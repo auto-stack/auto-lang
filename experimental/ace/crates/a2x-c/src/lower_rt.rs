@@ -1440,6 +1440,18 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     "a2x_stro_result",
                 )
             }
+            // PLAN-964 (L-22/FStr): I32 → decimal owned Str.
+            hir::ExprKind::TextDisplay { operand } => {
+                let mark = self.pending_frees.len();
+                let (v, _) = self.lower_pure(*operand)?;
+                self.one_arg_result(
+                    mark,
+                    "a2x_str_display_i32",
+                    &[v],
+                    Ty::StrOwned,
+                    "a2x_stro_result",
+                )
+            }
             hir::ExprKind::TextToOwned { operand } => {
                 let mark = self.pending_frees.len();
                 let (v, vt) = self.lower_view_value(*operand)?;

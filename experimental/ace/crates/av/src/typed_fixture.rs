@@ -187,6 +187,10 @@ pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
         // PLAN-823: closure metadata is execution-internal, never an entry
         // result face.
         Value::Closure(_) => return None,
+        // PLAN-964: nil reports its own kind with empty bits; object/
+        // external values never occur on the scalar typed face.
+        Value::Nil => ("nil", String::new()),
+        Value::Object(_) | Value::External(_) => return None,
     })
 }
 

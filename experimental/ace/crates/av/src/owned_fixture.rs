@@ -138,6 +138,10 @@ pub fn canonical_owned(
         // the entry contract never returns one (admission violation if it
         // would).
         Value::Closure(_) => return None,
+        // PLAN-964: nil canonicalizes as its own kind; object/external
+        // values never cross the entry boundary (admission violation).
+        Value::Nil => serde_json::json!({ "kind": "nil" }),
+        Value::Object(_) | Value::External(_) => return None,
     })
 }
 

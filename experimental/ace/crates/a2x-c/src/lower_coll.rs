@@ -722,6 +722,14 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         Ok(format!("(&{})", o))
     }
 
+    /// PLAN-964 (L-22/FStr): the owned-Str value of a Str-typed expr —
+    /// the expr lowering ALREADY unwraps result wrappers (`e<id>.value`
+    /// for concat/display temps); plain `a2x_str` locals/literals pass
+    /// as-is. Used by concat/eq/ne operands.
+    fn str_value_of(&mut self, operand: hir::ExprId) -> Result<String, A2xReject> {
+        self.expr(operand)
+    }
+
     fn expr(&mut self, id: hir::ExprId) -> Result<String, A2xReject> {
         let e = self
             .f
@@ -761,6 +769,8 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                             .view
                             .resolve_use_ty(self.f.body.exprs[lhs.0 as usize].ty)?;
                         if matches!(ty, Ty::StrOwned) {
+                            let l = self.str_value_of(lhs)?;
+                            let r = self.str_value_of(rhs)?;
                             Ok(format!("a2x_str_eq(&{l}, &{r})"))
                         } else {
                             Ok(format!("({l} == {r})"))
@@ -771,6 +781,8 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                             .view
                             .resolve_use_ty(self.f.body.exprs[lhs.0 as usize].ty)?;
                         if matches!(ty, Ty::StrOwned) {
+                            let l = self.str_value_of(lhs)?;
+                            let r = self.str_value_of(rhs)?;
                             Ok(format!("a2x_str_ne(&{l}, &{r})"))
                         } else {
                             Ok(format!("({l} != {r})"))
@@ -996,6 +1008,35 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             }
             hir::ExprKind::BorrowMut { local } => Ok(format!("&{}", self.local_name_of(local))),
             hir::ExprKind::Move { inner } => self.expr(inner),
+            // PLAN-964 (L-22/FStr): the interpolation chain's concat and
+            // i32 display ride the C collections Str runtime. The runtime
+            // channel is OUT-PARAM + trap-code return (fresh owned buffer
+            // written into `&e<id>`), so the emission declares the
+            // `a2x_stro_result` temp first, then trap-checks the code —
+            // the same shape the literal-promotion path uses.
+            hir::ExprKind::TextConcat { lhs, rhs } => {
+                let l = self.str_value_of(lhs)?;
+                let r = self.str_value_of(rhs)?;
+                let name = self.fall_out_pre(id, "a2x_stro_result");
+                self.wrapper_temps.insert(id.0);
+                let frees = self.err_frees_of(id.0, None);
+                self.trap_check(
+                    format!("a2x_str_concat(&{l}, &{r}, &{name})"),
+                    &frees,
+                );
+                Ok(format!("{name}.value"))
+            }
+            hir::ExprKind::TextDisplay { operand } => {
+                let o = self.expr(operand)?;
+                let name = self.fall_out_pre(id, "a2x_stro_result");
+                self.wrapper_temps.insert(id.0);
+                let frees = self.err_frees_of(id.0, None);
+                self.trap_check(
+                    format!("a2x_str_display_i32({o}, &{name})"),
+                    &frees,
+                );
+                Ok(format!("{name}.value"))
+            }
             hir::ExprKind::ListNew { list } => {
                 let elem = self.view.list_elem(list.0)?;
                 let tag = self.seed_ty(elem)?.elem_tag();

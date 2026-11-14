@@ -254,6 +254,12 @@ fn collect_expr(
                 stack.push((*lhs, d + 1));
                 stack.push((*rhs, d + 1));
             }
+            // PLAN-964 (L-22/FStr): the i32 display operator is part of
+            // the compute surface (the interpolation chain's leaf).
+            hir::ExprKind::TextDisplay { operand } => {
+                ops.insert("text_display");
+                stack.push((*operand, d + 1));
+            }
             hir::ExprKind::RecordCtor { eval_args, .. } => {
                 ops.insert("record_ctor");
                 for a in eval_args {
@@ -792,6 +798,12 @@ fn ser_expr(
             ser_expr(view, f, *lhs, canon, next, out, depth + 1)?;
             out.push(',');
             ser_expr(view, f, *rhs, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        // PLAN-964 (L-22/FStr): i32 display serialization.
+        hir::ExprKind::TextDisplay { operand } => {
+            out.push_str("disp(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
             out.push(')');
         }
         hir::ExprKind::TextClone { operand } => {

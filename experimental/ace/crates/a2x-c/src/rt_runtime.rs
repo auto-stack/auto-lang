@@ -257,6 +257,33 @@ static a2x_stro_result a2x_str_concat(a2x_str_view l, a2x_str_view r) {
     return out;
 }
 
+/* PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str (the M2-A
+ * display domain; the general format algorithms belong to 972). */
+static a2x_stro_result a2x_str_display_i32(int32_t v) {
+    a2x_stro_result out;
+    char tmp[12];
+    int32_t n = v;
+    int len = 0;
+    if (n == INT32_MIN) {
+        const char* lit = "-2147483648";
+        while (lit[len] != 0) { tmp[len] = lit[len]; len++; }
+    } else {
+        int neg = n < 0 ? 1 : 0;
+        uint32_t m = neg ? (uint32_t)(-(int64_t)n) : (uint32_t)n;
+        char digits[11];
+        int nd = 0;
+        do { digits[nd++] = (char)('0' + (m % 10)); m /= 10; } while (m != 0);
+        if (neg) tmp[len++] = '-';
+        while (nd > 0) tmp[len++] = digits[--nd];
+    }
+    if (a2x_rt_reserve((size_t)len)) { out.value.data = NULL; out.value.len = 0; out.trap = A2X_TRAP_RESOURCE; return out; }
+    uint8_t* buf = (uint8_t*)malloc(len == 0 ? 1 : (size_t)len);
+    if (buf == NULL) { out.value.data = NULL; out.value.len = 0; out.trap = A2X_TRAP_RESOURCE; return out; }
+    if (len > 0) memcpy(buf, tmp, (size_t)len);
+    out.value.data = buf; out.value.len = len; out.trap = A2X_TRAP_NONE;
+    return out;
+}
+
 /* Explicit free of an owned buffer — the ONLY release path. */
 static void a2x_str_free(a2x_str* s) {
     if (s != NULL && s->data != NULL) {

@@ -12,6 +12,7 @@ use crate::cache::CoffMeta;
 use crate::{closures_layout as layout, closures_lower as lower};
 use crate::{collections_artifacts as art, collections_runtime as runtime};
 use ace_av_core::mir::{MirFunction, MirModule, MirType};
+use ace_core::hir::DefKind;
 use std::path::Path;
 
 /// PLAN-924 V-08: the verified restore material for one closures
@@ -30,6 +31,58 @@ struct RestoredClosures {
 
 fn bad(message: impl Into<String>) -> crate::MnError {
     crate::MnError::Admit("closures", message.into())
+}
+
+/// PLAN-964: per-function closures units derived from an already-checked
+/// module — the same per-def lowering the cold producer runs minus the
+/// source recompile. Lets the checked-module driver arms (request_checked /
+/// build_checked) reuse the closures lane without the source text; the
+/// manifest source identity is the caller's placeholder (ephemeral
+/// requests never persist the source blob).
+pub(crate) fn units_from_checked(
+    checked: &ace_core::verify::CheckedModule,
+    snapshot: u64,
+) -> Result<Vec<MirModule>, crate::MnError> {
+    let bundle = checked.bundle();
+    let module = bundle
+        .modules
+        .first()
+        .ok_or_else(|| bad("bundle carries no module"))?;
+    let defs: Vec<String> = module
+        .defs
+        .iter()
+        .filter(|def| matches!(def.kind, DefKind::Function { .. }))
+        .map(|def| def.id_text.clone())
+        .collect();
+    let mut units = Vec::with_capacity(defs.len());
+    for def in &defs {
+        let unit =
+            ace_lowering::hir_adapter::lower_function_closures_unit(bundle, def, &[], snapshot)
+                .map_err(|e| crate::MnError::Backend(format!("{e:?}")))?;
+        crate::closures_lower::admit_layouts(&unit)?;
+        units.push(unit);
+    }
+    Ok(units)
+}
+
+/// PLAN-964: does this module exercise the closure surface (a body with
+/// create/indirect-call/env instructions)? Only those Numeric modules are
+/// routed to the closures lane; plain aggregates/composites keep the
+/// generic lane's frozen admission.
+pub(crate) fn module_has_closure_instructions(module: &MirModule) -> bool {
+    use ace_av_core::mir::MirInstr;
+    module.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    MirInstr::CreateClosure { .. }
+                        | MirInstr::CallClosure { .. }
+                        | MirInstr::EnvGet { .. }
+                )
+            })
+        })
+    })
 }
 
 struct ClosureInterface {
@@ -246,7 +299,7 @@ impl MnDriver {
         response
     }
 
-    fn closures_units_inner(
+    pub(crate) fn closures_units_inner(
         &mut self,
         units: &[MirModule],
         source: &str,

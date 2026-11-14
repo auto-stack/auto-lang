@@ -981,13 +981,17 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
         }
         // restricted Str face (literal + len + clone), record ctor/field
         // reads/borrows, whole-root move, and the List/Variant set — the
-        // wider text surface (slices/char ops/concat) stays out
+        // wider text surface (slices/char ops) stays out. PLAN-964: the
+        // FStr interpolation chain (TextConcat + TextDisplay) joins the
+        // collections face — the aggregates/closures FStr slice.
         Family::Collections => {
             matches!(
                 k,
                 hir::ExprKind::StrLit { .. }
                     | hir::ExprKind::TextLen { .. }
                     | hir::ExprKind::TextClone { .. }
+                    | hir::ExprKind::TextConcat { .. }
+                    | hir::ExprKind::TextDisplay { .. }
                     | hir::ExprKind::Move { .. }
             ) || record_kinds
                 || collections_kinds
@@ -1463,5 +1467,7 @@ fn type_kind_name(k: &hir::TypeKind) -> &'static str {
         hir::TypeKind::U64 => "u64",
         hir::TypeKind::F32 => "f32",
         hir::TypeKind::F64 => "f64",
+        hir::TypeKind::Nil => "nil",
+        hir::TypeKind::Object { .. } => "object",
     }
 }

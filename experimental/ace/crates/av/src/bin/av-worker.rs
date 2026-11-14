@@ -607,6 +607,9 @@ fn core_version_for(recipe: &str) -> &'static str {
         // PLAN-864: the collections SOURCE recipe rides the same profile-4
         // core identity (the source frontend lowers onto it unchanged).
         "ac-av/collections-source-run-v1" => ace_av_core::contract::AV_COLLECTIONS_PROFILE,
+        // PLAN-964: the aggregates SOURCE recipe lowers through the
+        // closures-superset entry — same av.closures/1 identity.
+        "ac-av/aggregates-source-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/closures-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/closures-source-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         // PLAN-912: the FUNCTION-session closures source recipe rides the
@@ -981,6 +984,10 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
     // PLAN-864: the collections SOURCE recipe — real .at sources through
     // the collections frontend onto the frozen 822 execution.
     let collections_source_recipe = recipe == "ac-av/collections-source-run-v1";
+    // PLAN-964: the aggregates SOURCE recipe — real .at sources through
+    // the aggregates frontend (objects/nil/fstr) onto the same closures-
+    // superset lowering/runtime the crate-level M2 tests drive.
+    let aggregates_source_recipe = recipe == "ac-av/aggregates-source-run-v1";
     // PLAN-865: real closures-profile source through per-function units and
     // the existing closures update/link/runtime session.
     let closures_source_recipe = recipe == "ac-av/closures-source-run-v1";
@@ -1023,6 +1030,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
         && !resource_events_recipe
         && !collections_recipe
         && !collections_source_recipe
+        && !aggregates_source_recipe
         && !closures_source_recipe
         && !closures_fn_recipe
         && !closures_recovery_recipe
@@ -1548,6 +1556,73 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     }
                     continue;
                 }
+                if aggregates_source_recipe {
+                    // PLAN-964: real .at sources through the aggregates
+                    // frontend (objects/nil/fstr) onto the shared closures-
+                    // superset lowering/runtime; the judged face is the
+                    // standard run outcome (value / trap / diag).
+                    let started = std::time::Instant::now();
+                    let source_hash = current_source.clone();
+                    match ace_av::collections_864_support::compile_and_execute_aggregates(
+                        &current_source,
+                        &entry,
+                    ) {
+                        Ok(collections) => {
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "success",
+                                "value": collections.value,
+                                "collections": null,
+                                "trap": null,
+                                "diag": null,
+                                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                        Err(e) if e.starts_with("trap: ") => {
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "trap",
+                                "value": null,
+                                "collections": null,
+                                "trap": e.trim_start_matches("trap: "),
+                                "diag": null,
+                                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                        Err(e) => {
+                            let (stage, code) = if let Some(rest) = e.strip_prefix("probe.at:") {
+                                let rest = rest.trim();
+                                let code_part = rest
+                                    .split("error[")
+                                    .nth(1)
+                                    .and_then(|x| x.split(']').next())
+                                    .unwrap_or("");
+                                let stage = match code_part.split('/').next().unwrap_or("") {
+                                    "text" => "parse",
+                                    "bind" => "resolve",
+                                    "verify" => "typecheck",
+                                    _ => "typecheck",
+                                };
+                                (stage.to_string(), code_part.to_string())
+                            } else {
+                                ("run".to_string(), String::new())
+                            };
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "diag",
+                                "value": null,
+                                "collections": null,
+                                "trap": null,
+                                "diag": {"stage": stage, "code": code, "message": e},
+                                "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                    }
+                    continue;
+                }
                 if collections_recipe {
                     let Some(fid) = &collections_fixture_id else {
                         eprintln!("collections recipe requires a collections:<id> entry");
@@ -1996,6 +2071,11 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                             | "S08"
                             // PLAN-928 V-09：同文 λ 异 owner（x=1/2）值面。
                             | "U1"
+                            // PLAN-964 (M2-A, T-02/T-08)：动态闭包语料
+                            // (D01: List 捕获+HOF → 369；D02: 对象存可调用
+                            // 值动态派发 → 9)。
+                            | "D01"
+                            | "D02"
                     ) {
                         eprintln!("unknown closures source id {source_id}");
                         exit(2);

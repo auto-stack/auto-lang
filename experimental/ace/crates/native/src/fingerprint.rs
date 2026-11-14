@@ -37,6 +37,10 @@ pub(crate) fn shape(m: &MirModule, idx: TypeIdx) -> String {
         Some(MirType::F64) => "f64".into(),
         Some(MirType::Record(r)) => record_shape(m, r),
         Some(MirType::RecordView(r)) => format!("view:{}", record_shape(m, r)),
+        // PLAN-964: Nil is a zero-width null-value type; Object renders
+        // as a distinct nominal label (opaque shared-cell reference).
+        Some(MirType::Nil) => "nil".into(),
+        Some(MirType::Object { .. }) => "object".into(),
         Some(
             MirType::List(_)
             | MirType::Variant(_)
@@ -108,6 +112,8 @@ fn const_repr(c: &MirConst) -> String {
         MirConst::U64(v) => format!("u64:{v}"),
         MirConst::F32Bits(b) => format!("f32:{b:08x}"),
         MirConst::F64Bits(b) => format!("f64:{b:016x}"),
+        // PLAN-964: nil renders by name (zero-width null value).
+        MirConst::Nil => "nil".to_string(),
     }
 }
 
@@ -396,6 +402,22 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         MirInstr::DynPack { dst, src } => format!("dynpack {dst} {src}"),
         MirInstr::DynIs { dst, src, ty } => format!("dynis {dst} {src} t{ty}"),
         MirInstr::DynTake { dst, src, ty } => format!("dyntake {dst} {src} t{ty}"),
+        // PLAN-964 object/display surface: pure formatting — a fingerprint
+        // must not panic on the widened instruction set; the lower surface
+        // rejects the object instructions below.
+        MirInstr::ObjectNew { dst, keys, vals } => {
+            format!("object-new {dst} {keys:?} {vals:?}")
+        }
+        MirInstr::ObjectGet {
+            dst,
+            obj,
+            key,
+            elem,
+        } => format!("object-get {dst} {obj} {key} t{elem}"),
+        MirInstr::ObjectSet { obj, key, value } => {
+            format!("object-set {obj} {key} {value}")
+        }
+        MirInstr::TextDisplay { dst, src } => format!("text-display {dst} {src}"),
     })
 }
 

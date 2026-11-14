@@ -632,8 +632,7 @@ pub extern "system" fn ac_rt_own_concat(
     b_ptr: *const u8,
     b_len: i32,
     out_len: *mut i32,
-) -> *mut u8 {
-    trace_line(|l| {
+) -> *mut u8 {    trace_line(|l| {
         l.s("CONCAT a=");
         l.i(a_len);
         l.s(" b=");
@@ -674,6 +673,77 @@ pub extern "system" fn ac_rt_own_concat(
                 l.u(id);
             });
             unsafe { write_volatile(out_len, total as i32) };
+            p
+        }
+        Err(code) => {
+            rt_fail(code);
+            unsafe { write_volatile(out_len, code) };
+            core::ptr::null_mut()
+        }
+    }
+}
+
+/// PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str. The M2-A
+/// display domain is I32 only (the general format algorithms belong to
+/// 972); a negative value carries a leading `-`. Deterministic itoa —
+/// no host-locale dependence.
+#[no_mangle]
+pub extern "system" fn ac_rt_own_display_i32(
+    value: i32,
+    out_len: *mut i32,
+) -> *mut u8 {
+    let mut buf = [0u8; 12];
+    let mut len = 0usize;
+    if value == i32::MIN {
+        let lit = b"-2147483648";
+        for b in lit {
+            buf[len] = *b;
+            len += 1;
+        }
+    } else {
+        let neg = value < 0;
+        let mut m = if neg { -(value as i64) } else { value as i64 };
+        let mut digits = [0u8; 11];
+        let mut nd = 0usize;
+        loop {
+            digits[nd] = b'0' + (m % 10) as u8;
+            nd += 1;
+            m /= 10;
+            if m == 0 {
+                break;
+            }
+        }
+        if neg {
+            buf[len] = b'-';
+            len += 1;
+        }
+        while nd > 0 {
+            nd -= 1;
+            buf[len] = digits[nd];
+            len += 1;
+        }
+    }
+    trace_line(|l| {
+        l.s("DISPLAY len=");
+        l.i(len as i32);
+    });
+    match try_alloc(len as u32) {
+        Ok((p, _id)) if p.is_null() => {
+            unsafe { write_volatile(out_len, 0) };
+            core::ptr::null_mut()
+        }
+        Ok((p, id)) => {
+            let mut w = 0usize;
+            while w < len {
+                let byte = unsafe { read_volatile(buf.as_ptr().add(w)) };
+                unsafe { write_volatile(p.add(w), byte) };
+                w += 1;
+            }
+            trace_line(|l| {
+                l.s("DISPLAY id=");
+                l.u(id);
+            });
+            unsafe { write_volatile(out_len, len as i32) };
             p
         }
         Err(code) => {

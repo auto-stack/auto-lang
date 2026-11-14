@@ -451,23 +451,61 @@ pub fn link_only(
     // changed plus the wrapper. Cold paths stage everything (no files
     // exist yet); the byte comparison is exact, not a heuristic.
     let mut owned: Vec<PathBuf> = Vec::new();
-    let stage: Vec<PathBuf> = std::iter::once(("mn8-ac-start".to_string(), entry_wrapper))
-        .chain(objects.iter().map(|o| (o.name.clone(), o.bytes.as_slice())))
-        .enumerate()
-        .map(|(i, (name, bytes))| {
-            let p = workdir.join(format!("{:02}-{}.obj", i, safe_name(&name)));
+    // A runtime (support) library link also carries the tiny CRT/EH stub
+    // so rust-lld can resolve the no_std runtime libs' std-object metadata
+    // symbols (`_fltused`, `__CxxFrameHandler3`) without any CRT DLL —
+    // the PE keeps its frozen kernel32-only import set (freeze §5).
+    let stub: Option<Vec<u8>> = if support_libs.is_empty() {
+        None
+    } else {
+        Some(crate::emit::emit_crt_stub_coff()?)
+    };
+    let stub_path: Option<PathBuf> = match stub {
+        Some(bytes) => {
+            let p = workdir.join(format!("mn8-crt-stub-{tag}.obj"));
             let unchanged = std::fs::metadata(&p)
                 .map(|m| m.len() == bytes.len() as u64)
                 .unwrap_or(false)
                 && std::fs::read(&p).map(|prev| prev == bytes).unwrap_or(false);
             if !unchanged {
-                std::fs::write(&p, bytes)
-                    .map_err(|e| MnError::Infra(format!("stage {}: {e}", p.display())))?;
+                std::fs::write(&p, &bytes)
+                    .map_err(|e| MnError::Infra(format!("stage stub {}: {e}", p.display())))?;
             }
             owned.push(p.clone());
-            Ok(p)
-        })
-        .collect::<Result<Vec<_>, MnError>>()?;
+            Some(p)
+        }
+        None => None,
+    };
+    let mut stage: Vec<PathBuf> = Vec::with_capacity(objects.len() + 2);
+    stage.push(workdir.join(format!("{:02}-{}.obj", 0, safe_name("mn8-ac-start"))));
+    let wrapper_path = stage[0].clone();
+    let unchanged = std::fs::metadata(&wrapper_path)
+        .map(|m| m.len() == entry_wrapper.len() as u64)
+        .unwrap_or(false)
+        && std::fs::read(&wrapper_path)
+            .map(|prev| prev == entry_wrapper)
+            .unwrap_or(false);
+    if !unchanged {
+        std::fs::write(&wrapper_path, entry_wrapper)
+            .map_err(|e| MnError::Infra(format!("stage wrapper {}: {e}", wrapper_path.display())))?;
+    }
+    owned.push(wrapper_path.clone());
+    for (i, o) in objects.iter().enumerate() {
+        let p = workdir.join(format!("{:02}-{}.obj", i + 1, safe_name(&o.name)));
+        let unchanged = std::fs::metadata(&p)
+            .map(|m| m.len() == o.bytes.len() as u64)
+            .unwrap_or(false)
+            && std::fs::read(&p).map(|prev| prev == o.bytes).unwrap_or(false);
+        if !unchanged {
+            std::fs::write(&p, &o.bytes)
+                .map_err(|e| MnError::Infra(format!("stage {}: {e}", p.display())))?;
+        }
+        owned.push(p.clone());
+        stage.push(p);
+    }
+    if let Some(p) = stub_path {
+        stage.push(p);
+    }
     // Reclaim every owned staged file; return the composed failure with
     // the blocked-reclaim report appended.
     let fail = |mut err: MnError, mut owned: Vec<PathBuf>| -> MnError {

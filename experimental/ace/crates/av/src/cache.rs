@@ -958,6 +958,9 @@ fn shape_of_use(u: &hir::TypeUse, m: &hir::Module) -> String {
             Some(hir::TypeKind::Record(_)) => "record".to_string(),
             Some(hir::TypeKind::List { .. }) => "list".to_string(),
             Some(hir::TypeKind::Variant { .. }) => "variant".to_string(),
+            // PLAN-964: nil/object shapes for the canonical digest.
+            Some(hir::TypeKind::Nil) => "nil".to_string(),
+            Some(hir::TypeKind::Object { .. }) => "object".to_string(),
             None => "oob".to_string(),
         },
     }
@@ -1504,7 +1507,10 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 // PLAN-824: the erased Dyn type interns atomically.
                 | MirType::Dyn
                 // PLAN-862: Unit is atomic (no type-table children).
-                | MirType::Unit => {
+                | MirType::Unit
+                // PLAN-964: Nil is atomic; Object interns once its elem
+                // is mapped (handled below).
+                | MirType::Nil => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
@@ -1626,6 +1632,16 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                         }
                         ns.result = map[sig.result as usize];
                         let idx = merged.intern_type(MirType::Closure(ns));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
+                // PLAN-964: an Object type maps once its elem is mapped.
+                MirType::Object { elem } => {
+                    if map[*elem as usize] != u32::MAX {
+                        let idx = merged.intern_type(MirType::Object {
+                            elem: map[*elem as usize],
+                        });
                         map[i] = idx;
                         progress = true;
                     }
@@ -1802,6 +1818,9 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             // PLAN-862: the unit RESULT renders as `unit` in the manifest
             // signature — a restore-time claim of `i32` is a mismatch.
             Some(MirType::Unit) => "unit".to_string(),
+            // PLAN-964: nil and object shapes for the manifest signature.
+            Some(MirType::Nil) => "nil".to_string(),
+            Some(MirType::Object { .. }) => "object".to_string(),
             None => "?".to_string(),
         }
     };

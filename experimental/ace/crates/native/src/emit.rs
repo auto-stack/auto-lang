@@ -643,6 +643,51 @@ pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
     emit_wrapper_coff_impl(entry_symbol, None).map(|(bytes, _)| bytes)
 }
 
+/// A tiny object resolving the CRT/EH metadata symbols the no_std runtime
+/// static libraries reference (`_fltused` from float codegen, the unwind
+/// personality `__CxxFrameHandler3` from the prebuilt std's `.xdata`).
+/// Neither is ever CALLED under panic=abort — definitions here let rust-lld
+/// link the runtime libs while the PE keeps its frozen kernel32-only
+/// import set (no CRT DLLs). Emitted only for links that carry a support
+/// (runtime) library.
+pub fn emit_crt_stub_coff() -> Result<Vec<u8>, MnError> {
+    let isa = make_isa()?;
+    let builder = ObjectBuilder::new(isa, "mn8-crt-stub", default_libcall_names())
+        .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
+    let mut om = ObjectModule::new(builder);
+    let fltused = om
+        .declare_data("_fltused", Linkage::Export, true, false)
+        .map_err(|e| MnError::Backend(format!("declare _fltused: {e}")))?;
+    let mut flt = cranelift_module::DataDescription::new();
+    flt.define_zeroinit(4);
+    om.define_data(fltused, &flt)
+        .map_err(|e| MnError::Backend(format!("define _fltused: {e}")))?;
+    let eh_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![],
+        returns: vec![],
+    };
+    let eh = om
+        .declare_function("__CxxFrameHandler3", Linkage::Export, &eh_sig)
+        .map_err(|e| MnError::Backend(format!("declare __CxxFrameHandler3: {e}")))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = eh_sig;
+    {
+        let mut fb_ctx = cranelift_frontend::FunctionBuilderContext::new();
+        let mut fb = cranelift_frontend::FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+        fb.ins().return_(&[]);
+        fb.finalize();
+    }
+    om.define_function(eh, &mut ctx)
+        .map_err(|e| MnError::Backend(format!("define __CxxFrameHandler3: {e}")))?;
+    om.finish()
+        .emit()
+        .map_err(|e| MnError::Backend(format!("emit crt stub: {e}")))
+}
+
 /// Source request wrapper bytes retain their real memory reservation through
 /// their last use, including file-write failures. The payload drops first.
 pub struct ReservedWrapper {

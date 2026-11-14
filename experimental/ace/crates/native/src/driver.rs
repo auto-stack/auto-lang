@@ -802,6 +802,43 @@ impl MnDriver {
         snapshot: u64,
         obs: &mut Obs,
     ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>, String, Option<String>), MnError> {
+        // PLAN-964: closures-family Numeric modules run through the closures
+        // lane (build + execute in one transaction — the run/observe half
+        // differs from the generic lane's bare ExitProcess wrapper).
+        if arm == Arm::Numeric {
+            let module = ace_lowering::lower_checked_closures(checked, entry, snapshot)
+                .map_err(|e| match e {
+                    ace_lowering::AdapterError::Unsupported { message, .. }
+                    | ace_lowering::AdapterError::Invalid { message, .. } => {
+                        MnError::Unsupported("adapter", message)
+                    }
+                    ace_lowering::AdapterError::Resource { message, .. } => {
+                        MnError::Resource("adapter", message)
+                    }
+                })?;
+            if closures::module_has_closure_instructions(&module) {
+                let units = closures::units_from_checked(checked, snapshot)?;
+                let (build, run) = self.closures_units_inner(
+                    &units,
+                    "",
+                    entry,
+                    workdir,
+                    trace_lib,
+                    obs,
+                    true,
+                )?;
+                let run = run.ok_or_else(|| {
+                    MnError::Infra("closures candidate did not execute".to_string())
+                })?;
+                return Ok((
+                    run.exit_code,
+                    run.stdout,
+                    run.stderr,
+                    build.manifest_fp,
+                    build.manifest_artifact_id,
+                ));
+            }
+        }
         let build = self.build_arm(arm, checked, entry, workdir, trace_lib, None, snapshot, obs)?;
         let run = obs.span("run", |o| {
             o.counter("run_invocations", 1);
@@ -839,7 +876,12 @@ impl MnDriver {
         snapshot: u64,
         obs: &mut Obs,
     ) -> Result<MnBuild, MnError> {
-        let needs_text_runtime = matches!(arm, Arm::Owned);
+        // PLAN-964: the Numeric lane also links the text runtime — FStr
+        // (TextConcat/TextDisplay/StrCmp) lowers to the text-runtime calls
+        // on this lane; closures-family modules route to the closures lane
+        // before this point, so `arm == Arm::Numeric` here means the
+        // generic lane.
+        let needs_text_runtime = matches!(arm, Arm::Owned) || arm == Arm::Numeric;
         // An explicit `--support-lib` means the DOMAIN runtime library on
         // owned (text/text-record) rows and the trace support library on
         // every other arm — the same split the retiring CLI had (PLAN-871
@@ -871,6 +913,25 @@ impl MnDriver {
                 }
             })
         })?;
+        // PLAN-964: a Numeric module that exercises the CLOSURE surface
+        // (create/indirect-call/env instructions) routes through the
+        // closures lane — the collections runtime + closures emitter own
+        // that vocabulary; the generic lane keeps its frozen
+        // scalar/data/owned admission (a closure-source build otherwise
+        // dies in the slot plan).
+        if arm == Arm::Numeric && closures::module_has_closure_instructions(&module) {
+            let units = closures::units_from_checked(checked, snapshot)?;
+            let (build, _) = self.closures_units_inner(
+                &units,
+                "",
+                entry,
+                workdir,
+                trace_lib,
+                obs,
+                false,
+            )?;
+            return Ok(build);
+        }
         let checked_mir = obs.span("mir_verify", |o| {
             verify_mir(&module).map_err(|e| {
                 o.counter("mir_verify_reject", 1);

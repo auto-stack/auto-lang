@@ -1439,6 +1439,17 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     Ty::StrOwned,
                 ))
             }
+            // PLAN-964 (L-22/FStr): I32 → decimal owned Str.
+            hir::ExprKind::TextDisplay { operand } => {
+                let (v, _) = self.lower_pure(*operand, out)?;
+                Ok((
+                    RExpr::StrFn {
+                        func: "a2x_str_display_i32".to_string(),
+                        args: vec![v],
+                    },
+                    Ty::StrOwned,
+                ))
+            }
             hir::ExprKind::TextToOwned { operand } => {
                 let (v, vt) = self.lower_view_value(*operand, out)?;
                 Ok((

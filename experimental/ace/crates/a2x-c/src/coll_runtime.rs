@@ -282,7 +282,7 @@ static a2x_trap_code a2x_str_alloc(size_t len, const uint8_t* fill, a2x_str* out
     if (t != A2X_TRAP_NONE) return t;
     p = (uint8_t*)malloc(len == 0 ? 1 : len);
     if (p == NULL) { a2x_coll_st_live_backing_bytes -= (long)len; return A2X_TRAP_RESOURCE; }
-    if (len > 0) memcpy(p, fill, len);
+    if (len > 0 && fill != NULL) memcpy(p, fill, len);
     out->data = p; out->len = len;
     a2x_coll_st_live_str_bytes += (long)len;
     return A2X_TRAP_NONE;
@@ -295,6 +295,41 @@ static a2x_trap_code a2x_str_from_lit(const uint8_t* lit, size_t len, a2x_str* o
 /* Independent owned copy (s.clone()). */
 static a2x_trap_code a2x_str_clone(const uint8_t* data, size_t len, a2x_str* out) {
     return a2x_str_alloc(len, data, out);
+}
+
+/* PLAN-964 (L-22/FStr): concatenation into a fresh owned buffer. */
+static a2x_trap_code a2x_str_concat(const a2x_str* l, const a2x_str* r, a2x_stro_result* out) {
+    a2x_trap_code t;
+    size_t total;
+    if (l->len > SIZE_MAX - r->len) { out->trap = A2X_TRAP_RESOURCE; out->value.data = NULL; out->value.len = 0; return A2X_TRAP_RESOURCE; }
+    total = l->len + r->len;
+    t = a2x_str_alloc(total, NULL, &out->value);
+    if (t != A2X_TRAP_NONE) { out->trap = t; return t; }
+    if (l->len > 0) memcpy(out->value.data, l->data, l->len);
+    if (r->len > 0) memcpy(out->value.data + l->len, r->data, r->len);
+    out->trap = A2X_TRAP_NONE;
+    return A2X_TRAP_NONE;
+}
+
+/* PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str. */
+static a2x_trap_code a2x_str_display_i32(int32_t v, a2x_stro_result* out) {
+    char tmp[12];
+    int32_t n = v;
+    size_t len = 0;
+    if (n == INT32_MIN) {
+        const char* lit = "-2147483648";
+        while (lit[len] != 0) { tmp[len] = lit[len]; len++; }
+    } else {
+        int neg = n < 0 ? 1 : 0;
+        uint32_t m = neg ? (uint32_t)(-(int64_t)n) : (uint32_t)n;
+        char digits[11];
+        int nd = 0;
+        do { digits[nd++] = (char)('0' + (m % 10)); m /= 10; } while (m != 0);
+        if (neg) tmp[len++] = '-';
+        while (nd > 0) tmp[len++] = digits[--nd];
+    }
+    out->trap = a2x_str_alloc(len, (const uint8_t*)tmp, &out->value);
+    return out->trap;
 }
 
 /* Explicit free of an owned buffer — the ONLY release path. Zero-charge,

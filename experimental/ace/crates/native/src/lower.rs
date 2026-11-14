@@ -239,8 +239,27 @@ pub fn emit_function(
                 // PLAN-862's entry-unit Unit type (av.entry-unit/1) is a
                 // fourth profile's value — a named rejection keeps mn's
                 // admitted set frozen at the three shared profiles.
-                | MirType::Unit,
+                | MirType::Unit
+                // PLAN-964: Nil is a zero-width null value; Object is the
+                // shared object cell — both outside the mn data/owned
+                // surface (the instruction gate below already rejects the
+                // object opcodes; these arms keep the type match total).
+                // Named rejection: the dynamic/object face is called out so
+                // consumers can tell it from the scalar/container faces.
+                | MirType::Nil
+                | MirType::Object { .. },
             ) => {
+                // PLAN-964: the dynamic/object faces are called out BY NAME
+                // so consumers can tell them from the scalar/container faces.
+                if matches!(
+                    unit.types.get(s.ty as usize),
+                    Some(MirType::Dyn | MirType::Nil | MirType::Object { .. })
+                ) {
+                    return Err(format!(
+                        "object/dynamic slot type {} is outside the mn data/owned surface",
+                        s.ty
+                    ));
+                }
                 return Err(format!(
                     "slot {si} type {} is outside the mn data/owned surface",
                     s.ty
@@ -3091,6 +3110,19 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 self.negative_guard(nl)?;
                 self.def_pair(*dst, np, nl)?;
             }
+            // PLAN-964 (L-22/FStr): I32 → decimal owned Str (the mn FStr
+            // leg; the general format algorithms belong to 972).
+            MirInstr::TextDisplay { dst, src } => {
+                let v = self.v_scalar(*src)?;
+                let x = self.fb.use_var(v);
+                let (np, nl) = self.abic_call(
+                    "ac_rt_own_display_i32",
+                    &[types::I32],
+                    &[x],
+                )?;
+                self.negative_guard(nl)?;
+                self.def_pair(*dst, np, nl)?;
+            }
             MirInstr::StrCmp { eq, dst, lhs, rhs } => {
                 let ap = self.use_ptr(*lhs)?;
                 let al = self.use_len(*lhs)?;
@@ -3169,6 +3201,15 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::DynPack { .. } | MirInstr::DynIs { .. } | MirInstr::DynTake { .. } => {
                 return Err(
                     "av.dynamic/1 dyn instructions are outside the mn scalar surface".to_string(),
+                )
+            }
+            // PLAN-964: the object cell and nil-value surface are dynamic
+            // values — outside the mn scalar/record/str domain (the frozen
+            // "按原支持域" arm; the mn TextDisplay leg carries FStr).
+            MirInstr::ObjectNew { .. } | MirInstr::ObjectGet { .. } | MirInstr::ObjectSet { .. } => {
+                return Err(
+                    "av.dynamic/1 object instructions are outside the mn scalar surface (PLAN-964)"
+                        .to_string(),
                 )
             }
         }

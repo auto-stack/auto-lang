@@ -314,6 +314,19 @@ pub fn a2x_str_concat(l: &str, r: &str) -> A2xResult<A2xStr> {
     Ok(A2xStr { buf: Some(b) })
 }
 
+/// PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str (the M2-A
+/// display domain; the general format algorithms belong to 972).
+pub fn a2x_str_display_i32(value: i32) -> A2xResult<A2xStr> {
+    let rendered = value.to_string();
+    let mut b = String::new();
+    if b.try_reserve(rendered.len()).is_err() {
+        return Err(AutoTrap::Resource);
+    }
+    rt_alloc(rendered.len())?;
+    b.push_str(&rendered);
+    Ok(A2xStr { buf: Some(b) })
+}
+
 /// Explicit free of an owned buffer — the ONLY release path. Returns the
 /// freed byte count to the (test) observer protocol.
 pub fn a2x_str_free(s: &mut A2xStr) {
