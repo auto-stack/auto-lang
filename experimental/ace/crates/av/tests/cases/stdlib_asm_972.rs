@@ -353,6 +353,81 @@ fn main() int {
         .unwrap_or(-1);
     assert_eq!(code, 44, "AC/native whole-set exit (HOF closures)");
 
+    // ---- A2C / cl POSITIVE leg on the text/char subset (PLAN-972 T-03:
+    // the scalar-indexed text/char surface on the C collections family):
+    // byte_len(A中😀)*10 + scalar_len = 83 via real cl. ----
+    {
+        use ace_a2x_c::CTargetProvider;
+        let subset: Vec<ace_core::source::packages::PackageModuleInput> =
+            ace_core::source::packages::stdlib_assembled_files()
+                .into_iter()
+                .filter(|(n, _)| matches!(n.as_str(), "text.at" | "char.at"))
+                .map(|(n, c)| {
+                    let id = n.trim_end_matches(".at").to_string();
+                    ace_core::source::packages::PackageModuleInput {
+                        package: "std".into(),
+                        version: "1.0.0".into(),
+                        id,
+                        source: c,
+                        provider: None,
+                    }
+                })
+                .chain(std::iter::once(
+                    ace_core::source::packages::PackageModuleInput {
+                        package: "app".into(),
+                        version: "1.0.0".into(),
+                        id: "main".into(),
+                        source: "use std.text.byte_len
+use std.text.scalar_len
+fn main() int {
+    let a Str = \"A中😀\"
+    return byte_len(a.clone()) * 10 + scalar_len(a.clone())
+}".into(),
+                        provider: None,
+                    },
+                ))
+                .collect();
+        let mut ctx_c = PackageAssemblyContext::new(
+            AssemblyBackend::A2C,
+            ProviderChoice::Auto,
+            TargetOs::Windows,
+        );
+        let subset_product = compile_assembled_aggregates_inputs(
+            &subset,
+            "app::main",
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx_c,
+        )
+        .unwrap_or_else(|ds| panic!("a2c subset compile: {ds:?}"));
+        let store = scratch("cons-a2c-subset");
+        let mut c_target = PackageA2xTarget::cold_aggregates(
+            &store,
+            "asm972c",
+            "app",
+            16 << 20,
+            CTargetProvider::v1(),
+            &subset_product,
+        )
+        .unwrap_or_else(|e| panic!("a2c cold (subset): {e}"));
+        let build_dir = scratch("cons-a2c-subset-build");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        for (path, content) in &c_target.current.files {
+            std::fs::write(build_dir.join(path), content).unwrap();
+        }
+        std::fs::write(build_dir.join("manifest.json"), &c_target.current.manifest).unwrap();
+        let exe = build_dir.join("asm972c.exe");
+        ace_a2x_worker::crun::compile_c_fileset(&build_dir, &exe)
+            .unwrap_or_else(|e| panic!("cl failed: {e}"));
+        let run = Command::new(&exe).current_dir(&build_dir).output().unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+        assert!(out.ends_with("value:83"), "a2c subset stdout: {out}");
+    }
+
     // ---- A2R / rustc WHOLE-SET leg (PLAN-972 T-03: capture-free closure
     // values + the text/char/numeric surface ride the collections family):
     // the HOF program — filter([1..5], >1)=[2,3,4,5] sum=14 len=4 →

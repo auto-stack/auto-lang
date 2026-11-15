@@ -157,6 +157,8 @@ pub fn coll_c_value_ty(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xRej
     match ty {
         Ty::I32 => Ok("int32_t".into()),
         Ty::Bool => Ok("bool".into()),
+        // PLAN-972 (T-03): a char is its Unicode codepoint (uint32).
+        Ty::Char => Ok("uint32_t".into()),
         Ty::StrOwned => Ok("a2x_str".into()),
         Ty::Record(i) => view
             .record(i)
@@ -236,9 +238,13 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
         let pass = match (p.mode, ty) {
             // a scalar view is its ABI copy (mirror of the Rust leg's
             // by-value scalar params in every mode)
-            (_, Ty::I32 | Ty::Bool) => ParamPass::Value,
+            (_, Ty::I32 | Ty::Bool | Ty::Char) => ParamPass::Value,
             (hir::ParamMode::MoveOwn, _) => ParamPass::Value,
             (hir::ParamMode::View, Ty::Record(_) | Ty::Variant(_)) => ParamPass::ConstPtr,
+            // PLAN-972 (T-03): a View-mode owned-Str param is a borrow of
+            // the caller's buffer (const a2x_str* — the Rust leg's
+            // `&'a str` mirror); MoveOwn keeps the by-value struct.
+            (hir::ParamMode::View, Ty::StrOwned) => ParamPass::ConstPtr,
             (hir::ParamMode::MutBorrow, Ty::Record(_) | Ty::Variant(_)) => ParamPass::MutPtr,
             // PLAN-946: a View-mode List param passes as a mutable pointer —
             // C aliases naturally, so callee mutations are visible in the
@@ -997,9 +1003,27 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 } else {
                     Vec::new()
                 };
+                // PLAN-972 (T-03): str-borrowed callee params take the
+                // operand's VIEW form (plain values get &x; pointer params
+                // pass through).
+                let str_view_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
+                    t.params
+                        .iter()
+                        .map(|p| {
+                            matches!(p.ty, Ty::Str | Ty::StrOwned)
+                                && p.mode != hir::ParamMode::MoveOwn
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let mut args = Vec::new();
                 for (i, a) in eval_args.iter().enumerate() {
-                    let v = self.expr(*a)?;
+                    let v = if str_view_param.get(i).copied().unwrap_or(false) {
+                        self.text_operand(*a)?
+                    } else {
+                        self.expr(*a)?
+                    };
                     if shared_list_param.get(i).copied().unwrap_or(false) {
                         args.push(format!("&{v}"));
                     } else {
@@ -1025,6 +1049,54 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             hir::ExprKind::TextLenBytes { operand } => {
                 let o = self.text_operand(operand)?;
                 self.fall_res(id, "a2x_result", format!("a2x_str_len_bytes({o})"))
+            }
+            // PLAN-972 (T-03): the scalar-indexed text/char expression
+            // surface (char IS its codepoint; slices are borrowed views).
+            hir::ExprKind::TextCharAt { operand, index } => {
+                let o = self.text_operand(operand)?;
+                let i = self.expr(index)?;
+                self.fall_res(
+                    id,
+                    "a2x_char_result",
+                    format!("a2x_str_char_at({o}, {i})"),
+                )
+            }
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } => {
+                let o = self.text_operand(operand)?;
+                let a = self.expr(start)?;
+                let b = self.expr(end)?;
+                self.fall_res(
+                    id,
+                    "a2x_strv_result",
+                    format!("a2x_str_slice({o}, {a}, {b})"),
+                )
+            }
+            hir::ExprKind::TextToOwned { operand } => {
+                let o = self.text_operand(operand)?;
+                self.fall_res(
+                    id,
+                    "a2x_stro_result",
+                    format!("a2x_str_to_owned({o})"),
+                )
+            }
+            // (TextConcat is handled by the pre-existing FStr arm in
+            // expr_rest — the out-param stro_result form.)
+            hir::ExprKind::CharLit { scalar } => Ok(format!("(uint32_t){}", scalar)),
+            hir::ExprKind::CharToCodepoint { operand } => {
+                let o = self.expr(operand)?;
+                Ok(format!("((int32_t)({o}))"))
+            }
+            hir::ExprKind::CharFromCodepoint { operand } => {
+                let o = self.expr(operand)?;
+                self.fall_res(
+                    id,
+                    "a2x_char_result",
+                    format!("a2x_char_from_codepoint({o})"),
+                )
             }
             hir::ExprKind::TextClone { operand } => {
                 let o = self.expr(operand)?;
