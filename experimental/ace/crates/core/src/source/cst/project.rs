@@ -297,6 +297,18 @@ pub(crate) fn project_program_with_caps(
             } else if Some(kind) == k.task_item {
                 // PLAN-968: task actor declaration.
                 items.push(Item::Task(eng.run_task_item(node)));
+            } else if p
+                .rules
+                .iter()
+                .position(|r| r.name == "age-node-item" || r.name == "age-node-c-item"
+                    || r.name == "age-pub-node-item")
+                .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+                .is_some_and(|k2| kind == k2)
+            {
+                // PLAN-979/981：AGE node 声明由**领域前门**单独投影（候选 + 脱糖），
+                // 不是普通声明项。这里必须显式跳过——否则下面的 `Item::Type`
+                // 兜底会把一个 node 静默变成同名记录类型（本批实测过的静默丢弃）。
+                continue;
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -3895,6 +3907,39 @@ pub(crate) fn project_component_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
+    // PLAN-981（IF-981-REF）：`pub node` 形状存在，但**跨模块可见性尚未成立**
+    // （顶层 `pub node` 不是 CST 声明边界，投影看不到它）。这里具名拒绝，
+    // 绝不允许"编译通过但节点静默消失"——那正是本合同禁止的静默丢弃。
+    let pub_node_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-pub-node-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    if let Some(pk) = pub_node_kind {
+        for d in &tree.decls {
+            let n = if tree.kind(d.node) == k.item {
+                tree.children(d.node)
+                    .into_iter()
+                    .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                    .unwrap_or(d.node)
+            } else {
+                d.node
+            };
+            if tree.kind(n) == pk {
+                let (a, b) = tree.abs_range(n);
+                return Err(vec![crate::atom_text::Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.pub-node-unsupported",
+                    "`pub node` is not supported yet: node visibility is not a declaration \
+                     boundary in this front door, so accepting it would silently drop the node",
+                    crate::atom_text::Span {
+                        start: a as usize,
+                        end: b as usize,
+                    },
+                )]);
+            }
+        }
+    }
     let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
     let mut out = Vec::new();
     for d in &tree.decls {
@@ -3909,6 +3954,7 @@ pub(crate) fn project_component_nodes(
         if tree.kind(node) != item_kind {
             continue;
         }
+        // PLAN-981（IF-981-REF）：本批只支持**同模块**实例引用。
         out.push(eng.run_component_node_item(node));
     }
     if let Some(first) = eng.cx.first_diag() {
@@ -4157,6 +4203,7 @@ impl<'a> Engine<'a> {
         let mut fields = Vec::new();
         let mut handlers = Vec::new();
         let mut texts = Vec::new();
+        let mut node_refs = Vec::new();
         let mut view_role = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
         for raw in self.cx.children(body) {
@@ -4267,7 +4314,43 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
-                    for c in self.cx.children(member) {
+                    for raw in self.cx.children(member) {
+                        // `age-view-item` 是分派 wrapper：实质成员是它的首个非 trivia 孩子。
+                        let c = self
+                            .cx
+                            .children(raw)
+                            .into_iter()
+                            .find(|&x| {
+                                self.cx.tree.node(x).flags & ace_syntax_runtime::cst::FLAG_TRIVIA
+                                    == 0
+                            })
+                            .unwrap_or(raw);
+                        // PLAN-981（IF-981-REF）：`Meter m1 {}` = 节点实例引用。
+                        if let Some(ref_kind) = self
+                            .cx
+                            .p
+                            .rules
+                            .iter()
+                            .position(|r| r.name == "age-node-ref")
+                            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+                        {
+                            if self.cx.tree.kind(c) == ref_kind {
+                                let ty_leaf =
+                                    self.cx.field_child(c, "ty").expect("node ref type");
+                                let name_leaf =
+                                    self.cx.field_child(c, "name").expect("node ref name");
+                                let ty = ident_of(&mut self.cx, ty_leaf);
+                                let n = ident_of(&mut self.cx, name_leaf);
+                                node_refs.push(
+                                    crate::source::age_component::ComponentNodeRef {
+                                        ty,
+                                        name: n,
+                                        span: self.cx.span_of(c),
+                                    },
+                                );
+                                continue;
+                            }
+                        }
                         if Some(self.cx.tree.kind(c)) != text_kind {
                             continue;
                         }
@@ -4297,6 +4380,7 @@ impl<'a> Engine<'a> {
             head_spelling: head_spelling.clone(),
             head_span,
             legacy_widget: head_spelling != canonical_head,
+            public: false,
             name,
             fields,
             handlers,
@@ -4304,6 +4388,7 @@ impl<'a> Engine<'a> {
                 role: view_role,
                 span: view_span,
                 texts,
+                node_refs,
             },
             span: self.cx.span_of(node),
         }

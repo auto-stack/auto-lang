@@ -74,6 +74,10 @@ pub struct AgePackageComponent {
     pub fields: Vec<(String, String)>,
     /// `on <msg>` 消息名（按声明序；可能带 `.`，如 `Life.Tick`）。
     pub handler_msgs: Vec<String>,
+    /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
+    pub public: bool,
+    /// PLAN-981（IF-981-REF）：本组件 view 里**已解析**的实例引用。
+    pub refs: Vec<AgeResolvedRef>,
     pub texts: Vec<AgePackageText>,
     /// 声明所在模块键。
     pub module: String,
@@ -215,10 +219,15 @@ pub fn compile_age_package_with_scenario(
     let checked = crate::verify::verify_text_record(parts.bundle)
         .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
 
+    // 4b) PLAN-981（IF-981-REF）：解析 view 里的节点实例引用。可见性判据复用
+    //     共享绑定器的 exports/imports 事实；失败即整包具名拒绝（带原模块 span）。
+    let resolved_refs = resolve_refs(&product.bound, &product.age_components)?;
+
     // 5) 从 Checked HIR 读回每条行为的结论（共享 resolver 的判定，不是本层猜的）。
     //    隐藏函数的 HIR 名已被绑定器 mangle（`sf_p3_appm4_main___age_p_hidden_0`），
     //    故用共享 `origins` 表把源名映到真实符号再查——不猜命名规则。
-    let components = read_back_components(&product.age_components, &checked, &product.bound)?;
+    let components =
+        read_back_components(&product.age_components, &checked, &product.bound, &resolved_refs)?;
 
     Ok(AgePackageCompilation {
         description: AgePackageDescription {
@@ -327,6 +336,7 @@ fn read_back_components(
     packaged: &[PackagedAgeComponent],
     checked: &CheckedModule,
     bound: &super::packages::BoundPackages,
+    refs: &std::collections::BTreeMap<String, Vec<AgeResolvedRef>>,
 ) -> Result<Vec<AgePackageComponent>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for p in packaged {
@@ -373,6 +383,8 @@ fn read_back_components(
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect(),
             handler_msgs: p.node.handlers.iter().map(|h| h.msg.clone()).collect(),
+            public: p.node.public,
+            refs: refs.get(&p.module).cloned().unwrap_or_default(),
             texts,
             module: p.module.clone(),
         });
@@ -451,6 +463,238 @@ pub(crate) fn resolve_tick_spelling(
         instances: scenario.instances,
         ops,
     }
+}
+
+/// PLAN-981（IF-981-REF）：一条**已解析**的节点实例引用。
+#[derive(Clone, Debug)]
+pub struct AgeResolvedRef {
+    /// 作者写的类型拼写。
+    pub ty_spelling: String,
+    /// 解析到的模块键（`pkg::mod`）。
+    pub module: String,
+    /// 该模块里 node 的源名。
+    pub node: String,
+    /// 实例名。
+    pub name: String,
+    /// 引用处原 span（原模块内）。
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-REF）：实例引用解析失败的具名原因。
+///
+/// 三种失败必须**互斥可辨**（979 V-10 要求"是引用/可见性诊断而非偶然类型错"）：
+/// 类型不存在、类型存在但不可见、以及**不是 node**（声明了但不是 AGE 节点）。
+fn ref_failure_code(kind: &RefFailure) -> &'static str {
+    match kind {
+        RefFailure::Undeclared => "source.age.ref-undeclared",
+        RefFailure::Invisible => "source.age.ref-invisible",
+        RefFailure::NotANode => "source.age.ref-not-a-node",
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RefFailure {
+    /// 本模块与已导入符号里都没有这个名字。
+    Undeclared,
+    /// 名字存在，但声明在别的模块且未 `pub`（或未导入）。
+    Invisible,
+    /// 名字是有可见性的类型，但它不是 AGE node 声明。
+    NotANode,
+}
+
+/// 解析一个模块里的全部实例引用（IF-981-REF 的核心判据）。
+///
+/// 可见性规则**完全复用** 960 绑定器的事实：`unit.exports`（公共面）与本模块
+/// `imports`（导入绑定）。本函数只做"按引用查符号"，不建第二套命名/可见性规则。
+fn resolve_refs(
+    bound: &super::packages::BoundPackages,
+    packaged: &[PackagedAgeComponent],
+) -> Result<std::collections::BTreeMap<String, Vec<AgeResolvedRef>>, Vec<Diagnostic>> {
+    // 每个模块里"本模块声明的 node"与"公共导出的 node"。
+    let mut declared: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    let mut public_nodes: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    let mut all_type_names: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for p in packaged {
+        declared
+            .entry(p.module.clone())
+            .or_default()
+            .push(p.node.name.name.clone());
+        if p.node.public {
+            public_nodes
+                .entry(p.module.clone())
+                .or_default()
+                .push(p.node.name.name.clone());
+        }
+    }
+    for (key, unit) in &bound.units {
+        for item in &unit.program.items {
+            if let Item::Type(t) = item {
+                all_type_names
+                    .entry(key.clone())
+                    .or_default()
+                    .push(t.name.name.clone());
+            }
+        }
+    }
+
+    let mut out: std::collections::BTreeMap<String, Vec<AgeResolvedRef>> =
+        std::collections::BTreeMap::new();
+    for p in packaged {
+        let mut resolved = Vec::new();
+        let unit = bound.units.get(&p.module);
+        for r in &p.node.view.node_refs {
+            let want = &r.ty.name;
+            // 1) 本模块声明优先（不需要导入；可见性仅约束**跨模块**）。
+            let local = declared
+                .get(&p.module)
+                .map(|v| v.iter().any(|n| n == want))
+                .unwrap_or(false);
+            if local {
+                resolved.push(AgeResolvedRef {
+                    ty_spelling: want.clone(),
+                    module: p.module.clone(),
+                    node: want.clone(),
+                    name: r.name.name.clone(),
+                    span: r.span,
+                });
+                continue;
+            }
+            // 2) 别的模块里的 **可见** node 声明：按 node 名解析（AGE 领域引用
+            //    走节点命名空间，不借用普通 use 导入的值/类型命名空间）。
+            let public_hit = public_nodes
+                .iter()
+                .find(|(k, v)| *k != &p.module && v.iter().any(|n| n == want))
+                .map(|(k, _)| k.clone());
+            if let Some(target_key) = public_hit {
+                resolved.push(AgeResolvedRef {
+                    ty_spelling: want.clone(),
+                    module: target_key,
+                    node: want.clone(),
+                    name: r.name.name.clone(),
+                    span: r.span,
+                });
+                continue;
+            }
+            // 3) 导入表：`use <mod>.<X>` 存在但目标不是可见 node → 具名区分。
+            let imported = unit.and_then(|u| {
+                u.imports
+                    .iter()
+                    .find(|i| i.bound_name() == want)
+                    .map(|i| i.path.clone())
+            });
+            match imported {
+                Some(path) => {
+                    let (target_key, item) = match path.len() {
+                        2 => (
+                            super::packages::unit_key(
+                                p.module.split_once("::").map(|(pk, _)| pk).unwrap_or(""),
+                                &path[0],
+                            ),
+                            path[1].clone(),
+                        ),
+                        3 => (super::packages::unit_key(&path[0], &path[1]), path[2].clone()),
+                        _ => (String::new(), want.clone()),
+                    };
+                    let is_plain_type = all_type_names
+                        .get(&target_key)
+                        .map(|v| v.iter().any(|n| n == &item))
+                        .unwrap_or(false);
+                    let visible = public_nodes
+                        .get(&target_key)
+                        .map(|v| v.iter().any(|n| n == &item))
+                        .unwrap_or(false);
+                    if is_plain_type && !visible {
+                        // 名字可见且是类型，但它不是 AGE node —— 与"不可见"分开报。
+                        return Err(vec![ref_diag(
+                            RefFailure::NotANode,
+                            format!(
+                                "`{want}` resolves to a declared type, not an AGE `node`; an \
+                                 instance reference must name a node declaration"
+                            ),
+                            flat_to_module(&bound_sources(bound), r.span),
+                        )]);
+                    }
+                    if visible {
+                        resolved.push(AgeResolvedRef {
+                            ty_spelling: want.clone(),
+                            module: target_key,
+                            node: item,
+                            name: r.name.name.clone(),
+                            span: r.span,
+                        });
+                    } else {
+                        return Err(vec![ref_diag(
+                            RefFailure::Invisible,
+                            format!(
+                                "`{want}` is imported from `{target_key}` but is not a `pub node` \
+                                 declaration there; an instance reference needs a visible AGE node"
+                            ),
+                            flat_to_module(&bound_sources(bound), r.span),
+                        )]);
+                    }
+                }
+                None => {
+                    // 3) 既非本模块声明、又无导入：区分"别处有但不可见"与"根本不存在"。
+                    let seen_elsewhere = declared
+                        .iter()
+                        .any(|(k, v)| k != &p.module && v.iter().any(|n| n == want))
+                        || public_nodes
+                            .iter()
+                            .any(|(k, v)| k != &p.module && v.iter().any(|n| n == want));
+                    let is_type_elsewhere = all_type_names
+                        .iter()
+                        .any(|(k, v)| k != &p.module && v.iter().any(|n| n == want));
+                    if is_type_elsewhere {
+                        return Err(vec![ref_diag(
+                            RefFailure::NotANode,
+                            format!(
+                                "`{want}` is a declared type but not an AGE `node`; an instance \
+                                 reference must name a node declaration"
+                            ),
+                            flat_to_module(&bound_sources(bound), r.span),
+                        )]);
+                    }
+                    let kind = if seen_elsewhere {
+                        RefFailure::Invisible
+                    } else {
+                        RefFailure::Undeclared
+                    };
+                    return Err(vec![ref_diag(
+                        kind,
+                        format!(
+                            "no `node {want}` is declared here or imported; an instance reference \
+                             must name a visible node declaration"
+                        ),
+                        flat_to_module(&bound_sources(bound), r.span),
+                    )]);
+                }
+            }
+        }
+        out.insert(p.module.clone(), resolved);
+    }
+    Ok(out)
+}
+
+fn ref_diag(kind: RefFailure, message: String, span: Span) -> Diagnostic {
+    text_diag(ref_failure_code(&kind), message, span)
+}
+
+/// 绑定器给出的模块源坐标（供诊断归位；与描述面同源）。
+fn bound_sources(
+    bound: &super::packages::BoundPackages,
+) -> Vec<AgeModuleSource> {
+    bound
+        .segments
+        .iter()
+        .map(|s| AgeModuleSource {
+            key: super::packages::unit_key(&s.package, &s.module),
+            source_len: s.source.len(),
+            flat_start: s.start,
+        })
+        .collect()
 }
 
 /// 包面身份拒绝：`age-package` 只由本前门消费（对称于 979 的通用入口拒绝）。

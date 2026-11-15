@@ -52,6 +52,19 @@ pub struct ComponentView {
     pub role: String,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
+    /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。
+    /// 只在 age-package 面产出；解析/可见性由共享绑定器裁定。
+    pub node_refs: Vec<ComponentNodeRef>,
+}
+
+/// PLAN-981（IF-981-REF）：一个节点实例引用（未受信候选）。
+#[derive(Clone, Debug)]
+pub struct ComponentNodeRef {
+    /// 被引用类型的作者拼写（`Meter`）。
+    pub ty: Ident,
+    /// 实例名（`m1`）。
+    pub name: Ident,
+    pub span: Span,
 }
 
 /// 一个组件 node 声明的未受信候选。
@@ -61,6 +74,8 @@ pub struct ComponentNode {
     pub head_spelling: String,
     pub head_span: Span,
     pub legacy_widget: bool,
+    /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
+    pub public: bool,
     pub name: Ident,
     pub fields: Vec<ComponentField>,
     pub handlers: Vec<ComponentHandler>,
@@ -99,6 +114,8 @@ pub struct ComponentViewOut {
     pub role: String,
     pub span: Span,
     pub texts: Vec<ComponentText>,
+    /// PLAN-981：已解析的实例引用（类型名已按绑定器符号解析）。
+    pub node_refs: Vec<ComponentNodeRef>,
 }
 
 /// 版本化描述（981 消费面）。
@@ -319,6 +336,7 @@ pub fn compile_age_component(
                 role: n.view.role.clone(),
                 span: n.view.span,
                 texts,
+                node_refs: n.view.node_refs.clone(),
             },
             span: n.span,
         });
@@ -796,6 +814,7 @@ pub fn compile_component_scenario_observing(
                     role: node.view.role.clone(),
                     span: node.view.span,
                     texts: Vec::new(),
+                    node_refs: node.view.node_refs.clone(),
                 },
                 span: node.span,
             }],

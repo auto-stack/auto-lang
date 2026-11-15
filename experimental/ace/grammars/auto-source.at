@@ -278,6 +278,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         item {
             // PLAN-979（T-H0-I）：AGE 领域节点声明（领域包显式启用时才存在）。
             alt(profiles: [age-h0]) { age-node-item() {} }
+            // PLAN-981（IF-981-REF）：`pub node` 形状先于裸 node 备选（首 token
+            // `pub` 与 `node` 互异）。当前**不产出**节点可见性，投影处具名拒绝。
+            alt(profiles: [age-package]) { age-pub-node-item() {} }
             alt(profiles: [age-component, age-package]) { age-node-c-item() {} }
             alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
@@ -361,6 +364,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-node-c-body(profiles: [age-component, age-package], expect: "the `node` body member list") {
             list-nl { age-node-member() {} }
         }
+        age-pub-node-item(profiles: [age-package], expect: "a `pub node <Name> { … }` declaration") {
+            r-pub(field: "pub") {}
+            age-node-head(field: "head") {}
+            ident(field: "name") {}
+            lbrace(same-line: true) {}
+            age-node-c-body(field: "body") {}
+            rbrace() {}
+        }
         age-node-member(profiles: [age-component, age-package]) {
             alt { age-model-member() {} }
             alt { age-on-member() {} }
@@ -408,7 +419,20 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-view-member(profiles: [age-component, age-package], expect: "the `view { … }` node view") {
             name(of: "age-view-head", field: "view") {}
             lbrace(same-line: true) {}
-            list-nl { age-text-item() {} }
+            list-nl { age-view-item() {} }
+            rbrace() {}
+        }
+        // PLAN-981（IF-981-REF）：view 成员 = 文本叶，或**节点实例引用**
+        // （`Meter m1 {}`）。引用只在包面存在；age-component 面的 view 仍然只收
+        // 文本叶（字节不变）。
+        age-view-item(profiles: [age-component, age-package]) {
+            alt { age-text-item() {} }
+            alt(profiles: [age-package]) { age-node-ref() {} }
+        }
+        age-node-ref(profiles: [age-package], expect: "a node instance `<Type> <name> {}`") {
+            ident(field: "ty") {}
+            ident(field: "name") {}
+            lbrace(same-line: true) {}
             rbrace() {}
         }
         // ---- 声明 ----
