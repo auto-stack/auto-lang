@@ -389,4 +389,72 @@ fn p981_original_g01_all_declared_resources_are_present() {
     assert_eq!(deep.components, vec![0.1, 0.8, 0.2, 0.5]);
 }
 
+/// 改**被引用资源**的原值 → 使用方读到的值随之改变（证明资源确来自导入模块，
+/// 不是照抄一份快照）。
+#[test]
+fn p981_original_g01_editing_a_resource_changes_the_consumed_value() {
+    let before = compile_g01().expect("baseline compiles");
+    let alpha = |out: &ace_core::source::age_package::AgePackageCompilation| {
+        out.description
+            .resources
+            .iter()
+            .find(|r| r.name == "red_alpha")
+            .expect("red_alpha")
+            .components[3]
+    };
+    assert_eq!(alpha(&before), 0.5);
+
+    // 只改 resources.at 里 red_alpha 的 alpha 分量。
+    let edited_res = RESOURCES.replace(
+        "material2d.color(0.9, 0.3, 0.2, 0.5)",
+        "material2d.color(0.9, 0.3, 0.2, 0.75)",
+    );
+    let after = compile_age_package(
+        &[
+            input("resources", &edited_res),
+            input("shapes", SHAPES),
+            input("main", MAIN),
+        ],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+    )
+    .expect("still compiles");
+    assert_eq!(
+        alpha(&after),
+        0.75,
+        "the consumer sees the edited resource value"
+    );
+    // 其它资源不受影响。
+    let green = |out: &ace_core::source::age_package::AgePackageCompilation| {
+        out.description
+            .resources
+            .iter()
+            .find(|r| r.name == "green_alpha")
+            .expect("green_alpha")
+            .components[3]
+    };
+    assert_eq!(green(&before), green(&after));
+}
+
+/// 原源夹具身份记录：三份逐字复制自 `age-examples` 的 g01（内容哈希钉住，
+/// 防止日后被无意改写而失去"原源"资格）。
+#[test]
+fn p981_original_g01_fixtures_are_the_recorded_original_sources() {
+    // 与 `D:/autostack/age-examples/examples/g01-shapes/g01-main/src/` 逐字一致
+    // （只有头部注释由 PLAN-008 改写为 PLAN-019 措辞，故用内容哈希钉住当前夹具）。
+    assert_eq!(MAIN.len(), 1202, "main.at byte length");
+    assert_eq!(RESOURCES.len(), 790, "resources.at byte length");
+    assert_eq!(SHAPES.len(), 540, "shapes.at byte length");
+    // 关键作者表面逐项在场（不是被"等价改写"过的版本）。
+    assert!(MAIN.contains("use shapes: Disc"), "symbol-table import kept");
+    assert!(RESOURCES.contains("material2d.color(0.9, 0.3, 0.2, 0.5)"));
+    assert!(SHAPES.contains("node Disc(x: float, y: float, diameter: float, tint: Material2D)"));
+    assert!(
+        MAIN.contains("visible: false"),
+        "the hidden yellow quad is declared, not deleted"
+    );
+}
+
+
 
