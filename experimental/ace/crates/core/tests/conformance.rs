@@ -92,6 +92,8 @@ mod plan981_param_ports;
 mod plan981_resource_refs;
 #[path = "cases/plan981_attr_shape.rs"]
 mod plan981_attr_shape;
+#[path = "cases/plan981_ref_aggregation.rs"]
+mod plan981_ref_aggregation;
 #[path = "cases/plan981_view_exits.rs"]
 mod plan981_view_exits;
 #[path = "cases/plan981_model3d.rs"]
