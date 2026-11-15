@@ -4461,7 +4461,11 @@ impl<'p> Emitter<'p> {
                             match l.mode {
                                 super::ast::ParamMode::Mut => "mut",
                                 super::ast::ParamMode::Move
-                                    if self.profile == super::SourceProfile::TextRecord =>
+                                    if matches!(
+                                        self.profile,
+                                        super::SourceProfile::TextRecord
+                                            | super::SourceProfile::AgePackage
+                                    ) =>
                                 {
                                     "move"
                                 }

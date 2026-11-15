@@ -947,19 +947,14 @@ fn hidden_fn_scene_value(
             }
             _ => return None,
         };
-        // 端口是**值语义资源句柄**（复制进场景行，从不需要可变借用），故按
-        // move 模式传递——这也让记录参数的所有权规则自然成立，无需新造模式。
-        let is_port = crate::source::age_resources::is_port_type(&p.ty);
+        // 端口模式保持默认（view）。**不要**改成 `move`：实测 verify 会拒绝
+        // 「record 不拥有缓冲却声明 move」，而端口是纯 f32 记录、永远推不出资源性。
         params.push(crate::source::ast::Param {
             name: Ident {
                 name: p.name.clone(),
                 span: p.span,
             },
-            mode: if is_port {
-                crate::source::ast::ParamMode::Move
-            } else {
-                crate::source::ast::ParamMode::Default
-            },
+            mode: crate::source::ast::ParamMode::Default,
             ty: TypeAnn {
                 kind,
                 span: p.ty_span,
