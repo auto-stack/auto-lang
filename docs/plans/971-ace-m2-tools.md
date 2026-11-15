@@ -292,6 +292,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 21 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 WebSocket帧层) | 记录: net_tcp_write_region raw面+真RFC-6455客户端往返（101/掩码帧/无掩码回显），net974 9/9绿（206fdf901） | next: 974 TLS/proxy provider道→T-04..07；971/B 等 M2A-08
+
+
 stage: goal | PLAN-971 | r6 | round: 20 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 HTTP方法族) | 记录: std.net全方法族（put/patch/delete/head加入），net974 8/8绿（5925768e9） | next: 974 WebSocket→TLS/proxy→T-04..07；971/B 等 M2A-08
 
 

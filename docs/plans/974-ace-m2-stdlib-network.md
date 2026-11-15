@@ -138,7 +138,7 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 | **DNS** | 旧tcp_connect(addr str)内含解析（无显式DNS API） | net_tcp_connect(host字节串)——std::net ToSocketAddrs **隐式解析**，无显式DNS面 | 平台实现事实（win32 backend） | **未交显式面**：解析控制/缓存/自定resolver=具名pending（旧面亦无显式API，义务=连接功能已交） |
 | **TLS** | 旧无（https经reqwest侧） | **未交** | — | **具名pending**：按r2合同TLS属显式可选provider（967 FFI道或OS provider），非本批静默 |
 | **proxy** | 旧配置形（http.proxy_url等） | **未交** | — | **具名pending**：客户端代理配置面 |
-| **WebSocket** | 旧无 .at 面（vm侧8注册） | **未交** | — | **具名pending**：upgrade握手+帧层 |
+| **WebSocket** | 旧无 .at 面（vm侧8注册） | **帧层已交**：net_tcp_write_region（raw字节面，read_into镜像）+真RFC-6455客户端（Upgrade握手→101+canonical accept→掩码文本帧写入→服务端无掩码回显字节精确解析） | net974_websocket_frame_layer（0.06s） | **帧层/握手已交**；ping/pong/close帧/分片/大帧(>125扩展长)/并发会话=具名pending |
 | **URL** | url.at encode/decode/encode_path_segment/encode_query_component/decode_query_component/encode_query/decode_query/parse_form/parse/build/join_path（11 pub fn） | **stdlib/ace/std/url.at**（encode×3+join_path；PLAN-1041内联） | net974_url_family_inline（独立oracle 0.05s） | **encode族+join已交**；decode/query族/parse/build=具名pending（子串物化核心决定：slice view→owned促升 或 char→str内建）；Map形归packages Collections面 |
 | **upload/download** | http.at body/upload/download（File腿） | **未交** | — | **具名pending：973阻塞腿**（File/Stream域） |
 
@@ -407,6 +407,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08 WebSocket帧层+raw写面) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: 206fdf901 | evidence: net974 **9/9绿**（ws 0.06s，真RFC-6455往返）；net_tcp_write_region（0x81等帧字节非UTF-8的必然要求，native穷尽拒） | next_responsible_role: work（TLS/proxy provider道→T-04..07 或按裁定）
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08 HTTP方法族) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: 5925768e9 | evidence: net974 **8/8绿**（method_family 0.08s，独立oracle PUT/PATCH/DELETE/HEAD） | next_responsible_role: work（WebSocket→TLS/proxy→T-04..07 或按裁定）
 
