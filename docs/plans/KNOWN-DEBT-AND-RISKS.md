@@ -4396,3 +4396,15 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | D-948-03 `async.at` 句柄与 `try_recv` 语义 | MINOR | `spawn -> void` 无句柄/取消、`Sender`/`Receiver` 缺 `close`/`drop`、`try_recv` 混淆 `0` 与空 | 968 / 973 AC-08 | 补齐任务/通道生命周期 API 与 `0` vs empty 负控 | 具名登记 |
 | D-948-04 `json.at` 命名漂移与 `json.rs.at` 坏 | MINOR | `json.at`（`JsonValue.type`）与 `038_json_encode_parse`（`Json.type_of`）命名漂移、`json.rs.at` `parse` P6 坏、typed `decode[T]` 擦除未实现 | 975 T-01/AC-02 | 冻结公开 JSON API、补全动态/typed 用例与独立 oracle | 具名登记 |
 | D-948-05 `UNEXEC-01..05` 未执行场景 | RELEASE-BLOCKER | 仓外 CWD、`man-install.py`、重定位、`web-install.py` 主题校验与完整 CAP（Design46 Gate A/B 未闭）仍 `pending` | 978 / 986 / 983 / Design46 C1-C3 | 对应后继在洁净环境实跑并记收据 | 具名登记 |
+
+### D-979 — PLAN-979 A 切片已交付后的具名承接项（2026-11-15，非延期豁免）
+
+来源：[979 A 切片 fold 收据](../plans/979-ace-m2-schema.md)（master `06b4ab49f`）与 T-05 独立复审 pass（绑定 `50daa4ed1`）。组件面已验切片（typed 投影/场景脱糖/双后端真跑/拒绝面/身份）已合入；下列各项因**跨 plan 语义或产品 owner**未在本切片实现，逐项具名承接，不视为 979 已闭或可豁免：
+
+| 项 | 优先级 | 证据分类/边界 | 主 owner Plan | 关闭条件 | 当前状态 |
+|---|---|---|---|---|---|
+| V-09④ 多模块 Node 工程 | P1 | AGE/组件裁剪无模块 `use`；source 适配层无模块集合入口；需 960 `packages-modules` 面与领域面组合 | [960](960-ace-m2-modules.md)（与 979 T-03 协同） | ①模块 `use` 进领域裁剪或 960 暴露模块图适配器 ②领域前门接受模块集合并以领域 profile 验证 ③两文件 Node 工程经 AV 与 A2R 真实运行 | 未开工（依赖 960） |
+| V-10 越权/未声明实例引用 | P1 | 当前只有场景实例越界检查；AGE 的实例引用语义（跨 node/实例可见性）属 981 | [981](981-age-product-integration.md)（与 979 T-08 协同） | ①实例引用语法与可见性规则 ②未声明/越权引用具名拒 + 原 span ③正反例经双后端 | 未开工（语义待 981） |
+| V-11 产品字段级覆盖清单 | P2 | 通用 `component_coverage`/`mapping_complete` 判据已交；传统 UI/AGE 的**必需字段清单**属产品 owner | [980](980-ace-ui-age-migration.md) | 980 提供必需映射清单并接入判据；删除一条必需映射时交接检查红、合法近邻接受 | 判据已交，清单待 980 |
+| F11 三次解析 | P3 | `project_component_candidates` + 两处 `parse_program_items`；仅性能，无正确性影响 | 979 T-03 | 单次解析复用（或明确记录为接受的成本） | 具名开 |
+| F12 身份未含 input_hash/compat | P2 | `DomainIdentity{id,version,grammar}`；本切片无投影缓存，接入缓存时须并入 | 979 T-02 | 缓存落地时身份元组含 input_hash + 兼容配置并补负控 | 具名开 |
