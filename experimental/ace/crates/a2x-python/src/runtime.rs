@@ -84,6 +84,12 @@ class _RuntimeLedger:
         self.pio_bufs = {}
         self.pio_next = 1000
         self.pio_last_error = 0
+        # PLAN-973 system-resource state: files/dirs/procs/clock-hi.
+        self.sys_next = 2000
+        self.sys_files = {}
+        self.sys_dirs = {}
+        self.sys_procs = {}
+        self.sys_clock_hi = 0
         self.budget_left = A2X_DEFAULT_BUDGET
         self.events_enabled = os.environ.get("A2X_RT_EVENTS", "") == "1"
         fault_raw = os.environ.get("A2X_RT_FAULT_ALLOC", "").strip()
@@ -581,9 +587,61 @@ PORT_SPECS = {
     "io.write_some_slice": (1, ("View", "View", "View", "View"), "int"),
     "io.console_write16": (1, ("View", "View", "View", "View"), "int"),
     "io.last_error": (1, (), "int"),
+    "io.stdin": (1, (), "int"),
     "mem.alloc": (1, ("View",), "int"),
     "mem.write_u8": (1, ("View", "View", "View"), "int"),
+    "mem.read_u8": (1, ("View", "View"), "int"),
     "mem.free": (1, ("View",), "int"),
+    # PLAN-973 system-resource families (python target runtime)
+    "file.open_w16": (1, ("View", "View", "View", "View"), "int"),
+    "file.open_bytes": (1, ("View", "View"), "int"),
+    "file.read_some": (1, ("View", "View", "View", "View"), "int"),
+    "file.write_some": (1, ("View", "View", "View", "View"), "int"),
+    "file.seek": (1, ("View", "View", "View", "View"), "int"),
+    "file.tell": (1, ("View",), "int"),
+    "file.hi": (1, ("View",), "int"),
+    "file.size": (1, ("View",), "int"),
+    "file.mtime_ms": (1, ("View",), "int"),
+    "file.flush": (1, ("View",), "int"),
+    "file.close": (1, ("View",), "int"),
+    "file.path_attrs_w16": (1, ("View", "View", "View"), "int"),
+    "file.path_attrs_bytes": (1, ("View",), "int"),
+    "file.delete_w16": (1, ("View", "View", "View"), "int"),
+    "file.delete_bytes": (1, ("View",), "int"),
+    "file.dir_create_w16": (1, ("View", "View", "View"), "int"),
+    "file.dir_create_bytes": (1, ("View",), "int"),
+    "file.dir_delete_w16": (1, ("View", "View", "View"), "int"),
+    "file.dir_delete_bytes": (1, ("View",), "int"),
+    "file.replace_w16": (1, ("View", "View", "View", "View", "View", "View"), "int"),
+    "file.replace_bytes": (1, ("View", "View"), "int"),
+    "file.canonical_w16": (1, ("View", "View", "View", "View", "View"), "int"),
+    "file.canonical_bytes": (1, ("View", "View", "View"), "int"),
+    "file.dir_open_w16": (1, ("View", "View", "View"), "int"),
+    "file.dir_next_w16": (1, ("View", "View", "View"), "int"),
+    "file.dir_close": (1, ("View",), "int"),
+    "file.dir_open_bytes": (1, ("View",), "int"),
+    "file.dir_fill_bytes": (1, ("View", "View", "View"), "int"),
+    "env.get_w16": (1, ("View", "View", "View", "View", "View"), "int"),
+    "env.set_w16": (1, ("View", "View", "View", "View", "View", "View"), "int"),
+    "env.remove_w16": (1, ("View", "View", "View"), "int"),
+    "env.get_bytes": (1, ("View", "View", "View"), "int"),
+    "clock.unix_ms": (1, (), "int"),
+    "clock.mono_ms": (1, (), "int"),
+    "clock.hi": (1, (), "int"),
+    "clock.sleep_ms": (1, ("View",), "int"),
+    "entropy.rand_fill": (1, ("View", "View", "View"), "int"),
+    "process.spawn_w16": (1, ("View", "View", "View", "View"), "int"),
+    "process.spawn_bytes": (1, ("View", "View"), "int"),
+    "process.pipe_read": (1, ("View", "View", "View", "View", "View", "View"), "int"),
+    "process.wait": (1, ("View", "View"), "int"),
+    "process.release": (1, ("View",), "int"),
+    "process.exit": (1, ("View",), "int"),
+    "process.cmdline_w16": (1, ("View", "View"), "int"),
+    "process.cmdline_fill_bytes": (1, ("View", "View", "View"), "int"),
+    "process.cwd_w16": (1, ("View", "View"), "int"),
+    "process.cwd_bytes": (1, ("View", "View"), "int"),
+    "process.chdir_w16": (1, ("View", "View", "View"), "int"),
+    "process.chdir_bytes": (1, ("View",), "int"),
     "math.private_square": (1, ("View",), "int"),
     "math.private_cube": (1, ("View",), "int"),
     "text.byte_length": (1, ("View",), "int"),
@@ -689,6 +747,38 @@ def a2x_port_call(op_id: str, sem_ver: int, modes: tuple, dep_sha: str, *args, s
         if _RT.pio_bufs.pop(b, None) is None:
             return -2
         return 0
+
+
+    # ---- PLAN-973 system-resource ports (python target runtime) --------
+    if op_id == "io.stdin":
+        return 0
+    if op_id == "mem.read_u8":
+        b = a2x_i32(args[0])
+        off = a2x_i32(args[1])
+        buf = _RT.pio_bufs.get(b)
+        if buf is None:
+            return -2
+        if off < 0 or off >= len(buf):
+            return -4
+        return buf[off]
+    if op_id in _SYS_FILE_OPEN:
+        return _sys_file_open(op_id, args)
+    if op_id in ("file.read_some", "file.write_some"):
+        return _sys_file_io(op_id, args)
+    if op_id in _SYS_FILE_QUERY:
+        return _sys_file_query(op_id, args)
+    if op_id in _SYS_PATH_BYTES or op_id in _SYS_PATH_W16:
+        return _sys_path_op(op_id, args)
+    if op_id in _SYS_DIR:
+        return _sys_dir_op(op_id, args)
+    if op_id in _SYS_ENV:
+        return _sys_env_op(op_id, args)
+    if op_id in _SYS_CLOCK:
+        return _sys_clock_op(op_id, args)
+    if op_id == "entropy.rand_fill":
+        return _sys_rand_fill(args)
+    if op_id in _SYS_PROC:
+        return _sys_proc_op(op_id, args)
     if op_id == "math.private_square":
         x = a2x_i32(args[0])
         return a2x_mul(x, x)
@@ -758,4 +848,523 @@ def a2x_run_main(entry_fn):
         with open(trace_path, "wb") as fh:
             fh.write(json.dumps(_RT.snapshot(), sort_keys=True).encode("utf-8"))
     sys.exit(exit_code)
+
+
+# ---- PLAN-973 system-resource helpers (python target runtime) ----
+# Windows paths stage through pio buffers as UTF-16LE; byte paths arrive
+# as bytes. Deterministic negative i32 error codes mirror the AV/AC
+# contract. Linux behaviors land with PLAN-1063 validation.
+
+_SYS_FILE_OPEN = {"file.open_w16", "file.open_bytes"}
+_SYS_PATH_BYTES = {
+    "file.path_attrs_bytes", "file.delete_bytes", "file.dir_create_bytes",
+    "file.dir_delete_bytes", "file.replace_bytes", "file.canonical_bytes",
+}
+_SYS_PATH_W16 = {
+    "file.path_attrs_w16", "file.delete_w16", "file.dir_create_w16",
+    "file.dir_delete_w16", "file.replace_w16", "file.canonical_w16",
+}
+_SYS_DIR = {
+    "file.dir_open_w16", "file.dir_next_w16", "file.dir_close",
+    "file.dir_open_bytes", "file.dir_fill_bytes",
+}
+_SYS_ENV = {"env.get_w16", "env.set_w16", "env.remove_w16", "env.get_bytes"}
+_SYS_CLOCK = {"clock.unix_ms", "clock.mono_ms", "clock.hi", "clock.sleep_ms"}
+_SYS_PROC = {
+    "process.spawn_w16", "process.spawn_bytes", "process.pipe_read",
+    "process.wait", "process.release", "process.exit",
+    "process.cmdline_w16", "process.cmdline_fill_bytes",
+    "process.cwd_w16", "process.cwd_bytes", "process.chdir_w16",
+    "process.chdir_bytes",
+}
+
+
+def _sys_io_error(exc):
+    _RT.pio_last_error = getattr(exc, "errno", None) or 5
+    return -8
+
+
+def _region_w16_to_path(region, uoff, ulen):
+    buf = _RT.pio_bufs.get(a2x_i32(region))
+    if buf is None:
+        return None
+    uoff = a2x_i32(uoff)
+    ulen = a2x_i32(ulen)
+    if uoff < 0 or ulen < 0 or 2 * (uoff + ulen) > len(buf):
+        return None
+    try:
+        return bytes(buf[2 * uoff:2 * (uoff + ulen)]).decode("utf-16-le")
+    except UnicodeDecodeError:
+        return None
+
+
+def _w16_path_op_path(op_id, args):
+    if op_id.endswith("_w16"):
+        return _region_w16_to_path(args[0], args[1], args[2])
+    raw = a2x_as_bytes(args[0])
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _sys_file_open(op_id, args):
+    if op_id == "file.open_w16":
+        path = _region_w16_to_path(args[0], args[1], args[2])
+        flags = a2x_i32(args[3])
+    else:
+        raw = a2x_as_bytes(args[0])
+        try:
+            path = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return -4
+        flags = a2x_i32(args[1])
+    if not path:
+        return -4
+    read = flags & 1
+    write = flags & 2
+    create = flags & 4
+    trunc = flags & 8
+    excl = flags & 16
+    append = flags & 32
+    if create and excl:
+        mode = "xb"
+    elif append:
+        mode = "ab"
+    elif read and (write or trunc):
+        mode = "r+b"
+    elif write or trunc or create:
+        mode = "wb" if (create or trunc) else "r+b"
+    else:
+        mode = "rb"
+    try:
+        f = open(path, mode)
+    except OSError as e:
+        return _sys_io_error(e)
+    _RT.sys_next += 1
+    hid = _RT.sys_next
+    _RT.sys_files[hid] = {"f": f, "hi": 0}
+    _RT.pio_last_error = 0
+    return hid
+
+def _sys_path_op(op_id, args):
+    if op_id in ("file.replace_w16",):
+        src = _region_w16_to_path(args[0], args[1], args[2])
+        dst = _region_w16_to_path(args[3], args[4], args[5])
+    elif op_id == "file.replace_bytes":
+        try:
+            src = a2x_as_bytes(args[0]).decode("utf-8")
+            dst = a2x_as_bytes(args[1]).decode("utf-8")
+        except UnicodeDecodeError:
+            return -4
+    else:
+        src = _w16_path_op_path(op_id, args)
+        dst = None
+    if src is None or (op_id.startswith("file.replace") and dst is None):
+        return -4
+    import os
+    try:
+        if op_id.startswith("file.path_attrs"):
+            import stat
+            st = os.stat(src)
+            bits = 0
+            if stat.S_ISDIR(st.st_mode):
+                bits |= 1
+            if not os.access(src, os.W_OK):
+                try:
+                    bits |= 2 if (st.st_mode & 0o200) == 0 else 0
+                except OSError:
+                    pass
+            return bits
+        if op_id.startswith("file.delete"):
+            os.remove(src)
+            return 0
+        if op_id.startswith("file.dir_create"):
+            os.mkdir(src)
+            return 0
+        if op_id.startswith("file.dir_delete"):
+            os.rmdir(src)
+            return 0
+        if op_id.startswith("file.replace"):
+            os.replace(src, dst)
+            return 0
+        if op_id.startswith("file.canonical"):
+            out = os.path.realpath(src).replace("\\", "/")
+            if op_id.endswith("_w16"):
+                data = out.encode("utf-16-le")
+                buf = _RT.pio_bufs.get(a2x_i32(args[3]))
+                cap = a2x_i32(args[4])
+                if buf is None:
+                    return -2
+                if len(data) > 2 * cap or len(data) > cap * 2:
+                    return -122
+                buf[: len(data)] = data
+                return len(data) // 2
+            data = out.encode("utf-8")
+            buf = _RT.pio_bufs.get(a2x_i32(args[1]))
+            cap = a2x_i32(args[2])
+            if buf is None:
+                return -2
+            if len(data) > cap:
+                return -122
+            buf[: len(data)] = data
+            return len(data)
+    except OSError as e:
+        return _sys_io_error(e)
+    return -10
+
+def _sys_dir_op(op_id, args):
+    import os
+    if op_id in ("file.dir_open_w16", "file.dir_open_bytes"):
+        path = _w16_path_op_path(op_id, args)
+        if not path:
+            return -4
+        try:
+            it = iter(sorted(os.listdir(path)))
+        except OSError as e:
+            return _sys_io_error(e)
+        _RT.sys_next += 1
+        did = _RT.sys_next
+        _RT.sys_dirs[did] = it
+        return did
+    if op_id == "file.dir_next_w16":
+        did = a2x_i32(args[0])
+        it = _RT.sys_dirs.get(did)
+        if it is None:
+            return -2
+        try:
+            name = next(it)
+        except StopIteration:
+            return 0
+        data = name.encode("utf-16-le")
+        buf = _RT.pio_bufs.get(a2x_i32(args[1]))
+        cap = a2x_i32(args[2])
+        if buf is None:
+            return -2
+        if len(data) > 2 * cap:
+            return -122
+        buf[: len(data)] = data
+        return len(data) // 2
+    if op_id == "file.dir_close":
+        did = a2x_i32(args[0])
+        if _RT.sys_dirs.pop(did, None) is None:
+            return -2
+        return 0
+    if op_id == "file.dir_fill_bytes":
+        did = a2x_i32(args[0])
+        it = _RT.sys_dirs.get(did)
+        buf = _RT.pio_bufs.get(a2x_i32(args[1]))
+        cap = a2x_i32(args[2])
+        if it is None or buf is None or cap <= 0:
+            return -4
+        blob = bytearray()
+        for name in it:
+            nb = name.encode("utf-8") + b"\x00"
+            if len(blob) + len(nb) > cap:
+                break
+            blob += nb
+        buf[: len(blob)] = bytes(blob)
+        return len(blob)
+    return -10
+
+def _sys_env_op(op_id, args):
+    import os
+    if op_id == "env.get_w16":
+        key = _region_w16_to_path(args[0], args[1], args[2])
+        if not key:
+            return -4
+        val = os.environ.get(key)
+        if val is None:
+            return 0
+        data = val.encode("utf-16-le")
+        buf = _RT.pio_bufs.get(a2x_i32(args[3]))
+        cap = a2x_i32(args[4])
+        if buf is None:
+            return -2
+        if len(data) > 2 * cap:
+            return -234
+        buf[: len(data)] = data
+        return len(data) // 2
+    if op_id == "env.set_w16":
+        key = _region_w16_to_path(args[0], args[1], args[2])
+        val = _region_w16_to_path(args[3], args[4], args[5])
+        if not key or val is None:
+            return -4
+        os.environ[key] = val
+        return 0
+    if op_id == "env.remove_w16":
+        key = _region_w16_to_path(args[0], args[1], args[2])
+        if not key:
+            return -4
+        os.environ.pop(key, None)
+        return 0
+    if op_id == "env.get_bytes":
+        buf = _RT.pio_bufs.get(a2x_i32(args[0]))
+        cap = a2x_i32(args[1])
+        if buf is None or buf <= 0:
+            return -4
+        blob = bytearray()
+        for k, v in os.environ.items():
+            blob += k.encode("utf-8") + b"=" + v.encode("utf-8") + b"\x00"
+            if len(blob) >= cap:
+                blob = blob[:cap]
+                break
+        buf[: len(blob)] = bytes(blob)
+        return len(blob)
+    return -10
+
+def _sys_clock_op(op_id, args):
+    import time
+    if op_id == "clock.unix_ms":
+        ms = int(time.time() * 1000) & 0xFFFFFFFFFFFFFFFF
+        _RT.sys_clock_hi = ms >> 32
+        return ms & 0xFFFFFFFF
+    if op_id == "clock.mono_ms":
+        ms = int(time.monotonic() * 1000) & 0xFFFFFFFFFFFFFFFF
+        _RT.sys_clock_hi = ms >> 32
+        return ms & 0xFFFFFFFF
+    if op_id == "clock.hi":
+        return _RT.sys_clock_hi
+    if op_id == "clock.sleep_ms":
+        n = a2x_i32(args[0])
+        if n < 0:
+            return -7
+        time.sleep(n / 1000.0)
+        return 0
+    return -10
+
+def _sys_rand_fill(args):
+    import secrets
+    buf = _RT.pio_bufs.get(a2x_i32(args[0]))
+    off = a2x_i32(args[1])
+    n = a2x_i32(args[2])
+    if buf is None or off < 0 or n < 0 or off + n > len(buf):
+        return -4
+    if n == 0:
+        return 0
+    data = secrets.token_bytes(n)
+    buf[off:off + n] = data
+    return 0
+
+def _sys_proc_op(op_id, args):
+    import subprocess
+    if op_id in ("process.spawn_w16", "process.spawn_bytes"):
+        if op_id == "process.spawn_w16":
+            cmd = _region_w16_to_path(args[0], args[1], args[2])
+        else:
+            try:
+                cmd = a2x_as_bytes(args[0]).decode("utf-8")
+            except UnicodeDecodeError:
+                return -4
+        if not cmd:
+            return -4
+        parts = cmd.split("\x00") if "\x00" in cmd else cmd.split()
+        parts = [p for p in parts if p]
+        if not parts:
+            return -4
+        capture = a2x_i32(args[-1]) & 1 if op_id == "process.spawn_w16" else a2x_i32(args[1]) & 1
+        try:
+            if capture:
+                p = subprocess.Popen(
+                    parts,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
+                )
+                _RT.sys_next += 1
+                pid = _RT.sys_next
+                _RT.sys_procs[pid] = {"p": p, "hi": 0}
+                return pid
+            p = subprocess.Popen(
+                parts,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
+        except OSError as e:
+            return _sys_io_error(e)
+        _RT.sys_next += 1
+        pid = _RT.sys_next
+        _RT.sys_procs[pid] = {"p": p, "hi": 0}
+        return pid
+    if op_id == "process.pipe_read":
+        pid = a2x_i32(args[0])
+        which = a2x_i32(args[1])
+        rec = _RT.sys_procs.get(pid)
+        if rec is None:
+            return -2
+        p = rec["p"]
+        stream = p.stdout if which == 1 and p.stdout else (p.stderr if which == 2 and p.stderr else None)
+        buf = _RT.pio_bufs.get(a2x_i32(args[2]))
+        off = a2x_i32(args[3])
+        cap = a2x_i32(args[4])
+        if stream is None or buf is None or off < 0 or cap <= 0:
+            return -4
+        data = stream.read(cap) if False else stream.readline()
+        if not data:
+            return 0
+        n = min(len(data), cap)
+        buf[off:off + n] = data[:n]
+        return n
+    if op_id == "process.wait":
+        pid = a2x_i32(args[0])
+        timeout_ms = a2x_i32(args[1])
+        rec = _RT.sys_procs.get(pid)
+        if rec is None:
+            return -2
+        p = rec["p"]
+        try:
+            if timeout_ms < 0:
+                code = p.wait()
+            else:
+                code = p.wait(timeout=timeout_ms / 1000.0)
+            return code
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
+            return -11
+    if op_id == "process.release":
+        pid = a2x_i32(args[0])
+        rec = _RT.sys_procs.pop(pid, None)
+        if rec is None:
+            return -2
+        p = rec["p"]
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        return 0
+    if op_id == "process.exit":
+        import sys as _sys
+        _sys.exit(a2x_i32(args[0]))
+    if op_id in ("process.cmdline_w16", "process.cwd_w16"):
+        import sys as _sys
+        if op_id == "process.cmdline_w16":
+            val = " ".join(_sys.argv)
+        else:
+            val = os.getcwd().replace("\\", "/")
+        data = val.encode("utf-16-le")
+        buf = _RT.pio_bufs.get(a2x_i32(args[0]))
+        cap = a2x_i32(args[1])
+        if buf is None:
+            return -2
+        if len(data) > 2 * cap:
+            return -122
+        buf[: len(data)] = data
+        return len(data) // 2
+    if op_id in ("process.cmdline_fill_bytes", "process.cwd_bytes"):
+        import sys as _sys
+        if op_id == "process.cmdline_fill_bytes":
+            val = "\x00".join(_sys.argv)
+        else:
+            val = os.getcwd()
+        data = val.encode("utf-8")
+        buf = _RT.pio_bufs.get(a2x_i32(args[0]))
+        cap = a2x_i32(args[1])
+        if buf is None:
+            return -2
+        n = min(len(data), cap)
+        buf[:n] = data[:n]
+        return n
+    if op_id == "process.chdir_w16":
+        path = _region_w16_to_path(args[0], args[1], args[2])
+        if not path:
+            return -4
+        try:
+            os.chdir(path)
+            return 0
+        except OSError as e:
+            return _sys_io_error(e)
+    if op_id == "process.chdir_bytes":
+        try:
+            path = a2x_as_bytes(args[0]).decode("utf-8")
+            os.chdir(path)
+            return 0
+        except (UnicodeDecodeError, OSError) as e:
+            if isinstance(e, OSError):
+                return _sys_io_error(e)
+            return -4
+    return -10
+
+
+
+_SYS_FILE_QUERY = {
+    "file.seek", "file.tell", "file.hi", "file.size", "file.mtime_ms",
+    "file.flush", "file.close",
+}
+
+
+def _sys_file_io(op_id, args):
+    hid = a2x_i32(args[0])
+    rec = _RT.sys_files.get(hid)
+    if rec is None:
+        return -2
+    handle = rec["f"]
+    buf = _RT.pio_bufs.get(a2x_i32(args[1]))
+    off = a2x_i32(args[2])
+    n = a2x_i32(args[3])
+    if buf is None or off < 0 or n < 0 or off + n > len(buf):
+        return -4
+    if n == 0:
+        return 0
+    try:
+        if op_id == "file.read_some":
+            data = handle.read(n)
+            buf[off:off + len(data)] = data
+            _RT.pio_last_error = 0
+            return len(data)
+        data = bytes(buf[off:off + n])
+        written = handle.write(data)
+        _RT.pio_last_error = 0
+        return written
+    except OSError as e:
+        return _sys_io_error(e)
+
+
+def _sys_file_query(op_id, args):
+    hid = a2x_i32(args[0])
+    rec = _RT.sys_files.get(hid)
+    if rec is None:
+        return -2
+    handle = rec["f"]
+    try:
+        if op_id == "file.seek":
+            origin = a2x_i32(args[1])
+            lo = a2x_i32(args[2])
+            hi = a2x_i32(args[3])
+            pos = ((hi & 0xFFFFFFFF) << 32) | (lo & 0xFFFFFFFF)
+            if origin == 1 and pos >= (1 << 63):
+                pos = pos - (1 << 64)
+            whence = {0: 0, 1: 1, 2: 2}[origin]
+            newpos = handle.seek(pos, whence)
+            rec["hi"] = (newpos >> 32) & 0xFFFFFFFF
+            return newpos & 0xFFFFFFFF
+        if op_id == "file.tell":
+            pos = handle.tell()
+            rec["hi"] = (pos >> 32) & 0xFFFFFFFF
+            return pos & 0xFFFFFFFF
+        if op_id == "file.hi":
+            return rec["hi"]
+        if op_id == "file.size":
+            pos = handle.tell()
+            sz = handle.seek(0, 2)
+            handle.seek(pos)
+            rec["hi"] = (sz >> 32) & 0xFFFFFFFF
+            return sz & 0xFFFFFFFF
+        if op_id == "file.mtime_ms":
+            import os
+            st = os.fstat(handle.fileno())
+            rec["hi"] = 0
+            return int(st.st_mtime * 1000) & 0x7FFFFFFF
+        if op_id == "file.flush":
+            handle.flush()
+            _RT.pio_last_error = 0
+            return 0
+        if op_id == "file.close":
+            handle.close()
+            _RT.sys_files.pop(hid, None)
+            _RT.pio_last_error = 0
+            return 0
+    except OSError as e:
+        return _sys_io_error(e)
+    return -10
 "#;

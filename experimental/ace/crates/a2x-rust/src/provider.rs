@@ -113,7 +113,7 @@ impl TargetProvider for RustTargetProvider {
         // PLAN-973: the collections family fileset gains the platform
         // runtime when the module carries platform intrinsics (the sys
         // modules' a2x_<callee> stubs; mirrors the record-text join).
-        if view.has_platform_ops() {
+        if family == Family::Collections && view.has_platform_ops() {
             source.push_str("\n\n// PLAN-973: platform-operation runtime (system library).\n");
             source.push_str(crate::rt::platform_rt_source());
         }
