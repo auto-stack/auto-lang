@@ -32,7 +32,7 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false, false)
+    project_program_with_caps(p, k, tree, snap, profile, false, false, false, false)
 }
 
 /// PLAN-963（V-G06）：包模块的投影入口——记录模板**推迟**到扁平程序（全部模块
@@ -45,8 +45,9 @@ pub(crate) fn project_program_deferring_templates(
     tree: &CstTree,
     snap: &Snapshot,
     profile: SourceProfile,
+    age_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false, true)
+    project_program_with_caps(p, k, tree, snap, profile, false, false, true, age_face)
 }
 
 /// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
@@ -63,6 +64,7 @@ pub(crate) fn project_program_with_caps(
     ct_face: bool,
     instances_face: bool,
     defer_templates: bool,
+    age_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
     // PLAN-936（T-04）：ct 面上字符串 token 仅作为 meta 字段选择子进入词法事实（值位置由
@@ -70,7 +72,7 @@ pub(crate) fn project_program_with_caps(
     if let Some(d) = lex::first_lex_fact_ct(tree, snap, k, profile, ct_face) {
         return Err(vec![d]);
     }
-    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face);
+    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face, age_face);
     let tree_has_errors = tree.has_error_nodes();
     // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
     // 其余面无此二规则 = 保持原分派行为）。
@@ -1622,7 +1624,9 @@ impl<'c, 'a> Walker<'c, 'a> {
     }
     fn is_raw(&self, g: u32) -> bool {
         let k = self.k();
-        g == k.tok_affix_num || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open
+        // PLAN-981：AGE 作者面合法使用浮点字面量，本面不把 affix-num 当裸 token。
+        let affix = g == k.tok_affix_num && !self.cx.age_face;
+        affix || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open
     }
 
     /// 块体：语句序列到 `}`（或 EOF 错误）。
@@ -3690,6 +3694,10 @@ pub(crate) struct Cx<'a> {
     /// `generic-call`（`rep<2>(21)`）只在这一面成立；plain 面沿用 935 的
     /// 具名拒（`source.instances-unsupported`）。
     instances_face: bool,
+    /// PLAN-981（IF-981-ORIGINAL）：AGE 作者面（`age-package` 裁剪）激活——
+    /// 浮点字面量等作者构造合法。由包前门显式传入（不按 profile 猜：包门在面
+    /// 之上用 TextRecord 投影）。
+    age_face: bool,
     /// PLAN-935：当前投影中函数声明的类型参数名（fn 投影期间有效——
     /// 引擎栈在 run_fn_item 内驱完，无跨函数交错）。
     ty_params: Vec<String>,
@@ -3889,7 +3897,7 @@ pub(crate) fn project_age_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
-    let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, false);
     let mut out = Vec::new();
     for d in &tree.decls {
         let node = if tree.kind(d.node) == k.item {
@@ -3930,7 +3938,7 @@ pub(crate) fn project_component_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
-    let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, false);
     let mut out = Vec::new();
     for d in &tree.decls {
         let node = if tree.kind(d.node) == k.item {
@@ -3971,6 +3979,7 @@ impl<'a> Engine<'a> {
         profile: SourceProfile,
         ct_face: bool,
         instances_face: bool,
+        age_face: bool,
     ) -> Self {
         Engine {
             cx: Cx {
@@ -3981,6 +3990,7 @@ impl<'a> Engine<'a> {
                 profile,
                 ct_face,
                 instances_face,
+                age_face,
                 ty_params: Vec::new(),
                 visited: 0,
                 diags: Vec::new(),
@@ -7128,7 +7138,7 @@ impl<'a> Engine<'a> {
                 // PLAN-961: the numeric profile decodes the typed literal
                 // (prefix/suffix/fraction per the frozen T-01 §1 table);
                 // every other profile keeps the frozen raw rejection.
-                if self.cx.profile.is_numeric() {
+                if self.cx.profile.is_numeric() || self.cx.age_face {
                     match decode_typed_literal(&raw) {
                         Ok(kind) => {
                             self.vals.push(Val::E(Expr { kind, span }));
@@ -10798,7 +10808,7 @@ pub(crate) fn in_decl_projector<'a>(
     profile: SourceProfile,
 ) -> InDeclProjector<'a> {
     InDeclProjector {
-        eng: Engine::new(p, k, tree, snap, profile, false, false),
+        eng: Engine::new(p, k, tree, snap, profile, false, false, false),
     }
 }
 

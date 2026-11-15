@@ -670,7 +670,17 @@ pub fn compile_component_scenario_observing(
                 type_params: Vec::new(),
                 params: Vec::new(),
                 ret: TypeAnn {
-                    kind: TypeRef::Builtin(field_type(f).expect("field type gate")),
+                    kind: TypeRef::Builtin(field_type(f).ok_or_else(|| {
+                        vec![text_diag(
+                            "source.age.component-unsupported",
+                            format!(
+                                "`model` field `{}` has type `{}`, which this slice cannot hold \
+                                 yet (supported: int/i32/bool)",
+                                f.name, f.ty
+                            ),
+                            f.ty_span,
+                        )]
+                    })?),
                     span: f.span,
                 },
                 body: Block {
@@ -948,7 +958,17 @@ pub(crate) fn instance_stmts(
                 span: f.span,
             },
             ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(field_type(f).expect("field type gate")),
+                kind: TypeRef::Builtin(field_type(f).ok_or_else(|| {
+                    vec![text_diag(
+                        "source.age.component-unsupported",
+                        format!(
+                            "`model` field `{}` has type `{}`, which this slice cannot hold yet \
+                             (supported: int/i32/bool)",
+                            f.name, f.ty
+                        ),
+                        f.ty_span,
+                    )]
+                })?),
                 span: f.ty_span,
             }),
             mutable: true,

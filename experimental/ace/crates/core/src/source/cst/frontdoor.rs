@@ -813,6 +813,8 @@ pub(crate) fn project_packages_front(
             tree,
             &snap,
             proj_profile,
+            // PLAN-981：AGE 作者面（age-package 裁剪）——浮点字面量等合法。
+            matches!(face, PackagesFace::Age),
         )?;
         items.extend(program.items);
         // PLAN-981（IF-981-MODULE）：AGE 领域候选从**同一次** CST 里投影，
@@ -2002,6 +2004,8 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         // `<const N>` 与 `generic-call` 的唯一成立面。
         instances || record_instances || text_record_instances,
         // PLAN-963（V-G06）：记录面就地单态化（模块/包面走上面的推迟入口）。
+        false,
+        // PLAN-981：整模块入口不属于 AGE 作者面。
         false,
     ) {
         Ok(program) => FrontOutcome::Ok(FrontOk {
