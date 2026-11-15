@@ -341,3 +341,50 @@ fn p979_component_typed_view_follows_its_own_field_events() {
     assert_eq!(o.instance_texts[0], vec!["big".to_string()]);
     assert_eq!(o.instance_texts[1], vec!["big".to_string()]);
 }
+
+/// bool 模型字段：view 读 flag，事件翻转它；观测字段仍是 int 的 count。
+const FLAG_MODEL: &str = "fn pick(on bool) str {\n    if on {\n        return \"on\"\n    }\n    return \"off\"\n}\nnode Switch {\n    model {\n        count int = 0\n        enabled bool = true\n    }\n    on Inc {\n        count = count + 1\n    }\n    on Off {\n        enabled = false\n    }\n    on On {\n        enabled = true\n    }\n    view {\n        text pick(enabled) {}\n    }\n}\n";
+
+#[test]
+fn p979_component_bool_field_renders_through_its_typed_state() {
+    let initial = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let o = observe_component(FLAG_MODEL, "switch.at", LegacyWidgetAlias::Reject, &initial)
+        .expect("bool field observes");
+    assert_eq!(o.encoded, 1, "the int field is the observed one");
+    assert_eq!(o.instance_texts[0], vec!["on".to_string()], "initial flag is true");
+
+    let flipped = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Off".to_string(),
+        }],
+    };
+    let o = observe_component(FLAG_MODEL, "switch.at", LegacyWidgetAlias::Reject, &flipped)
+        .expect("bool field observes");
+    assert_eq!(o.encoded, 0, "count untouched");
+    assert_eq!(o.instance_texts[0], vec!["off".to_string()], "flag flipped to false");
+}
+
+#[test]
+fn p979_component_bool_observed_field_is_refused_by_name() {
+    // 观测字段（首字段）必须是 int：bool 首字段具名拒。
+    let src = "node S {\n    model {\n        enabled bool = true\n    }\n    on Off {\n        enabled = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Off".to_string(),
+        }],
+    };
+    let err = observe_component(src, "s.at", LegacyWidgetAlias::Reject, &scenario)
+        .expect_err("a bool observed field is refused");
+    assert!(err.contains("source.age.component-unsupported"), "{err}");
+    assert!(err.contains("int"), "{err}");
+}

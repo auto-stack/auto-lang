@@ -595,3 +595,35 @@ fn p979_component_static_face_describes_every_node_in_the_module() {
     // 节点 span 各自落在自己的声明上。
     assert!(out.description.nodes[0].span.start < out.description.nodes[1].span.start);
 }
+
+#[test]
+fn p979_component_bool_fields_are_typed_and_the_observed_field_must_be_int() {
+    // 第二字段 bool 可用（状态函数按字段类型返回）。
+    let ok = "node S {\n    model {\n        count int = 0\n        on bool = true\n    }\n    on Off {\n        on = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Off".to_string(),
+        }],
+    };
+    let out = compile_component_scenario(ok, "s.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect("a bool second field is supported");
+    assert!(
+        out.atom_text.contains("__age_state_0_on"),
+        "bool field keeps its own state fn"
+    );
+
+    // 首字段（观测字段）bool：具名拒，span 指向该字段类型。
+    let bad = "node S {\n    model {\n        on bool = true\n    }\n    on Off {\n        on = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let ds = compile_component_scenario(bad, "s.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect_err("a bool observed field is refused");
+    assert_eq!(ds[0].code, "source.age.component-unsupported");
+    assert!(
+        ds[0].message.contains("observed model field must be `int`"),
+        "{:?}",
+        ds[0]
+    );
+    let at = bad.find("bool").expect("ty token");
+    assert_eq!(ds[0].span.start, at, "span points at the field type");
+}

@@ -506,17 +506,29 @@ pub fn compile_component_scenario(
             node.span,
         )]);
     }
-    // 模型限制（本步）：只支持 int 字段（事件推进用算术；文本状态归下一批）。
+    // 模型限制（本步）：字段类型须可映射（int/i32/bool）；**观测字段**（首字段）必须是 int，
+    // 因为驱动以 i32 编码观察它。
     for f in &node.fields {
-        if f.ty != "int" {
+        if field_type(f).is_none() {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
-                    "the component slice currently supports `int` model fields only; field `{}` \
-                     is `{}`",
+                    "the component slice supports `int`/`i32`/`bool` model fields; field `{}` is `{}`",
                     f.name, f.ty
                 ),
                 f.ty_span,
+            )]);
+        }
+    }
+    if let Some(f0) = node.fields.first() {
+        if field_type(f0) != Some(TypeWord::I32) {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "the observed model field must be `int` (the driver encodes it as i32); `{}` is `{}`",
+                    f0.name, f0.ty
+                ),
+                f0.ty_span,
             )]);
         }
     }
@@ -587,7 +599,7 @@ pub fn compile_component_scenario(
                 type_params: Vec::new(),
                 params: Vec::new(),
                 ret: TypeAnn {
-                    kind: TypeRef::Builtin(TypeWord::I32),
+                    kind: TypeRef::Builtin(field_type(f).expect("field type gate")),
                     span: f.span,
                 },
                 body: Block {
@@ -864,7 +876,7 @@ fn instance_stmts(
                 span: f.span,
             },
             ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(TypeWord::I32),
+                kind: TypeRef::Builtin(field_type(f).expect("field type gate")),
                 span: f.ty_span,
             }),
             mutable: true,
@@ -954,4 +966,12 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
         }
     }
     None
+}
+/// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool）。
+fn field_type(f: &ComponentField) -> Option<TypeWord> {
+    match f.ty.as_str() {
+        "int" | "i32" => Some(TypeWord::I32),
+        "bool" => Some(TypeWord::Bool),
+        _ => None,
+    }
 }
