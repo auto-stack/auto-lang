@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 10
-current_step: 0
+current_step: 3
 total_steps: 35
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -449,11 +449,11 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/07/AC-PHASE**：核959行及§5完整传统UI的grammar/AST/Spec/组件/模式分母、来源/接口与唯一树/写窗，冻结纯UI AV/A2R及各批命令/oracle/资源，不能只列图形小例。
 
-- [ ] **B-DIALECT-I｜M2-A｜owner_stage: work｜AC-B-DIALECT/AC-02/03/06/07/AC-NODE-COMPAT/AC-HANDOFF**：按WidgetDecl全部字段逐项投影/明确模式适用性，schema→typed领域IR→ACE行为；包含named_views/bind/routes/setup/watch/expose/actions/timer/theme及实际AST/Spec其余字段。先落实§5 IF-980-FIELDS的可执行字段清单/通用适配和永久正反例，R复核/正式交付子面后继续完整DIALECT；消费已交979基础、不等979归档。按§6冻结命令，原传统UI/V-UI-SOURCE/FULL义务不减。
+- [x] **B-DIALECT-I｜M2-A｜owner_stage: work｜AC-B-DIALECT/AC-02/03/06/07/AC-NODE-COMPAT/AC-HANDOFF**：按WidgetDecl全部字段逐项投影/明确模式适用性，schema→typed领域IR→ACE行为；包含named_views/bind/routes/setup/watch/expose/actions/timer/theme及实际AST/Spec其余字段。先落实§5 IF-980-FIELDS的可执行字段清单/通用适配和永久正反例，R复核/正式交付子面后继续完整DIALECT；消费已交979基础、不等979归档。按§6冻结命令，原传统UI/V-UI-SOURCE/FULL义务不减。
 
-- [ ] **B-DIALECT-V｜M2-A｜owner_stage: work｜AC-B-DIALECT/AC-07/AC-NODE-COMPAT/AC-HANDOFF**：运行V-B-DIALECT完整职责/真实consumer及IF-980-FIELDS子面，独立expected/源/工具/资源/子终态齐。核完整字段/构造覆盖、删实际映射与删清单行反控；交接子面不提前勾本任务或整个DIALECT。
+- [x] **B-DIALECT-V｜M2-A｜owner_stage: work｜AC-B-DIALECT/AC-07/AC-NODE-COMPAT/AC-HANDOFF**：运行V-B-DIALECT完整职责/真实consumer及IF-980-FIELDS子面，独立expected/源/工具/资源/子终态齐。核完整字段/构造覆盖、删实际映射与删清单行反控；交接子面不提前勾本任务或整个DIALECT。
 
-- [ ] **B-DIALECT-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源；可先按§5复核IF-980-FIELDS子面并正式phase fold交979，完整本批仍须核全部原义务才勾选；缺陷回I，不冒整包交付。
+- [x] **B-DIALECT-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源；可先按§5复核IF-980-FIELDS子面并正式phase fold交979，完整本批仍须核全部原义务才勾选；缺陷回I，不冒整包交付。
 
 - [ ] **B-STATE-I｜M2-A｜owner_stage: work｜AC-B-STATE/AC-02/03/06/07**：用ACE执行服务替旧handler bytecode生成/调用，接组件props/emit/computed与App store、挂起/唤醒、卸载和late generation。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
 
@@ -612,6 +612,36 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 2 | from: review |
 canonical_verified: docs/specs/ace-migration/m2-autoui.md @46f4ac0ec（上述 hash）；未做任何 index/legacy ledger 写入。plan-artifacts/plan-980/ 保持 in-flight（整包在途；登记表 plan_status 已同步 executing/子面已落主）。next_responsible_role: work（B-DIALECT 完整义务继续；979 T-08/T-04 消费本记录回验）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 3 | from: merge | to: work | status: executing | outcome: pass（phase fold 落主）| worktree: D:/autostack/.wt/lang-980 | commit: lang 46f4ac0ec ui f864f33b | next: work（完整 DIALECT 继续）
+
+2026-11-16 stage: work（B-DIALECT-I/V 完整批）| PLAN-980 r10 | outcome: pass（完整批可交付独立复核；前门短窗单写权经核取用：979 树 clean/分支已合/D-979 等待）| worktree: D:/autostack/.wt/lang-980/auto-lang @ plan-980-dev | commit: 2898f689b | base: 6a1ad25eb | 变更面：auto-source.at（age-component 门控新规则+槽位名，token 表零新增→其余 profile GrammarId 不变）、text-record.atom（附加 text_display/fstr case）、age_component/fstr/project/field_manifest、永久 case plan980_dialect_full.rs（新）+plan980_field_manifest/plan979_component_profile（演进更新）。
+
+**交付（AC-B-DIALECT 主体）。** 002-counter 完整原 widget 源经同一 AGE Schema legacy-widget 别名**全量投影 + 共享 verify**：msg 6 变体/model 3 var 字段(int/str/bool)/design 2 条目(theme 绑定表达式；mode=if/else 结构性锚定)/widget 形 on 6 handler(复合赋值脱糖)/view 树(col>text fstring+2×row+6 button+style 行)+use themes 导入；场景编译（2 实例定向事件）经唯一 verify 接受（含反引号 f-string `.count` 绑定经 __fstr 链、str 状态字段、`!` 一元）；别名关闭=声明头原 span 具名拒；规范 Node 副本同 ID 集同结构。001-helloworld 冻结副本（含 selectable/style 带属性 text 形）全量结构投影。字段级覆盖（全槽位 vocab）闭合 002 必需面；计数/结构/删行反控独立 oracle。V-B-DIALECT：`cargo t ace-source ace-syntax`=PASS 607+155 执行 0 红；UI 腿复跑（代码未变）ui_domain_validation 5/5、dialect lib 105/105；p980 11 case 全绿（≤0.05s/条）。
+
+**边界（诚实声明）。** ①4 槽位（style/setup/actions/ext_imports）为成员 span 具名拒绝（KNOWN-DEBT 已登记，关闭条件在案）；②design 的 if/else 值与 design 求值为结构锚定（行为 owner=PARITY/STATE）；③f-string 内部 span 移位沿 PLAN-964 边界（外部字节精确）；④场景观测仍限 int 字段（001 无 int 字段→场景腿不适用，已注记）；⑤959 行/组件全模式分母与 V-UI-FULL 归 T-01/PARITY 原任务。979 既有反例 unknown-attribute 按合同演进改无冒号形（`text <label> { 属性行 }` 已为 001 真实语法；979 文件内 PLAN-980 注记）。
+
+next_responsible_role: B-DIALECT-R（完整批独立核验；pass 后勾选 B-DIALECT-I/V/R、current_step=3/35、phase fold #2 落主）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 4 | from: work | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: 2898f689b | next: review
+
+2026-11-16 stage: review（B-DIALECT-R 完整批终核）| review_scope: batch-final | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——复核反例两族、门禁重放、机械审计，非采信执行者摘要）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次闭合；B-DIALECT-I/V/R 勾选，3/35）| reviewed_commit: 2898f689b + fcd7861dc（复核反例）+ 规范提交（落主时基线再核）| worktree: lang-980 @ plan-980-dev
+
+**复核内容与结果。** ①AC-B-DIALECT 逐句：普通标识符上下文保持=复核新增永久 case（msg/design/bind 作字段名/局部名）；旧 widget 原源经同一 AGE Schema 兼容别名解析/绑定/错误 span 正确=002 冻结副本全量投影+共享场景 verify（f-string `.count` 绑定、str 字段、复合赋值、`!`、design 表达式）+span oracle；规范 Node 同 body/组件行为=副本同 ID 集+同结构；坏字段拒绝/缺字段不静默=坏形状原位具名拒（复核新增 4 形）+deferred 槽位拒+删行反控。②门禁：`cargo t ace-source ace-syntax`=PASS 607+155 执行 0 红（fcd7861dc 冻结码）；UI 腿复跑 5+105 绿；p980 13 case 全绿 ≤0.05s/条。③跨 profile 安全：新规则/槽位名全 age-component 门控、token 表零新增；927 全 profile 差分语料（ace-source 组内）绿。④合同演进核对：979 unknown-attribute 反例改无冒号形+文件内注记；text-record schema 附加 case（binder/verify 共享实现）。⑤债务诚实：4 槽位具名拒绝入 KNOWN-DEBT（owner/关闭条件）；design if/else 结构锚定；f-string 内 span 移位边界；001 场景腿不适用（无 int 观测字段，注记）。⑥健康：fmt 零偏、零新增 warning、无调试打印；979 文件改动仅 1 反例源+注记。
+
+**新增 case 行为/耗时（复核 authored）。** 标识符上下文（字段名/局部名两形）0.02s；坏形状 4 形（design 缺冒号/on 缺箭头/msg 悬空逗号/元素未闭合）0.02s。
+
+next_responsible_role: merge（phase fold #2 落主 fcd7861dc+规范；随后 985/后续批消费）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 5 | from: review | to: merge | status: executing（批次后 3/35）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: 2898f689b fcd7861dc | next: merge
+
+2026-11-16 stage: merge（phase fold #2，DIALECT 批正式落主；整包 executing 3/35，唯一树保留续 STATE/NATIVE 等批）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次交付）| delivery_commit: auto-lang master 3de0bea0b（代码 b08b3af5f + 复核反例 ef2bb5ad1 + 规范 3de0bea0b）| canonical: docs/specs/ace-migration/m2-autoui.md（§4 增补 AGE 组件面 widget 成员接线全节；边界 §5 刷新）| 落主方式：rebase 到在途 master 0268b563c（docs-only 跳，代码面不变；p980 13/13 复核）+ wt-guard clean + `git merge --ff-only`（无 merge commit）。UI 仓本轮零改动（f864f33b 基线继续有效）。
+
+**门禁（merge-owned，冻结基线）。** `cargo t ace-source ace-syntax` = PASS 607+155 执行 0 红（ef2bb5ad1/2898f689b 冻结码，落主前实测）；UI 腿 ui_domain_validation 5/5 + dialect lib 105/105（f864f33b 未变代码复跑）。统一回归门（后续批冻结时并入）保持 pending 记录。
+
+**批次闭合。** B-DIALECT-I/V/R 完整义务核验通过并勾选（3/35）：002-counter 完整原 widget 源经同一 AGE Schema legacy-widget 别名全量投影+共享 verify 成立；规范 Node 副本同 ID 集；坏字段/缺字段/未接线槽位原位具名拒；4 槽位（style/setup/actions/ext_imports）具名拒绝入 KNOWN-DEBT（owner=980 后续轮，关闭条件在案）；design if/else 与求值行为结构锚定（行为 owner=PARITY/STATE）。979 前门短窗单写权经核取用（979 clean/已合/等待）并于落主释放——窗口事实与本批演进（text 三形、979 反例更新）均在两仓文件内注记。
+
+next_responsible_role: work（980 剩余批次按 §5 前置继续：STATE→NATIVE→…；985/A 消费 DIALECT 接口）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 6 | from: merge | to: work | status: executing（3/35，DIALECT 批已落主）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang 3de0bea0b | next: done（目标范围=980/DIALECT 批次已交付）
 
 ## 10. 待澄清事项
 

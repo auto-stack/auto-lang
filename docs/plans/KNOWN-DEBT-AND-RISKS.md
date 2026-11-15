@@ -4430,3 +4430,17 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | V-ID-RUN 真工件 provider 调用腿 | P3 | run_sdk 对打包 provider 已核 selection/兼容/pin/授权（具名拒绝齐全），但未用 967 真双 rustc cdylib 实际调用取值；结构性规则（rustc 不作准入轴）有专门测试，967 V-ABI-* 身份适用证据按 ID-06 复用。关闭=首个真实 provider 工件经 run_sdk 装配调用对独立值/ABI oracle（985 消费或 967 工件包重放） | 978→985 消费点 |
 | ace-semantics 基线红（非978触面） | P2 | sema_boundary_case_files_executed_status_honest：master 上 1062 的 cache-roundtrip.document.case.ad 缺 `status: executed`（commit aeeecc8f3）。978 并集时 282/283。关闭=1062 侧补语料标记或裁定 | PLAN-1062 |
 | A2C build-lane clang 变体 | P3 | Windows 腿已经 MSVC cl 真编译关闭（value:14）；clang 不在 PATH，变体具名 pending。关闭=有 clang 环境时补跑或裁定单编译器即可 | 978 记录，按需 |
+
+### PLAN-980 B-DIALECT：4 个 widget 槽位为具名拒绝（非结构投影）— 2026-11-16
+
+- **范围**：AGE 组件面对 `style { raw CSS }`、`setup { … }`、`actions { … }`（含
+  menubar/toolbar DSL）、widget 级 `use { fn/component/composable … }` 四个
+  WidgetDecl 槽位在成员 span 处**具名拒绝**（不静默略过；永久反例
+  `p980_age_face_rejects_unknown_widget_decl_members`）。002/001 及清单 115 行
+  分母不受影响（清单行携带 applicability/consumer owner）。
+- **原因**：style 需逐字 CSS 捕获（本声明式 grammar 无 verbatim token 面）；
+  setup/actions 需完整语句/DSL 面（本切片语句集=点赋值子集）。owner=980 后续
+  轮（或 PARITY 批按消费需要接线）。
+- **关闭条件**：任一槽位获得真实工程消费需求时，按同批流程（grammar 规则 +
+  投影行 + 永久正反例）接线并在 m2-autoui.md 规范更新；在此之前具名拒绝即
+  交付面（非静默缺口）。
