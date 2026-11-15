@@ -292,6 +292,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 12 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量2) | 记录: Auto侧HTTP协议API面交付（54e09069e）：旧a2p http_client_sync义务经platform.net/1真TCP承载，GET/builder/post三腿独立oracle精确命中（6010012），net974三测全绿 | next: 974/T-02余量（SSE/server/redirect/timeout）或按裁定；971/B 等 M2A-08
+
 stage: goal | PLAN-971 | r6 | round: 11 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02 OS薄适配增量) | 记录: 974/T-02 首增量交付（c226a7215，+754行）：platform.net/1 全栈（av-core四op/caps/预算/台账+Win32 std::net后端+mir_verify准入+core源表+native具名拒）；net_974双测绿（真实TCP HTTP往返 oracle 20043 + 六负控含准入拒零dispatch）；回归48/48 | next: 974/T-02续（http API面/SSE/server腿）或按裁定；971/B 等 M2A-08
 
 stage: goal | PLAN-971 | r6 | round: 10 | from: work(依赖链) | to: work(974 A批) | status: executing | outcome: pass(974/T-01冻结) | 记录: 按既定裁定模式开工974：T-01 A期冻结交付（974→r9 executing 1/8；S1选型=扩展platform_io增platform.net/1；973依赖分账=核心TCP/HTTP/SSE腿不前置、File/Stream/upload文件腿具名阻塞；worktree .wt/lang-974/auto-lang已建） | next: 974/T-02（platform.net/1薄适配+最小真实HTTP往返）；GD/SCENE待Godot；971/B 等 M2A-08
