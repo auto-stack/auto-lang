@@ -393,7 +393,7 @@ fn read_back_components(
     packaged: &[PackagedAgeComponent],
     checked: &CheckedModule,
     bound: &super::packages::BoundPackages,
-    refs: &std::collections::BTreeMap<String, Vec<AgeResolvedRef>>,
+    refs: &std::collections::BTreeMap<(String, String), Vec<AgeResolvedRef>>,
 ) -> Result<Vec<AgePackageComponent>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for p in packaged {
@@ -464,7 +464,10 @@ fn read_back_components(
                     span: row.span,
                 })
                 .collect(),
-            refs: refs.get(&p.module).cloned().unwrap_or_default(),
+            refs: refs
+                .get(&(p.module.clone(), p.node.name.name.clone()))
+                .cloned()
+                .unwrap_or_default(),
             texts,
             module: p.module.clone(),
         });
@@ -589,7 +592,7 @@ enum RefFailure {
 fn resolve_refs(
     bound: &super::packages::BoundPackages,
     packaged: &[PackagedAgeComponent],
-) -> Result<std::collections::BTreeMap<String, Vec<AgeResolvedRef>>, Vec<Diagnostic>> {
+) -> Result<std::collections::BTreeMap<(String, String), Vec<AgeResolvedRef>>, Vec<Diagnostic>> {
     // 每个模块里"本模块声明的 node"与"公共导出的 node"。
     let mut declared: std::collections::BTreeMap<String, Vec<String>> =
         std::collections::BTreeMap::new();
@@ -621,7 +624,14 @@ fn resolve_refs(
         }
     }
 
-    let mut out: std::collections::BTreeMap<String, Vec<AgeResolvedRef>> =
+    // 键是 **(模块, node)**，不是模块。
+    //
+    // 此前按模块聚合，于是同一模块里**每个**组件都拿到整份引用列表：实测
+    // `A` 引用 `Widget x1`、`B` 引用 `Widget y1` 时，`A`、`B`、连毫无引用的
+    // `Unrelated`，三者拿到的都是 `["Widget:x1","Widget:y1"]`；连被引用的
+    // `Widget` 自己都拿到了这两条（等于"自己引用自己"）。
+    // 那是 979 V-10 实例身份的实质错误，不是显示问题。
+    let mut out: std::collections::BTreeMap<(String, String), Vec<AgeResolvedRef>> =
         std::collections::BTreeMap::new();
     for p in packaged {
         let mut resolved = Vec::new();
@@ -761,7 +771,7 @@ fn resolve_refs(
         // `Widget` + `Counter`（后者 `view` 里有 `Widget w1 {}`）时 refs 正常；
         // 再加**任何**第三个 node（哪怕它毫无引用），整个模块的 refs 都变空——
         // 因为最后那个 node 的 `resolved` 是空的。
-        out.entry(p.module.clone())
+        out.entry((p.module.clone(), p.node.name.name.clone()))
             .or_default()
             .extend(resolved);
     }

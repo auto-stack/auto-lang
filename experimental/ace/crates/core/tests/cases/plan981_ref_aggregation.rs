@@ -86,3 +86,47 @@ fn p981_multiple_refs_across_nodes_are_all_kept() {
         vec!["Widget:x1".to_string(), "Widget:y1".to_string()]
     );
 }
+
+/// **每个组件只拿到自己的引用**——不是整个模块的。
+///
+/// 用模块聚合时，同一模块的每个组件都收到整份列表：实测 `A` 引用 `Widget x1`、
+/// `B` 引用 `Widget y1` 时，`A`、`B`、以及毫无引用的 `Unrelated` 三者拿到的都是
+/// `["Widget:x1","Widget:y1"]`；连被引用的 `Widget` 自己都拿到这两条（等于"自己
+/// 引用自己"）。那是 979 V-10 实例身份的实质错误。
+#[test]
+fn p981_each_component_gets_only_its_own_refs() {
+    let src = "node Widget {\n    view { text \"w\" {} }\n}\n\
+node A {\n    view {\n        text \"a\" {}\n        Widget x1 {}\n    }\n}\n\
+node B {\n    view {\n        text \"b\" {}\n        Widget y1 {}\n    }\n}\n\
+node Unrelated {\n    view { text \"u\" {} }\n}\n";
+    let out = compile_age_package(
+        &[input("main", src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+    )
+    .expect("compiles");
+    let refs_for = |name: &str| -> Vec<String> {
+        out.description
+            .components
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("component {name}"))
+            .refs
+            .iter()
+            .map(|r| format!("{}:{}", r.node, r.name))
+            .collect()
+    };
+    assert_eq!(refs_for("A"), vec!["Widget:x1".to_string()], "A's own only");
+    assert_eq!(refs_for("B"), vec!["Widget:y1".to_string()], "B's own only");
+    assert!(
+        refs_for("Unrelated").is_empty(),
+        "a component with no reference rows must get none: {:?}",
+        refs_for("Unrelated")
+    );
+    assert!(
+        refs_for("Widget").is_empty(),
+        "the referenced node must not receive the referring rows: {:?}",
+        refs_for("Widget")
+    );
+}
