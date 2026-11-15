@@ -225,6 +225,9 @@ mod stdlib_asm_972;
 // PLAN-972 T-08/V-08：逐操作覆盖对账——面清单奇偶校验 + 全公开符号五端演练。
 #[path = "cases/v08_surface_972.rs"]
 mod v08_surface_972;
+// PLAN-972 T-10/V-10：core/alloc 分层——无分配 core 证明 + 分配平衡/失败注入/预算。
+#[path = "cases/v10_layers_972.rs"]
+mod v10_layers_972;
 // PLAN-966：语句级编译期构造 + 宏调用的四端产品腿。
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;
