@@ -484,7 +484,10 @@ fn bind_package_syntax_inner(
                     &input.id,
                     &input.version,
                     &input.source,
-                    input.provider.as_ref().map(|l| (&l.kind, l.source.as_str())),
+                    input
+                        .provider
+                        .as_ref()
+                        .map(|l| (&l.kind, l.source.as_str())),
                 ))
         {
             return Err(fail(

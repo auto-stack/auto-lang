@@ -110,7 +110,8 @@ fn asm_lane_product(
     tag: &str,
     main_src: &str,
 ) -> ace_source_query::modules::packages::PackageProduct {
-    let mut ctx = PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    let mut ctx =
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
     let inputs = assemble_stdlib_aggregates_inputs(
         &[("main.at".to_string(), main_src.to_string())],
         "app::main",
@@ -127,8 +128,8 @@ fn asm_lane_product(
 }
 
 fn run_av(tag: &str, product: &ace_source_query::modules::packages::PackageProduct) -> Value {
-    let av =
-        PackageAvTarget::cold(&scratch(&format!("av-{tag}")), product).unwrap_or_else(|e| panic!("av {tag}: {e}"));
+    let av = PackageAvTarget::cold(&scratch(&format!("av-{tag}")), product)
+        .unwrap_or_else(|e| panic!("av {tag}: {e}"));
     av.run_value().unwrap_or_else(|e| panic!("run {tag}: {e}"))
 }
 
@@ -509,7 +510,8 @@ fn main() int {
     let ys = filter(xs, (x int) => { return x > 1 })
     let s = reduce(ys, 0, (acc int, x int) => { return acc + x })
     return s * 10 + ys.len()
-}".to_string(),
+}"
+                .to_string(),
             )],
             "app::main",
             &mut ctx_h,
@@ -538,8 +540,7 @@ fn main() int {
             std::fs::write(build_dir.join(path), content).unwrap();
         }
         let exe = build_dir.join("asm972hof.exe");
-        let mut cmd =
-            Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+        let mut cmd = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
         cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe);
         cmd.current_dir(&build_dir);
         let compile = auto_tool_execution::run_command_capture(
@@ -593,7 +594,8 @@ fn main() int {
             id: "main".into(),
             source: "use std.math.square
 use std.math.min
-fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }".into(),
+fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }"
+                .into(),
             provider: None,
         },
     ];
@@ -673,16 +675,14 @@ use std.text.scalar_len
 fn main() int {
     let a Str = \"A中😀\"
     return byte_len(a.clone()) * 10 + scalar_len(a.clone())
-}".into(),
+}"
+                    .into(),
                     provider: None,
                 },
             ))
             .collect();
-    let mut ctx2 = PackageAssemblyContext::new(
-        AssemblyBackend::Av,
-        ProviderChoice::Auto,
-        TargetOs::Windows,
-    );
+    let mut ctx2 =
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
     let subset_product = compile_assembled_aggregates_inputs(
         &subset,
         "app::main",
@@ -835,7 +835,8 @@ fn main() int {
 fn stdlib_asm_972_std_identity_reserved() {
     use ace_core::source::packages::bind_packages_assembled_aggregates;
     use ace_source_query::modules::packages::assembled_aggregates_caps;
-    let ctx = PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    let ctx =
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
     let caps = assembled_aggregates_caps();
     let files = ace_core::source::packages::stdlib_assembled_files();
     let frozen_list = files
@@ -916,4 +917,175 @@ fn stdlib_asm_972_closure_params_still_rejected_on_plain_lanes() {
         Err(ds) => ds,
     };
     assert_eq!(ds[0].diagnostic.code, "source.syntax", "{ds:?}");
+}
+
+/// S-06 (codepoint domain) + S-03 byte-domain default hash: exact oracles
+/// from an independent Python implementation of the frozen algorithm
+/// (seed 1469598103; mix (h * 1000003 + unit) mod 2^31-1 — every step
+/// inside checked i64). ASCII (incl. the NUL byte) agrees across the two
+/// domains; non-ASCII diverges; "ab" != "ba"; the empty string returns the
+/// seed. Domain/order distinguishing bits in the last main → 1111.
+#[test]
+fn stdlib_asm_972_hash_domains_av() {
+    let cases: &[(&str, &str, i64)] = &[
+        (
+            "codepoint-auto",
+            "use std.hash.codepoint_hash\nfn main() i64 { return codepoint_hash(\"auto\") }",
+            2075808597,
+        ),
+        (
+            "codepoint-empty-seed",
+            "use std.hash.codepoint_hash\nfn main() i64 { return codepoint_hash(\"\") }",
+            1469598103,
+        ),
+        (
+            "codepoint-a-cjk-emoji",
+            "use std.hash.codepoint_hash\nfn main() i64 { return codepoint_hash(\"A中😀\") }",
+            534270170,
+        ),
+        (
+            "byte-auto-equals-codepoint",
+            "use std.bytes.byte_hash\nfn main() i64 { return byte_hash(\"auto\") }",
+            2075808597,
+        ),
+        (
+            "byte-nul",
+            "use std.bytes.byte_hash\nfn main() i64 { return byte_hash(\"a\0b\") }",
+            386610881,
+        ),
+        (
+            "byte-a-cjk-emoji",
+            "use std.bytes.byte_hash\nfn main() i64 { return byte_hash(\"A中😀\") }",
+            866049554,
+        ),
+    ];
+    for (tag, src, want) in cases {
+        let p = asm_lane_product(&format!("hash-{tag}"), src);
+        assert_eq!(
+            run_av(&format!("hash-{tag}"), &p),
+            Value::I64(*want),
+            "{tag}"
+        );
+    }
+
+    const DISTINGUISH_MAIN: &str = r#"
+use std.hash.codepoint_hash
+use std.bytes.byte_hash
+fn main() int {
+    var code = 0
+    if (codepoint_hash("ab") != codepoint_hash("ba")) {
+        code = code + 1000
+    }
+    if (byte_hash("ab") != byte_hash("ba")) {
+        code = code + 100
+    }
+    if (codepoint_hash("中") != byte_hash("中")) {
+        code = code + 10
+    }
+    if (codepoint_hash("auto") == byte_hash("auto")) {
+        code = code + 1
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("hash-distinguish", DISTINGUISH_MAIN);
+    assert_eq!(run_av("hash-distinguish", &p), Value::I32(1111));
+}
+
+/// S-03 byte access: the UTF-8 bytes of "A中😀" are
+/// [65, 228, 184, 173, 240, 159, 152, 128] (8 bytes — byte 8 is out of
+/// range), a negative index is out of range, and the embedded NUL in
+/// "a\0b" is an ordinary byte (byte_at(1) = 0). Scored bits over
+/// pick-oracle positions (2e8 + 4e8 + 8e8 + 11111111) → 1411111111.
+#[test]
+fn stdlib_asm_972_bytes_byte_at_av() {
+    const BYTE_AT_MAIN: &str = r#"
+use std.bytes.byte_at
+fn pick(s Str, i int) int {
+    let r = byte_at(s, i)
+    is r {
+        Some(v) -> { return v }
+        None -> { return 999999 }
+    }
+}
+fn main() int {
+    let a Str = "A中😀"
+    var code = 0
+    if (pick(a.clone(), 0) == 65) {
+        code = code + 10000000
+    }
+    if (pick(a.clone(), 1) == 228) {
+        code = code + 1000000
+    }
+    if (pick(a.clone(), 2) == 184) {
+        code = code + 100000
+    }
+    if (pick(a.clone(), 3) == 173) {
+        code = code + 10000
+    }
+    if (pick(a.clone(), 4) == 240) {
+        code = code + 1000
+    }
+    if (pick(a.clone(), 5) == 159) {
+        code = code + 100
+    }
+    if (pick(a.clone(), 6) == 152) {
+        code = code + 10
+    }
+    if (pick(a.clone(), 7) == 128) {
+        code = code + 1
+    }
+    if (pick(a.clone(), 8) == 999999) {
+        code = code + 200000000
+    }
+    if (pick(a.clone(), -1) == 999999) {
+        code = code + 400000000
+    }
+    if (pick("a\0b", 1) == 0) {
+        code = code + 800000000
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("bytes", BYTE_AT_MAIN);
+    assert_eq!(run_av("bytes", &p), Value::I32(1411111111));
+}
+
+/// The reopened infix bit-op gate on packages-aggregates-ct (S-06 grammar
+/// fix): the face's expr previously dispatched to wide-ops, which has no
+/// &/|/^ — the tokens were declared since PLAN-961 but never referenced by
+/// an operator table (the rolled-back hash draft hit exactly this). Now
+/// ^/&/| parse and evaluate on the AV end (3^5=6, 6&2=2, 6|1=7 → 15);
+/// same-layer mixing with + keeps requiring parens (961 frozen record).
+/// Lane isolation: the plain aggregates face does not even declare the
+/// caret token — the program rejects at lex (`source.lex`).
+#[test]
+fn stdlib_asm_972_bitops_gate_open_av() {
+    let p = asm_lane_product(
+        "bitops",
+        "fn main() i64 { return (3i64 ^ 5i64) + (6i64 & 2i64) + (6i64 | 1i64) }",
+    );
+    assert_eq!(run_av("bitops", &p), Value::I64(15));
+
+    use ace_core::source::packages::PACKAGES_CAPABILITY;
+    let mut inputs = stdlib_aggregates_inputs();
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "main".into(),
+        source: "fn main() i64 { return 3i64 ^ 5i64 }".into(),
+        provider: None,
+    });
+    let ds = match compile_package_product_aggregates(
+        &inputs,
+        "app::main",
+        &[PACKAGES_CAPABILITY.into()],
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => {
+            panic!("numeric bit-op program unexpectedly admitted on the plain aggregates lane")
+        }
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].diagnostic.code, "source.lex", "{ds:?}");
 }

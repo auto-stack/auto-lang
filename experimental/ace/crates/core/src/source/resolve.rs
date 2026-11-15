@@ -3039,19 +3039,19 @@ fn first_expr_stmt(root: &RBlock) -> Option<Span> {
 
 /// PLAN-828 D-01: the RETAINED checked environment of one cold resolve — every function's resolved entry, the signature/record indexes, and
 /// the profile/trace facts the resolver consulted. A later single-body
-    /// re-check ([`recheck_function`]) grafts its result into `program.fns`
-    /// by O(1) slot swap; unchanged entries are never re-walked. The fields
-    /// are crate-visible: consumers drive the environment through
-    /// [`recheck_function`] and the emit seam, never by rebuilding it.
-    pub struct CheckedEnv {
-        pub(crate) program: ResolvedProgram,
-        pub(crate) rec_index: BTreeMap<String, usize>,
-        pub(crate) sigs: BTreeMap<String, FnSig>,
-        pub(crate) trace_enabled: bool,
-        pub(crate) profile: SourceProfile,
-        /// PLAN-972（T-02）：装配 aggregates 面（packages-aggregates-ct）——
-        /// 闭包字面量按 972 域放行（见 FnResolver.asm_lane）。
-        pub(crate) asm_lane: bool,
+/// re-check ([`recheck_function`]) grafts its result into `program.fns`
+/// by O(1) slot swap; unchanged entries are never re-walked. The fields
+/// are crate-visible: consumers drive the environment through
+/// [`recheck_function`] and the emit seam, never by rebuilding it.
+pub struct CheckedEnv {
+    pub(crate) program: ResolvedProgram,
+    pub(crate) rec_index: BTreeMap<String, usize>,
+    pub(crate) sigs: BTreeMap<String, FnSig>,
+    pub(crate) trace_enabled: bool,
+    pub(crate) profile: SourceProfile,
+    /// PLAN-972（T-02）：装配 aggregates 面（packages-aggregates-ct）——
+    /// 闭包字面量按 972 域放行（见 FnResolver.asm_lane）。
+    pub(crate) asm_lane: bool,
     /// Producer walk counters (D-01 observation; see [`env_walk_stats`]).
     pub(crate) resolve_walks: u64,
     pub(crate) check_walks: u64,

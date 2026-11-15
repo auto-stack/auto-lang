@@ -1,0 +1,20 @@
+// ACE assembled stdlib hash module (PLAN-972 T-02): the S-06 default hash
+// over the codepoint domain (scalar units — consistent with scalar_len /
+// char_at; S-06 ruling 2026-11-15). Deterministic, order-sensitive, i64
+// result. The polynomial multiply-add mix reduces mod 2^31-1 at every step
+// to stay inside checked i64 arithmetic — no wrapping ops on this surface,
+// and no bit ops in the default (the mn/C emitters name bit-op lowering as
+// a follow-up unit). The byte-domain default hash rides the S-03 byte
+// batch (std.bytes.byte_hash).
+pub fn codepoint_hash(s Str) i64 {
+    return codepoint_hash_at(s, 0, 1469598103i64)
+}
+
+fn codepoint_hash_at(s Str, i int, h i64) i64 {
+    if (i == s.len()) {
+        return h
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    return codepoint_hash_at(s, i + 1, (h * 1000003i64 + p.to(i64)) % 2147483647i64)
+}

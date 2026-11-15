@@ -420,11 +420,9 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             callee,
             captures,
         } => format!("createclosure {dst} {callee:?} c{captures:?}"),
-        MirInstr::CallClosure {
-            dst,
-            closure,
-            args,
-        } => format!("callclosure {dst} {closure} a{args:?}"),
+        MirInstr::CallClosure { dst, closure, args } => {
+            format!("callclosure {dst} {closure} a{args:?}")
+        }
         MirInstr::EnvGet { .. } => {
             return Err(MnError::Unsupported(
                 "instruction",

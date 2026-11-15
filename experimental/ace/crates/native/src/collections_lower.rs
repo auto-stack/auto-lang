@@ -798,7 +798,12 @@ impl Lower<'_, '_> {
                 let b = self.scalar(*end);
                 self.checked(
                     "mn_coll_str_slice",
-                    &[(d, types::I64), (v, types::I64), (a, types::I32), (b, types::I32)],
+                    &[
+                        (d, types::I64),
+                        (v, types::I64),
+                        (a, types::I32),
+                        (b, types::I32),
+                    ],
                 )?;
             }
             StrConcat { dst, lhs, rhs } => {
@@ -883,7 +888,9 @@ impl Lower<'_, '_> {
                     // unsigned target: the high bound rides the u64 bit
                     // pattern (u64::MAX == -1 as u64 under unsigned CC).
                     (
-                        self.fb.ins().icmp_imm(IntCC::UnsignedGreaterThanOrEqual, v, 0),
+                        self.fb
+                            .ins()
+                            .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, v, 0),
                         self.fb
                             .ins()
                             .icmp_imm(IntCC::UnsignedLessThanOrEqual, v, hi as i64),
@@ -1144,38 +1151,37 @@ impl Lower<'_, '_> {
             Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs)?,
             Un { op, dst, operand } => {
                 let v = self.scalar(*operand);
-                let result = match op {
-                    UnOp::NotBool => {
-                        let b = self.fb.ins().icmp_imm(IntCC::Equal, v, 0);
-                        self.fb.ins().uextend(types::I32, b)
-                    }
-                    UnOp::NegI32 => {
-                        let good = self.fb.ins().icmp_imm(IntCC::NotEqual, v, i32::MIN as i64);
-                        let error = self.i32(-30);
-                        self.guard(good, error);
-                        self.fb.ins().ineg(v)
-                    }
-                    // PLAN-961: typed negation awaits the numeric backend
-                    // unit — named rejection, never an i32 fallback.
-                    // PLAN-972 (T-03): checked I64 negation (MIN traps);
-                    // narrower/float typed negation stays with the numeric
-                    // backend unit.
-                    UnOp::NegT { ty: NumTy::I64 } => {
-                        let v = self.bits(*operand);
-                        let min = self.fb.ins().icmp_imm(IntCC::NotEqual, v, i64::MIN);
-                        let e = self.i32(-30);
-                        self.guard(min, e);
-                        let r = self.fb.ins().ineg(v);
-                        self.word_to(*dst, r);
-                        return Ok(());
-                    }
-                    UnOp::NegT { .. } => {
-                        return Err(unsupported(
+                let result =
+                    match op {
+                        UnOp::NotBool => {
+                            let b = self.fb.ins().icmp_imm(IntCC::Equal, v, 0);
+                            self.fb.ins().uextend(types::I32, b)
+                        }
+                        UnOp::NegI32 => {
+                            let good = self.fb.ins().icmp_imm(IntCC::NotEqual, v, i32::MIN as i64);
+                            let error = self.i32(-30);
+                            self.guard(good, error);
+                            self.fb.ins().ineg(v)
+                        }
+                        // PLAN-961: typed negation awaits the numeric backend
+                        // unit — named rejection, never an i32 fallback.
+                        // PLAN-972 (T-03): checked I64 negation (MIN traps);
+                        // narrower/float typed negation stays with the numeric
+                        // backend unit.
+                        UnOp::NegT { ty: NumTy::I64 } => {
+                            let v = self.bits(*operand);
+                            let min = self.fb.ins().icmp_imm(IntCC::NotEqual, v, i64::MIN);
+                            let e = self.i32(-30);
+                            self.guard(min, e);
+                            let r = self.fb.ins().ineg(v);
+                            self.word_to(*dst, r);
+                            return Ok(());
+                        }
+                        UnOp::NegT { .. } => return Err(unsupported(
                             "instruction",
                             "PLAN-972 narrow/float typed negation awaits the numeric backend unit",
-                        ))
-                    }
-                };
+                        )),
+                    };
                 self.scalar_to(*dst, result);
             }
             _ => return Err(unsupported("instruction", "unhandled admitted instruction")),
@@ -1329,14 +1335,36 @@ impl Lower<'_, '_> {
                 "PLAN-972 narrow typed arithmetic awaits the numeric backend unit",
             ));
         }
-        // checked I64 arithmetic: compute in I128, range-check, trap -30.
-        let wide = types::I128;
-        let a = self.fb.ins().sextend(wide, a);
-        let b = self.fb.ins().sextend(wide, b);
+        // checked I64 arithmetic: add/sub/mul compute in I128 with an
+        // explicit range check, trap -30. div/rem run at I64 width — x64
+        // has no I128 sdiv/srem lowering (the previous I128-shaped rem hit
+        // a codegen unwrap; PLAN-972 S-03/S-06 std modules first exercised
+        // it) — and the divisor/overflow guards below already pin the
+        // result inside the i64 range, so no separate range check is
+        // needed (the pre-guarded MIN % -1 also never reaches idiv).
         let value = match op {
-            Add => self.fb.ins().iadd(a, b),
-            Sub => self.fb.ins().isub(a, b),
-            Mul => self.fb.ins().imul(a, b),
+            Add | Sub | Mul => {
+                let wide = types::I128;
+                let a = self.fb.ins().sextend(wide, a);
+                let b = self.fb.ins().sextend(wide, b);
+                let value = match op {
+                    Add => self.fb.ins().iadd(a, b),
+                    Sub => self.fb.ins().isub(a, b),
+                    _ => self.fb.ins().imul(a, b),
+                };
+                let low =
+                    self.fb
+                        .ins()
+                        .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i64::MIN as i64);
+                let high =
+                    self.fb
+                        .ins()
+                        .icmp_imm(IntCC::SignedLessThanOrEqual, value, i64::MAX as i64);
+                let good = self.fb.ins().band(low, high);
+                let e = self.i32(-30);
+                self.guard(good, e);
+                self.fb.ins().ireduce(types::I64, value)
+            }
             Div | Rem => {
                 let nz = self.fb.ins().icmp_imm(IntCC::NotEqual, b, 0);
                 let e = self.i32(-31);
@@ -1361,19 +1389,7 @@ impl Lower<'_, '_> {
             }
             _ => return Err(unsupported("instruction", "typed numeric op mismatch")),
         };
-        let low = self
-            .fb
-            .ins()
-            .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i64::MIN as i64);
-        let high = self
-            .fb
-            .ins()
-            .icmp_imm(IntCC::SignedLessThanOrEqual, value, i64::MAX as i64);
-        let good = self.fb.ins().band(low, high);
-        let e = self.i32(-30);
-        self.guard(good, e);
-        let v = self.fb.ins().ireduce(types::I64, value);
-        self.word_to(dst, v);
+        self.word_to(dst, value);
         Ok(())
     }
 }

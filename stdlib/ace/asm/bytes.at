@@ -1,0 +1,109 @@
+// ACE assembled stdlib bytes module (PLAN-972 T-02): the S-03 byte-access
+// surface as pure Auto single-source algorithms over the scalar-indexed
+// face. UTF-8 bytes are reconstructed by walking scalars (char_at /
+// to_codepoint) and encoding each codepoint with div/mod arithmetic only —
+// bit ops stay out of the default algorithms even though the infix
+// ^/&/| grammar gate is open on this face: the mn/C emitters name bit-op
+// lowering as a follow-up unit, and the defaults must lower on every end.
+// byte_hash is the byte-domain default hash (S-06 ruling 2026-11-15: the
+// byte domain rides the S-03 batch); the codepoint-domain default lives in
+// std.hash. NUL is an ordinary byte (explicit lengths, no C-string cuts).
+pub fn byte_at(s Str, i int) ?int {
+    if (i < 0) {
+        return None
+    }
+    return byte_at_walk(s, 0, i)
+}
+
+fn byte_at_walk(s Str, ci int, bi int) ?int {
+    if (ci == s.len()) {
+        return None
+    }
+    let c = s.char_at(ci)
+    let p = c.to_codepoint()
+    let n = utf8_len(p)
+    if (bi < n) {
+        return Some(byte_of(p, bi))
+    }
+    return byte_at_walk(s, ci + 1, bi - n)
+}
+
+pub fn utf8_len(p int) int {
+    if (p < 128) {
+        return 1
+    }
+    if (p < 2048) {
+        return 2
+    }
+    if (p < 65536) {
+        return 3
+    }
+    return 4
+}
+
+// The k-th byte (0-based) of p's UTF-8 encoding, reconstructed with div/mod
+// (p>>6 == p/64 and p&0x3F == p%64 for non-negative codepoints).
+pub fn byte_of(p int, k int) int {
+    if (p < 128) {
+        return p
+    }
+    if (p < 2048) {
+        if (k == 0) {
+            return 192 + p / 64
+        }
+        return 128 + p % 64
+    }
+    if (p < 65536) {
+        if (k == 0) {
+            return 224 + p / 4096
+        }
+        if (k == 1) {
+            return 128 + (p / 64) % 64
+        }
+        return 128 + p % 64
+    }
+    if (k == 0) {
+        return 240 + p / 262144
+    }
+    if (k == 1) {
+        return 128 + (p / 4096) % 64
+    }
+    if (k == 2) {
+        return 128 + (p / 64) % 64
+    }
+    return 128 + p % 64
+}
+
+// S-03/S-06: the byte-domain default hash — deterministic, order-sensitive,
+// i64 result. UTF-8 bytes fold through the polynomial multiply-add mix;
+// the mod 2^31-1 reduction at every step keeps the whole computation
+// inside checked i64 arithmetic (no wrapping ops on this surface).
+pub fn byte_hash(s Str) i64 {
+    return byte_hash_at(s, 0, 1469598103i64)
+}
+
+fn byte_hash_at(s Str, i int, h i64) i64 {
+    if (i == s.len()) {
+        return h
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    let n = utf8_len(p)
+    let b0 = byte_of(p, 0)
+    let h1 = mix_byte(h, b0)
+    let h2 = step_if(n, 1, h1, p)
+    let h3 = step_if(n, 2, h2, p)
+    let h4 = step_if(n, 3, h3, p)
+    return byte_hash_at(s, i + 1, h4)
+}
+
+fn step_if(n int, k int, h i64, p int) i64 {
+    if (k < n) {
+        return mix_byte(h, byte_of(p, k))
+    }
+    return h
+}
+
+fn mix_byte(h i64, b int) i64 {
+    return (h * 1000003i64 + b.to(i64)) % 2147483647i64
+}

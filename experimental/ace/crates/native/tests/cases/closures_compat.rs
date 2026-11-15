@@ -17,9 +17,11 @@ fn closures_units_are_rejected_before_native_codegen() {
         // call). The capturing-closure boundary stays named: a body unit
         // carrying ENV_GET still refuses its fingerprint.
         let has_env_get = unit.funcs.iter().any(|f| {
-            f.blocks
-                .iter()
-                .any(|b| b.instrs.iter().any(|i| matches!(i, ace_av_core::mir::MirInstr::EnvGet { .. })))
+            f.blocks.iter().any(|b| {
+                b.instrs
+                    .iter()
+                    .any(|i| matches!(i, ace_av_core::mir::MirInstr::EnvGet { .. }))
+            })
         });
         if has_env_get {
             let error = ace_native::fingerprint::unit_fingerprint(unit)

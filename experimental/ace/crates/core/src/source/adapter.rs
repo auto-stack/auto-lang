@@ -3907,8 +3907,7 @@ impl<'p> Emitter<'p> {
                 // PLAN-972 (T-02): the aggregates profile rides the same
                 // closures-superset verification domain (char locals and
                 // char-typed expressions admitted) — t_char rides along.
-                if self.profile == super::SourceProfile::Closures || self.profile.is_aggregates()
-                {
+                if self.profile == super::SourceProfile::Closures || self.profile.is_aggregates() {
                     frag!("type t_char char {}", program_span);
                     spans.types.push(program_span);
                     nl!(12);

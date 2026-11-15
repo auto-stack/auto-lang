@@ -18,8 +18,10 @@ use ace_source_query::modules::packages::{
 };
 
 fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("../../target/probe972/{tag}-{}", std::process::id()));
+    let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../target/probe972/{tag}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -49,14 +51,16 @@ fn assemble_compile(
 }
 
 fn run_av(tag: &str, product: &ace_source_query::modules::packages::PackageProduct) -> Value {
-    let av = PackageAvTarget::cold(&scratch(tag), product).unwrap_or_else(|e| panic!("av {tag}: {e}"));
+    let av =
+        PackageAvTarget::cold(&scratch(tag), product).unwrap_or_else(|e| panic!("av {tag}: {e}"));
     av.run_value().unwrap_or_else(|e| panic!("run {tag}: {e}"))
 }
 
 // ---- fixtures -----------------------------------------------------------
 
 /// 纯 int 公共面（math 域）：公共体 scale 共享 + spec 层按 provider 来源选择。
-const P1A_MAIN: &str = "use algo972.scale\nuse algo972.layer\nfn main() int { return scale(7, 8) * 10 + layer() }";
+const P1A_MAIN: &str =
+    "use algo972.scale\nuse algo972.layer\nfn main() int { return scale(7, 8) * 10 + layer() }";
 const P1A_PUBLIC: &str =
     "pub fn scale(x int, y int) int { return x * y + x + y }\npub spec fn layer() int";
 const P1A_AT: &str = "fn layer() int { return 1 }";
@@ -165,13 +169,18 @@ fn probe972_p1a_suffix_int_publics_av() {
             ("algo972.rs.at", P1A_RS),
         ],
     );
-    let p = assemble_compile(&dir, AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows)
-        .unwrap_or_else(|ds| {
-            panic!(
-                "p1a Auto compile: {} {} {}",
-                ds[0].module, ds[0].diagnostic.code, ds[0].diagnostic.message
-            )
-        });
+    let p = assemble_compile(
+        &dir,
+        AssemblyBackend::Av,
+        ProviderChoice::Auto,
+        TargetOs::Windows,
+    )
+    .unwrap_or_else(|ds| {
+        panic!(
+            "p1a Auto compile: {} {} {}",
+            ds[0].module, ds[0].diagnostic.code, ds[0].diagnostic.message
+        )
+    });
     assert_eq!(run_av("p1a-auto", &p), Value::I32(711));
 
     let p = assemble_compile(
@@ -260,8 +269,12 @@ fn probe972_p1b2_closure_param_frozen_rejection() {
 fn probe972_p1c_suffix_list_public_frozen_rejection() {
     let dir = scratch("p1c-src");
     write_fixture(&dir, &[("main.at", P1C_MAIN), ("algo972.at", P1C_PUBLIC)]);
-    let e = match assemble_compile(&dir, AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows)
-    {
+    let e = match assemble_compile(
+        &dir,
+        AssemblyBackend::Av,
+        ProviderChoice::Auto,
+        TargetOs::Windows,
+    ) {
         Ok(_) => panic!("p1c: List-typed publics unexpectedly admitted on the assembled lane"),
         Err(ds) => ds,
     };
@@ -314,14 +327,21 @@ fn probe972_p2b_signature_drift_named_reject() {
             ("algo972.rs.at", P1A_RS),
         ],
     );
-    let e = match assemble_compile(&dir, AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows)
-    {
+    let e = match assemble_compile(
+        &dir,
+        AssemblyBackend::Av,
+        ProviderChoice::Auto,
+        TargetOs::Windows,
+    ) {
         Ok(_) => panic!("p2b: signature drift unexpectedly compiled"),
         Err(ds) => ds,
     };
     assert!(
         e[0].diagnostic.code.contains("assembly.signature")
-            || e[0].diagnostic.message.contains("does not match the public declaration"),
+            || e[0]
+                .diagnostic
+                .message
+                .contains("does not match the public declaration"),
         "p2b unexpected: {} {} {}",
         e[0].module,
         e[0].diagnostic.code,
@@ -354,8 +374,8 @@ fn probe972_p3_store_roundtrip_recovers_and_reruns() {
         compile_assembled_inputs(&inputs, "app::main", FrontBudget::WORK_OWNED_64MIB, &ctx)
             .unwrap();
     let root = scratch("p3-store");
-    let receipt = PackageStore::prepare_with_context(&root, &product, &inputs, &[], Some(&ctx))
-        .unwrap();
+    let receipt =
+        PackageStore::prepare_with_context(&root, &product, &inputs, &[], Some(&ctx)).unwrap();
     let (restored, _) = PackageStore::restore(&root, &receipt).unwrap();
     assert_eq!(restored.bound.input_hash, product.bound.input_hash);
     assert_eq!(run_av("p3-restored", &restored), Value::I32(711));
@@ -372,7 +392,8 @@ fn asm_aggr_compile(
     use ace_source_query::modules::packages::{
         assemble_stdlib_aggregates_inputs, compile_assembled_aggregates_inputs,
     };
-    let mut ctx = PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    let mut ctx =
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
     let inputs = assemble_stdlib_aggregates_inputs(
         &[("main.at".to_string(), main_src.to_string())],
         "app::main",

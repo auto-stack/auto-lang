@@ -80,6 +80,8 @@ const ASM_MATH_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/
 const ASM_TEXT_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/text.at");
 const ASM_CHAR_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/char.at");
 const ASM_CONV_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/conv.at");
+const ASM_HASH_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/hash.at");
+const ASM_BYTES_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/bytes.at");
 
 /// 装配标准库集的平铺文件闭包（discover/assemble 消费；按名排序由调用方
 /// 的 assemble 逻辑负责）。纯 Auto 模块无来源候选（provider 选择面允许
@@ -91,6 +93,8 @@ pub fn stdlib_assembled_files() -> Vec<(String, String)> {
         ("text.at".to_string(), ASM_TEXT_PUBLIC.to_string()),
         ("char.at".to_string(), ASM_CHAR_PUBLIC.to_string()),
         ("conv.at".to_string(), ASM_CONV_PUBLIC.to_string()),
+        ("hash.at".to_string(), ASM_HASH_PUBLIC.to_string()),
+        ("bytes.at".to_string(), ASM_BYTES_PUBLIC.to_string()),
     ]
 }
 
@@ -116,6 +120,8 @@ pub fn is_frozen_std_assembled_module(
         || matches!(id, "text" if source == ASM_TEXT_PUBLIC)
         || matches!(id, "char" if source == ASM_CHAR_PUBLIC)
         || matches!(id, "conv" if source == ASM_CONV_PUBLIC)
+        || matches!(id, "hash" if source == ASM_HASH_PUBLIC)
+        || matches!(id, "bytes" if source == ASM_BYTES_PUBLIC)
 }
 
 #[cfg(test)]

@@ -116,8 +116,13 @@ pub fn descriptors(m: &MirModule) -> Result<Vec<Descriptor>, MnError> {
                 h.update(&result[sig.result as usize].fingerprint);
                 (0, sig.params.len() as u32)
             }
-            MirType::I64 | MirType::U64 | MirType::I8 | MirType::U8 | MirType::U32
-            | MirType::F32 | MirType::F64 => {
+            MirType::I64
+            | MirType::U64
+            | MirType::I8
+            | MirType::U8
+            | MirType::U32
+            | MirType::F32
+            | MirType::F64 => {
                 text(&mut h, "numeric-immediate");
                 (0, 0)
             }
