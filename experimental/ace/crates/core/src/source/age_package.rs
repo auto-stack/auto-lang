@@ -224,6 +224,10 @@ pub fn compile_age_package_with_scenario(
         return Err(vec![d]);
     }
 
+    // 3b) 场景资源引用：`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
+    //     缺失或不符类型都具名拒绝——实测过"不存在的资源名静默通过"的缺口。
+    check_scene_resource_refs(&product.bound, &product.age_components)?;
+
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
     // 解析/检查用**本面的真实身份**（AgePackage），与发射一致：AGE 的资源端口、
     // f32 类型表、参数模式等规则都以它为准。此前传 TextRecord 导致"门说 TextRecord、
@@ -1065,6 +1069,84 @@ fn scene_value_type(
         // 按"值来自服务调用"的既有路径处理，不在此处猜。
         _ => None,
     }
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：场景 `material:`/`tint:` 的**资源引用**检查。
+///
+/// 这是存在性/可见性 + 端口类型问题，**不是**值类型推断：
+/// - 引用必须解析到一个已声明的模块全局（`let x = material2d.color(...)` 降级出的
+///   const），否则是 `source.age.scene-resource-unknown`；
+/// - 该全局的声明类型必须是 AGE 端口（`Material2D`/`Mesh2D`），否则是
+///   `source.age.scene-resource-type`——不是"随便一个常量都能当资源"。
+///
+/// 判据用 binder 自己的事实（`globals` + 符号命名规则），不重复实现可见性。
+fn check_scene_resource_refs(
+    bound: &super::packages::BoundPackages,
+    packaged: &[PackagedAgeComponent],
+) -> Result<(), Vec<Diagnostic>> {
+    for comp in packaged {
+        for row in &comp.node.view.scene_components {
+            for attr in &row.attrs {
+                if !matches!(attr.key.as_str(), "material" | "tint") {
+                    continue;
+                }
+                // 引用形状（实测）：限定写法是 `Field { base: Var("resources"), name }`，
+                // 裸写法是 `Var`。用 `Method` 判定会**一个都不匹配**，从而静默放过
+                // 不存在的资源——这正是本检查要堵的缺口。
+                let (module_spelling, symbol_spelling) = match &attr.value.kind {
+                    super::ast::ExprKind::Field { base, name } => match &base.kind {
+                        super::ast::ExprKind::Var(id) => {
+                            (Some(id.name.clone()), name.name.clone())
+                        }
+                        _ => continue,
+                    },
+                    super::ast::ExprKind::Var(id) => (None, id.name.clone()),
+                    _ => continue,
+                };
+                // `material: tint` 里的 `tint` 是**本 node 自己的参数**，不是资源。
+                // 参数绑定发生在实例化，故这里不是资源引用（也不是错误）。
+                if comp.node.params.iter().any(|p| p.name == symbol_spelling) {
+                    continue;
+                }
+                // 找声明：按 (模块, 名字) 或全局按名字后缀匹配。
+                let found = bound.globals.iter().find(|(sym, decl)| {
+                    decl.name == symbol_spelling
+                        && module_spelling
+                            .as_deref()
+                            .is_none_or(|m| decl.module == m || m == "resources")
+                        && sym.starts_with('g')
+                });
+                let Some((_sym, decl)) = found else {
+                    return Err(vec![text_diag(
+                        "source.age.scene-resource-unknown",
+                        format!(
+                            "`{key}` references `{symbol_spelling}`, which is not a declared \
+                             resource in this project",
+                            key = attr.key
+                        ),
+                        flat_to_module(&bound_sources(bound), attr.span),
+                    )]);
+                };
+                // 声明类型必须是 AGE 端口。
+                let ty_name = match &decl.ty.kind {
+                    super::ast::TypeRef::Record(id) => id.name.clone(),
+                    _ => String::new(),
+                };
+                if !super::age_resources::is_port_type(&ty_name) {
+                    return Err(vec![text_diag(
+                        "source.age.scene-resource-type",
+                        format!(
+                            "`{key}` references `{symbol_spelling}`, whose type is not an AGE \
+                             resource port (expected Material2D or Mesh2D)",
+                            key = attr.key
+                        ),
+                        flat_to_module(&bound_sources(bound), attr.span),
+                    )]);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 包面身份拒绝：`age-package` 只由本前门消费（对称于 979 的通用入口拒绝）。

@@ -247,3 +247,89 @@ fn p981_original_g01_recovers_after_a_rejected_edit() {
     // the pristine source still compiles afterwards
     compile_g01().expect("the original source compiles again after a rejected edit");
 }
+
+/// `material:`/`tint:` 的资源引用必须**真实存在**——不存在的名字被具名拒绝。
+///
+/// 这条是补缺口用的：此前只校验"是引用形状"，实测 `tint: no_such_resource`
+/// 会**静默通过**（引用根本没被解析）。
+#[test]
+fn p981_original_g01_rejects_an_unknown_resource() {
+    let bad = MAIN.replace("tint: resources.red_alpha", "tint: resources.nope");
+    let ds = compile_age_package(
+        &[
+            input("resources", RESOURCES),
+            input("shapes", SHAPES),
+            input("main", &bad),
+        ],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+    )
+    .expect_err("an unknown resource name is rejected");
+    assert_eq!(ds[0].code, "source.age.scene-resource-unknown", "{ds:?}");
+    assert!(
+        ds[0].message.contains("nope"),
+        "the diagnostic names the offending symbol: {}",
+        ds[0].message
+    );
+}
+
+/// 资源可以是**裸名**（`tint: red_alpha`，经 `use` 导入）——与限定写法同等。
+#[test]
+fn p981_original_g01_accepts_a_bare_imported_resource() {
+    let bare = MAIN
+        .replace("tint: resources.red_alpha", "tint: red_alpha")
+        .replace("tint: resources.green_alpha", "tint: green_alpha");
+    let out = compile_age_package(
+        &[
+            input("resources", RESOURCES),
+            input("shapes", SHAPES),
+            input("main", &bare),
+        ],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+    )
+    .expect("a bare imported resource name is accepted");
+    let main = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Main")
+        .expect("Main");
+    assert_eq!(main.scene.len(), 4);
+}
+
+/// 四行场景的材质各自绑定到**不同**的资源符号（不是都塌到第一个）。
+#[test]
+fn p981_original_g01_rows_reference_distinct_resources() {
+    let out = compile_g01().expect("g01 compiles");
+    let main = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Main")
+        .expect("Main");
+    let mut materials = Vec::new();
+    for row in &main.scene {
+        let key = if row.attrs.iter().any(|(k, _)| k == "material") {
+            "material"
+        } else {
+            "tint"
+        };
+        let e = attr(row, key).unwrap_or_else(|| panic!("{key} on {}", row.name));
+        // 取引用末段拼写（`resources.red_alpha` → `red_alpha`）。
+        let spelled = match &e.kind {
+            ExprKind::Field { name, .. } => name.name.clone(),
+            ExprKind::Var(id) => id.name.clone(),
+            other => panic!("unexpected material shape: {other:?}"),
+        };
+        materials.push(spelled);
+    }
+    assert_eq!(
+        materials,
+        vec!["red_alpha", "blue_alpha", "green_alpha", "yellow_opaque"],
+        "each row binds its own declared resource"
+    );
+}
+

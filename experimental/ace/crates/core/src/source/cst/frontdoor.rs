@@ -979,9 +979,10 @@ pub(crate) fn project_packages_front(
                             }
                             AttrValueKind::ResourceRef => {
                                 // 具名资源引用：值必须是**引用形状**（不是字面量/任意
-                                // 表达式）。名字是否存在、是否可见，由共享 binder 按
-                                // 960 的导入/可见性规则判定——本层不重复那套规则，也不
-                                // 在这里猜值类型（资源值是 Material2D/Mesh2D 端口）。
+                                // 表达式）。名字是否存在、是否可见——本层**不能**担保
+                                // （实测：不存在的 `tint: no_such_resource` 曾静默通过）。
+                                // 故把引用**降级成求值函数**，由共享 resolver/binder 按
+                                // 960 的导入/可见性规则真正解析符号；这里只拒绝非引用形状。
                                 let literal = matches!(
                                     &attr.value.kind,
                                     crate::source::ast::ExprKind::IntLit(_)
@@ -1002,6 +1003,9 @@ pub(crate) fn project_packages_front(
                                         attr.value.span,
                                     )]);
                                 }
+                                // 引用的**存在性/可见性/端口类型**由前门用 binder 事实
+                                // 裁定（`age_package::check_scene_resource_refs`）；这里
+                                // 不伪造值类型，也不降级成函数（目标声明决定其类型）。
                             }
                             AttrValueKind::Value => {
                                 match crate::source::age_package::hidden_fns_scene_value(
