@@ -246,3 +246,12 @@ final pass（reviewed 295e93f7c）。A-06/D-07 的会话/daemon/MCP 切片以显
 985/B。已验接口、边界与永久验证入口见 [m2-sessions.md](m2-sessions.md)。原分母 A-06/D-07
 的 CLI/产品接线义务不因本包 A 切片改 NA；文本/console/collections 会话域按 1024 F05 裁定
 保留各自 session。B 阶段消费者替换（985）以本包 A 收据为开工门之一。
+
+## PLAN-978 A 切片：工程增量多目标构建与预编译候选 SDK（SD-02 工作稿）
+
+978 A 交付：`experimental/ace/crates/m2-build`（`ac-build` CLI）——工程构建身份/精确
+缓存/CURRENT CAS 发布/恢复、五 lane（AV 进程内、native 真 PE、a2r/a2c/a2py 文件集
++ build-lane 真编译 A2R(rustc)/A2C(MSVC cl)）、可重定位候选 SDK（完整性/未声明文件/
+授权/兼容具名拒绝，异根无开发缓存运行）。新增已验证 producer 未关闭的缺口：F0
+foreign 执行链复用 967 既有面（978 侧为具名边界）、Linux 腿 deferred/1063、正式安装
+升级归 986/987。规范落点 [m2-build.md](m2-build.md)。本节为工作稿，独立 review 定稿。
