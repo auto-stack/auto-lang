@@ -242,6 +242,7 @@ pub fn compile_age_package_with_scenario(
 
     // 3b) 场景资源引用：`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
     //     缺失或不符类型都具名拒绝——实测过"不存在的资源名静默通过"的缺口。
+    check_scene_element_kinds(&product.age_components)?;
     check_scene_resource_refs(&product.bound, &product.age_components)?;
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
@@ -1099,6 +1100,45 @@ fn scene_value_type(
         // 按"值来自服务调用"的既有路径处理，不在此处猜。
         _ => None,
     }
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：场景元素的种类必须真实存在。
+///
+/// 投影层只能看到一个名字的**拼写**，它没有全项目的 node 事实——于是此前用
+/// 「首字母大写即当组件实例」来放行，拼错的 `Discc`（`Disc` 的 typo）与根本
+/// 不存在的 `NotANode` 都会被静默接受，产出一条绑定到空处的场景行。
+///
+/// 这里用 binder 的既定事实裁定：元素要么是冻结的 3D 元素（`cylinder3d` 等），
+/// 要么是 `shape2d`，要么是**某个模块里真实声明的 AGE node**（跨模块引用沿用
+/// 与 IF-981-REF 相同的"符号表导入即可见"规则，不额外要求 `pub`）。
+fn check_scene_element_kinds(
+    packaged: &[PackagedAgeComponent],
+) -> Result<(), Vec<Diagnostic>> {
+    // 全项目已声明的 node 名（含跨模块）。
+    let declared: std::collections::BTreeSet<&str> = packaged
+        .iter()
+        .map(|p| p.node.name.name.as_str())
+        .collect();
+    for comp in packaged {
+        for row in &comp.node.view.scene_components {
+            if row.kind == "shape2d" || super::age_resources::is_3d_element(&row.kind) {
+                continue;
+            }
+            if declared.contains(row.kind.as_str()) {
+                continue;
+            }
+            return Err(vec![text_diag(
+                "source.age.scene-element",
+                format!(
+                    "`{}` is not a declared AGE node and not a scene element \
+                     (2D: `shape2d`; 3D: cylinder3d/model3d/group3d)",
+                    row.kind
+                ),
+                row.span,
+            )]);
+        }
+    }
+    Ok(())
 }
 
 /// PLAN-981（IF-981-ORIGINAL）：场景 `material:`/`tint:` 的**资源引用**检查。
