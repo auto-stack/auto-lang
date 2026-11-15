@@ -127,6 +127,58 @@ pub struct DomainCompilation {
     pub atom_text: String,
 }
 
+/// 包注册冲突（V-02）：同 id 的版本/profile 不一致时**拒注册**，不静默覆盖。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomainPackageConflict {
+    pub id: String,
+    pub existing_version: DomainVersion,
+    pub incoming_version: DomainVersion,
+    pub existing_profile: SourceProfile,
+    pub incoming_profile: SourceProfile,
+}
+
+/// 领域包注册表（最小加载面）：同 id 同版本同 profile = 幂等；
+/// 其余同 id 变体 = 具名冲突，旧注册保留（拒绝加载不破坏已装程序）。
+#[derive(Default)]
+pub struct DomainRegistry {
+    packages: Vec<&'static DomainPackage>,
+}
+
+impl DomainRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 注册一个静态包（编译期常量身份；本切片无动态装载）。
+    pub fn register(&mut self, pkg: &'static DomainPackage) -> Result<(), DomainPackageConflict> {
+        if let Some(existing) = self.packages.iter().find(|p| p.id == pkg.id) {
+            if existing.version == pkg.version && existing.profile == pkg.profile {
+                return Ok(());
+            }
+            return Err(DomainPackageConflict {
+                id: pkg.id.to_string(),
+                existing_version: existing.version,
+                incoming_version: pkg.version,
+                existing_profile: existing.profile,
+                incoming_profile: pkg.profile,
+            });
+        }
+        self.packages.push(pkg);
+        Ok(())
+    }
+
+    pub fn get(&self, id: &str) -> Option<&'static DomainPackage> {
+        self.packages.iter().copied().find(|p| p.id == id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.packages.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.packages.is_empty()
+    }
+}
 /// 共享驱动：领域前门 → 包投影 → 兼容闸 → 隐藏名 → 脱糖 → 唯一 verify → 描述。
 pub fn compile_domain(
     pkg: &'static DomainPackage,

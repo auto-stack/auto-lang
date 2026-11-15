@@ -172,3 +172,50 @@ fn p979_domain_package_refuses_generic_profiles() {
         compile_domain(&PLAIN_PACKAGE, SRC, "plain.at", false, &[]).expect_err("plain profile");
     assert_eq!(first(&ds).code, "source.domain-package");
 }
+
+// ---- V-02：冲突包拒加载，旧注册保留 ----
+
+#[test]
+fn p979_domain_package_registry_refuses_conflicts_and_keeps_the_old_package() {
+    use ace_core::source::domain::{DomainPackage, DomainRegistry, DomainVersion};
+
+    // 与 PAIR_PACKAGE 同 id 但不同 profile 的变体（模拟"冲突包"）。
+    static CONFLICT: DomainPackage = DomainPackage {
+        id: "test.pair/v1",
+        version: DomainVersion { major: 0, minor: 1 },
+        profile: SourceProfile::AgeComponent,
+        hidden_prefix: "__pair_val_",
+        compat: None,
+        project: project_pair,
+    };
+    // 同 id 同版本同 profile 的重复注册（幂等）。
+    static SAME: DomainPackage = DomainPackage {
+        id: "test.pair/v1",
+        version: DomainVersion { major: 0, minor: 1 },
+        profile: SourceProfile::AgeH0,
+        hidden_prefix: "__pair_val_",
+        compat: None,
+        project: project_pair,
+    };
+
+    let mut registry = DomainRegistry::new();
+    assert!(registry.register(&PAIR_PACKAGE).is_ok());
+    assert!(
+        registry.register(&SAME).is_ok(),
+        "same id/version/profile is idempotent"
+    );
+    assert_eq!(registry.len(), 1);
+
+    let conflict = registry
+        .register(&CONFLICT)
+        .expect_err("a same-id package with another profile is refused");
+    assert_eq!(conflict.id, "test.pair/v1");
+    assert_eq!(conflict.existing_profile, SourceProfile::AgeH0);
+    assert_eq!(conflict.incoming_profile, SourceProfile::AgeComponent);
+    // 旧注册保留：仍能取到原包并用它编译（旧程序不受影响）。
+    assert_eq!(registry.len(), 1);
+    let kept = registry.get("test.pair/v1").expect("old package survives");
+    assert_eq!(kept.profile, SourceProfile::AgeH0);
+    let out = compile_domain(kept, SRC, "pair.at", false, &[]).expect("old package still compiles");
+    assert_eq!(out.id, "test.pair/v1");
+}
