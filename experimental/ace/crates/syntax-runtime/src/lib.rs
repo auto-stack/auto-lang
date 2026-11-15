@@ -6,6 +6,7 @@
 //!
 //! 所有多树遍历/构建/序列化路径均为显式栈迭代实现（V-12 深度约束）。
 
+pub mod autodown;
 pub mod cst;
 pub mod edit;
 pub mod handle;

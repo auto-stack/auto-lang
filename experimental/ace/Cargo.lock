@@ -439,6 +439,7 @@ dependencies = [
 name = "ace-syntax-runtime"
 version = "0.1.0"
 dependencies = [
+ "ace-syntax-grammar",
  "blake3",
 ]
 
