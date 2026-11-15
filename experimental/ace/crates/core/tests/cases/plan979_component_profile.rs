@@ -627,3 +627,85 @@ fn p979_component_bool_fields_are_typed_and_an_int_field_is_observed() {
     let at = bad.find("bool").expect("ty token");
     assert_eq!(ds[0].span.start, at, "span points at the field type");
 }
+
+#[test]
+fn p979_component_observed_field_can_be_chosen_by_name() {
+    let src = "node C {\n    model {\n        first int = 0\n        second int = 0\n    }\n    on Bump {\n        second = second + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Bump".to_string(),
+        }],
+    };
+    // 缺省观测首个 int 字段（first）；显式指定 second。
+    let default =
+        compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+            .expect("default observed field");
+    let chosen = ace_core::source::age_component::compile_component_scenario_observing(
+        src,
+        "c.at",
+        LegacyWidgetAlias::Reject,
+        &[],
+        &scenario,
+        Some("second"),
+    )
+    .expect("chosen observed field");
+    assert!(default.atom_text.contains("__age_state_0_first"));
+    assert!(chosen.atom_text.contains("__age_state_0_second"));
+    fn driver_observes(body: &str) -> String {
+        // 驱动体（b___age_drive）里唯一被调用的状态函数名即观测字段。
+        let tail = &body[body.find("body b___age_drive").expect("driver body")..];
+        let at = tail
+            .find("callee: d___age_state_0_")
+            .expect("driver callee");
+        let rest = &tail[at + "callee: d___age_state_0_".len()..];
+        rest.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+    assert_eq!(
+        driver_observes(&default.atom_text),
+        "first",
+        "default observes the first int field"
+    );
+    assert_eq!(
+        driver_observes(&chosen.atom_text),
+        "second",
+        "the chosen field is observed"
+    );
+}
+
+#[test]
+fn p979_component_observed_field_must_exist_and_be_int() {
+    let src = "node C {\n    model {\n        count int = 0\n        flag bool = true\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let missing = ace_core::source::age_component::compile_component_scenario_observing(
+        src,
+        "c.at",
+        LegacyWidgetAlias::Reject,
+        &[],
+        &scenario,
+        Some("nope"),
+    )
+    .expect_err("unknown observed field");
+    assert_eq!(missing[0].code, "source.age.component-unknown-field");
+    let bad_ty = ace_core::source::age_component::compile_component_scenario_observing(
+        src,
+        "c.at",
+        LegacyWidgetAlias::Reject,
+        &[],
+        &scenario,
+        Some("flag"),
+    )
+    .expect_err("bool cannot be observed");
+    assert_eq!(bad_ty[0].code, "source.age.component-unsupported");
+    assert!(bad_ty[0].message.contains('`'), "{:?}", bad_ty[0]);
+}

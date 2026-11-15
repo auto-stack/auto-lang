@@ -8,7 +8,8 @@ use ace_av_core::av::{execute, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::{abc_verify, mir_verify};
 use ace_core::source::age_component::{
-    compile_age_component, compile_component_scenario, ComponentCompilation, ComponentScenario,
+    compile_age_component, compile_component_scenario, compile_component_scenario_observing,
+    ComponentCompilation, ComponentScenario,
 };
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_lowering::lower_checked_owned;
@@ -32,6 +33,21 @@ pub fn observe_component(
     let caps = ["ac.runtime.text.v1".to_string()];
     let compiled = compile_component_scenario(src, module_path, alias, &caps, scenario)
         .map_err(|ds| format_diags(&ds))?;
+    observe_compiled(&compiled)
+}
+
+/// 场景观察（可指定观测字段）：同 `observe_component`，但驱动编码指定字段。
+pub fn observe_component_observing(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    scenario: &ComponentScenario,
+    observed: Option<&str>,
+) -> Result<ObservedComponent, String> {
+    let caps = ["ac.runtime.text.v1".to_string()];
+    let compiled =
+        compile_component_scenario_observing(src, module_path, alias, &caps, scenario, observed)
+            .map_err(|ds| format_diags(&ds))?;
     observe_compiled(&compiled)
 }
 

@@ -433,3 +433,43 @@ fn p979_component_observation_picks_the_first_int_field() {
         .expect("a bool-first model is observable through its int field");
     assert_eq!(o.encoded, 1 + 2 * 256, "instance0=1, instance1=2");
 }
+
+#[test]
+fn p979_component_observing_a_chosen_field_changes_the_encoding() {
+    use ace_av::age_component::observe_component_observing;
+    // 两 int 字段：事件只推 second；观测 second 才能看到推进。
+    let src = "node C {\n    model {\n        first int = 0\n        second int = 0\n    }\n    on Bump {\n        second = second + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Bump".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Bump".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Bump".to_string(),
+            },
+        ],
+    };
+    let default = observe_component(src, "c.at", LegacyWidgetAlias::Reject, &scenario)
+        .expect("default observes first");
+    assert_eq!(default.encoded, 0, "`first` never advances");
+    let chosen = observe_component_observing(
+        src,
+        "c.at",
+        LegacyWidgetAlias::Reject,
+        &scenario,
+        Some("second"),
+    )
+    .expect("observing second");
+    assert_eq!(
+        chosen.encoded,
+        1 + 2 * 256,
+        "instance0=1, instance1=2 on `second`"
+    );
+}

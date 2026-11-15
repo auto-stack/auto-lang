@@ -464,6 +464,18 @@ pub fn compile_component_scenario(
     capabilities: &[String],
     scenario: &ComponentScenario,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    compile_component_scenario_observing(src, module_path, alias, capabilities, scenario, None)
+}
+
+/// 同前，但可指定**观测字段**（必须是 `int`；缺省取首个 `int` 字段）。
+pub fn compile_component_scenario_observing(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &ComponentScenario,
+    observed: Option<&str>,
+) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     let candidates = project_component_candidates(src)?;
     if !alias.is_accept() {
         if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
@@ -528,11 +540,35 @@ pub fn compile_component_scenario(
             node.view.span,
         )]);
     }
-    // 观测字段 = 首个 `int` 字段（驱动以 i32 编码它）；没有 int 字段才拒。
-    let observed = node
-        .fields
-        .iter()
-        .find(|f| field_type(f) == Some(TypeWord::I32));
+    // 观测字段：显式指定者必须存在且是 `int`；缺省取首个 `int` 字段。
+    let observed = match observed {
+        Some(name) => {
+            let f = node.fields.iter().find(|f| f.name == name);
+            let Some(f) = f else {
+                return Err(vec![text_diag(
+                    "source.age.component-unknown-field",
+                    format!("no model field named `{name}` to observe"),
+                    node.span,
+                )]);
+            };
+            if field_type(f) != Some(TypeWord::I32) {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    format!(
+                        "the observed field must be `int` (the driver encodes it as i32); `{name}` \
+                         is `{}`",
+                        f.ty
+                    ),
+                    f.ty_span,
+                )]);
+            }
+            Some(f)
+        }
+        None => node
+            .fields
+            .iter()
+            .find(|f| field_type(f) == Some(TypeWord::I32)),
+    };
     let Some(observed_field) = observed else {
         return Err(vec![text_diag(
             "source.age.component-unsupported",
