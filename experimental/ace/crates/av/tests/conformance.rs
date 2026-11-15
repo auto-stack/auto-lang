@@ -236,6 +236,8 @@ mod plan966_ct_product;
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
+#[path = "cases/net_974.rs"]
+mod net_974;
 #[path = "cases/plan979_age_component_cpu.rs"]
 mod plan979_age_component_cpu;
 #[path = "cases/plan979_age_h0_cpu.rs"]

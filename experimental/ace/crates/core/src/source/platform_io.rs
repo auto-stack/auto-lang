@@ -11,6 +11,13 @@ pub const CAP_MEM: &str = "platform.mem";
 /// file API (full public File/path stays PLAN-973). Sources reach it only
 /// through these internal reserved names.
 pub const CAP_PROBE: &str = "platform.probe";
+/// PLAN-974 (T-02): the minimal TCP socket face — `platform.net/1`.
+/// Full public net/http Auto API stays this package's later tasks; these
+/// four primitives are the OS thin adapter the Auto protocol rides.
+pub const CAP_NET_CONNECT: &str = "platform.net.connect";
+pub const CAP_NET_WRITE: &str = "platform.net.write";
+pub const CAP_NET_READ: &str = "platform.net.read";
+pub const CAP_NET_CLOSE: &str = "platform.net.close";
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlatformSourceOp {
@@ -28,6 +35,8 @@ const P_I32_STR: &[VT] = &[VT::I32, VT::Str];
 const P_I32_STR_2I32: &[VT] = &[VT::I32, VT::Str, VT::I32, VT::I32];
 const P_2I32: &[VT] = &[VT::I32, VT::I32];
 const P_3I32: &[VT] = &[VT::I32, VT::I32, VT::I32];
+const P_STR_I32: &[VT] = &[VT::Str, VT::I32];
+const P_I32_STR_NET: &[VT] = &[VT::I32, VT::Str];
 
 pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
     PlatformSourceOp {
@@ -176,6 +185,34 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         params: P_I32,
         result: VT::I32,
         capability: CAP_PROBE,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_connect",
+        symbol: "auto.platform.net.tcp_connect.v1",
+        params: P_STR_I32,
+        result: VT::I32,
+        capability: CAP_NET_CONNECT,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_write_some",
+        symbol: "auto.platform.net.tcp_write_some.v1",
+        params: P_I32_STR_NET,
+        result: VT::I32,
+        capability: CAP_NET_WRITE,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_read_into",
+        symbol: "auto.platform.net.tcp_read_into.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_NET_READ,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_close",
+        symbol: "auto.platform.net.tcp_close.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_NET_CLOSE,
     },
 ];
 
