@@ -299,6 +299,12 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | plan_id: PLAN-968 | plan_revision: r5 | round: 2 | from: work | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-968/auto-lang | commit: aa630a2eb | next: review
+
+stage: goal | plan_id: PLAN-968 | plan_revision: r5 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-968/auto-lang | commit: aa630a2eb | next: merge
+
+stage: goal | plan_id: PLAN-968 | plan_revision: r5 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 2fe30f52f | next: done
+
 2026-11-15 stage: merge | PLAN-968 | r5 | cleaned: wt-guard clean → worktree lang-968+branch plan-968-dev removed（组目录已删）；plan-artifacts/plan-968 整目录删除（记录已折入本Plan），retention registry 刷新（无具名持有）；主检出代码路径 clean，docs/ 簿记已提交 8f4e6a5a8；landing checks: master tip=2fe30f52f（交付提交）+归档簿记 8f4e6a5a8，canonical specs在landed提交内验证；批量回归 due check: 968%5=3 非倍5触发，receipt 2026-11-14T23:23<48h → 不到期 | deployment observation: 无本包触面的发行二进制/web产物需要刷新（语言仓库内交付）| merge pass
 
 2026-11-15 stage: merge | PLAN-968 | r5 | outcome: pass | prepared: reviewed aa630a2eb+specs 9b3e07cda | landed: master=2fe30f52f（rebase 6提交，ff-only，range-diff等价隐含于无冲突rebase）| canonical_verified: docs/specs/ace-migration/m2-scheduler.md(869aaf24495d5557) + replacement-scope-and-evidence.md(ed850cf1570c214a) @2fe30f52f | merge门: ace-av/ace-native/ace-a2x/ace-lowering/case-ace-m2-scheduler-968 PASS@冻结提交 | archived: docs/plans/archive/968-ace-m2-scheduler.md status=archived, 8/8 | completion_kind: delivered | 旧→新哈希映射: b8197f04d/cad341817/dec5dae83/d81c918d6/a411711ec/9b3e07cda → rebase后同序6提交 tip=2fe30f52f
