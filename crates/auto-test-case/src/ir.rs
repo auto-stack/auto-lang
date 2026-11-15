@@ -298,9 +298,20 @@ pub fn resolve_oracle(
     if let Some(steps) = &expect.probe {
         let mut out = Vec::new();
         for st in steps {
-            let (bfile, bbytes, bsha) = match &st.bindings_file {
-                None => (None, None, None),
-                Some(f) => {
+            let (bfile, bbytes, bsha) = match (&st.bindings_file, &st.bindings_text) {
+                (Some(_), Some(_)) => {
+                    return Err(fail(format!(
+                        "probe step expectation declares both bindings_file and bindings_text (check {:?})",
+                        check.id
+                    )))
+                }
+                (None, Some(text)) => {
+                    let bytes = text.clone().into_bytes();
+                    let digest = hex(&sha256(&bytes));
+                    (None, Some(bytes), Some(digest))
+                }
+                (Some(f), None) => {
+                    let f = f.clone();
                     let full = ref_base.join(f.replace('/', std::path::MAIN_SEPARATOR_STR));
                     let bytes = read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes)
                         .map_err(|e| {
@@ -310,8 +321,9 @@ pub fn resolve_oracle(
                             ))
                         })?;
                     let digest = hex(&sha256(&bytes));
-                    (Some(f.clone()), Some(bytes), Some(digest))
+                    (Some(f), Some(bytes), Some(digest))
                 }
+                (None, None) => (None, None, None),
             };
             out.push(ResolvedProbeStep {
                 cache: st.cache.clone(),

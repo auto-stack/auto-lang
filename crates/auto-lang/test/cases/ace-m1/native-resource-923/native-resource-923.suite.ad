@@ -9,6 +9,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-native-resource-923", include: [
-  "native-resource-923.case.ad",
+  "native-resource-923.document.case.ad",
 ] }
 ```

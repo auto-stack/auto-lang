@@ -1,0 +1,215 @@
+## Case: ace-m1-nw932-body-edit-success
+id: "ace.m1.nw932.body-edit.success"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe body-edit
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+steps: [{op: "edit-source", from: "x * 2", to: "x * 3"}, {op: "run"}]
+exit: 64
+
+## Case: ace-m1-nw932-body-edit-language
+id: "ace.m1.nw932.body-edit.language"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe language-refusal
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+session: "nw932_repair"
+diagnostics: "source-v1"
+steps: [{op: "edit-source", from: "x * 2", to: "true + 1"}, {op: "run"}]
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-nw932-body-edit-repair
+id: "ace.m1.nw932.body-edit.repair"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe repair-edit
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+session: "nw932_repair"
+diagnostics: "source-v1"
+steps: [{op: "edit-source", from: "x * 2", to: "x * 4"}, {op: "run"}]
+exit: 85
+
+## Case: ace-m1-nw932-sig-edit-refused
+id: "ace.m1.nw932.sig-edit.refused"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe sig-refusal
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+session: "nw932_sig"
+diagnostics: "source-v1"
+steps: [{op: "run"}, {op: "edit-source", from: "fn leaf(v int) int {", to: "fn leaf(v int, w int) int {"}, {op: "run"}]
+stage: "verify"
+code: "mn.incremental.refused.signature-or-context-drift"
+
+## Case: ace-m1-nw932-sig-edit-survives
+id: "ace.m1.nw932.sig-edit.survives"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe survives
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+session: "nw932_sig"
+diagnostics: "source-v1"
+exit: 43
+
+## Case: ace-m1-nw932-multi-decl-invalid
+id: "ace.m1.nw932.multi-decl.invalid"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe multi-decl-refusal
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+steps: [{op: "edit-source", from: "return leaf(acc)\n}\n\nfn main() int {", to: "return leaf(acc)\n}\n\nfn main(x int) int {"}, {op: "run"}]
+stage: "verify"
+code: "mn.incremental.refused.invalid-edit"
+
+## Case: ace-m1-nw932-history-a-b-a
+id: "ace.m1.nw932.history.a-b-a"
+tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+links: ["PLAN-932"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(v int) int {
+    return v + 1
+}
+
+fn f(x int) int {
+    var acc = x * 2
+    return leaf(acc)
+}
+
+fn main() int {
+    return f(21)
+}
+~~~~
+
+### Probe history
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+steps: [{op: "edit-source", from: "x * 2", to: "x * 3"}, {op: "run"}, {op: "edit-source", from: "x * 3", to: "x * 2"}, {op: "run"}]
+exit: 43

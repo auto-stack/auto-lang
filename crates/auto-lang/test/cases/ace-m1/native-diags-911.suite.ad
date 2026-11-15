@@ -6,6 +6,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-native-diags-911", include: [
-  "native-diags-911.case.ad",
+  "native-diags-911.document.case.ad",
 ] }
 ```

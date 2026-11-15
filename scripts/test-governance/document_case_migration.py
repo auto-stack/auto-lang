@@ -2409,7 +2409,22 @@ def compare_manifest_sides(
                 raise ParityError(
                     f"{key}: document row without a fences twin in the old suite")
             continue
-        sem_diffs = diff_semantic(old_row["semantic"], new_row["semantic"])
+        # CF-07 representation: probe bindings may move sidecar-file ->
+        # inline text; identity rides bindings_sha256 (compared below).
+        import copy as _copy
+        old_sem = _copy.deepcopy(old_row["semantic"])
+        new_sem = _copy.deepcopy(new_row["semantic"])
+        old_probe = (old_sem.get("expect") or {}).get("probe") or []
+        new_probe = (new_sem.get("expect") or {}).get("probe") or []
+        if len(old_probe) == len(new_probe):
+            for ost, nst in zip(old_probe, new_probe):
+                if (ost.get("bindings_file") and nst.get("bindings_text")
+                        and ost.get("bindings_sha256") == nst.get("bindings_sha256")
+                        and ost.get("bindings_bytes_len") == nst.get("bindings_bytes_len")):
+                    # both sides keep bindings_text (identical bytes);
+                    # only the file reference is representation
+                    ost["bindings_file"] = None
+        sem_diffs = diff_semantic(old_sem, new_sem)
         if sem_diffs:
             results.append({"case": key[0], "check": key[1], "kind": "semantic",
                             "diffs": sem_diffs[:8]})
@@ -2589,16 +2604,33 @@ def collect_manifest_actuals(
             _record_file("mn-probe-receipt", receipt_file)
             rcp = json.loads(receipt_file.read_bytes().decode("utf-8"))
             sessions = rcp.get("sessions") or []
-            if not sessions:
-                raise EvidenceError(f"mn-probe-receipt missing sessions[0] for {key}")
-            observed["native"] = {
-                "report_exit_code": (rep_row.get("native") or {}).get("exit_code"),
-                "receipt_exit_code": rcp.get("exit_code"),
-                "session_exit_code": sessions[0].get("exit_code"),
-                "judged": sessions[0].get("judged"),
-                "recipe": rcp.get("recipe"), "protocol": rcp.get("protocol"),
-                "source_hash": sessions[0].get("source_sha256"),
-            }
+            if sessions:
+                observed["native"] = {
+                    "report_exit_code": (rep_row.get("native") or {}).get("exit_code"),
+                    "receipt_exit_code": rcp.get("exit_code"),
+                    "session_exit_code": sessions[0].get("exit_code"),
+                    "judged": sessions[0].get("judged"),
+                    "recipe": rcp.get("recipe"), "protocol": rcp.get("protocol"),
+                    "source_hash": sessions[0].get("source_sha256"),
+                }
+            else:
+                # PLAN-1000 receipts: per-op `steps` counters (warmup/edit/
+                # run) — record the full structured projection.
+                steps = rcp.get("steps") or []
+                if not steps:
+                    raise EvidenceError(
+                        f"mn-probe-receipt has neither sessions nor steps for {key}")
+                observed["native"] = {
+                    "report_exit_code": (rep_row.get("native") or {}).get("exit_code"),
+                    "receipt_exit_code": rcp.get("exit_code"),
+                    "recipe": rcp.get("recipe"), "protocol": rcp.get("protocol"),
+                    "steps": [
+                        {k: st.get(k) for k in
+                         ("op", "exit_code", "cache_hits", "codegen_units",
+                          "fallback_whole_lower", "reused_history_units", "changed_fn")}
+                        for st in steps
+                    ],
+                }
         elif adapter == "probe" and recipe.startswith("ac-av/"):
             receipt_file = check_out_dir / "probe-receipt.json"
             _record_file("probe-receipt", receipt_file)

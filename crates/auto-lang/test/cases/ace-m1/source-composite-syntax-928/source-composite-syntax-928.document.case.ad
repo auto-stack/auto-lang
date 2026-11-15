@@ -1,0 +1,364 @@
+## Case: ace-m1-source-composite-928-collections-parse
+id: "ace.m1.source-composite-928.collections-parse"
+tags: ["ace-m1", "source-composite", "plan-928"]
+links: ["PLAN-928"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+enum Shape { Dot Circle(int) Square(int) }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    var total int = 0
+    for it in xs {
+        total = total + it.code
+    }
+    let s Shape = Circle(3)
+    is s {
+        Dot -> { return total + xs.get(0).name.len() }
+        Circle(r) -> { return total + r + xs.len() }
+        Square(w) -> { return w }
+    }
+}
+~~~~
+
+### Syntax parse
+action: "parse"
+grammar: "auto-source@collections"
+
+#### reconstructed.at
+
+~~~~auto
+type Item { name Str; code int }
+enum Shape { Dot Circle(int) Square(int) }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    var total int = 0
+    for it in xs {
+        total = total + it.code
+    }
+    let s Shape = Circle(3)
+    is s {
+        Dot -> { return total + xs.get(0).name.len() }
+        Circle(r) -> { return total + r + xs.len() }
+        Square(w) -> { return w }
+    }
+}
+~~~~
+
+## Case: ace-m1-source-composite-928-closures-parse
+id: "ace.m1.source-composite-928.closures-parse"
+tags: ["ace-m1", "source-composite", "plan-928"]
+links: ["PLAN-928"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    let g = (x int, y int) => { return x + y }
+    let h = make("hi")
+    let inner = (x int) => { let nested = (y int) => { return x * y }; return nested(x) }
+    return f(2) + g(1, 2) + h(5) + inner(3)
+}
+~~~~
+
+### Syntax parse
+action: "parse"
+grammar: "auto-source@closures"
+
+#### reconstructed.at
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    let g = (x int, y int) => { return x + y }
+    let h = make("hi")
+    let inner = (x int) => { let nested = (y int) => { return x * y }; return nested(x) }
+    return f(2) + g(1, 2) + h(5) + inner(3)
+}
+~~~~
+
+## Case: ace-m1-source-composite-928-same-text-parse
+id: "ace.m1.source-composite-928.same-text-parse"
+tags: ["ace-m1", "source-composite", "plan-928"]
+links: ["PLAN-928"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn u1() int {
+    let x int = 1
+    let f = (n int) => { return x + n }
+    return f(10)
+}
+fn u2() int {
+    let x int = 2
+    let g = (n int) => { return x + n }
+    return g(10)
+}
+fn main() int {
+    return u1() * 100 + u2()
+}
+~~~~
+
+### Syntax parse
+action: "parse"
+grammar: "auto-source@closures"
+
+#### reconstructed.at
+
+~~~~auto
+fn u1() int {
+    let x int = 1
+    let f = (n int) => { return x + n }
+    return f(10)
+}
+fn u2() int {
+    let x int = 2
+    let g = (n int) => { return x + n }
+    return g(10)
+}
+fn main() int {
+    return u1() * 100 + u2()
+}
+~~~~
+
+## Case: ace-m1-source-composite-928-gate-collections-under-closures
+id: "ace.m1.source-composite-928.gate-collections-under-closures"
+tags: ["ace-m1", "source-composite", "plan-928", "negative"]
+links: ["PLAN-928"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+enum Shape { Dot Circle(int) Square(int) }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    var total int = 0
+    for it in xs {
+        total = total + it.code
+    }
+    let s Shape = Circle(3)
+    is s {
+        Dot -> { return total + xs.get(0).name.len() }
+        Circle(r) -> { return total + r + xs.len() }
+        Square(w) -> { return w }
+    }
+}
+~~~~
+
+### Syntax parse-gate
+action: "parse"
+grammar: "auto-source@closures"
+stage: "parse"
+code: "syntax.parse"
+
+## Case: ace-m1-source-composite-928-gate-closures-under-collections
+id: "ace.m1.source-composite-928.gate-closures-under-collections"
+tags: ["ace-m1", "source-composite", "plan-928", "negative"]
+links: ["PLAN-928"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    let g = (x int, y int) => { return x + y }
+    let h = make("hi")
+    let inner = (x int) => { let nested = (y int) => { return x * y }; return nested(x) }
+    return f(2) + g(1, 2) + h(5) + inner(3)
+}
+~~~~
+
+### Syntax parse-gate
+action: "parse"
+grammar: "auto-source@collections"
+stage: "parse"
+code: "syntax.parse"
+
+## Case: ace-m1-source-composite-928-av-l04
+id: "ace.m1.source-composite-928.av-l04"
+tags: ["ace-m1", "source-composite", "plan-928", "value"]
+links: ["PLAN-928", "PLAN-864"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    return xs.get(0).name.len() + xs.get(0).code
+}
+~~~~
+
+### Probe av-l04
+recipe: "ac-av/collections-source-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe mn-l04
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-source-composite-928-av-l05
+id: "ace.m1.source-composite-928.av-l05"
+tags: ["ace-m1", "source-composite", "plan-928", "value"]
+links: ["PLAN-928", "PLAN-864"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    xs.push(Item("hello", 37))
+    let x Item = xs.remove(0)
+    return x.name.len() + x.code + xs.len()
+}
+~~~~
+
+### Probe av-l05
+recipe: "ac-av/collections-source-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe mn-l05
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-source-composite-928-av-k02
+id: "ace.m1.source-composite-928.av-k02"
+tags: ["ace-m1", "source-composite", "plan-928", "value"]
+links: ["PLAN-928", "PLAN-865"]
+
+### Auto
+path: "K02.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    return f(37)
+}
+~~~~
+
+### Probe av-k02
+recipe: "ac-av/closures-source-run-v1"
+entry: "source:K02"
+exit: 42
+
+## Case: ace-m1-source-composite-928-av-k06
+id: "ace.m1.source-composite-928.av-k06"
+tags: ["ace-m1", "source-composite", "plan-928", "value"]
+links: ["PLAN-928", "PLAN-909"]
+
+### Auto
+path: "K06.at"
+
+~~~~auto
+fn main() int {
+    var base int = 1
+    var f = move (n int) => {
+        base = base + n
+        return base
+    }
+    return f(20) + f(0)
+}
+~~~~
+
+### Probe av-k06
+recipe: "ac-av/closures-source-run-v1"
+entry: "source:K06"
+exit: 42
+
+## Case: ace-m1-source-composite-928-av-s02
+id: "ace.m1.source-composite-928.av-s02"
+tags: ["ace-m1", "source-composite", "plan-928", "value"]
+links: ["PLAN-928", "PLAN-909"]
+
+### Auto
+path: "S02.at"
+
+~~~~auto
+fn main() int {
+    var x int = 1
+    var f = (n int) => {
+        x = x + n
+        return x
+    }
+    var g = (k int) => {
+        x = x + k
+        return x
+    }
+    return f(20) + g(0)
+}
+~~~~
+
+### Probe av-s02
+recipe: "ac-av/closures-source-run-v1"
+entry: "source:S02"
+exit: 42
+
+## Case: ace-m1-source-composite-928-av-same-text-owners
+id: "ace.m1.source-composite-928.av-same-text-owners"
+tags: ["ace-m1", "source-composite", "plan-928", "value"]
+links: ["PLAN-928"]
+
+### Auto
+path: "same_text_owners.at"
+
+~~~~auto
+fn u1() int {
+    let x int = 1
+    let f = (n int) => { return x + n }
+    return f(10)
+}
+fn u2() int {
+    let x int = 2
+    let g = (n int) => { return x + n }
+    return g(10)
+}
+fn main() int {
+    return u1() * 100 + u2()
+}
+~~~~
+
+### Probe av-u1-same-text
+recipe: "ac-av/closures-source-run-v1"
+entry: "source:U1"
+exit: 1112

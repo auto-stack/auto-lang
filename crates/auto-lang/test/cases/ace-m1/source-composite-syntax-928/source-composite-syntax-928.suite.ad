@@ -3,6 +3,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-source-composite-928", include: [
-  "source-composite-syntax-928.case.ad",
+  "source-composite-syntax-928.document.case.ad",
 ] }
 ```

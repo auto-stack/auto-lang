@@ -1,0 +1,167 @@
+## Case: ace-m2-g01-choose42
+id: "ace.m2.g01.choose42"
+tags: ["ace-m2", "generics", "value-domain", "plan-963"]
+links: ["PLAN-963"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+
+fn main() int {
+    if choose(true, false, true) { return choose(40, 42, false) }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.instances.scalar/v1"]
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.instances.scalar/v1"]
+exit: 42
+
+## Case: ace-m2-g02-point300
+id: "ace.m2.g02.point300"
+tags: ["ace-m2", "generics", "generic-record", "plan-963"]
+links: ["PLAN-963"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Point<T> { x T; y T
+    fn sum() T { return .x + .y }
+}
+
+fn main() int {
+    let p = Point<int> { x: 100, y: 200 }
+    return p.sum()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 300
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 300
+
+## Case: ace-m2-g03-bounded5
+id: "ace.m2.g03.bounded5"
+tags: ["ace-m2", "generics", "spec-bound", "plan-963"]
+links: ["PLAN-963"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+spec Summable { fn total() int }
+type Score as Summable { val int
+    fn total() int { return .val }
+}
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Score> = Box { inner: Score { val: 5 } }
+    let s Score = b.inner
+    return s.total()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 5
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 5
+
+## Case: ace-m2-g05-picker42
+id: "ace.m2.g05.picker42"
+tags: ["ace-m2", "generics", "generic-spec", "plan-963"]
+links: ["PLAN-963"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+spec Picker<T> { fn pick(a T, b T) T { return a } }
+type AsInt as Picker<int> { v int }
+fn main() int {
+    let x AsInt = AsInt { v: 1 }
+    return x.pick(41, 7) + x.v
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m2-g02-point-negative
+id: "ace.m2.g02.point-negative"
+tags: ["ace-m2", "generics", "negative", "generic-record", "plan-963"]
+links: ["PLAN-963"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Point<T> { x T; y T
+    fn sum() T { return .x + .y }
+}
+
+fn main() int {
+    let p = Point<int> { x: true, y: 200 }
+    return p.sum()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "source.type-mismatch"
+
+## Case: ace-m2-g03-bound-missing
+id: "ace.m2.g03.bound-missing"
+tags: ["ace-m2", "generics", "negative", "spec-bound", "plan-963"]
+links: ["PLAN-963"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+spec Summable { fn total() int }
+type Plain { val int }
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Plain> = Box { inner: Plain { val: 1 } }
+    return b.inner.val
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "source.unsupported"

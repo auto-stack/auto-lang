@@ -64,6 +64,9 @@ pub(super) fn resolved_probe_oracles(oracle: &ResolvedOracle) -> serde_json::Val
                         "bindings_file":s.bindings_file,
                         "bindings_bytes_len":s.bindings_bytes.as_ref().map(|b| b.len()),
                         "bindings_sha256":s.bindings_sha256,
+                        // PLAN-1062 CF-07: inline bindings payload text
+                        "bindings_text":s.bindings_bytes.as_ref()
+                            .and_then(|b| std::str::from_utf8(b).ok()),
                         "stages_include":s.stages_include,"pe_exit":s.pe_exit,
                     })
                 })

@@ -2,6 +2,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "av-abc-826", include: [
-  "av-compact-first-case.case.ad",
+  "av-compact-first-case.document.case.ad",
 ] }
 ```

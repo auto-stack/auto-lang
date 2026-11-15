@@ -4,6 +4,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-collections-864", include: [
-  "collections-source-864.case.ad",
+  "collections-source-864.document.case.ad",
 ] }
 ```

@@ -13,6 +13,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-native-closures-924", include: [
-  "native-closures-924.case.ad",
+  "native-closures-924.document.case.ad",
 ] }
 ```

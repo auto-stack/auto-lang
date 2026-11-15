@@ -1,0 +1,393 @@
+## Case: ace-m1-nd911-b17
+id: "ace.m1.nd911.b17"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return true + 1 }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-nd911-b18
+id: "ace.m1.nd911.b18"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let x int = 1
+    x = 2
+    return x
+}
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.immutable-write"
+
+## Case: ace-m1-nd911-b19
+id: "ace.m1.nd911.b19"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { if false { return 1 } }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.no-return-path"
+
+## Case: ace-m1-nd911-nb17
+id: "ace.m1.nd911.nb17"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 1 + 1 }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+exit: 2
+
+## Case: ace-m1-nd911-nb18
+id: "ace.m1.nd911.nb18"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var x int = 1
+    x = 2
+    return x
+}
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+exit: 2
+
+## Case: ace-m1-nd911-nb19
+id: "ace.m1.nd911.nb19"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    if false { return 1 }
+    return 0
+}
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+exit: 0
+
+## Case: ace-m1-nd911-b17v
+id: "ace.m1.nd911.b17v"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 1 + true }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-nd911-b18v
+id: "ace.m1.nd911.b18v"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let y int = 5
+    y = 6
+    return y
+}
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.immutable-write"
+
+## Case: ace-m1-nd911-b19v
+id: "ace.m1.nd911.b19v"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { if true { return 1 } }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.no-return-path"
+
+## Case: ace-m1-nd911-multi
+id: "ace.m1.nd911.multi"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let x int = true
+    return 1 + true
+}
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-nd911-other-stage-syntax
+id: "ace.m1.nd911.other-stage-syntax"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main( int { return 1 }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "parse"
+code: "source.unsupported"
+
+## Case: ace-m1-nd911-other-stage-bind
+id: "ace.m1.nd911.other-stage-bind"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return zzz }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "resolve"
+code: "source.undefined"
+
+## Case: ace-m1-nd911-multibyte
+id: "ace.m1.nd911.multibyte"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// 类型：bool 与 int 不可相加
+fn main() int { return true + 1 }
+~~~~
+
+### Probe ac-native-strict
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-nd911-red-wrong-family
+id: "ace.m1.nd911.red.wrong-family"
+tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return true + 1 }
+~~~~
+
+### Probe ac-native-strict-wrong-family
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.immutable-write"
+
+## Case: ace-m1-nd911-red-wrong-stage
+id: "ace.m1.nd911.red.wrong-stage"
+tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return true + 1 }
+~~~~
+
+### Probe ac-native-strict-wrong-stage
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "parse"
+code: "source.type-mismatch"
+
+## Case: ace-m1-nd911-red-generic-shell
+id: "ace.m1.nd911.red.generic-shell"
+tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return true + 1 }
+~~~~
+
+### Probe ac-native-strict-generic-shell
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "parse"
+code: "mn.unsupported.frontend"
+
+## Case: ace-m1-nd911-warm-reject-stops
+id: "ace.m1.nd911.warm-reject-stops"
+tags: ["ace-m1", "diagnostic", "native-diags-911"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn alpha(x int) int {
+    return x * 2
+}
+
+fn main() int {
+    return alpha(5)
+}
+~~~~
+
+### Probe ac-native-strict-warm
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+steps: [{op: "edit-source", from: "x * 2", to: "x + 2"}, {op: "edit-source", from: "x + 2", to: "true + 1"}, {op: "edit-source", from: "x + 2", to: "x * 3"}, {op: "run"}]
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-red-i12-avm
+id: "ace.m1.red.i12-avm"
+tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+links: ["PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### VM result
+check-id: "autovm-wrong-value"
+final-newline: false
+
+~~~~text
+15
+~~~~
+
+## Case: ace-m1-red-i12-a2r
+id: "ace.m1.red.i12-a2r"
+tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+links: ["PLAN-911"]
+module-name: "m1_b01"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### Rust
+check-id: "a2r-wrong-golden"
+
+#### m1_b01.rs
+
+~~~~rust
+// Auto-generated by a2r transpiler
+
+fn main() -> i64 {
+    let base: i64 = 40;
+    let f = move |n: i64| { return base + n; };
+    return f(2);
+}
+~~~~

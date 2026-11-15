@@ -21,7 +21,9 @@ use crate::atom::{self, CVal};
 use crate::contract::{
     valid_case_id, valid_check_id, Action, Adapter, ArtifactExpect, ArtifactPayload, CaseSpec,
     BudgetSpec, CheckSpec, Compare, Completion, EntryMode, ExpectSpec, FileEntry, Options,
-    PayloadSpec, ProbeAbiSpec, ProbeMnTypedSpec, SyntaxEdit, TypedExpect,
+    PayloadSpec, ProbeAbiSpec, ProbeMnTypedSpec, ProbeStepExpect, SyntaxEdit, TypedExpect,
+    ProbeAvInvalidationSpec, ProbeAvResourceSpec, ProbeMnDeclarationSpec, ProbeMnHistorySpec,
+    ProbeMnResourceSpec, ProbeMnTurnaroundSpec,
     ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
     ResultExpect, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
@@ -201,6 +203,37 @@ struct RustSection {
     subsections: Vec<RustArtifact>,
 }
 
+/// One `### VM result` section (multiple per case, check-id distinguished).
+#[derive(Clone)]
+struct VmResultSection {
+    text: String,
+    line: usize,
+    check_id: Option<String>,
+    tier: Option<String>,
+    has_fence: bool,
+    fail_alloc_at: Option<u64>,
+}
+
+#[derive(Clone)]
+struct VmDiagSection {
+    stage: Stage,
+    code: Option<String>,
+    line: usize,
+    check_id: Option<String>,
+    tier: Option<String>,
+    fail_alloc_at: Option<u64>,
+}
+
+#[derive(Clone)]
+struct VmDiagMessageSection {
+    stage: Stage,
+    code: Option<String>,
+    message: Option<MessageMatcher>,
+    line: usize,
+    check_id: Option<String>,
+    tier: Option<String>,
+}
+
 struct ProbeSection {
     check_id: String,
     section_line: usize,
@@ -223,16 +256,26 @@ struct ProbeSection {
     fn_name: Option<String>,
     leg: Option<String>,
     tier: Option<String>,
-    /// Ordered run-step list (PLAN-1062 T-05: run-run sequences; the full
-    /// CF-06 op vocabulary arrives with the session/step format).
-    steps: Option<Vec<String>>,
+    /// Ordered step list (CF-06 full vocabulary; () marks declaration).
+    steps: Option<()>,
+    steps_attr: Option<Attr>,
     /// CF-08 typed binding (mn typed recipe): fixture path + (kind,bits) args.
     typed_fixture: Option<(String, usize)>,
     typed_args: Option<Vec<(String, String)>>,
     /// CF-08 typed oracle: expected {kind, bits}.
     typed_expect: Option<(String, String)>,
+    /// CF-07 AV nested oracles (raw CVal kept; wired per family).
+    invalidation: Option<CVal>,
+    av_resource: Option<CVal>,
+    /// CF-07 MN nested oracles.
+    mn_resource: Option<CVal>,
+    declaration: Option<CVal>,
+    history: Option<CVal>,
+    turnaround: Option<CVal>,
     artifacts: Vec<RustArtifact>,
     streams: Vec<StreamBlock>,
+    /// CF-07 per-step expectations (#### Observation N, 1-based order).
+    observations: Vec<ObservationSection>,
 }
 
 /// One `key: value` attribute line.
@@ -684,22 +727,15 @@ fn decode_one_case(
     let mut auto: Option<String> = None;
     let mut auto_syntax: Option<Syntax> = None;
     let mut auto_path: Option<String> = None;
-    let mut vm_result: Option<(String, usize, Option<String>, Option<String>, bool)> = None;
-    let mut vm_diag: Option<(Stage, Option<String>, usize, Option<String>, Option<String>)> = None;
+    let mut vm_result: Vec<VmResultSection> = Vec::new();
+    let mut vm_diag: Vec<VmDiagSection> = Vec::new();
     let mut rust_section: Option<RustSection> = None;
     let mut probes: Vec<ProbeSection> = Vec::new();
     let mut acs: Vec<AcSection> = Vec::new();
     let mut syntaxes: Vec<SyntaxSection> = Vec::new();
     let mut vm_streams: Vec<(usize, StreamBlock)> = Vec::new();
     let mut auto_files: Vec<(String, String)> = Vec::new();
-    let mut vm_diag_message: Option<(
-        Stage,
-        Option<String>,
-        Option<MessageMatcher>,
-        usize,
-        Option<String>,
-        Option<String>,
-    )> = None;
+    let mut vm_diag_message: Vec<VmDiagMessageSection> = Vec::new();
     let mut rust_diag: Option<(
         Stage,
         Option<String>,
@@ -773,17 +809,32 @@ fn decode_one_case(
     let mut check_spans: Vec<DocCheckSpan> = Vec::new();
 
     // --- VM family: one execution, success XOR failure ---
-    if vm_result.is_some() && (vm_diag.is_some() || vm_diag_message.is_some()) {
-        return err(
-            case_head.line,
-            "同一 VM 动作同时要求成功（VM result）和失败（VM diagnostic）是格式错误",
-        );
+    // Per check-id success XOR failure (PLAN-1062 T-10: a case may carry
+    // multiple VM checks, each either a result or a diagnostic).
+    let result_ids: std::collections::BTreeSet<Option<String>> =
+        vm_result.iter().map(|v| v.check_id.clone()).collect();
+    for fail in vm_diag
+        .iter()
+        .map(|d| (&d.check_id, d.line))
+        .chain(vm_diag_message.iter().map(|m| (&m.check_id, m.line)))
+    {
+        if result_ids.contains(fail.0) {
+            return err(
+                fail.1,
+                format!(
+                    "同一 VM 检查 {:?} 同时要求成功（VM result）和失败（VM diagnostic）是格式错误",
+                    fail.0.clone().unwrap_or_else(|| "vm".into())
+                ),
+            );
+        }
     }
-    if vm_diag.is_some() && vm_diag_message.is_some() {
-        return err(
-            case_head.line,
-            "VM diagnostic 与 VM diagnostic message 互斥（后者是前者的完整消息形态）",
-        );
+    for msg in vm_diag_message.iter() {
+        if vm_diag.iter().any(|d| d.check_id == msg.check_id) {
+            return err(
+                msg.line,
+                "VM diagnostic 与 VM diagnostic message 互斥（后者是前者的完整消息形态）",
+            );
+        }
     }
     if let Some(rust_section) = rust_section.as_ref() {
         if rust_section.direct.is_some() && rust_diag.is_some() {
@@ -804,8 +855,18 @@ fn decode_one_case(
         match title {
             "Auto" | "Notes" => {}
             "VM diagnostic message" => {
-                if let Some((stage, code, message, line, check_id, tier)) =
-                    vm_diag_message.clone()
+                let pos = vm_diag_message
+                    .iter()
+                    .position(|v| v.line == sh.line)
+                    .expect("vm diag message parsed with its line");
+                if let Some(VmDiagMessageSection {
+                    stage,
+                    code,
+                    message,
+                    line,
+                    check_id,
+                    tier,
+                }) = vm_diag_message.clone().into_iter().nth(pos)
                 {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
                     let mut expect = expect_success();
@@ -877,7 +938,19 @@ fn decode_one_case(
                 }
             }
             "VM result" => {
-                if let Some((text, line, check_id, tier, has_fence)) = vm_result.clone() {
+                let pos = vm_result
+                    .iter()
+                    .position(|v| v.line == sh.line)
+                    .expect("vm result parsed with its line");
+                if let Some(VmResultSection {
+                    text,
+                    line,
+                    check_id,
+                    tier,
+                    has_fence,
+                    fail_alloc_at,
+                }) = vm_result.clone().into_iter().nth(pos)
+                {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
                     let mut expect = expect_success();
                     for (_, st) in vm_streams.iter().filter(|(l, _)| *l == line) {
@@ -906,7 +979,10 @@ fn decode_one_case(
                             adapter: Adapter::Avm,
                             action: Action::Run,
                             tier,
-                            options: Options::default(),
+                            options: Options {
+                                avm_fail_alloc_at: fail_alloc_at,
+                                ..Default::default()
+                            },
                             expect,
                             product_from: None,
                             skip: None,
@@ -915,7 +991,19 @@ fn decode_one_case(
                 }
             }
             "VM diagnostic" => {
-                if let Some((stage, code, line, check_id, tier)) = vm_diag.clone() {
+                let pos = vm_diag
+                    .iter()
+                    .position(|v| v.line == sh.line)
+                    .expect("vm diag parsed with its line");
+                if let Some(VmDiagSection {
+                    stage,
+                    code,
+                    line,
+                    check_id,
+                    tier,
+                    fail_alloc_at,
+                }) = vm_diag.clone().into_iter().nth(pos)
+                {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
                     let mut expect = expect_success();
                     for (_, st) in vm_streams.iter().filter(|(l, _)| *l == line) {
@@ -943,7 +1031,10 @@ fn decode_one_case(
                             adapter: Adapter::Avm,
                             action: Action::Run,
                             tier,
-                            options: Options::default(),
+                            options: Options {
+                                avm_fail_alloc_at: fail_alloc_at,
+                                ..Default::default()
+                            },
                             expect,
                             product_from: None,
                             skip: None,
@@ -1170,18 +1261,13 @@ fn decode_one_case(
                         p.recipe
                     ),
                 })?;
-                let step_list = p.steps.clone().unwrap_or_else(|| vec!["run".to_string()]);
-                if step_list.is_empty() || step_list.iter().any(|op| op != "run") {
-                    return err(
-                        p.section_line,
-                        "steps 仅接受非空 run 序列（其余 op 属于 CF-06 有序子节格式）",
-                    );
-                }
+                let steps = match &p.steps {
+                    None => vec![ProbeStep::Run],
+                    Some(_) => want_steps(p.steps_attr.as_ref().expect("raw attr kept"))?,
+                };
                 let mut options = Options {
                     probe_recipe: Some(p.recipe.clone()),
-                    probe_steps: Some(
-                        step_list.iter().map(|_| ProbeStep::Run).collect(),
-                    ),
+                    probe_steps: Some(steps),
                     ..Default::default()
                 };
                 let mut expect = expect_success();
@@ -1199,13 +1285,44 @@ fn decode_one_case(
                                 return err(*l, "console-run-v1 不接受 profile 覆盖");
                             }
                         }
+                        let invalidation = match &p.invalidation {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["stable_defs", "rebuilt_defs"], "invalidation", p.section_line)?;
+                                let stable = obj_str_list(pairs, "stable_defs", p.section_line)?;
+                                let rebuilt = obj_str_list(pairs, "rebuilt_defs", p.section_line)?;
+                                if stable.is_empty() && rebuilt.is_empty() {
+                                    return err(p.section_line, "invalidation 需要非空 stable_defs/rebuilt_defs");
+                                }
+                                Some(ProbeAvInvalidationSpec { stable_defs: stable, rebuilt_defs: rebuilt })
+                            }
+                            Some(_) => return err(p.section_line, "invalidation 需要对象值"),
+                        };
+                        let av_resource = match &p.av_resource {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["profile", "max_steps", "wall_ms", "cancel_after_ms"], "av-resource", p.section_line)?;
+                                let profile = obj_str(pairs, "profile", p.section_line)?
+                                    .ok_or_else(|| AuthorError {
+                                        line: p.section_line,
+                                        message: "av-resource 需要 profile".into(),
+                                    })?;
+                                Some(ProbeAvResourceSpec {
+                                    profile,
+                                    max_steps: obj_u64(pairs, "max_steps", p.section_line)?,
+                                    wall_ms: obj_u64(pairs, "wall_ms", p.section_line)?,
+                                    cancel_after_ms: obj_u64(pairs, "cancel_after_ms", p.section_line)?,
+                                })
+                            }
+                            Some(_) => return err(p.section_line, "av-resource 需要对象值"),
+                        };
                         options.probe_av = Some(ProbeAvSpec {
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
                             session: p.session.as_ref().map(|(v, _)| v.clone()),
                             profile: p.profile.as_ref().map(|(v, _)| v.clone()),
-                            invalidation: None,
-                            resource: None,
+                            invalidation,
+                            resource: av_resource,
                         });
                     }
                     ProbeFamily::Mn => {
@@ -1231,6 +1348,86 @@ fn decode_one_case(
                                 "typed-fixture 与 typed-args 需成对出现（args 可为空列表）",
                             );
                         }
+                        let mn_resource = match &p.mn_resource {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["budget_bytes", "cancel_after_work", "fail_nth", "fail_seam", "fail_text_nth", "fail_ledger_nth"], "mn-resource", p.section_line)?;
+                                let fail_seam = 'seam: {
+                                    for (k, v) in pairs {
+                                        if k == "fail_seam" {
+                                            let CVal::List(list) = v else {
+                                                return err(p.section_line, "mn-resource.fail_seam 需要 [seam, nth] 对");
+                                            };
+                                            if list.len() != 2 {
+                                                return err(p.section_line, "mn-resource.fail_seam 需要 [seam, nth] 对");
+                                            }
+                                            let (CVal::Int(a), CVal::Int(b)) = (&list[0], &list[1]) else {
+                                                return err(p.section_line, "mn-resource.fail_seam 元素需要整数");
+                                            };
+                                            break 'seam Some((*a as u32, *b as u64));
+                                        }
+                                    }
+                                    None
+                                };
+                                Some(ProbeMnResourceSpec {
+                                    budget_bytes: obj_u64(pairs, "budget_bytes", p.section_line)?,
+                                    cancel_after_work: obj_u64(pairs, "cancel_after_work", p.section_line)?,
+                                    fail_nth: obj_u64(pairs, "fail_nth", p.section_line)?,
+                                    fail_seam,
+                                    fail_text_nth: obj_u64(pairs, "fail_text_nth", p.section_line)?,
+                                    fail_ledger_nth: obj_u64(pairs, "fail_ledger_nth", p.section_line)?,
+                                })
+                            }
+                            Some(_) => return err(p.section_line, "mn-resource 需要对象值"),
+                        };
+                        let declaration = match &p.declaration {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["min_frontend_invalidations", "max_codegen_units", "stable_defs"], "declaration", p.section_line)?;
+                                let min_inv = obj_u64(pairs, "min_frontend_invalidations", p.section_line)?
+                                    .ok_or_else(|| AuthorError {
+                                        line: p.section_line,
+                                        message: "declaration 需要 min_frontend_invalidations".into(),
+                                    })?;
+                                Some(ProbeMnDeclarationSpec {
+                                    min_frontend_invalidations: min_inv,
+                                    max_codegen_units: obj_u64(pairs, "max_codegen_units", p.section_line)?,
+                                    stable_defs: obj_str_list(pairs, "stable_defs", p.section_line)?,
+                                })
+                            }
+                            Some(_) => return err(p.section_line, "declaration 需要对象值"),
+                        };
+                        let history = match &p.history {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["min_cache_hit_coff"], "history", p.section_line)?;
+                                let min_hits = obj_u64(pairs, "min_cache_hit_coff", p.section_line)?
+                                    .ok_or_else(|| AuthorError {
+                                        line: p.section_line,
+                                        message: "history 需要 min_cache_hit_coff".into(),
+                                    })?;
+                                Some(ProbeMnHistorySpec { min_cache_hit_coff: min_hits })
+                            }
+                            Some(_) => return err(p.section_line, "history 需要对象值"),
+                        };
+                        let turnaround = match &p.turnaround {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["p90_max_ms", "min_edits"], "turnaround", p.section_line)?;
+                                let p90 = obj_u64(pairs, "p90_max_ms", p.section_line)?
+                                    .ok_or_else(|| AuthorError {
+                                        line: p.section_line,
+                                        message: "turnaround 需要 p90_max_ms".into(),
+                                    })?;
+                                let min_edits = obj_u64(pairs, "min_edits", p.section_line)?
+                                    .ok_or_else(|| AuthorError {
+                                        line: p.section_line,
+                                        message: "turnaround 需要 min_edits".into(),
+                                    })?;
+                                Some(ProbeMnTurnaroundSpec { p90_max_ms: p90, min_edits })
+                            }
+                            Some(_) => return err(p.section_line, "turnaround 需要对象值"),
+                        };
                         options.probe_mn = Some(ProbeMnSpec {
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
@@ -1242,10 +1439,10 @@ fn decode_one_case(
                                 }
                             }),
                             diagnostics: p.diagnostics.as_ref().map(|(v, _)| v.clone()),
-                            declaration: None,
-                            resource: None,
-                            history: None,
-                            turnaround: None,
+                            declaration,
+                            resource: mn_resource,
+                            history,
+                            turnaround,
                         });
                     }
                     ProbeFamily::Cte => {
@@ -1314,6 +1511,30 @@ fn decode_one_case(
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
                         });
+                    }
+                }
+                // CF-07: nested oracle attrs are family-gated — a declared
+                // but unwired oracle would silently drop the expectation.
+                if family != ProbeFamily::Av && family != ProbeFamily::AvConsole {
+                    if p.invalidation.is_some() {
+                        return err(p.section_line, "invalidation 仅属于 av 系 recipe");
+                    }
+                    if p.av_resource.is_some() {
+                        return err(p.section_line, "av-resource 仅属于 av 系 recipe");
+                    }
+                }
+                if family != ProbeFamily::Mn {
+                    if p.mn_resource.is_some() {
+                        return err(p.section_line, "mn-resource 仅属于 mn 系 recipe");
+                    }
+                    if p.declaration.is_some() {
+                        return err(p.section_line, "declaration 仅属于 mn 系 recipe");
+                    }
+                    if p.history.is_some() {
+                        return err(p.section_line, "history 仅属于 mn 系 recipe");
+                    }
+                    if p.turnaround.is_some() {
+                        return err(p.section_line, "turnaround 仅属于 mn 系 recipe");
                     }
                 }
                 // CF-02: typed error expectations (stage/code + optional
@@ -1426,6 +1647,31 @@ fn decode_one_case(
                         bits: bits.clone(),
                     });
                 }
+                if !p.observations.is_empty() {
+                    let mut ordered = p.observations.clone();
+                    ordered.sort_by_key(|o| o.order);
+                    for (i, o) in ordered.iter().enumerate() {
+                        if o.order != i + 1 {
+                            return err(
+                                o.section_line,
+                                format!("Observation 序号必须从 1 连续（第 {} 项是 {}）", i + 1, o.order),
+                            );
+                        }
+                    }
+                    expect.probe = Some(
+                        ordered
+                            .iter()
+                            .map(|o| ProbeStepExpect {
+                                cache: o.cache.clone(),
+                                compute_calls: o.compute_calls,
+                                bindings_file: None,
+                                bindings_text: o.bindings_text.clone(),
+                                stages_include: o.stages_include.clone(),
+                                pe_exit: o.pe_exit,
+                            })
+                            .collect(),
+                    );
+                }
                 if !p.artifacts.is_empty() {
                     expect.artifacts = p
                         .artifacts
@@ -1537,6 +1783,19 @@ fn push_check(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// CF-07 per-step expectation: `#### Observation N` under a Probe section.
+#[derive(Clone)]
+struct ObservationSection {
+    order: usize,
+    section_line: usize,
+    cache: Option<String>,
+    compute_calls: Option<u32>,
+    stages_include: Vec<String>,
+    pe_exit: Option<i32>,
+    /// Inline bindings payload (optional json fence).
+    bindings_text: Option<String>,
+}
+
 // ---- PLAN-1062 T-06 (CF-01/CF-04): AC and Syntax author sections ----
 
 /// AC failure stages (contract::Stage::supported_for(Adapter::Ac)).
@@ -1722,16 +1981,9 @@ fn decode_h3_section(
     auto: &mut Option<String>,
     auto_path: &mut Option<String>,
     auto_syntax: &mut Option<Syntax>,
-    vm_result: &mut Option<(String, usize, Option<String>, Option<String>, bool)>,
-    vm_diag: &mut Option<(Stage, Option<String>, usize, Option<String>, Option<String>)>,
-    vm_diag_message: &mut Option<(
-        Stage,
-        Option<String>,
-        Option<MessageMatcher>,
-        usize,
-        Option<String>,
-        Option<String>,
-    )>,
+    vm_result: &mut Vec<VmResultSection>,
+    vm_diag: &mut Vec<VmDiagSection>,
+    vm_diag_message: &mut Vec<VmDiagMessageSection>,
     rust: &mut Option<RustSection>,
     rust_diag: &mut Option<(
         Stage,
@@ -1748,8 +2000,8 @@ fn decode_h3_section(
     let title = sh.text.trim();
     let known: &[&str] = match title {
         "Auto" => &["path", "final-newline", "eol", "syntax"],
-        "VM result" => &["check-id", "final-newline", "compare", "tier"],
-        "VM diagnostic" => &["check-id", "stage", "code", "tier"],
+        "VM result" => &["check-id", "final-newline", "compare", "tier", "fail-alloc-at"],
+        "VM diagnostic" => &["check-id", "stage", "code", "tier", "fail-alloc-at"],
         "VM diagnostic message" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
         "Rust" => &["check-id", "tier", "int-profile", "resource-profile"],
         "Rust diagnostic" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
@@ -1759,6 +2011,8 @@ fn decode_h3_section(
             "message", "message-contains", "session", "profile", "diagnostics",
             "package", "module", "kind", "fn", "leg", "tier", "steps",
             "typed-fixture", "typed-args", "typed",
+            "invalidation", "av-resource", "mn-resource", "declaration",
+            "history", "turnaround",
         ],
         t if t.starts_with("AC ") => &[
             "action", "profile", "target", "entry", "cache", "budget", "caps", "support-lib",
@@ -1845,8 +2099,11 @@ fn decode_h3_section(
             Ok(())
         }
         "VM result" => {
-            if vm_result.is_some() {
-                return err(sh.line, "重复的 ### VM result 节");
+            let id_ref = check_id_of(&attrs)?;
+            if let Some(id) = &id_ref {
+                if vm_result.iter().any(|v| v.check_id.as_deref() == Some(id.as_str())) {
+                    return err(sh.line, format!("重复的 ### VM result 节（check id {:?}）", id));
+                }
             }
             if fences.len() > 1 || (fences.len() == 1 && fences[0].language != "text") {
                 return err(
@@ -1854,13 +2111,23 @@ fn decode_h3_section(
                     "### VM result 至多一个 text 围栏（空围栏=空串；无围栏=仅流断言）",
                 );
             }
-            let mut check_id = None;
+            let check_id = id_ref;
             let mut tier = None;
+            let mut fail_alloc_at = None;
             let mut final_newline = true;
             for a in &attrs {
+                if a.key == "check-id" {
+                    continue; // consumed by check_id_of above
+                }
                 match a.key.as_str() {
-                    "check-id" => check_id = Some(want_str(a)?),
                     "tier" => tier = Some(want_tier(a)?),
+                    "fail-alloc-at" => {
+                        let n = want_int(a)?;
+                        if n < 1 {
+                            return err(a.line, "fail-alloc-at 需要 ≥1 的分配序号");
+                        }
+                        fail_alloc_at = Some(n as u64);
+                    }
                     "final-newline" => final_newline = want_bool(a)?,
                     // `compare` is legal to write (payload option slot) but the
                     // legacy-display result channel compares exact text.
@@ -1874,12 +2141,22 @@ fn decode_h3_section(
                 Some(fence) => (fence_text(doc, fence, final_newline)?, true),
                 None => (String::new(), false),
             };
-            *vm_result = Some((text, sh.line, check_id, tier, has_fence));
+            vm_result.push(VmResultSection {
+                text,
+                line: sh.line,
+                check_id,
+                tier,
+                has_fence,
+                fail_alloc_at,
+            });
             Ok(())
         }
         "VM diagnostic" => {
-            if vm_diag.is_some() {
-                return err(sh.line, "重复的 ### VM diagnostic 节");
+            let id_ref = check_id_of(&attrs)?;
+            if let Some(id) = &id_ref {
+                if vm_diag.iter().any(|v| v.check_id.as_deref() == Some(id.as_str())) {
+                    return err(sh.line, format!("重复的 ### VM diagnostic 节（check id {:?}）", id));
+                }
             }
             if !fences.is_empty() {
                 return err(
@@ -1887,14 +2164,24 @@ fn decode_h3_section(
                     "### VM diagnostic 不接受围栏（完整消息断言属后续批次）",
                 );
             }
-            let mut check_id = None;
+            let check_id = id_ref;
             let mut tier = None;
+            let mut fail_alloc_at = None;
             let mut stage: Option<String> = None;
             let mut code: Option<String> = None;
             for a in &attrs {
+                if a.key == "check-id" {
+                    continue; // consumed by check_id_of above
+                }
                 match a.key.as_str() {
-                    "check-id" => check_id = Some(want_str(a)?),
                     "tier" => tier = Some(want_tier(a)?),
+                    "fail-alloc-at" => {
+                        let n = want_int(a)?;
+                        if n < 1 {
+                            return err(a.line, "fail-alloc-at 需要 ≥1 的分配序号");
+                        }
+                        fail_alloc_at = Some(n as u64);
+                    }
                     "stage" => stage = Some(want_str(a)?),
                     "code" => code = Some(want_str(a)?),
                     _ => unreachable!(),
@@ -1915,15 +2202,35 @@ fn decode_h3_section(
                 message: format!("stage {:?} 不是 VM 支持的阶段（parse / type / run）", stage),
             })?;
             let code_opt = if code.is_empty() { None } else { Some(code) };
-            *vm_diag = Some((stage, code_opt, sh.line, check_id, tier));
+            vm_diag.push(VmDiagSection {
+                stage,
+                code: code_opt,
+                line: sh.line,
+                check_id,
+                tier,
+                fail_alloc_at,
+            });
             Ok(())
         }
         "VM diagnostic message" | "Rust diagnostic" => {
             // CF-02: typed stage/code plus an optional exact/contains
             // message matcher riding one text fence.
             let is_vm = title == "VM diagnostic message";
-            if (is_vm && vm_diag_message.is_some()) || (!is_vm && rust_diag.is_some()) {
-                return err(sh.line, format!("重复的 ### {} 节", title));
+            if is_vm {
+                let id_ref = check_id_of(&attrs)?;
+                if let Some(id) = &id_ref {
+                    if vm_diag_message
+                        .iter()
+                        .any(|v| v.check_id.as_deref() == Some(id.as_str()))
+                    {
+                        return err(
+                            sh.line,
+                            format!("重复的 ### VM diagnostic message 节（check id {:?}）", id),
+                        );
+                    }
+                }
+            } else if rust_diag.is_some() {
+                return err(sh.line, "重复的 ### Rust diagnostic 节");
             }
             if fences.len() > 1 || (fences.len() == 1 && fences[0].language != "text") {
                 return err(
@@ -1931,15 +2238,17 @@ fn decode_h3_section(
                     format!("### {} 至多一个 text 围栏（完整消息文本；无围栏=无消息断言）", title),
                 );
             }
-            let mut check_id = None;
+            let mut check_id = check_id_of(&attrs)?;
             let mut tier = None;
             let mut stage = None;
             let mut code = None;
             let mut contains = false;
             let mut final_newline = false;
             for a in &attrs {
+                if a.key == "check-id" {
+                    continue; // consumed by check_id_of above
+                }
                 match a.key.as_str() {
-                    "check-id" => check_id = Some(want_str(a)?),
                     "tier" => tier = Some(want_tier(a)?),
                     "stage" => stage = Some(want_str(a)?),
                     "code" => code = Some(want_str(a)?),
@@ -1976,11 +2285,17 @@ fn decode_h3_section(
                 None
             };
             let code_opt = if code.is_empty() { None } else { Some(code) };
-            let row = (stage, code_opt, message, sh.line, check_id, tier);
             if is_vm {
-                *vm_diag_message = Some(row);
+                vm_diag_message.push(VmDiagMessageSection {
+                    stage,
+                    code: code_opt,
+                    message,
+                    line: sh.line,
+                    check_id,
+                    tier,
+                });
             } else {
-                *rust_diag = Some(row);
+                *rust_diag = Some((stage, code_opt, message, sh.line, check_id, tier));
             }
             Ok(())
         }
@@ -2195,9 +2510,16 @@ fn decode_h3_section(
             let mut leg = None;
             let mut tier = None;
             let mut steps = None;
+            let mut steps_attr = None;
             let mut typed_fixture = None;
             let mut typed_args = None;
             let mut typed_expect = None;
+            let mut invalidation = None;
+            let mut av_resource = None;
+            let mut mn_resource = None;
+            let mut declaration = None;
+            let mut history = None;
+            let mut turnaround = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
@@ -2218,10 +2540,23 @@ fn decode_h3_section(
                     "fn" => fn_name = Some(want_str(a)?),
                     "leg" => leg = Some(want_str(a)?),
                     "tier" => tier = Some(want_str(a)?),
-                    "steps" => steps = Some(want_list(a)?),
+                    "steps" => {
+                        steps = Some(());
+                        steps_attr = Some(Attr {
+                            key: a.key.clone(),
+                            value: a.value.clone(),
+                            line: a.line,
+                        });
+                    }
                     "typed-fixture" => typed_fixture = Some((want_str(a)?.to_string(), a.line)),
                     "typed-args" => typed_args = Some(want_typed_args(a)?),
                     "typed" => typed_expect = Some(want_typed_expect(a)?),
+                    "invalidation" => invalidation = Some(a.value.clone()),
+                    "av-resource" => av_resource = Some(a.value.clone()),
+                    "mn-resource" => mn_resource = Some(a.value.clone()),
+                    "declaration" => declaration = Some(a.value.clone()),
+                    "history" => history = Some(a.value.clone()),
+                    "turnaround" => turnaround = Some(a.value.clone()),
                     _ => unreachable!(),
                 }
             }
@@ -2269,15 +2604,221 @@ fn decode_h3_section(
                 leg,
                 tier,
                 steps,
+                steps_attr,
                 typed_fixture,
                 typed_args,
                 typed_expect,
+                invalidation,
+                av_resource,
+                mn_resource,
+                declaration,
+                history,
+                turnaround,
                 artifacts: Vec::new(),
                 streams: Vec::new(),
+                observations: Vec::new(),
             });
             Ok(())
         }
     }
+}
+
+fn obj_str_list(obj: &[(String, CVal)], key: &str, line: usize) -> Result<Vec<String>, AuthorError> {
+    for (k, v) in obj {
+        if k == key {
+            let CVal::List(list) = v else {
+                return err(line, format!("{}.{} 需要字符串列表", key, key));
+            };
+            let mut out = Vec::new();
+            for item in list {
+                let CVal::Str(t) = item else {
+                    return err(line, format!("{}.{} 元素需要字符串", key, key));
+                };
+                out.push(t.clone());
+            }
+            return Ok(out);
+        }
+    }
+    Ok(Vec::new())
+}
+
+fn obj_u64(obj: &[(String, CVal)], key: &str, line: usize) -> Result<Option<u64>, AuthorError> {
+    for (k, v) in obj {
+        if k == key {
+            let CVal::Int(n) = v else {
+                return err(line, format!("{} 需要整数", key));
+            };
+            if *n < 0 {
+                return err(line, format!("{} 需要非负整数", key));
+            }
+            return Ok(Some(*n as u64));
+        }
+    }
+    Ok(None)
+}
+
+fn obj_str(obj: &[(String, CVal)], key: &str, line: usize) -> Result<Option<String>, AuthorError> {
+    for (k, v) in obj {
+        if k == key {
+            let CVal::Str(t) = v else {
+                return err(line, format!("{} 需要字符串", key));
+            };
+            return Ok(Some(t.clone()));
+        }
+    }
+    Ok(None)
+}
+
+fn obj_keys_ok(obj: &[(String, CVal)], allowed: &[&str], label: &str, line: usize) -> Result<(), AuthorError> {
+    for (k, _) in obj {
+        if !allowed.contains(&k.as_str()) {
+            return err(line, format!("{}.{} 未知（允许：{}）", label, k, allowed.join("/")));
+        }
+    }
+    Ok(())
+}
+
+fn want_steps(a: &Attr) -> Result<Vec<ProbeStep>, AuthorError> {
+    let CVal::List(items) = &a.value else {
+        return err(a.line, "steps 需要有序步骤列表");
+    };
+    let mut out = Vec::new();
+    for item in items {
+        let Some(obj) = item.as_obj() else {
+            // bare "run"/"query" strings stay legal shorthand
+            if let CVal::Str(op) = item {
+                match op.as_str() {
+                    "run" => {
+                        out.push(ProbeStep::Run);
+                        continue;
+                    }
+                    "query" => {
+                        out.push(ProbeStep::Query);
+                        continue;
+                    }
+                    "restart" => {
+                        out.push(ProbeStep::Restart);
+                        continue;
+                    }
+                    "resident-apply" => {
+                        out.push(ProbeStep::ResidentApply);
+                        continue;
+                    }
+                    "resident-finish" => {
+                        out.push(ProbeStep::ResidentFinish);
+                        continue;
+                    }
+                    other => {
+                        return err(a.line, format!(
+                            "steps 短形式仅接受 run/query/restart/resident-apply/resident-finish，收到 {:?}（带参步骤用对象）",
+                            other))
+                    }
+                }
+            }
+            return err(a.line, "steps 每项需要 {op: …} 对象或合法短字符串");
+        };
+        let mut op = None;
+        let mut from = None;
+        let mut to = None;
+        let mut defs = Vec::new();
+        let mut slices = None;
+        for (k, v) in obj {
+            match k.as_str() {
+                "op" => {
+                    let CVal::Str(t) = v else {
+                        return err(a.line, "steps.op 需要字符串");
+                    };
+                    op = Some(t.clone());
+                }
+                "from" | "to" => {
+                    let CVal::Str(t) = v else {
+                        return err(a.line, format!("steps.{} 需要字符串", k));
+                    };
+                    if k == "from" {
+                        from = Some(t.clone());
+                    } else {
+                        to = Some(t.clone());
+                    }
+                }
+                "defs" => {
+                    let CVal::List(list) = v else {
+                        return err(a.line, "steps.defs 需要字符串列表");
+                    };
+                    for d in list {
+                        let CVal::Str(t) = d else {
+                            return err(a.line, "steps.defs 元素需要字符串");
+                        };
+                        defs.push(t.clone());
+                    }
+                }
+                "slices" => {
+                    let CVal::Int(n) = v else {
+                        return err(a.line, "steps.slices 需要整数");
+                    };
+                    if *n < 1 {
+                        return err(a.line, "steps.slices 需要正整数");
+                    }
+                    slices = Some(*n as u32);
+                }
+                other => return err(a.line, format!("steps.{} 未知", other)),
+            }
+        }
+        let op = op.ok_or_else(|| AuthorError {
+            line: a.line,
+            message: "steps 对象需要 op".into(),
+        })?;
+        let need_pair = |from: &Option<String>, to: &Option<String>| -> Result<(String, String), AuthorError> {
+            match (from, to) {
+                (Some(f), Some(t)) => Ok((f.clone(), t.clone())),
+                _ => err(a.line, format!("steps op {:?} 需要 from/to 成对", op)),
+            }
+        };
+        let step = match op.as_str() {
+            "run" => ProbeStep::Run,
+            "query" => ProbeStep::Query,
+            "restart" => ProbeStep::Restart,
+            "resident-apply" => ProbeStep::ResidentApply,
+            "resident-finish" => ProbeStep::ResidentFinish,
+            "resident-slice" => {
+                let Some(n) = slices else {
+                    return err(a.line, "resident-slice 需要 slices");
+                };
+                ProbeStep::ResidentSlice { slices: n }
+            }
+            "edit-source" => {
+                let (f, t) = need_pair(&from, &to)?;
+                ProbeStep::EditSource { from: f, to: t }
+            }
+            "declaration-invalidate" => {
+                let (f, t) = need_pair(&from, &to)?;
+                ProbeStep::DeclarationInvalidate { from: f, to: t }
+            }
+            "partial-rebuild" => {
+                let (f, t) = need_pair(&from, &to)?;
+                if defs.is_empty() {
+                    return err(a.line, "partial-rebuild 需要非空 defs");
+                }
+                ProbeStep::PartialRebuild { from: f, to: t, defs }
+            }
+            other => {
+                return err(a.line, format!("steps.op {:?} 未知", other))
+            }
+        };
+        out.push(step);
+    }
+    if out.is_empty() {
+        return err(a.line, "steps 需要至少一步");
+    }
+    Ok(out)
+}
+
+fn check_id_of(attrs: &[Attr]) -> Result<Option<String>, AuthorError> {
+    for a in attrs {
+        if a.key == "check-id" {
+            return Ok(Some(want_str(a)?.to_string()));
+        }
+    }
+    Ok(None)
 }
 
 fn want_typed_args(a: &Attr) -> Result<Vec<(String, String)>, AuthorError> {
@@ -2463,6 +3004,85 @@ fn decode_h4_subsection(
         }
         t if t.starts_with("Probe ") => {
             let check_id = t.strip_prefix("Probe ").unwrap_or("").trim();
+            let obs_title = sh.text.trim();
+            if let Some(num) = obs_title.strip_prefix("Observation ") {
+                // CF-07 per-step expectation: attrs + optional json fence
+                // carrying the inline bindings payload.
+                let order: usize = num.trim().parse().map_err(|_| AuthorError {
+                    line: sh.line,
+                    message: format!("Observation 序号需要正整数，收到 {:?}", num),
+                })?;
+                if order == 0 {
+                    return err(sh.line, "Observation 序号从 1 开始");
+                }
+                let attrs = collect_leading_attrs(
+                    doc, lines, sh.line,
+                    &["cache", "compute-calls", "stages-include", "pe-exit", "final-newline"],
+                )?;
+                let mut cache = None;
+                let mut compute_calls = None;
+                let mut stages_include = Vec::new();
+                let mut pe_exit = None;
+                let mut obs_final_newline = true;
+                for a in &attrs {
+                    match a.key.as_str() {
+                        "final-newline" => obs_final_newline = want_bool(a)?,
+                        "cache" => {
+                            let v = want_str(a)?.to_string();
+                            if !matches!(v.as_str(), "hit" | "miss" | "stale" | "published") {
+                                return err(a.line, format!(
+                                    "Observation.cache 仅支持 hit/miss/stale/published，收到 {:?}", v));
+                            }
+                            cache = Some(v);
+                        }
+                        "compute-calls" => {
+                            let n = want_int(a)?;
+                            if n < 0 {
+                                return err(a.line, "compute-calls 需要非负整数");
+                            }
+                            compute_calls = Some(n as u32);
+                        }
+                        "stages-include" => stages_include = want_list(a)?,
+                        "pe-exit" => {
+                            let n = want_int(a)?;
+                            if !(0..=255).contains(&n) {
+                                return err(a.line, "pe-exit 需要 0..=255");
+                            }
+                            pe_exit = Some(n as i32);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                let bindings_text = if fences.len() == 1 {
+                    let text = fence_text(doc, &fences[0], obs_final_newline)?;
+                    if text.trim().is_empty() {
+                        return err(sh.line, "Observation 围栏需要非空 bindings 载荷");
+                    }
+                    Some(text)
+                } else if fences.is_empty() {
+                    None
+                } else {
+                    return err(sh.line, "Observation 至多一个围栏（内联 bindings）");
+                };
+                let probe = probes.iter_mut().find(|x| x.check_id == check_id).ok_or_else(|| AuthorError {
+                    line: sh.line,
+                    message: format!("Observation 找不到所属 Probe 节 {:?}", check_id),
+                })?;
+                if probe.observations.iter().any(|o| o.order == order) {
+                    return err(sh.line, format!("重复的 Observation {}", order));
+                }
+                probe.observations.push(ObservationSection {
+                    order,
+                    section_line: sh.line,
+                    cache,
+                    compute_calls,
+                    stages_include,
+                    pe_exit,
+                    bindings_text,
+                });
+                let _ = &obs_final_newline;
+                return Ok(());
+            }
             let kind = match sh.text.trim() {
                 "stdout" => StreamKind::Stdout,
                 "stderr" => StreamKind::Stderr,

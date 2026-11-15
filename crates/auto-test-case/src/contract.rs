@@ -3486,6 +3486,10 @@ pub struct ProbeStepExpect {
     pub compute_calls: Option<u32>,
     /// Sidecar JSON with the expected bindings (name/ty list).
     pub bindings_file: Option<String>,
+    /// PLAN-1062 CF-07: inline bindings payload (document cases inline the
+    /// oracle; bytes/hash identical to the sidecar form — mutually
+    /// exclusive with `bindings_file`).
+    pub bindings_text: Option<String>,
     /// Stage names the step trace must include.
     pub stages_include: Vec<String>,
     /// PLAN-939 T-09: per-step PE exit override for multi-query flows
@@ -4063,6 +4067,30 @@ fn decode_expect(
                             ));
                         }
                     };
+                    let bindings_text = match pf.sub("bindings_text") {
+                        None => None,
+                        Some(CVal::Str(t)) => {
+                            if bindings_file.is_some() {
+                                return Err(err(
+                                    &pf.path_of("bindings_text"),
+                                    "bindings_text and bindings_file are mutually exclusive",
+                                ));
+                            }
+                            if t.is_empty() {
+                                return Err(err(
+                                    &pf.path_of("bindings_text"),
+                                    "bindings_text must be non-empty (use no binding at all instead)",
+                                ));
+                            }
+                            Some(t.clone())
+                        }
+                        Some(other) => {
+                            return Err(err(
+                                &pf.path_of("bindings_text"),
+                                format!("expected string, got {}", other.type_name()),
+                            ));
+                        }
+                    };
                     let stages_include = match pf.sub("stages_include") {
                         None => Vec::new(),
                         Some(v) => {
@@ -4102,6 +4130,7 @@ fn decode_expect(
                         cache,
                         compute_calls,
                         bindings_file,
+                        bindings_text,
                         stages_include,
                         pe_exit,
                     });

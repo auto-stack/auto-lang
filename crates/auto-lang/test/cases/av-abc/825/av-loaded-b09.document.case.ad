@@ -1,0 +1,20 @@
+## Case: av-loaded-b09
+id: "av.loaded.b09"
+tags: ["av-abc-825", "probe", "ace-m1"]
+links: ["PLAN-825", "PLAN-852"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn fact(n int) int {
+    if n <= 1 { return 1 }
+    return n * fact(n - 1)
+}
+fn main() int { return fact(5) }
+~~~~
+
+### Probe run-loaded-b09
+recipe: "ac-av/loaded-run-v1"
+entry: "d_main"
+exit: 120

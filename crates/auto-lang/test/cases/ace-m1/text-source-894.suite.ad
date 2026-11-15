@@ -7,6 +7,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-text-source-894", include: [
-  "text-source-894.case.ad",
+  "text-source-894.document.case.ad",
 ] }
 ```

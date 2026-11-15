@@ -1,0 +1,528 @@
+## Case: ace-m1-l01-mn889
+id: "ace.m1.l01-mn889"
+tags: ["ace-m1", "collections", "value"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(20)
+    xs.push(22)
+    return xs.get(0) + xs.get(1)
+}
+~~~~
+
+### Probe mn-l01-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-l02-mn889
+id: "ace.m1.l02-mn889"
+tags: ["ace-m1", "collections", "value"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(10)
+    xs.push(30)
+    xs.insert(1, 20)
+    xs.remove(1)
+    return xs.get(0) + xs.get(1) + xs.len()
+}
+~~~~
+
+### Probe mn-l02-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-l03-mn889
+id: "ace.m1.l03-mn889"
+tags: ["ace-m1", "collections", "value"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    if xs.len() != 0 { return 1 }
+    xs.push(42)
+    xs.clear()
+    return xs.len()
+}
+~~~~
+
+### Probe mn-l03-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 0
+
+## Case: ace-m1-l04-mn889
+id: "ace.m1.l04-mn889"
+tags: ["ace-m1", "collections", "owned"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    return xs.get(0).name.len() + xs.get(0).code
+}
+~~~~
+
+### Probe mn-l04-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-l05-mn889
+id: "ace.m1.l05-mn889"
+tags: ["ace-m1", "collections", "owned"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    xs.push(Item("hello", 37))
+    let x Item = xs.remove(0)
+    return x.name.len() + x.code + xs.len()
+}
+~~~~
+
+### Probe mn-l05-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-l06-mn889
+id: "ace.m1.l06-mn889"
+tags: ["ace-m1", "collections", "trap"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(42)
+    return xs.get(1)
+}
+~~~~
+
+### Probe mn-l06-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.trap.list-index"
+
+## Case: ace-m1-l07-mn889
+id: "ace.m1.l07-mn889"
+tags: ["ace-m1", "collections", "value"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(20)
+    xs.push(1)
+    xs.set(1, 22)
+    return xs.get(0) + xs.get(1)
+}
+~~~~
+
+### Probe mn-l07-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-v01-mn889
+id: "ace.m1.v01-mn889"
+tags: ["ace-m1", "collections", "variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn maybe(x int) ?int {
+    if x > 0 { return Some(x) }
+    return None
+}
+fn main() int {
+    let x = maybe(42)
+    is x {
+        Some(v) -> { return v }
+        None -> { return 1 }
+    }
+}
+~~~~
+
+### Probe mn-v01-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-v02-mn889
+id: "ace.m1.v02-mn889"
+tags: ["ace-m1", "collections", "variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn divide(a int, b int) Result<int, Str> {
+    if b == 0 { return Err("bad") }
+    return Ok(a / b)
+}
+fn main() int {
+    let r = divide(84, 2)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}
+~~~~
+
+### Probe mn-v02-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-v03-mn889
+id: "ace.m1.v03-mn889"
+tags: ["ace-m1", "collections", "variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn fail() Result<int, Str> { return Err("bad") }
+fn main() int {
+    let r = fail()
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}
+~~~~
+
+### Probe mn-v03-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 3
+
+## Case: ace-m1-v04-mn889
+id: "ace.m1.v04-mn889"
+tags: ["ace-m1", "collections", "variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+enum Token {
+    Number(int)
+    End
+}
+fn main() int {
+    let t = Token.Number(42)
+    is t {
+        Token.Number(v) -> { return v }
+        Token.End -> { return 1 }
+    }
+}
+~~~~
+
+### Probe mn-v04-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-v05-mn889
+id: "ace.m1.v05-mn889"
+tags: ["ace-m1", "collections", "variant", "owned"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+enum Token {
+    Data(Item)
+    End
+}
+fn main() int {
+    let t = Token.Data(Item("hello", 37))
+    is t {
+        Token.Data(v) -> { return v.name.len() + v.code }
+        Token.End -> { return 1 }
+    }
+}
+~~~~
+
+### Probe mn-v05-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-v06-mn889
+id: "ace.m1.v06-mn889"
+tags: ["ace-m1", "collections", "variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var r Result<int, Str> = Err("old")
+    r = Ok(42)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}
+~~~~
+
+### Probe mn-v06-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-v07-mn889
+id: "ace.m1.v07-mn889"
+tags: ["ace-m1", "collections", "variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn maybe(x int) ?int {
+    if x > 0 { return Some(x) }
+    return None
+}
+fn main() int {
+    let x = maybe(-1)
+    is x {
+        Some(v) -> { return v }
+        None -> { return 42 }
+    }
+}
+~~~~
+
+### Probe mn-v07-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-n01-mn889
+id: "ace.m1.n01-mn889"
+tags: ["ace-m1", "collections", "owned", "plan-864-variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("hello")
+    xs.push("中")
+    let removed Str = xs.remove(0)
+    return removed.len() * 10 + xs.get(0).len()
+}
+~~~~
+
+### Probe mn-n01-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 51
+
+## Case: ace-m1-n02-mn889
+id: "ace.m1.n02-mn889"
+tags: ["ace-m1", "collections", "for-in", "plan-864-variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(10)
+    xs.push(20)
+    xs.push(12)
+    var total = 0
+    for x in xs {
+        total = total + x
+    }
+    return total
+}
+~~~~
+
+### Probe mn-n02-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-n03-mn889
+id: "ace.m1.n03-mn889"
+tags: ["ace-m1", "collections", "for-in", "owned", "plan-864-variant"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    xs.push(Item("ab", 1))
+    xs.push(Item("cde", 2))
+    var total = 0
+    for it in xs {
+        total = total + it.name.len() * 10 + it.code
+    }
+    return total
+}
+~~~~
+
+### Probe mn-n03-collections-source
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 53
+
+## Case: ace-m1-n889-list-variant
+id: "ace.m1.n889-list-variant"
+tags: ["ace-m1", "collections", "owned", "plan-889"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+enum Token { Data(Item)
+End }
+fn main() int {
+    var xs = List<Token>.new()
+    xs.push(Token.Data(Item("中", 41)))
+    let t = xs.remove(0)
+    is t {
+        Token.Data(v) -> { return v.name.len() + v.code }
+        Token.End -> { return 0 }
+    }
+}
+~~~~
+
+### Probe mn
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/collections-source-run-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-n889-nested-variant
+id: "ace.m1.n889-nested-variant"
+tags: ["ace-m1", "collections", "owned", "plan-889"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+enum Outer { Wrap(Inner)
+Empty }
+enum Inner { Data(Item)
+End }
+type Item { name Str; code int }
+fn make() Outer { return Outer.Wrap(Inner.Data(Item("中", 41))) }
+fn main() int {
+    var xs = List<Outer>.new()
+    let created = make()
+    xs.push(created.move)
+    let o Outer = xs.remove(0)
+    is o {
+        Outer.Wrap(inner) -> {
+            is inner {
+                Inner.Data(v) -> { return v.name.len() + v.code }
+                Inner.End -> { return 0 }
+            }
+        }
+        Outer.Empty -> { return 0 }
+    }
+}
+~~~~
+
+### Probe mn
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/collections-source-run-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-n889-optional-variant
+id: "ace.m1.n889-optional-variant"
+tags: ["ace-m1", "collections", "owned", "plan-889"]
+links: ["PLAN-889"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn make() ?Item { return Some(Item("中", 41)) }
+fn main() int {
+    var xs = List<?Item>.new()
+    let created = make()
+    xs.push(created.move)
+    let o = xs.remove(0)
+    is o {
+        Some(v) -> { return v.name.len() + v.code }
+        None -> { return 0 }
+    }
+}
+~~~~
+
+### Probe mn
+recipe: "ac/mir-native-collections-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/collections-source-run-v1"
+entry: "d_main"
+exit: 42

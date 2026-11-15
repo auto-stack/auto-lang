@@ -13,7 +13,7 @@ suite {
     "ace-m1/b-traps.document.case.ad",
     "ace-m1/b-diags.document.case.ad",
     "ace-m1/legacy-negative.document.case.ad",
-    "ace-m1/session-lifecycle.case.ad"
+    "ace-m1/session-lifecycle.document.case.ad"
   ]
 }
 ```

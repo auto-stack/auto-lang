@@ -1,0 +1,17 @@
+## Case: av-dynamic-first
+id: "av.dynamic.first"
+tags: ["av-data-824", "probe"]
+links: ["PLAN-824"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    return 0
+}
+~~~~
+
+### Probe run-dynamic-fixture
+recipe: "ac-av/dynamic-run-v1"
+entry: "dynamic:first-case"

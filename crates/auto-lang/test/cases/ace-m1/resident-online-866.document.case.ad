@@ -1,0 +1,80 @@
+## Case: ace-m1-res-r01-av866
+id: "ace.m1.res-r01-av866"
+tags: ["ace-m1", "resident", "value"]
+links: ["PLAN-866"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn helper() int { return 7 }
+fn main() int {
+    var i = 0
+    var total = 0
+    for i < 300 {
+        total = total + helper()
+        i = i + 1
+    }
+    return total
+}
+~~~~
+
+### Probe av-res-r01-continuity
+recipe: "ac-av/resident-run-v1"
+entry: "d_main"
+steps: [{op: "resident-slice", slices: 5}, {op: "resident-finish"}]
+exit: 2100
+
+## Case: ace-m1-res-r02-av866
+id: "ace.m1.res-r02-av866"
+tags: ["ace-m1", "resident", "online"]
+links: ["PLAN-866"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn helper() int { return 7 }
+fn main() int {
+    var i = 0
+    var total = 0
+    for i < 300 {
+        total = total + helper()
+        i = i + 1
+    }
+    return total
+}
+~~~~
+
+### Probe av-res-r02-online-swap
+recipe: "ac-av/resident-run-v1"
+entry: "d_main"
+steps: [{op: "resident-slice", slices: 10}, {op: "edit-source", from: "return 7", to: "return 9"}, {op: "resident-apply"}, {op: "resident-finish"}]
+exit: 2608
+
+## Case: ace-m1-res-r03-av866
+id: "ace.m1.res-r03-av866"
+tags: ["ace-m1", "resident", "online", "churn"]
+links: ["PLAN-866"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn helper() int { return 7 }
+fn main() int {
+    var i = 0
+    var total = 0
+    for i < 300 {
+        total = total + helper()
+        i = i + 1
+    }
+    return total
+}
+~~~~
+
+### Probe av-res-r03-churn-two-swaps
+recipe: "ac-av/resident-run-v1"
+entry: "d_main"
+steps: [{op: "resident-slice", slices: 10}, {op: "edit-source", from: "return 7", to: "return 9"}, {op: "resident-apply"}, {op: "resident-slice", slices: 5}, {op: "edit-source", from: "return 9", to: "return 11"}, {op: "resident-apply"}, {op: "resident-finish"}]
+exit: 3070

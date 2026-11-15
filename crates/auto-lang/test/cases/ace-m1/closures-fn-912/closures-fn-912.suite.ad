@@ -3,6 +3,6 @@
 # recipe; the parent (auto-lang-core) judges values AND zero-production axes.
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-closures-fn-912", include: [
-  "closures-fn-912.case.ad",
+  "closures-fn-912.document.case.ad",
 ] }
 ```
