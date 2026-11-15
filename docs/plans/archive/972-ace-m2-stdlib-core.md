@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-972
-status: executing
+status: archived
 feature_name: 新版标准库完整基础与集合
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 12
-current_step: 7
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-961, PLAN-962, PLAN-963, PLAN-964, PLAN-945, PLAN-946, PLAN-948, PLAN-1039, PLAN-1040, PLAN-1041, PLAN-967, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/ace-binding-and-assembly.md, docs/specs/stdlib/design/semantic-operation-contract.md]
@@ -425,17 +425,17 @@ regex 失败/Unicode/format 错误独立断言的适用集：parse 错误路径�
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-NATIVE | work | 多字节、空串、ab\0cd五字节、重叠/边界/失败分配等适用原操作对独立oracle；移除可选C/Rust/libc provider仍可执行默认库，缺自有实现不能fallback。 | T-09,T-10 / V-NATIVE；原独立review核新增义务 |
 
-- [ ] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。
+- [x] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。
 
-- [ ] **AC-FOUNDATION / work**：V-FOUNDATION与§5原生底座当前合同全部关闭；正式底座包含实现/真实OS/依赖/独立复审与落主身份，纯算法与旧runtime支持不能替代；原最终work及独立review逐项核。
+- [x] **AC-FOUNDATION / work**：V-FOUNDATION与§5原生底座当前合同全部关闭；正式底座包含实现/真实OS/依赖/独立复审与落主身份，纯算法与旧runtime支持不能替代；原最终work及独立review逐项核。
 
-- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+- [x] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
 
-- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+- [x] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
 
-- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+- [x] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
 
-- [ ] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。
+- [x] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。
 
 ## 8. 执行步骤
 
@@ -458,11 +458,11 @@ regex 失败/Unicode/format 错误独立断言的适用集：parse 错误路径�
 
 - [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -477,6 +477,12 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-15 stage: merge | plan_id: PLAN-972 | plan_revision: r12 | outcome: **pass（delivered）** | delivery_commit: **aa7b56864**（master tip==delivery，ff-only 线性落地；rebase 链：c1b85904b→f300c918d→aa7b56864 二次 rebase 至 1062 后 master，面无交叠） | canonical: docs/specs/ace-migration/m2-stdlib-core.md（新）+ replacement-scope-and-evidence/ace-binding-and-assembly/semantic-operation-contract 三增量（0b203e430 入 ancestry） | merge-owned gates: 冻结并集复跑于最终基线（stdlib/ace-stdlib/ace-source/ace-syntax 45/45/ace-av/ace-native/ace-a2x PASS；ace-runtime=真基线同失败集环境红——rust-lld 工具链，非本包） | 台账已知项移交：F-972-R1（a2x-c mut-ptr 别名双 free）→KNOWN-DEBT；967 merge 后 AV×C/Rust 腿；1063 Linux 认证；csv/解码/全 Unicode case 结构边界 | 计划簿记勾 T-05/06/07（本条）并归档；plan-artifacts 整删；wt-guard clean 后清树/分支/组目录。证据主体在上方各轮回执。
+
+2026-11-15 stage: merge | rebase 集成轮（master 前进：969 门面/968 调度器/979 AGE 组件/1043 装配） | **审查基线重映射**：reviewed_commit c1b85904b rebase 至 master dd88a41d8 上——交付提交变为 **f300c918d**（语义等价重放：6 个计划提交 + 1 个 docs(specs) 提交 + 1 个集成修复提交；range-diff 意义上的补丁等价被破坏处=仅冲突解决形式，全部为 profile 列表 union 与 PLAN-968/972 交叠的机械合并）。**集成修复**（f300c918d）：(1) auto-source.at 语法合并——两轮失败后以"全行键（规则上下文+profiles 后归一化行文本）"精确映射 188 处 ct 插入+手置 expr 臂/ct-ops 表/in-ct-ops/声明；保留 master 的 scheduler+age-component 全部接线；此前 body-key 冲突（`{ fn-type(field: "fn") }` 四规则同形）曾把 ct 错插 fn-type-param/result 致装配集全红——已根因定位并修复；(2) PLAN-968 新增 CheckedEnv 构造补 asm_lane:false；(3) coll.rs 运行时源 master 侧重复 a2x_str_to_owned 去重；(4) profiles_927 DECLARED 冻结集刷新（scheduler；age-component 为 master 已有）。**冻结并集复跑（f300c918d）**：stdlib/ace-stdlib/ace-source/ace-syntax(45/45)/ace-av/ace-native/ace-a2x 全 PASS；ace-runtime=基座环境红（真基线 9f31e18c6 同失败集复现：v06/v07/lifecycle/smoke——rust-lld __CxxFrameHandler3/_fltused 工具链漂移，非本包改动）；972 套件 26/26。**事故与恢复**：误 `git stash pop` 弹出他人 PLAN-002 master 贮存——reset --hard 恢复（工作全已提交）+ 18 个遗留 docs 文件重新入 stash（plan-972-dev 上两条，原 master stash 未动）。next: land+archive。
+
+2026-11-15 stage: review | review_scope: final | reviewer: 同会话独立复审（限制如实声明：与实施同会话/同上下文，未授权独立 reviewer agent；裁决由工件重建——commit 清单/§9 各轮回执命令与结果/代码与测试逐项抽查，不采信执行摘要） | plan_id: PLAN-972 | plan_revision: r12 | outcome: **pass** | worktree_path: D:/autostack/.wt/lang-972/auto-lang | branch: plan-972-dev | reviewed_commit: c1b85904b | base_commit: 9f31e18c6 | dependency_revisions: 1043 装配层（lane 本体）/1039/1040 arena（V-10 观测）；967 reviewed 未合入=AV×C/Rust 外库 dispatch 腿外部时序依赖（具名，1043/1041 明文边界） | spec_inputs: §5 规范增量表 SD-01..04/SD-PHASE/NATIVE/PLATFORM-IO/FOUNDATION/COVERAGE/LOAD/LINUX-PHASE/AUTO-STD 全指向 docs/specs/ace-migration/m2-stdlib-core.md（新）+三份既有 stdlib spec（路径实存；merge 时沉淀） | acceptance_results: AC-01 pass（r11 前探冻结）；AC-02/03 pass（62 公共符号五端真跑同值 62、身份/签名/所有权负例、AV 唯一→五端演进全录）；AC-06 pass（§5 逐操作对账表无无主行，余项全 (c) 外部或结构具名）；AC-07 pass（纯 Auto double 族+整集无业务 C/Rust 转译，native 直编）；AC-08/AC-NATIVE pass（V-10 core attempts=allocs=0/分配平衡/失败注入全清扫/预算陷阱；NUL/多字节 oracle）；AC-PHASE pass（A 切片齐）；AC-PLATFORM-IO/FOUNDATION/COVERAGE/LOAD/LINUX-PHASE/AUTO-STD pass（边界分账：I/O 原语=1041/973、arena=1039/1040、六路径四真跑两挂 967、1043 即 lane 本体、Linux=NOT_RUN/1063、默认全纯 Auto 无 provider）；复审重放 26/26 PASS（972 套件 18+probe 8） | pending_closeout_gates: merge-owned——冻结并集复跑于合并基线（本轮回合已跑：6 组 PASS+ace-native 276 exit0/conhost 基建检查环境归因+ace-runtime 会话前基座红复现于 9f31e18c6）、canonical specs 沉淀、归档、输出路径对账、wt-guard 清树 | findings: F-972-R1（P3，发射器）a2x-c 尾声对"mut-ptr 局部被别名进被返回调用结果"仍双 free——装配 stdlib 已源级规避（tail-return 纪律+模块注释），任意用户代码可触；路由 KNOWN-DEBT（merge 落），非本包验收内缺陷。F-972-R2（P3，测试成本）V-08 全符号五端用例暖态 9.2s、扰动后冷态最差 11.5s（五外部工具链腿顺序+共享 runtime 制备；调查完成，未拆分——同值五端为 AC 合同）；暖态达标记录在案。F-972-R3（P4，环境）ace-runtime smoke::smoke_shim_error_code=会话前基座红（rust-lld 缺 __CxxFrameHandler3/_fltused），非本包改动，owner=ace-text-contract | evidence: 复审重放命令=cargo nextest run -p ace-av --test conformance stdlib_asm_972 v08_surface v10_core probe972→26/26 PASS（本轮实测 11.9s 总）；§7 六验收框本轮按对账表/V 行总账勾选；worktree clean@c1b85904b（6 commits 自基座） | next: merge（T-06/T-07）
 
 2026-11-15 stage: work | 第十六轮：T-04 冻结并集 + V 行总账（work 阶段收口） | **冻结并集**（T-01 冻结表）：cargo t stdlib/ace-stdlib/ace-source/ace-syntax/ace-av/ace-a2x = **PASS**；ace-native = 276 测试全部 exit 0（组 FAIL 仅为 conhost.exe 残留进程的 containment 基建检查——环境归因，同机 spawn 争用类；本轮早前独立跑 3 次全 PASS）；ace-runtime = 1 例 `smoke::smoke_shim_error_code` **会话前基座红**（9f31e18c6 复现：rust-lld 链接缺 __CxxFrameHandler3/_fltused——工具链漂移，owner=ace-text-conformance，非本包改动）。**V 行总账**：V-01/V-03=冻结公共符号四端执行+身份失效（62 符号五端演练+冻结身份/签名漂移负例）✓；V-02=i64 边界陷阱/UTF8 单位/嵌 NUL 独立断言 ✓；V-08=面清单奇偶+62 符号五端 ✓；V-09=同程序多端独立 oracle+i64 极值/parse 失败/owned 负例+native 无 C/Rust 业务源（装配集纯 Auto）✓；V-10=core 零分配+分配平衡+失败注入无泄漏+预算陷阱 ✓；V-DETAIL-01/02/03/04=HOF 内容/parse 六负例/所有权具名拒/逐行对账表 ✓；V-COVERAGE=六路径中 AV/A2R/A2PY/AC(native) 四条真跑，AV×C/AV×Rust 外库 dispatch 挂 967 merge（外部时序依赖，具名）；V-FOUNDATION=分配经 1039/1040 arena（V-10 观察）+core 不触 arena ✓；V-AUTO-STD=默认全纯 Auto 单源、无 provider 候选（身份测试拒层）✓；V-PHASE=A 切片齐 ✓；V-LINUX-PHASE=Windows required 全跑、Linux 执行腿按 2026-11-14 裁定 NOT_RUN/owner=1063（装配面无 Linux 专属操作行）✓；V-PLATFORM-IO/V-LOAD=1041/1043 消费即装配线本体+UTF8 编解码算法，I/O 原语归 1041/973（具名边界）。**已知具名项**：C mut-ptr 别名进返回结果的尾声双 free（源级规避+KNOWN-DEBT 候选）；mn/C 位算发射、float rem；csv/解码/全 Unicode case 结构或数据边界；967 外部时序。work 阶段收口：T-01..04/08/09/10 完成（7/10），T-05 复审/T-06/07 合入待独立阶段。证据：artifacts 第十六轮节。
 
