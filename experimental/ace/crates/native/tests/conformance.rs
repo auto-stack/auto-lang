@@ -112,5 +112,8 @@ mod console_out_native_1041;
 mod linux_elf_1040;
 #[path = "cases/observation_scope_1028.rs"]
 mod observation_scope_1028;
+#[path = "cases/stdlib_sys_973.rs"]
+mod stdlib_sys_973;
+
 #[path = "cases/platform_io_1039.rs"]
 mod platform_io_1039;
