@@ -6,12 +6,12 @@
 |---|---|---|---|---|---|
 | F01 | P1 | 算法保真缺口；真实PE后果未测 | [1027](1027-ace-native-utf8-edit-fidelity.md) | UTF-01/02 | 技术未知/修复未闭 |
 | F02 | P1 | 同类嵌套/unwind恢复缺口 | [1028](1028-ace-scoped-observation-restoration.md) | OBS-01/02 | 技术未知/修复未闭 |
-| F03 | P2 | 文案耦合确认；替代方案候选 | [969](969-ace-m2-facade.md) | AUDIT-03 | 技术未知/修复未闭 |
+| F03 | P2 | 文案耦合确认；替代方案候选 | [969](969-ace-m2-facade.md) | AUDIT-03 | **已修@969**（结构化SurfaceFact选路，消息文本零参与；native 3 E2E+消息无关单测，2026-11-15） |
 | F04 | P2 | 52行机制重复；复用候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-01 | 技术未知/修复未闭 |
 | F05 | P2 | 职责分散；不可整套删除 | [970](970-ace-m2-sessions.md) | AUDIT-05 | 技术未知/修复未闭 |
 | F06 | P1 | 条件性重试缺口；仅历史测试consumer | [1030](1030-ace-av-864-failed-edit-transaction.md) | AVTX-01/02 | 技术未知/修复未闭 |
 | F07 | P2 | 转换事实；收益未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
-| F08 | P2 | profile权威差额；无成功fallback证据 | [969](969-ace-m2-facade.md) | AUDIT-08 | 技术未知/修复未闭 |
+| F08 | P2 | profile权威差额；无成功fallback证据 | [969](969-ace-m2-facade.md) | AUDIT-08 | **已修@969**（事实权威表+4守卫；未覆盖域具名保留不强删，2026-11-15） |
 | F09 | P2 | 依赖/宿主混合事实；成本未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
 | F10 | P2 | reader有界且差异确认；协议后果待核 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-02 | 技术未知/修复未闭 |
 | F11 | P2 | 同源不等同合同；共享候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
@@ -4399,12 +4399,34 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 ### D-979 — PLAN-979 A 切片已交付后的具名承接项（2026-11-15，非延期豁免）
 
+**当前交接以979 r11 / 980 r10 / 981 r13为准。** 用户本轮授权修订规划：保留979等待各owner正式交付后完整回验的裁定；960已归档不重开，原模块领域集成改由981/SOURCE原任务实际承接。下表全部开放项仍未实现/未验，本次不关闭债务、恢复目标或启动实施。r10历史收据只证明其已验切片，不替本次新增交接或979整包验收。
+
 来源：[979 A 切片 fold 收据](../plans/979-ace-m2-schema.md)（**2026-11-15 用户裁定：979 等待本表各 owner 交付后再组合收口，不得自行缩范围或以 A 表交付收档**）（master `06b4ab49f`）与 T-05 独立复审 pass（绑定 `50daa4ed1`）。组件面已验切片（typed 投影/场景脱糖/双后端真跑/拒绝面/身份）已合入；下列各项因**跨 plan 语义或产品 owner**未在本切片实现，逐项具名承接，不视为 979 已闭或可豁免：
 
 | 项 | 优先级 | 证据分类/边界 | 主 owner Plan | 关闭条件 | 当前状态 |
 |---|---|---|---|---|---|
-| V-09④ 多模块 Node 工程 | P1 | AGE/组件裁剪无模块 `use`；source 适配层无模块集合入口；需 960 `packages-modules` 面与领域面组合 | [960](960-ace-m2-modules.md)（与 979 T-03 协同） | ①模块 `use` 进领域裁剪或 960 暴露模块图适配器 ②领域前门接受模块集合并以领域 profile 验证 ③两文件 Node 工程经 AV 与 A2R 真实运行 | 未开工（依赖 960） |
-| V-10 越权/未声明实例引用 | P1 | 当前只有场景实例越界检查；AGE 的实例引用语义（跨 node/实例可见性）属 981 | [981](981-age-product-integration.md)（与 979 T-08 协同） | ①实例引用语法与可见性规则 ②未声明/越权引用具名拒 + 原 span ③正反例经双后端 | 未开工（语义待 981） |
-| V-11 产品字段级覆盖清单 | P2 | 通用 `component_coverage`/`mapping_complete` 判据已交；传统 UI/AGE 的**必需字段清单**属产品 owner | [980](980-ace-ui-age-migration.md) | 980 提供必需映射清单并接入判据；删除一条必需映射时交接检查红、合法近邻接受 | 判据已交，清单待 980 |
+| V-09④ 多模块 Node 工程 | P1 | 复用[960已交模块基础](archive/960-ace-m2-modules.md)；待模块图×领域前门组合，不是继续实施960 | [981/SOURCE](981-ace-m2-age.md) B-SOURCE-I/V/R生产IF-981-MODULE；979 T-03/T-08/T-04回验 | 逐模块Schema/CST/source map→共享绑定/唯一verify→AV与真实rustc后的A2R；两文件helper/Node、两实例2:1/N Tick独立oracle、私有/缺模块/环拒绝与恢复、正式来源；979补全V-09④ | 待981具名交付；不等979归档，不重开960 |
+| V-10 越权/未声明实例引用 | P1 | 源级实例声明/可见性检查，不能用host下标越界替代 | [981/SOURCE](981-ace-m2-age.md)交IF-981-REF，LANGUAGE继承完整语义；979 T-03/T-08回验 | 同类型合法/未声明/不可见三例可区分，原模块/字段span；非法前无AV/A2R执行或新工件，修复后真跑；979核原V-10剩余项 | 待981/SOURCE；不等LANGUAGE/SESSION/RUST整批 |
+| V-11 产品字段级覆盖清单 | P2 | 原通用判据已交，完整UI字段与AGE构造仍待可执行清单/适配；role级计数不代字段消费 | [980/DIALECT](980-ace-m2-autoui.md)交IF-980-FIELDS；[981/SOURCE](981-ace-m2-age.md)交IF-981-FIELDS；979 T-08/T-04回验 | 对完整AST/Spec双向对账，实际删必需映射、删清单行均红且合法近邻/恢复绿；原源/span/准入/产品owner与未闭格清楚；979完整V-11不缩 | 待两份正式清单/验证，不等产品全模式终验 |
+| V-DETAIL-01 g01原源CPU投影 | P1 | 原完整模块/资源闭包的四图形/visibility及来源；原要求是CPU读取，不替GPU或完整游戏 | [981/SOURCE](981-ace-m2-age.md)交IF-981-ORIGINAL；979 T-02/T-03/T-08/T-04回验 | 原坐标/尺寸/颜色alpha/order/隐藏项逐项独立断言；改导入资源实际值变，错属性原文件span，恢复后成功；保原完整输入与源hash | 待981正式交付；CPU面不等B内容/游戏 |
 | F11 三次解析 | P3 | 仅性能，无正确性影响 | 979 T-03 | 程序项解析一次；投影的 CST 解析是独立一遍 | **已闭（口径更正，N1）**：`7a91ed428` 使程序项只解析一次（隐藏名扫描与脱糖共用），但每次编译仍有「投影 CST 解析 + 程序项解析」两遍；不再声称"单次解析全闭" |
 | F12 身份未含 input_hash/compat | P2 | `DomainIdentity{id,version,grammar}`；本切片无投影缓存，接入缓存时须并入 | 979 T-02 | 身份元组含 input_hash + 兼容配置并补负控 | **已闭**（`d74433a59`：元组补全 + 负控用例；缓存接入时可直接作键） |
+
+### D-969 — PLAN-969 交付后的具名开放项（2026-11-15，随969 T-05复审登记）
+
+来源：[969](969-ace-m2-facade.md)（E0切片+T-01..08全M2-A交付，T-05 pass@33eab5086）。非延期豁免，边界已在 §5/§9 冻结：
+
+| 项 | 优先级 | 边界/关闭条件 | owner |
+|---|---|---|---|
+| AV argv/stdin 输入车道 | P2 | ACE门现具名拒 `ace.args/input-unsupported`；关闭=AV输入面+natives+门接入+正反例 | 后续语言侧Plan/970域 |
+| F-E0R-05 撤权×在途run竞态 | P3 | E0同步单线程合同下无影响；关闭=async切片重定义撤销语义 | async/daemon切片 |
+| 增量会话（编辑/热更）经公开门 | P2 | 现每run新会话；关闭=会话保持/编辑API经ace_entry且权限重核 | 970域 |
+| console×foreign组合车道 | P3 | 现具名拒 `ace.console/foreign-unsupported`；关闭=组合车道+预算并账 | 后续切片 |
+
+## PLAN-978（工程增量多目标构建与预编译SDK，2026-11-16 review 登记）
+
+| 债项/风险 | 优先级 | 现状与关闭条件 | owner |
+|---|---|---|---|
+| V-ID-RUN 真工件 provider 调用腿 | P3 | run_sdk 对打包 provider 已核 selection/兼容/pin/授权（具名拒绝齐全），但未用 967 真双 rustc cdylib 实际调用取值；结构性规则（rustc 不作准入轴）有专门测试，967 V-ABI-* 身份适用证据按 ID-06 复用。关闭=首个真实 provider 工件经 run_sdk 装配调用对独立值/ABI oracle（985 消费或 967 工件包重放） | 978→985 消费点 |
+| ace-semantics 基线红（非978触面） | P2 | sema_boundary_case_files_executed_status_honest：master 上 1062 的 cache-roundtrip.document.case.ad 缺 `status: executed`（commit aeeecc8f3）。978 并集时 282/283。关闭=1062 侧补语料标记或裁定 | PLAN-1062 |
+| A2C build-lane clang 变体 | P3 | Windows 腿已经 MSVC cl 真编译关闭（value:14）；clang 不在 PATH，变体具名 pending。关闭=有 clang 环境时补跑或裁定单编译器即可 | 978 记录，按需 |

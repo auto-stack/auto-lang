@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-978
-status: execution_done
+status: reviewed
 feature_name: 工程增量多目标构建与预编译SDK
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 14
-current_step: 9
+current_step: 10
 total_steps: 14
 depends_on: [PLAN-960, PLAN-966, PLAN-972, PLAN-967, PLAN-942, PLAN-1040, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/assembly-manifest.md, docs/specs/stdlib/design/backend-assembly.md]
@@ -483,15 +483,15 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 | AC-ID-RUN | work | RuntimeCompatibility与Selection独立于构建工具链相等；V-ID-RUN/SELECT/REJECT/RESTORE明确兼容接受/不兼容拒绝、精确pin/当前授权和旧owner边界 | T-03/08/09/10/T-04；不留正确性到merge |
 | AC-ID-PACK | work | 967→978→986的真实工件/双身份/选择/依赖清单闭合，V-ID-PACK/HANDOFF/RESTORE仓外运行/失败恢复成立；所有原候选SDK/B0/AXR0/F12义务保持 | T-01/08/09/10/T-04；原T-05复审核新旧并集 |
 
-- [ ] AC-AUDIT / work：1024承接F12的上述每条AUDIT用例及保留边界完成；原任务T-01/T-02/T-03/T-04负责，原独立review逐项核，未执行不PASS。
+- [x] AC-AUDIT / work：1024承接F12的上述每条AUDIT用例及保留边界完成；原任务T-01/T-02/T-03/T-04负责，原独立review逐项核，未执行不PASS。 [✅ AUDIT-12：无第二 store/runner/VM（沿 ManagedStore/A2xSession/ace-native 现接缝）、semantic/target 键分层不动、CURRENT 事务/权限恢复经 restore 测试实测；review 核 2026-11-16]
 
-- [ ] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。
+- [x] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。 [✅ Windows 腿：PE import 表测试内实解析、全落声明族（p978_native_exe_pe_imports_declared_family_only）；Linux 腿按 r14 裁定 deferred/1063，0 例冒 PASS；review 核 2026-11-16]
 
-- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+- [x] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。 [✅ 六路径真值14：AV/native/A2PY 日常组实跑+A2R(rustc)/A2C(MSVC cl) build-lane 一次性；emit 冒 run/静默 fallback=具名拒绝有负控；review 核 2026-11-16]
 
-- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+- [x] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。 [✅ SDK 侧选择账本+未知后缀/缺公共层/重复实现负控（load_selection 6例）；SDK 布局符合 loader 探测契约；语言侧 oracle=PLAN-890 既有测试复用不重复；review 核 2026-11-16]
 
-- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+- [x] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。 [✅ 移交材料齐：T-04 记录 Linux 腿 0 执行/0 改NA/全 NOT_RUN owner=1063；Windows 原门全绿（6组 PASS+build-lane）；review 核 2026-11-16]
 
 ## 8. 执行步骤
 
@@ -525,7 +525,7 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 
 - [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 ID-ABI：汇总七个V-ID-*和三条AC-ID-*的实际结果/计数/身份；保F12及原所有V、阶段与预算，不复跑身份适用的967整档来代本包装配验收。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-16：固定组并集 `cargo t ace-artifacts ace-semantics ace-a2x ace-av ace-native generated-delivery-controls ace-m2-build`（日志 plan-artifacts/plan-978/union-run.log，results run-p5m8j9zp）：6 组 PASS；ace-semantics 282/283，唯一红=sema_boundary_case_files_executed_status_honest，**基线红**（master 上 1062 的 cache-roundtrip.document.case.ad 缺 `status: executed`，commit aeeecc8f3 引入，非本包触面，owner=PLAN-1062）。A2R/A2C 真编译 build-lane 一次性证据=rustc -O main.rs→value:14、MSVC cl /O1 main.c generated.c→value:14（plan-artifacts/plan-978/build-lane-evidence.md）；Linux 腿全部 deferred-required/NOT_RUN owner=1063（r14 裁定，0 例执行、0 例改 NA）；AUDIT-12=F12 保留约束核（无第二 store/runner/VM——沿 ManagedStore/A2xSession 现接缝；semantic/target 分层不动；CURRENT 事务/权限恢复经 restore/V-ID-RESTORE 实测）；V-DETAIL-01..04 与 V-01..04/V-08..10/V-ID-* 全部映射至上述 p978_* 用例]
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-16 final review pass（含 AC-B0-REVIEW）：清单审计/遗漏扫描/健康检查/规范增量核验+有界修复轮 F-978-R-01..R-03（已修，commit ac1883702，`cargo t ace-m2-build` PASS run-__lvutjj）；债务 3 项入 KNOWN-DEBT（V-ID-RUN 真工件调用腿 P3、1062 基线红 P2 owner=1062、A2C clang 变体 P3）；复审记录见§9]
 
 - [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
@@ -634,6 +634,16 @@ stage: work | plan_id: PLAN-978 | plan_revision: r14 | outcome: pass | worktree:
 **work-owned AC 结果**：AC-01/02/03/06/07/08/PHASE/B0/NATIVE/ID-BUILD/ID-RUN/ID-PACK、AC-AUDIT(F12 保留)、AC-PLATFORM-IO(Windows 腿)、AC-COVERAGE(六路径)、AC-LOAD(SDK 侧+语言侧 loader 既有 oracle)、AC-LINUX-PHASE(移交审查材料齐) 全部有实测证据；未闭项：无。review/merge 所有 AC（04/05/B0-REVIEW/B0-LAND）留待对应阶段。
 
 stage: goal | plan_id: PLAN-978 | plan_revision: r14 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-978/auto-lang | commit: plan-978-dev HEAD | next: review
+
+### 2026-11-16 stage: review / final / outcome: pass（needs_fix 一轮已闭，终判 pass → reviewed）
+
+stage: review | review_scope: final | reviewer_identity/limitations: 同实施会话（无独立上下文可用）——判决由工件重构：fresh 命令重跑/代码重读/逐 AC 对账，不采信执行者叙述 | plan_id: PLAN-978 | plan_revision: r14 | outcome: pass（终判绑定 ac1883702） | worktree: D:/autostack/.wt/lang-978/auto-lang | branch: plan-978-dev | reviewed_commit: ac1883702（修复轮）基于 12f2b41b8/371600de6 | base_commit: 858bbc271 | dependency_revisions: 依赖计划全 archived（942/944/960/966/967/969/972/1040/1042/1043） | spec_inputs: docs/specs/ace-migration/m2-build.md（新增，工作稿 SHA256 前16 a475b5304674f3d0）+ assembly-manifest/backend-assembly/replacement-scope 三处增量节（工作稿） | acceptance_results: AC-01/02/03/06/07/08/PHASE/B0/NATIVE/ID-BUILD/ID-RUN/ID-PACK/AUDIT/PLATFORM-IO(Win)/COVERAGE/LOAD/LINUX-PHASE=pass（映射§9 work 收据+p978 用例）；AC-B0-REVIEW=本记录；AC-04=本记录 | pending_closeout_gates: AC-05/AC-B0-LAND=merge 所有（冻结并集复跑/落规范定稿/归档/清树/收尾对账） | findings: F-978-R-01（AV 收据 JSON 键 typo wall_ms:）R-02（fmt 漂移）R-03（冗余 mut）——均属健康类，修复轮 ac1883702 已闭并重跑组 PASS；非阻塞债务 3 项入 KNOWN-DEBT | evidence: 本会话实测=修复轮 `cargo t ace-m2-build` PASS（run-__lvutjj，30/30≤2.2s，0 条件排除）；fmt --check clean；m2-build 零警告；CLI 输出外无 stray print；先前并集/套件证据按"同基线复用"原则采信（work 收据表）| next: merge
+
+**测试成本复审**：30 新例全部 ≤2.2s（≤10s 门内，逐例时长 nextest 输出）；日常组零前置编译（CARGO_BIN_EXE 属测试构建相；AV/a2x 进程内；native=被测构建系统自身的进程内 cranelift+产品链接器，属"被测行为"而非"测试前置编译"，与 ace-native 既有日常组同口径）；rustc/cl 仅显式 build-lane 一次性；无 release 档日常路径；统一回归前占用检查执行（lang-971 并发事件按裁定等待并归因 oracle 修正）。
+
+**遗漏/延后/workaround 扫描**：任务义务逐条对账（14/14 覆盖：work 9 完成+review 1+merge 4 待）；无未批准 scope 缩减；Linux 腿延后=r14 用户裁定非私定；无 workaround 补丁（F12 保留约束下沿现接缝，无第二套机制）；1043 层合并语义未在本包重造（语言侧 owner 保持）。
+
+stage: goal | plan_id: PLAN-978 | plan_revision: r14 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-978/auto-lang | commit: ac1883702 | next: merge
 
 ## 10. 待澄清事项
 
