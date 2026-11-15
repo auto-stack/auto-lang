@@ -1,0 +1,38 @@
+# Legacy a2c corpus: 23_stdlib/002_std_getpid
+
+## Case: legacy-23-stdlib-002-std-getpid
+id: "legacy.23_stdlib.002_std_getpid"
+entry-mode: "program"
+
+### Auto
+path: "std_getpid.at"
+```auto
+use auto.sys: getpid
+
+fn main() {
+    let pid = getpid()
+    print("Pid is:", pid)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_getpid.expected.c
+```c
+#include "std_getpid.h"
+
+int main(void) {
+    unknown pid = getpid();
+    printf("%s %d\n", "Pid is:", pid);
+    return 0;
+}
+```
+
+#### std_getpid.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include "auto/sys.h"
+```

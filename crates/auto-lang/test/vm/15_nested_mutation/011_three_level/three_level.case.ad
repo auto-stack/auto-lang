@@ -1,0 +1,20 @@
+# Legacy vm corpus: 15_nested_mutation/011_three_level
+
+## Case: legacy-15-nested-mutation-011-three-level
+id: "legacy.15_nested_mutation.011_three_level"
+entry-mode: "program"
+
+### Auto
+path: "three_level.at"
+```auto
+var obj = { a: { b: { c: 100 } } }
+obj.a.b.c = 200
+obj.a.b.c
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+200
+```

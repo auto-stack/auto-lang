@@ -1,0 +1,27 @@
+# Legacy vm corpus: 16_option_result/018_option_or
+
+## Case: legacy-16-option-result-018-option-or
+id: "legacy.16_option_result.018_option_or"
+entry-mode: "program"
+
+### Auto
+path: "option_or.at"
+```auto
+fn main() {
+    let a = Some(42)
+    let b = a.or(0)
+    print(b)
+
+    let c = None
+    let d = c.or(99)
+    print(d)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+42
+99
+```

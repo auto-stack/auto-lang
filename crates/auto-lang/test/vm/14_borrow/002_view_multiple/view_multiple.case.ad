@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/002_view_multiple
+
+## Case: legacy-14-borrow-002-view-multiple
+id: "legacy.14_borrow.002_view_multiple"
+entry-mode: "program"
+
+### Auto
+path: "view_multiple.at"
+```auto
+let x = 42
+let v1 = x.view
+let v2 = x.view
+v1 + v2
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+84
+```

@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/datetime/004_current
+
+## Case: legacy-cookbook-datetime-004-current
+id: "legacy.cookbook.datetime.004_current"
+entry-mode: "program"
+
+### Auto
+path: "current.at"
+```auto
+dep chrono
+use.rs chrono::Local
+
+fn main() {
+    let now = Local.now()
+    let year = now.year()
+    let month = now.month()
+    let day = now.day()
+    let hour = now.hour()
+    assert(year > 2000)
+    assert(month >= 1)
+    assert(day >= 1)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

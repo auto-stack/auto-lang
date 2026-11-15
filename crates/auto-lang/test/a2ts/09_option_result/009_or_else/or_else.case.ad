@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 09_option_result/009_or_else
+
+## Case: legacy-09-option-result-009-or-else
+id: "legacy.09_option_result.009_or_else"
+entry-mode: "program"
+
+### Auto
+path: "or_else.at"
+```auto
+fn main() {
+    let x = None
+    let val = x.or_else(0)
+    print(val)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### or_else.expected.ts
+```ts
+function main(): void {
+    const x: any | null = null;
+    const val = x.or_else(0);
+    console.log(val);
+}
+
+main();
+```

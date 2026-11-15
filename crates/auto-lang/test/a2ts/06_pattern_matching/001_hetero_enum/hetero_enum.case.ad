@@ -1,0 +1,64 @@
+# Legacy a2ts corpus: 06_pattern_matching/001_hetero_enum
+
+## Case: legacy-06-pattern-matching-001-hetero-enum
+id: "legacy.06_pattern_matching.001_hetero_enum"
+entry-mode: "program"
+
+### Auto
+path: "hetero_enum.at"
+```auto
+enum Atom {
+    Int int
+    Char char
+    Float float
+}
+
+fn main() {
+    let atom = Atom.Int(11)
+
+    is atom {
+        Atom.Int(i) -> print("Got Int:", i)
+        Atom.Char(c) -> print("Got Char:", c)
+        Atom.Float(f) -> print("Got Float:", f)
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### hetero_enum.expected.ts
+```ts
+export type Atom =
+    { _tag: "Int", value: number }
+    | { _tag: "Char", value: number }
+    | { _tag: "Float", value: number };
+
+export const Atom = {
+    Int: (value: number) => ({ _tag: "Int" as const, value }),
+    Char: (value: number) => ({ _tag: "Char" as const, value }),
+    Float: (value: number) => ({ _tag: "Float" as const, value })
+};
+
+
+function main(): void {
+    const atom = Atom.Int(11);
+    
+
+        const __auto_is_0 = atom;
+    if (__auto_is_0._tag === "Int") {
+        const i = __auto_is_0.value;
+        console.log("Got Int:", i);
+    }
+    else if (__auto_is_0._tag === "Char") {
+        const c = __auto_is_0.value;
+        console.log("Got Char:", c);
+    }
+    else if (__auto_is_0._tag === "Float") {
+        const f = __auto_is_0.value;
+        console.log("Got Float:", f);
+    }
+}
+
+main();
+```

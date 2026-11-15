@@ -1,0 +1,22 @@
+# Legacy vm corpus: 99_bootstrap/060_bytecode_int
+
+## Case: legacy-99-bootstrap-060-bytecode-int
+id: "legacy.99_bootstrap.060_bytecode_int"
+entry-mode: "program"
+
+### Auto
+path: "bytecode_int.at"
+```auto
+// Test: bytecode compilation + execution — integer print
+fn main() {
+    var result = run_bytecode("fn main() {\nprint(42)\n}")
+    print(int_to_str(result.len()))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+```

@@ -1,0 +1,27 @@
+# Legacy vm corpus: 13_collections/030_list_multi_ops
+
+## Case: legacy-13-collections-030-list-multi-ops
+id: "legacy.13_collections.030_list_multi_ops"
+entry-mode: "program"
+
+### Auto
+path: "list_multi_ops.at"
+```auto
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var v = list.get(1)
+list.set(1, 99)
+var v2 = list.get(1)
+var len = list.len()
+list.drop()
+if v == 20 { if v2 == 99 { if len == 3 { 1 } else { 0 } } else { 0 } } else { 0 }
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

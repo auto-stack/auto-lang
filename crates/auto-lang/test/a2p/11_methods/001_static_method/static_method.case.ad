@@ -1,0 +1,39 @@
+# Legacy a2p corpus: 11_methods/001_static_method
+
+## Case: legacy-a2p-11-methods-001-static-method
+id: "legacy.a2p.11_methods.001_static_method"
+entry-mode: "program"
+
+### Auto
+path: "static_method.at"
+```auto
+type Math {
+    fn add(a int, b int) int {
+        a + b
+    }
+}
+
+fn main() {
+    let result = Math.add(3, 4)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### static_method.expected.py
+```python
+@dataclass
+class Math:
+
+    def add(self, a: int, b: int) -> int:
+        return a + b
+
+def main():
+    result = Math.add(3, 4)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

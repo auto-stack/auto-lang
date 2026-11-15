@@ -1,0 +1,50 @@
+# Legacy a2ts corpus: 12_specs/001_basic_spec
+
+## Case: legacy-12-specs-001-basic-spec
+id: "legacy.12_specs.001_basic_spec"
+entry-mode: "program"
+
+### Auto
+path: "basic_spec.at"
+```auto
+// Test basic spec declaration
+spec Flyer {
+    fn fly()
+}
+
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap")
+    }
+}
+
+fn main() {
+    let p = Pigeon()
+    p.fly()
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### basic_spec.expected.ts
+```ts
+export interface Flyer { {
+    fly(): void;
+}
+
+
+export class Pigeon implements Flyer {
+
+    fly(): void {
+        console.log("Flap");
+    }
+}
+
+function main(): void {
+    const p = new Pigeon();
+    p.fly();
+}
+
+main();
+```

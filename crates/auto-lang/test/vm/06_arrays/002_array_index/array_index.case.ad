@@ -1,0 +1,19 @@
+# Legacy vm corpus: 06_arrays/002_array_index
+
+## Case: legacy-06-arrays-002-array-index
+id: "legacy.06_arrays.002_array_index"
+entry-mode: "program"
+
+### Auto
+path: "array_index.at"
+```auto
+var a = [1, 2, 3]
+[a[0], a[1], a[2], a[-1], a[-2], a[-3]]
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+[1, 2, 3, 3, 2, 1]
+```

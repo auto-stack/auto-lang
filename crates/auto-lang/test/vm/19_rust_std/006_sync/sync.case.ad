@@ -1,0 +1,22 @@
+# Legacy vm corpus: 19_rust_std/006_sync
+
+## Case: legacy-19-rust-std-006-sync
+id: "legacy.19_rust_std.006_sync"
+entry-mode: "program"
+
+### Auto
+path: "sync.at"
+```auto
+use.rs std::sync::{Arc, Mutex}
+fn main() {
+    let data = Arc.new(Mutex.new(0))
+    print(data)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+<Arc>
+```

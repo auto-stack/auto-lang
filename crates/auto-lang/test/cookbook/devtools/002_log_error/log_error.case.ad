@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: cookbook/devtools/002_log_error
+
+## Case: legacy-cookbook-devtools-002-log-error
+id: "legacy.cookbook.devtools.002_log_error"
+entry-mode: "program"
+
+### Auto
+path: "log_error.at"
+```auto
+use.rs log::error
+
+fn main() {
+    #error("something went wrong")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

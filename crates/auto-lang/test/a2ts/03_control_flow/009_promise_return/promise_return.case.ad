@@ -1,0 +1,35 @@
+# Legacy a2ts corpus: 03_control_flow/009_promise_return
+
+## Case: legacy-03-control-flow-009-promise-return
+id: "legacy.03_control_flow.009_promise_return"
+entry-mode: "program"
+
+### Auto
+path: "promise_return.at"
+```auto
+fn compute() int {
+    return 100
+}
+
+fn main() {
+    let result = compute()
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### promise_return.expected.ts
+```ts
+export function compute(): number {
+    return 100;
+}
+
+function main(): void {
+    const result = compute();
+    console.log(result);
+}
+
+main();
+```

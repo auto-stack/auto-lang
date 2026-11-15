@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/048_eval_str_print
+
+## Case: legacy-99-bootstrap-048-eval-str-print
+id: "legacy.99_bootstrap.048_eval_str_print"
+entry-mode: "program"
+
+### Auto
+path: "eval_str_print.at"
+```auto
+// Test: eval — print string literal
+fn main() {
+    var r1 = run_eval("print(\"hello\")")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:hello
+
+```

@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 09_option_result/010_option_chain
+
+## Case: legacy-a2p-09-option-result-010-option-chain
+id: "legacy.a2p.09_option_result.010_option_chain"
+entry-mode: "program"
+
+### Auto
+path: "option_chain.at"
+```auto
+fn main() {
+    let x = Some(42)
+    let y = x ?? 0
+    print(y)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### option_chain.expected.py
+```python
+def main():
+    x = 42
+    y = (x if x is not None else 0)
+    print(y)
+
+if __name__ == "__main__":
+    main()
+```

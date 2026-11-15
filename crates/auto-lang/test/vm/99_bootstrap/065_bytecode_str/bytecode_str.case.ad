@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/065_bytecode_str
+
+## Case: legacy-99-bootstrap-065-bytecode-str
+id: "legacy.99_bootstrap.065_bytecode_str"
+entry-mode: "program"
+
+### Auto
+path: "bytecode_str.at"
+```auto
+// Test: bytecode compilation + execution — string concatenation
+fn main() {
+    var result = run_bytecode("fn main() {\nprint(\"hello \" + \"world\")\n}")
+    if result == "hello world\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/070_bvm_str_methods
+
+## Case: legacy-99-bootstrap-070-bvm-str-methods
+id: "legacy.99_bootstrap.070_bvm_str_methods"
+entry-mode: "program"
+
+### Auto
+path: "bvm_str_methods.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar s = \"hello world\"\nprint(s.char_at(0))\nvar sub = s.substr(0, 5)\nprint(sub)\nprint(s.len())\n}")
+    if result == "104\nhello\n11\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

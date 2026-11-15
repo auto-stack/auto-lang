@@ -1,0 +1,22 @@
+# Legacy vm corpus: 15_nested_mutation/010_type_nested_field
+
+## Case: legacy-15-nested-mutation-010-type-nested-field
+id: "legacy.15_nested_mutation.010_type_nested_field"
+entry-mode: "program"
+
+### Auto
+path: "type_nested_field.at"
+```auto
+type Inner { val int }
+type Outer { inner Inner }
+var o = Outer { inner: Inner { val: 10 } }
+o.inner.val = 20
+o.inner.val
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+20
+```

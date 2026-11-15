@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/009_string_starts_with
+
+## Case: legacy-18-ffi-009-string-starts-with
+id: "legacy.18_ffi.009_string_starts_with"
+entry-mode: "program"
+
+### Auto
+path: "string_starts_with.at"
+```auto
+Str.starts_with("hello", "hel")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

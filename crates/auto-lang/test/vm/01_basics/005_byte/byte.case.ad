@@ -1,0 +1,19 @@
+# Legacy vm corpus: 01_basics/005_byte
+
+## Case: legacy-01-basics-005-byte
+id: "legacy.01_basics.005_byte"
+entry-mode: "program"
+
+### Auto
+path: "byte.at"
+```auto
+let a byte = 255
+a
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+0xFF
+```

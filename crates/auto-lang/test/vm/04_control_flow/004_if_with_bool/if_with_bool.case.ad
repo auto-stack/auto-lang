@@ -1,0 +1,25 @@
+# Legacy vm corpus: 04_control_flow/004_if_with_bool
+
+## Case: legacy-04-control-flow-004-if-with-bool
+id: "legacy.04_control_flow.004_if_with_bool"
+entry-mode: "program"
+
+### Auto
+path: "if_with_bool.at"
+```auto
+var succ = true
+if succ {
+  print("I won!")
+  "succ"
+} else {
+  print("You failed!")
+  "failed"
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+I won!
+```

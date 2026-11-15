@@ -1,0 +1,27 @@
+# Legacy cookbook corpus: cookbook/encoding/001_json
+
+## Case: legacy-cookbook-encoding-001-json
+id: "legacy.cookbook.encoding.001_json"
+entry-mode: "program"
+
+### Auto
+path: "json.at"
+```auto
+dep serde_json
+use.rs serde_json
+
+fn main() {
+    let json_str = "{\"name\": \"Alice\", \"age\": 30}"
+    let parsed = serde_json.from_str(json_str)
+    print(f"Parsed: ${parsed}")
+    let encoded = serde_json.to_string("hello world")
+    assert(encoded.contains("hello"))
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+Parsed: 4000000
+```

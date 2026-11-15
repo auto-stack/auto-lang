@@ -1,0 +1,50 @@
+# Legacy a2ts corpus: 11_methods/004_static_method
+
+## Case: legacy-11-methods-004-static-method
+id: "legacy.11_methods.004_static_method"
+entry-mode: "program"
+
+### Auto
+path: "static_method.at"
+```auto
+type Box {
+    width int
+    height int
+
+    static fn new(w int, h int) Box {
+        Box(w, h)
+    }
+}
+
+fn main() {
+    let b = Box.new(10, 20)
+    print(b.width)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### static_method.expected.ts
+```ts
+class Box {
+    width: number;
+    height: number;
+
+    constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+    }
+
+    new(w: number, h: number): Box {
+        new Box(w, h);
+    }
+}
+
+function main(): void {
+    const b = Box.new(10, 20);
+    console.log(b.width);
+}
+
+main();
+```

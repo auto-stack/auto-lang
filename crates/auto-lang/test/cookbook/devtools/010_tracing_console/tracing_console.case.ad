@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/devtools/010_tracing_console
+
+## Case: legacy-cookbook-devtools-010-tracing-console
+id: "legacy.cookbook.devtools.010_tracing_console"
+entry-mode: "program"
+
+### Auto
+path: "tracing_console.at"
+```auto
+use.rs tracing::info
+use.rs tracing::debug
+
+fn main() {
+    #info("application started")
+    let count = 10
+    #debug("processing $count items")
+    assert(count == 10)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

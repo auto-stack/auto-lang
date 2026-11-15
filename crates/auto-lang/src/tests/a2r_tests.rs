@@ -25,33 +25,28 @@ fn test_a2r_with_base_impl(base: &str, case: &str) -> AutoResult<()> {
     let name = parts[1..].join("_");
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src_path = format!("test/{base}/{case}/{}.at", name);
-    let src_path = d.join(src_path);
-    let src = read_to_string(src_path.as_path())?;
-
-    let exp_path = format!("test/{base}/{case}/{}.expected.rs", name);
-    let exp_path = d.join(exp_path);
-    let expected = if !exp_path.is_file() {
-        "".to_string()
-    } else {
-        read_to_string(exp_path.as_path())?
-    };
+    // PLAN-1062 T-14: payload comes from the migration document; the old
+    // .at/.expected.rs sidecars are frozen history (never a fallback).
+    let case_dir = d.join(format!("test/{base}/{case}"));
+    let doc = crate::tests::legacy_doc::load_case(&case_dir, &name)?;
+    let src = doc.source_text().to_string();
+    let expected = doc.artifact(".rs").map(|b| b.to_vec()).unwrap_or_default();
 
     // Plan 610 ⑥: relative use.c JSON manifests resolve against the case dir.
     let mut rcode = crate::trans::rust::transpile_rust_with_source_dir(
-        src_path.parent().unwrap_or(&d),
+        &case_dir,
         &name,
         &src,
     )?;
     let rs_code = rcode.done()?;
 
-    if rs_code != expected.as_bytes() {
+    if rs_code != expected.as_slice() {
         let gen_path = format!("test/{base}/{case}/{}.wrong.rs", name);
         let gen_path = d.join(gen_path);
         std::fs::write(&gen_path, rs_code)?;
     }
 
-    assert_eq!(String::from_utf8_lossy(rs_code), expected);
+    assert_eq!(String::from_utf8_lossy(rs_code), String::from_utf8_lossy(&expected));
     Ok(())
 }
 
@@ -377,8 +372,10 @@ fn test_a2r_expect_error(case: &str, error_substring: &str) {
     let name = parts[1..].join("_");
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src_path = d.join(format!("test/a2r/{case}/{name}.at"));
-    let src = read_to_string(src_path.as_path()).unwrap();
+    // PLAN-1062 T-14: the error-face source also rides the migration doc.
+    let case_dir = d.join(format!("test/a2r/{case}"));
+    let doc = crate::tests::legacy_doc::load_case(&case_dir, &name).unwrap();
+    let src = doc.source_text().to_string();
 
     let result = transpile_rust(&name, &src);
     let err_msg = match result {

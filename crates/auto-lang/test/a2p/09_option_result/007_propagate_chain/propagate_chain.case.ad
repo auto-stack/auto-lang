@@ -1,0 +1,38 @@
+# Legacy a2p corpus: 09_option_result/007_propagate_chain
+
+## Case: legacy-a2p-09-option-result-007-propagate-chain
+id: "legacy.a2p.09_option_result.007_propagate_chain"
+entry-mode: "program"
+
+### Auto
+path: "propagate_chain.at"
+```auto
+fn get_name() str {
+    let x = Some("hello")
+    let y = x.?
+    y
+}
+
+fn main() {
+    let name = get_name()
+    print(name)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### propagate_chain.expected.py
+```python
+def get_name() -> str:
+    x = "hello"
+    y = x
+    return y
+
+def main():
+    name = get_name()
+    print(name)
+
+if __name__ == "__main__":
+    main()
+```

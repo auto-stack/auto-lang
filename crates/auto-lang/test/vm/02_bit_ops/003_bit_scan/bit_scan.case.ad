@@ -1,0 +1,27 @@
+# Legacy vm corpus: 02_bit_ops/003_bit_scan
+
+## Case: legacy-02-bit-ops-003-bit-scan
+id: "legacy.02_bit_ops.003_bit_scan"
+entry-mode: "program"
+
+### Auto
+path: "bit_scan.at"
+```auto
+fn main() {
+    // count_ones: 0b1010 has 2 ones
+    print(0b1010.count_ones())
+    // leading_zeros: 0b00001010 in 32-bit = 28 leading zeros
+    print(0b1010.leading_zeros())
+    // trailing_zeros: 0b1010 has 1 trailing zero
+    print(0b1010.trailing_zeros())
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+2
+28
+1
+```

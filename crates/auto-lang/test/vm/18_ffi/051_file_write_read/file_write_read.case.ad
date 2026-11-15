@@ -1,0 +1,23 @@
+# Legacy vm corpus: 18_ffi/051_file_write_read
+
+## Case: legacy-18-ffi-051-file-write-read
+id: "legacy.18_ffi.051_file_write_read"
+entry-mode: "program"
+
+### Auto
+path: "file_write_read.at"
+```auto
+File.write_text("tmp_test_vm_wr.txt", "hello auto")
+let content = File.read_text("tmp_test_vm_wr.txt")
+print(content)
+File.delete("tmp_test_vm_wr.txt")
+print(File.exists("tmp_test_vm_wr.txt"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello auto
+0
+```

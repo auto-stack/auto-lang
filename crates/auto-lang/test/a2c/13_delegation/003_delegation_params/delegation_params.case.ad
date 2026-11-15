@@ -1,0 +1,91 @@
+# Legacy a2c corpus: 13_delegation/003_delegation_params
+
+## Case: legacy-13-delegation-003-delegation-params
+id: "legacy.13_delegation.003_delegation_params"
+entry-mode: "program"
+
+### Auto
+path: "delegation_params.at"
+```auto
+spec Calculator {
+    fn add(a int, b int) int
+    fn multiply(a int, b int) int
+}
+
+type MathEngine {
+    fn add(a int, b int) int {
+        a + b
+    }
+
+    fn multiply(a int, b int) int {
+        a * b
+    }
+}
+
+type Computer {
+    has engine MathEngine for Calculator
+}
+
+fn main() {
+    let comp = Computer()
+    let result1 = comp.add(5, 3)
+    let result2 = comp.multiply(4, 7)
+    print(result1)
+    print(result2)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### delegation_params.expected.c
+```c
+#include "delegation_params.h"
+
+
+int MathEngine_Add(struct MathEngine *self, int, int) {
+    return a + b;
+}
+int MathEngine_Multiply(struct MathEngine *self, int, int) {
+    return a * b;
+}
+
+int Computer_add(struct Computer *self, int a, int b) {
+    return MathEngine_add(&self->engine, a, b);
+}
+int Computer_multiply(struct Computer *self, int a, int b) {
+    return MathEngine_multiply(&self->engine, a, b);
+}
+
+int main(void) {
+    struct Computer comp = {};
+    unknown result1 = Computer_add(&comp, 5, 3);
+    unknown result2 = Computer_multiply(&comp, 4, 7);
+    printf("%d\n", result1);
+    printf("%d\n", result2);
+    return 0;
+}
+```
+
+#### delegation_params.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+typedef struct Calculator_vtable {
+    void (*add)(void *self, int a, int b);
+    void (*multiply)(void *self, int a, int b);
+} Calculator_vtable;
+
+struct MathEngine {
+};
+
+int MathEngine_Add(struct MathEngine *self, int, int);
+int MathEngine_Multiply(struct MathEngine *self, int, int);
+struct Computer {
+    struct MathEngine engine;
+};
+int Computer_add(struct Computer *self, int a, int b);
+int Computer_multiply(struct Computer *self, int a, int b);
+```

@@ -1,0 +1,23 @@
+# Legacy vm corpus: 13_collections/004_hashmap_contains
+
+## Case: legacy-13-collections-004-hashmap-contains
+id: "legacy.13_collections.004_hashmap_contains"
+entry-mode: "program"
+
+### Auto
+path: "hashmap_contains.at"
+```auto
+var m = HashMap.new()
+m.insert_str("key", "value")
+var yes = m.contains("key")
+var no = m.contains("missing")
+m.drop()
+f"[$yes, $no]"
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+[1, 0]
+```

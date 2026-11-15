@@ -1,0 +1,49 @@
+# Legacy a2c corpus: 10_collections/002_array_return
+
+## Case: legacy-10-collections-002-array-return
+id: "legacy.10_collections.002_array_return"
+entry-mode: "program"
+
+### Auto
+path: "array_return.at"
+```auto
+// Test array return types
+
+fn get_numbers() []int {
+    [1, 2, 3, 4, 5]
+}
+
+fn main() {
+    let nums = get_numbers()
+    print(nums[0])
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_return.expected.c
+```c
+#include "array_return.h"
+
+int* get_numbers(int* out_size) {
+        static int _static_get_numbers[] = {1, 2, 3, 4, 5};
+    *out_size = 5;
+    return _static_get_numbers;
+}
+
+int main(void) {
+    unknown nums = get_numbers();
+    printf("%d\n", nums[0]);
+    return 0;
+}
+```
+
+#### array_return.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int* get_numbers(int* out_size);
+```

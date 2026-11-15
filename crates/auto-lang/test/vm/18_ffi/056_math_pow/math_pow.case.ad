@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/056_math_pow
+
+## Case: legacy-18-ffi-056-math-pow
+id: "legacy.18_ffi.056_math_pow"
+entry-mode: "program"
+
+### Auto
+path: "math_pow.at"
+```auto
+Math.pow(2.0, 10.0) == 1024.0
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+true
+```

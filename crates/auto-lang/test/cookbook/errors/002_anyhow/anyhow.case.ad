@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: cookbook/errors/002_anyhow
+
+## Case: legacy-cookbook-errors-002-anyhow
+id: "legacy.cookbook.errors.002_anyhow"
+entry-mode: "program"
+
+### Auto
+path: "anyhow.at"
+```auto
+fn main() {
+    let result = Ok("hello")
+    is result {
+        Ok(val) -> assert(val == "hello"),
+        Err(e) -> assert(false)
+    }
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

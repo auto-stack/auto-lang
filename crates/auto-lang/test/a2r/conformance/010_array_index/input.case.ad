@@ -1,0 +1,28 @@
+# Legacy conformance corpus: 010_array_index
+
+## Case: legacy-conf-010-array-index
+id: "legacy.conf.010_array_index"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 010: array creation and indexing
+fn main() {
+    let arr = [10, 20, 30]
+    print(arr[0])
+    print(arr[1])
+    print(arr[2])
+    print(arr.len())
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+10
+20
+30
+3
+```

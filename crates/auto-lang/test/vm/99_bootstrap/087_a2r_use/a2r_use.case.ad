@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/087_a2r_use
+
+## Case: legacy-99-bootstrap-087-a2r-use
+id: "legacy.99_bootstrap.087_a2r_use"
+entry-mode: "program"
+
+### Auto
+path: "a2r_use.at"
+```auto
+fn main() {
+    var result = run_a2r("use std.io\nfn main() {\nprint(42)\n}")
+    var expected = "use std::io;\nfn main() {\n    println!(\"{}\", 42);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

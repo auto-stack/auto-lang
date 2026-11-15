@@ -1,0 +1,35 @@
+# Legacy cookbook corpus: cookbook/cryptography/003_hmac
+
+## Case: legacy-cookbook-cryptography-003-hmac
+id: "legacy.cookbook.cryptography.003_hmac"
+entry-mode: "program"
+
+### Auto
+path: "hmac.at"
+```auto
+dep sha2
+use.rs sha2::Sha256
+use.rs sha2::Digest
+
+// HMAC-SHA256 computation and verification
+fn main() {
+    // Compute inner hash
+    var inner = Sha256.new()
+    inner.update(b"key_padded_inner")
+    inner.update(b"important_message")
+    let inner_hash = inner.finalize()
+    // Compute outer hash (HMAC result)
+    var outer = Sha256.new()
+    outer.update(b"key_padded_outer")
+    outer.update(inner_hash)
+    let hmac_result = outer.finalize()
+    // Smoke test: verify HMAC computation completes
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

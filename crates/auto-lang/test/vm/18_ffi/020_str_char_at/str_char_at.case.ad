@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/020_str_char_at
+
+## Case: legacy-18-ffi-020-str-char-at
+id: "legacy.18_ffi.020_str_char_at"
+entry-mode: "program"
+
+### Auto
+path: "str_char_at.at"
+```auto
+Str.char_at("hello", 0)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+104
+```

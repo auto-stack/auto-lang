@@ -1,0 +1,25 @@
+# Legacy a2ts corpus: 01_basics/001_hello
+
+## Case: legacy-01-basics-001-hello
+id: "legacy.01_basics.001_hello"
+entry-mode: "program"
+
+### Auto
+path: "hello.at"
+```auto
+fn main() {
+    print("hello!")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### hello.expected.ts
+```ts
+function main(): void {
+    console.log("hello!");
+}
+
+main();
+```

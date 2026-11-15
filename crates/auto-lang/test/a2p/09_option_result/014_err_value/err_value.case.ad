@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 09_option_result/014_err_value
+
+## Case: legacy-a2p-09-option-result-014-err-value
+id: "legacy.a2p.09_option_result.014_err_value"
+entry-mode: "program"
+
+### Auto
+path: "err_value.at"
+```auto
+fn main() {
+    let val = Err("something failed")
+    print(val)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### err_value.expected.py
+```python
+def main():
+    val = Exception("something failed")
+    print(val)
+
+if __name__ == "__main__":
+    main()
+```

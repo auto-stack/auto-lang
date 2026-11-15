@@ -1,0 +1,20 @@
+# Legacy vm corpus: 03_variables/007_var_reassignment
+
+## Case: legacy-03-variables-007-var-reassignment
+id: "legacy.03_variables.007_var_reassignment"
+entry-mode: "program"
+
+### Auto
+path: "var_reassignment.at"
+```auto
+let x = 41
+var x = 10
+x
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+10
+```

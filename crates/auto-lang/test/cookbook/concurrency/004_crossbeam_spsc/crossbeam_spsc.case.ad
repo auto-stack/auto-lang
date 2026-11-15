@@ -1,0 +1,33 @@
+# Legacy cookbook corpus: cookbook/concurrency/004_crossbeam_spsc
+
+## Case: legacy-cookbook-concurrency-004-crossbeam-spsc
+id: "legacy.cookbook.concurrency.004_crossbeam_spsc"
+entry-mode: "program"
+
+### Auto
+path: "crossbeam_spsc.at"
+```auto
+dep crossbeam
+use.rs crossbeam::channel
+
+// SPSC channel simulation (Auto lacks tuple destructuring for unbounded())
+// Tests the producer-consumer pattern with a List-based queue
+fn main() {
+    var queue List<Str> = List.new()
+    // Producer: send messages
+    queue.push("msg1")
+    queue.push("msg2")
+    queue.push("msg3")
+    assert(queue.len() == 3)
+    // Consumer: verify FIFO order
+    assert(queue.get(0) == "msg1")
+    assert(queue.get(1) == "msg2")
+    assert(queue.get(2) == "msg3")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

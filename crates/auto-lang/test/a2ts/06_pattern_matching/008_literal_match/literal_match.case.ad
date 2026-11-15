@@ -1,0 +1,41 @@
+# Legacy a2ts corpus: 06_pattern_matching/008_literal_match
+
+## Case: legacy-06-pattern-matching-008-literal-match
+id: "legacy.06_pattern_matching.008_literal_match"
+entry-mode: "program"
+
+### Auto
+path: "literal_match.at"
+```auto
+fn main() {
+    let x = 42
+    is x {
+        0 -> print("zero")
+        42 -> print("the answer")
+        _ -> print("other")
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### literal_match.expected.ts
+```ts
+function main(): void {
+    const x: number = 42;
+    switch (x) {
+        case 0:
+            console.log("zero");
+            break;
+        case 42:
+            console.log("the answer");
+            break;
+        case _:
+            console.log("other");
+            break;
+    }
+}
+
+main();
+```

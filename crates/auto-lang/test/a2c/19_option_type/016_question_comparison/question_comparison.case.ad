@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 19_option_type/016_question_comparison
+
+## Case: legacy-19-option-type-016-question-comparison
+id: "legacy.19_option_type.016_question_comparison"
+entry-mode: "program"
+
+### Auto
+path: "question_comparison.at"
+```auto
+fn test_comparison() ?bool {
+    42 > 10
+}
+
+fn main() {
+    let result = test_comparison()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_comparison.expected.c
+```c
+#include "question_comparison.h"
+
+bool test_comparison(void) {
+    return 42 > 10;
+}
+
+int main(void) {
+    unknown result = test_comparison();
+    return 0;
+}
+```
+
+#### question_comparison.expected.h
+```c
+#pragma once
+
+bool test_comparison(void);
+```

@@ -1,0 +1,19 @@
+# Legacy vm corpus: 09_functions/001_fn_simple
+
+## Case: legacy-09-functions-001-fn-simple
+id: "legacy.09_functions.001_fn_simple"
+entry-mode: "program"
+
+### Auto
+path: "fn_simple.at"
+```auto
+fn add(a, b) { a + b }
+add(12, 2)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+14
+```

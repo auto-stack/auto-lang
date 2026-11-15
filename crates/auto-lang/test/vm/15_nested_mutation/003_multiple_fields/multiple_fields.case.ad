@@ -1,0 +1,22 @@
+# Legacy vm corpus: 15_nested_mutation/003_multiple_fields
+
+## Case: legacy-15-nested-mutation-003-multiple-fields
+id: "legacy.15_nested_mutation.003_multiple_fields"
+entry-mode: "program"
+
+### Auto
+path: "multiple_fields.at"
+```auto
+var obj = { x: 100, y: 200, z: 300 }
+obj.x = 100
+obj.y = 200
+obj.z = 300
+obj.x + obj.y + obj.z
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+600
+```

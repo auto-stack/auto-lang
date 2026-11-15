@@ -1,0 +1,26 @@
+# Legacy conformance corpus: 018_for_iterator
+
+## Case: legacy-conf-018-for-iterator
+id: "legacy.conf.018_for_iterator"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 018: for-in iterator over array
+fn main() {
+    let items = [10, 20, 30]
+    for item in items {
+        print(item)
+    }
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+10
+20
+30
+```

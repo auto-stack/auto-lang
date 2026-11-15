@@ -1,0 +1,52 @@
+# Legacy a2c corpus: 22_iterators/001_iter_specs
+
+## Case: legacy-22-iterators-001-iter-specs
+id: "legacy.22_iterators.001_iter_specs"
+entry-mode: "program"
+
+### Auto
+path: "iter_specs.at"
+```auto
+// Test iterator spec declarations - Plan 051 Phase 1
+
+spec Iter<T> {
+    fn next() May<T>
+}
+
+spec Iterable<T> {
+    fn iter() Iter<T>
+}
+
+fn main() {
+    let x = 42
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### iter_specs.expected.c
+```c
+#include "iter_specs.h"
+
+
+
+int main(void) {
+    int x = 42;
+    return 0;
+}
+```
+
+#### iter_specs.expected.h
+```c
+#pragma once
+
+typedef struct Iter_vtable {
+    void (*next)(void *self);
+} Iter_vtable;
+
+typedef struct Iterable_vtable {
+    void (*iter)(void *self);
+} Iterable_vtable;
+
+```

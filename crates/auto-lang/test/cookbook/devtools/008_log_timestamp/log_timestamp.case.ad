@@ -1,0 +1,33 @@
+# Legacy cookbook corpus: cookbook/devtools/008_log_timestamp
+
+## Case: legacy-cookbook-devtools-008-log-timestamp
+id: "legacy.cookbook.devtools.008_log_timestamp"
+entry-mode: "program"
+
+### Auto
+path: "log_timestamp.at"
+```auto
+dep env_logger
+dep chrono
+dep log
+use.rs log::info
+use.rs chrono::Local
+use.rs env_logger::Builder
+
+fn main() {
+    var builder = Builder.new()
+    builder.format((buf, record) => {
+        buf.writeln(f"[${Local.now().format("%Y-%m-%d %H:%M:%S")}] ${record.level()} - ${record.args()}")
+    })
+    builder.init()
+    info("application started")
+    info("with timestamp logging")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

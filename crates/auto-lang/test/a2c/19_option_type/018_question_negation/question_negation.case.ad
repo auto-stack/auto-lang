@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 19_option_type/018_question_negation
+
+## Case: legacy-19-option-type-018-question-negation
+id: "legacy.19_option_type.018_question_negation"
+entry-mode: "program"
+
+### Auto
+path: "question_negation.at"
+```auto
+fn test_negation() ?int {
+    -42
+}
+
+fn main() {
+    let result = test_negation()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_negation.expected.c
+```c
+#include "question_negation.h"
+
+int test_negation(void) {
+    return -42;
+}
+
+int main(void) {
+    unknown result = test_negation();
+    return 0;
+}
+```
+
+#### question_negation.expected.h
+```c
+#pragma once
+
+int test_negation(void);
+```

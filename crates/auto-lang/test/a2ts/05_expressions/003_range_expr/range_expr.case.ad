@@ -1,0 +1,44 @@
+# Legacy a2ts corpus: 05_expressions/003_range_expr
+
+## Case: legacy-05-expressions-003-range-expr
+id: "legacy.05_expressions.003_range_expr"
+entry-mode: "program"
+
+### Auto
+path: "range_expr.at"
+```auto
+fn main() {
+    let r = 0..5
+    for i in r {
+        print(i)
+    }
+
+    let r_eq = 0..=5
+    for j in r_eq {
+        print(j)
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### range_expr.expected.ts
+```ts
+import { range } from "./runtime";
+
+function main(): void {
+    const r = range(0, 5);
+    for (const i of r) {
+        console.log(i);
+    }
+    
+
+    const r_eq = range(0, 5, true);
+    for (const j of r_eq) {
+        console.log(j);
+    }
+}
+
+main();
+```

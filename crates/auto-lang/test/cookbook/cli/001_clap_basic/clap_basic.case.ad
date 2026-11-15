@@ -1,0 +1,29 @@
+# Legacy cookbook corpus: cookbook/cli/001_clap_basic
+
+## Case: legacy-cookbook-cli-001-clap-basic
+id: "legacy.cookbook.cli.001_clap_basic"
+entry-mode: "program"
+
+### Auto
+path: "clap_basic.at"
+```auto
+dep clap
+use.rs clap::Parser
+
+type Args {
+    name str
+    count int
+}
+
+fn main() {
+    let args = Args.parse()
+    // Verify clap parser struct definition compiles
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

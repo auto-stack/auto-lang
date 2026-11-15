@@ -1,0 +1,39 @@
+# Legacy a2p corpus: 09_option_result/016_result_func
+
+## Case: legacy-a2p-09-option-result-016-result-func
+id: "legacy.a2p.09_option_result.016_result_func"
+entry-mode: "program"
+
+### Auto
+path: "result_func.at"
+```auto
+fn divide(a int, b int) int {
+    if b == 0 {
+        return 0
+    }
+    a / b
+}
+
+fn main() {
+    let result = divide(10, 2)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### result_func.expected.py
+```python
+def divide(a: int, b: int) -> int:
+    if b == 0:
+        return 0
+    return a / b
+
+def main():
+    result = divide(10, 2)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/025_list_clear
+
+## Case: legacy-13-collections-025-list-clear
+id: "legacy.13_collections.025_list_clear"
+entry-mode: "program"
+
+### Auto
+path: "list_clear.at"
+```auto
+var list = List.new()
+list.push(1)
+list.push(2)
+list.push(3)
+list.clear()
+var len = list.len()
+list.drop()
+len
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+0
+```

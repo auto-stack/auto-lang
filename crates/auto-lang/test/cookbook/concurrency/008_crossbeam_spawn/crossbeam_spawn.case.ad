@@ -1,0 +1,30 @@
+# Legacy cookbook corpus: cookbook/concurrency/008_crossbeam_spawn
+
+## Case: legacy-cookbook-concurrency-008-crossbeam-spawn
+id: "legacy.cookbook.concurrency.008_crossbeam_spawn"
+entry-mode: "program"
+
+### Auto
+path: "crossbeam_spawn.at"
+```auto
+dep crossbeam
+use.rs crossbeam
+
+fn main() {
+    crossbeam.scope(s => {
+        s.spawn(_ => {
+            print("Hello from scoped thread 1")
+        })
+        s.spawn(_ => {
+            print("Hello from scoped thread 2")
+        })
+    }).unwrap()
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

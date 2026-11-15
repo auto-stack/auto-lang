@@ -1,0 +1,20 @@
+# Legacy vm corpus: 15_nested_mutation/009_nested_array
+
+## Case: legacy-15-nested-mutation-009-nested-array
+id: "legacy.15_nested_mutation.009_nested_array"
+entry-mode: "program"
+
+### Auto
+path: "nested_array.at"
+```auto
+var matrix = [[1, 2], [3, 4]]
+matrix[0][1] = 20
+matrix[0][1]
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+20
+```

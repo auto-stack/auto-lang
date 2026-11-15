@@ -1,0 +1,31 @@
+# Legacy cookbook corpus: cookbook/compression/001_tar_compress
+
+## Case: legacy-cookbook-compression-001-tar-compress
+id: "legacy.cookbook.compression.001_tar_compress"
+entry-mode: "program"
+
+### Auto
+path: "tar_compress.at"
+```auto
+dep tar
+dep flate2
+
+// Tar + gzip compression — simplified for VM (no tar/flate2 shims yet)
+// Tests the concept of collecting entries and creating archive metadata
+fn main() {
+    var entries List<Str> = List.new()
+    entries.push("backup/file1.txt")
+    entries.push("backup/file2.txt")
+    entries.push("backup/subdir/file3.txt")
+    assert(entries.len() == 3)
+    // Verify entries are in correct order
+    assert(entries.get(0) == "backup/file1.txt")
+    assert(entries.get(2) == "backup/subdir/file3.txt")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

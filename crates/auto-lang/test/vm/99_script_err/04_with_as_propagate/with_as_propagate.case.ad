@@ -1,0 +1,32 @@
+# Legacy vm corpus: 99_script_err/04_with_as_propagate
+
+## Case: legacy-99-script-err-04-with-as-propagate
+id: "legacy.99_script_err.04_with_as_propagate"
+entry-mode: "program"
+
+### Auto
+path: "with_as_propagate.as"
+syntax: "auto-script"
+```auto
+use.py builtins: open, int
+
+fn main() {
+    try {
+        with open("with_as_guarantee.tmp", "w") as f {
+            f.write("guaranteed")
+            var boom = int("xyz")
+        }
+    } catch e {
+        print("caught: " + e.to(str))
+    }
+    print("end")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+caught: PyException ValueError: invalid literal for int() with base 10: 'xyz'
+end
+```

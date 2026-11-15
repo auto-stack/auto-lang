@@ -1,0 +1,20 @@
+# Legacy vm corpus: 08_strings/013_str_param
+
+## Case: legacy-08-strings-013-str-param
+id: "legacy.08_strings.013_str_param"
+entry-mode: "program"
+
+### Auto
+path: "str_param.at"
+```auto
+let text = "hello"
+let n = text.len
+print(n)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+5
+```

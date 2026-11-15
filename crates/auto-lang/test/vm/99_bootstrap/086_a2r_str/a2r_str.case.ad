@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/086_a2r_str
+
+## Case: legacy-99-bootstrap-086-a2r-str
+id: "legacy.99_bootstrap.086_a2r_str"
+entry-mode: "program"
+
+### Auto
+path: "a2r_str.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar name = \"Auto\"\nprint(name)\n}")
+    var expected = "fn main() {\n    let mut name: String = \"Auto\".to_string();\n    println!(\"{}\", name);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

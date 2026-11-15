@@ -1,0 +1,31 @@
+# Legacy a2ts corpus: 01_basics/004_unary
+
+## Case: legacy-01-basics-004-unary
+id: "legacy.01_basics.004_unary"
+entry-mode: "program"
+
+### Auto
+path: "unary.at"
+```auto
+fn main() {
+    let x = -5
+    let y = !true
+    print(x)
+    print(y)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### unary.expected.ts
+```ts
+function main(): void {
+    const x: number = -5;
+    const y: boolean = !true;
+    console.log(x);
+    console.log(y);
+}
+
+main();
+```

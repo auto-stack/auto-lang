@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/037_char_to_upper
+
+## Case: legacy-18-ffi-037-char-to-upper
+id: "legacy.18_ffi.037_char_to_upper"
+entry-mode: "program"
+
+### Auto
+path: "char_to_upper.at"
+```auto
+Char.to_upper(97)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+65
+```

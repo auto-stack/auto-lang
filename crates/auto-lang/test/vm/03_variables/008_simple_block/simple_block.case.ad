@@ -1,0 +1,22 @@
+# Legacy vm corpus: 03_variables/008_simple_block
+
+## Case: legacy-03-variables-008-simple-block
+id: "legacy.03_variables.008_simple_block"
+entry-mode: "program"
+
+### Auto
+path: "simple_block.at"
+```auto
+let a = 10
+{
+  let a = 20
+}
+a
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+10
+```

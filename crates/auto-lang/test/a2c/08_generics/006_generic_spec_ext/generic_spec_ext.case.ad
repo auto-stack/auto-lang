@@ -1,0 +1,76 @@
+# Legacy a2c corpus: 08_generics/006_generic_spec_ext
+
+## Case: legacy-08-generics-006-generic-spec-ext
+id: "legacy.08_generics.006_generic_spec_ext"
+entry-mode: "program"
+
+### Auto
+path: "generic_spec_ext.at"
+```auto
+// Test generic spec with ext block - Plan 057
+spec Storage<T> {
+    fn get() T
+}
+
+// Type with empty body - methods added via ext
+type Heap as Storage<int> {
+    ptr *int
+}
+
+ext Heap {
+    #[c]
+    fn get() *int {
+        return .ptr
+    }
+}
+
+fn main() {
+    let h = Heap()
+    let p = h.get()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### generic_spec_ext.expected.c
+```c
+#include "generic_spec_ext.h"
+
+
+int* Heap_Get(struct Heap *self) {
+}
+Storage_vtable Heap_Storage_vtable = {
+    .get = Heap_Get
+};
+
+Storage_int_vtable Heap_Storage_int_vtable = {
+    .get = Heap_Get
+};
+
+
+int main(void) {
+    struct Heap h = {};
+    int* p = Heap_Get(&h);
+    return 0;
+}
+```
+
+#### generic_spec_ext.expected.h
+```c
+#pragma once
+
+typedef struct Storage_vtable {
+    void (*get)(void *self);
+} Storage_vtable;
+
+struct Heap {
+    int* ptr;
+};
+
+int* Heap_Get(struct Heap *self);
+typedef struct Storage_int_vtable {
+    int (*get)(void *self);
+} Storage_int_vtable;
+
+```

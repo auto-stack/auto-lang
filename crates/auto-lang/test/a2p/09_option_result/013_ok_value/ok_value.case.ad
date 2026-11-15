@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 09_option_result/013_ok_value
+
+## Case: legacy-a2p-09-option-result-013-ok-value
+id: "legacy.a2p.09_option_result.013_ok_value"
+entry-mode: "program"
+
+### Auto
+path: "ok_value.at"
+```auto
+fn main() {
+    let val = Ok(42)
+    print(val)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### ok_value.expected.py
+```python
+def main():
+    val = 42
+    print(val)
+
+if __name__ == "__main__":
+    main()
+```

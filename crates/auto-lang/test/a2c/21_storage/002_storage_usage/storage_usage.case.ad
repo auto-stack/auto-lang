@@ -1,0 +1,195 @@
+# Legacy a2c corpus: 21_storage/002_storage_usage
+
+## Case: legacy-21-storage-002-storage-usage
+id: "legacy.21_storage.002_storage_usage"
+entry-mode: "program"
+
+### Auto
+path: "storage_usage.at"
+```auto
+// Test Plan 052: Storage usage with method calls
+
+spec Storage<T> {
+    fn data() *T
+    fn capacity() u32
+    fn try_grow(min_cap u32) bool
+}
+
+type Heap<T> as Storage<T> {
+    ptr *T
+    cap u32
+}
+
+type InlineInt64 as Storage<int> {
+    buffer [64]int
+}
+
+ext Heap {
+    #[c]
+    static fn new() Heap {
+        return Heap(ptr: 0 as *void, cap: 0)
+    }
+
+    #[c]
+    fn data() *void {
+        return .ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return .cap
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return .cap >= min_cap
+    }
+}
+
+ext InlineInt64 {
+    #[c]
+    static fn new() InlineInt64 {
+        return InlineInt64(buffer: [0])
+    }
+
+    #[c]
+    fn data() *int {
+        return .buffer.ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return 64
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 64
+    }
+}
+
+fn main() {
+    // Create heap storage
+    let heap = Heap.new()
+    let heap_data = heap.data()
+    let heap_cap = heap.capacity()
+    let can_grow_heap = heap.try_grow(100)
+
+    // Create inline storage
+    let inline = InlineInt64.new()
+    let inline_data = inline.data()
+    let inline_cap = inline.capacity()
+    let can_grow_inline = inline.try_grow(50)
+
+    return 0
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### storage_usage.expected.c
+```c
+#include "storage_usage.h"
+
+
+struct Heap Heap_New(struct Heap *self) {
+}
+void* Heap_Data(struct Heap *self) {
+}
+unsigned int Heap_Capacity(struct Heap *self) {
+}
+bool Heap_TryGrow(struct Heap *self, unsigned int) {
+}
+Storage_vtable Heap_Storage_vtable = {
+    .data = Heap_Data
+    .capacity = Heap_Capacity
+    .try_grow = Heap_TryGrow
+};
+
+Storage_void__vtable Heap_Storage_void__vtable = {
+    .data = Heap_Data
+    .capacity = Heap_Capacity
+    .try_grow = Heap_TryGrow
+};
+
+
+struct InlineInt64 InlineInt64_New(struct InlineInt64 *self) {
+}
+int* InlineInt64_Data(struct InlineInt64 *self) {
+}
+unsigned int InlineInt64_Capacity(struct InlineInt64 *self) {
+}
+bool InlineInt64_TryGrow(struct InlineInt64 *self, unsigned int) {
+}
+Storage_vtable InlineInt64_Storage_vtable = {
+    .data = InlineInt64_Data
+    .capacity = InlineInt64_Capacity
+    .try_grow = InlineInt64_TryGrow
+};
+
+Storage_int_vtable InlineInt64_Storage_int_vtable = {
+    .data = InlineInt64_Data
+    .capacity = InlineInt64_Capacity
+    .try_grow = InlineInt64_TryGrow
+};
+
+
+int main(void) {
+
+    struct Heap heap = Heap_New();
+    void* heap_data = Heap_Data(&heap);
+    unsigned int heap_cap = Heap_Capacity(&heap);
+    bool can_grow_heap = Heap_TryGrow(&heap, 100);
+
+
+    struct InlineInt64 inline = InlineInt64_New();
+    int* inline_data = InlineInt64_Data(&inline);
+    unsigned int inline_cap = InlineInt64_Capacity(&inline);
+    bool can_grow_inline = InlineInt64_TryGrow(&inline, 50);
+
+    return 0;
+}
+```
+
+#### storage_usage.expected.h
+```c
+#pragma once
+
+typedef struct Storage_vtable {
+    void (*data)(void *self);
+    void (*capacity)(void *self);
+    void (*try_grow)(void *self, unsigned int min_cap);
+} Storage_vtable;
+
+struct Heap {
+    void** ptr;
+    unsigned int cap;
+};
+
+struct Heap Heap_New(struct Heap *self);
+void* Heap_Data(struct Heap *self);
+unsigned int Heap_Capacity(struct Heap *self);
+bool Heap_TryGrow(struct Heap *self, unsigned int);
+typedef struct Storage_void__vtable {
+    void** (*data)(void *self);
+    unsigned int (*capacity)(void *self);
+    bool (*try_grow)(void *self, unsigned int min_cap);
+} Storage_void__vtable;
+
+struct InlineInt64 {
+    int[64] buffer;
+};
+
+struct InlineInt64 InlineInt64_New(struct InlineInt64 *self);
+int* InlineInt64_Data(struct InlineInt64 *self);
+unsigned int InlineInt64_Capacity(struct InlineInt64 *self);
+bool InlineInt64_TryGrow(struct InlineInt64 *self, unsigned int);
+typedef struct Storage_int_vtable {
+    void** (*data)(void *self);
+    unsigned int (*capacity)(void *self);
+    bool (*try_grow)(void *self, unsigned int min_cap);
+} Storage_int_vtable;
+
+
+```

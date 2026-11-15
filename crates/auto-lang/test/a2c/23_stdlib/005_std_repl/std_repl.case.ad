@@ -1,0 +1,77 @@
+# Legacy a2c corpus: 23_stdlib/005_std_repl
+
+## Case: legacy-23-stdlib-005-std-repl
+id: "legacy.23_stdlib.005_std_repl"
+entry-mode: "program"
+
+### Auto
+path: "std_repl.at"
+```auto
+use auto.io: getline, stdin
+use.c <stdlib.h>
+fn.c free(p cstr)
+
+fn main() {
+    var lineptr *char = null
+    var n int = 0
+
+    for {
+        print(c"Enter a line of text: ") // TODO: print without newline
+
+        let rn = getline(lineptr.@, n.@, stdin)
+
+        if rn != -1 {
+            if lineptr[0] == 'q' {
+                break
+            } else {
+                print("You entered:", lineptr)
+            }
+        } else {
+            print("Error reading line")
+        }
+    }
+
+    free(lineptr)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_repl.expected.c
+```c
+#include "std_repl.h"
+
+int main(void) {
+    char* lineptr = NULL;
+    int n = 0;
+
+    while (1) {
+        printf("%s\n", "Enter a line of text: ");
+
+        int rn = getline(&lineptr, &n, stdin);
+
+        if (rn != -1) {
+            if (lineptr[0] == 'q') {
+                break;
+            } else {
+                printf("%s %s\n", "You entered:", lineptr);
+            }
+        } else {
+            printf("%s\n", "Error reading line");
+        }
+    }
+
+    free(lineptr);
+    return 0;
+}
+```
+
+#### std_repl.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "auto/io.h"
+```

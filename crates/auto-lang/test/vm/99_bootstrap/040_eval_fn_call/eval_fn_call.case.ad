@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/040_eval_fn_call
+
+## Case: legacy-99-bootstrap-040-eval-fn-call
+id: "legacy.99_bootstrap.040_eval_fn_call"
+entry-mode: "program"
+
+### Auto
+path: "eval_fn_call.at"
+```auto
+// Test: eval — boolean print
+fn main() {
+    var r1 = run_eval("print(true)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:true
+
+```

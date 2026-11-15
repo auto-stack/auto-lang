@@ -1,0 +1,47 @@
+# Legacy a2c corpus: 03_control_flow/001_if_basic
+
+## Case: legacy-03-control-flow-001-if-basic
+id: "legacy.03_control_flow.001_if_basic"
+entry-mode: "program"
+
+### Auto
+path: "if_basic.at"
+```auto
+fn main() {
+    let x = 2
+
+    if x > 1 {
+        print("Great!")
+    } else {
+        print("Small!")
+    }
+
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### if_basic.expected.c
+```c
+#include "if_basic.h"
+
+int main(void) {
+    int x = 2;
+
+    if (x > 1) {
+        printf("%s\n", "Great!");
+    } else {
+        printf("%s\n", "Small!");
+    }
+
+    return 0;
+}
+```
+
+#### if_basic.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

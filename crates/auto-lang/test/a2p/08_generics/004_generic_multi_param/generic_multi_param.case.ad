@@ -1,0 +1,32 @@
+# Legacy a2p corpus: 08_generics/004_generic_multi_param
+
+## Case: legacy-a2p-08-generics-004-generic-multi-param
+id: "legacy.a2p.08_generics.004_generic_multi_param"
+entry-mode: "program"
+
+### Auto
+path: "generic_multi_param.at"
+```auto
+fn pair<K, V>(k K, v V) {
+    print("pair created")
+}
+
+fn main() {
+    pair("key", 42)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### generic_multi_param.expected.py
+```python
+def pair(k, v):
+    print("pair created")
+
+def main():
+    pair("key", 42)
+
+if __name__ == "__main__":
+    main()
+```

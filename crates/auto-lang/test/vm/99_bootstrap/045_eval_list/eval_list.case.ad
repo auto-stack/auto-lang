@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/045_eval_list
+
+## Case: legacy-99-bootstrap-045-eval-list
+id: "legacy.99_bootstrap.045_eval_list"
+entry-mode: "program"
+
+### Auto
+path: "eval_list.at"
+```auto
+// Test: eval — two prints
+fn main() {
+    var r1 = run_eval("print(100)
+print(200)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:100
+200
+
+```

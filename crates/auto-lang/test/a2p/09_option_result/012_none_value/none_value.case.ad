@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 09_option_result/012_none_value
+
+## Case: legacy-a2p-09-option-result-012-none-value
+id: "legacy.a2p.09_option_result.012_none_value"
+entry-mode: "program"
+
+### Auto
+path: "none_value.at"
+```auto
+fn main() {
+    let val = None
+    if val != None {
+        print("has value")
+    } else {
+        print("none")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### none_value.expected.py
+```python
+def main():
+    val = None
+    if val != None:
+        print("has value")
+    else:
+        print("none")
+
+if __name__ == "__main__":
+    main()
+```

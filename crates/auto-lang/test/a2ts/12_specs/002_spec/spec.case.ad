@@ -1,0 +1,84 @@
+# Legacy a2ts corpus: 12_specs/002_spec
+
+## Case: legacy-12-specs-002-spec
+id: "legacy.12_specs.002_spec"
+entry-mode: "program"
+
+### Auto
+path: "spec.at"
+```auto
+// a new spec that say's anything that conforms this Flyer spec should implement a fly() method.
+spec Flyer {
+    fn fly()
+}
+
+// a concreate type that conforms to the Flyer spec
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap Flap")
+    }
+}
+
+// a concreate type that conforms to the Flyer spec
+type Hawk as Flyer {
+    fn fly() {
+        print("Gawk! Gawk!")
+    }
+}
+
+fn main() {
+    // create an instance for each concrete type
+    let b1 = Pigeon()
+    let b2 = Hawk()
+
+    // As they both conform to the Flyer spec, we can store them in an array
+    // This is dynamic polymorphism at runtime
+    let arr []Flyer = [b1, b2]
+    for b in arr {
+        b.fly()
+    }
+}
+
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### spec.expected.ts
+```ts
+export interface Flyer { {
+    fly(): void;
+}
+
+
+export class Pigeon implements Flyer {
+
+    fly(): void {
+        console.log("Flap Flap");
+    }
+}
+
+export class Hawk implements Flyer {
+
+    fly(): void {
+        console.log("Gawk! Gawk!");
+    }
+}
+
+function main(): void {
+    
+
+    const b1 = new Pigeon();
+    const b2 = new Hawk();
+    
+
+
+
+    const arr: Flyer[] = [b1, b2];
+    for (const b of arr) {
+        b.fly();
+    }
+}
+
+main();
+```

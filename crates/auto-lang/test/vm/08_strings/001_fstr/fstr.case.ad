@@ -1,0 +1,19 @@
+# Legacy vm corpus: 08_strings/001_fstr
+
+## Case: legacy-08-strings-001-fstr
+id: "legacy.08_strings.001_fstr"
+entry-mode: "program"
+
+### Auto
+path: "fstr.at"
+```auto
+var name = "auto"
+f"hello $name, now!"
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+hello auto, now!
+```

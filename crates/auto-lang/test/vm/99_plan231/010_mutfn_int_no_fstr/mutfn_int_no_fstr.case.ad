@@ -1,0 +1,37 @@
+# Legacy vm corpus: 99_plan231/010_mutfn_int_no_fstr
+
+## Case: legacy-99-plan231-010-mutfn-int-no-fstr
+id: "legacy.99_plan231.010_mutfn_int_no_fstr"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_int_no_fstr.at"
+```auto
+// Test: mut fn returning int, no f-string
+type Counter {
+    count int
+
+    mut fn next() int {
+        self.count = self.count - 1
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let v1 = c.next()
+    print(v1)
+    let v2 = c.next()
+    print(v2)
+    print("mutfn int no fstr OK")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+2
+1
+mutfn int no fstr OK
+```

@@ -1,0 +1,20 @@
+# Legacy vm corpus: 09_functions/009_forward_decl
+
+## Case: legacy-09-functions-009-forward-decl
+id: "legacy.09_functions.009_forward_decl"
+entry-mode: "program"
+
+### Auto
+path: "forward_decl.at"
+```auto
+fn test() int;
+fn test() int { 42 }
+test()
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+42
+```

@@ -1,0 +1,22 @@
+# Legacy vm corpus: 16_option_result/016_is_err_match
+
+## Case: legacy-16-option-result-016-is-err-match
+id: "legacy.16_option_result.016_is_err_match"
+entry-mode: "program"
+
+### Auto
+path: "is_err_match.at"
+```auto
+let res = Err("fail")
+is res {
+  Ok(v) -> v
+  Err(e) -> -2
+}
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+-2
+```

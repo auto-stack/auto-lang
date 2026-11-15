@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 09_option_result/010_option_map
+
+## Case: legacy-09-option-result-010-option-map
+id: "legacy.09_option_result.010_option_map"
+entry-mode: "program"
+
+### Auto
+path: "option_map.at"
+```auto
+fn main() {
+    let x = Some(5)
+    let doubled = x.map(v => v * 2)
+    print(doubled)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### option_map.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 5;
+    const doubled = x.map((v) => v * 2);
+    console.log(doubled);
+}
+
+main();
+```

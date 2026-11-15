@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/010_string_ends_with
+
+## Case: legacy-18-ffi-010-string-ends-with
+id: "legacy.18_ffi.010_string_ends_with"
+entry-mode: "program"
+
+### Auto
+path: "string_ends_with.at"
+```auto
+Str.ends_with("hello", "llo")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

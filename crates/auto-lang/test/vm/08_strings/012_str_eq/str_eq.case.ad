@@ -1,0 +1,25 @@
+# Legacy vm corpus: 08_strings/012_str_eq
+
+## Case: legacy-08-strings-012-str-eq
+id: "legacy.08_strings.012_str_eq"
+entry-mode: "program"
+
+### Auto
+path: "str_eq.at"
+```auto
+let a = "hello"
+let b = "hello"
+let eq = a == b
+print(f"a == b: ${eq}")
+let c = "world"
+let ne = a == c
+print(f"a == c: ${ne}")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+a == b: true
+a == c: false
+```

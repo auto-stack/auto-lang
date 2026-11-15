@@ -1,0 +1,22 @@
+# Legacy vm corpus: 13_collections/018_sb_len
+
+## Case: legacy-13-collections-018-sb-len
+id: "legacy.13_collections.018_sb_len"
+entry-mode: "program"
+
+### Auto
+path: "sb_len.at"
+```auto
+var sb = StringBuilder.new(1024)
+sb.append("hello")
+var l = sb.len()
+sb.drop()
+l
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+5
+```

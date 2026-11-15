@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/069_bvm_str_len
+
+## Case: legacy-99-bootstrap-069-bvm-str-len
+id: "legacy.99_bootstrap.069_bvm_str_len"
+entry-mode: "program"
+
+### Auto
+path: "bvm_str_len.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar s = \"hello\"\nprint(s.len())\n}")
+    if result == "5\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

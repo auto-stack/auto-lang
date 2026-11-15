@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/003_file_is_dir
+
+## Case: legacy-18-ffi-003-file-is-dir
+id: "legacy.18_ffi.003_file_is_dir"
+entry-mode: "program"
+
+### Auto
+path: "file_is_dir.at"
+```auto
+File.is_dir("nonexistent_dir_xyz_12345")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+0
+```

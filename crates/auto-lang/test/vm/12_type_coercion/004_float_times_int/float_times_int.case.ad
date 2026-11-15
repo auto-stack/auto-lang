@@ -1,0 +1,18 @@
+# Legacy vm corpus: 12_type_coercion/004_float_times_int
+
+## Case: legacy-12-type-coercion-004-float-times-int
+id: "legacy.12_type_coercion.004_float_times_int"
+entry-mode: "program"
+
+### Auto
+path: "float_times_int.at"
+```auto
+2.5 * 4
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+10
+```

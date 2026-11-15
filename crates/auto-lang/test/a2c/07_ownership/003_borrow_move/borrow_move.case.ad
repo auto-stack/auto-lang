@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 07_ownership/003_borrow_move
+
+## Case: legacy-07-ownership-003-borrow-move
+id: "legacy.07_ownership.003_borrow_move"
+entry-mode: "program"
+
+### Auto
+path: "borrow_move.at"
+```auto
+// Test move (ownership transfer) expression
+// Plan 122: .move replaces deprecated .take
+fn main() {
+    let s1 = str_new("hello", 10)
+    let s2 = s1.move
+    print(str_len(s2))
+    // s1 is no longer valid here (would be compiler error in full implementation)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### borrow_move.expected.c
+```c
+#include "borrow_move.h"
+
+int main(void) {
+    unknown s1 = str_new("hello", 10);
+    unknown s2 = s1;
+    printf("%d\n", str_len(s2));
+
+    return 0;
+}
+```
+
+#### borrow_move.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

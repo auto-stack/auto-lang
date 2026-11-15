@@ -1,0 +1,48 @@
+# Legacy cookbook corpus: cookbook/algorithms/010_rand_custom
+
+## Case: legacy-cookbook-algorithms-010-rand-custom
+id: "legacy.cookbook.algorithms.010_rand_custom"
+entry-mode: "program"
+
+### Auto
+path: "rand_custom.at"
+```auto
+// Custom random distribution for Color enum
+use.rs rand
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn random_color() Color {
+    var rng = rand.thread_rng()
+    let n = rng.gen_range(0..3)
+    is n {
+        0 -> Color.Red,
+        1 -> Color.Green,
+        else -> Color.Blue
+    }
+}
+
+ext Color {
+    fn debug_str() str {
+        is self {
+            Color.Red -> "Red",
+            Color.Green -> "Green",
+            Color.Blue -> "Blue"
+        }
+    }
+}
+
+fn main() {
+    let color Color = random_color()
+    let name = color.debug_str()
+    // Verify debug_str returns one of the valid color names
+    assert(name == "Red" || name == "Green" || name == "Blue")
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

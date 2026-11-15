@@ -1,0 +1,20 @@
+# Legacy vm corpus: 06_arrays/003_array_update
+
+## Case: legacy-06-arrays-003-array-update
+id: "legacy.06_arrays.003_array_update"
+entry-mode: "program"
+
+### Auto
+path: "array_update.at"
+```auto
+var a = [1, 2, 3]
+a[0] = 4
+a
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+[4, 2, 3]
+```

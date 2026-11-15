@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 10_collections/002_array_index
+
+## Case: legacy-a2p-10-collections-002-array-index
+id: "legacy.a2p.10_collections.002_array_index"
+entry-mode: "program"
+
+### Auto
+path: "array_index.at"
+```auto
+fn main() {
+    let arr = [10, 20, 30]
+    let elem = arr[1]
+    print(elem)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### array_index.expected.py
+```python
+def main():
+    arr = [10, 20, 30]
+    elem = arr[1]
+    print(elem)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,31 @@
+# Legacy vm corpus: 10_types/012_enum_dot_match
+
+## Case: legacy-10-types-012-enum-dot-match
+id: "legacy.10_types.012_enum_dot_match"
+entry-mode: "program"
+
+### Auto
+path: "enum_dot_match.at"
+```auto
+enum Color { Red = 1, Green = 2, Blue = 3 }
+
+fn check(c int) str {
+    is c {
+        Color.Red -> "red"
+        Color.Green -> "green"
+        Color.Blue -> "blue"
+        else -> "unknown"
+    }
+}
+
+print(check(Color.Red))
+print(check(Color.Blue))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+red
+blue
+```

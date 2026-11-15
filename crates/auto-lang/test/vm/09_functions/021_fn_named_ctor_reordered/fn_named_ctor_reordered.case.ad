@@ -1,0 +1,27 @@
+# Legacy vm corpus: 09_functions/021_fn_named_ctor_reordered
+
+## Case: legacy-09-functions-021-fn-named-ctor-reordered
+id: "legacy.09_functions.021_fn_named_ctor_reordered"
+entry-mode: "program"
+
+### Auto
+path: "fn_named_ctor_reordered.at"
+```auto
+type Pair {
+    left int
+    right int
+}
+
+fn fan(p Pair) int {
+    p.left * 101 + p.right
+}
+
+fan(Pair { right: 2, left: 1 })
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+103
+```

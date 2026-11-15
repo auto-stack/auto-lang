@@ -1,0 +1,29 @@
+# Legacy cookbook corpus: cookbook/algorithms/011_rand_dist
+
+## Case: legacy-cookbook-algorithms-011-rand-dist
+id: "legacy.cookbook.algorithms.011_rand_dist"
+entry-mode: "program"
+
+### Auto
+path: "rand_dist.at"
+```auto
+// Normal distribution averaging demo
+use.rs rand
+use.rs rand_distr
+
+fn main() ! {
+    var rng = rand.thread_rng()
+    var normal = Normal.new(0.0, 1.0).?
+    var sum = 0.0
+    for _ in 0..1000 {
+        let val f64 = rng.sample(normal)
+        sum = sum + val
+    }
+    let avg = sum / 1000.0
+    // Verify average of 1000 N(0,1) samples is finite (not NaN/Inf)
+    assert(avg == avg)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

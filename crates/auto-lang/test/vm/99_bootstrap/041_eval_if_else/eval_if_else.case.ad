@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/041_eval_if_else
+
+## Case: legacy-99-bootstrap-041-eval-if-else
+id: "legacy.99_bootstrap.041_eval_if_else"
+entry-mode: "program"
+
+### Auto
+path: "eval_if_else.at"
+```auto
+// Test: eval — false boolean
+fn main() {
+    var r1 = run_eval("print(false)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:false
+
+```

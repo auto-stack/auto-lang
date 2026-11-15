@@ -1,0 +1,19 @@
+# Legacy vm corpus: 03_variables/001_var
+
+## Case: legacy-03-variables-001-var
+id: "legacy.03_variables.001_var"
+entry-mode: "program"
+
+### Auto
+path: "var.at"
+```auto
+var a = 1
+a+2
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+3
+```

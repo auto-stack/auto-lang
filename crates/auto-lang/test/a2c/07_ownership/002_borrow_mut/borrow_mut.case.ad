@@ -1,0 +1,40 @@
+# Legacy a2c corpus: 07_ownership/002_borrow_mut
+
+## Case: legacy-07-ownership-002-borrow-mut
+id: "legacy.07_ownership.002_borrow_mut"
+entry-mode: "program"
+
+### Auto
+path: "borrow_mut.at"
+```auto
+// Test mut (mutable borrow) expression
+fn main() {
+    let s = str_new("hello", 10)
+    let mut_ref = s.mut
+    str_append(mut_ref, " world")
+    print(s)  // s is modified in place
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### borrow_mut.expected.c
+```c
+#include "borrow_mut.h"
+
+int main(void) {
+    unknown s = str_new("hello", 10);
+    unknown mut_ref = &(s);
+    str_append(mut_ref, " world");
+    printf("%d\n", s);
+    return 0;
+}
+```
+
+#### borrow_mut.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

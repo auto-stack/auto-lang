@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: cookbook/datetime/006_parse_string
+
+## Case: legacy-cookbook-datetime-006-parse-string
+id: "legacy.cookbook.datetime.006_parse_string"
+entry-mode: "program"
+
+### Auto
+path: "parse_string.at"
+```auto
+dep chrono
+use.rs chrono::NaiveDateTime
+
+fn main() {
+    let dt = NaiveDateTime.parse_from_str("2024-01-15 10:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

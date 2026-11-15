@@ -1,0 +1,79 @@
+# Legacy a2c corpus: 06_pattern_matching/001_hetero_enum
+
+## Case: legacy-06-pattern-matching-001-hetero-enum
+id: "legacy.06_pattern_matching.001_hetero_enum"
+entry-mode: "program"
+
+### Auto
+path: "hetero_enum.at"
+```auto
+enum Atom {
+    Int int
+    Char char
+    Float float
+}
+
+fn main() {
+    let atom = Atom.Int(11)
+
+    is atom {
+        Atom.Int(i) -> print("Got Int:", i)
+        Atom.Char(c) -> print("Got Char:", c)
+        Atom.Float(f) -> print("Got Float:", f)
+    }
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### hetero_enum.expected.c
+```c
+#include "hetero_enum.h"
+
+
+int main(void) {
+    struct Atom atom = {.tag = ATOM_INT, .as.Int = 11};
+
+    switch (atom.tag) {
+    case ATOM_INT:
+        {
+            printf("%s %d\n", "Got Int:", atom.as.Int);
+        }
+        break;
+    case ATOM_CHAR:
+        {
+            printf("%s %c\n", "Got Char:", atom.as.Char);
+        }
+        break;
+    case ATOM_FLOAT:
+        {
+            printf("%s %f\n", "Got Float:", atom.as.Float);
+        }
+        break;
+    }
+    return 0;
+}
+```
+
+#### hetero_enum.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+enum AtomKind {
+    ATOM_INT,
+    ATOM_CHAR,
+    ATOM_FLOAT,
+};
+
+struct Atom {
+    enum AtomKind tag;
+    union {
+        int Int;
+        char Char;
+        float Float;
+    } as;
+};
+```

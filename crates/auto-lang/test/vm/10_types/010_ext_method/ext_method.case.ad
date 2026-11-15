@@ -1,0 +1,33 @@
+# Legacy vm corpus: 10_types/010_ext_method
+
+## Case: legacy-10-types-010-ext-method
+id: "legacy.10_types.010_ext_method"
+entry-mode: "program"
+
+### Auto
+path: "ext_method.at"
+```auto
+type Point { x int }
+
+ext Point {
+    static fn make(val int) int {
+        val
+    }
+
+    fn get_x(self) int {
+        self.x
+    }
+}
+
+let p = Point { x: 42 }
+print(p.get_x())
+print(Point.make(99))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+42
+99
+```

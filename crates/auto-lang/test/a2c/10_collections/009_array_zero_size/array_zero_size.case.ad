@@ -1,0 +1,23 @@
+# Legacy a2c corpus: 10_collections/009_array_zero_size
+
+## Case: legacy-10-collections-009-array-zero-size
+id: "legacy.10_collections.009_array_zero_size"
+entry-mode: "program"
+
+### Auto
+path: "array_zero_size.at"
+```auto
+let empty [0]int = []
+0
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_zero_size.expected.c
+```c
+int empty[0] = {};
+int main(void) {
+    return 0;
+}
+```

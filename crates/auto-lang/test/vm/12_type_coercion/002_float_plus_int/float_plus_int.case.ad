@@ -1,0 +1,18 @@
+# Legacy vm corpus: 12_type_coercion/002_float_plus_int
+
+## Case: legacy-12-type-coercion-002-float-plus-int
+id: "legacy.12_type_coercion.002_float_plus_int"
+entry-mode: "program"
+
+### Auto
+path: "float_plus_int.at"
+```auto
+3.5 + 2
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+5.5
+```

@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/os/001_env_variable
+
+## Case: legacy-cookbook-os-001-env-variable
+id: "legacy.cookbook.os.001_env_variable"
+entry-mode: "program"
+
+### Auto
+path: "env_variable.at"
+```auto
+fn main() {
+    env.set("AUTO_TEST_240", "hello")
+    let val = env.get_or("AUTO_TEST_240", "default")
+    assert(val == "hello")
+
+    let missing = env.get_or("AUTO_NONEXISTENT_240", "fallback")
+    assert(missing == "fallback")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

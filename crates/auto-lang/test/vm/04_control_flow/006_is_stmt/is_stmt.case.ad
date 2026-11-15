@@ -1,0 +1,24 @@
+# Legacy vm corpus: 04_control_flow/006_is_stmt
+
+## Case: legacy-04-control-flow-006-is-stmt
+id: "legacy.04_control_flow.006_is_stmt"
+entry-mode: "program"
+
+### Auto
+path: "is_stmt.at"
+```auto
+var x = 10
+is x {
+  10 -> {
+    print("Here is 10!")
+    x
+  }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+Here is 10!
+```

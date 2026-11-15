@@ -1,0 +1,25 @@
+# Legacy conformance corpus: 005_fstring
+
+## Case: legacy-conf-005-fstring
+id: "legacy.conf.005_fstring"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 005: f-string interpolation
+fn main() {
+    let name = "Auto"
+    let x = 10
+    print(f"hello $name")
+    print(f"$x + 1 = ${x + 1}")
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+hello Auto
+10 + 1 = 11
+```

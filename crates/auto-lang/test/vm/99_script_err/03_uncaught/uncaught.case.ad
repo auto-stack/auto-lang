@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_script_err/03_uncaught
+
+## Case: legacy-99-script-err-03-uncaught
+id: "legacy.99_script_err.03_uncaught"
+entry-mode: "program"
+
+### Auto
+path: "uncaught.as"
+syntax: "auto-script"
+```auto
+use.py builtins: int
+
+fn main() {
+    print("before")
+    var x = int("abc")
+    print("unreachable")
+}
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

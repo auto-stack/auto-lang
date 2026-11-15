@@ -1,0 +1,21 @@
+# Legacy vm corpus: 13_collections/020_list_new
+
+## Case: legacy-13-collections-020-list-new
+id: "legacy.13_collections.020_list_new"
+entry-mode: "program"
+
+### Auto
+path: "list_new.at"
+```auto
+var list = List.new()
+var empty = list.is_empty()
+list.drop()
+if empty { 1 } else { 0 }
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

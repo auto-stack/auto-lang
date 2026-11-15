@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 01_basics/002_sqrt
+
+## Case: legacy-01-basics-002-sqrt
+id: "legacy.01_basics.002_sqrt"
+entry-mode: "program"
+
+### Auto
+path: "sqrt.at"
+```auto
+use.c <math.h>
+
+fn.c sqrt(x double) double
+
+fn main() {
+    let x = 4.0d
+    let y double = sqrt(x)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### sqrt.expected.c
+```c
+#include "sqrt.h"
+
+int main(void) {
+    double x = 4.0;
+    double y = sqrt(x);
+    return 0;
+}
+```
+
+#### sqrt.expected.h
+```c
+#pragma once
+
+#include <math.h>
+```

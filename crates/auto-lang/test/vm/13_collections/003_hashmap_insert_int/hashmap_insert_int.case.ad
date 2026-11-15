@@ -1,0 +1,24 @@
+# Legacy vm corpus: 13_collections/003_hashmap_insert_int
+
+## Case: legacy-13-collections-003-hashmap-insert-int
+id: "legacy.13_collections.003_hashmap_insert_int"
+entry-mode: "program"
+
+### Auto
+path: "hashmap_insert_int.at"
+```auto
+var m = HashMap.new()
+m.insert_int("a", 42)
+m.insert_int("b", 25)
+var a = m.get_int("a")
+var b = m.get_int("b")
+m.drop()
+a + b
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+67
+```

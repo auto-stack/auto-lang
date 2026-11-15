@@ -1,0 +1,38 @@
+# Legacy a2p corpus: 09_option_result/006_propagate
+
+## Case: legacy-a2p-09-option-result-006-propagate
+id: "legacy.a2p.09_option_result.006_propagate"
+entry-mode: "program"
+
+### Auto
+path: "propagate.at"
+```auto
+fn test_propagate() int {
+    let x = 10
+    let y = x.?
+    y
+}
+
+fn main() {
+    let result = test_propagate()
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### propagate.expected.py
+```python
+def test_propagate() -> int:
+    x = 10
+    y = x
+    return y
+
+def main():
+    result = test_propagate()
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

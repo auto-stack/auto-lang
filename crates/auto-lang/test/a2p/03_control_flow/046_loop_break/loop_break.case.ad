@@ -1,0 +1,37 @@
+# Legacy a2p corpus: 03_control_flow/046_loop_break
+
+## Case: legacy-a2p-03-control-flow-046-loop-break
+id: "legacy.a2p.03_control_flow.046_loop_break"
+entry-mode: "program"
+
+### Auto
+path: "loop_break.at"
+```auto
+fn main() {
+    let x = 0
+    loop {
+        x = x + 1
+        if x > 5 {
+            break
+        }
+    }
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### loop_break.expected.py
+```python
+def main():
+    x = 0
+    for _ in None:
+        x = x + 1
+        if x > 5:
+            break
+    print(x)
+
+if __name__ == "__main__":
+    main()
+```

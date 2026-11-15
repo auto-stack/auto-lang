@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/050_eval_str_concat
+
+## Case: legacy-99-bootstrap-050-eval-str-concat
+id: "legacy.99_bootstrap.050_eval_str_concat"
+entry-mode: "program"
+
+### Auto
+path: "eval_str_concat.at"
+```auto
+// Test: eval — string concatenation
+fn main() {
+    var r1 = run_eval("print(\"a\" + \"b\")")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:ab
+
+```

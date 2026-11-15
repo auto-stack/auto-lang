@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 02_types/007_bool
+
+## Case: legacy-02-types-007-bool
+id: "legacy.02_types.007_bool"
+entry-mode: "program"
+
+### Auto
+path: "bool.at"
+```auto
+fn test_bool_return() bool {
+    1 == 1
+}
+
+fn main() {
+    let result = test_bool_return()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### bool.expected.c
+```c
+#include "bool.h"
+
+bool test_bool_return(void) {
+    return 1 == 1;
+}
+
+int main(void) {
+    unknown result = test_bool_return();
+    return 0;
+}
+```
+
+#### bool.expected.h
+```c
+#pragma once
+
+bool test_bool_return(void);
+```

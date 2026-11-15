@@ -1,0 +1,44 @@
+# Legacy a2ts corpus: 06_pattern_matching/004_nested_destructure
+
+## Case: legacy-06-pattern-matching-004-nested-destructure
+id: "legacy.06_pattern_matching.004_nested_destructure"
+entry-mode: "program"
+
+### Auto
+path: "nested_destructure.at"
+```auto
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point(3, 4)
+    print(p.x)
+    print(p.y)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### nested_destructure.expected.ts
+```ts
+export class Point {
+    x: number;
+    y: number;
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+function main(): void {
+    const p = new Point(3, 4);
+    console.log(p.x);
+    console.log(p.y);
+}
+
+main();
+```

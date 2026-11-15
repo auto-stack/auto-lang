@@ -1,0 +1,43 @@
+# Legacy a2c corpus: 08_generics/001_const_generics
+
+## Case: legacy-08-generics-001-const-generics
+id: "legacy.08_generics.001_const_generics"
+entry-mode: "program"
+
+### Auto
+path: "const_generics.at"
+```auto
+// Test const generic parameters in function definitions - Plan 052
+fn test_fn_with_const_param<T, N uint>(capacity N) int {
+    return 0
+}
+
+fn main() {
+    return 0
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### const_generics.expected.c
+```c
+#include "const_generics.h"
+
+int test_fn_with_const_param(unsigned int capacity) {
+    
+    return 0;
+}
+
+int main(void) {
+    
+    return 0;
+}
+```
+
+#### const_generics.expected.h
+```c
+#pragma once
+
+int test_fn_with_const_param(unsigned int capacity);
+```

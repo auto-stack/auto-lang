@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/005_str_slice_concat
+
+## Case: legacy-99-bootstrap-005-str-slice-concat
+id: "legacy.99_bootstrap.005_str_slice_concat"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_concat.at"
+```auto
+fn main() {
+    let src = "hello world"
+    let text = src[0..5]
+    print(text)
+    print("prefix:" + src[0..5])
+    print("a" + "b")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello
+prefix:hello
+ab
+```

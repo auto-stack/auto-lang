@@ -1,0 +1,32 @@
+# Legacy cookbook corpus: cookbook/concurrency/010_threadpool_walk
+
+## Case: legacy-cookbook-concurrency-010-threadpool-walk
+id: "legacy.cookbook.concurrency.010_threadpool_walk"
+entry-mode: "program"
+
+### Auto
+path: "threadpool_walk.at"
+```auto
+dep walkdir
+use.rs walkdir::WalkDir
+
+// Thread pool directory walk — simplified for VM (WalkDir shim returns entries)
+// Tests the pattern of collecting directory entries for parallel processing
+fn main() {
+    var dirs List<Str> = List.new()
+    dirs.push("src/")
+    dirs.push("docs/")
+    dirs.push("test/")
+    let count = dirs.len()
+    assert(count == 3)
+    for d in dirs {
+        assert(d.len() > 0)
+    }
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

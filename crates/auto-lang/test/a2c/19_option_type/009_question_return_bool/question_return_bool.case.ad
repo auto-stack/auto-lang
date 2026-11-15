@@ -1,0 +1,42 @@
+# Legacy a2c corpus: 19_option_type/009_question_return_bool
+
+## Case: legacy-19-option-type-009-question-return-bool
+id: "legacy.19_option_type.009_question_return_bool"
+entry-mode: "program"
+
+### Auto
+path: "question_return_bool.at"
+```auto
+fn test_question_return_bool() ?bool {
+    true
+}
+
+fn main() {
+    let result = test_question_return_bool()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_return_bool.expected.c
+```c
+#include "question_return_bool.h"
+
+bool test_question_return_bool(void) {
+    return true;
+}
+
+int main(void) {
+    unknown result = test_question_return_bool();
+    return 0;
+}
+```
+
+#### question_return_bool.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+bool test_question_return_bool(void);
+```

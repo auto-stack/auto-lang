@@ -1,0 +1,35 @@
+# Legacy a2ts corpus: 01_basics/007_nested_call
+
+## Case: legacy-01-basics-007-nested-call
+id: "legacy.01_basics.007_nested_call"
+entry-mode: "program"
+
+### Auto
+path: "nested_call.at"
+```auto
+fn double(x int) int {
+    x * 2
+}
+
+fn main() {
+    let result = double(double(5))
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### nested_call.expected.ts
+```ts
+export function double(x: number): number {
+    return x * 2;
+}
+
+function main(): void {
+    const result = double(double(5));
+    console.log(result);
+}
+
+main();
+```

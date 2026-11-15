@@ -1,0 +1,85 @@
+# Legacy a2c corpus: 06_pattern_matching/005_enum_smoke_3var
+
+## Case: legacy-06-pattern-matching-005-enum-smoke-3var
+id: "legacy.06_pattern_matching.005_enum_smoke_3var"
+entry-mode: "program"
+
+### Auto
+path: "enum_smoke_3var.at"
+```auto
+enum TriState {
+    On int
+    Off int
+    Unknown int
+}
+
+fn is_first(m TriState) bool {
+    is m {
+        TriState.On(x) -> true
+        TriState.Off(x) -> false
+        TriState.Unknown(x) -> false
+    }
+}
+
+fn main() {
+    let s = TriState.On()
+    is_first(s)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### enum_smoke_3var.expected.c
+```c
+#include "enum_smoke_3var.h"
+
+
+bool is_first(struct TriState m) {
+    switch (m.tag) {
+    case TRISTATE_ON:
+        {
+            return true;
+        }
+        break;
+    case TRISTATE_OFF:
+        {
+            return false;
+        }
+        break;
+    case TRISTATE_UNKNOWN:
+        {
+            return false;
+        }
+        break;
+    }
+    return false;
+}
+
+int main(void) {
+    struct TriState s = {.tag = TRISTATE_ON, .as.On = 0};
+    return is_first(s);
+}
+```
+
+#### enum_smoke_3var.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+enum TriStateKind {
+    TRISTATE_ON,
+    TRISTATE_OFF,
+    TRISTATE_UNKNOWN,
+};
+
+struct TriState {
+    enum TriStateKind tag;
+    union {
+        int On;
+        int Off;
+        int Unknown;
+    } as;
+};
+bool is_first(struct TriState m);
+```

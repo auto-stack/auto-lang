@@ -1,0 +1,59 @@
+# Legacy a2c corpus: 23_stdlib/009_advanced_io
+
+## Case: legacy-23-stdlib-009-advanced-io
+id: "legacy.23_stdlib.009_advanced_io"
+entry-mode: "program"
+
+### Auto
+path: "advanced_io.at"
+```auto
+use auto.io: File, open_write
+
+fn main() {
+    let file = open_write("seek_test.txt")
+    
+    // Write some data
+    file.puts("Hello")
+    
+    // Seek to beginning (SEEK_SET = 0)
+    file.seek(0, 0)
+    
+    // Get position
+    let pos = file.tell()
+    
+    // Rewind
+    file.rewind()
+    
+    file.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### advanced_io.expected.c
+```c
+#include "advanced_io.h"
+
+int main(void) {
+    unknown file = open_write("seek_test.txt");
+
+    file.puts("Hello");
+
+    file.seek(0, 0);
+
+    unknown pos = file.tell();
+
+    file.rewind();
+
+    file.close();
+    return 0;
+}
+```
+
+#### advanced_io.expected.h
+```c
+#pragma once
+
+#include "auto/io.h"
+```

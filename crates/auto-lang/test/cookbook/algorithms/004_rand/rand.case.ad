@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: cookbook/algorithms/004_rand
+
+## Case: legacy-cookbook-algorithms-004-rand
+id: "legacy.cookbook.algorithms.004_rand"
+entry-mode: "program"
+
+### Auto
+path: "rand.at"
+```auto
+// Random number generation demo
+use.rs rand
+
+fn main() {
+    var rng = rand.thread_rng()
+    let n int = rng.gen_range(0..100)
+    let in_range = n >= 0
+    assert(in_range)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

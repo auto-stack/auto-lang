@@ -1,0 +1,56 @@
+# Legacy a2c corpus: 24_runtime_size/001_runtime_size_var
+
+## Case: legacy-24-runtime-size-001-runtime-size-var
+id: "legacy.24_runtime_size.001_runtime_size_var"
+entry-mode: "program"
+
+### Auto
+path: "runtime_size_var.at"
+```auto
+// Test runtime-sized array allocation (Plan 052)
+// Variable-sized array using runtime size expression
+
+fn main() {
+    let size = 10
+    let arr [size]int
+
+    arr[0] = 42
+    arr[1] = 100
+
+    let first = arr[0]
+    let second = arr[1]
+
+    print("First:", first)
+    print("Second:", second)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### runtime_size_var.expected.c
+```c
+#include "runtime_size_var.h"
+
+int main(void) {
+    int size = 10;
+    int* arr = malloc(sizeof(int) * size);
+
+    arr[0] = 42;
+    arr[1] = 100;
+
+    int first = arr[0];
+    int second = arr[1];
+
+    printf("%s %d\n", "First:", first);
+    printf("%s %d\n", "Second:", second);
+    return 0;
+}
+```
+
+#### runtime_size_var.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

@@ -1,0 +1,24 @@
+# Legacy vm corpus: 13_collections/009_hashset_insert
+
+## Case: legacy-13-collections-009-hashset-insert
+id: "legacy.13_collections.009_hashset_insert"
+entry-mode: "program"
+
+### Auto
+path: "hashset_insert.at"
+```auto
+var s = HashSet.new()
+s.insert("a")
+s.insert("b")
+s.insert("c")
+var r = f"[${s.contains("a")}, ${s.contains("b")}, ${s.contains("c")}]"
+print(r)
+s.drop()
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+[1, 1, 1]
+```

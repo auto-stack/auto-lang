@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 01_basics/040_comments
+
+## Case: legacy-a2p-01-basics-040-comments
+id: "legacy.a2p.01_basics.040_comments"
+entry-mode: "program"
+
+### Auto
+path: "comments.at"
+```auto
+fn main() {
+    // This is a comment
+    let x = 42
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### comments.expected.py
+```python
+def main():
+
+    x = 42
+    print(x)
+
+if __name__ == "__main__":
+    main()
+```

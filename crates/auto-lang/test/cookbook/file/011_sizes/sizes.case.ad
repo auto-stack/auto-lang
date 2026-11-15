@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/file/011_sizes
+
+## Case: legacy-cookbook-file-011-sizes
+id: "legacy.cookbook.file.011_sizes"
+entry-mode: "program"
+
+### Auto
+path: "sizes.at"
+```auto
+use.rs std::fs
+
+fn main() ! {
+    var total = 0
+    let entries = fs.read_dir(".").?
+    for entry in entries {
+        let entry = entry.?
+        let meta = entry.metadata().?
+        total = total + meta.len()
+    }
+    assert(total >= 0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

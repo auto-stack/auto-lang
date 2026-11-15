@@ -1,0 +1,22 @@
+# Legacy vm corpus: 14_borrow/007_borrow_arithmetic
+
+## Case: legacy-14-borrow-007-borrow-arithmetic
+id: "legacy.14_borrow.007_borrow_arithmetic"
+entry-mode: "program"
+
+### Auto
+path: "borrow_arithmetic.at"
+```auto
+let x = 5
+let y = 6
+let vx = x.view
+let vy = y.view
+vx * vy
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+30
+```

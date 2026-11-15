@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/089_a2r_enum
+
+## Case: legacy-99-bootstrap-089-a2r-enum
+id: "legacy.99_bootstrap.089_a2r_enum"
+entry-mode: "program"
+
+### Auto
+path: "a2r_enum.at"
+```auto
+fn main() {
+    var result = run_a2r("enum Color {\nRED = 1\nGREEN = 2\n}\nfn main() {\nprint(42)\n}")
+    var expected = "#[derive(Clone, Debug, PartialEq)]\nenum Color {\n    RED = 1,\n    GREEN = 2,\n}\nfn main() {\n    println!(\"{}\", 42);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

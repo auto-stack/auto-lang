@@ -1,0 +1,24 @@
+# Legacy vm corpus: 25_method_u64/007_other_i64_methods
+
+## Case: legacy-25-method-u64-007-other-i64-methods
+id: "legacy.25_method_u64.007_other_i64_methods"
+entry-mode: "program"
+
+### Auto
+path: "other_i64_methods.at"
+```auto
+let s = "hello"
+print(s.len())
+let arr = [1, 2, 3]
+print(arr.len())
+print(s.len() + 10)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+5
+3
+15
+```

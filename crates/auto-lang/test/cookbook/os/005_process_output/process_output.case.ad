@@ -1,0 +1,21 @@
+# Legacy cookbook corpus: cookbook/os/005_process_output
+
+## Case: legacy-cookbook-os-005-process-output
+id: "legacy.cookbook.os.005_process_output"
+entry-mode: "program"
+
+### Auto
+path: "process_output.at"
+```auto
+use.rs std::process::Command
+
+fn main() {
+    let output = Command.new("ls").args(["-la"]).output().unwrap()
+    let stdout = String.from_utf8(output.stdout).unwrap()
+    // Verify ls command produces output
+    assert(stdout.len() > 0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

@@ -1,0 +1,29 @@
+# Legacy vm corpus: 18_ffi/049_url_parts
+
+## Case: legacy-18-ffi-049-url-parts
+id: "legacy.18_ffi.049_url_parts"
+entry-mode: "program"
+
+### Auto
+path: "url_parts.at"
+```auto
+let url = "https://example.com:8080/path/to/page?name=test#section"
+print(Url.scheme(url))
+print(Url.host(url))
+print(Url.port(url))
+print(Url.path(url))
+print(Url.query(url))
+print(Url.fragment(url))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+https
+example.com
+8080
+/path/to/page
+name=test
+section
+```

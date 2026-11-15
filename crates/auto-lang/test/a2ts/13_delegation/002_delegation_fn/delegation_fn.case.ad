@@ -1,0 +1,69 @@
+# Legacy a2ts corpus: 13_delegation/002_delegation_fn
+
+## Case: legacy-13-delegation-002-delegation-fn
+id: "legacy.13_delegation.002_delegation_fn"
+entry-mode: "program"
+
+### Auto
+path: "delegation_fn.at"
+```auto
+type Inner {
+    value int
+
+    fn get_value(self) int {
+        self.value
+    }
+}
+
+type Outer {
+    inner Inner
+
+    fn get_inner_value(self) int {
+        self.inner.get_value()
+    }
+}
+
+fn main() {
+    let i = Inner(42)
+    let o = Outer(i)
+    print(o.get_inner_value())
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### delegation_fn.expected.ts
+```ts
+export class Inner {
+    value: number;
+
+    constructor(value: number) {
+        this.value = value;
+    }
+
+    get_value(): number {
+        return value;
+    }
+}
+
+export class Outer {
+    inner: Inner;
+
+    constructor(inner: Inner) {
+        this.inner = inner;
+    }
+
+    get_inner_value(): number {
+        return inner.get_value();
+    }
+}
+
+function main(): void {
+    const i = new Inner(42);
+    const o = new Outer(i);
+    console.log(o.get_inner_value());
+}
+
+main();
+```

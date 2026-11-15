@@ -1,0 +1,22 @@
+# Legacy vm corpus: 05_loops/001_for_range
+
+## Case: legacy-05-loops-001-for-range
+id: "legacy.05_loops.001_for_range"
+entry-mode: "program"
+
+### Auto
+path: "for_range.at"
+```auto
+var sum = 0
+for i in 0..10 {
+  sum = sum + i
+}
+sum
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+45
+```

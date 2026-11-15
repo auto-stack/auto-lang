@@ -1,0 +1,42 @@
+# Legacy a2ts corpus: 08_generics/003_generic_struct
+
+## Case: legacy-08-generics-003-generic-struct
+id: "legacy.08_generics.003_generic_struct"
+entry-mode: "program"
+
+### Auto
+path: "generic_struct.at"
+```auto
+type Pair {
+    first int
+    second int
+}
+
+fn main() {
+    let p = Pair(1, 2)
+    print(p.first)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### generic_struct.expected.ts
+```ts
+export class Pair {
+    first: number;
+    second: number;
+
+    constructor(first: number, second: number) {
+        this.first = first;
+        this.second = second;
+    }
+}
+
+function main(): void {
+    const p = new Pair(1, 2);
+    console.log(p.first);
+}
+
+main();
+```

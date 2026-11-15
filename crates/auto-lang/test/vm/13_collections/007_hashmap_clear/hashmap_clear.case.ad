@@ -1,0 +1,24 @@
+# Legacy vm corpus: 13_collections/007_hashmap_clear
+
+## Case: legacy-13-collections-007-hashmap-clear
+id: "legacy.13_collections.007_hashmap_clear"
+entry-mode: "program"
+
+### Auto
+path: "hashmap_clear.at"
+```auto
+var m = HashMap.new()
+m.insert_str("a", "1")
+m.insert_str("b", "2")
+m.clear()
+var s = m.size()
+m.drop()
+s
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+0
+```

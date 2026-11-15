@@ -1,0 +1,21 @@
+# Legacy cookbook corpus: cookbook/concurrency/005_rayon_iter_mut
+
+## Case: legacy-cookbook-concurrency-005-rayon-iter-mut
+id: "legacy.cookbook.concurrency.005_rayon_iter_mut"
+entry-mode: "program"
+
+### Auto
+path: "rayon_iter_mut.at"
+```auto
+fn main() {
+    var v = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+    assert(v[0] == 2)
+    assert(v[9] == 20)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

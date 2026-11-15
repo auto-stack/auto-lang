@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/cryptography/001_sha_digest
+
+## Case: legacy-cookbook-cryptography-001-sha-digest
+id: "legacy.cookbook.cryptography.001_sha_digest"
+entry-mode: "program"
+
+### Auto
+path: "sha_digest.at"
+```auto
+dep sha2
+use.rs sha2::Sha256
+use.rs sha2::Digest
+
+fn main() {
+    var hasher = Sha256.new()
+    hasher.update(b"hello world")
+    let result = hasher.finalize()
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

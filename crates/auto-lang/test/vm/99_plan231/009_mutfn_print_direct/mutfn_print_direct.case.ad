@@ -1,0 +1,35 @@
+# Legacy vm corpus: 99_plan231/009_mutfn_print_direct
+
+## Case: legacy-99-plan231-009-mutfn-print-direct
+id: "legacy.99_plan231.009_mutfn_print_direct"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_print_direct.at"
+```auto
+// Test: mut fn + direct print after calls (no f-string)
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+}
+
+fn main() {
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    print(c.count)
+    print("mutfn print direct OK")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+mutfn print direct OK
+```

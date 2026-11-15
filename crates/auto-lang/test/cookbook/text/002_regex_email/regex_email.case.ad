@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/text/002_regex_email
+
+## Case: legacy-cookbook-text-002-regex-email
+id: "legacy.cookbook.text.002_regex_email"
+entry-mode: "program"
+
+### Auto
+path: "regex_email.at"
+```auto
+use.rs regex::Regex
+
+fn main() {
+    let re = Regex.new(c"[a-z]+@[a-z]+\.[a-z]+").unwrap()
+    let text = "Contact user@example.com for info"
+    let matched = re.is_match(text)
+    assert(matched == true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

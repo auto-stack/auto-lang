@@ -1,0 +1,18 @@
+# Legacy vm corpus: 05_loops/003_range_literal
+
+## Case: legacy-05-loops-003-range-literal
+id: "legacy.05_loops.003_range_literal"
+entry-mode: "program"
+
+### Auto
+path: "range_literal.at"
+```auto
+1..5
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1..5
+```

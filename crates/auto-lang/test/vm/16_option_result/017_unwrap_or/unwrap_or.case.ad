@@ -1,0 +1,26 @@
+# Legacy vm corpus: 16_option_result/017_unwrap_or
+
+## Case: legacy-16-option-result-017-unwrap-or
+id: "legacy.16_option_result.017_unwrap_or"
+entry-mode: "program"
+
+### Auto
+path: "unwrap_or.at"
+```auto
+let a = Some(42)
+let b = a.?(0)
+assert_eq(b, 42)
+
+let c = None
+let d = c.?(99)
+assert_eq(d, 99)
+
+print("dot_quest_default: all passed")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+dot_quest_default: all passed
+```

@@ -1,0 +1,19 @@
+# Legacy vm corpus: 07_objects/003_object_field_bool_key
+
+## Case: legacy-07-objects-003-object-field-bool-key
+id: "legacy.07_objects.003_object_field_bool_key"
+entry-mode: "program"
+
+### Auto
+path: "object_field_bool_key.at"
+```auto
+var a = { true: 2, false: 4 }
+a.false
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+4
+```

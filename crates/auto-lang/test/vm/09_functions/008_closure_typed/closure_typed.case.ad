@@ -1,0 +1,19 @@
+# Legacy vm corpus: 09_functions/008_closure_typed
+
+## Case: legacy-09-functions-008-closure-typed
+id: "legacy.09_functions.008_closure_typed"
+entry-mode: "program"
+
+### Auto
+path: "closure_typed.at"
+```auto
+let sub = (a int, b int) => a - b
+sub(12, 5)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+7
+```

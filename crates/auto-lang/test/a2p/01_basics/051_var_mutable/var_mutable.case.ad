@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 01_basics/051_var_mutable
+
+## Case: legacy-a2p-01-basics-051-var-mutable
+id: "legacy.a2p.01_basics.051_var_mutable"
+entry-mode: "program"
+
+### Auto
+path: "var_mutable.at"
+```auto
+fn main() {
+    var x = 10
+    x = 20
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### var_mutable.expected.py
+```python
+def main():
+    x = 10
+    x = 20
+    print(x)
+
+if __name__ == "__main__":
+    main()
+```

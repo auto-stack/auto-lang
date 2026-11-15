@@ -1,0 +1,30 @@
+# Legacy cookbook corpus: cookbook/file/014_read_lines_temp
+
+## Case: legacy-cookbook-file-014-read-lines-temp
+id: "legacy.cookbook.file.014_read_lines_temp"
+entry-mode: "program"
+
+### Auto
+path: "read_lines_temp.at"
+```auto
+use.rs std::fs
+
+fn main() {
+    let content = "line1\nline2\nline3"
+    let path = "test_temp.txt"
+    File.write_text(path, content)
+    let lines = File.read_text(path)
+    var line_count = 0
+    for line in lines.lines() {
+        line_count += 1
+    }
+    assert(line_count == 3)
+    File.delete(path)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

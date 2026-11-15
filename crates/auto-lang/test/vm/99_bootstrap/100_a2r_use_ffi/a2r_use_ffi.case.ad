@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/100_a2r_use_ffi
+
+## Case: legacy-99-bootstrap-100-a2r-use-ffi
+id: "legacy.99_bootstrap.100_a2r_use_ffi"
+entry-mode: "program"
+
+### Auto
+path: "a2r_use_ffi.at"
+```auto
+fn main() {
+    var result = run_a2r("use.c\nfn main() {\nprint(42)\n}")
+    var expected = "// extern \"C\" { /* use.c */ }\nfn main() {\n    println!(\"{}\", 42);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

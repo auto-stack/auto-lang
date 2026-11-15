@@ -1,0 +1,59 @@
+# Legacy a2c corpus: 02_types/004_pointer
+
+## Case: legacy-02-types-004-pointer
+id: "legacy.02_types.004_pointer"
+entry-mode: "program"
+
+### Auto
+path: "pointer.at"
+```auto
+fn inc(a *int) {
+    a.* += 1
+}
+
+fn main() {
+    var x = 5;
+    print("x = ", x)
+    var y *int = x.@
+    print("y = ", y.*)
+    y.* += 1
+    print("now x is", x)
+
+    inc(x.@)
+    print("now x is", x)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### pointer.expected.c
+```c
+#include "pointer.h"
+
+void inc(int* a) {
+    *a += 1;
+}
+
+int main(void) {
+    int x = 5;
+    printf("%s %d\n", "x = ", x);
+    int* y = &x;
+    printf("%s %d\n", "y = ", *y);
+    *y += 1;
+    printf("%s %d\n", "now x is", x);
+
+    inc(&x);
+    printf("%s %d\n", "now x is", x);
+    return 0;
+}
+```
+
+#### pointer.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+void inc(int* a);
+```

@@ -1,0 +1,20 @@
+# Legacy vm corpus: 16_option_result/010_propagate_err
+
+## Case: legacy-16-option-result-010-propagate-err
+id: "legacy.16_option_result.010_propagate_err"
+entry-mode: "program"
+
+### Auto
+path: "propagate_err.at"
+```auto
+let x = Err("error")
+let y = x.?
+y
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+4000000
+```

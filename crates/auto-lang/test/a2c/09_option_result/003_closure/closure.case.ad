@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 09_option_result/003_closure
+
+## Case: legacy-09-option-result-003-closure
+id: "legacy.09_option_result.003_closure"
+entry-mode: "program"
+
+### Auto
+path: "closure.at"
+```auto
+fn main() {
+    let add = (a int, b int) => a + b
+    let result = add(5, 3)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### closure.expected.c
+```c
+#include "closure.h"
+
+int main(void) {
+    int (*)(int, int) add = closure_0;
+    int result = add(5, 3);
+    return 0;
+}
+
+int closure_0(int a, int b) {
+    return a + b;
+}
+```
+
+#### closure.expected.h
+```c
+#pragma once
+
+int closure_0(int a, int b);
+```

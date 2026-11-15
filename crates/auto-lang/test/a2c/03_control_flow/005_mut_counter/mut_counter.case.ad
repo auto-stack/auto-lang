@@ -1,0 +1,35 @@
+# Legacy a2c corpus: 03_control_flow/005_mut_counter
+
+## Case: legacy-03-control-flow-005-mut-counter
+id: "legacy.03_control_flow.005_mut_counter"
+entry-mode: "program"
+
+### Auto
+path: "mut_counter.at"
+```auto
+fn main() int {
+    var i = 0
+    for i < 5 {
+        i = i + 1
+    }
+    i
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### mut_counter.expected.c
+```c
+int main(void) {
+    int i = 0;
+    while (i < 5) {
+        i = i + 1;
+    }
+    return i;
+}
+```
+
+#### mut_counter.expected.h
+```c
+```

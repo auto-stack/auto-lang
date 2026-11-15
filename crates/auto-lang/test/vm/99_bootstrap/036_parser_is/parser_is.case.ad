@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_bootstrap/036_parser_is
+
+## Case: legacy-99-bootstrap-036-parser-is
+id: "legacy.99_bootstrap.036_parser_is"
+entry-mode: "program"
+
+### Auto
+path: "parser_is.at"
+```auto
+// Test: is/match — is x { 1 -> true else -> false }
+fn main() {
+    let source = "is x {\n    1 -> true\n    else -> false\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+(is x (-> 1 true) (else false))
+```

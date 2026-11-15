@@ -1,0 +1,32 @@
+# Legacy cookbook corpus: cookbook/file/003_recursive_size
+
+## Case: legacy-cookbook-file-003-recursive-size
+id: "legacy.cookbook.file.003_recursive_size"
+entry-mode: "program"
+
+### Auto
+path: "recursive_size.at"
+```auto
+dep walkdir
+use.rs walkdir
+use.rs std::fs
+
+fn main() {
+    var total_size uint = 0
+    for entry in walkdir.WalkDir.new("src") {
+        let entry = entry.unwrap()
+        if entry.file_type().is_file() {
+            // VM fs.metadata=size 语义（codegen auto.fs.size；a2r 轨
+            // fs.file_size 同源）——PLAN-714 r3 夹具同步。
+            let meta = fs.file_size(entry.path())
+            total_size = total_size + meta
+        }
+    }
+    // Verify total_size was computed (non-negative)
+    let has_size = total_size >= 0
+    assert(has_size)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

@@ -1,0 +1,59 @@
+# Legacy a2ts corpus: 13_delegation/001_delegation
+
+## Case: legacy-13-delegation-001-delegation
+id: "legacy.13_delegation.001_delegation"
+entry-mode: "program"
+
+### Auto
+path: "delegation.at"
+```auto
+// Test member-level delegation syntax
+spec Engine {
+    fn start()
+}
+
+type WarpDrive {
+    fn start() {
+        print("WarpDrive engaging")
+    }
+}
+
+// Note: No 'as Engine' declaration to avoid trait checking for now
+// (delegation-based trait checking to be implemented)
+type Starship {
+    has core WarpDrive for Engine
+}
+
+fn main() {
+    let ship = Starship()
+    ship.start()
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### delegation.expected.ts
+```ts
+export interface Engine { {
+    start(): void;
+}
+
+
+export class WarpDrive {
+
+    start(): void {
+        console.log("WarpDrive engaging");
+    }
+}
+
+export class Starship {
+}
+
+function main(): void {
+    const ship = new Starship();
+    ship.start();
+}
+
+main();
+```

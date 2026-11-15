@@ -1,0 +1,33 @@
+# Legacy vm corpus: 23_actor/005_state_write
+
+## Case: legacy-23-actor-005-state-write
+id: "legacy.23_actor.005_state_write"
+entry-mode: "program"
+
+### Auto
+path: "state_write.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = 42
+            print("handler ran")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+handler ran
+```

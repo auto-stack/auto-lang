@@ -1,0 +1,18 @@
+# Legacy vm corpus: 01_basics/009_comp_false
+
+## Case: legacy-01-basics-009-comp-false
+id: "legacy.01_basics.009_comp_false"
+entry-mode: "program"
+
+### Auto
+path: "comp_false.at"
+```auto
+2 < 1
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+false
+```

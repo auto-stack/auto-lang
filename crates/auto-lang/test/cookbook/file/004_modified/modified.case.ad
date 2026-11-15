@@ -1,0 +1,31 @@
+# Legacy cookbook corpus: cookbook/file/004_modified
+
+## Case: legacy-cookbook-file-004-modified
+id: "legacy.cookbook.file.004_modified"
+entry-mode: "program"
+
+### Auto
+path: "modified.at"
+```auto
+dep walkdir
+use.rs walkdir
+use.rs std::fs
+
+fn main() {
+    for entry in walkdir.WalkDir.new("src").into_iter().filter_map(e => e.ok()) {
+        if entry.file_type().is_file() {
+            // VM fs.metadata=size 语义（codegen auto.fs.size）——原
+            // modified 列随内建 size 化退役；夹具同步为 size 清单形。
+            let meta = fs.file_size(entry.path())
+            print(f"${entry.path().display()}: ${meta}")
+        }
+    }
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

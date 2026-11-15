@@ -1,0 +1,29 @@
+# Legacy vm corpus: 10_types/034_struct_str_field
+
+## Case: legacy-10-types-034-struct-str-field
+id: "legacy.10_types.034_struct_str_field"
+entry-mode: "program"
+
+### Auto
+path: "struct_str_field.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let n = Note { id: 1, title: "hello" }
+    if n.title == "hello" {
+        print("title ok")
+    }
+    if n.id == 1 {
+        print("id ok")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+title ok
+id ok
+```

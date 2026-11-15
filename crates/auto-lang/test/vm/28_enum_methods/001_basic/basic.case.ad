@@ -1,0 +1,29 @@
+# Legacy vm corpus: 28_enum_methods/001_basic
+
+## Case: legacy-28-enum-methods-001-basic
+id: "legacy.28_enum_methods.001_basic"
+entry-mode: "program"
+
+### Auto
+path: "basic.at"
+```auto
+pub enum Color {
+    Red
+    Green
+    fn name() str {
+        return "called-ok"
+    }
+}
+pub fn main() {
+    print(Color.Red.name())
+    print(Color.Green.name())
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+called-ok
+called-ok
+```

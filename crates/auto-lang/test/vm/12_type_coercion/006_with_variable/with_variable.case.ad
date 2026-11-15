@@ -1,0 +1,19 @@
+# Legacy vm corpus: 12_type_coercion/006_with_variable
+
+## Case: legacy-12-type-coercion-006-with-variable
+id: "legacy.12_type_coercion.006_with_variable"
+entry-mode: "program"
+
+### Auto
+path: "with_variable.at"
+```auto
+let x = 2
+x + 3.5
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+5.5
+```

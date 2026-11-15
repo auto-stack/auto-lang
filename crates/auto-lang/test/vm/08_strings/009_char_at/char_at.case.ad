@@ -1,0 +1,20 @@
+# Legacy vm corpus: 08_strings/009_char_at
+
+## Case: legacy-08-strings-009-char-at
+id: "legacy.08_strings.009_char_at"
+entry-mode: "program"
+
+### Auto
+path: "char_at.at"
+```auto
+let a = "hello"
+let c0 = a[0]
+print(c0)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+104
+```

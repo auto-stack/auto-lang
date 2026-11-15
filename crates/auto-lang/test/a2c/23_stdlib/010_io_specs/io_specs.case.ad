@@ -1,0 +1,86 @@
+# Legacy a2c corpus: 23_stdlib/010_io_specs
+
+## Case: legacy-23-stdlib-010-io-specs
+id: "legacy.23_stdlib.010_io_specs"
+entry-mode: "program"
+
+### Auto
+path: "io_specs.at"
+```auto
+// Test basic spec polymorphism
+
+spec Reader {
+    fn read() str
+}
+
+type MyReader as Reader {
+    data str
+
+    fn read() str {
+        .data
+    }
+}
+
+fn main() {
+    let reader = MyReader("Hello, spec!")
+
+    // Test polymorphic array
+    let readers []Reader = [reader]
+    for r in readers {
+        let text = r.read()
+        print(text)
+    }
+
+    print("Test passed!")
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### io_specs.expected.c
+```c
+#include "io_specs.h"
+
+
+char* MyReader_Read(struct MyReader *self) {
+    return self->data;
+}
+Reader_vtable MyReader_Reader_vtable = {
+    .read = MyReader_Read
+};
+
+
+int main(void) {
+    struct MyReader reader = {.data = "Hello, spec!"};
+
+
+    void* readers[1] = {&reader};
+    for (int i = 0; i < 0; i++) {
+        void* r = readers[i];
+        unknown text = r.read();
+        printf("%d\n", text);
+    }
+
+    printf("%s\n", "Test passed!");
+    return 0;
+}
+```
+
+#### io_specs.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+typedef struct Reader_vtable {
+    void (*read)(void *self);
+} Reader_vtable;
+
+struct MyReader {
+    char* data;
+};
+
+char* MyReader_Read(struct MyReader *self);
+
+```

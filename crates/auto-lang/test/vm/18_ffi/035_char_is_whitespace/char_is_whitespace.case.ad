@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/035_char_is_whitespace
+
+## Case: legacy-18-ffi-035-char-is-whitespace
+id: "legacy.18_ffi.035_char_is_whitespace"
+entry-mode: "program"
+
+### Auto
+path: "char_is_whitespace.at"
+```auto
+Char.is_whitespace(32)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

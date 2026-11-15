@@ -1,0 +1,24 @@
+# Legacy vm corpus: 17_modules/001_use_fn
+
+## Case: legacy-17-modules-001-use-fn
+id: "legacy.17_modules.001_use_fn"
+entry-mode: "program"
+
+### Auto
+path: "use_fn.at"
+```auto
+use auto.greet_mod: greet, add
+
+pub fn main() {
+    greet("world")
+    print(add(1, 2))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+world
+3
+```

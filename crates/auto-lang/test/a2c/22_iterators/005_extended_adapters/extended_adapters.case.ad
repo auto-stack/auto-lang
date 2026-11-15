@@ -1,0 +1,104 @@
+# Legacy a2c corpus: 22_iterators/005_extended_adapters
+
+## Case: legacy-22-iterators-005-extended-adapters
+id: "legacy.22_iterators.005_extended_adapters"
+entry-mode: "program"
+
+### Auto
+path: "extended_adapters.at"
+```auto
+// Test Extended Adapters - Plan 051 Phase 6
+// Test limit, skip, enumerate, zip, and chain adapters
+
+use auto.list: List
+
+fn main() {
+    // Create two lists
+    let list1 = List.new()
+    list1.push(1)
+    list1.push(2)
+    list1.push(3)
+    list1.push(4)
+    list1.push(5)
+
+    let list2 = List.new()
+    list2.push(10)
+    list2.push(20)
+    list2.push(30)
+    list2.push(40)
+    list2.push(50)
+
+    // Test limit: limit to first 3 elements
+    // Should count 3 elements
+    let limited = list1.iter().limit(3)
+    say(limited.count())
+
+    // Test skip: skip first 2 elements
+    // Should count 3 remaining elements
+    let skipped = list1.iter().skip(2)
+    say(skipped.count())
+
+    // Test enumerate: get elements with indices
+    // Should count 5 elements
+    let enumerated = list1.iter().enumerate()
+    say(enumerated.count())
+
+    // Test zip: combine two lists
+    // Should have 5 pairs
+    let zipped = list1.iter().zip(list2.iter())
+    say(zipped.count())
+
+    // Test chain: concatenate two iterators
+    // Should have 10 elements total
+    let chained = list1.iter().chain(list2.iter())
+    say(chained.count())
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### extended_adapters.expected.c
+```c
+#include "extended_adapters.h"
+
+int main(void) {
+
+    unknown list1 = List.new();
+    list1.push(1);
+    list1.push(2);
+    list1.push(3);
+    list1.push(4);
+    list1.push(5);
+
+    unknown list2 = List.new();
+    list2.push(10);
+    list2.push(20);
+    list2.push(30);
+    list2.push(40);
+    list2.push(50);
+
+    unknown limited = list1.iter().limit(3);
+    say(limited.count());
+
+    unknown skipped = list1.iter().skip(2);
+    say(skipped.count());
+
+    unknown enumerated = list1.iter().enumerate();
+    say(enumerated.count());
+
+    unknown zipped = list1.iter().zip(list2.iter());
+    say(zipped.count());
+
+    unknown chained = list1.iter().chain(list2.iter());
+    say(chained.count());
+    return 0;
+}
+```
+
+#### extended_adapters.expected.h
+```c
+#pragma once
+
+#include "auto/list.h"
+```

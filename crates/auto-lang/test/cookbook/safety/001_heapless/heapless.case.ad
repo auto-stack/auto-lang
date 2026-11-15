@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/safety/001_heapless
+
+## Case: legacy-cookbook-safety-001-heapless
+id: "legacy.cookbook.safety.001_heapless"
+entry-mode: "program"
+
+### Auto
+path: "heapless.at"
+```auto
+fn main() {
+    // Simplified test: use a regular list to simulate heapless buffer
+    var buf = List.new()
+    buf.push(1)
+    buf.push(2)
+    buf.push(3)
+    assert(buf.len() == 3)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

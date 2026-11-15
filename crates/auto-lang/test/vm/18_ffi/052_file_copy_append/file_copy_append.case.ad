@@ -1,0 +1,22 @@
+# Legacy vm corpus: 18_ffi/052_file_copy_append
+
+## Case: legacy-18-ffi-052-file-copy-append
+id: "legacy.18_ffi.052_file_copy_append"
+entry-mode: "program"
+
+### Auto
+path: "file_copy_append.at"
+```auto
+File.write_text("tmp_test_vm_append.txt", "hello")
+File.append_text("tmp_test_vm_append.txt", " world")
+let content = File.read_text("tmp_test_vm_append.txt")
+print(content)
+File.delete("tmp_test_vm_append.txt")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello world
+```

@@ -1,0 +1,24 @@
+# Legacy vm corpus: 25_method_u64/004_assign_u64
+
+## Case: legacy-25-method-u64-004-assign-u64
+id: "legacy.25_method_u64.004_assign_u64"
+entry-mode: "program"
+
+### Auto
+path: "assign_u64.at"
+```auto
+let s = "7"
+var x u64 = 0
+x = s.to_uint()
+print(x)
+x = x + s.to_uint()
+print(x)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+7
+14
+```

@@ -1,0 +1,22 @@
+# Legacy vm corpus: 18_ffi/038_json_encode_parse
+
+## Case: legacy-18-ffi-038-json-encode-parse
+id: "legacy.18_ffi.038_json_encode_parse"
+entry-mode: "program"
+
+### Auto
+path: "json_encode_parse.at"
+```auto
+let encoded = Json.encode("hello")
+print(encoded)
+let parsed = Json.parse("{\"x\":1}")
+print(Json.type_of(parsed))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+"hello"
+object
+```

@@ -1,0 +1,23 @@
+# Legacy vm corpus: 13_collections/016_sb_append_char
+
+## Case: legacy-13-collections-016-sb-append-char
+id: "legacy.13_collections.016_sb_append_char"
+entry-mode: "program"
+
+### Auto
+path: "sb_append_char.at"
+```auto
+var sb = StringBuilder.new(1024)
+sb.append("hello")
+sb.append_char('!')
+var s = sb.build()
+sb.drop()
+s
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+hello!
+```

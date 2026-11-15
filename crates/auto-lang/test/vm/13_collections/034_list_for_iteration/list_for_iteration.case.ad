@@ -1,0 +1,29 @@
+# Legacy vm corpus: 13_collections/034_list_for_iteration
+
+## Case: legacy-13-collections-034-list-for-iteration
+id: "legacy.13_collections.034_list_for_iteration"
+entry-mode: "program"
+
+### Auto
+path: "list_for_iteration.at"
+```auto
+var list = List.new()
+list.push(1)
+list.push(2)
+list.push(3)
+list.push(4)
+list.push(5)
+var sum = 0
+for item in list {
+  sum = sum + item
+}
+list.drop()
+sum
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+15
+```

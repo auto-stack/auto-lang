@@ -1,0 +1,31 @@
+# Legacy a2ts corpus: 04_strings/004_fstring_edge
+
+## Case: legacy-04-strings-004-fstring-edge
+id: "legacy.04_strings.004_fstring_edge"
+entry-mode: "program"
+
+### Auto
+path: "fstring_edge.at"
+```auto
+fn main() {
+    let x = 42
+    print(f"value is ${x}!")
+    print(f"$x alone")
+    print(f"end $x")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### fstring_edge.expected.ts
+```ts
+function main(): void {
+    const x: number = 42;
+    console.log(`value is ${x}!`);
+    console.log(`${x} alone`);
+    console.log(`end ${x}`);
+}
+
+main();
+```

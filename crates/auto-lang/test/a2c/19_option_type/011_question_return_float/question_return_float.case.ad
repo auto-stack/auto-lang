@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 19_option_type/011_question_return_float
+
+## Case: legacy-19-option-type-011-question-return-float
+id: "legacy.19_option_type.011_question_return_float"
+entry-mode: "program"
+
+### Auto
+path: "question_return_float.at"
+```auto
+fn test_question_return_float() ?float {
+    3.14
+}
+
+fn main() {
+    let result = test_question_return_float()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_return_float.expected.c
+```c
+#include "question_return_float.h"
+
+float test_question_return_float(void) {
+    return 3.14;
+}
+
+int main(void) {
+    unknown result = test_question_return_float();
+    return 0;
+}
+```
+
+#### question_return_float.expected.h
+```c
+#pragma once
+
+float test_question_return_float(void);
+```

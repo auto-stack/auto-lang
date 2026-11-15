@@ -1,0 +1,33 @@
+# Legacy a2ts corpus: 01_basics/002_func
+
+## Case: legacy-01-basics-002-func
+id: "legacy.01_basics.002_func"
+entry-mode: "program"
+
+### Auto
+path: "func.at"
+```auto
+fn greet(name str) {
+    print(name)
+}
+
+fn main() {
+    greet("World")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### func.expected.ts
+```ts
+export function greet(name: string): void {
+    console.log(name);
+}
+
+function main(): void {
+    greet("World");
+}
+
+main();
+```

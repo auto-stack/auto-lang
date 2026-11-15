@@ -1,0 +1,19 @@
+# Legacy vm corpus: 08_strings/003_str_index
+
+## Case: legacy-08-strings-003-str-index
+id: "legacy.08_strings.003_str_index"
+entry-mode: "program"
+
+### Auto
+path: "str_index.at"
+```auto
+let a = "hello"
+a[1]
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+'e'
+```

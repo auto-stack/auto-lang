@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: cookbook/concurrency/003_rayon_parallel_sort
+
+## Case: legacy-cookbook-concurrency-003-rayon-parallel-sort
+id: "legacy.cookbook.concurrency.003_rayon_parallel_sort"
+entry-mode: "program"
+
+### Auto
+path: "rayon_parallel_sort.at"
+```auto
+fn main() {
+    var v = [99, 98, 97, 3, 2, 1, 0]
+    v.sort()
+    assert(v[0] == 0)
+    assert(v[6] == 99)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

@@ -1,0 +1,46 @@
+# Legacy vm corpus: 16_option_result/021_result_enum_error
+
+## Case: legacy-16-option-result-021-result-enum-error
+id: "legacy.16_option_result.021_result_enum_error"
+entry-mode: "program"
+
+### Auto
+path: "result_enum_error.at"
+```auto
+enum ParseError {
+    InvalidChar { ch str, pos int }
+    UnexpectedEnd
+}
+
+fn parse(s str) !int {
+    if s == "" {
+        return Err(ParseError.UnexpectedEnd)
+    }
+    Ok(42)
+}
+
+let r = parse("")
+is r {
+    Ok(n) -> print(n)
+    Err(e) -> {
+        is e {
+            ParseError.UnexpectedEnd -> print("unexpected end")
+            else -> print("other error")
+        }
+    }
+}
+
+let r2 = parse("hello")
+is r2 {
+    Ok(n) -> print(n)
+    Err(e) -> print("error")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+unexpected end
+42
+```

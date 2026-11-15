@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 10_collections/001_array
+
+## Case: legacy-10-collections-001-array
+id: "legacy.10_collections.001_array"
+entry-mode: "program"
+
+### Auto
+path: "array.at"
+```auto
+fn main() {
+    let array = [1, 2, 3, 4, 5]
+    print(array[1])
+
+    let a = array[0]
+    print(a)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array.expected.c
+```c
+#include "array.h"
+
+int main(void) {
+    int array[5] = {1, 2, 3, 4, 5};
+    printf("%d\n", array[1]);
+
+    int a = array[0];
+    printf("%d\n", a);
+    return 0;
+}
+```
+
+#### array.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

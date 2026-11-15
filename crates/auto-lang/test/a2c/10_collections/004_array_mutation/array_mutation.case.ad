@@ -1,0 +1,27 @@
+# Legacy a2c corpus: 10_collections/004_array_mutation
+
+## Case: legacy-10-collections-004-array-mutation
+id: "legacy.10_collections.004_array_mutation"
+entry-mode: "program"
+
+### Auto
+path: "array_mutation.at"
+```auto
+var arr [4]int = [1, 2, 3, 4]
+arr[0] = 100
+arr[1] = 200
+arr[2]
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_mutation.expected.c
+```c
+int arr[4] = {1, 2, 3, 4};
+int main(void) {
+    arr[0] = 100;
+    arr[1] = 200;
+    return arr[2];
+}
+```

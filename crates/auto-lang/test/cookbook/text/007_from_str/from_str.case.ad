@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/text/007_from_str
+
+## Case: legacy-cookbook-text-007-from-str
+id: "legacy.cookbook.text.007_from_str"
+entry-mode: "program"
+
+### Auto
+path: "from_str.at"
+```auto
+fn parse_parts(s str) {
+    var parts = s.split(",")
+    assert(parts.len() == 2)
+}
+
+fn main() {
+    parse_parts("hello,world")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

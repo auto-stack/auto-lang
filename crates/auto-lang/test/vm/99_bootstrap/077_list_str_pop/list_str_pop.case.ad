@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/077_list_str_pop
+
+## Case: legacy-99-bootstrap-077-list-str-pop
+id: "legacy.99_bootstrap.077_list_str_pop"
+entry-mode: "program"
+
+### Auto
+path: "list_str_pop.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(\"first\")\nlist.push(\"second\")\nvar v = list.pop()\nprint(v)\nprint(list.len())\n}")
+    if result == "second\n1\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

@@ -1,0 +1,22 @@
+# Legacy vm corpus: 99_bootstrap/003_lexer_basic
+
+## Case: legacy-99-bootstrap-003-lexer-basic
+id: "legacy.99_bootstrap.003_lexer_basic"
+entry-mode: "program"
+
+### Auto
+path: "lexer_basic.at"
+```auto
+fn main() {
+    let a = "hello"
+    let b = "world"
+    print(a + b)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+helloworld
+```

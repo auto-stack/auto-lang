@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: cookbook/encoding/009_csv_invalid
+
+## Case: legacy-cookbook-encoding-009-csv-invalid
+id: "legacy.cookbook.encoding.009_csv_invalid"
+entry-mode: "program"
+
+### Auto
+path: "csv_invalid.at"
+```auto
+fn main() {
+    let data = "name,age\nAlice,30\nBob,twenty-five\nCharlie,35"
+    var lines = data.split("\n")
+    assert(lines.len() == 4)
+    // Simplified: test that we can detect "twenty-five" as non-numeric
+    assert(data.contains("twenty-five"))
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

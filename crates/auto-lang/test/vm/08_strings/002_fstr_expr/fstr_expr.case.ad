@@ -1,0 +1,20 @@
+# Legacy vm corpus: 08_strings/002_fstr_expr
+
+## Case: legacy-08-strings-002-fstr-expr
+id: "legacy.08_strings.002_fstr_expr"
+entry-mode: "program"
+
+### Auto
+path: "fstr_expr.at"
+```auto
+var a = 1
+var b = 2
+f"a + b = ${a+b}"
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+a + b = 3
+```

@@ -1,0 +1,46 @@
+# Legacy vm corpus: 09_functions/016_enum_multi_destruct
+
+## Case: legacy-09-functions-016-enum-multi-destruct
+id: "legacy.09_functions.016_enum_multi_destruct"
+entry-mode: "program"
+
+### Auto
+path: "enum_multi_destruct.at"
+```auto
+// Test: multi-field enum variant destructuring
+fn main() {
+    enum Shape {
+        Point
+        Rect { w int, h int }
+        Circle { r int }
+    }
+
+    let s = Shape.Rect(10, 20)
+    is s {
+        Shape.Rect(w, h) -> {
+            print(w)
+            print(h)
+        }
+    }
+
+    let c = Shape.Circle(5)
+    is c {
+        Shape.Circle(r) -> print(r)
+    }
+
+    let p = Shape.Point
+    is p {
+        Shape.Point -> print("point")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+10
+20
+5
+point
+```

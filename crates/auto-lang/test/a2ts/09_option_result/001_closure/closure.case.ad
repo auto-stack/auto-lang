@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 09_option_result/001_closure
+
+## Case: legacy-09-option-result-001-closure
+id: "legacy.09_option_result.001_closure"
+entry-mode: "program"
+
+### Auto
+path: "closure.at"
+```auto
+fn main() {
+    let add = (a int, b int) => a + b
+    let result = add(5, 3)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### closure.expected.ts
+```ts
+function main(): void {
+    const add: (number, number) => number = (a: number, b: number) => a + b;
+    const result = add(5, 3);
+    console.log(result);
+}
+
+main();
+```

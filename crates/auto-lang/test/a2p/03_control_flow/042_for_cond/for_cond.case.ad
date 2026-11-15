@@ -1,0 +1,32 @@
+# Legacy a2p corpus: 03_control_flow/042_for_cond
+
+## Case: legacy-a2p-03-control-flow-042-for-cond
+id: "legacy.a2p.03_control_flow.042_for_cond"
+entry-mode: "program"
+
+### Auto
+path: "for_cond.at"
+```auto
+fn main() {
+    let x = 10
+    for x > 0 {
+        x = x - 1
+        print(x)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### for_cond.expected.py
+```python
+def main():
+    x = 10
+    while x > 0:
+        x = x - 1
+        print(x)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,28 @@
+# Legacy vm corpus: 19_rust_std/005_instant_duration
+
+## Case: legacy-19-rust-std-005-instant-duration
+id: "legacy.19_rust_std.005_instant_duration"
+entry-mode: "program"
+
+### Auto
+path: "instant_duration.at"
+```auto
+use.rs std::time::{Instant, Duration}
+fn main() {
+    let start = Instant.now()
+    print(start)
+    let d = Duration.from_secs(5)
+    print(d)
+    let d2 = Duration.from_millis(500)
+    print(d2)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+<Instant>
+5000ms
+500ms
+```

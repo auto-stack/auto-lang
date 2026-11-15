@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 15_type_conversion/001_cast
+
+## Case: legacy-15-type-conversion-001-cast
+id: "legacy.15_type_conversion.001_cast"
+entry-mode: "program"
+
+### Auto
+path: "cast.at"
+```auto
+fn main() {
+    let x = 3.14
+    let n = x.as(int)
+    print(n)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### cast.expected.ts
+```ts
+function main(): void {
+    const x: number = 3.14;
+    const n: number = Number(x);
+    console.log(n);
+}
+
+main();
+```

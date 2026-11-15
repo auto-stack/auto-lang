@@ -1,0 +1,40 @@
+# Legacy a2p corpus: 02_types/007_type_with_methods
+
+## Case: legacy-a2p-02-types-007-type-with-methods
+id: "legacy.a2p.02_types.007_type_with_methods"
+entry-mode: "program"
+
+### Auto
+path: "type_with_methods.at"
+```auto
+type Counter {
+    count int
+
+    fn increment() {
+        .count = .count + 1
+    }
+}
+
+fn main() {
+    print("Type with methods defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### type_with_methods.expected.py
+```python
+@dataclass
+class Counter:
+    count: int
+
+    def increment(self):
+        self.count = self.count + 1
+
+def main():
+    print("Type with methods defined")
+
+if __name__ == "__main__":
+    main()
+```

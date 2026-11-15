@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 10_collections/004_set_type
+
+## Case: legacy-10-collections-004-set-type
+id: "legacy.10_collections.004_set_type"
+entry-mode: "program"
+
+### Auto
+path: "set_type.at"
+```auto
+fn main() {
+    let nums = [1, 2, 3, 2, 1]
+    let unique = nums.to_set()
+    print(unique)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### set_type.expected.ts
+```ts
+function main(): void {
+    const nums: number[] = [1, 2, 3, 2, 1];
+    const unique = nums.to_set();
+    console.log(unique);
+}
+
+main();
+```

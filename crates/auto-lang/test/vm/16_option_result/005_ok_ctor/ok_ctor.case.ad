@@ -1,0 +1,19 @@
+# Legacy vm corpus: 16_option_result/005_ok_ctor
+
+## Case: legacy-16-option-result-005-ok-ctor
+id: "legacy.16_option_result.005_ok_ctor"
+entry-mode: "program"
+
+### Auto
+path: "ok_ctor.at"
+```auto
+let x = Ok(100)
+1
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

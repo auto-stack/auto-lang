@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 09_option_result/008_unwrap
+
+## Case: legacy-09-option-result-008-unwrap
+id: "legacy.09_option_result.008_unwrap"
+entry-mode: "program"
+
+### Auto
+path: "unwrap.at"
+```auto
+fn main() {
+    let x = Some(42)
+    let val = x.unwrap()
+    print(val)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### unwrap.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 42;
+    const val = x.unwrap();
+    console.log(val);
+}
+
+main();
+```

@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/devtools/006_log_env
+
+## Case: legacy-cookbook-devtools-006-log-env
+id: "legacy.cookbook.devtools.006_log_env"
+entry-mode: "program"
+
+### Auto
+path: "log_env.at"
+```auto
+use.rs log::info
+use.rs env_logger
+
+fn main() {
+    env_logger.init()
+    #info("this is an info message")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

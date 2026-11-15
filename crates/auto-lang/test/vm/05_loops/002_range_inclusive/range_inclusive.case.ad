@@ -1,0 +1,22 @@
+# Legacy vm corpus: 05_loops/002_range_inclusive
+
+## Case: legacy-05-loops-002-range-inclusive
+id: "legacy.05_loops.002_range_inclusive"
+entry-mode: "program"
+
+### Auto
+path: "range_inclusive.at"
+```auto
+var sum = 0
+for i in 0..=10 {
+  sum = sum + i
+}
+sum
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+55
+```

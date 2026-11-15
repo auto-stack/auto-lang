@@ -1,0 +1,35 @@
+# Legacy a2ts corpus: 09_option_result/007_is_none
+
+## Case: legacy-09-option-result-007-is-none
+id: "legacy.09_option_result.007_is_none"
+entry-mode: "program"
+
+### Auto
+path: "is_none.at"
+```auto
+fn main() {
+    let x = Some(10)
+    let y = None
+    let a = x.is_none()
+    let b = y.is_none()
+    print(a)
+    print(b)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### is_none.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 10;
+    const y: any | null = null;
+    const a = x.is_none();
+    const b = y.is_none();
+    console.log(a);
+    console.log(b);
+}
+
+main();
+```

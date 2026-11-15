@@ -1,0 +1,33 @@
+# Legacy vm corpus: 23_actor/001_start_hook
+
+## Case: legacy-23-actor-001-start-hook
+id: "legacy.23_actor.001_start_hook"
+entry-mode: "program"
+
+### Auto
+path: "start_hook.at"
+```auto
+task Greeter {
+    fn start() ! {
+        print("Greeter started")
+    }
+    on {
+        1 -> {
+            print("got msg")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Greeter", 16)
+    h.send(1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+Greeter started
+got msg
+```

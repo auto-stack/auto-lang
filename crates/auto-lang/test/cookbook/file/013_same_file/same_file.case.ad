@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/file/013_same_file
+
+## Case: legacy-cookbook-file-013-same-file
+id: "legacy.cookbook.file.013_same_file"
+entry-mode: "program"
+
+### Auto
+path: "same_file.at"
+```auto
+dep same_file
+use.rs same_file
+use.rs std::path::Path
+
+fn main() {
+    let path1 = Path.new("a.txt")
+    let path2 = Path.new("a.txt")
+    if same_file.is_same_file(path1, path2).unwrap() {
+        assert(true)
+    }
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

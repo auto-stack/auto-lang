@@ -1,0 +1,40 @@
+# Legacy vm corpus: 99_plan231/008_like_vmtest09
+
+## Case: legacy-99-plan231-008-like-vmtest09
+id: "legacy.99_plan231.008_like_vmtest09"
+entry-mode: "program"
+
+### Auto
+path: "like_vmtest09.at"
+```auto
+// Exact copy of vmtest-09-self-field.at
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+
+    fn get_count() int {
+        return self.count
+    }
+}
+
+fn main() {
+    print("=== Self field access test ===")
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    let n = c.get_count()
+    print(f"count: $n")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+=== Self field access test ===
+count: 3
+```

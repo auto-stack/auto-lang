@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/027_str_find
+
+## Case: legacy-18-ffi-027-str-find
+id: "legacy.18_ffi.027_str_find"
+entry-mode: "program"
+
+### Auto
+path: "str_find.at"
+```auto
+Str.find("hello world", "world")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+6
+```

@@ -1,0 +1,18 @@
+# Legacy vm corpus: 01_basics/006_unary
+
+## Case: legacy-01-basics-006-unary
+id: "legacy.01_basics.006_unary"
+entry-mode: "program"
+
+### Auto
+path: "unary.at"
+```auto
+-2 * 3
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+-6
+```

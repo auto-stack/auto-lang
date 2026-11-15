@@ -1,0 +1,97 @@
+# Legacy a2c corpus: 22_iterators/007_collect
+
+## Case: legacy-22-iterators-007-collect
+id: "legacy.22_iterators.007_collect"
+entry-mode: "program"
+
+### Auto
+path: "collect.at"
+```auto
+// Test Collect Operator - Plan 051 Phase 8
+// Test collect() method and bang operator (!)
+
+use auto.list: List
+
+// Helper function for map
+fn double(x int) int {
+    x * 2
+}
+
+// Helper function for filter
+fn is_gt_3(x int) bool {
+    x > 3
+}
+
+fn main() {
+    // Create a list
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    list.push(4)
+    list.push(5)
+
+    // Test 1: Collect with bang operator after map
+    // Should create new list with doubled values
+    let mapped = list.iter().map(double)!
+    say(mapped.len())
+
+    // Test 2: Collect with explicit method call after filter
+    // Should create new list with only elements > 3
+    let filtered = list.iter().filter(is_gt_3).collect()
+    say(filtered.len())
+
+    // Test 3: Collect after chaining map and filter
+    // First double (1,2,3,4,5) -> (2,4,6,8,10)
+    // Then filter > 3 -> (4,6,8,10)
+    // Should have 4 elements
+    let chained = list.iter().map(double).filter(is_gt_3).collect()
+    say(chained.len())
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### collect.expected.c
+```c
+#include "collect.h"
+
+int double(int x) {
+    return x * 2;
+}
+
+bool is_gt_3(int x) {
+    return x > 3;
+}
+
+int main(void) {
+
+    unknown list = List.new();
+    list.push(1);
+    list.push(2);
+    list.push(3);
+    list.push(4);
+    list.push(5);
+
+    unknown mapped = list.iter().map(double).collect();
+    say(mapped.len());
+
+    unknown filtered = list.iter().filter(is_gt_3).collect();
+    say(filtered.len());
+
+    unknown chained = list.iter().map(double).filter(is_gt_3).collect();
+    say(chained.len());
+    return 0;
+}
+```
+
+#### collect.expected.h
+```c
+#pragma once
+
+#include "auto/list.h"
+
+int double(int x);
+bool is_gt_3(int x);
+```

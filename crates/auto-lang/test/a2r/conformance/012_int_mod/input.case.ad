@@ -1,0 +1,29 @@
+# Legacy conformance corpus: 012_int_mod
+
+## Case: legacy-conf-012-int-mod
+id: "legacy.conf.012_int_mod"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 012: Integer modulo
+fn main() {
+    print(7 % 3)
+    print(-7 % 3)
+    print(7 % -3)
+    print(10 % 5)
+    print(3 % 7)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+1
+-1
+1
+0
+3
+```

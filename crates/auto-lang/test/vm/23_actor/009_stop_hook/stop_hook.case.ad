@@ -1,0 +1,37 @@
+# Legacy vm corpus: 23_actor/009_stop_hook
+
+## Case: legacy-23-actor-009-stop-hook
+id: "legacy.23_actor.009_stop_hook"
+entry-mode: "program"
+
+### Auto
+path: "stop_hook.at"
+```auto
+task Worker {
+    fn start() ! {
+        print("started")
+    }
+    fn stop() ! {
+        print("stopped")
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Worker", 16)
+    h.send(1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+started
+got one
+stopped
+```

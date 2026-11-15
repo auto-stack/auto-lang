@@ -1,0 +1,45 @@
+# Legacy a2p corpus: 16_python_std/002_method_map
+
+## Case: legacy-a2p-16-python-std-002-method-map
+id: "legacy.a2p.16_python_std.002_method_map"
+entry-mode: "program"
+
+### Auto
+path: "method_map.at"
+```auto
+fn main() {
+    let items = [1, 2, 3]
+    items.push(4)
+    let last = items.pop()
+    let n = items.len()
+    let has = items.contains(2)
+    let name = "  hello  ".trim()
+    let parts = "a,b,c".split(",")
+    let upper = "hello".to_upper()
+    let lower = "HELLO".to_lower()
+    let yes = "hello".starts_with("he")
+    print(n)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### method_map.expected.py
+```python
+def main():
+    items = [1, 2, 3]
+    items.append(4)
+    last = items.pop()
+    n = len(items)
+    has = 2 in items
+    name = "  hello  ".strip()
+    parts = "a,b,c".split(",")
+    upper = "hello".upper()
+    lower = "HELLO".lower()
+    yes = "hello".startswith("he")
+    print(n)
+
+if __name__ == "__main__":
+    main()
+```

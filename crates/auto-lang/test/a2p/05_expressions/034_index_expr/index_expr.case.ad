@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 05_expressions/034_index_expr
+
+## Case: legacy-a2p-05-expressions-034-index-expr
+id: "legacy.a2p.05_expressions.034_index_expr"
+entry-mode: "program"
+
+### Auto
+path: "index_expr.at"
+```auto
+fn main() {
+    let arr = [10, 20, 30]
+    let first = arr[0]
+    print(first)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### index_expr.expected.py
+```python
+def main():
+    arr = [10, 20, 30]
+    first = arr[0]
+    print(first)
+
+if __name__ == "__main__":
+    main()
+```

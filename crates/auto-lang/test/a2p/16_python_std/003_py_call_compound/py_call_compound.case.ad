@@ -1,0 +1,30 @@
+# Legacy a2p corpus: 16_python_std/003_py_call_compound
+
+## Case: legacy-a2p-16-python-std-003-py-call-compound
+id: "legacy.a2p.16_python_std.003_py_call_compound"
+entry-mode: "program"
+
+### Auto
+path: "py_call_compound.at"
+```auto
+// PLAN-598 T-05 (P539-D3): compound receivers must emit parenthesized —
+// `py_call(1 + 2, "bit_length")` → `(1 + 2).bit_length()`, never
+// `1 + 2.bit_length()` (precedence rebinds the call to the last operand).
+fn main() {
+    let n = py_call(1 + 2, "bit_length")
+    print(n)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### py_call_compound.expected.py
+```python
+def main():
+    n = (1 + 2).bit_length()
+    print(n)
+
+if __name__ == "__main__":
+    main()
+```

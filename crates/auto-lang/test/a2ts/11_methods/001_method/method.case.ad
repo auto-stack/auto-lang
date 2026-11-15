@@ -1,0 +1,52 @@
+# Legacy a2ts corpus: 11_methods/001_method
+
+## Case: legacy-11-methods-001-method
+id: "legacy.11_methods.001_method"
+entry-mode: "program"
+
+### Auto
+path: "method.at"
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point(3, 4)
+    let m int = p.modulus()
+    print("Modulus:", m)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### method.expected.ts
+```ts
+export class Point {
+    x: number;
+    y: number;
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+    }
+
+    modulus(): number {
+        return x * x + y * y;
+    }
+}
+
+function main(): void {
+    const p = new Point(3, 4);
+    const m: number = p.modulus();
+    console.log("Modulus:", m);
+}
+
+main();
+```

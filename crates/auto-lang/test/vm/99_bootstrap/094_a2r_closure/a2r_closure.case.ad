@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/094_a2r_closure
+
+## Case: legacy-99-bootstrap-094-a2r-closure
+id: "legacy.99_bootstrap.094_a2r_closure"
+entry-mode: "program"
+
+### Auto
+path: "a2r_closure.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar f = x => x + 1\n}")
+    var expected = "fn main() {\n    let mut f = |x| (x + 1);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

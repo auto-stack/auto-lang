@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/017_str_slice_mixed
+
+## Case: legacy-14-borrow-017-str-slice-mixed
+id: "legacy.14_borrow.017_str_slice_mixed"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_mixed.at"
+```auto
+let s = "first"
+let v = s.view
+let t = s.move
+v
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+first
+```

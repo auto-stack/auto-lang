@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 06_pattern_matching/003_is_else
+
+## Case: legacy-a2p-06-pattern-matching-003-is-else
+id: "legacy.a2p.06_pattern_matching.003_is_else"
+entry-mode: "program"
+
+### Auto
+path: "is_else.at"
+```auto
+fn main() {
+    let val = 42
+    is val {
+        0 -> print("zero")
+        else -> print("nonzero")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### is_else.expected.py
+```python
+def main():
+    val = 42
+    match val:
+        case 0:
+            print("zero")
+        case _:
+            print("nonzero")
+
+if __name__ == "__main__":
+    main()
+```

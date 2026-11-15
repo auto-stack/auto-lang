@@ -1,0 +1,18 @@
+# Legacy vm corpus: 10_types/005_generic_field_y
+
+## Case: legacy-10-types-005-generic-field-y
+id: "legacy.10_types.005_generic_field_y"
+entry-mode: "program"
+
+### Auto
+path: "generic_field_y.at"
+```auto
+type Point<T> { x T; y T }
+var p = Point<int> { x: 100, y: 200 }
+p.y
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

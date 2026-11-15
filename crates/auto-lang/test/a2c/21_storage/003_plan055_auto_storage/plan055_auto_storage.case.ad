@@ -1,0 +1,32 @@
+# Legacy a2c corpus: 21_storage/003_plan055_auto_storage
+
+## Case: legacy-21-storage-003-plan055-auto-storage
+id: "legacy.21_storage.003_plan055_auto_storage"
+entry-mode: "program"
+
+### Auto
+path: "plan055_auto_storage.at"
+```auto
+fn main() {
+    let list = List.new();
+    list.push(1);
+    list.push(2);
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### plan055_auto_storage.expected.c
+```c
+int main(void) {
+    unknown list = List.new();
+    list.push(1);
+    list.push(2);
+    return 0;
+}
+```
+
+#### plan055_auto_storage.expected.h
+```c
+```

@@ -1,0 +1,74 @@
+# Legacy a2c corpus: 08_generics/004_with_constraint
+
+## Case: legacy-08-generics-004-with-constraint
+id: "legacy.08_generics.004_with_constraint"
+entry-mode: "program"
+
+### Auto
+path: "with_constraint.at"
+```auto
+// Test Plan 061: #[with(...)] generic constraint syntax
+// Tests the new annotation-based generic parameter declaration
+
+// Simple generic without constraint
+#[with(T)]
+fn identity(x T) T {
+    x
+}
+
+// Generic with spec constraint
+#[with(T as Clone)]
+fn duplicate(x T) T {
+    x
+}
+
+// Multiple params, mixed constraints
+#[with(A, B as Eq)]
+fn compare(a A, b B) A {
+    a
+}
+
+fn main() {
+    let a = identity(42)
+    let b = duplicate(10)
+    say(a)
+    say(b)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### with_constraint.expected.c
+```c
+#include "with_constraint.h"
+
+void* identity(void* x) {
+    return x;
+}
+
+void* duplicate(void* x) {
+    return x;
+}
+
+void* compare(void* a, void* b) {
+    return a;
+}
+
+int main(void) {
+    unknown a = identity(42);
+    unknown b = duplicate(10);
+    say(a);
+    say(b);
+    return 0;
+}
+```
+
+#### with_constraint.expected.h
+```c
+#pragma once
+
+void* identity(void* x);
+void* duplicate(void* x);
+void* compare(void* a, void* b);
+```

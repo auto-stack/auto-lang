@@ -1,0 +1,20 @@
+# Legacy vm corpus: 11_compound_ops/001_add_eq
+
+## Case: legacy-11-compound-ops-001-add-eq
+id: "legacy.11_compound_ops.001_add_eq"
+entry-mode: "program"
+
+### Auto
+path: "add_eq.at"
+```auto
+var a = 1
+a += 1
+a
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+2
+```

@@ -1,0 +1,30 @@
+# Legacy cookbook corpus: cookbook/compression/003_tar_strip_prefix
+
+## Case: legacy-cookbook-compression-003-tar-strip-prefix
+id: "legacy.cookbook.compression.003_tar_strip_prefix"
+entry-mode: "program"
+
+### Auto
+path: "tar_strip_prefix.at"
+```auto
+dep flate2
+dep tar
+use.rs flate2::read::GzDecoder
+use.rs std::fs::File
+use.rs tar::Archive
+
+fn main() {
+    let file = File.open("archive.tar.gz").unwrap()
+    let gz = GzDecoder.new(file)
+    var archive = Archive.new(gz)
+    archive.set_prefix_strip(3)
+    for entry in archive.entries().unwrap() {
+        let entry = entry.unwrap()
+        print(f"Extracted: ${entry.path().unwrap().display()}")
+    }
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

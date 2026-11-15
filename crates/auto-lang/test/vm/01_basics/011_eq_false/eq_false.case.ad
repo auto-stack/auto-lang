@@ -1,0 +1,18 @@
+# Legacy vm corpus: 01_basics/011_eq_false
+
+## Case: legacy-01-basics-011-eq-false
+id: "legacy.01_basics.011_eq_false"
+entry-mode: "program"
+
+### Auto
+path: "eq_false.at"
+```auto
+1 == 2
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+false
+```

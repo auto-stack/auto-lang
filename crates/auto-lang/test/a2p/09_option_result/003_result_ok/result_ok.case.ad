@@ -1,0 +1,31 @@
+# Legacy a2p corpus: 09_option_result/003_result_ok
+
+## Case: legacy-a2p-09-option-result-003-result-ok
+id: "legacy.a2p.09_option_result.003_result_ok"
+entry-mode: "program"
+
+### Auto
+path: "result_ok.at"
+```auto
+fn main() {
+    let a = Ok(100)
+    let b = Err("something went wrong")
+    print(a)
+    print(b)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### result_ok.expected.py
+```python
+def main():
+    a = 100
+    b = Exception("something went wrong")
+    print(a)
+    print(b)
+
+if __name__ == "__main__":
+    main()
+```

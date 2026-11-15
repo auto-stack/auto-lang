@@ -1,0 +1,31 @@
+# Legacy conformance corpus: 004_for_range
+
+## Case: legacy-conf-004-for-range
+id: "legacy.conf.004_for_range"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 004: for range loops
+fn main() {
+    for i in 0..3 {
+        print(i)
+    }
+    for j in 0..=2 {
+        print(j)
+    }
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+0
+1
+2
+0
+1
+2
+```

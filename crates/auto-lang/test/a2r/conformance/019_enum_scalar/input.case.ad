@@ -1,0 +1,31 @@
+# Legacy conformance corpus: 019_enum_scalar
+
+## Case: legacy-conf-019-enum-scalar
+id: "legacy.conf.019_enum_scalar"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 019: Scalar enum with values
+enum Color {
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+}
+
+fn main() {
+    print(Color.RED)
+    print(Color.GREEN)
+    print(Color.BLUE)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+1
+2
+3
+```

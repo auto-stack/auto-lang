@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 04_strings/003_fstring_multi
+
+## Case: legacy-04-strings-003-fstring-multi
+id: "legacy.04_strings.003_fstring_multi"
+entry-mode: "program"
+
+### Auto
+path: "fstring_multi.at"
+```auto
+fn main() {
+    let name = "World"
+    let age = 30
+    print(f"Hello $name, age $age")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### fstring_multi.expected.ts
+```ts
+function main(): void {
+    const name: string = "World";
+    const age: number = 30;
+    console.log(`Hello ${name}, age ${age}`);
+}
+
+main();
+```

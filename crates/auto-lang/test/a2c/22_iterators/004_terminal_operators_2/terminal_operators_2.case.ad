@@ -1,0 +1,87 @@
+# Legacy a2c corpus: 22_iterators/004_terminal_operators_2
+
+## Case: legacy-22-iterators-004-terminal-operators-2
+id: "legacy.22_iterators.004_terminal_operators_2"
+entry-mode: "program"
+
+### Auto
+path: "terminal_operators_2.at"
+```auto
+// Test Terminal Operators - Plan 051 Phase 4
+// Test reduce, count, and for_each with List
+
+use auto.list: List
+
+// Helper function for reduce
+fn add(a int, b int) int {
+    a + b
+}
+
+// Helper function for for_each
+fn print_item(x int) {
+    say(x)
+}
+
+fn main() {
+    // Create a list
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+
+    // Test reduce: sum list elements
+    // Sum: 1 + 2 + 3 = 6
+    let sum = list.iter().reduce(0, add)
+    say(sum)
+
+    // Test count: count elements
+    let count = list.iter().count()
+    say(count)
+
+    // Test for_each: print all elements
+    list.iter().for_each(print_item)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### terminal_operators_2.expected.c
+```c
+#include "terminal_operators_2.h"
+
+int add(int a, int b) {
+    return a + b;
+}
+
+void print_item(int x) {
+    say(x);
+}
+
+int main(void) {
+
+    unknown list = List.new();
+    list.push(1);
+    list.push(2);
+    list.push(3);
+
+    unknown sum = list.iter().reduce(0, add);
+    say(sum);
+
+    unknown count = list.iter().count();
+    say(count);
+
+    list.iter().for_each(print_item);
+    return 0;
+}
+```
+
+#### terminal_operators_2.expected.h
+```c
+#pragma once
+
+#include "auto/list.h"
+
+int add(int a, int b);
+void print_item(int x);
+```

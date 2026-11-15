@@ -1,0 +1,78 @@
+# Legacy a2c corpus: 23_stdlib/007_file_operations
+
+## Case: legacy-23-stdlib-007-file-operations
+id: "legacy.23_stdlib.007_file_operations"
+entry-mode: "program"
+
+### Auto
+path: "file_operations.at"
+```auto
+use auto.io: File, open, open_read, open_write, open_append
+
+fn main() {
+    let file = open_read("test.txt")
+    let line = file.read_line()
+    print("Read: ")
+    print(line)
+    print("\n")
+    file.close()
+
+    let out = open_write("output.txt")
+    out.write_line("Hello, AutoLang!")
+    out.write_line("File I/O test")
+    out.flush()
+    out.close()
+
+    let app = open_append("output.txt")
+    app.write_line("This line is appended")
+    app.close()
+
+    let rw = open_write("rw_test.txt")
+    rw.write_line("Line 1")
+    rw.write_line("Line 2")
+    rw.flush()
+    rw.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### file_operations.expected.c
+```c
+#include "file_operations.h"
+
+int main(void) {
+    struct File file = open_read("test.txt");
+    char* line = File_ReadLine(&file);
+    printf("%s\n", "Read: ");
+    printf("%s\n", line);
+    printf("%s\n", "\n");
+    File_Close(&file);
+
+    struct File out = open_write("output.txt");
+    File_WriteLine(&out, "Hello, AutoLang!");
+    File_WriteLine(&out, "File I/O test");
+    File_Flush(&out);
+    File_Close(&out);
+
+    struct File app = open_append("output.txt");
+    File_WriteLine(&app, "This line is appended");
+    File_Close(&app);
+
+    struct File rw = open_write("rw_test.txt");
+    File_WriteLine(&rw, "Line 1");
+    File_WriteLine(&rw, "Line 2");
+    File_Flush(&rw);
+    File_Close(&rw);
+    return 0;
+}
+```
+
+#### file_operations.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include "auto/io.h"
+```

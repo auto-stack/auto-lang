@@ -1,0 +1,44 @@
+# Legacy a2p corpus: 05_expressions/032_chained_method
+
+## Case: legacy-a2p-05-expressions-032-chained-method
+id: "legacy.a2p.05_expressions.032_chained_method"
+entry-mode: "program"
+
+### Auto
+path: "chained_method.at"
+```auto
+type Holder {
+    val int
+
+    fn get() int {
+        .val
+    }
+}
+
+fn main() {
+    let b = Holder(val: 10)
+    let v = b.get()
+    print(v)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### chained_method.expected.py
+```python
+@dataclass
+class Holder:
+    val: int
+
+    def get(self) -> int:
+        return self.val
+
+def main():
+    b = Holder(val=10)
+    v = b.get()
+    print(v)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 01_basics/003_comments
+
+## Case: legacy-01-basics-003-comments
+id: "legacy.01_basics.003_comments"
+entry-mode: "program"
+
+### Auto
+path: "comments.at"
+```auto
+// This is a comment
+fn main() {
+    // Print hello
+    print("hello")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### comments.expected.ts
+```ts
+function main(): void {
+    
+
+    console.log("hello");
+}
+
+main();
+```

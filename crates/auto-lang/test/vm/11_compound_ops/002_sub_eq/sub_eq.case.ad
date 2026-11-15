@@ -1,0 +1,20 @@
+# Legacy vm corpus: 11_compound_ops/002_sub_eq
+
+## Case: legacy-11-compound-ops-002-sub-eq
+id: "legacy.11_compound_ops.002_sub_eq"
+entry-mode: "program"
+
+### Auto
+path: "sub_eq.at"
+```auto
+var a = 10
+a -= 3
+a
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+7
+```

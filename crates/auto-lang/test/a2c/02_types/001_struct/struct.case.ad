@@ -1,0 +1,66 @@
+# Legacy a2c corpus: 02_types/001_struct
+
+## Case: legacy-02-types-001-struct
+id: "legacy.02_types.001_struct"
+entry-mode: "program"
+
+### Auto
+path: "struct.at"
+```auto
+type Point {
+    x int
+    y int
+}
+
+type Circle {
+    radius float
+    border uint
+    center Point
+}
+
+fn main() {
+    var p = Point(1, 2)
+    p.x = 3
+    print("P: ", p.x, ", ", p.y)
+
+    let circle = Circle(5.0, 1, Point(50, 50))
+    print("C: ", circle.center.x, ", ", circle.center.y, ", ", circle.radius)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### struct.expected.c
+```c
+#include "struct.h"
+
+
+
+int main(void) {
+    struct Point p = {.x = 1, .y = 2};
+    p.x = 3;
+    printf("%s %d %s %d\n", "P: ", p.x, ", ", p.y);
+
+    struct Circle circle = {.radius = 5.0, .border = 1, .center = {.x = 50, .y = 50}};
+    printf("%s %d %s %d %s %d\n", "C: ", circle.center.x, ", ", circle.center.y, ", ", circle.radius);
+    return 0;
+}
+```
+
+#### struct.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+struct Point {
+    int x;
+    int y;
+};
+struct Circle {
+    float radius;
+    unsigned int border;
+    struct Point center;
+};
+```

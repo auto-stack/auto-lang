@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/errors/001_boxed_error
+
+## Case: legacy-cookbook-errors-001-boxed-error
+id: "legacy.cookbook.errors.001_boxed_error"
+entry-mode: "program"
+
+### Auto
+path: "boxed_error.at"
+```auto
+use.rs std::error::Error
+
+fn main() ! {
+    let msg = "hello"
+    let result = Ok(msg.to_string())
+    let val = result.?
+    assert(val == "hello")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

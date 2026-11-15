@@ -1,0 +1,64 @@
+# Legacy vm corpus: 18_ffi/058_read_text_range
+
+## Case: legacy-18-ffi-058-read-text-range
+id: "legacy.18_ffi.058_read_text_range"
+entry-mode: "program"
+
+### Auto
+path: "read_text_range.at"
+```auto
+// Plan 673 T-03: chunked read boundary matrix (design §5 shapes).
+File.write_text("tmp_test_vm_rtr.txt", "abcdefghij")
+// Normal mid-file read.
+let r1 = File.read_text_range("tmp_test_vm_rtr.txt", 2, 4)
+print(r1)
+// Limit runs past EOF: null next_offset only at true EOF.
+let r2 = File.read_text_range("tmp_test_vm_rtr.txt", 6, 10)
+print(r2)
+// Offset past end: EOF shape, real total.
+let r3 = File.read_text_range("tmp_test_vm_rtr.txt", 100, 4)
+print(r3)
+// Parameter error: limit <= 0.
+let r4 = File.read_text_range("tmp_test_vm_rtr.txt", 0, 0)
+print(r4)
+// IO error: missing file.
+let r5 = File.read_text_range("tmp_test_vm_rtr_no_such.txt", 0, 4)
+print(r5)
+File.delete("tmp_test_vm_rtr.txt")
+// UTF-8: chunk edges never split a char (3-byte CJK chars).
+File.write_text("tmp_test_vm_rtr_cjk.txt", "你好世界")
+// offset 2 walks back to 0; end 6 is a boundary.
+let u1 = File.read_text_range("tmp_test_vm_rtr_cjk.txt", 2, 4)
+print(u1)
+// limit 4 from 0 backs off to the 3-byte boundary.
+let u2 = File.read_text_range("tmp_test_vm_rtr_cjk.txt", 0, 4)
+print(u2)
+// Aligned mid-file CJK read.
+let u3 = File.read_text_range("tmp_test_vm_rtr_cjk.txt", 3, 3)
+print(u3)
+// CJK EOF: null next_offset at true EOF.
+let u4 = File.read_text_range("tmp_test_vm_rtr_cjk.txt", 9, 10)
+print(u4)
+File.delete("tmp_test_vm_rtr_cjk.txt")
+// Empty file: EOF shape with total 0.
+File.write_text("tmp_test_vm_rtr_empty.txt", "")
+let e1 = File.read_text_range("tmp_test_vm_rtr_empty.txt", 0, 10)
+print(e1)
+File.delete("tmp_test_vm_rtr_empty.txt")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+{"text":"cdef","total":10,"next_offset":6}
+{"text":"ghij","total":10,"next_offset":null}
+{"text":"","total":10,"next_offset":null}
+{"text":"","total":-1,"next_offset":null}
+{"text":"","total":-1,"next_offset":null}
+{"text":"你","total":12,"next_offset":3}
+{"text":"你","total":12,"next_offset":3}
+{"text":"好","total":12,"next_offset":6}
+{"text":"界","total":12,"next_offset":null}
+{"text":"","total":0,"next_offset":null}
+```

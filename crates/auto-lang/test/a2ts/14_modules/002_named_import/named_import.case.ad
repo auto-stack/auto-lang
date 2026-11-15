@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 14_modules/002_named_import
+
+## Case: legacy-14-modules-002-named-import
+id: "legacy.14_modules.002_named_import"
+entry-mode: "program"
+
+### Auto
+path: "named_import.at"
+```auto
+use math: add, sub
+
+fn main() {
+    print("imported named")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### named_import.expected.ts
+```ts
+import { add, sub } from "math";
+
+function main(): void {
+    console.log("imported named");
+}
+
+main();
+```

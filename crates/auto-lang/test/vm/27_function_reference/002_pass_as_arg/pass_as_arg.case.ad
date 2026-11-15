@@ -1,0 +1,24 @@
+# Legacy vm corpus: 27_function_reference/002_pass_as_arg
+
+## Case: legacy-27-function-reference-002-pass-as-arg
+id: "legacy.27_function_reference.002_pass_as_arg"
+entry-mode: "program"
+
+### Auto
+path: "pass_as_arg.at"
+```auto
+// Plan 383: 函数引用作为实参传递 + 在被调用方内部调用。
+// apply 接收一个函数引用 f 和一个 int，返回 f(x)。
+fn double(x int) int { return x * 2 }
+fn apply(f fn(int)int, x int) int { return f(x) }
+fn main() {
+    print(apply(double, 21))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+42
+```

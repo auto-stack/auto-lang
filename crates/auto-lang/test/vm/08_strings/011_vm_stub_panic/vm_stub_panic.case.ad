@@ -1,0 +1,26 @@
+# Legacy vm corpus: 08_strings/011_vm_stub_panic
+
+## Case: legacy-08-strings-011-vm-stub-panic
+id: "legacy.08_strings.011_vm_stub_panic"
+entry-mode: "program"
+
+### Auto
+path: "vm_stub_panic.at"
+```auto
+// Test: calling a #[vm] method that has no native implementation should panic
+ext str {
+    #[vm]
+    fn boom() str
+}
+
+fn main() {
+    let a = "hello"
+    let r = a.boom()
+    print(r)
+}
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

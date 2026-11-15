@@ -1,0 +1,20 @@
+# Legacy vm corpus: 14_borrow/015_str_slice_in_array
+
+## Case: legacy-14-borrow-015-str-slice-in-array
+id: "legacy.14_borrow.015_str_slice_in_array"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_in_array.at"
+```auto
+let s1 = "hello"
+let s2 = "world"
+[s1.view, s2.view]
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+["hello", "world"]
+```

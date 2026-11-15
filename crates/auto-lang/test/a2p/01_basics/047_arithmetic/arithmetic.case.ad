@@ -1,0 +1,39 @@
+# Legacy a2p corpus: 01_basics/047_arithmetic
+
+## Case: legacy-a2p-01-basics-047-arithmetic
+id: "legacy.a2p.01_basics.047_arithmetic"
+entry-mode: "program"
+
+### Auto
+path: "arithmetic.at"
+```auto
+fn main() {
+    let a = 10
+    let b = 3
+    let sum = a + b
+    let diff = a - b
+    let prod = a * b
+    let quot = a / b
+    let mod_ = a % b
+    print(sum)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### arithmetic.expected.py
+```python
+def main():
+    a = 10
+    b = 3
+    sum = a + b
+    diff = a - b
+    prod = a * b
+    quot = a / b
+    mod_ = a % b
+    print(sum)
+
+if __name__ == "__main__":
+    main()
+```

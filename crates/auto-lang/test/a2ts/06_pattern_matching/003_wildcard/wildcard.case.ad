@@ -1,0 +1,37 @@
+# Legacy a2ts corpus: 06_pattern_matching/003_wildcard
+
+## Case: legacy-06-pattern-matching-003-wildcard
+id: "legacy.06_pattern_matching.003_wildcard"
+entry-mode: "program"
+
+### Auto
+path: "wildcard.at"
+```auto
+fn main() {
+    let x = 5
+    is x {
+        0 -> print("zero")
+        _ -> print("non-zero")
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### wildcard.expected.ts
+```ts
+function main(): void {
+    const x: number = 5;
+    switch (x) {
+        case 0:
+            console.log("zero");
+            break;
+        case _:
+            console.log("non-zero");
+            break;
+    }
+}
+
+main();
+```

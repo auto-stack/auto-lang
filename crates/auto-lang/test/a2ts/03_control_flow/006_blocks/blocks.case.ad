@@ -1,0 +1,47 @@
+# Legacy a2ts corpus: 03_control_flow/006_blocks
+
+## Case: legacy-03-control-flow-006-blocks
+id: "legacy.03_control_flow.006_blocks"
+entry-mode: "program"
+
+### Auto
+path: "blocks.at"
+```auto
+fn add(a int, b int) int {
+    a + b
+}
+
+fn multiply(a int, b int) int {
+    a * b
+}
+
+fn main() {
+    let sum = add(5, 3)
+    let product = multiply(4, 7)
+    let result = sum + product
+    print("Sum:", sum, "Product:", product, "Result:", result)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### blocks.expected.ts
+```ts
+export function add(a: number, b: number): number {
+    return a + b;
+}
+
+export function multiply(a: number, b: number): number {
+    return a * b;
+}
+
+function main(): void {
+    const sum = add(5, 3);
+    const product = multiply(4, 7);
+    const result = sum + product;
+    console.log("Sum:", sum, "Product:", product, "Result:", result);
+}
+
+main();
+```

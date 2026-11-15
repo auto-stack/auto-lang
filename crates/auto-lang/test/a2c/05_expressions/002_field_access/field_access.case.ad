@@ -1,0 +1,118 @@
+# Legacy a2c corpus: 05_expressions/002_field_access
+
+## Case: legacy-05-expressions-002-field-access
+id: "legacy.05_expressions.002_field_access"
+entry-mode: "program"
+
+### Auto
+path: "field_access.at"
+```auto
+/// Plan 056: Field Access Tests
+/// Tests dot expression field access syntax
+
+type Point {
+    x int
+    y int
+}
+
+type Data {
+    name str
+    value int
+    active bool
+}
+
+fn main() {
+    // Test 1: Basic field access with named args
+    let p1 = Point { x: 10, y: 20 }
+    print("p1.x: ", p1.x)
+    print("p1.y: ", p1.y)
+
+    // Test 2: Field access with positional args
+    let p2 = Point(1, 2)
+    print("p2.x: ", p2.x)
+    print("p2.y: ", p2.y)
+
+    // Test 3: Field assignment
+    let p3 = Point { x: 0, y: 0 }
+    p3.x = 100
+    p3.y = 200
+    print("p3.x: ", p3.x)
+    print("p3.y: ", p3.y)
+
+    // Test 4: Multiple field accesses from same object
+    let d = Data { name: "test", value: 42, active: true }
+    print("d.name: ", d.name)
+    print("d.value: ", d.value)
+    print("d.active: ", d.active)
+
+    // Test 5: Access field multiple times (should not move)
+    let p4 = Point { x: 5, y: 10 }
+    print("p4.x (first): ", p4.x)
+    print("p4.x (second): ", p4.x)
+    print("p4.y: ", p4.y)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### field_access.expected.c
+```c
+#include "field_access.h"
+
+
+
+int main(void) {
+
+    struct Point p1 = {.x = 10, .y = 20};
+    printf("%s %d\n", "p1.x: ", p1.x);
+    printf("%s %d\n", "p1.y: ", p1.y);
+
+
+    struct Point p2 = {.x = 1, .y = 2};
+    printf("%s %d\n", "p2.x: ", p2.x);
+    printf("%s %d\n", "p2.y: ", p2.y);
+
+
+    struct Point p3 = {.x = 0, .y = 0};
+    p3.x = 100;
+    p3.y = 200;
+    printf("%s %d\n", "p3.x: ", p3.x);
+    printf("%s %d\n", "p3.y: ", p3.y);
+
+
+    struct Data d = {.name = "test", .value = 42, .active = true};
+    printf("%s %d\n", "d.name: ", d.name);
+    printf("%s %d\n", "d.value: ", d.value);
+    printf("%s %d\n", "d.active: ", d.active);
+
+
+    struct Point p4 = {.x = 5, .y = 10};
+    printf("%s %d\n", "p4.x (first): ", p4.x);
+    printf("%s %d\n", "p4.x (second): ", p4.x);
+    printf("%s %d\n", "p4.y: ", p4.y);
+    return 0;
+}
+```
+
+#### field_access.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include <stdbool.h>
+
+struct Point {
+    int x;
+    int y;
+};
+struct Data {
+    char* name;
+    int value;
+    bool active;
+};
+
+
+
+
+```

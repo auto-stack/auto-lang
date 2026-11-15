@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/algorithms/009_rand_range
+
+## Case: legacy-cookbook-algorithms-009-rand-range
+id: "legacy.cookbook.algorithms.009_rand_range"
+entry-mode: "program"
+
+### Auto
+path: "rand_range.at"
+```auto
+// Random range demo
+use.rs rand
+
+fn main() {
+    var rng = rand.thread_rng()
+    let x int = rng.gen_range(0..5)
+    let y int = rng.gen_range(10..20)
+    let x_ok = x >= 0
+    let y_ok = y >= 10
+    assert(x_ok)
+    assert(y_ok)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/encoding/006_endian_byte
+
+## Case: legacy-cookbook-encoding-006-endian-byte
+id: "legacy.cookbook.encoding.006_endian_byte"
+entry-mode: "program"
+
+### Auto
+path: "endian_byte.at"
+```auto
+fn main() {
+    let value = 0x1234
+    let bytes = value.to_be_bytes()
+    assert(bytes[0] == 0)
+    assert(bytes[2] == 0x12)
+    assert(bytes[3] == 0x34)
+    let le_bytes = value.to_le_bytes()
+    assert(le_bytes[0] == 0x34)
+    assert(le_bytes[1] == 0x12)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

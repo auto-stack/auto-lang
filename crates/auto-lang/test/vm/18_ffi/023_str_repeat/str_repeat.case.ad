@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/023_str_repeat
+
+## Case: legacy-18-ffi-023-str-repeat
+id: "legacy.18_ffi.023_str_repeat"
+entry-mode: "program"
+
+### Auto
+path: "str_repeat.at"
+```auto
+Str.repeat("ab", 3)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+ababab
+```

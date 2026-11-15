@@ -1,0 +1,23 @@
+# Legacy vm corpus: 04_control_flow/008_is_or_pattern
+
+## Case: legacy-04-control-flow-008-is-or-pattern
+id: "legacy.04_control_flow.008_is_or_pattern"
+entry-mode: "program"
+
+### Auto
+path: "is_or_pattern.at"
+```auto
+var n = 2
+is n {
+    1 | 2 | 3 -> print("small")
+    5 -> print("five")
+    else -> print("other")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+small
+```

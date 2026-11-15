@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/096_a2r_object
+
+## Case: legacy-99-bootstrap-096-a2r-object
+id: "legacy.99_bootstrap.096_a2r_object"
+entry-mode: "program"
+
+### Auto
+path: "a2r_object.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nlet o = { x: 1, y: 2 }\n}")
+    var expected = "fn main() {\n    let o = { x: 1, y: 2 };\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

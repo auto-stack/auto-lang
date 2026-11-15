@@ -1,0 +1,76 @@
+# Legacy a2c corpus: 06_pattern_matching/004_enum_smoke_2var
+
+## Case: legacy-06-pattern-matching-004-enum-smoke-2var
+id: "legacy.06_pattern_matching.004_enum_smoke_2var"
+entry-mode: "program"
+
+### Auto
+path: "enum_smoke_2var.at"
+```auto
+enum Mode {
+    Read int
+    Write int
+}
+
+fn is_first(m Mode) bool {
+    is m {
+        Mode.Read(x) -> true
+        Mode.Write(x) -> false
+    }
+}
+
+fn main() {
+    let s = Mode.Read()
+    is_first(s)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### enum_smoke_2var.expected.c
+```c
+#include "enum_smoke_2var.h"
+
+
+bool is_first(struct Mode m) {
+    switch (m.tag) {
+    case MODE_READ:
+        {
+            return true;
+        }
+        break;
+    case MODE_WRITE:
+        {
+            return false;
+        }
+        break;
+    }
+    return false;
+}
+
+int main(void) {
+    struct Mode s = {.tag = MODE_READ, .as.Read = 0};
+    return is_first(s);
+}
+```
+
+#### enum_smoke_2var.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+enum ModeKind {
+    MODE_READ,
+    MODE_WRITE,
+};
+
+struct Mode {
+    enum ModeKind tag;
+    union {
+        int Read;
+        int Write;
+    } as;
+};
+bool is_first(struct Mode m);
+```

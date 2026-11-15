@@ -1,0 +1,21 @@
+# Legacy cookbook corpus: cookbook/file/001_read_lines
+
+## Case: legacy-cookbook-file-001-read-lines
+id: "legacy.cookbook.file.001_read_lines"
+entry-mode: "program"
+
+### Auto
+path: "read_lines.at"
+```auto
+// Read lines from file demo
+fn main() {
+    File.write_text("lines.txt", "Rust\nFun\nAuto")
+    let data = File.read_text("lines.txt")
+    assert(data.len() == 13)
+    assert(data == "Rust\nFun\nAuto")
+    File.delete("lines.txt")
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: cookbook/concurrency/009_global_mut_state
+
+## Case: legacy-cookbook-concurrency-009-global-mut-state
+id: "legacy.cookbook.concurrency.009_global_mut_state"
+entry-mode: "program"
+
+### Auto
+path: "global_mut_state.at"
+```auto
+fn main() {
+    var counter = 0
+    for i in 0..200 {
+        counter += 1
+    }
+    assert(counter == 200)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

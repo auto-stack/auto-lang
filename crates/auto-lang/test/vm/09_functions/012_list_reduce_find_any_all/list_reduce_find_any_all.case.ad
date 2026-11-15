@@ -1,0 +1,36 @@
+# Legacy vm corpus: 09_functions/012_list_reduce_find_any_all
+
+## Case: legacy-09-functions-012-list-reduce-find-any-all
+id: "legacy.09_functions.012_list_reduce_find_any_all"
+entry-mode: "program"
+
+### Auto
+path: "list_reduce_find_any_all.at"
+```auto
+// Test: List.reduce — sum
+let nums = [1, 2, 3, 4, 5]
+let sum = nums.reduce(0, (acc, x) => acc + x)
+print(sum)
+
+// Test: List.find — first > 3
+let found = nums.find(x => x > 3)
+print(found)
+
+// Test: List.any — any negative
+let has_neg = nums.any(x => x < 0)
+print(has_neg)
+
+// Test: List.all — all positive
+let all_pos = nums.all(x => x > 0)
+print(all_pos)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+15
+4
+0
+1
+```

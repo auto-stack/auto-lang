@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/os/003_error_file
+
+## Case: legacy-cookbook-os-003-error-file
+id: "legacy.cookbook.os.003_error_file"
+entry-mode: "program"
+
+### Auto
+path: "error_file.at"
+```auto
+use.rs std::fs::File
+use.rs std::process::Command
+use.rs std::process::Stdio
+
+fn main() {
+    let result = Command.new("echo").arg("test output").output()
+    let stdout = result.stdout
+    assert(stdout.len() > 0)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

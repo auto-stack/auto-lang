@@ -1,0 +1,27 @@
+# Legacy cookbook corpus: cookbook/versioning/005_semver_complex
+
+## Case: legacy-cookbook-versioning-005-semver-complex
+id: "legacy.cookbook.versioning.005_semver_complex"
+entry-mode: "program"
+
+### Auto
+path: "semver_complex.at"
+```auto
+dep semver
+use.rs semver::Version
+use.rs semver::VersionReq
+
+fn main() {
+    let req = VersionReq.parse(">=1.2.0, <2.0.0").unwrap()
+    let v1 = Version.parse("1.5.0").unwrap()
+    let v2 = Version.parse("2.0.0").unwrap()
+    assert(req.matches(v1))
+    assert(!req.matches(v2))
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

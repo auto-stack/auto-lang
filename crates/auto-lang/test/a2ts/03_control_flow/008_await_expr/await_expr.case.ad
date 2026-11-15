@@ -1,0 +1,35 @@
+# Legacy a2ts corpus: 03_control_flow/008_await_expr
+
+## Case: legacy-03-control-flow-008-await-expr
+id: "legacy.03_control_flow.008_await_expr"
+entry-mode: "program"
+
+### Auto
+path: "await_expr.at"
+```auto
+fn get_value() ~int {
+    return 42
+}
+
+fn main() {
+    let val = get_value().await
+    print(val)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### await_expr.expected.ts
+```ts
+export async function get_value(): Future<number> {
+    return 42;
+}
+
+async function main(): void {
+    const val = (await get_value());
+    console.log(val);
+}
+
+main();
+```

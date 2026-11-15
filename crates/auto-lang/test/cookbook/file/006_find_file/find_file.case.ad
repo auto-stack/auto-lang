@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/file/006_find_file
+
+## Case: legacy-cookbook-file-006-find-file
+id: "legacy.cookbook.file.006_find_file"
+entry-mode: "program"
+
+### Auto
+path: "find_file.at"
+```auto
+use.rs std::fs
+
+fn main() ! {
+    let entries = fs.read_dir(".").?
+    var count = 0
+    for entry in entries {
+        let entry = entry.?
+        count += 1
+    }
+    // Verify read_dir returns entries
+    assert(count > 0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

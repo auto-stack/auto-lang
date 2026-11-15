@@ -1,0 +1,22 @@
+# Legacy vm corpus: 25_method_u64/003_let_u64_from_method
+
+## Case: legacy-25-method-u64-003-let-u64-from-method
+id: "legacy.25_method_u64.003_let_u64_from_method"
+entry-mode: "program"
+
+### Auto
+path: "let_u64_from_method.at"
+```auto
+let s = "100"
+let x u64 = s.to_uint()
+print(x)
+print(x + 23)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+100
+123
+```

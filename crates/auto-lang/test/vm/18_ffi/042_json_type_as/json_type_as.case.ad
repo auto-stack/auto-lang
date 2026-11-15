@@ -1,0 +1,21 @@
+# Legacy vm corpus: 18_ffi/042_json_type_as
+
+## Case: legacy-18-ffi-042-json-type-as
+id: "legacy.18_ffi.042_json_type_as"
+entry-mode: "program"
+
+### Auto
+path: "json_type_as.at"
+```auto
+let s = Json.parse("\"hello\"")
+print(Json.type_of(s))
+print(Json.as_string(s))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+string
+hello
+```

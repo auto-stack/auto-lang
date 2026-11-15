@@ -1,0 +1,18 @@
+# Legacy vm corpus: 01_basics/010_eq
+
+## Case: legacy-01-basics-010-eq
+id: "legacy.01_basics.010_eq"
+entry-mode: "program"
+
+### Auto
+path: "eq.at"
+```auto
+1 == 1
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+true
+```

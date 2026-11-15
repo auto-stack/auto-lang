@@ -1,0 +1,69 @@
+# Legacy a2ts corpus: 02_types/001_struct
+
+## Case: legacy-02-types-001-struct
+id: "legacy.02_types.001_struct"
+entry-mode: "program"
+
+### Auto
+path: "struct.at"
+```auto
+type Point {
+    x int
+    y int
+}
+
+type Circle {
+    radius float
+    border uint
+    center Point
+}
+
+fn main() {
+    var p = Point(1, 2)
+    p.x = 3
+    print(`P: ${p.x}, ${p.y}`)
+
+    let circle = Circle(5.0, 1, Point(50, 50))
+    print(`C: ${circle.center.x}, ${circle.center.y}, ${circle.radius}`)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### struct.expected.ts
+```ts
+export class Point {
+    x: number;
+    y: number;
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+export class Circle {
+    radius: number;
+    border: number;
+    center: Point;
+
+    constructor(radius: number, border: number, center: Point) {
+        this.radius = radius;
+        this.border = border;
+        this.center = center;
+    }
+}
+
+function main(): void {
+    let p = new Point(1, 2);
+    p.x = 3;
+    console.log(`P: ${p.x}, ${p.y}`);
+    
+
+    const circle = new Circle(5, 1, new Point(50, 50));
+    console.log(`C: ${circle.center.x}, ${circle.center.y}, ${circle.radius}`);
+}
+
+main();
+```

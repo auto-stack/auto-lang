@@ -1,0 +1,27 @@
+# Legacy cookbook corpus: cookbook/concurrency/007_crossbeam_complex
+
+## Case: legacy-cookbook-concurrency-007-crossbeam-complex
+id: "legacy.cookbook.concurrency.007_crossbeam_complex"
+entry-mode: "program"
+
+### Auto
+path: "crossbeam_complex.at"
+```auto
+fn main() {
+    let messages = ["hello", "world"]
+    var msg_count = 0
+    for msg in messages {
+        msg_count += 1
+        if msg == "world" {
+            break
+        }
+    }
+    assert(msg_count == 2)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

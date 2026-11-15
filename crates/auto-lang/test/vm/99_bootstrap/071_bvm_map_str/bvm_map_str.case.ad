@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/071_bvm_map_str
+
+## Case: legacy-99-bootstrap-071-bvm-map-str
+id: "legacy.99_bootstrap.071_bvm_map_str"
+entry-mode: "program"
+
+### Auto
+path: "bvm_map_str.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar m = Map.new()\nm.insert_str(\"name\", \"alice\")\nm.insert_str(\"city\", \"NYC\")\nprint(m.get_str(\"name\"))\nprint(m.get_str(\"city\"))\n}")
+    if result == "alice\nNYC\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

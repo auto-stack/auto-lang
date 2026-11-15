@@ -1,0 +1,48 @@
+# Legacy a2c corpus: 02_types/002_enum
+
+## Case: legacy-02-types-002-enum
+id: "legacy.02_types.002_enum"
+entry-mode: "program"
+
+### Auto
+path: "enum.at"
+```auto
+enum Color {
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+}
+
+fn main() {
+    let color Color = Color.BLUE;
+    print("The color is", color);
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### enum.expected.c
+```c
+#include "enum.h"
+
+
+int main(void) {
+    enum Color color = COLOR_BLUE;
+    printf("%s %d\n", "The color is", color);
+    return 0;
+}
+```
+
+#### enum.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+enum Color {
+    COLOR_RED = 1,
+    COLOR_GREEN = 2,
+    COLOR_BLUE = 3,
+};
+```

@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 19_option_type/010_question_return_uint
+
+## Case: legacy-19-option-type-010-question-return-uint
+id: "legacy.19_option_type.010_question_return_uint"
+entry-mode: "program"
+
+### Auto
+path: "question_return_uint.at"
+```auto
+fn test_question_return_uint() ?uint {
+    42
+}
+
+fn main() {
+    let result = test_question_return_uint()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_return_uint.expected.c
+```c
+#include "question_return_uint.h"
+
+unsigned int test_question_return_uint(void) {
+    return 42;
+}
+
+int main(void) {
+    unknown result = test_question_return_uint();
+    return 0;
+}
+```
+
+#### question_return_uint.expected.h
+```c
+#pragma once
+
+unsigned int test_question_return_uint(void);
+```

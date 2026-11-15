@@ -1,0 +1,19 @@
+# Legacy vm corpus: 07_objects/001_object_field
+
+## Case: legacy-07-objects-001-object-field
+id: "legacy.07_objects.001_object_field"
+entry-mode: "program"
+
+### Auto
+path: "object_field.at"
+```auto
+var a = { name: "auto", age: 18 }
+a.name
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+auto
+```

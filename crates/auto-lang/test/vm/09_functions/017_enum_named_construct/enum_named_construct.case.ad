@@ -1,0 +1,44 @@
+# Legacy vm corpus: 09_functions/017_enum_named_construct
+
+## Case: legacy-09-functions-017-enum-named-construct
+id: "legacy.09_functions.017_enum_named_construct"
+entry-mode: "program"
+
+### Auto
+path: "enum_named_construct.at"
+```auto
+// Test: named arg enum construction
+fn main() {
+    enum ApiError {
+        Http { code int, msg str }
+        Timeout { millis int }
+    }
+
+    // Named args in field order
+    let e1 = ApiError.Http(code: 404, msg: "not found")
+    is e1 {
+        ApiError.Http(c, m) -> print(c)
+    }
+
+    // Named args out of order
+    let e2 = ApiError.Http(msg: "timeout", code: 503)
+    is e2 {
+        ApiError.Http(c, m) -> print(c)
+    }
+
+    // Positional args
+    let e3 = ApiError.Timeout(5000)
+    is e3 {
+        ApiError.Timeout(ms) -> print(ms)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+404
+503
+5000
+```

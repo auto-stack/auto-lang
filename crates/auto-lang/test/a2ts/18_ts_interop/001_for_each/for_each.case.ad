@@ -1,0 +1,31 @@
+# Legacy a2ts corpus: 18_ts_interop/001_for_each
+
+## Case: legacy-18-ts-interop-001-for-each
+id: "legacy.18_ts_interop.001_for_each"
+entry-mode: "program"
+
+### Auto
+path: "for_each.at"
+```auto
+fn main() {
+    let arr = [1, 2, 3]
+    for x in arr {
+        print(x)
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### for_each.expected.ts
+```ts
+function main(): void {
+    const arr: number[] = [1, 2, 3];
+    for (const x of arr) {
+        console.log(x);
+    }
+}
+
+main();
+```

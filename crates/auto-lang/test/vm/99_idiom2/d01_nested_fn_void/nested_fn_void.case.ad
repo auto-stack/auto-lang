@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_idiom2/d01_nested_fn_void
+
+## Case: legacy-99-idiom2-d01-nested-fn-void
+id: "legacy.99_idiom2.d01_nested_fn_void"
+entry-mode: "program"
+
+### Auto
+path: "nested_fn_void.at"
+```auto
+// Plan 514 W1-2 探针 d01：447-① 债复现件——嵌套 void fn 静默失效
+// 期望（正确语义）：inner() 输出 "hi from inner"。
+// 当前 VM 基线（2026-09-01）：仅输出 "after"，inner() 静默无输出无报错 → 红。
+// W1-4 修复后转绿；接线暂 #[ignore]。
+fn main() {
+    fn inner() {
+        print("hi from inner")
+    }
+    inner()
+    print("after")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hi from inner
+after
+```

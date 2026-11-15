@@ -1,0 +1,22 @@
+# Legacy vm corpus: 10_types/001_type_compose
+
+## Case: legacy-10-types-001-type-compose
+id: "legacy.10_types.001_type_compose"
+entry-mode: "program"
+
+### Auto
+path: "type_compose.at"
+```auto
+type Wing { speed int }
+type Duck { name str }
+fn Wing.fly(self) { print("flap!flap!") }
+type Duck has Wing
+var duck = Duck { name: "donald", speed: 10 }
+duck.fly()
+1
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

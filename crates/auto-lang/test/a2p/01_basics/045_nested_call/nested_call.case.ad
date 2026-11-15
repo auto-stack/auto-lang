@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 01_basics/045_nested_call
+
+## Case: legacy-a2p-01-basics-045-nested-call
+id: "legacy.a2p.01_basics.045_nested_call"
+entry-mode: "program"
+
+### Auto
+path: "nested_call.at"
+```auto
+fn double(x int) int {
+    x * 2
+}
+
+fn main() {
+    let result = double(double(3))
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### nested_call.expected.py
+```python
+def double(x: int) -> int:
+    return x * 2
+
+def main():
+    result = double(double(3))
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

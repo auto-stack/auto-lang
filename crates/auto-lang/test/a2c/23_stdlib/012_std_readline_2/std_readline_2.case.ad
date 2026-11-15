@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 23_stdlib/012_std_readline_2
+
+## Case: legacy-23-stdlib-012-std-readline-2
+id: "legacy.23_stdlib.012_std_readline_2"
+entry-mode: "program"
+
+### Auto
+path: "std_readline_2.at"
+```auto
+use auto.io: File
+
+fn main() {
+    let file = File.open(c"test_lines.txt")
+    let line1 = file.read_line()
+    let line2 = file.read_line()
+    file.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_readline_2.expected.c
+```c
+#include "std_readline_2.h"
+
+int main(void) {
+    unknown file = File.open("test_lines.txt");
+    unknown line1 = file.read_line();
+    unknown line2 = file.read_line();
+    file.close();
+    return 0;
+}
+```
+
+#### std_readline_2.expected.h
+```c
+#pragma once
+
+#include "auto/io.h"
+```

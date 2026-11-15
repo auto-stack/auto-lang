@@ -1,0 +1,20 @@
+# Legacy vm corpus: 15_nested_mutation/007_array_of_obj_field
+
+## Case: legacy-15-nested-mutation-007-array-of-obj-field
+id: "legacy.15_nested_mutation.007_array_of_obj_field"
+entry-mode: "program"
+
+### Auto
+path: "array_of_obj_field.at"
+```auto
+var arr = [{ x: 1 }, { x: 2 }]
+arr[0].x = 10
+arr[0].x
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+10
+```

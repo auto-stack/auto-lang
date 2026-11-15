@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/001_file_exists
+
+## Case: legacy-18-ffi-001-file-exists
+id: "legacy.18_ffi.001_file_exists"
+entry-mode: "program"
+
+### Auto
+path: "file_exists.at"
+```auto
+File.exists("nonexistent_file_xyz_12345.txt")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+0
+```

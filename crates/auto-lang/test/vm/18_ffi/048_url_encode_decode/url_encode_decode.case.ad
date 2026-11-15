@@ -1,0 +1,24 @@
+# Legacy vm corpus: 18_ffi/048_url_encode_decode
+
+## Case: legacy-18-ffi-048-url-encode-decode
+id: "legacy.18_ffi.048_url_encode_decode"
+entry-mode: "program"
+
+### Auto
+path: "url_encode_decode.at"
+```auto
+print(Url.encode("hello world"))
+print(Url.decode("hello%20world"))
+print(Url.encode("a=b&c=d"))
+print(Url.decode("a%3Db%26c%3Dd"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello%20world
+hello world
+a%3Db%26c%3Dd
+a=b&c=d
+```

@@ -1,0 +1,20 @@
+# Legacy vm corpus: 15_nested_mutation/001_object_field
+
+## Case: legacy-15-nested-mutation-001-object-field
+id: "legacy.15_nested_mutation.001_object_field"
+entry-mode: "program"
+
+### Auto
+path: "object_field.at"
+```auto
+var obj = { x: 10, y: 20 }
+obj.x = 30
+obj.x
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+30
+```

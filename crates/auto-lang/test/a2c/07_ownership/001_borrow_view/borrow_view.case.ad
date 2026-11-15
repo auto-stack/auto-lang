@@ -1,0 +1,40 @@
+# Legacy a2c corpus: 07_ownership/001_borrow_view
+
+## Case: legacy-07-ownership-001-borrow-view
+id: "legacy.07_ownership.001_borrow_view"
+entry-mode: "program"
+
+### Auto
+path: "borrow_view.at"
+```auto
+// Test view (immutable borrow) expression
+fn main() {
+    let s = "hello"
+    let slice = s.view
+    print(str_len(slice))
+    print(s)  // s is still valid after view
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### borrow_view.expected.c
+```c
+#include "borrow_view.h"
+
+int main(void) {
+    char* s = "hello";
+    char* slice = &(s);
+    printf("%d\n", str_len(slice));
+    printf("%s\n", s);
+    return 0;
+}
+```
+
+#### borrow_view.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

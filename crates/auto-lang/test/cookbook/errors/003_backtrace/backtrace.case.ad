@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: cookbook/errors/003_backtrace
+
+## Case: legacy-cookbook-errors-003-backtrace
+id: "legacy.cookbook.errors.003_backtrace"
+entry-mode: "program"
+
+### Auto
+path: "backtrace.at"
+```auto
+use.rs std::backtrace::Backtrace
+
+fn main() {
+    let bt = Backtrace.capture()
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

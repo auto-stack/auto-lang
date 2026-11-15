@@ -1,0 +1,28 @@
+# Legacy cookbook corpus: cookbook/file/008_loops
+
+## Case: legacy-cookbook-file-008-loops
+id: "legacy.cookbook.file.008_loops"
+entry-mode: "program"
+
+### Auto
+path: "loops.at"
+```auto
+use.rs std::collections::HashSet
+
+fn visit(path str, visited HashSet<str>) {
+    if !visited.contains(path) {
+        visited.insert(path)
+    } else {
+        print(f"Loop detected: ${path}")
+    }
+}
+
+fn main() {
+    var visited HashSet<str> = HashSet.new()
+    visit(".", visited)
+    assert(visited.contains("."))
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

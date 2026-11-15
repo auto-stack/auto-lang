@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/006_nested_view
+
+## Case: legacy-14-borrow-006-nested-view
+id: "legacy.14_borrow.006_nested_view"
+entry-mode: "program"
+
+### Auto
+path: "nested_view.at"
+```auto
+let x = 21
+let v1 = x.view
+let v2 = v1.view
+v2 + v2
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+42
+```

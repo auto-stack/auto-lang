@@ -1,0 +1,18 @@
+# Legacy vm corpus: 10_types/003_generic_instantiation
+
+## Case: legacy-10-types-003-generic-instantiation
+id: "legacy.10_types.003_generic_instantiation"
+entry-mode: "program"
+
+### Auto
+path: "generic_instantiation.at"
+```auto
+type Point<T> { x T; y T }
+var p = Point<int> { x: 100, y: 200 }
+p.x + p.y
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

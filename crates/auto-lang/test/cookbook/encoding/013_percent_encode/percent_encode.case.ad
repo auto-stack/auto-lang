@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/encoding/013_percent_encode
+
+## Case: legacy-cookbook-encoding-013-percent-encode
+id: "legacy.cookbook.encoding.013_percent_encode"
+entry-mode: "program"
+
+### Auto
+path: "percent_encode.at"
+```auto
+dep percent_encoding
+use.rs percent_encoding::percent_encode
+use.rs percent_encoding
+
+fn main() {
+    let input = "hello world! foo@bar.com"
+    let encoded = percent_encode(input.as_bytes(), percent_encoding.NON_ALPHANUMERIC).to_string()
+    assert(encoded.contains("hello"))
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

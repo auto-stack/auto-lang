@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/algorithms/008_rand_passwd
+
+## Case: legacy-cookbook-algorithms-008-rand-passwd
+id: "legacy.cookbook.algorithms.008_rand_passwd"
+entry-mode: "program"
+
+### Auto
+path: "rand_passwd.at"
+```auto
+// Password generation demo
+use.rs rand
+
+fn main() {
+    var rng = rand.thread_rng()
+    let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
+    var password = ""
+    for _ in 0..16 {
+        let idx = rng.gen_range(0..charset.len())
+        password = password + charset.char_at(idx)
+    }
+    assert(password.len() == 16)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

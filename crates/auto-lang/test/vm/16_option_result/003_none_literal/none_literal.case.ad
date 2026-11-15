@@ -1,0 +1,19 @@
+# Legacy vm corpus: 16_option_result/003_none_literal
+
+## Case: legacy-16-option-result-003-none-literal
+id: "legacy.16_option_result.003_none_literal"
+entry-mode: "program"
+
+### Auto
+path: "none_literal.at"
+```auto
+let x = None
+1
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

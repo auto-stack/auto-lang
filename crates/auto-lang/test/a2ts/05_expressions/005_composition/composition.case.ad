@@ -1,0 +1,27 @@
+# Legacy a2ts corpus: 05_expressions/005_composition
+
+## Case: legacy-05-expressions-005-composition
+id: "legacy.05_expressions.005_composition"
+entry-mode: "program"
+
+### Auto
+path: "composition.at"
+```auto
+fn main() {
+    let x = (1 + 2) * (3 + 4)
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### composition.expected.ts
+```ts
+function main(): void {
+    const x: number = 1 + 2 * 3 + 4;
+    console.log(x);
+}
+
+main();
+```

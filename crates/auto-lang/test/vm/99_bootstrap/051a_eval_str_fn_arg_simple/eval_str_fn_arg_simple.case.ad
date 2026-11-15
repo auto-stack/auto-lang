@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/051a_eval_str_fn_arg_simple
+
+## Case: legacy-99-bootstrap-051a-eval-str-fn-arg-simple
+id: "legacy.99_bootstrap.051a_eval_str_fn_arg_simple"
+entry-mode: "program"
+
+### Auto
+path: "eval_str_fn_arg_simple.at"
+```auto
+// Test: eval — int function argument
+fn main() {
+    var r1 = run_eval("fn double(x) {\n  return x + x\n}\nprint(double(3))")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:6
+
+```

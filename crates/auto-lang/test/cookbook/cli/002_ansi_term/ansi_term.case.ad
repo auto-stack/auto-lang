@@ -1,0 +1,29 @@
+# Legacy cookbook corpus: cookbook/cli/002_ansi_term
+
+## Case: legacy-cookbook-cli-002-ansi-term
+id: "legacy.cookbook.cli.002_ansi_term"
+entry-mode: "program"
+
+### Auto
+path: "ansi_term.at"
+```auto
+dep ansi_term
+use.rs ansi_term::Colour::Red
+use.rs ansi_term::Colour::Green
+use.rs ansi_term::Colour::Yellow
+
+fn main() {
+    let err = Red.paint("Error: something went wrong")
+    let ok = Green.paint("Success: operation completed")
+    let warn = Yellow.paint("Warning: check your input")
+    assert(err.contains("Error"))
+    assert(ok.contains("Success"))
+    assert(warn.contains("Warning"))
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

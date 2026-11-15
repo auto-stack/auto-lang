@@ -1,0 +1,24 @@
+# Legacy vm corpus: 08_strings/005_str_import_basic
+
+## Case: legacy-08-strings-005-str-import-basic
+id: "legacy.08_strings.005_str_import_basic"
+entry-mode: "program"
+
+### Auto
+path: "str_import_basic.at"
+```auto
+use auto.str: len, is_empty
+
+print(len("hello"))
+print(is_empty(""))
+print(is_empty("hi"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+5
+1
+0
+```

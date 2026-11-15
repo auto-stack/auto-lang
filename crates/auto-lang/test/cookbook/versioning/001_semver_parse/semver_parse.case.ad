@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/versioning/001_semver_parse
+
+## Case: legacy-cookbook-versioning-001-semver-parse
+id: "legacy.cookbook.versioning.001_semver_parse"
+entry-mode: "program"
+
+### Auto
+path: "semver_parse.at"
+```auto
+use.rs semver::Version
+
+fn main() {
+    let v = Version.parse("1.2.3").unwrap()
+    assert(v.major == 1)
+    assert(v.minor == 2)
+    assert(v.patch == 3)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

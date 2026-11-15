@@ -1,0 +1,20 @@
+# Legacy vm corpus: 16_option_result/008_propagate_none
+
+## Case: legacy-16-option-result-008-propagate-none
+id: "legacy.16_option_result.008_propagate_none"
+entry-mode: "program"
+
+### Auto
+path: "propagate_none.at"
+```auto
+let x = None
+let y = x.?
+y
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+-1
+```

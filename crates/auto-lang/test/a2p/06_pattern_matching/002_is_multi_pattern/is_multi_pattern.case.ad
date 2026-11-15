@@ -1,0 +1,40 @@
+# Legacy a2p corpus: 06_pattern_matching/002_is_multi_pattern
+
+## Case: legacy-a2p-06-pattern-matching-002-is-multi-pattern
+id: "legacy.a2p.06_pattern_matching.002_is_multi_pattern"
+entry-mode: "program"
+
+### Auto
+path: "is_multi_pattern.at"
+```auto
+fn main() {
+    let x = 3
+    is x {
+        1 -> print("one")
+        2 -> print("two")
+        3 -> print("three")
+        else -> print("other")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### is_multi_pattern.expected.py
+```python
+def main():
+    x = 3
+    match x:
+        case 1:
+            print("one")
+        case 2:
+            print("two")
+        case 3:
+            print("three")
+        case _:
+            print("other")
+
+if __name__ == "__main__":
+    main()
+```

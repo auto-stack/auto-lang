@@ -1,0 +1,35 @@
+# Legacy a2p corpus: 01_basics/046_boolean_ops
+
+## Case: legacy-a2p-01-basics-046-boolean-ops
+id: "legacy.a2p.01_basics.046_boolean_ops"
+entry-mode: "program"
+
+### Auto
+path: "boolean_ops.at"
+```auto
+fn main() {
+    let a = true
+    let b = false
+    let c = a && b
+    let d = a || b
+    print(c)
+    print(d)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### boolean_ops.expected.py
+```python
+def main():
+    a = True
+    b = False
+    c = a and b
+    d = a or b
+    print(c)
+    print(d)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,24 @@
+# Legacy vm corpus: 99_bootstrap/038_eval_arithmetic
+
+## Case: legacy-99-bootstrap-038-eval-arithmetic
+id: "legacy.99_bootstrap.038_eval_arithmetic"
+entry-mode: "program"
+
+### Auto
+path: "eval_arithmetic.at"
+```auto
+// Test: eval — basic print via run_eval
+fn main() {
+    // Test 1: print integer literal
+    var r1 = run_eval("print(42)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:42
+
+```

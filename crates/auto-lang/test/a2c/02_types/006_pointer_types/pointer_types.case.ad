@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 02_types/006_pointer_types
+
+## Case: legacy-02-types-006-pointer-types
+id: "legacy.02_types.006_pointer_types"
+entry-mode: "program"
+
+### Auto
+path: "pointer_types.at"
+```auto
+// Test pointer types - Plan 052
+fn test_ptr_param(p *int) int {
+    return 0
+}
+
+fn main() {
+    return 0
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### pointer_types.expected.c
+```c
+#include "pointer_types.h"
+
+int test_ptr_param(int* p) {
+    return 0;
+}
+
+int main(void) {
+    return 0;
+}
+```
+
+#### pointer_types.expected.h
+```c
+#pragma once
+
+int test_ptr_param(int* p);
+```

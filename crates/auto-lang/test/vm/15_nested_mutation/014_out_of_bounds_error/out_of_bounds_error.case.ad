@@ -1,0 +1,17 @@
+# Legacy vm corpus: 15_nested_mutation/014_out_of_bounds_error
+
+## Case: legacy-15-nested-mutation-014-out-of-bounds-error
+id: "legacy.15_nested_mutation.014_out_of_bounds_error"
+entry-mode: "program"
+
+### Auto
+path: "out_of_bounds_error.at"
+```auto
+var obj = { items: [1, 2, 3] }
+obj.items[10] = 100
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

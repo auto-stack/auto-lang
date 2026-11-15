@@ -1,0 +1,35 @@
+# Legacy a2ts corpus: 08_generics/002_generic_extends
+
+## Case: legacy-08-generics-002-generic-extends
+id: "legacy.08_generics.002_generic_extends"
+entry-mode: "program"
+
+### Auto
+path: "generic_extends.at"
+```auto
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let result = add(3, 4)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### generic_extends.expected.ts
+```ts
+export function add(a: number, b: number): number {
+    return a + b;
+}
+
+function main(): void {
+    const result = add(3, 4);
+    console.log(result);
+}
+
+main();
+```

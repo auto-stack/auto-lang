@@ -1,0 +1,20 @@
+# Legacy vm corpus: 14_borrow/001_view_basic
+
+## Case: legacy-14-borrow-001-view-basic
+id: "legacy.14_borrow.001_view_basic"
+entry-mode: "program"
+
+### Auto
+path: "view_basic.at"
+```auto
+let s = "hello"
+let v = s.view
+v
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+hello
+```

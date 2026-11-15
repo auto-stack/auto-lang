@@ -1,0 +1,38 @@
+# Legacy a2p corpus: 007_enum
+
+## Case: legacy-a2p-007-enum
+id: "legacy.a2p.007_enum"
+entry-mode: "program"
+
+### Auto
+path: "enum.at"
+```auto
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn main() {
+    print("Enum defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### enum.expected.py
+```python
+from enum import Enum, auto
+
+class Color(Enum):
+    Red = auto()
+    Green = auto()
+    Blue = auto()
+
+def main():
+    print("Enum defined")
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,21 @@
+# Legacy vm corpus: 13_collections/032_list_varargs
+
+## Case: legacy-13-collections-032-list-varargs
+id: "legacy.13_collections.032_list_varargs"
+entry-mode: "program"
+
+### Auto
+path: "list_varargs.at"
+```auto
+var list = List.new(1, 2, 3, 4, 5)
+var len = list.len()
+list.drop()
+len
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+5
+```

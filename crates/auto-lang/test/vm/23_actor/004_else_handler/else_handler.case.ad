@@ -1,0 +1,34 @@
+# Legacy vm corpus: 23_actor/004_else_handler
+
+## Case: legacy-23-actor-004-else-handler
+id: "legacy.23_actor.004_else_handler"
+entry-mode: "program"
+
+### Auto
+path: "else_handler.at"
+```auto
+task Router {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("matched one")
+        }
+        else -> {
+            print("fell through")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Router", 16)
+    h.send(99)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+fell through
+```

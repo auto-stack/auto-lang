@@ -1,0 +1,33 @@
+# Legacy a2p corpus: 16_python_std/001_builtin_map
+
+## Case: legacy-a2p-16-python-std-001-builtin-map
+id: "legacy.a2p.16_python_std.001_builtin_map"
+entry-mode: "program"
+
+### Auto
+path: "builtin_map.at"
+```auto
+fn main() {
+    let x = type_name(42)
+    let y = sleep_ms(100)
+    let t = time_now()
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### builtin_map.expected.py
+```python
+import time
+
+def main():
+    x = type(42).__name__
+    y = time.sleep(100 / 1000)
+    t = time.time()
+    print(x)
+
+if __name__ == "__main__":
+    main()
+```

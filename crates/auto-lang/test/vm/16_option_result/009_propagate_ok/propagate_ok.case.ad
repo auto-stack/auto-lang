@@ -1,0 +1,20 @@
+# Legacy vm corpus: 16_option_result/009_propagate_ok
+
+## Case: legacy-16-option-result-009-propagate-ok
+id: "legacy.16_option_result.009_propagate_ok"
+entry-mode: "program"
+
+### Auto
+path: "propagate_ok.at"
+```auto
+let x = Ok(100)
+let y = x.?
+y
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+100
+```

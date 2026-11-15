@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/016_json_is_null
+
+## Case: legacy-18-ffi-016-json-is-null
+id: "legacy.18_ffi.016_json_is_null"
+entry-mode: "program"
+
+### Auto
+path: "json_is_null.as"
+syntax: "auto-script"
+```auto
+Json.is_null("null")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

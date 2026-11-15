@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/084_a2r_if
+
+## Case: legacy-99-bootstrap-084-a2r-if
+id: "legacy.99_bootstrap.084_a2r_if"
+entry-mode: "program"
+
+### Auto
+path: "a2r_if.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nlet x = 5\nif x > 3 {\nprint(\"big\")\n} else {\nprint(\"small\")\n}\n}")
+    var expected = "fn main() {\n    let x = 5;\n    if (x > 3) {\n        println!(\"big\");\n    } else {\n        println!(\"small\");\n    }\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

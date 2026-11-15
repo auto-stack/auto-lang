@@ -1,0 +1,48 @@
+# Legacy a2c corpus: 02_types/003_union
+
+## Case: legacy-02-types-003-union
+id: "legacy.02_types.003_union"
+entry-mode: "program"
+
+### Auto
+path: "union.at"
+```auto
+union MyUnion {
+    i int
+    f float
+    c char
+}
+
+fn main() {
+    let my_union = MyUnion(i: 42)
+    print("int value:", my_union.i)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### union.expected.c
+```c
+#include "union.h"
+
+
+int main(void) {
+    union MyUnion my_union = {.i = 42};
+    printf("%s %d\n", "int value:", my_union.i);
+    return 0;
+}
+```
+
+#### union.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+union MyUnion {
+    int i;
+    float f;
+    char c;
+};
+```

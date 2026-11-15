@@ -1,0 +1,21 @@
+# Legacy cookbook corpus: cookbook/encoding/002_toml
+
+## Case: legacy-cookbook-encoding-002-toml
+id: "legacy.cookbook.encoding.002_toml"
+entry-mode: "program"
+
+### Auto
+path: "toml.at"
+```auto
+fn main() {
+    let toml_str = "name = Alice"
+    // Simplified: just test string parsing
+    assert(toml_str.contains("Alice"))
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: cookbook/text/005_filter_log
+
+## Case: legacy-cookbook-text-005-filter-log
+id: "legacy.cookbook.text.005_filter_log"
+entry-mode: "program"
+
+### Auto
+path: "filter_log.at"
+```auto
+use.rs regex::Regex
+
+fn main() {
+    let re = Regex.new("ERROR: .+").unwrap()
+    let log = "INFO: started\nERROR: file not found\nWARN: retrying\nERROR: disk full"
+    let matches = re.captures_iter(log)
+    assert(matches.len() == 2)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

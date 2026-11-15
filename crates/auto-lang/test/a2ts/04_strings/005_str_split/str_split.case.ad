@@ -1,0 +1,29 @@
+# Legacy a2ts corpus: 04_strings/005_str_split
+
+## Case: legacy-04-strings-005-str-split
+id: "legacy.04_strings.005_str_split"
+entry-mode: "program"
+
+### Auto
+path: "str_split.at"
+```auto
+fn main() {
+    let s = "hello world"
+    let parts = s.split(" ")
+    print(parts)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### str_split.expected.ts
+```ts
+function main(): void {
+    const s: string = "hello world";
+    const parts = s.split(" ");
+    console.log(parts);
+}
+
+main();
+```

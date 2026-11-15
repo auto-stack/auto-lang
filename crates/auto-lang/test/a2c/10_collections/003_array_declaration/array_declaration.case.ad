@@ -1,0 +1,23 @@
+# Legacy a2c corpus: 10_collections/003_array_declaration
+
+## Case: legacy-10-collections-003-array-declaration
+id: "legacy.10_collections.003_array_declaration"
+entry-mode: "program"
+
+### Auto
+path: "array_declaration.at"
+```auto
+let arr [5]int = [10, 20, 30, 40, 50]
+arr[0]
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_declaration.expected.c
+```c
+int arr[5] = {10, 20, 30, 40, 50};
+int main(void) {
+    return arr[0];
+}
+```

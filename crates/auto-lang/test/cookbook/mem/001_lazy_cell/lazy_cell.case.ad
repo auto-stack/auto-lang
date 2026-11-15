@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/mem/001_lazy_cell
+
+## Case: legacy-cookbook-mem-001-lazy-cell
+id: "legacy.cookbook.mem.001_lazy_cell"
+entry-mode: "program"
+
+### Auto
+path: "lazy_cell.at"
+```auto
+use.rs std::cell::RefCell
+
+fn main() {
+    let cell = RefCell.new(0)
+    let current = cell.borrow()
+    assert(current == 0)
+    cell.replace(42)
+    let updated = cell.borrow()
+    assert(updated == 42)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

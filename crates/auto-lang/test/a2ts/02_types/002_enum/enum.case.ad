@@ -1,0 +1,37 @@
+# Legacy a2ts corpus: 02_types/002_enum
+
+## Case: legacy-02-types-002-enum
+id: "legacy.02_types.002_enum"
+entry-mode: "program"
+
+### Auto
+path: "enum.at"
+```auto
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn main() {
+    print("Enum defined")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### enum.expected.ts
+```ts
+export enum Color {
+    Red,
+    Green = 1,
+    Blue = 2
+}
+
+function main(): void {
+    console.log("Enum defined");
+}
+
+main();
+```

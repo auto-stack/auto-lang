@@ -1,0 +1,34 @@
+# Legacy vm corpus: 21_conv/002_neg_i32_to_str
+
+## Case: legacy-21-conv-002-neg-i32-to-str
+id: "legacy.21_conv.002_neg_i32_to_str"
+entry-mode: "program"
+
+### Auto
+path: "neg_i32_to_str.at"
+```auto
+// BUG: negative integer .to(String) fails
+//
+// Root cause: TYPE_TO_STR opcode checks `value_bits < 0` to detect tagged string
+// pointers (negative indices into the string pool). But negative integers also
+// have `value_bits < 0`, so they are treated as string indices instead of being
+// converted to their string representation.
+//
+// In engine.rs TYPE_TO_STR handler:
+//   if value_bits < 0 { push_i32(value_bits) } // treated as existing string!
+//   else { format!("{}", value_bits); ... }     // actual conversion
+//
+// Expected: -1
+// Actual:   (tagged string index, prints as garbage or wrong string)
+
+fn main() {
+    print((-1).to(String))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+-1
+```

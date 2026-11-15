@@ -1,0 +1,19 @@
+# Legacy vm corpus: 16_option_result/004_some_ctor
+
+## Case: legacy-16-option-result-004-some-ctor
+id: "legacy.16_option_result.004_some_ctor"
+entry-mode: "program"
+
+### Auto
+path: "some_ctor.at"
+```auto
+let x = Some(42)
+1
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

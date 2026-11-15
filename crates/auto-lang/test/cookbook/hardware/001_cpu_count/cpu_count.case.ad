@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: cookbook/hardware/001_cpu_count
+
+## Case: legacy-cookbook-hardware-001-cpu-count
+id: "legacy.cookbook.hardware.001_cpu_count"
+entry-mode: "program"
+
+### Auto
+path: "cpu_count.at"
+```auto
+use.rs std::thread
+
+fn main() {
+    let cores = thread.available_parallelism()
+    assert(cores >= 1)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

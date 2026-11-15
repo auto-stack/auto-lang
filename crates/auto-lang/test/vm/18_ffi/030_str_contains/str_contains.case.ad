@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/030_str_contains
+
+## Case: legacy-18-ffi-030-str-contains
+id: "legacy.18_ffi.030_str_contains"
+entry-mode: "program"
+
+### Auto
+path: "str_contains.at"
+```auto
+Str.contains("hello", "ell")
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

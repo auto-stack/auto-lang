@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/090_a2r_is
+
+## Case: legacy-99-bootstrap-090-a2r-is
+id: "legacy.99_bootstrap.090_a2r_is"
+entry-mode: "program"
+
+### Auto
+path: "a2r_is.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar x = 10\nis x {\n10 -> print(\"a\")\nelse -> print(\"b\")\n}\n}")
+    var expected = "fn main() {\n    let mut x = 10;\n    match x {\n        10 => println!(\"a\"),\n        _ => println!(\"b\"),\n    }\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

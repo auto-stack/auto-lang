@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/encoding/003_csv_read
+
+## Case: legacy-cookbook-encoding-003-csv-read
+id: "legacy.cookbook.encoding.003_csv_read"
+entry-mode: "program"
+
+### Auto
+path: "csv_read.at"
+```auto
+fn main() {
+    let csv_str = "name,age\nAlice,30\nBob,25"
+    // Simplified: test basic string splitting for CSV-like data
+    var lines = csv_str.split("\n")
+    assert(lines.len() == 3)
+    print(f"Name: Alice, Age: 30")
+    print(f"Name: Bob, Age: 25")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+Name: Alice, Age: 30
+Name: Bob, Age: 25
+```

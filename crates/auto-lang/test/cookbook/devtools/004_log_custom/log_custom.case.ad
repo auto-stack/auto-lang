@@ -1,0 +1,47 @@
+# Legacy cookbook corpus: cookbook/devtools/004_log_custom
+
+## Case: legacy-cookbook-devtools-004-log-custom
+id: "legacy.cookbook.devtools.004_log_custom"
+entry-mode: "program"
+
+### Auto
+path: "log_custom.at"
+```auto
+dep log
+use.rs log::info
+use.rs log::LevelFilter
+use.rs log::Log
+use.rs log::Metadata
+use.rs log::Record
+
+// Custom logger struct with Log trait implementation
+type SimpleLogger {}
+
+ext SimpleLogger {
+    static fn new() SimpleLogger {
+        SimpleLogger()
+    }
+    fn enabled(self, metadata Metadata) bool {
+        metadata.level() <= log.Level.Debug
+    }
+    fn log(self, record Record) {
+        if self.enabled(record.metadata()) {
+            print(f"${record.level()} - ${record.args()}")
+        }
+    }
+    fn flush(self) {}
+}
+
+fn main() {
+    log.set_boxed_logger(Box.new(SimpleLogger.new())).unwrap()
+    log.set_max_level(LevelFilter.Debug)
+    info("custom logger active")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

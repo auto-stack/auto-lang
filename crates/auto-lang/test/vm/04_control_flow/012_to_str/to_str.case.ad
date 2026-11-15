@@ -1,0 +1,19 @@
+# Legacy vm corpus: 04_control_flow/012_to_str
+
+## Case: legacy-04-control-flow-012-to-str
+id: "legacy.04_control_flow.012_to_str"
+entry-mode: "program"
+
+### Auto
+path: "to_str.at"
+```auto
+var x = 42
+print(x.to(str))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+42
+```

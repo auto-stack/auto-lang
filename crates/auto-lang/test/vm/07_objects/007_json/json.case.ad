@@ -1,0 +1,22 @@
+# Legacy vm corpus: 07_objects/007_json
+
+## Case: legacy-07-objects-007-json
+id: "legacy.07_objects.007_json"
+entry-mode: "program"
+
+### Auto
+path: "json.at"
+```auto
+var services = [
+    { name: "ClearDiagnosticInformation", port: 8090 }
+    { name: "UpdateData", port: 8091 }
+]
+services[0].name
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+ClearDiagnosticInformation
+```

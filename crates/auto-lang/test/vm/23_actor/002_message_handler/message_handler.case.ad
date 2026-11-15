@@ -1,0 +1,34 @@
+# Legacy vm corpus: 23_actor/002_message_handler
+
+## Case: legacy-23-actor-002-message-handler
+id: "legacy.23_actor.002_message_handler"
+entry-mode: "program"
+
+### Auto
+path: "message_handler.at"
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+got one
+```

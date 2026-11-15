@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/093_a2r_spec
+
+## Case: legacy-99-bootstrap-093-a2r-spec
+id: "legacy.99_bootstrap.093_a2r_spec"
+entry-mode: "program"
+
+### Auto
+path: "a2r_spec.at"
+```auto
+fn main() {
+    var result = run_a2r("spec Flyer {\nfn fly()\n}\nfn main() {\nprint(42)\n}")
+    var expected = "trait Flyer {\n    fn fly(&self);\n}\nfn main() {\n    println!(\"{}\", 42);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

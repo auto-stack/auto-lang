@@ -1,0 +1,62 @@
+# Legacy a2c corpus: 10_collections/013_list_capacity
+
+## Case: legacy-10-collections-013-list-capacity
+id: "legacy.10_collections.013_list_capacity"
+entry-mode: "program"
+
+### Auto
+path: "list_capacity.at"
+```auto
+// Test List.capacity() method (Plan 055 Phase 5)
+
+fn main() {
+    // Create a new list
+    let list = List.new()
+
+    // Add some elements
+    list.push(1)
+    list.push(2)
+    list.push(3)
+
+    // Check capacity
+    let cap = list.capacity()
+
+    // Check length
+    let len = list.len()
+
+    print("List capacity:", cap)
+    print("List length:", len)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### list_capacity.expected.c
+```c
+#include "list_capacity.h"
+
+int main(void) {
+
+    unknown list = List.new();
+
+    list.push(1);
+    list.push(2);
+    list.push(3);
+
+    unknown cap = list.capacity();
+
+    unknown len = list.len();
+
+    printf("%s %d\n", "List capacity:", cap);
+    printf("%s %d\n", "List length:", len);
+    return 0;
+}
+```
+
+#### list_capacity.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

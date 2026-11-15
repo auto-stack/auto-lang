@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 01_basics/041_unary_neg
+
+## Case: legacy-a2p-01-basics-041-unary-neg
+id: "legacy.a2p.01_basics.041_unary_neg"
+entry-mode: "program"
+
+### Auto
+path: "unary_neg.at"
+```auto
+fn main() {
+    let x = 10
+    let y = -x
+    print(y)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### unary_neg.expected.py
+```python
+def main():
+    x = 10
+    y = -x
+    print(y)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,37 @@
+# Legacy vm corpus: 99_plan231/006_mutfn_int_return
+
+## Case: legacy-99-plan231-006-mutfn-int-return
+id: "legacy.99_plan231.006_mutfn_int_return"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_int_return.at"
+```auto
+// Test: mut fn returning int (no Option)
+type Counter {
+    count int
+
+    mut fn next() int {
+        self.count = self.count - 1
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let v1 = c.next()
+    print(f"v1: $v1")
+    let v2 = c.next()
+    print(f"v2: $v2")
+    print("mutfn int return OK")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+v1: 2
+v2: 1
+mutfn int return OK
+```

@@ -1,0 +1,38 @@
+# Legacy a2p corpus: 08_generics/003_generic_method
+
+## Case: legacy-a2p-08-generics-003-generic-method
+id: "legacy.a2p.08_generics.003_generic_method"
+entry-mode: "program"
+
+### Auto
+path: "generic_method.at"
+```auto
+fn identity<T>(x T) T {
+    x
+}
+
+fn main() {
+    let a = identity(42)
+    let b = identity("hello")
+    print(a)
+    print(b)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### generic_method.expected.py
+```python
+def identity(x):
+    return x
+
+def main():
+    a = identity(42)
+    b = identity("hello")
+    print(a)
+    print(b)
+
+if __name__ == "__main__":
+    main()
+```

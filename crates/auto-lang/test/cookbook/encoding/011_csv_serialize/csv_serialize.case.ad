@@ -1,0 +1,28 @@
+# Legacy cookbook corpus: cookbook/encoding/011_csv_serialize
+
+## Case: legacy-cookbook-encoding-011-csv-serialize
+id: "legacy.cookbook.encoding.011_csv_serialize"
+entry-mode: "program"
+
+### Auto
+path: "csv_serialize.at"
+```auto
+fn main() {
+    // Simplified: test CSV string construction
+    let output = "name,age\nAlice,30\nBob,25"
+    assert(output.contains("Alice"))
+    assert(output.contains("Bob"))
+    print("name,age")
+    print("Alice,30")
+    print("Bob,25")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+name,age
+Alice,30
+Bob,25
+```

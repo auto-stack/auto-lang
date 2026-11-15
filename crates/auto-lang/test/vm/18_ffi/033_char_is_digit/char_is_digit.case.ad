@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/033_char_is_digit
+
+## Case: legacy-18-ffi-033-char-is-digit
+id: "legacy.18_ffi.033_char_is_digit"
+entry-mode: "program"
+
+### Auto
+path: "char_is_digit.at"
+```auto
+Char.is_digit(48)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

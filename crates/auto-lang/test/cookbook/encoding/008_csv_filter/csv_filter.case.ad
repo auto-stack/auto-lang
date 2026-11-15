@@ -1,0 +1,30 @@
+# Legacy cookbook corpus: cookbook/encoding/008_csv_filter
+
+## Case: legacy-cookbook-encoding-008-csv-filter
+id: "legacy.cookbook.encoding.008_csv_filter"
+entry-mode: "program"
+
+### Auto
+path: "csv_filter.at"
+```auto
+fn main() {
+    let data = "name,age\nAlice,30\nBob,25\nCharlie,35"
+    var lines = data.split("\n")
+    assert(lines.len() == 4)
+    // Alice(30) and Charlie(35) are > 28
+    var filtered_count = 0
+    if 30 > 28 {
+        filtered_count += 1
+    }
+    if 35 > 28 {
+        filtered_count += 1
+    }
+    assert(filtered_count == 2)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

@@ -1,0 +1,24 @@
+# Legacy vm corpus: 13_collections/005_hashmap_size
+
+## Case: legacy-13-collections-005-hashmap-size
+id: "legacy.13_collections.005_hashmap_size"
+entry-mode: "program"
+
+### Auto
+path: "hashmap_size.at"
+```auto
+var m = HashMap.new()
+m.insert_str("a", "1")
+m.insert_str("b", "2")
+m.insert_str("c", "3")
+var s = m.size()
+m.drop()
+s
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+3
+```

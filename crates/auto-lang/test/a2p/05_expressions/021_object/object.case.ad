@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 05_expressions/021_object
+
+## Case: legacy-a2p-05-expressions-021-object
+id: "legacy.a2p.05_expressions.021_object"
+entry-mode: "program"
+
+### Auto
+path: "object.at"
+```auto
+fn main() {
+    let obj = {name: "auto", version: 1}
+    print(obj)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### object.expected.py
+```python
+def main():
+    obj = {"name": "auto", "version": 1}
+    print(obj)
+
+if __name__ == "__main__":
+    main()
+```

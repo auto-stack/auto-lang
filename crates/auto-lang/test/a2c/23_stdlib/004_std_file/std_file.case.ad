@@ -1,0 +1,43 @@
+# Legacy a2c corpus: 23_stdlib/004_std_file
+
+## Case: legacy-23-stdlib-004-std-file
+id: "legacy.23_stdlib.004_std_file"
+entry-mode: "program"
+
+### Auto
+path: "std_file.at"
+```auto
+use auto.io: File
+
+
+fn main() {
+    let file = File.open(c"Cargo.toml")
+    let s = file.read_text()
+    print(s)
+    file.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_file.expected.c
+```c
+#include "std_file.h"
+
+int main(void) {
+    unknown file = File.open("Cargo.toml");
+    unknown s = file.read_text();
+    printf("%d\n", s);
+    file.close();
+    return 0;
+}
+```
+
+#### std_file.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include "auto/io.h"
+```

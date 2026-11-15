@@ -1,0 +1,49 @@
+# Legacy a2c corpus: 10_collections/012_list_iter
+
+## Case: legacy-10-collections-012-list-iter
+id: "legacy.10_collections.012_list_iter"
+entry-mode: "program"
+
+### Auto
+path: "list_iter.at"
+```auto
+// Test List iterator - Plan 051 Phase 3
+
+fn main() {
+    let list = List<int, Heap>.new()
+    list.push(10)
+    list.push(20)
+    list.push(30)
+
+    // Get iterator
+    let iter = list.iter()
+
+    // Iterate through elements
+    let a = iter.next()
+    let b = iter.next()
+    let c = iter.next()
+    let d = iter.next()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### list_iter.expected.c
+```c
+int main(void) {
+    bool list = List < int;
+    Heap > self->new();
+    bool_push(list, 10);
+    bool_push(list, 20);
+    bool_push(list, 30);
+
+    unknown iter = bool_iter(list);
+
+    unknown a = iter.next();
+    unknown b = iter.next();
+    unknown c = iter.next();
+    unknown d = iter.next();
+    return 0;
+}
+```

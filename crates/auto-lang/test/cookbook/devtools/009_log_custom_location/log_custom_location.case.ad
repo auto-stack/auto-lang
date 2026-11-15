@@ -1,0 +1,29 @@
+# Legacy cookbook corpus: cookbook/devtools/009_log_custom_location
+
+## Case: legacy-cookbook-devtools-009-log-custom-location
+id: "legacy.cookbook.devtools.009_log_custom_location"
+entry-mode: "program"
+
+### Auto
+path: "log_custom_location.at"
+```auto
+dep simplelog
+dep log
+use.rs log::info
+use.rs simplelog::WriteLogger
+use.rs simplelog::LevelFilter
+use.rs simplelog::Config
+
+fn main() {
+    let file = File.create("app.log").unwrap()
+    WriteLogger.init(LevelFilter.Info, Config.default(), file).unwrap()
+    info("logging to custom file")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

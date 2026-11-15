@@ -1,0 +1,35 @@
+# Legacy a2p corpus: 01_basics/031_typed_vars
+
+## Case: legacy-a2p-01-basics-031-typed-vars
+id: "legacy.a2p.01_basics.031_typed_vars"
+entry-mode: "program"
+
+### Auto
+path: "typed_vars.at"
+```auto
+fn main() {
+    let x int = 42
+    let name str = "hello"
+    let pi float = 3.14
+    let flag bool = true
+    print(x)
+    print(name)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### typed_vars.expected.py
+```python
+def main():
+    x = 42
+    name = "hello"
+    pi = 3.14
+    flag = True
+    print(x)
+    print(name)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,36 @@
+# Legacy vm corpus: 99_idiom_probe/p10_enum_reassign_eq
+
+## Case: legacy-99-idiom-probe-p10-enum-reassign-eq
+id: "legacy.99_idiom_probe.p10_enum_reassign_eq"
+entry-mode: "program"
+
+### Auto
+path: "enum_reassign_eq.at"
+```auto
+// Plan 447 probe p10: 枚举局部重赋值 + == 相等比较（V10 绿件）
+enum State {
+    On
+    Off
+}
+
+fn main() {
+    var s = State.On
+    if s == State.On {
+        print("on")
+    }
+    s = State.Off
+    if s == State.On {
+        print("still on")
+    } else {
+        print("off")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+on
+off
+```

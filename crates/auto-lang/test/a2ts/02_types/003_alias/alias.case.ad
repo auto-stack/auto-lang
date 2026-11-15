@@ -1,0 +1,32 @@
+# Legacy a2ts corpus: 02_types/003_alias
+
+## Case: legacy-02-types-003-alias
+id: "legacy.02_types.003_alias"
+entry-mode: "program"
+
+### Auto
+path: "alias.at"
+```auto
+type Name = str;
+
+fn main() {
+    let name = "Alice"
+    print(name)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### alias.expected.ts
+```ts
+export type Name = string;
+
+
+function main(): void {
+    const name: string = "Alice";
+    console.log(name);
+}
+
+main();
+```

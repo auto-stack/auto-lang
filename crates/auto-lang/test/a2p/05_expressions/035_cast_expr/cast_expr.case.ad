@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 05_expressions/035_cast_expr
+
+## Case: legacy-a2p-05-expressions-035-cast-expr
+id: "legacy.a2p.05_expressions.035_cast_expr"
+entry-mode: "program"
+
+### Auto
+path: "cast_expr.at"
+```auto
+fn main() {
+    let x = 42
+    let y = x.as(float)
+    print(y)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### cast_expr.expected.py
+```python
+def main():
+    x = 42
+    y = float(x)
+    print(y)
+
+if __name__ == "__main__":
+    main()
+```

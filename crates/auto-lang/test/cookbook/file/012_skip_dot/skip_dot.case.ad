@@ -1,0 +1,28 @@
+# Legacy cookbook corpus: cookbook/file/012_skip_dot
+
+## Case: legacy-cookbook-file-012-skip-dot
+id: "legacy.cookbook.file.012_skip_dot"
+entry-mode: "program"
+
+### Auto
+path: "skip_dot.at"
+```auto
+use.rs std::fs
+
+fn main() ! {
+    let entries = fs.read_dir(".").?
+    var non_dot = 0
+    for entry in entries {
+        let entry = entry.?
+        let name = entry.file_name()
+        let name_str = name.to_str().unwrap()
+        if !name_str.starts_with(".") {
+            non_dot += 1
+        }
+    }
+    assert(non_dot > 0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

@@ -1,0 +1,28 @@
+# Legacy a2p corpus: 011_for
+
+## Case: legacy-a2p-011-for
+id: "legacy.a2p.011_for"
+entry-mode: "program"
+
+### Auto
+path: "for.at"
+```auto
+fn main() {
+    for i in 0..5 {
+        print(i)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### for.expected.py
+```python
+def main():
+    for i in range(0, 5):
+        print(i)
+
+if __name__ == "__main__":
+    main()
+```

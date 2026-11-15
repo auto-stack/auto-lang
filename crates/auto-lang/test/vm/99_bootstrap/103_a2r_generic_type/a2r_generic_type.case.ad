@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/103_a2r_generic_type
+
+## Case: legacy-99-bootstrap-103-a2r-generic-type
+id: "legacy.99_bootstrap.103_a2r_generic_type"
+entry-mode: "program"
+
+### Auto
+path: "a2r_generic_type.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar items List\nitems.push(1)\n}")
+    var has_vec = result.find("Vec<i32>")
+    if has_vec >= 0 {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

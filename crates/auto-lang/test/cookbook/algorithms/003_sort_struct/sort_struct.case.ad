@@ -1,0 +1,36 @@
+# Legacy cookbook corpus: cookbook/algorithms/003_sort_struct
+
+## Case: legacy-cookbook-algorithms-003-sort-struct
+id: "legacy.cookbook.algorithms.003_sort_struct"
+entry-mode: "program"
+
+### Auto
+path: "sort_struct.at"
+```auto
+use.rs std::vec::Vec
+
+type Person {
+    name str
+    age uint
+}
+
+fn main() {
+    var people = [Person("Zoe", 25), Person("Al", 60), Person("John", 1)]
+
+    // sort() on struct arrays uses VmRef ID ordering (not field-based)
+    // Verify it completes without error
+    people.sort()
+
+    // sort_by_key sorts by extracted key — verify age-based ordering
+    people.sort_by_key((p) => p.age)
+    assert(people[0].name == "Zoe")
+    assert(people[1].name == "Al")
+    assert(people[2].name == "John")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

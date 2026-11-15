@@ -1,0 +1,49 @@
+# Legacy a2c corpus: 05_expressions/003_bang_operator
+
+## Case: legacy-05-expressions-003-bang-operator
+id: "legacy.05_expressions.003_bang_operator"
+entry-mode: "program"
+
+### Auto
+path: "bang_operator.at"
+```auto
+use auto.list: List
+
+fn main() {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+
+    let collected = list.iter().!
+
+    say(collected.len())
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### bang_operator.expected.c
+```c
+#include "bang_operator.h"
+
+int main(void) {
+    unknown list = List.new();
+    list.push(1);
+    list.push(2);
+    list.push(3);
+
+    unknown collected = list.iter().collect();
+
+    say(collected.len());
+    return 0;
+}
+```
+
+#### bang_operator.expected.h
+```c
+#pragma once
+
+#include "auto/list.h"
+```

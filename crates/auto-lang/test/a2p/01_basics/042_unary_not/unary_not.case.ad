@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 01_basics/042_unary_not
+
+## Case: legacy-a2p-01-basics-042-unary-not
+id: "legacy.a2p.01_basics.042_unary_not"
+entry-mode: "program"
+
+### Auto
+path: "unary_not.at"
+```auto
+fn main() {
+    let flag = true
+    let result = !flag
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### unary_not.expected.py
+```python
+def main():
+    flag = True
+    result = not flag
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

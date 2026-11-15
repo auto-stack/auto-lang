@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 23_stdlib/017_std_file_write
+
+## Case: legacy-23-stdlib-017-std-file-write
+id: "legacy.23_stdlib.017_std_file_write"
+entry-mode: "program"
+
+### Auto
+path: "std_file_write.at"
+```auto
+use auto.io: File
+
+fn main() {
+    let file = File.open(c"output.txt")
+    file.write_line("Hello, World!")
+    file.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_file_write.expected.c
+```c
+#include "std_file_write.h"
+
+int main(void) {
+    unknown file = File.open("output.txt");
+    file.write_line("Hello, World!");
+    file.close();
+    return 0;
+}
+```
+
+#### std_file_write.expected.h
+```c
+#pragma once
+
+#include "auto/io.h"
+```

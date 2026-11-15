@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: cookbook/encoding/010_csv_serde_serialize
+
+## Case: legacy-cookbook-encoding-010-csv-serde-serialize
+id: "legacy.cookbook.encoding.010_csv_serde_serialize"
+entry-mode: "program"
+
+### Auto
+path: "csv_serde_serialize.at"
+```auto
+fn main() {
+    let output = "30,Alice\n25,Bob"
+    assert(output.contains("Alice"))
+    assert(output.contains("Bob"))
+    print("30,Alice")
+    print("25,Bob")
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+30,Alice
+25,Bob
+```

@@ -1,0 +1,34 @@
+# Legacy cookbook corpus: cookbook/compression/002_tar_decompress
+
+## Case: legacy-cookbook-compression-002-tar-decompress
+id: "legacy.cookbook.compression.002_tar_decompress"
+entry-mode: "program"
+
+### Auto
+path: "tar_decompress.at"
+```auto
+dep tar
+dep flate2
+
+// Tar + gzip decompression — simplified for VM (no tar/flate2 shims yet)
+// Tests the concept of extracting and listing archive entries
+fn main() {
+    var entries List<Str> = List.new()
+    entries.push("file1.txt")
+    entries.push("file2.txt")
+    entries.push("subdir/file3.txt")
+    assert(entries.len() == 3)
+    // Verify we can iterate and count
+    var count = 0
+    for entry in entries {
+        count = count + 1
+    }
+    assert(count == 3)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

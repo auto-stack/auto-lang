@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: cookbook/devtools/005_log_syslog
+
+## Case: legacy-cookbook-devtools-005-log-syslog
+id: "legacy.cookbook.devtools.005_log_syslog"
+entry-mode: "program"
+
+### Auto
+path: "log_syslog.at"
+```auto
+dep syslog
+dep log
+use.rs syslog::BasicLogger
+use.rs syslog::Facility
+
+fn main() {
+    print("syslog configured")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+syslog configured
+```

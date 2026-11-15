@@ -1,0 +1,36 @@
+# Legacy cookbook corpus: cookbook/errors/004_retain
+
+## Case: legacy-cookbook-errors-004-retain
+id: "legacy.cookbook.errors.004_retain"
+entry-mode: "program"
+
+### Auto
+path: "retain.at"
+```auto
+use.rs std::error::Error
+
+fn inner() !str {
+    Err("inner error")
+}
+
+fn outer() !str {
+    let result = inner().?
+    Ok(result)
+}
+
+fn main() {
+    let result = outer()
+    var got_err = false
+    is result {
+        Ok(val) -> print(f"Success: ${val}"),
+        Err(e) -> got_err = true
+    }
+    assert(got_err == true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

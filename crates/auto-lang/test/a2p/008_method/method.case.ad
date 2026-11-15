@@ -1,0 +1,42 @@
+# Legacy a2p corpus: 008_method
+
+## Case: legacy-a2p-008-method
+id: "legacy.a2p.008_method"
+entry-mode: "program"
+
+### Auto
+path: "method.at"
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    print("Method defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### method.expected.py
+```python
+@dataclass
+class Point:
+    x: int
+    y: int
+
+    def modulus(self) -> int:
+        return self.x * self.x + self.y * self.y
+
+def main():
+    print("Method defined")
+
+if __name__ == "__main__":
+    main()
+```

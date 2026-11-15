@@ -1,0 +1,38 @@
+# Legacy cookbook corpus: cookbook/algorithms/006_rand_custom
+
+## Case: legacy-cookbook-algorithms-006-rand-custom
+id: "legacy.cookbook.algorithms.006_rand_custom"
+entry-mode: "program"
+
+### Auto
+path: "rand_custom.at"
+```auto
+// Custom random distribution for Pet enum
+use.rs rand
+
+enum Pet {
+    Dog
+    Cat
+    Bird
+}
+
+fn random_pet() Pet {
+    var rng = rand.thread_rng()
+    let n = rng.gen_range(0..3)
+    is n {
+        0 -> Pet.Dog,
+        1 -> Pet.Cat,
+        else -> Pet.Bird
+    }
+}
+
+fn main() {
+    let pet Pet = random_pet()
+    // Smoke test: random enum variant should be valid (Dog/Cat/Bird)
+    let is_valid = pet == Pet.Dog || pet == Pet.Cat || pet == Pet.Bird
+    assert(is_valid)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

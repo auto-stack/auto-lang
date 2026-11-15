@@ -1,0 +1,18 @@
+# Legacy vm corpus: 06_arrays/001_array_literal
+
+## Case: legacy-06-arrays-001-array-literal
+id: "legacy.06_arrays.001_array_literal"
+entry-mode: "program"
+
+### Auto
+path: "array_literal.at"
+```auto
+[1, 2, 3]
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+[1, 2, 3]
+```

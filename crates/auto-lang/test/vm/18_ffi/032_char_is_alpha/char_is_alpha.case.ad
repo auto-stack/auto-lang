@@ -1,0 +1,18 @@
+# Legacy vm corpus: 18_ffi/032_char_is_alpha
+
+## Case: legacy-18-ffi-032-char-is-alpha
+id: "legacy.18_ffi.032_char_is_alpha"
+entry-mode: "program"
+
+### Auto
+path: "char_is_alpha.at"
+```auto
+Char.is_alpha(65)
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+1
+```

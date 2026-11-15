@@ -1,0 +1,33 @@
+# Legacy vm corpus: 28_enum_methods/003_payload_method
+
+## Case: legacy-28-enum-methods-003-payload-method
+id: "legacy.28_enum_methods.003_payload_method"
+entry-mode: "program"
+
+### Auto
+path: "payload_method.at"
+```auto
+// 带 payload 的 enum 变体的方法
+pub enum Reg {
+    Yes(int)
+    No
+    fn is_yes() bool {
+        is self {
+            Reg.Yes -> return true
+        }
+        return false
+    }
+}
+pub fn main() {
+    print(Reg.Yes(42).is_yes())
+    print(Reg.No.is_yes())
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+1
+0
+```

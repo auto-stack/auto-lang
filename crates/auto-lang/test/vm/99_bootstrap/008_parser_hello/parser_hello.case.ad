@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/008_parser_hello
+
+## Case: legacy-99-bootstrap-008-parser-hello
+id: "legacy.99_bootstrap.008_parser_hello"
+entry-mode: "program"
+
+### Auto
+path: "parser_hello.at"
+```auto
+// Test: parse "fn main() { print("hello") }" and output AST
+fn main() {
+    let source = "fn main() {\n    print(\"hello\")\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    print(ast_to_string(stmts.get(0)))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+(fn main (params) (body (print "hello")))
+```

@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/098_a2r_error_prop
+
+## Case: legacy-99-bootstrap-098-a2r-error-prop
+id: "legacy.99_bootstrap.098_a2r_error_prop"
+entry-mode: "program"
+
+### Auto
+path: "a2r_error_prop.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nlet v = val.?\n}")
+    var expected = "fn main() {\n    let v = val?;\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

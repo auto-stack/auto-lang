@@ -1,0 +1,28 @@
+# Legacy cookbook corpus: cookbook/versioning/002_semver_increment
+
+## Case: legacy-cookbook-versioning-002-semver-increment
+id: "legacy.cookbook.versioning.002_semver_increment"
+entry-mode: "program"
+
+### Auto
+path: "semver_increment.at"
+```auto
+dep semver
+use.rs semver::Version
+
+fn main() {
+    var v = Version.parse("1.2.3").unwrap()
+    v.patch = v.patch + 1
+    assert(v.patch == 4)
+    v.minor = v.minor + 1
+    v.patch = 0
+    assert(v.minor == 3)
+    assert(v.patch == 0)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+```

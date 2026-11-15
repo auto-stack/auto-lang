@@ -1,0 +1,31 @@
+# Legacy conformance corpus: 008_arithmetic
+
+## Case: legacy-conf-008-arithmetic
+id: "legacy.conf.008_arithmetic"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 008: arithmetic operators
+fn main() {
+    print(7 + 3)
+    print(7 - 3)
+    print(7 * 3)
+    print(7 / 3)
+    print(7 % 3)
+    print(-5 + 10)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+10
+4
+21
+2
+1
+5
+```

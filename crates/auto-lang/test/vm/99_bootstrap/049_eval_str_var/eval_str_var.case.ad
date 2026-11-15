@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/049_eval_str_var
+
+## Case: legacy-99-bootstrap-049-eval-str-var
+id: "legacy.99_bootstrap.049_eval_str_var"
+entry-mode: "program"
+
+### Auto
+path: "eval_str_var.at"
+```auto
+// Test: eval — string variable binding and print
+fn main() {
+    var r1 = run_eval("let x = \"hello\"\nprint(x)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:hello
+
+```

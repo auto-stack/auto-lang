@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/046_eval_closure
+
+## Case: legacy-99-bootstrap-046-eval-closure
+id: "legacy.99_bootstrap.046_eval_closure"
+entry-mode: "program"
+
+### Auto
+path: "eval_closure.at"
+```auto
+// Test: eval — bool true/false
+fn main() {
+    var r1 = run_eval("print(true)
+print(false)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:true
+false
+
+```

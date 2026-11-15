@@ -1,0 +1,76 @@
+# Legacy a2c corpus: 22_iterators/003_terminal_operators
+
+## Case: legacy-22-iterators-003-terminal-operators
+id: "legacy.22_iterators.003_terminal_operators"
+entry-mode: "program"
+
+### Auto
+path: "terminal_operators.at"
+```auto
+// Test Terminal Operators - Plan 051 Phase 4
+// Test that reduce, count, and for_each methods can be declared
+
+type RangeIter {
+    current int
+    end int
+}
+
+ext RangeIter {
+    #[c]
+    fn reduce() int {
+        return 0
+    }
+
+    #[c]
+    fn count() int {
+        return 0
+    }
+
+    #[c]
+    fn for_each() {
+        return
+    }
+}
+
+fn main() {
+    let range = RangeIter(1, 4)
+    let sum = range.reduce()
+    let count = range.count()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### terminal_operators.expected.c
+```c
+#include "terminal_operators.h"
+
+int RangeIter_Reduce(struct RangeIter *self) {
+}
+int RangeIter_Count(struct RangeIter *self) {
+}
+void RangeIter_ForEach(struct RangeIter *self) {
+}
+
+int main(void) {
+    struct RangeIter range = {.current = 1, .end = 4};
+    int sum = RangeIter_Reduce(&range);
+    int count = RangeIter_Count(&range);
+    return 0;
+}
+```
+
+#### terminal_operators.expected.h
+```c
+#pragma once
+
+struct RangeIter {
+    int current;
+    int end;
+};
+
+int RangeIter_Reduce(struct RangeIter *self);
+int RangeIter_Count(struct RangeIter *self);
+void RangeIter_ForEach(struct RangeIter *self);
+```

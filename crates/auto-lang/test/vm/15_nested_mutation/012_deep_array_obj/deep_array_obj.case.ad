@@ -1,0 +1,20 @@
+# Legacy vm corpus: 15_nested_mutation/012_deep_array_obj
+
+## Case: legacy-15-nested-mutation-012-deep-array-obj
+id: "legacy.15_nested_mutation.012_deep_array_obj"
+entry-mode: "program"
+
+### Auto
+path: "deep_array_obj.at"
+```auto
+var arr = [[{ x: 5 }, { x: 10 }], [{ x: 15 }, { x: 20 }]]
+arr[0][1].x = 25
+arr[0][1].x
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+25
+```

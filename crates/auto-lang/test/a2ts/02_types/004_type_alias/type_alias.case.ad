@@ -1,0 +1,32 @@
+# Legacy a2ts corpus: 02_types/004_type_alias
+
+## Case: legacy-02-types-004-type-alias
+id: "legacy.02_types.004_type_alias"
+entry-mode: "program"
+
+### Auto
+path: "type_alias.at"
+```auto
+type Age = int;
+
+fn main() {
+    let a = 25
+    print(a)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### type_alias.expected.ts
+```ts
+export type Age = number;
+
+
+function main(): void {
+    const a: number = 25;
+    console.log(a);
+}
+
+main();
+```

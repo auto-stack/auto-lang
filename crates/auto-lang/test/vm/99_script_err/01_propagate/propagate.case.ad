@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_script_err/01_propagate
+
+## Case: legacy-99-script-err-01-propagate
+id: "legacy.99_script_err.01_propagate"
+entry-mode: "program"
+
+### Auto
+path: "propagate.as"
+syntax: "auto-script"
+```auto
+use.py builtins: int
+
+fn getnum(s str) {
+    return int(s)
+}
+fn main() {
+    print("start")
+    var n = getnum("42")
+    print("n=" + n.to(str))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+start
+n=42
+```

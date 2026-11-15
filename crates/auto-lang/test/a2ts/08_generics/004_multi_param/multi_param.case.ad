@@ -1,0 +1,45 @@
+# Legacy a2ts corpus: 08_generics/004_multi_param
+
+## Case: legacy-08-generics-004-multi-param
+id: "legacy.08_generics.004_multi_param"
+entry-mode: "program"
+
+### Auto
+path: "multi_param.at"
+```auto
+type Triple {
+    a int
+    b int
+    c int
+}
+
+fn main() {
+    let t = Triple(1, 2, 3)
+    print(t.a, t.b, t.c)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### multi_param.expected.ts
+```ts
+export class Triple {
+    a: number;
+    b: number;
+    c: number;
+
+    constructor(a: number, b: number, c: number) {
+        this.a = a;
+        this.b = b;
+        this.c = c;
+    }
+}
+
+function main(): void {
+    const t = new Triple(1, 2, 3);
+    console.log(t.a, t.b, t.c);
+}
+
+main();
+```

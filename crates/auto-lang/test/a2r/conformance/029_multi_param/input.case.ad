@@ -1,0 +1,27 @@
+# Legacy conformance corpus: 029_multi_param
+
+## Case: legacy-conf-029-multi-param
+id: "legacy.conf.029_multi_param"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 029: Multi-parameter function
+fn make_pair(x int, y int, sep str) str {
+    return f"$x$sep$y"
+}
+
+fn main() {
+    print(make_pair(1, 2, "-"))
+    print(make_pair(10, 20, ", "))
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+1-2
+10, 20
+```

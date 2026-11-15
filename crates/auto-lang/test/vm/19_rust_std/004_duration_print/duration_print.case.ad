@@ -1,0 +1,22 @@
+# Legacy vm corpus: 19_rust_std/004_duration_print
+
+## Case: legacy-19-rust-std-004-duration-print
+id: "legacy.19_rust_std.004_duration_print"
+entry-mode: "program"
+
+### Auto
+path: "duration_print.at"
+```auto
+use.rs std::time::Duration
+fn main() {
+    let d = Duration.from_millis(500)
+    print(d)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+500ms
+```

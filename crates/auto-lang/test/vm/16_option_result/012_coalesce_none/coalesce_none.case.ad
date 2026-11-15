@@ -1,0 +1,20 @@
+# Legacy vm corpus: 16_option_result/012_coalesce_none
+
+## Case: legacy-16-option-result-012-coalesce-none
+id: "legacy.16_option_result.012_coalesce_none"
+entry-mode: "program"
+
+### Auto
+path: "coalesce_none.at"
+```auto
+let x = None
+let y = x ?? 99
+y
+```
+
+### VM result
+check-id: "vm-result"
+
+```text
+99
+```

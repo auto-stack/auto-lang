@@ -1,0 +1,138 @@
+# Legacy a2c corpus: 06_pattern_matching/006_enum_with_functions
+
+## Case: legacy-06-pattern-matching-006-enum-with-functions
+id: "legacy.06_pattern_matching.006_enum_with_functions"
+entry-mode: "program"
+
+### Auto
+path: "enum_with_functions.at"
+```auto
+enum Result {
+    Ok int
+    Err int
+}
+
+fn get_message(r Result) str {
+    is r {
+        Result.Ok(v) -> "success"
+        Result.Err(e) -> "error"
+    }
+}
+
+fn is_ok(r Result) bool {
+    is r {
+        Result.Ok(x) -> true
+        Result.Err(x) -> false
+    }
+}
+
+fn is_err(r Result) bool {
+    is r {
+        Result.Ok(x) -> false
+        Result.Err(x) -> true
+    }
+}
+
+fn main() {
+    let r1 = Result.Ok(42)
+    let msg1 = get_message(r1)
+    let check1 = is_ok(r1)
+
+    let r2 = Result.Err(1)
+    let msg2 = get_message(r2)
+    let check2 = is_err(r2)
+
+    check1
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### enum_with_functions.expected.c
+```c
+#include "enum_with_functions.h"
+
+
+char* get_message(struct Result r) {
+    switch (r.tag) {
+    case RESULT_OK:
+        {
+            return "success";
+        }
+        break;
+    case RESULT_ERR:
+        {
+            return "error";
+        }
+        break;
+    }
+    return "";
+}
+
+bool is_ok(struct Result r) {
+    switch (r.tag) {
+    case RESULT_OK:
+        {
+            return true;
+        }
+        break;
+    case RESULT_ERR:
+        {
+            return false;
+        }
+        break;
+    }
+    return false;
+}
+
+bool is_err(struct Result r) {
+    switch (r.tag) {
+    case RESULT_OK:
+        {
+            return false;
+        }
+        break;
+    case RESULT_ERR:
+        {
+            return true;
+        }
+        break;
+    }
+    return false;
+}
+
+int main(void) {
+    struct Result r1 = {.tag = RESULT_OK, .as.Ok = 42};
+    unknown msg1 = get_message(r1);
+    unknown check1 = is_ok(r1);
+
+    struct Result r2 = {.tag = RESULT_ERR, .as.Err = 1};
+    unknown msg2 = get_message(r2);
+    unknown check2 = is_err(r2);
+
+    return check1;
+}
+```
+
+#### enum_with_functions.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+enum ResultKind {
+    RESULT_OK,
+    RESULT_ERR,
+};
+
+struct Result {
+    enum ResultKind tag;
+    union {
+        int Ok;
+        int Err;
+    } as;
+};
+char* get_message(struct Result r);
+bool is_ok(struct Result r);
+bool is_err(struct Result r);
+```

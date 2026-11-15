@@ -1,0 +1,47 @@
+# Legacy a2p corpus: 02_types/006_nested_struct
+
+## Case: legacy-a2p-02-types-006-nested-struct
+id: "legacy.a2p.02_types.006_nested_struct"
+entry-mode: "program"
+
+### Auto
+path: "nested_struct.at"
+```auto
+type Point {
+    x int
+    y int
+}
+
+type Rect {
+    p1 Point
+    p2 Point
+}
+
+fn main() {
+    print("Nested struct defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### nested_struct.expected.py
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+@dataclass
+class Rect:
+    p1: Point
+    p2: Point
+
+def main():
+    print("Nested struct defined")
+
+if __name__ == "__main__":
+    main()
+```

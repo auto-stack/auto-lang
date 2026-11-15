@@ -1,0 +1,61 @@
+# Legacy vm corpus: 16_option_result/022_result_multi_error
+
+## Case: legacy-16-option-result-022-result-multi-error
+id: "legacy.16_option_result.022_result_multi_error"
+entry-mode: "program"
+
+### Auto
+path: "result_multi_error.at"
+```auto
+enum ApiError {
+    Http { code int, msg str }
+    Timeout
+}
+
+fn fetch(url str) !int {
+    if url == "" {
+        return Err(ApiError.Http(code: 404, msg: "not found"))
+    }
+    if url == "slow" {
+        return Err(ApiError.Timeout)
+    }
+    Ok(200)
+}
+
+let r1 = fetch("")
+is r1 {
+    Ok(data) -> print(data)
+    Err(e) -> {
+        is e {
+            ApiError.Http(code, msg) -> print(code)
+            ApiError.Timeout -> print("timeout")
+        }
+    }
+}
+
+let r2 = fetch("slow")
+is r2 {
+    Ok(data) -> print(data)
+    Err(e) -> {
+        is e {
+            ApiError.Http(code, msg) -> print(code)
+            ApiError.Timeout -> print("timeout")
+        }
+    }
+}
+
+let r3 = fetch("ok")
+is r3 {
+    Ok(data) -> print(data)
+    Err(e) -> print("error")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+404
+timeout
+200
+```

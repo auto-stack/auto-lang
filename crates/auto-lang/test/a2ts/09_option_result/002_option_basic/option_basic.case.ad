@@ -1,0 +1,31 @@
+# Legacy a2ts corpus: 09_option_result/002_option_basic
+
+## Case: legacy-09-option-result-002-option-basic
+id: "legacy.09_option_result.002_option_basic"
+entry-mode: "program"
+
+### Auto
+path: "option_basic.at"
+```auto
+fn main() {
+    let x = Some(42)
+    let y = None
+    print(x)
+    print(y)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### option_basic.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 42;
+    const y: any | null = null;
+    console.log(x);
+    console.log(y);
+}
+
+main();
+```

@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/104_a2r_generic_vec
+
+## Case: legacy-99-bootstrap-104-a2r-generic-vec
+id: "legacy.99_bootstrap.104_a2r_generic_vec"
+entry-mode: "program"
+
+### Auto
+path: "a2r_generic_vec.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar x List<int>\nprint(x.len())\n}")
+    var pos = result.find("Vec<i32>")
+    if pos >= 0 {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

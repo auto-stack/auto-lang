@@ -1,0 +1,38 @@
+# Legacy a2ts corpus: 03_control_flow/001_if
+
+## Case: legacy-03-control-flow-001-if
+id: "legacy.03_control_flow.001_if"
+entry-mode: "program"
+
+### Auto
+path: "if.at"
+```auto
+fn main() {
+    let x = 2
+
+    if x > 1 {
+        print("Great!")
+    } else {
+        print("Small!")
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### if.expected.ts
+```ts
+function main(): void {
+    const x: number = 2;
+    
+
+    if (x > 1) {
+        console.log("Great!");
+    } else {
+        console.log("Small!");
+    }
+}
+
+main();
+```
