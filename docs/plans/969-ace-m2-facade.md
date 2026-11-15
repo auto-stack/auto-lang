@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-969
-status: executing
+status: execution_done
 feature_name: ACE 产品执行配置与嵌入前门
 author: [Codex]
 created_at: 2026-11-06
