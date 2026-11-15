@@ -249,6 +249,52 @@ fn v01_baseline_outline_labels_and_identity() {
         Some(auto_grammar().program.grammar_id().as_str()),
         "grammar identity recorded"
     );
+
+    // --- 空正文围栏的父子边界（§5.2 显式裁定；F4 回归钉住）---
+    let empty = open_doc("# 标题 ^t\n\n```auto\n```\n");
+    let f = empty
+        .current()
+        .regions
+        .iter()
+        .find_map(|r| r.fence())
+        .unwrap();
+    assert_eq!(f.label, "auto");
+    assert_eq!(
+        f.content.0, f.content.1,
+        "empty fence content is zero-width"
+    );
+    // 零宽内部点报围栏语言（已装载空分析）；紧邻其后（闭栏行首）属父层。
+    assert_eq!(
+        empty.language_at(0, f.content.0).unwrap(),
+        LanguageAt::FenceBody {
+            label: "auto".into(),
+            loaded: true
+        }
+    );
+    let in_fence = empty
+        .current()
+        .regions
+        .iter()
+        .find(|r| r.fence().is_some())
+        .unwrap();
+    assert!(
+        in_fence.embedded.is_some(),
+        "empty auto fence still records an (empty) analysis"
+    );
+    assert_eq!(
+        empty.current().highlights.len(),
+        0,
+        "no tokens to highlight in an empty body"
+    );
+    // 锚点字符集镜像（F2 回归）：非法字符尾段不提升，保留原名。
+    let loose = open_doc("# 题 ^中文锚\n\n正文\n");
+    assert_eq!(loose.current().outline.len(), 1);
+    assert_eq!(
+        loose.current().outline[0].name,
+        "题 ^中文锚",
+        "non [A-Za-z0-9_-] tail is content, not an anchor (mirrors extractAnchorBlock)"
+    );
+    assert!(loose.current().outline[0].anchor.is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +413,53 @@ fn v02_local_edit_reuses_subtrees_and_relocates_cursor() {
     // UTF-16 光标双向往返（后移后的 fn token；覆盖中文前缀的 UTF-16 列）。
     let (line, col) = doc.line_col_utf16(hl_new.start);
     assert_eq!(doc.offset_of_utf16(line, col), hl_new.start);
+}
+
+/// F1 回归：首区域之前（前导空行区）的编辑——从 0 重扫，增量与 fresh 等价。
+#[test]
+fn v02_regression_edit_before_first_region() {
+    // 前导空行 + 段落（与独立复审探针同构）。
+    let mut doc = open_doc("\npara\n");
+    assert_fresh_equivalent(&doc);
+    let rev = edit(&mut doc, 0, 0, 0, "X");
+    assert_eq!(rev, 1);
+    assert_fresh_equivalent(&doc);
+    assert_eq!(doc.current().regions.len(), 1);
+    let r = &doc.current().regions[0];
+    assert!(matches!(r.kind, RegionKind::Paragraph));
+    assert_eq!(
+        (r.start, r.end),
+        (0, 6),
+        "merged paragraph starts at 0 like fresh"
+    );
+
+    // 前导空行 + 标题 + auto 围栏：在空行区插入换行（纯前导扩展）。
+    let doc2_text = "\n# 标题 ^t\n\n```auto\nfn add() i32 { return 1 }\n```\n";
+    let mut doc2 = open_doc(doc2_text);
+    assert_fresh_equivalent(&doc2);
+    let fence_idx = doc2
+        .current()
+        .regions
+        .iter()
+        .position(|r| r.fence().is_some())
+        .unwrap();
+    let fence_emb = doc2.current().regions[fence_idx].embedded.clone().unwrap();
+    edit(&mut doc2, 0, 0, 0, "\n");
+    assert_fresh_equivalent(&doc2);
+    assert_eq!(doc2.current().outline.len(), 1);
+    // 围栏子分析仍真实复用（嫁接尾部）。
+    assert_eq!(doc2.current().metrics.reused_subtrees, 1);
+    let fence_idx_after = doc2
+        .current()
+        .regions
+        .iter()
+        .position(|r| r.fence().is_some())
+        .unwrap();
+    let grafted_emb = doc2.current().regions[fence_idx_after]
+        .embedded
+        .clone()
+        .unwrap();
+    assert!(Rc::ptr_eq(&fence_emb, &grafted_emb));
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +771,36 @@ fn v05_editor_session_replay_and_revision_isolation() {
         2,
         "both stale deliveries recorded as late"
     );
+
+    // F5 对齐：(FileId, 修订) 键控——发布后文件继续编辑，更新修订的当前结果
+    // 可替换旧发布；同修订重复交付仍首个胜出。
+    session
+        .edit(
+            a,
+            &EditRequest {
+                base_revision: 1,
+                edits: vec![Edit {
+                    start: 0,
+                    end: 0,
+                    insert: b"y\n\n".to_vec(),
+                }],
+            },
+        )
+        .unwrap();
+    let v2 = session.query(a, 2).unwrap();
+    assert_eq!(session.deliver(v2), DeliveryOutcome::Published);
+    assert_eq!(
+        session.published(a).unwrap().revision,
+        2,
+        "newer current revision replaces the old publication"
+    );
+    let dup = session.query(a, 2).unwrap();
+    assert_eq!(
+        session.deliver(dup),
+        DeliveryOutcome::Late,
+        "duplicate delivery for the same revision is late (first wins)"
+    );
+    assert_eq!(session.late().len(), 3);
 }
 
 // ---------------------------------------------------------------------------

@@ -405,12 +405,16 @@ fn strip_trailing_hashes(t: &str) -> &str {
     trimmed[..ss].trim_end_matches([' ', '\t'])
 }
 
-/// ` ^anchor` 提升（子集：尾段、非空、无空白、无 `^`；对齐 applyAnchorsDeep
-/// 的单尾段语义）。
+/// ` ^anchor` 提升（镜像 applyAnchorsDeep/extractAnchorBlock：尾段非空且每
+/// 字符属 [A-Za-z0-9_-]——F2 修复，与现版字符集一致）。
 fn lift_anchor(content: &str) -> (String, Option<String>) {
     if let Some(pos) = content.rfind(" ^") {
         let token = &content[pos + 2..];
-        if !token.is_empty() && !token.chars().any(|c| c.is_whitespace() || c == '^') {
+        if !token.is_empty()
+            && token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
             let name = content[..pos].trim_end_matches([' ', '\t']).to_string();
             return (name, Some(token.to_string()));
         }
@@ -503,12 +507,13 @@ fn scan_regions(
                         }
                         body_lines.pop();
                     }
-                    // stripTrailingSpaceLine 镜像：仅"末行全空格且其前有换行"
-                    // （即前面还有正文行）时剥掉该空格行——单行全空格保留。
+                    // stripTrailingSpaceLine 镜像（F3 修复）：现版只剥尾随空格
+                    // (0x20)——"末行全空格且其前有换行"（即前面还有正文行）时
+                    // 剥掉该空格行；含 tab 的末行按内容保留；单行全空格保留。
                     let content_end = match body_lines.last() {
                         Some(&last) => {
                             let lb = snap.read_bytes(last.0, last.1)?;
-                            if body_lines.len() > 1 && trim_ascii(&lb).is_empty() {
+                            if body_lines.len() > 1 && lb.iter().all(|&c| c == b' ') {
                                 last.0
                             } else {
                                 last.1
@@ -962,10 +967,13 @@ impl MixedDoc {
         // 若其上一区域是段落且与之紧邻（无空行分隔），再向前多取一个区域——
         // 编辑可能把分隔结构行（标题/开栏行）改成普通文本，上方段落向下
         // 吸收一行；段落吸收只向后达一行，故后退一步即充分。
+        // 编辑位于首区域之前的空行区（partition_point == 0）时无稳定前缀，
+        // 从 0 重扫——前导空行可能被编辑成区域内容（F1 回归）。
         let line_start_lo = line_start_of(old_snap, lo);
-        let mut rescan_idx = old.regions.partition_point(|r| r.start <= line_start_lo);
-        rescan_idx = rescan_idx.saturating_sub(1);
-        if rescan_idx > 0 {
+        let pp = old.regions.partition_point(|r| r.start <= line_start_lo);
+        let leading = pp == 0;
+        let mut rescan_idx = pp.saturating_sub(1);
+        if !leading && rescan_idx > 0 {
             if let Some(above) = old.regions.get(rescan_idx - 1) {
                 let adjacent = matches!(above.kind, RegionKind::Paragraph)
                     && next_line(old_snap, above.end)
@@ -976,7 +984,11 @@ impl MixedDoc {
                 }
             }
         }
-        let rescan_from = old.regions.get(rescan_idx).map(|r| r.start).unwrap_or(0);
+        let rescan_from = if leading {
+            0
+        } else {
+            old.regions[rescan_idx].start
+        };
         debug_assert!(rescan_from <= lo, "rescan start must precede the edit");
 
         // 稳定前缀：字节与结构原样保留（子分析 Rc 复用）。
@@ -1180,8 +1192,9 @@ impl EditorSession {
         Ok(self.doc(file)?.offset_of_utf16(line, col))
     }
 
-    /// 交付查询结果：仅当（文件仍打开、目标 = 该文件当前修订、且该文件尚无
-    /// 已发布结果）时发布；否则入 late（迟到不得覆盖，V-05）。
+    /// 交付查询结果（按 (FileId, 修订) 键控，F5 对齐）：仅当文件仍打开且
+    /// 目标 = 该文件当前修订时发布；同修订重复交付首个胜出（VersionedPublish
+    /// 语义），**更新**的当前修订可替换旧发布（迟到/过期结果永不覆盖，V-05）。
     pub fn deliver(&mut self, view: SessionView) -> DeliveryOutcome {
         let current = match self.docs.get(&view.file) {
             Some(d) => d.current_revision(),
@@ -1190,9 +1203,16 @@ impl EditorSession {
                 return DeliveryOutcome::Late;
             }
         };
-        if view.revision != current || self.published.contains_key(&view.file) {
+        if view.revision != current {
             self.late.push(view);
             return DeliveryOutcome::Late;
+        }
+        if let Some(p) = self.published.get(&view.file) {
+            if view.revision <= p.revision {
+                // 已发布同修订（重复）或更旧（不可能：=当前且发布更新）→ 迟到。
+                self.late.push(view);
+                return DeliveryOutcome::Late;
+            }
         }
         self.published.insert(view.file, view);
         DeliveryOutcome::Published
