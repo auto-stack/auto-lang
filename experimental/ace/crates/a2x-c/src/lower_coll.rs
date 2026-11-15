@@ -76,6 +76,22 @@ impl CollRetKind {
     }
 }
 
+/// PLAN-972 (T-03): the C RESULT STRUCT name of a closure body's return
+/// (the fn-pointer's pointee return + the indirect call's fall channel).
+fn coll_ret_chan_of(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xReject> {
+    Ok(match ty {
+        Ty::I32 | Ty::Char => "a2x_result".into(),
+        Ty::Bool => "a2x_bool_result".into(),
+        Ty::StrOwned => "a2x_stro_result".into(),
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "closure result `{:?}` outside the C collections channel",
+                other
+            )))
+        }
+    })
+}
+
 fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<CollRetKind, A2xReject> {
     match ty {
         Ty::I32 => Ok(CollRetKind::I32),
@@ -157,8 +173,17 @@ pub fn coll_c_value_ty(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xRej
     match ty {
         Ty::I32 => Ok("int32_t".into()),
         Ty::Bool => Ok("bool".into()),
-        // PLAN-972 (T-03): a char is its Unicode codepoint (uint32).
+        // PLAN-972 (T-03): a char is its Unicode codepoint (uint32); the
+        // 961 typed scalars ride their C spellings.
         Ty::Char => Ok("uint32_t".into()),
+        Ty::I64 => Ok("int64_t".into()),
+        Ty::U64 => Ok("uint64_t".into()),
+        Ty::I8 => Ok("int8_t".into()),
+        Ty::U8 => Ok("uint8_t".into()),
+        Ty::U32 => Ok("uint32_t".into()),
+        Ty::F32 | Ty::F64 => Err(A2xReject::unsupported_type(
+            "PLAN-972 float values await the C numeric backend unit",
+        )),
         Ty::StrOwned => Ok("a2x_str".into()),
         Ty::Record(i) => view
             .record(i)
@@ -235,10 +260,35 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
     let mut passes = std::collections::HashMap::new();
     for (p, (idx, l)) in f.params.iter().zip(param_locals.iter()) {
         let ty = view.resolve_use_ty(l.ty)?;
+        // PLAN-972 (T-03): a closure param is a C FUNCTION POINTER —
+        // `ret (*name)(params...)` over the body fn's channel (the pointee
+        // name embeds the param name, so it bypasses the pass table).
+        if let Ty::Closure(sig_idx) = ty {
+            let pname = local_name(&l.name, *idx);
+            let sig = view.closure_sig(sig_idx).ok_or_else(|| {
+                A2xReject::unsupported_type("closure type index out of range")
+            })?;
+            let ret_ty = view.resolve_use_ty(sig.result)?;
+            let ret_chan = coll_ret_chan_of(view, ret_ty)?;
+            let mut cparams: Vec<String> = Vec::new();
+            for pt in &sig.params {
+                let pty = view.resolve_use_ty(*pt)?;
+                cparams.push(coll_c_value_ty(view, pty)?);
+            }
+            let cparams = if cparams.is_empty() {
+                "void".to_string()
+            } else {
+                cparams.join(", ")
+            };
+            params.push((format!("{ret_chan} (*{pname})({cparams})"), String::new()));
+            continue;
+        }
         let pass = match (p.mode, ty) {
             // a scalar view is its ABI copy (mirror of the Rust leg's
             // by-value scalar params in every mode)
-            (_, Ty::I32 | Ty::Bool | Ty::Char) => ParamPass::Value,
+            (_, Ty::I32 | Ty::Bool | Ty::Char | Ty::I64 | Ty::U64 | Ty::I8 | Ty::U8 | Ty::U32) => {
+                ParamPass::Value
+            }
             (hir::ParamMode::MoveOwn, _) => ParamPass::Value,
             (hir::ParamMode::View, Ty::Record(_) | Ty::Variant(_)) => ParamPass::ConstPtr,
             // PLAN-972 (T-03): a View-mode owned-Str param is a borrow of
@@ -834,6 +884,30 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         match kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.local_read(local.0)),
             hir::ExprKind::Constant { value } => Ok(value.to_string()),
+            // PLAN-972 (T-03): typed scalar constants inline (mirror of
+            // the text lane's literal forms).
+            hir::ExprKind::NumericConst { ty, bits } => crate::lower::numeric_const_c(ty, bits),
+            // PLAN-972 (T-03): the 961 conversion matrix — identity passes
+            // through; checked conversions ride the shared helpers
+            // (a2x_c_<from>_<to>, now in the collections header).
+            hir::ExprKind::Cast { operand, to } => {
+                let v = self.expr(operand)?;
+                let from = self
+                    .view
+                    .resolve_use_ty(self.f.body.exprs[operand.0 as usize].ty)?;
+                let from_b = crate::lower::c_builtin_of(from)?;
+                if from_b == to {
+                    return Ok(v);
+                }
+                let f_name = crate::lower::c_bname(from_b);
+                let t_name = crate::lower::c_bname(to);
+                let chan = crate::lower::c_result_ty(crate::lower::builtin_ty_of(to)?)?;
+                self.fall_res(
+                    id,
+                    &chan,
+                    format!("a2x_c_{f_name}_{t_name}({v})"),
+                )
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.expr(lhs)?;
                 let r = self.expr(rhs)?;
@@ -852,6 +926,58 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     }
                     hir::BinOp::RemI32 => {
                         self.fall_res(id, "a2x_result", format!("a2x_rem({l}, {r})"))
+                    }
+                    // PLAN-972 (T-03): the 961 typed numeric surface —
+                    // integer compares inline; checked arith via the shared
+                    // typed helpers (the numeric runtime now joins the
+                    // collections header). Floats stay with the numeric
+                    // backend unit (named).
+                    hir::BinOp::Num { op, ty } => {
+                        use hir::NumOpKind as K;
+                        let bty = ty;
+                        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
+                            return Err(A2xReject::unsupported_op(
+                                "PLAN-972 typed float emission awaits the C numeric backend unit",
+                            ));
+                        }
+                        let cmp = match op {
+                            K::Lt => Some("<"),
+                            K::Le => Some("<="),
+                            K::Gt => Some(">"),
+                            K::Ge => Some(">="),
+                            K::Eq => Some("=="),
+                            K::Ne => Some("!="),
+                            _ => None,
+                        };
+                        if let Some(o) = cmp {
+                            return Ok(format!("(({}) {o} ({}))", l, r));
+                        }
+                        if matches!(op, K::And | K::Or | K::Xor | K::Shl | K::Shr) {
+                            return Err(A2xReject::unsupported_op(
+                                "PLAN-972 typed bit/shift emission awaits the C numeric backend unit",
+                            ));
+                        }
+                        let (name, chan, dom): (&str, &str, &str) = match bty {
+                            hir::BuiltinType::I8 => ("i8", "a2x_result_i8", "int64_t"),
+                            hir::BuiltinType::U8 => ("u8", "a2x_result_u8", "uint64_t"),
+                            hir::BuiltinType::I32 => ("i32", "a2x_result", "int32_t"),
+                            hir::BuiltinType::U32 => ("u32", "a2x_result_u32", "uint64_t"),
+                            hir::BuiltinType::I64 => ("i64", "a2x_result_i64", "int64_t"),
+                            _ => ("u64", "a2x_result_u64", "uint64_t"),
+                        };
+                        let f = match op {
+                            K::Add => format!("a2x_add_{name}"),
+                            K::Sub => format!("a2x_sub_{name}"),
+                            K::Mul => format!("a2x_mul_{name}"),
+                            K::Div => format!("a2x_div_{name}"),
+                            K::Rem => format!("a2x_rem_{name}"),
+                            _ => unreachable!(),
+                        };
+                        self.fall_res(
+                            id,
+                            chan,
+                            format!("{f}(({dom})({l}), ({dom})({r}))"),
+                        )
                     }
                     hir::BinOp::LtI32 => Ok(format!("({l} < {r})")),
                     hir::BinOp::LeI32 => Ok(format!("({l} <= {r})")),
@@ -1097,6 +1223,30 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     "a2x_char_result",
                     format!("a2x_char_from_codepoint({o})"),
                 )
+            }
+            // PLAN-972 (T-03): capture-free closure VALUES — the C function
+            // designator IS the closure value (function pointers decay);
+            // the indirect call falls through the body's result channel.
+            hir::ExprKind::CreateClosure { callee, captures } => {
+                if !captures.is_empty() {
+                    return Err(A2xReject::unsupported_op(
+                        "capturing closures await the C closure-env unit (PLAN-972)",
+                    ));
+                }
+                let f = self.view.fn_by_def(callee.0 as usize).ok_or_else(|| {
+                    A2xReject::unsupported_expr("closure callee def not in view")
+                })?;
+                Ok(crate::lower::c_fn_name(f.source_name))
+            }
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                let f = self.expr(callee)?;
+                let mut args = Vec::new();
+                for a in eval_args {
+                    args.push(self.expr(a)?);
+                }
+                let sig_ty = self.view.resolve_use_ty(e.ty)?;
+                let chan = coll_ret_chan_of(self.view, sig_ty)?;
+                self.fall_res(id, &chan, format!("{f}({})", args.join(", ")))
             }
             hir::ExprKind::TextClone { operand } => {
                 let o = self.expr(operand)?;

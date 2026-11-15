@@ -36,89 +36,11 @@ pub fn runtime_source_admitted(
     crate::admitted_text::render_admitted(|out| write_runtime(marks, out), admit)
 }
 
-/// The single formatter behind both entries (counting pass allocates
-/// nothing; the writer is bounded by the admitted size).
-pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> std::fmt::Result {
-    out.write_str("// AUTO-GENERATED minimal typed runtime (PLAN-921 CA-A) — DO NOT EDIT.\n")?;
-    out.write_str("// Checked i32 primitives with named traps + authorized trace marks.\n")?;
-    out.write_str("#ifndef A2X_C_RUNTIME_H\n#define A2X_C_RUNTIME_H\n\n")?;
-    out.write_str("#include <stdbool.h>\n#include <stdint.h>\n#include <stdio.h>\n\n")?;
-    out.write_str("typedef enum {\n")?;
-    out.write_str("    A2X_TRAP_NONE = 0,\n")?;
-    out.write_str("    A2X_TRAP_OVERFLOW,\n")?;
-    out.write_str("    A2X_TRAP_DIV_BY_ZERO,\n")?;
-    out.write_str("    A2X_TRAP_DIV_OVERFLOW,\n")?;
-    out.write_str("    A2X_TRAP_REM_BY_ZERO,\n")?;
-    out.write_str("    A2X_TRAP_REM_OVERFLOW,\n")?;
-    // PLAN-961: the numeric-only domain class (shift amount out of
-    // range, float→int NaN/±Inf/out-of-range) — name "InvalidScalar".
-    out.write_str("    A2X_TRAP_INVALID\n")?;
-    out.write_str("} a2x_trap_code;\n\n")?;
-    out.write_str("typedef struct {\n")?;
-    out.write_str("    int32_t value;\n")?;
-    out.write_str("    a2x_trap_code trap;\n")?;
-    out.write_str("} a2x_result;\n\n")?;
-    out.write_str("static inline a2x_result a2x_value(int32_t v) {\n")?;
-    out.write_str("    a2x_result r;\n")?;
-    out.write_str("    r.value = v;\n")?;
-    out.write_str("    r.trap = A2X_TRAP_NONE;\n")?;
-    out.write_str("    return r;\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("static inline const char *a2x_trap_name(a2x_trap_code t) {\n")?;
-    out.write_str("    static const char *const names[7] = {\n")?;
-    out.write_str("        \"None\", \"Overflow\", \"DivByZero\", \"DivOverflow\",\n")?;
-    out.write_str("        \"RemByZero\", \"RemOverflow\", \"InvalidScalar\"\n")?;
-    out.write_str("    };\n")?;
-    out.write_str("    return names[(int)t];\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("/* Checked i32: compute in int64_t, range-check, THEN narrow — C signed\n")?;
-    out.write_str(" * overflow is never executed (PLAN-921 §5.1). */\n")?;
-    out.write_str("static inline a2x_result a2x_add(int32_t a, int32_t b) {\n")?;
-    out.write_str("    int64_t s = (int64_t)a + (int64_t)b;\n")?;
-    out.write_str("    if (s < INT32_MIN || s > INT32_MAX) {\n")?;
-    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
-    out.write_str("    }\n")?;
-    out.write_str("    return a2x_value((int32_t)s);\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("static inline a2x_result a2x_sub(int32_t a, int32_t b) {\n")?;
-    out.write_str("    int64_t s = (int64_t)a - (int64_t)b;\n")?;
-    out.write_str("    if (s < INT32_MIN || s > INT32_MAX) {\n")?;
-    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
-    out.write_str("    }\n")?;
-    out.write_str("    return a2x_value((int32_t)s);\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("static inline a2x_result a2x_mul(int32_t a, int32_t b) {\n")?;
-    out.write_str("    int64_t s = (int64_t)a * (int64_t)b;\n")?;
-    out.write_str("    if (s < INT32_MIN || s > INT32_MAX) {\n")?;
-    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
-    out.write_str("    }\n")?;
-    out.write_str("    return a2x_value((int32_t)s);\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("static inline a2x_result a2x_neg(int32_t a) {\n")?;
-    out.write_str("    if (a == INT32_MIN) {\n")?;
-    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
-    out.write_str("    }\n")?;
-    out.write_str("    return a2x_value((int32_t)(-(int64_t)a));\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("/* div/rem: reject zero first, then INT32_MIN / -1; C truncation toward\n")?;
-    out.write_str(" * zero preserves -7/3 == -2 and -7%3 == -1. */\n")?;
-    out.write_str("static inline a2x_result a2x_div(int32_t a, int32_t b) {\n")?;
-    out.write_str("    a2x_result r;\n")?;
-    out.write_str("    if (b == 0) { r.value = 0; r.trap = A2X_TRAP_DIV_BY_ZERO; return r; }\n")?;
-    out.write_str(
-        "    if (a == INT32_MIN && b == -1) { r.value = 0; r.trap = A2X_TRAP_DIV_OVERFLOW; return r; }\n",
-    )?;
-    out.write_str("    return a2x_value(a / b);\n")?;
-    out.write_str("}\n\n")?;
-    out.write_str("static inline a2x_result a2x_rem(int32_t a, int32_t b) {\n")?;
-    out.write_str("    a2x_result r;\n")?;
-    out.write_str("    if (b == 0) { r.value = 0; r.trap = A2X_TRAP_REM_BY_ZERO; return r; }\n")?;
-    out.write_str(
-        "    if (a == INT32_MIN && b == -1) { r.value = 0; r.trap = A2X_TRAP_REM_OVERFLOW; return r; }\n",
-    )?;
-    out.write_str("    return a2x_value(a % b);\n")?;
-    out.write_str("}\n\n")?;
-
+/// PLAN-972 (T-03): the 961 numeric runtime section (frozen T-01
+/// §2/§3 matrix) — extracted so BOTH the scalar/text and the
+/// COLLECTIONS runtime headers carry the typed helpers (literals,
+/// checked arith, conversions) the assembled stdlib emits.
+pub fn write_numeric_runtime(out: &mut dyn std::fmt::Write) -> std::fmt::Result {
     // ---- PLAN-961 numeric runtime (frozen T-01 §2/§3 matrix) ----------
     // Integer lanes compute in the int64/uint64 domain (MSVC has no
     // __int128; _mul128/_umul128 cover the 64-bit high half), then
@@ -501,6 +423,93 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
     out.write_str("static inline double a2x_f64_bits(uint64_t bits) {\n")?;
     out.write_str("    double d; memcpy(&d, &bits, sizeof d); return d;\n")?;
     out.write_str("}\n\n")?;
+    Ok(())
+}
+
+/// The single formatter behind both entries (counting pass allocates
+/// nothing; the writer is bounded by the admitted size).
+pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> std::fmt::Result {
+    out.write_str("// AUTO-GENERATED minimal typed runtime (PLAN-921 CA-A) — DO NOT EDIT.\n")?;
+    out.write_str("// Checked i32 primitives with named traps + authorized trace marks.\n")?;
+    out.write_str("#ifndef A2X_C_RUNTIME_H\n#define A2X_C_RUNTIME_H\n\n")?;
+    out.write_str("#include <stdbool.h>\n#include <stdint.h>\n#include <stdio.h>\n\n")?;
+    out.write_str("typedef enum {\n")?;
+    out.write_str("    A2X_TRAP_NONE = 0,\n")?;
+    out.write_str("    A2X_TRAP_OVERFLOW,\n")?;
+    out.write_str("    A2X_TRAP_DIV_BY_ZERO,\n")?;
+    out.write_str("    A2X_TRAP_DIV_OVERFLOW,\n")?;
+    out.write_str("    A2X_TRAP_REM_BY_ZERO,\n")?;
+    out.write_str("    A2X_TRAP_REM_OVERFLOW,\n")?;
+    // PLAN-961: the numeric-only domain class (shift amount out of
+    // range, float→int NaN/±Inf/out-of-range) — name "InvalidScalar".
+    out.write_str("    A2X_TRAP_INVALID\n")?;
+    out.write_str("} a2x_trap_code;\n\n")?;
+    out.write_str("typedef struct {\n")?;
+    out.write_str("    int32_t value;\n")?;
+    out.write_str("    a2x_trap_code trap;\n")?;
+    out.write_str("} a2x_result;\n\n")?;
+    out.write_str("static inline a2x_result a2x_value(int32_t v) {\n")?;
+    out.write_str("    a2x_result r;\n")?;
+    out.write_str("    r.value = v;\n")?;
+    out.write_str("    r.trap = A2X_TRAP_NONE;\n")?;
+    out.write_str("    return r;\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("static inline const char *a2x_trap_name(a2x_trap_code t) {\n")?;
+    out.write_str("    static const char *const names[7] = {\n")?;
+    out.write_str("        \"None\", \"Overflow\", \"DivByZero\", \"DivOverflow\",\n")?;
+    out.write_str("        \"RemByZero\", \"RemOverflow\", \"InvalidScalar\"\n")?;
+    out.write_str("    };\n")?;
+    out.write_str("    return names[(int)t];\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("/* Checked i32: compute in int64_t, range-check, THEN narrow — C signed\n")?;
+    out.write_str(" * overflow is never executed (PLAN-921 §5.1). */\n")?;
+    out.write_str("static inline a2x_result a2x_add(int32_t a, int32_t b) {\n")?;
+    out.write_str("    int64_t s = (int64_t)a + (int64_t)b;\n")?;
+    out.write_str("    if (s < INT32_MIN || s > INT32_MAX) {\n")?;
+    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
+    out.write_str("    }\n")?;
+    out.write_str("    return a2x_value((int32_t)s);\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("static inline a2x_result a2x_sub(int32_t a, int32_t b) {\n")?;
+    out.write_str("    int64_t s = (int64_t)a - (int64_t)b;\n")?;
+    out.write_str("    if (s < INT32_MIN || s > INT32_MAX) {\n")?;
+    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
+    out.write_str("    }\n")?;
+    out.write_str("    return a2x_value((int32_t)s);\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("static inline a2x_result a2x_mul(int32_t a, int32_t b) {\n")?;
+    out.write_str("    int64_t s = (int64_t)a * (int64_t)b;\n")?;
+    out.write_str("    if (s < INT32_MIN || s > INT32_MAX) {\n")?;
+    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
+    out.write_str("    }\n")?;
+    out.write_str("    return a2x_value((int32_t)s);\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("static inline a2x_result a2x_neg(int32_t a) {\n")?;
+    out.write_str("    if (a == INT32_MIN) {\n")?;
+    out.write_str("        a2x_result r; r.value = 0; r.trap = A2X_TRAP_OVERFLOW; return r;\n")?;
+    out.write_str("    }\n")?;
+    out.write_str("    return a2x_value((int32_t)(-(int64_t)a));\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("/* div/rem: reject zero first, then INT32_MIN / -1; C truncation toward\n")?;
+    out.write_str(" * zero preserves -7/3 == -2 and -7%3 == -1. */\n")?;
+    out.write_str("static inline a2x_result a2x_div(int32_t a, int32_t b) {\n")?;
+    out.write_str("    a2x_result r;\n")?;
+    out.write_str("    if (b == 0) { r.value = 0; r.trap = A2X_TRAP_DIV_BY_ZERO; return r; }\n")?;
+    out.write_str(
+        "    if (a == INT32_MIN && b == -1) { r.value = 0; r.trap = A2X_TRAP_DIV_OVERFLOW; return r; }\n",
+    )?;
+    out.write_str("    return a2x_value(a / b);\n")?;
+    out.write_str("}\n\n")?;
+    out.write_str("static inline a2x_result a2x_rem(int32_t a, int32_t b) {\n")?;
+    out.write_str("    a2x_result r;\n")?;
+    out.write_str("    if (b == 0) { r.value = 0; r.trap = A2X_TRAP_REM_BY_ZERO; return r; }\n")?;
+    out.write_str(
+        "    if (a == INT32_MIN && b == -1) { r.value = 0; r.trap = A2X_TRAP_REM_OVERFLOW; return r; }\n",
+    )?;
+    out.write_str("    return a2x_value(a % b);\n")?;
+    out.write_str("}\n\n")?;
+
+    write_numeric_runtime(out)?;
 
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {

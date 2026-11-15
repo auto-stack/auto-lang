@@ -48,6 +48,16 @@ pub fn collections_runtime_source(marks: &[&'static str]) -> String {
     s.push_str("#ifndef A2X_C_COLL_RUNTIME_H\n#define A2X_C_COLL_RUNTIME_H\n\n");
     s.push_str("#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n");
     s.push_str(COLL_CORE);
+    // PLAN-972 (T-03): the 961 numeric runtime joins the collections
+    // header (typed literals/arith/conversions — the assembled stdlib's
+    // numeric surface rides the C collections family). The scalar core's
+    // INVALID code aliases the coll enum's INVALID_SCALAR (the transport
+    // layer keeps distinct text codes via the provider's trap table).
+    s.push_str("#ifndef A2X_TRAP_INVALID
+#define A2X_TRAP_INVALID A2X_TRAP_INVALID_SCALAR
+#endif
+");
+    crate::runtime::write_numeric_runtime(&mut s).expect("formatting into a String cannot fail");
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
