@@ -1261,6 +1261,20 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         };
 
         let mut clif_args: Vec<Value> = Vec::with_capacity(args.len() + 1);
+        if crate::platform_io::is_sys973_kind(spec.kind) {
+            // PLAN-973: sys973 marshalling derives from the frozen op
+            // table (StrView -> pointer + byte length; scalars as-is).
+            let mut arg_i = 0;
+            for p in spec.params.iter() {
+                if matches!(p, ace_av_core::mir::MirType::StrView) {
+                    clif_args.push(self.use_ptr(args[arg_i])?);
+                    clif_args.push(self.use_len(args[arg_i])?);
+                } else {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[arg_i])?));
+                }
+                arg_i += 1;
+            }
+        } else {
         match spec.kind {
             PlatformOpKind::IoStdout
             | PlatformOpKind::IoStderr
@@ -1335,7 +1349,16 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             PlatformOpKind::ProbeClose => {
                 clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
             }
+            // PLAN-973 kinds never reach this match (handled above);
+            // a future kind without marshalling fails closed, not silent.
+            _ => {
+                return Err(format!(
+                    "ac.platform-unwired: no marshalling for {}",
+                    spec.symbol
+                ));
+            }
         }
+        } // PLAN-973 sys973 else-arm
         let call = self.fb.ins().call(callee, &clif_args);
         let res = self.fb.inst_results(call)[0];
         self.def_scalar(dst, res)?;

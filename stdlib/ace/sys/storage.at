@@ -1,0 +1,11 @@
+// ACE system library — KV storage module (PLAN-973 T-02).
+//
+// NAMED LANE GAP: the whole persistent KV surface (get/set/remove with
+// line rebuild) requires reading stored bytes back into Str — the
+// packages-aggregates face has no byte→Str construction builtin (the 972
+// boundary; see the plan's lane dossier). The write-side escape/unescape
+// helpers are exported for the increment that lands with the lane
+// construction capability.
+
+use std.syscommon.escape
+use std.syscommon.unescape

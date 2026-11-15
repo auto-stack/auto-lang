@@ -3506,7 +3506,10 @@ impl Verifier {
                 // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
                 // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；
                 // console 拼写（auto.console.*）仍只在 host-console 画像。
-                let platform_in_packages = self.domain == HirDomain::TextRecord;
+                // PLAN-973: 装配 aggregates 面（std 系统库集 sysplat_win/lnx
+                // 的平台原语包装）同样准入；能力/授权仍由运行准入层核。
+                let platform_in_packages = self.domain == HirDomain::TextRecord
+                    || self.domain == HirDomain::Closures;
                 if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                     if (symbol.starts_with("auto.console.") && !sched_module)
                         || (symbol.starts_with("auto.platform.") && !platform_in_packages))

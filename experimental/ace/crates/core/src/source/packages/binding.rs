@@ -489,6 +489,12 @@ fn bind_package_syntax_inner(
                         .as_ref()
                         .map(|l| (&l.kind, l.source.as_str())),
                 ))
+            // PLAN-973：系统库装配集冻结身份（同包名 lane 分离）。
+            && !super::stdlib::is_frozen_std_sys_module(
+                &input.id,
+                &input.version,
+                &input.source,
+            )
         {
             return Err(fail(
                 &key,
@@ -3435,6 +3441,12 @@ pub fn bind_packages_assembled_aggregates(
                     .provider
                     .as_ref()
                     .map(|l| (&l.kind, l.source.as_str())),
+            )
+            // PLAN-973：系统库装配集（同包名 lane 分离；仓外来源拒绝）。
+            && !super::stdlib::is_frozen_std_sys_module(
+                &input.id,
+                &input.version,
+                &input.source,
             )
         {
             return Err(fail(

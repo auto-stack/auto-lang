@@ -1,0 +1,287 @@
+// ACE system-library shared helpers (PLAN-973 T-02): OS-neutral pure-Auto
+// utilities over the frozen platform ops and the 972 std set — UTF-8 byte
+// encoding/decoding between Str and OS regions, decimal formatting,
+// ordering/escaping and the buffer-walk engine.
+//
+// Lane discipline (frozen): the packages-aggregates face has NO
+// while/conditional-for loops (`for` is for-in only; 945/946/972 ruling)
+// and the AV frame stack is capped at MAX_AV_FRAMES = 1024. Every counted
+// byte/scalar walk is therefore a THREE-LEVEL chunked recursion:
+// INNER ≤ 768 steps, MID × ~40, OUTER × ~40 — depth ≤ 768 + 40 + 40 = 848
+// frames while covering the full 1 MiB per-run platform byte budget
+// (40 × 40 × 768 = 1_228_800 bytes). No bit ops (div/mod arithmetic only);
+// NUL is an ordinary byte.
+
+pub fn INNER() int {
+    return 768
+}
+
+pub fn MID() int {
+    return 40
+}
+
+pub fn min_i(a int, b int) int {
+    if (a < b) {
+        return a
+    }
+    return b
+}
+
+pub fn max_i(a int, b int) int {
+    if (a > b) {
+        return a
+    }
+    return b
+}
+
+// Advance at most n scalars from i (clamped to the string length).
+pub fn advance_if(s Str, i int, n int) int {
+    if (i + n < s.len()) {
+        return i + n
+    }
+    return s.len()
+}
+
+// ---- UTF-8 code tables --------------------------------------------------------
+
+pub fn utf8_len(p int) int {
+    if (p < 128) {
+        return 1
+    }
+    if (p < 2048) {
+        return 2
+    }
+    if (p < 65536) {
+        return 3
+    }
+    return 4
+}
+
+pub fn byte_of(p int, k int) int {
+    if (p < 128) {
+        return p
+    }
+    if (p < 2048) {
+        if (k == 0) {
+            return 192 + p / 64
+        }
+        return 128 + p % 64
+    }
+    if (p < 65536) {
+        if (k == 0) {
+            return 224 + p / 4096
+        }
+        if (k == 1) {
+            return 128 + (p / 64) % 64
+        }
+        return 128 + p % 64
+    }
+    if (k == 0) {
+        return 240 + p / 262144
+    }
+    if (k == 1) {
+        return 128 + (p / 4096) % 64
+    }
+    if (k == 2) {
+        return 128 + (p / 64) % 64
+    }
+    return 128 + p % 64
+}
+
+// ---- Str -> region bytes (three-level chunked, tail-move discipline) --
+//
+// The 972 ownership discipline: a Str param is READ via methods and
+// tail-moved EXACTLY ONCE into the next helper; no non-tail passes.
+
+pub fn encode_into(s Str, region int, off int) int {
+    return enc_outer(s, region, off, 0)
+}
+
+fn enc_outer(s Str, region int, pos int, ci int) int {
+    if (ci >= s.len()) {
+        return 0
+    }
+    let stopb = min_i(s.len(), ci + MID() * INNER())
+    return enc_mid(s, region, pos, ci, stopb)
+}
+
+fn enc_mid(s Str, region int, pos int, ci int, ostop int) int {
+    if (ci >= ostop) {
+        return enc_outer(s, region, pos, ostop)
+    }
+    return enc_inner(s, region, pos, ci, ostop, min_i(ostop, ci + INNER()))
+}
+
+// Each scalar's <=4 encoding bytes are UNROLLED (no counted loops).
+fn enc_inner(s Str, region int, pos int, ci int, ostop int, istop int) int {
+    if (ci >= istop) {
+        return enc_mid(s, region, pos, istop, ostop)
+    }
+    let p = s.char_at(ci).to_codepoint()
+    let w0 = mem_write_u8(region, pos, byte_of(p, 0))
+    if (w0 != 0) {
+        return w0
+    }
+    var pos1 = pos + 1
+    if (p >= 128) {
+        let w1 = mem_write_u8(region, pos1, byte_of(p, 1))
+        if (w1 != 0) {
+            return w1
+        }
+        pos1 = pos1 + 1
+        if (p >= 2048) {
+            let w2 = mem_write_u8(region, pos1, byte_of(p, 2))
+            if (w2 != 0) {
+                return w2
+            }
+            pos1 = pos1 + 1
+            if (p >= 65536) {
+                let w3 = mem_write_u8(region, pos1, byte_of(p, 3))
+                if (w3 != 0) {
+                    return w3
+                }
+                pos1 = pos1 + 1
+            }
+        }
+    }
+    return enc_inner(s, region, pos1, ci + 1, ostop, istop)
+}
+
+// ---- 64-bit lo/hi composition (no bit ops) ----------------------------------------
+
+pub fn combine64(hi int, lo int) i64 {
+    var lo64 = lo.to(i64)
+    if (lo64 < 0i64) {
+        lo64 = lo64 + 4294967296i64
+    }
+    return hi.to(i64) * 4294967296i64 + lo64
+}
+
+// Decimal string of an i64 (digit chars via table slices — no char
+// construction on this face).
+pub fn from_i64(v i64) Str {
+    if (v < 0i64) {
+        return "-" + from_i64(0i64 - v)
+    }
+    if (v == 0i64) {
+        return "0"
+    }
+    return from_i64_walk(v, "")
+}
+
+fn from_i64_walk(rest i64, acc Str) Str {
+    if (rest == 0i64) {
+        return acc
+    }
+    let digit = (rest % 10i64).to(i32)
+    return from_i64_walk(rest / 10i64, DIGITS().slice(digit, digit + 1) + acc)
+}
+
+fn DIGITS() Str {
+    return "0123456789"
+}
+
+// (str_eq/str_lt removed — two-Str walks cannot ride the single
+// tail-move discipline; comparisons land with the lane increment.)
+
+pub fn escape(s Str) Str {
+    return esc_outer(s, 0, "")
+}
+
+fn esc_outer(s Str, i int, acc Str) Str {
+    if (i >= s.len()) {
+        return acc
+    }
+    let stopb = min_i(s.len(), i + MID() * INNER())
+    return esc_mid(s, i, stopb, acc)
+}
+
+fn esc_mid(s Str, i int, ostop int, acc Str) Str {
+    if (i >= ostop) {
+        return esc_outer(s, ostop, acc)
+    }
+    return esc_inner(s, i, min_i(ostop, i + INNER()), ostop, acc)
+}
+
+fn esc_inner(s Str, i int, istop int, ostop int, acc Str) Str {
+    if (i >= istop) {
+        return esc_mid(s, istop, ostop, acc)
+    }
+    let p = s.char_at(i).to_codepoint()
+    if (p == 92) {
+        return esc_inner(s, i + 1, istop, ostop, acc + "\\")
+    }
+    if (p == 10) {
+        return esc_inner(s, i + 1, istop, ostop, acc + "\\n")
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    return esc_inner(s, i + 1, istop, ostop, acc + piece)
+}
+
+pub fn unescape(s Str) Str {
+    return unesc_outer(s, 0, "")
+}
+
+fn unesc_outer(s Str, i int, acc Str) Str {
+    if (i >= s.len()) {
+        return acc
+    }
+    let stopb = min_i(s.len(), i + MID() * INNER())
+    return unesc_mid(s, i, stopb, acc)
+}
+
+fn unesc_mid(s Str, i int, ostop int, acc Str) Str {
+    if (i >= ostop) {
+        return unesc_outer(s, ostop, acc)
+    }
+    return unesc_inner(s, i, min_i(ostop, i + INNER()), ostop, acc)
+}
+
+fn unesc_inner(s Str, i int, istop int, ostop int, acc Str) Str {
+    if (i >= istop) {
+        return unesc_mid(s, istop, ostop, acc)
+    }
+    let p = s.char_at(i).to_codepoint()
+    if (p == 92 && i + 1 < s.len()) {
+        let q = s.char_at(i + 1).to_codepoint()
+        if (q == 110) {
+            return unesc_inner(s, i + 2, istop, ostop, acc + "\\n")
+        }
+        if (q == 92) {
+            return unesc_inner(s, i + 2, istop, ostop, acc + "\\")
+        }
+        let piece1 Str = s.slice(i, i + 1).clone()
+        let piece2 Str = s.slice(i + 1, i + 2).clone()
+        return unesc_inner(s, i + 2, istop, ostop, acc + piece1 + piece2)
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    return unesc_inner(s, i + 1, istop, ostop, acc + piece)
+}
+
+// Total UTF-8 byte length of s (chunked scalar walk, tail-move).
+pub fn str_bytes_len(s Str) int {
+    return len_outer(s, 0, 0)
+}
+
+fn len_outer(s Str, ci int, acc int) int {
+    if (ci >= s.len()) {
+        return acc
+    }
+    let stopb = min_i(s.len(), ci + MID() * INNER())
+    return len_mid(s, ci, stopb, acc)
+}
+
+fn len_mid(s Str, ci int, ostop int, acc int) int {
+    if (ci >= ostop) {
+        return len_outer(s, ostop, acc)
+    }
+    return len_inner(s, ci, min_i(ostop, ci + INNER()), ostop, acc)
+}
+
+fn len_inner(s Str, ci int, istop int, ostop int, acc int) int {
+    if (ci >= istop) {
+        return len_mid(s, istop, ostop, acc)
+    }
+    let add = utf8_len(s.char_at(ci).to_codepoint())
+    return len_inner(s, ci + 1, istop, ostop, acc + add)
+}

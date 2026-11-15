@@ -230,6 +230,26 @@ pub fn lower_checked(
                     // modules (task-handler stdout).
                     if symbol.starts_with("__sched_") {
                         // accepted below via the shared import path
+                    } else if symbol.starts_with("auto.platform.") {
+                        // PLAN-973: system-library platform primitives on
+                        // the packages-aggregates lane — the frozen op
+                        // table owns signature/capability; call sites
+                        // lower to PlatformCall.
+                        let h = ace_av_core::platform_io::declaration(
+                            symbol,
+                            owned_fn_sig_for_def(
+                                module,
+                                di as u32,
+                                *ty,
+                                &mut out,
+                                &BTreeMap::new(),
+                            )?,
+                        )
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                        out.host_imports.push(h);
+                        // The call sites find the platform import by
+                        // symbol; the def itself needs no CalleeRef.
+                        continue;
                     } else if symbol.starts_with("auto.console.")
                         && module.defs.iter().any(|d| {
                             matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
@@ -632,6 +652,25 @@ fn lower_checked_collection_family(
                     out.host_imports.push(h);
                     // The console call sites find the host import by
                     // symbol; no CalleeRef entry is needed.
+                } else if symbol.starts_with("auto.platform.") {
+                    // PLAN-973: system-library platform primitives on the
+                    // packages-aggregates lane — the frozen op table owns
+                    // the signature/capability contract; call sites lower
+                    // to PlatformCall via the host-import-by-symbol path.
+                    let h = ace_av_core::platform_io::declaration(
+                        symbol,
+                        owned_fn_sig_for_def(
+                            module,
+                            di as u32,
+                            *ty,
+                            &mut out,
+                            &BTreeMap::new(),
+                        )?,
+                    )
+                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                    out.host_imports.push(h);
+                    // The call sites find the platform import by symbol;
+                    // no CalleeRef entry is needed.
                 } else {
                     return Err(AdapterError::uns(
                         "lower.intrinsic",
@@ -4113,7 +4152,12 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("__sched_"))
                     });
-                    if self.out.is_host_console_profile() || sched_module {
+                    let platform_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("auto.platform.")
+                    );
+                    if self.out.is_host_console_profile() || sched_module || platform_callee {
                         // PLAN-968: only host-table spellings take the
                         // host-import path; __sched_ intrinsics keep the
                         // generic call path (rewritten to SCHED ops below).

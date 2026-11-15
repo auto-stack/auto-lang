@@ -11,8 +11,8 @@ use crate::emit::{make_isa, WINCALL};
 use crate::MnError;
 use ace_av_core::platform_io::{
     PlatformOpKind, ERR_ALREADY_RELEASED, ERR_BORROWED, ERR_BUDGET, ERR_INVALID_BOUNDS,
-    ERR_INVALID_HANDLE, ERR_INVALID_VALUE, ERR_OS_FAILED, ERR_WRONG_ORIGIN, MAX_OS_REGION_BYTES,
-    MAX_PLATFORM_CALL_BYTES, MAX_PLATFORM_RUN_BYTES,
+    ERR_INVALID_HANDLE, ERR_INVALID_VALUE, ERR_OS_FAILED, ERR_UNSUPPORTED, ERR_WRONG_ORIGIN,
+    MAX_OS_REGION_BYTES, MAX_PLATFORM_CALL_BYTES, MAX_PLATFORM_RUN_BYTES,
 };
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
@@ -93,7 +93,215 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         | PlatformOpKind::NetTcpListen
         | PlatformOpKind::NetTcpAccept
         | PlatformOpKind::NetTcpLocalPort => "mn_pio_net_unsupported",
+        // PLAN-973 system-resource ops (symbol = mn_pio_<callee>).
+        PlatformOpKind::IoStdin => "mn_pio_stdin",
+        PlatformOpKind::FileOpenW16 => "mn_pio_file_open_w16",
+        PlatformOpKind::FileOpenBytes => "mn_pio_file_open_bytes",
+        PlatformOpKind::FileReadSome => "mn_pio_file_read_some",
+        PlatformOpKind::FileWriteSome => "mn_pio_file_write_some",
+        PlatformOpKind::FileSeek => "mn_pio_file_seek",
+        PlatformOpKind::FileTell => "mn_pio_file_tell",
+        PlatformOpKind::FileHi => "mn_pio_file_hi",
+        PlatformOpKind::FileSize => "mn_pio_file_size",
+        PlatformOpKind::FileMtimeMs => "mn_pio_file_mtime_ms",
+        PlatformOpKind::FileFlush => "mn_pio_file_flush",
+        PlatformOpKind::FileClose => "mn_pio_file_close",
+        PlatformOpKind::PathAttrsW16 => "mn_pio_path_attrs_w16",
+        PlatformOpKind::PathAttrsBytes => "mn_pio_path_attrs_bytes",
+        PlatformOpKind::FileDeleteW16 => "mn_pio_file_delete_w16",
+        PlatformOpKind::FileDeleteBytes => "mn_pio_file_delete_bytes",
+        PlatformOpKind::DirCreateW16 => "mn_pio_dir_create_w16",
+        PlatformOpKind::DirCreateBytes => "mn_pio_dir_create_bytes",
+        PlatformOpKind::DirDeleteW16 => "mn_pio_dir_delete_w16",
+        PlatformOpKind::DirDeleteBytes => "mn_pio_dir_delete_bytes",
+        PlatformOpKind::FileReplaceW16 => "mn_pio_file_replace_w16",
+        PlatformOpKind::FileReplaceBytes => "mn_pio_file_replace_bytes",
+        PlatformOpKind::CanonicalW16 => "mn_pio_canonical_w16",
+        PlatformOpKind::CanonicalBytes => "mn_pio_canonical_bytes",
+        PlatformOpKind::DirOpenW16 => "mn_pio_dir_open_w16",
+        PlatformOpKind::DirNextW16 => "mn_pio_dir_next_w16",
+        PlatformOpKind::DirClose => "mn_pio_dir_close",
+        PlatformOpKind::DirOpenBytes => "mn_pio_dir_open_bytes",
+        PlatformOpKind::DirFillBytes => "mn_pio_dir_fill_bytes",
+        PlatformOpKind::EnvGetW16 => "mn_pio_env_get_w16",
+        PlatformOpKind::EnvSetW16 => "mn_pio_env_set_w16",
+        PlatformOpKind::EnvRemoveW16 => "mn_pio_env_remove_w16",
+        PlatformOpKind::EnvGetBytes => "mn_pio_env_get_bytes",
+        PlatformOpKind::ClockUnixMs => "mn_pio_clock_unix_ms",
+        PlatformOpKind::ClockMonoMs => "mn_pio_clock_mono_ms",
+        PlatformOpKind::ClockHi => "mn_pio_clock_hi",
+        PlatformOpKind::SleepMs => "mn_pio_sleep_ms",
+        PlatformOpKind::RandFill => "mn_pio_rand_fill",
+        PlatformOpKind::ProcSpawnW16 => "mn_pio_proc_spawn_w16",
+        PlatformOpKind::ProcSpawnBytes => "mn_pio_proc_spawn_bytes",
+        PlatformOpKind::ProcPipeRead => "mn_pio_proc_pipe_read",
+        PlatformOpKind::ProcWait => "mn_pio_proc_wait",
+        PlatformOpKind::ProcRelease => "mn_pio_proc_release",
+        PlatformOpKind::ProcExit => "mn_pio_proc_exit",
+        PlatformOpKind::ProcCmdlineW16 => "mn_pio_proc_cmdline_w16",
+        PlatformOpKind::ProcCmdlineFillBytes => "mn_pio_proc_cmdline_fill_bytes",
+        PlatformOpKind::ProcCwdW16 => "mn_pio_proc_cwd_w16",
+        PlatformOpKind::ProcCwdBytes => "mn_pio_proc_cwd_bytes",
+        PlatformOpKind::ProcChdirW16 => "mn_pio_proc_chdir_w16",
+        PlatformOpKind::ProcChdirBytes => "mn_pio_proc_chdir_bytes",
     }
+}
+
+/// PLAN-973: true for the system-resource op kinds. The shim emitters
+/// install the named-unsupported stub set for these (a REAL body per op
+/// lands with its AC increment; a stub is an honest named rejection, never
+/// a silent fallback).
+pub fn is_sys973_kind(kind: PlatformOpKind) -> bool {
+    use PlatformOpKind::*;
+    matches!(
+        kind,
+        IoStdin
+            | FileOpenW16
+            | FileOpenBytes
+            | FileReadSome
+            | FileWriteSome
+            | FileSeek
+            | FileTell
+            | FileHi
+            | FileSize
+            | FileMtimeMs
+            | FileFlush
+            | FileClose
+            | PathAttrsW16
+            | PathAttrsBytes
+            | FileDeleteW16
+            | FileDeleteBytes
+            | DirCreateW16
+            | DirCreateBytes
+            | DirDeleteW16
+            | DirDeleteBytes
+            | FileReplaceW16
+            | FileReplaceBytes
+            | CanonicalW16
+            | CanonicalBytes
+            | DirOpenW16
+            | DirNextW16
+            | DirClose
+            | DirOpenBytes
+            | DirFillBytes
+            | EnvGetW16
+            | EnvSetW16
+            | EnvRemoveW16
+            | EnvGetBytes
+            | ClockUnixMs
+            | ClockMonoMs
+            | ClockHi
+            | SleepMs
+            | RandFill
+            | ProcSpawnW16
+            | ProcSpawnBytes
+            | ProcPipeRead
+            | ProcWait
+            | ProcRelease
+            | ProcExit
+            | ProcCmdlineW16
+            | ProcCmdlineFillBytes
+            | ProcCwdW16
+            | ProcCwdBytes
+            | ProcChdirW16
+            | ProcChdirBytes
+    )
+}
+
+/// The sys973 kinds in op-table order (stub emission set).
+pub const SYS973_KINDS: &[PlatformOpKind] = &[
+    PlatformOpKind::IoStdin,
+    PlatformOpKind::FileOpenW16,
+    PlatformOpKind::FileOpenBytes,
+    PlatformOpKind::FileReadSome,
+    PlatformOpKind::FileWriteSome,
+    PlatformOpKind::FileSeek,
+    PlatformOpKind::FileTell,
+    PlatformOpKind::FileHi,
+    PlatformOpKind::FileSize,
+    PlatformOpKind::FileMtimeMs,
+    PlatformOpKind::FileFlush,
+    PlatformOpKind::FileClose,
+    PlatformOpKind::PathAttrsW16,
+    PlatformOpKind::PathAttrsBytes,
+    PlatformOpKind::FileDeleteW16,
+    PlatformOpKind::FileDeleteBytes,
+    PlatformOpKind::DirCreateW16,
+    PlatformOpKind::DirCreateBytes,
+    PlatformOpKind::DirDeleteW16,
+    PlatformOpKind::DirDeleteBytes,
+    PlatformOpKind::FileReplaceW16,
+    PlatformOpKind::FileReplaceBytes,
+    PlatformOpKind::CanonicalW16,
+    PlatformOpKind::CanonicalBytes,
+    PlatformOpKind::DirOpenW16,
+    PlatformOpKind::DirNextW16,
+    PlatformOpKind::DirClose,
+    PlatformOpKind::DirOpenBytes,
+    PlatformOpKind::DirFillBytes,
+    PlatformOpKind::EnvGetW16,
+    PlatformOpKind::EnvSetW16,
+    PlatformOpKind::EnvRemoveW16,
+    PlatformOpKind::EnvGetBytes,
+    PlatformOpKind::ClockUnixMs,
+    PlatformOpKind::ClockMonoMs,
+    PlatformOpKind::ClockHi,
+    PlatformOpKind::SleepMs,
+    PlatformOpKind::RandFill,
+    PlatformOpKind::ProcSpawnW16,
+    PlatformOpKind::ProcSpawnBytes,
+    PlatformOpKind::ProcPipeRead,
+    PlatformOpKind::ProcWait,
+    PlatformOpKind::ProcRelease,
+    PlatformOpKind::ProcExit,
+    PlatformOpKind::ProcCmdlineW16,
+    PlatformOpKind::ProcCmdlineFillBytes,
+    PlatformOpKind::ProcCwdW16,
+    PlatformOpKind::ProcCwdBytes,
+    PlatformOpKind::ProcChdirW16,
+    PlatformOpKind::ProcChdirBytes,
+];
+
+/// PLAN-973: the shim signature for a sys973 kind, derived from the
+/// frozen op table (each StrView param lowers to an I64 pointer + I32
+/// byte-length pair, exactly like `IoWriteSome`).
+pub fn sys973_shim_sig(
+    kind: PlatformOpKind,
+    conv: cranelift_codegen::isa::CallConv,
+) -> Signature {
+    use ace_av_core::mir::MirType;
+    let spec = ace_av_core::platform_io::PLATFORM_OPS
+        .iter()
+        .find(|op| op.kind == kind)
+        .expect("sys973 kind is in the op table");
+    let mut params = Vec::new();
+    for p in spec.params {
+        if *p == MirType::StrView {
+            params.push(AbiParam::new(types::I64));
+            params.push(AbiParam::new(types::I32));
+        } else {
+            params.push(AbiParam::new(types::I32));
+        }
+    }
+    Signature {
+        call_conv: conv,
+        params,
+        returns: vec![AbiParam::new(types::I32)],
+    }
+}
+
+/// Emit the named-unsupported stub for one sys973 kind (returns
+/// `ERR_UNSUPPORTED`; the REAL body replaces the stub in its increment).
+pub fn emit_sys973_stub(
+    om: &mut ObjectModule,
+    kind: PlatformOpKind,
+    conv: cranelift_codegen::isa::CallConv,
+) -> Result<(), MnError> {
+    let s = sys973_shim_sig(kind, conv);
+    let id = declare_fn(om, shim_symbol_for(kind), Linkage::Export, &s)?;
+    define_fn(om, id, s, |_om, fb, _entry| {
+        ret_err(fb, ERR_UNSUPPORTED);
+    })
 }
 
 pub fn cranelift_shim_sig(kind: PlatformOpKind) -> Signature {
@@ -165,6 +373,9 @@ pub fn cranelift_shim_sig_for(
             AbiParam::new(types::I32),
         ],
         PlatformOpKind::ProbeClose => vec![AbiParam::new(types::I32)],
+        // PLAN-973: every remaining kind is a sys973 op — its signature
+        // derives from the frozen op table.
+        _ => sys973_shim_sig(kind, conv).params,
     };
     Signature {
         call_conv: conv,
@@ -1283,6 +1494,14 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
             let val = fb.ins().uload8(types::I32, flags, addr, 0);
             fb.ins().return_(&[val]);
         })?;
+    }
+
+    // PLAN-973: the sys973 op set ships as named-unsupported stubs in this
+    // emitter — a REAL body replaces its stub in the op's AC increment; a
+    // program calling a stub gets ERR_UNSUPPORTED (-10), never a silent
+    // fallback or a link hole.
+    for kind in SYS973_KINDS {
+        emit_sys973_stub(&mut om, *kind, WINCALL)?;
     }
 
     let product = om.finish();

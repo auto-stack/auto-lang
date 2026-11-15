@@ -1,0 +1,249 @@
+// ACE system library — Linux platform module (PLAN-973 T-02). Pure Auto
+// wrappers over the frozen Linux-side platform ops: paths are raw bytes
+// (no UTF-16 staging), directory batches parse linux_dirent64 records in
+// THIS Auto source, and the env snapshot parses /proc/self/environ. The
+// Linux arms are CODE-ONLY from Windows development per the 2026-11-15
+// ruling (deferred-required / NOT_RUN, owner PLAN-1063) — selected by
+// `#in sys is current { Linux -> ... }` at assembly time.
+
+use std.syscommon.encode_into
+use std.syscommon.str_bytes_len
+use std.syscommon.max_i
+
+pub fn buf_alloc(bytes int) int {
+    return mem_alloc(bytes)
+}
+
+pub fn buf_free(region int) int {
+    return mem_free(region)
+}
+
+pub fn OPEN_READ() int {
+    return 1
+}
+
+pub fn OPEN_WRITE() int {
+    return 2
+}
+
+pub fn OPEN_CREATE() int {
+    return 4
+}
+
+pub fn OPEN_TRUNCATE() int {
+    return 8
+}
+
+pub fn OPEN_EXCLUSIVE() int {
+    return 16
+}
+
+pub fn OPEN_APPEND() int {
+    return 32
+}
+
+pub fn pf_open(path Str, flags int) int {
+    if (path.len() == 0) {
+        return -4
+    }
+    // The op takes the path bytes as a str view directly (single tail pass).
+    return file_open_bytes(path, flags)
+}
+
+pub fn pf_read_some(h int, region int, off int, len int) int {
+    return file_read_some(h, region, off, len)
+}
+
+pub fn pf_write_some(h int, region int, off int, len int) int {
+    return file_write_some(h, region, off, len)
+}
+
+fn seek64(h int, origin int, pos i64) int {
+    let lo_norm = ((pos % 4294967296i64) + 4294967296i64) % 4294967296i64
+    let hi = (pos - lo_norm) / 4294967296i64
+    let lo_signed = lo_norm - 2147483648i64
+    return file_seek(h, origin, lo_signed.to(i32), hi.to(i32))
+}
+
+fn join64(hi int, lo int) i64 {
+    var lo64 = lo.to(i64)
+    if (lo64 < 0i64) {
+        lo64 = lo64 + 4294967296i64
+    }
+    return hi.to(i64) * 4294967296i64 + lo64
+}
+
+pub fn pf_seek_set(h int, pos i64) int {
+    return seek64(h, 0, pos)
+}
+
+pub fn pf_seek_cur(h int, delta i64) int {
+    return seek64(h, 1, delta)
+}
+
+pub fn pf_seek_end(h int, delta i64) int {
+    return seek64(h, 2, delta)
+}
+
+pub fn pf_tell(h int) i64 {
+    let lo = file_tell(h)
+    return join64(file_hi(h), lo)
+}
+
+pub fn pf_size(h int) i64 {
+    let lo = file_size(h)
+    return join64(file_hi(h), lo)
+}
+
+pub fn pf_mtime_ms(h int) i64 {
+    let lo = file_mtime_ms(h)
+    return join64(file_hi(h), lo)
+}
+
+pub fn pf_flush(h int) int {
+    return file_flush(h)
+}
+
+pub fn pf_close(h int) int {
+    return file_close(h)
+}
+
+pub fn pf_stdin() int {
+    return io_stdin()
+}
+
+pub fn pf_attrs(path Str) int {
+    return path_attrs_bytes(path)
+}
+
+pub fn pf_delete(path Str) int {
+    return file_delete_bytes(path)
+}
+
+pub fn pf_mkdir(path Str) int {
+    return dir_create_bytes(path)
+}
+
+pub fn pf_rmdir(path Str) int {
+    return dir_delete_bytes(path)
+}
+
+pub fn pf_replace(src Str, dst Str) int {
+    return file_replace_bytes(src, dst)
+}
+
+// dirent64 record layout: ino u64, off u64, reclen u16 (LE), d_type u8,
+// name bytes (NUL-terminated). Parsed with div/mod arithmetic only.
+fn u16_at(region int, off int) int {
+    let b0 = mem_read_u8(region, off)
+    let b1 = mem_read_u8(region, off + 1)
+    if (b0 < 0 || b1 < 0) {
+        return -1
+    }
+    return b0 + b1 * 256
+}
+
+fn u32_at(region int, off int) int {
+    let b0 = mem_read_u8(region, off)
+    let b1 = mem_read_u8(region, off + 1)
+    let b2 = mem_read_u8(region, off + 2)
+    let b3 = mem_read_u8(region, off + 3)
+    if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) {
+        return -1
+    }
+    return b0 + b1 * 256 + b2 * 65536 + b3 * 16777216
+}
+
+// list_dir(dir) -> entry names incl. "." / "."." (the caller filters);
+// empty list on error. The getdents64 batches parse via bounded record
+// recursion inside each batch.
+
+// Parse dirent64 records from pos; returns the advanced position.
+
+// A non-UTF-8 entry name is skipped, not silently lossy (the byte-path
+// API that preserves it lands with 1063).
+
+// env snapshot: NUL-separated KEY=VALUE bytes from /proc/self/environ.
+
+// entry starts with `name=`?
+
+fn key_matches(entry Str, name Str, i int) bool {
+    if (i >= name.len()) {
+        return true
+    }
+    if (entry.char_at(i).to_codepoint() != name.char_at(i).to_codepoint()) {
+        return false
+    }
+    return key_matches(entry, name, i + 1)
+}
+
+// strip `name=` off a matched entry, keeping the value verbatim.
+
+// env set/remove on Linux is a named-deferred gap: no syscall exists for
+// in-process environ mutation; the entry-captured envp increment is owned
+// by PLAN-1063 (frozen in the plan T-01 record).
+pub fn pf_env_set(name Str, value Str) int {
+    return err_deferred_env()
+}
+
+fn err_deferred_env() int {
+    return -10
+}
+
+pub fn pf_env_remove(name Str) int {
+    return err_deferred_env()
+}
+
+pub fn pf_now_ms() i64 {
+    let lo = clock_unix_ms()
+    return join64(clock_hi(), lo)
+}
+
+pub fn pf_mono_ms() i64 {
+    let lo = clock_mono_ms()
+    return join64(clock_hi(), lo)
+}
+
+pub fn pf_sleep_ms(ms int) int {
+    return sleep_ms(ms)
+}
+
+pub fn pf_rand_fill(region int, off int, len int) int {
+    return rand_fill(region, off, len)
+}
+
+// Linux spawn (clone+vfork shim) is a named-deferred gap owned by 1063;
+// callers map -10 to their error contract (never a silent fallback).
+pub fn pf_spawn_cps(cps List<int>, capture int) int {
+    // Linux spawn is named-deferred to 1063; the cps form reports the
+    // same named-unsupported state as the blob form.
+    return err_deferred_spawn(cps, capture)
+}
+
+fn err_deferred_spawn(cps List<int>, capture int) int {
+    return -10
+}
+
+pub fn pf_spawn(argv_blob Str, capture int) int {
+    return proc_spawn_bytes(argv_blob, capture)
+}
+
+pub fn pf_pipe_read(ph int, which int, region int, off int, cap int, timeout_ms int) int {
+    return proc_pipe_read(ph, which, region, off, cap, timeout_ms)
+}
+
+pub fn pf_wait(ph int, timeout_ms int) int {
+    return proc_wait(ph, timeout_ms)
+}
+
+pub fn pf_release(ph int) int {
+    return proc_release(ph)
+}
+
+pub fn pf_exit(code int) int {
+    return proc_exit(code)
+}
+
+pub fn pf_chdir(path Str) int {
+    return proc_chdir_bytes(path)
+}

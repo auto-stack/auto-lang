@@ -1,0 +1,324 @@
+// ACE system library — File/path module (PLAN-973 T-02). The public API
+// keeps the legacy sentinel contracts (read_text "" on error, write_text
+// 0/-1, exists bool, size -1, delete 0/-1); NUL is an ordinary byte
+// (length-based, never C-string); short reads/writes loop with real
+// progress and the bounded retry discipline of the 1041 out_* algorithms.
+// The OS boundary is selected at assembly time via `#in` (Windows: UTF-16
+// staging + CreateFileW ops; Linux: raw byte paths + direct syscalls —
+// Linux arms are code-only / deferred to PLAN-1063). Counted walks are
+// chunked recursions (this face has no while/conditional-for; the AV
+// frame cap is 1024 — see std.syscommon's budget note).
+
+#in sys is current {
+    Windows -> {
+        use std.sysplat_win.pf_open
+        use std.sysplat_win.pf_read_some
+        use std.sysplat_win.pf_write_some
+        use std.sysplat_win.pf_tell
+        use std.sysplat_win.pf_size
+        use std.sysplat_win.pf_mtime_ms
+        use std.sysplat_win.pf_flush
+        use std.sysplat_win.pf_close
+        use std.sysplat_win.pf_attrs
+        use std.sysplat_win.pf_delete
+        use std.sysplat_win.pf_mkdir
+        use std.sysplat_win.pf_rmdir
+        use std.sysplat_win.pf_replace
+        use std.sysplat_win.buf_alloc
+        use std.sysplat_win.buf_free
+        use std.sysplat_win.OPEN_READ
+        use std.sysplat_win.OPEN_WRITE
+        use std.sysplat_win.OPEN_CREATE
+        use std.sysplat_win.OPEN_TRUNCATE
+        use std.sysplat_win.OPEN_EXCLUSIVE
+        use std.sysplat_win.OPEN_APPEND
+    }
+    Linux -> {
+        use std.sysplat_lnx.pf_open
+        use std.sysplat_lnx.pf_read_some
+        use std.sysplat_lnx.pf_write_some
+        use std.sysplat_lnx.pf_tell
+        use std.sysplat_lnx.pf_size
+        use std.sysplat_lnx.pf_mtime_ms
+        use std.sysplat_lnx.pf_flush
+        use std.sysplat_lnx.pf_close
+        use std.sysplat_lnx.pf_attrs
+        use std.sysplat_lnx.pf_delete
+        use std.sysplat_lnx.pf_mkdir
+        use std.sysplat_lnx.pf_rmdir
+        use std.sysplat_lnx.pf_replace
+        use std.sysplat_lnx.buf_alloc
+        use std.sysplat_lnx.buf_free
+        use std.sysplat_lnx.OPEN_READ
+        use std.sysplat_lnx.OPEN_WRITE
+        use std.sysplat_lnx.OPEN_CREATE
+        use std.sysplat_lnx.OPEN_TRUNCATE
+        use std.sysplat_lnx.OPEN_EXCLUSIVE
+        use std.sysplat_lnx.OPEN_APPEND
+    }
+}
+
+use std.syscommon.encode_into
+use std.syscommon.str_bytes_len
+use std.syscommon.min_i
+
+fn READ_CHUNK() int {
+    return 32768
+}
+
+// ---- exists / classification -------------------------------------------------
+
+pub fn exists(path Str) bool {
+    return pf_attrs(path) >= 0
+}
+
+pub fn is_dir(path Str) bool {
+    let a = pf_attrs(path)
+    if (a < 0) {
+        return false
+    }
+    return a % 2 == 1
+}
+
+pub fn is_read_only(path Str) bool {
+    let a = pf_attrs(path)
+    if (a < 0) {
+        return false
+    }
+    return (a / 2) % 2 == 1
+}
+
+// ---- whole-file text ----------------------------------------------------------
+
+// read_all_bytes(h) -> Some(bytes) or None; walks the file in READ_CHUNK
+// platform reads, pushing region bytes into a List<int> (the lane has no
+// byte→Str construction — the text-read surface is the named gap in the
+// plan's lane dossier; the byte surface is the real oracle).
+fn read_all_bytes(h int, acc List<int>) ?List<int> {
+    let region = buf_alloc(READ_CHUNK())
+    if (region <= 0) {
+        return None
+    }
+    let n = pf_read_some(h, region, 0, READ_CHUNK())
+    if (n < 0) {
+        let d1_buf_free = buf_free(region)
+        return None
+    }
+    if (n == 0) {
+        let d2_buf_free = buf_free(region)
+        return Some(acc)
+    }
+    let pushed = push_bytes(region, 0, n, acc)
+    let d3_buf_free = buf_free(region)
+    return read_all_bytes(h, pushed)
+}
+
+fn push_bytes(region int, i int, n int, acc List<int>) List<int> {
+    if (i >= n) {
+        return acc
+    }
+    let b = mem_read_u8(region, i)
+    if (b < 0) {
+        return acc
+    }
+    acc.push(b)
+    return push_bytes(region, i + 1, n, acc)
+}
+
+// read_bytes_or(path) -> Some(byte list) or None ("" file = Some(empty)).
+pub fn read_bytes_or(path Str) ?List<int> {
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return None
+    }
+    let out = read_all_bytes(h, List<int>.new())
+    let d1_pf_close = pf_close(h)
+    return out
+}
+
+// read_bytes_or is the byte oracle entry; callers is-dispatch on it from
+// int/unit/Str-result functions (the lane's is-filler rule).
+pub fn read_bytes_len(path Str) int {
+    let r = read_bytes_or(path)
+    is r {
+        Some(bytes) -> {
+            return bytes.len()
+        }
+        None -> {
+            return -1
+        }
+    }
+}
+
+// read_text is the NAMED LANE GAP: the packages-aggregates face has no
+// byte→Str construction builtin (the 972 boundary); the text-read
+// surface lands with the lane construction increment (plan dossier).
+
+// read_text is the NAMED LANE GAP: the packages-aggregates face has no
+// byte→Str construction builtin (the 972 boundary); the text-read surface
+// lands with the lane construction increment (plan dossier). The WRITE
+// side works fully (Str→bytes via the codepoint walk + table-free
+// div/mod encoding).
+
+// write_all: content flows in the tail recursion ONLY (the 972
+// tail-move discipline); chunks are SCALAR ranges (8000 scalars <= 32000
+// worst-case bytes fit the 32 KiB region — no byte-cap walk needed).
+fn write_all(h int, content Str, ci int) int {
+    if (ci >= content.len()) {
+        return 0
+    }
+    let stop = min_i(content.len(), ci + 8000)
+    let region = buf_alloc(READ_CHUNK())
+    if (region <= 0) {
+        return -1
+    }
+    let n = str_bytes_len(content.slice(ci, stop).clone())
+    let d1_encode = encode_into(content.slice(ci, stop).clone(), region, 0)
+    let w = write_region_all(h, region, 0, n)
+    let d2_buf_free = buf_free(region)
+    if (w != 0) {
+        return -1
+    }
+    return write_all(h, content, stop)
+}
+
+// send one region slice fully (bounded zero-progress retries per 1041).
+fn write_region_all(h int, region int, off int, len int) int {
+    if (len <= 0) {
+        return 0
+    }
+    let w = pf_write_some(h, region, off, len)
+    if (w <= 0) {
+        return -1
+    }
+    return write_region_all(h, region, off + w, len - w)
+}
+
+pub fn write_text(path Str, content Str) int {
+    let flags = OPEN_WRITE() + OPEN_CREATE() + OPEN_TRUNCATE()
+    let h = pf_open(path, flags)
+    if (h <= 0) {
+        return -1
+    }
+    let r = write_all(h, content, 0)
+    let c = pf_close(h)
+    if (r != 0 || c < 0) {
+        return -1
+    }
+    return 0
+}
+
+pub fn append_text(path Str, content Str) int {
+    let flags = OPEN_WRITE() + OPEN_CREATE() + OPEN_APPEND()
+    let h = pf_open(path, flags)
+    if (h <= 0) {
+        return -1
+    }
+    let r = write_all(h, content, 0)
+    let c = pf_close(h)
+    if (r != 0 || c < 0) {
+        return -1
+    }
+    return 0
+}
+
+// write_bytes(bytes) — the byte-surface write (NUL-safe).
+pub fn write_bytes(path Str, bytes List<int>) int {
+    let flags = OPEN_WRITE() + OPEN_CREATE() + OPEN_TRUNCATE()
+    let h = pf_open(path, flags)
+    if (h <= 0) {
+        return -1
+    }
+    let region = buf_alloc(READ_CHUNK())
+    if (region <= 0) {
+        let d1_close = pf_close(h)
+        return -1
+    }
+    let r = write_bytes_all(h, region, bytes, 0)
+    let d2_buf_free = buf_free(region)
+    let c = pf_close(h)
+    if (r != 0 || c < 0) {
+        return -1
+    }
+    return 0
+}
+
+fn write_bytes_all(h int, region int, bytes List<int>, from int) int {
+    if (from >= bytes.len()) {
+        return 0
+    }
+    let stop = min_i(bytes.len(), from + READ_CHUNK())
+    let d1_stage = stage_bytes(region, bytes, from, stop, 0)
+    let w = write_region_all(h, region, 0, stop - from)
+    if (w != 0) {
+        return -1
+    }
+    return write_bytes_all(h, region, bytes, stop)
+}
+
+fn stage_bytes(region int, bytes List<int>, from int, stop int, k int) int {
+    if (from + k >= stop) {
+        return 0
+    }
+    let b = bytes.get(from + k)
+    let d1_write = mem_write_u8(region, k, b)
+    return stage_bytes(region, bytes, from, stop, k + 1)
+}
+
+// ---- size / mtime ---------------------------------------------------------------
+
+pub fn size(path Str) i64 {
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return -1i64
+    }
+    let s = pf_size(h)
+    let d1_close = pf_close(h)
+    return s
+}
+
+pub fn mtime_ms(path Str) i64 {
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return -1i64
+    }
+    let m = pf_mtime_ms(h)
+    let d1_close = pf_close(h)
+    return m
+}
+
+// ---- mutation --------------------------------------------------------------------
+
+pub fn delete(path Str) int {
+    return pf_delete(path)
+}
+
+pub fn create_dir(path Str) int {
+    return pf_mkdir(path)
+}
+
+pub fn remove_dir(path Str) int {
+    return pf_rmdir(path)
+}
+
+// rename/atomic replace: the OS replaces the destination in one step; a
+// failure keeps the old file untouched (V-08/V-DETAIL-01 contract).
+pub fn rename(src Str, dst Str) int {
+    return pf_replace(src, dst)
+}
+
+pub fn replace_atomic(src Str, dst Str) int {
+    return pf_replace(src, dst)
+}
+
+pub fn copy_file(src Str, dst Str) int {
+    let got = read_bytes_or(src)
+    is got {
+        Some(bytes) -> {
+            return write_bytes(dst, bytes)
+        }
+        None -> {
+            return -1
+        }
+    }
+}

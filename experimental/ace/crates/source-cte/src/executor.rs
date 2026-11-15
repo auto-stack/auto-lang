@@ -263,6 +263,12 @@ pub fn run_entry_on_av_observed(
             "cte.infra/exec",
             format!("AV infra failure: {m}"),
         )),
+        // PLAN-973: CTE entries never own a process; an exit request in a
+        // compile-time entry is a checked failure, not a host exit.
+        ExecOutcome::Exit { code } => Err(CtExecError::at_av(
+            "cte.exit",
+            format!("compiletime entry requested process exit: {code}"),
+        )),
     }
 }
 

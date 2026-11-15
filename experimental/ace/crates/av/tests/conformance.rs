@@ -220,6 +220,9 @@ mod stdlib_assembly_1043;
 #[path = "cases/probe972.rs"]
 mod probe972;
 // PLAN-972 T-02：装配标准库（packages-aggregates-ct lane）AV 正反例。
+#[path = "cases/stdlib_sys_973.rs"]
+mod stdlib_sys_973;
+
 #[path = "cases/stdlib_asm_972.rs"]
 mod stdlib_asm_972;
 // PLAN-972 T-08/V-08：逐操作覆盖对账——面清单奇偶校验 + 全公开符号五端演练。

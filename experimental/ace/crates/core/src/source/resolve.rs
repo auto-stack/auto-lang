@@ -14313,6 +14313,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             // 准入平台保留名——公共 stdlib 源（如 io 输出循环）单源服务
             // console 单模块面与 1043 装配面；能力仍在准入层核。
             || self.profile == SourceProfile::TextRecord
+            // PLAN-973: 装配 aggregates 面（std 系统库集：sysplat_win/lnx 的
+            // 平台原语包装）同样准入平台保留名；能力/授权仍在运行准入层核。
+            || self.profile == SourceProfile::Aggregates
         {
             if let Some(op) = super::platform_io::lookup_callee(&callee.name) {
                 if rargs.len() != op.params.len() || rargs.iter().any(|a| a.name.is_some()) {

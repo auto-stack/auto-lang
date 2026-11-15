@@ -94,7 +94,19 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
                 })
             })
         });
-    if !module.is_host_console_profile() && !sched_module && !module.host_imports.is_empty() {
+    // PLAN-973: packages-lane system-library modules carry PLATFORM
+    // imports (auto.platform.*) on the closures family — the same
+    // admission seam, granted at run time by the ledger.
+    let platform_module = module
+        .host_imports
+        .iter()
+        .all(|h| h.symbol.starts_with("auto.platform."))
+        && !module.host_imports.is_empty();
+    if !module.is_host_console_profile()
+        && !sched_module
+        && !platform_module
+        && !module.host_imports.is_empty()
+    {
         return Err(err(
             "host.profile",
             "host imports require the host-console profile",

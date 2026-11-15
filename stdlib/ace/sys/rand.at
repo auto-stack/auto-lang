@@ -1,0 +1,82 @@
+// ACE system library — rand module (PLAN-973 T-02). The credential-grade
+// surface only: secure_hex(n) = n CSPRNG bytes as 2n lowercase hex (the
+// 907 contract: "" for n <= 0; "" + last_error() on entropy failure).
+// last_error() derives from the platform ledger's raw last-error code
+// (no module-level mutable state on this surface — the distinct-state
+// contract maps to the raw OS code, e.g. -8 means the CSPRNG call failed).
+// The legacy xorshift VM track (random.rand_int/Random) is explicitly NOT
+// ported here — non-credential randomness rides the 1063 validation batch
+// with its own module (recorded ruling; no silent substitution).
+
+#in sys is current {
+    Windows -> {
+        use std.sysplat_win.pf_rand_fill
+        use std.sysplat_win.buf_alloc
+        use std.sysplat_win.buf_free
+    }
+    Linux -> {
+        use std.sysplat_lnx.pf_rand_fill
+        use std.sysplat_lnx.buf_alloc
+        use std.sysplat_lnx.buf_free
+    }
+}
+
+use std.syscommon.from_i64
+use std.syscommon.min_i
+
+// The raw platform error of the last failing primitive (negative codes;
+// 0 = none) — the module's distinguishable error state.
+pub fn last_error() Str {
+    return from_i64(io_last_error().to(i64))
+}
+
+pub fn secure_hex(n int) Str {
+    if (n <= 0) {
+        return ""
+    }
+    if (n > 32768) {
+        // the raw fill is capped by the per-call 64 KiB platform budget
+        return ""
+    }
+    let region = buf_alloc(n)
+    if (region <= 0) {
+        return ""
+    }
+    let r = pf_rand_fill(region, 0, n)
+    if (r != 0) {
+        let d1_buf_free = buf_free(region)
+        return ""
+    }
+    let acc = hex_walk(region, 0, n, "")
+    let d2_buf_free = buf_free(region)
+    return acc
+}
+
+// n ≤ 32768 per call — a two-level chunked walk keeps frames ≤ 768 + 43.
+fn hex_walk(region int, i int, n int, acc Str) Str {
+    if (i >= n) {
+        return acc
+    }
+    let stop = min_i(n, i + 768)
+    return hex_walk(region, stop, n, hex_chunk(region, i, stop, acc))
+}
+
+fn hex_chunk(region int, i int, stop int, acc Str) Str {
+    if (i >= stop) {
+        return acc
+    }
+    let b = mem_read_u8(region, i)
+    if (b < 0) {
+        return acc
+    }
+    return hex_chunk(region, i + 1, stop, acc + hex_digit(b / 16) + hex_digit(b % 16))
+}
+
+fn hex_digit(v int) Str {
+    let piece Str = HEX_CHARS().slice(v, v + 1).clone()
+    return piece
+}
+
+fn HEX_CHARS() Str {
+    return "0123456789abcdef"
+}
