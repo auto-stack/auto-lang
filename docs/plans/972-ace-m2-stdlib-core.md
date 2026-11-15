@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-972
-status: drafting
+status: executing
 feature_name: 新版标准库完整基础与集合
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 7
-current_step: 0
+updated_at: 2026-11-15
+plan_revision: 12
+current_step: 7
 total_steps: 10
-depends_on: [PLAN-961, PLAN-962, PLAN-963, PLAN-964, PLAN-945, PLAN-946, PLAN-948]
+depends_on: [PLAN-961, PLAN-962, PLAN-963, PLAN-964, PLAN-945, PLAN-946, PLAN-948, PLAN-1039, PLAN-1040, PLAN-1041, PLAN-967, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/ace-binding-and-assembly.md, docs/specs/stdlib/design/semantic-operation-contract.md]
 new_spec_components: [docs/specs/ace-migration/m2-stdlib-core.md]
 touched_goals: [GOAL-002]
@@ -17,6 +17,16 @@ touched_goals: [GOAL-002]
 # [PLAN-972] 新版标准库完整基础与集合
 
 ## 0. 变更摘要
+
+2026-11-15 r12当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
+
+2026-11-13 r11当前：纳入新1043来源后缀装配及最小#in平台静态选择，见§5/AC-LOAD/V-LOAD/SD-LOAD；原任务/状态/完成数与全覆盖不减，仅规划。
+
+2026-11-13 r10当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
+
+2026-11-13 r9：用户纠正原生标准库基础依赖；新增AC-FOUNDATION/V-FOUNDATION/SD-FOUNDATION，将算法准备与默认自有库原生实施/验收分开，修正整包前置。原任务ID/数量/状态/进度/旧AC与V不减，本轮仅规划。
+
+2026-11-13 r8：参考Zig/Go的原生平台I/O设计承接；新增AC-PLATFORM-IO/V-PLATFORM-IO/SD-PLATFORM-IO，由原任务负责。保全部原任务/数量/进度/既有AC/V及其他会话修订，本轮仅规划。
 
 2026-11-12 r7：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -39,7 +49,7 @@ touched_goals: [GOAL-002]
 
 ## 2. 架构方案
 
-当前正式前置：PLAN-961, PLAN-962, PLAN-963, PLAN-964, PLAN-945, PLAN-946, PLAN-948。后文旧依赖叙述补充读取本行；允许先做只读准备，不能以旧依赖较少绕过真实能力门。
+当前正式前置：PLAN-961, PLAN-962, PLAN-963, PLAN-964, PLAN-945, PLAN-946, PLAN-948；新增原生底座PLAN-1039,PLAN-1040,PLAN-1041。后文旧依赖叙述补充读取本行；允许先做只读准备，不能以旧依赖较少绕过真实能力门。
 
 
 整包最终依赖以frontmatter为准；局部A的启动只核§5已列的最小能力/PROOF接口及正式来源，不等待本Plan或其他产品的B整包。B实现先核985/A的M2A-08已合入收据，再核本批原前置。WIP或分支reviewed不替正式来源。
@@ -190,6 +200,30 @@ struct LibraryOperation { api: LogicalSignature, implementation: AutoModuleRef, 
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-09`、`T-10`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### Windows/Linux无libc平台I/O（2026-11-13当前）
+
+依据[原生平台I/O Draft 0.1](../design/stdlib/native-platform-io.md)。普通Auto实现format/UTF编码/缓冲和适用read_exact/write_all算法；read_into/write_from使用调用者buffer不强制堆。1039/1040负责原语与目标、1041最小输出、945早期文本。本包不反等973或1041整包，不把Rust helper算法当Auto；Storage完整API继续专题讨论。
+
+### 原生底座强制依赖（2026-11-13当前）
+
+依据[设计Draft 0.2 §10.1](../design/stdlib/native-platform-io.md#101-依赖的强制含义r02取代此前可并行表述的歧义)。本包最终depends_on明确新增1039/1040/1041：默认自有alloc/动态文本集合与原生输出集成须消费它们的实际实现/真实OS结果/独立review/正式来源；只有接口、provider名或旧runtime不能准入。core数学/编码/解析等无OS算法可提前写测，不要求每个函数运行时调用OS，但不能提前完成整个原生标准库。普通Auto的分配/容器策略消费1039/1040页区域，不使用malloc/Rust Vec/String/HashMap替代默认算法；1041只消费945所需最小文本，不反等本包，形成单向依赖。原API/四后端/Storage讨论边界保留，不反等973。
+
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+逐math/text/bytes/collections/format/parse/hash/regex/encoding公共操作补A2PY与AV三配置；纯Auto算法共用，allocator等边界才按provider适配。core/alloc、长度/编码/Storage及原生底座合同保留。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；需要更大Python语义时消费977/PY已交能力切片或先具名补齐，不反等977整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
+### 新加载机制完成依赖（2026-11-13当前）
+
+依据[设计§8–10](../design/stdlib/backend-provider-coverage.md)与[1043](archive/1043-ace-stdlib-context-assembly.md)。公共.at＋at/c/rs/py来源后缀组成同一逻辑模块，运行后端另选；#in打开临时namespace并让is/if/for继承编译期属性，不扩平台后缀。最小层由1043先交，966继续完整CTE，不能反向等966整包。
+
+完整公共core/alloc/算法库消费1043公共+所选来源绑定及最小#in；纯公共body共用，不强迫每模块四空文件。原native OS/Storage与六路径义务保持。
+
+本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -203,6 +237,88 @@ struct LibraryOperation { api: LogicalSignature, implementation: AutoModuleRef, 
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-stdlib-core.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### 平台I/O规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-PLATFORM-IO | add/modify | docs/specs/ace-migration/m2-stdlib-core.md | 笼统provider→本节平台IO/算法/运行/依赖分账 | 无libc平台设计 | AC-PLATFORM-IO |
+
+### 原生底座规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-FOUNDATION | add/modify | docs/specs/ace-migration/m2-stdlib-core.md | 算法/provider合同可冒完成→原生实施/验收必须消费已交OS区域/I/O与真实Auto算法 | 原生基础依赖 | AC-FOUNDATION |
+
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/ace-migration/m2-stdlib-core.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### 加载机制规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LOAD | add/modify | docs/specs/ace-migration/m2-stdlib-core.md | 旧有限后端侧文件→本包实际消费1043来源装配/#in/目标依赖及正式来源，未交保持缺口 | 用户确定新加载机制 | AC-LOAD |
+
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**完整core/math/text/bytes/集合与Storage/allocator**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+math/parse/format/编码/集合/分配策略默认共享Auto源码，CPU/页区域原语允许；不以libm/Rust容器默认实现代签。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+### T-08 逐操作对账（2026-11-15 当前；V-08 fixture 锚）
+
+分母=旧 `stdlib/auto` 对应域公开面 + 943 首批 17 合同行；V-08 常驻 fixture=装配面清单奇偶校验（8 模块 49 公共符号双向全等，删行/私增即红）+ 全符号五端演练（AV/mn/cl/rustc/Python 各 49 检查，独立 oracle）。去向三档：**(a) 已交付**（装配模块+测试锚）、**(b) 本包后续批**（具名）、**(c) 外部 owner**（具名计划）。
+
+| 域 | 旧面操作 | 去向 |
+|---|---|---|
+| math | abs/min/max（943 i64 族）；square/cube（旧 private） | (a) std.math（含 i64::MIN abs 陷阱独立断言） |
+| math | sqrt/abs_f/powf/sin/cos（double 族） | (a) std.math 纯 Auto 单源（T-09；无 intrinsic——AC-AUTO-STD 不以 libm 代签；NaN 不可构造→非正输入返 0.0=记录偏差；级数精度 ~1e-15 相对、五端同值；外部 NaN/正确舍入平价归 967） |
+| text | len/byte_len/char_at/sub(equal 语义)/contains/starts_with/ends_with/equal/repeat | (a) builtin 方法+std.text |
+| text | upper/lower | (a) upper_ascii/lower_ascii（ASCII 子集表移）；(b) 全 Unicode case 表 |
+| text | is_empty/is_digit(str) | (a) 组合基元（scalar_len==0 / ==1+char 谓词） |
+| text | from_uint/to_uint | (a) std.conv（to_uint=is_uint+to_int 组合） |
+| text | find/reverse/trim/replace/split/lines | (a) std.text（find 索引/reverse/trim/replace/split/lines；List<Str> 返回） |
+| text | uuid | (c) 967/973 域（外部随机） |
+| char | is_alpha/is_digit/is_alphanum/is_whitespace/is_ident | (a) std.char（ASCII 子集边界记录） |
+| char | to_upper/to_lower（旧 int→int 恒等平移） | (a) to_upper_ascii/to_lower_ascii |
+| collections | list 切片+HOF 族 | (a) std.list（946 冻结面超集） |
+| collections | hashmap/hashset（int 键） | (a) std.map（交错对+引用语义） |
+| collections | Str 键/泛型 map、btreemap | (c) 963 全泛型切片 |
+| collections | sort | (a) std.list.sort（稳定最小抽取升序 List<int>；比较闭包形与 Str 序归 963 切片） |
+| parse/format | to_int（含错误路径）/is_uint/from_uint/from_int（负数形、i32::MIN） | (a) std.conv |
+| format | FStr/format 求值 | (c) 964 |
+| hash | 纯 Auto 默认哈希 | (a) std.hash codepoint 域 + std.bytes byte 域（S-06 裁定） |
+| hash | md5/sha1/sha256/sha512/hmac/file_md5（旧全 crypto #[vm]） | (c) 967 外部引擎 |
+| regex | is_match/find_all/replace/test | (c) 967 外部引擎 |
+| encoding | hex/base64 编码 | (a) std.bytes（Python 独立 oracle） |
+| encoding | hex/base64 解码 | (b) 具名边界——byte→Str 构造本面无 |
+| encoding | csv | (b) 纯 Auto 后续批 |
+| Option/Result | ?T/Some/None；错误传播 .?/?? | (a) 语言面（aggregates 域，965 已交） |
+
+### T-10 core/alloc 分层清单（2026-11-15；V-10 fixture 锚；978 具名清单）
+
+装配集 54 公共符号按分配责任二分（V-10=`v10_layers_972.rs`：core-only 程序在 AC/native 端观察计数 **attempts=allocs=0**——无堆、无宿主 dispatch；alloc 程序分配平衡、invalid frees=0；fail-Nth 注入=资源 trap 22+全清扫无泄漏；欠配预算同陷阱）。分配走 mn 运行时 arena=1039/1040 原生底座（无 malloc/隐式宿主堆）；core 层符号不触 arena。
+
+| 层 | 符号（28 core / 26 alloc） |
+|---|---|
+| core（无分配） | math.abs/min/max/square/cube/abs_f/sqrt/powf/sin/cos；char.is_digit/is_alpha_ascii/is_alphanum_ascii/is_ident_ascii/is_whitespace/to_upper_ascii/to_lower_ascii；conv.to_int/is_uint；text.byte_len/scalar_len/char_code_at/equal；bytes.byte_at/utf8_len/byte_of/byte_hash；hash.codepoint_hash |
+| alloc（经底座 arena） | text.starts_with/ends_with/contains（slice 物化）/repeat/upper_ascii/lower_ascii；conv.from_uint/from_int（构串）；bytes.to_hex/to_base64（构串）；list 全 10（List<int> 分配）；map 全 6（交错 List 分配） |
+
+regex 失败/Unicode/format 错误独立断言的适用集：parse 错误路径已独立断言（V-DETAIL-02 六负例）；Unicode 单位 oracle（A中😀/e+U+0301/NUL）为常驻；regex 本体归 967 后其负例随该包验收。删 required 行/腿阻签=面清单奇偶校验+冻结身份拒（provider 腿）+全符号演练缺符号红。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-stdlib-core.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
+| SD-AUTO-STD | modify | docs/specs/ace-migration/m2-stdlib-core.md | 默认provider声明→普通标准能力有Auto算法/协议与OS边界来源证据，高级外库显式分账 | 用户自有普通库要求 | AC-AUTO-STD |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -256,6 +372,44 @@ struct LibraryOperation { api: LogicalSignature, implementation: AutoModuleRef, 
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 原生平台I/O验证（新增，未执行）
+
+| Case | AC / work任务 | 输入、独立oracle及边界 |
+|---|---|---|
+| V-PLATFORM-IO | AC-PLATFORM-IO；T-01/T-09/T-10/T-04 | 中文/emoji/含NUL与转换块边界、短写/成功0有独立编码和进度expected；固定buffer算法无隐式分配，alloc来源明确。纯算法无OS可用，但不代实际OS格。 |
+
+### 原生底座验证（新增，未执行）
+
+| Case | AC / work owner | 输入与独立oracle |
+|---|---|---|
+| V-FOUNDATION | AC-FOUNDATION；T-01/T-09/T-10/T-04 | 同一默认Auto Str/List/format操作追到1039/1040真实OS区域及1041输出：四native平台格独立内容/分配失败/最后释放结果齐；删除底座或注入Rust std容器/malloc委托必须被来源及运行控制拒绝。core-only合法程序仍无OS可运行；不能把core绿、旧runtime绿或只有1039接口当整库完成。 |
+
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 加载机制验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/owner |
+|---|---|---|
+| V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
+
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-AUTO-STD / AC-AUTO-STD | 原能力work与最终验证：移除可选外库/provider，在Windows默认native/AC跑原完整公共操作并核Auto源码/原语/OS调用来源和独立expected | math/io/JSON等按§5自有归属，不以包装libm/std::io/serde_json等代实现；Linux只做代码/移交审查，未来1063实跑，外部引擎依赖另账。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -271,25 +425,38 @@ struct LibraryOperation { api: LogicalSignature, implementation: AutoModuleRef, 
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-NATIVE | work | 多字节、空串、ab\0cd五字节、重叠/边界/失败分配等适用原操作对独立oracle；移除可选C/Rust/libc provider仍可执行默认库，缺自有实现不能fallback。 | T-09,T-10 / V-NATIVE；原独立review核新增义务 |
 
+- [ ] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。
+
+- [ ] **AC-FOUNDATION / work**：V-FOUNDATION与§5原生底座当前合同全部关闭；正式底座包含实现/真实OS/依赖/独立复审与落主身份，纯算法与旧runtime支持不能替代；原最终work及独立review逐项核。
+
+- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+
+- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+
+- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+
+- [ ] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。
+
 ## 8. 执行步骤
 
 当前共10任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+  [✅ 2026-11-15 前探完成：7/7 探针绿（worktree lang-972 @ cd71736f8 基面，probe972.rs）。正例=1043 装配 lane AV×Auto 711/AV×Rs 712（spec 层按来源选择）+ aggregates lane 算法面 154400015（sum=15/find=4/all/any/filter=[2,3,4,5] 拥有内容核验）+ PackageStore/2 往返恢复复跑。非法近邻=assembly.missing-default-provider（装配期）、source.assembly.signature（签名漂移，运行前）。冻结边界钉住：闭包参数形（fn 型注解）与 List 公共参数在后置裁剪语法面均 source.syntax 具名拒（auto-source.at:745 fn-type 门控缺 packages-aggregates；装配 lane 参数位无 generic-ty）→ T-02 开门项。依赖核验：12/13 archived 正式来源；967 reviewed 未合入 → 真实 C/Rust 外库 dispatch 腿终态闭合挂其 merge，默认库/native/A2R/A2PY/A2C 装配腿不受阻（1043/1041 明文边界）。§4 五路径全在（157/2/2/24/14 文件）。命令冻结：迭代 cargo nextest -p ace-av --test conformance <filter>；T-04 拟冻结并集 cargo t stdlib ace-stdlib ace-source ace-syntax ace-semantics ace-av ace-native ace-a2x ace-runtime（触面定稿）；Linux 执行腿按 2026-11-14 裁定排除，Linux 目标轴选择腿照 1043 模式跑。资源/平台表：AV=in-process、AC=MnDriver exe、A2R=rustc、A2C=cl、A2PY=真 OS Python；host=Win x64、target 轴 Win/Linux、Mac 仅输入；FrontBudget::WORK_OWNED_64MIB、store 16MiB。策略决定：新 stdlib 内容走 1043 装配 lane（公共 .at 单源 body + 可选来源候选），不扩 legacy stdlib/auto（986/987 域）也不止于 include_str! 冻结切片；std 防遮蔽身份扩展到装配面；oracle 基线=943 实册（A中😀=8B/3C、e+U+0301=3B/2C、NUL 不截断、i64 不窄化）。证据：D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md]
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：按948/959逐操作闭合math/text/bytes/collections/format/parse/hash与现用regex/encoding；纯算法单源，FStr求值归964，平台和DB归973/975，不留剩余操作无owner。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：按948/959逐操作闭合math/text/bytes/collections/format/parse/hash与现用regex/encoding；纯算法单源，FStr求值归964，平台和DB归973/975，不留剩余操作无owner。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
 
-- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：按947/943/944合同组织公共API与普通Auto默认算法，适配四端模块调用/AutoABI并核每个intrinsic/外部优化实现语义；保原公共路径和操作ID。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：默认基础算法保持Auto实现，Str/str/bytes按显式长度/既有编码和ownership语义；不靠strlen/printf等C库重建默认语义，也不透过Rust helper隐藏委托；intrinsic和allocator来源/目标依赖显式。
+- [x] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：按947/943/944合同组织公共API与普通Auto默认算法，适配四端模块调用/AutoABI并核每个intrinsic/外部优化实现语义；保原公共路径和操作ID。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：默认基础算法保持Auto实现，Str/str/bytes按显式长度/既有编码和ownership语义；不靠strlen/printf等C库重建默认语义，也不透过Rust helper隐藏委托；intrinsic和allocator来源/目标依赖显式。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：分离core/alloc依赖和profile，核无隐式heap/host的核心程序、显式allocator集合路径、必要runtime ABI和预编译库闭包；交978具名清单。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：默认基础算法保持Auto实现，Str/str/bytes按显式长度/既有编码和ownership语义；不靠strlen/printf等C库重建默认语义，也不透过Rust helper隐藏委托；intrinsic和allocator来源/目标依赖显式。
+- [x] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：分离core/alloc依赖和profile，核无隐式heap/host的核心程序、显式allocator集合路径、必要runtime ABI和预编译库闭包；交978具名清单。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：默认基础算法保持Auto实现，Str/str/bytes按显式长度/既有编码和ownership语义；不靠strlen/printf等C库重建默认语义，也不透过Rust helper隐藏委托；intrinsic和allocator来源/目标依赖显式。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -311,6 +478,62 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-15 stage: work | 第十六轮：T-04 冻结并集 + V 行总账（work 阶段收口） | **冻结并集**（T-01 冻结表）：cargo t stdlib/ace-stdlib/ace-source/ace-syntax/ace-av/ace-a2x = **PASS**；ace-native = 276 测试全部 exit 0（组 FAIL 仅为 conhost.exe 残留进程的 containment 基建检查——环境归因，同机 spawn 争用类；本轮早前独立跑 3 次全 PASS）；ace-runtime = 1 例 `smoke::smoke_shim_error_code` **会话前基座红**（9f31e18c6 复现：rust-lld 链接缺 __CxxFrameHandler3/_fltused——工具链漂移，owner=ace-text-conformance，非本包改动）。**V 行总账**：V-01/V-03=冻结公共符号四端执行+身份失效（62 符号五端演练+冻结身份/签名漂移负例）✓；V-02=i64 边界陷阱/UTF8 单位/嵌 NUL 独立断言 ✓；V-08=面清单奇偶+62 符号五端 ✓；V-09=同程序多端独立 oracle+i64 极值/parse 失败/owned 负例+native 无 C/Rust 业务源（装配集纯 Auto）✓；V-10=core 零分配+分配平衡+失败注入无泄漏+预算陷阱 ✓；V-DETAIL-01/02/03/04=HOF 内容/parse 六负例/所有权具名拒/逐行对账表 ✓；V-COVERAGE=六路径中 AV/A2R/A2PY/AC(native) 四条真跑，AV×C/AV×Rust 外库 dispatch 挂 967 merge（外部时序依赖，具名）；V-FOUNDATION=分配经 1039/1040 arena（V-10 观察）+core 不触 arena ✓；V-AUTO-STD=默认全纯 Auto 单源、无 provider 候选（身份测试拒层）✓；V-PHASE=A 切片齐 ✓；V-LINUX-PHASE=Windows required 全跑、Linux 执行腿按 2026-11-14 裁定 NOT_RUN/owner=1063（装配面无 Linux 专属操作行）✓；V-PLATFORM-IO/V-LOAD=1041/1043 消费即装配线本体+UTF8 编解码算法，I/O 原语归 1041/973（具名边界）。**已知具名项**：C mut-ptr 别名进返回结果的尾声双 free（源级规避+KNOWN-DEBT 候选）；mn/C 位算发射、float rem；csv/解码/全 Unicode case 结构或数据边界；967 外部时序。work 阶段收口：T-01..04/08/09/10 完成（7/10），T-05 复审/T-06/07 合入待独立阶段。证据：artifacts 第十六轮节。
+
+2026-11-15 stage: work | 第十五轮：T-08 (b) 批收口——find/reverse/trim/replace/split/lines + sort | 7 新符号落 std.text/std.list（纯 Auto 建基元），V-08 扩 **62 符号五端全绿同值**。钉住源级纪律：owned Str 实参移动→递归前 clone；尾调用实参先 bind 借用再移；List<Str> push 须 .move；穷尽 is 于 list 返回函数的面 filler 拒→int 助手 hit_or；保留字不作参数名；use 别名解跨模块同名。**C 发射器缺口（具名=KNOWN-DEBT 候选）**：mut-ptr 局部别名进被返回调用结果时尾声双 free（sort 单元素即堆损坏；源级规避=积累器 int 步函数+外层 tail-return 自有局部，模块内注释指明）。对账表更新：find 族+sort (b)→(a)；余 (b) 仅 csv（数据表批）、hex/base64 解码（byte→Str 结构边界）、全 Unicode case（宿主表，967）；余 (c) 不变。972 套件 18/18。commit c1b85904b。证据：artifacts 第十五轮节。
+
+2026-11-15 stage: work | 第十四轮：T-10/V-10——core/alloc 分层证明 + 978 具名清单 | **V-10 fixture**（v10_layers_972.rs，AC/native 端）：(1) core-only 程序（math 整数+纯 Auto double 族+char 谓词/case，无 Str/List 构造）观察计数 **attempts=allocs=0**（17 检查全分 1111121）——无堆无宿主 dispatch，分配器完全不触；(2) alloc 程序（upper/repeat/to_hex 构串）分配>0、invalid frees=0、账目闭合（allocs−frees_ok=live）；(3) fail-Nth=3 注入——资源 trap（观察 code=22）+ INJECT 记录 + 失败路径全清扫（live=0、invalid=0，无泄漏）；(4) 欠配字节预算同陷阱。**分层清单**（§5 新节=978 具名清单）：28 core（math 10、char 7、conv.to_int/is_uint、text 长度/索引/equal、bytes 走查族、hash）/26 alloc（text 物化/构串族、conv 构串、bytes 编码、list/map 全部）——分配经 mn arena=1039/1040 底座，无 malloc/隐式宿主堆。观察/注入/预算经 MnDriver.resource_knobs（WrapperKnobs observe/fail_nth/budget_bytes）。时长：冷首跑 87s（runtime rustc 一次制备）、暖 4.98s。972 套件 17/17+V-10。commit 见下。证据：D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md 第十四轮节。
+
+2026-11-15 stage: work | 第十三轮：T-09——纯 Auto double 族 + f64 五端发射面 | **裁定执行**：AC-AUTO-STD 不以 libm 代签→double 族=纯 Auto 单源算法（abs_f；sqrt=4^k 归一+Newton；sin/cos=一次 trunc 归约+Maclaurin 共享累加器；powf=exp(y·ln x) atanh/exp 级数+2^k 精确缩放；全递归）。**记录偏差**：NaN 不可构造（checked ÷±0）→非正输入返 0.0；|x|≤~1.4e18 归约域、i32 scale2 域；~1e-15 相对精度非正确舍入平价（五端同源同序→跨端同值）。**f64 发射面**：mn——F64Bits 常量位型、浮点 fcmp/fadd/sub/mul/fdiv(÷±0 陷阱-31)/fneg、Conv 三形（F32↔F64；float→int 2^n 精确幂界守卫+sat 转换；int→float 符号恢复+fcvt_from）；a2x-c——值类型/参数道/浮点 BinOp 臂/结果通道 F64/F32（chan/fwd/value 三表）+runtime add/sub/mul/neg f32/f64 生成+死旧臂删除；a2x-rust——num_bin_expr 浮点比较前置（曾落 "float op Eq" 拒）；a2x-python——Collections 参数/返回准入浮点。浮点字面量须宽度后缀（2.5d）。**V-08 扩 49→54 符号**：double 检查=宿主 oracle 容差带（sqrt(2)/powf(2,10)/sin(1)/cos(1)/abs_f），五端全绿同值 54。修复前基线探针：AV/A2Py 绿、mn 缺常量、A2C 缺值型、A2R 缺浮点比较（临时探针已删，链见 artifacts）。972 套件 17/17；组：ace-source/ace-native/ace-a2x PASS。commit d11993db6。T-08 对账表更新：double 族 (b)→(a)。证据：D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md 第十三轮节。
+
+2026-11-15 stage: work | 第十二轮：T-08/V-08——逐操作对账表落 §5 + 全符号五端演练常驻 fixture + 四发射器缺陷修复 | **V-08 fixture**（v08_surface_972.rs）：(A) 面清单奇偶校验——装配集 8 模块 49 公共符号与必需 op 表双向全等（删行/改名/私增即红=删行阻签）；(B) 全符号演练 main 49 检查（独立 oracle）→49 于五端全跑（AV/mn exit/cl/rustc/真 OS Python value:49）。**char 补齐**：legacy to_upper/to_lower（旧 int→int 恒等平移）以纯算术 p∓32 落 std.char（初版 char→char 遇 a2x-c Char 结果通道缺口，改 codepoint 形更贴旧 API）。**四缺陷修复**（全符号演练首触，逐一定位链见 plan-artifacts 第十二轮节）：(1) mn 指令包装 dst 匹配缺 StrSlice/StrConcat/StrToOwned——round-6 文本臂产新节点不绑指纹→Drop 校验 refusal=5→trap 70；(2) mn Conv 读窄 cell 零扩展字直 sextend——负值 I32→I64 变 4294966875（探针 %10=5 实锤）+收窄假溢出，修为源宽 ireduce 后扩展、加宽免检；(3) a2x-c View Record/Variant 实参传值 vs ConstPtr 原型（C4047/C2440）+ VariantProject 根为 ConstPtr 参数双重间接（C4090）——补 &/裸名/显式限定转换；(4) a2x-c 运行时 a2x_mul_i64/u64 的 _mul128 返回位与出参颠倒——一切 i64 乘（3*5 亦然）误溢出陷阱（最小 C 复现 hi=15/lo=0）。旧 961 数值面 C 侧 i64 乘从未被执行过。972 套件 17/17（V-08 五端 9.88s）；组：ace-native/ace-a2x PASS（后台）、ace-av PASS。commit 0dc418876。T-08 对账表（§5 新节）：(a) 已交付 49 符号、(b) 本包后续批（double 族 T-09、find/reverse/trim/replace/split/lines、sort、csv、解码 byte→Str、全 Unicode case）、(c) 外部 owner（964 FStr/963 泛型/967 regex+crypto+uuid/965 Result）——无无主操作。T-08 未勾：待 (b) 项落地后随 T-04 汇总。证据：D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md 第十二轮节。
+
+2026-11-15 stage: work | 第十一轮：T-02 余域批——map 型 + int→Str 负数形 + ASCII case 表 + hex/base64 编码 | **map 型**：`stdlib/ace/asm/map.at`（map_new/put/get/has/len/remove——交错 [k,v] 于 List<int>，946 冻结方法表引用语义、插入序保持、原位覆写、remove 先值后键压缩；实例化签名纪律沿 list.at，Str 键与泛型 map 归 963 全泛型切片=具名边界）。**int→Str 负数形**：conv.from_int（"-" + i64 幅值游走，i32::MIN 无 abs 溢出）。**case 表**：text.upper_ascii/lower_ascii（26 字母表定位+对照表 slice 重建，非 ASCII 透传；全 Unicode case 表=具名后续）。**编码**：bytes.to_hex/to_base64（重建字节流纯 div/mod 六位组，base64 状态递归跨 scalar 组对齐；DECODE=具名边界——byte→Str 构造本面无）。**a2x-rust 修复**（本批首触）：lower_coll Call 参数位实参为 View-List 参数名时仍包 RefMut（&mut <&'a mut 绑定> 借用绑定本身=E0596）——修为裸名传递（与 BorrowMut 臂同纪律；list.at 从未传 List 参数给自由函数故未触）。所有权纪律钉住：borrow Str 参数直返须 clone（E0308）、禁 Str var 重赋值/取 s 的 helper（use-after-move）、测试侧 equal 移动后 len 读=use-after-move（len 前置）。oracle（独立 Python hex/base64）：A中😀=41e4b8adf09f9880/QeS4rfCfmIA=、a\0b=610062/YQBi、autostack!=YXV0b3N0YWNrIQ==；map 场景 201023/1314；case 111155；from_int 1111511。972 套件 16/16（新例 map 0.98s/enc 0.74s/from_int+case ~0.2s；五端整集含 map.at 6.97s）；组：ace-source/ace-a2x/ace-av PASS。commit d0adee504。T-02 余量：Str 键/泛型 map（963 切片）、全 Unicode case、hex/base64 解码（byte→Str）、mn/C 位算发射；double 族挂 T-09。证据：D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md 第十一轮节。
+
+2026-11-15 stage: work | 第十轮：S-03+S-06 批落地——投影位根因闭合 + mn I64 rem 修复 | **根因**（S-06 回退待查项闭合）：packages-aggregates-ct 的 expr 分派 wide-ops pratt 表（无 & | ^），而三 token 自 961 起已在该面声明、无算符表引用——纯投影位缺口；草稿 hash.at 的 `^` 触发错误恢复错位（诊断落在参数位/项位，整集绑定失败外溢）。**修复**：新 pratt 表 `packages-aggregates-ct-ops`（wide-ops 超集+位算同层，961 冻结记录；旧 profile 字节不变）。**S-06**：`std.hash.codepoint_hash`（多项式 (h*1000003+cp) mod 2^31-1、种子 1469598103、全程 checked i64 域内）。**S-03**：`std.bytes.byte_at/utf8_len/byte_of`（纯 div/mod 重建 UTF-8）+ `byte_hash`（byte 域，裁定并入本批）；默认算法避开位算（mn/C 位算发射仍具名拒=后续单元，语法门已开并有 AV 正例钉住）。**mn 缺陷修复**（本批首触）：binary_num Div|Rem 原在 I128 宽 sdiv/srem——x64 ISLE 无 I128 除法降载（codegen unwrap panic；此前无 std 模块触 rem_i64）；改 I64 宽发射，-31 除零/-30 MIN%-1 守卫前置（MIN%-1 不达硬件 idiv），add/sub/mul 保 I128 域守卫，陷阱码不变。oracle（独立 Python）：codepoint auto=2075808597/空=种子/A中😀=534270170；byte a\0b=386610881/A中😀=866049554；区分位 1111；byte_at A中😀 8 字节逐位+越界/负索引 None+NUL 字节=1411111111。972 套件 12/12（新例 1.11s/0.31s/0.31s；五端整集腿含新两模块 6.2s）；组：ace-syntax/ace-source/ace-av PASS，ace-native 第 3 轮 PASS（前两轮各红不同 1-2 例、隔离重放绿——并行 mn exe spawn 争用，环境归因）。commit 02fd0daae（worktree lang-972 @ plan-972-dev）。T-02 余域：集合全集 map 型、int→Str 负数形、upper/lower case 表、hex/base64 编码、mn/C 位算发射；double 族挂 T-09。证据：D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md 第十轮节。
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r12：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
+
+2026-11-15 stage: work | S-06 hash 裁定（计划级，实现退回）| **裁定**：S-06 纯 Auto 默认哈希取 **codepoint 域**（与 scalar_len/char_at 单位一致、确定序敏感 i64 结果）；**byte 域哈希并入 S-03 byte 访问批**（本 lane 文本面无字节索引）。实现尝试退回：草稿 hash.at（FNV-1a codepoint 版+mod97/score 助手）破坏整集解析（app 消费者 main 的 item 位 `fn` 具名拒外溢），已整撤（未入库）；重试须先修 app-main 的 suffixed-literal/`.to` 语法面差异（math 腿 `min(3i64,5i64).to(i32)` 可行而 hash 腿同形被拒——待查 profile 投影位差异），并与 S-03 一批落地。整集回归 9/9 绿。
+
+2026-11-15 stage: work | 第九轮：A2PY 腿接通——五执行端整集 capture-free 闭包全通 | a2x-python lower：Collections 族准入 Char + typed 标量 + Closure 参数与 typed/List 返回；CreateClosure 直译 Python lambda 过体函数（捕获闭包具名拒——跨端契约保持 capture-free 一致）；CallClosure=普通间接调用。**A2PY 整集 HOF 腿接通**：filter+reduce 闭包经 PythonTargetProvider + 真 OS Python（pyrun）→ value:144。**五执行端（AV / AC-native / A2R / A2C / A2PY）整集 capture-free 闭包全通**——V-COVERAGE 六路径中五条执行路径真跑（AV 三来源配置面余 AV/C 与 AV/Rust 真实外库 dispatch，挂 967 merge）。972 套件 17/17；ace-a2x 组 PASS。commit 9f31e18c6。
+
+2026-11-15 stage: work | 第八轮：C List 结果通道落地，A2C 整集 HOF 腿翻转——四执行端整集全通 | coll_type_table：每 list 类型生成 a2x_res_list_<tag> 包装 + a2x_list_<tag>_value/a2x_fwd_list_<tag> 构造器；lower_coll：CollRetKind::List（elem-tag 包装名）+ typed 标量结果（i64/u64 通道；i8/u8/u32 按冻结通道窄化 i32）；coll 运行时：a2x_i64_value/fwd 等构造器（置数值 typedef 之后）。**A2C 整集 HOF 腿翻转**：filter+reduce 闭包经真 cl → value:144。**四执行端（AV/AC-native/A2R/A2C）整集 capture-free 闭包全通**。972 套件 17/17；ace-a2x 组 PASS。commit 332567ce1。
+
+2026-11-15 stage: work | 第七轮：A2C 数值面+闭包发射落地（整集腿待 C List-结果包装）| runtime.rs 将 961 数值运行时段落抽取为共享 write_numeric_runtime（标量/文本头字节不变）；coll 运行时并入该段（A2X_TRAP_INVALID 别名 INVALID_SCALAR）；typed 标量参数/值类型准入（C 拼写）；lower_coll（C）补 BinOp::Num（整型比较内联、checked 算术经共享助手、float/位算具名后续）、NumericConst（共享内联字面量 numeric_const_c）、Cast（共享转换矩阵）、闭包参数=C 函数指针（ret (*name)(params) 按体通道）、CreateClosure（函数指示符；捕获具名拒）、CallClosure（fall_res 按体通道）。**A2C 整集腿仍被 filter/map 的 List 结果签名阻塞**——C 侧 List 结果包装（seed 表生成 a2x_listo_result_<tag> 类）为具名后续。子集腿保持绿。972 套件 17/17；ace-a2x 组 PASS。commit 5ba41951f。
+
+2026-11-15 stage: work | 第六轮：A2C C 发射器 text/char 面接通（子集腿）| coll_runtime（C 源）补 a2x_char_result/str_char_at（标量索引解码）/strv_result+str_slice（借用视图，data 指入源）/str_to_owned/char_from_codepoint；lower_coll（C）补 TextCharAt/TextSlice/TextToOwned 臂（fall_res）、CharLit/CharToCodepoint 内联、CharFromCodepoint 臂；Char 与 View-StrOwned 参数准入（uint32 值传递 / const a2x_str* 借用）；Call 臂 str-borrow 参数强制（普通值 &x 借用）。**A2C 子集腿接通**：std.text+std.char 经真 cl → value:83（A中😀 Unicode 单位 oracle）。TextConcat 沿既有 FStr 臂（曾误加重复臂遮蔽致 dynamic_964 红——已删并复绿）。972 套件 17/17；ace-a2x 组 PASS。C 余量（数值面并入/闭包）沿 §10 蓝图。commit af340015d。
+
+2026-11-15 stage: work | 第五轮：mn closure 值落地，整集 AC 腿翻转 | collections_lower：CreateClosure（cell word=unit import 代码地址；捕获闭包具名拒）+ CallClosure（cells ABI call_indirect，实参+dst cell 地址）；collections_layout：Closure(sig) 描述符（签名指纹）；fingerprint：capture-free 闭包指令可渲染（823 排除由 972 扩面取代；ENV_GET 体仍拒）；collections_driver：空 env 声明的闭包体 import 准入（非空 env 保持具名边界）；closures_compat 测试更新至新边界。**整集 mn 缺口翻转**：HOF 程序经全装配 std 集真机码 exit 44。三执行端（AV/AC/A2R）整集全通；余 A2C/A2PY 发射器腿（各自需等价 closure/text/char/numeric 面）。972 套件 17/17；ace-native 组 PASS（276）。commit 2bddc6a28。
+
+2026-11-15 stage: work | 第四轮：a2x closure 值+全 text/char 面接通，整集 A2R 腿翻转 | a2x-core 增 Ty::Closure（类型表内联签名，Ty 保 Copy）+ prepare/fingerprint/语义面三处准入（CreateClosure/CallClosure/text/char kinds）；a2x-rust：ClosureLit/IndirectCall RExpr（间接调用可失败）、闭包参数渲染 `impl Fn(P) -> A2xResult<R>`（体转发可失败体函数、调用位 `?` 解包）、闭包 let 免标注、RustFn.result_text 预烘焙 List/闭包结果、char 三臂+text 六臂（正确临时类型；共享运行时助手）、str 视图操作数强制（字面量/借用参数跳过 .as_str，owned 临时经其借用）、coll 运行时补标量索引 text 助手；a2x-store 合成 __closure 片段 origin (0,0)。text.at repeat_into 改返 acc.clone()（a2x coll 不能把借用参数按 owned 结果返回——具名边界）。**整集 a2x 缺口翻转**：HOF 程序（filter+reduce 闭包）经真 rustc 编译运行 value:144（全装配 std 集）；mn closure 仍为整集具名缺口。972 套件 17/17；ace-a2x/ace-source 组 PASS。commit 8094f1149。
+
+2026-11-15 stage: work | 第三轮：mn 发射面落地+AC 消费腿接通 | collections-runtime 新增 mn_coll_str_len_bytes/str_char_at/str_slice/str_concat/char_from_codepoint（组合共享 ac_rt 标量索引原语，负状态→checked 陷阱）；collections_lower 落 text/char/数值发射臂：char/数值类型准入+immediate kind-0 布局指纹、typed 标量常量（I64/U64 全字存储）、七个 text/char 指令臂、全整宽比较、checked I64 加减乘除余（I128 计算+域守卫）、checked I64 取负、整型 Conv（符号感知加宽+checked 收窄）；窄算术/浮点/移位保持具名拒（数值后端单元）。**AC/native 正例腿接通**：std.math+text+char 子集真机码 exit 83（A中😀 Unicode 单位 oracle）。整集 closure 缺口仍冻结（任意具名深度均认）。ace-native 组 PASS；972 套件 17/17。commit f6f34e36b。跨端 closure 值现状：a2x-rust 无任何 closure 发射（Ty 无 fn 变体）——a2x closure 为新特性单元；mn closure 需并 closures 线 staged-transaction 运行时模型。
+
+2026-11-15 stage: work | 第二轮追加 | V-DETAIL-03 所有权负例系落地：use-after-move（移后读）与 mir.mut-conflict（实参表达式仍借用时移入实参）均以先于输出的具名拒断言（`stdlib_asm_972_ownership_move_negatives`；take 为聚合面保留字的语法事实一并钉住）。std.conv 补 from_uint（数字表切片格式化，0→"0"/421→"421"/负数→""；oracle 420743438）。972 套件 17/17 绿。commits 617cc2d0d、f4f3356f1。
+
+2026-11-15 stage: work | 第二轮（跨端域扩展 + T-02 余域）| (a) a2x：961 数值面并入 collections 族——lower_coll 补 NumericConst/Cast 臂（共享 num_lit/conv 矩阵）、typed checked temp 带真实结果类型（checked_temp_ty）、RT_NUMERIC 助手并入 collections 运行时；**A2R 正例腿接通**（装配线 std.math 子集经真 rustc：square(7)*10+min(3i64,5i64).to(i32)=493 stdout）；ace-a2x 组全 PASS。(b) mn：探明 collections 发射器为自含（逐指令 CLIF 臂，不委托共享文本/char lowering）——其 text/char/数值发射面为已设计后续单元；mn 整集保持干净具名拒（Closure/Char），不做半接入。(c) T-02 余域：`std.conv`（S-05 parse/format 双向——to_int 带 i64 累加器+显式域检查（-2147483648 可析、溢出返 None 不静默陷阱）、is_uint、from_uint 数字表切片构串（无 char→Str builtin 依赖））；**V-DETAIL-02 parse 错误路径全部独立断言**（42/007/MIN 边界/超域/非法数字/空/孤符号；oracle 420743438）。972 套件 16/16 绿。commits d16ba3276、8e1561546、5c4be6bb7、617cc2d0d。具名边界追加：S-03 bytes/编码（byte 索引）、S-06 hash（byte 域 vs codepoint 域语义裁定）、集合全集（map 型）、int→Str 负数形、upper/lower（case 表）、double 族（intrinsic）、mn text/char/数值发射面、跨端 closure 值（mn+a2x）。
+
+2026-11-15 stage: work | T-03 首轮跨端核验=具名缺口冻结 | 整装配 std 集跨端（mn/a2x）当前均具名拒：mn collections native 域无 closure 值/Char（list HOF 公共签名与 text/char 模块在整集构建中必触）；a2x collections 族无 closure 类型且未并 961 数值面（std.math 的 I64 NumericConst 亦拒）。三条具名拒以 freeze 断言钉入 `stdlib_asm_972_cross_end_named_gaps_frozen`（支持落地时有意翻转）；不接受 emit-only/宿主 fallback 替代。AV 为装配集当前唯一执行端。跨端 closure/char/数值域扩展=T-03/T-09 后续单元。972 套件 15/15 绿。commit ac33aa713。本轮 round 总结：T-01 完成；T-02 已落 list/math/text/char 四模块+装配线三单元；T-03 缺口已具名。下一轮：跨端域扩展（mn closure/char + a2x closure/numeric）或 T-02 余域（S-03/S-05/S-06/集合全集）。
+
+2026-11-15 stage: work | T-02 第二/三实现单元落地 | (a) 数值类型面并入组合线（63 处 `[numeric, aggregates]` 门 + packages-aggregates-ct）+ `stdlib/ace/asm/math.at`（abs/min/max 冻结 i64 签名 + square/cube；checked 算术——abs(i64::MIN) IntOverflow 陷阱为独立断言，V-02 边界；AV oracle 9223372036854775228 含 square(7).to(i64) 显式跨宽转换）。(b) 文本面：新 `schema/aggregates.atom` 描述符（numeric 超集 + text_len_bytes/text_char_at/text_slice/char_from_codepoint + expr start/end；三元组注册→Closures 域；数值 builtin 词在其下绑定）、aggregates profile 渲染自身身份、t_char 发射、lowering 四个 collections/collections-MIR-profile 文本臂；`stdlib/ace/asm/text.at`（byte_len/scalar_len/char_code_at/equal/starts_with/ends_with/contains/repeat——递归 helper、ownerness 正确：中途复用传 clone、借用长度先提升）与 `char.at`（ASCII 谓词子集，具名边界）。V-02 oracle 落地：A中😀=8B/3C、e+U+0301=3B、NUL 不截断（83343165/31）。972 套件 14/14 绿；ace-source/ace-syntax/ace-av 组全 PASS。commits 38d9f1a14、3a137fa07。T-02 余量：S-03 bytes/S-05 parse-format-encoding/S-06 hash/集合全集/V-DETAIL-02..03 系统负例；double 族（sqrt/sin/cos 等）挂 T-09 intrinsic 批。
+
+2026-11-15 stage: work | T-02 第一实现单元落地 | 装配 aggregates 线（packages-aggregates-ct 语法 profile + AggregatesCt 前门 + bind_packages_assembled_aggregates + asm_lane walker/resolve 门 + 装配 std 冻结身份集）+ 首个装配 stdlib 模块 `stdlib/ace/asm/list.at`（946 切片超集 + reduce/find/any/all/filter/map 闭包 HOF 族）。av conformance `stdlib_asm_972`：AV 独立 oracle 1544281/15455、std 防遮蔽双负例（篡改源/带层均 ace.stdlib-reserved 先于运行拒）、plain aggregates 线闭包参数保持具名拒（lane 隔离）；probe972 7/7 保持绿。受影响完整组：ace-source/ace-syntax/ace-av 全 PASS（ace-syntax DECLARED 集补 packages-aggregates-ct；grammar-id 隔离测试过——旧 profile 裁剪逐字节不变）。worktree commit 50704b661。T-02 继续：S-01..06 域内容逐批落装配形态+永久正反例。
+
+2026-11-15 stage: work | plan_id: PLAN-972 | plan_revision: r11 | outcome: in-progress（T-01 pass，T-02.. 续行中）| worktree: D:/autostack/.wt/lang-972/auto-lang | branch: plan-972-dev | base_commit: cd71736f8 | code_commit: (T-01 探针于 worktree，commit 待 T-02 首个实现单元一并落) | dependency_revisions: 12/13 archived（967 reviewed 未合入——真实 C/Rust 外库 dispatch 腿终态闭合挂其 merge，不阻当前默认库/native/A2x 腿） | task_ids: T-01 | evidence: probe972 7/7 绿（0.53s），摘要与命令见 D:/autostack/plan-artifacts/plan-972/t01-probe-evidence.md；§8 T-01 行内冻结表 | blockers: 无用户决策项；967 merge 为外部时序依赖，具名登记 | next_responsible_role: work（T-02 实现主能力）
+
+2026-11-13 stage:new / CONTEXT-LOAD | 规划静态预检通过：20份设计/计划553处本地链接路径、Markdown围栏与Plan 0–10节/任务数一致；原144任务ID/勾选/状态/进度/旧AC/V及原依赖保留，新1043十任务均未完成。可达149个语言计划依赖无缺失/环、ID无冲突，中央.next-id为1044。1043不依完整966/FFI/库，1042不反依1043；966改为消费1043，原F0/B0/Hello与M1门不减。新计划候选固定组名和新增设计锚静态核对，git diff --check通过。未实施/建树/编译/运行产品或测试，不是独立实现review PASS；canonical Specs及归档历史未改。
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
+
+2026-11-13 原生底座依赖修订预检：9份文档371处本地链接通过；保原48任务ID/阶段及已有AC/V，新添1039/1040各T-09共2项work；可达149个语言计划无缺失/环，946与972新增硬前置无反向分配器依赖。状态/勾选/进度未推进，归档计划与canonical Specs零修改，.next-id仍1042。仅规划静态检查，非产品/独立实现review PASS。
+
+2026-11-13 stage:new / r9：修正原生底座完成依赖；原任务/状态/勾选/进度保持，新增FOUNDATION AC/V/SD由原work任务和独立review承接。未启动实现或运行产品。下方较早可并行措辞仅对算法准备有效，不覆盖本次原生实施/验收门。
+
+2026-11-13 stage:new / r8：设计承接；新增平台I/O AC/V/SD由T-01,T-09,T-10及原最终work负责。原任务/进度保持，无实现或独立产品review；新三包drafting。
+
 2026-11-12 stage:new / PLAN-972 r7：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原10任务/全部AC与V/依赖/阶段/预算和drafting 0/10；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -327,6 +550,17 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
+
+### A2C/A2PY 发射器镜像设计（2026-11-15 冻结的续行蓝图，T-03 续行单元）
+
+已核事实（本轮survey）：a2x-c `lower_coll.rs` 已有 TextLen/TextLenBytes/TextClone/TextConcat?(仅 coll_runtime 有 concat 助手)；`lower.rs`（text 线）有 `num_bin_c`（比较内联、整型经 checked 助手、float 通道）与 NumericConst 内联字面量（:350）；`rt_runtime.rs`（text 线 C 运行时）已有 `a2x_str_char_at/a2x_str_slice/a2x_char_from_codepoint`；`coll_runtime.rs`（collections 线 C 运行时）字符串为 `a2x_str{data,len}` 结构 + trap/out-param 风格，已有 concat，缺 char_at/slice/to_owned/char 助手与 typed i64 算术助手。
+
+A2C 镜像步骤（C 发射器）：
+1. coll_runtime.rs 补助手（C 源）：`a2x_str_char_at(const a2x_str*,int32)->char 结果包装`、`a2x_str_slice`（借用视图 out-param：data/len 指入源）、`a2x_str_to_owned`、`a2x_char_from_codepoint`、`a2x_char_to_codepoint`（内联）；typed i64 加减乘除余/取负/字面量/收窄 cast 助手（镜像 rt_runtime 的 961 集——若 text 线助手为 static，复制进 coll 运行时源）。
+2. lower_coll.rs（C）补臂：NumericConst（内联字面量，镜像 lower.rs:350）；Cast（checked 收窄助手）；`BinOp::Num`（镜像 num_bin_c：比较内联、算术经 typed 助手 + coll fall 包装）；CharLit/CharToCodepoint（内联 (uint32_t)）/CharFromCodepoint（助手）；TextCharAt/TextSlice/TextToOwned（助手 + fall_res/trap_check）；TextConcat（已有助手接线）。
+3. 闭包：C 函数指针——Ty::Closure 参数文本 = 从 view.closure_sig(idx) 生成指向体函数 C 签名的 fn 指针（体函数 C 签名=其 CollRetKind.c_ret_ty 返回 + 参数 C 类型）；CreateClosure = 体函数名（C 函数指示符退化为指针，捕获闭包具名拒）；CallClosure = `p(args...)` 经 fall_res；result 通道沿体函数返回类型。
+4. 消费腿：`PackageA2xTarget::cold_aggregates(..., CTargetProvider::v1(), &product)` + `ace_a2x_worker::crun::compile_c_fileset`（1043 测试配方）+ 整集 HOF oracle（value:144 形 stdout）。
+A2PY 镜像同构（a2x-python 发射器 + PythonTargetProvider + pyrun；Python 闭包=lambda 直译，text/char 助手进 python_runtime_source）。
 
 ## 10. 待澄清事项
 
