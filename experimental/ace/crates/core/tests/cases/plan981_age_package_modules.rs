@@ -208,15 +208,29 @@ fn p981_age_package_profile_is_refused_by_generic_entries() {
         }
         _ => panic!("the generic front door must refuse the age-package profile"),
     }
-    // 片段入口同样拒绝（它没有领域槽位的字节事实源）。
-    let frag = parse_front(FrontRequest {
-        src: "fn f() int { return 1 }",
-        profile: ace_core::source::SourceProfile::AgePackage,
-        kind: FrontKind::FreeFnFragment { range: 0..10 },
-        budget: FrontBudget::WORK_OWNED_64MIB,
-    });
-    assert!(
-        matches!(frag, FrontOutcome::Diag(_)),
-        "the fragment front door must refuse it too"
+    // 片段入口同样拒绝——必须**直接调用**该入口，且断言**诊断码**。
+    //
+    // 复审 M5 第二半指出两件事，都已实测确认：
+    // ① `parse_front` 的整模块守卫会先拦住片段请求，所以从 `parse_front` 永远
+    //    到不了片段守卫——用它来"验证片段拒绝"是**盲**的；
+    // ② 旧断言 `matches!(frag, FrontOutcome::Diag(_))` 接受**任何**诊断，而探针源
+    //    本身的语法错（`source.syntax`）就足以让它绿。
+    //
+    // 因此这里直接调 `parse_fragment_front`，并用**完全合法**的片段源。
+    let frag_src = "fn f() int { return 1 }";
+    let frag = ace_core::source::cst::parse_fragment_front(
+        frag_src,
+        ace_core::source::SourceProfile::AgePackage,
+        FrontBudget::WORK_OWNED_64MIB,
+        &(0..frag_src.len()),
+        None,
+        ace_core::source::ast::Receiver::Free,
     );
+    match frag {
+        FrontOutcome::Diag(ds) => assert_eq!(
+            ds[0].code, "source.domain-frontend",
+            "the fragment entry must refuse by the DOMAIN refusal, not by a syntax error: {ds:?}"
+        ),
+        _ => panic!("the fragment front door must refuse the age-package profile"),
+    }
 }

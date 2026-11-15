@@ -2353,7 +2353,10 @@ pub fn parse_fragment_front(
     use crate::atom_text::Stage;
     // PLAN-979（评审 F2 观察）：片段入口同样拒绝领域 profile——片段不承载领域
     // 声明，且没有槽位拼写的字节事实源；只经领域前门消费整模块。
-    // 复审 M5：与整模块入口同步纳入 `AgePackage`。
+    //
+    // 复审 M5 第二半：`parse_front` 的**整模块**守卫会先拦住片段请求，所以从那里
+    // 永远到不了本函数；只测 `parse_front` 会让"本函数是否拒绝"成为盲区（实测：
+    // 直接调用本函数在修复前返回 `Ok`）。故本函数必须自己拒绝，并有专测直接调它。
     if matches!(
         profile,
         SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage

@@ -165,6 +165,18 @@ pub fn attr_port(element: &str, key: &str) -> Option<&'static str> {
         ("shape2d", "mesh") => Some("Mesh2D"),
         // 3D 叶
         ("model3d", "model") => Some("Model3D"),
-        _ => None,
+        _ => {
+            // 组件实例（`Disc red_disc { tint: … }`）的元素名是**组件名**，无法在
+            // 本表里逐一列举，所以按属性名兜底：`tint:` 无论出现在哪种元素上，
+            // 都必须绑 `Material2D`。
+            //
+            // 复审指出：此前本表只有 `("shape2d","material")` 等条目，**没有 `tint`**，
+            // 于是 `node Disc(tint: int) { … tint: tint }` 仍能编译——而那正是
+            // g01 组件实例实际使用的属性，B4 的不变量恰好漏掉了真实路径。
+            match key {
+                "tint" => Some("Material2D"),
+                _ => None,
+            }
+        }
     }
 }
