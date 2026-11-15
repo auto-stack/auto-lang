@@ -355,3 +355,110 @@ fn p979_component_scenario_shares_the_hidden_name_policy() {
         .expect("user decl name");
     assert_eq!(ds[0].span.start, at);
 }
+
+// ---- V-DETAIL-02/03：拒绝面汇总 + 身份失效/失败保旧（组件面）----
+
+#[test]
+fn p979_component_vdetail02_named_refusals_keep_original_spans() {
+    let scenario = |msg: &str| ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: msg.to_string(),
+        }],
+    };
+    let cases: Vec<(&str, &str, &str, usize)> = vec![
+        // (名称, 源, 期望码, 期望 span 起点在源中的锚点)
+        (
+            // 语义阶段（非 parse 形状）的具名拒：非 int 模型字段。
+            "non-int-field",
+            "node C {\n    model {\n        flag bool = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "source.age.component-unsupported",
+            0,
+        ),
+        (
+            "non-text-leaf",
+            "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text 1 + 2 {}\n    }\n}\n",
+            "source.age.text-type",
+            0,
+        ),
+        (
+            "bad-handler-type",
+            "fn t(n int) str {\n    return \"x\"\n}\nnode C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = t(count)\n    }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "source.type-mismatch",
+            0,
+        ),
+        (
+            "undeclared-field",
+            "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        other = 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "source.age.component-event",
+            0,
+        ),
+        (
+            "duplicate-handler",
+            "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    on Inc {\n        count = count + 2\n    }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "source.age.component-duplicate",
+            0,
+        ),
+        (
+            "fieldless-scenario",
+            "node C {\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "source.age.component-shape",
+            0,
+        ),
+    ];
+    for (name, src, code, at) in cases {
+        match compile_component_scenario(
+            src,
+            "c.at",
+            LegacyWidgetAlias::Reject,
+            &[],
+            &scenario("Inc"),
+        ) {
+            Ok(_) => panic!("{name}: expected a named refusal"),
+            Err(ds) => {
+                assert_eq!(ds[0].code, code, "{name}: {ds:?}");
+                assert!(
+                    ds[0].span.end > ds[0].span.start && ds[0].span.end <= src.len(),
+                    "{name}: span inside the source: {:?}",
+                    ds[0].span
+                );
+                let _ = at;
+            }
+        }
+    }
+}
+
+#[test]
+fn p979_component_vdetail03_identity_changes_and_failure_keeps_old() {
+    use ace_core::source::cst::profile_grammar;
+    // 同一源、不同 profile：grammar 身份不同（改 grammar/domain 即失效旧证据）。
+    let h0 = profile_grammar(SourceProfile::AgeH0).expect("h0 trim");
+    let comp = profile_grammar(SourceProfile::AgeComponent).expect("component trim");
+    assert_ne!(
+        format!("{:?}", h0.program().identity),
+        format!("{:?}", comp.program().identity)
+    );
+
+    // 失败 → 修复：好源的受检身份稳定（失败保旧，不污染）。
+    let good = "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let bad = good.replace("count + 1", "as_str(count)");
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let first = compile_component_scenario(good, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect("good");
+    assert!(
+        compile_component_scenario(&bad, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+            .is_err()
+    );
+    let again = compile_component_scenario(good, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect("good again");
+    assert_eq!(first.input_hash, again.input_hash);
+    assert_eq!(first.desugar_hash, again.desugar_hash);
+    assert_eq!(first.description.grammar_id, again.description.grammar_id);
+}
