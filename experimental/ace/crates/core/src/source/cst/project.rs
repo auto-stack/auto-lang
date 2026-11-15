@@ -3907,39 +3907,6 @@ pub(crate) fn project_component_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
-    // PLAN-981（IF-981-REF）：`pub node` 形状存在，但**跨模块可见性尚未成立**
-    // （顶层 `pub node` 不是 CST 声明边界，投影看不到它）。这里具名拒绝，
-    // 绝不允许"编译通过但节点静默消失"——那正是本合同禁止的静默丢弃。
-    let pub_node_kind = p
-        .rules
-        .iter()
-        .position(|r| r.name == "age-pub-node-item")
-        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
-    if let Some(pk) = pub_node_kind {
-        for d in &tree.decls {
-            let n = if tree.kind(d.node) == k.item {
-                tree.children(d.node)
-                    .into_iter()
-                    .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
-                    .unwrap_or(d.node)
-            } else {
-                d.node
-            };
-            if tree.kind(n) == pk {
-                let (a, b) = tree.abs_range(n);
-                return Err(vec![crate::atom_text::Diagnostic::new(
-                    crate::atom_text::Stage::Text,
-                    "source.age.pub-node-unsupported",
-                    "`pub node` is not supported yet: node visibility is not a declaration \
-                     boundary in this front door, so accepting it would silently drop the node",
-                    crate::atom_text::Span {
-                        start: a as usize,
-                        end: b as usize,
-                    },
-                )]);
-            }
-        }
-    }
     let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
     let mut out = Vec::new();
     for d in &tree.decls {
@@ -3951,11 +3918,20 @@ pub(crate) fn project_component_nodes(
         } else {
             d.node
         };
-        if tree.kind(node) != item_kind {
+        // PLAN-981（IF-981-REF）：`pub node Foo { .. }` 壳——可见性位进候选，
+        // 实体是它包裹的 node 声明。
+        let public = p
+            .rules
+            .iter()
+            .position(|r| r.name == "age-pub-node-item")
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+            .is_some_and(|pk| tree.kind(node) == pk);
+        // `pub node` 与本面 node 声明**同形**（head/name/body 字段一致），只是
+        // 多一个 `pub` 前缀，故直接投影该壳节点本身（不再找嵌套子节点）。
+        if tree.kind(node) != item_kind && !public {
             continue;
         }
-        // PLAN-981（IF-981-REF）：本批只支持**同模块**实例引用。
-        out.push(eng.run_component_node_item(node));
+        out.push(eng.run_component_node_item(node, public));
     }
     if let Some(first) = eng.cx.first_diag() {
         return Err(vec![first]);
@@ -4154,6 +4130,7 @@ impl<'a> Engine<'a> {
     fn run_component_node_item(
         &mut self,
         node: u32,
+        public: bool,
     ) -> crate::source::age_component::ComponentNode {
         use crate::source::age_component::{
             ComponentAssign, ComponentField, ComponentHandler, ComponentNode, ComponentView,
@@ -4380,7 +4357,7 @@ impl<'a> Engine<'a> {
             head_spelling: head_spelling.clone(),
             head_span,
             legacy_widget: head_spelling != canonical_head,
-            public: false,
+            public,
             name,
             fields,
             handlers,

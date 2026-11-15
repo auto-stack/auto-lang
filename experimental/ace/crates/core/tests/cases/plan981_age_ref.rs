@@ -7,9 +7,9 @@ use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::compile_age_package;
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
-/// 本批的引用语义只覆盖**同模块**引用与三类失败；跨模块 `pub node` 可见性
-/// 是具名缺口（见 Plan §9），故夹具不使用它。
-const WIDGETS: &str = "node Meter {\n\
+/// 被引用的 node 声明模块：`Meter` 是 `pub node`（跨模块可见），`Secret`
+/// 不是（跨模块不可见），`Plain` 是普通 type（不是 node）。
+const WIDGETS: &str = "pub node Meter {\n\
     view { text \"m\" {} }\n\
 }\n\
 node Secret {\n\
@@ -142,25 +142,49 @@ fn p981_ref_diagnostics_carry_the_original_module_span() {
 }
 
 
-/// NAMED GAP (IF-981-REF, cross-module half): a top-level `pub node` is not yet
-/// a declaration boundary in the CST engine, so it cannot reach projection.
-/// This test exists to make sure that gap stays LOUD: such a source must either
-/// be refused, or project the node — never compile into a silently smaller
-/// program that merely omits it.
+
+/// 跨模块可见性（本轮闭环）：`pub node` 可被别的模块按 node 名引用并解析到声明
+/// 模块；非 `pub` 的同名声明则报 `ref-invisible`。
 #[test]
-fn p981_ref_pub_node_is_never_silently_dropped() {
-    let src = "pub node Meter {\n    view { text \"m\" {} }\n}\n";
+fn p981_ref_cross_module_pub_node_resolves_and_private_does_not() {
+    let public =
+        "node Screen {\n    view {\n        text \"hi\" {}\n        Meter m1 {}\n    }\n}\n";
+    let out = compile(public).expect("a public cross-module node is referenceable");
+    let screen = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Screen")
+        .expect("Screen");
+    assert_eq!(screen.refs.len(), 1);
+    assert_eq!(screen.refs[0].module, "app::widgets");
+    assert_eq!(screen.refs[0].node, "Meter");
+
+    let private =
+        "node Screen {\n    view {\n        text \"hi\" {}\n        Secret m1 {}\n    }\n}\n";
+    let ds = compile(private).expect_err("a private cross-module node is rejected");
+    assert_eq!(ds[0].code, "source.age.ref-invisible", "{ds:?}");
+}
+
+/// `pub node` 自身必须留下可见性事实（声明侧，不只是引用侧）。
+#[test]
+fn p981_ref_pub_node_records_its_visibility() {
+    let out = compile("node Screen {\n    view { text \"x\" {} }\n}\n")
+        .expect("plain fixture compiles");
+    let _ = out; // plain nodes stay private
+    let src = "pub node Only {\n    view { text \"o\" {} }\n}\n";
     let out = compile_age_package(
         &[input("main", src)],
         "app::main",
         LegacyWidgetAlias::Reject,
         &caps(),
-    );
-    match out {
-        Err(_) => {}
-        Ok(c) => assert!(
-            c.description.components.iter().any(|x| x.name == "Meter"),
-            "`pub node Meter` must not be silently dropped from a compiling module"
-        ),
-    }
+    )
+    .expect("a public node compiles");
+    let only = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Only")
+        .expect("Only projects (it is no longer silently dropped)");
+    assert!(only.public, "the `pub` declaration must be recorded");
 }

@@ -744,6 +744,8 @@ pub(crate) fn project_packages_front(
     let public_item = rule("public-item");
     let const_item = rule("const-item");
     let var_item = rule("var-item");
+    // PLAN-981（IF-981-REF）：`pub node Foo {..}` —— 公共 node 声明的导出面。
+    let age_pub_node = rule("age-pub-node-item");
     // PLAN-1043（T-03）/PLAN-966（T-02）：项位 CT 选择/需求规则 id（仅
     // packages-ct 裁剪存在；plain 面全 None → 分支不可达，行为不变）。
     let fn_require_p = rule("fn-require-p");
@@ -1097,6 +1099,13 @@ pub(crate) fn project_packages_front(
                     }
                     _ => {}
                 }
+            } else if Some(kind) == age_pub_node {
+                // PLAN-981（IF-981-REF）：`pub node Foo` 进本模块**公共面**，别的
+                // 模块才能按 node 名引用其实例。可见性语义沿用 960 的 exports。
+                saw_decl = true;
+                let name = text(tree, field(tree, node, "name").expect("pub node name"));
+                exports.insert(name.clone());
+                declarations.insert(name, node_span(tree, node));
             } else if Some(kind) == const_item || Some(kind) == var_item {
                 saw_decl = true;
                 let name = text(tree, field(tree, node, "name").expect("global name"));
