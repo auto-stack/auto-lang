@@ -530,13 +530,25 @@ fn console_probe_channel_and_error_stage_code_rules() {
 
 #[test]
 fn author_rejects_invalid_entry_mode_channel_and_stage_code_combos() {
+    // PLAN-1062 T-05: program/script/expression/module are all legal entry
+    // modes now; only unknown values are rejected.
     let bad_entry = concat!(
         "## Case: bad\n",
-        "entry-mode: \"module\"\n",
+        "entry-mode: \"wat\"\n",
         "\n### Auto\n\n```auto\n1\n```\n",
         "\n### VM result\n\n```text\n1\n```\n",
     );
     assert_eq!(decode(bad_entry, "e.case.ad").unwrap_err().line, 2);
+    for mode in ["program", "script", "expression", "module"] {
+        let doc = concat!(
+            "## Case: ok\n",
+            "entry-mode: \"REPLACED\"\n",
+            "\n### Auto\n\n```auto\n1\n```\n",
+            "\n### VM result\n\n```text\n1\n```\n",
+        )
+        .replace("REPLACED", mode);
+        assert!(decode(&doc, "e.case.ad").is_ok(), "entry-mode {mode} decodes");
+    }
 
     let unit_plus_exit = case_doc(
         "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nchannel: \"unit\"\nexit: 0\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
@@ -568,8 +580,14 @@ fn author_rejects_invalid_entry_mode_channel_and_stage_code_combos() {
     );
     assert!(decode(&code_without_stage, "e.case.ad").is_err());
 
-    let non_console_channel = case_doc(
+    // PLAN-1062 T-05: the value/unit result channel is legal on av recipes
+    // generally (7 P1 pairs use it on core-run-v1); non-av families reject.
+    let av_channel = case_doc(
         "\n### Probe av\nrecipe: \"ac-av/core-run-v1\"\nentry: \"d_main\"\nchannel: \"value\"\nexit: 1\n",
     );
-    assert!(decode(&non_console_channel, "e.case.ad").is_err());
+    assert!(decode(&av_channel, "e.case.ad").is_ok());
+    let mn_channel = case_doc(
+        "\n### Probe mn\nrecipe: \"ac/mir-native-scalar-v1\"\nentry: \"main\"\nchannel: \"value\"\nexit: 1\n",
+    );
+    assert!(decode(&mn_channel, "e.case.ad").is_err());
 }

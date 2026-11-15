@@ -164,6 +164,8 @@ fn fence_text(
 enum StreamKind {
     Stdout,
     Stderr,
+    /// CF-07 mark-trace oracle (probe run steps; PLAN-914 trace channel).
+    Trace,
 }
 
 struct StreamBlock {
@@ -191,6 +193,7 @@ struct RustArtifact {
 struct RustSection {
     section_line: usize,
     check_id: Option<String>,
+    tier: Option<String>,
     direct: Option<DirectRust>,
     subsections: Vec<RustArtifact>,
 }
@@ -218,6 +221,7 @@ struct ProbeSection {
     kind: Option<String>,
     fn_name: Option<String>,
     leg: Option<String>,
+    tier: Option<String>,
     streams: Vec<StreamBlock>,
 }
 
@@ -644,11 +648,13 @@ fn decode_one_case(
                 entry_mode = match want_str(&a)?.as_str() {
                     "program" => EntryMode::Program,
                     "script" => EntryMode::Script,
+                    "expression" => EntryMode::Expression,
+                    "module" => EntryMode::Module,
                     other => {
                         return err(
                             a.line,
                             format!(
-                                "entry-mode 仅支持 \"program\" 或 \"script\"，收到 {:?}",
+                                "entry-mode 仅支持 \"program\" / \"script\" / \"expression\" / \"module\"，收到 {:?}",
                                 other
                             ),
                         )
@@ -667,8 +673,8 @@ fn decode_one_case(
 
     let mut auto: Option<String> = None;
     let mut auto_path: Option<String> = None;
-    let mut vm_result: Option<(String, usize, Option<String>)> = None;
-    let mut vm_diag: Option<(Stage, String, usize, Option<String>)> = None;
+    let mut vm_result: Option<(String, usize, Option<String>, Option<String>)> = None;
+    let mut vm_diag: Option<(Stage, String, usize, Option<String>, Option<String>)> = None;
     let mut rust_section: Option<RustSection> = None;
     let mut probes: Vec<ProbeSection> = Vec::new();
     let mut vm_diag_message: Option<(
@@ -677,12 +683,14 @@ fn decode_one_case(
         Option<MessageMatcher>,
         usize,
         Option<String>,
+        Option<String>,
     )> = None;
     let mut rust_diag: Option<(
         Stage,
         String,
         Option<MessageMatcher>,
         usize,
+        Option<String>,
         Option<String>,
     )> = None;
 
@@ -774,7 +782,9 @@ fn decode_one_case(
         match title {
             "Auto" | "Notes" => {}
             "VM diagnostic message" => {
-                if let Some((stage, code, message, line, check_id)) = vm_diag_message.clone() {
+                if let Some((stage, code, message, line, check_id, tier)) =
+                    vm_diag_message.clone()
+                {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
                     let mut expect = expect_success();
                     expect.completion = Completion::Error {
@@ -794,7 +804,7 @@ fn decode_one_case(
                             id,
                             adapter: Adapter::Avm,
                             action: Action::Run,
-                            tier: None,
+                            tier,
                             options: Options::default(),
                             expect,
                             product_from: None,
@@ -804,7 +814,7 @@ fn decode_one_case(
                 }
             }
             "Rust diagnostic" => {
-                if let Some((stage, code, message, line, check_id)) = rust_diag.clone() {
+                if let Some((stage, code, message, line, check_id, tier)) = rust_diag.clone() {
                     let id = check_id.unwrap_or_else(|| "rust".to_string());
                     let options = Options {
                         module_name: module_name.clone(),
@@ -828,7 +838,7 @@ fn decode_one_case(
                             id,
                             adapter: Adapter::A2r,
                             action: Action::Emit,
-                            tier: None,
+                            tier,
                             options,
                             expect,
                             product_from: None,
@@ -838,7 +848,7 @@ fn decode_one_case(
                 }
             }
             "VM result" => {
-                if let Some((text, line, check_id)) = vm_result.clone() {
+                if let Some((text, line, check_id, tier)) = vm_result.clone() {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
                     let mut expect = expect_success();
                     expect.result = Some(ResultExpect {
@@ -857,7 +867,7 @@ fn decode_one_case(
                             id,
                             adapter: Adapter::Avm,
                             action: Action::Run,
-                            tier: None,
+                            tier,
                             options: Options::default(),
                             expect,
                             product_from: None,
@@ -867,7 +877,7 @@ fn decode_one_case(
                 }
             }
             "VM diagnostic" => {
-                if let Some((stage, code, line, check_id)) = vm_diag.clone() {
+                if let Some((stage, code, line, check_id, tier)) = vm_diag.clone() {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
                     let mut expect = expect_success();
                     expect.completion = Completion::Error {
@@ -887,7 +897,7 @@ fn decode_one_case(
                             id,
                             adapter: Adapter::Avm,
                             action: Action::Run,
-                            tier: None,
+                            tier,
                             options: Options::default(),
                             expect,
                             product_from: None,
@@ -953,7 +963,7 @@ fn decode_one_case(
                             id,
                             adapter: Adapter::A2r,
                             action: Action::Emit,
-                            tier: None,
+                            tier: rs.tier.clone(),
                             options,
                             expect,
                             product_from: None,
@@ -1094,11 +1104,11 @@ fn decode_one_case(
                     }
                 }
                 // CF-02: typed error expectations (stage/code + optional
-                // message) are legal for every probe family; channel and
-                // byte streams stay console-only.
-                if family != ProbeFamily::AvConsole {
+                // message) are legal for every probe family; the value/unit
+                // result channel is legal on av recipes generally.
+                if !matches!(family, ProbeFamily::Av | ProbeFamily::AvConsole) {
                     if let Some((_, l)) = &p.channel {
-                        return err(*l, "channel 仅允许用于 console recipe（ac-av/console-run-v1）");
+                        return err(*l, "channel 仅允许用于 av 系 recipe（value/unit 结果通道）");
                     }
                 }
                 match (&p.stage, &p.code) {
@@ -1126,6 +1136,10 @@ fn decode_one_case(
                         if family == ProbeFamily::AvConsole && p.channel.is_some() {
                             return err(p.section_line, "console Probe 错误预期不能同时声明 channel");
                         }
+                        // Non-console av keeps the legacy contract: an error
+                        // expectation and the value/unit channel may coexist
+                        // only when the channel itself declares the error
+                        // result; admission validates the combination.
                         let message = p
                             .message
                             .as_ref()
@@ -1158,6 +1172,7 @@ fn decode_one_case(
                     match st.kind {
                         StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
                         StreamKind::Stderr => expect.stderr = Some(st.expect.clone()),
+                        StreamKind::Trace => expect.trace = Some(st.expect.clone()),
                     }
                 }
                 if family == ProbeFamily::AvConsole {
@@ -1185,7 +1200,7 @@ fn decode_one_case(
                         id: p.check_id.clone(),
                         adapter: Adapter::Probe,
                         action: Action::Run,
-                        tier: None,
+                        tier: p.tier.clone(),
                         options,
                         expect,
                         product_from: None,
@@ -1270,26 +1285,28 @@ fn decode_h3_section(
     next_head_line: usize,
     auto: &mut Option<String>,
     auto_path: &mut Option<String>,
-    vm_result: &mut Option<(String, usize, Option<String>)>,
-    vm_diag: &mut Option<(Stage, String, usize, Option<String>)>,
-    vm_diag_message: &mut Option<(Stage, String, Option<MessageMatcher>, usize, Option<String>)>,
+    vm_result: &mut Option<(String, usize, Option<String>, Option<String>)>,
+    vm_diag: &mut Option<(Stage, String, usize, Option<String>, Option<String>)>,
+    vm_diag_message:
+        &mut Option<(Stage, String, Option<MessageMatcher>, usize, Option<String>, Option<String>)>,
     rust: &mut Option<RustSection>,
-    rust_diag: &mut Option<(Stage, String, Option<MessageMatcher>, usize, Option<String>)>,
+    rust_diag:
+        &mut Option<(Stage, String, Option<MessageMatcher>, usize, Option<String>, Option<String>)>,
     probes: &mut Vec<ProbeSection>,
 ) -> Result<(), AuthorError> {
     let title = sh.text.trim();
     let known: &[&str] = match title {
-        "Auto" => &["path", "final-newline"],
-        "VM result" => &["check-id", "final-newline", "compare"],
-        "VM diagnostic" => &["check-id", "stage", "code"],
-        "VM diagnostic message" => &["check-id", "stage", "code", "contains", "final-newline"],
-        "Rust" => &["check-id"],
-        "Rust diagnostic" => &["check-id", "stage", "code", "contains", "final-newline"],
+        "Auto" => &["path", "final-newline", "eol"],
+        "VM result" => &["check-id", "final-newline", "compare", "tier"],
+        "VM diagnostic" => &["check-id", "stage", "code", "tier"],
+        "VM diagnostic message" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
+        "Rust" => &["check-id", "tier"],
+        "Rust diagnostic" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
         "Notes" => &[],
         t if t.starts_with("Probe ") => &[
             "recipe", "entry", "caps", "exit", "channel", "stage", "code",
             "message", "message-contains", "session", "profile", "diagnostics",
-            "package", "module", "kind", "fn", "leg",
+            "package", "module", "kind", "fn", "leg", "tier",
         ],
         t if UNWIRED_SECTIONS.contains(&t) => {
             return err(
@@ -1328,14 +1345,28 @@ fn decode_h3_section(
                 return err(sh.line, "重复的 ### Auto 节");
             }
             let mut final_newline = true;
+            let mut eol = "lf".to_string();
             for a in &attrs {
                 match a.key.as_str() {
                     "path" => *auto_path = Some(want_str(a)?),
                     "final-newline" => final_newline = want_bool(a)?,
+                    "eol" => {
+                        eol = want_str(a)?.to_string();
+                        if eol != "crlf" {
+                            return err(a.line, "eol 仅支持 \"crlf\"（默认 lf 不需声明）");
+                        }
+                    }
                     _ => unreachable!("known keys filtered"),
                 }
             }
-            *auto = Some(fence_text(doc, fences[0], final_newline)?);
+            let mut text = fence_text(doc, fences[0], final_newline)?;
+            if eol.as_str() == "crlf" {
+                // PLAN-1062 §5.1 payload restoration: the fence body is
+                // logical-LF; uniform-CRLF originals round-trip through this
+                // explicit attribute (mixed endings need named-asset admission).
+                text = text.replace('\n', "\r\n");
+            }
+            *auto = Some(text);
             Ok(())
         }
         "VM result" => {
@@ -1349,10 +1380,12 @@ fn decode_h3_section(
                 );
             }
             let mut check_id = None;
+            let mut tier = None;
             let mut final_newline = true;
             for a in &attrs {
                 match a.key.as_str() {
                     "check-id" => check_id = Some(want_str(a)?),
+                    "tier" => tier = Some(want_tier(a)?),
                     "final-newline" => final_newline = want_bool(a)?,
                     // `compare` is legal to write (payload option slot) but the
                     // legacy-display result channel compares exact text.
@@ -1363,7 +1396,7 @@ fn decode_h3_section(
                 }
             }
             let text = fence_text(doc, fences[0], final_newline)?;
-            *vm_result = Some((text, sh.line, check_id));
+            *vm_result = Some((text, sh.line, check_id, tier));
             Ok(())
         }
         "VM diagnostic" => {
@@ -1377,11 +1410,13 @@ fn decode_h3_section(
                 );
             }
             let mut check_id = None;
+            let mut tier = None;
             let mut stage: Option<String> = None;
             let mut code: Option<String> = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "check-id" => check_id = Some(want_str(a)?),
+                    "tier" => tier = Some(want_tier(a)?),
                     "stage" => stage = Some(want_str(a)?),
                     "code" => code = Some(want_str(a)?),
                     _ => unreachable!(),
@@ -1399,7 +1434,7 @@ fn decode_h3_section(
                 line: sh.line,
                 message: format!("stage {:?} 不是 VM 支持的阶段（parse / type / run）", stage),
             })?;
-            *vm_diag = Some((stage, code, sh.line, check_id));
+            *vm_diag = Some((stage, code, sh.line, check_id, tier));
             Ok(())
         }
         "VM diagnostic message" | "Rust diagnostic" => {
@@ -1416,6 +1451,7 @@ fn decode_h3_section(
                 );
             }
             let mut check_id = None;
+            let mut tier = None;
             let mut stage = None;
             let mut code = None;
             let mut contains = false;
@@ -1423,6 +1459,7 @@ fn decode_h3_section(
             for a in &attrs {
                 match a.key.as_str() {
                     "check-id" => check_id = Some(want_str(a)?),
+                    "tier" => tier = Some(want_tier(a)?),
                     "stage" => stage = Some(want_str(a)?),
                     "code" => code = Some(want_str(a)?),
                     "contains" => contains = want_bool(a)?,
@@ -1466,7 +1503,7 @@ fn decode_h3_section(
             } else {
                 MessageMatcher::Exact(text)
             };
-            let row = (stage, code, Some(matcher), sh.line, check_id);
+            let row = (stage, code, Some(matcher), sh.line, check_id, tier);
             if is_vm {
                 *vm_diag_message = Some(row);
             } else {
@@ -1485,6 +1522,9 @@ fn decode_h3_section(
             for a in &attrs {
                 if a.key == "check-id" {
                     section.check_id = Some(want_str(a)?);
+                }
+                if a.key == "tier" {
+                    section.tier = Some(want_tier(a)?);
                 }
             }
             if fences.len() > 1 || (fences.len() == 1 && fences[0].language != "rust") {
@@ -1528,6 +1568,7 @@ fn decode_h3_section(
             let mut kind = None;
             let mut fn_name = None;
             let mut leg = None;
+            let mut tier = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
@@ -1550,6 +1591,7 @@ fn decode_h3_section(
                     "kind" => kind = Some(want_str(a)?),
                     "fn" => fn_name = Some(want_str(a)?),
                     "leg" => leg = Some(want_str(a)?),
+                    "tier" => tier = Some(want_str(a)?),
                     _ => unreachable!(),
                 }
             }
@@ -1597,11 +1639,20 @@ fn decode_h3_section(
                 kind,
                 fn_name,
                 leg,
+                tier,
                 streams: Vec::new(),
             });
             Ok(())
         }
     }
+}
+
+fn want_tier(a: &Attr) -> Result<String, AuthorError> {
+    let v = want_str(a)?;
+    if v.trim().is_empty() {
+        return err(a.line, "tier 不能为空");
+    }
+    Ok(v)
 }
 
 fn decode_probe_stage(s: &str) -> Option<Stage> {
@@ -1689,11 +1740,12 @@ fn decode_h4_subsection(
             let kind = match sh.text.trim() {
                 "stdout" => StreamKind::Stdout,
                 "stderr" => StreamKind::Stderr,
+                "trace" => StreamKind::Trace,
                 other => {
                     return err(
                         sh.line,
                         format!(
-                            "Probe 下的四级标题只接受 stdout / stderr（得到 {:?}）",
+                            "Probe 下的四级标题只接受 stdout / stderr / trace（得到 {:?}）",
                             other
                         ),
                     );
