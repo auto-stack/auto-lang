@@ -1,0 +1,219 @@
+## Case: ace-m1-cte936-sum42
+id: "ace.m1.cte936.sum42"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    let n = #{ sum(20, 22) }
+    return n
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1"]
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: ace-m1-cte936-sum43
+id: "ace.m1.cte936.sum43"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn sum(a int, b int) int {
+    return a+b+1
+}
+fn main() int {
+    let n = #{ sum(20, 22) }
+    return n
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1"]
+exit: 43
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1"]
+exit: 43
+
+## Case: ace-m1-cte936-boollit
+id: "ace.m1.cte936.boollit"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn flag() bool {
+    return true
+}
+fn main() int {
+    if #{ flag() } { return 7 }
+    return 9
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1"]
+exit: 7
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1"]
+exit: 7
+
+## Case: ace-m1-cte936-meta2
+id: "ace.m1.cte936.meta2"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Pair {
+    x int
+    y int
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(ct_field_count(Pair), 40) }
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 42
+
+## Case: ace-m1-cte936-meta3
+id: "ace.m1.cte936.meta3"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Pair {
+    x int
+    y int
+    z int
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(ct_field_count(Pair), 40) }
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 43
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 43
+
+## Case: ace-m1-cte936-choose42
+id: "ace.m1.cte936.choose42"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn choose<T>(a T, b T, flag bool) T {
+    if flag { return a }
+    return b
+}
+fn main() int {
+    return #{ choose(40, 42, false) }
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"]
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"]
+exit: 42
+
+## Case: ace-m1-cte936-pick40
+id: "ace.m1.cte936.pick40"
+tags: ["ace-m1", "source-cte", "sq-c", "plan-936"]
+links: ["PLAN-936"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn flag() bool {
+    return true
+}
+fn pick<T>(a T, b T) T {
+    if #{ flag() } { return a }
+    return b
+}
+fn main() int {
+    return #{ pick(40, 42) }
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"]
+exit: 40
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.source.cte.scalar/v1", "ac.source.instances.scalar/v1"]
+exit: 40

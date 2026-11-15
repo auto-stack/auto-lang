@@ -4,9 +4,9 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "av-source-827", include: [
-  "av-source-first-case.case.ad",
-  "av-source-semantics.case.ad",
-  "av-source-unsupported.case.ad",
+  "av-source-first-case.document.case.ad",
+  "av-source-semantics.document.case.ad",
+  "av-source-unsupported.document.case.ad",
   "av-source-cache.case.ad",
 ] }
 ```

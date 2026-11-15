@@ -6,6 +6,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "legacy-a2r-text-994", include: [
-  "legacy-a2r-text-994.case.ad",
+  "legacy-a2r-text-994.document.case.ad",
 ] }
 ```

@@ -1,0 +1,23 @@
+## Case: gov-d-unary
+id: "gov.d.unary"
+tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
+links: ["PLAN-887"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return -2 * 3 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+profile: "entry-unit"
+exit: -6
+channel: "value"
+
+### Probe av-scalar-control
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: -6

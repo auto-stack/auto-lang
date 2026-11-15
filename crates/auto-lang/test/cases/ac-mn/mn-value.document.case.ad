@@ -1,0 +1,18 @@
+## Case: mn-value-seven
+id: "mn.value.seven"
+tags: ["ac-mn", "probe"]
+links: ["PLAN-818"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    return 7
+}
+~~~~
+
+### Probe run-value
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 7

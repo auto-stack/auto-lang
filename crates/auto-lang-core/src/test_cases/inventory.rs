@@ -582,6 +582,14 @@ fn suite_migration_inventory_impl(
                                 "virtual_path": entry_file.virtual_path,
                                 "bytes": entry_file.bytes.len(),
                                 "sha256": entry_file.sha256,
+                                // PLAN-1062: the /2 projection carries the
+                                // resolved payload text (file and inline
+                                // inputs treated alike); /1 stays unchanged.
+                                "text": if v2 {
+                                    std::str::from_utf8(&entry_file.bytes).ok()
+                                } else {
+                                    None
+                                },
                             },
                             "files": extra_files,
                         },

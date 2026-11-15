@@ -10,9 +10,9 @@ suite {
   include: [
     "ace-m2/documents/scalar.case.ad",
     "ace-m2/documents/composite.case.ad",
-    "ace-m1/b-traps.case.ad",
-    "ace-m1/b-diags.case.ad",
-    "ace-m1/legacy-negative.case.ad",
+    "ace-m1/b-traps.document.case.ad",
+    "ace-m1/b-diags.document.case.ad",
+    "ace-m1/legacy-negative.document.case.ad",
     "ace-m1/session-lifecycle.case.ad"
   ]
 }

@@ -2472,6 +2472,7 @@ def compare_manifest_sides(
 
 def collect_manifest_actuals(
     run_out_dir: Path, report_path: Path, side_idx: dict[tuple[str, str], dict[str, Any]],
+    base_doc_keys: set[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Channel-complete actual collection for manifest-selected pairs.
 
@@ -2491,7 +2492,7 @@ def collect_manifest_actuals(
             raise ParityError(f"duplicate results in report.json: {k}")
         res_map[k] = r
     missing = sorted(set(side_idx) - set(res_map))
-    extra = sorted(set(res_map) - set(side_idx))
+    extra = sorted(set(res_map) - set(side_idx) - set(base_doc_keys or set()))
     if missing or extra:
         raise ParityError(f"report set mismatch: missing={missing[:5]} extra={extra[:5]}")
 
@@ -2745,7 +2746,13 @@ def cmd_pair_manifest(args: argparse.Namespace) -> int:
         proc = run_cli(cmd, cwd=repo_root, env=env)
         (out_dir / f"{side}.stdout").write_bytes(proc.stdout)
         (out_dir / f"{side}.stderr").write_bytes(proc.stderr)
-        rep_meta, actuals = collect_manifest_actuals(run_out, report_path, idx)
+        base_keys = {
+            (((r.get("semantic") or {}).get("case") or {}).get("id", ""),
+             ((r.get("semantic") or {}).get("check") or {}).get("id", ""))
+            for r in proj.get("checks", [])
+            if (r.get("origin") or {}).get("format") == "document"
+        }
+        rep_meta, actuals = collect_manifest_actuals(run_out, report_path, idx, base_keys)
         timings[f"{side}_run_s"] = round(time.monotonic() - t1, 3)
         rec = {
             "schema": RECORD_SCHEMA, "mode": "manifest",
