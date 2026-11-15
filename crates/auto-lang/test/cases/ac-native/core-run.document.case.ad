@@ -1,0 +1,195 @@
+## Case: ac-core-precedence
+id: "ac.core.precedence"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 14
+
+## Case: ac-core-loop-retest
+id: "ac.core.loop-retest"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 3
+
+## Case: ac-core-while-zero
+id: "ac.core.while-zero"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { var i = 1; while false { i = i + 1 }; return i }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 1
+
+## Case: ac-core-unexecuted-trap
+id: "ac.core.unexecuted-trap"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { if false { return 2147483647 + 1 } else { return 0 } }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 0
+
+## Case: ac-core-add-overflow
+id: "ac.core.add-overflow"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 2147483647 + 1 }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 70
+
+## Case: ac-core-mul-overflow
+id: "ac.core.mul-overflow"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 2147483647 * 2 }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 70
+
+## Case: ac-core-bool-branch
+id: "ac.core.bool-branch"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn below(x int) bool { return x < 3 }
+fn main() int { let b bool = below(2); if b { return 4 } else { return 0 } }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 4
+
+## Case: ac-core-named-arg-binding
+id: "ac.core.named-arg-binding"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn pair(a int, b int) int { return a * 10 + b } fn main() int { return pair(b: 3, a: 7) }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+exit: 73
+
+## Case: ac-core-named-eval-order-marks
+id: "ac.core.named-eval-order-marks"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn pair(a int, b int) int { return a * 10 + b } fn main() int { return pair(b: mark_b(), a: mark_a()) }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+caps: ["hir.test.trace.v1"]
+support-lib: "trace-marks"
+exit: 12
+
+#### stderr
+final-newline: false
+
+~~~~text
+ba
+~~~~
+
+## Case: ac-core-observable-before-trap
+id: "ac.core.observable-before-trap"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { let observed = mark_a(); return 2147483647 + 1 }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+caps: ["hir.test.trace.v1"]
+support-lib: "trace-marks"
+exit: 70
+
+#### stderr
+final-newline: false
+
+~~~~text
+a
+~~~~
+
+## Case: ac-core-trace-without-capability
+id: "ac.core.trace-without-capability"
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { let observed = mark_a(); return 2147483647 + 1 }
+~~~~
+
+### AC run
+action: "run"
+tier: "ac-native"
+stage: "resolve"
+code: "source.undefined"

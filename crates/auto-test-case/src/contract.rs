@@ -728,6 +728,42 @@ pub fn valid_check_id(id: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
 }
 
+/// Cross-check admission shared by the contract decoder and the document
+/// author path (PLAN-1062: author-decoded specs pass the same graph rules).
+pub fn validate_check_graph(checks: &[CheckSpec]) -> Result<(), ContractError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for c in checks {
+        if !seen.insert(c.id.clone()) {
+            return Err(err(
+                "case.checks",
+                format!("duplicate check id {:?} (unique within the case)", c.id),
+            ));
+        }
+    }
+    // product_from must reference an existing check and stay acyclic
+    // (edges may only point to EARLIER checks by declaration order).
+    for (i, c) in checks.iter().enumerate() {
+        if let Some(up) = &c.product_from {
+            match checks.iter().position(|x| &x.id == up) {
+                Some(pos) if pos < i => {}
+                Some(_) => {
+                    return Err(err(
+                        &format!("case.checks[{}].product_from", i),
+                        format!("must reference an earlier check (cycle), got {:?}", up),
+                    ));
+                }
+                None => {
+                    return Err(err(
+                        &format!("case.checks[{}].product_from", i),
+                        format!("references unknown check {:?}", up),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Decode one `case { … }` node into a [`CaseSpec`] under admission limits.
 pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError> {
     let (name, props) = v.as_node().ok_or_else(|| {
@@ -859,36 +895,7 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
         }
     }
 
-    let mut seen = std::collections::BTreeSet::new();
-    for c in &checks {
-        if !seen.insert(c.id.clone()) {
-            return Err(err(
-                "case.checks",
-                format!("duplicate check id {:?} (unique within the case)", c.id),
-            ));
-        }
-    }
-    // product_from must reference an existing check and stay acyclic
-    // (edges may only point to EARLIER checks by declaration order).
-    for (i, c) in checks.iter().enumerate() {
-        if let Some(up) = &c.product_from {
-            match checks.iter().position(|x| &x.id == up) {
-                Some(pos) if pos < i => {}
-                Some(_) => {
-                    return Err(err(
-                        &format!("case.checks[{}].product_from", i),
-                        format!("must reference an earlier check (cycle), got {:?}", up),
-                    ));
-                }
-                None => {
-                    return Err(err(
-                        &format!("case.checks[{}].product_from", i),
-                        format!("references unknown check {:?}", up),
-                    ));
-                }
-            }
-        }
-    }
+    validate_check_graph(&checks)?;
 
     Ok(CaseSpec {
         schema,

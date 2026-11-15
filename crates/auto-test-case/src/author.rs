@@ -20,7 +20,8 @@ use crate::admission::Limits;
 use crate::atom::{self, CVal};
 use crate::contract::{
     valid_case_id, valid_check_id, Action, Adapter, ArtifactExpect, ArtifactPayload, CaseSpec,
-    CheckSpec, Compare, Completion, EntryMode, ExpectSpec, Options, PayloadSpec, ProbeAbiSpec,
+    BudgetSpec, CheckSpec, Compare, Completion, EntryMode, ExpectSpec, Options, PayloadSpec,
+    ProbeAbiSpec, SyntaxEdit,
     ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
     ResultExpect, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
@@ -204,8 +205,6 @@ struct ProbeSection {
     recipe: String,
     entry: String,
     caps: Vec<String>,
-    /// `caps:` declared (even empty) vs absent — preserved for CF-03.
-    caps_declared: bool,
     exit: Option<i32>,
     channel: Option<(String, usize)>,
     stage: Option<(String, usize)>,
@@ -681,6 +680,8 @@ fn decode_one_case(
     let mut vm_diag: Option<(Stage, Option<String>, usize, Option<String>, Option<String>)> = None;
     let mut rust_section: Option<RustSection> = None;
     let mut probes: Vec<ProbeSection> = Vec::new();
+    let mut acs: Vec<AcSection> = Vec::new();
+    let mut syntaxes: Vec<SyntaxSection> = Vec::new();
     let mut vm_streams: Vec<(usize, StreamBlock)> = Vec::new();
     let mut vm_diag_message: Option<(
         Stage,
@@ -722,6 +723,8 @@ fn decode_one_case(
                     &mut rust_section,
                     &mut rust_diag,
                     &mut probes,
+                    &mut acs,
+                    &mut syntaxes,
                 )?;
             }
             4 => {
@@ -740,6 +743,8 @@ fn decode_one_case(
                     next_head_line,
                     &mut rust_section,
                     &mut probes,
+                    &mut acs,
+                    &mut syntaxes,
                     &mut vm_streams,
                 )?;
             }
@@ -1001,6 +1006,114 @@ fn decode_one_case(
                         },
                     )?;
                 }
+            }
+            t if t.starts_with("AC ") => {
+                let pos = acs.iter().position(|a| a.section_line == sh.line).expect("ac parsed");
+                let a = acs.remove(pos);
+                let mut options = Options::default();
+                if let Some((v, _)) = &a.profile {
+                    options.ac_profile = Some(if v == "core" {
+                        crate::contract::AcProfile::Core
+                    } else {
+                        crate::contract::AcProfile::Scalar
+                    });
+                }
+                if let Some((v, _)) = &a.target {
+                    options.ac_target = Some(v.clone());
+                }
+                if let Some((v, _)) = &a.entry {
+                    options.ac_entry = Some(v.clone());
+                }
+                if let Some((v, _)) = &a.cache {
+                    options.ac_cache = Some(match v.as_str() {
+                        "fresh" => crate::contract::CacheMode::Fresh,
+                        "read-only" => crate::contract::CacheMode::ReadOnly,
+                        _ => crate::contract::CacheMode::Reuse,
+                    });
+                }
+                options.ac_budget = a.budget.clone();
+                if !a.caps.is_empty() {
+                    options.ac_capabilities = Some(a.caps.clone());
+                }
+                if let Some((v, _)) = &a.support_lib {
+                    options.ac_support_lib = Some(v.clone());
+                }
+                let mut expect = error_expectation_from(
+                    a.section_line, &a.stage, &a.code, &a.message, &a.message_contains,
+                    decode_ac_stage, " AC", a.exit,
+                )?;
+                for st in &a.streams {
+                    match st.kind {
+                        StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
+                        StreamKind::Stderr => expect.stderr = Some(st.expect.clone()),
+                        StreamKind::Trace => return err(a.section_line, "AC 不接受 trace 流"),
+                    }
+                }
+                let action = match a.action.as_str() {
+                    "check" => Action::Check,
+                    "build" => Action::Build,
+                    _ => Action::Run,
+                };
+                push_check(
+                    &mut checks,
+                    &mut check_spans,
+                    DocCheckSpan {
+                        id: a.check_id.clone(),
+                        section_line: a.section_line,
+                        section: format!("AC {}", a.check_id),
+                    },
+                    CheckSpec {
+                        id: a.check_id.clone(),
+                        adapter: Adapter::Ac,
+                        action,
+                        tier: a.tier.clone(),
+                        options,
+                        expect,
+                        product_from: a.product_from.as_ref().map(|(v, _)| v.clone()),
+                        skip: None,
+                    },
+                )?;
+            }
+            t if t.starts_with("Syntax ") => {
+                let pos = syntaxes.iter().position(|x| x.section_line == sh.line).expect("syntax parsed");
+                let x = syntaxes.remove(pos);
+                let mut options = Options::default();
+                if let Some((g, _)) = &x.grammar {
+                    options.syntax_grammar = Some(g.clone());
+                }
+                options.syntax_edits = x.edits.clone();
+                let mut expect = error_expectation_from(
+                    x.section_line, &x.stage, &x.code, &x.message, &x.message_contains,
+                    |s| if s == "parse" { Some(Stage::Parse) } else { None },
+                    " Syntax（parse）", None,
+                )?;
+                for st in &x.streams {
+                    match st.kind {
+                        StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
+                        StreamKind::Stderr => expect.stderr = Some(st.expect.clone()),
+                        StreamKind::Trace => return err(x.section_line, "Syntax 不接受 trace 流"),
+                    }
+                }
+                let action = if x.action == "parse" { Action::Parse } else { Action::Edit };
+                push_check(
+                    &mut checks,
+                    &mut check_spans,
+                    DocCheckSpan {
+                        id: x.check_id.clone(),
+                        section_line: x.section_line,
+                        section: format!("Syntax {}", x.check_id),
+                    },
+                    CheckSpec {
+                        id: x.check_id.clone(),
+                        adapter: Adapter::Syntax,
+                        action,
+                        tier: x.tier.clone(),
+                        options,
+                        expect,
+                        product_from: None,
+                        skip: None,
+                    },
+                )?;
             }
             t if t.starts_with("Probe ") => {
                 let pos = probes
@@ -1336,6 +1449,181 @@ fn push_check(
 }
 
 #[allow(clippy::too_many_arguments)]
+// ---- PLAN-1062 T-06 (CF-01/CF-04): AC and Syntax author sections ----
+
+/// AC failure stages (contract::Stage::supported_for(Adapter::Ac)).
+fn decode_ac_stage(s: &str) -> Option<Stage> {
+    match s {
+        "parse" => Some(Stage::Parse),
+        "resolve" => Some(Stage::Resolve),
+        "typecheck" => Some(Stage::Typecheck),
+        "bind" => Some(Stage::Bind),
+        "verify" => Some(Stage::Verify),
+        "capability" => Some(Stage::Capability),
+        "backend" => Some(Stage::Backend),
+        "link" => Some(Stage::Link),
+        "run" => Some(Stage::Run),
+        _ => None,
+    }
+}
+
+struct AcSection {
+    check_id: String,
+    section_line: usize,
+    action: String,
+    profile: Option<(String, usize)>,
+    target: Option<(String, usize)>,
+    entry: Option<(String, usize)>,
+    cache: Option<(String, usize)>,
+    budget: Option<BudgetSpec>,
+    caps: Vec<String>,
+    support_lib: Option<(String, usize)>,
+    product_from: Option<(String, usize)>,
+    tier: Option<String>,
+    exit: Option<i32>,
+    stage: Option<(String, usize)>,
+    code: Option<(String, usize)>,
+    message: Option<(String, usize)>,
+    message_contains: Option<(String, usize)>,
+    streams: Vec<StreamBlock>,
+}
+
+struct SyntaxSection {
+    check_id: String,
+    section_line: usize,
+    action: String,
+    grammar: Option<(String, usize)>,
+    edits: Option<Vec<SyntaxEdit>>,
+    tier: Option<String>,
+    stage: Option<(String, usize)>,
+    code: Option<(String, usize)>,
+    message: Option<(String, usize)>,
+    message_contains: Option<(String, usize)>,
+    streams: Vec<StreamBlock>,
+}
+
+fn want_budget(a: &Attr) -> Result<BudgetSpec, AuthorError> {
+    let v = a.value.as_obj().ok_or_else(|| AuthorError {
+        line: a.line,
+        message: "budget 需要对象值 {build_ms: N, run_ms: N, total_ms: N}".into(),
+    })?;
+    let mut spec = BudgetSpec::default();
+    for (k, val) in v {
+        let CVal::Int(n) = val else {
+            return err(a.line, format!("budget.{} 需要整数", k));
+        };
+        let n = *n as u64;
+        match k.as_str() {
+            "build_ms" => spec.build_ms = Some(n),
+            "run_ms" => spec.run_ms = Some(n),
+            "total_ms" => spec.total_ms = Some(n),
+            other => {
+                return err(a.line, format!("budget.{} 未知（build_ms/run_ms/total_ms）", other))
+            }
+        }
+    }
+    Ok(spec)
+}
+
+fn want_edits(a: &Attr) -> Result<Vec<SyntaxEdit>, AuthorError> {
+    let CVal::List(list) = &a.value else {
+        return err(a.line, "edits 需要 [{start: N, end: N, insert: \"…\"}] 列表值");
+    };
+    let mut out = Vec::new();
+    for item in list {
+        let Some(obj) = item.as_obj() else {
+            return err(a.line, "edits 每项需要 {start: N, end: N, insert: \"…\"}");
+        };
+        let mut start = None;
+        let mut end = None;
+        let mut insert = None;
+        for (k, v) in obj {
+            match k.as_str() {
+                "start" => {
+                    let CVal::Int(n) = v else {
+                        return err(a.line, "edits.start 需要整数");
+                    };
+                    start = Some(*n)
+                }
+                "end" => {
+                    let CVal::Int(n) = v else {
+                        return err(a.line, "edits.end 需要整数");
+                    };
+                    end = Some(*n)
+                }
+                "insert" => {
+                    let CVal::Str(t) = v else {
+                        return err(a.line, "edits.insert 需要字符串");
+                    };
+                    insert = Some(t.clone())
+                }
+                other => return err(a.line, format!("edits.{} 未知（start/end/insert）", other)),
+            }
+        }
+        let (Some(start), Some(end), Some(insert)) = (start, end, insert) else {
+            return err(a.line, "edits 每项需要 start/end/insert 三键齐全");
+        };
+        if end < start {
+            return err(a.line, format!("edits 区间非法：end {} < start {}", end, start));
+        }
+        out.push(SyntaxEdit { start: start as u64, end: end as u64, insert });
+    }
+    if out.is_empty() {
+        return err(a.line, "edits 需要至少一项（空编辑序列无意义）");
+    }
+    Ok(out)
+}
+
+fn error_expectation_from(
+    section_line: usize,
+    stage: &Option<(String, usize)>,
+    code: &Option<(String, usize)>,
+    message: &Option<(String, usize)>,
+    message_contains: &Option<(String, usize)>,
+    decode_stage: fn(&str) -> Option<Stage>,
+    stage_label: &str,
+    exit: Option<i32>,
+) -> Result<ExpectSpec, AuthorError> {
+    let mut expect = expect_success();
+    expect.exit = exit;
+    if message.is_some() && message_contains.is_some() {
+        return err(section_line, "message 与 message-contains 互斥（同一检查只声明一种匹配）");
+    }
+    if (message.is_some() || message_contains.is_some()) && stage.is_none() {
+        return err(section_line, "message / message-contains 需要与 stage 成对（诊断错误预期）");
+    }
+    match (stage, code) {
+        (None, None) => {
+            if message.is_some() || message_contains.is_some() {
+                unreachable!("guarded above")
+            }
+        }
+        (None, Some((_, cl))) => {
+            return err(*cl, "code 需要与 stage 成对出现（缺少 stage）");
+        }
+        (Some((st, sl)), code_opt) => {
+            let stage = decode_stage(st).ok_or_else(|| AuthorError {
+                line: *sl,
+                message: format!("stage {:?} 不是{}支持的阶段", st, stage_label),
+            })?;
+            if expect.exit.is_some() {
+                return err(section_line, "错误预期不能同时声明 exit");
+            }
+            let message = message
+                .as_ref()
+                .map(|(t, _)| MessageMatcher::Exact(t.clone()))
+                .or_else(|| {
+                    message_contains
+                        .as_ref()
+                        .map(|(t, _)| MessageMatcher::Contains(t.clone()))
+                });
+            let code = code_opt.as_ref().map(|(c, _)| c.clone());
+            expect.completion = Completion::Error { stage, code, message };
+        }
+    }
+    Ok(expect)
+}
+
 fn decode_h3_section(
     doc: &CaseDocument,
     lines: &[(usize, usize)],
@@ -1364,6 +1652,8 @@ fn decode_h3_section(
         Option<String>,
     )>,
     probes: &mut Vec<ProbeSection>,
+    acs: &mut Vec<AcSection>,
+    syntaxes: &mut Vec<SyntaxSection>,
 ) -> Result<(), AuthorError> {
     let title = sh.text.trim();
     let known: &[&str] = match title {
@@ -1378,6 +1668,13 @@ fn decode_h3_section(
             "recipe", "entry", "caps", "exit", "channel", "stage", "code",
             "message", "message-contains", "session", "profile", "diagnostics",
             "package", "module", "kind", "fn", "leg", "tier", "steps",
+        ],
+        t if t.starts_with("AC ") => &[
+            "action", "profile", "target", "entry", "cache", "budget", "caps", "support-lib",
+            "product-from", "tier", "exit", "stage", "code", "message", "message-contains",
+        ],
+        t if t.starts_with("Syntax ") => &[
+            "action", "grammar", "edits", "tier", "stage", "code", "message", "message-contains",
         ],
         t if UNWIRED_SECTIONS.contains(&t) => {
             return err(
@@ -1626,6 +1923,151 @@ fn decode_h3_section(
             *rust = Some(section);
             Ok(())
         }
+        t if t.starts_with("AC ") => {
+            let check_id = t.strip_prefix("AC ").unwrap_or("").trim();
+            if check_id.is_empty() {
+                return err(sh.line, "AC 节需要一个 check id（### AC <check-id>）");
+            }
+            if acs.iter().any(|a| a.check_id == check_id) {
+                return err(sh.line, format!("重复的 AC 节 {:?}", check_id));
+            }
+            let mut action = None;
+            let mut profile = None;
+            let mut target = None;
+            let mut entry = None;
+            let mut cache = None;
+            let mut budget = None;
+            let mut caps = Vec::new();
+            let mut support_lib = None;
+            let mut product_from = None;
+            let mut tier = None;
+            let mut exit = None;
+            let mut stage = None;
+            let mut code = None;
+            let mut message = None;
+            let mut message_contains = None;
+            for a in &attrs {
+                match a.key.as_str() {
+                    "action" => action = Some(want_str(a)?.to_string()),
+                    "profile" => profile = Some((want_str(a)?.to_string(), a.line)),
+                    "target" => target = Some((want_str(a)?.to_string(), a.line)),
+                    "entry" => entry = Some((want_str(a)?.to_string(), a.line)),
+                    "cache" => cache = Some((want_str(a)?.to_string(), a.line)),
+                    "budget" => budget = Some(want_budget(a)?),
+                    "caps" => caps = want_list(a)?,
+                    "support-lib" => support_lib = Some((want_str(a)?.to_string(), a.line)),
+                    "product-from" => product_from = Some((want_str(a)?.to_string(), a.line)),
+                    "tier" => tier = Some(want_tier(a)?),
+                    "exit" => exit = Some(want_int(a)?),
+                    "stage" => stage = Some((want_str(a)?.to_string(), a.line)),
+                    "code" => code = Some((want_str(a)?.to_string(), a.line)),
+                    "message" => message = Some((want_str(a)?.to_string(), a.line)),
+                    "message-contains" => message_contains = Some((want_str(a)?.to_string(), a.line)),
+                    _ => unreachable!(),
+                }
+            }
+            let action = action.ok_or_else(|| AuthorError {
+                line: sh.line,
+                message: "AC 节需要 action（check / build / run）".into(),
+            })?;
+            if !matches!(action.as_str(), "check" | "build" | "run") {
+                return err(sh.line, format!("AC action 仅支持 check/build/run，收到 {:?}", action));
+            }
+            if let Some((v, l)) = &profile {
+                if v != "core" && v != "scalar" {
+                    return err(*l, format!("AC profile 仅支持 core/scalar，收到 {:?}", v));
+                }
+            }
+            if let Some((v, l)) = &cache {
+                if !matches!(v.as_str(), "fresh" | "reuse" | "read-only") {
+                    return err(*l, format!("AC cache 仅支持 fresh/reuse/read-only，收到 {:?}", v));
+                }
+            }
+            if !fences.is_empty() {
+                return err(sh.line, "AC 节不接受直接围栏（输出流用 #### stdout / #### stderr 小节）");
+            }
+            acs.push(AcSection {
+                check_id: check_id.to_string(),
+                section_line: sh.line,
+                action,
+                profile,
+                target,
+                entry,
+                cache,
+                budget,
+                caps,
+                support_lib,
+                product_from,
+                tier,
+                exit,
+                stage,
+                code,
+                message,
+                message_contains,
+                streams: Vec::new(),
+            });
+            Ok(())
+        }
+        t if t.starts_with("Syntax ") => {
+            let check_id = t.strip_prefix("Syntax ").unwrap_or("").trim();
+            if check_id.is_empty() {
+                return err(sh.line, "Syntax 节需要一个 check id（### Syntax <check-id>）");
+            }
+            if syntaxes.iter().any(|x| x.check_id == check_id) {
+                return err(sh.line, format!("重复的 Syntax 节 {:?}", check_id));
+            }
+            let mut action = None;
+            let mut grammar = None;
+            let mut edits = None;
+            let mut tier = None;
+            let mut stage = None;
+            let mut code = None;
+            let mut message = None;
+            let mut message_contains = None;
+            for a in &attrs {
+                match a.key.as_str() {
+                    "action" => action = Some(want_str(a)?.to_string()),
+                    "grammar" => grammar = Some((want_str(a)?.to_string(), a.line)),
+                    "edits" => edits = Some(want_edits(a)?),
+                    "tier" => tier = Some(want_tier(a)?),
+                    "stage" => stage = Some((want_str(a)?.to_string(), a.line)),
+                    "code" => code = Some((want_str(a)?.to_string(), a.line)),
+                    "message" => message = Some((want_str(a)?.to_string(), a.line)),
+                    "message-contains" => message_contains = Some((want_str(a)?.to_string(), a.line)),
+                    _ => unreachable!(),
+                }
+            }
+            let action = action.ok_or_else(|| AuthorError {
+                line: sh.line,
+                message: "Syntax 节需要 action（parse / edit）".into(),
+            })?;
+            if !matches!(action.as_str(), "parse" | "edit") {
+                return err(sh.line, format!("Syntax action 仅支持 parse/edit，收到 {:?}", action));
+            }
+            if action == "edit" && edits.is_none() {
+                return err(sh.line, "Syntax edit 需要 edits（有序编辑序列）");
+            }
+            if action == "parse" && edits.is_some() {
+                return err(sh.line, "Syntax parse 不接受 edits");
+            }
+            if !fences.is_empty() {
+                return err(sh.line, "Syntax 节不接受直接围栏");
+            }
+            syntaxes.push(SyntaxSection {
+                check_id: check_id.to_string(),
+                section_line: sh.line,
+                action,
+                grammar,
+                edits,
+                tier,
+                stage,
+                code,
+                message,
+                message_contains,
+                streams: Vec::new(),
+            });
+            Ok(())
+        }
         t => {
             // Probe <check-id>
             let check_id = t.strip_prefix("Probe ").unwrap_or("").trim();
@@ -1638,7 +2080,6 @@ fn decode_h3_section(
             let mut recipe: Option<String> = None;
             let mut entry = String::new();
             let mut caps = Vec::new();
-            let mut caps_declared = false;
             let mut exit = None;
             let mut channel = None;
             let mut stage = None;
@@ -1659,10 +2100,7 @@ fn decode_h3_section(
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
                     "entry" => entry = want_str(a)?,
-                    "caps" => {
-                        caps = want_list(a)?;
-                        caps_declared = true;
-                    }
+                    "caps" => caps = want_list(a)?,
                     "exit" => exit = Some(want_int(a)?),
                     "channel" => channel = Some((want_str(a)?, a.line)),
                     "stage" => stage = Some((want_str(a)?, a.line)),
@@ -1710,7 +2148,6 @@ fn decode_h3_section(
                 recipe,
                 entry,
                 caps,
-                caps_declared,
                 exit,
                 channel,
                 stage,
@@ -1773,6 +2210,8 @@ fn decode_h4_subsection(
     next_head_line: usize,
     rust: &mut Option<RustSection>,
     probes: &mut [ProbeSection],
+    acs: &mut [AcSection],
+    syntaxes: &mut [SyntaxSection],
     vm_streams: &mut Vec<(usize, StreamBlock)>,
 ) -> Result<(), AuthorError> {
     let parent_title = parent.text.trim();
@@ -1864,6 +2303,59 @@ fn decode_h4_subsection(
             }
             let text = fence_text(doc, fences[0], final_newline)?;
             probe.streams.push(StreamBlock {
+                kind,
+                expect: StreamExpect { text, compare },
+            });
+            Ok(())
+        }
+        t if parent_title.starts_with("AC ") || parent_title.starts_with("Syntax ") => {
+            let kind = match sh.text.trim() {
+                "stdout" => StreamKind::Stdout,
+                "stderr" => StreamKind::Stderr,
+                other => {
+                    return err(
+                        sh.line,
+                        format!("AC/Syntax 下的四级标题只接受 stdout / stderr（得到 {:?}）", other),
+                    );
+                }
+            };
+            let target_streams: &mut Vec<StreamBlock> = if parent_title.starts_with("AC ") {
+                let check_id = parent_title.strip_prefix("AC ").unwrap_or("").trim();
+                &mut acs.iter_mut()
+                    .find(|a| a.check_id == check_id)
+                    .ok_or_else(|| AuthorError {
+                        line: sh.line,
+                        message: format!("四级流小节找不到所属 AC 节 {:?}", check_id),
+                    })?
+                    .streams
+            } else {
+                let check_id = parent_title.strip_prefix("Syntax ").unwrap_or("").trim();
+                &mut syntaxes.iter_mut()
+                    .find(|x| x.check_id == check_id)
+                    .ok_or_else(|| AuthorError {
+                        line: sh.line,
+                        message: format!("四级流小节找不到所属 Syntax 节 {:?}", check_id),
+                    })?
+                    .streams
+            };
+            if target_streams.iter().any(|s| s.kind == kind) {
+                return err(sh.line, format!("重复的 {:?} 流小节", sh.text));
+            }
+            if fences.len() != 1 || fences[0].language != "text" {
+                return err(sh.line, "流小节需要恰好一个 text 围栏（空围栏表示零字节）");
+            }
+            let attrs = collect_leading_attrs(doc, lines, sh.line, &["final-newline", "compare"])?;
+            let mut final_newline = true;
+            let mut compare = Compare::Bytes;
+            for a in &attrs {
+                match a.key.as_str() {
+                    "final-newline" => final_newline = want_bool(a)?,
+                    "compare" => compare = want_compare(a)?,
+                    _ => unreachable!(),
+                }
+            }
+            let text = fence_text(doc, fences[0], final_newline)?;
+            target_streams.push(StreamBlock {
                 kind,
                 expect: StreamExpect { text, compare },
             });

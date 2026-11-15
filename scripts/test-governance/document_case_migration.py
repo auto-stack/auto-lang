@@ -607,7 +607,9 @@ def collect_actuals(
     return report_meta, actuals
 
 
-def verify_actual_file_integrity(record: dict[str, Any], side_label: str) -> None:
+def verify_actual_file_integrity(
+    record: dict[str, Any], side_label: str, require_files: bool = True
+) -> None:
     rep_path = Path(record.get("report_path", ""))
     run_dir = Path(record.get("run_dir", ""))
     if not rep_path.is_file():
@@ -622,7 +624,7 @@ def verify_actual_file_integrity(record: dict[str, Any], side_label: str) -> Non
 
     for key_str, obs in (record.get("actuals") or {}).items():
         files_meta = obs.get("files") or {}
-        if not isinstance(files_meta, dict) or not files_meta:
+        if require_files and (not isinstance(files_meta, dict) or not files_meta):
             raise EvidenceError(f"[{side_label}] {key_str} has no actual files recorded")
         for tag, fmeta in files_meta.items():
             fpath = _ensure_under(run_dir, Path(fmeta["path"]), f"[{side_label}] {key_str}:{tag}")
@@ -2501,9 +2503,26 @@ def collect_manifest_actuals(
         origin = row_proj["origin"]
         sem = row_proj["semantic"]
         rep_row = res_map[key]
+        product_from = sem["check"].get("product_from")
         check_out_dir = _ensure_under(
             run_dir, run_dir / origin["case_dir"] / origin["check_dir"], f"check dir {key}")
-        if not check_out_dir.is_dir():
+        if product_from:
+            # A product-from consumer rides the producer's outputs: no own
+            # check dir is required; the consumed artifact digests from the
+            # report are the actual (hash-bound below via artifacts arm).
+            if not check_out_dir.is_dir():
+                observed["consumes_product_of"] = product_from
+                if not (rep_row.get("artifacts") or []):
+                    raise EvidenceError(
+                        f"product-from consumer {key} recorded no consumed artifacts")
+                observed["consumed_products"] = {
+                    "from": product_from,
+                    "count": len(rep_row["artifacts"]),
+                    "sha256": [a["sha256"] for a in rep_row["artifacts"]],
+                }
+                actuals[f"{key[0]}::{key[1]}"] = observed
+                continue
+        elif not check_out_dir.is_dir():
             raise EvidenceError(f"missing check directory {check_out_dir} for {key}")
         files_meta: dict[str, Any] = {}
         observed: dict[str, Any] = {
@@ -2609,6 +2628,19 @@ def collect_manifest_actuals(
                 if emit_err.is_file():
                     _record_file("emit-error", emit_err)
             observed["a2r"] = {"artifacts": arts}
+        elif adapter == "ac":
+            # AC checks persist their real products in the check dir; the
+            # report carries the digests — verify and hash-bind each.
+            arts = []
+            for a in rep_row.get("artifacts") or []:
+                stored = Path(a["stored"])
+                _record_file(f"artifact:{a['path']}", stored)
+                sz, dig = sha256_file(stored)
+                if sz != a.get("bytes") or dig != a.get("sha256"):
+                    raise EvidenceError(f"report artifact digest mismatch for {key} {a['path']}")
+                arts.append({"path": a["path"], "bytes": sz, "sha256": dig})
+            observed["ac"] = {"artifacts": arts,
+                              "detail": rep_row.get("detail")}
         elif adapter == "syntax":
             for name in ("parse.json", "edit.json"):
                 candidate = check_out_dir / name
@@ -2652,7 +2684,9 @@ def verify_manifest_records(
     (NC-19), and a missing/different axis is a mismatch (NC-18).
     """
     for record, label in ((old_record, "old"), (new_record, "new")):
-        verify_actual_file_integrity(record, label)
+        # Manifest mode: rejection-face checks (e.g. no-capability) legitimately
+        # record no files; the report hash + status remain the observable.
+        verify_actual_file_integrity(record, label, require_files=False)
         rebind_actuals_from_files(record, label)
     old_actuals = old_record["actuals"]
     new_actuals = new_record["actuals"]
