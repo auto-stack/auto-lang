@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 9
-current_step: 1
+current_step: 2
 total_steps: 16
 depends_on: [PLAN-959, PLAN-960, PLAN-962, PLAN-964, PLAN-965, PLAN-968, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -325,7 +325,8 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 - [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
   [✅ 2026-11-16] 冻结记录见§5"T-01 A期冻结记录"：前置全归档核实；来源重核（python.rs漂移重锚定 b6fff84a26408a59）；1042消费面登记；环境冻结（Python 3.14.2在机/Godot缺席→PY先行、GD/SCENE不半途开工）；命令与平台冻结；worktree .wt/lang-977/auto-lang 已建。B批（REVERSE+收口）只登记：前置M2A-08未闭。
 
-- [ ] **B-PY-I｜M2-A｜owner_stage: work｜AC-B-PY/AC-02/03/06**：消费1042正式producer/helper后扩Checked HIR→Python完整目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。 在§5改面接永久fixture，先冻结前置接口/命令。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+- [x] **B-PY-I｜M2-A｜owner_stage: work｜AC-B-PY/AC-02/03/06**：消费1042正式producer/helper后扩Checked HIR→Python完整目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。 在§5改面接永久fixture，先冻结前置接口/命令。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16, worktree commit 727f45616] **9/9 旧公开面家族在真实 Python 车道全绿**（永久探针套件 `a2x-worker/tests/cases/p977_py_public_surface.rs`，1.56s≤10s门）：if/for(条件for=Scalar)、func(Scalar)、**generics**(`fn id<T>`=Scalar+`ac.source.instances.scalar/v1` 935脱糖——caps-blind trim与packages binder拒`<`为具名路由事实非语言缺口)、methods(`static fn`/隐式self `.field`=TextRecord)、enum(变体模式=Aggregates)、str/struct(TextRecord)、**List/array**(PLAN-946 aggregates packages线 `PackageA2xTarget::cold_aggregates`+`use std.list.sum`)、option/result/is表达式+`??`(Aggregates)。oracle=真实 OS Python 3.14.2 执行的 `value:<n>` 独立手算值；旧print逐行形态→新观察面映射如实记录。**零车道缺口**：每构造皆有已准入路由。1042消费确认（provider全家族AXPY1/2/3+lower三层+ports）；实际目标adapter=1042既有 `ac_a2py_hir`（4 recipes），全语料case文档扫描归B-PY-V。
 
 - [ ] **B-PY-V｜M2-A｜owner_stage: work｜AC-B-PY**：运行V-B-PY及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
 
@@ -373,6 +374,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-PY-I/B-PY-V/B-GD-I/B-GD-V/B-SCENE-I/B-SCENE-V/B-REVERSE-I/B-REVERSE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-977 | r9 | 2026-11-16 | outcome: pass (B-PY-I) | worktree: D:/autostack/.wt/lang-977/auto-lang @ plan-977-dev | code_commit: 727f45616 | task_ids: B-PY-I | evidence: §8 B-PY-I[✅]行；新用例 p977_legacy_public_surface_runs_green_on_python 1.56s ≤10s门（10轮探针迭代，含3个具名路由事实发现：instances-cap脱糖/cold_aggregates线/is-表达式形态） | next_responsible_role: work（B-PY-V：经 ac_a2py_hir case线全语料扫描+返回/输出/短路/异常/资源独立oracle+坏输入负控）
 
 stage: work | PLAN-977 | r9 | 2026-11-16 | outcome: pass (T-01) | worktree: D:/autostack/.wt/lang-977/auto-lang @ plan-977-dev（基面 master@b66405d6d，纯冻结核验无代码提交） | task_ids: T-01 | evidence: §5"T-01 A期冻结记录" | authorization: 用户裁定选项A（goal续行2026-11-16） | blockers: GD/SCENE批V腿缺Godot（缺证不NA）；B-REVERSE+T-05/06/07前置M2A-08 | next_responsible_role: work（B-PY-I：消费1042扩Python provider，有界决定门冻结接口，建永久fixture——PY批I/V/R为A批下一单元）
 
