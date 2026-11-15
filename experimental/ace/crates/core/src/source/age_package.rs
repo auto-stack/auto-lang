@@ -86,6 +86,22 @@ pub struct AgePackageComponent {
     pub texts: Vec<AgePackageText>,
     /// 声明所在模块键。
     pub module: String,
+    /// PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口里的组件实例行，**按声明序**
+    /// （即 2D 绘制序）。属性值保留作者表达式与其 span，领域语义由消费端解释。
+    pub scene: Vec<AgeSceneRow>,
+}
+
+/// 一条场景行（组件实例）。
+#[derive(Clone, Debug)]
+pub struct AgeSceneRow {
+    /// 组件种类拼写（`shape2d` / `Disc`）。
+    pub kind: String,
+    /// 实例名（`red_disc`）。
+    pub name: String,
+    /// 属性名 → 属性值（作者表达式；按书写序）。
+    pub attrs: Vec<(String, Expr)>,
+    /// 该行在原模块源里的跨度。
+    pub span: Span,
 }
 
 /// 包面版本化描述（AV/A2R 共同消费面）。
@@ -404,6 +420,22 @@ fn read_back_components(
                 .params
                 .iter()
                 .map(|q| (q.name.clone(), q.ty.clone()))
+                .collect(),
+            scene: p
+                .node
+                .view
+                .scene_components
+                .iter()
+                .map(|row| AgeSceneRow {
+                    kind: row.kind.clone(),
+                    name: row.name.clone(),
+                    attrs: row
+                        .attrs
+                        .iter()
+                        .map(|a| (a.key.clone(), a.value.clone()))
+                        .collect(),
+                    span: row.span,
+                })
                 .collect(),
             refs: refs.get(&p.module).cloned().unwrap_or_default(),
             texts,

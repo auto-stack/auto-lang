@@ -3386,7 +3386,22 @@ impl PlanCtx<'_> {
                 plan.exprs.len() - 1
             }
             RExprKind::CallGlobalSet { global, value } => {
-                let v = self.plan_expr(plan, f, value);
+                let mut v = self.plan_expr(plan, f, value);
+                // PLAN-981：模块常量写回的合成 setter 把一个 **record** 值当参数
+                // 传递，而 verify 要求记录实参以借用包装到达（`plan_arg` 只对已解析
+                // fn 做这件事，setter 是合成的 intrinsic，不走那条路）。AGE 的
+                // `let x = material2d.color(...)` 因此报 "record param requires a
+                // borrow"。这里补上与 plan_arg 同一纪律的 view 包装：记录值走借用，
+                // 标量仍按值（标量没有借用语义）。
+                if matches!(value.vt, VT::Rec(_)) {
+                    let span = plan.exprs[v].span;
+                    plan.exprs.push(ENode {
+                        kind: EKind::BorrowView { base: v },
+                        vt: value.vt,
+                        span,
+                    });
+                    v = plan.exprs.len() - 1;
+                }
                 self.global_first_use
                     .entry(format!("module.global.set:{global}"))
                     .or_insert((true, value.vt, e.span));
