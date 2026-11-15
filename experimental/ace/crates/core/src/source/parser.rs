@@ -1207,10 +1207,12 @@ impl<'s> Parser<'s> {
                         span,
                     });
                 }
-                Some(_) => return Err(self.syntax(format!(
+                Some(_) => {
+                    return Err(self.syntax(format!(
                     "expected a task member (state field, `fn start`/`fn stop` or `on`), found {}",
                     self.describe_cur()
-                ))),
+                )))
+                }
             }
         }
         if arms.is_empty() {

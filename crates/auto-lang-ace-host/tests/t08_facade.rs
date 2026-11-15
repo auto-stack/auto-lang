@@ -14,6 +14,12 @@
 //!   artifacts as source (controlled rejection — they can never pass as
 //!   ACE instructions).
 //! - `eval_config_with_vm` — legacy config VM-eval owner (pac.at).
+//! - `test_file`/`test_code`/`test_code_with_deadline_and_input`/
+//!   `test_code_with_path_deadline_and_input`, `execute_autovm*`,
+//!   `extract_autovm_result`, `create_vm_from_source` — legacy AutoVM
+//!   owners, unchanged (byte-identical across the PLAN-969 range).
+//! - cwd / process exit-code mapping — legacy-owner process semantics
+//!   (CLI layer, auto-man); NOT ACE-door surface in M2-A.
 //! - args/stdin — explicit request inputs with NAMED refusals until the
 //!   AV lanes exist (`ace.args/unsupported` / `ace.input/unsupported`).
 
