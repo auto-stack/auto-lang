@@ -109,16 +109,24 @@ impl AceDaemon {
                 );
             }
         }
+        // F-970-R-05: only requests that CARRY an id participate in the
+        // idempotent replay cache (an id-less request must never replay a
+        // different id-less request's stored response).
+        let has_id = req.get("id").map(|v| !v.is_null()).unwrap_or(false);
         let id = req.get("id").and_then(Value::as_u64).unwrap_or(0);
-        // Idempotent replay: a duplicate request id answers with the
-        // stored response VERBATIM (no re-execution).
-        if let Some(cached) = self.cache.get(&id) {
-            return cached.clone();
+        if has_id {
+            // Idempotent replay: a duplicate request id answers with the
+            // stored response VERBATIM (no re-execution).
+            if let Some(cached) = self.cache.get(&id) {
+                return cached.clone();
+            }
         }
         let response = self.dispatch(id, &req);
         let serialized = serde_json::to_string(&response)
             .unwrap_or_else(|_| error_response(id, "response serialization failure"));
-        self.remember(id, serialized.clone());
+        if has_id {
+            self.remember(id, serialized.clone());
+        }
         serialized
     }
 
@@ -401,6 +409,14 @@ fn report_to_response(id: u64, report: &AceSessionReport, is_create: bool) -> Va
         AceSessionOutcome::Cancelled => Some("cancelled".to_string()),
         AceSessionOutcome::HostFailure { code, message } => Some(format!("{code}: {message}")),
     };
+    // F-970-R-02: the source text itself crosses the wire (the legacy
+    // daemon returned it in `value`; wire clients need it to compute
+    // `edit` offsets).
+    let source_text = if matches!(report.outcome, AceSessionOutcome::Ok) {
+        report.snapshot.clone()
+    } else {
+        None
+    };
     let mut data = json!({});
     if is_create {
         data["session"] = json!(report.session.clone());
@@ -421,10 +437,14 @@ fn report_to_response(id: u64, report: &AceSessionReport, is_create: bool) -> Va
                 }}))
                 .collect::<Vec<_>>());
         }
-        if matches!(report.outcome, AceSessionOutcome::Ok) && report.snapshot.is_some() {
-            data["snapshot_len"] = json!(report.snapshot.as_ref().unwrap().len());
+        if let Some(source) = &source_text {
+            data["snapshot_len"] = json!(source.len());
         }
     }
+    let value = match (&source_text, value) {
+        (Some(source), None) => Some(source.clone()),
+        (_, v) => v,
+    };
     json!({
         "id": id,
         "version": SESSION_PROTOCOL_VERSION,

@@ -61,8 +61,17 @@ const DEFAULT_BOOL_BODY: &str = "return true";
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 fn next_session_id() -> String {
+    // F-970-R-03: the id mixes the process identity into the counter so
+    // a restarted process cannot regenerate a restored session's id (the
+    // deterministic per-process counter alone collided); the create path
+    // additionally skips any id a restored record already owns.
     let n = SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let mix = n.wrapping_mul(0x9E3779B97F4A7C15);
+    let mix = n.wrapping_mul(0x9E3779B97F4A7C15)
+        ^ (std::process::id() as u64)
+        ^ (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64)
+            .unwrap_or(0));
     format!("ses_{:04x}{:04x}", n & 0xffff, mix & 0xffff)
 }
 
@@ -1140,7 +1149,11 @@ impl Owner {
         }
         match HostSession::new(source) {
             Ok(s) => {
-                let id = next_session_id();
+                // F-970-R-03: never silently replace a restored id.
+                let mut id = next_session_id();
+                while self.sessions.contains_key(&id) {
+                    id = next_session_id();
+                }
                 let rev = s.revision();
                 self.sessions.insert(id.clone(), s);
                 AceSessionReport {
@@ -1538,6 +1551,9 @@ impl Owner {
         let old = std::mem::replace(&mut session.engine, Engine::Taken);
         let fis = match old {
             Engine::Direct(f) => f,
+            // F-970-R-01: a previous runner is only present while its
+            // async id is live (terminal/cancel restored Direct above);
+            // the async gate therefore makes this arm unreachable.
             _ => unreachable!("async gate checked above"),
         };
         session.engine = Engine::Resident(ResidentRunner::start(fis, config));
@@ -1593,6 +1609,14 @@ impl Owner {
                 let rep = runner.slice();
                 if rep.state != ResidentState::Running {
                     terminal = rep.outcome;
+                    // F-970-R-01: the chain is done — hand the session
+                    // back to direct ownership so a later async can arm a
+                    // fresh chain (never the Taken guard).
+                    let old_engine = std::mem::replace(&mut session.engine, Engine::Taken);
+                    session.engine = match old_engine {
+                        Engine::Resident(r) => Engine::Direct(r.into_session()),
+                        other => other,
+                    };
                     break;
                 }
                 if !runner.pending().is_empty() {
@@ -1651,11 +1675,14 @@ impl Owner {
                 format!("no in-flight async evaluation {eval_id}"),
             );
         }
-        if let Engine::Resident(runner) = &mut session.engine {
-            // Host stop: the chain is dropped and every pin released
-            // (V-04); the session object stays in the (idle) runner.
-            runner.stop();
-        }
+        // F-970-R-01: host stop drops the chain, releases every pin
+        // (V-04), and hands the session back to direct ownership so a
+        // later async can arm a fresh chain.
+        let old_engine = std::mem::replace(&mut session.engine, Engine::Taken);
+        session.engine = match old_engine {
+            Engine::Resident(r) => Engine::Direct(r.into_session()),
+            other => other,
+        };
         session.async_id = None;
         session.finished.insert(
             eval_id,

@@ -131,7 +131,10 @@ pub enum AceSessionOutcome {
 pub enum AceSessionOp<'a> {
     /// Evaluate one REPL input (statement list or one expression) in the
     /// session, synchronously. The lane/wrap discipline is the host's
-    /// frozen model; a failed evaluation has zero effect.
+    /// frozen model; a failed evaluation has zero effect. The reference
+    /// host honors `cancel` as an ENTRY-TIME pre-check (long synchronous
+    /// evaluations are bounded by `wall`; mid-run cancellation is the
+    /// async surface's `cancel`) - F-970-R-06.
     Eval {
         input: &'a str,
         wall: Option<Duration>,
@@ -140,7 +143,10 @@ pub enum AceSessionOp<'a> {
     /// Apply a byte-range incremental edit `(start, end, insert)` to the
     /// session's accumulated program source at a safety point (same-PID
     /// online update). Stale base / bad UTF-8 / declaration-set changes
-    /// are named refusals that never switch the current root.
+    /// are named refusals that never switch the current root. Offsets
+    /// are relative to the RAW current source the `Inspect` op returns
+    /// (NOT the `Snapshot` user view - capture probes may hold the raw
+    /// lane body between evaluations) - F-970-R-12.
     Edit {
         start: u64,
         end: u64,

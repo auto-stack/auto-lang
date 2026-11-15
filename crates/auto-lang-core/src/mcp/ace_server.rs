@@ -16,9 +16,7 @@
 
 use serde_json::{json, Value};
 
-use super::protocol::{
-    ContentBlock, Id, JsonRpcError, JsonRpcRequest, JsonRpcResponse, ToolResult,
-};
+use super::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, ToolResult};
 use crate::ace_session::{
     ace_session_create, ace_session_op, AceSessionOp, AceSessionOutcome, AceSessionReport,
     AceSessionValue, SESSION_PROTOCOL_NAME, SESSION_PROTOCOL_VERSION,
@@ -357,6 +355,7 @@ mod tests {
     /// p970: with no host installed the tools answer the NAMED host
     /// failure (never a panic, never a legacy route).
     use crate::ace_session::test_registry::REGISTRY_LOCK;
+    use crate::mcp::protocol::Id;
 
     #[test]
     fn p970_mcp_unregistered_host_is_tool_error() {
