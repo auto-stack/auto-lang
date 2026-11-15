@@ -383,6 +383,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-03装配缝裁定+std.net包装) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: bd173aff0 | 决定: 缝=**(c) PLAN-1041内联单源约定**（语法事实：use-item仅scalar-modules/packages面；host-console设计单源，其stdlib故事即内联pub fn同拼写两世界）——`stdlib/ace/std/net.at`（pub fn协议模块）+`net974_std_net_packaging_inline`（verbatim内联、仅公共helper、真回环6010012、0.09s）；**packages面接线=具名后续**（packages-lane platform host，随973 io装配，非静默缩范围） | evidence: net974 **6/6绿**（2.24s）；零编译错误 | next_responsible_role: work（T-08协议分母核→T-04..07 或按裁定）
+
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: design-probe (T-03装配缝冻结输入) | 记录: T-03开缝探针——console前门按设计单源（ConsoleProgram=单src、AV_HOST_CONSOLE_PROFILE、restore/persist同单源身份），platform.net/1 的宿主执行只在此道；**多模块 std.net 包装需 T-03 裁定装配缝**：(a) console前门接纳 packages 产物（identity/admission 扩展）或 (b) 新宿主车道复用 execute_platform。此缝是 T-03"真实consumer、目标/装配/权限接线"的首个有界决定，非静默缩范围——std.net 多模块包装因此挂 T-03 决定后实施。已交面不变：net974 5/5绿。
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-02 inc4: SSE+redirect+refused) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: cf1b29c9e | evidence: net974 5/5绿（SSE/redirect 2.25s）；独立oracle 20002/30200/20000/-8 | next_responsible_role: work（std.net包装 或按裁定/T-03/T-08）

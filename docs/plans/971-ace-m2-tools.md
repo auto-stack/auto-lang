@@ -292,6 +292,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 17 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-03缝裁定+std.net包装) | 记录: 装配缝裁定=(c)PLAN-1041内联约定；stdlib/ace/std/net.at落地+内联包装测试真回环6010012；net974 6/6绿（bd173aff0）；packages面接线具名后续 | next: 974/T-08协议分母核→T-04..07整包A交付；971/B 等 M2A-08
+
+
 stage: goal | PLAN-971 | r6 | round: 16 | from: work(974) | to: user | status: executing | outcome: pass(974 T-03装配缝探针) | 记录: T-03首个有界决定已定案输入——console道单源为设计事实，多模块std.net包装须先裁定装配缝（console前门接纳packages产物 vs 新宿主车道复用execute_platform）；974已交面稳定（net974 5/5绿） | next: 974/T-03缝决定→包装→T-08→T-04..07；或在途包落主后985 T-A03；971/B 等 M2A-08
 
 
