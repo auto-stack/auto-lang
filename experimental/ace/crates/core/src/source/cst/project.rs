@@ -4008,7 +4008,7 @@ pub(crate) fn project_component_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
-    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, false);
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, true);
     let mut out = Vec::new();
     for d in &tree.decls {
         let node = if tree.kind(d.node) == k.item {
@@ -4331,6 +4331,8 @@ impl<'a> Engine<'a> {
         let mut handlers = Vec::new();
         let mut texts = Vec::new();
         let mut node_refs = Vec::new();
+        // PLAN-981（IF-981-ORIGINAL）：场景出口里的组件实例行。
+        let mut scene_components = Vec::new();
         let mut view_role = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
         for raw in self.cx.children(body) {
@@ -4431,6 +4433,79 @@ impl<'a> Engine<'a> {
                         span: self.cx.span_of(member),
                     });
                 }
+                // PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口。成员是组件实例
+                // （`Disc red_disc { x: -20.0 … }`），不是文本叶/节点引用——必须
+                // 单独处理，否则实例块会被当成普通成员解析（实测把 `Material2D`
+                // 变成了一个不存在的类型注解）。
+                "age-view2d-member" | "age-view3d-member" => {
+                    let view_leaf = self
+                        .cx
+                        .field_child(member, "view")
+                        .expect("scene view head spelling leaf");
+                    view_role = self
+                        .ctx_role_of_rule("age-view-head")
+                        .map(|(role, _)| role)
+                        .unwrap_or_else(|| "view".to_string());
+                    view_span = self.cx.span_of(view_leaf);
+                    for raw in self.cx.children(member) {
+                        let c = self
+                            .cx
+                            .children(raw)
+                            .into_iter()
+                            .find(|&x| {
+                                self.cx.tree.node(x).flags & ace_syntax_runtime::cst::FLAG_TRIVIA
+                                    == 0
+                            })
+                            .unwrap_or(raw);
+                        let is_comp = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                            r.name == "age-comp-item"
+                                && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                    == self.cx.tree.kind(c)
+                        });
+                        if !is_comp {
+                            continue;
+                        }
+                        // 组件实例 → 一条场景行：kind + name + 属性值表达式。
+                        let kind_leaf =
+                            self.cx.field_child(c, "kind").expect("component kind");
+                        let name_leaf =
+                            self.cx.field_child(c, "name").expect("component name");
+                        let kind = self.cx.spelling(kind_leaf);
+                        let cname = self.cx.spelling(name_leaf);
+                        let mut attrs = Vec::new();
+                        for a in self.cx.children(c) {
+                            let is_attr = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                                r.name == "age-attr"
+                                    && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                        == self.cx.tree.kind(a)
+                            });
+                            if !is_attr {
+                                continue;
+                            }
+                            let key_leaf =
+                                self.cx.field_child(a, "key").expect("attr key");
+                            let key = self.cx.spelling(key_leaf);
+                            let value_n = self
+                                .cx
+                                .field_child(a, "value")
+                                .expect("attr value");
+                            let value = self.project_expr_sync(value_n);
+                            attrs.push(crate::source::age_component::ComponentSceneAttr {
+                                key,
+                                value,
+                                span: self.cx.span_of(a),
+                            });
+                        }
+                        scene_components.push(
+                            crate::source::age_component::ComponentSceneInstance {
+                                kind,
+                                name: cname,
+                                attrs,
+                                span: self.cx.span_of(c),
+                            },
+                        );
+                    }
+                }
                 "age-view-member" => {
                     let view_leaf = self
                         .cx
@@ -4517,6 +4592,7 @@ impl<'a> Engine<'a> {
                 span: view_span,
                 texts,
                 node_refs,
+                scene_components,
             },
             span: self.cx.span_of(node),
         }

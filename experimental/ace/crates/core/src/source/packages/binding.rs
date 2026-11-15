@@ -171,6 +171,12 @@ fn valid_version(v: &str) -> bool {
 pub fn unit_key(package: &str, module: &str) -> String {
     format!("{package}::{module}")
 }
+/// PLAN-981：AGE node 的稳定符号（领域命名空间，与 fn/type/const 分开）。
+pub fn age_node_symbol(package: &str, name: &str) -> String {
+    format!("n{}_{}_{}", package.len(), sym_part(package), name)
+}
+
+
 fn split_key(key: &str) -> (&str, &str) {
     key.split_once("::").unwrap_or((key, ""))
 }
@@ -239,6 +245,9 @@ enum Target {
     Fn(String),
     Type(String),
     Const(String),
+    /// PLAN-981（IF-981-ORIGINAL）：导入的是 AGE **node 声明**（领域引用目标）。
+    /// 带稳定符号，但**不**进入值/类型命名空间。
+    Node(String),
 }
 
 struct BoundImport {
@@ -832,6 +841,16 @@ fn bind_package_syntax_inner(
                     ))
                 };
             }
+            // PLAN-981（IF-981-ORIGINAL）：AGE node 导出。**先于**通用 `exported`
+            // 闸：AGE 作者面用 `node Disc` + `use shapes: Disc` 表达跨模块意愿，
+            // 不需要 `pub`（g01 原源如此）。符号走 node 命名空间。
+            if unit
+                .age_components
+                .iter()
+                .any(|(n, _)| n.name.name == cursor.1)
+            {
+                return Ok(Target::Node(age_node_symbol(&cursor.0, &cursor.1)));
+            }
             if d.stores.contains_key(&cursor.1) {
                 return Err(fail(
                     owner,
@@ -894,6 +913,12 @@ fn bind_package_syntax_inner(
                     symbol: s,
                     is_type: false,
                     is_const: true,
+                },
+                // AGE node 导入：带符号但**不是**值/类型。
+                Target::Node(s) => BoundImport {
+                    symbol: s,
+                    is_type: false,
+                    is_const: false,
                 },
             };
             binds.insert(i.bound_name().to_string(), b);

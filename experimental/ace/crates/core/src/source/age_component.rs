@@ -55,6 +55,9 @@ pub struct ComponentView {
     /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。
     /// 只在 age-package 面产出；解析/可见性由共享绑定器裁定。
     pub node_refs: Vec<ComponentNodeRef>,
+    /// PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口里的组件实例行
+    /// （`Disc red_disc { x: -20.0 … }`）。属性值是普通 Auto 表达式。
+    pub scene_components: Vec<ComponentSceneInstance>,
 }
 
 /// PLAN-981（IF-981-REF）：一个节点实例引用（未受信候选）。
@@ -92,6 +95,25 @@ pub struct ComponentParam {
     /// 作者写的类型拼写（`float` / `Material2D` / ...）。
     pub ty: String,
     pub ty_span: Span,
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：场景组件实例的一行属性。
+#[derive(Clone, Debug)]
+pub struct ComponentSceneAttr {
+    pub key: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：场景出口里的一个组件实例。
+#[derive(Clone, Debug)]
+pub struct ComponentSceneInstance {
+    /// 组件种类拼写（`Disc` / `shape2d`）。
+    pub kind: String,
+    /// 实例名（`red_disc`）。
+    pub name: String,
+    pub attrs: Vec<ComponentSceneAttr>,
     pub span: Span,
 }
 
