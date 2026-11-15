@@ -23,6 +23,11 @@
 //! are created and closed inside the request — cross-request warm
 //! sessions, edits and async are NOT part of this slice.
 
+#![cfg(windows)]
+// (crate root gate, the ace-abi pattern: this crate path-depends on the
+// Windows-only ace-abi provider lane, so non-Windows builds compile it as
+// an empty crate rather than failing on ace-abi types)
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -468,6 +473,22 @@ impl HostExecutor {
                 format!("provider `{name}` admission withdrawn by the host"),
             );
         }
+        // Explicit capability discipline (freeze): the E0 foreign lane
+        // serves exactly the frozen F0 capability set; a request that
+        // names any OTHER capability is refused before admission instead
+        // of silently dropping it.
+        for capability in request.capabilities {
+            if capability != ace_foreign_contract::manual::SOURCE_CAP
+                && capability != ace_foreign_contract::resource::RESOURCE_CAP
+            {
+                return denied_report(
+                    "ace.capability/unsupported",
+                    format!(
+                        "capability `{capability}` is outside the frozen E0 foreign lane {{foreign.scalar, foreign.resource}}"
+                    ),
+                );
+            }
+        }
         for grant in request.grants {
             if !entry.granted_caps.iter().any(|cap| cap == grant) {
                 return denied_report(
@@ -561,13 +582,5 @@ impl HostExecutor {
                 Some(rejected),
             ),
         }
-    }
-
-    #[cfg(not(windows))]
-    fn run_foreign(&self, _request: &AceRequest<'_>, name: &str) -> AceRunReport {
-        host_report(
-            "ace.host/provider-lane-unavailable",
-            format!("provider `{name}`: the F0 Rust provider lane is Windows-only in E0"),
-        )
     }
 }

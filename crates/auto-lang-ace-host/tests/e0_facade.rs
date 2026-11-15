@@ -96,16 +96,38 @@ fn p969_e0_dispatch() {
         &provider_request(bad_sig, "f0_text"),
     );
     match report.outcome {
-        AceOutcome::Diagnostic { stage, span, .. } => {
-            assert!(!stage.is_empty(), "the producing stage is preserved");
-            let AceSpan { start, end } = span.expect("the diagnostic carries the original span");
-            assert!(end > start, "span is a real source range: {start}..{end}");
+        AceOutcome::Diagnostic {
+            stage, code, span, ..
+        } => {
+            // Pinned oracle (T-E0-R F-E0R-03): the fact lane binds the
+            // call at the ORIGINAL stage/span — `text_byte_len(1, 2)`.
+            assert_eq!(stage, "bind", "wrong-signature diagnoses at the bind stage");
+            assert_eq!(code, "source.argument");
+            assert_eq!(
+                span,
+                Some(AceSpan { start: 38, end: 57 }),
+                "the span covers the original call site"
+            );
         }
         other => panic!("wrong signature must be a diagnostic, got {other:?}"),
     }
     assert_eq!(
         report.callee_count, None,
         "compile failure dispatches nothing"
+    );
+
+    // Foreign-lane capabilities are explicit too: a capability outside the
+    // frozen F0 set is refused before admission, never silently dropped
+    // (T-E0-R F-E0R-04).
+    let foreign_cap = AceRequest {
+        capabilities: &[std::string::String::from("console")],
+        ..provider_request(good, "f0_text")
+    };
+    let report = run_ace(AceEngineChoice::AceAV, &foreign_cap);
+    assert!(
+        matches!(&report.outcome, AceOutcome::Denied { code, .. } if code == "ace.capability/unsupported"),
+        "unfrozen capability refuses before admission, got {:?}",
+        report.outcome
     );
 
     // Revoked authority: pre-dispatch refusal, then the exact fix (readmit)
@@ -227,20 +249,29 @@ fn p969_e0_source() {
         AceOutcome::Diagnostic {
             stage, code, span, ..
         } => {
-            assert!(!stage.is_empty() && !code.is_empty());
-            let AceSpan { start, end } = span.expect("syntax diagnostics carry the span");
-            assert!(end > start, "span is a real range: {start}..{end}");
+            // Pinned oracle (T-E0-R F-E0R-03): syntax diagnosis at the
+            // ORIGINAL text stage, span on the offending `}`.
+            assert_eq!(stage, "text");
+            assert_eq!(code, "source.syntax");
+            assert_eq!(span, Some(AceSpan { start: 27, end: 28 }));
         }
         other => panic!("broken source must diagnose, got {other:?}"),
     }
 
-    // A type error: still the original span/stage, different lane.
+    // A profile-foreign literal: still the original span/stage, different
+    // producer code (pinned: the string literal `"x"` at 23..26).
     let typed = "fn main() int { return \"x\" }";
     let report = run_ace(AceEngineChoice::AceAV, &pure_request(typed));
-    assert!(
-        matches!(report.outcome, AceOutcome::Diagnostic { .. }),
-        "type errors diagnose"
-    );
+    match report.outcome {
+        AceOutcome::Diagnostic {
+            stage, code, span, ..
+        } => {
+            assert_eq!(stage, "text");
+            assert_eq!(code, "source.unsupported");
+            assert_eq!(span, Some(AceSpan { start: 23, end: 26 }));
+        }
+        other => panic!("profile-foreign literal must diagnose, got {other:?}"),
+    }
 
     // The wrong entry id is an `entry`-stage diagnostic (correct stage,
     // not a lower-stage crash).

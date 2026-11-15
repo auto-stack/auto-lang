@@ -163,7 +163,8 @@ pub struct AceRunReport {
     /// than the primary diagnostic.
     pub diag_count: usize,
     /// Foreign lane: calls that actually dispatched through the provider
-    /// table this run (per-run session counter; 0 for pure runs).
+    /// table this run (per-run session counter; `None` for pure runs —
+    /// the pure lane has no provider table).
     pub callee_count: Option<u64>,
     /// Foreign lane: pre-dispatch rejections observed this run.
     pub rejected_count: Option<u64>,
@@ -255,7 +256,7 @@ pub fn run_ace(choice: AceEngineChoice, request: &AceRequest<'_>) -> AceRunRepor
         Err(_) => {
             return AceRunReport::host_failure(
                 choice.as_str(),
-                "ace.host/executor-unregistered",
+                "ace.host/executor-lock-poisoned",
                 "executor lock poisoned",
             )
         }
