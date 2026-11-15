@@ -16,6 +16,14 @@ use auto_test_case::suite::apply_defaults;
 mod probe;
 #[path = "inventory_wrappers.rs"]
 mod wrappers;
+#[path = "inventory_helpers.rs"]
+mod helpers;
+
+/// PLAN-1062 T-01: production syn closure of the python/conformance
+/// file-helper corpora (declared producer/consumer edges, not execution).
+pub fn helper_inventory(workspace_root: &Path) -> Result<serde_json::Value, String> {
+    helpers::helper_inventory(workspace_root)
+}
 
 /// The original parent constants/tables, not a reconstructed language model.
 pub fn parent_contract_inventory() -> serde_json::Value {

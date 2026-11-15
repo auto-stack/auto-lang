@@ -92,6 +92,15 @@ fn run(args: &[String]) -> Result<i32, String> {
         );
         return Ok(0);
     }
+    if cmd == "helper-inventory" {
+        let root = PathBuf::from(require(args, "--root")?);
+        let inventory = auto_lang::test_cases::inventory::helper_inventory(&root)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+        );
+        return Ok(0);
+    }
     let suite = PathBuf::from(require(args, "--suite")?);
     match cmd.as_str() {
         "lint" => lint(&suite),
@@ -138,7 +147,7 @@ fn run(args: &[String]) -> Result<i32, String> {
 }
 
 fn usage() -> String {
-    "usage: auto-case <lint|list|inventory|identity-inventory|migration-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case parent-inventory"
+        "usage: auto-case <lint|list|inventory|identity-inventory|migration-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case helper-inventory --root <path>; auto-case parent-inventory"
         .to_string()
 }
 
