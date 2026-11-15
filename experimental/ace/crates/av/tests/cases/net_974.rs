@@ -74,7 +74,13 @@ fn compile_and_run(
     grants: &[String],
     backend: &mut Win32PlatformIo,
 ) -> ace_av_core::contract::ExecOutcome {
-    let program = compile(src, "d_main").expect("compile net source");
+    let program = compile(src, "d_main").unwrap_or_else(|e| {
+        panic!(
+            "compile net source: {e:#?}
+--- source ---
+{src}"
+        )
+    });
     let (out, _trace, _summary) = program
         .run_platform(
             grants,
@@ -231,4 +237,218 @@ fn main() int {{
         ),
         (-3, -2, -4, -6)
     );
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-974 T-02 increment 2 — the Auto-side HTTP PROTOCOL API face
+// (http.get / request-builder chain / post): the legacy a2p
+// `30_plan724/001_http_client_sync` obligations ported onto the
+// platform.net/1 lane. The protocol lives in AUTO source (the r2
+// contract); the loopback server routes by method (GET -> 200 "hello"
+// + X-Echo header, POST -> 201 with the received payload length echoed).
+// ---------------------------------------------------------------------------
+
+/// A loopback server serving exactly `conns` method-routed requests.
+fn spawn_routed_server(conns: usize) -> (std::net::SocketAddr, std::thread::JoinHandle<i32>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback");
+    let addr = listener.local_addr().expect("local addr");
+    let handle = std::thread::spawn(move || {
+        let mut served = 0i32;
+        for _ in 0..conns {
+            let Ok((mut conn, _)) = listener.accept() else {
+                return served;
+            };
+            let _ = conn.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let mut buf = [0u8; 2048];
+            let mut seen = 0usize;
+            let mut head_end = None;
+            loop {
+                match conn.read(&mut buf[seen..]) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        seen += n;
+                        if let Some(p) = buf[..seen].windows(4).position(|w| w == b"\r\n\r\n") {
+                            head_end = Some(p + 4);
+                            break;
+                        }
+                    }
+                    Err(_) => return -1,
+                }
+            }
+            let Some(head_end) = head_end else {
+                return -2;
+            };
+            let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
+            let mut body = buf[head_end..seen].to_vec();
+            let cl = head
+                .lines()
+                .find_map(|l| {
+                    l.strip_prefix("Content-Length: ")
+                        .and_then(|v| v.parse::<usize>().ok())
+                })
+                .unwrap_or(0);
+            while body.len() < cl {
+                match conn.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => body.extend_from_slice(&buf[..n]),
+                    Err(_) => break,
+                }
+            }
+            let response: Vec<u8> = if head.starts_with("GET /") {
+                b"HTTP/1.1 200 OK\r\nX-Echo: served\r\nContent-Length: 5\r\n\r\nhello".to_vec()
+            } else if head.starts_with("POST /") {
+                format!(
+                    "HTTP/1.1 201 Created\r\nX-Echo: {}\r\nContent-Length: 2\r\n\r\nok",
+                    body.len()
+                )
+                .into_bytes()
+            } else {
+                return -3;
+            };
+            let _ = conn.write_all(&response);
+            let _ = conn.flush();
+            let _ = conn.shutdown(std::net::Shutdown::Both);
+            served += 1;
+        }
+        served
+    });
+    (addr, handle)
+}
+
+/// GET/builder/POST through the Auto-side protocol on platform.net/1:
+/// every leg observes `status*10000 + body_len` with a hand oracle
+/// (GET 200/5, builder GET 200/5, POST 201/2) and main returns the sum
+/// 600002.
+#[test]
+fn net974_http_api_face() {
+    let (addr, server) = spawn_routed_server(3);
+    let src = format!(
+        r#"
+fn send_request(host Str, port int, req Str) int {{
+    let s = net_tcp_connect(host, port)
+    if s <= 0 {{ return s }}
+    let w = net_tcp_write_some(s, req)
+    if w <= 0 {{ return w }}
+    let region = mem_alloc(2048)
+    var total = 0
+    for total < 2048 {{
+        let n = net_tcp_read_into(s, region, total, 512)
+        if n < 0 {{
+            let _m = mem_free(region)
+            return n
+        }}
+        if n == 0 {{ break }}
+        total = total + n
+    }}
+    let _c = net_tcp_close(s)
+    // status: the 3 digits after the first space
+    var i = 0
+    var code = 0
+    var got = 0
+    for i < total {{
+        let b = mem_read_u8(region, i)
+        if b == 32 {{
+            let d0 = mem_read_u8(region, i + 1)
+            let d1 = mem_read_u8(region, i + 2)
+            let d2 = mem_read_u8(region, i + 3)
+            code = (d0 - 48) * 100 + (d1 - 48) * 10 + (d2 - 48)
+            got = 1
+            break
+        }}
+        i = i + 1
+    }}
+    // body: everything after the first "\r\n\r\n" (scan for CR LF CR LF)
+    var j = 0
+    var blank = -1
+    for j + 3 < total {{
+        let c0 = mem_read_u8(region, j)
+        let c1 = mem_read_u8(region, j + 1)
+        let c2 = mem_read_u8(region, j + 2)
+        let c3 = mem_read_u8(region, j + 3)
+        if c0 == 13 {{
+            if c1 == 10 {{
+                if c2 == 13 {{
+                    if c3 == 10 {{
+                        blank = j + 4
+                        break
+                    }}
+                }}
+            }}
+        }}
+        j = j + 1
+    }}
+    let _f = mem_free(region)
+    if got != 1 {{ return 9100 }}
+    if blank < 0 {{ return 9200 }}
+    return code * 10000 + (total - blank)
+}}
+
+fn req_get(path Str) Str {{
+    return "GET " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+}}
+fn req_with_header(base Str, k Str, v Str) Str {{
+    return base + k + ": " + v + "\r\n"
+}}
+fn int_to_str(v int) Str {{
+    if v == 0 {{ return "0" }}
+    var n = v
+    var out Str = ""
+    for n > 0 {{
+        let d = n - (n / 10) * 10
+        out = int_digit(d) + out
+        n = n / 10
+    }}
+    return out
+}}
+fn int_digit(d int) Str {{
+    if d == 0 {{ return "0" }}
+    if d == 1 {{ return "1" }}
+    if d == 2 {{ return "2" }}
+    if d == 3 {{ return "3" }}
+    if d == 4 {{ return "4" }}
+    if d == 5 {{ return "5" }}
+    if d == 6 {{ return "6" }}
+    if d == 7 {{ return "7" }}
+    if d == 8 {{ return "8" }}
+    return "9"
+}}
+fn req_post(path Str, payload Str) Str {{
+    let n = payload.len_bytes()
+    let head Str = "POST " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: "
+    let tail Str = "\r\nConnection: close\r\n\r\n"
+    return head + int_to_str(n) + tail + payload
+}}
+
+fn main() int {{
+    // 1) http.get: 200, body "hello" (5)
+    let a = send_request("127.0.0.1", {port}, req_get("/p974"))
+    // 2) builder chain with a custom header: still a GET, 200/5
+    let base Str = "GET /builder HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+    let with_h Str = req_with_header(base, "X-Plan974", "builder")
+    let built Str = with_h + "Connection: close\r\n\r\n"
+    let b = send_request("127.0.0.1", {port}, built)
+    // 3) http.post with a 13-byte payload: 201, body "ok" (2)
+    let c = send_request("127.0.0.1", {port}, req_post("/submit", "post-payload"))
+    if a != 2000005 {{ return 1 }}
+    if b != 2000005 {{ return 2 }}
+    if c != 2010002 {{ return 3 }}
+    return a + b + c
+}}
+"#,
+        port = addr.port()
+    );
+    let mut backend = Win32PlatformIo::default();
+    let out = compile_and_run(&src, &net_grants(), &mut backend);
+    match &out {
+        ace_av_core::contract::ExecOutcome::Success {
+            value: ace_av_core::contract::Value::I32(v),
+            ..
+        } => assert_eq!(
+            *v, 6010012,
+            "GET 200/5 + builder 200/5 + POST 201/2 = 2000005+2000005+2010002"
+        ),
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+    let served = server.join().expect("server");
+    assert_eq!(served, 3, "three well-formed requests served");
 }
