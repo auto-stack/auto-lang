@@ -292,6 +292,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 7 | from: user(选项A裁定) | to: work(977 A批) | status: executing | outcome: pass(977/T-01) | 记录: 用户裁定选项A→977 A批开工：T-01 A期冻结已交付（前置全归档核实/python.rs漂移重锚定/1042消费面登记/环境冻结Python3.14.2在机·Godot缺席→PY批先行·GD+SCENE不半途开工/命令平台冻结；977→r9 executing 1/16，worktree .wt/lang-977/auto-lang 已建） | next: work——977/B-PY-I（消费1042扩Python provider完整映射+保旧公开格+adapter+永久fixture），其后 B-PY-V/R；GD/SCENE 待Godot环境；REVERSE属B。971/B 仍待 M2A-08（977/PY落主后补齐COVERAGE Python腿之一）
+
 stage: goal | PLAN-971 | r6 | round: 6 | from: work(985链) | to: user | status: executing | outcome: pass(985/T-09已交来源部分)+blocked(985 A批到边界) | 记录: 985/T-09 已交来源部分交付（f0全集33/33实测、FFI行逐行绑定、986/987 pending项；985→4/14）。**985 A批当前可执行边界已到**：T-A03..A05 阻塞于 973-984/OS064 各包A批（973/978/979/981 他会在途；974/975/976/977/980/982/983/984 无主）；T-08[A] 阻塞于 RG 正式输入+File(973) | next: user——选项A：指定无主包A批开工（建议977，阻塞COVERAGE Python腿；次选974/975喂M2A-03）；选项B：等在途包（973/978/979/981）落主后985继续T-A03；971/B 仍待 M2A-08
 
 stage: goal | PLAN-971 | r6 | round: 5 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A02) | 记录: 985/T-A02 已交付（985 worktree d6342f534，985→3/14）：m2-cover两配方语料+冻结父表真值+四准入族具名红控绑定+V-A-COVER命令冻结 | next: 985/T-09/T-08[A]（已交来源部分）或用户裁定转无主包A批；971/B 仍待 M2A-08
