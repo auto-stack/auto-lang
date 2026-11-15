@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-970
-status: drafting
+status: archived
 feature_name: REPL持久会话daemon与在线更新
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 5
-current_step: 0
+updated_at: 2026-11-15
+plan_revision: 6
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-969, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -152,6 +152,52 @@ struct UpdateReceipt { old: RootId, new: RootId, changed: OwnerSet, diagnostics:
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-sessions.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+
+### 1024发现承接合同（2026-11-13，r6，仅规划）
+
+承接1024的F05：会话职责与生命周期收敛，优先级P2（F12仅保留约束）。用户仅授权复审与分配，尚未授权实现；原支持/AC/任务/阶段/预算不减少，原任务进度0保持。
+
+T-01先冻结入口→状态→安装层→worker/外部consumer职责表；T-02/03只收敛被证明重复的候选/接受态术语与机制，T-04保独立邻例。1030只修历史864外层，1032/1033各修自己的事务，不由本Plan接管这些修复；消费其正式合入SHA。
+
+1002关系：核心职责/原入口反例/固定组治理均不以1002为硬前置；新作者格式迁移或document/IR/adapter重构仅等待G1002（1002 T-03四例七检查及负控通过，T-04独立复审、接口正式合入并绑定SHA）。不等待全语料搬迁；1002不反向依赖本Plan整包。现有M2能力前置不因承接登记被豁免，也不把这些非紧急结构改造伪装成可立即施工。
+
+来源：[1024](1024-ace-m2-code-quality-and-refactoring-audit.md) r2与Git 81d8fc03f10f4a7d179b0bc3a917602406ed7b91。F01–35高风险修复另立1027–1037；本Plan消费正式合入结果并在T-01重核漂移。与在途文件同写须串行，1017成本身份单独协调，不能靠删例减成本。规范影响沿本Plan原SD目标，review补当前实际实现，不改canonical Specs。
+
+### T-01 冻结记录（2026-11-15，r6 work，实施授权＝goal 会话）
+
+**前探证据**：scratch probe `D:/autostack/plan-artifacts/plan-970/probe/`（`src/main.rs` sha256前16 `2223c67b5f771790`，P1..P10共38项检查全过，单跑0.18s，log `aeabc3b1e54b76f8`）。覆盖：B01初值14／同PID改4→5=17（revision+1）／坏编辑具名拒＋旧接受代保持17／修复=20／双会话隔离＋跨会话候选拒／bool通道if-encode／变量prelude注入＋纯捕获探针／陈旧base拒／warmup_persisted→restore零冷回退＋恢复后首改fast-path／resident混代值。基面 master `95de79c11`；依赖969（archived，merge收据dd88a41d8）与968（archived，8f4e6a5a8）正式来源已核；§4五个hash重核一致。
+
+**实现策略裁定**（比较过的备选）：(a) B01原形单函数会话——拒（最后区域编辑不收敛，实测SyntaxNotConverged；F形锚后可编辑）；(b) 全源累积每eval重建（旧MCP式）——不作主路径（重执行≠持久、O(n) churn），保留为声明集变化时的显式reshape路径；(c) **冻结声明集+通道模型（选定）**；(d) resident暂停链作REPL主执行——不选（每eval需新执行），保留为长eval异步链（V-02/V-04）。实测：顶层声明增删被"declaration set changed (add/remove/rename)"具名拒绝——函数增量域为封闭声明集、仅body快速路径，此为产品约束非本包缺陷。
+
+**规范程序形状**：`fn main() int { return __repl_eval_int() }`（可编辑dispatch，非最后区域）＋`fn __repl_eval_int() int`＋`fn __repl_eval_bool() bool`（可编辑eval体）＋`fn __tail_anchor() int { return 0 }`（对齐锚，恒最后）。保留名（`__repl_eval_int/__repl_eval_bool/__tail_anchor`）冲突→具名拒绝。输入源（B01等）规范化装载：entry body进int通道、用户函数保序保留、锚追加；观测值不变（P1=14）。bool eval经if-encode走int入口（1/0），报告层解码；dispatch仅在通道切换时编辑（常态每eval 1次commit）。
+
+**REPL变量持久策略**：会话变量表（名→标量值，宿主持有，cap 64具名界）＋prelude注入（字面量）＋纯捕获探针（对改动的绑定以其RHS纯再求值；scalar profile无副作用操作支撑纯性）；非int/bool标量、record/closure值不可携带→具名边界（`session.var/non-carryable`），会话继续并在报告登记。错误后继续：坏eval零效果（表不动、revision不动、旧代可运行；P3实测）。eval尾表达式→`return (E)`重写；纯语句eval→sink return＋报告value=none（对齐旧REPL无显示行为）。支持域边界（scalar profile实测）：f64/i64/str/char/unit类型与表达式语句不在此profile——涉及→具名拒绝；text/console/collections域不并入本包（985/B或后继消费）。
+
+**同PID更新/在途**：`FunctionIncrementalSession::prepare_edit/commit`（原子单发布点、revision+1、跨会话/陈旧base/关闭具名拒；P2/P5/P8实测）＋`ResidentRunner`安全点提交（§2.3 deferral guard、在途帧钉旧代；P10混代值）＋close释放pin（V-04）。编辑API：字节区间(start,end,insert)；坏UTF-8/旧revision/错base→具名拒绝不切当前根。
+
+**协议冻结（T-08实施）**：daemon JSONL over named pipe(Windows)/unix socket；请求/响应带`version`（现值1=`ac.session.daemon/1`，缺省视为1）；方法名保旧7个（new-session/eval/inspect/reset/delete/snapshot/list/ping）＋新增`edit/eval-async/result/cancel/close`；幂等＝请求id＋末响应缓存重放（重连重试不重做有副作用提交）；半条消息/畸形行→具名错误后继续（旧stdio行为）；版本不匹配→具名拒绝列支持版本。close/EOF：stdio EOF→取消在途＋脏会话持久化＋关闭；pipe逐连接EOF守护常驻（旧行为）；session/close即释放pin。MCP：initialize按规范响应己方支持版本（2024-11-05），不再忽略客户端版本；旧7工具名保留＋新增`auto_edit/auto_vars`。
+
+**持久状态迁移**：会话用户态记录`ac.session.state/1`（source_history/变量表/revision/时间戳，JSON）与工件恢复（warmup_persisted/restore，重验而非反序列化Checked；P9零冷回退）分离；旧持久格式不存在（旧daemon仅source_history导出）→legacy源快照按源重放显式重建（具名`legacy-source-replay`）；未知schema/坏升级→具名拒绝且原文件不动（V-08）。
+
+**职责表（AUDIT-05，1024 F05承接）**：
+
+| 入口 | 状态 | 安装层 | worker/外部consumer |
+|---|---|---|---|
+| ACE session facade（新neutral `auto-lang-core::ace_session`，无ACE依赖） | 会话id/变量表/revision/通道dispatch | `FunctionIncrementalSession`（函数域prepare/commit） | ace-host会话桥（Windows）→AV执行 |
+| `ace_daemon`/`ace_client`（auto-lang-core新文件） | 协议id/幂等缓存/连接生命周期 | 经facade | 管道/stdio客户端；auto-man CLI接线归985/B |
+| MCP ACE变体（`mcp/ace_server.rs`新文件） | 经facade | 经facade | MCP stdio客户端 |
+| 旧autovm_persistent/daemon/client/mcp | 保留不动（退役归987） | 旧VM帧 | playground/plan082/plan738既有测试（conformance锚扫描保持绿） |
+
+重复收敛（T-02/03范围）：候选/接受态术语与观察统一到facade报告；不动data/closures/collections/864各session的domain策略（1024二轮裁定保留）。
+
+**命令/组冻结**：完整职责组＝固定组`ace-av ace-artifacts ace-semantics auto-lang-core integration`＋`ace-facade`（ace-host改动触发）；新语料`crates/auto-lang/test/cases/ace-m2/p970/`＋新recipe`ac-av/session-repl-v1`（worker serve模块＋ac_av.rs check＋append-only dispatch＋组`case-ace-m2-sessions-970`）；host桥fixtures `auto-lang-ace-host/tests/t970_*.rs`；neutral单测`p970_*`入auto-lang-core（旧auto-lang-core组的ACE家族排除规则自动归属显式组）。
+
+**资源合同**：max_sessions默认20、idle 1800s（旧值保持）；变量表cap 64；ExecLimits默认＋请求wall；新增测试用例各≤10s（probe单跑0.18s基准）。平台：实机门与host桥在Windows（named pipe；沿969 cfg(windows)）；stdio/neutral逻辑跨平台可编译。
+
+**依赖漂移重核**：1030/1032/1033仍drafting未合入——本包不接管其修复、不等待（各修各自事务；function-session线不受864外层影响）；G1002已满足（本包用旧作者格式+Rust入口）；1024 F12沿用（lease/存储用ace-artifacts既有，不建第二存储）。
+
+**T-02实施调整（2026-11-15，work）**：原冻结的"新recipe`ac-av/session-repl-v1`＋worker serve＋语料组注册"改为沿PLAN-969 facade先例——永久fixtures驻`auto-lang-ace-host/tests/`（t970_sessions.rs 11例全绿，真实产品路径＝neutral contract＋bridge，B01/14→17→20、隔离、变量携带、混代、取消/关闭、cap、快照），不再在av-worker侧复制会话语义（避免F05第二语义模型，也避免worker响应无法参与父侧source-hash绑定）。拟`ace.m2.p970.source01`映射＝t970_b01_same_pid_edit_oracle（B01原件输入、独立算术oracle）。范围/AC不变；语料目录`ace-m2/p970/`不建。
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -192,6 +238,15 @@ struct UpdateReceipt { old: RootId, new: RootId, changed: OwnerSet, diagnostics:
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+
+### 1024承接的具名验证
+
+| Case ID | 发现 / 原任务 / AC | 输入/设置 | 实际入口 | 独立关闭oracle | 状态 |
+|---|---|---|---|---|---|
+| AUDIT-05 | F05 / T-01..04 / AC-AUDIT | source/typed/owned/closure/历史864入口；body/签名/坏编辑/恢复后首改/close | 各AV session→真实worker→M2 session facade | 职责/接受态/真实生产与恢复消费者全表；共用机制保domain，不把所有session当重复删除 | 拟实施，未运行 |
+
+原组/平台/ignore/规模与正式性能分轴不变；新格式需G1002，原格式和Rust入口可先验证。每条oracle必须在本Plan原work验证完成前取得，不能移到merge或借登记冒关闭。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -204,27 +259,29 @@ struct UpdateReceipt { old: RootId, new: RootId, changed: OwnerSet, diagnostics:
 | AC-06 | work | 协议版本与持久状态迁移的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 
+- [x] AC-AUDIT / work：1024承接F05的上述每条AUDIT用例及保留边界完成；原任务T-01/T-02/T-03/T-04负责，原独立review逐项核，未执行不PASS。［✅ 见T-04证据行：职责表全列落地、接受态统一到facade报告、兄弟session域保留、真实生产/恢复consumer接线；source/typed/owned/closure/历史864入口未见删除或静默合并］
+
 ## 8. 执行步骤
 
 当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。［✅ 2026-11-15：冻结记录见§5"T-01冻结记录"；probe P1..P10全38项过（plan-artifacts/plan-970/probe，main.rs `2223c67b5f771790`/log `aeabc3b1e54b76f8`，0.18s）；依赖969/968 archived已核；§4五hash重核一致；AUDIT-05职责表已入冻结；1030/1032/1033未合入不等待；G1002满足］
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。［✅ 2026-11-15：neutral contract `auto-lang-core::ace_session`（5单测）＋参考host桥 `auto-lang-ace-host::session_bridge`（冻结声明集+通道模型；Engine Direct/Resident）＋永久fixtures `tests/t970_sessions.rs` 11/11绿（B01 14→17→20/隔离/变量携带/bool通道/reshape+保留名/错误后继续/混代V-02/取消关闭V-04/重置/cap/快照）；语料承载调整见§5"T-02实施调整"；commit 6e62352fc] 
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。［✅ 2026-11-15：`ace_daemon`（ac.session.daemon/1版本纪律/幂等缓存64/坏行继续/stdio EOF优雅/pipe逐连接EOF常驻/新方法edit·eval-async·result·cancel·close，5单测）＋`ace_client`（持久连接/重试10×200ms/30s收包/单调id）＋`mcp/ace_server`（initialize协商2024-11-05/旧7工具名保留+auto_edit·auto_vars，4单测）；真实roundtrip fixtures `t970_consumers.rs` 3/3（named pipe create/eval/edit 14→17、MCP工具面42/41→42/helper 7→9→10、T-08持久化）；旧autovm daemon/client/mcp不动（987退役）；commit bb8785b96] 
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：明确daemon/client/MCP版本、断连重连、请求幂等/取消及旧持久会话格式迁移/拒绝。源工件恢复与用户状态恢复分开，不用删用户状态完成升级。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：明确daemon/client/MCP版本、断连重连、请求幂等/取消及旧持久会话格式迁移/拒绝。源工件恢复与用户状态恢复分开，不用删用户状态完成升级。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。［✅ 2026-11-15：协议版本/幂等/取消/close语义在T-03面实现并测（V-08重复请求重放逐字/半条消息具名错误后继续/版本不匹配列支持版本/坏升级原文件不动+具名跳过/断连重连按id恢复/同PID更新后重连读新代17）；持久化＝`ac.session.state/1` op-log（eval/edit/reset），恢复走op重放重验（非反序列化Checked），legacy `.at` 显式源重放，Close/过期删record，shutdown flush原子替换；fixture t970_persistence_records 3阶段全绿；commit bb8785b96] 
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。［✅ 2026-11-16：V行映射（§5冻结+fixtures）——V-01=t970_session_isolation_variables；V-02=t970_async_edit_mixed_generations（混代2100<v<2700偶差+后2700）；V-03=t970_b01坏编辑revision不动仍17＋error_then_continue；V-04=t970_close_cancel（cancel停链/close拒后续）；V-05=probe P9（av级restore零冷回退+恢复后首改fast-path）＋t970_persistence_records（记录恢复/revision连续/变量重立）；V-08=daemon单测（幂等逐字重放/半条消息继续/版本不匹配）＋persistence fixture（坏升级原文件不动/close删record）＋pipe roundtrip（同PID更新后17）；V-DETAIL-01=t970_b01（14/17/20）；V-DETAIL-02=t970_edit_negative_controls（bounds/utf8具名拒+状态保持）；V-DETAIL-03=混代+P9+持久重放；V-DETAIL-04=§5冻结旧新映射表+实现按表；AUDIT-05=§5职责表落地（neutral合同=入口/host桥=状态/FIS=安装层/daemon·client·MCP=consumer）+各兄弟session域未删未并（F05裁定遵守）。完整职责组（worktree 29843b6bd）：ace-facade PASS 50.6s；ace-av 1222/1222过×3跑（组FAIL裁决＝MSVC vctip.exe工作负载后驻留，环境归因，本包未动ace crate）；ace-artifacts首跑r3_f01并发时序flake→隔离与整组重放均PASS；ace-semantics 282/283（1红＝ac-semantics语料executed状态缺失，主检出同红已核=预存非本包）；auto-lang-core PASS 100s；integration 3353/3354（1红＝plan702门扫../../../auto-ui兄弟仓，lang-970组内不存在该兄弟，主检出同测PASS已核=环境归因）。命令与时间全程log在plan-artifacts/plan-970/t04-*.log］ 
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。［✅ 2026-11-16：独立上下文final review @29843b6bd＝needs_fix（F-970-R-01..R-12，详§9）；修复@295e93f7c；targeted重审＝**pass**绑定295e93f7c：R-01..R-07全闭（R-06/R-12按处方文档化）、零新回归、全部计时≤10s（最慢单例~0.4s）、新码warning零、fmt clean、树clean；剩余N-1(fmt牵动sched_worker/sched_m2_968纯格式)/N-2(value字段多义须入SD-01)/N-3(merge冻结并集含ace-av)为合并期簿记］
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -240,6 +297,18 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-16 stage: merge / PLAN-970 r6 / outcome: pass（delivered）：**prepared**＝reviewed pass绑定295e93f7c（r6，依赖969/968 archived）＋冻结SD（SD-01/PHASE/DETAIL→新`docs/specs/ace-migration/m2-sessions.md`；SD-02→replacement-scope-and-evidence.md追加"PLAN-970，2026-11-16"节）worktree内落盘commit 9fee3a268（docs-only后代）。**合并门（冻结并集）**＝final tree跑`cargo t ace-av ace-facade auto-lang-core integration`：ace-av PASS（本次vctip未复发）、ace-facade PASS、auto-lang-core PASS、integration 3353/3354（1红＝plan702门扫`../../../auto-ui`兄弟仓，lang-970组内无该兄弟，主检出同测PASS已核＝环境归因，非970）；ace-artifacts/ace-semantics未受修复触及→复用T-04证据（artifacts重放PASS/semantics预存红具名）。**landed**＝master推进（972已并）→rebase 5提交（range-diff全等：6e62352fc=735cd1888、bb8785b96=35947b44c、29843b6bd=8c006a034、295e93f7c=dc46f6629、9fee3a268=900ba5ba9）→main `git merge --ff-only`＝delivery commit `900ba5ba9`，无merge提交，线性历史；master无代码WIP（bookkeeping除外）。**canonical_verified**＝`docs/specs/ace-migration/m2-sessions.md`（sha256前16 `1e3b1376a56aa8d2`）＋replacement-scope-and-evidence.md（PLAN-970收据节）在landed commit内。**archived**＝git mv至docs/plans/archive/970-ace-m2-sessions.md，status: archived，8/8，completion_kind: delivered；N-1/N-2簿记（fmt牵动sched_worker/sched_m2_968纯格式；daemon value字段多义已入SD-01）随归档落账。**cleaned**＝见下一条收据（wt-guard→worktree/branch/组目录删除→plan-artifacts整scope删除→retention刷新）。
+
+2026-11-16 stage: review / review_scope: final（同独立上下文targeted重审）/ PLAN-970 r6 / outcome: **pass**：reviewed `295e93f7cf5d5aaa40c87278bf2f66b04752e6d0`（基面95de79c11，树clean）。R-01闭（into_session additive＋Engine::Resident⟺async_id不变量成立，全unreachable守卫复核无可达项；wire侧cancel→第二async→跑完10000实测）；R-02闭（源文本入value，fixture纯wire取偏移）；R-03闭（pid+纳秒盐＋create碰撞跳过，restore后新建≠恢复id实测）；R-04/R-05闭；R-06/R-12按处方文档化闭；R-07闭（！rebuilt且revision恰+1真判别）。计时：av_resident 14/14 0.083s；core 14/14；t970_sessions 12/12 0.20s；t970_consumers 3/3 0.49s（最慢单例roundtrip~0.4s=300ms有意等待）；全部≤10s。健康：触及文件warning零、fmt clean、树clean。N-1（fmt牵动sched_worker.rs/sched_m2_968.rs纯格式，已逐hunk核）/N-2（daemon value字段多义：eval值/inspect·snapshot源/running标记——SD-01沉淀须写明）/N-3（修复功能触及experimental/ace，merge冻结并集须再含ace-av组）登记为合并期簿记。status: execution_done→reviewed，6/8。next: merge（T-06/T-07）。
+
+2026-11-16 stage: work / PLAN-970 r6 / repair cycle 1：修复提交 `295e93f7c`（树29843b6bd→295e93f7c）。R-01＝ResidentRunner新增additive `into_session()`（av/resident.rs，866纪律不动；av_resident 14/14过）＋poll终态与cancel交接Engine::Direct（第二条async可再arm，fixture覆盖cancel→second-async→跑完10000）；R-02＝wire inspect/snapshot回源文本于value（F-970-R02），pipe fixture改为纯wire取偏移（不再借道进程内facade）；R-03＝会话id掺入进程身份+纳秒盐＋create碰撞跳过循环（fixture：restore后新建≠恢复id且恢复会话完好）；R-04＝删除未用import；R-05＝无id请求不入幂等缓存；R-06/R-12＝契约注释（Eval cancel入口快照语义；Edit偏移以Inspect原源为基）；R-07＝永久断言入t970_persistence_records（恢复后首改！rebuilt且revision恰+1，lane body prelude为靶避开anchor）；R-08＝fmt牵动7文件已在R-08记录（本修复轮fmt再触碰为格式收口）；R-09＝计数修正于本行：新测试函数共30（12+3+14+1结构）。全绿：ace-host全部套件（12+3+既有）、core 14、av_resident 14。next: 复审重验（targeted）。
+
+2026-11-16 stage: review / review_scope: final（独立上下文general-purpose agent，同树独立会话；复审人非实施者）/ PLAN-970 r6 / outcome: **needs_fix**：worktree `D:/autostack/.wt/lang-970/auto-lang`，branch plan-970-dev，reviewed `29843b6bd`（基面95de79c11，树clean）。发现（F-970-R-*）：R-01 MAJOR＝首个async终态/取消后再次eval-async命中Engine::Taken守卫panic守主线程（session_bridge.rs:1538 unreachable）；R-02 MAJOR＝daemon wire inspect/snapshot仅回snapshot_len不带源文本（旧daemon回value源），wire侧edit偏移不可得、roundtrip fixture借道进程内facade；R-03 MAJOR＝会话id为进程内确定计数，restore后首个new-session可同号静默覆盖恢复会话；R-04 MINOR＝ace_server.rs未用import（ContentBlock/Id）；R-05 MINOR＝无id请求按0入幂等缓存跨内容重放；R-06 MINOR＝同步eval cancel仅入口快照（契约类型承诺高于实现，注释已声明）；R-07 MINOR＝V-05首改不重建/V-DETAIL-03 body改不重编未变宿主仅probe证据无永久断言；R-08 NONBLOCKING＝cargo fmt牵动7个声明面外文件（纯格式，已逐hunk核无语义变化）；R-09 NONBLOCKING＝簿记计数小偏（新测试函数实为30）；R-10/R-12 NONBLOCKING＝V-02/V-04字面→冻结语义细化与edit-base(Inspect原源)规则须入spec沉淀。AC图：AC-01/03/PHASE/AUDIT pass；AC-02/06 partial（R-01/02/03/07）；AC-04本审；AC-05未到。测试计时（复核）：core 14例0.00s/墙18.3s（编译17.96s）、t970_sessions 12例0.20s、t970_consumers 3例0.43s、最慢单例daemon roundtrip~0.4s（300ms为有意等待）——全部≤10s。三处非绿组归因全部复核诚实（ace-av 1222/1222×3仅vctip裁决红；sema_boundary主检出同红=预存；plan702主检出PASS=组内缺auto-ui兄弟）。健康：fmt clean；新码warning仅R-04一处。裁定：R-01..R-05+R-07为in-contract修复项回work（同树、影响面＝已触两crate）；R-06/R-12以契约注释+debt登记；R-08/R-09簿记修订；R-10入SD沉淀要求。next: work（repair cycle 1/3）。
+
+2026-11-16 stage: work / PLAN-970 r6 / outcome: pass（全部work任务完成，execution_done）：work树 `D:/autostack/.wt/lang-970/auto-lang`（分支plan-970-dev，交付提交 `29843b6bd`；基面95de79c11）。交付面：neutral `ace_session`合同（5单测）＋参考host桥 `session_bridge`（冻结声明集+int/bool通道+变量携带/纯捕获+resident异步混代+Engine Taken交接）＋`ace_daemon`/`ace_client`（ac.session.daemon/1版本/幂等64/取消/EOF语义）＋`mcp/ace_server`（9工具）＋`ac.session.state/1`持久化（op-log重放重验/legacy .at/坏schema跳过/原子替换/Close删record）；旧autovm_persistent/daemon/client/mcp不动（987退役，conformance锚保持绿——ace-av/ace-facade组全过佐证）。Work-owned AC：AC-01（T-01冻结全表）、AC-02（V行+fixtures，见T-04行）、AC-03（真实consumer接线零legacy回退）、AC-06（V-08全绿）、AC-PHASE（A切片required闭）、AC-AUDIT（职责表落地+域保留）。新用例（25个测试函数，全部≤10s）：t970_sessions 12例0.21s、t970_consumers 3例0.42s（含真实named pipe往返）、auto-lang-core单测14例（p970_*，<0.01s）、T-01 probe P1..P10 38检查0.18s。完整职责组见T-04行（两处环境归因+一处预存红均有主检出对照证据）。无未闭in-contract发现；无阻塞。next_responsible_role: 独立review（T-05）。
+
+2026-11-15 stage: work / PLAN-970 r6 / T-01：goal会话授权整链（work→review→bounded repair→merge）。建唯一树 `D:/autostack/.wt/lang-970/auto-lang`（分支`plan-970-dev`，基面master `95de79c11`）＋材料scope `D:/autostack/plan-artifacts/plan-970/`（retention已登记）。T-01前探38项全过（B01装载14/同PID17/坏编辑保旧/修复20/隔离/bool通道/变量策略/陈旧拒/restore零冷回退/resident混代）；策略裁定＝冻结声明集+通道模型；协议/持久迁移/职责表/命令组/资源合同全部冻结入§5"T-01冻结记录"。关键实测约束：函数增量域为封闭声明集（顶层增删具名拒）、最后区域编辑不收敛（锚不变量）、scalar profile仅int/bool返回。status: drafting→executing，1/8；outcome: in-progress；next: T-02（work）。
+
 2026-11-12 stage:new / PLAN-970 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -252,6 +321,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
+
+
+2026-11-13 stage:new / r6 / outcome:pass（规划承接） / next:原前置及实施授权后work。用户授权将1024的F05纳入本包原任务，新增具名AUDIT oracle/AC-AUDIT；未增任务、未删原任务/AC/V/阶段/预算、0进度/drafting保持。旧r5规划记录保留；实际实现/执行未开始。1002依赖按任务分流，无整包循环。
 
 ## 10. 待澄清事项
 
