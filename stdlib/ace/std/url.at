@@ -1,0 +1,119 @@
+// ACE stdlib url slice (PLAN-974 T-08): the string-level URL family on
+// the same PLAN-1041 convention as std.net (pub fn, single-source
+// inline for the host-console lane; the packages face arrives with the
+// packages-lane platform host). Map-shaped legacy fns (encode_query/
+// decode_query/parse_form/parse->Url) are NAMED PENDING for the
+// Collections-domain packages face; the string-level primitives below
+// carry the public obligation on this lane.
+
+pub fn url_hex_digit(d int) Str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    if d == 9 { return "9" }
+    if d == 10 { return "A" }
+    if d == 11 { return "B" }
+    if d == 12 { return "C" }
+    if d == 13 { return "D" }
+    if d == 14 { return "E" }
+    return "F"
+}
+
+fn url_hex_byte(b int) Str {
+    let pct Str = "%"
+    let hi = b / 16
+    let lo = b - hi * 16
+    return pct + url_hex_digit(hi) + url_hex_digit(lo)
+}
+
+// Unreserved for ALL url components: ALPHA / DIGIT / - . _ ~
+fn url_unreserved(code int) bool {
+    if code >= 97 { if code <= 122 { return true } }
+    if code >= 65 { if code <= 90 { return true } }
+    if code >= 48 { if code <= 57 { return true } }
+    if code == 45 { return true }
+    if code == 46 { return true }
+    if code == 95 { return true }
+    if code == 126 { return true }
+    return false
+}
+
+fn url_encode_with(s Str, extra_safe Str) Str {
+    var out Str = ""
+    var i = 0
+    let n = s.len()
+    for i < n {
+        let c = s.char_at(i)
+        let code = c.to_codepoint()
+        if url_unreserved(code) {
+            out = out + s.slice(i, i + 1)
+        } else {
+            var safe = false
+            let m = extra_safe.len()
+            var k = 0
+            for k < m {
+                if extra_safe.char_at(k).to_codepoint() == code { safe = true }
+                k = k + 1
+            }
+            if safe {
+                out = out + s.slice(i, i + 1)
+            } else {
+                out = out + url_hex_byte(code)
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+pub fn url_encode(s Str) Str {
+    let none Str = ""
+    return url_encode_with(s, none)
+}
+
+pub fn url_encode_path_segment(s Str) Str {
+    // path segment: keep the sub-delims that are pchar-safe
+    let safe Str = "!$&'()*+,;=:@-._~"
+    return url_encode_with(s, safe)
+}
+
+pub fn url_encode_query_component(s Str) Str {
+    let safe Str = "-._~"
+    return url_encode_with(s, safe)
+}
+
+pub fn url_join_path(a Str, b Str) Str {
+    let empty Str = ""
+    if a.len() == 0 { return b + empty }
+    if b.len() == 0 { return a + empty }
+    let a_slash = a.char_at(a.len() - 1).to_codepoint() == 47
+    let b_slash = b.char_at(0).to_codepoint() == 47
+    // both slashed: drop b's leading '/' — exactly one separator survives
+    if a_slash {
+        if b_slash {
+            var tail Str = ""
+            var k = 1
+            let n = b.len()
+            for k < n {
+                tail = tail + b.slice(k, k + 1)
+                k = k + 1
+            }
+            return a + tail
+        }
+        return a + b
+    }
+    if b_slash { return a + b }
+    let sep Str = "/"
+    return a + sep + b
+}
+
+// url_query_get / url_decode / Map族 (encode_query/decode_query/
+// parse_form/parse->Url): NAMED PENDING — substring materialization on
+// this lane needs one core decision (slice() view->owned promotion or a
+// char->str builtin); tracked in the T-08 ledger, not silently faked.

@@ -797,3 +797,66 @@ fn main() int {{
     );
     server.join().expect("server");
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-974 T-08 (URL family) — the tracked `stdlib/ace/std/url.at`
+// module (PLAN-1041 inline convention) embedded verbatim into a console
+// single source. Independent hand oracles: encode("a b/c") = "a%20b%2Fc"
+// (space 32 -> %20, '/' 47 -> %2F); path-segment keeps nothing extra of
+// "/": same here; query component same; join_path adds exactly one '/'.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn net974_url_family_inline() {
+    let stdlib_url = include_str!("../../../../../../stdlib/ace/std/url.at");
+    let src = format!(
+        r#"{stdlib_url}
+fn main() int {{
+    // encode: unreserved kept; ' ' -> %20 ; '/' -> %2F ; '~' kept
+    let ea Str = "a%20b%2Fc~"
+    let a = url_encode("a b/c~")
+    if a != ea {{ return 1 }}
+    let eb Str = "a.b%2Fc"
+    let b = url_encode_query_component("a.b/c")
+    if b != eb {{ return 2 }}
+    let ec Str = "x:y%2Fz"
+    let c = url_encode_path_segment("x:y/z")
+    if c != ec {{ return 3 }}
+    // join_path: single separator, no duplicates
+    let ed Str = "base/sub"
+    let d = url_join_path("base/", "/sub")
+    if d != ed {{ return 4 }}
+    let ee Str = "a/b"
+    let e = url_join_path("a", "b")
+    if e != ee {{ return 5 }}
+    let ef Str = "solo"
+    let f = url_join_path("", "solo")
+    if f != ef {{ return 6 }}
+    return 0
+}}
+"#
+    );
+    let mut backend = Win32PlatformIo::default();
+    // the URL family is pure string work: no net caps needed
+    let grants: Vec<String> = vec!["platform.mem".into()];
+    let program = ace_av::console_host::compile(&src, "d_main").expect("compile url source");
+    let (out, _t, _s) = program
+        .run_platform(
+            &grants,
+            &ace_av_core::av::ExecLimits::default(),
+            &ace_av_core::av::CancelFlag::new(false),
+            None,
+            &mut backend,
+        )
+        .expect("run platform url");
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "url family oracles, got {out:?}"
+    );
+}
