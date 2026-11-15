@@ -4335,6 +4335,11 @@ impl<'a> Engine<'a> {
         let mut scene_components = Vec::new();
         let mut view_role = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
+        // PLAN-981（复审 M1）：一个 node **恰一个** view 出口。此前 `view_role`
+        // 只是被重复赋值，于是两个 `view-2d`（或两个 `view`、或 2D+3D 并存）
+        // 会静默合并——后者还把两个出口的行融成一条扁平列表，丢失归属。
+        // 规范明说 "single view exit per node"。
+        let mut first_exit_span: Option<Span> = None;
         for raw in self.cx.children(body) {
             // 成员列表的每项先由 `age-node-member` 的 alt 包一层；取其实质成员。
             let member = self
@@ -4447,6 +4452,24 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
+                    if let Some(first) = first_exit_span {
+                        let msg = format!(
+                            "a node declares exactly one view exit (view / view-2d / \
+                             view-3d); a second exit at byte {} would silently merge its \
+                             leaves with the first at byte {}",
+                            view_span.start, first.start
+                        );
+                        self.cx.reject(view_span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.age.view-exit",
+                                msg.clone(),
+                                view_span,
+                            )
+                        });
+                    } else {
+                        first_exit_span = Some(view_span);
+                    }
                     for raw in self.cx.children(member) {
                         let c = self
                             .cx
@@ -4516,6 +4539,24 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
+                    if let Some(first) = first_exit_span {
+                        let msg = format!(
+                            "a node declares exactly one view exit (view / view-2d / \
+                             view-3d); a second exit at byte {} would silently merge its \
+                             leaves with the first at byte {}",
+                            view_span.start, first.start
+                        );
+                        self.cx.reject(view_span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.age.view-exit",
+                                msg.clone(),
+                                view_span,
+                            )
+                        });
+                    } else {
+                        first_exit_span = Some(view_span);
+                    }
                     for raw in self.cx.children(member) {
                         // `age-view-item` 是分派 wrapper：实质成员是它的首个非 trivia 孩子。
                         let c = self

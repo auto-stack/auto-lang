@@ -33,27 +33,43 @@ fn compile(src: &str) -> Result<
     )
 }
 
-/// 三个资源服务构造器都能编译，且模块级 `let` 从返回端口推断出类型。
+/// 三个资源服务构造器都能编译，且**模块级** `let` 从返回端口推断出类型。
+///
+/// 注意源里必须是**模块级** `let`（与测试名一致）：函数体内的 `let a = ...`
+/// 只是局部绑定，不进 `description.resources` 面。此前这个用例的源是函数体内
+/// `let`，却用一个恒真断言（复审 M6）掩盖了名实不符。
 #[test]
 fn p981_resource_services_compile_and_let_infers_the_port() {
     let src = format!(
-        "{NODE}fn f() int {{\n    \
-         let a = material2d.color(0.9, 0.3, 0.2, 0.5)\n    \
-         let m = mesh2d.quad(30.0, 30.0)\n    \
-         let c = mesh2d.circle(24.0)\n    \
-         return 1\n}}\n"
+        "{NODE}\
+         let a = material2d.color(0.9, 0.3, 0.2, 0.5)\n\
+         let m = mesh2d.quad(30.0, 30.0)\n\
+         let c = mesh2d.circle(24.0)\n"
     );
     let out = compile(&src).expect("AGE resource services compile");
-    // 三个 `let` 都被推断成有类型的模块常量（不是被丢弃）。
-    let consts: Vec<&str> = out
-        .atom_text
-        .lines()
-        .filter(|l| l.trim_start().starts_with("const ") || l.contains("global"))
+    // 三个 `let` 都被推断成**有类型的模块全局**，且类型是各自的端口。
+    //
+    // 旧断言是 `!consts.is_empty() || atom_text.contains("Material2D")`——
+    // 后者一旦端口类型被登记就恒真，等于什么都没测（复审 M6）。
+    let declared: Vec<(&str, &str)> = out
+        .description
+        .resources
+        .iter()
+        .map(|r| (r.name.as_str(), r.port.as_str()))
         .collect();
     assert!(
-        !consts.is_empty() || out.atom_text.contains("Material2D"),
-        "the inferred bindings reach the checked document"
+        declared.contains(&("a", "Material2D")),
+        "`a` must be inferred as Material2D: {declared:?}"
     );
+    assert!(
+        declared.contains(&("m", "Mesh2D")),
+        "`m` must be inferred as Mesh2D: {declared:?}"
+    );
+    assert!(
+        declared.contains(&("c", "Mesh2D")),
+        "`c` must be inferred as Mesh2D: {declared:?}"
+    );
+    assert_eq!(declared.len(), 3, "exactly the three bindings: {declared:?}");
 }
 
 /// 端口是**名义**类型：`Mesh2D` 不能赋给 `Material2D`。

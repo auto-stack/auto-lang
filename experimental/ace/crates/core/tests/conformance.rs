@@ -90,6 +90,8 @@ mod plan981_scene_elements;
 mod plan981_param_ports;
 #[path = "cases/plan981_resource_refs.rs"]
 mod plan981_resource_refs;
+#[path = "cases/plan981_view_exits.rs"]
+mod plan981_view_exits;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
 #[path = "cases/recovered_script_first_diag_941.rs"]
