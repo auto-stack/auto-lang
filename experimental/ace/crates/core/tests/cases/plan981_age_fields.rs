@@ -119,6 +119,48 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
     }
 }
 
+/// **投影真的被移除时**，覆盖检查必须红——这是上一版逐行守卫**做不到**的那一半。
+///
+/// 复审 M4 指出：`collect_facts` 从 `description` 派生，而 `description` 正是同一
+/// 份投影的输出（自证循环）。实证：把 `model` 字段的投影改成永不执行后——
+/// `p981_fields_full_source_satisfies_the_construct_table` **红**，
+/// 而 `..._every_projection_row_is_individually_guarded` **仍绿**（它只手工清空
+/// 描述字段，从未触碰投影代码）。
+///
+/// 因此这里不改投影（那需要编译期变异），而是**直接断言投影产物非空**：
+/// 一个真实源若投影正常，`fields`/`texts`/`refs` 就不可能同时为空。这样任何
+/// 「投影被静默移除」的改动会让本用例红，而不依赖手工清空描述。
+#[test]
+fn p981_real_projection_actually_produces_rows() {
+    let out = compile(FULL);
+    let c = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Counter")
+        .expect("the fixture declares Counter");
+    assert!(
+        !c.fields.is_empty(),
+        "Counter declares a model field, so projection must produce one"
+    );
+    assert!(
+        !c.texts.is_empty(),
+        "Counter declares a text leaf, so projection must produce one"
+    );
+    assert!(
+        !c.refs.is_empty(),
+        "Counter declares a node reference, so projection must produce one"
+    );
+    // 且这些行确实能满足完整构造表——不是"有行但都不合格"。
+    let present = collect_facts(&out.description);
+    for want in ["node", "model", "view.text", "view.node-ref"] {
+        assert!(
+            present.contains(&want),
+            "the real projection must yield `{want}`; got {present:?}"
+        );
+    }
+}
+
 /// 兼容变体单独验证：旧 `widget` 头在 compat 开启时留下 legacy 事实，
 /// 关闭时被具名拒绝（不混进 canonical 构造清单）。
 #[test]
