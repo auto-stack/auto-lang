@@ -292,6 +292,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 25 | from: work(975) | to: work(975) | status: executing | outcome: pass(975 T-02 sqlite :memory:腿) | 记录: 967钉版provider以:memory:开启（零973依赖），独立oracle复核SUM=9，双负控（bb8d56e07 5.6s）；Auto API面=console foreign缝具名后续 | next: 975 redis RESP腿→T-03..07；971/B 等 M2A-08
+
+
 stage: goal | PLAN-971 | r6 | round: 24 | from: work(975) | to: work(975) | status: executing | outcome: pass(975 T-01冻结+T-02 JSON encode族) | 记录: 975开工——T-01三域选型冻结（JSON自有codec/967 FFI sqlite/RESP over 974 net）+973分账；T-02首增量 std.json encode族交付（bc19182d9，14 oracle 0.09s） | next: 975 sqlite :memory:/redis腿→T-03..07；971/B 等 M2A-08
 
 stage: goal | PLAN-971 | r6 | round: 23 | from: work(974) | to: work(依赖链) | status: executing | outcome: pass(**974整包归档——M2A-03标准库门获正式来源**) | 记录: PLAN-974 整包A交付完成：T-05复审pass(0阻塞)→T-06落主681efa26b+spec m2-stdlib-network sha16 a8338b81e6b5f0ee+归档7534f4eef→T-07清理(worktree/分支/plan-artifacts全删,guard clean)。M2A依赖链：**973/977PY/978/974已闭**；剩973(在途)/979(在途)/981(在途)/975/976/980(部分在途980已见)/982/983/984/OS064/977GD+SCENE | next: 无主包975/976/982/983/984继续或等在途落主→985 T-A03..A05→M2A-08→971 M2-B
