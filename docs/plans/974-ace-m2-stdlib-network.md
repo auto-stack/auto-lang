@@ -128,7 +128,7 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 |---|---|---|---|---|
 | **TCP client** | net.at tcp_connect/read/write/read_all/read_line/write_str/close/peer_addr/set_read_timeout/set_write_timeout（10） | platform.net/1 connect/write_some/read_into/close（paced read/accept；caps/预算/台账/具名错码） | net974 roundtrip/negative（真回环） | **已交核心**；read_line/read_all/peer_addr=薄helper可加，具名pending（低危） |
 | **TCP server** | net.at tcp_bind/TcpListener.accept/local_addr/close（4） | platform.net/1 listen/accept/local_port（预保留口召回；paced accept） | net974 server_leg（Auto听、真客户端驱动） | **已交** |
-| **HTTP client** | http.at request/get/post/put/delete/head/patch/builder链/header/body/send/Response存取组 | std.net net_get/net_get_with_header/net_post/net_send_request（状态行/体界解析；观察面 status*10000+body_len） | net974 http_api_face + std_net_packaging（独立oracle 6010012） | **已交核心**（GET/builder/post/status/body/header）；put/delete/head/patch/Response全存取组/表单/JSON体=具名pending |
+| **HTTP client** | http.at request/get/post/put/delete/head/patch/builder链/header/body/send/Response存取组 | std.net **全方法族** net_get/net_get_with_header/net_post/net_put/net_patch/net_delete/net_head/net_send_request | net974 http_api_face + std_net_packaging + http_method_family（PUT200/4+PATCH200/2+DELETE204/0+HEAD200/0） | **方法族已交**；Response全存取组（header值/cookie/重定向策略配置）/表单/JSON体=具名pending（header值提取依子串物化决定） |
 | **HTTP server** | http.at Server.get/post/put/delete/static/listen + listen(host,port,handler)（路由/静态/handler注册） | Auto侧应答（listen+accept+读请求+按方法路由响应+close） | net974 server_leg（单连接路由） | **已交最小**；路由表/handler注册/多连接并发/静态文件=具名pending（静态文件腿973阻塞） |
 | **redirect** | http.at 内建跟随（follow_redirects配置） | 客户端跟随（302→Location→重发→200） | net974 sse_and_redirect（30200→20000） | **已交**（单跳）；多跳/循环检测/max-redirs=具名pending |
 | **timeout** | set_read_timeout/set_write_timeout(ms) | connect 5s/读写5s超时+**paced有界窗**（accept≤50ms/read≤500ms，静默窗返回可重试-10）；拒绝=-8具名 | net974 sse_and_redirect（refused -8）+负面组 | **已交**（语义形=固定窗+可重试，非旧per-stream可配置API）；可配置set_timeout API=具名pending |
@@ -407,6 +407,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08 HTTP方法族) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: 5925768e9 | evidence: net974 **8/8绿**（method_family 0.08s，独立oracle PUT/PATCH/DELETE/HEAD） | next_responsible_role: work（WebSocket→TLS/proxy→T-04..07 或按裁定）
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08 URL族实现腿) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: c397befd2 | evidence: stdlib/ace/std/url.at（encode×3+join_path 独立oracle）+net974 **7/7绿**（2.24s）；方言事实新增：slice右拼合法/字面量左拼拒/字面量实参不retag/借用参数不可直返owned（全数留痕迭代） | next_responsible_role: work（HTTP扩面→WebSocket→TLS/proxy→T-04..07 或按裁定）
 
