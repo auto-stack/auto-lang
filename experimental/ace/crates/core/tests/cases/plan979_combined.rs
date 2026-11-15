@@ -287,6 +287,8 @@ fn p979_combined_hot_swap_invalidates_old_evidence() {
         id: ae_id(),
         version: DomainVersion { major: 1, minor: 0 },
         grammar_id: age.description.grammar_id.clone(),
+        input_hash: age.input_hash.clone(),
+        compat: true,
     };
     assert!(
         !same_evidence(&i1, &age_identity),

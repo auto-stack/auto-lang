@@ -430,22 +430,28 @@ pub fn mapping_complete(description: &[DomainRow], required: &[&str]) -> Result<
         Err(missing)
     }
 }
-/// 领域证据身份：包 id/版本 + grammar 身份。任一项变化即旧证据失效
-/// （本切片无投影缓存；接缓存时按此元组失效，见 T-02 未决项）。
+/// 领域证据身份：包 id/版本 + grammar 身份 + 源哈希 + 兼容配置（F12 收口）。
+/// 任一项变化即旧证据失效；接投影缓存时可直接以此元组为键。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainIdentity {
     pub id: &'static str,
     pub version: DomainVersion,
     pub grammar_id: String,
+    /// 源内容哈希（同包不同源不得复用证据）。
+    pub input_hash: String,
+    /// 兼容配置（同 id/源、不同 `widget` 准入不得复用证据）。
+    pub compat: bool,
 }
 
 impl DomainCompilation {
-    /// 本次编译的证据身份（热换 schema/包后必须不同）。
+    /// 本次编译的证据身份（热换 schema/包/源/兼容配置后必须不同）。
     pub fn identity(&self) -> DomainIdentity {
         DomainIdentity {
             id: self.id,
             version: self.version,
             grammar_id: self.grammar_id.clone(),
+            input_hash: self.input_hash.clone(),
+            compat: self.compat,
         }
     }
 }

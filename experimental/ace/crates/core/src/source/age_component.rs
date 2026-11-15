@@ -162,6 +162,18 @@ pub fn component_coverage(
         Err(missing)
     }
 }
+impl ComponentCompilation {
+    /// 组件面证据身份（与领域接面同元组：id/version/grammar/源/兼容配置）。
+    pub fn identity(&self) -> super::domain::DomainIdentity {
+        super::domain::DomainIdentity {
+            id: AGE_COMPONENT_DOMAIN,
+            version: super::domain::DomainVersion { major: 1, minor: 0 },
+            grammar_id: self.description.grammar_id.clone(),
+            input_hash: self.input_hash.clone(),
+            compat: matches!(self.description.alias, LegacyWidgetAlias::Accept),
+        }
+    }
+}
 /// 未受信候选投影（可单独测试；不接触 verify/后端）。
 pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec<Diagnostic>> {
     match parse_domain_whole_module(

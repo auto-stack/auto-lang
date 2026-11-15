@@ -524,3 +524,43 @@ fn p979_component_v04_invalidation_tracks_the_actual_dependency() {
         LegacyWidgetAlias::Accept
     ));
 }
+
+// ---- F12：证据身份对源/兼容配置敏感（缓存键完整）----
+
+#[test]
+fn p979_component_f12_identity_is_sensitive_to_source_and_compat() {
+    use ace_core::source::domain::same_evidence;
+    let src = "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let one = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let base = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &one)
+        .expect("base");
+    let same = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &one)
+        .expect("same");
+    assert!(
+        same_evidence(&base.identity(), &same.identity()),
+        "same source + compat is stable evidence"
+    );
+
+    // 源变：源哈希入身份（此前 identity 只有 id/version/grammar）。
+    let src2 = format!("fn extra() int {{\n    return 1\n}}\n{src}");
+    let changed = compile_component_scenario(&src2, "c.at", LegacyWidgetAlias::Reject, &[], &one)
+        .expect("changed source");
+    assert!(
+        !same_evidence(&base.identity(), &changed.identity()),
+        "a different source must not reuse evidence"
+    );
+
+    // 兼容配置变：compat 入身份。
+    let compat = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Accept, &[], &one)
+        .expect("compat on");
+    assert!(
+        !same_evidence(&base.identity(), &compat.identity()),
+        "a different compat config must not reuse evidence"
+    );
+}
