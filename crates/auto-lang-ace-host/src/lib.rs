@@ -189,6 +189,21 @@ fn lookup_provider(name: &str) -> Option<Arc<ProviderEntry>> {
 
 impl AceExecutor for HostExecutor {
     fn execute(&self, request: &AceRequest<'_>) -> AceRunReport {
+        // T-08 compat discipline: argv/stdin are EXPLICIT request inputs
+        // the AV lane cannot serve yet — named refusals before any lane
+        // work (never a silent drop, never a legacy-VM route).
+        if !request.args.is_empty() {
+            return denied_report(
+                "ace.args/unsupported",
+                "the AV execution lane has no argv surface yet; the request is refused rather than silently dropped",
+            );
+        }
+        if request.input.is_some() {
+            return denied_report(
+                "ace.input/unsupported",
+                "the AV execution lane has no stdin surface yet; the request is refused rather than silently dropped",
+            );
+        }
         if request.console {
             if request.provider.is_some() {
                 // Freeze (T-02): the console lane and the F0 foreign lane

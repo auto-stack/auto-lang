@@ -109,6 +109,17 @@ pub struct AceRequest<'a> {
     /// grants (see [`AceConsoleReport`]); the captured streams come back
     /// on the report. `false` = the pure scalar lane (no console ops).
     pub console: bool,
+    /// T-08: script argv (beyond the program path) — an EXPLICIT input
+    /// the request carries so consumers never rely on ambient process
+    /// state. The AV lane has no argv surface yet: a non-empty `args`
+    /// is a NAMED refusal (`ace.args/unsupported`), never a silent
+    /// drop and never a legacy-VM route.
+    pub args: &'a [&'a str],
+    /// T-08: request-local stdin text (the legacy `Some("")` = immediate
+    /// EOF convention applies to the empty string). The AV lane has no
+    /// input surface yet: `Some(_)` is a NAMED refusal
+    /// (`ace.input/unsupported`), never a silent drop.
+    pub input: Option<&'a str>,
 }
 
 impl<'a> AceRequest<'a> {
@@ -125,6 +136,8 @@ impl<'a> AceRequest<'a> {
             wall: None,
             cancel: None,
             console: false,
+            args: &[],
+            input: None,
         }
     }
 }
