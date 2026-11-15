@@ -292,6 +292,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 23 | from: work(974) | to: work(依赖链) | status: executing | outcome: pass(**974整包归档——M2A-03标准库门获正式来源**) | 记录: PLAN-974 整包A交付完成：T-05复审pass(0阻塞)→T-06落主681efa26b+spec m2-stdlib-network sha16 a8338b81e6b5f0ee+归档7534f4eef→T-07清理(worktree/分支/plan-artifacts全删,guard clean)。M2A依赖链：**973/977PY/978/974已闭**；剩973(在途)/979(在途)/981(在途)/975/976/980(部分在途980已见)/982/983/984/OS064/977GD+SCENE | next: 无主包975/976/982/983/984继续或等在途落主→985 T-A03..A05→M2A-08→971 M2-B
+
 stage: goal | PLAN-971 | r6 | round: 22 | from: work(974) | to: review(974/T-05) | status: executing | outcome: pass(974/T-04全V行) | 记录: T-04冻结并集执行——ace-av 1257+ace-native 280+ace-source 597 全PASS（2134例）；V-01..05逐行状态+具名pending（长流背压/上传文件973/TLS-provider道）；974→5/8 | next: 974/T-05独立复审→T-06/07归档（整包A交付喁M2A-03）；971/B 等 M2A-08
 
 stage: goal | PLAN-971 | r6 | round: 21 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 WebSocket帧层) | 记录: net_tcp_write_region raw面+真RFC-6455客户端往返（101/掩码帧/无掩码回显），net974 9/9绿（206fdf901） | next: 974 TLS/proxy provider道→T-04..07；971/B 等 M2A-08
