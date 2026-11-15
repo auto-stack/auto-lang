@@ -213,10 +213,12 @@ pub fn compile_age_package_with_scenario(
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     crate::source::typecheck_with(&resolved, SourceProfile::TextRecord)
         .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
-    let parts = crate::source::adapter::emit_resolved_packages_parts(
+    // PLAN-981：AGE 作者面发射（f32 类型表等按本面发射；协议身份仍是包文档）。
+    let parts = crate::source::adapter::emit_resolved_packages_parts_profile(
         &resolved,
         &product.bound,
         "packages",
+        SourceProfile::AgePackage,
     )
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     let input_hash = parts.input_hash.clone();

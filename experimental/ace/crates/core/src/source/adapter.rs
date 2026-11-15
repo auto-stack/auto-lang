@@ -3812,6 +3812,8 @@ impl<'p> Emitter<'p> {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
                 .or_else(|| super::platform_io::signature(sym).map(|(_, _, cap)| cap))
+                // PLAN-981：AGE 资源服务自带能力键。
+                .or_else(|| super::age_resources::by_symbol(sym).map(|op| op.capability))
                 .unwrap_or(TRACE_CAPABILITY);
             if !requires.contains(&cap) {
                 requires.push(cap);
@@ -3860,6 +3862,8 @@ impl<'p> Emitter<'p> {
         nl!(12);
         // PLAN-961: the numeric profile declares its builtin type entries
         // (the ty_name refs resolve here; unused rows ride like t_i32).
+        // PLAN-981（IF-981-ORIGINAL）：AGE 作者面同样需要 f32（`material2d.color`
+        // 的分量、`position: (0.0, 0.0)`），故与 numeric 面共用这张类型表。
         if self.profile.is_numeric() {
             for (name, kind) in [
                 ("t_i8", "i8"),
@@ -3871,6 +3875,28 @@ impl<'p> Emitter<'p> {
                 ("t_f64", "f64"),
             ] {
                 frag!(&format!("type {} {} {{}}", name, kind), program_span);
+                spans.types.push(program_span);
+                nl!(12);
+            }
+        } else if self.profile == SourceProfile::AgePackage {
+            // PLAN-981：AGE 作者面只用 f32（资源分量/坐标），故只补这一行；
+            // 其余数字 case 不进本面（text-record 描述符不认它们）。
+            frag!("type t_f32 f32 {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+            // AGE typed 端口作为名义记录发射（无字段：身份即端口）。资源服务
+            // 的返回类型引用它们，故必须在场。
+            for (port, fields) in crate::source::age_resources::AGE_PORT_FIELDS {
+                // Same shape as the declared-record emission below:
+                // `{ name: "<n>", type: t_<ty> }`, comma separated.
+                let fs: Vec<String> = fields
+                    .iter()
+                    .map(|(n, ty)| format!("{{ name: \"{n}\", type: t_{ty} }}"))
+                    .collect();
+                frag!(
+                    &format!("type t_rec_{} record {{ fields: [{}] }}", port, fs.join(", ")),
+                    program_span
+                );
                 spans.types.push(program_span);
                 nl!(12);
             }
@@ -4195,6 +4221,12 @@ impl<'p> Emitter<'p> {
             } else if let Some((params, res, _)) = super::platform_io::signature(sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 (ps.join(", "), self.ty_use_ref(res))
+            } else if let Some(op) = super::age_resources::by_symbol(sym) {
+                // PLAN-981（IF-981-ORIGINAL）：AGE 资源服务的签名 = 参数表 + 端口
+                // 返回类型（端口按名义记录 id 发射，与 resolver 登记同一身份）。
+                let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                let rs = format!("\"t_rec_{}\"", op.result_port);
+                (ps.join(", "), rs)
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = match res {

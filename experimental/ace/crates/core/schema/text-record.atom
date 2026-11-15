@@ -25,7 +25,8 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
 
     enums {
         enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move] }
-        enum TypeKind { cases: [i32, bool, str, Str, char, function, record] }
+        // PLAN-981: `f32` joins the type cases (AGE resource/coordinate values).
+        enum TypeKind { cases: [i32, bool, str, Str, char, f32, function, record] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
         enum LogicOp { cases: [and, or] }
@@ -160,6 +161,8 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
         branch(key: "type.str") { forbid: [params, result, fields] }
         branch(key: "type.Str") { forbid: [params, result, fields] }
         branch(key: "type.char") { forbid: [params, result, fields] }
+        // PLAN-981: an f32 entry carries no shape (like i32/bool).
+        branch(key: "type.f32") { forbid: [params, result, fields] }
         branch(key: "type.function") { require: [params, result]; forbid: [fields] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result] }
         branch(key: "function") {

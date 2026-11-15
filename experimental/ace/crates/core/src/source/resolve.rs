@@ -1857,6 +1857,22 @@ fn resolve_detailed(
             });
         }
     }
+    // PLAN-981（IF-981-ORIGINAL）：AGE typed 端口（`Material2D`/`Mesh2D`）登记为
+    // **无字段名义记录**——身份即端口（两种端口互不相等），资源语义仍归领域
+    // owner 解释；这里不把资源压平成带颜色字段的普通 record。
+    if surface == SourceProfile::AgePackage {
+        for port in crate::source::age_resources::AGE_PORT_TYPES {
+            if !rec_index.contains_key(*port) {
+                rec_index.insert(port.to_string(), records.len());
+                records.push(ResolvedRecord {
+                    name: port.to_string(),
+                    name_span: Span { start: 0, end: 0 },
+                    fields: Vec::new(),
+                    methods: Vec::new(),
+                });
+            }
+        }
+    }
     // PLAN-889: resolve nominal variant references through the same type
     // table in every annotation position. Register names before payloads,
     // so acyclic forward references do not depend on declaration order.
@@ -5025,6 +5041,9 @@ enum RecvClass {
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
     VariantArm { vi: usize, disc: u32 },
+    /// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务命名空间接收者
+    /// （`material2d.color(...)`）。携带声明表里那一条 op。
+    AgeService(&'static super::age_resources::AgeResourceOp),
     /// PLAN-864: `<list<Str>-local>.get(i).len()` — a whole-Str element
     /// view consumed by len (contract C4).
     ElemViewLen {
@@ -12752,7 +12771,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                         let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind {
                             self.classify_generic_recv(name, args)
                         } else if let ExprKind::Var(id) = &recv.kind {
+                            // PLAN-981：AGE 资源服务（`material2d.color`）——接收者
+                            // 是**命名空间**不是值；按声明表分类，绝不求值它。
                             if self.lookup(&id.name).is_none()
+                                && crate::source::age_resources::lookup(&format!(
+                                    "{}.{}",
+                                    id.name, name.name
+                                ))
+                                .is_some()
+                            {
+                                let dotted = format!("{}.{}", id.name, name.name);
+                                RecvClass::AgeService(
+                                    crate::source::age_resources::lookup(&dotted)
+                                        .expect("checked above"),
+                                )
+                            } else if self.lookup(&id.name).is_none()
                                 && self.rec_index.contains_key(&id.name)
                             {
                                 RecvClass::Static(self.rec_index[&id.name])
@@ -13125,6 +13158,52 @@ impl<'a, 's> FnResolver<'a, 's> {
                         }
                     };
                     match recv_kind {
+                        // PLAN-981（IF-981-ORIGINAL）：AGE 资源服务调用。接收者是
+                        // 命名空间（未求值）；参数按声明表校验后落成固定符号的
+                        // intrinsic 调用，返回类型是该 op 的**端口类型**。
+                        RecvClass::AgeService(op) => {
+                            if rargs.len() != op.params.len() {
+                                self.bind_err(
+                                    "source.age.resource-arity",
+                                    format!(
+                                        "`{}` takes {} argument(s), got {}",
+                                        op.callee,
+                                        op.params.len(),
+                                        rargs.len()
+                                    ),
+                                    node_span,
+                                );
+                            }
+                            let mut args = Vec::with_capacity(rargs.len());
+                            for (arg, expected) in rargs.into_iter().zip(op.params.iter()) {
+                                if arg.value.vt != *expected {
+                                    self.bind_err(
+                                        "source.age.resource-argument",
+                                        format!(
+                                            "`{}` argument must be `{}`, got `{}`",
+                                            op.callee,
+                                            expected.as_str(),
+                                            arg.value.vt.as_str()
+                                        ),
+                                        arg.value.span,
+                                    );
+                                }
+                                args.push(arg.value);
+                            }
+                            let port = match self.rec_index.get(op.result_port) {
+                                Some(&i) => VT::Rec(i),
+                                None => VT::I32,
+                            };
+                            self.used_intrinsics.insert(op.symbol);
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: port,
+                                kind: RExprKind::CallIntrinsic {
+                                    symbol: op.symbol,
+                                    args,
+                                },
+                            };
+                        }
                         RecvClass::Value => {
                             out[dest] = self.method_call_out(rrecv, None, &name, rargs, node_span);
                         }

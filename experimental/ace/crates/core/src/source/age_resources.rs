@@ -42,6 +42,18 @@ const P_F32: &[VT] = &[VT::F32];
 /// 而是 AGE 领域声明的 typed 端口。resolver 按本表把它们当作名义类型登记。
 pub const AGE_PORT_TYPES: &[&str] = &["Material2D", "Mesh2D"];
 
+/// 每个端口携带的字段（与构造器实参一一对应；f32 分量）。
+///
+/// 这些不是"把资源压平成普通 record"：字段就是 AGE 构造器本身的实参
+/// （颜色四分量为 alpha 合成保留、网格为宽高/直径），资源身份仍由端口名承担。
+pub const AGE_PORT_FIELDS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "Material2D",
+        &[("r", "f32"), ("g", "f32"), ("b", "f32"), ("a", "f32")],
+    ),
+    ("Mesh2D", &[("w", "f32"), ("h", "f32")]),
+];
+
 pub const AGE_RESOURCE_OPS: &[AgeResourceOp] = &[
     AgeResourceOp {
         callee: "material2d.color",
@@ -69,6 +81,11 @@ pub const AGE_RESOURCE_OPS: &[AgeResourceOp] = &[
 /// 按源里的限定写法查声明。
 pub fn lookup(callee: &str) -> Option<&'static AgeResourceOp> {
     AGE_RESOURCE_OPS.iter().find(|op| op.callee == callee)
+}
+
+/// 按稳定符号查声明（发射器/消费者用）。
+pub fn by_symbol(symbol: &str) -> Option<&'static AgeResourceOp> {
+    AGE_RESOURCE_OPS.iter().find(|op| op.symbol == symbol)
 }
 
 /// 是否为 AGE 端口类型名（`Material2D` / `Mesh2D`）。
