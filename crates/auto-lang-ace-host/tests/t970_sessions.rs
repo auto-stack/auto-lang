@@ -11,8 +11,7 @@
 
 use auto_lang_core::{
     ace_session_cleanup_expired, ace_session_create, ace_session_list, ace_session_op,
-    shutdown_ace_session_host, AceSessionLimits, AceSessionOp,
-    AceSessionOutcome, AceSessionValue,
+    shutdown_ace_session_host, AceSessionLimits, AceSessionOp, AceSessionOutcome, AceSessionValue,
 };
 
 use auto_lang_ace_host::session_bridge::install_session_host;
@@ -31,11 +30,14 @@ struct Host {
 
 impl Host {
     fn install() -> Host {
-        let lock: std::sync::MutexGuard<'static, ()> = unsafe {
-            std::mem::transmute(HOST_LOCK.lock().unwrap_or_else(|p| p.into_inner()))
-        };
-        let guard = install_session_host(AceSessionLimits::default()).expect("install session host");
-        Host { _guard: guard, _lock: lock }
+        let lock: std::sync::MutexGuard<'static, ()> =
+            unsafe { std::mem::transmute(HOST_LOCK.lock().unwrap_or_else(|p| p.into_inner())) };
+        let guard =
+            install_session_host(AceSessionLimits::default()).expect("install session host");
+        Host {
+            _guard: guard,
+            _lock: lock,
+        }
     }
 }
 
@@ -92,7 +94,9 @@ fn t970_b01_same_pid_edit_oracle() {
     let inspect = ace_session_op(&s, AceSessionOp::Inspect);
     ok_of(&inspect);
     let source = inspect.snapshot.expect("inspect carries the source");
-    let at = source.find("2 + 3 * 4").expect("B01 body in canonical source");
+    let at = source
+        .find("2 + 3 * 4")
+        .expect("B01 body in canonical source");
     let edited = {
         let r = ace_session_op(
             &s,
@@ -138,11 +142,19 @@ fn t970_b01_same_pid_edit_oracle() {
         other => panic!("bad edit must be a diagnostic, got {other:?}"),
     }
     let after_bad = ace_session_op(&s, AceSessionOp::Inspect);
-    assert_eq!(after_bad.revision, bad.revision, "refused edit keeps revision");
+    assert_eq!(
+        after_bad.revision, bad.revision,
+        "refused edit keeps revision"
+    );
     assert_eq!(eval_value(&s, "2 + 3 * 5"), AceSessionValue::Int(17));
 
     // Failure recovery: the fixed edit lands and evaluates.
-    let at = after_bad.snapshot.as_ref().unwrap().find("2 + 3 * 5").unwrap();
+    let at = after_bad
+        .snapshot
+        .as_ref()
+        .unwrap()
+        .find("2 + 3 * 5")
+        .unwrap();
     let fixed = ace_session_op(
         &s,
         AceSessionOp::Edit {
@@ -189,7 +201,10 @@ fn t970_session_isolation_variables() {
     let vb = ace_session_op(&sb, AceSessionOp::Vars);
     ok_of(&va);
     ok_of(&vb);
-    assert!(va.vars.iter().any(|v| v.name == "x" && v.value == AceSessionValue::Int(41)));
+    assert!(va
+        .vars
+        .iter()
+        .any(|v| v.name == "x" && v.value == AceSessionValue::Int(41)));
     assert!(vb.vars.is_empty());
 }
 
@@ -282,11 +297,17 @@ fn t970_error_then_continue() {
     }
 
     let after = ace_session_op(&s, AceSessionOp::Inspect);
-    assert_eq!(after.revision, before.revision, "refused eval keeps revision");
+    assert_eq!(
+        after.revision, before.revision,
+        "refused eval keeps revision"
+    );
     let vars = ace_session_op(&s, AceSessionOp::Vars);
     ok_of(&vars);
     assert!(vars.vars.iter().any(|v| v.name == "x"));
-    assert!(!vars.vars.iter().any(|v| v.name == "y"), "failed binding not carried");
+    assert!(
+        !vars.vars.iter().any(|v| v.name == "y"),
+        "failed binding not carried"
+    );
     assert_eq!(eval_value(&s, "x * 2"), AceSessionValue::Int(20));
 }
 

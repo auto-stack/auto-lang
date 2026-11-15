@@ -161,7 +161,10 @@ pub enum AceSessionOp<'a> {
     Close,
     /// Start an async long evaluation on the resident runner; returns an
     /// `eval_id` for polling/cancellation (V-02/V-04).
-    EvalAsync { input: &'a str, wall: Option<Duration> },
+    EvalAsync {
+        input: &'a str,
+        wall: Option<Duration>,
+    },
     /// Poll an async evaluation: running / finished (with value) /
     /// unknown id.
     Result { eval_id: u64 },
@@ -327,10 +330,7 @@ pub fn ace_session_op(session: &str, op: AceSessionOp<'_>) -> AceSessionReport {
 /// Live session ids through the installed host.
 pub fn ace_session_list() -> Vec<String> {
     match ACE_SESSION_HOST.read() {
-        Ok(slot) => slot
-            .as_ref()
-            .map(|h| h.list())
-            .unwrap_or_default(),
+        Ok(slot) => slot.as_ref().map(|h| h.list()).unwrap_or_default(),
         Err(_) => Vec::new(),
     }
 }
@@ -346,14 +346,20 @@ pub fn ace_session_cleanup_expired() -> Vec<String> {
     }
 }
 
+/// Test-only shared registry lock: the registry tests (session, daemon,
+/// MCP) are the only installers in the process, and they compete with
+/// EACH OTHER under a threaded test runner — one shared lock keeps the
+/// global slot race-free and makes unregistered-path assertions
+/// deterministic.
+#[cfg(test)]
+pub(crate) mod test_registry {
+    pub static REGISTRY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The registry tests are the only installers in the process, but
-    /// they compete with EACH OTHER under a threaded test runner: one
-    /// shared lock keeps the global slot race-free.
-    static REGISTRY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    use crate::ace_session::test_registry::REGISTRY_LOCK;
 
     /// A stub host for dispatch-discipline tests: records ops, returns a
     /// canned report. NEVER a stand-in for the real bridge (the bridge
@@ -365,7 +371,8 @@ mod tests {
 
     impl AceSessionHost for StubHost {
         fn create(&self, _source: Option<&str>, _wall: Option<Duration>) -> AceSessionReport {
-            self.created.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.created
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             AceSessionReport {
                 session: Some("ses_test0001".to_string()),
                 outcome: AceSessionOutcome::Ok,
@@ -380,7 +387,10 @@ mod tests {
         }
 
         fn op(&self, session: &str, op: AceSessionOp<'_>) -> AceSessionReport {
-            self.ops.lock().unwrap().push(format!("{session}:{}", op_kind(&op)));
+            self.ops
+                .lock()
+                .unwrap()
+                .push(format!("{session}:{}", op_kind(&op)));
             AceSessionReport {
                 session: Some(session.to_string()),
                 outcome: AceSessionOutcome::Ok,
@@ -423,7 +433,7 @@ mod tests {
     /// never a legacy route.
     #[test]
     fn p970_unregistered_host_is_named_failure() {
-        let _guard = REGISTRY_LOCK.lock().unwrap();
+        let _guard = REGISTRY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         assert!(shutdown_ace_session_host() || true); // ensure clean state
         let report = ace_session_create(None, None);
         assert_eq!(
@@ -434,7 +444,10 @@ mod tests {
             }
         );
         let report = ace_session_op("ses_x", AceSessionOp::Inspect);
-        assert!(matches!(report.outcome, AceSessionOutcome::HostFailure { .. }));
+        assert!(matches!(
+            report.outcome,
+            AceSessionOutcome::HostFailure { .. }
+        ));
         assert!(ace_session_list().is_empty());
     }
 
@@ -442,7 +455,7 @@ mod tests {
     /// conflicting install refused) — the E0 executor pattern.
     #[test]
     fn p970_registry_single_owner() {
-        let _guard = REGISTRY_LOCK.lock().unwrap();
+        let _guard = REGISTRY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let a: Arc<dyn AceSessionHost> = Arc::new(StubHost {
             created: std::sync::atomic::AtomicUsize::new(0),
             ops: std::sync::Mutex::new(Vec::new()),
@@ -452,8 +465,14 @@ mod tests {
             ops: std::sync::Mutex::new(Vec::new()),
         });
         assert!(install_ace_session_host(a.clone()).is_ok());
-        assert!(install_ace_session_host(a.clone()).is_ok(), "same host idempotent");
-        assert!(install_ace_session_host(b).is_err(), "conflicting install refused");
+        assert!(
+            install_ace_session_host(a.clone()).is_ok(),
+            "same host idempotent"
+        );
+        assert!(
+            install_ace_session_host(b).is_err(),
+            "conflicting install refused"
+        );
         assert!(shutdown_ace_session_host());
         assert!(!shutdown_ace_session_host(), "double shutdown");
     }
@@ -462,7 +481,7 @@ mod tests {
     /// filled by the facade, not the host.
     #[test]
     fn p970_dispatch_reaches_host() {
-        let _guard = REGISTRY_LOCK.lock().unwrap();
+        let _guard = REGISTRY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let host = Arc::new(StubHost {
             created: std::sync::atomic::AtomicUsize::new(0),
             ops: std::sync::Mutex::new(Vec::new()),
@@ -481,7 +500,10 @@ mod tests {
             },
         );
         assert_eq!(report.outcome, AceSessionOutcome::Ok);
-        assert_eq!(*host.ops.lock().unwrap(), vec!["ses_test0001:eval".to_string()]);
+        assert_eq!(
+            *host.ops.lock().unwrap(),
+            vec!["ses_test0001:eval".to_string()]
+        );
         assert_eq!(ace_session_list(), vec!["ses_test0001".to_string()]);
         shutdown_ace_session_host();
     }
@@ -504,6 +526,9 @@ mod tests {
     fn p970_value_display() {
         assert_eq!(AceSessionValue::None.display(), None);
         assert_eq!(AceSessionValue::Int(17).display().as_deref(), Some("17"));
-        assert_eq!(AceSessionValue::Bool(true).display().as_deref(), Some("true"));
+        assert_eq!(
+            AceSessionValue::Bool(true).display().as_deref(),
+            Some("true")
+        );
     }
 }

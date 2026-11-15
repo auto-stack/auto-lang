@@ -2699,9 +2699,9 @@ mod tests {
             .artifact(".expected.py")
             .map(|b| String::from_utf8_lossy(b).to_string())
             .ok_or_else(|| {
-                crate::error::AutoError::Msg(
-                    format!("a2p case {case}: golden missing from migration doc"),
-                )
+                crate::error::AutoError::Msg(format!(
+                    "a2p case {case}: golden missing from migration doc"
+                ))
             })?;
 
         if py_code != expected.as_bytes() {

@@ -23,5 +23,15 @@ ace-foreign-contract = { path = "../../experimental/ace/crates/foreign-contract"
 ace-source-query = { path = "../../experimental/ace/crates/source-query" }
 ace-lowering = { path = "../../experimental/ace/crates/lowering" }
 
+[dependencies.base64]
+version = "0.22"
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1"
+
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -12,12 +12,12 @@ use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
+#[path = "inventory_helpers.rs"]
+mod helpers;
 #[path = "inventory_probe.rs"]
 mod probe;
 #[path = "inventory_wrappers.rs"]
 mod wrappers;
-#[path = "inventory_helpers.rs"]
-mod helpers;
 
 /// PLAN-1062 T-01: production syn closure of the python/conformance
 /// file-helper corpora (declared producer/consumer edges, not execution).
@@ -858,8 +858,7 @@ mod tests {
 
         // typed fixture binding (W01-family): fixture + args + payload marker.
         let typed_v2 = suite_migration_inventory_v2(
-            &cases_root()
-                .join("ace-m1/typed-native-891/typed-native-891.suite.ad"),
+            &cases_root().join("ace-m1/typed-native-891/typed-native-891.suite.ad"),
             &Limits::defaults(),
         )
         .unwrap();

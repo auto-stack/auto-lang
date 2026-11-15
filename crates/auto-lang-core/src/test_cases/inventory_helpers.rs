@@ -151,10 +151,8 @@ impl<'ast> Visit<'ast> for HelperCalls {
                     if let syn::Expr::Path(arg) = &expression.args[0] {
                         let arg_name = arg.path.segments.last().map(|s| s.ident.to_string());
                         if let Some(arg_name) = arg_name {
-                            if let Some((_, cases)) = self
-                                .active_loops
-                                .iter()
-                                .find(|(var, _)| *var == arg_name)
+                            if let Some((_, cases)) =
+                                self.active_loops.iter().find(|(var, _)| *var == arg_name)
                             {
                                 self.children.push(json!({
                                     "kind":"generator-loop","family":"a2r-conformance",
@@ -168,8 +166,9 @@ impl<'ast> Visit<'ast> for HelperCalls {
                         }
                     }
                 }
-                self.unresolved
-                    .push(format!("{name}: nonliteral input in helper corpus test body"));
+                self.unresolved.push(format!(
+                    "{name}: nonliteral input in helper corpus test body"
+                ));
                 syn::visit::visit_expr_call(self, expression);
                 return;
             };
@@ -380,10 +379,7 @@ mod tests {
         let value = helper_inventory(directory.path()).unwrap();
         let bindings = value["bindings"].as_array().unwrap();
         assert_eq!(bindings.len(), 2);
-        assert_eq!(
-            bindings[0]["children"][0]["kind"],
-            json!("generator-loop")
-        );
+        assert_eq!(bindings[0]["children"][0]["kind"], json!("generator-loop"));
         assert_eq!(
             bindings[0]["children"][0]["cases"],
             json!(["001_int_add", "002_str_concat"])
@@ -391,6 +387,9 @@ mod tests {
         assert_eq!(bindings[1]["children"][0]["comparison"], "unicode-trim");
         let unresolved = value["unresolved"].as_array().unwrap();
         assert_eq!(unresolved.len(), 1);
-        assert!(unresolved[0]["reason"].as_str().unwrap().contains("nonliteral"));
+        assert!(unresolved[0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("nonliteral"));
     }
 }

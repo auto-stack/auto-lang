@@ -21,10 +21,10 @@ use auto_val::AutoPath;
 use auto_val::{Array, Node, Obj, Value};
 
 // ---- T-02 批 1-2：扫描器/前端门面组 ----
-#[path = "legacy_doc_for_trans.rs"]
-pub mod legacy_doc_for_trans;
 pub mod dep_scanner;
 mod dependency_scan;
+#[path = "legacy_doc_for_trans.rs"]
+pub mod legacy_doc_for_trans;
 pub mod mode;
 pub mod os_paths;
 pub mod use_scanner;
@@ -69,6 +69,8 @@ pub mod ast_parse_ext;
 
 // ---- T-02 大迁移：执行/编译/VM/trans/服务全集 ----
 pub mod a2r_std;
+mod ace_client;
+mod ace_daemon;
 mod ace_entry;
 mod ace_session;
 pub mod api;
@@ -1231,6 +1233,8 @@ async fn test_code_with_options(
 }
 
 // ---- PLAN-843 结构拆分：入口/旗标分离（机制在子模块，crate 根保再导出） ----
+pub use ace_client::*;
+pub use ace_daemon::*;
 pub use ace_entry::*;
 pub use ace_session::*;
 mod entry;

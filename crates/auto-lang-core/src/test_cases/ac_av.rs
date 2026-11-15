@@ -1919,12 +1919,13 @@ fn run_check_with_transport(
         // streams (the case gate forbids them there); the full console
         // oracle contract applies to success completions.
         if family == RecipeFamily::SchedulerSource
-            && !matches!(oracle.completion, auto_test_case::contract::Completion::Success)
+            && !matches!(
+                oracle.completion,
+                auto_test_case::contract::Completion::Success
+            )
         {
             if oracle.stdout.is_some() || oracle.stderr.is_some() {
-                return Err(
-                    "scheduler error completions assert no console streams".into(),
-                );
+                return Err("scheduler error completions assert no console streams".into());
             }
         } else {
             auto_test_case::contract::validate_console_oracle(

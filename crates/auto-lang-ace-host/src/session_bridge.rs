@@ -28,6 +28,8 @@
 //! discipline, now structural); the public handle is `Send + Sync` and
 //! answers synchronously.
 
+use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine as _;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
@@ -203,8 +205,7 @@ fn normalize_program(
                     _ => {
                         return Err((
                             "session.source/entry-type".to_string(),
-                            "the session lanes support int/i32/bool entry results only"
-                                .to_string(),
+                            "the session lanes support int/i32/bool entry results only".to_string(),
                         ))
                     }
                 };
@@ -294,9 +295,11 @@ fn bindings_of(source: &str, lane: Lane) -> Vec<Binding> {
     let Ok(program) = parse_program(source) else {
         return Vec::new();
     };
-    let Some(Item::Fn(f)) = program.items.iter().find(|i| {
-        matches!(i, Item::Fn(f) if f.name.name == want)
-    }) else {
+    let Some(Item::Fn(f)) = program
+        .items
+        .iter()
+        .find(|i| matches!(i, Item::Fn(f) if f.name.name == want))
+    else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -378,6 +381,10 @@ struct HostSession {
     revision_offset: u64,
     /// `Some` while an async evaluation chain is armed/running.
     async_id: Option<u64>,
+    /// The persistent op log (T-08): every accepted eval / edit / reset,
+    /// replayed verbatim on restore — recovery RE-VERIFIES, it never
+    /// trusts persisted values (no deserialized Checked state).
+    op_log: Vec<OpRecord>,
     /// Raw edits queued for the async chain's next safety point (FIFO;
     /// spliced into the tracked source as their commits land).
     queued_edits: std::collections::VecDeque<(u64, u64, Vec<u8>)>,
@@ -389,6 +396,32 @@ struct FinishedEval {
     value: AceSessionValue,
     cancelled: bool,
 }
+
+/// One persisted operation (T-08 `ac.session.state/1` op log).
+#[derive(Debug, Clone)]
+enum OpRecord {
+    Eval {
+        input: String,
+    },
+    Edit {
+        start: u64,
+        end: u64,
+        insert_b64: String,
+    },
+    Reset,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SessionStateRecord {
+    schema: String,
+    id: String,
+    /// Serialized [`OpRecord`]s (tagged form).
+    ops: Vec<serde_json::Value>,
+    revision: u64,
+    saved_at: u64,
+}
+
+const STATE_SCHEMA: &str = "ac.session.state/1";
 
 fn refusal_code(out: &EditOutcome) -> String {
     match &out.rejection {
@@ -437,15 +470,13 @@ impl HostSession {
                 }
             })?;
         let src = canonical(dispatch_text(lane), &body_int, &body_bool, &items);
-        let fis = warmup(&src, "d_main", &[]).map_err(|e| {
-            AceSessionOutcome::Diagnostic {
+        let fis = warmup(&src, "d_main", &[]).map_err(|e| AceSessionOutcome::Diagnostic {
+            code: "session.source/compile".into(),
+            diagnostics: vec![AceSessionDiag {
+                stage: "compile".into(),
                 code: "session.source/compile".into(),
-                diagnostics: vec![AceSessionDiag {
-                    stage: "compile".into(),
-                    code: "session.source/compile".into(),
-                    message: e,
-                }],
-            }
+                message: e,
+            }],
         })?;
         Ok(HostSession {
             engine: Engine::Direct(fis),
@@ -461,6 +492,7 @@ impl HostSession {
             evals: 0,
             revision_offset: 0,
             async_id: None,
+            op_log: Vec::new(),
             queued_edits: std::collections::VecDeque::new(),
             finished: HashMap::new(),
             next_eval_id: 1,
@@ -507,7 +539,10 @@ impl HostSession {
     /// refusal (the error-then-continue invariant).
     fn commit_body(&mut self, lane: Lane, new_body: &str) -> Result<(), AceSessionOutcome> {
         let (a, b) = self.body_span(lane);
-        match self.fis_mut().prepare_edit(a, b, new_body.as_bytes().to_vec()) {
+        match self
+            .fis_mut()
+            .prepare_edit(a, b, new_body.as_bytes().to_vec())
+        {
             Err(e) => Err(AceSessionOutcome::HostFailure {
                 code: "session.edit/infra".into(),
                 message: e,
@@ -610,7 +645,10 @@ impl HostSession {
             ExecOutcome::Cancelled => (AceSessionValue::None, Some(AceSessionOutcome::Cancelled)),
             ExecOutcome::Resource { kind, message } => (
                 AceSessionValue::None,
-                Some(AceSessionOutcome::ResourceDenied { kind: format!("{kind:?}"), message }),
+                Some(AceSessionOutcome::ResourceDenied {
+                    kind: format!("{kind:?}"),
+                    message,
+                }),
             ),
             ExecOutcome::Error { message, .. } => (
                 AceSessionValue::None,
@@ -812,7 +850,12 @@ fn looks_like_items(input: &str) -> bool {
         Ok(p) => p.items.iter().any(|i| {
             matches!(
                 i,
-                Item::Fn(_) | Item::Type(_) | Item::Enum(_) | Item::Const(_) | Item::UseRs(_) | Item::Task(_)
+                Item::Fn(_)
+                    | Item::Type(_)
+                    | Item::Enum(_)
+                    | Item::Const(_)
+                    | Item::UseRs(_)
+                    | Item::Task(_)
             )
         }),
         Err(_) => false,
@@ -876,6 +919,174 @@ enum OpPayload {
 struct Owner {
     limits: AceSessionLimits,
     sessions: HashMap<String, HostSession>,
+    /// T-08 persistence root: when set, live sessions are flushed to
+    /// `ac.session.state/1` records on shutdown and re-verified (op-log
+    /// replay) on install; Close/expiry remove the record (a clean end).
+    state_dir: Option<std::path::PathBuf>,
+}
+
+impl Owner {
+    /// Serialize the session's accepted-op log to its record file.
+    fn write_record(&self, id: &str, session: &HostSession) {
+        let Some(dir) = &self.state_dir else { return };
+        let ops: Vec<serde_json::Value> = session
+            .op_log
+            .iter()
+            .map(|op| match op {
+                OpRecord::Eval { input } => serde_json::json!({"op": "eval", "input": input}),
+                OpRecord::Edit {
+                    start,
+                    end,
+                    insert_b64,
+                } => serde_json::json!({
+                    "op": "edit", "start": start, "end": end, "insert_b64": insert_b64
+                }),
+                OpRecord::Reset => serde_json::json!({"op": "reset"}),
+            })
+            .collect();
+        let record = SessionStateRecord {
+            schema: STATE_SCHEMA.to_string(),
+            id: id.to_string(),
+            ops,
+            revision: session.revision(),
+            saved_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        };
+        let path = dir.join(format!("{id}.state.json"));
+        if let Ok(text) = serde_json::to_string_pretty(&record) {
+            let tmp = dir.join(format!("{id}.state.json.tmp"));
+            // Atomic replace: a bad upgrade never leaves a half record.
+            if std::fs::write(&tmp, text).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+    }
+
+    fn remove_record(&self, id: &str) {
+        let Some(dir) = &self.state_dir else { return };
+        let _ = std::fs::remove_file(dir.join(format!("{id}.state.json")));
+    }
+
+    /// Restore persisted sessions: op-log replay RE-VERIFIES every
+    /// operation through the same seams (never a deserialized Checked
+    /// state). Unknown schemas are skipped by name and their files left
+    /// untouched; legacy `.at` snapshots load as seeded sessions (the
+    /// explicit legacy-source-replay path).
+    fn restore_records(&mut self, dir: &std::path::Path) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut records: Vec<(String, Vec<serde_json::Value>, u64)> = Vec::new();
+        let mut legacy: Vec<(String, String)> = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.ends_with(".state.json") {
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                match serde_json::from_str::<SessionStateRecord>(&text) {
+                    Ok(rec) if rec.schema == STATE_SCHEMA => {
+                        records.push((rec.id, rec.ops, rec.revision));
+                    }
+                    Ok(rec) => {
+                        // Unknown schema: skip by name, file untouched
+                        // (the named bad-upgrade boundary, V-08).
+                        eprintln!(
+                            "ace-session: skipping state record {} with unknown schema {}",
+                            rec.id, rec.schema
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("ace-session: skipping unreadable state record {name}: {e}");
+                    }
+                }
+            } else if name.ends_with(".at") {
+                if let Ok(source) = std::fs::read_to_string(&path) {
+                    let id = name.trim_end_matches(".at").to_string();
+                    legacy.push((id, source));
+                }
+            }
+        }
+        for (id, ops, revision) in records {
+            if self.sessions.contains_key(&id) {
+                continue;
+            }
+            let Ok(mut session) = HostSession::new(None) else {
+                continue;
+            };
+            session.revision_offset = revision;
+            session.op_log = ops
+                .iter()
+                .filter_map(|v| match v.get("op").and_then(|o| o.as_str()) {
+                    Some("eval") => {
+                        v.get("input")
+                            .and_then(|i| i.as_str())
+                            .map(|input| OpRecord::Eval {
+                                input: input.to_string(),
+                            })
+                    }
+                    Some("edit") => {
+                        let start = v.get("start").and_then(|x| x.as_u64())?;
+                        let end = v.get("end").and_then(|x| x.as_u64())?;
+                        v.get("insert_b64")
+                            .and_then(|x| x.as_str())
+                            .map(|b64| OpRecord::Edit {
+                                start,
+                                end,
+                                insert_b64: b64.to_string(),
+                            })
+                    }
+                    Some("reset") => Some(OpRecord::Reset),
+                    _ => None,
+                })
+                .collect();
+            // Replay through the same seams; each replayed op re-records
+            // itself, so trim back to one copy of the log afterwards.
+            let log_len = session.op_log.len();
+            self.sessions.insert(id.clone(), session);
+            for op in &ops {
+                let session = self.sessions.get_mut(&id).expect("just inserted");
+                let pre = session.op_log.len();
+                match op.get("op").and_then(|o| o.as_str()) {
+                    Some("eval") => {
+                        if let Some(input) = op.get("input").and_then(|i| i.as_str()) {
+                            let _ =
+                                Self::eval(self.limits.var_cap, &id, session, input, None, None);
+                        }
+                    }
+                    Some("edit") => {
+                        let start = op.get("start").and_then(|x| x.as_u64());
+                        let end = op.get("end").and_then(|x| x.as_u64());
+                        let b64 = op.get("insert_b64").and_then(|x| x.as_str());
+                        if let (Some(start), Some(end), Some(b64)) = (start, end, b64) {
+                            if let Ok(insert) = B64.decode(b64) {
+                                let _ = Self::edit(&id, session, start, end, insert);
+                            }
+                        }
+                    }
+                    Some("reset") => {
+                        let _ = Self::op_reset(&id, session);
+                    }
+                    _ => {}
+                }
+                let session = self.sessions.get_mut(&id).expect("just inserted");
+                session.op_log.truncate(pre);
+            }
+            let session = self.sessions.get_mut(&id).expect("just inserted");
+            session.op_log.truncate(log_len);
+        }
+        for (id, source) in legacy {
+            if !self.sessions.contains_key(&id) {
+                if let Ok(mut session) = HostSession::new(Some(&source)) {
+                    session.op_log.push(OpRecord::Eval { input: source });
+                    self.sessions.insert(id, session);
+                }
+            }
+        }
+    }
 }
 
 fn report(session: &str, s: &HostSession, outcome: AceSessionOutcome) -> AceSessionReport {
@@ -965,9 +1176,11 @@ impl Owner {
         };
         session.last_active = Instant::now();
         match payload {
-            OpPayload::Eval { input, wall, cancel } => {
-                Self::eval(var_cap, id, session, &input, wall, cancel)
-            }
+            OpPayload::Eval {
+                input,
+                wall,
+                cancel,
+            } => Self::eval(var_cap, id, session, &input, wall, cancel),
             OpPayload::Edit { start, end, insert } => Self::edit(id, session, start, end, insert),
             OpPayload::Inspect => {
                 let mut r = report(id, session, AceSessionOutcome::Ok);
@@ -991,36 +1204,13 @@ impl Owner {
                 ));
                 r
             }
-            OpPayload::Reset => {
-                if session.async_id.is_some() {
-                    return denied(
-                        id,
-                        "session.eval/busy-async",
-                        "an async evaluation is in flight; cancel it first",
-                    );
-                }
-                match session.reshape(DEFAULT_INT_BODY, DEFAULT_BOOL_BODY, Vec::new(), Lane::Int) {
-                    Ok(()) => {
-                        session.vars.clear();
-                        let mut r = report(id, session, AceSessionOutcome::Ok);
-                        r.rebuilt = true;
-                        r
-                    }
-                    Err(e) => report(
-                        id,
-                        session,
-                        AceSessionOutcome::HostFailure {
-                            code: "session.reset/reshape".into(),
-                            message: e,
-                        },
-                    ),
-                }
-            }
+            OpPayload::Reset => Self::op_reset(id, session),
             OpPayload::Close => {
                 if let Engine::Resident(r) = &mut session.engine {
                     r.stop(); // drops the chain, releases pins (V-04)
                 }
                 session.fis_mut().close();
+                self.remove_record(id);
                 self.sessions.remove(id);
                 AceSessionReport {
                     session: Some(id.to_string()),
@@ -1037,6 +1227,34 @@ impl Owner {
             OpPayload::EvalAsync { input, wall } => Self::eval_async(id, session, &input, wall),
             OpPayload::Result { eval_id } => Self::poll_async(id, session, eval_id),
             OpPayload::CancelEval { eval_id } => Self::cancel_eval(id, session, eval_id),
+        }
+    }
+
+    /// The reset op (shared by the dispatch arm and record replay).
+    fn op_reset(id: &str, session: &mut HostSession) -> AceSessionReport {
+        if session.async_id.is_some() {
+            return denied(
+                id,
+                "session.eval/busy-async",
+                "an async evaluation is in flight; cancel it first",
+            );
+        }
+        match session.reshape(DEFAULT_INT_BODY, DEFAULT_BOOL_BODY, Vec::new(), Lane::Int) {
+            Ok(()) => {
+                session.vars.clear();
+                session.op_log.push(OpRecord::Reset);
+                let mut r = report(id, session, AceSessionOutcome::Ok);
+                r.rebuilt = true;
+                r
+            }
+            Err(e) => report(
+                id,
+                session,
+                AceSessionOutcome::HostFailure {
+                    code: "session.reset/reshape".into(),
+                    message: e,
+                },
+            ),
         }
     }
 
@@ -1060,7 +1278,13 @@ impl Owner {
         // design — the reshape is the named, user-visible rebuild).
         if looks_like_items(input) {
             return match Self::reshape_append(id, session, input) {
-                Ok(r) => r,
+                Ok(mut r) => {
+                    session.op_log.push(OpRecord::Eval {
+                        input: input.to_string(),
+                    });
+                    r.rebuilt = true;
+                    r
+                }
                 Err(outcome) => report(id, session, outcome),
             };
         }
@@ -1101,6 +1325,9 @@ impl Owner {
             notes = session.capture(bindings, var_cap);
         }
         session.evals += 1;
+        session.op_log.push(OpRecord::Eval {
+            input: input.to_string(),
+        });
         let mut r = report(id, session, AceSessionOutcome::Ok);
         r.value = value;
         if !notes.is_empty() {
@@ -1120,15 +1347,13 @@ impl Owner {
         session: &mut HostSession,
         input: &str,
     ) -> Result<AceSessionReport, AceSessionOutcome> {
-        let program = parse_program(input).map_err(|d| {
-            AceSessionOutcome::Diagnostic {
+        let program = parse_program(input).map_err(|d| AceSessionOutcome::Diagnostic {
+            code: "session.source/parse".into(),
+            diagnostics: vec![AceSessionDiag {
+                stage: "text".into(),
                 code: "session.source/parse".into(),
-                diagnostics: vec![AceSessionDiag {
-                    stage: "text".into(),
-                    code: "session.source/parse".into(),
-                    message: format!("{}: {}", d.code, d.message),
-                }],
-            }
+                message: format!("{}: {}", d.code, d.message),
+            }],
         })?;
         for item in &program.items {
             if let Item::Fn(f) = item {
@@ -1144,14 +1369,12 @@ impl Owner {
             }
         }
         let replaced: Vec<String> = program.items.iter().filter_map(item_name).collect();
-        let current = parse_program(&session.source).map_err(|d| {
-            AceSessionOutcome::HostFailure {
+        let current =
+            parse_program(&session.source).map_err(|d| AceSessionOutcome::HostFailure {
                 code: "session.reshape/parse".into(),
                 message: format!("canonical source no longer parses: {}", d.message),
-            }
-        })?;
-        let structural =
-            |name: &str| name == "main" || RESERVED_NAMES.contains(&name);
+            })?;
+        let structural = |name: &str| name == "main" || RESERVED_NAMES.contains(&name);
         let mut merged: Vec<String> = Vec::new();
         for item in &current.items {
             if let Some(name) = item_name(item) {
@@ -1231,7 +1454,7 @@ impl Owner {
                 ),
             };
         }
-        match session.fis_mut().prepare_edit(start, end, insert) {
+        match session.fis_mut().prepare_edit(start, end, insert.clone()) {
             Err(e) => report(
                 id,
                 session,
@@ -1253,6 +1476,11 @@ impl Owner {
                 if outcome.ok {
                     session.source = new_source.clone();
                     session.rederive(&new_source);
+                    session.op_log.push(OpRecord::Edit {
+                        start,
+                        end,
+                        insert_b64: B64.encode(&insert),
+                    });
                     report(id, session, AceSessionOutcome::Ok)
                 } else {
                     report(
@@ -1316,6 +1544,9 @@ impl Owner {
         let eval_id = session.next_eval_id;
         session.next_eval_id += 1;
         session.async_id = Some(eval_id);
+        session.op_log.push(OpRecord::Eval {
+            input: input.to_string(),
+        });
         let mut r = report(id, session, AceSessionOutcome::Ok);
         r.eval_id = Some(eval_id);
         r
@@ -1326,11 +1557,7 @@ impl Owner {
     /// chain runs slices until finished or the per-poll budget; a
     /// finished chain reports its (possibly mixed-generation) value on
     /// every later poll from the finished table.
-    fn poll_async(
-        id: &str,
-        session: &mut HostSession,
-        eval_id: u64,
-    ) -> AceSessionReport {
+    fn poll_async(id: &str, session: &mut HostSession, eval_id: u64) -> AceSessionReport {
         if let Some(fin) = session.finished.get(&eval_id) {
             let mut r = report(
                 id,
@@ -1416,11 +1643,7 @@ impl Owner {
         }
     }
 
-    fn cancel_eval(
-        id: &str,
-        session: &mut HostSession,
-        eval_id: u64,
-    ) -> AceSessionReport {
+    fn cancel_eval(id: &str, session: &mut HostSession, eval_id: u64) -> AceSessionReport {
         if session.async_id != Some(eval_id) {
             return denied(
                 id,
@@ -1445,14 +1668,27 @@ impl Owner {
     }
 }
 
-fn run_owner(rx: mpsc::Receiver<Cmd>, limits: AceSessionLimits) {
+fn run_owner(
+    rx: mpsc::Receiver<Cmd>,
+    limits: AceSessionLimits,
+    state_dir: Option<std::path::PathBuf>,
+) {
     let mut owner = Owner {
         limits,
         sessions: HashMap::new(),
+        state_dir: state_dir.clone(),
     };
+    if let Some(dir) = &state_dir {
+        let _ = std::fs::create_dir_all(dir);
+        owner.restore_records(dir);
+    }
     while let Ok(cmd) = rx.recv() {
         match cmd {
-            Cmd::Create { source, wall, reply } => {
+            Cmd::Create {
+                source,
+                wall,
+                reply,
+            } => {
                 let _ = wall; // warmup cost is the frozen surface; see T-04 evidence
                 let _ = reply.send(owner.create(source.as_deref()));
             }
@@ -1471,6 +1707,7 @@ fn run_owner(rx: mpsc::Receiver<Cmd>, limits: AceSessionLimits) {
                     .map(|(k, _)| k.clone())
                     .collect();
                 for key in &expired {
+                    owner.remove_record(key);
                     owner.sessions.remove(key);
                 }
                 let _ = reply.send(expired);
@@ -1478,7 +1715,12 @@ fn run_owner(rx: mpsc::Receiver<Cmd>, limits: AceSessionLimits) {
             Cmd::Drop => break,
         }
     }
-
+    // Shutdown flush: every LIVE session's accepted-op log persists (a
+    // restarting daemon restores them; closed/expired sessions already
+    // removed their records).
+    for (id, session) in &owner.sessions {
+        owner.write_record(id, session);
+    }
 }
 
 /// The registry-side host: a cheap cloneable gate to the one owner
@@ -1525,7 +1767,11 @@ impl AceSessionHost for SessionHostShim {
 
     fn op(&self, session: &str, op: AceSessionOp<'_>) -> AceSessionReport {
         let payload = match op {
-            AceSessionOp::Eval { input, wall, cancel } => OpPayload::Eval {
+            AceSessionOp::Eval {
+                input,
+                wall,
+                cancel,
+            } => OpPayload::Eval {
                 input: input.to_string(),
                 wall,
                 // The neutral contract lends a flag reference; the owned
@@ -1602,13 +1848,27 @@ impl Drop for SessionHostGuard {
 
 /// Install the process-wide ACE session host (single owner; conflicts
 /// with an installed host are an error — release it first).
-pub fn install_session_host(
+pub fn install_session_host(limits: AceSessionLimits) -> Result<SessionHostGuard, String> {
+    install_session_host_inner(limits, None)
+}
+
+/// T-08: install with a persistence root — persisted sessions restore by
+/// op-log replay at startup and flush on shutdown.
+pub fn install_session_host_with_store(
     limits: AceSessionLimits,
+    state_dir: std::path::PathBuf,
+) -> Result<SessionHostGuard, String> {
+    install_session_host_inner(limits, Some(state_dir))
+}
+
+fn install_session_host_inner(
+    limits: AceSessionLimits,
+    state_dir: Option<std::path::PathBuf>,
 ) -> Result<SessionHostGuard, String> {
     let (tx, rx) = mpsc::channel::<Cmd>();
     let join = std::thread::Builder::new()
         .name("ace-session-host".into())
-        .spawn(move || run_owner(rx, limits))
+        .spawn(move || run_owner(rx, limits, state_dir))
         .map_err(|e| format!("session owner thread: {e}"))?;
     match auto_lang_core::install_ace_session_host(Arc::new(SessionHostShim { tx: tx.clone() })) {
         Ok(()) => Ok(SessionHostGuard {

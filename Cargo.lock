@@ -751,6 +751,9 @@ dependencies = [
  "ace-lowering",
  "ace-source-query",
  "auto-lang-core",
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

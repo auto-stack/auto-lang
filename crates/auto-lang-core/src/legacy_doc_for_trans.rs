@@ -24,7 +24,9 @@ pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
         CaseDocument::parse(text.as_bytes()).map_err(|e| format!("{}: {e}", doc_path.display()))?;
     let rel = format!(
         "{}/{}.case.ad",
-        dir.file_name().map(|d| d.to_string_lossy().to_string()).unwrap_or_default(),
+        dir.file_name()
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or_default(),
         stem
     );
     let mut cases = decode_document(&doc, &rel, &Limits::defaults())
@@ -36,7 +38,9 @@ pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
             cases.len()
         ));
     }
-    Ok(LegacyDoc { case: cases.remove(0) })
+    Ok(LegacyDoc {
+        case: cases.remove(0),
+    })
 }
 
 impl LegacyDoc {

@@ -58,7 +58,7 @@ pub fn run_check_typed(
             return Err(format!(
                 "typed fixture `{}` does not match the case source file `{f}`",
                 typed.fixture
-            ))
+            ));
         }
     }
     let fixture_bytes = case

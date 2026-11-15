@@ -1051,8 +1051,7 @@ fn dispatch_check(
         // PLAN-968: the scheduler SOURCE recipe (task actor sources through
         // the scheduler frontend + cooperative scheduler; append-only).
         (Adapter::Probe, auto_test_case::contract::Action::Run)
-            if check.options.probe_recipe.as_deref()
-                == Some(ac_av::AV_SCHEDULER_SOURCE_RECIPE) =>
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_SCHEDULER_SOURCE_RECIPE) =>
         {
             ac_av::run_scheduler_source_check(
                 resolved,
