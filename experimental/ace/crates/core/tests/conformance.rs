@@ -76,6 +76,8 @@ mod plan981_age_package_modules;
 mod plan981_age_ref;
 #[path = "cases/plan981_age_fields.rs"]
 mod plan981_age_fields;
+#[path = "cases/plan981_age_resources.rs"]
+mod plan981_age_resources;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]
