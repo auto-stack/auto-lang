@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 9
-current_step: 1
+current_step: 2
 total_steps: 8
 depends_on: [PLAN-972, PLAN-973, PLAN-948, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -324,7 +324,8 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 - [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
   [✅ 2026-11-16] 冻结记录见§5"T-01 A期冻结记录"：前置核实+973分账（JSON/:memory:/redis不前置，文件腿具名阻塞）；三域选型冻结（S1自有JSON codec/S2复用967 FFI sqlite/S3 RESP over platform.net）；worktree已建。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16, worktree commit bc19182d9] **JSON encode族已交**（T-02 首增量）：`stdlib/ace/std/json.at`（json_escape/json_int含负数/json_bool/json_null/json_str/kv与array/object组合helper + json_structurally_balanced字符串感知括号扫描=廉价有效面**明非parse**）＋`json975_encode_family_inline`（verbatim内联14独立手算oracle含3负控，0.09s）。decode/parse/泛型typed面=具名pending（子串物化决定共享）；sqlite/redis腿按T-01选型（S2 967 provider/S3 RESP）待续。
 
 - [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -351,6 +352,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-975 | r9 | 2026-11-16 | outcome: in-progress (T-02 JSON encode族) | worktree: D:/autostack/.wt/lang-975/auto-lang @ plan-975-dev | code_commit: bc19182d9 | evidence: json975 1/1绿0.09s（14 oracle） | next_responsible_role: work（sqlite :memory: 腿（S2 967 provider）/redis（S3 RESP） 或按裁定）
 
 stage: work | PLAN-975 | r9 | 2026-11-16 | outcome: pass (T-01) | worktree: D:/autostack/.wt/lang-975/auto-lang @ plan-975-dev（基面 master@b1cb6faeb） | task_ids: T-01 | evidence: §5"T-01 A期冻结记录" | authorization: 既定裁定模式 | blockers: sqlite文件腿=973（具名）；decode/parse=子串物化核心决定（与974共享） | next_responsible_role: work（T-02 JSON encode族先行——纯拼接面无阻塞）
 
