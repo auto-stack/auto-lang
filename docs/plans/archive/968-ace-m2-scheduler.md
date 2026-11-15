@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-968
-status: drafting
+status: archived
 feature_name: 任务async actor与事件调度
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 5
-current_step: 0
+updated_at: 2026-11-15
+plan_revision: 6
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-965, PLAN-967]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-968] 任务async actor与事件调度
 
 ## 0. 变更摘要
+
+2026-11-15 r6当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
 
 2026-11-12 r5：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -157,7 +159,22 @@ struct Continuation { frame: FrameId, owners: OwnerSet, wake_generation: Generat
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
-### 规范增量
+### 5.1 T-01 决定冻结（2026-11-15，work，r5 基线上执行）
+
+**依赖与路径核定**：PLAN-965（archive，r5）、PLAN-967（archive，r12，19/19）均为终态正式来源；965生成器记录（control_effects语料+specs）与967完成端口（`av-core/src/foreign_exec.rs` CompletionPorts）在位。§4路径修正：967异步完成端口实际在 `foreign-contract/src/port.rs`（+av-core `foreign_exec.rs:808`），非 `typed.rs`（typed.rs为937 typed-decl桥）；本Plan早前引用按此修正，范围不变。`crates/auto-lang-core/src/vm`（task.rs/task_system.rs/scheduler.rs/task_handler.rs/message_context.rs/channel.rs）、`crates/a2r-std/src/task.rs` 均在位已核。工作树 `D:/autostack/.wt/lang-968/auto-lang`（branch `plan-968-dev`，base `058179ed2`）。
+
+**有界全链前探（P1–P7，2026-11-15实测）**：最长producer→consumer链=source→aggregates前端→verify→lower→verify_mir→ABC admit→AV execute（即 `ace_av::collections_864_support::compile_and_execute_aggregates` 同链，探针以ace-core+ace-lowering+ace-av-core直接驱动，probe源+日志在plan-artifacts/plan-968/probe-t01/）。P1对照正例（`fn main() int` 返回42）PASS；P2 canonical message_handler.at原字节与P3最小task片段均于compile段具名拒绝 `source.unsupported: "`task` is not part of this source profile"`（现行精确缺口）；P4非法近邻（截断on臂）现被同一准入门拒绝（task解析落地后须有自己的具名parse拒绝，记为T-02义务）；P5失败后同进程重跑对照正例PASS（链可复用）；P6/P7：canonical函数面 `fn main() { }`（无返回标注）与 `fn start() ! { }`（bang效果标记）现均被"return type annotation required"拒绝——前端缺口=task语法+无标注unit函数+bang标记三件。
+
+**策略比较（择A，弃B/C）**：
+- **A（择）AV内确定性协作调度+共享前译**：aggregates profile 扩 task/on/spawn/send/ask/reply/await/go/sleep 语法；lowering 到现有HIR/MIR；调度服务=av-core内中立scheduler（虚拟时钟、零宿主线程、mailbox/timer/reply挂起唤醒，经host-intrinsic调用）；a2x-rust 以自包含生成代码实现同一状态机（行为oracle，不逐字匹配旧A2R金样）。
+- B（弃）宿主线程调度复用967端口：非确定序破坏正确性测试、线程归属泄漏公共API、违背"不一次性重写宿主线程模型"。
+- C（弃）移植旧AutoVM task_system执行器：V-08明令"不引入旧执行器"；旧实现仅作语义参考。
+
+**语义冻结（D1–D3）**：D1 语法面=原件义务（task decl：状态字段默认值/`fn start() !`/`fn stop() !`/on臂字面量·类型绑定模式；`Task.spawn("Name", cap[, 位置初始化按声明序])`；`h.send(m)`；`h.ask(m)`+handler内`reply(v)`（send模式reply=具名错误，沿旧MessageContext）；`await`；`go`；`sleep(ms)`；无标注unit函数与bang标记在aggregates profile准入）。D2 调度=确定性协作（mailbox有界=spawn cap，满则send挂起发送者=背压，沿旧 `mpsc::channel(capacity)` 域；程序退出=有序drain/join——message_handler在main返回后仍打印"got one"；取消=既有CancelFlag契约+per-task取消token，取消/完成竞争单终态，迟到结果丢弃（沿967 Publish/DropLate处置形态）；timer=虚拟时钟，无可运行任务时最早截止优先；exit时未决timer取消）。D3 四端矩阵（按原支持域）：**av=全量实现；a2r=emit+运行**（行为等价，旧金样保留给旧实现）；**native/a2c=具名拒绝码**（旧A2C `trans/c.rs` 零task支持、旧产品无native-actor执行——原支持域外不扩，负控验证具名拒绝）；967端口不改不反向等待。
+
+**owner/命令冻结（D4–D6）**：D4 owner=ace-core/source（lexer/parser/resolve/typecheck/adapter）、ace-lowering（task driver前译）、ace-av-core（中立调度服务+intrinsics）、a2x-rust（生成侧调度器）；语料 `crates/auto-lang/test/cases/ace-m2/scheduler/`（case.ad+suite.ad+src/，recipe `ac-av/aggregates-source-run-v1`，负控具名 `bind/source.*`）；新固定组 `case-ace-m2-scheduler-968`（沿965先例注册test-groups.toml）；四端断言进 ace-av/ace-a2x-worker 既有test crates。D5 命令=日常 `cargo t case-ace-m2-scheduler-968`；T-04完整职责并集 `cargo t ace-av ace-native ace-a2x ace-runtime a2r-actor-tests case-ace-m2-scheduler-968`。D6 资源=虚拟时钟不触墙钟（ExecLimits wall预算保持）；mailbox容量=spawn实参；新测试单例≤10s（test-discipline）；正确性泳道零新宿主线程（V-04/V-05由构造保绿）。
+
+
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
@@ -167,6 +184,22 @@ struct Continuation { frame: FrameId, owners: OwnerSet, wake_generation: Generat
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-scheduler.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**调度中被标准库消费的Linux OS/事件/资源腿**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+仅标准库Linux腿延期；普通平台中立async/actor、Windows状态机、四端调度原义务继续，不能借本条跳过共享算法测试。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-scheduler.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -208,6 +241,14 @@ struct Continuation { frame: FrameId, owners: OwnerSet, wake_generation: Generat
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -220,27 +261,29 @@ struct Continuation { frame: FrameId, owners: OwnerSet, wake_generation: Generat
 | AC-06 | work | 调度协议与真实四端状态机的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 
+- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+
 ## 8. 执行步骤
 
-当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共8任务，1完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。[✅ 已完成 2026-11-15，见§5.1 T-01冻结记录；探针证据 P1–P7 存plan-artifacts/plan-968/probe-t01/]
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。[DONE 2026-11-15 三提交 1792cde0a(AV全链)+e9d213f95(语料/recipe/worker)+461ecce35(a2r lane)：AV确定性调度器、MIR SCHED_*、case-runner语料11例、a2r Rust emit(线程+有界通道运行时,7例绿)；具名延后：a2r的Str字段spawn初值owned-text seam(spawn_with_state在AV/corpus全量覆盖)。原状态：AV全链已绿——scheduler profile(语法+CST投影+oracle)、sched_desugar(task→driver函数/操作→__sched_*内在)、VT::Task/Future单态句柄、MIR SCHED_*操作码(0x41-0x4B, closures族加性)、av-core确定性协作调度器(execute_sched: 虚拟时钟/背压/有序drain)、native具名拒。永久测试 av/tests/cases/sched_m2_968.rs 12/12绿(0.04s)：message_handler"got one"、spawn_with_state"mycounter: 15"(fstr裸花括号方言)、FIFO序、ask/await/reply 42、go、背压1/2/3、stop-hook、虚拟timer序、3负控。待办：语料case-runner接入、a2r lane、警告清理。]
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。[DONE 2026-11-15：case-runner worker协议(avworker/1信封+console观察)、a2x会话冷装+保留env、native具名拒；M2-A切片内增量/失败恢复由调度器内建语义(背压/有序drain/具名错误)承载，B阶段深度增量编辑不在A门]
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：明确mailbox容量、send/ask/reply顺序、timeout/取消胜负、任务join、生成器/stream所有权以及共享状态并发规则；有限前探不代实际四端任务实现。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：明确mailbox容量、send/ask/reply顺序、timeout/取消胜负、任务join、生成器/stream所有权以及共享状态并发规则；有限前探不代实际四端任务实现。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。[DONE 2026-11-15：协议冻结=D1/D2(§5.1)+调度器实现(容量=spawn实参/满则park、FIFO、ask/reply端口单消费、stop=关邮箱→挂起态唤醒→停止钩子→join、sleep虚拟时钟、共享态=单Registry+mailbox归属)；V-08可观测面在 sched_m2_968(AV)+corpus+a2r 三处有真实结果(交错序/满队列/取消胜者/真实await挂起)]
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。[DONE 2026-11-15：完整职责并集 cargo t ace-av ace-native ace-a2x ace-runtime a2r-actor-tests case-ace-m2-scheduler-968 → 5 PASS/1 FAIL(ace-runtime 基线红,源码回退至 058179ed2 复核同样红=预存,非本包触面；未改判NA)+a2r-actor-tests NOT_APPLICABLE(legacy域无本包改动,组级NA规则)。V行证据：V-01..V-08/V-PHASE/V-DETAIL-01..04由 sched_m2_968 12例(AV单测)+corpus 11例(case-runner真实worker)+a2r 7例(Rust emit编译执行) 三层承载，见§5.1映射]
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。[DONE 2026-11-15：needs_fix(F1/F2)→修复a9f9800cc→重审pass aa630a2eb；无新债务候选（原具名延后已随F2关闭撤销）]
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。[DONE 2026-11-15：SD-01/02落盘 m2-scheduler.md(sha256前16 869aaf24495d5557)+replacement-scope L-29切片段(ed850cf1570c214a)；merge冻结门 ace-av/ace-native/ace-a2x/ace-lowering/case-ace-m2-scheduler-968 全PASS@9b3e07cda(=2fe30f52f rebase后)；ff-only合入master 2fe30f52f（6提交，rebase无冲突，无merge commit）]
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。[DONE 2026-11-15：本Plan全部输出在worktree+plan-artifacts/plan-968（后者整目录删除）；无外置target/输出目录对账缺口；wt-guard clean后移除worktree lang-968/分支plan-968-dev]
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -255,6 +298,36 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-15 stage: merge | PLAN-968 | r5 | cleaned: wt-guard clean → worktree lang-968+branch plan-968-dev removed（组目录已删）；plan-artifacts/plan-968 整目录删除（记录已折入本Plan），retention registry 刷新（无具名持有）；主检出代码路径 clean，docs/ 簿记已提交 8f4e6a5a8；landing checks: master tip=2fe30f52f（交付提交）+归档簿记 8f4e6a5a8，canonical specs在landed提交内验证；批量回归 due check: 968%5=3 非倍5触发，receipt 2026-11-14T23:23<48h → 不到期 | deployment observation: 无本包触面的发行二进制/web产物需要刷新（语言仓库内交付）| merge pass
+
+2026-11-15 stage: merge | PLAN-968 | r5 | outcome: pass | prepared: reviewed aa630a2eb+specs 9b3e07cda | landed: master=2fe30f52f（rebase 6提交，ff-only，range-diff等价隐含于无冲突rebase）| canonical_verified: docs/specs/ace-migration/m2-scheduler.md(869aaf24495d5557) + replacement-scope-and-evidence.md(ed850cf1570c214a) @2fe30f52f | merge门: ace-av/ace-native/ace-a2x/ace-lowering/case-ace-m2-scheduler-968 PASS@冻结提交 | archived: docs/plans/archive/968-ace-m2-scheduler.md status=archived, 8/8 | completion_kind: delivered | 旧→新哈希映射: b8197f04d/cad341817/dec5dae83/d81c918d6/a411711ec/9b3e07cda → rebase后同序6提交 tip=2fe30f52f
+
+2026-11-15 stage: review | review_scope: final | reviewer: 同会话独立上下文（限制：实施会话内，非独立模型/会话——从artifacts重建结论） | PLAN-968 | r5 | outcome: pass | worktree D:/autostack/.wt/lang-968/auto-lang | plan-968-dev | reviewed aa630a2eb | base 058179ed2 | deps: 965/967 archived | spec_inputs: docs/specs/ace-migration/replacement-scope-and-evidence.md；规范增量表SD-01/02/PHASE/DETAIL可行，落盘归T-06 merge | acceptance_results: AC-01 pass；AC-02 pass（F2关闭：a2r 8/8含spawn_with_state；AV 12/12；corpus 11/11）；AC-03 pass；AC-06 pass；AC-PHASE pass（A切片完整，无scope缩减；B门不在本切片）；AC-04 pass（my-crate warnings=0、debug prints移除、gated prints清除）；AC-05 merge阶段 | findings: 无未闭项；F1/F2已于a9f9800cc+aa630a2eb关闭并重验（分组：ace-av/ace-a2x/case-ace-m2-scheduler-968/ace-lowering/ace-native PASS）| evidence: 完整职责并集T-04已录（5 PASS+ace-runtime基线红非本包）；新用例计时：sched_m2_968(AV) 12例0.04s、corpus 11例、a2r 8例4.5s（含rustc -O编译prep，执行<0.1s/例，均≤10s门）| pending_closeout_gates: merge-owned冻结并集重跑（代码变更aa630a2eb后：ace-av/ace-a2x/case-968/ace-lowering/ace-native已重跑PASS；ace-runtime/a2r-actor-tests按T-04口径基线红/NA不变）+ spec落盘SD-01/02/PHASE/DETAIL | next: merge
+
+2026-11-15 stage: work | PLAN-968 | r5 | T-02修复提交 a9f9800cc | F1清零（3 warnings移除，my-crate warning检查=0）；F2关闭（spawn_with_state a2r lane绿，a2r 8/8例；具名延后撤销）| 分组：ace-av/ace-a2x/case-ace-m2-scheduler-968 PASS | next_responsible_role: T-05重审
+
+2026-11-15 stage: review | review_scope: final | reviewer: 同会话独立复核（实施会话内独立上下文重建，非独立模型——限制已注明） | PLAN-968 | r5 | outcome: needs_fix | worktree D:/autostack/.wt/lang-968/auto-lang | plan-968-dev | reviewed 461ecce35 | base 058179ed2 | deps: 965/967 archived | spec_inputs: docs/specs/ace-migration/replacement-scope-and-evidence.md + §5规范增量表(SD-01/02/PHASE/DETAIL,落盘为T-06 merge义务,可行) | acceptance_results: AC-01 pass(T-01冻结§5.1)；AC-02 partial(见F2)；AC-03 pass(worker/case-runner/a2x真实接线,native具名拒)；AC-06 pass(协议冻结+三层V-08真实结果)；AC-PHASE partial(同F2)；AC-04/05 review/merge阶段 | findings: F1(轻,AC-04健康面) my-crate 3 warnings：fstr.rs profile_admits_fstr 重复Aggregates臂+unreachable 286、死wrapper split_fstring、a2x-rust lower.rs:1838 未用task_of——修复=去重/删wrapper/删helper；F2(中,AC-02/V-DETAIL-01原支持域) spawn_with_state的a2r lane(其原支持域=a2r转译)Str字段spawn初值owned-text seam具名延后不充分——按"按原支持域"合同应修：driver field let的owned提升未触发,最小重放=cargo test -p ace-a2x-worker sched_968 spawn_with_state(恢复用例后) | evidence: 完整职责并集5 PASS+ace-runtime基线红(058179ed2源码回退复核)已录T-04；调度器行为证据 sched_m2_968 12例(0.04s)+corpus 11例+a2r 7例(3.95s含rustc编译,超10s规则仅测试本体编译为prep,测试执行<4s) | next: work修复F1/F2→重审
+
+2026-11-15 stage: work | PLAN-968 | r5 | 5/8，work-owned任务全部完成，冻结提交461ecce35，无阻塞问题 | next_responsible_role: T-05独立复审（final review）
+
+2026-11-15 stage: work | PLAN-968 | r5 | 5/8（T-04完成）| 冻结提交 461ecce35 | 完整职责并集：ace-av/ace-native/ace-a2x/case-ace-m2-scheduler-968 PASS；ace-runtime FAIL=基线红（源码回退058179ed2复核同样红，text-conformance v04/v06/v07等，非本包触面；runtime crates 0文件改动）；a2r-actor-tests NOT_APPLICABLE（legacy域）。附：T-04期间发现并恢复一次 stash 误弹（PLAN-002 跨工作树共享 stash，pop冲突后 reset --hard 恢复，PLAN-002 stash 保留完好）| next: T-05 独立复审
+
+2026-11-15 stage: work | PLAN-968 | r5 | 4/8（T-01/T-02/T-03/T-08完成）| commits 1792cde0a+e9d213f95+461ecce35 | 分组证据：ace-av PASS(含sched_m2_968 12例)、case-ace-m2-scheduler-968 PASS 11/11、ace-a2x PASS(含sched_968_a2r_rust_emit 7例)、ace-native/ace-lowering/ace-source/ace-foreign-contract PASS | 具名延后(债候选)：a2r Str字段spawn初值owned-text seam（spawn_with_state在AV/corpus全量覆盖）；a2c=原支持域外具名拒 | next: T-04全职责并集
+
+2026-11-15 stage: work | PLAN-968 | r5 | T-02语料/T-03接线已提交 commit e9d213f95（21文件 +539/-31：recipe ac-av/scheduler-source-run-v1、sched_worker、case-runner接线、契约注册、语料11例8正3负、固定组 case-ace-m2-scheduler-968）| 分组：case-ace-m2-scheduler-968 PASS 11/11、ace-av PASS；daily单红(plan702门)经干净基线复核预存 | 剩余：a2r lane(D3)、T-04全职责并集、T-05复审 | next: a2r lane
+
+2026-11-15 stage: work | PLAN-968 | r5 | T-02 AV切片已提交 commit 1792cde0a（44文件 +4751/-305）| worktree D:/autostack/.wt/lang-968/auto-lang | 分组证据：ace-av PASS(1101+12含sched_m2_968新12例0.05s)、ace-native/ace-lowering/ace-source/ace-foreign-contract PASS；ace-host红经干净基线stash复核为预存（av_source_inventory、a2r_hir_first_case两例基线同样红，环境性）| next: T-02语料(recipe ac-av/scheduler-source-run-v1+worker接线+case-ace-m2-scheduler-968组)+a2r lane
+
+2026-11-15 stage: work | PLAN-968 | r5 | T-02进行中（AV主链全绿）| worktree D:/autostack/.wt/lang-968/auto-lang | branch plan-968-dev | base 058179ed2 | task T-02部分 | 证据：ace-av conformance sched_968 12/12 PASS 0.04s（canonical message_handler=got one、spawn_with_state=mycounter: 15、FIFO、ask/reply、go、背压、stop-hook、虚拟timer、3负控具名拒）；T-01探针P1-P7已录 | blockers: 无（机器占用等待回归组）| next: T-02语料+T-03接线
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r6：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
+
+stage: goal | plan_id: PLAN-968 | plan_revision: r5 | round: 1 | from: start | to: work | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-968/auto-lang | commit: 058179ed2 | next: work
+
+2026-11-15 stage: work | PLAN-968 | r5 | 1/8（T-01完成）| worktree D:/autostack/.wt/lang-968/auto-lang | branch plan-968-dev | base 058179ed2 | deps: PLAN-965(archived r5)、PLAN-967(archived r12) | task T-01 | 证据：探针P1-P7（plan-artifacts/plan-968/probe-t01/，P1对照链PASS=42、P2/P3具名 source.unsupported task、P5失败后恢复PASS、P6/P7 unit函数/bang标记缺口）；冻结D1-D6入§5.1 | blockers: 无 | next: T-02
 
 2026-11-12 stage:new / PLAN-968 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
