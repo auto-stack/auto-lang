@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 9
-current_step: 1
+current_step: 5
 total_steps: 8
 depends_on: [PLAN-968, PLAN-973, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -386,7 +386,8 @@ T-01在原有界前探冻结Winsock初始化/错误码、socket/非阻塞/IOCP�
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐现用DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE能力分母核实现；标准库以自身Auto协议＋OS socket/事件薄适配独立验收，第三方transport仅属显式可选provider，983后接产品Web，不以等待983形成循环。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
   [核已交 2026-11-16] 分母核表见§5"T-08 协议分母核"（证据基=net974 6/6；已交核心七族+具名pending清单+关闭序）；实现腿（URL族/HTTP扩面/WebSocket/TLS/proxy）按关闭序续施——T-08保持未勾至实现面闭。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+  [✅ 2026-11-16] T-04全V行以冻结受影响并集执行（974 worktree @206fdf901）：**ace-av=1257例PASS（8m37s含冷编译）+ ace-native=280 PASS + ace-source=597 PASS（1m27s）**，净974永久证 net974 9/9（client双向/http API/server/SSE+redirect/负控/URL族/方法族/WS帧层）＋std.net/std.url跟踪模块内联证。V-01真实流式请求✓（SSE/方法族）；V-02背压：有界窗(-10可重试)+预算(net run bytes)实证、慢消费者持续负压=具名pending（需长流服务器）；V-03断连释放：close回收+refused -8✓、上传文件腿=973阻塞具名；V-04中途错误/取消：错误类别具名(-1..-10)✓；V-05环境排除：回环动态端口全真实✓。TLS/proxy（V-08）：r2合同=显式可选provider道，自持面按合同不实现冒充——具名pending（provider裁定归967后继/用户）；V-COVERAGE六路径：语言侧AV实跑✓，其余路径按a2x域owner。机器占用核查0进程×2。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -407,6 +408,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-04全V行) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: 206fdf901 | evidence: 冻结并集 ace-av 1257+ace-native 280+ace-source 597 全PASS；V-01..05逐行状态（含具名pending：长流背压/上传文件973/TLS-provider道）；新用例全部≤10s门 | next_responsible_role: T-05独立复审（停写后）
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08 WebSocket帧层+raw写面) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: 206fdf901 | evidence: net974 **9/9绿**（ws 0.06s，真RFC-6455往返）；net_tcp_write_region（0x81等帧字节非UTF-8的必然要求，native穷尽拒） | next_responsible_role: work（TLS/proxy provider道→T-04..07 或按裁定）
 
