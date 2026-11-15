@@ -195,6 +195,14 @@ pub struct PackageSyntax {
     /// PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择项（packages-ct
     /// 面；plain 面恒空）。绑定期按事实求值，未选分支不进任何绑定。
     pub ct_items: Vec<PackageCtItem>,
+    /// PLAN-981（SOURCE 批，IF-981-MODULE）：本模块的 **AGE 领域候选**（未受信
+    /// 结构 + 原 span + 表达式）与其文本叶的隐藏求值函数名（同序）。只在
+    /// `age-package` 裁剪面有内容；其它面恒空——字段存在是为了让"领域行"与
+    /// 普通包项**同一次解析**产出，而不是再拼一遍源。
+    pub age_components: Vec<(
+        crate::source::age_component::ComponentNode,
+        Vec<(String, Span)>,
+    )>,
 }
 
 /// The explicit packages-module entry. Requires the packages capability and
@@ -263,6 +271,12 @@ pub fn packages_grammar() -> Result<&'static super::cst::CachedGrammar, String> 
 /// PLAN-1043（T-03）：packages-ct 裁剪 grammar 身份（IN 能力线的存储准入）。
 pub fn packages_ct_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
     super::cst::packages_ct_grammar()
+}
+
+/// PLAN-981（IF-981-MODULE）：`age-package` 裁剪 grammar 身份（AGE 包线的
+/// 存储/恢复准入；与 plain/ct/aggregates 存档互不互认）。
+pub fn packages_age_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
+    super::cst::packages_age_grammar()
 }
 
 /// PLAN-946（T-02）：packages-aggregates 裁剪 grammar 身份（aggregates
@@ -355,13 +369,27 @@ pub fn project_stored_package_aggregates(
     super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Aggregates)
 }
 
+/// PLAN-981（IF-981-MODULE）：`age-package` 面的模块解析入口 —— packages-modules
+/// 全表面 ∪ AGE 组件面，一次解析同时产出普通包项与领域候选。同一 packages
+/// 能力准入；由 AGE 包前门调用。
+pub fn parse_package_source_age(
+    src: &str,
+    capabilities: &[String],
+    budget: FrontBudget,
+) -> Result<PackageSyntax, Vec<Diagnostic>> {
+    if let Err(ds) = require_packages_capabilities(capabilities) {
+        return Err(ds);
+    }
+    super::cst::parse_packages_front_age(src, budget)
+}
+
 mod binding;
 pub use binding::{
     bind_package_syntax, bind_package_syntax_aggregates, bind_package_syntax_assembled,
-    bind_packages, bind_packages_aggregates, bind_packages_assembled, fn_symbol, global_symbol,
-    init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl, PackageDiagnostic,
-    PackageImplLayer, PackageImplSyntax, PackageModuleInput, PackageSegment, GLOBAL_GET_PREFIX,
-    GLOBAL_SET_PREFIX,
+    bind_packages, bind_packages_age, bind_packages_aggregates, bind_packages_assembled,
+    fn_symbol, global_symbol, init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl,
+    PackagedAgeComponent, PackageDiagnostic, PackageImplLayer, PackageImplSyntax,
+    PackageModuleInput, PackageSegment, GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
 };
 mod provider_sources;
 pub use provider_sources::{

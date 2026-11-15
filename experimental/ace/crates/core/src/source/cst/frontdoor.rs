@@ -312,6 +312,16 @@ pub fn packages_aggregates_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&PACKAGES_AGGREGATES_GRAMMAR, "packages-aggregates")
 }
 
+/// PLAN-981（IF-981-MODULE）：`age-package` 裁剪程序（packages-modules 全表面
+/// ∪ AGE 组件面）。独立缓存槽：其它三个包面与三个 AGE 面的裁剪字节不变，
+/// grammar-id 自然隔离。
+static PACKAGES_AGE_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// age-package 裁剪编译并缓存（进程内一次）。
+pub fn packages_age_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&PACKAGES_AGE_GRAMMAR, "age-package")
+}
+
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
     slug: &str,
@@ -377,6 +387,14 @@ pub(crate) fn parse_packages_front_aggregates(
     parse_packages_with(PackagesFace::Aggregates, src, budget)
 }
 
+/// PLAN-981（IF-981-MODULE）：`age-package` 前门（包模块图 ∪ AGE 组件）。
+pub(crate) fn parse_packages_front_age(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(PackagesFace::Age, src, budget)
+}
+
 /// 包面前门的三种裁剪面（旧布尔 `ct_face` 的结构化形态）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PackagesFace {
@@ -386,6 +404,9 @@ pub(crate) enum PackagesFace {
     Ct,
     /// packages-aggregates（PLAN-946；ct 专属规则在本面裁剪缺席→不可达）。
     Aggregates,
+    /// PLAN-981（IF-981-MODULE）：`age-package` —— 包模块面 ∪ AGE 组件面。
+    /// 与其它三面的差别只有两点：解析用该裁剪，且本面额外投影 AGE 候选。
+    Age,
 }
 
 impl PackagesFace {
@@ -394,6 +415,7 @@ impl PackagesFace {
             PackagesFace::Modules => packages_grammar(),
             PackagesFace::Ct => packages_ct_grammar(),
             PackagesFace::Aggregates => packages_aggregates_grammar(),
+            PackagesFace::Age => packages_age_grammar(),
         }
     }
     fn ct_face(&self) -> bool {
@@ -426,12 +448,26 @@ fn parse_packages_with(
     crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
-    let parsed = parse_snapshot(
-        &cached.program,
-        &cached.scanner,
-        &snap,
-        &Budget::from(budget),
-    )
+    // PLAN-981：`age-package` 裁剪带 `contextual` 槽位（`node`/`model`/`on`…），
+    // 解析必须拿到**真实快照字节**才能识别限定拼写；其它包面无该表，走原
+    // 无上下文入口（字节与诊断面不变）。
+    let ctx_text = SnapshotTokenText { snap: &snap };
+    let parsed = if matches!(face, PackagesFace::Age) {
+        parse_snapshot_with_ctx(
+            &cached.program,
+            &cached.scanner,
+            &snap,
+            &Budget::from(budget),
+            Some(&ctx_text),
+        )
+    } else {
+        parse_snapshot(
+            &cached.program,
+            &cached.scanner,
+            &snap,
+            &Budget::from(budget),
+        )
+    }
     .map_err(|e| match e {
         ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit } => err(
             "source.resource",
@@ -717,6 +753,8 @@ pub(crate) fn project_packages_front(
     let mut imports = Vec::new();
     let mut requires = Vec::new();
     let mut ct_items = Vec::new();
+    // PLAN-981：本模块的 AGE 领域候选（仅 age-package 面有内容）。
+    let mut age_components = Vec::new();
     let mut saw_decl = false;
     let mut items = Vec::new();
     let node_span = |tree: &CstTree, n| {
@@ -744,6 +782,91 @@ pub(crate) fn project_packages_front(
             proj_profile,
         )?;
         items.extend(program.items);
+        // PLAN-981（IF-981-MODULE）：AGE 领域候选从**同一次** CST 里投影，
+        // 与普通包项并排记录（结构名按 Schema 的 role 归属，不按拼写猜）。
+        // 只有 `age-package` 裁剪存在 `age-node-c-item` 规则，其余面保持空集。
+        //
+        // 每条文本叶随即脱糖成**普通隐藏函数**并进本模块 items —— 这样共享
+        // 绑定器会像对待普通函数一样给它 mangle 符号/平移 span/走唯一 verify，
+        // 领域层不另建求值路径。
+        if matches!(face, PackagesFace::Age) {
+            let nodes = project::project_component_nodes(
+                &cached.program,
+                &cached.kinds,
+                tree,
+                &snap,
+                SourceProfile::AgePackage,
+            )?;
+            for node in nodes {
+                let mut text_fns = Vec::new();
+                // `model` 字段脱糖成普通状态函数（复刻 979 已证口径）。
+                for f in &node.fields {
+                    let one = crate::source::age_component::ComponentScenario {
+                        instances: 1,
+                        ops: Vec::new(),
+                    };
+                    let mut stmts = match crate::source::age_component::instance_stmts(
+                        0, &node, &one,
+                    ) {
+                        Ok(s) => s,
+                        Err(ds) => return Err(ds),
+                    };
+                    stmts.push(crate::source::ast::Stmt::Return {
+                        value: crate::source::ast::Expr {
+                            span: f.span,
+                            kind: crate::source::ast::ExprKind::Var(crate::source::ast::Ident {
+                                name: crate::source::age_component::local_name(0, &f.name),
+                                span: f.span,
+                            }),
+                        },
+                        span: f.span,
+                    });
+                    items.push(crate::source::ast::Item::Fn(crate::source::ast::FnItem {
+                        name: crate::source::ast::Ident {
+                            name: crate::source::age_component::state_fn_name(0, &f.name),
+                            span: f.span,
+                        },
+                        type_params: Vec::new(),
+                        params: Vec::new(),
+                        ret: crate::source::ast::TypeAnn {
+                            kind: crate::source::ast::TypeRef::Builtin(
+                                crate::source::ast::TypeWord::I32,
+                            ),
+                            span: f.span,
+                        },
+                        body: crate::source::ast::Block {
+                            stmts,
+                            span: node.span,
+                        },
+                        span: node.span,
+                        receiver: crate::source::ast::Receiver::Free,
+                        owner: None,
+                        script: false,
+                    }));
+                }
+                for leaf in &node.view.texts {
+                    let name = format!(
+                        "{}{}",
+                        crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                        age_components.len() * 16 + text_fns.len()
+                    );
+                    // 字段引用 → 该实例的状态函数调用（与状态函数同一构造口径）。
+                    let bound = match crate::source::age_component::rename_expr(
+                        &leaf.expr,
+                        crate::source::age_component::FieldBinding::StateFn(0),
+                        &node.fields,
+                    ) {
+                        Ok(b) => b,
+                        Err(ds) => return Err(ds),
+                    };
+                    items.push(crate::source::ast::Item::Fn(
+                        crate::source::age_package::hidden_fn(&name, &bound, leaf.expr.span),
+                    ));
+                    text_fns.push((name, leaf.span));
+                }
+                age_components.push((node, text_fns));
+            }
+        }
         // PLAN-1043（T-03）：#in 结构投影器（共享同一声明子树投影引擎）。
         let mut in_face = ct_face.then(|| InFace {
             cached,
@@ -978,6 +1101,7 @@ pub(crate) fn project_packages_front(
         declarations,
         requires,
         ct_items,
+        age_components,
     })
 }
 

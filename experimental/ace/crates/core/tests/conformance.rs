@@ -70,6 +70,8 @@ mod plan979_component_profile;
 mod plan979_domain_package;
 #[path = "cases/plan981_age_package.rs"]
 mod plan981_age_package;
+#[path = "cases/plan981_age_package_modules.rs"]
+mod plan981_age_package_modules;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]

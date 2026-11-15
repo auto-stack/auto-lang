@@ -387,6 +387,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-on-member(profiles: [age-component, age-package], expect: "an `on <Msg> { <field> = <expr> }` block") {
             name(of: "age-on-head", field: "on") {}
             ident(field: "msg") {}
+            // PLAN-981：AGE 生命周期消息是**限定名**（`Life.Tick`）。该尾巴只在
+            // age-package 裁剪存在——age-component 面的规则与字节不变，仍是
+            // 单段消息名（980 的既有合同不被本批改写）。
+            opt(profiles: [age-package]) { age-on-msg-tail(field: "msg_tail") {} }
             lbrace(same-line: true) {}
             list-nl { age-on-assign() {} }
             rbrace() {}
@@ -395,6 +399,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "field") {}
             assign() {}
             pratt(of: "wide-ops", field: "rhs") {}
+        }
+        // PLAN-981：`Life.Tick` 这类限定消息名的尾巴（仅 age-package 裁剪）。
+        age-on-msg-tail(profiles: [age-package]) {
+            dot(same-line: true) {}
+            ident(field: "seg") {}
         }
         age-view-member(profiles: [age-component, age-package], expect: "the `view { … }` node view") {
             name(of: "age-view-head", field: "view") {}

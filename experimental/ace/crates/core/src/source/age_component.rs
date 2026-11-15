@@ -822,12 +822,12 @@ impl ScenarioOp {
     }
 }
 
-fn local_name(instance: usize, field: &str) -> String {
+pub(crate) fn local_name(instance: usize, field: &str) -> String {
     format!("__age_s_{instance}_{field}")
 }
 
 /// 表达式重命名：model 字段标识符 → 实例局部变量（只支持下述形状，其余具名拒）。
-fn rename_expr(
+pub(crate) fn rename_expr(
     expr: &Expr,
     binding: FieldBinding,
     fields: &[ComponentField],
@@ -915,7 +915,7 @@ fn rename_arg(
     })
 }
 /// 场景：单个实例的局部状态 + 定向 ops（驱动、状态函数与文本函数共用形状）。
-fn instance_stmts(
+pub(crate) fn instance_stmts(
     inst: usize,
     node: &ComponentNode,
     scenario: &ComponentScenario,
@@ -983,13 +983,13 @@ fn instance_stmts(
     Ok(stmts)
 }
 
-fn state_fn_name(inst: usize, field: &str) -> String {
+pub(crate) fn state_fn_name(inst: usize, field: &str) -> String {
     format!("__age_state_{inst}_{field}")
 }
 
 /// 字段标识符的绑定方式：实例局部（驱动内）或状态函数调用（文本求值函数内）。
 #[derive(Clone, Copy)]
-enum FieldBinding {
+pub(crate) enum FieldBinding {
     Local(usize),
     StateFn(usize),
 }

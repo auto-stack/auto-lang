@@ -270,12 +270,82 @@ pub fn bind_packages_aggregates(
     bind_packages_face(inputs, entry, caps, budget, true)
 }
 
+/// PLAN-981（IF-981-MODULE）：`age-package` 面的包绑定 —— 同一绑定器、同一
+/// 身份/预算/可见性/初始化序规则，只换解析裁剪（包模块面 ∪ AGE 组件面）。
+///
+/// 与 [`bind_packages`] 的关系是**同一条**链：领域候选与该模块的普通包项在
+/// 同一次解析里产出，绑定走查不区分二者（AGE 行的行为已是普通隐藏函数）。
+pub fn bind_packages_age(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+) -> Result<PackagedAge, PackageDiagnostic> {
+    let mut collected: Vec<PackagedAgeComponent> = Vec::new();
+    let bound = bind_packages_face_with(inputs, entry, caps, budget, Faces::Age, Some(&mut collected))?;
+    let sources = bound
+        .segments
+        .iter()
+        .map(|s| crate::source::age_package::AgeModuleSource {
+            key: unit_key(&s.package, &s.module),
+            source_len: s.source.len(),
+            flat_start: s.start,
+        })
+        .collect();
+    Ok(PackagedAge {
+        grammar_id: bound.grammar_id.clone(),
+        bound,
+        age_components: collected,
+        sources,
+    })
+}
+
+/// PLAN-981：`age-package` 面绑定的产物（绑定图 + 每模块 AGE 候选 + 源事实）。
+pub struct PackagedAge {
+    pub bound: BoundPackages,
+    pub age_components: Vec<PackagedAgeComponent>,
+    pub sources: Vec<crate::source::age_package::AgeModuleSource>,
+    pub grammar_id: String,
+}
+
+/// PLAN-981：一个模块里的 AGE 组件候选（未受信）+ 其隐藏求值函数名。
+pub struct PackagedAgeComponent {
+    pub module: String,
+    pub node: crate::source::age_component::ComponentNode,
+    /// 文本叶的 (隐藏函数源名, 原模块内 span)，与 `node.view.texts` 同序。
+    pub text_fns: Vec<(String, Span)>,
+}
+
 fn bind_packages_face(
     inputs: &[PackageModuleInput],
     entry: &str,
     caps: &[String],
     budget: FrontBudget,
     aggregates: bool,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    let face = if aggregates {
+        Faces::Aggregates
+    } else {
+        Faces::Plain
+    };
+    bind_packages_face_with(inputs, entry, caps, budget, face, None)
+}
+
+/// PLAN-981：包面的三态（plain / aggregates / age）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Faces {
+    Plain,
+    Aggregates,
+    Age,
+}
+
+fn bind_packages_face_with(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    face: Faces,
+    mut age_out: Option<&mut Vec<PackagedAgeComponent>>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     let mut units = BTreeMap::new();
@@ -325,19 +395,42 @@ fn bind_packages_face(
                 zero,
             ));
         }
-        let parse = if aggregates {
-            parse_package_source_aggregates
-        } else {
-            parse_package_source
+        let parse = match face {
+            Faces::Aggregates => parse_package_source_aggregates,
+            Faces::Age => parse_package_source_age,
+            Faces::Plain => parse_package_source,
         };
         let syntax = parse(&input.source, caps, budget).map_err(|mut ds| PackageDiagnostic {
             module: key.clone(),
             diagnostic: ds.remove(0),
         })?;
+        // PLAN-981：本模块的 AGE 候选（未受信）+ 其隐藏函数源名，收进产物。
+        if let Some(out) = age_out.as_deref_mut() {
+            for (node, text_fns) in &syntax.age_components {
+                out.push(PackagedAgeComponent {
+                    module: key.clone(),
+                    node: node.clone(),
+                    text_fns: text_fns.clone(),
+                });
+            }
+        }
         units.insert(key, syntax);
     }
-    if aggregates {
+    if matches!(face, Faces::Aggregates) {
         bind_package_syntax_aggregates(inputs, entry, caps, budget, units)
+    } else if matches!(face, Faces::Age) {
+        // PLAN-981：AGE 包面走同一内层绑定，只把面标成 Age（grammar 身份与
+        // 领域候选都按该面裁定）；不另建绑定器。
+        bind_package_syntax_inner(
+            inputs,
+            entry,
+            caps,
+            budget,
+            units,
+            BTreeMap::new(),
+            None,
+            Faces::Age,
+        )
     } else {
         bind_package_syntax(inputs, entry, caps, budget, units)
     }
@@ -360,7 +453,7 @@ pub fn bind_package_syntax(
         units,
         BTreeMap::new(),
         None,
-        false,
+        Faces::Plain,
     )
 }
 
@@ -381,7 +474,7 @@ pub fn bind_package_syntax_aggregates(
         units,
         BTreeMap::new(),
         None,
-        true,
+        Faces::Aggregates,
     )
 }
 
@@ -395,7 +488,7 @@ pub fn bind_package_syntax_assembled(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), false)
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), Faces::Plain)
 }
 
 /// 一个模块的已解析实现层（kind + 源 + 语法）。
@@ -414,7 +507,7 @@ fn bind_package_syntax_inner(
     mut units: BTreeMap<String, PackageSyntax>,
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: Option<&super::provider_sources::PackageAssemblyContext>,
-    aggregates: bool,
+    face: Faces,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     if !caps.iter().any(|c| c == PACKAGES_CAPABILITY)
@@ -434,8 +527,12 @@ fn bind_package_syntax_inner(
     let in_face = caps.iter().any(|c| c == super::IN_CAPABILITY);
     let grammar = if in_face {
         super::packages_ct_grammar()
-    } else if aggregates {
+    } else if matches!(face, Faces::Aggregates) {
         super::packages_aggregates_grammar()
+    } else if matches!(face, Faces::Age) {
+        // PLAN-981：AGE 包面的 grammar 身份是 `age-package` 裁剪（在仍走
+        // `bind_package_syntax` 的冷/恢复路径上同样必须对上）。
+        super::packages_age_grammar()
     } else {
         packages_grammar()
     }
@@ -894,7 +991,7 @@ fn bind_package_syntax_inner(
             depth: 0,
             set_counter: 0,
             tyvars: BTreeSet::new(),
-            aggregates,
+            aggregates: matches!(face, Faces::Aggregates),
         };
         let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
@@ -3646,6 +3743,8 @@ fn assemble_unit(
         declarations,
         requires: all_requires,
         ct_items: public.ct_items.clone(),
+        // PLAN-981：AGE 领域候选随公共模块源一起穿过装配（实现层不带领域行）。
+        age_components: public.age_components.clone(),
     })
 }
 

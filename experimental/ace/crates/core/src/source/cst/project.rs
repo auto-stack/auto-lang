@@ -4218,6 +4218,16 @@ impl<'a> Engine<'a> {
                 }
                 "age-on-member" => {
                     let msg_leaf = self.cx.field_child(member, "msg").expect("on message name");
+                    // PLAN-981：限定消息名（`Life.Tick`）——尾巴只在 age-package
+                    // 裁剪存在；拼成与单段名同形的点分串交领域层，领域层按
+                    // Schema 语义解释（不在此处硬编码任何消息名）。
+                    let mut msg = self.cx.spelling(msg_leaf);
+                    if let Some(tail) = self.cx.field_child(member, "msg_tail") {
+                        if let Some(seg) = self.cx.field_child(tail, "seg") {
+                            msg.push('.');
+                            msg.push_str(&self.cx.spelling(seg));
+                        }
+                    }
                     let mut assigns = Vec::new();
                     for assign in self.cx.children(member) {
                         let assign_kind = self.cx.tree.kind(assign);
@@ -4242,7 +4252,7 @@ impl<'a> Engine<'a> {
                         });
                     }
                     handlers.push(ComponentHandler {
-                        msg: self.cx.spelling(msg_leaf),
+                        msg,
                         assigns,
                         span: self.cx.span_of(member),
                     });

@@ -139,13 +139,7 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Aggregates
         // PLAN-968: the scheduler face runs through the same unified CST
         // chain (aggregates superset trim + task rules).
-        | SourceProfile::Scheduler
-        // PLAN-981: the AGE faces are CST-only (no handwritten-parser twin);
-        // their generic entry is refused before reaching this match, and the
-        // domain front doors parse through `cst::parse_domain_whole_module`.
-        | SourceProfile::AgeH0
-        | SourceProfile::AgeComponent
-        | SourceProfile::AgePackage => {
+        | SourceProfile::Scheduler => {
             // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
             // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
             let parsed_src = if super::fstr::profile_admits_fstr(profile) {
@@ -185,9 +179,10 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         }
         // PLAN-979：AGE 领域声明只经领域前门（`source::age_h0`）消费——通用
         // 解析入口在此显式拒绝，绝不返回一个把领域声明静默丢掉的 Program。
-        SourceProfile::AgeH0 | SourceProfile::AgeComponent => Err(
-            super::age_h0::domain_profile_refusal(SourceProfile::AgeH0, src.len())
-                .expect("age-h0 profile refusal"),
+        // PLAN-981：AGE 包面同理（只经 `source::age_package` 前门）。
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage => Err(
+            super::age_h0::domain_profile_refusal(profile, src.len())
+                .expect("AGE domain profile refusal"),
         ),
     }
 }

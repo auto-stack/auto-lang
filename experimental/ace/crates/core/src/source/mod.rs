@@ -18,6 +18,8 @@
 pub mod adapter;
 pub mod age_component;
 pub mod age_h0;
+/// PLAN-981（IF-981-MODULE）：AGE 多模块包前门。
+pub mod age_package;
 pub mod ast;
 pub(crate) mod closure_capture;
 pub mod closures_context;
