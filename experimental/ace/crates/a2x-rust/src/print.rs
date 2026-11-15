@@ -58,6 +58,9 @@ impl<'p> PrintCtx<'p> {
             Ty::Char => "char".to_string(),
             Ty::Str => "&str".to_string(),
             Ty::StrOwned => "A2xStr".to_string(),
+            // PLAN-972 (T-03): the annotation-free closure binding path —
+            // the pretty text is only for dumps.
+            Ty::Closure(_) => "closure".to_string(),
             Ty::Record(id) => self
                 .records
                 .get(&id)
@@ -225,12 +228,18 @@ fn print_fn_in(ctx: &PrintCtx<'_>, f: &RustFn, _program_borrowed: bool) -> Strin
     // per-function: only signatures that actually carry references get 'a
     let borrowed = f.params.iter().any(|p| param_borrows(p)) || matches!(f.result, Ty::Str);
     let life = if borrowed { "<'a>" } else { "" };
+    // PLAN-972 (T-03): pre-baked result text (List elements, closure
+    // signatures) overrides the ctx rendering.
+    let result_text = f
+        .result_text
+        .clone()
+        .unwrap_or_else(|| render_result(ctx, f.result, borrowed));
     out.push_str(&format!(
         "pub fn {}{}({}) -> A2xResult<{}> {{\n",
         f.name,
         life,
         params.join(", "),
-        render_result(ctx, f.result, borrowed)
+        result_text
     ));
     for s in &f.body {
         out.push_str(&render_stmt(ctx, s, 1));
@@ -302,14 +311,22 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
             init,
         } => {
             let m = if *mutable { "mut " } else { "" };
-            format!(
-                "{}let {}{}: {} = {};\n",
-                pad,
-                m,
-                name,
-                local_ty_text(ctx, *ty),
-                render_val(init)
-            )
+            // PLAN-972 (T-03): closure-valued bindings infer their type
+            // from the closure literal (an `impl Fn` let-annotation is not
+            // nameable in Rust).
+            let local_ty = local_ty_text(ctx, *ty);
+            if local_ty.is_empty() {
+                format!("{}let {}{} = {};\n", pad, m, name, render_val(init))
+            } else {
+                format!(
+                    "{}let {}{}: {} = {};\n",
+                    pad,
+                    m,
+                    name,
+                    local_ty,
+                    render_val(init)
+                )
+            }
         }
         RStmt::Assign { name, value } => format!("{}{} = {};\n", pad, name, render_val(value)),
         RStmt::AssignField { name, path, value } => {
@@ -381,6 +398,9 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
 /// locals use the runtime types).
 fn local_ty_text(ctx: &PrintCtx<'_>, ty: Ty) -> String {
     match ty {
+        // PLAN-972 (T-03): closure values infer at their binding — the
+        // empty text renders the let WITHOUT an annotation.
+        Ty::Closure(_) => String::new(),
         Ty::I32 => "i32".to_string(),
         // PLAN-961: numeric locals use their Rust spellings.
         Ty::I8 => "i8".to_string(),
@@ -497,6 +517,20 @@ fn render_expr(e: &RExpr) -> String {
         RExpr::Call { func, args } => {
             let args: Vec<String> = args.iter().map(render_val).collect();
             format!("{}({})", func, args.join(", "))
+        }
+        // PLAN-972 (T-03): capture-free closure literal over the body fn.
+        RExpr::ClosureLit { func, params } => {
+            let ps: Vec<String> = params
+                .iter()
+                .map(|(n, t)| format!("{}: {}", n, t))
+                .collect();
+            let pas: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+            format!("move |{}| {}({})", ps.join(", "), func, pas.join(", "))
+        }
+        // PLAN-972 (T-03): indirect call through a closure value.
+        RExpr::IndirectCall { func, args } => {
+            let args: Vec<String> = args.iter().map(render_val).collect();
+            format!("{}({})", render_expr(func), args.join(", "))
         }
         RExpr::PlainCall { func, args } => {
             let args: Vec<String> = args.iter().map(render_val).collect();

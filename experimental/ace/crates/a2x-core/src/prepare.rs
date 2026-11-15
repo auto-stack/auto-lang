@@ -260,6 +260,22 @@ fn collect_expr(
                 ops.insert("text_display");
                 stack.push((*operand, d + 1));
             }
+            // PLAN-972 (T-03): capture-free closure values — creation pins
+            // the callee; the indirect call is a compute operand (the
+            // emitter lowers it to the closure body fn).
+            hir::ExprKind::CreateClosure { .. } => {
+                ops.insert("create_closure");
+            }
+            hir::ExprKind::CallClosure {
+                callee,
+                eval_args,
+            } => {
+                ops.insert("call_closure");
+                stack.push((*callee, d + 1));
+                for a in eval_args {
+                    stack.push((*a, d + 1));
+                }
+            }
             hir::ExprKind::RecordCtor { eval_args, .. } => {
                 ops.insert("record_ctor");
                 for a in eval_args {
@@ -1001,6 +1017,37 @@ fn ser_expr(
                     A2xReject::unsupported_expr("callback target def is not a source function")
                 })?;
             out.push_str(&format!("cbref#{}()", name));
+        }
+        // PLAN-972 (T-03): capture-free closure values — the fingerprint
+        // pins the callee's source name and the (interned) signature; the
+        // indirect call serializes its operands.
+        hir::ExprKind::CreateClosure { callee, captures } => {
+            let name = view
+                .fn_by_def(callee.0 as usize)
+                .map(|t| t.source_name)
+                .ok_or_else(|| {
+                    A2xReject::unsupported_expr("closure callee def is not a source function")
+                })?;
+            out.push_str(&format!("cnew#{}#{}(", name, captures.len()));
+            for (i, c) in captures.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&format!("cap{}:{:?}", c.local.0, c.mode));
+            }
+            out.push(')');
+        }
+        hir::ExprKind::CallClosure {
+            callee,
+            eval_args,
+        } => {
+            out.push_str("ccall(");
+            ser_expr(view, f, *callee, canon, next, out, depth + 1)?;
+            for a in eval_args {
+                out.push(',');
+                ser_expr(view, f, *a, canon, next, out, depth + 1)?;
+            }
+            out.push(')');
         }
         other => {
             return Err(A2xReject::unsupported_expr(format!(

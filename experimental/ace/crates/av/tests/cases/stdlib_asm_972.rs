@@ -351,23 +351,84 @@ fn stdlib_asm_972_cross_end_gaps_and_a2r_math() {
         }
         Ok(_) => panic!("mn whole-set unexpectedly built"),
     }
+    // ---- A2R / rustc WHOLE-SET leg (PLAN-972 T-03: capture-free closure
+    // values + the text/char/numeric surface ride the collections family):
+    // the HOF program — filter([1..5], >1)=[2,3,4,5] sum=14 len=4 →
+    // 14*10+4 = 144 through real rustc over the FULL assembled std set. ----
     {
-        let store = scratch("cons-a2r-gap");
-        let a2x = PackageA2xTarget::cold_aggregates(
+        let mut ctx_h = PackageAssemblyContext::new(
+            AssemblyBackend::A2R,
+            ProviderChoice::Auto,
+            TargetOs::Windows,
+        );
+        let hof_inputs = assemble_stdlib_aggregates_inputs(
+            &[(
+                "main.at".to_string(),
+                "use std.list.reduce
+use std.list.filter
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    let ys = filter(xs, (x int) => { return x > 1 })
+    let s = reduce(ys, 0, (acc int, x int) => { return acc + x })
+    return s * 10 + ys.len()
+}".to_string(),
+            )],
+            "app::main",
+            &mut ctx_h,
+        )
+        .unwrap();
+        let hof_product = compile_assembled_aggregates_inputs(
+            &hof_inputs,
+            "app::main",
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx_h,
+        )
+        .unwrap_or_else(|ds| panic!("hof compile: {ds:?}"));
+        let store = scratch("cons-a2r-hof");
+        let mut rust = PackageA2xTarget::cold_aggregates(
             &store,
-            "asm972gap",
+            "asm972hof",
             "app",
             16 << 20,
             RustTargetProvider::v1(),
-            &whole,
-        );
-        match a2x {
-            Err(e) => assert!(
-                format!("{e:?}").contains("closure"),
-                "unexpected a2x gap: {e:?}"
-            ),
-            Ok(_) => panic!("a2x whole-set unexpectedly admitted"),
+            &hof_product,
+        )
+        .unwrap_or_else(|e| panic!("a2r cold (hof): {e}"));
+        let build_dir = scratch("cons-a2r-hof-build");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        for (path, content) in &rust.current.files {
+            std::fs::write(build_dir.join(path), content).unwrap();
         }
+        let exe = build_dir.join("asm972hof.exe");
+        let mut cmd =
+            Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+        cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe);
+        cmd.current_dir(&build_dir);
+        let compile = auto_tool_execution::run_command_capture(
+            cmd,
+            auto_tool_execution::TreeScope::ProcessTree,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            compile.kind,
+            auto_tool_execution::ExitKind::Success,
+            "{}",
+            String::from_utf8_lossy(compile.stderr.as_deref().unwrap_or(&[]))
+        );
+        let run = Command::new(&exe).current_dir(&build_dir).output().unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+        assert!(out.ends_with("value:144"), "a2r hof stdout: {out}");
     }
 
     // ---- A2R / rustc POSITIVE leg on the closure-free subset (std.math

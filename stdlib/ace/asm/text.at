@@ -81,7 +81,10 @@ pub fn repeat(s Str, n int) Str {
 
 fn repeat_into(s Str, n int, acc Str) Str {
     if (n <= 0) {
-        return acc
+        // explicit owned copy: returning a borrowed param as the owned
+        // result is outside the coll family's param rendering (named
+        // boundary, PLAN-972) — clone is semantically transparent.
+        return acc.clone()
     }
     let next Str = acc + s
     return repeat_into(s, n - 1, next)

@@ -52,6 +52,31 @@ pub fn rust_ty_str(view: &SemanticView<'_>, ty: Ty) -> String {
             .map(|e| format!("A2xList<{}>", rust_ty_str(view, e)))
             .unwrap_or_else(|| "A2xList".into()),
         Ty::Unit => "()".into(),
+        // PLAN-972 (T-03): closure values render as argument-position
+        // `impl Fn(P...) -> R` (params take them by value). The signature
+        // is interned in the type table — the infallible lookup mirrors
+        // the Record/Variant precedent.
+        Ty::Closure(idx) => match view.closure_sig(idx) {
+            Some(sig) => {
+                let ps: Vec<String> = sig
+                    .params
+                    .iter()
+                    .map(|t| {
+                        let ty = view.resolve_use_ty(*t).ok()?;
+                        Some(rust_ty_str(view, ty))
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .unwrap_or_default();
+                let r = view
+                    .resolve_use_ty(sig.result)
+                    .map(|ty| rust_ty_str(view, ty))
+                    .unwrap_or_else(|_| "()".into());
+                // the closure body fn is fallible (A2xResult) — the literal
+                // forwards it and the call site unwraps with `?`.
+                format!("impl Fn({}) -> A2xResult<{}>", ps.join(", "), r)
+            }
+            None => "impl Fn".into(),
+        },
     }
 }
 
@@ -147,12 +172,20 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         },
     });
     body.extend(w.block(f.body.entry)?);
+    // PLAN-972 (T-03): List/closure results need the view-resolved text
+    // (the PrintCtx has no element table); other results keep the
+    // historical rendering.
+    let result_text = match f.result {
+        Ty::List(_) | Ty::Closure(_) => Some(rust_ty_str(view, f.result)),
+        _ => None,
+    };
     Ok(RustFn {
         name: rust_fn_name(f.source_name),
         params: named_params,
         result: f.result,
         origin: f.origin,
         body,
+        result_text,
     })
 }
 
@@ -682,6 +715,89 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     args: vec![o],
                 })
             }
+            // PLAN-972 (T-03): capture-free closure values — the literal is
+            // a `move` closure over the (already emitted) body fn. Capturing
+            // closures await the a2x closure-env unit (named rejection).
+            hir::ExprKind::CreateClosure { callee, captures } => {
+                if !captures.is_empty() {
+                    return Err(A2xReject::unsupported_op(
+                        "capturing closures await the a2x closure-env unit (PLAN-972)",
+                    ));
+                }
+                let f = self.view.fn_by_def(callee.0 as usize).ok_or_else(|| {
+                    A2xReject::new("a2x.internal", "closure callee def not in view")
+                })?;
+                let func = crate::lower::rust_fn_name(f.source_name);
+                let params: Vec<(String, String)> = f
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| (format!("p{}", i), rust_ty_str(self.view, p.ty)))
+                    .collect();
+                Ok(RExpr::ClosureLit { func, params })
+            }
+            // PLAN-972 (T-03): the char expression surface (scalar-indexed
+            // codepoints; invalid scalars are the typed trap).
+            hir::ExprKind::CharLit { scalar } => {
+                let c = char::from_u32(scalar).ok_or_else(|| {
+                    A2xReject::new("a2x.internal", "invalid scalar in checked CharLit")
+                })?;
+                Ok(RExpr::CharLit(c))
+            }
+            hir::ExprKind::CharToCodepoint { operand } => {
+                let o = self.expr(operand, out)?;
+                Ok(RExpr::CharToI32 { inner: Box::new(o) })
+            }
+            hir::ExprKind::CharFromCodepoint { operand } => {
+                let o = self.expr(operand, out)?;
+                self.checked_temp_ty("a2x_char_from_codepoint", vec![o], id, out, Ty::Char)
+            }
+            // PLAN-972 (T-03): the scalar-indexed text expression surface
+            // (the shared runtime helpers; slices stay borrowed views).
+            hir::ExprKind::TextLenBytes { operand } => {
+                let o = self.operand_str_view(operand, out)?;
+                self.checked_temp("a2x_str_len_bytes", vec![o], id, out)
+            }
+            hir::ExprKind::TextCharAt { operand, index } => {
+                let o = self.operand_str_view(operand, out)?;
+                let i = self.expr(index, out)?;
+                self.checked_temp_ty("a2x_str_char_at", vec![o, i], id, out, Ty::Char)
+            }
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } => {
+                let o = self.operand_str_view(operand, out)?;
+                let a = self.expr(start, out)?;
+                let b = self.expr(end, out)?;
+                self.checked_temp_ty("a2x_str_slice", vec![o, a, b], id, out, Ty::Str)
+            }
+            hir::ExprKind::TextToOwned { operand } => {
+                let o = self.operand_str_view(operand, out)?;
+                self.checked_temp_ty("a2x_str_to_owned", vec![o], id, out, Ty::StrOwned)
+            }
+            hir::ExprKind::TextConcat { lhs, rhs } => {
+                let l = self.operand_str_view(lhs, out)?;
+                let r = self.operand_str_view(rhs, out)?;
+                self.checked_temp_ty("a2x_str_concat", vec![l, r], id, out, Ty::StrOwned)
+            }
+            hir::ExprKind::TextClone { operand } => {
+                let o = self.operand_str_view(operand, out)?;
+                self.checked_temp_ty("a2x_str_clone", vec![o], id, out, Ty::StrOwned)
+            }
+            // PLAN-972 (T-03): indirect call through the closure value.
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                let f = self.expr(callee, out)?;
+                let mut args = Vec::with_capacity(eval_args.len());
+                for a in eval_args {
+                    args.push(self.expr(a, out)?);
+                }
+                Ok(RExpr::IndirectCall {
+                    func: Box::new(f),
+                    args,
+                })
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.expr(lhs, out)?;
                 let r = self.expr(rhs, out)?;
@@ -1082,9 +1198,27 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 } else {
                     Vec::new()
                 };
+                // PLAN-972 (T-03): str-borrowed callee params take the
+                // operand's VIEW form (owned temps borrow through
+                // `.as_str()`; already-borrowed params pass as-is).
+                let str_view_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
+                    t.params
+                        .iter()
+                        .map(|p| {
+                            matches!(p.ty, Ty::Str | Ty::StrOwned)
+                                && p.mode != hir::ParamMode::MoveOwn
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let mut args = Vec::new();
                 for (i, a) in eval_args.iter().enumerate() {
-                    let v = self.expr(*a, out)?;
+                    let v = if str_view_param.get(i).copied().unwrap_or(false) {
+                        self.operand_str_view(*a, out)?
+                    } else {
+                        self.expr(*a, out)?
+                    };
                     if shared_list_param.get(i).copied().unwrap_or(false) {
                         args.push(RExpr::RefMut { inner: Box::new(v) });
                     } else {
@@ -1475,8 +1609,32 @@ impl<'a, 'v> CollLower<'a, 'v> {
         let ty = self
             .view
             .resolve_use_ty(self.f.body.exprs[operand.0 as usize].ty)?;
+        // PLAN-972 (T-03): a View/MutBorrow Str param already RENDERS as a
+        // borrow (`&'a str`) — `.as_str()` on it is the unstable str
+        // method. Only genuinely owned values (MoveOwn params, owned
+        // temps) carry the A2xStr borrow step.
+        // a literal renders as a borrowed `&str` already — `.as_str()`
+        // on it is the unstable str method.
+        let is_lit = matches!(
+            &self.f.body.exprs[operand.0 as usize].kind,
+            hir::ExprKind::StrLit { .. }
+        );
+        let borrowed_param = is_lit
+            || match &self.f.body.exprs[operand.0 as usize].kind {
+                hir::ExprKind::ReadLocal { local } => self
+                    .f
+                    .body
+                    .locals
+                    .get(local.0 as usize)
+                    .map(|d| {
+                        matches!(d.role, hir::LocalRole::Param)
+                            && !matches!(d.param_mode, hir::ParamMode::MoveOwn)
+                    })
+                    .unwrap_or(false),
+                _ => false,
+            };
         Ok(match ty {
-            Ty::StrOwned => RExpr::AsStr {
+            Ty::StrOwned if !borrowed_param => RExpr::AsStr {
                 val: Box::new(o),
                 owned: true,
             },

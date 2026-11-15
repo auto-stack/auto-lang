@@ -371,6 +371,9 @@ fn encode_ty(ty: &Ty) -> String {
         Ty::Record(n) => format!("rec:{}", n),
         Ty::List(n) => format!("list:{}", n),
         Ty::Variant(n) => format!("var:{}", n),
+        // PLAN-972 (T-03): closure values in fragment manifests — the
+        // interned signature index rides the wire.
+        Ty::Closure(n) => format!("closure:{}", n),
     }
 }
 
