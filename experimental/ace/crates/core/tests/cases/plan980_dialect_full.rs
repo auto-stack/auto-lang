@@ -527,3 +527,74 @@ fn p980_dialect_full_001_projection() {
     // 001 以结构断言核（上行），覆盖闭合以 002 为锚（本测试不冒充 002 口径）。
     assert!(cov.unknown.is_empty(), "001 has no unknown ids: {cov:?}");
 }
+
+/// AC-B-DIALECT 第一句：**普通标识符上下文保持**——`msg`/`design`/`bind` 等
+/// 槽位拼写只在成员槽位有结构含义；在字段名/局部名/函数名位仍是普通标识符。
+#[test]
+fn p980_dialect_full_identifier_contexts_preserved() {
+    // 字段名 = msg/design/bind（成员头拼写作为 model 字段名）。
+    let src = "node C {\n    model {\n        msg int = 0\n        design int = 1\n        bind int = 2\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let candidates = project_component_candidates(src)
+        .expect("member-head spellings stay ordinary identifiers in field position");
+    let n = &candidates[0];
+    let names: Vec<&str> = n.fields.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, vec!["msg", "design", "bind"]);
+    assert!(n.messages.is_empty() && n.design.is_empty() && n.members.is_empty());
+    // 普通函数体内的局部名同名（slot 拼写不进词法保留字表）。
+    let fn_src = "fn probe() int {\n    let design = 7\n    return design\n}\nnode C {\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let _ = project_component_candidates(fn_src)
+        .expect_or_else_named("slot spellings are not reserved words", || String::new());
+}
+
+/// 内部辅助：Ok 断言（避免 unwrap 无消息）。
+trait ExpectOrElseNamed<T> {
+    fn expect_or_else_named(self, label: &str, f: impl FnOnce() -> String) -> T;
+}
+impl<T> ExpectOrElseNamed<T> for Result<T, Vec<ace_core::atom_text::Diagnostic>> {
+    fn expect_or_else_named(self, label: &str, f: impl FnOnce() -> String) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => panic!("{label}: {}", f()),
+        }
+    }
+}
+
+/// 新成员面的坏形状：值缺冒号/handler 缺箭头/悬空逗号/未闭合元素括号——
+/// 各自在原位具名拒绝（不是静默略过或整文件兜底）。
+#[test]
+fn p980_dialect_full_malformed_member_shapes_reject_at_span() {
+    for (label, src, anchor) in [
+        (
+            "design-no-colon",
+            "node C {\n    design { theme }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "design",
+        ),
+        (
+            "on-no-arrow",
+            "node C {\n    on {\n        .Inc { .c = 1 }\n    }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "on",
+        ),
+        (
+            "msg-dangling-comma",
+            "node C {\n    msg { A, B, }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            "msg",
+        ),
+        (
+            "element-unclosed",
+            "node C {\n    view {\n        col {\n            text \"x\" {}\n    }\n}\n",
+            "col",
+        ),
+    ] {
+        match project_component_candidates(src) {
+            Ok(ns) => panic!("{label}: expected rejection, got {} nodes", ns.len()),
+            Err(ds) => {
+                assert!(!ds.is_empty(), "{label}: empty diags");
+                let at = src.find(anchor).unwrap_or_else(|| panic!("{label} anchor"));
+                assert!(
+                    ds.iter().any(|d| d.span.end > at && d.span.start <= at + 40),
+                    "{label}: diagnostic must point at the malformed member: {ds:?}"
+                );
+            }
+        }
+    }
+}
