@@ -63,6 +63,13 @@ use std.text.contains
 use std.text.repeat
 use std.text.upper_ascii
 use std.text.lower_ascii
+use std.text.find as t_find
+use std.text.reverse
+use std.text.trim
+use std.text.replace
+use std.text.split
+use std.text.lines
+use std.list.sort
 use std.char.is_digit
 use std.char.is_alpha_ascii
 use std.char.is_alphanum_ascii
@@ -238,6 +245,45 @@ fn main() int {
     if (to_lower_ascii('Q'.to_codepoint()) == 113) {
         code = code + 1
     }
+    let fidx = t_find("A中😀中", "中")
+    if (oi(fidx) == 1) {
+        code = code + 1
+    }
+    let nohit = t_find("abc", "z")
+    if (oi(nohit) == 999999) {
+        code = code + 1
+    }
+    let rev = reverse("A中")
+    if (equal(rev, "中A")) {
+        code = code + 1
+    }
+    let tr = trim("  a b ")
+    if (equal(tr, "a b")) {
+        code = code + 1
+    }
+    let rep = replace("aXbXc", "X", "-")
+    if (equal(rep, "a-b-c")) {
+        code = code + 1
+    }
+    let parts = split("a,b,c", ",")
+    if (parts.len() == 3) {
+        code = code + 1
+    }
+    let lns = lines("x
+y")
+    if (lns.len() == 2) {
+        code = code + 1
+    }
+    var un = List<int>.new()
+    un.push(3)
+    un.push(1)
+    un.push(2)
+    let sorted = sort(un)
+    if (sorted.get(0) == 1) {
+        if (sorted.get(2) == 3) {
+            code = code + 1
+        }
+    }
     if (oi(to_int("42")) == 42) {
         code = code + 1
     }
@@ -313,6 +359,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
                 "map",
                 "pop",
                 "reduce",
+                "sort",
                 "sum",
                 "total_len",
             ],
@@ -331,10 +378,16 @@ fn v08_surface_manifest_and_five_end_exercise() {
                 "contains",
                 "ends_with",
                 "equal",
+                "find",
+                "lines",
                 "lower_ascii",
                 "repeat",
+                "replace",
+                "reverse",
                 "scalar_len",
+                "split",
                 "starts_with",
+                "trim",
                 "upper_ascii",
             ],
         ),
@@ -428,7 +481,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
     });
     let dir = scratch("v08-av");
     let av = PackageAvTarget::cold(&dir, &product).unwrap();
-    assert_eq!(av.run_value().unwrap(), Value::I32(54));
+    assert_eq!(av.run_value().unwrap(), Value::I32(62));
 
     // ---- mn leg (real machine code): exit code = 49. ----
     let dir = scratch("v08-mn");
@@ -448,7 +501,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
         .expect("run v08 mn exe")
         .code()
         .unwrap_or(-1);
-    assert_eq!(code, 54, "AC/native v08 exercise exit");
+    assert_eq!(code, 62, "AC/native v08 exercise exit");
 
     // ---- A2C leg (real cl): value:49. ----
     {
@@ -501,7 +554,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:54"), "a2c v08 stdout: {out}");
+        assert!(out.ends_with("value:62"), "a2c v08 stdout: {out}");
     }
 
     // ---- A2R leg (real rustc): value:49. ----
@@ -568,7 +621,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:54"), "a2r v08 stdout: {out}");
+        assert!(out.ends_with("value:62"), "a2r v08 stdout: {out}");
     }
 
     // ---- A2PY leg (real OS Python): value:49. ----
@@ -619,6 +672,6 @@ fn v08_surface_manifest_and_five_end_exercise() {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:54"), "a2py v08 stdout: {out}");
+        assert!(out.ends_with("value:62"), "a2py v08 stdout: {out}");
     }
 }
