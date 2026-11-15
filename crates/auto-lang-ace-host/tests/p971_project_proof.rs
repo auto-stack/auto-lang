@@ -209,6 +209,34 @@ fn p971_project_proof_roundtrip() {
     assert_eq!(stop_report.exit_code, 1);
     assert_no_scratch_residue();
 
+    // ---- 5.5 Request-wall control: a 1ms wall budget refuses the run ----
+    // (phase check or in-run generation wall — never a silent run to the
+    // 2s frozen default; F-971-R-01).
+    let spin_modules = [spec(
+        "app",
+        "main",
+        // this profile: `var` locals are mutable, `for <cond> { .. }` is
+        // the conditional loop
+        "fn main() int { var i = 5000000\nfor i > 0 { i = i - 1 }\nreturn i }",
+    )];
+    let spin_req = AceProjectRequest {
+        modules: &spin_modules,
+        entry_module: "app::main",
+        entry_def_id: "d_main",
+        tests: &[],
+        capabilities: &caps,
+        wall: Some(std::time::Duration::from_millis(1)),
+        cancel: None,
+    };
+    let spin_report = run_ace_project(AceEngineChoice::AceAV, &spin_req);
+    assert!(
+        matches!(&spin_report.outcome, AceProjectOutcome::ResourceDenied { kind, .. }
+            if kind == "wall" || kind == "ExecutionWall"),
+        "a 1ms wall must refuse the spin run, got {:?}",
+        spin_report.outcome
+    );
+    assert_eq!(spin_report.exit_code, 1);
+
     // ---- 6. Refusal leg: legacy/unknown engine names never dispatch ----
     for engine in ["autovm", "vm", "evaluator", "ace-native"] {
         let refused = run_ace_project_named(engine, &req);

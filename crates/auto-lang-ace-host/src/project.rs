@@ -118,7 +118,7 @@ fn execute_project(request: &AceProjectRequest<'_>) -> AceProjectReport {
                 0,
             );
         }
-        tests.push(run_one_test(&product, name));
+        tests.push(run_one_test(&product, name, deadline, request.cancel));
     }
 
     // Entry leg.
@@ -135,7 +135,7 @@ fn execute_project(request: &AceProjectRequest<'_>) -> AceProjectReport {
             0,
         );
     }
-    let outcome = run_entry(&product, request.entry_def_id);
+    let outcome = run_entry(&product, request.entry_def_id, deadline, request.cancel);
     finish(outcome, tests, 0)
 }
 
@@ -174,8 +174,14 @@ fn package_diagnostic_outcome(diags: &[PackageDiagnostic]) -> AceProjectOutcome 
 /// Execute one requested test: resolve the bare name against the bound
 /// declaration origins, run it as its own generation, and judge it by
 /// the frozen test contract (`fn <name>() int` — passed iff the run
-/// completes and returns 0).
-fn run_one_test(product: &PackageProduct, name: &str) -> AceTestOutcome {
+/// completes and returns 0). The generation inherits the REQUEST's
+/// remaining wall budget and cancel flag (F-971-R-01).
+fn run_one_test(
+    product: &PackageProduct,
+    name: &str,
+    deadline: Instant,
+    cancel: Option<&AtomicBool>,
+) -> AceTestOutcome {
     let mut matches = product
         .bound
         .origins
@@ -215,7 +221,7 @@ fn run_one_test(product: &PackageProduct, name: &str) -> AceTestOutcome {
         Ok(target) => target,
         Err(e) => return failed(format!("test link failed: {e}")),
     };
-    match execute_generation(&target) {
+    match execute_generation(&target, deadline, cancel) {
         ExecOutcome::Success {
             value: Value::I32(0),
             ..
@@ -240,7 +246,14 @@ fn run_one_test(product: &PackageProduct, name: &str) -> AceTestOutcome {
 
 /// Run the project entry on its own generation and map the terminal
 /// state to the neutral contract (trap spans survive as diagnostics).
-fn run_entry(product: &PackageProduct, entry_def_id: &str) -> AceProjectOutcome {
+/// The generation inherits the REQUEST's remaining wall budget and
+/// cancel flag (F-971-R-01).
+fn run_entry(
+    product: &PackageProduct,
+    entry_def_id: &str,
+    deadline: Instant,
+    cancel: Option<&AtomicBool>,
+) -> AceProjectOutcome {
     let scratch = match ScratchStore::new() {
         Ok(scratch) => scratch,
         Err(e) => {
@@ -259,7 +272,7 @@ fn run_entry(product: &PackageProduct, entry_def_id: &str) -> AceProjectOutcome 
             }
         }
     };
-    match execute_generation(&target) {
+    match execute_generation(&target, deadline, cancel) {
         ExecOutcome::Success { value, steps } => AceProjectOutcome::Success {
             value: map_value(value),
             steps,
@@ -296,11 +309,29 @@ fn run_entry(product: &PackageProduct, entry_def_id: &str) -> AceProjectOutcome 
     }
 }
 
-fn execute_generation(target: &PackageAvTarget) -> ExecOutcome {
+/// Execute one generation with the REQUEST's remaining wall budget and
+/// the host-owned cancel flag (F-971-R-01: neither is dropped inside a
+/// generation — the same discipline as the E0 single-run face's
+/// `limits_from`/`cancel_flag`).
+fn execute_generation(
+    target: &PackageAvTarget,
+    deadline: Instant,
+    cancel: Option<&AtomicBool>,
+) -> ExecOutcome {
     let fallback = CancelFlag::new(false);
+    let flag = cancel.unwrap_or(&fallback);
     let (outcome, _trace) =
-        ace_av_core::execute_program(&target.current, &ExecLimits::default(), &fallback);
+        ace_av_core::execute_program(&target.current, &generation_limits(deadline), flag);
     outcome
+}
+
+/// Per-generation limits: the frozen probe budgets with the wall capped
+/// to the request's REMAINING budget (never the 2s default once the
+/// host asked for less).
+fn generation_limits(deadline: Instant) -> ExecLimits {
+    let mut limits = ExecLimits::default();
+    limits.wall = deadline.saturating_duration_since(Instant::now());
+    limits
 }
 
 /// Per-run scratch store root: a fresh temp directory created for one
@@ -324,5 +355,30 @@ impl ScratchStore {
 impl Drop for ScratchStore {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// F-971-R-01: a generation's wall budget is the REQUEST's remaining
+    /// budget, never silently the 2s frozen probe default.
+    #[test]
+    fn p971_generation_wall_is_the_requests_remaining_budget() {
+        let near = Instant::now() + Duration::from_millis(300);
+        let limits = generation_limits(near);
+        assert!(
+            limits.wall <= Duration::from_millis(300),
+            "wall must cap to the remaining request budget, got {:?}",
+            limits.wall
+        );
+        // An already-passed deadline leaves a zero wall for the
+        // generation (the phase checks refuse before it, this pins the
+        // wiring anyway).
+        let limits = generation_limits(Instant::now());
+        assert!(limits.wall <= Duration::from_millis(1));
+        // The frozen probe budgets stay intact for the other axes.
+        assert_eq!(limits.max_steps, ExecLimits::default().max_steps);
     }
 }
