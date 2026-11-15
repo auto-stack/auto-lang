@@ -26,6 +26,10 @@ const DECLARED: &[&str] = &[
     // PLAN-979（T-03）：AGE 组件面（`node { model … on … view … }`，同一
     // auto-source.at 的另一裁剪；声明序紧随 age-h0，H0 面逐字节不变）。
     "age-component",
+    // PLAN-981（T-01）：AGE 多模块包面（包模块图 ∪ AGE 组件，同一
+    // auto-source.at 的第三个 AGE 裁剪；声明序紧随 age-component，
+    // H0/组件面逐字节不变）。
+    "age-package",
     "entry-unit",
     "host-console",
     // PLAN-928：集合/闭包两面。
@@ -39,6 +43,10 @@ const DECLARED: &[&str] = &[
     // 序在 numeric 之后、模板面之前——962 合入时同样漏更新本冻结集，
     // 1025 收口接收侧按已交付现实刷新，合同语义不变，同 961→941 先例）。
     "aggregates",
+    // PLAN-968：调度器面（aggregates 超集 + task actor 面）。该面在 968 合入时
+    // 同样漏更新本冻结集（与 961→941、962→1025 同一类漂移），本 Plan 接收侧
+    // 按 auto-source.at 的已交付现实刷新——只补名字，合同语义不变。
+    "scheduler",
     // PLAN-935：有限模板面（scalar 全表面 + fn <T>；仅实例能力前门使用；
     // 声明序在闭包之后）。
     "scalar-instances",

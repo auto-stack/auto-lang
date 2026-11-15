@@ -151,6 +151,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::EntryUnit => "entry-unit",
         // PLAN-979 T-03：组件面（age-h0 的同源异裁剪）。
         SourceProfile::AgeComponent => "age-component",
+        // PLAN-981: the AGE package trim (package modules ∪ AGE components).
+        SourceProfile::AgePackage => "age-package",
         SourceProfile::HostConsole => "host-console",
         // PLAN-928 T-02/T-03：闭包/集合两面经统一前门（差分全集与冷入口
         // 切换由 T-04/T-07 冻结）。
@@ -184,6 +186,8 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         "numeric" => SourceProfile::Numeric,
         "aggregates" => SourceProfile::Aggregates,
         "age-h0" => SourceProfile::AgeH0,
+        // PLAN-981: AGE package slug round-trip.
+        "age-package" => SourceProfile::AgePackage,
         _ => return None,
     })
 }
@@ -207,7 +211,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 14]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 15]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -1589,6 +1593,8 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::AgeH0 => 11,
         // PLAN-979 T-03：组件面槽位。
         SourceProfile::AgeComponent => 12,
+        // PLAN-981：AGE 包面槽位（包模块图 ∪ AGE 组件）。
+        SourceProfile::AgePackage => 14,
         // PLAN-968：调度器面槽位。
         SourceProfile::Scheduler => 13,
     };

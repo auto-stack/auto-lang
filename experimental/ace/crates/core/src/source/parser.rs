@@ -139,7 +139,13 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Aggregates
         // PLAN-968: the scheduler face runs through the same unified CST
         // chain (aggregates superset trim + task rules).
-        | SourceProfile::Scheduler => {
+        | SourceProfile::Scheduler
+        // PLAN-981: the AGE faces are CST-only (no handwritten-parser twin);
+        // their generic entry is refused before reaching this match, and the
+        // domain front doors parse through `cst::parse_domain_whole_module`.
+        | SourceProfile::AgeH0
+        | SourceProfile::AgeComponent
+        | SourceProfile::AgePackage => {
             // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
             // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
             let parsed_src = if super::fstr::profile_admits_fstr(profile) {
