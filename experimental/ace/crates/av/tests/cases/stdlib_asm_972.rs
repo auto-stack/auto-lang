@@ -337,8 +337,15 @@ fn stdlib_asm_972_cross_end_gaps_and_a2r_math() {
     match mn {
         Err(e) => {
             let text = format!("{e:?}");
+            // the closure-value gap may surface at the type table or,
+            // with the PLAN-972 T-03 scalar/text admissions, deeper in the
+            // emitter/layout — all are the same named closure boundary.
             assert!(
-                text.contains("Closure") || text.contains("Char"),
+                text.contains("Closure")
+                    || text.contains("Char")
+                    || text.contains("closure")
+                    || text.contains("layout contract")
+                    || text.contains("unhandled admitted"),
                 "unexpected mn gap: {text}"
             );
         }
@@ -443,6 +450,70 @@ fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }".into(),
     let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
     assert!(out.ends_with("value:493"), "a2r math stdout: {out}");
 
+    // ---- AC / native (mn) POSITIVE leg on the closure-free subset
+    // (std.math + std.text + std.char + app): byte_len("A中😀")=8,
+    // scalar_len=3 → exit 83 — the Unicode unit oracle on real machine
+    // code through the PLAN-972 T-03 text/char/numeric emission arms
+    // (closure values stay the named whole-set gap). ----
+    let subset: Vec<ace_core::source::packages::PackageModuleInput> =
+        ace_core::source::packages::stdlib_assembled_files()
+            .into_iter()
+            .filter(|(n, _)| matches!(n.as_str(), "math.at" | "text.at" | "char.at"))
+            .map(|(n, c)| {
+                let id = n.trim_end_matches(".at").to_string();
+                ace_core::source::packages::PackageModuleInput {
+                    package: "std".into(),
+                    version: "1.0.0".into(),
+                    id,
+                    source: c,
+                    provider: None,
+                }
+            })
+            .chain(std::iter::once(
+                ace_core::source::packages::PackageModuleInput {
+                    package: "app".into(),
+                    version: "1.0.0".into(),
+                    id: "main".into(),
+                    source: "use std.text.byte_len
+use std.text.scalar_len
+fn main() int {
+    let a Str = \"A中😀\"
+    return byte_len(a.clone()) * 10 + scalar_len(a.clone())
+}".into(),
+                    provider: None,
+                },
+            ))
+            .collect();
+    let mut ctx2 = PackageAssemblyContext::new(
+        AssemblyBackend::Av,
+        ProviderChoice::Auto,
+        TargetOs::Windows,
+    );
+    let subset_product = compile_assembled_aggregates_inputs(
+        &subset,
+        "app::main",
+        FrontBudget::WORK_OWNED_64MIB,
+        &ctx2,
+    )
+    .unwrap_or_else(|ds| panic!("mn subset compile: {ds:?}"));
+    let dir = scratch("cons-mn-subset");
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    let built = driver
+        .build_collections_checked(
+            &subset_product.compiled.checked,
+            "d_main",
+            &dir,
+            &subset_product.bound.input_hash,
+            972,
+        )
+        .unwrap_or_else(|e| panic!("mn subset build: {e:?}"));
+    let code = Command::new(&built.exe_path)
+        .current_dir(&dir)
+        .status()
+        .expect("run mn subset exe")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 83, "AC/native subset exit (Unicode units)");
 }
 
 /// S-05 parse family with the V-DETAIL-02 error paths independently

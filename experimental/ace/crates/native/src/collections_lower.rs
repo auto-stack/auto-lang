@@ -116,10 +116,17 @@ pub(crate) fn admit_layouts(
             | MirType::RecordView(_)
             | MirType::List(_)
             | MirType::Variant(_) => {}
-            // PLAN-972 (T-03): the Unicode scalar rides the i32 carrier
-            // (layout Shape::I32) — the assembled stdlib text/char modules
-            // carry char locals/constants/codepoint ops.
-            MirType::Char => {}
+            // PLAN-972 (T-03): the char/numeric scalars ride the immediate
+            // kind-0 carrier (char IS its codepoint; typed scalars are cell
+            // word immediates like i32).
+            MirType::Char
+            | MirType::I64
+            | MirType::U64
+            | MirType::I8
+            | MirType::U8
+            | MirType::U32
+            | MirType::F32
+            | MirType::F64 => {}
             // PLAN-923: the checked place is a Copy element witness over a
             // List — frozen to i32/bool this revision; List<Str>/owned
             // record read-only views stay out of the native place surface
@@ -199,6 +206,18 @@ pub(crate) fn admit_layouts(
                     | MirInstr::VariantSwitch { .. }
                     | MirInstr::VariantGuard { .. }
                     | MirInstr::VariantProject { .. }
+                    // PLAN-972 (T-03): the text/char expression surface
+                    // (mn_coll_* over TEXT cells; char rides its codepoint).
+                    | MirInstr::StrLenBytes { .. }
+                    | MirInstr::StrCharAt { .. }
+                    | MirInstr::StrSlice { .. }
+                    | MirInstr::StrToOwned { .. }
+                    | MirInstr::StrConcat { .. }
+                    | MirInstr::CharToCodepoint { .. }
+                    | MirInstr::CharFromCodepoint { .. }
+                    // PLAN-972 (T-03): integer conversions (checked
+                    // narrowing; sign-aware widening).
+                    | MirInstr::Conv { .. }
             ) {
                 return Err(unsupported(
                     "instruction",
@@ -491,6 +510,12 @@ impl Lower<'_, '_> {
         let bits = self.fb.ins().uextend(types::I64, value);
         self.fb.ins().store(MemFlags::new(), bits, a, 0);
     }
+    /// PLAN-972 (T-03): full 64-bit cell-word store (typed scalar
+    /// immediates wider than i32 — I64/U64 constants and typed results).
+    fn word_to(&mut self, s: u32, value: Value) {
+        let a = self.addr(s);
+        self.fb.ins().store(MemFlags::new(), value, a, 0);
+    }
     fn call(
         &mut self,
         name: &'static str,
@@ -652,6 +677,32 @@ impl Lower<'_, '_> {
                     let v = self.i32(*b as i32);
                     self.scalar_to(*dst, v);
                 }
+                // PLAN-972 (T-03): typed scalar constants ride the cell
+                // word as exact-value immediates (loads narrow per use).
+                MirConst::Char(c) => {
+                    let v = self.i32(*c as u32 as i32);
+                    self.scalar_to(*dst, v);
+                }
+                MirConst::I64(n) => {
+                    let v = self.i64(*n);
+                    self.word_to(*dst, v);
+                }
+                MirConst::U64(n) => {
+                    let v = self.i64(*n as i64);
+                    self.word_to(*dst, v);
+                }
+                MirConst::I8(n) => {
+                    let v = self.i32(*n as i32);
+                    self.scalar_to(*dst, v);
+                }
+                MirConst::U8(n) => {
+                    let v = self.i32(*n as i32);
+                    self.scalar_to(*dst, v);
+                }
+                MirConst::U32(n) => {
+                    let v = self.i32(*n as i32);
+                    self.scalar_to(*dst, v);
+                }
                 MirConst::Str(bytes) => {
                     let id = if let Some(id) = self.literals.get(value) {
                         *id
@@ -711,6 +762,140 @@ impl Lower<'_, '_> {
                 let v = self.bits(*view);
                 let n = self.checked("mn_coll_str_len", &[(v, types::I64)])?;
                 self.scalar_to(*dst, n);
+            }
+            // PLAN-972 (T-03): the text/char expression surface —
+            // mn_coll_* over TEXT cells; char IS its codepoint here.
+            StrLenBytes { dst, view } => {
+                let v = self.bits(*view);
+                let n = self.checked("mn_coll_str_len_bytes", &[(v, types::I64)])?;
+                self.scalar_to(*dst, n);
+            }
+            StrCharAt { dst, view, index } => {
+                let v = self.bits(*view);
+                let i = self.scalar(*index);
+                let c = self.checked("mn_coll_str_char_at", &[(v, types::I64), (i, types::I32)])?;
+                self.scalar_to(*dst, c);
+            }
+            StrSlice {
+                dst,
+                view,
+                start,
+                end,
+            } => {
+                let d = self.addr(*dst);
+                let v = self.bits(*view);
+                let a = self.scalar(*start);
+                let b = self.scalar(*end);
+                self.checked(
+                    "mn_coll_str_slice",
+                    &[(d, types::I64), (v, types::I64), (a, types::I32), (b, types::I32)],
+                )?;
+            }
+            StrConcat { dst, lhs, rhs } => {
+                let d = self.addr(*dst);
+                let a = self.bits(*lhs);
+                let b = self.bits(*rhs);
+                self.checked(
+                    "mn_coll_str_concat",
+                    &[(d, types::I64), (a, types::I64), (b, types::I64)],
+                )?;
+            }
+            StrToOwned { dst, view } => {
+                // the owned copy of a view cell's current bytes — the same
+                // deep-copy mn_coll_clone provides for TEXT cells.
+                let d = self.addr(*dst);
+                let v = self.addr(*view);
+                self.checked("mn_coll_clone", &[(d, types::I64), (v, types::I64)])?;
+            }
+            CharToCodepoint { dst, ch } => {
+                let v = self.scalar(*ch);
+                self.scalar_to(*dst, v);
+            }
+            CharFromCodepoint { dst, code } => {
+                let c = self.scalar(*code);
+                let v = self.checked("mn_coll_char_from_codepoint", &[(c, types::I32)])?;
+                self.scalar_to(*dst, v);
+            }
+            // PLAN-972 (T-03): integer conversion — widening extends with
+            // the SOURCE's signedness; narrowing range-checks in I128 and
+            // traps (-30, the checked contract) outside the target domain.
+            Conv { dst, src } => {
+                let from = self.m.funcs[0].slots[*src as usize].ty;
+                let to = self.m.funcs[0].slots[*dst as usize].ty;
+                let num = |t: &MirType| -> Result<NumTy, MnError> {
+                    Ok(match t {
+                        MirType::I8 => NumTy::I8,
+                        MirType::U8 => NumTy::U8,
+                        MirType::I32 => NumTy::I32,
+                        MirType::U32 => NumTy::U32,
+                        MirType::I64 => NumTy::I64,
+                        MirType::U64 => NumTy::U64,
+                        other => {
+                            return Err(unsupported(
+                                "instruction",
+                                format!("PLAN-972 non-integer conversion {other:?} awaits the numeric backend unit"),
+                            ))
+                        }
+                    })
+                };
+                let (fa, ta) = (
+                    num(&self.m.types[from as usize])?,
+                    num(&self.m.types[to as usize])?,
+                );
+                let signed_from = matches!(fa, NumTy::I8 | NumTy::I32 | NumTy::I64);
+                let signed_to = matches!(ta, NumTy::I8 | NumTy::I32 | NumTy::I64);
+                let wide = types::I128;
+                let v = self.bits(*src);
+                let v = if signed_from {
+                    self.fb.ins().sextend(wide, v)
+                } else {
+                    self.fb.ins().uextend(wide, v)
+                };
+                let (lo, hi): (i128, i128) = match ta {
+                    NumTy::I8 => (i8::MIN as i128, i8::MAX as i128),
+                    NumTy::U8 => (0, u8::MAX as i128),
+                    NumTy::I32 => (i32::MIN as i128, i32::MAX as i128),
+                    NumTy::U32 => (0, u32::MAX as i128),
+                    NumTy::I64 => (i64::MIN as i128, i64::MAX as i128),
+                    NumTy::U64 => (0, u64::MAX as i128),
+                    NumTy::F32 | NumTy::F64 => unreachable!("filtered above"),
+                };
+                let (low, high) = if signed_to {
+                    (
+                        self.fb
+                            .ins()
+                            .icmp_imm(IntCC::SignedGreaterThanOrEqual, v, lo as i64),
+                        self.fb
+                            .ins()
+                            .icmp_imm(IntCC::SignedLessThanOrEqual, v, hi as i64),
+                    )
+                } else {
+                    // unsigned target: the high bound rides the u64 bit
+                    // pattern (u64::MAX == -1 as u64 under unsigned CC).
+                    (
+                        self.fb.ins().icmp_imm(IntCC::UnsignedGreaterThanOrEqual, v, 0),
+                        self.fb
+                            .ins()
+                            .icmp_imm(IntCC::UnsignedLessThanOrEqual, v, hi as i64),
+                    )
+                };
+                let good = self.fb.ins().band(low, high);
+                let e = self.i32(-30);
+                self.guard(good, e);
+                let target_ty = if ta == NumTy::I64 || ta == NumTy::U64 {
+                    types::I64
+                } else if ta == NumTy::I32 || ta == NumTy::U32 {
+                    types::I32
+                } else {
+                    types::I8
+                };
+                let r = self.fb.ins().ireduce(target_ty, v);
+                if target_ty == types::I64 {
+                    self.word_to(*dst, r);
+                } else {
+                    self.scalar_to(*dst, r);
+                }
+                let _ = signed_to;
             }
             Aggregate { dst, operands, .. } => {
                 let pointer = self.addr(*dst);
@@ -916,7 +1101,7 @@ impl Lower<'_, '_> {
                 pointers.push(self.addr(*dst));
                 self.fb.ins().call(self.import_refs[*i as usize], &pointers);
             }
-            Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs),
+            Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs)?,
             Un { op, dst, operand } => {
                 let v = self.scalar(*operand);
                 let result = match op {
@@ -932,10 +1117,22 @@ impl Lower<'_, '_> {
                     }
                     // PLAN-961: typed negation awaits the numeric backend
                     // unit — named rejection, never an i32 fallback.
+                    // PLAN-972 (T-03): checked I64 negation (MIN traps);
+                    // narrower/float typed negation stays with the numeric
+                    // backend unit.
+                    UnOp::NegT { ty: NumTy::I64 } => {
+                        let v = self.bits(*operand);
+                        let min = self.fb.ins().icmp_imm(IntCC::NotEqual, v, i64::MIN);
+                        let e = self.i32(-30);
+                        self.guard(min, e);
+                        let r = self.fb.ins().ineg(v);
+                        self.word_to(*dst, r);
+                        return Ok(());
+                    }
                     UnOp::NegT { .. } => {
                         return Err(unsupported(
                             "instruction",
-                            "PLAN-961 typed numeric emission awaits the numeric backend unit",
+                            "PLAN-972 narrow/float typed negation awaits the numeric backend unit",
                         ))
                     }
                 };
@@ -945,7 +1142,14 @@ impl Lower<'_, '_> {
         }
         Ok(())
     }
-    fn binary(&mut self, op: BinOp, dst: u32, lhs: u32, rhs: u32) {
+    fn binary(&mut self, op: BinOp, dst: u32, lhs: u32, rhs: u32) -> Result<(), MnError> {
+        // PLAN-972 (T-03): the 961 typed numeric surface — integer
+        // compares over every int width + checked I64 arithmetic ride the
+        // collections emitter; narrow arith, floats and shifts stay with
+        // the numeric backend unit (named rejection below).
+        if let BinOp::Num { op, ty } = op {
+            return self.binary_num(op, ty, dst, lhs, rhs);
+        }
         let a = self.scalar(lhs);
         let b = self.scalar(rhs);
         let condition = match op {
@@ -996,6 +1200,141 @@ impl Lower<'_, '_> {
             self.fb.ins().ireduce(types::I32, value)
         };
         self.scalar_to(dst, value);
+        Ok(())
+    }
+
+    /// PLAN-972 (T-03): typed integer compares (all widths) + checked I64
+    /// add/sub/mul/div/rem. Values live in the cell word; narrow loads
+    /// reduce with the operand's signedness.
+    fn binary_num(
+        &mut self,
+        op: NumOp,
+        ty: NumTy,
+        dst: u32,
+        lhs: u32,
+        rhs: u32,
+    ) -> Result<(), MnError> {
+        use NumOp::*;
+        use NumTy::*;
+        let signed = matches!(ty, I8 | I32 | I64);
+        let (a, b) = match ty {
+            I64 | U64 => (self.bits(lhs), self.bits(rhs)),
+            I8 | U8 | U32 | I32 => {
+                let a = self.bits(lhs);
+                let b = self.bits(rhs);
+                let narrow = if ty == I8 {
+                    types::I8
+                } else if ty == U8 {
+                    types::I8
+                } else if ty == U32 {
+                    types::I32
+                } else {
+                    types::I32
+                };
+                let a = self.fb.ins().ireduce(narrow, a);
+                let b = self.fb.ins().ireduce(narrow, b);
+                (a, b)
+            }
+            F32 | F64 => {
+                return Err(unsupported(
+                    "instruction",
+                    "PLAN-972 typed float emission awaits the numeric backend unit",
+                ))
+            }
+        };
+        let cc = |op: NumOp| -> Option<IntCC> {
+            Some(match op {
+                Lt => {
+                    if signed {
+                        IntCC::SignedLessThan
+                    } else {
+                        IntCC::UnsignedLessThan
+                    }
+                }
+                Le => {
+                    if signed {
+                        IntCC::SignedLessThanOrEqual
+                    } else {
+                        IntCC::UnsignedLessThanOrEqual
+                    }
+                }
+                Gt => {
+                    if signed {
+                        IntCC::SignedGreaterThan
+                    } else {
+                        IntCC::UnsignedGreaterThan
+                    }
+                }
+                Ge => {
+                    if signed {
+                        IntCC::SignedGreaterThanOrEqual
+                    } else {
+                        IntCC::UnsignedGreaterThanOrEqual
+                    }
+                }
+                Eq => IntCC::Equal,
+                Ne => IntCC::NotEqual,
+                _ => return None,
+            })
+        };
+        if let Some(c) = cc(op) {
+            let r = self.fb.ins().icmp(c, a, b);
+            let r = self.fb.ins().uextend(types::I32, r);
+            self.scalar_to(dst, r);
+            return Ok(());
+        }
+        if ty != I64 {
+            return Err(unsupported(
+                "instruction",
+                "PLAN-972 narrow typed arithmetic awaits the numeric backend unit",
+            ));
+        }
+        // checked I64 arithmetic: compute in I128, range-check, trap -30.
+        let wide = types::I128;
+        let a = self.fb.ins().sextend(wide, a);
+        let b = self.fb.ins().sextend(wide, b);
+        let value = match op {
+            Add => self.fb.ins().iadd(a, b),
+            Sub => self.fb.ins().isub(a, b),
+            Mul => self.fb.ins().imul(a, b),
+            Div | Rem => {
+                let nz = self.fb.ins().icmp_imm(IntCC::NotEqual, b, 0);
+                let e = self.i32(-31);
+                self.guard(nz, e);
+                let min = self.fb.ins().icmp_imm(IntCC::Equal, a, i64::MIN as i64);
+                let neg = self.fb.ins().icmp_imm(IntCC::Equal, b, -1);
+                let overflow = self.fb.ins().band(min, neg);
+                let good = self.fb.ins().icmp_imm(IntCC::Equal, overflow, 0);
+                let e = self.i32(-30);
+                self.guard(good, e);
+                if op == Div {
+                    self.fb.ins().sdiv(a, b)
+                } else {
+                    self.fb.ins().srem(a, b)
+                }
+            }
+            And | Or | Xor | Shl | Shr => {
+                return Err(unsupported(
+                    "instruction",
+                    "PLAN-972 typed bit/shift emission awaits the numeric backend unit",
+                ))
+            }
+            _ => return Err(unsupported("instruction", "typed numeric op mismatch")),
+        };
+        let low = self
+            .fb
+            .ins()
+            .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i64::MIN as i64);
+        let high = self
+            .fb
+            .ins()
+            .icmp_imm(IntCC::SignedLessThanOrEqual, value, i64::MAX as i64);
+        let good = self.fb.ins().band(low, high);
+        let e = self.i32(-30);
+        self.guard(good, e);
+        let v = self.fb.ins().ireduce(types::I64, value);
+        self.word_to(dst, v);
+        Ok(())
     }
 }
 

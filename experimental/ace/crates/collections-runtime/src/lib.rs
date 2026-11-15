@@ -21,6 +21,22 @@ extern "system" {
     fn ac_rt_own_clone(p: *const u8, len: i32, out: *mut i32) -> *mut u8;
     fn ac_rt_own_free(p: *mut u8);
     fn ac_rt_text_scalars(p: *const u8, len: i32) -> i32;
+    fn ac_rt_char_at(p: *const u8, len: i32, idx: i32) -> i32;
+    fn ac_rt_text_slice(
+        p: *const u8,
+        len: i32,
+        start: i32,
+        end: i32,
+        out_len: *mut i32,
+    ) -> *const u8;
+    fn ac_rt_own_concat(
+        a: *const u8,
+        a_len: i32,
+        b: *const u8,
+        b_len: i32,
+        out_len: *mut i32,
+    ) -> *mut u8;
+    fn ac_rt_char_from_codepoint(cp: i32) -> i32;
     fn ac_rt_summary();
 }
 
@@ -982,6 +998,95 @@ pub unsafe extern "system" fn mn_coll_str_len(bits: u64) -> i32 {
         Ok(p) => ac_rt_text_scalars((*p).data, (*p).len as i32),
         Err(e) => e,
     }
+}
+
+/// PLAN-972 (T-03): the text/char expression surface over TEXT cells.
+/// `.len` is the node's UTF-8 BYTE length; scalar views run through the
+/// shared ac_rt scalar-indexed helpers. Errors are negative statuses —
+/// the emitter's checked() guards turn them into named traps.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_str_len_bytes(bits: u64) -> i32 {
+    match of_kind(bits, TEXT) {
+        Ok(p) => (*p).len as i32,
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_str_char_at(bits: u64, index: i32) -> i32 {
+    match of_kind(bits, TEXT) {
+        Ok(p) => ac_rt_char_at((*p).data, (*p).len as i32, index),
+        Err(e) => e,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_char_from_codepoint(cp: i32) -> i32 {
+    ac_rt_char_from_codepoint(cp)
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_str_slice(
+    dst: *mut Cell,
+    bits: u64,
+    start: i32,
+    end: i32,
+) -> i32 {
+    status((|| {
+        let p = of_kind(bits, TEXT)?;
+        let mut view_len = 0i32;
+        let view = ac_rt_text_slice((*p).data, (*p).len as i32, start, end, &mut view_len);
+        if view.is_null() || view_len < 0 {
+            return Err(INVALID);
+        }
+        let mut actual = 0i32;
+        let data = ac_rt_own_clone(view, view_len, &mut actual);
+        if data.is_null() {
+            return Err(if actual == ac_text_runtime::ERR_CANCELLED {
+                CANCELLED
+            } else {
+                RESOURCE
+            });
+        }
+        if actual != view_len {
+            ac_rt_own_free(data);
+            return Err(RESOURCE);
+        }
+        let n = new_node(TEXT, 0, actual as usize)?;
+        (*n).data = data;
+        (*n).len = actual as usize;
+        commit(dst, owner(n));
+        ev_own(dst, false);
+        Ok(())
+    })())
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_str_concat(dst: *mut Cell, a: u64, b: u64) -> i32 {
+    status((|| {
+        let (pa, pb) = (of_kind(a, TEXT)?, of_kind(b, TEXT)?);
+        let mut out = 0i32;
+        let data = ac_rt_own_concat(
+            (*pa).data,
+            (*pa).len as i32,
+            (*pb).data,
+            (*pb).len as i32,
+            &mut out,
+        );
+        if data.is_null() {
+            return Err(if out == ac_text_runtime::ERR_CANCELLED {
+                CANCELLED
+            } else {
+                RESOURCE
+            });
+        }
+        let n = new_node(TEXT, 0, out as usize)?;
+        (*n).data = data;
+        (*n).len = out as usize;
+        commit(dst, owner(n));
+        ev_own(dst, false);
+        Ok(())
+    })())
 }
 
 #[no_mangle]
