@@ -200,7 +200,11 @@ pub fn compile_age_package_with_scenario(
         .iter()
         .flat_map(|c| c.text_fns.iter().map(|(n, _)| n.as_str()))
         .collect();
-    if let Some(d) = hidden_name_conflict(&product.bound, &injected) {
+    // 场景属性值函数同样由本前门生成（阶段 N），按前缀一并排除。
+    let is_injected = |name: &str| {
+        injected.contains(&name) || name.starts_with(AGE_PACKAGE_HIDDEN_PREFIX)
+    };
+    if let Some(d) = hidden_name_conflict(&product.bound, &is_injected) {
         return Err(vec![d]);
     }
 
@@ -302,7 +306,7 @@ fn flat_to_module(sources: &[AgeModuleSource], span: Span) -> Span {
 /// （必然含前缀片段），拿 mangle 后的名字判会把自己的隐藏函数判成冲突。
 fn hidden_name_conflict(
     bound: &super::packages::BoundPackages,
-    injected: &[&str],
+    is_injected: &dyn Fn(&str) -> bool,
 ) -> Option<Diagnostic> {
     for unit in bound.units.values() {
         for item in &unit.program.items {
@@ -316,7 +320,7 @@ fn hidden_name_conflict(
                 Item::UseRs(_) => None,
             };
             if let Some(u) = user {
-                if injected.contains(&u.name.as_str()) {
+                if is_injected(&u.name) {
                     continue;
                 }
                 for reserved in RESERVED {
@@ -895,15 +899,82 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
 /// 与 [`hidden_fn`] 同一机制（普通 Auto 源交给唯一 verify），差别只在**返回
 /// 类型**：场景属性是 f32 / 元组 / 资源引用等作者值，不是文本，故按值的语法
 /// 形状给出真实类型；形状无法判定时返回 `None`（调用方具名拒绝，不猜 i32）。
-pub(crate) fn hidden_fn_scene_value(name: &str, expr: &Expr, span: Span) -> Option<FnItem> {
-    let ret = scene_value_type(expr)?;
+/// 把场景属性值降级成**一个或多个**求值函数。
+///
+/// 标量值 → 一个函数；元组值（`position`/`size`）→ **逐分量**各一个函数，每个
+/// 用自己真实的分量类型。这样分量值仍由共享 verify 检查，又不需要打开 aggregates
+/// 面（tuple *类型*属那一面）。领域行保留原 key 与元组形状。
+pub(crate) fn hidden_fns_scene_value(
+    name: &str,
+    expr: &Expr,
+    span: Span,
+    node_params: &[crate::source::age_component::ComponentParam],
+) -> Option<Vec<FnItem>> {
+    if let ExprKind::TupleLit(items) = &expr.kind {
+        let mut out = Vec::new();
+        for (i, it) in items.iter().enumerate() {
+            out.push(hidden_fn_scene_value(
+                &format!("{name}_c{i}"),
+                it,
+                it.span,
+                node_params,
+            )?);
+        }
+        return Some(out);
+    }
+    Some(vec![hidden_fn_scene_value(name, expr, span, node_params)?])
+}
+
+fn hidden_fn_scene_value(
+    name: &str,
+    expr: &Expr,
+    span: Span,
+    node_params: &[crate::source::age_component::ComponentParam],
+) -> Option<FnItem> {
+    let ret = scene_value_type(expr, node_params)?;
+    // 作者声明的 node 参数按原类型进函数签名（参数化组件的真实语义）。
+    let mut params = Vec::new();
+    for p in node_params {
+        let kind = match p.ty.as_str() {
+            "float" => TypeRef::Builtin(TypeWord::Float),
+            "int" | "i32" => TypeRef::Builtin(TypeWord::I32),
+            "bool" => TypeRef::Builtin(TypeWord::Bool),
+            other if crate::source::age_resources::is_port_type(other) => {
+                TypeRef::Record(Ident {
+                    name: other.to_string(),
+                    span: p.ty_span,
+                })
+            }
+            _ => return None,
+        };
+        // 端口是**值语义资源句柄**（复制进场景行，从不需要可变借用），故按
+        // move 模式传递——这也让记录参数的所有权规则自然成立，无需新造模式。
+        let is_port = crate::source::age_resources::is_port_type(&p.ty);
+        params.push(crate::source::ast::Param {
+            name: Ident {
+                name: p.name.clone(),
+                span: p.span,
+            },
+            mode: if is_port {
+                crate::source::ast::ParamMode::Move
+            } else {
+                crate::source::ast::ParamMode::Default
+            },
+            ty: TypeAnn {
+                kind,
+                span: p.ty_span,
+            },
+            default: None,
+            span: p.span,
+        });
+    }
     Some(FnItem {
         name: Ident {
             name: name.to_string(),
             span,
         },
         type_params: Vec::new(),
-        params: Vec::new(),
+        params,
         ret: TypeAnn { kind: ret, span },
         body: Block {
             stmts: vec![Stmt::Return {
@@ -920,7 +991,28 @@ pub(crate) fn hidden_fn_scene_value(name: &str, expr: &Expr, span: Span) -> Opti
 }
 
 /// 场景属性值的类型（按语法形状；不是推断引擎）。
-fn scene_value_type(e: &Expr) -> Option<TypeRef> {
+fn scene_value_type(
+    e: &Expr,
+    node_params: &[crate::source::age_component::ComponentParam],
+) -> Option<TypeRef> {
+    // 参数的引用按其声明类型（`x` 在 `node Disc(x: float)` 里就是 `float`）。
+    if let ExprKind::Var(id) = &e.kind {
+        if let Some(p) = node_params.iter().find(|p| p.name == id.name) {
+            return Some(match p.ty.as_str() {
+                "float" => TypeRef::Builtin(TypeWord::Float),
+                "int" | "i32" => TypeRef::Builtin(TypeWord::I32),
+                "bool" => TypeRef::Builtin(TypeWord::Bool),
+                other if crate::source::age_resources::is_port_type(other) => {
+                    TypeRef::Record(Ident {
+                        name: other.to_string(),
+                        span: p.ty_span,
+                    })
+                }
+                _ => return None,
+            });
+        }
+        return None;
+    }
     match &e.kind {
         ExprKind::TypedLit { ty, .. } => Some(match ty {
             TypeWord::Float => TypeRef::Builtin(TypeWord::Float),
@@ -930,19 +1022,12 @@ fn scene_value_type(e: &Expr) -> Option<TypeRef> {
             _ => return None,
         }),
         ExprKind::IntLit(_) => Some(TypeRef::Builtin(TypeWord::I32)),
+        // 负数/取反：类型跟操作数（`-20.0` 仍是 float）。
+        ExprKind::Unary { operand, .. } => scene_value_type(operand, node_params),
         ExprKind::BoolLit(_) => Some(TypeRef::Builtin(TypeWord::Bool)),
         ExprKind::StrLit(_) => Some(TypeRef::Builtin(TypeWord::Str)),
-        // `(x, y)` → 二元组类型（元素类型递归）。
-        ExprKind::TupleLit(items) => {
-            let mut ts = Vec::new();
-            for it in items {
-                ts.push(TypeAnn {
-                    kind: scene_value_type(it)?,
-                    span: it.span,
-                });
-            }
-            Some(TypeRef::Tuple(ts))
-        }
+        // 元组在 `hidden_fns_scene_value` 里被分解成逐分量函数，故不在此给元组类型。
+        ExprKind::TupleLit(_) => None,
         // 资源引用/服务调用：类型由共享 resolver 判定，这里沿用 AGE 端口符号形式。
         // 具体端口名在 resolver 的服务分类里有定论，故返回 `None` 让调用方
         // 按"值来自服务调用"的既有路径处理，不在此处猜。

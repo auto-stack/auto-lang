@@ -92,3 +92,37 @@ pub fn by_symbol(symbol: &str) -> Option<&'static AgeResourceOp> {
 pub fn is_port_type(name: &str) -> bool {
     AGE_PORT_TYPES.contains(&name)
 }
+
+/// `shape2d kind:` 的冻结几何符号（AGE 规范 §1：`kind: circle|quad`）。
+pub const AGE_GEOMETRY_KINDS: &[&str] = &["circle", "quad"];
+
+/// 属性名的**值类别**（决定该怎么校验它，而不是猜一个值类型）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AttrValueKind {
+    /// 冻结几何符号（`kind: circle`）——按符号表校验，不是变量。
+    GeometryKind,
+    /// 具名资源引用（`material: resources.red_alpha`）——按导入/声明的事实校验。
+    ResourceRef,
+    /// 普通 Auto 值表达式（数/元组/bool）——由共享 verify 按值类型检查。
+    Value,
+}
+
+/// 一个属性名属于哪一类。`None` = 该属性名不在 AGE 的 2D 作者面内（具名拒绝）。
+///
+/// 这份表就是 AGE 规范 §1 的 `shape2d` 属性集：`kind`/`position`/`size`/
+/// `material`/`visible`，加上组件实例的 `x`/`y`/`diameter`/`tint`。
+pub fn attr_value_kind(key: &str) -> Option<AttrValueKind> {
+    match key {
+        "kind" => Some(AttrValueKind::GeometryKind),
+        "material" | "tint" => Some(AttrValueKind::ResourceRef),
+        "position" | "size" | "x" | "y" | "diameter" | "visible" => {
+            Some(AttrValueKind::Value)
+        }
+        _ => None,
+    }
+}
+
+/// 该拼写是否是冻结几何符号。
+pub fn is_geometry_kind(spelling: &str) -> bool {
+    AGE_GEOMETRY_KINDS.contains(&spelling)
+}

@@ -940,23 +940,92 @@ pub(crate) fn project_packages_front(
                             si,
                             ai
                         );
-                        match crate::source::age_package::hidden_fn_scene_value(
-                            &name,
-                            &attr.value,
-                            attr.span,
-                        ) {
-                            Some(f) => items.push(crate::source::ast::Item::Fn(f)),
+                        // PLAN-981（IF-981-ORIGINAL）：按**属性类别**校验，而不是
+                        // 把所有值塞进同一个值函数：
+                        //  - `kind:` 是冻结几何符号（circle/quad）→ 查符号表；
+                        //  - `material:`/`tint:` 是具名资源引用 → 查导入/声明事实；
+                        //  - 其余是普通 Auto 值 → 降级成函数交共享 verify。
+                        use crate::source::age_resources::AttrValueKind;
+                        let kind = match crate::source::age_resources::attr_value_kind(&attr.key) {
+                            Some(k) => k,
                             None => {
-                                // 形状无法给出类型：具名拒绝，不猜 i32、不静默丢。
                                 return Err(vec![crate::source::age_h0::text_diag(
-                                    "source.age.scene-value",
+                                    "source.age.scene-attr",
                                     format!(
-                                        "scene attribute `{}` has a value shape this slice \
-                                         cannot type yet",
+                                        "`{}` is not an AGE 2D scene attribute (expected \
+                                         kind/position/size/material/visible, or x/y/diameter/tint)",
                                         attr.key
                                     ),
                                     attr.span,
                                 )]);
+                            }
+                        };
+                        match kind {
+                            AttrValueKind::GeometryKind => {
+                                let spelled = match &attr.value.kind {
+                                    crate::source::ast::ExprKind::Var(id) => id.name.clone(),
+                                    _ => String::new(),
+                                };
+                                if !crate::source::age_resources::is_geometry_kind(&spelled) {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-kind",
+                                        format!(
+                                            "`kind` must be one of the frozen AGE geometry \
+                                             symbols (circle/quad), got `{spelled}`"
+                                        ),
+                                        attr.value.span,
+                                    )]);
+                                }
+                            }
+                            AttrValueKind::ResourceRef => {
+                                // 具名资源引用：值必须是**引用形状**（不是字面量/任意
+                                // 表达式）。名字是否存在、是否可见，由共享 binder 按
+                                // 960 的导入/可见性规则判定——本层不重复那套规则，也不
+                                // 在这里猜值类型（资源值是 Material2D/Mesh2D 端口）。
+                                let literal = matches!(
+                                    &attr.value.kind,
+                                    crate::source::ast::ExprKind::IntLit(_)
+                                        | crate::source::ast::ExprKind::BoolLit(_)
+                                        | crate::source::ast::ExprKind::StrLit(_)
+                                        | crate::source::ast::ExprKind::TupleLit(_)
+                                        | crate::source::ast::ExprKind::Unary { .. }
+                                        | crate::source::ast::ExprKind::Binary { .. }
+                                );
+                                if literal {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-resource",
+                                        format!(
+                                            "`{}` must name a resource (`resources.<symbol>`), \
+                                             not a literal or computed value",
+                                            attr.key
+                                        ),
+                                        attr.value.span,
+                                    )]);
+                                }
+                            }
+                            AttrValueKind::Value => {
+                                match crate::source::age_package::hidden_fns_scene_value(
+                                    &name,
+                                    &attr.value,
+                                    attr.span,
+                                    &node.params,
+                                ) {
+                                    Some(fs) => items.extend(
+                                        fs.into_iter()
+                                            .map(crate::source::ast::Item::Fn),
+                                    ),
+                                    None => {
+                                        return Err(vec![crate::source::age_h0::text_diag(
+                                            "source.age.scene-value",
+                                            format!(
+                                                "scene attribute `{}` has a value shape this \
+                                                 slice cannot type yet",
+                                                attr.key
+                                            ),
+                                            attr.span,
+                                        )]);
+                                    }
+                                }
                             }
                         }
                     }
