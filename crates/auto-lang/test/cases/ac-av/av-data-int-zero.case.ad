@@ -1,0 +1,24 @@
+# PLAN-820 F820-R9-01: the canonical ZERO result — the unique unpadded
+# encoding "0" was wrongly rejected by the R8 padding rule (a legal
+# program returning 0 was an admission Error while -1/1/42 passed). This
+# standing corpus case pins zero against ever regressing again.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.data.int.zero"
+  tags: ["ac-av", "probe", "av-data"]
+  links: ["PLAN-820"]
+  source: { text: "type P { x int }\nfn main() int {\n    var p = P { x: 0 }\n    return p.x\n}", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-int-zero", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```

@@ -1,0 +1,186 @@
+# PLAN-929 T-09 — unified-source-syntax-929 文件化面（九 profile 单一语法事实
+# 经**共享前门缓存**解析 + profile 门负控 + AV 源执行腿）。
+#
+# V-01（统一路由）：九 profile 冻结源（七 profile = 927 oracle 字节原样副本；
+# collections/closures = 928 复合面 oracle 字节原样副本——"原源引用"沿
+# 计划 §6）各经 `auto-source@<slug>` 裁剪语法解析，completion=success 且
+# 无损重建逐字节相同。case-worker 的语法栈自 T-06 起消费 core 共享
+# `profile_grammar` 进程缓存（同一 OnceLock 编译产物——生产/测试同一语法事实）。
+#
+# V-01 门负控：record 源在 scalar 语法（无 type 块）必须 parse 失败——
+# 配置真实改变语法，不降级成功。
+#
+# V-02 执行腿：scalar oracle 经 AV 源执行（probe recipe，真实值 oracle）。
+#
+# 深恢复/无预热首编辑/清单准入的 in-process 反控由固定组承载：
+# ace-source（source_restore_929_t02 / decl_env_roundtrip / decl_events_929_t07）、
+# ace-a2x（a2x_decl_env_929 / a2c_rt_restore）；SYN 严格父侧准入 =
+# auto-lang lib 的 syn_report_929（篡改矩阵）。
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-core"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/core.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-core", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@core" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/core.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-scalar"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/scalar.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-scalar", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@scalar" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/scalar.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-text"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/text.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-text", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@text" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/text.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-record"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/record.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-record", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@record" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/record.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-text-record"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/text_record.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-text-record", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@text-record" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/text_record.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-entry-unit"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/entry_unit.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-entry-unit", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@entry-unit" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/entry_unit.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-host-console"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/host_console.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-host-console", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@host-console" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/host_console.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-closures"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/closures.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-closures", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@closures" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/closures.at" } ] } },
+  ]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.parse-collections"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/collections.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-collections", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@collections" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/collections.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.profile-gate-negative"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/record.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-record-under-scalar-grammar-refused", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@scalar" },
+      expect: { completion: { stage: "parse", code: "syntax.parse" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.unified-source-929.scalar-run"
+  tags: ["ace-m1", "unified-source", "plan-929"]
+  links: ["PLAN-929"]
+  source: { file: "oracle/scalar.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-scalar-fresh-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 14 } },
+  ]
+}
+```

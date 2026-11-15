@@ -1,0 +1,32 @@
+# PLAN-902 a2r-hir record-text — T03 (frozen ace-m1 bytes, provenance
+# ../ace-m1/src/T03.at, sha256 f895f9d1…): owned Str literal promotion,
+# explicit clone, whole-root `.move` transfer, concat replacement of a live
+# owned local (old buffer freed only after the RHS materializes) and the
+# verifier-planned exit cleanup; `len` counts Unicode scalars ("ab中" = 3).
+# Oracle 23 = a.len()*10 + c.len() = 20 + 3. The source's `.move` in let
+# position is the text-record surface (profile text-record).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-record-text-902.t03"
+  tags: ["a2r-hir", "record-text", "owned-text", "resources"]
+  links: ["PLAN-902", "PLAN-894"]
+  source: { file: "src/T03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text-record", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-T03/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-T03/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-T03/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-T03/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

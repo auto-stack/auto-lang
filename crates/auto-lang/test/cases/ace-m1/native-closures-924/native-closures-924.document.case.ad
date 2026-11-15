@@ -1,0 +1,124 @@
+## Case: ace-m1-r02r05-k02
+id: "ace.m1.r02r05.k02"
+tags: ["ace-m1", "scenario", "native-closures-924", "r02", "r05"]
+links: ["PLAN-924"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    return f(37)
+}
+~~~~
+
+### Probe base
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+exit: 42
+mn-resource: {}
+
+### Probe fault-s9
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.allocation-injected"
+mn-resource: {fail_seam: [9, 1]}
+
+### Probe fault-s9-n2
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+exit: 42
+mn-resource: {fail_seam: [9, 2]}
+
+### Probe fault-s1
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.allocation-injected"
+mn-resource: {fail_seam: [1, 1]}
+
+### Probe fault-s4
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.execution-budget"
+mn-resource: {fail_seam: [4, 1]}
+
+## Case: ace-m1-r02r05-k05
+id: "ace.m1.r02r05.k05"
+tags: ["ace-m1", "scenario", "native-closures-924", "r02"]
+links: ["PLAN-924"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    let g = f.clone()
+    return f(10) + g(22)
+}
+~~~~
+
+### Probe base
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+exit: 42
+mn-resource: {}
+
+### Probe fault-s9a
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.allocation-injected"
+mn-resource: {fail_seam: [9, 1]}
+
+### Probe fault-s9b
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.allocation-injected"
+mn-resource: {fail_seam: [9, 2]}
+
+### Probe fault-s9-n3
+recipe: "ac/mir-native-closures-resource-v1"
+entry: "d_main"
+exit: 42
+mn-resource: {fail_seam: [9, 3]}
+
+## Case: ace-m1-r05-avm
+id: "ace.m1.r05.avm"
+tags: ["ace-m1", "scenario", "native-closures-924", "r05"]
+links: ["PLAN-924"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    return f(37)
+}
+~~~~
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+~~~~text
+42
+~~~~

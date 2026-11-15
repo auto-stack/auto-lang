@@ -1,0 +1,240 @@
+## Case: ace-m1-w01-mn891
+id: "ace.m1.w01-mn891"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891", "W01"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_w01","units":[{"name":"main","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"8000000000000000"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-w01-typed
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/W01-i64-min.mnf"
+typed-args: []
+typed: {kind: "i64", bits: "8000000000000000"}
+
+## Case: ace-m1-w02-mn891
+id: "ace.m1.w02-mn891"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891", "W02"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_w02","units":[{"name":"main","params":[],"result":"u64","body":[{"op":"const","dst":"t0","kind":"u64","bits":"ffffffffffffffff"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-w02-typed
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/W02-u64-max.mnf"
+typed-args: []
+typed: {kind: "u64", bits: "ffffffffffffffff"}
+
+## Case: ace-m1-w03-mn891
+id: "ace.m1.w03-mn891"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891", "W03"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_w03","units":[{"name":"main","params":[],"result":"f64","body":[{"op":"const","dst":"t0","kind":"f64","bits":"8000000000000000"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-w03-typed
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/W03-f64-negzero.mnf"
+typed-args: []
+typed: {kind: "f64", bits: "8000000000000000"}
+
+## Case: ace-m1-w04-mn891
+id: "ace.m1.w04-mn891"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891", "W04"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_w04","units":[{"name":"main","params":[],"result":"f64","body":[{"op":"const","dst":"t0","kind":"f64","bits":"fff80000deadbeef"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-w04-typed
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/W04-f64-nan.mnf"
+typed-args: []
+typed: {kind: "f64", bits: "fff80000deadbeef"}
+
+## Case: ace-m1-w05-mn891
+id: "ace.m1.w05-mn891"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891", "W05"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_w05","units":[{"name":"main","params":[],"result":"f32","body":[{"op":"const","dst":"t0","kind":"f32","bits":"7f80ad00"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-w05-typed
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/W05-f32-nan.mnf"
+typed-args: []
+typed: {kind: "f32", bits: "7f80ad00"}
+
+## Case: ace-m1-t891-value70
+id: "ace.m1.t891-value70"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_v70","units":[{"name":"main","params":[],"result":"i32","body":[{"op":"const","dst":"t0","kind":"i32","bits":"46"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-value70
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/V70-value.mnf"
+typed-args: []
+typed: {kind: "i32", bits: "46"}
+
+## Case: ace-m1-t891-div-trap
+id: "ace.m1.t891-div-trap"
+tags: ["ace-m1", "typed", "trap"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_divz","units":[{"name":"main","params":[["a","i32"],["b","i32"]],"result":"i32","body":[{"op":"bin","dst":"t0","oper":"div","lhs":"a","rhs":"b"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-div-zero
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/TRAP-div-zero.mnf"
+typed-args: [["i32", "1"], ["i32", "0"]]
+stage: "run"
+code: "mn.typed.trap"
+
+## Case: ace-m1-t891-ident-i64
+id: "ace.m1.t891-ident-i64"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_ident","units":[{"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"a"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-ident-i64
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/IDENT-i64.mnf"
+typed-args: [["i64", "0000000100000001"]]
+typed: {kind: "i64", bits: "0000000100000001"}
+
+## Case: ace-m1-t891-mix-select
+id: "ace.m1.t891-mix-select"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_mix","units":[{"name":"main","params":[["a","i32"],["b","i64"],["c","f32"],["d","bool"],["e","u64"],["f","f64"]],"result":"u64","body":[{"op":"copy","dst":"t0","src":"e"}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-mix-select
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/MIX-select.mnf"
+typed-args: [["i32", "1234567f"], ["i64", "1122334455667788"], ["f32", "7f80ad00"], ["bool", "1"], ["u64", "ffffffffffffffff"], ["f64", "fff80000deadbeef"]]
+typed: {kind: "u64", bits: "ffffffffffffffff"}
+
+## Case: ace-m1-t891-record-field
+id: "ace.m1.t891-record-field"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_rec","records":[{"name":"Pt","fields":[["x","f64"],["tag","i32"]]}],"units":[{"name":"main","params":[["a","f64"]],"result":"f64","body":[{"op":"const","dst":"t0","kind":"i32","bits":"2a"},{"op":"aggregate","dst":"r0","record":"Pt","args":["a","t0"]},{"op":"field-get","dst":"t1","base":"r0","path":[0]}],"ret":"t1"}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-record-field
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/REC-field.mnf"
+typed-args: [["f64", "fff80000deadbeef"]]
+typed: {kind: "f64", bits: "fff80000deadbeef"}
+
+## Case: ace-m1-t891-call-forward
+id: "ace.m1.t891-call-forward"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_call","units":[{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"a"}],"ret":"t0"},{"name":"main","params":[["a","i64"]],"result":"i64","body":[{"op":"call","dst":"t0","callee":"helper","args":["a"]}],"ret":"t0"}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-call-forward
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/CALL-forward.mnf"
+typed-args: [["i64", "8000000000000000"]]
+typed: {kind: "i64", bits: "8000000000000000"}
+
+## Case: ace-m1-t891-f32-branch-subnormal
+id: "ace.m1.t891-f32-branch-subnormal"
+tags: ["ace-m1", "typed", "value"]
+links: ["PLAN-891"]
+
+### Auto
+path: "main.mnf"
+syntax: "typed-fixture"
+
+~~~~auto
+{"schema":"mn-typed-fixture/1","module":"m891_f32sub","units":[{"name":"main","params":[["a","f32"]],"result":"f32","blocks":[{"instrs":[{"op":"const","dst":"t0","kind":"bool","bits":"1"}],"term":{"op":"br","cond":"t0","then":1,"else":2}},{"instrs":[{"op":"copy","dst":"t1","src":"a"}],"term":{"op":"ret","value":"t1"}},{"instrs":[{"op":"const","dst":"t2","kind":"f32","bits":"00000001"}],"term":{"op":"ret","value":"t2"}}]}],"entry":"main"}
+~~~~
+
+### Probe mn-typed-f32-branch
+recipe: "ac/mir-native-typed-v1"
+entry: "main"
+typed-fixture: "src/F32-subnormal.mnf"
+typed-args: [["f32", "00000001"]]
+typed: {kind: "f32", bits: "00000001"}

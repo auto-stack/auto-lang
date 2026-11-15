@@ -1,0 +1,42 @@
+## Case: ac-sema-turnaround-stages
+id: "ac.sema.turnaround-stages"
+tags: ["ac-semantics", "probe"]
+
+### Auto
+path: "turnaround-ref.at"
+
+~~~~auto
+fn f0(x int) int { let y0 = x * 1 + 1
+var z0 = y0
+while z0 < 100 { z0 = z0 + 1 }
+return z0 + x }
+fn f1(x int) int { let y1 = x * 2 + 2
+var z1 = y1
+while z1 < 200 { z1 = z1 + 2 }
+return z1 + x }
+fn f2(x int) int { let y2 = x * 3 + 3
+var z2 = y2
+while z2 < 300 { z2 = z2 + 3 }
+return z2 + x }
+fn f3(x int) int { let y3 = x * 4 + 4
+var z3 = y3
+while z3 < 400 { z3 = z3 + 4 }
+return z3 + x }
+fn f4(x int) int { let y4 = x * 5 + 5
+var z4 = y4
+while z4 < 500 { z4 = z4 + 5 }
+return z4 + x }
+~~~~
+
+### Probe stages
+recipe: "sema/query-v1"
+package: "ref"
+module: "turnaround-ref"
+kind: "infer-body"
+fn: "f0"
+steps: [{op: "query"}]
+
+#### Observation 1
+cache: "published"
+compute-calls: 1
+stages-include: ["request", "cache-read-validate", "infer", "publish"]

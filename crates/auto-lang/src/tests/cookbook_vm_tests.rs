@@ -25,7 +25,17 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
                 format!("No .at file found in {}/{}", category, name),
             )
         })?;
-    let src = fs::read_to_string(at_file.path())?;
+    // PLAN-1062 T-14: the payload comes from the migration document
+    // (stem = the discovered .at stem); expected.out rides the doc.
+    let stem = at_file
+        .path()
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let entry = crate::tests::legacy_doc::load_case(&case_dir, &stem)
+        .map_err(|e| std::io::Error::other(e))?;
+    let src = entry.source_text().to_string();
+    let expected_opt = entry.result_text().map(|t| t.to_string());
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
         serde_json::json!({
         "family":"legacy-cookbook-vm","id":format!("{category}/{name}"),
@@ -53,11 +63,10 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
     let out_path = case_dir.join("expected.out");
     let generate = std::env::var("GENERATE_EXPECTED").is_ok();
 
-    if generate && !out_path.is_file() {
+    if generate && expected_opt.is_none() {
         fs::write(&out_path, &stdout)?;
         eprintln!("GENERATED {}", out_path.display());
-    } else if out_path.is_file() {
-        let expected = fs::read_to_string(&out_path)?;
+    } else if let Some(expected) = expected_opt.clone() {
         if stdout != expected {
             let wrong_path = case_dir.join("wrong.out");
             fs::write(&wrong_path, &stdout)?;

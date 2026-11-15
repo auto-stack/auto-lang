@@ -1,0 +1,27 @@
+# AC semantic probe: turnaround stages and gate (PLAN-796 T-06, executed)
+
+status: executed — the turnaround hard gate itself is exercised by the
+committed harness (`sema_turnaround_*` + `sema-probe bench-turnaround`,
+report `docs/reports/plan796/turnaround.{md,json}`); this case pins the
+STAGE TRACE contract of one query through the unified runner.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ac.sema.turnaround-stages"
+  tags: ["ac-semantics", "probe"]
+  source: { file: "src/turnaround-ref.at", syntax: "auto", path: "turnaround-ref.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "stages", adapter: "probe", action: "run",
+      options: {
+        recipe: "sema/query-v1",
+        sema: { package: "ref", module: "turnaround-ref", kind: "infer-body", fn: "f0" },
+        steps: [ { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 1,
+          stages_include: ["request", "cache-read-validate", "infer", "publish"] } ] } }
+  ]
+}
+```

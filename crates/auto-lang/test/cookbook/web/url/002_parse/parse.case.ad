@@ -1,0 +1,29 @@
+# Legacy cookbook corpus: web/url/002_parse/parse
+
+## Case: legacy-web-url-002-parse-parse
+id: "legacy.web.url.002_parse.parse"
+entry-mode: "program"
+
+### Auto
+path: "parse.at"
+```auto
+dep url
+use.rs url::Url
+
+fn main() {
+    let url = Url.parse("https://example.com/rust?name=hello&age=20").unwrap()
+    // query_pairs() returns tuple iterator; use query() for raw string in Auto
+    let query = url.query()
+    print(f"Query string: ${query}")
+    // Demonstrate pair iteration via query_pairs()
+    let query = url.query()
+    var pair_count = 0
+    for pair in url.query_pairs() {
+        pair_count += 1
+    }
+    assert(pair_count == 2)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

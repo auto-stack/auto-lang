@@ -1,0 +1,308 @@
+# PLAN-889: original 17 source bytes and independent oracles, native machine path.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l01-mn889"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-889"]
+  source: { file: "src/L01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l01-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l02-mn889"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-889"]
+  source: { file: "src/L02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l02-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l03-mn889"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-889"]
+  source: { file: "src/L03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l03-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l04-mn889"
+  tags: ["ace-m1", "collections", "owned"]
+  links: ["PLAN-889"]
+  source: { file: "src/L04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l04-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l05-mn889"
+  tags: ["ace-m1", "collections", "owned"]
+  links: ["PLAN-889"]
+  source: { file: "src/L05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l05-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l06-mn889"
+  tags: ["ace-m1", "collections", "trap"]
+  links: ["PLAN-889"]
+  source: { file: "src/L06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l06-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "mn.trap.list-index" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l07-mn889"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-889"]
+  source: { file: "src/L07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-l07-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v01-mn889"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/V01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v01-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v02-mn889"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/V02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v02-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v03-mn889"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/V03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v03-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v04-mn889"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/V04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v04-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v05-mn889"
+  tags: ["ace-m1", "collections", "variant", "owned"]
+  links: ["PLAN-889"]
+  source: { file: "src/V05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v05-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v06-mn889"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/V06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v06-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v07-mn889"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/V07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-v07-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.n01-mn889"
+  tags: ["ace-m1", "collections", "owned", "plan-864-variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/LSTR864.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-n01-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.n02-mn889"
+  tags: ["ace-m1", "collections", "for-in", "plan-864-variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/FIN864A.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-n02-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.n03-mn889"
+  tags: ["ace-m1", "collections", "for-in", "owned", "plan-864-variant"]
+  links: ["PLAN-889"]
+  source: { file: "src/FIN864B.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "mn-n03-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 53 } }
+  ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2", id: "ace.m1.n889-list-variant",
+ tags: ["ace-m1", "collections", "owned", "plan-889"], links: ["PLAN-889"],
+ source: { file: "src/N889-list-variant.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+ checks: [
+  { id: "mn", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{op:"run"}] }, expect: { completion: "success", exit: 42 } },
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{op:"run"}] }, expect: { completion: "success", exit: 42 } },
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2", id: "ace.m1.n889-nested-variant",
+ tags: ["ace-m1", "collections", "owned", "plan-889"], links: ["PLAN-889"],
+ source: { file: "src/N889-nested-variant.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+ checks: [
+  { id: "mn", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{op:"run"}] }, expect: { completion: "success", exit: 42 } },
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{op:"run"}] }, expect: { completion: "success", exit: 42 } },
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2", id: "ace.m1.n889-optional-variant",
+ tags: ["ace-m1", "collections", "owned", "plan-889"], links: ["PLAN-889"],
+ source: { file: "src/N889-optional-variant.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+ checks: [
+  { id: "mn", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{op:"run"}] }, expect: { completion: "success", exit: 42 } },
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{op:"run"}] }, expect: { completion: "success", exit: 42 } },
+ ]
+}
+```

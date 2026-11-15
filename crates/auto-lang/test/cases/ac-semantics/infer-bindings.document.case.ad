@@ -1,0 +1,35 @@
+## Case: ac-sema-infer-bindings
+id: "ac.sema.infer-bindings"
+tags: ["ac-semantics", "probe"]
+
+### Auto
+path: "infer-bindings.at"
+
+~~~~auto
+fn helper(a int, b int) int { return a + b }
+
+fn main() int {
+  let x = helper(2, 3)
+  var y = x * 2
+  let flag = y < 10
+  return y
+}
+~~~~
+
+### Probe bindings
+recipe: "sema/query-v1"
+package: "probe"
+module: "infer-bindings"
+kind: "infer-body"
+fn: "main"
+steps: [{op: "query"}]
+
+#### Observation 1
+cache: "published"
+compute-calls: 1
+stages-include: ["request", "cache-read-validate", "infer", "publish"]
+final-newline: false
+
+~~~~json
+{"bindings":[{"name":"x","ty":"i32"},{"name":"y","ty":"i32"},{"name":"flag","ty":"bool"}]}
+~~~~

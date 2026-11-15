@@ -1,0 +1,26 @@
+# PLAN-827 V-01 first case: the REAL AP-01 source file (Euclid gcd, frozen
+# bytes — byte-identical copy of the ac-core fixture, SHA256 in README.md)
+# through the full source profile → Checked HIR → shared MIR → ABC → AV
+# pipeline. Independent oracle: the in-source gcd groups are hand-audited
+# ((48,18)=6, (18,48)=6, (7,5)=1, (0,9)=9, (9,0)=9); every group passing
+# means main returns 0.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.source.first"
+  tags: ["av-source-827", "probe"]
+  links: ["PLAN-827"]
+  source: { file: "src/p-gcd-euclid.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-first", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```

@@ -1,0 +1,30 @@
+# PLAN-931 derived-view-931 — statement-root and derived-view consumers:
+# a pinned clone temp must free AFTER the `let` that consumed it (pre-931
+# freed it before → len("")=0), and a text-eq of a pinned operand frees
+# after the binding that materialized the compare. Profile text (the
+# bool-local `if` is the frozen text-profile shape). Oracle 22 = 2*10+2.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-owned-temporaries-931.derived-view"
+  tags: ["a2r-hir", "text", "owned-temporaries", "statement-root"]
+  links: ["PLAN-931", "PLAN-902"]
+  source: { file: "src/derived-view-931.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-derived-view-931/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-derived-view-931/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-derived-view-931/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-derived-view-931/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: science/mathematics/linear_algebra/007_deserialize_matrix/deserialize_matrix
+
+## Case: legacy-science-mathematics-linear-algebra-007-deserialize-matrix-deserialize-matrix
+id: "legacy.science.mathematics.linear_algebra.007_deserialize_matrix.deserialize_matrix"
+entry-mode: "program"
+
+### Auto
+path: "deserialize_matrix.at"
+```auto
+dep ndarray
+dep serde_json
+use.rs ndarray::arr2
+use.rs serde_json
+
+fn main() {
+    let json = "[[1,2,3],[4,5,6]]"
+    let matrix = serde_json.from_str(json).unwrap()
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

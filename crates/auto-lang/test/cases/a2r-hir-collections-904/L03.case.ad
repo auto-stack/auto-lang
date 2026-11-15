@@ -1,0 +1,29 @@
+# PLAN-904 a2r-hir collections — L03 (frozen ace-m1 bytes, provenance
+# ../../ace-m1/src/L03.at, sha256 299034a89f81f97a…): empty-guard, clear, len 0.
+# Oracle value:0 (hand computation; reference-L03.rs carries the
+# certify leg). Recipe ac-a2r/hir-collections-emit-v1, profile collections.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-collections-904.l03"
+  tags: ["a2r-hir", "collections", "list-variant"]
+  links: ["PLAN-904", "PLAN-864", "PLAN-889"]
+  source: { file: "src/L03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-collections-emit-v1",
+        a2x_hir: { profile: "collections", entry: "main", caps: [] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-L03/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-L03/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-L03/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-L03/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

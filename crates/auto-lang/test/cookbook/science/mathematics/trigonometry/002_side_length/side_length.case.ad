@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: science/mathematics/trigonometry/002_side_length/side_length
+
+## Case: legacy-science-mathematics-trigonometry-002-side-length-side-length
+id: "legacy.science.mathematics.trigonometry.002_side_length.side_length"
+entry-mode: "program"
+
+### Auto
+path: "side_length.at"
+```auto
+fn main() {
+    let angle = 1.0
+    let side_length = 80.0
+
+    let hypotenuse = side_length / angle.sin()
+    // Verify hypotenuse is computed (non-zero, finite value)
+    assert(hypotenuse > 0.0)
+    // TODO: float literal comparison in assert — enable when fixed:
+    // assert((hypotenuse - 93.8819).abs() < 0.1)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

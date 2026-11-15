@@ -1,0 +1,78 @@
+# PLAN-908 legitimate near-neighbor controls for the B17/B18/B19 diagnostic
+# negatives (G-DEC-2 2026-11-01 ruling: the frozen semantic-family diagnostics
+# must be distinguishing rejections, not blanket refusals). Each neighbor
+# mutates exactly the illegal construct into the legal counterpart and MUST
+# run to 2/2/0 on the same engines that reject the originals — a neighbor
+# failing here means the negative face over-rejects; the original cases in
+# b-diags.case.ad are untouched, as are their expected codes.
+#
+#   NB17 = B17 with `true + 1` -> `1 + 1`            (expect 2)
+#   NB18 = B18 with `let x` -> `var x` (assign ok)   (expect 2)
+#   NB19 = B19 with a trailing `return 0` added      (expect 0)
+#
+# a2r has no leg here: the diagnostic-face judgment (G-DEC-3) is frontend
+# rejection for the negatives; neighbors only prove execution acceptance on
+# the rejecting engines (ac-native/av/autovm legs below).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nb17"
+  tags: ["ace-m1", "diagnostic", "neighbor-908"]
+  links: ["PLAN-908"]
+  source: { file: "src/NB17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 2 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 2 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "2" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nb18"
+  tags: ["ace-m1", "diagnostic", "neighbor-908"]
+  links: ["PLAN-908"]
+  source: { file: "src/NB18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 2 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 2 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "2" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nb19"
+  tags: ["ace-m1", "diagnostic", "neighbor-908"]
+  links: ["PLAN-908"]
+  source: { file: "src/NB19.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "0" } } },
+  ]
+}
+```

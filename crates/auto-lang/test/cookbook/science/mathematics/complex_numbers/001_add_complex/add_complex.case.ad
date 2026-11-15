@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: science/mathematics/complex_numbers/001_add_complex/add_complex
+
+## Case: legacy-science-mathematics-complex-numbers-001-add-complex-add-complex
+id: "legacy.science.mathematics.complex_numbers.001_add_complex.add_complex"
+entry-mode: "program"
+
+### Auto
+path: "add_complex.at"
+```auto
+// Complex number addition demo
+type Complex {
+    real f64
+    imag f64
+}
+
+fn main() {
+    let a = Complex(1.0, 2.0)
+    let b = Complex(3.0, 4.0)
+    let sum = Complex(a.real + b.real, a.imag + b.imag)
+    assert(sum.real == 4.0)
+    assert(sum.imag == 6.0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

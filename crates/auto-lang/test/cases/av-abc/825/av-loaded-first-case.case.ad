@@ -1,0 +1,23 @@
+# PLAN-825 T-02 first case: real source through the LoadedProgram recipe.
+# Independent oracle: mark_a=1, side(38)=38+mark_b=40, second mark_a=1,
+# therefore main=42 and the trace is a,b,a. The side else's 1/0 is latent.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.loaded.first"
+  tags: ["av-abc-825", "probe", "trace"]
+  links: ["PLAN-825"]
+  source: { file: "src/first-case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-loaded-first", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/loaded-run-v1",
+        av: { entry: "d_main", caps: ["hir.test.trace.v1"] },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```

@@ -1,0 +1,30 @@
+## Case: av-compact-first
+id: "av.compact.first"
+tags: ["av-abc-826", "probe", "trace"]
+links: ["PLAN-826"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn side(x int) int {
+    let m = mark_b()
+    if x > 0 {
+        return x + m
+    }
+    return 1 / 0
+}
+
+fn main() int {
+    let a = mark_a()
+    let b = side(38)
+    let c = mark_a()
+    return a + b + c
+}
+~~~~
+
+### Probe run-compact-first
+recipe: "ac-av/compact-run-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 42

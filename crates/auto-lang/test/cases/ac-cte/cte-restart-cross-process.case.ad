@@ -1,0 +1,28 @@
+# PLAN-817 restart: the first query publishes; the RESTART step ends
+# the worker process and the second query runs in a FRESH process against
+# the same session store — a frozen-layer HIT with zero AV executions
+# (the real cross-process persistence path through the official runner).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "cte.restart.cross-process"
+  tags: ["ac-cte", "probe"]
+  links: ["PLAN-817"]
+  source: { file: "cte/first-sum42.atomdata", syntax: "atom-data", path: "deck.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "query-restart-hit", adapter: "probe", action: "run",
+      options: {
+        recipe: "cte/scalar-query-v1",
+        cte: { entry: "main" },
+        steps: [
+          { op: "query" },
+          { op: "restart" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: "success", exit: 42, probe: [ { cache: "hit" } ] } }
+  ]
+}
+```

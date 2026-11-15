@@ -1,0 +1,8 @@
+# PLAN-788 T-07: red controls - golden FAIL never blocks real products; bad expectations never pass
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.red.build-golden-fail-product-still-runs", source: { text: "fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "bld-bad-golden", adapter: "ac", action: "build", expect: { completion: "success", artifacts: [ { path: "hir.atom", file: "oracle/wrong-hir.atom" } ] } }, { id: "run-consumer", adapter: "ac", action: "run", product_from: "bld-bad-golden", expect: { completion: "success", exit: 3 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.red.wrong-exit-fails", source: { text: "fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run-wrong-exit", adapter: "ac", action: "run", expect: { completion: "success", exit: 4 } } ] }
+```

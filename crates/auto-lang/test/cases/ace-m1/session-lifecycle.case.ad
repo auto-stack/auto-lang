@@ -1,0 +1,92 @@
+# PLAN-852 T-05: scalar session lifecycle on the SAME frozen B09 source
+# (fact). Four real observations per the 827 V-07 session shape:
+#   warm (fresh session), hot (new worker, warm store — a hit is never a
+#   cached PASS: AV really executes), body edit (fact(5) -> fact(6), the
+#   exactly-once literal replacement, judged against the NEW value), and
+#   cross-process persistence of the EDIT (a NEW check pair replays the
+#   same content edit in fresh workers over the warm store — the store is
+#   CONTENT-addressed, so this is the honest edit-persistence observation;
+#   a no-edit check would legitimately rerun the ORIGINAL content). The mn
+#   face adds the AC-side edit/restart sequence (restart splits into a REAL
+#   new worker process; the store on disk is the only carried state).
+# Native online HMR (I08) is NOT claimed here — that needs the native
+# loader capability package.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.session.av"
+  tags: ["ace-m1", "lifecycle", "av"]
+  links: ["PLAN-852"]
+  source: { file: "src/B09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "warm-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", session: "ace-m1-b09" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 120 } },
+    { id: "hot-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", session: "ace-m1-b09" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 120 } },
+    { id: "body-edit-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", session: "ace-m1-b09" },
+        steps: [
+          { op: "edit-source", from: "fact(5)", to: "fact(6)" },
+          { op: "run" }
+        ]
+      },
+      expect: { completion: "success", exit: 720 } },
+    { id: "edit-persist-across-workers", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", session: "ace-m1-b09" },
+        steps: [
+          { op: "edit-source", from: "fact(5)", to: "fact(6)" },
+          { op: "run" }
+        ]
+      },
+      expect: { completion: "success", exit: 720 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.session.mn"
+  tags: ["ace-m1", "lifecycle", "ac"]
+  links: ["PLAN-852"]
+  source: { file: "src/B09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "fresh-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac/mir-native-scalar-v1",
+        mn: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 120 } },
+    { id: "edit-then-restart-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac/mir-native-scalar-v1",
+        mn: { entry: "d_main" },
+        steps: [
+          { op: "edit-source", from: "fact(5)", to: "fact(6)" },
+          { op: "run" },
+          { op: "restart" },
+          { op: "run" }
+        ]
+      },
+      expect: { completion: "success", exit: 720 } }
+  ]
+}
+```

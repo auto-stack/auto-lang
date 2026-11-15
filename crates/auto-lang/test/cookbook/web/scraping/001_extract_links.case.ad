@@ -1,0 +1,28 @@
+# Legacy cookbook corpus: web/scraping/001_extract_links
+
+## Case: legacy-web-scraping-001-extract-links
+id: "legacy.web.scraping.001_extract_links"
+entry-mode: "program"
+
+### Auto
+path: "001_extract_links.at"
+```auto
+// HTML fetch demo — fetch a page and show its length
+
+fn main() {
+    let url = "https://httpbin.org/html"
+    let handle = http.get(url)
+    let status = Response.status_code(handle)
+    print(f"Status: ${status}")
+
+    let body = Response.body(handle)
+    print(f"Page fetched, body length: ${body.len()}")
+
+    let ct = Response.header_get(handle, "Content-Type")
+    print(f"Content-Type: ${ct}")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

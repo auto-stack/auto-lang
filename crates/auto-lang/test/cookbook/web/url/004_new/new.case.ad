@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: web/url/004_new/new
+
+## Case: legacy-web-url-004-new-new
+id: "legacy.web.url.004_new.new"
+entry-mode: "program"
+
+### Auto
+path: "new.at"
+```auto
+dep url
+use.rs url::Url
+
+fn main() {
+    let url = Url.parse("https://example.com/path?query=1").unwrap()
+    let new_url = url.join("sub/page").unwrap()
+    let path = url.path()
+    assert(path == "/path")
+    let new_path = new_url.path()
+    assert(new_path == "/sub/page")
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

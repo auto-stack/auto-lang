@@ -1,0 +1,34 @@
+# PLAN-825 T-11 / 852 I01/I02/I05/I06: B09 warm, hot, body edit and
+# content-addressed persistence across real workers.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.loaded.lifecycle"
+  tags: ["av-abc-825", "probe", "ace-m1", "lifecycle"]
+  links: ["PLAN-825", "PLAN-852"]
+  source: { file: "src/B09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "loaded-warm-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/loaded-run-v1", av: { entry: "d_main", session: "av825-b09" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 120 } },
+    { id: "loaded-hot-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/loaded-run-v1", av: { entry: "d_main", session: "av825-b09" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 120 } },
+    { id: "loaded-body-edit-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/loaded-run-v1",
+        av: { entry: "d_main", session: "av825-b09" },
+        steps: [{ op: "edit-source", from: "fact(5)", to: "fact(6)" }, { op: "run" }]
+      },
+      expect: { completion: "success", exit: 720 } },
+    { id: "loaded-edit-persist-across-workers", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/loaded-run-v1",
+        av: { entry: "d_main", session: "av825-b09" },
+        steps: [{ op: "edit-source", from: "fact(5)", to: "fact(6)" }, { op: "run" }]
+      },
+      expect: { completion: "success", exit: 720 } }
+  ]
+}
+```

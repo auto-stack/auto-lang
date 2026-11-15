@@ -1,0 +1,52 @@
+## Case: ace-m1-t07
+id: "ace.m1.t07"
+tags: ["ace-m1", "diagnostic", "legacy"]
+links: ["PLAN-852"]
+module-name: "m1_t07"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { let c char = '\u{D800}'; return 0 }
+~~~~
+
+### VM diagnostic
+check-id: "autovm"
+stage: "parse"
+code: "auto_lexer_E0001"
+
+### Rust diagnostic
+check-id: "a2r-snapshot"
+stage: "parse"
+code: "auto_lexer_E0001"
+
+## Case: ace-m1-k04
+id: "ace.m1.k04"
+tags: ["ace-m1", "diagnostic", "legacy"]
+links: ["PLAN-852"]
+module-name: "m1_k04"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn bad() fn(int) int {
+    let s Str = "local"
+    return (n int) => { return s.len() + n }
+}
+fn main() int {
+    let f = bad()
+    return f(37)
+}
+~~~~
+
+### VM diagnostic
+check-id: "autovm"
+stage: "run"
+code: "RuntimeError"
+
+### Rust diagnostic
+check-id: "a2r-snapshot"
+stage: "type"
+code: "auto_type_E0101"

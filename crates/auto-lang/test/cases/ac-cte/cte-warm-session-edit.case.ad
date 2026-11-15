@@ -1,0 +1,28 @@
+# PLAN-817 warm-session discriminating edit: the first query publishes
+# (miss, exit 42); the edit changes the CT argument (22 -> 23) so the
+# second query invalidates, re-executes and reports 43. Independent
+# oracle: hand-computed 20+22=42 and 20+23=43.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "cte.warm.session-edit"
+  tags: ["ac-cte", "probe"]
+  links: ["PLAN-817"]
+  source: { file: "cte/first-sum42.atomdata", syntax: "atom-data", path: "deck.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "query-warm-edit", adapter: "probe", action: "run",
+      options: {
+        recipe: "cte/scalar-query-v1",
+        cte: { entry: "main" },
+        steps: [
+          { op: "query" },
+          { op: "edit-source", from: "call cte_sum(20, 22)", to: "call cte_sum(20, 23)" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: "success", exit: 43, probe: [ { cache: "published" } ] } }
+  ]
+}
+```

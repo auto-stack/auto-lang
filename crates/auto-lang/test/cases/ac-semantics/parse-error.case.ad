@@ -1,0 +1,25 @@
+# AC semantic probe: language PARSE negative (PLAN-796 F-796-R6-07)
+
+status: executed — the source does not parse. The worker reports a TYPED
+language diagnostic (`source.syntax`, stage `parse`) and the parent
+judges it against the declared error completion. No store work happens;
+this must never be classified as an infrastructure ERROR.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ac.sema.parse-error"
+  tags: ["ac-semantics", "probe"]
+  source: { file: "src/parse-error.at", syntax: "auto", path: "parse-error.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "probe", action: "run",
+      options: {
+        recipe: "sema/query-v1",
+        sema: { package: "probe", module: "parse-error", kind: "infer-body", fn: "main" },
+        steps: [ { op: "query" } ]
+      },
+      expect: { completion: { stage: "parse", code: "source.syntax" }, probe: [ { } ] } }
+  ]
+}
+```

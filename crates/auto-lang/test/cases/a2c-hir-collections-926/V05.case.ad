@@ -1,0 +1,33 @@
+# PLAN-926 a2c-hir collections - V05 (value 42; variant-arm). The golden four-file C
+# set (main.c / a2x_c_coll_runtime.h / generated.c + manifest.json sidecar)
+# was frozen from a real worker emission (`daily-emit-c`, profile
+# collections) and re-verified deterministic across nonces; the
+# certification leg (real C compile+run of the actual set AND the
+# independent hand-written reference-V05.c against the frozen oracle,
+# strict ace.a2c-hir.collections.cert/1 with the execution-config
+# identity) is the explicit certify axis, not this daily check.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2c-hir-collections-926.v05"
+  tags: ["a2c-hir", "collections", "variant-arm"]
+  links: ["PLAN-926", "PLAN-904", "PLAN-864", "PLAN-889"]
+  source: { file: "src/V05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2c/hir-collections-emit-v1",
+        a2x_hir: { profile: "collections", entry: "main", caps: [] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-V05/main.c", compare: "bytes" },
+        { path: "a2x_c_coll_runtime.h", file: "golden-V05/a2x_c_coll_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-V05/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-V05/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

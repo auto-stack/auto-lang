@@ -1,0 +1,17 @@
+## Case: av-closures-first
+id: "av.closures.first"
+tags: ["av-data-823", "probe"]
+links: ["PLAN-823"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    return 0
+}
+~~~~
+
+### Probe run-closures-fixture
+recipe: "ac-av/closures-run-v1"
+entry: "closures:first-case"

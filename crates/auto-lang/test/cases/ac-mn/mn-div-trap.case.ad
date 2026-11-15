@@ -1,0 +1,23 @@
+# ac-mn probe: the scalar contract's div-overflow trap (MIN / -1) through
+# the REAL PE: the frozen experiment trap path exits the process with 70.
+# m = -2147483647 - 1 = i32::MIN (checked sub passes); MIN / -1 traps.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "mn.trap.div-overflow"
+  tags: ["ac-mn", "probe", "trap"]
+  links: ["PLAN-818"]
+  source: { file: "mn/div_trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-trap", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac/mir-native-scalar-v1",
+        mn: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 70 } }
+  ]
+}
+```

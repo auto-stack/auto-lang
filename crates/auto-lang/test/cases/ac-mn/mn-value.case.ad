@@ -1,0 +1,22 @@
+# ac-mn probe: plain value case — the PE forwards main's i32 BIT-EXACT
+# as the process exit code (observers compare the full 32 bits).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "mn.value.seven"
+  tags: ["ac-mn", "probe"]
+  links: ["PLAN-818"]
+  source: { file: "mn/value7.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-value", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac/mir-native-scalar-v1",
+        mn: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 7 } }
+  ]
+}
+```

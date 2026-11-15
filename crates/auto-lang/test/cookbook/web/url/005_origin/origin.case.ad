@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: web/url/005_origin/origin
+
+## Case: legacy-web-url-005-origin-origin
+id: "legacy.web.url.005_origin.origin"
+entry-mode: "program"
+
+### Auto
+path: "origin.at"
+```auto
+dep url
+use.rs url::Url
+
+fn main() {
+    let url = Url.parse("https://user:pass@example.com:8080/path?query=1#frag").unwrap()
+    let scheme = url.scheme()
+    let host = url.host_str()
+    assert(scheme == "https")
+    assert(host == "example.com")
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

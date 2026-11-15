@@ -1,0 +1,331 @@
+## Case: ace-m1-r02-l04
+id: "ace.m1.r02.l04"
+tags: ["ace-m1", "scenario", "resource-915", "r02"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    return xs.get(0).name.len() + xs.get(0).code
+}
+~~~~
+
+### Probe av-r02-l04-sweep
+recipe: "ac-av/resource-run-v1"
+entry: "source:l04"
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+### VM diagnostic
+check-id: "autovm-fault-1"
+fail-alloc-at: 1
+stage: "run"
+code: "AllocFault"
+
+### VM diagnostic
+check-id: "autovm-fault-2"
+fail-alloc-at: 2
+stage: "run"
+code: "AllocFault"
+
+### VM result
+check-id: "autovm-fault-3"
+fail-alloc-at: 3
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+## Case: ace-m1-r02-l05
+id: "ace.m1.r02.l05"
+tags: ["ace-m1", "scenario", "resource-915", "r02"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    xs.push(Item("hello", 37))
+    let x Item = xs.remove(0)
+    return x.name.len() + x.code + xs.len()
+}
+~~~~
+
+### Probe av-r02-l05-sweep
+recipe: "ac-av/resource-run-v1"
+entry: "source:l05"
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+### VM diagnostic
+check-id: "autovm-fault-1"
+fail-alloc-at: 1
+stage: "run"
+code: "AllocFault"
+
+### VM diagnostic
+check-id: "autovm-fault-2"
+fail-alloc-at: 2
+stage: "run"
+code: "AllocFault"
+
+### VM result
+check-id: "autovm-fault-3"
+fail-alloc-at: 3
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+## Case: ace-m1-r02-v05
+id: "ace.m1.r02.v05"
+tags: ["ace-m1", "scenario", "resource-915", "r02"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+enum Token {
+    Data(Item)
+    End
+}
+fn main() int {
+    let t = Token.Data(Item("hello", 37))
+    is t {
+        Token.Data(v) -> { return v.name.len() + v.code }
+        Token.End -> { return 1 }
+    }
+}
+~~~~
+
+### Probe av-r02-v05-sweep
+recipe: "ac-av/resource-run-v1"
+entry: "source:v05"
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+### VM diagnostic
+check-id: "autovm-fault-1"
+fail-alloc-at: 1
+stage: "run"
+code: "AllocFault"
+
+### VM diagnostic
+check-id: "autovm-fault-2"
+fail-alloc-at: 2
+stage: "run"
+code: "AllocFault"
+
+### VM result
+check-id: "autovm-fault-3"
+fail-alloc-at: 3
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+## Case: ace-m1-r02-lstr
+id: "ace.m1.r02.lstr"
+tags: ["ace-m1", "scenario", "resource-915", "r02"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("hello")
+    xs.push("中")
+    let removed Str = xs.remove(0)
+    return removed.len() * 10 + xs.get(0).len()
+}
+~~~~
+
+### Probe av-r02-lstr-sweep
+recipe: "ac-av/resource-run-v1"
+entry: "source:lstr"
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+~~~~text
+51
+~~~~
+
+### VM diagnostic
+check-id: "autovm-fault-1"
+fail-alloc-at: 1
+stage: "run"
+code: "AllocFault"
+
+### VM result
+check-id: "autovm-fault-2"
+fail-alloc-at: 2
+final-newline: false
+
+~~~~text
+51
+~~~~
+
+## Case: ace-m1-r02-capture
+id: "ace.m1.r02.capture"
+tags: ["ace-m1", "scenario", "resource-915", "r02", "capture"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    return f(37)
+}
+~~~~
+
+### Probe av-r02-capture-clone
+recipe: "ac-av/resource-run-v1"
+entry: "capture:clone"
+
+## Case: ace-m1-r02-k02
+id: "ace.m1.r02.k02"
+tags: ["ace-m1", "scenario", "resource-915", "r02", "capture"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    return f(37)
+}
+~~~~
+
+### Probe av-r02-k02-sweep
+recipe: "ac-av/resource-run-v1"
+entry: "source:k02"
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+### VM result
+check-id: "autovm-fault-none"
+fail-alloc-at: 1
+final-newline: false
+
+~~~~text
+42
+~~~~
+
+## Case: ace-m1-r03-stale
+id: "ace.m1.r03.stale"
+tags: ["ace-m1", "scenario", "resource-915", "r03"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(10)
+    let a int = xs.get(0)
+    xs.push(30)
+    return a * 10 + xs.get(1)
+}
+~~~~
+
+### Probe av-r03-stale-push
+recipe: "ac-av/resource-run-v1"
+entry: "place:push"
+
+### Probe av-r03-stale-insert
+recipe: "ac-av/resource-run-v1"
+entry: "place:insert"
+
+### Probe av-r03-stale-remove
+recipe: "ac-av/resource-run-v1"
+entry: "place:remove"
+
+### Probe av-r03-stale-replace
+recipe: "ac-av/resource-run-v1"
+entry: "place:replace"
+
+### Probe av-r03-legal-neighbour
+recipe: "ac-av/collections-source-run-v1"
+entry: "main"
+exit: 130
+
+## Case: ace-m1-r03-static-reject
+id: "ace.m1.r03.static-reject"
+tags: ["ace-m1", "scenario", "resource-915", "r03"]
+links: ["PLAN-915"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    for x in xs {
+        xs.push(x)
+    }
+    return xs.len()
+}
+~~~~
+
+### Probe av-r03-static-reject
+recipe: "ac-av/collections-source-run-v1"
+entry: "main"
+stage: "resolve"
+code: "bind/source.iterate-mutate"

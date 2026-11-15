@@ -1,0 +1,152 @@
+# PLAN-937 CA-D1 T-09: the scalar bridge corpus (source export + typed
+# peers + negatives). The source leg compiles REAL Auto source through
+# the checked frontdoor into the public C library and EXECUTES it with
+# the independent hand-written caller; the typed legs run the frozen
+# typed declarations across the real machine-code peers.
+
+# Source export: cold publish (facts+plan+2 fragments+library), pure
+# second-query hit (zero producers).
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d1.source-export"
+  tags: ["ca-d1", "probe"]
+  source: { file: "src/bridge-source.atomdata", syntax: "atom-data", path: "bridge-source.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "source-export", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "source" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 5, stages_include: ["bridge"] },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# Body edit (the distinguishing oracle): the +1 edit flips the DELIVERED
+# value; the frozen independent caller (hand-computed 42) must FAIL the
+# PE — completion run/pe-exit, never a wrong native pass. Republish
+# count = facts + the edited sum fragment + library (plan is a pure hit).
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d1.source-body-edit"
+  tags: ["ca-d1", "probe", "negative"]
+  source: { file: "src/bridge-source.atomdata", syntax: "atom-data", path: "bridge-source.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "source-body-edit", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "source" },
+        steps: [
+          { op: "edit-source", from: "return a + b }", to: "return a + b + 1 }" },
+          { op: "query" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: { stage: "run", code: "pe-exit" }, probe: [
+        { cache: "published", compute_calls: 5 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# Typed peers: each leg's first query produces the typed bridge
+# artifacts (facts+plan+callee, plus the cside C object on the cross
+# legs), the second query is a pure hit.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d1.typed-self"
+  tags: ["ca-d1", "probe"]
+  source: { file: "src/bridge-typed.atomdata", syntax: "atom-data", path: "bridge-typed.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "typed-self", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "typed-self" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 3 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d1.typed-n2c"
+  tags: ["ca-d1", "probe"]
+  source: { file: "src/bridge-typed-n2c.atomdata", syntax: "atom-data", path: "bridge-typed-n2c.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "typed-n2c", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "typed-n2c" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 4 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d1.typed-c2n"
+  tags: ["ca-d1", "probe"]
+  source: { file: "src/bridge-typed-c2n.atomdata", syntax: "atom-data", path: "bridge-typed-c2n.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "typed-c2n", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "typed-c2n" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 4 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# Negative: a deck edit to an unknown leg is a typed deck diagnostic
+# (the query returns diags before any native call).
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d1.bad-leg"
+  tags: ["ca-d1", "probe", "negative"]
+  source: { file: "src/bridge-source.atomdata", syntax: "atom-data", path: "bridge-source.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "bad-leg", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "source" },
+        steps: [
+          { op: "edit-source", from: "leg source", to: "leg nope" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: { stage: "parse", code: "deck" }, probe: [ { } ] } }
+  ]
+}
+```

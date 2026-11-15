@@ -1,0 +1,259 @@
+# PLAN-852 ace-m1 composite value cases green on the LEGACY engine only
+# (observed result == frozen oracle). AC native is scalar-only and the
+# AV source profile rejects composite types today — gap/wait rows in
+# binding.tsv; they join when their owners deliver. Their a2r-snapshot
+# checks compare frozen golden bytes only — the composite emitter output
+# is NOT compilable Rust (List<int>.new() pseudo-syntax), so certified-
+# run rows for composites stay a registered gap (a2r lowering owner).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k01"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/K01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_k01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_k01.rs", file: "oracle/m1_k01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k03"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/K03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_k03" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_k03.rs", file: "oracle/m1_k03.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k06"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/K06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_k06" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_k06.rs", file: "oracle/m1_k06.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/R02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "9" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r02" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r02.rs", file: "oracle/m1_r02.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r05"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/R05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r05" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r05.rs", file: "oracle/m1_r05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/R06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "21" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r06" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r06.rs", file: "oracle/m1_r06.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r08"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/R08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r08" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r08.rs", file: "oracle/m1_r08.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t05"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/T05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_t05" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_t05.rs", file: "oracle/m1_t05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v01"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/V01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_v01.rs", file: "oracle/m1_v01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v02"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/V02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v02" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_v02.rs", file: "oracle/m1_v02.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v04"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/V04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v04" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_v04.rs", file: "oracle/m1_v04.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v05"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/V05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v05" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_v05.rs", file: "oracle/m1_v05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v06"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/V06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v06" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_v06.rs", file: "oracle/m1_v06.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v07"
+  tags: ["ace-m1", "legacy-only"]
+  links: ["PLAN-852"]
+  source: { file: "src/V07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v07" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_v07.rs", file: "oracle/m1_v07.rs", compare: "bytes" } ] } }
+  ]
+}
+```

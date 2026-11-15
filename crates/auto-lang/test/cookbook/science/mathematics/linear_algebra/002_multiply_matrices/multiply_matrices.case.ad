@@ -1,0 +1,29 @@
+# Legacy cookbook corpus: science/mathematics/linear_algebra/002_multiply_matrices/multiply_matrices
+
+## Case: legacy-science-mathematics-linear-algebra-002-multiply-matrices-multiply-matrices
+id: "legacy.science.mathematics.linear_algebra.002_multiply_matrices.multiply_matrices"
+entry-mode: "program"
+
+### Auto
+path: "multiply_matrices.at"
+```auto
+fn main() {
+    let a = [[1, 2], [3, 4]]
+    let b = [[5, 6], [7, 8]]
+    var c = [[0, 0], [0, 0]]
+    for i in 0..2 {
+        for j in 0..2 {
+            for k in 0..2 {
+                c[i][j] = c[i][j] + a[i][k] * b[k][j]
+            }
+        }
+    }
+    assert(c[0][0] == 19)
+    assert(c[0][1] == 22)
+    assert(c[1][0] == 43)
+    assert(c[1][1] == 50)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

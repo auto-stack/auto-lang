@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: science/mathematics/miscellaneous/002_math_functions/math_functions
+
+## Case: legacy-science-mathematics-miscellaneous-002-math-functions-math-functions
+id: "legacy.science.mathematics.miscellaneous.002_math_functions.math_functions"
+entry-mode: "program"
+
+### Auto
+path: "math_functions.at"
+```auto
+fn main() {
+    let x = 2.0
+    let y = 3.0
+    let power = x.powf(y)
+    let sqrt_val = x.sqrt()
+    let abs_val = -5.0
+    let abs_result = abs_val.abs()
+    assert(power == 8.0)
+    let sqrt_ok = sqrt_val > 1.414
+    assert(sqrt_ok)
+    // TODO: float .abs() broken in nanbox mode — enable when fixed:
+    // assert(abs_result == 5.0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

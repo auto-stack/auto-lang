@@ -1,0 +1,40 @@
+# Legacy cookbook corpus: asynchronous/channel/001_bounded
+
+## Case: legacy-asynchronous-channel-001-bounded
+id: "legacy.asynchronous.channel.001_bounded"
+entry-mode: "program"
+
+### Auto
+path: "001_bounded.at"
+```auto
+// Bounded channel pattern demo using List
+
+type Book {
+    title str
+}
+
+ext Book {
+    static fn new(title str) Book {
+        return Book(title)
+    }
+}
+
+fn main() {
+    var shelf List<Book> = List.new()
+    shelf.push(Book.new("Shawshank Redemption"))
+    shelf.push(Book.new("Secret Recipe"))
+
+    for book in shelf {
+        print(f"Title: ${book.title}")
+    }
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+Title: Shawshank Redemption
+Title: Secret Recipe
+```

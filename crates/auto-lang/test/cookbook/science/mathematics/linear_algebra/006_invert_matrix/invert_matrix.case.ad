@@ -1,0 +1,23 @@
+# Legacy cookbook corpus: science/mathematics/linear_algebra/006_invert_matrix/invert_matrix
+
+## Case: legacy-science-mathematics-linear-algebra-006-invert-matrix-invert-matrix
+id: "legacy.science.mathematics.linear_algebra.006_invert_matrix.invert_matrix"
+entry-mode: "program"
+
+### Auto
+path: "invert_matrix.at"
+```auto
+dep ndarray
+dep ndarray_linalg
+use.rs ndarray::arr2
+use.rs ndarray_linalg::Inverse
+
+fn main() {
+    let a = arr2([[1.0, 2.0], [3.0, 4.0]])
+    let inv = a.inv().unwrap()
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

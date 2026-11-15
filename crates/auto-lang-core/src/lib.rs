@@ -21,6 +21,8 @@ use auto_val::AutoPath;
 use auto_val::{Array, Node, Obj, Value};
 
 // ---- T-02 批 1-2：扫描器/前端门面组 ----
+#[path = "legacy_doc_for_trans.rs"]
+pub mod legacy_doc_for_trans;
 pub mod dep_scanner;
 mod dependency_scan;
 pub mod mode;

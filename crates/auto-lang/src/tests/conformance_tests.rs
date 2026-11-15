@@ -26,8 +26,20 @@ fn conformance_dir() -> PathBuf {
 /// Returns Ok if AutoVM output matches expected_output.txt.
 fn run_conformance_test(case: &str) -> AutoResult<()> {
     let dir = conformance_dir().join(case);
-    let src = read_to_string(dir.join("input.at"))?;
-    let expected = read_to_string(dir.join("expected_output.txt"))?;
+    // PLAN-1062 T-14: payload comes from the migration document (input
+    // inline; expected output as the result oracle). The frozen sidecars
+    // are history — never a fallback.
+    let doc = crate::tests::legacy_doc::load_case(&dir, "input")
+        .map_err(|e| crate::error::AutoError::Msg(e.into()))?;
+    let src = doc.source_text().to_string();
+    let expected = doc
+        .result_text()
+        .ok_or_else(|| {
+            crate::error::AutoError::Msg(format!(
+                "conformance {case}: expected output missing from migration doc",
+            ))
+        })?
+        .to_string();
 
     // Path 1: AutoVM execution
     let (_, stdout) = run_autovm_capture(&src)?;
@@ -54,7 +66,8 @@ fn run_conformance_test(case: &str) -> AutoResult<()> {
 #[allow(dead_code)]
 fn generate_expected(case: &str) -> AutoResult<String> {
     let dir = conformance_dir().join(case);
-    let src = read_to_string(dir.join("input.at"))?;
+    let src = read_to_string(dir.join("input.at"))
+        .map_err(|e| crate::error::AutoError::Msg(e.to_string()))?;
     let (_, stdout) = run_autovm_capture(&src)?;
     let output = stdout.trim().to_string();
     std::fs::write(dir.join("expected_output.txt"), format!("{}\n", output))?;

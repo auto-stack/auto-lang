@@ -1,0 +1,31 @@
+# PLAN-925 a2c-hir record-text - T05 (NUL-bearing full-byte text equality). The golden four-file C
+# set (main.c / a2x_c_rt_runtime.h / generated.c + manifest.json sidecar)
+# was frozen from a real worker emission (`daily-emit-c`, profile
+# text) and re-verified deterministic across nonces; the
+# certification leg (real C compile+run vs the independent
+# reference-T05.c) is the explicit certify axis, not this daily check.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2c-hir-record-text-925.t05"
+  tags: ["a2c-hir", "record-text", "text"]
+  links: ["PLAN-925"]
+  source: { file: "src/T05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2c/hir-record-text-emit-v1",
+        a2x_hir: { profile: "text", entry: "main", caps: ["ac.runtime.text.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-T05/main.c", compare: "bytes" },
+        { path: "a2x_c_rt_runtime.h", file: "golden-T05/a2x_c_rt_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-T05/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-T05/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

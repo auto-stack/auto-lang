@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: web/mime/002_string/string
+
+## Case: legacy-web-mime-002-string-string
+id: "legacy.web.mime.002_string.string"
+entry-mode: "program"
+
+### Auto
+path: "string.at"
+```auto
+dep mime
+use.rs mime::Mime
+
+fn main() {
+    let mime = "text/html".parse().unwrap()
+    print(f"MIME: ${mime}")
+    let is_text = mime.type_() == mime.TEXT
+    assert(is_text == true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

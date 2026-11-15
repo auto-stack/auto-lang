@@ -1,0 +1,32 @@
+# PLAN-821 R1-F08: the borrowed record param through the formal recipe —
+# 782 ABI-D `*const` (read-only borrow, caller keeps ownership; two
+# borrowed calls + a field view after). The mut-record face is a precise
+# diagnosed refusal (lower.mut-record — the ABI-E write-back borrow is
+# beyond the frozen MIR, pending an explicit contract revision).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.owned.borrowed-record"
+  tags: ["av-data-821", "probe", "r1"]
+  links: ["PLAN-821"]
+  source: { text: "type Note { body Str; n int }
+fn read(p Note) int { return p.n }
+fn main() int {
+    let a Note = Note { body: \"A\", n: 7 }
+    let x int = read(a)
+    let y int = read(a)
+    return x + y + a.body.len()
+}
+", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-owned-borrowed", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/owned-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 15 } },  ]
+}
+```

@@ -1,0 +1,29 @@
+# PLAN-904 a2r-hir collections — V03 (frozen ace-m1 bytes, provenance
+# ../../ace-m1/src/V03.at, sha256 99bc231454ba7426…): Result Err arm: e.len()=3.
+# Oracle value:3 (hand computation; reference-V03.rs carries the
+# certify leg). Recipe ac-a2r/hir-collections-emit-v1, profile collections.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-collections-904.v03"
+  tags: ["a2r-hir", "collections", "list-variant"]
+  links: ["PLAN-904", "PLAN-864", "PLAN-889"]
+  source: { file: "src/V03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-collections-emit-v1",
+        a2x_hir: { profile: "collections", entry: "main", caps: [] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-V03/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-V03/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-V03/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-V03/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

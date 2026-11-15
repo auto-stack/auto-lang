@@ -1,0 +1,79 @@
+# PLAN-938 explicit independent source-import CERTIFICATION (not daily emit).
+# Expected values exist only here, never in the worker request or reference.
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.add-native", tags: ["ca-d2", "certify"],
+ source: { file: "src/add.atomdata", syntax: "atom-data", path: "add.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 42, probe: [ { stages_include: ["source-import"] }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.provider-body-native", tags: ["ca-d2", "certify"],
+ source: { file: "src/bias.atomdata", syntax: "atom-data", path: "bias.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 43, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.denied-native", tags: ["ca-d2", "certify"],
+ source: { file: "src/denied.atomdata", syntax: "atom-data", path: "denied.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: { stage: "resolve", code: "foreign.capability" }, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.unreviewed-native", tags: ["ca-d2", "certify"],
+ source: { file: "src/unreviewed.atomdata", syntax: "atom-data", path: "unreviewed.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: { stage: "resolve", code: "foreign.authority" }, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.add-c", tags: ["ca-d2", "certify"],
+ source: { file: "src/add.atomdata", syntax: "atom-data", path: "add.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 42, probe: [ { stages_include: ["source-import"] }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.provider-body-c", tags: ["ca-d2", "certify"],
+ source: { file: "src/bias.atomdata", syntax: "atom-data", path: "bias.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 43, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.denied-c", tags: ["ca-d2", "certify"],
+ source: { file: "src/denied.atomdata", syntax: "atom-data", path: "denied.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: { stage: "resolve", code: "foreign.capability" }, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d2.unreviewed-c", tags: ["ca-d2", "certify"],
+ source: { file: "src/unreviewed.atomdata", syntax: "atom-data", path: "unreviewed.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/source-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: { stage: "resolve", code: "foreign.authority" }, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+
+```test-case
+case {schema:"autolang.case/2",id:"ace-ca-d2.wrong-type-native",source:{file:"src/wrong-type.atomdata",syntax:"atom-data",path:"wrong-type.atomdata"},entry:{mode:"program"},checks:[{id:"certify",adapter:"probe",action:"run",options:{recipe:"abi/source-foreign-certify-v1",abi:{leg:"native"},steps:[{op:"query"}]},expect:{completion:{stage:"resolve",code:"source.foreign.type-mismatch"},probe:[{stages_include:["source-import"]}]}}]}
+```
+
+```test-case
+case {schema:"autolang.case/2",id:"ace-ca-d2.wrong-type-c",source:{file:"src/wrong-type.atomdata",syntax:"atom-data",path:"wrong-type.atomdata"},entry:{mode:"program"},checks:[{id:"certify",adapter:"probe",action:"run",options:{recipe:"abi/source-foreign-certify-v1",abi:{leg:"c"},steps:[{op:"query"}]},expect:{completion:{stage:"resolve",code:"source.foreign.type-mismatch"},probe:[{stages_include:["source-import"]}]}}]}
+```
+
+# Parent control: actual and reference BOTH return 42; independent oracle 43 must FAIL.
+```test-case
+case {schema:"autolang.case/2",id:"ace-ca-d2.wrong-oracle",source:{file:"src/add.atomdata",syntax:"atom-data",path:"add.atomdata"},entry:{mode:"program"},checks:[{id:"certify",adapter:"probe",action:"run",options:{recipe:"abi/source-foreign-certify-v1",abi:{leg:"native"},steps:[{op:"query"}]},expect:{completion:"success",exit:43,probe:[{}]}}]}
+```

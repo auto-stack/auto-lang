@@ -1,0 +1,433 @@
+## Case: ace-m1-m08
+id: "ace.m1.m08"
+tags: ["ace-m1", "method-881", "record"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Counter {
+    value int
+    static fn new(n int) Counter { return Counter(n) }
+    fn read() int { return .value }
+}
+fn uncalled_shape() int { return 5 }
+fn main() int {
+    let x Counter = Counter.new(42)
+    return x.read()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-m01
+id: "ace.m1.m01"
+tags: ["ace-m1", "method-881", "record"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Pair {
+    left int
+    right bool
+    static fn new(l int, r bool) Pair { return Pair { left: l, right: r } }
+    fn left_is(v int) bool { return .left == v }
+}
+type Inner {
+    flag bool
+    p Pair
+}
+fn main() int {
+    let p = Pair.new(1, true)
+    var q = p
+    q.left = 5
+    if p.left != 1 { return 1 }
+    if q.left != 5 { return 2 }
+    if p.left_is(1) == false { return 3 }
+    let i = Inner { p: p, flag: false }
+    if i.p.right == false { return 4 }
+    if i.p.left_is(1) == false { return 5 }
+    let n = Pair { right: true, left: 9 }
+    if n.left != 9 { return 6 }
+    return 0
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 0
+
+## Case: ace-m1-m02
+id: "ace.m1.m02"
+tags: ["ace-m1", "method-881", "owned-text"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Token {
+    text Str
+    kind int
+    line int
+    at int
+    len int
+    fn is_ident() bool { return .kind == 1 }
+    static fn ident(move text Str, line int, at int) Token {
+        let n int = text.len()
+        return Token { text: text.move, kind: 1, line: line, at: at, len: n }
+    }
+}
+fn weigh(move t Token) int { return t.len + t.line + t.at }
+fn main() int {
+    let s Str = "keyword"
+    let a Token = Token.ident(s.move, 3, 12)
+    if a.is_ident() == false { return 100 }
+    if a.len != 7 { return 101 }
+    var b Token = a.clone()
+    b.at = 40
+    if a.at != 12 { return 102 }
+    let w int = weigh(b.move)
+    return w + a.text.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 57
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+exit: 57
+
+## Case: ace-m1-m03
+id: "ace.m1.m03"
+tags: ["ace-m1", "method-881", "record"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn mix(mut q P, d int) int { q.v = q.v + d; return .v * 10 + q.v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(7)
+    var q = P.mk(2)
+    let r = p.mix(q.mut, 3)
+    if p.v != 7 { return 90 + p.v }
+    if q.v != 5 { return 80 + q.v }
+    return r
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 75
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 75
+
+## Case: ace-m1-m04
+id: "ace.m1.m04"
+tags: ["ace-m1", "method-881", "record"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    static fn mixed(ro P, mut a P, k int, mut b P) int {
+        a.v = a.v + k;
+        b.v = b.v + 2 * k;
+        return ro.v * 100 + a.v * 10 + b.v
+    }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var ro = P.mk(1)
+    var a = P.mk(2)
+    var b = P.mk(3)
+    let r = P.mixed(ro, a.mut, 1, b.mut)
+    let diff = ro.v * 100 + a.v * 10 + b.v - r
+    if diff != 0 { return 60 }
+    if ro.v != 1 { return 70 + ro.v }
+    return r
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 135
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 135
+
+## Case: ace-m1-m05
+id: "ace.m1.m05"
+tags: ["ace-m1", "method-881", "owned-text"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn eat(move a Str, k int, move b Str) int { return .v + a.len() * 10 + k + b.len() }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(17)
+    let r = p.eat(b: "Z", k: 4, a: "A中")
+    return r
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-m06
+id: "ace.m1.m06"
+tags: ["ace-m1", "method-881", "owned-text"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    static fn update(mut q P) Str { q.v = 5; return "A中" }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var q = P.mk(1)
+    let r Str = P.update(q.mut)
+    return q.v * 10 + r.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 52
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+exit: 52
+
+## Case: ace-m1-m07
+id: "ace.m1.m07"
+tags: ["ace-m1", "method-881", "record"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type R {
+    n int
+    static fn down(k int) int {
+        if k <= 0 { return 42 }
+        return R.down(k - 1)
+    }
+    fn vdown(k int) int {
+        if k <= 0 { return .n }
+        return self.vdown(k - 1)
+    }
+    static fn mk(n int) R { return R { n: n } }
+}
+fn main() int {
+    let r = R.mk(42)
+    return R.down(9) + r.vdown(9)
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 84
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 84
+
+## Case: ace-m1-r08
+id: "ace.m1.r08"
+tags: ["ace-m1", "four-path", "record", "method-881"]
+links: ["PLAN-852", "PLAN-870", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Counter {
+    value int
+    static fn new(n int) Counter { return Counter(n) }
+    fn read() int { return .value }
+}
+fn main() int {
+    let x Counter = Counter.new(42)
+    return x.read()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-m09
+id: "ace.m1.m09"
+tags: ["ace-m1", "diagnostic", "record", "method-881"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn get() int { return .v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return P.get(p)
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+stage: "parse"
+code: "mn.unsupported.frontend"
+
+## Case: ace-m1-m10
+id: "ace.m1.m10"
+tags: ["ace-m1", "diagnostic", "record", "method-881"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn bad(n int) int {
+        let q = P { v: n }
+        q.v = n + 1
+        return q.v
+    }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.bad(2)
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+stage: "parse"
+code: "mn.unsupported.frontend"
+
+## Case: ace-m1-m11
+id: "ace.m1.m11"
+tags: ["ace-m1", "diagnostic", "record", "method-881"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn mix(mut q P, d int) int { q.v = q.v + d; return .v * 10 + q.v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(7)
+    let r = p.mix(p.mut, 3)
+    return r
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+stage: "parse"
+code: "mn.unsupported.frontend"
+
+## Case: ace-m1-m12
+id: "ace.m1.m12"
+tags: ["ace-m1", "diagnostic", "owned-text", "method-881"]
+links: ["PLAN-852", "PLAN-881"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    s Str
+    v int
+    fn clone() int { return .v }
+    static fn mk(n int) P { return P { s: "x", v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.clone()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+stage: "parse"
+code: "mn.unsupported.frontend"

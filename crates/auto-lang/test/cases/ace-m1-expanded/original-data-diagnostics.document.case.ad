@@ -1,0 +1,257 @@
+## Case: ace-m1-original-data-diag-m09
+id: "ace.m1.original-data-diag.m09"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn get() int { return .v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return P.get(p)
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "source.not-callable"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "resolve"
+code: "source.not-callable"
+
+## Case: ace-m1-original-data-diag-m10
+id: "ace.m1.original-data-diag.m10"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn bad(n int) int {
+        let q = P { v: n }
+        q.v = n + 1
+        return q.v
+    }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.bad(2)
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "verify.immutable-write"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.immutable-write"
+
+## Case: ace-m1-original-data-diag-m11
+id: "ace.m1.original-data-diag.m11"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    v int
+    fn mix(mut q P, d int) int { q.v = q.v + d; return .v * 10 + q.v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(7)
+    let r = p.mix(p.mut, 3)
+    return r
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "verify.mut-conflict"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.mut-conflict"
+
+## Case: ace-m1-original-data-diag-m12
+id: "ace.m1.original-data-diag.m12"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    s Str
+    v int
+    fn clone() int { return .v }
+    static fn mk(n int) P { return P { s: "x", v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.clone()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+stage: "parse"
+code: "source.duplicate"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+diagnostics: "source-v1"
+stage: "resolve"
+code: "source.duplicate"
+
+## Case: ace-m1-original-data-diag-r09
+id: "ace.m1.original-data-diag.r09"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type A { value int }
+type B { value int }
+fn read(x A) int { return x.value }
+fn main() int { return read(B(42)) }
+~~~~
+
+### Probe av
+recipe: "ac-av/data-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "source.type-mismatch"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "source.type-mismatch"
+
+## Case: ace-m1-original-data-diag-r10
+id: "ace.m1.original-data-diag.r10"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    let a Item = Item("x", 41)
+    let b Item = a.move
+    return a.code + b.code
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+stage: "parse"
+code: "verify.use-after-move"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.use-after-move"
+
+## Case: ace-m1-original-data-diag-t06
+id: "ace.m1.original-data-diag.t06"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn bad() str {
+    let s Str = "temporary"
+    return s.to(str)
+}
+fn main() int { return bad().len() }
+~~~~
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+stage: "parse"
+code: "verify.borrow-escape"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+diagnostics: "source-v1"
+stage: "typecheck"
+code: "verify.borrow-escape"
+
+## Case: ace-m1-original-data-diag-t07
+id: "ace.m1.original-data-diag.t07"
+tags: ["ace-m1", "q4", "original-data", "negative", "plan-941"]
+links: ["PLAN-941", "PLAN-881", "PLAN-911"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { let c char = '\u{D800}'; return 0 }
+~~~~
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+stage: "parse"
+code: "text.invalid-scalar"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["ac.runtime.text.v1"]
+diagnostics: "source-v1"
+stage: "parse"
+code: "text.invalid-scalar"

@@ -1,0 +1,34 @@
+# AC semantic probe: callee signature change (PLAN-796 T-06, executed)
+
+status: executed — the CALLEE signature flip (plus the matching call
+argument) changes the caller's called-sigs-fp key component
+(contract-decision D7), so the old result is a miss and the fresh
+recompute republishes under the new key. One key never holds two
+contents.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ac.sema.callee-sig-change"
+  tags: ["ac-semantics", "probe"]
+  source: { file: "src/callee-sig.at", syntax: "auto", path: "callee-sig.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "callee-sig", adapter: "probe", action: "run",
+      options: {
+        recipe: "sema/query-v1",
+        sema: { package: "probe", module: "callee-sig", kind: "infer-body", fn: "main" },
+        steps: [
+          { op: "query" },
+          { op: "edit-source", from: "helper(a int, b int)", to: "helper(a bool, b int)" },
+          { op: "edit-source", from: "helper(2, 3)", to: "helper(true, 3)" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 1, stages_include: ["publish"] },
+        { cache: "published", compute_calls: 1, stages_include: ["infer"] }
+      ] } }
+  ]
+}
+```

@@ -1,0 +1,16 @@
+# PLAN-823 formal typed closure fixture (the source is a protocol placeholder).
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.closures.first"
+  tags: ["av-data-823", "probe"]
+  links: ["PLAN-823"]
+  source: { file: "src/first-case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-closures-fixture", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-run-v1", av: { entry: "closures:first-case" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```

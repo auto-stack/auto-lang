@@ -1,0 +1,170 @@
+# PLAN-932 native warm-edit admission suite — the file-based independent
+# oracle for the admission/refusal classification closure (D-927-2). Every
+# check runs the REAL scalar worker through the unified probe runner in the
+# explicit `source-v1` observation mode, so each refusal carries its TYPED
+# fact on the wire and the parent admits it before judging:
+#
+#   body-edit.success        V-01/V-04 — a legitimate body-only edit takes
+#                             the true single-body fast path (the parent's
+#                             per-edit structural admission — unaffected=0,
+#                             whole=0, fallback=0, real PE exit — is part of
+#                             the green verdict); the judged value is the
+#                             independent revision-1 expectation (64).
+#   body-edit.language       V-03 — a real type error in the edited body is
+#                             a LANGUAGE fact (raw verify/source.type-mismatch),
+#                             never washed into a policy refusal or infra.
+#   body-edit.repair         V-04 — after a refused (language) edit, the next
+#                             legitimate body edit on the same session store
+#                             succeeds with the new value (85): a refusal
+#                             never poisons the accepted state.
+#   sig-edit.refused         V-02 — a true signature edit is REFUSED with the
+#                             typed signature-or-context-drift verdict
+#                             (PLAN-914 N3: a complete valid typed refusal is
+#                             the declared diagnostic completion, stage verify).
+#   sig-edit.survives        V-05 — the same session's accepted state still
+#                             runs green (the old value 43) after the refusal.
+#   multi-decl.invalid       V-03 — an edit interval meeting two declarations
+#                             is the typed invalid-edit policy refusal.
+#   history.a-b-a            V-04 — edit away and back: the content hit
+#                             reuses the historical unit (judged run = the
+#                             original value 43).
+#
+# The FAIL-shape controls (a typed refusal vs a success expectation FAILs;
+# an untyped default-mode refusal is an infra ERROR; a bad edit literal is
+# an ERROR) and the original 115-function t11 workload legs live in the
+# formal host gate (mir_native_incremental_formal_runner_gate); the typed
+# fact-admission negatives (missing/unknown kind, contradictions) are
+# parent-side unit controls (ac_mn::refusal_tests).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.body-edit.success"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [
+        { op: "edit-source", from: "x * 2", to: "x * 3" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 64 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.body-edit.language"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "language-refusal", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", session: "nw932_repair", diagnostics: "source-v1" }, steps: [
+        { op: "edit-source", from: "x * 2", to: "true + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.body-edit.repair"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "repair-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", session: "nw932_repair", diagnostics: "source-v1" }, steps: [
+        { op: "edit-source", from: "x * 2", to: "x * 4" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 85 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.sig-edit.refused"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "sig-refusal", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", session: "nw932_sig", diagnostics: "source-v1" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "fn leaf(v int) int {", to: "fn leaf(v int, w int) int {" },
+        { op: "run" }
+      ] },
+      expect: { completion: { stage: "verify", code: "mn.incremental.refused.signature-or-context-drift" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.sig-edit.survives"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "survives", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", session: "nw932_sig", diagnostics: "source-v1" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.multi-decl.invalid"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "multi-decl-refusal", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [
+        { op: "edit-source", from: "return leaf(acc)\n}\n\nfn main() int {", to: "return leaf(acc)\n}\n\nfn main(x int) int {" },
+        { op: "run" }
+      ] },
+      expect: { completion: { stage: "verify", code: "mn.incremental.refused.invalid-edit" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.nw932.history.a-b-a"
+  tags: ["ace-m1", "warm-admission", "native-warm-admission-932"]
+  links: ["PLAN-932"]
+  source: { file: "src/main.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "history", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [
+        { op: "edit-source", from: "x * 2", to: "x * 3" },
+        { op: "run" },
+        { op: "edit-source", from: "x * 3", to: "x * 2" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 43 } },
+  ]
+}
+```

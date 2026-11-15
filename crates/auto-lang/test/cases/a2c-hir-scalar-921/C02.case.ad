@@ -1,0 +1,30 @@
+# PLAN-921 a2c-hir scalar — C02 (DivOverflow trap source): INT_MIN / -1
+# traps at RUNTIME — but the DAILY check is emit-only golden compare (no
+# execution of the emitted C); the oracle is just the frozen golden bytes,
+# and the runtime trap itself is a certification-leg observation, never a
+# daily axis. Same four-file C set shape as C01.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2c-hir-scalar-921.c02"
+  tags: ["a2c-hir", "scalar", "div-overflow"]
+  links: ["PLAN-921"]
+  source: { file: "src/C02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2c/hir-scalar-emit-v1",
+        a2x_hir: { profile: "scalar", entry: "main", caps: [] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-C02/main.c", compare: "bytes" },
+        { path: "a2x_c_runtime.h", file: "golden-C02/a2x_c_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-C02/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-C02/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

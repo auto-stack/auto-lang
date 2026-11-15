@@ -64,39 +64,42 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                     let name = parts[1];
                     let case = format!("{}/{}", category, case_dir_name);
 
-                    // Find the .at file inside the case directory
-                    // Plan 567 T10: `.as` 脚本糖语料支持（.at 优先，缺位回落）。
+                    // PLAN-1062 T-14: the entry's payload comes from its
+                    // migration document; .at/.as/.expected.* sidecars are
+                    // frozen history (never a fallback). Entry presence is
+                    // still discovered via the original source files.
                     let at_path = case_entry.path().join(format!("{}.at", name));
                     let as_path = case_entry.path().join(format!("{}.as", name));
-                    let (src_path, is_script) = if at_path.is_file() {
-                        (at_path, false)
-                    } else if as_path.is_file() {
-                        (as_path, true)
-                    } else {
+                    if !at_path.is_file() && !as_path.is_file() {
                         continue;
-                    };
-
-                    let source = read_to_string(&src_path).unwrap_or_default();
-                    let expected_out = {
-                        let p = case_entry.path().join(format!("{}.expected.out", name));
-                        if p.is_file() {
-                            read_to_string(&p).ok()
-                        } else {
-                            None
-                        }
-                    };
-                    let expected_result = {
-                        let p = case_entry.path().join(format!("{}.expected.result", name));
-                        if p.is_file() {
-                            read_to_string(&p).ok()
-                        } else {
-                            None
-                        }
-                    };
-                    let expected_error = {
-                        let p = case_entry.path().join(format!("{}.expected.error", name));
-                        p.is_file()
-                    };
+                    }
+                    let is_script = !at_path.is_file();
+                    let entry = crate::tests::legacy_doc::load_case(
+                        &case_entry.path(),
+                        name,
+                    )
+                    .unwrap_or_else(|e| panic!("vm entry {case}: {e}"));
+                    let source = entry.source_text().to_string();
+                    let expected_out = entry
+                        .case
+                        .spec
+                        .checks
+                        .iter()
+                        .find(|c| c.id == "vm-stdout")
+                        .and_then(|c| c.expect.result.as_ref().map(|r| r.text.clone()));
+                    let expected_result = entry
+                        .case
+                        .spec
+                        .checks
+                        .iter()
+                        .find(|c| c.id == "vm-result")
+                        .and_then(|c| c.expect.result.as_ref().map(|r| r.text.clone()));
+                    let expected_error = entry
+                        .case
+                        .spec
+                        .checks
+                        .iter()
+                        .any(|c| c.id == "vm-error");
 
                     cache.insert(
                         case,

@@ -1,0 +1,30 @@
+# PLAN-892 a2r-hir NAMED-01 — daily emit golden compare through the real
+# A2X chain (scalar profile). The certification leg for this case runs
+# the explicit certify axis (reference-NAMED-01.rs vs the closed-form
+# oracle), not this daily check.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-892.named-01-source-order"
+  tags: ["a2r-hir", "four-file", "scalar", "trace"]
+  links: ["PLAN-892"]
+  source: { file: "src/NAMED-01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-scalar-emit-v1",
+        a2x_hir: { profile: "scalar", entry: "main",
+        caps: ["hir.test.trace.v1"] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-NAMED-01/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-NAMED-01/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-NAMED-01/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-NAMED-01/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

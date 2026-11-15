@@ -1,0 +1,22 @@
+# Legacy cookbook corpus: science/mathematics/linear_algebra/005_vector_norm/vector_norm
+
+## Case: legacy-science-mathematics-linear-algebra-005-vector-norm-vector-norm
+id: "legacy.science.mathematics.linear_algebra.005_vector_norm.vector_norm"
+entry-mode: "program"
+
+### Auto
+path: "vector_norm.at"
+```auto
+fn main() {
+    let v = [3.0, 4.0]
+    var sum_sq = 0.0
+    for i in 0..2 {
+        sum_sq = sum_sq + v[i] * v[i]
+    }
+    let norm = sum_sq.sqrt()
+    assert(norm == 5.0)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

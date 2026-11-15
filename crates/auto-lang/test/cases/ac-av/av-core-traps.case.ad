@@ -1,0 +1,45 @@
+# ac-av probe: language traps are RUN-stage error completions with the
+# trap code as the oracle (V-03). MIN % -1 traps per the scalar contract.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.trap-rem-overflow"
+  tags: ["ac-av", "probe", "trap"]
+  links: ["PLAN-798"]
+  source: { file: "av/core/trap_rem_overflow.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-trap-rem", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "run", message: { contains: "av.trap.rem-overflow" } } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.trap-div-zero"
+  tags: ["ac-av", "probe", "trap"]
+  links: ["PLAN-798"]
+  source: { text: "fn main() int {
+    var d = 5 / 0
+    return d
+}", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-trap-div", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "run", message: { contains: "av.trap.div-by-zero" } } } }
+  ]
+}
+```

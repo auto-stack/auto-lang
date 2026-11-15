@@ -1,0 +1,153 @@
+# PLAN-934 T-09 — SQ-A ordinary-source query family (independent oracles).
+#
+# Every program here is compiled by the PRODUCT entries that now consume the
+# SQ-A fact layer (AV driver/session, MIR-native driver/session, A2X store and
+# both emitters). The oracles are closed-form values and hand-written
+# arithmetic, never "the new solver agrees with the new backend":
+#
+# * leaf42:  leaf(41) = 42 with leaf(x) = x + 1;
+# * leaf43:  the same caller with leaf(x) = x + 2 -> 43 (only the callee body
+#            differs, so the caller's facts stay warm);
+# * named7:  pick(b: true, a: 7) = 7 because arguments bind BY NAME (the
+#            positional reading of the same operands is a type error);
+# * trace-ab7: mark_a() = 1, mark_b() = 2 -> 1*3 + 2*2 = 7 with the mark
+#            trace "ab" (the let runs before the call arguments);
+# * neg-bool-plus / neg-not-int: frozen frontend diagnostics are the oracle —
+#            the product entry reports the same code/stage as before the
+#            wiring (the fact layer must not invent or swallow diagnostics).
+#
+# The facts-layer negative controls (cold miss with the solver disabled, warm
+# hit with the solver disabled, tampered facts rejected at bind, cold/warm
+# solver counters) are pinned by the `ace-source-query` crate tests, which the
+# same fixed group runs — this file adds the executable end-to-end oracle, not
+# a second copy of those counters.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.sq934.leaf42"
+  tags: ["ace-m1", "source-query", "sq-a", "plan-934"]
+  links: ["PLAN-934"]
+  source: { file: "src/leaf42.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "a2r-emit", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2r/hir-scalar-emit-v1", a2x_hir: { profile: "scalar", entry: "main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-a2r/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-a2r/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-a2r/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-a2r/manifest.json", compare: "bytes" }
+      ] } },
+    { id: "a2c-emit", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2c/hir-scalar-emit-v1", a2x_hir: { profile: "scalar", entry: "main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-a2c/main.c", compare: "bytes" },
+        { path: "a2x_c_runtime.h", file: "golden-a2c/a2x_c_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-a2c/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-a2c/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.sq934.leaf43"
+  tags: ["ace-m1", "source-query", "sq-a", "plan-934"]
+  links: ["PLAN-934"]
+  source: { file: "src/leaf43.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 43 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.sq934.named7"
+  tags: ["ace-m1", "source-query", "sq-a", "plan-934"]
+  links: ["PLAN-934"]
+  source: { file: "src/named7.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.sq934.trace-ab7"
+  tags: ["ace-m1", "source-query", "sq-a", "plan-934", "trace"]
+  links: ["PLAN-934"]
+  source: { file: "src/trace-ab7.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7, trace: { text: "ab" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7, stderr: { text: "ab" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.sq934.neg-bool-plus"
+  tags: ["ace-m1", "source-query", "sq-a", "plan-934", "negative"]
+  links: ["PLAN-934"]
+  source: { file: "src/neg-bool-plus.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "parse", code: "source.type-mismatch" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.sq934.neg-not-int"
+  tags: ["ace-m1", "source-query", "sq-a", "plan-934", "negative"]
+  links: ["PLAN-934"]
+  source: { file: "src/neg-not-int.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "parse", code: "source.type-mismatch" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", diagnostics: "source-v1" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } }
+  ]
+}
+```

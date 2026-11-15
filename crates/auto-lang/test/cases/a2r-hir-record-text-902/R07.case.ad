@@ -1,0 +1,33 @@
+# PLAN-902 a2r-hir record-text — R07 (frozen ace-m1 bytes, provenance
+# ../ace-m1/src/R07.at, sha256 6d07888a…): a `mut` record parameter whose
+# field write is visible to the caller (write-back through the exclusive
+# borrow), BorrowMut call-site marker, field-path read/write. Oracle 42 =
+# bump result 21 + caller-visible x.value 21. The golden four-file set was
+# frozen from a real worker emission and re-verified deterministic across
+# nonces; the certification leg (real rustc compile+run vs the independent
+# reference) is the explicit certify axis, not this daily check.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2r-hir-record-text-902.r07"
+  tags: ["a2r-hir", "record-text", "record", "param-mode"]
+  links: ["PLAN-902", "PLAN-881"]
+  source: { file: "src/R07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2r/hir-record-text-emit-v1",
+        a2x_hir: { profile: "record", entry: "main" },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-R07/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-R07/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-R07/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-R07/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

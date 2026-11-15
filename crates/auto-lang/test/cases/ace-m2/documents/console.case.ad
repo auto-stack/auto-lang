@@ -1,0 +1,498 @@
+# ACE M1 Console Single-Run Document Corpus
+tags: ["ace-m1", "console"]
+links: ["PLAN-863"]
+
+PLAN-1057 first-wave inline document migration of the 15 console cases (`ace.m1.o01`..`o15`; 15 checks).
+
+## Case: signed-int
+id: "ace.m1.o01"
+tags: ["signed-int"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ print(-2147483648)
+ print(-7)
+ print(0)
+ print(42)
+ return 7
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+exit: 7
+
+#### stdout
+
+```text
+-2147483648
+-7
+0
+42
+```
+
+#### stderr
+
+```text
+```
+
+## Case: bool
+id: "ace.m1.o02"
+tags: ["bool"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ print(true)
+ print(false)
+ eprint(true)
+ eprint(false)
+ return 0
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+true
+false
+```
+
+#### stderr
+
+```text
+true
+false
+```
+
+## Case: utf8-newline
+id: "ace.m1.o03"
+tags: ["utf8-newline"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ print("你好\n")
+ eprint("é")
+ return 0
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+你好
+
+```
+
+#### stderr
+
+```text
+é
+```
+
+## Case: char
+id: "ace.m1.o04"
+tags: ["char"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ print('界')
+ eprint('😀')
+ return 0
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+界
+```
+
+#### stderr
+
+```text
+😀
+```
+
+## Case: owned-borrow
+id: "ace.m1.o05"
+tags: ["owned-borrow"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ let text Str = "Auto"
+ print(text)
+ eprint(text)
+ return text.len()
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+exit: 4
+
+#### stdout
+
+```text
+Auto
+```
+
+#### stderr
+
+```text
+Auto
+```
+
+## Case: guest-order
+id: "ace.m1.o06"
+tags: ["guest-order"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn helper() int {
+ eprint(8)
+ return 9
+}
+fn main() int {
+ print(helper())
+ print(3)
+ return 0
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+9
+3
+```
+
+#### stderr
+
+```text
+8
+```
+
+## Case: unit-entry
+id: "ace.m1.o07"
+tags: ["unit-entry"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() void {
+ print(7)
+ eprint("unit")
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+7
+```
+
+#### stderr
+
+```text
+unit
+```
+
+## Case: script-value
+id: "ace.m1.o08"
+tags: ["script-value"]
+
+### Auto
+path: "main.at"
+
+````auto
+print(1)
+eprint(2)
+42
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+channel: "value"
+exit: 42
+
+#### stdout
+
+```text
+1
+```
+
+#### stderr
+
+```text
+2
+```
+
+## Case: script-unit
+id: "ace.m1.o09"
+tags: ["script-unit"]
+
+### Auto
+path: "main.at"
+
+````auto
+eprint("done")
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+done
+```
+
+## Case: trap-keeps-output
+id: "ace.m1.o10"
+tags: ["trap-keeps-output"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ print("before")
+ eprint("fail")
+ return 1 / 0
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.div-by-zero"
+
+#### stdout
+
+```text
+before
+```
+
+#### stderr
+
+```text
+fail
+```
+
+## Case: arity-reject
+id: "ace.m1.o11"
+tags: ["arity-reject"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() void {
+ print()
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.console-argument"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: grant-reject
+id: "ace.m1.o12"
+tags: ["grant-reject"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ print(7)
+ return 0
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: []
+stage: "parse"
+code: "host.unauthorized"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: unit-argument-reject
+id: "ace.m1.o13"
+tags: ["unit-argument-reject"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() void {
+ print(print(1))
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.console-argument"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: reserved-reject
+id: "ace.m1.o14"
+tags: ["reserved-reject"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+ let print = 1
+ return print
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+stage: "parse"
+code: "source.console-reserved"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: empty-text-lines
+id: "ace.m1.o15"
+tags: ["empty-text-lines"]
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() void {
+ print("")
+ eprint("")
+}
+````
+
+### Probe av-console
+recipe: "ac-av/console-run-v1"
+entry: "d_main"
+caps: ["console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+
+```
+
+#### stderr
+
+```text
+
+```

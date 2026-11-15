@@ -1,0 +1,54 @@
+## Case: ace-m1-t03-value
+id: "ace.m1.t03.value"
+tags: ["ace-m1", "owned-text", "plan-894"]
+links: ["PLAN-894", "PLAN-870"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let a Str = "ab"
+    let b Str = a.clone()
+    var c Str = b.move
+    c = c + "中"
+    return a.len() * 10 + c.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 23
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+exit: 23
+
+## Case: ace-m1-t05-value
+id: "ace.m1.t05.value"
+tags: ["ace-m1", "owned-text", "plan-894"]
+links: ["PLAN-894", "PLAN-870"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let a str = "A\0B"
+    if a == "A" { return 1 }
+    if a != "A\0B" { return 2 }
+    return 42
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+### Probe av
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+exit: 42

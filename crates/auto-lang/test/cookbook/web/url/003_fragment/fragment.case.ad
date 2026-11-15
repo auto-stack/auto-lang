@@ -1,0 +1,21 @@
+# Legacy cookbook corpus: web/url/003_fragment/fragment
+
+## Case: legacy-web-url-003-fragment-fragment
+id: "legacy.web.url.003_fragment.fragment"
+entry-mode: "program"
+
+### Auto
+path: "fragment.at"
+```auto
+dep url
+use.rs url::Url
+
+fn main() {
+    let url = Url.parse("https://example.com/page#section").unwrap()
+    let fragment = url.fragment()
+    assert(fragment == "section")
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

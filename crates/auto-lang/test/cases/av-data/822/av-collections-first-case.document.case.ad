@@ -1,0 +1,17 @@
+## Case: av-collections-first
+id: "av.collections.first"
+tags: ["av-data-822", "probe"]
+links: ["PLAN-822"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    return 0
+}
+~~~~
+
+### Probe run-collections-fixture
+recipe: "ac-av/collections-run-v1"
+entry: "collections:first-case"

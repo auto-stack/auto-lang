@@ -1,0 +1,40 @@
+# Legacy a2c corpus: 200_auto_cffi_math/auto_cffi_math
+
+## Case: legacy-200-auto-cffi-math-auto-cffi-math
+id: "legacy.200_auto_cffi_math.auto_cffi_math"
+entry-mode: "program"
+
+### Auto
+path: "auto_cffi_math.at"
+```auto
+// Plan 216 Phase 3: Auto C FFI - math functions
+// Tests that use.c <math.h> enables direct calls to sqrt/abs
+// without needing explicit fn.c declarations.
+use.c <math.h>
+
+fn main() {
+    let x = sqrt(4.0)
+    let y = abs(-10)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### auto_cffi_math.expected.c
+```c
+#include "auto_cffi_math.h"
+
+int main(void) {
+    unknown x = sqrt(4.0);
+    unknown y = abs(-10);
+    return 0;
+}
+```
+
+#### auto_cffi_math.expected.h
+```c
+#pragma once
+
+#include <math.h>
+```

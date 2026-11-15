@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: science/mathematics/trigonometry/001_tan_sin_cos/tan_sin_cos
+
+## Case: legacy-science-mathematics-trigonometry-001-tan-sin-cos-tan-sin-cos
+id: "legacy.science.mathematics.trigonometry.001_tan_sin_cos.tan_sin_cos"
+entry-mode: "program"
+
+### Auto
+path: "tan_sin_cos.at"
+```auto
+fn main() {
+    let x = 6.0
+
+    let a = x.tan()
+    let b = x.sin() / x.cos()
+
+    // Verify tan(x) and sin(x)/cos(x) are both non-zero (computation works)
+    assert(a != 0.0)
+    assert(b != 0.0)
+    // TODO: float .abs() broken in nanbox mode — enable when fixed:
+    // assert((a - b).abs() < 0.001)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

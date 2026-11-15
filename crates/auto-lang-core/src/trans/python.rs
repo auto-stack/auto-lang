@@ -2678,9 +2678,11 @@ mod tests {
         let name = name.as_str();
 
         let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let src_path = format!("../auto-lang/test/a2p/{}/{}.at", case, name);
-        let src_path = d.join(src_path);
-        let src = read_to_string(src_path.as_path())?;
+        // PLAN-1062 T-14: payload comes from the migration document.
+        let case_dir = d.join(format!("../auto-lang/test/a2p/{}", case));
+        let doc = crate::legacy_doc_for_trans::load_case(&case_dir, name)
+            .map_err(|e| crate::error::AutoError::Msg(e.into()))?;
+        let src = doc.source_text().to_string();
 
         // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
         // Plan 091: Universe removed
@@ -2693,9 +2695,14 @@ mod tests {
         trans.trans(ast, &mut sink)?;
         let py_code = sink.done()?;
 
-        let expected_path = format!("../auto-lang/test/a2p/{}/{}.expected.py", case, name);
-        let expected_path = d.join(expected_path);
-        let expected = read_to_string(expected_path.as_path())?;
+        let expected = doc
+            .artifact(".expected.py")
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .ok_or_else(|| {
+                crate::error::AutoError::Msg(
+                    format!("a2p case {case}: golden missing from migration doc"),
+                )
+            })?;
 
         if py_code != expected.as_bytes() {
             let gen_path = format!("../auto-lang/test/a2p/{}/{}.wrong.py", case, name);

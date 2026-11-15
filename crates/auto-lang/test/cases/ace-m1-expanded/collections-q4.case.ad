@@ -1,0 +1,301 @@
+# PLAN-941 original twenty collections sources; independent original oracles.
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l01"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L01.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l02"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L02.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l03"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L03.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 0 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 0 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l04"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L04.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l05"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L05.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l06"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L06.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: { stage: "run", code: "av.trap.list-index" } } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: { stage: "run", code: "mn.trap.list-index" } } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.l07"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--L07.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v01"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V01.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v02"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V02.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v03"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V03.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 3 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 3 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v04"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V04.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v05"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V05.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v06"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V06.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.v07"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--V07.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.lstr864"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--LSTR864.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 51 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 51 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.fin864a"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--FIN864A.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.fin864b"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--FIN864B.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 53 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 53 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.n889-list-variant"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--N889-list-variant.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.n889-nested-variant"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--N889-nested-variant.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.collq4.n889-optional-variant"
+ tags: ["ace-m1", "q4", "collections", "plan-941"]
+ links: ["PLAN-941", "PLAN-926"]
+ source: { file: "ace-m1-expanded/composite-src/collections-926--N889-optional-variant.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```

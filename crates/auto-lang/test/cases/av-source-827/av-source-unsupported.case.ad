@@ -1,0 +1,51 @@
+# PLAN-827 V-05: unsupported inputs at the scalar source front door —
+# real diagnosed rejections, no old-VM fallback, no host side effects,
+# and an unsupported program NEVER counts as a program success.
+# Empirically frozen codes (T-04, release worker @369e1c349):
+#   print        -> frontend:source.unsupported (-> parse stage)
+#   List literal -> frontend:source.syntax      (-> parse stage)
+# The wrong-entry face (mir-lower:lower.entry) lives in the Rust probe
+# tests with the precise stage/code — the probe adapter's declarative
+# stage vocabulary (parse/resolve/typecheck/run) does not carry the
+# verify-stage face, and extending it is a shared-surface change this
+# plan does not make (T-01 reuse ruling).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.source.unsupported-print"
+  tags: ["av-source-827", "probe", "admission"]
+  links: ["PLAN-827"]
+  source: { text: "fn main() int {\n    print(\"hi\")\n    return 0\n}\n", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-unsupported-print", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "parse", code: "source.unsupported" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.source.unsupported-list"
+  tags: ["av-source-827", "probe", "admission"]
+  links: ["PLAN-827"]
+  source: { text: "fn main() int {\n    let xs = [1, 2, 3]\n    return xs.len()\n}\n", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-unsupported-list", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "parse", code: "source.syntax" } } }
+  ]
+}
+```

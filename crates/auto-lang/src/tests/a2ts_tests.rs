@@ -27,9 +27,10 @@ fn test_a2ts_impl(case: &str) -> AutoResult<()> {
     let name = name.as_str();
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src_path = format!("test/a2ts/{}/{}.at", case, name);
-    let src_path = d.join(src_path);
-    let src = fs::read_to_string(src_path.as_path())?;
+    // PLAN-1062 T-14: payload comes from the migration document.
+    let case_dir = d.join(format!("test/a2ts/{}", case));
+    let doc = crate::tests::legacy_doc::load_case(&case_dir, name)?;
+    let src = doc.source_text().to_string();
 
     let _scope = crate::scope_manager::ScopeManager::new();
     let mut parser = Parser::from(src.as_str());
@@ -39,9 +40,10 @@ fn test_a2ts_impl(case: &str) -> AutoResult<()> {
     trans.trans(ast, &mut sink)?;
     let ts_code = sink.done()?;
 
-    let expected_path = format!("test/a2ts/{}/{}.expected.ts", case, name);
-    let expected_path = d.join(expected_path);
-    let expected = fs::read_to_string(expected_path.as_path())?;
+    let expected = doc
+        .artifact(".expected.ts")
+        .map(|b| String::from_utf8_lossy(b).to_string())
+        .ok_or_else(|| format!("a2ts case {case}: golden missing from migration doc"))?;
 
     let ts_string = String::from_utf8_lossy(&ts_code);
     if ts_string != expected {

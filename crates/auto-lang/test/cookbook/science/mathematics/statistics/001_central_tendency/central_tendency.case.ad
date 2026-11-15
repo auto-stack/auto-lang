@@ -1,0 +1,40 @@
+# Legacy cookbook corpus: science/mathematics/statistics/001_central_tendency/central_tendency
+
+## Case: legacy-science-mathematics-statistics-001-central-tendency-central-tendency
+id: "legacy.science.mathematics.statistics.001_central_tendency.central_tendency"
+entry-mode: "program"
+
+### Auto
+path: "central_tendency.at"
+```auto
+fn mean(data []int) ?f64 {
+    let count = data.len()
+    if count == 0 {
+        return None
+    }
+    var sum = 0
+    for val in data {
+        sum += val
+    }
+    Some(sum.as(f64) / count.as(f64))
+}
+
+fn main() {
+    let data = [3, 1, 6, 1, 5, 8, 1, 8, 10, 11]
+
+    // Verify computation of sum and count
+    var sum = 0
+    for val in data {
+        sum += val
+    }
+    let count = data.len()
+    assert(sum == 54)
+    assert(count == 10)
+
+    // TODO: .as(f64) + Some() combination broken in nanbox VM
+    // Enable when fixed: let m = mean(data).unwrap(); assert((m - 5.4).abs() < 0.001)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

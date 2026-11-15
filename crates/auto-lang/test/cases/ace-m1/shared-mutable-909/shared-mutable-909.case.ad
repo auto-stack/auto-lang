@@ -1,0 +1,155 @@
+# PLAN-909 T-06: shared mutable scalar captures — the dedicated corpus.
+# Positives run the real closures source recipe (fresh / body-edit / restart);
+# S07/S08 are the named unsupported-domain negatives. The parent oracle in
+# crates/auto-lang-core (CLOSURES_SOURCE_CASES) holds independent values.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s01-av909"
+  tags: ["ace-m1", "closures", "value", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S01.at", syntax: "auto", path: "S01.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s01-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S01:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 43 } },
+    { id: "av-s01-closures-source-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S01:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "base = base + n", to: "base = base + n + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 46 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s02-av909"
+  tags: ["ace-m1", "closures", "value", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S02.at", syntax: "auto", path: "S02.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s02-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S02:fresh", session: "av_closures_909_s02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-s02-closures-source-restart", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S02:restart", session: "av_closures_909_s02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-s02-closures-source-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S02:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "x = x + n", to: "x = x + n + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 44 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s03-av909"
+  tags: ["ace-m1", "closures", "value", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S03.at", syntax: "auto", path: "S03.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s03-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S03:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av-s03-closures-source-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S03:body-edit" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "count = count + n", to: "count = count + n + 1" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 45 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s04-av909"
+  tags: ["ace-m1", "closures", "value", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S04.at", syntax: "auto", path: "S04.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s04-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S04:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 44 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s05-av909"
+  tags: ["ace-m1", "closures", "value", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S05.at", syntax: "auto", path: "S05.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s05-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S05:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 82 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s06-av909"
+  tags: ["ace-m1", "closures", "value", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S06.at", syntax: "auto", path: "S06.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s06-closures-source-fresh", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S06:fresh" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 84 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s07-av909"
+  tags: ["ace-m1", "closures", "diagnostic", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S07.at", syntax: "auto", path: "S07.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s07-closures-source-reject", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S07" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "resolve", code: "source.closure-shared-mutable" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.s08-av909"
+  tags: ["ace-m1", "closures", "diagnostic", "plan-909"]
+  links: ["PLAN-909"]
+  source: { file: "src/S08.at", syntax: "auto", path: "S08.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s08-closures-source-reject", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S08" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "verify", code: "verify.immutable-write" } } }
+  ]
+}
+```

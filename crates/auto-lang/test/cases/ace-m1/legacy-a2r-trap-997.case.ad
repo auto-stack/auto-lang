@@ -1,0 +1,74 @@
+# PLAN-997 legacy A2R trap certification extension — the four H-06 trap
+# sources (B13/B14/B15/B20) certified in the trap domain: the EXPLICIT
+# `legacy-a2r.checked-i32/1` profile emits source-int arithmetic checked
+# at the i32 domain at operation time; a violation is a typed stderr
+# event (auto.trap:<kind>:<op>) plus a controlled exit(70).
+# a2r-ONLY by design: this suite is the daily zero-spawn face (emit +
+# byte-compare against the G04-reviewed trap goldens at oracle/trap/);
+# the real compile+run certification is the ace-certify --trap tool
+# (never this suite), and the value domain (ace.m1.cert/1) is untouched.
+# Default-profile bytes for every value cell remain frozen elsewhere.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rtrap.b13"
+  tags: ["ace-m1", "a2r-trap-997"]
+  links: ["PLAN-997"]
+  source: { file: "src/B13.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-trap-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_b13", int_profile: "legacy-a2r.checked-i32/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b13.rs", file: "oracle/trap/m1_b13.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rtrap.b14"
+  tags: ["ace-m1", "a2r-trap-997"]
+  links: ["PLAN-997"]
+  source: { file: "src/B14.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-trap-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_b14", int_profile: "legacy-a2r.checked-i32/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b14.rs", file: "oracle/trap/m1_b14.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rtrap.b15"
+  tags: ["ace-m1", "a2r-trap-997"]
+  links: ["PLAN-997"]
+  source: { file: "src/B15.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-trap-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_b15", int_profile: "legacy-a2r.checked-i32/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b15.rs", file: "oracle/trap/m1_b15.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rtrap.b20"
+  tags: ["ace-m1", "a2r-trap-997"]
+  links: ["PLAN-997"]
+  source: { file: "src/B20.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-trap-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_b20", int_profile: "legacy-a2r.checked-i32/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b20.rs", file: "oracle/trap/m1_b20.rs", compare: "bytes" } ] } }
+  ]
+}
+```

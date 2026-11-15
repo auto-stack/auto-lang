@@ -1,0 +1,38 @@
+# AC semantic probe: persisted cache roundtrip (PLAN-796 T-06, executed)
+
+status: executed — cold publish, REAL worker process restart (the
+`restart` step ends the session; the next query runs in a FRESH worker
+process against the same store root), then a body edit flips the key.
+The no-compute-on-hit control is a declarable oracle
+(compute_calls: 0).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ac.sema.cache-roundtrip"
+  tags: ["ac-semantics", "probe"]
+  source: { file: "src/cache-roundtrip.at", syntax: "auto", path: "cache-roundtrip.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "roundtrip", adapter: "probe", action: "run",
+      options: {
+        recipe: "sema/query-v1",
+        sema: { package: "probe", module: "cache-roundtrip", kind: "infer-body", fn: "main" },
+        steps: [
+          { op: "query" },
+          { op: "restart" },
+          { op: "query" },
+          { op: "edit-source", from: "x * 2", to: "x * 3" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 1,
+          stages_include: ["infer", "publish"],
+          bindings_file: "oracle/ac.sema.cache-roundtrip.bindings.json" },
+        { cache: "hit", compute_calls: 0 },
+        { cache: "published", compute_calls: 1 }
+      ] } }
+  ]
+}
+```

@@ -1,0 +1,26 @@
+# PLAN-824 V-01 first case (formal path, frozen fixture): the frozen
+# dynamic fixture `first-case` (programmatic typed input, untrusted
+# builder output admitted by the real verify/ABC gates in the worker)
+# through the real `ac-av/dynamic-run-v1` recipe. The PARENT judges the
+# canonical result face + live=0 + alloc/free order against its OWN
+# frozen table (the worker never sees expected outcomes).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.dynamic.first"
+  tags: ["av-data-824", "probe"]
+  links: ["PLAN-824"]
+  source: { file: "src/first-case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-dynamic-fixture", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/dynamic-run-v1",
+        av: { entry: "dynamic:first-case" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```

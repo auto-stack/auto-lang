@@ -1,0 +1,41 @@
+# PLAN-941: exact old B08/B11 bytes and approved oracle 7.
+# B08 preserves outer x=7; B11 binds a=10,b=3, so 10-3=7.
+# Old legacy-AVM differences and A2R certification remain separate.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.legacy941.b08"
+  tags: ["ace-m1", "legacy-required", "plan-941"]
+  links: ["PLAN-941"]
+  source: { file: "src/legacy-B08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.legacy941.b11"
+  tags: ["ace-m1", "legacy-required", "plan-941"]
+  links: ["PLAN-941"]
+  source: { file: "src/legacy-B11.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 7 } }
+  ]
+}
+```

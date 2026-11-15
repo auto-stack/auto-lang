@@ -1,0 +1,90 @@
+# PLAN-964 T-02/T-08 — permanent M2 dynamic corpus: object literals,
+# dynamic string-key read/write, nil/null, callable values in objects,
+# generic closure capture + HOF, FStr interpolation. The same sources run
+# on the AV lane (recipe ac-av/aggregates-source-run-v1 for object/nil/
+# fstr cases and ac-av/closures-source-run-v1 for closure cases) with
+# hand-computed byte oracles (exit codes). The native/a2r/a2c legs of the
+# same sources run in the crate-level four-end tests (PLAN-964 §6 V rows)
+# per the original support domain (mn: closures Move/Clone + FStr
+# TextConcat/display; a2r/a2c: FStr only — objects/dynamic are outside
+# their domains).
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.map-bracket-write", tags: ["ace-m2", "dynamic", "object", "plan-964"],
+  source: { file: "src/map_bracket_write.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-object", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 600 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.closure-capture-hof", tags: ["ace-m2", "dynamic", "closures", "plan-964"],
+  source: { file: "src/closure_capture_hof.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-closures", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:D01" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 369 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.fstring", tags: ["ace-m2", "dynamic", "fstr", "plan-964"],
+  source: { file: "src/fstring.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-fstr", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 42 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.object-callable", tags: ["ace-m2", "dynamic", "callable", "plan-964"],
+  source: { file: "src/object_callable.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-closures", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:D02" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 9 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.nil-and-alias", tags: ["ace-m2", "dynamic", "nil", "plan-964"],
+  source: { file: "src/nil_and_alias.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-object", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 20 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.object-missing", tags: ["ace-m2", "dynamic", "negative", "plan-964"],
+  source: { file: "src/object_missing.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-object", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", message: { contains: "av.dyn.object-missing" } } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.object-mixed", tags: ["ace-m2", "dynamic", "negative", "plan-964"],
+  source: { file: "src/object_mixed.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-object", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.object-elem" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p964.nil-op", tags: ["ace-m2", "dynamic", "negative", "plan-964"],
+  source: { file: "src/nil_op.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-object", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.nil-op" } } }]
+}
+```

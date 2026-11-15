@@ -1,0 +1,193 @@
+# PLAN-941: original ten text/char sources and independent oracle.
+# Native trap rows bind exit 70 AND the frozen text-runtime status/cleanup
+# event bytes. The strict reader also decodes RT-FAIL to its named trap.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_len_scalars_bytes"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_len_scalars_bytes.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 506 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 506 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_nul_data"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_nul_data.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 33 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 33 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_eq_full_bytes"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_eq_full_bytes.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_char_at"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_char_at.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 233 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 233 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_char_at_negative"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_char_at_negative.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.str-index" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70, stderr: { text: "LIT len=3\nLIT id=1\nRT-FAIL code=-10\nFREE id=1\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_slice_oob"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_slice_oob.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.str-index" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70, stderr: { text: "LIT len=6\nLIT id=1\nRT-FAIL code=-10\nFREE id=1\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_slice_scalars"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_slice_scalars.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_codepoint_ok"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_codepoint_ok.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 20013 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 20013 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_codepoint_surrogate"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_codepoint_surrogate.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.char-invalid" } } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70, stderr: { text: "FROM-CP cp=55296\nRT-FAIL code=-8\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.textq4.v03_concat_clone"
+  tags: ["ace-m1", "q4", "text", "plan-941"]
+  links: ["PLAN-941", "PLAN-925"]
+  source: { file: "composite-src/text-char-925--v03_concat_clone.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 112 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 112 } }
+  ]
+}
+```

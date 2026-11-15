@@ -1,0 +1,30 @@
+# PLAN-821 R2-F08': the mut record param through the formal recipe — the
+# 782 ABI-E exclusive write-back borrow: the callee's p.n=8 is visible to
+# the CALLER after the call (oracle r*100+a.n = 8*100+8 = 808).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.owned.mut-record-writeback"
+  tags: ["av-data-821", "probe", "r2"]
+  links: ["PLAN-821"]
+  source: { text: "type Note { body Str; n int }
+fn set(mut p Note) int { p.n = 8; return p.n }
+fn main() int {
+    var a Note = Note { body: \"A\", n: 7 }
+    let r int = set(a.mut)
+    return r * 100 + a.n
+}
+", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-owned-mut-writeback", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/owned-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 808 } }
+  ]
+}
+```

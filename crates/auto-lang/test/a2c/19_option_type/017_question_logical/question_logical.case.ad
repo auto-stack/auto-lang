@@ -1,0 +1,28 @@
+# Legacy a2c corpus: 19_option_type/017_question_logical/question_logical
+
+## Case: legacy-19-option-type-017-question-logical-question-logical
+id: "legacy.19_option_type.017_question_logical.question_logical"
+entry-mode: "program"
+
+### Auto
+path: "question_logical.at"
+```auto
+fn test_logical() ?bool {
+    true && false
+}
+
+fn main() {
+    let result = test_logical()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_logical.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+struct MayBool test_question_logical(void);
+```

@@ -1047,28 +1047,33 @@ fn decode_one_case(
                     .as_ref()
                     .is_some_and(|rs| rs.section_line == sh.line);
                 if is_this {
-                    let rs = rust_section.take().expect("checked above");
+                    let mut rs = rust_section.take().expect("checked above");
                     let mut artifacts = Vec::new();
                     if rs.subsections.is_empty() {
-                        let direct = rs.direct.ok_or_else(|| AuthorError {
-                            line: rs.section_line,
-                            message: "### Rust 需要一个 rust 围栏或 #### <产物路径> 小节"
-                                .to_string(),
-                        })?;
-                        let stem = module_name
-                            .clone()
-                            .unwrap_or_else(|| path_stem(&source_path));
-                        artifacts.push(ArtifactExpect {
-                            path: format!("{}.rs", stem),
-                            payload: ArtifactPayload::Inline {
-                                bytes: direct.bytes,
-                                open_line: direct.open_line,
-                                close_line: direct.close_line,
+                        let direct = match rs.direct {
+                            Some(d) => d,
+                            None => DirectRust {
+                                bytes: Vec::new(),
+                                open_line: 0,
+                                close_line: None,
                             },
-                            compare: Compare::Bytes,
-                        });
+                        };
+                        if !direct.bytes.is_empty() {
+                            let stem = module_name
+                                .clone()
+                                .unwrap_or_else(|| path_stem(&source_path));
+                            artifacts.push(ArtifactExpect {
+                                path: format!("{}.rs", stem),
+                                payload: ArtifactPayload::Inline {
+                                    bytes: direct.bytes,
+                                    open_line: direct.open_line,
+                                    close_line: direct.close_line,
+                                },
+                                compare: Compare::Bytes,
+                            });
+                        }
                     } else {
-                        for sub in rs.subsections {
+                        for sub in std::mem::take(&mut rs.subsections) {
                             artifacts.push(ArtifactExpect {
                                 path: sub.path,
                                 payload: ArtifactPayload::Inline {
@@ -1088,6 +1093,31 @@ fn decode_one_case(
                         ..Default::default()
                     };
                     let mut expect = expect_success();
+                    // PLAN-1062 T-15: a fence-less Rust section is the
+                    // legacy smoke face (transpile must succeed; no golden).
+                    if artifacts.is_empty() && rs.subsections.is_empty() {
+                        expect.completion = Completion::Success;
+                        push_check(
+                            &mut checks,
+                            &mut check_spans,
+                            DocCheckSpan {
+                                id: id.clone(),
+                                section_line: rs.section_line,
+                                section: "Rust".into(),
+                            },
+                            CheckSpec {
+                                id,
+                                adapter: Adapter::A2r,
+                                action: Action::Emit,
+                                tier: rs.tier.clone(),
+                                options,
+                                expect,
+                                product_from: None,
+                                skip: None,
+                            },
+                        )?;
+                        continue;
+                    }
                     expect.artifacts = artifacts;
                     push_check(
                         &mut checks,
@@ -2958,10 +2988,12 @@ fn decode_h4_subsection(
     let fences = direct_fences(doc, sh.line, next_head_line);
     match parent_title {
         "Rust" => {
-            if fences.len() != 1 || fences[0].language != "rust" {
+            // PLAN-1062 T-14: artifact subsections carry any payload
+            // language (rust/c/h/python/ts/…) — the bytes are the oracle.
+            if fences.len() != 1 {
                 return err(
                     sh.line,
-                    format!("#### {:?} 需要恰好一个 rust 围栏", sh.text),
+                    format!("#### {:?} 需要恰好一个围栏", sh.text),
                 );
             }
             let attrs = collect_leading_attrs(doc, lines, sh.line, &["final-newline", "compare"])?;

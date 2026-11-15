@@ -1,0 +1,26 @@
+# PLAN-824 T-11 D02 formal face (frozen fixture): the `take-probe` fixture
+# packs a Note, probes it with the WRONG type (DYN_IS List<Note> — false,
+# never a trap), then takes it with the RIGHT type and reads n → 7. The
+# SUCCESS result proves the failed probe left the container takeable (the
+# wrong-type TAKE trap face itself is the take-mismatch probe fixture).
+# Parent-side judgement against the frozen DYNAMIC_CASES row.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.dynamic.take_probe"
+  tags: ["av-data-824", "probe"]
+  links: ["PLAN-824"]
+  source: { file: "src/first-case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-dynamic-take-probe", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/dynamic-run-v1",
+        av: { entry: "dynamic:take-probe" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```

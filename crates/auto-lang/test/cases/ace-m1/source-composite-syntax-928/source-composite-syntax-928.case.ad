@@ -1,0 +1,204 @@
+# PLAN-928 T-09 — 集合/闭包复合语法文件化面（九 profile 的后两个）。
+#
+# V-01（parse/无损重建 + profile 门反控）：复合冻结源经 `auto-source@<p>`
+# 裁剪语法解析，completion=success 且重建 oracle 逐字节相同；**门反控**
+# ——collections 复合源在 closures 语法（顶层无 type/enum 项，T-04 合同）
+# 与 closures 复合源在 collections 语法（无 lambda/函数类型）都必须 parse
+# 失败：配置真实改变语法，未知构造不降 Any/Raw 成功。
+#
+# V-02（原适用真实值腿，字节原样副本）：L04/L05/K02/K06/S02 走 AV 源
+# 执行；L04/L05 加 native collections。Rust 腿由 case-a2r-hir-collections-904
+# 组、C 腿由 a2c-hir-collections-926 golden/certify、native closures 腿由
+# native-closures-924 组（其父表按 check 绑定 K02-924 冻结语料，含 fault/R05
+# 轴）在**相同冻结语料字节**上承载——不在本 suite 复制 goldens/注册行。
+#
+# V-09（同文 lambda 异 owner 的独立语义 oracle）：`same_text_owners.at`
+# 两 owner 各含**字节相同**的 lambda 文本，捕获各自 x=1/x=2——u1()=11、
+# u2()=12，main 退出 1112；跨 owner 串用/合并捕获必偏离（1212/212 等）。
+# 语法层身份独立（不合并、编辑不串扰）由固定组 ace-source 的
+# source_units_928 反控承载。
+#
+# 诊断 parity（首诊断四元组逐字节）由 ace-source 的差分扫描
+# （t04_corpus_sweep 162/162）与 conformance 承载——两个 oracle 相互独立。
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.collections-parse"
+  tags: ["ace-m1", "source-composite", "plan-928"]
+  links: ["PLAN-928"]
+  source: { file: "oracle/collections_face.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@collections" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/collections_face.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.closures-parse"
+  tags: ["ace-m1", "source-composite", "plan-928"]
+  links: ["PLAN-928"]
+  source: { file: "oracle/closures_face.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@closures" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/closures_face.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.same-text-parse"
+  tags: ["ace-m1", "source-composite", "plan-928"]
+  links: ["PLAN-928"]
+  source: { file: "src/same_text_owners.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@closures" },
+      expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "src/same_text_owners.at" } ] } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.gate-collections-under-closures"
+  tags: ["ace-m1", "source-composite", "plan-928", "negative"]
+  links: ["PLAN-928"]
+  source: { file: "oracle/collections_face.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-gate", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@closures" },
+      expect: { completion: { stage: "parse", code: "syntax.parse" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.gate-closures-under-collections"
+  tags: ["ace-m1", "source-composite", "plan-928", "negative"]
+  links: ["PLAN-928"]
+  source: { file: "oracle/closures_face.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "parse-gate", adapter: "syntax", action: "parse",
+      options: { grammar: "auto-source@collections" },
+      expect: { completion: { stage: "parse", code: "syntax.parse" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.av-l04"
+  tags: ["ace-m1", "source-composite", "plan-928", "value"]
+  links: ["PLAN-928", "PLAN-864"]
+  source: { file: "src/L04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l04", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "mn-l04", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.av-l05"
+  tags: ["ace-m1", "source-composite", "plan-928", "value"]
+  links: ["PLAN-928", "PLAN-864"]
+  source: { file: "src/L05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l05", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "mn-l05", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-collections-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.av-k02"
+  tags: ["ace-m1", "source-composite", "plan-928", "value"]
+  links: ["PLAN-928", "PLAN-865"]
+  source: { file: "src/K02.at", syntax: "auto", path: "K02.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k02", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.av-k06"
+  tags: ["ace-m1", "source-composite", "plan-928", "value"]
+  links: ["PLAN-928", "PLAN-909"]
+  source: { file: "src/K06.at", syntax: "auto", path: "K06.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-k06", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:K06" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.av-s02"
+  tags: ["ace-m1", "source-composite", "plan-928", "value"]
+  links: ["PLAN-928", "PLAN-909"]
+  source: { file: "src/S02.at", syntax: "auto", path: "S02.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-s02", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:S02" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.source-composite-928.av-same-text-owners"
+  tags: ["ace-m1", "source-composite", "plan-928", "value"]
+  links: ["PLAN-928"]
+  source: { file: "src/same_text_owners.at", syntax: "auto", path: "same_text_owners.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-u1-same-text", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/closures-source-run-v1", av: { entry: "source:U1" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1112 } },
+  ]
+}
+```

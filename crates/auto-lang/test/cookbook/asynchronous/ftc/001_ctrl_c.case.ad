@@ -1,0 +1,30 @@
+# Legacy cookbook corpus: asynchronous/ftc/001_ctrl_c
+
+## Case: legacy-asynchronous-ftc-001-ctrl-c
+id: "legacy.asynchronous.ftc.001_ctrl_c"
+entry-mode: "program"
+
+### Auto
+path: "001_ctrl_c.at"
+```auto
+// Ctrl-C signal handling demo (simulated)
+
+fn fetch_data() str {
+    return "data"
+}
+
+fn main() {
+    let result = fetch_data()
+    print(f"Got: ${result}")
+    print("Shutting down...")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+Got: data
+Shutting down...
+```

@@ -1,0 +1,57 @@
+# PLAN-939 T-11 (D-939-CE-1 bridge arm): the CE direction — Auto source
+# EXPORTED through the C library fileset and EXECUTED by independent
+# hand-audited C callers (the S01 text-view and S02 record lanes the
+# §5.8 matrix marks "CE 必需"). The certify-path arm (exported resource
+# functions inside the source-import certification) stays the D-960-1
+# named successor — the 934 signature-facts vocabulary is not extended
+# here.
+
+# S01 CE: cold publish (facts+plan+fragment+library), pure second-query
+# hit (zero producers), exit 0 = every hand-computed byte-length oracle
+# passed (NUL as data, multibyte, decomposed accent, len0).
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d3.ce-text-view"
+  tags: ["ca-d3", "probe", "certify"]
+  source: { file: "src/ce-text-view.atomdata", syntax: "atom-data", path: "ce-text-view.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "certify", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "source" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", exit: 0, probe: [
+        { cache: "published", stages_include: ["bridge"] },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# S02 CE: the record lane — the caller's compile-time layout asserts
+# (sizeof/alignof/offsetof) plus the mut writeback and the §5.3
+# failure-atomicity oracle (overflow keeps the caller's bytes).
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace-ca-d3.ce-record"
+  tags: ["ca-d3", "probe", "certify"]
+  source: { file: "src/ce-record.atomdata", syntax: "atom-data", path: "ce-record.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "certify", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/ca-d1-bridge-v1",
+        abi: { leg: "source" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", exit: 0, probe: [
+        { cache: "published", stages_include: ["bridge"] },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```

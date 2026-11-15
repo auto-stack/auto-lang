@@ -1,0 +1,26 @@
+# PLAN-820 T-02: the av.data/1 first case — record source through the
+# data-profile pipeline (Checked HIR → data MIR → AVAD ABC → AV) via the
+# formal AutoDown recipe ac-av/data-run-v1. Worker: av_probe_worker
+# case-serve (avworker/1, data branch); judgement parent-side. Independent
+# hand-audited oracle: the nested field write lands on the original root
+# and main returns 42.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.data.first"
+  tags: ["ac-av", "probe", "av-data"]
+  links: ["PLAN-820"]
+  source: { file: "av/data/first_case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-data-first", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```

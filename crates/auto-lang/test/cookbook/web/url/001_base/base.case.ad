@@ -1,0 +1,20 @@
+# Legacy cookbook corpus: web/url/001_base/base
+
+## Case: legacy-web-url-001-base-base
+id: "legacy.web.url.001_base.base"
+entry-mode: "program"
+
+### Auto
+path: "base.at"
+```auto
+fn main() {
+    let u = url.parse("https://example.com/path?query=1")
+    let scheme = u.scheme()
+    assert(scheme == "https")
+    let path = u.path()
+    assert(path == "/path")
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

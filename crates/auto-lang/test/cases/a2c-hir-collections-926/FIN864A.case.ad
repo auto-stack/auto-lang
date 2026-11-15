@@ -1,0 +1,33 @@
+# PLAN-926 a2c-hir collections - FIN864A (value 42; for-in-sum). The golden four-file C
+# set (main.c / a2x_c_coll_runtime.h / generated.c + manifest.json sidecar)
+# was frozen from a real worker emission (`daily-emit-c`, profile
+# collections) and re-verified deterministic across nonces; the
+# certification leg (real C compile+run of the actual set AND the
+# independent hand-written reference-FIN864A.c against the frozen oracle,
+# strict ace.a2c-hir.collections.cert/1 with the execution-config
+# identity) is the explicit certify axis, not this daily check.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "a2c-hir-collections-926.fin864a"
+  tags: ["a2c-hir", "collections", "for-in-sum"]
+  links: ["PLAN-926", "PLAN-904", "PLAN-864", "PLAN-889"]
+  source: { file: "src/FIN864A.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2x-emit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-a2c/hir-collections-emit-v1",
+        a2x_hir: { profile: "collections", entry: "main", caps: [] },
+        steps: [{ op: "run" }]
+      },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-FIN864A/main.c", compare: "bytes" },
+        { path: "a2x_c_coll_runtime.h", file: "golden-FIN864A/a2x_c_coll_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-FIN864A/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-FIN864A/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

@@ -1,0 +1,108 @@
+## Case: ace-m1-original-scalar-c01
+id: "ace.m1.original-scalar.c01"
+tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn helper(a int) int { return a * 2 }
+fn main() int { return helper(21) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+## Case: ace-m1-original-scalar-c02
+id: "ace.m1.original-scalar.c02"
+tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return -2147483648 / -1 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.div-overflow"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+## Case: ace-m1-original-scalar-c03
+id: "ace.m1.original-scalar.c03"
+tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn leaf(x int) int { return x * 3 }
+fn mid(x int) int { return leaf(x) + 1 }
+fn main() int { return mid(20) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 61
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 61
+
+## Case: ace-m1-original-scalar-named-01
+id: "ace.m1.original-scalar.named-01"
+tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(a int, b int) int { return a*10+b }
+fn main() int { return f(b:mark_b()+1,a:mark_a()*2) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 23
+
+#### trace
+final-newline: false
+
+~~~~text
+ba
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 23
+
+#### stderr
+final-newline: false
+
+~~~~text
+ba
+~~~~

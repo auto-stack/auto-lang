@@ -146,17 +146,15 @@ fn test_a2c_impl(case: &str) -> AutoResult<()> {
 
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    let src_path = format!("test/a2c/{}/{}.at", case, name);
-    let src_path = d.join(src_path);
-    let src = read_to_string(src_path.as_path())?;
+    // PLAN-1062 T-14: payload comes from the migration document.
+    let case_dir = d.join(format!("test/a2c/{}", case));
+    let doc = crate::tests::legacy_doc::load_case(&case_dir, name)?;
+    let src = doc.source_text().to_string();
+    let is_error_test = doc.artifact(".expected.error.log").is_some();
 
-    // Check if this is an error test
-    let err_path = format!("test/a2c/{}/{}.expected.error.log", case, name);
-    let err_path = d.join(err_path);
-
-    if err_path.is_file() {
+    if is_error_test {
         // This is an error test - check that transpilation fails with expected error
-        let _expected_error = read_to_string(err_path.as_path())?;
+        // (the error-log oracle rides the doc as an artifact).
 
         let result = transpile_c(name, &src);
 
@@ -178,22 +176,16 @@ fn test_a2c_impl(case: &str) -> AutoResult<()> {
             }
         }
     } else {
-        // Normal test - check generated code
-        let exp_path = format!("test/a2c/{}/{}.expected.c", case, name);
-        let exp_path = d.join(exp_path);
-        let expected_src = if !exp_path.is_file() {
-            "".to_string()
-        } else {
-            read_to_string(exp_path.as_path())?
-        };
+        // Normal test - check generated code (goldens ride the doc)
+        let expected_src = doc
+            .artifact(".expected.c")
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_default();
 
-        let exph_path = format!("test/a2c/{}/{}.expected.h", case, name);
-        let exph_path = d.join(exph_path);
-        let expected_header = if !exph_path.is_file() {
-            "".to_string()
-        } else {
-            read_to_string(exph_path.as_path())?
-        };
+        let expected_header = doc
+            .artifact(".expected.h")
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_default();
 
         let mut ccode = transpile_c(name, &src)?;
 

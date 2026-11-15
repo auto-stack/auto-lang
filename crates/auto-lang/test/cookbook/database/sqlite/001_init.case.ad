@@ -1,0 +1,20 @@
+# Legacy cookbook corpus: database/sqlite/001_init
+
+## Case: legacy-database-sqlite-001-init
+id: "legacy.database.sqlite.001_init"
+entry-mode: "program"
+
+### Auto
+path: "001_init.at"
+```auto
+// SQLite init demo (simulated)
+
+fn main() {
+    print("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")
+    print("Table created successfully")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

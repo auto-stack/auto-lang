@@ -1,0 +1,24 @@
+# Legacy cookbook corpus: science/mathematics/linear_algebra/003_multiply_svm/multiply_svm
+
+## Case: legacy-science-mathematics-linear-algebra-003-multiply-svm-multiply-svm
+id: "legacy.science.mathematics.linear_algebra.003_multiply_svm.multiply_svm"
+entry-mode: "program"
+
+### Auto
+path: "multiply_svm.at"
+```auto
+fn main() {
+    let scalar = 2
+    let v = [1, 2, 3]
+    var result = [0, 0, 0]
+    for i in 0..3 {
+        result[i] = scalar * v[i]
+    }
+    assert(result[0] == 2)
+    assert(result[1] == 4)
+    assert(result[2] == 6)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

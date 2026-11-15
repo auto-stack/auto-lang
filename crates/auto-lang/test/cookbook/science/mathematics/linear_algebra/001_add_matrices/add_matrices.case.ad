@@ -1,0 +1,27 @@
+# Legacy cookbook corpus: science/mathematics/linear_algebra/001_add_matrices/add_matrices
+
+## Case: legacy-science-mathematics-linear-algebra-001-add-matrices-add-matrices
+id: "legacy.science.mathematics.linear_algebra.001_add_matrices.add_matrices"
+entry-mode: "program"
+
+### Auto
+path: "add_matrices.at"
+```auto
+fn main() {
+    let a = [[1, 2], [3, 4]]
+    let b = [[5, 6], [7, 8]]
+    var c = [[0, 0], [0, 0]]
+    for i in 0..2 {
+        for j in 0..2 {
+            c[i][j] = a[i][j] + b[i][j]
+        }
+    }
+    assert(c[0][0] == 6)
+    assert(c[0][1] == 8)
+    assert(c[1][0] == 10)
+    assert(c[1][1] == 12)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

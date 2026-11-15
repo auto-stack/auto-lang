@@ -1,0 +1,43 @@
+# PLAN-788 T-07: scalar profile run semantics
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.scalar.short-circuit-trap", source: { text: "// V-04 (trap polarity): the skipped RHS never executes its division by
+// zero; the executed one traps (exit 70) before the final return.
+fn main() int {
+    let safe = false && 1 / 0 > 0
+    if safe { return 1 }
+    let boom = true && 1 / 0 > 0
+    return 0
+}
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: { profile: "scalar" }, expect: { completion: "success", exit: 70 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.scalar.div-zero", source: { text: "fn main() int { return 1 / 0 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: { profile: "scalar" }, expect: { completion: "success", exit: 70 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.scalar.cond-for", source: { text: "// V-12: conditional for — zero-iteration body, per-round condition
+// re-evaluation, nested break/continue on the nearest loop.
+fn main() int {
+    var zero = 0
+    for 1 > 2 {
+        zero = zero + 1
+    }
+    if zero != 0 { return 1 }
+
+    var total = 0
+    var i = 0
+    for i < 3 {
+        var j = 0
+        for j < 3 {
+            j = j + 1
+            if j == 2 { continue }
+            if j == 3 { break }
+            total = total + 10
+        }
+        i = i + 1
+    }
+    if total != 30 { return 2 }
+    return 0
+}
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: { profile: "scalar" }, expect: { completion: "success", exit: 0 } } ] }
+```

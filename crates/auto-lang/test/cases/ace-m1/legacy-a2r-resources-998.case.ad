@@ -1,0 +1,204 @@
+# PLAN-998 legacy A2R resource-scenario certification extension — the six
+# H-07 scenario cells (binding ns=scenario R01..R06) certified in the
+# resource-scenario domain: the EXPLICIT `legacy-a2r.resources-observe/1`
+# profile instruments the real ownership paths of the production emission
+# (per-owner create/transfer/release guards, allocation-count fault
+# sentinels, structural list-mutation events, budget/cancel steps); the
+# R06 trap leg additionally selects `legacy-a2r.checked-i32/1` (combined
+# profiles — the typed trap unwinds through the real Drop guards).
+# a2r-ONLY by design: this suite is the daily zero-spawn face (emit +
+# byte-compare against the G04-reviewed scene goldens at oracle/scenario/);
+# the real compile+run certification is the ace-certify --resource tool
+# (never this suite), and the value/trap domains are untouched.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r01"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r01", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r01.rs", file: "oracle/scenario/m1_r01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r02_l04"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R02-L04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r02_l04", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r02_l04.rs", file: "oracle/scenario/m1_r02_l04.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r02_l05"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R02-L05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r02_l05", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r02_l05.rs", file: "oracle/scenario/m1_r02_l05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r02_v05"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R02-V05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r02_v05", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r02_v05.rs", file: "oracle/scenario/m1_r02_v05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r02_lstr"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R02-LSTR.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r02_lstr", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r02_lstr.rs", file: "oracle/scenario/m1_r02_lstr.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r02_k02"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R02-K02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r02_k02", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r02_k02.rs", file: "oracle/scenario/m1_r02_k02.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r03_legal"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R03-legal.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r03_legal", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r03_legal.rs", file: "oracle/scenario/m1_r03_legal.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r03_static"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R03-static.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r03_static", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r03_static.rs", file: "oracle/scenario/m1_r03_static.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r04"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r04", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r04.rs", file: "oracle/scenario/m1_r04.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r05"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r05", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r05.rs", file: "oracle/scenario/m1_r05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r06_deep"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R06-deep.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r06_deep", resource_profile: "legacy-a2r.resources-observe/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r06_deep.rs", file: "oracle/scenario/m1_r06_deep.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rscene.r06_trap"
+  tags: ["ace-m1", "a2r-resources-998"]
+  links: ["PLAN-998"]
+  source: { file: "legacy-a2r-resources-998/src/R06-trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-scene-emit", adapter: "a2r", action: "emit", options: { module_name: "m1_r06_trap", resource_profile: "legacy-a2r.resources-observe/1", int_profile: "legacy-a2r.checked-i32/1" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r06_trap.rs", file: "oracle/scenario/m1_r06_trap.rs", compare: "bytes" } ] } }
+  ]
+}
+```
