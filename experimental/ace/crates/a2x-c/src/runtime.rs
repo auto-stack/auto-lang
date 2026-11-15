@@ -245,6 +245,34 @@ pub fn write_numeric_runtime(out: &mut dyn std::fmt::Write) -> std::fmt::Result 
     }
 
     // Float lanes: div-by-±0 traps; rem = fmod; arith is infallible.
+    // PLAN-972 (T-09): add/sub/mul/neg f32/f64 join div/rem as uniform
+    // checked-channel helpers (the Rust leg's infallible-except-div
+    // discipline — the trap_check pattern stays uniform at call sites);
+    // comparisons render inline in the emitter (native IEEE operators).
+    for (t, cty, ok) in [
+        ("f32", "float", "A2X_OK_F32"),
+        ("f64", "double", "A2X_OK_F64"),
+    ] {
+        for op in ["add", "sub", "mul"] {
+            let sym = if op == "add" {
+                "+"
+            } else if op == "sub" {
+                "-"
+            } else {
+                "*"
+            };
+            out.write_str(&format!(
+                "static inline a2x_result_{t} a2x_{op}_{t}({cty} a, {cty} b) {{\n"
+            ))?;
+            out.write_str(&format!("    return (a2x_result_{t}){ok}(a {sym} b);\n"))?;
+            out.write_str("}\n\n")?;
+        }
+        out.write_str(&format!(
+            "static inline a2x_result_{t} a2x_neg_{t}({cty} a) {{\n"
+        ))?;
+        out.write_str(&format!("    return (a2x_result_{t}){ok}(-a);\n"))?;
+        out.write_str("}\n\n")?;
+    }
     out.write_str("static inline a2x_result_f32 a2x_div_f32(float a, float b) {\n")?;
     out.write_str("    if (b == 0.0f) { return (a2x_result_f32){ 0, A2X_TRAP_DIV_BY_ZERO }; }\n")?;
     out.write_str("    return (a2x_result_f32)A2X_OK_F32(a / b);\n")?;

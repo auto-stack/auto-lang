@@ -67,6 +67,10 @@ static inline a2x_result_i64 a2x_i64_value(int64_t v) { return (a2x_result_i64){
 static inline a2x_result_i64 a2x_fwd_i64(a2x_trap_code t) { return (a2x_result_i64){ 0, t }; }
 static inline a2x_result_u64 a2x_u64_value(uint64_t v) { return (a2x_result_u64){ v, A2X_TRAP_NONE }; }
 static inline a2x_result_u64 a2x_fwd_u64(a2x_trap_code t) { return (a2x_result_u64){ 0, t }; }
+static inline a2x_result_f64 a2x_f64_value(double v) { return (a2x_result_f64){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_f64 a2x_fwd_f64(a2x_trap_code t) { return (a2x_result_f64){ 0, t }; }
+static inline a2x_result_f32 a2x_f32_value(float v) { return (a2x_result_f32){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_f32 a2x_fwd_f32(a2x_trap_code t) { return (a2x_result_f32){ 0, t }; }
 ",
     );
     for &mark in marks {

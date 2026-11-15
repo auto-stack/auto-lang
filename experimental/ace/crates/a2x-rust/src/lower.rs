@@ -2318,6 +2318,21 @@ pub(super) fn num_bin_expr(
     let is_cmp = matches!(op, K::Lt | K::Le | K::Gt | K::Ge | K::Eq | K::Ne);
     let res_ty = if is_cmp { Ty::Bool } else { out_ty };
     if ty.is_float() {
+        if is_cmp {
+            let c = match op {
+                K::Lt => CmpOp::Lt,
+                K::Le => CmpOp::Le,
+                K::Gt => CmpOp::Gt,
+                K::Ge => CmpOp::Ge,
+                K::Eq => CmpOp::Eq,
+                _ => CmpOp::Ne,
+            };
+            // Float comparisons use Rust's native IEEE operators (the
+            // arith helper-name match below has no compare cases — a
+            // compare previously fell into it and rejected as "float op
+            // Eq"; PLAN-972 T-09).
+            return Ok((cmp(c, l, r), Ty::Bool));
+        }
         let f: &'static str = match (op, is_float32(ty)) {
             (K::Add, true) => "a2x_add_f32",
             (K::Add, false) => "a2x_add_f64",
@@ -2331,18 +2346,6 @@ pub(super) fn num_bin_expr(
             (K::Rem, false) => "a2x_rem_f64",
             _ => return Err(A2xReject::unsupported_op(format!("float op {op:?}"))),
         };
-        if is_cmp {
-            let c = match op {
-                K::Lt => CmpOp::Lt,
-                K::Le => CmpOp::Le,
-                K::Gt => CmpOp::Gt,
-                K::Ge => CmpOp::Ge,
-                K::Eq => CmpOp::Eq,
-                _ => CmpOp::Ne,
-            };
-            // Float comparisons use Rust's native IEEE operators.
-            return Ok((cmp(c, l, r), Ty::Bool));
-        }
         // Float arith is infallible except div — uniform Checked
         // helpers keep the fallible-root discipline.
         return Ok((

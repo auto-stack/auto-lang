@@ -48,6 +48,11 @@ use std.math.min
 use std.math.max
 use std.math.square
 use std.math.cube
+use std.math.abs_f
+use std.math.sqrt
+use std.math.powf
+use std.math.sin
+use std.math.cos
 use std.text.byte_len
 use std.text.scalar_len
 use std.text.char_code_at
@@ -152,6 +157,33 @@ fn main() int {
     }
     if (cube(3) == 27) {
         code = code + 1
+    }
+    if (abs_f(-2.5d) == 2.5d) {
+        code = code + 1
+    }
+    let r2 = sqrt(2.0d)
+    if (r2 > 1.41421356237d) {
+        if (r2 < 1.41421356238d) {
+            code = code + 1
+        }
+    }
+    let p10 = powf(2.0d, 10.0d)
+    if (p10 > 1023.9999d) {
+        if (p10 < 1024.0001d) {
+            code = code + 1
+        }
+    }
+    let sn1 = sin(1.0d)
+    if (sn1 > 0.8414709847d) {
+        if (sn1 < 0.8414709849d) {
+            code = code + 1
+        }
+    }
+    let cs1 = cos(1.0d)
+    if (cs1 > 0.5403023057d) {
+        if (cs1 < 0.5403023059d) {
+            code = code + 1
+        }
     }
     if (byte_len(s1.clone()) == 8) {
         code = code + 1
@@ -285,7 +317,12 @@ fn v08_surface_manifest_and_five_end_exercise() {
                 "total_len",
             ],
         ),
-        ("math", &["abs", "cube", "max", "min", "square"]),
+        (
+            "math",
+            &[
+                "abs", "abs_f", "cos", "max", "min", "powf", "sin", "sqrt", "square", "cube",
+            ],
+        ),
         (
             "text",
             &[
@@ -391,7 +428,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
     });
     let dir = scratch("v08-av");
     let av = PackageAvTarget::cold(&dir, &product).unwrap();
-    assert_eq!(av.run_value().unwrap(), Value::I32(49));
+    assert_eq!(av.run_value().unwrap(), Value::I32(54));
 
     // ---- mn leg (real machine code): exit code = 49. ----
     let dir = scratch("v08-mn");
@@ -411,7 +448,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
         .expect("run v08 mn exe")
         .code()
         .unwrap_or(-1);
-    assert_eq!(code, 49, "AC/native v08 exercise exit");
+    assert_eq!(code, 54, "AC/native v08 exercise exit");
 
     // ---- A2C leg (real cl): value:49. ----
     {
@@ -464,7 +501,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:49"), "a2c v08 stdout: {out}");
+        assert!(out.ends_with("value:54"), "a2c v08 stdout: {out}");
     }
 
     // ---- A2R leg (real rustc): value:49. ----
@@ -531,7 +568,7 @@ fn v08_surface_manifest_and_five_end_exercise() {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:49"), "a2r v08 stdout: {out}");
+        assert!(out.ends_with("value:54"), "a2r v08 stdout: {out}");
     }
 
     // ---- A2PY leg (real OS Python): value:49. ----
@@ -582,6 +619,6 @@ fn v08_surface_manifest_and_five_end_exercise() {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:49"), "a2py v08 stdout: {out}");
+        assert!(out.ends_with("value:54"), "a2py v08 stdout: {out}");
     }
 }

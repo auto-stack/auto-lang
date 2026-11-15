@@ -257,6 +257,8 @@ fn validate_family_param_ty(
             | Ty::U32
             | Ty::I64
             | Ty::U64
+            | Ty::F32
+            | Ty::F64
             | Ty::Closure(_)
             | Ty::Str
             | Ty::StrOwned
@@ -290,13 +292,16 @@ fn validate_family_ret_ty(
             LowerFamily::Collections,
             Ty::I32
             | Ty::Bool
-            // PLAN-972 (T-03): typed scalar + list returns.
+            // PLAN-972 (T-03/T-09): typed scalar + list returns; floats
+            // join with the double family.
             | Ty::Char
             | Ty::I8
             | Ty::U8
             | Ty::U32
             | Ty::I64
             | Ty::U64
+            | Ty::F32
+            | Ty::F64
             | Ty::Str
             | Ty::StrOwned
             | Ty::Record(_)
@@ -875,9 +880,10 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                         "capturing closures await the a2py closure-env unit (PLAN-972)",
                     ));
                 }
-                let f = self.view.fn_by_def(callee.0 as usize).ok_or_else(|| {
-                    A2xReject::unsupported_expr("closure callee def not in view")
-                })?;
+                let f = self
+                    .view
+                    .fn_by_def(callee.0 as usize)
+                    .ok_or_else(|| A2xReject::unsupported_expr("closure callee def not in view"))?;
                 let params: Vec<String> = (0..f.params.len()).map(|i| format!("p{i}")).collect();
                 let t = self.fresh_temp();
                 self.emit_line(&format!(
@@ -896,7 +902,7 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 let t = self.fresh_temp();
                 self.emit_line(&format!("{t} = {f}({})", args.join(", ")));
                 Ok(t)
-            },
+            }
             hir::ExprKind::StrLit { value } => Ok(py_bytes_literal(value.as_bytes())),
             hir::ExprKind::TextLen { operand } => {
                 let s = self.lower_expr(*operand)?;

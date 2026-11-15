@@ -42,6 +42,9 @@ pub enum CollRetKind {
     I8,
     U8,
     U32,
+    /// PLAN-972 (T-09): float results (the f64/f32 channels).
+    F64,
+    F32,
     StrOwned,
     Record(String),
     Variant(String),
@@ -65,6 +68,8 @@ impl CollRetKind {
             CollRetKind::I8 => "a2x_result".into(),
             CollRetKind::U8 => "a2x_result".into(),
             CollRetKind::U32 => "a2x_result".into(),
+            CollRetKind::F64 => "a2x_result_f64".into(),
+            CollRetKind::F32 => "a2x_result_f32".into(),
         }
     }
 
@@ -80,6 +85,8 @@ impl CollRetKind {
             CollRetKind::I64 => "a2x_fwd_i64".into(),
             CollRetKind::U64 => "a2x_fwd_u64".into(),
             CollRetKind::I8 | CollRetKind::U8 | CollRetKind::U32 => "a2x_fwd_i32".into(),
+            CollRetKind::F64 => "a2x_fwd_f64".into(),
+            CollRetKind::F32 => "a2x_fwd_f32".into(),
         }
     }
 
@@ -95,6 +102,8 @@ impl CollRetKind {
             CollRetKind::I64 => "a2x_i64_value".into(),
             CollRetKind::U64 => "a2x_u64_value".into(),
             CollRetKind::I8 | CollRetKind::U8 | CollRetKind::U32 => "a2x_value".into(),
+            CollRetKind::F64 => "a2x_f64_value".into(),
+            CollRetKind::F32 => "a2x_f32_value".into(),
         }
     }
 }
@@ -129,6 +138,8 @@ fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<CollRetKind, A2xReject
         Ty::I8 => Ok(CollRetKind::I8),
         Ty::U8 => Ok(CollRetKind::U8),
         Ty::U32 => Ok(CollRetKind::U32),
+        Ty::F64 => Ok(CollRetKind::F64),
+        Ty::F32 => Ok(CollRetKind::F32),
         Ty::Bool => Ok(CollRetKind::Bool),
         Ty::StrOwned => Ok(CollRetKind::StrOwned),
         Ty::Record(i) => view
@@ -220,9 +231,11 @@ pub fn coll_c_value_ty(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xRej
         Ty::I8 => Ok("int8_t".into()),
         Ty::U8 => Ok("uint8_t".into()),
         Ty::U32 => Ok("uint32_t".into()),
-        Ty::F32 | Ty::F64 => Err(A2xReject::unsupported_type(
-            "PLAN-972 float values await the C numeric backend unit",
-        )),
+        // PLAN-972 (T-09): float values on the C collections channel —
+        // native IEEE doubles/floats; arithmetic rides the checked
+        // runtime helpers (div traps ±0), comparisons inline.
+        Ty::F32 => Ok("float".into()),
+        Ty::F64 => Ok("double".into()),
         Ty::StrOwned => Ok("a2x_str".into()),
         Ty::Record(i) => view
             .record(i)
@@ -324,10 +337,21 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
         }
         let pass = match (p.mode, ty) {
             // a scalar view is its ABI copy (mirror of the Rust leg's
-            // by-value scalar params in every mode)
-            (_, Ty::I32 | Ty::Bool | Ty::Char | Ty::I64 | Ty::U64 | Ty::I8 | Ty::U8 | Ty::U32) => {
-                ParamPass::Value
-            }
+            // by-value scalar params in every mode; PLAN-972 T-09: floats
+            // join the scalar value channel)
+            (
+                _,
+                Ty::I32
+                | Ty::Bool
+                | Ty::Char
+                | Ty::I64
+                | Ty::U64
+                | Ty::I8
+                | Ty::U8
+                | Ty::U32
+                | Ty::F32
+                | Ty::F64,
+            ) => ParamPass::Value,
             (hir::ParamMode::MoveOwn, _) => ParamPass::Value,
             (hir::ParamMode::View, Ty::Record(_) | Ty::Variant(_)) => ParamPass::ConstPtr,
             // PLAN-972 (T-03): a View-mode owned-Str param is a borrow of
@@ -961,54 +985,6 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     }
                     hir::BinOp::RemI32 => {
                         self.fall_res(id, "a2x_result", format!("a2x_rem({l}, {r})"))
-                    }
-                    // PLAN-972 (T-03): the 961 typed numeric surface —
-                    // integer compares inline; checked arith via the shared
-                    // typed helpers (the numeric runtime now joins the
-                    // collections header). Floats stay with the numeric
-                    // backend unit (named).
-                    hir::BinOp::Num { op, ty } => {
-                        use hir::NumOpKind as K;
-                        let bty = ty;
-                        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
-                            return Err(A2xReject::unsupported_op(
-                                "PLAN-972 typed float emission awaits the C numeric backend unit",
-                            ));
-                        }
-                        let cmp = match op {
-                            K::Lt => Some("<"),
-                            K::Le => Some("<="),
-                            K::Gt => Some(">"),
-                            K::Ge => Some(">="),
-                            K::Eq => Some("=="),
-                            K::Ne => Some("!="),
-                            _ => None,
-                        };
-                        if let Some(o) = cmp {
-                            return Ok(format!("(({}) {o} ({}))", l, r));
-                        }
-                        if matches!(op, K::And | K::Or | K::Xor | K::Shl | K::Shr) {
-                            return Err(A2xReject::unsupported_op(
-                                "PLAN-972 typed bit/shift emission awaits the C numeric backend unit",
-                            ));
-                        }
-                        let (name, chan, dom): (&str, &str, &str) = match bty {
-                            hir::BuiltinType::I8 => ("i8", "a2x_result_i8", "int64_t"),
-                            hir::BuiltinType::U8 => ("u8", "a2x_result_u8", "uint64_t"),
-                            hir::BuiltinType::I32 => ("i32", "a2x_result", "int32_t"),
-                            hir::BuiltinType::U32 => ("u32", "a2x_result_u32", "uint64_t"),
-                            hir::BuiltinType::I64 => ("i64", "a2x_result_i64", "int64_t"),
-                            _ => ("u64", "a2x_result_u64", "uint64_t"),
-                        };
-                        let f = match op {
-                            K::Add => format!("a2x_add_{name}"),
-                            K::Sub => format!("a2x_sub_{name}"),
-                            K::Mul => format!("a2x_mul_{name}"),
-                            K::Div => format!("a2x_div_{name}"),
-                            K::Rem => format!("a2x_rem_{name}"),
-                            _ => unreachable!(),
-                        };
-                        self.fall_res(id, chan, format!("{f}(({dom})({l}), ({dom})({r}))"))
                     }
                     hir::BinOp::LtI32 => Ok(format!("({l} < {r})")),
                     hir::BinOp::LeI32 => Ok(format!("({l} <= {r})")),
