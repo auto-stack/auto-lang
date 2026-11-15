@@ -12,6 +12,7 @@ Json.as_bool("true")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

@@ -16,6 +16,7 @@ sub(b: 2, a: 1)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 7

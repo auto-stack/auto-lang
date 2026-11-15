@@ -16,6 +16,7 @@ arr[0] + arr[1] + arr[2]
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 60

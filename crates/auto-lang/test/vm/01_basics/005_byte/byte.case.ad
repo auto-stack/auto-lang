@@ -13,6 +13,7 @@ a
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 0xFF

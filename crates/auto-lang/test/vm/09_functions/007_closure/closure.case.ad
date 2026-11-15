@@ -13,6 +13,7 @@ add(1, 2)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 3

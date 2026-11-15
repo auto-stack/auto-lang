@@ -13,6 +13,7 @@ let x = Err("error message")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

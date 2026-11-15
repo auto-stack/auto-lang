@@ -21,6 +21,7 @@ f"[$v0, $v1, $v2]"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 [10, 99, 30]

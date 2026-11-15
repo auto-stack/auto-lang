@@ -16,6 +16,7 @@ services[0].name
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 ClearDiagnosticInformation

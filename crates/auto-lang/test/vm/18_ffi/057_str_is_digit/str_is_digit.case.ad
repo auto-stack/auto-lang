@@ -12,6 +12,7 @@ Str.is_digit("7")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 true

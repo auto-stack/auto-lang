@@ -322,11 +322,14 @@ fn located_rejection_battery() {
     // Empty Auto section (no fence) is rejected.
     let nofence = "## Case: a\n\n### Auto\n";
     assert!(decode(nofence, "x.case.ad").is_err(), "Auto needs a fence");
-    // Rust with neither a direct fence nor subsections is rejected.
-    let bare = case_doc("\n### Rust\ncheck-id: \"rust\"\n");
-    assert!(decode(&bare, "x.case.ad").is_err(), "Rust needs payload");
+    // PLAN-1062 T-15: a fence-less Rust section is the legacy smoke face
+    // (success, no golden) — it must decode now.
+    let bare = case_doc("
+### Rust
+check-id: \"rust\"
+");
+    assert!(decode(&bare, "x.case.ad").is_ok(), "Rust smoke face decodes");
 }
-
 #[test]
 fn final_newline_and_empty_stream_rules() {
     // Empty stream fence = zero bytes; console success may ride exit only.

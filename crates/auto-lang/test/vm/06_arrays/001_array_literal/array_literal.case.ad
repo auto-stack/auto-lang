@@ -12,6 +12,7 @@ path: "array_literal.at"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 [1, 2, 3]

@@ -1,0 +1,17 @@
+# Legacy vm corpus: `18_ffi/047_time_now`
+
+## Case: legacy-18-ffi-047-time-now-time-now
+id: "legacy.18_ffi.047_time_now.time_now"
+entry-mode: "program"
+
+### Auto
+path: "time_now.at"
+```auto
+let ms = Time.now_ms()
+let sec = Time.now_sec()
+print(ms)
+print(sec)
+```
+
+### VM result
+check-id: "vm-smoke"

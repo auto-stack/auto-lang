@@ -17,6 +17,7 @@ f"[$yes, $no]"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 [1, 0]

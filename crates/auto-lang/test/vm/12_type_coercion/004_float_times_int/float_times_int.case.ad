@@ -12,6 +12,7 @@ path: "float_times_int.at"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 10

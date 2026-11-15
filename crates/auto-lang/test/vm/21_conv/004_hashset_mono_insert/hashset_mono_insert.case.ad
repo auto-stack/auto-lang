@@ -25,6 +25,7 @@ fn main() {
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 apple=1 cherry=0 size=1

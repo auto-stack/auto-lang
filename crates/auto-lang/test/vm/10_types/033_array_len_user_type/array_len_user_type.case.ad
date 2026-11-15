@@ -1,0 +1,31 @@
+# Legacy vm corpus: `10_types/033_array_len_user_type`
+
+## Case: legacy-10-types-033-array-len-user-type-array-len-user-type
+id: "legacy.10_types.033_array_len_user_type.array_len_user_type"
+entry-mode: "program"
+
+### Auto
+path: "array_len_user_type.at"
+```auto
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let a = Point { x: 1, y: 2 }
+    let b = Point { x: 3, y: 4 }
+    let list = [a, b]
+    assert_eq(list.len(), 2)
+    let first = list[0]
+    assert_eq(first.x, 1)
+    assert_eq(first.y, 2)
+    let second = list[1]
+    assert_eq(second.x, 3)
+    assert_eq(second.y, 4)
+    print("array_len_user_type: passed")
+}
+```
+
+### VM result
+check-id: "vm-smoke"

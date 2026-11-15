@@ -12,6 +12,7 @@ Str.substr("hello world", 0, 5)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 hello

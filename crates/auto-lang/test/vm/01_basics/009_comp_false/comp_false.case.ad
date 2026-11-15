@@ -12,6 +12,7 @@ path: "comp_false.at"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 false

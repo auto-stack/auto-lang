@@ -1,0 +1,21 @@
+# Legacy vm corpus: `99_bootstrap/066_bytecode_list`
+
+## Case: legacy-99-bootstrap-066-bytecode-list-bytecode-list
+id: "legacy.99_bootstrap.066_bytecode_list.bytecode_list"
+entry-mode: "program"
+
+### Auto
+path: "bytecode_list.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(10)\nlist.push(20)\nlist.push(30)\nprint(list.len())\nprint(list.get(0))\nprint(list.get(2))\n}")
+    if result == "3\n10\n30\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-smoke"

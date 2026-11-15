@@ -12,6 +12,7 @@ Str.to_upper("hello")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 HELLO

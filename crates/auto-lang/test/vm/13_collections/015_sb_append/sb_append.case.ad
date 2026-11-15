@@ -18,6 +18,7 @@ s
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 hello world

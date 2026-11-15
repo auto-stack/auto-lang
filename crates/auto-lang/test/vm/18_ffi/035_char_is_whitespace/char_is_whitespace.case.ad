@@ -12,6 +12,7 @@ Char.is_whitespace(32)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

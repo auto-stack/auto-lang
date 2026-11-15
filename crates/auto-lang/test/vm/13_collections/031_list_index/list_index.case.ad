@@ -18,6 +18,7 @@ v
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 20

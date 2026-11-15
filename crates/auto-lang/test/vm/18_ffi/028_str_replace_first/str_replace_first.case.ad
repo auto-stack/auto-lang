@@ -12,6 +12,7 @@ Str.replace_first("hello hello", "hello", "hi")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 hi hello

@@ -17,6 +17,7 @@ f"[$e1, $e2]"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 [1, 0]

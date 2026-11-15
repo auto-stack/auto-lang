@@ -12,6 +12,7 @@ path: "int_plus_float.at"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 5.5

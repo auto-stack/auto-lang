@@ -12,6 +12,7 @@ Str.replace("hello world", "world", "auto")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 hello auto

@@ -12,6 +12,7 @@ if false { 1 } else if false { 2 } else { 3 }
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 3

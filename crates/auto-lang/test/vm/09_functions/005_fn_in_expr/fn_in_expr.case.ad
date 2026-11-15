@@ -13,6 +13,7 @@ fn add(a, b) { a + b }
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 18

@@ -12,6 +12,7 @@ Char.is_alpha(65)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

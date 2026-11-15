@@ -1,0 +1,15 @@
+# Legacy vm corpus: `18_ffi/055_process_args`
+
+## Case: legacy-18-ffi-055-process-args-process-args
+id: "legacy.18_ffi.055_process_args.process_args"
+entry-mode: "program"
+
+### Auto
+path: "process_args.at"
+```auto
+let args = Process.args()
+print(args)
+```
+
+### VM result
+check-id: "vm-smoke"

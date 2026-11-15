@@ -1,0 +1,21 @@
+# Legacy vm corpus: `17_cffi/001_strlen`
+
+## Case: legacy-17-cffi-001-strlen-strlen
+id: "legacy.17_cffi.001_strlen.strlen"
+entry-mode: "program"
+
+### Auto
+path: "strlen.at"
+```auto
+// Plan 216 Phase 2: strlen test
+// Tests C FFI strlen function via use.c <string.h>
+use.c <string.h>
+
+fn main() {
+    let len = strlen(c"hello")
+    print(len)
+}
+```
+
+### VM result
+check-id: "vm-smoke"

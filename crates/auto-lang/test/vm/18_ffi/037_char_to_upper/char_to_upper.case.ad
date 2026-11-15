@@ -12,6 +12,7 @@ Char.to_upper(97)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 65

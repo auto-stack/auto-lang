@@ -1,0 +1,21 @@
+# Legacy vm corpus: `99_bootstrap/068_bytecode_list_fn`
+
+## Case: legacy-99-bootstrap-068-bytecode-list-fn-bytecode-list-fn
+id: "legacy.99_bootstrap.068_bytecode_list_fn.bytecode_list_fn"
+entry-mode: "program"
+
+### Auto
+path: "bytecode_list_fn.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn sum_list(lst, n int) int {\nvar s = 0\nfor i in 0..n {\ns = s + lst.get(i)\n}\nreturn s\n}\nfn main() {\nvar list = List.new()\nlist.push(1)\nlist.push(2)\nlist.push(3)\nprint(sum_list(list, 3))\n}")
+    if result == "6\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-smoke"

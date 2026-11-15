@@ -16,6 +16,7 @@ obj.x + obj.y + obj.z
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 600

@@ -12,6 +12,7 @@ Math.pow(2.0, 10.0) == 1024.0
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 true

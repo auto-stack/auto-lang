@@ -12,6 +12,7 @@ File.exists("nonexistent_file_xyz_12345.txt")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 0

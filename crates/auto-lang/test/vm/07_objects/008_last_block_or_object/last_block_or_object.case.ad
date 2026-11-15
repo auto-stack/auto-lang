@@ -12,6 +12,7 @@ path: "last_block_or_object.at"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 {a: 1, b: 2}

@@ -21,6 +21,7 @@ if v == 20 { if v2 == 99 { if len == 3 { 1 } else { 0 } } else { 0 } } else { 0 
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

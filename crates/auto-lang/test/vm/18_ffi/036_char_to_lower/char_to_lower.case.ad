@@ -12,6 +12,7 @@ Char.to_lower(65)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 97

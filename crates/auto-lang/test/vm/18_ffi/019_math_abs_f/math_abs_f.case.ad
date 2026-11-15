@@ -12,6 +12,7 @@ Math.abs_f(-3.14)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 3.14

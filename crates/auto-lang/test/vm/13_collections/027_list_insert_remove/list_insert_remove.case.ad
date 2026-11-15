@@ -20,6 +20,7 @@ if v == 20 { if len == 2 { 1 } else { 0 } } else { 0 }
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

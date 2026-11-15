@@ -12,6 +12,7 @@ path: "complex.at"
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 27.5

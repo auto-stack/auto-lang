@@ -12,6 +12,7 @@ Str.find("hello world", "world")
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 6

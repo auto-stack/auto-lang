@@ -1,0 +1,23 @@
+# Legacy vm corpus: `17_cffi/002_math`
+
+## Case: legacy-17-cffi-002-math-math
+id: "legacy.17_cffi.002_math.math"
+entry-mode: "program"
+
+### Auto
+path: "math.at"
+```auto
+// Plan 216 Phase 2: math test
+// Tests C FFI math functions via use.c <math.h>
+use.c <math.h>
+
+fn main() {
+    let x = sqrt(4.0)
+    let y = abs(-10)
+    print(x)
+    print(y)
+}
+```
+
+### VM result
+check-id: "vm-smoke"

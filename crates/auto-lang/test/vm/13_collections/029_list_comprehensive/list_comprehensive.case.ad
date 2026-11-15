@@ -20,6 +20,7 @@ if e1 { if e2 { 1 } else { 0 } } else { 0 }
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

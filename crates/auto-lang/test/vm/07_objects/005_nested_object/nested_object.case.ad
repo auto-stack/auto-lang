@@ -13,6 +13,7 @@ obj.inner.x
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 10

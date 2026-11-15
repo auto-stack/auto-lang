@@ -15,6 +15,7 @@ a[0] + a[1] + a[2]
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 70

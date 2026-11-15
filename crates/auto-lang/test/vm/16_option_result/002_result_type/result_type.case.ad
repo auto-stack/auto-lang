@@ -13,6 +13,7 @@ let x !int = Ok(42)
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 1

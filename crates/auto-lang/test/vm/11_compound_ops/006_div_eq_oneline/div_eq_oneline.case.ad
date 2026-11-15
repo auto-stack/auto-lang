@@ -12,6 +12,7 @@ var a = 20; a /= 4; a
 
 ### VM result
 check-id: "vm-result"
+final-newline: false
 
 ```text
 5
