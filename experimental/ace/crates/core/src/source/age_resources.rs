@@ -18,6 +18,8 @@ use super::resolve::VT;
 
 /// AGE 2D 资源服务的能力键（与其它平台服务同风格；进入身份/准入）。
 pub const CAP_AGE2D_RESOURCE: &str = "age2d.resource";
+/// 3D 资源服务的能力键（与 2D 分开：3D 资源有独立的 GLB 身份规则）。
+pub const CAP_AGE3D_RESOURCE: &str = "age3d.resource";
 
 /// 一条 AGE 资源服务声明。
 #[derive(Clone, Copy, Debug)]
@@ -35,12 +37,13 @@ pub struct AgeResourceOp {
 const P_4F32: &[VT] = &[VT::F32, VT::F32, VT::F32, VT::F32];
 const P_2F32: &[VT] = &[VT::F32, VT::F32];
 const P_F32: &[VT] = &[VT::F32];
+const P_STR: &[VT] = &[VT::Str];
 
 /// AGE 资源端口类型族（AGE 规范 §1 的 typed 端口）。
 ///
 /// 这四个是共鸣名的**端口**类型：它们不是用户 record，也不是 Core 内建，
 /// 而是 AGE 领域声明的 typed 端口。resolver 按本表把它们当作名义类型登记。
-pub const AGE_PORT_TYPES: &[&str] = &["Material2D", "Mesh2D"];
+pub const AGE_PORT_TYPES: &[&str] = &["Material2D", "Mesh2D", "Model3D"];
 
 /// 每个端口携带的字段（与构造器实参一一对应；f32 分量）。
 ///
@@ -52,6 +55,10 @@ pub const AGE_PORT_FIELDS: &[(&str, &[(&str, &str)])] = &[
         &[("r", "f32"), ("g", "f32"), ("b", "f32"), ("a", "f32")],
     ),
     ("Mesh2D", &[("w", "f32"), ("h", "f32")]),
+    // `Model3D` 的字段是**资源身份**（GLB 内容哈希 + 字节数），不是颜色分量：
+    // 规范 `model3d.glb("path.glb")` 的身份 = 完整原始字节 SHA256 + byte_length。
+    // 用 `Str` 承载哈希（十六进制）与 `i32` 承载长度，避免把身份伪造为数值。
+    ("Model3D", &[("sha256", "Str"), ("byte_length", "i32")]),
 ];
 
 pub const AGE_RESOURCE_OPS: &[AgeResourceOp] = &[
@@ -75,6 +82,14 @@ pub const AGE_RESOURCE_OPS: &[AgeResourceOp] = &[
         params: P_F32,
         result_port: "Mesh2D",
         capability: CAP_AGE2D_RESOURCE,
+    },
+    // 3D：静态平色 GLB。参数是**文件路径**（字符串），身份由内容决定。
+    AgeResourceOp {
+        callee: "model3d.glb",
+        symbol: "age.model3d.glb.v1",
+        params: P_STR,
+        result_port: "Model3D",
+        capability: CAP_AGE3D_RESOURCE,
     },
 ];
 
@@ -136,4 +151,20 @@ pub fn is_3d_element(kind: &str) -> bool {
 /// 该拼写是否是冻结几何符号。
 pub fn is_geometry_kind(spelling: &str) -> bool {
     AGE_GEOMETRY_KINDS.contains(&spelling)
+}
+
+/// 某场景行的某个资源属性**必须**绑定哪一种端口。
+///
+/// 只验"是某个端口"不够：`shape2d` 的 `material` 收 `Material2D`，`model3d` 的
+/// `model` 收 `Model3D`——把颜色资源绑到 `model:` 上必须被拒，反之亦然。
+/// `None` = 该 (行种类, 属性) 组合不是资源绑定（或不约束端口）。
+pub fn attr_port(element: &str, key: &str) -> Option<&'static str> {
+    match (element, key) {
+        // 2D 叶
+        ("shape2d", "material") => Some("Material2D"),
+        ("shape2d", "mesh") => Some("Mesh2D"),
+        // 3D 叶
+        ("model3d", "model") => Some("Model3D"),
+        _ => None,
+    }
 }

@@ -1105,7 +1105,12 @@ fn check_scene_resource_refs(
     for comp in packaged {
         for row in &comp.node.view.scene_components {
             for attr in &row.attrs {
-                if !matches!(attr.key.as_str(), "material" | "tint") {
+                // 用**同一张**属性分类表决定哪些属性是资源引用；此前这里硬编码
+                // `material|tint`，于是 3D 的 `model:`/2D 的 `mesh:` 被整段跳过——
+                // 不存在的资源名也因此静默通过（实测）。
+                if super::age_resources::attr_value_kind(&attr.key)
+                    != Some(super::age_resources::AttrValueKind::ResourceRef)
+                {
                     continue;
                 }
                 // 引用形状（实测）：限定写法是 `Field { base: Var("resources"), name }`，
@@ -1145,7 +1150,9 @@ fn check_scene_resource_refs(
                         flat_to_module(&bound_sources(bound), attr.span),
                     )]);
                 };
-                // 声明类型必须是 AGE 端口。
+                // 声明类型必须是 AGE 端口，且必须是**该属性该场景行该有的那个端口**。
+                // 只验"是某个端口"不够：`model3d` 的 `model:` 收 `Model3D`，把颜色资源
+                // `Material2D` 绑上去必须被拒（实测曾静默通过）。
                 let ty_name = match &decl.ty.kind {
                     super::ast::TypeRef::Record(id) => id.name.clone(),
                     _ => String::new(),
@@ -1160,6 +1167,20 @@ fn check_scene_resource_refs(
                         ),
                         flat_to_module(&bound_sources(bound), attr.span),
                     )]);
+                }
+                if let Some(want) = super::age_resources::attr_port(row.kind.as_str(), &attr.key) {
+                    if ty_name != want {
+                        return Err(vec![text_diag(
+                            "source.age.scene-resource-type",
+                            format!(
+                                "`{key}` on `{elem}` requires a `{want}` resource, but \
+                                 `{symbol_spelling}` is a `{ty_name}`",
+                                key = attr.key,
+                                elem = row.kind
+                            ),
+                            flat_to_module(&bound_sources(bound), attr.span),
+                        )]);
+                    }
                 }
             }
         }

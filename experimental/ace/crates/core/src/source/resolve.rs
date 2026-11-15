@@ -1928,9 +1928,17 @@ fn resolve_detailed(
                         fs.iter()
                             .map(|(n, ty)| ResolvedField {
                                 name: n.to_string(),
+                                // 未知拼写**不得**静默回落 i32：那样 `Str` 会被
+                                // 当成整数，端口字段类型就悄悄错了（实测发生过）。
                                 vt: match *ty {
                                     "f32" => VT::F32,
-                                    _ => VT::I32,
+                                    "i32" => VT::I32,
+                                    "bool" => VT::Bool,
+                                    "Str" => VT::StrOwned,
+                                    "str" => VT::Str,
+                                    other => panic!(
+                                        "AGE port field `{n}` declares unsupported type `{other}`"
+                                    ),
                                 },
                                 span: Span { start: 0, end: 0 },
                             })
