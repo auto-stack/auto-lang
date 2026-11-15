@@ -88,6 +88,8 @@ mod plan981_three_views;
 mod plan981_scene_elements;
 #[path = "cases/plan981_param_ports.rs"]
 mod plan981_param_ports;
+#[path = "cases/plan981_resource_refs.rs"]
+mod plan981_resource_refs;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
 #[path = "cases/recovered_script_first_diag_941.rs"]

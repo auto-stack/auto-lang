@@ -1165,18 +1165,42 @@ fn check_scene_resource_refs(
                 {
                     continue;
                 }
-                // 引用形状（实测）：限定写法是 `Field { base: Var("resources"), name }`，
-                // 裸写法是 `Var`。用 `Method` 判定会**一个都不匹配**，从而静默放过
-                // 不存在的资源——这正是本检查要堵的缺口。
+                // 引用形状（实测）：限定写法是 `Field { base: Var(ns), name }`，
+                // 裸写法是 `Var`。其它形状**必须具名拒绝**——此前这里是 `_ => continue`，
+                // 于是 `resources.nope.clone()`、`nope()`、`resources.nope.deep` 这类
+                // 方法/字段链里的未知资源**从未被存在性检查**（复审 B6）。
                 let (module_spelling, symbol_spelling) = match &attr.value.kind {
                     super::ast::ExprKind::Field { base, name } => match &base.kind {
                         super::ast::ExprKind::Var(id) => {
                             (Some(id.name.clone()), name.name.clone())
                         }
-                        _ => continue,
+                        // 深链（`a.b.c`）：根不是简单模块名，按非引用拒绝。
+                        _ => {
+                            return Err(vec![text_diag(
+                                "source.age.scene-resource",
+                                format!(
+                                    "`{key}` must name a resource directly \
+                                     (`<module>.<symbol>` or an imported symbol), not a chained \
+                                     expression",
+                                    key = attr.key
+                                ),
+                                flat_to_module(&bound_sources(bound), attr.span),
+                            )]);
+                        }
                     },
                     super::ast::ExprKind::Var(id) => (None, id.name.clone()),
-                    _ => continue,
+                    // 方法调用 / 任意计算值：不是可解析的资源引用。
+                    _ => {
+                        return Err(vec![text_diag(
+                            "source.age.scene-resource",
+                            format!(
+                                "`{key}` must name a resource (`<module>.<symbol>` or an imported \
+                                 symbol); a computed value is not a resource reference",
+                                key = attr.key
+                            ),
+                            flat_to_module(&bound_sources(bound), attr.span),
+                        )]);
+                    }
                 };
                 // `material: tint` 里的 `tint` 是**本 node 自己的参数**——它不是
                 // 模块全局资源，但它**仍然必须**是该位置期望的端口类型。此前这里
@@ -1205,11 +1229,15 @@ fn check_scene_resource_refs(
                     continue;
                 }
                 // 找声明：按 (模块, 名字) 或全局按名字后缀匹配。
+                // B5：此前 `m == "resources"` 是**硬编码通配**——任何名为 `resources`
+                // 的模块无需 `use` 即可达，与"复用 binder 的可见性事实"自相矛盾。
+                // 现在限定写法必须**逐字等于**声明所在模块名；裸写法（`None`）沿用
+                // 符号表导入的既有可见性（binder 已裁定，能走到这里的名字必然可见）。
                 let found = bound.globals.iter().find(|(sym, decl)| {
                     decl.name == symbol_spelling
                         && module_spelling
                             .as_deref()
-                            .is_none_or(|m| decl.module == m || m == "resources")
+                            .is_none_or(|m| decl.module == m)
                         && sym.starts_with('g')
                 });
                 let Some((_sym, decl)) = found else {
