@@ -709,3 +709,35 @@ fn p979_component_observed_field_must_exist_and_be_int() {
     assert_eq!(bad_ty[0].code, "source.age.component-unsupported");
     assert!(bad_ty[0].message.contains('`'), "{:?}", bad_ty[0]);
 }
+
+#[test]
+fn p979_component_generated_name_families_are_reserved_and_duplicate_fields_are_named() {
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    // 用户占用状态函数族名 → hidden-name（两个前门一致）。
+    let body = "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    for reserved in ["__age_state_0_count", "__age_drive"] {
+        let src = format!("fn {reserved}() int {{\n    return 0\n}}\n{body}");
+        let ds =
+            compile_component_scenario(&src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+                .expect_err("generated name families are reserved");
+        assert_eq!(ds[0].code, "source.age.hidden-name", "{reserved}");
+        let at = src.find(reserved).expect("user decl");
+        assert_eq!(
+            ds[0].span.start, at,
+            "{reserved}: span at the user declaration"
+        );
+    }
+
+    // 重复 model 字段名 → component-duplicate（不是生成符号处的通用 duplicate）。
+    let dup = "node C {\n    model {\n        count int = 0\n        count int = 1\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let ds = compile_component_scenario(dup, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect_err("duplicate model fields are named");
+    assert_eq!(ds[0].code, "source.age.component-duplicate");
+    assert!(ds[0].message.contains("count"), "{:?}", ds[0]);
+}

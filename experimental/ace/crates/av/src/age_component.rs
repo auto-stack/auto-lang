@@ -1,7 +1,7 @@
 //! PLAN-979 T-03：组件场景驱动的 **AV 消费端**（共享 lower→MIR→ABC→AV 取真值）。
 //!
 //! 驱动是普通 `i32` 函数（`__age_drive`），由共享链执行；观察值即场景编码
-//! （instance 0 在个位、instance i 在 10^i 位）。文本叶仍按 H0 口径取共享 Str 值。
+//! （instance 0 在个位、instance i 在 256^i 位）。文本叶仍按 H0 口径取共享 Str 值。
 
 use ace_av_core::abc::{decode_abc, encode_abc};
 use ace_av_core::av::{execute, CancelFlag, ExecLimits};

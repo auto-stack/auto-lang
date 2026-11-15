@@ -518,8 +518,20 @@ pub fn compile_component_scenario_observing(
             node.span,
         )]);
     }
-    // 模型限制（本步）：字段类型须可映射（int/i32/bool）；**观测字段**（首字段）必须是 int，
-    // 因为驱动以 i32 编码观察它。
+    // 重复的 model 字段名：具名拒（否则会在生成符号处报通用 duplicate）。
+    let mut seen_fields: Vec<&str> = Vec::new();
+    for f in &node.fields {
+        if seen_fields.contains(&f.name.as_str()) {
+            return Err(vec![text_diag(
+                "source.age.component-duplicate",
+                format!("duplicate `model` field `{}`", f.name),
+                f.span,
+            )]);
+        }
+        seen_fields.push(&f.name);
+    }
+    // 模型限制（本步）：字段类型须可映射（int/i32/bool）；观测字段另由下方规则校验
+    // （缺省首个 int 字段，或按名指定）。
     for f in &node.fields {
         if field_type(f).is_none() {
             return Err(vec![text_diag(
@@ -601,14 +613,7 @@ pub fn compile_component_scenario_observing(
             )]);
         }
     }
-    // 场景自检（review F2/F3/F1）：无字段、重复消息、多字段都不静默处理。
-    if node.fields.is_empty() {
-        return Err(vec![text_diag(
-            "source.age.component-shape",
-            "the scenario slice requires at least one `model` field to observe",
-            node.view.span,
-        )]);
-    }
+    // 场景自检：重复 `on <Msg>` 具名拒（形状/字段检查已在上方完成）。
     let mut seen_msgs: Vec<String> = Vec::new();
     for h in &node.handlers {
         if seen_msgs.contains(&h.msg) {
@@ -988,7 +993,11 @@ enum FieldBinding {
     Local(usize),
     StateFn(usize),
 }
-/// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6）。
+/// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动）——用户顶层名不得占用。
+const COMPONENT_RESERVED_NAMES: [&str; 3] =
+    [AGE_COMPONENT_HIDDEN_PREFIX, "__age_state_", "__age_drive"];
+
+/// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6/N6）。
 fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
     for item in items {
         let user = match item {
@@ -1000,16 +1009,18 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
             Item::UseRs(_) => None,
         };
         if let Some(u) = user {
-            if u.name.contains(AGE_COMPONENT_HIDDEN_PREFIX) {
-                return Some(text_diag(
-                    "source.age.hidden-name",
-                    format!(
-                        "`{}` contains `{AGE_COMPONENT_HIDDEN_PREFIX}` which is reserved for \
-                         component value evaluation",
-                        u.name
-                    ),
-                    u.span,
-                ));
+            for reserved in COMPONENT_RESERVED_NAMES {
+                if u.name.contains(reserved) {
+                    return Some(text_diag(
+                        "source.age.hidden-name",
+                        format!(
+                            "`{}` contains `{reserved}` which is reserved for component \
+                             desugaring (value evaluation / state functions / driver)",
+                            u.name
+                        ),
+                        u.span,
+                    ));
+                }
             }
         }
     }
