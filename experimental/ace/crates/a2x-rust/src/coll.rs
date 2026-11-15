@@ -527,9 +527,6 @@ pub fn a2x_str_from_lit(s: &str) -> A2xResult<A2xStr> {
 pub fn a2x_str_clone(s: &str) -> A2xResult<A2xStr> {
     alloc_buffer(s.len(), s)
 }
-pub fn a2x_str_to_owned(s: &str) -> A2xResult<A2xStr> {
-    a2x_str_from_lit(s)
-}
 pub fn a2x_str_display_i32(value: i32) -> A2xResult<A2xStr> {
     let rendered = format!("{}", value);
     a2x_str_from_lit(&rendered)

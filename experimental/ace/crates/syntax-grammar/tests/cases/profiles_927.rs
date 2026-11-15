@@ -39,6 +39,9 @@ const DECLARED: &[&str] = &[
     // 序在 numeric 之后、模板面之前——962 合入时同样漏更新本冻结集，
     // 1025 收口接收侧按已交付现实刷新，合同语义不变，同 961→941 先例）。
     "aggregates",
+    // PLAN-968：调度器面（task/on 语句域；声明序紧随 aggregates——
+    // 972 rebase 接收侧按 master 已交付现实刷新冻结集，合同语义不变）。
+    "scheduler",
     // PLAN-935：有限模板面（scalar 全表面 + fn <T>；仅实例能力前门使用；
     // 声明序在闭包之后）。
     "scalar-instances",

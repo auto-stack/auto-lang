@@ -3373,6 +3373,8 @@ pub fn resolve_env_with_sched(
         },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
+        // PLAN-968 wrapper constructs outside the assembled lane.
+        asm_lane: false,
         trace_enabled: ix.trace_enabled,
         profile: surface,
         resolve_walks: 0,
