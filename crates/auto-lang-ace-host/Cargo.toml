@@ -1,0 +1,27 @@
+[package]
+name = "auto-lang-ace-host"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-969 E0: the reference explicit-ACE executor bridge (auto-lang-core ace_entry contract over the ACE AV spine)"
+keywords = ["ace", "av", "facade", "sdk"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# The neutral public contract (request/result/authorization/close). No
+# ACE crate is a dependency of auto-lang-core itself; this bridge is the
+# ONLY place the two sides meet.
+auto-lang-core = { path = "../auto-lang-core" }
+
+# The ACE AV spine frozen by PLAN-969 E0 (T-E0-I): query_entry compile
+# seam, MIR lowering + wire admission, the executor, and (Windows) the
+# F0 Rust provider build/load/admission chain.
+ace-av = { path = "../../experimental/ace/crates/av" }
+ace-av-core = { path = "../../experimental/ace/crates/av-core" }
+ace-core = { path = "../../experimental/ace/crates/core" }
+ace-abi = { path = "../../experimental/ace/crates/abi" }
+ace-foreign-contract = { path = "../../experimental/ace/crates/foreign-contract" }
+ace-source-query = { path = "../../experimental/ace/crates/source-query" }
+ace-lowering = { path = "../../experimental/ace/crates/lowering" }
+
+[dev-dependencies]
+tempfile = { workspace = true }

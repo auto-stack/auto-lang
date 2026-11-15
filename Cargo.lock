@@ -27,6 +27,126 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-a2x-c"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-core",
+ "ace-core",
+ "ace-foreign-contract",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ace-a2x-core"
+version = "0.1.0"
+dependencies = [
+ "ace-core",
+ "ace-foreign-contract",
+]
+
+[[package]]
+name = "ace-a2x-store"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-core",
+ "ace-artifacts",
+ "ace-core",
+ "ace-semantics-contract",
+ "ace-source-cte",
+ "ace-source-query",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ace-abi"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-c",
+ "ace-a2x-core",
+ "ace-a2x-store",
+ "ace-artifacts",
+ "ace-av-core",
+ "ace-core",
+ "ace-foreign-contract",
+ "ace-lowering",
+ "ace-native",
+ "ace-semantics-contract",
+ "ace-source-query",
+ "auto-bindgen",
+ "base64 0.22.1",
+ "blake3",
+ "cranelift-codegen",
+ "cranelift-frontend",
+ "cranelift-module",
+ "cranelift-object",
+ "object 0.37.3",
+ "serde",
+ "serde_json",
+ "target-lexicon 0.13.5",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ace-artifacts"
+version = "0.1.0"
+dependencies = [
+ "ace-core",
+ "auto-cache",
+ "auto-tool-execution",
+ "blake3",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ace-av"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-av-core",
+ "ace-core",
+ "ace-lowering",
+ "ace-semantics-contract",
+ "ace-source-cte",
+ "ace-source-query",
+ "ace-syntax-core",
+ "ace-syntax-grammar",
+ "ace-syntax-runtime",
+ "auto-tool-execution",
+ "base64 0.22.1",
+ "blake3",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ace-av-core"
+version = "0.1.0"
+dependencies = [
+ "ace-foreign-contract",
+ "serde_json",
+]
+
+[[package]]
+name = "ace-core"
+version = "0.1.0"
+dependencies = [
+ "ace-foreign-contract",
+ "ace-syntax-grammar",
+ "ace-syntax-runtime",
+ "anyhow",
+ "serde",
+ "serde_json",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "ace-foreign-contract"
 version = "0.1.0"
 dependencies = [
@@ -37,12 +157,121 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-lowering"
+version = "0.1.0"
+dependencies = [
+ "ace-av-core",
+ "ace-core",
+]
+
+[[package]]
+name = "ace-native"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-foreign-contract",
+ "ace-lowering",
+ "ace-source-query",
+ "base64 0.22.1",
+ "blake3",
+ "cranelift-codegen",
+ "cranelift-frontend",
+ "cranelift-module",
+ "cranelift-object",
+ "serde",
+ "serde_json",
+ "sha2",
+ "target-lexicon 0.13.5",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ace-semantics"
+version = "0.1.0"
+dependencies = [
+ "ace-core",
+ "ace-semantics-contract",
+]
+
+[[package]]
 name = "ace-semantics-contract"
 version = "0.1.0"
 dependencies = [
  "blake3",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ace-source-cte"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-av-core",
+ "ace-core",
+ "ace-lowering",
+ "ace-semantics-contract",
+ "ace-source-query",
+ "blake3",
+]
+
+[[package]]
+name = "ace-source-query"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-core",
+ "ace-foreign-contract",
+ "ace-semantics",
+ "ace-semantics-contract",
+ "ace-syntax-artifacts",
+ "ace-syntax-runtime",
+ "blake3",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "ace-syntax-artifacts"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-syntax-grammar",
+ "ace-syntax-runtime",
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ace-syntax-core"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-core",
+ "ace-syntax-grammar",
+ "ace-syntax-runtime",
+]
+
+[[package]]
+name = "ace-syntax-grammar"
+version = "0.1.0"
+dependencies = [
+ "ace-syntax-runtime",
+ "auto-atom",
+ "auto-val",
+ "blake3",
+]
+
+[[package]]
+name = "ace-syntax-runtime"
+version = "0.1.0"
+dependencies = [
+ "blake3",
 ]
 
 [[package]]
@@ -508,6 +737,21 @@ dependencies = [
  "url",
  "urlencoding",
  "walkdir",
+]
+
+[[package]]
+name = "auto-lang-ace-host"
+version = "0.1.0"
+dependencies = [
+ "ace-abi",
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-foreign-contract",
+ "ace-lowering",
+ "ace-source-query",
+ "auto-lang-core",
+ "tempfile",
 ]
 
 [[package]]
@@ -1008,6 +1252,9 @@ name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+dependencies = [
+ "allocator-api2",
+]
 
 [[package]]
 name = "bytemuck"
@@ -1456,6 +1703,151 @@ checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "cranelift-assembler-x64"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19f28665a3cba7b8fe75d885c2a1c1bbc661b65685df34f7d93a4669ceb2e719"
+dependencies = [
+ "cranelift-assembler-x64-meta",
+]
+
+[[package]]
+name = "cranelift-assembler-x64-meta"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6308845400e41d9d34acf8f2d13454b907012d9de5265c66f731570adf82019e"
+dependencies = [
+ "cranelift-srcgen",
+]
+
+[[package]]
+name = "cranelift-bforest"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93ed5df9b6cda90f2dd921760925079670ba6c86162efa4de9f6c6efea124384"
+dependencies = [
+ "cranelift-entity",
+]
+
+[[package]]
+name = "cranelift-bitset"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "006fe8776f6d81acb83571f52e7737a54c6dec1ba75e2b7b5a68af15451f88ee"
+
+[[package]]
+name = "cranelift-codegen"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "021b5a45c5ca4d414746a985c7241fea4202fd71aeef5a2891c0be32518e3201"
+dependencies = [
+ "bumpalo",
+ "cranelift-assembler-x64",
+ "cranelift-bforest",
+ "cranelift-bitset",
+ "cranelift-codegen-meta",
+ "cranelift-codegen-shared",
+ "cranelift-control",
+ "cranelift-entity",
+ "cranelift-isle",
+ "gimli",
+ "hashbrown 0.15.5",
+ "log",
+ "regalloc2",
+ "rustc-hash",
+ "serde",
+ "smallvec",
+ "target-lexicon 0.13.5",
+ "wasmtime-internal-math",
+]
+
+[[package]]
+name = "cranelift-codegen-meta"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5350ad78964a8cc301bc83cbc9b5144ccb44e1c2f604b551cc8ec15c99900dcb"
+dependencies = [
+ "cranelift-assembler-x64-meta",
+ "cranelift-codegen-shared",
+ "cranelift-srcgen",
+ "heck 0.5.0",
+]
+
+[[package]]
+name = "cranelift-codegen-shared"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6918b5db84d5a9b09eb8fae05466cd57fb04d97a88ac47c24698830c8714747e"
+
+[[package]]
+name = "cranelift-control"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec4ea4593cd6ef06573d7a6bc5a4231368f96a5b57f65900b24553cca3284bcd"
+dependencies = [
+ "arbitrary",
+]
+
+[[package]]
+name = "cranelift-entity"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bcca10e8c33eac67a45be4e09d236e274697831ca6bf4c4a927f7570eb8436a8"
+dependencies = [
+ "cranelift-bitset",
+]
+
+[[package]]
+name = "cranelift-frontend"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0dcc8b7e922ab1a6ec4640be3533698e291a4111b83d96f8d9e3367162e290ef"
+dependencies = [
+ "cranelift-codegen",
+ "log",
+ "smallvec",
+ "target-lexicon 0.13.5",
+]
+
+[[package]]
+name = "cranelift-isle"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9db87d9e6fe9ba89a71434a06c9f19153f3dd273a1c5c9a6365bc4f019213d1b"
+
+[[package]]
+name = "cranelift-module"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a54dbd8cd9c6d596ff659efdc18dec95e7903d13c35d141b12ff0ed2949184f2"
+dependencies = [
+ "anyhow",
+ "cranelift-codegen",
+ "cranelift-control",
+]
+
+[[package]]
+name = "cranelift-object"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "400a66b7b67c256bbbda4bf1221560534b9afc8a0dd875c20ab0349753152894"
+dependencies = [
+ "anyhow",
+ "cranelift-codegen",
+ "cranelift-control",
+ "cranelift-module",
+ "log",
+ "object 0.37.3",
+ "target-lexicon 0.13.5",
+]
+
+[[package]]
+name = "cranelift-srcgen"
+version = "0.126.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "289ab02de2733de3a857c98bdaace8f4dfab1cc1d322ba8637280ce2a7d15d8e"
 
 [[package]]
 name = "crc"
@@ -2423,6 +2815,11 @@ name = "gimli"
 version = "0.32.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
+dependencies = [
+ "fallible-iterator",
+ "indexmap 2.14.2",
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "gio"
@@ -4068,7 +4465,12 @@ version = "0.37.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
 dependencies = [
+ "crc32fast",
+ "flate2",
+ "hashbrown 0.15.5",
+ "indexmap 2.14.2",
  "memchr",
+ "ruzstd",
 ]
 
 [[package]]
@@ -4877,6 +5279,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "regalloc2"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08effbc1fa53aaebff69521a5c05640523fab037b34a4a2c109506bc938246fa"
+dependencies = [
+ "allocator-api2",
+ "bumpalo",
+ "hashbrown 0.15.5",
+ "log",
+ "rustc-hash",
+ "smallvec",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5168,6 +5584,15 @@ dependencies = [
  "unicode-width 0.1.14",
  "utf8parse",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "ruzstd"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7c1c839d570d835527c9a5e4db7cb2198683a988cb9d7293fc8674e6bd58fc8"
+dependencies = [
+ "twox-hash",
 ]
 
 [[package]]
@@ -6689,6 +7114,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "twox-hash"
+version = "2.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a"
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7041,6 +7472,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wasmtime-internal-math"
+version = "39.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d51480b15d802e7203630ea338da956f5e96b6ae6308db265d14d92a3c29870"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
