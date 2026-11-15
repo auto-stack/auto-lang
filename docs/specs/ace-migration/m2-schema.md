@@ -75,3 +75,36 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 （22 个 `p979_age_h0_*`）、av `p979` 7 例、syntax-grammar `p979` 13 例；受影响固定组
 `ace-syntax ace-source ace-semantics ace-artifacts ace-av` 全 PASS（ace-av 的 `vctip.exe`
 进程树为已记录环境边界）。后续核验一律以最新代码重跑，不引用本文件的数字当交付证明。
+
+## 6. 组件面（T-03 已验切片，2026-11-15）
+
+### 6.1 profile 与 typed 候选
+
+- `SourceProfile::AgeComponent`（slug `age-component`，`auto.source.age-component.draft`）：**同一** `auto-source.at` 的另一裁剪（`age-h0` 的 H0 合同逐字节不变），自有 GrammarId；所有通用入口（整模块/片段/兼容桥/独立二进制）具名拒绝 `source.domain-frontend`。
+- `project_component_candidates(src)`：未受信 typed 候选 —— `node`（名/声明头/原 span）、`model` 字段（名/类型词/初值/原 span；`int`/`i32`/`bool`/命名类型均解析）、`on <Msg>` 处理器（消息名 + 赋值清单，字段/右值/原 span）、`view` 文本叶（沿用 H0 形状）。
+- 兼容：`widget` 头在 `LegacyWidgetAlias::Accept` 下等价同一 `node` 角色；关闭时声明头 span 具名拒 `source.age.legacy-widget`。
+
+### 6.2 场景脱糖（消费者配置，不是源语言）
+
+`ComponentScenario { instances: 1..=4, ops: [Send{instance, msg} | Tick{instance}] }`，其中 `Life.Tick` 在本切片建模为保留消息 `Tick`（运行身份归 981）。脱糖产物全部是**普通 Auto**：
+
+- 每实例一个状态函数 `fn __age_state_<i>() int`：该实例的 `model` 初值 + 定向 ops 内联（字段标识符→实例局部），返回**首个** model 字段；
+- 驱动 `fn __age_drive() int`：各 `__age_state_<i>()` 按 **256^i** 求和（instance 0 在个位）；
+- 渲染求值函数 `fn __age_c_text_<i>_<j>() Str`：叶表达式中的字段引用绑定为该实例的 `__age_state_<i>()` 调用，再 `.clone()` 返回。
+
+三者与普通项一起经**唯一** text-record verify（无第二解释器/发射器）；`desugar_hash`（对受检模块文本取 content_sha）标识受检工件身份，源哈希 `input_hash` 不含脱糖。
+
+### 6.3 观察与双后端
+
+- AV：`ace_av::age_component::observe_component(src, path, alias, scenario)` → `{encoded, instance_texts}`；驱动与逐实例渲染函数各经共享 lower→MIR 校验→ABC→AV 执行取真值。
+- A2R：同一 `CheckedModule` 以 `__age_drive` 为 i32 入口 → Rust fileset → **真实 rustc** → 运行 → `value:<encoded>`。
+- 已验场景值（同源同场景）：plain 双实例 **514**（2+2·256）、helper 场景 **259**（3+1·256）、N-tick 矩阵 **516**（4+2·256）。**typed view 的渲染文本只在 AV 侧观察**；A2R 证明的是同源场景驱动 + helper/N-tick，不得表述为"typed view 在两后端渲染"。
+- **编码边界**：256^i 仅在各实例观测状态 < 256 时单射；instance 3 需 < 128 才不溢出 i32（溢出为 AV `Trap{IntOverflow}` 响亮失败，非静默别名）。
+
+### 6.4 拒绝面（组件）
+
+`source.age.component-shape`（形状：无 model 字段/空 view/多 node）、`component-unsupported`（未接线：多字段模型、非 `int` 模型字段、未支持表达式形状）、`component-duplicate`（重复 `on <Msg>`）、`component-event`（未声明事件/未声明字段赋值）、`component-scenario`（实例越界/0 或 >4 实例），以及 H0 既有的 `source.age.slot|structure|text-type|leaf-expr|text-count|hidden-name|legacy-widget|domain-frontend`。全部保原 span，不静默丢字段/行为。
+
+### 6.5 本切片边界（pending，不得据此声明支持）
+
+单 node 定义、单模块（多模块 Node 工程需 960 模块图前门与领域面组合）、`int` 单字段观测（多字段 per-field 状态函数未接线）、无越权/未声明实例引用校验（V-10）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。
