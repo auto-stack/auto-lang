@@ -1,15 +1,20 @@
 # ace-migration: m2-autoui — 传统 AutoUI 声明的 ACE 接入（IF-980-FIELDS 字段分母已验切片）
 
-> Status: **IF-980-FIELDS 子面已验**（PLAN-980 B-DIALECT-I/V/R 子面，2026-11-16；同会话
-> 独立 phase 复审 pass，收据见计划 §9）。已交付：字段级投影完整性清单的共享机制
-> （ace-core `source::field_manifest`）+ `WidgetDecl` 完整字段分母的可执行清单与穷尽
-> 出现集抽取（auto-ui-dialect `p980_fields`）+ 双侧永久 case 与反控。
-> 完整 DIALECT（旧 widget 原源经同一 AGE Schema 兼容别名的全量投影/绑定/错误 span、
-> AGE 组件面对 msg/design/view 树组件等成员的接线）、STATE/NATIVE/WEB/RUST/TAURI/
-> JET/ARK/PARITY 各批、V-UI-FULL 与真实窗口验收**未交付**——本文件不把它们标为已支持。
-> 来源：[PLAN-980](../../plans/980-ace-m2-autoui.md) §5 r10（IF-980-FIELDS 合同）、§6、§9；
-> 消费方：[PLAN-979](../../plans/979-ace-m2-schema.md) r11 §5 V-11/AC-08/AC-HANDOFF
-> （T-08/T-04 对本清单回验）。本文件只写**已验行为与接口**。
+> Status: **DIALECT 批已验**（PLAN-980 B-DIALECT-I/V/R，2026-11-16；work→review（含
+> 复核反例两族）→phase fold 收据见计划 §9）。已交付：字段级投影完整性清单共享机制
+> （ace-core `source::field_manifest`）+ `WidgetDecl` 完整分母可执行清单（auto-ui
+> `-dialect p980_fields`，ui.widget-decl/v1）+ **AGE 组件面对 widget 成员槽位与 view
+> 树的接线**——002-counter/001-helloworld 完整原 widget 源经同一 AGE Schema
+> legacy-widget 别名全量投影并通过共享场景 verify（含反引号 f-string 绑定、str 状态
+> 字段、复合赋值、`!` 一元、design 绑定表达式）；`node` 规范头副本同字段 ID 集；
+> 别名关闭/坏形状/未接线槽位在原 span 具名拒绝。
+> 未交付（保持显式）：`style`/`setup`/`actions`/widget 级 `use{}` 四槽位为具名拒绝
+> （KNOWN-DEBT 登记）；design 的 if/else 值与求值行为（结构锚定）；STATE/NATIVE/
+> WEB/RUST/TAURI/JET/ARK/PARITY 各批与 V-UI-FULL/真实窗口验收；959 全行/组件全模式
+> 分母（T-01/PARITY）。
+> 来源：[PLAN-980](../../plans/980-ace-m2-autoui.md) §5/§6/§9；消费方：
+> [PLAN-979](../../plans/979-ace-m2-schema.md) r11 §5 V-11（T-08/T-04 回验）。
+> 本文件只写**已验行为与接口**。
 
 ## 1. 共享字段级清单机制（ace-core）
 
@@ -72,11 +77,33 @@ if/else、component、outlet/memo、memo/exact、link）、view-fn、style-recip
 - 语料清扫：全仓 1592 个 `.at`（排除 pac.at/target）中 697 个可独立解析源经
   parse+抽取**未知构造拒绝 0**。
 
-## 4. 边界与已知限制（未交付面保持显式）
+## 4. AGE 组件面的 widget 成员接线（DIALECT 批，2026-11-16）
 
-- AGE 组件面（`age-component` profile）当前只接线 model/on/view(text) 成员；
-  `msg`/`design` 等未接线成员在成员 span 具名拒绝（§1 case 固定），002 全源经
-  AGE 面编译属完整 DIALECT（PLAN-980 B-DIALECT 原任务继续）。
+- **grammar**（`auto-source.at`，全部 `profiles: [age-component]` 门控；token 表
+  零新增——其余 profile 的 GrammarId 不变）：成员槽位 `msg`/`design`/`named
+  view`/`bind`/`routes`/`expose`/`lifecycle`/`computed`/`watch`/`timer`、model
+  `var` 前缀、widget 形 `on { .Msg -> { 复合赋值 } }`（与 979 的 `on <Msg> {
+  assigns }` 并存，投影为同一 handler 结构）、view 树（元素 `[label] { 项* }`/
+  属性行 `key: value`（事件= `on` 前缀键，投影层归类，同 auto-ui 规则）/内联
+  lambda `() => { 点赋值 }`/裸与带属性 text）、`use <mod>.<name>: A, B` 导入。
+- **f-string**：widget 反引号形 `` `text ${expr}` `` 在 AGE 组件面入口统一源级
+  desugar 为 `__fstr(...)`（沿 PLAN-964 机制与边界——f-string 内部 span 可能
+  移位，外部字节精确；未闭合/嵌 brace 拒 `source.fstr-syntax`）。
+- **共享 verify**：场景驱动支持 `str` 状态字段（观测仍限 int）；`.field` 自引用
+  （投影为 `Field{base:Var("self")}`）与 `!` 一元在脱糖重命名通道内；text-record
+  描述符附加 `text_display`/`fstr` case（binder/verify 共享实现原就支持）。
+- **永久 case**（`cargo t ace-source`）：`plan980_dialect_full` ——002 冻结副本
+  （sha256/16=04937c35）经别名 Accept 全量投影 + 2 实例场景共享 verify + 别名
+  关闭原 span 拒 + 字段覆盖闭合/计数 oracle/Node 副本同 ID 集/删行反控；001
+  冻结副本（b2763be51）带属性 text 腿；标识符上下文保持；新成员坏形状原位拒。
+- **合同演进**：979 的 `text <expr> {}` 空括号冻结面扩为三形（空括号/带属性
+  体/裸标签——001 真实语法）；979 反例 unknown-attribute 改无冒号形（979 文件
+  内 PLAN-980 注记；具名结构拒绝合同不变）。
+
+## 5. 边界与已知限制（未交付面保持显式）
+
+- `style`/`setup`/`actions`/widget 级 `use{}` 四槽位在成员 span 具名拒绝
+  （KNOWN-DEBT 登记，关闭条件在案）——具名拒绝即交付面，非静默缺口。
 - `parse_ui` 为单文件语义：多模块工程源（`use store:` 等跨文件引用）独立解析
   报 `undefined variable`——完整批的语料验证按工程闭包入口执行。
 - `ViewEvent.inline` 在 parse 输出上恒 `None`（内联 lambda parse 期铸造为
