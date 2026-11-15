@@ -88,23 +88,23 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 `ComponentScenario { instances: 1..=4, ops: [Send{instance, msg} | Tick{instance}] }`，其中 `Life.Tick` 在本切片建模为保留消息 `Tick`（运行身份归 981）。脱糖产物全部是**普通 Auto**：
 
-- 每 **(实例, 字段)** 一个状态函数 `fn __age_state_<i>_<field>() int`：该实例的 `model` 初值 + 定向 ops 内联（字段标识符→实例局部），返回**该字段**；
-- 驱动 `fn __age_drive() int`：各实例**首字段**的 `__age_state_<i>_<first>()` 按 **256^i** 求和（instance 0 在个位；其他字段各自独立状态函数，渲染函数按需取用）；
+- 每 **(实例, 字段)** 一个状态函数 `fn __age_state_<i>_<field>() <ty>`：该实例的 `model` 初值 + 定向 ops 内联（字段标识符→实例局部），返回**该字段**；`<ty>` 取字段声明类型（`int`/`i32` → `int`，`bool` → `bool`；其余类型未接线，具名拒）；
+- 驱动 `fn __age_drive() int`：各实例**观测字段**的 `__age_state_<i>_<observed>()` 按 **256^i** 求和（instance 0 在个位）。观测字段缺省为**首个 `int` 字段**（故以 bool 开头的模型也可观测），也可由 `compile_component_scenario_observing(..., observed)` 按名指定（须存在且为 `int`：未知名 `component-unknown-field`，非 int `component-unsupported`）；
 - 渲染求值函数 `fn __age_c_text_<i>_<j>() Str`：叶表达式中的字段引用绑定为**该字段**的 `__age_state_<i>_<field>()` 调用，再 `.clone()` 返回（多字段模型因此可正确绑定，不再有"只认首字段"的错绑）。
 
 三者与普通项一起经**唯一** text-record verify（无第二解释器/发射器）；`desugar_hash`（对受检模块文本取 content_sha）标识受检工件身份，源哈希 `input_hash` 不含脱糖。
 
 ### 6.3 观察与双后端
 
-- AV：`ace_av::age_component::observe_component(src, path, alias, scenario)` → `{encoded, instance_texts}`；驱动与逐实例渲染函数各经共享 lower→MIR 校验→ABC→AV 执行取真值。
+- AV：`ace_av::age_component::observe_component(src, path, alias, scenario)` → `{encoded, instance_texts}`；`observe_component_observing(..., observed)` 指定观测字段；驱动与逐实例渲染函数各经共享 lower→MIR 校验→ABC→AV 执行取真值。静态面另有 `observe_component_texts(src, path, alias)`：多节点逐个文本叶取共享 Str 真值（按节点分组的**值**证据）。
 - A2R：同一 `CheckedModule` 以 `__age_drive` 为 i32 入口 → Rust fileset → **真实 rustc** → 运行 → `value:<encoded>`。
 - 已验场景值（同源同场景）：plain 双实例 **514**（2+2·256）、helper 场景 **259**（3+1·256）、N-tick 矩阵 **516**（4+2·256）。**typed view 的渲染文本只在 AV 侧观察**；A2R 证明的是同源场景驱动 + helper/N-tick，不得表述为"typed view 在两后端渲染"。
 - **编码边界**：256^i 仅在各实例观测状态 < 256 时单射；instance 3 需 < 128 才不溢出 i32（溢出为 AV `Trap{IntOverflow}` 响亮失败，非静默别名）。
 
 ### 6.4 拒绝面（组件）
 
-`source.age.component-shape`（形状：无 model 字段/空 view/多 node）、`component-unsupported`（未接线：多字段模型、非 `int` 模型字段、未支持表达式形状）、`component-duplicate`（重复 `on <Msg>`）、`component-event`（未声明事件/未声明字段赋值）、`component-scenario`（实例越界/0 或 >4 实例），以及 H0 既有的 `source.age.slot|structure|text-type|leaf-expr|text-count|hidden-name|legacy-widget|domain-frontend`。全部保原 span，不静默丢字段/行为。
+`source.age.component-shape`（形状：无 model 字段/空 view/多 node）、`component-unknown-field`（观测字段名不存在）、`component-unsupported`（未接线：非 `int`/`bool` 字段类型、无 `int` 字段可观测、未支持表达式形状）、`component-duplicate`（重复 `on <Msg>`）、`component-event`（未声明事件/未声明字段赋值）、`component-scenario`（实例越界/0 或 >4 实例），以及 H0 既有的 `source.age.slot|structure|text-type|leaf-expr|text-count|hidden-name|legacy-widget|domain-frontend`。全部保原 span，不静默丢字段/行为。
 
 ### 6.5 本切片边界（pending，不得据此声明支持）
 
-单 node 定义、单模块（多模块 Node 工程需 960 模块图前门与领域面组合）、`int` 模型字段（其他类型未接线）、无越权/未声明实例引用校验（V-10）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。
+场景面单 node 定义（静态面可描述同模块多个 node）、单模块（多模块 Node 工程需 960 模块图前门与领域面组合）、`int`/`bool` 模型字段（`str`/其他类型未接线）、观测字段须为 `int`、无越权/未声明实例引用校验（V-10）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。
