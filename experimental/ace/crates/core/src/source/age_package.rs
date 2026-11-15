@@ -242,7 +242,7 @@ pub fn compile_age_package_with_scenario(
 
     // 3b) 场景资源引用：`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
     //     缺失或不符类型都具名拒绝——实测过"不存在的资源名静默通过"的缺口。
-    check_scene_element_kinds(&product.age_components)?;
+    check_scene_element_kinds(&product.age_components, &product.bound)?;
     check_scene_resource_refs(&product.bound, &product.age_components)?;
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
@@ -1106,26 +1106,43 @@ fn scene_value_type(
 /// 与 IF-981-REF 相同的"符号表导入即可见"规则，不额外要求 `pub`）。
 fn check_scene_element_kinds(
     packaged: &[PackagedAgeComponent],
+    bound: &super::packages::BoundPackages,
 ) -> Result<(), Vec<Diagnostic>> {
-    // 全项目已声明的 node 名（含跨模块）。
-    let declared: std::collections::BTreeSet<&str> = packaged
-        .iter()
-        .map(|p| p.node.name.name.as_str())
-        .collect();
+    // 每个模块**自己**声明的 node 名（同模块引用天然可见）。
+    let mut own: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
+        std::collections::BTreeMap::new();
+    for p in packaged {
+        own.entry(p.module.as_str())
+            .or_default()
+            .insert(p.node.name.name.as_str());
+    }
     for comp in packaged {
+        // 本模块**导入**的 node 名（符号表导入即可见，不需要 `pub`）。
+        //
+        // 复审指出：此前这里把**全项目** node 名并成一个集合，于是"某个与入口
+        // 毫无导入关系的模块里恰好有个同名 node"也会被当作合法元素——比同族的
+        // `resolve_refs`（查导入）松，拼写撞上无关模块的名字就能过关。
+        let imported: std::collections::BTreeSet<&str> = bound
+            .units
+            .get(&comp.module)
+            .map(|u| u.imports.iter().map(|i| i.bound_name()).collect())
+            .unwrap_or_default();
         for row in &comp.node.view.scene_components {
             if row.kind == "shape2d" || super::age_resources::is_3d_element(&row.kind) {
                 continue;
             }
-            if declared.contains(row.kind.as_str()) {
+            let local = own
+                .get(comp.module.as_str())
+                .is_some_and(|s| s.contains(row.kind.as_str()));
+            if local || imported.contains(row.kind.as_str()) {
                 continue;
             }
             return Err(vec![text_diag(
                 "source.age.scene-element",
                 format!(
-                    "`{}` is not a declared AGE node and not a scene element \
+                    "`{}` is not a node declared in or imported by `{}` \
                      (2D: `shape2d`; 3D: cylinder3d/model3d/group3d)",
-                    row.kind
+                    row.kind, comp.module
                 ),
                 row.span,
             )]);

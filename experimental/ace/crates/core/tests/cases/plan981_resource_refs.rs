@@ -95,6 +95,32 @@ fn p981_qualifier_wildcard_is_gone() {
     assert_eq!(ds[0].code, "source.age.scene-resource-unknown", "{ds:?}");
 }
 
+/// 括号**不改变**引用身份——既不绕过存在性，也不该被拒。
+///
+/// 复审问"`(red)` 应否被拒"。实测答案是**不该**，理由是可验证的：括号在投影后
+/// 被展开，`(red)` 与 `red` 得到同一个表达式；而且**坏名字加括号仍然被拒**
+/// （`(resources.nope)` → `scene-resource-unknown`，与不加括号完全一致）。
+///
+/// 所以"括号被接受"不是静默接受，而是"括号不携带身份"。这条用例把这个判断固定
+/// 下来，防止日后有人为了"更严格"而无故拒绝合法括号。
+#[test]
+fn p981_parentheses_do_not_change_resource_identity() {
+    // 合法引用加括号 → 仍然合法（且解析到同一资源）。
+    for form in ["red", "(red)", "resources.red", "(resources.red)"] {
+        compile(RES, &with_material(form))
+            .unwrap_or_else(|ds| panic!("`{form}` should resolve: {ds:?}"));
+    }
+    // 坏引用加括号 → 仍然被拒（括号不绕过存在性检查）。
+    for form in ["nope", "(nope)", "resources.nope", "(resources.nope)"] {
+        let ds = compile(RES, &with_material(form))
+            .expect_err(&format!("`{form}` must be rejected"));
+        assert_eq!(
+            ds[0].code, "source.age.scene-resource-unknown",
+            "`{form}` must fail the SAME way with or without parens: {ds:?}"
+        );
+    }
+}
+
 /// 正确的限定写法与裸写法都仍然合法（收紧不能破坏原源）。
 #[test]
 fn p981_correct_forms_still_resolve() {

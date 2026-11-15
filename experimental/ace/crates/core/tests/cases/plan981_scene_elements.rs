@@ -93,6 +93,43 @@ fn p981_scene_element_same_module_node_is_accepted() {
     assert_eq!(m.scene[0].kind, "Inner");
 }
 
+/// **未被导入**的跨模块 node 不能当场景元素。
+///
+/// 复审指出：此前的实现把**全项目** node 名并成一个集合，于是"某个与入口毫无
+/// 导入关系的模块里恰好有个同名 node"也会被接受——比同族的 `resolve_refs`
+/// （查导入）松。拼写撞上无关模块的名字就能过关，是真实的静默接受。
+#[test]
+fn p981_unimported_node_is_not_a_scene_element() {
+    let ds = compile_with(
+        "node Far {\n    view { text \"f\" {} }\n}\n",
+        "node M {\n    view-2d {\n        Far f1 {\n            x: 1.0\n        }\n    }\n}\n",
+    )
+    .expect_err("an unimported node is not usable as a scene element");
+    assert_eq!(ds[0].code, "source.age.scene-element", "{ds:?}");
+    assert!(
+        ds[0].message.contains("not a node declared in or imported by"),
+        "{}",
+        ds[0].message
+    );
+}
+
+/// 同一形状但**写了 `use`** → 通过。与上一条构成同型合法/非法对照。
+#[test]
+fn p981_imported_node_is_a_scene_element() {
+    let out = compile_with(
+        "node Far {\n    view { text \"f\" {} }\n}\n",
+        "use libx.Far\nnode M {\n    view-2d {\n        Far f1 {\n            x: 1.0\n        }\n    }\n}\n",
+    )
+    .expect("an imported node is usable as a scene element");
+    let m = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "M")
+        .expect("M");
+    assert_eq!(m.scene[0].kind, "Far");
+}
+
 /// 冻结的 3D 元素与 `shape2d` 不受该收紧影响。
 #[test]
 fn p981_frozen_elements_are_still_legal() {
