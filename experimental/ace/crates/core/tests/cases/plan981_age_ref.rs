@@ -45,6 +45,19 @@ fn compile(main: &str) -> Result<
     )
 }
 
+/// 依赖模块可变体的版本（`widgets` 键，便于构造扁平偏移布局）。
+fn compile_two(dep: &str, main: &str) -> Result<
+    ace_core::source::age_package::AgePackageCompilation,
+    Vec<ace_core::atom_text::Diagnostic>,
+> {
+    compile_age_package(
+        &[input("widgets", dep), input("main", main)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps(),
+    )
+}
+
 
 
 
@@ -148,7 +161,41 @@ fn p981_ref_diagnostics_carry_the_original_module_span() {
     );
 }
 
-/// 跨模块 node 引用（本轮闭环）：普通 `use` 导入的 node 按 node 名解析到声明模块；
+//// 诊断带**原模块** span，且**在能暴露偏移的布局下**精确指向出错 token。
+///
+/// 判据必须这样构造，否则缺陷隐身（我因此一度误判"减法必需"）：
+/// - 故障必须在**非入口**模块（入口的 `flat_start` 为 0，减 0 等于没减）；
+/// - 故障的**本地偏移**必须**大于**其它模块的 `flat_start`，否则减法会
+///   `saturating_sub` 到 0 附近而"碰巧正确"。
+///
+/// 布局：`main` 很短且是入口；`zlib` 里先放一个正常 node，再放 200 字节填充，
+/// 最后才是带 `Nowhere` 的 node —— 使 `Nowhere` 的本地偏移 (~316) 远大于
+/// `main` 的长度。任何"再减一次 flat_start"的实现都会落到填充注释上。
+#[test]
+fn p981_ref_span_is_correct_for_a_deep_fault_in_a_non_entry_module() {
+    let main = "use widgets.Screen\nnode Main {\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let filler = format!("// {}\n", "q".repeat(200));
+    let zlib = format!(
+        "pub node Screen {{\n    view {{\n        text \"s\" {{}}\n    }}\n}}\n{filler}\
+         pub node Late {{\n    view {{\n        text \"l\" {{}}\n        Nowhere m1 {{}}\n    }}\n}}\n"
+    );
+    let ds = compile_two(&zlib, main).expect_err("Nowhere is undeclared");
+    let want = zlib.find("Nowhere").expect("fixture has Nowhere");
+    assert_eq!(
+        ds[0].span.start, want,
+        "the diagnostic must point at `Nowhere` inside zlib (local {want}); \
+         got {:?} which reads {:?}",
+        ds[0].span,
+        &zlib[ds[0].span.start.min(zlib.len())..ds[0].span.end.min(zlib.len())]
+    );
+    // 同时确认这个布局确实"能暴露偏移"：want 必须大于 main 的长度。
+    assert!(
+        want > main.len(),
+        "the fixture must place the fault beyond main's length to be a real probe"
+    );
+}
+
+// 跨模块 node 引用（本轮闭环）的既有用例在下方。
 /// `pub node` 同样可引用。AGE 作者面不需要 `pub`（2026-11-16 用户裁定）。
 #[test]
 fn p981_ref_cross_module_node_resolves_by_import() {

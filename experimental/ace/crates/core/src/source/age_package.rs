@@ -325,32 +325,25 @@ fn locate_all(
     ds.into_iter().map(|d| bound.locate(d).diagnostic).collect()
 }
 
-/// 扁平坐标 → 原模块坐标（诊断/描述都按原文件给定位）。
+/// 把 AGE 领域候选里的 span 交回诊断：**原样返回，不做换算**。
 ///
-/// PLAN-981：`age_components` 里的 span **是扁平坐标**，因此这里必须减去
-/// `flat_start`。这是实测结论，不是推断：
+/// 这些 span 是**模块本地**坐标。证据（我先前判断错了一次，这里留下判据）：
+/// 领域候选由 `parse_package_source_age` 逐模块解析、由 binder 原样 `clone` 进
+/// 产物，所以其 span 就是该模块源内的偏移——与 `AgeResolvedRef.span` 同一口径。
 ///
-/// - 保留减法时，`ref-undeclared` 与 `ref-not-a-node` 两条路径在依赖 73B / 157B
-///   两种长度下都把 span 精确落在出错 token 上（`at_token=true`）；
-/// - 去掉减法（我一度这样"修"过）后，同一批探针在 40B 依赖下指向
-///   `"{\n    view {\n"` —— 说明不减才是错的。
+/// 曾经的减法 `span.start - flat_start` 在**大多数**布局下碰巧无害，因为本地
+/// 偏移通常小于后置模块的 `flat_start`，`find` 会落到第一个模块（`flat_start`
+/// 为 0）上，减 0 等于没减。但把故障放在模块**深处**就会暴露：
 ///
-/// 已知边界：`find(|s| span.start >= s.flat_start)` 假定被减的偏移**大于**任何
-/// 前置模块长度。当依赖模块很短、而 span 落在其中时，会匹配到错误的模块。
-/// 该边界尚未修（属 RUST/汇总批），但**不得**用"整体不减"来回避。
-fn flat_to_module(sources: &[AgeModuleSource], span: Span) -> Span {
-    let src = sources
-        .iter()
-        .rev()
-        .find(|s| span.start >= s.flat_start)
-        .or_else(|| sources.first());
-    match src {
-        Some(s) => Span {
-            start: span.start.saturating_sub(s.flat_start),
-            end: span.end.saturating_sub(s.flat_start),
-        },
-        None => span,
-    }
+/// ```text
+/// 本地偏移 316 → 报成 248（命中的是填充注释 "qqqq…" 而不是 `Nowhere`）
+/// ```
+///
+/// 判据要这样构造才能看见它：故障模块必须**不是**入口模块、且本地偏移**大于**
+/// 其它模块的 `flat_start`。反例（我一开始用的短模块）会让缺陷隐身——这正是
+/// 我上一轮误判"减法必需"的原因。
+fn flat_to_module(_sources: &[AgeModuleSource], span: Span) -> Span {
+    span
 }
 
 /// 用户顶层名与保留前缀的冲突（具名拒绝，不静默遮蔽）。
