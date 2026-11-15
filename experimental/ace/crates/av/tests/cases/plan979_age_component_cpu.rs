@@ -357,7 +357,11 @@ fn p979_component_bool_field_renders_through_its_typed_state() {
     let o = observe_component(FLAG_MODEL, "switch.at", LegacyWidgetAlias::Reject, &initial)
         .expect("bool field observes");
     assert_eq!(o.encoded, 1, "the int field is the observed one");
-    assert_eq!(o.instance_texts[0], vec!["on".to_string()], "initial flag is true");
+    assert_eq!(
+        o.instance_texts[0],
+        vec!["on".to_string()],
+        "initial flag is true"
+    );
 
     let flipped = ComponentScenario {
         instances: 1,
@@ -369,7 +373,11 @@ fn p979_component_bool_field_renders_through_its_typed_state() {
     let o = observe_component(FLAG_MODEL, "switch.at", LegacyWidgetAlias::Reject, &flipped)
         .expect("bool field observes");
     assert_eq!(o.encoded, 0, "count untouched");
-    assert_eq!(o.instance_texts[0], vec!["off".to_string()], "flag flipped to false");
+    assert_eq!(
+        o.instance_texts[0],
+        vec!["off".to_string()],
+        "flag flipped to false"
+    );
 }
 
 #[test]
@@ -387,4 +395,15 @@ fn p979_component_bool_observed_field_is_refused_by_name() {
         .expect_err("a bool observed field is refused");
     assert!(err.contains("source.age.component-unsupported"), "{err}");
     assert!(err.contains("int"), "{err}");
+}
+#[test]
+fn p979_component_static_face_observes_every_text_value() {
+    // 静态面（无场景）也要有**值**证据：多节点、多叶、helper 调用各取共享 Str 真值。
+    use ace_av::age_component::observe_component_texts;
+    let src = "fn greet() str {\n    return \"hi\"\n}\nnode First {\n    view {\n        text \"a\" {}\n        text greet() {}\n    }\n}\nnode Second {\n    view {\n        text \"c\" {}\n    }\n}\n";
+    let values = observe_component_texts(src, "static.at", LegacyWidgetAlias::Reject)
+        .expect("static face observes");
+    assert_eq!(values.len(), 2, "one group per node");
+    assert_eq!(values[0], vec!["a".to_string(), "hi".to_string()]);
+    assert_eq!(values[1], vec!["c".to_string()]);
 }

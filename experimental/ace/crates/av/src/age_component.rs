@@ -8,7 +8,7 @@ use ace_av_core::av::{execute, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::{abc_verify, mir_verify};
 use ace_core::source::age_component::{
-    compile_component_scenario, ComponentCompilation, ComponentScenario,
+    compile_age_component, compile_component_scenario, ComponentCompilation, ComponentScenario,
 };
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_lowering::lower_checked_owned;
@@ -33,6 +33,28 @@ pub fn observe_component(
     let compiled = compile_component_scenario(src, module_path, alias, &caps, scenario)
         .map_err(|ds| format_diags(&ds))?;
     observe_compiled(&compiled)
+}
+
+/// 静态面观察：编译（共享前门 + 唯一 verify）后逐个文本叶取共享 Str 真值。
+///
+/// 返回按节点分组的叶值（节点序、叶声明序）；这是静态描述之外的**值**证据。
+pub fn observe_component_texts(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+) -> Result<Vec<Vec<String>>, String> {
+    let caps = ["ac.runtime.text.v1".to_string()];
+    let compiled =
+        compile_age_component(src, module_path, alias, &caps).map_err(|ds| format_diags(&ds))?;
+    let mut per_node = Vec::new();
+    for node in &compiled.description.nodes {
+        let mut texts = Vec::new();
+        for t in &node.view.texts {
+            texts.push(execute_text(&compiled.checked, &t.def_id)?);
+        }
+        per_node.push(texts);
+    }
+    Ok(per_node)
 }
 
 /// 对已编译结果执行驱动与文本叶（可复用于暖路径）。
