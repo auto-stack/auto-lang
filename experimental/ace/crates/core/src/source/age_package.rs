@@ -28,6 +28,10 @@ use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span};
 use crate::verify::CheckedModule;
 
+/// PLAN-981：包面的**消费者配置**（不是源语言的一部分）——实例数与定向事件
+/// 序列。与 979 组件场景是**同一个类型**（同一套脱糖口径，不复制一份）。
+pub use super::age_component::ComponentScenario as AgePackageScenario;
+
 /// 包面领域身份（进入描述与证据身份；与 grammar id 一起构成交接件身份）。
 pub const AGE_PACKAGE_DOMAIN: &str = "ace.age.package/v1";
 /// 隐藏求值函数前缀（用户顶层名含此前缀 = 具名冲突）。
@@ -92,6 +96,8 @@ pub struct AgePackageDescription {
 pub struct AgePackageCompilation {
     pub description: AgePackageDescription,
     pub checked: CheckedModule,
+    /// 源函数名 → 绑定器 HIR 符号（脱糖函数与普通函数都在内）。
+    pub symbols: std::collections::BTreeMap<String, String>,
     /// 包图身份（源 + 模块图 + grammar + 兼容配置）。
     pub input_hash: String,
     /// 脱糖后模块内容的身份（换领域行为即换它；源哈希不含脱糖）。
@@ -100,6 +106,12 @@ pub struct AgePackageCompilation {
 }
 
 impl AgePackageCompilation {
+    /// 源名 → 绑定器给出的 HIR 符号（`sf_<mangled>`），供 AV/A2R 消费者按
+    /// 同一事实取函数；查不到返回 None（不猜命名规则）。
+    pub fn symbol_of(&self, source_name: &str) -> Option<String> {
+        self.symbols.get(source_name).cloned()
+    }
+
     /// 证据身份（与 979 领域接面同元组：id/version/grammar/源/兼容配置）。
     pub fn identity(&self) -> super::domain::DomainIdentity {
         super::domain::DomainIdentity {
@@ -122,6 +134,29 @@ pub fn compile_age_package(
     alias: LegacyWidgetAlias,
     capabilities: &[String],
 ) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
+    compile_age_package_with_scenario(
+        inputs,
+        entry,
+        alias,
+        capabilities,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
+}
+
+/// 同 [`compile_age_package`]，但显式给出**消费者场景**（实例数与定向事件）。
+///
+/// 场景不是源语言的一部分：它决定为哪些实例生成状态函数/求值函数，从而让
+/// AV/A2R 消费者观察真实值（两实例 2:1 事件、N 次 Tick）。
+pub fn compile_age_package_with_scenario(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &crate::source::age_component::ComponentScenario,
+) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
     // 1) 共享包绑定：包模块面 ∪ AGE 面**一次**解析；可见性/导入/初始化序/
     //    mangle 全部由 960 的绑定器裁定（本模块不重做任何一项）。
     let product = bind_packages_age(
@@ -129,6 +164,7 @@ pub fn compile_age_package(
         entry,
         capabilities,
         FrontBudget::WORK_OWNED_64MIB,
+        scenario,
     )
     .map_err(|d| vec![d.diagnostic])?;
 
@@ -194,6 +230,12 @@ pub fn compile_age_package(
             modules: product.sources.clone(),
         },
         checked,
+        symbols: product
+            .bound
+            .origins
+            .iter()
+            .map(|(sym, (_, _, original))| (original.clone(), sym.clone()))
+            .collect(),
         input_hash,
         desugar_hash,
         atom_text: parts.atom_text,
@@ -372,6 +414,42 @@ pub(crate) fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         receiver: Receiver::Free,
         owner: None,
         script: false,
+    }
+}
+
+/// PLAN-981：把场景里的 `Tick` 解析成**作者实际声明**的生命周期消息拼写。
+///
+/// 979 的组件场景把 `Life.Tick` 建模为保留消息 `Tick`（"运行身份归 981"）——
+/// 本条就是那个运行身份：包面接受 `Tick` 与 `Life.Tick` 两种拼写，并归一到本
+/// node 真正声明的那一个；两者都没声明才保持原样交给共享检查具名拒绝。
+pub(crate) fn resolve_tick_spelling(
+    scenario: &crate::source::age_component::ComponentScenario,
+    node: &ComponentNode,
+) -> crate::source::age_component::ComponentScenario {
+    use crate::source::age_component::{ScenarioOp, ComponentScenario};
+    let declared = node
+        .handlers
+        .iter()
+        .find(|h| h.msg == "Life.Tick")
+        .or_else(|| node.handlers.iter().find(|h| h.msg == "Tick"))
+        .map(|h| h.msg.clone());
+    let Some(declared) = declared else {
+        return scenario.clone();
+    };
+    let ops = scenario
+        .ops
+        .iter()
+        .map(|op| match op {
+            ScenarioOp::Tick { instance } => ScenarioOp::Send {
+                instance: *instance,
+                msg: declared.clone(),
+            },
+            other => other.clone(),
+        })
+        .collect();
+    ComponentScenario {
+        instances: scenario.instances,
+        ops,
     }
 }
 

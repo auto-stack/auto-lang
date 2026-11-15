@@ -365,7 +365,15 @@ pub(crate) fn parse_packages_front(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Modules, src, budget)
+    parse_packages_with(
+        PackagesFace::Modules,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-1043（T-03）：packages-ct 前门（`ac.source.cte.in/v1` 能力线；
@@ -374,7 +382,15 @@ pub(crate) fn parse_packages_front_ct(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Ct, src, budget)
+    parse_packages_with(
+        PackagesFace::Ct,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-946（T-02）：packages-aggregates 前门（PLAN-962 `av.aggregates/1`
@@ -384,15 +400,24 @@ pub(crate) fn parse_packages_front_aggregates(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Aggregates, src, budget)
+    parse_packages_with(
+        PackagesFace::Aggregates,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-981（IF-981-MODULE）：`age-package` 前门（包模块图 ∪ AGE 组件）。
 pub(crate) fn parse_packages_front_age(
     src: &str,
     budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Age, src, budget)
+    parse_packages_with(PackagesFace::Age, src, budget, scenario)
 }
 
 /// 包面前门的三种裁剪面（旧布尔 `ct_face` 的结构化形态）。
@@ -436,6 +461,7 @@ fn parse_packages_with(
     face: PackagesFace,
     src: &str,
     budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
@@ -476,7 +502,7 @@ fn parse_packages_with(
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
     })?;
-    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), face)
+    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), face, scenario)
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -683,6 +709,7 @@ pub(crate) fn project_packages_front(
     trees: Vec<CstTree>,
     tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
     face: PackagesFace,
+    scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
@@ -799,70 +826,99 @@ pub(crate) fn project_packages_front(
             )?;
             for node in nodes {
                 let mut text_fns = Vec::new();
-                // `model` 字段脱糖成普通状态函数（复刻 979 已证口径）。
-                for f in &node.fields {
-                    let one = crate::source::age_component::ComponentScenario {
-                        instances: 1,
-                        ops: Vec::new(),
-                    };
-                    let mut stmts = match crate::source::age_component::instance_stmts(
-                        0, &node, &one,
-                    ) {
-                        Ok(s) => s,
-                        Err(ds) => return Err(ds),
-                    };
-                    stmts.push(crate::source::ast::Stmt::Return {
-                        value: crate::source::ast::Expr {
-                            span: f.span,
-                            kind: crate::source::ast::ExprKind::Var(crate::source::ast::Ident {
-                                name: crate::source::age_component::local_name(0, &f.name),
+                // PLAN-981：把场景里的 `Tick` 归一到本 node 实际声明的生命周期
+                // 消息拼写（`Life.Tick` 优先），再交给共享脱糖/检查。
+                let node_scenario =
+                    crate::source::age_package::resolve_tick_spelling(scenario, &node);
+                // `model` 字段：按场景实例数脱糖成普通状态函数
+                // `__age_state_<i>_<field>()`（init + 该实例的定向 ops + 返回）。
+                // 静态面（`instances == 0`）仍生成**实例 0** 的状态，否则文本叶里的
+                // 字段引用没有绑定——"静态"只表示不额外复制实例，不等于没有 model。
+                let state_instances = if node_scenario.instances == 0 {
+                    1
+                } else {
+                    node_scenario.instances
+                };
+                for inst in 0..state_instances {
+                    for f in &node.fields {
+                        let mut stmts =
+                            match crate::source::age_component::instance_stmts(
+                                inst, &node, &node_scenario,
+                            ) {
+                                Ok(s) => s,
+                                Err(ds) => return Err(ds),
+                            };
+                        stmts.push(crate::source::ast::Stmt::Return {
+                            value: crate::source::ast::Expr {
                                 span: f.span,
-                            }),
-                        },
-                        span: f.span,
-                    });
-                    items.push(crate::source::ast::Item::Fn(crate::source::ast::FnItem {
-                        name: crate::source::ast::Ident {
-                            name: crate::source::age_component::state_fn_name(0, &f.name),
+                                kind: crate::source::ast::ExprKind::Var(
+                                    crate::source::ast::Ident {
+                                        name: crate::source::age_component::local_name(
+                                            inst, &f.name,
+                                        ),
+                                        span: f.span,
+                                    },
+                                ),
+                            },
                             span: f.span,
-                        },
-                        type_params: Vec::new(),
-                        params: Vec::new(),
-                        ret: crate::source::ast::TypeAnn {
-                            kind: crate::source::ast::TypeRef::Builtin(
-                                crate::source::ast::TypeWord::I32,
-                            ),
-                            span: f.span,
-                        },
-                        body: crate::source::ast::Block {
-                            stmts,
-                            span: node.span,
-                        },
-                        span: node.span,
-                        receiver: crate::source::ast::Receiver::Free,
-                        owner: None,
-                        script: false,
-                    }));
+                        });
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::ast::FnItem {
+                                name: crate::source::ast::Ident {
+                                    name: crate::source::age_component::state_fn_name(
+                                        inst, &f.name,
+                                    ),
+                                    span: f.span,
+                                },
+                                type_params: Vec::new(),
+                                params: Vec::new(),
+                                ret: crate::source::ast::TypeAnn {
+                                    kind: crate::source::ast::TypeRef::Builtin(
+                                        crate::source::ast::TypeWord::I32,
+                                    ),
+                                    span: f.span,
+                                },
+                                body: crate::source::ast::Block {
+                                    stmts,
+                                    span: node.span,
+                                },
+                                span: node.span,
+                                receiver: crate::source::ast::Receiver::Free,
+                                owner: None,
+                                script: false,
+                            },
+                        ));
+                    }
                 }
-                for leaf in &node.view.texts {
-                    let name = format!(
-                        "{}{}",
-                        crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
-                        age_components.len() * 16 + text_fns.len()
-                    );
-                    // 字段引用 → 该实例的状态函数调用（与状态函数同一构造口径）。
-                    let bound = match crate::source::age_component::rename_expr(
-                        &leaf.expr,
-                        crate::source::age_component::FieldBinding::StateFn(0),
-                        &node.fields,
-                    ) {
-                        Ok(b) => b,
-                        Err(ds) => return Err(ds),
-                    };
-                    items.push(crate::source::ast::Item::Fn(
-                        crate::source::age_package::hidden_fn(&name, &bound, leaf.expr.span),
-                    ));
-                    text_fns.push((name, leaf.span));
+                // 文本叶：每个实例一份求值函数（字段引用 → 该实例状态函数调用）。
+                // 静态面同样按实例 0 生成（与上面的状态函数一致：有 model 就有状态，
+                // "静态"只表示不复制实例，不表示叶可以无绑定地脱离 model）。
+                let insts: Vec<usize> = (0..state_instances).collect();
+                for inst in insts {
+                    for leaf in &node.view.texts {
+                        let name = format!(
+                            "{}{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            age_components.len(),
+                            text_fns.len()
+                        );
+                        let bound = match crate::source::age_component::rename_expr(
+                            &leaf.expr,
+                            crate::source::age_component::FieldBinding::StateFn(inst),
+                            &node.fields,
+                        ) {
+                            Ok(b) => b,
+                            Err(ds) => return Err(ds),
+                        };
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::age_package::hidden_fn(
+                                &name,
+                                &bound,
+                                leaf.expr.span,
+                            ),
+                        ));
+                        text_fns.push((name, leaf.span));
+                    }
                 }
                 age_components.push((node, text_fns));
             }

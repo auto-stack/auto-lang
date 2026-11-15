@@ -228,6 +228,8 @@ mod module_sources_950;
 mod plan979_age_component_cpu;
 #[path = "cases/plan979_age_h0_cpu.rs"]
 mod plan979_age_h0_cpu;
+#[path = "cases/plan981_age_package_av.rs"]
+mod plan981_age_package_av;
 #[path = "cases/platform_io_1039.rs"]
 mod platform_io_1039;
 #[path = "cases/sq_source_facts_934.rs"]

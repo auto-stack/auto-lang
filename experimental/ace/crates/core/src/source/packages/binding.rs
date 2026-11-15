@@ -280,9 +280,18 @@ pub fn bind_packages_age(
     entry: &str,
     caps: &[String],
     budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<PackagedAge, PackageDiagnostic> {
     let mut collected: Vec<PackagedAgeComponent> = Vec::new();
-    let bound = bind_packages_face_with(inputs, entry, caps, budget, Faces::Age, Some(&mut collected))?;
+    let bound = bind_packages_face_with(
+        inputs,
+        entry,
+        caps,
+        budget,
+        Faces::Age,
+        scenario,
+        Some(&mut collected),
+    )?;
     let sources = bound
         .segments
         .iter()
@@ -328,7 +337,18 @@ fn bind_packages_face(
     } else {
         Faces::Plain
     };
-    bind_packages_face_with(inputs, entry, caps, budget, face, None)
+    bind_packages_face_with(
+        inputs,
+        entry,
+        caps,
+        budget,
+        face,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+        None,
+    )
 }
 
 /// PLAN-981：包面的三态（plain / aggregates / age）。
@@ -345,6 +365,7 @@ fn bind_packages_face_with(
     caps: &[String],
     budget: FrontBudget,
     face: Faces,
+    scenario: &crate::source::age_component::ComponentScenario,
     mut age_out: Option<&mut Vec<PackagedAgeComponent>>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
@@ -395,12 +416,14 @@ fn bind_packages_face_with(
                 zero,
             ));
         }
-        let parse = match face {
-            Faces::Aggregates => parse_package_source_aggregates,
-            Faces::Age => parse_package_source_age,
-            Faces::Plain => parse_package_source,
+        // PLAN-981：AGE 面的解析要带消费者场景（实例数/定向事件），故按面
+        // 直接调用而不是取函数指针（其它面的参数面保持不变）。
+        let parsed = match face {
+            Faces::Aggregates => parse_package_source_aggregates(&input.source, caps, budget),
+            Faces::Age => parse_package_source_age(&input.source, caps, budget, scenario),
+            Faces::Plain => parse_package_source(&input.source, caps, budget),
         };
-        let syntax = parse(&input.source, caps, budget).map_err(|mut ds| PackageDiagnostic {
+        let syntax = parsed.map_err(|mut ds| PackageDiagnostic {
             module: key.clone(),
             diagnostic: ds.remove(0),
         })?;

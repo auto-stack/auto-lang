@@ -310,7 +310,16 @@ pub fn project_stored_package(
             Span { start: 0, end: 0 },
         )]);
     }
-    super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Modules)
+    super::cst::project_packages_front(
+        src,
+        trees,
+        None,
+        super::cst::PackagesFace::Modules,
+        &super::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-1043（T-03）：packages-ct 存档 CST 的再投影（grammar_id 对
@@ -338,7 +347,16 @@ pub fn project_stored_package_ct(
             Span { start: 0, end: 0 },
         )]);
     }
-    super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Ct)
+    super::cst::project_packages_front(
+        src,
+        trees,
+        None,
+        super::cst::PackagesFace::Ct,
+        &super::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-946（T-02）：packages-aggregates 存档 CST 的再投影（grammar_id 对
@@ -366,7 +384,16 @@ pub fn project_stored_package_aggregates(
             Span { start: 0, end: 0 },
         )]);
     }
-    super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Aggregates)
+    super::cst::project_packages_front(
+        src,
+        trees,
+        None,
+        super::cst::PackagesFace::Aggregates,
+        &super::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-981（IF-981-MODULE）：`age-package` 面的模块解析入口 —— packages-modules
@@ -376,11 +403,12 @@ pub fn parse_package_source_age(
     src: &str,
     capabilities: &[String],
     budget: FrontBudget,
+    scenario: &super::age_component::ComponentScenario,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
     if let Err(ds) = require_packages_capabilities(capabilities) {
         return Err(ds);
     }
-    super::cst::parse_packages_front_age(src, budget)
+    super::cst::parse_packages_front_age(src, budget, scenario)
 }
 
 mod binding;
