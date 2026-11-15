@@ -372,6 +372,8 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
             )
         }
         RStmt::EvalExpr { expr } => format!("{}{};\n", pad, render_val(expr)),
+        // PLAN-968: verbatim nested fn item (scheduler driver adapters).
+        RStmt::RawFn { text } => format!("{}\n", text),
     }
 }
 

@@ -1,0 +1,263 @@
+
+// ---- PLAN-968 scheduler runtime (std threads + bounded channels) ----
+// The same observable semantics as the AV lane: FIFO mailboxes, bounded
+// backpressure (sync_channel parks the sender), ask/reply ports, sleeps,
+// and an orderly post-main drain (pending mailboxes deliver first, then
+// stop flags run the drivers' stop hooks and every thread joins).
+
+pub enum SchedValue {
+    I(i32),
+    B(bool),
+    S(A2xStr),
+}
+
+impl Clone for SchedValue {
+    fn clone(&self) -> Self {
+        match self {
+            SchedValue::I(v) => SchedValue::I(*v),
+            SchedValue::B(v) => SchedValue::B(*v),
+            SchedValue::S(s) => SchedValue::S(
+                a2x_str_clone(s.as_str()).unwrap_or_else(|_| a2x_str_clone("").unwrap()),
+            ),
+        }
+    }
+}
+
+pub fn a2x_v_i(v: i32) -> SchedValue { SchedValue::I(v) }
+pub fn a2x_v_b(v: bool) -> SchedValue { SchedValue::B(v) }
+pub fn a2x_v_s(v: A2xStr) -> SchedValue { SchedValue::S(v) }
+pub fn a2x_un_i(v: SchedValue) -> i32 {
+    match v { SchedValue::I(x) => x, SchedValue::B(b) => i32::from(b), SchedValue::S(_) => 0 }
+}
+pub fn a2x_un_b(v: SchedValue) -> bool {
+    match v { SchedValue::B(b) => b, SchedValue::I(x) => x != 0, SchedValue::S(_) => false }
+}
+pub fn a2x_un_s(v: SchedValue) -> A2xStr {
+    match v {
+        SchedValue::S(s) => s,
+        _ => a2x_str_clone("").unwrap(),
+    }
+}
+
+pub fn a2x_sched_vec(v: Vec<SchedValue>) -> Vec<SchedValue> { v }
+pub fn a2x_sched_vec1(a: SchedValue) -> Vec<SchedValue> { vec![a] }
+pub fn a2x_sched_vec2(a: SchedValue, b: SchedValue) -> Vec<SchedValue> { vec![a, b] }
+pub fn a2x_sched_vec3(a: SchedValue, b: SchedValue, c: SchedValue) -> Vec<SchedValue> { vec![a, b, c] }
+pub fn a2x_sched_vec0() -> Vec<SchedValue> { Vec::new() }
+
+pub fn a2x_print_str(s: &str) {
+    println!("{}", s);
+}
+pub fn a2x_print_i32(v: i32) { println!("{}", v); }
+pub fn a2x_print_bool(v: bool) { println!("{}", v); }
+pub fn a2x_eprint_str(s: &str) { eprintln!("{}", s); }
+pub fn a2x_eprint_i32(v: i32) { eprintln!("{}", v); }
+pub fn a2x_eprint_bool(v: bool) { eprintln!("{}", v); }
+
+/// One mailbox envelope: the message, its reply port (0 = send mode) and
+/// the reply sender for ask deliveries.
+struct Envelope {
+    msg: SchedValue,
+    port: i32,
+    reply: Option<std::sync::mpsc::Sender<SchedValue>>,
+}
+
+struct TaskEntry {
+    tx: Option<std::sync::mpsc::SyncSender<Envelope>>,
+    stopped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+struct SchedRegistry {
+    tasks: Vec<TaskEntry>,
+    /// Ask awaiters by 1-based port id.
+    awaiters: Vec<Option<std::sync::mpsc::Receiver<SchedValue>>>,
+    go_threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+fn registry() -> &'static std::sync::Mutex<SchedRegistry> {
+    static REG: std::sync::OnceLock<std::sync::Mutex<SchedRegistry>> = std::sync::OnceLock::new();
+    REG.get_or_init(|| {
+        std::sync::Mutex::new(SchedRegistry { tasks: Vec::new(), awaiters: Vec::new(), go_threads: Vec::new() })
+    })
+}
+
+thread_local! {
+    static TASK_RX: std::cell::RefCell<Option<std::sync::mpsc::Receiver<Envelope>>> = const { std::cell::RefCell::new(None) };
+    static TASK_STOPPED: std::cell::RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = const { std::cell::RefCell::new(None) };
+    static TASK_REPLY: std::cell::RefCell<Option<std::sync::mpsc::Sender<SchedValue>>> = const { std::cell::RefCell::new(None) };
+    static TASK_STASH: std::cell::RefCell<Option<Envelope>> = const { std::cell::RefCell::new(None) };
+    static RECV_REAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub fn a2x_sched_spawn(
+    cap: i32,
+    inits: Vec<SchedValue>,
+    driver: fn(Vec<SchedValue>),
+) -> i32 {
+    let cap = if cap < 1 { 1 } else { cap as usize };
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Envelope>(cap);
+    let stopped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stopped2 = stopped.clone();
+    let handle = std::thread::spawn(move || {
+        TASK_RX.with(|c| *c.borrow_mut() = Some(rx));
+        TASK_STOPPED.with(|c| *c.borrow_mut() = Some(stopped2));
+        driver(inits);
+    });
+    let mut reg = registry().lock().unwrap();
+    reg.tasks.push(TaskEntry { tx: Some(tx), stopped, handle: Some(handle) });
+    reg.tasks.len() as i32
+}
+
+pub fn a2x_sched_send(handle: i32, msg: SchedValue) -> i32 {
+    let reg = registry().lock().unwrap();
+    if let Some(entry) = reg.tasks.get((handle - 1).max(0) as usize) {
+        if let Some(tx) = &entry.tx {
+            let r = tx.send(Envelope { msg, port: 0, reply: None });
+            let _ = r;
+        }
+    }
+    0
+}
+
+pub fn a2x_sched_ask(handle: i32, msg: SchedValue) -> i32 {
+    let (rtx, rrx) = std::sync::mpsc::channel::<SchedValue>();
+    let mut reg = registry().lock().unwrap();
+    let port = reg.awaiters.len() as i32 + 1;
+    reg.awaiters.push(Some(rrx));
+    if let Some(entry) = reg.tasks.get((handle - 1).max(0) as usize) {
+        if let Some(tx) = &entry.tx {
+            let _ = tx.send(Envelope { msg, port, reply: Some(rtx) });
+        }
+    }
+    port
+}
+
+pub fn a2x_sched_reply(value: SchedValue) -> i32 {
+    TASK_REPLY.with(|c| {
+        if let Some(tx) = &*c.borrow() {
+            let _ = tx.send(value);
+        }
+    });
+    0
+}
+
+pub fn a2x_sched_await(port: i32) -> SchedValue {
+    let rrx = {
+        let mut reg = registry().lock().unwrap();
+        let idx = (port - 1).max(0) as usize;
+        if idx >= reg.awaiters.len() {
+            return SchedValue::I(0);
+        }
+        reg.awaiters[idx].take()
+    };
+    let Some(rrx) = rrx else {
+        return SchedValue::I(0);
+    };
+    match rrx.recv() {
+        Ok(v) => v,
+        Err(_) => SchedValue::I(0),
+    }
+}
+
+pub fn a2x_sched_recv() -> SchedValue {
+
+    let stashed = TASK_STASH.with(|st| st.borrow_mut().take());
+    let got = match stashed {
+        Some(env) => Some(env),
+        None => TASK_RX.with(|c| match &*c.borrow() {
+            Some(rx) => rx.recv().ok(),
+            None => None,
+        }),
+    };
+    match got {
+        Some(env) => {
+            RECV_REAL.with(|f| f.set(true));
+            TASK_REPLY.with(|c| *c.borrow_mut() = env.reply);
+            env.msg
+        }
+        None => {
+            RECV_REAL.with(|f| f.set(false));
+            SchedValue::I(0)
+        }
+    }
+}
+
+pub fn a2x_sched_port() -> i32 {
+    TASK_REPLY.with(|c| c.borrow().is_some() as i32)
+}
+
+pub fn a2x_sched_stopping() -> bool {
+    // A just-delivered REAL message masks stopping for exactly one
+    // check (the post-recv guard) — the message dispatches first, the
+    // closing handoff (recv None) then reports stopping (AV order).
+    if RECV_REAL.with(|f| f.replace(false)) {
+            return false;
+    }
+    // Stopping = the mailbox is EXHAUSTED (nothing stashed and the
+    // channel disconnected): pending messages deliver first, the
+    // stop hooks then run on the closing handoff (AV drain order).
+    if TASK_STASH.with(|st| st.borrow().is_some()) {
+        return false;
+    }
+    let pulled = TASK_RX.with(|c| match &*c.borrow() {
+        // PEEK by pulling into the stash — a buffered message must NOT
+        // be consumed here (recv delivers it next).
+        Some(rx) => rx.try_recv(),
+        None => Err(std::sync::mpsc::TryRecvError::Disconnected),
+    });
+    match pulled {
+        Ok(env) => {
+            TASK_STASH.with(|st| *st.borrow_mut() = Some(env));
+            false
+        }
+        Err(std::sync::mpsc::TryRecvError::Empty) => false,
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => true,
+    }
+}
+
+pub fn a2x_sched_sleep(ms: i32) -> i32 {
+    std::thread::sleep(std::time::Duration::from_millis(ms.max(0) as u64));
+    0
+}
+
+pub fn a2x_sched_go(args: Vec<SchedValue>, f: fn(Vec<SchedValue>)) -> i32 {
+    let handle = std::thread::spawn(move || f(args));
+    registry().lock().unwrap().go_threads.push(handle);
+    0
+}
+
+pub fn a2x_sched_stop(handle: i32) -> i32 {
+    let mut reg = registry().lock().unwrap();
+    if let Some(entry) = reg.tasks.get_mut((handle - 1).max(0) as usize) {
+        entry.stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+        entry.tx = None;
+    }
+    0
+}
+
+/// The orderly drain after main returns: mark every task stopped, close
+/// the mailboxes (buffered messages still deliver), join every thread.
+pub fn a2x_sched_drain() {
+    let mut reg = registry().lock().unwrap();
+    // Close the mailboxes first: buffered messages still deliver on the
+    // receivers, then recv reports closure; the stop flags follow so the
+    // drivers' stop hooks run at the end of their loops.
+    for entry in reg.tasks.iter_mut() {
+        entry.tx = None;
+    }
+    for entry in reg.tasks.iter_mut() {
+        entry.stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    let task_handles: Vec<Option<std::thread::JoinHandle<()>>> =
+        reg.tasks.iter_mut().map(|e| e.handle.take()).collect();
+    let go_handles: Vec<std::thread::JoinHandle<()>> =
+        std::mem::take(&mut reg.go_threads);
+    drop(reg);
+    for h in task_handles.into_iter().flatten() {
+        let _ = h.join();
+    }
+    for h in go_handles {
+        let _ = h.join();
+    }
+}

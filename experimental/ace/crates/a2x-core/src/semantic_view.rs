@@ -243,6 +243,9 @@ pub struct SemanticView<'a> {
     )>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
+    /// PLAN-968: scheduler-surface intrinsics (`__sched_*` and the console
+    /// print spellings admitted in scheduler modules).
+    sched_defs: Vec<(usize, String)>,
     /// PLAN-1041: platform-operation intrinsic defs present (the common
     /// stdlib output source's reserved calls): def_index → symbol
     /// (`auto.platform.io.*` / `auto.platform.mem.*`). The target lowers
@@ -279,7 +282,7 @@ impl<'a> SemanticView<'a> {
         let functions = collect_functions(module, None)?;
         let records = collect_records(module)?;
         let variants = collect_variants(module)?;
-        let (trace_defs, platform_defs) = collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs, sched_defs) = collect_trace_defs(module, bundle)?;
         let view = SemanticView {
             module,
             domain,
@@ -295,6 +298,7 @@ impl<'a> SemanticView<'a> {
             foreign_plan: checked.foreign_resource_plan(),
             fragment_foreign: None,
             trace_defs,
+            sched_defs,
             platform_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -376,7 +380,7 @@ impl<'a> SemanticView<'a> {
                 ),
             ));
         }
-        let (trace_defs, platform_defs) = collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs, sched_defs) = collect_trace_defs(module, bundle)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
         // index — a mismatched plan can never leak to another body).
@@ -408,6 +412,7 @@ impl<'a> SemanticView<'a> {
             foreign_plan: None,
             fragment_foreign,
             trace_defs,
+            sched_defs,
             platform_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -580,6 +585,50 @@ impl<'a> SemanticView<'a> {
             .iter()
             .find(|(d, _)| *d == def_index)
             .map(|(_, s)| *s)
+    }
+
+    /// PLAN-968: the scheduler-surface intrinsic symbol for a def.
+    pub fn sched_symbol(&self, def_index: usize) -> Option<&str> {
+        self.sched_defs
+            .iter()
+            .find(|(d, _)| *d == def_index)
+            .map(|(_, s)| s.as_str())
+    }
+
+    /// PLAN-968: whether any scheduler intrinsics are present (targets
+    /// append the scheduler runtime only then).
+    pub fn has_sched_ops(&self) -> bool {
+        self.sched_defs
+            .iter()
+            .any(|(_, s)| s.starts_with("__sched_"))
+    }
+
+    /// PLAN-968: the resolved (param, result) types of a scheduler
+    /// intrinsic's fn-type def (the import seam carries the exact shape).
+    pub fn sched_sig_types(
+        &self,
+        def_index: usize,
+    ) -> Option<Result<(Vec<Ty>, Ty), A2xReject>> {
+        let def = self.module.defs.get(def_index)?;
+        if let hir::DefKind::Intrinsic { ty, .. } = &def.kind {
+            if let hir::TypeKind::Function(sig) =
+                &self.module.types.get(ty.0 as usize)?.kind
+            {
+                let mut params = Vec::with_capacity(sig.params.len());
+                for p in &sig.params {
+                    match resolve_ty(self.module, *p) {
+                        Ok(t) => params.push(t),
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+                let result = resolve_ty(self.module, sig.result);
+                return Some(match result {
+                    Ok(r) => Ok((params, r)),
+                    Err(e) => Err(e),
+                });
+            }
+        }
+        None
     }
 
     /// PLAN-1041: whether any platform-operation intrinsics are present
@@ -861,6 +910,9 @@ impl<'a> SemanticView<'a> {
                     // PLAN-1041: platform-operation intrinsics reach the
                     // target lowers' runtime stubs.
                     || self.platform_symbol(target).is_some()
+                    // PLAN-968: scheduler-surface intrinsics reach the
+                    // targets' scheduler runtimes.
+                    || self.sched_symbol(target).is_some()
                 {
                     Ok(())
                 } else {
@@ -1029,6 +1081,10 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     | hir::ExprKind::TextConcat { .. }
                     | hir::ExprKind::TextDisplay { .. }
                     | hir::ExprKind::Move { .. }
+                    // PLAN-968: the scheduler face's f-string chain
+                    // borrows owned parts (the legacy brace dialect's
+                    // interpolation reads state locals).
+                    | hir::ExprKind::TextToBorrowed { .. }
             ) || record_kinds
                 || collections_kinds
         }
@@ -1303,16 +1359,30 @@ fn collect_variants(module: &hir::Module) -> Result<Vec<VariantFacts>, A2xReject
 fn collect_trace_defs(
     module: &hir::Module,
     bundle: &hir::Bundle,
-) -> Result<(Vec<(usize, &'static str)>, Vec<(usize, String)>), A2xReject> {
+) -> Result<
+    (
+        Vec<(usize, &'static str)>,
+        Vec<(usize, String)>,
+        Vec<(usize, String)>,
+    ),
+    A2xReject,
+> {
     let trace_authorized = bundle.requires.iter().any(|c| c == TRACE_CAPABILITY);
     let mut trace_defs = Vec::new();
     let mut platform_defs = Vec::new();
+    let mut sched_defs = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
         if let hir::DefKind::Intrinsic { symbol, .. } = &def.kind {
             if symbol.starts_with("auto.platform.") {
                 // PLAN-1041: platform-operation intrinsics — the target
                 // runtimes implement them (negative i32 error codes).
                 platform_defs.push((def_index, symbol.clone()));
+                continue;
+            }
+            // PLAN-968: the scheduler surface's intrinsics (task actor
+            // operations + console print in scheduler modules).
+            if symbol.starts_with("__sched_") || symbol.starts_with("auto.console.") {
+                sched_defs.push((def_index, symbol.clone()));
                 continue;
             }
             let sym = match symbol.as_str() {
@@ -1334,7 +1404,7 @@ fn collect_trace_defs(
             trace_defs.push((def_index, sym));
         }
     }
-    Ok((trace_defs, platform_defs))
+    Ok((trace_defs, platform_defs, sched_defs))
 }
 
 fn fn_sig(module: &hir::Module, ty: hir::TypeId) -> Result<&hir::FnSig, A2xReject> {

@@ -746,6 +746,8 @@ impl A2xSession {
             // PLAN-962: aggregates rides the collections family (the
             // CollectionsBodyFacts free schedule).
             SourceProfile::Aggregates => Family::Collections,
+            // PLAN-968: the scheduler face rides the collections family.
+            SourceProfile::Scheduler => Family::Collections,
             _ => Family::Scalar,
         }
     }
@@ -1057,6 +1059,11 @@ impl A2xSession {
             SourceProfile::Aggregates => {
                 ace_core::source::compile_aggregates_source(src, "a2x", caps)
             }
+            // PLAN-968: the scheduler surface compiles through its own
+            // profile (task actor desugar + closures-superset domain).
+            SourceProfile::Scheduler => {
+                ace_core::source::compile_scheduler_source(src, "a2x", caps)
+            }
             other => {
                 return Err(A2xRejectOrResource::Reject(A2xReject::domain(format!(
                     "unsupported profile {:?}",
@@ -1095,6 +1102,27 @@ impl A2xSession {
         // other profiles keep their own authoritative path.
         let env = match scalar_supply.as_ref() {
             Some(supply) => resolve_env_with_supply(&program, caps, profile, Some(supply)),
+            None if profile == SourceProfile::Scheduler => {
+                // PLAN-968: the retained environment builds from the
+                // DESUGARED program with its task side-table (the raw
+                // source never resolves — Task.spawn/h.send are desugar
+                // spellings).
+                let (dprogram, dsched) =
+                    ace_core::source::sched_desugar::desugar_program(&program).map_err(|ds| {
+                        A2xRejectOrResource::Reject(A2xReject::new(
+                            "a2x.compile",
+                            ds.first()
+                                .map(|d| format!("{}: {}", d.code, d.message))
+                                .unwrap_or_else(|| "scheduler desugar failed".into()),
+                        ))
+                    })?;
+                ace_core::source::resolve::resolve_env_with_sched(
+                    &dprogram,
+                    caps,
+                    profile,
+                    &dsched,
+                )
+            }
             None => resolve_env(&program, caps, profile),
         }
         .map_err(|ds| {
@@ -1865,6 +1893,8 @@ impl A2xSession {
             // PLAN-962: aggregates rides the collections family (the
             // CollectionsBodyFacts free schedule).
             SourceProfile::Aggregates => Family::Collections,
+            // PLAN-968: the scheduler face rides the collections family.
+            SourceProfile::Scheduler => Family::Collections,
             _ => Family::Scalar,
         };
         // PLAN-925: the record-text family restores purely on the C target

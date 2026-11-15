@@ -725,6 +725,10 @@ fn ser_expr(
                 // PLAN-1041: platform-operation intrinsic — the runtime
                 // stub identity is its stable symbol.
                 format!("platform:{sym}")
+            } else if let Some(sym) = view.sched_symbol(target) {
+                // PLAN-968: scheduler intrinsic — the runtime call
+                // identity is its stable per-task symbol.
+                format!("sched:{sym}")
             } else {
                 return Err(A2xReject::unsupported_expr("call target not admitted"));
             };

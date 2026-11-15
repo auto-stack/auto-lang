@@ -24,6 +24,9 @@ mod a2c_scalar_semantics;
 mod a2r_owned_temporaries_931;
 #[path = "cases/a2x_decl_env_929.rs"]
 mod a2x_decl_env_929;
+#[path = "cases/sched_m2_968.rs"]
+mod sched_m2_968;
+
 #[path = "cases/aggregates_semantics.rs"]
 mod aggregates_semantics;
 #[path = "cases/boundaries.rs"]

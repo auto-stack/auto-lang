@@ -3334,6 +3334,41 @@ pub fn resolve_env(
     resolve_env_with_supply(program, capabilities, surface, None)
 }
 
+/// PLAN-968: the retained checked environment for a DESUGARED scheduler
+/// program with its task side-table (the warm lane's env shape).
+pub fn resolve_env_with_sched(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    sched: &super::sched_desugar::SchedSurface,
+) -> Result<CheckedEnv, Vec<Diagnostic>> {
+    let (fns, records, coll, ix) =
+        resolve_detailed(program, capabilities, surface, None, None, Some(sched))?;
+    Ok(CheckedEnv {
+        program: ResolvedProgram {
+            foreign_slots: Vec::new(),
+            foreign: Vec::new(),
+            fns,
+            records,
+            lists: coll.lists,
+            tuples: coll.tuples,
+            variants: coll.variants,
+            function_types: coll.function_types,
+            objects: coll.objects,
+            sched_tasks: coll.sched_tasks,
+        },
+        rec_index: ix.rec_index,
+        sigs: ix.sigs,
+        trace_enabled: ix.trace_enabled,
+        profile: surface,
+        resolve_walks: 0,
+        check_walks: 0,
+        id: next_env_id(),
+        generation: 0,
+        closed: false,
+    })
+}
+
 /// PLAN-934 T-08: the retained checked environment built from a TYPE FACT
 /// SUPPLY — the same cold resolve as [`resolve_env`], with the query fact
 /// layer as the authority for every expression/declaration type instead of

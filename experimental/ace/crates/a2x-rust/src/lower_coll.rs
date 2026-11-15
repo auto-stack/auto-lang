@@ -341,11 +341,29 @@ impl<'a, 'v> CollLower<'a, 'v> {
             match stmt {
                 hir::Stmt::Let { local, value } => {
                     // an owned-position literal promotes (a2x_str_from_lit)
-                    let v = if is_lit(self.f.body, *value) && owned_target(self, local.0) {
+                    let mut v = if is_lit(self.f.body, *value) && owned_target(self, local.0) {
                         self.owned_or_plain_child(*value, &mut out)?
                     } else {
                         self.expr(*value, &mut out)?
                     };
+                    // PLAN-968: a borrowed str initializing an owned field
+                    // (the scheduler driver's state locals take spawn
+                    // initializers through the Str-view import seam)
+                    // promotes through the runtime's owned conversion.
+                    {
+                        let owned_here = owned_target(self, local.0);
+                        let borrowed_val = self
+                            .view
+                            .resolve_use_ty(self.f.body.exprs[value.0 as usize].ty)
+                            .map(|t| matches!(t, Ty::Str))
+                            .unwrap_or(false);
+                        if owned_here && borrowed_val && !is_lit(self.f.body, *value) {
+                            v = RExpr::StrFn {
+                                func: "a2x_str_to_owned".into(),
+                                args: vec![v],
+                            };
+                        }
+                    }
                     let l = self.locals.get(local.0 as usize).ok_or_else(|| {
                         A2xReject::new("a2x.internal", "local index out of range")
                     })?;
@@ -759,6 +777,162 @@ impl<'a, 'v> CollLower<'a, 'v> {
     }
 
     #[allow(clippy::too_many_lines)]
+    /// PLAN-968: lower one scheduler intrinsic call on the collections
+    /// path — the same runtime mapping as the scalar lane (threads +
+    /// bounded channels; AV-equivalent observable semantics).
+    fn lower_sched_call_coll(
+        &mut self,
+        symbol: &str,
+        def_id: usize,
+        id: hir::ExprId,
+        ty: Ty,
+        eval_args: &[hir::ExprId],
+        out: &mut Vec<RStmt>,
+    ) -> Result<RExpr, A2xReject> {
+        // Console print spellings: println!/eprintln! helpers.
+        if let Some(tail) = symbol.strip_prefix("auto.console.") {
+            let (is_print, ty_word) = if let Some(w) = tail.strip_prefix("print.") {
+                (true, w)
+            } else if let Some(w) = tail.strip_prefix("eprint.") {
+                (false, w)
+            } else {
+                return Err(A2xReject::unsupported_expr(format!(
+                    "console intrinsic `{symbol}` is outside the scheduler surface"
+                )));
+            };
+            let helper = match (is_print, ty_word) {
+                (true, "str.v1") => "a2x_print_str",
+                (true, "i32.v1") => "a2x_print_i32",
+                (true, "bool.v1") => "a2x_print_bool",
+                (false, "str.v1") => "a2x_eprint_str",
+                (false, "i32.v1") => "a2x_eprint_i32",
+                (false, "bool.v1") => "a2x_eprint_bool",
+                _ => {
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "console intrinsic `{symbol}` is outside the scheduler surface"
+                    )))
+                }
+            };
+            let v = self.expr(eval_args[0], out)?;
+            out.push(RStmt::EvalExpr {
+                expr: RExpr::PlainCall {
+                    func: helper.to_string(),
+                    args: vec![v],
+                },
+            });
+            return self.coll_temp_plain(id, "i32".into(), RExpr::I32Lit(0), out);
+        }
+
+        let Some(Ok((sig_params, _sig_result))) = self.view.sched_sig_types(def_id) else {
+            return Err(A2xReject::new(
+                "a2x.internal",
+                format!("scheduler intrinsic `{symbol}` lacks its fn-type seam"),
+            ));
+        };
+
+        let mut args = Vec::with_capacity(eval_args.len());
+        for a in eval_args {
+            args.push(self.expr(*a, out)?);
+        }
+        let wrap = |e: RExpr, t: &Ty| -> RExpr {
+            let f = match t {
+                Ty::Bool => "a2x_v_b",
+                Ty::Str | Ty::StrOwned => "a2x_v_s",
+                _ => "a2x_v_i",
+            };
+            RExpr::PlainCall {
+                func: f.to_string(),
+                args: vec![e],
+            }
+        };
+        let unwrap = |e: RExpr, t: &Ty| -> RExpr {
+            let f = match t {
+                Ty::Bool => "a2x_un_b",
+                Ty::Str | Ty::StrOwned => "a2x_un_s",
+                _ => "a2x_un_i",
+            };
+            RExpr::PlainCall {
+                func: f.to_string(),
+                args: vec![e],
+            }
+        };
+        let rest = symbol.strip_prefix("__sched_").unwrap_or(symbol);
+
+        let plain = |func: &str, args: Vec<RExpr>| RExpr::PlainCall {
+            func: func.to_string(),
+            args,
+        };
+
+        let call: RExpr = if rest == "sleep" || rest == "stop" {
+            plain(&format!("a2x_sched_{rest}"), args)
+        } else if rest.starts_with("send_") {
+            plain(
+                "a2x_sched_send",
+                vec![args[0].clone(), wrap(args[1].clone(), &sig_params[1])],
+            )
+        } else if rest.starts_with("ask_") {
+            plain(
+                "a2x_sched_ask",
+                vec![args[0].clone(), wrap(args[1].clone(), &sig_params[1])],
+            )
+        } else if rest.starts_with("reply_") {
+            plain("a2x_sched_reply", vec![wrap(args[0].clone(), &sig_params[0])])
+        } else if rest.starts_with("await_") {
+            unwrap(plain("a2x_sched_await", vec![args[0].clone()]), &ty)
+        } else if rest.starts_with("recv_") {
+            unwrap(plain("a2x_sched_recv", Vec::new()), &ty)
+        } else if rest.starts_with("port_") {
+            plain("a2x_sched_port", Vec::new())
+        } else if rest.starts_with("stopping_") {
+            plain("a2x_sched_stopping", Vec::new())
+        } else if let Some(t) = rest.strip_prefix("spawn_") {
+            let cap = args[1].clone();
+            let mut vals = Vec::new();
+            for (k, a) in args[2..].iter().enumerate() {
+                vals.push(wrap(a.clone(), &sig_params[2 + k]));
+            }
+            let adapter = format!("__sched_task_adapter_{t}");
+            out.push(RStmt::RawFn {
+                text: sched_task_adapter_text(t, &sig_params[2..]),
+            });
+            let vec_call = match vals.len() {
+                0 => plain("a2x_sched_vec0", Vec::new()),
+                1 => plain("a2x_sched_vec1", vals),
+                2 => plain("a2x_sched_vec2", vals),
+                3 => plain("a2x_sched_vec3", vals),
+                _ => plain("a2x_sched_vec", vals),
+            };
+            plain(
+                "a2x_sched_spawn",
+                vec![cap, vec_call, RExpr::Local(adapter)],
+            )
+        } else if let Some(rest2) = rest.strip_prefix("go_") {
+            let name = rest2.splitn(2, '_').nth(1).unwrap_or("").to_string();
+            let mut vals = Vec::new();
+            for (k, a) in args[1..].iter().enumerate() {
+                vals.push(wrap(a.clone(), &sig_params[1 + k]));
+            }
+            let adapter = format!("__sched_go_adapter_{name}");
+            out.push(RStmt::RawFn {
+                text: sched_go_adapter_text(&name, &sig_params[1..]),
+            });
+            let vec_call = match vals.len() {
+                0 => plain("a2x_sched_vec0", Vec::new()),
+                1 => plain("a2x_sched_vec1", vals),
+                2 => plain("a2x_sched_vec2", vals),
+                3 => plain("a2x_sched_vec3", vals),
+                _ => plain("a2x_sched_vec", vals),
+            };
+            plain("a2x_sched_go", vec![vec_call, RExpr::Local(adapter)])
+        } else {
+            return Err(A2xReject::unsupported_expr(format!(
+                "scheduler intrinsic `{symbol}` is outside the a2r support domain"
+            )));
+        };
+        let ty_str = rust_ty_str(self.view, ty);
+        self.coll_temp_plain(id, ty_str, call, out)
+    }
+
     fn expr_rest(
         &mut self,
         id: hir::ExprId,
@@ -812,6 +986,13 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 callee, eval_args, ..
             } => {
                 let target = callee.0 as usize;
+                // PLAN-968: scheduler-surface intrinsics map to the
+                // appended scheduler runtime (the AV-equivalent threads +
+                // bounded channels semantics).
+                if let Some(sym) = self.view.sched_symbol(target) {
+                    let ty = self.view.resolve_use_ty(e.ty)?;
+                    return self.lower_sched_call_coll(sym, target, id, ty, &eval_args, out);
+                }
                 let func = if let Some(sym) = self.view.trace_symbol(target) {
                     let suffix = if sym == "hir.test.mark_a" { "a" } else { "b" };
                     format!("a2x_mark_{}", suffix)
@@ -876,6 +1057,41 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     RExpr::StrFn {
                         func: "a2x_str_clone".into(),
                         args: vec![o],
+                    },
+                    out,
+                )
+            }
+            hir::ExprKind::TextToBorrowed { operand } => {
+                // PLAN-968: the scheduler f-string chain borrows owned
+                // parts — a plain as_str view, no ownership transfer.
+                let o = self.operand_str_view(operand, out)?;
+                Ok(o)
+            }
+            hir::ExprKind::TextDisplay { operand } => {
+                // PLAN-968: the scheduler f-string chain renders an i32
+                // into an owned buffer.
+                let o = self.expr(operand, out)?;
+                self.coll_temp(
+                    id,
+                    "A2xStr".into(),
+                    RExpr::StrFn {
+                        func: "a2x_str_display_i32".into(),
+                        args: vec![o],
+                    },
+                    out,
+                )
+            }
+            hir::ExprKind::TextConcat { lhs, rhs } => {
+                // PLAN-968: the scheduler f-string chain concatenates
+                // borrowed parts into an owned buffer.
+                let l = self.operand_str_view(lhs, out)?;
+                let r = self.operand_str_view(rhs, out)?;
+                self.coll_temp(
+                    id,
+                    "A2xStr".into(),
+                    RExpr::StrFn {
+                        func: "a2x_str_concat".into(),
+                        args: vec![l, r],
                     },
                     out,
                 )
@@ -1282,4 +1498,71 @@ pub fn lower_coll_variants(view: &SemanticView<'_>) -> Vec<RustVariant> {
                 .collect(),
         })
         .collect()
+}
+
+/// PLAN-968: the synthesized `fn(Vec<SchedValue>)` adapter that runs a
+/// task's driver with typed initializers (built by plain concatenation —
+/// no brace escaping).
+fn sched_task_adapter_text(task: &str, field_tys: &[Ty]) -> String {
+    let mut b = String::new();
+    b.push_str("fn __sched_task_adapter_");
+    b.push_str(task);
+    b.push_str("(a: ::std::vec::Vec<crate::a2x_runtime::SchedValue>) {");
+    b.push('\n');
+    b.push_str("    let _ = a;");
+    b.push('\n');
+    b.push_str("    let _ = fn___task_");
+    b.push_str(task);
+    b.push_str("(");
+    for (k, t) in field_tys.iter().enumerate() {
+        if k > 0 {
+            b.push_str(", ");
+        }
+        b.push_str(unwrap_helper(t));
+        b.push_str("(a[");
+        b.push_str(&k.to_string());
+        b.push_str("].clone())");
+    }
+    b.push_str(");");
+    b.push('\n');
+    b.push_str("}");
+    b.push('\n');
+    b
+}
+
+/// PLAN-968: the synthesized `fn(Vec<SchedValue>)` adapter for a `go` call.
+fn sched_go_adapter_text(name: &str, param_tys: &[Ty]) -> String {
+    let mut b = String::new();
+    b.push_str("fn __sched_go_adapter_");
+    b.push_str(name);
+    b.push_str("(a: ::std::vec::Vec<crate::a2x_runtime::SchedValue>) {");
+    b.push('\n');
+    b.push_str("    let _ = a;");
+    b.push('\n');
+    b.push_str("    let _ = fn_");
+    b.push_str(name);
+    b.push_str("(");
+    for (k, t) in param_tys.iter().enumerate() {
+        if k > 0 {
+            b.push_str(", ");
+        }
+        b.push_str(unwrap_helper(t));
+        b.push_str("(a[");
+        b.push_str(&k.to_string());
+        b.push_str("].clone())");
+    }
+    b.push_str(");");
+    b.push('\n');
+    b.push_str("}");
+    b.push('\n');
+    b
+}
+
+/// PLAN-968: the typed unwrap helper name for an adapter parameter.
+fn unwrap_helper(t: &Ty) -> &'static str {
+    match t {
+        Ty::Bool => "a2x_un_b",
+        Ty::Str | Ty::StrOwned => "a2x_un_s",
+        _ => "a2x_un_i",
+    }
 }

@@ -104,7 +104,12 @@ pub fn assemble_collections_file_set(
     generated.push_str("use crate::a2x_runtime::*;\n\n");
     generated.push_str(&print_program(program));
 
-    let runtime = collections_runtime_source(&program.marks);
+    let mut runtime = collections_runtime_source(&program.marks);
+    // PLAN-968: append the scheduler runtime for scheduler-surface
+    // programs (the generated __sched calls bind to it).
+    if view.has_sched_ops() {
+        runtime.push_str(include_str!("sched_rt.txt"));
+    }
 
     let mut wrapper = String::new();
     wrapper.push_str(&format!(
@@ -118,7 +123,12 @@ pub fn assemble_collections_file_set(
         "    let outcome: A2xResult<i32> = generated::{}();\n",
         program.entry
     ));
-    wrapper.push_str("    match outcome {\n");
+        // PLAN-968: the orderly scheduler drain runs after the user main
+    // returns (pending mailboxes deliver, stop hooks run, threads join).
+    if view.has_sched_ops() {
+        wrapper.push_str("    a2x_runtime::a2x_sched_drain();\n");
+    }
+wrapper.push_str("    match outcome {\n");
     wrapper.push_str("        Ok(v) => println!(\"value:{}\", v),\n");
     wrapper.push_str("        Err(t) => println!(\"trap:{}\", t.name()),\n");
     wrapper.push_str("    }\n}\n");

@@ -129,6 +129,11 @@ pub enum RStmt {
     EvalExpr {
         expr: RExpr,
     },
+    /// PLAN-968: a verbatim nested `fn` item (scheduler task driver
+    /// adapters); rendered inline, hoisted by Rust's item semantics.
+    RawFn {
+        text: String,
+    },
 }
 
 /// Statements + tail value of a lazily-evaluated short-circuit side. Used
@@ -1324,6 +1329,12 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 if let Some(sym) = self.view.platform_symbol(target_id) {
                     return self.lower_platform_call(sym, eval_args, out);
                 }
+                // PLAN-968: the scheduler surface's intrinsics map to the
+                // appended scheduler runtime (threads + bounded channels,
+                // the same observable semantics as the AV lane).
+                if let Some(sym) = self.view.sched_symbol(target_id) {
+                    return self.lower_sched_call(sym, target_id, eval_args, out);
+                }
                 // Internal function/method or fragment external.
                 let (rust_name, target_params, result_ty) =
                     if let Some(t) = self.view.fn_by_def(target_id) {
@@ -1740,6 +1751,267 @@ impl<'v, 'a> FnLowering<'v, 'a> {
     /// consumers-in-flight stay alive.
     /// PLAN-1041: lower a platform-operation intrinsic call to its Rust
     /// runtime stub. Arg kinds come from the shared source-op table.
+    /// PLAN-968: lower one scheduler-surface intrinsic call to the
+    /// appended scheduler runtime (threads + bounded channels — the same
+    /// observable semantics as the AV lane: FIFO mailboxes, bounded
+    /// backpressure, ask/reply futures, sleeps, orderly stop drain).
+    #[allow(clippy::too_many_lines)]
+    fn lower_sched_call(
+        &mut self,
+        symbol: &str,
+        def_id: usize,
+        eval_args: &[hir::ExprId],
+        out: &mut Vec<RStmt>,
+    ) -> Result<(RExpr, Ty), A2xReject> {
+        use ace_a2x_core::Ty as VTy;
+
+        // Console print spellings (scheduler modules): println!/eprintln!
+        // through runtime helpers.
+        if let Some(tail) = symbol.strip_prefix("auto.console.") {
+            let (is_print, ty_word) = if let Some(w) = tail.strip_prefix("print.") {
+                (true, w)
+            } else if let Some(w) = tail.strip_prefix("eprint.") {
+                (false, w)
+            } else {
+                return Err(A2xReject::unsupported_expr(format!(
+                    "console intrinsic `{symbol}` is outside the scheduler surface"
+                )));
+            };
+            let helper = match (is_print, ty_word) {
+                (true, "str.v1") => "a2x_print_str",
+                (true, "i32.v1") => "a2x_print_i32",
+                (true, "bool.v1") => "a2x_print_bool",
+                (false, "str.v1") => "a2x_eprint_str",
+                (false, "i32.v1") => "a2x_eprint_i32",
+                (false, "bool.v1") => "a2x_eprint_bool",
+                _ => {
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "console intrinsic `{symbol}` is outside the scheduler surface"
+                    )))
+                }
+            };
+            let (arg, _ty) = self.lower_expr(eval_args[0], out)?;
+            return Ok((RExpr::PlainCall {
+                func: helper.to_string(),
+                args: vec![arg],
+            }, VTy::Unit));
+        }
+
+        let Some(Ok((sig_params, _sig_result))) = self.view.sched_sig_types(def_id) else {
+            return Err(A2xReject::new(
+                "a2x.internal",
+                format!("scheduler intrinsic `{symbol}` lacks its fn-type seam"),
+            ));
+        };
+
+        // Lower the call arguments (source order).
+        let mut args = Vec::with_capacity(eval_args.len());
+        for a in eval_args {
+            let (e, _t) = self.lower_expr(*a, out)?;
+            args.push(e);
+        }
+        let wrap = |e: RExpr, ty: &VTy| -> RExpr {
+            let f = match ty {
+                VTy::I32 => "a2x_v_i",
+                VTy::Bool => "a2x_v_b",
+                VTy::Str | VTy::StrOwned => "a2x_v_s",
+                _ => "a2x_v_i",
+            };
+            RExpr::PlainCall {
+                func: f.to_string(),
+                args: vec![e],
+            }
+        };
+        let unwrap = |e: RExpr, ty: &VTy| -> RExpr {
+            let f = match ty {
+                VTy::I32 => "a2x_un_i",
+                VTy::Bool => "a2x_un_b",
+                VTy::Str | VTy::StrOwned => "a2x_un_s",
+                _ => "a2x_un_i",
+            };
+            RExpr::PlainCall {
+                func: f.to_string(),
+                args: vec![e],
+            }
+        };
+        let rest = symbol.strip_prefix("__sched_").unwrap_or(symbol);
+        let task_of = |rest: &str| -> String {
+            rest.split('_').next().unwrap_or("").to_string()
+        };
+
+        if rest == "sleep" || rest == "stop" {
+            return Ok((RExpr::PlainCall {
+                func: format!("a2x_sched_{rest}"),
+                args,
+            }, VTy::I32));
+        }
+        if rest.starts_with("send_") {
+            let m = wrap(args[1].clone(), &sig_params[1]);
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_send".to_string(),
+                args: vec![args[0].clone(), m],
+            }, VTy::I32));
+        }
+        if rest.starts_with("ask_") {
+            let m = wrap(args[1].clone(), &sig_params[1]);
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_ask".to_string(),
+                args: vec![args[0].clone(), m],
+            }, VTy::I32));
+        }
+        if rest.starts_with("reply_") {
+            let v = wrap(args[0].clone(), &sig_params[0]);
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_reply".to_string(),
+                args: vec![v],
+            }, VTy::I32));
+        }
+        if rest.starts_with("await_") {
+            // result type = the task's reply type (the import seam's
+            // declared result).
+            let unwrapped = unwrap(
+                RExpr::PlainCall {
+                    func: "a2x_sched_await".to_string(),
+                    args: vec![args[0].clone()],
+                },
+                &self.view.sched_sig_types(def_id).unwrap().unwrap().1,
+            );
+            let ty = self.view.sched_sig_types(def_id).unwrap().unwrap().1;
+            return Ok((unwrapped, ty));
+        }
+        if rest.starts_with("recv_") {
+            let ty = self.view.sched_sig_types(def_id).unwrap().unwrap().1;
+            let unwrapped = unwrap(
+                RExpr::PlainCall {
+                    func: "a2x_sched_recv".to_string(),
+                    args: Vec::new(),
+                },
+                &ty,
+            );
+            return Ok((unwrapped, ty));
+        }
+        if rest.starts_with("port_") {
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_port".to_string(),
+                args: Vec::new(),
+            }, VTy::I32));
+        }
+        if rest.starts_with("stopping_") {
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_stopping".to_string(),
+                args: Vec::new(),
+            }, VTy::Bool));
+        }
+        if let Some(t) = rest.strip_prefix("spawn_") {
+            // args: [name-str, capacity, inits...]; the driver fn runs on
+            // the task thread through a synthesized adapter.
+            let cap = args[1].clone();
+            let mut vals = Vec::new();
+            for (k, a) in args[2..].iter().enumerate() {
+                vals.push(wrap(a.clone(), &sig_params[2 + k]));
+            }
+            let driver_call = format!("__sched_task_adapter_{t}");
+            out.push(RStmt::RawFn {
+                text: self.sched_task_adapter_fn(t, &sig_params[2..]),
+            });
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_spawn".to_string(),
+                args: vec![
+                    cap,
+                    RExpr::PlainCall {
+                        func: "a2x_sched_vec".to_string(),
+                        args: vals,
+                    },
+                    RExpr::Local(driver_call),
+                ],
+            }, VTy::I32));
+        }
+        if let Some(rest2) = rest.strip_prefix("go_") {
+            // go_<fn-index>_<name>: args [name-str, fn args...]
+            let name = rest2.splitn(2, '_').nth(1).unwrap_or("").to_string();
+            let mut vals = Vec::new();
+            for (k, a) in args[1..].iter().enumerate() {
+                vals.push(wrap(a.clone(), &sig_params[1 + k]));
+            }
+            let adapter = format!("__sched_go_adapter_{name}");
+            out.push(RStmt::RawFn {
+                text: self.sched_go_adapter_fn(&name, &sig_params[1..]),
+            });
+            return Ok((RExpr::PlainCall {
+                func: "a2x_sched_go".to_string(),
+                args: vec![
+                    RExpr::PlainCall {
+                        func: "a2x_sched_vec".to_string(),
+                        args: vals,
+                    },
+                    RExpr::Local(adapter),
+                ],
+            }, VTy::I32));
+        }
+        Err(A2xReject::unsupported_expr(format!(
+            "scheduler intrinsic `{symbol}` is outside the a2r support domain"
+        )))
+    }
+
+    /// PLAN-968: the synthesized `fn(Vec<SchedValue>)` adapter that runs a
+    /// task's driver with typed initializers.
+    fn sched_task_adapter_fn(&self, task: &str, field_tys: &[ace_a2x_core::Ty]) -> String {
+        let driver = format!("__task_{task}");
+        let mut body = String::new();
+        body.push_str(&format!(
+            "fn __sched_task_adapter_{task}(a: ::std::vec::Vec<a2x_runtime::SchedValue>) {{\n"
+        ));
+        if field_tys.is_empty() {
+            body.push_str(&format!("    let _ = a;\n    let _ = {driver}();\n"));
+        } else {
+            let mut call = format!("{driver}(");
+            for (k, t) in field_tys.iter().enumerate() {
+                let un = match t {
+                    ace_a2x_core::Ty::Bool => "a2x_un_b",
+                    ace_a2x_core::Ty::Str | ace_a2x_core::Ty::StrOwned => "a2x_un_s",
+                    _ => "a2x_un_i",
+                };
+                if k > 0 {
+                    call.push_str(", ");
+                }
+                call.push_str(&format!("{un}(a[{k}].clone())"));
+            }
+            call.push(')');
+            body.push_str(&format!("    let _ = {call};\n"));
+        }
+        body.push_str("}\n");
+        body
+    }
+
+    /// PLAN-968: the synthesized `fn(Vec<SchedValue>)` adapter for a `go`
+    /// call (fire-and-forget fn run).
+    fn sched_go_adapter_fn(&self, name: &str, param_tys: &[ace_a2x_core::Ty]) -> String {
+        let mut body = String::new();
+        body.push_str(&format!(
+            "fn __sched_go_adapter_{name}(a: ::std::vec::Vec<a2x_runtime::SchedValue>) {{\n"
+        ));
+        if param_tys.is_empty() {
+            body.push_str(&format!("    let _ = a;\n    let _ = {name}();\n"));
+        } else {
+            let mut call = format!("{name}(");
+            for (k, t) in param_tys.iter().enumerate() {
+                let un = match t {
+                    ace_a2x_core::Ty::Bool => "a2x_un_b",
+                    ace_a2x_core::Ty::Str | ace_a2x_core::Ty::StrOwned => "a2x_un_s",
+                    _ => "a2x_un_i",
+                };
+                if k > 0 {
+                    call.push_str(", ");
+                }
+                call.push_str(&format!("{un}(a[{k}].clone())"));
+            }
+            call.push(')');
+            body.push_str(&format!("    let _ = {call};\n"));
+        }
+        body.push_str("}\n");
+        body
+    }
+
     fn lower_platform_call(
         &mut self,
         symbol: &str,

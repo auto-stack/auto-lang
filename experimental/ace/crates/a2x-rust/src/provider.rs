@@ -242,13 +242,28 @@ impl TargetProvider for RustTargetProvider {
             return Err(A2xReject::entry("entry missing"));
         }
         let entry_rust = rust_fn_name(entry);
+        // PLAN-968: the orderly scheduler drain runs after the user main
+        // returns (pending mailboxes deliver, stop hooks run, threads join).
+        let sched_drain: &str = if view.is_some_and(|v| v.has_sched_ops()) {
+            "    a2x_runtime::a2x_sched_drain();\n"
+        } else {
+            ""
+        };
         let wrapper = format!(
-            "// AUTO-GENERATED (PLAN-892 AX-A) — DO NOT EDIT.\nmod a2x_runtime;\nmod generated;\n\nuse a2x_runtime::A2xResult;\n\nfn main() {{\n    let outcome: A2xResult<i32> = generated::{}();\n    match outcome {{\n        Ok(v) => println!(\"value:{{}}\", v),\n        Err(t) => println!(\"trap:{{}}\", t.name()),\n    }}\n}}\n",
-            entry_rust
+            "// AUTO-GENERATED (PLAN-892 AX-A) \u{2014} DO NOT EDIT.\nmod a2x_runtime;\nmod generated;\n\nuse a2x_runtime::A2xResult;\n\nfn main() {{\n    let outcome: A2xResult<i32> = generated::{}();\n{}    match outcome {{\n        Ok(v) => println!(\"value:{{}}\", v),\n        Err(t) => println!(\"trap:{{}}\", t.name()),\n    }}\n}}\n",
+            entry_rust,
+            sched_drain
         );
+        // PLAN-968: append the scheduler runtime for scheduler-surface
+        // programs (the generated __sched calls bind to it).
+        let runtime = if view.is_some_and(|v| v.has_sched_ops()) {
+            format!("{runtime}{}", include_str!("sched_rt.txt"))
+        } else {
+            runtime.to_string()
+        };
         let files = vec![
             ("main.rs".to_string(), wrapper),
-            ("a2x_runtime.rs".to_string(), runtime.to_string()),
+            ("a2x_runtime.rs".to_string(), runtime),
             ("generated.rs".to_string(), generated),
         ];
         let schema = match family {
