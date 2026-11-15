@@ -79,6 +79,8 @@ pub struct AgePackageComponent {
     /// PLAN-981（IF-981-FIELDS）：本组件的 `model` 初值是否真的进了求值链
     /// （即每个字段都有实例状态函数）。没有它，"model.init" 不得算已覆盖。
     pub initialized: bool,
+    /// PLAN-981（IF-981-ORIGINAL）：作者 typed 参数（名字 + 类型拼写）。
+    pub params: Vec<(String, String)>,
     /// PLAN-981（IF-981-REF）：本组件 view 里**已解析**的实例引用。
     pub refs: Vec<AgeResolvedRef>,
     pub texts: Vec<AgePackageText>,
@@ -388,6 +390,12 @@ fn read_back_components(
             handler_msgs: p.node.handlers.iter().map(|h| h.msg.clone()).collect(),
             public: p.node.public,
             initialized: state_functions_present(bound, &p.module, &p.node.fields),
+            params: p
+                .node
+                .params
+                .iter()
+                .map(|q| (q.name.clone(), q.ty.clone()))
+                .collect(),
             refs: refs.get(&p.module).cloned().unwrap_or_default(),
             texts,
             module: p.module.clone(),

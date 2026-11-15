@@ -76,10 +76,22 @@ pub struct ComponentNode {
     pub legacy_widget: bool,
     /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
     pub public: bool,
+    /// PLAN-981（IF-981-ORIGINAL）：作者写的 typed 参数（`(x: float, tint: Material2D)`）。
+    pub params: Vec<ComponentParam>,
     pub name: Ident,
     pub fields: Vec<ComponentField>,
     pub handlers: Vec<ComponentHandler>,
     pub view: ComponentView,
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：一个 node 参数（未受信候选）。
+#[derive(Clone, Debug)]
+pub struct ComponentParam {
+    pub name: String,
+    /// 作者写的类型拼写（`float` / `Material2D` / ...）。
+    pub ty: String,
+    pub ty_span: Span,
     pub span: Span,
 }
 

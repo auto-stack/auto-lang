@@ -3203,10 +3203,16 @@ fn decode_typed_literal(raw: &str) -> Result<ExprKind, String> {
     };
     // Split the alphabetic suffix from the numeric body (the token shape
     // guarantees digits lead and the suffix is contiguous letters).
-    let split = rest
-        .find(|ch: char| ch.is_ascii_alphabetic())
-        .ok_or_else(|| format!("numeric literal `{raw}` carries no digits"))?;
-    let (body, suffix) = (&rest[..split], &rest[split..]);
+    // 没有字母后缀（`0.9`/`12`/`1_000`）是**合法**的无后缀字面量：body 即整个
+    // 数字体、suffix 为空。只有连一个数字都没有时才报错。
+    let split = rest.find(|ch: char| ch.is_ascii_alphabetic());
+    let (body, suffix) = match split {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    if body.is_empty() || !body.chars().any(|c| c.is_ascii_digit()) {
+        return Err(format!("numeric literal `{raw}` carries no digits"));
+    }
     let has_dot = body.contains('.');
     if has_dot && radix != 10 {
         return Err(format!("radix literal `{raw}` cannot carry a fraction"));
@@ -4199,6 +4205,53 @@ impl<'a> Engine<'a> {
             .cx
             .field_child(node, "body")
             .expect("component node body");
+        // PLAN-981（IF-981-ORIGINAL）：作者 typed 参数（`(x: float, …)`）。
+        // 语法面已产出；此处投影，避免合法参数被静默丢弃。
+        let mut params = Vec::new();
+        if let Some(pn) = self.cx.field_child(node, "params") {
+            // 逐个 `age-node-param`：第一个是 `first`，后续嵌在 `age-node-param-tail`
+            // 里面（逗号 + param），故按子树收集而不是只看直接孩子。
+            let want = |slf: &Self, name: &str, n: u32| -> bool {
+                slf.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                    r.name == name
+                        && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                            == slf.cx.tree.kind(n)
+                })
+            };
+            let mut collect = |slf: &mut Self, n: u32| {
+                let name_leaf = slf.cx.field_child(n, "name").expect("param name");
+                let ty_node = slf.cx.field_child(n, "ty").expect("param type");
+                let ty_leaf = slf
+                    .cx
+                    .children(ty_node)
+                    .into_iter()
+                    .find(|&x| {
+                        slf.cx.tree.node(x).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0
+                    })
+                    .unwrap_or(ty_node);
+                let name = slf.cx.spelling(name_leaf);
+                let ty = slf.cx.spelling(ty_leaf);
+                let ty_span = slf.cx.span_of(ty_leaf);
+                let span = slf.cx.span_of(n);
+                params.push(crate::source::age_component::ComponentParam {
+                    name,
+                    ty,
+                    ty_span,
+                    span,
+                });
+            };
+            for c in self.cx.children(pn) {
+                if want(self, "age-node-param", c) {
+                    collect(self, c);
+                } else if want(self, "age-node-param-tail", c) {
+                    for inner in self.cx.children(c) {
+                        if want(self, "age-node-param", inner) {
+                            collect(self, inner);
+                        }
+                    }
+                }
+            }
+        }
         let text_role = self
             .ctx_role_of_rule("age-text-item")
             .map(|(role, _)| role)
@@ -4391,6 +4444,7 @@ impl<'a> Engine<'a> {
             head_span,
             legacy_widget: head_spelling != canonical_head,
             public,
+            params,
             name,
             fields,
             handlers,
