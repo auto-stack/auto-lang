@@ -6126,9 +6126,6 @@ fn dispatch_with_host<V: ModuleView>(
                         ));
                     };
                     let port = st.sched_reply_port;
-                    if std::env::var_os("ACE_SCHED_DEBUG").is_some() {
-                        eprintln!("[sched] reply port={port}");
-                    }
                     if port <= 0 {
                         return Some(ExecOutcome::Error {
                             message: "reply is only legal while handling an ask message".into(),
@@ -6269,9 +6266,6 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(ExecOutcome::Infra("sched.recv on an unknown task".into()));
                     }
                     if let Some((m, port)) = t.tasks[ti].queue.pop_front() {
-                        if std::env::var_os("ACE_SCHED_DEBUG").is_some() {
-                            eprintln!("[sched] recv task#{ti} msg={m:?} port={port}");
-                        }
                         st.sched_reply_port = port;
                         drop(t);
                         if let Err(out) = commit_slot_write(st, *dst as usize, m, limits) {
@@ -7256,14 +7250,7 @@ fn sched_new_chain<V: ModuleView>(
     let mut ai = args.iter();
     for sl in &f.slots {
         frame.slots.push(if sl.kind == crate::mir::SlotKind::Param {
-            let val = ai.next().cloned().unwrap_or_else(|| v.zero_of(fn_idx, sl.ty));
-            if std::env::var_os("ACE_SCHED_DEBUG").is_some() {
-                eprintln!(
-                    "[sched] chain fn#{fn_idx} param slot ty={:?} gets {:?}",
-                    sl.ty, val
-                );
-            }
-            val
+            ai.next().cloned().unwrap_or_else(|| v.zero_of(fn_idx, sl.ty))
         } else {
             v.zero_of(fn_idx, sl.ty)
         });
