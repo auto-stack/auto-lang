@@ -1833,6 +1833,17 @@ fn uses_age_service(b: &ast::Block) -> bool {
     block(b)
 }
 
+/// PLAN-981：该类型注解是否点名了 AGE typed 端口（`Material2D`/`Mesh2D`）。
+///
+/// 端口可能**只**出现在注解里（g01 `shapes.at` 的 `tint: Material2D` 就没有任何
+/// 服务调用），因此登记判据必须包含注解位，不能只看服务使用。
+fn ann_mentions_age_port(ann: &ast::TypeAnn) -> bool {
+    match &ann.kind {
+        ast::TypeRef::Record(id) => crate::source::age_resources::is_port_type(&id.name),
+        _ => false,
+    }
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -1893,7 +1904,12 @@ fn resolve_detailed(
     // 包前门用 TextRecord 做领域解析（面在 profile 之上），所以 profile 判据在这里
     // 永远不成立——按**是否使用 AGE 资源服务**登记。
     let uses_age_ports = program.items.iter().any(|it| match it {
-        ast::Item::Fn(f) => uses_age_service(&f.body),
+        ast::Item::Fn(f) => {
+            uses_age_service(&f.body)
+                || f.params.iter().any(|p| ann_mentions_age_port(&p.ty))
+                || ann_mentions_age_port(&f.ret)
+        }
+        ast::Item::Type(t) => t.fields.iter().any(|f| ann_mentions_age_port(&f.ty)),
         _ => false,
     });
     if surface == SourceProfile::AgePackage || uses_age_ports {
