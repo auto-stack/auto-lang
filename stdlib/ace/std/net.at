@@ -1,0 +1,109 @@
+// ACE stdlib net slice (PLAN-974 T-02/T-03): the Auto-side HTTP/TCP
+// protocol over the platform.net/1 thin adapter. `pub fn` spelling per
+// the PLAN-1041 convention — the SAME file serves the host-console lane
+// (inline single-source) and, once the packages-lane platform host
+// lands (named follow-up with 973's io assembly), the packages face
+// (`use std.net.*`). No provider or host addresses appear here.
+//
+// Status/body observation face: each helper returns
+// `status * 10000 + body_len` (parsed from the raw response bytes).
+
+pub fn net_send_request(host Str, port int, req Str) int {
+    let s = net_tcp_connect(host, port)
+    if s <= 0 { return s }
+    let w = net_tcp_write_some(s, req)
+    if w <= 0 { return w }
+    let region = mem_alloc(4096)
+    var total = 0
+    for total < 4096 {
+        let n = net_tcp_read_into(s, region, total, 512)
+        if n < 0 {
+            let _m = mem_free(region)
+            return n
+        }
+        if n == 0 { break }
+        total = total + n
+    }
+    let _c = net_tcp_close(s)
+    // status: the 3 digits after the first space
+    var i = 0
+    var code = 0
+    var got = 0
+    for i < total {
+        let b = mem_read_u8(region, i)
+        if b == 32 {
+            let d0 = mem_read_u8(region, i + 1)
+            let d1 = mem_read_u8(region, i + 2)
+            let d2 = mem_read_u8(region, i + 3)
+            code = (d0 - 48) * 100 + (d1 - 48) * 10 + (d2 - 48)
+            got = 1
+            break
+        }
+        i = i + 1
+    }
+    // body: after the first CRLFCRLF
+    var j = 0
+    var blank = -1
+    for j + 3 < total {
+        let c0 = mem_read_u8(region, j)
+        let c1 = mem_read_u8(region, j + 1)
+        let c2 = mem_read_u8(region, j + 2)
+        let c3 = mem_read_u8(region, j + 3)
+        if c0 == 13 {
+            if c1 == 10 {
+                if c2 == 13 {
+                    if c3 == 10 { blank = j + 4; break }
+                }
+            }
+        }
+        j = j + 1
+    }
+    let _f = mem_free(region)
+    if got != 1 { return 9100 }
+    if blank < 0 { return 9200 }
+    return code * 10000 + (total - blank)
+}
+
+pub fn net_get(host Str, port int, path Str) int {
+    let req Str = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
+    return net_send_request(host, port, req)
+}
+
+pub fn net_get_with_header(host Str, port int, path Str, k Str, v Str) int {
+    let base Str = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\n"
+    let req Str = base + k + ": " + v + "\r\nConnection: close\r\n\r\n"
+    return net_send_request(host, port, req)
+}
+
+pub fn net_int_to_str(v int) Str {
+    if v == 0 { return "0" }
+    var n = v
+    var out Str = ""
+    for n > 0 {
+        let d = n - (n / 10) * 10
+        out = net_int_digit(d) + out
+        n = n / 10
+    }
+    return out
+}
+
+pub fn net_int_digit(d int) Str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+pub fn net_post(host Str, port int, path Str, payload Str) int {
+    let n = payload.len_bytes()
+    let head Str = "POST " + path + " HTTP/1.1\r\nHost: " + host + "\r\nContent-Length: "
+    let tail Str = "\r\nConnection: close\r\n\r\n"
+    let req Str = head + net_int_to_str(n) + tail + payload
+    return net_send_request(host, port, req)
+}

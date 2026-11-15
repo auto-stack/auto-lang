@@ -734,3 +734,66 @@ fn main() int {{
         "SSE 200/2 events + redirect 302->200 + refused -8, got {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-974 T-03 — the std.net PACKAGING: the tracked `stdlib/ace/std/
+// net.at` module (PLAN-1041 `pub fn` inline convention — the same file
+// spells the future packages face) embedded verbatim into a host-console
+// single source, driving a REAL loopback server through the public
+// helpers only (net_get / net_get_with_header / net_post).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn net974_std_net_packaging_inline() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = std::thread::spawn(move || {
+        for route in 0..3 {
+            let Ok((mut c, _)) = listener.accept() else {
+                return;
+            };
+            let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let mut b = [0u8; 512];
+            let _ = c.read(&mut b);
+            let response: &[u8] = if route == 2 {
+                b"HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok"
+            } else {
+                b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+            };
+            use std::io::Write as _;
+            let _ = c.write_all(response);
+            let _ = c.flush();
+            let _ = c.shutdown(std::net::Shutdown::Both);
+        }
+    });
+
+    // The tracked stdlib module, verbatim, then a main that calls ONLY
+    // the public helpers — the packaging seam (PLAN-1041 inline form).
+    let stdlib_net = include_str!("../../../../../../stdlib/ace/std/net.at");
+    let src = format!(
+        r#"{stdlib_net}
+fn main() int {{
+    let a = net_get("127.0.0.1", {port}, "/a")
+    let b = net_get_with_header("127.0.0.1", {port}, "/b", "X-Plan974", "packaged")
+    let c = net_post("127.0.0.1", {port}, "/c", "body")
+    if a != 2000005 {{ return 1 }}
+    if b != 2000005 {{ return 2 }}
+    if c != 2010002 {{ return 3 }}
+    return a + b + c
+}}
+"#
+    );
+    let mut backend = Win32PlatformIo::default();
+    let out = compile_and_run(&src, &net_grants(), &mut backend);
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(6010012),
+                ..
+            }
+        ),
+        "std.net packaged GET/header-GET/POST -> 2000005+2000005+2010002, got {out:?}"
+    );
+    server.join().expect("server");
+}
