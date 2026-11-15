@@ -6,7 +6,7 @@ schema = 1
 default = ["daily"]
 
 [sets]
-ace = ["ace-workspace", "ace-adapters", "ace-batch"]
+ace = ["ace-workspace", "ace-adapters", "ace-batch", "ace-facade"]
 
 [[group]]
 name = "daily"
@@ -1605,6 +1605,17 @@ workspace = "experimental/ace"
 args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "all() and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-facade"
+title = "语言侧ACE公开执行前门桥接（PLAN-969 E0）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang-ace-host", "--lib", "--tests", "--config-file", ".config/nextest-full.toml"]
+expression = "all()"
+tools = []
 domain = "ace"
 all = false
 

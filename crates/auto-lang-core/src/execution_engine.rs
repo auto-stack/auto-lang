@@ -1,6 +1,13 @@
 // Plan 081 Phase 1: AutoVM as Default Execution Mode
 // AutoVM is now the default execution engine for all AutoLang code
 // Plan 091: Evaluator option removed, always uses AutoVM
+//
+// PLAN-969 E0 (T-E0-I): this legacy selection surface stays AutoVM-only —
+// env/default selection can never yield an ACE engine. The explicit ACE
+// door lives in `crate::ace_entry` (`run_ace`/`AceRequest`), which has no
+// path back into this module (ACE dispatch and legacy dispatch are
+// disjoint; an ACE-side failure is a named error, never a default-engine
+// switch).
 
 use crate::error::AutoResult;
 
