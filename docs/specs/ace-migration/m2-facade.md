@@ -26,14 +26,21 @@ daily 组不构建 ACE）。
 | 纯源车道 | `compile_scalar_or_core_source_product`→`lower_checked`（会话暖启同seam）→`verify_mir`→ABC encode/decode→`verify_abc`→`execute`；入口缺失=`entry`阶段诊断（`ace.entry/missing`） | 桥消费 `ace-av`/`ace-lowering`/`ace-av-core` 既有公开接口 |
 | foreign车道 | `SourceQuerySession.set_foreign`→`compile_text_record_product`→`lower_checked_owned`（F0 owned/text-record族）→…→`verify_abc_foreign`→`ForeignSession`（967冻结消费面） | 同上 |
 | 永久验证 | `crates/auto-lang-ace-host/tests/e0_facade.rs`（V-E0-DISPATCH/CLOSE/SOURCE经真公开门：text_byte_len("A中😀\0")=9且callee=1、坏签名零dispatch原span、撤权/未知/旧引擎具名拒、双身份20轮计数不串、teardown后HostFailure、cancel→Cancelled、B01=14）＋core侧`ace_entry::tests`4纪律用例（daily可见，纯std） | 固定组 `cargo t ace-facade`（domain ace，入ace集） |
+| **T-02 console车道** | `AceRequest.console`＋`AceConsoleReport{stdout,stderr,dispatches}`；桥 `compile_host_console_source→lower_checked_owned→execute_console`（每run grants授权；console+foreign组合=具名拒`ace.console/foreign-unsupported`）；未授权run=预拒`host.unauthorized`零dispatch；入口策略=adapter自有`lower.entry`码透传 | `crates/auto-lang-ace-host/src/lib.rs` run_console |
+| **T-03/T-08 兼容门** | `AceRequest.args/input`为显式输入，AV无argv/stdin面→具名拒`ace.args/unsupported`/`ace.input/unsupported`（预车道、不静默丢、不走旧VM）；旧ABT字节码经ACE门=text阶段受控拒（源only，永不作为ACE指令执行，t08以真legacy ABT程序为oracle）；V-01文件/字符串producer一致；全部旧导出（run*/run_with_mode/run_abt/eval_config等）保持legacy owner不变 | `crates/auto-lang-ace-host/tests/t08_facade.rs`（映射表冻结于计划§5/§9） |
+| **AUDIT-03（1024 F03）** | `Diagnostic.surface: Option<SurfaceFact>`（OwnedCharacter/OwnedToken/OwnedShape/ProfileSurface，`tagged()`builder）在CST projector/lexer与legacy parser/lexer发射点打标；native升级梯子`is_surface_rejection`=结构fact＋稳定`source.unsupported`@Text code/stage臂——**消息文本零参与选路**；消息无关性单测＋3 E2E路由类 | `core/src/atom_text.rs`、`core/src/source/{cst/project,cst/lex,parser,lexer}.rs`、`native/src/driver.rs` |
+| **AUDIT-08（1024 F08）** | profile×consumer事实权威表：Scalar/Core/TextRecord=SQ facts权威（legacy entry=诊断oracle only，不产HIR）；Record=空供给自有resolve/verify；Numeric/Aggregates=自有core族（无solver事实页，具名未覆盖）；facts失败=typed拒/`source.fact-diagnostic`显式拒，绝不静默旧路成功；4守卫测试 | `source-query/tests/p969_audit08_fact_authority.rs`（表在头注） |
 
 ## 边界（现值开放项）
 
 - E0=**同步一次执行**＋宿主owner创建/关闭；跨请求暖会话、编辑、async/daemon/
   热更新未交付（原 T-02/03 与 970 后续）。
-- 兼容前门（run_abt/create_vm_from_abt、run_with_mode/auto mode、capture/
-  input/deadline/config 全量、stdin/EOF/cwd/args）**未交付**——归 T-08/AC-06；
-  E0 的同步功能不冒完整入口兼容。
+- **argv/stdin 车道**：AV 无输入面——请求携带 args/input 时为具名拒（
+  `ace.args/unsupported`/`ace.input/unsupported`），AV 输入车道为具名开放项
+  （后续计划/970 域）。
+- 兼容前门行为面：run_with_mode=compile-only（legacy owner，unified_api_tests
+  钉住）、run_abt=legacy owner（ACE门受控拒）、eval_config_with_vm=legacy
+  owner（pac.at）、cwd/退出码映射=CLI层（auto-man）——均未在ACE门复制。
 - 撤权与在途 run 的竞态：E0 同步单线程合同下无影响（零 thread::spawn），
   async 切片须重定义（T-E0-R F-E0R-05 边界）。
 - 桥 crate 整体 Windows-only（ace-abi 模式：非 Windows 编译为空 crate）；
