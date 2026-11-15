@@ -68,6 +68,8 @@ mod plan979_combined;
 mod plan979_component_profile;
 #[path = "cases/plan979_domain_package.rs"]
 mod plan979_domain_package;
+#[path = "cases/plan980_field_manifest.rs"]
+mod plan980_field_manifest;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]
