@@ -6,3 +6,4 @@
 |---|---|---|---|---|
 | 787 | ac-grammar-incremental-cst | ✅（delivered，r8；R1–R7 七轮反例修复清偿后 pass） | [787-ac-grammar-incremental-cst.md](../../plans/archive/787-ac-grammar-incremental-cst.md) | Atom 语法驱动增量词法+无损 CST 首条闭环：双 profile 配置驱动规则程序/迭代引擎（深链无栈崩）/checkpoint 完整状态/嫁接共享块（复用 99.99%）/A03 持久化规范形（fresh/增量同键幂等）/子树 admission/有界查询窗口/64MiB 流式预算；A01/A02/A03 真实生产者接入 783 store |
 | 828 | av-function-incremental-session | ✅（delivered，T-10 最终 PASS） | [计划](../../plans/archive/828-av-function-incremental-session.md) | 会话驻留消费：incremental_reparse+project_decl_strict 为 828 唯一编辑热路径，未改声明零重投影；auto-scalar 版本化语法+scalar_projection_ 差分 |
+| 1058 | autodown-mixed-language-incremental-editing | ✅（delivered，r1；独立复审两轮：F1～F5 修复核销后 pass） | [计划](../../plans/archive/1058-autodown-mixed-language-incremental-editing.md) | AutoDown 混合语言编辑原型：父层（ATX 标题/段落/围栏，镜像现版 parser 子集）+ 按标签子解析（auto）；局部重扫+对齐嫁接+子分析 Rc 真实复用（fresh 等价逐步断言）；(FileId,修订) 发布屏障迟到不覆盖；LineIndex UTF-16 双向；测试 V-01～06+回归 |

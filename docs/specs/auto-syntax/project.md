@@ -7,7 +7,8 @@
 > 来源：PLAN-787（[归档计划](../../plans/archive/787-ac-grammar-incremental-cst.md)）、
 > PLAN-927（[归档计划](../../plans/archive/927-unified-source-syntax-foundation.md)）；
 > 关联 [grammar-contract.md](grammar-contract.md)、[snapshot-cst.md](snapshot-cst.md)、
-> [source-frontdoor.md](source-frontdoor.md)（PLAN-927 七 profile 统一前门），
+> [source-frontdoor.md](source-frontdoor.md)（PLAN-927 七 profile 统一前门）、
+> [autodown-mixed-editing.md](autodown-mixed-editing.md)（PLAN-1058 混合语言编辑原型），
 > A01/A02/A03 产物接入见 [../auto-ac/artifact-contract.md](../auto-ac/artifact-contract.md)。
 
 ## 定位与依赖方向
