@@ -535,6 +535,17 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "ace-m2-build"
+title = "ACE包 experimental/ace/crates/m2-build（PLAN-978 工程增量多目标构建与预编译SDK）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-m2-build", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-av"
 title = "ACE包 experimental/ace"
 runner = "nextest"
