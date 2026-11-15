@@ -5,6 +5,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "autoabi", include: [
-    "interop-legs.case.ad"
+    "interop-legs.document.case.ad"
 ] }
 ```
