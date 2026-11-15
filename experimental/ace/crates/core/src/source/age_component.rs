@@ -232,11 +232,13 @@ pub fn compile_age_component(
             f.span,
         )]);
     }
-    if let Some(d) = hidden_name_conflict(&parse_program_items(src)?) {
+    // F11：程序项只解析一次（隐藏名检查与脱糖共用）。
+    let items = parse_program_items(src)?;
+    if let Some(d) = hidden_name_conflict(&items) {
         return Err(vec![d]);
     }
     // 脱糖：每个文本叶一个隐藏求值函数（普通 Auto 源，由共享 verify 检查）。
-    let mut items = parse_program_items(src)?;
+    let mut items = items;
     let mut leaves = Vec::new();
     for (ni, n) in candidates.iter().enumerate() {
         for (ti, leaf) in n.view.texts.iter().enumerate() {
@@ -477,7 +479,9 @@ pub fn compile_component_scenario(
     }
     let node = &candidates[0];
     // 隐藏名前缀与用户顶层名冲突：两个前门共用同一策略（先于场景自检）。
-    if let Some(d) = hidden_name_conflict(&parse_program_items(src)?) {
+    // F11：程序项只解析一次（隐藏名检查与脱糖共用）。
+    let items = parse_program_items(src)?;
+    if let Some(d) = hidden_name_conflict(&items) {
         return Err(vec![d]);
     }
     if scenario.instances == 0 || scenario.instances > 4 {
@@ -559,7 +563,7 @@ pub fn compile_component_scenario(
         }
         seen_msgs.push(h.msg.clone());
     }
-    let mut items = parse_program_items(src)?;
+    let mut items = items;
     let field0 = &node.fields[0];
     // 每个实例一个状态函数：该实例的 init + 定向 ops，返回首字段。
     for inst in 0..scenario.instances {
