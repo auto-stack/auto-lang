@@ -419,6 +419,71 @@ fn main() int {
         assert!(out.ends_with("value:144"), "a2c whole stdout: {out}");
     }
 
+    // ---- A2PY / real OS Python WHOLE-SET HOF leg (PLAN-972 T-03: the
+    // Python producer with closure lambdas over the FULL assembled std
+    // set → value:144 via PythonTargetProvider + pyrun). ----
+    {
+        use ace_a2x_python::PythonTargetProvider;
+        let mut ctx_py = PackageAssemblyContext::new(
+            AssemblyBackend::A2Py,
+            ProviderChoice::Auto,
+            TargetOs::Windows,
+        );
+        let src_py = "use std.list.reduce
+use std.list.filter
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    let ys = filter(xs, (x int) => { return x > 1 })
+    let s = reduce(ys, 0, (acc int, x int) => { return acc + x })
+    return s * 10 + ys.len()
+}";
+        let inputs_py = assemble_stdlib_aggregates_inputs(
+            &[("main.at".to_string(), src_py.to_string())],
+            "app::main",
+            &mut ctx_py,
+        )
+        .unwrap();
+        let whole_py = compile_assembled_aggregates_inputs(
+            &inputs_py,
+            "app::main",
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx_py,
+        )
+        .unwrap_or_else(|ds| panic!("a2py whole compile: {ds:?}"));
+        let store = scratch("cons-a2py-whole");
+        let mut py = PackageA2xTarget::cold_aggregates(
+            &store,
+            "asm972py",
+            "app",
+            16 << 20,
+            PythonTargetProvider,
+            &whole_py,
+        )
+        .unwrap_or_else(|e| panic!("a2py cold (whole): {e}"));
+        let py_dir = scratch("cons-a2py-whole-build");
+        for (path, content) in &py.current.files {
+            std::fs::write(py_dir.join(path), content).unwrap();
+        }
+        let rt = ace_a2x_python::python_runtime_source(&[]);
+        let rt_hash = ace_core::runtime_contract::sha256_hex(rt.as_bytes());
+        let tool = ace_a2x_worker::pyrun::resolve_python(&rt_hash)
+            .expect("OS Python interpreter required (missing Python cannot PASS)");
+        let run = ace_a2x_worker::pyrun::run_py_fileset(&tool, &py_dir, &[]).unwrap();
+        assert_eq!(
+            run.exit_code,
+            Some(0),
+            "stderr={}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+        assert!(out.ends_with("value:144"), "a2py whole stdout: {out}");
+    }
+
     // ---- A2R / rustc WHOLE-SET leg (PLAN-972 T-03: capture-free closure
     // values + the text/char/numeric surface ride the collections family):
     // the HOF program — filter([1..5], >1)=[2,3,4,5] sum=14 len=4 →
