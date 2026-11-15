@@ -394,7 +394,7 @@ impl M2Build {
             "target": "av",
             "observed": value,
             "channel": outcome.channel(),
-            "wall_ms:": outcome.wall_ms,
+            "wall_ms": outcome.wall_ms,
         });
         Ok((
             vec![(

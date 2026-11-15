@@ -158,7 +158,7 @@ fn pe_import_dlls(bytes: &[u8]) -> Result<Vec<String>, String> {
     }
     // Section table: map RVA → file offset.
     let sections = opt + opt_size;
-    let mut file_off_of = |rva: usize| -> Result<usize, String> {
+    let file_off_of = |rva: usize| -> Result<usize, String> {
         for i in 0..num_sections {
             let s = sections + i * 40;
             let vaddr = rd_u32(s + 12)? as usize;

@@ -175,7 +175,8 @@ fn p978_foreign_source_named_boundary() {
             _ => "m2build.lane-a2x",
         };
         assert_eq!(
-            err.code, expected_code,
+            err.code,
+            expected_code,
             "target {}: named lane rejection, got {err}",
             target.name()
         );
