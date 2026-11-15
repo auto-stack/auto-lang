@@ -461,13 +461,6 @@ fn main() int {{
 // (Rust side) drives it — the roles reversed from increments 1/2.
 // ---------------------------------------------------------------------------
 
-// PLAN-974 inc3 OPEN FINDING (named, not silently dropped): the loopback
-// partial-delivery puzzle — the Auto server's first read receives 29 of
-// the 31-byte request and the trailing 2 bytes never arrive within the
-// 5s read window (diagnostic return 9000-n*10+total observed 9109).
-// The listen/accept/local_port ops, paced accept and this full test
-// harness are landed; un-ignoring requires explaining that delivery.
-#[ignore = "PLAN-974 inc3: loopback 29/31 partial delivery puzzle (see comment)"]
 #[test]
 fn net974_server_leg_auto_listens_rust_client() {
     // reserve a free port (bind + drop)
@@ -476,8 +469,7 @@ fn net974_server_leg_auto_listens_rust_client() {
     drop(probe);
 
     let src = format!(
-        r#"
-fn main() int {{
+        r#"fn main() int {{
     let ln = net_tcp_listen({port})
     if ln <= 0 {{ return ln }}
     var s = 0
@@ -493,10 +485,7 @@ fn main() int {{
     var total = 0
     for total < 1024 {{
         let n = net_tcp_read_into(s, region, total, 256)
-        if n < 0 {{
-            let _m = mem_free(region)
-            return 9000 - n * 10 + total
-        }}
+        if n < 0 {{ return n }}
         if n == 0 {{ break }}
         total = total + n
         if total >= 4 {{
@@ -513,14 +502,11 @@ fn main() int {{
             }}
         }}
     }}
-    let body Str = "HTTP/1.1 200 OK
-Content-Length: 4
-
-pong"
+    let body Str = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\npong"
     let w = net_tcp_write_some(s, body)
     let _c = net_tcp_close(s)
     let _f = mem_free(region)
-    if w != 40 {{ return 9100 }}
+    if w != 42 {{ return 9100 }}
     return 0
 }}
 "#,
@@ -552,18 +538,19 @@ pong"
                 &mut backend,
             )
             .expect("run platform server");
+        eprintln!(
+            "[p974] server outcome: {out:?}; dispatches conn={} wr={} rd={} cl={}",
+            backend.dispatches.net_connect,
+            backend.dispatches.net_write,
+            backend.dispatches.net_read,
+            backend.dispatches.net_close
+        );
         match out {
             ace_av_core::contract::ExecOutcome::Success {
                 value: ace_av_core::contract::Value::I32(0),
                 ..
             } => {}
-            other => panic!(
-                "server outcome: {other:?}; dispatches net_connect={} net_write={} net_read={} net_close={}",
-                backend.dispatches.net_connect,
-                backend.dispatches.net_write,
-                backend.dispatches.net_read,
-                backend.dispatches.net_close
-            ),
+            other => panic!("server outcome: {other:?}"),
         }
     });
     let mut client = loop {
@@ -572,20 +559,23 @@ pong"
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
+    let _ = client.set_nodelay(true);
+    // an HTTP client sets TCP_NODELAY: without it Nagle+delayed-ACK can
+    // stall the request tail past the read window (the inc3 puzzle's
+    // second half — the first half was the mangled source escapes)
+    client.set_nodelay(true).ok();
     client
         .set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .ok();
     client
-        .write_all(b"GET /drive HTTP/1.1
-Host: x
-
-")
+        .write_all(b"GET /drive HTTP/1.1\r\nHost: x\r\n\r\n")
         .expect("client send");
     let mut buf = [0u8; 128];
     let n = client.read(&mut buf).expect("client read");
-    assert_eq!(&buf[..n], b"HTTP/1.1 200 OK
-Content-Length: 4
-
-pong");
+    assert_eq!(
+        &buf[..n],
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\npong",
+        "server response bytes"
+    );
     handle.join().expect("server thread");
 }

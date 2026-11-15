@@ -880,9 +880,32 @@ impl PlatformIoBackend for Win32PlatformIo {
         let Some(stream) = slots.get_mut(socket as usize - 1).and_then(|s| s.as_mut()) else {
             return Err(6); // ERROR_INVALID_HANDLE
         };
-        match stream.read(buf) {
-            Ok(n) => Ok(n),
-            Err(e) => Err(io_err_code(e)),
+        // paced bounded wait (accept's discipline): peer data normally
+        // arrives within microseconds; a quiet window returns the
+        // RETRYABLE -10 instead of a hard timeout, and the guest loop
+        // re-calls — closing the accept/read interleaving race of inc3
+        let _ = stream.set_nonblocking(true);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        loop {
+            match stream.read(buf) {
+                Ok(n) => {
+                    let _ = stream.set_nonblocking(false);
+                    return Ok(n);
+                }
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(u32::MAX);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(e) => {
+                    let _ = stream.set_nonblocking(false);
+                    return Err(io_err_code(e));
+                }
+            }
         }
     }
 
@@ -943,7 +966,10 @@ impl PlatformIoBackend for Win32PlatformIo {
             }
         };
         drop(slots);
-        let _ = stream.set_nonblocking(false);
+        // the accepted socket MUST return to blocking mode before use —
+        // a silently-swallowed failure here leaves reads WouldBlocking
+        // instantly (the 29/32 partial-delivery puzzle of inc3)
+        stream.set_nonblocking(false).map_err(io_err_code)?;
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .map_err(io_err_code)?;
@@ -2184,6 +2210,7 @@ impl PlatformResourceLedger {
                 self.net_bytes_total += read;
                 i32::try_from(read).unwrap_or(i32::MAX)
             }
+            Err(u32::MAX) => ERR_WOULDB_BLOCK,
             Err(err) => {
                 self.last_os_error = err;
                 ERR_OS_FAILED
