@@ -110,6 +110,13 @@ impl TargetProvider for RustTargetProvider {
                 _ => crate::artifacts::runtime_source(&marks),
             },
         };
+        // PLAN-973: the collections family fileset gains the platform
+        // runtime when the module carries platform intrinsics (the sys
+        // modules' a2x_<callee> stubs; mirrors the record-text join).
+        if view.has_platform_ops() {
+            source.push_str("\n\n// PLAN-973: platform-operation runtime (system library).\n");
+            source.push_str(crate::rt::platform_rt_source());
+        }
         if !foreign_bridge.is_empty() {
             source.push_str(
                 "\n\n// PLAN-967 (AXR0): generated foreign bridge — the SAME shim exports.\n",
@@ -232,7 +239,21 @@ impl TargetProvider for RustTargetProvider {
             let (records, variants) = decode_seed(prelude_seed).ok_or_else(|| {
                 A2xReject::new("a2x.internal", "collections assembly needs its type tables")
             })?;
-            generated.push_str(&print::print_coll_prelude_from(&records, &variants));
+            // PLAN-973: the prelude's variant payloads may be Lists —
+            // rebuild the element table from the live view.
+            let mut list_elems = std::collections::BTreeMap::new();
+            if let Some(v) = view {
+                for var in v.variants() {
+                    for a in &var.arms {
+                        crate::lower_coll::collect_list_elems(v, a.payload, &mut list_elems);
+                    }
+                }
+            }
+            generated.push_str(&print::print_coll_prelude_from(
+                &records,
+                &variants,
+                &list_elems,
+            ));
         }
         for r in fragments {
             generated.push_str(r.text);

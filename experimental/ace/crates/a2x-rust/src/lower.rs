@@ -419,6 +419,9 @@ pub struct RustProgram {
     pub variants: Vec<RustVariant>,
     /// Whether this program is a collections-channel program (PLAN-904).
     pub coll: bool,
+    /// PLAN-973: list type-index -> element type (the printer renders
+    ///  payloads; populated by the collections lowerer).
+    pub list_elems: std::collections::BTreeMap<u32, Ty>,
 }
 
 /// Sanitize a source name into Rust-identifier-safe ASCII ([A-Za-z0-9_]).
@@ -512,6 +515,7 @@ pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xRe
         clones,
         borrowed,
         variants: Vec::new(),
+            list_elems: std::collections::BTreeMap::new(),
         coll: false,
     })
 }

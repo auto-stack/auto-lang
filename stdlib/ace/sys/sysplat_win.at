@@ -118,7 +118,7 @@ pub fn pf_open(path Str, flags int) int {
     // scalars take 2 units — size by scalars*2 bytes is a safe ceiling.
     let cap = (path.len() * 2 + 2) * 2
     let region = buf_alloc(cap)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let n = stage_w16(path, region, 0)
@@ -204,7 +204,7 @@ pub fn pf_stdin() int {
 pub fn pf_attrs(path Str) int {
     let cap = (path.len() * 2 + 2) * 2
     let region = buf_alloc(cap)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let n = stage_w16(path, region, 0)
@@ -220,7 +220,7 @@ pub fn pf_attrs(path Str) int {
 pub fn pf_delete(path Str) int {
     let cap = (path.len() * 2 + 2) * 2
     let region = buf_alloc(cap)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let n = stage_w16(path, region, 0)
@@ -236,7 +236,7 @@ pub fn pf_delete(path Str) int {
 pub fn pf_mkdir(path Str) int {
     let cap = (path.len() * 2 + 2) * 2
     let region = buf_alloc(cap)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let n = stage_w16(path, region, 0)
@@ -252,7 +252,7 @@ pub fn pf_mkdir(path Str) int {
 pub fn pf_rmdir(path Str) int {
     let cap = (path.len() * 2 + 2) * 2
     let region = buf_alloc(cap)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let n = stage_w16(path, region, 0)
@@ -294,7 +294,7 @@ pub fn pf_replace(src Str, dst Str) int {
 
 pub fn pf_env_set(name Str, value Str) int {
     let nregion = buf_alloc((name.len() * 2 + 2) * 2)
-    if (nregion <= 0) {
+    if (nregion < 0) {
         return nregion
     }
     let vregion = buf_alloc((value.len() * 2 + 2) * 2)
@@ -315,7 +315,7 @@ pub fn pf_env_set(name Str, value Str) int {
 
 pub fn pf_env_remove(name Str) int {
     let nregion = buf_alloc((name.len() * 2 + 2) * 2)
-    if (nregion <= 0) {
+    if (nregion < 0) {
         return nregion
     }
     let n = stage_w16(name, nregion, 0)
@@ -361,7 +361,7 @@ pub fn pf_spawn_cps(cps List<int>, capture int) int {
     }
     let cap = (cps.len() + 2) * 2
     let region = buf_alloc(cap + 8)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let units = stage_cps(cps, 0, region, 0)
@@ -421,7 +421,7 @@ pub fn pf_exit(code int) int {
 pub fn pf_chdir(path Str) int {
     let cap = (path.len() * 2 + 2) * 2
     let region = buf_alloc(cap)
-    if (region <= 0) {
+    if (region < 0) {
         return region
     }
     let n = stage_w16(path, region, 0)

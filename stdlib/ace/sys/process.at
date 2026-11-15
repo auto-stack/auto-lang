@@ -60,14 +60,36 @@ fn append_str_cps(a Str, i int, cps List<int>) int {
     return append_str_cps(a, i + 1, cps)
 }
 
+// quote ONLY when needed (spaces/tabs/quotes): cmd.exe and other legacy
+// parsers mishandle unconditional quoting. The decision scan tail-passes
+//  into the emit step (single-move discipline).
 fn append_quoted(a Str, cps List<int>) int {
     if (a.len() == 0) {
         return 0
     }
-    cps.push(34)
-    let d2 = append_str_cps(a, 0, cps)
-    cps.push(34)
-    return 0
+    return quote_scan(a, cps, 0, 0)
+}
+
+fn quote_scan(a Str, cps List<int>, j int, need int) int {
+    if (j >= a.len()) {
+        return quote_emit(a, cps, need)
+    }
+    let p = a.char_at(j).to_codepoint()
+    var nq = need
+    if (p == 32 || p == 9 || p == 34) {
+        nq = 1
+    }
+    return quote_scan(a, cps, j + 1, nq)
+}
+
+fn quote_emit(a Str, cps List<int>, need int) int {
+    if (need == 1) {
+        cps.push(34)
+        let d2 = append_str_cps(a, 0, cps)
+        cps.push(34)
+        return 0
+    }
+    return append_str_cps(a, 0, cps)
 }
 
 // ---- spawn ------------------------------------------------------------------------
@@ -147,7 +169,7 @@ fn drain_count(ph int, which int, total int) int {
         return total
     }
     let region = buf_alloc(32768)
-    if (region <= 0) {
+    if (region < 0) {
         return total
     }
     let n = pf_pipe_read(ph, which, region, 0, 32768, -1)

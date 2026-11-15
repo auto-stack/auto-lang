@@ -171,7 +171,7 @@ pub fn from_i64(v i64) Str {
 
 fn from_i64_walk(rest i64, acc Str) Str {
     if (rest == 0i64) {
-        return acc
+        return acc.clone()
     }
     let digit = (rest % 10i64).to(i32)
     return from_i64_walk(rest / 10i64, DIGITS().slice(digit, digit + 1) + acc)
@@ -190,7 +190,7 @@ pub fn escape(s Str) Str {
 
 fn esc_outer(s Str, i int, acc Str) Str {
     if (i >= s.len()) {
-        return acc
+        return acc.clone()
     }
     let stopb = min_i(s.len(), i + MID() * INNER())
     return esc_mid(s, i, stopb, acc)
@@ -224,7 +224,7 @@ pub fn unescape(s Str) Str {
 
 fn unesc_outer(s Str, i int, acc Str) Str {
     if (i >= s.len()) {
-        return acc
+        return acc.clone()
     }
     let stopb = min_i(s.len(), i + MID() * INNER())
     return unesc_mid(s, i, stopb, acc)

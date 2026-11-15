@@ -39,7 +39,7 @@ pub fn secure_hex(n int) Str {
         return ""
     }
     let region = buf_alloc(n)
-    if (region <= 0) {
+    if (region < 0) {
         return ""
     }
     let r = pf_rand_fill(region, 0, n)
@@ -55,7 +55,7 @@ pub fn secure_hex(n int) Str {
 // n ≤ 32768 per call — a two-level chunked walk keeps frames ≤ 768 + 43.
 fn hex_walk(region int, i int, n int, acc Str) Str {
     if (i >= n) {
-        return acc
+        return acc.clone()
     }
     let stop = min_i(n, i + 768)
     return hex_walk(region, stop, n, hex_chunk(region, i, stop, acc))
@@ -63,11 +63,11 @@ fn hex_walk(region int, i int, n int, acc Str) Str {
 
 fn hex_chunk(region int, i int, stop int, acc Str) Str {
     if (i >= stop) {
-        return acc
+        return acc.clone()
     }
     let b = mem_read_u8(region, i)
     if (b < 0) {
-        return acc
+        return acc.clone()
     }
     return hex_chunk(region, i + 1, stop, acc + hex_digit(b / 16) + hex_digit(b % 16))
 }

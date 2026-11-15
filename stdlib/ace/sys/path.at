@@ -47,10 +47,10 @@ fn last_sep_walk(path Str, i int) int {
 
 pub fn join(base Str, rest Str) Str {
     if (base.len() == 0) {
-        return rest
+        return rest.clone()
     }
     if (rest.len() == 0) {
-        return base
+        return base.clone()
     }
     let csep = base.char_at(base.len() - 1)
     let cp = csep.to_codepoint()

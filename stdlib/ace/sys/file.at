@@ -90,64 +90,73 @@ pub fn is_read_only(path Str) bool {
 
 // ---- whole-file text ----------------------------------------------------------
 
-// read_all_bytes(h) -> Some(bytes) or None; walks the file in READ_CHUNK
-// platform reads, pushing region bytes into a List<int> (the lane has no
-// byte→Str construction — the text-read surface is the named gap in the
-// plan's lane dossier; the byte surface is the real oracle).
-fn read_all_bytes(h int, acc List<int>) ?List<int> {
+// read_all_bytes(h, acc) -> 0 ok / -1 error: accumulates INTO the list
+// param in place (the 972 view-discipline — AV handles and A2R &mut
+// borrows both carry the mutations; nothing is returned through the
+// param).
+fn read_all_bytes(h int, acc List<int>) int {
     let region = buf_alloc(READ_CHUNK())
-    if (region <= 0) {
-        return None
+    if (region < 0) {
+        return -1
     }
     let n = pf_read_some(h, region, 0, READ_CHUNK())
     if (n < 0) {
         let d1_buf_free = buf_free(region)
-        return None
+        return -1
     }
     if (n == 0) {
         let d2_buf_free = buf_free(region)
-        return Some(acc)
+        return 0
     }
-    let pushed = push_bytes(region, 0, n, acc)
+    let staged = push_bytes(region, 0, n, acc)
     let d3_buf_free = buf_free(region)
-    return read_all_bytes(h, pushed)
+    if (staged != 0) {
+        return -1
+    }
+    return read_all_bytes(h, acc)
 }
 
-fn push_bytes(region int, i int, n int, acc List<int>) List<int> {
+fn push_bytes(region int, i int, n int, acc List<int>) int {
     if (i >= n) {
-        return acc
+        return 0
     }
     let b = mem_read_u8(region, i)
     if (b < 0) {
-        return acc
+        return -1
     }
     acc.push(b)
     return push_bytes(region, i + 1, n, acc)
 }
 
-// read_bytes_or(path) -> Some(byte list) or None ("" file = Some(empty)).
-pub fn read_bytes_or(path Str) ?List<int> {
+// read_bytes(path) -> the byte list (empty when unreadable; distinguish
+// via read_bytes_len == -1). The Option<List> shape is a NAMED LANE GAP
+// on the A2R collections lowering.
+pub fn read_bytes(path Str) List<int> {
+    let acc = List<int>.new()
     let h = pf_open(path, OPEN_READ())
     if (h <= 0) {
-        return None
+        return acc
     }
-    let out = read_all_bytes(h, List<int>.new())
+    let status = read_all_bytes(h, acc)
     let d1_pf_close = pf_close(h)
-    return out
+    if (status != 0) {
+        return acc
+    }
+    return acc
 }
 
-// read_bytes_or is the byte oracle entry; callers is-dispatch on it from
-// int/unit/Str-result functions (the lane's is-filler rule).
 pub fn read_bytes_len(path Str) int {
-    let r = read_bytes_or(path)
-    is r {
-        Some(bytes) -> {
-            return bytes.len()
-        }
-        None -> {
-            return -1
-        }
+    let acc = List<int>.new()
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return -1
     }
+    let status = read_all_bytes(h, acc)
+    let d1_pf_close = pf_close(h)
+    if (status != 0) {
+        return -1
+    }
+    return acc.len()
 }
 
 // read_text is the NAMED LANE GAP: the packages-aggregates face has no
@@ -169,7 +178,7 @@ fn write_all(h int, content Str, ci int) int {
     }
     let stop = min_i(content.len(), ci + 8000)
     let region = buf_alloc(READ_CHUNK())
-    if (region <= 0) {
+    if (region < 0) {
         return -1
     }
     let n = str_bytes_len(content.slice(ci, stop).clone())
@@ -230,7 +239,7 @@ pub fn write_bytes(path Str, bytes List<int>) int {
         return -1
     }
     let region = buf_alloc(READ_CHUNK())
-    if (region <= 0) {
+    if (region < 0) {
         let d1_close = pf_close(h)
         return -1
     }
@@ -312,13 +321,19 @@ pub fn replace_atomic(src Str, dst Str) int {
 }
 
 pub fn copy_file(src Str, dst Str) int {
-    let got = read_bytes_or(src)
-    is got {
-        Some(bytes) -> {
-            return write_bytes(dst, bytes)
-        }
-        None -> {
-            return -1
-        }
+    // single tail pass of src (the 972 discipline): open inside the args
+    return copy_open(dst, pf_open(src, OPEN_READ()))
+}
+
+fn copy_open(dst Str, h int) int {
+    if (h <= 0) {
+        return -1
     }
+    let acc = List<int>.new()
+    let status = read_all_bytes(h, acc)
+    let d1_close = pf_close(h)
+    if (status != 0) {
+        return -1
+    }
+    return write_bytes(dst, acc)
 }

@@ -185,6 +185,10 @@ pub fn record_text_runtime_source_with(marks: &[&'static str], platform: bool) -
 /// Deterministic negative i32 error codes mirror the AV/AC backends; the
 /// Windows console path calls GetConsoleMode/WriteConsoleW directly; the
 /// byte sink uses std::io::Write with REAL partial-write progress.
+pub(crate) fn platform_rt_source() -> &'static str {
+    PLATFORM_RT
+}
+
 const PLATFORM_RT: &str = r#"
 // ---- PLAN-1041 platform operations (common output capability) ----
 use std::io::Write;
@@ -355,6 +359,18 @@ pub fn a2x_mem_alloc(n: i32) -> i32 {
     }
 }
 
+pub fn a2x_mem_read_u8(b: i32, off: i32) -> i32 {
+    unsafe {
+        let Some(buf) = pio_slot(b) else {
+            return -2;
+        };
+        if off < 0 || off as usize >= buf.len() {
+            return -4;
+        }
+        buf[off as usize] as i32
+    }
+}
+
 pub fn a2x_mem_write_u8(b: i32, off: i32, v: i32) -> i32 {
     unsafe {
         let Some(buf) = pio_slot(b) else {
@@ -380,6 +396,1185 @@ pub fn a2x_mem_free(b: i32) -> i32 {
             Some(_) => 0,
             None => -2,
         }
+    }
+}
+
+// ---- PLAN-973 system-resource runtime (A2R target; Rust std backed,
+// target-runtime dependency line item per the coverage design) ----
+// PLAN-973 A2R target runtime: system-resource operations (Rust std
+// backed — the A2R TARGET runtime dependency is its own line item per
+// the coverage design; the AV/native default-provider contract is not
+// affected). Handle table: 0 = free; 1..=48 files; 49..=56 dirs
+// (read_dir iterator + pending first name); 57..=64 processes (child +
+// piped stdout/stderr). Regions are the PIO_BUFS buffers.
+// Linux behaviors route through the same std surface (deferred to 1063
+// for real validation; the code path compiles on both targets).
+
+
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::io::Write as _;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const H_FREE: u8 = 0;
+const H_FILE: u8 = 1;
+const H_DIR: u8 = 2;
+const H_PROC: u8 = 3;
+
+struct SysHandle {
+    kind: u8,
+    file: Option<File>,
+    dir: Option<std::fs::ReadDir>,
+    pending: Option<String>,
+    child: Option<std::process::Child>,
+    out: Option<std::process::ChildStdout>,
+    err: Option<std::process::ChildStderr>,
+    hi: u32,
+    closed: bool,
+}
+
+static mut SYS_HANDLES: [Option<SysHandle>; 64] = [
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    None, None, None, None,
+];
+
+unsafe fn sys_slot(id: i32) -> Option<&'static mut SysHandle> {
+    if id <= 0 || id as usize > 64 {
+        return None;
+    }
+    match (&mut SYS_HANDLES)[(id - 1) as usize].as_mut() {
+        Some(h) if !h.closed => Some(h),
+        _ => None,
+    }
+}
+
+unsafe fn sys_insert(h: SysHandle) -> i32 {
+    for (i, slot) in (&mut SYS_HANDLES).iter_mut().enumerate() {
+        if slot.is_none() {
+            *slot = Some(h);
+            return (i + 1) as i32;
+        }
+    }
+    -9
+}
+
+fn set_last_error(code: i32) {
+    unsafe {
+        PIO_LAST_ERROR = code;
+    }
+}
+
+fn map_io_err(e: &std::io::Error) -> i32 {
+    let raw = e.raw_os_error().unwrap_or(5);
+    set_last_error(raw);
+    -8
+}
+
+// UTF-16LE units at region[off*2 .. +ulen*2] -> String (lossless).
+unsafe fn region_w16_to_string(region: i32, uoff: i32, ulen: i32) -> Option<String> {
+    let Some(buf) = pio_slot(region) else {
+        return None;
+    };
+    let byte_off = (uoff as usize) * 2;
+    let byte_len = (ulen as usize) * 2;
+    if byte_off + byte_len > buf.len().max(buf.capacity()) {
+        return None;
+    }
+    let mut units = Vec::with_capacity(ulen.max(0) as usize);
+    for i in 0..byte_len / 2 {
+        let lo = buf[byte_off + i * 2];
+        let hi = buf[byte_off + i * 2 + 1];
+        units.push(u16::from_le_bytes([lo, hi]));
+    }
+    String::from_utf16(&units).ok()
+}
+
+// region bytes [off..off+len] as a slice copy.
+unsafe fn region_bytes(region: i32, off: i32, len: i32) -> Option<Vec<u8>> {
+    let Some(buf) = pio_slot(region) else {
+        return None;
+    };
+    let (off, len) = (off as usize, len as usize);
+    if off + len > buf.capacity() {
+        return None;
+    }
+    // grow to cover the requested window (alloc regions are
+    // capacity-sized; writes inside them are always in-bounds)
+    while buf.len() < off + len {
+        buf.push(0);
+    }
+    Some(buf[off..off + len].to_vec())
+}
+
+fn open_options_from_flags(flags: i32) -> std::fs::OpenOptions {
+    let read = flags & 1 != 0;
+    let write = flags & 2 != 0;
+    let create = flags & 4 != 0;
+    let trunc = flags & 8 != 0;
+    let excl = flags & 16 != 0;
+    let append = flags & 32 != 0;
+    let mut o = std::fs::OpenOptions::new();
+    o.read(read || !write);
+    if write || append {
+        o.write(true);
+    }
+    if append {
+        o.append(true);
+    }
+    if trunc {
+        o.truncate(true);
+    }
+    if create {
+        o.create(true);
+    }
+    if excl {
+        o.create_new(true);
+    }
+    o
+}
+
+pub fn a2x_io_stdin() -> i32 {
+    0
+}
+
+pub fn a2x_file_open_w16(region: i32, uoff: i32, ulen: i32, flags: i32) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match open_options_from_flags(flags).open(&path) {
+            Ok(f) => {
+                let id = sys_insert(SysHandle {
+                    kind: H_FILE,
+                    file: Some(f),
+                    dir: None,
+                    pending: None,
+                    child: None,
+                    out: None,
+                    err: None,
+                    hi: 0,
+                    closed: false,
+                });
+                if id > 0 {
+                    set_last_error(0);
+                }
+                id
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_open_bytes(path: &str, flags: i32) -> i32 {
+    unsafe {
+        match open_options_from_flags(flags).open(path) {
+            Ok(f) => {
+                let id = sys_insert(SysHandle {
+                    kind: H_FILE,
+                    file: Some(f),
+                    dir: None,
+                    pending: None,
+                    child: None,
+                    out: None,
+                    err: None,
+                    hi: 0,
+                    closed: false,
+                });
+                if id > 0 {
+                    set_last_error(0);
+                }
+                id
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_read_some(h: i32, region: i32, off: i32, len: i32) -> i32 {
+    unsafe {
+        if len == 0 {
+            return 0;
+        }
+        if region_bytes(region, off, len).is_none() {
+            return -4;
+        }
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        let Some(f) = sl.file.as_mut() else {
+            return -3;
+        };
+        let mut tmp = vec![0u8; len as usize];
+        match f.read(&mut tmp) {
+            Ok(0) => 0,
+            Ok(n) => {
+                    let Some(buf) = pio_slot(region) else {
+                    return -2;
+                };
+                for i in 0..n {
+                    let at = off as usize + i;
+                    while buf.len() <= at {
+                        buf.push(0);
+                    }
+                    buf[at] = tmp[i];
+                }
+                set_last_error(0);
+                n as i32
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_write_some(h: i32, region: i32, off: i32, len: i32) -> i32 {
+    unsafe {
+        if len == 0 {
+            return 0;
+        }
+        let Some(data) = region_bytes(region, off, len) else {
+            return -4;
+        };
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        let Some(f) = sl.file.as_mut() else {
+            return -3;
+        };
+        match f.write_all(&data).map(|_| data.len()) {
+            Ok(n) => {
+                set_last_error(0);
+                n as i32
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+fn i64_to_lo_hi(v: u64) -> (i32, u32) {
+    (((v & 0xFFFF_FFFF) as u32 as i32), (v >> 32) as u32)
+}
+
+pub fn a2x_file_seek(h: i32, origin: i32, lo: i32, hi: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        let Some(f) = sl.file.as_mut() else {
+            return -3;
+        };
+        let pos = ((hi as u32 as u64) << 32) | (lo as u32 as u64);
+        let pos = pos as i64;
+        let whence = match origin {
+            0 => SeekFrom::Start(pos as u64),
+            1 => SeekFrom::Current(pos),
+            2 => SeekFrom::End(pos),
+            _ => return -7,
+        };
+        match f.seek(whence) {
+            Ok(p) => {
+                let (lo2, hi2) = i64_to_lo_hi(p);
+                sl.hi = hi2;
+                set_last_error(0);
+                lo2
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_tell(h: i32) -> i32 {
+    a2x_file_seek(h, 1, 0, 0)
+}
+
+pub fn a2x_file_hi(h: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        sl.hi as i32
+    }
+}
+
+pub fn a2x_file_size(h: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        let Some(f) = sl.file.as_ref() else {
+            return -3;
+        };
+        match f.metadata() {
+            Ok(m) => {
+                let (lo, hi) = i64_to_lo_hi(m.len());
+                sl.hi = hi;
+                set_last_error(0);
+                lo
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_mtime_ms(h: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        let Some(f) = sl.file.as_ref() else {
+            return -3;
+        };
+        match f.metadata().and_then(|m| m.modified()) {
+            Ok(t) => {
+                let ms = t
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let (lo, hi) = i64_to_lo_hi(ms);
+                sl.hi = hi;
+                lo
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_flush(h: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        let Some(f) = sl.file.as_mut() else {
+            return -3;
+        };
+        match f.flush() {
+            Ok(()) => {
+                set_last_error(0);
+                0
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_close(h: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        sl.closed = true;
+        let idx = (h - 1) as usize;
+        (&mut SYS_HANDLES)[idx] = None;
+        set_last_error(0);
+        0
+    }
+}
+
+fn attr_bits(md: &std::fs::Metadata) -> i32 {
+    let mut bits = 0;
+    if md.is_dir() {
+        bits |= 1;
+    }
+    if md.permissions().readonly() {
+        bits |= 2;
+    }
+    bits
+}
+
+pub fn a2x_path_attrs_w16(region: i32, uoff: i32, ulen: i32) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match std::fs::metadata(&path) {
+            Ok(md) => attr_bits(&md),
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_path_attrs_bytes(path: &str) -> i32 {
+    match std::fs::metadata(path) {
+        Ok(md) => attr_bits(&md),
+        Err(e) => map_io_err(&e),
+    }
+}
+
+pub fn a2x_file_delete_w16(region: i32, uoff: i32, ulen: i32) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match std::fs::remove_file(&path) {
+            Ok(()) => 0,
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_delete_bytes(path: &str) -> i32 {
+    match std::fs::remove_file(path) {
+        Ok(()) => 0,
+        Err(e) => map_io_err(&e),
+    }
+}
+
+pub fn a2x_dir_create_w16(region: i32, uoff: i32, ulen: i32) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match std::fs::create_dir(&path) {
+            Ok(()) => 0,
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_dir_create_bytes(path: &str) -> i32 {
+    match std::fs::create_dir(path) {
+        Ok(()) => 0,
+        Err(e) => map_io_err(&e),
+    }
+}
+
+pub fn a2x_dir_delete_w16(region: i32, uoff: i32, ulen: i32) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match std::fs::remove_dir(&path) {
+            Ok(()) => 0,
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_dir_delete_bytes(path: &str) -> i32 {
+    match std::fs::remove_dir(path) {
+        Ok(()) => 0,
+        Err(e) => map_io_err(&e),
+    }
+}
+
+pub fn a2x_file_replace_w16(sr: i32, so: i32, sl_: i32, dr: i32, doff: i32, dl: i32) -> i32 {
+    unsafe {
+        let (Some(src), Some(dst)) = (
+            region_w16_to_string(sr, so, sl_),
+            region_w16_to_string(dr, doff, dl),
+        ) else {
+            return -4;
+        };
+        // atomic on the same volume: write temp + hard rename (replace)
+        match std::fs::rename(&src, &dst) {
+            Ok(()) => 0,
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_file_replace_bytes(src: &str, dst: &str) -> i32 {
+    match std::fs::rename(src, dst) {
+        Ok(()) => 0,
+        Err(e) => map_io_err(&e),
+    }
+}
+
+pub fn a2x_canonical_w16(
+    iregion: i32,
+    ioff: i32,
+    ilen: i32,
+    oregion: i32,
+    ocap: i32,
+) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(iregion, ioff, ilen) else {
+            return -4;
+        };
+        let Ok(full) = std::fs::canonicalize(&path) else {
+            return -8;
+        };
+        let s = full.to_string_lossy().replace('\\', "/");
+        let units: Vec<u16> = s.encode_utf16().collect();
+        if units.len() > ocap as usize {
+            return -36;
+        }
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        for (i, u) in units.iter().enumerate() {
+            let b = i * 2;
+            while buf.len() <= b + 1 {
+                buf.push(0);
+            }
+            let [lo, hi] = u.to_le_bytes();
+            buf[b] = lo;
+            buf[b + 1] = hi;
+        }
+        units.len() as i32
+    }
+}
+
+pub fn a2x_canonical_bytes(path: &str, oregion: i32, ocap: i32) -> i32 {
+    unsafe {
+        let Ok(full) = std::fs::canonicalize(path) else {
+            return -8;
+        };
+        let s = full.to_string_lossy().into_owned();
+        let bytes = s.as_bytes();
+        if bytes.len() > ocap as usize {
+            return -36;
+        }
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        for (i, b) in bytes.iter().enumerate() {
+            while buf.len() <= i {
+                buf.push(0);
+            }
+            buf[i] = *b;
+        }
+        bytes.len() as i32
+    }
+}
+
+pub fn a2x_dir_open_w16(region: i32, uoff: i32, ulen: i32) -> i32 {
+    unsafe {
+        let Some(dir) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match std::fs::read_dir(&dir) {
+            Ok(rd) => {
+                let id = sys_insert(SysHandle {
+                    kind: H_DIR,
+                    file: None,
+                    dir: Some(rd),
+                    pending: None,
+                    child: None,
+                    out: None,
+                    err: None,
+                    hi: 0,
+                    closed: false,
+                });
+                if id > 0 {
+                    set_last_error(0);
+                }
+                id
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_dir_open_bytes(path: &str) -> i32 {
+    match std::fs::read_dir(path) {
+        Ok(rd) => unsafe {
+            let id = sys_insert(SysHandle {
+                kind: H_DIR,
+                file: None,
+                dir: Some(rd),
+                pending: None,
+                child: None,
+                out: None,
+                err: None,
+                hi: 0,
+                closed: false,
+            });
+            if id > 0 {
+                set_last_error(0);
+            }
+            id
+        },
+        Err(e) => map_io_err(&e),
+    }
+}
+
+unsafe fn write_units_to_region(buf: &mut Vec<u8>, units: &[u16]) {
+    for (i, u) in units.iter().enumerate() {
+        let b = i * 2;
+        while buf.len() <= b + 1 {
+            buf.push(0);
+        }
+        let [lo, hi] = u.to_le_bytes();
+        buf[b] = lo;
+        buf[b + 1] = hi;
+    }
+}
+
+pub fn a2x_dir_next_w16(h: i32, oregion: i32, ocap: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        if sl.kind != H_DIR {
+            return -3;
+        }
+        let Some(rd) = sl.dir.as_mut() else {
+            return -3;
+        };
+        match rd.next() {
+            None => 0,
+            Some(Err(e)) => map_io_err(&e),
+            Some(Ok(entry)) => {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let units: Vec<u16> = name.encode_utf16().collect();
+                if units.len() > ocap as usize {
+                    return -122;
+                }
+                let Some(buf) = pio_slot(oregion) else {
+                    return -2;
+                };
+                write_units_to_region(buf, &units);
+                units.len() as i32
+            }
+        }
+    }
+}
+
+pub fn a2x_dir_close(h: i32) -> i32 {
+    a2x_file_close(h)
+}
+
+pub fn a2x_dir_fill_bytes(h: i32, region: i32, cap: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(h) else {
+            return -2;
+        };
+        if sl.kind != H_DIR {
+            return -3;
+        }
+        let Some(rd) = sl.dir.as_mut() else {
+            return -3;
+        };
+        // Linux dirent64 batch form: emit NUL-separated UTF-8 names.
+        let mut names: Vec<u8> = Vec::new();
+        while names.len() < cap as usize {
+            match rd.next() {
+                None => break,
+                Some(Err(_)) => break,
+                Some(Ok(entry)) => {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if names.len() + name.len() + 1 > cap as usize {
+                        break;
+                    }
+                    names.extend_from_slice(name.as_bytes());
+                    names.push(0);
+                }
+            }
+        }
+        let n = names.len() as i32;
+        let Some(buf) = pio_slot(region) else {
+            return -2;
+        };
+        for (i, b) in names.iter().enumerate() {
+            while buf.len() <= i {
+                buf.push(0);
+            }
+            buf[i] = *b;
+        }
+        n
+    }
+}
+
+pub fn a2x_env_get_w16(nregion: i32, noff: i32, nlen: i32, oregion: i32, ocap: i32) -> i32 {
+    unsafe {
+        let Some(key) = region_w16_to_string(nregion, noff, nlen) else {
+            return -4;
+        };
+        match std::env::var(&key) {
+            Err(_) => 0,
+            Ok(v) => {
+                let units: Vec<u16> = v.encode_utf16().collect();
+                if units.len() > ocap as usize {
+                    return -234;
+                }
+                let Some(buf) = pio_slot(oregion) else {
+                    return -2;
+                };
+                write_units_to_region(buf, &units);
+                units.len() as i32
+            }
+        }
+    }
+}
+
+pub fn a2x_env_set_w16(
+    nregion: i32,
+    noff: i32,
+    nlen: i32,
+    vregion: i32,
+    voff: i32,
+    vlen: i32,
+) -> i32 {
+    unsafe {
+        let (Some(k), Some(v)) = (
+            region_w16_to_string(nregion, noff, nlen),
+            region_w16_to_string(vregion, voff, vlen),
+        ) else {
+            return -4;
+        };
+        std::env::set_var(&k, &v);
+        0
+    }
+}
+
+pub fn a2x_env_remove_w16(nregion: i32, noff: i32, nlen: i32) -> i32 {
+    unsafe {
+        let Some(k) = region_w16_to_string(nregion, noff, nlen) else {
+            return -4;
+        };
+        std::env::remove_var(&k);
+        0
+    }
+}
+
+pub fn a2x_env_get_bytes(oregion: i32, ocap: i32) -> i32 {
+    // NUL-separated KEY=VALUE snapshot (Linux parity).
+    let mut blob: Vec<u8> = Vec::new();
+    for (k, v) in std::env::vars_os() {
+        let mut entry = k.to_string_lossy().into_owned().into_bytes();
+        entry.push(b'=');
+        entry.extend_from_slice(v.to_string_lossy().as_bytes());
+        entry.push(0);
+        blob.extend_from_slice(&entry);
+        if blob.len() >= ocap as usize {
+            blob.truncate(ocap as usize);
+            break;
+        }
+    }
+    unsafe {
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        for (i, b) in blob.iter().enumerate() {
+            while buf.len() <= i {
+                buf.push(0);
+            }
+            buf[i] = *b;
+        }
+    }
+    blob.len() as i32
+}
+
+pub fn a2x_clock_unix_ms() -> i32 {
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    unsafe {
+        LAST_CLOCK_HI = (ms >> 32) as u32;
+    }
+    (ms & 0xFFFF_FFFF) as u32 as i32
+}
+
+fn mono_start() -> std::time::Instant {
+    static mut START: Option<std::time::Instant> = None;
+    unsafe {
+        if START.is_none() {
+            START = Some(std::time::Instant::now());
+        }
+        START.unwrap()
+    }
+}
+
+pub fn a2x_clock_mono_ms() -> i32 {
+    let ms = mono_start().elapsed().as_millis() as u64;
+    unsafe {
+        LAST_CLOCK_HI = (ms >> 32) as u32;
+    }
+    (ms & 0xFFFF_FFFF) as u32 as i32
+}
+
+static mut LAST_CLOCK_HI: u32 = 0;
+
+pub fn a2x_clock_hi() -> i32 {
+    unsafe { LAST_CLOCK_HI as i32 }
+}
+
+pub fn a2x_sleep_ms(ms: i32) -> i32 {
+    if ms < 0 {
+        return -7;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+    0
+}
+
+pub fn a2x_rand_fill(region: i32, off: i32, len: i32) -> i32 {
+    unsafe {
+        let Some(buf) = pio_slot(region) else {
+            return -2;
+        };
+        let mut tmp = vec![0u8; len as usize];
+        getrandom_fill(&mut tmp);
+        for i in 0..tmp.len() {
+            let at = off as usize + i;
+            while buf.len() <= at {
+                buf.push(0);
+            }
+            buf[at] = tmp[i];
+        }
+        0
+    }
+}
+
+#[cfg(windows)]
+fn getrandom_fill(out: &mut [u8]) {
+    // RtlGenRandom (SystemFunction036) — the documented public OS RNG
+    // entry reachable without extra crates (target runtime dependency).
+    extern "system" {
+        fn SystemFunction036(randombuffer: *mut u8, randombufferlength: u32) -> i32;
+    }
+    unsafe {
+        SystemFunction036(out.as_mut_ptr(), out.len() as u32);
+    }
+}
+
+#[cfg(not(windows))]
+fn getrandom_fill(out: &mut [u8]) {
+    use std::io::Read;
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        let _ = f.read_exact(out);
+    }
+}
+
+// ---- processes (A2R target runtime; child-only kill v1 — the full job
+// tree kill is the AV/native Win32 path's contract; documented boundary).
+
+fn split_cmdline(cmd: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut cur = String::new();
+    let mut in_q = false;
+    let mut has = false;
+    for c in cmd.chars() {
+        match c {
+            '"' => {
+                in_q = !in_q;
+                has = true;
+            }
+            ' ' if !in_q => {
+                if has {
+                    parts.push(std::mem::take(&mut cur));
+                    has = false;
+                }
+            }
+            _ => {
+                cur.push(c);
+                has = true;
+            }
+        }
+    }
+    if has {
+        parts.push(cur);
+    }
+    parts
+}
+
+pub fn a2x_proc_spawn_w16(region: i32, uoff: i32, ulen: i32, mode: i32) -> i32 {
+    unsafe {
+        let Some(cmd) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        let parts = split_cmdline(&cmd);
+        if parts.is_empty() {
+            return -4;
+        }
+        let mut command = std::process::Command::new(&parts[0]);
+        for a in &parts[1..] {
+            command.arg(a);
+        }
+        if mode & 1 != 0 {
+            command
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+        } else {
+            command
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+        }
+        match command.spawn() {
+            Ok(mut child) => {
+                let out = if mode & 1 != 0 {
+                    child.stdout.take()
+                } else {
+                    None
+                };
+                let err = if mode & 1 != 0 {
+                    child.stderr.take()
+                } else {
+                    None
+                };
+                sys_insert(SysHandle {
+                    kind: H_PROC,
+                    file: None,
+                    dir: None,
+                    pending: None,
+                    child: Some(child),
+                    out,
+                    err,
+                    hi: 0,
+                    closed: false,
+                })
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_proc_spawn_bytes(blob: &str, mode: i32) -> i32 {
+    unsafe {
+        let parts: Vec<String> = blob
+            .split('\0')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        if parts.is_empty() {
+            return -4;
+        }
+        let mut command = std::process::Command::new(&parts[0]);
+        for a in &parts[1..] {
+            command.arg(a);
+        }
+        if mode & 1 != 0 {
+            command
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+        } else {
+            command
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+        }
+        match command.spawn() {
+            Ok(mut child) => {
+                let out = if mode & 1 != 0 {
+                    child.stdout.take()
+                } else {
+                    None
+                };
+                let err = if mode & 1 != 0 {
+                    child.stderr.take()
+                } else {
+                    None
+                };
+                sys_insert(SysHandle {
+                    kind: H_PROC,
+                    file: None,
+                    dir: None,
+                    pending: None,
+                    child: Some(child),
+                    out,
+                    err,
+                    hi: 0,
+                    closed: false,
+                })
+            }
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_proc_pipe_read(ph: i32, which: i32, region: i32, off: i32, cap: i32, timeout_ms: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(ph) else {
+            return -2;
+        };
+        if sl.kind != H_PROC {
+            return -3;
+        }
+        let deadline: Option<std::time::Instant> = if timeout_ms < 0 {
+            None
+        } else {
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64))
+        };
+        loop {
+            if let Some(dl) = deadline {
+                if std::time::Instant::now() >= dl {
+                    return -11;
+                }
+            }
+            // non-blocking-ish: read what's available via a small slice
+            let mut tmp = vec![0u8; 4096usize.min(cap as usize)];
+            let stream: &mut dyn Read = if which == 1 {
+                match sl.out.as_mut() {
+                    Some(s) => s,
+                    None => return 0,
+                }
+            } else {
+                match sl.err.as_mut() {
+                    Some(s) => s,
+                    None => return 0,
+                }
+            };
+            // NOTE: std pipes are blocking; a real poll needs the OS API —
+            // v1 reads with the blocking semantic and relies on close-on-
+            // child-exit for EOF (timeout only guards between reads).
+            match stream.read(&mut tmp) {
+                Ok(0) => return 0,
+                Ok(n) => {
+                    let Some(buf) = pio_slot(region) else {
+                        return -2;
+                    };
+                    for i in 0..n {
+                        let at = off as usize + i;
+                        while buf.len() <= at {
+                            buf.push(0);
+                        }
+                        buf[at] = tmp[i];
+                    }
+                    return n as i32;
+                }
+                Err(e) => return map_io_err(&e),
+            }
+        }
+    }
+}
+
+pub fn a2x_proc_wait(ph: i32, timeout_ms: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(ph) else {
+            return -2;
+        };
+        if sl.kind != H_PROC {
+            return -3;
+        }
+        let Some(child) = sl.child.as_mut() else {
+            return -3;
+        };
+        let deadline: Option<std::time::Instant> = if timeout_ms < 0 {
+            None
+        } else {
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64))
+        };
+        loop {
+            match child.try_wait() {
+                Ok(Some(st)) => {
+                    // drain pipes closed by child exit happens on read
+                    return st.code().unwrap_or(-1);
+                }
+                Ok(None) => {
+                    if let Some(dl) = deadline {
+                        if std::time::Instant::now() >= dl {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return -11;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                }
+                Err(e) => return map_io_err(&e),
+            }
+        }
+    }
+}
+
+pub fn a2x_proc_release(ph: i32) -> i32 {
+    unsafe {
+        let Some(sl) = sys_slot(ph) else {
+            return -2;
+        };
+        if let Some(child) = sl.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let idx = (ph - 1) as usize;
+        (&mut SYS_HANDLES)[idx] = None;
+        0
+    }
+}
+
+pub fn a2x_proc_exit(code: i32) -> i32 {
+    std::process::exit(code)
+}
+
+pub fn a2x_proc_cmdline_w16(oregion: i32, ocap: i32) -> i32 {
+    unsafe {
+        let mut args: Vec<String> = std::env::args().collect();
+        if args.is_empty() {
+            args.push(String::new());
+        }
+        let line = args.join(" ");
+        let units: Vec<u16> = line.encode_utf16().collect();
+        if units.len() > ocap as usize {
+            return -122;
+        }
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        write_units_to_region(buf, &units);
+        units.len() as i32
+    }
+}
+
+pub fn a2x_proc_cmdline_fill_bytes(oregion: i32, ocap: i32) -> i32 {
+    let line = std::env::args().collect::<Vec<_>>().join("\0");
+    let bytes = line.as_bytes();
+    unsafe {
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        for (i, b) in bytes.iter().take(ocap as usize).enumerate() {
+            while buf.len() <= i {
+                buf.push(0);
+            }
+            buf[i] = *b;
+        }
+    }
+    bytes.len().min(ocap as usize) as i32
+}
+
+pub fn a2x_proc_cwd_w16(oregion: i32, ocap: i32) -> i32 {
+    unsafe {
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let units: Vec<u16> = cwd.encode_utf16().collect();
+        if units.len() > ocap as usize {
+            return -234;
+        }
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        write_units_to_region(buf, &units);
+        units.len() as i32
+    }
+}
+
+pub fn a2x_proc_cwd_bytes(oregion: i32, ocap: i32) -> i32 {
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let bytes = cwd.as_bytes();
+    unsafe {
+        let Some(buf) = pio_slot(oregion) else {
+            return -2;
+        };
+        for (i, b) in bytes.iter().take(ocap as usize).enumerate() {
+            while buf.len() <= i {
+                buf.push(0);
+            }
+            buf[i] = *b;
+        }
+    }
+    bytes.len().min(ocap as usize) as i32
+}
+
+pub fn a2x_proc_chdir_w16(region: i32, uoff: i32, ulen: i32) -> i32 {
+    unsafe {
+        let Some(path) = region_w16_to_string(region, uoff, ulen) else {
+            return -4;
+        };
+        match std::env::set_current_dir(&path) {
+            Ok(()) => 0,
+            Err(e) => map_io_err(&e),
+        }
+    }
+}
+
+pub fn a2x_proc_chdir_bytes(path: &str) -> i32 {
+    match std::env::set_current_dir(path) {
+        Ok(()) => 0,
+        Err(e) => map_io_err(&e),
     }
 }
 "#;
