@@ -36,9 +36,18 @@ use crate::seed_coll::{c_variant_name, SeedCollTy};
 pub enum CollRetKind {
     I32,
     Bool,
+    /// PLAN-972 (T-03): typed numeric scalar results (the 961 channels).
+    I64,
+    U64,
+    I8,
+    U8,
+    U32,
     StrOwned,
     Record(String),
     Variant(String),
+    /// PLAN-972 (T-03): a typed list result (the elem tag rides the
+    /// wrapper names — a2x_res_list_<tag>/a2x_list_<tag>_value).
+    List(String),
 }
 
 impl CollRetKind {
@@ -50,6 +59,12 @@ impl CollRetKind {
             CollRetKind::StrOwned => "a2x_stro_result".into(),
             CollRetKind::Record(n) => format!("a2x_res_{}", c_record_name(n)),
             CollRetKind::Variant(n) => format!("a2x_res_{}", c_variant_name(n)),
+            CollRetKind::List(tag) => format!("a2x_res_list_{tag}"),
+            CollRetKind::I64 => "a2x_result_i64".into(),
+            CollRetKind::U64 => "a2x_result_u64".into(),
+            CollRetKind::I8 => "a2x_result".into(),
+            CollRetKind::U8 => "a2x_result".into(),
+            CollRetKind::U32 => "a2x_result".into(),
         }
     }
 
@@ -61,6 +76,10 @@ impl CollRetKind {
             CollRetKind::StrOwned => "a2x_fwd_stro".into(),
             CollRetKind::Record(n) => format!("a2x_fwd_{}", c_record_name(n)),
             CollRetKind::Variant(n) => format!("a2x_fwd_{}", c_variant_name(n)),
+            CollRetKind::List(tag) => format!("a2x_fwd_list_{tag}"),
+            CollRetKind::I64 => "a2x_fwd_i64".into(),
+            CollRetKind::U64 => "a2x_fwd_u64".into(),
+            CollRetKind::I8 | CollRetKind::U8 | CollRetKind::U32 => "a2x_fwd_i32".into(),
         }
     }
 
@@ -72,6 +91,10 @@ impl CollRetKind {
             CollRetKind::StrOwned => "a2x_stro_value".into(),
             CollRetKind::Record(n) => format!("a2x_{}_value", c_record_name(n)),
             CollRetKind::Variant(n) => format!("a2x_{}_value", c_variant_name(n)),
+            CollRetKind::List(tag) => format!("a2x_list_{tag}_value"),
+            CollRetKind::I64 => "a2x_i64_value".into(),
+            CollRetKind::U64 => "a2x_u64_value".into(),
+            CollRetKind::I8 | CollRetKind::U8 | CollRetKind::U32 => "a2x_value".into(),
         }
     }
 }
@@ -83,6 +106,10 @@ fn coll_ret_chan_of(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xReject
         Ty::I32 | Ty::Char => "a2x_result".into(),
         Ty::Bool => "a2x_bool_result".into(),
         Ty::StrOwned => "a2x_stro_result".into(),
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            format!("a2x_res_list_{}", seed_ty_of(view, elem)?.elem_tag())
+        }
         other => {
             return Err(A2xReject::unsupported_type(format!(
                 "closure result `{:?}` outside the C collections channel",
@@ -95,6 +122,13 @@ fn coll_ret_chan_of(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xReject
 fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<CollRetKind, A2xReject> {
     match ty {
         Ty::I32 => Ok(CollRetKind::I32),
+        // PLAN-972 (T-03): typed scalar results ride the numeric channel
+        // wrappers (i32 keeps the frozen a2x_result).
+        Ty::I64 => Ok(CollRetKind::I64),
+        Ty::U64 => Ok(CollRetKind::U64),
+        Ty::I8 => Ok(CollRetKind::I8),
+        Ty::U8 => Ok(CollRetKind::U8),
+        Ty::U32 => Ok(CollRetKind::U32),
         Ty::Bool => Ok(CollRetKind::Bool),
         Ty::StrOwned => Ok(CollRetKind::StrOwned),
         Ty::Record(i) => view
@@ -105,6 +139,11 @@ fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<CollRetKind, A2xReject
             .variant(i)
             .map(|v| CollRetKind::Variant(v.name.clone()))
             .ok_or_else(|| A2xReject::unsupported_type("unknown variant result type")),
+        // PLAN-972 (T-03): list results (filter/map-style signatures).
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            Ok(CollRetKind::List(seed_ty_of(view, elem)?.elem_tag()))
+        }
         other => Err(A2xReject::unsupported_type(format!(
             "result type `{:?}` outside the C collections channel",
             other

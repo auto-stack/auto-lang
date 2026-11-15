@@ -353,63 +353,54 @@ fn main() int {
         .unwrap_or(-1);
     assert_eq!(code, 44, "AC/native whole-set exit (HOF closures)");
 
-    // ---- A2C / cl POSITIVE leg on the text/char subset (PLAN-972 T-03:
-    // the scalar-indexed text/char surface on the C collections family):
-    // byte_len(A中😀)*10 + scalar_len = 83 via real cl. ----
+    // ---- A2C / cl WHOLE-SET HOF leg (PLAN-972 T-03: closure values as
+    // C function pointers + numeric + text/char + LIST RESULTS on the C
+    // collections family): the HOF program over the FULL assembled std
+    // set → value:144 via real cl. ----
     {
         use ace_a2x_c::CTargetProvider;
-        let subset: Vec<ace_core::source::packages::PackageModuleInput> =
-            ace_core::source::packages::stdlib_assembled_files()
-                .into_iter()
-                .filter(|(n, _)| matches!(n.as_str(), "text.at" | "char.at"))
-                .map(|(n, c)| {
-                    let id = n.trim_end_matches(".at").to_string();
-                    ace_core::source::packages::PackageModuleInput {
-                        package: "std".into(),
-                        version: "1.0.0".into(),
-                        id,
-                        source: c,
-                        provider: None,
-                    }
-                })
-                .chain(std::iter::once(
-                    ace_core::source::packages::PackageModuleInput {
-                        package: "app".into(),
-                        version: "1.0.0".into(),
-                        id: "main".into(),
-                        source: "use std.text.byte_len
-use std.text.scalar_len
+        let src_c = "use std.list.reduce
+use std.list.filter
 fn main() int {
-    let a Str = \"A中😀\"
-    return byte_len(a.clone()) * 10 + scalar_len(a.clone())
-}".into(),
-                        provider: None,
-                    },
-                ))
-                .collect();
-        let mut ctx_c = PackageAssemblyContext::new(
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    let ys = filter(xs, (x int) => { return x > 1 })
+    let s = reduce(ys, 0, (acc int, x int) => { return acc + x })
+    return s * 10 + ys.len()
+}";
+        let mut ctx_c0 = PackageAssemblyContext::new(
             AssemblyBackend::A2C,
             ProviderChoice::Auto,
             TargetOs::Windows,
         );
-        let subset_product = compile_assembled_aggregates_inputs(
-            &subset,
+        let inputs_c0 = assemble_stdlib_aggregates_inputs(
+            &[("main.at".to_string(), src_c.to_string())],
+            "app::main",
+            &mut ctx_c0,
+        )
+        .unwrap();
+        let whole_c = compile_assembled_aggregates_inputs(
+            &inputs_c0,
             "app::main",
             FrontBudget::WORK_OWNED_64MIB,
-            &ctx_c,
+            &ctx_c0,
         )
-        .unwrap_or_else(|ds| panic!("a2c subset compile: {ds:?}"));
-        let store = scratch("cons-a2c-subset");
+        .unwrap_or_else(|ds| panic!("a2c whole compile: {ds:?}"));
+        let store = scratch("cons-a2c-whole");
         let mut c_target = PackageA2xTarget::cold_aggregates(
             &store,
             "asm972c",
             "app",
             16 << 20,
             CTargetProvider::v1(),
-            &subset_product,
+            &whole_c,
         )
-        .unwrap_or_else(|e| panic!("a2c cold (subset): {e}"));
-        let build_dir = scratch("cons-a2c-subset-build");
+        .unwrap_or_else(|e| panic!("a2c cold (whole): {e}"));
+        let build_dir = scratch("cons-a2c-whole-build");
         std::fs::create_dir_all(&build_dir).unwrap();
         for (path, content) in &c_target.current.files {
             std::fs::write(build_dir.join(path), content).unwrap();
@@ -425,7 +416,7 @@ fn main() int {
             String::from_utf8_lossy(&run.stderr)
         );
         let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
-        assert!(out.ends_with("value:83"), "a2c subset stdout: {out}");
+        assert!(out.ends_with("value:144"), "a2c whole stdout: {out}");
     }
 
     // ---- A2R / rustc WHOLE-SET leg (PLAN-972 T-03: capture-free closure

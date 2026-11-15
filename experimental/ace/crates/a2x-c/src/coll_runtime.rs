@@ -58,6 +58,15 @@ pub fn collections_runtime_source(marks: &[&'static str]) -> String {
 #endif
 ");
     crate::runtime::write_numeric_runtime(&mut s).expect("formatting into a String cannot fail");
+    s.push_str(
+        "
+/* PLAN-972 (T-03): typed numeric result constructors for the fn channels. */
+static inline a2x_result_i64 a2x_i64_value(int64_t v) { return (a2x_result_i64){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_i64 a2x_fwd_i64(a2x_trap_code t) { return (a2x_result_i64){ 0, t }; }
+static inline a2x_result_u64 a2x_u64_value(uint64_t v) { return (a2x_result_u64){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_u64 a2x_fwd_u64(a2x_trap_code t) { return (a2x_result_u64){ 0, t }; }
+",
+    );
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
