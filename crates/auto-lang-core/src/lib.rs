@@ -70,6 +70,7 @@ pub mod ast_parse_ext;
 // ---- T-02 大迁移：执行/编译/VM/trans/服务全集 ----
 pub mod a2r_std;
 mod ace_entry;
+mod ace_session;
 pub mod api;
 pub mod autovm_client;
 pub mod autovm_daemon;
@@ -1231,6 +1232,7 @@ async fn test_code_with_options(
 
 // ---- PLAN-843 结构拆分：入口/旗标分离（机制在子模块，crate 根保再导出） ----
 pub use ace_entry::*;
+pub use ace_session::*;
 mod entry;
 pub use entry::*;
 mod flags;

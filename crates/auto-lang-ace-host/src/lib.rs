@@ -44,6 +44,8 @@ use auto_lang_core::{
 
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
+pub mod session_bridge;
+
 pub const ENGINE_ID: &str = "av";
 
 // ---------------------------------------------------------------------------
