@@ -22,9 +22,14 @@ fn id_of(p: SourceProfile) -> String {
     format!("{}", g.program().identity.grammar_id.0)
 }
 
-/// 非 AGE 的每个 profile 的 grammar id 都必须与冻结值逐字相同。
+/// 这些面的 grammar id 必须与**记录的冻结值**逐字相同。
+///
+/// 注意范围：`age-component` 与 `age-h0` 也在列表里，所以本用例名不叫
+/// "does not touch non-age profiles"——那两个是 AGE 面，且 `age-component` 的
+/// 冻结值**不是** SOURCE 交付时的值（它在本批被重排过，见文件头注释）。
+/// 断言消息只说"与记录的冻结值相同"，不断言"与交付前相同"，避免对那一行说谎。
 #[test]
-fn p981_grammar_trim_does_not_touch_non_age_profiles() {
+fn p981_grammar_ids_match_the_recorded_frozen_values() {
     // (profile, frozen id at SOURCE delivery)
     for (p, frozen) in [
         (
@@ -93,9 +98,10 @@ fn p981_grammar_trim_does_not_touch_non_age_profiles() {
         assert_eq!(
             id_of(p),
             frozen,
-            "{p:?}: this profile's grammar must be byte-identical to the frozen \
-             SOURCE-delivery value; a change here means the age-package trim \
-             leaked into another surface"
+            "{p:?}: this profile's grammar must be byte-identical to the value \
+             recorded when this check was written. For age-component that recorded \
+             value is POST-change (reordered in this batch), so a red here means it \
+             drifted AGAIN -- not that this batch left it untouched."
         );
     }
 }
