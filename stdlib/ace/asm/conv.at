@@ -1,11 +1,11 @@
-// ACE assembled stdlib conv module (PLAN-972 T-02): the S-05 parse family
-// as pure Auto algorithms (scalar-indexed, codepoint arithmetic; i64
-// accumulator with explicit range checks — never a silent trap).
+// ACE assembled stdlib conv module (PLAN-972 T-02): the S-05 parse/format
+// family as pure Auto algorithms (scalar-indexed, codepoint arithmetic;
+// i64 accumulator with explicit range checks — never a silent trap).
 // Errors are Option-valued (V-DETAIL-02): invalid digit, empty input,
 // lone sign, and out-of-i32-range all return None; "-2147483648" (i32::MIN)
-// parses. int→Str formatting needs char→Str construction (named later
-// batch); byte-level encodings (hex/base64) need byte indexing (named
-// boundary of the scalar surface).
+// parses. int→Str covers both signs (from_uint is the non-negative
+// domain; from_int handles negatives incl. i32::MIN); byte-level
+// encodings live in std.bytes.
 pub fn to_int(s Str) ?int {
     if (s.len() == 0) {
         return None
@@ -93,4 +93,28 @@ fn digits_of(n int, acc Str) Str {
         return with_d
     }
     return digits_of(rest, with_d)
+}
+
+// Signed int→Str (S-03/T-02 named boundary closed): the negative form is
+// "-" + the magnitude's digits. The magnitude walk runs in i64 so
+// i32::MIN (-2147483648) formats without an abs() overflow — checked
+// arithmetic never traps here.
+pub fn from_int(n int) Str {
+    if (n >= 0) {
+        return from_uint(n)
+    }
+    let wide = n.to(i64)
+    let mag = -wide
+    let digits = digits_of64(mag, "")
+    return "-" + digits
+}
+
+fn digits_of64(m i64, acc Str) Str {
+    let d = (m % 10i64).to(i32)
+    let rest = m / 10i64
+    let with_d Str = digit_str(d) + acc
+    if (rest == 0i64) {
+        return with_d
+    }
+    return digits_of64(rest, with_d)
 }

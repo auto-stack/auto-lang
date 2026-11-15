@@ -1089,3 +1089,201 @@ fn stdlib_asm_972_bitops_gate_open_av() {
     };
     assert_eq!(ds[0].diagnostic.code, "source.lex", "{ds:?}");
 }
+
+/// T-02 collections full set — the map slice: interleaved [k, v] entries on
+/// List<int> (reference semantics). put returns 0=insert / 1=overwrite;
+/// get/has/len; insert order preserved; overwrite hits in place.
+/// Score: ov(1)*1e5 + get1(99)*1e3 + get2(20)*1e2 + len(2)*10 + has1 + 2
+/// → 201023.
+#[test]
+fn stdlib_asm_972_map_int_int_av() {
+    const MAP_MAIN: &str = r#"
+use std.map.map_new
+use std.map.map_put
+use std.map.map_get
+use std.map.map_has
+use std.map.map_len
+fn pick(m List<int>, k int) int {
+    let r = map_get(m, k)
+    is r {
+        Some(v) -> { return v }
+        None -> { return 999999 }
+    }
+}
+fn main() int {
+    var m = map_new()
+    let i1 = map_put(m, 1, 10)
+    let i2 = map_put(m, 2, 20)
+    let ov = map_put(m, 1, 99)
+    var code = i1 * 10000000 + i2 * 1000000 + ov * 100000
+    code = code + pick(m, 1) * 1000
+    code = code + pick(m, 2) * 100
+    code = code + map_len(m) * 10
+    if map_has(m, 1) {
+        code = code + 1
+    }
+    if (pick(m, 7) == 999999) {
+        code = code + 2
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("map", MAP_MAIN);
+    assert_eq!(run_av("map", &p), Value::I32(201023));
+
+    // removal leg: remove hits (true), compacts the pair, keeps siblings,
+    // and a missing key removes nothing (false). 1000+200+40+70+4 = 1314.
+    const MAP_RM_MAIN: &str = r#"
+use std.map.map_new
+use std.map.map_put
+use std.map.map_remove
+use std.map.map_has
+use std.map.map_len
+use std.map.map_get
+fn main() int {
+    var m = map_new()
+    map_put(m, 5, 50)
+    map_put(m, 6, 60)
+    map_put(m, 7, 70)
+    var code = 0
+    if map_remove(m, 6) {
+        code = code + 1000
+    }
+    code = code + map_len(m) * 100
+    if (!map_has(m, 6)) {
+        code = code + 40
+    }
+    let r = map_get(m, 7)
+    is r {
+        Some(v) -> { code = code + v }
+        None -> { code = code + 8000 }
+    }
+    if (!map_remove(m, 99)) {
+        code = code + 4
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("map-rm", MAP_RM_MAIN);
+    assert_eq!(run_av("map-rm", &p), Value::I32(1314));
+}
+
+/// T-02 int→Str negative form (from_int): "-421", i32::MIN
+/// "-2147483648" (i64 magnitude walk — no abs overflow), 0 → "0", 7 → "7".
+/// Score: 1111000 + 4*100 + 11*10 + 1 = 1111511.
+#[test]
+fn stdlib_asm_972_conv_from_int_av() {
+    const FROM_INT_MAIN: &str = r#"
+use std.conv.from_int
+use std.text.equal
+fn main() int {
+    let a = from_int(-421)
+    let b = from_int(-2147483648)
+    let c = from_int(0)
+    let d = from_int(7)
+    var code = a.len() * 100
+    code = code + b.len() * 10
+    code = code + c.len()
+    if equal(a, "-421") {
+        code = code + 1000000
+    }
+    if equal(b, "-2147483648") {
+        code = code + 100000
+    }
+    if equal(c, "0") {
+        code = code + 10000
+    }
+    if equal(d, "7") {
+        code = code + 1000
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("from-int", FROM_INT_MAIN);
+    assert_eq!(run_av("from-int", &p), Value::I32(1111511));
+}
+
+/// T-02 ASCII case mapping: upper/lower over mixed ASCII + non-ASCII
+/// passthrough (中/😀 unchanged), empty stays empty. Score: 111155.
+#[test]
+fn stdlib_asm_972_case_ascii_av() {
+    const CASE_MAIN: &str = r#"
+use std.text.upper_ascii
+use std.text.lower_ascii
+use std.text.equal
+fn main() int {
+    let u1 = upper_ascii("aB中z9")
+    let l1 = lower_ascii("Ab中Z9")
+    let u2 = upper_ascii("")
+    let u3 = upper_ascii("中😀")
+    var code = u1.len() * 10
+    code = code + l1.len()
+    if equal(u1, "AB中Z9") {
+        code = code + 100000
+    }
+    if equal(l1, "ab中z9") {
+        code = code + 10000
+    }
+    if equal(u2, "") {
+        code = code + 1000
+    }
+    if equal(u3, "中😀") {
+        code = code + 100
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("case", CASE_MAIN);
+    assert_eq!(run_av("case", &p), Value::I32(111155));
+}
+
+/// T-02 S-03 encodings: hex and base64 over reconstructed UTF-8 bytes
+/// (oracles from Python's hex/base64): A中😀 → 41e4b8adf09f9880 /
+/// QeS4rfCfmIA=; NUL is an ordinary byte (a\0b → 610062 / YQBi); empty →
+/// empty; padding shapes 1/2/0/2 tail bytes. Score: 111111126.
+#[test]
+fn stdlib_asm_972_bytes_hex_b64_av() {
+    const ENC_MAIN: &str = r#"
+use std.bytes.to_hex
+use std.bytes.to_base64
+use std.text.equal
+fn main() int {
+    let h1 = to_hex("A中😀")
+    let h2 = to_hex("")
+    let h3 = to_hex("a\0b")
+    let b1 = to_base64("A中😀")
+    let b2 = to_base64("a")
+    let b3 = to_base64("abc")
+    let b4 = to_base64("a\0b")
+    let b5 = to_base64("autostack!")
+    var code = h1.len()
+    if equal(h1, "41e4b8adf09f9880") {
+        code = code + 100000000
+    }
+    if equal(h2, "") {
+        code = code + 10000000
+    }
+    if equal(h3, "610062") {
+        code = code + 1000000
+    }
+    if equal(b1, "QeS4rfCfmIA=") {
+        code = code + 100000
+    }
+    if equal(b2, "YQ==") {
+        code = code + 10000
+    }
+    if equal(b3, "YWJj") {
+        code = code + 1000
+    }
+    if equal(b4, "YQBi") {
+        code = code + 100
+    }
+    if equal(b5, "YXV0b3N0YWNrIQ==") {
+        code = code + 10
+    }
+    return code
+}
+"#;
+    let p = asm_lane_product("enc", ENC_MAIN);
+    assert_eq!(run_av("enc", &p), Value::I32(111111126));
+}

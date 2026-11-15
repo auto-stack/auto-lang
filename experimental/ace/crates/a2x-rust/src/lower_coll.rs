@@ -1220,7 +1220,20 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         self.expr(*a, out)?
                     };
                     if shared_list_param.get(i).copied().unwrap_or(false) {
-                        args.push(RExpr::RefMut { inner: Box::new(v) });
+                        // PLAN-972 (T-02 map slice): an arg that is itself
+                        // the bare name of a View-List param ALREADY renders
+                        // as `&'a mut A2xList` — pass it bare (Rust
+                        // reborrows at the argument position). Wrapping it
+                        // in `&mut` would borrow the binding itself
+                        // (E0596), not the list — the same discipline the
+                        // BorrowMut arm below applies to place refs.
+                        let bare_param =
+                            matches!(&v, RExpr::Local(n) if self.shared_list_params.contains(n));
+                        if !bare_param {
+                            args.push(RExpr::RefMut { inner: Box::new(v) });
+                        } else {
+                            args.push(v);
+                        }
                     } else {
                         args.push(v);
                     }

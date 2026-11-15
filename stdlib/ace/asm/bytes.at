@@ -107,3 +107,115 @@ fn step_if(n int, k int, h i64, p int) i64 {
 fn mix_byte(h i64, b int) i64 {
     return (h * 1000003i64 + b.to(i64)) % 2147483647i64
 }
+
+// S-03 encodings: hex and base64 ENCODE over the reconstructed UTF-8 bytes
+// (6-bit groups via div/mod arithmetic — no bit ops; digits come from the
+// alphabet tables via slice construction). base64 walks (scalar index,
+// byte-in-scalar, pending group b0/b1, pending count, emitted prefix) so
+// groups align across scalar boundaries without buffering. DECODE is a
+// named boundary: building a Str from arbitrary byte values needs a
+// byte→Str construction this surface does not expose.
+pub fn to_hex(s Str) Str {
+    return hex_at(s, 0, "")
+}
+
+fn hex_at(s Str, i int, acc Str) Str {
+    if (i == s.len()) {
+        return acc.clone()
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    let n = utf8_len(p)
+    let acc1 = hex_byte(acc, byte_of(p, 0))
+    let acc2 = hex_step(n, 1, acc1, p)
+    let acc3 = hex_step(n, 2, acc2, p)
+    return hex_at(s, i + 1, hex_step(n, 3, acc3, p))
+}
+
+fn hex_step(n int, k int, acc Str, p int) Str {
+    if (k < n) {
+        return hex_byte(acc, byte_of(p, k))
+    }
+    return acc.clone()
+}
+
+fn hex_byte(acc Str, b int) Str {
+    let table Str = "0123456789abcdef"
+    let hi = b / 16
+    let lo = b % 16
+    let h Str = table.slice(hi, hi + 1).clone()
+    let l Str = table.slice(lo, lo + 1).clone()
+    let mid Str = acc + h
+    return mid + l
+}
+
+pub fn to_base64(s Str) Str {
+    return b64_at(s, 0, 0, 0, 0, 0, "")
+}
+
+fn b64_at(s Str, ci int, kb int, b0 int, b1 int, k int, acc Str) Str {
+    if (ci == s.len()) {
+        if (k == 0) {
+            return acc.clone()
+        }
+        if (k == 1) {
+            let head Str = acc + b64_pair(b0)
+            return head + "=="
+        }
+        let head Str = acc + b64_triple(b0, b1)
+        return head + "="
+    }
+    let c = s.char_at(ci)
+    let p = c.to_codepoint()
+    let n = utf8_len(p)
+    if (kb >= n) {
+        return b64_at(s, ci + 1, 0, b0, b1, k, acc)
+    }
+    let b = byte_of(p, kb)
+    if (k == 0) {
+        return b64_at(s, ci, kb + 1, b, b1, 1, acc)
+    }
+    if (k == 1) {
+        return b64_at(s, ci, kb + 1, b0, b, 2, acc)
+    }
+    let with_group Str = acc + b64_quad(b0, b1, b)
+    return b64_at(s, ci, kb + 1, 0, 0, 0, with_group)
+}
+
+fn b64_digit(g int) Str {
+    let table Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    return table.slice(g, g + 1).clone()
+}
+
+fn b64_quad(b0 int, b1 int, b2 int) Str {
+    let g0 = b0 / 4
+    let g1 = (b0 % 4) * 16 + b1 / 16
+    let g2 = (b1 % 16) * 4 + b2 / 64
+    let g3 = b2 % 64
+    let a Str = b64_digit(g0)
+    let b Str = b64_digit(g1)
+    let c2 Str = b64_digit(g2)
+    let d Str = b64_digit(g3)
+    let ab Str = a + b
+    let cd Str = c2 + d
+    return ab + cd
+}
+
+fn b64_pair(b0 int) Str {
+    let g0 = b0 / 4
+    let g1 = (b0 % 4) * 16
+    let a Str = b64_digit(g0)
+    let b Str = b64_digit(g1)
+    return a + b
+}
+
+fn b64_triple(b0 int, b1 int) Str {
+    let g0 = b0 / 4
+    let g1 = (b0 % 4) * 16 + b1 / 16
+    let g2 = (b1 % 16) * 4
+    let a Str = b64_digit(g0)
+    let b Str = b64_digit(g1)
+    let c2 Str = b64_digit(g2)
+    let ab Str = a + b
+    return ab + c2
+}

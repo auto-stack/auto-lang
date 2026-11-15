@@ -7,8 +7,9 @@
 // bytes; the A中😀 (8 bytes / 3 scalars) and e+U+0301 (3 bytes) oracles are
 // asserted by the 972 conformance (V-02). NUL never truncates (explicit
 // lengths; no C-string semantics). str `==` is not bound on this lane —
-// equality is the scalar-by-scalar `equal` below. Full-Unicode
-// upper/lower/trim need case tables (later batch, named boundary).
+// equality is the scalar-by-scalar `equal` below. ASCII upper/lower are
+// table-mapped below; full-Unicode case tables and trim remain a later
+// batch (named boundary).
 pub fn byte_len(s Str) int {
     return s.len_bytes()
 }
@@ -88,4 +89,59 @@ fn repeat_into(s Str, n int, acc Str) Str {
     }
     let next Str = acc + s
     return repeat_into(s, n - 1, next)
+}
+
+// ASCII case mapping (T-02 named boundary closed): each scalar is located
+// in the 26-letter table and re-taken from the counterpart table via the
+// slice construction (no char→Str builtin on this surface); non-ASCII
+// scalars pass through unchanged. Full-Unicode case tables remain a later
+// batch (named boundary).
+pub fn upper_ascii(s Str) Str {
+    return case_at(s, 0, "", true)
+}
+
+pub fn lower_ascii(s Str) Str {
+    return case_at(s, 0, "", false)
+}
+
+// Branch-exclusive table moves; every path tail-moves `s` exactly once
+// after all its reads (the contains_at ownership discipline — no Str var
+// reassignment, no helper taking `s`).
+fn case_at(s Str, i int, acc Str, up bool) Str {
+    if (i == s.len()) {
+        return acc.clone()
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    let lower Str = "abcdefghijklmnopqrstuvwxyz"
+    let upper Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if (up) {
+        let j = table_index(lower, p, 0)
+        if (j >= 0) {
+            let piece Str = upper.slice(j, j + 1).clone()
+            let next Str = acc + piece
+            return case_at(s, i + 1, next, up)
+        }
+    } else {
+        let j = table_index(upper, p, 0)
+        if (j >= 0) {
+            let piece Str = lower.slice(j, j + 1).clone()
+            let next Str = acc + piece
+            return case_at(s, i + 1, next, up)
+        }
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    let next Str = acc + piece
+    return case_at(s, i + 1, next, up)
+}
+
+fn table_index(t Str, p int, i int) int {
+    if (i == t.len()) {
+        return -1
+    }
+    let c = t.char_at(i)
+    if (c.to_codepoint() == p) {
+        return i
+    }
+    return table_index(t, p, i + 1)
 }
