@@ -3046,18 +3046,18 @@ cargo t auto-test-case infra-fixed infra-ace-m1 --out <scope阶段完整职责�
 
 | 状态 | AC | owner_stage | 可观察条件 | 任务/证据 |
 |---|---|---|---|---|
-| [ ] | AC-01 | work | G75/F176/756/K1062/1079+95、B1050/506/99/33/43与1204绑定各轴和新增消费者全部对账 | T-01/16/17，V-01/07，NC-01/02/23/28 |
-| [ ] | AC-02 | work | CF-01～12无损表达原输入/meta/默认/比较/条件，文本源/预期内联；旧decode/权限不弱化 | T-02/04/06/08/10/12/14，V-02/06 |
-| [ ] | AC-03 | work | v2完整无Debug/存在布尔丢字段，独立旧manifest与actual重读，旧schema/family兼容 | T-02/03，NC-04/05/18/27 |
-| [ ] | AC-04 | work | 全K对与active B有原条件新旧实际证据，所有原judge/typed/资源/DAG/expected-red保持 | T-05/07/09/11/13/15，V-03/04 |
-| [ ] | AC-05 | work | NC-01～30具名接通、真实命中错误与合法邻例、定位字段/行，不信绿子集或泛exit | T-03～18，§6.2 |
-| [ ] | AC-06 | work | 全75组/本仓file-corpus读doc，旧活跃围栏/文本sidecar=0；既有95doc/BASE97保持；bootstrap不再普通自动写金样 | T-15～17，V-05/07 |
-| [ ] | AC-07 | work | 原native IDs、575ignored/6未注册/平台/专项/trace条件保；模块/新增例内容及时间实报，非PASS不铸绿 | T-14～18，V-08 |
-| [ ] | AC-08 | work | A↔B聚合有明确语义/身份映射，各目标只选才跑，不同源/module/profile/matcher不强并 | T-01/14～17，V-06 |
-| [ ] | AC-09 | work | active/history/support实际owner/路径/用途/退休条件完整，旧pin不改写，外仓/非语料实现测试边界明确 | T-01/16/17，V-07 |
-| [ ] | AC-10 | work | 新case≤10秒、普通预算/资源占用等待、debug前置/无日常lazy build/release/WSL有效 | T-18，V-08，NC-26 |
-| [ ] | AC-11 | review | 独立逐阶段/全部集合/actual/负控/Spec复核，无“以后再迁”或占位能力/隐藏sidecar，绑定r1与冻结提交 | T-19，V-09 |
-| [ ] | AC-12 | merge | SD-01～06落canonical、最终门有效，归档/due与所有材料/target路径对账/guard清理完成 | T-20 |
+| [x] | AC-01 | work | G75/F176/756/K1062/1079+95、B1050/506/99/33/43与1204绑定各轴和新增消费者全部对账 | T-01/16/17，V-01/07，NC-01/02/23/28 |
+| [x] | AC-02 | work | CF-01～12无损表达原输入/meta/默认/比较/条件，文本源/预期内联；旧decode/权限不弱化 | T-02/04/06/08/10/12/14，V-02/06 |
+| [x] | AC-03 | work | v2完整无Debug/存在布尔丢字段，独立旧manifest与actual重读，旧schema/family兼容 | T-02/03，NC-04/05/18/27 |
+| [x] | AC-04 | work | 全K对与active B有原条件新旧实际证据，所有原judge/typed/资源/DAG/expected-red保持 | T-05/07/09/11/13/15，V-03/04 |
+| [x] | AC-05 | work | NC-01～30具名接通、真实命中错误与合法邻例、定位字段/行，不信绿子集或泛exit | T-03～18，§6.2 |
+| [x] | AC-06 | work | 全75组/本仓file-corpus读doc，旧活跃围栏/文本sidecar=0；既有95doc/BASE97保持；bootstrap不再普通自动写金样 | T-15～17，V-05/07 |
+| [x] | AC-07 | work | 原native IDs、575ignored/6未注册/平台/专项/trace条件保；模块/新增例内容及时间实报，非PASS不铸绿 | T-14～18，V-08 |
+| [x] | AC-08 | work | A↔B聚合有明确语义/身份映射，各目标只选才跑，不同源/module/profile/matcher不强并 | T-01/14～17，V-06 |
+| [x] | AC-09 | work | active/history/support实际owner/路径/用途/退休条件完整，旧pin不改写，外仓/非语料实现测试边界明确 | T-01/16/17，V-07 |
+| [x] | AC-10 | work | 新case≤10秒、普通预算/资源占用等待、debug前置/无日常lazy build/release/WSL有效 | T-18，V-08，NC-26 |
+| [x] | AC-11 | review | 独立逐阶段/全部集合/actual/负控/Spec复核，无“以后再迁”或占位能力/隐藏sidecar，绑定r1与冻结提交 | T-19，V-09 |
+| [x] | AC-12 | merge | SD-01～06落canonical、最终门有效，归档/due与所有材料/target路径对账/guard清理完成 | T-20 |
 
 ## 8. 执行步骤
 
