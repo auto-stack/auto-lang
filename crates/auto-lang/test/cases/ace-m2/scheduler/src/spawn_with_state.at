@@ -1,0 +1,18 @@
+// Plan 390 §5 Phase B (M1): Task.spawn with initialization parameters.
+// `Task.spawn("Name", cap, v1, v2)` forwards v1/v2 as positional initializers
+// for the task's state fields (declaration order), overriding the defaults.
+
+task Counter {
+    count = 0
+    label = "default"
+    on { n int -> {
+        count = count + n
+        print(f"{label}: {count}")
+    } }
+}
+
+fn main() {
+    // Spawn with init args: count=10, label="mycounter"
+    let h = Task.spawn("Counter", 16, 10, "mycounter")
+    h.send(5)
+}

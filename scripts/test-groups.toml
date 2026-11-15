@@ -756,6 +756,18 @@ suite = "crates/auto-lang/test/cases/ace-m2/dynamic/dynamic.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m2-scheduler-968"
+title = "TestCase case-ace-m2-scheduler-968（PLAN-968 M2-A 任务actor调度器 AV 真实运行与正反控）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m2/scheduler/scheduler.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m2-control-effects-965"
 title = "TestCase case-ace-m2-control-effects-965（PLAN-965 T-08 完整控制流/错误传播/生成器 AV 真实运行与正反控）"
 runner = "case"

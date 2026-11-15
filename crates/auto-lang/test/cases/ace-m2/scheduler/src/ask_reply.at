@@ -1,0 +1,13 @@
+task Q {
+    on {
+        n int -> {
+            reply(n + 1)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Q", 16)
+    let v = await h.ask(41)
+    print("reply:")
+    print(v)
+}

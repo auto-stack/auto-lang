@@ -1,0 +1,119 @@
+# PLAN-968 T-02/T-03 — permanent M2-A task actor & event scheduler corpus:
+# `task`/`on` declarations, `Task.spawn`, handle `send`/`ask`/`stop`,
+# `reply`, `await`, `go`, `sleep`, bounded mailboxes (backpressure),
+# virtual timers, the orderly stop-hook drain and named rejections, all
+# on `ac-av/scheduler-source-run-v1` (the deterministic cooperative
+# scheduler; console stdout observed byte-exactly). The canonical
+# `message_handler`/`spawn_with_state` obligations are the originals,
+# unmodified. Unit-level oracles also live in `ace-av`
+# (`sched_m2_968`).
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.message-handler", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/message_handler.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "got one\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.spawn-with-state", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/spawn_with_state.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "mycounter: 15\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.mailbox-fifo", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/mailbox_fifo.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "got two\ngot one\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.ask-reply", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/ask_reply.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "reply:\n42\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.go-join", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/go_join.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "go:\n7\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.backpressure", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/backpressure.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "1\n2\n3\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.stop-hook", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/stop_hook.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "one\nstopped\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.virtual-timer", tags: ["ace-m2", "scheduler", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/virtual_timer.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 0, stdout: { text: "main\nlater\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.neg-unknown-task", tags: ["ace-m2", "scheduler", "negative", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/neg_unknown_task.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "source.sched-task" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.neg-malformed-task", tags: ["ace-m2", "scheduler", "negative", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/neg_malformed_task.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "parse", code: "source.unsupported" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p968.neg-send-after-stop", tags: ["ace-m2", "scheduler", "negative", "plan-968"], links: ["PLAN-968"],
+  source: { file: "src/neg_send_after_stop.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-scheduler", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/scheduler-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", code: "lang.error", message: { contains: "send on a closed task" } } } }]
+}
+```

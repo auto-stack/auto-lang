@@ -938,6 +938,16 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
             }
         };
     }
+    // PLAN-968: the scheduler recipe producer (task actor sources).
+    if recipe == ace_av::sched_worker::RECIPE {
+        return match ace_av::sched_worker::serve(&req) {
+            Ok(observations) => echo(observations),
+            Err(error) => {
+                eprintln!("scheduler request: {error}");
+                exit(2);
+            }
+        };
+    }
     if recipe == ace_av::console_worker::RECIPE {
         return match ace_av::console_worker::serve(&req) {
             Ok(observations) => echo(observations),

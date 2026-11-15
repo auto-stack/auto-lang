@@ -1,0 +1,7 @@
+fn worker(n int) {
+    print("go:")
+    print(n)
+}
+fn main() {
+    go worker(7)
+}

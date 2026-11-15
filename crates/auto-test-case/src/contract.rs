@@ -1299,7 +1299,13 @@ fn decode_check(
                     "console-run-v1 requires exactly one run step",
                 ));
             }
-        } else if expect.stderr.is_some() && !mn_recipe && !py_run_recipe {
+        } else if expect.stderr.is_some()
+            && !mn_recipe
+            && !py_run_recipe
+            // PLAN-968: the scheduler source recipe observes console
+            // streams like the console recipe.
+            && options.probe_recipe.as_deref() != Some("ac-av/scheduler-source-run-v1")
+        {
             // PLAN-914: the MIR-native recipes capture the produced PE's
             // real streams; `stderr` is admitted there so a scenario can
             // observe the executed mark bytes. stdout stays console-only
@@ -1308,10 +1314,15 @@ fn decode_check(
                 &f.path_of("expect"),
                 "probe stderr is observable only with ac-av/console-run-v1, ac/mir-native-*, or ac-a2py/hir-stdlib-run-v1",
             ));
-        } else if expect.stdout.is_some() && !py_run_recipe {
+        } else if expect.stdout.is_some()
+            && !py_run_recipe
+            // PLAN-968: the scheduler source recipe observes console
+            // streams like the console recipe.
+            && options.probe_recipe.as_deref() != Some("ac-av/scheduler-source-run-v1")
+        {
             return Err(err(
                 &f.path_of("expect"),
-                "probe streams are observable only with ac-av/console-run-v1 or ac-a2py/hir-stdlib-run-v1",
+                "probe streams are observable only with ac-av/console-run-v1, ac-av/scheduler-source-run-v1 or ac-a2py/hir-stdlib-run-v1",
             ));
         }
     }
@@ -1815,6 +1826,11 @@ fn decode_options(
                         "ac-av/aggregates-source-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
+                        // PLAN-968: the scheduler source recipe — run-only
+                        // vocabulary (one judged run).
+                        "ac-av/scheduler-source-run-v1" => {
+                            matches!(op.as_str(), "run")
+                        }
                         "ac-av/closures-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
@@ -2015,6 +2031,7 @@ fn decode_options(
                     || recipe == "ac-av/collections-run-v1"
                     || recipe == "ac-av/collections-source-run-v1"
                     || recipe == "ac-av/aggregates-source-run-v1"
+                    || recipe == "ac-av/scheduler-source-run-v1"
                     || recipe == "ac-av/loaded-run-v1"
                     || recipe == "ac-av/closures-run-v1"
                     || recipe == "ac-av/closures-source-run-v1"
@@ -2208,6 +2225,7 @@ fn decode_options(
                         || recipe == "ac-av/collections-run-v1"
                         || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/aggregates-source-run-v1"
+                        || recipe == "ac-av/scheduler-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/closures-source-run-v1"
@@ -2235,6 +2253,7 @@ fn decode_options(
                         && recipe != "ac-av/collections-run-v1"
                         && recipe != "ac-av/collections-source-run-v1"
                         && recipe != "ac-av/aggregates-source-run-v1"
+                        && recipe != "ac-av/scheduler-source-run-v1"
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/closures-source-run-v1"
@@ -3163,6 +3182,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // the aggregates frontend (objects/nil/fstr) onto the shared
     // closures-superset lowering/runtime, same seam contract.
     "ac-av/aggregates-source-run-v1",
+    // PLAN-968: the scheduler source recipe (task actor surface; run-only
+    // steps, console streams observed).
+    "ac-av/scheduler-source-run-v1",
     // PLAN-865: the closures SOURCE recipe — real .at sources through the
     // closures frontend onto the frozen 823 execution, same seam contract.
     "ac-av/closures-source-run-v1",

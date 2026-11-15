@@ -106,6 +106,12 @@ pub const AV_COLLECTIONS_SOURCE_RECIPE: &str = "ac-av/collections-source-run-v1"
 /// closures-source family; the aggregates front door admits the wider
 /// composite/dynamic surface).
 pub const AV_AGGREGATES_SOURCE_RECIPE: &str = "ac-av/aggregates-source-run-v1";
+/// PLAN-968: the scheduler SOURCE recipe - task actor sources (task/on,
+/// Task.spawn, send/ask/reply, await, go, sleep) through the scheduler
+/// frontend onto the closures-superset MIR with the deterministic
+/// cooperative scheduler (av.closures/1 identity; SCHED opcodes additive)
+/// and console observation.
+pub const AV_SCHEDULER_SOURCE_RECIPE: &str = "ac-av/scheduler-source-run-v1";
 /// PLAN-823 (R1-F02): the closures-profile av recipe (append-only
 /// registration; earlier recipe contracts untouched).
 pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
@@ -172,6 +178,9 @@ pub enum RecipeFamily {
     /// PLAN-964: real `.at` sources through the aggregates frontend
     /// (objects/nil/fstr) onto the shared closures-superset lowering.
     AggregatesSource,
+    /// PLAN-968: the task actor scheduler source recipe (console streams
+    /// observed; av.closures/1 identity).
+    SchedulerSource,
     /// PLAN-865: real `.at` source through closure lowering and the existing
     /// per-function closures update/link/runtime session.
     ClosuresSource,
@@ -208,6 +217,7 @@ impl RecipeFamily {
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
             RecipeFamily::AggregatesSource => AV_AGGREGATES_SOURCE_RECIPE,
+            RecipeFamily::SchedulerSource => AV_SCHEDULER_SOURCE_RECIPE,
             RecipeFamily::ClosuresSource => AV_CLOSURES_SOURCE_RECIPE,
             RecipeFamily::ClosuresFn => AV_CLOSURES_FN_RECIPE,
             RecipeFamily::ClosuresRecovery => AV_CLOSURES_RECOVERY_RECIPE,
@@ -230,6 +240,9 @@ impl RecipeFamily {
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::AggregatesSource => EXPECTED_AV_CLOSURES_CORE_VERSION,
+            // PLAN-968: the scheduler recipe rides the closures-superset
+            // identity (SCHED opcodes are additive on it).
+            RecipeFamily::SchedulerSource => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::ClosuresSource
             | RecipeFamily::ClosuresFn
             | RecipeFamily::ClosuresRecovery => EXPECTED_AV_CLOSURES_CORE_VERSION,
@@ -1694,6 +1707,28 @@ pub fn run_collections_source_check(
     )
 }
 
+/// PLAN-968: the scheduler SOURCE recipe check — same request/judge
+/// shape as the console family (console streams + exit observed); the
+/// worker runs the real source through the scheduler chain.
+pub fn run_scheduler_source_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::SchedulerSource,
+    )
+}
+
 /// PLAN-964: the aggregates SOURCE recipe check — same request/judge
 /// shape as the other av source families; the worker compiles the real
 /// source through the aggregates frontend (no fixture table).
@@ -1879,20 +1914,38 @@ fn run_check_with_transport(
             case.spec.source.syntax.as_str()
         ));
     }
-    if family == RecipeFamily::Console {
-        auto_test_case::contract::validate_console_oracle(
-            oracle.stdout.as_ref(),
-            oracle.stderr.as_ref(),
-            oracle.exit,
-            oracle.av_channel.as_deref(),
-            &oracle.completion,
-        )?;
+    if family == RecipeFamily::Console || family == RecipeFamily::SchedulerSource {
+        // PLAN-968: the scheduler face's ERROR completions assert no
+        // streams (the case gate forbids them there); the full console
+        // oracle contract applies to success completions.
+        if family == RecipeFamily::SchedulerSource
+            && !matches!(oracle.completion, auto_test_case::contract::Completion::Success)
+        {
+            if oracle.stdout.is_some() || oracle.stderr.is_some() {
+                return Err(
+                    "scheduler error completions assert no console streams".into(),
+                );
+            }
+        } else {
+            auto_test_case::contract::validate_console_oracle(
+                oracle.stdout.as_ref(),
+                oracle.stderr.as_ref(),
+                oracle.exit,
+                oracle.av_channel.as_deref(),
+                &oracle.completion,
+            )?;
+        }
         let binding = check
             .options
             .probe_av
             .as_ref()
             .ok_or("console binding missing")?;
-        if check.options.probe_recipe.as_deref() != Some(AV_CONSOLE_RECIPE)
+        let want_recipe = if family == RecipeFamily::Console {
+            AV_CONSOLE_RECIPE
+        } else {
+            AV_SCHEDULER_SOURCE_RECIPE
+        };
+        if check.options.probe_recipe.as_deref() != Some(want_recipe)
             || binding.entry != "d_main"
             || binding.session.is_some()
             || binding.profile.is_some()
@@ -1902,7 +1955,7 @@ fn run_check_with_transport(
             )
         {
             return Err(
-                "console-run-v1 requires d_main, one run and no session/profile override".into(),
+                "console-run-v1/scheduler-source-run-v1 requires d_main, one run and no session/profile override".into(),
             );
         }
     } else if oracle.stdout.is_some() || oracle.stderr.is_some() {
@@ -2765,7 +2818,7 @@ fn run_check_with_transport(
         }
     }
 
-    if family == RecipeFamily::Console {
+    if family == RecipeFamily::Console || family == RecipeFamily::SchedulerSource {
         let capture = step.console.as_ref().expect("console admitted");
         let run =
             serde_json::json!({"stdout_b64":capture.stdout_b64,"stderr_b64":capture.stderr_b64});
@@ -5811,7 +5864,7 @@ pub fn current_console_toolchain_identity() -> std::collections::BTreeMap<String
 
 /// Console transport admission is independent of a matching oracle.
 fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> {
-    if family != RecipeFamily::Console {
+    if family != RecipeFamily::Console && family != RecipeFamily::SchedulerSource {
         return steps
             .iter()
             .any(|s| s.console.is_some())
@@ -5878,6 +5931,20 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
             None
         }
         "diag"
+            if step.value.is_none()
+                && step.channel.is_none()
+                && step.trap.is_none()
+                && step.diag.as_ref().is_some_and(|d| {
+                    d["stage"].is_string()
+                        && d["code"].as_str().is_some_and(|c| !c.is_empty())
+                        && d["message"].is_string()
+                }) =>
+        {
+            None
+        }
+        // PLAN-968: the scheduler face surfaces language errors (e.g. a
+        // send on a closed task) as run-stage diagnostics.
+        "error"
             if step.value.is_none()
                 && step.channel.is_none()
                 && step.trap.is_none()

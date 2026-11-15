@@ -1,0 +1,14 @@
+task B {
+    on {
+        n int -> {
+            sleep(50)
+            print(n)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("B", 1)
+    h.send(1)
+    h.send(2)
+    h.send(3)
+}

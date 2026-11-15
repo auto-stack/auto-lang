@@ -1,0 +1,13 @@
+task C {
+    fn stop() ! {
+    }
+    on {
+        1 -> {
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("C", 16)
+    h.stop()
+    h.send(1)
+}

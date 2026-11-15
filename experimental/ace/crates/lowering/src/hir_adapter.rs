@@ -236,14 +236,6 @@ pub fn lower_checked(
                                 if s.starts_with("__sched_"))
                         })
                     {
-                        let sig = fn_type_index(
-                            *ty,
-                            module,
-                            &mut out,
-                            false,
-                            &mut std::collections::BTreeMap::new(),
-                            &mut std::collections::BTreeSet::new(),
-                        )?;
                         let h = ace_av_core::host::declaration(
                             symbol,
                             owned_fn_sig_for_def(
@@ -428,14 +420,6 @@ pub fn lower_checked_data(
                                 if s.starts_with("__sched_"))
                         })
                     {
-                        let sig = fn_type_index(
-                            *ty,
-                            module,
-                            &mut out,
-                            false,
-                            &mut std::collections::BTreeMap::new(),
-                            &mut std::collections::BTreeSet::new(),
-                        )?;
                         let h = ace_av_core::host::declaration(
                             symbol,
                             owned_fn_sig_for_def(

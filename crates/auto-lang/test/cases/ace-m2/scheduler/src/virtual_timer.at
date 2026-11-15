@@ -1,0 +1,8 @@
+fn main() {
+    go sleeper()
+    print("main")
+}
+fn sleeper() {
+    sleep(100)
+    print("later")
+}
