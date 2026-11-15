@@ -579,3 +579,158 @@ fn net974_server_leg_auto_listens_rust_client() {
     );
     handle.join().expect("server thread");
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-974 T-02 increment 4 — SSE streaming parse + redirect-follow +
+// the connect-refused timeout negative. All three ride the SAME
+// platform.net/1 lane (paced read/accept); the loopback server serves
+// three connections: the SSE stream, the 302 redirect hop and the
+// followed /next hop.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn net974_sse_and_redirect() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = std::thread::spawn(move || {
+        // conn 1: SSE — two events streamed with a gap, then close.
+        let (mut c, _) = listener.accept().expect("sse accept");
+        let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        let mut b = [0u8; 256];
+        let _ = c.read(&mut b); // drain the GET
+        use std::io::Write as _;
+        let _ = c.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n");
+        let _ = c.write_all(b"event: tick\ndata: 41\n\n");
+        let _ = c.flush();
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        let _ = c.write_all(b"event: tock\ndata: 42\n\n");
+        let _ = c.flush();
+        let _ = c.shutdown(std::net::Shutdown::Both);
+        // conn 2: the redirect hop (GET /start -> 302 + Location: /next).
+        let (mut c, _) = listener.accept().expect("hop accept");
+        let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        let mut b = [0u8; 256];
+        let _ = c.read(&mut b);
+        let _ = c.write_all(b"HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\r\n");
+        let _ = c.flush();
+        let _ = c.shutdown(std::net::Shutdown::Both);
+        // conn 3: the followed hop (GET /next -> 200 ok).
+        let (mut c, _) = listener.accept().expect("next accept");
+        let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        let mut b = [0u8; 256];
+        let _ = c.read(&mut b);
+        let _ = c.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+        let _ = c.flush();
+        let _ = c.shutdown(std::net::Shutdown::Both);
+    });
+
+    let src = format!(
+        r#"fn get_code_and_events(host Str, port int, path Str) int {{
+    let s = net_tcp_connect(host, port)
+    if s <= 0 {{ return s }}
+    let req Str = "GET " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+    let w = net_tcp_write_some(s, req)
+    if w <= 0 {{ return w }}
+    let region = mem_alloc(4096)
+    var total = 0
+    for total < 4096 {{
+        let n = net_tcp_read_into(s, region, total, 512)
+        if n < 0 {{ return n }}
+        if n == 0 {{ break }}
+        total = total + n
+    }}
+    let _c = net_tcp_close(s)
+    // status code after the first space
+    var i = 0
+    var code = 0
+    var got = 0
+    for i < total {{
+        let b = mem_read_u8(region, i)
+        if b == 32 {{
+            let d0 = mem_read_u8(region, i + 1)
+            let d1 = mem_read_u8(region, i + 2)
+            let d2 = mem_read_u8(region, i + 3)
+            code = (d0 - 48) * 100 + (d1 - 48) * 10 + (d2 - 48)
+            got = 1
+            break
+        }}
+        i = i + 1
+    }}
+    if got != 1 {{ let _f = mem_free(region); return 9100 }}
+    // SSE event count: blank lines ("\n\n") AFTER the header blank line.
+    // header end: "\r\n\r\n"
+    var j = 0
+    var blank = -1
+    for j + 3 < total {{
+        let c0 = mem_read_u8(region, j)
+        let c1 = mem_read_u8(region, j + 1)
+        let c2 = mem_read_u8(region, j + 2)
+        let c3 = mem_read_u8(region, j + 3)
+        if c0 == 13 {{
+            if c1 == 10 {{
+                if c2 == 13 {{
+                    if c3 == 10 {{ blank = j + 4; break }}
+                }}
+            }}
+        }}
+        j = j + 1
+    }}
+    if blank < 0 {{ let _f = mem_free(region); return 9200 }}
+    var events = 0
+    var k = blank
+    for k + 1 < total {{
+        let b0 = mem_read_u8(region, k)
+        let b1 = mem_read_u8(region, k + 1)
+        if b0 == 10 {{
+            if b1 == 10 {{ events = events + 1; k = k + 1 }}
+        }}
+        k = k + 1
+    }}
+    let _f = mem_free(region)
+    return code * 100 + events
+}}
+
+fn main() int {{
+    // 1) SSE: 200 with exactly 2 streamed events (41/42 payloads ride the
+    //    same stream; the parse counts event-boundary blank lines).
+    let a = get_code_and_events("127.0.0.1", {port}, "/stream")
+    // 2) redirect: /start answers 302; follow once to /next -> 200, 0 events.
+    let hop = get_code_and_events("127.0.0.1", {port}, "/start")
+    let next = get_code_and_events("127.0.0.1", {port}, "/next")
+    // 3) connect-refused: nothing listens on the probe port's neighbor.
+    //    The OS refusal surfaces as the named OS error (-8), never a hang.
+    let refused = net_tcp_connect("127.0.0.1", 1)
+    if a != 20002 {{ return 1 }}
+    if hop != 30200 {{ return 2 }}
+    if next != 20000 {{ return 3 }}
+    if refused != -8 {{ return 4 }}
+    return 0
+}}
+"#,
+        port = port
+    );
+    let _ = server; // joined implicitly at process end; assertions below
+    let mut backend = Win32PlatformIo::default();
+    let program = ace_av::console_host::compile(&src, "d_main").expect("compile sse/redirect source");
+    let mut limits = ace_av_core::av::ExecLimits::default();
+    limits.wall = std::time::Duration::from_secs(10);
+    let (out, _t, _s) = program
+        .run_platform(
+            &net_grants(),
+            &limits,
+            &ace_av_core::av::CancelFlag::new(false),
+            None,
+            &mut backend,
+        )
+        .expect("run platform sse/redirect");
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "SSE 200/2 events + redirect 302->200 + refused -8, got {out:?}"
+    );
+}
