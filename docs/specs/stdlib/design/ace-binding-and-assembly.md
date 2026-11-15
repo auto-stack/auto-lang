@@ -133,3 +133,11 @@ A2PY 执行经 PLAN-1042 producer（拒绝旧 AST emitter）。
 - **调用边界与持久化恢复**：所有 `PlatformCall` 参数/返回值受限于 `I32`/`StrView` 并绑定 1-based 带代际句柄（区分 `StdStream` 与 `OsMemRegion` 来源），
   每轮运行前经 `av-core/src/host.rs` 检查 `platform.io.{stdout,stderr,write}` 与 `platform.mem` 权限；
   `persist`/`restore` 不序列化任何旧 grant、OS 指针或句柄槽位，恢复后的产物在无当前授权时于 dispatch 前以 `host.unauthorized` 拒绝，并在重新授予以当前上下文恢复可执行。详细规格见 [native-platform-io.md](native-platform-io.md)。
+
+## 装配线消费面（PLAN-972 交付增量，2026-11-15）
+
+packages-aggregates-ct 装配线为本包已验消费面：`stdlib_assembled_files()`
+冻结 8 模块身份（include_str! 仓内源；仓外/漂移/provider 层绑定前
+`ace.stdlib-reserved` 拒）。纯 Auto 模块无来源候选；默认算法不以 C/Rust
+实现层代签（AC-AUTO-STD）。执行端五路真跑（AV/mn/cl/rustc/Python）同值；
+f64 发射面与源级纪律详见 [m2-stdlib-core](../../ace-migration/m2-stdlib-core.md)。

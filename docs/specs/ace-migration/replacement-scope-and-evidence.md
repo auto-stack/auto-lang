@@ -203,6 +203,15 @@ use.c/use.rs 的旧阻塞已由本包公共工程入口解除（SD-10 该行由 
 - 分母台账 `S-01..S-25`、`K-01..K-08`、`UK-01..13` 与 Design56 增补 `FFI-M2-01..08` / `LIB-M2-01..08` 的 M2-A 领域差额追踪、代表性真实消费者前探（JSON/HTTP/Async/UI）及发行接管阻塞清单见 [ace-domain-migration-readiness](../stdlib/design/ace-domain-migration-readiness.md)。
 - **未闭硬阻塞保持**：`stdlib_assembly/loader.rs:68,78` 开发仓 `CARGO_MANIFEST_DIR` 回退、`~/.auto/libs/stdlib` junction、陈旧 `PATH` `auto`、跨仓安装器漂移（`web-install.py`/`musk/install.sh`）、`binding.rs` 拒项目级 `use.c`/`use.rs`（阻塞 `AV/C`/`AV/Rust`）、`sys.arch`/`env`/`ABI` 缺失与 Design46 Gate A/B 未闭。以上阻塞在台账中保持 `missing`/`unknown` 原状，未完成洁净仓外实跑前严禁签发 M2 发行通过。
 
+## M2-A 装配标准库核心（PLAN-972 交付增量，2026-11-15）
+
+装配 std 集（8 模块 62 公共符号，packages-aggregates-ct lane）经五执行端
+（AV/AC-native/A2R/A2C/A2PY）真跑同值，独立 oracle 与正反例齐
+（[m2-stdlib-core](m2-stdlib-core.md)）。未闭缺口按 owner 分账：AV×C/
+AV×Rust 外库 dispatch 挂 967 merge（外部时序依赖）；Linux 执行腿 NOT_RUN/
+owner=1063（2026-11-14 裁定）；regex/crypto/全 Unicode case 归 967；
+FStr 归 964；泛型/Str 键集合归 963。旧义务不减；本节为已验现状记录，
+非范围声明。
 ## M2-A 产品执行配置与嵌入前门已验（PLAN-969，2026-11-15）
 
 PLAN-969（ACE 产品执行配置与嵌入前门）M2-A 全部任务交付并经独立终审 pass
