@@ -675,7 +675,7 @@ pub fn compile_component_scenario_observing(
             leaves.push((name, inst, ti));
         }
     }
-    // 驱动：各实例状态按 10^i 求和（instance 0 在个位）。
+    // 驱动：各实例观测字段状态按 256^i 求和（instance 0 在个位）。
     let mut terms: Option<Expr> = None;
     for inst in 0..scenario.instances {
         let call = Expr {
