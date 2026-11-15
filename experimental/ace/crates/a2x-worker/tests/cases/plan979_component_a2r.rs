@@ -6,7 +6,9 @@
 
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{assemble_record_text_file_set, lower_program};
-use ace_core::source::age_component::{compile_component_scenario, ComponentScenario, ScenarioOp};
+use ace_core::source::age_component::{
+    compile_component_scenario, compile_component_scenario_observing, ComponentScenario, ScenarioOp,
+};
 use ace_core::source::age_h0::LegacyWidgetAlias;
 
 use crate::rt_common::{out_root, rustc};
@@ -18,13 +20,24 @@ const HELPER_COUNTER: &str = "fn seed() int {\n    return 0\n}\nfn bump(n int) i
 
 /// 完整 A2R 链：编译（共享前门+唯一 verify）→ fileset → **真实 rustc** → 运行 stdout。
 fn run_scenario(name: &str, src: &str, scenario: &ComponentScenario) -> String {
+    run_scenario_observing(name, src, scenario, None)
+}
+
+/// 同上，可指定观测字段（驱动编码该字段）。
+fn run_scenario_observing(
+    name: &str,
+    src: &str,
+    scenario: &ComponentScenario,
+    observed: Option<&str>,
+) -> String {
     let caps = ["ac.runtime.text.v1".to_string()];
-    let compiled = compile_component_scenario(
+    let compiled = compile_component_scenario_observing(
         src,
         "counter.at",
         LegacyWidgetAlias::Reject,
         &caps,
         scenario,
+        observed,
     )
     .unwrap_or_else(|ds| {
         panic!(
@@ -160,4 +173,34 @@ fn p979_component_n_tick_matrix_runs_on_a2r() {
     };
     let out = run_scenario("TICKS", HELPER_COUNTER, &scenario);
     assert_eq!(out, "value:516\n");
+}
+
+#[test]
+fn p979_component_observing_a_chosen_field_runs_on_a2r() {
+    // 两 int 字段，事件只推 second：默认观测 first（0），指定 second 时 driver 编码它（1+2*256）。
+    let src = "node C {\n    model {\n        first int = 0\n        second int = 0\n    }\n    on Bump {\n        second = second + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Bump".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Bump".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Bump".to_string(),
+            },
+        ],
+    };
+    let default = run_scenario("CHOSEN_DEFAULT", src, &scenario);
+    assert_eq!(default, "value:0\n", "`first` never advances");
+    let chosen = run_scenario_observing("CHOSEN_SECOND", src, &scenario, Some("second"));
+    assert_eq!(
+        chosen, "value:513\n",
+        "instance0=1, instance1=2 on `second`"
+    );
 }
