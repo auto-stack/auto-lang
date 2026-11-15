@@ -377,6 +377,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+stage: merge | phase fold (977/PY批；plan 保持 executing，同树保留至GD/SCENE/REVERSE) | PLAN-977 | r9 | outcome: pass (phase) | prepared: B-PY-R pass @e49c99efa + 相位门 ace-a2x 247+a2py 105 全PASS | landed: rebase后 --ff-only，**delivery `56aadead4`**（range-diff全等：727f45616→b286af57c、9fc1d2a34→4b9c367ba、e49c99efa→56aadead4）；master tip=delivery ✓；rebase后冒烟 p977+pyready_04 绿 | canonical_verified: `docs/specs/ace-migration/m2-other-targets.md` sha16 `83af83e29cd299f4`（PY批已验接口+边界）；无legacy ledger写 | archived: N/A（phase——GD/SCENE待Godot、REVERSE属B） | cleaned: N/A（worktree保留） | 部署观察: 纯测试+文档，无发行产物受影响 | next: 985/A可消费977/PY切片（COVERAGE Python腿A2PY路径已喂）；GD/SCENE待Godot环境；REVERSE待M2A-08
+
 stage: review | phase (B-PY-R, 977/PY批) | reviewer: 实施会话内复审（局限随收据） | PLAN-977 | r9 | outcome: pass (phase) | reviewed_commit: e49c99efa（含727f45616/9fc1d2a34） | 相位门: `cargo t ace-a2x a2py`=PASS 247+105例 7m0.6s | findings: 0阻塞；边界（代表例vs逐例/case线单文件/预构建/Linux归1063）已入spec边界节与B-PY-V[✅]行 | next: phase fold 合入977/PY A切片（plan保持executing——GD/SCENE待Godot、REVERSE属B）
 
 stage: work | PLAN-977 | r9 | 2026-11-16 | outcome: pass (B-PY-I) | worktree: D:/autostack/.wt/lang-977/auto-lang @ plan-977-dev | code_commit: 727f45616 | task_ids: B-PY-I | evidence: §8 B-PY-I[✅]行；新用例 p977_legacy_public_surface_runs_green_on_python 1.56s ≤10s门（10轮探针迭代，含3个具名路由事实发现：instances-cap脱糖/cold_aggregates线/is-表达式形态） | next_responsible_role: work（B-PY-V：经 ac_a2py_hir case线全语料扫描+返回/输出/短路/异常/资源独立oracle+坏输入负控）

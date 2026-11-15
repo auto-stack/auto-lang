@@ -292,6 +292,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 9 | from: work(977 A批) | to: work(依赖链) | status: executing | outcome: pass(977/PY批A切片落主) | 记录: 977 B-PY-V(9fc1d2a34→4b9c367ba)+B-PY-R+phase fold 完成：**master=56aadead4**，spec m2-other-targets sha16 83af83e29cd299f4；相位门 ace-a2x 247+a2py 105 全PASS；977→4/16(T-01/B-PY-I/V/R)；**985/A 的 COVERAGE Python腿(A2PY路径)已获正式来源** | next: 无主包剩余974/975/976/980/982/983/984（M2A-03标准库门建议974/975；M2A-05 RG-A建议982/983）或在途包落主后985 T-A03；GD/SCENE待Godot；971/B 等 M2A-08
+
+
 stage: goal | PLAN-971 | r6 | round: 8 | from: work(977 A批) | to: work(977 A批) | status: executing | outcome: pass(977/B-PY-I) | 记录: 977/B-PY-I 已交付（977 worktree 727f45616，977→2/16）：旧a2p公开面9/9家族真实Python 3.14.2车道全绿（1.56s），路由事实冻结（instances-cap/cold_aggregates/is表达式），零车道缺口 | next: 977/B-PY-V（全语料case扫描+负控）→ B-PY-R；GD/SCENE待Godot；971/B 等 M2A-08（977/PY批R后phase fold即补COVERAGE Python腿）
 
 stage: goal | PLAN-971 | r6 | round: 7 | from: user(选项A裁定) | to: work(977 A批) | status: executing | outcome: pass(977/T-01) | 记录: 用户裁定选项A→977 A批开工：T-01 A期冻结已交付（前置全归档核实/python.rs漂移重锚定/1042消费面登记/环境冻结Python3.14.2在机·Godot缺席→PY批先行·GD+SCENE不半途开工/命令平台冻结；977→r9 executing 1/16，worktree .wt/lang-977/auto-lang 已建） | next: work——977/B-PY-I（消费1042扩Python provider完整映射+保旧公开格+adapter+永久fixture），其后 B-PY-V/R；GD/SCENE 待Godot环境；REVERSE属B。971/B 仍待 M2A-08（977/PY落主后补齐COVERAGE Python腿之一）
