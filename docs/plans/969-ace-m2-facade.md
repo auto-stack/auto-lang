@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-969
-status: execution_done
+status: reviewed
 feature_name: ACE 产品执行配置与嵌入前门
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 7
-current_step: 9
+current_step: 10
 total_steps: 12
 depends_on: [PLAN-960, PLAN-964, PLAN-967, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -321,7 +321,7 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 - [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 [✅ 2026-11-15 @冻结33eab5086：V行对账——V-01✓(t08)/V-02✓(身份+grants隔离)/V-03✓(具名拒+结构零legacy)/V-04✓(budget)/V-08✓/V-E0-*✓/V-DETAIL-01..04✓/V-PHASE✓(§8/§9逐行收据)/AUDIT-03/08✓；组并集——ace-facade PASS、ace-av PASS、daily@worktree 2669/2670 ok（唯一红=plan702门扫`../../../auto-ui`跨仓路径、lang-969组无auto-ui兄弟树——环境归因非代码红；daily全量@主检出=merge-owned pending）；复用——ace-source/ace-semantics绿@5b93ed743、ace-native 280/280事件ok×2（conhost门噪声§9）；磁盘——D:剩1.1G致daily首跑拒跑，回收自有16.6G后重跑]
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-15：独立上下文agent终审@冻结33eab5086（未参与实现，全部声明的scoped命令独立重跑：桥11/11、core ace_entry 4/4、audit03 3+1、audit08 4/4、check零新告警、6文件SHA对账冻结记录）——verdict **PASS**（0 BLOCKER/0 MAJOR/4 MINOR）；F-T05-01/02审计表枚举补全（t08头注）、F-T05-03 fmt点、F-T05-04 KNOWN-DEBT行更新（F03/F08已修@969+D-969段，随979并发编辑暂不提交、文本已落工作树）→ 01/02/03已修@f439f7f3d、04文本就位；两处FAIL门环境归因（plan702跨仓路径/conhost观察）经复核至基础设施错误串级确认；无遗漏/无未批延期/无workaround]
 
 - [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
@@ -382,6 +382,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-15 stage: work / T-03 + T-08 + T-04（AC-02/03/06/01..03 收口轮）| worktree: D:/autostack/.wt/lang-969/auto-lang @ plan-969-dev | base: 5b93ed743 | code_commit: 33eab5086 | 产出: AceRequest.args/input（显式输入+具名拒ace.args/input-unsupported）＋t08_facade 3例＋门映射审计表 | T-04对账: V全行映射见§8勾选；组证据=ace-facade PASS@33eab5086、ace-av PASS、daily@worktree 2669/2670（1红=plan702跨仓路径环境归因：门读`../../../auto-ui/crates/auto-ui-runtime/src/ui`，worktree组无该兄弟树；daily全量主检出=merge-owned pending）、ace-source/ace-semantics@5b93ed743复用、ace-native 280/280事件ok复用 | 磁盘: D:1.1G满→daily拒跑；回收自有16.6G（probe target 7.4G+ace incremental 9.2G）后复跑 | 边界: AV argv/stdin车道=具名开放项；增量会话=970域 | next: T-05（停写独立复审）
 
 2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 6 | from: work | to: review | status: executing | outcome: pass（work全own任务完成9/12） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 33eab5086 | next: T-05
+2026-11-15 stage: review / T-05（AC-04 独立终审）| 冻结基线: 33eab5086（停写；复审后仅F-T05-01/02/03修复@f439f7f3d，无行为变更） | 审计者: 独立上下文agent（未参与实现） | 结论: **PASS**（0 BLOCKER/0 MAJOR/4 MINOR） | 独立重跑: 桥11/11、ace_entry 4/4、audit03 3+1、audit08 4/4、check零新告警、fmt（1点已修）、SHA×6对账 | 逐项核: AC-01冻结记录（预算常量对code核）/AC-02独立oracle（span 38..43手工对字节、9=1+3+4+1字节独立复算）/AC-03结构零legacy（全范围diff entry/script/vm字节同）/AC-06 ABT同文本legacy可跑对证+args/input预车道/AC-E0修复存活/AC-AUDIT旧匹配器逐类对账（legacy无DotDot token→无parity gap）/收据四项抽验（results.json复核含两个FAIL门环境归因至错误串）/延期诚实（args/stdin=开放项、增量=970、config=legacy owner）/无attachments无junction | findings: F-T05-01审计表枚举（test_code族/execute_autovm*/create_vm_from_source/cwd/退出码）→t08头注补全；F-T05-02 cwd/exit-code立场→同上；F-T05-03 parser.rs fmt→已修；F-T05-04 KNOWN-DEBT F03/F08行+D-969段→文本已落（随979并发编辑暂不提交，下次docs提交搭载或merge时落） | next: T-06/T-07（merge）
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass（T-05终审PASS） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: f439f7f3d | next: T-06
 
 
 ## 10. 待澄清事项
