@@ -44,6 +44,7 @@ use auto_lang_core::{
 
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
+pub mod project;
 pub mod session_bridge;
 
 pub const ENGINE_ID: &str = "av";
@@ -79,8 +80,17 @@ fn host() -> &'static Arc<HostExecutor> {
 /// Install the process-wide ACE executor (idempotent — the same host
 /// singleton serves every call). Until this runs, explicit ACE requests
 /// report `ace.host/executor-unregistered`.
+///
+/// PLAN-971 B-PROOF-I: installing the host also installs the reference
+/// PROJECT executor (the `ace_entry::run_ace_project` face) over the
+/// 960 packages lane — same single-owner discipline, idempotent with
+/// the same singleton. The project registry is released only by
+/// `shutdown_ace_project_executor`; the E0 [`shutdown`] below
+/// intentionally does not touch it, so E0 consumers keep their close
+/// semantics unchanged.
 pub fn install() -> Result<(), String> {
-    auto_lang_core::install_ace_executor(host().clone() as Arc<dyn AceExecutor>)
+    auto_lang_core::install_ace_executor(host().clone() as Arc<dyn AceExecutor>)?;
+    auto_lang_core::install_ace_project_executor(project::project_host())
 }
 
 /// Release the installed executor (host close; see
@@ -325,7 +335,7 @@ fn cancel_flag<'a>(request: &'a AceRequest<'_>, fallback: &'a CancelFlag) -> &'a
     }
 }
 
-fn map_value(value: Value) -> AceValue {
+pub(crate) fn map_value(value: Value) -> AceValue {
     match value {
         Value::Unit => AceValue::Unit,
         Value::Bool(b) => AceValue::Bool(b),

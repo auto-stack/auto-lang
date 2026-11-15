@@ -323,6 +323,265 @@ pub fn run_ace_named(engine: &str, request: &AceRequest<'_>) -> AceRunReport {
     run_ace(choice, request)
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-971 B-PROOF-I (A batch): the PROJECT face — one real multi-file
+// project roundtrip through the ACE explicit entry. Same discipline as
+// the E0 single-source face above: this module owns the neutral public
+// contract only (zero ACE dependency, zero legacy fallback — an explicit
+// project request can never dispatch the legacy machine), and the
+// executable project engine is injected by the host through
+// [`install_ace_project_executor`] (the `auto-lang-ace-host` bridge over
+// the 960 packages lane is the reference implementation).
+//
+// A-batch scope (protocol capability only): values and diagnostics with
+// the ORIGINAL module identity (`pkg::mod`) and span, isolated test runs
+// with a nonzero protocol exit when a test fails, phase-boundary cancel
+// (before compile / before each test / before the entry run; in-run step
+// granularity, breakpoints, stack and locals are the B batch — T-02).
+// ---------------------------------------------------------------------------
+
+/// One source module of an explicit ACE project request. The identity
+/// fields mirror the packages-lane input contract: `package`/`version`
+/// name the package, `id` is the module id inside it.
+pub struct AceModuleSpec<'a> {
+    pub package: &'a str,
+    pub version: &'a str,
+    pub id: &'a str,
+    pub source: &'a str,
+}
+
+/// An explicit multi-file project request through the ACE door.
+pub struct AceProjectRequest<'a> {
+    /// All source modules of the project (the entry module included).
+    pub modules: &'a [AceModuleSpec<'a>],
+    /// Entry module key `pkg::mod` — the module owning the entry def.
+    pub entry_module: &'a str,
+    /// Entry def id (`"d_main"` for the conventional entry).
+    pub entry_def_id: &'a str,
+    /// Explicitly discovered test entry names (bare fn names, unique
+    /// across the project). A-phase discovery stays with the existing
+    /// test owner (`test_runner`); each listed name executes as one
+    /// isolated test run (fresh generation, per-test scratch store).
+    pub tests: &'a [&'a str],
+    /// Explicit capability requests (grammar/domain registration), e.g.
+    /// the packages module capability — re-checked on every run.
+    pub capabilities: &'a [String],
+    /// Wall-clock budget for the whole project request; `None` = the
+    /// executor's frozen default budget.
+    pub wall: Option<Duration>,
+    /// Host-owned cancellation flag, checked before the compile, before
+    /// every test run and before the entry run.
+    pub cancel: Option<&'a AtomicBool>,
+}
+
+impl<'a> AceProjectRequest<'a> {
+    /// A minimal project request: `d_main` entry, no tests and the
+    /// default budget. `capabilities` is the caller-bound capability
+    /// list — [`packages_capabilities`] builds the standard packages
+    /// lane list.
+    pub fn simple_project(
+        modules: &'a [AceModuleSpec<'a>],
+        entry_module: &'a str,
+        capabilities: &'a [String],
+    ) -> Self {
+        AceProjectRequest {
+            modules,
+            entry_module,
+            entry_def_id: "d_main",
+            tests: &[],
+            capabilities,
+            wall: None,
+            cancel: None,
+        }
+    }
+}
+
+/// The packages-lane module capability the project face consumes
+/// (frozen by the T-01 freeze record, PLAN-971 §5).
+pub const PACKAGES_CAPABILITY: &str = "ac.source.modules.packages/v1";
+
+/// The standard capability list for the packages lane (bind once, pass
+/// by reference to [`AceProjectRequest::simple_project`]).
+pub fn packages_capabilities() -> Vec<String> {
+    vec![PACKAGES_CAPABILITY.to_string()]
+}
+
+/// One executed test of a project request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceTestOutcome {
+    /// The requested test entry name.
+    pub name: String,
+    /// Owning module identity of the executed test (`pkg::mod`); empty
+    /// when the name was not found in the project.
+    pub module: String,
+    pub passed: bool,
+    /// Failure reason (empty on pass).
+    pub message: String,
+}
+
+/// The distinguished terminal states of one explicit ACE project run.
+/// Mirrors [`AceOutcome`] with the diagnostic carrying the ORIGINAL
+/// module identity so a multi-file rejection locates the original file.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AceProjectOutcome {
+    /// The entry run executed to completion and produced a value.
+    Success { value: AceValue, steps: u64 },
+    /// A diagnosed source/pipeline rejection in one original module;
+    /// `span` is the original span inside that module's source.
+    Diagnostic {
+        module: String,
+        stage: String,
+        code: String,
+        message: String,
+        span: Option<AceSpan>,
+    },
+    /// Authorization/admission refusal (unknown engine option).
+    Denied { code: String, message: String },
+    /// A resource budget denial (wall/steps/slots/bytes).
+    ResourceDenied { kind: String, message: String },
+    /// The request observed the host cancel flag.
+    Cancelled,
+    /// Host/tool infrastructure failure. Never retried silently.
+    HostFailure { code: String, message: String },
+}
+
+/// Evidence companion of one project request.
+#[derive(Debug, Clone)]
+pub struct AceProjectReport {
+    /// The engine identity that served (or was asked to serve) the run.
+    pub engine: &'static str,
+    /// Terminal state of the request (see [`AceProjectOutcome`]).
+    pub outcome: AceProjectOutcome,
+    /// Per-test results, in request order (empty when no tests were
+    /// requested; tests already executed survive a later cancel).
+    pub tests: Vec<AceTestOutcome>,
+    /// Protocol-level exit of the roundtrip: `0` iff the entry run
+    /// succeeded AND every requested test passed; `1` otherwise — the
+    /// test-failure exit contract (a failing test never exits zero).
+    pub exit_code: i32,
+    /// Diagnostics count when the pipeline rejection carried more than
+    /// the primary diagnostic.
+    pub diag_count: usize,
+    /// Executor-measured wall time of the whole request (milliseconds).
+    pub wall_ms: f64,
+}
+
+impl AceProjectReport {
+    fn host_failure(engine: &'static str, code: &str, message: impl Into<String>) -> Self {
+        AceProjectReport {
+            engine,
+            outcome: AceProjectOutcome::HostFailure {
+                code: code.to_string(),
+                message: message.into(),
+            },
+            tests: Vec::new(),
+            exit_code: 1,
+            diag_count: 0,
+            wall_ms: 0.0,
+        }
+    }
+
+    fn denied(engine: &'static str, code: &str, message: impl Into<String>) -> Self {
+        AceProjectReport {
+            engine,
+            outcome: AceProjectOutcome::Denied {
+                code: code.to_string(),
+                message: message.into(),
+            },
+            tests: Vec::new(),
+            exit_code: 1,
+            diag_count: 0,
+            wall_ms: 0.0,
+        }
+    }
+}
+
+/// The executable project engine, injected by the host (the
+/// `auto-lang-ace-host` bridge is the reference implementation).
+/// Implementations re-check authorization and identity on every
+/// [`AceProjectExecutor::execute_project`] call and stay callable from
+/// the UI main thread (synchronous, no thread spawning).
+pub trait AceProjectExecutor: Send + Sync {
+    fn execute_project(&self, request: &AceProjectRequest<'_>) -> AceProjectReport;
+}
+
+static ACE_PROJECT_EXECUTOR: RwLock<Option<Arc<dyn AceProjectExecutor>>> = RwLock::new(None);
+
+/// Install the process-wide project executor (same single-owner
+/// discipline as [`install_ace_executor`]: reinstalling the SAME
+/// executor is idempotent; a different one while installed is an error).
+pub fn install_ace_project_executor(executor: Arc<dyn AceProjectExecutor>) -> Result<(), String> {
+    let mut slot = ACE_PROJECT_EXECUTOR
+        .write()
+        .map_err(|e| format!("project executor lock poisoned: {e}"))?;
+    match slot.as_ref() {
+        Some(current) => {
+            if Arc::ptr_eq(current, &executor) {
+                Ok(())
+            } else {
+                Err("another ACE project executor is installed; shutdown_ace_project_executor() first".to_string())
+            }
+        }
+        None => {
+            *slot = Some(executor);
+            Ok(())
+        }
+    }
+}
+
+/// Release the installed project executor (host close). Returns whether
+/// one was installed. After this, explicit project requests report
+/// `ace.host/project-executor-unregistered` — they never fall back.
+pub fn shutdown_ace_project_executor() -> bool {
+    match ACE_PROJECT_EXECUTOR.write() {
+        Ok(mut slot) => slot.take().is_some(),
+        Err(_) => false,
+    }
+}
+
+/// Run one explicit multi-file project request synchronously through the
+/// installed project executor. No executor / unknown engine / any
+/// failure is a NAMED terminal state — the legacy AutoVM is never
+/// dispatched from here.
+pub fn run_ace_project(
+    choice: AceEngineChoice,
+    request: &AceProjectRequest<'_>,
+) -> AceProjectReport {
+    let started = std::time::Instant::now();
+    let executor = match ACE_PROJECT_EXECUTOR.read() {
+        Ok(slot) => slot.clone(),
+        Err(_) => {
+            return AceProjectReport::host_failure(
+                choice.as_str(),
+                "ace.host/project-executor-lock-poisoned",
+                "project executor lock poisoned",
+            )
+        }
+    };
+    let Some(executor) = executor else {
+        return AceProjectReport::host_failure(
+            choice.as_str(),
+            "ace.host/project-executor-unregistered",
+            "no ACE project executor installed; the host must install one (auto-lang-ace-host)",
+        );
+    };
+    let mut report = executor.execute_project(request);
+    report.wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    report
+}
+
+/// Name-driven form of [`run_ace_project`]: an unknown name — including
+/// every legacy engine name — is a named refusal with zero dispatch.
+pub fn run_ace_project_named(engine: &str, request: &AceProjectRequest<'_>) -> AceProjectReport {
+    let choice = match parse_ace_engine(engine) {
+        Ok(choice) => choice,
+        Err(message) => {
+            return AceProjectReport::denied("?", "ace.engine/unknown", message);
+        }
+    };
+    run_ace_project(choice, request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,5 +693,88 @@ mod tests {
         assert_eq!(parse_ace_engine("ace-av"), Ok(AceEngineChoice::AceAV));
         assert!(parse_ace_engine("AV").is_err());
         assert_eq!(AceEngineChoice::AceAV.as_str(), "av");
+    }
+
+    // PLAN-971 B-PROOF-I: project-face discipline (pure std, zero ACE
+    // dependency — the bridge crate carries the executable cases).
+
+    #[test]
+    fn p971_project_face_freezes_engine_and_registry_discipline() {
+        let modules = [AceModuleSpec {
+            package: "app",
+            version: "0",
+            id: "main",
+            source: "fn main() int { return 0 }",
+        }];
+        let caps = packages_capabilities();
+        let req = AceProjectRequest::simple_project(&modules, "app::main", &caps);
+        assert_eq!(req.entry_def_id, "d_main");
+        assert_eq!(req.capabilities, [PACKAGES_CAPABILITY.to_string()]);
+
+        // Unknown and legacy engine names: named refusal, zero dispatch.
+        for bad in ["autovm", "vm", "evaluator", "ace-native", ""] {
+            let report = run_ace_project_named(bad, &req);
+            assert!(
+                matches!(&report.outcome, AceProjectOutcome::Denied { code, .. } if code == "ace.engine/unknown"),
+                "engine `{bad}` must be refused on the project face, got {:?}",
+                report.outcome
+            );
+            assert_eq!(report.exit_code, 1);
+        }
+
+        // Unregistered project executor: named host failure (never a
+        // legacy-engine success). This test is the ONLY installer in the
+        // process, so the global stays race-free under threaded tests.
+        assert!(
+            matches!(
+                run_ace_project(AceEngineChoice::AceAV, &req).outcome,
+                AceProjectOutcome::HostFailure { ref code, .. } if code == "ace.host/project-executor-unregistered"
+            ),
+            "unregistered project executor must be a named host failure"
+        );
+
+        struct Probe(bool);
+        impl AceProjectExecutor for Probe {
+            fn execute_project(&self, _request: &AceProjectRequest<'_>) -> AceProjectReport {
+                AceProjectReport {
+                    engine: "av",
+                    outcome: AceProjectOutcome::Success {
+                        value: AceValue::I32(if self.0 { 7 } else { 8 }),
+                        steps: 0,
+                    },
+                    tests: vec![AceTestOutcome {
+                        name: "probe".into(),
+                        module: "app::main".into(),
+                        passed: !self.0,
+                        message: String::new(),
+                    }],
+                    exit_code: 0,
+                    diag_count: 0,
+                    wall_ms: 0.0,
+                }
+            }
+        }
+        let first = Arc::new(Probe(true));
+        assert!(install_ace_project_executor(first.clone()).is_ok());
+        // Same executor: idempotent. A different one: refused.
+        assert!(install_ace_project_executor(first.clone()).is_ok());
+        let second = Arc::new(Probe(false));
+        assert!(install_ace_project_executor(second).is_err());
+        // The installed one serves the project face.
+        let served = run_ace_project(AceEngineChoice::AceAV, &req);
+        assert!(matches!(
+            served.outcome,
+            AceProjectOutcome::Success {
+                value: AceValue::I32(7),
+                ..
+            }
+        ));
+        // Shutdown ends ownership; requests become named failures again.
+        assert!(shutdown_ace_project_executor());
+        assert!(matches!(
+            run_ace_project(AceEngineChoice::AceAV, &req).outcome,
+            AceProjectOutcome::HostFailure { .. }
+        ));
+        assert!(!shutdown_ace_project_executor());
     }
 }
