@@ -7,6 +7,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "legacy-a2r-trap-997", include: [
-  "legacy-a2r-trap-997.case.ad",
+  "legacy-a2r-trap-997.document.case.ad",
 ] }
 ```

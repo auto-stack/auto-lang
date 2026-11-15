@@ -507,6 +507,9 @@ fn suite_migration_inventory_impl(
                         "virtual_path": rfile.virtual_path,
                         "bytes": rfile.bytes.len(),
                         "sha256": rfile.sha256,
+                        // PLAN-1062: /2 carries resolved payload texts for
+                        // file and inline inputs alike; /1 stays unchanged.
+                        "text": if v2 { std::str::from_utf8(&rfile.bytes).ok() } else { None },
                     })
                 })
                 .collect();

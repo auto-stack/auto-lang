@@ -2,6 +2,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-source-syntax-927", include: [
-  "source-syntax-927.case.ad",
+  "source-syntax-927.document.case.ad",
 ] }
 ```

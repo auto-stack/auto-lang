@@ -9,9 +9,9 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "a2r-hir-record-text-902", include: [
-  "R07.case.ad",
-  "R08.case.ad",
-  "T03.case.ad",
-  "T05.case.ad",
+  "R07.document.case.ad",
+  "R08.document.case.ad",
+  "T03.document.case.ad",
+  "T05.document.case.ad",
 ] }
 ```

@@ -3,6 +3,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-source-query-934", include: [
-  "source-query-934.case.ad",
+  "source-query-934.document.case.ad",
 ] }
 ```

@@ -9,7 +9,7 @@ suite { schema: "autolang.suite/2", id: "ac-native", include: [
     "src-invalid.document.case.ad",
     "hir-invalid.document.case.ad",
     "hir-valid.document.case.ad",
-    "red-controls.case.ad",
-    "syntax.case.ad"
+    "red-controls.document.case.ad",
+    "syntax.document.case.ad"
 ], defaults: { tier: "ac-native" } }
 ```

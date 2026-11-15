@@ -1,0 +1,397 @@
+## Case: ace-m1-unified-source-929-parse-core
+id: "ace.m1.unified-source-929.parse-core"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2147483647 + 1 }
+~~~~
+
+### Syntax parse-core
+action: "parse"
+grammar: "auto-source@core"
+
+#### reconstructed.at
+
+~~~~auto
+fn main() int { return 2147483647 + 1 }
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-scalar
+id: "ace.m1.unified-source-929.parse-scalar"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### Syntax parse-scalar
+action: "parse"
+grammar: "auto-source@scalar"
+
+#### reconstructed.at
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-text
+id: "ace.m1.unified-source-929.parse-text"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let s str = "A中😀"
+    let t str = s.slice(1, 3)
+    return t.len() * 10 + t.len_bytes()
+}
+~~~~
+
+### Syntax parse-text
+action: "parse"
+grammar: "auto-source@text"
+
+#### reconstructed.at
+
+~~~~auto
+fn main() int {
+    let s str = "A中😀"
+    let t str = s.slice(1, 3)
+    return t.len() * 10 + t.len_bytes()
+}
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-record
+id: "ace.m1.unified-source-929.parse-record"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Pair {
+    left int
+    right bool
+    static fn new(l int, r bool) Pair { return Pair { left: l, right: r } }
+    fn left_is(v int) bool { return .left == v }
+}
+type Inner {
+    flag bool
+    p Pair
+}
+fn main() int {
+    let p = Pair.new(1, true)
+    var q = p
+    q.left = 5
+    if p.left != 1 { return 1 }
+    if q.left != 5 { return 2 }
+    if p.left_is(1) == false { return 3 }
+    let i = Inner { p: p, flag: false }
+    if i.p.right == false { return 4 }
+    if i.p.left_is(1) == false { return 5 }
+    let n = Pair { right: true, left: 9 }
+    if n.left != 9 { return 6 }
+    return 0
+}
+~~~~
+
+### Syntax parse-record
+action: "parse"
+grammar: "auto-source@record"
+
+#### reconstructed.at
+
+~~~~auto
+type Pair {
+    left int
+    right bool
+    static fn new(l int, r bool) Pair { return Pair { left: l, right: r } }
+    fn left_is(v int) bool { return .left == v }
+}
+type Inner {
+    flag bool
+    p Pair
+}
+fn main() int {
+    let p = Pair.new(1, true)
+    var q = p
+    q.left = 5
+    if p.left != 1 { return 1 }
+    if q.left != 5 { return 2 }
+    if p.left_is(1) == false { return 3 }
+    let i = Inner { p: p, flag: false }
+    if i.p.right == false { return 4 }
+    if i.p.left_is(1) == false { return 5 }
+    let n = Pair { right: true, left: 9 }
+    if n.left != 9 { return 6 }
+    return 0
+}
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-text-record
+id: "ace.m1.unified-source-929.parse-text-record"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type P {
+    s Str
+    v int
+    fn clone() int { return .v }
+    static fn mk(n int) P { return P { s: "x", v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.clone()
+}
+~~~~
+
+### Syntax parse-text-record
+action: "parse"
+grammar: "auto-source@text-record"
+
+#### reconstructed.at
+
+~~~~auto
+type P {
+    s Str
+    v int
+    fn clone() int { return .v }
+    static fn mk(n int) P { return P { s: "x", v: n } }
+}
+fn main() int {
+    let p = P.mk(1)
+    return p.clone()
+}
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-entry-unit
+id: "ace.m1.unified-source-929.parse-entry-unit"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+let total = 0
+total = total + 1
+total + 41
+~~~~
+
+### Syntax parse-entry-unit
+action: "parse"
+grammar: "auto-source@entry-unit"
+
+#### reconstructed.at
+
+~~~~auto
+let total = 0
+total = total + 1
+total + 41
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-host-console
+id: "ace.m1.unified-source-929.parse-host-console"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+ print(-2147483648)
+ print(true)
+ eprint(false)
+ print("你好\0\n")
+ eprint('界')
+ return 7
+}
+~~~~
+
+### Syntax parse-host-console
+action: "parse"
+grammar: "auto-source@host-console"
+
+#### reconstructed.at
+
+~~~~auto
+fn main() int {
+ print(-2147483648)
+ print(true)
+ eprint(false)
+ print("你好\0\n")
+ eprint('界')
+ return 7
+}
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-closures
+id: "ace.m1.unified-source-929.parse-closures"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    let g = (x int, y int) => { return x + y }
+    let h = make("hi")
+    let inner = (x int) => { let nested = (y int) => { return x * y }; return nested(x) }
+    return f(2) + g(1, 2) + h(5) + inner(3)
+}
+~~~~
+
+### Syntax parse-closures
+action: "parse"
+grammar: "auto-source@closures"
+
+#### reconstructed.at
+
+~~~~auto
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    let g = (x int, y int) => { return x + y }
+    let h = make("hi")
+    let inner = (x int) => { let nested = (y int) => { return x * y }; return nested(x) }
+    return f(2) + g(1, 2) + h(5) + inner(3)
+}
+~~~~
+
+## Case: ace-m1-unified-source-929-parse-collections
+id: "ace.m1.unified-source-929.parse-collections"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+enum Shape { Dot Circle(int) Square(int) }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    var total int = 0
+    for it in xs {
+        total = total + it.code
+    }
+    let s Shape = Circle(3)
+    is s {
+        Dot -> { return total + xs.get(0).name.len() }
+        Circle(r) -> { return total + r + xs.len() }
+        Square(w) -> { return w }
+    }
+}
+~~~~
+
+### Syntax parse-collections
+action: "parse"
+grammar: "auto-source@collections"
+
+#### reconstructed.at
+
+~~~~auto
+type Item { name Str; code int }
+enum Shape { Dot Circle(int) Square(int) }
+fn main() int {
+    var xs = List<Item>.new()
+    let x Item = Item("hello", 37)
+    xs.push(x.move)
+    var total int = 0
+    for it in xs {
+        total = total + it.code
+    }
+    let s Shape = Circle(3)
+    is s {
+        Dot -> { return total + xs.get(0).name.len() }
+        Circle(r) -> { return total + r + xs.len() }
+        Square(w) -> { return w }
+    }
+}
+~~~~
+
+## Case: ace-m1-unified-source-929-profile-gate-negative
+id: "ace.m1.unified-source-929.profile-gate-negative"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Pair {
+    left int
+    right bool
+    static fn new(l int, r bool) Pair { return Pair { left: l, right: r } }
+    fn left_is(v int) bool { return .left == v }
+}
+type Inner {
+    flag bool
+    p Pair
+}
+fn main() int {
+    let p = Pair.new(1, true)
+    var q = p
+    q.left = 5
+    if p.left != 1 { return 1 }
+    if q.left != 5 { return 2 }
+    if p.left_is(1) == false { return 3 }
+    let i = Inner { p: p, flag: false }
+    if i.p.right == false { return 4 }
+    if i.p.left_is(1) == false { return 5 }
+    let n = Pair { right: true, left: 9 }
+    if n.left != 9 { return 6 }
+    return 0
+}
+~~~~
+
+### Syntax parse-record-under-scalar-grammar-refused
+action: "parse"
+grammar: "auto-source@scalar"
+stage: "parse"
+code: "syntax.parse"
+
+## Case: ace-m1-unified-source-929-scalar-run
+id: "ace.m1.unified-source-929.scalar-run"
+tags: ["ace-m1", "unified-source", "plan-929"]
+links: ["PLAN-929"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### Probe av-scalar-fresh-run
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 14

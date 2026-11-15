@@ -1,0 +1,421 @@
+## Case: ace-m1-a2r916-b16-single
+id: "ace.m1.a2r916.b16.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_b16"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    if false { return missing() }
+    return 42
+}
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_name_E0204"
+
+## Case: ace-m1-a2r916-b16-project
+id: "ace.m1.a2r916.b16.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    if false { return missing() }
+    return 42
+}
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_name_E0204"
+
+## Case: ace-m1-a2r916-b17-single
+id: "ace.m1.a2r916.b17.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_b17"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return true + 1 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-b17-project
+id: "ace.m1.a2r916.b17.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return true + 1 }
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-b18-single
+id: "ace.m1.a2r916.b18.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_b18"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let x int = 1
+    x = 2
+    return x
+}
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_name_E0203"
+
+## Case: ace-m1-a2r916-b18-project
+id: "ace.m1.a2r916.b18.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    let x int = 1
+    x = 2
+    return x
+}
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_name_E0203"
+
+## Case: ace-m1-a2r916-b19-single
+id: "ace.m1.a2r916.b19.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_b19"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { if false { return 1 } }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-b19-project
+id: "ace.m1.a2r916.b19.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { if false { return 1 } }
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-t06-single
+id: "ace.m1.a2r916.t06.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_t06"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn bad() str {
+    let s Str = "temporary"
+    return s.to(str)
+}
+fn main() int { return bad().len() }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-t06-project
+id: "ace.m1.a2r916.t06.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn bad() str {
+    let s Str = "temporary"
+    return s.to(str)
+}
+fn main() int { return bad().len() }
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-r09-single
+id: "ace.m1.a2r916.r09.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_r09"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type A { value int }
+type B { value int }
+fn read(x A) int { return x.value }
+fn main() int { return read(B(42)) }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-r09-project
+id: "ace.m1.a2r916.r09.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type A { value int }
+type B { value int }
+fn read(x A) int { return x.value }
+fn main() int { return read(B(42)) }
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0101"
+
+## Case: ace-m1-a2r916-r10-single
+id: "ace.m1.a2r916.r10.single"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+module-name: "a2r916_r10"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    let a Item = Item("x", 41)
+    let b Item = a.move
+    return a.code + b.code
+}
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0102"
+
+## Case: ace-m1-a2r916-r10-project
+id: "ace.m1.a2r916.r10.project"
+tags: ["ace-m1", "a2r", "diagnostic"]
+links: ["PLAN-916"]
+entry-mode: "module"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Item { name Str; code int }
+fn main() int {
+    let a Item = Item("x", 41)
+    let b Item = a.move
+    return a.code + b.code
+}
+~~~~
+
+#### helper.at
+
+~~~~auto
+pub fn helper() int { return 0 }
+~~~~
+
+### Rust diagnostic
+check-id: "emit"
+stage: "type"
+code: "auto_type_E0102"
+
+## Case: ace-m1-a2r916-nb17
+id: "ace.m1.a2r916.nb17"
+tags: ["ace-m1", "a2r", "legal-neighbor"]
+links: ["PLAN-916"]
+module-name: "nb17"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 1 + 1 }
+~~~~
+
+### Rust
+check-id: "emit"
+
+#### nb17.rs
+
+~~~~rust
+// Auto-generated by a2r transpiler
+
+fn main() -> i64 {
+    return 1 + 1;
+}
+~~~~
+
+## Case: ace-m1-a2r916-nb18
+id: "ace.m1.a2r916.nb18"
+tags: ["ace-m1", "a2r", "legal-neighbor"]
+links: ["PLAN-916"]
+module-name: "nb18"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var x int = 1
+    x = 2
+    return x
+}
+~~~~
+
+### Rust
+check-id: "emit"
+
+#### nb18.rs
+
+~~~~rust
+// Auto-generated by a2r transpiler
+
+fn main() -> i64 {
+    let mut x: i64 = 1;
+    x = 2;
+    return x;
+}
+~~~~
+
+## Case: ace-m1-a2r916-nb19
+id: "ace.m1.a2r916.nb19"
+tags: ["ace-m1", "a2r", "legal-neighbor"]
+links: ["PLAN-916"]
+module-name: "nb19"
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    if false { return 1 }
+    return 0
+}
+~~~~
+
+### Rust
+check-id: "emit"
+
+#### nb19.rs
+
+~~~~rust
+// Auto-generated by a2r transpiler
+
+fn main() -> i64 {
+    if false {
+        return 1;
+    }
+    return 0;
+}
+~~~~

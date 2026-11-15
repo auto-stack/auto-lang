@@ -13,10 +13,10 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "a2r-owned-temporaries-931", include: [
-  "wrap-931.case.ad",
-  "derived-view-931.case.ad",
-  "short-circuit-931.case.ad",
-  "modes-931.case.ad",
-  "ownership-931.case.ad",
+  "wrap-931.document.case.ad",
+  "derived-view-931.document.case.ad",
+  "short-circuit-931.document.case.ad",
+  "modes-931.document.case.ad",
+  "ownership-931.document.case.ad",
 ] }
 ```

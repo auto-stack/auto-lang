@@ -20,8 +20,8 @@ use crate::admission::Limits;
 use crate::atom::{self, CVal};
 use crate::contract::{
     valid_case_id, valid_check_id, Action, Adapter, ArtifactExpect, ArtifactPayload, CaseSpec,
-    BudgetSpec, CheckSpec, Compare, Completion, EntryMode, ExpectSpec, Options, PayloadSpec,
-    ProbeAbiSpec, SyntaxEdit,
+    BudgetSpec, CheckSpec, Compare, Completion, EntryMode, ExpectSpec, FileEntry, Options,
+    PayloadSpec, ProbeAbiSpec, ProbeMnTypedSpec, SyntaxEdit, TypedExpect,
     ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
     ResultExpect, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
@@ -195,6 +195,8 @@ struct RustSection {
     section_line: usize,
     check_id: Option<String>,
     tier: Option<String>,
+    int_profile: Option<String>,
+    resource_profile: Option<String>,
     direct: Option<DirectRust>,
     subsections: Vec<RustArtifact>,
 }
@@ -224,6 +226,12 @@ struct ProbeSection {
     /// Ordered run-step list (PLAN-1062 T-05: run-run sequences; the full
     /// CF-06 op vocabulary arrives with the session/step format).
     steps: Option<Vec<String>>,
+    /// CF-08 typed binding (mn typed recipe): fixture path + (kind,bits) args.
+    typed_fixture: Option<(String, usize)>,
+    typed_args: Option<Vec<(String, String)>>,
+    /// CF-08 typed oracle: expected {kind, bits}.
+    typed_expect: Option<(String, String)>,
+    artifacts: Vec<RustArtifact>,
     streams: Vec<StreamBlock>,
 }
 
@@ -683,6 +691,7 @@ fn decode_one_case(
     let mut acs: Vec<AcSection> = Vec::new();
     let mut syntaxes: Vec<SyntaxSection> = Vec::new();
     let mut vm_streams: Vec<(usize, StreamBlock)> = Vec::new();
+    let mut auto_files: Vec<(String, String)> = Vec::new();
     let mut vm_diag_message: Option<(
         Stage,
         Option<String>,
@@ -746,6 +755,7 @@ fn decode_one_case(
                     &mut acs,
                     &mut syntaxes,
                     &mut vm_streams,
+                    &mut auto_files,
                 )?;
             }
             _ => unreachable!("levels filtered earlier"),
@@ -982,6 +992,8 @@ fn decode_one_case(
                     let id = rs.check_id.clone().unwrap_or_else(|| "rust".to_string());
                     let options = Options {
                         module_name: module_name.clone(),
+                        a2r_int_profile: rs.int_profile.clone(),
+                        a2r_resource_profile: rs.resource_profile.clone(),
                         ..Default::default()
                     };
                     let mut expect = expect_success();
@@ -1049,6 +1061,21 @@ fn decode_one_case(
                         StreamKind::Trace => return err(a.section_line, "AC 不接受 trace 流"),
                     }
                 }
+                if !a.artifacts.is_empty() {
+                    expect.artifacts = a
+                        .artifacts
+                        .iter()
+                        .map(|art| ArtifactExpect {
+                            path: art.path.clone(),
+                            payload: ArtifactPayload::Inline {
+                                bytes: art.bytes.clone(),
+                                open_line: art.open_line,
+                                close_line: art.close_line,
+                            },
+                            compare: art.compare,
+                        })
+                        .collect();
+                }
                 let action = match a.action.as_str() {
                     "check" => Action::Check,
                     "build" => Action::Build,
@@ -1093,6 +1120,21 @@ fn decode_one_case(
                         StreamKind::Stderr => expect.stderr = Some(st.expect.clone()),
                         StreamKind::Trace => return err(x.section_line, "Syntax 不接受 trace 流"),
                     }
+                }
+                if !x.artifacts.is_empty() {
+                    expect.artifacts = x
+                        .artifacts
+                        .iter()
+                        .map(|a| ArtifactExpect {
+                            path: a.path.clone(),
+                            payload: ArtifactPayload::Inline {
+                                bytes: a.bytes.clone(),
+                                open_line: a.open_line,
+                                close_line: a.close_line,
+                            },
+                            compare: a.compare,
+                        })
+                        .collect();
                 }
                 let action = if x.action == "parse" { Action::Parse } else { Action::Edit };
                 push_check(
@@ -1175,11 +1217,30 @@ fn decode_one_case(
                                 return err(*l, "diagnostics 仅支持 source-v1（mn.source-diagnostic/1）");
                             }
                         }
+                        if (p.typed_fixture.is_some() || p.typed_args.is_some())
+                            && p.recipe != "ac/mir-native-typed-v1"
+                        {
+                            return err(
+                                p.section_line,
+                                "typed-fixture/typed-args 仅属于 ac/mir-native-typed-v1",
+                            );
+                        }
+                        if (p.typed_fixture.is_some()) != p.typed_args.is_some() {
+                            return err(
+                                p.section_line,
+                                "typed-fixture 与 typed-args 需成对出现（args 可为空列表）",
+                            );
+                        }
                         options.probe_mn = Some(ProbeMnSpec {
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
                             session: p.session.as_ref().map(|(v, _)| v.clone()),
-                            typed: None,
+                            typed: p.typed_fixture.as_ref().map(|(fixture, _)| {
+                                ProbeMnTypedSpec {
+                                    fixture: fixture.clone(),
+                                    args: p.typed_args.clone().unwrap_or_default(),
+                                }
+                            }),
                             diagnostics: p.diagnostics.as_ref().map(|(v, _)| v.clone()),
                             declaration: None,
                             resource: None,
@@ -1359,6 +1420,27 @@ fn decode_one_case(
                         message: m,
                     })?;
                 }
+                if let Some((kind, bits)) = &p.typed_expect {
+                    expect.typed = Some(TypedExpect {
+                        kind: kind.clone(),
+                        bits: bits.clone(),
+                    });
+                }
+                if !p.artifacts.is_empty() {
+                    expect.artifacts = p
+                        .artifacts
+                        .iter()
+                        .map(|a| ArtifactExpect {
+                            path: a.path.clone(),
+                            payload: ArtifactPayload::Inline {
+                                bytes: a.bytes.clone(),
+                                open_line: a.open_line,
+                                close_line: a.close_line,
+                            },
+                            compare: a.compare,
+                        })
+                        .collect();
+                }
                 push_check(
                     &mut checks,
                     &mut check_spans,
@@ -1408,7 +1490,13 @@ fn decode_one_case(
             syntax: auto_syntax.unwrap_or(Syntax::Auto),
             path: source_path,
         },
-        files: vec![],
+        files: auto_files
+            .iter()
+            .map(|(path, text)| FileEntry {
+                path: path.clone(),
+                payload: PayloadSpec::Text(text.clone()),
+            })
+            .collect(),
         entry: entry_mode,
         checks,
         status_skip: None,
@@ -1485,6 +1573,7 @@ struct AcSection {
     code: Option<(String, usize)>,
     message: Option<(String, usize)>,
     message_contains: Option<(String, usize)>,
+    artifacts: Vec<RustArtifact>,
     streams: Vec<StreamBlock>,
 }
 
@@ -1499,6 +1588,7 @@ struct SyntaxSection {
     code: Option<(String, usize)>,
     message: Option<(String, usize)>,
     message_contains: Option<(String, usize)>,
+    artifacts: Vec<RustArtifact>,
     streams: Vec<StreamBlock>,
 }
 
@@ -1661,13 +1751,14 @@ fn decode_h3_section(
         "VM result" => &["check-id", "final-newline", "compare", "tier"],
         "VM diagnostic" => &["check-id", "stage", "code", "tier"],
         "VM diagnostic message" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
-        "Rust" => &["check-id", "tier"],
+        "Rust" => &["check-id", "tier", "int-profile", "resource-profile"],
         "Rust diagnostic" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
         "Notes" => &[],
         t if t.starts_with("Probe ") => &[
             "recipe", "entry", "caps", "exit", "channel", "stage", "code",
             "message", "message-contains", "session", "profile", "diagnostics",
             "package", "module", "kind", "fn", "leg", "tier", "steps",
+            "typed-fixture", "typed-args", "typed",
         ],
         t if t.starts_with("AC ") => &[
             "action", "profile", "target", "entry", "cache", "budget", "caps", "support-lib",
@@ -1908,6 +1999,12 @@ fn decode_h3_section(
                 if a.key == "tier" {
                     section.tier = Some(want_tier(a)?);
                 }
+                if a.key == "int-profile" {
+                    section.int_profile = Some(want_str(a)?.to_string());
+                }
+                if a.key == "resource-profile" {
+                    section.resource_profile = Some(want_str(a)?.to_string());
+                }
             }
             if fences.len() > 1 || (fences.len() == 1 && fences[0].language != "rust") {
                 return err(sh.line, "### Rust 的直接围栏需要恰好一个 rust 围栏");
@@ -2004,6 +2101,7 @@ fn decode_h3_section(
                 code,
                 message,
                 message_contains,
+                artifacts: Vec::new(),
                 streams: Vec::new(),
             });
             Ok(())
@@ -2064,6 +2162,7 @@ fn decode_h3_section(
                 code,
                 message,
                 message_contains,
+                artifacts: Vec::new(),
                 streams: Vec::new(),
             });
             Ok(())
@@ -2096,6 +2195,9 @@ fn decode_h3_section(
             let mut leg = None;
             let mut tier = None;
             let mut steps = None;
+            let mut typed_fixture = None;
+            let mut typed_args = None;
+            let mut typed_expect = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
@@ -2117,6 +2219,9 @@ fn decode_h3_section(
                     "leg" => leg = Some(want_str(a)?),
                     "tier" => tier = Some(want_str(a)?),
                     "steps" => steps = Some(want_list(a)?),
+                    "typed-fixture" => typed_fixture = Some((want_str(a)?.to_string(), a.line)),
+                    "typed-args" => typed_args = Some(want_typed_args(a)?),
+                    "typed" => typed_expect = Some(want_typed_expect(a)?),
                     _ => unreachable!(),
                 }
             }
@@ -2164,10 +2269,63 @@ fn decode_h3_section(
                 leg,
                 tier,
                 steps,
+                typed_fixture,
+                typed_args,
+                typed_expect,
+                artifacts: Vec::new(),
                 streams: Vec::new(),
             });
             Ok(())
         }
+    }
+}
+
+fn want_typed_args(a: &Attr) -> Result<Vec<(String, String)>, AuthorError> {
+    let CVal::List(items) = &a.value else {
+        return err(a.line, "typed-args 需要 [[kind, bits], …] 列表值");
+    };
+    let mut out = Vec::new();
+    for item in items {
+        let CVal::List(pair) = item else {
+            return err(a.line, "typed-args 每项需要 [kind, bits] 二元组");
+        };
+        if pair.len() != 2 {
+            return err(a.line, "typed-args 每项需要 [kind, bits] 恰好两元素");
+        }
+        let (CVal::Str(kind), CVal::Str(bits)) = (&pair[0], &pair[1]) else {
+            return err(a.line, "typed-args 元素需要字符串对");
+        };
+        out.push((kind.clone(), bits.clone()));
+    }
+    Ok(out)
+}
+
+fn want_typed_expect(a: &Attr) -> Result<(String, String), AuthorError> {
+    let Some(obj) = a.value.as_obj() else {
+        return err(a.line, "typed 需要 {kind: \"i64\", bits: \"十六进制\"} 对象值");
+    };
+    let mut kind = None;
+    let mut bits = None;
+    for (k, v) in obj {
+        match k.as_str() {
+            "kind" => {
+                let CVal::Str(t) = v else {
+                    return err(a.line, "typed.kind 需要字符串");
+                };
+                kind = Some(t.clone());
+            }
+            "bits" => {
+                let CVal::Str(t) = v else {
+                    return err(a.line, "typed.bits 需要完整十六进制字符串");
+                };
+                bits = Some(t.clone());
+            }
+            other => return err(a.line, format!("typed.{} 未知（kind/bits）", other)),
+        }
+    }
+    match (kind, bits) {
+        (Some(kind), Some(bits)) => Ok((kind, bits)),
+        _ => err(a.line, "typed 需要 kind 与 bits 两键齐全"),
     }
 }
 
@@ -2202,6 +2360,46 @@ fn decode_vm_stage(s: &str) -> Option<Stage> {
     }
 }
 
+fn decode_artifact_subsection(
+    doc: &CaseDocument,
+    lines: &[(usize, usize)],
+    sh: &HeadRef,
+    next_head_line: usize,
+    fences: &[&crate::document::DocumentFence],
+    sink: &mut Vec<RustArtifact>,
+) -> Result<(), AuthorError> {
+    if fences.len() != 1 {
+        return err(sh.line, format!("产物小节 {:?} 需要恰好一个围栏", sh.text));
+    }
+    let attrs = collect_leading_attrs(doc, lines, sh.line, &["final-newline", "compare"])?;
+    let mut final_newline = true;
+    let mut compare = Compare::Bytes;
+    for a in &attrs {
+        match a.key.as_str() {
+            "final-newline" => final_newline = want_bool(a)?,
+            "compare" => compare = want_compare(a)?,
+            _ => unreachable!(),
+        }
+    }
+    let text = fence_text(doc, &fences[0], final_newline)?;
+    let path = sh.text.trim().to_string();
+    crate::admission::validate_virtual_path(&path).map_err(|e| AuthorError {
+        line: sh.line,
+        message: format!("产物路径 {:?}: {}", path, e),
+    })?;
+    if sink.iter().any(|a| a.path == path) {
+        return err(sh.line, format!("重复的产物路径 {:?}", path));
+    }
+    sink.push(RustArtifact {
+        path,
+        bytes: text.into_bytes(),
+        open_line: fences[0].open_line,
+        close_line: fences[0].close_line,
+        compare,
+    });
+    Ok(())
+}
+
 fn decode_h4_subsection(
     doc: &CaseDocument,
     lines: &[(usize, usize)],
@@ -2213,6 +2411,7 @@ fn decode_h4_subsection(
     acs: &mut [AcSection],
     syntaxes: &mut [SyntaxSection],
     vm_streams: &mut Vec<(usize, StreamBlock)>,
+    auto_files: &mut Vec<(String, String)>,
 ) -> Result<(), AuthorError> {
     let parent_title = parent.text.trim();
     let fences = direct_fences(doc, sh.line, next_head_line);
@@ -2269,12 +2468,16 @@ fn decode_h4_subsection(
                 "stderr" => StreamKind::Stderr,
                 "trace" => StreamKind::Trace,
                 other => {
-                    return err(
-                        sh.line,
-                        format!(
-                            "Probe 下的四级标题只接受 stdout / stderr / trace（得到 {:?}）",
-                            other
-                        ),
+                    let _ = other;
+                    // PLAN-1062 T-08 (CF-05): emit recipes carry multi-file
+                    // artifact oracles (rs/c/h/json sets).
+                    let check_id = parent_title.strip_prefix("Probe ").unwrap_or("").trim();
+                    return decode_artifact_subsection(
+                        doc, lines, sh, next_head_line, &fences,
+                        &mut probes.iter_mut()
+                            .find(|x| x.check_id == check_id)
+                            .expect("probe section parsed")
+                            .artifacts,
                     );
                 }
             };
@@ -2313,9 +2516,33 @@ fn decode_h4_subsection(
                 "stdout" => StreamKind::Stdout,
                 "stderr" => StreamKind::Stderr,
                 other => {
+                    let _ = other;
+                    if parent_title.starts_with("Syntax ") {
+                        // PLAN-1062 T-08 (CF-04): syntax oracle artifacts
+                        // (lossless reconstruction / outline / canonical).
+                        return decode_artifact_subsection(
+                            doc, lines, sh, next_head_line, &fences,
+                            &mut syntaxes.iter_mut()
+                                .find(|x| x.check_id == parent_title.strip_prefix("Syntax ").unwrap_or("").trim())
+                                .expect("syntax section parsed")
+                                .artifacts,
+                        );
+                    }
+                    if parent_title.starts_with("AC ") {
+                        // PLAN-1062 T-08: AC build/run product oracles (e.g.
+                        // the intentionally-wrong golden of ac.red).
+                        let check_id = parent_title.strip_prefix("AC ").unwrap_or("").trim();
+                        return decode_artifact_subsection(
+                            doc, lines, sh, next_head_line, &fences,
+                            &mut acs.iter_mut()
+                                .find(|x| x.check_id == check_id)
+                                .expect("ac section parsed")
+                                .artifacts,
+                        );
+                    }
                     return err(
                         sh.line,
-                        format!("AC/Syntax 下的四级标题只接受 stdout / stderr（得到 {:?}）", other),
+                        format!("AC 下的四级标题只接受 stdout / stderr（得到 {:?}）", other),
                     );
                 }
             };
@@ -2407,10 +2634,42 @@ fn decode_h4_subsection(
             ));
             Ok(())
         }
-        "Auto" => err(
-            sh.line,
-            "### Auto 下的四级标题（多文件工程）属后续批次，本批只支持单文件",
-        ),
+        "Auto" => {
+            // PLAN-1062 T-08 (CF-01): additional project files ride ordered
+            // #### <virtual-path> subsections, one fence each.
+            let path = sh.text.trim().to_string();
+            crate::admission::validate_virtual_path(&path).map_err(|e| AuthorError {
+                line: sh.line,
+                message: format!("附加源路径 {:?}: {}", path, e),
+            })?;
+            if auto_files.iter().any(|f| f.0 == path) {
+                return err(sh.line, format!("重复的附加源路径 {:?}", path));
+            }
+            if fences.len() != 1 {
+                return err(sh.line, "附加源小节需要恰好一个围栏（载荷文本）");
+            }
+            let attrs = collect_leading_attrs(doc, lines, sh.line, &["final-newline", "eol"])?;
+            let mut final_newline = true;
+            let mut eol = "lf".to_string();
+            for a in &attrs {
+                match a.key.as_str() {
+                    "final-newline" => final_newline = want_bool(a)?,
+                    "eol" => {
+                        eol = want_str(a)?.to_string();
+                        if eol != "crlf" {
+                            return err(a.line, "eol 仅支持 \"crlf\"（默认 lf 不需声明）");
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            let mut text = fence_text(doc, fences[0], final_newline)?;
+            if eol == "crlf" {
+                text = text.replace('\n', "\r\n");
+            }
+            auto_files.push((path, text));
+            Ok(())
+        }
         other => err(
             sh.line,
             format!(

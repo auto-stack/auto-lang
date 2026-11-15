@@ -10,8 +10,8 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "a2c-hir-scalar-921", include: [
-  "C01.case.ad",
-  "C02.case.ad",
-  "C03.case.ad",
+  "C01.document.case.ad",
+  "C02.document.case.ad",
+  "C03.document.case.ad",
 ] }
 ```

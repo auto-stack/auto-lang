@@ -2504,14 +2504,32 @@ def collect_manifest_actuals(
         sem = row_proj["semantic"]
         rep_row = res_map[key]
         product_from = sem["check"].get("product_from")
+        recipe_early = sem["options"].get("probe_recipe") or ""
+        a2x_recipe = (recipe_early.startswith("ac-a2r/") or recipe_early.startswith("ac-a2c/")
+                      or recipe_early.startswith("ac-a2py/"))
         check_out_dir = _ensure_under(
             run_dir, run_dir / origin["case_dir"] / origin["check_dir"], f"check dir {key}")
-        if product_from:
+        files_meta: dict[str, Any] = {}
+        observed: dict[str, Any] = {
+            "case": key[0], "check": key[1], "status": rep_row.get("status"),
+            "adapter": sem["check"]["adapter"], "action": sem["check"]["action"],
+            "recipe": sem["options"].get("probe_recipe"),
+            "identity": rep_row.get("identity"),
+            "check_dir": str(check_out_dir.relative_to(run_dir)).replace("\\", "/"),
+            "files": files_meta,
+        }
+        if a2x_recipe:
+            # A2X emit recipes write artifacts judged parent-side; a per-
+            # check dir may not exist (report artifacts carry the actual).
+            if not check_out_dir.is_dir():
+                observed["a2x"] = {"artifacts": rep_row.get("artifacts") or []}
+                actuals[f"{key[0]}::{key[1]}"] = observed
+                continue
+        elif product_from:
             # A product-from consumer rides the producer's outputs: no own
             # check dir is required; the consumed artifact digests from the
-            # report are the actual (hash-bound below via artifacts arm).
+            # report are the actual.
             if not check_out_dir.is_dir():
-                observed["consumes_product_of"] = product_from
                 if not (rep_row.get("artifacts") or []):
                     raise EvidenceError(
                         f"product-from consumer {key} recorded no consumed artifacts")
@@ -2524,15 +2542,6 @@ def collect_manifest_actuals(
                 continue
         elif not check_out_dir.is_dir():
             raise EvidenceError(f"missing check directory {check_out_dir} for {key}")
-        files_meta: dict[str, Any] = {}
-        observed: dict[str, Any] = {
-            "case": key[0], "check": key[1], "status": rep_row.get("status"),
-            "adapter": sem["check"]["adapter"], "action": sem["check"]["action"],
-            "recipe": sem["options"].get("probe_recipe"),
-            "identity": rep_row.get("identity"),
-            "check_dir": str(check_out_dir.relative_to(run_dir)).replace("\\", "/"),
-            "files": files_meta,
-        }
 
         def _record_file(tag: str, file_path: Path) -> dict[str, Any]:
             safe = _ensure_under(run_dir, file_path, f"{key}:{tag}")
@@ -2545,7 +2554,22 @@ def collect_manifest_actuals(
 
         adapter = sem["check"]["adapter"]
         recipe = sem["options"].get("probe_recipe") or ""
-        if adapter == "probe" and recipe == "ac/mir-native-typed-v1":
+        if adapter == "probe" and (
+            recipe.startswith("ac-a2r/") or recipe.startswith("ac-a2c/")
+            or recipe.startswith("ac-a2py/")
+        ):
+            # A2X emit recipes judge artifacts parent-side (no probe
+            # receipt): same actual face as the a2r adapter.
+            arts = []
+            for a in rep_row.get("artifacts") or []:
+                stored = Path(a["stored"])
+                _record_file(f"artifact:{a['path']}", stored)
+                sz, dig = sha256_file(stored)
+                if sz != a.get("bytes") or dig != a.get("sha256"):
+                    raise EvidenceError(f"report artifact digest mismatch for {key} {a['path']}")
+                arts.append({"path": a["path"], "bytes": sz, "sha256": dig})
+            observed["a2x"] = {"artifacts": arts}
+        elif adapter == "probe" and recipe == "ac/mir-native-typed-v1":
             # PLAN-891: the typed recipe writes its own receipt (fixture
             # bytes/args ride the request; expected values never do).
             receipt_file = check_out_dir / "mn-typed-receipt.json"
