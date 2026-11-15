@@ -139,7 +139,7 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 | **TLS** | 旧无（https经reqwest侧） | **未交** | — | **具名pending**：按r2合同TLS属显式可选provider（967 FFI道或OS provider），非本批静默 |
 | **proxy** | 旧配置形（http.proxy_url等） | **未交** | — | **具名pending**：客户端代理配置面 |
 | **WebSocket** | 旧无 .at 面（vm侧8注册） | **未交** | — | **具名pending**：upgrade握手+帧层 |
-| **URL** | url.at encode/decode/encode_path_segment/encode_query_component/decode_query_component/encode_query/decode_query/parse_form/parse/build/join_path（11 pub fn） | **未交** | — | **具名pending**：Auto侧URL解析/构建/编码族（可沿std.net同file加） |
+| **URL** | url.at encode/decode/encode_path_segment/encode_query_component/decode_query_component/encode_query/decode_query/parse_form/parse/build/join_path（11 pub fn） | **stdlib/ace/std/url.at**（encode×3+join_path；PLAN-1041内联） | net974_url_family_inline（独立oracle 0.05s） | **encode族+join已交**；decode/query族/parse/build=具名pending（子串物化核心决定：slice view→owned促升 或 char→str内建）；Map形归packages Collections面 |
 | **upload/download** | http.at body/upload/download（File腿） | **未交** | — | **具名pending：973阻塞腿**（File/Stream域） |
 
 **核结论**：已交核心=TCP双向+HTTP client/server核心+SSE解析+redirect+timeout语义（net974 6/6真回环+独立oracle）；**具名pending**=URL族（11符号）、TLS/proxy/WebSocket、HTTP全方法/全存取组、多跳redirect、可配置timeout、upload/download(973)。分母不删行、不NA——T-04按此表逐行记录，pending腿的关闭序=URL族（Auto可加）→HTTP面扩→WebSocket→TLS/proxy（provider道）；973腿随973落主。
@@ -407,6 +407,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08 URL族实现腿) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: c397befd2 | evidence: stdlib/ace/std/url.at（encode×3+join_path 独立oracle）+net974 **7/7绿**（2.24s）；方言事实新增：slice右拼合法/字面量左拼拒/字面量实参不retag/借用参数不可直返owned（全数留痕迭代） | next_responsible_role: work（HTTP扩面→WebSocket→TLS/proxy→T-04..07 或按裁定）
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08分母核交付；实现腿续施) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: bd173aff0（核基线） | evidence: §5"T-08 协议分母核"逐族表（13族：已交7核心+具名pending 6+973腿，分母零删行） | next_responsible_role: work（URL族实现→HTTP扩面→…→T-04..07 或按裁定）
 
