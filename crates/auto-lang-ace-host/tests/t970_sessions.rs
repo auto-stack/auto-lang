@@ -481,3 +481,41 @@ fn t970_snapshot_shape() {
     assert!(text.contains("__tail_anchor"), "anchor present: {text}");
     assert!(!text.contains("return (41)"), "no probe leak: {text}");
 }
+
+/// V-DETAIL-02: out-of-bounds and non-UTF-8 edits are NAMED refusals
+/// that never touch the current root.
+#[test]
+fn t970_edit_negative_controls() {
+    let _host = Host::install();
+    let s = ace_session_create(None, None);
+    ok_of(&s);
+    let s = s.session.unwrap();
+    assert_eq!(eval_value(&s, "var keep = 7"), AceSessionValue::None);
+
+    let bounds = ace_session_op(
+        &s,
+        AceSessionOp::Edit {
+            start: 5,
+            end: u64::MAX,
+            insert: b"x".as_slice(),
+        },
+    );
+    match bounds.outcome {
+        AceSessionOutcome::Denied { code, .. } if code == "session.edit/bounds" => {}
+        other => panic!("bounds must refuse, got {other:?}"),
+    }
+    let utf8 = ace_session_op(
+        &s,
+        AceSessionOp::Edit {
+            start: 0,
+            end: 0,
+            insert: &[0xff, 0xfe],
+        },
+    );
+    match utf8.outcome {
+        AceSessionOutcome::Denied { code, .. } if code == "session.edit/utf8" => {}
+        other => panic!("bad utf8 must refuse, got {other:?}"),
+    }
+    // The session keeps its state and evaluates.
+    assert_eq!(eval_value(&s, "keep"), AceSessionValue::Int(7));
+}
