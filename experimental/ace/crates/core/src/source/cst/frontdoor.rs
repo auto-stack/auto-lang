@@ -932,6 +932,24 @@ pub(crate) fn project_packages_front(
                 // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                 // 不另建求值器，也不把手写数值当常量。
                 for (si, scene) in node.view.scene_components.iter().enumerate() {
+                    // PLAN-981：属性名在**一行内必须唯一**。此前重复键被静默接受，
+                    // 后值覆盖前值、零诊断——写两遍 `kind:` 的作者得不到任何反馈。
+                    let mut seen_keys: std::collections::BTreeMap<&str, Span> =
+                        std::collections::BTreeMap::new();
+                    for attr in &scene.attrs {
+                        if let Some(first) = seen_keys.insert(attr.key.as_str(), attr.span) {
+                            let msg = format!(
+                                "attribute `{}` is written twice on `{}` (first at byte {}, \
+                                 again at byte {})",
+                                attr.key, scene.name, first.start, attr.span.start
+                            );
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.scene-attr-duplicate",
+                                msg,
+                                attr.span,
+                            )]);
+                        }
+                    }
                     for (ai, attr) in scene.attrs.iter().enumerate() {
                         let name = format!(
                             "{}scene_{}_{}_{}",
@@ -961,6 +979,20 @@ pub(crate) fn project_packages_front(
                                     scene.kind
                                 ),
                                 scene.span,
+                            )]);
+                        }
+                        // 属性必须**适用于**该元素（`yaw:` 不属 shape2d 等）。
+                        if !crate::source::age_resources::attr_applies_to(
+                            scene.kind.as_str(),
+                            attr.key.as_str(),
+                        ) {
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.scene-attr",
+                                format!(
+                                    "`{}` does not apply to `{}`",
+                                    attr.key, scene.kind
+                                ),
+                                attr.span,
                             )]);
                         }
                         use crate::source::age_resources::AttrValueKind;
