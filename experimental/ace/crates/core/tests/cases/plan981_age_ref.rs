@@ -84,18 +84,28 @@ fn p981_ref_undeclared_is_named_distinctly() {
     assert_eq!(ds[0].code, "source.age.ref-undeclared", "{ds:?}");
 }
 
-/// ② 已声明但不可见：`Secret` 存在但没有 `pub`，且未被导入 →
-///    `source.age.ref-invisible`（与"不存在"分开报）。
+/// ② 已声明且被导入 → 可引用。AGE 作者面**不写 `pub`**（2026-11-16 用户裁定；
+///    规范原文「接受普通 Auto 模块工程（…普通 `use`、具名资源与引用）」）；
+///    符号表导入本身就是显式的跨模块意愿。
 #[test]
-fn p981_ref_invisible_is_named_distinctly() {
-    let main = "node Screen {\n\
+fn p981_ref_imported_node_is_referenceable_without_pub() {
+    let out = compile(
+        "node Screen {\n\
     view {\n\
         text \"hi\" {}\n\
         Secret m1 {}\n\
     }\n\
-}\n";
-    let ds = compile(main).expect_err("a non-public node reference is rejected");
-    assert_eq!(ds[0].code, "source.age.ref-invisible", "{ds:?}");
+}\n",
+    )
+    .expect("an imported node is referenceable without `pub`");
+    let screen = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Screen")
+        .expect("Screen");
+    assert_eq!(screen.refs.len(), 1);
+    assert_eq!(screen.refs[0].node, "Secret");
 }
 
 /// ③ 已声明且导入，但**不是 node**（是普通 type）→ `source.age.ref-not-a-node`。
@@ -143,13 +153,13 @@ fn p981_ref_diagnostics_carry_the_original_module_span() {
 
 
 
-/// 跨模块可见性（本轮闭环）：`pub node` 可被别的模块按 node 名引用并解析到声明
-/// 模块；非 `pub` 的同名声明则报 `ref-invisible`。
+/// 跨模块 node 引用（本轮闭环）：普通 `use` 导入的 node 按 node 名解析到声明模块；
+/// `pub node` 同样可引用。AGE 作者面不需要 `pub`（2026-11-16 用户裁定）。
 #[test]
-fn p981_ref_cross_module_pub_node_resolves_and_private_does_not() {
-    let public =
+fn p981_ref_cross_module_node_resolves_by_import() {
+    let imported =
         "node Screen {\n    view {\n        text \"hi\" {}\n        Meter m1 {}\n    }\n}\n";
-    let out = compile(public).expect("a public cross-module node is referenceable");
+    let out = compile(imported).expect("an imported node is referenceable");
     let screen = out
         .description
         .components
@@ -160,10 +170,18 @@ fn p981_ref_cross_module_pub_node_resolves_and_private_does_not() {
     assert_eq!(screen.refs[0].module, "app::widgets");
     assert_eq!(screen.refs[0].node, "Meter");
 
-    let private =
+    // 同一规则对未写 `pub` 的声明同样成立（g01 的原源形态）。
+    let plain =
         "node Screen {\n    view {\n        text \"hi\" {}\n        Secret m1 {}\n    }\n}\n";
-    let ds = compile(private).expect_err("a private cross-module node is rejected");
-    assert_eq!(ds[0].code, "source.age.ref-invisible", "{ds:?}");
+    let out = compile(plain).expect("a non-pub imported node is referenceable too");
+    let screen = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Screen")
+        .expect("Screen");
+    assert_eq!(screen.refs.len(), 1);
+    assert_eq!(screen.refs[0].node, "Secret");
 }
 
 /// `pub node` 自身必须留下可见性事实（声明侧，不只是引用侧）。

@@ -209,13 +209,16 @@ pub fn compile_age_package_with_scenario(
     }
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
+    // 解析/检查用**本面的真实身份**（AgePackage），与发射一致：AGE 的资源端口、
+    // f32 类型表、参数模式等规则都以它为准。此前传 TextRecord 导致"门说 TextRecord、
+    // 面规则永不触发"这一类缺陷（端口/ f32 / move 各一次）。
     let resolved = crate::source::resolve_with(
         &product.bound.program,
         capabilities,
-        SourceProfile::TextRecord,
+        SourceProfile::AgePackage,
     )
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
-    crate::source::typecheck_with(&resolved, SourceProfile::TextRecord)
+    crate::source::typecheck_with(&resolved, SourceProfile::AgePackage)
         .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     // PLAN-981：AGE 作者面发射（f32 类型表等按本面发射；协议身份仍是包文档）。
     let parts = crate::source::adapter::emit_resolved_packages_parts_profile(
@@ -540,12 +543,13 @@ fn resolve_refs(
             .entry(p.module.clone())
             .or_default()
             .push(p.node.name.name.clone());
-        if p.node.public {
-            public_nodes
-                .entry(p.module.clone())
-                .or_default()
-                .push(p.node.name.name.clone());
-        }
+        // AGE 作者面不写 `pub`：模块内的 node 声明都可被符号表导入引用（与
+        // binder 的 node 导入判据一致）。`pub node` 仍合法，只是不再额外收紧
+        // ——两层面对同一份源必须给出同一结论。
+        public_nodes
+            .entry(p.module.clone())
+            .or_default()
+            .push(p.node.name.name.clone());
     }
     for (key, unit) in &bound.units {
         for item in &unit.program.items {
@@ -932,23 +936,19 @@ fn hidden_fn_scene_value(
     node_params: &[crate::source::age_component::ComponentParam],
 ) -> Option<FnItem> {
     let ret = scene_value_type(expr, node_params)?;
-    // 作者声明的 node 参数按原类型进函数签名（参数化组件的真实语义）。
+    // 只带**本值真正引用到**的参数。节点可能声明若干参数而某个属性一个都不碰
+    // （`Disc` 的 `tint` 之于 `position`）；把全部参数塞进签名会让每个值函数都
+    // 卡在那一个无法传递的类型上。
     let mut params = Vec::new();
-    for p in node_params {
+    for p in node_params.iter().filter(|p| expr_mentions(expr, &p.name)) {
         let kind = match p.ty.as_str() {
             "float" => TypeRef::Builtin(TypeWord::Float),
             "int" | "i32" => TypeRef::Builtin(TypeWord::I32),
             "bool" => TypeRef::Builtin(TypeWord::Bool),
-            other if crate::source::age_resources::is_port_type(other) => {
-                TypeRef::Record(Ident {
-                    name: other.to_string(),
-                    span: p.ty_span,
-                })
-            }
+            // 端口参数：裸传 → verify 要求借用；声明 `move` → verify 要求拥有
+            // 缓冲。两条路都被实测拒绝，故引用端口参数时本函数不可表示。
             _ => return None,
         };
-        // 端口模式保持默认（view）。**不要**改成 `move`：实测 verify 会拒绝
-        // 「record 不拥有缓冲却声明 move」，而端口是纯 f32 记录、永远推不出资源性。
         params.push(crate::source::ast::Param {
             name: Ident {
                 name: p.name.clone(),
@@ -986,6 +986,16 @@ fn hidden_fn_scene_value(
 }
 
 /// 场景属性值的类型（按语法形状；不是推断引擎）。
+/// 该表达式是否引用了名为 `name` 的参数（浅遍历，不建求值器）。
+fn expr_mentions(e: &Expr, name: &str) -> bool {
+    match &e.kind {
+        ExprKind::Var(id) => id.name == name,
+        ExprKind::TupleLit(items) => items.iter().any(|i| expr_mentions(i, name)),
+        ExprKind::Unary { operand, .. } => expr_mentions(operand, name),
+        _ => false,
+    }
+}
+
 fn scene_value_type(
     e: &Expr,
     node_params: &[crate::source::age_component::ComponentParam],
@@ -993,16 +1003,11 @@ fn scene_value_type(
     // 参数的引用按其声明类型（`x` 在 `node Disc(x: float)` 里就是 `float`）。
     if let ExprKind::Var(id) = &e.kind {
         if let Some(p) = node_params.iter().find(|p| p.name == id.name) {
+            // 端口类型的参数引用在这里也返回 None：与函数签名同一理由。
             return Some(match p.ty.as_str() {
                 "float" => TypeRef::Builtin(TypeWord::Float),
                 "int" | "i32" => TypeRef::Builtin(TypeWord::I32),
                 "bool" => TypeRef::Builtin(TypeWord::Bool),
-                other if crate::source::age_resources::is_port_type(other) => {
-                    TypeRef::Record(Ident {
-                        name: other.to_string(),
-                        span: p.ty_span,
-                    })
-                }
                 _ => return None,
             });
         }

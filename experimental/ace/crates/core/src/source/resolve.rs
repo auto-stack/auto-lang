@@ -1903,15 +1903,20 @@ fn resolve_detailed(
     // owner 解释；这里不把资源压平成带颜色字段的普通 record。
     // 包前门用 TextRecord 做领域解析（面在 profile 之上），所以 profile 判据在这里
     // 永远不成立——按**是否使用 AGE 资源服务**登记。
-    let uses_age_ports = program.items.iter().any(|it| match it {
-        ast::Item::Fn(f) => {
-            uses_age_service(&f.body)
-                || f.params.iter().any(|p| ann_mentions_age_port(&p.ty))
-                || ann_mentions_age_port(&f.ret)
-        }
-        ast::Item::Type(t) => t.fields.iter().any(|f| ann_mentions_age_port(&f.ty)),
-        _ => false,
-    });
+    // 端口类型只要**可能被提到**就必须在场：AGE 作者面的 node 参数不落在
+    // `program.items` 的 fn 上（它们在领域行里），故仅凭"程序是否用到服务/注解"
+    // 会漏掉 `node Disc(…, tint: Material2D)` 这种合法源。AGE 前门本来就把
+    // 整份文档交给本函数，所以对它一律登记——这也是与发射器同一判据。
+    let uses_age_ports = surface == SourceProfile::AgePackage
+        || program.items.iter().any(|it| match it {
+            ast::Item::Fn(f) => {
+                uses_age_service(&f.body)
+                    || f.params.iter().any(|p| ann_mentions_age_port(&p.ty))
+                    || ann_mentions_age_port(&f.ret)
+            }
+            ast::Item::Type(t) => t.fields.iter().any(|f| ann_mentions_age_port(&f.ty)),
+            _ => false,
+        });
     if surface == SourceProfile::AgePackage || uses_age_ports {
         for port in crate::source::age_resources::AGE_PORT_TYPES {
             if !rec_index.contains_key(*port) {
