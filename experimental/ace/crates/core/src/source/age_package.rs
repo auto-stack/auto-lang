@@ -1178,9 +1178,30 @@ fn check_scene_resource_refs(
                     super::ast::ExprKind::Var(id) => (None, id.name.clone()),
                     _ => continue,
                 };
-                // `material: tint` 里的 `tint` 是**本 node 自己的参数**，不是资源。
-                // 参数绑定发生在实例化，故这里不是资源引用（也不是错误）。
-                if comp.node.params.iter().any(|p| p.name == symbol_spelling) {
+                // `material: tint` 里的 `tint` 是**本 node 自己的参数**——它不是
+                // 模块全局资源，但它**仍然必须**是该位置期望的端口类型。此前这里
+                // 无条件 `continue`，于是 `node Disc(tint: int)` 把一个整数塞进
+                // `Material2D` 位也无人过问（复审 B4）。
+                if let Some(param) = comp.node.params.iter().find(|p| p.name == symbol_spelling)
+                {
+                    if let Some(want) =
+                        super::age_resources::attr_port(row.kind.as_str(), &attr.key)
+                    {
+                        if param.ty != want {
+                            return Err(vec![text_diag(
+                                "source.age.scene-resource-type",
+                                format!(
+                                    "`{key}` on `{elem}` requires a `{want}` resource, but the \
+                                     node parameter `{name}` is declared `{ty}`",
+                                    key = attr.key,
+                                    elem = row.kind,
+                                    name = param.name,
+                                    ty = param.ty
+                                ),
+                                flat_to_module(&bound_sources(bound), param.ty_span),
+                            )]);
+                        }
+                    }
                     continue;
                 }
                 // 找声明：按 (模块, 名字) 或全局按名字后缀匹配。
