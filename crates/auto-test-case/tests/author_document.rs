@@ -307,10 +307,18 @@ fn located_rejection_battery() {
         decode(&badentry, "x.case.ad").is_err(),
         "console entry is d_main"
     );
-    // Unwired recipe is a located error.
-    let recipe = case_doc("\n### Probe r\nrecipe: \"ac-av/resident-run-v1\"\nentry: \"d_main\"\n");
+    // Unregistered recipe is a located error (PLAN-1062 T-04: every
+    // REGISTERED_PROBE_RECIPES id — e.g. resident-run-v1 — is authorable;
+    // only ids outside the registry are rejected).
+    let recipe = case_doc("\n### Probe r\nrecipe: \"ac-av/resident-run-v99\"\nentry: \"d_main\"\n");
     let e = decode(&recipe, "x.case.ad").unwrap_err();
-    assert!(e.message.contains("未接入文档式试点"), "{e:?}");
+    assert!(e.message.contains("未注册"), "{e:?}");
+    let registered =
+        case_doc("\n### Probe r\nrecipe: \"ac-av/resident-run-v1\"\nentry: \"d_main\"\n");
+    assert!(
+        decode(&registered, "x.case.ad").is_ok(),
+        "registered recipes are authorable since T-04"
+    );
     // Empty Auto section (no fence) is rejected.
     let nofence = "## Case: a\n\n### Auto\n";
     assert!(decode(nofence, "x.case.ad").is_err(), "Auto needs a fence");

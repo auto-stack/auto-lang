@@ -20,9 +20,9 @@ use crate::admission::Limits;
 use crate::atom::{self, CVal};
 use crate::contract::{
     valid_case_id, valid_check_id, Action, Adapter, ArtifactExpect, ArtifactPayload, CaseSpec,
-    CheckSpec, Compare, Completion, EntryMode, ExpectSpec, Options, PayloadSpec, ProbeAvSpec,
-    ProbeMnSpec, ProbeStep, ResultExpect, SourceSpec, Stage, StreamExpect, Syntax,
-};
+    CheckSpec, Compare, Completion, EntryMode, ExpectSpec, Options, PayloadSpec, ProbeAbiSpec,
+    ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
+    ResultExpect, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
 use crate::raw_ranges::line_table;
 use crate::sha256::{hex, sha256};
@@ -75,8 +75,10 @@ pub struct AuthorCase {
 
 const CASE_HEADING_PREFIX: &str = "Case: ";
 
-/// Legal three-level section titles of the first wired batch.
-const WIRED_SECTIONS: &str = "Auto, VM result, VM diagnostic, Rust, Probe <check-id>, Notes";
+/// Legal three-level section titles (PLAN-1062 T-04 wires the CF-02/03
+/// diagnostic-message faces and the full registered-recipe vocabulary).
+const WIRED_SECTIONS: &str =
+    "Auto, VM result, VM diagnostic, VM diagnostic message, Rust, Rust diagnostic, Probe <check-id>, Notes";
 
 /// Headings of the full target vocabulary that are NOT wired yet (located
 /// errors, never silent skips).
@@ -86,31 +88,41 @@ const UNWIRED_SECTIONS: &[&str] = &[
     "VM exit",
     "C",
     "Python",
-    "VM diagnostic message",
     "C diagnostic",
-    "Rust diagnostic",
     "Python diagnostic",
 ];
 
-/// Probe recipes wired into the document pilot (the seam contract itself
-/// lives in [`crate::contract::REGISTERED_PROBE_RECIPES`]).
+/// Binding family of a registered probe recipe (PLAN-1062 T-04: every
+/// REGISTERED_PROBE_RECIPES id is authorable; the recipe-specific binding
+/// object is validated by contract admission).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProbeWiring {
-    AvCore,
+enum ProbeFamily {
+    Av,
     AvConsole,
-    MnScalar,
+    Mn,
+    Cte,
+    Sema,
+    Abi,
+    A2x,
 }
 
-fn probe_wiring(recipe: &str) -> Option<ProbeWiring> {
+fn probe_family(recipe: &str) -> Option<ProbeFamily> {
+    if !crate::contract::REGISTERED_PROBE_RECIPES.contains(&recipe) {
+        return None;
+    }
     match recipe {
-        "ac-av/core-run-v1" => Some(ProbeWiring::AvCore),
-        "ac-av/console-run-v1" => Some(ProbeWiring::AvConsole),
-        "ac/mir-native-scalar-v1" => Some(ProbeWiring::MnScalar),
+        "ac-av/console-run-v1" => Some(ProbeFamily::AvConsole),
+        r if r.starts_with("ac-av/") => Some(ProbeFamily::Av),
+        r if r.starts_with("ac/mir-native-") || r.starts_with("ac/mn/") => Some(ProbeFamily::Mn),
+        r if r.starts_with("cte/") => Some(ProbeFamily::Cte),
+        r if r.starts_with("sema/") => Some(ProbeFamily::Sema),
+        r if r.starts_with("abi/") => Some(ProbeFamily::Abi),
+        r if r.starts_with("ac-a2r/") || r.starts_with("ac-a2c/") || r.starts_with("ac-a2py/") => {
+            Some(ProbeFamily::A2x)
+        }
         _ => None,
     }
 }
-
-const WIRED_RECIPES: &str = "ac-av/core-run-v1, ac-av/console-run-v1, ac/mir-native-scalar-v1";
 
 /// Does this document declare document-style cases (any top-level
 /// `## Case: <key>` heading outside fences)?
@@ -189,10 +201,23 @@ struct ProbeSection {
     recipe: String,
     entry: String,
     caps: Vec<String>,
+    /// `caps:` declared (even empty) vs absent — preserved for CF-03.
+    caps_declared: bool,
     exit: Option<i32>,
     channel: Option<(String, usize)>,
     stage: Option<(String, usize)>,
     code: Option<(String, usize)>,
+    /// Optional single-line message matchers (CF-02): exact or contains.
+    message: Option<(String, usize)>,
+    message_contains: Option<(String, usize)>,
+    session: Option<(String, usize)>,
+    profile: Option<(String, usize)>,
+    diagnostics: Option<(String, usize)>,
+    package: Option<String>,
+    module: Option<String>,
+    kind: Option<String>,
+    fn_name: Option<String>,
+    leg: Option<String>,
     streams: Vec<StreamBlock>,
 }
 
@@ -646,6 +671,20 @@ fn decode_one_case(
     let mut vm_diag: Option<(Stage, String, usize, Option<String>)> = None;
     let mut rust_section: Option<RustSection> = None;
     let mut probes: Vec<ProbeSection> = Vec::new();
+    let mut vm_diag_message: Option<(
+        Stage,
+        String,
+        Option<MessageMatcher>,
+        usize,
+        Option<String>,
+    )> = None;
+    let mut rust_diag: Option<(
+        Stage,
+        String,
+        Option<MessageMatcher>,
+        usize,
+        Option<String>,
+    )> = None;
 
     let mut current_h3: Option<&HeadRef> = None;
     for (si, sh) in section_heads.iter().enumerate() {
@@ -665,7 +704,9 @@ fn decode_one_case(
                     &mut auto_path,
                     &mut vm_result,
                     &mut vm_diag,
+                    &mut vm_diag_message,
                     &mut rust_section,
+                    &mut rust_diag,
                     &mut probes,
                 )?;
             }
@@ -702,11 +743,25 @@ fn decode_one_case(
     let mut check_spans: Vec<DocCheckSpan> = Vec::new();
 
     // --- VM family: one execution, success XOR failure ---
-    if vm_result.is_some() && vm_diag.is_some() {
+    if vm_result.is_some() && (vm_diag.is_some() || vm_diag_message.is_some()) {
         return err(
             case_head.line,
             "同一 VM 动作同时要求成功（VM result）和失败（VM diagnostic）是格式错误",
         );
+    }
+    if vm_diag.is_some() && vm_diag_message.is_some() {
+        return err(
+            case_head.line,
+            "VM diagnostic 与 VM diagnostic message 互斥（后者是前者的完整消息形态）",
+        );
+    }
+    if let Some(rust_section) = rust_section.as_ref() {
+        if rust_section.direct.is_some() && rust_diag.is_some() {
+            return err(
+                case_head.line,
+                "同一 Rust 检查同时要求金样（Rust）和诊断（Rust diagnostic）是格式错误",
+            );
+        }
     }
 
     // Emit checks in DOCUMENT SECTION ORDER — the report identity follows
@@ -718,6 +773,70 @@ fn decode_one_case(
         let title = sh.text.trim();
         match title {
             "Auto" | "Notes" => {}
+            "VM diagnostic message" => {
+                if let Some((stage, code, message, line, check_id)) = vm_diag_message.clone() {
+                    let id = check_id.unwrap_or_else(|| "vm".to_string());
+                    let mut expect = expect_success();
+                    expect.completion = Completion::Error {
+                        stage,
+                        code: Some(code),
+                        message,
+                    };
+                    push_check(
+                        &mut checks,
+                        &mut check_spans,
+                        DocCheckSpan {
+                            id: id.clone(),
+                            section_line: line,
+                            section: "VM diagnostic message".into(),
+                        },
+                        CheckSpec {
+                            id,
+                            adapter: Adapter::Avm,
+                            action: Action::Run,
+                            tier: None,
+                            options: Options::default(),
+                            expect,
+                            product_from: None,
+                            skip: None,
+                        },
+                    )?;
+                }
+            }
+            "Rust diagnostic" => {
+                if let Some((stage, code, message, line, check_id)) = rust_diag.clone() {
+                    let id = check_id.unwrap_or_else(|| "rust".to_string());
+                    let options = Options {
+                        module_name: module_name.clone(),
+                        ..Default::default()
+                    };
+                    let mut expect = expect_success();
+                    expect.completion = Completion::Error {
+                        stage,
+                        code: Some(code),
+                        message,
+                    };
+                    push_check(
+                        &mut checks,
+                        &mut check_spans,
+                        DocCheckSpan {
+                            id: id.clone(),
+                            section_line: line,
+                            section: "Rust diagnostic".into(),
+                        },
+                        CheckSpec {
+                            id,
+                            adapter: Adapter::A2r,
+                            action: Action::Emit,
+                            tier: None,
+                            options,
+                            expect,
+                            product_from: None,
+                            skip: None,
+                        },
+                    )?;
+                }
+            }
             "VM result" => {
                 if let Some((text, line, check_id)) = vm_result.clone() {
                     let id = check_id.unwrap_or_else(|| "vm".to_string());
@@ -849,19 +968,13 @@ fn decode_one_case(
                     .position(|p| p.section_line == sh.line)
                     .expect("probe parsed with its section line");
                 let p = probes.remove(pos);
-                let wiring = probe_wiring(&p.recipe).ok_or_else(|| AuthorError {
+                let family = probe_family(&p.recipe).ok_or_else(|| AuthorError {
                     line: p.section_line,
                     message: format!(
-                        "probe recipe {:?} 未接入文档式试点（已接通：{}）",
-                        p.recipe, WIRED_RECIPES
+                        "probe recipe {:?} 未注册（合法集合见 contract::REGISTERED_PROBE_RECIPES）",
+                        p.recipe
                     ),
                 })?;
-                if p.entry.is_empty() {
-                    return err(
-                        p.section_line,
-                        "Probe 节需要 entry（试点 recipe 的入口须显式声明）",
-                    );
-                }
                 let mut options = Options {
                     probe_recipe: Some(p.recipe.clone()),
                     probe_steps: Some(vec![ProbeStep::Run]),
@@ -869,100 +982,185 @@ fn decode_one_case(
                 };
                 let mut expect = expect_success();
                 expect.exit = p.exit;
-                match wiring {
-                    ProbeWiring::AvCore | ProbeWiring::AvConsole => {
-                        if !p.caps.is_empty() && wiring != ProbeWiring::AvConsole {
-                            return err(p.section_line, "caps 只属于 console recipe");
+                match family {
+                    ProbeFamily::Av | ProbeFamily::AvConsole => {
+                        if p.entry.is_empty() {
+                            return err(p.section_line, "Probe 节需要 entry（av recipe 入口须显式）");
                         }
-                        if wiring == ProbeWiring::AvConsole && p.entry != "d_main" {
+                        if family == ProbeFamily::AvConsole && p.entry != "d_main" {
                             return err(p.section_line, "console-run-v1 要求 entry 为 d_main");
+                        }
+                        if let Some((_, l)) = &p.profile {
+                            if family == ProbeFamily::AvConsole {
+                                return err(*l, "console-run-v1 不接受 profile 覆盖");
+                            }
                         }
                         options.probe_av = Some(ProbeAvSpec {
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
-                            session: None,
-                            profile: None,
+                            session: p.session.as_ref().map(|(v, _)| v.clone()),
+                            profile: p.profile.as_ref().map(|(v, _)| v.clone()),
                             invalidation: None,
                             resource: None,
                         });
                     }
-                    ProbeWiring::MnScalar => {
+                    ProbeFamily::Mn => {
+                        if p.entry.is_empty() {
+                            return err(p.section_line, "Probe 节需要 entry（mn recipe 入口须显式）");
+                        }
+                        if let Some((v, l)) = &p.diagnostics {
+                            if v != "source-v1" {
+                                return err(*l, "diagnostics 仅支持 source-v1（mn.source-diagnostic/1）");
+                            }
+                        }
                         options.probe_mn = Some(ProbeMnSpec {
                             entry: p.entry.clone(),
-                            caps: vec![],
-                            session: None,
+                            caps: p.caps.clone(),
+                            session: p.session.as_ref().map(|(v, _)| v.clone()),
                             typed: None,
-                            diagnostics: None,
+                            diagnostics: p.diagnostics.as_ref().map(|(v, _)| v.clone()),
                             declaration: None,
                             resource: None,
                             history: None,
                             turnaround: None,
                         });
                     }
+                    ProbeFamily::Cte => {
+                        if p.entry.is_empty() {
+                            return err(p.section_line, "Probe 节需要 entry（cte recipe 入口须显式）");
+                        }
+                        options.probe_cte = Some(ProbeCteSpec {
+                            entry: p.entry.clone(),
+                            caps: p.caps.clone(),
+                            session: p.session.as_ref().map(|(v, _)| v.clone()),
+                        });
+                    }
+                    ProbeFamily::Sema => {
+                        if !p.entry.is_empty() || !p.caps.is_empty() {
+                            return err(
+                                p.section_line,
+                                "sema binding 不接受 entry/caps（用 package/module/kind/fn）",
+                            );
+                        }
+                        let package = p.package.clone().ok_or_else(|| AuthorError {
+                            line: p.section_line,
+                            message: "sema recipe 需要 package".into(),
+                        })?;
+                        let module = p.module.clone().ok_or_else(|| AuthorError {
+                            line: p.section_line,
+                            message: "sema recipe 需要 module".into(),
+                        })?;
+                        let kind = p.kind.clone().ok_or_else(|| AuthorError {
+                            line: p.section_line,
+                            message: "sema recipe 需要 kind（v1 冻结 infer-body）".into(),
+                        })?;
+                        let fn_name = p.fn_name.clone().ok_or_else(|| AuthorError {
+                            line: p.section_line,
+                            message: "sema recipe 需要 fn".into(),
+                        })?;
+                        options.probe_sema = Some(ProbeSemaSpec {
+                            package,
+                            module,
+                            kind,
+                            fn_name,
+                        });
+                    }
+                    ProbeFamily::Abi => {
+                        if !p.entry.is_empty() || !p.caps.is_empty() {
+                            return err(
+                                p.section_line,
+                                "abi binding 不接受 entry/caps（用 leg）",
+                            );
+                        }
+                        let leg = p.leg.clone().ok_or_else(|| AuthorError {
+                            line: p.section_line,
+                            message: "abi recipe 需要 leg（a / b / c）".into(),
+                        })?;
+                        options.probe_abi = Some(ProbeAbiSpec { leg });
+                    }
+                    ProbeFamily::A2x => {
+                        if p.entry.is_empty() {
+                            return err(p.section_line, "Probe 节需要 entry（emit recipe 入口须显式）");
+                        }
+                        let profile = p.profile.as_ref().ok_or_else(|| AuthorError {
+                            line: p.section_line,
+                            message: "emit recipe 需要 profile".into(),
+                        })?;
+                        options.probe_a2x_hir = Some(ProbeA2xHirSpec {
+                            profile: profile.0.clone(),
+                            entry: p.entry.clone(),
+                            caps: p.caps.clone(),
+                        });
+                    }
                 }
-                if wiring == ProbeWiring::AvConsole {
-                    match (&p.stage, &p.code) {
-                        (None, None) => {}
-                        (Some((_, sl)), None) => {
-                            return err(
-                                *sl,
-                                "console Probe 的 stage 与 code 必须成对出现（缺少 code）",
-                            );
-                        }
-                        (None, Some((_, cl))) => {
-                            return err(
-                                *cl,
-                                "console Probe 的 stage 与 code 必须成对出现（缺少 stage）",
-                            );
-                        }
-                        (Some((s, sl)), Some((c, cl))) => {
-                            let stage = decode_probe_stage(s).ok_or_else(|| AuthorError {
-                                line: *sl,
-                                message: format!(
-                                    "console Probe stage 仅支持 parse / resolve / typecheck / verify / run，收到 {:?}",
-                                    s
-                                ),
-                            })?;
-                            if c.trim().is_empty() {
-                                return err(*cl, "console Probe code 不能为空");
-                            }
-                            if expect.exit.is_some() {
-                                return err(
-                                    p.section_line,
-                                    "console Probe 错误预期不能同时声明 exit",
-                                );
-                            }
-                            if p.channel.is_some() {
-                                return err(
-                                    p.section_line,
-                                    "console Probe 错误预期不能同时声明 channel",
-                                );
-                            }
-                            expect.completion = Completion::Error {
-                                stage,
-                                code: Some(c.clone()),
-                                message: None,
-                            };
-                        }
+                // CF-02: typed error expectations (stage/code + optional
+                // message) are legal for every probe family; channel and
+                // byte streams stay console-only.
+                if family != ProbeFamily::AvConsole {
+                    if let Some((_, l)) = &p.channel {
+                        return err(*l, "channel 仅允许用于 console recipe（ac-av/console-run-v1）");
                     }
-                    if let Some((ch, ch_line)) = &p.channel {
-                        if ch != "value" && ch != "unit" {
-                            return err(
-                                *ch_line,
-                                format!(
-                                    "console Probe channel 仅支持 \"value\" 或 \"unit\"，收到 {:?}",
-                                    ch
-                                ),
-                            );
-                        }
-                        expect.av_channel = Some(ch.clone());
+                }
+                match (&p.stage, &p.code) {
+                    (None, None) => {}
+                    (Some((_, sl)), None) => {
+                        return err(*sl, "Probe 的 stage 与 code 必须成对出现（缺少 code）");
                     }
-                    for st in &p.streams {
-                        match st.kind {
-                            StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
-                            StreamKind::Stderr => expect.stderr = Some(st.expect.clone()),
-                        }
+                    (None, Some((_, cl))) => {
+                        return err(*cl, "Probe 的 stage 与 code 必须成对出现（缺少 stage）");
                     }
+                    (Some((st, sl)), Some((c, cl))) => {
+                        let stage = decode_probe_stage(st).ok_or_else(|| AuthorError {
+                            line: *sl,
+                            message: format!(
+                                "Probe stage 仅支持 parse / resolve / typecheck / verify / run，收到 {:?}",
+                                st
+                            ),
+                        })?;
+                        if c.trim().is_empty() {
+                            return err(*cl, "Probe code 不能为空");
+                        }
+                        if expect.exit.is_some() {
+                            return err(p.section_line, "Probe 错误预期不能同时声明 exit");
+                        }
+                        if family == ProbeFamily::AvConsole && p.channel.is_some() {
+                            return err(p.section_line, "console Probe 错误预期不能同时声明 channel");
+                        }
+                        let message = p
+                            .message
+                            .as_ref()
+                            .map(|(t, _)| MessageMatcher::Exact(t.clone()))
+                            .or_else(|| {
+                                p.message_contains
+                                    .as_ref()
+                                    .map(|(t, _)| MessageMatcher::Contains(t.clone()))
+                            });
+                        expect.completion = Completion::Error {
+                            stage,
+                            code: Some(c.clone()),
+                            message,
+                        };
+                    }
+                }
+                if let Some((ch, ch_line)) = &p.channel {
+                    if ch != "value" && ch != "unit" {
+                        return err(
+                            *ch_line,
+                            format!(
+                                "console Probe channel 仅支持 'value' 或 'unit'，收到 {:?}",
+                                ch
+                            ),
+                        );
+                    }
+                    expect.av_channel = Some(ch.clone());
+                }
+                for st in &p.streams {
+                    match st.kind {
+                        StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
+                        StreamKind::Stderr => expect.stderr = Some(st.expect.clone()),
+                    }
+                }
+                if family == ProbeFamily::AvConsole {
                     crate::contract::validate_console_oracle(
                         expect.stdout.as_ref(),
                         expect.stderr.as_ref(),
@@ -974,25 +1172,6 @@ fn decode_one_case(
                         line: p.section_line,
                         message: m,
                     })?;
-                } else {
-                    if let Some((_, l)) = p.channel {
-                        return err(
-                            l,
-                            "channel 仅允许用于 console recipe（ac-av/console-run-v1）",
-                        );
-                    }
-                    if let Some((_, l)) = p.stage {
-                        return err(l, "stage 仅允许用于 console recipe（ac-av/console-run-v1）");
-                    }
-                    if let Some((_, l)) = p.code {
-                        return err(l, "code 仅允许用于 console recipe（ac-av/console-run-v1）");
-                    }
-                    if !p.streams.is_empty() {
-                        return err(
-                            p.section_line,
-                            "只有 console recipe（ac-av/console-run-v1）接入输出流小节",
-                        );
-                    }
                 }
                 push_check(
                     &mut checks,
@@ -1093,7 +1272,9 @@ fn decode_h3_section(
     auto_path: &mut Option<String>,
     vm_result: &mut Option<(String, usize, Option<String>)>,
     vm_diag: &mut Option<(Stage, String, usize, Option<String>)>,
+    vm_diag_message: &mut Option<(Stage, String, Option<MessageMatcher>, usize, Option<String>)>,
     rust: &mut Option<RustSection>,
+    rust_diag: &mut Option<(Stage, String, Option<MessageMatcher>, usize, Option<String>)>,
     probes: &mut Vec<ProbeSection>,
 ) -> Result<(), AuthorError> {
     let title = sh.text.trim();
@@ -1101,10 +1282,14 @@ fn decode_h3_section(
         "Auto" => &["path", "final-newline"],
         "VM result" => &["check-id", "final-newline", "compare"],
         "VM diagnostic" => &["check-id", "stage", "code"],
+        "VM diagnostic message" => &["check-id", "stage", "code", "contains", "final-newline"],
         "Rust" => &["check-id"],
+        "Rust diagnostic" => &["check-id", "stage", "code", "contains", "final-newline"],
         "Notes" => &[],
         t if t.starts_with("Probe ") => &[
             "recipe", "entry", "caps", "exit", "channel", "stage", "code",
+            "message", "message-contains", "session", "profile", "diagnostics",
+            "package", "module", "kind", "fn", "leg",
         ],
         t if UNWIRED_SECTIONS.contains(&t) => {
             return err(
@@ -1217,6 +1402,78 @@ fn decode_h3_section(
             *vm_diag = Some((stage, code, sh.line, check_id));
             Ok(())
         }
+        "VM diagnostic message" | "Rust diagnostic" => {
+            // CF-02: typed stage/code plus an optional exact/contains
+            // message matcher riding one text fence.
+            let is_vm = title == "VM diagnostic message";
+            if (is_vm && vm_diag_message.is_some()) || (!is_vm && rust_diag.is_some()) {
+                return err(sh.line, format!("重复的 ### {} 节", title));
+            }
+            if fences.len() != 1 || fences[0].language != "text" {
+                return err(
+                    sh.line,
+                    format!("### {} 需要恰好一个 text 围栏（完整消息文本）", title),
+                );
+            }
+            let mut check_id = None;
+            let mut stage = None;
+            let mut code = None;
+            let mut contains = false;
+            let mut final_newline = false;
+            for a in &attrs {
+                match a.key.as_str() {
+                    "check-id" => check_id = Some(want_str(a)?),
+                    "stage" => stage = Some(want_str(a)?),
+                    "code" => code = Some(want_str(a)?),
+                    "contains" => contains = want_bool(a)?,
+                    "final-newline" => final_newline = want_bool(a)?,
+                    _ => unreachable!(),
+                }
+            }
+            let stage_text = stage.ok_or_else(|| AuthorError {
+                line: sh.line,
+                message: format!("### {} 需要 stage", title),
+            })?;
+            let code = code.ok_or_else(|| AuthorError {
+                line: sh.line,
+                message: format!("### {} 需要 code", title),
+            })?;
+            let stage = if is_vm {
+                decode_vm_stage(&stage_text).ok_or_else(|| AuthorError {
+                    line: sh.line,
+                    message: format!(
+                        "stage {:?} 不是 VM 支持的阶段（parse / type / run）",
+                        stage_text
+                    ),
+                })?
+            } else {
+                decode_probe_stage(&stage_text).ok_or_else(|| AuthorError {
+                    line: sh.line,
+                    message: format!(
+                        "stage {:?} 不是 Rust 诊断支持的阶段（parse / resolve / typecheck / verify / run）",
+                        stage_text
+                    ),
+                })?
+            };
+            if code.trim().is_empty() {
+                return err(sh.line, format!("### {} code 不能为空", title));
+            }
+            // A diagnostic message is a single logical line by default; the
+            // closing fence's newline is an artifact unless kept.
+            let text = fence_text(doc, fences[0], final_newline)?;
+            let matcher = if contains {
+                MessageMatcher::Contains(text)
+            } else {
+                MessageMatcher::Exact(text)
+            };
+            let row = (stage, code, Some(matcher), sh.line, check_id);
+            if is_vm {
+                *vm_diag_message = Some(row);
+            } else {
+                *rust_diag = Some(row);
+            }
+            Ok(())
+        }
         "Rust" => {
             if rust.is_some() {
                 return err(sh.line, "重复的 ### Rust 节");
@@ -1256,19 +1513,43 @@ fn decode_h3_section(
             let mut recipe: Option<String> = None;
             let mut entry = String::new();
             let mut caps = Vec::new();
+            let mut caps_declared = false;
             let mut exit = None;
             let mut channel = None;
             let mut stage = None;
             let mut code = None;
+            let mut message = None;
+            let mut message_contains = None;
+            let mut session = None;
+            let mut profile = None;
+            let mut diagnostics = None;
+            let mut package = None;
+            let mut module = None;
+            let mut kind = None;
+            let mut fn_name = None;
+            let mut leg = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
                     "entry" => entry = want_str(a)?,
-                    "caps" => caps = want_list(a)?,
+                    "caps" => {
+                        caps = want_list(a)?;
+                        caps_declared = true;
+                    }
                     "exit" => exit = Some(want_int(a)?),
                     "channel" => channel = Some((want_str(a)?, a.line)),
                     "stage" => stage = Some((want_str(a)?, a.line)),
                     "code" => code = Some((want_str(a)?, a.line)),
+                    "message" => message = Some((want_str(a)?, a.line)),
+                    "message-contains" => message_contains = Some((want_str(a)?, a.line)),
+                    "session" => session = Some((want_str(a)?, a.line)),
+                    "profile" => profile = Some((want_str(a)?, a.line)),
+                    "diagnostics" => diagnostics = Some((want_str(a)?, a.line)),
+                    "package" => package = Some(want_str(a)?),
+                    "module" => module = Some(want_str(a)?),
+                    "kind" => kind = Some(want_str(a)?),
+                    "fn" => fn_name = Some(want_str(a)?),
+                    "leg" => leg = Some(want_str(a)?),
                     _ => unreachable!(),
                 }
             }
@@ -1282,16 +1563,40 @@ fn decode_h3_section(
                     "Probe 节不接受直接围栏（输出流用 #### stdout / #### stderr 小节）",
                 );
             }
+            if message.is_some() && message_contains.is_some() {
+                return err(
+                    sh.line,
+                    "message 与 message-contains 互斥（同一检查只声明一种匹配）",
+                );
+            }
+            if (message.is_some() || message_contains.is_some()) && (stage.is_none() || code.is_none())
+            {
+                return err(
+                    sh.line,
+                    "message / message-contains 需要与 stage + code 成对（诊断错误预期）",
+                );
+            }
             probes.push(ProbeSection {
                 check_id: check_id.to_string(),
                 section_line: sh.line,
                 recipe,
                 entry,
                 caps,
+                caps_declared,
                 exit,
                 channel,
                 stage,
                 code,
+                message,
+                message_contains,
+                session,
+                profile,
+                diagnostics,
+                package,
+                module,
+                kind,
+                fn_name,
+                leg,
                 streams: Vec::new(),
             });
             Ok(())
