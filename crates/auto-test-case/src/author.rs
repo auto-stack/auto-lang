@@ -2268,7 +2268,7 @@ fn decode_h3_section(
                     format!("### {} 至多一个 text 围栏（完整消息文本；无围栏=无消息断言）", title),
                 );
             }
-            let mut check_id = check_id_of(&attrs)?;
+            let check_id = check_id_of(&attrs)?;
             let mut tier = None;
             let mut stage = None;
             let mut code = None;
@@ -2935,7 +2935,6 @@ fn decode_artifact_subsection(
     doc: &CaseDocument,
     lines: &[(usize, usize)],
     sh: &HeadRef,
-    next_head_line: usize,
     fences: &[&crate::document::DocumentFence],
     sink: &mut Vec<RustArtifact>,
 ) -> Result<(), AuthorError> {
@@ -3125,7 +3124,7 @@ fn decode_h4_subsection(
                     // artifact oracles (rs/c/h/json sets).
                     let check_id = parent_title.strip_prefix("Probe ").unwrap_or("").trim();
                     return decode_artifact_subsection(
-                        doc, lines, sh, next_head_line, &fences,
+                        doc, lines, sh, &fences,
                         &mut probes.iter_mut()
                             .find(|x| x.check_id == check_id)
                             .expect("probe section parsed")
@@ -3163,7 +3162,7 @@ fn decode_h4_subsection(
             });
             Ok(())
         }
-        t if parent_title.starts_with("AC ") || parent_title.starts_with("Syntax ") => {
+        _t if parent_title.starts_with("AC ") || parent_title.starts_with("Syntax ") => {
             let kind = match sh.text.trim() {
                 "stdout" => StreamKind::Stdout,
                 "stderr" => StreamKind::Stderr,
@@ -3173,7 +3172,7 @@ fn decode_h4_subsection(
                         // PLAN-1062 T-08 (CF-04): syntax oracle artifacts
                         // (lossless reconstruction / outline / canonical).
                         return decode_artifact_subsection(
-                            doc, lines, sh, next_head_line, &fences,
+                            doc, lines, sh, &fences,
                             &mut syntaxes.iter_mut()
                                 .find(|x| x.check_id == parent_title.strip_prefix("Syntax ").unwrap_or("").trim())
                                 .expect("syntax section parsed")
@@ -3185,7 +3184,7 @@ fn decode_h4_subsection(
                         // the intentionally-wrong golden of ac.red).
                         let check_id = parent_title.strip_prefix("AC ").unwrap_or("").trim();
                         return decode_artifact_subsection(
-                            doc, lines, sh, next_head_line, &fences,
+                            doc, lines, sh, &fences,
                             &mut acs.iter_mut()
                                 .find(|x| x.check_id == check_id)
                                 .expect("ac section parsed")
@@ -3240,7 +3239,7 @@ fn decode_h4_subsection(
             });
             Ok(())
         }
-        t if matches!(
+        _t if matches!(
             parent_title,
             "VM result" | "VM diagnostic" | "VM diagnostic message"
         ) =>
