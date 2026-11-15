@@ -222,6 +222,9 @@ mod probe972;
 // PLAN-972 T-02：装配标准库（packages-aggregates-ct lane）AV 正反例。
 #[path = "cases/stdlib_asm_972.rs"]
 mod stdlib_asm_972;
+// PLAN-972 T-08/V-08：逐操作覆盖对账——面清单奇偶校验 + 全公开符号五端演练。
+#[path = "cases/v08_surface_972.rs"]
+mod v08_surface_972;
 // PLAN-966：语句级编译期构造 + 宏调用的四端产品腿。
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;

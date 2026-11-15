@@ -973,10 +973,7 @@ fn c_min_or_cast_i32(v: i32) -> String {
 }
 /// PLAN-972 (T-03): the shared typed-constant literal forms (the text
 /// lane's inline match extracted for the collections lane).
-pub(crate) fn numeric_const_c(
-    ty: hir::BuiltinType,
-    bits: u64,
-) -> Result<String, A2xReject> {
+pub(crate) fn numeric_const_c(ty: hir::BuiltinType, bits: u64) -> Result<String, A2xReject> {
     Ok(match ty {
         hir::BuiltinType::I8 => c_min_or_cast_i8((bits as u8) as i8),
         hir::BuiltinType::I32 => c_min_or_cast_i32(bits as i32),

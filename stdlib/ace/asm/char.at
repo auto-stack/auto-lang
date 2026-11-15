@@ -3,8 +3,11 @@
 // for is_alpha/is_alphanum/is_ident (full-Unicode category tables are a
 // named later batch — legacy VM used host Unicode tables; the difference is
 // recorded, not silently narrowed). is_whitespace covers the legacy set
-// (space, tab, line feed, carriage return) by codepoint. to_lower/to_upper
-// (ASCII subset) follow; case tables for non-ASCII are the same later batch.
+// (space, tab, line feed, carriage return) by codepoint. The legacy
+// char-surface to_lower/to_upper (codepoint in/out, identity for
+// non-letters) close as the ASCII-subset codepoint forms at the bottom (pure
+// arithmetic — the old int→int identity-shift semantics);
+// full-Unicode case tables are the same named later batch.
 pub fn is_digit(c char) bool {
     let p = c.to_codepoint()
     if (p >= '0'.to_codepoint()) {
@@ -62,4 +65,25 @@ pub fn is_whitespace(c char) bool {
         return true
     }
     return false
+}
+
+// Legacy to_upper/to_lower parity: the old char surface was codepoint
+// in/out with identity for non-ASCII-letters — kept verbatim as pure
+// arithmetic (no table or char construction needed; works on every end).
+pub fn to_upper_ascii(p int) int {
+    if (p >= 97) {
+        if (p <= 122) {
+            return p - 32
+        }
+    }
+    return p
+}
+
+pub fn to_lower_ascii(p int) int {
+    if (p >= 65) {
+        if (p <= 90) {
+            return p + 32
+        }
+    }
+    return p
 }

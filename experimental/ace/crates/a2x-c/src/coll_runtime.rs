@@ -53,10 +53,12 @@ pub fn collections_runtime_source(marks: &[&'static str]) -> String {
     // numeric surface rides the C collections family). The scalar core's
     // INVALID code aliases the coll enum's INVALID_SCALAR (the transport
     // layer keeps distinct text codes via the provider's trap table).
-    s.push_str("#ifndef A2X_TRAP_INVALID
+    s.push_str(
+        "#ifndef A2X_TRAP_INVALID
 #define A2X_TRAP_INVALID A2X_TRAP_INVALID_SCALAR
 #endif
-");
+",
+    );
     crate::runtime::write_numeric_runtime(&mut s).expect("formatting into a String cannot fail");
     s.push_str(
         "

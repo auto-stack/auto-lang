@@ -304,9 +304,9 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
         // name embeds the param name, so it bypasses the pass table).
         if let Ty::Closure(sig_idx) = ty {
             let pname = local_name(&l.name, *idx);
-            let sig = view.closure_sig(sig_idx).ok_or_else(|| {
-                A2xReject::unsupported_type("closure type index out of range")
-            })?;
+            let sig = view
+                .closure_sig(sig_idx)
+                .ok_or_else(|| A2xReject::unsupported_type("closure type index out of range"))?;
             let ret_ty = view.resolve_use_ty(sig.result)?;
             let ret_chan = coll_ret_chan_of(view, ret_ty)?;
             let mut cparams: Vec<String> = Vec::new();
@@ -941,11 +941,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 let f_name = crate::lower::c_bname(from_b);
                 let t_name = crate::lower::c_bname(to);
                 let chan = crate::lower::c_result_ty(crate::lower::builtin_ty_of(to)?)?;
-                self.fall_res(
-                    id,
-                    &chan,
-                    format!("a2x_c_{f_name}_{t_name}({v})"),
-                )
+                self.fall_res(id, &chan, format!("a2x_c_{f_name}_{t_name}({v})"))
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.expr(lhs)?;
@@ -1012,11 +1008,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                             K::Rem => format!("a2x_rem_{name}"),
                             _ => unreachable!(),
                         };
-                        self.fall_res(
-                            id,
-                            chan,
-                            format!("{f}(({dom})({l}), ({dom})({r}))"),
-                        )
+                        self.fall_res(id, chan, format!("{f}(({dom})({l}), ({dom})({r}))"))
                     }
                     hir::BinOp::LtI32 => Ok(format!("({l} < {r})")),
                     hir::BinOp::LeI32 => Ok(format!("({l} <= {r})")),
@@ -1182,6 +1174,23 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 } else {
                     Vec::new()
                 };
+                // PLAN-972 (T-08): View-mode Record/Variant callee params
+                // are ConstPtr (`const a2x_rec_X*` / `const a2x_var_X*`) —
+                // the argument passes its ADDRESS, unless it is itself a
+                // pointer-passed local of the caller (already the
+                // address; passing a user Option/record value by struct
+                // previously mismatched the prototype — C4047/C2440).
+                let ref_ptr_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
+                    t.params
+                        .iter()
+                        .map(|p| {
+                            p.mode == hir::ParamMode::View
+                                && matches!(p.ty, Ty::Record(_) | Ty::Variant(_))
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let mut args = Vec::new();
                 for (i, a) in eval_args.iter().enumerate() {
                     let v = if str_view_param.get(i).copied().unwrap_or(false) {
@@ -1191,6 +1200,20 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     };
                     if shared_list_param.get(i).copied().unwrap_or(false) {
                         args.push(format!("&{v}"));
+                    } else if ref_ptr_param.get(i).copied().unwrap_or(false) {
+                        let already_ptr = matches!(
+                            &self.f.body.exprs[a.0 as usize].kind,
+                            hir::ExprKind::ReadLocal { local }
+                                if matches!(
+                                    self.passes.get(&local.0),
+                                    Some(ParamPass::ConstPtr) | Some(ParamPass::MutPtr)
+                                )
+                        );
+                        if already_ptr {
+                            args.push(v);
+                        } else {
+                            args.push(format!("&{v}"));
+                        }
                     } else {
                         args.push(v);
                     }
@@ -1220,11 +1243,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             hir::ExprKind::TextCharAt { operand, index } => {
                 let o = self.text_operand(operand)?;
                 let i = self.expr(index)?;
-                self.fall_res(
-                    id,
-                    "a2x_char_result",
-                    format!("a2x_str_char_at({o}, {i})"),
-                )
+                self.fall_res(id, "a2x_char_result", format!("a2x_str_char_at({o}, {i})"))
             }
             hir::ExprKind::TextSlice {
                 operand,
@@ -1242,11 +1261,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             }
             hir::ExprKind::TextToOwned { operand } => {
                 let o = self.text_operand(operand)?;
-                self.fall_res(
-                    id,
-                    "a2x_stro_result",
-                    format!("a2x_str_to_owned({o})"),
-                )
+                self.fall_res(id, "a2x_stro_result", format!("a2x_str_to_owned({o})"))
             }
             // (TextConcat is handled by the pre-existing FStr arm in
             // expr_rest — the out-param stro_result form.)
@@ -1272,9 +1287,10 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                         "capturing closures await the C closure-env unit (PLAN-972)",
                     ));
                 }
-                let f = self.view.fn_by_def(callee.0 as usize).ok_or_else(|| {
-                    A2xReject::unsupported_expr("closure callee def not in view")
-                })?;
+                let f = self
+                    .view
+                    .fn_by_def(callee.0 as usize)
+                    .ok_or_else(|| A2xReject::unsupported_expr("closure callee def not in view"))?;
                 Ok(crate::lower::c_fn_name(f.source_name))
             }
             hir::ExprKind::CallClosure { callee, eval_args } => {
@@ -1584,11 +1600,24 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 // the root must be addressable (a whole-local read): the
                 // take MOVES the payload out and resets the disc — a
                 // wrong arm leaves the root untouched (the caller's
-                // error frees still own it)
+                // error frees still own it). A pointer-passed
+                // Record/Variant param local (ConstPtr/MutPtr) IS the
+                // address already — taking `&name` would pass the
+                // pointer's own address (indirection mismatch). The
+                // take resets the disc, so a ConstPtr view needs the
+                // explicit cast — the projection itself was
+                // verifier-approved (borrow discipline is at the HIR
+                // level, not the C qualifier).
                 let root_ref = match &self.f.body.exprs[root.0 as usize].kind {
-                    hir::ExprKind::ReadLocal { local } => {
-                        format!("&{}", self.local_name_of(*local))
-                    }
+                    hir::ExprKind::ReadLocal { local } => match self.passes.get(&local.0) {
+                        Some(ParamPass::ConstPtr) => {
+                            let name = self.local_name_of(*local);
+                            let ty = coll_c_value_ty(self.view, self.local_ty(*local)?)?;
+                            format!("({ty}*)(void*){name}")
+                        }
+                        Some(ParamPass::MutPtr) => self.local_name_of(*local),
+                        _ => format!("&{}", self.local_name_of(*local)),
+                    },
                     _ => {
                         return Err(A2xReject::unsupported_expr(
                             "variant projection root must be a whole-local read",

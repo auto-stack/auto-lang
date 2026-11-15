@@ -118,11 +118,17 @@ pub fn write_numeric_runtime(out: &mut dyn std::fmt::Write) -> std::fmt::Result 
                 "static inline a2x_result_{rt} a2x_{op}_{name}({dom} a, {dom} b) {{\n"
             ))?;
             if name == "i64" && op == "mul" {
-                out.write_str("    int64_t lo64; int64_t hi64 = _mul128(a, b, &lo64);\n")?;
+                // PLAN-972 (T-08): MSVC's _mul128 RETURNS the LOW 64 bits
+                // and stores the HIGH half through the out-param — the
+                // previous line assigned them swapped (hi64 got the low
+                // product), so EVERY i64 mul trapped Overflow (3*5
+                // included; the 972 exercise first executed this path).
+                out.write_str("    int64_t hi64; int64_t lo64 = _mul128(a, b, &hi64);\n")?;
                 out.write_str("    if (hi64 != lo64 >> 63) { return (a2x_result_i64)A2X_TRAP_I(A2X_TRAP_OVERFLOW); }\n")?;
                 out.write_str("    return (a2x_result_i64)A2X_OK_I(lo64);\n")?;
             } else if name == "u64" && op == "mul" {
-                out.write_str("    uint64_t lo64; uint64_t hi64 = _umul128(a, b, &lo64);\n")?;
+                // _umul128: same return-low / out-param-high contract.
+                out.write_str("    uint64_t hi64; uint64_t lo64 = _umul128(a, b, &hi64);\n")?;
                 out.write_str("    if (hi64 != 0) { return (a2x_result_u64)A2X_TRAP_U(A2X_TRAP_OVERFLOW); }\n")?;
                 out.write_str("    return (a2x_result_u64)A2X_OK_U(lo64);\n")?;
             } else {

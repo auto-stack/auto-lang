@@ -658,7 +658,18 @@ impl Lower<'_, '_> {
             | PlaceGet { dst, .. }
             | VariantPack { dst, .. }
             | VariantProject { dst, .. }
-            | Call { dst, .. } => Some(*dst),
+            | Call { dst, .. }
+            // PLAN-972 (T-08): the round-6 text arms allocate FRESH nodes
+            // (slice own-clones its view; concat / to_owned deep-copy) —
+            // they must carry a dst binding like every other allocation,
+            // or the first later validation (e.g. the scope-end Drop's
+            // reads precheck) refuses on the unbound node (mn_coll_type
+            // refusal=5 → trap 70; the starts_with/ends_with/contains
+            // chain first hit it — literal-rooted clones were masked by
+            // the literal's own binding).
+            | StrSlice { dst, .. }
+            | StrConcat { dst, .. }
+            | StrToOwned { dst, .. } => Some(*dst),
             VariantSwitch { root, .. } => Some(*root),
             _ => None,
         };
@@ -670,6 +681,18 @@ impl Lower<'_, '_> {
                     | ListNew { .. }
                     | VariantPack { .. }
                     | VariantSwitch { .. }
+                    // PLAN-972 (T-08): the round-6 text arms allocate
+                    // FRESH nodes (slice own-clones its view; concat and
+                    // to_owned deep-copy) — they must BIND their type
+                    // fingerprint like every other fresh allocation, or
+                    // the first later validation of the unbound node
+                    // refuses (mn_coll_type refusal=5 → trap 70; the
+                    // starts_with/ends_with/contains chain first hit it —
+                    // literal-rooted clones were masked by the literal's
+                    // own binding).
+                    | StrSlice { .. }
+                    | StrConcat { .. }
+                    | StrToOwned { .. }
             );
             self.check_slot(dst, bind)?;
         }
@@ -831,9 +854,15 @@ impl Lower<'_, '_> {
                 let v = self.checked("mn_coll_char_from_codepoint", &[(c, types::I32)])?;
                 self.scalar_to(*dst, v);
             }
-            // PLAN-972 (T-03): integer conversion — widening extends with
-            // the SOURCE's signedness; narrowing range-checks in I128 and
-            // traps (-30, the checked contract) outside the target domain.
+            // PLAN-972 (T-03/T-08): integer conversion — widening extends
+            // with the SOURCE's signedness and needs NO range check (an
+            // in-source-range value is in every wider target's range by
+            // construction); narrowing range-checks at the SOURCE's own
+            // I64 reduction and traps (-30, the checked contract) outside
+            // the target domain. The earlier I128-width `icmp_imm` range
+            // compare misbehaved on x64 for negative values (a valid
+            // I32→I64 widening of -421 trapped); I64-width compares are
+            // exact here because the source never exceeds 64 bits.
             Conv { dst, src } => {
                 let from = self.m.funcs[0].slots[*src as usize].ty;
                 let to = self.m.funcs[0].slots[*dst as usize].ty;
@@ -857,48 +886,82 @@ impl Lower<'_, '_> {
                     num(&self.m.types[from as usize])?,
                     num(&self.m.types[to as usize])?,
                 );
+                let bits_of = |t: NumTy| -> u32 {
+                    match t {
+                        NumTy::I8 | NumTy::U8 => 8,
+                        NumTy::I32 | NumTy::U32 => 32,
+                        NumTy::I64 | NumTy::U64 => 64,
+                        NumTy::F32 | NumTy::F64 => unreachable!("filtered above"),
+                    }
+                };
                 let signed_from = matches!(fa, NumTy::I8 | NumTy::I32 | NumTy::I64);
                 let signed_to = matches!(ta, NumTy::I8 | NumTy::I32 | NumTy::I64);
                 let wide = types::I128;
                 let v = self.bits(*src);
-                let v = if signed_from {
+                // PLAN-972 (T-08): narrow scalar cells hold ZERO-extended
+                // words (`scalar_to` uextends on store) — re-narrow to the
+                // SOURCE's width first so the signed extension restores the
+                // sign bits (a negative I32→I64 widening previously read
+                // the zero-extended word: -421 became 4294966875, wrong
+                // arithmetic and a spurious narrowing trap).
+                let v = if bits_of(fa) <= 32 {
+                    let narrow = if bits_of(fa) == 8 {
+                        types::I8
+                    } else {
+                        types::I32
+                    };
+                    let v = self.fb.ins().ireduce(narrow, v);
+                    if signed_from {
+                        self.fb.ins().sextend(wide, v)
+                    } else {
+                        self.fb.ins().uextend(wide, v)
+                    }
+                } else if signed_from {
                     self.fb.ins().sextend(wide, v)
                 } else {
                     self.fb.ins().uextend(wide, v)
                 };
-                let (lo, hi): (i128, i128) = match ta {
-                    NumTy::I8 => (i8::MIN as i128, i8::MAX as i128),
-                    NumTy::U8 => (0, u8::MAX as i128),
-                    NumTy::I32 => (i32::MIN as i128, i32::MAX as i128),
-                    NumTy::U32 => (0, u32::MAX as i128),
-                    NumTy::I64 => (i64::MIN as i128, i64::MAX as i128),
-                    NumTy::U64 => (0, u64::MAX as i128),
-                    NumTy::F32 | NumTy::F64 => unreachable!("filtered above"),
-                };
-                let (low, high) = if signed_to {
-                    (
-                        self.fb
-                            .ins()
-                            .icmp_imm(IntCC::SignedGreaterThanOrEqual, v, lo as i64),
-                        self.fb
-                            .ins()
-                            .icmp_imm(IntCC::SignedLessThanOrEqual, v, hi as i64),
-                    )
-                } else {
-                    // unsigned target: the high bound rides the u64 bit
-                    // pattern (u64::MAX == -1 as u64 under unsigned CC).
-                    (
-                        self.fb
-                            .ins()
-                            .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, v, 0),
-                        self.fb
-                            .ins()
-                            .icmp_imm(IntCC::UnsignedLessThanOrEqual, v, hi as i64),
-                    )
-                };
-                let good = self.fb.ins().band(low, high);
-                let e = self.i32(-30);
-                self.guard(good, e);
+                if bits_of(ta) < bits_of(fa) {
+                    // narrowing: compare the exact I64 reduction against
+                    // the target bounds (both fit i64 for every ≤64-bit
+                    // target; u64::MAX rides the bit pattern under the
+                    // unsigned CC, which cannot occur from a signed
+                    // source this lane admits).
+                    let v64 = self.fb.ins().ireduce(types::I64, v);
+                    let (lo, hi): (i64, i64) = match ta {
+                        NumTy::I8 => (i8::MIN as i64, i8::MAX as i64),
+                        NumTy::U8 => (0, u8::MAX as i64),
+                        NumTy::I32 => (i32::MIN as i64, i32::MAX as i64),
+                        NumTy::U32 => (0, u32::MAX as i64),
+                        // I64/U64 targets never narrow (64-bit sources
+                        // only); the match keeps the bound table total.
+                        NumTy::I64 => (i64::MIN, i64::MAX),
+                        NumTy::U64 => (0, -1),
+                        NumTy::F32 | NumTy::F64 => unreachable!("filtered above"),
+                    };
+                    let (low, high) = if signed_to {
+                        (
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::SignedGreaterThanOrEqual, v64, lo),
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::SignedLessThanOrEqual, v64, hi),
+                        )
+                    } else {
+                        (
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, v64, lo),
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::UnsignedLessThanOrEqual, v64, hi),
+                        )
+                    };
+                    let good = self.fb.ins().band(low, high);
+                    let e = self.i32(-30);
+                    self.guard(good, e);
+                }
                 let target_ty = if ta == NumTy::I64 || ta == NumTy::U64 {
                     types::I64
                 } else if ta == NumTy::I32 || ta == NumTy::U32 {
