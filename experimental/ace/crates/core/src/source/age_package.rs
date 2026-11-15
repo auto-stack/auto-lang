@@ -890,6 +890,66 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
     out
 }
 
+/// PLAN-981（IF-981-ORIGINAL）：场景属性值的求值函数。
+///
+/// 与 [`hidden_fn`] 同一机制（普通 Auto 源交给唯一 verify），差别只在**返回
+/// 类型**：场景属性是 f32 / 元组 / 资源引用等作者值，不是文本，故按值的语法
+/// 形状给出真实类型；形状无法判定时返回 `None`（调用方具名拒绝，不猜 i32）。
+pub(crate) fn hidden_fn_scene_value(name: &str, expr: &Expr, span: Span) -> Option<FnItem> {
+    let ret = scene_value_type(expr)?;
+    Some(FnItem {
+        name: Ident {
+            name: name.to_string(),
+            span,
+        },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn { kind: ret, span },
+        body: Block {
+            stmts: vec![Stmt::Return {
+                value: expr.clone(),
+                span,
+            }],
+            span,
+        },
+        span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+    })
+}
+
+/// 场景属性值的类型（按语法形状；不是推断引擎）。
+fn scene_value_type(e: &Expr) -> Option<TypeRef> {
+    match &e.kind {
+        ExprKind::TypedLit { ty, .. } => Some(match ty {
+            TypeWord::Float => TypeRef::Builtin(TypeWord::Float),
+            TypeWord::Double | TypeWord::F64 => TypeRef::Builtin(TypeWord::Double),
+            TypeWord::Int | TypeWord::I32 => TypeRef::Builtin(TypeWord::I32),
+            TypeWord::Bool => TypeRef::Builtin(TypeWord::Bool),
+            _ => return None,
+        }),
+        ExprKind::IntLit(_) => Some(TypeRef::Builtin(TypeWord::I32)),
+        ExprKind::BoolLit(_) => Some(TypeRef::Builtin(TypeWord::Bool)),
+        ExprKind::StrLit(_) => Some(TypeRef::Builtin(TypeWord::Str)),
+        // `(x, y)` → 二元组类型（元素类型递归）。
+        ExprKind::TupleLit(items) => {
+            let mut ts = Vec::new();
+            for it in items {
+                ts.push(TypeAnn {
+                    kind: scene_value_type(it)?,
+                    span: it.span,
+                });
+            }
+            Some(TypeRef::Tuple(ts))
+        }
+        // 资源引用/服务调用：类型由共享 resolver 判定，这里沿用 AGE 端口符号形式。
+        // 具体端口名在 resolver 的服务分类里有定论，故返回 `None` 让调用方
+        // 按"值来自服务调用"的既有路径处理，不在此处猜。
+        _ => None,
+    }
+}
+
 /// 包面身份拒绝：`age-package` 只由本前门消费（对称于 979 的通用入口拒绝）。
 pub fn age_package_refusal(profile: SourceProfile, src_len: usize) -> Option<Diagnostic> {
     if profile != SourceProfile::AgePackage {

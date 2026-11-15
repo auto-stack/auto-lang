@@ -928,6 +928,39 @@ pub(crate) fn project_packages_front(
                         text_fns.push((name, leaf.span));
                     }
                 }
+                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
+                // 不另建求值器，也不把手写数值当常量。
+                for (si, scene) in node.view.scene_components.iter().enumerate() {
+                    for (ai, attr) in scene.attrs.iter().enumerate() {
+                        let name = format!(
+                            "{}scene_{}_{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            age_components.len(),
+                            si,
+                            ai
+                        );
+                        match crate::source::age_package::hidden_fn_scene_value(
+                            &name,
+                            &attr.value,
+                            attr.span,
+                        ) {
+                            Some(f) => items.push(crate::source::ast::Item::Fn(f)),
+                            None => {
+                                // 形状无法给出类型：具名拒绝，不猜 i32、不静默丢。
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.scene-value",
+                                    format!(
+                                        "scene attribute `{}` has a value shape this slice \
+                                         cannot type yet",
+                                        attr.key
+                                    ),
+                                    attr.span,
+                                )]);
+                            }
+                        }
+                    }
+                }
                 age_components.push((node, text_fns));
             }
         }
