@@ -125,6 +125,11 @@ stage: goal | plan_id: PLAN-1058 | plan_revision: r1 | round: 4 | from: review |
 
 stage: goal | plan_id: PLAN-1058 | plan_revision: r1 | round: 5 | from: merge | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1058/auto-lang | commit: c3b1a5d06 | next: merge
 
+
+2026-11-15 stage: merge 收尾 | plan_id: PLAN-1058:r1 | checkpoints: archived=docs/plans/archive/1058-autodown-mixed-language-incremental-editing.md（status: archived；簿记提交 c2155153a）；cleaned=wt-guard clean → worktree D:/autostack/.wt/lang-1058/auto-lang 与分支 plan-1058-dev（c3b1a5d06）删除、组目录 lang-1058 移除（worktree list 复核 0 残留）；plan-artifacts/plan-1058 整目录删除（证据已折叠：oracle 脚本为一次性探针，confirm_oracle.out 的样例/哈希/版本事实记于 §4/§9 与 SD-01；无具名持有）；登记表 .retention/policy.json 追加 PLAN-1058 deleted-at-merge (no holds) | completion_kind: delivered | 落点核对: 本计划命令/日志实际使用的输出目录仅 plan-artifacts/plan-1058（已删）与 worktree 内 target/（随 worktree 删除）；无其他盘符/外部安装输出 | deployment_observation: 库级原型，无生产产物/发行面需要刷新（AutoEdit 接线另行决定）| blockers: none
+
+stage: goal | plan_id: PLAN-1058 | plan_revision: r1 | round: 6 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: c3b1a5d06 | next: done
+
 ## 10. 待澄清事项
 
 没有阻塞 T-01 的产品决策。未闭合围栏的流式与完整文档模式如有差异，由 T-01 对照现版固定所选模式，列明另一模式的边界。外部语言包、外语子集进入 Checked HIR、AutoEdit 正式替换及新格式适配按各自后续范围评估。
