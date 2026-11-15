@@ -3884,22 +3884,6 @@ impl<'p> Emitter<'p> {
             frag!("type t_f32 f32 {}", program_span);
             spans.types.push(program_span);
             nl!(12);
-            // AGE typed 端口作为名义记录发射（无字段：身份即端口）。资源服务
-            // 的返回类型引用它们，故必须在场。
-            for (port, fields) in crate::source::age_resources::AGE_PORT_FIELDS {
-                // Same shape as the declared-record emission below:
-                // `{ name: "<n>", type: t_<ty> }`, comma separated.
-                let fs: Vec<String> = fields
-                    .iter()
-                    .map(|(n, ty)| format!("{{ name: \"{n}\", type: t_{ty} }}"))
-                    .collect();
-                frag!(
-                    &format!("type t_rec_{} record {{ fields: [{}] }}", port, fs.join(", ")),
-                    program_span
-                );
-                spans.types.push(program_span);
-                nl!(12);
-            }
         }
         if self.profile.is_text() {
             frag!("type t_str str {}", program_span);
@@ -5450,7 +5434,13 @@ fn global_type_id(sym: &str) -> String {
     format!("t_{}", global_id_suffix(sym))
 }
 fn intrinsic_id_suffix(sym: &str) -> String {
-    if sym.starts_with("auto.console.") || sym.starts_with("auto.platform.") {
+    if sym.starts_with("auto.console.")
+        || sym.starts_with("auto.platform.")
+        // PLAN-981：AGE 资源服务的符号形如 `age.material2d.color.v1`——只取末段
+        // 会让 `color`/`quad`/`circle` 全塌成 `v1`，同一模块两处调用即重复 id。
+        // 服务符号用全名（与 console/platform 同纪律）。
+        || sym.starts_with("age.")
+    {
         sym.replace('.', "_")
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()

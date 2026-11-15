@@ -2082,6 +2082,11 @@ impl<'a> Walker<'a> {
         if self.my_decls().types.contains_key(&name.name) {
             return Ok(type_symbol(self.pkg(), self.module(), &name.name));
         }
+        // PLAN-981：AGE typed 端口是内建领域类型——不是模块符号，保持原名交
+        // resolver（与上面 aggregates 的内建名义类型同一处理）。
+        if crate::source::age_resources::is_port_type(&name.name) {
+            return Ok(name.name.clone());
+        }
         if let Some(b) = self.binds.get(&name.name) {
             return if b.is_type {
                 Ok(b.symbol.clone())
@@ -2102,7 +2107,11 @@ impl<'a> Walker<'a> {
         ))
     }
     fn is_type_name(&self, name: &str) -> bool {
-        self.my_decls().types.contains_key(name) || self.binds.get(name).is_some_and(|b| b.is_type)
+        self.my_decls().types.contains_key(name)
+            || self.binds.get(name).is_some_and(|b| b.is_type)
+            // PLAN-981：AGE typed 端口（`Material2D`/`Mesh2D`）是内建领域类型，
+            // 既非本模块声明也非导入；按内建类型词同等待遇。
+            || crate::source::age_resources::is_port_type(name)
     }
     /// 裸全局名 -> 全局符号（本模块 const/store，或导入常量）。
     fn global_of(&self, name: &str) -> Option<String> {

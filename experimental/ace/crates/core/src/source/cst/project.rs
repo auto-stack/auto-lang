@@ -256,20 +256,53 @@ pub(crate) fn project_program_with_caps(
                 // 非活动臂 is-分支不匹配）。
                 items.push(Item::Enum(eng.run_enum_item(node)));
             } else if Some(kind) == age_let_item_kind {
-                // PLAN-981（IF-981-ORIGINAL）：模块级 `let` **无类型注解**（作者
-                // 靠推断），而 `Item::Const` 的投影路径要求注解——直接复用会
-                // panic。此处具名拒绝，不用一条会崩的路径冒充支持。
+                // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 无注解，类型由**初值**
+                // 推断。本切片只覆盖作者实际写法：初值是 AGE 资源服务调用，其返回
+                // 类型由声明表给出（`material2d.color -> Material2D` 等）。其它初值
+                // 形状具名拒绝——不假装有通用推断器，也不猜成 i32。
                 let span = first_leaf_span(&eng.cx, node);
-                eng.cx.reject(span, move || {
-                    Diagnostic::new(
-                        Stage::Text,
-                        "source.module-let-inference",
-                        "a module-level `let` needs type inference, which this front door does not \
-                         implement yet; write `const <name>: <type> = <expr>` until it lands",
-                        span,
-                    )
-                });
-                continue;
+                let value_n = match eng.cx.field_child(node, "value") {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let inferred = age_service_result_port(&eng.cx, value_n);
+                match inferred {
+                    Some(port) => {
+                        // 与 `const` 同一 Item 形状，注解取推断出的端口类型。
+                        let name_leaf =
+                            eng.cx.field_child(node, "name").expect("let name");
+                        let name = ident_of(&mut eng.cx, name_leaf);
+                        let ann = TypeAnn {
+                            kind: TypeRef::Record(Ident {
+                                name: port.to_string(),
+                                span: eng.cx.span_of(value_n),
+                            }),
+                            span: eng.cx.span_of(value_n),
+                        };
+                        let value = eng.project_expr_sync(value_n);
+                        items.push(Item::Const(crate::source::ast::ConstItem {
+                            name,
+                            ty: ann,
+                            value,
+                            span: eng.cx.span_of(node),
+                        }));
+                        continue;
+                    }
+                    None => {
+                        eng.cx.reject(span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.module-let-inference",
+                                "a module-level `let` is typed from its initializer; this slice \
+                                 infers only AGE resource-service calls (e.g. \
+                                 `material2d.color(...)`). Write `const <name>: <type> = <expr>` \
+                                 for other initializers",
+                                span,
+                            )
+                        });
+                        continue;
+                    }
+                }
             } else if Some(kind) == const_item_kind || Some(kind) == var_item_kind {
                 // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
                 // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。
@@ -3872,6 +3905,37 @@ fn range_parts(cx: &Cx, node: u32) -> (u32, u32, bool) {
     let start_n = cx.field_child(node, "start").expect("range start");
     let end_n = cx.field_child(node, "end").expect("range end");
     (start_n, end_n, inclusive)
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：初值是 AGE 资源服务调用时，其返回的端口类型名。
+///
+/// 与 resolver 的服务分类**同一判据**：`MethodCall{recv: Var(ns), name}` 且
+/// `ns.op` 命中声明表 → 该 op 的 `result_port`。其它形状返回 None（调用方具名
+/// 拒绝，不猜类型）。
+fn age_service_result_port(cx: &Cx, expr_n: u32) -> Option<&'static str> {
+    // 表达式节点 → 找到其中的 `MethodCall-like` 形状。CST 里点分调用是
+    // `expr` 下的 receiver `ident` + `.` + `ident` + 实参块；这里用词法子叶
+    // 序列判定，避免依赖投影后的 AST。
+    let mut leaves: Vec<(u64, String)> = Vec::new();
+    let mut stack = vec![expr_n];
+    while let Some(n) = stack.pop() {
+        let kids = cx.children(n);
+        if kids.is_empty() {
+            if cx.tree.node(n).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0 {
+                let (a, _) = cx.tree.abs_range(n);
+                leaves.push((a, cx.spelling(n)));
+            }
+        }
+        for c in kids.into_iter().rev() {
+            stack.push(c);
+        }
+    }
+    leaves.sort_by_key(|(a, _)| *a);
+    if leaves.len() < 3 {
+        return None;
+    }
+    let dotted = format!("{}.{}", leaves[0].1, leaves[2].1);
+    crate::source::age_resources::lookup(&dotted).map(|op| op.result_port)
 }
 
 fn ident_of(cx: &mut Cx, leaf: u32) -> Ident {

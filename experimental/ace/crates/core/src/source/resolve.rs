@@ -1803,6 +1803,36 @@ pub fn validate_foreign_declarations(
     }
 }
 
+/// PLAN-981：该块里是否出现 AGE 资源服务调用（`material2d.color(...)` 等）。
+///
+/// 判据与 resolver 的分类**同一条件**（`MethodCall{recv: Var(ns), name}` 且
+/// `ns.op` 命中声明表），不另立规则。
+fn uses_age_service(b: &ast::Block) -> bool {
+    fn is_service(e: &ast::Expr) -> bool {
+        if let ast::ExprKind::MethodCall { recv, name, .. } = &e.kind {
+            if let ast::ExprKind::Var(id) = &recv.kind {
+                let dotted = format!("{}.{}", id.name, name.name);
+                return crate::source::age_resources::lookup(&dotted).is_some();
+            }
+        }
+        false
+    }
+    fn block(b: &ast::Block) -> bool {
+        b.stmts.iter().any(|s| match s {
+            ast::Stmt::Let { value, .. } => is_service(value),
+            ast::Stmt::Assign { value, .. } => is_service(value),
+            ast::Stmt::Return { value, .. } => is_service(value),
+            ast::Stmt::ExprStmt { value, .. } => is_service(value),
+            ast::Stmt::If { cond, then, els, .. } => {
+                is_service(cond) || block(then) || els.as_ref().is_some_and(|e| block(e))
+            }
+            ast::Stmt::Loop { body, .. } => block(body),
+            _ => false,
+        })
+    }
+    block(b)
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -1860,14 +1890,36 @@ fn resolve_detailed(
     // PLAN-981（IF-981-ORIGINAL）：AGE typed 端口（`Material2D`/`Mesh2D`）登记为
     // **无字段名义记录**——身份即端口（两种端口互不相等），资源语义仍归领域
     // owner 解释；这里不把资源压平成带颜色字段的普通 record。
-    if surface == SourceProfile::AgePackage {
+    // 包前门用 TextRecord 做领域解析（面在 profile 之上），所以 profile 判据在这里
+    // 永远不成立——按**是否使用 AGE 资源服务**登记。
+    let uses_age_ports = program.items.iter().any(|it| match it {
+        ast::Item::Fn(f) => uses_age_service(&f.body),
+        _ => false,
+    });
+    if surface == SourceProfile::AgePackage || uses_age_ports {
         for port in crate::source::age_resources::AGE_PORT_TYPES {
             if !rec_index.contains_key(*port) {
                 rec_index.insert(port.to_string(), records.len());
+                let fields = crate::source::age_resources::AGE_PORT_FIELDS
+                    .iter()
+                    .find(|(p, _)| *p == *port)
+                    .map(|(_, fs)| {
+                        fs.iter()
+                            .map(|(n, ty)| ResolvedField {
+                                name: n.to_string(),
+                                vt: match *ty {
+                                    "f32" => VT::F32,
+                                    _ => VT::I32,
+                                },
+                                span: Span { start: 0, end: 0 },
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 records.push(ResolvedRecord {
                     name: port.to_string(),
                     name_span: Span { start: 0, end: 0 },
-                    fields: Vec::new(),
+                    fields,
                     methods: Vec::new(),
                 });
             }
@@ -13190,9 +13242,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 }
                                 args.push(arg.value);
                             }
+                            // 端口在解析开始时已登记；缺失是内部不变量破坏，
+                            // not a silent downgrade to i32.
                             let port = match self.rec_index.get(op.result_port) {
                                 Some(&i) => VT::Rec(i),
-                                None => VT::I32,
+                                None => {
+                                    self.bind_err(
+                                        "source.age.resource-port",
+                                        format!(
+                                            "AGE port type `{}` is not registered for this document",
+                                            op.result_port
+                                        ),
+                                        node_span,
+                                    );
+                                    VT::I32
+                                }
                             };
                             self.used_intrinsics.insert(op.symbol);
                             out[dest] = ResolvedExpr {
