@@ -1,0 +1,7 @@
+fn main() int {
+    var a Str = "A中😀"
+    let c Str = "pq"
+    let o Str = a.clone()
+    a = a + "xy"
+    return a.len() + c.len() + o.len()
+}
