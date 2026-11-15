@@ -996,8 +996,17 @@ pub(crate) fn project_packages_front(
                             )]);
                         }
                         use crate::source::age_resources::AttrValueKind;
+                        // 组件实例的属性名就是该 node 声明的**参数名**，作者自定，
+                        // 无法在 `attr_value_kind` 的扁平表里穷举。故实例上的未知键
+                        // 按普通值处理；`shape2d` / 3D 元素仍只接受已知属性。
+                        let is_component_instance =
+                            !crate::source::age_resources::is_3d_element(scene.kind.as_str())
+                                && scene.kind != "shape2d";
                         let kind = match crate::source::age_resources::attr_value_kind(&attr.key) {
                             Some(k) => k,
+                            None if is_component_instance => {
+                                crate::source::age_resources::AttrValueKind::Value
+                            }
                             None => {
                                 return Err(vec![crate::source::age_h0::text_diag(
                                     "source.age.scene-attr",

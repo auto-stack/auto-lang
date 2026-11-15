@@ -152,30 +152,28 @@ pub fn is_3d_element(kind: &str) -> bool {
 ///
 /// `attr_value_kind` 是一张不带元素轴的扁平表，于是 `yaw:`（3D 静态角度）写在
 /// `shape2d` 叶上、`size:`（2D 尺寸）写在 `cylinder3d` 上，都会被当作合法值接受。
-/// 实测确认过这两条都是静默通过。
 ///
-/// 判据保守而明确：
-/// - `kind:` 只属 `shape2d`；
-/// - 3D 专属（`yaw`/`pitch`/`scale`/`model`）只属 3D 元素；
-/// - 2D 专属（`position` 在 2D 是二元组、`size`、`material`、`mesh`）只属 `shape2d`
-///   与组件实例；
-/// - `visible` 与 `tint` 两类元素都可用。
+/// **组件实例不受本表约束。** 组件实例的元素名是作者自定义的 node 名，它的属性名
+/// 就是那个 node 声明的**参数名**——无法在 `(element, attribute)` 表里穷举。
+/// 早期版本用 `is_component` 兜底把 14 个已知拼写放行，结果 `Badge(label: int)` 的
+/// `label:` 被拒（"`label` does not apply to `Badge`"）——那是**真实的过度收紧**，
+/// 实测确认。故现在只有 `shape2d` 与冻结 3D 元素走本表；组件实例一律放行，
+/// 其参数类型由 `check_scene_resource_refs` 按**端口**校验（`tint` 等）。
 pub fn attr_applies_to(element: &str, key: &str) -> bool {
     let is_2d_leaf = element == "shape2d";
     let is_3d = is_3d_element(element);
-    // 组件实例：元素名是组件名（大写开头），它沿用 2D 组件参数面。
-    let is_component = !is_2d_leaf && !is_3d;
+    if !is_2d_leaf && !is_3d {
+        // 组件实例：属性名由作者在该 node 的声明里定义，本表无从判断。
+        return true;
+    }
     match key {
         "kind" => is_2d_leaf,
         // 3D 专属
-        "yaw" | "pitch" | "model" => is_3d,
-        // 2D 专属（3D 用 position 三分量，但那是同一键；`size`/`scale` 分开）
-        "size" | "material" | "mesh" => is_2d_leaf || is_component,
-        "scale" => is_3d,
-        // 两类及组件实例都可用
-        "position" | "visible" | "tint" | "x" | "y" | "diameter" => {
-            is_2d_leaf || is_3d || is_component
-        }
+        "yaw" | "pitch" | "model" | "scale" => is_3d,
+        // 2D 专属
+        "size" | "material" | "mesh" => is_2d_leaf,
+        // 两类都可用
+        "position" | "visible" | "tint" | "x" | "y" | "diameter" => true,
         _ => false,
     }
 }
