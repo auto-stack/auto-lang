@@ -1238,26 +1238,76 @@ fn check_scene_resource_refs(
                     }
                     continue;
                 }
-                // 找声明：按 (模块, 名字) 或全局按名字后缀匹配。
-                // B5：此前 `m == "resources"` 是**硬编码通配**——任何名为 `resources`
-                // 的模块无需 `use` 即可达，与"复用 binder 的可见性事实"自相矛盾。
-                // 现在限定写法必须**逐字等于**声明所在模块名；裸写法（`None`）沿用
-                // 符号表导入的既有可见性（binder 已裁定，能走到这里的名字必然可见）。
+                // 找声明：**必须**尊重导入可见性。
+                //
+                // B5 修了限定词的硬编码通配（`m == "resources"`），但裸名路径仍是
+                // 按全项目 `bound.globals` 匹配——于是"某个从未被本模块导入的模块里
+                // 恰好有同名资源"也能通过。这与场景元素种类那条（B3）是**同一缺陷类**：
+                // 用全项目名字集代替导入集。实测：无 `use` 时 `material: red` 与
+                // `material: assets.red` 都 ACCEPTED。
+                //
+                // 现在两条路径都要求：声明所在模块 == 本模块，或本模块**确实导入**了
+                // 这个资源符号（`PackageImport::bound_name()`）。
+                let this_module = comp.module.as_str();
+                // `GlobalDecl.module` 是**短模块名**（`main`），而 `comp.module` 是
+                // `pkg::mod` 键。比较前先归一，否则"本模块自己的资源"会被误判成
+                // "别的模块且未导入"（实测：`let ship = model3d.glb(...)` 与使用它的
+                // 场景行同在一个模块，却报 `scene-resource-invisible`）。
+                let this_short = this_module
+                    .split_once("::")
+                    .map(|(_, m)| m)
+                    .unwrap_or(this_module);
+                let imported_names: std::collections::BTreeSet<&str> = bound
+                    .units
+                    .get(this_module)
+                    .map(|u| u.imports.iter().map(|i| i.bound_name()).collect())
+                    .unwrap_or_default();
                 let found = bound.globals.iter().find(|(sym, decl)| {
-                    decl.name == symbol_spelling
-                        && module_spelling
-                            .as_deref()
-                            .is_none_or(|m| decl.module == m)
-                        && sym.starts_with('g')
+                    if decl.name != symbol_spelling || !sym.starts_with('g') {
+                        return false;
+                    }
+                    // 限定写法：限定词必须就是声明所在模块（短名或全键均可）。
+                    if let Some(m) = module_spelling.as_deref() {
+                        if decl.module != m && Some(decl.module.as_str()) != Some(this_short) {
+                            return false;
+                        }
+                    }
+                    // 可见性：本模块自有的资源，或本模块导入的名字。
+                    decl.module == this_short || decl.module == this_module
+                        || imported_names.contains(symbol_spelling.as_str())
                 });
                 let Some((_sym, decl)) = found else {
+                    // 区分"根本不存在"与"存在但本模块没导入"——979 V-10 要求两类
+                    // 诊断**互斥可辨**，不能用一个笼统的 "unknown" 混过去。
+                    let exists_elsewhere = bound.globals.values().any(|d| {
+                        d.name == symbol_spelling
+                            && module_spelling
+                                .as_deref()
+                                .is_none_or(|m| d.module == m)
+                    });
+                    let (code, msg) = if exists_elsewhere {
+                        (
+                            "source.age.scene-resource-invisible",
+                            format!(
+                                "`{key}` references `{symbol_spelling}`, which is declared in \
+                                 another module that `{this_module}` does not import; \
+                                 add a `use` for it",
+                                key = attr.key
+                            ),
+                        )
+                    } else {
+                        (
+                            "source.age.scene-resource-unknown",
+                            format!(
+                                "`{key}` references `{symbol_spelling}`, which is not a declared \
+                                 resource in this project",
+                                key = attr.key
+                            ),
+                        )
+                    };
                     return Err(vec![text_diag(
-                        "source.age.scene-resource-unknown",
-                        format!(
-                            "`{key}` references `{symbol_spelling}`, which is not a declared \
-                             resource in this project",
-                            key = attr.key
-                        ),
+                        code,
+                        msg,
                         flat_to_module(&bound_sources(bound), attr.span),
                     )]);
                 };

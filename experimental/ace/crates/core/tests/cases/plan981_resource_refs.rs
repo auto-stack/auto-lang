@@ -121,6 +121,80 @@ fn p981_parentheses_do_not_change_resource_identity() {
     }
 }
 
+/// 资源引用**必须尊重导入可见性**——裸名与限定名都一样。
+///
+/// 第三次复审指出：`check_scene_resource_refs` 修了限定词的硬编码通配，
+/// 但**裸名**路径仍按全项目 `bound.globals` 匹配。实测：无 `use` 时
+/// `material: red` 与 `material: assets.red` **都 ACCEPTED**。
+///
+/// 这与场景元素种类（B3）是同一缺陷类：用全项目名字集代替导入集。
+#[test]
+fn p981_resource_references_respect_imports() {
+    const ASSETS: &str = "let red = material2d.color(0.9, 0.3, 0.2, 0.5)\n";
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let with = |import: &str, attr: &str| {
+        format!(
+            "{import}node D {{\n    view-2d {{\n        shape2d q {{\n            kind: circle\n            material: {attr}\n        }}\n    }}\n}}\n"
+        )
+    };
+    let run = |main: &str| {
+        compile_age_package(
+            &[input("assets", ASSETS), input("main", main)],
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &caps,
+        )
+    };
+
+    // 无 `use`：两种写法都必须被拒，且诊断要区分"存在但不可见"。
+    for attr in ["red", "assets.red"] {
+        let ds = run(&with("", attr)).expect_err(&format!("`{attr}` must not resolve without a use"));
+        assert_eq!(
+            ds[0].code, "source.age.scene-resource-invisible",
+            "`{attr}` without a use: {ds:?}"
+        );
+        assert!(
+            ds[0].message.contains("does not import"),
+            "{}",
+            ds[0].message
+        );
+    }
+    // 有 `use`：两种写法都通过。
+    for attr in ["red", "assets.red"] {
+        run(&with("use assets.red\n", attr))
+            .unwrap_or_else(|ds| panic!("`{attr}` with a use must resolve: {ds:?}"));
+    }
+}
+
+/// "根本不存在"与"存在但本模块没导入"必须是**互斥可辨**的诊断（979 V-10）。
+#[test]
+fn p981_unknown_and_invisible_resources_are_distinguishable() {
+    const ASSETS: &str = "let red = material2d.color(0.9, 0.3, 0.2, 0.5)\n";
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let main = |attr: &str| {
+        format!(
+            "node D {{\n    view-2d {{\n        shape2d q {{\n            kind: circle\n            material: {attr}\n        }}\n    }}\n}}\n"
+        )
+    };
+    let run = |attr: &str| {
+        compile_age_package(
+            &[input("assets", ASSETS), input("main", &main(attr))],
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &caps,
+        )
+        .expect_err("must be rejected")
+    };
+    assert_eq!(
+        run("nope")[0].code, "source.age.scene-resource-unknown",
+        "a name nobody declares is UNKNOWN"
+    );
+    assert_eq!(
+        run("red")[0].code, "source.age.scene-resource-invisible",
+        "a declared-but-unimported name is INVISIBLE, not unknown"
+    );
+}
+
 /// 正确的限定写法与裸写法都仍然合法（收紧不能破坏原源）。
 #[test]
 fn p981_correct_forms_still_resolve() {
