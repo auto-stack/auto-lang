@@ -1348,21 +1348,6 @@ fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
     }
 }
 
-/// 包面身份拒绝：`age-package` 只由本前门消费（对称于 979 的通用入口拒绝）。
-pub fn age_package_refusal(profile: SourceProfile, src_len: usize) -> Option<Diagnostic> {
-    if profile != SourceProfile::AgePackage {
-        return None;
-    }
-    Some(text_diag(
-        "source.domain-frontend",
-        "the age-package profile is consumed only by the AGE package front door \
-         (ace_core::source::age_package::compile_age_package)",
-        Span {
-            start: 0,
-            end: src_len,
-        },
-    ))
-}
 
 /// 描述里的叶角色汇总（最小资源要求面；本切片不申请运行时资源）。
 pub fn component_roles(description: &AgePackageDescription) -> Vec<&str> {

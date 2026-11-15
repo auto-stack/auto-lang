@@ -184,17 +184,39 @@ fn p981_age_package_legacy_widget_alias_is_gated() {
 }
 
 /// 通用入口不得静默丢弃领域声明（对称于 979 的通用入口拒绝）。
+///
+/// 复审 M5：旧版本只调用 `age_package_refusal` 这个**辅助函数**，从不经过真实
+/// 入口——而那个辅助函数零生产调用、是死代码，通用入口对 `age-package` 实际
+/// 返回 `Ok`（零项目、零领域行）。测试绿，缺陷在。现在直接跑真实入口。
 #[test]
 fn p981_age_package_profile_is_refused_by_generic_entries() {
-    let refusal = ace_core::source::age_package::age_package_refusal(
-        ace_core::source::SourceProfile::AgePackage,
-        MAIN.len(),
-    )
-    .expect("age-package profile refusal");
-    assert_eq!(refusal.code, "source.domain-frontend");
-    assert!(ace_core::source::age_package::age_package_refusal(
-        ace_core::source::SourceProfile::TextRecord,
-        MAIN.len()
-    )
-    .is_none());
+    use ace_core::source::cst::{parse_front, FrontBudget, FrontKind, FrontRequest, FrontOutcome};
+    let out = parse_front(FrontRequest {
+        src: MAIN,
+        profile: ace_core::source::SourceProfile::AgePackage,
+        kind: FrontKind::WholeModule,
+        budget: FrontBudget::WORK_OWNED_64MIB,
+    });
+    match out {
+        FrontOutcome::Diag(ds) => {
+            assert_eq!(ds[0].code, "source.domain-frontend", "{ds:?}");
+            assert!(
+                ds[0].message.contains("age_package"),
+                "the refusal must point at the real front door: {}",
+                ds[0].message
+            );
+        }
+        _ => panic!("the generic front door must refuse the age-package profile"),
+    }
+    // 片段入口同样拒绝（它没有领域槽位的字节事实源）。
+    let frag = parse_front(FrontRequest {
+        src: "fn f() int { return 1 }",
+        profile: ace_core::source::SourceProfile::AgePackage,
+        kind: FrontKind::FreeFnFragment { range: 0..10 },
+        budget: FrontBudget::WORK_OWNED_64MIB,
+    });
+    assert!(
+        matches!(frag, FrontOutcome::Diag(_)),
+        "the fragment front door must refuse it too"
+    );
 }

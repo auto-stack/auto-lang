@@ -2034,9 +2034,17 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
         kind,
         budget,
     } = req;
-    // PLAN-979 F2：AGE 领域 profile 只经 `source::age_h0` 的整模块入口消费；
-    // 通用入口（含片段入口，它们没有槽位拼写的事实源）一律具名拒绝。
-    if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
+    // PLAN-979 F2 / PLAN-981：AGE 领域 profile（H0、组件面、**包面**）只经各自的
+    // 领域前门消费；通用入口（含片段入口，它们没有槽位拼写的事实源）一律具名拒绝。
+    //
+    // 复审 M5：`domain_profile_refusal` 早已包含 `AgePackage`，但**这里的 matches!
+    // 没同步**——于是通用入口对 `age-package` 返回 `Ok`（零项目、零领域行），
+    // 而 `age_package.rs` 里那个专门的 `age_package_refusal` **零调用**、是死代码。
+    // 现在两者一致：入口拒绝，且拒绝理由指向正确的前门。
+    if matches!(
+        profile,
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage
+    ) {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }
@@ -2345,7 +2353,11 @@ pub fn parse_fragment_front(
     use crate::atom_text::Stage;
     // PLAN-979（评审 F2 观察）：片段入口同样拒绝领域 profile——片段不承载领域
     // 声明，且没有槽位拼写的字节事实源；只经领域前门消费整模块。
-    if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
+    // 复审 M5：与整模块入口同步纳入 `AgePackage`。
+    if matches!(
+        profile,
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage
+    ) {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }
