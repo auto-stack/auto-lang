@@ -38,7 +38,9 @@ use ace_av_core::contract::{fnv1a64, ExecOutcome, Value};
 use ace_av_core::mir::MirModule;
 use ace_core::atom_text::Diagnostic;
 use ace_core::verify::CheckedModule;
-use auto_lang_core::{AceExecutor, AceOutcome, AceRequest, AceRunReport, AceSpan, AceValue};
+use auto_lang_core::{
+    AceConsoleReport, AceExecutor, AceOutcome, AceRequest, AceRunReport, AceSpan, AceValue,
+};
 
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
@@ -187,6 +189,18 @@ fn lookup_provider(name: &str) -> Option<Arc<ProviderEntry>> {
 
 impl AceExecutor for HostExecutor {
     fn execute(&self, request: &AceRequest<'_>) -> AceRunReport {
+        if request.console {
+            if request.provider.is_some() {
+                // Freeze (T-02): the console lane and the F0 foreign lane
+                // are not composed yet — an explicit named refusal, never
+                // a silent route to the other lane.
+                return denied_report(
+                    "ace.console/foreign-unsupported",
+                    "console+provider composition is outside the frozen T-02 surface",
+                );
+            }
+            return self.run_console(request);
+        }
         match request.provider {
             None => self.run_pure(request),
             Some(name) => self.run_foreign(request, name),
@@ -207,6 +221,7 @@ fn report(
         callee_count: callee,
         rejected_count: rejected,
         wall_ms: 0.0, // filled by auto_lang_core::run_ace (whole-request wall)
+        console: None,
     }
 }
 
@@ -454,6 +469,65 @@ impl HostExecutor {
             cancel_flag(request, &fallback),
         );
         map_outcome(outcome, None, None)
+    }
+
+    // -- console lane (T-02: print/eprint under per-run grants) ----------
+
+    fn run_console(&self, request: &AceRequest<'_>) -> AceRunReport {
+        let compiled = match ace_core::source::compile_host_console_source(
+            request.source,
+            "p969.at",
+            request.capabilities,
+        ) {
+            Ok(compiled) => compiled,
+            Err(diags) => return diag_list_report(&diags),
+        };
+        // The console front door enforces the main-only entry policy; a
+        // wrong entry surfaces the adapter's own named code (`lower.entry`).
+        let mir = match ace_lowering::hir_adapter::lower_checked_owned(
+            &compiled.checked,
+            request.entry_def_id,
+            fnv1a64(request.source.as_bytes()),
+        ) {
+            Ok(mir) => mir,
+            Err(e) => return diag_report("lower", &e.code(), format!("{e:?}"), None),
+        };
+        if let Err(e) = ace_av_core::mir_verify::verify_mir(&mir) {
+            return diag_report("verify", "ace.mir/verify-failed", format!("{e:?}"), None);
+        }
+        let loaded = match wire_admit(&mir, None) {
+            Ok(loaded) => loaded,
+            Err(report) => return report,
+        };
+        let mut cap = ace_av::console_host::ConsoleCapture::default();
+        let fallback = CancelFlag::new(false);
+        // Per-run console authorization: the request grants are the ONLY
+        // authority (structural credentials carry none).
+        let result = ace_av_core::av::execute_console(
+            &loaded,
+            &limits_from(request),
+            cancel_flag(request, &fallback),
+            request.grants,
+            &mut cap,
+        );
+        let mut out = match result {
+            Ok((outcome, _trace)) => map_outcome(outcome, None, None),
+            Err(e) => report(
+                AceOutcome::Denied {
+                    code: e.code.to_string(),
+                    message: e.message.clone(),
+                },
+                0,
+                None,
+                None,
+            ),
+        };
+        out.console = Some(AceConsoleReport {
+            stdout: cap.stdout.clone(),
+            stderr: cap.stderr.clone(),
+            dispatches: cap.dispatches,
+        });
+        out
     }
 
     // -- F0 Rust provider lane (Windows: the provider build/load chain) ----

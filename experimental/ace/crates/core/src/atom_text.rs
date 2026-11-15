@@ -55,12 +55,36 @@ impl Stage {
     }
 }
 
+/// PLAN-969 (AUDIT-03, 1024 F03): the STRUCTURED profile-surface fact a
+/// Text-stage diagnostic carries when it belongs to an escalation class
+/// owned by a WIDER source profile. Escalation ladders route on THIS
+/// fact — never on diagnostic message text, so rewording a message can
+/// never change profile routing. `None` (every producer that does not
+/// explicitly tag) means "not an escalation candidate": terminal.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SurfaceFact {
+    /// A single character owned by a wider profile (numeric `&`/`|`/`^`
+    /// on the narrower faces).
+    OwnedCharacter,
+    /// A token spelling owned by a wider profile (aggregates `[`, `..`).
+    OwnedToken,
+    /// A construct shape owned by a wider profile (tuple literal comma,
+    /// named-ctor `{` after an ident).
+    OwnedShape,
+    /// The projector's own "not part of this source profile" refusal
+    /// (`source.unsupported` at the Text stage).
+    ProfileSurface,
+}
+
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub stage: Stage,
     pub code: String,
     pub message: String,
     pub span: Span,
+    /// PLAN-969 (AUDIT-03): optional structured surface fact (see
+    /// [`SurfaceFact`]); `None` on every untagged producer.
+    pub surface: Option<SurfaceFact>,
 }
 
 impl Diagnostic {
@@ -70,7 +94,16 @@ impl Diagnostic {
             code: code.to_string(),
             message: message.into(),
             span,
+            surface: None,
         }
+    }
+
+    /// PLAN-969 (AUDIT-03): attach the structured surface fact this
+    /// diagnostic's escalation class is (builder form — the message
+    /// stays purely human-readable).
+    pub fn tagged(mut self, surface: SurfaceFact) -> Self {
+        self.surface = Some(surface);
+        self
     }
 
     /// Human-readable one-line rendering with 1-based line/column.

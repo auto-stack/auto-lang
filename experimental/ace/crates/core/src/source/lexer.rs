@@ -361,14 +361,18 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                 if lx.b.get(lx.pos + 1) == Some(&b'&') {
                     lx.push_punct(P::AmpAmp, 2, &mut out);
                 } else {
-                    return Err(lx.err_lex("unknown character `&`"));
+                    return Err(lx
+                        .err_lex("unknown character `&`")
+                        .tagged(crate::atom_text::SurfaceFact::OwnedCharacter));
                 }
             }
             b'|' => {
                 if lx.b.get(lx.pos + 1) == Some(&b'|') {
                     lx.push_punct(P::PipePipe, 2, &mut out);
                 } else {
-                    return Err(lx.err_lex("unknown character `|`"));
+                    return Err(lx
+                        .err_lex("unknown character `|`")
+                        .tagged(crate::atom_text::SurfaceFact::OwnedCharacter));
                 }
             }
             b'-' if lx.b.get(lx.pos + 1) == Some(&b'>') => {
@@ -840,7 +844,13 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                         line: lx.line,
                     });
                 } else {
-                    return Err(lx.err_lex(format!("unknown character `{}`", c as char)));
+                    let mut diag = lx.err_lex(format!("unknown character `{}`", c as char));
+                    if matches!(c, b'&' | b'|' | b'^') {
+                        // PLAN-969 (AUDIT-03): numeric-owned operator
+                        // characters carry the structured surface fact.
+                        diag = diag.tagged(crate::atom_text::SurfaceFact::OwnedCharacter);
+                    }
+                    return Err(diag);
                 }
             }
         }

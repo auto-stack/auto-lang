@@ -104,6 +104,11 @@ pub struct AceRequest<'a> {
     /// Host-owned cancellation flag (checked by the executor; a set flag
     /// yields [`AceOutcome::Cancelled`]). `None` = not cancellable.
     pub cancel: Option<&'a AtomicBool>,
+    /// T-02: explicit CONSOLE lane selection — the source may use
+    /// `print`/`eprint` and the run executes under per-run console
+    /// grants (see [`AceConsoleReport`]); the captured streams come back
+    /// on the report. `false` = the pure scalar lane (no console ops).
+    pub console: bool,
 }
 
 impl<'a> AceRequest<'a> {
@@ -119,8 +124,22 @@ impl<'a> AceRequest<'a> {
             provider: None,
             wall: None,
             cancel: None,
+            console: false,
         }
     }
+}
+
+/// T-02: the console lane's captured streams of one run (bytes — the
+/// program owns its stream encoding; nothing is lossily transcoded).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AceConsoleReport {
+    /// Bytes written through granted `console.stdout` ops.
+    pub stdout: Vec<u8>,
+    /// Bytes written through granted `console.stderr` ops.
+    pub stderr: Vec<u8>,
+    /// Console host dispatches observed this run (0 on an unauthorized
+    /// run — refusal happens before any dispatch).
+    pub dispatches: u64,
 }
 
 /// The distinguished terminal states of one explicit ACE run.
@@ -170,6 +189,9 @@ pub struct AceRunReport {
     pub rejected_count: Option<u64>,
     /// Executor-measured wall time of the whole request (milliseconds).
     pub wall_ms: f64,
+    /// T-02: the console lane's captured streams (`None` on non-console
+    /// runs and on pre-execution refusals).
+    pub console: Option<AceConsoleReport>,
 }
 
 impl AceRunReport {
@@ -184,6 +206,7 @@ impl AceRunReport {
             callee_count: None,
             rejected_count: None,
             wall_ms: 0.0,
+            console: None,
         }
     }
 
@@ -198,6 +221,7 @@ impl AceRunReport {
             callee_count: None,
             rejected_count: None,
             wall_ms: 0.0,
+            console: None,
         }
     }
 }
@@ -361,6 +385,7 @@ mod tests {
                     callee_count: None,
                     rejected_count: None,
                     wall_ms: 0.0,
+                    console: None,
                 }
             }
         }

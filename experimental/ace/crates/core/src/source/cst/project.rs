@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::kinds::SourceKinds;
 use super::lex;
-use crate::atom_text::{Diagnostic, Span, Stage};
+use crate::atom_text::{Diagnostic, Span, Stage, SurfaceFact};
 use crate::source::ast::*;
 use crate::source::SourceProfile;
 use ace_syntax_runtime::cst::{CstTree, FLAG_TRIVIA};
@@ -1371,7 +1371,7 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
             let prev_line = w.at(i - 1).map(|c| c.3).unwrap_or(0);
             if !prev_semi && cur_line <= prev_line {
                 let (sp, gg, tt) = at(i);
-                return Some(Diagnostic::new(
+                let mut diag = Diagnostic::new(
                     Stage::Text,
                     "source.syntax",
                     format!(
@@ -1379,7 +1379,11 @@ fn walk_type_item(cx: &Cx, leaves: &[(u32, u32, String)]) -> Option<Diagnostic> 
                         describe_g(gg, tt, &k)
                     ),
                     sp,
-                ));
+                );
+                if let Some(fact) = surface_shape_of_token(tt) {
+                    diag = diag.tagged(fact);
+                }
+                return Some(diag);
             }
         }
         any_member = true;
@@ -1564,7 +1568,10 @@ impl<'c, 'a> Walker<'c, 'a> {
         Diagnostic::new(Stage::Text, "source.syntax", msg, span)
     }
     fn unsupported(&self, msg: String, span: Span) -> Diagnostic {
+        // PLAN-969 (AUDIT-03): every projector "not part of this source
+        // profile" refusal carries the structured surface fact.
         Diagnostic::new(Stage::Text, "source.unsupported", msg, span)
+            .tagged(SurfaceFact::ProfileSurface)
     }
     fn describe_cur(&self) -> String {
         match self.cur() {
@@ -1621,7 +1628,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                             .map(|(n, _, _)| self.cx.line_of_pos(self.cx.tree.abs_range(*n).0))
                             .unwrap_or(0);
                         if text != ";" && cur_line <= prev_line {
-                            return Some(Diagnostic::new(
+                            let mut diag = Diagnostic::new(
                                 Stage::Text,
                                 "source.syntax",
                                 format!(
@@ -1629,7 +1636,11 @@ impl<'c, 'a> Walker<'c, 'a> {
                                     describe_g(g, &text, k)
                                 ),
                                 span,
-                            ));
+                            );
+                            if let Some(fact) = surface_shape_of_token(&text) {
+                                diag = diag.tagged(fact);
+                            }
+                            return Some(diag);
                         }
                         return Some(Diagnostic::new(
                             Stage::Text,
@@ -1664,10 +1675,16 @@ impl<'c, 'a> Walker<'c, 'a> {
             None => None,
             Some((_, _, ";", _)) | Some((_, _, "}", _)) => None,
             Some((_, _, _, line)) if line > self.prev_line() => None,
-            Some(_) => Some(self.syntax(format!(
-                "expected `;`, newline or `}}`, found {}",
-                self.describe_cur()
-            ))),
+            Some((_, _, text, _)) => {
+                let mut diag = self.syntax(format!(
+                    "expected `;`, newline or `}}`, found {}",
+                    self.describe_cur()
+                ));
+                if let Some(fact) = surface_shape_of_token(text) {
+                    diag = diag.tagged(fact);
+                }
+                Some(diag)
+            }
         }
     }
 
@@ -2892,10 +2909,14 @@ impl<'c, 'a> Walker<'c, 'a> {
             }
             match text {
                 "(" => {
-                    return Some(Some(self.syntax(format!(
-                        "expected operator, found {}",
-                        self.describe_cur()
-                    ))))
+                    let mut diag =
+                        self.syntax(format!("expected operator, found {}", self.describe_cur()));
+                    if let Some((_, _, text, _)) = self.cur() {
+                        if let Some(fact) = surface_shape_of_token(text) {
+                            diag = diag.tagged(fact);
+                        }
+                    }
+                    return Some(Some(diag));
                 }
                 ")" => match frames.last() {
                     Some(Br::Paren) | Some(Br::Call) => {
@@ -2918,7 +2939,14 @@ impl<'c, 'a> Walker<'c, 'a> {
                         *anchored = false;
                         return None;
                     }
-                    _ => return Some(Some(self.syntax("expected operator, found `,`".into()))),
+                    // PLAN-969 (AUDIT-03): the tuple-literal comma shape is
+                    // aggregates-owned — structured, not message-routed.
+                    _ => {
+                        return Some(Some(
+                            self.syntax("expected operator, found `,`".into())
+                                .tagged(SurfaceFact::OwnedShape),
+                        ))
+                    }
                 },
                 "}" => match frames.last() {
                     Some(Br::Ctor) => {
@@ -4394,7 +4422,10 @@ impl<'a> Engine<'a> {
                     continue;
                 }
                 seen_fields.push(fname.name.clone());
-                let value_n = self.cx.field_child(field_n, "value").expect("field default");
+                let value_n = self
+                    .cx
+                    .field_child(field_n, "value")
+                    .expect("field default");
                 self.stack.push(Frame::ExprEnter(value_n));
                 self.drive();
                 let default = self.pop_e();
@@ -6363,10 +6394,8 @@ impl<'a> Engine<'a> {
                     .or_else(|| self.cx.child_of_kind(node, self.cx.k.postfix_expr));
                 match operand {
                     Some(o) => {
-                        self.stack.push(Frame::SchedPrefixFinish {
-                            is_await,
-                            kw_span,
-                        });
+                        self.stack
+                            .push(Frame::SchedPrefixFinish { is_await, kw_span });
                         self.stack.push(Frame::ExprEnter(o));
                     }
                     None => {
@@ -8919,10 +8948,7 @@ impl<'a> Engine<'a> {
                         args: vec![Arg::Pos(operand)],
                     },
                 };
-                self.vals.push(Val::S(Stmt::ExprStmt {
-                    value: e,
-                    span,
-                }));
+                self.vals.push(Val::S(Stmt::ExprStmt { value: e, span }));
             }
             Frame::SchedPrefixFinish { is_await, kw_span } => {
                 let operand = self.pop_e();
@@ -9186,6 +9212,18 @@ fn collect_seq(cx: &Cx, list_node: u32, item_kind: u32, tail_name: &str) -> Vec<
     out
 }
 
+/// PLAN-969 (AUDIT-03): the structured surface fact for an unexpected
+/// token at a statement/expression boundary — the wider-profile-owned
+/// token spellings (`[`, `..`, `..=`) and the named-ctor `{` shape. This
+/// replaces message-substring routing: the escalation ladders read THIS.
+fn surface_shape_of_token(text: &str) -> Option<SurfaceFact> {
+    match text {
+        "{" => Some(SurfaceFact::OwnedShape),
+        "[" | ".." | "..=" => Some(SurfaceFact::OwnedToken),
+        _ => None,
+    }
+}
+
 fn syntax_diag(msg: &str, span: Span) -> Diagnostic {
     Diagnostic::new(Stage::Text, "source.syntax", msg.to_string(), span)
 }
@@ -9197,6 +9235,7 @@ fn unsupported_ty(word: &str, span: Span) -> Diagnostic {
         format!("type `{}` is not part of this source profile", word),
         span,
     )
+    .tagged(SurfaceFact::ProfileSurface)
 }
 
 fn self_method_name(span: Span) -> Diagnostic {
