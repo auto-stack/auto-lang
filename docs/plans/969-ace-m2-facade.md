@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-969
-status: drafting
+status: executing
 feature_name: ACE 产品执行配置与嵌入前门
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 6
-current_step: 0
+updated_at: 2026-11-15
+plan_revision: 7
+current_step: 4
 total_steps: 12
 depends_on: [PLAN-960, PLAN-964, PLAN-967, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -121,6 +121,22 @@ E0只覆盖同步一次执行+宿主owner创建/关闭，适用UI主线程调用
 
 早期切片是本Plan M2-A内部交接，不新增ACE里程碑或Plan终态；只在同一权威树按owner流程独立复核、正式落主并记source/接口/grammar/ABI/provider及真实结果后供下游消费。同Plan尚有原完整义务时不归档/删树/勾整包完成。frontmatter保最终依赖并集，早期切片只等本节最小接口；同一文件单写，不以分支reviewed/WIP当交付。最小切片通过不关闭原AC、完整Rust FFI/全UI/RG-A03/M2A-08；不新增对980/981/985整包或AGE联合门的反向依赖。
 
+### E0接口冻结记录（T-E0-I输出，2026-11-15，worktree lang-969@plan-969-dev，基线ca88cde14）
+
+公开合同（新模块 `crates/auto-lang-core/src/ace_entry.rs`，lib.rs根glob再导出；**零ACE依赖、零legacy引用**——模块内无run_autovm/parse符号，ACE失败永不切换默认引擎）：
+- `AceEngineChoice{AceAV}`＋`parse_ace_engine("av"|"ace-av")`；未知名与全部旧引擎名→`Denied{code:"ace.engine/unknown"}`（零dispatch）。
+- `AceRequest{source, entry_def_id, capabilities, grants, provider, wall, cancel}`（全显式输入；`simple()`便捷构造）；`AceSpan{start,end}`。
+- 结果分态 `AceOutcome{Success{value,steps}, Diagnostic{stage,code,message,span}, Denied{code,message}, ResourceDenied{kind,message}, Cancelled, HostFailure{code,message}}`＋证据面 `AceRunReport{engine, outcome, diag_count, callee_count, rejected_count, wall_ms}`；`AceValue`标量面（Unit/Bool/I8..F64/Char/Opaque具名）。
+- 注册/执行：`trait AceExecutor`＋`install_ace_executor(Arc)`（单owner，同指针幂等）/`shutdown_ace_executor()`/`run_ace(choice,req)`/`run_ace_named(engine,req)`；未注册→`HostFailure{ace.host/executor-unregistered}`。同步、不spawn线程（UI主线程合同）。
+
+执行桥（**新crate `crates/auto-lang-ace-host`**；root workspace成员但**非**auto-lang/auto-lang-core依赖——daily组不构建ACE；测试走新固定组 `ace-facade`（domain ace，入ace集，`cargo t ace-facade`））：
+- 宿主生命周期：`install()`（进程单例幂等）、`build_f0_text_provider(s)(names,root)`（冻结F0 text provider，rustc cdylib一次性构建）、`revoke/readmit/teardown_provider`。
+- 每run纪律：查注册→撤销态预拒（`ace.provider/revoked`，编译/装载前）→foreign车道capabilities须⊆冻结F0集{foreign.scalar,foreign.resource}（否则`ace.capability/unsupported`预拒，空=冻结集；纯源非空grants=`ace.grant/no-provider`）→grants对已授予caps核（`ace.grant/unadmitted`）→**每run重admit**（`f0_authority`+`manual.admit`）→独立`load()`（本run独占ForeignStubTable/计数）→ForeignSession `adopt→execute→teardown`（关闭后晚到调用拒绝）。crate整体`#![cfg(windows)]`（ace-abi模式；非Windows编译为空crate，E0不承诺跨平台）。
+- 车道：纯源 `compile_scalar_or_core_source_product→lower_checked→verify_mir→ABC encode/decode→verify_abc→execute`（会话暖启同一lower seam）；foreign源 `SourceQuerySession.set_foreign→compile_text_record_product→lower_checked_owned→…→verify_abc_foreign→ForeignSession`（F0冻结owned/text-record族）。入口缺失=`entry`阶段诊断；前端诊断原stage/span透传。
+- av侧适用owner无代码改动：`query_entry`/`ForeignSession`/`rust_provider::{build_f0,load,f0_authority}`/`execute(_foreign)` 既有公开接口即本切片冻结消费面。
+
+用例：`crates/auto-lang-ace-host/tests/e0_facade.rs`（p969_e0_dispatch/close/source，V-E0-*逐条）；core侧纪律用例4个在`ace_entry::tests`（daily可见，纯std）。
+
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r6当前）
 
 **具体输入与期望。** 原件[crates/auto-lang/test/cases/ace-m1/src/B01.at](../../crates/auto-lang/test/cases/ace-m1/src/B01.at)（下列节选L1–L1；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
@@ -174,6 +190,17 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-facade.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+
+### 1024发现承接合同（2026-11-13，r7，仅规划）
+
+承接1024的F03/F08：前门分派与事实权威，优先级P2（F12仅保留约束）。用户仅授权复审与分配，尚未授权实现；原支持/AC/任务/阶段/预算不减少，原任务进度0保持。
+
+在T-01冻结每profile的事实生产者与拒绝原因，T-02/03实施结构诊断及同一类型权威接线，T-04验证。不能因消重复删除独立verify、TextRecord foreign解析或原域拒绝。
+
+1002关系：核心职责/原入口反例/固定组治理均不以1002为硬前置；新作者格式迁移或document/IR/adapter重构仅等待G1002（1002 T-03四例七检查及负控通过，T-04独立复审、接口正式合入并绑定SHA）。不等待全语料搬迁；1002不反向依赖本Plan整包。现有M2能力前置不因承接登记被豁免，也不把这些非紧急结构改造伪装成可立即施工。
+
+来源：[1024](1024-ace-m2-code-quality-and-refactoring-audit.md) r2与Git 81d8fc03f10f4a7d179b0bc3a917602406ed7b91。F01–35高风险修复另立1027–1037；本Plan消费正式合入结果并在T-01重核漂移。与在途文件同写须串行，1017成本身份单独协调，不能靠删例减成本。规范影响沿本Plan原SD目标，review补当前实际实现，不改canonical Specs。
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -222,6 +249,16 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+
+### 1024承接的具名验证
+
+| Case ID | 发现 / 原任务 / AC | 输入/设置 | 实际入口 | 独立关闭oracle | 状态 |
+|---|---|---|---|---|---|
+| AUDIT-03 | F03 / T-01..04 / AC-AUDIT | 只改message、同码不同原因、正常窄域/宽域及真正parse/type错 | native::driver::compile_escalating与product facade | 结构化理由决定路由；Core旁路、terminal诊断、attempted身份保持；改文案不改选路 | 拟实施，未运行 |
+| AUDIT-08 | F08 / T-01..04 / AC-AUDIT | profile×consumer事实覆盖/旧综合/独立verify/诊断oracle表 | source-query::consumer/apply→core→AV/native/A2X | 未覆盖域具名；不把diagnostic旧路当成功fallback；facts失败不得悄悄产物 | 拟实施，未运行 |
+
+原组/平台/ignore/规模与正式性能分轴不变；新格式需G1002，原格式和Rust入口可先验证。每条oracle必须在本Plan原work验证完成前取得，不能移到merge或借登记冒关闭。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -237,6 +274,8 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 | AC-E0-REVIEW | review | 同树独立核E0实际dispatch/权限/关闭及正反例 | T-E0-R |
 | AC-E0-LAND | merge | E0正式来源/请求合同/ABI与实际命令落主供978/980，原facade范围不减 | T-E0-D |
 
+- [ ] AC-AUDIT / work：1024承接F03/F08的上述每条AUDIT用例及保留边界完成；原任务T-01/T-02/T-03/T-04负责，原独立review逐项核，未执行不PASS。
+
 ## 8. 执行步骤
 
 当前共12任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
@@ -245,25 +284,25 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 早期任务可按§5最小前置先行，不要求T-01完整分母冻结已完成；各I自行冻结本切片输入/接口/命令，不提前勾T-01或其它原整项。以下行序不是额外前置。
 
-- [ ] **T-E0-I｜M2-A｜owner_stage: work｜AC-E0**：967/F0-D正式交付后，自行冻结公开同步ACE请求/结果/错误与provider注册/主线程合同，在现有owner接通非UI普通源consumer并建V-E0-*；不等原T-01完整配置分母。
+- [x] **T-E0-I｜M2-A｜owner_stage: work｜AC-E0**：967/F0-D正式交付后，自行冻结公开同步ACE请求/结果/错误与provider注册/主线程合同，在现有owner接通非UI普通源consumer并建V-E0-*；不等原T-01完整配置分母。 [✅ 2026-11-15：接口冻结见§5"E0接口冻结记录"；ace_entry.rs＋auto-lang-ace-host桥＋V-E0-*三用例＋ace-facade固定组；cargo t ace-facade PASS]
 
-- [ ] **T-E0-V｜M2-A｜owner_stage: work｜AC-E0**：T-E0-I后执行全部V-E0-*及冻结职责/必要消费者，核真正新dispatch、撤权零调用、session隔离与退出，不以标签替证据。
+- [x] **T-E0-V｜M2-A｜owner_stage: work｜AC-E0**：T-E0-I后执行全部V-E0-*及冻结职责/必要消费者，核真正新dispatch、撤权零调用、session隔离与退出，不以标签替证据。 [✅ 2026-11-15：`cargo t ace-facade` PASS（3执行/0排除；per-case：dispatch 0.411s、close 0.504s、source 0.043s，全≤10s门；发现2.81s/执行1.64s/总4.47s）；实测text_byte_len("A中😀\0")=9且callee=1、坏签名零dispatch（compile诊断原span）、撤权/未知/旧引擎具名拒、双身份20轮结果与计数不串、teardown后HostFailure、预置cancel→Cancelled、B01=14、错入口=entry阶段；core侧ace_entry 4用例绿]
 
-- [ ] **T-E0-R｜M2-A｜owner_stage: review｜AC-E0-REVIEW**：T-E0-V齐后停写同树独立复核公开入口及无legacy旁路，finding返I。
+- [x] **T-E0-R｜M2-A｜owner_stage: review｜AC-E0-REVIEW**：T-E0-V齐后停写同树独立复核公开入口及无legacy旁路，finding返I。 [✅ 2026-11-15：独立上下文agent审计@278b91204（未参与实现）——verdict **PASS**（0 BLOCKER/0 MAJOR/4 MINOR+1边界note）；F-E0R-01 crate根cfg(windows)/E-02 doc+锁码/E-03 oracle钉死/E-04显式caps 全数修复@1ad2d2c60并复验（cargo t ace-facade PASS：source 0.047s/dispatch 0.509s/close 0.600s；core ace_entry 4绿）；F-E0R-05（撤权与在途run竞态）按审计裁定为E0同步合同边界、后续async切片处理]
 
-- [ ] **T-E0-D｜M2-A｜owner_stage: merge｜AC-E0-LAND**：T-E0-R pass后按phase fold正式合入公开入口/已验规范与接口来源，交978/B0和980/HELLO；保树继续原全部facade任务，不翻机器默认。
+- [x] **T-E0-D｜M2-A｜owner_stage: merge｜AC-E0-LAND**：T-E0-R pass后按phase fold正式合入公开入口/已验规范与接口来源，交978/B0和980/HELLO；保树继续原全部facade任务，不翻机器默认。 [✅ 2026-11-15：merge --no-ff plan-969-dev→master `5dfcfe74e`（含实现278b91204+修复1ad2d2c60）；主检出净树落门核对 cargo t ace-facade PASS＋core ace_entry 4绿（主检出存在外来PLAN-979未完WIP致本地红，按字节备份→还原→验证→恢复处理，WIP原样保留，见§9）；沉淀 docs/specs/ace-migration/m2-facade.md；树resync至master，T-01..08继续]
 
 
 
-- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐导出核run_abt/create_vm_from_abt等旧编译输入API、run_with_mode/auto mode、capture/input/deadline/config；对旧字节码明确版本拒绝或受检迁移，不能透传为ACE指令。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -301,6 +340,21 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
+
+
+2026-11-13 stage:new / r7 / outcome:pass（规划承接） / next:原前置及实施授权后work。用户授权将1024的F03/F08纳入本包原任务，新增具名AUDIT oracle/AC-AUDIT；未增任务、未删原任务/AC/V/阶段/预算、0进度/drafting保持。旧r6规划记录保留；实际实现/执行未开始。1002依赖按任务分流，无整包循环。
+
+2026-11-15 stage: work / T-E0-I + T-E0-V（E0切片，AC-E0）| worktree: D:/autostack/.wt/lang-969/auto-lang @ plan-969-dev | base: ca88cde14 | code_commit: 278b91204 | 依赖核对: 960/964/967/968全archived；967/F0-D已落主（master 4c1788a79，AC-F0-LAND收据） | 产出: `crates/auto-lang-core/src/ace_entry.rs`（公开合同，零ACE依赖/零legacy引用）＋新crate `crates/auto-lang-ace-host`（executor桥+provider生命周期+每run重admit/授权）＋`tests/e0_facade.rs`（V-E0-DISPATCH/CLOSE/SOURCE）＋固定组`ace-facade`（入ace集） | 验证: `cargo t ace-facade` PASS（执行3/排除0；per-case dispatch 0.411s/close 0.504s/source 0.043s，≤10s门达标；discovery 2.81s/execution 1.64s/wall 4.47s，meter见target/test-groups/run-d_gttlhy）；`cargo test -p auto-lang-core --lib ace_entry` 4绿；`cargo check -p auto-lang`/`-p auto-lang-ace-host --all-targets` 绿、新增代码0 warning；fmt已施（误及的ac_av.rs/test_cases mod.rs外部fmt噪声已revert，不在提交内） | 测试纪律: 3新用例数值如上（provider rustc cdylib构建在显式ace集成车道内计入用例耗时）；无新慢用例 | 真实dispatch证据: text_byte_len("A中😀\0")=9且callee_count=1；坏签名=compile诊断原span零dispatch；撤权/未知引擎/旧引擎名=具名Denied预拒；双provider身份20轮结果与计数不串；teardown后=HostFailure{ace.provider/unknown}；预置cancel flag=Cancelled；B01显式ACE=14；错入口=entry阶段诊断 | 义务保留: 原T-01..08/全部AC/1024承接不变，E0切片不冒整包 | next: T-E0-R（同树停写独立复核）
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 1 | from: work | to: work | status: executing | outcome: pass（E0切片work完成，T-E0-I/V绿） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 278b91204 | next: T-E0-R（E0切片独立复核）
+
+2026-11-15 stage: review / T-E0-R（E0切片独立审计，AC-E0-REVIEW）| 冻结基线: 278b91204（停写） | 审计者: 独立上下文agent（未参与实现，重跑全部声明的scoped命令） | 结论: **PASS**（0 BLOCKER/0 MAJOR/4 MINOR+1边界note；逐项核：ace_entry零legacy引用/单owner安装/桥接车道对ACE真实API（lower seam、wire admission、adopt/replace、teardown次序）/无泄漏UAF/授权次序/oracle质量/收据逐条对账/组注册/卫生/工作区无破坏） | findings: F-E0R-01非Windows根门缺失→crate根`#![cfg(windows)]`；F-E0R-02 callee_count doc+锁poison误标→`ace.host/executor-lock-poisoned`；F-E0R-03诊断oracle弱于计划行→钉死bind/source.argument 38..57、text/source.syntax 27..28、text/source.unsupported 23..26；F-E0R-04 foreign车道静默丢caps→冻结集外`ace.capability/unsupported`预拒+用例 | 修复: 全数@1ad2d2c60，复验cargo t ace-facade PASS（source 0.047s/dispatch 0.509s/close 0.600s）+core ace_entry 4绿 | F-E0R-05: 撤权与在途run竞态=E0同步单线程合同边界（审计验证零thread::spawn），后续async切片处理 | next: T-E0-D（phase fold）
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 2 | from: work | to: work | status: executing | outcome: pass（T-E0-R PASS，findings全数修复复验） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 1ad2d2c60 | next: T-E0-D（E0切片phase fold）
+
+2026-11-15 stage: merge / T-E0-D（E0切片phase fold，AC-E0-LAND）| 合入: plan-969-dev → master `5dfcfe74e`（--no-ff；含278b91204实现+1ad2d2c60修复，9文件+1792行） | 落地核对: 主检出**净树** `cargo t ace-facade` PASS＋`cargo test -p auto-lang-core --lib ace_entry` 4绿 | 外来WIP处置: 主检出 `experimental/ace/crates/core/src/source/mod.rs` 携PLAN-979未完WIP（AgePackage臂引用不存在变体，致含该文件的本地编译红）——**非本包改动、未纳入任何提交**；按 备份（plan-artifacts/plan-969/main-checkout-979-wip-mod.rs.bak）→`git checkout --`还原→净树验证→恢复 流程处理，sha256前后一致（471876a2bab0df31…）；已浮出待979 owner路由 | 沉淀: `docs/specs/ace-migration/m2-facade.md`（E0已验接口/每run纪律/永久验证/边界与开放项） | 交接: `auto_lang_core::run_ace`＋`auto_lang_ace_host::install()` 供978/B0、980/HELLO消费 | 树: 唯一worktree保留并resync至master，原T-01..T-08/1024承接继续；不归档、不勾整包完成、不翻机器默认 | next: T-01（全链前探/冻结）
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 3 | from: work | to: work | status: executing | outcome: pass（T-E0-D phase fold完成：master 5dfcfe74e＋spec沉淀＋净树落门绿） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 5dfcfe74e(merge) | next: T-01（原完整facade任务开工）
 
 ## 10. 待澄清事项
 
