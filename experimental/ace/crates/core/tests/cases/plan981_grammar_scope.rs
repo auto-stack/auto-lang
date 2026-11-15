@@ -1,12 +1,20 @@
 //! PLAN-981（SOURCE 批）：**grammar 裁剪的作用域不变量**。
 //!
-//! 我当时给 `auto-source.at` 加 `age-package` 裁剪（AGE 作者面 ∪ 包模块面），
-//! 声明"其余 profile 的 grammar id 字节不变"。但此前**没有断言**证明这一点——
-//! 只是叙述。本文件把它变成机械检查。
+//! ## 这条测试能证明什么、不能证明什么（复查者必读）
 //!
-//! 冻结值取自 PLAN-981 SOURCE 交付时（commit `11545e9de`）的实测值。任何一次
-//! grammar 改动若波及这些面，会在此立刻变红，而不是等到下游才发现"另一个面
-//! 的语法悄悄变了"。
+//! 冻结值是**本交付时**（commit `11545e9de`）的实测值。它防的是**将来**：任何
+//! 后续改动若波及这些面，会立刻变红并报出 profile 名。
+//!
+//! 它**无法**证明"本交付没有改动过它们"——因为冻结动作发生在 grammar 改动
+//! **之后**。而我当初那句"其余 profile 字节不变"的声明，就栽在这个时序上：
+//! 实测对比 `ca88cde14` 与 HEAD，**`age-component` 确实变了**
+//! （`b244ee16…` → `9c78ebbd…`），原因是它的 `age-view-member` 与新增的
+//! `age-view2d/3d-member` 共用同一个 `age-node-member` alt 列表，规则体被重排。
+//! 其余 13 个面（含 `age-h0`、`text-record`）**逐字节未变**。
+//!
+//! 也就是说：`age-component` 的那一行冻结值是"变后值"，不是"变前值"。它现在只能
+//! 防止**再次**漂移。这已是既成事实，故如实记录而非假装未发生——把已变的值改回
+//! 去会让当前代码红，而把声明改成"确实改了一个面"才是真实结论。
 use ace_core::source::SourceProfile;
 
 fn id_of(p: SourceProfile) -> String {
@@ -68,6 +76,11 @@ fn p981_grammar_trim_does_not_touch_non_age_profiles() {
             "f26f378633dd7b3df5754ee754836cfc2759c8435df1d04ecb952712c81d0d5e",
         ),
         // AGE 自己的既有两面同样是"不得被本次打包裁剪波及"的邻居。
+        // 注意：`age-component` 的这一行是**变后值**——它在阶段 H 因与新增的
+        // `age-view2d/3d-member` 共用同一个 alt 列表而被重排，基线 `ca88cde14`
+        // 的值是 `b244ee1614428379afb61a756e84adfd8c947fc8584e92d7a0f04bc7bf7222e0`。
+        // 保留变后值 + 在此注明，是为了让后来者看得到"这个面确实变过"，
+        // 而不是被一个看似中性的数字掩盖。
         (
             SourceProfile::AgeComponent,
             "9c78ebbd0fb37973b6866c7bc8b17ee5c7491e0c8cfd31bfc50dc348318c4e30",
