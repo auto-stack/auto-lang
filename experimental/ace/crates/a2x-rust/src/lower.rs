@@ -1835,9 +1835,6 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
         };
         let rest = symbol.strip_prefix("__sched_").unwrap_or(symbol);
-        let task_of = |rest: &str| -> String {
-            rest.split('_').next().unwrap_or("").to_string()
-        };
 
         if rest == "sleep" || rest == "stop" {
             return Ok((RExpr::PlainCall {

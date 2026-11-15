@@ -38,10 +38,6 @@ enum Part {
 
 /// Scan an f-string starting at `f"` in `src[i..]`; return the split parts
 /// and the byte length consumed (through the closing quote).
-fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
-    split_fstring_dialect(src, i, false)
-}
-
 /// PLAN-968: the scheduler face additionally admits the task sources'
 /// legacy bare-brace interpolation `{ident}` (idents only); the shared
 /// `$ident` / `${expr}` dialect stays byte-identical everywhere else.
@@ -283,7 +279,6 @@ pub fn profile_admits_fstr(profile: SourceProfile) -> bool {
             | SourceProfile::Numeric
             | SourceProfile::Aggregates
             | SourceProfile::Scheduler
-            | SourceProfile::Aggregates
     )
 }
 

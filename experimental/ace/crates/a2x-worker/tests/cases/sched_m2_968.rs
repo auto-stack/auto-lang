@@ -61,11 +61,15 @@ const CASES: &[(&str, &str, &str)] = &[
         ),
         "got one\nvalue:0\n",
     ),
-    // spawn_with_state (a Str state field + the legacy bare-brace fstr)
-    // stays on the AV lane for M2-A: the a2r emit owned-text field-init
-    // seam (a borrowed spawn initializer binding an owned field local)
-    // is a NAMED DEFERRAL recorded in PLAN-968 receipts; the canonical
-    // stays fully covered on the AV lane and in the case-runner corpus.
+    (
+        "spawn_with_state",
+        include_str!(
+            "../../../../../../crates/auto-lang/test/cases/ace-m2/scheduler/src/spawn_with_state.at"
+        ),
+        "mycounter: 15
+value:0
+",
+    ),
     (
         "mailbox_fifo",
         include_str!(

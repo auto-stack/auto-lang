@@ -350,14 +350,30 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     // (the scheduler driver's state locals take spawn
                     // initializers through the Str-view import seam)
                     // promotes through the runtime's owned conversion.
-                    {
-                        let owned_here = owned_target(self, local.0);
-                        let borrowed_val = self
-                            .view
-                            .resolve_use_ty(self.f.body.exprs[value.0 as usize].ty)
-                            .map(|t| matches!(t, Ty::Str))
-                            .unwrap_or(false);
-                        if owned_here && borrowed_val && !is_lit(self.f.body, *value) {
+                    // PLAN-968: a scheduler driver's state field local
+                    // may initialize from a borrowed str PARAM read (the
+                    // import seam types spawn initializers as the str
+                    // view). The let TARGET is owned — promote the source
+                    // local read through the runtime's owned conversion.
+                    if owned_target(self, local.0) && !is_lit(self.f.body, *value) {
+                        // A PARAM read renders as a borrowed view (view
+                        // mode) even when its declared type is owned —
+                        // promote the param-read initializer.
+                        let src_param = match &self.f.body.exprs[value.0 as usize].kind {
+                            hir::ExprKind::ReadLocal { local: src } => self
+                                .locals
+                                .get(src.0 as usize)
+                                .map(|l| {
+                                    matches!(l.role, hir::LocalRole::Param)
+                                        && matches!(
+                                            self.view.resolve_use_ty(l.ty),
+                                            Ok(Ty::StrOwned | Ty::Str)
+                                        )
+                                })
+                                .unwrap_or(false),
+                            _ => false,
+                        };
+                        if src_param {
                             v = RExpr::StrFn {
                                 func: "a2x_str_to_owned".into(),
                                 args: vec![v],
@@ -835,9 +851,16 @@ impl<'a, 'v> CollLower<'a, 'v> {
             args.push(self.expr(*a, out)?);
         }
         let wrap = |e: RExpr, t: &Ty| -> RExpr {
+            let text_lit = matches!(&e, RExpr::StrLit(_));
             let f = match t {
                 Ty::Bool => "a2x_v_b",
-                Ty::Str | Ty::StrOwned => "a2x_v_s",
+                Ty::Str | Ty::StrOwned => {
+                    if text_lit {
+                        "a2x_v_lit"
+                    } else {
+                        "a2x_v_s"
+                    }
+                }
                 _ => "a2x_v_i",
             };
             RExpr::PlainCall {
@@ -1518,10 +1541,17 @@ fn sched_task_adapter_text(task: &str, field_tys: &[Ty]) -> String {
         if k > 0 {
             b.push_str(", ");
         }
-        b.push_str(unwrap_helper(t));
-        b.push_str("(a[");
-        b.push_str(&k.to_string());
-        b.push_str("].clone())");
+        if matches!(t, Ty::Str | Ty::StrOwned) {
+            b.push_str(unwrap_helper(t));
+            b.push_str("(a[");
+            b.push_str(&k.to_string());
+            b.push_str("].clone()).as_str()");
+        } else {
+            b.push_str(unwrap_helper(t));
+            b.push_str("(a[");
+            b.push_str(&k.to_string());
+            b.push_str("].clone())");
+        }
     }
     b.push_str(");");
     b.push('\n');
@@ -1546,10 +1576,17 @@ fn sched_go_adapter_text(name: &str, param_tys: &[Ty]) -> String {
         if k > 0 {
             b.push_str(", ");
         }
-        b.push_str(unwrap_helper(t));
-        b.push_str("(a[");
-        b.push_str(&k.to_string());
-        b.push_str("].clone())");
+        if matches!(t, Ty::Str | Ty::StrOwned) {
+            b.push_str(unwrap_helper(t));
+            b.push_str("(a[");
+            b.push_str(&k.to_string());
+            b.push_str("].clone()).as_str()");
+        } else {
+            b.push_str(unwrap_helper(t));
+            b.push_str("(a[");
+            b.push_str(&k.to_string());
+            b.push_str("].clone())");
+        }
     }
     b.push_str(");");
     b.push('\n');

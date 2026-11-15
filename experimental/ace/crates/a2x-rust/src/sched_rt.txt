@@ -26,6 +26,7 @@ impl Clone for SchedValue {
 pub fn a2x_v_i(v: i32) -> SchedValue { SchedValue::I(v) }
 pub fn a2x_v_b(v: bool) -> SchedValue { SchedValue::B(v) }
 pub fn a2x_v_s(v: A2xStr) -> SchedValue { SchedValue::S(v) }
+pub fn a2x_v_lit(v: &str) -> SchedValue { SchedValue::S(a2x_str_from_lit(v).unwrap()) }
 pub fn a2x_un_i(v: SchedValue) -> i32 {
     match v { SchedValue::I(x) => x, SchedValue::B(b) => i32::from(b), SchedValue::S(_) => 0 }
 }
