@@ -469,3 +469,58 @@ fn p979_component_vdetail03_identity_changes_and_failure_keeps_old() {
     assert_eq!(first.desugar_hash, again.desugar_hash);
     assert_eq!(first.description.grammar_id, again.description.grammar_id);
 }
+
+// ---- V-04：只失效实际依赖（源/场景/profile/兼容配置各看各的）----
+
+#[test]
+fn p979_component_v04_invalidation_tracks_the_actual_dependency() {
+    let src = "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let one = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let two = ComponentScenario {
+        instances: 1,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+        ],
+    };
+    let base = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &one)
+        .expect("base");
+
+    // ① 源变 → 源身份与脱糖身份都变。
+    let src2 = format!("fn extra() int {{\n    return 1\n}}\n{src}");
+    let changed_src =
+        compile_component_scenario(&src2, "c.at", LegacyWidgetAlias::Reject, &[], &one)
+            .expect("changed source");
+    assert_ne!(base.input_hash, changed_src.input_hash);
+    assert_ne!(base.desugar_hash, changed_src.desugar_hash);
+
+    // ② 场景变 → 源身份不变、脱糖身份变（只失效受影响的依赖）。
+    let changed_scenario =
+        compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &two)
+            .expect("changed scenario");
+    assert_eq!(base.input_hash, changed_scenario.input_hash);
+    assert_ne!(base.desugar_hash, changed_scenario.desugar_hash);
+
+    // ③ 兼容配置变 → 描述记录别名；**哈希对不变**（F12：接缓存时 alias 必须入键）。
+    let alias_on = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Accept, &[], &one)
+        .expect("alias on");
+    assert_eq!(base.input_hash, alias_on.input_hash);
+    assert_eq!(base.desugar_hash, alias_on.desugar_hash);
+    assert!(matches!(base.description.alias, LegacyWidgetAlias::Reject));
+    assert!(matches!(
+        alias_on.description.alias,
+        LegacyWidgetAlias::Accept
+    ));
+}
