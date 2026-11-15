@@ -62,14 +62,14 @@ fn vm_diagnostic_message_exact_and_contains_decode() {
 #[test]
 fn rust_diagnostic_decodes_to_a2r_error_check() {
     let case = one(
-        "### Rust diagnostic\ncheck-id: \"rust-fail\"\nstage: \"typecheck\"\ncode: \"a2r.E0203\"\ncontains: true\n\n```text\nmismatch\n```\n",
+        "### Rust diagnostic\ncheck-id: \"rust-fail\"\nstage: \"type\"\ncode: \"a2r.E0203\"\ncontains: true\n\n```text\nmismatch\n```\n",
     );
     let check = &case.spec.checks[0];
     assert_eq!(check.id, "rust-fail");
     assert_eq!(check.adapter.as_str(), "a2r");
     match &check.expect.completion {
         Completion::Error {
-            stage: Stage::Typecheck,
+            stage: Stage::Type,
             code,
             message: Some(MessageMatcher::Contains(text)),
         } => {
@@ -215,7 +215,7 @@ fn message_without_stage_code_and_conflicting_faces_are_errors() {
 
     // Rust golden + Rust diagnostic conflict
     let e = error_of(
-        "### Rust\n\n```rust\nfn main() {}\n```\n\n### Rust diagnostic\nstage: \"typecheck\"\ncode: \"c\"\n\n```text\nm\n```\n",
+        "### Rust\n\n```rust\nfn main() {}\n```\n\n### Rust diagnostic\nstage: \"type\"\ncode: \"c\"\n\n```text\nm\n```\n",
     );
     assert!(e.message.contains("金样"), "{e:?}");
 }

@@ -2072,7 +2072,14 @@ REPRESENTATION_ORIGIN_KEYS = {
     "suite", "suite_path", "suite_sha256", "case_file", "case_file_sha256",
     "format", "case_open_line", "case_close_line", "doc_section_line",
     "input_paths", "case_dir", "check_dir",
+    # the migration itself: a file payload becomes inline text (source
+    # bytes stay identity-bound via semantic.case.source.sha256)
+    "source_ref",
 }
+
+# Artifact entry fields that change representation when an oracle file
+# becomes an inline document fence; path+sha256 remain the identity.
+ARTIFACT_REPRESENTATION_FIELDS = {"file", "origin_lines"}
 
 
 def _parse_plan_a1(plan_path: Path) -> list[dict[str, Any]]:
@@ -2362,8 +2369,14 @@ def index_manifest_side(
     indexed: dict[tuple[str, str], dict[str, Any]] = {}
     for row in proj.get("checks", []):
         sem = row.get("semantic") or {}
+        origin = row.get("origin") or {}
         key = ((sem.get("case") or {}).get("id", ""), (sem.get("check") or {}).get("id", ""))
         if key not in pair_idx:
+            # The pre-existing BASE document corpus (95 positions) is not
+            # part of the fences manifest; it travels unchanged and is
+            # verified by its own contracts, not this pair index.
+            if origin.get("format") == "document":
+                continue
             raise ParityError(f"[{side_label}] row outside frozen manifest: {key}")
         if key in indexed:
             raise ParityError(f"[{side_label}] duplicate (case, check): {key}")
@@ -2400,17 +2413,54 @@ def compare_manifest_sides(
                             "diffs": sem_diffs[:8]})
             continue
         old_origin, new_origin = old_row["origin"], new_row["origin"]
+        artifact_identity_ok = not (old_origin.get("artifacts") or new_origin.get("artifacts"))
         for field in sorted(set(old_origin) | set(new_origin)):
             if field in REPRESENTATION_ORIGIN_KEYS:
+                continue
+            if field == "artifacts":
+                # per-entry identity is (path, sha256); the payload carrier
+                # (sidecar file vs inline fence lines) is representation
+                old_arts = {
+                    (a.get("path"), a.get("sha256")): a
+                    for a in (old_origin.get(field) or [])
+                }
+                new_arts = {
+                    (a.get("path"), a.get("sha256")): a
+                    for a in (new_origin.get(field) or [])
+                }
+                if set(old_arts) != set(new_arts):
+                    results.append({"case": key[0], "check": key[1], "kind": "origin",
+                                    "diffs": [f"origin.artifacts identity set: "
+                                              f"{sorted(set(old_arts) ^ set(new_arts))[:3]}"]})
+                    artifact_identity_ok = False
+                else:
+                    artifact_identity_ok = True
+                continue
+            if field == "oracle_sha256":
+                # The aggregate hash embeds each artifact's payload carrier
+                # (PLAN-1002 formula: file path vs inline@line marker). It may
+                # differ old-vs-new ONLY when artifacts moved file->inline with
+                # identical (path, sha256) content; artifact-free oracles must
+                # hash identically.
+                if old_origin.get(field) != new_origin.get(field):
+                    old_has_arts = bool(old_origin.get("artifacts"))
+                    if not (old_has_arts and artifact_identity_ok):
+                        results.append({"case": key[0], "check": key[1], "kind": "origin",
+                                        "diffs": [f"origin.oracle_sha256: "
+                                                  f"{old_origin.get(field)!r} != "
+                                                  f"{new_origin.get(field)!r}"]})
                 continue
             if old_origin.get(field) != new_origin.get(field):
                 results.append({"case": key[0], "check": key[1], "kind": "origin",
                                 "diffs": [f"origin.{field}: {old_origin.get(field)!r} "
                                           f"!= {new_origin.get(field)!r}"]})
-        if (new_row["semantic"]["case"]["source"]["sha256"] != meta["source_sha256"]
-                or new_row["origin"]["oracle_sha256"] != meta["oracle_sha256"]):
+        # Aggregate oracle_sha256 is representation-sensitive for inline
+        # artifact payloads (PLAN-1002 formula); oracle CONTENT identity is
+        # enforced by the semantic diff plus the per-artifact (path, sha256)
+        # set compared above. Source bytes must equal the manifest freeze.
+        if new_row["semantic"]["case"]["source"]["sha256"] != meta["source_sha256"]:
             results.append({"case": key[0], "check": key[1], "kind": "identity",
-                            "diffs": ["source/oracle identity drifted from manifest"]})
+                            "diffs": ["source identity drifted from manifest"]})
     if results:
         first = results[0]
         raise ParityError(
