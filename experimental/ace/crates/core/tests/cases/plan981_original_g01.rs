@@ -456,5 +456,48 @@ fn p981_original_g01_fixtures_are_the_recorded_original_sources() {
     );
 }
 
+/// 交叉闭环：**凡被场景行引用的资源，都出现在 `resources` 面上**。
+///
+/// 两条判据（前门的存在性/类型检查、资源收集）必须给出同一答案；任何一边的
+/// 判据漂移都会在此暴露，而不是靠人工核对。
+#[test]
+fn p981_original_g01_every_referenced_resource_is_on_the_resource_surface() {
+    let out = compile_g01().expect("g01 compiles");
+    let main = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Main")
+        .expect("Main");
+    let declared: Vec<&str> = out
+        .description
+        .resources
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect();
+    for row in &main.scene {
+        let key = if row.attrs.iter().any(|(k, _)| k == "material") {
+            "material"
+        } else if row.attrs.iter().any(|(k, _)| k == "tint") {
+            "tint"
+        } else {
+            continue;
+        };
+        let e = attr(row, key).expect("material/tint");
+        let name = match &e.kind {
+            ExprKind::Field { name, .. } => name.name.clone(),
+            ExprKind::Var(id) => id.name.clone(),
+            other => panic!("unexpected material shape: {other:?}"),
+        };
+        assert!(
+            declared.contains(&name.as_str()),
+            "row `{}` references `{name}`, which is missing from the resource surface \
+             (declared: {declared:?})",
+            row.name
+        );
+    }
+}
+
+
 
 

@@ -1075,7 +1075,8 @@ fn scene_value_type(
             _ => return None,
         }),
         ExprKind::IntLit(_) => Some(TypeRef::Builtin(TypeWord::I32)),
-        // 负数/取反：类型跟操作数（`-20.0` 仍是 float）。
+        // 一元运算的结果类型**就是**操作数类型：`-20.0` 是 float，`!b` 是 bool。
+        // （不是"负数特例"——`Neg` 与 `Not` 都保持操作数类型，这里不必分叉。）
         ExprKind::Unary { operand, .. } => scene_value_type(operand, node_params),
         ExprKind::BoolLit(_) => Some(TypeRef::Builtin(TypeWord::Bool)),
         ExprKind::StrLit(_) => Some(TypeRef::Builtin(TypeWord::Str)),
@@ -1170,6 +1171,10 @@ fn check_scene_resource_refs(
 ///
 /// 判据是初值本身：`material2d.color(r,g,b,a)` / `mesh2d.*` 这类服务调用，端口
 /// 类型即其返回端口。分量只收**字面量**（含一元负号）；非字面量不猜、留空。
+///
+/// 注意：这里 `continue` 掉的是**非资源**全局（普通常量/store），不是丢弃——凡是
+/// 被场景行当作资源引用的名字，都由 `check_scene_resource_refs` 先确认为端口类型，
+/// 因此必然在本表里出现（否则那条检查会报 `scene-resource-type`）。
 fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResource> {
     let mut out = Vec::new();
     for decl in bound.globals.values() {
