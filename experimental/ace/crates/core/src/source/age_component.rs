@@ -520,18 +520,30 @@ pub fn compile_component_scenario(
             )]);
         }
     }
-    if let Some(f0) = node.fields.first() {
-        if field_type(f0) != Some(TypeWord::I32) {
-            return Err(vec![text_diag(
-                "source.age.component-unsupported",
-                format!(
-                    "the observed model field must be `int` (the driver encodes it as i32); `{}` is `{}`",
-                    f0.name, f0.ty
-                ),
-                f0.ty_span,
-            )]);
-        }
+    // 形状优先：没有 model 字段是形状问题（不是"没有 int 字段"的未接线问题）。
+    if node.fields.is_empty() {
+        return Err(vec![text_diag(
+            "source.age.component-shape",
+            "the scenario slice requires at least one `model` field to observe",
+            node.view.span,
+        )]);
     }
+    // 观测字段 = 首个 `int` 字段（驱动以 i32 编码它）；没有 int 字段才拒。
+    let observed = node
+        .fields
+        .iter()
+        .find(|f| field_type(f) == Some(TypeWord::I32));
+    let Some(observed_field) = observed else {
+        return Err(vec![text_diag(
+            "source.age.component-unsupported",
+            "the scenario needs at least one `int` model field to observe (the driver encodes it \
+             as i32)",
+            node.fields
+                .first()
+                .map(|f| f.ty_span)
+                .unwrap_or(node.view.span),
+        )]);
+    };
     if node.view.texts.is_empty() {
         return Err(vec![text_diag(
             "source.age.component-shape",
@@ -629,7 +641,7 @@ pub fn compile_component_scenario(
             span: node.span,
             kind: ExprKind::Call {
                 callee: Ident {
-                    name: state_fn_name(inst, &node.fields[0].name),
+                    name: state_fn_name(inst, &observed_field.name),
                     span: node.span,
                 },
                 args: Vec::new(),

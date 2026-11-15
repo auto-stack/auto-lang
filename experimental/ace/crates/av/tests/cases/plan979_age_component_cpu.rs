@@ -381,7 +381,7 @@ fn p979_component_bool_field_renders_through_its_typed_state() {
 }
 
 #[test]
-fn p979_component_bool_observed_field_is_refused_by_name() {
+fn p979_component_bool_only_model_is_refused_by_name() {
     // 观测字段（首字段）必须是 int：bool 首字段具名拒。
     let src = "node S {\n    model {\n        enabled bool = true\n    }\n    on Off {\n        enabled = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
     let scenario = ComponentScenario {
@@ -406,4 +406,30 @@ fn p979_component_static_face_observes_every_text_value() {
     assert_eq!(values.len(), 2, "one group per node");
     assert_eq!(values[0], vec!["a".to_string(), "hi".to_string()]);
     assert_eq!(values[1], vec!["c".to_string()]);
+}
+
+#[test]
+fn p979_component_observation_picks_the_first_int_field() {
+    // bool 首字段、int 第二字段：观测取首个 int 字段（不再要求首字段是 int）。
+    let src = "node S {\n    model {\n        on bool = true\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Inc".to_string(),
+            },
+        ],
+    };
+    let o = observe_component(src, "s.at", LegacyWidgetAlias::Reject, &scenario)
+        .expect("a bool-first model is observable through its int field");
+    assert_eq!(o.encoded, 1 + 2 * 256, "instance0=1, instance1=2");
 }

@@ -597,7 +597,7 @@ fn p979_component_static_face_describes_every_node_in_the_module() {
 }
 
 #[test]
-fn p979_component_bool_fields_are_typed_and_the_observed_field_must_be_int() {
+fn p979_component_bool_fields_are_typed_and_an_int_field_is_observed() {
     // 第二字段 bool 可用（状态函数按字段类型返回）。
     let ok = "node S {\n    model {\n        count int = 0\n        on bool = true\n    }\n    on Off {\n        on = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
     let scenario = ComponentScenario {
@@ -614,13 +614,13 @@ fn p979_component_bool_fields_are_typed_and_the_observed_field_must_be_int() {
         "bool field keeps its own state fn"
     );
 
-    // 首字段（观测字段）bool：具名拒，span 指向该字段类型。
+    // 只有 bool 字段（没有 int 可观测）：具名拒，span 指向该字段类型。
     let bad = "node S {\n    model {\n        on bool = true\n    }\n    on Off {\n        on = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
     let ds = compile_component_scenario(bad, "s.at", LegacyWidgetAlias::Reject, &[], &scenario)
-        .expect_err("a bool observed field is refused");
+        .expect_err("a bool-only model has nothing to observe");
     assert_eq!(ds[0].code, "source.age.component-unsupported");
     assert!(
-        ds[0].message.contains("observed model field must be `int`"),
+        ds[0].message.contains("at least one `int` model field"),
         "{:?}",
         ds[0]
     );
