@@ -355,7 +355,7 @@ T-01在原有界前探冻结Winsock初始化/错误码、socket/非阻塞/IOCP�
   [✅ 2026-11-16] 冻结记录见§5"T-01 A期冻结记录"：968/1042/1043 已交核实；973 依赖分账（核心腿不前置、File/Stream/upload 文件腿具名阻塞）；已交 seam 盘点（platform_io 无 net=补位面）；策略比较冻结 S1（platform.net/1 扩展）；平台/命令/资源冻结。worktree 已建。T-02 为下一实现单元（platform.net/1 provider＋最小 HTTP 往返）。
 
 - [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
-  [进行中 2026-11-16, worktree commit c226a7215] **OS薄适配+最小真实HTTP往返已交付**（T-02首个增量）：`platform.net/1` 全栈落地——av-core（CATEGORY_NET四op：connect/write_some/read_into/close；每动作caps；call/run字节预算；16-socket台账单属主账本NetSocket；混源region读沿console_write16纪律；具名错误码）＋Win32后端（std::net，5s超时，取消轮询写，槽位存储）＋mir_verify四net caps准入＋ace-core源表四符号注册＋**native道两导入点具名拒platform.net**（原支持域外，匹配保持穷尽）。永久证 `net_974.rs`：`net974_real_tcp_http_roundtrip`（**Auto侧自有HTTP协议**驱动真实回环服务器：GET写入→region读→状态行解析；独立oracle 200*100+43=20043；0.09s）＋`net974_negative_controls`（wrong-origin -3/invalid-handle -2/bad-bounds -4/double-close -6/bad-port -7/准入host.unauthorized且零dispatch）。回归：platform_io_1039+sched+console 48/48 PASS。**T-02余量**：http.get/builder/post API面、SSE、server腿、redirect/timeout语义、旧a2p语料http案例映射——后续增量；973阻塞腿不变。
+  [进行中 2026-11-16, worktree commit c226a7215] **OS薄适配+最小真实HTTP往返已交付**（T-02首个增量）：`platform.net/1` 全栈落地——av-core（CATEGORY_NET四op：connect/write_some/read_into/close；每动作caps；call/run字节预算；16-socket台账单属主账本NetSocket；混源region读沿console_write16纪律；具名错误码）＋Win32后端（std::net，5s超时，取消轮询写，槽位存储）＋mir_verify四net caps准入＋ace-core源表四符号注册＋**native道两导入点具名拒platform.net**（原支持域外，匹配保持穷尽）。永久证 `net_974.rs`：`net974_real_tcp_http_roundtrip`（**Auto侧自有HTTP协议**驱动真实回环服务器：GET写入→region读→状态行解析；独立oracle 200*100+43=20043；0.09s）＋`net974_negative_controls`（wrong-origin -3/invalid-handle -2/bad-bounds -4/double-close -6/bad-port -7/准入host.unauthorized且零dispatch）。回归：platform_io_1039+sched+console 48/48 PASS。**增量2已交（54e09069e）**：Auto侧HTTP协议API面——`net974_http_api_face`（旧a2p `30_plan724/001_http_client_sync` 义务：http.get存取组/自定义头builder链/两参post，协议全在Auto源：send_request+req_get+req_with_header+req_post+int_to_str，console profile owned-Str方言；回环服务器按方法路由GET→200"hello"+X-Echo/POST→201+载荷长回显；独立手算oracle 2000005+2000005+2010002=6010012，三请求成形服务；三测全绿0.06s）。**T-02余量**：SSE、server腿、redirect/timeout语义、多模块std.net包装、973阻塞腿。
 
 - [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -382,6 +382,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: in-progress (T-02 inc2: Auto http API面) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: 54e09069e | evidence: net974三测全绿0.06s（roundtrip/negative/http_api_face 6010012精确命中）；回归platform_io_1039 8/8 | next_responsible_role: work（SSE/server腿/redirect/timeout 或按裁定）
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: in-progress (T-02 OS seam increment delivered) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: c226a7215（+754行：av-core platform.net/1全栈+Win32后端+mir_verify准入+core源表+native具名拒+net_974双测） | evidence: net974双测0.09s绿（真实TCP往返20043+六负控）；回归48/48；新用例≤10s门✓ | blockers: T-02完整协议面（http API/SSE/server/redirect）余量；973阻塞腿不变 | next_responsible_role: work（T-02续：Auto http协议API面+SSE+server腿，或按裁定继续）
 
