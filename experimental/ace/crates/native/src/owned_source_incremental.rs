@@ -214,6 +214,8 @@ fn decl_spans(program: &ace_core::source::ast::Program) -> (Vec<DeclFn>, Vec<(u6
             }),
             // PLAN-960: module globals are single-module-lane agnostic.
             Item::Const(_) | Item::Store(_) => {}
+            // PLAN-968: task declarations carry no TextRecord decl span.
+            Item::Task(_) => {}
             // PLAN-967 F0: the import frontdoor carries no decl span.
             Item::UseRs(_) => {}
             Item::Type(t) => {

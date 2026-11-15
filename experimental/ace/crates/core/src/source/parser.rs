@@ -136,11 +136,21 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Collections
         | SourceProfile::Closures
         | SourceProfile::Numeric
-        | SourceProfile::Aggregates => {
+        | SourceProfile::Aggregates
+        // PLAN-968: the scheduler face runs through the same unified CST
+        // chain (aggregates superset trim + task rules).
+        | SourceProfile::Scheduler => {
             // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
             // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
             let parsed_src = if super::fstr::profile_admits_fstr(profile) {
-                match super::fstr::desugar_fstrings(src) {
+                // PLAN-968: the scheduler face desugars with the legacy
+                // bare-brace `{ident}` dialect of the task sources.
+                let desugared = if profile.is_scheduler() {
+                    super::fstr::desugar_fstrings_sched(src)
+                } else {
+                    super::fstr::desugar_fstrings(src)
+                };
+                match desugared {
                     Ok(s) => s,
                     Err(msg) => {
                         return Err(Diagnostic {
@@ -982,6 +992,12 @@ impl<'s> Parser<'s> {
             {
                 self.use_rs_item()
             }
+            // PLAN-968: `task Name { ... }` actor declarations —
+            // scheduler surface only; every other profile keeps the
+            // historical `source.unsupported` rejection at the same token.
+            Some(Tok::Reserved(word)) if word == "task" && self.surface.is_scheduler() => {
+                Ok(Item::Task(self.task_item()?))
+            }
             Some(Tok::Reserved(word)) => {
                 let span = self.peek().unwrap().span;
                 Err(self.unsupported(
@@ -997,6 +1013,325 @@ impl<'s> Parser<'s> {
                 ))
             }
             _ => Err(self.syntax(format!("expected `fn`, found {}", self.describe_cur()))),
+        }
+    }
+
+    /// PLAN-968: `task Name { members }` (scheduler surface only). Members:
+    /// state fields `name = <default>`, the lifecycle hooks
+    /// `fn start() ! { }` / `fn stop() ! { }`, and exactly one `on { arms }`
+    /// message-handler block. Member separators follow the type-item
+    /// convention (`;`, newline or the closing brace).
+    fn task_item(&mut self) -> Result<TaskItem, Diagnostic> {
+        let kw = self.bump(); // the `task` reserved token (peeked by item())
+        let name = self.expect_ident("task name")?;
+        self.expect_punct(P::LBrace, "`{`")?;
+        let mut fields: Vec<TaskFieldDecl> = Vec::new();
+        let mut start: Option<FnItem> = None;
+        let mut stop: Option<FnItem> = None;
+        let mut arms: Vec<OnArm> = Vec::new();
+        let mut seen_fields: Vec<String> = Vec::new();
+        let mut any_member = false;
+        loop {
+            // member separator: `;`, newline(s) or the closing brace; the
+            // FIRST member may share the `{`'s line, a member may share a
+            // `;`'s line (type-item convention).
+            let after_semi = matches!(
+                self.toks.get(self.pos.wrapping_sub(1)),
+                Some(Token {
+                    tok: Tok::Punct(P::Semi),
+                    ..
+                })
+            );
+            match self.peek() {
+                None => return Err(self.syntax("expected `}` before end of file")),
+                Some(Token {
+                    tok: Tok::Punct(P::Semi),
+                    ..
+                }) => {
+                    self.pos += 1;
+                    continue;
+                }
+                Some(Token {
+                    tok: Tok::Punct(P::RBrace),
+                    ..
+                }) => break,
+                Some(t) if !any_member || after_semi || t.line > self.toks[self.pos - 1].line => {}
+                Some(_) => {
+                    return Err(self.syntax(format!(
+                        "expected `;`, newline or `}}`, found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+            any_member = true;
+            match self.peek().map(|t| t.tok.clone()) {
+                None => return Err(self.syntax("expected a task member, found end of file")),
+                Some(Tok::Kw(Kw::Fn)) => {
+                    let f = self.fn_item(Receiver::Free)?;
+                    let hook = f.name.name.as_str();
+                    if hook != "start" && hook != "stop" {
+                        return Err(self.err(
+                            "source.task-lifecycle",
+                            "only the `start` and `stop` lifecycle hooks may be declared inside a `task`",
+                            f.name.span,
+                        ));
+                    }
+                    let slot = if hook == "start" { &mut start } else { &mut stop };
+                    if slot.is_some() {
+                        return Err(self.err(
+                            "source.task-lifecycle",
+                            format!("duplicate `{hook}` lifecycle hook in the same task"),
+                            f.name.span,
+                        ));
+                    }
+                    *slot = Some(f);
+                }
+                Some(Tok::Ident(n))
+                    if n == "on"
+                        && matches!(
+                            self.peek2().map(|t2| &t2.tok),
+                            Some(Tok::Punct(P::LBrace))
+                        ) =>
+                {
+                    let on_kw = self.bump();
+                    self.expect_punct(P::LBrace, "`{`")?;
+                    if !arms.is_empty() {
+                        return Err(self.err(
+                            "source.task-handler",
+                            "duplicate `on` message-handler block in the same task",
+                            on_kw.span,
+                        ));
+                    }
+                    let mut any_arm = false;
+                    loop {
+                        let arm_after_semi = matches!(
+                            self.toks.get(self.pos.wrapping_sub(1)),
+                            Some(Token {
+                                tok: Tok::Punct(P::Semi),
+                                ..
+                            })
+                        );
+                        match self.peek() {
+                            None => return Err(self.syntax("expected `}` before end of file")),
+                            Some(Token {
+                                tok: Tok::Punct(P::Semi),
+                                ..
+                            }) => {
+                                self.pos += 1;
+                                continue;
+                            }
+                            Some(Token {
+                                tok: Tok::Punct(P::RBrace),
+                                ..
+                            }) => break,
+                            Some(t) if !any_arm
+                                || arm_after_semi
+                                || t.line > self.toks[self.pos - 1].line => {}
+                            Some(_) => {
+                                return Err(self.syntax(format!(
+                                    "expected `;`, newline or `}}`, found {}",
+                                    self.describe_cur()
+                                )))
+                            }
+                        }
+                        any_arm = true;
+                        let pat_start = self.peek().unwrap().span;
+                        let pattern = self.task_pattern()?;
+                        self.expect_punct(P::Arrow, "`->` after the message pattern")?;
+                        let lb = self.expect_punct(P::LBrace, "`{` opening the handler arm")?;
+                        // Oracle: brace-balanced skip + span-recorded
+                        // placeholder body (the scheduler corpus's AST
+                        // authority is the CST chain; this parser only
+                        // keeps the structural contract).
+                        let (body, body_span) = self.skip_balanced_block(lb)?;
+                        let span = pat_start.join(body_span);
+                        arms.push(OnArm {
+                            pattern,
+                            body,
+                            span,
+                        });
+                    }
+                }
+                Some(Tok::Ident(_)) => {
+                    let fname = self.expect_ident("task state field name")?;
+                    if fname.name == "on" {
+                        return Err(self.err(
+                            "source.task-handler",
+                            "`on` introduces the message-handler block and cannot be a state field",
+                            fname.span,
+                        ));
+                    }
+                    if seen_fields.contains(&fname.name) {
+                        return Err(self.err(
+                            "source.task-field",
+                            format!("duplicate task state field `{}`", fname.name),
+                            fname.span,
+                        ));
+                    }
+                    seen_fields.push(fname.name.clone());
+                    self.expect_punct(P::Assign, "`=` after the field name")?;
+                    let default = self.expr(false)?;
+                    let span = fname.span.join(default.span);
+                    fields.push(TaskFieldDecl {
+                        name: fname,
+                        default,
+                        span,
+                    });
+                }
+                Some(_) => {
+                    return Err(self.syntax(format!(
+                        "expected a task member (state field, `fn start`/`fn stop` or `on`), found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+        }
+        if arms.is_empty() {
+            return Err(self.err(
+                "source.task-handler",
+                "a `task` declaration requires one `on { ... }` message-handler block",
+                kw.span,
+            ));
+        }
+        let span = kw.span.join(
+            self.toks
+                .get(self.pos.wrapping_sub(1))
+                .map(|t| t.span)
+                .unwrap_or(kw.span),
+        );
+        Ok(TaskItem {
+            name,
+            fields,
+            start,
+            stop,
+            arms,
+            span,
+        })
+    }
+
+    /// PLAN-968: one `on` arm pattern - an integer/string literal
+    /// (`1 ->`, `"ping" ->`), a typed binding (`n int ->`) or the
+    /// wildcard (`_ ->`).
+    fn task_pattern(&mut self) -> Result<TaskPattern, Diagnostic> {
+        match self.peek().cloned() {
+            Some(Token {
+                tok: Tok::Int(digits),
+                span,
+                line,
+            }) => {
+                self.pos += 1;
+                self.last_line = line;
+                let mag: u128 = digits.parse().unwrap_or(u128::MAX);
+                if mag > I32_MAX {
+                    return Err(self.err(
+                        "source.literal-range",
+                        format!(
+                            "integer literal `{}` is outside the signed 32-bit range of this source profile",
+                            digits
+                        ),
+                        span,
+                    ));
+                }
+                Ok(TaskPattern::Lit(Expr {
+                    span,
+                    kind: ExprKind::IntLit(mag as i32),
+                }))
+            }
+            Some(Token {
+                tok: Tok::StrLit(v),
+                span,
+                line,
+            }) => {
+                self.pos += 1;
+                self.last_line = line;
+                Ok(TaskPattern::Lit(Expr {
+                    span,
+                    kind: ExprKind::StrLit(v),
+                }))
+            }
+            Some(Token {
+                tok: Tok::Ident(n),
+                span,
+                ..
+            }) if n == "_" => {
+                self.pos += 1;
+                Ok(TaskPattern::Wildcard(span))
+            }
+            Some(Token {
+                tok: Tok::Ident(_),
+                ..
+            }) => {
+                let name = self.expect_ident("message binding name")?;
+                let ty = self.param_type(&name)?;
+                Ok(TaskPattern::Bind { name, ty })
+            }
+            Some(_) => Err(self.syntax(format!(
+                "expected a message pattern (literal, binding or `_`), found {}",
+                self.describe_cur()
+            ))),
+            None => Err(self.syntax("expected a message pattern, found end of file")),
+        }
+    }
+
+    /// PLAN-968 oracle helper: skip one brace-balanced `{ ... }` region,
+    /// returning a placeholder block plus its span.
+    fn skip_balanced_block(&mut self, lb: Span) -> Result<(Block, Span), Diagnostic> {
+        let mut depth = 1usize;
+        let mut end = lb;
+        while depth > 0 {
+            let next = self.peek().cloned();
+            match next {
+                None => return Err(self.syntax("expected `}` before end of file")),
+                Some(t) => {
+                    let sp = t.span;
+                    let is_open = matches!(t.tok, Tok::Punct(P::LBrace));
+                    let is_close = matches!(t.tok, Tok::Punct(P::RBrace));
+                    self.pos += 1;
+                    self.last_line = t.line;
+                    if is_open {
+                        depth += 1;
+                    } else if is_close {
+                        depth -= 1;
+                    }
+                    end = sp;
+                }
+            }
+        }
+        Ok((
+            Block {
+                stmts: Vec::new(),
+                span: lb.join(end),
+            },
+            lb.join(end),
+        ))
+    }
+
+    /// PLAN-968 helper: the return type after the legacy `!` effect marker
+    /// was consumed (`fn start() ! int`). The accepted set mirrors the
+    /// scheduler-surface tail of the main return-type match.
+    fn fn_return_type_after_bang(
+        &mut self,
+        name: Ident,
+        rparen: Span,
+        bang_span: Span,
+    ) -> Result<TypeAnn, Diagnostic> {
+        match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Kw(Kw::Fn)) if self.surface.is_closures() => self.closures_type(),
+            Some(Tok::Punct(P::Question)) if self.surface.is_collections() => {
+                self.collections_type()
+            }
+            Some(Tok::Ident(_)) if self.surface.is_collections() => self.collections_type(),
+            Some(Tok::Kw(Kw::Int | Kw::I32 | Kw::Bool)) => Ok(self.type_word()),
+            Some(Tok::Punct(P::LBrace)) => Ok(TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::Void),
+                span: bang_span,
+            }),
+            _ => {
+                return Err(self.unsupported(
+                    "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
+                    name.span.join(rparen),
+                ))
+            }
         }
     }
 
@@ -1309,6 +1644,28 @@ impl<'s> Parser<'s> {
                 TypeAnn {
                     kind: TypeRef::Record(id),
                     span: t.span,
+                }
+            }
+            // PLAN-968: the legacy effect marker `fn start() ! { ... }` —
+            // admitted as a no-op on the scheduler surface; the annotated
+            // return type may follow it, or the body opens directly.
+            Some(Tok::Punct(P::Bang)) if self.surface.is_scheduler() => {
+                let t = self.bump();
+                match self.peek().map(|t| t.tok.clone()) {
+                    Some(Tok::Punct(P::LBrace)) => TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::Void),
+                        span: t.span,
+                    },
+                    _ => self.fn_return_type_after_bang(name.clone(), rparen, t.span)?,
+                }
+            }
+            // PLAN-968: bare `fn main() { ... }` — unit result on the
+            // scheduler surface (the canonical task sources' spelling).
+            Some(Tok::Punct(P::LBrace)) if self.surface.is_scheduler() => {
+                let sp = self.peek().unwrap().span;
+                TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Void),
+                    span: sp,
                 }
             }
             Some(Tok::Punct(P::LBrace)) => {
@@ -2959,6 +3316,30 @@ impl<'s> Parser<'s> {
                     {
                         let closure = self.closure_expr(true)?;
                         vals.push(closure);
+                    }
+                    // PLAN-968: `await <expr>` / `go <expr>` prefix
+                    // operators - scheduler surface only; every other
+                    // profile keeps the historical rejection.
+                    Tok::Reserved(ref word)
+                        if self.surface.is_scheduler() && (word == "await" || word == "go") =>
+                    {
+                        let kw_span = span;
+                        let kw_line = line;
+                        self.pos += 1;
+                        self.last_line = kw_line;
+                        // The operand is a complete trailing expression on
+                        // the same line (or any bracketed expression): the
+                        // frozen surface is `await <handle-ask>` / `go <call>`.
+                        let inner = self.expr(true)?;
+                        let espan = kw_span.join(inner.span);
+                        vals.push(Expr {
+                            span: espan,
+                            kind: if word == "await" {
+                                ExprKind::Await(Box::new(inner))
+                            } else {
+                                ExprKind::Go(Box::new(inner))
+                            },
+                        });
                     }
                     Tok::Reserved(word) => {
                         return Err(self.unsupported(

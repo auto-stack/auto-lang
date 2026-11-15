@@ -95,6 +95,37 @@ fn profile_descriptor(profile: SourceProfile) -> &'static crate::descriptor::Des
     }
 }
 
+/// PLAN-968: compile under the scheduler source profile — parse under the
+/// scheduler trim (aggregates superset + task actor surface), desugar the
+/// task declarations into driver functions and the operations into
+/// `__sched_*` intrinsics, resolve with the task side-table, typecheck,
+/// emit/bind through the closures-family descriptor and verify under the
+/// closures-superset domain.
+pub fn compile_scheduler_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let program = match super::parse_program_with(src, SourceProfile::Scheduler) {
+        Ok(p) => p,
+        Err(d) => return Err(vec![d]),
+    };
+    let (program, sched) = super::sched_desugar::desugar_program(&program)?;
+    let resolved =
+        super::resolve::resolve_with_sched(&program, capabilities, SourceProfile::Scheduler, &sched)?;
+    if let Err(ds) = typecheck::typecheck_with(&resolved, SourceProfile::Scheduler) {
+        return Err(ds);
+    }
+    let parts = emit_whole_document(&resolved, src, module_path, SourceProfile::Scheduler)?;
+    let checked = crate::verify::verify_closures(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::SCHEDULER_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// PLAN-961: compile under the numeric source profile (parse → resolve →
 /// typecheck → Atom bind through the numeric descriptor → verify under
 /// the closures-superset domain).
@@ -1319,6 +1350,8 @@ fn ty_name_t(
         VT::Object(i) => format!("t_object_{}", i),
         VT::Nil => "t_nil".to_string(),
         VT::Variant(i) => variant_atom_id(i, variants),
+        // PLAN-968: task handles / ask futures are opaque i32 ids.
+        VT::Task(_) | VT::Future(_) => "t_i32".to_string(),
         VT::Function(i) => format!("t_closure_sig_{}", i),
         // not reachable through a compiling entry-unit program (Unit is a
         // result type); the Atom id keeps the name meaningful for any
@@ -4162,6 +4195,13 @@ impl<'p> Emitter<'p> {
             } else if let Some((params, res, _)) = super::platform_io::signature(sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 (ps.join(", "), self.ty_use_ref(res))
+            } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
+                let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                let rs = match res {
+                    Some(r) => self.ty_use_ref(r),
+                    None => "unit".to_string(),
+                };
+                (ps.join(", "), rs)
             } else {
                 (String::new(), "\"t_i32\"".to_string())
             };
@@ -5281,6 +5321,70 @@ fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
 /// frozen string lives with the verifier front door (text_resources.rs)
 /// so verify and the source adapter cannot drift apart (r2 QA-02).
 pub use crate::text_resources::RUNTIME_TEXT_CAPABILITY;
+
+/// PLAN-968: the scheduler intrinsic signature table — one fixed
+/// (params, result) per per-task/per-callee symbol (`None` result = the
+/// unit result spelling). Handle/future params and results are the opaque
+/// `t_i32` ids (`VT::Task`/`VT::Future` map there).
+pub(crate) fn sched_intrinsic_signature(
+    program: &ResolvedProgram,
+    sym: &str,
+) -> Option<(Vec<VT>, Option<VT>)> {
+    let rest = sym.strip_prefix("__sched_")?;
+    let tasks = &program.sched_tasks;
+    if let Some(t) = rest.strip_prefix("spawn_") {
+        let t = tasks.iter().find(|x| x.name == t)?;
+        let mut params = vec![VT::Str, VT::I32];
+        // Text fields initialize from str literals (the borrowed view
+        // face) — the runtime clones the value either way.
+        params.extend(t.fields_vt.iter().map(|v| match v {
+            VT::StrOwned => VT::Str,
+            other => *other,
+        }));
+        return Some((params, Some(VT::I32)));
+    }
+    if let Some(t) = rest.strip_prefix("send_") {
+        let t = tasks.iter().find(|x| x.name == t)?;
+        return Some((vec![VT::I32, t.msg], Some(VT::I32)));
+    }
+    if let Some(t) = rest.strip_prefix("ask_") {
+        let t = tasks.iter().find(|x| x.name == t)?;
+        return Some((vec![VT::I32, t.msg], Some(VT::I32)));
+    }
+    if let Some(t) = rest.strip_prefix("await_") {
+        let t = tasks.iter().find(|x| x.name == t)?;
+        return Some((vec![VT::I32], Some(t.reply)));
+    }
+    if let Some(t) = rest.strip_prefix("reply_") {
+        let t = tasks.iter().find(|x| x.name == t)?;
+        return Some((vec![t.reply], Some(VT::I32)));
+    }
+    if let Some(t) = rest.strip_prefix("recv_") {
+        let t = tasks.iter().find(|x| x.name == t)?;
+        return Some((Vec::new(), Some(t.msg)));
+    }
+    if rest.starts_with("port_") {
+        return Some((Vec::new(), Some(VT::I32)));
+    }
+    if rest.starts_with("stopping_") {
+        return Some((Vec::new(), Some(VT::Bool)));
+    }
+    if let Some(rest2) = rest.strip_prefix("go_") {
+        // PLAN-968: the symbol is go_<fn-index>_<name>; the sig carries
+        // the callee's params after the name string argument.
+        let f_idx: usize = rest2.parse().ok().or_else(|| {
+            rest2.split('_').next().and_then(|n| n.parse().ok())
+        })?;
+        let f = program.fns.get(f_idx)?;
+        let mut params = vec![VT::Str];
+        params.extend(f.params.iter().copied());
+        return Some((params, Some(VT::I32)));
+    }
+    match rest {
+        "stop" | "sleep" => Some((vec![VT::I32], Some(VT::I32))),
+        _ => None,
+    }
+}
 
 fn intrinsic_def_id(sym: &str) -> String {
     format!("i_{}", intrinsic_id_suffix(sym))

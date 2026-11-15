@@ -224,10 +224,47 @@ pub fn lower_checked(
             }
             hir::DefKind::Intrinsic { symbol, effect, ty } => {
                 if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
-                    return Err(AdapterError::uns(
-                        "lower.intrinsic",
-                        format!("intrinsic `{}` is not in the av profile", symbol),
-                    ));
+                    // PLAN-968: scheduler intrinsics ride the same import
+                    // seam; the call sites rewrite them to SCHED ops.
+                    // Console spellings become host imports in scheduler
+                    // modules (task-handler stdout).
+                    if symbol.starts_with("__sched_") {
+                        // accepted below via the shared import path
+                    } else if symbol.starts_with("auto.console.")
+                        && module.defs.iter().any(|d| {
+                            matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
+                                if s.starts_with("__sched_"))
+                        })
+                    {
+                        let sig = fn_type_index(
+                            *ty,
+                            module,
+                            &mut out,
+                            false,
+                            &mut std::collections::BTreeMap::new(),
+                            &mut std::collections::BTreeSet::new(),
+                        )?;
+                        let h = ace_av_core::host::declaration(
+                            symbol,
+                            owned_fn_sig_for_def(
+                                module,
+                                di as u32,
+                                *ty,
+                                &mut out,
+                                &BTreeMap::new(),
+                            )?,
+                        )
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                        out.host_imports.push(h);
+                        // The call sites find the host import by symbol;
+                        // the def itself needs no CalleeRef.
+                        continue;
+                    } else {
+                        return Err(AdapterError::uns(
+                            "lower.intrinsic",
+                            format!("intrinsic `{}` is not in the av profile", symbol),
+                        ));
+                    }
                 }
                 let sig = fn_type_index(
                     *ty,
@@ -379,10 +416,47 @@ pub fn lower_checked_data(
             }
             hir::DefKind::Intrinsic { symbol, effect, ty } => {
                 if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
-                    return Err(AdapterError::uns(
-                        "lower.intrinsic",
-                        format!("intrinsic `{}` is not in the av profile", symbol),
-                    ));
+                    // PLAN-968: scheduler intrinsics ride the same import
+                    // seam; the call sites rewrite them to SCHED ops.
+                    // Console spellings become host imports in scheduler
+                    // modules (task-handler stdout).
+                    if symbol.starts_with("__sched_") {
+                        // accepted below via the shared import path
+                    } else if symbol.starts_with("auto.console.")
+                        && module.defs.iter().any(|d| {
+                            matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
+                                if s.starts_with("__sched_"))
+                        })
+                    {
+                        let sig = fn_type_index(
+                            *ty,
+                            module,
+                            &mut out,
+                            false,
+                            &mut std::collections::BTreeMap::new(),
+                            &mut std::collections::BTreeSet::new(),
+                        )?;
+                        let h = ace_av_core::host::declaration(
+                            symbol,
+                            owned_fn_sig_for_def(
+                                module,
+                                di as u32,
+                                *ty,
+                                &mut out,
+                                &BTreeMap::new(),
+                            )?,
+                        )
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                        out.host_imports.push(h);
+                        // The call sites find the host import by symbol;
+                        // the def itself needs no CalleeRef.
+                        continue;
+                    } else {
+                        return Err(AdapterError::uns(
+                            "lower.intrinsic",
+                            format!("intrinsic `{}` is not in the av profile", symbol),
+                        ));
+                    }
                 }
                 let sig = fn_type_index(
                     *ty,
@@ -533,11 +607,53 @@ fn lower_checked_collection_family(
                     "type-bound methods are outside the av.collections/1 surface".to_string(),
                 ));
             }
-            hir::DefKind::Intrinsic { .. } => {
-                return Err(AdapterError::uns(
-                    "lower.intrinsic",
-                    "intrinsics are outside the av.collections/1 surface".to_string(),
-                ));
+            hir::DefKind::Intrinsic { symbol, effect, ty } => {
+                // PLAN-968: the scheduler intrinsics ride the collections-
+                // family def path as imports; console spellings become
+                // host imports (task-handler stdout). Everything else
+                // keeps the historical rejection.
+                if symbol.starts_with("__sched_") {
+                    let sig = owned_fn_sig_for_def(
+                        module,
+                        di as u32,
+                        *ty,
+                        &mut out,
+                        &BTreeMap::new(),
+                    )?;
+                    let idx = out.intern_import(MirImport {
+                        symbol: symbol.clone(),
+                        effect: match effect {
+                            hir::Effect::Observable => Effect::Observable,
+                            hir::Effect::Pure => Effect::Pure,
+                        },
+                        sig,
+                        env: None,
+                    });
+                    def_map.insert(di as u32, CalleeRef::Import(idx));
+                } else if symbol.starts_with("auto.console.")
+                    && module.defs.iter().any(|d| {
+                        matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
+                            if s.starts_with("__sched_"))
+                    })
+                {
+                    let sig = owned_fn_sig_for_def(
+                        module,
+                        di as u32,
+                        *ty,
+                        &mut out,
+                        &BTreeMap::new(),
+                    )?;
+                    let h = ace_av_core::host::declaration(symbol, sig)
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                    out.host_imports.push(h);
+                    // The console call sites find the host import by
+                    // symbol; no CalleeRef entry is needed.
+                } else {
+                    return Err(AdapterError::uns(
+                        "lower.intrinsic",
+                        "intrinsics are outside the av.collections/1 surface".to_string(),
+                    ));
+                }
             }
         }
     }
@@ -1943,10 +2059,14 @@ fn lower_function_unit_impl(
             }
             hir::DefKind::Intrinsic { symbol, effect, ty } => {
                 if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
-                    return Err(AdapterError::uns(
-                        "lower.intrinsic",
-                        format!("intrinsic `{symbol}` is not in the av profile"),
-                    ));
+                    // PLAN-968: scheduler intrinsics ride this reserved
+                    // import seam like the trace marks.
+                    if !symbol.starts_with("__sched_") {
+                        return Err(AdapterError::uns(
+                            "lower.intrinsic",
+                            format!("intrinsic `{symbol}` is not in the av profile"),
+                        ));
+                    }
                 }
                 let sig = fn_type_index_ext_reserved(
                     *ty,
@@ -2871,7 +2991,16 @@ fn owned_type_idx_of(
             hir::BuiltinType::StrSlice => Ok(out.intern_type(MirType::StrView)),
             // PLAN-862: Unit is a RESULT type of the entry-unit profile,
             // which this owned-profile lowering never sees (defense).
-            hir::BuiltinType::Unit if out.is_host_console_profile() => {
+            hir::BuiltinType::Unit
+                if out.is_host_console_profile()
+                    // PLAN-968: console intrinsics in scheduler modules
+                    // carry the same unit result seam (the module's defs
+                    // carry __sched_ intrinsics).
+                    || m.defs.iter().any(|d| {
+                        matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("__sched_"))
+                    }) =>
+            {
                 Ok(out.intern_type(MirType::Unit))
             }
             hir::BuiltinType::Unit => Err(AdapterError::uns(
@@ -3996,10 +4125,22 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         }
                         return Ok(dst);
                     }
-                    if self.out.is_host_console_profile() {
+                    let sched_module = self.hir_module.defs.iter().any(|d| {
+                        matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("__sched_"))
+                    });
+                    if self.out.is_host_console_profile() || sched_module {
+                        // PLAN-968: only host-table spellings take the
+                        // host-import path; __sched_ intrinsics keep the
+                        // generic call path (rewritten to SCHED ops below).
                         if let hir::DefKind::Intrinsic { symbol, .. } =
                             &self.hir_module.defs[callee.0 as usize].kind
                         {
+                            if !(symbol.starts_with("auto.console.")
+                                || symbol.starts_with("auto.platform."))
+                            {
+                                // fall through to the generic call path
+                            } else {
                             let host = self
                                 .out
                                 .host_imports
@@ -4038,6 +4179,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             )?;
                             // No runtime Unit local/dst: HIR has already forbidden value consumers.
                             return Ok(u32::MAX);
+                            }
                         }
                     }
                     let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
@@ -4049,6 +4191,32 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     if let CalleeRef::Import(imp) = callee_ref {
                         let symbol = self.out.imports[imp as usize].symbol.clone();
                         if !symbol.starts_with("fn:") {
+                            // PLAN-968: scheduler intrinsic calls rewrite to
+                            // the dedicated SCHED operations right here (the
+                            // import seam is the def-side identity only).
+                            if symbol.starts_with("__sched_") {
+                                let dst = self.temp_ty(ty)?;
+                                let instr = sched_instr_of(
+                                    &symbol,
+                                    dst,
+                                    &arg_slots,
+                                    &self
+                                        .out
+                                        .funcs
+                                        .iter()
+                                        .map(|f| f.name.clone())
+                                        .collect::<Vec<String>>(),
+                                )?;
+                                let no_result = sched_op_has_no_result(&instr);
+                                self.emit(instr, sp)?;
+                                // PLAN-968: the call seam still expects a
+                                // result value; the effect-only ops yield 0.
+                                if no_result {
+                                    let c = self.const_i32(0)?;
+                                    self.emit(MirInstr::Const { dst, value: c }, sp)?;
+                                }
+                                return Ok(dst);
+                            }
                             // PLAN-960: module global cell read/write.
                             if let Some(gname) = symbol.strip_prefix("module.global.get:") {
                                 let sig = self.out.imports[imp as usize].sig;
@@ -4387,6 +4555,28 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             "the wrapper is fully consumed: f0 + every wb field"
                         );
                         return Ok(v);
+                    }
+                    // PLAN-968: scheduler intrinsic calls rewrite to the
+                    // dedicated SCHED operations (the import seam is the
+                    // def-side identity only).
+                    if let CalleeRef::Import(idx) = callee_ref {
+                        let sym = self.out.imports[idx as usize].symbol.clone();
+                        if sym.starts_with("__sched_") {
+                            let dst = self.temp_ty(ty)?;
+                            let instr = sched_instr_of(
+                                &sym,
+                                dst,
+                                &actuals,
+                                &self.out.funcs.iter().map(|f| f.name.clone()).collect::<Vec<String>>(),
+                            )?;
+                            let no_result = sched_op_has_no_result(&instr);
+                            self.emit(instr, sp)?;
+                            if no_result {
+                                let c = self.const_i32(0)?;
+                                self.emit(MirInstr::Const { dst, value: c }, sp)?;
+                            }
+                            return Ok(dst);
+                        }
                     }
                     let dst = self.temp_ty(ty)?;
                     self.emit(
@@ -6526,4 +6716,113 @@ pub fn lower_checked_console(
         ));
     }
     lower_checked_owned(checked, entry_name, source_snapshot)
+}
+
+
+/// PLAN-968: whether a sched operation produces no result value (the
+/// call seam zero-fills its temp for these).
+fn sched_op_has_no_result(i: &ace_av_core::mir::MirInstr) -> bool {
+    use ace_av_core::mir::MirInstr;
+    matches!(
+        i,
+        MirInstr::SchedSend { .. }
+            | MirInstr::SchedReply { .. }
+            | MirInstr::SchedStop { .. }
+            | MirInstr::SchedSleep { .. }
+            | MirInstr::SchedGo { .. }
+    )
+}
+
+/// PLAN-968: map one `__sched_*` intrinsic call to its MIR scheduler
+/// operation. `actuals` are the already-lowered argument slots (source
+/// order); `dst` is the freshly allocated result temp.
+fn sched_instr_of(
+    sym: &str,
+    dst: u32,
+    actuals: &[u32],
+    func_names: &[String],
+) -> Result<ace_av_core::mir::MirInstr, AdapterError> {
+    use ace_av_core::mir::MirInstr;
+    let rest = sym.strip_prefix("__sched_").unwrap_or(sym);
+    // The MIR fn name is the def's emitted identity (the source adapter's
+    // `d_f<fi>_<name>` form); match by suffix on the plain fn name.
+    let fn_idx_by_name = |name: &str| -> Result<u32, AdapterError> {
+        let want = format!("_{name}");
+        func_names
+            .iter()
+            .position(|f| f.ends_with(&want) || f.as_str() == name)
+            .map(|i| i as u32)
+            .ok_or_else(|| {
+                AdapterError::inv(
+                    "lower.sched-callee",
+                    format!("scheduler callee function `{name}` missing"),
+                )
+            })
+    };
+    if let Some(t) = rest.strip_prefix("spawn_") {
+        // actuals: [name-str, capacity, inits...] — the name string is a
+        // compile-time identity; the driver fn is the callee.
+        if actuals.len() < 2 {
+            return Err(AdapterError::inv(
+                "lower.sched-arity",
+                format!("`{sym}` needs a task name and a capacity"),
+            ));
+        }
+        let callee = fn_idx_by_name(&format!("__task_{t}"))?;
+        return Ok(MirInstr::SchedSpawn {
+            callee,
+            capacity: actuals[1],
+            args: actuals[2..].to_vec(),
+            dst,
+        });
+    }
+    if let Some(rest2) = rest.strip_prefix("go_") {
+        // go_<fn-index>_<name>: the resolved fn index is the MIR table
+        // position (def order) — independent of body-lowering order.
+        let callee: u32 = rest2
+            .split('_')
+            .next()
+            .and_then(|n| n.parse().ok())
+            .ok_or_else(|| {
+                AdapterError::inv(
+                    "lower.sched-callee",
+                    format!("scheduler go symbol `{sym}` lacks its fn index"),
+                )
+            })?;
+        return Ok(MirInstr::SchedGo {
+            callee,
+            args: actuals[1..].to_vec(),
+        });
+    }
+    Ok(match rest {
+        "stop" => MirInstr::SchedStop {
+            handle: actuals[0],
+        },
+        "sleep" => MirInstr::SchedSleep { ms: actuals[0] },
+        _ if rest.starts_with("send_") => MirInstr::SchedSend {
+            handle: actuals[0],
+            msg: actuals[1],
+        },
+        _ if rest.starts_with("ask_") => MirInstr::SchedAsk {
+            handle: actuals[0],
+            msg: actuals[1],
+            dst,
+        },
+        _ if rest.starts_with("reply_") => MirInstr::SchedReply {
+            value: actuals[0],
+        },
+        _ if rest.starts_with("await_") => MirInstr::SchedAwait {
+            future: actuals[0],
+            dst,
+        },
+        _ if rest.starts_with("recv_") => MirInstr::SchedRecv { dst },
+        _ if rest.starts_with("port_") => MirInstr::SchedPort { dst },
+        _ if rest.starts_with("stopping_") => MirInstr::SchedStopping { dst },
+        _ => {
+            return Err(AdapterError::uns(
+                "lower.sched-unknown",
+                format!("unknown scheduler intrinsic `{sym}`"),
+            ))
+        }
+    })
 }

@@ -139,6 +139,12 @@ pub(super) fn dummy_expr_for_vt(
             vt,
             kind: RExprKind::IntLit(0),
         },
+        // PLAN-968: scheduler handles/futures synthesize the 0 id literal.
+        VT::Task(_) | VT::Future(_) => ResolvedExpr {
+            span,
+            vt,
+            kind: RExprKind::IntLit(0),
+        },
         VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64 => ResolvedExpr {
             span,
             vt,
@@ -344,6 +350,16 @@ pub(super) fn collect_agg_iter_records(
     for item in &program.items {
         match item {
             ast::Item::Fn(f) => collect_fn_anns(f, &mut anns),
+            // PLAN-968: task declarations carry anns in arm binding patterns;
+            // hook/field/body anns flow through the resolve-synthesized
+            // functions (never this ast-level walk).
+            ast::Item::Task(t) => {
+                for arm in &t.arms {
+                    if let ast::TaskPattern::Bind { ty, .. } = &arm.pattern {
+                        anns.push(ty);
+                    }
+                }
+            }
             ast::Item::Type(t) => {
                 for f in &t.fields {
                     anns.push(&f.ty);

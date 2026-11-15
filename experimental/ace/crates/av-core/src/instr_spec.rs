@@ -755,6 +755,17 @@ pub fn coverage_check() -> Result<(), String> {
 pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
     match i {
         MirInstr::HostCall { .. } => "HOST_CALL",
+        MirInstr::SchedSpawn { .. } => "SCHED_SPAWN",
+        MirInstr::SchedSend { .. } => "SCHED_SEND",
+        MirInstr::SchedAsk { .. } => "SCHED_ASK",
+        MirInstr::SchedReply { .. } => "SCHED_REPLY",
+        MirInstr::SchedStop { .. } => "SCHED_STOP",
+        MirInstr::SchedSleep { .. } => "SCHED_SLEEP",
+        MirInstr::SchedAwait { .. } => "SCHED_AWAIT",
+        MirInstr::SchedGo { .. } => "SCHED_GO",
+        MirInstr::SchedRecv { .. } => "SCHED_RECV",
+        MirInstr::SchedPort { .. } => "SCHED_PORT",
+        MirInstr::SchedStopping { .. } => "SCHED_STOPPING",
         MirInstr::PlatformCall { .. } => "PLATFORM_CALL",
         MirInstr::GlobalGet { .. } => "GLOBAL_GET",
         MirInstr::GlobalSet { .. } => "GLOBAL_SET",

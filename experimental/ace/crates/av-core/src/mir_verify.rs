@@ -790,7 +790,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
         for (ii, imp) in self.module.imports.iter().enumerate() {
             let known = match imp.symbol.strip_prefix("fn:") {
                 Some(name) => self.module.is_unit && !name.is_empty(),
-                None => matches!(imp.symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b"),
+                // PLAN-968: scheduler intrinsics ride the import seam as
+                // def-side identity only — their call sites rewrite to the
+                // SCHED operations at lowering; runtime never dispatches
+                // them as imports.
+                None => {
+                    matches!(imp.symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b")
+                        || imp.symbol.starts_with("__sched_")
+                }
             };
             if !known {
                 return Err(MirVerifyError::uns(
@@ -830,6 +837,13 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // has no foreign call of its own (e.g. a callback target
                 // fn); the grant was admitted with the environment.
                 || (self.is_owned && c == ace_foreign_contract::resource::RESOURCE_CAP)
+                // PLAN-968: scheduler-surface modules admit the console
+                // capabilities (task-handler stdout observation).
+                || (self.module.host_imports.iter().any(|h| h.symbol.starts_with("auto.console."))
+                    && matches!(
+                        c.as_str(),
+                        crate::host::STDOUT | crate::host::STDERR
+                    ))
                 || (self.module.is_host_console_profile()
                     && matches!(
                         c.as_str(),
@@ -2621,7 +2635,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 let _ = dst;
             }
             MirInstr::HostCall { host, arg } => {
-                if !self.module.is_host_console_profile() {
+                // PLAN-968: scheduler modules carry the same console
+                // HostCall seam as the host-console profile.
+                let sched_console = self
+                    .module
+                    .host_imports
+                    .iter()
+                    .any(|h| h.symbol.starts_with("auto.console."));
+                if !self.module.is_host_console_profile() && !sched_console {
                     return Err(err("host.profile", "host call in a legacy profile".into()));
                 }
                 let h = self
@@ -4595,6 +4616,20 @@ impl MirInstr {
             // their dst; structural mutations (PUSH/INSERT/SET/FIELD_SET/
             // SWITCH) require an ALREADY-initialized root and never
             // re-initialize it.
+            // PLAN-968: value-producing scheduler ops define their dst
+            // (handles/futures are opaque i32 ids).
+            MirInstr::SchedSpawn { dst, .. }
+            | MirInstr::SchedAsk { dst, .. }
+            | MirInstr::SchedAwait { dst, .. }
+            | MirInstr::SchedRecv { dst, .. }
+            | MirInstr::SchedPort { dst, .. }
+            | MirInstr::SchedStopping { dst, .. } => Some(*dst),
+            // PLAN-968: effect-only scheduler ops define no slot.
+            MirInstr::SchedSend { .. }
+            | MirInstr::SchedReply { .. }
+            | MirInstr::SchedStop { .. }
+            | MirInstr::SchedSleep { .. }
+            | MirInstr::SchedGo { .. } => None,
             MirInstr::ListNew { dst, .. }
             | MirInstr::ListLen { dst, .. }
             | MirInstr::ListCap { dst, .. }
@@ -4674,6 +4709,17 @@ impl MirInstr {
                 out
             }
             MirInstr::HostCall { arg, .. } => vec![*arg],
+            // PLAN-968: scheduler operand reads.
+            MirInstr::SchedSpawn { args, .. } | MirInstr::SchedGo { args, .. } => args.clone(),
+            MirInstr::SchedSend { handle, msg } => vec![*handle, *msg],
+            MirInstr::SchedAsk { handle, msg, .. } => vec![*handle, *msg],
+            MirInstr::SchedReply { value } => vec![*value],
+            MirInstr::SchedStop { handle } | MirInstr::SchedSleep { ms: handle } => {
+                vec![*handle]
+            }
+            MirInstr::SchedAwait { future, .. } => vec![*future],
+            MirInstr::SchedRecv { .. } | MirInstr::SchedPort { .. }
+            | MirInstr::SchedStopping { .. } => vec![],
             MirInstr::PlatformCall { args, .. } => args.clone(),
             MirInstr::GlobalGet { .. } => vec![],
             MirInstr::GlobalSet { src, .. } => vec![*src],

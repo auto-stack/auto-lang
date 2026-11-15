@@ -119,6 +119,9 @@ fn vt_name(v: &ace_core::source::resolve::VT) -> &'static str {
         // PLAN-961: the numeric surface is outside this inference
         // profile's value set — a distinct label, never a silent i32.
         VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64 => "numeric",
+        // PLAN-968: scheduler handles/futures are outside this inference
+        // profile (distinct label, never a silent i32).
+        VT::Task(_) | VT::Future(_) => "scheduler",
         VT::Bool => "bool",
         VT::Str | VT::StrOwned | VT::Char => "text",
         VT::Rec(_) => "record",
@@ -178,6 +181,9 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
             core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor projects nothing.
             core_ast::Item::UseRs(_) => {}
+            // PLAN-968: task declarations desugar before this projection
+            // on the scheduler face; nothing to project here.
+            core_ast::Item::Task(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
@@ -300,6 +306,9 @@ pub fn project_body_scoped_with_caps(
             core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor projects nothing.
             core_ast::Item::UseRs(_) => {}
+            // PLAN-968: task declarations desugar before this projection
+            // on the scheduler face; nothing to project here.
+            core_ast::Item::Task(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
@@ -611,6 +620,14 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         // expression on the query surface (named rejection).
         core_ast::ExprKind::Range { .. } => InputExprKind::Unsupported {
             what: "range-expression",
+        },
+        // PLAN-968: await/go are scheduler-surface forms, desugared
+        // before any query projection (named rejection if one escapes).
+        core_ast::ExprKind::Await(_) => InputExprKind::Unsupported {
+            what: "await-expression",
+        },
+        core_ast::ExprKind::Go(_) => InputExprKind::Unsupported {
+            what: "go-expression",
         },
         // PLAN-962: literals/index reads are aggregates-surface forms,
         // named-unsupported on the query surface.

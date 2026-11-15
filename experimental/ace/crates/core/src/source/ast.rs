@@ -262,6 +262,52 @@ pub enum Item {
     /// Exactly one per module; the provider id must match the session's
     /// admitted foreign manifest (validated in resolve, never parsed away).
     UseRs(UseRsItem),
+    /// PLAN-968: a `task` actor declaration (scheduler surface only).
+    Task(TaskItem),
+}
+
+/// PLAN-968: a `task Name { ... }` actor declaration (scheduler surface).
+/// Members: state fields with defaults (`count = 0`), optional lifecycle
+/// hooks `fn start() ! {}` / `fn stop() ! {}`, and one `on { ... }` message
+/// handler block whose arms pattern-match the (monomorphic) message type.
+#[derive(Clone, Debug)]
+pub struct TaskItem {
+    pub name: Ident,
+    pub fields: Vec<TaskFieldDecl>,
+    pub start: Option<FnItem>,
+    pub stop: Option<FnItem>,
+    pub arms: Vec<OnArm>,
+    /// `task` keyword through the closing brace.
+    pub span: Span,
+}
+
+/// PLAN-968: one task state field `name = <default expr>` (type inferred
+/// from the default, spawn-time positional initializers override it in
+/// declaration order — the Plan 390 §5 Phase B public contract).
+#[derive(Clone, Debug)]
+pub struct TaskFieldDecl {
+    pub name: Ident,
+    pub default: Expr,
+    /// Field name token through the default expression.
+    pub span: Span,
+}
+
+/// PLAN-968: one `on` message arm `pattern -> { body }`.
+#[derive(Clone, Debug)]
+pub struct OnArm {
+    pub pattern: TaskPattern,
+    pub body: Block,
+    /// Pattern start through the closing brace.
+    pub span: Span,
+}
+
+/// PLAN-968: an arm pattern — a literal (`1 ->`), a typed binding
+/// (`n int ->`) or the wildcard binding (`_ ->`, binds nothing).
+#[derive(Clone, Debug)]
+pub enum TaskPattern {
+    Lit(Expr),
+    Bind { name: Ident, ty: TypeAnn },
+    Wildcard(Span),
 }
 
 /// A `use.rs <provider>` / `use.c <provider>` module item (PLAN-967
@@ -434,6 +480,14 @@ pub enum ExprKind {
     NilLit,
     /// PLAN-964 (L-22/FStr): display an I32 as a decimal owned Str.
     TextDisplay(Box<Expr>),
+    /// PLAN-968: `await <expr>` — park the current task chain until the
+    /// future is published (scheduler surface only). The operand is the
+    /// future-bearing expression (a handle `ask` call).
+    Await(Box<Expr>),
+    /// PLAN-968: `go <expr>` — fire-and-forget concurrent evaluation of a
+    /// call expression on a fresh anonymous task chain (scheduler surface
+    /// only). Yields no value.
+    Go(Box<Expr>),
     /// PLAN-962 (L-19): a range `a..b` / `a..=b` — legal ONLY in the
     /// for-in iterable position (the resolver desugars to a counted
     /// i32 loop; a range in any other position is a named rejection).

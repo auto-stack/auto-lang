@@ -3221,6 +3221,21 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::HostCall { .. } | MirInstr::PlatformCall { .. } => {
                 return Err("av.host-console/1 calls are outside the native surface".into())
             }
+            // PLAN-968: the scheduler surface is outside the native
+            // backend's support domain (D3: named rejection).
+            MirInstr::SchedSpawn { .. }
+            | MirInstr::SchedSend { .. }
+            | MirInstr::SchedAsk { .. }
+            | MirInstr::SchedReply { .. }
+            | MirInstr::SchedStop { .. }
+            | MirInstr::SchedSleep { .. }
+            | MirInstr::SchedAwait { .. }
+            | MirInstr::SchedGo { .. }
+            | MirInstr::SchedRecv { .. }
+            | MirInstr::SchedPort { .. }
+            | MirInstr::SchedStopping { .. } => {
+                return Err("native.sched-unsupported: the task scheduler surface is not part of the native backend".into())
+            }
             MirInstr::GlobalGet { .. } | MirInstr::GlobalSet { .. } => {
                 return Err(
                     "module global cells are outside the mn surface first cut (PLAN-960 follow-up)"

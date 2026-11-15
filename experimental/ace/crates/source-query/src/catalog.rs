@@ -136,6 +136,9 @@ impl SignatureCatalog {
         let mut by_logical: BTreeMap<LogicalId, String> = BTreeMap::new();
         for item in &program.items {
             match item {
+                // PLAN-968: task declarations produce no fn-signature
+                // facts (their drivers desugar first).
+                Item::Task(_) => {}
                 Item::Fn(f) => {
                     let facts = produce_fn_sig(program, package, module, &f.name.name)?;
                     by_logical.insert(facts.logical.clone(), facts.name.clone());

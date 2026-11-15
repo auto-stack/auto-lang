@@ -79,6 +79,8 @@ fn shift_expr(e: &mut Expr, delta: i64) {
     match &mut e.kind {
         // PLAN-936（T-04）：CT 需求原子——inner span 同步平移。
         ExprKind::HashExpr { expr: inner } => shift_expr(inner, delta),
+        // PLAN-968: await/go spans shift with their operand.
+        ExprKind::Await(inner) | ExprKind::Go(inner) => shift_expr(inner, delta),
         // PLAN-962：范围界 span 平移。
         ExprKind::Range { start, end, .. } => {
             shift_expr(start, delta);

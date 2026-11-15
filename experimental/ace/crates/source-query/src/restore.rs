@@ -128,6 +128,8 @@ pub fn restore_bind(
             // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
             Item::Type(_) => {}
             Item::Const(_) | Item::Store(_) => {}
+            // PLAN-968: task declarations declare no free function here.
+            Item::Task(_) => {}
             // PLAN-967 F0: the import frontdoor declares no function.
             Item::UseRs(_) => {}
             Item::Enum(_) => {
@@ -149,6 +151,7 @@ pub fn restore_bind(
                 variants: Vec::new(),
                 function_types: Vec::new(),
                 objects: Vec::new(),
+                            sched_tasks: Vec::new(),
             },
             Vec::new(),
             BodyTypeSupply::new(),

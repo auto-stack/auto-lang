@@ -11,6 +11,12 @@ pub struct SourceKinds {
     // items
     pub item: u32,
     pub fn_item: u32,
+    /// PLAN-968: `task Name { ... }` actor declaration (scheduler face only).
+    pub task_item: Option<u32>,
+    pub task_member: Option<u32>,
+    pub task_on: Option<u32>,
+    pub task_arm: Option<u32>,
+    pub task_field: Option<u32>,
     pub type_item: Option<u32>,
     pub script_item: Option<u32>,
     /// PLAN-963 (T-03): `spec Name { .. }` declaration (record/aggregates
@@ -105,6 +111,12 @@ pub struct SourceKinds {
     pub enum_item: Option<u32>,
     pub tag_item: Option<u32>,
     pub take_atom: Option<u32>,
+    /// PLAN-968: `reply(v)` call atom (scheduler face).
+    pub reply_atom: Option<u32>,
+    /// PLAN-968: `reply(v)` statement (scheduler face).
+    pub reply_stmt: Option<u32>,
+    /// PLAN-968: `go <call>` statement (scheduler face).
+    pub go_stmt: Option<u32>,
     pub union_item: Option<u32>,
     pub enum_arm: Option<u32>,
     pub is_stmt: Option<u32>,
@@ -153,6 +165,10 @@ pub struct SourceKinds {
     pub tok_block_open: u32,
     pub tok_minus: u32,
     pub tok_bang: u32,
+    /// PLAN-968: scheduler prefix operators and the `Task.spawn` member.
+    pub tok_r_await: u32,
+    pub tok_r_go: u32,
+    pub tok_r_spawn: u32,
     pub tok_dot: u32,
     pub tok_comma: u32,
     pub tok_colon: u32,
@@ -382,6 +398,11 @@ impl SourceKinds {
             reserved_toks,
             item: rk("item"),
             fn_item: rk("fn-item"),
+            task_item: rk_opt(p, "task-item"),
+            task_member: rk_opt(p, "task-member"),
+            task_on: rk_opt(p, "task-on"),
+            task_arm: rk_opt(p, "task-arm"),
+            task_field: rk_opt(p, "task-field"),
             type_item: rk_opt(p, "type-item"),
             script_item: rk_opt(p, "script-item"),
             spec_item: rk_opt(p, "spec-item"),
@@ -450,6 +471,9 @@ impl SourceKinds {
             enum_item: rk_opt(p, "enum-item"),
             tag_item: rk_opt(p, "tag-item"),
             take_atom: rk_opt(p, "take-atom"),
+            reply_atom: rk_opt(p, "reply-atom"),
+            reply_stmt: rk_opt(p, "reply-stmt"),
+            go_stmt: rk_opt(p, "go-stmt"),
             union_item: rk_opt(p, "union-item"),
             enum_arm: rk_opt(p, "enum-arm"),
             is_stmt: rk_opt(p, "is-stmt"),
@@ -498,6 +522,9 @@ impl SourceKinds {
             tok_block_open: tk("block-open"),
             tok_minus: tk("minus"),
             tok_bang: tk("bang"),
+            tok_r_await: tk("r-await"),
+            tok_r_go: tk("r-go"),
+            tok_r_spawn: tk("r-spawn"),
             tok_dot: tk("dot"),
             tok_comma: tk("comma"),
             tok_colon: tk("colon"),

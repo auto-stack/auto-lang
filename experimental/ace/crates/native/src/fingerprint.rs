@@ -257,6 +257,20 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
                 )
             }
         },
+        // PLAN-968: scheduler ops never reach an admitted native module
+        // (the lowering rejects them by name); a stable tag keeps the
+        // renderer total.
+        MirInstr::SchedSpawn { .. }
+        | MirInstr::SchedSend { .. }
+        | MirInstr::SchedAsk { .. }
+        | MirInstr::SchedReply { .. }
+        | MirInstr::SchedStop { .. }
+        | MirInstr::SchedSleep { .. }
+        | MirInstr::SchedAwait { .. }
+        | MirInstr::SchedGo { .. }
+        | MirInstr::SchedRecv { .. }
+        | MirInstr::SchedPort { .. }
+        | MirInstr::SchedStopping { .. } => "sched-op".to_string(),
         MirInstr::HostCall { host, arg } => {
             let h = m
                 .host_imports

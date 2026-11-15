@@ -1,5 +1,8 @@
 #[path = "cases/abc_semantics_tier.rs"]
 mod abc_semantics_tier;
+#[path = "cases/sched_m2_968.rs"]
+mod sched_m2_968;
+
 #[path = "cases/aggregates_m2_965.rs"]
 mod aggregates_m2_965;
 #[path = "cases/aggregates_v_rows.rs"]

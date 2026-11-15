@@ -39,6 +39,17 @@ enum Part {
 /// Scan an f-string starting at `f"` in `src[i..]`; return the split parts
 /// and the byte length consumed (through the closing quote).
 fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
+    split_fstring_dialect(src, i, false)
+}
+
+/// PLAN-968: the scheduler face additionally admits the task sources'
+/// legacy bare-brace interpolation `{ident}` (idents only); the shared
+/// `$ident` / `${expr}` dialect stays byte-identical everywhere else.
+fn split_fstring_dialect(
+    src: &str,
+    i: usize,
+    bare_braces: bool,
+) -> Result<(Vec<Part>, usize), String> {
     let bytes = src.as_bytes();
     debug_assert!(bytes[i] == b'f');
     let mut j = i + 2; // past `f"`
@@ -129,6 +140,25 @@ fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
                 j += 1;
                 break;
             }
+            // PLAN-968: the scheduler face's legacy `{ident}` form.
+            b'{' if bare_braces
+                && bytes.get(j + 1).is_some_and(|n| is_ident_start(*n)) =>
+            {
+                let mut k = j + 1;
+                while k < bytes.len() && is_ident_char(bytes[k]) {
+                    k += 1;
+                }
+                if bytes.get(k) == Some(&b'}') {
+                    if !text.is_empty() {
+                        parts.push(Part::Text(std::mem::take(&mut text)));
+                    }
+                    parts.push(Part::Ident(src[j + 1..k].to_string()));
+                    j = k + 1;
+                    continue;
+                }
+                text.push('{');
+                j += 1;
+            }
             _ => {
                 let ch = src[j..].chars().next().unwrap();
                 text.push(ch);
@@ -149,7 +179,17 @@ fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
 /// Desugar every `f"..."` in `src`. A parse-stage error string on a
 /// malformed f-string; the caller maps it to a `source.fstr-syntax`
 /// diagnostic.
+/// PLAN-968: the scheduler face's f-string desugar (adds the legacy
+/// bare-brace `{ident}` interpolation of the task sources).
+pub fn desugar_fstrings_sched(src: &str) -> Result<String, String> {
+    desugar_fstrings_dialect(src, true)
+}
+
 pub fn desugar_fstrings(src: &str) -> Result<String, String> {
+    desugar_fstrings_dialect(src, false)
+}
+
+fn desugar_fstrings_dialect(src: &str, bare_braces: bool) -> Result<String, String> {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
     let mut i = 0;
@@ -193,7 +233,7 @@ pub fn desugar_fstrings(src: &str) -> Result<String, String> {
         // f-string start: `f"` with a non-ident char before the `f`
         if c == b'f' && bytes.get(i + 1) == Some(&b'"') && (i == 0 || !is_ident_char(bytes[i - 1]))
         {
-            let (parts, len) = match split_fstring(src, i) {
+            let (parts, len) = match split_fstring_dialect(src, i, bare_braces) {
                 Ok(x) => x,
                 Err(e) => return Err(e),
             };
@@ -241,6 +281,8 @@ pub fn profile_admits_fstr(profile: SourceProfile) -> bool {
             | SourceProfile::Collections
             | SourceProfile::Closures
             | SourceProfile::Numeric
+            | SourceProfile::Aggregates
+            | SourceProfile::Scheduler
             | SourceProfile::Aggregates
     )
 }

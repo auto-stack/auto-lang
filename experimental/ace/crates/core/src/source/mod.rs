@@ -34,12 +34,14 @@ pub mod packages;
 pub mod parser;
 pub mod platform_io;
 pub mod resolve;
+pub mod sched_desugar;
 pub mod typecheck;
 
 pub use adapter::{
     compile_aggregates_source, compile_closures_source, compile_closures_source_incremental,
     compile_collections_source, compile_entry_unit_source, compile_host_console_source,
     compile_numeric_source, compile_parts, compile_parts_with, compile_program_parts,
+    compile_scheduler_source,
     compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
     compile_text_source, emit_collections_function_batch, emit_function_body,
     emit_resolved_module_parts, emit_resolved_packages_parts, emit_resolved_packages_parts_profile,
@@ -121,6 +123,12 @@ pub const AGGREGATES_SOURCE_PROFILE: &str = "auto.source.aggregates.draft";
 /// 避免领域声明被静默丢弃。
 pub const AGE_H0_SOURCE_PROFILE: &str = "auto.source.age-h0.draft";
 
+/// PLAN-968: the scheduler surface (aggregates superset + the task actor
+/// face — `task` declarations with `on` message arms, `Task.spawn`,
+/// handle `send`/`ask`/`stop`, `reply`, `await`, `go`, `sleep` and
+/// console `print`). Consumed by `compile_scheduler_source`.
+pub const SCHEDULER_SOURCE_PROFILE: &str = "auto.source.scheduler.draft";
+
 /// PLAN-979 T-03：AGE 组件面 profile（`node { model … on … view … }`）。与 `age-h0`
 /// 同源不同裁剪：H0 合同不变，组件语义只在本面出现。
 pub const AGE_COMPONENT_SOURCE_PROFILE: &str = "auto.source.age-component.draft";
@@ -142,6 +150,9 @@ pub enum SourceProfile {
     Numeric,
     /// PLAN-962: the aggregates profile (numeric surface + composites).
     Aggregates,
+    /// PLAN-968: the scheduler profile (aggregates superset + the task
+    /// actor surface; see [`SCHEDULER_SOURCE_PROFILE`]).
+    Scheduler,
     /// PLAN-979: the AGE H0 domain profile (text-record surface + AGE node
     /// declarations). Only the AGE domain front door consumes it.
     AgeH0,
@@ -164,6 +175,7 @@ impl SourceProfile {
             SourceProfile::Closures => CLOSURES_SOURCE_PROFILE,
             SourceProfile::Numeric => NUMERIC_SOURCE_PROFILE,
             SourceProfile::Aggregates => AGGREGATES_SOURCE_PROFILE,
+            SourceProfile::Scheduler => SCHEDULER_SOURCE_PROFILE,
             SourceProfile::AgeH0 => AGE_H0_SOURCE_PROFILE,
             SourceProfile::AgeComponent => AGE_COMPONENT_SOURCE_PROFILE,
         }
@@ -188,6 +200,10 @@ impl SourceProfile {
             // collections-family domain (aggregate admission lives in the
             // resolver and the MIR verifier, keyed by profile).
             SourceProfile::Aggregates => crate::hir::HirDomain::Closures,
+            // PLAN-968: scheduler documents verify under the same
+            // collections-family domain (task admission lives in the
+            // resolver and the MIR verifier, keyed by profile).
+            SourceProfile::Scheduler => crate::hir::HirDomain::Closures,
             // PLAN-979: the AGE domain's ordinary surface is text-record; the
             // domain description is verified inside that same domain, never a
             // second checker.
@@ -211,6 +227,8 @@ impl SourceProfile {
                 | SourceProfile::Closures
                 | SourceProfile::Numeric
                 | SourceProfile::Aggregates
+                // PLAN-968: the scheduler face keeps the scalar operator surface.
+                | SourceProfile::Scheduler
                 // PLAN-979: the AGE domain face keeps the text-record surface.
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
@@ -228,6 +246,8 @@ impl SourceProfile {
                 | SourceProfile::Closures
                 | SourceProfile::Numeric
                 | SourceProfile::Aggregates
+                // PLAN-968: the scheduler face keeps the collections surface.
+                | SourceProfile::Scheduler
         )
     }
 
@@ -236,21 +256,35 @@ impl SourceProfile {
     pub fn is_closures(&self) -> bool {
         matches!(
             self,
-            SourceProfile::Closures | SourceProfile::Numeric | SourceProfile::Aggregates
+            SourceProfile::Closures
+                | SourceProfile::Numeric
+                | SourceProfile::Aggregates
+                // PLAN-968: the scheduler face keeps the closures surface.
+                | SourceProfile::Scheduler
         )
     }
 
     /// PLAN-961: whether the numeric surface is accepted — typed literals,
     /// numeric type words, bit ops, shift methods and conversions.
     pub fn is_numeric(&self) -> bool {
-        matches!(self, SourceProfile::Numeric | SourceProfile::Aggregates)
+        matches!(
+            self,
+            SourceProfile::Numeric | SourceProfile::Aggregates | SourceProfile::Scheduler
+        )
     }
 
     /// PLAN-962: whether the aggregate surface is accepted — nested
     /// containers, composite record/variant fields, tuples, index
     /// places, ranges and the wider pattern set.
     pub fn is_aggregates(&self) -> bool {
-        matches!(self, SourceProfile::Aggregates)
+        matches!(self, SourceProfile::Aggregates | SourceProfile::Scheduler)
+    }
+
+    /// PLAN-968: whether the task actor surface is accepted — `task`
+    /// declarations, `Task.spawn`, handle `send`/`ask`, `reply`, `await`,
+    /// `go`, `sleep` and scheduler-profile `print`.
+    pub fn is_scheduler(&self) -> bool {
+        matches!(self, SourceProfile::Scheduler)
     }
 
     /// PLAN-864: whether string literals lex on this surface (the text
@@ -282,6 +316,8 @@ impl SourceProfile {
                 | SourceProfile::Collections
                 | SourceProfile::Closures
                 | SourceProfile::Aggregates
+                // PLAN-968: the scheduler face keeps the record surface.
+                | SourceProfile::Scheduler
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
         )

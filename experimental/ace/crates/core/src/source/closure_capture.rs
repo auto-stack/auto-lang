@@ -69,6 +69,10 @@ pub(crate) fn analyze_capture_uses(
             ExprKind::HashExpr { expr: inner } => {
                 visit_expr(inner, outer_locals, scopes, uses, by_name)
             }
+            // PLAN-968: await/go capture through their operand.
+            ExprKind::Await(inner) | ExprKind::Go(inner) => {
+                visit_expr(inner, outer_locals, scopes, uses, by_name)
+            }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}
             // PLAN-962: a range captures through its bounds.
@@ -441,6 +445,10 @@ pub(crate) fn scan_shared_capture_cells(
     ) {
         match &expr.kind {
             ExprKind::HashExpr { expr: inner } => visit_expr(inner, scopes, shared),
+            // PLAN-968: await/go share through their operand.
+            ExprKind::Await(inner) | ExprKind::Go(inner) => {
+                visit_expr(inner, scopes, shared)
+            }
             // PLAN-962: a range captures through its bounds.
             ExprKind::Range { start, end, .. } => {
                 visit_expr(start, scopes, shared);

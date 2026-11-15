@@ -197,6 +197,9 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
         ),
         SourceProfile::Core => compile_source(&src, &module_path, &args.capabilities),
         SourceProfile::Scalar => compile_scalar_source(&src, &module_path, &args.capabilities),
+        SourceProfile::Scheduler => {
+            ace_core::source::adapter::compile_scheduler_source(&src, &module_path, &args.capabilities)
+        }
         SourceProfile::Text => {
             ace_core::source::compile_text_source(&src, &module_path, &args.capabilities)
         }

@@ -220,6 +220,8 @@ pub(crate) fn project_program_with_caps(
             // PLAN-967（F0/T-10）：导入前门也是声明区项（须在 script 前）。
             || Some(kind) == use_rs_item_kind
             || Some(kind) == use_c_item_kind
+            // PLAN-968: `task` declarations are declaration-position items.
+            || Some(kind) == k.task_item
         {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
@@ -292,6 +294,9 @@ pub(crate) fn project_program_with_caps(
             } else if eng.is_type_alias(node) {
                 // PLAN-963（T-03）：类型别名——只进投影侧表，不产出 Item。
                 aliases.push(eng.run_type_alias_item(node));
+            } else if Some(kind) == k.task_item {
+                // PLAN-968: task actor declaration.
+                items.push(Item::Task(eng.run_task_item(node)));
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -2450,6 +2455,12 @@ impl<'c, 'a> Walker<'c, 'a> {
                 if let Some(d) = self.walk_closure_expr() {
                     return Some(d);
                 }
+            } else if (g == k.tok_r_await || g == k.tok_r_go) && self.cx.profile.is_scheduler() {
+                // PLAN-968: `await`/`go` prefix operators — consumed, the
+                // operand walk continues (mirrors the oracle's prefix parse).
+                self.i += 1;
+                anchored = true;
+                continue;
             } else if self.is_reserved(g) {
                 return Some(self.unsupported(
                     format!("keyword `{}` is not part of this source profile", text),
@@ -3537,6 +3548,19 @@ enum Frame {
     UnaryPost {
         op: UnaryOp,
     },
+    /// PLAN-968: `await`/`go` prefix wrap-up (scheduler face).
+    SchedPrefixFinish {
+        is_await: bool,
+        kw_span: Span,
+    },
+    /// PLAN-968: `reply(v)` statement wrap-up (unit call for effect).
+    ReplyStmtFinish {
+        kw: Span,
+    },
+    /// PLAN-968: `go <call>` statement wrap-up.
+    GoStmtFinish {
+        kw: Span,
+    },
     PostfixFoldAll {
         steps: Vec<u32>,
     },
@@ -3637,6 +3661,18 @@ pub(crate) struct Cx<'a> {
     visited: usize,
     diags: Vec<(u64, Diagnostic)>,
     over_budget: bool,
+}
+
+/// PLAN-968 helper: the closing `)` leaf span of one fn-tail node (the
+/// missing-ret N42 diagnostic spans `name .. )`, matching the oracle).
+fn fn_tail_rparen_span(cx: &Cx, tail: u32) -> Span {
+    let mut best: Option<Span> = None;
+    for c in cx.children(tail) {
+        if cx.tree.kind(c) == cx.k.tok_rparen {
+            best = Some(cx.span_of(c));
+        }
+    }
+    best.unwrap_or(Span { start: 0, end: 0 })
 }
 
 impl<'a> Cx<'a> {
@@ -4263,6 +4299,241 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// PLAN-968: `task <Name> { members }` -> `ast::TaskItem`. Members walk in
+    /// source order; the projection enforces hook names (start/stop only),
+    /// duplicate hooks and a single non-empty `on` block with the same named
+    /// diagnostics as the handwritten oracle (`source.task-*`).
+    fn run_task_item(&mut self, node: u32) -> TaskItem {
+        let kw_leaf = self.cx.field_child(node, "kw").expect("task kw");
+        let name_leaf = self.cx.field_child(node, "name").expect("task name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let member_kind = self.cx.k.task_member;
+        let mut fields: Vec<TaskFieldDecl> = Vec::new();
+        let mut seen_fields: Vec<String> = Vec::new();
+        let mut start: Option<FnItem> = None;
+        let mut stop: Option<FnItem> = None;
+        let mut arms: Vec<OnArm> = Vec::new();
+        let mut on_seen = false;
+        for member in self.cx.children(node) {
+            if Some(self.cx.tree.kind(member)) != member_kind {
+                continue;
+            }
+            if let Some(hook_n) = self.cx.field_child(member, "hook") {
+                let f = self.run_fn_item(hook_n, None, Receiver::Free);
+                let hook = f.name.name.clone();
+                let hook_span = f.name.span;
+                if hook != "start" && hook != "stop" {
+                    self.cx.reject(hook_span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.task-lifecycle",
+                            "only the `start` and `stop` lifecycle hooks may be declared inside a `task`",
+                            hook_span,
+                        )
+                    });
+                    continue;
+                }
+                let slot = if hook == "start" {
+                    &mut start
+                } else {
+                    &mut stop
+                };
+                if slot.is_some() {
+                    self.cx.reject(hook_span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.task-lifecycle",
+                            format!("duplicate `{hook}` lifecycle hook in the same task"),
+                            hook_span,
+                        )
+                    });
+                    continue;
+                }
+                *slot = Some(f);
+            } else if let Some(on_n) = self.cx.field_child(member, "handler") {
+                if on_seen {
+                    let head = self.cx.field_child(on_n, "on").expect("on head");
+                    let span = self.cx.span_of(head);
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.task-handler",
+                            "duplicate `on` message-handler block in the same task",
+                            span,
+                        )
+                    });
+                    continue;
+                }
+                on_seen = true;
+                arms = self.run_task_on(on_n);
+            } else if let Some(field_n) = self.cx.field_child(member, "field") {
+                let fname_leaf = self.cx.field_child(field_n, "name").expect("field name");
+                let fname = ident_of(&mut self.cx, fname_leaf);
+                if fname.name == "on" {
+                    let span = fname.span;
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.task-handler",
+                            "`on` introduces the message-handler block and cannot be a state field",
+                            span,
+                        )
+                    });
+                    continue;
+                }
+                if seen_fields.contains(&fname.name) {
+                    let span = fname.span;
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.task-field",
+                            format!("duplicate task state field `{}`", fname.name),
+                            span,
+                        )
+                    });
+                    continue;
+                }
+                seen_fields.push(fname.name.clone());
+                let value_n = self.cx.field_child(field_n, "value").expect("field default");
+                self.stack.push(Frame::ExprEnter(value_n));
+                self.drive();
+                let default = self.pop_e();
+                let span = fname.span.join(default.span);
+                fields.push(TaskFieldDecl {
+                    name: fname,
+                    default,
+                    span,
+                });
+            }
+        }
+        if !on_seen {
+            let span = self.cx.span_of(kw_leaf);
+            self.cx.reject(span, || {
+                Diagnostic::new(
+                    Stage::Text,
+                    "source.task-handler",
+                    "a `task` declaration requires one `on { ... }` message-handler block",
+                    span,
+                )
+            });
+        }
+        let span = self.cx.span_of(node);
+        TaskItem {
+            name,
+            fields,
+            start,
+            stop,
+            arms,
+            span,
+        }
+    }
+
+    /// PLAN-968: the `on { arms }` block — arms in source order.
+    fn run_task_on(&mut self, node: u32) -> Vec<OnArm> {
+        let arm_kind = self.cx.k.task_arm;
+        let mut arms = Vec::new();
+        for arm in self.cx.children(node) {
+            if Some(self.cx.tree.kind(arm)) != arm_kind {
+                continue;
+            }
+            let pat_n = self.cx.field_child(arm, "pattern").expect("arm pattern");
+            let pattern = self.run_task_pattern(pat_n);
+            let body_n = self.cx.field_child(arm, "body").expect("arm body");
+            self.enter_block(body_n);
+            self.drive();
+            let body = self.pop_b();
+            let span = self.cx.span_of(arm);
+            arms.push(OnArm {
+                pattern,
+                body,
+                span,
+            });
+        }
+        arms
+    }
+
+    /// PLAN-968: one arm pattern — literal / typed binding / wildcard, with
+    /// the same named rejections as the oracle (`source.task-pattern`,
+    /// `source.literal-range`).
+    fn run_task_pattern(&mut self, node: u32) -> TaskPattern {
+        if let Some(lit) = self.cx.child_of_kind(node, self.cx.k.tok_int_lit) {
+            let span = self.cx.span_of(lit);
+            let raw = self.cx.spelling(lit);
+            let mag: u128 = raw.parse().unwrap_or(u128::MAX);
+            if mag > 2147483647 {
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.literal-range",
+                        format!(
+                            "integer literal `{raw}` is outside the signed 32-bit range of this source profile"
+                        ),
+                        span,
+                    )
+                });
+                return TaskPattern::Lit(Expr {
+                    span,
+                    kind: ExprKind::IntLit(0),
+                });
+            }
+            return TaskPattern::Lit(Expr {
+                span,
+                kind: ExprKind::IntLit(mag as i32),
+            });
+        }
+        if let Some(lit) = self.cx.child_of_kind(node, self.cx.k.tok_str_lit) {
+            let span = self.cx.span_of(lit);
+            let raw = self.cx.spelling(lit);
+            let inner = &raw.as_bytes()[1..raw.len() - 1];
+            let value = lex::decode_str_value(inner);
+            return TaskPattern::Lit(Expr {
+                span,
+                kind: ExprKind::StrLit(value),
+            });
+        }
+        let bind_leaf = self
+            .cx
+            .child_of_kind(node, self.cx.k.tok_ident)
+            .expect("pattern ident");
+        let bind = ident_of(&mut self.cx, bind_leaf);
+        let ty = self.cx.field_child(node, "ty");
+        if bind.name == "_" {
+            if let Some(ty_n) = ty {
+                let span = self.cx.span_of(ty_n);
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.task-pattern",
+                        "the `_` wildcard pattern cannot carry a type annotation",
+                        span,
+                    )
+                });
+            }
+            return TaskPattern::Wildcard(bind.span);
+        }
+        match ty {
+            Some(ty_n) => {
+                let ann = self.classify_word(ty_n, false);
+                TaskPattern::Bind {
+                    name: bind,
+                    ty: ann,
+                }
+            }
+            None => {
+                let span = bind.span;
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.task-pattern",
+                        "a message binding pattern requires a type annotation (`n int ->`)",
+                        span,
+                    )
+                });
+                TaskPattern::Wildcard(span)
+            }
+        }
+    }
+
     fn run_fn_item(&mut self, node: u32, owner: Option<Ident>, receiver: Receiver) -> FnItem {
         let tail = self
             .cx
@@ -4322,7 +4593,36 @@ impl<'a> Engine<'a> {
                 }
             }
         }
-        let ret = self.classify_word(self.cx.field_child(tail, "ty").expect("fn ret"), true);
+        // PLAN-968: bare unit-result fns (`fn main() { ... }`) — the ret-ty
+        // step is optional in the grammar; the scheduler face projects a
+        // synthesized Void result, every other face keeps the historical
+        // required-ret contract (the N42 `source.unsupported` rejection,
+        // byte-identical with the pre-968 parse-failure mapping).
+        let ret = match self.cx.field_child(tail, "ty") {
+            Some(ty_n) => self.classify_word(ty_n, true),
+            None => {
+                let span = name.span.join(fn_tail_rparen_span(&self.cx, tail));
+                if self.cx.profile.is_scheduler() {
+                    TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::Void),
+                        span,
+                    }
+                } else {
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
+                            span,
+                        )
+                    });
+                    TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::Void),
+                        span,
+                    }
+                }
+            }
+        };
         let body_n = self.cx.field_child(tail, "body").expect("fn body");
         let owner_for_frame = owner.clone();
         self.stack.push(Frame::FnBodyFinish {
@@ -5886,6 +6186,29 @@ impl<'a> Engine<'a> {
             let body_n = self.cx.field_child(inner, "body").expect("loop body");
             self.stack.push(Frame::LoopBody { node: inner });
             self.enter_block(body_n);
+        } else if Some(kind) == self.cx.k.go_stmt {
+            // PLAN-968: `go <call>` — a dedicated statement form carrying
+            // the Go expression node (the desugar rewrites it).
+            let value_n = self.cx.field_child(inner, "value").expect("go value");
+            let kw = self
+                .cx
+                .field_child(inner, "kw")
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or(Span { start: 0, end: 0 });
+            self.stack.push(Frame::GoStmtFinish { kw });
+            self.stack.push(Frame::ExprEnter(value_n));
+        } else if Some(kind) == self.cx.k.reply_stmt {
+            // PLAN-968: `reply(v)` — a dedicated statement form; projects
+            // as the __sched_reply intrinsic call for the desugar/resolve
+            // contract (statement position only).
+            let kw = self
+                .cx
+                .field_child(inner, "kw")
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or(Span { start: 0, end: 0 });
+            let value_n = self.cx.field_child(inner, "value").expect("reply value");
+            self.stack.push(Frame::ReplyStmtFinish { kw });
+            self.stack.push(Frame::ExprEnter(value_n));
         } else if kind == self.cx.k.expr_stmt {
             let value_n = self
                 .cx
@@ -6024,6 +6347,39 @@ impl<'a> Engine<'a> {
                 self.stack.push(Frame::ExprEnter(lit));
                 return;
             }
+            // PLAN-968: `await <expr>` / `go <expr>` (scheduler face; the
+            // grammar only admits these tokens here on the scheduler trim).
+            if let Some(kw) = self
+                .cx
+                .child_of_kind(node, self.cx.k.tok_r_await)
+                .or_else(|| self.cx.child_of_kind(node, self.cx.k.tok_r_go))
+            {
+                let is_await = self.cx.tree.kind(kw) == self.cx.k.tok_r_await;
+                let kw_span = self.cx.span_of(kw);
+                let operand = self
+                    .cx
+                    .child_of_kind(node, self.cx.k.expr)
+                    .or_else(|| self.cx.child_of_kind(node, self.cx.k.unary_expr))
+                    .or_else(|| self.cx.child_of_kind(node, self.cx.k.postfix_expr));
+                match operand {
+                    Some(o) => {
+                        self.stack.push(Frame::SchedPrefixFinish {
+                            is_await,
+                            kw_span,
+                        });
+                        self.stack.push(Frame::ExprEnter(o));
+                    }
+                    None => {
+                        self.cx
+                            .reject(kw_span, || syntax_diag("expected expression", kw_span));
+                        self.vals.push(Val::E(Expr {
+                            kind: ExprKind::IntLit(0),
+                            span: kw_span,
+                        }));
+                    }
+                }
+                return;
+            }
             let has_minus = self.cx.child_of_kind(node, self.cx.k.tok_minus).is_some();
             let has_bang = self.cx.child_of_kind(node, self.cx.k.tok_bang).is_some();
             if has_minus || has_bang {
@@ -6135,6 +6491,25 @@ impl<'a> Engine<'a> {
                     kind: ExprKind::Call {
                         callee: Ident {
                             name: "take".to_string(),
+                            span: kw,
+                        },
+                        args: vec![Arg::Pos(v)],
+                    },
+                }));
+                return;
+            }
+            // PLAN-968: `reply(v)` — the reserved reply call atom on the
+            // scheduler face; projects as the __sched_reply intrinsic call.
+            if ck == self.cx.k.reply_atom.unwrap_or(u32::MAX) {
+                let v_n = self.cx.field_child(c, "value").expect("reply operand");
+                let v = self.project_expr_sync(v_n);
+                let kw = self.cx.span_of(c);
+                let span = kw.join(v.span);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::Call {
+                        callee: Ident {
+                            name: "__sched_reply".to_string(),
                             span: kw,
                         },
                         args: vec![Arg::Pos(v)],
@@ -6962,6 +7337,8 @@ impl<'a> Engine<'a> {
                 || mk == self.cx.k.tok_r_view
                 // PLAN-965 (M2-A): `May.nil` member leaf.
                 || self.cx.k.tok_r_nil.is_some_and(|n| mk == n)
+                // PLAN-968: `Task.spawn` member leaf (`spawn` is reserved).
+                || mk == self.cx.k.tok_r_spawn
         })
     }
 
@@ -8518,6 +8895,47 @@ impl<'a> Engine<'a> {
                     },
                 }));
             }
+            Frame::GoStmtFinish { kw } => {
+                let operand = self.pop_e();
+                let span = kw.join(operand.span);
+                self.vals.push(Val::S(Stmt::ExprStmt {
+                    value: Expr {
+                        span,
+                        kind: ExprKind::Go(Box::new(operand)),
+                    },
+                    span,
+                }));
+            }
+            Frame::ReplyStmtFinish { kw } => {
+                let operand = self.pop_e();
+                let span = kw.join(operand.span);
+                let e = Expr {
+                    span,
+                    kind: ExprKind::Call {
+                        callee: Ident {
+                            name: "__sched_reply".to_string(),
+                            span: kw,
+                        },
+                        args: vec![Arg::Pos(operand)],
+                    },
+                };
+                self.vals.push(Val::S(Stmt::ExprStmt {
+                    value: e,
+                    span,
+                }));
+            }
+            Frame::SchedPrefixFinish { is_await, kw_span } => {
+                let operand = self.pop_e();
+                let span = kw_span.join(operand.span);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: if is_await {
+                        ExprKind::Await(Box::new(operand))
+                    } else {
+                        ExprKind::Go(Box::new(operand))
+                    },
+                }));
+            }
             Frame::PostfixFoldAll { steps } => {
                 let recv = self.pop_e();
                 let e = self.fold_postfix(recv, steps);
@@ -9877,6 +10295,19 @@ impl GenericExpand {
             Item::Enum(_) => {}
             // PLAN-967 F0: the import frontdoor carries no expressions.
             Item::UseRs(_) => {}
+            // PLAN-968: task declarations carry expressions in field
+            // defaults, hook bodies and handler arms.
+            Item::Task(t) => {
+                for f in &t.fields {
+                    self.resolve_typed_ctors_in_expr(&mut f.default.clone());
+                }
+                for h in t.start.iter().chain(t.stop.iter()) {
+                    self.resolve_typed_ctors_in_block(&mut h.body.clone());
+                }
+                for a in &mut t.arms {
+                    self.resolve_typed_ctors_in_block(&mut a.body.clone());
+                }
+            }
         }
     }
 

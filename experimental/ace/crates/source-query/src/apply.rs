@@ -376,6 +376,9 @@ pub fn apply_facts_to_resolved(
             // 事实面按 fn 逐体定型，Type 项跳过（core resolve 仍注册其
             // rec_index 供 meta selector 验证）。
             Item::Type(_) => Ok(String::new()),
+            // PLAN-968: task declarations declare no free function here
+            // (their drivers desugar first on the scheduler face).
+            Item::Task(_) => Ok(String::new()),
             // PLAN-960: module globals carry no body facts.
             Item::Const(_) | Item::Store(_) => Ok(String::new()),
             // PLAN-967 F0: the import frontdoor carries no body facts.
@@ -642,6 +645,8 @@ pub fn bind_with_facts(
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor declares no function.
             Item::UseRs(_) => {}
+            // PLAN-968: task declarations declare no free function here.
+            Item::Task(_) => {}
             Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),
         }
     }
@@ -657,6 +662,7 @@ pub fn bind_with_facts(
                 variants: Vec::new(),
                 function_types: Vec::new(),
                 objects: Vec::new(),
+                            sched_tasks: Vec::new(),
             },
             Vec::new(),
             BodyTypeSupply::new(),

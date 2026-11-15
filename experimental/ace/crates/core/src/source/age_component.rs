@@ -1006,6 +1006,7 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
             Item::Enum(e) => Some(&e.name),
             Item::Const(c) => Some(&c.name),
             Item::Store(s) => Some(&s.name),
+            Item::Task(t) => Some(&t.name),
             Item::UseRs(_) => None,
         };
         if let Some(u) = user {

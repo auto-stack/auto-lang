@@ -534,6 +534,9 @@ fn verify_profile(
     use ace_core::verify;
     match p {
         SourceProfile::Core => verify::verify(b),
+        // PLAN-968: the scheduler face verifies under the closures-
+        // superset domain (task admission keyed by profile).
+        SourceProfile::Scheduler => verify::verify_closures(b),
         // PLAN-866 compat repair (864 landing gap): the collections
         // source profile landed in ac-core without this exhaustive-match
         // update — this contract test never feeds it; route it to the

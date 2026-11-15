@@ -3495,13 +3495,20 @@ impl Verifier {
 
     fn check_module(&mut self, m: &hir::Module) {
         if self.domain != HirDomain::HostConsole {
+            // PLAN-968: the scheduler surface's task handlers observe
+            // through stdout — console spellings are legal in a module
+            // that also carries scheduler intrinsics.
+            let sched_module = m.defs.iter().any(|d| {
+                matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
+                    if symbol.starts_with("__sched_"))
+            });
             for d in &m.defs {
                 // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
                 // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；
                 // console 拼写（auto.console.*）仍只在 host-console 画像。
                 let platform_in_packages = self.domain == HirDomain::TextRecord;
                 if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
-                    if symbol.starts_with("auto.console.")
+                    if (symbol.starts_with("auto.console.") && !sched_module)
                         || (symbol.starts_with("auto.platform.") && !platform_in_packages))
                 {
                     self.error(

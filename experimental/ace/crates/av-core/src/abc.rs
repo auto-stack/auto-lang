@@ -230,6 +230,21 @@ pub const TERM_RETURN: u8 = 0x12;
 /// next byte after the instruction space (`m2-dynamic` froze `0x3D`/`0x3E`/`0x3F`).
 pub const TERM_LANG_FAIL: u8 = 0x40;
 
+// PLAN-968: the scheduler operations — additive opcodes on the closures
+// wire family (the 965 LANG_FAIL precedent: only the scheduler lowering
+// emits them; stored closures-family caches never carry them).
+pub const OP_SCHED_SPAWN: u8 = 0x41;
+pub const OP_SCHED_SEND: u8 = 0x42;
+pub const OP_SCHED_ASK: u8 = 0x43;
+pub const OP_SCHED_REPLY: u8 = 0x44;
+pub const OP_SCHED_STOP: u8 = 0x45;
+pub const OP_SCHED_SLEEP: u8 = 0x46;
+pub const OP_SCHED_AWAIT: u8 = 0x47;
+pub const OP_SCHED_GO: u8 = 0x48;
+pub const OP_SCHED_RECV: u8 = 0x49;
+pub const OP_SCHED_PORT: u8 = 0x4A;
+pub const OP_SCHED_STOPPING: u8 = 0x4B;
+
 // sub-ops
 pub const BIN_ADD: u8 = 1;
 pub const BIN_SUB: u8 = 2;
@@ -829,7 +844,11 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
             ))
         }
     };
-    if (!m.host_imports.is_empty() && family != WireFamily::HostConsole)
+    if (!m.host_imports.is_empty()
+        && family != WireFamily::HostConsole
+        // PLAN-968: scheduler-surface modules (closures family) carry
+        // console host imports for task-handler stdout observation.
+        && family != WireFamily::Closures)
         || m.host_imports.len() > crate::platform_io::MAX_TOTAL_HOST_IMPORTS
     {
         return Err(AbcDecodeError::fmt_err(
@@ -896,7 +915,9 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
         w.push(b);
     }
 
-    if family == WireFamily::HostConsole {
+    // PLAN-968: scheduler modules (closures family) carry the same HOST
+    // section (console host imports).
+    if family == WireFamily::HostConsole || family == WireFamily::Closures {
         w.push(b"HOST");
         put_u16(&mut w, m.host_imports.len() as u16);
         for h in &m.host_imports {
@@ -1488,7 +1509,9 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         }
                     }
                     MirInstr::HostCall { host, arg } => {
-                        if family != WireFamily::HostConsole {
+                        // PLAN-968: scheduler modules (closures family) carry
+                        // the same console HostCall seam.
+                        if family != WireFamily::HostConsole && family != WireFamily::Closures {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "host call in a legacy family".into(),
@@ -1576,6 +1599,81 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u8(&mut w, OP_CONV);
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *src);
+                    }
+                    MirInstr::SchedSpawn {
+                        callee,
+                        capacity,
+                        args,
+                        dst,
+                    } => {
+                        if args.len() > u8::MAX as usize {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.arity",
+                                format!("sched spawn with {} args exceeds wire width", args.len()),
+                            ));
+                        }
+                        put_u8(&mut w, OP_SCHED_SPAWN);
+                        put_u32(&mut w, *callee);
+                        put_u32(&mut w, *capacity);
+                        put_u8(&mut w, args.len() as u8);
+                        for a in args {
+                            put_u32(&mut w, *a);
+                        }
+                        put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedSend { handle, msg } => {
+                        put_u8(&mut w, OP_SCHED_SEND);
+                        put_u32(&mut w, *handle);
+                        put_u32(&mut w, *msg);
+                    }
+                    MirInstr::SchedAsk { handle, msg, dst } => {
+                        put_u8(&mut w, OP_SCHED_ASK);
+                        put_u32(&mut w, *handle);
+                        put_u32(&mut w, *msg);
+                        put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedReply { value } => {
+                        put_u8(&mut w, OP_SCHED_REPLY);
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::SchedStop { handle } => {
+                        put_u8(&mut w, OP_SCHED_STOP);
+                        put_u32(&mut w, *handle);
+                    }
+                    MirInstr::SchedSleep { ms } => {
+                        put_u8(&mut w, OP_SCHED_SLEEP);
+                        put_u32(&mut w, *ms);
+                    }
+                    MirInstr::SchedAwait { future, dst } => {
+                        put_u8(&mut w, OP_SCHED_AWAIT);
+                        put_u32(&mut w, *future);
+                        put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedGo { callee, args } => {
+                        if args.len() > u8::MAX as usize {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.arity",
+                                format!("sched go with {} args exceeds wire width", args.len()),
+                            ));
+                        }
+                        put_u8(&mut w, OP_SCHED_GO);
+                        put_u32(&mut w, *callee);
+                        put_u8(&mut w, args.len() as u8);
+                        for a in args {
+                            put_u32(&mut w, *a);
+                        }
+                    }
+                    MirInstr::SchedRecv { dst } => {
+                        put_u8(&mut w, OP_SCHED_RECV);
+                        put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedPort { dst } => {
+                        put_u8(&mut w, OP_SCHED_PORT);
+                        put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedStopping { dst } => {
+                        put_u8(&mut w, OP_SCHED_STOPPING);
+                        put_u32(&mut w, *dst);
                     }
                     MirInstr::Call { callee, dst, args } => {
                         if args.len() > u8::MAX as usize {
@@ -2648,7 +2746,8 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
         })?);
     }
     let mut host_imports = Vec::new();
-    if family == WireFamily::HostConsole {
+    // PLAN-968: scheduler modules (closures family) carry the HOST section.
+    if family == WireFamily::HostConsole || family == WireFamily::Closures {
         if c.take(4)? != b"HOST" {
             return Err(AbcDecodeError::fmt_err(
                 "abc.decode.host-section",
@@ -3278,6 +3377,73 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let src = c.u32()?;
                         MirInstr::Conv { dst, src }
                     }
+                    OP_SCHED_SPAWN if family == WireFamily::Closures => {
+                        let callee = c.u32()?;
+                        let capacity = c.u32()?;
+                        let nargs = c.u8()? as usize;
+                        decode_mem!(nargs * std::mem::size_of::<SlotId>(), "sched spawn args");
+                        let mut args = Vec::with_capacity(nargs);
+                        for _ in 0..nargs {
+                            args.push(c.u32()?);
+                        }
+                        let dst = c.u32()?;
+                        MirInstr::SchedSpawn {
+                            callee,
+                            capacity,
+                            args,
+                            dst,
+                        }
+                    }
+                    OP_SCHED_SEND if family == WireFamily::Closures => {
+                        let handle = c.u32()?;
+                        let msg = c.u32()?;
+                        MirInstr::SchedSend { handle, msg }
+                    }
+                    OP_SCHED_ASK if family == WireFamily::Closures => {
+                        let handle = c.u32()?;
+                        let msg = c.u32()?;
+                        let dst = c.u32()?;
+                        MirInstr::SchedAsk { handle, msg, dst }
+                    }
+                    OP_SCHED_REPLY if family == WireFamily::Closures => {
+                        let value = c.u32()?;
+                        MirInstr::SchedReply { value }
+                    }
+                    OP_SCHED_STOP if family == WireFamily::Closures => {
+                        let handle = c.u32()?;
+                        MirInstr::SchedStop { handle }
+                    }
+                    OP_SCHED_SLEEP if family == WireFamily::Closures => {
+                        let ms = c.u32()?;
+                        MirInstr::SchedSleep { ms }
+                    }
+                    OP_SCHED_AWAIT if family == WireFamily::Closures => {
+                        let future = c.u32()?;
+                        let dst = c.u32()?;
+                        MirInstr::SchedAwait { future, dst }
+                    }
+                    OP_SCHED_GO if family == WireFamily::Closures => {
+                        let callee = c.u32()?;
+                        let nargs = c.u8()? as usize;
+                        decode_mem!(nargs * std::mem::size_of::<SlotId>(), "sched go args");
+                        let mut args = Vec::with_capacity(nargs);
+                        for _ in 0..nargs {
+                            args.push(c.u32()?);
+                        }
+                        MirInstr::SchedGo { callee, args }
+                    }
+                    OP_SCHED_RECV if family == WireFamily::Closures => {
+                        let dst = c.u32()?;
+                        MirInstr::SchedRecv { dst }
+                    }
+                    OP_SCHED_PORT if family == WireFamily::Closures => {
+                        let dst = c.u32()?;
+                        MirInstr::SchedPort { dst }
+                    }
+                    OP_SCHED_STOPPING if family == WireFamily::Closures => {
+                        let dst = c.u32()?;
+                        MirInstr::SchedStopping { dst }
+                    }
                     OP_CALL => {
                         let ck = c.u8()?;
                         let callee = match ck {
@@ -3431,7 +3597,9 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         }
                     }
                     OP_HOST_CALL => {
-                        if family != WireFamily::HostConsole {
+                        // PLAN-968: scheduler modules (closures family)
+                        // carry the console HostCall seam too.
+                        if family != WireFamily::HostConsole && family != WireFamily::Closures {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.profile",
                                 "host opcode in a legacy family".into(),

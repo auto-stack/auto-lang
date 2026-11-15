@@ -297,6 +297,8 @@ fn pair(s: Span) -> (usize, usize) {
 fn vt_dump(v: VT) -> VtDump {
     match v {
         VT::I32 => VtDump::I32,
+        // PLAN-968: scheduler handles dump as their runtime shape (i32).
+        VT::Task(_) | VT::Future(_) => VtDump::I32,
         // PLAN-962：tuple 形状（内联索引）。
         VT::Tuple(ti) => VtDump::Tuple(ti),
         VT::Bool => VtDump::Bool,
@@ -1009,7 +1011,8 @@ pub fn restore_context(
             variants,
             function_types,
             objects: Vec::new(),
-        },
+        sched_tasks: Vec::new(),
+    },
         rec_index,
         sigs,
         dump.trace_enabled,

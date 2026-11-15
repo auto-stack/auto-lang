@@ -530,6 +530,20 @@ fn walk_expr<'a>(
                 span: e.span,
             });
         }
+        // PLAN-968: scheduler-surface forms, named-unsupported here (they
+        // desugar before any retained query walk on the scheduler face).
+        ExprKind::Await(_) => {
+            return Err(WalkError::Unsupported {
+                what: "await-expression",
+                span: e.span,
+            });
+        }
+        ExprKind::Go(_) => {
+            return Err(WalkError::Unsupported {
+                what: "go-expression",
+                span: e.span,
+            });
+        }
         // PLAN-962: aggregates-surface forms, named-unsupported here.
         ExprKind::TupleLit(_) => {
             return Err(WalkError::Unsupported {

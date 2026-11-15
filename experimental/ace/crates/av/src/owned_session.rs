@@ -327,6 +327,9 @@ fn decl_facts_of(
                 lo: f.span.start as u64,
                 hi: f.span.end as u64,
             }),
+            // PLAN-968: task declarations synthesize their drivers at
+            // the desugar stage; no fn/outline entry here.
+            Item::Task(_) => {}
             // PLAN-960: module globals contribute no fn/outline entry.
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor contributes no fn decl.

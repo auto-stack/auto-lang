@@ -579,6 +579,19 @@ fn bind_package_syntax_inner(
                 Item::Type(t) => (t.name.clone(), t.name.span),
                 Item::Const(c) => (c.name.clone(), c.name.span),
                 Item::Store(v) => (v.name.clone(), v.name.span),
+                // PLAN-968: task declarations belong to the single-module
+                // scheduler face; package modules reject them by name.
+                Item::Task(t) => {
+                    return Err(fail(
+                        key,
+                        "source.module-surface",
+                        format!(
+                            "`task` declarations are not part of the package module surface (found task `{}`)",
+                            t.name.name
+                        ),
+                        t.name.span,
+                    ));
+                }
                 Item::Enum(en) => {
                     return Err(fail(
                         key,
@@ -605,7 +618,7 @@ fn bind_package_syntax_inner(
                 Item::Type(_) => d.types.insert(name.name, span),
                 Item::Const(_) => d.consts.insert(name.name, span),
                 Item::Store(_) => d.stores.insert(name.name, span),
-                Item::Enum(_) | Item::UseRs(_) => unreachable!(),
+                Item::Enum(_) | Item::UseRs(_) | Item::Task(_) => unreachable!(),
             };
         }
         decls.insert(key.clone(), d);
@@ -889,6 +902,18 @@ fn bind_package_syntax_inner(
                 // PLAN-967 F0: package modules do not carry the
                 // single-module use.rs frontdoor; a named rejection beats
                 // silently dropping the import.
+                // PLAN-968: package modules never carry task declarations.
+                Item::Task(t) => {
+                    return Err(fail(
+                        key,
+                        "source.module-surface",
+                        format!(
+                            "`task` declarations are not part of the package module surface (found task `{}`)",
+                            t.name.name
+                        ),
+                        t.name.span,
+                    ));
+                }
                 Item::UseRs(u) => {
                     return Err(fail(
                         key,
@@ -1625,6 +1650,10 @@ fn shift_arg(a: &mut Arg, offset: usize) {
 fn shift_expr(e: &mut Expr, offset: usize) {
     sh(&mut e.span, offset);
     match &mut e.kind {
+        // PLAN-968：await/go 操作数同步平移。
+        ExprKind::Await(inner) | ExprKind::Go(inner) => {
+            shift_expr(inner, offset);
+        }
         // PLAN-962：范围界同步平移。
         ExprKind::Range { start, end, .. } => {
             shift_expr(start, offset);
@@ -2238,6 +2267,8 @@ impl<'a> Walker<'a> {
     ) -> Result<(), PackageDiagnostic> {
         let span = e.span;
         match &mut e.kind {
+            // PLAN-968：await/go 递归走读。
+            ExprKind::Await(inner) | ExprKind::Go(inner) => self.walk_expr_inner(inner, locals),
             // PLAN-962：范围界递归走读。
             ExprKind::Range { start, end, .. } => {
                 self.walk_expr_inner(start, locals)?;
@@ -3462,7 +3493,8 @@ fn assemble_unit(
     for item in impl_items.iter() {
         match item {
             // PLAN-967 F0: impl segments never carry the frontdoor item.
-            Item::UseRs(_) => {}
+            // PLAN-968: nor task declarations (single-module scheduler face).
+            Item::UseRs(_) | Item::Task(_) => {}
             Item::Fn(f) => {
                 let name = f.name.name.clone();
                 if let Some(req) = unfilled.remove(&name) {
@@ -4352,6 +4384,26 @@ fn eval_ct_expr(
 /// 项级 span 平移（实现项按实现段偏移预平移；复用既有 per-kind 平移）。
 fn shift_item(item: Item, offset: usize) -> Item {
     match item {
+        // PLAN-968: task declarations never reach package shifting in
+        // practice; the arm keeps spans/defaults/hooks/arms correct anyway.
+        Item::Task(mut t) => {
+            sh(&mut t.span, offset);
+            for f in &mut t.fields {
+                sh(&mut f.span, offset);
+                shift_expr(&mut f.default, offset);
+            }
+            if let Some(h) = &mut t.start {
+                shift_fn(h, offset);
+            }
+            if let Some(h) = &mut t.stop {
+                shift_fn(h, offset);
+            }
+            for arm in &mut t.arms {
+                sh(&mut arm.span, offset);
+                shift_block(&mut arm.body, offset);
+            }
+            Item::Task(t)
+        }
         Item::Fn(mut f) => {
             shift_fn(&mut f, offset);
             Item::Fn(f)

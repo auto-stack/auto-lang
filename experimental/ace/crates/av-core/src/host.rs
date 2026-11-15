@@ -68,7 +68,33 @@ pub fn declaration(symbol: &str, sig: u32) -> Result<MirHostImport, AdmissionErr
 }
 /// Structural validation covers every declaration, even without a reachable call.
 pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
-    if !module.is_host_console_profile() && !module.host_imports.is_empty() {
+    // PLAN-968: scheduler-surface modules (closures profile carrying
+    // SCHED operations) admit console host imports for task-handler
+    // stdout observation.
+    let sched_module = module
+        .funcs
+        .iter()
+        .any(|f| {
+            f.blocks.iter().any(|b| {
+                b.instrs.iter().any(|i| {
+                    matches!(
+                        i,
+                        crate::mir::MirInstr::SchedSpawn { .. }
+                            | crate::mir::MirInstr::SchedSend { .. }
+                            | crate::mir::MirInstr::SchedAsk { .. }
+                            | crate::mir::MirInstr::SchedReply { .. }
+                            | crate::mir::MirInstr::SchedStop { .. }
+                            | crate::mir::MirInstr::SchedSleep { .. }
+                            | crate::mir::MirInstr::SchedAwait { .. }
+                            | crate::mir::MirInstr::SchedGo { .. }
+                            | crate::mir::MirInstr::SchedRecv { .. }
+                            | crate::mir::MirInstr::SchedPort { .. }
+                            | crate::mir::MirInstr::SchedStopping { .. }
+                    )
+                })
+            })
+        });
+    if !module.is_host_console_profile() && !sched_module && !module.host_imports.is_empty() {
         return Err(err(
             "host.profile",
             "host imports require the host-console profile",

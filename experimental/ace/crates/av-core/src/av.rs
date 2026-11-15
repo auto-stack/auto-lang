@@ -1127,6 +1127,27 @@ struct LoopState {
     /// PLAN-919: fast gate for the lifecycle channel (one bool check per
     /// hook site; the RefCell is only touched when enabled).
     lifecycle_on: bool,
+    /// PLAN-968: the shared scheduler tables (mailboxes, reply ports,
+    /// virtual clock). Present only inside `execute_sched` chains.
+    sched: Option<std::sync::Arc<std::sync::Mutex<SchedTables>>>,
+    /// PLAN-968: set when this chain must park; the parking instruction
+    /// does NOT advance (ip is rewound) and re-executes on wake.
+    sched_park: Option<SchedPark>,
+    /// PLAN-968: this chain's scheduler identity (index into the outer
+    /// chain vector); used by sleep timers.
+    sched_chain_id: usize,
+    /// PLAN-968: the task slot this chain drives (None for the main and
+    /// `go` chains).
+    sched_task_id: Option<usize>,
+    /// PLAN-968: spawn requests recorded by SCHED_SPAWN/SCHED_GO — the
+    /// outer scheduler materializes the chains after the step.
+    sched_spawned: Vec<SchedSpawnReq>,
+    /// PLAN-968: the reply port of the most recently received message
+    /// (0 = send mode).
+    sched_reply_port: i32,
+    /// PLAN-968: the wake pass fired this chain's sleep — the re-executed
+    /// SCHED_SLEEP consumes it instead of re-arming.
+    sched_sleep_fired: bool,
 }
 
 struct ClosureEntry {
@@ -5917,6 +5938,393 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
+                MirInstr::SchedSpawn {
+                    callee,
+                    capacity,
+                    args,
+                    dst,
+                } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.spawn outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let cap = match caller.slots[*capacity as usize] {
+                        Value::I32(c) if c >= 0 => c as usize,
+                        _ => {
+                            return Some(ExecOutcome::Error {
+                                message: "task mailbox capacity must be a non-negative int"
+                                    .into(),
+                                span: None,
+                            })
+                        }
+                    };
+                    let raws: Vec<Value> = args
+                        .iter()
+                        .map(|a| caller.slots[*a as usize].clone())
+                        .collect();
+                    let mut argv: Vec<Value> = Vec::with_capacity(raws.len());
+                    for raw in raws {
+                        argv.push(match sched_materialize(v, func_idx, st, raw) {
+                            Ok(x) => x,
+                            Err(out) => return Some(out),
+                        });
+                    }
+                    let task_idx;
+                    {
+                        let mut t = tables_arc.lock().expect("sched tables");
+                        task_idx = t.tasks.len();
+                        t.tasks.push(SchedTaskSlot {
+                            capacity: cap,
+                            queue: std::collections::VecDeque::new(),
+                            stopped: false,
+                            closed: false,
+                        });
+                    }
+                    st.sched_spawned.push(SchedSpawnReq {
+                        fn_idx: *callee,
+                        args: argv,
+                        task: Some(task_idx),
+                    });
+                    let res = Value::I32(task_idx as i32 + 1);
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::SchedGo { callee, args } => {
+                    let caller = st.frames.last().expect("frame present");
+                    let argv: Vec<Value> = args
+                        .iter()
+                        .map(|a| caller.slots[*a as usize].clone())
+                        .collect();
+                    st.sched_spawned.push(SchedSpawnReq {
+                        fn_idx: *callee,
+                        args: argv,
+                        task: None,
+                    });
+                }
+                MirInstr::SchedSend { handle, msg } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.send outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let (h, raw_m) = {
+                        let caller = st.frames.last().expect("frame present");
+                        (
+                            caller.slots[*handle as usize].clone(),
+                            caller.slots[*msg as usize].clone(),
+                        )
+                    };
+                    let m = match sched_materialize(v, func_idx, st, raw_m) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let Value::I32(hv) = h else {
+                        return Some(ExecOutcome::Error {
+                            message: "send requires a task handle".into(),
+                            span: None,
+                        });
+                    };
+                    if hv <= 0 {
+                        return Some(ExecOutcome::Error {
+                            message: "send requires a task handle".into(),
+                            span: None,
+                        });
+                    }
+                    let ti = (hv - 1) as usize;
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    if ti >= t.tasks.len() {
+                        return Some(ExecOutcome::Error {
+                            message: "send on an unknown task handle".into(),
+                            span: None,
+                        });
+                    }
+                    if t.tasks[ti].closed || t.tasks[ti].stopped {
+                        return Some(ExecOutcome::Error {
+                            message: "send on a closed task".into(),
+                            span: None,
+                        });
+                    }
+                    if t.tasks[ti].queue.len() >= t.tasks[ti].capacity {
+                        // Bounded backpressure: park the sender; the
+                        // instruction re-executes once space frees.
+                        st.sched_park = Some(SchedPark::SendFull(ti));
+                        if let Some(fr) = st.frames.last_mut() {
+                            fr.ip -= 1;
+                        }
+                        return None;
+                    }
+                    t.tasks[ti].queue.push_back((m, 0));
+                }
+                MirInstr::SchedAsk { handle, msg, dst } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.ask outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let (h, raw_m) = {
+                        let caller = st.frames.last().expect("frame present");
+                        (
+                            caller.slots[*handle as usize].clone(),
+                            caller.slots[*msg as usize].clone(),
+                        )
+                    };
+                    let m = match sched_materialize(v, func_idx, st, raw_m) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let Value::I32(hv) = h else {
+                        return Some(ExecOutcome::Error {
+                            message: "ask requires a task handle".into(),
+                            span: None,
+                        });
+                    };
+                    if hv <= 0 {
+                        return Some(ExecOutcome::Error {
+                            message: "ask requires a task handle".into(),
+                            span: None,
+                        });
+                    }
+                    let ti = (hv - 1) as usize;
+                    let port_id;
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    if ti >= t.tasks.len() {
+                        return Some(ExecOutcome::Error {
+                            message: "ask on an unknown task handle".into(),
+                            span: None,
+                        });
+                    }
+                    if t.tasks[ti].closed || t.tasks[ti].stopped {
+                        return Some(ExecOutcome::Error {
+                            message: "ask on a closed task".into(),
+                            span: None,
+                        });
+                    }
+                    if t.tasks[ti].queue.len() >= t.tasks[ti].capacity {
+                        st.sched_park = Some(SchedPark::SendFull(ti));
+                        if let Some(fr) = st.frames.last_mut() {
+                            fr.ip -= 1;
+                        }
+                        return None;
+                    }
+                    // Port ids are 1-based: 0 is the send-mode sentinel.
+                    port_id = t.ports.len() as i32 + 1;
+                    t.ports.push(SchedPortState::Pending);
+                    t.tasks[ti].queue.push_back((m, port_id));
+                    drop(t);
+                    let res = Value::I32(port_id);
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::SchedReply { value } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.reply outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let port = st.sched_reply_port;
+                    if std::env::var_os("ACE_SCHED_DEBUG").is_some() {
+                        eprintln!("[sched] reply port={port}");
+                    }
+                    if port <= 0 {
+                        return Some(ExecOutcome::Error {
+                            message: "reply is only legal while handling an ask message".into(),
+                            span: None,
+                        });
+                    }
+                    let raw_v = st
+                        .frames
+                        .last()
+                        .expect("frame present")
+                        .slots[*value as usize]
+                        .clone();
+                    let reply_v = match sched_materialize(v, func_idx, st, raw_v) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    if port > 0 && (port as usize) <= t.ports.len() {
+                        t.ports[port as usize - 1] = SchedPortState::Published(reply_v);
+                    }
+                }
+                MirInstr::SchedStop { handle } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.stop outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let Value::I32(hv) = caller.slots[*handle as usize] else {
+                        return Some(ExecOutcome::Error {
+                            message: "stop requires a task handle".into(),
+                            span: None,
+                        });
+                    };
+                    if hv <= 0 {
+                        return Some(ExecOutcome::Error {
+                            message: "stop requires a task handle".into(),
+                            span: None,
+                        });
+                    }
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    let ti = (hv - 1) as usize;
+                    if ti < t.tasks.len() {
+                        t.tasks[ti].stopped = true;
+                    }
+                }
+                MirInstr::SchedSleep { ms } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.sleep outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let Value::I32(mv) = caller.slots[*ms as usize] else {
+                        return Some(ExecOutcome::Error {
+                            message: "sleep requires an int duration".into(),
+                            span: None,
+                        });
+                    };
+                    let chain = st.sched_chain_id;
+                    if st.sched_sleep_fired {
+                        st.sched_sleep_fired = false;
+                        return None;
+                    }
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    if t.draining {
+                        // Orderly drain: sleeps complete immediately.
+                        return None;
+                    }
+                    let deadline = t.clock_ms + mv.max(0) as u64;
+                    t.timers.push((deadline, chain));
+                    st.sched_park = Some(SchedPark::Sleep(deadline));
+                    if let Some(fr) = st.frames.last_mut() {
+                        fr.ip -= 1;
+                    }
+                    return None;
+                }
+                MirInstr::SchedAwait { future, dst } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.await outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let Value::I32(pv) = caller.slots[*future as usize] else {
+                        return Some(ExecOutcome::Error {
+                            message: "await requires an ask future".into(),
+                            span: None,
+                        });
+                    };
+                    if pv <= 0 || pv as usize > {
+                        let t = tables_arc.lock().expect("sched tables");
+                        t.ports.len()
+                    } {
+                        return Some(ExecOutcome::Error {
+                            message: "await on an unknown future".into(),
+                            span: None,
+                        });
+                    }
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    match std::mem::replace(&mut t.ports[pv as usize - 1], SchedPortState::Taken) {
+                        SchedPortState::Published(v) => {
+                            if let Err(out) = commit_slot_write(st, *dst as usize, v, limits) {
+                                return Some(out);
+                            }
+                        }
+                        SchedPortState::Taken => {
+                            return Some(ExecOutcome::Error {
+                                message: "await on an already-consumed future".into(),
+                                span: None,
+                            });
+                        }
+                        SchedPortState::Pending => {
+                            // restore and park: re-executes on publication.
+                            t.ports[pv as usize - 1] = SchedPortState::Pending;
+                            drop(t);
+                            st.sched_park = Some(SchedPark::AwaitPort(pv));
+                            if let Some(fr) = st.frames.last_mut() {
+                                fr.ip -= 1;
+                            }
+                            return None;
+                        }
+                    }
+                }
+                MirInstr::SchedRecv { dst } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.recv outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let Some(ti) = st.sched_task_id else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.recv outside a task driver function".into(),
+                        ));
+                    };
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    if ti >= t.tasks.len() {
+                        return Some(ExecOutcome::Infra("sched.recv on an unknown task".into()));
+                    }
+                    if let Some((m, port)) = t.tasks[ti].queue.pop_front() {
+                        if std::env::var_os("ACE_SCHED_DEBUG").is_some() {
+                            eprintln!("[sched] recv task#{ti} msg={m:?} port={port}");
+                        }
+                        st.sched_reply_port = port;
+                        drop(t);
+                        if let Err(out) = commit_slot_write(st, *dst as usize, m, limits) {
+                            return Some(out);
+                        }
+                    } else if t.tasks[ti].stopped {
+                        // Orderly stop with an empty mailbox: hand the
+                        // zero value of the destination; the driver's
+                        // stopping() check then leaves the loop.
+                        drop(t);
+                        let zero = v.zero_of(
+                            func_idx,
+                            v.fn_at(func_idx)
+                                .and_then(|f| f.slots.get(*dst as usize))
+                                .map(|s| s.ty)
+                                .unwrap_or(0),
+                        );
+                        if let Err(out) = commit_slot_write(st, *dst as usize, zero, limits) {
+                            return Some(out);
+                        }
+                    } else {
+                        st.sched_park = Some(SchedPark::Recv(ti));
+                        if let Some(fr) = st.frames.last_mut() {
+                            fr.ip -= 1;
+                        }
+                        return None;
+                    }
+                }
+                MirInstr::SchedPort { dst } => {
+                    let res = Value::I32(st.sched_reply_port);
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::SchedStopping { dst } => {
+                    let Some(tables_arc) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.stopping outside the scheduler execution lane".into(),
+                        ));
+                    };
+                    let Some(ti) = st.sched_task_id else {
+                        return Some(ExecOutcome::Infra(
+                            "sched.stopping outside a task driver function".into(),
+                        ));
+                    };
+                    let t = tables_arc.lock().expect("sched tables");
+                    let stopped = ti < t.tasks.len() && t.tasks[ti].stopped;
+                    drop(t);
+                    let res = Value::Bool(stopped);
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
                 MirInstr::HostCall { host: index, arg } => {
                     let Some(h) = v.host_imports().get(*index as usize) else {
                         return Some(ExecOutcome::Infra(
@@ -6702,6 +7110,480 @@ fn eval_conv(src: NumTy, dst: NumTy, v: Value) -> Result<Value, EvalErr> {
         },
         _ => unreachable!("same-width float conv"),
     }
+}
+
+// ===========================================================================
+// PLAN-968: the deterministic cooperative scheduler.
+//
+// One `execute_sched` run multiplexes N task chains over the ONE frozen
+// step executor: every chain owns its `LoopState` (frames, locals, fuel
+// spent), the mailboxes/reply ports/virtual clock live in one shared
+// `SchedTables`, and a parking instruction (mailbox empty/full, pending
+// reply port, sleep deadline) rewinds its ip and re-executes on wake —
+// the same idempotent-op discipline as the resident-online pauses. No
+// host threads, no wall clock: the correctness lane is deterministic.
+// ===========================================================================
+
+/// PLAN-968: materialize a scheduler handoff value into the sending
+/// chain's arena — a borrowed StrView becomes an arena-owned Str so the
+/// receiving chain never depends on the sender's frame lifetime.
+fn sched_materialize<V: ModuleView>(
+    v: &V,
+    func_idx: u32,
+    st: &mut LoopState,
+    val: Value,
+) -> Result<Value, ExecOutcome> {
+    if matches!(val, Value::StrView(_)) {
+        let (bytes, sv) = match resolve_view_bytes(v, func_idx, &val) {
+            Ok(x) => x,
+            Err(out) => return Err(out),
+        };
+        let projected = project_bytes(&bytes, &sv).to_vec();
+        st.steps += projected.len() as u64;
+        match st.arena.try_alloc(&projected) {
+            Ok(h) => Ok(Value::Str(h)),
+            Err(_) => Err(ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: "scheduler text handoff allocation failed".into(),
+            }),
+        }
+    } else {
+        Ok(val)
+    }
+}
+
+/// One task's mailbox state (shared across chains).
+struct SchedTaskSlot {
+    capacity: usize,
+    queue: std::collections::VecDeque<(Value, i32)>,
+    stopped: bool,
+    closed: bool,
+}
+
+/// One ask reply port.
+#[derive(Clone, Debug)]
+enum SchedPortState {
+    Pending,
+    Published(Value),
+    /// Consumed by its single await.
+    Taken,
+}
+
+/// The shared scheduler tables.
+#[derive(Default)]
+struct SchedTables {
+    /// PLAN-968: set during the post-main orderly drain — sleeps return
+    /// immediately and chains run to completion.
+    draining: bool,
+    tasks: Vec<SchedTaskSlot>,
+    ports: Vec<SchedPortState>,
+    /// Virtual milliseconds; only advances when every chain is parked on
+    /// timers or message waits (earliest-deadline-first).
+    clock_ms: u64,
+    /// (deadline, chain id) sleep timers.
+    timers: Vec<(u64, usize)>,
+}
+
+/// Why a chain parked (mirrored between LoopState and the scheduler).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum SchedPark {
+    Recv(usize),
+    SendFull(usize),
+    AwaitPort(i32),
+    Sleep(u64),
+}
+
+/// A spawn request recorded by SCHED_SPAWN / SCHED_GO.
+struct SchedSpawnReq {
+    fn_idx: u32,
+    args: Vec<Value>,
+    task: Option<usize>,
+}
+
+/// One multiplexed chain.
+struct SchedChain {
+    st: LoopState,
+    task: Option<usize>,
+    main: bool,
+    done: Option<ExecOutcome>,
+    park: Option<SchedPark>,
+}
+
+/// Build a fresh chain state rooted at `fn_idx` with positional `args`
+/// (the same slot filling the guest `Call` arm performs).
+fn sched_new_chain<V: ModuleView>(
+    v: &V,
+    fn_idx: u32,
+    args: &[Value],
+    tables: &std::sync::Arc<std::sync::Mutex<SchedTables>>,
+    chain_id: usize,
+    task: Option<usize>,
+) -> Result<LoopState, ExecOutcome> {
+    let Some(f) = v.fn_at(fn_idx) else {
+        return Err(ExecOutcome::Infra(format!("sched chain fn #{fn_idx} missing")));
+    };
+    let (slots, allocation) = match crate::frame_allocation::reserve_slots(f.slots.len()) {
+        Ok(x) => x,
+        Err(()) => {
+            return Err(ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: "sched chain frame slot allocation failed".into(),
+            })
+        }
+    };
+    let mut st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
+    st.trace.arena = Some(st.arena.clone());
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.sched = Some(tables.clone());
+    st.sched_chain_id = chain_id;
+    st.sched_task_id = task;
+    st.frame_seq += 1;
+    let seq = st.frame_seq;
+    let mut frame = Frame {
+        func: fn_idx,
+        block: f.entry,
+        ip: 0,
+        slots,
+        gens: vec![0; f.slots.len()],
+        seq,
+        _allocation: allocation,
+        ret_dst: None,
+        closure_env: None,
+    };
+    let mut ai = args.iter();
+    for sl in &f.slots {
+        frame.slots.push(if sl.kind == crate::mir::SlotKind::Param {
+            let val = ai.next().cloned().unwrap_or_else(|| v.zero_of(fn_idx, sl.ty));
+            if std::env::var_os("ACE_SCHED_DEBUG").is_some() {
+                eprintln!(
+                    "[sched] chain fn#{fn_idx} param slot ty={:?} gets {:?}",
+                    sl.ty, val
+                );
+            }
+            val
+        } else {
+            v.zero_of(fn_idx, sl.ty)
+        });
+    }
+    st.frames.push(frame);
+    Ok(st)
+}
+
+/// PLAN-968: execute a scheduler-surface module — the module entry runs as
+/// the MAIN chain; `Task.spawn`/`go` chains multiplex cooperatively until
+/// quiescence, then parked task chains receive their stop signal (stop
+/// hooks run) and the program ends with the main chain's outcome.
+/// Deterministic: round-robin scheduling, virtual clock, zero host threads.
+pub fn execute_sched(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    host: &mut dyn crate::host::ConsoleHost,
+) -> (ExecOutcome, ExecTrace) {
+    let tables = std::sync::Arc::new(std::sync::Mutex::new(SchedTables::default()));
+    let m = module.module();
+    let view = MergedView(m);
+    let mut chains: Vec<SchedChain> = Vec::new();
+    // The main chain: park at the entry with a zero-step dispatch.
+    let mut main_st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
+    main_st.trace.arena = Some(main_st.arena.clone());
+    main_st.trace.execution_seq =
+        EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    main_st.sched = Some(tables.clone());
+    main_st.sched_chain_id = 0;
+    if let Some(out) = dispatch_with_host(
+        &view,
+        limits,
+        cancel,
+        &[],
+        &mut main_st,
+        Some(0),
+        false,
+        Some(host),
+        None,
+        None,
+    ) {
+        let trace = std::mem::replace(&mut main_st.trace, ExecTrace::default());
+        return (out, trace);
+    }
+    chains.push(SchedChain {
+        st: main_st,
+        task: None,
+        main: true,
+        done: None,
+        park: None,
+    });
+
+    let mut rr = 0usize;
+    let mut main_outcome: Option<ExecOutcome> = None;
+    let mut main_trace: Option<ExecTrace> = None;
+    let mut guard: u64 = 0;
+
+    loop {
+        if CancelCheck::poll(cancel) {
+            let trace = take_trace(&mut chains);
+            return (ExecOutcome::Cancelled, trace);
+        }
+        guard += 1;
+        if guard > 100_000_000 {
+            let trace = take_trace(&mut chains);
+            return (
+                ExecOutcome::Resource {
+                    kind: ResourceKind::InstrSteps,
+                    message: "scheduler multiplex guard exceeded".into(),
+                },
+                trace,
+            );
+        }
+
+        // 1) materialize spawn requests (chain order = spawn order).
+        let mut new_reqs: Vec<(usize, SchedSpawnReq)> = Vec::new();
+        for (ci, ch) in chains.iter_mut().enumerate() {
+            if ch.done.is_some() {
+                continue;
+            }
+            for r in ch.st.sched_spawned.drain(..) {
+                new_reqs.push((ci, r));
+            }
+        }
+        for (ci, req) in new_reqs {
+            let id = chains.len();
+            match sched_new_chain(&view, req.fn_idx, &req.args, &tables, id, req.task) {
+                Ok(st) => chains.push(SchedChain {
+                    st,
+                    task: req.task,
+                    main: false,
+                    done: None,
+                    park: None,
+                }),
+                Err(out) => {
+                    // A failed chain start fails the program (named).
+                    let _ = ci;
+                    let trace = take_trace(&mut chains);
+                    return (out, trace);
+                }
+            }
+        }
+
+        // 2) close finished driver chains' tasks.
+        for ch in chains.iter() {
+            if !ch.main {
+                if let (Some(out), Some(ti)) = (&ch.done, ch.task) {
+                    if matches!(out, ExecOutcome::Success { .. }) {
+                        let mut t = tables.lock().expect("sched tables");
+                        if let Some(slot) = t.tasks.get_mut(ti) {
+                            slot.closed = true;
+                            slot.stopped = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3) wake pass: parked chains whose condition is now met run again.
+        let mut woke = false;
+        for ch in chains.iter_mut() {
+            if ch.done.is_some() {
+                continue;
+            }
+            let Some(park) = ch.park else { continue };
+            let ready = {
+                let t = tables.lock().expect("sched tables");
+                match park {
+                    SchedPark::Recv(ti) => {
+                        !t.tasks[ti].queue.is_empty() || t.tasks[ti].stopped
+                    }
+                    SchedPark::SendFull(ti) => {
+                        t.tasks[ti].closed
+                            || t.tasks[ti].queue.len() < t.tasks[ti].capacity
+                    }
+                    SchedPark::AwaitPort(p) => {
+                        !matches!(t.ports.get(p as usize), Some(SchedPortState::Pending))
+                    }
+                    SchedPark::Sleep(deadline) => t.clock_ms >= deadline,
+                }
+            };
+            if ready {
+                if matches!(park, SchedPark::Sleep(_)) {
+                    ch.st.sched_sleep_fired = true;
+                }
+                ch.park = None;
+                ch.st.sched_park = None;
+                woke = true;
+            }
+        }
+        let _ = woke;
+
+        // 4) pick the next runnable chain (round-robin).
+        let runnable: Vec<usize> = (0..chains.len())
+            .filter(|&i| chains[i].done.is_none() && chains[i].park.is_none())
+            .collect();
+        if runnable.is_empty() {
+            // Everyone is parked or done. Advance the virtual clock to the
+            // earliest pending timer; if none can fire, this is quiescence.
+            let now = { tables.lock().expect("sched tables").clock_ms };
+            let next = tables
+                .lock()
+                .expect("sched tables")
+                .timers
+                .iter()
+                .filter(|(d, ci)| *d > now && chains.get(*ci).is_some_and(|c| c.done.is_none()))
+                .map(|(d, _)| *d)
+                .min();
+            match next {
+                Some(d) => {
+                    tables.lock().expect("sched tables").clock_ms = d;
+                    continue;
+                }
+                None => {
+                    // Quiescent. If the main chain already finished, run the
+                    // orderly drain: signal stop to every live task, wake
+                    // every parked chain once more, and let them run out.
+                    if main_outcome.is_some() {
+                        let any_live = chains.iter().any(|c| {
+                            c.done.is_none() && !matches!(c.park, Some(SchedPark::Sleep(_)))
+                        }) || {
+                            let t = tables.lock().expect("sched tables");
+                            t.tasks.iter().any(|s| !s.closed)
+                        };
+                        if any_live {
+                            let mut t = tables.lock().expect("sched tables");
+                            t.draining = true;
+                            for slot in t.tasks.iter_mut() {
+                                slot.stopped = true;
+                            }
+                            drop(t);
+                            for ch in chains.iter_mut() {
+                                if ch.done.is_none() {
+                                    ch.park = None;
+                                    ch.st.sched_park = None;
+                                }
+                            }
+                            // One more drain round; bounded by the guard.
+                            let all_done_after_drain = chains.iter().all(|c| c.done.is_some());
+                            if all_done_after_drain {
+                                break;
+                            }
+                            continue;
+                        }
+                        break;
+                    }
+                    // Main never finished and nothing can run: deadlock.
+                    let trace = take_trace(&mut chains);
+                    return (
+                        ExecOutcome::Resource {
+                            kind: ResourceKind::InstrSteps,
+                            message:
+                                "scheduler deadlock: every chain waits and no timer can fire"
+                                    .into(),
+                        },
+                        trace,
+                    );
+                }
+            }
+        }
+
+        // 5) step one runnable chain by one instruction (round-robin).
+        let mut stepped = false;
+        for k in 0..runnable.len() {
+            let ci = runnable[(rr + k) % runnable.len()];
+            if chains[ci].done.is_some() || chains[ci].park.is_some() {
+                continue;
+            }
+            rr = (rr + k + 1) % runnable.len().max(1);
+            let out = dispatch_with_host(
+                &view,
+                limits,
+                cancel,
+                &[],
+                &mut chains[ci].st,
+                Some(1),
+                false,
+                Some(host),
+                None,
+                None,
+            );
+            stepped = true;
+            match out {
+                Some(o) => {
+                    if chains[ci].main {
+                        main_outcome = Some(o.clone());
+                    } else if !matches!(o, ExecOutcome::Success { .. }) {
+                        // A task/go chain failure fails the program (the
+                        // frozen M2-A propagation rule).
+                        let trace = take_trace(&mut chains);
+                        return (o, trace);
+                    }
+                    if chains[ci].main && main_trace.is_none() {
+                        main_trace = Some(std::mem::replace(
+                            &mut chains[ci].st.trace,
+                            ExecTrace::default(),
+                        ));
+                    }
+                    chains[ci].done = Some(o);
+                }
+                None => {
+                    if let Some(p) = chains[ci].st.sched_park {
+                        chains[ci].park = Some(p);
+                    }
+                }
+            }
+            break;
+        }
+        if !stepped {
+            // runnable list was stale (all got parked/done in pass 3's
+            // snapshot) — loop again to recompute.
+        }
+
+        // 6) global fuel accounting.
+        let total_steps: u64 = chains.iter().map(|c| c.st.steps).sum();
+        if total_steps > limits.max_steps {
+            let trace = take_trace(&mut chains);
+            return (
+                ExecOutcome::Resource {
+                    kind: ResourceKind::InstrSteps,
+                    message: "scheduler multiplex exceeded the fuel budget".into(),
+                },
+                trace,
+            );
+        }
+
+        // Termination: main done and every chain done or park-only.
+        if main_outcome.is_some() {
+            let quiescent = chains.iter().all(|c| {
+                c.done.is_some()
+                    || matches!(c.park, Some(SchedPark::Recv(_)) | Some(SchedPark::Sleep(_)))
+            });
+            if quiescent {
+                // Drain phase (stop hooks) happens above on the next
+                // runnable-empty iteration; reaching here with all-done
+                // means the drain already completed.
+                if chains.iter().all(|c| c.done.is_some()) {
+                    break;
+                }
+            }
+        }
+    }
+
+    let trace = main_trace.take().unwrap_or_else(|| take_trace(&mut chains));
+    let out = main_outcome.unwrap_or(ExecOutcome::Infra(
+        "scheduler ended without the main chain finishing".into(),
+    ));
+    (out, trace)
+}
+
+fn take_trace(chains: &mut Vec<SchedChain>) -> ExecTrace {
+    chains
+        .iter_mut()
+        .find(|c| c.main)
+        .map(|c| std::mem::replace(&mut c.st.trace, ExecTrace::default()))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

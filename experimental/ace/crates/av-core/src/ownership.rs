@@ -667,6 +667,54 @@ fn verify_owned_function_impl(
                 }};
             }
             match instr {
+                // PLAN-968: scheduler operand reads (handles/futures are
+                // plain i32 reads; value-producing ops define their dst).
+                MirInstr::SchedSpawn { args, dst, .. } => {
+                    for a in args {
+                        check_read!(a, "scheduler argument");
+                    }
+                    check_def_conflict!(dst, "scheduler handle");
+                    st.define_slot(*dst as usize);
+                    continue;
+                }
+                MirInstr::SchedGo { args, .. } => {
+                    for a in args {
+                        check_read!(a, "scheduler argument");
+                    }
+                    continue;
+                }
+                MirInstr::SchedSend { handle, msg } => {
+                    check_read!(handle, "task handle");
+                    check_read!(msg, "message");
+                    continue;
+                }
+                MirInstr::SchedAsk { handle, msg, dst } => {
+                    check_read!(handle, "task handle");
+                    check_read!(msg, "message");
+                    check_def_conflict!(dst, "reply future");
+                    st.define_slot(*dst as usize);
+                    continue;
+                }
+                MirInstr::SchedReply { value } => {
+                    check_read!(value, "reply value");
+                    continue;
+                }
+                MirInstr::SchedStop { handle } | MirInstr::SchedSleep { ms: handle } => {
+                    check_read!(handle, "scheduler operand");
+                    continue;
+                }
+                MirInstr::SchedAwait { future, dst } => {
+                    check_read!(future, "reply future");
+                    check_def_conflict!(dst, "await result");
+                    st.define_slot(*dst as usize);
+                    continue;
+                }
+                MirInstr::SchedRecv { dst } | MirInstr::SchedPort { dst }
+                | MirInstr::SchedStopping { dst } => {
+                    check_def_conflict!(dst, "scheduler receive");
+                    st.define_slot(*dst as usize);
+                    continue;
+                }
                 // PLAN-939 S06: a callback lane's args entry is a
                 // PLACEHOLDER (the named target rides `callbacks`); it is
                 // neither read nor owned.
