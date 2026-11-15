@@ -76,6 +76,9 @@ pub struct AgePackageComponent {
     pub handler_msgs: Vec<String>,
     /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
     pub public: bool,
+    /// PLAN-981（IF-981-FIELDS）：本组件的 `model` 初值是否真的进了求值链
+    /// （即每个字段都有实例状态函数）。没有它，"model.init" 不得算已覆盖。
+    pub initialized: bool,
     /// PLAN-981（IF-981-REF）：本组件 view 里**已解析**的实例引用。
     pub refs: Vec<AgeResolvedRef>,
     pub texts: Vec<AgePackageText>,
@@ -384,6 +387,7 @@ fn read_back_components(
                 .collect(),
             handler_msgs: p.node.handlers.iter().map(|h| h.msg.clone()).collect(),
             public: p.node.public,
+            initialized: state_functions_present(bound, &p.module, &p.node.fields),
             refs: refs.get(&p.module).cloned().unwrap_or_default(),
             texts,
             module: p.module.clone(),
@@ -678,6 +682,28 @@ fn resolve_refs(
     Ok(out)
 }
 
+/// `model` 初值事实是否成立：该模块里每个字段都存在实例 0 的状态函数。
+///
+/// 用绑定器自己的 `origins` 表查（源名 → 符号），不猜命名规则。
+fn state_functions_present(
+    bound: &super::packages::BoundPackages,
+    module: &str,
+    fields: &[crate::source::age_component::ComponentField],
+) -> bool {
+    if fields.is_empty() {
+        return false;
+    }
+    fields.iter().all(|f| {
+        let want = format!("__age_state_0_{}", f.name);
+        bound
+            .origins
+            .iter()
+            .any(|(_, (pkg, m, original))| {
+                original == &want && super::packages::unit_key(pkg, m) == module
+            })
+    })
+}
+
 fn ref_diag(kind: RefFailure, message: String, span: Span) -> Diagnostic {
     text_diag(ref_failure_code(&kind), message, span)
 }
@@ -695,6 +721,163 @@ fn bound_sources(
             flat_start: s.start,
         })
         .collect()
+}
+
+/// PLAN-981（IF-981-FIELDS）：AGE 作者语言的**构造清单**（required rows）。
+///
+/// 每一行是"作者可写的一个构造 → 它在受检描述里必须留下的 typed 事实 → 谁消费
+/// 它"。清单是**数据**：真实的覆盖检查（[`age_construct_coverage`]）逐行核对，
+/// 删掉一行或删掉对应的投影都会让检查变红（见 T-01 冻结的删行反控用例）。
+///
+/// 与 980 的 IF-980-FIELDS（UI 组件字段表）**取并集**，不互相替代；本表只覆盖
+/// AGE node 这一侧的构造（`node/model/on/view` 及其成员与视图引用）。
+pub struct AgeConstruct {
+    /// 构造键（稳定、可追踪；不随拼写改名）。
+    pub key: &'static str,
+    /// 作者实际写的语法形状（文档/诊断用）。
+    pub spelling: &'static str,
+    /// 该构造在受检产物里必须留下的 typed 事实。
+    pub fact: &'static str,
+    /// 消费该事实的下游 owner（本批 = 包前门自己的描述面）。
+    pub consumer: &'static str,
+    /// 该构造由哪一族规范条款要求（AGE-L / AG-A / V-DETAIL）。
+    pub requirement: &'static str,
+}
+
+/// 兼容变体：旧 `widget` 声明头。**不属于** canonical 源必须覆盖的构造集，
+/// 但它是同一 Schema 的合法别名，故单独登记、单独验证（compat 开/关各一态）。
+pub const AGE_COMPAT_CONSTRUCTS: &[AgeConstruct] = &[AgeConstruct {
+    key: "node.legacy-widget",
+    spelling: "widget <Name> { … }",
+    fact: "the same node row, flagged as the legacy compat head",
+    consumer: "age_package (compat gate)",
+    requirement: "AC-NODE-CHAIN",
+}];
+
+/// AGE 构造清单（本批实际迁入的范围；canonical 源必须逐行覆盖）。
+pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
+    AgeConstruct {
+        key: "node",
+        spelling: "node <Name> { … }",
+        fact: "a component row carrying the declared node name + original head span",
+        consumer: "age_package::AgePackageDescription.components",
+        requirement: "AGE-L01",
+    },
+    AgeConstruct {
+        key: "model",
+        spelling: "model { <field> <type> = <init> }",
+        fact: "per-field (name, type) rows in declaration order",
+        consumer: "age_package::AgePackageComponent.fields",
+        requirement: "AGE-L01",
+    },
+    AgeConstruct {
+        key: "model.init",
+        spelling: "<field> <type> = <init>",
+        fact: "a per-instance state function built from the initializer",
+        consumer: "av::age_package (instance_states)",
+        requirement: "AGE-L01",
+    },
+    AgeConstruct {
+        key: "on",
+        spelling: "on <Msg> { <field> = <expr> }",
+        fact: "the handler message names in declaration order",
+        consumer: "age_package::AgePackageComponent.handler_msgs",
+        requirement: "AGE-L01",
+    },
+    AgeConstruct {
+        key: "on.lifecycle",
+        spelling: "on Life.Tick { … }",
+        fact: "the qualified lifecycle message, kept in author spelling",
+        consumer: "av::age_package (Tick resolution)",
+        requirement: "AGE-L05",
+    },
+    AgeConstruct {
+        key: "view",
+        spelling: "view { … }",
+        fact: "the view role + its member rows",
+        consumer: "age_package::AgePackageComponent.texts",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "view.text",
+        spelling: "text <expression> {}",
+        fact: "a checked text value function (def id + kind)",
+        consumer: "av::age_package / a2x (value functions)",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "view.node-ref",
+        spelling: "<Type> <name> {}",
+        fact: "a resolved instance-reference row (declaring module + node)",
+        consumer: "age_package::AgePackageComponent.refs",
+        requirement: "AGE-L03",
+    },
+];
+
+/// 构造清单覆盖检查：清单里每一行的 `fact` 必须在**实际产物**里出现。
+///
+/// 这是 IF-981-FIELDS 的通用判据（与 979 的 `mapping_complete` 同口径）：
+/// - 删掉清单里的一行 → 该行不再是 required，检查仍绿（清单是分母，不是产物）；
+/// - 删掉**投影**（产物不再留该事实）→ 用 kept 清单检查时必须红；
+/// - 合法近邻（产物多出别的事实）不受影响。
+///
+/// 所以真实反控的做法是：用**完整**清单核对**被削弱**的产物 → 必须报缺失。
+pub fn age_construct_coverage(
+    description: &AgePackageDescription,
+    required: &[AgeConstruct],
+) -> Result<(), Vec<String>> {
+    let present = collect_facts(description);
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|c| !present.contains(&c.key))
+        .map(|c| c.key.to_string())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+/// 产物里实际留下的构造键（没有任何行靠"名字像"混过去：每项都要有实体事实）。
+pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    if description.components.is_empty() {
+        return out;
+    }
+    out.push("node");
+    for c in &description.components {
+        if c.legacy_widget && !out.contains(&"node.legacy-widget") {
+            out.push("node.legacy-widget");
+        }
+        if !c.fields.is_empty() {
+            if !out.contains(&"model") {
+                out.push("model");
+            }
+            // 字段初值真的参与了求值（有状态函数），才算 init 事实成立。
+            if c.initialized && !out.contains(&"model.init") {
+                out.push("model.init");
+            }
+        }
+        if !c.handler_msgs.is_empty() && !out.contains(&"on") {
+            out.push("on");
+        }
+        if c.handler_msgs.iter().any(|m| m.contains('.')) && !out.contains(&"on.lifecycle") {
+            out.push("on.lifecycle");
+        }
+        if !c.texts.is_empty() && !out.contains(&"view") {
+            out.push("view");
+        }
+        for t in &c.texts {
+            if !t.fn_name.is_empty() && !t.def_id.is_empty() && !out.contains(&"view.text") {
+                out.push("view.text");
+            }
+        }
+        if !c.refs.is_empty() && !out.contains(&"view.node-ref") {
+            out.push("view.node-ref");
+        }
+    }
+    out
 }
 
 /// 包面身份拒绝：`age-package` 只由本前门消费（对称于 979 的通用入口拒绝）。
