@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-978
-status: reviewed
+status: archived
 feature_name: 工程增量多目标构建与预编译SDK
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 14
-current_step: 10
+current_step: 14
 total_steps: 14
 depends_on: [PLAN-960, PLAN-966, PLAN-972, PLAN-967, PLAN-942, PLAN-1040, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/assembly-manifest.md, docs/specs/stdlib/design/backend-assembly.md]
@@ -505,9 +505,9 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 
 - [x] **T-B0-V｜M2-A｜owner_stage: work｜AC-B0**：T-B0-I后执行V-B0-*与冻结完整受影响职责组/必要消费者；独立非UI consumer先验，记录编译/执行身份和无多余Rust构建的进程观测。 [✅ 2026-11-16：V-B0-CLOSURE=SDK 异根重定位+删开发根后 AV/native run 14（p978_sdk_relocates_and_runs_without_dev_cache）；V-B0-EDIT=B01 14→编辑4→5 得17、重复运行=精确缓存命中、归因进程 oracle（按父链归属本进程的 cargo/rustc/bindgen 计数）=0（p978_b0_edit_runs_new_value_with_zero_tool_processes）；固定组 ace-m2-build 注册于 scripts/test-groups.toml 并 PASS]
 
-- [ ] **T-B0-R｜M2-A｜owner_stage: review｜AC-B0-REVIEW**：T-B0-V齐后同树停写独立审最小AV构建/运行闭包与拒绝恢复；finding返I。 [记：work 阶段一次性交齐 M2-A 全量、无中期 fold 窗口与外部等待消费者，B0 切片独立复审并入 T-05 最终 review 同树停写执行，AC-B0-REVIEW 义务不变]
+- [x] **T-B0-R｜M2-A｜owner_stage: review｜AC-B0-REVIEW**：T-B0-V齐后同树停写独立审最小AV构建/运行闭包与拒绝恢复；finding返I。 [✅ 由 T-05 最终 review 承担（work 一次交齐 M2-A 全量、无中期 fold 窗口）：最小 AV 闭包/冷消费/真实进程计数/dispatch 前拒绝逐项核（见§9 review 记录）；finding F-978-R-01..03 已返工修复]
 
-- [ ] **T-B0-D｜M2-A｜owner_stage: merge｜AC-B0-LAND**：T-B0-R pass后phase fold正式合入清单/recipe及已验来源交980/HELLO，保同树继续原完整SDK/性能/外库任务，不归档或宣称全SDK已交。 [记：并入 T-06 最终 merge 一次性落主（同一 work 阶段已交 M2-A 全量），"正式落主供980/HELLO"由 T-06 承担，不宣称全SDK已交]
+- [x] **T-B0-D｜M2-A｜owner_stage: merge｜AC-B0-LAND**：T-B0-R pass后phase fold正式合入清单/recipe及已验来源交980/HELLO，保同树继续原完整SDK/性能/外库任务，不归档或宣称全SDK已交。 [✅ 由 T-06 承担：清单/recipe/已验产物随 delivery commit b8f80afcf 正式落主供980/HELLO；本包 M2-A 全量已交故无"保同树继续"腿；不宣称全SDK/发行已交（986/987 归属保持）]
 
 
 
@@ -527,9 +527,9 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 
 - [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-16 final review pass（含 AC-B0-REVIEW）：清单审计/遗漏扫描/健康检查/规范增量核验+有界修复轮 F-978-R-01..R-03（已修，commit ac1883702，`cargo t ace-m2-build` PASS run-__lvutjj）；债务 3 项入 KNOWN-DEBT（V-ID-RUN 真工件调用腿 P3、1062 基线红 P2 owner=1062、A2C clang 变体 P3）；复审记录见§9]
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 [✅ 2026-11-16：rebase 后 `git merge --ff-only`（range-diff 三提交全等价：371600de6→9f17fd9c2、12f2b41b8→a07250691、ac1883702→b8f80afcf）；delivery commit=b8f80afcf=master tip；canonical m2-build.md SHA256 前16 a475b5304674f3d0 与 review 冻结一致；landing check=`cargo t ace-m2-build` 主检出 PASS（run-4nn8ckg0）；T-B0-D 同时落主（AC-B0-LAND，供980/HELLO 消费）]
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。 [✅ 2026-11-16：收尾对账见§9 merge 收据 cleaned 检查点；plan-artifacts/plan-978 整目录删除（证据已折入本文件）；retention 登记刷新；wt-guard clean 后移除 lang-978 组两树/分支/组目录]
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -645,7 +645,28 @@ stage: review | review_scope: final | reviewer_identity/limitations: 同实施�
 
 stage: goal | plan_id: PLAN-978 | plan_revision: r14 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-978/auto-lang | commit: ac1883702 | next: merge
 
+### 2026-11-16 stage: merge / PLAN-978:r14 / outcome: pass（delivered & archived）
+
+stage: merge | plan_id: PLAN-978 | plan_revision: r14 | outcome: pass | delivery_commit: b8f80afcf（master tip，ff-only）| old→new: 371600de6→9f17fd9c2, 12f2b41b8→a07250691, ac1883702→b8f80afcf（range-diff 全等价）| canonical: docs/specs/ace-migration/m2-build.md（a475b5304674f3d0）+ assembly-manifest/backend-assembly/replacement-scope 三处增量节（a07250691）| archive: docs/plans/archive/978-ace-m2-build.md（status: archived）| cleanup: 见下 cleaned 检查点
+
+**合并检查点**：prepared=reviewed 基线 r14@ac1883702+冻结规范delta ✓；landed=ff-only，master tip==delivery ✓；canonical_verified=源哈希核对+主检出存在性 ✓；archived=git mv+状态翻转+docs 提交 ✓；cleaned=wt-guard 两树 clean→移除 lang-978/auto-lang 与 lang-978/auto-down、删组目录、删 plan-artifacts/plan-978、retention 登记刷新 ✓。
+
+**merge 会话实测**：landing check `cargo t ace-m2-build` 主检出 PASS（run-4nn8ckg0，占用检查 0 并发）；无新用例（复用 review/工作阶段冻结证据：并集 6 组 PASS+1062 基线红、修复轮组 PASS run-__lvutjj——修复仅触 m2-build crate，其余组基线未变复用）。
+
+**批量回归到期核查**：.last-batch-regression.json last_covered=1060@2026-11-14T23:23Z；978%5≠0 且无可见 5 倍数计划新落、回执 <48h → **不到期**。
+
+**部署新鲜度观察**：本包为语言/ACE 仓库内交付（crate+CLI+固定组+规范），无发行二进制/Web 产物需刷新；未触发任何 release/rebuild/restart（按裁定不在日常验证内隐式执行）。
+
+**收尾路径对账**：本计划命令/日志实际使用的输出目录=plan-artifacts/plan-978/{probe,smoke,buildlane,*.log}（已随 scope 删除）+ 两 worktree 内 target 树（随树删除）+ 主检出 target/test-groups 一次性 results（框架自管）；无 D:/autostack 之外盘符输出、无散落 plan978-* 目录、无外部安装/消费根；组目录删除后 D:/autostack/.wt/lang-978 不存在。
+
+stage: goal | plan_id: PLAN-978 | plan_revision: r14 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: （已清）| commit: b8f80afcf | next: done
+
 ## 10. 待澄清事项
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
+（2026-11-16 交付时点：无未决澄清项；遗留观察见 KNOWN-DEBT-AND-RISKS 的 PLAN-978 节。）
+
+## 11. 完成摘要（2026-11-16 delivered）
+
+PLAN-978（M2-A 工程增量多目标构建与预编译SDK）交付：`ace-m2-build` crate+`ac-build` CLI——工程构建身份（M978B 精确缓存）/RuntimeCompatibility（rustc 不作准入轴）/ProviderSelection（精确 pin+逐次授权）/可重定位候选 SDK recipe/五 lane 构建与预编译消费/恢复自愈/归因零工具进程 oracle。30 个永久 p978 用例（≤2.2s）+固定组 ace-m2-build；A2R(rustc)/A2C(MSVC cl) build-lane 真编译运行 value:14；Linux 腿全量移交 1063（r14 裁定）。债务 3 项见 KNOWN-DEBT（V-ID-RUN 真工件调用腿/1062 基线红/clang 变体）。供 985/986/980-HELLO 消费的正式来源=master b8f80afcf。
