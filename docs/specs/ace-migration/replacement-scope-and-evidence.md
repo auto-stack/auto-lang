@@ -203,6 +203,19 @@ use.c/use.rs 的旧阻塞已由本包公共工程入口解除（SD-10 该行由 
 - 分母台账 `S-01..S-25`、`K-01..K-08`、`UK-01..13` 与 Design56 增补 `FFI-M2-01..08` / `LIB-M2-01..08` 的 M2-A 领域差额追踪、代表性真实消费者前探（JSON/HTTP/Async/UI）及发行接管阻塞清单见 [ace-domain-migration-readiness](../stdlib/design/ace-domain-migration-readiness.md)。
 - **未闭硬阻塞保持**：`stdlib_assembly/loader.rs:68,78` 开发仓 `CARGO_MANIFEST_DIR` 回退、`~/.auto/libs/stdlib` junction、陈旧 `PATH` `auto`、跨仓安装器漂移（`web-install.py`/`musk/install.sh`）、`binding.rs` 拒项目级 `use.c`/`use.rs`（阻塞 `AV/C`/`AV/Rust`）、`sys.arch`/`env`/`ABI` 缺失与 Design46 Gate A/B 未闭。以上阻塞在台账中保持 `missing`/`unknown` 原状，未完成洁净仓外实跑前严禁签发 M2 发行通过。
 
+## M2-A 产品执行配置与嵌入前门已验（PLAN-969，2026-11-15）
+
+PLAN-969（ACE 产品执行配置与嵌入前门）M2-A 全部任务交付并经独立终审 pass
+（0 BLOCKER/0 MAJOR/4 MINOR 全数折叠）。已验现值：公开显式 ACE 同步执行门
+（`auto-lang-core::ace_entry`：引擎门/六态结果/具名拒绝，零 legacy 引用）＋
+参考执行桥（`crates/auto-lang-ace-host`：scalar/core/console/F0 foreign 四车道，
+每 run 重授权，provider 生命周期，console 捕获）＋结构化 profile 表面事实选路
+（AUDIT-03，消息文本零参与）＋事实权威表（AUDIT-08）＋兼容门审计（旧 ABT 受控
+拒、args/stdin 具名拒、旧导出各保 legacy owner）。接口/预算/边界单源见
+[m2-facade.md](m2-facade.md)。未闭缺口（AV argv/stdin 车道、增量会话经公开门、
+console×foreign 组合、撤权竞态 async 语义）见 KNOWN-DEBT-AND-RISKS D-969；
+旧义务不因本包 A 切片改 NA，985/A 消费以本收据为开工门之一。
+
 ## M2-A 任务actor调度器已验（PLAN-968，2026-11-15）
 
 PLAN-968（任务async actor与事件调度）M2-A 全部 work 任务交付并经 needs_fix→修复→final pass
