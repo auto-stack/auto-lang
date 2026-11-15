@@ -3078,7 +3078,7 @@ cargo t auto-test-case infra-fixed infra-ace-m1 --out <scope阶段完整职责�
 | [x] | T-11/work | P4；T-10 | 迁P4的60文件/303case/484对，编辑/重启/缓存/资源/查询真实条件证据，不留JSON块逃逸 | G/F/K actual与反控，AC-04～06 |
 | [x] | T-12/work | P5；T-02/03 | 全ABI绑定、真实库/项目源/期望/依赖，显式debug准备与专项clean-build认证保留，普通不暗编译 | NC-05/08/16/18/25/26，AC-02/04/05/10 |
 | [x] | T-13/work | P5；T-12 | 迁P5的8文件/109case/109对，ABI版本/资源/取消/错误/认证原receipt/actual，切活跃入口 | G/F/K，AC-04～07 |
-| [ ] | T-14/work | P6；T-02/03及相关CF | 文档内部C/Python/TS/VM多观测及legacy matcher复用原backend，VM cache/TestRunner/helpers读doc；同步input_inventory/wrapper_bindings/execution_trace，保native IDs/源目录/原条件 | NC-07/08/10/11/20～23/27/29，AC-02/03/07/08 |
+| [x] | T-14/work | P6；T-02/03及相关CF | 文档内部C/Python/TS/VM多观测及legacy matcher复用原backend，VM cache/TestRunner/helpers读doc；同步input_inventory/wrapper_bindings/execution_trace，保native IDs/源目录/原条件 | NC-07/08/10/11/20～23/27/29，AC-02/03/07/08 |
 | [x] | T-15/work | P6；T-14 | 迁全部活跃/注册B语料；623active按正式重冻值逐旧新实跑，575ignored/6未注册及2缺源码原态保；同源聚合/selector；bootstrap改显式proposal，不写金样 | 原生child证据、NC-20～23/29/30，AC-04/06～09 |
 | [x] | T-16/work | P6；T-01/14 | 扫其他test目录/脚本/hardcode/include_str和实际读者，全部新增本仓活跃file-corpus在本Plan迁/验；归属active/history/support与外仓，不靠旧快照漏项 | V-01/07，NC-22/24/28，AC-01/06/09 |
 | [x] | T-17/work | P7；各迁移阶段及T-16 | 最终重发现75组+本仓包装及增量，active全doc/零旧fallback，既有95doc/BASE97守恒；正式入口和候选一致 | V-05～07，NC-01/20～24/28，AC-01/06～09 |
