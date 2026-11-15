@@ -64,16 +64,18 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                     let name = parts[1];
                     let case = format!("{}/{}", category, case_dir_name);
 
-                    // PLAN-1062 T-14: the entry's payload comes from its
-                    // migration document; .at/.as/.expected.* sidecars are
-                    // frozen history (never a fallback). Entry presence is
-                    // still discovered via the original source files.
+                    // PLAN-1062 T-14/NC-20: the entry's payload comes from
+                    // its migration document; .at/.as/.expected.* sidecars
+                    // are frozen history (never a fallback). An entry is
+                    // present when either its frozen source or its migration
+                    // document exists — a doc-only tree still discovers.
                     let at_path = case_entry.path().join(format!("{}.at", name));
                     let as_path = case_entry.path().join(format!("{}.as", name));
-                    if !at_path.is_file() && !as_path.is_file() {
+                    let doc_path = case_entry.path().join(format!("{}.case.ad", name));
+                    if !at_path.is_file() && !as_path.is_file() && !doc_path.is_file() {
                         continue;
                     }
-                    let is_script = !at_path.is_file();
+                    let is_script = !at_path.is_file() && as_path.is_file();
                     let entry = crate::tests::legacy_doc::load_case(
                         &case_entry.path(),
                         name,
