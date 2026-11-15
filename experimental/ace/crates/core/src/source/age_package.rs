@@ -325,6 +325,18 @@ fn locate_all(
 }
 
 /// 扁平坐标 → 原模块坐标（诊断/描述都按原文件给定位）。
+///
+/// PLAN-981：`age_components` 里的 span **是扁平坐标**，因此这里必须减去
+/// `flat_start`。这是实测结论，不是推断：
+///
+/// - 保留减法时，`ref-undeclared` 与 `ref-not-a-node` 两条路径在依赖 73B / 157B
+///   两种长度下都把 span 精确落在出错 token 上（`at_token=true`）；
+/// - 去掉减法（我一度这样"修"过）后，同一批探针在 40B 依赖下指向
+///   `"{\n    view {\n"` —— 说明不减才是错的。
+///
+/// 已知边界：`find(|s| span.start >= s.flat_start)` 假定被减的偏移**大于**任何
+/// 前置模块长度。当依赖模块很短、而 span 落在其中时，会匹配到错误的模块。
+/// 该边界尚未修（属 RUST/汇总批），但**不得**用"整体不减"来回避。
 fn flat_to_module(sources: &[AgeModuleSource], span: Span) -> Span {
     let src = sources
         .iter()

@@ -47,6 +47,7 @@ fn compile(main: &str) -> Result<
 
 
 
+
 /// 同模块引用不需要导入（可见性只约束跨模块）。
 #[test]
 fn p981_ref_same_module_reference_needs_no_import() {
@@ -132,26 +133,20 @@ fn p981_ref_diagnostics_carry_the_original_module_span() {
         Nowhere m1 {}\n\
     }\n\
 }\n";
-    let out = compile(main);
-    let ds = out.expect_err("undeclared reference rejected");
-    // 用同一工程的成功编译取得 main 模块的源坐标。
-    let ok = compile("node Screen {\n    view { text \"hi\" {} }\n}\n").expect("base compiles");
-    let main_mod = ok
-        .description
-        .modules
-        .iter()
-        .find(|m| m.key == "app::main")
-        .expect("main module");
-    assert!(
-        ds.iter().any(|d| {
-            d.span.start >= main_mod.flat_start
-                && d.span.start < main_mod.flat_start + main_mod.source_len
-        }),
-        "the reference diagnostic maps into main.at: {ds:?}"
+    let ds = compile(main).expect_err("undeclared reference rejected");
+    // 诊断必须**精确指向**出错的那个 token，而不是"落在模块区间内"。
+    //
+    // 旧版本只检查 `span` 落在 main 的区间里；因为 main 的 `flat_start == 0`，
+    // **任何**小 span 都满足——那是一句几乎不可能红的断言。改成锚定 token 后，
+    // 任何把 span 算错一个偏移的改动都会立刻暴露。
+    let want = main.find("Nowhere").expect("fixture contains Nowhere");
+    assert_eq!(
+        ds[0].span.start, want,
+        "the diagnostic must point at the offending token; got {:?} which reads {:?}",
+        ds[0].span,
+        &main[ds[0].span.start.min(main.len())..ds[0].span.end.min(main.len())]
     );
 }
-
-
 
 /// 跨模块 node 引用（本轮闭环）：普通 `use` 导入的 node 按 node 名解析到声明模块；
 /// `pub node` 同样可引用。AGE 作者面不需要 `pub`（2026-11-16 用户裁定）。
