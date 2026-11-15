@@ -177,6 +177,9 @@ pub enum PlatformOpKind {
     /// PLAN-974 inc3: accept one connection on a listener — returns a NEW
     /// socket handle (a fresh ledger entry).
     NetTcpAccept,
+    /// PLAN-974 T-08: write RAW BYTES from an OS memory region (non-UTF-8
+    /// frames; the write_some Str face stays UTF-8-only).
+    NetTcpWriteRegion,
     /// PLAN-974 inc3: the listener's actual bound port (ephemeral recall).
     NetTcpLocalPort,
 }
@@ -463,6 +466,18 @@ pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
         len_unit: LenUnit::Utf8Bytes,
         origin: HandleOrigin::None,
         max_call_bytes: 256,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpWriteRegion,
+        callee: "net_tcp_write_region",
+        symbol: "auto.platform.net.tcp_write_region.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_WRITE,
+        params: P_4I32,
+        param_dirs: D_4,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: 0,
     },
     PlatformOpSpec {
         kind: PlatformOpKind::NetTcpWriteSome,
@@ -1982,6 +1997,13 @@ impl PlatformResourceLedger {
                 as_i32(&args[3])?,
             ),
             PlatformOpKind::NetTcpClose => self.op_net_close(backend, as_i32(&args[0])?),
+            PlatformOpKind::NetTcpWriteRegion => self.op_net_write_region(
+                backend,
+                as_i32(&args[0])?,
+                as_i32(&args[1])?,
+                as_i32(&args[2])?,
+                as_i32(&args[3])?,
+            ),
             PlatformOpKind::NetTcpListen => self.op_net_listen(backend, as_i32(&args[0])?),
             PlatformOpKind::NetTcpAccept => self.op_net_accept(backend, as_i32(&args[0])?),
             PlatformOpKind::NetTcpLocalPort => {
@@ -2211,6 +2233,60 @@ impl PlatformResourceLedger {
                 i32::try_from(read).unwrap_or(i32::MAX)
             }
             Err(u32::MAX) => ERR_WOULDB_BLOCK,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974 T-08: write raw region bytes (the read_into mirror):
+    /// mixed-origin validation + byte bounds + net budget, then the
+    /// backend write with the paced cancel discipline.
+    fn op_net_write_region(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        socket_handle: i32,
+        region_handle: i32,
+        byte_off: i32,
+        byte_len: i32,
+    ) -> i32 {
+        if byte_off < 0 || byte_len < 0 {
+            return ERR_INVALID_BOUNDS;
+        }
+        let Ok(socket) = self.net_socket_of(socket_handle) else {
+            return self.net_socket_of(socket_handle).unwrap_err();
+        };
+        let Ok((ridx, _)) = self.decode_handle(region_handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let (base, logical_len) = match &self.entries[ridx].payload {
+            LedgerPayload::OsMemRegion {
+                base,
+                logical_len,
+                released: false,
+                ..
+            } => (*base, *logical_len),
+            LedgerPayload::OsMemRegion {
+                released: true, ..
+            } => return ERR_ALREADY_RELEASED,
+            _ => return ERR_WRONG_ORIGIN,
+        };
+        let (off, len) = (byte_off as usize, byte_len as usize);
+        let end = match off.checked_add(len) {
+            Some(e) if e <= logical_len => e,
+            _ => return ERR_INVALID_BOUNDS,
+        };
+        if self.net_bytes_total.saturating_add(len) > MAX_NET_RUN_BYTES {
+            return ERR_BUDGET;
+        }
+        // SAFETY: region stays mapped and session-owned for the call.
+        let buf = unsafe { std::slice::from_raw_parts(base.add(off), end - off) };
+        match backend.net_write_some(socket, buf, &CancelFlag::new(false)) {
+            Ok(written) => {
+                self.net_bytes_total += written;
+                i32::try_from(written).unwrap_or(i32::MAX)
+            }
             Err(err) => {
                 self.last_os_error = err;
                 ERR_OS_FAILED

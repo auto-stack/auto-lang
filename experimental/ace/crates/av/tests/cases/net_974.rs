@@ -929,3 +929,149 @@ fn main() int {{
     );
     server.join().expect("server");
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-974 T-08 (WebSocket frame layer) — a real RFC-6455 client on the
+// platform.net/1 lane: the Rust server answers the HTTP Upgrade with
+// 101 + the fixed accept token, then echoes one server text frame; the
+// Auto client writes a MASKED text frame via net_tcp_write_region
+// (mask bytes 0x00..=0x1F keep ASCII payloads ASCII — RFC-legal) and
+// parses the unmasked server frame from the region.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn net974_websocket_frame_layer() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let Ok((mut c, _)) = listener.accept() else { return };
+        let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        // read the upgrade request until blank line
+        let mut b = [0u8; 512];
+        let mut seen = 0;
+        loop {
+            let Ok(n) = c.read(&mut b[seen..]) else { return };
+            if n == 0 { return }
+            seen += n;
+            if b[..seen].windows(4).any(|w| w == b"\r\n\r\n") { break }
+        }
+        let req = String::from_utf8_lossy(&b[..seen]).to_string();
+        if !req.starts_with("GET /ws HTTP/1.1") || !req.contains("Upgrade: websocket") {
+            return;
+        }
+        // 101 switching protocols (fixed accept for the fixed key)
+        let _ = c.write_all(
+            b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n",
+        );
+        let _ = c.flush();
+        // read one masked client frame, verify mask + payload, echo as an
+        // unmasked server text frame with the SAME payload
+        let mut h = [0u8; 2];
+        if c.read_exact(&mut h).is_err() { return }
+        let fin_op = h[0];
+        let mlen = h[1] & 0x7F;
+        if fin_op != 0x81 || h[1] & 0x80 == 0 || mlen != 5 { return }
+        let mut mask = [0u8; 4];
+        if c.read_exact(&mut mask).is_err() { return }
+        let mut payload = [0u8; 5];
+        if c.read_exact(&mut payload).is_err() { return }
+        for i in 0..5 {
+            payload[i] ^= mask[i % 4];
+        }
+        if &payload != b"hello" { return }
+        let _ = c.write_all(&[0x81, 0x05, b'h', b'e', b'l', b'l', b'o']);
+        let _ = c.flush();
+        let _ = c.shutdown(std::net::Shutdown::Both);
+    });
+
+    let src = format!(
+        r#"fn main() int {{
+    // 1) the HTTP Upgrade request (UTF-8 face is fine here)
+    let s = net_tcp_connect("127.0.0.1", {port})
+    if s <= 0 {{ return s }}
+    let key Str = "dGhlIHNhbXBsZSBub25jZQ=="
+    let up Str = "GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + key + "\r\nSec-WebSocket-Version: 13\r\n\r\n"
+    let w = net_tcp_write_some(s, up)
+    if w <= 0 {{ return w }}
+    // 2) read the 101 response head into the region
+    let region = mem_alloc(1024)
+    var total = 0
+    for total < 1024 {{
+        let n = net_tcp_read_into(s, region, total, 256)
+        if n < 0 {{ return n }}
+        if n == 0 {{ break }}
+        total = total + n
+        if total >= 4 {{
+            let c0 = mem_read_u8(region, total - 4)
+            let c1 = mem_read_u8(region, total - 3)
+            let c2 = mem_read_u8(region, total - 2)
+            let c3 = mem_read_u8(region, total - 1)
+            if c0 == 13 {{
+                if c1 == 10 {{
+                    if c2 == 13 {{
+                        if c3 == 10 {{ break }}
+                    }}
+                }}
+            }}
+        }}
+    }}
+    // status must be 101
+    if mem_read_u8(region, 9) - 48 != 1 {{ return 101 }}
+    if mem_read_u8(region, 10) - 48 != 0 {{ return 102 }}
+    if mem_read_u8(region, 11) - 48 != 1 {{ return 103 }}
+    // 3) write a MASKED text frame via the RAW region face:
+    //    0x81 0x85, mask 0x05 0x01 0x02 0x03, "hello" XOR mask
+    let f0 = mem_alloc(16)
+    let u1 = mem_write_u8(f0, 0, 129)
+    let u2 = mem_write_u8(f0, 1, 133)
+    let u3 = mem_write_u8(f0, 2, 5)
+    let u4 = mem_write_u8(f0, 3, 1)
+    let u5 = mem_write_u8(f0, 4, 2)
+    let u6 = mem_write_u8(f0, 5, 3)
+    let u7 = mem_write_u8(f0, 6, 109)
+    let u8 = mem_write_u8(f0, 7, 100)
+    let u9 = mem_write_u8(f0, 8, 110)
+    let u10 = mem_write_u8(f0, 9, 111)
+    let u11 = mem_write_u8(f0, 10, 106)
+    let wf = net_tcp_write_region(s, f0, 0, 11)
+    let _ = mem_free(f0)
+    if wf != 11 {{ return 104 }}
+    // 4) read the unmasked server text frame + verify payload bytes
+    var got = 0
+    for got < 256 {{
+        let n = net_tcp_read_into(s, region, got, 64)
+        if n < 0 {{ return n }}
+        if n == 0 {{ break }}
+        got = got + n
+    }}
+    let _c = net_tcp_close(s)
+    if got != 7 {{ return 105 }}
+    if mem_read_u8(region, 0) != 129 {{ return 106 }}
+    if mem_read_u8(region, 1) != 5 {{ return 107 }}
+    // payload "hello" byte-compared
+    if mem_read_u8(region, 2) != 104 {{ return 108 }}
+    if mem_read_u8(region, 3) != 101 {{ return 109 }}
+    if mem_read_u8(region, 4) != 108 {{ return 110 }}
+    if mem_read_u8(region, 5) != 108 {{ return 111 }}
+    if mem_read_u8(region, 6) != 111 {{ return 112 }}
+    let _f = mem_free(region)
+    return 0
+}}
+"#,
+        port = port
+    );
+    let mut backend = Win32PlatformIo::default();
+    let out = compile_and_run(&src, &net_grants(), &mut backend);
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "WS upgrade 101 + masked client frame + unmasked server echo, got {out:?}"
+    );
+    server.join().expect("server");
+}

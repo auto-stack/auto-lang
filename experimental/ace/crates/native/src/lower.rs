@@ -1290,6 +1290,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             // PLAN-974: rejected by name before lowering (unreachable).
             PlatformOpKind::NetTcpConnect
             | PlatformOpKind::NetTcpWriteSome
+            | PlatformOpKind::NetTcpWriteRegion
             | PlatformOpKind::NetTcpReadInto
             | PlatformOpKind::NetTcpClose
             | PlatformOpKind::NetTcpListen

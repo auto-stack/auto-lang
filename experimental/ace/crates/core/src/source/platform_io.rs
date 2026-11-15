@@ -197,6 +197,13 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         capability: CAP_NET_CONNECT,
     },
     PlatformSourceOp {
+        callee: "net_tcp_write_region",
+        symbol: "auto.platform.net.tcp_write_region.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_NET_WRITE,
+    },
+    PlatformSourceOp {
         callee: "net_tcp_write_some",
         symbol: "auto.platform.net.tcp_write_some.v1",
         params: P_I32_STR_NET,

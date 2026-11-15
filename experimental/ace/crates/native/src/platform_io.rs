@@ -87,6 +87,7 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         // category can never silently fall through.
         PlatformOpKind::NetTcpConnect
         | PlatformOpKind::NetTcpWriteSome
+        | PlatformOpKind::NetTcpWriteRegion
         | PlatformOpKind::NetTcpReadInto
         | PlatformOpKind::NetTcpClose
         | PlatformOpKind::NetTcpListen
@@ -140,6 +141,7 @@ pub fn cranelift_shim_sig_for(
         // PLAN-974: rejected by name before lowering (unreachable).
         PlatformOpKind::NetTcpConnect
         | PlatformOpKind::NetTcpWriteSome
+        | PlatformOpKind::NetTcpWriteRegion
         | PlatformOpKind::NetTcpReadInto
         | PlatformOpKind::NetTcpClose
         | PlatformOpKind::NetTcpListen
