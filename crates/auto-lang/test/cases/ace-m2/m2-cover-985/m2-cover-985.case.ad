@@ -1,0 +1,41 @@
+# PLAN-985 T-A02 — the M2-cover tracked corpus: parent-side observation
+# for the two frozen recipe families (plain source run + owned-resource
+# run), judged PARENT-SIDE (the workers never see the expected outcomes).
+# Rows map into the ab-obligations matrix (`autolang.ab-obligations/1`):
+# plain-run -> L-26/L-05 (scalar arithmetic/control) via the av core
+# lane; owned-relay -> L-06/L-08/S-02 (view/mut/move + owned records and
+# strings) via the av owned-resource lane. Registered by 985/T-A02; the
+# green gate plus the wrong-oracle red control live in the conformance
+# host suite (`ace_m2_p985_cover_*`).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p985.cover.plain-run"
+  tags: ["ace-m2", "m2-cover-985", "plan-985"]
+  links: ["PLAN-985"]
+  source: { file: "src/plain-run.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-plain", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 14 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p985.cover.owned-relay"
+  tags: ["ace-m2", "m2-cover-985", "plan-985"]
+  links: ["PLAN-985"]
+  source: { file: "src/owned-relay.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-owned", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resource-events-v1", av: { entry: "d_main", resource: { profile: "owned" } }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 405 } }
+  ]
+}
+```

@@ -1367,3 +1367,111 @@ mod performance {
         assert_eq!(result["passed"], true, "{result}");
     }
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-985 T-A02 — the M2-cover tracked corpus (`m2-cover-985`): green
+// gate for the two frozen recipe families (plain-source run + owned-
+// resource run) with PARENT-SIDE judging, plus the wrong-oracle RED
+// control on this registration. The four admission families bind to the
+// named controls of this suite and av_protocol:
+// - stale binary / stale identity: `ac_av_probe_mixed_recipe_stale_identity_is_order_independent`
+//   (av_protocol; verified green 2026-11-16);
+// - emit masquerading as run: `ace_m1_golden_drift_is_red` (emit-byte
+//   drift is RED) + kind confusion `ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red`
+//   (a known baseline red of the group — its control role stands, status noted);
+// - fake worker PASS (self-reported success without real execution):
+//   `ace_m1_base_negative_oracle_fails` + `ac_av_probe_negative_oracle_fails`
+//   + `ace_m2_p985_cover_wrong_oracle_is_red` below (on THIS corpus);
+// - timeout masquerading as a language negative:
+//   `ac_av_probe_prep_executor_contained_failure_shapes` (AV798_BUILD_WALL_MS
+//   seam) + `ac_av_worker_contract_faults_are_infra` (faults are infra,
+//   never a language pass/negative).
+// ---------------------------------------------------------------------------
+
+/// The M2-cover corpus runs END TO END green through the unified runner
+/// (real av worker processes; the parent judges independently).
+#[test]
+fn ace_m2_p985_cover_suite_green() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("m2-cover-985");
+    let report = run_suite(
+        &cases_dir.join("ace-m2/m2-cover-985/m2-cover-985.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("m2-cover-985 suite runs");
+    let failing: Vec<String> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} = {:?} | {:?} | mismatches: {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(
+        failing.is_empty(),
+        "m2-cover-985 has non-PASS checks:\n{}",
+        failing.join("\n")
+    );
+    assert_eq!(report.results.len(), 2, "two recipe checks");
+    for (case_id, check_id) in [
+        ("ace.m2.p985.cover.plain-run", "av-plain"),
+        ("ace.m2.p985.cover.owned-relay", "av-owned"),
+    ] {
+        assert!(
+            report
+                .results
+                .iter()
+                .any(|r| r.case_id == case_id && r.check_id == check_id),
+            "missing {case_id}:{check_id}"
+        );
+    }
+}
+
+/// Wrong-oracle RED control on the M2-cover registration: mutating the
+/// frozen owned-relay exit (405 -> 406) must turn the gate RED — the
+/// corpus is a real parent-side judge, not a worker self-report.
+#[test]
+fn ace_m2_p985_cover_wrong_oracle_is_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("m2-cover-985-neg");
+    let corpus = root.join("corpus");
+    copy_tree(&cases_dir.join("ace-m2/m2-cover-985"), &corpus);
+    let doc = corpus.join("m2-cover-985.case.ad");
+    let text = std::fs::read_to_string(&doc).unwrap();
+    let mutated = text.replacen("exit: 405", "exit: 406", 1);
+    assert_ne!(&mutated, &text, "mutation must hit the owned-relay oracle");
+    std::fs::write(&doc, mutated).unwrap();
+    let report = run_suite(
+        &corpus.join("m2-cover-985.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated m2-cover suite still runs");
+    let owned = report
+        .results
+        .iter()
+        .find(|r| r.case_id == "ace.m2.p985.cover.owned-relay" && r.check_id == "av-owned")
+        .expect("owned-relay check present");
+    assert_eq!(owned.status, Status::Fail, "wrong exit must be RED");
+    assert!(
+        owned.mismatches.iter().any(|m| m.observation == "exit"),
+        "the failure must name the exit axis: {:?}",
+        owned.mismatches
+    );
+    // The untouched plain-run check stays green — the mutation is localized.
+    assert!(
+        report
+            .results
+            .iter()
+            .any(|r| r.case_id == "ace.m2.p985.cover.plain-run"
+                && r.check_id == "av-plain"
+                && r.status == Status::Pass),
+        "plain-run stays green under the localized mutation"
+    );
+}

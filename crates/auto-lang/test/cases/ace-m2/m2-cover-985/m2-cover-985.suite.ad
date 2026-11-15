@@ -1,0 +1,5 @@
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m2-m2-cover-985", include: [
+  "m2-cover-985.case.ad",
+] }
+```
