@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-974
-status: drafting
+status: executing
 feature_name: 新版网络HTTP与流式服务库
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 5
-current_step: 0
+updated_at: 2026-11-16
+plan_revision: 9
+current_step: 1
 total_steps: 8
-depends_on: [PLAN-968, PLAN-973]
+depends_on: [PLAN-968, PLAN-973, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-stdlib-network.md]
 touched_goals: [GOAL-002]
@@ -18,13 +18,19 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+2026-11-15 r8当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
+
+2026-11-13 r7当前：纳入新1043来源后缀装配及最小#in平台静态选择，见§5/AC-LOAD/V-LOAD/SD-LOAD；原任务/状态/完成数与全覆盖不减，仅规划。
+
+2026-11-13 r6当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
+
 2026-11-12 r5：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
 历史修订：2026-11-10 r4当前执行版：M2-A。本轮把阶段安排落实到本Plan的开工前置、执行顺序和A/B交接；原任务/AC/范围保留，所有任务仍未执行。以§5的最小接口和§8的分阶段清单为准，不按后文历史轮次的旧总顺序施工。
 
 历史修订：2026-11-09 r3当前：用户正式拆M2为A语言/新库完善、B全产品替换；本包归属**M2-A**，以§5阶段合同为当前启动/验收边界。旧日期范围/义务不删，所有任务仍未执行；仅规划，不授权施工。
 
-实现既有net/HTTP client/server、SSE、upload/download、File/Stream return、async handler；transport留Web owner，标准库只保中立契约，涵盖取消/背压/断连/错误与权限。
+实现既有net/HTTP client/server、SSE、upload/download、File/Stream return、async handler；Auto网络/HTTP协议及基础transport封装归本包，Web产品宿主/部署接线留983，涵盖取消/背压/断连/错误与权限。
 
 设计与路线：[Design55](../design/55-ace-m2-complete-language-and-product-replacement.md)、[M2执行路线](../design/strategy/ace-m2-delivery-roadmap.md)。本包是拟议执行合同，非已实现声明。
 
@@ -86,7 +92,7 @@ touched_goals: [GOAL-002]
 语言/库相关case继承旧公开行为义务并补规范/组合/边界/负控，每条按当前规范与独立expected验证，M1有限豁免不自动继承；产品专有全量用例归B，未执行/缺环境不PASS。详见Design55 §16.5，TestCase/固定原生组沿用，不另建tm/全仓调度。AC自举独立后续、非本包或M2硬门。
 
 
-实现既有net/HTTP client/server、SSE、upload/download、File/Stream return、async handler；transport留Web owner，标准库只保中立契约，涵盖取消/背压/断连/错误与权限。
+实现既有net/HTTP client/server、SSE、upload/download、File/Stream return、async handler；Auto网络/HTTP协议及基础transport封装归本包，Web产品宿主/部署接线留983，涵盖取消/背压/断连/错误与权限。
 
 支持集继承959分母与Design55的完整语言定义；若本包先于分母完成，仅允许静态准备。T-01冻结到符号/语法/consumer，不能把不支持项从范围删掉。新IR节点、provider、领域接面与测试fixture均为拟新增，位置由已核owner下确定，不声称当前存在。
 
@@ -94,9 +100,23 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 资源所有者：编译session持候选，发布后当前generation持产物；运行/宿主pin保在途，最后owner释放。取消/错误/late结果不得覆盖当前已发布版本。现行预算保持，新增域的计量单位/上限/超限分类在T-01冻结并有边界反例；改变承诺须显式修订。
 
 
+### T-01 A期冻结记录（2026-11-16，r9执行）
+
+**授权**：既定裁定模式（goal 续行 2026-11-16，无主包按建议开工 974 A 批）。worktree：`D:/autostack/.wt/lang-974/auto-lang`（分支 `plan-974-dev`，基面 master@03a3fc5db）；材料 `plan-artifacts/plan-974/` 已登记；无 junction/symlink。
+
+**前置核实**：968 已归档（**全量调度器已交**：task/on 声明、Task.spawn、send/ask/reply/await/go/sleep、有界邮箱背压、虚拟定时器、stop-hook 排空，AV+a2r 双道——本包 async 基座 ✓）；1042 已归档 ✓；**973 在途（executing 0/10，他会话）**——依赖分账冻结（见下）。1043 已归档（加载层）。
+
+**973 依赖分账（T-01 冻结）**：本包自有"OS socket/事件薄适配"（r2 合同：标准库以自身 Auto 协议＋OS 薄适配独立验收）——**核心腿（TCP 连接、HTTP client/server 语义、SSE 流、取消/背压/断连/错误）不前置 973**；**973 阻塞腿具名**：File/Stream return、upload/download 的文件体腿、io.* port 消费——待 973 io 域正式落主（缺证不 NA）。
+
+**已交 seam 盘点（策略比较输入）**：`av-core/platform_io.rs`（1039/1040 已交）= `platform.io/1|mem/1|probe/1` 类别（caps `platform.io.stdout/stderr/write`、`platform.mem`、`platform.probe`；导入上限16/24、call/run 字节预算、句柄台账、Win32 实现）——**无 net 类别**（本包补位）；947/863 console=宿主 ConsoleHost recipe 模式；967 F0=外 provider 道（rustc/cdylib）。
+
+**策略比较与选型（T-01 决定）**：S1=**扩展 platform_io 增 `platform.net/1`**（符号表+caps `platform.net.*`+字节/句柄预算+台账+Win32 std::net 实现；auto 源经 host_imports 消费）——与 1039 同纪律、OS 面原生、预算/取消/账本复用；S2=967 FFI Rust provider（cdylib socket）——层不符（OS 面非用户 FFI）、每 provider rustc 重；**保留为显式可选第三方 transport**（r2 合同原义）；S3=native 道独占——失 AV/a2r 对等，拒。**冻结 S1**。
+
+**平台/命令/资源**：Windows x64；真实 TCP 以本机回环服务器（948 消费者探针模式）；Linux 腿归 1063（r8 裁定）。V 真实命令由 T-02/T-04 登记（拟：ace-av 组扩展 net 案例集＋case 语料 `ace-m2/net-974`，沿 977/PY 模式）。资源计量：沿 platform_io 预算形态，net 新增单位（连接数/收发字节/句柄）在 T-02 冻结并配边界反例。r5 具体输入锚（http_client_sync.at 等）由 T-02 开工时重核 hash。
+
 ### 本次复核补充：协议特性与host循环解耦（r2）
 
-逐现用DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE能力分母核实现；中立标准库可用独立真实transport provider验收，983后接产品Web，不以等待983形成循环。
+逐现用DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE能力分母核实现；标准库以自身Auto协议＋OS socket/事件薄适配独立验收，第三方transport仅属显式可选provider，983后接产品Web，不以等待983形成循环。
 
 本节由T-08实施并以AC-06/V-08验收，属本包完成条件。既有任务/验收不被替代；需要的新接口由T-01先冻结，T-08依赖T-01及相关T-02/03结果，必须先于最终work验证与独立review完成。
 
@@ -149,7 +169,7 @@ fn main() {
 
 本包所需独立结果：沿PLAN724本地stub各verb/二参post/headers/body/last_status断言；用动态端口真实TCP与独立服务端请求记录，Unicode/二进制body不截断。 本轮未运行；这些断言是实施目标，不是已观察PASS。
 
-**类型/代码设计。** Auto网络API→968任务/973资源→独立transport/967宿主端口→真实TCP/流→typed响应/关闭。沿已有owner扩展，不因下面的名字另建平行模型/执行器。字段草图为拟设计，不是现存API或可编译声明；等价复用当前类型允许在原有界决定任务冻结，不能改变字段所表达的不变量：
+**类型/代码设计。** Auto网络API/协议实现→968任务/973资源→本包OS socket/事件薄适配（显式外库另走967）→真实TCP/流→typed响应/关闭。沿已有owner扩展，不因下面的名字另建平行模型/执行器。字段草图为拟设计，不是现存API或可编译声明；等价复用当前类型允许在原有界决定任务冻结，不能改变字段所表达的不变量：
 
 ```rust
 // Proposed semantic fields; not existing/compiled API.
@@ -182,6 +202,22 @@ struct StreamLease { owner: OwnerId, state: StreamState, generation: Generation 
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE按原能力分母补六路径；复用中立端口/同一调度与协议算法，不为AV三来源另造executor，Python缺端口由本包/977-PY具名承接，不删API行。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；需要更大Python语义时消费977/PY已交能力切片或先具名补齐，不反等977整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
+### 新加载机制完成依赖（2026-11-13当前）
+
+依据[设计§8–10](../design/stdlib/backend-provider-coverage.md)与[1043](archive/1043-ace-stdlib-context-assembly.md)。公共.at＋at/c/rs/py来源后缀组成同一逻辑模块，运行后端另选；#in打开临时namespace并让is/if/for继承编译期属性，不扩平台后缀。最小层由1043先交，966继续完整CTE，不能反向等966整包。
+
+经973消费1043正式加载层；网络API/transport实现沿统一来源与目标选择，不按AV×provider×OS另造文件组合/loader，原完整网络和真实provider证明保留。
+
+本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -192,6 +228,37 @@ struct StreamLease { owner: OwnerId, state: StreamState, generation: Generation 
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-stdlib-network.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/ace-migration/m2-stdlib-network.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### 加载机制规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LOAD | add/modify | docs/specs/ace-migration/m2-stdlib-network.md | 旧有限后端侧文件→本包实际消费1043来源装配/#in/目标依赖及正式来源，未交保持缺口 | 用户确定新加载机制 | AC-LOAD |
+
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**网络/HTTP/流式协议及socket事件接线**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+默认地址/DNS、TCP/UDP API、HTTP/framing/redirect/proxy/stream/WebSocket/SSE等原协议逻辑由Auto实现，底层用Linux socket/syscall或Windows Winsock/事件API。OS TCP/IP栈允许；reqwest/hyper/libcurl/Tokio net等不能代默认自有net。TLS加密/握手等高级引擎暂可显式FFI，依赖和边界列明，不能接管普通HTTP逻辑。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+T-01在原有界前探冻结Winsock初始化/错误码、socket/非阻塞/IOCP或等价事件接缝、Linux socket/epoll、DNS配置/解析、取消/buffer保活及各协议原分母；T-02/03/T-08实现Auto协议/OS接线，T-04汇总验证。先闭共享算法与Windows真实路径，Linux同源平台分支交1063；不反等983整产品。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-stdlib-network.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
+| SD-AUTO-NET | modify | docs/specs/ace-migration/m2-stdlib-network.md | 中立接口/外部transport可验→普通协议由Auto实现＋OS socket/事件，TLS等高级依赖显式分账 | 用户自有net要求 | AC-AUTO-NET |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -232,6 +299,32 @@ struct StreamLease { owner: OwnerId, state: StreamState, generation: Generation 
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 加载机制验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/owner |
+|---|---|---|
+| V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
+
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-AUTO-NET / AC-AUTO-NET | T-02/03/T-08及T-04：移除可选C/Rust/第三方网络provider，以默认Auto源码发真实loopback DNS/HTTP/stream等原适用请求；独立对端记录wire字节/关闭，审计实际调用链 | Auto协议解析/序列化及socket/事件适配来源正确，原错误/取消/背压通过；不能以reqwest/hyper/libcurl/Tokio net默认代理。高级TLS显式分账，Linux此时只审实现与1063移交，未来实跑。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -244,21 +337,30 @@ struct StreamLease { owner: OwnerId, state: StreamState, generation: Generation 
 | AC-06 | work | 协议特性与host循环解耦的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 
+- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+
+- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+
+- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+
+- [ ] **AC-AUTO-NET / work**：V-AUTO-NET满足，普通net/HTTP协议与资源逻辑由Auto实现并经OS薄入口真实运行；外部transport不能代默认native。T-02/03/T-08及最终T-04负责，原review核；Linux按AC-LINUX-PHASE移交。
+
 ## 8. 执行步骤
 
 当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+  [✅ 2026-11-16] 冻结记录见§5"T-01 A期冻结记录"：968/1042/1043 已交核实；973 依赖分账（核心腿不前置、File/Stream/upload 文件腿具名阻塞）；已交 seam 盘点（platform_io 无 net=补位面）；策略比较冻结 S1（platform.net/1 扩展）；平台/命令/资源冻结。worktree 已建。T-02 为下一实现单元（platform.net/1 provider＋最小 HTTP 往返）。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐现用DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE能力分母核实现；中立标准库可用独立真实transport provider验收，983后接产品Web，不以等待983形成循环。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐现用DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE能力分母核实现；标准库以自身Auto协议＋OS socket/事件薄适配独立验收，第三方transport仅属显式可选provider，983后接产品Web，不以等待983形成循环。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -279,6 +381,16 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-01) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev（基面 master@03a3fc5db，纯冻结核验无代码提交） | task_ids: T-01 | evidence: §5"T-01 A期冻结记录" | authorization: 既定裁定模式（goal续行2026-11-16） | blockers: 973阻塞腿具名（File/Stream/upload文件腿/io port消费）；GD无关 | next_responsible_role: work（T-02：platform.net/1 薄适配＋最小真实HTTP往返I/V，沿977/PY批模式）
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r8：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
+
+2026-11-13 stage:new / CONTEXT-LOAD | 规划静态预检通过：20份设计/计划553处本地链接路径、Markdown围栏与Plan 0–10节/任务数一致；原144任务ID/勾选/状态/进度/旧AC/V及原依赖保留，新1043十任务均未完成。可达149个语言计划依赖无缺失/环、ID无冲突，中央.next-id为1044。1043不依完整966/FFI/库，1042不反依1043；966改为消费1043，原F0/B0/Hello与M1门不减。新计划候选固定组名和新增设计锚静态核对，git diff --check通过。未实施/建树/编译/运行产品或测试，不是独立实现review PASS；canonical Specs及归档历史未改。
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
 
 2026-11-12 stage:new / PLAN-974 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
