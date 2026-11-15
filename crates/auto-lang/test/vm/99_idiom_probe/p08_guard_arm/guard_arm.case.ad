@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "guard_arm.at"
+final-newline: false
 ```auto
 // H4: 卫语句臂生成非法 Rust
 // Auto卫语句语法 (假设未来支持): if <condition> -> <body>

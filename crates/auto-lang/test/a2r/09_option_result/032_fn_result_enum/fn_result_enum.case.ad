@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "fn_result_enum.at"
+final-newline: false
 ```auto
 pub enum ToolError {
     ExecutionFailed str

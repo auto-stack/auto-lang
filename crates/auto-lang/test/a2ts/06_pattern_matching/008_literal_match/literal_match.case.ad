@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "literal_match.at"
+final-newline: false
 ```auto
 fn main() {
     let x = 42

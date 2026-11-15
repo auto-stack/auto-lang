@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "str_find.at"
+final-newline: false
 ```auto
 fn main() {
     let s = "hello world"

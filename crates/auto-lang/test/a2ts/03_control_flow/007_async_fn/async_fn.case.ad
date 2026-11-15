@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "async_fn.at"
+final-newline: false
 ```auto
 fn fetch_data() ~int {
     let result = 42.await

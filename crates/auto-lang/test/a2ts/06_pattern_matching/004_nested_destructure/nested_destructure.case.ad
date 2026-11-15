@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "nested_destructure.at"
+final-newline: false
 ```auto
 type Point {
     x int

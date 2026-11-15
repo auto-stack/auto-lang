@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "export_fn.at"
+final-newline: false
 ```auto
 pub fn greet(name str) {
     print(name)

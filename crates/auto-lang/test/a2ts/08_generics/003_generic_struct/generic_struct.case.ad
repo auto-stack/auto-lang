@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "generic_struct.at"
+final-newline: false
 ```auto
 type Pair {
     first int

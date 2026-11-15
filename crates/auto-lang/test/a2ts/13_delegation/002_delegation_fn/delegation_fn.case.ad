@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "delegation_fn.at"
+final-newline: false
 ```auto
 type Inner {
     value int

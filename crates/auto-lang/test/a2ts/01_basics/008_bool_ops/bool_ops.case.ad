@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "bool_ops.at"
+final-newline: false
 ```auto
 fn main() {
     let a = true && false

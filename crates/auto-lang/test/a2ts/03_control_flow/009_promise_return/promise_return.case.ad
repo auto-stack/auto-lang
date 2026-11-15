@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "promise_return.at"
+final-newline: false
 ```auto
 fn compute() int {
     return 100

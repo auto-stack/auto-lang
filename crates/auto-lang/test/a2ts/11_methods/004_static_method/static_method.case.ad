@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "static_method.at"
+final-newline: false
 ```auto
 type Box {
     width int

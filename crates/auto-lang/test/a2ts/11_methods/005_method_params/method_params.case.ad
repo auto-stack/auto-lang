@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "method_params.at"
+final-newline: false
 ```auto
 type Counter {
     count int

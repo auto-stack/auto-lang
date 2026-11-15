@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "while_loop.at"
+final-newline: false
 ```auto
 fn main() {
     var i = 0

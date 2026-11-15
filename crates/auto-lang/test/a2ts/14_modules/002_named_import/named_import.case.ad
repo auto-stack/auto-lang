@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "named_import.at"
+final-newline: false
 ```auto
 use math: add, sub
 

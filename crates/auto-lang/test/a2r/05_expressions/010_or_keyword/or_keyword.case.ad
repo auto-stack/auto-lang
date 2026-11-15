@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "or_keyword.at"
+final-newline: false
 ```auto
 pub fn check(a int, b int) bool {
     return a > 0 || b > 0

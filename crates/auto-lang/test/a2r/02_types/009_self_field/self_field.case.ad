@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "self_field.at"
+final-newline: false
 ```auto
 pub type Counter {
     count int

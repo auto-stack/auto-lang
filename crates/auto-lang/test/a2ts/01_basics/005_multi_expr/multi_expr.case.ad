@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "multi_expr.at"
+final-newline: false
 ```auto
 fn main() {
     let a = 1 + 2 * 3

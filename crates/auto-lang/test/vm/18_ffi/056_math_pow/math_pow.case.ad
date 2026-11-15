@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "math_pow.at"
+final-newline: false
 ```auto
 Math.pow(2.0, 10.0) == 1024.0
 ```

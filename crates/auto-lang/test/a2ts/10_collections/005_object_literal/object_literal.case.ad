@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "object_literal.at"
+final-newline: false
 ```auto
 fn main() {
     let obj = {name: "test", count: 5}

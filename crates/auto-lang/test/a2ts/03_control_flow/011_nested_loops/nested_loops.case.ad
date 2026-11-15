@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "nested_loops.at"
+final-newline: false
 ```auto
 fn main() {
     for i in 0..3 {

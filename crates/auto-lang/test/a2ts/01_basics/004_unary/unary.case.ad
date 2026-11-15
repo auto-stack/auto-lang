@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "unary.at"
+final-newline: false
 ```auto
 fn main() {
     let x = -5

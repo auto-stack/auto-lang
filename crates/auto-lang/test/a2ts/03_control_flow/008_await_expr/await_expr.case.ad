@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "await_expr.at"
+final-newline: false
 ```auto
 fn get_value() ~int {
     return 42

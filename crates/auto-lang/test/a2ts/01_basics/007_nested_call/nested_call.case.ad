@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "nested_call.at"
+final-newline: false
 ```auto
 fn double(x int) int {
     x * 2

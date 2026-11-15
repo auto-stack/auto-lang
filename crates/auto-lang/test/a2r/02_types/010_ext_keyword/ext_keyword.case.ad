@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "ext_keyword.at"
+final-newline: false
 ```auto
 pub fn test() int {
     let file_ext = ".rs"

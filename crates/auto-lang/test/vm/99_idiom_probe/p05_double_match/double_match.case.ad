@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "double_match.at"
+final-newline: false
 ```auto
 // H5: 同一枚举值二次 is 匹配 E0382
 // 当同一个枚举值在函数内被多次 is 匹配时，会触发 Rust E0382 借用错误

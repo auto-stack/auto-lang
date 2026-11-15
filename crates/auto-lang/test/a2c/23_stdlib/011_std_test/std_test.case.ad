@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "std_test.at"
+final-newline: false
 ```auto
 use auto.test: test
 

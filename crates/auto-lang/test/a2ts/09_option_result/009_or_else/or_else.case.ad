@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "or_else.at"
+final-newline: false
 ```auto
 fn main() {
     let x = None

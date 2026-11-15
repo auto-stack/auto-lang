@@ -6,6 +6,7 @@ entry-mode: "program"
 
 ### Auto
 path: "enum_match.at"
+final-newline: false
 ```auto
 enum Color {
     Red
