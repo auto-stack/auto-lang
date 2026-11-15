@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 7
-current_step: 4
+current_step: 5
 total_steps: 12
 depends_on: [PLAN-960, PLAN-964, PLAN-967, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -136,6 +136,23 @@ E0只覆盖同步一次执行+宿主owner创建/关闭，适用UI主线程调用
 - av侧适用owner无代码改动：`query_entry`/`ForeignSession`/`rust_provider::{build_f0,load,f0_authority}`/`execute(_foreign)` 既有公开接口即本切片冻结消费面。
 
 用例：`crates/auto-lang-ace-host/tests/e0_facade.rs`（p969_e0_dispatch/close/source，V-E0-*逐条）；core侧纪律用例4个在`ace_entry::tests`（daily可见，纯std）。
+
+### T-01冻结记录（2026-11-15，基线 master 45ecb376a）
+
+**有界全链前探（已执行，scratch证据 plan-artifacts/plan-969/probe-t01/）**：最长producer(文件)→consumer(公开门)路径一次正例＋同类非法近邻＋失败恢复＋预算/取消/拒绝可观察，全部经`run_ace`公开门实测——
+P1 B01文件→`Success{I32(14),steps=6}`；P2a B18不可变写→`verify/verify.immutable-write`原span 38..43（与legacy `auto_name_E0203`同不变量、ACE自身命名码，阶段正确）；P2b坏语法→`text/source.syntax` 27..28；P3 坏→修→同门复跑=7；P4b core-lane长循环+1ms wall→`ResourceDenied{ExecutionWall}`（16ms观测）；P5b 预置cancel→`Cancelled`；P6 未知引擎→`Denied{ace.engine/unknown}`零dispatch；P7 use.rs源经文件＋provider车道→9、callee=1。**冻结语义发现**：AV取消/wall按`CANCEL_CHECK_INTERVAL=1024`步轮询（av-core contract.rs:264）——子区间短程序在首个轮询前正常完成（P4/P5短程序=Success是冻结合同行为，非门缺失）；子区间程序不因预置flag/超短wall中止。
+
+**策略决定（比较后选A，E0已验证）**：A=中立合同（auto-lang-core `ace_entry`）＋注入executor桥（auto-lang-ace-host），legacy门保持legacy、逐门显式迁入；B=core硬依赖ACE（违反"普通语言测试不构建ACE"，否决）；C=worker进程门（进程边界＋UI主线程同步合同复杂化，否决）。E0切片即A的已落实现。
+
+**§4路径重核（SHA256前16@45ecb376a）**：execution_engine.rs `70af92dea97ec79a`（E0加了doc注记）、entry.rs `b3e46189b0e6e1af`（未动）、auto-lang-core/lib.rs `fc8a688b18e6e0b3`（+ace_entry声明/再导出）、auto-lang/lib.rs `d164a7d19ccea437`（未动）、script_entry.rs `d1d0fff6299cdc12`、av/session.rs `7c37123cb8504b91`（未动）。**兼容面事实（T-08范围，survey钉死）**：`run_with_mode`为compile-only信息串（Config/Template经Codegen编译、从不执行）；`run_file_with_args`经进程级SCRIPT_ARGS+AutoVM capture→println；`run_abt/create_vm_from_abt`=ABT人类可读字节码→assemble→VM；input=`Some("")`即时EOF/`None`进程stdin；deadline=协作式每sweep检查；capture=VM内output_buffer非进程重定向；CLI无`--engine`旗标（auto-man cmd_run→run_file_with_args）。
+
+**支持集/资源合同冻结**：现ACE车道=scalar/core纯源（标量值面）＋F0 foreign provider（Windows）＋wall/cancel（轮询节奏1024步）；默认预算=MAX_AV_INSTR_STEPS 1e6/MAX_AV_FRAMES 1024/MAX_AV_SLOT_BYTES 8MiB/MAX_AV_WALL 2s/MAX_TRACE_BYTES原值＋F0 MAX_CALL_BYTES 65536/MAX_RUN_BYTES 1MiB；请求级wall覆写已接。平台=Windows（桥crate根cfg）；Linux腿按2026-11-14裁定归专用Linux环境。
+
+**兼容缺口表（具名owner，T-02/03/08关闭；非本行不得冒已支持）**：stdout capture语义（AV console profile存在`av.host-console/1`+execute_console(grants,provider)，公开门未接）→T-02/03；args/argv车道→T-02/03；stdin input车道→T-02/03；config/template执行语义（现compile-only；eval_config_with_vm=VM eval）→T-08具名裁定；旧ABT字节码→ACE车道**版本拒绝**（不透传为ACE指令）→T-08；test_file/test_code族→T-08核范围。
+
+**旧用例映射冻结（r6表落地）**：`ace.m1.b01`→新case `ace.m2.p969.source01`（公开门run-av车道；native/a2r/a2c按各自后端原支持域由T-04并集核）；`ace.m1.ia920.b18`→`ace.m2.p969.source02`（不可变写typed拒绝不变量，期望=`verify/verify.immutable-write`类typed诊断，不照搬legacy码）；unified_api_tests三测→V-08（run_with_mode兼容行为）＋V-DETAIL-01..04。永久fixture位置：语言侧`crates/auto-lang-ace-host/tests/`（公开门）＋必要时`crates/auto-lang/test/cases/ace-m2/p969/`（case格式，等G1002裁定）；不另建runner/checker。
+
+**1024承接冻结（AC-AUDIT实施策略）**：AUDIT-03（F03文案选路）——修法=前端projector在`source.unsupported`/表面拒绝时携带**结构化surface事实**（profile拥有的记号/形状类，如operator-char/bracket/tuple/ctor的typed reason），`native/driver.rs is_surface_rejection`与AV共享门改按结构化reason选路，保stage/code/profile身份与terminal诊断不改；只改文案不得改选路（T-02实施，T-04核）。AUDIT-08（F08事实权威）——产出profile×consumer事实覆盖表（scalar→SQ facts 934、core→facts 999、text-record/foreign→facts 938/967、host-console→863车道），未覆盖域具名保留旧推导不强删、facts失败不得悄悄产物（表由T-02填齐、T-04核）。
 
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r6当前）
 
@@ -294,7 +311,7 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 
 
-- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
+- [x] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 [✅ 2026-11-15：§5"T-01冻结记录"——前探P1..P7全绿（scratch plan-artifacts/plan-969/probe-t01，输出摘要折入计划）；策略决定A（中立合同+注入桥，E0已验）；§4六文件SHA重核@45ecb376a；兼容面事实survey钉死（run_with_mode=compile-only等）；支持集/资源合同/平台冻结（轮询1024步、默认预算、F0预算）；兼容缺口具名owner表（capture/args/stdin/config/ABT→T-02/03/08）；旧用例映射冻结（source01/source02/V-08/V-DETAIL）；AUDIT-03/08实施策略冻结（结构化surface事实选路；profile×consumer事实权威表）]
 
 - [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
 
@@ -355,6 +372,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-15 stage: merge / T-E0-D（E0切片phase fold，AC-E0-LAND）| 合入: plan-969-dev → master `5dfcfe74e`（--no-ff；含278b91204实现+1ad2d2c60修复，9文件+1792行） | 落地核对: 主检出**净树** `cargo t ace-facade` PASS＋`cargo test -p auto-lang-core --lib ace_entry` 4绿 | 外来WIP处置: 主检出 `experimental/ace/crates/core/src/source/mod.rs` 携PLAN-979未完WIP（AgePackage臂引用不存在变体，致含该文件的本地编译红）——**非本包改动、未纳入任何提交**；按 备份（plan-artifacts/plan-969/main-checkout-979-wip-mod.rs.bak）→`git checkout --`还原→净树验证→恢复 流程处理，sha256前后一致（471876a2bab0df31…）；已浮出待979 owner路由 | 沉淀: `docs/specs/ace-migration/m2-facade.md`（E0已验接口/每run纪律/永久验证/边界与开放项） | 交接: `auto_lang_core::run_ace`＋`auto_lang_ace_host::install()` 供978/B0、980/HELLO消费 | 树: 唯一worktree保留并resync至master，原T-01..T-08/1024承接继续；不归档、不勾整包完成、不翻机器默认 | next: T-01（全链前探/冻结）
 
 2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 3 | from: work | to: work | status: executing | outcome: pass（T-E0-D phase fold完成：master 5dfcfe74e＋spec沉淀＋净树落门绿） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 5dfcfe74e(merge) | next: T-01（原完整facade任务开工）
+
+2026-11-15 stage: work / T-01（AC-01/AC-PHASE 冻结轮）| worktree: D:/autostack/.wt/lang-969/auto-lang @ plan-969-dev（resync至master） | base: 45ecb376a | code_commit: 无（纯前探/冻结；probe scratch在plan-artifacts/plan-969/probe-t01/，已登记REGISTRY） | 产出: §5"T-01冻结记录"——①前探P1..P7实测（正例14/同类非法近邻typed span/失败恢复/长循环wall=ResourceDenied/预置cancel=Cancelled/未知引擎拒/provider文件车道9+callee=1）；②冻结语义发现：cancel/wall按CANCEL_CHECK_INTERVAL=1024步轮询、子区间程序先完成属合同行为；③策略A决定；④§4六文件SHA重核；⑤兼容面survey（run_with_mode=compile-only、ABT=人类可读字节码、input EOF语义、capture=VM缓冲、CLI无engine旗标）；⑥资源/平台合同；⑦兼容缺口具名owner表；⑧旧用例映射（source01/source02/V-08）；⑨AUDIT-03/08实施策略 | 义务: 全部保留，未缩范围 | next: T-02（主能力+永久正反例+F03/F08实施）
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 4 | from: work | to: work | status: executing | outcome: pass（T-01冻结完成，5/12） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 45ecb376a | next: T-02
 
 ## 10. 待澄清事项
 
