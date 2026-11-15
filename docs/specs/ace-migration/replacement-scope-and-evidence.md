@@ -234,3 +234,15 @@ PLAN-968（任务async actor与事件调度）M2-A 全部 work 任务交付并�
 `SCHED_*` 操作码与执行模型见 [m2-scheduler.md](m2-scheduler.md)。原 965 台账中 L-29 的
 "归 PLAN-968" 义务由此闭合调度切片；async 块 `~{}` 语法面与流所有权深水区仍按分母保持
 required，不因 968 的 A 切片改 NA。B 阶段消费者替换（985）以本包 A 收据为开工门。
+
+## M2-A REPL持久会话daemon已验（PLAN-970，2026-11-16）
+
+PLAN-970（REPL持久会话daemon与在线更新）M2-A 全部 work 任务交付并经 needs_fix→修复→
+final pass（reviewed 295e93f7c）。A-06/D-07 的会话/daemon/MCP 切片以显式 ACE 面交付：
+中立契约 `auto_lang_core::ace_session`、参考宿主 `auto-lang-ace-host::session_bridge`
+（冻结声明集通道模型、变量携带表、resident 异步混代、`ac.session.state/1` op-log 持久
+重验）、`ac.session.daemon/1` daemon/client（版本纪律、幂等重放、取消）与 MCP ACE 变体
+（9工具）。旧 autovm_persistent/daemon/client/mcp 不动（退役归987）；auto-man CLI 接线归
+985/B。已验接口、边界与永久验证入口见 [m2-sessions.md](m2-sessions.md)。原分母 A-06/D-07
+的 CLI/产品接线义务不因本包 A 切片改 NA；文本/console/collections 会话域按 1024 F05 裁定
+保留各自 session。B 阶段消费者替换（985）以本包 A 收据为开工门之一。
