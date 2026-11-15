@@ -484,7 +484,7 @@ pub fn compile_component_scenario(
         return Err(vec![text_diag(
             "source.age.component-scenario",
             format!(
-                "the component slice supports 1..=4 instances per scenario (injective 256^i encoding); got {}",
+                "the component slice supports 1..=4 instances per scenario; the observation packs instance i at 256^i, so it is injective only while each observed state is < 256 (instance 3 needs < 128 to stay in i32); got {}",
                 scenario.instances
             ),
             node.span,

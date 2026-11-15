@@ -1,6 +1,6 @@
 //! PLAN-979 T-03：组件场景的 **AV 真值**（共享 lower→MIR→ABC→AV）。
 //!
-//! 两个同定义实例、定向事件与 Tick：观察编码 22 = instance0(2) + instance1(2)*10，
+//! 两个同定义实例、定向事件与 Tick：观察编码 514 = instance0(2) + instance1(2)*256，
 //! 证明实例隔离（事件只改目标实例）与 Tick 推进次数精确；文本叶仍取共享 Str 值。
 
 use ace_av::age_component::observe_component;
@@ -39,7 +39,7 @@ fn p979_component_av_observes_two_isolated_instances() {
         &scenario(),
     )
     .expect("AV observes the component scenario");
-    // instance0 收到 2 次 Inc；instance1 收到 1 次 Inc + 1 次 Tick；编码 2 + 2*10。
+    // instance0 收到 2 次 Inc；instance1 收到 1 次 Inc + 1 次 Tick；编码 2 + 2*256。
     assert_eq!(o.encoded, 514, "2 + 2*256");
     assert_eq!(o.instance_texts.len(), 2);
     assert_eq!(o.instance_texts[0], vec!["c".to_string()]);
@@ -48,7 +48,7 @@ fn p979_component_av_observes_two_isolated_instances() {
 
 #[test]
 fn p979_component_av_event_order_changes_the_observation() {
-    // 只给 instance1 发事件：instance0 保持 0 → 0 + 1*10 = 10（定向 2:1 的证据）。
+    // 只给 instance1 发事件：instance0 保持 0 → 0 + 1*256 = 256（定向 2:1 的证据）。
     let one_sided = ComponentScenario {
         instances: 2,
         ops: vec![ScenarioOp::Send {
