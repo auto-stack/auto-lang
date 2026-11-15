@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 9
-current_step: 2
+current_step: 4
 total_steps: 16
 depends_on: [PLAN-959, PLAN-960, PLAN-962, PLAN-964, PLAN-965, PLAN-968, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -328,9 +328,11 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 - [x] **B-PY-I｜M2-A｜owner_stage: work｜AC-B-PY/AC-02/03/06**：消费1042正式producer/helper后扩Checked HIR→Python完整目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。 在§5改面接永久fixture，先冻结前置接口/命令。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
   [✅ 2026-11-16, worktree commit 727f45616] **9/9 旧公开面家族在真实 Python 车道全绿**（永久探针套件 `a2x-worker/tests/cases/p977_py_public_surface.rs`，1.56s≤10s门）：if/for(条件for=Scalar)、func(Scalar)、**generics**(`fn id<T>`=Scalar+`ac.source.instances.scalar/v1` 935脱糖——caps-blind trim与packages binder拒`<`为具名路由事实非语言缺口)、methods(`static fn`/隐式self `.field`=TextRecord)、enum(变体模式=Aggregates)、str/struct(TextRecord)、**List/array**(PLAN-946 aggregates packages线 `PackageA2xTarget::cold_aggregates`+`use std.list.sum`)、option/result/is表达式+`??`(Aggregates)。oracle=真实 OS Python 3.14.2 执行的 `value:<n>` 独立手算值；旧print逐行形态→新观察面映射如实记录。**零车道缺口**：每构造皆有已准入路由。1042消费确认（provider全家族AXPY1/2/3+lower三层+ports）；实际目标adapter=1042既有 `ac_a2py_hir`（4 recipes），全语料case文档扫描归B-PY-V。
 
-- [ ] **B-PY-V｜M2-A｜owner_stage: work｜AC-B-PY**：运行V-B-PY及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+- [x] **B-PY-V｜M2-A｜owner_stage: work｜AC-B-PY**：运行V-B-PY及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16, worktree commit 9fc1d2a34] 跟踪语料 `ace-m2/py-977`（8检查）经 **case线** `ac-a2py/hir-stdlib-run-v1`（ac_a2py_hir适配器→预构建a2x-worker run-py→真实Python 3.14.2，父侧独立裁判）：观察五轴=返回（value14/generic42）/输出（stdout面）/短路（value:7+stderr确定性marks序mark_b,mark_a）/异常（trap:Overflow/trap:DivByZero）/资源（record-text值面，零泄漏trace证在1042 pyready_02）。门：`ace_m2_p977_py_case_line_green`（1.79s）+`ace_m2_p977_py_wrong_oracle_is_red`（stdout轴RED局部化1.95s）。坏输入负控=本注册wrong-oracle RED+1042 `pyready_04_admission_negative_controls`（实测绿）。预构建纪律：`target/release/a2x-worker.exe` 显式预构建（2m56s，缺=具名Error非PASS，测试内不编译）。
 
-- [ ] **B-PY-R｜M2-A｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- [x] **B-PY-R｜M2-A｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+  [✅ 2026-11-16] 批内独立复审（局限：实施会话内，从提交工件重建）：基线 727f45616(I)+9fc1d2a34(V)+e49c99efa(spec)；**相位门** `cargo t ace-a2x a2py`=247+105例全PASS（7m0.6s，含新crate套件、case双门、1042全套、certification；a2py旧面不变绿）；健康=新代码零警告、fmt过、无调试打印。发现0阻塞项；边界如实记录（spec边界节）：旧99例字节金样属旧实现不动，新面=家族代表+路由台账承接（逐例扩充机械映射）；case线单文件（List腿crate级）；Linux归1063。PY批A切片可phase fold；GD/SCENE批待Godot（缺证不NA不半途开工）；REVERSE属B。
 
 - [ ] **B-GD-I｜M2-A｜owner_stage: work｜AC-B-GD/AC-02/03/06**：实现新GDScript provider及运行时适配；分离脚本语义和场景树生成，不等待TSCN批次。 在§5改面接永久fixture，先冻结前置接口/命令。
 
@@ -374,6 +376,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-PY-I/B-PY-V/B-GD-I/B-GD-V/B-SCENE-I/B-SCENE-V/B-REVERSE-I/B-REVERSE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: review | phase (B-PY-R, 977/PY批) | reviewer: 实施会话内复审（局限随收据） | PLAN-977 | r9 | outcome: pass (phase) | reviewed_commit: e49c99efa（含727f45616/9fc1d2a34） | 相位门: `cargo t ace-a2x a2py`=PASS 247+105例 7m0.6s | findings: 0阻塞；边界（代表例vs逐例/case线单文件/预构建/Linux归1063）已入spec边界节与B-PY-V[✅]行 | next: phase fold 合入977/PY A切片（plan保持executing——GD/SCENE待Godot、REVERSE属B）
 
 stage: work | PLAN-977 | r9 | 2026-11-16 | outcome: pass (B-PY-I) | worktree: D:/autostack/.wt/lang-977/auto-lang @ plan-977-dev | code_commit: 727f45616 | task_ids: B-PY-I | evidence: §8 B-PY-I[✅]行；新用例 p977_legacy_public_surface_runs_green_on_python 1.56s ≤10s门（10轮探针迭代，含3个具名路由事实发现：instances-cap脱糖/cold_aggregates线/is-表达式形态） | next_responsible_role: work（B-PY-V：经 ac_a2py_hir case线全语料扫描+返回/输出/短路/异常/资源独立oracle+坏输入负控）
 
