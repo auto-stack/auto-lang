@@ -40,7 +40,7 @@ fn p979_component_av_observes_two_isolated_instances() {
     )
     .expect("AV observes the component scenario");
     // instance0 收到 2 次 Inc；instance1 收到 1 次 Inc + 1 次 Tick；编码 2 + 2*10。
-    assert_eq!(o.encoded, 22);
+    assert_eq!(o.encoded, 514, "2 + 2*256");
     assert_eq!(o.instance_texts.len(), 2);
     assert_eq!(o.instance_texts[0], vec!["c".to_string()]);
     assert_eq!(o.instance_texts[1], vec!["c".to_string()]);
@@ -58,7 +58,7 @@ fn p979_component_av_event_order_changes_the_observation() {
     };
     let o = observe_component(COUNTER, "counter.at", LegacyWidgetAlias::Reject, &one_sided)
         .expect("one-sided events observe");
-    assert_eq!(o.encoded, 10);
+    assert_eq!(o.encoded, 256, "0 + 1*256 (directed)");
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn p979_component_helpers_participate_and_view_reads_state() {
         &scenario,
     )
     .expect("helpers observe");
-    assert_eq!(o.encoded, 13);
+    assert_eq!(o.encoded, 259, "3 + 1*256");
     assert_eq!(o.instance_texts[0], vec!["big".to_string()]);
     assert_eq!(o.instance_texts[1], vec!["small".to_string()]);
 }
@@ -133,7 +133,7 @@ fn p979_component_n_ticks_advance_each_instance_exactly_n_times() {
         &scenario,
     )
     .expect("tick matrix observes");
-    assert_eq!(o.encoded, 24);
+    assert_eq!(o.encoded, 516, "4 + 2*256");
     assert_eq!(o.instance_texts[0], vec!["big".to_string()]);
     assert_eq!(o.instance_texts[1], vec!["small".to_string()]);
 }

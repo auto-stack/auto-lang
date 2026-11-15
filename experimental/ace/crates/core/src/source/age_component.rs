@@ -232,29 +232,8 @@ pub fn compile_age_component(
             f.span,
         )]);
     }
-    // 隐藏求值函数与用户顶层名重名 = 具名冲突（不静默遮蔽）。
-    for item in &parse_program_items(src)? {
-        let user = match item {
-            Item::Fn(f) => Some(&f.name),
-            Item::Type(t) => Some(&t.name),
-            Item::Enum(e) => Some(&e.name),
-            Item::Const(c) => Some(&c.name),
-            Item::Store(s) => Some(&s.name),
-            Item::UseRs(_) => None,
-        };
-        if let Some(u) = user {
-            if u.name.contains(AGE_COMPONENT_HIDDEN_PREFIX) {
-                return Err(vec![text_diag(
-                    "source.age.hidden-name",
-                    format!(
-                        "`{}` contains `{AGE_COMPONENT_HIDDEN_PREFIX}` which is reserved for \
-                         component value evaluation",
-                        u.name
-                    ),
-                    u.span,
-                )]);
-            }
-        }
+    if let Some(d) = hidden_name_conflict(&parse_program_items(src)?) {
+        return Err(vec![d]);
     }
     // 脱糖：每个文本叶一个隐藏求值函数（普通 Auto 源，由共享 verify 检查）。
     let mut items = parse_program_items(src)?;
@@ -497,11 +476,15 @@ pub fn compile_component_scenario(
         )]);
     }
     let node = &candidates[0];
-    if scenario.instances == 0 || scenario.instances > 8 {
+    // 隐藏名前缀与用户顶层名冲突：两个前门共用同一策略（先于场景自检）。
+    if let Some(d) = hidden_name_conflict(&parse_program_items(src)?) {
+        return Err(vec![d]);
+    }
+    if scenario.instances == 0 || scenario.instances > 4 {
         return Err(vec![text_diag(
             "source.age.component-scenario",
             format!(
-                "the component slice supports 1..=8 instances per scenario; got {}",
+                "the component slice supports 1..=4 instances per scenario (injective 256^i encoding); got {}",
                 scenario.instances
             ),
             node.span,
@@ -541,6 +524,40 @@ pub fn compile_component_scenario(
                 node.span,
             )]);
         }
+    }
+    // 场景自检（review F2/F3/F1）：无字段、重复消息、多字段都不静默处理。
+    if node.fields.is_empty() {
+        return Err(vec![text_diag(
+            "source.age.component-shape",
+            "the scenario slice requires at least one `model` field to observe",
+            node.view.span,
+        )]);
+    }
+    if node.fields.len() > 1 {
+        return Err(vec![text_diag(
+            "source.age.component-unsupported",
+            format!(
+                "the scenario slice observes the first `model` field only; `{}` is not wired yet \
+                 (per-field state functions land next)",
+                node.fields[1].name
+            ),
+            node.fields[1].span,
+        )]);
+    }
+    let mut seen_msgs: Vec<String> = Vec::new();
+    for h in &node.handlers {
+        if seen_msgs.contains(&h.msg) {
+            return Err(vec![text_diag(
+                "source.age.component-duplicate",
+                format!(
+                    "duplicate `on {}` handler; the scenario slice needs one handler per message \
+                     (a silent first-wins would drop behaviour)",
+                    h.msg
+                ),
+                h.span,
+            )]);
+        }
+        seen_msgs.push(h.msg.clone());
     }
     let mut items = parse_program_items(src)?;
     let field0 = &node.fields[0];
@@ -611,7 +628,7 @@ pub fn compile_component_scenario(
                     lhs: Box::new(call),
                     rhs: Box::new(Expr {
                         span: node.span,
-                        kind: ExprKind::IntLit(10i32.saturating_pow(inst as u32)),
+                        kind: ExprKind::IntLit(256i32.saturating_pow(inst as u32)),
                     }),
                 },
             }
@@ -689,7 +706,9 @@ pub fn compile_component_scenario(
     Ok(ComponentCompilation {
         description: ComponentDescription {
             domain: AGE_COMPONENT_DOMAIN,
-            grammar_id: String::new(),
+            grammar_id: super::cst::profile_grammar(SourceProfile::AgeComponent)
+                .map(|g| format!("{}", g.program().identity.grammar_id.0))
+                .unwrap_or_default(),
             alias,
             nodes: vec![ComponentNodeOut {
                 name: node.name.name.clone(),
@@ -903,4 +922,31 @@ fn state_fn_name(inst: usize) -> String {
 enum FieldBinding {
     Local(usize),
     StateFn(usize),
+}
+/// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6）。
+fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
+    for item in items {
+        let user = match item {
+            Item::Fn(f) => Some(&f.name),
+            Item::Type(t) => Some(&t.name),
+            Item::Enum(e) => Some(&e.name),
+            Item::Const(c) => Some(&c.name),
+            Item::Store(s) => Some(&s.name),
+            Item::UseRs(_) => None,
+        };
+        if let Some(u) = user {
+            if u.name.contains(AGE_COMPONENT_HIDDEN_PREFIX) {
+                return Some(text_diag(
+                    "source.age.hidden-name",
+                    format!(
+                        "`{}` contains `{AGE_COMPONENT_HIDDEN_PREFIX}` which is reserved for \
+                         component value evaluation",
+                        u.name
+                    ),
+                    u.span,
+                ));
+            }
+        }
+    }
+    None
 }

@@ -117,32 +117,6 @@ fn p979_component_compat_and_prefix_rules_apply() {
         .expect_err("reserved prefix family is a named conflict");
     assert_eq!(ds[0].code, "source.age.hidden-name");
 }
-
-#[test]
-fn p979_component_probe_member_shapes() {
-    let cases = [
-        ("model_only", "node C {\n    model {\n        count int = 0\n    }\n}\n"),
-        ("view_then_model", "node C {\n    view {\n        text \"x\" {}\n    }\n    model {\n        count int = 0\n    }\n}\n"),
-        ("model_then_view", "node C {\n    model {\n        count int = 0\n    }\n    view {\n        text \"x\" {}\n    }\n}\n"),
-        ("model_assign_only", "node C {\n    model {\n        count = 0\n    }\n}\n"),
-        ("on_only", "node C {\n    on Inc {\n        count = 1\n    }\n}\n"),
-        ("model_two", "node C {\n    model {\n        a int = 0\n        b int = 1\n    }\n}\n"),
-    ];
-    for (name, src) in cases {
-        match project_component_candidates(src) {
-            Ok(ns) => eprintln!(
-                "PROBE {name}: ok nodes={} fields={} handlers={}",
-                ns.len(),
-                ns.first().map(|n| n.fields.len()).unwrap_or(0),
-                ns.first().map(|n| n.handlers.len()).unwrap_or(0)
-            ),
-            Err(ds) => eprintln!(
-                "PROBE {name}: err {} @{}..{} {}",
-                ds[0].code, ds[0].span.start, ds[0].span.end, ds[0].message
-            ),
-        }
-    }
-}
 #[test]
 fn p979_component_model_and_on_members_project_typed_candidates() {
     let model = "node Counter {\n    model {\n        count int = 0\n        label str = \"x\"\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
@@ -306,4 +280,78 @@ fn p979_component_coverage_check_is_red_when_a_required_mapping_is_dropped() {
         component_coverage(&tampered, &["node", "view", "text"]),
         Err(vec!["view".to_string()])
     );
+}
+
+// ---- review F1/F2/F3/F6 回归：场景前门的静默错误面 ----
+
+#[test]
+fn p979_component_scenario_refuses_a_fieldless_model() {
+    // F2：无 model 字段的 node 走场景前门时必须具名拒（此前 &fields[0] panic）。
+    let src = "node Hello {\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let ds = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect_err("a fieldless node cannot be observed by a scenario");
+    assert_eq!(ds[0].code, "source.age.component-shape");
+}
+
+#[test]
+fn p979_component_scenario_refuses_duplicate_handlers() {
+    // F3：重复 `on <Msg>` 必须具名拒（此前 first-wins 静默丢行为）。
+    let src = "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    on Inc {\n        count = count + 2\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let ds = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect_err("duplicate handlers are refused");
+    assert_eq!(ds[0].code, "source.age.component-duplicate");
+}
+
+#[test]
+fn p979_component_scenario_refuses_multi_field_models_until_per_field_state_lands() {
+    // F1：单状态函数只返回首字段；多字段模型必须具名拒（不静默错绑）。
+    let src = "node C {\n    model {\n        a int = 0\n        b int = 9\n    }\n    on Inc {\n        a = a + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let ds = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect_err("multi-field models are not wired yet");
+    assert_eq!(ds[0].code, "source.age.component-unsupported");
+    assert!(ds[0].message.contains('b'), "{:?}", ds[0]);
+}
+
+#[test]
+fn p979_component_scenario_shares_the_hidden_name_policy() {
+    // F6：两个前门的隐藏前缀策略必须一致（码 + 用户声明 span）。
+    let body = "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let collide =
+        format!("fn __age_c_text_0_text_0() Str {{\n    return \"HACK\".clone()\n}}\n{body}");
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let ds =
+        compile_component_scenario(&collide, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+            .expect_err("reserved prefix on the scenario path");
+    assert_eq!(ds[0].code, "source.age.hidden-name");
+    let at = collide
+        .find("__age_c_text_0_text_0")
+        .expect("user decl name");
+    assert_eq!(ds[0].span.start, at);
 }

@@ -137,7 +137,7 @@ pub fn compile_domain(
 ) -> Result<DomainCompilation, Vec<Diagnostic>> {
     // 0) 包必须拥有领域 profile；普通 profile 不进入领域驱动（对称于通用入口
     //    对领域 profile 的具名拒绝——两个方向都不静默）。
-    if pkg.profile != SourceProfile::AgeH0 {
+    if crate::source::age_h0::domain_profile_refusal(pkg.profile, 0).is_none() {
         return Err(vec![text_diag(
             "source.domain-package",
             format!(

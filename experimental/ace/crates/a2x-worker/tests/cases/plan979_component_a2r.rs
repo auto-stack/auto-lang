@@ -93,7 +93,7 @@ fn p979_component_scenario_runs_through_real_rustc() {
     .expect("run exe");
     assert_eq!(run.kind, auto_tool_execution::ExitKind::Success);
     let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
-    assert_eq!(out, "value:22\n", "A2R run matches the AV observation");
+    assert_eq!(out, "value:514\n", "A2R run matches the AV observation (2 + 2*256)");
 }
 
 const HELPER_COUNTER: &str = "fn seed() int {\n    return 0\n}\nfn bump(n int) int {\n    return n + 1\n}\nnode Counter {\n    model {\n        count int = seed()\n    }\n    on Inc {\n        count = bump(count)\n    }\n    on Tick {\n        count = bump(count)\n    }\n    view {\n        text \"c\" {}\n    }\n}\n";
