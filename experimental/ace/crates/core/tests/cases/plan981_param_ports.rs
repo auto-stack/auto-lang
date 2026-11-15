@@ -113,6 +113,47 @@ node M {\n\
     assert_eq!(m.scene[0].kind, "Disc");
 }
 
+/// **`tint:` 这个键本身**必须被端口检查覆盖——用真正写着 `tint:` 的源。
+///
+/// 复审指出上一版的问题：那个以 `tint` 命名的用例，源里写的是 `material: tint`
+/// （元素 `shape2d`、键 `material`），走的是**既有**的 `("shape2d","material")` 分支；
+/// 把新增的 `"tint"` 兜底删掉，84 个用例**全绿**。也就是说那条"修复"根本没被测试。
+///
+/// 现在用**键就是 `tint:`** 的源，并且让**组件实例**与 **shape2d 叶**各测一次，
+/// 才算真正覆盖 `attr_port` 的 `tint` 分支。
+#[test]
+fn p981_tint_key_is_port_checked_on_a_component_instance() {
+    let ds = compile(
+        "node Disc(tint: int) {\n    view-2d {\n        Disc inner {\n            tint: tint\n        }\n    }\n}\n",
+    )
+    .expect_err("`tint:` fed by an int parameter must be rejected");
+    assert_eq!(ds[0].code, "source.age.scene-resource-type", "{ds:?}");
+    assert!(
+        ds[0].message.contains("on `Disc`"),
+        "the diagnostic must name the component element: {}",
+        ds[0].message
+    );
+}
+
+/// 同一个 `tint:` 键、同样的元素，参数是 `Material2D` → 通过。
+#[test]
+fn p981_tint_key_accepts_a_material2d_parameter() {
+    compile(
+        "node Disc(tint: Material2D) {\n    view-2d {\n        Disc inner {\n            tint: tint\n        }\n    }\n}\n",
+    )
+    .expect("`tint:` with a Material2D parameter is correct");
+}
+
+/// `tint:` 用在 `shape2d` 叶上同样受检查（不是只有组件实例才查）。
+#[test]
+fn p981_tint_key_is_port_checked_on_a_shape2d_leaf() {
+    let ds = compile(
+        "node M(tint: int) {\n    view-2d {\n        shape2d q {\n            kind: quad\n            tint: tint\n        }\n    }\n}\n",
+    )
+    .expect_err("`tint:` on a shape2d leaf must be port-checked too");
+    assert_eq!(ds[0].code, "source.age.scene-resource-type", "{ds:?}");
+}
+
 /// 正确端口类型的参数仍然合法。
 #[test]
 fn p981_material2d_parameter_is_accepted() {
