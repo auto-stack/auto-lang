@@ -462,3 +462,10 @@ avm/cert 各格与 corpus 行不变；cert 轴仍 `snapshot-only-cert-gap`，M1 
   经 release-scope 收据准入。
 - 坏轴/缺项拒绝保持：负行判别器=无 pin 行（原 'refusal' 键探针与 exact-keys 形态
   永不匹配，已修）；tampered 判定/worker 身份篡改在 T-13 负控中 exit2 拒绝。
+
+
+## 全量文档式收口（PLAN-1062）
+
+M1 相关全部 case 组（BASE 文档套件 97 位、expanded/source/typed 系列）经 PLAN-1062
+全量迁移为文档式作者文件并按阶段门新旧双跑关闭：语义投影与冻结 manifest 全等，
+expected-red 控制组同轴保持红。旧围栏来源为冻结历史。

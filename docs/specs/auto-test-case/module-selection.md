@@ -17,7 +17,10 @@
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
 - `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
 - `cargo t aavm --ignored [--test-name <名字>]`：明确手动重放已忽略实验；原平台/T3条件保持。
-- `runner = "case"` 的固定组以 `suite` 字段指向该语料**当前活跃作者文件**；活跃语料为
+- `runner = "case"` 的固定组以 `suite` 字段指向该语料**当前活跃作者文件**。PLAN-1062 起
+  全部 75 个固定 case 组与全部本仓注册 file-corpus（含 B 层逐条目文档与 ffi_dual）均为
+  文档式；原职责、tier/skip/平台/ignore 条件与证据复用口径不变，575 ignored/6 未注册
+  原态保持；活跃语料为
   AutoDown 文档式 suite 时组名可沿用调用方历史名（如 `case-ace-m1-base` 现读
   `ace-document-base.suite.ad`，`case-ace-m1-console-863`/`case-ace-m1-immutable-avm-920`
   分别读 `ace-document-console`/`ace-document-immutable`）。被取代的旧 suite 保留为

@@ -472,3 +472,17 @@ CT机制的父侧证据可消费原服务公开的计数与执行边界日志：
 - **原件保留至签前复核**：分域/raw/机制/认证原件保留到正式准入、独立复审与主线
   tag_ready 复核完成；清理仅折叠摘要入计划，已删路径标历史；清理后如需重新准入，
   先重采复核，不以已删文件 hash 冒当前验证。
+
+
+## 文档式全量输入视图（PLAN-1062）
+
+- 全部活跃 suite 的作者输入为文档式 `<stem>.document.case.ad`；CaseSpec/CheckSpec 与旧围栏
+  消费者共用同一源/oracle 视图与执行链。旧围栏文件仅保冻结历史/显式回放，不再是活跃入口。
+- B 层（VM cache、原 TestRunner、a2r/a2c/a2ts/cookbook/python/conformance/ffi_dual 包装）
+  以最小适配直读对应文档载荷再调原 backend：源与金样字节内联于文档，`.wrong.*` 调试写与
+  逐族比较语义（bytes/trim/error-presence/no-crash）原样保留；缺文档=硬错误，禁止
+  sidecar 回退。多文件/source-dir（use.c 等）依赖保持目录语义，不因文档化改变解析。
+- 完整投影：`migration-inventory --schema-version 2`（`autolang.case-migration/2`）对
+  options/steps/typed/observations 全结构化（零 Debug 字符串/零 is_some 布尔），/1 保兼容。
+- actual 来源：report 产物摘要逐通道（av/avm/mn-typed/mn-steps/a2r/a2x/ac/syntax）hash
+  绑定，离线 verify 重读文件、核 hash 与来源，不信缓存状态。
