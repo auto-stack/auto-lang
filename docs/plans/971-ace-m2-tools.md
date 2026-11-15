@@ -292,6 +292,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 15 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量4) | 记录: SSE流式解析+redirect跟随+拒绝负控交付（cf1b29c9e）；net974 5/5绿（SSE 20002/redirect 30200→20000/refused -8） | next: 974 std.net包装→T-03/T-08→T-04..07 或按裁定；971/B 等 M2A-08
+
+
 stage: goal | PLAN-971 | r6 | round: 14 | from: work(974) | to: work(974) | status: executing | outcome: pass(974回环谜题关闭) | 记录: 具名开放发现已关闭（d090a48bb）：根因=补丁脚本转义损坏客户端实发29字节LF（非内核）+非阻塞复原+paced read三修；net974 4/4绿（server腿0.56s稳定） | next: 974/SSE/redirect/timeout 或按裁定；971/B 等 M2A-08
 
 
