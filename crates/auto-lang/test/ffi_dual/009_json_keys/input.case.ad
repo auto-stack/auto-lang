@@ -1,0 +1,24 @@
+# Legacy ffi_dual corpus: 009_json_keys
+
+## Case: legacy-ffi-dual-009-json-keys
+id: "legacy.ffi_dual.009_json_keys"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: JSON keys — #[rust_fn] JSON
+let obj = Json.parse("{\"a\":1,\"b\":2}")
+print(Json.has_key(obj, "a"))
+print(Json.has_key(obj, "b"))
+print(Json.has_key(obj, "c"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+true
+true
+false
+```

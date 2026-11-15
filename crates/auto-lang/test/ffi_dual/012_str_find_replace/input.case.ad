@@ -1,0 +1,27 @@
+# Legacy ffi_dual corpus: 012_str_find_replace
+
+## Case: legacy-ffi-dual-012-str-find-replace
+id: "legacy.ffi_dual.012_str_find_replace"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: String find/replace — #[rust_fn] String
+print(String.find("hello world", "world"))
+print(String.find("hello world", "xyz"))
+print(String.replace("hello world", "world", "auto"))
+print(String.replace_first("aaa", "a", "b"))
+print(String.match_count("ababab", "ab"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+6
+-1
+hello auto
+baa
+3
+```

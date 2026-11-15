@@ -1,0 +1,23 @@
+# Legacy ffi_dual corpus: 007_path_join
+
+## Case: legacy-ffi-dual-007-path-join
+id: "legacy.ffi_dual.007_path_join"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: Path operations — #[rust_fn] Path
+print(Path.extension("archive.tar.gz"))
+print(Path.filename("/home/user/docs/readme.md"))
+print(Path.parent("/home/user/docs"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+gz
+readme.md
+/home/user
+```

@@ -1,0 +1,29 @@
+# Legacy ffi_dual corpus: 011_char_operations
+
+## Case: legacy-ffi-dual-011-char-operations
+id: "legacy.ffi_dual.011_char_operations"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: Char operations — #[rust_fn] Char
+print(Char.is_alpha('a'))
+print(Char.is_digit('5'))
+print(Char.is_alphanum('z'))
+print(Char.is_whitespace(' '))
+print(Char.to_lower('A'))
+print(Char.to_upper('a'))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+true
+true
+true
+true
+97
+65
+```
