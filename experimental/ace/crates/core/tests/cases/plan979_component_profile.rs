@@ -317,8 +317,8 @@ fn p979_component_scenario_refuses_duplicate_handlers() {
 }
 
 #[test]
-fn p979_component_scenario_refuses_multi_field_models_until_per_field_state_lands() {
-    // F1：单状态函数只返回首字段；多字段模型必须具名拒（不静默错绑）。
+fn p979_component_scenario_observes_each_field_independently() {
+    // F1 收口：多字段模型由 per-field 状态函数正确绑定（此前只返回首字段、会错绑）。
     let src = "node C {\n    model {\n        a int = 0\n        b int = 9\n    }\n    on Inc {\n        a = a + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
     let scenario = ComponentScenario {
         instances: 1,
@@ -327,12 +327,18 @@ fn p979_component_scenario_refuses_multi_field_models_until_per_field_state_land
             msg: "Inc".to_string(),
         }],
     };
-    let ds = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
-        .expect_err("multi-field models are not wired yet");
-    assert_eq!(ds[0].code, "source.age.component-unsupported");
-    assert!(ds[0].message.contains('b'), "{:?}", ds[0]);
+    let out = compile_component_scenario(src, "c.at", LegacyWidgetAlias::Reject, &[], &scenario)
+        .expect("multi-field models compile now");
+    // 每个字段都有自己的状态函数（`__age_state_<inst>_<field>`）。
+    assert!(
+        out.atom_text.contains("__age_state_0_a"),
+        "field a has its own state fn"
+    );
+    assert!(
+        out.atom_text.contains("__age_state_0_b"),
+        "field b has its own state fn"
+    );
 }
-
 #[test]
 fn p979_component_scenario_shares_the_hidden_name_policy() {
     // F6：两个前门的隐藏前缀策略必须一致（码 + 用户声明 span）。

@@ -88,9 +88,9 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 `ComponentScenario { instances: 1..=4, ops: [Send{instance, msg} | Tick{instance}] }`，其中 `Life.Tick` 在本切片建模为保留消息 `Tick`（运行身份归 981）。脱糖产物全部是**普通 Auto**：
 
-- 每实例一个状态函数 `fn __age_state_<i>() int`：该实例的 `model` 初值 + 定向 ops 内联（字段标识符→实例局部），返回**首个** model 字段；
-- 驱动 `fn __age_drive() int`：各 `__age_state_<i>()` 按 **256^i** 求和（instance 0 在个位）；
-- 渲染求值函数 `fn __age_c_text_<i>_<j>() Str`：叶表达式中的字段引用绑定为该实例的 `__age_state_<i>()` 调用，再 `.clone()` 返回。
+- 每 **(实例, 字段)** 一个状态函数 `fn __age_state_<i>_<field>() int`：该实例的 `model` 初值 + 定向 ops 内联（字段标识符→实例局部），返回**该字段**；
+- 驱动 `fn __age_drive() int`：各实例**首字段**的 `__age_state_<i>_<first>()` 按 **256^i** 求和（instance 0 在个位；其他字段各自独立状态函数，渲染函数按需取用）；
+- 渲染求值函数 `fn __age_c_text_<i>_<j>() Str`：叶表达式中的字段引用绑定为**该字段**的 `__age_state_<i>_<field>()` 调用，再 `.clone()` 返回（多字段模型因此可正确绑定，不再有"只认首字段"的错绑）。
 
 三者与普通项一起经**唯一** text-record verify（无第二解释器/发射器）；`desugar_hash`（对受检模块文本取 content_sha）标识受检工件身份，源哈希 `input_hash` 不含脱糖。
 
@@ -107,4 +107,4 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 ### 6.5 本切片边界（pending，不得据此声明支持）
 
-单 node 定义、单模块（多模块 Node 工程需 960 模块图前门与领域面组合）、`int` 单字段观测（多字段 per-field 状态函数未接线）、无越权/未声明实例引用校验（V-10）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。
+单 node 定义、单模块（多模块 Node 工程需 960 模块图前门与领域面组合）、`int` 模型字段（其他类型未接线）、无越权/未声明实例引用校验（V-10）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。

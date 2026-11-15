@@ -281,3 +281,63 @@ fn p979_component_v10_scenario_change_invalidates_the_artifact_identity() {
     .expect("scenario a again");
     assert_eq!(a.desugar_hash, a2.desugar_hash);
 }
+
+/// 两字段模型：view 读**第二个**字段（reviewer 的 wrong-field 反例，现在必须正确）。
+const TWO_FIELDS: &str = "fn label(n int) str {\n    if n > 2 {\n        return \"big\"\n    }\n    return \"small\"\n}\nnode Counter {\n    model {\n        count int = 0\n        other int = 9\n    }\n    on Inc {\n        count = count + 1\n    }\n    on Other {\n        other = other + 1\n    }\n    view {\n        text label(other) {}\n    }\n}\n";
+
+#[test]
+fn p979_component_typed_view_binds_the_named_field_not_the_first_one() {
+    // 只推进 count：编码看 count（0），渲染看 other（9 → "big"）。
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let o = observe_component(
+        TWO_FIELDS,
+        "counter.at",
+        LegacyWidgetAlias::Reject,
+        &scenario,
+    )
+    .expect("two-field model observes");
+    assert_eq!(o.encoded, 1, "driver observes the first field (count)");
+    assert_eq!(
+        o.instance_texts[0],
+        vec!["big".to_string()],
+        "view reads `other` (9)"
+    );
+}
+
+#[test]
+fn p979_component_typed_view_follows_its_own_field_events() {
+    // 事件推进 other：编码仍看 count（0），渲染变 "big"→ 更大。
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Other".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Other".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Other".to_string(),
+            },
+        ],
+    };
+    let o = observe_component(
+        TWO_FIELDS,
+        "counter.at",
+        LegacyWidgetAlias::Reject,
+        &scenario,
+    )
+    .expect("two-field model observes");
+    assert_eq!(o.encoded, 0, "count never advances");
+    assert_eq!(o.instance_texts[0], vec!["big".to_string()]);
+    assert_eq!(o.instance_texts[1], vec!["big".to_string()]);
+}

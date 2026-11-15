@@ -549,17 +549,6 @@ pub fn compile_component_scenario(
             node.view.span,
         )]);
     }
-    if node.fields.len() > 1 {
-        return Err(vec![text_diag(
-            "source.age.component-unsupported",
-            format!(
-                "the scenario slice observes the first `model` field only; `{}` is not wired yet \
-                 (per-field state functions land next)",
-                node.fields[1].name
-            ),
-            node.fields[1].span,
-        )]);
-    }
     let mut seen_msgs: Vec<String> = Vec::new();
     for h in &node.handlers {
         if seen_msgs.contains(&h.msg) {
@@ -576,42 +565,42 @@ pub fn compile_component_scenario(
         seen_msgs.push(h.msg.clone());
     }
     let mut items = items;
-    let field0 = &node.fields[0];
-    // 每个实例一个状态函数：该实例的 init + 定向 ops，返回首字段。
+    // 每个 (实例, 字段) 一个状态函数：该实例的 init + 定向 ops，返回该字段。
     for inst in 0..scenario.instances {
-        let mut stmts = instance_stmts(inst, node, scenario)?;
-        stmts.push(Stmt::Return {
-            value: Expr {
-                span: field0.span,
-                kind: ExprKind::Var(Ident {
-                    name: local_name(inst, &field0.name),
-                    span: field0.span,
-                }),
-            },
-            span: field0.span,
-        });
-        items.push(Item::Fn(FnItem {
-            name: Ident {
-                name: state_fn_name(inst),
-                span: field0.span,
-            },
-            type_params: Vec::new(),
-            params: Vec::new(),
-            ret: TypeAnn {
-                kind: TypeRef::Builtin(TypeWord::I32),
-                span: field0.span,
-            },
-            body: Block {
-                stmts,
+        for f in &node.fields {
+            let mut stmts = instance_stmts(inst, node, scenario)?;
+            stmts.push(Stmt::Return {
+                value: Expr {
+                    span: f.span,
+                    kind: ExprKind::Var(Ident {
+                        name: local_name(inst, &f.name),
+                        span: f.span,
+                    }),
+                },
+                span: f.span,
+            });
+            items.push(Item::Fn(FnItem {
+                name: Ident {
+                    name: state_fn_name(inst, &f.name),
+                    span: f.span,
+                },
+                type_params: Vec::new(),
+                params: Vec::new(),
+                ret: TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::I32),
+                    span: f.span,
+                },
+                body: Block {
+                    stmts,
+                    span: node.span,
+                },
                 span: node.span,
-            },
-            span: node.span,
-            receiver: Receiver::Free,
-            owner: None,
-            script: false,
-        }));
-    }
-    // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
+                receiver: Receiver::Free,
+                owner: None,
+                script: false,
+            }));
+        }
+    } // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
     let mut leaves: Vec<(String, usize, usize)> = Vec::new();
     for inst in 0..scenario.instances {
         for (ti, leaf) in node.view.texts.iter().enumerate() {
@@ -628,7 +617,7 @@ pub fn compile_component_scenario(
             span: node.span,
             kind: ExprKind::Call {
                 callee: Ident {
-                    name: state_fn_name(inst),
+                    name: state_fn_name(inst, &node.fields[0].name),
                     span: node.span,
                 },
                 args: Vec::new(),
@@ -797,7 +786,7 @@ fn rename_expr(
                     span: expr.span,
                     kind: ExprKind::Call {
                         callee: Ident {
-                            name: state_fn_name(inst),
+                            name: state_fn_name(inst, &f.name),
                             span: id.span,
                         },
                         args: Vec::new(),
@@ -929,8 +918,8 @@ fn instance_stmts(
     Ok(stmts)
 }
 
-fn state_fn_name(inst: usize) -> String {
-    format!("__age_state_{inst}")
+fn state_fn_name(inst: usize, field: &str) -> String {
+    format!("__age_state_{inst}_{field}")
 }
 
 /// 字段标识符的绑定方式：实例局部（驱动内）或状态函数调用（文本求值函数内）。
