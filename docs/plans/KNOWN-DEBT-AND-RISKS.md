@@ -4406,5 +4406,5 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | V-09④ 多模块 Node 工程 | P1 | AGE/组件裁剪无模块 `use`；source 适配层无模块集合入口；需 960 `packages-modules` 面与领域面组合 | [960](960-ace-m2-modules.md)（与 979 T-03 协同） | ①模块 `use` 进领域裁剪或 960 暴露模块图适配器 ②领域前门接受模块集合并以领域 profile 验证 ③两文件 Node 工程经 AV 与 A2R 真实运行 | 未开工（依赖 960） |
 | V-10 越权/未声明实例引用 | P1 | 当前只有场景实例越界检查；AGE 的实例引用语义（跨 node/实例可见性）属 981 | [981](981-age-product-integration.md)（与 979 T-08 协同） | ①实例引用语法与可见性规则 ②未声明/越权引用具名拒 + 原 span ③正反例经双后端 | 未开工（语义待 981） |
 | V-11 产品字段级覆盖清单 | P2 | 通用 `component_coverage`/`mapping_complete` 判据已交；传统 UI/AGE 的**必需字段清单**属产品 owner | [980](980-ace-ui-age-migration.md) | 980 提供必需映射清单并接入判据；删除一条必需映射时交接检查红、合法近邻接受 | 判据已交，清单待 980 |
-| F11 三次解析 | P3 | `project_component_candidates` + 两处 `parse_program_items`；仅性能，无正确性影响 | 979 T-03 | 单次解析复用（或明确记录为接受的成本） | 具名开 |
-| F12 身份未含 input_hash/compat | P2 | `DomainIdentity{id,version,grammar}`；本切片无投影缓存，接入缓存时须并入 | 979 T-02 | 缓存落地时身份元组含 input_hash + 兼容配置并补负控 | 具名开 |
+| F11 三次解析 | P3 | `project_component_candidates` + 两处 `parse_program_items`；仅性能，无正确性影响 | 979 T-03 | 单次解析复用 | **已闭**（`7a91ed428`：程序项单次解析，扫描与脱糖共用） |
+| F12 身份未含 input_hash/compat | P2 | `DomainIdentity{id,version,grammar}`；本切片无投影缓存，接入缓存时须并入 | 979 T-02 | 身份元组含 input_hash + 兼容配置并补负控 | **已闭**（`d74433a59`：元组补全 + 负控用例；缓存接入时可直接作键） |
