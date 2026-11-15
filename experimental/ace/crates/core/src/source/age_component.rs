@@ -27,6 +27,8 @@ pub struct ComponentField {
     pub ty: String,
     pub ty_span: Span,
     pub init: Expr,
+    /// PLAN-980：`var` 可变前缀（传统 widget 工程形）。
+    pub mutable: bool,
     pub span: Span,
 }
 
@@ -46,12 +48,79 @@ pub struct ComponentHandler {
     pub span: Span,
 }
 
-/// 组件 view（文本叶沿用 H0 形状）。
+/// 组件 view（文本叶沿用 H0 形状；PLAN-980 增补完整树结构）。
 #[derive(Clone, Debug)]
 pub struct ComponentView {
     pub role: String,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
+    /// 完整 view 树（元素/属性行/文本叶；texts 仍为叶子平铺——场景驱动消费）。
+    pub tree: Vec<ComponentViewItem>,
+}
+
+/// PLAN-980（B-DIALECT-I 完整批）：`msg` 变体（结构投影）。
+#[derive(Clone, Debug)]
+pub struct ComponentMsgVariant {
+    pub name: String,
+    /// 载荷类型表（ident 拼写；空 = unit 变体）。
+    pub payload: Vec<String>,
+    pub span: Span,
+}
+
+/// PLAN-980：`design` 条目（`theme: <expr>` 等）。value 为 wide-ops 表达式；
+/// if/else 形在本切片结构性保留（value=None，span 锚定原位），求值接线归
+/// 后续批（design 行为 owner 见 980 清单）。
+#[derive(Clone, Debug)]
+pub struct ComponentDesignEntry {
+    pub key: String,
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+/// PLAN-980：view 树成员——文本叶 / 组件元素 / 属性行（`key: value`）。
+#[derive(Clone, Debug)]
+pub enum ComponentViewItem {
+    Text(AgeTextLeaf),
+    Element(ComponentViewElement),
+    Entry(ComponentViewEntry),
+}
+
+/// 组件元素：`tag [label] { items }`（tag 为普通标识符——上下文保持）。
+#[derive(Clone, Debug)]
+pub struct ComponentViewElement {
+    pub tag: String,
+    pub label: Option<Expr>,
+    pub items: Vec<ComponentViewItem>,
+    pub span: Span,
+}
+
+/// 属性行。事件归类按 `key` 的 `on` 前缀（与 auto-ui 方言同规则：
+/// key.starts_with("on")），在投影层完成。
+#[derive(Clone, Debug)]
+pub struct ComponentViewEntry {
+    pub key: String,
+    pub value: ComponentEntryValue,
+    pub is_event: bool,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum ComponentEntryValue {
+    Expr(Expr),
+    /// 内联 lambda `() => { .field (=|+=|-=) expr … }`——脱糖为赋值集。
+    Lambda(Vec<ComponentAssign>),
+}
+
+/// PLAN-980：其余成员槽位（bind/route/expose/lifecycle/computed/watch/
+/// timer/named-view）的通用结构行——逐槽位具名投影（不静默略过）。
+#[derive(Clone, Debug)]
+pub struct ComponentMemberRow {
+    pub role: &'static str,
+    pub name: String,
+    pub value: Option<Expr>,
+    pub text: Option<String>,
+    pub num: Option<i64>,
+    pub span: Span,
 }
 
 /// 一个组件 node 声明的未受信候选。
@@ -65,6 +134,10 @@ pub struct ComponentNode {
     pub fields: Vec<ComponentField>,
     pub handlers: Vec<ComponentHandler>,
     pub view: ComponentView,
+    /// PLAN-980：widget 声明成员槽位（msg/design 等；见类型注释）。
+    pub messages: Vec<ComponentMsgVariant>,
+    pub design: Vec<ComponentDesignEntry>,
+    pub members: Vec<ComponentMemberRow>,
     pub span: Span,
 }
 
@@ -174,8 +247,25 @@ impl ComponentCompilation {
         }
     }
 }
+/// PLAN-980：widget 工程源的反引号 f-string desugar（`` `…${expr}…` `` →
+/// `__fstr(...)`，与 `f"…"` 同一生成物）。AGE 组件面所有入口统一先过此步；
+/// 幂等（生成物无反引号）。f-string 内部 span 移位边界沿 PLAN-964 记录。
+fn desugar_widget_src(src: &str) -> Result<String, Vec<Diagnostic>> {
+    crate::source::fstr::desugar_fstrings_widget(src).map_err(|m| {
+        vec![text_diag(
+            "source.fstr-syntax",
+            format!("widget f-string: {m}"),
+            Span {
+                start: 0,
+                end: src.len(),
+            },
+        )]
+    })
+}
+
 /// 未受信候选投影（可单独测试；不接触 verify/后端）。
 pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec<Diagnostic>> {
+    let src = &desugar_widget_src(src)?;
     match parse_domain_whole_module(
         src,
         SourceProfile::AgeComponent,
@@ -209,6 +299,10 @@ pub fn compile_age_component(
     alias: LegacyWidgetAlias,
     capabilities: &[String],
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    // PLAN-980：widget f-string desugar 在入口统一应用；下游（候选/程序项/
+    // adapter 的 span 映射与 input_hash）全部使用 desugar 后源，保证 span
+    // 一致（PLAN-964 同边界：f-string 内部 span 可能移位）。
+    let src = &desugar_widget_src(src)?;
     let candidates = project_component_candidates(src)?;
     // 兼容配置：别名关闭时旧声明头受控拒绝（不回落旧引擎）。
     if !alias.is_accept() {
@@ -343,6 +437,7 @@ pub fn compile_age_component(
 
 /// 同一次解析的普通程序项（供脱糖与隐藏名检查复用一次解析）。
 fn parse_program_items(src: &str) -> Result<Vec<Item>, Vec<Diagnostic>> {
+    let src = &desugar_widget_src(src)?;
     match parse_domain_whole_module(
         src,
         SourceProfile::AgeComponent,
@@ -476,6 +571,8 @@ pub fn compile_component_scenario_observing(
     scenario: &ComponentScenario,
     observed: Option<&str>,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
+    let src = &desugar_widget_src(src)?;
     let candidates = project_component_candidates(src)?;
     if !alias.is_accept() {
         if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
@@ -537,7 +634,7 @@ pub fn compile_component_scenario_observing(
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
-                    "the component slice supports `int`/`i32`/`bool` model fields; field `{}` is `{}`",
+                    "the component slice supports `int`/`i32`/`bool`/`str` model fields; field `{}` is `{}`",
                     f.name, f.ty
                 ),
                 f.ty_span,
@@ -838,6 +935,40 @@ fn rename_expr(
         | ExprKind::StrLit(_)
         | ExprKind::CharLit(_)
         | ExprKind::NilLit => expr.clone(),
+        // PLAN-980：widget DSL 的  引用（投影为 Field{base: Var("self")}）
+        // = model 字段引用——与裸 Var 同一重命名通道。
+        ExprKind::Field { base, name } if matches!(base.kind, ExprKind::Var(ref v) if v.name == "self") => {
+            match fields.iter().find(|f| f.name == name.name) {
+                Some(f) => match binding {
+                    FieldBinding::Local(inst) => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Var(Ident {
+                            name: local_name(inst, &f.name),
+                            span: name.span,
+                        }),
+                    },
+                    FieldBinding::StateFn(inst) => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: state_fn_name(inst, &f.name),
+                                span: name.span,
+                            },
+                            args: Vec::new(),
+                        },
+                    },
+                },
+                None => expr.clone(),
+            }
+        }
+        // PLAN-980： 等一元形——操作数按同一通道重命名。
+        ExprKind::Unary { op, operand } => Expr {
+            span: expr.span,
+            kind: ExprKind::Unary {
+                op: *op,
+                operand: Box::new(rename_expr(operand, binding, fields)?),
+            },
+        },
         ExprKind::Var(id) => match fields.iter().find(|f| f.name == id.name) {
             Some(f) => match binding {
                 FieldBinding::Local(inst) => Expr {
@@ -1032,6 +1163,9 @@ fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {
         "int" | "i32" => Some(TypeWord::I32),
         "bool" => Some(TypeWord::Bool),
+        // PLAN-980：传统 widget 工程的 str 状态字段（002 形）。状态函数按
+        // Str 返回；驱动观测仍限 int 字段（打包编码不变）。
+        "str" | "Str" => Some(TypeWord::StrOwned),
         _ => None,
     }
 }

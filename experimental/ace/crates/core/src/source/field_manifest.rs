@@ -208,10 +208,33 @@ pub struct ComponentFieldVocab {
     pub node_name: String,
     pub model_block: String,
     pub model_field: String,
+    /// `var` 可变前缀出现（传统 widget 工程形）。
+    pub model_field_var: String,
     pub on_block: String,
     pub on_handler: String,
     pub view_block: String,
     pub text_leaf: String,
+    /// PLAN-980（完整批）：widget 成员槽位/view 树的字段 ID 词汇。
+    pub msg_block: String,
+    pub msg_variant: String,
+    pub msg_variant_payload: String,
+    pub design_block: String,
+    pub design_entry: String,
+    pub view_element: String,
+    /// 非事件属性行（`key: value` 且 key 不以 `on` 开头）。
+    pub view_prop_entry: String,
+    /// 事件行（key 以 `on` 开头——与 auto-ui 方言同规则）。
+    pub view_event_entry: String,
+    /// 内联 lambda 事件（`() => { … }`）。
+    pub view_event_inline: String,
+    pub bind_key: String,
+    pub route_def: String,
+    pub expose_name: String,
+    pub lifecycle_method: String,
+    pub computed_property: String,
+    pub watch_decl: String,
+    pub timer_entry: String,
+    pub named_view: String,
 }
 
 /// 把组件面候选（`project_component_candidates` 的产物，带原 span）walk 成
@@ -244,6 +267,12 @@ pub fn component_field_ids(
                     id: vocab.model_field.clone(),
                     span: f.span,
                 });
+                if f.mutable {
+                    out.push(FieldPresented {
+                        id: vocab.model_field_var.clone(),
+                        span: f.span,
+                    });
+                }
             }
         }
         if !n.handlers.is_empty() {
@@ -263,13 +292,100 @@ pub fn component_field_ids(
                 id: vocab.view_block.clone(),
                 span: n.view.span,
             });
-            for t in &n.view.texts {
+            // 文本叶出现经下方 walk_view_tree（tree 与 texts 同源；此处不重复计）。
+        }
+        // PLAN-980（完整批）：msg/design/成员槽位/view 树的字段级出现。
+        if !n.messages.is_empty() {
+            out.push(FieldPresented {
+                id: vocab.msg_block.clone(),
+                span: n.span,
+            });
+            for m in &n.messages {
                 out.push(FieldPresented {
-                    id: vocab.text_leaf.clone(),
-                    span: t.span,
+                    id: vocab.msg_variant.clone(),
+                    span: m.span,
+                });
+                if !m.payload.is_empty() {
+                    out.push(FieldPresented {
+                        id: vocab.msg_variant_payload.clone(),
+                        span: m.span,
+                    });
+                }
+            }
+        }
+        if !n.design.is_empty() {
+            out.push(FieldPresented {
+                id: vocab.design_block.clone(),
+                span: n.span,
+            });
+            for d in &n.design {
+                out.push(FieldPresented {
+                    id: vocab.design_entry.clone(),
+                    span: d.span,
                 });
             }
         }
+        for r in &n.members {
+            let id = match r.role {
+                "bind" => &vocab.bind_key,
+                "route" => &vocab.route_def,
+                "expose" => &vocab.expose_name,
+                "lifecycle" => &vocab.lifecycle_method,
+                "computed" => &vocab.computed_property,
+                "watch" => &vocab.watch_decl,
+                "timer" => &vocab.timer_entry,
+                "named-view" => &vocab.named_view,
+                _ => continue,
+            };
+            out.push(FieldPresented {
+                id: id.clone(),
+                span: r.span,
+            });
+        }
+        walk_view_tree(&n.view.tree, vocab, &mut out);
     }
     out
+}
+
+/// view 树（元素/属性行/文本叶）→ 字段级出现（事件归类按 `on` 前缀）。
+fn walk_view_tree(
+    items: &[crate::source::age_component::ComponentViewItem],
+    vocab: &ComponentFieldVocab,
+    out: &mut Vec<FieldPresented>,
+) {
+    use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
+    for item in items {
+        match item {
+            ComponentViewItem::Text(t) => out.push(FieldPresented {
+                id: vocab.text_leaf.clone(),
+                span: t.span,
+            }),
+            ComponentViewItem::Element(e) => {
+                out.push(FieldPresented {
+                    id: vocab.view_element.clone(),
+                    span: e.span,
+                });
+                walk_view_tree(&e.items, vocab, out);
+            }
+            ComponentViewItem::Entry(v) => {
+                if v.is_event {
+                    out.push(FieldPresented {
+                        id: vocab.view_event_entry.clone(),
+                        span: v.span,
+                    });
+                    if matches!(v.value, ComponentEntryValue::Lambda(_)) {
+                        out.push(FieldPresented {
+                            id: vocab.view_event_inline.clone(),
+                            span: v.span,
+                        });
+                    }
+                } else {
+                    out.push(FieldPresented {
+                        id: vocab.view_prop_entry.clone(),
+                        span: v.span,
+                    });
+                }
+            }
+        }
+    }
 }

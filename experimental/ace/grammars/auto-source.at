@@ -263,6 +263,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component] }
         name(age-model-head) { spelling: "model", token: "ident", role: "model", profiles: [age-component] }
         name(age-on-head) { spelling: "on", token: "ident", role: "on", profiles: [age-component] }
+        // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位的槽位限定拼写
+        //（同一拼写只在成员槽位有结构含义；普通标识符上下文保持）。
+        name(age-msg-head) { spelling: "msg", token: "ident", role: "msg", profiles: [age-component] }
+        name(age-design-head) { spelling: "design", token: "ident", role: "design", profiles: [age-component] }
+        name(age-bind-head) { spelling: "bind", token: "ident", role: "bind", profiles: [age-component] }
+        name(age-expose-head) { spelling: "expose", token: "ident", role: "expose", profiles: [age-component] }
+        name(age-lifecycle-head) { spelling: "lifecycle", token: "ident", role: "lifecycle", profiles: [age-component] }
+        name(age-computed-head) { spelling: "computed", token: "ident", role: "computed", profiles: [age-component] }
+        name(age-watch-head) { spelling: "watch", token: "ident", role: "watch", profiles: [age-component] }
+        name(age-timer-head) { spelling: "timer", token: "ident", role: "timer", profiles: [age-component] }
         // PLAN-968: `on { ... }` message-handler head inside a `task`
         // declaration (contextual `on` — not a reserved word).
         name(task-on-head) { spelling: "on", token: "ident", role: "on", profiles: [scheduler] }
@@ -292,6 +302,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             //（text-record 面首个 F0 切片；`rs` 拼写与 provider 匹配在投影/解析期校验）。
             alt(profiles: [text-record, age-h0, age-component]) { use-rs-item() {} }
             alt(profiles: [text-record, age-h0, age-component]) { use-c-item() {} }
+            // PLAN-980：`use themes.themes: Auto, Solarized` 模块成员导入
+            //（002-counter 等传统工程的主题包导入形；仅 age-component 面）。
+            alt(profiles: [age-component]) { age-use-module-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
@@ -360,7 +373,207 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-node-member(profiles: [age-component]) {
             alt { age-model-member() {} }
             alt { age-on-member() {} }
+            alt { age-on-widget-member() {} }
             alt { age-view-member() {} }
+            // PLAN-980（B-DIALECT-I 完整批）：WidgetDecl 其余成员槽位逐项
+            // 投影（结构 + 原 span）；行为接线按槽位 applicability 分批。
+            alt { age-msg-member() {} }
+            alt { age-design-member() {} }
+            alt { age-named-view-member() {} }
+            alt { age-bind-member() {} }
+            alt { age-routes-member() {} }
+            alt { age-expose-member() {} }
+            alt { age-lifecycle-member() {} }
+            alt { age-computed-member() {} }
+            alt { age-watch-member() {} }
+            alt { age-timer-member() {} }
+        }
+        // PLAN-980：`msg { Inc, Dec, Set(int) }`——消息变体声明。
+        age-msg-member(profiles: [age-component], expect: "a `msg { Variant, … }` block") {
+            name(of: "age-msg-head", field: "head") {}
+            lbrace(same-line: true) {}
+            age-msg-variant(field: "head") {} many { age-msg-variant-tail() {} }
+            rbrace() {}
+        }
+        age-msg-variant(profiles: [age-component]) {
+            ident(field: "name")
+            opt { lparen(same-line: true, cut: true) {} age-model-ty(field: "payload") {} many { age-payload-tail() {} } rparen() {} }
+        }
+        age-msg-variant-tail(profiles: [age-component]) {
+            comma() {} age-msg-variant() {}
+        }
+        age-payload-tail(profiles: [age-component]) {
+            comma() {} age-model-ty(field: "payload") {}
+        }
+        // PLAN-980：`design { theme: <expr> mode: <expr> }`——主题设计块。
+        age-design-member(profiles: [age-component], expect: "a `design { theme: <expr> }` block") {
+            name(of: "age-design-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-design-entry() {} }
+            rbrace() {}
+        }
+        age-design-entry(profiles: [age-component]) {
+            ident(field: "key")
+            colon() {}
+            age-design-value(field: "value") {}
+        }
+        age-design-value(profiles: [age-component]) {
+            alt { age-if-expr() {} }
+            alt { pratt(of: "wide-ops") {} }
+        }
+        age-if-expr(profiles: [age-component]) {
+            if(field: "kw")
+            if-cond(field: "cond")
+            age-if-then(field: "then")
+            age-if-else(repeat: "opt")
+        }
+        age-if-then(profiles: [age-component]) {
+            lbrace(same-line: true) {}
+            pratt(of: "wide-ops", field: "value")
+            rbrace() {}
+        }
+        age-if-else(profiles: [age-component]) {
+            else(field: "kw")
+            lbrace(same-line: true) {}
+            pratt(of: "wide-ops", field: "value")
+            rbrace() {}
+        }
+        // PLAN-980：`on { .Msg -> { <stmts> } … }`——传统 widget on 块形态
+        //（与 979 的 `on <Msg> { assigns }` 并存，投影为同一 handler 结构）。
+        age-on-widget-member(profiles: [age-component], expect: "an `on { .Msg -> { … } }` block") {
+            name(of: "age-on-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-on-widget-handler() {} }
+            rbrace() {}
+        }
+        age-on-widget-handler(profiles: [age-component]) {
+            dot() {}
+            ident(field: "msg")
+            arrow() {}
+            lbrace(same-line: true, cut: true) {}
+            list-nl { age-view-stmt() {} }
+            rbrace() {}
+        }
+        // PLAN-980：widget DSL 语句子集——`.field (=|+=|=) <expr>`。
+        age-view-stmt(profiles: [age-component]) {
+            dot() {}
+            ident(field: "field")
+            age-assign-op(field: "op") {}
+            pratt(of: "wide-ops", field: "rhs")
+        }
+        age-assign-op(profiles: [age-component]) {
+            alt { age-op-assign() {} }
+            alt { age-op-plus-assign() {} }
+            alt { age-op-minus-assign() {} }
+        }
+        age-op-assign(profiles: [age-component]) { assign(field: "op") {} }
+        age-op-plus-assign(profiles: [age-component]) { plus() {} assign() {} }
+        age-op-minus-assign(profiles: [age-component]) { minus() {} assign() {} }
+        // PLAN-980：命名视图 `view <name> { … }`（head 复用 age-view-head 槽位名）。
+        age-named-view-member(profiles: [age-component], expect: "a named `view <name> { … }` face") {
+            name(of: "age-view-head", field: "head") {}
+            ident(field: "face")
+            lbrace(same-line: true, cut: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-bind-member(profiles: [age-component], expect: "a `bind { key -> .Handler }` block") {
+            name(of: "age-bind-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-bind-key() {} }
+            rbrace() {}
+        }
+        age-bind-key(profiles: [age-component]) {
+            str-lit(field: "key")
+            arrow() {}
+            dot(same-line: true) {}
+            ident(field: "handler")
+        }
+        age-routes-member(profiles: [age-component], expect: "a `routes { path -> use module }` block") {
+            r-routes(field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-route-def() {} }
+            rbrace() {}
+        }
+        age-route-def(profiles: [age-component]) {
+            str-lit(field: "path")
+            arrow() {}
+            r-use(field: "use") {}
+            ident(field: "module")
+        }
+        age-expose-member(profiles: [age-component], expect: "an `expose { name, … }` block") {
+            name(of: "age-expose-head", field: "head") {}
+            lbrace(same-line: true) {}
+            ident(field: "name") {} many { age-expose-name-tail() {} }
+            rbrace() {}
+        }
+        age-expose-name-tail(profiles: [age-component]) {
+            comma() {} ident(field: "name") {}
+        }
+        age-lifecycle-member(profiles: [age-component], expect: "a `lifecycle { method => { … } }` block") {
+            name(of: "age-lifecycle-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-lifecycle-method() {} }
+            rbrace() {}
+        }
+        age-lifecycle-method(profiles: [age-component]) {
+            ident(field: "method")
+            fat-arrow() {}
+            lbrace(same-line: true, cut: true) {}
+            list-nl { age-view-stmt() {} }
+            rbrace() {}
+        }
+        age-computed-member(profiles: [age-component], expect: "a `computed { name => <expr> }` block") {
+            name(of: "age-computed-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-computed-property() {} }
+            rbrace() {}
+        }
+        age-computed-property(profiles: [age-component]) {
+            ident(field: "name")
+            fat-arrow() {}
+            pratt(of: "wide-ops", field: "value")
+        }
+        age-watch-member(profiles: [age-component], expect: "a `watch { .src -> { … } }` block") {
+            name(of: "age-watch-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-watch-decl() {} }
+            rbrace() {}
+        }
+        age-watch-decl(profiles: [age-component]) {
+            age-watch-source(field: "head") {} many { age-watch-source-tail() {} }
+            arrow() {}
+            lbrace(same-line: true, cut: true) {}
+            list-nl { age-view-stmt() {} }
+            rbrace() {}
+        }
+        age-watch-source(profiles: [age-component]) {
+            dot(same-line: true) {} ident(field: "source") opt { dot(same-line: true) {} ident(field: "modifier") }
+        }
+        age-watch-source-tail(profiles: [age-component]) {
+            comma() {} age-watch-source() {}
+        }
+        age-timer-member(profiles: [age-component], expect: "a `timer { Msg (every_ms: n) }` block") {
+            name(of: "age-timer-head", field: "head") {}
+            lbrace(same-line: true) {}
+            list-nl { age-timer-entry() {} }
+            rbrace() {}
+        }
+        age-timer-entry(profiles: [age-component]) {
+            ident(field: "event")
+            lparen(same-line: true, cut: true) {}
+            ident(field: "k1") colon() {} int-lit(field: "v1") {}
+            opt { comma() {} ident(field: "k2") colon() {} pratt(of: "wide-ops", field: "v2") }
+            rparen() {}
+        }
+        // PLAN-980：`use themes.themes: Auto, Solarized` 模块导入。
+        age-use-module-item(profiles: [age-component], expect: "a `use <module>.<name>: Item, …` import") {
+            r-use(field: "kw") {}
+            ident(field: "module") dot(same-line: true) {} ident(field: "name") colon() {}
+            ident(field: "import") {} many { age-use-import-tail() {} }
+        }
+        age-use-import-tail(profiles: [age-component]) {
+            comma() {} ident(field: "import") {}
         }
         age-model-member(profiles: [age-component], expect: "a `model { <field> <type> = <init> }` block") {
             name(of: "age-model-head", field: "model") {}
@@ -369,6 +582,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
         }
         age-model-field(profiles: [age-component], expect: "a `model` field `name type = init`") {
+            // PLAN-980：`var` 可变前缀（传统 widget 工程形 `var count int = 0`）。
+            opt { var(field: "kw") {} }
             ident(field: "field") {}
             age-model-ty(field: "ty") {}
             assign() {}
@@ -395,8 +610,72 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-view-member(profiles: [age-component], expect: "the `view { … }` node view") {
             name(of: "age-view-head", field: "view") {}
             lbrace(same-line: true) {}
-            list-nl { age-text-item() {} }
+            many { age-view-item() {} }
             rbrace() {}
+        }
+        // PLAN-980：view 树成员——文本叶（带 {} / 裸标签两形）/ 组件元素 /
+        // 属性行（`key: <expr>`）。事件归类按 key 的 on 前缀在投影层完成
+        //（与 auto-ui 方言同规则）。
+        age-view-item(profiles: [age-component]) {
+            alt { age-view-entry() {} }
+            alt { age-text-item() {} }
+            alt { age-text-props() {} }
+            alt { age-text-bare() {} }
+            alt { age-view-element() {} }
+        }
+        // `text <label> { props }`——带属性体的文本（001 形；空括号形走
+        // age-text-item，裸标签形走 age-text-bare）。
+        age-text-props(profiles: [age-component], expect: "a `text <expression> { props }` leaf") {
+            name(of: "age-text-head", field: "component")
+            pratt(of: "wide-ops", field: "text")
+            lbrace(same-line: true, cut: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        // `text "label"` 裸标签形（无空 body 括号）；age-text-item（{} 形）
+        // 保持不变（age-h0 语义不动）。
+        age-text-bare(profiles: [age-component], expect: "a `text <expression>` bare label leaf") {
+            name(of: "age-text-head", field: "component")
+            pratt(of: "wide-ops", field: "text")
+        }
+        age-view-entry(profiles: [age-component]) {
+            ident(field: "key")
+            colon() {}
+            age-entry-value(field: "value") {}
+            // 同行多属性以逗号并排（002 形：onclick: .X, style: "…"）。
+            opt { comma() {} }
+        }
+        age-entry-value(profiles: [age-component]) {
+            alt { age-inline-lambda() {} }
+            alt { pratt(of: "wide-ops") {} }
+        }
+        age-inline-lambda(profiles: [age-component]) {
+            lparen() {} rparen() {} fat-arrow() {}
+            lbrace(same-line: true, cut: true) {}
+            list-nl { age-view-stmt() {} }
+            rbrace() {}
+        }
+        age-view-element(profiles: [age-component], expect: "a component element `<tag> [label] { … }`") {
+            alt { age-element-labeled-block() {} }
+            alt { age-element-block() {} }
+            alt { age-element-labeled() {} }
+        }
+        age-element-labeled-block(profiles: [age-component]) {
+            ident(field: "tag")
+            pratt(of: "wide-ops", field: "label")
+            lbrace(same-line: true, cut: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-element-block(profiles: [age-component]) {
+            ident(field: "tag")
+            lbrace(same-line: true, cut: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-element-labeled(profiles: [age-component]) {
+            ident(field: "tag")
+            pratt(of: "wide-ops", field: "label")
         }
         // ---- 声明 ----
         fn-item(recover: true) {

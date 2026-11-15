@@ -16,6 +16,12 @@ use super::lex;
 use crate::atom_text::{Diagnostic, Span, Stage, SurfaceFact};
 use crate::source::ast::*;
 use crate::source::SourceProfile;
+// PLAN-980（B-DIALECT-I 完整批）：组件面 widget 成员槽位的结构类型。
+use crate::source::age_component::{
+    ComponentAssign, ComponentDesignEntry, ComponentEntryValue, ComponentHandler,
+    ComponentMemberRow, ComponentMsgVariant, ComponentViewElement, ComponentViewEntry,
+    ComponentViewItem,
+};
 use ace_syntax_runtime::cst::{CstTree, FLAG_TRIVIA};
 use ace_syntax_runtime::program::{GrammarProgram, KIND_CALL, KIND_POSTFIX};
 use ace_syntax_runtime::snapshot::Snapshot;
@@ -4138,7 +4144,8 @@ impl<'a> Engine<'a> {
         node: u32,
     ) -> crate::source::age_component::ComponentNode {
         use crate::source::age_component::{
-            ComponentAssign, ComponentField, ComponentHandler, ComponentNode, ComponentView,
+            ComponentAssign, ComponentField, ComponentHandler, ComponentMemberRow, ComponentNode,
+            ComponentView,
         };
         let head_node = self
             .cx
@@ -4187,6 +4194,11 @@ impl<'a> Engine<'a> {
         let mut texts = Vec::new();
         let mut view_role = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
+        // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
+        let mut messages = Vec::new();
+        let mut design = Vec::new();
+        let mut member_rows = Vec::new();
+        let mut tree = Vec::new();
         for raw in self.cx.children(body) {
             // 成员列表的每项先由 `age-node-member` 的 alt 包一层；取其实质成员。
             let member = self
@@ -4235,11 +4247,17 @@ impl<'a> Engine<'a> {
                             .field_child(field, "init")
                             .expect("model field init");
                         let init = self.project_expr_sync(init_node);
+                        let mutable = self
+                            .cx
+                            .field_child(field, "kw")
+                            .map(|kw| self.cx.spelling(kw) == "var")
+                            .unwrap_or(false);
                         fields.push(ComponentField {
                             name: self.cx.spelling(name_leaf),
                             ty: self.cx.spelling(ty_leaf),
                             ty_span: self.cx.span_of(ty_leaf),
                             init,
+                            mutable,
                             span: self.cx.span_of(field),
                         });
                     }
@@ -4306,6 +4324,61 @@ impl<'a> Engine<'a> {
                             span: self.cx.span_of(c),
                         });
                     }
+                    tree = self.collect_view_items(member, &mut texts, &text_role);
+                }
+                "age-msg-member" => {
+                    self.collect_msg_variants(member, &mut messages);
+                }
+                "age-design-member" => {
+                    self.collect_design_entries(member, &mut design);
+                }
+                "age-on-widget-member" => {
+                    self.collect_widget_handlers(member, &mut handlers);
+                }
+                "age-named-view-member" => {
+                    let face = self
+                        .cx
+                        .field_child(member, "face")
+                        .expect("named view face name");
+                    member_rows.push(ComponentMemberRow {
+                        role: "named-view",
+                        name: self.cx.spelling(face),
+                        value: None,
+                        text: None,
+                        num: None,
+                        span: self.cx.span_of(member),
+                    });
+                }
+                "age-bind-member" => {
+                    self.collect_member_rows(member, "age-bind-key", "bind", &mut member_rows);
+                }
+                "age-routes-member" => {
+                    self.collect_member_rows(member, "age-route-def", "route", &mut member_rows);
+                }
+                "age-expose-member" => {
+                    self.collect_expose_names(member, &mut member_rows);
+                }
+                "age-lifecycle-member" => {
+                    self.collect_member_rows(
+                        member,
+                        "age-lifecycle-method",
+                        "lifecycle",
+                        &mut member_rows,
+                    );
+                }
+                "age-computed-member" => {
+                    self.collect_member_rows(
+                        member,
+                        "age-computed-property",
+                        "computed",
+                        &mut member_rows,
+                    );
+                }
+                "age-watch-member" => {
+                    self.collect_member_rows(member, "age-watch-decl", "watch", &mut member_rows);
+                }
+                "age-timer-member" => {
+                    self.collect_member_rows(member, "age-timer-entry", "timer", &mut member_rows);
                 }
                 _ => {}
             }
@@ -4322,8 +4395,369 @@ impl<'a> Engine<'a> {
                 role: view_role,
                 span: view_span,
                 texts,
+                tree,
             },
+            messages,
+            design,
+            members: member_rows,
             span: self.cx.span_of(node),
+        }
+    }
+
+    /// PLAN-980：规则名 → kind（本裁剪面内）。
+    fn rule_kind_of(&self, name: &str) -> Option<u32> {
+        self.cx
+            .p
+            .rules
+            .iter()
+            .position(|r| r.name == name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    }
+
+    /// 子节点里按规则名找第一个非 trivia 实质子节点（alt/包装解包）。
+    fn unwrap_child(&self, node: u32) -> u32 {
+        self.cx
+            .children(node)
+            .into_iter()
+            .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+            .unwrap_or(node)
+    }
+
+    /// view 树成员（age-view-item 包装的 text/entry/element）→ 结构树；文本叶
+    /// 同时平铺进 `texts`（场景驱动消费）。
+    fn collect_view_items(
+        &mut self,
+        list_node: u32,
+        texts: &mut Vec<crate::source::age_h0::AgeTextLeaf>,
+        text_role: &str,
+    ) -> Vec<ComponentViewItem> {
+        let text_item = self.rule_kind_of("age-text-item");
+        let text_bare = self.rule_kind_of("age-text-bare");
+        let text_props = self.rule_kind_of("age-text-props");
+        let entry_kind = self.rule_kind_of("age-view-entry");
+        let element_kind = self.rule_kind_of("age-view-element");
+        let mut out = Vec::new();
+        for raw in self.cx.children(list_node) {
+            let item = self.unwrap_child(raw);
+            let kind = self.cx.tree.kind(item);
+            if Some(kind) == text_item || Some(kind) == text_bare {
+                let comp = self
+                    .cx
+                    .field_child(item, "component")
+                    .expect("text head leaf");
+                let expr_node = self.cx.field_child(item, "text").expect("text expression");
+                let expr = self.project_expr_sync(expr_node);
+                let leaf = crate::source::age_h0::AgeTextLeaf {
+                    role: text_role.to_string(),
+                    spelling: self.cx.spelling(comp),
+                    component_span: self.cx.span_of(comp),
+                    expr,
+                    span: self.cx.span_of(item),
+                };
+                texts.push(leaf.clone());
+                out.push(ComponentViewItem::Text(leaf));
+            } else if Some(kind) == text_props {
+                // 带属性体的文本（001 形）：tag=text 的元素 + label 表达式同时
+                // 入 texts（绑定验证通道与其它文本叶一致）。
+                let comp = self
+                    .cx
+                    .field_child(item, "component")
+                    .expect("text head leaf");
+                let expr_node = self.cx.field_child(item, "text").expect("text expression");
+                let label = self.project_expr_sync(expr_node);
+                texts.push(crate::source::age_h0::AgeTextLeaf {
+                    role: text_role.to_string(),
+                    spelling: self.cx.spelling(comp),
+                    component_span: self.cx.span_of(comp),
+                    expr: label.clone(),
+                    span: self.cx.span_of(item),
+                });
+                let items = self.collect_view_items(item, texts, text_role);
+                out.push(ComponentViewItem::Element(ComponentViewElement {
+                    tag: "text".to_string(),
+                    label: Some(label),
+                    items,
+                    span: self.cx.span_of(item),
+                }));
+            } else if Some(kind) == entry_kind {
+                let key = self
+                    .cx
+                    .field_child(item, "key")
+                    .expect("view entry key ident");
+                let key_name = self.cx.spelling(key);
+                let value_node = self
+                    .cx
+                    .field_child(item, "value")
+                    .expect("view entry value");
+                let inner = self.unwrap_child(value_node);
+                let inner_kind = self.cx.tree.kind(inner);
+                let lambda_kind = self.rule_kind_of("age-inline-lambda");
+                let value = if Some(inner_kind) == lambda_kind {
+                    let mut assigns = Vec::new();
+                    let stmt_kind = self.rule_kind_of("age-view-stmt");
+                    for stmt in self.cx.children(inner) {
+                        if Some(self.cx.tree.kind(stmt)) == stmt_kind {
+                            self.collect_view_stmt(stmt, &mut assigns);
+                        }
+                    }
+                    ComponentEntryValue::Lambda(assigns)
+                } else {
+                    ComponentEntryValue::Expr(self.project_expr_sync(inner))
+                };
+                out.push(ComponentViewItem::Entry(ComponentViewEntry {
+                    is_event: key_name.starts_with("on"),
+                    key: key_name,
+                    value,
+                    span: self.cx.span_of(item),
+                }));
+            } else if Some(kind) == element_kind {
+                // 元素具体形（labeled-block/block/labeled）在子节点上——解包后取字段。
+                let variant = self.unwrap_child(item);
+                let tag = self
+                    .cx
+                    .field_child(variant, "tag")
+                    .expect("element tag ident");
+                let label = self
+                    .cx
+                    .field_child(variant, "label")
+                    .map(|l| self.project_expr_sync(l));
+                let items = self.collect_view_items(variant, texts, text_role);
+                out.push(ComponentViewItem::Element(ComponentViewElement {
+                    tag: self.cx.spelling(tag),
+                    label,
+                    items,
+                    span: self.cx.span_of(item),
+                }));
+            }
+        }
+        out
+    }
+
+    /// `.field (=|+=|-=) expr` 语句 → 赋值行（复合赋值脱糖为二元）。
+    fn collect_view_stmt(&mut self, stmt: u32, assigns: &mut Vec<ComponentAssign>) {
+        let field = self
+            .cx
+            .field_child(stmt, "field")
+            .expect("stmt field ident");
+        let rhs_node = self.cx.field_child(stmt, "rhs").expect("stmt rhs");
+        let mut rhs = self.project_expr_sync(rhs_node);
+        let field_name = self.cx.spelling(field);
+        let op_node = self.cx.field_child(stmt, "op").expect("stmt assign op");
+        let op_inner = self.unwrap_child(op_node);
+        let op_rule = self.rule_name_of_kind(self.cx.tree.kind(op_inner));
+        let span = self.cx.span_of(stmt);
+        if op_rule == "age-op-plus-assign" || op_rule == "age-op-minus-assign" {
+            let op = if op_rule == "age-op-plus-assign" {
+                crate::source::ast::BinOp::Add
+            } else {
+                crate::source::ast::BinOp::Sub
+            };
+            rhs = Expr {
+                span,
+                kind: ExprKind::Binary {
+                    op,
+                    lhs: Box::new(Expr {
+                        span,
+                        kind: ExprKind::Field {
+                            base: Box::new(Expr {
+                                span,
+                                kind: ExprKind::Var(Ident {
+                                    name: "self".to_string(),
+                                    span,
+                                }),
+                            }),
+                            name: Ident {
+                                name: field_name.clone(),
+                                span,
+                            },
+                        },
+                    }),
+                    rhs: Box::new(rhs),
+                },
+            };
+        }
+        assigns.push(ComponentAssign {
+            field: field_name,
+            rhs,
+            span,
+        });
+    }
+
+    fn rule_name_of_kind(&self, kind: u32) -> String {
+        self.cx
+            .p
+            .rules
+            .iter()
+            .enumerate()
+            .find(|(i, _)| ace_syntax_runtime::program::RULE_KIND_BASE + *i as u32 == kind)
+            .map(|(_, r)| r.name.clone())
+            .unwrap_or_default()
+    }
+
+    /// msg 变体（含逗号 tail 包装内的递归变体）。
+    fn collect_msg_variants(&mut self, member: u32, messages: &mut Vec<ComponentMsgVariant>) {
+        let variant_kind = self.rule_kind_of("age-msg-variant").expect("variant rule");
+        fn walk(
+            eng: &mut Engine,
+            node: u32,
+            variant_kind: u32,
+            out: &mut Vec<ComponentMsgVariant>,
+        ) {
+            for c in eng.cx.children(node) {
+                if eng.cx.tree.kind(c) == variant_kind {
+                    let name = eng.cx.field_child(c, "name").expect("variant name");
+                    let mut payload = Vec::new();
+                    for p in eng.cx.children(c) {
+                        let ty_kind = eng.rule_kind_of("age-model-ty");
+                        if Some(eng.cx.tree.kind(p)) == ty_kind {
+                            payload.push(eng.cx.spelling(p));
+                        }
+                    }
+                    out.push(ComponentMsgVariant {
+                        name: eng.cx.spelling(name),
+                        payload,
+                        span: eng.cx.span_of(c),
+                    });
+                } else {
+                    walk(eng, c, variant_kind, out);
+                }
+            }
+        }
+        walk(self, member, variant_kind, messages);
+    }
+
+    /// design 条目（value=表达式；if/else 形结构性保留 value=None）。
+    fn collect_design_entries(&mut self, member: u32, design: &mut Vec<ComponentDesignEntry>) {
+        let entry_kind = self
+            .rule_kind_of("age-design-entry")
+            .expect("design entry rule");
+        let if_kind = self.rule_kind_of("age-if-expr");
+        for c in self.cx.children(member) {
+            if self.cx.tree.kind(c) != entry_kind {
+                continue;
+            }
+            let key = self.cx.field_child(c, "key").expect("design key");
+            let value = match self.cx.field_child(c, "value") {
+                Some(v) => {
+                    let inner = self.unwrap_child(v);
+                    if Some(self.cx.tree.kind(inner)) == if_kind {
+                        None
+                    } else {
+                        Some(self.project_expr_sync(inner))
+                    }
+                }
+                None => None,
+            };
+            design.push(ComponentDesignEntry {
+                key: self.cx.spelling(key),
+                value,
+                span: self.cx.span_of(c),
+            });
+        }
+    }
+
+    /// `on { .Msg -> { stmts } }` widget 形 → 与 979 `on <Msg> { assigns }` 同构。
+    fn collect_widget_handlers(&mut self, member: u32, handlers: &mut Vec<ComponentHandler>) {
+        let handler_kind = self
+            .rule_kind_of("age-on-widget-handler")
+            .expect("handler rule");
+        for c in self.cx.children(member) {
+            if self.cx.tree.kind(c) != handler_kind {
+                continue;
+            }
+            let msg = self.cx.field_child(c, "msg").expect("widget handler msg");
+            let mut assigns = Vec::new();
+            let stmt_kind = self.rule_kind_of("age-view-stmt");
+            for stmt in self.cx.children(c) {
+                if Some(self.cx.tree.kind(stmt)) == stmt_kind {
+                    self.collect_view_stmt(stmt, &mut assigns);
+                }
+            }
+            handlers.push(ComponentHandler {
+                msg: self.cx.spelling(msg),
+                assigns,
+                span: self.cx.span_of(c),
+            });
+        }
+    }
+
+    /// 通用成员槽位行（bind/route/lifecycle/computed/watch/timer）。
+    fn collect_member_rows(
+        &mut self,
+        member: u32,
+        item_rule: &str,
+        role: &'static str,
+        rows: &mut Vec<ComponentMemberRow>,
+    ) {
+        let item_kind = self
+            .rule_kind_of(item_rule)
+            .unwrap_or_else(|| panic!("{item_rule}"));
+        for c in self.cx.children(member) {
+            if self.cx.tree.kind(c) != item_kind {
+                continue;
+            }
+            let name = self
+                .cx
+                .field_child(c, "key")
+                .or_else(|| self.cx.field_child(c, "path"))
+                .or_else(|| self.cx.field_child(c, "method"))
+                .or_else(|| self.cx.field_child(c, "name"))
+                .or_else(|| self.cx.field_child(c, "event"));
+            let name = match name {
+                Some(n) => self.cx.spelling(n),
+                None => String::new(),
+            };
+            let value = self
+                .cx
+                .field_child(c, "value")
+                .or_else(|| self.cx.field_child(c, "v2"))
+                .map(|v| {
+                    let inner = self.unwrap_child(v);
+                    self.project_expr_sync(inner)
+                });
+            let text = self
+                .cx
+                .field_child(c, "handler")
+                .or_else(|| self.cx.field_child(c, "module"))
+                .map(|t| self.cx.spelling(t));
+            let num = self
+                .cx
+                .field_child(c, "v1")
+                .map(|v| self.cx.spelling(v).parse::<i64>().unwrap_or(0));
+            rows.push(ComponentMemberRow {
+                role,
+                name,
+                value,
+                text,
+                num,
+                span: self.cx.span_of(c),
+            });
+        }
+    }
+
+    /// expose 名单（含逗号 tail）。
+    fn collect_expose_names(&mut self, member: u32, rows: &mut Vec<ComponentMemberRow>) {
+        let expose_span = self.cx.span_of(member);
+        let mut names: Vec<String> = Vec::new();
+        fn walk(eng: &mut Engine, node: u32, out: &mut Vec<String>) {
+            for c in eng.cx.children(node) {
+                if let Some(n) = eng.cx.field_child(c, "name") {
+                    out.push(eng.cx.spelling(n));
+                } else {
+                    walk(eng, c, out);
+                }
+            }
+        }
+        walk(self, member, &mut names);
+        for n in names {
+            rows.push(ComponentMemberRow {
+                role: "expose",
+                name: n,
+                value: None,
+                text: None,
+                num: None,
+                span: expose_span,
+            });
         }
     }
 

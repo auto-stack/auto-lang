@@ -28,10 +28,28 @@ fn widget_vocab() -> ComponentFieldVocab {
         node_name: "widget.decl.name".to_string(),
         model_block: "widget.model.block".to_string(),
         model_field: "widget.model.field".to_string(),
+        model_field_var: "widget.model.field.var".to_string(),
         on_block: "widget.on.block".to_string(),
         on_handler: "widget.on.handler".to_string(),
         view_block: "widget.view.block".to_string(),
         text_leaf: "widget.view.node.text".to_string(),
+        msg_block: "widget.msg".to_string(),
+        msg_variant: "widget.msg.variant".to_string(),
+        msg_variant_payload: "widget.msg.variant.payload".to_string(),
+        design_block: "widget.design".to_string(),
+        design_entry: "widget.design.entry".to_string(),
+        view_element: "view.node.element".to_string(),
+        view_prop_entry: "view.prop".to_string(),
+        view_event_entry: "view.event".to_string(),
+        view_event_inline: "view.event.inline".to_string(),
+        bind_key: "widget.bind.key".to_string(),
+        route_def: "widget.routes.def".to_string(),
+        expose_name: "widget.expose.name".to_string(),
+        lifecycle_method: "widget.lifecycle.method".to_string(),
+        computed_property: "widget.computed.property".to_string(),
+        watch_decl: "widget.watch.decl".to_string(),
+        timer_entry: "widget.timer.entry".to_string(),
+        named_view: "widget.view.named".to_string(),
     }
 }
 
@@ -254,38 +272,66 @@ fn p980_component_field_coverage_delete_and_restore_controls() {
     );
 }
 
-// ---- AGE 面对未接线 widget 成员：具名拒绝，不静默略过 ----
+// ---- AGE 面：已接线成员投影、未接线/未知成员具名拒绝（不静默略过）----
+//
+// PLAN-980 完整批后：msg/design/view 树/on widget 形等已接线（下方 full-batch
+// case 全量核对）；本 case 固定「具名拒绝」面——文档化 deferred 槽位
+//（style/setup/actions/ext_imports，见清单 applicability 与规范 §4）与
+// 未知拼写都在成员 span 处拒绝，绝不静默略过。
 
-/// 含 `msg`/`design`（WidgetDecl 分母行存在、AGE 组件面未接线）的最小源。
-const UNKNOWN_MEMBERS_SRC: &str =
-    "node App {\n    msg { Go }\n    view {\n        text \"x\" {}\n    }\n}\n";
+/// 含 `msg`/`design`（已接线成员）的最小源。
+const UNKNOWN_MEMBERS_SRC: &str = "node App {
+    msg { Go }
+    view {
+        text \"x\" {}
+    }
+}
+";
 
+/// 含 `msg`/`design`（已接线成员）的源：两者**投影**而非拒绝（完整批事实）。
+#[test]
+fn p980_age_face_projects_msg_and_design_members() {
+    let candidates = project_component_candidates(UNKNOWN_MEMBERS_SRC)
+        .expect("msg/design are wired in the full batch; they project");
+    let n = &candidates[0];
+    assert_eq!(n.messages.len(), 1);
+    assert_eq!(n.messages[0].name, "Go");
+    assert_eq!(n.design.len(), 0);
+    let design_src = "node App {\n    design {\n        theme: .t\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let candidates = project_component_candidates(design_src)
+        .expect("design is wired in the full batch; it projects");
+    assert_eq!(candidates[0].design.len(), 1);
+    assert_eq!(candidates[0].design[0].key, "theme");
+}
+
+/// deferred 槽位（style/setup/actions——清单行 Optional/Conditional + 规范
+/// §4 边界）与未知拼写：成员 span 处具名拒绝（不静默略过）。
 #[test]
 fn p980_age_face_rejects_unknown_widget_decl_members() {
-    let diags = project_component_candidates(UNKNOWN_MEMBERS_SRC)
-        .expect_err("msg is not wired in the AGE component face; it must be rejected, not dropped");
-    assert!(!diags.is_empty());
-    // 具名拒绝必须指到未接线成员的原位置（msg 声明处），不是整文件兜底或静默空候选。
-    let msg_at = UNKNOWN_MEMBERS_SRC.find("msg").expect("msg anchor");
-    let pointed = diags.iter().any(|d| {
-        d.span.start >= msg_at && d.span.start < UNKNOWN_MEMBERS_SRC.find("view").unwrap()
-    });
-    assert!(
-        pointed,
-        "a diagnostic must point at the `msg` member span: {diags:?}"
-    );
-
-    // design 成员同理（002-counter 的 design 块成员）。
-    let design_src = "node App {\n    design {\n        theme: .t\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
-    let diags = project_component_candidates(design_src)
-        .expect_err("design is not wired in the AGE component face");
-    let design_at = design_src.find("design").expect("design anchor");
-    assert!(
-        diags
+    for (label, src, anchor) in [
+        ("style", "node App {\n    style { .a { color: red } }\n    view {\n        text \"x\" {}\n    }\n}\n", "style"),
+        ("setup", "node App {\n    setup { let t = 1 }\n    view {\n        text \"x\" {}\n    }\n}\n", "setup"),
+        ("actions", "node App {\n    actions { action (id: \"a\", handler: .Go) }\n    view {\n        text \"x\" {}\n    }\n}\n", "actions"),
+        ("bogus", "node App {\n    frobnicate { }\n    view {\n        text \"x\" {}\n    }\n}\n", "frobnicate"),
+    ] {
+        let diags = match project_component_candidates(src) {
+            Err(ds) => ds,
+            Ok(ns) => panic!(
+                "{label} must be rejected, not silently dropped; got {} nodes: {ns:?}",
+                ns.len()
+            ),
+        };
+        assert!(!diags.is_empty(), "{label}: empty diagnostics");
+        let at = src.find(anchor).unwrap_or_else(|| panic!("{label} anchor"));
+        let view_at = src.find("view").expect("view anchor");
+        let pointed = diags
             .iter()
-            .any(|d| d.span.start >= design_at && d.span.start < design_src.find("view").unwrap()),
-        "a diagnostic must point at the `design` member span: {diags:?}"
-    );
+            .any(|d| d.span.start >= at && d.span.start < view_at);
+        assert!(
+            pointed,
+            "{label}: a diagnostic must point at the member span: {diags:?}"
+        );
+    }
 }
 
 // ---- `widget` 兼容头与 `node` 规范头：同一字段 ID 连接 ----
