@@ -107,3 +107,29 @@ pub fn net_post(host Str, port int, path Str, payload Str) int {
     let req Str = head + net_int_to_str(n) + tail + payload
     return net_send_request(host, port, req)
 }
+
+pub fn net_put(host Str, port int, path Str, payload Str) int {
+    let n = payload.len_bytes()
+    let head Str = "PUT " + path + " HTTP/1.1\r\nHost: " + host + "\r\nContent-Length: "
+    let tail Str = "\r\nConnection: close\r\n\r\n"
+    let req Str = head + net_int_to_str(n) + tail + payload
+    return net_send_request(host, port, req)
+}
+
+pub fn net_patch(host Str, port int, path Str, payload Str) int {
+    let n = payload.len_bytes()
+    let head Str = "PATCH " + path + " HTTP/1.1\r\nHost: " + host + "\r\nContent-Length: "
+    let tail Str = "\r\nConnection: close\r\n\r\n"
+    let req Str = head + net_int_to_str(n) + tail + payload
+    return net_send_request(host, port, req)
+}
+
+pub fn net_delete(host Str, port int, path Str) int {
+    let req Str = "DELETE " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
+    return net_send_request(host, port, req)
+}
+
+pub fn net_head(host Str, port int, path Str) int {
+    let req Str = "HEAD " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n"
+    return net_send_request(host, port, req)
+}

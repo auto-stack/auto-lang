@@ -860,3 +860,72 @@ fn main() int {{
         "url family oracles, got {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-974 T-08 (HTTP expansion) — the full method family (put/patch/
+// delete/head) of std.net against a method-routing loopback server.
+// Independent oracles: PUT 200 body 4 ("done"), PATCH 200 body 2,
+// DELETE 204 body 0, HEAD 200 body 0 (headers only).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn net974_http_method_family() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = std::thread::spawn(move || {
+        for _ in 0..4 {
+            let Ok((mut c, _)) = listener.accept() else {
+                return;
+            };
+            let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let mut b = [0u8; 512];
+            let _ = c.read(&mut b);
+            let head = String::from_utf8_lossy(&b[..]).to_string();
+            let response: &[u8] = if head.starts_with("PUT ") {
+                b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\ndone"
+            } else if head.starts_with("PATCH ") {
+                b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+            } else if head.starts_with("DELETE ") {
+                b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n"
+            } else if head.starts_with("HEAD ") {
+                b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"
+            } else {
+                b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+            };
+            use std::io::Write as _;
+            let _ = c.write_all(response);
+            let _ = c.flush();
+            let _ = c.shutdown(std::net::Shutdown::Both);
+        }
+    });
+
+    let stdlib_net = include_str!("../../../../../../stdlib/ace/std/net.at");
+    let src = format!(
+        r#"{stdlib_net}
+fn main() int {{
+    let p = net_put("127.0.0.1", {port}, "/put", "data")
+    let pa = net_patch("127.0.0.1", {port}, "/patch", "x")
+    let d = net_delete("127.0.0.1", {port}, "/del")
+    let h = net_head("127.0.0.1", {port}, "/head")
+    if p != 2000004 {{ return 1 }}
+    if pa != 2000002 {{ return 2 }}
+    if d != 2040000 {{ return 3 }}
+    if h != 2000000 {{ return 4 }}
+    return 0
+}}
+"#
+    );
+    let mut backend = Win32PlatformIo::default();
+    let out = compile_and_run(&src, &net_grants(), &mut backend);
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "PUT 200/4 + PATCH 200/2 + DELETE 204/0 + HEAD 200/0, got {out:?}"
+    );
+    server.join().expect("server");
+}
