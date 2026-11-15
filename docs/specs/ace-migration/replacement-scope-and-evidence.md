@@ -202,3 +202,13 @@ use.c/use.rs 的旧阻塞已由本包公共工程入口解除（SD-10 该行由 
 
 - 分母台账 `S-01..S-25`、`K-01..K-08`、`UK-01..13` 与 Design56 增补 `FFI-M2-01..08` / `LIB-M2-01..08` 的 M2-A 领域差额追踪、代表性真实消费者前探（JSON/HTTP/Async/UI）及发行接管阻塞清单见 [ace-domain-migration-readiness](../stdlib/design/ace-domain-migration-readiness.md)。
 - **未闭硬阻塞保持**：`stdlib_assembly/loader.rs:68,78` 开发仓 `CARGO_MANIFEST_DIR` 回退、`~/.auto/libs/stdlib` junction、陈旧 `PATH` `auto`、跨仓安装器漂移（`web-install.py`/`musk/install.sh`）、`binding.rs` 拒项目级 `use.c`/`use.rs`（阻塞 `AV/C`/`AV/Rust`）、`sys.arch`/`env`/`ABI` 缺失与 Design46 Gate A/B 未闭。以上阻塞在台账中保持 `missing`/`unknown` 原状，未完成洁净仓外实跑前严禁签发 M2 发行通过。
+
+## M2-A 任务actor调度器已验（PLAN-968，2026-11-15）
+
+PLAN-968（任务async actor与事件调度）M2-A 全部 work 任务交付并经 needs_fix→修复→final pass
+（reviewed aa630a2eb）。L-29 的调度与所有权切片（`task`/`on`、`Task.spawn`、`send`/`ask`/
+`reply`、`await`、`go`、`sleep`、有界邮箱、虚拟时钟、停止钩子 drain）在 AV 与 a2r 两端以
+相同可观测语义交付；native/a2c 按原支持域具名拒。已验能力、语义冻结（D1/D2）、MIR
+`SCHED_*` 操作码与执行模型见 [m2-scheduler.md](m2-scheduler.md)。原 965 台账中 L-29 的
+"归 PLAN-968" 义务由此闭合调度切片；async 块 `~{}` 语法面与流所有权深水区仍按分母保持
+required，不因 968 的 A 切片改 NA。B 阶段消费者替换（985）以本包 A 收据为开工门。
