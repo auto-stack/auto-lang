@@ -7,7 +7,7 @@
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{assemble_record_text_file_set, lower_program};
 use ace_core::source::age_component::{
-    compile_component_scenario, compile_component_scenario_observing, ComponentScenario, ScenarioOp,
+    compile_component_scenario_observing, ComponentScenario, ScenarioOp,
 };
 use ace_core::source::age_h0::LegacyWidgetAlias;
 

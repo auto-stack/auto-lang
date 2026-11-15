@@ -98,7 +98,7 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 ### 6.3 观察与双后端
 
-- 静态面（无 `model`/`on` 的源）由 `compile_age_component` 描述并按需要取叶值；**任何** `model` 字段或 `on` 处理器在静态门都是 `component-unsupported`（`observe_component_texts` 因此只覆盖无模型源）；无 `node` 的源在静态门被接受并返回空分组。
+- 静态面（无 `model`/`on` 的源）由 `compile_age_component` 描述并按需要取叶值；**任何** `model` 字段或 `on` 处理器在静态门都是 `component-unsupported`（`observe_component_texts` 因此只覆盖无模型源）；可解析但**没有 `node` 声明**的源在静态门被接受并返回空分组（空/不可解析源仍报 `source.syntax`）。
 - AV：`ace_av::age_component::observe_component(src, path, alias, scenario)` → `{encoded, instance_texts}`；`observe_component_observing(..., observed)` 指定观测字段；驱动与逐实例渲染函数各经共享 lower→MIR 校验→ABC→AV 执行取真值。静态面另有 `observe_component_texts(src, path, alias)`：多节点逐个文本叶取共享 Str 真值（按节点分组的**值**证据）。
 - A2R：同一 `CheckedModule` 以 `__age_drive` 为 i32 入口 → Rust fileset → **真实 rustc** → 运行 → `value:<encoded>`。
 - 已验场景值（同源同场景）：plain 双实例 **514**（2+2·256）、helper 场景 **259**（3+1·256）、N-tick 矩阵 **516**（4+2·256）。**typed view 的渲染文本只在 AV 侧观察**；A2R 证明的是同源场景驱动 + helper/N-tick，不得表述为"typed view 在两后端渲染"。
@@ -106,7 +106,7 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 ### 6.4 拒绝面（组件）
 
-`source.age.component-shape`（形状：无 model 字段/空 view/多 node）、`component-unknown-field`（观测字段名不存在）、`component-duplicate`（重复 `on <Msg>` **或**重复 `model` 字段名）、`component-unsupported`（未接线：非 `int`/`bool` 字段类型、无 `int` 字段可观测、静态门的 `model`/`on`、未支持表达式形状）、`component-duplicate`（重复 `on <Msg>`）、`component-event`（未声明事件/未声明字段赋值）、`component-scenario`（实例越界/0 或 >4 实例），以及 H0 既有的 `source.age.slot|structure|text-type|leaf-expr|text-count|hidden-name|legacy-widget|domain-frontend`。全部保原 span，不静默丢字段/行为。生成名族（`__age_c_text_*`/`__age_state_*`/`__age_drive`）对用户顶层名保留，占用即 `source.age.hidden-name`。
+`source.age.component-shape`（形状：无 model 字段/空 view/多 node）、`component-unknown-field`（观测字段名不存在）、`component-duplicate`（重复 `on <Msg>` 或重复 `model` 字段名，均在第二处 span 报）、`component-unsupported`（未接线：非 `int`/`bool` 字段类型、无 `int` 字段可观测、静态门的 `model`/`on`、未支持表达式形状）、`component-event`（未声明事件/未声明字段赋值）、`component-scenario`（实例越界/0 或 >4 实例），以及 H0 既有的 `source.age.slot|structure|text-type|leaf-expr|text-count|hidden-name|legacy-widget|domain-frontend`。全部保原 span，不静默丢字段/行为。生成名族（`__age_c_text_*`/`__age_state_*`/`__age_drive`）对用户顶层名保留，占用即 `source.age.hidden-name`。
 
 ### 6.5 本切片边界（pending，不得据此声明支持）
 
