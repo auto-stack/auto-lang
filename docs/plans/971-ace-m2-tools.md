@@ -292,6 +292,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 5 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A02) | 记录: 985/T-A02 已交付（985 worktree d6342f534，985→3/14）：m2-cover两配方语料+冻结父表真值+四准入族具名红控绑定+V-A-COVER命令冻结 | next: 985/T-09/T-08[A]（已交来源部分）或用户裁定转无主包A批；971/B 仍待 M2A-08
+
 stage: goal | PLAN-971 | r6 | round: 4 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A01) | 记录: 985/T-A01 义务矩阵+V-A-MAP红控已交付（985 worktree 0dff19cd4，簿记 247c345e6，985→executing 2/14）：162行 `autolang.ab-obligations/1` 矩阵（959冻结行+FFI/LIB增补+早期切片去重）+ 7例真实红控（缺行/重复/错source/非收据路径/词表无owner/pending虚报,0.03s绿,`cargo test -p auto-lang-core --lib obligation_ledger`） | next: 985/T-A02（下一就绪）或按用户改道无主包A批；971/B 仍待 M2A-08
 
 stage: goal | PLAN-971 | r6 | round: 3 | from: user(续行指令) | to: work(985链) | status: executing | outcome: blocked(外部依赖扩大) | 记录: 2026-11-16 续行指令"推进985 A批至T-A05/V-A-LAND后回971 B"已执行第一步——985/T-01 A期冻结完成并提交（df9a75568，985 r16 executing 1/14，worktree .wt/lang-985/auto-lang 已建）；985 冻结结论：**M2A-08 需 973-984/OS064 各包A批正式落主**，其中 973/979/981 在途属其他会话、978 reviewed收口中——本会话不可替代；无主可开工的包：974/975/976/977/980/982/983/984；985 下一就绪任务=T-A01 义务矩阵 | next: user/work——后续轮次按续行指令继续（985 T-A01 或无主包A批），971/B 仍待 M2A-08
