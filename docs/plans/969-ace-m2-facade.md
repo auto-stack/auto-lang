@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 7
-current_step: 6
+current_step: 9
 total_steps: 12
 depends_on: [PLAN-960, PLAN-964, PLAN-967, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -315,11 +315,11 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 - [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 [✅ 2026-11-15 @5b93ed743：①主能力=console车道（AceRequest.console＋AceConsoleReport stdout/stderr/dispatches；execute_console每run grants授权，未授权预拒host.unauthorized零dispatch）；②永久正反例 t02_facade 5绿（source01 B01文件门+修复循环、source02 B18 typed拒绝、预算态wall/cancel/轮询钉死、未知引擎拒、console授权/捕获/入口策略）；③AUDIT-03=Diagnostic结构化SurfaceFact（4类）在CST projector/lexer与legacy parser/lexer发射点打标＋native梯子改结构化选路（保unsupported@Text的code+stage稳定臂），3 E2E＋1消息无关单测绿；④AUDIT-08=事实权威表＋4守卫（scalar事实权威typed拒、显式core升级、canonical typed错误、text-record/record各自应答）绿；⑤回归：ace-facade/ace-source/ace-semantics组PASS，ace-native组280/280事件ok×2（门FAIL=运行器conhost观察噪声，环境归因记录§9）]
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。（T-02已交：桥=非UI真实consumer、每run权限/失败恢复/console捕获接线；余：args/stdin受控拒、ABT受控拒与V-01文件/字符串一致性——与T-08同批落）
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 [✅ 2026-11-15：非UI真实consumer=auto-lang-ace-host桥（E0/T-02/T-08全链经真公开门）；权限=每run grants/admission/revocation（e0_close+console用例）；失败恢复=坏→修→同门复跑（source01/探针P3）；目标面=scalar/core/console/foreign四车道各自独立oracle；args/stdin=具名受控拒（33eab5086）；增量会话=970域边界（§5 E0冻结）]
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐导出核run_abt/create_vm_from_abt等旧编译输入API、run_with_mode/auto mode、capture/input/deadline/config；对旧字节码明确版本拒绝或受检迁移，不能透传为ACE指令。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐导出核run_abt/create_vm_from_abt等旧编译输入API、run_with_mode/auto mode、capture/input/deadline/config；对旧字节码明确版本拒绝或受检迁移，不能透传为ACE指令。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 [✅ 2026-11-15 @33eab5086：门映射审计表冻结（§9收据+t08头注——run*/run_with_mode/run_abt/eval_config各保legacy owner，unified_api_tests/abt tests钉住旧行为不变）；ACE门受控拒=真legacy ABT程序文本→text阶段拒（永不作为ACE指令执行）；args/stdin=显式输入+具名拒ace.args/input-unsupported（预车道零dispatch）；deadline=wall已接（E0）；capture=console车道已接（T-02）；t08_facade 3绿]
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 [✅ 2026-11-15 @冻结33eab5086：V行对账——V-01✓(t08)/V-02✓(身份+grants隔离)/V-03✓(具名拒+结构零legacy)/V-04✓(budget)/V-08✓/V-E0-*✓/V-DETAIL-01..04✓/V-PHASE✓(§8/§9逐行收据)/AUDIT-03/08✓；组并集——ace-facade PASS、ace-av PASS、daily@worktree 2669/2670 ok（唯一红=plan702门扫`../../../auto-ui`跨仓路径、lang-969组无auto-ui兄弟树——环境归因非代码红；daily全量@主检出=merge-owned pending）；复用——ace-source/ace-semantics绿@5b93ed743、ace-native 280/280事件ok×2（conhost门噪声§9）；磁盘——D:剩1.1G致daily首跑拒跑，回收自有16.6G后重跑]
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -379,6 +379,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-15 stage: work / T-02（AC-02 主能力+永久正反例+AUDIT-03/08）| worktree: D:/autostack/.wt/lang-969/auto-lang @ plan-969-dev | base: 45ecb376a(resync) | code_commit: 5b93ed743 | 产出: ①console车道（ace_entry.console/AceConsoleReport{stdout,stderr,dispatches}＋桥compile_host_console_source→lower_checked_owned→execute_console每run grants；console+foreign组合=具名拒ace.console/foreign-unsupported）；②t02_facade永久fixture 5例；③AUDIT-03结构化SurfaceFact（atom_text.rs 4类枚举＋Diagnostic.surface/tagged()；CST projector/lex与legacy parser/lexer发射点打标；native/driver is_surface_rejection=结构化fact＋稳定code/stage臂，消息文本零参与；native tests 3 E2E+driver单测1）；④AUDIT-08事实权威表（表钉在p969_audit08_fact_authority.rs头注＋4守卫测试） | 验证: cargo test p auto-lang-ace-host 8绿（0.03-1.04s全≤10s门）；audit03 3+1绿；audit08 4绿；回归组：ace-facade PASS、ace-source PASS、ace-semantics PASS；ace-native组两轮280/280事件ok（门verdict FAIL经查=运行器process-tree conhost观察"descendants live after workload exit"（cleanup_complete,remaining_active 0）——环境基础设施噪声非测试失败，孤立重放此前闪红4例+collections全绿；首跑bare cargo test的8个::performance::失败=PLAN-1016裁定排除的正式性能campaign） | 修复过程: F03首版纯结构化匹配漏掉legacy parser/lexer发射点与unsupported@Text稳定臂（mn_data_owned_rejection_surface暴露），按"tag+稳定code/stage臂"修正后全绿 | 义务: 全保留（args/stdin→T-08具名拒；AV输入车道=债务候选） | next: T-03+T-08（compat门映射+V-08+V-01一致性）
 
 2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-02完成，6/12） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 5b93ed743 | next: T-03/T-08
+2026-11-15 stage: work / T-03 + T-08 + T-04（AC-02/03/06/01..03 收口轮）| worktree: D:/autostack/.wt/lang-969/auto-lang @ plan-969-dev | base: 5b93ed743 | code_commit: 33eab5086 | 产出: AceRequest.args/input（显式输入+具名拒ace.args/input-unsupported）＋t08_facade 3例＋门映射审计表 | T-04对账: V全行映射见§8勾选；组证据=ace-facade PASS@33eab5086、ace-av PASS、daily@worktree 2669/2670（1红=plan702跨仓路径环境归因：门读`../../../auto-ui/crates/auto-ui-runtime/src/ui`，worktree组无该兄弟树；daily全量主检出=merge-owned pending）、ace-source/ace-semantics@5b93ed743复用、ace-native 280/280事件ok复用 | 磁盘: D:1.1G满→daily拒跑；回收自有16.6G（probe target 7.4G+ace incremental 9.2G）后复跑 | 边界: AV argv/stdin车道=具名开放项；增量会话=970域 | next: T-05（停写独立复审）
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 6 | from: work | to: review | status: executing | outcome: pass（work全own任务完成9/12） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: 33eab5086 | next: T-05
 
 
 ## 10. 待澄清事项
