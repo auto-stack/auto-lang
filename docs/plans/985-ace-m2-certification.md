@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 16
-current_step: 1
+current_step: 2
 total_steps: 14
 depends_on: [PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-976, PLAN-977, PLAN-978, PLAN-984, PLAN-941]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/stdlib/project.md]
@@ -523,7 +523,8 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 - [x] **T-01｜M2-A准备｜work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。
   [✅ 2026-11-16] A期冻结记录见§5"T-01 A期冻结记录"：授权链（971 goal 续行指令）、A最小前置核实（语言族959-970/972归档+早期切片967/F0、969/E0、978/B0、979/H0@71472d975、980/HELLO+971/A@2f1eed27f/c1561d94 落主；1039-1043 基础设施归档）、硬前置未闭清单（973/974/975/976/977/978收口/979余量/980/981/982/983/984/OS064）、M2A-01..07门级现值与可执行面结论（M2A-08本轮不可闭合；T-A01/T-A02/T-09/T-08[A]已交来源部分可执行）、平台/资源/命令冻结（Windows x64；Linux腿归1063）。PIO/FOUNDATION 子合同来源状态核实并冻结（1039/1040/1041已齐，973算法腿pending不冒原生完成）；worktree `.wt/lang-985/auto-lang` 已建。
 
-- [ ] **T-A01｜M2-A｜owner_stage: work｜AC-A-MAP/AC-NATIVE**：从959及FFI/LIB/UI/AGE增补冻结A/B义务矩阵（纳入五包Hello早期20任务/对应原义务，去重计case），盘点原语言/库用例、原expected/条件与新check去向；每条归继承/具名语义替代/原内部退役/B产品，不按旧目录或M1 NA缩分母，执行V-A-MAP负控。 新增V-NATIVE：在M2-A义务/测试中并入LIB-M2-07/08，默认自有库和显式C/Rust FFI双腿分开验；追踪原实现/符号/调用/依赖与字符串正反例。现框架缺长度/资源/ABI观测时按T-A02有界核实并版本化扩展，不能由worker自报PASS或以四端相等替独立oracle。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-A01｜M2-A｜owner_stage: work｜AC-A-MAP/AC-NATIVE**：从959及FFI/LIB/UI/AGE增补冻结A/B义务矩阵（纳入五包Hello早期20任务/对应原义务，去重计case），盘点原语言/库用例、原expected/条件与新check去向；每条归继承/具名语义替代/原内部退役/B产品，不按旧目录或M1 NA缩分母，执行V-A-MAP负控。 新增V-NATIVE：在M2-A义务/测试中并入LIB-M2-07/08，默认自有库和显式C/Rust FFI双腿分开验；追踪原实现/符号/调用/依赖与字符串正反例。现框架缺长度/资源/ABI观测时按T-A02有界核实并版本化扩展，不能由worker自报PASS或以四端相等替独立oracle。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+  [✅ 2026-11-16, worktree commit 0dff19cd4] 交付 **A/B义务矩阵 `autolang.ab-obligations/1`**（`crates/auto-lang/test/cases/ace-m2/m2-cert-985/ab-obligations.tsv`，162行=959冻结L-01..49/S-01..25/A/B/C/D/E/F/K全部入口产品行+Design56 FFI-M2-01..08/LIB-M2-01..08增补；每行 phase(A/B/AB)×disposition(inherited/named-replacement/internal-retire/product-B)×successor×best-current-receipt；早期切片去重计入对应行：967/F0→FFI行、969/E0→A-01..03/B-01、978/B0→LIB-02/FFI-07(inflight)、979/H0→S-23/L-44、980/HELLO→C-02/B-01(无spec收据保持pending，产品闭口本就B)、971/A→S-24/A-04/A-07/C-06/D-05/D-07/F-07/F-10）。`landed`语义=该行**当前最佳已审收据**（可为早期/A切片，sha16锚定至 docs/specs 或 docs/plans/archive 实文件），全行闭口判定归T-A03——MAP≠EXIT。**V-A-MAP负控**（`crates/auto-lang-core/src/test_cases/obligation_ledger.rs`，7例全绿0.03s，每例对真实矩阵做突变并断言具名RED）：缺行(冻结行缺失=RED不缩分母)、重复行、错source(sha16失配=陈旧/伪造收据RED)、非收据路径(源码/测试自报PASS永不充收据RED)、词表+无owner行、pending虚报收据(证据膨胀RED)+真实矩阵绿。准入层四族(旧binary/emit冒run/假workerPASS/timeout)绑定ac/ac_av准入脊柱(父侧deadline/kill+schema admission+父侧独立裁判worker不见期望)，逐能力绑定归T-A02。子合同去向：V-NATIVE双腿/COVERAGE六路径逐操作/LOAD消费/1024 F14案例试验账——按计划文本归T-A02/T-09/T-A03继续（本任务的义务并入已完成：LIB-07/08在矩阵、F14守恒由矩阵+缺行负控承担）。V-A-MAP真实命令冻结：`cargo test -p auto-lang-core --lib obligation_ledger`（组登记归T-A02）。
 
 - [ ] **T-A02｜M2-A｜owner_stage: work｜AC-A-COVER/AC-NATIVE**：先用普通source和FFI/async资源两配方核父侧观测支持；在现TestCase/ACE owner接版本化M2描述、必要typed协议/薄adapter与父侧stage聚合/负控，unsupported保持ERROR；注册拟新增跟踪ace-m2源/expected/适用性/旧新映射，督促每能力owner补规范/组合/边界case，冻结V-A-COVER真实命令，不另造runner。 新增V-NATIVE：在M2-A义务/测试中并入LIB-M2-07/08，默认自有库和显式C/Rust FFI双腿分开验；追踪原实现/符号/调用/依赖与字符串正反例。现框架缺长度/资源/ABI观测时按T-A02有界核实并版本化扩展，不能由worker自报PASS或以四端相等替独立oracle。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -570,6 +571,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-A01/T-A02/T-A03/T-09/T-08/T-02/T-03/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-985 | r16 | 2026-11-16 | outcome: pass (T-A01) | worktree: D:/autostack/.wt/lang-985/auto-lang @ plan-985-dev | code_commit: 0dff19cd4（矩阵TSV+校验器7红控，基面 b8f80afcf） | task_ids: T-A01 | evidence: §8 T-A01[✅]行（162行矩阵+7例红控0.03s绿+早期切片去重记账+子合同去向）；真实命令 `cargo test -p auto-lang-core --lib obligation_ledger`=7/7 | 新用例≤10s门：7例全部0.03s | dependency_revisions: 沿T-01冻结记录 | blockers: T-A03..A05 仍阻塞于 973-984/OS064 能力owner A批；T-A02 为下一就绪任务（M2测试描述/薄adapter/真实命令组登记/准入层四族逐能力绑定/COVERAGE六路径/V-NATIVE观测扩展） | next_responsible_role: work（T-A02；T-09/T-08[A] 可按已交来源并行）
 
 stage: work | PLAN-985 | r16 | 2026-11-16 | outcome: pass (T-01) | worktree: D:/autostack/.wt/lang-985/auto-lang @ plan-985-dev（基面 master@b8f80afcf，本轮纯冻结核验无代码提交） | task_ids: T-01 | evidence: §5"T-01 A期冻结记录"（A来源正式交付账/M2A门级现值/硬前置未闭清单/平台资源命令冻结）；worktree与plan-artifacts/plan-985已登记 | dependency_revisions: 见冻结记录（语言族归档+早期切片+1039-1043；973-984/OS064 A批pending） | blockers: T-A03..A05 阻塞于 973-984/OS064 各能力owner A批正式落主（含他会在途的973/979/981与reviewed待收口的978）；M2A-08 需 M2A-01..07 全闭——本轮结论为不可在本轮闭合，971/B 及本包 B 任务的解锁链随之顺延 | next_responsible_role: work（T-A01 义务矩阵+V-A-MAP负控为下一就绪任务；其后 T-A02；T-09/T-08[A] 按已交来源并行推进）
 
