@@ -292,6 +292,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 18 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08分母核) | 记录: T-08协议分母核交付（13族逐项：已交7核心=TCP双向/HTTP client+server核心/SSE解析/redirect/timeout，证据net974 6/6；具名pending=URL族11符号/TLS/proxy/WebSocket/HTTP全方法面/多跳redirect/可配置timeout/upload-download973腿；分母零删行+关闭序冻结） | next: 974实现腿（URL族→HTTP扩面→WebSocket→TLS/proxy）→T-04..07；971/B 等 M2A-08
+
 stage: goal | PLAN-971 | r6 | round: 17 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-03缝裁定+std.net包装) | 记录: 装配缝裁定=(c)PLAN-1041内联约定；stdlib/ace/std/net.at落地+内联包装测试真回环6010012；net974 6/6绿（bd173aff0）；packages面接线具名后续 | next: 974/T-08协议分母核→T-04..07整包A交付；971/B 等 M2A-08
 
 
