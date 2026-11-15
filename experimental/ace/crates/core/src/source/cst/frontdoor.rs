@@ -945,6 +945,24 @@ pub(crate) fn project_packages_front(
                         //  - `kind:` 是冻结几何符号（circle/quad）→ 查符号表；
                         //  - `material:`/`tint:` 是具名资源引用 → 查导入/声明事实；
                         //  - 其余是普通 Auto 值 → 降级成函数交共享 verify。
+                        // 该场景行是不是 2D 叶（`shape2d`）——决定 `kind:` 是否适用。
+                        let is_2d_leaf = scene.kind == "shape2d";
+                        // 3D 叶种类必须属于冻结集合（`cylinder3d`/`model3d`/`group3d`）；
+                        // 2D 场景只允许 `shape2d`（以及 `Disc` 这类组件实例名）。
+                        if scene.kind != "shape2d"
+                            && !scene.kind.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                            && !crate::source::age_resources::is_3d_element(&scene.kind)
+                        {
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.scene-element",
+                                format!(
+                                    "`{}` is not an AGE scene element (2D: `shape2d` or a \
+                                     component name; 3D: cylinder3d/model3d/group3d)",
+                                    scene.kind
+                                ),
+                                scene.span,
+                            )]);
+                        }
                         use crate::source::age_resources::AttrValueKind;
                         let kind = match crate::source::age_resources::attr_value_kind(&attr.key) {
                             Some(k) => k,
@@ -962,6 +980,21 @@ pub(crate) fn project_packages_front(
                         };
                         match kind {
                             AttrValueKind::GeometryKind => {
+                                // `kind:` 只属于 **2D** 叶（`shape2d`）——规范里
+                                // `view-2d` 的叶是 `shape2d { kind: circle|quad }`，
+                                // 而 `view-3d` 的叶种类是元素名本身（`cylinder3d`
+                                // 等），没有 `kind` 属性。两套符号表不可互套。
+                                if !is_2d_leaf {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-attr",
+                                        format!(
+                                            "`kind` is a `shape2d` (view-2d) attribute; \
+                                             `{elem}` declares its kind by its element name",
+                                            elem = scene.kind
+                                        ),
+                                        attr.span,
+                                    )]);
+                                }
                                 let spelled = match &attr.value.kind {
                                     crate::source::ast::ExprKind::Var(id) => id.name.clone(),
                                     _ => String::new(),

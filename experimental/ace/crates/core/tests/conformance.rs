@@ -82,6 +82,8 @@ mod plan981_age_resources;
 mod plan981_original_g01;
 #[path = "cases/plan981_grammar_scope.rs"]
 mod plan981_grammar_scope;
+#[path = "cases/plan981_three_views.rs"]
+mod plan981_three_views;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]

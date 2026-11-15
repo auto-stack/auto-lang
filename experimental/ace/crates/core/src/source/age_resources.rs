@@ -96,6 +96,11 @@ pub fn is_port_type(name: &str) -> bool {
 /// `shape2d kind:` 的冻结几何符号（AGE 规范 §1：`kind: circle|quad`）。
 pub const AGE_GEOMETRY_KINDS: &[&str] = &["circle", "quad"];
 
+/// `view-3d` 的**冻结叶种类**（AGE 规范：3D 叶是 `cylinder3d` / `model3d` /
+/// `group3d`，**不是** `shape3d`——2D 的 kind 符号表与 3D 的叶种类是两套东西，
+/// 不能互相套用）。
+pub const AGE_3D_ELEMENT_KINDS: &[&str] = &["cylinder3d", "model3d", "group3d"];
+
 /// 属性名的**值类别**（决定该怎么校验它，而不是猜一个值类型）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AttrValueKind {
@@ -114,12 +119,18 @@ pub enum AttrValueKind {
 pub fn attr_value_kind(key: &str) -> Option<AttrValueKind> {
     match key {
         "kind" => Some(AttrValueKind::GeometryKind),
-        "material" | "tint" => Some(AttrValueKind::ResourceRef),
-        "position" | "size" | "x" | "y" | "diameter" | "visible" => {
-            Some(AttrValueKind::Value)
-        }
+        // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**。
+        "material" | "tint" | "model" | "mesh" => Some(AttrValueKind::ResourceRef),
+        // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）。
+        "position" | "size" | "x" | "y" | "diameter" | "visible" | "yaw" | "pitch"
+        | "scale" => Some(AttrValueKind::Value),
         _ => None,
     }
+}
+
+/// 该 3D 叶种类拼写是否合法（`cylinder3d`/`model3d`/`group3d`）。
+pub fn is_3d_element(kind: &str) -> bool {
+    AGE_3D_ELEMENT_KINDS.contains(&kind)
 }
 
 /// 该拼写是否是冻结几何符号。
