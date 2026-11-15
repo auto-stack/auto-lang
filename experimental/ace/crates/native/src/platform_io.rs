@@ -88,7 +88,10 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         PlatformOpKind::NetTcpConnect
         | PlatformOpKind::NetTcpWriteSome
         | PlatformOpKind::NetTcpReadInto
-        | PlatformOpKind::NetTcpClose => "mn_pio_net_unsupported",
+        | PlatformOpKind::NetTcpClose
+        | PlatformOpKind::NetTcpListen
+        | PlatformOpKind::NetTcpAccept
+        | PlatformOpKind::NetTcpLocalPort => "mn_pio_net_unsupported",
     }
 }
 
@@ -138,7 +141,10 @@ pub fn cranelift_shim_sig_for(
         PlatformOpKind::NetTcpConnect
         | PlatformOpKind::NetTcpWriteSome
         | PlatformOpKind::NetTcpReadInto
-        | PlatformOpKind::NetTcpClose => vec![],
+        | PlatformOpKind::NetTcpClose
+        | PlatformOpKind::NetTcpListen
+        | PlatformOpKind::NetTcpAccept
+        | PlatformOpKind::NetTcpLocalPort => vec![],
         PlatformOpKind::MemWriteU8 => vec![
             AbiParam::new(types::I32),
             AbiParam::new(types::I32),

@@ -861,6 +861,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_NET_WRITE
                             | crate::platform_io::CAP_NET_READ
                             | crate::platform_io::CAP_NET_CLOSE
+                            | crate::platform_io::CAP_NET_LISTEN
                     ));
             if !known {
                 return Err(MirVerifyError::uns(

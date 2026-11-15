@@ -18,6 +18,8 @@ pub const CAP_NET_CONNECT: &str = "platform.net.connect";
 pub const CAP_NET_WRITE: &str = "platform.net.write";
 pub const CAP_NET_READ: &str = "platform.net.read";
 pub const CAP_NET_CLOSE: &str = "platform.net.close";
+/// PLAN-974 (T-02 inc3): the server face — listen + accept share one cap.
+pub const CAP_NET_LISTEN: &str = "platform.net.listen";
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlatformSourceOp {
@@ -30,6 +32,7 @@ pub struct PlatformSourceOp {
 
 const P_EMPTY: &[VT] = &[];
 const P_I32: &[VT] = &[VT::I32];
+const P_I32_NET: &[VT] = &[VT::I32];
 const P_4I32: &[VT] = &[VT::I32, VT::I32, VT::I32, VT::I32];
 const P_I32_STR: &[VT] = &[VT::I32, VT::Str];
 const P_I32_STR_2I32: &[VT] = &[VT::I32, VT::Str, VT::I32, VT::I32];
@@ -206,6 +209,27 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         params: P_4I32,
         result: VT::I32,
         capability: CAP_NET_READ,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_listen",
+        symbol: "auto.platform.net.tcp_listen.v1",
+        params: P_I32_NET,
+        result: VT::I32,
+        capability: CAP_NET_LISTEN,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_accept",
+        symbol: "auto.platform.net.tcp_accept.v1",
+        params: P_I32_NET,
+        result: VT::I32,
+        capability: CAP_NET_LISTEN,
+    },
+    PlatformSourceOp {
+        callee: "net_tcp_local_port",
+        symbol: "auto.platform.net.tcp_local_port.v1",
+        params: P_I32_NET,
+        result: VT::I32,
+        capability: CAP_NET_LISTEN,
     },
     PlatformSourceOp {
         callee: "net_tcp_close",

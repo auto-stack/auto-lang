@@ -1291,7 +1291,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             PlatformOpKind::NetTcpConnect
             | PlatformOpKind::NetTcpWriteSome
             | PlatformOpKind::NetTcpReadInto
-            | PlatformOpKind::NetTcpClose => {
+            | PlatformOpKind::NetTcpClose
+            | PlatformOpKind::NetTcpListen
+            | PlatformOpKind::NetTcpAccept
+            | PlatformOpKind::NetTcpLocalPort => {
                 return Err("native.net-unsupported".into());
             }
             PlatformOpKind::IoConsoleKind => {
