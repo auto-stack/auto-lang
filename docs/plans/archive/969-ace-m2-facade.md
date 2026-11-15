@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-969
-status: reviewed
+status: archived
 feature_name: ACE 产品执行配置与嵌入前门
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 7
-current_step: 10
+current_step: 12
 total_steps: 12
 depends_on: [PLAN-960, PLAN-964, PLAN-967, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -323,9 +323,9 @@ enum ExecutionResult { Value(ValueRef), Diagnostic(DiagnosticRef), ResourceDenie
 
 - [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-15：独立上下文agent终审@冻结33eab5086（未参与实现，全部声明的scoped命令独立重跑：桥11/11、core ace_entry 4/4、audit03 3+1、audit08 4/4、check零新告警、6文件SHA对账冻结记录）——verdict **PASS**（0 BLOCKER/0 MAJOR/4 MINOR）；F-T05-01/02审计表枚举补全（t08头注）、F-T05-03 fmt点、F-T05-04 KNOWN-DEBT行更新（F03/F08已修@969+D-969段，随979并发编辑暂不提交、文本已落工作树）→ 01/02/03已修@f439f7f3d、04文本就位；两处FAIL门环境归因（plan702跨仓路径/conhost观察）经复核至基础设施错误串级确认；无遗漏/无未批延期/无workaround]
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 [✅ 2026-11-15：rebase dev→master（range-diff全等：5b93ed743→eb246d3e3、33eab5086→5bd20f959、f439f7f3d→5e54fbca9）＋SD-02 doc-only后代6fd48b4f1=delivery commit；`git merge --ff-only`线性落主（master tip=6fd48b4f1无merge commit）；canonical sources落主核hash（m2-facade.md 9d1403f96a7795c7、replacement-scope-and-evidence.md d4e76f041e403b11）；merge-owned落门：主检出daily全量PASS（plan702跨仓门随auto-ui在场转绿——worktree归因证实）＋ace-facade PASS 11/11（wall 31.5s）]
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。 [✅ 2026-11-15：收据见§9 merge/cleaned；plan-artifacts/plan-969整scope删除（证据已折入本文件，probe-t01源码与REGISTRY随scope删除——重验按§5/§9摘要用最新代码重跑）；.retention/policy.json刷新（plan-969删除登记）；wt-guard双树clean后worktree/分支/组目录移除；主检出终态核clean（仅外来979/av会话WIP，非本包）]
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -385,6 +385,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-15 stage: review / T-05（AC-04 独立终审）| 冻结基线: 33eab5086（停写；复审后仅F-T05-01/02/03修复@f439f7f3d，无行为变更） | 审计者: 独立上下文agent（未参与实现） | 结论: **PASS**（0 BLOCKER/0 MAJOR/4 MINOR） | 独立重跑: 桥11/11、ace_entry 4/4、audit03 3+1、audit08 4/4、check零新告警、fmt（1点已修）、SHA×6对账 | 逐项核: AC-01冻结记录（预算常量对code核）/AC-02独立oracle（span 38..43手工对字节、9=1+3+4+1字节独立复算）/AC-03结构零legacy（全范围diff entry/script/vm字节同）/AC-06 ABT同文本legacy可跑对证+args/input预车道/AC-E0修复存活/AC-AUDIT旧匹配器逐类对账（legacy无DotDot token→无parity gap）/收据四项抽验（results.json复核含两个FAIL门环境归因至错误串）/延期诚实（args/stdin=开放项、增量=970、config=legacy owner）/无attachments无junction | findings: F-T05-01审计表枚举（test_code族/execute_autovm*/create_vm_from_source/cwd/退出码）→t08头注补全；F-T05-02 cwd/exit-code立场→同上；F-T05-03 parser.rs fmt→已修；F-T05-04 KNOWN-DEBT F03/F08行+D-969段→文本已落（随979并发编辑暂不提交，下次docs提交搭载或merge时落） | next: T-06/T-07（merge）
 
 2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass（T-05终审PASS） | worktree: D:/autostack/.wt/lang-969/auto-lang | commit: f439f7f3d | next: T-06
+2026-11-15 stage: merge / T-06+T-07（PLAN-969:r7 consolidation）| prepared: reviewed基线33eab5086+F-T05修复f439f7f3d（doc-only后代合规）＋冻结Spec delta（SD-01 m2-facade.md既有、SD-02本批、SD-DETAIL/PHASE/HELLO并入m2-facade.md各节） | landed: rebase dev→master全等（range-diff `=`：5b93ed743→eb246d3e3/33eab5086→5bd20f959/f439f7f3d→5e54fbca9）＋`merge --ff-only`；master tip=delivery **6fd48b4f1**（线性、无merge commit） | canonical_verified: docs/specs/ace-migration/m2-facade.md（9d1403f96a7795c7）、replacement-scope-and-evidence.md（d4e76f041e403b11）均落主tracked | merge-owned门: 主检出daily全量PASS（含plan702跨仓门转绿=worktree环境归因最终证实）＋ace-facade PASS 11/11 | archived: 本文件git mv至docs/plans/archive/＋status:archived（收据随docs提交） | cleaned: plan-artifacts/plan-969整scope删除（无具名持有——D-969债务为登记项非工件持有）；.retention/policy.json刷新；wt-guard clean×2；worktree/plan-969-dev分支/lang-969组目录移除 | 交接: 978/B0、980/HELLO消费run_ace+install()；985/A以本收据为开工门之一 | 外来WIP（非本包、未纳入提交）: 主检出experimental/ace/crates/core/src/source/mod.rs（PLAN-979）与experimental/ace/crates/av/tests/cases/function_incremental_contract.rs——待各自owner路由
+
+2026-11-15 stage: goal | plan_id: PLAN-969 | plan_revision: r7 | round: 8 | from: merge | to: done | status: archived | outcome: pass（merge全检查点verified：landed/canonical_verified/archived/cleaned） | worktree: removed | commit: 6fd48b4f1 | next: done
+
 
 
 ## 10. 待澄清事项
