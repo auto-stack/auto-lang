@@ -127,6 +127,10 @@ pub(crate) fn admit_layouts(
             | MirType::U32
             | MirType::F32
             | MirType::F64 => {}
+            // PLAN-972 (T-03): capture-free closure VALUES — the inlined
+            // unit carries the closure slot type; construction/call instrs
+            // are named-rejected below if any survive inlining.
+            MirType::Closure(_) => {}
             // PLAN-923: the checked place is a Copy element witness over a
             // List — frozen to i32/bool this revision; List<Str>/owned
             // record read-only views stay out of the native place surface
@@ -215,6 +219,12 @@ pub(crate) fn admit_layouts(
                     | MirInstr::StrConcat { .. }
                     | MirInstr::CharToCodepoint { .. }
                     | MirInstr::CharFromCodepoint { .. }
+                    // PLAN-972 (T-03): capture-free closure values — the
+                    // callee binds through its unit import (split_units
+                    // rewrote Func→Import); the indirect call rides the
+                    // cells ABI.
+                    | MirInstr::CreateClosure { .. }
+                    | MirInstr::CallClosure { .. }
                     // PLAN-972 (T-03): integer conversions (checked
                     // narrowing; sign-aware widening).
                     | MirInstr::Conv { .. }
@@ -1100,6 +1110,36 @@ impl Lower<'_, '_> {
                 let mut pointers: Vec<_> = args.iter().map(|s| self.addr(*s)).collect();
                 pointers.push(self.addr(*dst));
                 self.fb.ins().call(self.import_refs[*i as usize], &pointers);
+            }
+            // PLAN-972 (T-03): capture-free closure VALUES — the cell word
+            // holds the callee's code address (the unit import carries the
+            // (params+1)-cell ABI signature; capturing closures stay with
+            // the closure-env unit, named rejection).
+            CreateClosure {
+                dst,
+                callee,
+                captures,
+            } => {
+                let CalleeRef::Import(i) = callee else {
+                    return Err(unsupported("callee", "closure creation must use imports"));
+                };
+                if !captures.is_empty() {
+                    return Err(unsupported(
+                        "instruction",
+                        "capturing closures await the mn closure-env unit (PLAN-972)",
+                    ));
+                }
+                let f = self.import_refs[*i as usize];
+                let addr = self.fb.ins().func_addr(types::I64, f);
+                self.word_to(*dst, addr);
+            }
+            CallClosure { dst, closure, args } => {
+                let ptr = self.bits(*closure);
+                let mut pointers: Vec<_> = args.iter().map(|s| self.addr(*s)).collect();
+                pointers.push(self.addr(*dst));
+                let sig = signature(args.len());
+                let sigref = self.fb.func.import_signature(sig);
+                self.fb.ins().call_indirect(sigref, ptr, &pointers);
             }
             Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs)?,
             Un { op, dst, operand } => {

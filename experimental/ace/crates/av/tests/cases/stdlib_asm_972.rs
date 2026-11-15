@@ -315,42 +315,44 @@ fn stdlib_asm_972_cross_end_gaps_and_a2r_math() {
             )
         })
     };
-    // ---- Cross-end freeze record (2026-11-15): the whole assembled std
-    // set carries closure-typed publics (list HOF family) and char-typed
-    // exprs (char/text modules); the mn collections native domain and the
-    // a2x value-type table both reject them TODAY (named Unsupported /
-    // a2x.unsupported-type). The closure/char cross-end ABI is PLAN-972
-    // T-03/T-09 work — these asserts pin the CURRENT named rejections and
-    // flip intentionally when the extension lands.
-    let whole = compile_asm(CONSUMER_MAIN);
-    let mn = {
-        let dir = scratch("cons-mn-gap");
-        let mut driver = ace_native::driver::MnDriver::ephemeral();
-        driver.build_collections_checked(
-            &whole.compiled.checked,
+    // ---- AC / native (mn) WHOLE-SET leg (PLAN-972 T-03: capture-free
+    // closure VALUES on the collections path — the callee binds through
+    // its unit import; the indirect call rides the cells ABI): the HOF
+    // program over the FULL assembled std set — filter([1..5], >1) len=4,
+    // reduce sum=14 → (14%10)*10 + 4 = 44 exit on real machine code. ----
+    let hof_main = "use std.list.reduce
+use std.list.filter
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    let ys = filter(xs, (x int) => { return x > 1 })
+    let s = reduce(ys, 0, (acc int, x int) => { return acc + x })
+    return (s % 10) * 10 + ys.len()
+}";
+    let whole_hof = compile_asm(hof_main);
+    let dir = scratch("cons-mn-whole");
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    let built = driver
+        .build_collections_checked(
+            &whole_hof.compiled.checked,
             "d_main",
             &dir,
-            &whole.bound.input_hash,
+            &whole_hof.bound.input_hash,
             972,
         )
-    };
-    match mn {
-        Err(e) => {
-            let text = format!("{e:?}");
-            // the closure-value gap may surface at the type table or,
-            // with the PLAN-972 T-03 scalar/text admissions, deeper in the
-            // emitter/layout — all are the same named closure boundary.
-            assert!(
-                text.contains("Closure")
-                    || text.contains("Char")
-                    || text.contains("closure")
-                    || text.contains("layout contract")
-                    || text.contains("unhandled admitted"),
-                "unexpected mn gap: {text}"
-            );
-        }
-        Ok(_) => panic!("mn whole-set unexpectedly built"),
-    }
+        .unwrap_or_else(|e| panic!("mn whole-set build: {e:?}"));
+    let code = Command::new(&built.exe_path)
+        .current_dir(&dir)
+        .status()
+        .expect("run mn whole-set exe")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 44, "AC/native whole-set exit (HOF closures)");
+
     // ---- A2R / rustc WHOLE-SET leg (PLAN-972 T-03: capture-free closure
     // values + the text/char/numeric surface ride the collections family):
     // the HOF program — filter([1..5], >1)=[2,3,4,5] sum=14 len=4 →
