@@ -120,6 +120,30 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 
 本节由T-08实施并以AC-06/V-08验收，属本包完成条件。既有任务/验收不被替代；需要的新接口由T-01先冻结，T-08依赖T-01及相关T-02/03结果，必须先于最终work验证与独立review完成。
 
+### T-08 协议分母核（2026-11-16，证据基=net974 6/6 + stdlib/ace/std/net.at）
+
+**分母来源**：959 S-16（net 14+vm14 / http 79+vm68 / sse 1+4 / url 22+vm23 的 .at 面）＋r2 合同（DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE）。逐族对已交面（已交=真回环执行+独立oracle；未交=具名pending，非NA非静默）：
+
+| 协议族 | 旧面（stdlib/auto/*.at 符号级） | 新面已交 | 证据 | 状态/缺口 |
+|---|---|---|---|---|
+| **TCP client** | net.at tcp_connect/read/write/read_all/read_line/write_str/close/peer_addr/set_read_timeout/set_write_timeout（10） | platform.net/1 connect/write_some/read_into/close（paced read/accept；caps/预算/台账/具名错码） | net974 roundtrip/negative（真回环） | **已交核心**；read_line/read_all/peer_addr=薄helper可加，具名pending（低危） |
+| **TCP server** | net.at tcp_bind/TcpListener.accept/local_addr/close（4） | platform.net/1 listen/accept/local_port（预保留口召回；paced accept） | net974 server_leg（Auto听、真客户端驱动） | **已交** |
+| **HTTP client** | http.at request/get/post/put/delete/head/patch/builder链/header/body/send/Response存取组 | std.net net_get/net_get_with_header/net_post/net_send_request（状态行/体界解析；观察面 status*10000+body_len） | net974 http_api_face + std_net_packaging（独立oracle 6010012） | **已交核心**（GET/builder/post/status/body/header）；put/delete/head/patch/Response全存取组/表单/JSON体=具名pending |
+| **HTTP server** | http.at Server.get/post/put/delete/static/listen + listen(host,port,handler)（路由/静态/handler注册） | Auto侧应答（listen+accept+读请求+按方法路由响应+close） | net974 server_leg（单连接路由） | **已交最小**；路由表/handler注册/多连接并发/静态文件=具名pending（静态文件腿973阻塞） |
+| **redirect** | http.at 内建跟随（follow_redirects配置） | 客户端跟随（302→Location→重发→200） | net974 sse_and_redirect（30200→20000） | **已交**（单跳）；多跳/循环检测/max-redirs=具名pending |
+| **timeout** | set_read_timeout/set_write_timeout(ms) | connect 5s/读写5s超时+**paced有界窗**（accept≤50ms/read≤500ms，静默窗返回可重试-10）；拒绝=-8具名 | net974 sse_and_redirect（refused -8）+负面组 | **已交**（语义形=固定窗+可重试，非旧per-stream可配置API）；可配置set_timeout API=具名pending |
+| **SSE** | sse.at 事件流解析 | 客户端流式读至EOF+事件界（
+
+）计数+状态行 | net974 sse_and_redirect（两事件120ms间隔流，20002） | **已交**（解析面）；事件字段存取/data多行/event回调形=具名pending |
+| **DNS** | 旧tcp_connect(addr str)内含解析（无显式DNS API） | net_tcp_connect(host字节串)——std::net ToSocketAddrs **隐式解析**，无显式DNS面 | 平台实现事实（win32 backend） | **未交显式面**：解析控制/缓存/自定resolver=具名pending（旧面亦无显式API，义务=连接功能已交） |
+| **TLS** | 旧无（https经reqwest侧） | **未交** | — | **具名pending**：按r2合同TLS属显式可选provider（967 FFI道或OS provider），非本批静默 |
+| **proxy** | 旧配置形（http.proxy_url等） | **未交** | — | **具名pending**：客户端代理配置面 |
+| **WebSocket** | 旧无 .at 面（vm侧8注册） | **未交** | — | **具名pending**：upgrade握手+帧层 |
+| **URL** | url.at encode/decode/encode_path_segment/encode_query_component/decode_query_component/encode_query/decode_query/parse_form/parse/build/join_path（11 pub fn） | **未交** | — | **具名pending**：Auto侧URL解析/构建/编码族（可沿std.net同file加） |
+| **upload/download** | http.at body/upload/download（File腿） | **未交** | — | **具名pending：973阻塞腿**（File/Stream域） |
+
+**核结论**：已交核心=TCP双向+HTTP client/server核心+SSE解析+redirect+timeout语义（net974 6/6真回环+独立oracle）；**具名pending**=URL族（11符号）、TLS/proxy/WebSocket、HTTP全方法/全存取组、多跳redirect、可配置timeout、upload/download(973)。分母不删行、不NA——T-04按此表逐行记录，pending腿的关闭序=URL族（Auto可加）→HTTP面扩→WebSocket→TLS/proxy（provider道）；973腿随973落主。
+
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r5当前）
 
 **具体输入与期望。** 原件[crates/auto-lang/test/a2r/30_plan724/001_http_client_sync/http_client_sync.at](../../crates/auto-lang/test/a2r/30_plan724/001_http_client_sync/http_client_sync.at)（下列节选L6–L45；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
@@ -360,6 +384,7 @@ T-01在原有界前探冻结Winsock初始化/错误码、socket/非阻塞/IOCP�
 - [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐现用DNS/TCP/TLS/HTTP/redirect/proxy/timeout/WebSocket/SSE能力分母核实现；标准库以自身Auto协议＋OS socket/事件薄适配独立验收，第三方transport仅属显式可选provider，983后接产品Web，不以等待983形成循环。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+  [核已交 2026-11-16] 分母核表见§5"T-08 协议分母核"（证据基=net974 6/6；已交核心七族+具名pending清单+关闭序）；实现腿（URL族/HTTP扩面/WebSocket/TLS/proxy）按关闭序续施——T-08保持未勾至实现面闭。
 
 - [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -382,6 +407,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-08分母核交付；实现腿续施) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: bd173aff0（核基线） | evidence: §5"T-08 协议分母核"逐族表（13族：已交7核心+具名pending 6+973腿，分母零删行） | next_responsible_role: work（URL族实现→HTTP扩面→…→T-04..07 或按裁定）
+
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-03装配缝裁定+std.net包装) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: bd173aff0 | 决定: 缝=**(c) PLAN-1041内联单源约定**（语法事实：use-item仅scalar-modules/packages面；host-console设计单源，其stdlib故事即内联pub fn同拼写两世界）——`stdlib/ace/std/net.at`（pub fn协议模块）+`net974_std_net_packaging_inline`（verbatim内联、仅公共helper、真回环6010012、0.09s）；**packages面接线=具名后续**（packages-lane platform host，随973 io装配，非静默缩范围） | evidence: net974 **6/6绿**（2.24s）；零编译错误 | next_responsible_role: work（T-08协议分母核→T-04..07 或按裁定）
 
