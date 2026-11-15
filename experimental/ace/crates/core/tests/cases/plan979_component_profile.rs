@@ -570,3 +570,28 @@ fn p979_component_f12_identity_is_sensitive_to_source_and_compat() {
         "a different compat config must not reuse evidence"
     );
 }
+
+#[test]
+fn p979_component_static_face_describes_every_node_in_the_module() {
+    // 一个模块里的多个 view-only Node：各自描述、各自文本叶、互不串号。
+    let src = "node First {\n    view {\n        text \"a\" {}\n    }\n}\nnode Second {\n    view {\n        text \"b\" {}\n        text \"c\" {}\n    }\n}\n";
+    let out = compile_age_component(src, "two.at", LegacyWidgetAlias::Reject, &[])
+        .expect("two view-only nodes compile");
+    assert_eq!(out.description.nodes.len(), 2);
+    assert_eq!(out.description.nodes[0].name, "First");
+    assert_eq!(out.description.nodes[0].view.texts.len(), 1);
+    assert_eq!(out.description.nodes[1].name, "Second");
+    assert_eq!(out.description.nodes[1].view.texts.len(), 2);
+    // 每个叶的 def id 不同（不共用求值函数）。
+    let mut ids: Vec<_> = out
+        .description
+        .nodes
+        .iter()
+        .flat_map(|n| n.view.texts.iter().map(|t| t.def_id.clone()))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 3, "each leaf has its own definition: {ids:?}");
+    // 节点 span 各自落在自己的声明上。
+    assert!(out.description.nodes[0].span.start < out.description.nodes[1].span.start);
+}
