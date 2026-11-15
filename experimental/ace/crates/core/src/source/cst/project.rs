@@ -79,6 +79,12 @@ pub(crate) fn project_program_with_caps(
         .iter()
         .position(|r| r.name == "const-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 资源绑定（不可变，同 const）。
+    let age_let_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-let-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let var_item_kind = p
         .rules
         .iter()
@@ -214,6 +220,8 @@ pub(crate) fn project_program_with_caps(
             || kind == k.union_item.unwrap_or(u32::MAX)
             || Some(kind) == const_item_kind
             || Some(kind) == var_item_kind
+            // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 也是声明位项。
+            || Some(kind) == age_let_item_kind
             || Some(kind) == k.spec_item
             // PLAN-963（T-03）：`ext` 块也是声明项（须在 script 前）。
             || Some(kind) == k.ext_item
@@ -245,6 +253,21 @@ pub(crate) fn project_program_with_caps(
                 // ——同构投影到 Enum AST（union 的读语义由变体 guard 承载：
                 // 非活动臂 is-分支不匹配）。
                 items.push(Item::Enum(eng.run_enum_item(node)));
+            } else if Some(kind) == age_let_item_kind {
+                // PLAN-981（IF-981-ORIGINAL）：模块级 `let` **无类型注解**（作者
+                // 靠推断），而 `Item::Const` 的投影路径要求注解——直接复用会
+                // panic。此处具名拒绝，不用一条会崩的路径冒充支持。
+                let span = first_leaf_span(&eng.cx, node);
+                eng.cx.reject(span, move || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.module-let-inference",
+                        "a module-level `let` needs type inference, which this front door does not \
+                         implement yet; write `const <name>: <type> = <expr>` until it lands",
+                        span,
+                    )
+                });
+                continue;
             } else if Some(kind) == const_item_kind || Some(kind) == var_item_kind {
                 // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
                 // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。

@@ -136,8 +136,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         u32-kw(profiles: [numeric, aggregates, scheduler]) { literal: "u32" }
         i64-kw(profiles: [numeric, aggregates, scheduler]) { literal: "i64" }
         u64-kw(profiles: [numeric, aggregates, scheduler]) { literal: "u64" }
-        float-kw(profiles: [numeric, aggregates, scheduler]) { literal: "float" }
-        f32-kw(profiles: [numeric, aggregates, scheduler]) { literal: "f32" }
+        float-kw(profiles: [numeric, aggregates, scheduler, age-package]) { literal: "float" }
+        f32-kw(profiles: [numeric, aggregates, scheduler, age-package]) { literal: "f32" }
         double-kw(profiles: [numeric, aggregates, scheduler]) { literal: "double" }
         f64-kw(profiles: [numeric, aggregates, scheduler]) { literal: "f64" }
         type-kw { literal: "type" }
@@ -304,7 +304,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 备选相互作用）；const/var 模块项与别名导入。
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, age-package]) { public-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, age-package]) { const-item() {} }
+            alt(profiles: [age-package]) { age-let-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, age-package]) { var-item() {} }
+            // PLAN-981：符号表形式 `use mod: a, b` 与点分形式共享首 token `use`，
+            // 必须**先**试符号表（其第二个 token 是 `:`），否则点分规则先匹配并
+            // 在 `:` 处失败后不回溯。
+            alt(profiles: [age-package]) { age-use-sym-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, age-package]) { use-item-p() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, packages-aggregates, aggregates, scheduler, age-package]) { type-item() {} }
             // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（仅
@@ -357,9 +362,36 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-node-c-item(profiles: [age-component, age-package], expect: "a `node <Name> { model … on … view … }` declaration") {
             age-node-head(field: "head") {}
             ident(field: "name")
+            // PLAN-981（IF-981-ORIGINAL）：typed 参数列表（仅包面）。
+            opt(profiles: [age-package]) { age-node-params(field: "params") {} }
             lbrace(same-line: true)
             age-node-c-body(field: "body") {}
             rbrace() {}
+        }
+        // `( <name>: <type>, … )`——作者参数形，类型交给 AGE 既有类型面。
+        age-node-params(profiles: [age-package], expect: "a parameter list `(<name>: <type>, …)`") {
+            lparen() {}
+            age-node-param(field: "first") {}
+            many { age-node-param-tail() {} }
+            rparen() {}
+        }
+        age-node-param-tail(profiles: [age-package]) {
+            comma() {}
+            age-node-param() {}
+        }
+        age-node-param(profiles: [age-package]) {
+            ident(field: "name") {}
+            colon() {}
+            age-param-ty(field: "ty") {}
+        }
+        // 参数类型：内建类型词或名义类型名（`float`/`Material2D`）。
+        age-param-ty(profiles: [age-package]) {
+            alt { float-kw(field: "word") {} }
+            alt { f32-kw(field: "word") {} }
+            alt { int-kw(field: "word") {} }
+            alt { i32(field: "word") {} }
+            alt { bool(field: "word") {} }
+            alt { ident(field: "word") {} }
         }
         age-node-c-body(profiles: [age-component, age-package], expect: "the `node` body member list") {
             list-nl { age-node-member() {} }
@@ -376,6 +408,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-model-member() {} }
             alt { age-on-member() {} }
             alt { age-view-member() {} }
+            // PLAN-981（IF-981-ORIGINAL）：2D/3D 直属出口（仅包面）。
+            alt(profiles: [age-package]) { age-view2d-member() {} }
+            alt(profiles: [age-package]) { age-view3d-member() {} }
         }
         age-model-member(profiles: [age-component, age-package], expect: "a `model { <field> <type> = <init> }` block") {
             name(of: "age-model-head", field: "model") {}
@@ -416,6 +451,53 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             dot(same-line: true) {}
             ident(field: "seg") {}
         }
+        // ---- PLAN-981（IF-981-ORIGINAL）：2D/3D 呈现出口 ----
+        // `view-2d { … }` / `view-3d { … }`：`view` 保留字 + `-` + `2d/3d` 尾巴。
+        // 语义沿用 AGE 既有多呈现设计（直属出口是对应变体），本面只补语法形状。
+        age-view2d-member(profiles: [age-package], expect: "a `view-2d { … }` node view") {
+            name(of: "age-view-head", field: "view") {}
+            minus(same-line: true) {}
+            age-view-suffix-2d(field: "suffix") {}
+            lbrace(same-line: true) {}
+            list-nl { age-scene-item() {} }
+            rbrace() {}
+        }
+        age-view3d-member(profiles: [age-package], expect: "a `view-3d { … }` node view") {
+            name(of: "age-view-head", field: "view") {}
+            minus(same-line: true) {}
+            age-view-suffix-3d(field: "suffix") {}
+            lbrace(same-line: true) {}
+            list-nl { age-scene-item() {} }
+            rbrace() {}
+        }
+        // 出口后缀：`2d` / `3d`（ident 接受，投影期按字节校验，不在词法层硬编码）。
+        age-view-suffix-2d(profiles: [age-package]) {
+            alt { ident(field: "word") {} }
+            alt { affix-num(field: "word") {} }
+        }
+        age-view-suffix-3d(profiles: [age-package]) {
+            alt { ident(field: "word") {} }
+            alt { affix-num(field: "word") {} }
+        }
+        // 场景成员：组件实例（`shape2d q { … }` / `Disc d { … }`。
+        age-scene-item(profiles: [age-package]) {
+            alt { age-comp-item() {} }
+        }
+        // 一个组件实例：`<Kind> <name> { <attr>: <value> … }`。
+        age-comp-item(profiles: [age-package], expect: "a component instance `<Kind> <name> { <attr>: <value> }`") {
+            ident(field: "kind") {}
+            ident(field: "name") {}
+            lbrace(same-line: true) {}
+            list-nl { age-attr() {} }
+            rbrace() {}
+        }
+        // 属性行：`<name>: <value>`。值是普通 Auto 表达式（数/元组/资源路径/bool）。
+        age-attr(profiles: [age-package], expect: "an attribute line `<name>: <value>`") {
+            ident(field: "key") {}
+            colon(same-line: true) {}
+            pratt(of: "wide-ops", field: "value") {}
+        }
+        // ---- 以下为原有 AGE view 规则 ----
         age-view-member(profiles: [age-component, age-package], expect: "the `view { … }` node view") {
             name(of: "age-view-head", field: "view") {}
             lbrace(same-line: true) {}
@@ -479,6 +561,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             assign() {}
             expr(field: "value")
         }
+        // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 不可变资源绑定（g01 作者
+        // 拼写）。语义等同 const：不可变模块级值，进初始化序与跨模块 get。
+        age-let-item(profiles: [age-package], expect: "a module-level `let <name> = <expr>`") {
+            let(field: "kw") {}
+            ident(field: "name") {}
+            assign() {}
+            pratt(of: "wide-ops", field: "value") {}
+        }
         var-item(profiles: [packages-modules, packages-ct, packages-aggregates, age-package]) {
             var(field: "kw") {}
             ident(field: "name")
@@ -517,6 +607,19 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-960（T-02）：多段路径导入 `use a.b[.c] [as x]` 与重导出
         // `pub use a.b[.c] [as x]`（2 段=本包 mod.item；3 段=pkg.mod.item）。
+        // PLAN-981（IF-981-ORIGINAL）：符号表式导入 `use <mod>: a, b, c`。
+        // 与点分导入同义（逐符号绑定到 `mod.a` …），只是作者拼写不同。
+        age-use-sym-item(profiles: [age-package], expect: "a symbol-table import `use <mod>: a, b`") {
+            r-use(field: "kw") {}
+            ident(field: "module") {}
+            colon() {}
+            ident(field: "head") {}
+            many { age-use-sym-tail() {} }
+        }
+        age-use-sym-tail(profiles: [age-package]) {
+            comma() {}
+            ident(field: "sym") {}
+        }
         use-item-p(profiles: [packages-modules, packages-ct, packages-aggregates, age-package]) {
             r-use(field: "kw") {}
             use-path(field: "path")
@@ -1632,7 +1735,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, scheduler]) { take-atom() {} }
             // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
             // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
-            alt(profiles: [aggregates, scheduler]) { tuple-lit() {} }
+            alt(profiles: [aggregates, scheduler, age-package]) { tuple-lit() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, scheduler, age-package]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
@@ -1672,7 +1775,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, scheduler]) { take-atom() {} }
             // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
             // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
-            alt(profiles: [aggregates, scheduler]) { tuple-lit() {} }
+            alt(profiles: [aggregates, scheduler, age-package]) { tuple-lit() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler, age-package]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
@@ -1775,14 +1878,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { r-null(same-line: true, field: "kw") }
         }
         // PLAN-962（L-15）：tuple 字面量形（≥2 元，带至少一个逗号尾，单元素回退括号组）。
-        tuple-lit(profiles: [aggregates, scheduler]) {
+        tuple-lit(profiles: [aggregates, scheduler, age-package]) {
             lparen() {}
             expr(field: "head")
             tuple-lit-tail() {}
             many { tuple-lit-tail() {} }
             rparen() {}
         }
-        tuple-lit-tail(profiles: [aggregates, scheduler]) {
+        tuple-lit-tail(profiles: [aggregates, scheduler, age-package]) {
             comma() {}
             expr() {}
         }

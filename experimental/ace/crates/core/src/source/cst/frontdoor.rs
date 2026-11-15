@@ -746,6 +746,10 @@ pub(crate) fn project_packages_front(
     let var_item = rule("var-item");
     // PLAN-981（IF-981-REF）：`pub node Foo {..}` —— 公共 node 声明的导出面。
     let age_pub_node = rule("age-pub-node-item");
+    // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 与符号表导入。
+    let age_let_item = rule("age-let-item");
+    let age_use_sym = rule("age-use-sym-item");
+    let age_use_sym_tail = rule("age-use-sym-tail");
     // PLAN-1043（T-03）/PLAN-966（T-02）：项位 CT 选择/需求规则 id（仅
     // packages-ct 裁剪存在；plain 面全 None → 分支不可达，行为不变）。
     let fn_require_p = rule("fn-require-p");
@@ -993,6 +997,52 @@ pub(crate) fn project_packages_front(
                 continue;
             }
             // use 项（含 public-item 内的 use 尾）——路径/别名字段读取。
+            // PLAN-981（IF-981-ORIGINAL）：`use mod: a, b` → 每个符号一条
+            // 与 `use mod.a` **同义**的绑定（同一命名空间、同一可见性规则）。
+            if Some(kind) == age_use_sym {
+                if saw_decl {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede declarations".into(),
+                        node_span(tree, node),
+                    ));
+                }
+                let module = text(tree, field(tree, node, "module").expect("use module"));
+                let mut syms: Vec<(String, u64)> = Vec::new();
+                let head = field(tree, node, "head").expect("use sym head");
+                let (ha, _) = tree.abs_range(head);
+                syms.push((text(tree, head), ha));
+                for c in tree.children(node) {
+                    if Some(tree.kind(c)) != age_use_sym_tail {
+                        continue;
+                    }
+                    let leaf = field(tree, c, "sym").expect("use sym");
+                    let (a, _) = tree.abs_range(leaf);
+                    syms.push((text(tree, leaf), a));
+                }
+                for (sym, at) in syms {
+                    let span = Span {
+                        start: at as usize,
+                        end: at as usize + sym.len(),
+                    };
+                    if imports
+                        .iter()
+                        .any(|i: &PackageImport| i.bound_name() == sym)
+                    {
+                        return Err(err(
+                            "source.module-duplicate-import",
+                            format!("duplicate imported name `{sym}`"),
+                            span,
+                        ));
+                    }
+                    imports.push(PackageImport {
+                        path: vec![module.clone(), sym],
+                        alias: None,
+                        reexport: false,
+                        span,
+                    });
+                }
+            }
             let use_node = if Some(kind) == use_item_p {
                 Some(node)
             } else if Some(kind) == public_item {
@@ -1105,6 +1155,15 @@ pub(crate) fn project_packages_front(
                 saw_decl = true;
                 let name = text(tree, field(tree, node, "name").expect("pub node name"));
                 exports.insert(name.clone());
+                declarations.insert(name, node_span(tree, node));
+            } else if Some(kind) == age_let_item {
+                // PLAN-981（IF-981-ORIGINAL）：`let name = expr` 是**不可变**模块
+                // 绑定，语义等同 `const`（同初始化序、同跨模块 get）。资源模块靠
+                // 这些名字对外供给，故进公共面；可见性仍由共享 binder 裁定。
+                saw_decl = true;
+                let name = text(tree, field(tree, node, "name").expect("let name"));
+                exports.insert(name.clone());
+                const_exports.insert(name.clone());
                 declarations.insert(name, node_span(tree, node));
             } else if Some(kind) == const_item || Some(kind) == var_item {
                 saw_decl = true;
