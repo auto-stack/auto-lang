@@ -292,6 +292,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 22 | from: work(974) | to: review(974/T-05) | status: executing | outcome: pass(974/T-04全V行) | 记录: T-04冻结并集执行——ace-av 1257+ace-native 280+ace-source 597 全PASS（2134例）；V-01..05逐行状态+具名pending（长流背压/上传文件973/TLS-provider道）；974→5/8 | next: 974/T-05独立复审→T-06/07归档（整包A交付喁M2A-03）；971/B 等 M2A-08
+
 stage: goal | PLAN-971 | r6 | round: 21 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 WebSocket帧层) | 记录: net_tcp_write_region raw面+真RFC-6455客户端往返（101/掩码帧/无掩码回显），net974 9/9绿（206fdf901） | next: 974 TLS/proxy provider道→T-04..07；971/B 等 M2A-08
 
 
