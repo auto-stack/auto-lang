@@ -333,3 +333,60 @@ fn p981_original_g01_rows_reference_distinct_resources() {
     );
 }
 
+/// 资源的**颜色分量与 alpha** 与 auto-ui 基线一致逐值。
+///
+/// 基线：red (0.9,0.3,0.2, α0.5)、blue (0.2,0.3,0.9, α0.5)、
+/// green (0.2,0.8,0.3, α0.6)、yellow (0.95,0.9,0.1, α1.0)。
+#[test]
+fn p981_original_g01_resource_colours_match_the_baseline() {
+    let out = compile_g01().expect("g01 compiles");
+    let resource = |n: &str| {
+        out.description
+            .resources
+            .iter()
+            .find(|r| r.name == n)
+            .unwrap_or_else(|| panic!("resource {n}"))
+    };
+
+    assert_eq!(resource("red_alpha").port, "Material2D");
+    assert_eq!(resource("red_alpha").components, vec![0.9, 0.3, 0.2, 0.5]);
+    assert_eq!(resource("blue_alpha").components, vec![0.2, 0.3, 0.9, 0.5]);
+    assert_eq!(resource("green_alpha").components, vec![0.2, 0.8, 0.3, 0.6]);
+    assert_eq!(
+        resource("yellow_opaque").components,
+        vec![0.95, 0.9, 0.1, 1.0]
+    );
+}
+
+/// 五个资源全部在场（含未被任何行引用的 `deep_green`）——声明不被丢弃。
+#[test]
+fn p981_original_g01_all_declared_resources_are_present() {
+    let out = compile_g01().expect("g01 compiles");
+    let names: Vec<&str> = out
+        .description
+        .resources
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            "blue_alpha",
+            "deep_green",
+            "green_alpha",
+            "red_alpha",
+            "yellow_opaque"
+        ],
+        "every declared resource is carried, sorted by (module, name)"
+    );
+    // 未引用的资源同样带真实分量，不是空壳。
+    let deep = out
+        .description
+        .resources
+        .iter()
+        .find(|r| r.name == "deep_green")
+        .expect("deep_green");
+    assert_eq!(deep.components, vec![0.1, 0.8, 0.2, 0.5]);
+}
+
+

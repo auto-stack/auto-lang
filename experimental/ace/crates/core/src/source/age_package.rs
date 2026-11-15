@@ -114,6 +114,22 @@ pub struct AgePackageDescription {
     pub components: Vec<AgePackageComponent>,
     /// 参与本包的模块源事实（module graph identity 的可读面）。
     pub modules: Vec<AgeModuleSource>,
+    /// PLAN-981（IF-981-ORIGINAL）：具名 AGE 资源（模块常量 → 其构造事实）。
+    /// 按模块 + 声明序排列；消费端据此取得颜色分量/alpha 等真实值。
+    pub resources: Vec<AgeResource>,
+}
+
+/// 一个具名 AGE 资源：`let red_alpha = material2d.color(0.9, 0.3, 0.2, 0.5)`。
+#[derive(Clone, Debug)]
+pub struct AgeResource {
+    /// 资源名（`red_alpha`）。
+    pub name: String,
+    /// 声明所在模块键。
+    pub module: String,
+    /// 端口类型名（`Material2D` / `Mesh2D`）。
+    pub port: String,
+    /// 构造器实参的 f32 分量（按书写序）；非字面量参数不在此列。
+    pub components: Vec<f32>,
 }
 
 /// 一次 AGE 包编译结果。
@@ -271,6 +287,7 @@ pub fn compile_age_package_with_scenario(
             entry: entry.to_string(),
             components,
             modules: product.sources.clone(),
+            resources: collect_age_resources(&product.bound),
         },
         checked,
         symbols: product
@@ -1147,6 +1164,61 @@ fn check_scene_resource_refs(
         }
     }
     Ok(())
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：从 binder 的全局事实里取出**具名 AGE 资源**。
+///
+/// 判据是初值本身：`material2d.color(r,g,b,a)` / `mesh2d.*` 这类服务调用，端口
+/// 类型即其返回端口。分量只收**字面量**（含一元负号）；非字面量不猜、留空。
+fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResource> {
+    let mut out = Vec::new();
+    for decl in bound.globals.values() {
+        let Some(init) = &decl.init else { continue };
+        let super::ast::ExprKind::MethodCall { recv, name, args } = &init.kind else {
+            continue;
+        };
+        let super::ast::ExprKind::Var(ns) = &recv.kind else {
+            continue;
+        };
+        let dotted = format!("{}.{}", ns.name, name.name);
+        let Some(op) = super::age_resources::lookup(&dotted) else {
+            continue;
+        };
+        let mut components = Vec::new();
+        for a in args {
+            let e = match a {
+                super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => x,
+                super::ast::Arg::Named { .. } => continue,
+            };
+            if let Some(v) = f32_literal(e) {
+                components.push(v);
+            }
+        }
+        out.push(AgeResource {
+            name: decl.name.clone(),
+            module: super::packages::unit_key(&decl.package, &decl.module),
+            port: op.result_port.to_string(),
+            components,
+        });
+    }
+    out.sort_by(|a, b| (&a.module, &a.name).cmp(&(&b.module, &b.name)));
+    out
+}
+
+/// 表达式的 f32 字面量值（`0.9` 或 `-45.0`）；非字面量返回 `None`（不猜）。
+fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
+    use super::ast::{ExprKind, TypeWord, UnaryOp};
+    match &e.kind {
+        ExprKind::TypedLit {
+            ty: TypeWord::Float,
+            bits,
+        } => Some(f32::from_bits(*bits as u32)),
+        ExprKind::Unary {
+            op: UnaryOp::Neg,
+            operand,
+        } => f32_literal(operand).map(|v| -v),
+        _ => None,
+    }
 }
 
 /// 包面身份拒绝：`age-package` 只由本前门消费（对称于 979 的通用入口拒绝）。

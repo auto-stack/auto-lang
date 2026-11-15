@@ -54,6 +54,9 @@ pub struct GlobalDecl {
     pub mutable: bool,
     /// 本模块源内的名字 span。
     pub span: Span,
+    /// PLAN-981（IF-981-ORIGINAL）：初值表达式。此前只留声明类型，导致模块常量
+    /// 的**值**（g01 的资源颜色）无法被任何断言看到。
+    pub init: Option<super::super::ast::Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -954,9 +957,9 @@ fn bind_package_syntax_inner(
     for (key, unit) in &units {
         let (pkg, module) = split_key(key);
         for item in &unit.program.items {
-            let (name, ty, mutable, span) = match item {
-                Item::Const(c) => (&c.name, &c.ty, false, c.name.span),
-                Item::Store(v) => (&v.name, &v.ty, true, v.name.span),
+            let (name, ty, mutable, span, init) = match item {
+                Item::Const(c) => (&c.name, &c.ty, false, c.name.span, Some(&c.value)),
+                Item::Store(v) => (&v.name, &v.ty, true, v.name.span, Some(&v.value)),
                 _ => continue,
             };
             globals.insert(
@@ -968,6 +971,7 @@ fn bind_package_syntax_inner(
                     ty: ty.clone(),
                     mutable,
                     span,
+                    init: init.cloned(),
                 },
             );
         }
