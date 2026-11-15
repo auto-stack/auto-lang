@@ -383,6 +383,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: design-probe (T-03装配缝冻结输入) | 记录: T-03开缝探针——console前门按设计单源（ConsoleProgram=单src、AV_HOST_CONSOLE_PROFILE、restore/persist同单源身份），platform.net/1 的宿主执行只在此道；**多模块 std.net 包装需 T-03 裁定装配缝**：(a) console前门接纳 packages 产物（identity/admission 扩展）或 (b) 新宿主车道复用 execute_platform。此缝是 T-03"真实consumer、目标/装配/权限接线"的首个有界决定，非静默缩范围——std.net 多模块包装因此挂 T-03 决定后实施。已交面不变：net974 5/5绿。
+
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-02 inc4: SSE+redirect+refused) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: cf1b29c9e | evidence: net974 5/5绿（SSE/redirect 2.25s）；独立oracle 20002/30200/20000/-8 | next_responsible_role: work（std.net包装 或按裁定/T-03/T-08）
 
 stage: work | PLAN-974 | r9 | 2026-11-16 | outcome: pass (T-02 inc3 finding CLOSED) | worktree: D:/autostack/.wt/lang-974/auto-lang @ plan-974-dev | code_commit: d090a48bb | evidence: net974 4/4绿（server腿0.56s稳定复跑）；回归17/17；根因三层具名（转义损坏/非阻塞复原/paced read） | next_responsible_role: work（SSE/redirect/timeout 或按裁定）
