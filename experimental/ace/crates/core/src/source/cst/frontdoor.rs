@@ -1808,7 +1808,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
                 // profile 上优先报它，保原 span；但**不吞更早的错误**（F6：
                 // 只有 hint 不晚于共享投影的最早诊断时才取代它）。普通 profile
                 // 的既有首诊断序不变。
-                if profile == SourceProfile::AgeH0 {
+                if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
                     let hint = tree
                         .diags
                         .iter()

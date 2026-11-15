@@ -370,7 +370,14 @@ fn p979_component_vdetail02_named_refusals_keep_original_spans() {
     let cases: Vec<(&str, &str, &str, usize)> = vec![
         // (名称, 源, 期望码, 期望 span 起点在源中的锚点)
         (
-            // 语义阶段（非 parse 形状）的具名拒：非 int 模型字段。
+            // 解析形状错误也必须走领域 hint（age-component 与 age-h0 同策略）。
+            "unknown-attribute",
+            "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" { size: 1 }\n    }\n}\n",
+            "source.age.structure",
+            0,
+        ),
+        (
+            // 语义阶段的具名拒：非 int 模型字段。
             "non-int-field",
             "node C {\n    model {\n        flag bool = false\n    }\n    view {\n        text \"x\" {}\n    }\n}\n",
             "source.age.component-unsupported",
