@@ -754,7 +754,16 @@ fn resolve_refs(
                 }
             }
         }
-        out.insert(p.module.clone(), resolved);
+        // 按模块**累加**，不是覆盖。
+        //
+        // 此前是 `out.insert(p.module.clone(), resolved)`：同一模块里的第二个 node
+        // 会用**它自己的**空 refs 顶掉第一个 node 的结果。实测：一个模块里
+        // `Widget` + `Counter`（后者 `view` 里有 `Widget w1 {}`）时 refs 正常；
+        // 再加**任何**第三个 node（哪怕它毫无引用），整个模块的 refs 都变空——
+        // 因为最后那个 node 的 `resolved` 是空的。
+        out.entry(p.module.clone())
+            .or_default()
+            .extend(resolved);
     }
     Ok(out)
 }
@@ -889,6 +898,16 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "age_package::AgePackageComponent.refs",
         requirement: "AGE-L03",
     },
+    // PLAN-981（IF-981-ORIGINAL）：`view-2d`/`view-3d` 的**场景出口**——叶是
+    // `shape2d` 或冻结 3D 元素，携带作者属性（坐标/尺寸/材质/可见性）。它此前
+    // 被投影、被断言，却**不在本表里**，于是"清单覆盖"看不见它。
+    AgeConstruct {
+        key: "view.scene",
+        spelling: "<element> <name> { <attr>: <value> }",
+        fact: "a scene instance row with its authored attributes (declaration order)",
+        consumer: "age_package::AgeSceneRow",
+        requirement: "AGE-L03",
+    },
 ];
 
 /// 构造清单覆盖检查：清单里每一行的 `fact` 必须在**实际产物**里出现。
@@ -952,6 +971,10 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
         }
         if !c.refs.is_empty() && !out.contains(&"view.node-ref") {
             out.push("view.node-ref");
+        }
+        // 场景出口的事实：只要有行，就必须能在产物里看见（不只是"解析过"）。
+        if !c.scene.is_empty() && !out.contains(&"view.scene") {
+            out.push("view.scene");
         }
     }
     out

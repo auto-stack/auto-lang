@@ -14,6 +14,10 @@ use ace_core::source::age_package::{
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 /// 覆盖清单里**每一行**构造的真实作者源。
+///
+/// 两个常驻限制决定了它必须拆成两个组件：
+/// - 一个 node 恰一个 view 出口（M1），所以场景出口不能塞进已有 `view` 的 `Counter`；
+/// - `Widget` 是无 model 的纯文本组件，用来覆盖 `view.node-ref` 的引用方。
 const FULL: &str = "node Widget {\n\
     view { text \"w\" {} }\n\
 }\n\
@@ -24,6 +28,15 @@ node Counter {\n\
     view {\n\
         text \"counter\" {}\n\
         Widget w1 {}\n\
+    }\n\
+}\n\
+node Scene {\n\
+    view-2d {\n\
+        shape2d badge {\n\
+            kind: circle\n\
+            position: (1.0, 2.0)\n\
+            visible: false\n\
+        }\n\
     }\n\
 }\n";
 
