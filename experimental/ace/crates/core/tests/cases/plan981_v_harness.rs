@@ -6,9 +6,8 @@
 //! 在 [`V_PENDING_INPUTS`] 里具名登记——V 批就绪时按该清单替换源即可，不重写判据。
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::{
-    collect_facts,
-    age_construct_coverage, compile_age_package, select_exit, AgeViewExit, AgeViewRequest,
-    AGE_CONSTRUCTS,
+    age_construct_coverage, collect_facts, compile_age_package, select_exit, AgeViewExit,
+    AgeViewRequest, AGE_CONSTRUCTS,
 };
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
@@ -16,7 +15,7 @@ use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 const V_PENDING_INPUTS: [&str; 2] = [
     // 2026-11-17：980/A 正式源已交（IF-980-NODE-DESKTOP-A），本项从清单移除；
     // 真实源已进 `plan981_ma_sources.rs` / AV 腿 / A2R 腿。
-    "V-B-SESSION: 980 正式 typed UI/资源接口 + 多 Run/Stop 资源净归零宿主面（R64-10 异步面）",
+    "V-B-SESSION[B]: 两组件事件 2:1 + 多 Run/Stop 资源净归零异步面（A 子面已交：单组件双实例隔离/重启，见 auto-ui s2；本项是 B 波）",
     "V-L-*: 与 980 合流的正式 oracle 期望文件（当前用独立算术 oracle，不是 980 expected）",
 ];
 
@@ -54,7 +53,10 @@ fn v_l_view_exits_and_selection_are_frozen() {
     );
     let c = &multi.components[0];
     assert_eq!(c.exits, vec![AgeViewExit::View, AgeViewExit::ViewPortrait]);
-    assert_eq!(select_exit(&c.exits, ui).unwrap(), AgeViewExit::ViewPortrait);
+    assert_eq!(
+        select_exit(&c.exits, ui).unwrap(),
+        AgeViewExit::ViewPortrait
+    );
     // 方形不选 portrait。
     let square = AgeViewRequest::Ui {
         width: 600,
@@ -62,7 +64,9 @@ fn v_l_view_exits_and_selection_are_frozen() {
         widget_host: false,
     };
     assert_eq!(
-        select_exit(&[AgeViewExit::ViewPortrait], square).unwrap_err().code,
+        select_exit(&[AgeViewExit::ViewPortrait], square)
+            .unwrap_err()
+            .code,
         "source.age.exit-unavailable"
     );
     // 2D/3D 无跨域。
@@ -86,13 +90,16 @@ fn v_l_condition_ownership_is_frozen() {
     )
     .is_err());
     let ct = "node M {\n    #if true {\n        view {\n            text \"t\" {}\n        }\n    }\n}\n";
-    assert!(compile_age_package(
-        &[input(ct)],
-        "app::main",
-        LegacyWidgetAlias::Reject,
-        &[PACKAGES_CAPABILITY.to_string()],
-    )
-    .is_err(), "`#if` belongs to 966, not to the AGE package surface");
+    assert!(
+        compile_age_package(
+            &[input(ct)],
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &[PACKAGES_CAPABILITY.to_string()],
+        )
+        .is_err(),
+        "`#if` belongs to 966, not to the AGE package surface"
+    );
 }
 
 /// V-L-TIME：生命周期计数 Start=1 / Tick=N / Frame=M，不随出口倍增。
@@ -110,7 +117,10 @@ fn v_l_lifecycle_counts_do_not_scale_with_exits() {
         5,
         "exits do not multiply ticks"
     );
-    assert_eq!(lifecycle_budget(5, 3, 0).unwrap_err().code, "source.age.lifecycle");
+    assert_eq!(
+        lifecycle_budget(5, 3, 0).unwrap_err().code,
+        "source.age.lifecycle"
+    );
 }
 
 /// V-L-WIRE：消息/handler 与成员槽位在描述面可读（typed 事件回 AV 的静态半边）。
@@ -120,7 +130,11 @@ fn v_l_wire_surface_is_readable() {
         "node M {\n    model { count int = 0 }\n    on Inc { count = count + 1 }\n    msg { Set(int) }\n    design {\n        theme: \"dark\"\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
     );
     let c = &d.components[0];
-    assert!(c.handler_msgs.iter().any(|m| m == "Inc"), "{:?}", c.handler_msgs);
+    assert!(
+        c.handler_msgs.iter().any(|m| m == "Inc"),
+        "{:?}",
+        c.handler_msgs
+    );
     assert!(!c.messages.is_empty(), "msg variants are described");
     assert!(!c.design.is_empty(), "design entries are described");
 }

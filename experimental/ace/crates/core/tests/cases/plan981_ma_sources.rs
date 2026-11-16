@@ -17,6 +17,9 @@ use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 const HELLO: &str = include_str!("../fixtures_ma/ace_hello_minimal.at");
 const COUNTER: &str = include_str!("../fixtures_ma/ace_node_counter.at");
+/// R67-5：fixture 与 auto-ui canonical 源逐字节同源（818 B；SHA256 前 16 `6016eb863f94499e`）。
+/// auto-ui 侧测试直接 `include_str!` 读 examples 源，避免字面量漂移；这里用长度钉住。
+const COUNTER_LEN: usize = 818;
 
 fn compile(src: &str) -> ace_core::source::age_package::AgePackageDescription {
     compile_age_package(
@@ -42,23 +45,44 @@ fn p981_ma_hello_source_compiles() {
     assert_eq!(d.components.len(), 1);
     let c = &d.components[0];
     assert_eq!(c.name, "Hello");
-    assert_eq!(c.exits, vec![ace_core::source::age_package::AgeViewExit::View]);
+    assert_eq!(
+        c.exits,
+        vec![ace_core::source::age_package::AgeViewExit::View]
+    );
     assert_eq!(c.texts.len(), 1);
-    assert_eq!(c.texts[0].fn_name.is_empty(), false, "the text leaf has its hidden fn");
+    assert_eq!(
+        c.texts[0].fn_name.is_empty(),
+        false,
+        "the text leaf has its hidden fn"
+    );
 }
 
 /// 980/A 的 Counter 源：消息、模型字段、三条 handler、view 事件绑定全部可读。
 #[test]
 fn p981_ma_counter_source_compiles_with_its_facts() {
+    assert_eq!(
+        COUNTER.len(),
+        COUNTER_LEN,
+        "fixture must stay byte-stable with the canonical A source"
+    );
     let d = compile(COUNTER);
     let c = &d.components[0];
     assert_eq!(c.name, "Counter");
     assert_eq!(
-        c.messages.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+        c.messages
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["Inc", "Dec", "Reset"]
     );
-    assert!(c.messages.iter().all(|m| m.payload.is_empty()), "unit messages");
-    assert_eq!(c.message_set_name, None, "the delivered source uses the anonymous form");
+    assert!(
+        c.messages.iter().all(|m| m.payload.is_empty()),
+        "unit messages"
+    );
+    assert_eq!(
+        c.message_set_name, None,
+        "the delivered source uses the anonymous form"
+    );
     assert_eq!(c.fields, vec![("count".to_string(), "int".to_string())]);
     assert_eq!(
         c.handler_msgs,
@@ -92,7 +116,10 @@ fn p981_ma_unknown_event_binding_is_rejected() {
         LegacyWidgetAlias::Reject,
         &[PACKAGES_CAPABILITY.to_string()],
     );
-    assert!(r.is_err(), "an unknown `.Boom` binding must not compile silently");
+    assert!(
+        r.is_err(),
+        "an unknown `.Boom` binding must not compile silently"
+    );
 }
 
 /// B-LANGUAGE-V（V-L-VIEW / V-L-WIRE / V-L-COVER）：真实 A 源在 SOURCE/LANGUAGE
@@ -105,7 +132,11 @@ fn p981_ma_sources_satisfy_the_language_v_checks() {
 
     // V-L-VIEW：真实源只有默认 view 出口；任意 UI 请求都选它，场景请求无跨域。
     assert_eq!(c.exits, vec![AgeViewExit::View]);
-    let ui = AgeViewRequest::Ui { width: 400, height: 900, widget_host: false };
+    let ui = AgeViewRequest::Ui {
+        width: 400,
+        height: 900,
+        widget_host: false,
+    };
     assert_eq!(select_exit(&c.exits, ui).unwrap(), AgeViewExit::View);
     assert!(select_exit(&c.exits, AgeViewRequest::Scene2d).is_err());
 
@@ -128,12 +159,18 @@ fn p981_ma_sources_satisfy_the_language_v_checks() {
     // V-L-COVER：真实源覆盖 node/model/on/view 四类事实。
     let facts = collect_facts(&d);
     for key in ["node", "model", "on", "view"] {
-        assert!(facts.contains(&key), "real A source must cover `{key}`: {facts:?}");
+        assert!(
+            facts.contains(&key),
+            "real A source must cover `{key}`: {facts:?}"
+        );
     }
 
     // 原名保真：消息变体的原 span 指回真实源文本。
     for v in &c.messages {
         let text = &COUNTER[v.span.start..v.span.end];
-        assert!(text.starts_with(&v.name), "variant span must start at its name: {text:?}");
+        assert!(
+            text.starts_with(&v.name),
+            "variant span must start at its name: {text:?}"
+        );
     }
 }
