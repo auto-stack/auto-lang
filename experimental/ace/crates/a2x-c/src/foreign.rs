@@ -122,6 +122,10 @@ pub fn resource_prototype(declaration: &SourceDecl) -> String {
                 push(&mut out, "const uint8_t *");
                 push(&mut out, "uint64_t");
             }
+            ResKind::OutBytes => {
+                push(&mut out, "uint8_t *");
+                push(&mut out, "uint64_t");
+            }
             ResKind::Rec { rec, role, .. } => match role {
                 ViewRole::Const => push(&mut out, &format!("const {rec} *")),
                 ViewRole::Mut | ViewRole::Out => push(&mut out, &format!("{rec} *")),

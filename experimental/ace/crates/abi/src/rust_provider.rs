@@ -1220,12 +1220,30 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
             Some(auto_bindgen::rust_import::RustParam::ViewUtf8)
                 | Some(auto_bindgen::rust_import::RustParam::FrameCall)
         );
+        let has_out_bytes = f
+            .params
+            .iter()
+            .any(|p| matches!(p, auto_bindgen::rust_import::RustParam::OutBytes));
+        let only_out_bytes = f.params.len() == 1 && has_out_bytes;
         let scalars = f
             .params
             .iter()
             .filter(|p| matches!(p, auto_bindgen::rust_import::RustParam::I32))
             .count();
         let callable = match f.form {
+            auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && has_out_bytes && scalars == 0 => unsafe {
+                ace_av_core::foreign_exec::ForeignCallable::ViewOutBytesToI32(
+                    std::mem::transmute::<
+                        _,
+                        unsafe extern "C" fn(*const u8, u64, *mut u8, u64) -> i32,
+                    >(sym),
+                )
+            },
+            auto_bindgen::rust_import::RustFnForm::PureI32 if only_out_bytes => unsafe {
+                ace_av_core::foreign_exec::ForeignCallable::OutBytesToI32(
+                    std::mem::transmute::<_, unsafe extern "C" fn(*mut u8, u64) -> i32>(sym),
+                )
+            },
             auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 2 => unsafe {
                 ace_av_core::foreign_exec::ForeignCallable::ViewI32I32ToI32(std::mem::transmute::<
                     _,

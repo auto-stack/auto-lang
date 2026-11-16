@@ -3211,29 +3211,62 @@ fn dispatch_with_host<V: ModuleView>(
                         });
                     }
                     let frame = st.frames.last().expect("frame");
-                    let input = &frame.slots[args[0] as usize];
-                    let view = match foreign_view(input) {
-                        Ok(view) => view,
-                        Err(out) => return Some(out),
-                    };
-                    // PLAN-967 T-11: the lanes AFTER the view are i32
-                    // scalars (bool lanes narrow to their 0/1 i32 spine —
-                    // the manifest keeps the resource sig authoritative).
-                    let mut scalars = [0i32; 3];
-                    for (slot, out) in args[1..].iter().zip(scalars.iter_mut()) {
-                        match &frame.slots[*slot as usize] {
-                            Value::I32(n) => *out = *n,
-                            Value::Bool(b) => *out = *b as i32,
-                            other => {
-                                return Some(ExecOutcome::Infra(format!(
-                                    "foreign.lane: scalar lane holds {}",
-                                    other.type_name()
-                                )))
+                    let dispatched = match table.callable_of(declaration) {
+                        Some(crate::foreign_exec::ForeignCallable::ViewOutBytesToI32(_)) => {
+                            if args.len() != 2 {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.arity: out-bytes view call requires (path, buf_id)".into(),
+                                ));
                             }
+                            let view = match foreign_view(&frame.slots[args[0] as usize]) {
+                                Ok(v) => v,
+                                Err(out) => return Some(out),
+                            };
+                            let Value::I32(buf_id) = frame.slots[args[1] as usize] else {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.lane: out-buffer handle must be I32".into(),
+                                ));
+                            };
+                            table.dispatch_view_out_bytes(declaration, view.bytes(), buf_id, cancel)
                         }
-                    }
-                    let dispatched =
-                        table.dispatch_view_scalars(declaration, view.bytes(), &scalars);
+                        Some(crate::foreign_exec::ForeignCallable::OutBytesToI32(_)) => {
+                            if args.len() != 1 {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.arity: out-bytes call requires (buf_id)".into(),
+                                ));
+                            }
+                            let Value::I32(buf_id) = frame.slots[args[0] as usize] else {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.lane: out-buffer handle must be I32".into(),
+                                ));
+                            };
+                            table.dispatch_view_out_bytes(declaration, &[], buf_id, cancel)
+                        }
+                        _ => {
+                            let input = &frame.slots[args[0] as usize];
+                            let view = match foreign_view(input) {
+                                Ok(view) => view,
+                                Err(out) => return Some(out),
+                            };
+                            // PLAN-967 T-11: the lanes AFTER the view are i32
+                            // scalars (bool lanes narrow to their 0/1 i32 spine —
+                            // the manifest keeps the resource sig authoritative).
+                            let mut scalars = [0i32; 3];
+                            for (slot, out) in args[1..].iter().zip(scalars.iter_mut()) {
+                                match &frame.slots[*slot as usize] {
+                                    Value::I32(n) => *out = *n,
+                                    Value::Bool(b) => *out = *b as i32,
+                                    other => {
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "foreign.lane: scalar lane holds {}",
+                                            other.type_name()
+                                        )))
+                                    }
+                                }
+                            }
+                            table.dispatch_view_scalars(declaration, view.bytes(), &scalars)
+                        }
+                    };
                     match dispatched {
                         Ok(crate::foreign_exec::ForeignDispatch::PureI32(n)) => {
                             if let Err(out) =

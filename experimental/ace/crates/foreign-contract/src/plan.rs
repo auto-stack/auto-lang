@@ -246,6 +246,10 @@ fn project_resource(res: &crate::resource::ResourceSig) -> Result<PhysForm, Stri
                 all.push((format!("p{i}_ptr"), PhysLane::I64, SlotBank::Gp));
                 all.push((format!("p{i}_len"), PhysLane::U64, SlotBank::Gp));
             }
+            ResKind::OutBytes => {
+                all.push((format!("p{i}_dst"), PhysLane::I64, SlotBank::Gp));
+                all.push((format!("p{i}_cap"), PhysLane::U64, SlotBank::Gp));
+            }
             ResKind::BufViewI64 => {
                 // PLAN-939 S07: the element-count lane is spelled _n (NOT
                 // _len) so a byte-count projection of the same view can

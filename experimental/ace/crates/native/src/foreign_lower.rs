@@ -163,7 +163,7 @@ pub fn resource_signature(
             ResKind::I32 if after_cb => signature.params.push(AbiParam::new(types::I64)),
             ResKind::I32 => signature.params.push(AbiParam::new(types::I32)),
             ResKind::Bool => signature.params.push(AbiParam::new(types::I8)),
-            ResKind::ViewText => {
+            ResKind::ViewText | ResKind::OutBytes => {
                 signature.params.push(AbiParam::new(types::I64));
                 signature.params.push(AbiParam::new(types::I64));
             }

@@ -752,6 +752,12 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     arguments.push(format!("(const uint8_t *)({value}).data"));
                     arguments.push(format!("(uint64_t)({value}).len"));
                 }
+                ResKind::OutBytes => {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-binding",
+                        "checked out-bytes borrow belongs to the AV host frame",
+                    ));
+                }
                 ResKind::Rec { rec, role, .. } => {
                     let Ty::Record(ri) = vty else {
                         return Err(A2xReject::new(

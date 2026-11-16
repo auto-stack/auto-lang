@@ -1969,7 +1969,7 @@ fn check_foreign_declarations(
                     sig.params.len() == res.params.len()
                         && result_ok
                         && sig.params.iter().zip(&res.params).all(|(p, k)| match k {
-                            ResKind::I32 | ResKind::Handle { .. } => {
+                            ResKind::I32 | ResKind::Handle { .. } | ResKind::OutBytes => {
                                 lane(p) == Some(ace_foreign_contract::LaneKind::I32)
                             }
                             ResKind::Bool => lane(p) == Some(ace_foreign_contract::LaneKind::Bool),
