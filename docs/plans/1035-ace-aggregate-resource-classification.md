@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1035
-status: execution_done
+status: executing
 feature_name: ACE聚合资源分类、字段投影与真实故障回归
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 5
-current_step: 3
+current_step: 1
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/composite-source-projection.md, docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resource-fault-and-generation-conformance.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/ace-migration/m2-aggregates.md, docs/specs/auto-mir/owned-access-profile.md, docs/specs/auto-a2x/python-stdlib-readiness.md]
@@ -282,7 +282,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 ## 7. 验收标准
 
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，落实§5 r4 DEC-RES的S/D/R、MutBorrow分层、故障分类与提交/abort观察，§6反例及邻例可在实际入口运行，不私改expected。
-- [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
+- [ ] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
 - [ ] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
@@ -293,8 +293,8 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 | task / owner_stage | 依赖 / 状态 | 操作、交付与验证 / AC |
 |---|---|---|
 | T-01 / work | [x] 1024交接、未来实施授权及当前源 | 按§5 r4 DEC-RES重核源漂移；建立Bag/纯值/Variant/tuple/Box等真实前门、Named近邻、测试私有aggregate故障接线及活帧提交观察；记录目标admit/emit/run边界。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：base=b043117b8 重核 §4 全部源/Spec 字节身份（漂移见 §9），四个真实前门（aggregates source→lower→verify_mir→ABC→AV）跑通反例红：RES-01 `audit1035_res_01_list_only_record_ownership` 红、RES-02 命名投影在 `resolve.rs` `unreachable!` panic、core HIR 负控双红；RES-03 两 fault 例在旧代码即绿（证明 F30 是证据缺口而非缺陷，未把静态风险冒失败）。 |
-| T-02 / work | [x] T-01反例设置与r4既定决定 | 按最小owner/drop边界修F34与融合前置参数门；原v03正常义务保留，新增真实聚合fault永久例，不重推后端ownership。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：commit=34c8fc04a（11 文件）。F34 资源叶闭包统一到 source resolve / core verify（两处同义元素判据合一）/ lowering HIR walk / av-core ownership+layout；F33 两处融合点接受 Named 且移除用户可触发 `unreachable!`；F30 增 `resource_915::aggregates_fault_sweep` + `aggregates_commit_fault_probe`（测试私有 aggregates 前门，不改 `SourceFrontend`/recipe/旧 915 负载）。11 个永久例在修复后全绿，回退分类修复后 6 红重现（见 §9 红/绿表）。 |
-| T-03 / work | [x] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：冻结并集门 `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi` 全跑（结果见 §9）：ace-lowering/ace-native/ace-a2x PASS；ace-source 2 红、ace-av 1 红、ace-a2c-abi 1 红均为 base b043117b8 已存在（回退本包修改逐项复现），ace-av 另 1 红 `sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动归因；本包 10 个永久锚点在该组结果中被发现并执行。 |
+| T-02 / work | [ ] T-01反例设置与r4既定决定 | 按最小owner/drop边界修F34与融合前置参数门；原v03正常义务保留，新增真实聚合fault永久例，不重推后端ownership。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：commit=34c8fc04a（11 文件）。F34 资源叶闭包统一到 source resolve / core verify（两处同义元素判据合一）/ lowering HIR walk / av-core ownership+layout；F33 两处融合点接受 Named 且移除用户可触发 `unreachable!`；F30 增 `resource_915::aggregates_fault_sweep` + `aggregates_commit_fault_probe`（测试私有 aggregates 前门，不改 `SourceFrontend`/recipe/旧 915 负载）。11 个永久例在修复后全绿，回退分类修复后 6 红重现（见 §9 红/绿表）。 |
+| T-03 / work | [ ] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：冻结并集门 `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi` 全跑（结果见 §9）：ace-lowering/ace-native/ace-a2x PASS；ace-source 2 红、ace-av 1 红、ace-a2c-abi 1 红均为 base b043117b8 已存在（回退本包修改逐项复现），ace-av 另 1 红 `sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动归因；本包 10 个永久锚点在该组结果中被发现并执行。 |
 | T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
@@ -460,8 +460,43 @@ ace-av 组结果 JSON 中本包 10 个 `audit1035_*` 锚点均被发现并执行
 | cargo t ace-a2c-abi | 9 | 0.02s（meter wall 0.75s） | 1 红=base 已存在 certification pin |
 
 准备/发现/执行：组门由 cargo t 一次性完成 discovery+run（日志中 per-group Summary 可复核）；冷编译首轮 32.8s（debug），后续增量 2-10s。复用证据：T-03 冻结提交 f86894ce3 的并集结果即为 merge 前的同身份证据，未重复跑全目录。
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
+
+### 2026-11-16 stage: review（final scope；同会话非独立上下文，结论由冻结提交重建）
+
+stage: review | review_scope: final | reviewer_identity: 本会话（与实现同一上下文；independence_limit: 非独立 reviewer 上下文，故不采信 work 摘要，全部结论由 reviewed_commit 的实际代码、diff、独立探针与组门原始结果重建） | plan_id: PLAN-1035 | plan_revision: 5 | outcome: **needs_fix** | worktree_path: D:/autostack/.wt/lang-1035/auto-lang | branch: plan-1035-dev | reviewed_commit: f86894ce3（工作树 clean，diff base b043117b8） | dependency_revisions: 无（仅语言仓 ACE workspace） | next: work（受影响 T-02/T-03）
+
+**基线**：Plan r5；实现分支 3 个提交 34c8fc04a/7d06f14e9/f86894ce3；`git status` clean；实现期未写 `docs/specs`、`.autoos`、`docs/plans`（`git diff b043117b8..HEAD -- docs/specs .autoos docs/plans` 为空），未发布 canonical Spec、未动 ledger。SD target 7 份全部存在；当前字节身份与 r4 快照比对：`auto-a2x/checked-resource-facts.md`=23e28db325f25a6de07ac456b30fb192901959e74116b7bab3be5b5cc0d15757（r4 记载 38da0f0d…）、`auto-a2x/python-stdlib-readiness.md`=695a26c3ade487ba97c6244582094a5f2a5cb5f95d7e678ba6f67748e704e591（r4 930ab8b2…）为他人合入造成的身份漂移；逐条读现文，SD-04/SD-07 规则未变，无冲突。其余 5 份与 §4 r4 值一致。
+
+**独立探针（review 临时用例，跑完即删，工作树恢复 clean；未提交）**
+
+| 探针 | 输入/入口 | 结果 |
+|---|---|---|
+| 派生分类三事实 | aggregates 源码→`lower_checked_closures`，取 `t_rec_Bag` | `type_is_owned=true`、`compute_layout().is_copy=false`、`compute_body_facts().owned={0,1,2}`（Bag 局部在 owned 集中） |
+| Variant-only 资源 record | `type W { t Tag; code int }` | 隐式 `xs.push(w)` → `source.move-required`；`push(w.move)` 运行 value=7、live=0 |
+| List 字段经元素视图读 | `xs.get(0).items.get(0)`（xs: List<Bag>） | 被 MIR 拒绝 `mir.field-type`: "list-field-get of owned field type 3 (fields ride records; use LIST_REMOVE first)" — 962 既有边界，非本包回归 |
+| Object / 闭包域 | `List<Object>`、`type W { f fn(int) int }` | 源不可表达：`no type named Object`；`function values are not admitted in record fields or container payloads` → 分类里的 Object/Closure 分支是防御性死路，非缺口 |
+
+**验收结果映射**：AC-01 pass（源/支持域/前置与 DEC-RES 边界落实，反例红可复现）；AC-02 **partial**（见 R-1035-R1-01..04：§6 RES-01 三事实与 native/clone 腿、RES-02 单次求值 oracle 缺永久断言）；AC-03 pass（消费者与恢复责任保持：ace-lowering/ace-native/ace-a2x 组绿，ace-av 除 4 项 base 既存红外全绿）；AC-04 本记录（结论 needs_fix）；AC-05/06 pending merge。
+
+| finding / severity | 违反的既有规则与证据 | 修复与关闭 oracle（最小范围） |
+|---|---|---|
+| R-1035-R1-01 / P2 / RES-01、T-02 | §6 r4 矩阵 RES-01 行明确要求 "Bag(List-only)=S true、MIR owned true、layout.is_copy false、HIR facts Deep"，但永久用例只断言 source/HIR 门与动态账；三事实当前正确（review 探针实测 true/false/{0,1,2}），无永久断言 → 任一层回退不会被现有套件抓到 | 新增 `audit1035_res_01_derived_facts`（建议落 lowering 或 av-core 测试）：断言 MIR `type_is_owned`=true、`LayoutDesc.is_copy`=false、`CollectionsPlan` 的 owned 含该局部（record 名按 `t_rec_Bag` 后缀匹配），并配纯标量 record 对照（false/true/不在 owned）。 |
+| R-1035-R1-02 / P2 / RES-01、T-03 | 同一矩阵 "native/A2X 各行精确区分 admit/emit/run" 只在 AV 执行腿有证据；List-only record 无 native admit/emit 永久例（native 组现有聚合 lane 只覆盖嵌套 List/Box/grid） | 在 `ace-native` 聚合 codegen tier 增 admit+COFF emit 用例（不声称机器运行；D-962 arena 运行债保持具名），并记录 A2X 两目标对同形的既有 admit/拒绝结论。 |
+| R-1035-R1-03 / P2 / RES-01、T-02 | 矩阵 "clone 只走上表已准入 typed 执行入口"：F34 后 List-only record 在 MIR 由 "copyable→CLONE 拒绝" 变为 owned（CLONE 可准入），`clone_owned_value` 会重建 List buffer；无永久 typed 深克隆例证明克隆独立且双方各释放一次 | 增 typed MIR CLONE 例（沿 `av_collections_semantics` 现有 builder 形）：克隆后改一份元素不影响另一份；两 owner 各 free 一次、live=0。源码 List.clone 继续拒不动。 |
+| R-1035-R1-04 / P2 / RES-02、T-02 | §6 RES-02 要求 "index 副作用只执行一次、求值顺序"，现例只断言 Pos/Named 等值；Named 分支的 idx 表达式若被重复求值不会被发现 | 增结构性永久断言：同一程序的 `xs.get(index:0).code` 与 `xs.get(0).code` 产出的 HIR 形状一致（标签不进入 HIR，fused 节点只带一个 index 子表达式）+ 一条真索引函数调用的值/顺序例；在 Plan 记录该平台无可观察 index 副作用，结构性单次引用即其可行 oracle。 |
+| R-1035-R1-05 / P3 / T-01 记录 | work §9 的源漂移表只列源码/组配置，未重记 7 份 SD target 的当前身份；其中 2 份已漂移（他人合入），诊断影响虽为零但记录不全 | 在 §9 补 7 份 Spec 当前 SHA256（含上述两份），并确认 SD-01..07 的 after 文本仍与现规范一致；若措辞需补（如 SD-05 明确 "资源 record 隐式转移仍拒、`Box(tail)` 需 `.move`"）则并入同一 delta 修订。 |
+
+**非阻塞记录（非缺陷，供 merge/后续闭包）**：① RES-03 的 "List epoch 独立核" review 接受 work 的反证边界——故障注入即整帧 abort，运行期 buffer epoch 无外部观测面；可观察等价物（无 `replaced` disown、旧目的 buffer 身份存活至 abort 且只释放一次、账平、N+1 提交）已有永久断言，List precheck-before-touch 仍由 915 R03 成功路径套件覆盖。② `resolve.rs` 5 行无关 rustfmt 归一化属健康清理，非功能改动。③ 分组门 4 红（plan981×2、stdlib_list_946_grammar_face、a2c certification pin）已在 base b043117b8 复现，`sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动；均非本包回归，不充 PASS。④ Box 合法例补 `.move` 是 F34 的应有后果（资源 record 隐式转移本就被拒），支持域未收缩，需在 SD-05 文本中明示。
+
+**测试与时长（review 复用 + 新增探针；不重复 work 的组门）**：复用 work 在 reviewed_commit f86894ce3 的 `cargo t` 结果（run-1zd2ia6g：ace-source 804/806、ace-av 1312/1314、ace-native/ace-a2x PASS、ace-a2c-abi 8/9）；review 新增探针 3 例（derived-facts/variant/chain）单进程合计 <0.1s，另有 2 次 `ace-core check-source` 源级探针；探针文件已删除、`conformance.rs` 已还原、工作树 clean。本会话未新增交付用例；无 >10s 用例。
+
+**实现写权**：review 期间未改实现；上述 R1-01..05 全部回 work 于同一树修复，修后仅需重跑受影响用例（探针等价物转永久例 + 相关组）与受影响 AC 的重审，不要求整目录重跑。
+
+
 
 ## 10. 待澄清事项
 
 DEC-RES经r4复审修订后无关键设计未决：S/D/R、MutBorrow在HIR与各MIR/目标表示中的临时拥有/写回、fault Infra/预算Resource及List代际/slot gen分域已定。F34动态严重度/真实N及失败提交观察仍待实施，不据静态差额声称双free；不扩962未交付的聚合mut/closure/clone或运行期失效句柄保证。原具名能力债仍归原owner，本包资源闭包与Named受控准入不能延期。**2026-11-16 work 更新**：T-01..T-03 已实施（详见 §9 实施记录），F34 的真实动态后果已观察（List-only record 的帧账/move 纪律/四层分类一致），未观察到双 free 或错机器结果；F30 仍无缺陷证据（旧代码同绿），只补永久真实故障例。drafting→executing→execution_done 3/6。
+
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: work
