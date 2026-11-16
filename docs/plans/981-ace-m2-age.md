@@ -924,6 +924,22 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: work（B-SESSION-V 双实例 2:1 + B-RUST-V 真实 A 源 A2R + overlay 字节保真）| PLAN-981 | outcome: partial
+
+**B-SESSION-V（real A 源）**：auto-ui `332ef407`→master `0a87676b`——用交付的 980/A Counter 源开
+两实例，2:1 定向事件（实例 0 两次 Inc；实例 1 一次 Inc 一次 Dec）→ 状态 `[2, 0]`；随后实例 1 的
+Inc/Inc/Reset 不影响实例 0；Stop→Restart 后回到 `[0, 0]` 且 PID 不变。`s2_age_routing` **15/15**。
+**B-RUST-V（real A 源）**：auto-lang `eb487f3cf`→master `399edd447`——同一交付 Counter 源（core 测试
+fixture，与 `plan981_ma_sources.rs` 共享）经公共 A2R 链（SemanticView → lower → fileset → 真实 rustc →
+运行）2×Inc+1×Dec 输出 **1**，对独立算术 oracle；`ace-a2x-worker` p981 **5/5**。
+**两层 SDK 可复现性（R65-7/R66-3 收尾）**：overlay 路径改为 `git ls-files` 的三个根（1391 文件，
+含 1064 新增 stdlib）；字节改由 `git archive <commit>` 抽取（避免工作树 CRLF 污染，保留故意 CRLF
+fixture 的原字节）；auto-ui `736381e0`→master `4e7a2fb0`；`prepare_sdk --verify-only` PASS，
+逐 blob 保真核验 **1391/1391 PASS**（`auto-lang 399edd447`）。
+**门禁实测**：plan981 206/206、plan980 13/13、ace-a2x-worker p981 5/5、AV 3/3、grammar 45/45；
+driver lib 47/47、`s2_age_routing` 15/15、bridge S1 4 + S3 3 + S4 10。
+**未闭**：B-SESSION-V / B-RUST-V 的**独立复审**（下一轮交 reviewer）；B 侧载荷/参数执行、AV 消费
+（`D-981-EVENT-A-REMAINDER`）。
 2026-11-17 stage: review（event A 批：review-65 needs_fix → review-66 pass → R66 修补）| PLAN-981 | outcome: pass（批级）
 
 - **review-65 = needs_fix（11 项）**：R65-1..11 全部修复（`a5214be59`→master `49409c6fb`；auto-ui
