@@ -49,3 +49,5 @@ mod scalar_bridge;
 mod source_foreign;
 #[path = "cases/wide_bridge.rs"]
 mod wide_bridge;
+#[path = "cases/plan980_f0_cache.rs"]
+mod plan980_f0_cache;

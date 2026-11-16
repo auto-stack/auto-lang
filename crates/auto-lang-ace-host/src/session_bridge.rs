@@ -651,6 +651,18 @@ impl HostSession {
                     }),
                 ),
             },
+            // PLAN-980 HELLO 修复：Exit（进程退出内建）→ session 具名诊断。
+            ExecOutcome::Exit { code } => (
+                AceSessionValue::None,
+                Some(AceSessionOutcome::Diagnostic {
+                    code: "session.eval/exit".into(),
+                    diagnostics: vec![AceSessionDiag {
+                        stage: "run".into(),
+                        code: "session.eval/exit".into(),
+                        message: format!("the entry requested exit with code {code}"),
+                    }],
+                }),
+            ),
             ExecOutcome::Cancelled => (AceSessionValue::None, Some(AceSessionOutcome::Cancelled)),
             ExecOutcome::Resource { kind, message } => (
                 AceSessionValue::None,

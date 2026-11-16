@@ -95,56 +95,72 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
     )
     .map_err(|e| e.to_string())?;
 
-    let (code, _out, err) = run_rustc(&["--version"], &crate_dir)?;
+    let (code, out_text, err) = run_rustc(&["--version"], &crate_dir)?;
     if code != 0 {
         return Err(format!("rustc --version failed: {err}"));
     }
-    let rustc_identity = _out.trim().to_string();
-    let (code, _out, err) = run_rustc(
-        &[
-            "--edition",
-            "2021",
-            "--crate-type",
-            "cdylib",
-            "--crate-name",
-            "f0_text_provider",
-            "--cap-lints",
-            "allow",
-            "src/lib.rs",
-            "--out-dir",
-            out.to_str().ok_or("non-utf8 out dir")?,
-        ],
-        &crate_dir,
-    )?;
-    if code != 0 {
-        return Err(format!("rustc cdylib build failed: {err}"));
+    let rustc_identity = out_text.trim().to_string();
+    // PLAN-980 HELLO：新鲜度缓存——同 (provider digest, shim digest, rustc
+    // identity) 且 cdylib/staticlib 在位时跳过两次 rustc 编译（显式预构建
+    // 阶段的测试纪律：测试及其子进程不编译前置）。缓存只认输入身份，不认
+    // 时间戳；编辑源（identity/rebind 腿）digest 变化即自然重建。
+    let shim_digest = auto_bindgen::rust_import::shim_digest(&shim_source);
+    let stamp = format!("{provider_digest}\n{shim_digest}\n{rustc_identity}\n");
+    let stamp_path = out.join("f0-build-stamp.txt");
+    let cached = stamp_path.is_file()
+        && std::fs::read_to_string(&stamp_path)
+            .map(|s| s == stamp)
+            .unwrap_or(false)
+        && out.join("f0_text_provider.dll").is_file()
+        && out.join("f0_text_provider.lib").is_file();
+    if !cached {
+        let (code, _out, err) = run_rustc(
+            &[
+                "--edition",
+                "2021",
+                "--crate-type",
+                "cdylib",
+                "--crate-name",
+                "f0_text_provider",
+                "--cap-lints",
+                "allow",
+                "src/lib.rs",
+                "--out-dir",
+                out.to_str().ok_or("non-utf8 out dir")?,
+            ],
+            &crate_dir,
+        )?;
+        if code != 0 {
+            return Err(format!("rustc cdylib build failed: {err}"));
+        }
+        // PLAN-967 T-11 (B-02): the STATICLIB artifact — the native-relink
+        // distribution form (one more product of the SAME build closure; its
+        // LTO/link-tool conditions are the consumer's contract, recorded by
+        // the artifact existing beside the cdylib).
+        let (code, _out, err) = run_rustc(
+            &[
+                "--edition",
+                "2021",
+                "--crate-type",
+                "staticlib",
+                "--crate-name",
+                "f0_text_provider",
+                "--cap-lints",
+                "allow",
+                "src/lib.rs",
+                "--out-dir",
+                out.to_str().ok_or("non-utf8 out dir")?,
+            ],
+            &crate_dir,
+        )?;
+        if code != 0 {
+            return Err(format!("rustc staticlib build failed: {err}"));
+        }
+        std::fs::write(&stamp_path, &stamp).map_err(|e| e.to_string())?;
     }
     let cdylib = out.join("f0_text_provider.dll");
     if !cdylib.is_file() {
         return Err(format!("cdylib not produced at {}", cdylib.display()));
-    }
-    // PLAN-967 T-11 (B-02): the STATICLIB artifact — the native-relink
-    // distribution form (one more product of the SAME build closure; its
-    // LTO/link-tool conditions are the consumer's contract, recorded by
-    // the artifact existing beside the cdylib).
-    let (code, _out, err) = run_rustc(
-        &[
-            "--edition",
-            "2021",
-            "--crate-type",
-            "staticlib",
-            "--crate-name",
-            "f0_text_provider",
-            "--cap-lints",
-            "allow",
-            "src/lib.rs",
-            "--out-dir",
-            out.to_str().ok_or("non-utf8 out dir")?,
-        ],
-        &crate_dir,
-    )?;
-    if code != 0 {
-        return Err(format!("rustc staticlib build failed: {err}"));
     }
     let staticlib = out.join("f0_text_provider.lib");
     if !staticlib.is_file() {
