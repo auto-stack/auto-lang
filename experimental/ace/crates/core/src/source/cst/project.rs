@@ -2842,9 +2842,10 @@ impl<'c, 'a> Walker<'c, 'a> {
             if let Some((dsp, _, ".", dline)) = self.cur() {
                 let is_record = self.cx.profile.is_record();
                 let is_text = self.cx.profile.is_text();
+                let admits_text = is_text || self.cx.profile.admits_text_literals();
                 let next = self.at(self.i + 1);
                 let next_is_to = matches!(next, Some((_, ng, _, _)) if ng == k.tok_r_to);
-                if is_record && !(next_is_to && is_text) {
+                if is_record && !(next_is_to && admits_text) {
                     if !in_br && dline != self.prev_line() {
                         return Some(Some(Diagnostic::new(
                             Stage::Text,
@@ -2889,7 +2890,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                         }
                     }
                 }
-                if is_text {
+                if admits_text {
                     match next {
                         Some((msp, mg, _, mline)) if mg == k.tok_r_move => {
                             if !in_br && mline != self.prev_line() {
@@ -10205,8 +10206,10 @@ impl<'a> Engine<'a> {
                 let mk = self.cx.tree.kind(member);
                 let mspan = self.cx.span_of(member);
                 let mname = self.cx.spelling(member);
-                // type-level 接收者：char.from_codepoint（text 面）。
-                let recv = if is_text && mname == "from_codepoint" {
+                // type-level 接收者：char.from_codepoint（text 面与 closures/aggregates 含 char 词域）。
+                let recv = if (is_text || self.cx.profile.is_closures())
+                    && mname == "from_codepoint"
+                {
                     let mut r = recv;
                     if let ExprKind::Var(id) = &r.kind {
                         if id.name == "char" {

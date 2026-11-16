@@ -108,6 +108,10 @@ pub enum ResKind {
     /// Borrowed UTF-8 text view (byte length; NUL is data, not a
     /// terminator; encoding validated before any call).
     ViewText,
+    /// PLAN-1064 T-FRAME: checked writable byte output borrow `{uint8_t *dst, u64 cap}`
+    /// (`&mut [u8]` in Rust, `uint8_t* dst, uint64_t cap` in C; noescape,
+    /// host-pinned across the call, only `0 <= n <= cap` published).
+    OutBytes,
     /// PLAN-939 S07 typed-peer-only lane: borrowed view of an i64
     /// ELEMENT array `{const int64_t *p, u64 n}` — n counts ELEMENTS,
     /// never bytes (descriptor3 `ParamKind::BufViewI64`). Element-size
@@ -145,6 +149,7 @@ impl ResKind {
             ResKind::I64 => "i64".into(),
             ResKind::Bool => "bool".into(),
             ResKind::ViewText => "view str".into(),
+            ResKind::OutBytes => "out bytes".into(),
             ResKind::BufViewI64 => "view i64s".into(),
             ResKind::Rec { rec, role, .. } => format!("{rec}.{}", role.spell()),
             ResKind::Handle { provider } => format!("handle:{provider}"),
@@ -161,7 +166,7 @@ impl ResKind {
         match self {
             ResKind::I32 | ResKind::I64 | ResKind::Bool | ResKind::Rec { .. }
             | ResKind::Handle { .. } => 1,
-            ResKind::ViewText | ResKind::BufViewI64 => 2,
+            ResKind::ViewText | ResKind::OutBytes | ResKind::BufViewI64 => 2,
             ResKind::Callback { .. } => 1,
         }
     }
@@ -261,6 +266,13 @@ impl ResourceSig {
         for (i, p) in self.params.iter().enumerate() {
             match p {
                 ResKind::I32 | ResKind::Bool | ResKind::ViewText => {}
+                ResKind::OutBytes => {
+                    if !self.noescape {
+                        return Err(format!(
+                            "resource.params[{i}]: out bytes borrow requires noescape=true"
+                        ));
+                    }
+                }
                 ResKind::BufViewI64 | ResKind::I64 => {
                     if !self.typed_peer {
                         return Err(format!(

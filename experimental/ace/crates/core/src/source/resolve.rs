@@ -848,6 +848,18 @@ pub enum RStmt {
     },
 }
 
+fn rblock_always_returns(block: &RBlock) -> bool {
+    block.stmts.iter().any(|stmt| match stmt {
+        RStmt::Return { .. } | RStmt::Fail { .. } => true,
+        RStmt::If {
+            then,
+            els: Some(els),
+            ..
+        } => rblock_always_returns(then) && rblock_always_returns(els),
+        _ => false,
+    })
+}
+
 #[derive(Clone, Debug)]
 pub struct RBlock {
     pub stmts: Vec<RStmt>,
@@ -6258,11 +6270,43 @@ impl<'a, 's> FnResolver<'a, 's> {
                 vt: VT::Unit,
                 kind: RExprKind::Unit,
             },
+            VT::Bool => ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::BoolLit(false),
+            },
             VT::StrOwned => ResolvedExpr {
                 span,
                 vt: VT::StrOwned,
                 kind: RExprKind::StrLit(String::new()),
             },
+            VT::List(li) => ResolvedExpr {
+                span,
+                vt: VT::List(li),
+                kind: RExprKind::ListNew { list: li },
+            },
+            VT::Variant(vi)
+                if self
+                    .coll
+                    .variants
+                    .get(vi)
+                    .is_some_and(|v| v.arms.iter().any(|a| a.1.is_none())) =>
+            {
+                let disc = self.coll.variants[vi]
+                    .arms
+                    .iter()
+                    .position(|a| a.1.is_none())
+                    .unwrap() as u32;
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc,
+                        payload: None,
+                    },
+                }
+            }
             other => {
                 self.bind_err(
                     "source.is-tail-return",
@@ -10644,14 +10688,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // compile-checked above), present so the shared
                     // no-return-path walk sees a Returned spine. The filler
                     // value is typed from the function result.
-                    let filler = self.default_return_filler(*span);
-                    let mut current = Some(RBlock {
-                        stmts: vec![RStmt::Return {
-                            value: filler,
+                    let all_return = resolved
+                        .iter()
+                        .all(|(_, _, b)| rblock_always_returns(b));
+                    let mut current = if all_return {
+                        let filler = self.default_return_filler(*span);
+                        Some(RBlock {
+                            stmts: vec![RStmt::Return {
+                                value: filler,
+                                span: *span,
+                            }],
                             span: *span,
-                        }],
-                        span: *span,
-                    });
+                        })
+                    } else {
+                        None
+                    };
                     let resolved_rev: Vec<(u32, Option<(LocalRef, VT)>, RBlock)> =
                         resolved.into_iter().rev().collect();
                     for (disc, bind, mut body) in resolved_rev {

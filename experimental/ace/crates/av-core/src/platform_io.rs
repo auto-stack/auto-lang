@@ -1935,6 +1935,7 @@ mod win32 {
             lpOverlapped: *mut u8,
         ) -> i32;
         pub fn GetLastError() -> u32;
+        pub fn SetLastError(dwErrCode: u32);
         pub fn GetSystemInfo(lpSystemInfo: *mut SYSTEM_INFO);
         pub fn VirtualAlloc(
             lpAddress: *mut u8,
@@ -1994,12 +1995,6 @@ mod win32 {
             lpNewFileName: *const u16,
             dwFlags: u32,
         ) -> i32;
-        pub fn GetFullPathNameW(
-            lpFileName: *const u16,
-            nBufferLength: u32,
-            lpBuffer: *mut u16,
-            lpFilePart: *mut *mut u16,
-        ) -> u32;
         pub fn GetFinalPathNameByHandleW(
             hFile: isize,
             lpszFilePath: *mut u16,
@@ -2805,35 +2800,9 @@ impl PlatformIoBackend for Win32PlatformIo {
         self.dispatches.sys += 1;
         let mut path = units.to_vec();
         path.push(0);
-        // 1) logical absolute form always succeeds for valid input
-        let need = unsafe {
-            win32::GetFullPathNameW(
-                path.as_ptr(),
-                0,
-                core::ptr::null_mut(),
-                core::ptr::null_mut(),
-            )
-        };
-        if need == 0 {
-            let err = unsafe { win32::GetLastError() };
-            return Err(if err == 0 { 122 } else { err });
-        }
-        let mut full = vec![0u16; need as usize + 1];
-        let written = unsafe {
-            win32::GetFullPathNameW(
-                path.as_ptr(),
-                full.len() as u32,
-                full.as_mut_ptr(),
-                core::ptr::null_mut(),
-            )
-        };
-        if written == 0 {
-            let err = unsafe { win32::GetLastError() };
-            return Err(if err == 0 { 122 } else { err });
-        }
-        full.truncate(written as usize);
-        // 2) if the target is openable, prefer the symlink-resolved final
-        //    path (legacy `canonicalize` parity — keeps the \\?\ prefix).
+        // Require the target to exist and resolve via its open handle
+        // (matching `std::fs::canonicalize` — never fall back to a logical
+        // unverified full path on missing targets).
         let h = unsafe {
             win32::CreateFileW(
                 path.as_ptr(),
@@ -2845,35 +2814,30 @@ impl PlatformIoBackend for Win32PlatformIo {
                 0,
             )
         };
-        if h != win32::INVALID_HANDLE_VALUE {
-            let mut final_buf = vec![0u16; out.len().max(full.len() + 8)];
-            let n = unsafe {
-                win32::GetFinalPathNameByHandleW(
-                    h,
-                    final_buf.as_mut_ptr(),
-                    final_buf.len() as u32,
-                    0,
-                )
-            };
-            unsafe { win32::CloseHandle(h) };
-            if n > 0 && (n as usize) < final_buf.len() {
-                final_buf.truncate(n as usize);
-                if final_buf.len() <= out.len() {
-                    out[..final_buf.len()].copy_from_slice(&final_buf);
-                    return Ok(final_buf.len());
-                }
-            }
-            // fall through: resolution failed or did not fit — report the
-            // overflow honestly instead of truncating a resolved path
-            if n as usize > out.len() {
-                return Err(122); // ERROR_INSUFFICIENT_BUFFER
-            }
+        if h == win32::INVALID_HANDLE_VALUE {
+            let err = unsafe { win32::GetLastError() };
+            return Err(if err == 0 { 2 } else { err });
         }
-        if full.len() > out.len() {
-            return Err(122);
+        let mut final_buf = vec![0u16; out.len() + 1];
+        unsafe { win32::SetLastError(0) };
+        let n = unsafe {
+            win32::GetFinalPathNameByHandleW(
+                h,
+                final_buf.as_mut_ptr(),
+                final_buf.len() as u32,
+                0,
+            )
+        };
+        let err = unsafe { win32::GetLastError() };
+        unsafe { win32::CloseHandle(h) };
+        if n == 0 {
+            return Err(if err == 0 { 5 } else { err });
         }
-        out[..full.len()].copy_from_slice(&full);
-        Ok(full.len())
+        if (n as usize) >= final_buf.len() || (n as usize) > out.len() {
+            return Err(122); // ERROR_INSUFFICIENT_BUFFER
+        }
+        out[..n as usize].copy_from_slice(&final_buf[..n as usize]);
+        Ok(n as usize)
     }
 
     #[cfg(windows)]
@@ -2935,13 +2899,14 @@ impl PlatformIoBackend for Win32PlatformIo {
             return Err(122);
         }
         let cap = u32::try_from(out.len() - 1).unwrap_or(u32::MAX);
+        unsafe { win32::SetLastError(0) };
         let ret = unsafe { win32::GetEnvironmentVariableW(n.as_ptr(), out.as_mut_ptr(), cap + 1) };
         if ret == 0 {
             let err = unsafe { win32::GetLastError() };
-            if err == 203 {
-                return Ok(0); // ERROR_ENVVAR_NOT_FOUND — unset
+            if err == 0 {
+                return Ok(0); // present with empty value ""
             }
-            return Err(if err == 0 { 203 } else { err });
+            return Err(err); // e.g. 203 (ERROR_ENVVAR_NOT_FOUND)
         }
         if ret > cap {
             return Err(234); // ERROR_MORE_DATA
@@ -7342,6 +7307,10 @@ impl PlatformResourceLedger {
             LedgerPayload::OsProcess { released: true, .. } => return ERR_ALREADY_RELEASED,
             _ => return ERR_WRONG_ORIGIN,
         };
+        if let Ok(false) = backend.wait_child(spawn.process, 0) {
+            let _ = backend.kill_tree(spawn.job);
+            let _ = backend.wait_child(spawn.process, -1);
+        }
         if spawn.out_read != 0 {
             let _ = backend.close_raw(spawn.out_read);
         }
@@ -7501,6 +7470,10 @@ impl PlatformResourceLedger {
                 }
                 LedgerPayload::OsProcess { spawn, released } => {
                     if !*released {
+                        if let Ok(false) = backend.wait_child(spawn.process, 0) {
+                            let _ = backend.kill_tree(spawn.job);
+                            let _ = backend.wait_child(spawn.process, -1);
+                        }
                         if spawn.out_read != 0 {
                             let _ = backend.close_raw(spawn.out_read);
                         }

@@ -219,3 +219,269 @@ fn b64_triple(b0 int, b1 int) Str {
     let ab Str = a + b
     return ab + c2
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1064 T-02: shared pure-Auto strict UTF-8 decoder & 972 byte codecs.
+// ---------------------------------------------------------------------------
+
+fn bstr_tree_concat(chunks List<Str>, n int) Str {
+    if (n <= 0) { return "" }
+    if (n == 1) { return chunks.remove(chunks.len() - 1) }
+    if (n == 2) {
+        let right = chunks.remove(chunks.len() - 1)
+        let left = chunks.remove(chunks.len() - 1)
+        return left + right
+    }
+    let r_cnt = n / 2
+    let l_cnt = n - r_cnt
+    let right = bstr_tree_concat(chunks, r_cnt)
+    let left = bstr_tree_concat(chunks, l_cnt)
+    return left + right
+}
+
+fn utf8_step_len(b0 int) int {
+    if (b0 < 128) { return 1 }
+    if (b0 <= 223) { return 2 }
+    if (b0 <= 239) { return 3 }
+    return 4
+}
+
+fn utf8_read_cp(bytes List<int>, n int, i int, b0 int) int {
+    if (b0 < 0) { return -1 }
+    if (b0 > 255) { return -1 }
+    if (b0 < 128) { return b0 }
+    if (b0 < 194) { return -1 }
+    if (b0 <= 223) {
+        if (i + 1 >= n) { return -1 }
+        let b1 = bytes.get(i + 1)
+        if (b1 < 128) { return -1 }
+        if (b1 > 191) { return -1 }
+        return (b0 - 192) * 64 + (b1 - 128)
+    }
+    if (b0 <= 239) {
+        if (i + 2 >= n) { return -1 }
+        let b1 = bytes.get(i + 1)
+        let b2 = bytes.get(i + 2)
+        if (b1 < 128) { return -1 }
+        if (b1 > 191) { return -1 }
+        if (b2 < 128) { return -1 }
+        if (b2 > 191) { return -1 }
+        if (b0 == 224) {
+            if (b1 < 160) { return -1 }
+        }
+        if (b0 == 237) {
+            if (b1 > 159) { return -1 }
+        }
+        return (b0 - 224) * 4096 + (b1 - 128) * 64 + (b2 - 128)
+    }
+    if (b0 <= 244) {
+        if (i + 3 >= n) { return -1 }
+        let b1 = bytes.get(i + 1)
+        let b2 = bytes.get(i + 2)
+        let b3 = bytes.get(i + 3)
+        if (b1 < 128) { return -1 }
+        if (b1 > 191) { return -1 }
+        if (b2 < 128) { return -1 }
+        if (b2 > 191) { return -1 }
+        if (b3 < 128) { return -1 }
+        if (b3 > 191) { return -1 }
+        if (b0 == 240) {
+            if (b1 < 144) { return -1 }
+        }
+        if (b0 == 244) {
+            if (b1 > 143) { return -1 }
+        }
+        return (b0 - 240) * 262144 + (b1 - 128) * 4096 + (b2 - 128) * 64 + (b3 - 128)
+    }
+    return -1
+}
+
+fn utf8_leaf(bytes List<int>, n int, i int, rem int, acc Str, chunks List<Str>) int {
+    if (rem <= 0) {
+        let leaf = acc.clone()
+        chunks.push(leaf.move)
+        return i
+    }
+    if (i >= n) {
+        let leaf = acc.clone()
+        chunks.push(leaf.move)
+        return i
+    }
+    let b0 = bytes.get(i)
+    if (b0 >= 0) {
+        if (b0 < 128) {
+            let c char = char.from_codepoint(b0)
+            let piece = c.to(Str)
+            let next_acc = acc + piece
+            return utf8_leaf(bytes, n, i + 1, rem - 1, next_acc, chunks)
+        }
+    }
+    let cp = utf8_read_cp(bytes, n, i, b0)
+    if (cp < 0) { return -1 }
+    let step = utf8_step_len(b0)
+    let c char = char.from_codepoint(cp)
+    let piece = c.to(Str)
+    let next_acc = acc + piece
+    return utf8_leaf(bytes, n, i + step, rem - 1, next_acc, chunks)
+}
+
+fn utf8_block(bytes List<int>, n int, i int, rem_leaves int, chunks List<Str>) int {
+    if (rem_leaves <= 0) { return i }
+    if (i >= n) { return i }
+    let next_i = utf8_leaf(bytes, n, i, 64, "", chunks)
+    if (next_i < 0) { return -1 }
+    return utf8_block(bytes, n, next_i, rem_leaves - 1, chunks)
+}
+
+fn utf8_outer(bytes List<int>, n int, i int, chunks List<Str>) int {
+    if (i >= n) { return i }
+    let next_i = utf8_block(bytes, n, i, 16, chunks)
+    if (next_i < 0) { return -1 }
+    return utf8_outer(bytes, n, next_i, chunks)
+}
+
+pub fn decode_utf8(bytes List<int>) ?Str {
+    let n = bytes.len()
+    if (n == 0) { return Some("") }
+    var chunks = List<Str>.new()
+    let end_i = utf8_outer(bytes, n, 0, chunks)
+    if (end_i < 0) { return None }
+    return Some(bstr_tree_concat(chunks, chunks.len()))
+}
+
+fn hex_nibble(cp int) int {
+    if (cp >= 48) {
+        if (cp <= 57) { return cp - 48 }
+    }
+    if (cp >= 65) {
+        if (cp <= 70) { return cp - 55 }
+    }
+    if (cp >= 97) {
+        if (cp <= 102) { return cp - 87 }
+    }
+    return -1
+}
+
+fn hex_leaf(s Str, n int, i int, rem int, out List<int>) int {
+    if (rem <= 0) { return i }
+    if (i >= n) { return i }
+    let hi = hex_nibble(s.char_at(i).to_codepoint())
+    if (hi < 0) { return -1 }
+    let lo = hex_nibble(s.char_at(i + 1).to_codepoint())
+    if (lo < 0) { return -1 }
+    out.push(hi * 16 + lo)
+    return hex_leaf(s, n, i + 2, rem - 1, out)
+}
+
+fn hex_outer(s Str, n int, i int, out List<int>) int {
+    if (i >= n) { return i }
+    var stop = i + 128
+    if (stop > n) { stop = n }
+    let sub Str = s.slice(i, stop).clone()
+    let next_sub = hex_leaf(sub, stop - i, 0, 64, out)
+    if (next_sub < 0) { return -1 }
+    return hex_outer(s, n, stop, out)
+}
+
+pub fn decode_hex(s Str) ?List<int> {
+    let n = s.len()
+    if (s.len_bytes() != n) { return None }
+    if (n == 0) { return Some(List<int>.new()) }
+    if ((n - (n / 2) * 2) != 0) { return None }
+    var out = List<int>.new()
+    if (hex_outer(s, n, 0, out) < 0) { return None }
+    return Some(out.move)
+}
+
+fn b64_val(cp int) int {
+    if (cp >= 65) {
+        if (cp <= 90) { return cp - 65 }
+    }
+    if (cp >= 97) {
+        if (cp <= 122) { return cp - 71 }
+    }
+    if (cp >= 48) {
+        if (cp <= 57) { return cp + 4 }
+    }
+    if (cp == 43) { return 62 }
+    if (cp == 47) { return 63 }
+    return -1
+}
+
+fn b64_leaf(s Str, n int, is_last bool, i int, rem int, out List<int>) int {
+    if (rem <= 0) { return i }
+    if (i >= n) { return i }
+    let c0 = s.char_at(i).to_codepoint()
+    let c1 = s.char_at(i + 1).to_codepoint()
+    let c2 = s.char_at(i + 2).to_codepoint()
+    let c3 = s.char_at(i + 3).to_codepoint()
+    let v0 = b64_val(c0)
+    let v1 = b64_val(c1)
+    if (v0 < 0) { return -1 }
+    if (v1 < 0) { return -1 }
+    if (c2 == 61) {
+        if (is_last == false) { return -1 }
+        if (c3 != 61) { return -1 }
+        if (i + 4 != n) { return -1 }
+        if ((v1 - (v1 / 16) * 16) != 0) { return -1 }
+        out.push(v0 * 4 + v1 / 16)
+        return i + 4
+    }
+    let v2 = b64_val(c2)
+    if (v2 < 0) { return -1 }
+    if (c3 == 61) {
+        if (is_last == false) { return -1 }
+        if (i + 4 != n) { return -1 }
+        if ((v2 - (v2 / 4) * 4) != 0) { return -1 }
+        let b1 = v1 - (v1 / 16) * 16
+        out.push(v0 * 4 + v1 / 16)
+        out.push(b1 * 16 + v2 / 4)
+        return i + 4
+    }
+    let v3 = b64_val(c3)
+    if (v3 < 0) { return -1 }
+    let b1 = v1 - (v1 / 16) * 16
+    let b2 = v2 - (v2 / 4) * 4
+    out.push(v0 * 4 + v1 / 16)
+    out.push(b1 * 16 + v2 / 4)
+    out.push(b2 * 64 + v3)
+    return b64_leaf(s, n, is_last, i + 4, rem - 1, out)
+}
+
+fn b64_outer(s Str, n int, i int, out List<int>) int {
+    if (i >= n) { return i }
+    var stop = i + 256
+    if (stop > n) { stop = n }
+    let sub Str = s.slice(i, stop).clone()
+    let next_sub = b64_leaf(sub, stop - i, stop == n, 0, 64, out)
+    if (next_sub < 0) { return -1 }
+    return b64_outer(s, n, stop, out)
+}
+
+pub fn decode_base64(s Str) ?List<int> {
+    let n = s.len()
+    if (s.len_bytes() != n) { return None }
+    if (n == 0) { return Some(List<int>.new()) }
+    if ((n - (n / 4) * 4) != 0) { return None }
+    var out = List<int>.new()
+    if (b64_outer(s, n, 0, out) < 0) { return None }
+    return Some(out.move)
+}
+
+pub fn decode_hex_str(s Str) ?Str {
+    let bs = decode_hex(s)
+    is bs {
+        Some(b) -> { return decode_utf8(b) }
+        None -> {}
+    }
+    return None
+}
+
+pub fn decode_base64_str(s Str) ?Str {
+    let bs = decode_base64(s)
+    is bs {
+        Some(b) -> { return decode_utf8(b) }
+        None -> {}
+    }
+    return None
+}

@@ -455,15 +455,13 @@ fn main() int {{
     if cn <= 4 {{ return -30 }}
     // \?\ final-path prefix
     if expect_units(out, 0, 92, 92, 63, 92) != 0 {{ return -31 }}
-    // a MISSING path (same length, one unit mutated): attrs fail with
-    // the real OS error; canonical resolves to the logical absolute form
-    // (no \?\ prefix) per the AV public contract.
+    // a MISSING path (same length, one unit mutated): both attrs and
+    // canonical fail with the real OS error (never GetFullPathNameW fallback,
+    // aligned with AV / A2R / A2Py D-04).
     if mem_write_u8(m, 8, 33) != 0 {{ return -33 }}
     if path_attrs_w16(m, 0, {f2len}) != -8 {{ return -34 }}
-    let mcn = canonical_w16(m, 0, {f2len}, out, 512)
-    if mcn <= 4 {{ return -36 }}
-    if expect_units(out, 0, 67, 58, 92, 85) != 0 {{ return -35 }}
-    // env: empty name rejected; set/get/remove with an ASCII value
+    if canonical_w16(m, 0, {f2len}, out, 512) != -8 {{ return -36 }}
+    // env: empty name rejected; set/get/empty/remove with ASCII value
     if env_set_w16(m, 0, 0, out, 0, 0) != -4 {{ return -35 }}
     if {evnc} != 0 {{ return -36 }}
     if {evvc} != 0 {{ return -37 }}
@@ -472,8 +470,11 @@ fn main() int {{
     let gn = env_get_w16(m, 0, {evlen}, got, 100)
     if gn != {evvlen} {{ return -39 }}
     if expect_units(got, 0, 118, 97, 101, 45) != 0 {{ return -40 }}
+    // present empty value "" -> 0; removed/unset variable -> -8 (ERROR_ENVVAR_NOT_FOUND)
+    if env_set_w16(m, 0, {evlen}, out, 0, 0) != 0 {{ return -44 }}
+    if env_get_w16(m, 0, {evlen}, got, 100) != 0 {{ return -45 }}
     if env_remove_w16(m, 0, {evlen}) != 0 {{ return -41 }}
-    if env_get_w16(m, 0, {evlen}, got, 100) != 0 {{ return -42 }}
+    if env_get_w16(m, 0, {evlen}, got, 100) != -8 {{ return -42 }}
     if env_remove_w16(m, 0, {evlen}) != 0 {{ return -43 }}
     if mem_free(m) != 0 {{ return -48 }}
     if mem_free(out) != 0 {{ return -49 }}

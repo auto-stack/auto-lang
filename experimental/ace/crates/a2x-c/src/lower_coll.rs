@@ -269,6 +269,10 @@ pub(crate) fn seed_ty_of(view: &SemanticView<'_>, ty: Ty) -> Result<SeedCollTy, 
             .variant(i)
             .map(|v| SeedCollTy::Variant(v.name.clone()))
             .ok_or_else(|| A2xReject::new("a2x.internal", "unknown variant index")),
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            Ok(SeedCollTy::List(Box::new(seed_ty_of(view, elem)?)))
+        }
         other => Err(A2xReject::unsupported_type(format!(
             "type `{:?}` is outside the collections domain",
             other
@@ -560,7 +564,13 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 } else {
                     format!("e{}", e)
                 };
-                Some(format!("{}(&{});", self.free_call(*kind, None), slot))
+                let expr_ty = self
+                    .f
+                    .body
+                    .exprs
+                    .get(*e as usize)
+                    .and_then(|ex| self.view.resolve_use_ty(ex.ty).ok());
+                Some(format!("{}(&{});", self.free_call(*kind, expr_ty), slot))
             }
         }
     }

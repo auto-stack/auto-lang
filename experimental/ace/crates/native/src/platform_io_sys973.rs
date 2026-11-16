@@ -89,7 +89,6 @@ const FILETIME_UNIX_EPOCH_100NS: i64 = 116_444_736_000_000_000;
 const ERROR_BROKEN_PIPE: i64 = 109;
 const ERROR_NO_DATA: i64 = 232;
 const ERROR_NO_MORE_FILES: i64 = 18;
-const ERROR_ENVVAR_NOT_FOUND: i64 = 203;
 const ERROR_MORE_DATA: i64 = 234;
 const ERROR_INSUFFICIENT_BUFFER: i64 = 122;
 const ERROR_INVALID_PARAMETER: i64 = 87;
@@ -101,6 +100,7 @@ type DataId = cranelift_module::DataId;
 
 pub(crate) struct Sys973Ids {
     get_last_error: FuncId,
+    set_last_error: FuncId,
     create_file_w: FuncId,
     write_file: FuncId,
     read_file: FuncId,
@@ -114,7 +114,6 @@ pub(crate) struct Sys973Ids {
     create_directory_w: FuncId,
     remove_directory_w: FuncId,
     move_file_ex_w: FuncId,
-    get_full_path_name_w: FuncId,
     get_final_path_name_by_handle_w: FuncId,
     find_first_file_w: FuncId,
     find_next_file_w: FuncId,
@@ -149,6 +148,7 @@ fn declare_sys973_imports(om: &mut ObjModule) -> Result<Sys973Ids, MnError> {
     };
     Ok(Sys973Ids {
         get_last_error: imp(om, "GetLastError", sig(&[], Some(t::I32)))?,
+        set_last_error: imp(om, "SetLastError", sig(&[t::I32], None))?,
         create_file_w: imp(
             om,
             "CreateFileW",
@@ -188,11 +188,6 @@ fn declare_sys973_imports(om: &mut ObjModule) -> Result<Sys973Ids, MnError> {
             om,
             "MoveFileExW",
             sig(&[t::I64, t::I64, t::I32], Some(t::I32)),
-        )?,
-        get_full_path_name_w: imp(
-            om,
-            "GetFullPathNameW",
-            sig(&[t::I64, t::I32, t::I64, t::I64], Some(t::I32)),
         )?,
         get_final_path_name_by_handle_w: imp(
             om,
@@ -1704,50 +1699,9 @@ fn emit_canonical_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resul
             ret_code(fb, ERR_INVALID_BOUNDS);
             fb.switch_to_block(k1);
 
-            // Phase 1: logical absolute form.
-            let gfp = fref(om, fb, ctx.ids.get_full_path_name_w);
-            let _t112 = i32v(fb, 0);
-            let _t113 = i64v(fb, 0);
-            let _t114 = i64v(fb, 0);
-
-            let need_c = fb.ins().call(gfp, &[dst, _t112, _t113, _t114]);
-            let need = fb.inst_results(need_c)[0];
-            let no_need = fb.ins().icmp_imm(IntCC::Equal, need, 0);
-            let (bn, kn) = branch2(fb, no_need);
-            fb.switch_to_block(bn);
-            os_fail(
-                om,
-                fb,
-                gle,
-                ctx.state,
-                flags,
-                ERROR_INSUFFICIENT_BUFFER as i32,
-            );
-            fb.switch_to_block(kn);
-
-            let full = stack_buf(fb, PATH_BUF_BYTES);
-            let _t115 = i32v(fb, 1);
-
-            let cap_arg = fb.ins().iadd(need, _t115);
-            let _t116 = i64v(fb, 0);
-
-            let w_c = fb.ins().call(gfp, &[dst, cap_arg, full, _t116]);
-            let written = fb.inst_results(w_c)[0];
-            let no_w = fb.ins().icmp_imm(IntCC::Equal, written, 0);
-            let (bw, kw) = branch2(fb, no_w);
-            fb.switch_to_block(bw);
-            os_fail(
-                om,
-                fb,
-                gle,
-                ctx.state,
-                flags,
-                ERROR_INSUFFICIENT_BUFFER as i32,
-            );
-            fb.switch_to_block(kw);
-            let full_len = written;
-
-            // Phase 2: symlink-resolved final path when openable.
+            // Resolve exclusively via CreateFileW + GetFinalPathNameByHandleW so
+            // missing/unopenable targets fail with ERR_OS_FAILED (aligned with
+            // AV / A2R / A2Py D-04; no GetFullPathNameW logical fallback).
             let cf = fref(om, fb, ctx.ids.create_file_w);
             let z64c = i64v(fb, 0);
             let acc_attrs = i32v(fb, FILE_READ_ATTRIBUTES as i32);
@@ -1767,8 +1721,18 @@ fn emit_canonical_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resul
                 ],
             );
             let h = fb.inst_results(open_c)[0];
-            let openable = fb.ins().icmp_imm(IntCC::NotEqual, h, INVALID_HANDLE_VALUE);
-            let (try_final, use_full) = split_open(fb, openable);
+            let not_open = fb.ins().icmp_imm(IntCC::Equal, h, INVALID_HANDLE_VALUE);
+            let (bad_open, try_final) = branch2(fb, not_open);
+            fb.switch_to_block(bad_open);
+            os_fail(
+                om,
+                fb,
+                gle,
+                ctx.state,
+                flags,
+                ERROR_INVALID_PARAMETER as i32,
+            );
+
             fb.switch_to_block(try_final);
             let final_buf = state_scratch_ptr(om, fb, ctx.state, 2);
             let gfpn = fref(om, fb, ctx.ids.get_final_path_name_by_handle_w);
@@ -1777,9 +1741,6 @@ fn emit_canonical_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resul
 
             let fc = fb.ins().call(gfpn, &[h, final_buf, _t117, _t118]);
             let nf = fb.inst_results(fc)[0];
-            let _t119 = fref(om, fb, ctx.ids.close_handle);
-
-            let _ = fb.ins().call(_t119, &[h]);
             let _t120 = fb.ins().icmp_imm(IntCC::SignedLessThanOrEqual, nf, 0);
             let _t121 = fb.ins().icmp_imm(
                 IntCC::SignedGreaterThanOrEqual,
@@ -1788,23 +1749,29 @@ fn emit_canonical_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resul
             );
 
             let no_final = fb.ins().bor(_t120, _t121);
-            let (skip_final, have_final) = branch2(fb, no_final);
-            fb.switch_to_block(skip_final);
-            fb.ins().jump(use_full, &[]);
-            fb.seal_block(use_full);
+            let (bad_final, have_final) = branch2(fb, no_final);
+            fb.switch_to_block(bad_final);
+            let gc = fb.ins().call(gle, &[]);
+            let ecode = fb.inst_results(gc)[0];
+            let ch_bad = fref(om, fb, ctx.ids.close_handle);
+            let _ = fb.ins().call(ch_bad, &[h]);
+            let ez = fb.ins().icmp_imm(IntCC::Equal, ecode, 0);
+            let fb_err = i32v(fb, ERROR_INVALID_PARAMETER as i32);
+            let rec_e = fb.ins().select(ez, fb_err, ecode);
+            fb.ins().store(flags, rec_e, st, H_LAST_OS_ERROR);
+            ret_code(fb, ERR_OS_FAILED);
+
             fb.switch_to_block(have_final);
+            let ch_ok = fref(om, fb, ctx.ids.close_handle);
+            let _ = fb.ins().call(ch_ok, &[h]);
             // resolved but over the scratch cap -> os_fail(122)
             let over = fb.ins().icmp(IntCC::SignedGreaterThan, nf, scratch_cap);
             let (of, fits) = branch2(fb, over);
             fb.switch_to_block(of);
-            os_fail(
-                om,
-                fb,
-                gle,
-                ctx.state,
-                flags,
-                ERROR_INSUFFICIENT_BUFFER as i32,
-            );
+            let ins_err = i32v(fb, ERROR_INSUFFICIENT_BUFFER as i32);
+            fb.ins().store(flags, ins_err, st, H_LAST_OS_ERROR);
+            ret_code(fb, ERR_OS_FAILED);
+
             fb.switch_to_block(fits);
             let wru = fref(om, fb, ctx.wru);
             let wc = fb.ins().call(wru, &[out_region, final_buf, nf]);
@@ -1818,34 +1785,6 @@ fn emit_canonical_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resul
 
             fb.ins().store(flags, _t122, st, H_LAST_OS_ERROR);
             fb.ins().return_(&[nf]);
-
-            fb.switch_to_block(use_full);
-            let over2 = fb
-                .ins()
-                .icmp(IntCC::SignedGreaterThan, full_len, scratch_cap);
-            let (of2, fits2) = branch2(fb, over2);
-            fb.switch_to_block(of2);
-            os_fail(
-                om,
-                fb,
-                gle,
-                ctx.state,
-                flags,
-                ERROR_INSUFFICIENT_BUFFER as i32,
-            );
-            fb.switch_to_block(fits2);
-            let wru2 = fref(om, fb, ctx.wru);
-            let wc2 = fb.ins().call(wru2, &[out_region, full, full_len]);
-            let wres2 = fb.inst_results(wc2)[0];
-            let wbad2 = fb.ins().icmp_imm(IntCC::SignedLessThan, wres2, 0);
-            let (bw3, kw3) = branch2(fb, wbad2);
-            fb.switch_to_block(bw3);
-            fb.ins().return_(&[wres2]);
-            fb.switch_to_block(kw3);
-            let _t123 = i32v(fb, 0);
-
-            fb.ins().store(flags, _t123, st, H_LAST_OS_ERROR);
-            fb.ins().return_(&[full_len]);
         },
     )
 }
@@ -2131,28 +2070,31 @@ fn emit_env_get_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Result<
             let _t153 = i32v(fb, 1);
 
             let cap_arg = fb.ins().iadd(scratch_cap, _t153);
+            // Clear GetLastError before GetEnvironmentVariableW so ret==0 & gle==0
+            // means a present empty variable `""` (returns 0), whereas unset sets
+            // ERROR_ENVVAR_NOT_FOUND (203) -> ERR_OS_FAILED (-8), matching AV D-03.
+            let sle = fref(om, fb, ctx.ids.set_last_error);
+            let zero32 = i32v(fb, 0);
+            let _ = fb.ins().call(sle, &[zero32]);
             let _t154 = fref(om, fb, ctx.ids.get_environment_variable_w);
 
             let c = fb.ins().call(_t154, &[nbuf, vbuf, cap_arg]);
             let ret = fb.inst_results(c)[0];
             let is0 = fb.ins().icmp_imm(IntCC::Equal, ret, 0);
-            let (unset, have) = branch2(fb, is0);
-            fb.switch_to_block(unset);
+            let (zero_ret, have) = branch2(fb, is0);
+            fb.switch_to_block(zero_ret);
             let gc = fb.ins().call(gle, &[]);
             let ecode = fb.inst_results(gc)[0];
-            let not_found = fb
-                .ins()
-                .icmp_imm(IntCC::Equal, ecode, ERROR_ENVVAR_NOT_FOUND as i64);
-            let (clean_unset, hard) = branch2(fb, not_found);
-            fb.switch_to_block(clean_unset);
+            let is_empty = fb.ins().icmp_imm(IntCC::Equal, ecode, 0);
+            let (present_empty, missing_or_err) = branch2(fb, is_empty);
+            fb.switch_to_block(present_empty);
             let _t155 = i32v(fb, 0);
-
             fb.ins().store(flags, _t155, st, H_LAST_OS_ERROR);
             let _t156 = i32v(fb, 0);
-
             fb.ins().return_(&[_t156]);
-            fb.switch_to_block(hard);
-            os_fail(om, fb, gle, ctx.state, flags, ERROR_ENVVAR_NOT_FOUND as i32);
+            fb.switch_to_block(missing_or_err);
+            fb.ins().store(flags, ecode, st, H_LAST_OS_ERROR);
+            ret_code(fb, ERR_OS_FAILED);
 
             fb.switch_to_block(have);
             let over = fb.ins().icmp(IntCC::SignedGreaterThan, ret, scratch_cap);

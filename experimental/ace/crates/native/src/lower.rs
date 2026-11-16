@@ -3383,6 +3383,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     values.push(ptr);
                     values.push(self.fb.ins().uextend(types::I64, len));
                 }
+                ResKind::OutBytes => {
+                    return Err("foreign out-bytes borrow lane runs on the AV host frame".into());
+                }
                 ResKind::Rec { role, .. } => {
                     let addr = self.view_addr(slot)?;
                     match role {

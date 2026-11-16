@@ -88,6 +88,7 @@ const SYS_PROCESS: &str = include_str!("../../../../../../../stdlib/ace/sys/proc
 const SYS_TIME: &str = include_str!("../../../../../../../stdlib/ace/sys/time.at");
 const SYS_RAND: &str = include_str!("../../../../../../../stdlib/ace/sys/rand.at");
 const SYS_STORAGE: &str = include_str!("../../../../../../../stdlib/ace/sys/storage.at");
+const SYS_ZIP: &str = include_str!("../../../../../../../stdlib/ace/sys/zip.at");
 
 const ASM_LIST_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/list.at");
 const ASM_MATH_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/math.at");
@@ -131,6 +132,7 @@ pub fn stdlib_sys_files() -> Vec<(String, String)> {
         ("time.at".to_string(), SYS_TIME.to_string()),
         ("rand.at".to_string(), SYS_RAND.to_string()),
         ("storage.at".to_string(), SYS_STORAGE.to_string()),
+        ("zip.at".to_string(), SYS_ZIP.to_string()),
     ]
 }
 
@@ -146,7 +148,8 @@ pub fn is_frozen_std_sys_module(id: &str, version: &str, source: &str) -> bool {
             || matches!(id, "process" if source == SYS_PROCESS)
             || matches!(id, "time" if source == SYS_TIME)
             || matches!(id, "rand" if source == SYS_RAND)
-            || matches!(id, "storage" if source == SYS_STORAGE))
+            || matches!(id, "storage" if source == SYS_STORAGE)
+            || matches!(id, "zip" if source == SYS_ZIP))
 }
 
 /// PLAN-972（T-02）：装配线 `std` 身份保留。模块 id/版本/公共源（以及实现
