@@ -306,3 +306,29 @@ v0.6 面积（29 任务）的分母/来源/命令/oracle 单表——各批实�
 - 排窗：`AUTO_UI_ACE_HELLO_E2E=1` 单实例串行；GPU/媒体档沿仓内既有门。
 - 预存红台账（KNOWN-DEBT）：ace-abi source_foreign 25、ui_gen::rust 2、
   ace-host 13——不判 980、不充 PASS。
+
+## 11. WEB 首切片：976 provider 的 UI fragment 消费（2026-11-16）
+
+PLAN-980 WEB 批首个已验切片（B-WEB 任务保持开放）：生产表达式形态经
+**976 TS/JS provider**（fragment 接口）发射+执行+宿主映射成立；完整适配器
+切换（ts_adapter 四处旧 TypeScriptTrans 委托替换 + 全 UI 合法表面 + 浏览器
+挂载档）为后续步。收据见计划 §9 round 23。
+
+- **桥（`ui/ace_ts_provider.rs`，feature=ace-bridge）**：UI 表达式/语句
+  **源文本** → 合成包装函数（core 面：int 域；宿主状态=参数/`var` 可变局部；
+  体含 return 不补尾——HIR 块图连通）→ `ace_core::source::compile_source`
+  （与 976 tsfrag 同一前门）→ `SemanticView`（按源名取函数事实）→ 976
+  `emit_{expr,stmt}_fragment`（checked-helper 模式：操作数住 helper 行、
+  表达式本体=临时引用；`a2x_*` helper 义务首用序报告）→ **宿主映射**（两跳：
+  发射名→源名→reactive 宿主名，如 `count`→`count.value`——词法整词替换；
+  976 合同的反应性/捕获/宿主变量职责在适配器）。
+- **真 node 验证**：`run_fragment_on_node` 拼宿主驱动（helper 导入+预声明
+  宿主变量+fragment 行+断言）跑真 node（FRAG_OK 协议，`A2TS_NODE` 覆写）。
+- **永久 case**（`tests/ace_ts_provider.rs` 4 项）：绑定表达式（count+1→
+  count.value+a2x_add+node 42）、赋值语句（var sum 可变局部→node 42）、
+  未定位/越界=具名拒绝、源类型错误带 ACE 码透传。命令：
+  `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1`。
+- **边界**：str/结构形态与 watch/setup 回调形状未接（core 面 int 域+
+  fragment 语句面限制——完整合法表面需 text-record/collections 面扩展或
+  适配器组合）；ts_adapter 生产委托未替换；浏览器挂载档未建。**无旧
+  emitter 回退**：新车道未覆盖形态=具名拒绝。
