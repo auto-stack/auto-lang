@@ -1116,13 +1116,29 @@ next_responsible_role: user（裁定三选一：等外部/并行/继续——WEB
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 38 | from: work | to: user | status: executing（12/32）| outcome: pass（切片#6h 落主；WEB UI 侧完）| worktree: D:/autostack/.wt/lang-980 | commit: ui 15b9c4c6 lang 6512eb531 | next: user（裁定）
 
+2026-11-16 stage: goal（用户裁定轮——等待外部交付，goal round 39）| plan_id: PLAN-980 | plan_revision: r14 | outcome: **blocked（用户裁定=等待，条件具名）**| 状态：executing 12/32，无阻塞可续项。
+
+**用户裁定**：①等待外部交付（原裁定不变）。980 保持 executing，等 PLAN-985（M2A-08）、PLAN-1068（UI-W2-AC）、语言侧前置×3 交付后再续 B-AV/B-RUST/PARITY/终验。
+
+**本会话最终交付清单（round 24–39，15 个 commit）**：
+- NATIVE r13 批全链：ui980 provider FFI 实效果+typed 事件回 AV+MIN-A-UI 通用入口+AUTO_UI_ENGINE=ace 重定向（fold #7：ui 403c936d/lang 7f431bd5f）
+- WEB 批十三个切片（#1–#6h）：fragment 消费/普查冻结表/组件面入口/O-C3 精确定位/真实002源端到端/方言 OnHandler span 捕获/路线B核心/SFC拼接/一体化入口+state归一化/参数化域缺口具名/全量双轨仪表/浏览器挂载档
+- 规范沉淀 §12/§13.1–13.11；ace_ts_provider 14/14；ace_node_desktop 8/8+排窗 e2e
+
+**等待的外部条件（unblock）**：
+1. PLAN-985 交付 M2A-08（当前 executing 4/14）
+2. PLAN-1068 交付 UI-W2-AC（当前 drafting 0/10）
+3. 语言侧前置×3：ScenarioOp payload 扩展、具名 msg 语法、参数绑定面（979/981 谱系后继）
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 39 | from: user | to: blocked | status: executing（12/32）| outcome: blocked（等待外部，条件具名）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 15b9c4c6 lang 6512eb531 | next: 外部交付后 resume work（B-AV/B-RUST/PARITY/终验）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
 
-**【等待用户裁定（round 33 登记）】完成计划980 的路径三选一**：①等 985 交付 M2A-08 + 1068 交付 UI-W2-AC（波次门原样——980 保持 executing 至外部交付后再续 B-AV/B-RUST/PARITY/终验）；②调整波次裁定允许 B-AV/B-RUST 与 WEB 并行（可立即开工）；③授权后续会话续 WEB 切片#6c（路线 B：vue/script.rs handler 体级 lane 发射+generate_with_source）直至 WEB 批闭合。WEB 剩余与波次门明细见 §9 round 32/33 收据与 §13.5。
+**【用户裁定已记录（round 39，2026-11-16）】**：用户选择 **①等待外部交付（原裁定不变）**——980 保持 executing 12/32，等 PLAN-985 交付 M2A-08、PLAN-1068 交付 UI-W2-AC、语言侧前置×3（ScenarioOp payload/具名 msg 语法/参数绑定面）交付后再续 B-AV/B-RUST/PARITY/终验。WEB 批 UI 侧全部项已交（§13.11），真语料 spliced 切换待前置。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 §5已冻结批次；T-01只补各批接口/命令参数及实测环境，不再负责从零拆大包。新增分母项须追加具名批次或正式后继并逐AC迁移，保持总闭合责任。
