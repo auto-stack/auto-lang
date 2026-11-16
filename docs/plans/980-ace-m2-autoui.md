@@ -934,6 +934,20 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 23 | from: work | 
 
 本轮规划静态预检：14份计划/设计/路线文档，8份Plan共230个当前任务；仅980新增B-AV-I/V/R三项并按完整W3范围重开原RUST三项，旧AXR0收据保留；981仅核正原SOURCE三项已交的滞后计数。全部原任务ID/其余勾选、各Plan状态与整包依赖列表保留；新增本地链接/锚点15处、章节/表格/元数据计数/验收任务映射及行尾检查通过，A最小→A出口→W1→W2独立交接→W3→OS→候选/安装/退役阶段图16节点18边无环。原GUI/Widgets/Notes-Clock/语言/库/产品义务有具名阶段与原owner，不以延期冒PASS。仅文档预检，未实施/建树/运行测试或窗口/签阶段/合入/清理/恢复目标，未写源码、测试资产、canonical Specs或取号计数器；他会话并发修改不由本轮回退。
 
+2026-11-16 stage: work（B-NATIVE-I/V 批，r13 MIN-A-UI，goal round 24：用户授权"完成计划980"开工链）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（批次可交付独立复核；B-NATIVE-I/V/R 勾选留 R，current_step 仍 9/32）| worktree: D:/autostack/.wt/lang-980/{auto-lang,auto-ui} @ plan-980-dev | base: lang 6ff4233b4 / ui dfc73cf1 | code_commit: ui 3df28cf9、lang c449acc13（+18 行）。
+
+**B-NATIVE-I 有界决定（冻结）。** ①UI-FFI 载体 = `ui980` provider（hooks trampoline）：依赖无关注解源经 `build_source` 构建（root=target/ace-node-desktop，新鲜度缓存，prep 后测试零 rustc）；**967 冻结 AV 外呼可调用域 = view + 2×i32（ViewI32I32ToI32）**——7 函数全部 `(view,i32,i32)->i32`：`ui_open`（tag+instances）、`ui_apply_text/ui_apply_str`（view 即载荷，instance*1000+slot 打包，当前 session）、`ui_apply_int/ui_apply_bool`（tag+打包+值，当前 session）、`ui_poll_event/ui_close`（tag+显式句柄）。UI session 状态（显示模型/typed 队列/世代/证据计数）归 auto-ui-runtime 所有；宿主与 AV 经同一 DLL 模块（LoadLibraryW 引用计数）共享 hooks statics。②事件回 AV：窗口点击→typed 队列（世代纪律）→tick 受控调用点 AV 外调 `ui_poll_event`→`AceStateEngine::dispatch`（STATE 已交场景重放面，业务全在 AV）→状态差量经 AV 外调 `ui_apply_*` 提交实际 UI 更新；计数绝不在 Rust。③三类源：ace-hello-minimal 双源 + 新 fixture `examples/ui/ace-node-counter/src/front/app.at`（002 计数业务派生 node：msg Inc/Dec/Reset、count int、on 复合赋值）；文本面两段：driverless-full（带 model/on 源）→静态观察面（Hello 类无 model 的具名回退；静态面拒 on=具名行为）。④命令冻结：CPU `cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1`；排窗 `AUTO_UI_ACE_NODE_E2E=1`（prep=构建 example+`--prep-only`）；产品入口 `AUTO_UI_ENGINE=ace`→`run_ace_node_desktop_entry`（r11 快照面保留给自己的测试/exe）。
+
+**交付。** UI：`ui/ace_node_desktop.rs`（provider 源+hooks+UI session host+桥+`AceNodeDesktopWindow`+入口）、`examples/ace_node_desktop_window.rs`（e2e 驱动/证据 JSON/自动退出/--prep-only）、`tests/ace_node_desktop.rs` 7 永久 case、counter fixture、run_vm 分支重定向、`ace_hello::escape_auto_string_for_source` 转 pub；lang：ace-host `register_source_provider`（通用源 provider 注册面，返回 cdylib 路径）。
+
+**V 验证（冻结提交实测；会话测试表）。** CPU 7/7=0.74s：①轨迹 0→1→0→0+两实例定向 2:1（dispatch 序 [Inc,Dec,Reset,Inc,Inc,Inc]、终值 i0=2/i1=1、宿主显示=AV 真值、applies 只增、初始 FFI 提交≥4）；②hello 双源 AV 文本字节级过 FFI（"Hello"/"你好 Auto"）；③坏 Schema：无绑定 target→LaneError+同入口恢复绿、未声明 msg `.Nope`→DispatchRefused 且零 UI 效果；④坏 ABI：poll/close 未知句柄 -1、越槽/越实例 apply -3，全部零提交；⑤close/reopen/late：close 后 apply/poll -2 具名拒、push→late_dropped、reopen 新世代重提交（业务 count 延续 1→2）、旧代 applies 冻结；⑥byte_len 反例：F0 车道成功返回 1 但 applies/display 均不动（V-UI-A-MIN oracle 对伪车道的判别力固化）；⑦撤权：`Denied ace.provider/revoked` 零 UI 效果、复权同门恢复。排窗 e2e 1/1=2.24s：真窗 frames≥4、六事件轨迹、双 session（旧代 closed/late≥1、新代重提交）、reopen 后显示 [2,1]。受影响面（串行）：ace_ui_hello 7/7、ace_native_window 5/5、ace_ts_provider 4/4、ace_a2r_axr0 4/4、plan041 9/9、desktop_behavior 11 过/1 ignored（P488-D1 原条件）、image_surface_contract 1/1；`cargo check -p auto-ui-tools` 绿；lang `cargo t ace-facade` PASS。逐 case 墙钟（含 cargo 启动）0.9–1.8s，全部 ≤10s。fmt clean、我的文件零警告。
+
+**边界（诚实声明）。** ①f-string 文本叶在两条文本车道均具名拒（KNOWN-DEBT 既有边界，W1 义务）——counter fixture 文本叶用字面量、计数值显示走 int 状态槽呈现；②交互档（真实鼠标/IME/选择复制）归手工/环境门控档（r11 同口径）；③instance*1000+slot 打包为 MIN-A 界内约定（实例 ≤4、槽 <1000，越界具名拒 -3）；④driverless-full 的 states 观察弃用（状态经引擎面取——纯文档性）；⑤完整 001/002 主题/选择/全部组件/Widgets 归 W1 B-AV，义务不变。
+
+next_responsible_role: B-NATIVE-R（同树停写独立核本批：AC-B-NATIVE 的 V-UI-A-MIN 子面、AC-NODE-DESKTOP 反例重放、边界与债务核对；pass 后勾 B-NATIVE-I/V/R=12/32、phase fold #7 落主）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 24 | from: work | to: review | status: executing（9/32，NATIVE r13 批待复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: ui 3df28cf9 lang c449acc13 | next: review（B-NATIVE-R）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
