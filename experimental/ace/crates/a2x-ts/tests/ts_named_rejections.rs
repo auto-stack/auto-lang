@@ -31,9 +31,8 @@ fn tsrej_01_scheduler_intrinsic_is_a_named_rejection() {
     // control exists to catch.
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../../crates/auto-lang/test/cases/ace-m2/scheduler/src/ask_reply.at");
-    let src = std::fs::read_to_string(&fixture).unwrap_or_else(|e| {
-        panic!("read scheduler fixture {}: {e}", fixture.display())
-    });
+    let src = std::fs::read_to_string(&fixture)
+        .unwrap_or_else(|e| panic!("read scheduler fixture {}: {e}", fixture.display()));
     let view = view_of_scheduler(&src);
     let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
     let err = TypeScriptTargetProvider
@@ -81,8 +80,8 @@ fn tsrej_02_depth_budget_is_a_named_rejection() {
     }
     body.push_str("    return v79");
     let flat = format!("fn main() int {{\n{body}\n}}");
-    let compiled = ace_core::source::compile_source(&flat, "a2ts-rej", &[])
-        .expect("wide source compiles");
+    let compiled =
+        ace_core::source::compile_source(&flat, "a2ts-rej", &[]).expect("wide source compiles");
     let checked = Box::leak(Box::new(compiled.checked));
     let view = ace_a2x_core::SemanticView::from_checked(checked).expect("view admission");
     let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
