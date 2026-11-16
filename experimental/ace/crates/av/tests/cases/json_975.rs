@@ -348,7 +348,7 @@ fn main() int {
     // ---- Rust (A2R): rustc-built exe stdout
     let store = std::env::temp_dir().join(format!("p975-c2s-rs-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&store);
-    let mut rust = PackageA2xTarget::cold(
+    let rust = PackageA2xTarget::cold(
         &store,
         "pkg975c2s",
         "app",
@@ -394,7 +394,7 @@ fn main() int {
     // ---- C (AC): cl-built exe stdout
     let c_store = std::env::temp_dir().join(format!("p975-c2s-c-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&c_store);
-    let mut c = PackageA2xTarget::cold(
+    let c = PackageA2xTarget::cold(
         &c_store,
         "pkg975c2s",
         "app",

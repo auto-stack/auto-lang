@@ -125,7 +125,7 @@ fn main() int {
     // (the owned-buffer counterexample: it really allocates).
     let store = std::env::temp_dir().join(format!("p975-b1-rs-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&store);
-    let mut rust = PackageA2xTarget::cold(
+    let rust = PackageA2xTarget::cold(
         &store,
         "pkg975b1",
         "app",
@@ -177,7 +177,7 @@ fn main() int {
     // AC + native/mn exit code 31
     let c_store = std::env::temp_dir().join(format!("p975-b1-c-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&c_store);
-    let mut c = PackageA2xTarget::cold(
+    let c = PackageA2xTarget::cold(
         &c_store,
         "pkg975b1",
         "app",
