@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1032
-status: reviewed
+status: archived
 feature_name: ACE typed native批量编辑失败原子性
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 3
-current_step: 4
+current_step: 5
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-mir/native-typed-entry.md, docs/specs/auto-ac/mir-native-cache.md]
@@ -21,7 +21,7 @@ affects: [ACE]
 
 2026-11-13 r2当前：用户要求对1028以外计划逐份核是否足够定制。本包补真实输入、状态/故障设置、独立关闭断言、测试落点、任务改面和Spec具体增量；原发现/AC/Case/T-ID及6任务、drafting 0/6保留。只做规划与静态源码核对，不修改实现/测试/配置，不接管1028实施，也不宣称动态反例或产品通过。
 
-承接[1024](1024-ace-m2-code-quality-and-refactoring-audit.md)的F24，优先级**P1**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。真实动态影响由T-01反例界定，不把静态风险冒实际失败。
+承接[1024](../1024-ace-m2-code-quality-and-refactoring-audit.md)的F24，优先级**P1**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。真实动态影响由T-01反例界定，不把静态风险冒实际失败。
 
 2026-11-16 r3阶段裁定：F24全部A-required，先关闭原NTX-01/02与对应独立oracle再供985/A；虽然是native typed批编辑，但真实mn-worker/typed_entry消费者属于A的AC基础/测试接受态；不能因AC桌面在B而整体延期。原6任务/0完成/既定设计与历史保留，仅规划。
 
@@ -49,14 +49,14 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 
 | 已核源路径 | 字节SHA256 | 状态 |
 |---|---|---|
-| [experimental/ace/crates/native/src/typed_session.rs](../../experimental/ace/crates/native/src/typed_session.rs) | 29186796e89fe450877d7f09079cfc629d7c18c85c9c04866a45a663cb750c38 | 静态取材，非运行证据 |
-| [experimental/ace/crates/native/src/typed_fixture.rs](../../experimental/ace/crates/native/src/typed_fixture.rs) | e4d65e4d80f8d66f3efc11d6c8828830b77b56e50fea8b9fca549f27de5005a0 | 静态取材，非运行证据 |
-| [experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs](../../experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs) | b7508d6348a4da79786aa984d537560c3f9649e117cc7029d23d326f94389e5c | 静态取材，非运行证据 |
+| [experimental/ace/crates/native/src/typed_session.rs](../../../experimental/ace/crates/native/src/typed_session.rs) | 29186796e89fe450877d7f09079cfc629d7c18c85c9c04866a45a663cb750c38 | 静态取材，非运行证据 |
+| [experimental/ace/crates/native/src/typed_fixture.rs](../../../experimental/ace/crates/native/src/typed_fixture.rs) | e4d65e4d80f8d66f3efc11d6c8828830b77b56e50fea8b9fca549f27de5005a0 | 静态取材，非运行证据 |
+| [experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs](../../../experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs) | b7508d6348a4da79786aa984d537560c3f9649e117cc7029d23d326f94389e5c | 静态取材，非运行证据 |
 
 | Spec来源 | SHA256 | 适用边界 |
 |---|---|---|
-| [docs/specs/auto-mir/native-typed-entry.md](../../docs/specs/auto-mir/native-typed-entry.md) | f2de377e354771e9bee7b906d9cf482c08724d78d565c410af61ec4156a7a4da | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-ac/mir-native-cache.md](../../docs/specs/auto-ac/mir-native-cache.md) | e0dbd77304c7cfe8d1e99c4a8d2eb35c38c4e1833e61ca25f5a690870fe2a395 | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-mir/native-typed-entry.md](../../../docs/specs/auto-mir/native-typed-entry.md) | f2de377e354771e9bee7b906d9cf482c08724d78d565c410af61ec4156a7a4da | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-ac/mir-native-cache.md](../../../docs/specs/auto-ac/mir-native-cache.md) | e0dbd77304c7cfe8d1e99c4a8d2eb35c38c4e1833e61ca25f5a690870fe2a395 | 当前规则保持；开工重读核漂移 |
 
 源码/Spec是实际规则依据。1024 M/S/D/L/A/N/U为保留账，不代Rust reader/nextest发现；同文件在途修改串行单写，正式合入来源重核，不用他Plan WIP当已交付依赖。
 
@@ -138,8 +138,8 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 
 | 原Case ID | 拟新增永久测试名（当前不存在） | 既有源码/目标落点 | 使其可运行的owner |
 |---|---|---|---|
-| NTX-01 | audit1032_ntx_01（实际落地 `audit1032_ntx_01_failed_batch_keeps_previous_entry_runnable`，公开状态oracle） | [experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs](../../experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行（已核，见§9） |
-| NTX-02 | audit1032_ntx_02（实际落地 `audit1032_ntx_02_batch_failure_is_atomic` + 邻例 `audit1032_ntx_02_signature_change_pulls_real_dependents`，内部接受快照oracle + cfg(test)一次性emit/store故障注入） | [experimental/ace/crates/native/src/typed_session.rs](../../experimental/ace/crates/native/src/typed_session.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行（已核，见§9） |
+| NTX-01 | audit1032_ntx_01（实际落地 `audit1032_ntx_01_failed_batch_keeps_previous_entry_runnable`，公开状态oracle） | [experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs](../../../experimental/ace/crates/native/tests/typed_entry_incremental_tier.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行（已核，见§9） |
+| NTX-02 | audit1032_ntx_02（实际落地 `audit1032_ntx_02_batch_failure_is_atomic` + 邻例 `audit1032_ntx_02_signature_change_pulls_real_dependents`，内部接受快照oracle + cfg(test)一次性emit/store故障注入） | [experimental/ace/crates/native/src/typed_session.rs](../../../experimental/ace/crates/native/src/typed_session.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行（已核，见§9） |
 
 一个Case可需多个同族函数，以上名字是最小锚，不代全部状态。优先扩已有test根/私有cfg(test)模块；若新建test文件，须在其真实conformance根或Cargo target接线，不能只创建文件然后把rg属性数当发现。T-03必须在实际固定组结果中核各锚点被发现/执行；平台/工具条件排除具名列出，不计PASS。
 
@@ -151,7 +151,7 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 - [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。证据：NTX-01/02 三锚点新增并实测 PASS；失败后 doc/residents/history/generation 与旧 entry_plan/COFF 全保旧的独立断言成立；partial-install 变异对照 3/3 定向红（§9），证明 oracle 能区分原缺陷。
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。证据：固定组 `cargo t ace-native` PASS（298/298 executed，0 excluded/not_run，gate_passed，执行期 checkout 未漂移）；原三例 warm/A→B→A/param-only、签名变更、冷恢复全绿；实质调用者仅同 crate（`typed_entry_tier.rs`、本 tier、`mn-worker` bin 无 `#[test]` 体），无跨仓消费者；SD-01/02 文本仍按 §5 供 merge 沉淀；无 1002 硬前置（未触作者格式/IR/adapter）。
 - [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。证据：`cargo t ace-native` PASS 298/298 @ delivery `45fcd50f4`（source_state 复核一致）、两 Spec 落主（post 哈希见 §9 merge 收据）、`git mv` 归档 + `status: archived`。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
@@ -162,7 +162,7 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 | T-02 / work | [x] T-01决定与可区分输入（review F-01 回退后已闭：rustfmt + R-01/R-02） | doc/units/history/generation全部build-aside，在全部verify/admit/emit/cache成功后切换；补NTX永久断言，保真实COFF复用。 AC-02 ✅ 提交 `6d3e638d7`：`edit_units` 改为候选文档+`prepare_candidate` 暂存+`commit_staged` 单点切换；history 命中只读、提交时消费；A→B→A 字节等同原 COFF。 |
 | T-03 / work | [x] T-02（组证据已重跑并绑定 `2cf01df05`） | 对每种失败复核旧run与同批重试、A→B→A、param-only与signature-dependent；运行typed_entry_incremental_tier及native职责组，工具缺失不计成功。 AC-02/03 ✅ `cargo t ace-native` PASS：298 executed/298 selected、0 not_run/0 excluded、gate_passed、source_state `15ad563b…`、wall 679.93s（工具准备 577.8s/12项、发现 34.85s、执行 66.80s）；工具齐备（rust-lld/SDK 可用，无 infra-blocked）。 |
 | T-04 / review | [x] T-01..03完成、冻结提交（re-review PASS @ `2cf01df05`） | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass（落主+Spec+归档已核 @ `45fcd50f4`） | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
@@ -296,6 +296,28 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **证据**：本记录即持久证据；原始 `D:/autostack/plan-artifacts/plan-1032/{group-run-2/results.json, ace-native-run-2.log}`（merge 折叠后整目录删除）。**未做**：未改实现/Specs、未合入/归档/清树、未跑全仓或 ace-perf。
 
 2026-11-16 stage:goal | plan_id: PLAN-1032 | plan_revision: r3 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1032/auto-lang | commit: 2cf01df05 | next: merge
+
+2026-11-16 stage:merge | PLAN-1032:r3 | outcome: pass（delivery 已落主并归档；清理见下一条收据） | delivery_commit `45fcd50f4` | canonical Specs `docs/specs/auto-mir/native-typed-entry.md`（post `4825d105…`）、`docs/specs/auto-ac/mir-native-cache.md`（post `5d72ffb1…`） | archive `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md` | cleanup pending（T-06）。
+
+| Checkpoint | 证据 |
+|---|---|
+| prepared | reviewed r3 @ `2cf01df05`（review pass，含 F-01/R-01/R-02 关闭）；canonical delta = §5 SD-01/SD-02；targets 前哈希 `native-typed-entry.md` f2de377e…、`mir-native-cache.md` e0dbd773…；spec 提交 `af2c87fed`（reviewed_commit 的 documentation-only 后代；`git diff 2cf01df05..b49397461 -- experimental crates scripts .cargo .config Cargo.toml Cargo.lock` 为空＝实现/依赖未变） |
+| landed | master `e7236a6d1` --ff-only→ `45fcd50f4`（Fast-forward，无 merge commit；tip 与 delivery 相等已核）。rebase 重写映射：`6d3e638d7→5892906f3`、`2cf01df05→b49397461`、`af2c87fed→45fcd50f4`；`git range-diff 16a58402e..af2c87fed e7236a6d1..45fcd50f4` 三段全部 `=`（等价证明） |
+| gate（merge-owned 冻结组门） | `cargo t ace-native` 在 delivery 状态实跑：PASS 298/298 executed、0 excluded/0 not_run、`gate_passed=true`、`source_state=26e792074b5a…`（现场重算逐字一致）、3 个 `audit1032` 锚点均在选中集；wall 120.36s（工具 63.55s/12 项、发现 4.89s、执行 51.48s、max_parallel 20）。证据 `plan-artifacts/plan-1032/group-run-3/results.json`（清理前折叠，见下） |
+| canonical_verified | 落主树内两 Spec 新文本存在（`native-typed-entry.md:67-75`「同一接受事务」、`mir-native-cache.md:42-46`「批量编辑的接受事务边界」）；post 哈希如上；`python scripts/spec-lint.py` = 4 errors/77 warnings，**全部为既有**（4 个缺 project.md 的结构项 + 历史断链），输出中无任何本 Plan 路径/新链接项（已 grep 核对）；无 index/ledger 写入 |
+| archived | `git mv docs/plans/1032-ace-native-typed-batch-atomicity.md docs/plans/archive/` + `status: archived`，docs 随本提交入库（未跟踪 docs 不为 archived）；见下方实际状态核验 |
+| cleaned | pending（worktree/branch/plan-artifacts scope；完成后另记） |
+
+**本轮实测（debug/test；复用+merge 门实跑）**
+
+| Test module / actual scope | Result and executed/excluded counts | Preparation/build | Discovery | Tests | Cleanup | Total wall time |
+|---|---|---|---|---|---|---|
+| `cargo t ace-native`（delivery `45fcd50f4`） | PASS 298/298，0 excluded/not_run，gate_passed | 工具 63.55s（12 项 receipt，新 HEAD 身份） | 4.89s | 51.48s（max_parallel 20） | — | 120.36s |
+| `git range-diff` / 代码同一性 / spec-lint | range-diff 3/3 `=`；代码 diff 空；lint 4E/77W 全为既有且无本 Plan 项 | 无构建 | — | — | — | <5s |
+
+**新增用例**：本 Plan 的 3 个锚点（`audit1032_ntx_01_*`、`audit1032_ntx_02_*`×2）在 delivery 组门内被执行并通过；耗时为 work/review 实测 0.5–2.45s（≤10s 门），merge 未新增用例。
+
+**证据折叠**：`plan-artifacts/plan-1032/` 原始记录（`group-run/results.json`、`group-run-2/results.json`、`group-run-3/results.json`、`ace-native-run{,2,3}.log`、`typed_session.rs.pre-mutation`、`base_typed_session.rs`、`base_fmt.txt`、本轮收据草稿）已全部以命令/退出码/数字/哈希折入本 Plan §6/§9；随后整 scope 删除并刷新注册表（D-1032-RUNTIME-PREP 为具名持有，登记于 KNOWN-DEBT）。
 
 ## 10. 待澄清事项
 
