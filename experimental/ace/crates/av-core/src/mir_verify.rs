@@ -862,7 +862,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_NET_READ
                             | crate::platform_io::CAP_NET_CLOSE
                             | crate::platform_io::CAP_NET_LISTEN
-                    ));
+                    ))
             // PLAN-973: the system-resource capability spellings are
             // KNOWN admissions (units may carry them transitively from
             // package binding without owning a platform import) — the
