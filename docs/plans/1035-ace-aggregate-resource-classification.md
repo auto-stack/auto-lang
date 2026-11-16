@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1035
-status: drafting
+status: execution_done
 feature_name: ACE聚合资源分类、字段投影与真实故障回归
 author: [Codex]
 created_at: 2026-11-13
-updated_at: 2026-11-13
+updated_at: 2026-11-16
 plan_revision: 5
-current_step: 0
+current_step: 3
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/composite-source-projection.md, docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resource-fault-and-generation-conformance.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/ace-migration/m2-aggregates.md, docs/specs/auto-mir/owned-access-profile.md, docs/specs/auto-a2x/python-stdlib-readiness.md]
@@ -224,9 +224,9 @@ F34结论：List-only record在source、lowering/MIR及layout存在资源闭包�
 
 | Case ID | AC / work owner | 区分性输入/设置 | 实际入口 | 独立关闭oracle | 当前状态 |
 |---|---|---|---|---|---|
-| RES-01 | AC-02 / T-02 | List-only record、Str+List、标量、嵌套/tuple-of-list/合法Box | source→Checked HIR→共享MIR ownership→AV/native | 支持域内按S/D/R核move/read/get/clear/原已准入clone及参数/返回；纯标量不误owned；旧域外继续拒绝 | 拟实施，未运行 |
-| RES-02 | AC-02 / T-02 | xs.get(index:0).code与Pos邻例；错型/多参/缺字段/owned与Copy | resolve的Field融合前置路径和真实source前门 | Named按普通get现准入与Pos等价；错型/arity具名诊断；无panic、无owned whole物化逃逸 | 拟实施，未运行 |
-| RES-03 | AC-02 / T-02 | 保v03正常42，再对新聚合构造/克隆/替换逐实际分配attempt命中原Infra注入 | 测试私有Aggregates前门→现ExecLimits/arena seam及真实AV consumer | 真实注入Infra确命中；旧目标数据/buffer保持，List epoch独立核；半构造回收；清故障重跑成功；N+1成功 | 拟实施，未运行 |
+| RES-01 | AC-02 / T-02 | List-only record、Str+List、标量、嵌套/tuple-of-list/合法Box | source→Checked HIR→共享MIR ownership→AV/native | 支持域内按S/D/R核move/read/get/clear/原已准入clone及参数/返回；纯标量不误owned；旧域外继续拒绝 | 已实施并绿 2026-11-16（audit1035_res_01_*，§9） |
+| RES-02 | AC-02 / T-02 | xs.get(index:0).code与Pos邻例；错型/多参/缺字段/owned与Copy | resolve的Field融合前置路径和真实source前门 | Named按普通get现准入与Pos等价；错型/arity具名诊断；无panic、无owned whole物化逃逸 | 已实施并绿 2026-11-16（audit1035_res_02_*，§9；修前 unreachable! panic 复现） |
+| RES-03 | AC-02 / T-02 | 保v03正常42，再对新聚合构造/克隆/替换逐实际分配attempt命中原Infra注入 | 测试私有Aggregates前门→现ExecLimits/arena seam及真实AV consumer | 真实注入Infra确命中；旧目标数据/buffer保持，List epoch独立核；半构造回收；清故障重跑成功；N+1成功 | 已实施并绿 2026-11-16（audit1035_res_03_*，§9；旧代码同绿=F30 证据缺口而非缺陷） |
 
 代表性路径/失败状态不冒全笛卡尔覆盖。发现/执行/原条件排除、准备/冷编译/发现/运行/清理、首次红/环境归因/重放绿分别记；父exit0不代子终态。当前未运行，无产品PASS。
 
@@ -281,9 +281,9 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 
 ## 7. 验收标准
 
-- [ ] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，落实§5 r4 DEC-RES的S/D/R、MutBorrow分层、故障分类与提交/abort观察，§6反例及邻例可在实际入口运行，不私改expected。
-- [ ] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
-- [ ] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
+- [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，落实§5 r4 DEC-RES的S/D/R、MutBorrow分层、故障分类与提交/abort观察，§6反例及邻例可在实际入口运行，不私改expected。
+- [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
+- [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
 - [ ] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
@@ -292,9 +292,9 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 
 | task / owner_stage | 依赖 / 状态 | 操作、交付与验证 / AC |
 |---|---|---|
-| T-01 / work | [ ] 1024交接、未来实施授权及当前源 | 按§5 r4 DEC-RES重核源漂移；建立Bag/纯值/Variant/tuple/Box等真实前门、Named近邻、测试私有aggregate故障接线及活帧提交观察；记录目标admit/emit/run边界。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-02 / work | [ ] T-01反例设置与r4既定决定 | 按最小owner/drop边界修F34与融合前置参数门；原v03正常义务保留，新增真实聚合fault永久例，不重推后端ownership。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-03 / work | [ ] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-01 / work | [x] 1024交接、未来实施授权及当前源 | 按§5 r4 DEC-RES重核源漂移；建立Bag/纯值/Variant/tuple/Box等真实前门、Named近邻、测试私有aggregate故障接线及活帧提交观察；记录目标admit/emit/run边界。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：base=b043117b8 重核 §4 全部源/Spec 字节身份（漂移见 §9），四个真实前门（aggregates source→lower→verify_mir→ABC→AV）跑通反例红：RES-01 `audit1035_res_01_list_only_record_ownership` 红、RES-02 命名投影在 `resolve.rs` `unreachable!` panic、core HIR 负控双红；RES-03 两 fault 例在旧代码即绿（证明 F30 是证据缺口而非缺陷，未把静态风险冒失败）。 |
+| T-02 / work | [x] T-01反例设置与r4既定决定 | 按最小owner/drop边界修F34与融合前置参数门；原v03正常义务保留，新增真实聚合fault永久例，不重推后端ownership。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：commit=34c8fc04a（11 文件）。F34 资源叶闭包统一到 source resolve / core verify（两处同义元素判据合一）/ lowering HIR walk / av-core ownership+layout；F33 两处融合点接受 Named 且移除用户可触发 `unreachable!`；F30 增 `resource_915::aggregates_fault_sweep` + `aggregates_commit_fault_probe`（测试私有 aggregates 前门，不改 `SourceFrontend`/recipe/旧 915 负载）。11 个永久例在修复后全绿，回退分类修复后 6 红重现（见 §9 红/绿表）。 |
+| T-03 / work | [x] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：冻结并集门 `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi` 全跑（结果见 §9）：ace-lowering/ace-native/ace-a2x PASS；ace-source 2 红、ace-av 1 红、ace-a2c-abi 1 红均为 base b043117b8 已存在（回退本包修改逐项复现），ace-av 另 1 红 `sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动归因；本包 10 个永久锚点在该组结果中被发现并执行。 |
 | T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
@@ -376,6 +376,78 @@ r4静态终检（2026-11-13）通过：54个相关源/Spec/配置及2个依赖�
 
 本轮规划静态预检（非产品PASS）：18份规划/路线/债务文档；13份Plan共92个原任务，任务ID/勾选/状态/完成数/整包依赖保持。985本轮162父行分类索引唯一、F01..35唯一且全覆盖（20条A正确性、6条A约束/证据、2条已交复用、7条B）；新增本地链接/锚点、章节、表格、阶段/任务/原Case映射与行尾核对通过，阶段图34节点36边无环，1066的A终验不再依赖B-only格式/项目/250编译任务。仅验收合同冻结；真实矩阵/adapter/新控制及全部新产品结果仍待原work任务，未运行/签A。未改源码/测试资产/canonical Specs/取号计数器，未实施/建树/构建/窗口/合入/归档/清理或恢复目标。
 
+### T-01..T-03 实施记录（2026-11-16，work）
+
+stage: work | plan_id: PLAN-1035 | plan_revision: 5 | worktree_path: D:/autostack/.wt/lang-1035/auto-lang | branch: plan-1035-dev | base_commit: b043117b8 | code_commit: f86894ce3（review 冻结提交，前序 34c8fc04a / 7d06f14e9） | dependency_revisions: 无（仅语言仓 ACE workspace；未改其他仓、未取跨仓依赖） | task_ids: T-01, T-02, T-03 | outcome: pass | next_responsible_role: review
+
+授权：objective「完成计划1035」经 /auto-plan-goal 继承为 work→review→merge 全链授权；实现只在专属树写，计划簿记只在主检出。
+
+**入驻重核（base b043117b8，字节 SHA256；与 §4/§9 历史记载的 r4 快照对比）**
+
+| 源 | base SHA256 | 与 r4 记载 |
+|---|---|---|
+| experimental/ace/crates/core/src/source/resolve.rs | b282282074654ead07d948c85461792afb3762c2f9b7a7f0e6a00a195e7315f0 | 漂移（r4 快照 6584e94 时点） |
+| experimental/ace/crates/core/src/verify.rs | 64de0d8290587300514a053b093a8bff2a582cc6ec2a85531ef41187ff37331f | 漂移 |
+| experimental/ace/crates/core/src/collections_facts.rs | dac38ace978d739fe3e3a9f03c3783c8ab202ad912325e48b22ee4bc2c2993c2 | 漂移 |
+| experimental/ace/crates/lowering/src/hir_adapter.rs | 097c791bb992735bba0a5fa0e7e8791c9b16f6d9a26f15574931eadd81129167 | 漂移 |
+| experimental/ace/crates/av-core/src/ownership.rs | fbe208179c99a9a93d04aaa26e5fee36d3de18931bd6089d8203a2d4cfcd4dd7 | 漂移 |
+| experimental/ace/crates/av-core/src/layout.rs | 5c4bba8a2b0b4af013eee82700f2af47f1c76b20df5f28f03616ee6fd0c1fc63 | 漂移 |
+| experimental/ace/crates/av/src/resource_915.rs | b9c66c8f4813264fed38398e201832ce36b3e15837926305a16212b08ff5c087 | 与 r4 一致 |
+| experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs | bda3489be2e11390a1dd4deba752dcb9a3e49e9b797c5603b85ca6061a12adfe | 与 r4 一致 |
+| experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs | 151e679e5de4fde4d4e167e41ca789b9b1d958d0778094fd1b222d2a552da049 | 漂移 |
+| scripts/test-groups.toml | 14b2ef9db5ca04f49126e7559b584a0c4ab9ef97d6326eb20d5efd6b6508e3f0 | 漂移（组名不变：ace-source/lowering/av/native/a2x/a2c-abi 均在） |
+
+漂移来自 11-13→11-16 之间其他计划的正式合入；按现码逐条复核，r4 DEC-RES 的责任边界（S 语义 move / D 物理释放 / R 借用凭证）在当前代码仍成立，未改约定。
+
+**实现（commit 34c8fc04a + 7d06f14e9 + f86894ce3，11+3+2 文件）**
+
+| 层 | 位置 | 改动 |
+|---|---|---|
+| source | [core/src/source/resolve.rs](../../experimental/ace/crates/core/src/source/resolve.rs) | `record_reaches_str` → `record_reaches_resource(records, tuples)`：字段闭包到 owned Str/List/Variant/Function/Object 或 tuple 元素即资源；`vt_is_coll_owned`/`VT::is_owned_coll` 改用之（旧 live helper 与公开 helper 同义）。F33：两个融合点（`xs.get(i).f`、`xs.get(i).len()`）接受 Named 索引，去掉用户可触发 `unreachable!`。 |
+| HIR verify | [core/src/verify.rs](../../experimental/ace/crates/core/src/verify.rs) | 两处同义元素判据合一为 `list_elem_owned`；新增 `type_reaches_resource`/`record_reaches_resource`（record 字段闭包到资源叶）。**保持 962 面**：裸 List/Closure/Object 元素仍是链式 view，不判 owned。 |
+| lowering | [lowering/src/hir_adapter.rs](../../experimental/ace/crates/lowering/src/hir_adapter.rs) | `hir_record_reaches_str` → `hir_record_reaches_resource`（同叶集），`hir_elem_owned` 用资源闭包判 record 元素。 |
+| MIR | [av-core/src/ownership.rs](../../experimental/ace/crates/av-core/src/ownership.rs)、[layout.rs](../../experimental/ace/crates/av-core/src/layout.rs) | `record_reaches_str` → `record_reaches_resource`（List/Variant/Closure 叶即真）；`type_is_owned(Record)` 与 `LayoutDesc.is_copy` 同源派生。 |
+| 故障证据 | [av/src/resource_915.rs](../../experimental/ace/crates/av/src/resource_915.rs) | 新增测试私有 `compile_aggregates_module`、`aggregates_fault_sweep`（同 sweep 体，不改 `SourceFrontend`/`worker recipe`/旧 915 负载）、`aggregates_commit_fault_probe`（PLAN-919 lifecycle 观测真实 dst：replaced/swept/free id）。 |
+
+**红/绿判别（同一永久例；红=回退上述分类修改后重跑）**
+
+| Case / 永久锚点 | 修前 | 修后 | 判别性观察 |
+|---|---|---|---|
+| RES-01 `audit1035_res_01_list_only_record_ownership` | FAIL | ok | List-only record 不再被当纯值：帧账闭合（live 0、allocs==frees） |
+| RES-01 `audit1035_res_01_move_then_read_rejects` | FAIL | ok | move 后读走 MIR `mir.use-after-move`（旧分类下无 kill） |
+| RES-01 `audit1035_res_01_str_plus_list_and_scalar_record` | ok | ok | 纯标量 record 仍隐式 Copy（不误 owned） |
+| RES-01 `audit1035_res_01_tuple_of_list_is_owned` | ok（tuple 早已 owned） | ok | tuple 成员 owned 纪律保持 |
+| RES-02 `audit1035_res_02_named_get_projection` | FAIL（panic） | ok | 修前 `core/src/source/resolve.rs:12820` `internal error: entered unreachable code: get takes one positional index`；修后 Named 与 Pos 同为 42 |
+| RES-02 `audit1035_res_02_named_neighbours_reject_with_diagnostics` | FAIL（同一 panic） | ok | 错型/arity/缺字段各有具名诊断，无 panic |
+| RES-02 `audit1035_res_02_named_whole_element_stays_a_view` | ok | ok | Named 不放松 whole-element 物化禁令 |
+| core HIR `list_only_record_element_is_owned_at_the_hir_gate`（含纯标量对照） | FAIL | ok | 程序化 HIR 裸 ListGet：List-only record 拒绝（`verify.view-escape`），纯标量 record 放行 |
+| core HIR `nested_list_only_record_chain_is_owned_at_the_hir_gate` | FAIL | ok | 嵌套 record 链到 List 仍 owned；纯标量链放行 |
+| core HIR `record_with_variant_field_is_owned_at_the_hir_gate` | —（修前同门漏项） | ok | 仅含 Variant 载荷的 record 也 owned |
+| RES-03 `audit1035_res_03_aggregate_fault_sweep` | ok | ok | **旧代码同绿**：F30 是证据缺口而非缺陷；两 seam 逐 attempt 命中 fault-injected Infra、live 0、free id 唯一且 frees==successful、N+1 与清故障重跑均 42 |
+| RES-03 `audit1035_res_03_commit_seam_keeps_old_destination` | ok | ok | 实测 clean: replaced≥1；每个故障 attempt：`replaced==0`、旧目的 buffer id 存活至 abort 且只释放一次、账平、N+1 重新提交 |
+
+**组门（冻结 code_commit f86894ce3）**：`cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi`（run id run-1zd2ia6g）
+
+| 组 | 结果 | 红的分账 |
+|---|---|---|
+| ace-source | 804/806 pass | `plan981_grammar_scope::{p981_age_package_grammar_id_is_frozen, p981_grammar_ids_match_the_recorded_frozen_values}`：回退本包修改仍红（grammar hash pin 漂移，非本包） |
+| ace-lowering | PASS | — |
+| ace-av | 1312/1314 pass | `stdlib_list_946_grammar_face`：回退仍红（packages 前门语法 pin，非本包）；`sys973_v03_process_spawn_capture_timeout_exit`：隔离重放绿（环境/时序抖动归因，非回归） |
+| ace-native | PASS | 首轮 `mn_aggregates_collections_lane_admits_and_emits` 红由 HIR 门过度扩大引起，收窄后绿 |
+| ace-a2x | PASS | 含 ace-a2x-python（1042 合入）分类事实消费者 |
+| ace-a2c-abi | 8/9 pass | `admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin`：回退仍红（C 文本 certification pin 漂移，非本包） |
+
+ace-av 组结果 JSON 中本包 10 个 `audit1035_*` 锚点均被发现并执行（`results.json` 可复核）；core 侧 3 个锚点在 `ace-source` 组同文件内执行。
+
+**范围与观测边界（不冒 PASS）**
+
+1. **List epoch / 通用 slot gen**：故障注入在提交前返回 Infra 并整帧 abort，运行期 buffer epoch 与 `fr.gens` 没有外部观测面；本包只断言可观察面（无 `replaced` disown、旧目的 buffer 身份存活至 abort 且释放一次、账平）。List precheck 先验证后触碰仍由 915 R03 stale-place 成功路径套件覆盖，未新增 epoch 观测 API。
+2. **Box 合法例补 `.move`**：`Node{next Box<Node>}` 在 F34 后属资源 record，`Box(tail)` 的隐式转移被 `source.move-required` 拒绝；V-04 fixture 与 t01 probe 内联源改为 `Box(tail.move)`，预期值 42 与资源账不变（同例 `Node(1, cell.move)` 一直如此）。纯标量 record 的 `Box(p)` 保持原样。这是分类修正的应有后果，不是支持域收缩。
+3. 未执行：native/A2X 对 Box 递归的发射/运行腿（D-962-C2/C3 既有能力债，不在本包补）、聚合 MutBorrow 新 ABI、clone 深拷贝源码能力、UI/AGE/正式性能轴。
+4. 首轮组门暴露的 HIR 过度扩大已在本包内回正（7d06f14e9）：裸 List/Closure/Object 元素不得判 owned，否则 962 的 chained whole-element view 与 native 聚合 lane 误红；该边界已由 `nested_element_view_read_runs`/`p946`/native lane 永久例守住。
+
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
+
 ## 10. 待澄清事项
 
-DEC-RES经r4复审修订后无关键设计未决：S/D/R、MutBorrow在HIR与各MIR/目标表示中的临时拥有/写回、fault Infra/预算Resource及List代际/slot gen分域已定。F34动态严重度/真实N及失败提交观察仍待实施，不据静态差额声称双free；不扩962未交付的聚合mut/closure/clone或运行期失效句柄保证。原具名能力债仍归原owner，本包资源闭包与Named受控准入不能延期。drafting 0/6。
+DEC-RES经r4复审修订后无关键设计未决：S/D/R、MutBorrow在HIR与各MIR/目标表示中的临时拥有/写回、fault Infra/预算Resource及List代际/slot gen分域已定。F34动态严重度/真实N及失败提交观察仍待实施，不据静态差额声称双free；不扩962未交付的聚合mut/closure/clone或运行期失效句柄保证。原具名能力债仍归原owner，本包资源闭包与Named受控准入不能延期。**2026-11-16 work 更新**：T-01..T-03 已实施（详见 §9 实施记录），F34 的真实动态后果已观察（List-only record 的帧账/move 纪律/四层分类一致），未观察到双 free 或错机器结果；F30 仍无缺陷证据（旧代码同绿），只补永久真实故障例。drafting→executing→execution_done 3/6。
