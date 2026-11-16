@@ -4761,6 +4761,7 @@ impl<'a> Engine<'a> {
                         num: None,
                         stmts: Vec::new(),
                         sources: Vec::new(),
+                        source_spans: Vec::new(),
                         span: self.cx.span_of(member),
                     });
                 }
@@ -5148,15 +5149,21 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// R61-2：`watch { .a, .b -> … }` 的全部源（head + 每个 tail）。
-    fn member_sources(&mut self, item: u32) -> Vec<String> {
+    /// R61-2/R62-2：`watch { .a, .b -> … }` 的全部源（head + 每个 tail），
+    /// 返回（拼写, 源 token span）；修饰形 `.a.b` 保留完整拼写。
+    fn member_sources(&mut self, item: u32) -> Vec<(String, Span)> {
         let source_kind = self.rule_kind_of("age-watch-source");
         let mut out = Vec::new();
-        fn walk(eng: &mut Engine, node: u32, source_kind: Option<u32>, out: &mut Vec<String>) {
+        fn walk(eng: &mut Engine, node: u32, source_kind: Option<u32>, out: &mut Vec<(String, Span)>) {
             for c in eng.cx.children(node) {
                 if Some(eng.cx.tree.kind(c)) == source_kind {
                     if let Some(s) = eng.cx.field_child(c, "source") {
-                        out.push(eng.cx.spelling(s));
+                        let mut text = eng.cx.spelling(s);
+                        if let Some(m) = eng.cx.field_child(c, "modifier") {
+                            text.push('.');
+                            text.push_str(&eng.cx.spelling(m));
+                        }
+                        out.push((text, eng.cx.span_of(s)));
                     }
                 } else {
                     walk(eng, c, source_kind, out);
@@ -5269,7 +5276,16 @@ impl<'a> Engine<'a> {
                 text,
                 num,
                 stmts: self.member_stmts(c),
-                sources: self.member_sources(c),
+                sources: self
+                    .member_sources(c)
+                    .iter()
+                    .map(|(s, _)| s.clone())
+                    .collect(),
+                source_spans: self
+                    .member_sources(c)
+                    .iter()
+                    .map(|(_, sp)| *sp)
+                    .collect(),
                 span: self.cx.span_of(c),
             });
         }
@@ -5300,6 +5316,7 @@ impl<'a> Engine<'a> {
                 num: None,
                 stmts: Vec::new(),
                 sources: Vec::new(),
+                source_spans: Vec::new(),
                 span: expose_span,
             });
         }

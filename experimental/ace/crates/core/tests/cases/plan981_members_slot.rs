@@ -235,3 +235,16 @@ fn p981_watch_multisource_single_line_body() {
     };
     assert_eq!(ds[0].code, "source.age.member-field", "{ds:?}");
 }
+
+/// R62-2：watch 源拒绝的 span 指向**源 token**（不是整个成员）。
+#[test]
+fn p981_watch_source_rejection_points_at_the_source() {
+    let bad = "node M {\n    model {\n        alpha int = 0\n    }\n    watch { .alpha, .nosuch -> { .alpha = alpha + 1 } }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let want = bad.find("nosuch").expect("fixture has the bad source");
+    let ds = match compile(bad) {
+        Ok(_) => panic!("the second watch source must be checked"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.age.member-field", "{ds:?}");
+    assert_eq!(ds[0].span.start, want, "span points at the source token");
+}
