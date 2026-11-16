@@ -902,7 +902,23 @@ fn read_back_components(
                 )]);
             };
             texts.push(AgePackageText {
-                role: p.node.view.role.clone(),
+                // R60-2：文本叶的 role 按叶自身记录（命名 view 的叶是
+                // `named-view:<name>`），不再一律写 view 的 role。
+                role: p
+                    .node
+                    .view
+                    .texts
+                    .get(ti)
+                    .map(|t| {
+                        // 命名 view 的叶保留 `named-view:<name>`；普通 view 的叶
+                        // 沿用面 role（历史合同是 `view`）。
+                        if t.role.starts_with("named-view:") {
+                            t.role.clone()
+                        } else {
+                            p.node.view.role.clone()
+                        }
+                    })
+                    .unwrap_or_else(|| p.node.view.role.clone()),
                 span: *orig_span,
                 kind,
                 fn_name: fn_name.clone(),

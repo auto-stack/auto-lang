@@ -4743,9 +4743,19 @@ impl<'a> Engine<'a> {
                         .cx
                         .field_child(member, "face")
                         .expect("named view face name");
+                    let face_name = self.cx.spelling(face);
+                    // R60-2：`view <name> { … }` 的**体**此前被整个丢掉（不投影、
+                    // 不进 verify）。这里按 `view` 同一机制收集文本叶，role 带上
+                    // 命名面（`named-view:<name>`），由前门生成隐藏函数交给唯一
+                    // verify；结构树本切片暂不投影（具名边界见 §6.7）。
+                    let named_role = format!("named-view:{face_name}");
+                    let mut named_texts = Vec::new();
+                    let _named_tree =
+                        self.collect_view_items(member, &mut named_texts, &named_role);
+                    texts.extend(named_texts);
                     member_rows.push(ComponentMemberRow {
                         role: "named-view",
-                        name: self.cx.spelling(face),
+                        name: face_name,
                         value: None,
                         text: None,
                         num: None,
@@ -5124,8 +5134,8 @@ impl<'a> Engine<'a> {
                         .map(|f| eng.cx.spelling(f))
                         .unwrap_or_default();
                     if let Some(rhs) = eng.cx.field_child(c, "rhs") {
-                        let inner = eng.unwrap_child(rhs);
-                        let expr = eng.project_expr_sync(inner);
+                        // R60-1：同 `value`——`rhs` 是完整表达式，不再 unwrap 成首原子。
+                        let expr = eng.project_expr_sync(rhs);
                         out.push((field, expr));
                     }
                 } else {
@@ -5175,14 +5185,13 @@ impl<'a> Engine<'a> {
                 Some(n) => self.cx.spelling(n),
                 None => String::new(),
             };
+            // R60-1：`pratt` 字段记录的是完整表达式树（二元链在这里），**不能**先
+            // `unwrap_child` 取第一个原子——那会把 `count + 1` 截成 `count`。
             let value = self
                 .cx
                 .field_child(c, "value")
                 .or_else(|| self.cx.field_child(c, "v2"))
-                .map(|v| {
-                    let inner = self.unwrap_child(v);
-                    self.project_expr_sync(inner)
-                });
+                .map(|v| self.project_expr_sync(v));
             let text = self
                 .cx
                 .field_child(c, "handler")

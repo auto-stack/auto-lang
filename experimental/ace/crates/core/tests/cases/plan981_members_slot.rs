@@ -144,3 +144,55 @@ fn p981_member_statement_field_must_exist() {
     };
     assert_eq!(ds[0].code, "source.age.member-field", "{ds:?}");
 }
+/// R60-1：成员值必须保留**完整表达式**（`1 + 2` 是 Binary，不是首原子 IntLit）。
+#[test]
+fn p981_member_value_keeps_the_full_expression() {
+    use ace_core::source::ast::ExprKind;
+    let out = compile(&body("computed {\n        d => 1 + 2\n    }")).expect("computed compiles");
+    let row = out.description.components[0]
+        .members
+        .iter()
+        .find(|m| m.role == "computed")
+        .expect("a computed row");
+    let value = row.value.as_ref().expect("the expression is projected");
+    assert!(
+        matches!(value.kind, ExprKind::Binary { .. }),
+        "the projected value must be the whole binary expression, got {:?}",
+        value.kind
+    );
+}
+
+/// R60-1：成员值/语句 RHS 的**右链**也必须进唯一 verify（截断即绿是缺陷）。
+#[test]
+fn p981_member_value_tail_is_verified() {
+    for src in [
+        "node M {\n    model {\n        count int = 0\n    }\n    computed {\n        d => count + nosuch_ident\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+        "node M {\n    model {\n        count int = 0\n    }\n    lifecycle {\n        m => {\n            .count = count + nosuch_ident\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+    ] {
+        let want = src.find("nosuch_ident").expect("fixture has the bad name");
+        let ds = match compile(src) {
+            Ok(_) => panic!("the right-hand tail must be verified: {src}"),
+            Err(ds) => ds,
+        };
+        assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
+        assert_eq!(ds[0].span.start, want, "diagnostic at the name");
+    }
+}
+
+/// R60-2：`view <name> { … }` 的体不能丢——文本叶投影（role 带命名面）且进 verify。
+#[test]
+fn p981_named_view_body_is_verified_and_attributed() {
+    let good = "node M {\n    view main {\n        text \"hi\" {}\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let out = compile(good).expect("a named view with a valid text body compiles");
+    let texts = &out.description.components[0].texts;
+    assert_eq!(texts.len(), 2, "both leaves are projected");
+    assert!(
+        texts.iter().any(|t| t.role == "named-view:main"),
+        "the named-view leaf keeps its face attribution: {texts:?}"
+    );
+    let bad = "node M {\n    view main {\n        text nosuch_fn() {}\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    match compile(bad) {
+        Ok(_) => panic!("an undefined name inside `view <name>` must be rejected"),
+        Err(ds) => assert_eq!(ds[0].code, "source.module-symbol", "{ds:?}"),
+    }
+}
