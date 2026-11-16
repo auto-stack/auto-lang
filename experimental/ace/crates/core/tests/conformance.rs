@@ -140,3 +140,5 @@ mod source_units_928_t09;
 mod text_replacement;
 #[path = "cases/plan981_resource_identity.rs"]
 mod plan981_resource_identity;
+#[path = "cases/plan981_multimodule_identity.rs"]
+mod plan981_multimodule_identity;

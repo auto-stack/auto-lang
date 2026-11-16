@@ -124,6 +124,12 @@ pub struct AgePackageComponent {
 pub struct AgeSceneRow {
     /// 组件种类拼写（`shape2d` / `Disc`）。
     pub kind: String,
+    /// PLAN-981（轮 47）：该行**解析后**的元素种类。
+    ///
+    /// 只有 `kind` 时，`Disc d1 { … }` 与同包另一个模块里同名的 `Disc` 无法区分
+    /// ——消费者只能按名字字符串匹配声明，正是 §5 禁止的做法。这里给出检查器
+    /// 已解析的目标：冻结叶（shape2d / 3D）或声明所在模块的 node。
+    pub element: AgeSceneElement,
     /// 实例名（`red_disc`）。
     pub name: String,
     /// 属性名 → 属性值（作者表达式；按书写序）。
@@ -137,6 +143,22 @@ pub struct AgeSceneRow {
     /// 这里给出**已经解码好**的值，同时保留 `attrs` 里的原始表达式，两者并存：
     /// 消费者读值用本字段，需要作者拼写时回看 `attrs`。
     pub cpu: Vec<(String, AgeSceneValue)>,
+}
+
+/// 场景行元素的**解析结果**（PLAN-981 轮 47）。
+#[derive(Clone, Debug, PartialEq)]
+pub enum AgeSceneElement {
+    /// 冻结 2D 叶（`shape2d`）。
+    Shape2d,
+    /// 冻结 3D 叶（`cylinder3d` / `model3d` / `group3d`）。
+    Element3d,
+    /// 作者定义的 AGE node 实例化，已解析到声明模块。
+    Node {
+        /// 声明所在模块的全键（`pkg::mod`，与 `AgePackageComponent.module` 同一身份）。
+        module: String,
+        /// 该模块里 node 的源名。
+        node: String,
+    },
 }
 
 /// 一个场景属性的 CPU 已解析值。
@@ -264,7 +286,13 @@ pub struct AgePackageCompilation {
     pub description: AgePackageDescription,
     pub checked: CheckedModule,
     /// 源函数名 → 绑定器 HIR 符号（脱糖函数与普通函数都在内）。
+    ///
+    /// **多模块下是有损的**：两个模块各有一个同名 helper 时，本表只留得下一条
+    /// （键是源名，不是模块+源名）。多模块消费者必须用
+    /// [`AgePackageCompilation::symbol_of_in`] / [`symbols_by_module`]。
     pub symbols: std::collections::BTreeMap<String, String>,
+    /// PLAN-981（轮 47）：`(模块全键, 源函数名) → HIR 符号`——跨模块同名不互相覆盖。
+    pub symbols_by_module: std::collections::BTreeMap<(String, String), String>,
     /// 包图身份（源 + 模块图 + grammar + 兼容配置）。
     pub input_hash: String,
     /// 脱糖后模块内容的身份（换领域行为即换它；源哈希不含脱糖）。
@@ -277,6 +305,16 @@ impl AgePackageCompilation {
     /// 同一事实取函数；查不到返回 None（不猜命名规则）。
     pub fn symbol_of(&self, source_name: &str) -> Option<String> {
         self.symbols.get(source_name).cloned()
+    }
+
+    /// PLAN-981（轮 47）：在**指定模块**里取源函数名的 HIR 符号。
+    ///
+    /// 多模块包里同名 helper 是合法的（各自 mangle 成不同符号），`symbol_of`
+    /// 按源名查会在两个模块间任选一个——消费端必须用本方法。
+    pub fn symbol_of_in(&self, module: &str, source_name: &str) -> Option<String> {
+        self.symbols_by_module
+            .get(&(module.to_string(), source_name.to_string()))
+            .cloned()
     }
 
     /// 证据身份（与 979 领域接面同元组：id/version/grammar/源/兼容配置）。
@@ -366,9 +404,10 @@ pub fn compile_age_package_with_scenario(
         return Err(vec![d]);
     }
 
-    // 3b) 场景资源引用：`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
+    // 3b) 场景元素种类 + 资源引用：元素必须解析到**真实的** node 声明（冻结叶
+    //     除外），`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
     //     缺失或不符类型都具名拒绝——实测过"不存在的资源名静默通过"的缺口。
-    check_scene_element_kinds(&product.age_components, &product.bound)?;
+    let resolved_elements = resolve_scene_elements(&product.age_components, &product.bound)?;
     let resolved_resource_refs = check_scene_resource_refs(&product.bound, &product.age_components)?;
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
@@ -409,6 +448,7 @@ pub fn compile_age_package_with_scenario(
         &product.bound,
         &resolved_refs,
         &resolved_resource_refs,
+        &resolved_elements,
     )?;
 
     Ok(AgePackageCompilation {
@@ -427,6 +467,18 @@ pub fn compile_age_package_with_scenario(
             .origins
             .iter()
             .map(|(sym, (_, _, original))| (original.clone(), sym.clone()))
+            .collect(),
+        // 轮 47：多模块同名 helper 的**权威**映射（上面的 `symbols` 按源名会冲突）。
+        symbols_by_module: product
+            .bound
+            .origins
+            .iter()
+            .map(|(sym, (pkg, module, original))| {
+                (
+                    (super::packages::unit_key(pkg, module), original.clone()),
+                    sym.clone(),
+                )
+            })
             .collect(),
         input_hash,
         desugar_hash,
@@ -565,6 +617,7 @@ fn read_back_components(
     bound: &super::packages::BoundPackages,
     refs: &std::collections::BTreeMap<(String, String), Vec<AgeResolvedRef>>,
     resource_refs: &std::collections::BTreeMap<(String, String), Vec<AgeResolvedResourceRef>>,
+    elements: &std::collections::BTreeMap<(String, String), Vec<AgeSceneElement>>,
 ) -> Result<Vec<AgePackageComponent>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for p in packaged {
@@ -659,8 +712,16 @@ fn read_back_components(
                 .view
                 .scene_components
                 .iter()
-                .map(|row| AgeSceneRow {
+                .enumerate()
+                .map(|(ri, row)| AgeSceneRow {
                     kind: row.kind.clone(),
+                    // 元素解析结果与场景行由同一次投影按同序产生（见
+                    // `resolve_scene_elements`）；缺位是内部不变量破坏，不是用户输入。
+                    element: elements
+                        .get(&(p.module.clone(), p.node.name.name.clone()))
+                        .and_then(|v| v.get(ri))
+                        .cloned()
+                        .expect("scene elements are resolved in row order"),
                     name: row.name.clone(),
                     attrs: row
                         .attrs
@@ -1402,10 +1463,22 @@ fn scene_value_type(
 /// 这里用 binder 的既定事实裁定：元素要么是冻结的 3D 元素（`cylinder3d` 等），
 /// 要么是 `shape2d`，要么是**某个模块里真实声明的 AGE node**（跨模块引用沿用
 /// 与 IF-981-REF 相同的"符号表导入即可见"规则，不额外要求 `pub`）。
-fn check_scene_element_kinds(
+/// PLAN-981（轮 47）：场景元素**解析**（不再只做"名字在不在"的检查）。
+///
+/// 判据沿用 binder 事实：元素要么是冻结叶（`shape2d` / `cylinder3d`/`model3d`/
+/// `group3d`），要么是**某模块真实声明的 AGE node**——同模块声明天然可见，跨模块
+/// 必须是本模块**确实导入**的名字，且该导入的来源模块里真有这个 node（只导入一个
+/// 同名的普通函数不算）。
+///
+/// 返回值按 (模块键, node 源名) 聚合、**与场景行同序**：消费者拿到的不是拼写，
+/// 而是声明所在模块（`Disc` 在两个模块各有一份时不会撞车）。
+fn resolve_scene_elements(
     packaged: &[PackagedAgeComponent],
     bound: &super::packages::BoundPackages,
-) -> Result<(), Vec<Diagnostic>> {
+) -> Result<
+    std::collections::BTreeMap<(String, String), Vec<AgeSceneElement>>,
+    Vec<Diagnostic>,
+> {
     // 每个模块**自己**声明的 node 名（同模块引用天然可见）。
     let mut own: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
         std::collections::BTreeMap::new();
@@ -1414,39 +1487,104 @@ fn check_scene_element_kinds(
             .or_default()
             .insert(p.node.name.name.as_str());
     }
+    let mut out: std::collections::BTreeMap<(String, String), Vec<AgeSceneElement>> =
+        std::collections::BTreeMap::new();
     for comp in packaged {
-        // 本模块**导入**的 node 名（符号表导入即可见，不需要 `pub`）。
-        //
-        // 复审指出：此前这里把**全项目** node 名并成一个集合，于是"某个与入口
-        // 毫无导入关系的模块里恰好有个同名 node"也会被当作合法元素——比同族的
-        // `resolve_refs`（查导入）松，拼写撞上无关模块的名字就能过关。
-        let imported: std::collections::BTreeSet<&str> = bound
-            .units
-            .get(&comp.module)
-            .map(|u| u.imports.iter().map(|i| i.bound_name()).collect())
-            .unwrap_or_default();
+        let mut rows: Vec<AgeSceneElement> = Vec::new();
         for row in &comp.node.view.scene_components {
-            if row.kind == "shape2d" || super::age_resources::is_3d_element(&row.kind) {
-                continue;
-            }
-            let local = own
+            let element = if row.kind == "shape2d" {
+                AgeSceneElement::Shape2d
+            } else if super::age_resources::is_3d_element(&row.kind) {
+                AgeSceneElement::Element3d
+            } else if own
                 .get(comp.module.as_str())
-                .is_some_and(|s| s.contains(row.kind.as_str()));
-            if local || imported.contains(row.kind.as_str()) {
-                continue;
-            }
-            return Err(vec![text_diag(
-                "source.age.scene-element",
-                format!(
-                    "`{}` is not a node declared in or imported by `{}` \
-                     (2D: `shape2d`; 3D: cylinder3d/model3d/group3d)",
-                    row.kind, comp.module
-                ),
-                row.span,
-            )]);
+                .is_some_and(|s| s.contains(row.kind.as_str()))
+            {
+                AgeSceneElement::Node {
+                    module: comp.module.clone(),
+                    node: row.kind.clone(),
+                }
+            } else if let Some(origin) = imported_node_origin(
+                &own,
+                bound,
+                comp.module.as_str(),
+                row.kind.as_str(),
+                8,
+                false,
+            ) {
+                AgeSceneElement::Node {
+                    module: origin,
+                    node: row.kind.clone(),
+                }
+            } else {
+                return Err(vec![text_diag(
+                    "source.age.scene-element",
+                    format!(
+                        "`{}` is not a node declared in or imported by `{}` \
+                         (2D: `shape2d`; 3D: cylinder3d/model3d/group3d)",
+                        row.kind, comp.module
+                    ),
+                    row.span,
+                )]);
+            };
+            rows.push(element);
+        }
+        out.insert(
+            (comp.module.clone(), comp.node.name.name.clone()),
+            rows,
+        );
+    }
+    Ok(out)
+}
+
+/// 从 `module_key` 的导入（可沿 `pub use` 重导出链）找到**真正声明** `name` 的模块。
+///
+/// 只跟随 `reexport` 的导入（第一跳除外）：`mid` 的私有导入不应让 `main` 看见它。
+/// 深度上限防御环（环本身是绑定期问题，这里只保证不递归爆栈）。
+fn imported_node_origin(
+    own: &std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>>,
+    bound: &super::packages::BoundPackages,
+    module_key: &str,
+    name: &str,
+    depth: u32,
+    via_reexport_only: bool,
+) -> Option<String> {
+    if depth == 0 {
+        return None;
+    }
+    // 该模块自己声明了它 → 就是声明地。
+    if own
+        .get(module_key)
+        .is_some_and(|s| s.contains(name))
+    {
+        return Some(module_key.to_string());
+    }
+    let unit = bound.units.get(module_key)?;
+    let pkg = module_key
+        .split_once("::")
+        .map(|(p, _)| p)
+        .unwrap_or(module_key);
+    for imp in &unit.imports {
+        if imp.bound_name() != name || (via_reexport_only && !imp.reexport) {
+            continue;
+        }
+        let origin = match imp.path.len() {
+            2 => format!("{pkg}::{}", imp.path[0]),
+            3 => format!("{}::{}", imp.path[0], imp.path[1]),
+            _ => continue,
+        };
+        if let Some(found) = imported_node_origin(
+            own,
+            bound,
+            origin.as_str(),
+            name,
+            depth - 1,
+            true,
+        ) {
+            return Some(found);
         }
     }
-    Ok(())
+    None
 }
 
 /// PLAN-981（IF-981-ORIGINAL）：场景 `material:`/`tint:` 的**资源引用**检查。
