@@ -268,3 +268,24 @@ producer 就位；新增已验证 producer 未关闭的缺口：byte→Str 面�
 env get 族/zip/storage 等）→1064、AC 50 操作真身→1065（用户裁定 b）、Linux 实跑
 →1063、967 读出参帧。规范落点 [m2-stdlib-io.md](m2-stdlib-io.md)。B 阶段消费者
 替换（985）以本包 A 收据为开工门之一。
+
+## PLAN-979 增量：Schema 领域接面与 AGE 投影（SD-02 挂接，2026-11-16）
+
+按本文件 SD-01 分类口径登记本包已验 producer（不复制子计划分母；状态=实现可核对，产品门另计）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| `ace_core::source::age_h0::compile_age_h0` + `ace_av::age_h0::observe_age_h0` | auto-lang `e352e462b` | implemented-verified（H0 切片） | node/view/text + 普通函数文本；完整 AGE 语法不在本项 |
+| `ace_core::source::domain::compile_domain`（包/typed 投影/身份/注册表/`mapping_complete`） | auto-lang `e352e462b` | implemented-verified（通用接面） | role 粒度；字段粒度见 `field_manifest` |
+| `ace_core::source::field_manifest` + owner 分母（UI 115 行 / AGE 12 行） | auto-lang `e352e462b`；auto-ui `f864f33b` | implemented-verified（清单/覆盖机制） | 分母数据与产品字段归 owner；L04/AG-A 范围外 |
+| `compile_age_package`（多模块 AGE 包前门）+ `observe_age_package` | auto-lang `e352e462b`（981/SOURCE） | implemented-verified（CPU 腿） | A2R 实例 1 未取值；g01 不进 A2R；模块级 const/var 拒绝 |
+| 传统 AutoUI 字段分母（`ui.widget-decl/v1`） | auto-ui `f864f33b`（980） | implemented-verified（字段面） | 全模式/窗口由 980/PARITY 等继续 |
+
+未闭/范围外（保持显式，不填“支持/无差额”）：
+
+- AGE-L04 选择/条件（981/LANGUAGE + 966）、AG-A01..09（980 + 981/LANGUAGE）、AGE-L03 的
+  `view-portrait`/`view-widget`（981/LANGUAGE）；
+- GUI/FFI/宿主与两游戏（981/SESSION/RUST/LANGUAGE/PROOF）、完整产品分母（985）、980 其余批次；
+- auto-ui 仓 `ace-migration-feasibility.md` 的领域侧增量归 UI owner（本仓不可沉淀）。
+
+规范落点：[m2-schema.md](m2-schema.md)；证据与边界见 PLAN-979 §9。
