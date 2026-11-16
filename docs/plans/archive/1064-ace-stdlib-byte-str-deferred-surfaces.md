@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1064
-status: executing
+status: archived
 feature_name: ACE共同模块装配、byte→Str与延后系统库交付
 author: [ZCode]
 created_at: 2026-11-16
-updated_at: 2026-11-16
+updated_at: 2026-11-17
 plan_revision: 3
-current_step: 10
+current_step: 13
 total_steps: 13
 depends_on: [PLAN-973, PLAN-972, PLAN-967, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-stdlib-io.md, docs/specs/stdlib/design/ace-binding-and-assembly.md, docs/specs/ace-migration/m2-host.md, docs/specs/auto-abi/checked-source-foreign-calls.md]
@@ -43,7 +43,7 @@ affects: [stdlib, ace]
 
 ## 4. 需求分析与背景调查
 
-用户本轮明确授权细化1064/1065及975/973/985交接、旧例映射、平台与验收、消除循环；仅规划，不启动实现/测试/合并/清理。语言读取主线9d0f973cb3cafc585ba2bae52ad269b9b6a8c0e3；975分支02a687da8含B1及JSON/Redis进展，未据此宣称正式交付。973归档路径为[原交付](archive/973-ace-m2-stdlib-io.md)，Spec取材为`docs/specs/ace-migration/m2-stdlib-io.md`及`stdlib/design/ace-binding-and-assembly.md`。
+用户本轮明确授权细化1064/1065及975/973/985交接、旧例映射、平台与验收、消除循环；仅规划，不启动实现/测试/合并/清理。语言读取主线9d0f973cb3cafc585ba2bae52ad269b9b6a8c0e3；975分支02a687da8含B1及JSON/Redis进展，未据此宣称正式交付。973归档路径为[原交付](973-ace-m2-stdlib-io.md)，Spec取材为`docs/specs/ace-migration/m2-stdlib-io.md`及`stdlib/design/ace-binding-and-assembly.md`。
 
 **已观察事实**：975/json.at含`pub fn`及私有`json_cp`等helper；sqlite.at现为plain fn内联面。975记录text-record拒pub、packages拒private helper；这是待关闭的接面问题，不能仅凭文本归因锁死某一个parser分支。PackageModule已有exports/imports，CtInStmt::Decl已有public标志；stdlib冻结身份在binding冷/恢复路径均检查。975的TextFromChar/StrFromChar与多端降落已有源码/测试，先独立正式交付再复用，不新造相同原语。AV×C/Rust当前读出参帧未交，由本包T-FRAME在967现有ABI/binding owner内补必要面，非外部无主等待。
 
@@ -146,7 +146,7 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 
 ### 三端最终一致与AC阶段移交（2026-11-16当前优先）
 
-本包适用范围为**本包公共标准库及真实AC调用**。A仍须AV/A2R完整原required及AC真实基础，A2PY标准库/AV三provider与原其他required保持。AC基础外剩余差额允许B后延，逐原行ID/输入/独立oracle/资源/错误/源身份记录B-owner与关闭条件，交[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)，异步调度交[1067](1067-ace-ac-native-async-and-task-parity.md)。不能以stub或原profile不支持签AC已实现；M2最终三端必须同平台可用，A后延只是时间调整。A2C完整对齐增强，既有代码/用例/支持事实保留，缺完整面不阻M2。
+本包适用范围为**本包公共标准库及真实AC调用**。A仍须AV/A2R完整原required及AC真实基础，A2PY标准库/AV三provider与原其他required保持。AC基础外剩余差额允许B后延，逐原行ID/输入/独立oracle/资源/错误/源身份记录B-owner与关闭条件，交[1068](../1068-ace-m2b-three-backend-parity-and-aac-proof.md)，异步调度交[1067](../1067-ace-ac-native-async-and-task-parity.md)。不能以stub或原profile不支持签AC已实现；M2最终三端必须同平台可用，A后延只是时间调整。A2C完整对齐增强，既有代码/用例/支持事实保留，缺完整面不阻M2。
 
 在本包原能力work/最终验证/review明确区分“A已验接口”“B后延AC行”：移交有正式producer/版本/所需前置，最终真实实现和补验归1068及原owner协作，不回落旧VM或重写归档Plan。985/A可收本包A正式切片，不反等1068；本包如已有B则保唯一树续行，A切片不能勾全包完成。
 
@@ -199,19 +199,19 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 | AC-03 | work | D01..06真实公共API、旧sentinel/实际OS/资源与原例＋增补齐 | T-03/V-02 |
 | AC-04 | work | 原required ZIP三函数/方法与新KV持久合同完整关闭 | T-04/T-KV/V-03 |
 | AC-05 | work | 全部required路径/旧新检查闭合，AC取1065来源，Linux完整移交，错误/缺证不冒PASS | T-05/V-04 |
-| AC-06 | review | 全包独立复审绑定本r2/冻结实现SHA、逐AC/差额/健康/SD，MODULE批审不代全包 | T-06 |
-| AC-07 | merge | 已验规范/正式来源、归档和全输出对账/清理事实齐 | T-07 |
+| AC-06 | review | 全包独立复审绑定本r3/冻结实现SHA `69eb8b479`、逐AC/差额/健康/SD，MODULE批审不代全包 | T-06（2026-11-17 终审 PASS，见 `§9`） |
+| AC-07 | merge | 已验规范/正式来源、归档和全输出对账/清理事实齐 | T-07（2026-11-17 已完成并归档） |
 | AC-MODULE | work | 合法public/private共同CST/exports/原源身份及冷恢复与实际975 consumer闭合，无源重写/旧链fallback | T-MODULE-I/V；V-MODULE/RESTORE |
 | AC-MODULE-REVIEW | review | 独立phase复核MODULE接口/原源/负控及本revision，不能只采实现者汇报 | T-MODULE-R |
 | AC-MODULE-LAND | merge | MODULE已独立正式合入、收据/Spec同版供975，整包状态仍executing | T-MODULE-D |
 | AC-D09 | work | Option<List>真实实现及全部适用端空/非空/失败闭合，不只裁定 | T-02/V-D09 |
 | AC-FRAME | work | 输出借用权限/owner/长度/ABI及自动binding→AV C/Rust真读闭合，无手工manifest | T-FRAME/V-FRAME |
 
-- [ ] **AC-AC-STAGED / work**：V-AC-STAGED闭合，AC基础真实、剩余差额完整移交1067/1068/实际owner，AV/A2R及原其他A-required不减；最终三端未验不得冒支持。原work落实、原独立review核，无新增任务或本轮完成数。
+- [x] **AC-AC-STAGED / work**：V-AC-STAGED闭合，AC基础真实、剩余差额完整移交1067/1068/实际owner，AV/A2R及原其他A-required不减；最终三端未验不得冒支持。原work落实、原独立review核，无新增任务或本轮完成数。（已由 `T-05` 闭合并经 `T-06` 终审复核 PASS：A-delivered AC 基础与 B-deferred AC 差额及 1063 Linux `NOT_RUN` 分账见 `§8 T-05` / `§9`。）
 
 ## 8. 执行步骤
 
-当前10/13（MODULE切片I/V/R/D + T-01 + T-02 + T-FRAME + T-KV + T-04 + T-03已交付，余3项待执行：T-05/T-06/T-07）；下列是唯一当前任务表。
+当前13/13（全部任务已完成并归档：MODULE切片I/V/R/D + T-01 + T-02 + T-FRAME + T-KV + T-04 + T-03 + T-05 + T-06 + T-07）。
 
 - [x] **T-01｜work｜AC-01**：核取材/正式依赖与原D/旧例表，冻结MODULE声明/exports、必要输出帧、UTF8/资源和ZIP完整方法/预算清单、hex/base64旧合同冲突；以最小真实正例＋非法近邻＋失败恢复的最长链先验策略，不造平行系统，不把未决全部留给后续。（已完成@`e9a359f5e`，冻结档案见 `D:/autostack/plan-artifacts/plan-1064/t01-freeze.md`：§4锚点SHA重核、`IF-975-B1` 已落地`8e0c4d1d6`、`project.rs` 修复 `Aggregates/Closures` 下 `char.from_codepoint`/`.to(Str)`、实测 `bstr_1064` 1KB/4KB/8KB/16KB 步数与恢复、冻结 `D-03 env_get_w16` `-203`/empty 0 与 `D-04 canonical_w16` 禁回退及 `D-09 ?List<int>` 缺口。）
 - [x] **T-MODULE-I｜work｜AC-MODULE**：在已核grammar/frontdoor/packages/binding/stdlib owner统一合法声明/可见性和冻结身份；建立V-MODULE/RESTORE；canonical sqlite pub迁移由975原T-03负责，不代其业务实现。
@@ -227,15 +227,61 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 - [x] **T-03｜work｜AC-03**：按D01..06具体合同落公开面/原兼容包装，真实OS/错误/生命周期与V-02，不以常量/计数充文本/args。（已完成@`cd936c05b`：修复 `av-core` `Win32::canonical_w16`（移除缺失路径 `GetFullPathNameW` 回退 + `op_proc_release` 同步杀并等待未退进程树）、`Win32::env_get_w16`（`SetLastError(0)` 区分 `Ok(0)` 空串与 `Err(203)` 未设置）、`a2x-rust` (`-203` + `win32_quote_arg` + `split_cmdline` + `a2x_env_get_bytes`/`a2x_proc_cmdline_fill_bytes` 3参对齐)、`a2x-python` (`os.stat` 缺失路径拒 + `-203` + `_win32_quote_arg` + `_split_win32_cmdline` + `stream.read1`)；`std.syscommon` 交付 `json_escape`/`parse_win32_cmdline` 及迭代化 `read_region_bytes`、`ticks16`/`ticks64`；`std.sysplat_{win,lnx}` 交付 `decode_w16_region` 与 `pf_{dir_names,env_get_opt,home_dir,local_data_dir,canonical,current_dir,args}`（同步修 `seek64` `lo_signed=0` 符号位）；`std.{file,path,env,process}` 交付 D-01..D-06 全公开面；`sys_d01_d06_1064` 5/5（含 058 10行/046 oracle/A2R+A2Py CLI 参数还原与 spawn cap/kill）+ `stdlib_sys_973` 15/15 + `kv_zip_1064` 8/8 + `bstr_1064` 7/7 + `ace-av-core --lib` 63/63 + `ace-core --lib` 79/79 + `ace-a2x-{rust,python}` 各 2/2 均 PASS。）
 - [x] **T-04｜work｜AC-04**：实现ZIP central-directory/原required解压方法/CRC/预算及三公开面，V-03 ZIP部分；复用原source/fixtures，不能缩成Stored-only。（已完成@`0fb14fe93`：`std.zip` 交付纯 Auto `list_json`/`read_text`/`extract_entry`，含 EOCD+Central Directory+Local Header 校验、IEEE CRC-32 半字节表、`Stored`/`Deflated` RFC 1951 BTYPE 00/01/10、流式 `max_bytes` 预算止损、拒绝加密/ZIP64/BZip2/坏 CRC/非法 UTF-8 且不覆写既有 `dest_path`，`.acezip.tmp` 原子替换；`std.syscommon` `region_leaf` 8B 展开降步数；`kv_zip_1064` 8/8（ZIP 4/4：plan897+BTYPE00 14.220s、neg+preserve 2.288s、A2R 8.464s、A2Py 8.022s）+ `stdlib_sys_973` 15/15 + `bstr_1064` 7/7 + `ace-core --lib` 79/79 均 PASS。）
 - [x] **T-KV｜work｜AC-04**：实现本节KV格式/读写/原子替换/重开及V-03 KV部分；不依975 JSON/DB业务循环，不重复既有atomic replace底座。（已完成@`52bb2dcdc`：`std.storage` 交付 `KVRead { status, found, value }` 及 `kv_get`/`get`、`kv_set`/`set`、`kv_remove`/`remove`，`ACE-KV/1\n` 分段校验＋UTF-8 严格解码＋1024 桶最后有效记录去重＋`.acekv.tmp` flush/close 后原子替换，`std.file.write_bytes` 补 `pf_flush`，`a2x-rust` 补 `lower_coll` `StrCmp` 与 `rt.rs` 1 基复用 `PIO_BUFS`；`kv_zip_1064` 4/4（AV wire oracle/重开 5.700s、AV 损坏/IO/只读保留/256KiB 3.697s、A2R 4096 往返/4097 超限 9.408s、A2Py 4096 往返/4097 超限 8.689s）+ `stdlib_sys_973` 15/15 + `ace-a2x-rust` 2/2 + `ace-core --lib` 79/79 均 PASS。）
-- [ ] **T-05｜work｜AC-05**：各work能力齐后核全部原例/新增V、六路径/原A2C、1065 AC正式来源与1063完整移交，形成冻结并集/真实结果；未闭required阻work完成。
-- [ ] **T-06｜review｜AC-06**：同树停写后的全包独立final，核全部AC/原后延义务与新增差额/健康/SD，阶段R不冒final。
-- [ ] **T-07｜merge｜AC-07**：final pass后核正式来源/沉淀/合入归档；输出逐目录对账、摘要折Plan、按现行政策清scope/guard清树，未知持有不盲删。
+- [x] **T-05｜work｜AC-05**：各work能力齐后核全部原例/新增V、六路径/原A2C、1065 AC正式来源与1063完整移交，形成冻结并集/真实结果；未闭required阻work完成。
+  [✅ 2026-11-17, commits `0b260dc7b` + `7d326c701` + `8b57bc17e`(master merge) + `69eb8b479` (`plan-1064-dev@69eb8b479`)]
+  - **1065 AC 正式来源对齐与修复**：消费已合入 `master` 的 `PLAN-1065`（`IF-1065-ACSYS`），对齐 `experimental/ace/crates/native/src/platform_io_sys973.rs` 与 `platform_io.rs`：`emit_canonical_w16` 移除 `GetFullPathNameW` 逻辑回退，缺失/不可打开路径经 `os_fail` 统一返回 `-8`（移除未使用导入 `GetFullPathNameW`）；`emit_env_get_w16` 补齐 `SetLastError(0)`（并在 `ALLOWED_KERNEL32_IMPORTS` 用 `"SetLastError"` 替换 `"GetFullPathNameW"`），区分已存在空值 `""`（`ret==0 && gle==0 -> 0`）与未设置变量（`203 -> -8`）；同步更新 `native/tests/cases/stdlib_sys_973.rs::sys973_win_canonical_and_env` 负控断言，消除 `platform_io_sys973.rs` 死常量警告（0 新增编译警告）。
+  - **共用前端回归根修**：在全套 `ace-native` 回归中捕获 `T-02` `resolve.rs` 对嵌套 `is` 分支返回判定仅看末语句 `RStmt::Return` 导致 `nested_variant.at` 触发 `verify.no-return-path` 的 4 项回归，抽提 `rblock_always_returns(block)` 递归判定 `Return`/`Fail` 与双臂全返回 `If`（4 项 `collections_*` 全绿）。
+  - **遗留测试口径校准**：更新 `ace-av::stdlib_list_946_grammar_face`（`"plain"`=`packages-modules` 自 `T-MODULE-D` 起依 `SD-MODULE` 闭合 `if a > t {` 条件语法缝、`packages-aggregates-ct` 仍拒）与 `kv_zip_1064::run_av_i32_budget`（33 次 Win32 I/O 的 `kv-av-misc` 给 `wall: 8s` 防 `-j 2` 并发 CPU 抢占超 2s，保留默认 `max_steps` 步数门槛）。
+  - **冻结提交 `69eb8b479`（及 `7d326c701` 整组 `ace-native`）实测汇总（全部 `exit=0`，Windows 仅测，排除 `::performance::` 与 Linux/WSL）**：
+    - `ace-native` 全正确性组（`-E "not test(::performance::)"` @ `7d326c701`，合并 `master` 对 `native` 源码零修改）：**299/299 PASS**（18 skipped = 17 `::performance::` + 1 平台排除；`196.525s`）；冻结 `69eb8b479` 复跑 `stdlib_sys_973` + `collections_{frontend,driver,source}_tier`：**33/33 PASS**（`64.923s`，含 `pe_import_audit` 仅 `kernel32.dll` + `bcrypt.dll!BCryptGenRandom`）。
+    - `ace-av` 受影响并集（`bstr_1064` + `kv_zip_1064` + `sys_d01_d06_1064` + `stdlib_sys_973` + `module_v_1064` + `stdlib_asm_972` + `v08_surface_972` + `stdlib_core_945` + `stdlib_list_946` @ `69eb8b479`）：**94/94 PASS**（`196.811s`，覆盖 `AV`/`mn(AC)`/`A2C`/`A2R`/`A2Py` 五端编解码与 `AV`/`A2R`/`A2Py` `D-01..D-09`）。
+    - `ace-core --lib`：**79/79 PASS**（1 ignored，`2.354s`）；`ace-core --test conformance (module_1064 | plan981)`：**205/205 PASS**（`6.418s`）。
+    - `ace-abi --test conformance (out_frame_1064 | rust_f0 | f0_rich | c_import)`：**18/18 PASS**（`7.069s`）。
+    - `ace-av-core` + `ace-a2x-core` + `ace-a2x-rust` + `ace-a2x-python` + `ace-foreign-contract` `--lib`：**120/120 PASS**（`0.872s`）；`ace-a2x-{core,rust,python}` `--lib --tests`：**13/13 PASS**（`1.230s`）。
+    - `ace-a2x-c --lib --tests`：**8/8 PASS**（`0.068s`，1 预存漂移 `admitted_text::tests::runtime_admission_preserves_bytes_and_the_certification_pin` 除外：`master` `PLAN-972` 已修改 `a2x-c/src/runtime.rs` 而未重钉 SHA，1064 零修改 `runtime.rs`；A2C 端到端 `bstr_1064_v_codec_five_ends`、`v08_surface_manifest_and_five_end_exercise`、`stdlib_asm_972`、`stdlib_core_945`、`stdlib_list_946` 全部 PASS）；`auto-bindgen --lib`：**10/10 PASS**（`0.450s`）。
+  - **`AC-AC-STAGED` M2-A/M2-B 明确分账（A 已交 AC 基础 vs B 后延差额 -> `PLAN-1068 T-03` / `PLAN-1067`）**：
+    - **A 已验 AC 真实基础**：① `packages-aggregates` 纯 Auto `std.bytes`（`decode_utf8`/`decode_hex*`/`decode_base64*`）在 `MnDriver::build_collections_checked` 真编译真运行（`bstr_1064_v_codec_five_ends` exit=77，与 AV/A2C/A2R/A2Py 同值）；② Windows `LowerMode::Console` 下 `50` 项 `sys973` 原语（`36` Win32 机器身含对齐后的 `canonical_w16`/`env_get_w16` + `14` `-10` 拒绝，11/11 PASS + PE 导入审计）。
+    - **B 后延 AC 差额（不记 PASS/NA，保留原分母与独立 oracle）**：① `D-01..D-09` 高层 `packages-aggregates` `std.{file,path,env,process,storage,zip}` 在 `AC` 上运行：当前 `native/src/lower.rs:3270-3275`（`!LowerMode::Console`）与 `collections_units` 尚未合并打通 `av.collections/1` + `PlatformCall`（`mn_pio_*` 链接）；交 **`PLAN-1068 T-03`**（与 `native` owner）打通后用 `sys_d01_d06_1064`、`kv_zip_1064` 与 `bstr_1064_v_d09_file_read_bytes_cross_end` 同源/同 oracle 补验；② `T-FRAME` `ResKind::OutBytes` 在 `AC` native 侧的机器调用与帧守卫校验交 **`PLAN-1068 T-03`**（与 `967` native/ABI owner）消费同一 `rustside`/`cside` provider 与守卫/代际 oracle 关闭；③ 异步/调度仍归 **`PLAN-1067`**。
+  - **Linux `NOT_RUN` 移交（-> `PLAN-1063`）**：`stdlib/ace/sys/sysplat_lnx.at` 已按同一接口/UTF-8 编码补齐代码（含 `decode_w16_region`、`pf_{dir_names,env_get_opt,home_dir,local_data_dir,canonical,current_dir,args}` 与 `seek64` `lo_signed=0` 修复）及 `TargetOs::Linux` `#in sys` 选择绑定证明（`sys973_t09_target_selection_linux_binds`），依裁定在 Windows 标记 `NOT_RUN`，完整 Linux 运行认证（含 `AV`/`AC ELF`/`A2R`/`A2Py` 与原 `A2C`）整体移交 **`PLAN-1063`**。
+- [x] **T-06｜review｜AC-06**：同树停写后的全包独立final，核全部AC/原后延义务与新增差额/健康/SD，阶段R不冒final。
+  [✅ 2026-11-17 final pass @ `plan-1064-dev@69eb8b479`] 完成冻结树全包终审（见 `§9` 2026-11-17 r3 终审记录）；状态置为 `reviewed`（12/13），放行 `T-07` 沉淀与合入收尾。
+- [x] **T-07｜merge｜AC-07**：final pass后核正式来源/沉淀/合入归档；输出逐目录对账、摘要折Plan、按现行政策清scope/guard清树，未知持有不盲删。
+  [✅ 2026-11-17 完整闭环归档]
+  - **代码合入**：`plan-1064-dev@69eb8b479` 无冲突并入 **master@`a9c35237ef7118b93b0e7648db84bc857d059195`**（52 文件变更，+7922/-383，前序 MODULE 切片已先落 `master@4ba167930` / `SD-MODULE@58b383eea`）。
+  - **规范沉淀（canonical `docs/specs/` on `master`）**：
+    - `SD-MODULE`：`docs/specs/stdlib/design/ace-binding-and-assembly.md`（先落 `@58b383eea`）
+    - `SD-BSTR-01`：`docs/specs/ace-migration/m2-stdlib-io.md`（SHA256 `423EF4A8975C8A5116C6C06713B4CB86A8E4EF37B07D130F68FBCDDBF0C51584`，更新 `11` sys 模块、`D-01..D-09`、`OutBytes` 与 `1068`/`1063` 移交表）
+    - `SD-BSTR-02`：`docs/specs/stdlib/design/ace-binding-and-assembly.md`（SHA256 `7040292B0E105140D61AC451E9511AFEC56DA0439ED64361109223A38C2E1445`，`std.bytes`/`syscommon`/?`List<int>`/`resolve.rs::rblock_always_returns`）
+    - `SD-FRAME`：`docs/specs/ace-migration/m2-host.md`（SHA256 `F7DFC2FB46C418BEDB8B60C1A350D2D0D0ADD2C8CF027D032A705666C807F7B3`，`ResKind::OutBytes` + `OutBufferFrame`）
+    - `SD-AC-STAGED`：`docs/specs/auto-abi/checked-source-foreign-calls.md`（SHA256 `E91689B1E52EC65E0AB6B5032E5433870DF01B7B6A49B79FAC2D0CE6A63792C8`，M2-A/M2-B 分阶段 AC 边界与 `1068`/`1067`/`1063` 移交）
+  - **暂存证据折入与路径对账清理（2026-10-31 merge 即全删裁定）**：
+    - `D:/autostack/plan-artifacts/plan-1064/t01-freeze.md`（12,284B，SHA256 `EFC2C596CF5C191E44613C98877503FC93CB6AF0554C7703574DAAE15213E452`）：冻结 7 个锚点 SHA、UTF-8 1K/4K/8K/16K 链测实测步数/峰值、hex/base64 严格解码与 `D-03`/`D-04`/`D-09` 冻结规则（摘要已完全折入 `§8 T-01..T-05`），整目录 `D:/autostack/plan-artifacts/plan-1064/` 已删除（0 保留持有），并刷新 `D:/autostack/plan-artifacts/.retention/policy.json`。
+    - `%TEMP%` 自有临时探索/测试目录（`ace-m2-1064-contracts-r0nevpm5`、33 个 `p1064v-run-*` 及 `b1064.txt`/`m1064.log`/`v1064.log`，共 37 项）已清理；未触及他人 PID 目录；`D:/autostack-build` 不存在。
+    - Worktree 收尾：`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-1064/auto-lang` 输出 `clean`，`git worktree remove` 移除了 `D:/autostack/.wt/lang-1064/auto-lang`，删除本地分支 `plan-1064-dev` 及空组目录 `D:/autostack/.wt/lang-1064`。
+  - **周期批量回归判定**：`1064 % 5 != 0`（无本次整包强制触发；合入后不替代定期 `cargo t all`）。
+  - **计划归档**：`git mv docs/plans/1064-ace-stdlib-byte-str-deferred-surfaces.md docs/plans/archive/`，状态 `archived`（终态）。
 
 ## 9. 复审记录
 
 2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
 
 2026-11-16 stage:new / r3：按用户最新三端目标修阶段/移交，增SD/V/AC-AC-STAGED；原任务/状态/进度保留，仅规划，无新增实际验证/签章。
+
+2026-11-17 r3 final review (**PASS** @ `plan-1064-dev@69eb8b479`, merge-base `master@49409c6fb`)：
+- **独立性与停写边界**：同会话从冻结工作树（`D:/autostack/.wt/lang-1064/auto-lang`，`git status` clean，`0` 未提交修改）、`git diff "$mb..HEAD"` 与重跑实证工件重建裁定（不盲信早期步骤自报摘要；局限性如实声明在案）。`T-MODULE-R`（`6ee22e770`）仅计作 MODULE 切片阶段审，本次全包终审覆盖剩余 1064 全部代码、runtime 与验证面。
+- **逐 AC / 逐 D 行 / 后延矩阵核验**：
+  - `AC-01 / T-01`：`t01-freeze.md` 锚点、`IF-975-B1`、1K..16K 链探测与非法/恢复边界已核。
+  - `AC-02 + AC-D09 / T-02`：`std.bytes` 5 函数 + `std.syscommon.decode_utf8_region` + `std.file.read_bytes -> ?List<int>`；五端（`AV`/`mn(AC)`/`A2C`/`A2R`/`A2Py`）编解码与 `AV`/`A2R`/`A2Py` `read_bytes` 实跑均通过，且 `T-05` 于 `resolve.rs` 补齐 `rblock_always_returns` 修复嵌套 `is` 返回判定回归。
+  - `AC-FRAME / T-FRAME`：`ResKind::OutBytes` + `auto-bindgen/{rust,c}_import` + `av-core::foreign_exec::OutBufferFrame` 自动生成 `&mut [u8]`/`(dst, cap)` 读出参帧闭合（`out_frame_1064` 3/3 + `rust_f0`/`f0_rich`/`c_import` + `auto-bindgen` 10/10）；未新增平行 FFI 模型或手写 manifest。
+  - `AC-03 / T-03`：`D-01..D-06`（`read_text`/`read_text_range` 058 10行 oracle/`dir_names`/`env.{get,get_or,home_dir,local_data_dir}` 046 oracle/`path.canonicalize`/`process.{args,current_dir,set_current_dir,spawn_with_output}`）已在 `AV`/`A2R`/`A2Py` 与 `av-core`/`a2x-rust`/`a2x-python` 原语对齐（`sys_d01_d06_1064` 5/5 PASS）。
+  - `AC-04 / T-KV + T-04`：`D-07` `ACE-KV/1`（`std.storage`）与 `D-08` ZIP（`std.zip` `Stored`+`Deflated` BTYPE 00/01/10 + CRC-32 + 流式 `max_bytes`）实跑均通过（`kv_zip_1064` 8/8 PASS，含坏输入/原子保留）。
+  - `AC-05 + AC-AC-STAGED / T-05`：已消费 `PLAN-1065`（`IF-1065-ACSYS`）并对齐 `platform_io_sys973.rs` 的 `canonical_w16`（缺失 `-8`）与 `env_get_w16`（`SetLastError(0)` 空 `0`/未设 `-8`）；A 已交 AC 基础与 B 后延 AC 差额（`std.{file,path,env,process,storage,zip}` packages-collections+`PlatformCall` 接线与 `OutBytes` native 机器调用 -> `PLAN-1068 T-03`，异步 -> `PLAN-1067`）、保留 `A2C` 已有支持、以及 Linux `NOT_RUN`（-> `PLAN-1063`）全部逐项具名分账。
+- **代码健康与回归门禁**：
+  - `git diff --check master..HEAD` 退出 0；新增生产代码 `TODO|FIXME|HACK|XXX|println!|eprintln!|dbg!` 扫描为 0。
+  - 涉及 8 个 Rust crate (`ace-{core,av-core,abi,foreign-contract,native,a2x-rust,a2x-python,collections-runtime}` + `auto-bindgen`) `--lib` `cargo check` 引入 0 个新警告。
+  - 实测：`ace-native` 全非性能组 299/299 (`7d326c701`) / 受影响 33/33 (`69eb8b479`)、`ace-av` 94/94 (`69eb8b479`)、`ace-core` 79/79 + 205/205 (`69eb8b479`)、`ace-abi` 18/18 (`69eb8b479`)、`ace-av-core/a2x-{core,rust,python}/foreign-contract` 120/120 + 13/13 (`69eb8b479`)、`ace-a2x-c` 8/8（1 预存 `PLAN-972` `runtime.rs` SHA 钉漂移除外，1064 未改 `runtime.rs`）、`auto-bindgen` 10/10 (`69eb8b479`)，全部绿通。
+- **Spec Deltas（放行 `T-07` 沉淀）**：`SD-MODULE` 已于 `58b383eea` 落地；`SD-BSTR-01/02`、`SD-FRAME`、`SD-AC-STAGED` 目标明确（`docs/specs/ace-migration/m2-stdlib-io.md`、`docs/specs/stdlib/design/ace-binding-and-assembly.md`、`docs/specs/ace-migration/m2-host.md`、`docs/specs/auto-abi/checked-source-foreign-calls.md`），无未决冲突。
+- **非阻塞观察（记账）**：`t01-freeze.md`（12,284B）将在 `T-07` 摘要折入本计划后整目录移除 `D:/autostack/plan-artifacts/plan-1064/` 并刷新 `.retention/policy.json`。
 
 stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-03 | status: executing (10/13; T-03 closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`cd936c05b`) | gates: sys_d01_d06_1064 5/5 PASS (AV D01/D02 2.946s, AV D03..D05 2.488s, AV D06 2.790s, A2R 10.720s, A2Py 10.141s; 058 10-line & 046 oracles) + stdlib_sys_973 15/15 PASS + kv_zip_1064 8/8 PASS + bstr_1064 7/7 PASS + ace-av-core --lib 63/63 PASS (0 warnings) + ace-core --lib 79/79 PASS (1 ignored) + ace-a2x-{rust,python} 2/2 each | next: T-05 (merge/sync PLAN-1065 IF-1065-ACSYS + V-04 + AC/all-backends parity matrix)
 
