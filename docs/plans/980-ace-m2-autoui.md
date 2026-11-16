@@ -136,6 +136,8 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 | `D:/autostack/auto-lang/docs/specs/ace-migration/m2-autoui.md` | `bf01874c6fa2e8ba` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
 
 
+补读原冻结身份测试`experimental/ace/crates/core/tests/cases/plan981_grammar_scope.rs`，SHA256前16 `9bd4c795284c0da4`；属原SOURCE/LANGUAGE的防漂移用例，新增r41取材未运行或修改该文件。
+
 ## 5. 详细设计
 
 ### EVENT-SPLIT-20261116：A/B交付与等待的当前权威
@@ -145,6 +147,8 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 正式A来源已交：`IF-980-NODE-DESKTOP-A`（auto-lang `7f431bd5f`／auto-ui `403c936d`），源为`ace-hello-minimal`双源与`ace-node-counter/src/front/app.at`；独立oracle可直接绑定`tests/ace_node_desktop.rs`中的预期轨迹/状态及e2e断言，不强制另造不存在的expected文件。交接至少绑定repo/SHA、源闭包hash、原/脱糖source map、Schema/profile、SDK/host/provider ABI、用例/独立expected位置及实际结果。**980整包executing不等于正式A源未交；已交源也不自动证明981领域组合验收已通过。**
 
 刚落主的980 WEB #6i（lang `b043117b8`／ui `876c99a3`）已在共同grammar增加`msg Msg {...}`及`.Add(t) -> {...}`入口，并更新SFC体定位/拼接与census；只按实际范围复用，不重复造语法。当前静态事实仍为：`ComponentMsgVariant.payload`保存类型拼写，`ScenarioOp::Send`仅`instance/msg`，`ComponentHandler`没有参数列表，CST的`msg_name/params`还需真实保真/绑定核验。已有`param-handler`样本体为`.n = 1`且不读取`t`，其spliced=1不能证明payload传递或参数绑定正确；本轮未运行产品、不能据这些静态事实签修复PASS。
+
+**#6i冻结身份交接是A必闭，不是B参数功能。** 980 round41新收据报告`ace-source 801/803`，红项位于`core/tests/cases/plan981_grammar_scope.rs`的`p981_grammar_ids_match_the_recorded_frozen_values`与`p981_age_package_grammar_id_is_frozen`；本轮未运行复测。实际承接为**981 T-01＋B-LANGUAGE-I/V/R[A]**，980原B-WEB owner交#6i差额/源与新旧身份清单，985 T-A03/A04拒过期来源。先核`age-component/age-package`规则、Schema/构造表与源/原span的预期变化和其它profile影响，保合法/坏源/普通标识符对照，再按审定新基线维护冻结期望/注释、SDK/缓存身份及实际负控并独立phase交接。不能仅把哈希替成当前值求绿，不能豁免两红或让A等完整WEB/M2A-08；旧身份必须按既有MISS/拒绝规则失效而非误信任。本项并入IF-981-EVENT-A，不新建计划、不宣称已修。
 
 | 缺口键 | A必须关闭的有界责任 | B保留的完整责任及具体任务owner |
 |---|---|---|
@@ -703,7 +707,7 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [ ] **B-AV-R｜M2-B-W1｜owner_stage: review｜AC-UI-WAVES/AC-04**：同树停写独立核完整AV分母/原oracle/失败控制/来源，phase fold交UI-W1-AV及宿主/域ABI供1068 W2；不提前签三端/整包PARITY或归档。 EVENT-SPLIT：核AC-EVENT-PHASE/真实EVENT-B来源后逐组交AV，不等全域终验。
 
-- [ ] **B-WEB-I｜M2-B独立现役模式｜owner_stage: work｜AC-B-WEB/AC-02/03/06**：Vue生成使用新TS/JS provider，保watch/setup/expose/ext_imports/style及绑定；服务端使用已交宿主接口或隔离真实fixture，不等整个983才能证UI表达式。 按§5真实改面补永久fixture并固定§6命令。 EVENT-SPLIT：复用#6i，具体消费981 B-LANGUAGE-I/V/R的MSG/PAYLOAD/PARAMS-B与B-SESSION所需typed接口；本批完整实现门=M2A-08及所用接口，不等W1/W2整波。
+- [ ] **B-WEB-I｜M2-B独立现役模式｜owner_stage: work｜AC-B-WEB/AC-02/03/06**：Vue生成使用新TS/JS provider，保watch/setup/expose/ext_imports/style及绑定；服务端使用已交宿主接口或隔离真实fixture，不等整个983才能证UI表达式。 按§5真实改面补永久fixture并固定§6命令。 EVENT-SPLIT：复用#6i，具体消费981 B-LANGUAGE-I/V/R的MSG/PAYLOAD/PARAMS-B与B-SESSION所需typed接口；本批完整实现门=M2A-08及所用接口，不等W1/W2整波。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
 
 - [ ] **B-WEB-V｜M2-B独立现役模式｜owner_stage: work｜AC-B-WEB**：运行V-B-WEB完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 EVENT-SPLIT：V-EVT-WEB-CONSUME按真实旧语料＋实际读参区分例对独立oracle，缺席/旧道不计ACE覆盖。
 
@@ -1224,6 +1228,34 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 40 | from: user | 
 **边界（诚实）。** 语法扩展证明功能面成立但 981 冻结 hash 未更新（跨计划）→ ace-source 组 2 红在 981 owner 核准前不可全绿。真语料全量双轨聚合仍为 spliced=0/absent=23（复杂结构在面编译级仍失败——computed/watch/ext_imports 等，语法扩展只是第一步）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 41 | from: work | to: blocked | status: executing（12/32）| outcome: blocked（981 冻结 hash 跨计划核准 + M2A-08/UI-W2-AC 波次门）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 876c99a3 lang b043117b8 | next: 981 owner 核准冻结 hash 更新；外部交付后 resume（B-AV/B-RUST/PARITY/终验）
+
+本轮文档静态预检（非产品PASS）：8份规划/路线/债务文档；980/981/985原80个任务ID、勾选、32/34/14总数与12/3/4完成、状态及依赖并集保留，原AC/V/SD标识未删除。新增表格/引用/任务和阶段映射、Markdown围栏（含985原四反引号嵌套例）与空白通过；最终阶段图32节点37边无环。12份读取的代码/用例/规范内容hash未变，980并发round41收据完整保留；所报两红只完成归属规划、未修复/复测。新增V-EVT均未创建/运行，实际矩阵/SDK/目标状态及canonical Specs未改。next为原owner后续按现合同执行；当前只规划，不签代码/独立产品review或A出口。
+
+2026-11-16 stage: new/revision | PLAN-980 r15（用户范围裁定 v2）| 用户裁定**新等待顺序**：① 980/A已交源✅→② 981/A及其他A前提→③ 985/A→④ 981事件B接口→⑤ 980完整AV/WEB消费→⑥ AC波→⑦ A2R波。规则：各批分别解锁、不等三外部齐备；981/A不等980整包；985不能提前签发。原 r13/r14 的 M2A-08 门由⑤取代、UI-W2-AC 门由⑦取代；WEB 真语料切换不等 985/A（981/A 交付 face 扩展即可消费）。WAVES-v2 表已入 §5（§10 前）。980/A 全部已交付（12/32），无剩余 A 期工作。本轮仅修订合同。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r15 | round: 42 | from: user | to: blocked | status: executing（12/32）| outcome: waiting（新顺序下 980 下一个可开工位=⑤，需 ②③④ 先行交付）| worktree: D:/autostack/.wt/lang-980（保留）| next: 981/A 交付 face 扩展→WEB 真语料可提前消费；否则等 ⑤
+
+### WAVES-20261116-v2：新等待顺序裁定（用户，2026-11-16 晚段）
+
+**新顺序取代 r13/r14 波次门**（各批分别解锁，不等三外部齐备）：
+
+```
+① 980/A 已交源 ✅ → ② 981/A 及其他A前提 → ③ 985/A → ④ 981事件B接口
+→ ⑤ 980 完整AV/WEB 消费 → ⑥ AC波（1068）→ ⑦ A2R波
+```
+
+规则：980 各批**分别解锁**；981/A 不等 980 整包；985 不能提前签发解锁自身前置。
+
+**980 各批新解锁条件**：
+| 批次 | 新解锁条件 | 备注 |
+|---|---|---|
+| B-WEB 真语料 spliced 切换 | 981/A 交付语言侧 face 扩展（ScenarioOp payload / 参数绑定——§13.9/§13.10 前置）；**不等** 985/A 或事件B接口 | 981/A 交付即可消费 |
+| B-AV（完整示例/Widgets AV 面） | **⑤**：981/A→985/A→981事件B接口 全链后 | 原"M2A-08"门由⑤取代 |
+| B-RUST W3 完整 A2R | **⑦** A2R 波（AC波后） | 原"UI-W2-AC"门由⑦取代 |
+| B-TAURI | WEB 完成（真语料切换义） | 不变 |
+| B-PARITY / T-05/06/07 | 各随前序 | 不变 |
+
+**980/A 现状**：A 期全部已交付（12/32）——无剩余 A 期工作需解锁。下一可开工位=⑤。
 
 ## 10. 待澄清事项
 
