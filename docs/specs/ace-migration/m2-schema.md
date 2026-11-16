@@ -8,7 +8,7 @@
 > **不在本文件声明**：完整 AGE 语言/五 view 产品化（981/LANGUAGE）、传统 AutoUI 全模式与窗口
 > （980/PARITY 等）、GUI/FFI/宿主与两游戏产品腿、AGE-L04/AG-A 完整分母（§9 范围外登记）、
 > 跨仓 auto-ui 规范（owner 待沉淀）。
-> 来源：[PLAN-979](../../plans/979-ace-m2-schema.md) §5 H0 合同 + T-H0-I 冻结决定、§9 三轮
+> 来源：[PLAN-979](../../plans/archive/979-ace-m2-schema.md) §5 H0 合同 + T-H0-I 冻结决定、§9 三轮
 > H0 复审收据（F1–F12）与 M2-A 交付收据；Design55/ACE M2 路线。本文件只写**已验行为与接口**。
 
 ## 1. 领域激活与身份

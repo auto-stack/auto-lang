@@ -13,7 +13,7 @@
 > WEB/RUST/TAURI/JET/ARK/PARITY 各批与 V-UI-FULL/真实窗口验收；959 全行/组件全模式
 > 分母（T-01/PARITY）。
 > 来源：[PLAN-980](../../plans/980-ace-m2-autoui.md) §5/§6/§9；消费方：
-> [PLAN-979](../../plans/979-ace-m2-schema.md) r11 §5 V-11（T-08/T-04 回验）。
+> [PLAN-979](../../plans/archive/979-ace-m2-schema.md) r11 §5 V-11（T-08/T-04 回验）。
 > 本文件只写**已验行为与接口**。
 
 ## 1. 共享字段级清单机制（ace-core）

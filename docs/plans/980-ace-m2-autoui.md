@@ -143,7 +143,7 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 ### r10：向979交付完整字段事实，消费基础接口而非最终归档
 
-**原任务承接。** B-DIALECT-I/V/R产出**IF-980-FIELDS**，对接[979 r11 §5](979-ace-m2-schema.md)的V-11、AC-08/AC-HANDOFF。T-01核输入与未决，B-STATE原任务继续承担组件状态/事件实际产品行为，PARITY继续核全模式；字段子面可以先独立复核并phase fold，不提前勾整个DIALECT任务或归档980，不新增任务/计划/第二份分母。
+**原任务承接。** B-DIALECT-I/V/R产出**IF-980-FIELDS**，对接[979 r11 §5](archive/979-ace-m2-schema.md)的V-11、AC-08/AC-HANDOFF。T-01核输入与未决，B-STATE原任务继续承担组件状态/事件实际产品行为，PARITY继续核全模式；字段子面可以先独立复核并phase fold，不提前勾整个DIALECT任务或归档980，不新增任务/计划/第二份分母。
 
 交付按现行`auto-ui-dialect/src/ast.rs::WidgetDecl`及其引用类型、组件/Store/主题/路由Spec和既有grammar逐字段建表，不能只抄本文列举项。每行含稳定字段/构造ID、Spec/原case与source hash、Node/widget原span、允许位置/类型/模式、是否必需、候选/投影位置、共享verify准入、实际consumer及未闭产品格；条件适用也须给可核理由，不能以“不在Hello中”删行。UI端清单与981的AGE构造清单分owner并集交979；未知构造必须显式拒绝，不能静默略过。
 
