@@ -6,7 +6,7 @@ author: [ZCode]
 created_at: 2026-11-16
 updated_at: 2026-11-16
 plan_revision: 2
-current_step: 4
+current_step: 5
 total_steps: 13
 depends_on: [PLAN-973, PLAN-972, PLAN-967, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-stdlib-io.md, docs/specs/stdlib/design/ace-binding-and-assembly.md, docs/specs/ace-migration/m2-host.md, docs/specs/auto-abi/checked-source-foreign-calls.md]
@@ -193,7 +193,7 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 
 当前4/13（MODULE切片I/V/R/D已交付，余9项待执行）；下列是唯一当前任务表。
 
-- [ ] **T-01｜work｜AC-01**：核取材/正式依赖与原D/旧例表，冻结MODULE声明/exports、必要输出帧、UTF8/资源和ZIP完整方法/预算清单、hex/base64旧合同冲突；以最小真实正例＋非法近邻＋失败恢复的最长链先验策略，不造平行系统，不把未决全部留给后续。
+- [x] **T-01｜work｜AC-01**：核取材/正式依赖与原D/旧例表，冻结MODULE声明/exports、必要输出帧、UTF8/资源和ZIP完整方法/预算清单、hex/base64旧合同冲突；以最小真实正例＋非法近邻＋失败恢复的最长链先验策略，不造平行系统，不把未决全部留给后续。（已完成@`e9a359f5e`，冻结档案见 `D:/autostack/plan-artifacts/plan-1064/t01-freeze.md`：§4锚点SHA重核、`IF-975-B1` 已落地`8e0c4d1d6`、`project.rs` 修复 `Aggregates/Closures` 下 `char.from_codepoint`/`.to(Str)`、实测 `bstr_1064` 1KB/4KB/8KB/16KB 步数与恢复、冻结 `D-03 env_get_w16` `-203`/empty 0 与 `D-04 canonical_w16` 禁回退及 `D-09 ?List<int>` 缺口。）
 - [x] **T-MODULE-I｜work｜AC-MODULE**：在已核grammar/frontdoor/packages/binding/stdlib owner统一合法声明/可见性和冻结身份；建立V-MODULE/RESTORE；canonical sqlite pub迁移由975原T-03负责，不代其业务实现。
   [✅ 2026-11-16, commits 208cc04a5+e2e9b4724] r1=**条件缝闭合**（诊断：json.at不可解析根因是packages-modules用贪婪expr解析for/if条件，'x < ident {'把块括号提交为record ctor、误报挂'fn unsupported'——非pub/private拼写；修复=record族condition-expr全链扩至packages-modules的if-cond/for-cond）；r2=**模块域'use demo'**（frontdoor一段路径=模块域导入、整模块reexport命名拒；binding绑定模块命名空间BoundImport+模块边+未知名拒；限定调用沿既有module_prefix/cross_call路径带exports可见性执法）。正例负例全绿（module_1064 6/6：§5.2 demo verbatim编译、demo.helper限定私调=module-private、demo()裸调=module-symbol、pub use demo=module-path、use nope=module-missing）。
 - [x] **T-MODULE-V｜work｜AC-MODULE**：运行MODULE完整职责与实际JSON/Redis/SQLite装配消费、原源/错误/冷恢复负控；完整文本consumer所需B1先核独立正式切片，不等975全包/1065/ZIP/KV。
@@ -212,6 +212,8 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 - [ ] **T-07｜merge｜AC-07**：final pass后核正式来源/沉淀/合入归档；输出逐目录对账、摘要折Plan、按现行政策清scope/guard清树，未知持有不盲删。
 
 ## 9. 复审记录
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-01 | status: executing (5/13; T-01 closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`e9a359f5e`) | policy_scope: plan-artifacts/plan-1064 (in-flight registered; t01-freeze.md) | gates: bstr_1064 3/3 PASS (1024B=108692 steps/30ms, 4096B=456277 steps/106ms, 8192B=956097 steps/792ms, 16384B=Resource::InstrSteps@991ms, CharInvalid 0xD800/0x110000, tight-budget recovery) + `cargo t ace-source` PASS (757 executed, 0 failed) | findings: fixed `project.rs` `char.from_codepoint`/`.to(Str)` gating for `Aggregates`; frozen `hex/base64`/`env_get_w16`/`canonical_w16`/`ZIP`/`KV`/`T-FRAME`; next: T-02 (BSTR UTF-8 + 972 hex/base64 + D-09 `?List<int>`)
 
 stage: goal | plan_id: PLAN-1064 | plan_revision: r2 | scope: MODULE (T-MODULE-I/V/R/D) | status: executing (4/13; MODULE phase delivered) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (retained, wt-guard clean, resynced) | code_commit: 4ba167930 | spec_commit: 58b383eea (docs/specs/stdlib/design/ace-binding-and-assembly.md sha256/16=c1f10e6dbb135789, --ff-only) | gates: ace-source PASS 757/1 ignored (30.40s+20.74s) + ace-syntax PASS 155/0 (24.51s+27.47s) + module_1064 6/6 (0.168s, max 0.168s) + module_v_1064 7/7 (0.319s, max 0.316s); spec-lint 0 new issues | next: T-01 / BSTR / T-FRAME / T-03..07 (remaining 9/13)
 
