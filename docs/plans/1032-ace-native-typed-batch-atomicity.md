@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1032
-status: execution_done
+status: executing
 feature_name: ACE typed native批量编辑失败原子性
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 3
-current_step: 3
+current_step: 1
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-mir/native-typed-entry.md, docs/specs/auto-ac/mir-native-cache.md]
@@ -159,8 +159,8 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 | task / owner_stage | 依赖 / 状态 | 操作、交付与验证 / AC |
 |---|---|---|
 | T-01 / work | [x] 1024交接、未来实施授权及当前源 | 用原BASE和具体replacement接通后项失败、历史hit/依赖重准备及写入故障；冻结私有接受快照与现工具条件，避免未知unit早拒。 AC-01 ✅ 提交 `6d3e638d7`：`acceptance_snapshot`（cfg(test)：doc/residents/history/generation）与一次性 emit/store failpoint 落地；真实入口可达后项 verify 失败、签名依赖失败与写入晚失败。 |
-| T-02 / work | [x] T-01决定与可区分输入 | doc/units/history/generation全部build-aside，在全部verify/admit/emit/cache成功后切换；补NTX永久断言，保真实COFF复用。 AC-02 ✅ 提交 `6d3e638d7`：`edit_units` 改为候选文档+`prepare_candidate` 暂存+`commit_staged` 单点切换；history 命中只读、提交时消费；A→B→A 字节等同原 COFF。 |
-| T-03 / work | [x] T-02 | 对每种失败复核旧run与同批重试、A→B→A、param-only与signature-dependent；运行typed_entry_incremental_tier及native职责组，工具缺失不计成功。 AC-02/03 ✅ `cargo t ace-native` PASS：298 executed/298 selected、0 not_run/0 excluded、gate_passed、source_state `15ad563b…`、wall 679.93s（工具准备 577.8s/12项、发现 34.85s、执行 66.80s）；工具齐备（rust-lld/SDK 可用，无 infra-blocked）。 |
+| T-02 / work | [ ] T-01决定与可区分输入（review F-01 回退：rustfmt + R-01/R-02 后重验） | doc/units/history/generation全部build-aside，在全部verify/admit/emit/cache成功后切换；补NTX永久断言，保真实COFF复用。 AC-02 ✅ 提交 `6d3e638d7`：`edit_units` 改为候选文档+`prepare_candidate` 暂存+`commit_staged` 单点切换；history 命中只读、提交时消费；A→B→A 字节等同原 COFF。 |
+| T-03 / work | [ ] T-02（组证据绑定 `6d3e638d7`，修复提交后须重跑） | 对每种失败复核旧run与同批重试、A→B→A、param-only与signature-dependent；运行typed_entry_incremental_tier及native职责组，工具缺失不计成功。 AC-02/03 ✅ `cargo t ace-native` PASS：298 executed/298 selected、0 not_run/0 excluded、gate_passed、source_state `15ad563b…`、wall 679.93s（工具准备 577.8s/12项、发现 34.85s、执行 66.80s）；工具齐备（rust-lld/SDK 可用，无 infra-blocked）。 |
 | T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
@@ -217,6 +217,36 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **证据位置**：`D:/autostack/plan-artifacts/plan-1032/`（`group-run/results.json`、`ace-native-run.log`、`typed_session.rs.pre-mutation`；scope 已在 `.retention/policy.json` 登记 in-flight，merge 收尾折叠摘要后整目录删除）。**未做**：未改 canonical Specs（SD-01/02 留 merge 沉淀）、未改测试期望/原样本/规模/平台/ignore、未跑 ace-perf 或全仓、未合入/归档/清树。**健康**：改动文件零新警告（`cargo build -p ace-native --lib --tests` 中无 typed_session/typed_fixture 告警），无调试打印残留。
 
 2026-11-16 stage:goal | plan_id: PLAN-1032 | plan_revision: r3 | round: 1 | from: draft | to: work | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1032/auto-lang | commit: 6d3e638d7 | next: review
+
+2026-11-16 stage:review | review_scope: final | reviewer: 本会话同上下文（Plan §6 明确「无指定模型/另起agent授权」；无独立会话可用，故按职责任务重建证据而非采纳work自述：重算 checkout_state、重读 diff、独立复跑、独立 fmt/warnings/证据策略检查） | PLAN-1032 | r3 | outcome: **needs_fix** | worktree `D:/autostack/.wt/lang-1032/auto-lang` | branch `plan-1032-dev` | reviewed_commit `6d3e638d7`（tree clean，untracked=0） | base `16a58402e` | deps 无 | spec_inputs `docs/specs/auto-mir/native-typed-entry.md` f2de377e…、`docs/specs/auto-ac/mir-native-cache.md` e0dbd773…（与 §4 一致，未漂移） | acceptance_results AC-01 pass / AC-02 pass / AC-03 pass(组证据有效、消费者编排已核) / AC-04 fail（本审查健康门见 F-01）/ AC-05,06 pending | pending_closeout_gates 冻结并集组门（修复提交后须重跑 `cargo t ace-native`）| next: work（F-01 修复，同树）
+
+**基线独立重建**：`git -C worktree log` = `6d3e638d7`（父 `16a58402e`，master 已前进但分支未含其他仓改动）；`git status --short --untracked-files=all` 空；改动 3 文件（typed_session.rs / typed_fixture.rs / typed_entry_incremental_tier.rs）。**组证据绑定复核**：用 `scripts/fixed-tests.py` 的 `checkout_state()` 现场重算得 `15ad563b400f…`，与 `group-run/results.json.source_state` 逐字相同 → 该 PASS 确实绑定本提交树（非旧树/漂移树）。
+
+**逐 AC 独立核验**：
+- AC-01 pass：三源文件/两 Spec 字节哈希与 §4 表逐一相同（复核见上）；反例经真实 `TypedSession::edit_units`→`build_verified_unit`/`verify_mir`/`admit_typed_unit`（`admit_typed_unit` 通读确认为纯校验、无全局注册/写）→真实 PE；无 expected 改动（diff 仅新增）。
+- AC-02 pass（语义）：`edit_units` 结构确为「校验→候选文档 clone→plan(replaced+dependents, 去重)→逐单元 `prepare_candidate` 暂存→`commit_staged` 单点安装」；`commit_staged` 内无可失败调用（`replace_resident`/history insert/remove/`self.doc=` 皆无 `?`），故失败点全部落在切换之前，原子性由结构保证而非用例巧合；history 命中在暂存期仅 `get`（非 `remove`），消费只在提交段；unchanged 指纹不 bump 代际与修前一致；计数器为尝试观察（失败可增长）与 §5 分账一致；错误分类码未变（failpoint 仅 cfg(test)）。
+- AC-03 pass：消费者仅同 crate（`typed_entry_tier.rs`、本 tier、`mn-worker` bin；bin 无 `#[test]` 体），且组工具准备以 `cargo build -p ace-native --release --bin mn-worker` exit 0 编译了真实 bin 消费者；SD-01/02 见下已可沉淀；无 1002 硬前置。
+- AC-04 fail：仅因健康门 F-01（见下）；其余 §6 行 oracle、遗漏/延后/workaround 扫描、来源/健康检查均通过。
+
+**§6 行→断言映射（复核，含一处加强请求）**：NTX-01 后项失败=`ntx_01` step2；首项失败=step3；签名依赖失败=`ntx_02_signature_change…`；公开态（resident fp/generation/COFF hash、entry_plan、实跑 0x10）在 `ntx_01` 全形态覆盖；内部态（doc/history/代际）由 `ntx_02_batch_failure_is_atomic` 对「history 命中+后项晚失败 / emit 晚失败 / store 晚失败」三形态取整快照等值。NTX-02 行「history 不被消耗」由快照内的 history 键集合断言（非仅重试结果；因会话带 store 时重试也可由 store 命中，故快照断言才是真 oracle —— 变异对照红在该断言上已证区分力）。A→B→A「真实字节」在无 store 的既有 tier 例（`emit_units==0 && cache_hits==1`）与本例 `resident_coff == 原 A 字节` 双向覆盖。**加强请求 R-01**：`ntx_01` 那种「多项 verify 晚失败」输入目前只有公开态 oracle 直测，内部态同形态靠同路径推理；请在内部用例加一次同批次断言（成本≈1 次暂存，无额外 PE 运行），把该行 oracle 映射变成直接证据。
+
+**F-01（needs_fix，健康门/非语义）**：`rustfmt --check --edition 2021` 对改动文件不通过——`crates/native/src/typed_session.rs`（L734 `DISJOINT_BAD` 常量换行、L755/L897 `TypedSession::start(` 应单行、文件尾多余空行）、`tests/typed_entry_incremental_tier.rs`（L281 同常量换行、L288 `residents_snapshot` 签名应单行、L425 文件尾空行）；`typed_fixture.rs` 干净。基线对照：本仓 `typed_entry.rs`/`typed_pipeline.rs`/`cache.rs` 及 `typed_session.rs` 的 `16a58402e` 版本均 rustfmt-clean，master 上 `lib.rs` 为既有例外（非本 Plan 所致），仓内已有「rustfmt touched files」先例（973 `6c0facac9`）。修法：对上述两文件跑 `rustfmt --edition 2021`，确认 `git diff` 仅格式化、无语义变化，重跑受影响 6 例与 `cargo build -p ace-native --lib --tests` 警告检查，单独提交（建议 `style(ace-native): rustfmt touched files (Plan 1032)`）。**R-02（同轮顺手，非阻塞）**：内部用例入口显式清空 failpoint 状态，避免 panic 时残留 arm 影响同线程后续用例。**非阻塞观察**：O-01 同一 unit 重复出现在 change set 的去重路径无专属断言（退化输入，未在合同内）；O-02 工具缺失时新例走既有 `infra-blocked` 早退（本会话组证据显示真实执行，耗时 1.4–2.4s，非跳过）；O-03 `typed_fixture` 六个声明新增 `PartialEq/Eq` 为公开 trait impl 扩展（无行为变化）；O-04 history 字节损坏分支（`check_coff_relocatable` 失败）无专属用例，仅由自产字节可达；O-05 快照以 (name,fp,len) 记 history，不识别同键同长换内容（实现不存在该路径）。
+
+**SD 增量收敛（供 merge 沉淀，未改 canonical）**：SD-01 目标 §「缓存/恢复/增量（合同）」第 66 行句后补：「多单元编辑是同一接受事务：候选文档与全部受影响单元先行构建/验证/准入/产出，全部成功后才一次切换文档/居民/history/代际；任一步（build/verify/admit/emit/store 写）失败不部分安装，失败不消耗 history 键，旧 entry_plan 与已接受 COFF 继续可 link/run，修复后同批可重试；尝试计数（verify/prepare/fp/admit/emit/persist/cache hit）可因失败尝试增长，接受态与 whole-module fallback=0 不变；source 入口既有零写拒绝语义不变。」SD-02 目标 §「D828 增量消费（history/回退）」补：「无根/未引用对象字节是可回收副产物：批量编辑失败后 store 可能残留已写页，但会话接受态（文档/居民/代际/history 键）不随之改变；A→B→A 仍复用真实历史对象字节。」`supersedes_spec_components`/`new_spec_components`/`touched_goals` 维持 frontmatter（两 Spec、无新增、无 product goal）。
+
+**本审查会话实测（debug/test；机制未变故复用 work 组证据，另做独立复跑）**：
+
+| Test module / actual scope | Result and executed/excluded counts | Preparation/build | Discovery | Tests | Cleanup | Total wall time |
+|---|---|---|---|---|---|---|
+| `cargo nextest run -p ace-native --lib --tests -E 'test(/audit1032\|typed_session_/)'`（3 新锚点+3 既有 tier 例，独立复跑） | 6/6 PASS，0 excluded，311 skipped=过滤未选 | 增量 0（已构建），命令内编译检查 3.5s | 含在命令内 | 2.447s（单例 1.375–2.445s） | 无残留（临时目录） | 5.97s |
+| `cargo t ace-native`（work 阶段冻结 `6d3e638d7`，本审查复用，绑定已复核 `15ad563b…`） | PASS 298/298，0 excluded/not_run，gate_passed，298 例 max_parallel 20 | 工具 577.8s（12 项）/ 组发现 34.85s | 34.85s | 66.80s | — | 679.93s |
+| `rustfmt --check`（3 改动文件 + 4 基线对照 + base 版本） | 改动 2 文件 FAIL（F-01），`typed_fixture.rs` 与基线对照 PASS | 无构建 | — | <1s | — | ≈2s |
+
+**新增用例行为/耗时（复跑实测，≤10s 门）**：`audit1032_ntx_01_failed_batch_keeps_previous_entry_runnable` 1.917s；`audit1032_ntx_02_batch_failure_is_atomic` 2.445s；`audit1032_ntx_02_signature_change_pulls_real_dependents` 1.375s —— 均 PASS ≤10s（并发 6 例下测得，work 单例实测 0.5–1.5s）。
+
+**证据**：本记录即持久证据（命令/退出码/数字）；原始 `D:/autostack/plan-artifacts/plan-1032/{group-run/results.json, ace-native-run.log, base_typed_session.rs, base_fmt.txt, typed_session.rs.pre-mutation}`，merge 折叠后整目录删除。**未做**：未改实现/Specs/canonical 索引，未合入/归档/清树，未跑全仓或 ace-perf。
+
+2026-11-16 stage:goal | plan_id: PLAN-1032 | plan_revision: r3 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1032/auto-lang | commit: 6d3e638d7 | next: work
 
 ## 10. 待澄清事项
 
