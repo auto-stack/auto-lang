@@ -966,6 +966,18 @@ next: merge（phase fold #7：ui e203caa8 链 + lang c449acc13 rebase 落主 + �
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 25 | from: review | to: merge | status: executing（12/32，NATIVE r13 批已复核）| outcome: pass（批次）| worktree: D:/autostack/.wt/lang-980 | commit: ui e203caa8 lang c449acc13 | next: merge（phase fold #7）
 
+2026-11-16 stage: merge（B-NATIVE-D phase fold #7，NATIVE r13 批正式落主；整包 executing 12/32 保持，唯一树保留续 WEB 剩余/TAURI，不归档/不清树）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（批次交付）| delivery_commit: auto-ui master **403c936d**（代码 a8ace167 + 复核反例 403c936d）、auto-lang master **7f431bd5f**（代码 562b90fd3 + 规范 7f431bd5f）| canonical: docs/specs/ace-migration/m2-autoui.md（master 上 sha256/16=**c58125ab4889b796**，新 §12 MIN-A-UI 通用 Node 桌面入口；§9 引擎缝去向在 §12 注记取代）| 落主方式：两仓 rebase 到在途 master（981 已落 SESSION/host 多笔代码——lang e36b7ffcd 等、ui 4c629db0 等）+ range-diff 全等（lang c449acc13→562b90fd3 `=`、spec →7f431bd5f；ui 3df28cf9→a8ace167 `=`、e203caa8→403c936d `=`）+ wt-guard 双树 clean + `git merge --ff-only`（无 merge commit、无冲突）。
+
+**落地后复核门（merge-owned，rebase 基线实测——master 代码面因 981 已动，按规矩全量重跑，不复用旧证据）。** UI（rebase 后 worktree=落主内容）：ace_node_desktop **8/8**=0.62s + 排窗 e2e 1/1=3.00s（真窗，含 981 代码）+ 回归集 ace_ui_hello 7/7、ace_native_window 5/5、ace_ts_provider 4/4、ace_a2r_axr0 4/4、plan041 9/9、desktop_behavior 11 过/1 ignored（原条件）、image_surface_contract 1/1。lang：`cargo t ace-facade` = **PASS**。落地后 master 核对：双仓 tip=delivery commit、§12 在库（hash 见上）、lang 主检出代码路径 clean。
+
+**批次闭合。** B-NATIVE-I/V/R（r13 重开范围）交付并勾选（12/32）：ui980 provider（967 冻结 view+2×i32 域内 7 函数，FFI 实际承载 UI 创建/提交/更新/关闭）+ typed 事件回 AV（poll→AceStateEngine 场景重放，业务全在 AV）+ 通用入口 `AUTO_UI_ENGINE=ace`→node-desktop + 三类源 + 9 永久 case（含 byte_len 反例与复核 authored 三面）。边界（f-string 双车道拒/交互档手工/打包界/W1 全量）在案。
+
+**观察项（非阻断）。** ①UI 主检出存在未跟踪目录 `crates/auto-ui-runtime/test/ui`（无 git 历史，非本计划创建——本批全部工作在 lang-980 组 worktree；归属未明，未动，fail-closed 留待其 owner 处置）；②批量回归 due-check：980%5=0，按 §9 round 23 口径归 980 最终归档收口触发（本次为 phase fold，不触发）；③plan-artifacts/plan-980/ 保持 in-flight（整包在途；本轮 patch 脚本为暂存，最终归档时整目录删除）。
+
+next_responsible_role: work（980/WEB 剩余批：ts_adapter 委托替换扩面 + 浏览器档——976 已解锁；TAURI 随 WEB。B-AV 等 M2A-08（985），B-RUST 完整 W3 等 UI-W2-AC（1068）——波次门阻塞在案）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 26 | from: merge | to: work | status: executing（12/32，NATIVE r13 批已交付落主）| outcome: pass（phase fold #7）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 403c936d lang 7f431bd5f | next: work（WEB 剩余/TAURI；B-AV/B-RUST 波次门阻塞已具名）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
