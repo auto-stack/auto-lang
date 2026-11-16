@@ -1094,6 +1094,16 @@ next_responsible_role: work（WEB 切片#6g：90 项全量双轨（普查表=分
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 36 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6f 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui f4cbbf9e lang 6fc787bfb | next: user（裁定开放）或 work（#6g 默认）
 
+2026-11-16 stage: work（WEB 批切片 #6g：全量双轨普查，goal round 37——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——浏览器档待做；真语料交付切换的语言侧前置×3 已具名）| worktree: lang-980 @ plan-980-dev | commit: ui **281f420a**、lang **45b25c284**（§13.10）。
+
+**交付。** ①**全量双轨普查冻结聚合表**（`p980_web_full_dual_track_census`，13/13）：vue_capabilities 全部 83 源语料（文件级提取）经一体化入口——ok=72 / err=11（2 store + 9=master 预存红"duplicate view block"族同族，归 triage）/ spliced=0 / absent=23；②**state-slot 同长归一化**（`state {`→`model {`，5↔5 字节 **span 零位移**）入 lane compile——匿名 msg+state 形态可进 lane；③**语言侧前置×3 清单**（§13.10）：ScenarioOp 无 payload、具名 msg 语法、参数绑定面——组件面语法域缺口，非 UI 可闭合，979/981 谱系后继。真语料主导形态（具名 msg/带参/铸造）在三者交付前走编译器旧道（双轨合同）。
+
+**验证（冻结提交实测）。** ace_ts_provider 13/13（全链 node 腿实跑）；fmt clean；ui ff 落主 `281f420a`；规范 §13.10 落主 `45b25c284`。
+
+next_responsible_role: work（WEB 批 UI 侧剩余=浏览器挂载档（013/017 playwright 先例）——语言侧前置交付后再做 90 项全量 spliced 双轨。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 37 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6g 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 281f420a lang 45b25c284 | next: user（裁定开放）或 work（浏览器档默认）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
