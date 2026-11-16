@@ -1036,6 +1036,38 @@ pub(crate) fn project_packages_front(
                         if let Some(v) = &m.value {
                             check_value(v)?;
                         }
+                    }                    // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
+                    // 同样进唯一 verify——`class: nosuch_ident` 不能静默通过。
+                    fn collect_item_exprs<'a>(
+                        items: &'a [crate::source::age_component::ComponentViewItem],
+                        out: &mut Vec<&'a crate::source::ast::Expr>,
+                    ) {
+                        use crate::source::age_component::ComponentEntryValue;
+                        use crate::source::age_component::ComponentViewItem;
+                        for it in items {
+                            match it {
+                                ComponentViewItem::Text(_) => {}
+                                ComponentViewItem::Element(e) => {
+                                    if let Some(l) = &e.label {
+                                        out.push(l);
+                                    }
+                                    collect_item_exprs(&e.items, out);
+                                }
+                                ComponentViewItem::Entry(en) => match &en.value {
+                                    ComponentEntryValue::Expr(x) => out.push(x),
+                                    ComponentEntryValue::Lambda(asgs) => {
+                                        for a in asgs {
+                                            out.push(&a.rhs);
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                    let mut entry_exprs = Vec::new();
+                    collect_item_exprs(&node.view.tree, &mut entry_exprs);
+                    for e in entry_exprs {
+                        check_value(e)?;
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
