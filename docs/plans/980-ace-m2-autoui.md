@@ -5,8 +5,8 @@ feature_name: 现有AutoUI全模式ACE兼容接入
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
-plan_revision: 11
-current_step: 12
+plan_revision: 12
+current_step: 15
 total_steps: 29
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-980] 现有AutoUI全模式ACE兼容接入
 
 ## 0. 变更摘要
+
+2026-11-16 r12最新阶段：AV/AC/A2R最终完整一致；A期AC基础以外差额可逐行交M2-B，1067/1068承接原生异步与三端补齐，A2C完整对齐增强。原任务/勾选/实际进度不变；新阶段条款不能冒实现或复审已过。
 
 2026-11-16 r11（当前，用户范围裁定）：**JET/ARK 两后端归 M3（v0.7），从 v0.6 移除**——B-JET-I/V/R 与 B-ARK-I/V/R 六任务行撤出执行清单（原条目及 AC/V 留 §9 历史），total 35→29、进度口径 12/29；AC-B-JET/AC-B-ARK/V-B-JET/V-B-ARK 随批归 M3；PARITY 的 v0.6 联合覆盖改为现役模式（NATIVE/WEB/RUST/TAURI），JET/ARK 的模式覆盖由 M3 联合验收补。**WEB（Vue+TS）保留 v0.6**（前置仍为 L976）。本裁定同步 M2 路线与 m2-autoui 规范；此前 §9 round 17 的 JET 环境阻塞记录由本裁定取代（归 M3 后 v0.6 不再含该腿）。本包已交付各批（DIALECT/STATE/HELLO/RUST-AXR0）不受影响。
 
@@ -361,6 +363,18 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 新增V-TS-CONSUMER-UI由B-WEB-I/V/R、B-ARK-I/V/R及B-TAURI-V/R落实，原PARITY核完整合法UI表面和非Demo导入/函数。976能力可先独立交付，980最终产品接线不反成为其前置；HELLO的node/text→AV/FFI首窗仍沿原最小链，不新增976整包等待。Godot目标后置不改变AGE自有Node/2D/3D或本包UI义务。
 
+### 三端最终一致与AC阶段移交（2026-11-16当前优先）
+
+本包适用范围为**UI/AGE领域及原生host/事件回调**。A仍须AV/A2R完整原required及AC真实基础，A2PY标准库/AV三provider与原其他required保持。AC基础外剩余差额允许B后延，逐原行ID/输入/独立oracle/资源/错误/源身份记录B-owner与关闭条件，交[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)，异步调度交[1067](1067-ace-ac-native-async-and-task-parity.md)。不能以stub或原profile不支持签AC已实现；M2最终三端必须同平台可用，A后延只是时间调整。A2C完整对齐增强，既有代码/用例/支持事实保留，缺完整面不阻M2。
+
+在本包原能力work/最终验证/review明确区分“A已验接口”“B后延AC行”：移交有正式producer/版本/所需前置，最终真实实现和补验归1068及原owner协作，不回落旧VM或重写归档Plan。985/A可收本包A正式切片，不反等1068；本包如已有B则保唯一树续行，A切片不能勾全包完成。
+
+原NATIVE在历史中主要指AV原生窗口，不能自动当AC证明。本包原NATIVE/SOURCE/LANGUAGE work任务向1068交共享领域表示、ABI/typed事件回调/资源与真实产品oracle；1068接AC机器码业务，并按原I/V/R交正式来源。完整状态/事件/挂载/关闭与真实UI/renderer门不缩减，不能只测序列化文件。
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-AC-STAGED | modify | docs/specs/ace-migration/m2-autoui.md（实际交付） | A所有AC必齐→A基础/具名B移交，最终三端完整，A2C增强 | 用户明确排程 | AC-AC-STAGED |
+
 ## 6. 测试设计
 
 ### r10字段交接验证（拟执行）
@@ -430,6 +444,10 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 |---|---|---|
 | V-TS-CONSUMER-UI | AC-TS-CONSUMER-UI；WEB/ARK/TAURI原I/V/R | 真实Vue/Ark及Tauri适用工程→976新provider→框架adapter→原运行器；观察handler/computed/watch/setup、props/store及导入调用的实际值/事件/资源/错误span。注入旧TypeScriptTrans fallback、删合法函数或误绑响应式引用须失败；禁用Godot不影响node/text首窗，首窗成功不代完整Web/Ark通过。 |
 
+| V / AC | 原owner/输入 | 独立预期与边界 |
+|---|---|---|
+| V-AC-STAGED / AC-AC-STAGED | 原work及最终验证：A真实基础/AV-A2R结果＋完整AC后延账，缺owner/基础stub负控；B回验真AC | A基础真实且B每行去向/关闭条件齐才可交A；不得记AC PASS/NA或从分母消失；B真实三端与原独立oracle齐才关闭后延行。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察标准 | 验证 |
@@ -463,6 +481,8 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 |---|---|---|---|
 | AC-TS-CONSUMER-UI | work | WEB/ARK/TAURI完整生产TS/JS接976新provider，无TypeScriptTrans委托残留，规范合法非Demo模块/函数仍支持；首Hello最小链不被附加独立TS/Godot前置 | B-WEB-I/V/R、B-ARK-I/V/R、B-TAURI-V/R、V-TS-CONSUMER-UI；原独立review逐项复核 |
 
+- [ ] **AC-AC-STAGED / work**：V-AC-STAGED闭合，AC基础真实、剩余差额完整移交1067/1068/实际owner，AV/A2R及原其他A-required不减；最终三端未验不得冒支持。原work落实、原独立review核，无新增任务或本轮完成数。
+
 ## 8. 执行步骤
 
 当前共35任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
@@ -495,11 +515,11 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [x] **B-STATE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-NATIVE-I｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：接原生run入口、路由/页面/主题/媒体/terminal等宿主；实际旧vm参数可保兼容名字但dispatch为ACE。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
+- [x] **B-NATIVE-I｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：接原生run入口、路由/页面/主题/媒体/terminal等宿主；实际旧vm参数可保兼容名字但dispatch为ACE。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
 
-- [ ] **B-NATIVE-V｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-07**：运行V-B-NATIVE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
+- [x] **B-NATIVE-V｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-07**：运行V-B-NATIVE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
 
-- [ ] **B-NATIVE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [x] **B-NATIVE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
 - [ ] **B-WEB-I｜M2-A｜owner_stage: work｜AC-B-WEB/AC-02/03/06**：Vue生成使用新TS/JS provider，保watch/setup/expose/ext_imports/style及绑定；服务端使用已交宿主接口或隔离真实fixture，不等整个983才能证UI表达式。 按§5真实改面补永久fixture并固定§6命令。
 
@@ -545,6 +565,8 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-DIALECT-I/B-DIALECT-V/B-STATE-I/B-STATE-V/B-PARITY-I/B-PARITY-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-16 stage:new / r12：按用户最新三端目标修阶段/移交，增SD/V/AC-AC-STAGED；原任务/状态/进度保留，仅规划，无新增实际验证/签章。
 
 2026-11-16 stage: new/revision | PLAN-980 r11 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
 
@@ -767,6 +789,20 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 17 | from: work | 
 2026-11-16 stage: new/revision | PLAN-980 r11 | 用户范围裁定（直接授权）：**JET/ARK 后端归 M3（v0.7），从 v0.6 移除；WEB（Vue+TS）保留 v0.6**。执行：§8 六任务行撤出（原文留档 HTML 注记）、total 35→29（当前 12/29）、§5 批表/阶段表与 PARITY 依赖改写、§6/§7 对应 V/AC 行注记归 M3；round 17 的 JET 环境阻塞记录由本裁定取代（v0.6 不再含该腿；M3 再启时原环境缺口仍在案）。WEB 保留意味着 L976（TypeScript provider，drafting）为 v0.6 WEB 批关键路径。DIALECT/STATE/HELLO/RUST-AXR0 已交付面不受影响；唯一树 lang-980 保留续 NATIVE/WEB/TAURI/PARITY。同步：M2 路线图 dated 注记 + m2-autoui 规范边界刷新 + KNOWN-DEBT JET 条目改写。本修订只改范围归属，不改已交付验收/其余义务。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 18 | from: new | to: work | status: executing（12/29，JET/ARK 归 M3）| outcome: pass（范围修订落档）| worktree: D:/autostack/.wt/lang-980 | commit: pending | next: work（NATIVE/WEB/TAURI/PARITY 按前置续行）
+2026-11-16 stage: work（B-NATIVE-I/V 批，round 19）| plan_id: PLAN-980 | plan_revision: r11 | outcome: pass（批次可交付独立复核；勾选留 R）| code_commit: lang 32e8e951c（免驱动面+av 双观察/再导出）、ui 34bb4326（ace_native 通道/exe/缝/测试）。
+
+**交付。** ①lang 免驱动场景编译（980 入口专属：`with_initials`/`states`；979 冻结打包入口保持编译期拒——回归 16/16 实证）+ `observe_component_states_and_texts` + `project_component_candidates` 再导出。②UI `ui/ace_native.rs`：001 真源（widget 头 Accept）装载——文本值（AV）+属性（候选投影 view 树按声明序：style/selectable）+状态；状态写=初值重建→重编译→重观察（dark_mode→窗口主题线程局部翻转，与旧链同机制）；`AceNativeWindow`（run_app 宿主）+ `examples/ace_native_window.exe`（帧内状态写/证据/自动退出；关闭重开=顺序多轮进程级）。③引擎缝：run_vm `execute_vm_entry` 增 `AUTO_UI_ENGINE=ace` 分支→`run_ace_native_entry`（无条件编译，feature 关=具名拒；出面外源 ACE 面具名拒不静默回旧 VM；旧 vm/托管 hook 不变）。
+
+**V 验证（冻结提交实测）。** 新文件 `tests/ace_native_window.rs` CPU 4/4（001 装载/状态写翻转+未知字段拒/出面外 shape 拒/双叶属性对齐）+ 排窗 e2e 1/1（3.88s：真窗、selectable/style 入叶、帧内 dark_mode 写→主题翻转证据、**两轮关闭重开**各 exit 0）；V 行点名门 desktop_behavior 11 过/1 ignored（P488-D1 原条件）+ image_surface_contract 1/1；`auto run -r vm` 隔离工程身份=driver V06e 真跑复用（43/43 内：vm-session 子进程身份/MCP 探活/cancel 收口）。**fmt 事件（诚实）**：rustfmt 经 lib.rs 递归扫入 128 个历史未格式化文件（+fmt only）随 34bb4326 落主——全保真核验：128 文件逐字节=父提交内容+rustfmt，3 文件为我的真实改动+1 文件（dynamic.rs）为配置宽度差异的纯换行，**零语义变化**。
+
+2026-11-16 stage: review（B-NATIVE-R 终核，round 20）| review_scope: batch-final | reviewer: 同会话独立复核（工件重构）| outcome: pass（批次闭合；B-NATIVE-I/V/R 勾选，15/29）| reviewed_commit: ui 34bb4326 / lang 32e8e951c | 复核：①冻结重放（新文件 5/5、点名门两文件、979 面 16/16+p980 全家、driverless 1/1）；②authored 反例 `p980_native_multi_leaf_props_align_by_declaration_order`（双叶属性对齐——zip 顺序错位即红）；③fmt 事件全保真核验（如上）；④边界核对（交互档手工/环境门控、路由未交付归 981、默认链沿 STATE 边界）——KNOWN-DEBT 待补 NATIVE 条目随 merge 落。findings: 无阻断。
+
+2026-11-16 stage: merge（B-NATIVE-D phase fold #6，round 21）| outcome: pass（批次交付）| delivery_commit: auto-ui master **34bb4326**、auto-lang master **1d2f01238**（免驱动 32e8e951c+规范 84886ea11 rebase 后落主）| canonical: m2-autoui.md sha256/16=**5fa70f1c34770f26**（§9 原生 run 通道）| 落地后复核：主检出 p980_native 过滤绿；ui 落主内容=worktree 验证内容同身份。统一回归门：本批受影响组（ace-av/ace-source 组件面、runtime 新文件、tools check）实测绿；预存红台账不变（source_foreign/ui_gen 2 例）。
+
+next_responsible_role: work（v0.6 剩余：WEB 批待 L976 立项实施；TAURI 待 WEB；PARITY 待 NATIVE✓/WEB/RUST✓/TAURI）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 21 | from: merge | to: work | status: executing（15/29，NATIVE 批已交付落主）| outcome: pass（phase fold #6）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 34bb4326 lang 1d2f01238 | next: work（WEB 批关键路径=L976）
+
 
 
 
