@@ -1030,12 +1030,14 @@ fn audit1029_adm_04_paged_decl_entry_admission_and_checked_spans() {
     });
     put_manifest(&sas, &p, &snap_a, &manifest_a);
 
-    // manifest B：total_len = 16；paged 合法恰等（[10,16)）与多 1（[10,17)）。
+    // manifest B：total_len = 16；paged 合法恰等（[10,16)）、多 1 span
+    // （[10,17)）、以及 origin>total_len 准入臂（F-R1-01：17 > 16）。
     let idx_b = serde_json::json!({
         "first": 0,
         "decls": [
             {"origin": 10, "node": 0, "node_lo": 0, "page": 0},
             {"origin": 10, "node": 1, "node_lo": 0, "page": 0},
+            {"origin": 17, "node": 0, "node_lo": 0, "page": 0},
         ],
     });
     let idx_chunk_b = put_chunk(
@@ -1052,8 +1054,8 @@ fn audit1029_adm_04_paged_decl_entry_admission_and_checked_spans() {
         "diags": [],
         "root_edges": [],
         "pages": [{"chunk": chunk_b, "first_node": 0, "node_count": 2}],
-        "decl_index": [{"chunk": idx_chunk_b, "first_node": 0, "node_count": 2}],
-        "decl_count": 2,
+        "decl_index": [{"chunk": idx_chunk_b, "first_node": 0, "node_count": 3}],
+        "decl_count": 3,
         "decls": [],
         "source_pages": [],
     });
@@ -1087,7 +1089,7 @@ fn audit1029_adm_04_paged_decl_entry_admission_and_checked_spans() {
 
     // paged 合法恰等接受、多 1 拒绝（合法跨度不误拒）。
     let view_b = sas.open_cst(&p, &snap_b).unwrap().expect("manifest B");
-    assert_eq!(view_b.decl_count(), 2);
+    assert_eq!(view_b.decl_count(), 3);
     assert_eq!(
         view_b.decl_range(0).expect("exact-fit paged span is legal"),
         (10, 16)
@@ -1097,7 +1099,7 @@ fn audit1029_adm_04_paged_decl_entry_admission_and_checked_spans() {
         .expect("exact-fit paged subtree is legal");
     match view_b.decl_range(1) {
         Err(AdapterError::Admissions(m)) => assert!(
-            m.contains("beyond source total_len"),
+            m.contains("decl span [10,17) beyond source total_len"),
             "off-by-one span must be rejected: {m}"
         ),
         other => panic!("span [10,17) > total 16 must be rejected: {other:?}"),
@@ -1106,4 +1108,20 @@ fn audit1029_adm_04_paged_decl_entry_admission_and_checked_spans() {
         view_b.decl_subtree(1),
         Err(AdapterError::Admissions(_))
     ));
+    // F-R1-01：origin>total_len 在**准入臂**拒绝（"decl origin …" 与 span 臂
+    // 的 "decl span …" 文案可区分），两个真实消费者都到。
+    match view_b.decl_range(2) {
+        Err(AdapterError::Admissions(m)) => assert!(
+            m.contains("decl origin 17 beyond source total_len 16"),
+            "origin beyond total must hit the admission arm: {m}"
+        ),
+        other => panic!("origin 17 > total 16 must be rejected: {other:?}"),
+    }
+    match view_b.decl_subtree(2) {
+        Err(AdapterError::Admissions(m)) => assert!(
+            m.contains("decl origin 17 beyond source total_len 16"),
+            "origin beyond total must hit the admission arm: {m}"
+        ),
+        other => panic!("origin 17 > total 16 must be rejected: {other:?}"),
+    }
 }
