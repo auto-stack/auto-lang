@@ -41,7 +41,23 @@ fn compile_g01() -> Result<
     )
 }
 
-/// 从属性值表达式里取一个 f32 常量（字面量或一元负号）。
+
+/// 从行的**CPU 值面**取一个属性值——这是 979 消费的方式，不再自己解析 AST。
+///
+/// 旧版这里有一套 `f32_of`/`pair_of`，把 `Expr` 的 AST 形状再判一次（是不是
+/// `TypedLit{Float}`、要不要处理一元负号……）。那正是"只给 AST 等于把判断推给
+/// 消费者"的写照：每个消费者都得重写一遍。现在读 `row.cpu`，那两个 helper 已删。
+fn cpu<'a>(
+    row: &'a ace_core::source::age_package::AgeSceneRow,
+    key: &str,
+) -> &'a ace_core::source::age_package::AgeSceneValue {
+    &row.cpu
+        .iter()
+        .find(|(k, _)| k == key)
+        .unwrap_or_else(|| panic!("attribute `{key}` on row `{}`", row.name))
+        .1
+}
+
 fn f32_of(e: &Expr) -> Option<f32> {
     match &e.kind {
         ExprKind::TypedLit {
@@ -56,15 +72,6 @@ fn f32_of(e: &Expr) -> Option<f32> {
     }
 }
 
-/// 取元组的两个 f32 分量。
-fn pair_of(e: &Expr) -> Option<(f32, f32)> {
-    match &e.kind {
-        ExprKind::TupleLit(items) if items.len() == 2 => {
-            Some((f32_of(&items[0])?, f32_of(&items[1])?))
-        }
-        _ => None,
-    }
-}
 
 fn attr<'a>(
     row: &'a ace_core::source::age_package::AgeSceneRow,
@@ -133,38 +140,37 @@ fn p981_original_g01_geometry_matches_the_baseline() {
             .unwrap_or_else(|| panic!("scene row {n}"))
     };
 
+    // 全部读 **CPU 值面**（979 的消费方式），不再在测试里解析 AST。
     // red circle: (-20, 10) d30
     let red = row("red_disc");
-    assert_eq!(f32_of(attr(red, "x").expect("x")), Some(-20.0));
-    assert_eq!(f32_of(attr(red, "y").expect("y")), Some(10.0));
-    assert_eq!(f32_of(attr(red, "diameter").expect("diameter")), Some(30.0));
+    assert_eq!(cpu(red, "x").as_float(), Some(-20.0));
+    assert_eq!(cpu(red, "y").as_float(), Some(10.0));
+    assert_eq!(cpu(red, "diameter").as_float(), Some(30.0));
 
     // blue quad: (0,0) 30x30
     let blue = row("blue_quad");
-    assert_eq!(pair_of(attr(blue, "position").expect("position")), Some((0.0, 0.0)));
-    assert_eq!(pair_of(attr(blue, "size").expect("size")), Some((30.0, 30.0)));
+    assert_eq!(cpu(blue, "position").as_floats(), Some(&[0.0, 0.0][..]));
+    assert_eq!(cpu(blue, "size").as_floats(), Some(&[30.0, 30.0][..]));
 
     // green circle: (25, -15) d24
     let green = row("green_disc");
-    assert_eq!(f32_of(attr(green, "x").expect("x")), Some(25.0));
-    assert_eq!(f32_of(attr(green, "y").expect("y")), Some(-15.0));
-    assert_eq!(f32_of(attr(green, "diameter").expect("diameter")), Some(24.0));
+    assert_eq!(cpu(green, "x").as_float(), Some(25.0));
+    assert_eq!(cpu(green, "y").as_float(), Some(-15.0));
+    assert_eq!(cpu(green, "diameter").as_float(), Some(24.0));
 
     // yellow quad: (-45, -25) 12x12, HIDDEN — visibility is a scene row fact,
     // not an `if` that destroys the object (per the AGE spec).
     let yellow = row("yellow_quad");
+    assert_eq!(cpu(yellow, "position").as_floats(), Some(&[-45.0, -25.0][..]));
+    assert_eq!(cpu(yellow, "size").as_floats(), Some(&[12.0, 12.0][..]));
     assert_eq!(
-        pair_of(attr(yellow, "position").expect("position")),
-        Some((-45.0, -25.0))
-    );
-    assert_eq!(pair_of(attr(yellow, "size").expect("size")), Some((12.0, 12.0)));
-    assert!(
-        matches!(
-            attr(yellow, "visible").map(|e| &e.kind),
-            Some(ExprKind::BoolLit(false))
-        ),
+        cpu(yellow, "visible").as_bool(),
+        Some(false),
         "yellow is declared visible: false (kept, not destroyed)"
     );
+    // 符号值也走同一面：`kind: circle|quad`。
+    assert_eq!(red.kind, "Disc");
+    assert_eq!(cpu(row("blue_quad"), "kind").as_symbol(), Some("quad"));
 }
 
 /// `kind:` 必须是冻结几何符号；坏拼写具名拒绝（不是静默接受）。

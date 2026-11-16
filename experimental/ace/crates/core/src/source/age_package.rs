@@ -102,6 +102,57 @@ pub struct AgeSceneRow {
     pub attrs: Vec<(String, Expr)>,
     /// 该行在原模块源里的跨度。
     pub span: Span,
+    /// PLAN-981（IF-981-ORIGINAL）：属性值的 **CPU 已解析值**（属性名 → 值）。
+    ///
+    /// 979 的 V-DETAIL-01 要求"CPU 读取入口"，而只给 `Expr` 等于把 AST 形状的
+    /// 判断推给消费者——每个消费者都得自己再判一次"这是字面量吗、取多少"。
+    /// 这里给出**已经解码好**的值，同时保留 `attrs` 里的原始表达式，两者并存：
+    /// 消费者读值用本字段，需要作者拼写时回看 `attrs`。
+    pub cpu: Vec<(String, AgeSceneValue)>,
+}
+
+/// 一个场景属性的 CPU 已解析值。
+#[derive(Clone, Debug, PartialEq)]
+pub enum AgeSceneValue {
+    /// `x: -20.0` / `diameter: 30.0` —— 单个 f32。
+    Float(f32),
+    /// `position: (1.0, 2.0)` / `size: (30.0, 30.0)` —— f32 元组（按书写序）。
+    Floats(Vec<f32>),
+    /// `visible: false`。
+    Bool(bool),
+    /// `kind: circle`、`material: resources.red` 这类**符号**：值为末段拼写，
+    /// 不在这里判定它的类型（那是 `attr_port` / 引用检查的职责）。
+    Symbol(String),
+    /// 形状无法在本批解码（例如参数引用 `x`、方法链）。消费者必须回看 `attrs`；
+    /// **不猜**、不填默认值。
+    Unresolved,
+}
+
+impl AgeSceneValue {
+    pub fn as_float(&self) -> Option<f32> {
+        match self {
+            AgeSceneValue::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
+    pub fn as_floats(&self) -> Option<&[f32]> {
+        match self {
+            AgeSceneValue::Floats(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            AgeSceneValue::Bool(v) => Some(*v),
+            _ => None,
+        }
+    }
+    pub fn as_symbol(&self) -> Option<&str> {
+        match self {
+            AgeSceneValue::Symbol(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 /// 包面版本化描述（AV/A2R 共同消费面）。
@@ -346,6 +397,36 @@ fn flat_to_module(_sources: &[AgeModuleSource], span: Span) -> Span {
     span
 }
 
+/// PLAN-981（IF-981-ORIGINAL）：把一个场景属性表达式解成 **CPU 值**。
+///
+/// 只解码**形状确定**的情形：f32 字面量（含一元负号）、f32 元组、bool、
+/// 以及符号引用（`kind: circle` / `material: resources.red`）。其余（参数引用
+/// `x`、方法链、计算值）返回 [`AgeSceneValue::Unresolved`]——**不猜**，消费者
+/// 回看 `attrs` 里的原始表达式。
+fn scene_value_cpu(e: &Expr) -> AgeSceneValue {
+    use super::ast::ExprKind;
+    if let Some(v) = f32_literal(e) {
+        return AgeSceneValue::Float(v);
+    }
+    match &e.kind {
+        ExprKind::TupleLit(items) => {
+            let mut vals = Vec::with_capacity(items.len());
+            for it in items {
+                match f32_literal(it) {
+                    Some(v) => vals.push(v),
+                    None => return AgeSceneValue::Unresolved,
+                }
+            }
+            AgeSceneValue::Floats(vals)
+        }
+        ExprKind::BoolLit(b) => AgeSceneValue::Bool(*b),
+        ExprKind::Var(id) => AgeSceneValue::Symbol(id.name.clone()),
+        // `resources.red` → 末段拼写 `red`（与资源引用检查同一口径）。
+        ExprKind::Field { name, .. } => AgeSceneValue::Symbol(name.name.clone()),
+        _ => AgeSceneValue::Unresolved,
+    }
+}
+
 /// 用户顶层名与保留前缀的冲突（具名拒绝，不静默遮蔽）。
 ///
 /// 按 `units` 里的**源名**判：绑定器已把程序项 mangle 成包/模块限定符号
@@ -462,6 +543,11 @@ fn read_back_components(
                         .map(|a| (a.key.clone(), a.value.clone()))
                         .collect(),
                     span: row.span,
+                    cpu: row
+                        .attrs
+                        .iter()
+                        .map(|a| (a.key.clone(), scene_value_cpu(&a.value)))
+                        .collect(),
                 })
                 .collect(),
             refs: refs
