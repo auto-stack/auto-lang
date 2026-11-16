@@ -382,6 +382,11 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **批量回归 due 检查（auto-lang）**：`docs/plans/.last-batch-regression.json` 存在，`last_covered_plan_id=1064`、`timestamp=2026-11-16T10:04:09Z`。本计划 1036 `%5=1`（非 0），receipt 年龄 <48h，窗口内无 `%5==0` 的计划在此 receipt 之后归档 → **当前 not due**；owner=周期批量回归（下次 %5 计划归档或 >48h 有合并时再触发）。
 
 **最终计数**：6/6 任务、AC-01..06 全部勾选（AC-05/06 为本条落地）；`git status` clean（仅他人 docs WIP 保留、未纳入）。
+2026-11-17 stage: goal | plan_id: PLAN-1036 | plan_revision: r4 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 3b734996b | next: done
+
+**GOAL 完成收据（PLAN-1036 交付闭环）**：plan=PLAN-1036 r4；delivery_commit=`3b734996b`（master ff-only，线性无 merge 提交；reviewed `a628ad594` → rebase `68924c748`，`git range-diff` 两条 `=`）；canonical Specs 5 份已落并逐份核文本+sha256（auto-ac/source-collections-variants cc52d3ae…、auto-mir/collection-place-profile f37ff295…、auto-a2x/checked-resource-facts ae5bb206…、auto-a2c/collections-hir-backend 6f0f22a9…、auto-a2r/collections-hir-backend 7d18ff1f…）；archive=`docs/plans/archive/1036-ace-loop-latch-and-cooperative-poll.md`（status: archived，docs 已提交）；cleanup=guard clean + 树/分支/组目录/plan-artifacts scope 全删（6文件 1,458,039B 折叠后删）；剩余 merge 自有项=登记表条目待他人修复后插入（其 JSON 已被他人写坏，条目原文留本§9）、批量回归 not due（owner=周期 gate）。产品面无生产制品重建需求（本计划只触 experimental/ace 与 docs）。
+
+**交付实质（对用户可见）**：AUDIT-1024 的 F28（for-in `continue` 跳过隐藏推进 → 重复当前元素）、F29（闭区间 i32 上界合成 `hi+1` → IntOverflow）、F35（A2X C/Rust collections `continue` 绕过回边 poll → 预算/取消点丢失）三项全部修复并有红→绿证据；修复过程中发现并修掉一个**真实内存安全缺陷**（Rust list 释放非幂等 → 回边 poll 错误路径二次释放 → 0xC0000374 堆损坏）。6 个永久回归用例常驻，全部 ≤5.8s。
 ## 10. 待澄清事项
 
 F28值/迭代、F29宽度、F35预算/取消三个oracle分别关闭；不把所有目标未支持面计为PASS，不新增无限规模承诺。 T-01使真实反例/资源或IO故障可运行，未取得前不声称动态后果已证。等价实现不需重复审批；新支持/预算/公共合同变化先最小决定，不能用隐式门限或延期替原义务。不等待“新测试框架全部完成”。
