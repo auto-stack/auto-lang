@@ -1207,7 +1207,7 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
     None
 }
 /// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool）。
-fn field_type(f: &ComponentField) -> Option<TypeWord> {
+pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {
         "int" | "i32" => Some(TypeWord::I32),
         "bool" => Some(TypeWord::Bool),

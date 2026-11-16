@@ -142,3 +142,5 @@ mod text_replacement;
 mod plan981_resource_identity;
 #[path = "cases/plan981_multimodule_identity.rs"]
 mod plan981_multimodule_identity;
+#[path = "cases/plan981_model_field_types.rs"]
+mod plan981_model_field_types;

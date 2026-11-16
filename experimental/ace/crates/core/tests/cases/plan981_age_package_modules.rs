@@ -234,3 +234,45 @@ fn p981_age_package_profile_is_refused_by_generic_entries() {
         _ => panic!("the fragment front door must refuse the age-package profile"),
     }
 }
+
+/// 模块输入**换序**不改变语义身份（§6 "模块输入换序/重定位语义不变"）。
+///
+/// 轮 48 复审（R47-8）指出这条只有探针、没有永久用例；现在钉住。
+#[test]
+fn p981_module_input_order_does_not_change_identity() {
+    let a = compile_age_package(
+        &[input("helper", HELPER), input("main", MAIN)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps(),
+    )
+    .expect("ordered input compiles");
+    let b = compile_age_package(
+        &[input("main", MAIN), input("helper", HELPER)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps(),
+    )
+    .expect("reordered input compiles");
+    assert_eq!(
+        a.input_hash, b.input_hash,
+        "module order is presentation, not identity"
+    );
+    assert_eq!(a.desugar_hash, b.desugar_hash);
+}
+
+/// 模块图**环**必须具名拒绝（不是挂起、不是静默取一个顺序）。
+#[test]
+fn p981_module_cycle_is_named() {
+    let aa = "use bb.B\nnode A {\n    view { text \"a\" {} }\n}\n";
+    let bb = "use aa.A\nnode B {\n    view { text \"b\" {} }\n}\n";
+    let main = "use aa.A\nnode Main {\n    view { text \"m\" {} }\n}\n";
+    let ds = compile_age_package(
+        &[input("aa", aa), input("bb", bb), input("main", main)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps(),
+    )
+    .expect_err("a module cycle is rejected by name");
+    assert_eq!(ds[0].code, "source.module-cycle", "{ds:?}");
+}

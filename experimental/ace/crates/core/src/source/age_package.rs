@@ -878,13 +878,15 @@ pub struct AgeResolvedRef {
 
 /// PLAN-981（IF-981-REF）：实例引用解析失败的具名原因。
 ///
-/// 三种失败必须**互斥可辨**（979 V-10 要求"是引用/可见性诊断而非偶然类型错"）：
-/// 类型不存在、类型存在但不可见、以及**不是 node**（声明了但不是 AGE 节点）。
+/// 失败必须**互斥可辨**（979 V-10 要求"是引用/可见性诊断而非偶然类型错"）：
+/// 名字不存在、存在但没有导入（不可见）、**不是 node**（声明了但不是 AGE 节点），
+/// 以及同名 node 出现在多个模块且本模块一个都没导入（歧义，必须显式选一个）。
 fn ref_failure_code(kind: &RefFailure) -> &'static str {
     match kind {
         RefFailure::Undeclared => "source.age.ref-undeclared",
         RefFailure::Invisible => "source.age.ref-invisible",
         RefFailure::NotANode => "source.age.ref-not-a-node",
+        RefFailure::Ambiguous => "source.age.ref-ambiguous",
     }
 }
 
@@ -892,10 +894,12 @@ fn ref_failure_code(kind: &RefFailure) -> &'static str {
 enum RefFailure {
     /// 本模块与已导入符号里都没有这个名字。
     Undeclared,
-    /// 名字存在，但声明在别的模块且未 `pub`（或未导入）。
+    /// 名字存在，但声明在别的模块且本模块没有导入它。
     Invisible,
     /// 名字是有可见性的类型，但它不是 AGE node 声明。
     NotANode,
+    /// 名字在**多个**模块里都是 node，而本模块一个都没导入——必须显式选一个。
+    Ambiguous,
 }
 
 /// 解析一个模块里的全部实例引用（IF-981-REF 的核心判据）。
@@ -906,25 +910,16 @@ fn resolve_refs(
     bound: &super::packages::BoundPackages,
     packaged: &[PackagedAgeComponent],
 ) -> Result<std::collections::BTreeMap<(String, String), Vec<AgeResolvedRef>>, Vec<Diagnostic>> {
-    // 每个模块里"本模块声明的 node"与"公共导出的 node"。
-    let mut declared: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    let mut public_nodes: std::collections::BTreeMap<String, Vec<String>> =
+    // 每个模块**自己**声明的 node 名（可见性只约束**跨模块**）。
+    let mut own_nodes: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
         std::collections::BTreeMap::new();
     let mut all_type_names: std::collections::BTreeMap<String, Vec<String>> =
         std::collections::BTreeMap::new();
     for p in packaged {
-        declared
-            .entry(p.module.clone())
+        own_nodes
+            .entry(p.module.as_str())
             .or_default()
-            .push(p.node.name.name.clone());
-        // AGE 作者面不写 `pub`：模块内的 node 声明都可被符号表导入引用（与
-        // binder 的 node 导入判据一致）。`pub node` 仍合法，只是不再额外收紧
-        // ——两层面对同一份源必须给出同一结论。
-        public_nodes
-            .entry(p.module.clone())
-            .or_default()
-            .push(p.node.name.name.clone());
+            .insert(p.node.name.name.as_str());
     }
     for (key, unit) in &bound.units {
         for item in &unit.program.items {
@@ -952,11 +947,10 @@ fn resolve_refs(
         for r in &p.node.view.node_refs {
             let want = &r.ty.name;
             // 1) 本模块声明优先（不需要导入；可见性仅约束**跨模块**）。
-            let local = declared
-                .get(&p.module)
-                .map(|v| v.iter().any(|n| n == want))
-                .unwrap_or(false);
-            if local {
+            if own_nodes
+                .get(p.module.as_str())
+                .is_some_and(|s| s.contains(want.as_str()))
+            {
                 resolved.push(AgeResolvedRef {
                     ty_spelling: want.clone(),
                     module: p.module.clone(),
@@ -966,13 +960,16 @@ fn resolve_refs(
                 });
                 continue;
             }
-            // 2) 别的模块里的 **可见** node 声明：按 node 名解析（AGE 领域引用
-            //    走节点命名空间，不借用普通 use 导入的值/类型命名空间）。
-            let public_hit = public_nodes
-                .iter()
-                .find(|(k, v)| *k != &p.module && v.iter().any(|n| n == want))
-                .map(|(k, _)| k.clone());
-            if let Some(target_key) = public_hit {
+            // 2) 跨模块：必须**从声明模块导入**。
+            //
+            //    符号表导入就是显式的跨模块意愿（2026-11-16 裁定），不需要 `pub`
+            //    ——AGE 作者面不写 pub，g01 的原源形态就是 `use shapes: Disc`。
+            //    此前这里按**全包** node 名直接命中、从不查导入：未导入的
+            //    `Far f1 {}` 被静默接受，同名两模块还会按模块键任选一个（轮 48
+            //    R47-1）。现在沿 `pub use` 重导出链解析到**真正声明**的模块。
+            if let Some(target_key) =
+                imported_node_origin(&own_nodes, bound, &p.module, want, 8, false)
+            {
                 resolved.push(AgeResolvedRef {
                     ty_spelling: want.clone(),
                     module: target_key,
@@ -982,100 +979,94 @@ fn resolve_refs(
                 });
                 continue;
             }
-            // 3) 导入表：`use <mod>.<X>` 存在但目标不是可见 node → 具名区分。
-            let imported = unit.and_then(|u| {
-                u.imports
-                    .iter()
-                    .find(|i| i.bound_name() == want)
-                    .map(|i| i.path.clone())
-            });
-            match imported {
-                Some(path) => {
-                    let (target_key, item) = match path.len() {
-                        2 => (
-                            super::packages::unit_key(
-                                p.module.split_once("::").map(|(pk, _)| pk).unwrap_or(""),
-                                &path[0],
-                            ),
-                            path[1].clone(),
+            // 3) 导入表里绑定的是**非 node** 的名字 → 具名 NotANode。
+            if let Some(imp) = unit.and_then(|u| {
+                u.imports.iter().find(|i| i.bound_name() == want)
+            }) {
+                let (target_key, item) = match imp.path.len() {
+                    2 => (
+                        super::packages::unit_key(
+                            p.module.split_once("::").map(|(pk, _)| pk).unwrap_or(""),
+                            &imp.path[0],
                         ),
-                        3 => (super::packages::unit_key(&path[0], &path[1]), path[2].clone()),
-                        _ => (String::new(), want.clone()),
-                    };
-                    let is_plain_type = all_type_names
-                        .get(&target_key)
-                        .map(|v| v.iter().any(|n| n == &item))
-                        .unwrap_or(false);
-                    let visible = public_nodes
-                        .get(&target_key)
-                        .map(|v| v.iter().any(|n| n == &item))
-                        .unwrap_or(false);
-                    if is_plain_type && !visible {
-                        // 名字可见且是类型，但它不是 AGE node —— 与"不可见"分开报。
-                        return Err(vec![ref_diag(
-                            RefFailure::NotANode,
-                            format!(
-                                "`{want}` resolves to a declared type, not an AGE `node`; an \
-                                 instance reference must name a node declaration"
-                            ),
-                            flat_to_module(&bound_sources(bound), r.span),
-                        )]);
-                    }
-                    if visible {
-                        resolved.push(AgeResolvedRef {
-                            ty_spelling: want.clone(),
-                            module: target_key,
-                            node: item,
-                            name: r.name.name.clone(),
-                            span: r.span,
-                        });
-                    } else {
-                        return Err(vec![ref_diag(
-                            RefFailure::Invisible,
-                            format!(
-                                "`{want}` is imported from `{target_key}` but is not a `pub node` \
-                                 declaration there; an instance reference needs a visible AGE node"
-                            ),
-                            flat_to_module(&bound_sources(bound), r.span),
-                        )]);
-                    }
-                }
-                None => {
-                    // 3) 既非本模块声明、又无导入：区分"别处有但不可见"与"根本不存在"。
-                    let seen_elsewhere = declared
-                        .iter()
-                        .any(|(k, v)| k != &p.module && v.iter().any(|n| n == want))
-                        || public_nodes
-                            .iter()
-                            .any(|(k, v)| k != &p.module && v.iter().any(|n| n == want));
-                    let is_type_elsewhere = all_type_names
-                        .iter()
-                        .any(|(k, v)| k != &p.module && v.iter().any(|n| n == want));
-                    if is_type_elsewhere {
-                        return Err(vec![ref_diag(
-                            RefFailure::NotANode,
-                            format!(
-                                "`{want}` is a declared type but not an AGE `node`; an instance \
-                                 reference must name a node declaration"
-                            ),
-                            flat_to_module(&bound_sources(bound), r.span),
-                        )]);
-                    }
-                    let kind = if seen_elsewhere {
-                        RefFailure::Invisible
-                    } else {
-                        RefFailure::Undeclared
-                    };
+                        imp.path[1].clone(),
+                    ),
+                    3 => (
+                        super::packages::unit_key(&imp.path[0], &imp.path[1]),
+                        imp.path[2].clone(),
+                    ),
+                    _ => (String::new(), want.clone()),
+                };
+                let is_plain_type = all_type_names
+                    .get(&target_key)
+                    .map(|v| v.iter().any(|n| n == &item))
+                    .unwrap_or(false);
+                if is_plain_type {
+                    // 名字是类型，但它不是 AGE node —— 与"不可见"分开报。
                     return Err(vec![ref_diag(
-                        kind,
+                        RefFailure::NotANode,
                         format!(
-                            "no `node {want}` is declared here or imported; an instance reference \
-                             must name a visible node declaration"
+                            "`{want}` resolves to a declared type, not an AGE `node`; an \
+                             instance reference must name a node declaration"
                         ),
                         flat_to_module(&bound_sources(bound), r.span),
                     )]);
                 }
+                return Err(vec![ref_diag(
+                    RefFailure::Invisible,
+                    format!(
+                        "`{want}` is imported from `{target_key}` but is not a `node` \
+                         declaration there; an instance reference needs an AGE node"
+                    ),
+                    flat_to_module(&bound_sources(bound), r.span),
+                )]);
             }
+            // 4) 没有导入：别处声明的 node → invisible（唯一候选）或 ambiguous（多候选）。
+            let candidates: Vec<&str> = own_nodes
+                .iter()
+                .filter(|(k, v)| **k != p.module.as_str() && v.contains(want.as_str()))
+                .map(|(k, _)| *k)
+                .collect();
+            if candidates.len() > 1 {
+                return Err(vec![ref_diag(
+                    RefFailure::Ambiguous,
+                    format!(
+                        "`{want}` is declared as a node in several modules ({}); import exactly \
+                         the one you mean, e.g. `use <module>: {want}`",
+                        candidates.join(", ")
+                    ),
+                    flat_to_module(&bound_sources(bound), r.span),
+                )]);
+            }
+            if let Some(only) = candidates.first() {
+                let short = only.split_once("::").map(|(_, m)| m).unwrap_or(only);
+                return Err(vec![ref_diag(
+                    RefFailure::Invisible,
+                    format!(
+                        "`{want}` is a node declared in `{only}`, but `{}` does not import it; \
+                         add `use {short}: {want}`",
+                        p.module
+                    ),
+                    flat_to_module(&bound_sources(bound), r.span),
+                )]);
+            }
+            // 5) 全项目都没有同名 node：是普通类型 → NotANode；否则 Undeclared。
+            let is_type_elsewhere = all_type_names
+                .iter()
+                .any(|(_, v)| v.iter().any(|n| n == want));
+            let kind = if is_type_elsewhere {
+                RefFailure::NotANode
+            } else {
+                RefFailure::Undeclared
+            };
+            return Err(vec![ref_diag(
+                kind,
+                format!(
+                    "no `node {want}` is declared here or imported; an instance reference \
+                     must name a visible node declaration"
+                ),
+                flat_to_module(&bound_sources(bound), r.span),
+            )]);
         }
         // 按模块**累加**，不是覆盖。
         //

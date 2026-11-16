@@ -881,10 +881,16 @@ pub(crate) fn project_packages_front(
                                 type_params: Vec::new(),
                                 params: Vec::new(),
                                 ret: crate::source::ast::TypeAnn {
+                                    // 状态函数返回**字段自己的类型**（int/i32/bool）——
+                                    // 原先硬编码 i32，于是 `flag bool = true` 被共享
+                                    // 检查判成 `expected i32, found bool`（轮 48 R47-3）。
+                                    // 不支持的类型已由上面的 `instance_stmts` 具名拒绝。
                                     kind: crate::source::ast::TypeRef::Builtin(
-                                        crate::source::ast::TypeWord::I32,
+                                        crate::source::age_component::field_type(f).expect(
+                                            "instance_stmts rejected unsupported model field types",
+                                        ),
                                     ),
-                                    span: f.span,
+                                    span: f.ty_span,
                                 },
                                 body: crate::source::ast::Block {
                                     stmts,

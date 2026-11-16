@@ -428,6 +428,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { int-kw() {} }
             alt { i32() {} }
             alt { bool() {} }
+            // PLAN-981（轮 49）：`float`/`f32` 在 age-package 面是**关键字**（场景
+            // 属性/参数需要它们，见 age-param-ty）。model 类型位置若不显式接受，
+            // 整个 node 会退化成 `expected fn, found node` @0——不是具名拒绝。
+            // 接受后由共享检查在**类型 token 处**具名拒绝（该切片只承载
+            // int/i32/bool），age-component 面字节不变。
+            alt(profiles: [age-package]) { float-kw() {} }
+            alt(profiles: [age-package]) { f32-kw() {} }
             alt { ident(field: "name") {} }
         }
         age-on-member(profiles: [age-component, age-package], expect: "an `on <Msg> { <field> = <expr> }` block") {

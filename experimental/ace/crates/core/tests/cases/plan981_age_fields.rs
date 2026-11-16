@@ -111,19 +111,39 @@ fn p981_fields_dropping_a_projection_row_is_red() {
 /// 逐行删：清单里任意一行被真正删掉投影，都必须能被抓到（不是只抓 on）。
 #[test]
 fn p981_fields_every_projection_row_is_individually_guarded() {
-    for drop in ["model", "view.text", "view.node-ref", "view.scene.resource"] {
+    // 10 行**全列**：此前只逐行削弱了 5 行，`node`/`model`/`model.init`/`view`/
+    // `view.scene` 删掉投影后无人发现（轮 48 R47-2 的探针实证）。
+    for drop in [
+        "node",
+        "model",
+        "model.init",
+        "on",
+        "on.lifecycle",
+        "view",
+        "view.text",
+        "view.node-ref",
+        "view.scene",
+        "view.scene.resource",
+    ] {
         let out = compile(FULL);
         let mut weakened = out.description.clone();
-        for c in &mut weakened.components {
-            match drop {
-                "model" => {
-                    c.fields.clear();
-                    c.initialized = false;
+        if drop == "node" {
+            weakened.components.clear();
+        } else {
+            for c in &mut weakened.components {
+                match drop {
+                    "model" => {
+                        c.fields.clear();
+                        c.initialized = false;
+                    }
+                    "model.init" => c.initialized = false,
+                    "on" | "on.lifecycle" => c.handler_msgs.clear(),
+                    "view" | "view.text" => c.texts.clear(),
+                    "view.node-ref" => c.refs.clear(),
+                    "view.scene" => c.scene.clear(),
+                    "view.scene.resource" => c.resource_refs.clear(),
+                    other => panic!("unknown drop {other}"),
                 }
-                "view.text" => c.texts.clear(),
-                "view.node-ref" => c.refs.clear(),
-                "view.scene.resource" => c.resource_refs.clear(),
-                other => panic!("unknown drop {other}"),
             }
         }
         let missing = age_construct_coverage(&weakened, AGE_CONSTRUCTS)
@@ -133,6 +153,34 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
             "the reported missing rows must name `{drop}`: {missing:?}"
         );
     }
+}
+
+/// **分母**冻结：清单的键集与行数必须与登记值逐字相同。
+///
+/// 995/979 的 V-11 与 §6 r13 都要求"**删必需清单行**"也红。上一版只测了
+/// "删投影"，于是把一行从 `AGE_CONSTRUCTS` 里**删掉**时分母一起变小、检查照绿
+/// （轮 48 R47-2 探针：删掉 `view.scene` 后 `Ok(())`）。本用例把分母本身钉住。
+#[test]
+fn p981_fields_construct_table_is_frozen() {
+    let mut keys: Vec<&str> = AGE_CONSTRUCTS.iter().map(|c| c.key).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        vec![
+            "model",
+            "model.init",
+            "node",
+            "on",
+            "on.lifecycle",
+            "view",
+            "view.node-ref",
+            "view.scene",
+            "view.scene.resource",
+            "view.text",
+        ],
+        "deleting or renaming a required construct row must be red, never a smaller \
+         denominator that still passes"
+    );
 }
 
 /// **投影真的被移除时**，覆盖检查必须红——这是上一版逐行守卫**做不到**的那一半。

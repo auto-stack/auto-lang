@@ -189,6 +189,24 @@ fn p981_original_g01_rejects_a_bad_geometry_kind() {
     )
     .expect_err("an unknown geometry kind is rejected");
     assert_eq!(ds[0].code, "source.age.scene-kind", "{ds:?}");
+    // 诊断必须落在**原文件**的出错 token 上（轮 48 R47-5 指出此前只断言了码）。
+    let want = bad.find("triangle").expect("fixture has triangle");
+    assert_eq!(
+        ds[0].span.start, want,
+        "the diagnostic must point at `triangle` in main.at; got {:?} which reads {:?}",
+        ds[0].span,
+        &bad[ds[0].span.start.min(bad.len())..ds[0].span.end.min(bad.len())]
+    );
+}
+
+/// g01 夹具的**字节身份**必须被钉住：它必须是 `age-examples` 的原源，而不是
+/// "改过一行的相似文件"。长度断言挡不住注释/空白改动，内容哈希可以（R47-7）。
+#[test]
+fn p981_original_g01_fixture_bytes_are_pinned() {
+    use ace_core::source::cst::content_sha;
+    assert_eq!(content_sha(MAIN.as_bytes()), 4_661_484_066_523_668_053);
+    assert_eq!(content_sha(RESOURCES.as_bytes()), 12_785_226_987_299_247_172);
+    assert_eq!(content_sha(SHAPES.as_bytes()), 5_140_912_040_684_847_638);
 }
 
 /// 改一个几何值后闭包仍成立，且**只有**该值变化（其余逐值不变）。
