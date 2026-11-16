@@ -924,6 +924,21 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: work（B-LANGUAGE-V：V-L 判据 + AV 腿跑在真实 A 源上）| PLAN-981 | outcome: partial
+
+- auto-lang `81d423858`→master `777c68b3b`：`plan981_ma_sources.rs` 增加真实 A 源的 V-L 判据——
+  V-L-VIEW（单 view 出口；UI 选它、场景请求具名拒）、V-L-WIRE（3 unit 消息/3 handler/onclick 绑定，
+  绑定 span 指回真实源文本）、V-L-COVER（node/model/on/view 四类事实）、消息变体**原 span 保真**；
+  AV 腿（`p981_ma_counter_av_leg`）用同一源同一 2×Inc+1×Dec 得状态 **1** 与真实 view 文本
+  `"Counter"`，与 A2R 二进制 oracle 同值（AV/A2R 两腿互证）。
+- `V_PENDING_INPUTS` 从 3 项降为 **2 项**：980/A 正式源已交（本项移除）；剩 typed UI/资源宿主面
+  （R64-10 异步面）与 980 合流 oracle。
+- auto-ui `9a8d12a3`→master `979d4cfd`：overlay 钉 `auto-lang 777c68b3b`（1391 文件），逐 blob
+  保真 PASS；`.sdk-source` 由该提交的 `git archive` 抽取物化（工作树 EOL 差异不影响）。
+- **门禁实测**：plan981 **207/207**、plan980 13/13、AV p981 **4/4**、A2R p981 5/5、grammar 45/45、
+  ace-core **738/738**；driver lib 47/47、`s2_age_routing` 15/15、bridge S1 4 + S3 3 + S4 10。
+- **未闭**：review-67（SESSION-V/RUST-V 批）待回；typed UI/资源宿主面与 980 oracle 仍 pending；
+  B 侧载荷/参数执行（`D-981-EVENT-A-REMAINDER`）。
 2026-11-17 stage: work（B-SESSION-V 双实例 2:1 + B-RUST-V 真实 A 源 A2R + overlay 字节保真）| PLAN-981 | outcome: partial
 
 **B-SESSION-V（real A 源）**：auto-ui `332ef407`→master `0a87676b`——用交付的 980/A Counter 源开
