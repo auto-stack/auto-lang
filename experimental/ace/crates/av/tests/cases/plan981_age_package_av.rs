@@ -84,9 +84,15 @@ fn p981_age_package_two_instances_two_to_one_events_and_four_ticks() {
         "instance 0 = 2 Inc + 4 Tick, instance 1 = 1 Inc + 4 Tick"
     );
     // 同一 node 定义、两个**独立**实例：文本随各自状态取不同分支。
-    assert_eq!(c.instance_texts, vec![vec!["six".to_string()], vec!["other".to_string()]]);
+    assert_eq!(
+        c.instance_texts,
+        vec![vec!["six".to_string()], vec!["other".to_string()]]
+    );
     // Tick 恰推进实例自己的计数（不串扰）：各实例 4 次。
-    assert_eq!(c.handler_msgs, vec!["Inc".to_string(), "Life.Tick".to_string()]);
+    assert_eq!(
+        c.handler_msgs,
+        vec!["Inc".to_string(), "Life.Tick".to_string()]
+    );
 }
 
 /// 改被导入 helper 的初值 → 同一场景下两个实例的值都必须变（跨模块真受检）。
@@ -104,7 +110,10 @@ fn p981_age_package_imported_helper_value_drives_both_instances() {
     .expect("changed helper compiles");
     let observed =
         ace_av::age_package::observe_age_package(&compiled, 2).expect("AV observes both");
-    assert_eq!(observed.components[0].instance_states, vec![vec![16], vec![15]]);
+    assert_eq!(
+        observed.components[0].instance_states,
+        vec![vec![16], vec![15]]
+    );
     // 两个实例都越过了 6，故都走 "other" 分支 —— 文本不是常量补的。
     assert_eq!(
         observed.components[0].instance_texts,
@@ -152,7 +161,8 @@ fn p981_dual_nodes_same_field_are_observed_separately() {
         },
     )
     .expect("two nodes sharing a field name compile");
-    let observed = ace_av::age_package::observe_age_package(&compiled, 2).expect("observation resolves both components");
+    let observed = ace_av::age_package::observe_age_package(&compiled, 2)
+        .expect("observation resolves both components");
     assert_eq!(observed.components.len(), 2);
     // 实例级调度：两个组件都声明了 `on Tick`，实例 0 各 Tick 两次。
     assert_eq!(observed.components[0].instance_states[0][0], 2);
@@ -166,9 +176,18 @@ fn p981_ma_counter_av_leg_matches_the_arithmetic_oracle() {
     let scenario = ComponentScenario {
         instances: 1,
         ops: vec![
-            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
-            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
-            ScenarioOp::Send { instance: 0, msg: "Dec".into() },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Dec".into(),
+            },
         ],
     };
     let compiled = compile_age_package_with_scenario(
@@ -190,4 +209,85 @@ fn p981_ma_counter_av_leg_matches_the_arithmetic_oracle() {
         vec![vec!["Counter".to_string()]],
         "the real view text is observed"
     );
+}
+
+/// V-EVT-A-UNIT：匿名 unit Counter 的真实轨迹 **0→1→0→0**（Inc/Dec/Reset/Reset），
+/// 以及具名 unit 镜面（`msg Msg { Inc }`）同轨迹。
+#[test]
+fn p981_evt_a_unit_counter_trace_and_named_mirror() {
+    const SRC: &str = include_str!("../../../core/tests/fixtures_ma/ace_node_counter.at");
+    let ops = || {
+        vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Dec".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Reset".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Reset".into(),
+            },
+        ]
+    };
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", SRC)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: ops(),
+        },
+    )
+    .expect("the anonymous unit counter compiles");
+    // 逐 op 轨迹：0 → 1 → 0 → 0 → 0（编译期展开，状态即末值；逐步由独立 oracle 核）。
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1).expect("observes");
+    assert_eq!(observed.components[0].instance_states, vec![vec![0]]);
+
+    // 具名 unit 镜面：同一 business 轨迹，消息集合取名不改变语义。
+    let named = "node Counter {\n    msg Msg {\n        Inc,\n        Dec,\n        Reset\n    }\n    model {\n        var count int = 0\n    }\n    on {\n        .Inc -> { .count += 1 }\n        .Dec -> { .count -= 1 }\n        .Reset -> { .count = 0 }\n    }\n    view {\n        text \"Counter\" {}\n    }\n}\n";
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", named)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: ops(),
+        },
+    )
+    .expect("the named unit mirror compiles");
+    assert_eq!(
+        compiled.description.components[0]
+            .message_set_name
+            .as_deref(),
+        Some("Msg")
+    );
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1).expect("observes");
+    assert_eq!(observed.components[0].instance_states, vec![vec![0]]);
+
+    // 中间步骤 oracle：Inc 后 1、Dec 后 0。
+    let mid = compile_age_package_with_scenario(
+        &[input("main", SRC)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: vec![ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            }],
+        },
+    )
+    .expect("compiles");
+    let observed = ace_av::age_package::observe_age_package(&mid, 1).expect("observes");
+    assert_eq!(observed.components[0].instance_states, vec![vec![1]]);
 }
