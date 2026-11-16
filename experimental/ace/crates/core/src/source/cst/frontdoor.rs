@@ -878,21 +878,44 @@ pub(crate) fn project_packages_front(
             for op in &scenario.ops {
                 if let crate::source::age_component::ScenarioOp::Send { msg, .. } = op {
                     for node in &nodes {
-                        if let Some(v) = node.messages.iter().find(|v| &v.name == msg) {
-                            if !v.payload.is_empty() {
-                                let detail = format!(
-                                    "message `{msg}` declares a payload ({}); payload event \
-                                     execution is not supported in this slice, so the dispatch \
-                                     is rejected instead of running the handler without its value",
-                                    v.payload.join(", ")
-                                );
-                                let span = v.span;
-                                return Err(vec![crate::source::age_h0::text_diag(
-                                    "source.age.event-payload-unsupported",
-                                    detail,
-                                    span,
-                                )]);
-                            }
+                        // R65-2：**任一**同名变体带 payload 就拒（首个 unit 变体不能
+                        // 掩盖后面的有载荷变体）。
+                        if let Some(v) = node
+                            .messages
+                            .iter()
+                            .find(|v| &v.name == msg && !v.payload.is_empty())
+                        {
+                            let detail = format!(
+                                "message `{msg}` declares a payload ({}); payload event \
+                                 execution is not supported in this slice, so the dispatch \
+                                 is rejected instead of running the handler without its value",
+                                v.payload.join(", ")
+                            );
+                            let span = v.span;
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.event-payload-unsupported",
+                                detail,
+                                span,
+                            )]);
+                        }
+                        // R65-8：带参 handler 的派发在 dispatch 前具名拒（零效果）。
+                        if let Some(h) = node
+                            .handlers
+                            .iter()
+                            .find(|h| h.msg == *msg && !h.params.is_empty())
+                        {
+                            let (param, span) = h.params[0].clone();
+                            let detail = format!(
+                                "handler `{}` declares parameter `{param}`, but parameterised \
+                                 event execution is not implemented in this slice; the dispatch \
+                                 is rejected instead of running the handler without its value",
+                                h.msg
+                            );
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.event-params-unsupported",
+                                detail,
+                                span,
+                            )]);
                         }
                     }
                 }
@@ -1145,20 +1168,21 @@ pub(crate) fn project_packages_front(
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
-                    // PLAN-981（IF-981-EVENT-A）：带参 handler 的**行为**未实现——
-                    // 解析成功不等于可执行：admit 前具名拒绝（零状态/UI 效果），
-                    // 不静默丢参后跑常量体。
+                    // R65-3：widget 形 handler 必须指向本 node 声明的消息。
+                    // R65-8：带参 handler 允许解析/描述（参数事实可读），派发时再具名拒
+                    // （见上方 Send 守卫）——解析成功 ≠ 可执行。
                     for h in &node.handlers {
-                        if let Some((param, span)) = h.params.first() {
+                        if h.from_widget
+                            && !node.messages.iter().any(|m| m.name == h.msg)
+                        {
                             return Err(vec![crate::source::age_h0::text_diag(
-                                "source.age.event-params-unsupported",
+                                "source.age.msg-unknown",
                                 format!(
-                                    "handler `{}` declares parameter `{param}`, but \
-                                     parameterised event handlers are not executable in this \
-                                     slice; use a unit handler (`on {{ .{} -> {{ … }} }}`)",
-                                    h.msg, h.msg
+                                    "handler `{}` names a message that no `msg` block declares \
+                                     in this node",
+                                    h.msg
                                 ),
-                                *span,
+                                h.span,
                             )]);
                         }
                     }
