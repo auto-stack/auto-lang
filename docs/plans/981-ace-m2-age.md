@@ -924,6 +924,32 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: review（review-67 needs_fix → 修补；口径修正）| PLAN-981 | outcome: partial
+
+**review-67 = needs_fix（8 项，全部修补）**：
+- R67-1（medium，口径）：本批 A2R 证据改称 **B-RUST-V[A]**（真实 rustc 值切片，编译期展开重放），
+  并把 **B-W3 余量**（运行时 dispatch、AGE 端口、GPU/输入/音频与关闭释放）加入未闭清单——
+  不把值切片说成 B-RUST-V 全项。
+- R67-2（low）：`V_PENDING_INPUTS` 的 session 项改写为 **V-B-SESSION[B]**（两组件事件 2:1 +
+  多 Run/Stop 资源净归零异步面），A 子面已交（单组件双实例隔离/重启）不再列为未解输入。
+- R67-3（low）：隔离断言可在"实例 1 派发被丢弃"时失败——首次 `send_to(1, Inc)` 后立刻断言 `[2,1]`，
+  结束值保持非零。
+- R67-4（low）：A2R oracle 从后缀判断改为**精确值**比较（`value:1` / `value:5`）。
+- R67-5（low）：auto-ui 侧测试直接 `include_str!` **canonical 源**（examples 文件），ACE fixture 用
+  长度 818 钉住并注明 SHA256 前 16；不再依赖三份手抄字面量。
+- R67-6（low）：删除主检出里游离的 `tests/s2_age_routing.rs`（旧快照、未跟踪）；两个测试文件
+  rustfmt 清理。
+- R67-7（info）：重启证据改述为"逻辑 session id 稳定 + generation 递增"（`pid` 是逻辑计数器，
+  不是进程身份）。
+- R67-8（info，口径更正）：此前"1361/1361 保真"是**自参照分母**——在 `862f8694e` 三个根下实有
+  **1386** 个跟踪文件，旧清单只 1361（漏 25，含整个 a2x-ts crate 与 `plan981_ma_sources.rs`），
+  原因是旧工具复用既有清单路径而**不是** CRLF 污染；新工具用 `git ls-files` 派生路径
+  （现在 1393，随后续提交增长），逐 blob 保真 PASS。
+- **落主**：auto-lang `ec9874d7f`→master `24b4ba4a7`；auto-ui `9032d69c`→`9a0f0ed5`，overlay
+  `731f5be2`→`3e5398ab`（钉 `24b4ba4a7`，1393 文件，保真 PASS）。
+- **门禁实测**：plan981 **207/207**、plan980 13/13、AV p981 **5/5**、A2R p981 5/5、grammar 45/45；
+  driver lib 47/47、`s2_age_routing` **16/16**、bridge 4+3+10；`prepare_sdk --verify-only` PASS。
+- **未闭**：review-68（needs_fix 闭包核销）；B-W3 余量（R67-1）；`D-981-EVENT-A-REMAINDER`。
 2026-11-17 stage: work（B-LANGUAGE-V：V-L 判据 + AV 腿跑在真实 A 源上）| PLAN-981 | outcome: partial
 
 - auto-lang `81d423858`→master `777c68b3b`：`plan981_ma_sources.rs` 增加真实 A 源的 V-L 判据——
