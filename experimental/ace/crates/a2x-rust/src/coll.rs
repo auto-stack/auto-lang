@@ -524,6 +524,11 @@ fn alloc_buffer(cap: usize, fill: &str) -> A2xResult<A2xStr> {
 pub fn a2x_str_from_lit(s: &str) -> A2xResult<A2xStr> {
     alloc_buffer(s.len(), s)
 }
+pub fn a2x_str_from_char(c: char) -> A2xResult<A2xStr> {
+    let mut buf = [0u8; 4];
+    let s = c.encode_utf8(&mut buf);
+    alloc_buffer(s.len(), s)
+}
 pub fn a2x_str_clone(s: &str) -> A2xResult<A2xStr> {
     alloc_buffer(s.len(), s)
 }
@@ -782,6 +787,36 @@ pub fn a2x_coll_list_free<E: A2xCollElem>(l: &mut A2xList<E>) {
     let bytes = list_cap_bytes::<E>(cap);
     unsafe { std::mem::ManuallyDrop::drop(&mut l.buf) };
     coll_alloc_release(bytes);
+}
+
+pub fn a2x_coll_list_clone<E: A2xCollElem>(src: &A2xList<E>) -> A2xResult<A2xList<E>> {
+    let mut out = a2x_coll_list_new::<E>()?;
+    for elem in src.buf.iter() {
+        let cloned = match elem.a2x_elem_deep_clone() {
+            Ok(v) => v,
+            Err(e) => {
+                a2x_coll_list_free(&mut out);
+                return Err(e);
+            }
+        };
+        if let Err(e) = a2x_coll_list_push(&mut out, cloned) {
+            a2x_coll_list_free(&mut out);
+            return Err(e);
+        }
+    }
+    Ok(out)
+}
+
+impl<E: A2xCollElem> A2xCollElem for A2xList<E> {
+    fn a2x_elem_free(&mut self) {
+        a2x_coll_list_free(self);
+    }
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {
+        a2x_coll_list_clone(self)
+    }
+    fn a2x_elem_str_bytes(&self) -> u64 {
+        self.buf.iter().map(|e| e.a2x_elem_str_bytes()).sum()
+    }
 }
 
 // ---- deep-link witness chain (helper probes; iterative, no host

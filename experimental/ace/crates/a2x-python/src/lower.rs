@@ -448,6 +448,15 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                     .unwrap_or_else(|| format!("v{v}"));
                 format!("var_{vname}")
             }
+            Ty::List(sub) => {
+                let tag = self
+                    .view
+                    .list_elem(sub)
+                    .ok()
+                    .map(|et| self.list_elem_tag(et))
+                    .unwrap_or_else(|| "i32".into());
+                format!("list_{tag}")
+            }
             _ => "i32".into(),
         }
     }
@@ -1045,7 +1054,19 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             }
             hir::ExprKind::BorrowView { base } => self.lower_expr(*base),
             hir::ExprKind::BorrowMut { local } => Ok(self.local_name(local.0)?.to_string()),
-            hir::ExprKind::Move { inner } => self.lower_expr(*inner),
+            hir::ExprKind::Move { inner } => {
+                let inner_e = self.lower_expr(*inner)?;
+                if let hir::ExprKind::ReadLocal { local } = &self.facts.body.exprs[inner.0 as usize].kind {
+                    if self.owned_locals.contains_key(&local.0) {
+                        let lname = self.local_name(local.0)?.to_string();
+                        let t = self.fresh_temp();
+                        self.emit_line(&format!("{t} = {inner_e}"));
+                        self.emit_line(&format!("{lname} = None"));
+                        return Ok(t);
+                    }
+                }
+                Ok(inner_e)
+            }
             hir::ExprKind::ListNew { .. } => {
                 let t = self.fresh_temp();
                 self.emit_line(&format!("{t} = a2x_list_new()"));

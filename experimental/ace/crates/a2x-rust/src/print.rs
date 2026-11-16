@@ -809,6 +809,15 @@ fn coll_record_helpers(
                 free_body.push_str(&format!("    a2x_coll_free_{}(&mut v.{});\n", inner, fname));
                 bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
             }
+            Ty::Variant(id) => {
+                let inner = variant_name_of(p, *id);
+                free_body.push_str(&format!("    a2x_coll_free_{}(&mut v.{});\n", inner, fname));
+                bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
+            }
+            Ty::List(_) => {
+                free_body.push_str(&format!("    a2x_coll_list_free(&mut v.{});\n", fname));
+                bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
+            }
             _ => {}
         }
     }
@@ -835,6 +844,25 @@ fn coll_record_helpers(
                 ));
                 owned.push((fname.clone(), call));
             }
+            Ty::Variant(id) => {
+                let inner = variant_name_of(p, *id);
+                let call = format!("a2x_coll_free_{}", inner);
+                clone_stmts.push_str(&format!(
+                    "    let c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    f = fname,
+                    inner = inner,
+                    rollback = rollback_stmts(&owned)
+                ));
+                owned.push((fname.clone(), call));
+            }
+            Ty::List(_) => {
+                clone_stmts.push_str(&format!(
+                    "    let c_{f} = match a2x_coll_list_clone(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    f = fname,
+                    rollback = rollback_stmts(&owned)
+                ));
+                owned.push((fname.clone(), "a2x_coll_list_free".to_string()));
+            }
             _ => {}
         }
     }
@@ -842,7 +870,9 @@ fn coll_record_helpers(
         .fields
         .iter()
         .map(|(fname, ty)| match ty {
-            Ty::StrOwned | Ty::Record(_) => format!("{}: c_{}", fname, fname),
+            Ty::StrOwned | Ty::Record(_) | Ty::Variant(_) | Ty::List(_) => {
+                format!("{}: c_{}", fname, fname)
+            }
             _ => format!("{}: src.{}", fname, fname),
         })
         .collect();
@@ -900,6 +930,7 @@ fn coll_variant_helpers(
             Some(Ty::Variant(id)) => {
                 format!("    a2x_coll_free_{}(p);\n", variant_name_of(p, *id))
             }
+            Some(Ty::List(_)) => "    a2x_coll_list_free(p);\n".to_string(),
             _ => String::new(),
         };
         match payload {
@@ -945,6 +976,11 @@ fn coll_variant_helpers(
                 a = arm,
                 inner = variant_name_of(p, *id)
             )),
+            Some(Ty::List(_)) => clone_arms.push_str(&format!(
+                "            {n}::{a}(p) => Ok({n}::{a}(a2x_coll_list_clone(p)?)),\n",
+                n = v.name,
+                a = arm
+            )),
             Some(_) => clone_arms.push_str(&format!(
                 "            {n}::{a}(p) => Ok({n}::{a}(p.clone())),\n",
                 n = v.name,
@@ -973,7 +1009,7 @@ fn coll_variant_helpers(
                 n = v.name,
                 a = arm
             )),
-            Some(Ty::Record(_)) | Some(Ty::Variant(_)) => out.push_str(&format!(
+            Some(Ty::Record(_)) | Some(Ty::Variant(_)) | Some(Ty::List(_)) => out.push_str(&format!(
                 " {n}::{a}(p) => p.a2x_elem_str_bytes(),",
                 n = v.name,
                 a = arm

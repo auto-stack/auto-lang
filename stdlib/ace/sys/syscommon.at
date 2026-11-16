@@ -12,6 +12,8 @@
 // (40 × 40 × 768 = 1_228_800 bytes). No bit ops (div/mod arithmetic only);
 // NUL is an ordinary byte.
 
+use std.bytes.decode_utf8
+
 pub fn INNER() int {
     return 768
 }
@@ -284,4 +286,35 @@ fn len_inner(s Str, ci int, istop int, ostop int, acc int) int {
     }
     let add = utf8_len(s.char_at(ci).to_codepoint())
     return len_inner(s, ci + 1, istop, ostop, acc + add)
+}
+
+// PLAN-1064 T-02: host-region byte reader + strict UTF-8 decoder.
+// Returns 0 on success, -1 on invalid region / negative bounds / out-of-range read.
+pub fn read_region_bytes(region int, offset int, length int, out List<int>) int {
+    if (region <= 0) { return -1 }
+    if (offset < 0) { return -1 }
+    if (length < 0) { return -1 }
+    return region_outer(region, offset, offset + length, out)
+}
+
+fn region_leaf(region int, i int, stop int, rem int, out List<int>) int {
+    if (rem <= 0) { return i }
+    if (i >= stop) { return i }
+    let b = mem_read_u8(region, i)
+    if (b < 0) { return -1 }
+    out.push(b)
+    return region_leaf(region, i + 1, stop, rem - 1, out)
+}
+
+fn region_outer(region int, i int, stop int, out List<int>) int {
+    if (i >= stop) { return 0 }
+    let next_i = region_leaf(region, i, stop, 64, out)
+    if (next_i < 0) { return -1 }
+    return region_outer(region, next_i, stop, out)
+}
+
+pub fn decode_utf8_region(region int, offset int, length int) ?Str {
+    var xs = List<int>.new()
+    if (read_region_bytes(region, offset, length, xs) != 0) { return None }
+    return decode_utf8(xs)
 }

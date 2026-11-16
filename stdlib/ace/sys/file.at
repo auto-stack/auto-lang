@@ -94,6 +94,32 @@ pub fn is_read_only(path Str) bool {
 // param in place (the 972 view-discipline — AV handles and A2R &mut
 // borrows both carry the mutations; nothing is returned through the
 // param).
+fn push_bytes(region int, i int, n int, rem int, acc List<int>) int {
+    if (rem <= 0) {
+        return i
+    }
+    if (i >= n) {
+        return i
+    }
+    let b = mem_read_u8(region, i)
+    if (b < 0) {
+        return -1
+    }
+    acc.push(b)
+    return push_bytes(region, i + 1, n, rem - 1, acc)
+}
+
+fn push_bytes_outer(region int, i int, n int, acc List<int>) int {
+    if (i >= n) {
+        return 0
+    }
+    let next_i = push_bytes(region, i, n, 64, acc)
+    if (next_i < 0) {
+        return -1
+    }
+    return push_bytes_outer(region, next_i, n, acc)
+}
+
 fn read_all_bytes(h int, acc List<int>) int {
     let region = buf_alloc(READ_CHUNK())
     if (region < 0) {
@@ -108,7 +134,7 @@ fn read_all_bytes(h int, acc List<int>) int {
         let d2_buf_free = buf_free(region)
         return 0
     }
-    let staged = push_bytes(region, 0, n, acc)
+    let staged = push_bytes_outer(region, 0, n, acc)
     let d3_buf_free = buf_free(region)
     if (staged != 0) {
         return -1
@@ -116,47 +142,38 @@ fn read_all_bytes(h int, acc List<int>) int {
     return read_all_bytes(h, acc)
 }
 
-fn push_bytes(region int, i int, n int, acc List<int>) int {
-    if (i >= n) {
-        return 0
-    }
-    let b = mem_read_u8(region, i)
-    if (b < 0) {
-        return -1
-    }
-    acc.push(b)
-    return push_bytes(region, i + 1, n, acc)
-}
-
-// read_bytes(path) -> the byte list (empty when unreadable; distinguish
-// via read_bytes_len == -1). The Option<List> shape is a NAMED LANE GAP
-// on the A2R collections lowering.
-pub fn read_bytes(path Str) List<int> {
-    let acc = List<int>.new()
+// PLAN-1064 D-09: strict Option<List<int>> read_bytes:
+//   missing/unreadable -> None, empty file -> Some([]), bytes -> Some(bytes).
+pub fn read_bytes(path Str) ?List<int> {
     let h = pf_open(path, OPEN_READ())
     if (h <= 0) {
-        return acc
+        return None
     }
+    var acc = List<int>.new()
     let status = read_all_bytes(h, acc)
     let d1_pf_close = pf_close(h)
     if (status != 0) {
-        return acc
+        return None
     }
-    return acc
+    return Some(acc.move)
+}
+
+// Legacy thin compatibility wrapper (empty list on error; use read_bytes for ?List<int>).
+pub fn read_bytes_or_empty(path Str) List<int> {
+    let opt = read_bytes(path)
+    is opt {
+        Some(xs) -> { return xs.move }
+        None -> {}
+    }
+    return List<int>.new()
 }
 
 pub fn read_bytes_len(path Str) int {
-    let acc = List<int>.new()
-    let h = pf_open(path, OPEN_READ())
-    if (h <= 0) {
-        return -1
+    let opt = read_bytes(path)
+    is opt {
+        None -> { return -1 }
+        Some(xs) -> { return xs.len() }
     }
-    let status = read_all_bytes(h, acc)
-    let d1_pf_close = pf_close(h)
-    if (status != 0) {
-        return -1
-    }
-    return acc.len()
 }
 
 // read_text is the NAMED LANE GAP: the packages-aggregates face has no
