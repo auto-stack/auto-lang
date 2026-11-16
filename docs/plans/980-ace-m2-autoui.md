@@ -992,6 +992,16 @@ next_responsible_role: work（WEB 批切片 #3：fragment 编译入口扩域候�
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 27 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#2 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 6aa0fd4a lang 3047fc389 | next: work（WEB 切片#3：profile/入口扩域）
 
+2026-11-16 stage: work（WEB 批切片 #3：入口扩域评估，goal round 28）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（评估结论=组件面路线成立，机制钉住并落主；**B-WEB-I/V/R 保持未勾**）| worktree: lang-980 @ plan-980-dev | commit: ui **3c8c80ff**、lang **3190c60b3**（规范 §13.1）。
+
+**评估结论（决策级）。** ①**组件面 = fragment 扩域可行入口**：生产形态源（`!` 一元/str/bool 字段——Core profile 具名拒）经组件面 states-only 编译 → `SemanticView::from_checked` → 976 发射器可运行；永久 case `p980_web_component_face_entry_fragments` 端到端钉住（span 定位→发射→**调用形**宿主映射（`__age_state_<i>_<field>()`→reactive 值，吃括号）→真 node 读值 FRAG_OK，6/6）。②**O-C3**：脱糖 drive 的 span 精度（`!.on` 源段定位落到 count 调用，PLAN-964 同族边界）——精确 per-handler 定位=切片#4（适配器接线）前置。③**裁定不需要**：WEB 完整切换无需 976 后继扩 profile——组件面路线成立；剩余=span 精度/逐 handler 定位+ts_adapter 接线+全量切换+浏览器档（多会话量级，波次门不变）。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **6/6**（含切片#2 普查+切片#3 入口 case，node 腿实跑）；fmt clean；ui 主落主 ff（分支已同步 master，981 Run/Stop 已含）；lang 规范 §13.1 落主。
+
+next_responsible_role: work（WEB 切片#4：逐 handler 定位/span 精度 + ts_adapter 接线设计；波次门 B-AV←M2A-08、B-RUST W3←UI-W2-AC 不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 28 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#3 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 3c8c80ff lang 3190c60b3 | next: work（WEB 切片#4）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
