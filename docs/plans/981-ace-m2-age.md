@@ -924,6 +924,17 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: review（review-68 = pass；事件 A / V 证据批闭）| PLAN-981 | outcome: pass（批级）
+
+- **review-68 = pass**：R68-1 闭包核销；三个真实源 session 测试全部 `include_str!` canonical 源、
+  手抄副本 **0**；轨迹/隔离/重启断言与措辞核验通过；overlay 路径集合与逐 blob 保真
+  **1393/1393 PASS**（`auto-lang 75015a49b`）；门禁全绿。
+- **信息项（不阻塞）**：R68-3 收据里 driver lib 数字过期（`3e5398ab` 时 47/47，当前 **49/49**，
+  因并行 plan-080 新增 2 个 lib 用例）；R68-4 代码注释仍把 `age_identity()` 的首值写作 PID
+  （实为逻辑计数器），已并入 `D-981-EVENT-A-REMAINDER` 的下次触碰项。
+- **批级结论**：event A（IF-981-EVENT-A）+ V 证据（B-LANGUAGE-V[A]/B-SESSION-V[A]/B-RUST-V[A]）**闭**，
+  可绑定 revision：auto-lang `24b4ba4a7`/`75015a49b`、auto-ui `771be6a9`/`7de28330`。
+  **不声称** B-LANGUAGE-V/B-SESSION-V/B-RUST-V 全项完成（B-W1/W3 余量见 §7/§8 与债务表）。
 2026-11-17 stage: review（review-68 R68-1 修补）| PLAN-981 | outcome: partial
 
 - **review-68 = needs_fix（仅 R68-1）**：R67-1/2/3/4/6/7/8 已核销；R67-5 只部分闭合——旧

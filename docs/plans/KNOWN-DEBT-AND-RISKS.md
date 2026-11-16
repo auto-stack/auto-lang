@@ -6,7 +6,7 @@
 - **仍开（B 侧，不属 A）**：参数/载荷的**执行**语义（声明→typed 参数→唯一 verify→dispatch）、
   AV 队列/宿主调度/世代/所有权、980 B-AV/B-WEB 的真实消费。owner：B-LANGUAGE/B-SESSION [B-W1]、
   980 B-AV/B-WEB；关闭条件：B 批实际事件载荷执行 + 独立 oracle。
-- **不冒充**：A 交接不代表 MIN-A-AGE 全 UI/2D/3D 验收通过，也不代替 985 T-A03/T-A04 的独立复审。
+- **不冒充**：A 交接不代表 MIN-A-AGE 全 UI/2D/3D 验收通过，也不代替 985 T-A03/T-A04 的独立复审。\n- **下次触碰**：`age_identity()` 首值是逻辑计数器，代码注释里的 "PID" 措辞待统一（review-67 R67-7 / review-68 R68-4，info）。
 ## D-980-981-EVENT-PHASE — 三消息缺口与整包等待拆分（2026-11-16，仅规划，未关闭）
 
 | 原问题/当前事实 | A承接与关闭条件 | B承接与关闭条件 |
