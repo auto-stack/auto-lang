@@ -894,7 +894,7 @@ fn read_back_components(
     elements: &std::collections::BTreeMap<(String, String), Vec<AgeSceneElement>>,
 ) -> Result<Vec<AgePackageComponent>, Vec<Diagnostic>> {
     let mut out = Vec::new();
-    for p in packaged {
+    for (node_index, p) in packaged.iter().enumerate() {
         let mut texts = Vec::new();
         // `text_fns` 与 `node.view.texts` 由同一次投影按同序产生，故按下标对位取
         // 该文本表达式引用到的名字（`text label(c)` → `["c"]`）。
@@ -990,7 +990,7 @@ fn read_back_components(
                 .map(|f| (f.name.clone(), scene_value_cpu(&f.init)))
                 .collect(),
             public: p.node.public,
-            initialized: state_functions_present(bound, &p.module, &p.node.fields),
+            initialized: state_functions_present(bound, &p.module, &p.node.fields, node_index),
             params: p
                 .node
                 .params
@@ -1515,12 +1515,14 @@ fn state_functions_present(
     bound: &super::packages::BoundPackages,
     module: &str,
     fields: &[crate::source::age_component::ComponentField],
+    node_index: usize,
 ) -> bool {
     if fields.is_empty() {
         return false;
     }
     fields.iter().all(|f| {
-        let want = format!("__age_state_0_{}", f.name);
+        // R64-4：与包前门同一套多 node 消歧命名。
+        let want = crate::source::age_component::state_fn_name_at(node_index, 0, &f.name);
         bound
             .origins
             .iter()
