@@ -142,3 +142,15 @@ fn p981_age_package_grammar_identity_is_stable_across_lookups() {
     assert_eq!(a, b, "grammar identity must be deterministic");
     assert_eq!(a.len(), 64, "it is a sha256 hex digest");
 }
+
+/// R59-7：age-package 的裁剪身份也被钉住（此前只钉了邻接面的 13 个冻结值）。
+///
+/// LANGUAGE-I 改变了它（五 view/msg payload/成员槽位），这是**有意的面扩展**：
+/// 值随批次推进更新，但必须与 §6.7 的记录逐字一致，且不得在无声中漂移。
+#[test]
+fn p981_age_package_grammar_id_is_frozen() {
+    assert_eq!(
+        id_of(SourceProfile::AgePackage),
+        "d239370afa36a764de542358dfdcf573915611a3f601f3229cec55119fa28ba6"
+    );
+}
