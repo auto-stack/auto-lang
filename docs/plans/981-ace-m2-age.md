@@ -924,6 +924,19 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: done（tier-1 A 面终验：固定组干净 PASS）| PLAN-981 | outcome: pass（tier-1 A 面）
+
+- **固定组（终验）**：`cargo t ace-source ace-syntax` → **gate_passed=true**（run-ip6ed8jk，353.3s）；
+  两组 PASS，无并发改树干扰。
+- **四命令**：`cargo test -p ace-core --test conformance plan981` **207/207**、`cargo test -p ace-core`
+  **742/742**（+lib 79/1 ignored）、`cargo test -p ace-av --test conformance p981` **6/6**、
+  `cargo test -p ace-a2x-worker --test conformance p981` **5/5**、`cargo test -p ace-syntax-grammar`
+  **45/45**；auto-ui driver lib **49/49**、`s2_age_routing` **16/16**、bridge 4+3+10、
+  V-B-SESSION 规定命令 4/4 + 7/7；overlay 1393 钉 `260070b10`，逐 blob 保真 PASS。
+- **tier-1 A 面结论**：AC-HANDOFF/B-SOURCE 收口（979 已核）+ B-SESSION-I/V[A] + B-RUST-I/ V[A] +
+  B-LANGUAGE-I/V[A] 全部交付、永久用例、独立复审（62/64/65/66/67/68/69）、逐批落主；B 波余量具名
+  （B-SESSION[B] 两组件 2:1/异步资源、B-W1 载荷/参数执行、B-W3 运行时 dispatch/AGE 端口/GPU/音频、
+  模块级 const/var A2R、R59-5、EXIT-CONTRACT 重核）。**未改验收口径、未声称 plan-level execution_done。**
 2026-11-17 stage: review（review-69 = pass：tier-1 A 面可交；R69 处置）| PLAN-981 | outcome: pass（tier-1 A 面）
 
 - **review-69 = pass**：独立复核确认 tier-1 A 面（SOURCE 收口、LANGUAGE-I/SESSION-I 记录与落主、RUST 公共链、
