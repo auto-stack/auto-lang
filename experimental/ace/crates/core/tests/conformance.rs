@@ -96,6 +96,8 @@ mod plan981_attr_shape;
 mod plan981_ref_aggregation;
 #[path = "cases/plan981_cpu_surface.rs"]
 mod plan981_cpu_surface;
+#[path = "cases/plan981_text_refs.rs"]
+mod plan981_text_refs;
 #[path = "cases/plan981_view_exits.rs"]
 mod plan981_view_exits;
 #[path = "cases/plan981_model3d.rs"]

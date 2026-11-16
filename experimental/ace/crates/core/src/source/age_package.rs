@@ -62,6 +62,9 @@ pub struct AgePackageText {
     pub def_id: String,
     /// 所属模块键（跨模块 domain 行的归属事实）。
     pub module: String,
+    /// PLAN-981：该文本表达式引用到的名字（如 `text label(c)` 的 `c`）。
+    /// 979 核"文本是否由 model 字段驱动"时需要它，否则只能反查隐藏函数体。
+    pub references: Vec<String>,
 }
 
 /// 受检的一个 AGE 组件（一个 node 声明）。
@@ -488,7 +491,9 @@ fn read_back_components(
     let mut out = Vec::new();
     for p in packaged {
         let mut texts = Vec::new();
-        for (fn_name, orig_span) in &p.text_fns {
+        // `text_fns` 与 `node.view.texts` 由同一次投影按同序产生，故按下标对位取
+        // 该文本表达式引用到的名字（`text label(c)` → `["c"]`）。
+        for (ti, (fn_name, orig_span)) in p.text_fns.iter().enumerate() {
             // 源名 → 绑定器给出的真实 HIR 符号（962/960 的 origins 表是唯一事实源），
             // 再按 adapter 的唯一约定取 `sf_<symbol>` 的 HIR 名（同一个 helper，不猜）。
             let symbol = bound
@@ -517,6 +522,13 @@ fn read_back_components(
                 fn_name: fn_name.clone(),
                 def_id,
                 module: p.module.clone(),
+                references: p
+                    .node
+                    .view
+                    .texts
+                    .get(ti)
+                    .map(|t| crate::source::age_component::collect_expr_names(&t.expr))
+                    .unwrap_or_default(),
             });
         }
         out.push(AgePackageComponent {

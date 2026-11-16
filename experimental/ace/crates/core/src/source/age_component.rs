@@ -126,6 +126,12 @@ pub struct ComponentText {
     pub kind: TextKind,
     pub fn_name: String,
     pub def_id: String,
+    /// PLAN-981：该文本表达式**引用到的名字**（按出现序、去重）。
+    ///
+    /// 补这个是因为实测发现：`text label(c)` 的实参 `c` 完全没进描述——只有
+    /// 函数名与 def_id。979 要核"文本是否由 model 字段驱动"时，拿不到这层关系，
+    /// 只能自己去反查隐藏函数的 HIR 体，等于把工作推给消费者。
+    pub references: Vec<String>,
 }
 
 /// 受检组件描述的一行。
@@ -352,6 +358,7 @@ pub fn compile_age_component(
                 kind,
                 fn_name,
                 def_id,
+                references: collect_expr_names(&leaf.expr),
             });
         }
         nodes.push(ComponentNodeOut {
@@ -414,6 +421,59 @@ fn parse_program_items(src: &str) -> Result<Vec<Item>, Vec<Diagnostic>> {
 }
 
 /// 隐藏求值函数：`fn <prefix><n>() Str { return (<expr>).clone() }`。
+/// 收集表达式里**引用到的名字**（按出现序、去重）。
+///
+/// 这是给描述面用的最小事实：`text label(c)` → `["c"]`，`text "x".to(...)` → `[]`。
+/// 只做名字提取，不做类型/绑定判断（那些由共享 resolver 负责）。
+pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    fn walk(e: &Expr, out: &mut Vec<String>) {
+        match &e.kind {
+            ExprKind::Var(id) => {
+                if !out.contains(&id.name) {
+                    out.push(id.name.clone());
+                }
+            }
+            ExprKind::Field { base, name } => {
+                walk(base, out);
+                if !out.contains(&name.name) {
+                    out.push(name.name.clone());
+                }
+            }
+            ExprKind::TupleLit(items) => items.iter().for_each(|i| walk(i, out)),
+            ExprKind::Unary { operand, .. } => walk(operand, out),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                walk(lhs, out);
+                walk(rhs, out);
+            }
+            ExprKind::Call { callee, args } => {
+                if !out.contains(&callee.name) {
+                    out.push(callee.name.clone());
+                }
+                for a in args {
+                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a {
+                        walk(x, out);
+                    }
+                }
+            }
+            ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
+                walk(recv, out);
+                if !out.contains(&name.name) {
+                    out.push(name.name.clone());
+                }
+                for a in args {
+                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a {
+                        walk(x, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(e, &mut out);
+    out
+}
+
 fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
     let clone = Expr {
         span,
@@ -833,6 +893,7 @@ pub fn compile_component_scenario_observing(
             kind,
             fn_name: fn_name.clone(),
             def_id,
+            references: collect_expr_names(&node.view.texts[*ti].expr),
         });
     }
     Ok(ComponentCompilation {
