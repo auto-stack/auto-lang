@@ -22,7 +22,12 @@ fn input(src: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<ace_core::source::age_package::AgePackageDescription, Vec<ace_core::atom_text::Diagnostic>> {
+fn compile(
+    src: &str,
+) -> Result<
+    ace_core::source::age_package::AgePackageDescription,
+    Vec<ace_core::atom_text::Diagnostic>,
+> {
     compile_age_package(
         &[input(src)],
         "app::main",
@@ -41,10 +46,14 @@ fn p981_event_a_named_unit_messages_are_projected() {
     assert_eq!(c.message_set_name.as_deref(), Some("Msg"));
     let names: Vec<&str> = c.messages.iter().map(|m| m.name.as_str()).collect();
     assert_eq!(names, vec!["Add", "Set"]);
-    assert!(c.messages.iter().all(|m| m.payload.is_empty()), "unit variants carry no payload");
+    assert!(
+        c.messages.iter().all(|m| m.payload.is_empty()),
+        "unit variants carry no payload"
+    );
     assert_eq!(c.handler_params, vec![("Add".to_string(), Vec::new())]);
 
-    let anon = "node M {\n    msg {\n        Inc\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let anon =
+        "node M {\n    msg {\n        Inc\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     let d = compile(anon).expect("an anonymous message set still compiles");
     assert_eq!(d.components[0].message_set_name, None);
     assert_eq!(d.components[0].messages.len(), 1);
@@ -121,7 +130,10 @@ fn p981_event_a_unit_first_payload_second_dispatch_is_rejected() {
     // 该源本身因跨块重复变体被拒（R65-1）；构造一个只声明一次、跨块不重复的
     // 对照组：unit `Add` 与 payload `Set`，两处都能走到 payload 守卫。
     let ok = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Set(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n        .Set -> {\n            .count = count + 2\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
-    assert!(compile(src).is_err(), "cross-block duplicates already rejected");
+    assert!(
+        compile(src).is_err(),
+        "cross-block duplicates already rejected"
+    );
     let d = compile(ok).expect("distinct variants across blocks stay legal");
     assert_eq!(d.components[0].messages.len(), 2);
     let scenario = ComponentScenario {
@@ -164,7 +176,10 @@ fn p981_event_a_named_unit_dispatch_works() {
         &scenario,
     )
     .expect("a named unit set dispatches");
-    assert_eq!(out.description.components[0].message_set_name.as_deref(), Some("Msg"));
+    assert_eq!(
+        out.description.components[0].message_set_name.as_deref(),
+        Some("Msg")
+    );
 }
 /// UI-EVT-PAYLOAD：声明侧允许 payload 变体（执行拒绝在 SESSION dispatch 前）。
 #[test]
@@ -244,7 +259,10 @@ fn p981_event_a_payload_dispatch_is_named_rejected() {
         &[PACKAGES_CAPABILITY.to_string()],
         &unit_scenario,
     );
-    assert!(out.is_ok(), "a unit message dispatch still compiles: {out:?}");
+    assert!(
+        out.is_ok(),
+        "a unit message dispatch still compiles: {out:?}"
+    );
 }
 
 /// R66-1：另一个组件的同名 payload 变体不能误伤合法 unit 派发（只有真的处理该

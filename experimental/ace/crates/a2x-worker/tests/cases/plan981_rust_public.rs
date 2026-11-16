@@ -109,7 +109,11 @@ fn run_public_chain_with(
         None,
     )
     .expect("run exe");
-    assert_eq!(run.kind, auto_tool_execution::ExitKind::Success, "wrapper exit for {name}");
+    assert_eq!(
+        run.kind,
+        auto_tool_execution::ExitKind::Success,
+        "wrapper exit for {name}"
+    );
     let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
     (out, dir)
 }
@@ -119,20 +123,27 @@ fn run_public_chain_with(
 #[test]
 fn p981_rust_ma_counter_source_runs_through_the_public_chain() {
     const MA_COUNTER: &str = include_str!("../../../core/tests/fixtures_ma/ace_node_counter.at");
-    let src = format!(
-        "{MA_COUNTER}\nfn main() int {{\n    return __age_state_0_count()\n}}\n"
-    );
+    let src = format!("{MA_COUNTER}\nfn main() int {{\n    return __age_state_0_count()\n}}\n");
     let scenario = ComponentScenario {
         instances: 1,
         ops: vec![
-            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
-            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
-            ScenarioOp::Send { instance: 0, msg: "Dec".into() },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Dec".into(),
+            },
         ],
     };
     let (out, _dir) = run_public_chain_with("MA_COUNTER", &src, &scenario);
     assert!(
-        out.trim().ends_with('1'),
+        out.trim() == "value:1",
         "2 Inc then 1 Dec must print 1 through the A2R binary, got {out:?}"
     );
 }
@@ -141,7 +152,7 @@ fn p981_rust_ma_counter_source_runs_through_the_public_chain() {
 fn p981_rust_public_chain_runs_the_same_source() {
     let (out, _dir) = run_public_chain("TICKS", MAIN);
     assert!(
-        out.trim().ends_with('5'),
+        out.trim() == "value:5",
         "five ticks must print 5 through the A2R binary, got {out:?}"
     );
 }
@@ -157,7 +168,10 @@ fn p981_rust_public_chain_rejects_unknown_target_and_recovers() {
         "app::main",
         LegacyWidgetAlias::Reject,
         &caps,
-        &ComponentScenario { instances: 1, ops: Vec::new() },
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
     )
     .expect("the front door accepts a module const");
     let rejected = SemanticView::from_checked(&compiled.checked);
@@ -178,11 +192,17 @@ fn p981_rust_public_chain_rejects_unknown_target_and_recovers() {
     }
     // 恢复：同一入口、合法源照常走完整链。
     let (out, dir) = run_public_chain("RECOVER", MAIN);
-    assert!(out.trim().ends_with('5'), "recovery run prints 5, got {out:?}");
+    assert_eq!(out.trim(), "value:5", "recovery run prints 5, got {out:?}");
     // 无解释器：生成的 Rust 里不含 VM/AV 执行循环标记。
     let emitted = std::fs::read_to_string(dir.join("main.rs")).expect("main.rs");
     for marker in ["AutoVM", "autovm", "interpret", "interpret_loop"] {
-        assert!(!emitted.contains(marker), "generated Rust must not embed a {marker} path");
+        assert!(
+            !emitted.contains(marker),
+            "generated Rust must not embed a {marker} path"
+        );
     }
-    assert!(dir.join("a2x_rt_case.exe").exists(), "a real binary is produced");
+    assert!(
+        dir.join("a2x_rt_case.exe").exists(),
+        "a real binary is produced"
+    );
 }
