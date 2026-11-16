@@ -111,14 +111,16 @@ fn p981_event_a_unknown_handler_message_is_rejected() {
     }
 }
 
-/// R65-2：unit 变体在前、有载荷变体在后时，无值派发仍必须拒。
+/// R65-2/R66-2：同名 unit+payload 变体已被 R65-1 的跨块重复拒拦下；这里冻结
+/// **不同名** unit/payload 的派发语义，并把 payload 谓词标为纵深防御
+/// （R66-1 起只对“真的处理该消息”的节点生效）。
 #[test]
 fn p981_event_a_unit_first_payload_second_dispatch_is_rejected() {
     use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
     let src = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Add(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     // 该源本身因跨块重复变体被拒（R65-1）；构造一个只声明一次、跨块不重复的
     // 对照组：unit `Add` 与 payload `Set`，两处都能走到 payload 守卫。
-    let ok = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Set(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let ok = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Set(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n        .Set -> {\n            .count = count + 2\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     assert!(compile(src).is_err(), "cross-block duplicates already rejected");
     let d = compile(ok).expect("distinct variants across blocks stay legal");
     assert_eq!(d.components[0].messages.len(), 2);
@@ -243,4 +245,30 @@ fn p981_event_a_payload_dispatch_is_named_rejected() {
         &unit_scenario,
     );
     assert!(out.is_ok(), "a unit message dispatch still compiles: {out:?}");
+}
+
+/// R66-1：另一个组件的同名 payload 变体不能误伤合法 unit 派发（只有真的处理该
+/// 消息的 node 才参与 payload 判定）。
+#[test]
+fn p981_event_a_cross_component_payload_does_not_block_unit_dispatch() {
+    use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
+    let src = "node A {\n    msg {\n        Add\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"a\" {}\n    }\n}\nnode B {\n    msg Msg {\n        Add(str)\n    }\n    view {\n        text \"b\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Add".into(),
+        }],
+    };
+    let out = ace_core::source::age_package::compile_age_package_with_scenario(
+        &[input(src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+    );
+    assert!(
+        out.is_ok(),
+        "node B declares Add(str) but does not handle it; A's unit dispatch stays legal: {out:?}"
+    );
 }

@@ -878,8 +878,13 @@ pub(crate) fn project_packages_front(
             for op in &scenario.ops {
                 if let crate::source::age_component::ScenarioOp::Send { msg, .. } = op {
                     for node in &nodes {
+                        // R66-1：只有**本 node 真的处理该消息**时才用它的变体判 payload；
+                        // 否则同包里另一个组件的同名 payload 变体会误伤合法 unit 派发。
+                        if !node.handlers.iter().any(|h| h.msg == *msg) {
+                            continue;
+                        }
                         // R65-2：**任一**同名变体带 payload 就拒（首个 unit 变体不能
-                        // 掩盖后面的有载荷变体）。
+                        // 掩盖后面的有载荷变体；R65-1 后它是纵深防御）。
                         if let Some(v) = node
                             .messages
                             .iter()
