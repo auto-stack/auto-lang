@@ -24,7 +24,7 @@
 descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-i32-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move, text_display, fstr] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, text_from_char, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move, text_display, fstr] }
         enum TypeKind { cases: [i32, bool, str, Str, char, function, record] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
@@ -310,6 +310,10 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
         }
         branch(key: "expr.char_from_codepoint") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_from_char") {
             require: [type, operand]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
         }

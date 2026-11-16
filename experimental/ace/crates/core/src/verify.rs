@@ -3185,7 +3185,8 @@ impl Verifier {
                 | E::TextToOwned { operand }
                 | E::TextToBorrowed { operand }
                 | E::CharToCodepoint { operand }
-                | E::CharFromCodepoint { operand } => vec![*operand],
+                | E::CharFromCodepoint { operand }
+                | E::TextFromChar { operand } => vec![*operand],
                 E::Call { eval_args, .. } | E::RecordCtor { eval_args, .. } => eval_args.clone(),
                 E::CallClosure { callee, eval_args } => std::iter::once(*callee)
                     .chain(eval_args.iter().copied())
@@ -4545,7 +4546,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { .. }
                 | hir::ExprKind::TextToBorrowed { .. }
                 | hir::ExprKind::CharToCodepoint { .. }
-                | hir::ExprKind::CharFromCodepoint { .. } => {}
+                | hir::ExprKind::CharFromCodepoint { .. }
+                | hir::ExprKind::TextFromChar { .. } => {}
             }
             if is_call {
                 direct_call_arg.extend(children);
@@ -4937,7 +4939,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
-                | hir::ExprKind::CharFromCodepoint { operand } => {
+                | hir::ExprKind::CharFromCodepoint { operand }
+                | hir::ExprKind::TextFromChar { operand } => {
                     if (operand.0 as usize) >= n_exprs {
                         bad("expression", operand.0, n_exprs, e.span);
                     }
@@ -5695,7 +5698,8 @@ impl Verifier {
                         | hir::ExprKind::TextToOwned { operand }
                         | hir::ExprKind::TextToBorrowed { operand }
                         | hir::ExprKind::CharToCodepoint { operand }
-                        | hir::ExprKind::CharFromCodepoint { operand } => {
+                        | hir::ExprKind::CharFromCodepoint { operand }
+                        | hir::ExprKind::TextFromChar { operand } => {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*operand));
                         }
@@ -6694,6 +6698,37 @@ impl Verifier {
                             }
                             ValueType::Str
                         }
+                        hir::ExprKind::TextFromChar { operand } => {
+                            // PLAN-975 B1: char -> fresh owned 1-scalar Str.
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if ot != ValueType::Char {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char materialization operand must be char (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::StrOwned {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char materialization must produce Str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::StrOwned
+                        }
                         hir::ExprKind::CharToCodepoint { operand } => {
                             let ot = operand_type(
                                 tm,
@@ -7175,7 +7210,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
-                | hir::ExprKind::CharFromCodepoint { operand } => {
+                | hir::ExprKind::CharFromCodepoint { operand }
+                | hir::ExprKind::TextFromChar { operand } => {
                     targets.push(operand.0);
                 }
                 hir::ExprKind::TextCharAt { operand, index } => {
@@ -7978,7 +8014,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
-                | hir::ExprKind::CharFromCodepoint { operand } => {
+                | hir::ExprKind::CharFromCodepoint { operand }
+                | hir::ExprKind::TextFromChar { operand } => {
                     stack.push(*operand);
                 }
                 hir::ExprKind::TextCharAt { operand, index } => {

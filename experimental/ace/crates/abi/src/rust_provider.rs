@@ -682,6 +682,11 @@ pub fn compile_c_unit(root: &Path, source: &Path) -> Result<PathBuf, String> {
         .nth(4)
         .ok_or("cannot derive MSVC root from cl path")?;
     let mut cmd = std::process::Command::new(&tool.cl_exe);
+    // cl writes its intermediates into the CURRENT directory — pin it to
+    // the case-scoped dir so concurrent builds never race on shared .obj
+    // paths (two parallel cases both wrote failure_runtime.obj into the
+    // workspace root before this pin).
+    cmd.current_dir(&dir);
     cmd.args(["-nologo", "-c", "-O1"])
         .arg(source)
         .arg(format!(
@@ -741,6 +746,8 @@ pub fn build_c_oracle(
         .ok_or("cannot derive MSVC root from cl path")?;
     let exe = dir.join("p967_oracle.exe");
     let mut cmd = std::process::Command::new(&tool.cl_exe);
+    // pin the CWD to the case-scoped dir (concurrent-build isolation)
+    cmd.current_dir(&dir);
     cmd.args(["-nologo", "-O1"])
         .arg(dir.join("oracle_main.c"))
         .arg(format!("-I{}", dir.display()))
@@ -1001,6 +1008,11 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
     )
     .map_err(|e| e.to_string())?;
     let mut cmd = std::process::Command::new(&tool.cl_exe);
+    // pin the CWD to the case-scoped dir: cl writes intermediates
+    // (failure_runtime.obj & friends) into its current directory, so two
+    // concurrent DLL builds in one test binary raced on a SHARED path in
+    // the workspace root (observed: C1083 permission denied).
+    cmd.current_dir(&dir);
     // the CRT link paths: MSVC lib/x64 (LIBCMT) + the SDK ucrt lib
     cmd.args(["-nologo", "-LD"])
         .arg(format!("-I{}", msvc_include.display()))

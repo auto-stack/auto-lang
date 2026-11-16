@@ -270,6 +270,33 @@ static a2x_stro_result a2x_str_concat(a2x_str_view l, a2x_str_view r) {
     return out;
 }
 
+/* PLAN-975 B1: char materialized as a fresh owned 1-scalar Str
+ * (c.to(Str), the decode/parse substring-materialization primitive);
+ * non-scalars are the typed InvalidScalar trap. */
+static a2x_stro_result a2x_str_from_char(uint32_t c) {
+    a2x_stro_result bad; bad.value.data = NULL; bad.value.len = 0; bad.trap = A2X_TRAP_INVALID_SCALAR;
+    uint8_t tmp[4];
+    size_t n = 0;
+    uint32_t u = c;
+    if (u > 0x10FFFFu || (u >= 0xD800u && u <= 0xDFFFu)) return bad;
+    if (u < 0x80u) {
+        tmp[n++] = (uint8_t)u;
+    } else if (u < 0x800u) {
+        tmp[n++] = (uint8_t)(0xC0u | (u >> 6));
+        tmp[n++] = (uint8_t)(0x80u | (u & 0x3Fu));
+    } else if (u < 0x10000u) {
+        tmp[n++] = (uint8_t)(0xE0u | (u >> 12));
+        tmp[n++] = (uint8_t)(0x80u | ((u >> 6) & 0x3Fu));
+        tmp[n++] = (uint8_t)(0x80u | (u & 0x3Fu));
+    } else {
+        tmp[n++] = (uint8_t)(0xF0u | (u >> 18));
+        tmp[n++] = (uint8_t)(0x80u | ((u >> 12) & 0x3Fu));
+        tmp[n++] = (uint8_t)(0x80u | ((u >> 6) & 0x3Fu));
+        tmp[n++] = (uint8_t)(0x80u | (u & 0x3Fu));
+    }
+    return a2x_str_alloc(n, tmp);
+}
+
 /* PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str (the M2-A
  * display domain; the general format algorithms belong to 972). */
 static a2x_stro_result a2x_str_display_i32(int32_t v) {

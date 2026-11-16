@@ -1,0 +1,975 @@
+// ACE stdlib json slice (PLAN-975 T-02): the string-level JSON ENCODE
+// family + the DECODE/PARSE face (B1 decision landed: slice views +
+// concat materialization + `c.to(Str)` char materialization) on the
+// PLAN-1041 convention (pub fn inline, same file spells the packages
+// face). Values: null/bool/int/string/array/object — object keys are
+// emitted in insertion order via paired key/value count params (the
+// Map face belongs to the packages Collections domain).
+
+pub fn json_escape(s Str) Str {
+    var out Str = ""
+    var i = 0
+    let n = s.len()
+    for i < n {
+        let c = s.char_at(i)
+        let code = c.to_codepoint()
+        if code == 34 {
+            let q Str = "\\\""
+            out = out + q
+        } else {
+            if code == 92 {
+                let b Str = "\\\\"
+                out = out + b
+            } else {
+                if code == 10 {
+                    let nl Str = "\\n"
+                    out = out + nl
+                } else {
+                    if code == 13 {
+                        let cr Str = "\\r"
+                        out = out + cr
+                    } else {
+                        if code == 9 {
+                            let tb Str = "\\t"
+                            out = out + tb
+                        } else {
+                            out = out + s.slice(i, i + 1)
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+pub fn json_int_str(v int) Str {
+    if v == 0 { return "0" }
+    var neg = false
+    var n = v
+    if n < 0 {
+        neg = true
+        n = 0 - n
+    }
+    var out Str = ""
+    for n > 0 {
+        let d = n - (n / 10) * 10
+        out = json_digit(d) + out
+        n = n / 10
+    }
+    if neg {
+        let dash Str = "-"
+        return dash + out
+    }
+    return out
+}
+
+pub fn json_digit(d int) Str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+// scalar leaves
+pub fn json_str(value Str) Str {
+    let q Str = "\""
+    return q + json_escape(value) + q
+}
+
+pub fn json_bool(value bool) Str {
+    if value { return "true" }
+    return "false"
+}
+
+pub fn json_null() Str {
+    return "null"
+}
+
+pub fn json_int(value int) Str {
+    return json_int_str(value)
+}
+
+// array: count + element strings appended in order (the guest builds
+// elements via the helpers above; this is the deterministic join)
+pub fn json_array_open() Str {
+    return "["
+}
+
+pub fn json_array_close() Str {
+    return "]"
+}
+
+pub fn json_object_open() Str {
+    return "{"
+}
+
+pub fn json_object_close() Str {
+    return "}"
+}
+
+pub fn json_kv(key Str, raw_value Str) Str {
+    let colon Str = "\":"
+    let q Str = "\""
+    return q + json_escape(key) + colon + raw_value
+}
+
+// validity face (byte-scan, no materialization): balanced brackets and
+// quotes outside strings — the cheap structural check retained from the
+// encode increment; json_is_valid below is the full recursive parse
+// admission (PLAN-975 B1).
+pub fn json_structurally_balanced(s Str) bool {
+    var depth = 0
+    var in_str = false
+    var i = 0
+    let n = s.len()
+    for i < n {
+        let code = s.char_at(i).to_codepoint()
+        if in_str {
+            if code == 92 {
+                i = i + 1
+            } else {
+                if code == 34 { in_str = false }
+            }
+        } else {
+            if code == 34 {
+                in_str = true
+            } else {
+                if code == 123 { depth = depth + 1 }
+                if code == 91 { depth = depth + 1 }
+                if code == 125 { depth = depth - 1 }
+                if code == 93 { depth = depth - 1 }
+                if depth < 0 { return false }
+            }
+        }
+        i = i + 1
+    }
+    if in_str { return false }
+    return depth == 0
+}
+
+// ---------- decode/parse (PLAN-975 B1: the substring-materialization
+// core decision landed as `c.to(Str)` + slice views + concat): a
+// string-level recursive-descent face. kind codes: -1 malformed,
+// 0 missing, 1 null, 2 bool, 3 int, 4 string, 5 array, 6 object,
+// 7 number (non-integer form). Object keys containing JSON escapes
+// are skipped by the path comparator (documented lane limitation);
+// values decode every escape incl. \uXXXX. Recursion depth = document
+// nesting (AV frame limits apply). Array indexing in paths and float
+// VALUE parsing are named pending (this face observes kind 7).
+
+fn json_cp(s str, i int) int {
+    return s.char_at(i).to_codepoint()
+}
+
+fn json_ws(s str, i int) int {
+    var p = i
+    var alive = 1
+    let n = s.len()
+    for alive == 1 {
+        if p >= n {
+            alive = 0
+        } else {
+            let c = json_cp(s, p)
+            if c == 32 {
+                p = p + 1
+            } else {
+                if c == 9 {
+                    p = p + 1
+                } else {
+                    if c == 10 {
+                        p = p + 1
+                    } else {
+                        if c == 13 {
+                            p = p + 1
+                        } else {
+                            alive = 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return p
+}
+
+// i at the opening quote; index AFTER the closing quote, or -1.
+fn json_str_end(s str, i int) int {
+    let n = s.len()
+    var p = i + 1
+    var alive = 1
+    for alive == 1 {
+        if p >= n {
+            return -1
+        }
+        let c = json_cp(s, p)
+        if c == 92 {
+            p = p + 2
+        } else {
+            if c == 34 {
+                return p + 1
+            }
+            p = p + 1
+        }
+    }
+    return -1
+}
+
+// i at the number start; index AFTER the number, or -1. JSON grammar:
+// no leading zeros ("0" alone is fine, "01" is not).
+fn json_num_end(s str, i int) int {
+    let n = s.len()
+    var p = i
+    if p < n {
+        if json_cp(s, p) == 45 {
+            p = p + 1
+        }
+    }
+    var digits = 0
+    var lead_zero = 0
+    var alive = 1
+    for alive == 1 {
+        if p >= n {
+            alive = 0
+        } else {
+            let c = json_cp(s, p)
+            if c >= 48 {
+                if c <= 57 {
+                    if digits == 0 {
+                        if c == 48 {
+                            lead_zero = 1
+                        }
+                    } else {
+                        if lead_zero == 1 {
+                            return -1
+                        }
+                    }
+                    p = p + 1
+                    digits = digits + 1
+                } else {
+                    alive = 0
+                }
+            } else {
+                alive = 0
+            }
+        }
+    }
+    if digits == 0 {
+        return -1
+    }
+    if p < n {
+        if json_cp(s, p) == 46 {
+            p = p + 1
+            var fd = 0
+            var alive2 = 1
+            for alive2 == 1 {
+                if p >= n {
+                    alive2 = 0
+                } else {
+                    let c = json_cp(s, p)
+                    if c >= 48 {
+                        if c <= 57 {
+                            p = p + 1
+                            fd = fd + 1
+                        } else {
+                            alive2 = 0
+                        }
+                    } else {
+                        alive2 = 0
+                    }
+                }
+            }
+            if fd == 0 {
+                return -1
+            }
+        }
+    }
+    if p < n {
+        let c = json_cp(s, p)
+        if c == 101 {
+            return json_exp_end(s, p)
+        }
+        if c == 69 {
+            return json_exp_end(s, p)
+        }
+    }
+    return p
+}
+
+fn json_exp_end(s str, p int) int {
+    let n = s.len()
+    var q = p + 1
+    if q < n {
+        let c = json_cp(s, q)
+        if c == 43 {
+            q = q + 1
+        }
+        if c == 45 {
+            q = q + 1
+        }
+    }
+    var d = 0
+    var alive = 1
+    for alive == 1 {
+        if q >= n {
+            alive = 0
+        } else {
+            let c = json_cp(s, q)
+            if c >= 48 {
+                if c <= 57 {
+                    q = q + 1
+                    d = d + 1
+                } else {
+                    alive = 0
+                }
+            } else {
+                alive = 0
+            }
+        }
+    }
+    if d == 0 {
+        return -1
+    }
+    return q
+}
+
+// i at a value start (callers pass a ws-advanced index); the index
+// AFTER the complete value, or -1. Recursive: objects, arrays,
+// strings, numbers, true/false/null.
+fn json_skip_value(s str, i int) int {
+    let n = s.len()
+    if i >= n {
+        return -1
+    }
+    let c = json_cp(s, i)
+    if c == 123 {
+        var p = json_ws(s, i + 1)
+        if p < n {
+            if json_cp(s, p) == 125 {
+                return p + 1
+            }
+        }
+        var alive = 1
+        for alive == 1 {
+            p = json_ws(s, p)
+            if p >= n {
+                return -1
+            }
+            if json_cp(s, p) != 34 {
+                return -1
+            }
+            let k_end = json_str_end(s, p)
+            if k_end < 0 {
+                return -1
+            }
+            p = json_ws(s, k_end)
+            if p >= n {
+                return -1
+            }
+            if json_cp(s, p) != 58 {
+                return -1
+            }
+            let v_end = json_skip_value(s, json_ws(s, p + 1))
+            if v_end < 0 {
+                return -1
+            }
+            p = json_ws(s, v_end)
+            if p >= n {
+                return -1
+            }
+            if json_cp(s, p) == 44 {
+                p = p + 1
+            } else {
+                if json_cp(s, p) == 125 {
+                    return p + 1
+                }
+                return -1
+            }
+        }
+        return -1
+    }
+    if c == 91 {
+        var p = json_ws(s, i + 1)
+        if p < n {
+            if json_cp(s, p) == 93 {
+                return p + 1
+            }
+        }
+        var alive = 1
+        for alive == 1 {
+            let v_end = json_skip_value(s, json_ws(s, p))
+            if v_end < 0 {
+                return -1
+            }
+            p = json_ws(s, v_end)
+            if p >= n {
+                return -1
+            }
+            if json_cp(s, p) == 44 {
+                p = p + 1
+            } else {
+                if json_cp(s, p) == 93 {
+                    return p + 1
+                }
+                return -1
+            }
+        }
+        return -1
+    }
+    if c == 34 {
+        return json_str_end(s, i)
+    }
+    if c == 116 {
+        if i + 4 <= n {
+            if json_cp(s, i + 1) == 114 {
+                if json_cp(s, i + 2) == 117 {
+                    if json_cp(s, i + 3) == 101 {
+                        return i + 4
+                    }
+                }
+            }
+        }
+        return -1
+    }
+    if c == 102 {
+        if i + 5 <= n {
+            if json_cp(s, i + 1) == 97 {
+                if json_cp(s, i + 2) == 108 {
+                    if json_cp(s, i + 3) == 115 {
+                        if json_cp(s, i + 4) == 101 {
+                            return i + 5
+                        }
+                    }
+                }
+            }
+        }
+        return -1
+    }
+    if c == 110 {
+        if i + 4 <= n {
+            if json_cp(s, i + 1) == 117 {
+                if json_cp(s, i + 2) == 108 {
+                    if json_cp(s, i + 3) == 108 {
+                        return i + 4
+                    }
+                }
+            }
+        }
+        return -1
+    }
+    return json_num_end(s, i)
+}
+
+// Full structural validation (the true parse admission, replacing the
+// balanced-scan as the validity face).
+pub fn json_is_valid(s str) bool {
+    let n = s.len()
+    let start = json_ws(s, 0)
+    if start >= n {
+        return false
+    }
+    let end = json_skip_value(s, start)
+    if end < 0 {
+        return false
+    }
+    if json_ws(s, end) != n {
+        return false
+    }
+    return true
+}
+
+// The value START index of a dotted path over a root object;
+// 0 missing, -1 malformed.
+fn json_path_value(s str, path str) int {
+    let n = s.len()
+    let pn = path.len()
+    let root = json_ws(s, 0)
+    if root >= n {
+        return -1
+    }
+    if json_cp(s, root) != 123 {
+        return -1
+    }
+    var obj = root + 1
+    var pc = 0
+    var alive = 1
+    for alive == 1 {
+        var seg_end = pc
+        var scanning = 1
+        for scanning == 1 {
+            if seg_end >= pn {
+                scanning = 0
+            } else {
+                if json_cp(path, seg_end) == 46 {
+                    scanning = 0
+                } else {
+                    seg_end = seg_end + 1
+                }
+            }
+        }
+        var p = json_ws(s, obj)
+        var found = 0
+        var member_go = 1
+        for member_go == 1 {
+            if p >= n {
+                return -1
+            }
+            if json_cp(s, p) != 34 {
+                return -1
+            }
+            var q = p + 1
+            var sp = pc
+            var match1 = 1
+            var key_go = 1
+            for key_go == 1 {
+                if q >= n {
+                    return -1
+                }
+                let kc = json_cp(s, q)
+                if kc == 92 {
+                    match1 = 0
+                    key_go = 0
+                } else {
+                    if kc == 34 {
+                        if sp == seg_end {
+                            found = 1
+                        } else {
+                            match1 = 0
+                        }
+                        key_go = 0
+                    } else {
+                        if sp >= seg_end {
+                            match1 = 0
+                            key_go = 0
+                        } else {
+                            if json_cp(path, sp) != kc {
+                                match1 = 0
+                                key_go = 0
+                            } else {
+                                sp = sp + 1
+                                q = q + 1
+                            }
+                        }
+                    }
+                }
+            }
+            if match1 == 1 {
+                let colon = json_ws(s, q + 1)
+                if colon >= n {
+                    return -1
+                }
+                if json_cp(s, colon) != 58 {
+                    return -1
+                }
+                let v = json_ws(s, colon + 1)
+                if v >= n {
+                    return -1
+                }
+                if seg_end >= pn {
+                    return v
+                }
+                if json_cp(s, v) == 123 {
+                    obj = v + 1
+                    pc = seg_end + 1
+                    member_go = 0
+                } else {
+                    if json_cp(s, v) == 91 {
+                        // PLAN-975 T-03: array descent — numeric segments
+                        // index into arrays ("services.0.name", the legacy
+                        // JsonValue.get_at face mapped onto dotted paths).
+                        // Chained indices reach nested arrays; a non-digit
+                        // segment or an out-of-range index is MISSING (0).
+                        var ap = v
+                        var apc = seg_end + 1
+                        var descending = 1
+                        for descending == 1 {
+                            var a_seg_end = apc
+                            var a_scan = 1
+                            for a_scan == 1 {
+                                if a_seg_end >= pn {
+                                    a_scan = 0
+                                } else {
+                                    if json_cp(path, a_seg_end) == 46 {
+                                        a_scan = 0
+                                    } else {
+                                        a_seg_end = a_seg_end + 1
+                                    }
+                                }
+                            }
+                            if a_seg_end == apc {
+                                return 0
+                            }
+                            var idx = 0
+                            var di = apc
+                            var ok = 1
+                            for di < a_seg_end {
+                                let dc = json_cp(path, di)
+                                if dc < 48 {
+                                    ok = 0
+                                } else {
+                                    if dc > 57 {
+                                        ok = 0
+                                    }
+                                }
+                                if ok == 1 {
+                                    idx = idx * 10 + (dc - 48)
+                                    di = di + 1
+                                } else {
+                                    di = a_seg_end
+                                }
+                            }
+                            if ok == 0 {
+                                return 0
+                            }
+                            var ep = json_ws(s, ap + 1)
+                            var k2 = 0
+                            var hunting = 1
+                            for hunting == 1 {
+                                if ep >= n {
+                                    return -1
+                                }
+                                if json_cp(s, ep) == 93 {
+                                    return 0
+                                }
+                                if k2 == idx {
+                                    hunting = 0
+                                } else {
+                                    let nv = json_skip_value(s, ep)
+                                    if nv < 0 {
+                                        return -1
+                                    }
+                                    ep = json_ws(s, nv)
+                                    if ep >= n {
+                                        return -1
+                                    }
+                                    if json_cp(s, ep) == 44 {
+                                        ep = json_ws(s, ep + 1)
+                                        k2 = k2 + 1
+                                    } else {
+                                        if json_cp(s, ep) == 93 {
+                                            return 0
+                                        }
+                                        return -1
+                                    }
+                                }
+                            }
+                            if a_seg_end >= pn {
+                                return ep
+                            }
+                            let ev = json_ws(s, ep)
+                            if json_cp(s, ev) == 123 {
+                                obj = ev + 1
+                                pc = a_seg_end + 1
+                                descending = 0
+                                member_go = 0
+                            } else {
+                                if json_cp(s, ev) == 91 {
+                                    ap = ev
+                                    apc = a_seg_end + 1
+                                } else {
+                                    return 0
+                                }
+                            }
+                        }
+                    } else {
+                        return 0
+                    }
+                }
+            } else {
+                let k_end = json_str_end(s, p)
+                if k_end < 0 {
+                    return -1
+                }
+                let colon = json_ws(s, k_end)
+                if colon >= n {
+                    return -1
+                }
+                if json_cp(s, colon) != 58 {
+                    return -1
+                }
+                let v_end = json_skip_value(s, json_ws(s, colon + 1))
+                if v_end < 0 {
+                    return -1
+                }
+                p = json_ws(s, v_end)
+                if p >= n {
+                    return -1
+                }
+                if json_cp(s, p) == 44 {
+                    p = json_ws(s, p + 1)
+                } else {
+                    member_go = 0
+                }
+            }
+        }
+        if found == 0 {
+            return 0
+        }
+    }
+    return 0
+}
+
+// -1 malformed / 0 missing / 1 null / 2 bool / 3 int / 4 string /
+// 5 array / 6 object / 7 number (non-integer form).
+pub fn json_kind_at(s str, path str) int {
+    let v = json_path_value(s, path)
+    if v == -1 {
+        return -1
+    }
+    if v == 0 {
+        return 0
+    }
+    let c = json_cp(s, v)
+    if c == 123 {
+        return 6
+    }
+    if c == 91 {
+        return 5
+    }
+    if c == 34 {
+        return 4
+    }
+    if c == 116 {
+        return 2
+    }
+    if c == 102 {
+        return 2
+    }
+    if c == 110 {
+        return 1
+    }
+    let e = json_num_end(s, v)
+    if e < 0 {
+        return -1
+    }
+    var p = v
+    if json_cp(s, p) == 45 {
+        p = p + 1
+    }
+    var pure = 1
+    for p < e {
+        let d = json_cp(s, p)
+        if d < 48 {
+            pure = 0
+        } else {
+            if d > 57 {
+                pure = 0
+            }
+        }
+        p = p + 1
+    }
+    if pure == 1 {
+        return 3
+    }
+    return 7
+}
+
+fn json_hex4(s str, i int) int {
+    var v = 0
+    var k = 0
+    for k < 4 {
+        let c = json_cp(s, i + k)
+        var d = -1
+        if c >= 48 {
+            if c <= 57 {
+                d = c - 48
+            }
+        }
+        if c >= 97 {
+            if c <= 102 {
+                d = c - 87
+            }
+        }
+        if c >= 65 {
+            if c <= 70 {
+                d = c - 55
+            }
+        }
+        if d < 0 {
+            return -1
+        }
+        v = v * 16 + d
+        k = k + 1
+    }
+    return v
+}
+
+// 1 ok / 0 missing / -1 malformed (or the value is not a string).
+pub fn json_parse_str_ok(s str, path str) int {
+    let v = json_path_value(s, path)
+    if v == -1 {
+        return -1
+    }
+    if v == 0 {
+        return 0
+    }
+    if json_cp(s, v) != 34 {
+        return -1
+    }
+    return 1
+}
+
+// The decoded string value; "" on missing/malformed (pair with
+// json_parse_str_ok / json_kind_at to disambiguate). Decodes every
+// JSON escape incl. \uXXXX (char.to(Str) materialization, B1).
+pub fn json_parse_str(s str, path str) Str {
+    let v = json_path_value(s, path)
+    if v <= 0 {
+        return ""
+    }
+    if json_cp(s, v) != 34 {
+        return ""
+    }
+    let n = s.len()
+    var out Str = ""
+    var run = v + 1
+    var p = v + 1
+    var alive = 1
+    for alive == 1 {
+        if p >= n {
+            return ""
+        }
+        let c = json_cp(s, p)
+        if c == 34 {
+            out = out + s.slice(run, p)
+            return out
+        }
+        if c == 92 {
+            out = out + s.slice(run, p)
+            if p + 1 >= n {
+                return ""
+            }
+            let e = json_cp(s, p + 1)
+            var bad = 0
+            if e == 34 {
+                let qq Str = "\""
+                out = out + qq
+            } else {
+                if e == 92 {
+                    let bb Str = "\\"
+                    out = out + bb
+                } else {
+                    if e == 47 {
+                        let sl Str = "/"
+                        out = out + sl
+                    } else {
+                        if e == 98 {
+                            let bs Str = "\u{8}"
+                            out = out + bs
+                        } else {
+                            if e == 102 {
+                                let ff Str = "\u{c}"
+                                out = out + ff
+                            } else {
+                                if e == 110 {
+                                    let nl Str = "\n"
+                                    out = out + nl
+                                } else {
+                                    if e == 114 {
+                                        let cr Str = "\r"
+                                        out = out + cr
+                                    } else {
+                                        if e == 116 {
+                                            let tb Str = "\t"
+                                            out = out + tb
+                                        } else {
+                                            if e == 117 {
+                                                if p + 5 >= n {
+                                                    return ""
+                                                }
+                                                let cp = json_hex4(s, p + 2)
+                                                if cp < 0 {
+                                                    return ""
+                                                }
+                                                let piece Str = char.from_codepoint(cp).to(Str)
+                                                out = out + piece
+                                            } else {
+                                                bad = 1
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if bad == 1 {
+                return ""
+            }
+            if e == 117 {
+                p = p + 6
+            } else {
+                p = p + 2
+            }
+            run = p
+        } else {
+            p = p + 1
+        }
+    }
+    return ""
+}
+
+// The integer value (kind 3); 0 when missing/malformed/wrong kind
+// (pair with json_kind_at == 3 to disambiguate). i32 range only.
+pub fn json_parse_int(s str, path str) int {
+    if json_kind_at(s, path) != 3 {
+        return 0
+    }
+    let v = json_path_value(s, path)
+    if v <= 0 {
+        return 0
+    }
+    let n = s.len()
+    var p = v
+    var neg = 0
+    if json_cp(s, p) == 45 {
+        neg = 1
+        p = p + 1
+    }
+    var val = 0
+    var alive = 1
+    for alive == 1 {
+        if p >= n {
+            alive = 0
+        } else {
+            let c = json_cp(s, p)
+            if c >= 48 {
+                if c <= 57 {
+                    val = val * 10 + (c - 48)
+                    p = p + 1
+                } else {
+                    alive = 0
+                }
+            } else {
+                alive = 0
+            }
+        }
+    }
+    if neg == 1 {
+        return 0 - val
+    }
+    return val
+}
+
+// true -> 1, false -> 0; -1 when missing/malformed/wrong kind.
+pub fn json_parse_bool(s str, path str) int {
+    let v = json_path_value(s, path)
+    if v <= 0 {
+        return -1
+    }
+    if json_cp(s, v) == 116 {
+        return 1
+    }
+    if json_cp(s, v) == 102 {
+        return 0
+    }
+    return -1
+}

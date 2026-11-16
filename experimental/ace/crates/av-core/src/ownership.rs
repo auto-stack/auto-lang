@@ -1003,6 +1003,7 @@ fn verify_owned_function_impl(
                                     | MirInstr::StrSlice { dst, .. }
                                     | MirInstr::StrConcat { dst, .. }
                                     | MirInstr::StrToOwned { dst, .. }
+                                    | MirInstr::StrFromChar { dst, .. }
                                     | MirInstr::StrCmp { dst, .. }
                                     | MirInstr::CharToCodepoint { dst, .. }
                                     | MirInstr::CharFromCodepoint { dst, .. } => *dst == *value,
@@ -1373,6 +1374,15 @@ fn verify_owned_function_impl(
                     // applies exactly as for CLONE.
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "to-owned destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::StrFromChar { dst, ch } => {
+                    check_read!(ch, "char operand");
+                    // PLAN-975 B1: like STR_TO_OWNED, the materialized
+                    // OWNED result is a def of its destination.
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "from-char destination");
                     }
                     st.define_slot(*dst as usize);
                 }
