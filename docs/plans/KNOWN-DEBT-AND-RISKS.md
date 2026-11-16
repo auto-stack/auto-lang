@@ -4506,6 +4506,12 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   单组件面内无承载语义，归 981/IF-981-MODULE 多单元接线；computed 以逐字段
   状态函数+字面量/函数文本叶为已验面（f-string 叶见上条）。关闭=981 多单元
   接线后经组件间路由用例验收。owner=981。
+- **JET 批平台腿缺环境（2026-11-16，goal 链 blocked 记录）**：本机无 Jet
+  工具链（driver V06c 实证 `gradlew assembleDebug exit 9009` 命令不存在；
+  生成面 jet generate_ok=True 24 文件在库）。B-JET-I 的「受检 UI 领域 IR 供
+  目标 adapter」接线与 V-B-JET 真实构建腿**不可在本机验证**——不做无验证
+  的 IR 重布线。关闭=Jet 专用环境（gradlew/AGP 在场）中按原任务实施
+  B-JET-I/V/R 并真实构建运行。owner=Jet 专用环境/后续轮。
 - **RUST 批边界（AXR0 先行，2026-11-16）**：①产品级 `rust_ui.rs` 旧 AST
   emitter 未替换——多文件 store/组件/sidecar 与 props/msg/route 对齐需组件面
   表达真实产品源（981 age-package 面刚落主、UI 接线未建）；关闭=后续轮经
