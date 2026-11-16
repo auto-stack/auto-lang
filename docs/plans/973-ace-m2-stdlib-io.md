@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-973
-status: execution_done
+status: executing
 feature_name: 新版系统文件进程时间与资源库
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 12
-current_step: 7
+current_step: 6
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-972, PLAN-947, PLAN-966, PLAN-1039, PLAN-1040, PLAN-1041, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/ace-binding-and-assembly.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-973] 新版系统文件进程时间与资源库
 
 ## 0. 变更摘要
+
+2026-11-16 r12复审·第6轮：T-05 独立复审 **needs_fix**——复审重跑 29/29 绿（sys973 15/15+外库腿 2/2+native stub 1/1+ace-host 11/11，per-case ≤10s）、四表对齐/车道门/零 libc 委托/故障注入/零 debug 残留核验通过；发现 F1[中]（AC 后端 50 操作全 stub，V-09"AC真实调用OS API"正例腿未交付且无具名移交行——T-09 复开，待用户裁定 a 本计划实现/b 具名延后继）+ F2..F5 小缺陷（触面 warning×2、dialect_bisect 读仓外文件、argv 注记过时、rand 不移植裁定不可追溯）。status 回 executing（6/10）。债务候选登记 KNOWN-DEBT D-973。
 
 2026-11-16 r12执行·第5轮：**用户裁定 §10.1 选项 c——byte→Str 车道面具名延期后继计划**。[PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md) 创建为承接 owner（drafting 0/7，移交表 D-01..D-09）；T-02/T-03/T-08 按 r11 已交付面勾选（read_text/dir_names/env get 族/canonical/cwd/cmdline/捕获文本/存储重建/zip/inflate/KV storage 移交 1064），全部 work 任务完成，status→execution_done，零代码改动（worktree 保持 a9eceef38，复用第 4 轮冻结证据）。next=T-05 独立复审。
 
@@ -379,7 +381,7 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 
 ## 8. 执行步骤
 
-当前共10任务，7完成（全部 work 任务；T-05/06/07 为 review/merge 阶段）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共10任务，6完成（T-09 因复审 F1 复开；T-05/06/07 为 review/merge 阶段）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
@@ -391,7 +393,7 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 
 - [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：承947未闭Rust/C console，补文件watch/目录/seek/权限、process信号与退出、路径重定位及zip现用义务；按实际平台支持，不自动新增平台承诺。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。（✅ V-08绿+V-03进程树/超时Job杀/权限链attrib±R/dirs+replace/mtime；watch无旧公共API（调研记录，无义务可保）；zip现用义务随车道移交 1064 D-08，见 §9 第2/4/5轮）
 
-- [x] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：建立统一系统API到auto.platform.* provider/host端口映射，用966的#if/#is按目标选择；native用平台ABI直接调用OS，四端复用967受检事实。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ sys973_t09 绑定绿+AV×C/AV×Rust 外库腿绿（216fd055d）+Linux 移交 L-10，见 §9）
+- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：建立统一系统API到auto.platform.* provider/host端口映射，用966的#if/#is按目标选择；native用平台ABI直接调用OS，四端复用967受检事实。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（⛔ T-05 复审 F1 复开：已交付 sys973_t09 绑定绿+AV×C/AV×Rust 外库腿绿（216fd055d）+Linux 移交 L-10；但 V-09"AC真实调用OS API"正例腿=stub(-10) 未交付未移交，待用户裁定 a) 本计划实现 AC 真身 b) 具名延后继并修订 V-09/AC-07 行文，见 §9 第 6 轮/§10）
 
 - [x] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：完成仓外真实文件create/write/read/seek/close/EOF/部分IO/错误与权限资源测试，联进程/time/random/console及原全系统义务；形成给978的runtime/动态依赖清单。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ V-10/probe01/v04 真实OS全链绿+真实熵/dir+replace/mtime；zip/storage 车道缺口不属本任务关闭面，见 §9 第1/4轮；AC-08 的 zip/storage 切片随 T-02/T-03/T-08 车道裁定）
 
@@ -416,6 +418,22 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-16 stage: review | review_scope: final | reviewer: 独立只读审计 agent（本 goal 会话派发，108 次只读工具调用，file:line 证据）+ 复审主持（同会话限制：r1–4 为前会话执行，本轮结论从工件重建并独立重跑） | plan_id: PLAN-973 | plan_revision: r12 | outcome: **needs_fix** | worktree: D:/autostack/.wt/lang-973/auto-lang | branch: plan-973-dev | reviewed_commit: a9eceef38 | base_commit: 3279f2f72
+- **复审重跑（29/29 绿，per-case 计时全 ≤10s）**：sys973 AV 15/15（max 6.13s a2r 腿）；abi 外库腿 2/2（av_c 7.74s/av_rust 8.00s）；native stub 1/1（0.59s）；ace-host 11/11（max 0.92s）。准备编译增量热 2.35s/11.02s。第 4 轮 9 组冻结并集同基线 a9eceef38 复用有效。本轮无新增用例。
+- **核验通过**（审计 agent + 主持抽查）：四表对齐 50/50/50/51（source platform_io.rs L196-540 恰 50 op + av-core 枚举/规格表 50 + native Win64 COFF 50 符号 + a2r rt.rs 50 fn + a2py ports.rs 51 含 mem.read_u8 辅助，符号 diff 空）；车道门 7 处注记生效非死代码（ExecOutcome::Exit 生产点 av.rs:6596 由 v03 exit{code:97} 实证）；默认 provider 零 libc/Rust std 委托（kernel32/bcrypt extern "system" 直声明，std:: 仅 BTreeSet 账本与 Linux OnceLock）；V-04 故障注入真实触发（inject_file_error:1123→-1 且磁盘零副作用）；装配集/绑定双点身份/消费入口齐全；新增代码零 TODO/FIXME/unimplemented/println 残留；规范增量目标存在（两个 modify 对象在库；m2-stdlib-io.md 待 merge 新建，符合流程）。
+- **AC 结果映射**：AC-01/02/03/06/08（交付面）/AC-PHASE/AC-PLATFORM-IO（Windows 格）/AC-LOAD/AC-LINUX-PHASE/AC-AUTO-STD = pass；**AC-07/AC-COVERAGE = partial**（AC 后端腿）；AC-NATIVE = pass（默认 provider 面，AC 路径例外见 F1）；AC-04 = needs_fix（本复审）；AC-05 = merge 待。
+- **发现（F-稳定 ID）**：
+  - **F1[中]** AC 后端 sys973 全 50 操作为 named-unsupported stub（-10），V-09"AC真实调用OS API"正例腿未交付且无具名移交行——`native/src/platform_io.rs:139-142`（"a REAL body lands with its AC increment"无 owner）、`:1476-1482` Win64 全 stub、`platform_io_linux.rs:1066-1070` ELF 同（L-12 仅 Linux 侧）。T-01 冻结原文"AV/native+AC+走平台操作真跑"；T-09 勾选证据（绑定绿+外库腿）不覆盖 V-09 AC 腿。影响 AC-07/AC-COVERAGE/T-09。**修复路由=用户裁定**：a) 本计划内实现 50 真身（cranelift 内联或 shim 符号两模式均有存量先例）或 b) 具名延后继计划并修订 V-09/AC-07 行文（验收变更须用户批准）。
+  - **F2[低]** 触面 warning 未清零：`stdlib_sys_973.rs:17` 未用 import `assemble_stdlib_aggregates_inputs`、`:46` 未用变量 `tag`——与第 4 轮"计划触面 warning 清零"声明矛盾（AC-04 健康项）。修复=同树清理+复编译验证。
+  - **F3[低]** `sys973_dialect_bisect` 非封闭：读仓外未跟踪 `D:/autostack/plan-artifacts/plan-973/probe_main.at`（`stdlib_sys_973.rs:210-218`）——merge 删材料目录后必红。修复=内联源入测试体。
+  - **F4[低]** `process.at:47-51` argv List\<Str\> staging 注记指向"车道增量"，实际已被 spawn5/cps 终局替代（§9 第 1 轮）且 D-01..D-09/L 表无此行——修复=修订注记为已替代终局。
+  - **F5[低]** `rand.at:8-10` 旧 `random.rand_int`/`Random` 不移植"recorded ruling"不可追溯（973/1063/1064 均未逐名记录）——修复=计划 §10 具名落册。
+  - **F6..F8[信息→债务登记]** Unicode **路径名**切片未测（内容已测）；file.at:162-171 read_text 注记块重复两遍；V-02 sys 能力无授权拒绝专测（机制由 1039 泛测+ledger 共享）。
+- **债务候选已登记**：KNOWN-DEBT D-973（master 预存红两组、基线存量 warning ACE15+core132、967 读出参缓冲帧缺口、F6..F8）。
+- next: work（F2/F3/F4/F5 同树修复；F1 待用户裁定后按 a/b 路径收口）。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r12 | round: 6 | from: review | to: work | status: executing | outcome: needs_fix（29/29 重跑绿+四表/车道门/零委托核验过；F1 AC 真身腿未交付未移交=验收内缺口，F2..F5 小缺陷） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: a9eceef38 | next: work（先 F1 用户裁定）
 
 2026-11-16 stage: work | plan_id: PLAN-973 | plan_revision: r12 | **第 5 轮收口（车道裁定落册，work 全任务完成 → execution_done）** | worktree @ a9eceef38（零代码改动，clean；复用第 4 轮冻结证据） | outcome: **pass**
 - **用户裁定（2026-11-16，原 §10.1 选项 c）**：byte→Str 车道面具名延期后继计划。[PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md) 以 `scripts/new-plan.sh` 取号创建（master 主检出，drafting 0/7）为承接 owner：移交表 D-01..D-09 逐面记录代码锚点（file.at:162-168/env.at:18-21/process.at:40-44,139-141/storage.at:1-8 等，基线 a9eceef38 快照）与旧 sentinel 合同；车道解锁落点（972 域修订 vs 1064 内建）与 972 归档同车道 (b) 解码项是否同批=其 §10 待澄清。973 不反向依赖 1064。
@@ -510,6 +528,14 @@ stage: goal | plan_id: PLAN-973 | plan_revision: r11 | round: 1 | from: work | t
 
 1. **字节→Str 构造车道缺口**（原 §10.1 待裁定项）：**用户裁定选项 c——具名延期后继计划**。承接 owner=[PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md)（drafting 0/7，移交表 D-01..D-09：read_text/dir_names/env get 族/canonical/cwd/cmdline/捕获文本/存储重建/zip/inflate/KV storage/read_bytes Option\<List\> 形状）。本包 T-02/T-03/T-08 按已交付面关闭；AC-08 的 storage/Task/Stream byte→Str 切片移交 1064，不冒已交付。车道解锁落点与 972 (b) 解码项是否同批=1064 §10 待澄清，非本包反向依赖。
 2. （非阻塞本包，供 triage）两组 master 预存红见 §9 第 4 轮：ace-abi source_foreign authority 1 例、ace-runtime text 车道 19 例（rust-lld `__CxxFrameHandler3`/`_fltused`）；主检出同红，建议批量回归 triage 或独立 fix worktree。
+
+### 待用户裁定（2026-11-16 第 6 轮复审 F1，阻塞 T-09/V-09 AC 腿收口）
+
+**AC 后端 sys973 真身**：AC（直接编译后端）的 50 个 sys973 平台操作当前全部为 named-unsupported stub（-10，诚实拒绝），V-09"AC真实调用OS API"正例腿未交付且无移交 owner（代码注记"a REAL body lands with its AC increment"无具名计划；Linux 侧仅 L-12 覆盖）。选项：a) 本计划内实现 50 真身（cranelift 内联体与 shim 符号链接两模式均有 1039/1041 存量先例，属验收内工作，体量较大）；b) 具名延后继计划并修订 V-09/AC-07/AC-COVERAGE 行文为"AC stub=已裁定交付面"（验收变更，须本裁定批准）。
+
+### 具名裁定补录（2026-11-16 第 6 轮复审 F5）
+
+旧 `random.rand_int`/`Random`（[stdlib/auto/random.at](../../stdlib/auto/random.at)，Plan 250 非凭据 PRNG 面）**不移植**到 ACE sys 库——ACE 熵面以 `entropy.rand_fill`/`secure_hex`（CSPRNG）承接，非凭据 PRNG 如需再立显式计划。本条为该工程决定的正式落册（原 rand.at:8-10 注记"recorded ruling"自此可追溯）。
 
 ### Linux 移交表（2026-11-16，owner=PLAN-1063；本表=当前 NOT_RUN 清单）
 

@@ -4444,3 +4444,14 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - **关闭条件**：任一槽位获得真实工程消费需求时，按同批流程（grammar 规则 +
   投影行 + 永久正反例）接线并在 m2-autoui.md 规范更新；在此之前具名拒绝即
   交付面（非静默缺口）。
+
+## PLAN-973（ACE M2 系统库，2026-11-16 T-05 复审登记 @a9eceef38）
+
+| 债项/风险 | 优先级 | 现状与关闭条件 | owner |
+|---|---|---|---|
+| master 预存红：ace-abi authority 1 例 + ace-runtime text 车道 19 例 | P2 | 主检出同红取证（§9 第 4 轮）：source_foreign authority restore 过渡 1 例；text 车道 rust-lld `__CxxFrameHandler3`/`_fltused` 19 例（疑似 972 f64 五端面后置或工具链变动）。非 973 触面。关闭=批量回归 triage 或独立 fix worktree 修复绿 | 批量回归 triage |
+| 基线存量 warning：ACE 侧 ~15 条 + auto-lang-core ~132 条 | P3 | 973 触面已清零（第 4 轮+本轮复核实证）；存量在 mn-linux-av-runner/closures/elf_admission/owned_session/native cache 等+core 主库，均非 973 面。关闭=专项清理计划 | 专项清理（未立） |
+| 967 读出参缓冲帧缺口 | P2 | AV×C/AV×Rust 外库腿仅覆盖写路径族 dispatch（读路径出参帧=967 域具名边界，与 972 同源）。关闭=967 域 out-buffer 帧交付后补读路径腿 | 967 域后续计划 |
+| F6: Unicode 路径名切片未测 | P3 | sys973 测试 Unicode 仅在内容面；UTF-8→UTF-16 路径转换未受非 ASCII 文件名检验。关闭=1064/后续补 Unicode 文件名往返正例 | 1064 候选 |
+| F7: file.at read_text 注记块重复两遍 | P4 | 纯文案冗余（file.at:162-171），随 1064 D-01 落地时清理 | 1064 |
+| F8: V-02 sys 能力无授权拒绝专测 | P3 | 越权=0 副作用由 probe01/v04 近邻+1039 泛测+ledger 检查共享覆盖；无 sys973 专属"缺 platform.file grant"负例。关闭=1064/后续补专属负例 | 1064 候选 |
