@@ -4506,6 +4506,11 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   单组件面内无承载语义，归 981/IF-981-MODULE 多单元接线；computed 以逐字段
   状态函数+字面量/函数文本叶为已验面（f-string 叶见上条）。关闭=981 多单元
   接线后经组件间路由用例验收。owner=981。
+- **master 预存红：ace-abi `source_foreign` 族 ~24 例**：PLAN-980 HELLO 门禁
+  实测 272/296；同族在主检出 master `8e0c4d1d6`（975 B1 落主后）复现同红
+  （973 台账原记 authority restore 1 例，975 落主后扩大）。非 980 触面
+  （980 仅改 rust_provider 构建缓存，2 个 p980_f0_cache case 组内绿）。
+  关闭=批量回归 triage 或 975/973 线收敛后修复绿。owner=批量回归 triage。
 - **master 预存红：ace-host（ace-conformance）13 例**：STATE 门禁实测 153/166，
   13 红在主检出 master `2cdb28fb3`（无 980 代码）逐一复现同错（`unknown ABI
   leg "z"`、m1 语言面/comptime/rust_lowering/source inventory/governance）；
