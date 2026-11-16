@@ -387,3 +387,71 @@ fn main() int {{ return sqlite_open_memory() }}"#
         "a named diagnostic, got {rejected:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-975 T-03 MODULE leg (post IF-1064-MODULE): the canonical pub-fn
+// sqlite.at now ALSO serves the packages module face — it parses as a
+// package module with exactly the 5 pub exports, and a pub-stripped
+// mirror is visibility-RED. Provider EXECUTION (p967_*) stays on the
+// foreign lane (db975 above) — foreign declarations on package modules
+// are the named 1043 remainder.
+// ---------------------------------------------------------------------------
+#[test]
+fn db975_sqlite_at_packages_module_face() {
+    use ace_core::source::cst::FrontBudget;
+    use ace_core::source::packages::{
+        parse_package_source, PackageModuleInput, PACKAGES_CAPABILITY,
+    };
+    use ace_source_query::modules::packages::compile_package_product;
+
+    let sqlite_at = include_str!("../../../../../../stdlib/ace/std/sqlite.at");
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let m = parse_package_source(sqlite_at, &caps, FrontBudget::WORK_OWNED_64MIB)
+        .expect("the canonical pub-fn sqlite.at parses as a package module");
+    let mut exports: Vec<&String> = m.exports.iter().collect();
+    exports.sort();
+    assert_eq!(
+        exports,
+        vec![
+            &"sqlite_close".to_string(),
+            &"sqlite_exec".to_string(),
+            &"sqlite_open".to_string(),
+            &"sqlite_open_memory".to_string(),
+            &"sqlite_query_int".to_string(),
+        ],
+        "exactly the 5 pub exports"
+    );
+
+    // the pub-stripped mirror is visibility-RED (the 删pub tamper)
+    let mirror = sqlite_at.replace("pub fn sqlite_", "fn sqlite_");
+    let err = match compile_package_product(
+        &[
+            PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "sqlited".into(),
+                source: mirror,
+                provider: None,
+            },
+            PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "main".into(),
+                source: "use app.sqlited.sqlite_open_memory\npub fn main() int { return 1 }"
+                    .into(),
+                provider: None,
+            },
+        ],
+        "app::main",
+        &caps,
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => panic!("the pub-stripped mirror must be visibility-RED"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err.iter().any(|d| d.diagnostic.code == "source.module-private"),
+        "named module-private, got {:?}",
+        err.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+    );
+}
