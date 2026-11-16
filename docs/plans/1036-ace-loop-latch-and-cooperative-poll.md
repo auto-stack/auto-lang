@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1036
-status: execution_done
+status: reviewed
 feature_name: ACE循环continue推进、闭区间终点与协作检查
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 4
-current_step: 3
+current_step: 4
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-ac/source-collections-variants.md, docs/specs/auto-mir/collection-place-profile.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/auto-a2c/collections-hir-backend.md, docs/specs/auto-a2r/collections-hir-backend.md]
@@ -232,7 +232,7 @@ LOOP-03独立poll例为普通loop计数n从0加到4，n==4 break，其余条件c
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，所有§6反例及邻例可在实际入口运行，重大未决先定，不私改expected。 — 2026-11-17：r4按现码重冻（§4 r4表），10份入口文件hash实测，§6三案在原入口（AV aggregates链 / A2X Rust coll链 / A2X C coll链）全部可运行；非字面量range端点按现语法具名拒绝，未扩支持域。
 - [x] AC-02 / work（review F-R1-01..03 已闭，2026-11-17 a628ad594）：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。 — 2026-11-17：三案修前红/修后绿双向证据见§6 r4表与§9；修复点在 resolve.rs(前三continue路径+latch)与 a2x-rust/a2x-c lower_coll(continue回边poll)，未删/未放宽任何原断言。
 - [x] AC-03 / work（review F-R1-04 已闭：SD重定向+frontmatter，2026-11-17）：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。 — 2026-11-17：冻结并集组实测（§9组表）：ace-source 821 / ace-lowering 5 / ace-av 1340 / ace-a2x 306 / ace-native 299 全PASS；ace-a2c-abi 8/9，唯一红为本仓已登记master预存红（runtime pin bd260a8b vs 0a4f68e3，KNOWN-DEBT 4588），非本计划引入。SD-01/02/03 正文待T-05按实际交付收敛。
-- [ ] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
+- [x] AC-04 / review（2026-11-17 final 复审 pass @a628ad594）：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
@@ -243,7 +243,7 @@ LOOP-03独立poll例为普通loop计数n从0加到4，n==4 break，其余条件c
 | T-01 / work | [x] 1024交接、未来实施授权及当前源 | 把两个完整source与独立typed/source poll例启用，冻结continue目标/每条回边/poll次数与Wbase计费，确认各目标准入。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 — 2026-11-17：r4重冻（§4）+三案在原入口跑通；Wbase=7（call 4+poll 3）由clean运行自证，非故障反推。 |
 | T-02 / work | [x] T-01决定与可区分输入（F-R1-01/02 已补，见§6 r4复审修复表） | 按本loop latch保推进/终点/poll，嵌套归属和cleanup分开；分别新增三类永久反例，不用单一值绿替代预算绿。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 — 2026-11-17：resolve.rs 增 `for_latches` latch 与 `rblock_can_fall_through`（range闭区间端点守卫=Break；List/半开=增量），三条continue路径（直跳/路由dispatch/collections面）同源注入；a2x-rust/a2x-c 增 `back_edge_poll(lb)` 并在 Loop 体尾与每个 Continue 前注入同一 poll（break不poll）。提交 d766ce811。 |
 | T-03 / work | [x] T-02（F-R1-03 已闭：幂等free修复+两腿cleanup用例） | 运行range/List/MAX及C/Rust真实poll/cancel/预算边界/owned清理；保共享MIR与目标原拒绝，完成职责并集。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 — 2026-11-17：冻结并集组5绿1具名预存红（§9组表）；三个新案修前红/修后绿，逐例≤2.8s。 |
-| T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
@@ -337,6 +337,25 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **未闭/交下一阶段**：T-04 re-review 只核 F-R1-01..04 与受影响AC；T-05 merge 须①按§5新目标正文沉淀SD-01a/01b/02/03a/03b并核对落地；②在合并基线（main 已前移30提交）重跑受影响并集；③把 Python/TS 同形缺口写入 KNOWN-DEBT 具名持有。
 
 2026-11-17 stage: goal | plan_id: PLAN-1036 | plan_revision: r4 | round: 3 | from: executing | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1036/auto-lang | commit: a628ad594 | next: review
+2026-11-17 stage: review | review_scope: final（复审，范围限定 F-R1-01..04 + AC-02/03） | reviewer_identity: 实施会话内复审（无独立reviewer/model；独立性=重放冻结提交+重读代码/规范原文，不采信work叙述；limitations=同一上下文） | plan_id: PLAN-1036 | plan_revision: 4 | outcome: pass | worktree: D:/autostack/.wt/lang-1036/auto-lang | branch: plan-1036-dev | reviewed_commit: a628ad594（修复轮增量 diff vs d766ce811=4文件 +250/−6） | base_commit: 6de19aa3918813908f9094a93da856983a623c04 | dependency_revisions: none | spec_inputs: 5份承载文档（auto-ac/source-collections-variants L45/47、auto-mir/collection-place-profile L30、auto-a2x/checked-resource-facts L47/66/68/121、auto-a2c/collections-hir-backend L33/34/36、auto-a2r/collections-hir-backend L27）逐一核在，SD-01a/01b/02/03a/03b 的 before 片段全部命中原文 | next: merge
+
+**逐发现闭合（check → invariant → 结果）**
+
+| finding | 不变量 | 复审实测 |
+|---|---|---|
+| F-R1-01 | 计数for-in的latch按**target**命中；非计数 loop/while 的 continue 不得推进外层 | 代码：`for_latch_of` 以 `*t == target` 精确匹配（resolve.rs:6569）；用例：裸loop=36、while=24 常驻；受控变异（改为“任一外层”）时该例转红 `left: 24`——接受该变异证据（本会话执行，未入库），并以当前代码复核匹配条件 |
+| F-R1-02 | `return` 绕过latch；i32 上界不合成 MAX+1 | 用例：单点MAX `return i`=2147483647；正常推进到末成员后return=27；`rblock_can_fall_through` 对体末终结语句不追加latch（代码复核） |
+| F-R1-03 | 回边poll错误路径重列 = 释放必须真幂等（不二次drop/不重发事件） | 实现：`mem::replace` 取出 + `cap==0` 早退（coll.rs:786-800）；**结构性复核**：Rust 全部释放原语（str take / list 新take / deep take / 生成的record·variant free 逐字段委派 / i32·bool no-op）均幂等→重列不可能二次释放；红→绿：修复前 `Failure(-1073740940)`（0xC0000374），修复后 continue/fallthrough × clean/cancel/budget 六路实测通过且 alloc/free 字节与次数闭合（本轮复跑 Rust 3.78s、C 5.73s） |
+| F-R1-04 | delta 必须落在真实承载文档 | 5份目标存在、before 片段逐条命中（见上 spec_inputs）；SD-02 保留并收紧；frontmatter `supersedes_spec_components` 与表格5行一致 |
+
+**AC 结果**：AC-01 pass（前轮）；AC-02 **pass**（F-R1-01..03 已闭，§6 各行子状态均有断言）；AC-03 **pass**（消费者/原测试/门保持：修复提交上 `cargo t ace-av ace-a2x` = 1340/1340 与 308/308，gate_passed=true，wall 400s；SD准备已按真实承载重定向）；AC-04 本行 pass；AC-05/06 未执行（merge）。
+
+**覆盖边界（非阻断，明示）**：`free路径不扣/不poll` 由**结构+观察**关闭而非专门断言——唯一释放路径（`a2x_str_free`/`a2x_coll_list_free`/`a2x_coll_deep_free`/生成的 free 助手）内不含任何 charge/poll 调用（代码核对），且 cancel/budget 的 stderr 事件序在 trap poll 之后仅有 `coll:free-backing` 行。若后续要求每条冻结规则都有常驻断言，可作增量；不影响本计划关闭谓词。
+
+**本会话复跑与计时（a628ad594）**：AV `audit1036_loop_01` 0.116s、`_loop_02` 0.118s（+ 既有 `range_for_in_counts_and_executes` 0.107s、`for_in_nested_list_view_binding_reads` 0.103s）；A2X `loop_03`(Rust) 2.14s、`loop_03_c`(C) 4.00s、`loop_03_owned_cleanup`(Rust) 3.78s、`loop_03_c_owned_cleanup`(C) 5.73s（+ 既有 `a2c_coll_loop_poll_cancel` 2.89s、`a2c_coll_exit_cleanup_matrix` 3.39s）。全部 ≤10s；无新增helper隐式构建（编译对象=被测生成程序本身）；健康：4文件 rustfmt --check 干净、`cargo build -p ace-a2x-rust` 零warning、diff 无调试打印。
+
+**pending_closeout_gates（merge所有，同前轮）**：① 主检出仍领先 base 30+ 提交（含他人代码/测试落 main），merge 后须在合并基线重跑受影响并集 `cargo t ace-source ace-lowering ace-av ace-a2x ace-native ace-a2c-abi`；② `ace-a2c-abi::admitted_text…certification_pin` 既有红按 KNOWN-DEBT(4588) 具名排除；③ 按 §5 新目标把 SD-01a/01b/02/03a/03b 正文沉淀并核对落地文本；④ Python/TS 同形缺口入 KNOWN-DEBT 具名持有；⑤ 归档前 guard clean + 清树/分支/scope。
+2026-11-17 stage: goal | plan_id: PLAN-1036 | plan_revision: r4 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1036/auto-lang | commit: a628ad594 | next: merge
 ## 10. 待澄清事项
 
 F28值/迭代、F29宽度、F35预算/取消三个oracle分别关闭；不把所有目标未支持面计为PASS，不新增无限规模承诺。 T-01使真实反例/资源或IO故障可运行，未取得前不声称动态后果已证。等价实现不需重复审批；新支持/预算/公共合同变化先最小决定，不能用隐式门限或延期替原义务。不等待“新测试框架全部完成”。
@@ -348,3 +367,5 @@ F28值/迭代、F29宽度、F35预算/取消三个oracle分别关闭；不把所
 2026-11-17 r4 review后（needs_fix）：**无需用户裁定的问题**（F-R1-01..04 均为本计划已声明义务的落实/定向修复，不改目标/AC口径/范围/仓集合/预算）。下一轮 work 只做有界修复：①在既有锚点test内补3段断言（嵌套裸loop、末成员return、continue回边poll的owned survivor清理）；②按实际承载文档重定向 SD-01/SD-03 正文与 `supersedes_spec_components`；③重定向后重跑受影响用例，不重跑整组；随后re-review只核这四项与受影响AC。
 
 2026-11-17 r4 复审修复后：**无需用户裁定**（F-R1-01..04 均为已声明义务的落实，目标/范围/预算不变）。下一轮 re-review 只核这四项与受影响AC-02/03；修复未改语义合同，故 `plan_revision` 仍为 r4（review 的 r5 升版规则仅在合同变更时触发）。
+
+2026-11-17 r4 复审 pass（@a628ad594）：F-R1-01..04 全部闭合，AC-01..04 已勾，status=`reviewed`，4/6。merge（T-05/T-06）承接：合并基线上重跑受影响并集、按§5新目标沉淀SD-01a/01b/02/03a/03b、Python/TS 缺口入债务登记、归档/清理与输出路径对账。无需用户裁定。
