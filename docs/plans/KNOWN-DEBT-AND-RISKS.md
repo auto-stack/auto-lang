@@ -4532,3 +4532,10 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   leg "z"`、m1 语言面/comptime/rust_lowering/source inventory/governance）；
   与 973 登记的 ace-abi/ace-runtime 预存红同类。非 980 触面。关闭=批量回归
   triage 或独立 fix worktree 修复绿。owner=批量回归 triage。
+
+### PLAN-975 M2-A 收尾候选边界与 master 预存红观察 — 2026-11-16
+
+- **动态 `JsonValue` / 泛型 `encode[T]` / 任意字段名类型迭代反射（B 阶段边界）**：M2-A 已交付纯 Auto `json.at` 编解码与点路径数组访问、`spec JsonDecodable` 泛型 `<T has JsonDecodable> decode<T>`、`app::service` `pub type Service` 跨模块编解码，及 `966` `ct_field_count`/`ct_has_field` 合约检查；动态 `JsonValue` AST 对象（`keys`/`as_array`/`as_number`/`prettify`/`minify`）、泛型 `encode[T]`/`encode_pretty` 与按字段名/类型遍历反射超出 M2-A 范围（`966` A 切片仅提供字段数与 `has_field`），关闭=B 阶段/comptime 字段遍历能力就绪后增量扩展。owner=M2-B/966 后续轮。
+- **`encoding/csv.at` 外部未迁移占位**：`stdlib/auto/encoding/csv.at`（`csv_parse`/`csv_parse_with_delimiter`/`csv_encode`/`csv_encode_with_delimiter`）仍仅存在于旧 VM/A2R 外部清单，不在 ACE M2-A 已交付 `json`/`sqlite`/`redis` 集合内。关闭=如需支持则按纯 Auto codec 迁移或明确废弃。owner=M2-B/stdlib-encoding。
+- **跨 Plan 外部承接边界（已具名）**：SQLite 宿主文件持久化/崩溃恢复归 `PLAN-973`/`PLAN-1064`；`packages` 跨模块 `p967_*` provider 执行装配归 `PLAN-1043`；schema 迁移策略归 `PLAN-986`；Linux 端实跑 `L-01..L-05` 归 `PLAN-1063`。
+- **T-04 并集观察到的 master 预存红（非 Plan 975 引入）**：① `ace-a2x-c::admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin` 与 `ace-abi::source_foreign`（25 例）— `master@82d032c8e`（Plan 972）改 `a2x-c/src/runtime.rs` 后 `CERTIFICATION_C_RUNTIME_SHA256`（`bd260a8b...` vs `0a4f68e3...`）未重钉；② `ace-av::stdlib_list_946::stdlib_list_946_grammar_face` — `master@4ba167930`（Plan 1064）放宽 `if` 条件文法后旧负控断言过时；③ `ace-runtime` `ace-text-conformance` 19 例 Windows `rust-lld` 缺 `__CxxFrameHandler3`/`_fltused`。关闭=批量回归 triage 或各自 owner/fix worktree 修复。owner=批量回归 triage。
