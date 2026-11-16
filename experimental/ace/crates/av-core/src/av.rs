@@ -4717,6 +4717,42 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
+                MirInstr::StrFromChar { dst, ch } => {
+                    let cv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*ch as usize].clone()
+                    };
+                    let scalar = match cv {
+                        Value::Char(c) => c,
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "str_from_char holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    // PLAN-975 B1: materialize the scalar as a fresh owned
+                    // 1-scalar Str buffer (UTF-8, 1..=4 bytes).
+                    let mut buf = [0u8; 4];
+                    let encoded = scalar.encode_utf8(&mut buf).as_bytes().to_vec();
+                    let deep = std::mem::size_of::<Value>() + encoded.len();
+                    if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                        return Some(out);
+                    }
+                    // F821-R1-06: byte-scaled fuel for the materialization.
+                    st.steps += encoded.len() as u64;
+                    let owned = match st.arena.try_alloc(&encoded) {
+                        Ok(h) => Value::Str(h),
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, owned, limits) {
+                        return Some(out);
+                    }
+                }
                 MirInstr::StrCmp { eq, dst, lhs, rhs } => {
                     let (lv, rv_) = {
                         let fr = st.frames.last().expect("frame present");

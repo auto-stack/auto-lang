@@ -4793,10 +4793,22 @@ impl<'p> Emitter<'p> {
                                 ),
                                 BM::To => {
                                     if matches!(to, Some(super::resolve::VT::StrOwned)) {
-                                        format!(
-                                            "expr e{} text_to_owned {{ type: {}; operand: {} }}",
-                                            ei, ty, recv_s
-                                        )
+                                        // PLAN-975 B1: a Char receiver
+                                        // materializes a fresh owned
+                                        // 1-scalar Str — never a borrow.
+                                        if plan.exprs[*recv].vt
+                                            == super::resolve::VT::Char
+                                        {
+                                            format!(
+                                                "expr e{} text_from_char {{ type: {}; operand: {} }}",
+                                                ei, ty, recv_s
+                                            )
+                                        } else {
+                                            format!(
+                                                "expr e{} text_to_owned {{ type: {}; operand: {} }}",
+                                                ei, ty, recv_s
+                                            )
+                                        }
                                     } else {
                                         format!(
                                             "expr e{} text_to_borrowed {{ type: {}; operand: {} }}",

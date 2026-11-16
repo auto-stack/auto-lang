@@ -1254,6 +1254,12 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     format!("a2x_char_from_codepoint({o})"),
                 )
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let o = self.expr(operand)?;
+                self.fall_res(id, "a2x_stro_result", format!("a2x_str_from_char({o})"))
+            }
             // PLAN-972 (T-03): capture-free closure VALUES — the C function
             // designator IS the closure value (function pointers decay);
             // the indirect call falls through the body's result channel.

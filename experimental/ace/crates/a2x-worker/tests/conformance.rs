@@ -43,6 +43,8 @@ mod cert_execution_941;
 mod cert_json_951;
 #[path = "cases/cert_rt_902.rs"]
 mod cert_rt_902;
+#[path = "cases/char_to_str_975.rs"]
+mod char_to_str_975;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
 #[path = "cases/coll_manifest_oracle_933.rs"]

@@ -309,6 +309,7 @@ impl<'a> Walker<'a> {
             | E::TextToBorrowed { operand }
             | E::CharToCodepoint { operand }
             | E::CharFromCodepoint { operand }
+            | E::TextFromChar { operand }
             | E::FieldGet { base: operand, .. }
             | E::BorrowView { base: operand }
             | E::RecordClone { base: operand, .. }
@@ -648,6 +649,7 @@ impl<'a> Walker<'a> {
             E::TextClone { operand } | E::ClosureClone { operand } => self.expr(operand),
             E::TextToOwned { operand } | E::TextToBorrowed { operand } => self.expr(operand),
             E::CharToCodepoint { operand } | E::CharFromCodepoint { operand } => self.expr(operand),
+            E::TextFromChar { operand } => self.expr(operand),
             E::RecordCtor { eval_args, .. } => {
                 for a in eval_args {
                     self.owned_value_child(a);
@@ -1042,6 +1044,10 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
         }
         E::CharFromCodepoint { operand } => {
             h.str("i2c");
+            h.u32(operand.0);
+        }
+        E::TextFromChar { operand } => {
+            h.str("c2s");
             h.u32(operand.0);
         }
         E::RecordCtor {

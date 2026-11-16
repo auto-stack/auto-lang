@@ -553,6 +553,7 @@ fn sweep_order(
                 | MirInstr::FieldMove { dst, .. }
                 | MirInstr::StrConcat { dst, .. }
                 | MirInstr::StrToOwned { dst, .. }
+                | MirInstr::StrFromChar { dst, .. }
                 | MirInstr::Aggregate { dst, .. }
                 | MirInstr::Call { dst, .. } => vec![*dst],
                 MirInstr::FieldSet { root, .. } => vec![*root],
@@ -3182,6 +3183,15 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 let l = self.use_len(*view)?;
                 let (np, nl) =
                     self.abic_call("ac_rt_own_from_lit", &[types::I64, types::I32], &[p, l])?;
+                self.negative_guard(nl)?;
+                self.def_pair(*dst, np, nl)?;
+            }
+            MirInstr::StrFromChar { dst, ch } => {
+                // PLAN-975 B1: char (scalar on the I32 channel) -> fresh
+                // owned 1-scalar UTF-8 buffer.
+                let v = self.v_scalar(*ch)?;
+                let x = self.fb.use_var(v);
+                let (np, nl) = self.abic_call("ac_rt_own_from_char", &[types::I32], &[x])?;
                 self.negative_guard(nl)?;
                 self.def_pair(*dst, np, nl)?;
             }

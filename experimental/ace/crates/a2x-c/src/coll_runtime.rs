@@ -337,6 +337,37 @@ static a2x_trap_code a2x_str_concat(const a2x_str* l, const a2x_str* r, a2x_stro
     return A2X_TRAP_NONE;
 }
 
+/* PLAN-975 B1: char materialized as a fresh owned 1-scalar Str
+ * (c.to(Str)); non-scalars are the typed InvalidScalar trap. */
+static a2x_stro_result a2x_str_from_char(uint32_t c) {
+    a2x_stro_result r;
+    uint8_t tmp[4];
+    size_t n = 0;
+    uint32_t u = c;
+    if (u > 0x10FFFFu || (u >= 0xD800u && u <= 0xDFFFu)) {
+        r.value.data = NULL; r.value.len = 0; r.trap = A2X_TRAP_INVALID_SCALAR;
+        return r;
+    }
+    if (u < 0x80u) {
+        tmp[n++] = (uint8_t)u;
+    } else if (u < 0x800u) {
+        tmp[n++] = (uint8_t)(0xC0u | (u >> 6));
+        tmp[n++] = (uint8_t)(0x80u | (u & 0x3Fu));
+    } else if (u < 0x10000u) {
+        tmp[n++] = (uint8_t)(0xE0u | (u >> 12));
+        tmp[n++] = (uint8_t)(0x80u | ((u >> 6) & 0x3Fu));
+        tmp[n++] = (uint8_t)(0x80u | (u & 0x3Fu));
+    } else {
+        tmp[n++] = (uint8_t)(0xF0u | (u >> 18));
+        tmp[n++] = (uint8_t)(0x80u | ((u >> 12) & 0x3Fu));
+        tmp[n++] = (uint8_t)(0x80u | ((u >> 6) & 0x3Fu));
+        tmp[n++] = (uint8_t)(0x80u | (u & 0x3Fu));
+    }
+    r.trap = a2x_str_alloc(n, tmp, &r.value);
+    if (r.trap != A2X_TRAP_NONE) { r.value.data = NULL; r.value.len = 0; }
+    return r;
+}
+
 /* PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str. */
 static a2x_trap_code a2x_str_display_i32(int32_t v, a2x_stro_result* out) {
     char tmp[12];

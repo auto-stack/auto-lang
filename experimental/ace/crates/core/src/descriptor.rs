@@ -2650,7 +2650,8 @@ impl<'d> Binder<'d> {
             | "text_to_owned"
             | "text_to_borrowed"
             | "char_to_codepoint"
-            | "char_from_codepoint" => {
+            | "char_from_codepoint"
+            | "text_from_char" => {
                 let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
                     return None;
                 };
@@ -2666,6 +2667,7 @@ impl<'d> Binder<'d> {
                     "text_to_owned" => hir::ExprKind::TextToOwned { operand },
                     "text_to_borrowed" => hir::ExprKind::TextToBorrowed { operand },
                     "char_to_codepoint" => hir::ExprKind::CharToCodepoint { operand },
+                    "text_from_char" => hir::ExprKind::TextFromChar { operand },
                     _ => hir::ExprKind::CharFromCodepoint { operand },
                 }
             }
@@ -4084,6 +4086,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::TextToBorrowed { .. } => "text_to_borrowed",
         hir::ExprKind::CharToCodepoint { .. } => "char_to_codepoint",
         hir::ExprKind::CharFromCodepoint { .. } => "char_from_codepoint",
+        hir::ExprKind::TextFromChar { .. } => "text_from_char",
         hir::ExprKind::RecordCtor { .. } => "record_ctor",
         hir::ExprKind::FieldGet { .. } => "field_get",
         hir::ExprKind::BorrowView { .. } => "borrow_view",
@@ -4166,7 +4169,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         | hir::ExprKind::TextToOwned { operand }
         | hir::ExprKind::TextToBorrowed { operand }
         | hir::ExprKind::CharToCodepoint { operand }
-        | hir::ExprKind::CharFromCodepoint { operand } => {
+        | hir::ExprKind::CharFromCodepoint { operand }
+        | hir::ExprKind::TextFromChar { operand } => {
             body_fields.push(format!(
                 "operand: {}",
                 quote(&b.exprs[operand.0 as usize].id_text)

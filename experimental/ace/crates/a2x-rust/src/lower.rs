@@ -1574,6 +1574,18 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     Ty::Char,
                 ))
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let (v, _) = self.lower_pure(*operand, out)?;
+                Ok((
+                    RExpr::StrFn {
+                        func: "a2x_str_from_char".to_string(),
+                        args: vec![v],
+                    },
+                    Ty::StrOwned,
+                ))
+            }
             // ---- PLAN-902 record operations ----
             hir::ExprKind::RecordCtor {
                 record,

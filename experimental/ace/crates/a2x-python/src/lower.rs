@@ -959,6 +959,14 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 self.emit_line(&format!("{t} = a2x_char_from_codepoint({o})"));
                 Ok(t)
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let o = self.lower_expr(*operand)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_str_from_char({o})"));
+                Ok(t)
+            }
             hir::ExprKind::TextConcat { lhs, rhs } => {
                 let l = self.lower_expr(*lhs)?;
                 let r = self.lower_expr(*rhs)?;

@@ -175,6 +175,11 @@ pub fn builtin_method(recv: VT, name: &str) -> Option<(BuiltinMethod, &'static [
         (Str, "slice") | (StrOwned, "slice") => Some((BuiltinMethod::Slice, &[I32, I32], Str)),
         (Str, "clone") | (StrOwned, "clone") => Some((BuiltinMethod::Clone, &[], StrOwned)),
         (Str, "to") | (StrOwned, "to") => Some((BuiltinMethod::To, &[], Str)),
+        // PLAN-975 B1 (decode/parse core decision): `c.to(Str)` — a char
+        // materialized as a fresh owned 1-scalar Str. The To arm in
+        // `resolve_method` carries the target word and enforces the
+        // owned-only rule (a computed scalar has no buffer to borrow).
+        (Char, "to") => Some((BuiltinMethod::To, &[], Str)),
         (Char, "to_codepoint") => Some((BuiltinMethod::ToCodepoint, &[], I32)),
         (Char, "from_codepoint") => Some((BuiltinMethod::FromCodepoint, &[I32], Char)),
         _ => None,
@@ -13930,6 +13935,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                 self.bind_err(
                     "source.type-mismatch",
                     "`.to` converts between str and Str only",
+                    span,
+                );
+            }
+            // PLAN-975 B1: a char receiver has no source buffer to borrow —
+            // char `.to` is the owned materialization only.
+            if recv.vt == VT::Char && target != VT::StrOwned {
+                self.bind_err(
+                    "source.type-mismatch",
+                    "char `.to` materializes an owned Str: use `.to(Str)`",
                     span,
                 );
             }
