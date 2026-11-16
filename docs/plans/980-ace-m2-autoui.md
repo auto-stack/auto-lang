@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 14
-current_step: 9
+current_step: 12
 total_steps: 32
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -584,7 +584,7 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 ## 8. 执行步骤
 
-当前共32任务，已完成9项（原已交范围核账，本轮未新增实施）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共32任务，已完成12项（B-NATIVE-I/V/R r13 批已复核勾选）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### A最小与B各波唯一任务清单（阶段按行标签）
 
@@ -614,11 +614,11 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [x] **B-STATE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-NATIVE-I｜M2-A最小｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：实现MIN-A-UI普通Node入口/实际UI-FFI/typed事件与owner；新用例V-UI-A-MIN；完整001/002与所有Widgets、媒体/terminal迁B-AV。
+- [x] **B-NATIVE-I｜M2-A最小｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：实现MIN-A-UI普通Node入口/实际UI-FFI/typed事件与owner；新用例V-UI-A-MIN；完整001/002与所有Widgets、媒体/terminal迁B-AV。 [✅ r13批 round 24/25：ui980 provider+桥+通用入口，收据 §9]
 
-- [ ] **B-NATIVE-V｜M2-A最小｜owner_stage: work｜AC-B-NATIVE/AC-07**：只关闭V-UI-A-MIN及所用接口/错误/资源原义务，真实窗/事件/恢复，不以字节探针代UI；完整V-UI-FULL交B波。
+- [x] **B-NATIVE-V｜M2-A最小｜owner_stage: work｜AC-B-NATIVE/AC-07**：只关闭V-UI-A-MIN及所用接口/错误/资源原义务，真实窗/事件/恢复，不以字节探针代UI；完整V-UI-FULL交B波。 [✅ r13批 round 24：CPU 7/7+排窗 e2e 1/1+受影响面全绿]
 
-- [ ] **B-NATIVE-R｜M2-A最小｜owner_stage: review｜AC-04**：独立核MIN-A-UI/正式source/ABI/FFI效果与B承接，phase fold交IF-980-NODE-DESKTOP-A；不要求完整Widgets/图形A2R，也不签完整NATIVE产品覆盖。
+- [x] **B-NATIVE-R｜M2-A最小｜owner_stage: review｜AC-04**：独立核MIN-A-UI/正式source/ABI/FFI效果与B承接，phase fold交IF-980-NODE-DESKTOP-A；不要求完整Widgets/图形A2R，也不签完整NATIVE产品覆盖。 [✅ round 25 批次终核 pass，authored 反例 e203caa8]
 
 - [ ] **B-AV-I｜M2-B-W1｜owner_stage: work｜AC-UI-WAVES/AC-07**：M2A-08后冻结U01..06原源/Widgets分母和旧新oracle映射，在既有DIALECT/STATE/NATIVE owner扩完整AV组件/场景/输入/错误/资源；只做AV，多个简单例按能力成组，不另建引擎/runner。
 
@@ -947,6 +947,24 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 23 | from: work | 
 next_responsible_role: B-NATIVE-R（同树停写独立核本批：AC-B-NATIVE 的 V-UI-A-MIN 子面、AC-NODE-DESKTOP 反例重放、边界与债务核对；pass 后勾 B-NATIVE-I/V/R=12/32、phase fold #7 落主）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 24 | from: work | to: review | status: executing（9/32，NATIVE r13 批待复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: ui 3df28cf9 lang c449acc13 | next: review（B-NATIVE-R）
+
+2026-11-16 stage: review（B-NATIVE-R 批次终核，goal round 25）| review_scope: batch-final | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——冻结树核对、全量重放、authored 反例、机械审计，非采信执行者摘要）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（批次闭合；B-NATIVE-I/V/R 勾选，12/32）| reviewed_commit: ui 3df28cf9 + e203caa8（复核反例）/ lang c449acc13 | base: lang 6ff4233b4 / ui dfc73cf1 | worktree: lang-980 @ plan-980-dev（双树 clean）。
+
+**复核内容与结果。** ①冻结核对：双树 clean 于复审提交；diff 面=9 文件 +2070/-6（ui）+18（lang），与收据申报一致；无探针残留（zz_probe 已删）、零调试输出（ACE980_DEBUG 探针已随 view+2 重构移除，grep 0）、fmt clean、模块零警告。②全量重放（冻结提交实测）：CPU 8/8=0.63s（含复核 authored case）+ 排窗 e2e 1/1=1.69s。③AC 映射：AC-B-NATIVE A 切片=V-UI-A-MIN 逐项——真窗文字/中文（e2e frames≥4+你好 Auto 字节级过 FFI）、0→1→0→0 与两实例 2:1（dispatch 序+终值 2/1+显示=AV）、关开/late/权限/坏更新恢复（-2/late_dropped/Denied+复权/越槽拒后同入口绿）、**byte_len 反例判别力**（伪车道成功返回但 applies/display 不动）；AC-NODE-DESKTOP 本批 A 子面同上，完整 V-NODE-DESKTOP-* 归 B-AV/W1（不提前签）。④**authored 反例（e203caa8，永久）**：车道标签纪律（错 tag→BAD_OP 零效果、负打包→BAD_SLOT）、**跨 session 队列隔离**（显式句柄 poll 不偷当前 session 事件——s1 poll=0 且 s2.polled 不动，s2 poll 取编码 1003）、双重 close→-2（不复活）；首版探针自身 arity 笔误（4 参调 3 参函数）被 source.argument 具名拒抓出——探针缺陷修正记录在案，非产品缺陷。⑤机械审计：语言侧 +18 行纯加法（通用注册面），ace-facade PASS 实证；run_vm 重定向编译绿；r11 快照面/HELLO/WEB 切片/AXR0 回归全绿（round 24 表）。⑥测试成本：全部新 case ≤10s（文件 0.63s/8 case；e2e 1.69s；逐 case 墙钟 0.9–1.8s 含 cargo 启动）；prep 纪律成立（provider 新鲜度缓存，重放零 rustc）。
+
+**边界核对（诚实）。** f-string 文本叶双车道具名拒（KNOWN-DEBT 既有）；交互档手工/环境门控（r11 同口径）；instance*1000+slot 打包 MIN-A 界内（authored 已锁负值/错标签面）；完整 001/002 主题/全部组件归 W1——均与 work 收据一致，无未申报缩水。
+
+**acceptance 结果。** AC-B-NATIVE A 切片=pass；AC-NODE-DESKTOP A 子面=pass（完整格 B-AV/W1 保持 open）；AC-02/03/06/07 本批子面=pass；AC-04 本批复核面=pass（本记录）。
+
+pending_closeout_gates: 统一回归门（merge 冻结态：本批受影响组 ace_node_desktop/ace-facade/UI 点名门已实测，落主基线若代码面动按规矩重跑）；SD-NODE-DESKTOP 规范增量（merge 时落 m2-autoui.md §NODE-DESKTOP）。
+
+findings: 无阻断缺陷；F1（探针 arity 笔误，已修正，原始记录保留）。
+
+新增 case 行为/耗时（authored）：lane_tag_queue_isolation_and_double_close——错标签/负打包/跨 session 隔离/双 close 四断言面，文件 8 case 合计 0.63s。
+
+next: merge（phase fold #7：ui e203caa8 链 + lang c449acc13 rebase 落主 + 规范 §NODE-DESKTOP + 落地后复核门；唯一树保留续 WEB 剩余/TAURI）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 25 | from: review | to: merge | status: executing（12/32，NATIVE r13 批已复核）| outcome: pass（批次）| worktree: D:/autostack/.wt/lang-980 | commit: ui e203caa8 lang c449acc13 | next: merge（phase fold #7）
 
 ## 10. 待澄清事项
 
