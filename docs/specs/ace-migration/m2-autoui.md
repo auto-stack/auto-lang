@@ -495,3 +495,15 @@ VueGenerator SFC）+ 六 lane 体 → splice——Inc/其他 handler 体替换�
 template 与 pre-state 区 byte-identical、ToggleMode 取反体就位。
 **WEB 剩余**：`generate_sfc_with_lane` 一体化入口 + 90 项全量双轨 +
 浏览器挂载档。
+
+### §13.8 一体化入口 + 覆盖普查 v2（切片 #6e，2026-11-16）
+
+`generate_sfc_with_lane(src, path)`（`ui/ace_vue_script.rs`）：源文本 →
+真实编译器管线 SFC + lane handler 体拼接，一调返回 `(sfc, bodies, absent)`
+——**absent 中的 handler 保持编译器旧道体**（双轨期合同：缺席不拒绝）。
+**覆盖普查 v2 冻结表**（`p980_web_unified_entry_census_v2`，代表性能力族
+语料，2026-11-16 实测）：msg 引用赋值族全覆盖（counter-3h=3 spliced、
+str 字面量=1）；无 on 块/watch-only=passthrough（0 spliced）；
+**参数化 handler（`.Add(t) ->`）= lane 缺席，旧道保持**（#6f 扩面：参数
+进入 lane 体）。ace_ts_provider 12/12。**WEB 剩余**：参数化 handler 扩面
+→ 90 项全量双轨 → 浏览器挂载档（013/017 playwright 先例）。
