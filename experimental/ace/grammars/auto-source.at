@@ -617,8 +617,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list-nl { age-view-stmt() {} }
             rbrace() {}
         }
+        // R60-3：watch 源允许跨行（`watch {\n    .count -> …`）；此前 `dot(same-line)`
+        // 让多行与多源声明都退化成 `source.syntax@0`。
         age-watch-source(profiles: [age-component, age-package]) {
-            dot(same-line: true) {} ident(field: "source") opt { dot(same-line: true) {} ident(field: "modifier") }
+            dot() {} ident(field: "source") opt { dot() {} ident(field: "modifier") }
         }
         age-watch-source-tail(profiles: [age-component, age-package]) {
             comma() {} age-watch-source() {}

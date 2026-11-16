@@ -1012,6 +1012,14 @@ pub(crate) fn project_packages_front(
                             check_value(v)?;
                         }
                     }
+                    // R60-4：`if` 形态的条件/分支同样进唯一 verify。
+                    for d in &node.design {
+                        for part in [&d.cond, &d.then_value, &d.else_value] {
+                            if let Some(v) = part {
+                                check_value(v)?;
+                            }
+                        }
+                    }
                     for m in &node.members {
                         if let Some(v) = &m.value {
                             check_value(v)?;

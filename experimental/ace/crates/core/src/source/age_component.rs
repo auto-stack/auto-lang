@@ -113,6 +113,11 @@ pub struct ComponentMsgVariant {
 pub struct ComponentDesignEntry {
     pub key: String,
     pub value: Option<Expr>,
+    /// R60-4：`key: if <cond> { <then> } else { <else> }` 的三段表达式——
+    /// 此前只保留 `value=None` + span，条件与分支从不进 verify。
+    pub cond: Option<Expr>,
+    pub then_value: Option<Expr>,
+    pub else_value: Option<Expr>,
     pub span: Span,
 }
 

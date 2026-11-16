@@ -196,3 +196,22 @@ fn p981_named_view_body_is_verified_and_attributed() {
         Err(ds) => assert_eq!(ds[0].code, "source.module-symbol", "{ds:?}"),
     }
 }
+
+/// R60-3：watch 支持多行与多源声明（此前 `dot(same-line)` 让两者都 `@0`）。
+#[test]
+fn p981_watch_multiline_and_multisource_parse() {
+    let multiline = "node M {\n    model {\n        count int = 0\n    }\n    watch {\n        .count -> {\n            .count = count + 1\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let out = compile(multiline).expect("a multi-line watch parses");
+    let row = out.description.components[0]
+        .members
+        .iter()
+        .find(|m| m.role == "watch")
+        .expect("a watch row");
+    assert_eq!(row.name, "count");
+    let multi = "node M {\n    model {\n        a int = 0\n        b int = 1\n    }\n    watch {\n        .a, .b -> {\n            .a = a + 1\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let out = compile(multi).expect("a multi-source watch parses");
+    assert!(
+        out.description.components[0].members.iter().any(|m| m.role == "watch"),
+        "the multi-source watch leaves a row"
+    );
+}

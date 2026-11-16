@@ -4367,10 +4367,10 @@ impl<'a> Engine<'a> {
         // `name(age-view-head)` 与同形后缀规则，命中哪个 alt 不能决定出口。
         let mut view_exit = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
-        // PLAN-981（复审 M1）：一个 node **恰一个** view 出口。此前 `view_role`
+        // PLAN-981（B-LANGUAGE-I）：**多出口**——不同键并存、同键重复拒绝。此前 `view_role`
         // 只是被重复赋值，于是两个 `view-2d`（或两个 `view`、或 2D+3D 并存）
         // 会静默合并——后者还把两个出口的行融成一条扁平列表，丢失归属。
-        // 规范明说 "single view exit per node"。
+        // 现在是 AGE-L03 的多出口规则（同键重复仍是具名错误）。
         let mut exits: Vec<crate::source::age_component::ComponentExit> = Vec::new();
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
         let mut messages = Vec::new();
@@ -5067,9 +5067,37 @@ impl<'a> Engine<'a> {
             .rule_kind_of("age-design-entry")
             .expect("design entry rule");
         let if_kind = self.rule_kind_of("age-if-expr");
+        let else_kind = self.rule_kind_of("age-if-else");
         for c in self.cx.children(member) {
             if self.cx.tree.kind(c) != entry_kind {
                 continue;
+            }
+            // R60-4：`key: if <cond> { <then> } else { <else> }`——三段都按表达式
+            // 投影（字段是包装规则时先解包到 pratt 表达式）；普通条目三项为空。
+            let mut cond = None;
+            let mut then_value = None;
+            let mut else_value = None;
+            if let Some(if_node) = self.cx.field_child(c, "value") {
+                let inner = self.unwrap_child(if_node);
+                if Some(self.cx.tree.kind(inner)) == if_kind {
+                    cond = self.cx.field_child(inner, "cond").map(|w| {
+                        let e = self.unwrap_child(w);
+                        self.project_expr_sync(e)
+                    });
+                    then_value = self
+                        .cx
+                        .field_child(inner, "then")
+                        .and_then(|w| self.cx.field_child(w, "value"))
+                        .map(|v| self.project_expr_sync(v));
+                    // else 分支不是 inner 的字段，而是 `age-if-else` 子规则。
+                    else_value = self
+                        .cx
+                        .children(inner)
+                        .into_iter()
+                        .find(|&w| Some(self.cx.tree.kind(w)) == else_kind)
+                        .and_then(|w| self.cx.field_child(w, "value"))
+                        .map(|v| self.project_expr_sync(v));
+                }
             }
             let key = self.cx.field_child(c, "key").expect("design key");
             let value = match self.cx.field_child(c, "value") {
@@ -5086,6 +5114,9 @@ impl<'a> Engine<'a> {
             design.push(ComponentDesignEntry {
                 key: self.cx.spelling(key),
                 value,
+                cond,
+                then_value,
+                else_value,
                 span: self.cx.span_of(c),
             });
         }

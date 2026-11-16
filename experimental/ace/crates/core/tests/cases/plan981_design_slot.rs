@@ -63,3 +63,22 @@ fn p981_design_coexists_with_other_slots() {
     assert_eq!(c.messages.len(), 1);
     assert_eq!(c.fields.len(), 1);
 }
+/// R60-4：design 的 `if` 形态三段（条件/Then/Else）都进唯一 verify。
+#[test]
+fn p981_design_if_value_is_verified() {
+    let good = "node M {\n    design {\n        theme: if true { \"a\" } else { \"b\" }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    compile(good).expect("a valid if-valued design entry compiles");
+    for src in [
+        "node M {\n    design {\n        theme: if nosuch_cond { 1 } else { 2 }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+        "node M {\n    design {\n        theme: if true { nosuch_then } else { 2 }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+        "node M {\n    design {\n        theme: if true { 1 } else { nosuch_else }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+    ] {
+        let want = src.find("nosuch_").expect("fixture has a bad name");
+        let ds = match compile(src) {
+            Ok(_) => panic!("undefined if-parts must be rejected: {src}"),
+            Err(ds) => ds,
+        };
+        assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
+        assert_eq!(ds[0].span.start, want, "diagnostic at the name");
+    }
+}

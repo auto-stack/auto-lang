@@ -1,8 +1,8 @@
-//! PLAN-981（SOURCE 批）：**一个 node 恰一个 view 出口**。
+//! PLAN-981（B-LANGUAGE-I）：**多出口语义**——不同键的直属出口可并存、同键重复拒绝。
 //!
 //! 独立复审 major M1：`view_role` 只是被重复赋值，于是两个 `view-2d`（或两个
 //! `view`、或 2D+3D 并存）会**静默合并**——后者还把两个出口的行融成一条扁平
-//! 列表，丢失"哪些叶属于哪个出口"。规范明说 *single view exit per node*。
+//! 现在是多出口：不同键可并存（AGE-L03），同键重复仍具名拒绝。
 //!
 //! 现在第二个出口是具名拒绝，且消息里同时给出两个出口的字节位置。
 use ace_core::source::age_h0::LegacyWidgetAlias;
@@ -107,7 +107,7 @@ fn p981_portrait_and_widget_exits_are_recognised() {
     assert_eq!(c.texts.len(), 1, "the widget text leaf is carried");
 }
 
-/// 五 view 不改变"恰一个出口"：任意两个直属出口并存仍具名拒绝。
+/// 同键重复仍拒绝；不同键并存合法（AGE-L03）。
 #[test]
 fn p981_duplicate_portrait_or_widget_exits_are_rejected() {
     for src in [

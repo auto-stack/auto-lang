@@ -85,6 +85,10 @@ pub struct AgeMessageVariant {
 pub struct AgeDesignEntry {
     pub key: String,
     pub value: Option<Expr>,
+    /// R60-4：`if` 形态的三段（条件/Then/Else）；普通条目三项为空。
+    pub cond: Option<Expr>,
+    pub then_value: Option<Expr>,
+    pub else_value: Option<Expr>,
     pub span: Span,
 }
 /// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行。
@@ -1044,6 +1048,9 @@ fn read_back_components(
                 .map(|d| AgeDesignEntry {
                     key: d.key.clone(),
                     value: d.value.clone(),
+                    cond: d.cond.clone(),
+                    then_value: d.then_value.clone(),
+                    else_value: d.else_value.clone(),
                     span: d.span,
                 })
                 .collect(),
@@ -1706,7 +1713,7 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
 pub const AGE_CONSTRUCTS_OUT_OF_SCOPE: &[(&str, &str)] = &[
     (
         "AGE-L04",
-        "条件与选择（if/#if、widget→portrait→默认的用途选择）：981/LANGUAGE + 966 CT 语义",
+        "`#if`/CT 条件归 966（LANGUAGE 只消费）；选择已由 `select_exit` 落地（AGE-L04 的用途/领域序）",
     ),
     (
         "AG-A01..AG-A09",
