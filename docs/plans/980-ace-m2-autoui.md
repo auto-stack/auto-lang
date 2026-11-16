@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 11
-current_step: 3
+current_step: 6
 total_steps: 35
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -486,11 +486,11 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [x] **B-DIALECT-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源；可先按§5复核IF-980-FIELDS子面并正式phase fold交979，完整本批仍须核全部原义务才勾选；缺陷回I，不冒整包交付。
 
-- [ ] **B-STATE-I｜M2-A｜owner_stage: work｜AC-B-STATE/AC-02/03/06/07**：用ACE执行服务替旧handler bytecode生成/调用，接组件props/emit/computed与App store、挂起/唤醒、卸载和late generation。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
+- [x] **B-STATE-I｜M2-A｜owner_stage: work｜AC-B-STATE/AC-02/03/06/07**：用ACE执行服务替旧handler bytecode生成/调用，接组件props/emit/computed与App store、挂起/唤醒、卸载和late generation。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
 
-- [ ] **B-STATE-V｜M2-A｜owner_stage: work｜AC-B-STATE**：运行V-B-STATE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+- [x] **B-STATE-V｜M2-A｜owner_stage: work｜AC-B-STATE**：运行V-B-STATE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
-- [ ] **B-STATE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [x] **B-STATE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
 - [ ] **B-NATIVE-I｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：接原生run入口、路由/页面/主题/媒体/terminal等宿主；实际旧vm参数可保兼容名字但dispatch为ACE。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
 
@@ -699,6 +699,18 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 7 | from: verify |
 next_responsible_role: B-STATE-R（同树独立核本批：AC-B-STATE 逐句/反控重放/边界与债务核对；pass 后勾选 B-STATE-I/V/R、current_step=6/35、phase fold #3 落主）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 8 | from: work | to: review | status: executing（3/35，STATE 批待复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang 09a6274af ui a6b7fb4c | next: review（B-STATE-R）
+2026-11-16 stage: review（B-STATE-R 批次终核）| review_scope: batch-final | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——冻结树核对、p980 过滤独立重放、复核反例两族、机械审计，非采信执行者摘要）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次闭合；B-STATE-I/V/R 勾选，6/35）| reviewed_commit: lang 09a6274af+d43eb9618（复核反例）/ ui a6b7fb4c+94b9334b（复核反例）| base: lang 925aeb4fb / ui c15fe0f5 | worktree: lang-980 @ plan-980-dev
+
+**复核内容与结果。** ①冻结核对：两树 clean 于复审提交，无未审漂移。②AC-B-STATE 逐句：双App各两组件不串=双引擎×keyed 实例 case（int/str 字段、跨引擎零影响）；异步任务返回只写仍存活实例=MIX-03 无 HTTP case（先关一例→完成只写存活、关闭不复活、旧世代 StaleGeneration 丢弃、新世代回写）；真实异步host=ACE scheduler 968 面（stdout 保序 case）；HTTP 实腿归 983。③门禁独立重放：work 冻结提交上 `cargo t ace-source ace-av ace-host`（union 831.6s）= ace-source **PASS 610 执行 0 红**、ace-av **PASS 1263 执行 0 红**、ace-host 153/166（13 红=master 预存红——主检出 master `2cdb28fb3` 无 980 代码逐一复现同错，如 `unknown ABI leg "z"`；与 973 登记的预存红同类，已入 KNOWN-DEBT，owner=批量回归 triage）；UI plan041 8/8+plan033 2/2（work 态）；复审态终验 av p980_state **7/7**（0.101s）、UI plan041 **9/9**（0.34s）+plan033 2/2（0.17s）。④复核反例（authored，永久）：lang `p980_state_states_only_emits_no_text_fns_in_artifact`（states-only 工件级无 `__age_c_text`、description 无文本行、完整编译含之——删发射门控即红）；UI `p980_state_async_task_failure_surfaces_not_fabricated`（坏任务源在 ACE 段具名拒 `bind/source.sched-task` → await_async Err、状态未被写——完成不可伪造；首版断言串过窄系探针缺陷，原始记录保留并修正）。⑤机械审计：review 增量仅 2 测试文件；零台账/legacy 写入；core 改动全部封装于组件面编译入口内（ace-source 610 含全部 p979/p980 core case 绿证跨 profile 安全）。⑥债务诚实：f-string 文本叶 av.owned/1 车道、DynamicComponent 默认链未切（退役归 987）、ace-host 预存红、**emit 子项边界（复核新增具名——跨组件路由归 981/IF-981-MODULE，此前收据漏具名）**全部入 KNOWN-DEBT（7a3fc610e/18701b519）。⑦健康：新增文件 fmt clean、零新增 warning、无调试输出。
+
+**新增 case 行为/耗时（authored）。** states-only 工件断言（av，含编译+双编译对照）文件 7 条合计 0.10s；异步失败不伪造（UI，含坏源编译+引擎回滚核对）文件 9 条合计 0.34s。全部 ≪10s。
+
+**规范增量核验（merge 落）。** 拟 SD-STATE：m2-autoui.md 新 §6（组件面状态执行服务：states-only/initials/逐字段观察/scheduler 入口/AceStateEngine 生命周期与世代纪律/MIX-03 无 HTTP 已验面）+ §5 边界刷新（f-string 文本叶车道/emit 归 981/默认链并行）——与交付现实一致，不冒 NATIVE/PARITY。
+
+pending_closeout_gates: 统一回归门（merge 冻结态：lang ace-source+ace-av 复核于落主基线，ace-host 预存红具名排除；UI 两文件同基线）。findings: 无阻断缺陷；emit 具名边界补登记（非缺陷，原收据漏项）。next: merge（phase fold #3 落主 lang d43eb9618/ui 94b9334b + 规范 §6；NATIVE 前置之一 STATE 已就绪）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 9 | from: review | to: merge | status: executing（6/35，STATE 批已复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang d43eb9618 ui 94b9334b | next: merge
+
 
 ## 10. 待澄清事项
 
