@@ -371,15 +371,15 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-NATIVE | work | 实际OS create/write/read/seek/EOF/close、错误/部分IO/取消与平台文本边界对独立expected；核符号/调用/链接来源，无隐式libc委托；缺默认provider拒绝，不切外部桥。 | T-09,T-10 / V-NATIVE；原独立review核新增义务 |
 
-- [ ] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。
+- [x] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。（✅ Windows 四格 probe01/v04/t08/dirs 绿；Linux 格 code-only/NOT_RUN→1063 L-01..L-03；T-05 第 6 轮核）
 
-- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+- [x] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。（✅ AV/native 15 例+AV×C/AV×Rust 外库腿 2/2+A2R 真 rustc+A2PY 真 Python；AC 路径=stub 拒绝+负控（2026-11-16 裁定 b 真实运行移交 1065）；A2C 按原适用域不减；T-05 第 6 轮核）
 
-- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+- [x] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。（✅ 全部 sys973 测试经 assemble_stdlib_sys_inputs（1043 装配+#in 目标选择 t09）；T-05 第 6 轮核）
 
-- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+- [x] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。（✅ §10 L-01..L-12 表与代码注记逐项一致（审计 agent 核），全部 NOT_RUN/1063；T-05 第 6 轮核）
 
-- [ ] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。
+- [x] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。（✅ stdlib/ace/sys 10 模块纯 Auto 构造；av-core kernel32/bcrypt 直调零 libc/Rust std 委托（审计 agent L1575-1899 核）；A2R/A2PY Rust std/Python 为显式目标运行时分账；T-05 第 6 轮核）
 
 ## 8. 执行步骤
 
