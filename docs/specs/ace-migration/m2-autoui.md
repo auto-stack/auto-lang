@@ -159,3 +159,37 @@ round 8/9（work/review 终核）。
 - **边界**（KNOWN-DEBT）：f-string 文本叶 AV 车道（上）；emit 路由与多单元源
   （host/store 内嵌跨引用）归 981/IF-981-MODULE；产品默认链未切换、旧
   bytecode 退役归 987；观测字段仍须 int（打包驱动口径不变）。
+
+## 7. 首个 ACE AGE Node 文字窗口（HELLO 批，2026-11-16）
+
+PLAN-980 T-HELLO-I/V/R 已验：AGE node 单 text 源 → 真实 Iced 主线程窗口
+的全链（H0 共享 verify → AV 真值 → F0 受检调用 → `run_app` 泛型宿主渲染）。
+收据见计划 §9 round 11/12。
+
+- **有界决定**：窗口宿主选 `run_app::<C>` 泛型单窗链（View→into_iced 投影、
+  Inter 字体、主题服务；ui_hello_loader 等 example 同链）；弃 daemon
+  `run_session`（硬绑 DynamicComponent/旧 bytecode 链）。无第二传统接入线、
+  无假 VmBridge。
+- **桥（`ui/ace_hello.rs`）**：`HelloSession::load`（H0 面）产出 AV 真值文本
+  （复制为 UI 所有 String）；`run_f0` **分派时重观察**——快照与新鲜 AV 真值
+  逐字节一致（漂移具名红，T-HELLO-R 反例修复），同一文本字节经 967 冻结
+  provider 的 `text_byte_len`（969 E0 门面 foreign 车道）证实被接收
+  （callee=1/rejected=0）；幂等注册。
+- **F0 面现实映射**：967 冻结 provider 计算文本事实不返回文本——窗口文本
+  =AV 真值，F0 证同字节抵达，二者分立为已交付接口的既成事实。
+- **F0 构建新鲜度缓存**（abi `rust_provider::build_source`）：按
+  (provider digest, shim digest, rustc identity)+双产物在位跳过 rustc——
+  显式预构建阶段的测试纪律支撑（篡改/缺产物/digest 变化即重建；永久 case
+  `plan980_f0_cache`）。
+- **真窗 exe（`examples/ace_hello_window.rs`）**：主线程 Iced 窗口 +
+  `--prep-only` 预构建模式 + 帧计数/证据 JSON/自动退出（Process.exit 语义）。
+  永久 case `tests/ace_ui_hello.rs` 7 项：CPU 面（SCHEMA/BODY/REJECT/
+  LIFE 20 轮+teardown/漂移拒绝/坏源退出码）恒跑；窗口+FFI 面
+  （`AUTO_UI_ACE_HELLO_E2E=1` 排窗，prep 后执行）：静态 text 与普通函数
+  返回中文/ASCII 双 fixture、AV/F0/帧/cwd 断言。命令：
+  `cargo test -p auto-ui-runtime --test ace_ui_hello -- --test-threads=1`。
+- **fixture**：`examples/ui/ace-hello-minimal/src/front/{app,app-body}.at`。
+- **边界**：完整 B0 打包闭包（发行包形态）pending（本批交仓外 cwd/预构建零
+  rustc/缺前置具名拒绝最小面）；V-HELLO-LIFE 以 20 轮 CPU 生命周期+每证据
+  1 真窗轮实现（进程内二次 iced 事件环被 PLAN-698 禁止；测试内 RSS 断言不稳
+  定，具名）；AXR0 同源 A2R 腿归 RUST 批；不改产品默认链。
