@@ -139,6 +139,121 @@ pub enum AgeViewExit {
     ViewWidget,
 }
 
+/// PLAN-981（B-LANGUAGE-I / AGE-L04）：一次呈现请求——选择的唯一输入。
+///
+/// 选择是**纯函数**：只看 node 已声明的出口与这次请求（用途/领域/逻辑尺寸），
+/// 不偷看宿主、不按命名猜平台。选择规则见
+/// `plan-artifacts/plan-981/language/L04-L05-decisions.md`。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgeViewRequest {
+    /// UI 呈现：可选 widget 宿主形态，逻辑宽高用于 portrait 判定。
+    Ui {
+        /// 逻辑宽（像素；作者/宿主给定）。
+        width: u32,
+        /// 逻辑高（像素）。
+        height: u32,
+        /// 该次请求是否来自 widget 宿主（`view-widget` 只在此命中）。
+        widget_host: bool,
+    },
+    /// 2D 场景请求（只接受 `view-2d`）。
+    Scene2d,
+    /// 3D 场景请求（只接受 `view-3d`）。
+    Scene3d,
+}
+
+/// 选择失败（纯函数没有源 span，故带 `&'static str` 码 + 人读消息）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgeSelectionError {
+    /// 稳定诊断码（`source.age.…`）。
+    pub code: &'static str,
+    /// 人读消息（含请求与已声明出口，便于定位）。
+    pub message: String,
+}
+
+/// AGE-L04：按"用途/领域 + 逻辑尺寸"从 node 已声明出口里选一个。
+///
+/// - UI：`view-widget`（仅 widget 宿主）→ `view-portrait`（仅 H > W）→ 默认 `view`；
+///   方形（H == W）**走默认**，不隐式选 portrait。
+/// - 2D/3D：只接受对应场景出口，**无跨域 fallback**。
+/// - 无候选（如场景请求遇到纯 UI 出口、或 UI 请求遇到纯场景出口）→ 具名拒绝。
+/// - 零尺寸 → 具名拒绝（不伪装成空画面）。
+pub fn select_exit(
+    declared: AgeViewExit,
+    request: AgeViewRequest,
+) -> Result<AgeViewExit, AgeSelectionError> {
+    let declared_label = exit_label(declared);
+    match request {
+        AgeViewRequest::Scene2d => match declared {
+            AgeViewExit::View2d => Ok(AgeViewExit::View2d),
+            other => Err(AgeSelectionError {
+                code: "source.age.exit-unavailable",
+                message: format!(
+                    "a 2D scene request cannot be served by `{}`; declare `view-2d` \
+                     (no cross-domain fallback)",
+                    exit_label(other)
+                ),
+            }),
+        },
+        AgeViewRequest::Scene3d => match declared {
+            AgeViewExit::View3d => Ok(AgeViewExit::View3d),
+            other => Err(AgeSelectionError {
+                code: "source.age.exit-unavailable",
+                message: format!(
+                    "a 3D scene request cannot be served by `{}`; declare `view-3d` \
+                     (no cross-domain fallback)",
+                    exit_label(other)
+                ),
+            }),
+        },
+        AgeViewRequest::Ui {
+            width,
+            height,
+            widget_host,
+        } => {
+            if width == 0 || height == 0 {
+                return Err(AgeSelectionError {
+                    code: "source.age.view-request",
+                    message: format!(
+                        "a UI request needs a non-zero logical size (got {width}x{height})"
+                    ),
+                });
+            }
+            match declared {
+                AgeViewExit::ViewWidget if widget_host => Ok(AgeViewExit::ViewWidget),
+                AgeViewExit::ViewPortrait if height > width => Ok(AgeViewExit::ViewPortrait),
+                AgeViewExit::View => Ok(AgeViewExit::View),
+                // 声明了合适形态但请求不匹配：仍可落到默认出口；没有默认出口才拒。
+                AgeViewExit::ViewWidget | AgeViewExit::ViewPortrait => Err(AgeSelectionError {
+                    code: "source.age.exit-unavailable",
+                    message: format!(
+                        "`{}` is the only declared UI exit, but this request is not \
+                         widget/portrait; declare a default `view`",
+                        declared_label
+                    ),
+                }),
+                other => Err(AgeSelectionError {
+                    code: "source.age.exit-unavailable",
+                    message: format!(
+                        "`{}` is a scene exit and cannot serve a UI request",
+                        exit_label(other)
+                    ),
+                }),
+            }
+        }
+    }
+}
+
+/// 出口的稳定标签（与 description 的 exit 事实同字）。
+fn exit_label(exit: AgeViewExit) -> &'static str {
+    match exit {
+        AgeViewExit::View => "view",
+        AgeViewExit::View2d => "view-2d",
+        AgeViewExit::View3d => "view-3d",
+        AgeViewExit::ViewPortrait => "view-portrait",
+        AgeViewExit::ViewWidget => "view-widget",
+    }
+}
+
 /// 一条场景行（组件实例）。
 #[derive(Clone, Debug)]
 pub struct AgeSceneRow {

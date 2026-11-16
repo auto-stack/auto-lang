@@ -102,6 +102,8 @@ mod plan981_text_refs;
 mod plan981_model_handlers;
 #[path = "cases/plan981_view_exits.rs"]
 mod plan981_view_exits;
+#[path = "cases/plan981_view_select.rs"]
+mod plan981_view_select;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
 #[path = "cases/plan980_dialect_full.rs"]
