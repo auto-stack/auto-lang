@@ -924,6 +924,27 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: review（review-69 = pass：tier-1 A 面可交；R69 处置）| PLAN-981 | outcome: pass（tier-1 A 面）
+
+- **review-69 = pass**：独立复核确认 tier-1 A 面（SOURCE 收口、LANGUAGE-I/SESSION-I 记录与落主、RUST 公共链、
+  V[A] 三腿、event A）可交；§8 仍 **3/35** 勾选、`status: executing`，**未声称 execution_done**。
+- **R69-1（low）**：V-EVT-A-UNIT 改为"终值 + 单步 oracle"，新增 `Inc,Inc,Reset → 0` 判别例（Reset 若
+  no-op 会剩 2 → 红）：`cedf5331c`→master `c286fb8d0`。
+- **R69-3（low）**：`D-981-EXIT-CONTRACT` owner 由已归档 979 改判 **981/LANGUAGE**，关闭条件写明；
+  R69-4（债务文件字面 `\n`）同批修正（`260070b10`）。
+- **R69-5/R69-6**：review-68 的 R68-2 措辞项并入债务"下次触碰"；roadmap 里过期的 review-67/1391 口径
+  已更新为 review-68 pass / 1393。
+- **R69-2（low，契约口径）**：985 UI-EVT-BIND 的"逐项 arity/type/dup/未绑定"诊断在 A 以**一律不可执行
+  的具名拒**兜住（fail-closed + 零效果），逐项诊断归 B-W1（`D-981-EVENT-A-REMAINDER`，已具名）；
+  985/T-A03 记录该替代口径。
+- **R69-7/R69-8（info）**：重复 pin 提交与既有警告均非 981 触碰面，保持记录。
+- **最终证据**：plan981 **207/207**、plan980 13/13、AV p981 **6/6**、A2R p981 5/5、grammar 45/45、
+  ace-core **742/742**；auto-ui driver lib **49/49**、`s2_age_routing` **16/16**、bridge 4+3+10、
+  V-B-SESSION 规定命令 `authoring_session 4/4 + mixed_regions_lifecycle_flow 7/7`；
+  overlay 1393 文件钉 `auto-lang 260070b10`，逐 blob 保真 PASS。
+- **tier-1 结论（A 面）**：已交并全部独立复审（review-62/64/65/66/67/68/69）；**B 波余量**（B-SESSION[B]
+  两组件 2:1 + 异步资源、B-W1 载荷/参数执行、B-W3 运行时 dispatch/AGE 端口/GPU/音频、模块级 const/var
+  A2R、R59-5、EXIT-CONTRACT 重核）逐项具名，未以 A 面替代。
 2026-11-17 stage: work（V-B-SESSION / V-B-LANGUAGE[A] 实跑证据）| PLAN-981 | outcome: partial
 
 - **V-B-SESSION 规定命令实跑**（auto-ui 主检出 master）：`cargo test --manifest-path
