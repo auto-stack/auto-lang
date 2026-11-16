@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 11
-current_step: 6
+current_step: 9
 total_steps: 35
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -468,11 +468,11 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 早期任务可按§5最小前置先行，不要求T-01完整分母冻结已完成；各I自行冻结本切片输入/接口/命令，不提前勾T-01或其它原整项。以下行序不是额外前置。
 
-- [ ] **T-HELLO-I｜M2-A｜owner_stage: work｜AC-HELLO/AC-NODE-COMPAT**：967/F0-D、979/H0-D、969/E0-D、978/B0-D齐后，按§5冻结AGE node首源/Schema激活及旧widget兼容配置、CLI/主线程/文本所有权与资源，建ace-hello-minimal及ace_ui_hello永久case；只实现同一受检通路，不等T-01全部UI分母/STATE async/PARITY。
+- [x] **T-HELLO-I｜M2-A｜owner_stage: work｜AC-HELLO/AC-NODE-COMPAT**：967/F0-D、979/H0-D、969/E0-D、978/B0-D齐后，按§5冻结AGE node首源/Schema激活及旧widget兼容配置、CLI/主线程/文本所有权与资源，建ace-hello-minimal及ace_ui_hello永久case；只实现同一受检通路，不等T-01全部UI分母/STATE async/PARITY。
 
-- [ ] **T-HELLO-V｜M2-A｜owner_stage: work｜AC-HELLO/AC-NODE-COMPAT**：T-HELLO-I后跑全部V-HELLO-*与真实受影响UI命名case/必要语言职责并集，AV首窗全链记录独立oracle/窗口/FFI dispatch/退出；AXR0由原RUST并行验证，未执行腿保持pending，不阻AV部分正式交接。
+- [x] **T-HELLO-V｜M2-A｜owner_stage: work｜AC-HELLO/AC-NODE-COMPAT**：T-HELLO-I后跑全部V-HELLO-*与真实受影响UI命名case/必要语言职责并集，AV首窗全链记录独立oracle/窗口/FFI dispatch/退出；AXR0由原RUST并行验证，未执行腿保持pending，不阻AV部分正式交接。
 
-- [ ] **T-HELLO-R｜M2-A｜owner_stage: review｜AC-HELLO-REVIEW**：T-HELLO-V的AV全部V-HELLO-*齐后停写同树独立核最小普通源到真实Iced、AV FFI与资源/反控；finding返I，不把AV Hello pass冒A2R或完整UI。
+- [x] **T-HELLO-R｜M2-A｜owner_stage: review｜AC-HELLO-REVIEW**：T-HELLO-V的AV全部V-HELLO-*齐后停写同树独立核最小普通源到真实Iced、AV FFI与资源/反控；finding返I，不把AV Hello pass冒A2R或完整UI。
 
 - [ ] **T-HELLO-D｜M2-A｜owner_stage: merge｜AC-HELLO-LAND**：T-HELLO-R pass后按各owner phase fold正式合入首Hello代码/已验规范与source/ABI/包来源，保唯一树/resync继续原九批与全包review；不改默认、不归档980或宣称完整RG-A03/M2A-08已过。
 
@@ -734,6 +734,16 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 10 | from: merge |
 next_responsible_role: T-HELLO-R（同树独立核：AC-HELLO/AC-NODE-COMPAT 面、真窗链、反控、边界与债务；pass 后勾 T-HELLO-I/V/R=9/35、fold #4 落主）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 11 | from: work | to: review | status: executing（6/35，HELLO 批待复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang b3887f887 ui 3e85a7f1 | next: review（T-HELLO-R）
+2026-11-16 stage: review（T-HELLO-R 批次终核）| review_scope: batch-final | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——冻结树重放、复核反例、机械审计）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次闭合；T-HELLO-I/V/R 勾选，9/35）| reviewed_commit: lang b3887f887 / ui 3e85a7f1 + 复核修复 e529dde6 | worktree: lang-980 @ plan-980-dev
+
+**复核内容与结果。** ①冻结核对+重放：UI ace_ui_hello 5/5@3e85a7f1（含窗口面）；lang abi p980_f0_cache 2/2 + e0_facade 3/3 + `cargo t ace-facade` PASS@b3887f887。②AC-HELLO/AC-NODE-COMPAT 面：正式输入 root=node（SCHEMA case）、AGE Schema/grammar 身份、任意 Node/函数/文本变体、坏 Schema/int 文本叶 FFI 前具名拒、错 provider 零 dispatch、20 轮生命周期+teardown/新代、真窗 e2e（AV 文本=源字节、F0 byte_len=字节数、callee=1/rejected=0、frames≥2、仓外 cwd）。③**复核反例（authored，两族）**：`p980_hello_f0_bytes_drift_must_refuse` ——**发现真缺陷**：run_f0 字节等式两侧同源（快照 vs 由快照生成载荷）恒真；work 修复 e529dde6（分派时重观察，快照漂移具名红——等式两侧自此不同源），修复后 7/7 绿；`p980_hello_window_exe_bad_source_exits_named`（坏源 exit 4、无证据文件——证据不可伪造）。④机械审计：review+修复增量仅桥/测试；零台账写入；lang 面改动（abi 缓存/ace-host Exit 臂）均为加法，ace-facade 组 PASS 实证。⑤边界核对：PACK 最小面/LIFE 20CPU+1真窗适配/AXR0 归 RUST 均已在案；ace-abi source_foreign 预存红（KNOWN-DEBT）非触面。⑥健康：fmt clean、零新增 warning、无调试输出。
+
+**新增 case 行为/耗时（authored）。** 漂移拒绝（含双观察+分派）≤2.17s 文件 7 项合计；坏源退出码（子进程 spawn+退出）同文件内。终态全量 7/7=4.91s（e2e 窗口腿 ~3.1s 最大，≤10s）。
+
+pending_closeout_gates: 统一回归门（merge 冻结态：lang ace-abi+ace-facade 于落主基线，source_foreign 预存红具名；UI ace_ui_hello 全量）。findings: F1（漂移恒真，已修复闭环）。next: merge（T-HELLO-D fold #4：lang b3887f887/ui e529dde6 + 规范 §7 HELLO 节；不改默认、不归档）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 12 | from: review | to: merge | status: executing（9/35，HELLO 批已复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang b3887f887 ui e529dde6 | next: merge（T-HELLO-D）
+
 
 
 
