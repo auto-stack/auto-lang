@@ -912,6 +912,10 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 21 | from: merge |
 2026-11-16 stage: work（T-01 分母冻结，round 22）| plan_id: PLAN-980 | plan_revision: r11 | outcome: pass（任务闭合；勾选 T-01，16/29）| 交付：m2-autoui.md **§10 分母/命令/oracle 冻结表**（批次×状态×冻结命令×输入源身份；模式网格 NATIVE✓/RUST-AXR0✓/WEB 解锁/TAURI 传递/PARITY 源面可先行；共享纪律=前门短窗/F0 缓存/构建道/排窗/预存红台账）+ replacement-scope **SD-02 挂接增量**（980 五批 producer 行+具名边界，沿 979/975/976 增量节先例）。**重大事实更新**：核实 PLAN-976 已归档（`5cedb4715`，delivery `660fe72b5`——ace-a2x-ts 双目标 TS/JS provider 全交付、"产品适配器切换归 980"）→ **WEB/TAURI/PARITY 的 976 前置全部解锁**，工作序从"976 卡住"前提更新为 WEB 可直接开工。T-01 分母本体=字段清单（115 行，DIALECT 已交）+959 台账（979 节维护中，本轮 980 行刷新）；唯一树/写窗=§10.3 冻结。落主：lang `ae041fb6a`（§10）+`db4ad0b37`（SD-02）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 22 | from: work | to: work | status: executing（16/29，T-01 闭合）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang db4ad0b37 | next: work（WEB 批——976 已解锁）
+2026-11-16 stage: work（WEB 批首切片，round 23）| plan_id: PLAN-980 | plan_revision: r11 | outcome: pass（切片交付；**B-WEB-I/V/R 保持未勾**——完整适配器切换为批剩余义务）| code_commit: auto-ui **dfc73cf1**（`ui/ace_ts_provider.rs` 桥 + 4 永久 case；lang 零代码——976 接口原样消费）。交付：UI 表达式/语句源→ACE core 前门（tsfrag 同门）→976 fragment（checked-helper）→宿主 reactive 两跳映射（count→count.value）→真 node FRAG_OK（42/42）；未定位/越界/类型错误=具名拒绝（无旧 emitter 回退）。探索发现（收据在案）：现行管道求值旧 AST、976 接口吃受检 HIR——**形态阻抗**是完整切换的实底：ts_adapter 四处委托（Stmt/Expr×vue/ark）替换需按源 span 线程化+宿主映射扩展+90 项 vue_capabilities 全量过新车道+浏览器挂载档（013/017 playwright 先例）。测试表：ace_ts_provider 4/4=0.13s（node 腿含内）；ace-bridge feature 门下编译；未动 ts_adapter/vue_capabilities（旧车道原样）。边界详见规范 §11。next：WEB 剩余=ts_adapter 委托替换（切片扩面：str/结构/回调形态）+浏览器档；TAURI 随 WEB；PARITY 源面/NATIVE 腿仍可并行。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 23 | from: work | to: work | status: executing（16/29，WEB 首切片落主）| outcome: pass（切片）| worktree: D:/autostack/.wt/lang-980 | commit: ui dfc73cf1 | next: work（WEB 剩余/PARITY 源面）
+
 
 
 
