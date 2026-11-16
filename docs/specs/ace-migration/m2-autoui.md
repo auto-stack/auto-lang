@@ -507,3 +507,14 @@ str 字面量=1）；无 on 块/watch-only=passthrough（0 spliced）；
 **参数化 handler（`.Add(t) ->`）= lane 缺席，旧道保持**（#6f 扩面：参数
 进入 lane 体）。ace_ts_provider 12/12。**WEB 剩余**：参数化 handler 扩面
 → 90 项全量双轨 → 浏览器挂载档（013/017 playwright 先例）。
+
+### §13.9 参数化 handler 域缺口具名（切片 #6f，2026-11-16）
+
+**结论**：参数化 handler（`.Add(t) ->`）与内联 lambda 铸造 handler 的 lane
+覆盖**不是 UI 适配器可闭合项**——根因=组件面 `ScenarioOp::Send` **无
+payload 字段**（参数化事件不可场景重放，状态函数 HIR 无从携带参数）+
+铸造形无源锚。属**语言侧后继义务**（979/981 谱系扩展 ScenarioOp 或参数
+绑定面）。双轨期合同下二者永远走编译器旧道直至语言侧交付。普查 v2 冻结
+表已扩两行（param-handler/inline-lambda-only=absent；ace_ts_provider
+12/12）。**WEB 剩余（UI 侧）**：90 项全量双轨（普查表=分母仪表）+
+浏览器挂载档（013/017 playwright 先例）。
