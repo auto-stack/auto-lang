@@ -332,3 +332,44 @@ PLAN-980 WEB 批首个已验切片（B-WEB 任务保持开放）：生产表达�
   fragment 语句面限制——完整合法表面需 text-record/collections 面扩展或
   适配器组合）；ts_adapter 生产委托未替换；浏览器挂载档未建。**无旧
   emitter 回退**：新车道未覆盖形态=具名拒绝。
+
+## 12. MIN-A-UI 通用 Node 桌面入口（NATIVE r13 批，2026-11-16）
+
+PLAN-980 B-NATIVE-I/V/R（r13 重开范围）已验：通用 Node 项目入口 +
+**实际 UI-FFI 效果** + **typed 事件回 AV**。收据见计划 §9 round 24–26；
+r11 §9 的快照窗口面保留给自己的测试/exe，但 `AUTO_UI_ENGINE=ace` 产品缝
+自本批起指向 `run_ace_node_desktop_entry`（§9 引擎缝行为由此取代）。
+
+- **ui980 provider**（`ui/ace_node_desktop.rs`，hooks trampoline）：依赖
+  无关注解源经 `build_source` 构建（root=target/ace-node-desktop，新鲜度
+  缓存；lang 侧通用注册面 `auto_lang_ace_host::register_source_provider`）。
+  **967 冻结 AV 外呼可调用域 = view + 2×i32（`ViewI32I32ToI32`）**——7 函
+  数全部 `(view,i32,i32)->i32`：`ui_open`（tag+instances）、
+  `ui_apply_text/ui_apply_str`（view 即载荷，instance\*1000+slot 打包，当前
+  session）、`ui_apply_int/ui_apply_bool`（tag+打包+值，当前 session）、
+  `ui_poll_event/ui_close`（tag+显式句柄）。具名状态码：-1 未知句柄 /
+  -2 过期或未开 / -3 越槽 / -4 坏字节 / -5 错车道标签 / -100 hooks 未装。
+  宿主与 AV 经同一 DLL 模块（LoadLibraryW 引用计数）共享 statics；UI
+  session 状态（显示模型/typed 队列/世代/证据计数）归 auto-ui-runtime。
+- **事件回 AV（业务全在 AV）**：窗口点击→typed 队列（世代纪律）→tick
+  受控调用点 AV 外调 `ui_poll_event`（事件编码 (instance+1)\*1000+
+  (target+1)）→`AceStateEngine::dispatch`（§6 场景重放）→状态差量经 AV
+  外调 `ui_apply_*` 提交实际 UI 更新→Iced（`run_app` 泛型宿主，tick 订阅
+  驱动）。`text_byte_len` 不是 UI dispatch（判别力反例已固化）。
+- **三类源**：ace-hello-minimal 双源（字面量/函数中文）+ `examples/ui/
+  ace-node-counter/src/front/app.at`（002 计数业务派生 node）。文本面两
+  段：driverless-full（带 model/on）→静态观察面（无 model 的 Hello 类具
+  名回退；静态面拒 `on`=具名）。
+- **产品缝**（run_vm）：`AUTO_UI_ENGINE=ace` → `run_ace_node_desktop_entry`
+  （feature 关=具名拒；r11 `run_ace_native_entry` 保留为快照面 API）。
+- **永久 case**（`tests/ace_node_desktop.rs` 8 项 + 排窗 e2e 1 项）：轨迹
+  0→1→0→0 与两实例定向 2:1、hello 双源字节级 FFI、坏 Schema（无绑定
+  target/未声明 msg）、坏 ABI（未知句柄/越槽）、close/reopen/late 世代
+  纪律、byte_len 反例、撤权/复权、车道标签+跨 session 队列隔离+双重
+  close（复核 authored）。命令：`cargo test -p auto-ui-runtime --features
+  ace-bridge --test ace_node_desktop -- --test-threads=1`（排窗
+  `AUTO_UI_ACE_NODE_E2E=1`，prep=构建 example+`--prep-only`）。
+- **边界**：f-string 文本叶在两条文本车道均具名拒（沿 §5 既有债务；计数
+  值显示走 int 状态槽呈现）；真实鼠标/IME 交互属手工/环境门控档（沿 §9）；
+  打包位为 MIN-A 界内约定（实例 ≤4、槽 <1000）；完整 001/002 主题/全部
+  组件/Widgets 归 W1 B-AV。
