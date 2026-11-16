@@ -1044,11 +1044,21 @@ next_responsible_role: work（WEB 切片#6c：路线 B 实施。波次门不变�
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 32 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6b 落主）| worktree: D:/autostack/.wt/lang-980 | commit: lang 4656bf607 | next: work（WEB 切片#6c：路线 B 实施）
 
+2026-11-16 stage: goal（等待轮：完成审计+用户决策点，无阶段施工）| plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: work | to: user | status: executing（12/32）| outcome: waiting（结构性外部依赖，具名）| worktree: D:/autostack/.wt/lang-980（保留）。
+
+**完成审计（磁盘级，round 24–33 全对账）。** 已交付落主：NATIVE r13 全链（12/32）+ WEB 切片#1–#6b（普查/入口/精确定位/002 端到端/方言 span/设计决策）+ 规范 §12/§13.1–13.5。未完成：B-WEB 剩余（路线 B 实施=vue/script.rs 生成道+`generate_with_source`，多会话量级；90 项双轨；浏览器档）、B-TAURI、B-PARITY、T-05/06/07。**结构性外部依赖（用户 r13/r14 波次门，本会话不可解除）**：B-AV←M2A-08（985 executing 4/14）；B-RUST W3←UI-W2-AC（1068 drafting 0/10）；TAURI←WEB 完成。停靠项：KNOWN-DEBT 债务提交在分支（主检出 981 WIP 未落）；vue_capabilities 10 红=master 预存（已具名归 triage）。
+
+**用户决策点（§10 同步登记）**：完成计划980 需其一——①等待 985 交付 M2A-08 与 1068 交付 UI-W2-AC（波次门原样，980 保持 executing 至外部交付）；②调整波次裁定，允许 B-AV/B-RUST 与 WEB 并行（本会话可立即开工 B-AV 的 U01 分组面）；③授权后续会话继续 WEB #6c（路线 B 实施）直至 WEB 批闭合。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: verify | to: user | status: executing（12/32）| outcome: waiting | worktree: D:/autostack/.wt/lang-980 | commit: — | next: user（波次门/并行裁定）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
+
+**【等待用户裁定（round 33 登记）】完成计划980 的路径三选一**：①等 985 交付 M2A-08 + 1068 交付 UI-W2-AC（波次门原样——980 保持 executing 至外部交付后再续 B-AV/B-RUST/PARITY/终验）；②调整波次裁定允许 B-AV/B-RUST 与 WEB 并行（可立即开工）；③授权后续会话续 WEB 切片#6c（路线 B：vue/script.rs handler 体级 lane 发射+generate_with_source）直至 WEB 批闭合。WEB 剩余与波次门明细见 §9 round 32/33 收据与 §13.5。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 §5已冻结批次；T-01只补各批接口/命令参数及实测环境，不再负责从零拆大包。新增分母项须追加具名批次或正式后继并逐AC迁移，保持总闭合责任。
