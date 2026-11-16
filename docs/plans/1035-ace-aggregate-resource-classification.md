@@ -446,6 +446,20 @@ ace-av 组结果 JSON 中本包 10 个 `audit1035_*` 锚点均被发现并执行
 3. 未执行：native/A2X 对 Box 递归的发射/运行腿（D-962-C2/C3 既有能力债，不在本包补）、聚合 MutBorrow 新 ABI、clone 深拷贝源码能力、UI/AGE/正式性能轴。
 4. 首轮组门暴露的 HIR 过度扩大已在本包内回正（7d06f14e9）：裸 List/Closure/Object 元素不得判 owned，否则 962 的 chained whole-element view 与 native 聚合 lane 误红；该边界已由 `nested_element_view_read_runs`/`p946`/native lane 永久例守住。
 
+**测试范围与时长（test-discipline：daily 用 debug/增量，未跑 release/ace-perf）**
+
+| 范围 | 用例数 | 实测时长 | 说明 |
+|---|---|---|---|
+| av udit1035 过滤（RES-01/02/03 永久例） | 10 | 0.07s | 单进程 --test-threads=1；单个新增用例均 ≪10s |
+| core ggregates_resource_1035（HIR 负控） | 3 | 0.04s | 同上，含程序化 HIR 变异构造 |
+| cargo t ace-source | 806 | 7.05s | 2 红=base 已存在 grammar pin |
+| cargo t ace-lowering | 全组 | PASS | 新增零用例 |
+| cargo t ace-av | 1314 | 63.89s | 1 红=base 已存在 packages pin；1 红=环境抖动（隔离绿） |
+| cargo t ace-native | 298 | PASS | 首轮含本包回归，收窄后全绿 |
+| cargo t ace-a2x | 全组 | PASS | 含 ace-a2x-python 分类消费者 |
+| cargo t ace-a2c-abi | 9 | 0.02s（meter wall 0.75s） | 1 红=base 已存在 certification pin |
+
+准备/发现/执行：组门由 cargo t 一次性完成 discovery+run（日志中 per-group Summary 可复核）；冷编译首轮 32.8s（debug），后续增量 2-10s。复用证据：T-03 冻结提交 f86894ce3 的并集结果即为 merge 前的同身份证据，未重复跑全目录。
 stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
 
 ## 10. 待澄清事项
