@@ -468,3 +468,18 @@ expr 包含性**——对全部 handler 成立（002 六例核验）。精确 pa
   +宿主映射组装 handler 函数体。改动面：vue/script.rs handler 生成道 +
   VueGenerator 源通道（`generate_with_source`）——UI 侧自有面，无语言侧
   手术。**剩余**：路线 B 实施 → vue_capabilities 全量双轨 → 浏览器档。
+
+### §13.6 路线 B 核心：lane_handler_bodies（切片 #6c，2026-11-16）
+
+`ui/ace_vue_script.rs`（feature=ace-bridge）：`lane_handler_bodies(src,
+path, patterns)` → 每 handler 的 Vue script 函数体行（reactive 语义）。
+算法：lane（ops=去点 msg 重放）→ pattern**带箭头**锚定位体区间（view 内
+联引用无箭头——排除歧义）→ **写目标=体文本 LHS 首个 `.field`**（所有状
+态函数含全部 handler 的重放表达式，span 包含性不可区分写路径——具名边
+界：单赋值形 002 族已验，多语句/控制流形体归 #6d 结构分析）→ 区间最宽
+RHS 发射 → 宿主映射（`l<i>___age_s_<inst>_<field>` → `field.value`，剥
+实例段）→ `[helper 行..., field.value = rhs;]`。永久 case
+`p980_web_route_b_handler_bodies`（ace_ts_provider 10/10）：002 五
+handler 体全派生（Inc=加、ToggleMode=取反、UseAuto=字面量），**Inc 体
+真 node 执行 41→42**（a2x_rt helper 就位）。**WEB 剩余**：SFC 拼接
+（#6d）→ 全量双轨 → 浏览器档。
