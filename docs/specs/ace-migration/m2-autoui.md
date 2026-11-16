@@ -373,3 +373,22 @@ r11 §9 的快照窗口面保留给自己的测试/exe，但 `AUTO_UI_ENGINE=ace
   值显示走 int 状态槽呈现）；真实鼠标/IME 交互属手工/环境门控档（沿 §9）；
   打包位为 MIN-A 界内约定（实例 ≤4、槽 <1000）；完整 001/002 主题/全部
   组件/Widgets 归 W1 B-AV。
+
+## 13. WEB 切片 #2：fragment 车道覆盖普查（2026-11-16）
+
+PLAN-980 WEB 批切片 #2 已验：类型域参数（int/bool——str 被 profile 拒）
++ **车道覆盖普查冻结表**（`tests/ace_ts_provider.rs::
+p980_web_lane_census_frozen_forms`，11 形态逐项 Ok/具名拒）。收据见计划
+§9 round 27。
+
+- **关键事实（切换前置义务）**：976 fragment 车道经 `compile_source`
+  （**Core profile**）编译——**比较算子（`>`/`==`）、布尔算子（`!`/`&&`）、
+  `str` 类型、f-string 插值、多函数源均不在 profile 内**（具名码
+  `source.unsupported`/`source.lex`/`source.syntax`）；非字面 var-init
+  （参数引用/表达式初始化）触发 `verify.block-structure` 拒（O-C2 形状
+  缺口——字面初始化的两步赋值形态 OK）。今日 OK 面=字面 init 两步赋值/
+  return 表达式（int 算术）+宿主 reactive 映射+真 node 执行。
+- **推论**：ts_adapter 委托替换的实底不是（只是）AST→HIR 线程化——
+  生产 UI 表达表面（比较/布尔/str/插值/调用）**先须扩 fragment 编译
+  profile/入口**（976 后继或 richer entry），普查表即该义务的可测分母
+  （表变化须具名修订，防静默漂移）。
