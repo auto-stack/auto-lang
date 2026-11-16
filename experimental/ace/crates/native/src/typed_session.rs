@@ -594,6 +594,14 @@ fn arm_failpoint(point: &'static str, ordinal: u32) {
     FAILPOINT.with(|f| f.set(Some((point, ordinal.max(1)))));
 }
 
+/// Clear any armed one-shot fault. Tests call this on entry so a panicking
+/// previous test can never leak an armed point into the next test on the
+/// same thread.
+#[cfg(test)]
+fn disarm_failpoint() {
+    FAILPOINT.with(|f| f.set(None));
+}
+
 #[cfg(test)]
 fn failpoint(point: &str) -> bool {
     FAILPOINT.with(|f| match f.get() {
@@ -734,11 +742,13 @@ mod atomicity_1032 {
     const HELPER_B: &str = r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"00000000000000ff"}],"ret":"t0"}"#;
     const HELPER_C: &str = r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"00000000000000ab"}],"ret":"t0"}"#;
     const HELPER_WIDE: &str = r#"{"name":"helper","params":[["a","i64"],["b","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"b"}],"ret":"t0"}"#;
-    const DISJOINT_BAD: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[],"ret":"missing"}"#;
+    const DISJOINT_BAD: &str =
+        r#"{"name":"disjoint","params":[],"result":"i64","body":[],"ret":"missing"}"#;
     const DISJOINT_GOOD: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000003"}],"ret":"t0"}"#;
     const DISJOINT_C: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000005"}],"ret":"t0"}"#;
     const HELPER_D: &str = r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"00000000000000cd"}],"ret":"t0"}"#;
     const DISJOINT_D: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000009"}],"ret":"t0"}"#;
+    const HELPER_E: &str = r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000017"}],"ret":"t0"}"#;
 
     /// PLAN-1032 NTX-02 (internal oracle): a failed batch leaves the WHOLE
     /// accepted transaction untouched — document, residents/objects,
@@ -752,16 +762,13 @@ mod atomicity_1032 {
             eprintln!("infra-blocked: rust-lld/SDK unavailable — PLAN-1032 oracle skipped");
             return;
         }
+        disarm_failpoint();
         let store_root = workdir("store");
         let store = ManagedStore::open(&store_root).expect("store");
         let dir = workdir("run");
-        let mut session = TypedSession::start(
-            doc_from(BASE),
-            &dir,
-            Some(store),
-            TypedCacheMode::Reuse,
-        )
-        .expect("session starts");
+        let mut session =
+            TypedSession::start(doc_from(BASE), &dir, Some(store), TypedCacheMode::Reuse)
+                .expect("session starts");
 
         // A: helper identity.
         let run = session
@@ -826,6 +833,22 @@ mod atomicity_1032 {
             .run(&[arg("i64", "0000000000000010")], 4, None)
             .expect("run A again");
         assert_eq!(value_bits(&run), "0000000000000010", "A is installed");
+
+        // (2b) The EXACT multi-item shape of the public NTX-01 oracle
+        // ("valid head + late verify failure") observed on the INTERNAL
+        // accepted state as well: the head genuinely produces a new object,
+        // the tail fails, and doc/residents/history/generation stay
+        // identical — the already-produced head is not installed.
+        let accepted = session.acceptance_snapshot();
+        let err = session
+            .edit_units(vec![unit_decl(HELPER_E), unit_decl(DISJOINT_BAD)])
+            .expect_err("multi-item verify failure must reject the whole batch");
+        reject(err, "multi-item verify batch");
+        assert_eq!(
+            session.acceptance_snapshot(),
+            accepted,
+            "the internal accepted state is unchanged for a multi-item verify failure"
+        );
 
         // (3) EMIT failure on the SECOND unit: the first unit already
         // produced, the batch must still install nothing.
@@ -896,14 +919,10 @@ mod atomicity_1032 {
             eprintln!("infra-blocked: rust-lld/SDK unavailable — PLAN-1032 control skipped");
             return;
         }
+        disarm_failpoint();
         let dir = workdir("sig");
-        let mut session = TypedSession::start(
-            doc_from(BASE),
-            &dir,
-            None,
-            TypedCacheMode::Reuse,
-        )
-        .expect("session starts");
+        let mut session = TypedSession::start(doc_from(BASE), &dir, None, TypedCacheMode::Reuse)
+            .expect("session starts");
         let accepted = session.acceptance_snapshot();
 
         // helper widens WITHOUT its caller following: the dependent `main`

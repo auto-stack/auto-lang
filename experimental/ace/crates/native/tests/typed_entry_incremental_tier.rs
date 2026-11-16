@@ -281,13 +281,12 @@ fn typed_session_cold_restart_readmits_from_store_without_remission() {
 
 const ATOMIC_HELPER_B: &str = r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"00000000000000ff"}],"ret":"t0"}"#;
 const ATOMIC_HELPER_WIDE: &str = r#"{"name":"helper","params":[["a","i64"],["b","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"b"}],"ret":"t0"}"#;
-const ATOMIC_DISJOINT_BAD: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[],"ret":"missing"}"#;
+const ATOMIC_DISJOINT_BAD: &str =
+    r#"{"name":"disjoint","params":[],"result":"i64","body":[],"ret":"missing"}"#;
 const ATOMIC_DISJOINT_GOOD: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000003"}],"ret":"t0"}"#;
 const ATOMIC_DISJOINT_LATER: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000007"}],"ret":"t0"}"#;
 
-fn residents_snapshot(
-    session: &TypedSession,
-) -> Vec<(String, String, u64, String)> {
+fn residents_snapshot(session: &TypedSession) -> Vec<(String, String, u64, String)> {
     session
         .residents()
         .map(|r| {
