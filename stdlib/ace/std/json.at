@@ -201,6 +201,7 @@ fn json_ws(s str, i int) int {
 }
 
 // i at the opening quote; index AFTER the closing quote, or -1.
+// Rejects unescaped control chars (< 32) and invalid escape sequences.
 fn json_str_end(s str, i int) int {
     let n = s.len()
     var p = i + 1
@@ -210,8 +211,52 @@ fn json_str_end(s str, i int) int {
             return -1
         }
         let c = json_cp(s, p)
+        if c < 32 {
+            return -1
+        }
         if c == 92 {
-            p = p + 2
+            if p + 1 >= n {
+                return -1
+            }
+            let e = json_cp(s, p + 1)
+            var ok = 0
+            if e == 34 { ok = 1 }
+            if e == 92 { ok = 1 }
+            if e == 47 { ok = 1 }
+            if e == 98 { ok = 1 }
+            if e == 102 { ok = 1 }
+            if e == 110 { ok = 1 }
+            if e == 114 { ok = 1 }
+            if e == 116 { ok = 1 }
+            if e == 117 {
+                if p + 5 >= n {
+                    return -1
+                }
+                var k = 0
+                for k < 4 {
+                    let hc = json_cp(s, p + 2 + k)
+                    var hd = 0
+                    if hc >= 48 {
+                        if hc <= 57 { hd = 1 }
+                    }
+                    if hc >= 65 {
+                        if hc <= 70 { hd = 1 }
+                    }
+                    if hc >= 97 {
+                        if hc <= 102 { hd = 1 }
+                    }
+                    if hd == 0 {
+                        return -1
+                    }
+                    k = k + 1
+                }
+                p = p + 6
+            } else {
+                if ok == 0 {
+                    return -1
+                }
+                p = p + 2
+            }
         } else {
             if c == 34 {
                 return p + 1
@@ -848,6 +893,7 @@ pub fn json_parse_str(s str, path str) Str {
             }
             let e = json_cp(s, p + 1)
             var bad = 0
+            var step = 2
             if e == 34 {
                 let qq Str = "\""
                 out = out + qq
@@ -888,8 +934,41 @@ pub fn json_parse_str(s str, path str) Str {
                                                 if cp < 0 {
                                                     return ""
                                                 }
-                                                let piece Str = char.from_codepoint(cp).to(Str)
-                                                out = out + piece
+                                                if cp >= 55296 {
+                                                    if cp <= 56319 {
+                                                        if p + 11 >= n {
+                                                            return ""
+                                                        }
+                                                        if json_cp(s, p + 6) != 92 {
+                                                            return ""
+                                                        }
+                                                        if json_cp(s, p + 7) != 117 {
+                                                            return ""
+                                                        }
+                                                        let lo = json_hex4(s, p + 8)
+                                                        if lo < 56320 {
+                                                            return ""
+                                                        }
+                                                        if lo > 57343 {
+                                                            return ""
+                                                        }
+                                                        let full = 65536 + (cp - 55296) * 1024 + (lo - 56320)
+                                                        let piece Str = char.from_codepoint(full).to(Str)
+                                                        out = out + piece
+                                                        step = 12
+                                                    } else {
+                                                        if cp <= 57343 {
+                                                            return ""
+                                                        }
+                                                        let piece Str = char.from_codepoint(cp).to(Str)
+                                                        out = out + piece
+                                                        step = 6
+                                                    }
+                                                } else {
+                                                    let piece Str = char.from_codepoint(cp).to(Str)
+                                                    out = out + piece
+                                                    step = 6
+                                                }
                                             } else {
                                                 bad = 1
                                             }
@@ -904,11 +983,7 @@ pub fn json_parse_str(s str, path str) Str {
             if bad == 1 {
                 return ""
             }
-            if e == 117 {
-                p = p + 6
-            } else {
-                p = p + 2
-            }
+            p = p + step
             run = p
         } else {
             p = p + 1
@@ -943,7 +1018,11 @@ pub fn json_parse_int(s str, path str) int {
             let c = json_cp(s, p)
             if c >= 48 {
                 if c <= 57 {
-                    val = val * 10 + (c - 48)
+                    if neg == 1 {
+                        val = val * 10 - (c - 48)
+                    } else {
+                        val = val * 10 + (c - 48)
+                    }
                     p = p + 1
                 } else {
                     alive = 0
@@ -952,9 +1031,6 @@ pub fn json_parse_int(s str, path str) int {
                 alive = 0
             }
         }
-    }
-    if neg == 1 {
-        return 0 - val
     }
     return val
 }

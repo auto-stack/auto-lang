@@ -1339,14 +1339,11 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     let view_owned =
                         matches!(mode, hir::ParamMode::View | hir::ParamMode::MutBorrow)
                             && matches!(pty, Ty::StrOwned);
-                    let v = if view_owned {
-                        self.lower_view_value(arg).map(|(v, _)| v)?
+                    let (v, aty) = if view_owned {
+                        self.lower_view_value(arg)?
                     } else {
-                        self.lower_pure(arg).map(|(v, _)| v)?
+                        self.lower_pure(arg)?
                     };
-                    let aty = self
-                        .view
-                        .resolve_use_ty(self.facts.body.exprs[arg.0 as usize].ty)?;
                     slots.push((v, aty));
                 }
                 let mut placed: Vec<Option<(String, Ty)>> = vec![None; n];

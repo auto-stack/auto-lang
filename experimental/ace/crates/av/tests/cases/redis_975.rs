@@ -38,7 +38,7 @@ fn redis975_resp_over_platform_net() {
             return received;
         };
         let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(2)));
-                use std::io::Write as _;
+        use std::io::Write as _;
         // interactive: read ONE command line, reply, repeat (real RESP
         // request/response — no read-to-EOF deadlock)
         let mut carry = Vec::<u8>::new();
@@ -63,7 +63,6 @@ fn redis975_resp_over_platform_net() {
                 } else {
                     b"-ERR unknown command\r\n"
                 };
-                eprintln!("[r975s] cmd={cmd:?} -> reply {reply:?}");
                 if c.write_all(reply).is_err() {
                     break;
                 }
@@ -71,18 +70,9 @@ fn redis975_resp_over_platform_net() {
                 continue;
             }
             match c.read(&mut rbuf) {
-                Ok(0) => {
-                    eprintln!("[r975s] EOF");
-                    break;
-                }
-                Ok(n) => {
-                    eprintln!("[r975s] read {n}");
-                    carry.extend_from_slice(&rbuf[..n]);
-                }
-                Err(e) => {
-                    eprintln!("[r975s] err {e}");
-                    break;
-                }
+                Ok(0) => break,
+                Ok(n) => carry.extend_from_slice(&rbuf[..n]),
+                Err(_) => break,
             }
         }
         let _ = c.shutdown(std::net::Shutdown::Both);
@@ -233,10 +223,7 @@ fn resp_read_bulk(buf: &mut Vec<u8>, c: &mut std::net::TcpStream, n: usize) -> O
 /// Parse ONE full RESP2 array command ("*N" + N "$len" args). The
 /// $len framing IS the wire oracle: each arg is decoded by length, so
 /// a miscounted encoder yields the wrong recorded command (or None).
-fn resp_read_command(
-    buf: &mut Vec<u8>,
-    c: &mut std::net::TcpStream,
-) -> Option<Vec<String>> {
+fn resp_read_command(buf: &mut Vec<u8>, c: &mut std::net::TcpStream) -> Option<Vec<String>> {
     let head = resp_read_line(buf, c)?;
     let n: usize = head.strip_prefix('*')?.parse().ok()?;
     let mut args = Vec::with_capacity(n);
@@ -271,6 +258,9 @@ fn redis975_std_redis_packaging_inline() {
                 ("GET", 2) if args[1] == "k" => b"$5\r\nhello\r\n".to_vec(),
                 ("GET", 2) if args[1] == "missing" => b"$-1\r\n".to_vec(),
                 ("GET", 2) if args[1] == "u" => b"$4\r\n\xe4\xb8\xadA\r\n".to_vec(),
+                ("GET", 2) if args[1] == "badutf8" => b"$2\r\n\xff\xfe\r\n".to_vec(),
+                ("GET", 2) if args[1] == "overlong" => b"$2\r\n\xc0\xaf\r\n".to_vec(),
+                ("GET", 2) if args[1] == "surr" => b"$3\r\n\xed\xa0\x80\r\n".to_vec(),
                 ("INCR", 2) => b":3\r\n".to_vec(),
                 ("EXISTS", 2) => b":1\r\n".to_vec(),
                 ("PING", 1) => b"+PONG\r\n".to_vec(),
@@ -313,6 +303,13 @@ fn main() int {{
     let gu Str = redis_get(s, "u")              // $4 中A   -> "中A"
     let want_u Str = "中A"
     if gu != want_u {{ return 42 }}
+    // malformed UTF-8 negative controls must reject cleanly to "" without trapping
+    let gb Str = redis_get(s, "badutf8")
+    if gb.len_bytes() != 0 {{ return 43 }}
+    let g_ol Str = redis_get(s, "overlong")
+    if g_ol.len_bytes() != 0 {{ return 44 }}
+    let gs Str = redis_get(s, "surr")
+    if gs.len_bytes() != 0 {{ return 45 }}
     // payload BYTES observable through the reader face
     let region = mem_alloc(4096)
     let end = redis_cmd(s, region, 0, redis_cmd_get("k"))
@@ -347,7 +344,8 @@ fn main() int {{
         port = port
     );
     let mut backend = Win32PlatformIo::default();
-    let program = ace_av::console_host::compile(&src, "d_main").expect("compile redis stdlib source");
+    let program =
+        ace_av::console_host::compile(&src, "d_main").expect("compile redis stdlib source");
     let mut limits = ace_av_core::av::ExecLimits::default();
     limits.wall = std::time::Duration::from_secs(10);
     let (out, _t, _s) = program
@@ -384,6 +382,9 @@ fn main() int {{
             vec!["GET", "k"],
             vec!["GET", "missing"],
             vec!["GET", "u"],
+            vec!["GET", "badutf8"],
+            vec!["GET", "overlong"],
+            vec!["GET", "surr"],
             vec!["GET", "k"],
             vec!["FOO"],
             vec!["DEL", "k"],

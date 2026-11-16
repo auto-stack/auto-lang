@@ -251,6 +251,17 @@ fn main() int {{
     // missing string -> "" pairs with kind 0 (owned literal context)
     let empty Str = ""
     if json_parse_str(doc, "nope") != empty {{ return 47 }}
+    // UTF-16 surrogate pair decode + lone-surrogate non-trap + invalid escapes + i32::MIN
+    let surr str = "{{\"emoji\":\"\\uD83D\\uDE00\",\"lone\":\"\\uD800\",\"min\":-2147483648}}"
+    let emoji Str = json_parse_str(surr, "emoji")
+    let want_emoji Str = "😀"
+    if emoji != want_emoji {{ return 48 }}
+    if json_parse_str(surr, "lone") != empty {{ return 49 }}
+    if json_parse_int(surr, "min") != -2147483648 {{ return 50 }}
+    let b10 str = "{{\"bad\":\"\\q\"}}"
+    if json_is_valid(b10) != false {{ return 51 }}
+    let b11 str = "{{\"bad\":\"\\uZZZZ\"}}"
+    if json_is_valid(b11) != false {{ return 52 }}
     return 0
 }}
 "#
@@ -525,4 +536,3 @@ fn main() int {{
         "array paths + V-08 fidelity oracles, got {out:?}"
     );
 }
-

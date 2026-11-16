@@ -270,39 +270,117 @@ pub fn redis_get(s int, key Str) Str {
     var i = 0
     for i < n {
         let b0 = mem_read_u8(region, p + i)
-        var cp = b0
-        var step = 1
-        if b0 >= 240 {
-            if b0 <= 247 {
-                if i + 3 < n {
-                    cp = (b0 - 240) * 262144 + (mem_read_u8(region, p + i + 1) - 128) * 4096 + (mem_read_u8(region, p + i + 2) - 128) * 64 + (mem_read_u8(region, p + i + 3) - 128)
-                    step = 4
-                } else {
-                    let _fb = mem_free(region)
-                    return ""
-                }
-            }
-        }
-        if b0 >= 224 {
-            if b0 <= 239 {
-                if i + 2 < n {
-                    cp = (b0 - 224) * 4096 + (mem_read_u8(region, p + i + 1) - 128) * 64 + (mem_read_u8(region, p + i + 2) - 128)
-                    step = 3
-                } else {
-                    let _fb = mem_free(region)
-                    return ""
-                }
-            }
-        }
-        if b0 >= 192 {
-            if b0 <= 223 {
-                if i + 1 < n {
-                    cp = (b0 - 192) * 64 + (mem_read_u8(region, p + i + 1) - 128)
+        var cp = 0
+        var step = 0
+        if b0 <= 127 {
+            cp = b0
+            step = 1
+        } else {
+            if b0 >= 194 {
+                if b0 <= 223 {
+                    if i + 1 >= n {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    let b1 = mem_read_u8(region, p + i + 1)
+                    if b1 < 128 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b1 > 191 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    cp = (b0 - 192) * 64 + (b1 - 128)
                     step = 2
-                } else {
-                    let _fb = mem_free(region)
-                    return ""
                 }
+            }
+            if b0 >= 224 {
+                if b0 <= 239 {
+                    if i + 2 >= n {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    let b1 = mem_read_u8(region, p + i + 1)
+                    let b2 = mem_read_u8(region, p + i + 2)
+                    if b1 < 128 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b1 > 191 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b2 < 128 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b2 > 191 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    cp = (b0 - 224) * 4096 + (b1 - 128) * 64 + (b2 - 128)
+                    if cp < 2048 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if cp >= 55296 {
+                        if cp <= 57343 {
+                            let _fb = mem_free(region)
+                            return ""
+                        }
+                    }
+                    step = 3
+                }
+            }
+            if b0 >= 240 {
+                if b0 <= 244 {
+                    if i + 3 >= n {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    let b1 = mem_read_u8(region, p + i + 1)
+                    let b2 = mem_read_u8(region, p + i + 2)
+                    let b3 = mem_read_u8(region, p + i + 3)
+                    if b1 < 128 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b1 > 191 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b2 < 128 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b2 > 191 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b3 < 128 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if b3 > 191 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    cp = (b0 - 240) * 262144 + (b1 - 128) * 4096 + (b2 - 128) * 64 + (b3 - 128)
+                    if cp < 65536 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    if cp > 1114111 {
+                        let _fb = mem_free(region)
+                        return ""
+                    }
+                    step = 4
+                }
+            }
+            if step == 0 {
+                let _fb = mem_free(region)
+                return ""
             }
         }
         let c char = char.from_codepoint(cp)
