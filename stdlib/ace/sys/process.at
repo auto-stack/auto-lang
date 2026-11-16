@@ -48,7 +48,8 @@ use std.syscommon.min_i
 // allow only no-argument method reads (len), so per-char walks over list
 // elements are impossible; the spawn API takes OWNED string params
 // (spawn5) or a raw codepoint list (spawn_wait_cps) instead. The list
-// form lands with the lane construction increment (plan dossier).
+// form is SUPERSEDED by those APIs (final PLAN-973 decision — no
+// list-staging increment is planned; T-05 review finding F4).
 
 fn append_str_cps(a Str, i int, cps List<int>) int {
     if (i >= a.len()) {
