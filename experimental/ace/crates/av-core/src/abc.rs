@@ -1525,9 +1525,9 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         // PLAN-973: the closures family (packages-aggregates
                         // lane, std system-library modules) rides the same
                         // platform-call seam as AVHC.
-                        if (family != WireFamily::HostConsole
-                            && family != WireFamily::Closures)
-                            || args.len() > 8 {
+                        if (family != WireFamily::HostConsole && family != WireFamily::Closures)
+                            || args.len() > 8
+                        {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "platform call requires AVHC and bounded arity".into(),

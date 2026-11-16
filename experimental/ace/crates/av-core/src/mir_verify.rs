@@ -863,11 +863,12 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_NET_CLOSE
                             | crate::platform_io::CAP_NET_LISTEN
                     ));
-                // PLAN-973: the system-resource capability spellings are
-                // KNOWN admissions (units may carry them transitively from
-                // package binding without owning a platform import) — the
-                // run-time grant ledger stays the authority.
-                || matches!(
+            // PLAN-973: the system-resource capability spellings are
+            // KNOWN admissions (units may carry them transitively from
+            // package binding without owning a platform import) — the
+            // run-time grant ledger stays the authority.
+            || {
+                matches!(
                     c.as_str(),
                     crate::platform_io::CAP_STDIN
                         | crate::platform_io::CAP_FILE
@@ -879,7 +880,8 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // sys-library units stage through io/mem primitives
                         | crate::platform_io::CAP_WRITE
                         | crate::platform_io::CAP_MEM
-                );
+                )
+            };
             if !known {
                 return Err(MirVerifyError::uns(
                     "mir.capability-unknown",

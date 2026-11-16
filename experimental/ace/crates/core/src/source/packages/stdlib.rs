@@ -135,11 +135,7 @@ pub fn stdlib_sys_files() -> Vec<(String, String)> {
 }
 
 /// 系统库装配集的 `std` 身份保留（与 972 集同一防遮蔽纪律）。
-pub fn is_frozen_std_sys_module(
-    id: &str,
-    version: &str,
-    source: &str,
-) -> bool {
+pub fn is_frozen_std_sys_module(id: &str, version: &str, source: &str) -> bool {
     version == STDLIB_VERSION
         && (matches!(id, "syscommon" if source == SYS_SYSCOMMON)
             || matches!(id, "sysplat_win" if source == SYS_SYSPLAT_WIN)

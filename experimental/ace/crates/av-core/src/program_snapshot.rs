@@ -706,11 +706,7 @@ pub struct UnitView<'a> {
 impl crate::av::ModuleView for UnitView<'_> {
     /// PLAN-973: host imports resolve against the OWNING unit's module
     /// (indices are unit-local on the split-unit link path).
-    fn host_import_at(
-        &self,
-        func: u32,
-        idx: u32,
-    ) -> Option<crate::mir::MirHostImport> {
+    fn host_import_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirHostImport> {
         self.snap
             .code
             .get(func as usize)?

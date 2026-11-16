@@ -62,7 +62,8 @@ fn t13_coff_split_path_fails_closed_for_callback_resource_manifests() {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
-    let scratch = TempDir(std::env::temp_dir().join(format!("p967-t13-fence-{}", std::process::id())));
+    let scratch =
+        TempDir(std::env::temp_dir().join(format!("p967-t13-fence-{}", std::process::id())));
     std::fs::create_dir_all(&scratch.0).unwrap();
     let _ = &scratch; // held to end-of-test: the scratch cleans up on drop
     let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(

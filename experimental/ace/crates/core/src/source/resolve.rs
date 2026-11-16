@@ -1413,7 +1413,7 @@ pub fn resolve_closures_cached(
             variants: coll.variants,
             function_types: coll.function_types,
             objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
+            sched_tasks: coll.sched_tasks,
         },
         warm.out,
         warm.reused,
@@ -1462,7 +1462,7 @@ pub(crate) fn resolve_closures_env(
                 variants: coll.variants,
                 function_types: coll.function_types,
                 objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
+                sched_tasks: coll.sched_tasks,
             },
             rec_index: ix.rec_index,
             sigs: ix.sigs,
@@ -1484,7 +1484,8 @@ pub fn resolve_with(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None, None, None)?;
+    let (fns, records, coll, _) =
+        resolve_detailed(program, capabilities, surface, None, None, None)?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
         foreign_slots: Vec::new(),
@@ -3427,7 +3428,7 @@ pub fn resolve_env_with_supply(
             variants: coll.variants,
             function_types: coll.function_types,
             objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
+            sched_tasks: coll.sched_tasks,
         },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
@@ -14572,22 +14573,26 @@ impl<'a, 's> FnResolver<'a, 's> {
         match name {
             "__sched_spawn" => {
                 if args.len() < 2 {
-                    arity_err(self, "a task name string, a mailbox capacity and the spawn initializers");
+                    arity_err(
+                        self,
+                        "a task name string, a mailbox capacity and the spawn initializers",
+                    );
                     return named_i32(call_span);
                 }
                 let task_idx = match &args[0].kind {
-                    RExprKind::StrLit(tname) => match surface.tasks.iter().position(|t| &t.name == tname)
-                    {
-                        Some(i) => i,
-                        None => {
-                            self.bind_err(
-                                "source.sched-task",
-                                format!("no task named `{tname}` is declared in this module"),
-                                args[0].span,
-                            );
-                            return named_i32(call_span);
+                    RExprKind::StrLit(tname) => {
+                        match surface.tasks.iter().position(|t| &t.name == tname) {
+                            Some(i) => i,
+                            None => {
+                                self.bind_err(
+                                    "source.sched-task",
+                                    format!("no task named `{tname}` is declared in this module"),
+                                    args[0].span,
+                                );
+                                return named_i32(call_span);
+                            }
                         }
-                    },
+                    }
                     _ => {
                         self.bind_err(
                             "source.sched-task",
@@ -14645,10 +14650,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 ResolvedExpr {
                     span: call_span,
                     vt: self.node_ty(call_span, VT::Task(task_idx)),
-                    kind: RExprKind::CallIntrinsic {
-                        symbol: sym,
-                        args,
-                    },
+                    kind: RExprKind::CallIntrinsic { symbol: sym, args },
                 }
             }
             "__sched_send" | "__sched_ask" => {
@@ -14661,7 +14663,14 @@ impl<'a, 's> FnResolver<'a, 's> {
                     _ => {
                         self.bind_err(
                             "source.sched-argument",
-                            format!("`{}`'s first argument must be a task handle", if name == "__sched_send" { "send" } else { "ask" }),
+                            format!(
+                                "`{}`'s first argument must be a task handle",
+                                if name == "__sched_send" {
+                                    "send"
+                                } else {
+                                    "ask"
+                                }
+                            ),
                             args[0].span,
                         );
                         return named_i32(call_span);
@@ -14832,10 +14841,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     if a.vt != want[k] {
                         self.bind_err(
                             "source.sched-argument",
-                            format!(
-                                "`go {fname}` argument {k} must be {}",
-                                want[k].as_str()
-                            ),
+                            format!("`go {fname}` argument {k} must be {}", want[k].as_str()),
                             a.span,
                         );
                         return named_i32(call_span);
@@ -14844,10 +14850,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 // The symbol carries the resolved fn INDEX (stable across
                 // the def-order MIR function table) — the lowering does not
                 // depend on body-lowering order.
-                let go_sym = Self::sched_sym(
-                    "__sched_go",
-                    &format!("{}_{fname}", sig.index),
-                );
+                let go_sym = Self::sched_sym("__sched_go", &format!("{}_{fname}", sig.index));
                 ResolvedExpr {
                     span: call_span,
                     vt: VT::I32,
@@ -14868,19 +14871,17 @@ impl<'a, 's> FnResolver<'a, 's> {
                 };
                 let tname = self.coll.sched_tasks[ti].name.clone();
                 let (vt, symbol): (VT, &'static str) = match name {
-                    "__sched_recv" => {
-                        (self.coll.sched_tasks[ti].msg, Self::sched_sym("__sched_recv", &tname))
-                    }
+                    "__sched_recv" => (
+                        self.coll.sched_tasks[ti].msg,
+                        Self::sched_sym("__sched_recv", &tname),
+                    ),
                     "__sched_port" => (VT::I32, Self::sched_sym("__sched_port", &tname)),
                     _ => (VT::Bool, Self::sched_sym("__sched_stopping", &tname)),
                 };
                 ResolvedExpr {
                     span: call_span,
                     vt: self.node_ty(call_span, vt),
-                    kind: RExprKind::CallIntrinsic {
-                        symbol,
-                        args,
-                    },
+                    kind: RExprKind::CallIntrinsic { symbol, args },
                 }
             }
             _ => {

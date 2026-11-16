@@ -3508,8 +3508,8 @@ impl Verifier {
                 // console 拼写（auto.console.*）仍只在 host-console 画像。
                 // PLAN-973: 装配 aggregates 面（std 系统库集 sysplat_win/lnx
                 // 的平台原语包装）同样准入；能力/授权仍由运行准入层核。
-                let platform_in_packages = self.domain == HirDomain::TextRecord
-                    || self.domain == HirDomain::Closures;
+                let platform_in_packages =
+                    self.domain == HirDomain::TextRecord || self.domain == HirDomain::Closures;
                 if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                     if (symbol.starts_with("auto.console.") && !sched_module)
                         || (symbol.starts_with("auto.platform.") && !platform_in_packages))

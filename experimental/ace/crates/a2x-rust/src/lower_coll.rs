@@ -1061,7 +1061,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 vec![args[0].clone(), wrap(args[1].clone(), &sig_params[1])],
             )
         } else if rest.starts_with("reply_") {
-            plain("a2x_sched_reply", vec![wrap(args[0].clone(), &sig_params[0])])
+            plain(
+                "a2x_sched_reply",
+                vec![wrap(args[0].clone(), &sig_params[0])],
+            )
         } else if rest.starts_with("await_") {
             unwrap(plain("a2x_sched_await", vec![args[0].clone()]), &ty)
         } else if rest.starts_with("recv_") {
@@ -1195,15 +1198,15 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     let op = ace_core::source::platform_io::PLATFORM_SOURCE_OPS
                         .iter()
                         .find(|o| o.symbol == sym)
-                        .ok_or_else(|| A2xReject::unsupported_expr(format!(
-                            "platform symbol {sym} is not in the op table"
-                        )))?;
+                        .ok_or_else(|| {
+                            A2xReject::unsupported_expr(format!(
+                                "platform symbol {sym} is not in the op table"
+                            ))
+                        })?;
                     let mut args = Vec::new();
                     for (i, a) in eval_args.iter().enumerate() {
-                        let is_str = matches!(
-                            op.params.get(i),
-                            Some(ace_core::source::resolve::VT::Str)
-                        );
+                        let is_str =
+                            matches!(op.params.get(i), Some(ace_core::source::resolve::VT::Str));
                         let v = if is_str {
                             self.operand_str_view(*a, out)?
                         } else {
@@ -1216,16 +1219,11 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         args,
                     };
                     let ty = self.view.resolve_use_ty(e.ty)?;
-                    return self.coll_temp_plain(
-                        id,
-                        rust_ty_str(self.view, ty),
-                        call,
-                        out,
-                    );
+                    return self.coll_temp_plain(id, rust_ty_str(self.view, ty), call, out);
                 } else {
-                    return Err(A2xReject::unsupported_expr(
-                        format!("call target not admitted (def #{target})"),
-                    ));
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "call target not admitted (def #{target})"
+                    )));
                 };
                 // PLAN-946: View-mode List parameters borrow exclusively at
                 // the call (`&mut x`) — the caller keeps its list (callee

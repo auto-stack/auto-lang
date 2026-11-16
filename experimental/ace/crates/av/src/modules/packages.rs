@@ -106,18 +106,22 @@ impl PackageAvTarget {
         &self,
         grants: &[String],
         backend: &mut dyn ace_av_core::platform_io::PlatformIoBackend,
-    ) -> Result<(ace_av_core::contract::ExecOutcome, ace_av_core::PlatformSessionSummary), String>
-    {
-        let (out, _trace, summary) =
-            ace_av_core::execute_program_platform(
-                &self.current,
-                &ace_av_core::ExecLimits::default(),
-                &ace_av_core::CancelFlag::default(),
-                grants,
-                None,
-                backend,
-            )
-            .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    ) -> Result<
+        (
+            ace_av_core::contract::ExecOutcome,
+            ace_av_core::PlatformSessionSummary,
+        ),
+        String,
+    > {
+        let (out, _trace, summary) = ace_av_core::execute_program_platform(
+            &self.current,
+            &ace_av_core::ExecLimits::default(),
+            &ace_av_core::CancelFlag::default(),
+            grants,
+            None,
+            backend,
+        )
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
         Ok((out, summary))
     }
 

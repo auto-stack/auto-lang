@@ -68,9 +68,12 @@ fn run_av(
         source, "p973avf", &caps, "p973avf", "m973avf", &mut query,
     )
     .unwrap_or_else(|ds| {
-        eprintln!("AV SRC PANIC:
+        eprintln!(
+            "AV SRC PANIC:
 {}
-END", source);
+END",
+            source
+        );
         panic!("compiles: {ds:?}")
     });
     let mir = ace_lowering::hir_adapter::lower_checked_owned(
@@ -96,7 +99,10 @@ END", source);
 
 fn expect_i32(out: ExecOutcome, want: i32, label: &str) {
     match out {
-        ExecOutcome::Success { value: Value::I32(v), .. } => assert_eq!(v, want, "{label}"),
+        ExecOutcome::Success {
+            value: Value::I32(v),
+            ..
+        } => assert_eq!(v, want, "{label}"),
         other => panic!("{label}: unexpected {other:?}"),
     }
 }
@@ -142,9 +148,7 @@ fn sys973_av_rust_foreign_dispatch() {
             .find(|f| f.rust_name == "sys973_path_attrs")
             .map(|f| f.export.clone())
             .expect("provider function present in manifest");
-        let raw = library
-            .symbol(&export)
-            .expect("shim export present");
+        let raw = library.symbol(&export).expect("shim export present");
         let callable = unsafe {
             ForeignCallable::PureI32(std::mem::transmute::<
                 _,
@@ -166,14 +170,21 @@ fn sys973_av_rust_foreign_dispatch() {
     // a REAL directory through the Rust provider: bits = 1
     let dir_arg = {
         let t = std::env::temp_dir().to_string_lossy().to_string();
-        t.trim_end_matches(char::from(92)).trim_end_matches('/').replace(char::from(92), "/")
+        t.trim_end_matches(char::from(92))
+            .trim_end_matches('/')
+            .replace(char::from(92), "/")
     };
-    let src = format!(
-        "use.rs sys973_rust\nfn main() int {{ return sys973_path_attrs(\"{dir_arg}\") }}"
-    );
+    let src =
+        format!("use.rs sys973_rust\nfn main() int {{ return sys973_path_attrs(\"{dir_arg}\") }}");
     let out = run_av(&src, &mut table, &environment);
     assert!(
-        matches!(out, ExecOutcome::Success { value: Value::I32(1), .. }),
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(1),
+                ..
+            }
+        ),
         "AV Rust dir bit: {out:?}"
     );
 
@@ -182,9 +193,8 @@ fn sys973_av_rust_foreign_dispatch() {
         .join("tests/cases/sys973_av_foreign.rs")
         .to_string_lossy()
         .replace(char::from(92), "/");
-    let src = format!(
-        "use.rs sys973_rust\nfn main() int {{ return sys973_path_attrs(\"{file_arg}\") }}"
-    );
+    let src =
+        format!("use.rs sys973_rust\nfn main() int {{ return sys973_path_attrs(\"{file_arg}\") }}");
     let out = run_av(&src, &mut table, &environment);
     expect_i32(out, 0, "AV Rust file bits");
 
@@ -249,10 +259,10 @@ int32_t sys973_path_attrs(const uint8_t* data, uint64_t len) {
     )
     .unwrap();
 
-    let provider = ace_abi::rust_provider::open_c_provider(&dir, "sys973_c")
-        .expect("the C provider imports");
-    let dll = ace_abi::rust_provider::build_c_dll(&provider, &root)
-        .expect("the provider DLL builds");
+    let provider =
+        ace_abi::rust_provider::open_c_provider(&dir, "sys973_c").expect("the C provider imports");
+    let dll =
+        ace_abi::rust_provider::build_c_dll(&provider, &root).expect("the provider DLL builds");
     let library = RawLibrary::load(&dll).expect("the DLL loads");
     let authority = ace_abi::rust_provider::c_authority(&provider, 1);
     let environment = provider.manifest.clone().admit(&authority).expect("admits");
@@ -281,14 +291,21 @@ int32_t sys973_path_attrs(const uint8_t* data, uint64_t len) {
 
     let dir_arg = {
         let t = std::env::temp_dir().to_string_lossy().to_string();
-        t.trim_end_matches(char::from(92)).trim_end_matches('/').replace(char::from(92), "/")
+        t.trim_end_matches(char::from(92))
+            .trim_end_matches('/')
+            .replace(char::from(92), "/")
     };
-    let src = format!(
-        "use.c sys973_c\nfn main() int {{ return sys973_path_attrs(\"{dir_arg}\") }}"
-    );
+    let src =
+        format!("use.c sys973_c\nfn main() int {{ return sys973_path_attrs(\"{dir_arg}\") }}");
     let out = run_av(&src, &mut table, &environment);
     assert!(
-        matches!(out, ExecOutcome::Success { value: Value::I32(1), .. }),
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(1),
+                ..
+            }
+        ),
         "AV C dir bit: {out:?}"
     );
 
@@ -296,13 +313,13 @@ int32_t sys973_path_attrs(const uint8_t* data, uint64_t len) {
         .join("tests/cases/sys973_av_foreign.rs")
         .to_string_lossy()
         .replace(char::from(92), "/");
-    let src = format!(
-        "use.c sys973_c\nfn main() int {{ return sys973_path_attrs(\"{file_arg}\") }}"
-    );
+    let src =
+        format!("use.c sys973_c\nfn main() int {{ return sys973_path_attrs(\"{file_arg}\") }}");
     let out = run_av(&src, &mut table, &environment);
     expect_i32(out, 0, "AV C file bits");
 
-    let src = "use.c sys973_c\nfn main() int { return sys973_path_attrs(\"Z:/definitely/missing/973\") }";
+    let src =
+        "use.c sys973_c\nfn main() int { return sys973_path_attrs(\"Z:/definitely/missing/973\") }";
     let out = run_av(src, &mut table, &environment);
     expect_i32(out, -8, "AV C missing-path sentinel");
 }

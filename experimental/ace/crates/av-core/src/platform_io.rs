@@ -398,7 +398,13 @@ const P_2I32: &[MirType] = &[MirType::I32, MirType::I32];
 const P_3I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32];
 const P_4I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32, MirType::I32];
 const P_STR_I32: &[MirType] = &[MirType::StrView, MirType::I32];
-const P_5I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32, MirType::I32, MirType::I32];
+const P_5I32: &[MirType] = &[
+    MirType::I32,
+    MirType::I32,
+    MirType::I32,
+    MirType::I32,
+    MirType::I32,
+];
 const P_6I32: &[MirType] = &[
     MirType::I32,
     MirType::I32,
@@ -2007,11 +2013,7 @@ mod win32 {
         pub fn FindNextFileW(hFindFile: isize, lpFindFileData: *mut WIN32_FIND_DATAW) -> i32;
         pub fn FindClose(hFindFile: isize) -> i32;
         // PLAN-973: environment, clock, sleep.
-        pub fn GetEnvironmentVariableW(
-            lpName: *const u16,
-            lpBuffer: *mut u16,
-            nSize: u32,
-        ) -> u32;
+        pub fn GetEnvironmentVariableW(lpName: *const u16, lpBuffer: *mut u16, nSize: u32) -> u32;
         pub fn SetEnvironmentVariableW(lpName: *const u16, lpValue: *const u16) -> i32;
         pub fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime: *mut FILETIME);
         pub fn QueryPerformanceCounter(lpPerformanceCount: *mut i64) -> i32;
@@ -2036,18 +2038,17 @@ mod win32 {
             lpPipeAttributes: *mut SECURITY_ATTRIBUTES,
             nSize: u32,
         ) -> i32;
-        pub fn CreateJobObjectW(lpJobAttributes: *mut SECURITY_ATTRIBUTES, lpName: *const u16)
-        -> isize;
+        pub fn CreateJobObjectW(
+            lpJobAttributes: *mut SECURITY_ATTRIBUTES,
+            lpName: *const u16,
+        ) -> isize;
         pub fn SetInformationJobObject(
             hJob: isize,
             JobObjectInformationClass: i32,
             lpJobObjectInformation: *mut u8,
             cbJobObjectInformationLength: u32,
         ) -> i32;
-        pub fn AssignProcessToJobObject(
-            hJob: isize,
-            hProcess: isize,
-        ) -> i32;
+        pub fn AssignProcessToJobObject(hJob: isize, hProcess: isize) -> i32;
         pub fn TerminateJobObject(hJob: isize, uExitCode: u32) -> i32;
         pub fn WaitForSingleObject(hHandle: isize, dwMilliseconds: u32) -> u32;
         pub fn GetExitCodeProcess(hProcess: isize, lpExitCode: *mut u32) -> i32;
@@ -2656,8 +2657,7 @@ impl PlatformIoBackend for Win32PlatformIo {
             _ => return Err(87),
         };
         let mut pos: i64 = 0;
-        let ok =
-            unsafe { win32::SetFilePointerEx(os_handle as isize, offset, &mut pos, method) };
+        let ok = unsafe { win32::SetFilePointerEx(os_handle as isize, offset, &mut pos, method) };
         if ok == 0 {
             let err = unsafe { win32::GetLastError() };
             return Err(if err == 0 { 6 } else { err });
@@ -2695,9 +2695,7 @@ impl PlatformIoBackend for Win32PlatformIo {
     fn file_mtime_ms(&mut self, os_handle: usize) -> Result<i64, u32> {
         self.dispatches.sys += 1;
         let mut info = win32::BY_HANDLE_FILE_INFORMATION::default();
-        let ok = unsafe {
-            win32::GetFileInformationByHandle(os_handle as isize, &mut info)
-        };
+        let ok = unsafe { win32::GetFileInformationByHandle(os_handle as isize, &mut info) };
         if ok == 0 {
             let err = unsafe { win32::GetLastError() };
             return Err(if err == 0 { 6 } else { err });
@@ -2793,13 +2791,8 @@ impl PlatformIoBackend for Win32PlatformIo {
         s.push(0);
         let mut d = dst.to_vec();
         d.push(0);
-        let ok = unsafe {
-            win32::MoveFileExW(
-                s.as_ptr(),
-                d.as_ptr(),
-                win32::MOVEFILE_REPLACE_EXISTING,
-            )
-        };
+        let ok =
+            unsafe { win32::MoveFileExW(s.as_ptr(), d.as_ptr(), win32::MOVEFILE_REPLACE_EXISTING) };
         if ok == 0 {
             let err = unsafe { win32::GetLastError() };
             return Err(if err == 0 { 5 } else { err });
@@ -2814,7 +2807,12 @@ impl PlatformIoBackend for Win32PlatformIo {
         path.push(0);
         // 1) logical absolute form always succeeds for valid input
         let need = unsafe {
-            win32::GetFullPathNameW(path.as_ptr(), 0, core::ptr::null_mut(), core::ptr::null_mut())
+            win32::GetFullPathNameW(
+                path.as_ptr(),
+                0,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
+            )
         };
         if need == 0 {
             let err = unsafe { win32::GetLastError() };
@@ -2850,7 +2848,12 @@ impl PlatformIoBackend for Win32PlatformIo {
         if h != win32::INVALID_HANDLE_VALUE {
             let mut final_buf = vec![0u16; out.len().max(full.len() + 8)];
             let n = unsafe {
-                win32::GetFinalPathNameByHandleW(h, final_buf.as_mut_ptr(), final_buf.len() as u32, 0)
+                win32::GetFinalPathNameByHandleW(
+                    h,
+                    final_buf.as_mut_ptr(),
+                    final_buf.len() as u32,
+                    0,
+                )
             };
             unsafe { win32::CloseHandle(h) };
             if n > 0 && (n as usize) < final_buf.len() {
@@ -3047,8 +3050,7 @@ impl PlatformIoBackend for Win32PlatformIo {
                 return Err(if err == 0 { 8 } else { err });
             }
             let mut info = std::mem::zeroed::<win32::JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
-            info.BasicLimitInformation.LimitFlags =
-                win32::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            info.BasicLimitInformation.LimitFlags = win32::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
             let ok = win32::SetInformationJobObject(
                 job,
                 win32::JobObjectExtendedLimitInformation,
@@ -3439,7 +3441,9 @@ impl PlatformIoBackend for CapturePlatformIo {
             self.win32.dispatches.sys += 1;
             return Err(err);
         }
-        let cap = self.max_file_read_chunk.map_or(buf.len(), |c| buf.len().min(c));
+        let cap = self
+            .max_file_read_chunk
+            .map_or(buf.len(), |c| buf.len().min(c));
         self.win32
             .file_read_some(os_handle, &mut buf[..cap], cancel)
     }
@@ -4317,9 +4321,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
     #[cfg(target_os = "linux")]
     fn file_tell(&mut self, os_handle: usize) -> Result<i64, u32> {
         self.dispatches.sys += 1;
-        let ret = unsafe {
-            linux_asm::syscall4(linux_sysno::LSEEK, os_handle as isize, 0, 1, 0)
-        };
+        let ret = unsafe { linux_asm::syscall4(linux_sysno::LSEEK, os_handle as isize, 0, 1, 0) };
         if linux_is_errno(ret) {
             return Err((-ret) as u32);
         }
@@ -4366,8 +4368,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
     #[cfg(target_os = "linux")]
     fn file_flush(&mut self, os_handle: usize) -> Result<(), u32> {
         self.dispatches.sys += 1;
-        let ret =
-            unsafe { linux_asm::syscall1(linux_sysno::FSYNC, os_handle as isize) };
+        let ret = unsafe { linux_asm::syscall1(linux_sysno::FSYNC, os_handle as isize) };
         if linux_is_errno(ret) {
             return Err((-ret) as u32);
         }
@@ -4405,9 +4406,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
             return Err((-fd) as u32);
         }
         let mut st = [0u8; 144];
-        let ret = unsafe {
-            linux_asm::syscall2(linux_sysno::FSTAT, fd, st.as_mut_ptr() as isize)
-        };
+        let ret = unsafe { linux_asm::syscall2(linux_sysno::FSTAT, fd, st.as_mut_ptr() as isize) };
         unsafe { linux_asm::syscall1(linux_sysno::CLOSE, fd) };
         if linux_is_errno(ret) || ret != 0 {
             return Err(5);
@@ -4581,9 +4580,8 @@ impl PlatformIoBackend for LinuxPlatformIo {
                 linux_sysno::OPENAT,
                 PROBE_AT_FDCWD as isize,
                 buf.as_ptr() as isize,
-                (linux_oflags::O_RDONLY
-                    | linux_oflags::O_DIRECTORY
-                    | linux_oflags::O_CLOEXEC) as isize,
+                (linux_oflags::O_RDONLY | linux_oflags::O_DIRECTORY | linux_oflags::O_CLOEXEC)
+                    as isize,
                 0,
             )
         };
@@ -4669,11 +4667,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
         // clock_gettime(clk, &timespec{tv_sec i64, tv_nsec i64})
         let mut ts = [0i64; 2];
         let ret = unsafe {
-            linux_asm::syscall2(
-                linux_sysno::CLOCK_GETTIME,
-                clk_id,
-                ts.as_mut_ptr() as isize,
-            )
+            linux_asm::syscall2(linux_sysno::CLOCK_GETTIME, clk_id, ts.as_mut_ptr() as isize)
         };
         if linux_is_errno(ret) || ret != 0 {
             return Err(22);
@@ -4708,13 +4702,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
             let slice = remaining.min(SLICE_MS);
             // nanosleep(&{sec, nsec}, NULL) — EINTR keeps partial progress
             let mut ts = [(slice / 1000) as i64, ((slice % 1000) as i64) * 1_000_000];
-            unsafe {
-                linux_asm::syscall2(
-                    linux_sysno::NANOSLEEP,
-                    ts.as_mut_ptr() as isize,
-                    0,
-                )
-            };
+            unsafe { linux_asm::syscall2(linux_sysno::NANOSLEEP, ts.as_mut_ptr() as isize, 0) };
             remaining -= slice;
         }
     }
@@ -4814,9 +4802,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
                 return Ok(false);
             }
             let mut ts = [0i64, 20_000_000i64]; // 20 ms
-            unsafe {
-                linux_asm::syscall2(linux_sysno::NANOSLEEP, ts.as_mut_ptr() as isize, 0)
-            };
+            unsafe { linux_asm::syscall2(linux_sysno::NANOSLEEP, ts.as_mut_ptr() as isize, 0) };
             waited += 20;
         }
     }
@@ -4836,8 +4822,7 @@ impl PlatformIoBackend for LinuxPlatformIo {
         self.dispatches.sys += 1;
         // kill(-pgid, SIGKILL) — the whole group (grandchildren included
         // unless they detached via setsid).
-        let ret =
-            unsafe { linux_asm::syscall2(linux_sysno::KILL, -(job_handle as isize), 9) };
+        let ret = unsafe { linux_asm::syscall2(linux_sysno::KILL, -(job_handle as isize), 9) };
         if linux_is_errno(ret) && (-ret) as u32 != 3 {
             // ESRCH (3) = already gone — success for our purpose
             return Err((-ret) as u32);
@@ -4893,7 +4878,11 @@ impl PlatformIoBackend for LinuxPlatformIo {
     fn proc_cwd_bytes(&mut self, out: &mut [u8]) -> Result<usize, u32> {
         self.dispatches.sys += 1;
         let ret = unsafe {
-            linux_asm::syscall2(linux_sysno::GETCWD, out.as_mut_ptr() as isize, out.len() as isize)
+            linux_asm::syscall2(
+                linux_sysno::GETCWD,
+                out.as_mut_ptr() as isize,
+                out.len() as isize,
+            )
         };
         if linux_is_errno(ret) {
             return Err((-ret) as u32);
@@ -4986,10 +4975,7 @@ enum LedgerPayload {
     /// backend id + release state (the single ownership account).
     NetSocket { socket: u64, released: bool },
     /// PLAN-974 inc3: backend-owned listener id.
-    NetListener {
-        listener: u64,
-        released: bool,
-    },
+    NetListener { listener: u64, released: bool },
     /// PLAN-973: an open OS file handle. `last64_hi` keeps the high 32
     /// bits of the last 64-bit result (seek/tell/size/mtime) for the
     /// `file_hi` paired query.
@@ -5007,10 +4993,7 @@ enum LedgerPayload {
     },
     /// PLAN-973: a spawned child with its kill-on-close job tree and the
     /// parent-side capture-pipe read ends.
-    OsProcess {
-        spawn: ProcSpawn,
-        released: bool,
-    },
+    OsProcess { spawn: ProcSpawn, released: bool },
 }
 
 #[derive(Debug)]
@@ -5273,10 +5256,10 @@ impl PlatformResourceLedger {
             ),
             PlatformOpKind::NetTcpListen => self.op_net_listen(backend, as_i32(&args[0])?),
             PlatformOpKind::NetTcpAccept => self.op_net_accept(backend, as_i32(&args[0])?),
-            PlatformOpKind::NetTcpLocalPort => {
-                self.op_net_local_port(backend, as_i32(&args[0])?)
+            PlatformOpKind::NetTcpLocalPort => self.op_net_local_port(backend, as_i32(&args[0])?),
+            PlatformOpKind::FileTell => {
+                self.op_file_query(backend, as_i32(&args[0])?, FileQuery::Tell)
             }
-            PlatformOpKind::FileTell => self.op_file_query(backend, as_i32(&args[0])?, FileQuery::Tell),
             PlatformOpKind::FileHi => self.op_file_hi(as_i32(&args[0])?),
             PlatformOpKind::FileSize => {
                 self.op_file_query(backend, as_i32(&args[0])?, FileQuery::Size)
@@ -5424,11 +5407,9 @@ impl PlatformResourceLedger {
                 as_i32(&args[2])?,
                 as_i32(&args[3])?,
             ),
-            PlatformOpKind::ProcSpawnBytes => self.op_proc_spawn_bytes(
-                backend,
-                as_str_bytes(&args[0])?,
-                as_i32(&args[1])?,
-            ),
+            PlatformOpKind::ProcSpawnBytes => {
+                self.op_proc_spawn_bytes(backend, as_str_bytes(&args[0])?, as_i32(&args[1])?)
+            }
             PlatformOpKind::ProcPipeRead => self.op_proc_pipe_read(
                 backend,
                 as_i32(&args[0])?,
@@ -5474,9 +5455,7 @@ impl PlatformResourceLedger {
                 as_i32(&args[1])?,
                 as_i32(&args[2])?,
             ),
-            PlatformOpKind::ProcChdirBytes => {
-                self.op_chdir_bytes(backend, as_str_bytes(&args[0])?)
-            }
+            PlatformOpKind::ProcChdirBytes => self.op_chdir_bytes(backend, as_str_bytes(&args[0])?),
         };
         Ok(code)
     }
@@ -5517,9 +5496,7 @@ impl PlatformResourceLedger {
                 listener,
                 released: false,
             } => Ok(*listener),
-            LedgerPayload::NetListener {
-                released: true, ..
-            } => Err(ERR_ALREADY_RELEASED),
+            LedgerPayload::NetListener { released: true, .. } => Err(ERR_ALREADY_RELEASED),
             _ => Err(ERR_WRONG_ORIGIN),
         }
     }
@@ -5735,9 +5712,7 @@ impl PlatformResourceLedger {
                 released: false,
                 ..
             } => (*base, *logical_len),
-            LedgerPayload::OsMemRegion {
-                released: true, ..
-            } => return ERR_ALREADY_RELEASED,
+            LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
             _ => return ERR_WRONG_ORIGIN,
         };
         let (off, len) = (byte_off as usize, byte_len as usize);
@@ -5800,10 +5775,8 @@ impl PlatformResourceLedger {
         let (stream, os_handle) = match &self.entries[idx].payload {
             LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
             LedgerPayload::OsMemRegion { .. }
-                | LedgerPayload::NetSocket { .. }
-                | LedgerPayload::NetListener { .. } => {
-                return ERR_WRONG_ORIGIN
-            }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => return ERR_WRONG_ORIGIN,
             _ => return ERR_WRONG_ORIGIN,
         };
         if !self.grants.contains(stream.capability()) {
@@ -5844,10 +5817,8 @@ impl PlatformResourceLedger {
         let (stream, os_handle) = match &self.entries[sidx].payload {
             LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
             LedgerPayload::OsMemRegion { .. }
-                | LedgerPayload::NetSocket { .. }
-                | LedgerPayload::NetListener { .. } => {
-                return ERR_WRONG_ORIGIN
-            }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => return ERR_WRONG_ORIGIN,
             _ => return ERR_WRONG_ORIGIN,
         };
         if !self.grants.contains(stream.capability()) {
@@ -5865,10 +5836,8 @@ impl PlatformResourceLedger {
             } => (*base, *logical_len),
             LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
             LedgerPayload::StdStream { .. }
-                | LedgerPayload::NetSocket { .. }
-                | LedgerPayload::NetListener { .. } => {
-                return ERR_WRONG_ORIGIN
-            }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => return ERR_WRONG_ORIGIN,
             _ => return ERR_WRONG_ORIGIN,
         };
         let (unit_off, unit_len) = (unit_off as usize, unit_len as usize);
@@ -6032,10 +6001,8 @@ impl PlatformResourceLedger {
         let (stream, os_handle) = match &self.entries[idx].payload {
             LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
             LedgerPayload::OsMemRegion { .. }
-                | LedgerPayload::NetSocket { .. }
-                | LedgerPayload::NetListener { .. } => {
-                return ERR_WRONG_ORIGIN
-            }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => return ERR_WRONG_ORIGIN,
             _ => return ERR_WRONG_ORIGIN,
         };
         if !self.grants.contains(stream.capability()) {
@@ -6127,10 +6094,8 @@ impl PlatformResourceLedger {
         };
         let (base, mapped_len) = match &self.entries[idx].payload {
             LedgerPayload::StdStream { .. }
-                | LedgerPayload::NetSocket { .. }
-                | LedgerPayload::NetListener { .. } => {
-                return ERR_WRONG_ORIGIN
-            }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => return ERR_WRONG_ORIGIN,
 
             LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion { borrow_count, .. } if *borrow_count > 0 => {
@@ -6166,7 +6131,9 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
 
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion {
@@ -6186,7 +6153,9 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &mut self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
 
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion { borrow_count, .. } => {
@@ -6216,7 +6185,9 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
 
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion {
@@ -6239,7 +6210,9 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. }
+            | LedgerPayload::NetSocket { .. }
+            | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
 
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion {
@@ -6358,12 +6331,7 @@ impl PlatformResourceLedger {
         Ok(())
     }
 
-    fn write_bytes_to_region(
-        &mut self,
-        handle: i32,
-        off: i32,
-        bytes: &[u8],
-    ) -> Result<(), i32> {
+    fn write_bytes_to_region(&mut self, handle: i32, off: i32, bytes: &[u8]) -> Result<(), i32> {
         if off < 0 {
             return Err(ERR_INVALID_BOUNDS);
         }
@@ -6432,11 +6400,7 @@ impl PlatformResourceLedger {
     }
 
     /// Decode a file-op target: file handles plus (read ops only) stdin.
-    fn file_target(
-        &self,
-        handle: i32,
-        for_read: bool,
-    ) -> Result<(usize, Option<StreamKind>), i32> {
+    fn file_target(&self, handle: i32, for_read: bool) -> Result<(usize, Option<StreamKind>), i32> {
         let Ok((idx, _)) = self.decode_handle(handle) else {
             return Err(ERR_INVALID_HANDLE);
         };
@@ -6649,8 +6613,7 @@ impl PlatformResourceLedger {
             Ok(()) => {
                 if close {
                     if let Ok((idx, _)) = self.decode_handle(handle) {
-                        if let LedgerPayload::OsFile { closed, .. } =
-                            &mut self.entries[idx].payload
+                        if let LedgerPayload::OsFile { closed, .. } = &mut self.entries[idx].payload
                         {
                             *closed = true;
                         }
@@ -7447,7 +7410,9 @@ impl PlatformResourceLedger {
         }
         let mut scratch = vec![0u8; cap_us];
         let result = match op {
-            OutBytesOp::Cmdline => backend.proc_cmdline_fill_bytes(&mut scratch).map(|v| v as u64),
+            OutBytesOp::Cmdline => backend
+                .proc_cmdline_fill_bytes(&mut scratch)
+                .map(|v| v as u64),
             OutBytesOp::Cwd => backend.proc_cwd_bytes(&mut scratch).map(|v| v as u64),
         };
         match result {
@@ -7512,8 +7477,7 @@ impl PlatformResourceLedger {
                     if !*released {
                         let _ = backend.virtual_free(*base, *mapped_len);
                         *released = true;
-                        self.live_mapped_bytes =
-                            self.live_mapped_bytes.saturating_sub(*mapped_len);
+                        self.live_mapped_bytes = self.live_mapped_bytes.saturating_sub(*mapped_len);
                     }
                 }
                 // PLAN-973: owner-terminated handles are closed exactly

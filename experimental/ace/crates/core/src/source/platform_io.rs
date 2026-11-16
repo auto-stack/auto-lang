@@ -260,7 +260,6 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         result: VT::I32,
         capability: CAP_NET_CLOSE,
     },
-
     // ---- PLAN-973 system-resource reserved names --------------------
     PlatformSourceOp {
         callee: "io_stdin",

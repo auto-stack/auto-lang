@@ -265,10 +265,7 @@ pub const SYS973_KINDS: &[PlatformOpKind] = &[
 /// PLAN-973: the shim signature for a sys973 kind, derived from the
 /// frozen op table (each StrView param lowers to an I64 pointer + I32
 /// byte-length pair, exactly like `IoWriteSome`).
-pub fn sys973_shim_sig(
-    kind: PlatformOpKind,
-    conv: cranelift_codegen::isa::CallConv,
-) -> Signature {
+pub fn sys973_shim_sig(kind: PlatformOpKind, conv: cranelift_codegen::isa::CallConv) -> Signature {
     use ace_av_core::mir::MirType;
     let spec = ace_av_core::platform_io::PLATFORM_OPS
         .iter()

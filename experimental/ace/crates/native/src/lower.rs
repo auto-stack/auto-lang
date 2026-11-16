@@ -1275,89 +1275,89 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 arg_i += 1;
             }
         } else {
-        match spec.kind {
-            PlatformOpKind::IoStdout
-            | PlatformOpKind::IoStderr
-            | PlatformOpKind::IoLastError
-            | PlatformOpKind::MemPageSize
-            | PlatformOpKind::MemAllocGranularity => {}
-            PlatformOpKind::IoWriteSome => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.use_ptr(args[1])?);
-                clif_args.push(self.use_len(args[1])?);
+            match spec.kind {
+                PlatformOpKind::IoStdout
+                | PlatformOpKind::IoStderr
+                | PlatformOpKind::IoLastError
+                | PlatformOpKind::MemPageSize
+                | PlatformOpKind::MemAllocGranularity => {}
+                PlatformOpKind::IoWriteSome => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.use_ptr(args[1])?);
+                    clif_args.push(self.use_len(args[1])?);
+                }
+                PlatformOpKind::IoWriteSomeSlice => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.use_ptr(args[1])?);
+                    clif_args.push(self.use_len(args[1])?);
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
+                }
+                PlatformOpKind::MemAlloc
+                | PlatformOpKind::MemFree
+                | PlatformOpKind::MemLogicalLen
+                | PlatformOpKind::MemMappedLen
+                | PlatformOpKind::MemBorrow
+                | PlatformOpKind::MemUnborrow => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                }
+                // PLAN-974: rejected by name before lowering (unreachable).
+                PlatformOpKind::NetTcpConnect
+                | PlatformOpKind::NetTcpWriteSome
+                | PlatformOpKind::NetTcpWriteRegion
+                | PlatformOpKind::NetTcpReadInto
+                | PlatformOpKind::NetTcpClose
+                | PlatformOpKind::NetTcpListen
+                | PlatformOpKind::NetTcpAccept
+                | PlatformOpKind::NetTcpLocalPort => {
+                    return Err("native.net-unsupported".into());
+                }
+                PlatformOpKind::IoConsoleKind => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                }
+                // PLAN-1041: (stream handle, region handle, unit off, unit len).
+                PlatformOpKind::IoConsoleWrite16 => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
+                }
+                PlatformOpKind::MemReadU8 => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
+                }
+                PlatformOpKind::MemWriteU8 => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                }
+                // PLAN-1040 probe seam: (dirfd, path ptr/len, flags, mode),
+                // (fd, bytes ptr/len) and (fd) — same marshalling as the io
+                // string ops for the buffer pair.
+                PlatformOpKind::ProbeOpenat => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.use_ptr(args[1])?);
+                    clif_args.push(self.use_len(args[1])?);
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
+                }
+                PlatformOpKind::ProbeWriteFd => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                    clif_args.push(self.use_ptr(args[1])?);
+                    clif_args.push(self.use_len(args[1])?);
+                }
+                PlatformOpKind::ProbeClose => {
+                    clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                }
+                // PLAN-973 kinds never reach this match (handled above);
+                // a future kind without marshalling fails closed, not silent.
+                _ => {
+                    return Err(format!(
+                        "ac.platform-unwired: no marshalling for {}",
+                        spec.symbol
+                    ));
+                }
             }
-            PlatformOpKind::IoWriteSomeSlice => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.use_ptr(args[1])?);
-                clif_args.push(self.use_len(args[1])?);
-                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
-            }
-            PlatformOpKind::MemAlloc
-            | PlatformOpKind::MemFree
-            | PlatformOpKind::MemLogicalLen
-            | PlatformOpKind::MemMappedLen
-            | PlatformOpKind::MemBorrow
-            | PlatformOpKind::MemUnborrow => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-            }
-            // PLAN-974: rejected by name before lowering (unreachable).
-            PlatformOpKind::NetTcpConnect
-            | PlatformOpKind::NetTcpWriteSome
-            | PlatformOpKind::NetTcpWriteRegion
-            | PlatformOpKind::NetTcpReadInto
-            | PlatformOpKind::NetTcpClose
-            | PlatformOpKind::NetTcpListen
-            | PlatformOpKind::NetTcpAccept
-            | PlatformOpKind::NetTcpLocalPort => {
-                return Err("native.net-unsupported".into());
-            }
-            PlatformOpKind::IoConsoleKind => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-            }
-            // PLAN-1041: (stream handle, region handle, unit off, unit len).
-            PlatformOpKind::IoConsoleWrite16 => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
-            }
-            PlatformOpKind::MemReadU8 => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
-            }
-            PlatformOpKind::MemWriteU8 => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
-            }
-            // PLAN-1040 probe seam: (dirfd, path ptr/len, flags, mode),
-            // (fd, bytes ptr/len) and (fd) — same marshalling as the io
-            // string ops for the buffer pair.
-            PlatformOpKind::ProbeOpenat => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.use_ptr(args[1])?);
-                clif_args.push(self.use_len(args[1])?);
-                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
-                clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
-            }
-            PlatformOpKind::ProbeWriteFd => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                clif_args.push(self.use_ptr(args[1])?);
-                clif_args.push(self.use_len(args[1])?);
-            }
-            PlatformOpKind::ProbeClose => {
-                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-            }
-            // PLAN-973 kinds never reach this match (handled above);
-            // a future kind without marshalling fails closed, not silent.
-            _ => {
-                return Err(format!(
-                    "ac.platform-unwired: no marshalling for {}",
-                    spec.symbol
-                ));
-            }
-        }
         } // PLAN-973 sys973 else-arm
         let call = self.fb.ins().call(callee, &clif_args);
         let res = self.fb.inst_results(call)[0];

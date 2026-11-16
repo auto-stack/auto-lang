@@ -39,7 +39,11 @@ impl<'p> PrintCtx<'p> {
         for v in &program.variants {
             variants.insert(v.type_index, v);
         }
-        PrintCtx { records, variants, list_elems: &program.list_elems }
+        PrintCtx {
+            records,
+            variants,
+            list_elems: &program.list_elems,
+        }
     }
 
     /// Rust type text of a target-neutral type. Scalar types render

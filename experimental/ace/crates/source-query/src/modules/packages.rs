@@ -276,7 +276,10 @@ pub fn assembled_caps() -> Vec<String> {
 /// 编译期命名空间 + PLAN-962 `av.aggregates/1` 准入）。
 pub fn assembled_aggregates_caps() -> Vec<String> {
     let mut caps = assembled_caps();
-    if !caps.iter().any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP) {
+    if !caps
+        .iter()
+        .any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP)
+    {
         caps.push(ace_core::source::AGGREGATES_ADMISSION_CAP.into());
     }
     caps
@@ -480,7 +483,9 @@ pub fn frozen_std_assembled_inputs(
                 }
             }
             None => {
-                return Err(format!("std assembled file `{name}` is not a provider-source name"))
+                return Err(format!(
+                    "std assembled file `{name}` is not a provider-source name"
+                ))
             }
         }
     }
@@ -499,9 +504,8 @@ pub fn frozen_std_assembled_inputs(
                         _ => None,
                     })
                     .collect();
-                let sel =
-                    select_provider_source(base, &set, ctx.backend, ctx.provider, ctx.target)
-                        .map_err(|e: ProviderSourceError| format!("{}: {}", e.code(), e.message()))?;
+                let sel = select_provider_source(base, &set, ctx.backend, ctx.provider, ctx.target)
+                    .map_err(|e: ProviderSourceError| format!("{}: {}", e.code(), e.message()))?;
                 sel.provider.map(|kind| PackageImplLayer {
                     kind,
                     source: kinds.get(kind.label()).cloned().unwrap_or_default(),
@@ -566,11 +570,7 @@ pub fn compile_assembled_aggregates_inputs(
 ) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
     let lane_caps = assembled_aggregates_caps();
     let bound = ace_core::source::packages::bind_packages_assembled_aggregates(
-        inputs,
-        entry,
-        &lane_caps,
-        budget,
-        ctx,
+        inputs, entry, &lane_caps, budget, ctx,
     )
     .map_err(|e| vec![convert_asm_diag(e)])?;
     compile_bound_packages_aggregates(bound, &lane_caps)

@@ -785,8 +785,7 @@ pub fn execute_program_platform(
 ) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
     // front-door: every declared import's capability must be granted
     // (each code unit's host imports, via its verified unit module).
-    let granted: std::collections::BTreeSet<&str> =
-        grants.iter().map(|g| g.as_str()).collect();
+    let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
     for code in prog.code() {
         for h in code.unit().module().host_imports.iter() {
             if !granted.contains(h.capability.as_str()) {
@@ -1354,11 +1353,7 @@ pub(crate) trait ModuleView {
     /// PLAN-973: func-aware host-import resolution — unit views keep
     /// host indices LOCAL to the owning unit's module (the merged view
     /// keeps the module-wide table; func is ignored there).
-    fn host_import_at(
-        &self,
-        _func: u32,
-        idx: u32,
-    ) -> Option<crate::mir::MirHostImport> {
+    fn host_import_at(&self, _func: u32, idx: u32) -> Option<crate::mir::MirHostImport> {
         self.host_imports().get(idx as usize).cloned()
     }
     /// The function payload execution reads (blocks/slots/spans).
@@ -6095,8 +6090,7 @@ fn dispatch_with_host<V: ModuleView>(
                         Value::I32(c) if c >= 0 => c as usize,
                         _ => {
                             return Some(ExecOutcome::Error {
-                                message: "task mailbox capacity must be a non-negative int"
-                                    .into(),
+                                message: "task mailbox capacity must be a non-negative int".into(),
                                 span: None,
                             })
                         }
@@ -6273,12 +6267,8 @@ fn dispatch_with_host<V: ModuleView>(
                             span: None,
                         });
                     }
-                    let raw_v = st
-                        .frames
-                        .last()
-                        .expect("frame present")
-                        .slots[*value as usize]
-                        .clone();
+                    let raw_v =
+                        st.frames.last().expect("frame present").slots[*value as usize].clone();
                     let reply_v = match sched_materialize(v, func_idx, st, raw_v) {
                         Ok(x) => x,
                         Err(out) => return Some(out),
@@ -6357,10 +6347,12 @@ fn dispatch_with_host<V: ModuleView>(
                             span: None,
                         });
                     };
-                    if pv <= 0 || pv as usize > {
-                        let t = tables_arc.lock().expect("sched tables");
-                        t.ports.len()
-                    } {
+                    if pv <= 0
+                        || pv as usize > {
+                            let t = tables_arc.lock().expect("sched tables");
+                            t.ports.len()
+                        }
+                    {
                         return Some(ExecOutcome::Error {
                             message: "await on an unknown future".into(),
                             span: None,
@@ -7362,7 +7354,9 @@ fn sched_new_chain<V: ModuleView>(
     task: Option<usize>,
 ) -> Result<LoopState, ExecOutcome> {
     let Some(f) = v.fn_at(fn_idx) else {
-        return Err(ExecOutcome::Infra(format!("sched chain fn #{fn_idx} missing")));
+        return Err(ExecOutcome::Infra(format!(
+            "sched chain fn #{fn_idx} missing"
+        )));
     };
     let (slots, allocation) = match crate::frame_allocation::reserve_slots(f.slots.len()) {
         Ok(x) => x,
@@ -7398,7 +7392,9 @@ fn sched_new_chain<V: ModuleView>(
     let mut ai = args.iter();
     for sl in &f.slots {
         frame.slots.push(if sl.kind == crate::mir::SlotKind::Param {
-            ai.next().cloned().unwrap_or_else(|| v.zero_of(fn_idx, sl.ty))
+            ai.next()
+                .cloned()
+                .unwrap_or_else(|| v.zero_of(fn_idx, sl.ty))
         } else {
             v.zero_of(fn_idx, sl.ty)
         });
@@ -7531,12 +7527,9 @@ pub fn execute_sched(
             let ready = {
                 let t = tables.lock().expect("sched tables");
                 match park {
-                    SchedPark::Recv(ti) => {
-                        !t.tasks[ti].queue.is_empty() || t.tasks[ti].stopped
-                    }
+                    SchedPark::Recv(ti) => !t.tasks[ti].queue.is_empty() || t.tasks[ti].stopped,
                     SchedPark::SendFull(ti) => {
-                        t.tasks[ti].closed
-                            || t.tasks[ti].queue.len() < t.tasks[ti].capacity
+                        t.tasks[ti].closed || t.tasks[ti].queue.len() < t.tasks[ti].capacity
                     }
                     SchedPark::AwaitPort(p) => {
                         !matches!(t.ports.get(p as usize), Some(SchedPortState::Pending))
@@ -7614,9 +7607,8 @@ pub fn execute_sched(
                     return (
                         ExecOutcome::Resource {
                             kind: ResourceKind::InstrSteps,
-                            message:
-                                "scheduler deadlock: every chain waits and no timer can fire"
-                                    .into(),
+                            message: "scheduler deadlock: every chain waits and no timer can fire"
+                                .into(),
                         },
                         trace,
                     );
