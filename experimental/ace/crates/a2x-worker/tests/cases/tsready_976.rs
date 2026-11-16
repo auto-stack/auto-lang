@@ -289,6 +289,42 @@ fn tsready_02_worker_identity_daily_emit_and_run() {
     assert_eq!(reply["stdout"], "trap:Overflow\n");
     assert_eq!(reply["exit_code"], 1);
     let _ = std::fs::remove_dir_all(&dir);
+
+    // Failure preserves the old output: a REJECTED emit (bad source) must
+    // exit non-zero and leave a pre-existing out_dir byte-identical — the
+    // emit happens before any write, so a failed request never touches it.
+    let dir = out_root("tsready02_failkeep");
+    std::fs::write(dir.join("a2x_main.ts"), "// previous generation\n").unwrap();
+    let before = std::fs::read(dir.join("a2x_main.ts")).unwrap();
+    let exe = env!("CARGO_BIN_EXE_a2x-worker");
+    let mut cmd = Command::new(exe);
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn().expect("spawn a2x-worker");
+    use std::io::Write;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(
+            format!(
+                "{{\"op\":\"daily-emit-ts\",\"source_text\":\"fn broken(\",\"profile\":\"core\",\"entry\":\"main\",\"target_lang\":\"typescript\",\"out_dir\":\"{}\"}}",
+                dir.to_string_lossy().replace('\\', "/")
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    let out = child.wait_with_output().expect("worker reply");
+    assert_ne!(out.status.code(), Some(0), "bad source must fail");
+    let reply: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(reply["status"], "error");
+    assert_eq!(
+        std::fs::read(dir.join("a2x_main.ts")).unwrap(),
+        before,
+        "failed emit must not overwrite the previous generation"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// TSREADY-06 (V-01): i64/u64 magnitudes beyond 2^53 survive the WHOLE
