@@ -193,3 +193,40 @@ PLAN-980 T-HELLO-I/V/R 已验：AGE node 单 text 源 → 真实 Iced 主线程�
   rustc/缺前置具名拒绝最小面）；V-HELLO-LIFE 以 20 轮 CPU 生命周期+每证据
   1 真窗轮实现（进程内二次 iced 事件环被 PLAN-698 禁止；测试内 RSS 断言不稳
   定，具名）；AXR0 同源 A2R 腿归 RUST 批；不改产品默认链。
+
+## 8. 同源 A2R 先行切片（RUST 批 AXR0，2026-11-16）
+
+PLAN-980 B-RUST-I/V/R 已验：同源 AGE 组件经**新 A2R**（902/979 面）生成
+Rust → 真 rustc → 真运行 → 窗口派生显示；旧 AST emitter 未替换（边界在案）。
+收据见计划 §9 round 14–16。
+
+- **Leg A（同源语义）**：`examples/ui/ace-hello-minimal/src/front/app-a2r.at`
+  （node+model+on+单 text）→ 组件场景 A2R 文件集（`ui/ace_a2r_bridge.rs`
+  `component_a2r_fileset`：场景编译→SemanticView→lower `__age_drive`→
+  record-text 三文件+manifest）→ 构建道真 rustc → `value:2`（冻结场景
+  2×Inc）。改 scenario/handler/初值即改产物字节（发射身份 oracle）。
+- **Leg B（F0×A2R，967/T-12 桥）**：同一文本字节经 text-record 源 →
+  文件集（provider `#[no_mangle]` 符号 + extern 块）→ rustc 链接**预构建**
+  F0 provider（新鲜度缓存，零 rustc 于测试）→ `value:9`（"Hello A2R" 字节
+  数）——同字节经 provider 的 A2R 侧证明。
+- **构建道纪律**：真 rustc 只在显式构建道 `examples/ace_a2r_axr0_build.rs`
+  （一次性，回执 `target/ace-a2r-axr0/receipt.json`）；日用例（
+  `tests/ace_a2r_axr0.rs` 4 项）只做发射控制+回执消费+排窗窗口腿。
+- **窗口腿（V-UI-AXR0）**：`ace_hello_window --a2r-run <exe>` 派生 A2R 产物
+  exe、显示其真实 stdout（"A2R value:2"）——零 AV/旧 VM；改函数结果随变
+  于 drive 值层。
+- **ace-bridge feature 门（结构性）**：STATE/HELLO/RUST 的 ACE 桥生产依赖
+  经 `ace-bridge`（默认关）optional 化；交付投影（rust_ui）剥 7 optional
+  行+dev ace-av+feature 改写为空（autodown-core 同型先例）——792 受管交付
+  闭包保持。AXR0/HELLO/STATE 测试命令带 `--features ace-bridge`。
+- **交付闭包修复（driver 43/43 全绿）**：①DIALECT 批 ace-core dev-dep
+  越根 → 投影 `strip_dev_deps`（新引擎面，三态幂等）+ compiler 专用 spec；
+  ②spec 须全行形态（裸名键取空误入已剥离分支——单测实证）；③bindgen 的
+  ace-foreign-contract（967/973 谱系预存）→ DELIVERY_VENDOR_TREES 补
+  foreign-contract 树。原工程 runner（PLAN-792 driver V01..V06）真实执行
+  **43/43 PASS**（V01 fresh-lock/V02 重定位 locked/V03 负控/V06 全 profile
+  矩阵+vm-run；jet/ark 环境门控为 driver 原语义）。
+- **边界**：产品级 `rust_ui.rs` 旧 emitter 未替换（多文件 store/组件/
+  sidecar/props/msg/route 对齐待 981 面接线，KNOWN-DEBT）；文本不可经 A2R
+  出岛（902 冻结 i32 `value:` 协议）——窗口文本腿以 A2R stdout 上窗实现；
+  ui_gen::rust 2 例 master 预存红（台账）；AXR0-PACK 完整打包闭包 pending。
