@@ -1608,8 +1608,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 顺序连排使聚合面同时要求两者（潜在 bug，962 语料无聚合面 if 未
         // 暴露）；拆成子规则 alt 按 profile 单选。
         if-cond {
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler]) { condition-expr() {} }
-            alt(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { expr() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules]) { condition-expr() {} }
+            alt(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { expr() {} }
         }
         else-block { else() {} block() {} }
         while-stmt(profiles: [core]) {
@@ -1620,8 +1620,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 条件 for（wide 族；投影复用 While AST 形状）
         for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates, scheduler, packages-aggregates-ct]) {
             for(field: "kw")
-            condition-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct], field: "cond")
+            condition-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-ct, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct], field: "cond")
             block(field: "body")
         }
         // PLAN-928（T-03）：PLAN-864 `for x in <List 局部> { .. }`。
@@ -1835,26 +1835,26 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-941 F04: a guard's body brace does not belong to its final
         // identifier. A ctor here must start actual fields; groups and call
         // arguments retain ordinary expression syntax and ctor diagnostics.
-        condition-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler]) {
+        condition-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules]) {
             alt(profiles: [aggregates, scheduler]) { pratt(of: "aggregates-condition-ops") }
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures]) { pratt(of: "condition-ops") }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-modules]) { pratt(of: "condition-ops") }
         }
-        condition-unary(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler]) {
+        condition-unary(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules]) {
             alt { int-literal() {} }
             alt { minus() {} condition-unary(field: "operand", same-line: true) }
             alt { bang() {} condition-unary(field: "operand", same-line: true) }
             alt { condition-postfix() {} }
         }
-        condition-postfix(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler]) {
+        condition-postfix(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules]) {
             condition-atom() {} many { postfix-step() {} }
         }
-        condition-ctor(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler]) {
+        condition-ctor(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules]) {
             ident(field: "ty")
             lbrace(same-line: true) {}
             ctor-fields() {}
             rbrace() {}
         }
-        condition-atom(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler]) {
+        condition-atom(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler, packages-modules]) {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
@@ -2159,7 +2159,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(condition-ops, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures]) {
+    pratt(condition-ops, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-modules]) {
         primary: "condition-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
