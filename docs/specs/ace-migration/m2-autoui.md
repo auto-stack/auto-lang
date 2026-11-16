@@ -419,3 +419,18 @@ states-only 编译（ops=**待定位 handler 的 msg 重放**——ops 空则 ha
 `1` vs Toggle 的 `!on`）；越界 span/无命中/未知状态函数=具名拒。永久
 case `p980_web_handler_precise_location`。**WEB 剩余**=ts_adapter 四委托
 点接此 lane（源 span 从 widget 提取管线取）→ 全量切换 → 浏览器档。
+
+### §13.3 lane 消费真实生产源（切片 #5，2026-11-16）
+
+`ComponentFragmentLane` 坐标基准明确为 **f-string 脱糖后源**（组件面入口
+统一脱糖，`ace_core::source::fstr::desugar_fstrings_widget` 公共出口；
+无 f-string 源时与原源一致）——lane 暴露 `desugared_source()` 并提供
+`emit_expr_at_text`（文本锚包含定位，同 span 组合形优先）。**真实生产
+002 全源**（msg 6 变体/model 3 字段/design/f-string/view 内联 lambda）
+经 lane 端到端：ToggleMode 的 `!.dark_mode` NOT 组合形（`l2___age_s_0_
+dark_mode` 局部名，字段序即局部序）按脱糖源 span 精确定位→宿主 reactive
+映射→真 node `!false===true`；Inc handler 同 lane 在 count 状态函数定位
+（002 的 `.count += 1` 首现于 view 内联 lambda——**on 块 occurrence 推导**
+是适配器配方）。永久 case `p980_web_lane_consumes_production_002_source`。
+**WEB 剩余**：OnHandler 方言层 span 捕获 + LogicPayload 源区间线程化 +
+ts_adapter 四委托点接线 → 90 项全量 → 浏览器档（多会话）。
