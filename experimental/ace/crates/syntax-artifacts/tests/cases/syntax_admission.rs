@@ -867,3 +867,243 @@ fn syntax_admission_zero_width_epsilon_inside_parent_accepted() {
         }
     }
 }
+
+/// PLAN-1029 ADM-04：分页目录条目取出后、消费前复用 inline 同等准入
+/// （页存在/节点页归属/node_lo/origin ≤ total_len）；decl_range 与
+/// decl_subtree 的 origin+start+len 全部 checked——origin=u64::MAX、
+/// start=1、len=1 在算术前受控拒绝（不 panic、不 wrap 成合法跨度）；
+/// 合法跨度恰等 total_len 接受、多 1 拒绝。inline 合法控制走真实
+/// put_cst 流；paged 合法/坏例走手造 manifest + 目录页（到达分页分支）。
+#[test]
+fn audit1029_adm_04_paged_decl_entry_admission_and_checked_spans() {
+    use ace_artifacts::{
+        codec::{framed_chunk_id, ChunkKind},
+        identity::QueryKey,
+        schema,
+        store::PutRequest,
+    };
+    use ace_syntax_runtime::program::KIND_CALL;
+
+    // ---- 合法控制（真实 inline 流：put_grammar/put_tokens/put_cst）----
+    let real_root = scratch("adm1029-real");
+    let (p, snap, _out) = setup(&real_root);
+    let sas_real = SyntaxArtifactStore::open(&real_root, "adm").unwrap();
+    let view = sas_real.open_cst(&p, &snap).unwrap().expect("manifest");
+    assert!(view.decl_count() >= 1);
+    for i in 0..view.decl_count() {
+        let (lo, hi) = view.decl_range(i).expect("inline legal range");
+        assert!(hi > lo && hi <= view.total_len());
+        view.decl_subtree(i).expect("inline legal subtree");
+    }
+
+    // ---- 手造分页目录（坏例 + paged 合法控制）----
+    fn node_bytes(start: u32, len: u32) -> Vec<u8> {
+        let mut c = Vec::with_capacity(32);
+        c.extend_from_slice(&(KIND_CALL as u32).to_le_bytes()); // kind
+        c.extend_from_slice(&start.to_le_bytes());
+        c.extend_from_slice(&len.to_le_bytes());
+        c.extend_from_slice(&0u32.to_le_bytes()); // first_child
+        c.extend_from_slice(&0u32.to_le_bytes()); // child_count
+        c.extend_from_slice(&0u32.to_le_bytes()); // expected
+        c.extend_from_slice(&1u32.to_le_bytes()); // decl（非 0：可作声明根）
+        c.push(0u8); // flags
+        c.extend_from_slice(&[0u8; 3]);
+        c
+    }
+    fn page_payload(nodes: &[Vec<u8>]) -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes()); // edges
+        for n in nodes {
+            b.extend_from_slice(n);
+        }
+        b
+    }
+
+    let root = scratch("adm1029-paged");
+    let sas = SyntaxArtifactStore::open(&root, "adm1029").unwrap();
+    let snap_a = Snapshot::from_text(&Rc::new(PageStore::new()), "api a() -> i32;");
+    let snap_b = Snapshot::from_text(&Rc::new(PageStore::new()), "api b() -> i32;");
+
+    fn put_chunk(
+        sas: &SyntaxArtifactStore,
+        p: &GrammarProgram,
+        tag: &str,
+        kind: ChunkKind,
+        payload: &[u8],
+    ) -> String {
+        let key = QueryKey::new(
+            schema::layer("A03").unwrap(),
+            vec![
+                ("source-snapshot".into(), "adm1029".into()),
+                ("grammar-id".into(), p.grammar_id().as_str().into()),
+                ("parser-version".into(), "adm1029".into()),
+                ("page".into(), tag.into()),
+            ],
+        );
+        sas.inner()
+            .put_artifact(PutRequest {
+                layer: "A03",
+                key,
+                kind,
+                payload: payload.to_vec(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap();
+        framed_chunk_id(kind, payload).to_string()
+    }
+    fn put_manifest(
+        sas: &SyntaxArtifactStore,
+        p: &GrammarProgram,
+        snap: &Snapshot,
+        manifest: &serde_json::Value,
+    ) {
+        let key = QueryKey::new(
+            schema::layer("A03").unwrap(),
+            vec![
+                ("source-snapshot".into(), snap.id().as_str().into()),
+                ("grammar-id".into(), p.grammar_id().as_str().into()),
+                (
+                    "parser-version".into(),
+                    ace_syntax_runtime::PARSER_ABI_VERSION.to_string(),
+                ),
+                ("page".into(), "manifest".into()),
+            ],
+        );
+        sas.inner()
+            .put_artifact(PutRequest {
+                layer: "A03",
+                key,
+                kind: ChunkKind::CstManifest,
+                payload: serde_json::to_vec(manifest).unwrap(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap();
+    }
+
+    // 页 chunk：A = §5 r4 变异节点（start=1, len=1）；B = 恰等/多1 双节点。
+    let chunk_a = put_chunk(
+        &sas,
+        &p,
+        "page-a",
+        ChunkKind::CstPage,
+        &page_payload(&[node_bytes(1, 1)]),
+    );
+    let chunk_b = put_chunk(
+        &sas,
+        &p,
+        "page-b",
+        ChunkKind::CstPage,
+        &page_payload(&[node_bytes(0, 6), node_bytes(0, 7)]),
+    );
+
+    // manifest A：total_len = u64::MAX；四类坏分页条目。
+    let idx_a = serde_json::json!({
+        "first": 0,
+        "decls": [
+            {"origin": u64::MAX, "node": 0, "node_lo": 0, "page": 0},
+            {"origin": 5, "node": 0, "node_lo": 0, "page": 999},
+            {"origin": 5, "node": 0, "node_lo": 3, "page": 0},
+            {"origin": 5, "node": 9, "node_lo": 0, "page": 0},
+        ],
+    });
+    let idx_chunk_a = put_chunk(
+        &sas,
+        &p,
+        "declidx-a",
+        ChunkKind::CstManifest,
+        &serde_json::to_vec(&idx_a).unwrap(),
+    );
+    let manifest_a = serde_json::json!({
+        "snapshot": snap_a.id().as_str(),
+        "grammar": p.grammar_id().as_str(),
+        "total_len": u64::MAX,
+        "diags": [],
+        "root_edges": [],
+        "pages": [{"chunk": chunk_a, "first_node": 0, "node_count": 1}],
+        "decl_index": [{"chunk": idx_chunk_a, "first_node": 0, "node_count": 4}],
+        "decl_count": 4,
+        "decls": [],
+        "source_pages": [],
+    });
+    put_manifest(&sas, &p, &snap_a, &manifest_a);
+
+    // manifest B：total_len = 16；paged 合法恰等（[10,16)）与多 1（[10,17)）。
+    let idx_b = serde_json::json!({
+        "first": 0,
+        "decls": [
+            {"origin": 10, "node": 0, "node_lo": 0, "page": 0},
+            {"origin": 10, "node": 1, "node_lo": 0, "page": 0},
+        ],
+    });
+    let idx_chunk_b = put_chunk(
+        &sas,
+        &p,
+        "declidx-b",
+        ChunkKind::CstManifest,
+        &serde_json::to_vec(&idx_b).unwrap(),
+    );
+    let manifest_b = serde_json::json!({
+        "snapshot": snap_b.id().as_str(),
+        "grammar": p.grammar_id().as_str(),
+        "total_len": 16u64,
+        "diags": [],
+        "root_edges": [],
+        "pages": [{"chunk": chunk_b, "first_node": 0, "node_count": 2}],
+        "decl_index": [{"chunk": idx_chunk_b, "first_node": 0, "node_count": 2}],
+        "decl_count": 2,
+        "decls": [],
+        "source_pages": [],
+    });
+    put_manifest(&sas, &p, &snap_b, &manifest_b);
+
+    // ---- 断言：坏分页条目在算术前受控拒绝（两个真实消费者都到）----
+    let view_a = sas.open_cst(&p, &snap_a).unwrap().expect("manifest A");
+    assert_eq!(view_a.decl_count(), 4);
+    let bad_cases = [
+        (0usize, "overflows"), // origin=u64::MAX + start=1：checked 溢出
+        (1, "out of range"),   // 页 999 不存在
+        (2, "node_lo"),        // node_lo 3 > node 0
+        (3, "outside page"),   // 节点 9 越出页 [0,1)
+    ];
+    for (i, needle) in bad_cases {
+        match view_a.decl_range(i) {
+            Err(AdapterError::Admissions(m)) => assert!(
+                m.contains(needle),
+                "decl_range({i}) must be rejected as `{needle}`: {m}"
+            ),
+            other => panic!("decl_range({i}) must be a controlled rejection: {other:?}"),
+        }
+        match view_a.decl_subtree(i) {
+            Err(AdapterError::Admissions(m)) => assert!(
+                m.contains(needle),
+                "decl_subtree({i}) must be rejected as `{needle}`: {m}"
+            ),
+            other => panic!("decl_subtree({i}) must be a controlled rejection: {other:?}"),
+        }
+    }
+
+    // paged 合法恰等接受、多 1 拒绝（合法跨度不误拒）。
+    let view_b = sas.open_cst(&p, &snap_b).unwrap().expect("manifest B");
+    assert_eq!(view_b.decl_count(), 2);
+    assert_eq!(
+        view_b.decl_range(0).expect("exact-fit paged span is legal"),
+        (10, 16)
+    );
+    view_b
+        .decl_subtree(0)
+        .expect("exact-fit paged subtree is legal");
+    match view_b.decl_range(1) {
+        Err(AdapterError::Admissions(m)) => assert!(
+            m.contains("beyond source total_len"),
+            "off-by-one span must be rejected: {m}"
+        ),
+        other => panic!("span [10,17) > total 16 must be rejected: {other:?}"),
+    }
+    assert!(matches!(
+        view_b.decl_subtree(1),
+        Err(AdapterError::Admissions(_))
+    ));
+}

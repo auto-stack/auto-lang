@@ -328,6 +328,172 @@ impl GrammarProgram {
     pub fn canonical_bytes(&self) -> Vec<u8> {
         crate::program_codec::encode_canonical(self)
     }
+
+    /// 引用命名空间准入（PLAN-1029 ADM-02）：在授信/FirstSets/parse 消费前
+    /// 按字段语义核对每个数值引用的归属表——TokenId 与 RuleId 是**不同
+    /// 命名空间**（`Pratt.call_args/postfix_tail` 是 RuleId，不得按 token 表
+    /// 校验），optional None 合法。任何越界 = `InvalidProgram`，绝不带着坏
+    /// 引用进入 `first[prim]`/Machine 的直接索引（坏 primary 此前会 panic）。
+    /// 合法递归 grammar 照常通过（不新增无环/深度限制）。
+    pub fn validate_references(&self) -> Result<(), RtError> {
+        let n_tok = self.tokens.len();
+        let n_rule = self.rules.len();
+        let n_mode = self.scanner.mode_names.len();
+        for r in &self.scanner.rules {
+            if (r.token as usize) >= n_tok {
+                return Err(RtError::InvalidProgram(format!(
+                    "scan rule references unknown token {} ({} tokens)",
+                    r.token, n_tok
+                )));
+            }
+            if (r.mode as usize) >= n_mode || (r.next_mode as usize) >= n_mode {
+                return Err(RtError::InvalidProgram(format!(
+                    "scan rule references unknown mode {}/{} ({} modes)",
+                    r.mode, r.next_mode, n_mode
+                )));
+            }
+        }
+        if (self.start as usize) >= n_rule {
+            return Err(RtError::InvalidProgram(format!(
+                "start rule {} out of range ({} rules)",
+                self.start, n_rule
+            )));
+        }
+        if !self.rule_expects.is_empty() && self.rule_expects.len() != n_rule {
+            return Err(RtError::InvalidProgram(format!(
+                "rule-expect table length {} != rules {}",
+                self.rule_expects.len(),
+                n_rule
+            )));
+        }
+        for n in &self.ctx_names {
+            if (n.token as usize) >= n_tok {
+                return Err(RtError::InvalidProgram(format!(
+                    "ctx-name `{}` references unknown token {} ({} tokens)",
+                    n.name, n.token, n_tok
+                )));
+            }
+            if n.spelling.is_empty() || n.role.is_empty() || n.name.is_empty() {
+                return Err(RtError::InvalidProgram(format!(
+                    "ctx-name `{}` has empty name/spelling/role",
+                    n.name
+                )));
+            }
+        }
+        let bad_tok = |what: &str, t: TokenId| {
+            RtError::InvalidProgram(format!(
+                "{what} references unknown token {t} ({n_tok} tokens)"
+            ))
+        };
+        let bad_rule = |what: &str, r: RuleId| {
+            RtError::InvalidProgram(format!(
+                "{what} references unknown rule {r} ({n_rule} rules)"
+            ))
+        };
+        for rule in &self.rules {
+            for alt in &rule.alts {
+                for s in &alt.steps {
+                    match s.atom {
+                        Atom::Tok(t) => {
+                            if (t as usize) >= n_tok {
+                                return Err(bad_tok(&format!("rule `{}` step", rule.name), t));
+                            }
+                        }
+                        Atom::Rule(r) => {
+                            if (r as usize) >= n_rule {
+                                return Err(bad_rule(&format!("rule `{}` step", rule.name), r));
+                            }
+                        }
+                        Atom::Pratt(x) => {
+                            if (x as usize) >= self.pratt.len() {
+                                return Err(RtError::InvalidProgram(format!(
+                                    "rule `{}` step references unknown pratt {x} ({} tables)",
+                                    rule.name,
+                                    self.pratt.len()
+                                )));
+                            }
+                        }
+                        Atom::CtxName(c) => {
+                            if (c as usize) >= self.ctx_names.len() {
+                                return Err(RtError::InvalidProgram(format!(
+                                    "rule `{}` step references unknown ctx-name {c} ({} entries)",
+                                    rule.name,
+                                    self.ctx_names.len()
+                                )));
+                            }
+                        }
+                    }
+                    if let Some(f) = s.field {
+                        if (f as usize) >= self.field_names.len() {
+                            return Err(RtError::InvalidProgram(format!(
+                                "rule `{}` step field {f} outside field table ({} names)",
+                                rule.name,
+                                self.field_names.len()
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+        for t in &self.pratt {
+            if (t.primary as usize) >= n_rule {
+                return Err(RtError::InvalidProgram(format!(
+                    "pratt primary rule {} out of range ({} rules)",
+                    t.primary, n_rule
+                )));
+            }
+            for op in &t.ops {
+                if (op.op as usize) >= n_tok {
+                    return Err(bad_tok("pratt op", op.op));
+                }
+            }
+            if let Some(o) = t.group_open {
+                if (o as usize) >= n_tok {
+                    return Err(bad_tok("pratt group_open", o));
+                }
+            }
+            if let Some(c) = t.group_close {
+                if (c as usize) >= n_tok {
+                    return Err(bad_tok("pratt group_close", c));
+                }
+            }
+            if let Some(cp) = &t.call_paren {
+                if (cp.open as usize) >= n_tok {
+                    return Err(bad_tok("pratt call_paren.open", cp.open));
+                }
+                if (cp.close as usize) >= n_tok {
+                    return Err(bad_tok("pratt call_paren.close", cp.close));
+                }
+            }
+            // RuleId 命名空间（R-1029-01）：调用实参/点后缀续读是规则引用。
+            if let Some(r) = t.call_args {
+                if (r as usize) >= n_rule {
+                    return Err(bad_rule("pratt call_args", r));
+                }
+            }
+            if let Some(r) = t.postfix_tail {
+                if (r as usize) >= n_rule {
+                    return Err(bad_rule("pratt postfix_tail", r));
+                }
+            }
+        }
+        for t in &self.newline.stmt_end {
+            if (*t as usize) >= n_tok {
+                return Err(bad_tok("newline stmt_end", *t));
+            }
+        }
+        for t in &self.newline.sep_consume {
+            if (*t as usize) >= n_tok {
+                return Err(bad_tok("newline sep_consume", *t));
+            }
+        }
+        for t in &self.recovery.sync {
+            if (*t as usize) >= n_tok {
+                return Err(bad_tok("recovery sync", *t));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// 资源预算（V-11/V-12：显式工作栈 + 可配置预算，无固定嵌套上限）。

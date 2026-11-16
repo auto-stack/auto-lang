@@ -154,10 +154,13 @@ fn same_name_templates_in_two_packages_stay_distinct() {
         "single set per revision: cross-package stale candidate must be late-rejected"
     );
     let installed = host.current().expect("installed");
-    assert_eq!(installed.instances.len(), 2, "no silent cross-package mixing");
+    assert_eq!(
+        installed.instances.len(),
+        2,
+        "no silent cross-package mixing"
+    );
     assert_eq!(host.productions(), 2);
 }
-
 
 /// V-03：同键单飞——两个调用点/两次请求同一实例，productions=1；
 /// 异键隔离——另一实例独立计数。commit 原子安装整个集合。
@@ -319,4 +322,172 @@ fn managed_store_s935_persistence() {
         }
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// PLAN-1029 ADM-03：实例页 decoder 入口准入——512KiB 锚优先（超尺寸含旧
+/// 版本 → TooLarge，不冒 BadVersion 恒优先）；demands 后必须恰在页尾
+/// （+1 尾字节属坏页）；四 tag/argc·constc 边界（64 合法/65 拒）与 255
+/// 拒、旧版本 BadVersion、512KiB 等界（524287/524288 合法、524289 在解析
+/// 分配前 TooLarge，全部由合法字符串长度调节构造）。
+#[test]
+fn audit1029_adm_03_size_eof_and_boundary_admission() {
+    use ace_source_query::{decode_instance_page, encode_instance_page, InstanceTy};
+
+    fn page(
+        args: Vec<(String, InstanceTy)>,
+        consts: Vec<(String, u32)>,
+        body_version: &str,
+    ) -> InstancePage {
+        InstancePage {
+            producer: INSTANCES_PRODUCER,
+            schema: INSTANCES_SCHEMA,
+            algo: INSTANCES_ALGO,
+            key: "k1029".into(),
+            logical: "l".into(),
+            template: "t".into(),
+            args,
+            consts,
+            concrete_name: "c".into(),
+            sig_version: "s".into(),
+            body_version: body_version.into(),
+            demands: 1,
+        }
+    }
+
+    // 四 tag roundtrip + consts（合法控制，真实 encoder 字节）。
+    let four = page(
+        vec![
+            ("a".into(), InstanceTy::I32),
+            ("b".into(), InstanceTy::Bool),
+            ("c".into(), InstanceTy::Text),
+            ("d".into(), InstanceTy::Record("R".into())),
+        ],
+        vec![("N".into(), 2)],
+        "b",
+    );
+    let bytes = encode_instance_page(&four).expect("encode four-tag page");
+    let back = decode_instance_page(&bytes).expect("decode four-tag page");
+    assert_eq!(back, four, "all four type codes must roundtrip");
+    assert_eq!(back.consts, four.consts, "v4 consts roundtrip");
+
+    // 255 类型码已拒（v4 事实保留）：args=[("T", I32)]，定位 code 字节翻转。
+    let one = page(vec![("T".into(), InstanceTy::I32)], vec![], "b");
+    let ob = encode_instance_page(&one).expect("encode");
+    // 布局：magic6+ver1 + 三个信封串 + key/logical/template + argc4 + name(4+1) + code1。
+    let code_at = 7
+        + (4 + INSTANCES_PRODUCER.len())
+        + (4 + INSTANCES_SCHEMA.len())
+        + (4 + INSTANCES_ALGO.len())
+        + (4 + one.key.len())
+        + (4 + one.logical.len())
+        + (4 + one.template.len())
+        + 4
+        + (4 + 1);
+    assert_eq!(ob[code_at], 0, "first arg type code is I32=0");
+    let mut bad_code = ob.clone();
+    bad_code[code_at] = 255;
+    assert!(
+        matches!(
+            decode_instance_page(&bad_code),
+            Err(InstancePageError::Truncated)
+        ),
+        "type code 255 must stay rejected"
+    );
+
+    // argc/constc：64 合法 roundtrip；65 拒（防御上限保留）。
+    let args64: Vec<(String, InstanceTy)> = (0..64)
+        .map(|i| (format!("a{i}"), InstanceTy::I32))
+        .collect();
+    let p64 = page(args64, vec![], "b");
+    let b64 = encode_instance_page(&p64).expect("encode 64 args");
+    assert_eq!(decode_instance_page(&b64).expect("64 args legal"), p64);
+    let args65: Vec<(String, InstanceTy)> = (0..65)
+        .map(|i| (format!("a{i}"), InstanceTy::I32))
+        .collect();
+    let b65 = encode_instance_page(&page(args65, vec![], "b")).expect("encode 65");
+    assert!(
+        matches!(
+            decode_instance_page(&b65),
+            Err(InstancePageError::Truncated)
+        ),
+        "argc=65 must be rejected"
+    );
+    let consts64: Vec<(String, u32)> = (0..64).map(|i| (format!("c{i}"), i)).collect();
+    let k64 = page(vec![], consts64, "b");
+    let kc64 = encode_instance_page(&k64).expect("encode 64 consts");
+    assert_eq!(decode_instance_page(&kc64).expect("64 consts legal"), k64);
+    let consts65: Vec<(String, u32)> = (0..65).map(|i| (format!("c{i}"), i)).collect();
+    let kc65 = encode_instance_page(&page(vec![], consts65, "b")).expect("encode 65 consts");
+    assert!(
+        matches!(
+            decode_instance_page(&kc65),
+            Err(InstancePageError::Truncated)
+        ),
+        "constc=65 must be rejected"
+    );
+
+    // 旧版本 v1..v3：版本不符 → BadVersion（512KiB 内不因 size 被拒）。
+    for v in 1..=3u8 {
+        let mut old = bytes.clone();
+        old[6] = v;
+        assert!(
+            matches!(decode_instance_page(&old), Err(InstancePageError::BadVersion { found }) if found == v),
+            "old version {v} must be BadVersion inside the page anchor"
+        );
+    }
+
+    // 全消费：截断与 +1 尾字节都是坏页。
+    assert!(decode_instance_page(&bytes[..bytes.len() - 3]).is_err());
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    assert!(
+        matches!(
+            decode_instance_page(&trailing),
+            Err(InstancePageError::Truncated)
+        ),
+        "legal page + 1 trailing byte must be a bad page (full consumption)"
+    );
+
+    // 512KiB 等界：以 body_version 长度调节总长（合法字符串，非 padding）。
+    // body_version 是 demands 前最后一个字符串——每字符恰 +1 字节。
+    let probe = page(vec![], vec![], "");
+    let base_len = encode_instance_page(&probe).unwrap().len();
+    let pad = 524_288 - base_len; // body_version 须非空也合法，直接按差值填充
+    let p524288 = page(vec![], vec![], &"v".repeat(pad));
+    let b524288 = encode_instance_page(&p524288).expect("encode exactly 524288");
+    assert_eq!(b524288.len(), 524288);
+    assert_eq!(
+        decode_instance_page(&b524288).expect("524288 is at the anchor, not beyond"),
+        p524288
+    );
+    let p524287 = page(vec![], vec![], &"v".repeat(pad - 1));
+    let b524287 = encode_instance_page(&p524287).expect("encode 524287");
+    assert_eq!(b524287.len(), 524287);
+    assert_eq!(
+        decode_instance_page(&b524287).expect("524287 below anchor"),
+        p524287
+    );
+    // 524289（encoder 拒写 → 由 524288 合法页按同一布局拼装：长度字段 +1、
+    // 内容区插 1 字节，格式仍完整合法）——decoder 入口必须在解析分配前
+    // TooLarge；且该锚优先于旧版本（版本字节改 3 仍 TooLarge）。
+    let n = b524288.len();
+    let blen = pad as u64; // body_version 长度
+    let len_field_at = n - 8 - 4 - blen as usize;
+    let mut b524289 = b524288.clone();
+    b524289[len_field_at..len_field_at + 4].copy_from_slice(&((blen + 1) as u32).to_le_bytes());
+    b524289.insert(n - 8, b'v');
+    assert_eq!(b524289.len(), 524289);
+    assert!(matches!(
+        decode_instance_page(&b524289),
+        Err(InstancePageError::TooLarge { bytes: 524289 })
+    ));
+    let mut old_oversize = b524289.clone();
+    old_oversize[6] = 3;
+    assert!(
+        matches!(
+            decode_instance_page(&old_oversize),
+            Err(InstancePageError::TooLarge { .. })
+        ),
+        "oversize takes priority over BadVersion at the decoder entry"
+    );
 }

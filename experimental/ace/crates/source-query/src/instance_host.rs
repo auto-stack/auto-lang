@@ -143,17 +143,21 @@ fn put_str(out: &mut Vec<u8>, s: &str) {
 }
 
 fn get_str(b: &[u8], pos: &mut usize) -> Result<String, InstancePageError> {
-    if *pos + 4 > b.len() {
-        return Err(InstancePageError::Truncated);
-    }
+    // PLAN-1029（ADM-03）：pos+n 一律 checked（坏页受控拒绝，不回绕）。
+    let readable = |end: usize| end <= b.len();
+    let len_end = pos
+        .checked_add(4)
+        .filter(|&e| readable(e))
+        .ok_or(InstancePageError::Truncated)?;
     let n = u32::from_le_bytes([b[*pos], b[*pos + 1], b[*pos + 2], b[*pos + 3]]) as usize;
-    *pos += 4;
-    if *pos + n > b.len() {
-        return Err(InstancePageError::Truncated);
-    }
+    *pos = len_end;
+    let str_end = pos
+        .checked_add(n)
+        .filter(|&e| readable(e))
+        .ok_or(InstancePageError::Truncated)?;
     let s =
-        String::from_utf8(b[*pos..*pos + n].to_vec()).map_err(|_| InstancePageError::Truncated)?;
-    *pos += n;
+        String::from_utf8(b[*pos..str_end].to_vec()).map_err(|_| InstancePageError::Truncated)?;
+    *pos = str_end;
     Ok(s)
 }
 
@@ -197,6 +201,11 @@ pub fn encode_instance_page(p: &InstancePage) -> Result<Vec<u8>, InstancePageErr
 pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError> {
     if b.len() < INSTANCE_PAGE_MAGIC.len() + 1 {
         return Err(InstancePageError::Truncated);
+    }
+    // PLAN-1029（ADM-03）：512KiB 页锚在 **decoder 入口**先执行——超尺寸
+    // （包括旧版本页）优先 TooLarge，不冒 BadVersion 恒优先。
+    if b.len() > INSTANCE_MAX_PAGE_BYTES {
+        return Err(InstancePageError::TooLarge { bytes: b.len() });
     }
     if &b[..6] != INSTANCE_PAGE_MAGIC {
         return Err(InstancePageError::BadMagic);
@@ -280,6 +289,12 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
         b[pos + 6],
         b[pos + 7],
     ]);
+    pos += 8;
+    // PLAN-1029（ADM-03）：全消费——demands 读完后必须恰在页尾；合法页
+    // +1 尾字节属坏页（沿 Truncated 坏格式类处理 suffix）。
+    if pos != b.len() {
+        return Err(InstancePageError::Truncated);
+    }
     Ok(InstancePage {
         producer: INSTANCES_PRODUCER,
         schema: INSTANCES_SCHEMA,
