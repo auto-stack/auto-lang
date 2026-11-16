@@ -217,6 +217,17 @@ try {
   printed.length = 0;
   eq(RT.a2x_run_main(() => RT.a2x_add(2147483647, 1)), 1, "trap exit code");
   eq(printed.join(""), "trap:Overflow\n", "trap line");
+  printed.length = 0;
+  // Internal (non-A2xTrap) failures surface as trap:Internal with exit 1 —
+  // the error contract async/host boundaries rely on (V-08).
+  eq(
+    RT.a2x_run_main(() => {
+      throw new TypeError("boom");
+    }),
+    1,
+    "internal error exit code",
+  );
+  eq(printed.join(""), "trap:Internal\n", "internal trap line");
 } finally {
   process.stdout.write = origWrite;
 }
