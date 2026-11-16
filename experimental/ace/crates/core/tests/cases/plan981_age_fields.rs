@@ -24,6 +24,9 @@ node Widget {\n\
     view { text \"w\" {} }\n\
 }\n\
 node Counter {\n\
+    design {\n\
+        theme: \"dark\"\n\
+    }\n\
     msg {\n\
         Inc,\n\
         Set(int)\n\
@@ -137,6 +140,7 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
     // `view.scene` 删掉投影后无人发现（轮 48 R47-2 的探针实证）。
     for drop in [
         "node",
+        "design",
         "model",
         "model.init",
         "msg",
@@ -166,6 +170,7 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     "model.init" => c.initialized = false,
                     "on" | "on.lifecycle" => c.handler_msgs.clear(),
                     "msg" => c.messages.clear(),
+                    "design" => c.design.clear(),
                     // 出口事实：把该出口换成另一个，代表"投影不再产出这一行"。
                     "view" => {
                         if c.exit == AgeViewExit::View {
@@ -221,6 +226,7 @@ fn p981_fields_construct_table_is_frozen() {
     assert_eq!(
         keys,
         vec![
+            "design",
             "model",
             "model.init",
             "msg",

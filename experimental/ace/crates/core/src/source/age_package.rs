@@ -77,6 +77,16 @@ pub struct AgeMessageVariant {
     pub payload: Vec<String>,
     pub span: Span,
 }
+/// PLAN-981（B-LANGUAGE-I / AGE-L02）：`design { key: <expr> … }` 的一条条目。
+///
+/// `value` 是作者表达式（含 span）；`if/else` 形在本切片结构性保留为 `None`
+/// （不是静默丢——span 仍锚定原位，消费者能看到"这里有一条未求值的条目"）。
+#[derive(Clone, Debug)]
+pub struct AgeDesignEntry {
+    pub key: String,
+    pub value: Option<Expr>,
+    pub span: Span,
+}
 /// 受检的一个 AGE 组件（一个 node 声明）。
 #[derive(Clone, Debug)]
 pub struct AgePackageComponent {
@@ -89,6 +99,8 @@ pub struct AgePackageComponent {
     pub handler_msgs: Vec<String>,
     /// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体（名字 + payload 类型拼写，按声明序）。
     pub messages: Vec<AgeMessageVariant>,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式，按声明序）。
+    pub design: Vec<AgeDesignEntry>,
     /// PLAN-981：每个 `on` 处理器做的事（消息名 → `(字段, 赋值右手)`，按声明序）。
     ///
     /// 只有 `handler_msgs` 时，`count = count + 1` 与 `count = count + 2` 的区别
@@ -898,6 +910,16 @@ fn read_back_components(
                 "view-widget" => AgeViewExit::ViewWidget,
                 _ => AgeViewExit::View,
             },
+            design: p
+                .node
+                .design
+                .iter()
+                .map(|d| AgeDesignEntry {
+                    key: d.key.clone(),
+                    value: d.value.clone(),
+                    span: d.span,
+                })
+                .collect(),
             messages: p
                 .node
                 .messages
@@ -1341,7 +1363,14 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "av::age_package (instance_states)",
         requirement: "AGE-L01",
     },
-    // PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体是 AGE 作者语法的一部分；
+    // PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式）。
+    AgeConstruct {
+        key: "design",
+        spelling: "design { key: <expr> }",
+        fact: "the design entries with their author expressions and spans",
+        consumer: "age_package::AgePackageComponent.design",
+        requirement: "AGE-L02",
+    },    // PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体是 AGE 作者语法的一部分；
     // SOURCE 交接时它属 AG-A 范围外（B-LANGUAGE 消费），现在以完整投影进入本面。
     AgeConstruct {
         key: "msg",
@@ -1519,6 +1548,10 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
         };
         if !out.contains(&exit_fact) {
             out.push(exit_fact);
+        }
+        // B-LANGUAGE-I（AGE-L02）：`design` 条目进入事实面。
+        if !c.design.is_empty() && !out.contains(&"design") {
+            out.push("design");
         }
         // B-LANGUAGE-I（AGE-L01）：`msg` 变体进入事实面（有变体即产生该行）。
         if !c.messages.is_empty() && !out.contains(&"msg") {
@@ -2174,6 +2207,10 @@ fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
 pub fn component_roles(description: &AgePackageDescription) -> Vec<&str> {
     let mut out = vec!["node", "view", "text"];
     for c in &description.components {
+        // B-LANGUAGE-I（AGE-L02）：`design` 条目进入事实面。
+        if !c.design.is_empty() && !out.contains(&"design") {
+            out.push("design");
+        }
         // B-LANGUAGE-I（AGE-L01）：`msg` 变体进入事实面（有变体即产生该行）。
         if !c.messages.is_empty() && !out.contains(&"msg") {
             out.push("msg");

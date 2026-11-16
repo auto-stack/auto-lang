@@ -433,7 +433,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-980（B-DIALECT-I 完整批）：WidgetDecl 其余成员槽位逐项
             // 投影（结构 + 原 span）；行为接线按槽位 applicability 分批。
             alt(profiles: [age-component, age-package]) { age-msg-member() {} }
-            alt(profiles: [age-component]) { age-design-member() {} }
+            alt(profiles: [age-component, age-package]) { age-design-member() {} }
             alt(profiles: [age-component]) { age-named-view-member() {} }
             alt(profiles: [age-component]) { age-bind-member() {} }
             alt(profiles: [age-component]) { age-routes-member() {} }
@@ -476,13 +476,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             comma() {} age-msg-ty(field: "payload") {}
         }
         // PLAN-980：`design { theme: <expr> mode: <expr> }`——主题设计块。
-        age-design-member(profiles: [age-component], expect: "a `design { theme: <expr> }` block") {
+        age-design-member(profiles: [age-component, age-package], expect: "a `design { theme: <expr> }` block") {
             name(of: "age-design-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-design-entry() {} }
             rbrace() {}
         }
-        age-design-entry(profiles: [age-component]) {
+        age-design-entry(profiles: [age-component, age-package]) {
             ident(field: "key")
             colon() {}
             age-design-value(field: "value") {}
