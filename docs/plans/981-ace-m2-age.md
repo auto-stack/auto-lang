@@ -924,6 +924,17 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: review（review-68 R68-1 修补）| PLAN-981 | outcome: partial
+
+- **review-68 = needs_fix（仅 R68-1）**：R67-1/2/3/4/6/7/8 已核销；R67-5 只部分闭合——旧
+  `s2_real_a_counter_dual_instance_2_to_1` 仍内嵌一份 818 B 手抄源。
+- **修补**：auto-ui `f4edcf7b`→master `771be6a9`——该测试改为 `s2_real_a_counter_trajectory_and_restart`，
+  直接 `include_str!` **canonical 源**，保留 Reset 归零轨迹覆盖，重启证据改述"逻辑 session id 稳定 +
+  generation 递增"；三个真实源 session 测试全部读 canonical 文件，无手抄字面量。
+- **overlay 复核**：`5cbe66ed`→master `7de28330`，1393 文件钉 `auto-lang 75015a49b`，
+  `prepare_sdk --verify-only` PASS，逐 blob 保真 PASS。
+- **门禁**：`s2_age_routing` **16/16**、driver lib 47/47、bridge 4+3+10。
+- **待办**：review-68 复验 R68-1 闭包（已发复验请求）。
 2026-11-17 stage: review（review-67 needs_fix → 修补；口径修正）| PLAN-981 | outcome: partial
 
 **review-67 = needs_fix（8 项，全部修补）**：
