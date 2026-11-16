@@ -483,3 +483,15 @@ RHS 发射 → 宿主映射（`l<i>___age_s_<inst>_<field>` → `field.value`，
 handler 体全派生（Inc=加、ToggleMode=取反、UseAuto=字面量），**Inc 体
 真 node 执行 41→42**（a2x_rt helper 就位）。**WEB 剩余**：SFC 拼接
 （#6d）→ 全量双轨 → 浏览器档。
+
+### §13.7 SFC 拼接（切片 #6d，2026-11-16）
+
+`splice_lane_handler_bodies(sfc, bodies)`（`ui/ace_vue_script.rs`）：lane
+派生体替换编译器 SFC 内对应 handler 函数体——锚=`function <Variant>():
+void {` 括号配对；pattern 去点=Variant；只动 handler 体，**锚外段落字节
+不变**（模板/状态声明区前后对账断言）。永久 case `p980_web_sfc_splice`
+（ace_ts_provider 11/11）：002 真实编译器管线（parse→extract→
+VueGenerator SFC）+ 六 lane 体 → splice——Inc/其他 handler 体替换、
+template 与 pre-state 区 byte-identical、ToggleMode 取反体就位。
+**WEB 剩余**：`generate_sfc_with_lane` 一体化入口 + 90 项全量双轨 +
+浏览器挂载档。
