@@ -248,3 +248,18 @@ fn p981_watch_source_rejection_points_at_the_source() {
     assert_eq!(ds[0].code, "source.age.member-field", "{ds:?}");
     assert_eq!(ds[0].span.start, want, "span points at the source token");
 }
+
+/// R61-4：view 元素属性值表达式进唯一 verify（`class: nosuch_ident` 不能静默通过）。
+#[test]
+fn p981_view_attribute_expressions_are_verified() {
+    let good = "node M {\n    model {\n        count int = 0\n    }\n    view {\n        col {\n            class: \"w-full\"\n        }\n    }\n}\n";
+    compile(good).expect("a literal attribute value compiles");
+    let bad = "node M {\n    model {\n        count int = 0\n    }\n    view {\n        col {\n            class: nosuch_ident\n        }\n    }\n}\n";
+    let want = bad.find("nosuch_ident").expect("fixture has the bad name");
+    let ds = match compile(bad) {
+        Ok(_) => panic!("an undefined attribute value must be rejected"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
+    assert_eq!(ds[0].span.start, want, "diagnostic at the attribute value");
+}
