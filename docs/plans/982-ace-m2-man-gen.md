@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-982
-status: drafting
+status: executing
 feature_name: AutoMan配置任务模板与生成器迁移
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 6
-current_step: 0
-total_steps: 40
+updated_at: 2026-11-17
+plan_revision: 7
+current_step: 1
+total_steps: 37
 depends_on: [PLAN-960, PLAN-964, PLAN-966, PLAN-969, PLAN-970, PLAN-971, PLAN-973, PLAN-976, PLAN-977, PLAN-978]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-man-gen.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-982] AutoMan配置任务模板与生成器迁移
 
 ## 0. 变更摘要
+
+2026-11-16 r7（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
 2026-11-12 r6：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -78,7 +80,17 @@ touched_goals: [GOAL-002]
 
 - [crates/auto-generation-core/src](../../crates/auto-generation-core/src)：复用共享载体/失败发布，不把源码字符串另交旧VM；目录职责已核，确切符号/闭包开工再核
 
+### 2026-11-16 用户目标范围修订与取材
+
+用户明确要求从ACE M2去掉Godot转译，并核实a2vue对TS的真实依赖；本轮仅规划，不删除实现/原源/旧用例，不运行测试/安装Godot或创建/恢复实施树/目标，不改canonical Specs或归档959。读取基面`8a686e8d2399f01c3aa91112aa683f141c0a0922`及并行文档WIP。auto-ui代码核实：`ui_gen/ts_adapter.rs` SHA256前16 `84efe1eb8306dc25`（Stmt回退约858行、Expr委托约2458行）、`ui_gen/vue/script.rs`=`8120f939878ed68d`（handler约288/1732行及computed/body约2596行）、`ui_gen/ark_adapter.rs`=`038454e31c87e786`（同类TS委托）；现行`docs/specs/ui/vue-store-generation.md`=`f422fe6df24cc398`。这是静态读取，不是新ACE TS运行证据。
+
+Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2R/其他required后端义务不能随Godot一起撤掉。规范中旧“全部在用A2X目标”的历史范围由本次用户裁定覆盖，未来实际交付时落对应SD；当前Spec已验事实不伪造。受修改的旧revision范围/矩阵证明仅保历史，未来独立review须绑定当前revision与真正实现提交。
+
 ## 5. 详细设计
+
+### M2-TARGET-SCOPE-20261116：本包当前边界
+
+本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
 ### M2阶段执行合同（当前优先）
 
@@ -88,7 +100,7 @@ touched_goals: [GOAL-002]
 |---|---|
 | M2-A准备 | T-01 |
 | M2-A | B-PROOF-I, B-PROOF-V, B-PROOF-R, B-CONFIG-I, B-CONFIG-V, B-CONFIG-R |
-| M2-B | B-EXEC-I, B-EXEC-V, B-EXEC-R, B-TEMPLATE-I, B-TEMPLATE-V, B-TEMPLATE-R, B-RUST-I, B-RUST-V, B-RUST-R, B-C-I, B-C-V, B-C-R, B-WEBTARGET-I, B-WEBTARGET-V, B-WEBTARGET-R, B-PY-I, B-PY-V, B-PY-R, B-GODOT-I, B-GODOT-V, B-GODOT-R, B-REVERSE-I, B-REVERSE-V, B-REVERSE-R, B-EXPORT-I, B-EXPORT-V, B-EXPORT-R, B-DEVSDK-I, B-DEVSDK-V, B-DEVSDK-R, T-05, T-06, T-07 |
+| M2-B | B-EXEC-I, B-EXEC-V, B-EXEC-R, B-TEMPLATE-I, B-TEMPLATE-V, B-TEMPLATE-R, B-RUST-I, B-RUST-V, B-RUST-R, B-C-I, B-C-V, B-C-R, B-WEBTARGET-I, B-WEBTARGET-V, B-WEBTARGET-R, B-PY-I, B-PY-V, B-PY-R, B-REVERSE-I, B-REVERSE-V, B-REVERSE-R, B-EXPORT-I, B-EXPORT-V, B-EXPORT-R, B-DEVSDK-I, B-DEVSDK-V, B-DEVSDK-R, T-05, T-06, T-07 |
 
 本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。frontmatter仍是整Plan最终依赖并集，局部A按本节/各批最小接口前置启动，不把985全Plan或B消费者整包置为A前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
 
@@ -108,12 +120,11 @@ touched_goals: [GOAL-002]
 | 982/TEMPLATE | new/init模板与AutoGen | 982/CONFIG; L966/L978 | auto-man + auto-lang |
 | 982/RUST | Rust转译与构建 | 982/CONFIG; L978 | auto-man |
 | 982/C | C转译与标准库构建 | 982/CONFIG; L978 | auto-man |
-| 982/WEBTARGET | TS/JS转译 | 982/CONFIG; L976/L978 | auto-man |
+| 982/WEBTARGET | 生产TS/JS工程与CLI消费闭包 | 982/CONFIG; L976/L978 | auto-man |
 | 982/PY | Python转译 | 982/CONFIG; 977/PY; L978 | auto-man |
-| 982/GODOT | Godot脚本与场景工程 | 982/CONFIG; 977/GD; 977/SCENE; L978 | auto-man |
 | 982/REVERSE | 逆向与源到源命令 | 982/CONFIG; 977/REVERSE | auto-man |
 | 982/EXPORT | 现用发行工程格式 | 982/C; 982/RUST; L978 | auto-man |
-| 982/DEVSDK | watch快路径与SDK发现 | 982/EXEC; 982/TEMPLATE; 982/RUST; 982/C; 982/WEBTARGET; 982/PY; 982/GODOT; 982/REVERSE; 982/EXPORT; L978 | auto-man |
+| 982/DEVSDK | watch快路径与SDK发现 | 982/EXEC; 982/TEMPLATE; 982/RUST; 982/C; 982/WEBTARGET; 982/PY; 982/REVERSE; 982/EXPORT; L978 | auto-man |
 | 982/PROOF | RG-A01真实配置与最小CLI | L982/CONFIG, L969, L970, L978 | 原owner；RG-A具名真实验证 |
 
 ### 982/CONFIG：配置包锁与项目模型
@@ -148,7 +159,7 @@ R关闭：独立核真实输入→新producer→consumer及正反例/来源/资�
 
 ### 982/WEBTARGET：TS/JS转译
 改面（核存在）：`D:/autostack/auto-man/crates/auto/src/cmd_trans.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/target.rs`；`D:/autostack/auto-man/crates/auto-man-core/src/target.rs`。
-I实现：真实CLI调用新TS/JS provider，保模块/依赖/source map。
+I实现：真实生产工程/CLI调用976新TS/JS provider，保模块/依赖/source map；按976冻结的完整生产闭包消费，不自动增加独立全语言通用a2ts/a2js产品门，实际产品使用的CLI功能仍须支持。
 V验收：实际JS运行与TS编译后运行，类型/运行时错误有原span，不能只打印代码。
 R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
@@ -156,12 +167,6 @@ R关闭：独立核真实输入→新producer→consumer及正反例/来源/资�
 改面（核存在）：`D:/autostack/auto-man/crates/auto/src/cmd_trans.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/target.rs`；`D:/autostack/auto-man/crates/auto-man-core/src/target.rs`。
 I实现：CLI接977/PY及工程配置/解释器发现。
 V验收：真实Python原工程运行、错误JSON/exit正确，错误解释器身份不静默回落。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
-
-### 982/GODOT：Godot脚本与场景工程
-改面（核存在）：`D:/autostack/auto-man/crates/auto/src/cmd_trans.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/target.rs`；`D:/autostack/auto-man/crates/auto-man-core/src/target.rs`。
-I实现：接GDScript/TSCN脚本/场景/资源工程装配。
-V验收：实际Godot headless载入原工程，资源/脚本执行，缺依赖诊断。
 R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 982/REVERSE：逆向与源到源命令
@@ -192,6 +197,62 @@ R关闭：独立核真实输入→新producer→consumer及正反例/来源/资�
 I：从原CLI/runtime fixture冻结多模块pac、args/env及最小脚本，接显式ACE candidate入口，证明配置与实际命令消费同一SDK；不等待整个EXEC/TEMPLATE/各target迁移。
 V：双配置/作用域隔离，真实值/stdout/exit正确；坏配置不写state/lock，缺ACE身份拒绝无fallback；取消子任务回收。
 R：独立核普通源→新producer→真实consumer、原expected/资源/退出及source/SDK身份；本批只关闭RG-A义务，不冒全部产品迁移。
+
+### T-01 冻结记录（2026-11-17，r7 执行轮；work 收据见 §9）
+
+**授权**：本 goal（"完成计划982/A"）按 `/auto-plan-goal` 授予 work → review → 有界修复 → merge 全链；A 切片仍只按 §5 阶段表执行，不冒 B。
+
+**前置核验（A 最小前置均已归档，取正式交付而非状态字样）**
+
+| 前置 | 状态 | 正式交付 | 对 982/CONFIG 的实际提供 |
+|---|---|---|---|
+| L960 modules | archived | `8b5a1d980`；`m2-modules.md` | 模块包面 `packages-modules`；**无配置文档面** |
+| L964 dynamic | archived | `9135c9ceb`；`m2-dynamic.md` | 对象/闭包/FStr 运行值；对象字面量同型冻结（异型 `source.object-elem` 具名拒） |
+| L969 facade | archived | `6fd48b4f1`（E0 fold `5dfcfe74e`）；`m2-facade.md`（`9d1403f96a7795c7`） | `run_ace`/`AceRequest`/`AceOutcome`/console 车道/args,input 具名拒；**该规范 §边界 明写：`eval_config_with_vm`＝legacy owner（pac.at），config 兼容面"均未在 ACE 门复制"** |
+| L973 stdlib-io | archived | r13 delivered | 标准库 I/O；无配置面 |
+| L970 sessions | archived | r6 delivered | 会话/热更新；无配置面 |
+| L978 build | archived | `b8f80afcf`；`m2-build.md` | 候选 SDK/`ac-build`/身份与运行兼容核对；无配置求值 |
+
+**真实 owner 与改面重核**（两树 `D:/autostack/.wt/lang-982/auto-lang@c6c65e5c5`、`…/auto-man@54fe4070b`，本轮新建、均干净）
+
+| 文件 | sha256前16 | 本轮核实事实 |
+|---|---|---|
+| auto-man `crates/auto-man-runtime/src/automan.rs` | `3699ce78450fd62d` | `parse_pac`(L112)→`AutoConfig::from_file`(L132/L169)；state 读取 L234；am.at 模板 L2825/L2929 |
+| auto-man `crates/auto-man-runtime/src/project_model_adapter.rs` | `c5f766e1634cad20` | 静态子集与动态配置的分轴衔接口（L602 注释所指） |
+| auto-man `crates/auto-man-core/src/target.rs` | `827f96a5d400be3f` | 目标装配/CLI 语义 |
+| auto-man `crates/auto/src/main.rs` | `b69056ace1b07d69` | L800 直接 `eval_config_with_vm` |
+| auto-man `crates/auto/src/cmd_run.rs` | `da08fd8369261f27` | 最小 CLI 执行入口（PROOF 实际 consumer） |
+| auto-lang `crates/auto-lang-core/src/config.rs` | `89a5f60f4a03855b` | `AutoConfig` 全部读取面：`from_code/from_file`→`eval_config_with_vm` |
+| auto-lang `crates/auto-lang-core/src/entry.rs` | `b3e46189b0e6e1af` | `eval_config_with_vm`(L735)：`CompileDest::Config` 解析＋config codegen＋VM |
+| auto-lang `crates/auto-lang-core/src/vm/codegen.rs` | `3dd3b52496e03344` | `new_for_config`/`compile_config_program`：accum 文档求值（旧 VM opcode） |
+
+**接口现值与缺口（实测，非推断）**
+
+- ACE 公开值面只到标量＋具名 `Opaque`（`auto-lang-core/src/ace_entry.rs` `4d32c15d3405cb34`）；console 车道只回文本；`canonical_owned` 对 `Value::Object|External` 返回 `None`（`experimental/ace/crates/av/src/owned_fixture.rs` `409c9fd345a36031` L144）。
+- `SourceProfile` 全集（`experimental/ace/crates/core/src/source/mod.rs` `5a0c640e1b5395d5` L152 起）**无 config/document/atom 面**；ACE 运行时亦无 `Value::Node` 之类文档值种类。
+- 探针（scratch 见 `D:/autostack/plan-artifacts/plan-982/probe-t01/`）：
+  - 真实配置文档 `auto-man/test/fixtures/plan446/j2check/auto/pac.at`（`807c35217b9a6ea9`）经 `av-worker request --store … --src-file … --entry d_main` → `{"ok":false,"diag":"frontend:source.syntax","source_hash":"37f2c30fd510fec2"}`，exit 4＝ACE 前端直接拒绝该文档；
+  - 同族产品 legacy 面（`auto info` 读 `~/.auto/auto-man/am.at` 配置文档）正常求值并推进——旧引擎能求值、ACE 不能，是本轮缺口的直接对照。
+- 已存在的真实多模块/依赖输入（可直接冻结为 A 输入）：`auto-man/test/fixtures/modularity/project-model/fixtures/static-dep-forms.pac.at`（`271f83d37ffe2ea1`，`dep bps{}`／`dep "stylekit"{}`／`dep("kernel"){}` 三形）；`…/generated-ui-consumer/proj/pac.at`（`58c8390310bb8b09`，含 title/window 面）。
+
+**冻结结论：`GAP-982-CONFIG-ACE`（具名缺口）**
+
+ACE 当前**没有配置文档求值面**——文档值种类、求值语义、canonical 投影、进程内车道四者皆缺，而 969 的已验规范把该面显式留在 legacy owner。982/CONFIG 的 I（"pac/am/index/state 与参数/环境双阶段求值接 ACE"）与 PROOF（"证明配置与实际命令消费同一 SDK"）都必须先有该面才能真实执行。因此：
+
+- A **不能按现合同在 982 内直接开工实现**：本包 CONFIG 声明的改面只有 auto-man 文件；要把语言核心 capability（新文档值/新 profile 或等价 lowering）塞进产品包，会改变本 Plan 声明的改面与依赖来源，属 review 必扫的 workaround/scope 扩张。
+- 缺口 **owner 未指派**：969 已归档且规范明示未交；`SourceProfile`/值面/规范中均无其他能力包承接"配置面"。
+- 三种可行路由及其影响见 §10 Q-982-1；三者都触及本 Plan 的合同/接受面，须用户裁定，不能由执行侧自行选择。
+
+**已冻结可复用资产（决议落地后不必重做）**
+
+| 面 | 冻结内容 |
+|---|---|
+| 输入 | `j2check/auto/pac.at`（三 prop 最简形）、`static-dep-forms.pac.at`（三 dep 形）、`generated-ui-consumer/proj/pac.at`（display/window 面）；args 注入形沿用 `config.rs` 现测 `test_injected_object_arg_field_access`（`kernel.port` 对象参数）与 `test_injected_bool_arg`（bool 参数） |
+| 独立预期 | 原动态 pac 与 args/env 输出逐值一致；失败不写 state/lock；同名包与配置隔离；未知语言不降成静态默认；缺 ACE 身份＝具名拒且 legacy dispatch 为 0 |
+| 入口/命令 | man：`cargo tc`、`cargo test -p auto-package-lock --test lock_contract`、`cargo test -p auto --test plan816_cli_driver`、`cargo test -p auto-man --test plan805_toolchain_parity`；lang：`cargo t ace-facade`（既有固定组）、`cargo test -p auto-lang-core --lib config` |
+| 材料/树 | 唯一 scope `D:/autostack/plan-artifacts/plan-982/`（已登记 `.retention/policy.json`）；唯一组 `D:/autostack/.wt/lang-982/{auto-lang,auto-man}`，均 branch `plan-982-dev`、基面各仓 master，保留至 B 完成 |
+| A/B 边界 | A 只闭 CONFIG/PROOF 切片；EXEC/TEMPLATE/各 target/EXPORT/DEVSDK/安装仍 B |
+| B 侧登记（本 Task 只登记，不实现） | B-EXEC/TEMPLATE/RUST/C/WEBTARGET/PY/REVERSE/EXPORT/DEVSDK 依赖 976/977 受检 provider 及其自有 A 切片；本轮**未**冻结其接口，不构成接口已交声明 |
 
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r6当前）
 
@@ -253,6 +314,7 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 | SD-01 | add | docs/specs/ace-migration/m2-man-gen.md | 有限切片→实际已验支持/拒绝/来源 | 不把计划当现状 | AC-01..06、全部AC-B-* |
 | SD-02 | modify | docs/specs/ace-migration/replacement-scope-and-evidence.md | 959行关联新producer/consumer及差额 | 替换闭合 | AC-03/05/06 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-man-gen.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE/AC-A-PROOF |
+| SD-TARGET-SCOPE | modify | `docs/specs/ace-migration/m2-man-gen.md`及`replacement-scope-and-evidence.md`（真实交付后归原owner） | 原全目标并集→按Design55 §5.1的用户范围：Godot后置，生产TS/JS required，范围/证据/发行宣称一致；旧实现与用例保留 | 本轮用户明确裁定，防止旧Godot门残留或误删Vue能力 | AC-01/02/04/05、AC-PHASE；原work/review与范围核对 |
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-man-gen.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
 
@@ -280,7 +342,6 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 | V-B-C | AC-B-C | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 原C工程含新stdlib链接执行，CTrans入口零，错误目标保旧输出。 |
 | V-B-WEBTARGET | AC-B-WEBTARGET | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 实际JS运行与TS编译后运行，类型/运行时错误有原span，不能只打印代码。 |
 | V-B-PY | AC-B-PY | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 真实Python原工程运行、错误JSON/exit正确，错误解释器身份不静默回落。 |
-| V-B-GODOT | AC-B-GODOT | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 实际Godot headless载入原工程，资源/脚本执行，缺依赖诊断。 |
 | V-B-REVERSE | AC-B-REVERSE | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 原支持Rust输入→Auto真实运行，非法近邻错误/exit；不要求任意互逆。 |
 | V-B-EXPORT | AC-B-EXPORT | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 各原支持输出实际构建/链接/可执行或原目标验收，未知工具环境不改NA。 |
 | V-B-DEVSDK | AC-B-DEVSDK | man: python scripts/test_install_transaction.py；python scripts/test-man-install-compat.py；真实watch采样接978，安装终验归986/987 | 真实process树cargo/rustc0，Rust输入变化仍正确重建；旧cache/binary不被发现；候选安装失败回退保用户数据。 |
@@ -305,6 +366,12 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 当前目标范围验证（拟实施，未运行）
+
+| Case | AC/任务 | 输入→producer→consumer→独立oracle与负控 |
+|---|---|---|
+| V-TARGET-SCOPE | AC-01/AC-B-WEBTARGET/AC-04；B-WEBTARGET-I/V/R、T-05 | 原生产TS/JS工程/CLI→976受检provider→真实编译后运行，以模块初始化/值/诊断及无旧emitter为oracle；DEVSDK可在不具备Godot工具的环境闭合本版范围。误把生产TS命令后置或把Godot缺席当成required失败须被范围检查发现；不支持目标请求具名拒绝，不旧链fallback。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察标准 | 验证 |
@@ -322,7 +389,6 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 | AC-B-C | work | 原C工程含新stdlib链接执行，CTrans入口零，错误目标保旧输出。 | B-C-V/R |
 | AC-B-WEBTARGET | work | 实际JS运行与TS编译后运行，类型/运行时错误有原span，不能只打印代码。 | B-WEBTARGET-V/R |
 | AC-B-PY | work | 真实Python原工程运行、错误JSON/exit正确，错误解释器身份不静默回落。 | B-PY-V/R |
-| AC-B-GODOT | work | 实际Godot headless载入原工程，资源/脚本执行，缺依赖诊断。 | B-GODOT-V/R |
 | AC-B-REVERSE | work | 原支持Rust输入→Auto真实运行，非法近邻错误/exit；不要求任意互逆。 | B-REVERSE-V/R |
 | AC-B-EXPORT | work | 各原支持输出实际构建/链接/可执行或原目标验收，未知工具环境不改NA。 | B-EXPORT-V/R |
 | AC-B-DEVSDK | work | 真实process树cargo/rustc0，Rust输入变化仍正确重建；旧cache/binary不被发现；候选安装失败回退保用户数据。 | B-DEVSDK-V/R |
@@ -331,11 +397,11 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 ## 8. 执行步骤
 
-当前共40任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共37任务，0完成（原GODOT三任务由用户后置，非完成）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。
+- [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 [✅ 2026-11-17：冻结记录落 §5"T-01 冻结记录"——六前置 archived 交付核验、两仓改面/owner 重核、ACE 接口实测（`av-worker request` 对真实 pac.at＝`frontend:source.syntax` 拒；legacy 面正常求值）、具名缺口 `GAP-982-CONFIG-ACE`、A 输入/预期/入口/材料/树/A-B 边界冻结；零源码/测试改动，A 实现待 §10 Q-982-1 裁定]
 
 - [ ] **B-CONFIG-I｜M2-A｜owner_stage: work｜AC-B-CONFIG/AC-02/03/06**：pac/am/index/state与参数/环境双阶段求值接ACE；路径锁身份与可求值静态子集不混用。 按§5真实改面补永久fixture并固定§6命令。
 
@@ -391,12 +457,6 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 - [ ] **B-PY-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-GODOT-I｜M2-B｜owner_stage: work｜AC-B-GODOT/AC-02/03/06**：接GDScript/TSCN脚本/场景/资源工程装配。 按§5真实改面补永久fixture并固定§6命令。
-
-- [ ] **B-GODOT-V｜M2-B｜owner_stage: work｜AC-B-GODOT**：运行V-B-GODOT完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
-
-- [ ] **B-GODOT-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
-
 - [ ] **B-REVERSE-I｜M2-B｜owner_stage: work｜AC-B-REVERSE/AC-02/03/06**：保r2a与s2s/emit已有公开命令，消费其独立工具接口。 按§5真实改面补永久fixture并固定§6命令。
 
 - [ ] **B-REVERSE-V｜M2-B｜owner_stage: work｜AC-B-REVERSE**：运行V-B-REVERSE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
@@ -432,7 +492,25 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-CONFIG-I/B-CONFIG-V/B-TEMPLATE-I/B-TEMPLATE-V/B-RUST-I/B-RUST-V/B-PROOF-I/B-PROOF-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
+
+
 ## 9. 复审记录
+
+### 本轮用户授权后置的原Godot条目（历史，不计当前M2任务/AC/V）
+
+原ID及验收留此供后续版本追溯；全部原为未实施，不记完成、不形成M2缺证门。本轮没有创建后继Plan。原代码/fixtures/expected未删除。
+
+> | V-B-GODOT | AC-B-GODOT | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 实际Godot headless载入原工程，资源/脚本执行，缺依赖诊断。 |
+
+> | AC-B-GODOT | work | 实际Godot headless载入原工程，资源/脚本执行，缺依赖诊断。 | B-GODOT-V/R |
+
+> - [ ] **B-GODOT-I｜M2-B｜owner_stage: work｜AC-B-GODOT/AC-02/03/06**：接GDScript/TSCN脚本/场景/资源工程装配。 按§5真实改面补永久fixture并固定§6命令。
+
+> - [ ] **B-GODOT-V｜M2-B｜owner_stage: work｜AC-B-GODOT**：运行V-B-GODOT完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+
+> - [ ] **B-GODOT-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+
+2026-11-16 stage: new/revision | PLAN-982 r7 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
 
 2026-11-12 stage:new / PLAN-982 r6：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原40任务/全部AC与V/依赖/阶段/预算和drafting 0/40；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -450,7 +528,30 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
+本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
+
+2026-11-17 stage: work / T-01（A 切片冻结轮，AC-01/AC-PHASE）| tree: `D:/autostack/.wt/lang-982/auto-lang@c6c65e5c5` ＋ 同组 `auto-man@54fe4070b`（本轮新建、两树干净、branch `plan-982-dev`、基面各仓 master）| 授权: 本 goal（完成计划982/A）经 `/auto-plan-goal` 授予 work→review→bounded repair→merge；A 只按 §5 阶段表 | 产出: §5"T-01 冻结记录"——①A 六个最小前置（960/964/969/970/973/978）全 archived 且取正式 delivery commit＋规范；②两仓真实 owner/改面 6 文件 sha256 与计划记录一致、配置读取调用点逐行定位；③接口现值**实测**：ACE `SourceProfile` 全集无 config/document 面、`AceValue` 仅标量面、`canonical_owned` 拒 `Value::Object`；真探针 `av-worker request` 对 `j2check/auto/pac.at`（`807c35217b9a6ea9`）＝`{"ok":false,"diag":"frontend:source.syntax","source_hash":"37f2c30fd510fec2"}` exit 4，同族 legacy 面（`auto info` 读 am.at）正常求值；④具名缺口 `GAP-982-CONFIG-ACE`（owner 未指派）；⑤A 输入/独立预期/入口命令/材料 scope/树布局/A-B 边界冻结；⑥路由 A/B/C 交 §10 Q-982-1 | 未执行: 零源码/测试/规范改动，零固定组/产品/生成运行，未合入，未清树 | 判读: T-01 的交付物是"冻结或具名 PROOF"；本轮如实冻结在缺口＋可复用资产上，**不**把缺口写成能力已交、不勾任何 CONFIG/PROOF I/V/R | next: 用户裁定 Q-982-1 后进 B-CONFIG-I（或按裁定改 Plan/改 owner）
+
+2026-11-17 stage: goal | plan_id: PLAN-982 | plan_revision: r7 | round: 1 | from: work | to: work | status: executing | outcome: waiting（T-01 冻结已落；A 实现待 §10 Q-982-1 用户裁定，本轮不实施） | worktree: D:/autostack/.wt/lang-982/auto-lang | commit: c6c65e5c5(base) | next: user
+
 ## 10. 待澄清事项
+
+### Q-982-1（2026-11-17，A 实现路由，待用户裁定）
+
+**事实**（证据见 §5"T-01 冻结记录"）：982/CONFIG 的"接 ACE"需要一个当前**不存在**的 ACE 配置文档求值面——ACE 无 config/document `SourceProfile`、无文档值种类、`canonical_owned` 拒 `Value::Object`，真探针 `av-worker request` 对真实 `pac.at` 直接 `frontend:source.syntax` 拒；而 969 的已验规范把 `eval_config_with_vm` 显式留在 legacy owner（`m2-facade.md` §边界）。故 `GAP-982-CONFIG-ACE` 是 A 的硬前置，且 owner 未指派。
+
+请裁定 A 的实现路由（三选一）：
+
+| 路由 | 内容 | 代价/影响 |
+|---|---|---|
+| **A（扩范围）** | 982 自建该能力：ACE 增加配置文档面（文档值＋求值语义＋canonical 投影＋进程内车道），auto-man 接线 | 本 Plan 改面从"仅 auto-man"扩到 ACE 语言核心，等同一项 capability 开发；需设计沉淀与 A/B 再拆分；AC 分母不变 |
+| **B（另派 owner）** | 把 `GAP-982-CONFIG-ACE` 指派给能力 owner（新计划或既有 owner 后续切片），982/A 停在此处等来源 | 982/A 本轮起保持等待；§5 冻结资产与两树保留不动，不做产品侧改造 |
+| **C（收窄 A）** | A 只交"同一 SDK 身份＋无 legacy fallback＋失败/隔离纪律"的 PROOF 与 CONFIG 消费改造：配置求值按 969 规范由 legacy owner 在**同一 SDK** 内执行，ACE 承担最小 CLI 执行腿；配置引擎迁移随缺口并入 B，并在 A 收据具名差额 | 需把 RG-A01 的"缺 ACE 不能回退旧 VM"解释为**命令执行腿**（接受面收窄，须用户明确点头）；A 可当轮开工 |
+
+**推荐：C**。A 的产品见证价值在"真实 CLI 消费＋同一来源身份＋无静默回退"；配置文档求值面是一项独立的语言核心 capability，塞进产品包会同时破坏 982 的改面声明与来源纪律。若 969 时代的原意就是"配置求值留在 SDK 的 legacy owner、A 只证 SDK 身份"，那正是路由 C，可直接答 **C**。
+
+
+Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 §5已冻结批次；T-01只补各批接口/命令参数及实测环境，不再负责从零拆大包。新增分母项须追加具名批次或正式后继并逐AC迁移，保持总闭合责任。
