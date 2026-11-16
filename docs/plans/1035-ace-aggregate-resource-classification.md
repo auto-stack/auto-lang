@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1035
-status: execution_done
+status: reviewed
 feature_name: ACE聚合资源分类、字段投影与真实故障回归
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 5
-current_step: 3
+current_step: 4
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/composite-source-projection.md, docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resource-fault-and-generation-conformance.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/ace-migration/m2-aggregates.md, docs/specs/auto-mir/owned-access-profile.md, docs/specs/auto-a2x/python-stdlib-readiness.md]
@@ -300,7 +300,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，落实§5 r4 DEC-RES的S/D/R、MutBorrow分层、故障分类与提交/abort观察，§6反例及邻例可在实际入口运行，不私改expected。
 - [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
-- [ ] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
+- [x] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
@@ -311,7 +311,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 | T-01 / work | [x] 1024交接、未来实施授权及当前源 | 按§5 r4 DEC-RES重核源漂移；建立Bag/纯值/Variant/tuple/Box等真实前门、Named近邻、测试私有aggregate故障接线及活帧提交观察；记录目标admit/emit/run边界。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：base=b043117b8 重核 §4 全部源/Spec 字节身份（漂移见 §9），四个真实前门（aggregates source→lower→verify_mir→ABC→AV）跑通反例红：RES-01 `audit1035_res_01_list_only_record_ownership` 红、RES-02 命名投影在 `resolve.rs` `unreachable!` panic、core HIR 负控双红；RES-03 两 fault 例在旧代码即绿（证明 F30 是证据缺口而非缺陷，未把静态风险冒失败）。 |
 | T-02 / work | [x] T-01反例设置与r4既定决定 | 按最小owner/drop边界修F34与融合前置参数门；原v03正常义务保留，新增真实聚合fault永久例，不重推后端ownership。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：commit=34c8fc04a（11 文件）。F34 资源叶闭包统一到 source resolve / core verify（两处同义元素判据合一）/ lowering HIR walk / av-core ownership+layout；F33 两处融合点接受 Named 且移除用户可触发 `unreachable!`；F30 增 `resource_915::aggregates_fault_sweep` + `aggregates_commit_fault_probe`（测试私有 aggregates 前门，不改 `SourceFrontend`/recipe/旧 915 负载）。11 个永久例在修复后全绿，回退分类修复后 6 红重现（见 §9 红/绿表）。 |
 | T-03 / work | [x] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：冻结并集门 `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi` 全跑（结果见 §9）：ace-lowering/ace-native/ace-a2x PASS；ace-source 2 红、ace-av 1 红、ace-a2c-abi 1 红均为 base b043117b8 已存在（回退本包修改逐项复现），ace-av 另 1 红 `sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动归因；本包 10 个永久锚点在该组结果中被发现并执行。 |
-| T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
@@ -476,7 +476,7 @@ ace-av 组结果 JSON 中本包 10 个 `audit1035_*` 锚点均被发现并执行
 | cargo t ace-a2c-abi | 9 | 0.02s（meter wall 0.75s） | 1 红=base 已存在 certification pin |
 
 准备/发现/执行：组门由 cargo t 一次性完成 discovery+run（日志中 per-group Summary 可复核）；冷编译首轮 32.8s（debug），后续增量 2-10s。复用证据：T-03 冻结提交 f86894ce3 的并集结果即为 merge 前的同身份证据，未重复跑全目录。
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
 
 ### 2026-11-16 stage: review（final scope；同会话非独立上下文，结论由冻结提交重建）
 
@@ -533,10 +533,36 @@ stage: work | plan_id: PLAN-1035 | plan_revision: 5 | outcome: pass（repair） 
 
 
 
+### 2026-11-16 stage: review（final 重审，repair 1 后）
+
+stage: review | review_scope: final | reviewer_identity: 本会话（与实现同上下文；independence_limit 同前次记录，结论由 reviewed_commit 实际代码/差异/独立重放与受控变异重建） | plan_id: PLAN-1035 | plan_revision: 5 | outcome: **pass** | worktree_path: D:/autostack/.wt/lang-1035/auto-lang | branch: plan-1035-dev | reviewed_commit: 4d4a6b89c（工作树 clean，diff base b043117b8） | base_commit: b043117b8 | dependency_revisions: 无 | next: merge
+
+**修复范围核对**：`git diff --stat f86894ce3..4d4a6b89c` 只含 5 个测试/注册文件（471 行新增），**零生产代码改动**——分类实现仍冻结在 34c8fc04a/7d06f14e9，前次生产证据不失效；组门已在 4d4a6b89c 重跑（run-ejf170pe）。
+
+| finding | 独立重审方式 | 结果 |
+|---|---|---|
+| R1-01 派生事实 | 读 `audit1035_res_01_derived_facts` 断言集 + 重放 | 关闭：MIR owned=true / is_copy=false / facts.owned 含全部 Bag 局部；纯标量 Pair 三对照反向（false/true/不在 owned）。断言非空转（record 名 `.expect` 硬失败、owned 子集为真判断） |
+| R1-02 native 腿 | 读用例 + 重放（native 聚合 tier 3 例 1.84s 全绿） | 关闭：source→lower→verify_mir→split_units→admit_unit→emit_unit_coff；不声称机器运行，D-962 运行债仍具名 |
+| R1-03 typed 深克隆 | 读用例 + 重放 + **受控变异**：把 `Clone` 换成 `Copy`（浅别名）重跑 | 关闭且判别有效：变异后 77≠112 立即红；原例 112、allocs=2/frees=2/free id 唯一/live=0。纯标量对照 `is_copy=true`、零分配 |
+| R1-04 单次求值 | 读用例 + 重放（core 4 例 0.05s） | 关闭：Named 与 Pos 的 HIR 形状逐表达式相等（标签不进 HIR）；call 索引程序 Call 节点恰 1 个且就是 ListGet 的 index 操作数（重复求值会产生第 2 个 Call → 红） |
+| R1-05 记录/SD 措辞 | 逐份重算 7 份 SD target SHA256 并与 §9 记录比对；读 SD-05 新措辞 | 关闭：7 份全部与本记录一致（2 份漂移已在 §9 具名并确认规则未变）；SD-05 已补 "资源 record 隐式转移仍拒（`Box(tail)` 需 `.move`）" |
+
+**AC 证据映射（本轮）**：AC-01 pass；AC-02 pass（§6 每行独立 oracle 齐：13 av + 4 core + 3 native 锚点，含派生事实/深克隆/native admit/单次求值与 RES-03 两 seam + commit seam）；AC-03 pass（消费者组：ace-lowering/ace-native/ace-a2x 绿；ace-av 除 base 既有红外全绿）；AC-04 pass（本记录）；AC-05/06 pending merge。
+
+**Spec delta 核对**：SD-01..07 的 after 文本与 reviewed 代码一致；SD-05 增补后仍属"规则澄清"而非新语义。实现期与复审期均未改 canonical Specs、未写 `.autoos/specs.json`（分支提交文件全在 `experimental/ace/` 下，无 docs/.autoos 路径）；`supersedes_spec_components` 7 份路径真实存在，`new_spec_components`/`touched_goals` 为空且有正文说明。**merge 须发布这 7 份 delta 并核对落地身份。**
+
+**测试与时长（本轮复核）**：av `audit1035` 13 例 0.18s；core 4 例 0.05s；native 聚合 tier 3 例 1.84s；受控变异重放 1 次（红，已还原）；生产组门复用 4d4a6b89c 的 run-ejf170pe（不重复跑）。**无新增 >10s 用例**，未用 release、无 helper 触发前置构建；4 个 base 既有红（plan981×2、stdlib_list_946_grammar_face、a2c certification pin）与并行负载下抖动的 `sys973_v03_process_spawn_capture_timeout_exit`（隔离重放 2 次绿 2.3s）分别记账，不充 PASS。
+
+**合并前仍需的 merge-owned 门（本 review 不代做）**：① 在 4d4a6b89c 冻结并集上复用 run-ejf170pe 证据（生产代码未变）；② 发布 SD-01..07 到 7 份 canonical Spec 并核对落地/来源身份；③ 归档到 `docs/plans/archive/` 并置 `status: archived`；④ `wt-guard.ps1` clean 后删 worktree/分支/空组目录；⑤ 删除 `D:/autostack/plan-artifacts/plan-1035/`（证据摘要已折入本 Plan）；⑥ 输出路径对账与主检出 clean。
+
+
+
 ## 10. 待澄清事项
 
 DEC-RES经r4复审修订后无关键设计未决：S/D/R、MutBorrow在HIR与各MIR/目标表示中的临时拥有/写回、fault Infra/预算Resource及List代际/slot gen分域已定。F34动态严重度/真实N及失败提交观察仍待实施，不据静态差额声称双free；不扩962未交付的聚合mut/closure/clone或运行期失效句柄保证。原具名能力债仍归原owner，本包资源闭包与Named受控准入不能延期。**2026-11-16 work 更新**：T-01..T-03 已实施（详见 §9 实施记录），F34 的真实动态后果已观察（List-only record 的帧账/move 纪律/四层分类一致），未观察到双 free 或错机器结果；F30 仍无缺陷证据（旧代码同绿），只补永久真实故障例。drafting→executing→execution_done 3/6。
 
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 2 | from: review | to: work | status: execution_done | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: work
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 2 | from: review | to: work | status: reviewed | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: work
 
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 3 | from: work(repair) | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: review
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 3 | from: work(repair) | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: review
+
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: merge
