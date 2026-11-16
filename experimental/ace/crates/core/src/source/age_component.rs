@@ -143,6 +143,19 @@ pub struct ComponentNodeOut {
     pub legacy_widget: bool,
     pub fields: Vec<(String, String)>,
     pub handler_msgs: Vec<String>,
+    /// PLAN-981：每个 `on` 处理器**做的事**（消息名 → 赋值列表）。
+    ///
+    /// 此前只透出 `handler_msgs`（名字），handler 体内的 `count = count + 1`
+    /// 与 `count = count + 2` 的**区别完全丢失**。979 要核"2:1 事件、各 N 次 Tick
+    /// 后两实例各自推进几次"就必须知道每个 handler 的行为，否则只能去反查 HIR 体。
+    ///
+    /// 赋值右手是**原始表达式**；需要已解码值时看 `handler_assigns`。
+    pub handler_assigns: Vec<(String, Vec<(String, Expr)>)>,
+    /// PLAN-981：模型字段的**初值表达式**（名字 → 初值）。
+    ///
+    /// `fields` 只有 `(name, ty)` 拼写；作者的 `count int = 3` 里的 `3` 原先不在
+    /// 描述面，979 无法核对"helper 初值改了，两个后端结果应随之改变"。
+    pub field_inits: Vec<(String, Expr)>,
     /// 场景模式下每个实例的文本叶值（实例序；非场景编译为空）。
     pub instance_texts: Vec<Vec<ComponentText>>,
     pub view: ComponentViewOut,
@@ -372,6 +385,20 @@ pub fn compile_age_component(
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect(),
             handler_msgs: n.handlers.iter().map(|h| h.msg.clone()).collect(),
+            handler_assigns: n
+                .handlers
+                .iter()
+                .map(|h| {
+                    (
+                        h.msg.clone(),
+                        h.assigns
+                            .iter()
+                            .map(|a| (a.field.clone(), a.rhs.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+            field_inits: n.fields.iter().map(|f| (f.name.clone(), f.init.clone())).collect(),
             instance_texts: Vec::new(),
             view: ComponentViewOut {
                 role: n.view.role.clone(),
@@ -914,6 +941,24 @@ pub fn compile_component_scenario_observing(
                     .map(|f| (f.name.clone(), f.ty.clone()))
                     .collect(),
                 handler_msgs: node.handlers.iter().map(|h| h.msg.clone()).collect(),
+                handler_assigns: node
+                    .handlers
+                    .iter()
+                    .map(|h| {
+                        (
+                            h.msg.clone(),
+                            h.assigns
+                                .iter()
+                                .map(|a| (a.field.clone(), a.rhs.clone()))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+                field_inits: node
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.clone(), f.init.clone()))
+                    .collect(),
                 instance_texts,
                 view: ComponentViewOut {
                     role: node.view.role.clone(),

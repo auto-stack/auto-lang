@@ -77,6 +77,17 @@ pub struct AgePackageComponent {
     pub fields: Vec<(String, String)>,
     /// `on <msg>` 消息名（按声明序；可能带 `.`，如 `Life.Tick`）。
     pub handler_msgs: Vec<String>,
+    /// PLAN-981：每个 `on` 处理器做的事（消息名 → `(字段, 赋值右手)`，按声明序）。
+    ///
+    /// 只有 `handler_msgs` 时，`count = count + 1` 与 `count = count + 2` 的区别
+    /// 在描述面完全丢失；979 核"2:1 事件、各 N 次 Tick 后两实例各自推进几次"必须
+    /// 知道每个 handler 的行为。
+    pub handler_assigns: Vec<(String, Vec<(String, Expr)>)>,
+    /// PLAN-981：`model` 字段的初值表达式（按声明序）。
+    ///
+    /// `fields` 只给 `(名字, 类型拼写)`；`count int = 3` 里的 `3` 原先不在描述面，
+    /// 979 无法核对"改 helper 初值后两个后端结果应随之改变"。
+    pub field_inits: Vec<(String, Expr)>,
     /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
     pub public: bool,
     /// PLAN-981（IF-981-FIELDS）：本组件的 `model` 初值是否真的进了求值链
@@ -542,6 +553,26 @@ fn read_back_components(
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect(),
             handler_msgs: p.node.handlers.iter().map(|h| h.msg.clone()).collect(),
+            handler_assigns: p
+                .node
+                .handlers
+                .iter()
+                .map(|h| {
+                    (
+                        h.msg.clone(),
+                        h.assigns
+                            .iter()
+                            .map(|a| (a.field.clone(), a.rhs.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+            field_inits: p
+                .node
+                .fields
+                .iter()
+                .map(|f| (f.name.clone(), f.init.clone()))
+                .collect(),
             public: p.node.public,
             initialized: state_functions_present(bound, &p.module, &p.node.fields),
             params: p
