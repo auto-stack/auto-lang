@@ -743,6 +743,16 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 11 | from: work | 
 pending_closeout_gates: 统一回归门（merge 冻结态：lang ace-abi+ace-facade 于落主基线，source_foreign 预存红具名；UI ace_ui_hello 全量）。findings: F1（漂移恒真，已修复闭环）。next: merge（T-HELLO-D fold #4：lang b3887f887/ui e529dde6 + 规范 §7 HELLO 节；不改默认、不归档）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 12 | from: review | to: merge | status: executing（9/35，HELLO 批已复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang b3887f887 ui e529dde6 | next: merge（T-HELLO-D）
+2026-11-16 stage: merge（T-HELLO-D，phase fold #4，HELLO 批正式落主；整包 executing 9/35 保持，唯一树保留续 RUST/JET，不归档/不清树、不改产品默认）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次交付）| delivery_commit: auto-lang master **1991021a5**（代码 dd27cdf0c→50d0dcce4 + 规范 098d0f4a3→1991021a5，两次 rebase：先 onto 8e0c4d1d6（975 B1），FF 拒绝后再 onto 57fdfe6f8（981 SOURCE 落主），range-diff 全等 2/2 `=`）、auto-ui master **e529dde6**（0 behind 直落）| canonical: docs/specs/ace-migration/m2-autoui.md（master sha256/16=**3e92ba6f3df309b1**，新 §7 首窗链/桥/F0 缓存/排窗纪律）| 落主方式：wt-guard clean + `git merge --ff-only`（无 merge commit）。
+
+**落地后复核门（merge-owned）。** lang rebase 基线（975 B1 后）：`cargo t ace-abi ace-facade` = **ace-facade PASS**；ace-abi 273/298——25 红全为 `source_foreign` 族 master 预存红（已入 KNOWN-DEBT，主检出同红复现在案），本批 p980_f0_cache 2/2 组内绿（re-rebase 后单跑复核 2/2）。981 SOURCE 二次落主后再核 ace-facade=PASS（av crate 变更面重跑）。主检出落主后 p980 过滤 2/2。UI：ace_ui_hello 7/7（4.91s 含真窗 e2e）@落主内容 e529dde6。
+
+**批次闭合。** T-HELLO-I/V/D 勾选（9/35；R 已在 round 12 勾）：AGE node 首源→真 Iced 窗口全链成立（H0 verify→AV 真值→F0 受检调用（分派时重观察防漂移）→run_app 宿主）；fixture ace-hello-minimal 双源；永久 case 7 项（CPU 5+反例 2 族）+ 排窗 e2e；F0 构建新鲜度缓存 + ace-host Exit 臂修复（master 预存编译红）随批落主。边界：完整 B0 打包闭包 pending、LIFE 20CPU+1真窗适配、AXR0 归 RUST 批——均在案。
+
+next_responsible_role: work（980/RUST 批：前置 DIALECT✓+L978✅已归档；AXR0 切片消费 967/T-12、978/T-03/09 正式来源——已归档可取）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 13 | from: merge | to: work | status: executing（9/35，HELLO 批已交付落主）| outcome: pass（phase fold #4）| worktree: D:/autostack/.wt/lang-980（保留）| commit: lang 1991021a5 ui e529dde6 | next: work（RUST 批）
+
 
 
 
