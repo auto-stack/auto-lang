@@ -1300,10 +1300,21 @@ pub(crate) fn project_packages_front(
                 let bound = alias
                     .clone()
                     .unwrap_or_else(|| path.last().cloned().unwrap_or_default());
-                if path.len() < 2 {
+                // PLAN-1064 T-MODULE-I r2: a ONE-segment path is the
+                // module-scope import (`use demo` — declares the module
+                // dependency edge; members stay qualified `demo.item`).
+                // Re-exporting a whole module is a named rejection.
+                if path.is_empty() {
                     return Err(err(
                         "source.module-path",
-                        "module paths need at least `module.item`".into(),
+                        "module paths need at least `module` or `module.item`".into(),
+                        span,
+                    ));
+                }
+                if path.len() == 1 && reexport {
+                    return Err(err(
+                        "source.module-path",
+                        "a whole module cannot be re-exported; re-export its items".into(),
                         span,
                     ));
                 }
