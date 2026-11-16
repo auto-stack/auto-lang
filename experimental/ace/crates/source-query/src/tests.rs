@@ -945,10 +945,12 @@ fn audit1031_neg_01() {
         .expect_err("helper appeared after prepare: the stale candidate must be refused");
     assert_eq!(err, crate::host::CommitError::NegativeFlipped);
 
-    // The old record is untouched: revision, artifact, facts and target.
+    // The old record is untouched: the COMPLETE current snapshot
+    // (revision/key/artifact/facts/target) and the sink length (§5).
     let cur = host.current().expect("old record still installed").clone();
     assert_eq!(cur.revision, 1);
-    assert_eq!(cur.facts.name, "old");
+    assert_eq!(cur.key, old_rec.key);
+    assert_eq!(cur.facts, old_rec.facts);
     assert_eq!(cur.artifact, old_artifact);
     assert_eq!(cur.target, Some(TargetHandle(77)));
     assert_eq!(host.sink().len(), sink_before, "no page was published");
