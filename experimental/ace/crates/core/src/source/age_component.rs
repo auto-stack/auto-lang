@@ -44,6 +44,9 @@ pub struct ComponentAssign {
 #[derive(Clone, Debug)]
 pub struct ComponentHandler {
     pub msg: String,
+    /// PLAN-981（IF-981-EVENT-A）：作者写的 handler 参数名与 span（`.Add(t)`）。
+    /// 空 = 零参 handler。参数**行为**在 A 切片未实现，前门会具名拒绝。
+    pub params: Vec<(String, Span)>,
     pub assigns: Vec<ComponentAssign>,
     pub span: Span,
 }
@@ -198,6 +201,8 @@ pub struct ComponentNode {
     pub view: ComponentView,
     /// PLAN-980：widget 声明成员槽位（msg/design 等；见类型注释）。
     pub messages: Vec<ComponentMsgVariant>,
+    /// PLAN-980 WEB #6i：`msg Msg { … }` 的具名段（`None` = 匿名 `msg { … }`）。
+    pub message_set_name: Option<String>,
     pub design: Vec<ComponentDesignEntry>,
     pub members: Vec<ComponentMemberRow>,
     pub span: Span,

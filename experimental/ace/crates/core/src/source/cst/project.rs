@@ -4376,6 +4376,7 @@ impl<'a> Engine<'a> {
     let mut named_trees: Vec<(String, Vec<ComponentViewItem>)> = Vec::new();
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
         let mut messages = Vec::new();
+        let mut message_set_name: Option<String> = None;
         let mut design = Vec::new();
         let mut member_rows = Vec::new();
         let mut tree = Vec::new();
@@ -4479,6 +4480,8 @@ impl<'a> Engine<'a> {
                     }
                     handlers.push(ComponentHandler {
                         msg,
+                        // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
+                        params: Vec::new(),
                         assigns,
                         span: self.cx.span_of(member),
                     });
@@ -4743,6 +4746,10 @@ impl<'a> Engine<'a> {
                 }
                 "age-msg-member" => {
                     self.collect_msg_variants(member, &mut messages);
+                    // PLAN-980 WEB #6i：可选的具名段（`msg Msg { … }`）。
+                    if let Some(name) = self.cx.field_child(member, "msg_name") {
+                        message_set_name = Some(self.cx.spelling(name));
+                    }
                 }
                 "age-design-member" => {
                     self.collect_design_entries(member, &mut design);
@@ -4835,6 +4842,7 @@ impl<'a> Engine<'a> {
                 tree,
             },
             messages,
+            message_set_name,
             design,
             members: member_rows,
             span: self.cx.span_of(node),
@@ -5033,6 +5041,32 @@ impl<'a> Engine<'a> {
 
     /// msg 变体（含逗号 tail 包装内的递归变体）。
     fn collect_msg_variants(&mut self, member: u32, messages: &mut Vec<ComponentMsgVariant>) {
+        let before = messages.len();
+        self.collect_msg_variants_inner(member, messages);
+        // PLAN-981（IF-981-EVENT-A）：同一 `msg` 集合里重复变体具名拒（985 要求
+        // 名字/变体/原 span 保真，同时有重复拒绝；不静默合并）。
+        let mut seen: Vec<(String, Span)> = Vec::new();
+        for v in &messages[before..] {
+            if let Some((name, first)) = seen.iter().find(|(n, _)| *n == v.name) {
+                let msg = format!(
+                    "duplicate message variant `{}` (first declared at byte {}); a duplicate \
+                     would silently merge two handlers",
+                    name, first.start
+                );
+                self.cx.reject(v.span, move || {
+                    Diagnostic::new(Stage::Text, "source.age.msg-duplicate", msg.clone(), v.span)
+                });
+            } else {
+                seen.push((v.name.clone(), v.span));
+            }
+        }
+    }
+
+    fn collect_msg_variants_inner(
+        &mut self,
+        member: u32,
+        messages: &mut Vec<ComponentMsgVariant>,
+    ) {
         let variant_kind = self.rule_kind_of("age-msg-variant").expect("variant rule");
         fn walk(
             eng: &mut Engine,
@@ -5140,6 +5174,25 @@ impl<'a> Engine<'a> {
     }
 
     /// `on { .Msg -> { stmts } }` widget 形 → 与 979 `on <Msg> { assigns }` 同构。
+    /// PLAN-981（IF-981-EVENT-A）：handler 参数名与 span（`.Add(t, u)`），按出现序。
+    fn handler_params(&mut self, handler: u32) -> Vec<(String, Span)> {
+        let mut out = Vec::new();
+        let Some(params) = self.cx.field_child(handler, "params") else {
+            return out;
+        };
+        let mut stack = vec![params];
+        while let Some(n) = stack.pop() {
+            if let Some(p) = self.cx.field_child(n, "param") {
+                out.push((self.cx.spelling(p), self.cx.span_of(p)));
+            }
+            for ch in self.cx.children(n) {
+                stack.push(ch);
+            }
+        }
+        out.sort_by_key(|(_, s)| s.start);
+        out
+    }
+
     fn collect_widget_handlers(&mut self, member: u32, handlers: &mut Vec<ComponentHandler>) {
         let handler_kind = self
             .rule_kind_of("age-on-widget-handler")
@@ -5158,6 +5211,7 @@ impl<'a> Engine<'a> {
             }
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
+                params: self.handler_params(c),
                 assigns,
                 span: self.cx.span_of(c),
             });
