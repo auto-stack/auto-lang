@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 5
-current_step: 5
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/composite-source-projection.md, docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resource-fault-and-generation-conformance.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/ace-migration/m2-aggregates.md, docs/specs/auto-mir/owned-access-profile.md, docs/specs/auto-a2x/python-stdlib-readiness.md]
@@ -302,7 +302,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
 - [x] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
 
@@ -313,7 +313,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 | T-03 / work | [x] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：冻结并集门 `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi` 全跑（结果见 §9）：ace-lowering/ace-native/ace-a2x PASS；ace-source 2 红、ace-av 1 红、ace-a2c-abi 1 红均为 base b043117b8 已存在（回退本包修改逐项复现），ace-av 另 1 红 `sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动归因；本包 10 个永久锚点在该组结果中被发现并执行。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -570,6 +570,15 @@ stage: merge | plan_id: PLAN-1035 | plan_revision: 5 | outcome: pass（cleaned �
 | cleaned | 排空中（worktree/branch/组目录 + plan-artifacts scope + 登记表） |
 
 **交付门（merge-owned，最终冻结身份 `d2847bf4c`）**：`cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi`（run-txuyszxm 于 `05b8ccd0b`；此后 master 仅新增 4 个 plan981 测试文件、零生产 src 变更，故该生产门证据在同生产输入下复用，并在 landed tip 重放 PLAN-1035 锚点：av 13/13、core 4/4、native 3/3）：ace-source PASS、ace-lowering PASS、ace-av PASS、ace-native PASS、ace-a2x PASS；ace-a2c-abi 8/9——唯一红 `admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin` 已在 base `b043117b8`（回退本包改动）复现，属既有 certification pin 漂移，不充 PASS。测试时长：av 13 例 0.09s、core 4 例 0.03s、native 3 例 1.28s；组门 50s（ace-av 1317 例）+ 各组增量构建；无新增 >10s 用例，未用 release。
+**cleaned（2026-11-17T00:52+08:00）**
+
+- guard：`wt-guard.ps1 D:/autostack/.wt/lang-1035/auto-lang` → clean（移除前即时复跑）；随后 worktree 移除、`git branch -d plan-1035-dev`（tip `d2847bf4c` 已在 master 历史）、空组目录 `D:/autostack/.wt/lang-1035` 删除。
+- plan-artifacts：`D:/autostack/plan-artifacts/plan-1035/` 整目录删除（10 文件：3 个源级探针 `.at`、2 份回退/当前 patch 及 LF 版、2 份 commit message、`base_resolve.rs` 副本、`blob.bin` 运行期先删）；其内容摘要均已折入 §9（探针结论、红/绿表、hash 映射），无遗留原文依赖。登记表 `.retention/policy.json` 追加 `auto-lang/PLAN-1035`（`deleted-at-merge (no holds)`, 2026-11-17），无具名持有。
+- 归档副作用（如实记录）：`git mv` 暂存的“旧路径删除 + 新归档路径入库”被并发会话提交 `fb7b45820`（PLAN-981）一并带走；本包内容定稿在 `19d1f8dc0`。HEAD 树仅存在归档路径、无重复/丢失，工作树该文件 clean。
+- 输出路径对账：本计划全部产物只落在 `D:/autostack/.wt/lang-1035/`（随 worktree 删除）与 `D:/autostack/plan-artifacts/plan-1035/`（已删）；无第二暂存目录、无其他盘符散落。主检出的其余脏项属并发会话 WIP，本计划未触碰。
+- 落地后观察（非部署）：本计划只改 ACE 实验仓源码与 `docs/specs`；`auto.exe` 等语言仓产物不受影响（未重建）；ACE release 工具产物（如 `a2x-worker.exe`）未在本次日常验证中重建，属预期陈旧观察；交付范围不含 release 打包/重启。
+- 批量回归 due 检查：`docs/plans/.last-batch-regression.json` = last_covered_plan_id 1064 / 2026-11-16T10:04Z；距今 <48h，且无 >1064 的 5 倍数计划落地（1035 ≤ 1064）→ **不 due**，本次不跑 `cargo t all`。
+- 最终状态：6/6 任务完成、AC-01..06 全绿、`completion_kind: delivered`；交付提交 `d2847bf4c`。
 ## 10. 待澄清事项
 
 DEC-RES经r4复审修订后无关键设计未决：S/D/R、MutBorrow在HIR与各MIR/目标表示中的临时拥有/写回、fault Infra/预算Resource及List代际/slot gen分域已定。F34动态严重度/真实N及失败提交观察仍待实施，不据静态差额声称双free；不扩962未交付的聚合mut/closure/clone或运行期失效句柄保证。原具名能力债仍归原owner，本包资源闭包与Named受控准入不能延期。**2026-11-16 work 更新**：T-01..T-03 已实施（详见 §9 实施记录），F34 的真实动态后果已观察（List-only record 的帧账/move 纪律/四层分类一致），未观察到双 free 或错机器结果；F30 仍无缺陷证据（旧代码同绿），只补永久真实故障例。drafting→executing→execution_done 3/6。
