@@ -872,6 +872,31 @@ pub(crate) fn project_packages_front(
                 &snap,
                 SourceProfile::AgePackage,
             )?;
+            // PLAN-981（IF-981-EVENT-A）：payload 的**执行**未实现——向声明了载荷的
+            // 消息投递一个没有载荷的 Send 必须具名拒绝（零效果），不能当 unit 消息
+            // 静默跑常量体。
+            for op in &scenario.ops {
+                if let crate::source::age_component::ScenarioOp::Send { msg, .. } = op {
+                    for node in &nodes {
+                        if let Some(v) = node.messages.iter().find(|v| &v.name == msg) {
+                            if !v.payload.is_empty() {
+                                let detail = format!(
+                                    "message `{msg}` declares a payload ({}); payload event \
+                                     execution is not supported in this slice, so the dispatch \
+                                     is rejected instead of running the handler without its value",
+                                    v.payload.join(", ")
+                                );
+                                let span = v.span;
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.event-payload-unsupported",
+                                    detail,
+                                    span,
+                                )]);
+                            }
+                        }
+                    }
+                }
+            }
             for node in nodes {
         // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
         let node_index = age_components.len();
@@ -1083,6 +1108,23 @@ pub(crate) fn project_packages_front(
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
+                    // PLAN-981（IF-981-EVENT-A）：带参 handler 的**行为**未实现——
+                    // 解析成功不等于可执行：admit 前具名拒绝（零状态/UI 效果），
+                    // 不静默丢参后跑常量体。
+                    for h in &node.handlers {
+                        if let Some((param, span)) = h.params.first() {
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.event-params-unsupported",
+                                format!(
+                                    "handler `{}` declares parameter `{param}`, but \
+                                     parameterised event handlers are not executable in this \
+                                     slice; use a unit handler (`on {{ .{} -> {{ … }} }}`)",
+                                    h.msg, h.msg
+                                ),
+                                *span,
+                            )]);
+                        }
+                    }
                     // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
                     for m in &node.members {
                         // R62-2：诊断落在**源 token** 上；修饰形只检查头字段。

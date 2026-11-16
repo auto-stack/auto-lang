@@ -177,6 +177,11 @@ pub struct AgePackageComponent {
     pub text_exits: Vec<Option<AgeViewExit>>,
     /// PLAN-981（R61-4/R62-5）：命名 view 的有界结构事实（按声明序）。
     pub named_views: Vec<AgeNamedViewFact>,
+    /// PLAN-981（IF-981-EVENT-A）：`msg Msg { … }` 的具名段（匿名 msg 为 None）。
+    pub message_set_name: Option<String>,
+    /// PLAN-981（IF-981-EVENT-A）：每个 handler 的参数名（按声明序；空 = unit handler）。
+    /// 参数**执行**在 A 切片未实现，前门对带参 handler 具名拒绝。
+    pub handler_params: Vec<(String, Vec<String>)>,
     /// 声明所在模块键。
     pub module: String,
     /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
@@ -1047,6 +1052,18 @@ fn read_back_components(
                 .text_exits
                 .iter()
                 .map(|e| e.as_deref().map(exit_from_kind))
+                .collect(),
+            message_set_name: p.node.message_set_name.clone(),
+            handler_params: p
+                .node
+                .handlers
+                .iter()
+                .map(|h| {
+                    (
+                        h.msg.clone(),
+                        h.params.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>(),
+                    )
+                })
                 .collect(),
             named_views: p
                 .node
