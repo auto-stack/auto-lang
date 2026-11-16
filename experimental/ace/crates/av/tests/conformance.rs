@@ -240,6 +240,8 @@ mod module_sources_950;
 mod net_974;
 #[path = "cases/json_975.rs"]
 mod json_975;
+#[path = "cases/b1_slice_975.rs"]
+mod b1_slice_975;
 #[path = "cases/redis_975.rs"]
 mod redis_975;
 #[path = "cases/plan979_age_component_cpu.rs"]
