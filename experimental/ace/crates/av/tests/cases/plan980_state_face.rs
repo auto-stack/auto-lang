@@ -7,9 +7,9 @@
 //! `ace_av::age_component` 的消费者再导出（与 UI 桥同路径，不直连 ace-core）。
 
 use ace_av::age_component::{
-    compile_component_scenario_with_initials, observe_compiled, observe_component_scenario_states,
-    observe_component_states, ComponentFieldValue, ComponentInitials, ComponentScenario,
-    InitialValue, LegacyWidgetAlias, ScenarioOp,
+    compile_component_scenario_states, compile_component_scenario_with_initials, observe_compiled,
+    observe_component_scenario_states, observe_component_states, ComponentFieldValue,
+    ComponentInitials, ComponentScenario, InitialValue, LegacyWidgetAlias, ScenarioOp,
 };
 
 /// int/bool/str 三型字段 + 三条消息的最小组件源（冻结输入；与 002 同族形状）。
@@ -296,4 +296,61 @@ fn p980_state_fstring_view_leaf_states_observe_text_lane_refuses() {
     .expect("full compile verifies (HIR-level)");
     let err = observe_compiled(&compiled).expect_err("text lane must refuse TextDisplay");
     assert!(err.contains("text-display"), "{err}");
+}
+
+/// 复核反例（B-STATE-R）：states-only 是工件级事实，不是运行时偶然——
+/// states-only 编译的 atom_text 不含任何文本叶函数；完整编译含之。
+/// 删掉发射门控（emit_view_texts 恒真）会让本例红。
+#[test]
+fn p980_state_states_only_emits_no_text_fns_in_artifact() {
+    const SRC: &str = concat!(
+        "node T {\n",
+        "    model {\n",
+        "        n int = 0\n",
+        "    }\n",
+        "    on Inc {\n",
+        "        n = n + 1\n",
+        "    }\n",
+        "    view {\n",
+        "        text \"t\" {}\n",
+        "    }\n",
+        "}\n",
+    );
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![],
+    };
+    let caps = ["ac.runtime.text.v1".to_string()];
+    let states_only = compile_component_scenario_states(
+        SRC,
+        "t.at",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &scenario,
+        &empty_initials(1),
+    )
+    .expect("states-only compiles");
+    assert!(states_only.atom_text.contains("__age_state_0_n"));
+    assert!(
+        !states_only.atom_text.contains("__age_c_text_"),
+        "states-only must not emit text leaf functions"
+    );
+    assert!(
+        states_only.description.nodes[0].instance_texts[0].is_empty(),
+        "states-only description carries no text rows"
+    );
+    let full = compile_component_scenario_with_initials(
+        SRC,
+        "t.at",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &scenario,
+        None,
+        &empty_initials(1),
+    )
+    .expect("full compiles");
+    assert!(
+        full.atom_text.contains("__age_c_text_"),
+        "full compile emits text leaf functions (control)"
+    );
 }
