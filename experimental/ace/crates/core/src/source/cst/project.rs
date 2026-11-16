@@ -5174,7 +5174,17 @@ impl<'a> Engine<'a> {
                 if Some(eng.cx.tree.kind(c)) == source_kind {
                     if let Some(s) = eng.cx.field_child(c, "source") {
                         let mut text = eng.cx.spelling(s);
-                        if let Some(m) = eng.cx.field_child(c, "modifier") {
+                        // R62-7：修饰在独立的 `age-watch-modifier` 子规则里。
+                        let mut modifier = eng.cx.field_child(c, "modifier");
+                        if modifier.is_none() {
+                            for sub in eng.cx.children(c) {
+                                if let Some(m) = eng.cx.field_child(sub, "modifier") {
+                                    modifier = Some(m);
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some(m) = modifier {
                             text.push('.');
                             text.push_str(&eng.cx.spelling(m));
                         }

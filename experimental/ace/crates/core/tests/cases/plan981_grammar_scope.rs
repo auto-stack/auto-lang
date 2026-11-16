@@ -91,7 +91,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // 而不是被一个看似中性的数字掩盖。
         (
             SourceProfile::AgeComponent,
-            "0e799dc1387d96229e726701a0421c798e1dd9d071fc87c5755b4c4f85e24c1c",
+            "f230c61ea531ad564203e3735ddeebdcd3361f456492171b45e519a600f62a00",
         ),
         (
             SourceProfile::AgeH0,
@@ -154,6 +154,6 @@ fn p981_age_package_grammar_identity_is_stable_across_lookups() {
 fn p981_age_package_grammar_id_is_frozen() {
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "c152355d6f5140cfc09b3fc37454585394f96c18d2e6a0a1bec653ec01f01cf7"
+        "01c8ae389b9320f1d82074b4590233f20d99658dfc2d86f4c84e402bb5620d9e"
     );
 }
