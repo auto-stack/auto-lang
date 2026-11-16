@@ -371,6 +371,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-16 stage: goal | plan_id: PLAN-976 | plan_revision: r6 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: （已移除） | commit: 660fe72b5（delivery，master 祖先链内） | next: done
+
 2026-11-16 stage: merge | PLAN-976 | r6 | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang（已移除） | delivery_commit: 660fe72b5（master tip，ff-only，无 merge commit） | checkpoints: prepared=reviewed 9da498211+冻结spec增量（498d7a205） | landed=rebase onto master 补丁全等（range-diff 全=；映射 1d30914ff→d4945b802、67b5c0804→6259fb3f5、82b3dc665→6f7cdcce9、968e2c76c→7fb7ee058、9da498211→ef028d1c3、498d7a205→660fe72b5）后 `git merge --ff-only` 成功 | canonical_verified=m2-typescript.md sha256前16 914bbadae9af3f85 于 660fe72b5、replacement-scope-and-evidence.md 挂接节在位 | archived=docs/plans/archive/976-ace-m2-typescript.md status archived 本提交 | merge 门禁=rebased 基线 `cargo t ace-a2x` PASS 288 执行 gate True wall 229s（run-n65_bt60）；受触 crate 零 warning | 时间表（本会话实测）：tsrt 3例0.18s、tsfrag 4例0.18s、tsrej 2例0.03s、tsready 6例~8s（最大单例~7s<10s）、ace-semantics-contract 19例0s | cleaned=见 T-07 行 | 批量回归到期检查：976%5=1 非5倍数；.last-batch-regression.json 见 §10 后记 | next: done
 
 2026-11-16 stage: goal | plan_id: PLAN-976 | plan_revision: r6 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | commit: 9da498211（冻结复审基线） | next: merge
@@ -399,6 +401,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
 
 ## 10. 待澄清事项
+
+（merge 后记：本包仅触 experimental/ace 开发/探针 crate 与 docs——无生产发行物/web 包/部署面，无 stale 生产工件需重建（landing 观察记录）；批量回归到期经 975 触发已跑并收据，新红归因 969 见 KNOWN-DEBT。）
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
