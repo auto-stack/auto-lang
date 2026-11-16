@@ -59,3 +59,20 @@ AV：`aggregates_v_rows` 8 fixture + `aggregates_t01_probe` 21 腿（真全链+�
 组合形真 PE 执行（mn driver）+ arena 形 admit/COFF 发射（collections 车道；递归 Box=D-962-C2）。
 a2x-rust：4 案例真实 rustc（tuple/解构/参数/命名 ctor/range）。a2x-c：3 案例真实 MSVC cl（tuple 调用
 实参=D-962-C3）。六职责组零代码红（`t04-six-groups.log`/`t04-rerun-native-a2x.log`，具名环境红归因）。
+
+### PLAN-1035 增量：资源闭包、move 纪律与 clone 边界（2026-11-16）
+
+资源 record = 字段闭包可达资源叶（owned Str / List / Variant / 运行时 closure /
+object；tuple 递归），source/HIR/MIR/layout 四层一致（旧 Str-only 走查已撤）。由此：
+
+- **隐式转移仍拒**：`Box(tail)`/`xs.push(rec)` 对资源 record 仍须显式 `.move`
+  （V-04 合法例已按此标注，形状/预期值/资源账不变）；纯标量 record 的 `Box(p)` 与
+  隐式 Copy 保持。
+- **clone 边界不扩**：source `List.clone` 与聚合 record builtin clone 仍拒；MIR
+  `CLONE` 对资源 record（含 List-only）可准入=**typed 内部通道**，深克隆重建内层
+  buffer（实测 2 allocs/2 frees、改克隆不影响原件），不能据此声称源码新能力。
+- **目标边界不变**：native arena 形仍只 admit/COFF 发射
+  （`mn_aggregates_list_only_record_admits_and_emits`；机器运行仍为 D-962-C2 债），
+  A2X 两目标只消费既有 facts/mode。
+- 证据锚：`ace-av` `audit1035_res_01_*`/`audit1035_res_03_*`、`ace-core`
+  `aggregates_resource_1035`、`ace-native` 聚合 tier。

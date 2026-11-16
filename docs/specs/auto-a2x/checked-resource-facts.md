@@ -113,3 +113,18 @@ List/Variant 实参不再 move-in 杀调用者槽位，保持调用者所有权�
 `A2X_RT_FAULT_ALLOC` 于 collections 通道=typed `trap:`；失效/恢复（精确段失效、
 restore 0/0 重发、stale receipt 拒）合同见
 [../../stdlib/design/ace-collections.md](../../stdlib/design/ace-collections.md) §4。
+
+## PLAN-1035 增量：聚合分类修正不转移事实权威（2026-11-16）
+
+- Collections 受检事实的唯一生产者仍是 core verifier（`CollectionsPlan` /
+  `CollectionsBodyFacts`：Str/List/Deep 的 owned/pending/exit_frees/replace_frees/
+  err_frees/loop_survivors）；record 的 Deep 判定沿用 `TypeClassifier` 的
+  Record→List fixpoint（字段可达 List 即 Deep）。本计划**不新增事实字段、不重推
+  ownership**。
+- 分类修正后 List-only record 的 Deep 释放进入既有计划（实测帧账闭合、`facts.owned`
+  含其局部）；A2X 两目标继续只消费原 facts/mode——**不新增聚合 MutBorrow ABI**、
+  不改参数模式事实与目标差异。
+- Python 目标（PLAN-1042）作为共享事实 consumer 纳入回归（`ace-a2x` 组含
+  `ace-a2x-python`），不依赖 GC/`__del__`，不复制分类分析。
+- 证据锚：`audit1035_res_01_derived_facts`（facts.owned 含 Bag 局部）、
+  `ace-av`/`ace-a2x`/`ace-a2c-abi` 固定组（PLAN-1035 T-03 结果）。

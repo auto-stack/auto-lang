@@ -101,3 +101,21 @@ AutoLang 源码当前**不能**铸造 List Place（`xs.get(i)` 的 owned 元素�
 - M1 总门仍由其余格与 `ace-m1-gap-audit.md` 的剩余 owner 决定，本文件不签 M1。
 - 证据以 `case-ace-m1-resource-915` 的可复跑结果 + 父侧冻结表为准；worker 的自述、单点
   注入或“只测第 1 点”不构成闭合证据。
+
+## 6. PLAN-1035 增量：聚合形态的真实中途故障（2026-11-16）
+
+- 同一双 seam（`fault_after_allocs` / `set_fault_at`）的逐 attempt 扫描已覆盖聚合形态：
+  `resource_915::aggregates_fault_sweep` 经**测试私有** `compile_aggregates_source`
+  前门跑 List-only record 的构造/替换（不新增 `SourceFrontend` 变体、不新增 worker
+  recipe，旧 915 负载与冻结计数不变）；两 seam 每点命中带序号 `Infra`、live=0、
+  free id 唯一且 frees==successful、N+1 与清故障重跑回到冻结值。
+- **提交 seam 的旧值保持（新增观测）**：`aggregates_commit_fault_probe` 用 PLAN-919
+  lifecycle 通道观察真实 dst——故障 attempt 均 `replaced=0`（写入未提交，旧值未被先行
+  销毁）、旧目的 buffer 身份存活至 abort 并**只释放一次**、账平；clean 对照
+  `replaced>=1`（替换确实发生），N+1 重新提交。“正常两帧 42”不构成故障证据。
+- **epoch / slot gen 分域**：故障注入即整帧 abort，运行期 buffer epoch 与 `fr.gens`
+  没有外部观测面，本文件**不声称**其回滚；List precheck-before-touch 仍由 §3 的 R03
+  见证（stale 使用 `buffer_reads=0`）覆盖；通用 slot gen 实际递增不构成运行期失效保证
+  （同 821 口径）。
+- 证据锚：`audit1035_res_03_aggregate_fault_sweep`、
+  `audit1035_res_03_commit_seam_keeps_old_destination`（`ace-av`）。

@@ -45,3 +45,10 @@
   1MiB；解释器内容 hash 流式计算（不整缓存 binary），读取失败具名 Infra，不以路径字符串 hash
   兜底。平台准入不变（非 Windows 受管 runner 拒绝即拒绝）。
 
+## PLAN-1035 增量：作为共享分类事实的 consumer（2026-11-16）
+
+- Python 目标只消费 core verifier 的 Collections/资源事实与参数模式事实；资源 record
+  闭包分类修正（List-only record 归资源）经 `ace-a2x` 组（含 `ace-a2x-python`）回归
+  验证，未改变本文件的准入、句柄/`finally` 显式清理与 `A2xOwnedStr`/
+  `A2xResourceHandle` 契约，也未引入 GC/`__del__` 兜底或复制 ownership 分析。
+- 证据锚：`ace-a2x` 固定组（含 `ace-a2x-python`）在 PLAN-1035 冻结提交上的全绿结果。
