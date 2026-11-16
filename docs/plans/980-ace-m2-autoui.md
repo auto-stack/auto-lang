@@ -1064,6 +1064,16 @@ next_responsible_role: work（WEB 切片#6d：SFC 拼接 → 全量双轨 → �
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6c 落主；裁定问题开放）| worktree: D:/autostack/.wt/lang-980 | commit: ui 59b1d65b lang bf9d76079 | next: user（裁定）或 work（#6d 默认）
 
+2026-11-16 stage: work（WEB 批切片 #6d：SFC 拼接，goal round 34——裁定仍未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——一体化入口/全量双轨/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **18b50bfd**、lang **340b7e018**（§13.7）。
+
+**交付。** `splice_lane_handler_bodies(sfc, bodies)`：lane 体替换编译器 SFC 内 handler 函数体（锚=`function <Variant>(): void {` 括号配对，pattern 去点=Variant；**锚外段落字节不变**）。永久 case `p980_web_sfc_splice`（**11/11**）：002 真实编译器管线（parse→extract→VueGenerator SFC）+ 六 lane 体 → splice——Inc 体 lane 语义就位、template 与 pre-state 区 byte-identical 对账、ToggleMode 取反体就位。
+
+**验证（冻结提交实测）。** ace_ts_provider 11/11（node 腿实跑含 6c Inc 体）；fmt clean；ui ff 落主 `18b50bfd`；规范 §13.7 落主 `340b7e018`。现场修：闭包生命周期（改 fn）。
+
+next_responsible_role: work（WEB 切片#6e：`generate_sfc_with_lane` 一体化入口 + 90 项全量双轨（lane 面覆盖普查 v2）+ 浏览器挂载档。波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 34 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6d 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 18b50bfd lang 340b7e018 | next: user（裁定开放）或 work（#6e 默认）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
