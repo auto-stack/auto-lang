@@ -44,3 +44,12 @@
   ×≥30 样本；512 真实不同修订（256 left_pad + 256 right_pad 变长体编辑）逐修订
   真实 cl 预认证对闭式 oracle；暖 P90≤2000ms（P50/95/99 单列）；新进程恢复见证
   （P0 计数 + 恢复后下一编辑双侧认证）；未改单元计数（编辑态 lower/print 恰 +1）。
+
+## 父侧有界交换与产物准入（PLAN-1034）
+
+C collections 日常 `daily-emit-c` 父交换与 Rust 通道同一 r4 worker 资源 policy：stdin 请求、
+exec 70s/单一 cleanup 3s、stdout 4MiB/stderr 1MiB（经 `auto-tool-execution::run_bounded`
+opt-in cap 入口）；本通道自身 recipe/fileset、路径域审查与父独立 golden 判定保持不变；产物
+有界准入 manifest 4MiB/单文件 64MiB/总量 128MiB。certify-c 的正式轴（真 cl 双腿、120s/30s/360s
+预算）不受 daily 70s 影响。
+

@@ -486,3 +486,19 @@ CT机制的父侧证据可消费原服务公开的计数与执行边界日志：
   options/steps/typed/observations 全结构化（零 Debug 字符串/零 is_some 布尔），/1 保兼容。
 - actual 来源：report 产物摘要逐通道（av/avm/mn-typed/mn-steps/a2r/a2x/ac/syntax）hash
   绑定，离线 verify 重读文件、核 hash 与来源，不信缓存状态。
+
+## worker IPC 读取与输入限额单位（PLAN-1034）
+
+- **一次有界快照**：worker 读文件输入（source/reference/golden）必须一次 cap+1 有界读取后，
+  同一 bytes 供 hash 与解码/编译；第二次读取（TOCTOU）与无界读取都是缺陷。文件 IO、坏 UTF-8、
+  超限是具名 Infra 拒绝（`a2x.*-io/-utf8/-limit` 前缀），不报 hash(empty) 成功、不 lossy。
+- **请求信封门**：one-shot 请求原始 JSON UTF-8 ≤8MiB（stdin cap+1 读完整个文档、argv 先按
+  OsStr 长度准入），在 serde 解析之前拒绝；首行可解析不等于文档合法。
+- **line reader 的 EOF/IO/TooLong 分界**：case-worker（8MiB 不计分隔 LF）与 sema ipc（4MiB
+  不计 LF）保无 LF 终帧可解析与 lossy-在-raw-计量-之后；IO 错误是具名 Infra 终止当前不完整
+  请求，不折正常 EOF、不接受前缀、已回执不重写。mn-collections-worker（5657941 含 LF）保
+  必须尾 LF 与 `from_slice` 严格字节准入；over-cap 与 missing-LF 是不同具名拒绝。三通道
+  不统一为彼此的宽松/严格。
+- **错误身份**：父侧对协议 IO/EOF/编码、请求/源/输出限额、交换期限、身份失配的拒绝一律
+  Status::Error（Infra，保 Resource 子因），永不充当语言负例或语法不支持判定。
+
