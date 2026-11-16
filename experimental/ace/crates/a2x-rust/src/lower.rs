@@ -419,6 +419,9 @@ pub struct RustProgram {
     pub variants: Vec<RustVariant>,
     /// Whether this program is a collections-channel program (PLAN-904).
     pub coll: bool,
+    /// PLAN-973: list type-index -> element type (the printer renders
+    ///  payloads; populated by the collections lowerer).
+    pub list_elems: std::collections::BTreeMap<u32, Ty>,
 }
 
 /// Sanitize a source name into Rust-identifier-safe ASCII ([A-Za-z0-9_]).
@@ -512,6 +515,7 @@ pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xRe
         clones,
         borrowed,
         variants: Vec::new(),
+        list_elems: std::collections::BTreeMap::new(),
         coll: false,
     })
 }
@@ -1813,10 +1817,13 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 }
             };
             let (arg, _ty) = self.lower_expr(eval_args[0], out)?;
-            return Ok((RExpr::PlainCall {
-                func: helper.to_string(),
-                args: vec![arg],
-            }, VTy::Unit));
+            return Ok((
+                RExpr::PlainCall {
+                    func: helper.to_string(),
+                    args: vec![arg],
+                },
+                VTy::Unit,
+            ));
         }
 
         let Some(Ok((sig_params, _sig_result))) = self.view.sched_sig_types(def_id) else {
@@ -1859,31 +1866,43 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         let rest = symbol.strip_prefix("__sched_").unwrap_or(symbol);
 
         if rest == "sleep" || rest == "stop" {
-            return Ok((RExpr::PlainCall {
-                func: format!("a2x_sched_{rest}"),
-                args,
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: format!("a2x_sched_{rest}"),
+                    args,
+                },
+                VTy::I32,
+            ));
         }
         if rest.starts_with("send_") {
             let m = wrap(args[1].clone(), &sig_params[1]);
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_send".to_string(),
-                args: vec![args[0].clone(), m],
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_send".to_string(),
+                    args: vec![args[0].clone(), m],
+                },
+                VTy::I32,
+            ));
         }
         if rest.starts_with("ask_") {
             let m = wrap(args[1].clone(), &sig_params[1]);
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_ask".to_string(),
-                args: vec![args[0].clone(), m],
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_ask".to_string(),
+                    args: vec![args[0].clone(), m],
+                },
+                VTy::I32,
+            ));
         }
         if rest.starts_with("reply_") {
             let v = wrap(args[0].clone(), &sig_params[0]);
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_reply".to_string(),
-                args: vec![v],
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_reply".to_string(),
+                    args: vec![v],
+                },
+                VTy::I32,
+            ));
         }
         if rest.starts_with("await_") {
             // result type = the task's reply type (the import seam's
@@ -1910,16 +1929,22 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             return Ok((unwrapped, ty));
         }
         if rest.starts_with("port_") {
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_port".to_string(),
-                args: Vec::new(),
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_port".to_string(),
+                    args: Vec::new(),
+                },
+                VTy::I32,
+            ));
         }
         if rest.starts_with("stopping_") {
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_stopping".to_string(),
-                args: Vec::new(),
-            }, VTy::Bool));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_stopping".to_string(),
+                    args: Vec::new(),
+                },
+                VTy::Bool,
+            ));
         }
         if let Some(t) = rest.strip_prefix("spawn_") {
             // args: [name-str, capacity, inits...]; the driver fn runs on
@@ -1933,17 +1958,20 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             out.push(RStmt::RawFn {
                 text: self.sched_task_adapter_fn(t, &sig_params[2..]),
             });
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_spawn".to_string(),
-                args: vec![
-                    cap,
-                    RExpr::PlainCall {
-                        func: "a2x_sched_vec".to_string(),
-                        args: vals,
-                    },
-                    RExpr::Local(driver_call),
-                ],
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_spawn".to_string(),
+                    args: vec![
+                        cap,
+                        RExpr::PlainCall {
+                            func: "a2x_sched_vec".to_string(),
+                            args: vals,
+                        },
+                        RExpr::Local(driver_call),
+                    ],
+                },
+                VTy::I32,
+            ));
         }
         if let Some(rest2) = rest.strip_prefix("go_") {
             // go_<fn-index>_<name>: args [name-str, fn args...]
@@ -1956,16 +1984,19 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             out.push(RStmt::RawFn {
                 text: self.sched_go_adapter_fn(&name, &sig_params[1..]),
             });
-            return Ok((RExpr::PlainCall {
-                func: "a2x_sched_go".to_string(),
-                args: vec![
-                    RExpr::PlainCall {
-                        func: "a2x_sched_vec".to_string(),
-                        args: vals,
-                    },
-                    RExpr::Local(adapter),
-                ],
-            }, VTy::I32));
+            return Ok((
+                RExpr::PlainCall {
+                    func: "a2x_sched_go".to_string(),
+                    args: vec![
+                        RExpr::PlainCall {
+                            func: "a2x_sched_vec".to_string(),
+                            args: vals,
+                        },
+                        RExpr::Local(adapter),
+                    ],
+                },
+                VTy::I32,
+            ));
         }
         Err(A2xReject::unsupported_expr(format!(
             "scheduler intrinsic `{symbol}` is outside the a2r support domain"

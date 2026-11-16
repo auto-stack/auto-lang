@@ -1063,6 +1063,13 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
         })?;
     }
 
+    // PLAN-973: the sys973 op set ships as named-unsupported stubs here
+    // too (Linux ELF); REAL bodies land with the 1063-validated Linux
+    // file increment — a stub is an honest named rejection.
+    for kind in crate::platform_io::SYS973_KINDS {
+        crate::platform_io::emit_sys973_stub(&mut om, *kind, CONV)?;
+    }
+
     let product = om.finish();
     let bytes = product
         .emit()

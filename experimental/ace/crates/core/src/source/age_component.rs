@@ -238,8 +238,21 @@ pub struct ComponentNodeOut {
     pub field_inits: Vec<(String, Expr)>,
     /// 场景模式下每个实例的文本叶值（实例序；非场景编译为空）。
     pub instance_texts: Vec<Vec<ComponentText>>,
+    /// 场景模式下每个实例、每个 model 字段的状态函数出口（PLAN-980 STATE：
+    /// 消费者按 def id 逐字段取真值；非场景编译为空）。
+    pub instance_states: Vec<Vec<ComponentStateOut>>,
     pub view: ComponentViewOut,
     pub span: Span,
+}
+
+/// 单个 (实例, 字段) 的状态函数出口：`__age_state_<i>_<field>()`。
+#[derive(Clone, Debug)]
+pub struct ComponentStateOut {
+    pub field: String,
+    /// 源类型词（`int`/`i32`/`bool`/`str`/`Str`；消费侧按此映射观察值）。
+    pub ty: String,
+    pub fn_name: String,
+    pub def_id: String,
 }
 
 #[derive(Clone, Debug)]
@@ -501,6 +514,7 @@ pub fn compile_age_component(
                 .collect(),
             field_inits: n.fields.iter().map(|f| (f.name.clone(), f.init.clone())).collect(),
             instance_texts: Vec::new(),
+            instance_states: Vec::new(),
             view: ComponentViewOut {
                 role: n.view.role.clone(),
                 span: n.view.span,
@@ -690,6 +704,25 @@ pub enum ScenarioOp {
     Tick { instance: usize },
 }
 
+/// 每实例的初始字段值（props 种子）——消费者配置，不是源语言的一部分。
+///
+/// PLAN-980 STATE：UI 桥以 mount 时传入的 per-instance 初值覆盖源内 `model`
+/// 初始化（源保持原样；覆盖只进脱糖）。校验：字段须存在、类型须匹配、
+/// `int` 值须在 i32 域内、单实例内不得重复。
+#[derive(Clone, Debug, Default)]
+pub struct ComponentInitials {
+    /// 按实例序（长度必须等于 `ComponentScenario::instances`）：`(字段名, 值)`。
+    pub per_instance: Vec<Vec<(String, InitialValue)>>,
+}
+
+/// 单个初始值的承载类型（与 `field_type` 的映射域一致：int/bool/str）。
+#[derive(Clone, Debug)]
+pub enum InitialValue {
+    Int(i64),
+    Bool(bool),
+    Str(String),
+}
+
 /// 组件驱动的观察结果（编码值）。
 #[derive(Clone, Debug)]
 pub struct ComponentDriver {
@@ -716,6 +749,79 @@ pub fn compile_component_scenario_observing(
     capabilities: &[String],
     scenario: &ComponentScenario,
     observed: Option<&str>,
+) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    compile_component_scenario_full(
+        src,
+        module_path,
+        alias,
+        capabilities,
+        scenario,
+        observed,
+        None,
+        true,
+    )
+}
+
+/// PLAN-980 STATE：同 `compile_component_scenario_observing`，另带每实例初始
+/// 字段值（props 种子；见 `ComponentInitials`）。初值只改写脱糖后的实例局部
+/// 初始化，源与 `input_hash` 不变，`desugar_hash` 随初值变化。
+pub fn compile_component_scenario_with_initials(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &ComponentScenario,
+    observed: Option<&str>,
+    initials: &ComponentInitials,
+) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    compile_component_scenario_full(
+        src,
+        module_path,
+        alias,
+        capabilities,
+        scenario,
+        observed,
+        Some(initials),
+        true,
+    )
+}
+
+/// PLAN-980 STATE：**states-only** 场景编译——发射状态函数与驱动，**不发射**
+/// 文本叶求值函数（`instance_texts` 为空行）。
+///
+/// 边界（具名）：f-string 文本叶（`` `x ${int}` `` → HIR `TextDisplay`）在
+/// av.owned/1 执行车道不可 lowering（整模块 lowering 会连带失败）；状态通道
+/// 不依赖文本叶，故 states-only 对此类源可用。完整文本观察（含 f-string 源）
+/// 保持既有行为（拒绝），待后续 profile/接线工作关闭。
+pub fn compile_component_scenario_states(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &ComponentScenario,
+    initials: &ComponentInitials,
+) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    compile_component_scenario_full(
+        src,
+        module_path,
+        alias,
+        capabilities,
+        scenario,
+        None,
+        Some(initials),
+        false,
+    )
+}
+
+fn compile_component_scenario_full(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &ComponentScenario,
+    observed: Option<&str>,
+    initials: Option<&ComponentInitials>,
+    emit_view_texts: bool,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
     let src = &desugar_widget_src(src)?;
@@ -873,10 +979,12 @@ pub fn compile_component_scenario_observing(
         seen_msgs.push(h.msg.clone());
     }
     let mut items = items;
-    // 每个 (实例, 字段) 一个状态函数：该实例的 init + 定向 ops，返回该字段。
+    // PLAN-980 STATE：初值（props 种子）先验后用——形状/类型/重复在发射前具名拒。
+    let initial_maps = validate_initials(initials, node, scenario.instances)?;
+    // 每个 (实例, 字段) 一个状态函数：该实例的 init（可被初值覆盖）+ 定向 ops，返回该字段。
     for inst in 0..scenario.instances {
         for f in &node.fields {
-            let mut stmts = instance_stmts(inst, node, scenario)?;
+            let mut stmts = instance_stmts(inst, node, scenario, &initial_maps[inst])?;
             stmts.push(Stmt::Return {
                 value: Expr {
                     span: f.span,
@@ -919,13 +1027,17 @@ pub fn compile_component_scenario_observing(
             }));
         }
     } // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
+      // states-only 模式（PLAN-980 STATE）跳过文本叶发射：f-string 叶的
+      // `TextDisplay` 在 av.owned/1 车道不可 lowering，而状态通道不依赖文本叶。
     let mut leaves: Vec<(String, usize, usize)> = Vec::new();
-    for inst in 0..scenario.instances {
-        for (ti, leaf) in node.view.texts.iter().enumerate() {
-            let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{inst}_text_{ti}");
-            let bound = rename_expr(&leaf.expr, FieldBinding::StateFn(inst), &node.fields)?;
-            items.push(Item::Fn(hidden_fn(&name, &bound, leaf.expr.span)));
-            leaves.push((name, inst, ti));
+    if emit_view_texts {
+        for inst in 0..scenario.instances {
+            for (ti, leaf) in node.view.texts.iter().enumerate() {
+                let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{inst}_text_{ti}");
+                let bound = rename_expr(&leaf.expr, FieldBinding::StateFn(inst), &node.fields)?;
+                items.push(Item::Fn(hidden_fn(&name, &bound, leaf.expr.span)));
+                leaves.push((name, inst, ti));
+            }
         }
     }
     // 驱动：各实例观测字段状态按 256^i 求和（instance 0 在个位）。
@@ -1027,6 +1139,20 @@ pub fn compile_component_scenario_observing(
             references: collect_expr_names(&node.view.texts[*ti].expr),
         });
     }
+    // 状态函数出口：每 (实例, 字段) 的 def id 按共享 adapter 的自由函数约定
+    // （`d_<name>`，与 `d___age_drive` 同源），消费者按 def id 逐字段取真值。
+    let mut instance_states: Vec<Vec<ComponentStateOut>> = vec![Vec::new(); scenario.instances];
+    for inst in 0..scenario.instances {
+        for f in &node.fields {
+            let fn_name = state_fn_name(inst, &f.name);
+            instance_states[inst].push(ComponentStateOut {
+                field: f.name.clone(),
+                ty: f.ty.clone(),
+                def_id: super::adapter::free_fn_def_id(&fn_name),
+                fn_name,
+            });
+        }
+    }
     Ok(ComponentCompilation {
         description: ComponentDescription {
             domain: AGE_COMPONENT_DOMAIN,
@@ -1064,6 +1190,7 @@ pub fn compile_component_scenario_observing(
                     .map(|f| (f.name.clone(), f.init.clone()))
                     .collect(),
                 instance_texts,
+                instance_states,
                 view: ComponentViewOut {
                     role: node.view.role.clone(),
                     span: node.view.span,
@@ -1222,13 +1349,33 @@ fn rename_arg(
     })
 }
 /// 场景：单个实例的局部状态 + 定向 ops（驱动、状态函数与文本函数共用形状）。
+/// PLAN-980 STATE：`overrides` 命中的字段以初值字面量替换源内 init（源不变）。
 pub(crate) fn instance_stmts(
     inst: usize,
     node: &ComponentNode,
     scenario: &ComponentScenario,
+    overrides: &std::collections::HashMap<String, InitialValue>,
 ) -> Result<Vec<Stmt>, Vec<Diagnostic>> {
     let mut stmts = Vec::new();
     for f in &node.fields {
+        // 轮 49 契约：不支持的类型在**类型 token** 处具名拒绝。必须在 init 的
+        // 表达式脱糖之前判——980 STATE 的 init 形状诊断会先命中（同样的
+        // `source.age.component-unsupported`，但定位在初值字面量上）。
+        let ty = field_type(f).ok_or_else(|| {
+            vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "`model` field `{}` has type `{}`, which this slice cannot hold yet \
+                     (supported: int/i32/bool/str)",
+                    f.name, f.ty
+                ),
+                f.ty_span,
+            )]
+        })?;
+        let init = match overrides.get(&f.name) {
+            Some(v) => initial_literal(v, f.span),
+            None => rename_expr(&f.init, FieldBinding::Local(inst), &node.fields)?,
+        };
         stmts.push(Stmt::Let {
             kw: f.span,
             name: Ident {
@@ -1236,21 +1383,11 @@ pub(crate) fn instance_stmts(
                 span: f.span,
             },
             ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(field_type(f).ok_or_else(|| {
-                    vec![text_diag(
-                        "source.age.component-unsupported",
-                        format!(
-                            "`model` field `{}` has type `{}`, which this slice cannot hold yet \
-                             (supported: int/i32/bool)",
-                            f.name, f.ty
-                        ),
-                        f.ty_span,
-                    )]
-                })?),
+                kind: TypeRef::Builtin(ty),
                 span: f.ty_span,
             }),
             mutable: true,
-            value: rename_expr(&f.init, FieldBinding::Local(inst), &node.fields)?,
+            value: init,
             span: f.span,
         });
     }
@@ -1344,6 +1481,92 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
     }
     None
 }
+/// 初值（props 种子）先验：覆盖每个实例、字段存在、类型匹配、int 在 i32 域内、
+/// 单实例内不重复。全部具名拒（不静默丢行），span 取字段自身。
+fn validate_initials(
+    initials: Option<&ComponentInitials>,
+    node: &ComponentNode,
+    instances: usize,
+) -> Result<Vec<std::collections::HashMap<String, InitialValue>>, Vec<Diagnostic>> {
+    let empty = vec![std::collections::HashMap::new(); instances];
+    let Some(initials) = initials else {
+        return Ok(empty);
+    };
+    if initials.per_instance.len() != instances {
+        return Err(vec![text_diag(
+            "source.age.component-scenario",
+            format!(
+                "initials must cover every scenario instance one-for-one; scenario declares {} \
+                 instance(s) but initials carry {}",
+                instances,
+                initials.per_instance.len()
+            ),
+            node.span,
+        )]);
+    }
+    let mut maps = Vec::new();
+    for per in &initials.per_instance {
+        let mut map = std::collections::HashMap::new();
+        for (name, value) in per {
+            let f = node.fields.iter().find(|f| &f.name == name);
+            let Some(f) = f else {
+                return Err(vec![text_diag(
+                    "source.age.component-unknown-field",
+                    format!("no model field named `{name}` to seed"),
+                    node.span,
+                )]);
+            };
+            let ty_ok = match (&value, field_type(f)) {
+                (InitialValue::Int(v), Some(TypeWord::I32)) => {
+                    if *v < i32::MIN as i64 || *v > i32::MAX as i64 {
+                        return Err(vec![text_diag(
+                            "source.age.component-unsupported",
+                            format!(
+                                "initial for `{name}` is `int` and must stay in i32 range; got {v}"
+                            ),
+                            f.ty_span,
+                        )]);
+                    }
+                    true
+                }
+                (InitialValue::Bool(_), Some(TypeWord::Bool)) => true,
+                (InitialValue::Str(_), Some(TypeWord::StrOwned)) => true,
+                _ => false,
+            };
+            if !ty_ok {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    format!(
+                        "initial for field `{}` must be `{}` (field type); the carried value \
+                         does not match",
+                        f.name, f.ty
+                    ),
+                    f.ty_span,
+                )]);
+            }
+            if map.insert(name.clone(), value.clone()).is_some() {
+                return Err(vec![text_diag(
+                    "source.age.component-duplicate",
+                    format!("duplicate initial for model field `{name}` in one instance"),
+                    f.span,
+                )]);
+            }
+        }
+        maps.push(map);
+    }
+    Ok(maps)
+}
+
+/// 初值 → 脱糖字面量（span 落在字段上，诊断可回源）。
+fn initial_literal(v: &InitialValue, span: Span) -> Expr {
+    let kind = match v {
+        InitialValue::Int(i) => ExprKind::IntLit(*i as i32),
+        InitialValue::Bool(b) => ExprKind::BoolLit(*b),
+        InitialValue::Str(s) => ExprKind::StrLit(s.clone()),
+    };
+    Expr { span, kind }
+}
+
 /// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool）。
 pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {

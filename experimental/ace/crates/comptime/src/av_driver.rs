@@ -307,6 +307,12 @@ impl SnapshotLane {
                 CteCode::Infra("snapshot-exec".into()),
                 format!("snapshot infra failure: {m}"),
             )),
+            // PLAN-973: comptime snapshots never own a process; an exit
+            // request is a checked failure, not a host exit.
+            ExecOutcome::Exit { code } => Err(CteAdmissionError::new(
+                CteCode::Trap("proc.exit".to_string()),
+                format!("compiletime snapshot requested process exit: {code}"),
+            )),
         }
     }
 

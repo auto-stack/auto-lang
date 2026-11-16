@@ -189,6 +189,7 @@ pub fn execute_loaded_observed(
         ExecOutcome::Cancelled => ("cancelled", None, None, None, None, 0, None),
         ExecOutcome::Error { .. } => ("error", None, None, None, None, 0, None),
         ExecOutcome::Infra(m) => ("infra", None, None, None, Some(m), 0, None),
+        ExecOutcome::Exit { code } => ("exit", Some(code), None, None, None, 0, None),
     };
     // Drop the result value LAST: its buffer frees (if any) append to the
     // same seq-ordered log after the `end` marker.

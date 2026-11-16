@@ -655,6 +655,13 @@ fn lifecycle_end_info(out: &ExecOutcome, steps: u64) -> crate::lifecycle::EndInf
             resource: None,
             steps,
         },
+        ExecOutcome::Exit { code } => EndInfo {
+            outcome: "exit",
+            value: Some(*code),
+            trap: None,
+            resource: None,
+            steps,
+        },
     }
 }
 
@@ -760,6 +767,129 @@ pub fn execute_program_units(
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     execute_program(prog, limits, cancel)
+}
+
+/// PLAN-973: execute a linked packages-lane `ProgramSnapshot` under the
+/// console lane's platform discipline — per-run grants, a fresh resource
+/// ledger, an explicit backend, and a front-door capability check over
+/// every declared host import across the linked code units (a missing
+/// grant is a named admission rejection BEFORE execution, not a per-op
+/// runtime sentinel).
+pub fn execute_program_platform(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    console: Option<&mut dyn crate::host::ConsoleHost>,
+    backend: &mut dyn crate::platform_io::PlatformIoBackend,
+) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
+    // front-door: every declared import's capability must be granted
+    // (each code unit's host imports, via its verified unit module).
+    let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
+    for code in prog.code() {
+        for h in code.unit().module().host_imports.iter() {
+            if !granted.contains(h.capability.as_str()) {
+                return Err(crate::host::AdmissionError {
+                    code: "host.unauthorized",
+                    message: format!(
+                        "platform capability `{}` is required by `{}` but not granted",
+                        h.capability, h.symbol
+                    ),
+                });
+            }
+        }
+    }
+    let session_id = NEXT_PLATFORM_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut ledger = crate::platform_io::PlatformResourceLedger::new(session_id, grants);
+    let mut st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
+    st.trace.arena = Some(st.arena.clone());
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
+    let limits = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
+        Ok(limits) => limits,
+        Err(out) => {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: 0,
+                written_total_bytes: 0,
+                leaked_regions_cleaned: 0,
+                live_mapped_at_exit: 0,
+            };
+            return Ok((out, st.trace, summary));
+        }
+    };
+    // module inits run under the same platform provider (a platform-using
+    // init is legal — e.g. seeding from the environment).
+    if !prog.initialized() {
+        let slots = prog.init_slots().to_vec();
+        if slots.is_empty() {
+            prog.mark_initialized();
+        } else {
+            prog.reset_global_cells();
+            for slot in slots {
+                let view = prog.unit_view_at(slot);
+                // console/1 hosts stay with the entry dispatch in the
+                // packages lane (module inits run platform-only; a console
+                // import inside an init is a named unwired boundary).
+                let out = dispatch_with_host(
+                    &view,
+                    &limits,
+                    cancel,
+                    &[],
+                    &mut st,
+                    None,
+                    false,
+                    None,
+                    Some((&mut ledger, backend)),
+                    None,
+                )
+                .expect("no budget: the loop always terminates with an outcome");
+                if !matches!(out, ExecOutcome::Success { .. }) {
+                    finish_trace(&mut st, &limits);
+                    let summary = PlatformSessionSummary {
+                        session_id,
+                        last_os_error: ledger.last_os_error,
+                        written_total_bytes: ledger.written_total_bytes,
+                        leaked_regions_cleaned: ledger.active_regions(),
+                        live_mapped_at_exit: ledger.live_mapped_bytes,
+                    };
+                    ledger.cleanup(backend);
+                    return Ok((out, st.trace, summary));
+                }
+            }
+            prog.mark_initialized();
+        }
+    }
+    let view = prog.unit_view();
+    let out = dispatch_with_host(
+        &view,
+        &limits,
+        cancel,
+        &[],
+        &mut st,
+        None,
+        false,
+        console,
+        Some((&mut ledger, backend)),
+        None,
+    )
+    .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        cleanup_owned_frames(&mut st);
+    }
+    finish_trace(&mut st, &limits);
+    let summary = PlatformSessionSummary {
+        session_id,
+        last_os_error: ledger.last_os_error,
+        written_total_bytes: ledger.written_total_bytes,
+        leaked_regions_cleaned: ledger.active_regions(),
+        live_mapped_at_exit: ledger.live_mapped_bytes,
+    };
+    ledger.cleanup(backend);
+    Ok((out, st.trace, summary))
 }
 
 pub fn execute_program(
@@ -1219,6 +1349,12 @@ fn closure_ref_valid(st: &LoopState, cref: crate::contract::ClosureRefV) -> bool
 pub(crate) trait ModuleView {
     fn host_imports(&self) -> &[crate::mir::MirHostImport] {
         &[]
+    }
+    /// PLAN-973: func-aware host-import resolution — unit views keep
+    /// host indices LOCAL to the owning unit's module (the merged view
+    /// keeps the module-wide table; func is ignored there).
+    fn host_import_at(&self, _func: u32, idx: u32) -> Option<crate::mir::MirHostImport> {
+        self.host_imports().get(idx as usize).cloned()
     }
     /// The function payload execution reads (blocks/slots/spans).
     fn fn_at(&self, idx: u32) -> Option<&MirFunction>;
@@ -5954,8 +6090,7 @@ fn dispatch_with_host<V: ModuleView>(
                         Value::I32(c) if c >= 0 => c as usize,
                         _ => {
                             return Some(ExecOutcome::Error {
-                                message: "task mailbox capacity must be a non-negative int"
-                                    .into(),
+                                message: "task mailbox capacity must be a non-negative int".into(),
                                 span: None,
                             })
                         }
@@ -6132,12 +6267,8 @@ fn dispatch_with_host<V: ModuleView>(
                             span: None,
                         });
                     }
-                    let raw_v = st
-                        .frames
-                        .last()
-                        .expect("frame present")
-                        .slots[*value as usize]
-                        .clone();
+                    let raw_v =
+                        st.frames.last().expect("frame present").slots[*value as usize].clone();
                     let reply_v = match sched_materialize(v, func_idx, st, raw_v) {
                         Ok(x) => x,
                         Err(out) => return Some(out),
@@ -6216,10 +6347,12 @@ fn dispatch_with_host<V: ModuleView>(
                             span: None,
                         });
                     };
-                    if pv <= 0 || pv as usize > {
-                        let t = tables_arc.lock().expect("sched tables");
-                        t.ports.len()
-                    } {
+                    if pv <= 0
+                        || pv as usize > {
+                            let t = tables_arc.lock().expect("sched tables");
+                            t.ports.len()
+                        }
+                    {
                         return Some(ExecOutcome::Error {
                             message: "await on an unknown future".into(),
                             span: None,
@@ -6431,7 +6564,8 @@ fn dispatch_with_host<V: ModuleView>(
                     host: index,
                     args,
                 } => {
-                    let Some(h) = v.host_imports().get(*index as usize) else {
+                    let cur_func = st.frames.last().expect("frame present").func;
+                    let Some(h) = v.host_import_at(cur_func, *index) else {
                         return Some(ExecOutcome::Infra(
                             "host.reference: missing platform declaration".into(),
                         ));
@@ -6459,6 +6593,12 @@ fn dispatch_with_host<V: ModuleView>(
                     };
                     match ledger.dispatch(*backend, spec, &arg_vals, cancel) {
                         Ok(code) => {
+                            // PLAN-973: `proc_exit` is a terminal control
+                            // action — the code never lands in a slot; the
+                            // ledger cleans up owner handles on drop.
+                            if spec.kind == crate::platform_io::PlatformOpKind::ProcExit {
+                                return Some(ExecOutcome::Exit { code });
+                            }
                             let fr = st.frames.last_mut().expect("frame");
                             fr.slots[*dst as usize] = Value::I32(code);
                         }
@@ -7214,7 +7354,9 @@ fn sched_new_chain<V: ModuleView>(
     task: Option<usize>,
 ) -> Result<LoopState, ExecOutcome> {
     let Some(f) = v.fn_at(fn_idx) else {
-        return Err(ExecOutcome::Infra(format!("sched chain fn #{fn_idx} missing")));
+        return Err(ExecOutcome::Infra(format!(
+            "sched chain fn #{fn_idx} missing"
+        )));
     };
     let (slots, allocation) = match crate::frame_allocation::reserve_slots(f.slots.len()) {
         Ok(x) => x,
@@ -7250,7 +7392,9 @@ fn sched_new_chain<V: ModuleView>(
     let mut ai = args.iter();
     for sl in &f.slots {
         frame.slots.push(if sl.kind == crate::mir::SlotKind::Param {
-            ai.next().cloned().unwrap_or_else(|| v.zero_of(fn_idx, sl.ty))
+            ai.next()
+                .cloned()
+                .unwrap_or_else(|| v.zero_of(fn_idx, sl.ty))
         } else {
             v.zero_of(fn_idx, sl.ty)
         });
@@ -7383,12 +7527,9 @@ pub fn execute_sched(
             let ready = {
                 let t = tables.lock().expect("sched tables");
                 match park {
-                    SchedPark::Recv(ti) => {
-                        !t.tasks[ti].queue.is_empty() || t.tasks[ti].stopped
-                    }
+                    SchedPark::Recv(ti) => !t.tasks[ti].queue.is_empty() || t.tasks[ti].stopped,
                     SchedPark::SendFull(ti) => {
-                        t.tasks[ti].closed
-                            || t.tasks[ti].queue.len() < t.tasks[ti].capacity
+                        t.tasks[ti].closed || t.tasks[ti].queue.len() < t.tasks[ti].capacity
                     }
                     SchedPark::AwaitPort(p) => {
                         !matches!(t.ports.get(p as usize), Some(SchedPortState::Pending))
@@ -7466,9 +7607,8 @@ pub fn execute_sched(
                     return (
                         ExecOutcome::Resource {
                             kind: ResourceKind::InstrSteps,
-                            message:
-                                "scheduler deadlock: every chain waits and no timer can fire"
-                                    .into(),
+                            message: "scheduler deadlock: every chain waits and no timer can fire"
+                                .into(),
                         },
                         trace,
                     );

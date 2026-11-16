@@ -102,6 +102,13 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
     marks.sort_unstable();
     let records = crate::lower::lower_records(view)?;
     let variants = lower_coll_variants(view);
+    // PLAN-973: list element table for the printer's A2xList<E> payloads.
+    let mut list_elems = std::collections::BTreeMap::new();
+    for v in view.variants() {
+        for a in &v.arms {
+            collect_list_elems(view, a.payload, &mut list_elems);
+        }
+    }
     Ok(RustProgram {
         functions,
         entry: String::new(),
@@ -111,6 +118,7 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
         borrowed: false,
         variants,
         coll: true,
+        list_elems,
     })
 }
 
@@ -1053,7 +1061,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 vec![args[0].clone(), wrap(args[1].clone(), &sig_params[1])],
             )
         } else if rest.starts_with("reply_") {
-            plain("a2x_sched_reply", vec![wrap(args[0].clone(), &sig_params[0])])
+            plain(
+                "a2x_sched_reply",
+                vec![wrap(args[0].clone(), &sig_params[0])],
+            )
         } else if rest.starts_with("await_") {
             unwrap(plain("a2x_sched_await", vec![args[0].clone()]), &ty)
         } else if rest.starts_with("recv_") {
@@ -1178,8 +1189,41 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     rust_fn_name(t.source_name)
                 } else if let Some(x) = self.view.external_by_def(target) {
                     rust_fn_name(&x.source_name)
+                } else if let Some(sym) = self.view.platform_symbol(target) {
+                    // PLAN-973: system-library platform intrinsics map to
+                    // the plain target-runtime stubs (a2x_<callee>) and are
+                    // re-wrapped as infallible results in this failable
+                    // lane; the shared op table owns the callee spelling
+                    // and the Str-parameter positions.
+                    let op = ace_core::source::platform_io::PLATFORM_SOURCE_OPS
+                        .iter()
+                        .find(|o| o.symbol == sym)
+                        .ok_or_else(|| {
+                            A2xReject::unsupported_expr(format!(
+                                "platform symbol {sym} is not in the op table"
+                            ))
+                        })?;
+                    let mut args = Vec::new();
+                    for (i, a) in eval_args.iter().enumerate() {
+                        let is_str =
+                            matches!(op.params.get(i), Some(ace_core::source::resolve::VT::Str));
+                        let v = if is_str {
+                            self.operand_str_view(*a, out)?
+                        } else {
+                            self.expr(*a, out)?
+                        };
+                        args.push(v);
+                    }
+                    let call = RExpr::PlainCall {
+                        func: format!("a2x_{}", op.callee),
+                        args,
+                    };
+                    let ty = self.view.resolve_use_ty(e.ty)?;
+                    return self.coll_temp_plain(id, rust_ty_str(self.view, ty), call, out);
                 } else {
-                    return Err(A2xReject::unsupported_expr("call target not admitted"));
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "call target not admitted (def #{target})"
+                    )));
                 };
                 // PLAN-946: View-mode List parameters borrow exclusively at
                 // the call (`&mut x`) — the caller keeps its list (callee
@@ -1400,11 +1444,15 @@ impl<'a, 'v> CollLower<'a, 'v> {
             }
             hir::ExprKind::ListLen { list } => {
                 let l = self.place_ref(list, false)?;
-                Ok(RExpr::CollCall {
+                // PLAN-973: pin through a temp — an exit sweep between the
+                // lowering and the return would otherwise free the list
+                // BEFORE this inline call renders (len()==0 bug).
+                let call = RExpr::CollCall {
                     func: "a2x_coll_list_len".into(),
                     turbo: None,
                     args: vec![l],
-                })
+                };
+                self.coll_temp_plain(id, "i32".into(), call, out)
             }
             hir::ExprKind::ListPush { list, value } => {
                 let l = self.place_ref(list, true)?;
@@ -1811,5 +1859,24 @@ fn unwrap_helper(t: &Ty) -> &'static str {
         Ty::Bool => "a2x_un_b",
         Ty::Str | Ty::StrOwned => "a2x_un_s",
         _ => "a2x_un_i",
+    }
+}
+
+/// PLAN-973: collect list type-index -> element type over a payload tree
+/// (variant payloads today; signatures can join the same table).
+pub fn collect_list_elems(
+    view: &SemanticView<'_>,
+    ty: Option<Ty>,
+    out: &mut std::collections::BTreeMap<u32, Ty>,
+) {
+    let Some(t) = ty else { return };
+    match t {
+        Ty::List(id) => {
+            if let Ok(e) = view.list_elem(id) {
+                out.insert(id, e);
+                collect_list_elems(view, Some(e), out);
+            }
+        }
+        _ => {}
     }
 }

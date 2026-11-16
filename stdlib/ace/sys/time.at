@@ -1,0 +1,52 @@
+// ACE system library — time module (PLAN-973 T-02). now_ms/now_sec are
+// i64 epoch values (the lo/hi platform pair composed in Auto); sleep_ms
+// is the bounded-slice interruptible sleep. Legacy shapes preserved.
+
+#in sys is current {
+    Windows -> {
+        use std.sysplat_win.pf_now_ms
+        use std.sysplat_win.pf_mono_ms
+        use std.sysplat_win.pf_sleep_ms
+    }
+    Linux -> {
+        use std.sysplat_lnx.pf_now_ms
+        use std.sysplat_lnx.pf_mono_ms
+        use std.sysplat_lnx.pf_sleep_ms
+    }
+}
+
+use std.syscommon.from_i64
+
+pub fn now_ms() i64 {
+    return pf_now_ms()
+}
+
+pub fn now_sec() i64 {
+    let ms = pf_now_ms()
+    if (ms < 0i64) {
+        return ms
+    }
+    return ms / 1000i64
+}
+
+// mono_ms(): the monotonic clock for deadlines/measurements — never wall
+// time (public so callers do not reach for now_ms deltas).
+pub fn mono_ms() i64 {
+    return pf_mono_ms()
+}
+
+pub fn sleep_ms(ms int) int {
+    if (ms <= 0) {
+        return 0
+    }
+    return pf_sleep_ms(ms)
+}
+
+// now(): epoch seconds as a string (legacy shape).
+pub fn now() Str {
+    let sec = now_sec()
+    if (sec < 0i64) {
+        return ""
+    }
+    return from_i64(sec)
+}

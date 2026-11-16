@@ -1,0 +1,434 @@
+// ACE system library — Windows platform module (PLAN-973 T-02). Pure Auto
+// wrappers over the frozen Windows-side platform ops: paths/values stage
+// as UTF-16LE code units in OS regions (the 1041 conversion discipline —
+// conversion happens in THIS Auto source, never in a host helper), files
+// open via CreateFileW, processes run under a kill-on-close job. Selected
+// by `#in sys is current { Windows -> ... }` in the public sys modules.
+
+use std.syscommon.encode_into
+use std.syscommon.min_i
+use std.syscommon.str_bytes_len
+use std.syscommon.INNER
+use std.syscommon.MID
+
+// ---- UTF-16 staging ---------------------------------------------------------
+
+pub fn utf16_len(cp int) int {
+    if (cp < 65536) {
+        return 1
+    }
+    return 2
+}
+
+fn put_unit(region int, pos int, v int) int {
+    let lo = mem_write_u8(region, pos, v % 256)
+    if (lo != 0) {
+        return lo
+    }
+    return mem_write_u8(region, pos + 1, (v / 256) % 256)
+}
+
+fn put_scalar(region int, pos int, cp int) int {
+    if (cp < 65536) {
+        return put_unit(region, pos, cp)
+    }
+    let v = cp - 65536
+    let hi = 55296 + v / 1024
+    let lo = 56320 + v % 1024
+    let r1 = put_unit(region, pos, hi)
+    if (r1 != 0) {
+        return r1
+    }
+    return put_unit(region, pos + 2, lo)
+}
+
+// Stage s's UTF-16LE units into region at byte offset off; returns the
+// unit count or a negative error. Two-level chunked recursion (paths are
+// bounded by the 4 KiB platform path budget).
+pub fn stage_w16(s Str, region int, off int) int {
+    let n = s.len()
+    return stage_mid(s, region, off, 0, n, 0)
+}
+
+fn stage_mid(s Str, region int, off int, i int, stop int, units int) int {
+    if (i >= stop) {
+        return units
+    }
+    return stage_inner(s, region, off, i, min_i(stop, i + INNER()), stop, units)
+}
+
+// walks [i, istop), then TAIL-calls stage_mid for the next chunk (the
+// single-tail-move discipline: s flows through exactly one call).
+fn stage_inner(s Str, region int, off int, i int, istop int, ostop int, units int) int {
+    if (i >= istop) {
+        return stage_mid(s, region, off, istop, ostop, units)
+    }
+    let cp = s.char_at(i).to_codepoint()
+    let r = put_scalar(region, off + units * 2, cp)
+    if (r != 0) {
+        return -8
+    }
+    return stage_inner(s, region, off, i + 1, istop, ostop, units + utf16_len(cp))
+}
+
+// ---- buffers ----------------------------------------------------------------
+
+pub fn buf_alloc(bytes int) int {
+    return mem_alloc(bytes)
+}
+
+pub fn buf_free(region int) int {
+    return mem_free(region)
+}
+
+// ---- open flags (sums of disjoint powers of two — no bit ops) ----------------
+
+pub fn OPEN_READ() int {
+    return 1
+}
+
+pub fn OPEN_WRITE() int {
+    return 2
+}
+
+pub fn OPEN_CREATE() int {
+    return 4
+}
+
+pub fn OPEN_TRUNCATE() int {
+    return 8
+}
+
+pub fn OPEN_EXCLUSIVE() int {
+    return 16
+}
+
+pub fn OPEN_APPEND() int {
+    return 32
+}
+
+// ---- files -------------------------------------------------------------------
+
+// open(path, flags) -> ledger file handle (>0) or negative platform error.
+pub fn pf_open(path Str, flags int) int {
+    if (path.len() == 0) {
+        return -4
+    }
+    // worst case: every byte ASCII -> 1 unit per scalar; surrogate-heavy
+    // scalars take 2 units — size by scalars*2 bytes is a safe ceiling.
+    let cap = (path.len() * 2 + 2) * 2
+    let region = buf_alloc(cap)
+    if (region < 0) {
+        return region
+    }
+    let n = stage_w16(path, region, 0)
+    if (n <= 0) {
+        let d1_buf_free = buf_free(region)
+        return n
+    }
+    let h = file_open_w16(region, 0, n, flags)
+    let d2_buf_free = buf_free(region)
+    return h
+}
+
+pub fn pf_read_some(h int, region int, off int, len int) int {
+    return file_read_some(h, region, off, len)
+}
+
+pub fn pf_write_some(h int, region int, off int, len int) int {
+    return file_write_some(h, region, off, len)
+}
+
+pub fn pf_seek_set(h int, pos i64) int {
+    return seek64(h, 0, pos)
+}
+
+pub fn pf_seek_cur(h int, delta i64) int {
+    return seek64(h, 1, delta)
+}
+
+pub fn pf_seek_end(h int, delta i64) int {
+    return seek64(h, 2, delta)
+}
+
+fn seek64(h int, origin int, pos i64) int {
+    // split the signed 64-bit offset into (hi32, lo32) bit patterns using
+    // div/mod arithmetic only (no bit ops on this surface).
+    let lo_norm = ((pos % 4294967296i64) + 4294967296i64) % 4294967296i64
+    let hi = (pos - lo_norm) / 4294967296i64
+    let lo_signed = lo_norm - 2147483648i64
+    return file_seek(h, origin, lo_signed.to(i32), hi.to(i32))
+}
+
+fn join64(hi int, lo int) i64 {
+    var lo64 = lo.to(i64)
+    if (lo64 < 0i64) {
+        lo64 = lo64 + 4294967296i64
+    }
+    return hi.to(i64) * 4294967296i64 + lo64
+}
+
+pub fn pf_tell(h int) i64 {
+    let lo = file_tell(h)
+    let hi = file_hi(h)
+    return join64(hi, lo)
+}
+
+pub fn pf_size(h int) i64 {
+    let lo = file_size(h)
+    let hi = file_hi(h)
+    return join64(hi, lo)
+}
+
+pub fn pf_mtime_ms(h int) i64 {
+    let lo = file_mtime_ms(h)
+    let hi = file_hi(h)
+    return join64(hi, lo)
+}
+
+pub fn pf_flush(h int) int {
+    return file_flush(h)
+}
+
+pub fn pf_close(h int) int {
+    return file_close(h)
+}
+
+pub fn pf_stdin() int {
+    return io_stdin()
+}
+
+// ---- paths --------------------------------------------------------------------
+
+// attrs bits: 1 = directory, 2 = read-only; negative = error.
+pub fn pf_attrs(path Str) int {
+    let cap = (path.len() * 2 + 2) * 2
+    let region = buf_alloc(cap)
+    if (region < 0) {
+        return region
+    }
+    let n = stage_w16(path, region, 0)
+    if (n <= 0) {
+        let d3_buf_free = buf_free(region)
+        return n
+    }
+    let a = path_attrs_w16(region, 0, n)
+    let d4_buf_free = buf_free(region)
+    return a
+}
+
+pub fn pf_delete(path Str) int {
+    let cap = (path.len() * 2 + 2) * 2
+    let region = buf_alloc(cap)
+    if (region < 0) {
+        return region
+    }
+    let n = stage_w16(path, region, 0)
+    if (n <= 0) {
+        let d5_buf_free = buf_free(region)
+        return n
+    }
+    let r = file_delete_w16(region, 0, n)
+    let d6_buf_free = buf_free(region)
+    return r
+}
+
+pub fn pf_mkdir(path Str) int {
+    let cap = (path.len() * 2 + 2) * 2
+    let region = buf_alloc(cap)
+    if (region < 0) {
+        return region
+    }
+    let n = stage_w16(path, region, 0)
+    if (n <= 0) {
+        let d7_buf_free = buf_free(region)
+        return n
+    }
+    let r = dir_create_w16(region, 0, n)
+    let d8_buf_free = buf_free(region)
+    return r
+}
+
+pub fn pf_rmdir(path Str) int {
+    let cap = (path.len() * 2 + 2) * 2
+    let region = buf_alloc(cap)
+    if (region < 0) {
+        return region
+    }
+    let n = stage_w16(path, region, 0)
+    if (n <= 0) {
+        let d9_buf_free = buf_free(region)
+        return n
+    }
+    let r = dir_delete_w16(region, 0, n)
+    let d10_buf_free = buf_free(region)
+    return r
+}
+
+pub fn pf_replace(src Str, dst Str) int {
+    let scap = (src.len() * 2 + 2) * 2
+    let dcap = (dst.len() * 2 + 2) * 2
+    let sregion = buf_alloc(scap)
+    if (sregion <= 0) {
+        return sregion
+    }
+    let dregion = buf_alloc(dcap)
+    if (dregion <= 0) {
+        let d11_buf_free = buf_free(sregion)
+        return dregion
+    }
+    let sn = stage_w16(src, sregion, 0)
+    let dn = stage_w16(dst, dregion, 0)
+    var r = -4
+    if (sn > 0 && dn > 0) {
+        r = file_replace_w16(sregion, 0, sn, dregion, 0, dn)
+    }
+    let d12_buf_free = buf_free(sregion)
+    let d13_buf_free = buf_free(dregion)
+    return r
+}
+
+// ---- directory listing ---------------------------------------------------------
+
+// ---- env -------------------------------------------------------------------------
+
+pub fn pf_env_set(name Str, value Str) int {
+    let nregion = buf_alloc((name.len() * 2 + 2) * 2)
+    if (nregion < 0) {
+        return nregion
+    }
+    let vregion = buf_alloc((value.len() * 2 + 2) * 2)
+    if (vregion <= 0) {
+        let d33_buf_free = buf_free(nregion)
+        return vregion
+    }
+    let n = stage_w16(name, nregion, 0)
+    let v = stage_w16(value, vregion, 0)
+    var r = -4
+    if (n > 0) {
+        r = env_set_w16(nregion, 0, n, vregion, 0, v)
+    }
+    let d34_buf_free = buf_free(nregion)
+    let d35_buf_free = buf_free(vregion)
+    return r
+}
+
+pub fn pf_env_remove(name Str) int {
+    let nregion = buf_alloc((name.len() * 2 + 2) * 2)
+    if (nregion < 0) {
+        return nregion
+    }
+    let n = stage_w16(name, nregion, 0)
+    var r = -4
+    if (n > 0) {
+        r = env_remove_w16(nregion, 0, n)
+    }
+    let d36_buf_free = buf_free(nregion)
+    return r
+}
+
+// ---- clock / entropy ----------------------------------------------------------------
+
+pub fn pf_now_ms() i64 {
+    let lo = clock_unix_ms()
+    let hi = clock_hi()
+    return join64(hi, lo)
+}
+
+pub fn pf_mono_ms() i64 {
+    let lo = clock_mono_ms()
+    let hi = clock_hi()
+    return join64(hi, lo)
+}
+
+pub fn pf_sleep_ms(ms int) int {
+    return sleep_ms(ms)
+}
+
+// rand_fill(region, off, len) -> 0 or negative error (CSPRNG).
+pub fn pf_rand_fill(region int, off int, len int) int {
+    return rand_fill(region, off, len)
+}
+
+// ---- processes ------------------------------------------------------------------------
+
+// pf_spawn_cps(cps, capture 0/1) -> process handle or negative error.
+// The command line arrives as CODEPOINTS (ints) — the UTF-16 staging is
+// the same put_scalar walk over the list.
+pub fn pf_spawn_cps(cps List<int>, capture int) int {
+    if cps.len() == 0 {
+        return -4
+    }
+    let cap = (cps.len() + 2) * 2
+    let region = buf_alloc(cap + 8)
+    if (region < 0) {
+        return region
+    }
+    let units = stage_cps(cps, 0, region, 0)
+    if (units <= 0) {
+        buf_free(region)
+        return units
+    }
+    let ph = proc_spawn_w16(region, 0, units, capture)
+    buf_free(region)
+    return ph
+}
+
+fn stage_cps(cps List<int>, i int, region int, units int) int {
+    if (i >= cps.len()) {
+        return units
+    }
+    let stop = min_i(cps.len(), i + INNER())
+    let staged = stage_cps_chunk(cps, i, stop, region, units)
+    is staged {
+        Some(next_units) -> {
+            return stage_cps(cps, stop, region, next_units)
+        }
+        None -> {
+            return -8
+        }
+    }
+}
+
+fn stage_cps_chunk(cps List<int>, i int, stop int, region int, units int) ?int {
+    if (i >= stop) {
+        return Some(units)
+    }
+    let cp = cps.get(i)
+    let r = put_scalar(region, units * 2, cp)
+    if (r != 0) {
+        return None
+    }
+    return stage_cps_chunk(cps, i + 1, stop, region, units + utf16_len(cp))
+}
+
+pub fn pf_pipe_read(ph int, which int, region int, off int, cap int, timeout_ms int) int {
+    return proc_pipe_read(ph, which, region, off, cap, timeout_ms)
+}
+
+pub fn pf_wait(ph int, timeout_ms int) int {
+    return proc_wait(ph, timeout_ms)
+}
+
+pub fn pf_release(ph int) int {
+    return proc_release(ph)
+}
+
+pub fn pf_exit(code int) int {
+    return proc_exit(code)
+}
+
+pub fn pf_chdir(path Str) int {
+    let cap = (path.len() * 2 + 2) * 2
+    let region = buf_alloc(cap)
+    if (region < 0) {
+        return region
+    }
+    let n = stage_w16(path, region, 0)
+    var r = -4
+    if (n > 0) {
+        r = proc_chdir_w16(region, 0, n)
+    }
+    let d43_buf_free = buf_free(region)
+    return r
+}

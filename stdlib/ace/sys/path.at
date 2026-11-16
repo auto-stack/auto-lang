@@ -1,0 +1,154 @@
+// ACE system library — path module (PLAN-973 T-02). Pure-Auto string
+// algorithms (no OS calls): both `/` and `\` are separators (the legacy
+// basename parity), no global normalization, NUL is an ordinary char.
+// slice(a, b) is the scalar-index view slice (start inclusive, end
+// exclusive); scalar positions keep every algorithm char-safe.
+
+pub fn is_sep(c char) bool {
+    let p = c.to_codepoint()
+    return p == 47 || p == 92
+}
+
+// index just past the last non-separator (trailing separators trimmed).
+fn trim_trailing_seps(path Str) int {
+    let n = path.len()
+    return trim_walk(path, n)
+}
+
+fn trim_walk(path Str, end int) int {
+    if (end == 0) {
+        return 0
+    }
+    let csep = path.char_at(end - 1)
+    let cp = csep.to_codepoint()
+    if (cp == 47 || cp == 92) {
+        return trim_walk(path, end - 1)
+    }
+    return end
+}
+
+// last separator index in [0, end), or -1.
+fn last_sep(path Str, end int) int {
+    let start = end - 1
+    return last_sep_walk(path, start)
+}
+
+fn last_sep_walk(path Str, i int) int {
+    if (i < 0) {
+        return -1
+    }
+    let csep = path.char_at(i)
+    let cp = csep.to_codepoint()
+    if (cp == 47 || cp == 92) {
+        return i
+    }
+    return last_sep_walk(path, i - 1)
+}
+
+pub fn join(base Str, rest Str) Str {
+    if (base.len() == 0) {
+        return rest.clone()
+    }
+    if (rest.len() == 0) {
+        return base.clone()
+    }
+    let csep = base.char_at(base.len() - 1)
+    let cp = csep.to_codepoint()
+    if (cp == 47 || cp == 92) {
+        return base + rest
+    }
+    return base + "/" + rest
+}
+
+// The part family rides ONE tail-move walker per call (the 972
+// discipline: a Str param is method-read and tail-moved exactly once).
+// mode: 1=parent 2=filename 3=extension 4=stem.
+
+pub fn parent(path Str) Str {
+    let n = path.len()
+    return pp_trim(path, 1, n)
+}
+
+pub fn filename(path Str) Str {
+    let n = path.len()
+    return pp_trim(path, 2, n)
+}
+
+pub fn extension(path Str) Str {
+    let n = path.len()
+    return pp_trim(path, 3, n)
+}
+
+pub fn stem(path Str) Str {
+    let n = path.len()
+    return pp_trim(path, 4, n)
+}
+
+fn pp_trim(path Str, mode int, end int) Str {
+    if (end > 0) {
+        let c = path.char_at(end - 1)
+        let cp = c.to_codepoint()
+        if (cp == 47 || cp == 92) {
+            return pp_trim(path, mode, end - 1)
+        }
+    }
+    let scan = end - 1
+    return pp_scan(path, mode, end, scan)
+}
+
+fn pp_scan(path Str, mode int, end int, i int) Str {
+    if (i < 0) {
+        return pp_sep_done(path, mode, end, -1)
+    }
+    let c = path.char_at(i)
+    let cp = c.to_codepoint()
+    if (cp == 47 || cp == 92) {
+        return pp_sep_done(path, mode, end, i)
+    }
+    return pp_scan(path, mode, end, i - 1)
+}
+
+// separator resolved at i (or -1): filename starts at i+1.
+fn pp_sep_done(path Str, mode int, end int, i int) Str {
+    if (mode == 1) {
+        if (i < 0) {
+            return ""
+        }
+        if (i == 0) {
+            return "/"
+        }
+        return path.slice(0, i).clone()
+    }
+    if (mode == 2) {
+        if (i < 0) {
+            return path.slice(0, end).clone()
+        }
+        return path.slice(i + 1, end).clone()
+    }
+    // extension/stem: dot-scan within the name [namestart, end)
+    let namestart = i + 1
+    return pp_dot(path, mode, namestart, namestart, end, -1)
+}
+
+// dot walk: j scans the name; dot tracks the last qualifying dot.
+fn pp_dot(path Str, mode int, namestart int, j int, end int, dot int) Str {
+    if (j >= end) {
+        if (mode == 3) {
+            if (dot < 0 || dot + 1 >= end) {
+                return ""
+            }
+            return path.slice(dot + 1, end).clone()
+        }
+        if (dot <= 0) {
+            return path.slice(namestart, end).clone()
+        }
+        return path.slice(namestart, dot).clone()
+    }
+    let c = path.char_at(j)
+    let cp = c.to_codepoint()
+    var nd = dot
+    if (cp == 46 && j > namestart) {
+        nd = j
+    }
+    return pp_dot(path, mode, namestart, j + 1, end, nd)
+}

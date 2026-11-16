@@ -230,6 +230,26 @@ pub fn lower_checked(
                     // modules (task-handler stdout).
                     if symbol.starts_with("__sched_") {
                         // accepted below via the shared import path
+                    } else if symbol.starts_with("auto.platform.") {
+                        // PLAN-973: system-library platform primitives on
+                        // the packages-aggregates lane — the frozen op
+                        // table owns signature/capability; call sites
+                        // lower to PlatformCall.
+                        let h = ace_av_core::platform_io::declaration(
+                            symbol,
+                            owned_fn_sig_for_def(
+                                module,
+                                di as u32,
+                                *ty,
+                                &mut out,
+                                &BTreeMap::new(),
+                            )?,
+                        )
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                        out.host_imports.push(h);
+                        // The call sites find the platform import by
+                        // symbol; the def itself needs no CalleeRef.
+                        continue;
                     } else if symbol.starts_with("auto.console.")
                         && module.defs.iter().any(|d| {
                             matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
@@ -597,13 +617,8 @@ fn lower_checked_collection_family(
                 // host imports (task-handler stdout). Everything else
                 // keeps the historical rejection.
                 if symbol.starts_with("__sched_") {
-                    let sig = owned_fn_sig_for_def(
-                        module,
-                        di as u32,
-                        *ty,
-                        &mut out,
-                        &BTreeMap::new(),
-                    )?;
+                    let sig =
+                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                     let idx = out.intern_import(MirImport {
                         symbol: symbol.clone(),
                         effect: match effect {
@@ -620,18 +635,26 @@ fn lower_checked_collection_family(
                             if s.starts_with("__sched_"))
                     })
                 {
-                    let sig = owned_fn_sig_for_def(
-                        module,
-                        di as u32,
-                        *ty,
-                        &mut out,
-                        &BTreeMap::new(),
-                    )?;
+                    let sig =
+                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                     let h = ace_av_core::host::declaration(symbol, sig)
                         .map_err(|e| AdapterError::inv(e.code, e.message))?;
                     out.host_imports.push(h);
                     // The console call sites find the host import by
                     // symbol; no CalleeRef entry is needed.
+                } else if symbol.starts_with("auto.platform.") {
+                    // PLAN-973: system-library platform primitives on the
+                    // packages-aggregates lane — the frozen op table owns
+                    // the signature/capability contract; call sites lower
+                    // to PlatformCall via the host-import-by-symbol path.
+                    let h = ace_av_core::platform_io::declaration(
+                        symbol,
+                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?,
+                    )
+                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                    out.host_imports.push(h);
+                    // The call sites find the platform import by symbol;
+                    // no CalleeRef entry is needed.
                 } else {
                     return Err(AdapterError::uns(
                         "lower.intrinsic",
@@ -4113,7 +4136,12 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("__sched_"))
                     });
-                    if self.out.is_host_console_profile() || sched_module {
+                    let platform_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("auto.platform.")
+                    );
+                    if self.out.is_host_console_profile() || sched_module || platform_callee {
                         // PLAN-968: only host-table spellings take the
                         // host-import path; __sched_ intrinsics keep the
                         // generic call path (rewritten to SCHED ops below).
@@ -4125,44 +4153,44 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             {
                                 // fall through to the generic call path
                             } else {
-                            let host = self
-                                .out
-                                .host_imports
-                                .iter()
-                                .position(|h| &h.symbol == symbol)
-                                .ok_or_else(|| {
-                                    AdapterError::inv(
-                                        "host.reference",
-                                        "host declaration missing".into(),
-                                    )
-                                })? as u32;
-                            if ace_av_core::platform_io::is_platform_symbol(symbol) {
-                                let dst = self.temp_ty(self.t_i32)?;
+                                let host = self
+                                    .out
+                                    .host_imports
+                                    .iter()
+                                    .position(|h| &h.symbol == symbol)
+                                    .ok_or_else(|| {
+                                        AdapterError::inv(
+                                            "host.reference",
+                                            "host declaration missing".into(),
+                                        )
+                                    })? as u32;
+                                if ace_av_core::platform_io::is_platform_symbol(symbol) {
+                                    let dst = self.temp_ty(self.t_i32)?;
+                                    self.emit(
+                                        MirInstr::PlatformCall {
+                                            dst,
+                                            host,
+                                            args: arg_slots.clone(),
+                                        },
+                                        sp,
+                                    )?;
+                                    return Ok(dst);
+                                }
+                                if arg_slots.len() != 1 {
+                                    return Err(AdapterError::inv(
+                                        "host.signature",
+                                        "console call needs one argument".into(),
+                                    ));
+                                }
                                 self.emit(
-                                    MirInstr::PlatformCall {
-                                        dst,
+                                    MirInstr::HostCall {
                                         host,
-                                        args: arg_slots.clone(),
+                                        arg: arg_slots[0],
                                     },
                                     sp,
                                 )?;
-                                return Ok(dst);
-                            }
-                            if arg_slots.len() != 1 {
-                                return Err(AdapterError::inv(
-                                    "host.signature",
-                                    "console call needs one argument".into(),
-                                ));
-                            }
-                            self.emit(
-                                MirInstr::HostCall {
-                                    host,
-                                    arg: arg_slots[0],
-                                },
-                                sp,
-                            )?;
-                            // No runtime Unit local/dst: HIR has already forbidden value consumers.
-                            return Ok(u32::MAX);
+                                // No runtime Unit local/dst: HIR has already forbidden value consumers.
+                                return Ok(u32::MAX);
                             }
                         }
                     }
@@ -4551,7 +4579,12 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 &sym,
                                 dst,
                                 &actuals,
-                                &self.out.funcs.iter().map(|f| f.name.clone()).collect::<Vec<String>>(),
+                                &self
+                                    .out
+                                    .funcs
+                                    .iter()
+                                    .map(|f| f.name.clone())
+                                    .collect::<Vec<String>>(),
                             )?;
                             let no_result = sched_op_has_no_result(&instr);
                             self.emit(instr, sp)?;
@@ -6761,7 +6794,6 @@ pub fn lower_checked_console(
     lower_checked_owned(checked, entry_name, source_snapshot)
 }
 
-
 /// PLAN-968: whether a sched operation produces no result value (the
 /// call seam zero-fills its temp for these).
 fn sched_op_has_no_result(i: &ace_av_core::mir::MirInstr) -> bool {
@@ -6838,9 +6870,7 @@ fn sched_instr_of(
         });
     }
     Ok(match rest {
-        "stop" => MirInstr::SchedStop {
-            handle: actuals[0],
-        },
+        "stop" => MirInstr::SchedStop { handle: actuals[0] },
         "sleep" => MirInstr::SchedSleep { ms: actuals[0] },
         _ if rest.starts_with("send_") => MirInstr::SchedSend {
             handle: actuals[0],
@@ -6851,9 +6881,7 @@ fn sched_instr_of(
             msg: actuals[1],
             dst,
         },
-        _ if rest.starts_with("reply_") => MirInstr::SchedReply {
-            value: actuals[0],
-        },
+        _ if rest.starts_with("reply_") => MirInstr::SchedReply { value: actuals[0] },
         _ if rest.starts_with("await_") => MirInstr::SchedAwait {
             future: actuals[0],
             dst,

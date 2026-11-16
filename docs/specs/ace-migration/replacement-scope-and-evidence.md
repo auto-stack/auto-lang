@@ -255,3 +255,16 @@ final pass（reviewed 295e93f7c）。A-06/D-07 的会话/daemon/MCP 切片以显
 授权/兼容具名拒绝，异根无开发缓存运行）。新增已验证 producer 未关闭的缺口：F0
 foreign 执行链复用 967 既有面（978 侧为具名边界）、Linux 腿 deferred/1063、正式安装
 升级归 986/987。规范落点 [m2-build.md](m2-build.md)。本节为工作稿，独立 review 定稿。
+
+## PLAN-973 A 切片：系统文件进程时间与资源库（SD-02 挂接）
+
+973 A 交付：`stdlib/ace/sys/` 10 模块系统库（File/path/env/process/time/rand/console 面）
+经 1043 装配+50 冻结平台操作四表（source/av-core/AC shim/a2x 端口）——Windows 默认
+provider kernel32/bcrypt 直调零 libc/Rust std 委托、统一资源账本（文件/目录/进程/
+socket/listener、lo+hi、预算沿 1039 冻结值、cleanup 恰好一次）、诚实拒绝分态。
+六路径覆盖（AV/native+AV×C+AV×Rust 外库+A2R 真 rustc+A2PY 真 Python+AC stub 负控）
+与宿主 facade 全绿（归档收据含命令/计时）。分母挂接：18_ffi/19_rust_std 系统操作
+producer 就位；新增已验证 producer 未关闭的缺口：byte→Str 面（read_text/dir_names/
+env get 族/zip/storage 等）→1064、AC 50 操作真身→1065（用户裁定 b）、Linux 实跑
+→1063、967 读出参帧。规范落点 [m2-stdlib-io.md](m2-stdlib-io.md)。B 阶段消费者
+替换（985）以本包 A 收据为开工门之一。

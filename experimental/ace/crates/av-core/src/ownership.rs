@@ -709,7 +709,8 @@ fn verify_owned_function_impl(
                     st.define_slot(*dst as usize);
                     continue;
                 }
-                MirInstr::SchedRecv { dst } | MirInstr::SchedPort { dst }
+                MirInstr::SchedRecv { dst }
+                | MirInstr::SchedPort { dst }
                 | MirInstr::SchedStopping { dst } => {
                     check_def_conflict!(dst, "scheduler receive");
                     st.define_slot(*dst as usize);

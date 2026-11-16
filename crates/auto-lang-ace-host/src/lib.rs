@@ -387,6 +387,12 @@ fn map_outcome(outcome: ExecOutcome, callee: Option<u64>, rejected: Option<u64>)
             code: "ace.executor/infra".to_string(),
             message,
         },
+        // PLAN-973: the guest requested its own termination — a normal
+        // named outcome (the requested exit code rides the message).
+        ExecOutcome::Exit { code } => AceOutcome::HostFailure {
+            code: "av.exit".to_string(),
+            message: format!("process exit requested: {code}"),
+        },
     };
     report(mapped, 0, callee, rejected)
 }

@@ -1522,7 +1522,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *arg);
                     }
                     MirInstr::PlatformCall { dst, host, args } => {
-                        if family != WireFamily::HostConsole || args.len() > 8 {
+                        // PLAN-973: the closures family (packages-aggregates
+                        // lane, std system-library modules) rides the same
+                        // platform-call seam as AVHC.
+                        if (family != WireFamily::HostConsole && family != WireFamily::Closures)
+                            || args.len() > 8
+                        {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "platform call requires AVHC and bounded arity".into(),
@@ -3611,7 +3616,9 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         }
                     }
                     OP_PLATFORM_CALL => {
-                        if family != WireFamily::HostConsole {
+                        // PLAN-973: the closures family rides the same
+                        // platform-call seam (packages std system library).
+                        if family != WireFamily::HostConsole && family != WireFamily::Closures {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.profile",
                                 "platform opcode in a legacy family".into(),

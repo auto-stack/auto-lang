@@ -1,0 +1,187 @@
+// ACE system library — process module (PLAN-973 T-02). Legacy contracts:
+// spawn WAITS and returns the child's exit code (-1 on spawn failure);
+// spawn_with_output captures stdout/stderr with 64 KiB caps per stream and
+// returns the {"exit_code","stdout","stderr"} JSON envelope; args() is the
+// argv list (argv[0] = the program); exit terminates the program with a
+// code (a controlled VM outcome on AV — never kills the host). Timeout
+// kills the whole child tree (job object / process group) and returns -11.
+// Counted walks are bounded recursions (no while/conditional-for on this
+// face; AV frame cap 1024 — see std.syscommon; command lines are
+// path-scale so single-level bounded walks suffice).
+
+#in sys is current {
+    Windows -> {
+        use std.sysplat_win.pf_spawn_cps
+        use std.sysplat_win.pf_pipe_read
+        use std.sysplat_win.pf_wait
+        use std.sysplat_win.pf_release
+        use std.sysplat_win.pf_exit
+        use std.sysplat_win.pf_chdir
+        use std.sysplat_win.buf_alloc
+        use std.sysplat_win.buf_free
+    }
+    Linux -> {
+        use std.sysplat_lnx.pf_spawn_cps
+        use std.sysplat_lnx.pf_pipe_read
+        use std.sysplat_lnx.pf_wait
+        use std.sysplat_lnx.pf_release
+        use std.sysplat_lnx.pf_exit
+        use std.sysplat_lnx.pf_chdir
+        use std.sysplat_lnx.buf_alloc
+        use std.sysplat_lnx.buf_free
+    }
+}
+
+use std.syscommon.escape
+use std.syscommon.from_i64
+use std.syscommon.min_i
+
+// ---- argv / cwd ----------------------------------------------------------------
+
+// args()/current_dir() read argv/cwd into Str — the named lane gap (no
+// byte→Str construction on this face); they land with the lane
+// construction increment (plan dossier).
+
+// ---- cmdline building ------------------------------------------------------------
+
+// NAMED LANE GAP: argv List<Str> staging — element views on this face
+// allow only no-argument method reads (len), so per-char walks over list
+// elements are impossible; the spawn API takes OWNED string params
+// (spawn5) or a raw codepoint list (spawn_wait_cps) instead. The list
+// form is SUPERSEDED by those APIs (final PLAN-973 decision — no
+// list-staging increment is planned; T-05 review finding F4).
+
+fn append_str_cps(a Str, i int, cps List<int>) int {
+    if (i >= a.len()) {
+        return 0
+    }
+    let c = a.char_at(i)
+    let cp = c.to_codepoint()
+    cps.push(cp)
+    return append_str_cps(a, i + 1, cps)
+}
+
+// quote ONLY when needed (spaces/tabs/quotes): cmd.exe and other legacy
+// parsers mishandle unconditional quoting. The decision scan tail-passes
+//  into the emit step (single-move discipline).
+fn append_quoted(a Str, cps List<int>) int {
+    if (a.len() == 0) {
+        return 0
+    }
+    return quote_scan(a, cps, 0, 0)
+}
+
+fn quote_scan(a Str, cps List<int>, j int, need int) int {
+    if (j >= a.len()) {
+        return quote_emit(a, cps, need)
+    }
+    let p = a.char_at(j).to_codepoint()
+    var nq = need
+    if (p == 32 || p == 9 || p == 34) {
+        nq = 1
+    }
+    return quote_scan(a, cps, j + 1, nq)
+}
+
+fn quote_emit(a Str, cps List<int>, need int) int {
+    if (need == 1) {
+        cps.push(34)
+        let d2 = append_str_cps(a, 0, cps)
+        cps.push(34)
+        return 0
+    }
+    return append_str_cps(a, 0, cps)
+}
+
+// ---- spawn ------------------------------------------------------------------------
+
+// spawn_wait_cps(cps, timeout_ms): spawn a fully-staged command line
+// (codepoints) and wait; -11 on timeout-kill (the V-03 tree kill).
+pub fn spawn_wait_cps(cps List<int>, timeout_ms int) int {
+    if (cps.len() == 0) {
+        return -1
+    }
+    let ph = pf_spawn_cps(cps, 0)
+    if (ph <= 0) {
+        return -1
+    }
+    let code = pf_wait(ph, timeout_ms)
+    let d1_release = pf_release(ph)
+    return code
+}
+
+// spawn5: up to four string arguments after the program ("" = absent),
+// always-quoted (valid Windows form; args containing a double quote are
+// a named v1 limit).
+pub fn spawn5(prog Str, a1 Str, a2 Str, a3 Str, a4 Str, timeout_ms int) int {
+    let cps = List<int>.new()
+    return spawn_chain5(prog, a1, a2, a3, a4, cps, timeout_ms)
+}
+
+// the owned cps local moves ONCE into this frame; params borrow freely
+fn spawn_chain5(prog Str, a1 Str, a2 Str, a3 Str, a4 Str, cps List<int>, timeout_ms int) int {
+    let d0 = append_quoted(prog, cps)
+    let d1 = sep_arg(a1, cps)
+    let d2 = sep_arg(a2, cps)
+    let d3 = sep_arg(a3, cps)
+    let d4 = sep_arg(a4, cps)
+    return spawn_wait_cps(cps, timeout_ms)
+}
+
+fn sep_arg(a Str, cps List<int>) int {
+    if (a.len() == 0) {
+        return 0
+    }
+    cps.push(32)
+    return append_quoted(a, cps)
+}
+
+// spawn_capture_counts5: same shape with capture pipes; the returned
+// composite is code*1000000 + stdout_bytes*1000 + stderr_bytes (legacy
+// 64 KiB caps; the TEXT of captured output is the byte→Str lane gap).
+pub fn spawn_capture_counts5(prog Str, a1 Str, a2 Str, a3 Str, a4 Str) int {
+    let cps = List<int>.new()
+    return capture_chain5(prog, a1, a2, a3, a4, cps)
+}
+
+fn capture_chain5(prog Str, a1 Str, a2 Str, a3 Str, a4 Str, cps List<int>) int {
+    let d0 = append_quoted(prog, cps)
+    let d1 = sep_arg(a1, cps)
+    let d2 = sep_arg(a2, cps)
+    let d3 = sep_arg(a3, cps)
+    let d4 = sep_arg(a4, cps)
+    if (cps.len() == 0) {
+        return -1
+    }
+    let ph = pf_spawn_cps(cps, 1)
+    if (ph <= 0) {
+        return -1
+    }
+    let out_n = drain_count(ph, 1, 0)
+    let err_n = drain_count(ph, 2, 0)
+    let code = pf_wait(ph, -1)
+    let d5_release = pf_release(ph)
+    return code * 1000000 + out_n * 1000 + err_n
+}
+
+// drain one capture pipe counting bytes to EOF with the 64 KiB legacy cap.
+fn drain_count(ph int, which int, total int) int {
+    if (total >= 65536) {
+        return total
+    }
+    let region = buf_alloc(32768)
+    if (region < 0) {
+        return total
+    }
+    let n = pf_pipe_read(ph, which, region, 0, 32768, -1)
+    let d1_buf_free = buf_free(region)
+    if (n <= 0) {
+        return total
+    }
+    return drain_count(ph, which, total + n)
+}
+
+// exit(code): terminate the running program with the given exit code.
+pub fn exit(code int) int {
+    return pf_exit(code)
+}

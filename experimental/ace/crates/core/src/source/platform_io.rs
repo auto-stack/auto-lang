@@ -20,6 +20,15 @@ pub const CAP_NET_READ: &str = "platform.net.read";
 pub const CAP_NET_CLOSE: &str = "platform.net.close";
 /// PLAN-974 (T-02 inc3): the server face — listen + accept share one cap.
 pub const CAP_NET_LISTEN: &str = "platform.net.listen";
+// PLAN-973 system-resource capabilities (one per resource family; stdin
+// joins io with its own grant so a session can take output-only).
+pub const CAP_STDIN: &str = "platform.io.stdin";
+pub const CAP_FILE: &str = "platform.file";
+pub const CAP_PATH: &str = "platform.file.path";
+pub const CAP_ENV: &str = "platform.env";
+pub const CAP_CLOCK: &str = "platform.clock";
+pub const CAP_ENTROPY: &str = "platform.entropy";
+pub const CAP_PROC: &str = "platform.process";
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlatformSourceOp {
@@ -40,6 +49,12 @@ const P_2I32: &[VT] = &[VT::I32, VT::I32];
 const P_3I32: &[VT] = &[VT::I32, VT::I32, VT::I32];
 const P_STR_I32: &[VT] = &[VT::Str, VT::I32];
 const P_I32_STR_NET: &[VT] = &[VT::I32, VT::Str];
+// PLAN-973 shapes.
+const P_5I32: &[VT] = &[VT::I32, VT::I32, VT::I32, VT::I32, VT::I32];
+const P_6I32: &[VT] = &[VT::I32, VT::I32, VT::I32, VT::I32, VT::I32, VT::I32];
+const P_STR: &[VT] = &[VT::Str];
+const P_2STR: &[VT] = &[VT::Str, VT::Str];
+const P_STR_2I32: &[VT] = &[VT::Str, VT::I32, VT::I32];
 
 pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
     PlatformSourceOp {
@@ -244,6 +259,357 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         params: P_I32,
         result: VT::I32,
         capability: CAP_NET_CLOSE,
+    },
+    // ---- PLAN-973 system-resource reserved names --------------------
+    PlatformSourceOp {
+        callee: "io_stdin",
+        symbol: "auto.platform.io.stdin.v1",
+        params: P_EMPTY,
+        result: VT::I32,
+        capability: CAP_STDIN,
+    },
+    PlatformSourceOp {
+        callee: "file_open_w16",
+        symbol: "auto.platform.file.open_w16.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_open_bytes",
+        symbol: "auto.platform.file.open_bytes.v1",
+        params: P_STR_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_read_some",
+        symbol: "auto.platform.file.read_some.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_write_some",
+        symbol: "auto.platform.file.write_some.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_seek",
+        symbol: "auto.platform.file.seek.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_tell",
+        symbol: "auto.platform.file.tell.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_hi",
+        symbol: "auto.platform.file.hi.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_size",
+        symbol: "auto.platform.file.size.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_mtime_ms",
+        symbol: "auto.platform.file.mtime_ms.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_flush",
+        symbol: "auto.platform.file.flush.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "file_close",
+        symbol: "auto.platform.file.close.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_FILE,
+    },
+    PlatformSourceOp {
+        callee: "path_attrs_w16",
+        symbol: "auto.platform.file.path_attrs_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "path_attrs_bytes",
+        symbol: "auto.platform.file.path_attrs_bytes.v1",
+        params: P_STR,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "file_delete_w16",
+        symbol: "auto.platform.file.delete_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "file_delete_bytes",
+        symbol: "auto.platform.file.delete_bytes.v1",
+        params: P_STR,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_create_w16",
+        symbol: "auto.platform.file.dir_create_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_create_bytes",
+        symbol: "auto.platform.file.dir_create_bytes.v1",
+        params: P_STR,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_delete_w16",
+        symbol: "auto.platform.file.dir_delete_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_delete_bytes",
+        symbol: "auto.platform.file.dir_delete_bytes.v1",
+        params: P_STR,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "file_replace_w16",
+        symbol: "auto.platform.file.replace_w16.v1",
+        params: P_6I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "file_replace_bytes",
+        symbol: "auto.platform.file.replace_bytes.v1",
+        params: P_2STR,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "canonical_w16",
+        symbol: "auto.platform.file.canonical_w16.v1",
+        params: P_5I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "canonical_bytes",
+        symbol: "auto.platform.file.canonical_bytes.v1",
+        params: P_STR_2I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_open_w16",
+        symbol: "auto.platform.file.dir_open_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_next_w16",
+        symbol: "auto.platform.file.dir_next_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_close",
+        symbol: "auto.platform.file.dir_close.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_open_bytes",
+        symbol: "auto.platform.file.dir_open_bytes.v1",
+        params: P_STR,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "dir_fill_bytes",
+        symbol: "auto.platform.file.dir_fill_bytes.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PATH,
+    },
+    PlatformSourceOp {
+        callee: "env_get_w16",
+        symbol: "auto.platform.env.get_w16.v1",
+        params: P_5I32,
+        result: VT::I32,
+        capability: CAP_ENV,
+    },
+    PlatformSourceOp {
+        callee: "env_set_w16",
+        symbol: "auto.platform.env.set_w16.v1",
+        params: P_6I32,
+        result: VT::I32,
+        capability: CAP_ENV,
+    },
+    PlatformSourceOp {
+        callee: "env_remove_w16",
+        symbol: "auto.platform.env.remove_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_ENV,
+    },
+    PlatformSourceOp {
+        callee: "env_get_bytes",
+        symbol: "auto.platform.env.get_bytes.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_ENV,
+    },
+    PlatformSourceOp {
+        callee: "clock_unix_ms",
+        symbol: "auto.platform.clock.unix_ms.v1",
+        params: P_EMPTY,
+        result: VT::I32,
+        capability: CAP_CLOCK,
+    },
+    PlatformSourceOp {
+        callee: "clock_mono_ms",
+        symbol: "auto.platform.clock.mono_ms.v1",
+        params: P_EMPTY,
+        result: VT::I32,
+        capability: CAP_CLOCK,
+    },
+    PlatformSourceOp {
+        callee: "clock_hi",
+        symbol: "auto.platform.clock.hi.v1",
+        params: P_EMPTY,
+        result: VT::I32,
+        capability: CAP_CLOCK,
+    },
+    PlatformSourceOp {
+        callee: "sleep_ms",
+        symbol: "auto.platform.clock.sleep_ms.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_CLOCK,
+    },
+    PlatformSourceOp {
+        callee: "rand_fill",
+        symbol: "auto.platform.entropy.rand_fill.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_ENTROPY,
+    },
+    PlatformSourceOp {
+        callee: "proc_spawn_w16",
+        symbol: "auto.platform.process.spawn_w16.v1",
+        params: P_4I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_spawn_bytes",
+        symbol: "auto.platform.process.spawn_bytes.v1",
+        params: P_STR_I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_pipe_read",
+        symbol: "auto.platform.process.pipe_read.v1",
+        params: P_6I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_wait",
+        symbol: "auto.platform.process.wait.v1",
+        params: P_2I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_release",
+        symbol: "auto.platform.process.release.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_exit",
+        symbol: "auto.platform.process.exit.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_cmdline_w16",
+        symbol: "auto.platform.process.cmdline_w16.v1",
+        params: P_2I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_cmdline_fill_bytes",
+        symbol: "auto.platform.process.cmdline_fill_bytes.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_cwd_w16",
+        symbol: "auto.platform.process.cwd_w16.v1",
+        params: P_2I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_cwd_bytes",
+        symbol: "auto.platform.process.cwd_bytes.v1",
+        params: P_2I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_chdir_w16",
+        symbol: "auto.platform.process.chdir_w16.v1",
+        params: P_3I32,
+        result: VT::I32,
+        capability: CAP_PROC,
+    },
+    PlatformSourceOp {
+        callee: "proc_chdir_bytes",
+        symbol: "auto.platform.process.chdir_bytes.v1",
+        params: P_STR,
+        result: VT::I32,
+        capability: CAP_PROC,
     },
 ];
 

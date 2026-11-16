@@ -36,6 +36,9 @@ mod feasibility;
 mod resource;
 #[path = "cases/resource_recovery.rs"]
 mod resource_recovery;
+#[path = "cases/sys973_av_foreign.rs"]
+mod sys973_av_foreign;
+
 #[path = "cases/rust_f0.rs"]
 mod rust_f0;
 #[path = "cases/scalar_bridge.rs"]

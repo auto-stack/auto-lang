@@ -141,3 +141,15 @@ packages-aggregates-ct 装配线为本包已验消费面：`stdlib_assembled_fil
 `ace.stdlib-reserved` 拒）。纯 Auto 模块无来源候选；默认算法不以 C/Rust
 实现层代签（AC-AUTO-STD）。执行端五路真跑（AV/mn/cl/rustc/Python）同值；
 f64 发射面与源级纪律详见 [m2-stdlib-core](../../ace-migration/m2-stdlib-core.md)。
+
+## sys 装配集增量（PLAN-973 交付，2026-11-16）
+
+`stdlib_sys_files()` 冻结 sys 10 模块（file/path/env/process/time/rand/storage/
+syscommon/sysplat_win/sysplat_lnx，include_str! 仓内源）；`is_frozen_std_sys_module()`
+守保留名，`assemble_stdlib_sys_inputs` 为唯一消费入口，binding 双点身份
+（binding.rs 两处）防漂移。`#in sys is current` 按目标选平台模块（966 `#if/#is`；
+Windows/Linux 装配绑定已验，Linux 运行归 1063）。sys 模块走 Aggregates/Closures
+车道门（resolve/verify/lowering/abc/host/mir_verify 具 PLAN-973 注记）；旧 sentinel
+公开合同逐面保留。byte→Str 摘除面（read_text 族/zip/storage）以模块头具名注记
+移交 1064，不在装配面伪装可绑。资源/预算/capability 语义见
+[m2-stdlib-io.md](../../ace-migration/m2-stdlib-io.md)。

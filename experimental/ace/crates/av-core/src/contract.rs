@@ -1141,6 +1141,13 @@ pub enum ExecOutcome {
     /// Executor-internal failure (budget bookkeeping etc.) — never used to
     /// absorb a language trap or a resource classification.
     Infra(String),
+    /// PLAN-973: the guest requested its own termination via the
+    /// `proc_exit` platform op (Process.exit parity). A NORMAL terminal
+    /// state carrying the requested exit code — never kills the AV host;
+    /// native lowers to `ExitProcess`/`exit_group`.
+    Exit {
+        code: i32,
+    },
 }
 
 /// Source-mapping record attached to traps and diagnostics: the owning

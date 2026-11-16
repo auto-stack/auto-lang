@@ -891,7 +891,7 @@ pub(crate) fn project_packages_front(
                     for f in &node.fields {
                         let mut stmts =
                             match crate::source::age_component::instance_stmts(
-                                inst, &node, &node_scenario,
+                                inst, &node, &node_scenario, &std::collections::HashMap::new(),
                             ) {
                                 Ok(s) => s,
                                 Err(ds) => return Err(ds),
