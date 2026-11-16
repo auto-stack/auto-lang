@@ -1104,6 +1104,18 @@ next_responsible_role: work（WEB 批 UI 侧剩余=浏览器挂载档（013/017 
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 37 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6g 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 281f420a lang 45b25c284 | next: user（裁定开放）或 work（浏览器档默认）
 
+2026-11-16 stage: work（WEB 批切片 #6h：浏览器挂载档，goal round 38——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——真语料 spliced 切换待语言侧前置×3；WEB UI 侧全部项已交）| worktree: lang-980 @ plan-980-dev | commit: ui **15b9c4c6**、lang **6512eb531**（§13.11）。
+
+**交付。** 浏览器挂载档（013-todo playwright 先例）：`test_lane_browser.mjs`（playwright 解析→无头 chromium→DOM 断言）+ 永久 case `p980_web_lane_browser_mount`（排窗 `AUTO_UI_ACE_WEB_E2E=1`）——002 的 lane Inc handler 体在**真实浏览器** reactive 宿主中执行：点击 → `a2x_add(count.value, 1)` → DOM 文本 41→42。现场修：ES module export 语句不能入非 module `<script>`（剥 export 多行签名语法碎——a2x_add 按 rt_body.js 冻结式手写内联）。
+
+**验证（冻结提交实测）。** ace_ts_provider **14/14**（含浏览器档 1/1 排窗实测）；fmt clean；ui ff 落主 `15b9c4c6`；规范 §13.11 落主 `6512eb531`。
+
+**WEB 批 UI 侧总结（切片 #1–#6h，十三个增量）**：机制链全通（组件面→HIR→span 定位→发射→reactive 映射→函数体→SFC 拼接→一体化入口→双轨仪表→浏览器档）；真语料 spliced 切换待语言侧前置×3（§13.10——ScenarioOp 无 payload、具名 msg 语法、参数绑定面）。
+
+next_responsible_role: user（裁定三选一：等外部/并行/继续——WEB UI 侧已无无阻塞可续项；波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 38 | from: work | to: user | status: executing（12/32）| outcome: pass（切片#6h 落主；WEB UI 侧完）| worktree: D:/autostack/.wt/lang-980 | commit: ui 15b9c4c6 lang 6512eb531 | next: user（裁定）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
