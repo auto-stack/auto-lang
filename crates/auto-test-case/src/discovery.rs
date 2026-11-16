@@ -195,6 +195,18 @@ pub fn load_suite(suite_path: &Path, limits: &Limits) -> Result<LoadedSuite, Loa
                         match author::decode_document(&case_doc, &rel_display, limits) {
                             Ok(decoded) => {
                                 for ac in decoded {
+                                    if let Err(e) =
+                                        crate::contract::validate_check_graph(&ac.spec.checks)
+                                    {
+                                        errors.push(LoadError {
+                                            file: case_path.clone(),
+                                            detail: format!(
+                                                "document case {}: {}",
+                                                ac.key, e
+                                            ),
+                                        });
+                                        continue;
+                                    }
                                     doc_spans.push(DocCaseSpan {
                                         key: ac.key,
                                         heading_line: ac.heading_line,

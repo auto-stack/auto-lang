@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 01_basics/053_print_var
+
+## Case: legacy-a2p-01-basics-053-print-var
+id: "legacy.a2p.01_basics.053_print_var"
+entry-mode: "program"
+
+### Auto
+path: "print_var.at"
+```auto
+fn main() {
+    let name = "World"
+    print(f"Hello, $name!")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### print_var.expected.py
+```python
+def main():
+    name = "World"
+    print(f"Hello, {name}!")
+
+if __name__ == "__main__":
+    main()
+```

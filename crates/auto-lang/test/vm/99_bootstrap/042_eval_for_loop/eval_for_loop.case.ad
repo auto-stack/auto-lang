@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/042_eval_for_loop
+
+## Case: legacy-99-bootstrap-042-eval-for-loop
+id: "legacy.99_bootstrap.042_eval_for_loop"
+entry-mode: "program"
+
+### Auto
+path: "eval_for_loop.at"
+```auto
+// Test: eval — large integer
+fn main() {
+    var r1 = run_eval("print(12345)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:12345
+
+```

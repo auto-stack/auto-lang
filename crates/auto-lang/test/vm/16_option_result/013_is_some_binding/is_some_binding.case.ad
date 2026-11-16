@@ -1,0 +1,23 @@
+# Legacy vm corpus: 16_option_result/013_is_some_binding
+
+## Case: legacy-16-option-result-013-is-some-binding
+id: "legacy.16_option_result.013_is_some_binding"
+entry-mode: "program"
+
+### Auto
+path: "is_some_binding.at"
+```auto
+let opt = Some(42)
+is opt {
+  Some(v) -> v
+  None -> 0
+}
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+42
+```

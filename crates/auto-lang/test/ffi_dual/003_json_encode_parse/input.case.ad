@@ -1,0 +1,29 @@
+# Legacy ffi_dual corpus: 003_json_encode_parse
+
+## Case: legacy-ffi-dual-003-json-encode-parse
+id: "legacy.ffi_dual.003_json_encode_parse"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: JSON encode/parse — #[rust_fn] JSON
+let encoded = Json.encode("hello")
+print(encoded)
+let obj = Json.parse("{\"name\":\"auto\",\"ver\":1}")
+print(Json.get(obj, "name"))
+print(Json.type_of(Json.get(obj, "ver")))
+print(Json.has_key(obj, "name"))
+print(Json.has_key(obj, "missing"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+"hello"
+"auto"
+number
+true
+false
+```

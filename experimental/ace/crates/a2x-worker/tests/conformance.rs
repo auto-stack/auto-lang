@@ -106,6 +106,8 @@ mod store_rt_902;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
 
+#[path = "cases/p977_py_public_surface.rs"]
+mod p977_py_public_surface;
 #[path = "cases/pyready_1042.rs"]
 mod pyready_1042;
 #[path = "cases/record_field_writes_941.rs"]

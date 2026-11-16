@@ -1,0 +1,25 @@
+# Legacy a2p corpus: 000_hello
+
+## Case: legacy-a2p-000-hello
+id: "legacy.a2p.000_hello"
+entry-mode: "program"
+
+### Auto
+path: "hello.at"
+```auto
+fn main() {
+    print("hello, world!")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### hello.expected.py
+```python
+def main():
+    print("hello, world!")
+
+if __name__ == "__main__":
+    main()
+```

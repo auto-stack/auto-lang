@@ -1,0 +1,36 @@
+# Legacy a2ts corpus: 01_basics/008_bool_ops
+
+## Case: legacy-01-basics-008-bool-ops
+id: "legacy.01_basics.008_bool_ops"
+entry-mode: "program"
+
+### Auto
+path: "bool_ops.at"
+final-newline: false
+```auto
+fn main() {
+    let a = true && false
+    let b = true || false
+    let c = !true
+    print(a)
+    print(b)
+    print(c)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### bool_ops.expected.ts
+```ts
+function main(): void {
+    const a = true && false;
+    const b = true || false;
+    const c: boolean = !true;
+    console.log(a);
+    console.log(b);
+    console.log(c);
+}
+
+main();
+```

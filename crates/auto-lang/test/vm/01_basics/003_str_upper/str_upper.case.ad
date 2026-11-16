@@ -1,0 +1,24 @@
+# Legacy vm corpus: 01_basics/003_str_upper
+
+## Case: legacy-01-basics-003-str-upper
+id: "legacy.01_basics.003_str_upper"
+entry-mode: "program"
+
+### Auto
+path: "str_upper.at"
+```auto
+fn my_upper(s str) str {
+    s.upper()
+}
+
+fn main() {
+    print(my_upper("hello"))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+HELLO
+```

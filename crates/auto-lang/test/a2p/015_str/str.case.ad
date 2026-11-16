@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 015_str
+
+## Case: legacy-a2p-015-str
+id: "legacy.a2p.015_str"
+entry-mode: "program"
+
+### Auto
+path: "str.at"
+```auto
+fn main() {
+    let name = "World"
+    print(f"Hello, $name!")
+    print(f"Result: ${1 + 2}")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### str.expected.py
+```python
+def main():
+    name = "World"
+    print(f"Hello, {name}!")
+    print(f"Result: {1 + 2}")
+
+if __name__ == "__main__":
+    main()
+```

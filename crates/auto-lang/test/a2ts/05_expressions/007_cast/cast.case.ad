@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 05_expressions/007_cast
+
+## Case: legacy-05-expressions-007-cast
+id: "legacy.05_expressions.007_cast"
+entry-mode: "program"
+
+### Auto
+path: "cast.at"
+final-newline: false
+```auto
+fn main() {
+    let x = 42
+    let s = x.to(str)
+    print(s)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### cast.expected.ts
+```ts
+function main(): void {
+    const x: number = 42;
+    const s: string = String(x);
+    console.log(s);
+}
+
+main();
+```

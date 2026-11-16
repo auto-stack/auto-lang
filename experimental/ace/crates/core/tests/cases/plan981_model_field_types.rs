@@ -123,12 +123,15 @@ fn p981_model_f32_is_named_rejected_at_the_type_token() {
     assert_eq!(ds[0].span.start, want);
 }
 
-/// `str` model 字段仍按具名原因拒绝（回归：这条本来就对）。
+/// resync（并入 980 B-DIALECT 面）后 `str`/`Str` 成为合法 model 字段类型：状态函数
+/// 按 `Str` 返回（975/980 的传统 widget 002 形）。本用例钉住合并后的真实行为——
+/// 旧的"str 在类型 token 具名拒"是当时实现的限制，不是契约。
 #[test]
-fn p981_model_str_is_named_rejected_at_the_type_token() {
+fn p981_model_str_field_is_supported_after_the_980_surface() {
     let src = "node M {\n    model {\n        s str = \"x\"\n    }\n    view { text \"t\" {} }\n}\n";
-    let want = src.find("str").expect("fixture has str");
-    let ds = compile_pkg(src).expect_err("str is not a supported model field type");
-    assert_eq!(ds[0].code, "source.age.component-unsupported", "{ds:?}");
-    assert_eq!(ds[0].span.start, want);
+    let out = compile_pkg(src).expect("str model fields are supported by the merged surface");
+    let c = &out.description.components[0];
+    assert_eq!(c.fields, vec![("s".to_string(), "str".to_string())]);
+    assert!(c.initialized, "the Str state function is generated");
+    assert!(out.symbol_of("__age_state_0_s").is_some());
 }

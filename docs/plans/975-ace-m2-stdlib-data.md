@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-975
-status: drafting
+status: executing
 feature_name: 新版JSON序列化数据库与扩展库
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 5
-current_step: 0
+updated_at: 2026-11-16
+plan_revision: 9
+current_step: 2
 total_steps: 8
-depends_on: [PLAN-972, PLAN-973, PLAN-948]
+depends_on: [PLAN-972, PLAN-973, PLAN-948, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-stdlib-data.md]
 touched_goals: [GOAL-002]
@@ -17,6 +17,12 @@ touched_goals: [GOAL-002]
 # [PLAN-975] 新版JSON序列化数据库与扩展库
 
 ## 0. 变更摘要
+
+2026-11-15 r8当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
+
+2026-11-13 r7当前：纳入新1043来源后缀装配及最小#in平台静态选择，见§5/AC-LOAD/V-LOAD/SD-LOAD；原任务/状态/完成数与全覆盖不减，仅规划。
+
+2026-11-13 r6当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
 
 2026-11-12 r5：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -100,6 +106,18 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 
 本节由T-08实施并以AC-06/V-08验收，属本包完成条件。既有任务/验收不被替代；需要的新接口由T-01先冻结，T-08依赖T-01及相关T-02/03结果，必须先于最终work验证与独立review完成。
 
+### T-01 A期冻结记录（2026-11-16，r9执行）
+
+**授权**：既定裁定模式（goal 续行 2026-11-16，974 整包归档后按序开工 975 A 批）。worktree：`D:/autostack/.wt/lang-975/auto-lang`（分支 `plan-975-dev`，基面 master@b1cb6faeb）；材料 `plan-artifacts/plan-975/` 已登记。
+
+**前置核实**：972/948/1042 已归档 ✓；**973 在途（executing 0/10，他会话）——依赖分账冻结**：JSON 域（纯 codec，无 IO 依赖）**不前置 973**；sqlite 文件持久化腿（db 路径/文件锁/崩溃恢复面）具名阻塞 973；sqlite **`:memory:` 腿**（连接私有内存库，无宿主文件）不前置；redis 腿=TCP 客户端，**可复用已归档 974 的 platform.net/1 车道**（同为 OS 薄适配纪律）。
+
+**已交面盘点（策略输入）**：legacy `stdlib/auto/json.at`（20 pub fn：encode/encode_pretty/decode/try_decode/parse + JsonValue 存取组 15 + prettify/minify/is_valid，泛型 `[T]` 面 VM=serde_json）；`a2r-std/{json,sqlite,redis}.rs`（旧 Rust 侧参考）；ACE 侧无 json/sqlite/redis crate（补位面）。967 已交 SQLite C 库内容钉版道（p967_sqlite fixture——SQL 引擎经 FFI provider 可复用，非重写引擎）。
+
+**策略比较与选型（T-01 决定）**：JSON 域=**S1 Auto 侧自有 codec**（`stdlib/ace/std/json.at`，PLAN-1041 内联约定——encode 族纯字符串拼接沿 std.url 方言事实；decode/parse 需子串物化=与 url_decode 同一核心决定，具名共享）；sqlite=**S2 复用 967 FFI provider 道**（SQL 引擎不重写，`:memory:` 与文件腿统一经 provider；错误/事务/资源沿 967 面加 Auto 包装）；redis=**S3 platform.net/1 + RESP 协议在 Auto**（974 同律：协议自有+OS 薄适配）。拒绝：平行 SQL/JSON 引擎重写（禁平行语义分析）。
+
+**平台/命令/资源**：Windows x64；JSON 腿=纯 console-lane 单源证（974 同模式）；sqlite `:memory:`=967 provider 构建道（rustc/cl 预构建纪律）；Linux 归 1063。V 真实命令由各 I 任务登记（拟 ace-av/ace-a2x/相关组并集）。
+
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r5当前）
 
 **具体输入与期望。** 原件[crates/auto-lang/test/a2r/28_sqlite/001_basic/basic.at](../../crates/auto-lang/test/a2r/28_sqlite/001_basic/basic.at)（下列节选L2–L15；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
@@ -156,6 +174,22 @@ struct DatabaseLease { connection: ResourceId, transaction: TransactionState, gr
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+JSON/序列化/缓存/sqlite/redis等原公共操作补六路径；保持数据格式、错误与owner。显式数据库引擎等第三方依赖逐路径列明；AV/native能调用受检FFI不等于该外部引擎已由纯Auto重写，不能冒无C/Rust依赖。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；需要更大Python语义时消费977/PY已交能力切片或先具名补齐，不反等977整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
+### 新加载机制完成依赖（2026-11-13当前）
+
+依据[设计§8–10](../design/stdlib/backend-provider-coverage.md)与[1043](archive/1043-ace-stdlib-context-assembly.md)。公共.at＋at/c/rs/py来源后缀组成同一逻辑模块，运行后端另选；#in打开临时namespace并让is/if/for继承编译期属性，不扩平台后缀。最小层由1043先交，966继续完整CTE，不能反向等966整包。
+
+经972/973消费1043；数据/数据库适配复用source装配与#in，不因selected source标签冒实际C/Rust引擎调用，原格式/资源/第三方依赖保留。
+
+本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -166,6 +200,35 @@ struct DatabaseLease { connection: ResourceId, transaction: TransactionState, gr
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-stdlib-data.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/ace-migration/m2-stdlib-data.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### 加载机制规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LOAD | add/modify | docs/specs/ace-migration/m2-stdlib-data.md | 旧有限后端侧文件→本包实际消费1043来源装配/#in/目标依赖及正式来源，未交保持缺口 | 用户确定新加载机制 | AC-LOAD |
+
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**JSON/编码/序列化/缓存与显式数据库等外部引擎**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+普通JSON/编码/序列化/容器缓存等默认共享Auto实现；SQLite/数据库引擎、Redis外部服务等可暂经显式FFI/协议适配，列真实依赖，不能把serde_json等包装冒自有JSON。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-stdlib-data.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
+| SD-AUTO-STD | modify | docs/specs/ace-migration/m2-stdlib-data.md | 默认provider声明→普通标准能力有Auto算法/协议与OS边界来源证据，高级外库显式分账 | 用户自有普通库要求 | AC-AUTO-STD |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -206,6 +269,32 @@ struct DatabaseLease { connection: ResourceId, transaction: TransactionState, gr
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 加载机制验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/owner |
+|---|---|---|
+| V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
+
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-AUTO-STD / AC-AUTO-STD | 原能力work与最终验证：移除可选外库/provider，在Windows默认native/AC跑原完整公共操作并核Auto源码/原语/OS调用来源和独立expected | math/io/JSON等按§5自有归属，不以包装libm/std::io/serde_json等代实现；Linux只做代码/移交审查，未来1063实跑，外部引擎依赖另账。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -218,21 +307,31 @@ struct DatabaseLease { connection: ResourceId, transaction: TransactionState, gr
 | AC-06 | work | 持久数据与兼容升级的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 
+- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+
+- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+
+- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+
+- [ ] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。
+
 ## 8. 执行步骤
 
 当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+  [✅ 2026-11-16] 冻结记录见§5"T-01 A期冻结记录"：前置核实+973分账（JSON/:memory:/redis不前置，文件腿具名阻塞）；三域选型冻结（S1自有JSON codec/S2复用967 FFI sqlite/S3 RESP over platform.net）；worktree已建。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16, worktree commit bc19182d9] **JSON encode族已交**（T-02 首增量）：`stdlib/ace/std/json.at`（json_escape/json_int含负数/json_bool/json_null/json_str/kv与array/object组合helper + json_structurally_balanced字符串感知括号扫描=廉价有效面**明非parse**）＋`json975_encode_family_inline`（verbatim内联14独立手算oracle含3负控，0.09s）。decode/parse/泛型typed面=具名pending（子串物化决定共享）。**sqlite :memory:腿已交（bb8d56e07）**：`db975_sqlite_memory_leg_on_pinned_provider`——967内容钉版SQLite 3.46.0 provider以`:memory:`路径开启（无宿主文件=零973依赖），手算oracle SUM(4,5)=9＋独立cl oracle exe同amalgamation私有`:memory:`库同语句复核；负控exec-before-open/-1、double-close/-1；oracle语义在案（changes=末语句、close ack out=1）；5.6s。**Auto侧sqlite.* API面=具名后续**（console道foreign dispatch缝）。**redis腿（S3 RESP）待续**。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐JSON、sqlite/redis、序列化/缓存的实际API覆盖；现有磁盘/数据库格式与ABI无关，不因换引擎破坏用户数据，schema迁移与降级策略交986消费。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：逐JSON、sqlite/redis、序列化/缓存的实际API覆盖；现有磁盘/数据库格式与ABI无关，不因换引擎破坏用户数据，schema迁移与降级策略交986消费。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -253,6 +352,21 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: work | PLAN-975 | r9 | 2026-11-16 | outcome: in-progress (T-02 sqlite :memory:腿) | worktree: D:/autostack/.wt/lang-975/auto-lang @ plan-975-dev | code_commit: bb8d56e07 | evidence: db975 1/1绿5.6s（含独立oracle exe） | next_responsible_role: work（redis RESP腿 → T-03..07 或按裁定）
+
+stage: work | PLAN-975 | r9 | 2026-11-16 | outcome: in-progress (T-02 JSON encode族) | worktree: D:/autostack/.wt/lang-975/auto-lang @ plan-975-dev | code_commit: bc19182d9 | evidence: json975 1/1绿0.09s（14 oracle） | next_responsible_role: work（sqlite :memory: 腿（S2 967 provider）/redis（S3 RESP） 或按裁定）
+
+stage: work | PLAN-975 | r9 | 2026-11-16 | outcome: pass (T-01) | worktree: D:/autostack/.wt/lang-975/auto-lang @ plan-975-dev（基面 master@b1cb6faeb） | task_ids: T-01 | evidence: §5"T-01 A期冻结记录" | authorization: 既定裁定模式 | blockers: sqlite文件腿=973（具名）；decode/parse=子串物化核心决定（与974共享） | next_responsible_role: work（T-02 JSON encode族先行——纯拼接面无阻塞）
+
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r8：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
+
+2026-11-13 stage:new / CONTEXT-LOAD | 规划静态预检通过：20份设计/计划553处本地链接路径、Markdown围栏与Plan 0–10节/任务数一致；原144任务ID/勾选/状态/进度/旧AC/V及原依赖保留，新1043十任务均未完成。可达149个语言计划依赖无缺失/环、ID无冲突，中央.next-id为1044。1043不依完整966/FFI/库，1042不反依1043；966改为消费1043，原F0/B0/Hello与M1门不减。新计划候选固定组名和新增设计锚静态核对，git diff --check通过。未实施/建树/编译/运行产品或测试，不是独立实现review PASS；canonical Specs及归档历史未改。
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
 
 2026-11-12 stage:new / PLAN-975 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 

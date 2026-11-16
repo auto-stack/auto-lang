@@ -1,0 +1,21 @@
+# Legacy vm corpus: 07_objects/004_obj_set
+
+## Case: legacy-07-objects-004-obj-set
+id: "legacy.07_objects.004_obj_set"
+entry-mode: "program"
+
+### Auto
+path: "obj_set.at"
+```auto
+var a = { name: "Alice" }
+a.name = "Bob"
+a.name
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+Bob
+```

@@ -1,0 +1,41 @@
+# Legacy vm corpus: 23_actor/008_string_pattern
+
+## Case: legacy-23-actor-008-string-pattern
+id: "legacy.23_actor.008_string_pattern"
+entry-mode: "program"
+
+### Auto
+path: "string_pattern.at"
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        "ping" -> {
+            print("pong")
+        }
+        "bye" -> {
+            print("farewell")
+        }
+        else -> {
+            print("unknown")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send("ping")
+    h.send("bye")
+    h.send("what")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+pong
+farewell
+unknown
+```

@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/023_list_len
+
+## Case: legacy-13-collections-023-list-len
+id: "legacy.13_collections.023_list_len"
+entry-mode: "program"
+
+### Auto
+path: "list_len.at"
+```auto
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var len = list.len()
+list.drop()
+len
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

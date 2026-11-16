@@ -272,6 +272,16 @@ pub fn assembled_caps() -> Vec<String> {
     vec![PACKAGES_CAPABILITY.to_string(), IN_CAPABILITY.to_string()]
 }
 
+/// PLAN-972（T-02）：装配 aggregates lane 的能力集（packages 面 + `#in`
+/// 编译期命名空间 + PLAN-962 `av.aggregates/1` 准入）。
+pub fn assembled_aggregates_caps() -> Vec<String> {
+    let mut caps = assembled_caps();
+    if !caps.iter().any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP) {
+        caps.push(ace_core::source::AGGREGATES_ADMISSION_CAP.into());
+    }
+    caps
+}
+
 /// 扫描一个平铺候选目录 → (文件名, 内容) 闭包（按名排序；非本合同文件
 /// 与旧 `.vm.at` 目标层被分类器忽略）。无递归、无搜索路径猜测。
 pub fn discover_provider_sources(dir: &std::path::Path) -> Result<Vec<(String, String)>, String> {
@@ -415,6 +425,132 @@ pub fn compile_assembled_inputs(
         ace_core::source::packages::bind_packages_assembled(inputs, entry, &caps, budget, ctx)
             .map_err(|e| vec![convert_asm_diag(e)])?;
     compile_bound_packages(bound, &caps)
+}
+
+/// PLAN-972（T-02）：装配 aggregates 线的冻结装配 std 集输入（package
+/// `std`；公共 `.at` 成模块，候选按同一显式上下文选择——现集为纯 Auto
+/// 模块，无候选）。实现层身份在绑定面按 `is_frozen_std_assembled_module`
+/// 逐字节核验（仓外来源拒绝）。
+pub fn frozen_std_assembled_inputs(
+    ctx: &mut PackageAssemblyContext,
+) -> Result<Vec<AsmInput>, String> {
+    let mut publics: BTreeMap<String, String> = BTreeMap::new();
+    let mut candidates: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for (name, content) in ace_core::source::packages::stdlib_assembled_files() {
+        match classify_provider_file_name(&name) {
+            Some((ProviderFileKind::Public, base)) => {
+                if publics.insert(base.clone(), content.clone()).is_some() {
+                    return Err(format!("duplicate std public module file for `{base}`"));
+                }
+            }
+            Some((ProviderFileKind::Provider(_), base)) => {
+                let slot = candidates.entry(base.clone()).or_default();
+                let (label, kind) = match classify_provider_file_name(&name) {
+                    Some((ProviderFileKind::Provider(k), _)) => (k.label().to_string(), k),
+                    _ => unreachable!("classified above"),
+                };
+                if slot.insert(label, content.clone()).is_some() {
+                    return Err(format!(
+                        "duplicate `{}` std provider candidate for `{base}`",
+                        kind.label()
+                    ));
+                }
+            }
+            None => {
+                return Err(format!("std assembled file `{name}` is not a provider-source name"))
+            }
+        }
+    }
+    let mut inputs = Vec::new();
+    for (base, source) in &publics {
+        let provider = match candidates.get(base) {
+            None => None,
+            Some(kinds) => {
+                let set: BTreeSet<ProviderKind> = kinds
+                    .keys()
+                    .filter_map(|l| match l.as_str() {
+                        "at" => Some(ProviderKind::At),
+                        "c" => Some(ProviderKind::C),
+                        "rs" => Some(ProviderKind::Rs),
+                        "py" => Some(ProviderKind::Py),
+                        _ => None,
+                    })
+                    .collect();
+                let sel =
+                    select_provider_source(base, &set, ctx.backend, ctx.provider, ctx.target)
+                        .map_err(|e: ProviderSourceError| format!("{}: {}", e.code(), e.message()))?;
+                sel.provider.map(|kind| PackageImplLayer {
+                    kind,
+                    source: kinds.get(kind.label()).cloned().unwrap_or_default(),
+                })
+            }
+        };
+        inputs.push(AsmInput {
+            package: ace_core::source::packages::STDLIB_PACKAGE.to_string(),
+            version: ace_core::source::packages::STDLIB_VERSION.to_string(),
+            id: base.clone(),
+            source: source.clone(),
+            provider,
+        });
+    }
+    Ok(inputs)
+}
+
+/// PLAN-972（T-02）：装配 aggregates 线的应用输入组装——调用方平铺 app
+/// 目录（package 取自 entry，同一 1043 单包装配规则）+ 冻结装配 std 集。
+/// app 候选照常进 `ctx.available` 读集；std 集候选（现无）按 base 名并入
+/// 同一读集（与 app 同名 base 保守合并失效——身份保守方向）。
+pub fn assemble_stdlib_aggregates_inputs(
+    app_files: &[(String, String)],
+    entry: &str,
+    ctx: &mut PackageAssemblyContext,
+) -> Result<Vec<AsmInput>, String> {
+    let mut inputs = assemble_package_inputs(app_files, entry, ctx)?;
+    inputs.extend(frozen_std_assembled_inputs(ctx)?);
+    Ok(inputs)
+}
+
+/// PLAN-972（T-02）：显式装配 aggregates 编译入口（app 文件闭包 + 冻结
+/// std 集 → 组装 → 装配 aggregates 绑定（packages-aggregates-ct 裁剪）→
+/// 既有 aggregates 管线）。调用方保留组装后的 inputs 与 ctx（进 store
+/// 身份/恢复）。
+pub fn compile_assembled_aggregates_package(
+    app_files: &[(String, String)],
+    entry: &str,
+    budget: FrontBudget,
+    ctx: &mut PackageAssemblyContext,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let inputs = assemble_stdlib_aggregates_inputs(app_files, entry, ctx).map_err(|e| {
+        vec![PackageDiagnostic {
+            module: entry.to_string(),
+            diagnostic: Diagnostic::new(
+                ace_core::atom_text::Stage::Bind,
+                "assembly.discovery",
+                e,
+                ace_core::atom_text::Span { start: 0, end: 0 },
+            ),
+        }]
+    })?;
+    compile_assembled_aggregates_inputs(&inputs, entry, budget, ctx)
+}
+
+/// PLAN-972（T-02）：已组装输入的装配 aggregates 编译（恢复/再编译共用）。
+pub fn compile_assembled_aggregates_inputs(
+    inputs: &[AsmInput],
+    entry: &str,
+    budget: FrontBudget,
+    ctx: &PackageAssemblyContext,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let lane_caps = assembled_aggregates_caps();
+    let bound = ace_core::source::packages::bind_packages_assembled_aggregates(
+        inputs,
+        entry,
+        &lane_caps,
+        budget,
+        ctx,
+    )
+    .map_err(|e| vec![convert_asm_diag(e)])?;
+    compile_bound_packages_aggregates(bound, &lane_caps)
 }
 
 fn convert_asm_diag(d: AsmPackageDiagnostic) -> PackageDiagnostic {

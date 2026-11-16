@@ -1,0 +1,45 @@
+# Legacy a2c corpus: 09_option_result/002_error_propagate
+
+## Case: legacy-09-option-result-002-error-propagate
+id: "legacy.09_option_result.002_error_propagate"
+entry-mode: "program"
+
+### Auto
+path: "error_propagate.at"
+```auto
+fn test_propagate() int {
+    let x = 10
+    let y = x.?
+    y
+}
+
+fn main() {
+    let result = test_propagate()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### error_propagate.expected.c
+```c
+#include "error_propagate.h"
+
+int test_propagate(void) {
+    int x = 10;
+    int y = x;
+    return y;
+}
+
+int main(void) {
+    unknown result = test_propagate();
+    return 0;
+}
+```
+
+#### error_propagate.expected.h
+```c
+#pragma once
+
+int test_propagate(void);
+```

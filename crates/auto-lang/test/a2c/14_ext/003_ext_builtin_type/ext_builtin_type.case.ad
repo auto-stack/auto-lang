@@ -1,0 +1,51 @@
+# Legacy a2c corpus: 14_ext/003_ext_builtin_type
+
+## Case: legacy-14-ext-003-ext-builtin-type
+id: "legacy.14_ext.003_ext_builtin_type"
+entry-mode: "program"
+
+### Auto
+path: "ext_builtin_type.at"
+```auto
+// Test ext statement with built-in type str (Plan 035)
+
+ext str {
+    fn len() int {
+        .size
+    }
+}
+
+fn main() {
+    let s = "hello"
+    let length = s.len()
+    print(length)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### ext_builtin_type.expected.c
+```c
+#include "ext_builtin_type.h"
+
+int str_len(char* self) {
+    return self->size;
+}
+
+int main(void) {
+    char* s = "hello";
+    unknown length = str_len(s);
+    printf("%d\n", length);
+    return 0;
+}
+```
+
+#### ext_builtin_type.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int str_len(char* self);
+```

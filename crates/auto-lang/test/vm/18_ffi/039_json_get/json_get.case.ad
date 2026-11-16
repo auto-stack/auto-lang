@@ -1,0 +1,25 @@
+# Legacy vm corpus: 18_ffi/039_json_get
+
+## Case: legacy-18-ffi-039-json-get
+id: "legacy.18_ffi.039_json_get"
+entry-mode: "program"
+
+### Auto
+path: "json_get.at"
+```auto
+let obj = Json.parse("{\"name\":\"auto\",\"ver\":1}")
+print(Json.get(obj, "name"))
+print(Json.type_of(Json.get(obj, "ver")))
+print(Json.has_key(obj, "name"))
+print(Json.has_key(obj, "missing"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+"auto"
+number
+1
+0
+```

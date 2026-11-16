@@ -8,8 +8,8 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ac-mn", include: [
-  "mn-first-trace.case.ad",
-  "mn-value.case.ad",
-  "mn-div-trap.case.ad",
+  "mn-first-trace.document.case.ad",
+  "mn-value.document.case.ad",
+  "mn-div-trap.document.case.ad",
 ] }
 ```

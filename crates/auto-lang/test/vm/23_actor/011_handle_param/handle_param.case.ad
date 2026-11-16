@@ -1,0 +1,39 @@
+# Legacy vm corpus: 23_actor/011_handle_param
+
+## Case: legacy-23-actor-011-handle-param
+id: "legacy.23_actor.011_handle_param"
+entry-mode: "program"
+
+### Auto
+path: "handle_param.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            print("got one")
+        }
+    }
+}
+
+fn forward(h TaskRef<i64>) {
+    h.send(1)
+    h.send(1)
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    forward(h)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+got one
+got one
+```

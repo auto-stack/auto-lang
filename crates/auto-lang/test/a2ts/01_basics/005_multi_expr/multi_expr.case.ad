@@ -1,0 +1,32 @@
+# Legacy a2ts corpus: 01_basics/005_multi_expr
+
+## Case: legacy-01-basics-005-multi-expr
+id: "legacy.01_basics.005_multi_expr"
+entry-mode: "program"
+
+### Auto
+path: "multi_expr.at"
+final-newline: false
+```auto
+fn main() {
+    let a = 1 + 2 * 3
+    let b = (1 + 2) * 3
+    print(a)
+    print(b)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### multi_expr.expected.ts
+```ts
+function main(): void {
+    const a: number = 1 + 2 * 3;
+    const b: number = 1 + 2 * 3;
+    console.log(a);
+    console.log(b);
+}
+
+main();
+```

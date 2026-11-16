@@ -1,0 +1,23 @@
+# Legacy vm corpus: 07_objects/009_multiple_field_mutations
+
+## Case: legacy-07-objects-009-multiple-field-mutations
+id: "legacy.07_objects.009_multiple_field_mutations"
+entry-mode: "program"
+
+### Auto
+path: "multiple_field_mutations.at"
+```auto
+var obj = { x: 100, y: 200, z: 300 }
+obj.x = 100
+obj.y = 200
+obj.z = 300
+obj.x + obj.y + obj.z
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+600
+```

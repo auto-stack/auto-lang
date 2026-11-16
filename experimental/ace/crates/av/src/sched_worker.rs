@@ -39,7 +39,9 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     if request["recipe"].as_str() != Some(RECIPE) || request["entry"].as_str() != Some("d_main") {
         return Err("scheduler recipe requires d_main".into());
     }
-    let steps = request["steps"].as_array().ok_or("missing scheduler steps")?;
+    let steps = request["steps"]
+        .as_array()
+        .ok_or("missing scheduler steps")?;
     if steps.len() != 1 || steps[0] != json!({"op":"run"}) {
         return Err("scheduler requires exactly one run step".into());
     }
@@ -114,8 +116,8 @@ pub fn serve(request: &Json) -> Result<Json, String> {
 fn run_chain(source: &str) -> (Result<ExecOutcome, Json>, ConsoleCapture) {
     let mut capture = ConsoleCapture::default();
     let outcome = (|| -> Result<ExecOutcome, Json> {
-        let compiled =
-            ace_core::source::compile_scheduler_source(source, "probe.at", &[]).map_err(|ds| {
+        let compiled = ace_core::source::compile_scheduler_source(source, "probe.at", &[])
+            .map_err(|ds| {
                 let d = ds.first();
                 json!({
                     "stage": d.map(|x| format!("{:?}", x.stage).to_lowercase()).unwrap_or_default(),

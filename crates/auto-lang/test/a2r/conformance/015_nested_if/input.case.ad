@@ -1,0 +1,38 @@
+# Legacy conformance corpus: 015_nested_if
+
+## Case: legacy-conf-015-nested-if
+id: "legacy.conf.015_nested_if"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 015: Nested if/else
+fn main() {
+    let x = 15
+    if x > 20 {
+        print("big")
+    } else if x > 10 {
+        print("medium")
+    } else if x > 5 {
+        print("small")
+    } else {
+        print("tiny")
+    }
+    if x > 10 {
+        if x > 20 {
+            print("huge")
+        } else {
+            print("ok")
+        }
+    }
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+medium
+ok
+```

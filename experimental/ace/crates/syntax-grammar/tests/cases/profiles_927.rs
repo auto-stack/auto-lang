@@ -43,9 +43,8 @@ const DECLARED: &[&str] = &[
     // 序在 numeric 之后、模板面之前——962 合入时同样漏更新本冻结集，
     // 1025 收口接收侧按已交付现实刷新，合同语义不变，同 961→941 先例）。
     "aggregates",
-    // PLAN-968：调度器面（aggregates 超集 + task actor 面）。该面在 968 合入时
-    // 同样漏更新本冻结集（与 961→941、962→1025 同一类漂移），本 Plan 接收侧
-    // 按 auto-source.at 的已交付现实刷新——只补名字，合同语义不变。
+    // PLAN-968：调度器面（task/on 语句域；声明序紧随 aggregates——
+    // 972 rebase 接收侧按 master 已交付现实刷新冻结集，合同语义不变）。
     "scheduler",
     // PLAN-935：有限模板面（scalar 全表面 + fn <T>；仅实例能力前门使用；
     // 声明序在闭包之后）。
@@ -65,6 +64,10 @@ const DECLARED: &[&str] = &[
     // ace-syntax，966 接收侧按 auto-source.at 已声明现实刷新（合同语义不变，
     // 同 961→941、962→1025 先例）。声明序紧随 packages-ct、scalar-ct 之前。
     "packages-aggregates",
+    // PLAN-972（T-02）：packages-aggregates-ct 面（packages-aggregates 全表面
+    // + packages-ct 装配项 + 闭包类型注解/字面量）；装配 aggregates 线
+    //（std 装配标准库承载面）。声明序紧随 packages-aggregates。
+    "packages-aggregates-ct",
     // PLAN-936（T-04）：有限 CT 表达式面（scalar-instances 全表面 +
     // #{ expr } 原子；仅 CT 能力前门使用；声明序在模板面之后）。
     "scalar-ct",

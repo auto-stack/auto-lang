@@ -1,0 +1,41 @@
+# Legacy vm corpus: 09_functions/019_enum_tuple_payload
+
+## Case: legacy-09-functions-019-enum-tuple-payload
+id: "legacy.09_functions.019_enum_tuple_payload"
+entry-mode: "program"
+
+### Auto
+path: "enum_tuple_payload.at"
+```auto
+// Test: multi-argument tuple variant enum destructuring
+fn main() {
+    enum Shape {
+        Circle(float)
+        Rect(int, int)
+    }
+
+    let s = Shape.Circle(3.14)
+    is s {
+        Shape.Circle(r) -> print(r)
+        Shape.Rect(w, h) -> print(w)
+    }
+
+    let r = Shape.Rect(10, 20)
+    is r {
+        Shape.Circle(r) -> print(r)
+        Shape.Rect(w, h) -> {
+            print(w)
+            print(h)
+        }
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3.14
+10
+20
+```

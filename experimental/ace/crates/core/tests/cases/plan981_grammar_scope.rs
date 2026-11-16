@@ -81,14 +81,14 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             "f26f378633dd7b3df5754ee754836cfc2759c8435df1d04ecb952712c81d0d5e",
         ),
         // AGE 自己的既有两面同样是"不得被本次打包裁剪波及"的邻居。
-        // 注意：`age-component` 的这一行是**变后值**——它在阶段 H 因与新增的
+        // resync（2026-11-16，并入 master 的 980/972 面）后该行再次变化：age-package 采纳 980 富 view 时给 AGE 规则的 profile 门列表补了 `age-package`，规则文本字节变、语义不变（age-component 仍不收 view-2d/3d 与 node-ref）。此前一段历史：// 注意：`age-component` 的这一行是**变后值**——它在阶段 H 因与新增的
         // `age-view2d/3d-member` 共用同一个 alt 列表而被重排，基线 `ca88cde14`
         // 的值是 `b244ee1614428379afb61a756e84adfd8c947fc8584e92d7a0f04bc7bf7222e0`。
         // 保留变后值 + 在此注明，是为了让后来者看得到"这个面确实变过"，
         // 而不是被一个看似中性的数字掩盖。
         (
             SourceProfile::AgeComponent,
-            "9c78ebbd0fb37973b6866c7bc8b17ee5c7491e0c8cfd31bfc50dc348318c4e30",
+            "7a439096417b64cc283f155f7d037ab64b42bcb248ef451adac17157a80cd6f1",
         ),
         (
             SourceProfile::AgeH0,

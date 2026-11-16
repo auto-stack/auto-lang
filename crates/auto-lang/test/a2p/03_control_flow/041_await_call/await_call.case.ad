@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 03_control_flow/041_await_call
+
+## Case: legacy-a2p-03-control-flow-041-await-call
+id: "legacy.a2p.03_control_flow.041_await_call"
+entry-mode: "program"
+
+### Auto
+path: "await_call.at"
+```auto
+fn fetch_data(url str) ~str {
+    return url
+}
+
+fn main() {
+    let result = fetch_data("http://example.com").await
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### await_call.expected.py
+```python
+async def fetch_data(url: str) -> str:
+    return url
+
+async def main():
+    result = await fetch_data("http://example.com")
+    print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```

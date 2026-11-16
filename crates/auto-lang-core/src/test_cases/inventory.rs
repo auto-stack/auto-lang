@@ -12,10 +12,18 @@ use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
+#[path = "inventory_helpers.rs"]
+mod helpers;
 #[path = "inventory_probe.rs"]
 mod probe;
 #[path = "inventory_wrappers.rs"]
 mod wrappers;
+
+/// PLAN-1062 T-01: production syn closure of the python/conformance
+/// file-helper corpora (declared producer/consumer edges, not execution).
+pub fn helper_inventory(workspace_root: &Path) -> Result<serde_json::Value, String> {
+    helpers::helper_inventory(workspace_root)
+}
 
 /// The original parent constants/tables, not a reconstructed language model.
 pub fn parent_contract_inventory() -> serde_json::Value {
@@ -415,11 +423,60 @@ fn options_json(opt: &Options) -> serde_json::Value {
     })
 }
 
+/// PLAN-1062 T-02 `autolang.case-migration/2` options projection: every
+/// compound field is structured JSON — no Debug strings, no `is_some`
+/// booleans. The /1 projection above stays byte-identical.
+fn options_json_v2(opt: &Options) -> serde_json::Value {
+    serde_json::json!({
+        "module_name": opt.module_name,
+        "a2r_int_profile": opt.a2r_int_profile,
+        "a2r_resource_profile": opt.a2r_resource_profile,
+        "ac_profile": opt.ac_profile.map(|p| p.as_str()),
+        "ac_target": opt.ac_target,
+        "ac_entry": opt.ac_entry,
+        "ac_cache": opt.ac_cache.map(|c| c.as_str()),
+        "ac_budget": opt.ac_budget.map(|b| serde_json::json!({
+            "build_ms": b.build_ms,
+            "run_ms": b.run_ms,
+            "total_ms": b.total_ms,
+        })),
+        "ac_capabilities": opt.ac_capabilities,
+        "ac_support_lib": opt.ac_support_lib,
+        "syntax_grammar": opt.syntax_grammar,
+        "syntax_edits": opt.syntax_edits.as_ref().map(|edits| edits.iter().map(|edit|
+            serde_json::json!({"start": edit.start, "end": edit.end, "insert": edit.insert})
+        ).collect::<Vec<_>>()),
+        "probe_recipe": opt.probe_recipe,
+        "probe_steps": opt.probe_steps.as_ref().map(|steps| steps.iter().map(probe_step_json).collect::<Vec<_>>()),
+        "probe_bindings": probe::options_bindings(opt),
+        "avm_fail_alloc_at": opt.avm_fail_alloc_at,
+    })
+}
+
 /// PLAN-1057 §5.8 read-only canonical projection (`autolang.case-migration/1`)
 /// for side-by-side semantic equivalence & origin traceability verification.
 pub fn suite_migration_inventory(
     path: &Path,
     limits: &Limits,
+) -> Result<serde_json::Value, String> {
+    suite_migration_inventory_impl(path, limits, false)
+}
+
+/// PLAN-1062 T-02 `autolang.case-migration/2`: the same walk and admission
+/// as /1 with a lossless structured projection — options bindings, syntax
+/// edits, resolved probe oracles and typed bindings are typed JSON (no
+/// Debug strings, no `is_some` booleans). /1 stays byte-identical.
+pub fn suite_migration_inventory_v2(
+    path: &Path,
+    limits: &Limits,
+) -> Result<serde_json::Value, String> {
+    suite_migration_inventory_impl(path, limits, true)
+}
+
+fn suite_migration_inventory_impl(
+    path: &Path,
+    limits: &Limits,
+    v2: bool,
 ) -> Result<serde_json::Value, String> {
     let loaded = load_suite(path, limits).map_err(|e| e.to_string())?;
     if !loaded.errors.is_empty() {
@@ -450,6 +507,9 @@ pub fn suite_migration_inventory(
                         "virtual_path": rfile.virtual_path,
                         "bytes": rfile.bytes.len(),
                         "sha256": rfile.sha256,
+                        // PLAN-1062: /2 carries resolved payload texts for
+                        // file and inline inputs alike; /1 stays unchanged.
+                        "text": if v2 { std::str::from_utf8(&rfile.bytes).ok() } else { None },
                     })
                 })
                 .collect();
@@ -525,6 +585,14 @@ pub fn suite_migration_inventory(
                                 "virtual_path": entry_file.virtual_path,
                                 "bytes": entry_file.bytes.len(),
                                 "sha256": entry_file.sha256,
+                                // PLAN-1062: the /2 projection carries the
+                                // resolved payload text (file and inline
+                                // inputs treated alike); /1 stays unchanged.
+                                "text": if v2 {
+                                    std::str::from_utf8(&entry_file.bytes).ok()
+                                } else {
+                                    None
+                                },
                             },
                             "files": extra_files,
                         },
@@ -537,7 +605,11 @@ pub fn suite_migration_inventory(
                             "product_from": effective.product_from,
                             "skip": effective.skip.as_ref().map(skip_json),
                         },
-                        "options": options_json(&effective.options),
+                        "options": if v2 {
+                            options_json_v2(&effective.options)
+                        } else {
+                            options_json(&effective.options)
+                        },
                         "expect": {
                             "completion": completion_json,
                             "exit": oracle.exit,
@@ -551,8 +623,28 @@ pub fn suite_migration_inventory(
                             "trace": stream_json(&oracle.trace),
                             "artifacts": artifacts_semantic,
                             "perf": oracle.perf.map(|p| serde_json::json!({"total_ms_max": p.total_ms_max})),
-                            "typed": effective.expect.typed.as_ref().map(|t| serde_json::json!({"kind": t.kind, "bits": t.bits})),
-                            "probe": oracle.probe.as_ref().map(|steps| format!("{steps:?}")),
+                            "typed": effective.expect.typed.as_ref().map(|t| {
+                                let mut value = serde_json::json!({"kind": t.kind, "bits": t.bits});
+                                if v2 {
+                                    // The mn typed binding rides the same projection; the
+                                    // fixture payload itself is the case source (content-bound
+                                    // in semantic.case.source) per PLAN-891/1062 CF-08.
+                                    if let Some(mn) = &effective.options.probe_mn {
+                                        if let Some(typed) = &mn.typed {
+                                            value["mn_fixture"] = serde_json::json!({
+                                                "fixture": typed.fixture, "args": typed.args,
+                                                "payload": "case-source",
+                                            });
+                                        }
+                                    }
+                                }
+                                value
+                            }),
+                            "probe": match (v2, &oracle.probe) {
+                                (true, _) => probe::resolved_probe_oracles(&oracle),
+                                (false, Some(steps)) => serde_json::Value::String(format!("{steps:?}")),
+                                (false, None) => serde_json::Value::Null,
+                            },
                         },
                     },
                     "origin": {
@@ -569,7 +661,15 @@ pub fn suite_migration_inventory(
                         "case_open_line": open_line,
                         "case_close_line": close_line,
                         "doc_section_line": check_sections.get(effective.id.as_str()).copied(),
-                        "source_ref": format!("{:?}", spec.source.payload),
+                        "source_ref": if v2 {
+                            match &spec.source.payload {
+                                auto_test_case::contract::PayloadSpec::File(rel) => serde_json::json!({"kind":"file","path":rel}),
+                                auto_test_case::contract::PayloadSpec::Text(_) => serde_json::json!({"kind":"text"}),
+                                auto_test_case::contract::PayloadSpec::Block(_) => serde_json::json!({"kind":"block"}),
+                            }
+                        } else {
+                            serde_json::Value::String(format!("{:?}", spec.source.payload))
+                        },
                         "input_paths": input_paths,
                         "source_sha256": case.source_sha256,
                         "oracle_sha256": oracle.oracle_sha256,
@@ -585,7 +685,7 @@ pub fn suite_migration_inventory(
         return Err("suite migration inventory selected zero atomic checks".into());
     }
     Ok(serde_json::json!({
-        "schema": "autolang.case-migration/1",
+        "schema": if v2 { "autolang.case-migration/2" } else { "autolang.case-migration/1" },
         "suite": loaded.suite.id,
         "suite_path": loaded.suite_path,
         "suite_sha256": loaded.suite_sha256,
@@ -704,5 +804,108 @@ mod tests {
         );
         assert_eq!(top["origin"]["case_dir"], "ace.m1.ia920.top");
         assert_eq!(top["origin"]["check_dir"], "autovm");
+    }
+
+    #[test]
+    fn migration_inventory_v2_is_fully_structured_and_v1_stays_legacy() {
+        // sema bindings: structured package/module/kind/fn_name, no Debug.
+        let sema_v2 = suite_migration_inventory_v2(
+            &cases_root().join("ac-semantics/ac-semantics.suite.ad"),
+            &Limits::defaults(),
+        )
+        .unwrap();
+        assert_eq!(sema_v2["schema"], "autolang.case-migration/2");
+        let sema_row = sema_v2["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| !r["semantic"]["options"]["probe_bindings"]["sema"].is_null())
+            .unwrap();
+        let sema_binding = &sema_row["semantic"]["options"]["probe_bindings"]["sema"];
+        assert!(sema_binding["package"].is_string());
+        assert!(sema_binding["module"].is_string());
+        assert!(sema_binding["kind"].is_string());
+        assert!(sema_binding["fn_name"].is_string());
+
+        // CTE: structured steps and resolved probe oracles (no Debug).
+        let cte_v2 = suite_migration_inventory_v2(
+            &cases_root().join("ac-cte/ac-cte.suite.ad"),
+            &Limits::defaults(),
+        )
+        .unwrap();
+        let cte_rows = cte_v2["checks"].as_array().unwrap();
+        let edit_row = cte_rows
+            .iter()
+            .find(|r| {
+                r["semantic"]["options"]["probe_steps"]
+                    .as_array()
+                    .is_some_and(|steps| {
+                        steps.iter().any(|s| {
+                            s["op"] == "edit-source" || s["op"] == "declaration-invalidate"
+                        })
+                    })
+            })
+            .expect("ac-cte carries an edit/declaration step");
+        let probe_oracle = edit_row["semantic"]["expect"]["probe"]
+            .as_array()
+            .expect("v2 projects resolved probe oracles as structured steps");
+        assert!(!probe_oracle.is_empty());
+        assert!(probe_oracle[0]["stages_include"].is_array());
+        let cte_binding = &edit_row["semantic"]["options"]["probe_bindings"]["cte"];
+        assert!(cte_binding["entry"].is_string());
+        // v2 source_ref is a structured kind object, never a Debug payload.
+        assert!(edit_row["origin"]["source_ref"]["kind"].is_string());
+
+        // typed fixture binding (W01-family): fixture + args + payload marker.
+        let typed_v2 = suite_migration_inventory_v2(
+            &cases_root().join("ace-m1/typed-native-891/typed-native-891.suite.ad"),
+            &Limits::defaults(),
+        )
+        .unwrap();
+        let typed_row = typed_v2["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| !r["semantic"]["expect"]["typed"]["mn_fixture"].is_null())
+            .unwrap();
+        assert_eq!(
+            typed_row["semantic"]["expect"]["typed"]["mn_fixture"]["payload"],
+            "case-source"
+        );
+        assert!(typed_row["semantic"]["expect"]["typed"]["mn_fixture"]["fixture"].is_string());
+        assert!(typed_row["semantic"]["expect"]["typed"]["mn_fixture"]["args"].is_array());
+
+        // Losslessness face: no Rust Debug artifacts in v2 PROJECTION fields
+        // (guest source payloads may legitimately contain `Some(`).
+        for value in [&sema_v2, &cte_v2, &typed_v2] {
+            for row in value["checks"].as_array().unwrap() {
+                let projected = serde_json::json!({
+                    "options": row["semantic"]["options"],
+                    "probe": row["semantic"]["expect"]["probe"],
+                    "source_ref": row["origin"]["source_ref"],
+                });
+                let text = serde_json::to_string(&projected).unwrap();
+                assert!(
+                    !text.contains("Some("),
+                    "v2 projection still carries Debug artifacts"
+                );
+            }
+        }
+
+        // /1 keeps its legacy shape: Debug strings for sema, no bindings key.
+        let sema_v1 = suite_migration_inventory(
+            &cases_root().join("ac-semantics/ac-semantics.suite.ad"),
+            &Limits::defaults(),
+        )
+        .unwrap();
+        assert_eq!(sema_v1["schema"], "autolang.case-migration/1");
+        let v1_row = sema_v1["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["semantic"]["options"]["probe_sema"].is_string())
+            .unwrap();
+        assert!(v1_row["semantic"]["options"]["probe_sema"].is_string());
+        assert!(v1_row["semantic"]["options"]["probe_bindings"].is_null());
     }
 }

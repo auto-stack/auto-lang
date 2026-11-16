@@ -1,0 +1,38 @@
+# Legacy a2c corpus: 23_stdlib/006_std_str
+
+## Case: legacy-23-stdlib-006-std-str
+id: "legacy.23_stdlib.006_std_str"
+entry-mode: "program"
+
+### Auto
+path: "std_str.at"
+```auto
+use auto.str: str
+
+fn main() {
+    let s1 str = "Hello"
+    print(s1)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_str.expected.c
+```c
+#include "std_str.h"
+
+int main(void) {
+    char* s1 = "Hello";
+    printf("%d\n", s1);
+    return 0;
+}
+```
+
+#### std_str.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include "auto/str.h"
+```

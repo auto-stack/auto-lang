@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 03_control_flow/006_mut_accumulator
+
+## Case: legacy-03-control-flow-006-mut-accumulator
+id: "legacy.03_control_flow.006_mut_accumulator"
+entry-mode: "program"
+
+### Auto
+path: "mut_accumulator.at"
+```auto
+fn main() int {
+    var sum = 0
+    var i = 0
+    for i < 10 {
+        sum = sum + i
+        i = i + 1
+    }
+    sum
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### mut_accumulator.expected.c
+```c
+int main(void) {
+    int sum = 0;
+    int i = 0;
+    while (i < 10) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    return sum;
+}
+```
+
+#### mut_accumulator.expected.h
+```c
+```

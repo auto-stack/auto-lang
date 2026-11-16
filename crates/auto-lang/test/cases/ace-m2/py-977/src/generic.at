@@ -1,0 +1,5 @@
+fn id<T>(x T) T { return x }
+fn main() int {
+    let a = id(42)
+    return a
+}

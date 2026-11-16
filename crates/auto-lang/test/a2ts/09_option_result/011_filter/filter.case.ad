@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 09_option_result/011_filter
+
+## Case: legacy-09-option-result-011-filter
+id: "legacy.09_option_result.011_filter"
+entry-mode: "program"
+
+### Auto
+path: "filter.at"
+final-newline: false
+```auto
+fn main() {
+    let x = Some(10)
+    let filtered = x.filter(v => v > 5)
+    print(filtered)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### filter.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 10;
+    const filtered = x.filter((v) => v > 5);
+    console.log(filtered);
+}
+
+main();
+```

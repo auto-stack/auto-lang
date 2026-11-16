@@ -1,0 +1,61 @@
+# Legacy a2c corpus: 14_ext/006_ext_prop_shorthand
+
+## Case: legacy-14-ext-006-ext-prop-shorthand
+id: "legacy.14_ext.006_ext_prop_shorthand"
+entry-mode: "program"
+
+### Auto
+path: "ext_prop_shorthand.at"
+```auto
+// Test ext statement with .prop shorthand (Plan 035)
+
+type Point {
+    x int
+    y int
+}
+
+ext Point {
+    fn sum() int {
+        .x + .y
+    }
+}
+
+fn main() {
+    let p = Point { x: 3, y: 4 }
+    let result = p.sum()
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### ext_prop_shorthand.expected.c
+```c
+#include "ext_prop_shorthand.h"
+
+int Point_Sum(struct Point *self) {
+    return self->x + self->y;
+}
+
+int main(void) {
+    unknown p = {.x = 3, .y = 4};
+    unknown result = p.sum();
+    printf("%d\n", result);
+    return 0;
+}
+```
+
+#### ext_prop_shorthand.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+struct Point {
+    int x;
+    int y;
+};
+
+int Point_Sum(struct Point *self);
+```

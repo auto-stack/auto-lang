@@ -216,6 +216,18 @@ mod console_load_1041;
 mod console_out_1041;
 #[path = "cases/stdlib_assembly_1043.rs"]
 mod stdlib_assembly_1043;
+// PLAN-972 T-01：有界全链前探（scratch probe；永久 fixture 由 T-02/T-03 落位）。
+#[path = "cases/probe972.rs"]
+mod probe972;
+// PLAN-972 T-02：装配标准库（packages-aggregates-ct lane）AV 正反例。
+#[path = "cases/stdlib_asm_972.rs"]
+mod stdlib_asm_972;
+// PLAN-972 T-08/V-08：逐操作覆盖对账——面清单奇偶校验 + 全公开符号五端演练。
+#[path = "cases/v08_surface_972.rs"]
+mod v08_surface_972;
+// PLAN-972 T-10/V-10：core/alloc 分层——无分配 core 证明 + 分配平衡/失败注入/预算。
+#[path = "cases/v10_layers_972.rs"]
+mod v10_layers_972;
 // PLAN-966：语句级编译期构造 + 宏调用的四端产品腿。
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;
@@ -224,6 +236,8 @@ mod plan966_ct_product;
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
+#[path = "cases/net_974.rs"]
+mod net_974;
 #[path = "cases/plan979_age_component_cpu.rs"]
 mod plan979_age_component_cpu;
 #[path = "cases/plan979_age_h0_cpu.rs"]

@@ -1,0 +1,21 @@
+# Legacy vm corpus: 04_control_flow/005_if_in_array
+
+## Case: legacy-04-control-flow-005-if-in-array
+id: "legacy.04_control_flow.005_if_in_array"
+entry-mode: "program"
+
+### Auto
+path: "if_in_array.at"
+```auto
+var is_lse = false
+var is_rh = true
+["osal", if is_lse {"EB"}, if is_rh {"al"}]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+["osal", "al"]
+```

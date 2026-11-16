@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/004_move_basic
+
+## Case: legacy-14-borrow-004-move-basic
+id: "legacy.14_borrow.004_move_basic"
+entry-mode: "program"
+
+### Auto
+path: "move_basic.at"
+```auto
+let s1 = "hello"
+let s2 = s1.move
+s2
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

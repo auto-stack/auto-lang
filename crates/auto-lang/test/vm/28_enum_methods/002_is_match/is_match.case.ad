@@ -1,0 +1,33 @@
+# Legacy vm corpus: 28_enum_methods/002_is_match
+
+## Case: legacy-28-enum-methods-002-is-match
+id: "legacy.28_enum_methods.002_is_match"
+entry-mode: "program"
+
+### Auto
+path: "is_match.at"
+```auto
+// enum 实例方法 + is self 匹配
+pub enum Light {
+    Red
+    Green
+    fn is_red() bool {
+        is self {
+            Light.Red -> return true
+        }
+        return false
+    }
+}
+pub fn main() {
+    print(Light.Red.is_red())
+    print(Light.Green.is_red())
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+1
+0
+```

@@ -1,0 +1,40 @@
+# Legacy a2ts corpus: 07_ownership/001_union
+
+## Case: legacy-07-ownership-001-union
+id: "legacy.07_ownership.001_union"
+entry-mode: "program"
+
+### Auto
+path: "union.at"
+```auto
+union MyUnion {
+    i int
+    f float
+    c char
+}
+
+fn main() {
+    let my_union = MyUnion(i: 42)
+    print("int value:", my_union.i)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### union.expected.ts
+```ts
+export interface MyUnion {
+    i?: number;
+    f?: number;
+    c?: number;
+}
+
+
+function main(): void {
+    const my_union = MyUnion(i: 42);
+    console.log("int value:", my_union.i);
+}
+
+main();
+```

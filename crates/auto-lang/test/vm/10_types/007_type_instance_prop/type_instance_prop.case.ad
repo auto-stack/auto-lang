@@ -1,0 +1,21 @@
+# Legacy vm corpus: 10_types/007_type_instance_prop
+
+## Case: legacy-10-types-007-type-instance-prop
+id: "legacy.10_types.007_type_instance_prop"
+entry-mode: "program"
+
+### Auto
+path: "type_instance_prop.at"
+```auto
+type Point { x int }
+var a = Point { x: 42 }
+a.x
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+42
+```

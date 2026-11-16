@@ -1,0 +1,21 @@
+# Legacy vm corpus: 04_control_flow/007_asn_upper
+
+## Case: legacy-04-control-flow-007-asn-upper
+id: "legacy.04_control_flow.007_asn_upper"
+entry-mode: "program"
+
+### Auto
+path: "asn_upper.at"
+```auto
+var a = 1
+if true { a = 2 }
+a
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```

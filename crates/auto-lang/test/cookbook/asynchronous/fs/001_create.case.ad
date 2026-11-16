@@ -1,0 +1,25 @@
+# Legacy cookbook corpus: asynchronous/fs/001_create
+
+## Case: legacy-asynchronous-fs-001-create
+id: "legacy.asynchronous.fs.001_create"
+entry-mode: "program"
+
+### Auto
+path: "001_create.at"
+```auto
+// File and directory creation
+fn main() ! {
+    let _ = File.write_text("data.txt", "hello").?
+    let _ = File.create_dir("my_dir").?
+    let _ = File.create_dir("my_dir/sub_dir/inner").?
+    print("Files and directories created")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+Files and directories created
+```

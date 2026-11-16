@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 05_expressions/020_tuple
+
+## Case: legacy-a2p-05-expressions-020-tuple
+id: "legacy.a2p.05_expressions.020_tuple"
+entry-mode: "program"
+
+### Auto
+path: "tuple.at"
+```auto
+fn main() {
+    let pair = (1, "hello")
+    print(pair)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### tuple.expected.py
+```python
+def main():
+    pair = (1, "hello")
+    print(pair)
+
+if __name__ == "__main__":
+    main()
+```

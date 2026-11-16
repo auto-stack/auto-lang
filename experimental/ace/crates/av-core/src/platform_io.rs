@@ -27,6 +27,14 @@ pub const CAP_STDERR: &str = "platform.io.stderr";
 pub const CAP_WRITE: &str = "platform.io.write";
 pub const CAP_MEM: &str = "platform.mem";
 pub const CAP_PROBE: &str = "platform.probe";
+/// PLAN-974 (T-02): `platform.net/1` — the minimal TCP socket face.
+pub const CATEGORY_NET: &str = "platform.net/1";
+pub const CAP_NET_CONNECT: &str = "platform.net.connect";
+pub const CAP_NET_WRITE: &str = "platform.net.write";
+pub const CAP_NET_READ: &str = "platform.net.read";
+pub const CAP_NET_CLOSE: &str = "platform.net.close";
+/// PLAN-974 (T-02 inc3): the server face (listen + accept).
+pub const CAP_NET_LISTEN: &str = "platform.net.listen";
 
 pub const MAX_PLATFORM_IMPORTS: usize = 16;
 pub const MAX_TOTAL_HOST_IMPORTS: usize = 24;
@@ -34,6 +42,13 @@ pub const MAX_PLATFORM_CALL_BYTES: usize = 65_536;
 pub const MAX_PLATFORM_RUN_BYTES: usize = 1_048_576;
 pub const MAX_OS_REGION_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_LEDGER_HANDLES: usize = 1024;
+/// PLAN-974: concurrent TCP sockets per run (the ledger counts them).
+pub const MAX_NET_SOCKETS: usize = 16;
+/// PLAN-974: cumulative net bytes (read + written) per run.
+pub const MAX_NET_RUN_BYTES: usize = 1_048_576;
+/// PLAN-974: the raw backend marker for "no TCP backend here" (a named
+/// control, never a silent zero).
+pub const NET_TCP_UNSUPPORTED: u32 = 0x0010_4002;
 /// PLAN-1040: bound of one probe `openat` path (excludes the NUL we
 /// append ourselves; NAME_MAX-bound kernel paths stay far below this).
 pub const MAX_PROBE_PATH_BYTES: usize = 4096;
@@ -64,6 +79,9 @@ pub const ERR_ALREADY_RELEASED: i32 = -6;
 pub const ERR_INVALID_VALUE: i32 = -7;
 pub const ERR_OS_FAILED: i32 = -8;
 pub const ERR_BUDGET: i32 = -9;
+/// PLAN-974 inc3: a nonblocking accept found no pending connection — a
+/// RETRYABLE condition (the guest polls); never an OS failure.
+pub const ERR_WOULDB_BLOCK: i32 = -10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParamDir {
@@ -82,6 +100,7 @@ pub enum HandleOrigin {
     None,
     StdStream,
     OsMemRegion,
+    NetSocket,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,6 +161,27 @@ pub enum PlatformOpKind {
     /// region handle, unit offset, unit count). Returns units written
     /// (progress) or a negative error code.
     IoConsoleWrite16,
+    /// PLAN-974: connect a TCP socket (host, port) — returns a ledger
+    /// socket handle or a negative error code.
+    NetTcpConnect,
+    /// PLAN-974: write UTF-8 bytes to a socket — returns bytes written.
+    NetTcpWriteSome,
+    /// PLAN-974: read into an OS memory region — returns bytes read
+    /// (0 = orderly EOF) or a negative error code.
+    NetTcpReadInto,
+    /// PLAN-974: close a socket — 0 or a negative error code.
+    NetTcpClose,
+    /// PLAN-974 inc3: bind a loopback listener (port 0 = ephemeral); the
+    /// actual port is observed via `net_tcp_local_port`.
+    NetTcpListen,
+    /// PLAN-974 inc3: accept one connection on a listener — returns a NEW
+    /// socket handle (a fresh ledger entry).
+    NetTcpAccept,
+    /// PLAN-974 T-08: write RAW BYTES from an OS memory region (non-UTF-8
+    /// frames; the write_some Str face stays UTF-8-only).
+    NetTcpWriteRegion,
+    /// PLAN-974 inc3: the listener's actual bound port (ephemeral recall).
+    NetTcpLocalPort,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -171,6 +211,7 @@ const P_I32_STR_2I32: &[MirType] = &[MirType::I32, MirType::StrView, MirType::I3
 const P_2I32: &[MirType] = &[MirType::I32, MirType::I32];
 const P_3I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32];
 const P_4I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32, MirType::I32];
+const P_STR_I32: &[MirType] = &[MirType::StrView, MirType::I32];
 
 pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
     PlatformOpSpec {
@@ -414,6 +455,102 @@ pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
         origin: HandleOrigin::None,
         max_call_bytes: 0,
     },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpConnect,
+        callee: "net_tcp_connect",
+        symbol: "auto.platform.net.tcp_connect.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_CONNECT,
+        params: P_STR_I32,
+        param_dirs: D_2,
+        len_unit: LenUnit::Utf8Bytes,
+        origin: HandleOrigin::None,
+        max_call_bytes: 256,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpWriteRegion,
+        callee: "net_tcp_write_region",
+        symbol: "auto.platform.net.tcp_write_region.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_WRITE,
+        params: P_4I32,
+        param_dirs: D_4,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpWriteSome,
+        callee: "net_tcp_write_some",
+        symbol: "auto.platform.net.tcp_write_some.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_WRITE,
+        params: P_I32_STR,
+        param_dirs: D_2,
+        len_unit: LenUnit::Utf8Bytes,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: MAX_PLATFORM_CALL_BYTES as u32,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpReadInto,
+        callee: "net_tcp_read_into",
+        symbol: "auto.platform.net.tcp_read_into.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_READ,
+        params: P_4I32,
+        param_dirs: D_4,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpClose,
+        callee: "net_tcp_close",
+        symbol: "auto.platform.net.tcp_close.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_CLOSE,
+        params: P_I32,
+        param_dirs: D_1,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpListen,
+        callee: "net_tcp_listen",
+        symbol: "auto.platform.net.tcp_listen.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_LISTEN,
+        params: P_I32,
+        param_dirs: D_1,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::None,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpAccept,
+        callee: "net_tcp_accept",
+        symbol: "auto.platform.net.tcp_accept.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_LISTEN,
+        params: P_I32,
+        param_dirs: D_1,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::NetTcpLocalPort,
+        callee: "net_tcp_local_port",
+        symbol: "auto.platform.net.tcp_local_port.v1",
+        category: CATEGORY_NET,
+        capability: CAP_NET_LISTEN,
+        params: P_I32,
+        param_dirs: D_1,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::NetSocket,
+        max_call_bytes: 0,
+    },
 ];
 
 pub fn lookup_callee(callee: &str) -> Option<&'static PlatformOpSpec> {
@@ -540,6 +677,43 @@ pub trait PlatformIoBackend {
     ) -> Result<usize, u32> {
         Err(CONSOLE_WRITE16_UNSUPPORTED)
     }
+    /// PLAN-974 (T-02): the TCP backend face. `host` is the raw guest
+    /// byte slice (no NUL). Returns a backend-owned socket id (stored in
+    /// the ledger entry, mirroring `os_handle`) or the raw OS error.
+    fn net_connect(&mut self, _host: &[u8], _port: i32) -> Result<u64, u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
+    /// Write bytes to a backend socket; returns real OS progress.
+    fn net_write_some(
+        &mut self,
+        _socket: u64,
+        _bytes: &[u8],
+        _cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
+    /// Read into `buf`; `Ok(0)` = orderly EOF. Returns bytes read.
+    fn net_read_some(&mut self, _socket: u64, _buf: &mut [u8]) -> Result<usize, u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
+    /// Close a backend socket; the entry release is ledger-owned.
+    fn net_close(&mut self, _socket: u64) -> Result<(), u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
+    /// PLAN-974 inc3: bind a loopback listener (port 0 = ephemeral);
+    /// returns a backend-owned listener id.
+    fn net_listen(&mut self, _port: i32) -> Result<u64, u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
+    /// PLAN-974 inc3: accept one connection on a listener; returns a
+    /// backend socket id (the ledger opens a FRESH entry for it).
+    fn net_accept(&mut self, _listener: u64) -> Result<u64, u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
+    /// PLAN-974 inc3: the listener's actual bound port.
+    fn net_local_port(&mut self, _listener: u64) -> Result<i32, u32> {
+        Err(NET_TCP_UNSUPPORTED)
+    }
 }
 
 #[cfg(windows)]
@@ -610,6 +784,12 @@ mod win32 {
 #[derive(Debug, Default)]
 pub struct Win32PlatformIo {
     pub dispatches: DispatchCounters,
+    /// PLAN-974: backend-owned TCP sockets (slot id = index + 1; the
+    /// ledger entry stores that id, mirroring `os_handle`). Taking the
+    /// slot closes the socket by drop.
+    pub net_sockets: std::cell::RefCell<Vec<Option<std::net::TcpStream>>>,
+    /// PLAN-974 inc3: backend-owned listeners (id = index + 1).
+    pub net_listeners: std::cell::RefCell<Vec<Option<std::net::TcpListener>>>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -622,9 +802,219 @@ pub struct DispatchCounters {
     /// PLAN-1041 console ops.
     pub console_kind: u64,
     pub console_write16: u64,
+    /// PLAN-974 net ops.
+    pub net_connect: u64,
+    pub net_write: u64,
+    pub net_read: u64,
+    pub net_close: u64,
 }
 
 impl PlatformIoBackend for Win32PlatformIo {
+    #[cfg(windows)]
+    fn net_connect(&mut self, host: &[u8], port: i32) -> Result<u64, u32> {
+        self.dispatches.net_connect += 1;
+        use std::net::ToSocketAddrs as _;
+        let host = std::str::from_utf8(host).map_err(|_| 87u32)?;
+        let addr = std::format!("{host}:{port}");
+        let target = addr
+            .to_socket_addrs()
+            .map_err(io_err_code)?
+            .next()
+            .ok_or(87u32)?;
+        let stream =
+            std::net::TcpStream::connect_timeout(&target, std::time::Duration::from_secs(5))
+                .map_err(io_err_code)?;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .map_err(io_err_code)?;
+        stream
+            .set_write_timeout(Some(std::time::Duration::from_secs(5)))
+            .map_err(io_err_code)?;
+        let mut slots = self.net_sockets.borrow_mut();
+        let idx = match slots.iter().position(|s| s.is_none()) {
+            Some(free) => {
+                slots[free] = Some(stream);
+                free
+            }
+            None => {
+                slots.push(Some(stream));
+                slots.len() - 1
+            }
+        };
+        Ok(idx as u64 + 1)
+    }
+
+    #[cfg(windows)]
+    fn net_write_some(
+        &mut self,
+        socket: u64,
+        bytes: &[u8],
+        cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        self.dispatches.net_write += 1;
+        use std::io::Write as _;
+        if CancelCheck::poll(cancel) {
+            return Err(995); // ERROR_OPERATION_ABORTED
+        }
+        let mut slots = self.net_sockets.borrow_mut();
+        let Some(stream) = slots.get_mut(socket as usize - 1).and_then(|s| s.as_mut()) else {
+            return Err(6); // ERROR_INVALID_HANDLE
+        };
+        let mut written = 0usize;
+        while written < bytes.len() {
+            if CancelCheck::poll(cancel) {
+                return Err(995);
+            }
+            match stream.write(&bytes[written..]) {
+                Ok(0) => return Err(232), // ERROR_NO_DATA
+                Ok(n) => written += n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    return if written > 0 {
+                        Ok(written)
+                    } else {
+                        Err(io_err_code(e))
+                    }
+                }
+                Err(e) => {
+                    return if written > 0 {
+                        Ok(written)
+                    } else {
+                        Err(io_err_code(e))
+                    }
+                }
+            }
+        }
+        Ok(written)
+    }
+
+    #[cfg(windows)]
+    fn net_read_some(&mut self, socket: u64, buf: &mut [u8]) -> Result<usize, u32> {
+        self.dispatches.net_read += 1;
+        use std::io::Read as _;
+        let mut slots = self.net_sockets.borrow_mut();
+        let Some(stream) = slots.get_mut(socket as usize - 1).and_then(|s| s.as_mut()) else {
+            return Err(6); // ERROR_INVALID_HANDLE
+        };
+        // paced bounded wait (accept's discipline): peer data normally
+        // arrives within microseconds; a quiet window returns the
+        // RETRYABLE -10 instead of a hard timeout, and the guest loop
+        // re-calls — closing the accept/read interleaving race of inc3
+        let _ = stream.set_nonblocking(true);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        loop {
+            match stream.read(buf) {
+                Ok(n) => {
+                    let _ = stream.set_nonblocking(false);
+                    return Ok(n);
+                }
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(u32::MAX);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(e) => {
+                    let _ = stream.set_nonblocking(false);
+                    return Err(io_err_code(e));
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn net_close(&mut self, socket: u64) -> Result<(), u32> {
+        self.dispatches.net_close += 1;
+        let mut slots = self.net_sockets.borrow_mut();
+        let idx = socket as usize - 1;
+        if idx >= slots.len() || slots[idx].is_none() {
+            return Err(6); // ERROR_INVALID_HANDLE
+        }
+        slots[idx] = None; // drop closes the socket
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn net_listen(&mut self, port: i32) -> Result<u64, u32> {
+        let listener =
+            std::net::TcpListener::bind(("127.0.0.1", port as u16)).map_err(io_err_code)?;
+        let mut slots = self.net_listeners.borrow_mut();
+        let idx = match slots.iter().position(|s| s.is_none()) {
+            Some(free) => {
+                slots[free] = Some(listener);
+                free
+            }
+            None => {
+                slots.push(Some(listener));
+                slots.len() - 1
+            }
+        };
+        Ok(idx as u64 + 1)
+    }
+
+    #[cfg(windows)]
+    fn net_accept(&mut self, listener: u64) -> Result<u64, u32> {
+        let slots = self.net_listeners.borrow();
+        let Some(l) = slots.get(listener as usize - 1).and_then(|s| s.as_ref()) else {
+            return Err(6); // ERROR_INVALID_HANDLE
+        };
+        // paced bounded wait (5ms sleeps up to 50ms per call): a pending
+        // connection returns promptly; none is a RETRYABLE condition and
+        // the guest loop re-calls — no wall-budget hogging, no step burn
+        l.set_nonblocking(true).map_err(io_err_code)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(50);
+        let (stream, _peer) = loop {
+            match l.accept() {
+                Ok(pair) => break pair,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(u32::MAX);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(e) => return Err(io_err_code(e)),
+            }
+        };
+        drop(slots);
+        // the accepted socket MUST return to blocking mode before use —
+        // a silently-swallowed failure here leaves reads WouldBlocking
+        // instantly (the 29/32 partial-delivery puzzle of inc3)
+        stream.set_nonblocking(false).map_err(io_err_code)?;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .map_err(io_err_code)?;
+        stream
+            .set_write_timeout(Some(std::time::Duration::from_secs(5)))
+            .map_err(io_err_code)?;
+        let mut socks = self.net_sockets.borrow_mut();
+        let idx = match socks.iter().position(|s| s.is_none()) {
+            Some(free) => {
+                socks[free] = Some(stream);
+                free
+            }
+            None => {
+                socks.push(Some(stream));
+                socks.len() - 1
+            }
+        };
+        Ok(idx as u64 + 1)
+    }
+
+    #[cfg(windows)]
+    fn net_local_port(&mut self, listener: u64) -> Result<i32, u32> {
+        let slots = self.net_listeners.borrow();
+        let Some(l) = slots.get(listener as usize - 1).and_then(|s| s.as_ref()) else {
+            return Err(6); // ERROR_INVALID_HANDLE
+        };
+        let addr = l.local_addr().map_err(io_err_code)?;
+        Ok(addr.port() as i32)
+    }
+
     #[cfg(windows)]
     fn std_handle(&mut self, stream: StreamKind) -> Result<usize, u32> {
         self.dispatches.std_handle += 1;
@@ -1389,6 +1779,14 @@ enum LedgerPayload {
         borrow_count: u32,
         released: bool,
     },
+    /// PLAN-974: the socket lives in the backend; the ledger tracks the
+    /// backend id + release state (the single ownership account).
+    NetSocket { socket: u64, released: bool },
+    /// PLAN-974 inc3: backend-owned listener id.
+    NetListener {
+        listener: u64,
+        released: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -1413,6 +1811,8 @@ pub struct PlatformResourceLedger {
     /// PLAN-1040 probe seam: cumulative probe bytes per run (defensive
     /// mirror of the console run budget; probes are internal, not public).
     pub probe_written_total: usize,
+    /// PLAN-974: cumulative net bytes (read + written) this run.
+    pub net_bytes_total: usize,
 }
 
 impl PlatformResourceLedger {
@@ -1426,11 +1826,28 @@ impl PlatformResourceLedger {
             written_total_bytes: 0,
             live_mapped_bytes: 0,
             probe_written_total: 0,
+            net_bytes_total: 0,
         }
     }
 
     pub fn grants(&self) -> &BTreeSet<String> {
         &self.grants
+    }
+
+    /// PLAN-974: live (unreleased) sockets in this session.
+    pub fn active_sockets(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.payload,
+                    LedgerPayload::NetSocket {
+                        released: false,
+                        ..
+                    }
+                )
+            })
+            .count()
     }
 
     pub fn active_regions(&self) -> usize {
@@ -1563,8 +1980,344 @@ impl PlatformResourceLedger {
                 as_i32(&args[3])?,
                 cancel,
             ),
+            PlatformOpKind::NetTcpConnect => {
+                let host = as_str_bytes(&args[0])?;
+                self.op_net_connect(backend, host, as_i32(&args[1])?)
+            }
+            PlatformOpKind::NetTcpWriteSome => {
+                let handle = as_i32(&args[0])?;
+                let bytes = as_str_bytes(&args[1])?;
+                self.op_net_write_some(backend, handle, bytes, cancel)
+            }
+            PlatformOpKind::NetTcpReadInto => self.op_net_read_into(
+                backend,
+                as_i32(&args[0])?,
+                as_i32(&args[1])?,
+                as_i32(&args[2])?,
+                as_i32(&args[3])?,
+            ),
+            PlatformOpKind::NetTcpClose => self.op_net_close(backend, as_i32(&args[0])?),
+            PlatformOpKind::NetTcpWriteRegion => self.op_net_write_region(
+                backend,
+                as_i32(&args[0])?,
+                as_i32(&args[1])?,
+                as_i32(&args[2])?,
+                as_i32(&args[3])?,
+            ),
+            PlatformOpKind::NetTcpListen => self.op_net_listen(backend, as_i32(&args[0])?),
+            PlatformOpKind::NetTcpAccept => self.op_net_accept(backend, as_i32(&args[0])?),
+            PlatformOpKind::NetTcpLocalPort => {
+                self.op_net_local_port(backend, as_i32(&args[0])?)
+            }
         };
         Ok(code)
+    }
+
+    /// PLAN-974 inc3: bind a loopback listener. The listener lives in the
+    /// backend; `net_tcp_local_port` recalls the actual (ephemeral) port.
+    fn op_net_listen(&mut self, backend: &mut dyn PlatformIoBackend, port: i32) -> i32 {
+        if port < 0 || port > 65535 {
+            return ERR_INVALID_VALUE;
+        }
+        match backend.net_listen(port) {
+            Ok(listener) => {
+                let gen = self.bump_gen();
+                self.entries.push(LedgerEntry {
+                    generation: gen,
+                    owner: OwnerKind::GuestAv,
+                    session_id: self.session_id,
+                    payload: LedgerPayload::NetListener {
+                        listener,
+                        released: false,
+                    },
+                });
+                let idx = self.entries.len() - 1;
+                Self::encode_handle(idx, gen).unwrap_or(ERR_BUDGET)
+            }
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974 inc3: listener-origin decode (accept/local_port share it).
+    fn net_listener_of(&self, handle: i32) -> Result<u64, i32> {
+        let (idx, _) = self.decode_handle(handle)?;
+        match &self.entries[idx].payload {
+            LedgerPayload::NetListener {
+                listener,
+                released: false,
+            } => Ok(*listener),
+            LedgerPayload::NetListener {
+                released: true, ..
+            } => Err(ERR_ALREADY_RELEASED),
+            _ => Err(ERR_WRONG_ORIGIN),
+        }
+    }
+
+    /// PLAN-974 inc3: accept ONE connection — the accepted socket is a
+    /// FRESH ledger entry (the caller owns and closes it separately).
+    fn op_net_accept(&mut self, backend: &mut dyn PlatformIoBackend, handle: i32) -> i32 {
+        if self.active_sockets() >= MAX_NET_SOCKETS {
+            return ERR_BUDGET;
+        }
+        let Ok(listener) = self.net_listener_of(handle) else {
+            return self.net_listener_of(handle).unwrap_err();
+        };
+        match backend.net_accept(listener) {
+            Ok(socket) => {
+                let gen = self.bump_gen();
+                self.entries.push(LedgerEntry {
+                    generation: gen,
+                    owner: OwnerKind::GuestAv,
+                    session_id: self.session_id,
+                    payload: LedgerPayload::NetSocket {
+                        socket,
+                        released: false,
+                    },
+                });
+                let idx = self.entries.len() - 1;
+                Self::encode_handle(idx, gen).unwrap_or(ERR_BUDGET)
+            }
+            Err(u32::MAX) => ERR_WOULDB_BLOCK,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974 inc3: the listener's actual bound port (ephemeral recall).
+    fn op_net_local_port(&mut self, backend: &mut dyn PlatformIoBackend, handle: i32) -> i32 {
+        let Ok(listener) = self.net_listener_of(handle) else {
+            return self.net_listener_of(handle).unwrap_err();
+        };
+        match backend.net_local_port(listener) {
+            Ok(port) => port,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974: connect (host, port). The socket itself lives in the
+    /// backend; the ledger entry is the single ownership account (the cap
+    /// was checked in dispatch; the concurrent-socket budget is here).
+    fn op_net_connect(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        host: &[u8],
+        port: i32,
+    ) -> i32 {
+        if port < 0 || port > 65535 {
+            return ERR_INVALID_VALUE;
+        }
+        if host.is_empty() || host.len() > 256 || host.contains(&0) {
+            return ERR_INVALID_VALUE;
+        }
+        if self.active_sockets() >= MAX_NET_SOCKETS {
+            return ERR_BUDGET;
+        }
+        match backend.net_connect(host, port) {
+            Ok(socket) => {
+                let gen = self.bump_gen();
+                self.entries.push(LedgerEntry {
+                    generation: gen,
+                    owner: OwnerKind::GuestAv,
+                    session_id: self.session_id,
+                    payload: LedgerPayload::NetSocket {
+                        socket,
+                        released: false,
+                    },
+                });
+                let idx = self.entries.len() - 1;
+                Self::encode_handle(idx, gen).unwrap_or(ERR_BUDGET)
+            }
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974: socket-origin decode shared by write/read/close. Returns
+    /// the backend socket id or the exact negative code (invalid handle /
+    /// already released / wrong origin).
+    fn net_socket_of(&self, handle: i32) -> Result<u64, i32> {
+        let (idx, _) = self.decode_handle(handle)?;
+        match &self.entries[idx].payload {
+            LedgerPayload::NetSocket {
+                socket,
+                released: false,
+            } => Ok(*socket),
+            LedgerPayload::NetSocket { released: true, .. } => Err(ERR_ALREADY_RELEASED),
+            _ => Err(ERR_WRONG_ORIGIN),
+        }
+    }
+
+    fn op_net_write_some(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        handle: i32,
+        bytes: &[u8],
+        cancel: &CancelFlag,
+    ) -> i32 {
+        if bytes.len() > MAX_PLATFORM_CALL_BYTES {
+            return ERR_BUDGET;
+        }
+        let Ok(socket) = self.net_socket_of(handle) else {
+            return self.net_socket_of(handle).unwrap_err();
+        };
+        if self.net_bytes_total.saturating_add(bytes.len()) > MAX_NET_RUN_BYTES {
+            return ERR_BUDGET;
+        }
+        match backend.net_write_some(socket, bytes, cancel) {
+            Ok(written) => {
+                self.net_bytes_total += written;
+                i32::try_from(written).unwrap_or(i32::MAX)
+            }
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974: read into an OS memory region (mixed-origin params, the
+    /// console_write16 discipline): both handles ledger-validated, byte
+    /// bounds checked against the region's logical length, the net run
+    /// budget enforced. Returns bytes read (0 = orderly EOF).
+    fn op_net_read_into(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        socket_handle: i32,
+        region_handle: i32,
+        byte_off: i32,
+        byte_len: i32,
+    ) -> i32 {
+        if byte_off < 0 || byte_len < 0 {
+            return ERR_INVALID_BOUNDS;
+        }
+        let Ok(socket) = self.net_socket_of(socket_handle) else {
+            return self.net_socket_of(socket_handle).unwrap_err();
+        };
+        let Ok((ridx, _)) = self.decode_handle(region_handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let (base, logical_len) = match &self.entries[ridx].payload {
+            LedgerPayload::OsMemRegion {
+                base,
+                logical_len,
+                released: false,
+                ..
+            } => (*base, *logical_len),
+            LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
+            _ => return ERR_WRONG_ORIGIN,
+        };
+        let (off, len) = (byte_off as usize, byte_len as usize);
+        let end = match off.checked_add(len) {
+            Some(e) if e <= logical_len => e,
+            _ => return ERR_INVALID_BOUNDS,
+        };
+        if self.net_bytes_total.saturating_add(len) > MAX_NET_RUN_BYTES {
+            return ERR_BUDGET;
+        }
+        // SAFETY: the region stays mapped and exclusively owned by this
+        // session for the call; bounds were checked against logical_len.
+        let buf = unsafe { std::slice::from_raw_parts_mut(base.add(off), end - off) };
+        match backend.net_read_some(socket, buf) {
+            Ok(read) => {
+                self.net_bytes_total += read;
+                i32::try_from(read).unwrap_or(i32::MAX)
+            }
+            Err(u32::MAX) => ERR_WOULDB_BLOCK,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-974 T-08: write raw region bytes (the read_into mirror):
+    /// mixed-origin validation + byte bounds + net budget, then the
+    /// backend write with the paced cancel discipline.
+    fn op_net_write_region(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        socket_handle: i32,
+        region_handle: i32,
+        byte_off: i32,
+        byte_len: i32,
+    ) -> i32 {
+        if byte_off < 0 || byte_len < 0 {
+            return ERR_INVALID_BOUNDS;
+        }
+        let Ok(socket) = self.net_socket_of(socket_handle) else {
+            return self.net_socket_of(socket_handle).unwrap_err();
+        };
+        let Ok((ridx, _)) = self.decode_handle(region_handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let (base, logical_len) = match &self.entries[ridx].payload {
+            LedgerPayload::OsMemRegion {
+                base,
+                logical_len,
+                released: false,
+                ..
+            } => (*base, *logical_len),
+            LedgerPayload::OsMemRegion {
+                released: true, ..
+            } => return ERR_ALREADY_RELEASED,
+            _ => return ERR_WRONG_ORIGIN,
+        };
+        let (off, len) = (byte_off as usize, byte_len as usize);
+        let end = match off.checked_add(len) {
+            Some(e) if e <= logical_len => e,
+            _ => return ERR_INVALID_BOUNDS,
+        };
+        if self.net_bytes_total.saturating_add(len) > MAX_NET_RUN_BYTES {
+            return ERR_BUDGET;
+        }
+        // SAFETY: region stays mapped and session-owned for the call.
+        let buf = unsafe { std::slice::from_raw_parts(base.add(off), end - off) };
+        match backend.net_write_some(socket, buf, &CancelFlag::new(false)) {
+            Ok(written) => {
+                self.net_bytes_total += written;
+                i32::try_from(written).unwrap_or(i32::MAX)
+            }
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    fn op_net_close(&mut self, backend: &mut dyn PlatformIoBackend, handle: i32) -> i32 {
+        let Ok((idx, _)) = self.decode_handle(handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let socket = match &self.entries[idx].payload {
+            LedgerPayload::NetSocket {
+                socket,
+                released: false,
+            } => *socket,
+            LedgerPayload::NetSocket { released: true, .. } => return ERR_ALREADY_RELEASED,
+            _ => return ERR_WRONG_ORIGIN,
+        };
+        match backend.net_close(socket) {
+            Ok(()) => {
+                if let LedgerPayload::NetSocket { released, .. } = &mut self.entries[idx].payload {
+                    *released = true;
+                }
+                0
+            }
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
     }
 
     /// PLAN-1041: classify a ledger std-stream handle. The stream handle
@@ -1578,7 +2331,11 @@ impl PlatformResourceLedger {
         };
         let (stream, os_handle) = match &self.entries[idx].payload {
             LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
-            LedgerPayload::OsMemRegion { .. } => return ERR_WRONG_ORIGIN,
+            LedgerPayload::OsMemRegion { .. }
+                | LedgerPayload::NetSocket { .. }
+                | LedgerPayload::NetListener { .. } => {
+                return ERR_WRONG_ORIGIN
+            }
         };
         if !self.grants.contains(stream.capability()) {
             return ERR_UNAUTHORIZED;
@@ -1617,7 +2374,11 @@ impl PlatformResourceLedger {
         };
         let (stream, os_handle) = match &self.entries[sidx].payload {
             LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
-            LedgerPayload::OsMemRegion { .. } => return ERR_WRONG_ORIGIN,
+            LedgerPayload::OsMemRegion { .. }
+                | LedgerPayload::NetSocket { .. }
+                | LedgerPayload::NetListener { .. } => {
+                return ERR_WRONG_ORIGIN
+            }
         };
         if !self.grants.contains(stream.capability()) {
             return ERR_UNAUTHORIZED;
@@ -1633,7 +2394,11 @@ impl PlatformResourceLedger {
                 ..
             } => (*base, *logical_len),
             LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
-            LedgerPayload::StdStream { .. } => return ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. }
+                | LedgerPayload::NetSocket { .. }
+                | LedgerPayload::NetListener { .. } => {
+                return ERR_WRONG_ORIGIN
+            }
         };
         let (unit_off, unit_len) = (unit_off as usize, unit_len as usize);
         let byte_off = match unit_off.checked_mul(2) {
@@ -1795,7 +2560,11 @@ impl PlatformResourceLedger {
         };
         let (stream, os_handle) = match &self.entries[idx].payload {
             LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
-            LedgerPayload::OsMemRegion { .. } => return ERR_WRONG_ORIGIN,
+            LedgerPayload::OsMemRegion { .. }
+                | LedgerPayload::NetSocket { .. }
+                | LedgerPayload::NetListener { .. } => {
+                return ERR_WRONG_ORIGIN
+            }
         };
         if !self.grants.contains(stream.capability()) {
             return ERR_UNAUTHORIZED;
@@ -1885,7 +2654,11 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         let (base, mapped_len) = match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } => return ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. }
+                | LedgerPayload::NetSocket { .. }
+                | LedgerPayload::NetListener { .. } => {
+                return ERR_WRONG_ORIGIN
+            }
             LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion { borrow_count, .. } if *borrow_count > 0 => {
                 return ERR_BORROWED
@@ -1919,7 +2692,7 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion {
                 logical_len,
@@ -1937,7 +2710,7 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &mut self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion { borrow_count, .. } => {
                 if acquire {
@@ -1965,7 +2738,7 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion {
                 base, logical_len, ..
@@ -1986,7 +2759,7 @@ impl PlatformResourceLedger {
             return ERR_INVALID_HANDLE;
         };
         match &self.entries[idx].payload {
-            LedgerPayload::StdStream { .. } => ERR_WRONG_ORIGIN,
+            LedgerPayload::StdStream { .. } | LedgerPayload::NetSocket { .. } | LedgerPayload::NetListener { .. } => ERR_WRONG_ORIGIN,
             LedgerPayload::OsMemRegion { released: true, .. } => ERR_ALREADY_RELEASED,
             LedgerPayload::OsMemRegion {
                 base, logical_len, ..
@@ -2034,6 +2807,11 @@ fn as_i32(v: &Value) -> Result<i32, HostError> {
             other.type_name()
         ))),
     }
+}
+
+/// PLAN-974: map a std io error to the raw OS error code (1 = generic).
+fn io_err_code(e: std::io::Error) -> u32 {
+    e.raw_os_error().map(|c| c as u32).unwrap_or(1)
 }
 
 fn as_str_bytes<'a>(v: &'a Value) -> Result<&'a [u8], HostError> {

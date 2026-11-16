@@ -854,6 +854,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_WRITE
                             | crate::platform_io::CAP_MEM
                             | crate::platform_io::CAP_PROBE
+                            // PLAN-974: the platform.net/1 caps (the
+                            // host-console platform profile carries the
+                            // same admission discipline as io/mem).
+                            | crate::platform_io::CAP_NET_CONNECT
+                            | crate::platform_io::CAP_NET_WRITE
+                            | crate::platform_io::CAP_NET_READ
+                            | crate::platform_io::CAP_NET_CLOSE
+                            | crate::platform_io::CAP_NET_LISTEN
                     ));
             if !known {
                 return Err(MirVerifyError::uns(
@@ -4718,7 +4726,8 @@ impl MirInstr {
                 vec![*handle]
             }
             MirInstr::SchedAwait { future, .. } => vec![*future],
-            MirInstr::SchedRecv { .. } | MirInstr::SchedPort { .. }
+            MirInstr::SchedRecv { .. }
+            | MirInstr::SchedPort { .. }
             | MirInstr::SchedStopping { .. } => vec![],
             MirInstr::PlatformCall { args, .. } => args.clone(),
             MirInstr::GlobalGet { .. } => vec![],

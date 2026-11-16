@@ -1,0 +1,19 @@
+# Legacy vm corpus: 04_control_flow/003_if_else_if
+
+## Case: legacy-04-control-flow-003-if-else-if
+id: "legacy.04_control_flow.003_if_else_if"
+entry-mode: "program"
+
+### Auto
+path: "if_else_if.at"
+```auto
+if false { 1 } else if false { 2 } else { 3 }
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

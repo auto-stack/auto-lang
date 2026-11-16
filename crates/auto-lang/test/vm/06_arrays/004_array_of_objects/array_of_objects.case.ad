@@ -1,0 +1,19 @@
+# Legacy vm corpus: 06_arrays/004_array_of_objects
+
+## Case: legacy-06-arrays-004-array-of-objects
+id: "legacy.06_arrays.004_array_of_objects"
+entry-mode: "program"
+
+### Auto
+path: "array_of_objects.at"
+```auto
+[1, 2]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+[1, 2]
+```

@@ -1,0 +1,33 @@
+# Legacy a2p corpus: 05_expressions/022_continue
+
+## Case: legacy-a2p-05-expressions-022-continue
+id: "legacy.a2p.05_expressions.022_continue"
+entry-mode: "program"
+
+### Auto
+path: "continue.at"
+```auto
+fn main() {
+    for i in 0..5 {
+        if i == 2 {
+            continue
+        }
+        print(i)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### continue.expected.py
+```python
+def main():
+    for i in range(0, 5):
+        if i == 2:
+            continue
+        print(i)
+
+if __name__ == "__main__":
+    main()
+```

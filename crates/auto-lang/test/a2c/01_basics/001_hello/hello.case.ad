@@ -1,0 +1,33 @@
+# Legacy a2c corpus: 01_basics/001_hello
+
+## Case: legacy-01-basics-001-hello
+id: "legacy.01_basics.001_hello"
+entry-mode: "program"
+
+### Auto
+path: "hello.at"
+```auto
+fn main() {
+    print("Hello, World!")
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### hello.expected.c
+```c
+#include "hello.h"
+
+int main(void) {
+    printf("%s\n", "Hello, World!");
+    return 0;
+}
+```
+
+#### hello.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

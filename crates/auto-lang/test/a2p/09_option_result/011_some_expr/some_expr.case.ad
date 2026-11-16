@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 09_option_result/011_some_expr
+
+## Case: legacy-a2p-09-option-result-011-some-expr
+id: "legacy.a2p.09_option_result.011_some_expr"
+entry-mode: "program"
+
+### Auto
+path: "some_expr.at"
+```auto
+fn main() {
+    let val = Some("hello")
+    print(val)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### some_expr.expected.py
+```python
+def main():
+    val = "hello"
+    print(val)
+
+if __name__ == "__main__":
+    main()
+```

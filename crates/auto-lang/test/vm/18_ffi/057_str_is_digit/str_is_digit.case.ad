@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/057_str_is_digit
+
+## Case: legacy-18-ffi-057-str-is-digit
+id: "legacy.18_ffi.057_str_is_digit"
+entry-mode: "program"
+
+### Auto
+path: "str_is_digit.at"
+```auto
+Str.is_digit("7")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+true
+```

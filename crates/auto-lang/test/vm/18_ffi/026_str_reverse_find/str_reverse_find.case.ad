@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/026_str_reverse_find
+
+## Case: legacy-18-ffi-026-str-reverse-find
+id: "legacy.18_ffi.026_str_reverse_find"
+entry-mode: "program"
+
+### Auto
+path: "str_reverse_find.at"
+```auto
+Str.reverse("hello")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+olleh
+```

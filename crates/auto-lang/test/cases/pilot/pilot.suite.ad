@@ -11,12 +11,12 @@ suite {
   id: "pilot"
   fixture_root: "../.."
   include: [
-    "vm-basics.case.ad",
-    "vm-shortcircuit.case.ad",
-    "vm-script.case.ad",
-    "a2r-basics.case.ad",
-    "a2r-cabi.case.ad",
-    "a2r-project.case.ad"
+    "vm-basics.document.case.ad",
+    "vm-shortcircuit.document.case.ad",
+    "vm-script.document.case.ad",
+    "a2r-basics.document.case.ad",
+    "a2r-cabi.document.case.ad",
+    "a2r-project.document.case.ad"
   ]
   defaults: { tier: "vm-corpus" }
 }

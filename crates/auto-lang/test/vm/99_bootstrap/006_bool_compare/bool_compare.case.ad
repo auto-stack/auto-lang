@@ -1,0 +1,32 @@
+# Legacy vm corpus: 99_bootstrap/006_bool_compare
+
+## Case: legacy-99-bootstrap-006-bool-compare
+id: "legacy.99_bootstrap.006_bool_compare"
+entry-mode: "program"
+
+### Auto
+path: "bool_compare.at"
+```auto
+fn main() {
+    let a = true
+    let b = false
+    print(a == false)
+    print(b == false)
+    print(a != true)
+    print(b != true)
+    print(a == true)
+    print(b == true)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+0
+1
+0
+1
+1
+0
+```

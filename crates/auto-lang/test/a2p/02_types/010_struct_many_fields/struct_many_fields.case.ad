@@ -1,0 +1,41 @@
+# Legacy a2p corpus: 02_types/010_struct_many_fields
+
+## Case: legacy-a2p-02-types-010-struct-many-fields
+id: "legacy.a2p.02_types.010_struct_many_fields"
+entry-mode: "program"
+
+### Auto
+path: "struct_many_fields.at"
+```auto
+type Person {
+    name str
+    age int
+    height float
+    active bool
+}
+
+fn main() {
+    print("Person struct defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### struct_many_fields.expected.py
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Person:
+    name: str
+    age: int
+    height: float
+    active: bool
+
+def main():
+    print("Person struct defined")
+
+if __name__ == "__main__":
+    main()
+```

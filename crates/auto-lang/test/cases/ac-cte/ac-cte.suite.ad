@@ -8,11 +8,11 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ac-cte", include: [
-  "cte-first-sum42.case.ad",
-  "cte-first-bool-branch.case.ad",
-  "cte-warm-session-edit.case.ad",
-  "cte-restart-cross-process.case.ad",
-  "cte-trap-diags.case.ad",
-  "cte-meta-arg.case.ad",
+  "cte-first-sum42.document.case.ad",
+  "cte-first-bool-branch.document.case.ad",
+  "cte-warm-session-edit.document.case.ad",
+  "cte-restart-cross-process.document.case.ad",
+  "cte-trap-diags.document.case.ad",
+  "cte-meta-arg.document.case.ad",
 ] }
 ```

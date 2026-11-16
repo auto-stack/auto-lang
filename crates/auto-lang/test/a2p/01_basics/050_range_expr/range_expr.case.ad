@@ -1,0 +1,28 @@
+# Legacy a2p corpus: 01_basics/050_range_expr
+
+## Case: legacy-a2p-01-basics-050-range-expr
+id: "legacy.a2p.01_basics.050_range_expr"
+entry-mode: "program"
+
+### Auto
+path: "range_expr.at"
+```auto
+fn main() {
+    for i in 0..10 {
+        print(i)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### range_expr.expected.py
+```python
+def main():
+    for i in range(0, 10):
+        print(i)
+
+if __name__ == "__main__":
+    main()
+```

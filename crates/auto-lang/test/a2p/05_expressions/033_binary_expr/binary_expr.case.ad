@@ -1,0 +1,31 @@
+# Legacy a2p corpus: 05_expressions/033_binary_expr
+
+## Case: legacy-a2p-05-expressions-033-binary-expr
+id: "legacy.a2p.05_expressions.033_binary_expr"
+entry-mode: "program"
+
+### Auto
+path: "binary_expr.at"
+```auto
+fn main() {
+    let a = 10
+    let b = 20
+    let c = a + b * 2
+    print(c)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### binary_expr.expected.py
+```python
+def main():
+    a = 10
+    b = 20
+    c = a + b * 2
+    print(c)
+
+if __name__ == "__main__":
+    main()
+```

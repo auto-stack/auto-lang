@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 05_expressions/023_return
+
+## Case: legacy-a2p-05-expressions-023-return
+id: "legacy.a2p.05_expressions.023_return"
+entry-mode: "program"
+
+### Auto
+path: "return.at"
+```auto
+fn add(a int, b int) int {
+    return a + b
+}
+
+fn main() {
+    let result = add(3, 4)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### return.expected.py
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+
+def main():
+    result = add(3, 4)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

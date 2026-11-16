@@ -10,11 +10,23 @@ use std::path::PathBuf;
 
 fn test_ffi_dual(case: &str) -> AutoResult<()> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut src = read_to_string(d.join(format!("test/ffi_dual/{}/input.at", case)))?;
+    // PLAN-1062 T-16: payload comes from the migration document; the frozen
+    // input.at/expected_output.txt sidecars are history (never a fallback).
+    let case_dir = d.join(format!("test/ffi_dual/{}", case));
+    let doc = crate::tests::legacy_doc::load_case(&case_dir, "input")
+        .map_err(|e| crate::error::AutoError::Msg(e.into()))?;
+    let mut src = doc.source_text().to_string();
     // PLAN-592: dep 路径占位符——语料文件化,VM/a2r/oracle 三腿共享同一份 input.at
     let ffi_dual_dir = d.join("test/ffi_dual").to_string_lossy().replace('\\', "/");
     src = src.replace("{{FFI_DUAL_DIR}}", &ffi_dual_dir);
-    let expected = read_to_string(d.join(format!("test/ffi_dual/{}/expected_output.txt", case)))?;
+    let expected = doc
+        .result_text()
+        .ok_or_else(|| {
+            crate::error::AutoError::Msg(
+                format!("ffi_dual {case}: expected output missing from migration doc").into(),
+            )
+        })?
+        .to_string();
 
     let (_, stdout) = run_with_capture(&src)?;
     let trimmed = stdout.trim();

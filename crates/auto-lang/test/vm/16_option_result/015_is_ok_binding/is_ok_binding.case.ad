@@ -1,0 +1,23 @@
+# Legacy vm corpus: 16_option_result/015_is_ok_binding
+
+## Case: legacy-16-option-result-015-is-ok-binding
+id: "legacy.16_option_result.015_is_ok_binding"
+entry-mode: "program"
+
+### Auto
+path: "is_ok_binding.at"
+```auto
+let res = Ok(100)
+is res {
+  Ok(v) -> v
+  Err(e) -> -1
+}
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+100
+```

@@ -1,0 +1,18 @@
+# Legacy vm corpus: 03_variables/006_let_asn_error
+
+## Case: legacy-03-variables-006-let-asn-error
+id: "legacy.03_variables.006_let_asn_error"
+entry-mode: "program"
+
+### Auto
+path: "let_asn_error.at"
+```auto
+let x = 41
+x = 10
+x
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

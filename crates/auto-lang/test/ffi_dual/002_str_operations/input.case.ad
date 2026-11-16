@@ -1,0 +1,37 @@
+# Legacy ffi_dual corpus: 002_str_operations
+
+## Case: legacy-ffi-dual-002-str-operations
+id: "legacy.ffi_dual.002_str_operations"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: String operations — #[rust_fn] String
+print(String.len("hello"))
+print(String.is_empty(""))
+print(String.contains("hello world", "world"))
+print(String.starts_with("hello", "hel"))
+print(String.ends_with("hello", "llo"))
+print(String.trim("  hi  "))
+print(String.repeat("ab", 3))
+print(String.replace("hello world", "world", "auto"))
+print(String.upper("hello"))
+print(String.lower("HELLO"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+5
+true
+true
+true
+true
+hi
+ababab
+hello auto
+HELLO
+hello
+```

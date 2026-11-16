@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/021_list_push_pop
+
+## Case: legacy-13-collections-021-list-push-pop
+id: "legacy.13_collections.021_list_push_pop"
+entry-mode: "program"
+
+### Auto
+path: "list_push_pop.at"
+```auto
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var popped = list.pop()
+list.drop()
+popped
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+30
+```

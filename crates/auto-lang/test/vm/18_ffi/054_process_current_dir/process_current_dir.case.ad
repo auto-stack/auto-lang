@@ -1,0 +1,21 @@
+# Legacy vm corpus: 18_ffi/054_process_current_dir
+
+## Case: legacy-18-ffi-054-process-current-dir
+id: "legacy.18_ffi.054_process_current_dir"
+entry-mode: "program"
+
+### Auto
+path: "process_current_dir.at"
+```auto
+let cwd = Process.current_dir()
+if Str.len(cwd) > 0 {
+    print("ok")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

@@ -1,0 +1,60 @@
+# Legacy a2c corpus: 24_runtime_size/002_runtime_size_expr
+
+## Case: legacy-24-runtime-size-002-runtime-size-expr
+id: "legacy.24_runtime_size.002_runtime_size_expr"
+entry-mode: "program"
+
+### Auto
+path: "runtime_size_expr.at"
+```auto
+// Test runtime-sized array with expression (Plan 052)
+// Array size is computed from expression
+
+fn main() {
+    let x = 5
+    let y = 3
+    let arr [x + y]int
+
+    arr[0] = 1
+    arr[1] = 2
+    arr[2] = 3
+
+    let len = arr.len()  // Should work if len() is supported
+    let elem = arr[0]
+
+    print("Length:", len)
+    print("First element:", elem)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### runtime_size_expr.expected.c
+```c
+#include "runtime_size_expr.h"
+
+int main(void) {
+    int x = 5;
+    int y = 3;
+    int* arr = malloc(sizeof(int) * (x + y));
+
+    arr[0] = 1;
+    arr[1] = 2;
+    arr[2] = 3;
+
+    unknown len = arr.len();
+    int elem = arr[0];
+
+    printf("%s %d\n", "Length:", len);
+    printf("%s %d\n", "First element:", elem);
+    return 0;
+}
+```
+
+#### runtime_size_expr.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

@@ -1,0 +1,29 @@
+# Legacy vm corpus: 22_generator/003_string_yields
+
+## Case: legacy-22-generator-003-string-yields
+id: "legacy.22_generator.003_string_yields"
+entry-mode: "program"
+
+### Auto
+path: "string_yields.at"
+```auto
+fn words() ~Iter<str> {
+    yield "a"
+    yield "b"
+    yield "c"
+}
+fn main() {
+    var acc = ""
+    for w in words() {
+        acc = acc + w
+    }
+    print(acc)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+abc
+```

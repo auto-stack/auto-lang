@@ -1,0 +1,41 @@
+# Legacy a2ts corpus: 09_option_result/005_option_pattern
+
+## Case: legacy-09-option-result-005-option-pattern
+id: "legacy.09_option_result.005_option_pattern"
+entry-mode: "program"
+
+### Auto
+path: "option_pattern.at"
+final-newline: false
+```auto
+fn main() {
+    let x = Some(10)
+
+    is x {
+        Some(v) -> print("got value:", v)
+        None -> print("got none")
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### option_pattern.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 10;
+    
+
+        const __auto_is_0 = x;
+    if (__auto_is_0 !== null) {
+        const v = __auto_is_0;
+        console.log("got value:", v);
+    }
+    else if (__auto_is_0 === null) {
+        console.log("got none");
+    }
+}
+
+main();
+```

@@ -54,11 +54,23 @@ fn pkg_mapped_origins(
                 .find_map(|i| match i {
                     ace_core::source::ast::Item::Fn(f) if f.name.name == r.name => Some(f),
                     _ => None,
-                })
-                .ok_or(format!(
-                    "A2X packages fragment `{}` is not a free function (type-bound methods close with the A2X follow-up)",
-                    r.name
-                ))?;
+                });
+            // PLAN-972 (T-03): synthetic closure-body fns have no AST item
+            // of their own — their source-map origin rides the CreateClosure
+            // site (a named source-map follow-up); (0,0) here keeps the
+            // fragment mapping honest without blocking the cold target.
+            let f = match f {
+                Some(f) => f,
+                None if r.name.starts_with("__closure") => {
+                    return Ok((r.index, (0, 0)));
+                }
+                None => {
+                    return Err(format!(
+                        "A2X packages fragment `{}` is not a free function (type-bound methods close with the A2X follow-up)",
+                        r.name
+                    ))
+                }
+            };
             Ok((r.index, (f.span.start as u32, f.span.end as u32)))
         })
         .collect()

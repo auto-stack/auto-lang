@@ -1,0 +1,76 @@
+# Legacy a2c corpus: 05_expressions/004_binary
+
+## Case: legacy-05-expressions-004-binary
+id: "legacy.05_expressions.004_binary"
+entry-mode: "program"
+
+### Auto
+path: "binary.at"
+```auto
+enum Binary {
+    Yes int
+    No int
+}
+
+fn is_first(m Binary) bool {
+    is m {
+        Binary.Yes(x) -> true
+        Binary.No(x) -> false
+    }
+}
+
+fn main() {
+    let s = Binary.Yes()
+    is_first(s)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### binary.expected.c
+```c
+#include "binary.h"
+
+
+bool is_first(struct Binary m) {
+    switch (m.tag) {
+    case BINARY_YES:
+        {
+            return true;
+        }
+        break;
+    case BINARY_NO:
+        {
+            return false;
+        }
+        break;
+    }
+    return false;
+}
+
+int main(void) {
+    struct Binary s = {.tag = BINARY_YES, .as.Yes = 0};
+    return is_first(s);
+}
+```
+
+#### binary.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+enum BinaryKind {
+    BINARY_YES,
+    BINARY_NO,
+};
+
+struct Binary {
+    enum BinaryKind tag;
+    union {
+        int Yes;
+        int No;
+    } as;
+};
+bool is_first(struct Binary m);
+```

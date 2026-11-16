@@ -1,0 +1,36 @@
+# Legacy conformance corpus: 020_enum_match
+
+## Case: legacy-conf-020-enum-match
+id: "legacy.conf.020_enum_match"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 020: Enum with pattern matching
+enum Shape {
+    Circle(f64)
+    Rect(int, int)
+}
+
+fn main() {
+    let s = Shape.Circle(3.0)
+    is s {
+        Shape.Circle(r) -> print(r),
+        Shape.Rect(w, h) -> print(w)
+    }
+    let r = Shape.Rect(4, 5)
+    is r {
+        Shape.Circle(r) -> print(r),
+        Shape.Rect(w, h) -> print(w)
+    }
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+3
+4
+```

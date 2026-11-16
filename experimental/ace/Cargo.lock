@@ -302,6 +302,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-m2-build"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-c",
+ "ace-a2x-core",
+ "ace-a2x-python",
+ "ace-a2x-rust",
+ "ace-a2x-store",
+ "ace-abi",
+ "ace-artifacts",
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ace-native"
 version = "0.1.0"
 dependencies = [

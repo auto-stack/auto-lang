@@ -1,0 +1,64 @@
+# Legacy a2c corpus: 19_option_type/001_question_syntax
+
+## Case: legacy-19-option-type-001-question-syntax
+id: "legacy.19_option_type.001_question_syntax"
+entry-mode: "program"
+
+### Auto
+path: "question_syntax.at"
+```auto
+fn test_question_int() ?int {
+    42
+}
+
+fn test_question_str() ?str {
+    "hello"
+}
+
+fn test_question_bool() ?bool {
+    true
+}
+
+fn main() {
+    let x = test_question_int()
+    let y = test_question_str()
+    let z = test_question_bool()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_syntax.expected.c
+```c
+#include "question_syntax.h"
+
+int test_question_int(void) {
+    return 42;
+}
+
+char* test_question_str(void) {
+    return "hello";
+}
+
+bool test_question_bool(void) {
+    return true;
+}
+
+int main(void) {
+    unknown x = test_question_int();
+    unknown y = test_question_str();
+    unknown z = test_question_bool();
+    return 0;
+}
+```
+
+#### question_syntax.expected.h
+```c
+#pragma once
+
+#include <stdbool.h>
+int test_question_int(void);
+char* test_question_str(void);
+bool test_question_bool(void);
+```

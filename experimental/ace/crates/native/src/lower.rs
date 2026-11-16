@@ -1230,6 +1230,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 h.symbol
             ));
         };
+        // PLAN-974: platform.net/1 is outside the native lane's original
+        // support domain — a NAMED rejection, never a silent shim.
+        if spec.category == ace_av_core::platform_io::CATEGORY_NET {
+            return Err(format!(
+                "native.sched-unsupported-style: platform.net `{}` is outside the native support domain",
+                h.symbol
+            ));
+        }
         if args.len() != spec.params.len() {
             return Err(format!(
                 "platform op `{}` expected {} args, got {}",
@@ -1278,6 +1286,17 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | PlatformOpKind::MemBorrow
             | PlatformOpKind::MemUnborrow => {
                 clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+            }
+            // PLAN-974: rejected by name before lowering (unreachable).
+            PlatformOpKind::NetTcpConnect
+            | PlatformOpKind::NetTcpWriteSome
+            | PlatformOpKind::NetTcpWriteRegion
+            | PlatformOpKind::NetTcpReadInto
+            | PlatformOpKind::NetTcpClose
+            | PlatformOpKind::NetTcpListen
+            | PlatformOpKind::NetTcpAccept
+            | PlatformOpKind::NetTcpLocalPort => {
+                return Err("native.net-unsupported".into());
             }
             PlatformOpKind::IoConsoleKind => {
                 clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));

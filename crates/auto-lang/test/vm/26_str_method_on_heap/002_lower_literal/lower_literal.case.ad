@@ -1,0 +1,22 @@
+# Legacy vm corpus: 26_str_method_on_heap/002_lower_literal
+
+## Case: legacy-26-str-method-on-heap-002-lower-literal
+id: "legacy.26_str_method_on_heap.002_lower_literal"
+entry-mode: "program"
+
+### Auto
+path: "lower_literal.at"
+```auto
+print("HELLO".lower())
+print("World".lower())
+print("hello".upper())
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello
+world
+HELLO
+```

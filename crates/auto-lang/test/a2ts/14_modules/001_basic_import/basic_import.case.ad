@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 14_modules/001_basic_import
+
+## Case: legacy-14-modules-001-basic-import
+id: "legacy.14_modules.001_basic_import"
+entry-mode: "program"
+
+### Auto
+path: "basic_import.at"
+final-newline: false
+```auto
+use math
+
+fn main() {
+    print("imported")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### basic_import.expected.ts
+```ts
+import "math";
+
+function main(): void {
+    console.log("imported");
+}
+
+main();
+```

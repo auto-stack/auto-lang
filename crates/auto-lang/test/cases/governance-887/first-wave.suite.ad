@@ -17,8 +17,8 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "governance-887-first-wave", include: [
-  "d-arithmetic.case.ad",
-  "d-unary.case.ad",
-  "d-group.case.ad",
+  "d-arithmetic.document.case.ad",
+  "d-unary.document.case.ad",
+  "d-group.document.case.ad",
 ] }
 ```

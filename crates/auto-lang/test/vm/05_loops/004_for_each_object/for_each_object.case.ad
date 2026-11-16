@@ -1,0 +1,27 @@
+# Legacy vm corpus: 05_loops/004_for_each_object
+
+## Case: legacy-05-loops-004-for-each-object
+id: "legacy.05_loops.004_for_each_object"
+entry-mode: "program"
+
+### Auto
+path: "for_each_object.at"
+```auto
+var items = [
+    { name: "Alice", age: 20 }
+    { name: "Bob", age: 21 }
+    { name: "Charlie", age: 22 }
+]
+for item in items {
+    print(f"Hi ${item.name}")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+Hi Alice
+Hi Bob
+Hi Charlie
+```

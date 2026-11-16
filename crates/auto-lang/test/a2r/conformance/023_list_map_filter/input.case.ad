@@ -1,0 +1,27 @@
+# Legacy conformance corpus: 023_list_map_filter
+
+## Case: legacy-conf-023-list-map-filter
+id: "legacy.conf.023_list_map_filter"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 023: List map and filter (with closures)
+fn main() {
+    let nums = [1, 2, 3, 4, 5]
+    let doubled = nums.map(x => x * 2)
+    print(doubled.get(0))
+    print(doubled.get(1))
+    print(doubled.get(2))
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+2
+4
+6
+```

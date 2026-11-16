@@ -3,6 +3,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-resource-events-919", include: [
-  "resource-events.case.ad",
+  "resource-events.document.case.ad",
 ] }
 ```

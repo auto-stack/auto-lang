@@ -1,0 +1,31 @@
+# Legacy conformance corpus: 022_list_push_pop
+
+## Case: legacy-conf-022-list-push-pop
+id: "legacy.conf.022_list_push_pop"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 022: List push and pop
+fn main() {
+    let list = List.new()
+    list.push(10)
+    list.push(20)
+    list.push(30)
+    print(list.len())
+    print(list.get(0))
+    print(list.get(1))
+    print(list.get(2))
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+3
+10
+20
+30
+```

@@ -1,0 +1,20 @@
+# Legacy vm corpus: 09_functions/007_closure
+
+## Case: legacy-09-functions-007-closure
+id: "legacy.09_functions.007_closure"
+entry-mode: "program"
+
+### Auto
+path: "closure.at"
+```auto
+var add = (a, b) => a + b
+add(1, 2)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

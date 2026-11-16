@@ -1,0 +1,51 @@
+# Legacy a2c corpus: 14_ext/002_ext_instance_method
+
+## Case: legacy-14-ext-002-ext-instance-method
+id: "legacy.14_ext.002_ext_instance_method"
+entry-mode: "program"
+
+### Auto
+path: "ext_instance_method.at"
+```auto
+// Test ext statement with instance method (Plan 035)
+
+ext int {
+    fn double() int {
+        self + self
+    }
+}
+
+fn main() {
+    let x = 21
+    let result = x.double()
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### ext_instance_method.expected.c
+```c
+#include "ext_instance_method.h"
+
+int int_double(int self) {
+    return self + self;
+}
+
+int main(void) {
+    int x = 21;
+    unknown result = int_double(x);
+    printf("%d\n", result);
+    return 0;
+}
+```
+
+#### ext_instance_method.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int int_double(int self);
+```

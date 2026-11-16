@@ -1,0 +1,19 @@
+# Legacy vm corpus: 10_types/009_access_fields_in_method
+
+## Case: legacy-10-types-009-access-fields-in-method
+id: "legacy.10_types.009_access_fields_in_method"
+entry-mode: "program"
+
+### Auto
+path: "access_fields_in_method.at"
+```auto
+type Point { x int; y int }
+fn Point.sum(self) int { self.x + self.y }
+var p = Point { x: 100, y: 200 }
+p.sum()
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

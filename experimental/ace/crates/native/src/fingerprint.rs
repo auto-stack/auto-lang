@@ -411,10 +411,22 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         }
         MirInstr::PlaceGet { dst, src } => format!("placeget {dst} {src}"),
         MirInstr::PlaceSet { place, value } => format!("placeset {place} {value}"),
-        MirInstr::CreateClosure { .. } | MirInstr::CallClosure { .. } | MirInstr::EnvGet { .. } => {
+        // PLAN-972 (T-03): capture-free closure VALUES render (pure
+        // formatting like the widened sets below — the collections emitter
+        // admits construction/indirect-call; EnvGet only exists in
+        // capturing closure bodies and stays a named rejection there).
+        MirInstr::CreateClosure {
+            dst,
+            callee,
+            captures,
+        } => format!("createclosure {dst} {callee:?} c{captures:?}"),
+        MirInstr::CallClosure { dst, closure, args } => {
+            format!("callclosure {dst} {closure} a{args:?}")
+        }
+        MirInstr::EnvGet { .. } => {
             return Err(MnError::Unsupported(
                 "instruction",
-                "closure instructions are outside the scalar native surface".into(),
+                "closure environments are outside the scalar native surface".into(),
             ));
         }
         // PLAN-824 shared-core widening: the dynamic-profile instructions

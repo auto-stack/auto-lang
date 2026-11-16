@@ -1,0 +1,48 @@
+# Legacy vm corpus: 08_strings/015_multi_fstr
+
+## Case: legacy-08-strings-015-multi-fstr
+id: "legacy.08_strings.015_multi_fstr"
+entry-mode: "program"
+
+### Auto
+path: "multi_fstr.at"
+```auto
+// Test: multi-line f-string f"""..."""
+
+let name = "World"
+let age = 25
+
+// Basic multi-line f-string with interpolation
+let msg = f"""Hello $name,
+you are $age years old.
+Welcome!"""
+print(msg)
+
+// Multi-line with expression interpolation
+let a = 10
+let b = 20
+let result = f"""Sum of $a and $b is ${a + b}.
+Product is ${a * b}."""
+print(result)
+
+// Multi-line with escaped braces
+let json = f"""{"type": "text", "value": "$name"}"""
+print(json)
+
+// Single-line f""" (triple-quote on one line)
+let single = f"""just $name"""
+print(single)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+Hello World,
+you are 25 years old.
+Welcome!
+Sum of 10 and 20 is 30.
+Product is 200.
+{"type": "text", "value": "World"}
+just World
+```

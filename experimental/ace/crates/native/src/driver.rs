@@ -48,33 +48,18 @@ enum Domain {
 /// reports from the domain that produced it, exactly like AV's explicit
 /// per-domain drivers.
 fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
+    // PLAN-969 (AUDIT-03 / 1024 F03): escalation routes on the STRUCTURED
+    // surface fact the producer attached at emission — never on message
+    // text. The producer (the fact-lane projector/lexer) tags exactly the
+    // classes that used to be recognized by substring:
+    // ProfileSurface (961/962-era `source.unsupported`@Text),
+    // OwnedCharacter (numeric `&`/`|`/`^`), OwnedToken (aggregates `[`,
+    // `..`, `..=`), OwnedShape (tuple comma / named-ctor `{`). Rewording
+    // any message can no longer change profile routing; a same-code
+    // different-reason diagnostic without a tag stays terminal.
     ds.iter().all(|d| {
-        d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text || {
-            // PLAN-961: the numeric-only operator characters (& | ^)
-            // lex as unknown characters on every narrower profile —
-            // that lex failure is a surface fact (the numeric profile
-            // owns the characters), so escalation continues.
-            d.code == "source.lex"
-                && d.message.contains("unknown character")
-                && (d.message.contains("`&`")
-                    || d.message.contains("`|`")
-                    || d.message.contains("`^`"))
-                || {
-                    // PLAN-962: the aggregates-owned token spellings (`[`,
-                    // `..`, `..=`) surface as narrow-face syntax errors —
-                    // climb to the widest rung exactly like the numeric-only
-                    // operator characters (961 precedent).
-                    d.code == "source.syntax"
-                        && (d.message.contains("found `[`")
-                        || d.message.contains("found `..`")
-                        // PLAN-962: the tuple literal (comma inside the
-                        // paren group) and the named ctor (ident followed
-                        // by `{ field: v }`) are aggregates-owned shapes.
-                        || d.message.contains("expected operator, found `,`")
-                        || d.message
-                            .contains("expected `;`, newline or `}`, found `{`"))
-                }
-        }
+        d.surface.is_some()
+            || (d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text)
     })
 }
 
@@ -1457,4 +1442,93 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
     format!("{:x}", h.finalize())
+}
+
+#[cfg(test)]
+mod p969_audit03_tests {
+    use super::*;
+    use ace_core::atom_text::{Diagnostic, Span, Stage, SurfaceFact};
+
+    fn diag(code: &str, stage: Stage, message: &str, surface: Option<SurfaceFact>) -> Diagnostic {
+        let d = Diagnostic::new(stage, code, message.to_string(), Span { start: 0, end: 1 });
+        match surface {
+            Some(fact) => d.tagged(fact),
+            None => d,
+        }
+    }
+
+    /// AUDIT-03 core property: routing reads the STRUCTURED fact, never
+    /// the message. Arbitrary reworded text on a tagged diagnostic still
+    /// climbs; the legacy substring-matching text WITHOUT a tag stays
+    /// terminal (same code, different reason).
+    #[test]
+    fn audit03_routing_reads_structure_not_text() {
+        // Tagged + completely rewritten messages → escalates.
+        assert!(is_surface_rejection(&[diag(
+            "source.lex",
+            Stage::Text,
+            "zzz completely reworded copy zzz",
+            Some(SurfaceFact::OwnedCharacter),
+        )]));
+        assert!(is_surface_rejection(&[diag(
+            "source.syntax",
+            Stage::Text,
+            "another rewritten text",
+            Some(SurfaceFact::OwnedShape),
+        )]));
+        assert!(is_surface_rejection(&[diag(
+            "source.unsupported",
+            Stage::Text,
+            "reworded profile refusal",
+            Some(SurfaceFact::ProfileSurface),
+        )]));
+        // Untagged + the EXACT legacy substring-matching messages →
+        // terminal for the lex/syntax classes (a message can no longer
+        // force a climb; only the structured fact does).
+        assert!(!is_surface_rejection(&[diag(
+            "source.lex",
+            Stage::Text,
+            "unknown character `&`",
+            None,
+        )]));
+        assert!(!is_surface_rejection(&[diag(
+            "source.syntax",
+            Stage::Text,
+            "expected operator, found `,`",
+            None,
+        )]));
+        // The projector-refusal arm keeps its ORIGINAL code+stage form
+        // (stable identifiers, never message text): an untagged
+        // `source.unsupported` at the Text stage still climbs, however
+        // its message is worded.
+        assert!(is_surface_rejection(&[diag(
+            "source.unsupported",
+            Stage::Text,
+            "`x` is not part of this source profile",
+            None,
+        )]));
+        assert!(is_surface_rejection(&[diag(
+            "source.unsupported",
+            Stage::Text,
+            "completely reworded refusal copy",
+            None,
+        )]));
+        // A Bind-stage unsupported was NEVER escalatable and still is not.
+        assert!(!is_surface_rejection(&[diag(
+            "source.unsupported",
+            Stage::Bind,
+            "record methods are not part of this source profile",
+            None,
+        )]));
+        // Mixed: one terminal diagnostic holds the whole set terminal.
+        assert!(!is_surface_rejection(&[
+            diag(
+                "source.lex",
+                Stage::Text,
+                "x",
+                Some(SurfaceFact::OwnedCharacter)
+            ),
+            diag("source.syntax", Stage::Text, "y", None),
+        ]));
+    }
 }

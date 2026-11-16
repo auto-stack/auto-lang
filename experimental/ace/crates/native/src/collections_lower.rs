@@ -4,7 +4,7 @@
 //! The explicit collections driver/CLI/worker all consume this same emitter.
 use crate::{emit, symbols, MnError};
 use ace_av_core::mir::*;
-use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::{
     types, AbiParam, Block, FuncRef, InstBuilder, MemFlags, Signature, StackSlotData,
     StackSlotKind, TrapCode, Type, Value,
@@ -116,6 +116,21 @@ pub(crate) fn admit_layouts(
             | MirType::RecordView(_)
             | MirType::List(_)
             | MirType::Variant(_) => {}
+            // PLAN-972 (T-03): the char/numeric scalars ride the immediate
+            // kind-0 carrier (char IS its codepoint; typed scalars are cell
+            // word immediates like i32).
+            MirType::Char
+            | MirType::I64
+            | MirType::U64
+            | MirType::I8
+            | MirType::U8
+            | MirType::U32
+            | MirType::F32
+            | MirType::F64 => {}
+            // PLAN-972 (T-03): capture-free closure VALUES — the inlined
+            // unit carries the closure slot type; construction/call instrs
+            // are named-rejected below if any survive inlining.
+            MirType::Closure(_) => {}
             // PLAN-923: the checked place is a Copy element witness over a
             // List — frozen to i32/bool this revision; List<Str>/owned
             // record read-only views stay out of the native place surface
@@ -195,6 +210,24 @@ pub(crate) fn admit_layouts(
                     | MirInstr::VariantSwitch { .. }
                     | MirInstr::VariantGuard { .. }
                     | MirInstr::VariantProject { .. }
+                    // PLAN-972 (T-03): the text/char expression surface
+                    // (mn_coll_* over TEXT cells; char rides its codepoint).
+                    | MirInstr::StrLenBytes { .. }
+                    | MirInstr::StrCharAt { .. }
+                    | MirInstr::StrSlice { .. }
+                    | MirInstr::StrToOwned { .. }
+                    | MirInstr::StrConcat { .. }
+                    | MirInstr::CharToCodepoint { .. }
+                    | MirInstr::CharFromCodepoint { .. }
+                    // PLAN-972 (T-03): capture-free closure values — the
+                    // callee binds through its unit import (split_units
+                    // rewrote Func→Import); the indirect call rides the
+                    // cells ABI.
+                    | MirInstr::CreateClosure { .. }
+                    | MirInstr::CallClosure { .. }
+                    // PLAN-972 (T-03): integer conversions (checked
+                    // narrowing; sign-aware widening).
+                    | MirInstr::Conv { .. }
             ) {
                 return Err(unsupported(
                     "instruction",
@@ -487,6 +520,12 @@ impl Lower<'_, '_> {
         let bits = self.fb.ins().uextend(types::I64, value);
         self.fb.ins().store(MemFlags::new(), bits, a, 0);
     }
+    /// PLAN-972 (T-03): full 64-bit cell-word store (typed scalar
+    /// immediates wider than i32 — I64/U64 constants and typed results).
+    fn word_to(&mut self, s: u32, value: Value) {
+        let a = self.addr(s);
+        self.fb.ins().store(MemFlags::new(), value, a, 0);
+    }
     fn call(
         &mut self,
         name: &'static str,
@@ -619,7 +658,18 @@ impl Lower<'_, '_> {
             | PlaceGet { dst, .. }
             | VariantPack { dst, .. }
             | VariantProject { dst, .. }
-            | Call { dst, .. } => Some(*dst),
+            | Call { dst, .. }
+            // PLAN-972 (T-08): the round-6 text arms allocate FRESH nodes
+            // (slice own-clones its view; concat / to_owned deep-copy) —
+            // they must carry a dst binding like every other allocation,
+            // or the first later validation (e.g. the scope-end Drop's
+            // reads precheck) refuses on the unbound node (mn_coll_type
+            // refusal=5 → trap 70; the starts_with/ends_with/contains
+            // chain first hit it — literal-rooted clones were masked by
+            // the literal's own binding).
+            | StrSlice { dst, .. }
+            | StrConcat { dst, .. }
+            | StrToOwned { dst, .. } => Some(*dst),
             VariantSwitch { root, .. } => Some(*root),
             _ => None,
         };
@@ -631,6 +681,18 @@ impl Lower<'_, '_> {
                     | ListNew { .. }
                     | VariantPack { .. }
                     | VariantSwitch { .. }
+                    // PLAN-972 (T-08): the round-6 text arms allocate
+                    // FRESH nodes (slice own-clones its view; concat and
+                    // to_owned deep-copy) — they must BIND their type
+                    // fingerprint like every other fresh allocation, or
+                    // the first later validation of the unbound node
+                    // refuses (mn_coll_type refusal=5 → trap 70; the
+                    // starts_with/ends_with/contains chain first hit it —
+                    // literal-rooted clones were masked by the literal's
+                    // own binding).
+                    | StrSlice { .. }
+                    | StrConcat { .. }
+                    | StrToOwned { .. }
             );
             self.check_slot(dst, bind)?;
         }
@@ -646,6 +708,42 @@ impl Lower<'_, '_> {
                 }
                 MirConst::Bool(b) => {
                     let v = self.i32(*b as i32);
+                    self.scalar_to(*dst, v);
+                }
+                // PLAN-972 (T-03): typed scalar constants ride the cell
+                // word as exact-value immediates (loads narrow per use).
+                MirConst::Char(c) => {
+                    let v = self.i32(*c as u32 as i32);
+                    self.scalar_to(*dst, v);
+                }
+                MirConst::I64(n) => {
+                    let v = self.i64(*n);
+                    self.word_to(*dst, v);
+                }
+                // PLAN-972 (T-09): float constants ride the cell word as
+                // their raw IEEE bit pattern (loads bitcast to F32/F64).
+                MirConst::F64Bits(n) => {
+                    let v = self.i64(*n as i64);
+                    self.word_to(*dst, v);
+                }
+                MirConst::F32Bits(n) => {
+                    let v = self.i64(*n as i64);
+                    self.word_to(*dst, v);
+                }
+                MirConst::U64(n) => {
+                    let v = self.i64(*n as i64);
+                    self.word_to(*dst, v);
+                }
+                MirConst::I8(n) => {
+                    let v = self.i32(*n as i32);
+                    self.scalar_to(*dst, v);
+                }
+                MirConst::U8(n) => {
+                    let v = self.i32(*n as i32);
+                    self.scalar_to(*dst, v);
+                }
+                MirConst::U32(n) => {
+                    let v = self.i32(*n as i32);
                     self.scalar_to(*dst, v);
                 }
                 MirConst::Str(bytes) => {
@@ -707,6 +805,308 @@ impl Lower<'_, '_> {
                 let v = self.bits(*view);
                 let n = self.checked("mn_coll_str_len", &[(v, types::I64)])?;
                 self.scalar_to(*dst, n);
+            }
+            // PLAN-972 (T-03): the text/char expression surface —
+            // mn_coll_* over TEXT cells; char IS its codepoint here.
+            StrLenBytes { dst, view } => {
+                let v = self.bits(*view);
+                let n = self.checked("mn_coll_str_len_bytes", &[(v, types::I64)])?;
+                self.scalar_to(*dst, n);
+            }
+            StrCharAt { dst, view, index } => {
+                let v = self.bits(*view);
+                let i = self.scalar(*index);
+                let c = self.checked("mn_coll_str_char_at", &[(v, types::I64), (i, types::I32)])?;
+                self.scalar_to(*dst, c);
+            }
+            StrSlice {
+                dst,
+                view,
+                start,
+                end,
+            } => {
+                let d = self.addr(*dst);
+                let v = self.bits(*view);
+                let a = self.scalar(*start);
+                let b = self.scalar(*end);
+                self.checked(
+                    "mn_coll_str_slice",
+                    &[
+                        (d, types::I64),
+                        (v, types::I64),
+                        (a, types::I32),
+                        (b, types::I32),
+                    ],
+                )?;
+            }
+            StrConcat { dst, lhs, rhs } => {
+                let d = self.addr(*dst);
+                let a = self.bits(*lhs);
+                let b = self.bits(*rhs);
+                self.checked(
+                    "mn_coll_str_concat",
+                    &[(d, types::I64), (a, types::I64), (b, types::I64)],
+                )?;
+            }
+            StrToOwned { dst, view } => {
+                // the owned copy of a view cell's current bytes — the same
+                // deep-copy mn_coll_clone provides for TEXT cells.
+                let d = self.addr(*dst);
+                let v = self.addr(*view);
+                self.checked("mn_coll_clone", &[(d, types::I64), (v, types::I64)])?;
+            }
+            CharToCodepoint { dst, ch } => {
+                let v = self.scalar(*ch);
+                self.scalar_to(*dst, v);
+            }
+            CharFromCodepoint { dst, code } => {
+                let c = self.scalar(*code);
+                let v = self.checked("mn_coll_char_from_codepoint", &[(c, types::I32)])?;
+                self.scalar_to(*dst, v);
+            }
+            // PLAN-972 (T-03/T-08): integer conversion — widening extends
+            // with the SOURCE's signedness and needs NO range check (an
+            // in-source-range value is in every wider target's range by
+            // construction); narrowing range-checks at the SOURCE's own
+            // I64 reduction and traps (-30, the checked contract) outside
+            // the target domain. The earlier I128-width `icmp_imm` range
+            // compare misbehaved on x64 for negative values (a valid
+            // I32→I64 widening of -421 trapped); I64-width compares are
+            // exact here because the source never exceeds 64 bits.
+            Conv { dst, src } => {
+                let from = self.m.funcs[0].slots[*src as usize].ty;
+                let to = self.m.funcs[0].slots[*dst as usize].ty;
+                // PLAN-972 (T-09): float conversions — int→float promotes
+                // the sign-restored integer to F64 (F32 targets demote);
+                // float→int range-checks at the target's f64 bounds and
+                // converts toward zero (fcvt_to_sint_sat keeps out-of-
+                // contract inputs defined; the guard traps first, parity
+                // with the C/Rust checked conversion helpers); F32↔F64
+                // promote/demote exactly.
+                let float_ty = |t: &MirType| -> Option<cranelift_codegen::ir::Type> {
+                    match t {
+                        MirType::F32 => Some(types::F32),
+                        MirType::F64 => Some(types::F64),
+                        _ => None,
+                    }
+                };
+                if let (Some(ffrom), Some(fto)) = (
+                    float_ty(&self.m.types[from as usize]),
+                    float_ty(&self.m.types[to as usize]),
+                ) {
+                    let bits = self.bits(*src);
+                    let v = self.fb.ins().bitcast(ffrom, MemFlags::new(), bits);
+                    let r = if fto == types::F64 && ffrom == types::F32 {
+                        self.fb.ins().fpromote(types::F64, v)
+                    } else if fto == types::F32 && ffrom == types::F64 {
+                        self.fb.ins().fdemote(types::F32, v)
+                    } else {
+                        v
+                    };
+                    let w = self.fb.ins().bitcast(types::I64, MemFlags::new(), r);
+                    self.word_to(*dst, w);
+                    return Ok(());
+                }
+                let num = |t: &MirType| -> Result<NumTy, MnError> {
+                    Ok(match t {
+                        MirType::I8 => NumTy::I8,
+                        MirType::U8 => NumTy::U8,
+                        MirType::I32 => NumTy::I32,
+                        MirType::U32 => NumTy::U32,
+                        MirType::I64 => NumTy::I64,
+                        MirType::U64 => NumTy::U64,
+                        other => {
+                            return Err(unsupported(
+                                "instruction",
+                                format!("PLAN-972 non-integer conversion {other:?} awaits the numeric backend unit"),
+                            ))
+                        }
+                    })
+                };
+                // PLAN-972 (T-09): mixed int↔float conversions.
+                let from_f = float_ty(&self.m.types[from as usize]);
+                let to_f = float_ty(&self.m.types[to as usize]);
+                match (from_f, to_f) {
+                    (Some(_), Some(_)) => unreachable!("float↔float handled above"),
+                    (Some(fty), None) => {
+                        // float → int: range-check at the target's exact
+                        // power-of-two f64 bounds (rounding-safe strict
+                        // upper), then convert toward zero.
+                        let ta = num(&self.m.types[to as usize])?;
+                        let bits = self.bits(*src);
+                        let fv = if fty == types::F32 {
+                            let f32v = self.fb.ins().bitcast(types::F32, MemFlags::new(), bits);
+                            self.fb.ins().fpromote(types::F64, f32v)
+                        } else {
+                            self.fb.ins().bitcast(types::F64, MemFlags::new(), bits)
+                        };
+                        let (lo, hi): (f64, f64) = match ta {
+                            NumTy::I8 => (i8::MIN as f64, 128.0),
+                            NumTy::U8 => (0.0, 256.0),
+                            NumTy::I32 => (-2147483648.0, 2147483648.0),
+                            NumTy::U32 => (0.0, 4294967296.0),
+                            NumTy::I64 => (-9223372036854775808.0, 9223372036854775808.0),
+                            NumTy::U64 => (0.0, 18446744073709551616.0),
+                            NumTy::F32 | NumTy::F64 => unreachable!("int side here"),
+                        };
+                        let lo_c = self.fb.ins().f64const(lo);
+                        let hi_c = self.fb.ins().f64const(hi);
+                        let ok_lo = self.fb.ins().fcmp(FloatCC::GreaterThanOrEqual, fv, lo_c);
+                        let ok_hi = self.fb.ins().fcmp(FloatCC::LessThan, fv, hi_c);
+                        let good = self.fb.ins().band(ok_lo, ok_hi);
+                        let e = self.i32(-30);
+                        self.guard(good, e);
+                        let iv = if matches!(ta, NumTy::U8 | NumTy::U32 | NumTy::U64) {
+                            self.fb.ins().fcvt_to_uint_sat(types::I64, fv)
+                        } else {
+                            self.fb.ins().fcvt_to_sint_sat(types::I64, fv)
+                        };
+                        if matches!(ta, NumTy::I64 | NumTy::U64) {
+                            self.word_to(*dst, iv);
+                        } else {
+                            let n = self.fb.ins().ireduce(types::I32, iv);
+                            self.scalar_to(*dst, n);
+                        }
+                        return Ok(());
+                    }
+                    (None, Some(fty)) => {
+                        // int → float: restore the source's sign from the
+                        // zero-extended cell word, convert from the I64
+                        // integer domain, demote for F32 targets.
+                        let bits = self.bits(*src);
+                        let src_ty = &self.m.types[from as usize];
+                        let narrow = match src_ty {
+                            MirType::I8 | MirType::U8 => Some(types::I8),
+                            MirType::I32 | MirType::U32 => Some(types::I32),
+                            _ => None,
+                        };
+                        let iv = match narrow {
+                            Some(nt) => {
+                                let n = self.fb.ins().ireduce(nt, bits);
+                                if matches!(src_ty, MirType::I8 | MirType::I32) {
+                                    self.fb.ins().sextend(types::I64, n)
+                                } else {
+                                    self.fb.ins().uextend(types::I64, n)
+                                }
+                            }
+                            None => {
+                                if matches!(src_ty, MirType::U64) {
+                                    bits
+                                } else {
+                                    self.fb.ins().sextend(types::I64, bits)
+                                }
+                            }
+                        };
+                        let f64v = if matches!(src_ty, MirType::U8 | MirType::U32 | MirType::U64) {
+                            self.fb.ins().fcvt_from_uint(types::F64, iv)
+                        } else {
+                            self.fb.ins().fcvt_from_sint(types::F64, iv)
+                        };
+                        let r = if fty == types::F32 {
+                            self.fb.ins().fdemote(types::F32, f64v)
+                        } else {
+                            f64v
+                        };
+                        let w = self.fb.ins().bitcast(types::I64, MemFlags::new(), r);
+                        self.word_to(*dst, w);
+                        return Ok(());
+                    }
+                    (None, None) => {}
+                }
+                let (fa, ta) = (
+                    num(&self.m.types[from as usize])?,
+                    num(&self.m.types[to as usize])?,
+                );
+                let bits_of = |t: NumTy| -> u32 {
+                    match t {
+                        NumTy::I8 | NumTy::U8 => 8,
+                        NumTy::I32 | NumTy::U32 => 32,
+                        NumTy::I64 | NumTy::U64 => 64,
+                        NumTy::F32 | NumTy::F64 => unreachable!("filtered above"),
+                    }
+                };
+                let signed_from = matches!(fa, NumTy::I8 | NumTy::I32 | NumTy::I64);
+                let signed_to = matches!(ta, NumTy::I8 | NumTy::I32 | NumTy::I64);
+                let wide = types::I128;
+                let v = self.bits(*src);
+                // PLAN-972 (T-08): narrow scalar cells hold ZERO-extended
+                // words (`scalar_to` uextends on store) — re-narrow to the
+                // SOURCE's width first so the signed extension restores the
+                // sign bits (a negative I32→I64 widening previously read
+                // the zero-extended word: -421 became 4294966875, wrong
+                // arithmetic and a spurious narrowing trap).
+                let v = if bits_of(fa) <= 32 {
+                    let narrow = if bits_of(fa) == 8 {
+                        types::I8
+                    } else {
+                        types::I32
+                    };
+                    let v = self.fb.ins().ireduce(narrow, v);
+                    if signed_from {
+                        self.fb.ins().sextend(wide, v)
+                    } else {
+                        self.fb.ins().uextend(wide, v)
+                    }
+                } else if signed_from {
+                    self.fb.ins().sextend(wide, v)
+                } else {
+                    self.fb.ins().uextend(wide, v)
+                };
+                if bits_of(ta) < bits_of(fa) {
+                    // narrowing: compare the exact I64 reduction against
+                    // the target bounds (both fit i64 for every ≤64-bit
+                    // target; u64::MAX rides the bit pattern under the
+                    // unsigned CC, which cannot occur from a signed
+                    // source this lane admits).
+                    let v64 = self.fb.ins().ireduce(types::I64, v);
+                    let (lo, hi): (i64, i64) = match ta {
+                        NumTy::I8 => (i8::MIN as i64, i8::MAX as i64),
+                        NumTy::U8 => (0, u8::MAX as i64),
+                        NumTy::I32 => (i32::MIN as i64, i32::MAX as i64),
+                        NumTy::U32 => (0, u32::MAX as i64),
+                        // I64/U64 targets never narrow (64-bit sources
+                        // only); the match keeps the bound table total.
+                        NumTy::I64 => (i64::MIN, i64::MAX),
+                        NumTy::U64 => (0, -1),
+                        NumTy::F32 | NumTy::F64 => unreachable!("filtered above"),
+                    };
+                    let (low, high) = if signed_to {
+                        (
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::SignedGreaterThanOrEqual, v64, lo),
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::SignedLessThanOrEqual, v64, hi),
+                        )
+                    } else {
+                        (
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::UnsignedGreaterThanOrEqual, v64, lo),
+                            self.fb
+                                .ins()
+                                .icmp_imm(IntCC::UnsignedLessThanOrEqual, v64, hi),
+                        )
+                    };
+                    let good = self.fb.ins().band(low, high);
+                    let e = self.i32(-30);
+                    self.guard(good, e);
+                }
+                let target_ty = if ta == NumTy::I64 || ta == NumTy::U64 {
+                    types::I64
+                } else if ta == NumTy::I32 || ta == NumTy::U32 {
+                    types::I32
+                } else {
+                    types::I8
+                };
+                let r = self.fb.ins().ireduce(target_ty, v);
+                if target_ty == types::I64 {
+                    self.word_to(*dst, r);
+                } else {
+                    self.scalar_to(*dst, r);
+                }
+                let _ = signed_to;
             }
             Aggregate { dst, operands, .. } => {
                 let pointer = self.addr(*dst);
@@ -912,7 +1312,37 @@ impl Lower<'_, '_> {
                 pointers.push(self.addr(*dst));
                 self.fb.ins().call(self.import_refs[*i as usize], &pointers);
             }
-            Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs),
+            // PLAN-972 (T-03): capture-free closure VALUES — the cell word
+            // holds the callee's code address (the unit import carries the
+            // (params+1)-cell ABI signature; capturing closures stay with
+            // the closure-env unit, named rejection).
+            CreateClosure {
+                dst,
+                callee,
+                captures,
+            } => {
+                let CalleeRef::Import(i) = callee else {
+                    return Err(unsupported("callee", "closure creation must use imports"));
+                };
+                if !captures.is_empty() {
+                    return Err(unsupported(
+                        "instruction",
+                        "capturing closures await the mn closure-env unit (PLAN-972)",
+                    ));
+                }
+                let f = self.import_refs[*i as usize];
+                let addr = self.fb.ins().func_addr(types::I64, f);
+                self.word_to(*dst, addr);
+            }
+            CallClosure { dst, closure, args } => {
+                let ptr = self.bits(*closure);
+                let mut pointers: Vec<_> = args.iter().map(|s| self.addr(*s)).collect();
+                pointers.push(self.addr(*dst));
+                let sig = signature(args.len());
+                let sigref = self.fb.func.import_signature(sig);
+                self.fb.ins().call_indirect(sigref, ptr, &pointers);
+            }
+            Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs)?,
             Un { op, dst, operand } => {
                 let v = self.scalar(*operand);
                 let result = match op {
@@ -928,10 +1358,40 @@ impl Lower<'_, '_> {
                     }
                     // PLAN-961: typed negation awaits the numeric backend
                     // unit — named rejection, never an i32 fallback.
+                    // PLAN-972 (T-03): checked I64 negation (MIN traps);
+                    // narrower/float typed negation stays with the numeric
+                    // backend unit.
+                    UnOp::NegT { ty: NumTy::I64 } => {
+                        let v = self.bits(*operand);
+                        let min = self.fb.ins().icmp_imm(IntCC::NotEqual, v, i64::MIN);
+                        let e = self.i32(-30);
+                        self.guard(min, e);
+                        let r = self.fb.ins().ineg(v);
+                        self.word_to(*dst, r);
+                        return Ok(());
+                    }
+                    UnOp::NegT {
+                        ty: NumTy::F64 | NumTy::F32,
+                    } => {
+                        // PLAN-972 (T-09): float negation — the cell
+                        // word's raw IEEE bits bitcast, fneg, bitcast
+                        // back (the word IS the value channel).
+                        let fty = if matches!(op, UnOp::NegT { ty: NumTy::F64 }) {
+                            types::F64
+                        } else {
+                            types::F32
+                        };
+                        let bits = self.bits(*operand);
+                        let v = self.fb.ins().bitcast(fty, MemFlags::new(), bits);
+                        let r = self.fb.ins().fneg(v);
+                        let w = self.fb.ins().bitcast(types::I64, MemFlags::new(), r);
+                        self.word_to(*dst, w);
+                        return Ok(());
+                    }
                     UnOp::NegT { .. } => {
                         return Err(unsupported(
                             "instruction",
-                            "PLAN-961 typed numeric emission awaits the numeric backend unit",
+                            "PLAN-972 narrow typed negation awaits the numeric backend unit",
                         ))
                     }
                 };
@@ -941,7 +1401,14 @@ impl Lower<'_, '_> {
         }
         Ok(())
     }
-    fn binary(&mut self, op: BinOp, dst: u32, lhs: u32, rhs: u32) {
+    fn binary(&mut self, op: BinOp, dst: u32, lhs: u32, rhs: u32) -> Result<(), MnError> {
+        // PLAN-972 (T-03): the 961 typed numeric surface — integer
+        // compares over every int width + checked I64 arithmetic ride the
+        // collections emitter; narrow arith, floats and shifts stay with
+        // the numeric backend unit (named rejection below).
+        if let BinOp::Num { op, ty } = op {
+            return self.binary_num(op, ty, dst, lhs, rhs);
+        }
         let a = self.scalar(lhs);
         let b = self.scalar(rhs);
         let condition = match op {
@@ -992,6 +1459,198 @@ impl Lower<'_, '_> {
             self.fb.ins().ireduce(types::I32, value)
         };
         self.scalar_to(dst, value);
+        Ok(())
+    }
+
+    /// PLAN-972 (T-03): typed integer compares (all widths) + checked I64
+    /// add/sub/mul/div/rem. Values live in the cell word; narrow loads
+    /// reduce with the operand's signedness.
+    fn binary_num(
+        &mut self,
+        op: NumOp,
+        ty: NumTy,
+        dst: u32,
+        lhs: u32,
+        rhs: u32,
+    ) -> Result<(), MnError> {
+        use NumOp::*;
+        use NumTy::*;
+        let signed = matches!(ty, I8 | I32 | I64);
+        // PLAN-972 (T-09): the float lanes — the cell word carries raw
+        // IEEE bits; bitcast per use. Compares via fcmp (Eq/Ne included);
+        // arith native; div traps ±0 (parity with the C/Rust checked
+        // helpers); rem/bit ops stay named rejections.
+        if matches!(ty, F32 | F64) {
+            let fty = if ty == F64 { types::F64 } else { types::F32 };
+            let lhs_bits = self.bits(lhs);
+            let rhs_bits = self.bits(rhs);
+            let fa = self.fb.ins().bitcast(fty, MemFlags::new(), lhs_bits);
+            let fbv = self.fb.ins().bitcast(fty, MemFlags::new(), rhs_bits);
+            let fcc = match op {
+                Lt => Some(FloatCC::LessThan),
+                Le => Some(FloatCC::LessThanOrEqual),
+                Gt => Some(FloatCC::GreaterThan),
+                Ge => Some(FloatCC::GreaterThanOrEqual),
+                Eq => Some(FloatCC::Equal),
+                Ne => Some(FloatCC::NotEqual),
+                _ => None,
+            };
+            if let Some(c) = fcc {
+                let r = self.fb.ins().fcmp(c, fa, fbv);
+                let r = self.fb.ins().uextend(types::I32, r);
+                self.scalar_to(dst, r);
+                return Ok(());
+            }
+            let zero = if ty == F64 {
+                self.fb.ins().f64const(0.0)
+            } else {
+                self.fb.ins().f32const(0.0)
+            };
+            let value = match op {
+                Add => self.fb.ins().fadd(fa, fbv),
+                Sub => self.fb.ins().fsub(fa, fbv),
+                Mul => self.fb.ins().fmul(fa, fbv),
+                Div => {
+                    let nz = self.fb.ins().fcmp(FloatCC::NotEqual, fbv, zero);
+                    let e = self.i32(-31);
+                    self.guard(nz, e);
+                    self.fb.ins().fdiv(fa, fbv)
+                }
+                Rem | And | Or | Xor | Shl | Shr => {
+                    return Err(unsupported(
+                        "instruction",
+                        "PLAN-972 float rem/bit emission stays a named follow-up",
+                    ))
+                }
+                _ => return Err(unsupported("instruction", "float op mismatch")),
+            };
+            let w = self.fb.ins().bitcast(types::I64, MemFlags::new(), value);
+            self.word_to(dst, w);
+            return Ok(());
+        }
+        let (a, b) = match ty {
+            I64 | U64 => (self.bits(lhs), self.bits(rhs)),
+            I8 | U8 | U32 | I32 => {
+                let a = self.bits(lhs);
+                let b = self.bits(rhs);
+                let narrow = if ty == I8 {
+                    types::I8
+                } else if ty == U8 {
+                    types::I8
+                } else if ty == U32 {
+                    types::I32
+                } else {
+                    types::I32
+                };
+                let a = self.fb.ins().ireduce(narrow, a);
+                let b = self.fb.ins().ireduce(narrow, b);
+                (a, b)
+            }
+            F32 | F64 => unreachable!("handled above"),
+        };
+        let cc = |op: NumOp| -> Option<IntCC> {
+            Some(match op {
+                Lt => {
+                    if signed {
+                        IntCC::SignedLessThan
+                    } else {
+                        IntCC::UnsignedLessThan
+                    }
+                }
+                Le => {
+                    if signed {
+                        IntCC::SignedLessThanOrEqual
+                    } else {
+                        IntCC::UnsignedLessThanOrEqual
+                    }
+                }
+                Gt => {
+                    if signed {
+                        IntCC::SignedGreaterThan
+                    } else {
+                        IntCC::UnsignedGreaterThan
+                    }
+                }
+                Ge => {
+                    if signed {
+                        IntCC::SignedGreaterThanOrEqual
+                    } else {
+                        IntCC::UnsignedGreaterThanOrEqual
+                    }
+                }
+                Eq => IntCC::Equal,
+                Ne => IntCC::NotEqual,
+                _ => return None,
+            })
+        };
+        if let Some(c) = cc(op) {
+            let r = self.fb.ins().icmp(c, a, b);
+            let r = self.fb.ins().uextend(types::I32, r);
+            self.scalar_to(dst, r);
+            return Ok(());
+        }
+        if ty != I64 {
+            return Err(unsupported(
+                "instruction",
+                "PLAN-972 narrow typed arithmetic awaits the numeric backend unit",
+            ));
+        }
+        // checked I64 arithmetic: add/sub/mul compute in I128 with an
+        // explicit range check, trap -30. div/rem run at I64 width — x64
+        // has no I128 sdiv/srem lowering (the previous I128-shaped rem hit
+        // a codegen unwrap; PLAN-972 S-03/S-06 std modules first exercised
+        // it) — and the divisor/overflow guards below already pin the
+        // result inside the i64 range, so no separate range check is
+        // needed (the pre-guarded MIN % -1 also never reaches idiv).
+        let value = match op {
+            Add | Sub | Mul => {
+                let wide = types::I128;
+                let a = self.fb.ins().sextend(wide, a);
+                let b = self.fb.ins().sextend(wide, b);
+                let value = match op {
+                    Add => self.fb.ins().iadd(a, b),
+                    Sub => self.fb.ins().isub(a, b),
+                    _ => self.fb.ins().imul(a, b),
+                };
+                let low =
+                    self.fb
+                        .ins()
+                        .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i64::MIN as i64);
+                let high =
+                    self.fb
+                        .ins()
+                        .icmp_imm(IntCC::SignedLessThanOrEqual, value, i64::MAX as i64);
+                let good = self.fb.ins().band(low, high);
+                let e = self.i32(-30);
+                self.guard(good, e);
+                self.fb.ins().ireduce(types::I64, value)
+            }
+            Div | Rem => {
+                let nz = self.fb.ins().icmp_imm(IntCC::NotEqual, b, 0);
+                let e = self.i32(-31);
+                self.guard(nz, e);
+                let min = self.fb.ins().icmp_imm(IntCC::Equal, a, i64::MIN as i64);
+                let neg = self.fb.ins().icmp_imm(IntCC::Equal, b, -1);
+                let overflow = self.fb.ins().band(min, neg);
+                let good = self.fb.ins().icmp_imm(IntCC::Equal, overflow, 0);
+                let e = self.i32(-30);
+                self.guard(good, e);
+                if op == Div {
+                    self.fb.ins().sdiv(a, b)
+                } else {
+                    self.fb.ins().srem(a, b)
+                }
+            }
+            And | Or | Xor | Shl | Shr => {
+                return Err(unsupported(
+                    "instruction",
+                    "PLAN-972 typed bit/shift emission awaits the numeric backend unit",
+                ))
+            }
+            _ => return Err(unsupported("instruction", "typed numeric op mismatch")),
+        };
+        self.word_to(dst, value);
+        Ok(())
     }
 }
 

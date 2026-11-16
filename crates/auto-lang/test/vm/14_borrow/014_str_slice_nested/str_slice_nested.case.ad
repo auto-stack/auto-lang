@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/014_str_slice_nested
+
+## Case: legacy-14-borrow-014-str-slice-nested
+id: "legacy.14_borrow.014_str_slice_nested"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_nested.at"
+```auto
+let s = "hello"
+let v = s.view
+v
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

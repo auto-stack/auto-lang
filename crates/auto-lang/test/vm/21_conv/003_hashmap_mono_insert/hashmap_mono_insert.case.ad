@@ -1,0 +1,33 @@
+# Legacy vm corpus: 21_conv/003_hashmap_mono_insert
+
+## Case: legacy-21-conv-003-hashmap-mono-insert
+id: "legacy.21_conv.003_hashmap_mono_insert"
+entry-mode: "program"
+
+### Auto
+path: "hashmap_mono_insert.at"
+```auto
+// Test Plan 194: HashMap unified generic insert/get API
+// Uses monomorphic dispatch: m.insert() resolves to HashMap.insert_int
+// because HashMap.new() defaults to <str, int>
+fn main() {
+    var m = HashMap.new()
+    m.insert("age", 30)
+    m.insert("score", 100)
+    var age = m.get("age")
+    var score = m.get("score")
+    var has_age = m.contains("age")
+    m.remove("score")
+    var sz = m.size()
+    m.drop()
+    f"age=$age score=$score has=$has_age size=$sz"
+}
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+age=30 score=100 has=1 size=1
+```

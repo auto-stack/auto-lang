@@ -59,6 +59,10 @@ pub enum Ty {
     /// The unit type (PLAN-904: the collections `Eval` statement's
     /// discarded result).
     Unit,
+    /// PLAN-972 (T-03): an owned closure VALUE — the payload is the module
+    /// type-table index of its `TypeKind::Closure(FnSig)` entry (signatures
+    /// are interned by index; `Ty` stays `Copy`).
+    Closure(u32),
     /// PLAN-961 numeric surface: the signed/unsigned/float value types.
     /// `byte`/`uint` resolve to `U8`/`U32` at the source front.
     I8,
@@ -91,6 +95,7 @@ impl Ty {
             Ty::U64 => "u64",
             Ty::F32 => "f32",
             Ty::F64 => "f64",
+            Ty::Closure(_) => "closure",
         }
     }
 
@@ -550,6 +555,14 @@ impl<'a> SemanticView<'a> {
     }
 
     /// The user function owning `def_index`, if any.
+    /// PLAN-972 (T-03): the interned signature of a closure type entry.
+    pub fn closure_sig(&self, idx: u32) -> Option<&hir::FnSig> {
+        match self.module.types.get(idx as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::Closure(sig)) => Some(sig),
+            _ => None,
+        }
+    }
+
     pub fn fn_by_def(&self, def_index: usize) -> Option<&FnFacts<'a>> {
         self.functions.iter().find(|f| f.def_index == def_index)
     }
@@ -1087,6 +1100,18 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     | hir::ExprKind::TextToBorrowed { .. }
             ) || record_kinds
                 || collections_kinds
+                // PLAN-972 (T-03): the assembled stdlib's text/char
+                // expression surface (scalar-indexed slices/char ops) and
+                // capture-free closure values join the collections family —
+                // the same widening the packages-aggregates-ct lane admits
+                // upstream; capturing closures stay rejected downstream.
+                || text_kinds
+                || matches!(
+                    k,
+                    hir::ExprKind::CreateClosure { .. }
+                        | hir::ExprKind::CallClosure { .. }
+                        | hir::ExprKind::TextDisplay { .. }
+                )
         }
     }
 }
@@ -1500,6 +1525,9 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
             Some(hir::TypeKind::Str) => Ok(Ty::Str),
             Some(hir::TypeKind::StrOwned) => Ok(Ty::StrOwned),
             Some(hir::TypeKind::Char) => Ok(Ty::Char),
+            // PLAN-972 (T-03): closure values — the payload is the type
+            // table index (the signature is interned, not copied).
+            Some(hir::TypeKind::Closure(_)) => Ok(Ty::Closure(id.0)),
             Some(hir::TypeKind::Record(_)) => Ok(Ty::Record(id.0)),
             // PLAN-904: structural lists and nominal variants
             Some(hir::TypeKind::List { .. }) => Ok(Ty::List(id.0)),

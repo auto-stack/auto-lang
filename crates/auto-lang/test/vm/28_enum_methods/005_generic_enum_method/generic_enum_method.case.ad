@@ -1,0 +1,35 @@
+# Legacy vm corpus: 28_enum_methods/005_generic_enum_method
+
+## Case: legacy-28-enum-methods-005-generic-enum-method
+id: "legacy.28_enum_methods.005_generic_enum_method"
+entry-mode: "program"
+
+### Auto
+path: "generic_enum_method.at"
+```auto
+// Plan 325: 本模块泛型 enum + 方法通过变量调用
+pub enum Bag<T, E> {
+    Hit T
+    Miss E
+    fn is_hit() bool {
+        is self {
+            Bag.Hit -> return true
+        }
+        return false
+    }
+}
+fn main() {
+    let r = Bag.Hit(42)
+    print(r.is_hit())
+    let e = Bag.Miss("nope")
+    print(e.is_hit())
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+1
+0
+```

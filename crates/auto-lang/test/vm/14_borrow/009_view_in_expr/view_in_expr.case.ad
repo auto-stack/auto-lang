@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/009_view_in_expr
+
+## Case: legacy-14-borrow-009-view-in-expr
+id: "legacy.14_borrow.009_view_in_expr"
+entry-mode: "program"
+
+### Auto
+path: "view_in_expr.at"
+```auto
+let x = 10
+let v = x.view
+v + 5
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+15
+```

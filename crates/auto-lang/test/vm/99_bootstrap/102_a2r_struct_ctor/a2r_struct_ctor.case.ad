@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/102_a2r_struct_ctor
+
+## Case: legacy-99-bootstrap-102-a2r-struct-ctor
+id: "legacy.99_bootstrap.102_a2r_struct_ctor"
+entry-mode: "program"
+
+### Auto
+path: "a2r_struct_ctor.at"
+```auto
+fn main() {
+    var result = run_a2r("type Point {\nx int\ny int\n}\nfn main() {\nvar p = Point(1, 2)\nprint(p.x)\n}")
+    var expected = "#[derive(Clone, Debug, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\nfn main() {\n    let mut p = Point { x: 1, y: 2 };\n    println!(\"{}\", p.x);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

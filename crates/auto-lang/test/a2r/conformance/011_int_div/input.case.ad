@@ -1,0 +1,29 @@
+# Legacy conformance corpus: 011_int_div
+
+## Case: legacy-conf-011-int-div
+id: "legacy.conf.011_int_div"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 011: Integer division (truncation toward zero)
+fn main() {
+    print(7 / 2)
+    print(-7 / 2)
+    print(7 / -2)
+    print(-7 / -2)
+    print(0 / 5)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+3
+-3
+-3
+3
+0
+```

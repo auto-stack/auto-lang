@@ -49,19 +49,17 @@ pub fn run_check_typed(
     }
     // The fixture IS the case's declared source file: same bytes ride the
     // request and (independently) any AV-side comparison of the same file.
-    let source_file = match &case.spec.source.payload {
-        auto_test_case::contract::PayloadSpec::File(f) => f.clone(),
-        other => {
+    // PLAN-1062 CF-08: the fixture IS the case source. For a File payload
+    // the fixture name must equal the file reference; for an inline (document)
+    // payload the binding is the payload itself — the bytes are already
+    // content-bound by resolve, so no name equality exists to check.
+    if let auto_test_case::contract::PayloadSpec::File(f) = &case.spec.source.payload {
+        if *f != typed.fixture {
             return Err(format!(
-                "typed case source must be a fixture file, got {other:?}"
-            ))
+                "typed fixture `{}` does not match the case source file `{f}`",
+                typed.fixture
+            ));
         }
-    };
-    if source_file != typed.fixture {
-        return Err(format!(
-            "typed fixture `{}` does not match the case source file `{source_file}`",
-            typed.fixture
-        ));
     }
     let fixture_bytes = case
         .files

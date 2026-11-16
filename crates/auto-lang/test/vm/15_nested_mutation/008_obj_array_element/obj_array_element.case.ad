@@ -1,0 +1,21 @@
+# Legacy vm corpus: 15_nested_mutation/008_obj_array_element
+
+## Case: legacy-15-nested-mutation-008-obj-array-element
+id: "legacy.15_nested_mutation.008_obj_array_element"
+entry-mode: "program"
+
+### Auto
+path: "obj_array_element.at"
+```auto
+var obj = { items: [1, 2, 3] }
+obj.items[0] = 10
+obj.items[0]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```

@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/082_a2r_fn
+
+## Case: legacy-99-bootstrap-082-a2r-fn
+id: "legacy.99_bootstrap.082_a2r_fn"
+entry-mode: "program"
+
+### Auto
+path: "a2r_fn.at"
+```auto
+fn main() {
+    var result = run_a2r("fn add(a int, b int) int {\nreturn a + b\n}\nfn main() {\nvar result = add(5, 3)\nprint(result)\n}")
+    var expected = "fn add(a: i32, b: i32) -> i32 {\n    return (a + b);\n}\nfn main() {\n    let mut result = add(5, 3);\n    println!(\"{}\", result);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

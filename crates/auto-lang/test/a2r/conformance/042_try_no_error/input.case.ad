@@ -1,0 +1,27 @@
+# Legacy conformance corpus: 042_try_no_error
+
+## Case: legacy-conf-042-try-no-error
+id: "legacy.conf.042_try_no_error"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 042: try with no error runs body, skips catch
+fn main() {
+    try {
+        print("in try")
+    } catch {
+        print("in catch")
+    }
+    print("after")
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+in try
+after
+```

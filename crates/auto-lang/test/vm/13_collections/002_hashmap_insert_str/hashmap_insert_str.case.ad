@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/002_hashmap_insert_str
+
+## Case: legacy-13-collections-002-hashmap-insert-str
+id: "legacy.13_collections.002_hashmap_insert_str"
+entry-mode: "program"
+
+### Auto
+path: "hashmap_insert_str.at"
+```auto
+var m = HashMap.new()
+m.insert_str("name", "Alice")
+m.insert_str("city", "Wonderland")
+var n = m.get_str("name")
+var c = m.get_str("city")
+m.drop()
+f"[$n, $c]"
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+[Alice, Wonderland]
+```

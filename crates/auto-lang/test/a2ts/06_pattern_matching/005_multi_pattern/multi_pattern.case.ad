@@ -1,0 +1,56 @@
+# Legacy a2ts corpus: 06_pattern_matching/005_multi_pattern
+
+## Case: legacy-06-pattern-matching-005-multi-pattern
+id: "legacy.06_pattern_matching.005_multi_pattern"
+entry-mode: "program"
+
+### Auto
+path: "multi_pattern.at"
+final-newline: false
+```auto
+fn check(x int) {
+    is x {
+        1 -> print("one")
+        2 -> print("two")
+        3 -> print("three")
+        _ -> print("other")
+    }
+}
+
+fn main() {
+    check(1)
+    check(2)
+    check(99)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### multi_pattern.expected.ts
+```ts
+export function check(x: number): void {
+    switch (x) {
+        case 1:
+            console.log("one");
+            break;
+        case 2:
+            console.log("two");
+            break;
+        case 3:
+            console.log("three");
+            break;
+        case _:
+            console.log("other");
+            break;
+    }
+}
+
+function main(): void {
+    check(1);
+    check(2);
+    check(99);
+}
+
+main();
+```

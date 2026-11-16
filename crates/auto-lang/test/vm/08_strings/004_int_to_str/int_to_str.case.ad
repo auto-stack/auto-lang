@@ -1,0 +1,19 @@
+# Legacy vm corpus: 08_strings/004_int_to_str
+
+## Case: legacy-08-strings-004-int-to-str
+id: "legacy.08_strings.004_int_to_str"
+entry-mode: "program"
+
+### Auto
+path: "int_to_str.at"
+```auto
+1.str()
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

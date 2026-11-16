@@ -1,0 +1,38 @@
+# Legacy a2ts corpus: 03_control_flow/007_async_fn
+
+## Case: legacy-03-control-flow-007-async-fn
+id: "legacy.03_control_flow.007_async_fn"
+entry-mode: "program"
+
+### Auto
+path: "async_fn.at"
+final-newline: false
+```auto
+fn fetch_data() ~int {
+    let result = 42.await
+    return result
+}
+
+fn main() {
+    let data = fetch_data()
+    print(data)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### async_fn.expected.ts
+```ts
+export async function fetch_data(): Future<number> {
+    const result = (await 42);
+    return result;
+}
+
+function main(): void {
+    const data = fetch_data();
+    console.log(data);
+}
+
+main();
+```

@@ -1,0 +1,19 @@
+# Legacy ffi_dual corpus: 001_file_exists
+
+## Case: legacy-ffi-dual-001-file-exists
+id: "legacy.ffi_dual.001_file_exists"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: File.exists — #[rust_fn] File I/O
+print(File.exists("nonexistent_file_xyz_12345.txt"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+0
+```

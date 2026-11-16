@@ -1,0 +1,22 @@
+# Legacy vm corpus: 13_collections/033_list_varargs_empty
+
+## Case: legacy-13-collections-033-list-varargs-empty
+id: "legacy.13_collections.033_list_varargs_empty"
+entry-mode: "program"
+
+### Auto
+path: "list_varargs_empty.at"
+```auto
+var list = List.new()
+var len = list.len()
+list.drop()
+len
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+0
+```

@@ -1,0 +1,102 @@
+# Legacy a2c corpus: 13_delegation/002_multi_delegation
+
+## Case: legacy-13-delegation-002-multi-delegation
+id: "legacy.13_delegation.002_multi_delegation"
+entry-mode: "program"
+
+### Auto
+path: "multi_delegation.at"
+```auto
+spec Engine {
+    fn start()
+}
+
+spec Weapon {
+    fn fire()
+}
+
+type WarpDrive {
+    fn start() {
+        print("WarpDrive engaging")
+    }
+}
+
+type LaserCannon {
+    fn fire() {
+        print("Pew! Pew!")
+    }
+}
+
+type Starship {
+    has core WarpDrive for Engine
+    has weapon LaserCannon for Weapon
+}
+
+fn main() {
+    let ship = Starship()
+    ship.start()
+    ship.fire()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### multi_delegation.expected.c
+```c
+#include "multi_delegation.h"
+
+
+
+void WarpDrive_Start(struct WarpDrive *self) {
+    printf("%s\n", "WarpDrive engaging");
+}
+
+void LaserCannon_Fire(struct LaserCannon *self) {
+    printf("%s\n", "Pew! Pew!");
+}
+
+void Starship_start(struct Starship *self) {
+    WarpDrive_start(&self->core);
+}
+void Starship_fire(struct Starship *self) {
+    LaserCannon_fire(&self->weapon);
+}
+
+int main(void) {
+    struct Starship ship = {};
+    Starship_start(&ship);
+    Starship_fire(&ship);
+    return 0;
+}
+```
+
+#### multi_delegation.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+typedef struct Engine_vtable {
+    void (*start)(void *self);
+} Engine_vtable;
+
+typedef struct Weapon_vtable {
+    void (*fire)(void *self);
+} Weapon_vtable;
+
+struct WarpDrive {
+};
+
+void WarpDrive_Start(struct WarpDrive *self);
+struct LaserCannon {
+};
+
+void LaserCannon_Fire(struct LaserCannon *self);
+struct Starship {
+    struct WarpDrive core;
+    struct LaserCannon weapon;
+};
+void Starship_start(struct Starship *self);
+void Starship_fire(struct Starship *self);
+```

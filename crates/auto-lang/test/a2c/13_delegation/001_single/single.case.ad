@@ -1,0 +1,74 @@
+# Legacy a2c corpus: 13_delegation/001_single
+
+## Case: legacy-13-delegation-001-single
+id: "legacy.13_delegation.001_single"
+entry-mode: "program"
+
+### Auto
+path: "single.at"
+```auto
+// Test member-level delegation syntax
+spec Engine {
+    fn start()
+}
+
+type WarpDrive {
+    fn start() {
+        print("WarpDrive engaging")
+    }
+}
+
+// Note: No 'as Engine' declaration to avoid trait checking for now
+// (delegation-based trait checking to be implemented)
+type Starship {
+    has core WarpDrive for Engine
+}
+
+fn main() {
+    let ship = Starship()
+    ship.start()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### single.expected.c
+```c
+#include "single.h"
+
+
+void WarpDrive_Start(struct WarpDrive *self) {
+    printf("%s\n", "WarpDrive engaging");
+}
+
+void Starship_start(struct Starship *self) {
+    WarpDrive_start(&self->core);
+}
+
+int main(void) {
+    struct Starship ship = {};
+    Starship_start(&ship);
+    return 0;
+}
+```
+
+#### single.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+typedef struct Engine_vtable {
+    void (*start)(void *self);
+} Engine_vtable;
+
+struct WarpDrive {
+};
+
+void WarpDrive_Start(struct WarpDrive *self);
+struct Starship {
+    struct WarpDrive core;
+};
+void Starship_start(struct Starship *self);
+```

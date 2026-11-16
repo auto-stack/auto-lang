@@ -1,0 +1,21 @@
+# Legacy vm corpus: 03_variables/002_var_assign
+
+## Case: legacy-03-variables-002-var-assign
+id: "legacy.03_variables.002_var_assign"
+entry-mode: "program"
+
+### Auto
+path: "var_assign.at"
+```auto
+var a = 1
+a = 2
+a
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```

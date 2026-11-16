@@ -1,0 +1,35 @@
+# Legacy a2p corpus: 08_generics/002_generic_struct
+
+## Case: legacy-a2p-08-generics-002-generic-struct
+id: "legacy.a2p.08_generics.002_generic_struct"
+entry-mode: "program"
+
+### Auto
+path: "generic_struct.at"
+```auto
+type Container<T> {
+    value T
+}
+
+fn main() {
+    print("Container defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### generic_struct.expected.py
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Container:
+    value: Any
+
+def main():
+    print("Container defined")
+
+if __name__ == "__main__":
+    main()
+```

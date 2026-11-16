@@ -15,6 +15,8 @@ mod plan790_clipboard_media_provider;
 mod a2r_c_abi_gates;
 mod a2r_std_signature_parity;
 mod a2r_tests;
+#[path = "tests/legacy_doc.rs"]
+pub(crate) mod legacy_doc;
 mod a2ts_tests;
 // Plan 577: a2ts directed compile-level probes (.at → tsc --noEmit)
 mod a2ts_directed_probes;

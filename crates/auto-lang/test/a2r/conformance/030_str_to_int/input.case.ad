@@ -1,0 +1,27 @@
+# Legacy conformance corpus: 030_str_to_int
+
+## Case: legacy-conf-030-str-to-int
+id: "legacy.conf.030_str_to_int"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 030: Type conversion and to_string
+fn main() {
+    let x = 42
+    print(x.to_string())
+    let s = "hello"
+    print(s.len())
+    print(42.to_string())
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+42
+5
+42
+```

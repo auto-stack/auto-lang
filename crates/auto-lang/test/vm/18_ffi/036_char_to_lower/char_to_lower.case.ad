@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/036_char_to_lower
+
+## Case: legacy-18-ffi-036-char-to-lower
+id: "legacy.18_ffi.036_char_to_lower"
+entry-mode: "program"
+
+### Auto
+path: "char_to_lower.at"
+```auto
+Char.to_lower(65)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+97
+```

@@ -1,0 +1,43 @@
+# Legacy a2c corpus: 22_iterators/002_map_adapter
+
+## Case: legacy-22-iterators-002-map-adapter
+id: "legacy.22_iterators.002_map_adapter"
+entry-mode: "program"
+
+### Auto
+path: "map_adapter.at"
+```auto
+// Test Map adapter - Plan 051 Phase 2
+// Test that generic type fields work in adapter types
+
+type MapIter<I, T, U> {
+    iter I  // Generic type field
+}
+
+fn main() {
+    let x = 42
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### map_adapter.expected.c
+```c
+#include "map_adapter.h"
+
+
+int main(void) {
+    int x = 42;
+    return 0;
+}
+```
+
+#### map_adapter.expected.h
+```c
+#pragma once
+
+struct MapIter {
+    void* iter;
+};
+```

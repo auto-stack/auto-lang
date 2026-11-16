@@ -6,6 +6,6 @@ suite {
   schema: "autolang.suite/2"
   id: "case-ace-m1-a2r-emit-917"
   fixture_root: ".."
-  include: ["a2r-emit-917.case.ad"]
+  include: ["a2r-emit-917.document.case.ad"]
 }
 ```

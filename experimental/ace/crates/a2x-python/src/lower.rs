@@ -249,6 +249,17 @@ fn validate_family_param_ty(
             LowerFamily::Collections,
             Ty::I32
             | Ty::Bool
+            // PLAN-972 (T-03): the assembled stdlib surface — char, typed
+            // scalars, closure values (Python functions are first-class).
+            | Ty::Char
+            | Ty::I8
+            | Ty::U8
+            | Ty::U32
+            | Ty::I64
+            | Ty::U64
+            | Ty::F32
+            | Ty::F64
+            | Ty::Closure(_)
             | Ty::Str
             | Ty::StrOwned
             | Ty::Record(_)
@@ -281,6 +292,16 @@ fn validate_family_ret_ty(
             LowerFamily::Collections,
             Ty::I32
             | Ty::Bool
+            // PLAN-972 (T-03/T-09): typed scalar + list returns; floats
+            // join with the double family.
+            | Ty::Char
+            | Ty::I8
+            | Ty::U8
+            | Ty::U32
+            | Ty::I64
+            | Ty::U64
+            | Ty::F32
+            | Ty::F64
             | Ty::Str
             | Ty::StrOwned
             | Ty::Record(_)
@@ -849,6 +870,39 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 eval_args,
                 bindings,
             } => self.lower_call(callee.0 as usize, eval_args, bindings),
+            // PLAN-972 (T-03): capture-free closure VALUES — the literal is
+            // a Python lambda over the body fn; capturing closures stay a
+            // named rejection (Python closures could capture, but the
+            // cross-end contract keeps them uniformly closed for now).
+            hir::ExprKind::CreateClosure { callee, captures } => {
+                if !captures.is_empty() {
+                    return Err(A2xReject::unsupported_op(
+                        "capturing closures await the a2py closure-env unit (PLAN-972)",
+                    ));
+                }
+                let f = self
+                    .view
+                    .fn_by_def(callee.0 as usize)
+                    .ok_or_else(|| A2xReject::unsupported_expr("closure callee def not in view"))?;
+                let params: Vec<String> = (0..f.params.len()).map(|i| format!("p{i}")).collect();
+                let t = self.fresh_temp();
+                self.emit_line(&format!(
+                    "{t} = lambda {ps}: {fn_name}({ps})",
+                    ps = params.join(", "),
+                    fn_name = py_fn_name(f.source_name)
+                ));
+                Ok(t)
+            }
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                let f = self.lower_expr(*callee)?;
+                let mut args = Vec::with_capacity(eval_args.len());
+                for a in eval_args {
+                    args.push(self.lower_expr(*a)?);
+                }
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = {f}({})", args.join(", ")));
+                Ok(t)
+            }
             hir::ExprKind::StrLit { value } => Ok(py_bytes_literal(value.as_bytes())),
             hir::ExprKind::TextLen { operand } => {
                 let s = self.lower_expr(*operand)?;

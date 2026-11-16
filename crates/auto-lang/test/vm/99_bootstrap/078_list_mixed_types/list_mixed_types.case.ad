@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/078_list_mixed_types
+
+## Case: legacy-99-bootstrap-078-list-mixed-types
+id: "legacy.99_bootstrap.078_list_mixed_types"
+entry-mode: "program"
+
+### Auto
+path: "list_mixed_types.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar nums = List.new()\nnums.push(10)\nnums.push(20)\nvar strs = List.new()\nstrs.push(\"x\")\nstrs.push(\"y\")\nprint(nums.get(0))\nprint(strs.get(1))\nprint(nums.len())\nprint(strs.len())\n}")
+    if result == "10\ny\n2\n2\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

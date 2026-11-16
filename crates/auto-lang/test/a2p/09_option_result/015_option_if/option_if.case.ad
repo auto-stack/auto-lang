@@ -1,0 +1,39 @@
+# Legacy a2p corpus: 09_option_result/015_option_if
+
+## Case: legacy-a2p-09-option-result-015-option-if
+id: "legacy.a2p.09_option_result.015_option_if"
+entry-mode: "program"
+
+### Auto
+path: "option_if.at"
+```auto
+fn get_name() str {
+    "Alice"
+}
+
+fn main() {
+    let name = get_name()
+    let result = Some(name)
+    if result != None {
+        print(result)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### option_if.expected.py
+```python
+def get_name() -> str:
+    return "Alice"
+
+def main():
+    name = get_name()
+    result = name
+    if result != None:
+        print(result)
+
+if __name__ == "__main__":
+    main()
+```

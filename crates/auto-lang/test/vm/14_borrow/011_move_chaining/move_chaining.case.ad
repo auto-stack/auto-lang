@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/011_move_chaining
+
+## Case: legacy-14-borrow-011-move-chaining
+id: "legacy.14_borrow.011_move_chaining"
+entry-mode: "program"
+
+### Auto
+path: "move_chaining.at"
+```auto
+let s1 = "first"
+let s2 = s1.move
+s2
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+first
+```

@@ -1,0 +1,86 @@
+## Case: ace-ca-d3-ce-text-view
+id: "ace-ca-d3.ce-text-view"
+tags: ["ca-d3", "probe", "certify"]
+
+### Auto
+path: "ce-text-view.atomdata"
+syntax: "atom-data"
+
+~~~~auto
+# PLAN-939 T-11 CE (S01 text view): the Auto source exports a borrowed
+# UTF-8 view consumer under the text-record profile. The independent C
+# caller (ce_text_caller.c) passes NUL-bearing and multibyte fixtures and
+# checks the byte-length oracle (NUL is DATA; len counts BYTES).
+# (deck src grammar: a line that trims to `}` closes the block — closing
+# braces ride inline with their code.)
+deck ace-ca-d1/1
+leg source
+profile text-record
+caller ce_text_caller.c
+module t939ce_text
+export bytes_of as t939ce_bytes
+src {
+fn bytes_of(s str) int { return s.len() }
+fn main() int { return 0 }
+}
+~~~~
+
+### Probe certify
+recipe: "abi/ca-d1-bridge-v1"
+leg: "source"
+steps: [{op: "query"}, {op: "query"}]
+exit: 0
+
+#### Observation 1
+cache: "published"
+stages-include: ["bridge"]
+
+#### Observation 2
+cache: "hit"
+compute-calls: 0
+
+## Case: ace-ca-d3-ce-record
+id: "ace-ca-d3.ce-record"
+tags: ["ca-d3", "probe", "certify"]
+
+### Auto
+path: "ce-record.atomdata"
+syntax: "atom-data"
+
+~~~~auto
+# PLAN-939 T-11 CE (S02 record): the Auto source exports a mut record
+# lane under the text-record profile. The independent C caller
+# (ce_record_caller.c) statically checks the closed public layout
+# (sizeof/alignof/offsetof) and observes the mut writeback — including
+# the §5.3 failure-atomicity oracle: an overflow trap keeps the caller's
+# record byte-identical and the out sentinel untouched.
+# (deck src grammar: a line that trims to `}` closes the block — closing
+# braces ride inline with their code.)
+deck ace-ca-d1/1
+leg source
+profile text-record
+caller ce_record_caller.c
+module t939ce_rec
+export bump as t939ce_bump
+src {
+type Counter { value int }
+fn bump(mut x Counter, delta int) int {
+    x.value = x.value + delta
+    return x.value }
+fn main() int { return 0 }
+}
+~~~~
+
+### Probe certify
+recipe: "abi/ca-d1-bridge-v1"
+leg: "source"
+steps: [{op: "query"}, {op: "query"}]
+exit: 0
+
+#### Observation 1
+cache: "published"
+stages-include: ["bridge"]
+
+#### Observation 2
+cache: "hit"
+compute-calls: 0

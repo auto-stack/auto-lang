@@ -1,0 +1,49 @@
+# Legacy a2c corpus: 14_ext/001_ext_simple
+
+## Case: legacy-14-ext-001-ext-simple
+id: "legacy.14_ext.001_ext_simple"
+entry-mode: "program"
+
+### Auto
+path: "ext_simple.at"
+```auto
+// Test ext statement with simple static method (Plan 035)
+
+ext int {
+    static fn get_default() int {
+        42
+    }
+}
+
+fn main() {
+    let x = int.get_default()
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### ext_simple.expected.c
+```c
+#include "ext_simple.h"
+
+int int_get_default(void) {
+    return 42;
+}
+
+int main(void) {
+    unknown x = int_get_default(int);
+    printf("%d\n", x);
+    return 0;
+}
+```
+
+#### ext_simple.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int int_get_default(void);
+```

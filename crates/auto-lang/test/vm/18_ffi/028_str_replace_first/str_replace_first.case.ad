@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/028_str_replace_first
+
+## Case: legacy-18-ffi-028-str-replace-first
+id: "legacy.18_ffi.028_str_replace_first"
+entry-mode: "program"
+
+### Auto
+path: "str_replace_first.at"
+```auto
+Str.replace_first("hello hello", "hello", "hi")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hi hello
+```

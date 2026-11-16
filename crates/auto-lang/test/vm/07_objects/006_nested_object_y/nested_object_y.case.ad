@@ -1,0 +1,20 @@
+# Legacy vm corpus: 07_objects/006_nested_object_y
+
+## Case: legacy-07-objects-006-nested-object-y
+id: "legacy.07_objects.006_nested_object_y"
+entry-mode: "program"
+
+### Auto
+path: "nested_object_y.at"
+```auto
+var obj = { inner: { x: 10, y: 20 } }
+obj.inner.y
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+20
+```

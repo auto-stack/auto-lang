@@ -1,0 +1,21 @@
+# Legacy cookbook corpus: database/postgres/001_create_tables
+
+## Case: legacy-database-postgres-001-create-tables
+id: "legacy.database.postgres.001_create_tables"
+entry-mode: "program"
+
+### Auto
+path: "001_create_tables.at"
+```auto
+// Postgres create tables demo (simulated)
+
+fn main() {
+    print("CREATE TABLE author (id SERIAL PRIMARY KEY, name VARCHAR NOT NULL, nationality VARCHAR)")
+    print("CREATE TABLE book (id SERIAL PRIMARY KEY, title VARCHAR NOT NULL, author_id INTEGER REFERENCES author(id))")
+    print("Tables created successfully")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-smoke"

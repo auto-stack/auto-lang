@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/105_a2r_generic_map
+
+## Case: legacy-99-bootstrap-105-a2r-generic-map
+id: "legacy.99_bootstrap.105_a2r_generic_map"
+entry-mode: "program"
+
+### Auto
+path: "a2r_generic_map.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar scores Map<str, int>\n}")
+    var has_hashmap = result.find("HashMap<String, i32>")
+    if has_hashmap >= 0 {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

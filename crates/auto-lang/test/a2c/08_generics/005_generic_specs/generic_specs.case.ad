@@ -1,0 +1,42 @@
+# Legacy a2c corpus: 08_generics/005_generic_specs
+
+## Case: legacy-08-generics-005-generic-specs
+id: "legacy.08_generics.005_generic_specs"
+entry-mode: "program"
+
+### Auto
+path: "generic_specs.at"
+```auto
+// Test generic spec declaration - Plan 057
+spec Storage<T> {
+    fn get() T
+}
+
+fn main() {
+    let x = 42
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### generic_specs.expected.c
+```c
+#include "generic_specs.h"
+
+
+int main(void) {
+    int x = 42;
+    return 0;
+}
+```
+
+#### generic_specs.expected.h
+```c
+#pragma once
+
+typedef struct Storage_vtable {
+    void (*get)(void *self);
+} Storage_vtable;
+
+```

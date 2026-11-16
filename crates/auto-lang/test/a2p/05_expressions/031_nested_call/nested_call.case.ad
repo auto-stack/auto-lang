@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 05_expressions/031_nested_call
+
+## Case: legacy-a2p-05-expressions-031-nested-call
+id: "legacy.a2p.05_expressions.031_nested_call"
+entry-mode: "program"
+
+### Auto
+path: "nested_call.at"
+```auto
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let result = add(add(1, 2), add(3, 4))
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### nested_call.expected.py
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+
+def main():
+    result = add(add(1, 2), add(3, 4))
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

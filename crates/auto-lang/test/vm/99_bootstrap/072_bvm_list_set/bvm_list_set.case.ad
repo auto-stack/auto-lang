@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/072_bvm_list_set
+
+## Case: legacy-99-bootstrap-072-bvm-list-set
+id: "legacy.99_bootstrap.072_bvm_list_set"
+entry-mode: "program"
+
+### Auto
+path: "bvm_list_set.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(10)\nlist.push(20)\nlist.push(30)\nlist.set(1, 99)\nprint(list.get(0))\nprint(list.get(1))\nprint(list.get(2))\n}")
+    if result == "10\n99\n30\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

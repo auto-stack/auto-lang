@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/029_str_match_count
+
+## Case: legacy-18-ffi-029-str-match-count
+id: "legacy.18_ffi.029_str_match_count"
+entry-mode: "program"
+
+### Auto
+path: "str_match_count.at"
+```auto
+Str.match_count("hello hello hello", "hello")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

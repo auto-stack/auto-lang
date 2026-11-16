@@ -1,0 +1,46 @@
+# Legacy a2c corpus: 23_stdlib/003_std_readline
+
+## Case: legacy-23-stdlib-003-std-readline
+id: "legacy.23_stdlib.003_std_readline"
+entry-mode: "program"
+
+### Auto
+path: "std_readline.at"
+```auto
+use auto.io: File
+
+fn main() {
+    let f = File.open("Cargo.toml")
+
+    let s = f.read_line()
+    print(s)
+
+    f.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_readline.expected.c
+```c
+#include "std_readline.h"
+
+int main(void) {
+    unknown f = File.open("Cargo.toml");
+
+    unknown s = f.read_line();
+    printf("%d\n", s);
+
+    f.close();
+    return 0;
+}
+```
+
+#### std_readline.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include "auto/io.h"
+```

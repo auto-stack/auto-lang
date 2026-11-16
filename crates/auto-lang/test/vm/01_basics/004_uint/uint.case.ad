@@ -1,0 +1,19 @@
+# Legacy vm corpus: 01_basics/004_uint
+
+## Case: legacy-01-basics-004-uint
+id: "legacy.01_basics.004_uint"
+entry-mode: "program"
+
+### Auto
+path: "uint.at"
+```auto
+1u + 2u
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3u
+```

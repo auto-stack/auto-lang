@@ -1,0 +1,35 @@
+# Legacy vm corpus: 16_option_result/020_result_propagate
+
+## Case: legacy-16-option-result-020-result-propagate
+id: "legacy.16_option_result.020_result_propagate"
+entry-mode: "program"
+
+### Auto
+path: "result_propagate.at"
+```auto
+fn try_parse(s str) !int {
+    if s == "" {
+        return Err("empty string")
+    }
+    Ok(42)
+}
+
+fn chain() !int {
+    let a = try_parse("hello").?
+    let b = try_parse("").?
+    Ok(a + b)
+}
+
+let result = chain()
+is result {
+    Ok(n) -> print(n)
+    Err(e) -> print("propagated error")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+propagated error
+```

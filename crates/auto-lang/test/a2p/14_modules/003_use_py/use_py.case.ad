@@ -1,0 +1,31 @@
+# Legacy a2p corpus: 14_modules/003_use_py
+
+## Case: legacy-a2p-14-modules-003-use-py
+id: "legacy.a2p.14_modules.003_use_py"
+entry-mode: "program"
+
+### Auto
+path: "use_py.at"
+```auto
+use.py numpy
+use.py pandas: DataFrame
+
+fn main() {
+    print("use.py test")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### use_py.expected.py
+```python
+import numpy
+from pandas import DataFrame
+
+def main():
+    print("use.py test")
+
+if __name__ == "__main__":
+    main()
+```

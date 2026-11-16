@@ -1,0 +1,21 @@
+# Legacy vm corpus: 16_option_result/011_coalesce_some
+
+## Case: legacy-16-option-result-011-coalesce-some
+id: "legacy.16_option_result.011_coalesce_some"
+entry-mode: "program"
+
+### Auto
+path: "coalesce_some.at"
+```auto
+let x = Some(42)
+let y = x ?? 0
+y
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+42
+```

@@ -36,9 +36,21 @@ use crate::seed_coll::{c_variant_name, SeedCollTy};
 pub enum CollRetKind {
     I32,
     Bool,
+    /// PLAN-972 (T-03): typed numeric scalar results (the 961 channels).
+    I64,
+    U64,
+    I8,
+    U8,
+    U32,
+    /// PLAN-972 (T-09): float results (the f64/f32 channels).
+    F64,
+    F32,
     StrOwned,
     Record(String),
     Variant(String),
+    /// PLAN-972 (T-03): a typed list result (the elem tag rides the
+    /// wrapper names — a2x_res_list_<tag>/a2x_list_<tag>_value).
+    List(String),
 }
 
 impl CollRetKind {
@@ -50,6 +62,14 @@ impl CollRetKind {
             CollRetKind::StrOwned => "a2x_stro_result".into(),
             CollRetKind::Record(n) => format!("a2x_res_{}", c_record_name(n)),
             CollRetKind::Variant(n) => format!("a2x_res_{}", c_variant_name(n)),
+            CollRetKind::List(tag) => format!("a2x_res_list_{tag}"),
+            CollRetKind::I64 => "a2x_result_i64".into(),
+            CollRetKind::U64 => "a2x_result_u64".into(),
+            CollRetKind::I8 => "a2x_result".into(),
+            CollRetKind::U8 => "a2x_result".into(),
+            CollRetKind::U32 => "a2x_result".into(),
+            CollRetKind::F64 => "a2x_result_f64".into(),
+            CollRetKind::F32 => "a2x_result_f32".into(),
         }
     }
 
@@ -61,6 +81,12 @@ impl CollRetKind {
             CollRetKind::StrOwned => "a2x_fwd_stro".into(),
             CollRetKind::Record(n) => format!("a2x_fwd_{}", c_record_name(n)),
             CollRetKind::Variant(n) => format!("a2x_fwd_{}", c_variant_name(n)),
+            CollRetKind::List(tag) => format!("a2x_fwd_list_{tag}"),
+            CollRetKind::I64 => "a2x_fwd_i64".into(),
+            CollRetKind::U64 => "a2x_fwd_u64".into(),
+            CollRetKind::I8 | CollRetKind::U8 | CollRetKind::U32 => "a2x_fwd_i32".into(),
+            CollRetKind::F64 => "a2x_fwd_f64".into(),
+            CollRetKind::F32 => "a2x_fwd_f32".into(),
         }
     }
 
@@ -72,13 +98,48 @@ impl CollRetKind {
             CollRetKind::StrOwned => "a2x_stro_value".into(),
             CollRetKind::Record(n) => format!("a2x_{}_value", c_record_name(n)),
             CollRetKind::Variant(n) => format!("a2x_{}_value", c_variant_name(n)),
+            CollRetKind::List(tag) => format!("a2x_list_{tag}_value"),
+            CollRetKind::I64 => "a2x_i64_value".into(),
+            CollRetKind::U64 => "a2x_u64_value".into(),
+            CollRetKind::I8 | CollRetKind::U8 | CollRetKind::U32 => "a2x_value".into(),
+            CollRetKind::F64 => "a2x_f64_value".into(),
+            CollRetKind::F32 => "a2x_f32_value".into(),
         }
     }
+}
+
+/// PLAN-972 (T-03): the C RESULT STRUCT name of a closure body's return
+/// (the fn-pointer's pointee return + the indirect call's fall channel).
+fn coll_ret_chan_of(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xReject> {
+    Ok(match ty {
+        Ty::I32 | Ty::Char => "a2x_result".into(),
+        Ty::Bool => "a2x_bool_result".into(),
+        Ty::StrOwned => "a2x_stro_result".into(),
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            format!("a2x_res_list_{}", seed_ty_of(view, elem)?.elem_tag())
+        }
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "closure result `{:?}` outside the C collections channel",
+                other
+            )))
+        }
+    })
 }
 
 fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<CollRetKind, A2xReject> {
     match ty {
         Ty::I32 => Ok(CollRetKind::I32),
+        // PLAN-972 (T-03): typed scalar results ride the numeric channel
+        // wrappers (i32 keeps the frozen a2x_result).
+        Ty::I64 => Ok(CollRetKind::I64),
+        Ty::U64 => Ok(CollRetKind::U64),
+        Ty::I8 => Ok(CollRetKind::I8),
+        Ty::U8 => Ok(CollRetKind::U8),
+        Ty::U32 => Ok(CollRetKind::U32),
+        Ty::F64 => Ok(CollRetKind::F64),
+        Ty::F32 => Ok(CollRetKind::F32),
         Ty::Bool => Ok(CollRetKind::Bool),
         Ty::StrOwned => Ok(CollRetKind::StrOwned),
         Ty::Record(i) => view
@@ -89,6 +150,11 @@ fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<CollRetKind, A2xReject
             .variant(i)
             .map(|v| CollRetKind::Variant(v.name.clone()))
             .ok_or_else(|| A2xReject::unsupported_type("unknown variant result type")),
+        // PLAN-972 (T-03): list results (filter/map-style signatures).
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            Ok(CollRetKind::List(seed_ty_of(view, elem)?.elem_tag()))
+        }
         other => Err(A2xReject::unsupported_type(format!(
             "result type `{:?}` outside the C collections channel",
             other
@@ -157,6 +223,19 @@ pub fn coll_c_value_ty(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xRej
     match ty {
         Ty::I32 => Ok("int32_t".into()),
         Ty::Bool => Ok("bool".into()),
+        // PLAN-972 (T-03): a char is its Unicode codepoint (uint32); the
+        // 961 typed scalars ride their C spellings.
+        Ty::Char => Ok("uint32_t".into()),
+        Ty::I64 => Ok("int64_t".into()),
+        Ty::U64 => Ok("uint64_t".into()),
+        Ty::I8 => Ok("int8_t".into()),
+        Ty::U8 => Ok("uint8_t".into()),
+        Ty::U32 => Ok("uint32_t".into()),
+        // PLAN-972 (T-09): float values on the C collections channel —
+        // native IEEE doubles/floats; arithmetic rides the checked
+        // runtime helpers (div traps ±0), comparisons inline.
+        Ty::F32 => Ok("float".into()),
+        Ty::F64 => Ok("double".into()),
         Ty::StrOwned => Ok("a2x_str".into()),
         Ty::Record(i) => view
             .record(i)
@@ -233,12 +312,52 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
     let mut passes = std::collections::HashMap::new();
     for (p, (idx, l)) in f.params.iter().zip(param_locals.iter()) {
         let ty = view.resolve_use_ty(l.ty)?;
+        // PLAN-972 (T-03): a closure param is a C FUNCTION POINTER —
+        // `ret (*name)(params...)` over the body fn's channel (the pointee
+        // name embeds the param name, so it bypasses the pass table).
+        if let Ty::Closure(sig_idx) = ty {
+            let pname = local_name(&l.name, *idx);
+            let sig = view
+                .closure_sig(sig_idx)
+                .ok_or_else(|| A2xReject::unsupported_type("closure type index out of range"))?;
+            let ret_ty = view.resolve_use_ty(sig.result)?;
+            let ret_chan = coll_ret_chan_of(view, ret_ty)?;
+            let mut cparams: Vec<String> = Vec::new();
+            for pt in &sig.params {
+                let pty = view.resolve_use_ty(*pt)?;
+                cparams.push(coll_c_value_ty(view, pty)?);
+            }
+            let cparams = if cparams.is_empty() {
+                "void".to_string()
+            } else {
+                cparams.join(", ")
+            };
+            params.push((format!("{ret_chan} (*{pname})({cparams})"), String::new()));
+            continue;
+        }
         let pass = match (p.mode, ty) {
             // a scalar view is its ABI copy (mirror of the Rust leg's
-            // by-value scalar params in every mode)
-            (_, Ty::I32 | Ty::Bool) => ParamPass::Value,
+            // by-value scalar params in every mode; PLAN-972 T-09: floats
+            // join the scalar value channel)
+            (
+                _,
+                Ty::I32
+                | Ty::Bool
+                | Ty::Char
+                | Ty::I64
+                | Ty::U64
+                | Ty::I8
+                | Ty::U8
+                | Ty::U32
+                | Ty::F32
+                | Ty::F64,
+            ) => ParamPass::Value,
             (hir::ParamMode::MoveOwn, _) => ParamPass::Value,
             (hir::ParamMode::View, Ty::Record(_) | Ty::Variant(_)) => ParamPass::ConstPtr,
+            // PLAN-972 (T-03): a View-mode owned-Str param is a borrow of
+            // the caller's buffer (const a2x_str* — the Rust leg's
+            // `&'a str` mirror); MoveOwn keeps the by-value struct.
+            (hir::ParamMode::View, Ty::StrOwned) => ParamPass::ConstPtr,
             (hir::ParamMode::MutBorrow, Ty::Record(_) | Ty::Variant(_)) => ParamPass::MutPtr,
             // PLAN-946: a View-mode List param passes as a mutable pointer —
             // C aliases naturally, so callee mutations are visible in the
@@ -828,6 +947,26 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         match kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.local_read(local.0)),
             hir::ExprKind::Constant { value } => Ok(value.to_string()),
+            // PLAN-972 (T-03): typed scalar constants inline (mirror of
+            // the text lane's literal forms).
+            hir::ExprKind::NumericConst { ty, bits } => crate::lower::numeric_const_c(ty, bits),
+            // PLAN-972 (T-03): the 961 conversion matrix — identity passes
+            // through; checked conversions ride the shared helpers
+            // (a2x_c_<from>_<to>, now in the collections header).
+            hir::ExprKind::Cast { operand, to } => {
+                let v = self.expr(operand)?;
+                let from = self
+                    .view
+                    .resolve_use_ty(self.f.body.exprs[operand.0 as usize].ty)?;
+                let from_b = crate::lower::c_builtin_of(from)?;
+                if from_b == to {
+                    return Ok(v);
+                }
+                let f_name = crate::lower::c_bname(from_b);
+                let t_name = crate::lower::c_bname(to);
+                let chan = crate::lower::c_result_ty(crate::lower::builtin_ty_of(to)?)?;
+                self.fall_res(id, &chan, format!("a2x_c_{f_name}_{t_name}({v})"))
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.expr(lhs)?;
                 let r = self.expr(rhs)?;
@@ -997,11 +1136,60 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 } else {
                     Vec::new()
                 };
+                // PLAN-972 (T-03): str-borrowed callee params take the
+                // operand's VIEW form (plain values get &x; pointer params
+                // pass through).
+                let str_view_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
+                    t.params
+                        .iter()
+                        .map(|p| {
+                            matches!(p.ty, Ty::Str | Ty::StrOwned)
+                                && p.mode != hir::ParamMode::MoveOwn
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                // PLAN-972 (T-08): View-mode Record/Variant callee params
+                // are ConstPtr (`const a2x_rec_X*` / `const a2x_var_X*`) —
+                // the argument passes its ADDRESS, unless it is itself a
+                // pointer-passed local of the caller (already the
+                // address; passing a user Option/record value by struct
+                // previously mismatched the prototype — C4047/C2440).
+                let ref_ptr_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
+                    t.params
+                        .iter()
+                        .map(|p| {
+                            p.mode == hir::ParamMode::View
+                                && matches!(p.ty, Ty::Record(_) | Ty::Variant(_))
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let mut args = Vec::new();
                 for (i, a) in eval_args.iter().enumerate() {
-                    let v = self.expr(*a)?;
+                    let v = if str_view_param.get(i).copied().unwrap_or(false) {
+                        self.text_operand(*a)?
+                    } else {
+                        self.expr(*a)?
+                    };
                     if shared_list_param.get(i).copied().unwrap_or(false) {
                         args.push(format!("&{v}"));
+                    } else if ref_ptr_param.get(i).copied().unwrap_or(false) {
+                        let already_ptr = matches!(
+                            &self.f.body.exprs[a.0 as usize].kind,
+                            hir::ExprKind::ReadLocal { local }
+                                if matches!(
+                                    self.passes.get(&local.0),
+                                    Some(ParamPass::ConstPtr) | Some(ParamPass::MutPtr)
+                                )
+                        );
+                        if already_ptr {
+                            args.push(v);
+                        } else {
+                            args.push(format!("&{v}"));
+                        }
                     } else {
                         args.push(v);
                     }
@@ -1025,6 +1213,71 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             hir::ExprKind::TextLenBytes { operand } => {
                 let o = self.text_operand(operand)?;
                 self.fall_res(id, "a2x_result", format!("a2x_str_len_bytes({o})"))
+            }
+            // PLAN-972 (T-03): the scalar-indexed text/char expression
+            // surface (char IS its codepoint; slices are borrowed views).
+            hir::ExprKind::TextCharAt { operand, index } => {
+                let o = self.text_operand(operand)?;
+                let i = self.expr(index)?;
+                self.fall_res(id, "a2x_char_result", format!("a2x_str_char_at({o}, {i})"))
+            }
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } => {
+                let o = self.text_operand(operand)?;
+                let a = self.expr(start)?;
+                let b = self.expr(end)?;
+                self.fall_res(
+                    id,
+                    "a2x_strv_result",
+                    format!("a2x_str_slice({o}, {a}, {b})"),
+                )
+            }
+            hir::ExprKind::TextToOwned { operand } => {
+                let o = self.text_operand(operand)?;
+                self.fall_res(id, "a2x_stro_result", format!("a2x_str_to_owned({o})"))
+            }
+            // (TextConcat is handled by the pre-existing FStr arm in
+            // expr_rest — the out-param stro_result form.)
+            hir::ExprKind::CharLit { scalar } => Ok(format!("(uint32_t){}", scalar)),
+            hir::ExprKind::CharToCodepoint { operand } => {
+                let o = self.expr(operand)?;
+                Ok(format!("((int32_t)({o}))"))
+            }
+            hir::ExprKind::CharFromCodepoint { operand } => {
+                let o = self.expr(operand)?;
+                self.fall_res(
+                    id,
+                    "a2x_char_result",
+                    format!("a2x_char_from_codepoint({o})"),
+                )
+            }
+            // PLAN-972 (T-03): capture-free closure VALUES — the C function
+            // designator IS the closure value (function pointers decay);
+            // the indirect call falls through the body's result channel.
+            hir::ExprKind::CreateClosure { callee, captures } => {
+                if !captures.is_empty() {
+                    return Err(A2xReject::unsupported_op(
+                        "capturing closures await the C closure-env unit (PLAN-972)",
+                    ));
+                }
+                let f = self
+                    .view
+                    .fn_by_def(callee.0 as usize)
+                    .ok_or_else(|| A2xReject::unsupported_expr("closure callee def not in view"))?;
+                Ok(crate::lower::c_fn_name(f.source_name))
+            }
+            hir::ExprKind::CallClosure { callee, eval_args } => {
+                let f = self.expr(callee)?;
+                let mut args = Vec::new();
+                for a in eval_args {
+                    args.push(self.expr(a)?);
+                }
+                let sig_ty = self.view.resolve_use_ty(e.ty)?;
+                let chan = coll_ret_chan_of(self.view, sig_ty)?;
+                self.fall_res(id, &chan, format!("{f}({})", args.join(", ")))
             }
             hir::ExprKind::TextClone { operand } => {
                 let o = self.expr(operand)?;
@@ -1323,11 +1576,24 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 // the root must be addressable (a whole-local read): the
                 // take MOVES the payload out and resets the disc — a
                 // wrong arm leaves the root untouched (the caller's
-                // error frees still own it)
+                // error frees still own it). A pointer-passed
+                // Record/Variant param local (ConstPtr/MutPtr) IS the
+                // address already — taking `&name` would pass the
+                // pointer's own address (indirection mismatch). The
+                // take resets the disc, so a ConstPtr view needs the
+                // explicit cast — the projection itself was
+                // verifier-approved (borrow discipline is at the HIR
+                // level, not the C qualifier).
                 let root_ref = match &self.f.body.exprs[root.0 as usize].kind {
-                    hir::ExprKind::ReadLocal { local } => {
-                        format!("&{}", self.local_name_of(*local))
-                    }
+                    hir::ExprKind::ReadLocal { local } => match self.passes.get(&local.0) {
+                        Some(ParamPass::ConstPtr) => {
+                            let name = self.local_name_of(*local);
+                            let ty = coll_c_value_ty(self.view, self.local_ty(*local)?)?;
+                            format!("({ty}*)(void*){name}")
+                        }
+                        Some(ParamPass::MutPtr) => self.local_name_of(*local),
+                        _ => format!("&{}", self.local_name_of(*local)),
+                    },
                     _ => {
                         return Err(A2xReject::unsupported_expr(
                             "variant projection root must be a whole-local read",

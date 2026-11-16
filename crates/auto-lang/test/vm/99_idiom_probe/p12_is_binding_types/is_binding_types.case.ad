@@ -1,0 +1,39 @@
+# Legacy vm corpus: 99_idiom_probe/p12_is_binding_types
+
+## Case: legacy-99-idiom-probe-p12-is-binding-types
+id: "legacy.99_idiom_probe.p12_is_binding_types"
+entry-mode: "program"
+
+### Auto
+path: "is_binding_types.at"
+```auto
+// Plan 447 probe p12: is 臂解构绑定的载荷类型（int/str 双形态，绿件）
+// H6（DEBT-113）靶形：a2r 侧 local_var_types 对 is 臂绑定的回填以此件观察
+enum Atom {
+    Int(int)
+    Str(str)
+    Nil
+}
+
+fn main() {
+    let a = Atom.Int(42)
+    is a {
+        Atom.Int(n) -> print(n.str())
+        else -> print("not int")
+    }
+
+    let s = Atom.Str("txt")
+    is s {
+        Atom.Str(t) -> print(t)
+        else -> print("not str")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+42
+txt
+```

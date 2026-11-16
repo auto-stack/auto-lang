@@ -1,0 +1,32 @@
+# Legacy a2p corpus: 03_control_flow/040_async_func
+
+## Case: legacy-a2p-03-control-flow-040-async-func
+id: "legacy.a2p.03_control_flow.040_async_func"
+entry-mode: "program"
+
+### Auto
+path: "async_func.at"
+```auto
+fn fetch_data(url str) ~str {
+    return url
+}
+
+fn main() {
+    let x = 42
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### async_func.expected.py
+```python
+async def fetch_data(url: str) -> str:
+    return url
+
+def main():
+    x = 42
+
+if __name__ == "__main__":
+    main()
+```

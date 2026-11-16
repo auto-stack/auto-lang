@@ -1,0 +1,45 @@
+# Legacy a2c corpus: 05_expressions/001_complex_expr
+
+## Case: legacy-05-expressions-001-complex-expr
+id: "legacy.05_expressions.001_complex_expr"
+entry-mode: "program"
+
+### Auto
+path: "complex_expr.at"
+```auto
+// Test Plan 037 Phase 1: Complex Expression Support
+// Test binary expressions in for loop range
+
+fn main() {
+    let len = 10
+
+    // Test: for loop with variable in range expression
+    for i in 0..len {
+        print(i)
+    }
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### complex_expr.expected.c
+```c
+#include "complex_expr.h"
+
+int main(void) {
+    int len = 10;
+
+    for (int i = 0; i < len; i++) {
+        printf("%d\n", i);
+    }
+    return 0;
+}
+```
+
+#### complex_expr.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

@@ -1,0 +1,31 @@
+# Legacy a2c corpus: 10_collections/006_array_copy
+
+## Case: legacy-10-collections-006-array-copy
+id: "legacy.10_collections.006_array_copy"
+entry-mode: "program"
+
+### Auto
+path: "array_copy.at"
+```auto
+let src [3]int = [1, 2, 3]
+var dst [3]int = [0, 0, 0]
+dst[0] = src[0]
+dst[1] = src[1]
+dst[2] = src[2]
+dst[0] + dst[1] + dst[2]
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_copy.expected.c
+```c
+int src[3] = {1, 2, 3};
+int dst[3] = {0, 0, 0};
+int main(void) {
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+    return dst[0] + dst[1] + dst[2];
+}
+```

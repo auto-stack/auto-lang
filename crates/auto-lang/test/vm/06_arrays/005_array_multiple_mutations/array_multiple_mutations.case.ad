@@ -1,0 +1,22 @@
+# Legacy vm corpus: 06_arrays/005_array_multiple_mutations
+
+## Case: legacy-06-arrays-005-array-multiple-mutations
+id: "legacy.06_arrays.005_array_multiple_mutations"
+entry-mode: "program"
+
+### Auto
+path: "array_multiple_mutations.at"
+```auto
+var a = [10, 20, 30]
+a[0] = 15
+a[2] = 35
+a[0] + a[1] + a[2]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+70
+```

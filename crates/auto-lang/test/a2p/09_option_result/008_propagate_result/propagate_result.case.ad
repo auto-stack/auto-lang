@@ -1,0 +1,38 @@
+# Legacy a2p corpus: 09_option_result/008_propagate_result
+
+## Case: legacy-a2p-09-option-result-008-propagate-result
+id: "legacy.a2p.09_option_result.008_propagate_result"
+entry-mode: "program"
+
+### Auto
+path: "propagate_result.at"
+```auto
+fn try_parse() int {
+    let x = Ok(42)
+    let y = x.?
+    y
+}
+
+fn main() {
+    let result = try_parse()
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### propagate_result.expected.py
+```python
+def try_parse() -> int:
+    x = 42
+    y = x
+    return y
+
+def main():
+    result = try_parse()
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

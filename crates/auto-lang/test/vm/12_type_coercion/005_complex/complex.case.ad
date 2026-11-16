@@ -1,0 +1,19 @@
+# Legacy vm corpus: 12_type_coercion/005_complex
+
+## Case: legacy-12-type-coercion-005-complex
+id: "legacy.12_type_coercion.005_complex"
+entry-mode: "program"
+
+### Auto
+path: "complex.at"
+```auto
+(2 + 3.5) * 5
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+27.5
+```

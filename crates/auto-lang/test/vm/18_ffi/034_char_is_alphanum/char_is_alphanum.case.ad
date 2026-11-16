@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/034_char_is_alphanum
+
+## Case: legacy-18-ffi-034-char-is-alphanum
+id: "legacy.18_ffi.034_char_is_alphanum"
+entry-mode: "program"
+
+### Auto
+path: "char_is_alphanum.at"
+```auto
+Char.is_alphanum(65)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

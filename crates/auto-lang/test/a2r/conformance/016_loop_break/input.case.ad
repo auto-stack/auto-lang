@@ -1,0 +1,32 @@
+# Legacy conformance corpus: 016_loop_break
+
+## Case: legacy-conf-016-loop-break
+id: "legacy.conf.016_loop_break"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 016: loop with break
+fn main() {
+    var i = 0
+    loop {
+        if i >= 3 {
+            break
+        }
+        print(i)
+        i += 1
+    }
+    print("done")
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+0
+1
+2
+done
+```

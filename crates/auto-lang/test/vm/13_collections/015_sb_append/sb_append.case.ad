@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/015_sb_append
+
+## Case: legacy-13-collections-015-sb-append
+id: "legacy.13_collections.015_sb_append"
+entry-mode: "program"
+
+### Auto
+path: "sb_append.at"
+```auto
+var sb = StringBuilder.new(1024)
+sb.append("hello")
+sb.append(" ")
+sb.append("world")
+var s = sb.build()
+sb.drop()
+s
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello world
+```

@@ -77,3 +77,12 @@ Task/Msg 的 VM park/resume、Rust Tokio actor/drain 和资源 owner/取消协�
 NUL 不截断。永久守卫接入固定 `cargo t stdlib`（包括 872 的旧绑定/行为守卫）。
 合法 i32 source 对照与 i64 source 的具名拒绝仅证明原有限域边界，不代表 math
 公共 API 已接入。原 required/accepted-diff/NA、样本、资源预算与认证平台不变。
+
+## 装配面逐操作对账（PLAN-972 交付增量，2026-11-15）
+
+旧 str/char/math/conv/hash/encoding/collections 域公开操作逐行去向（三档：
+已交付装配模块 / 本包具名结构或数据边界 / 外部 owner 964/963/967/965）
+见归档计划 972 §5 对账表与 [m2-stdlib-core](../../ace-migration/m2-stdlib-core.md)
+——无无主操作。保持的兼容差异追记：装配面 `s.len()`=scalar 数（与旧静态
+Str.len 字节语义并列记录）；double 族 NaN/精度偏差为已裁定记录（非静默
+窄化）。

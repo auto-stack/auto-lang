@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/083_a2r_var
+
+## Case: legacy-99-bootstrap-083-a2r-var
+id: "legacy.99_bootstrap.083_a2r_var"
+entry-mode: "program"
+
+### Auto
+path: "a2r_var.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar x = 10\nvar y = 20\nvar sum = x + y\nprint(sum)\n}")
+    var expected = "fn main() {\n    let mut x = 10;\n    let mut y = 20;\n    let mut sum = (x + y);\n    println!(\"{}\", sum);\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

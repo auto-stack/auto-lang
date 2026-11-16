@@ -1,0 +1,31 @@
+# Legacy a2p corpus: 04_strings/003_string_concat
+
+## Case: legacy-a2p-04-strings-003-string-concat
+id: "legacy.a2p.04_strings.003_string_concat"
+entry-mode: "program"
+
+### Auto
+path: "string_concat.at"
+```auto
+fn main() {
+    let a = "hello"
+    let b = " "
+    let c = "world"
+    print(a + b + c)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### string_concat.expected.py
+```python
+def main():
+    a = "hello"
+    b = " "
+    c = "world"
+    print(a + b + c)
+
+if __name__ == "__main__":
+    main()
+```

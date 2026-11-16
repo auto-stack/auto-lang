@@ -1,0 +1,48 @@
+# Legacy a2p corpus: 12_specs/002_spec_impl
+
+## Case: legacy-a2p-12-specs-002-spec-impl
+id: "legacy.a2p.12_specs.002_spec_impl"
+entry-mode: "program"
+
+### Auto
+path: "spec_impl.at"
+```auto
+spec Flyer {
+    fn fly()
+}
+
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap")
+    }
+}
+
+fn main() {
+    let p = Pigeon()
+    p.fly()
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### spec_impl.expected.py
+```python
+from typing import Protocol
+
+class Flyer(Protocol):
+    def fly(self): ...
+
+@dataclass
+class Pigeon:
+
+    def fly(self):
+        print("Flap")
+
+def main():
+    p = Pigeon()
+    p.fly()
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,31 @@
+# Legacy a2p corpus: 05_expressions/012_closure_var
+
+## Case: legacy-a2p-05-expressions-012-closure-var
+id: "legacy.a2p.05_expressions.012_closure_var"
+entry-mode: "program"
+
+### Auto
+path: "closure_var.at"
+```auto
+fn main() {
+    let factor = 10
+    let scale = (x int) => x * factor
+    let result = scale(5)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### closure_var.expected.py
+```python
+def main():
+    factor = 10
+    scale = lambda x: x * factor
+    result = scale(5)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

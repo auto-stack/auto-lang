@@ -1,0 +1,34 @@
+# Legacy vm corpus: 10_types/011_enum_multi_field
+
+## Case: legacy-10-types-011-enum-multi-field
+id: "legacy.10_types.011_enum_multi_field"
+entry-mode: "program"
+
+### Auto
+path: "enum_multi_field.at"
+```auto
+fn main() {
+    // Multi-field enum variant
+    enum ApiError {
+        Http { status int, message str }
+        Timeout int
+        None
+    }
+
+    // Construct multi-field variant
+    let err = ApiError.Http(status: 429, message: "rate limited")
+
+    // Access fields
+    assert_eq(err.status, 429)
+    assert_eq(err.message, "rate limited")
+
+    print("enum_multi_field: all assertions passed")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+enum_multi_field: all assertions passed
+```

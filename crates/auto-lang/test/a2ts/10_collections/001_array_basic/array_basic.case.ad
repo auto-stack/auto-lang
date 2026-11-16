@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 10_collections/001_array_basic
+
+## Case: legacy-10-collections-001-array-basic
+id: "legacy.10_collections.001_array_basic"
+entry-mode: "program"
+
+### Auto
+path: "array_basic.at"
+final-newline: false
+```auto
+fn main() {
+    let arr = [1, 2, 3, 4, 5]
+    print(arr)
+    print(arr[0])
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### array_basic.expected.ts
+```ts
+function main(): void {
+    const arr: number[] = [1, 2, 3, 4, 5];
+    console.log(arr);
+    console.log(arr[0]);
+}
+
+main();
+```

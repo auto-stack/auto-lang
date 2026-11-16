@@ -1,0 +1,34 @@
+# Legacy a2ts corpus: 04_strings/007_str_case
+
+## Case: legacy-04-strings-007-str-case
+id: "legacy.04_strings.007_str_case"
+entry-mode: "program"
+
+### Auto
+path: "str_case.at"
+final-newline: false
+```auto
+fn main() {
+    let s = "Hello World"
+    let upper = s.to_upper()
+    let lower = s.to_lower()
+    print(upper)
+    print(lower)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### str_case.expected.ts
+```ts
+function main(): void {
+    const s: string = "Hello World";
+    const upper = s.to_upper();
+    const lower = s.to_lower();
+    console.log(upper);
+    console.log(lower);
+}
+
+main();
+```

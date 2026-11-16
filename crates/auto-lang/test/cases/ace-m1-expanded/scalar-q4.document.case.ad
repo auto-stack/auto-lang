@@ -1,0 +1,1962 @@
+## Case: ace-m1-scalarq4-core-c02-paren-newline
+id: "ace.m1.scalarq4.core-c02-paren-newline"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+ return (1 +
+ 2)
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 3
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 3
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-c05-ac-start-name
+id: "ace.m1.scalarq4.core-c05-ac-start-name"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn ac_start() int { return 3 } fn main() int { return ac_start() }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 3
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 3
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-c06-exitprocess-name
+id: "ace.m1.scalarq4.core-c06-exitprocess-name"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn ExitProcess() int { return 4 } fn main() int { return ExitProcess() }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 4
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 4
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-d01-call-multiline
+id: "ace.m1.scalarq4.core-d01-call-multiline"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int) int { return x }
+fn main() int { return f(
+ 2
+) + 3 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 5
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 5
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-d02-paren-multiline
+id: "ace.m1.scalarq4.core-d02-paren-multiline"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return (1 +
+ 2) + 3 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 6
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 6
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-d03-negative-multiline
+id: "ace.m1.scalarq4.core-d03-negative-multiline"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int) int { return x }
+fn main() int { return f(-
+ 2) + 3 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 1
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 1
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-d04-nested-paren
+id: "ace.m1.scalarq4.core-d04-nested-paren"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return ((1 +
+ 2) + 3) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 6
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 6
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-d05-call-no-tail
+id: "ace.m1.scalarq4.core-d05-call-no-tail"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int) int { return x }
+fn main() int { return f(
+ 2
+) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 2
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 2
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-d07-colliding-prefix
+id: "ace.m1.scalarq4.core-d07-colliding-prefix"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn ac_start() int { return 3 } fn sf_ac_start() int { return 4 } fn main() int { return ac_start() + sf_ac_start() }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 7
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 7
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-e01-nesting-16
+id: "ace.m1.scalarq4.core-e01-nesting-16"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return ((((((((((((((((1)))))))))))))))) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 1
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 1
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-f04-parens-99
+id: "ace.m1.scalarq4.core-f04-parens-99"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return (((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 1
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 1
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-f11-add-chain-100
+id: "ace.m1.scalarq4.core-f11-add-chain-100"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 300
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 300
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-g02-parens-200
+id: "ace.m1.scalarq4.core-g02-parens-200"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 1
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 1
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-m01-comma-args
+id: "ace.m1.scalarq4.core-m01-comma-args"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int, y int) int { return x*10+y }
+fn main() int { return f(1+2,3*4) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-m02-named-binop
+id: "ace.m1.scalarq4.core-m02-named-binop"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int, y int) int { return x*10+y }
+fn main() int { return f(y:3*4,x:1+2) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-m06-nested-call
+id: "ace.m1.scalarq4.core-m06-nested-call"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int, y int) int { return x*10+y }
+fn main() int { return f(f(1,2)+3,f(2,1)*2) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 192
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 192
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-m07-bool-arg
+id: "ace.m1.scalarq4.core-m07-bool-arg"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x bool, y int) int { if x { return y }; return 0 }
+fn main() int { return f(1+2<4,5) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 5
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 5
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-m10-paren-args
+id: "ace.m1.scalarq4.core-m10-paren-args"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int, y int) int { return x*10+y }
+fn main() int { return f((1+2),(3*4)) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-m22-named-newline
+id: "ace.m1.scalarq4.core-m22-named-newline"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn f(x int, y int) int { return x*10+y }
+fn main() int { return f(x: 1+2,
+y: 3) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 33
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 33
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p01-precedence
+id: "ace.m1.scalarq4.core-p01-precedence"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 14
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 14
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p02-signed-pos
+id: "ace.m1.scalarq4.core-p02-signed-pos"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn add(a int, b int) int { return a + b }
+fn main() int { return add(-2, 3) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 1
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 1
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p03-bool-param
+id: "ace.m1.scalarq4.core-p03-bool-param"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn choose(c bool) int { if c { return 7 } else { return 9 } }
+fn main() int { return choose(true) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 7
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 7
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p04-while
+id: "ace.m1.scalarq4.core-p04-while"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 3
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 3
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p05-while-zero
+id: "ace.m1.scalarq4.core-p05-while-zero"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { var i = 1; while false { i = i + 1 }; return i }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 1
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 1
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p06-continue
+id: "ace.m1.scalarq4.core-p06-continue"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { var i = 0; while i < 3 { i = i + 1; continue }; return i }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 3
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 3
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p07-break-nearest
+id: "ace.m1.scalarq4.core-p07-break-nearest"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { var n = 0; loop { loop { n = n + 2; break }; n = n + 3; break }; return n }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 5
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 5
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p08-recursion
+id: "ace.m1.scalarq4.core-p08-recursion"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn down(n int) int { if n < 1 { return 0 } else { return down(n + -1) + 1 } }
+fn main() int { return down(3) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 3
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 3
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p09-forward-sig
+id: "ace.m1.scalarq4.core-p09-forward-sig"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return later(4) }
+fn later(x int) int { return x * 2 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 8
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 8
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p10-shadow
+id: "ace.m1.scalarq4.core-p10-shadow"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { let x = 2; if true { let x = x + 3; if x < 6 { return x } else { return 8 } } else { return x } }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 5
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 5
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p11-min-max
+id: "ace.m1.scalarq4.core-p11-min-max"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { let x = -2147483648; let y i32 = 2147483647; if x < y { return 0 } else { return 1 } }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p12-unexecuted
+id: "ace.m1.scalarq4.core-p12-unexecuted"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { if false { return 2147483647 + 1 } else { return 0 } }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p13-add-overflow
+id: "ace.m1.scalarq4.core-p13-add-overflow"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 2147483647 + 1 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.int-overflow"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p14-mul-overflow
+id: "ace.m1.scalarq4.core-p14-mul-overflow"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 2147483647 * 2 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.int-overflow"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p17-hetero-named
+id: "ace.m1.scalarq4.core-p17-hetero-named"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn choose(n int, flag bool) int { if flag { return n } else { return 0 } }
+fn main() int { return choose(flag: true, n: 6) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 6
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 6
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p18-bool-return
+id: "ace.m1.scalarq4.core-p18-bool-return"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn below(x int) bool { return x < 3 }
+fn main() int { let b bool = below(2); if b { return 4 } else { return 0 } }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 4
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 4
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p19-user-mark-a
+id: "ace.m1.scalarq4.core-p19-user-mark-a"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn mark_a() int { return 6 }
+fn main() int { return mark_a() }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 6
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 6
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-core-p20-utf8-crlf-min
+id: "ace.m1.scalarq4.core-p20-utf8-crlf-min"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+eol: "crlf"
+
+~~~~auto
+// 中文注释
+fn main() i32 {
+ let n int = - 2147483648
+ if n < 0 { return 0 } else { return 1 }
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-a-minus-1
+id: "ace.m1.scalarq4.sc-a-minus-1"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-08: `a-1` is binary subtraction on the scalar surface — never a
+// negative-literal adjacency misread; negative literals still fold.
+fn sub1(a int) int {
+    return a - 1
+}
+
+fn main() int {
+    if sub1(5) != 4 { return 1 }
+    if sub1(0) != -1 { return 2 }
+    if sub1(-5) != -6 { return 3 }
+    let a = 10
+    let b = a-1
+    let c = a -1
+    let d = a- 1
+    if b != 9 || c != 9 || d != 9 { return 4 }
+    if 5 -3 != 2 { return 5 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-binop-args
+id: "ace.m1.scalarq4.sc-binop-args"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-08: binary operators inside call arguments — positional, named
+// (reversed order), nested calls, multiline continuation inside brackets.
+fn add(a int, b int) int {
+    return a + b
+}
+
+fn main() int {
+    if add(1 - 2, 3 * 4) != 11 { return 1 }
+    if add(b: 10 / 2, a: 7 % 4) != 8 { return 2 }
+    if add(add(1, 2), add(3 % 2, 4 - 1)) != 7 { return 3 }
+    if add(
+        1 +
+        2,
+        3
+    ) != 6 { return 4 }
+    let x = (1 +
+        2) * (10 -
+        7)
+    if x != 9 { return 5 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-cmp-matrix
+id: "ace.m1.scalarq4.sc-cmp-matrix"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-06/V-02: signed truncation table for / and %, full order comparisons,
+// eq/ne over i32 and bool, unary chains, and precedence mixing. Exit 0
+// only when every oracle row holds.
+fn main() int {
+    let a = 0 - 7
+    if a / 3 != -2 { return 1 }
+    if a % 3 != -1 { return 2 }
+    if 7 / -3 != -2 { return 3 }
+    if 7 % -3 != 1 { return 4 }
+    if -7 / -3 != 2 { return 5 }
+    if -7 % -3 != -1 { return 6 }
+    if !(-2147483648 < 2147483647) { return 7 }
+    if -2147483648 >= 2147483647 { return 8 }
+    if !(-2147483648 <= -2147483648) { return 9 }
+    if !(2147483647 > -2147483648) { return 10 }
+    let t = true
+    let f = false
+    if t == f { return 11 }
+    if !(t != f) { return 12 }
+    if !(t == true && f == false) { return 13 }
+    if 1 == 2 || 2 != 2 { return 14 }
+    if !(1 + 2 * 3 == 7) { return 15 }
+    if !(2 + 3 < 6 && 4 > 2) { return 16 }
+    if false || true && false { return 17 }
+    if !(1 < 2 == true) { return 18 }
+    let neg = -(a + 3)
+    if neg != 4 { return 19 }
+    let nn = - -5
+    if nn != 5 { return 20 }
+    if !(!t) != t { return 21 }
+    if !(10 % 4 == 2 && 9 / 2 == 4) { return 22 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-count-digits
+id: "ace.m1.scalarq4.sc-count-digits"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-11: decimal digit count of 12345 by repeated division — 5 digits,
+// asserted from the independent literal 5.
+fn main() int {
+    var n = 12345
+    var count = 0
+    for n > 0 {
+        n = n / 10
+        count = count + 1
+    }
+    if count != 5 { return 1 }
+    if n != 0 { return 2 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-crlf
+id: "ace.m1.scalarq4.sc-crlf"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+eol: "crlf"
+
+~~~~auto
+fn main() int {
+    let a = 1
+    let b = a - 2
+    var c = (b +
+        4) * 3
+    if c != 9 { return 1 }
+    for c > 0 {
+        c = c - 3
+    }
+    if c != 0 { return 2 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-for-loops
+id: "ace.m1.scalarq4.sc-for-loops"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-12: conditional for — zero-iteration body, per-round condition
+// re-evaluation, nested break/continue on the nearest loop.
+fn main() int {
+    var zero = 0
+    for 1 > 2 {
+        zero = zero + 1
+    }
+    if zero != 0 { return 1 }
+
+    var total = 0
+    var i = 0
+    for i < 3 {
+        var j = 0
+        for j < 3 {
+            j = j + 1
+            if j == 2 { continue }
+            if j == 3 { break }
+            total = total + 10
+        }
+        i = i + 1
+    }
+    if total != 30 { return 2 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-gcd-euclid
+id: "ace.m1.scalarq4.sc-gcd-euclid"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-11/V-12: Euclid gcd via the conditional for loop (r2 §5.2.1).
+// gcd(48, 18) must be 6; the loop re-tests `y != 0` every round and after
+// every continue-equivalent fall-through.
+fn gcd(a int, b int) int {
+    var x = a
+    var y = b
+    for y != 0 {
+        let t = y
+        y = x % y
+        x = t
+    }
+    return x
+}
+
+fn main() int {
+    if gcd(48, 18) != 6 { return 1 }
+    if gcd(18, 48) != 6 { return 2 }
+    if gcd(7, 5) != 1 { return 3 }
+    if gcd(0, 9) != 9 { return 4 }
+    if gcd(9, 0) != 9 { return 5 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-is-digit
+id: "ace.m1.scalarq4.sc-is-digit"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-11: lexer is_digit rewritten as i32 code-point range checks — NOT the
+// original lexer compiled (char/str are still open work packages). Both
+// interval boundaries and both sides are asserted.
+fn is_digit(c int) bool {
+    return c >= 48 && c <= 57
+}
+
+fn main() int {
+    let ok = is_digit(48) && is_digit(57) && !is_digit(47) && !is_digit(58)
+    if ok { return 0 }
+    return 1
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 0
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-sc-short-circuit-contexts
+id: "ace.m1.scalarq4.sc-short-circuit-contexts"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-05: short-circuit expressions in every declaration context — let,
+// assign, if condition, conditional-for condition (>= 2 rounds, condition
+// re-tested per round), positional call argument and named argument
+// (source evaluation order preserved through the named binding map).
+fn lhs_a() bool {
+    let x = mark_a()
+    return true
+}
+
+fn rhs_b() bool {
+    let x = mark_b()
+    return true
+}
+
+fn of_bool(x bool) int {
+    if x { return 1 }
+    return 0
+}
+
+fn named2(a int, b bool) int {
+    if b { return a }
+    return 0
+}
+
+fn main() int {
+    let l = lhs_a() && rhs_b()
+    var v = false
+    v = lhs_a() && rhs_b()
+    if lhs_a() && rhs_b() { v = true } else { v = false }
+    var n = 0
+    for lhs_a() && n < 2 {
+        n = n + 1
+    }
+    let p = of_bool(lhs_a() && rhs_b())
+    let q = named2(b: lhs_a() && rhs_b(), a: 1)
+    if !l { return 1 }
+    if !v { return 2 }
+    if n != 2 { return 3 }
+    if p != 1 { return 4 }
+    if q != 1 { return 5 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 0
+
+#### stderr
+final-newline: false
+
+~~~~text
+abababaaaabab
+~~~~
+
+## Case: ace-m1-scalarq4-sc-short-circuit-trace
+id: "ace.m1.scalarq4.sc-short-circuit-trace"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-04: the four short-circuit polarity rows. Trace wrappers mark exactly
+// one letter per evaluation; skipped RHS emits nothing and never traps.
+fn f_false() bool {
+    let x = mark_a()
+    return 2 < 1
+}
+
+fn t_true() bool {
+    let x = mark_a()
+    return 1 < 2
+}
+
+fn rhs_b(x bool) bool {
+    if x {
+        let y = mark_b()
+        return true
+    }
+    return false
+}
+
+fn main() int {
+    // false && rhs — rhs skipped (no b)
+    let r1 = f_false() && rhs_b(true)
+    if r1 { return 1 }
+    // true || rhs — rhs skipped (no b)
+    let r2 = t_true() || rhs_b(false)
+    if !r2 { return 2 }
+    // true && rhs — both run
+    let r3 = t_true() && rhs_b(true)
+    if !r3 { return 3 }
+    // false || rhs — both run
+    let r4 = f_false() || rhs_b(false)
+    if r4 { return 4 }
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 0
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 0
+
+#### stderr
+final-newline: false
+
+~~~~text
+aaaba
+~~~~
+
+## Case: ace-m1-scalarq4-sc-short-circuit-trap
+id: "ace.m1.scalarq4.sc-short-circuit-trap"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// V-04 (trap polarity): the skipped RHS never executes its division by
+// zero; the executed one traps (exit 70) before the final return.
+fn main() int {
+    let safe = false && 1 / 0 > 0
+    if safe { return 1 }
+    let boom = true && 1 / 0 > 0
+    return 0
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.div-by-zero"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-ace-b01
+id: "ace.m1.scalarq4.ace-b01"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 14
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 14
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-ace-b02-signed-div-rem
+id: "ace.m1.scalarq4.ace-b02-signed-div-rem"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return (-7 / 3) * 10 + (-7 % 3) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: -21
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: -21
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-ace-b04-shortcircuit
+id: "ace.m1.scalarq4.ace-b04-shortcircuit"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    if false && 1 / 0 > 0 { return 1 }
+    return 42
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 42
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-ace-b09-recursion
+id: "ace.m1.scalarq4.ace-b09-recursion"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn fact(n int) int {
+    if n <= 1 { return 1 }
+    return n * fact(n - 1)
+}
+fn main() int { return fact(5) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 120
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 120
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-ace-b13-overflow
+id: "ace.m1.scalarq4.ace-b13-overflow"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2147483647 + 1 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.int-overflow"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-ace-b14-div-zero
+id: "ace.m1.scalarq4.ace-b14-div-zero"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 10 / 0 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.div-by-zero"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-bd-min-literal
+id: "ace.m1.scalarq4.bd-min-literal"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return -2147483648 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: -2147483648
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: -2147483648
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-bd-min-div-minus-1
+id: "ace.m1.scalarq4.bd-min-div-minus-1"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return -2147483648 / -1 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.div-overflow"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-bd-min-rem-minus-1
+id: "ace.m1.scalarq4.bd-min-rem-minus-1"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return -2147483648 % -1 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.rem-overflow"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-bd-rem-by-zero
+id: "ace.m1.scalarq4.bd-rem-by-zero"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 10 % 0 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.div-by-zero"
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-bd-value70
+id: "ace.m1.scalarq4.bd-value70"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { return 70 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+exit: 70
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70
+
+#### stderr
+
+~~~~text
+~~~~
+
+## Case: ace-m1-scalarq4-bd-named-source-order
+id: "ace.m1.scalarq4.bd-named-source-order"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn pair(a int, b int) int { return a * 10 + b }
+fn main() int { return pair(b: mark_b(), a: mark_a()) }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 12
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 12
+
+#### stderr
+final-newline: false
+
+~~~~text
+ba
+~~~~
+
+## Case: ace-m1-scalarq4-bd-or-skips-rhs
+id: "ace.m1.scalarq4.bd-or-skips-rhs"
+tags: ["ace-m1", "q4", "scalar", "plan-941"]
+links: ["PLAN-941", "PLAN-892", "PLAN-921"]
+
+### Auto
+path: "main.at"
+final-newline: false
+
+~~~~auto
+fn main() int { if true || mark_b() > 99 { return 8 }; return 9 }
+~~~~
+
+### Probe av
+recipe: "ac-av/core-run-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 8
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+caps: ["hir.test.trace.v1"]
+exit: 8
+
+#### stderr
+
+~~~~text
+~~~~

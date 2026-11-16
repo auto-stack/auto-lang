@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/076_list_str_set
+
+## Case: legacy-99-bootstrap-076-list-str-set
+id: "legacy.99_bootstrap.076_list_str_set"
+entry-mode: "program"
+
+### Auto
+path: "list_str_set.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(\"aaa\")\nlist.push(\"bbb\")\nlist.set(0, \"xxx\")\nprint(list.get(0))\nprint(list.get(1))\n}")
+    if result == "xxx\nbbb\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

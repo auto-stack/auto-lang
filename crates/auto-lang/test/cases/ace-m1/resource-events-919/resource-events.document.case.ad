@@ -1,0 +1,453 @@
+## Case: ace-m1-r01-av
+id: "ace.m1.r01.av"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R01 (av cell, owned profile): the T03/R04/R05 resource
+// shapes in one program — clone/move/concat (T03), record construction with
+// owned fields (R04), a `move` parameter relay across frames (R05) — plus
+// an early-return branch whose temporary dies with the callee frame.
+// Frozen oracle: value 732; 4 frames; per-owner LIFO releases.
+type Item { name Str; code int }
+fn relay(move x Item) Item { return x.move }
+fn pick(move s Str) int {
+    let t Str = "tail"
+    if s.len() > 2 {
+        return s.len() + t.len()
+    }
+    let u Str = "u"
+    return s.len() + u.len()
+}
+fn main() int {
+    let a Str = "ab"
+    let b Str = a.clone()
+    var c Str = b.move
+    c = c + "中"
+    var it Item = Item("hello", 1)
+    let keep Item = it.clone()
+    it.name = "x"
+    let got Item = relay(keep.move)
+    let early = pick(c.move)
+    let d Str = a.clone()
+    let late = pick(d.move)
+    return early * 100 + late * 10 + got.code + it.name.len()
+}
+~~~~
+
+### Probe av-owned
+recipe: "ac-av/resource-events-v1"
+entry: "d_main"
+exit: 732
+av-resource: {profile: "owned"}
+
+## Case: ace-m1-r01-mn
+id: "ace.m1.r01.mn"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R01 (ac cell, collections profile): nested scopes,
+// early return, temporaries, an owned record construction, and the
+// list-transfer of an owned payload — per-owner LIFO on both engines.
+// Frozen oracle: value 969; 3 frames; slot own/disown alternation.
+type Item { name Str; code int }
+fn pick(s Str, flag int) int {
+    let t Str = "tail"
+    if flag > 0 {
+        return s.len() + t.len()
+    }
+    let u Str = "u"
+    return s.len() + u.len()
+}
+fn main() int {
+    let a Str = "alpha"
+    var xs = List<Str>.new()
+    xs.push("one")
+    xs.push("two")
+    var it Item = Item("hello", 1)
+    let code = it.code
+    let got Str = xs.remove(1)
+    let early = pick(a.clone(), 1)
+    let late = pick(a.move, 0)
+    return early * 100 + late * 10 + got.len() + code + it.name.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-resource-events-v1"
+entry: "d_main"
+exit: 969
+mn-resource: {}
+
+## Case: ace-m1-r04-av
+id: "ace.m1.r04.av"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R04 (both cells): variant switch V06 — Err("old") is
+// replaced by Ok(42); the old payload releases EXACTLY once at the switch,
+// the inactive payload is never read, the result is 42.
+fn main() int {
+    var r Result<int, Str> = Err("old")
+    r = Ok(42)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/resource-events-v1"
+entry: "d_main"
+exit: 42
+av-resource: {profile: "collections"}
+
+## Case: ace-m1-r04-mn
+id: "ace.m1.r04.mn"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R04 (both cells): variant switch V06 — Err("old") is
+// replaced by Ok(42); the old payload releases EXACTLY once at the switch,
+// the inactive payload is never read, the result is 42.
+fn main() int {
+    var r Result<int, Str> = Err("old")
+    r = Ok(42)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-resource-events-v1"
+entry: "d_main"
+exit: 42
+mn-resource: {}
+
+## Case: ace-m1-r06-budget-av
+id: "ace.m1.r06-budget.av"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 (both cells): a deep owned structure alive across
+// the exit — 64 payload strings in a list, then a long scalar spin. The
+// budget/cancel knobs bite in the spin (after the build), so the sweep
+// releases every owner deterministically.
+fn main() int {
+    var seed = List<int>.new()
+    seed.push(1)
+    seed.push(2)
+    seed.push(3)
+    seed.push(4)
+    seed.push(5)
+    seed.push(6)
+    seed.push(7)
+    seed.push(8)
+    var xs = List<Str>.new()
+    for a in seed {
+        for b in seed {
+            xs.push("payload")
+        }
+    }
+    var n = 0
+    for a in seed {
+        for b in seed {
+            for c in seed {
+                for d in seed {
+                    for e in seed {
+                        for f in seed {
+                            n = n + a + f
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return n + xs.len()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/resource-events-v1"
+entry: "d_main"
+stage: "run"
+code: "av.resource.instr-steps"
+av-resource: {profile: "collections", max_steps: 5000}
+
+## Case: ace-m1-r06-budget-mn
+id: "ace.m1.r06-budget.mn"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 (both cells): a deep owned structure alive across
+// the exit — 64 payload strings in a list, then a long scalar spin. The
+// budget/cancel knobs bite in the spin (after the build), so the sweep
+// releases every owner deterministically.
+fn main() int {
+    var seed = List<int>.new()
+    seed.push(1)
+    seed.push(2)
+    seed.push(3)
+    seed.push(4)
+    seed.push(5)
+    seed.push(6)
+    seed.push(7)
+    seed.push(8)
+    var xs = List<Str>.new()
+    for a in seed {
+        for b in seed {
+            xs.push("payload")
+        }
+    }
+    var n = 0
+    for a in seed {
+        for b in seed {
+            for c in seed {
+                for d in seed {
+                    for e in seed {
+                        for f in seed {
+                            n = n + a + f
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return n + xs.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-resource-events-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.execution-budget"
+mn-resource: {budget_bytes: 128}
+
+## Case: ace-m1-r06-cancel-av
+id: "ace.m1.r06-cancel.av"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 (both cells): a deep owned structure alive across
+// the exit — 64 payload strings in a list, then a long scalar spin. The
+// budget/cancel knobs bite in the spin (after the build), so the sweep
+// releases every owner deterministically.
+fn main() int {
+    var seed = List<int>.new()
+    seed.push(1)
+    seed.push(2)
+    seed.push(3)
+    seed.push(4)
+    seed.push(5)
+    seed.push(6)
+    seed.push(7)
+    seed.push(8)
+    var xs = List<Str>.new()
+    for a in seed {
+        for b in seed {
+            xs.push("payload")
+        }
+    }
+    var n = 0
+    for a in seed {
+        for b in seed {
+            for c in seed {
+                for d in seed {
+                    for e in seed {
+                        for f in seed {
+                            n = n + a + f
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return n + xs.len()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/resource-events-v1"
+entry: "d_main"
+stage: "run"
+code: "av.cancelled"
+av-resource: {profile: "collections", cancel_after_ms: 20}
+
+## Case: ace-m1-r06-cancel-mn
+id: "ace.m1.r06-cancel.mn"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 (both cells): a deep owned structure alive across
+// the exit — 64 payload strings in a list, then a long scalar spin. The
+// budget/cancel knobs bite in the spin (after the build), so the sweep
+// releases every owner deterministically.
+fn main() int {
+    var seed = List<int>.new()
+    seed.push(1)
+    seed.push(2)
+    seed.push(3)
+    seed.push(4)
+    seed.push(5)
+    seed.push(6)
+    seed.push(7)
+    seed.push(8)
+    var xs = List<Str>.new()
+    for a in seed {
+        for b in seed {
+            xs.push("payload")
+        }
+    }
+    var n = 0
+    for a in seed {
+        for b in seed {
+            for c in seed {
+                for d in seed {
+                    for e in seed {
+                        for f in seed {
+                            n = n + a + f
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return n + xs.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-resource-events-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.resource.cancelled"
+mn-resource: {cancel_after_work: 3}
+
+## Case: ace-m1-r06-avm
+id: "ace.m1.r06.avm"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 trap face (both cells): a language trap inside a
+// callee while both frames own live values — the fatal sweep releases the
+// callee first, then the caller.
+fn boom(s Str, d int) int {
+    let t Str = "inner"
+    return (s.len() + t.len()) / d
+}
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("a")
+    xs.push("bb")
+    let keep Str = "kept"
+    return boom(keep, 0) + xs.len()
+}
+~~~~
+
+### VM diagnostic
+check-id: "autovm"
+stage: "run"
+code: "DivisionByZero"
+
+## Case: ace-m1-r06-trap-av
+id: "ace.m1.r06-trap.av"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 trap face (both cells): a language trap inside a
+// callee while both frames own live values — the fatal sweep releases the
+// callee first, then the caller.
+fn boom(s Str, d int) int {
+    let t Str = "inner"
+    return (s.len() + t.len()) / d
+}
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("a")
+    xs.push("bb")
+    let keep Str = "kept"
+    return boom(keep, 0) + xs.len()
+}
+~~~~
+
+### Probe av
+recipe: "ac-av/resource-events-v1"
+entry: "d_main"
+stage: "run"
+code: "av.trap.div-by-zero"
+av-resource: {profile: "collections"}
+
+## Case: ace-m1-r06-trap-mn
+id: "ace.m1.r06-trap.mn"
+tags: ["ace-m1", "scenario", "resource-events-919"]
+links: ["PLAN-919"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+// PLAN-919 scenario R06 trap face (both cells): a language trap inside a
+// callee while both frames own live values — the fatal sweep releases the
+// callee first, then the caller.
+fn boom(s Str, d int) int {
+    let t Str = "inner"
+    return (s.len() + t.len()) / d
+}
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("a")
+    xs.push("bb")
+    let keep Str = "kept"
+    return boom(keep, 0) + xs.len()
+}
+~~~~
+
+### Probe ac-native
+recipe: "ac/mir-native-resource-events-v1"
+entry: "d_main"
+stage: "run"
+code: "mn.trap.overflow"
+mn-resource: {}

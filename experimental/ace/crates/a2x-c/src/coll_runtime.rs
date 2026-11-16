@@ -48,6 +48,31 @@ pub fn collections_runtime_source(marks: &[&'static str]) -> String {
     s.push_str("#ifndef A2X_C_COLL_RUNTIME_H\n#define A2X_C_COLL_RUNTIME_H\n\n");
     s.push_str("#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n");
     s.push_str(COLL_CORE);
+    // PLAN-972 (T-03): the 961 numeric runtime joins the collections
+    // header (typed literals/arith/conversions — the assembled stdlib's
+    // numeric surface rides the C collections family). The scalar core's
+    // INVALID code aliases the coll enum's INVALID_SCALAR (the transport
+    // layer keeps distinct text codes via the provider's trap table).
+    s.push_str(
+        "#ifndef A2X_TRAP_INVALID
+#define A2X_TRAP_INVALID A2X_TRAP_INVALID_SCALAR
+#endif
+",
+    );
+    crate::runtime::write_numeric_runtime(&mut s).expect("formatting into a String cannot fail");
+    s.push_str(
+        "
+/* PLAN-972 (T-03): typed numeric result constructors for the fn channels. */
+static inline a2x_result_i64 a2x_i64_value(int64_t v) { return (a2x_result_i64){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_i64 a2x_fwd_i64(a2x_trap_code t) { return (a2x_result_i64){ 0, t }; }
+static inline a2x_result_u64 a2x_u64_value(uint64_t v) { return (a2x_result_u64){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_u64 a2x_fwd_u64(a2x_trap_code t) { return (a2x_result_u64){ 0, t }; }
+static inline a2x_result_f64 a2x_f64_value(double v) { return (a2x_result_f64){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_f64 a2x_fwd_f64(a2x_trap_code t) { return (a2x_result_f64){ 0, t }; }
+static inline a2x_result_f32 a2x_f32_value(float v) { return (a2x_result_f32){ v, A2X_TRAP_NONE }; }
+static inline a2x_result_f32 a2x_fwd_f32(a2x_trap_code t) { return (a2x_result_f32){ 0, t }; }
+",
+    );
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
@@ -372,6 +397,70 @@ static a2x_result a2x_str_len_bytes(const a2x_str* s) {
     int64_t n = (int64_t)s->len;
     if (n > INT32_MAX) { a2x_result r; r.value = 0; r.trap = A2X_TRAP_RESOURCE; return r; }
     return a2x_value((int32_t)n);
+}
+
+/* PLAN-972 (T-03): the scalar-indexed text/char expression surface.
+ * A char is its Unicode codepoint (uint32); char access is scalar-
+ * indexed; a slice is a BORROWED view (data points into the source —
+ * no allocation, freed never). */
+typedef struct { uint32_t value; a2x_trap_code trap; } a2x_char_result;
+
+static a2x_char_result a2x_str_char_at(const a2x_str* s, int32_t idx) {
+    size_t scalars = 0, i = 0;
+    a2x_char_result r;
+    if (idx < 0) { r.value = 0; r.trap = A2X_TRAP_TEXT_INDEX; return r; }
+    while (i < s->len) {
+        size_t step = a2x_utf8_step(s->data[i]);
+        if (step == 0 || i + step > s->len) { r.value = 0; r.trap = A2X_TRAP_TEXT_INDEX; return r; }
+        if (scalars == (size_t)idx) {
+            /* decode the scalar at i */
+            uint32_t cp;
+            if (step == 1) { cp = s->data[i]; }
+            else if (step == 2) { cp = ((uint32_t)(s->data[i] & 0x1F) << 6) | (uint32_t)(s->data[i+1] & 0x3F); }
+            else if (step == 3) { cp = ((uint32_t)(s->data[i] & 0x0F) << 12) | ((uint32_t)(s->data[i+1] & 0x3F) << 6) | (uint32_t)(s->data[i+2] & 0x3F); }
+            else { cp = ((uint32_t)(s->data[i] & 0x07) << 18) | ((uint32_t)(s->data[i+1] & 0x3F) << 12) | ((uint32_t)(s->data[i+2] & 0x3F) << 6) | (uint32_t)(s->data[i+3] & 0x3F); }
+            r.value = cp; r.trap = A2X_TRAP_NONE; return r;
+        }
+        i += step; scalars++;
+    }
+    r.value = 0; r.trap = A2X_TRAP_TEXT_INDEX; return r;
+}
+
+typedef struct { a2x_str value; a2x_trap_code trap; } a2x_strv_result;
+
+static a2x_strv_result a2x_str_slice(const a2x_str* s, int32_t start, int32_t end) {
+    size_t scalars = 0, i = 0, byte_start = 0, byte_end = 0;
+    int32_t seen_start = 0, seen_end = 0;
+    a2x_strv_result r;
+    if (start < 0 || end < start) { r.trap = A2X_TRAP_TEXT_INDEX; r.value.data = NULL; r.value.len = 0; return r; }
+    if (start == 0) { byte_start = 0; seen_start = 1; }
+    while (i < s->len) {
+        size_t step = a2x_utf8_step(s->data[i]);
+        if (step == 0 || i + step > s->len) { r.trap = A2X_TRAP_TEXT_INDEX; r.value.data = NULL; r.value.len = 0; return r; }
+        if (!seen_start && (int32_t)scalars == start) { byte_start = i; seen_start = 1; }
+        if (!seen_end && (int32_t)scalars == end) { byte_end = i; seen_end = 1; }
+        i += step; scalars++;
+    }
+    if ((int32_t)scalars == start && !seen_start) { byte_start = s->len; seen_start = 1; }
+    if ((int32_t)scalars == end && !seen_end) { byte_end = s->len; seen_end = 1; }
+    if (!seen_start || !seen_end || (int32_t)scalars < end) { r.trap = A2X_TRAP_TEXT_INDEX; r.value.data = NULL; r.value.len = 0; return r; }
+    r.value.data = s->data + byte_start;
+    r.value.len = byte_end - byte_start;
+    r.trap = A2X_TRAP_NONE;
+    return r;
+}
+
+static a2x_stro_result a2x_str_to_owned(const a2x_str* s) {
+    a2x_stro_result r;
+    r.trap = a2x_str_alloc(s->len, s->data, &r.value);
+    if (r.trap != A2X_TRAP_NONE) { r.value.data = NULL; r.value.len = 0; }
+    return r;
+}
+
+static a2x_char_result a2x_char_from_codepoint(int32_t n) {
+    a2x_char_result r;
+    if (n < 0 || n > 0x10FFFF || (n >= 0xD800 && n <= 0xDFFF)) { r.value = 0; r.trap = A2X_TRAP_INVALID_SCALAR; return r; }
+    r.value = (uint32_t)n; r.trap = A2X_TRAP_NONE; return r;
 }
 
 /* Full-byte equality (no normalization; NUL included). */

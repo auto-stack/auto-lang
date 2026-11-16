@@ -1,0 +1,31 @@
+# Legacy conformance corpus: 009_comparison
+
+## Case: legacy-conf-009-comparison
+id: "legacy.conf.009_comparison"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 009: comparison operators
+fn main() {
+    print(3 == 3)
+    print(3 != 4)
+    print(3 < 4)
+    print(4 > 3)
+    print(3 <= 3)
+    print(4 >= 4)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+true
+true
+true
+true
+true
+true
+```

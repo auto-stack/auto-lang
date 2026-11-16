@@ -1,0 +1,43 @@
+# Legacy a2ts corpus: 03_control_flow/004_nested_if
+
+## Case: legacy-03-control-flow-004-nested-if
+id: "legacy.03_control_flow.004_nested_if"
+entry-mode: "program"
+
+### Auto
+path: "nested_if.at"
+```auto
+fn main() {
+    let x = 10
+    if x > 5 {
+        if x > 8 {
+            print("large")
+        } else {
+            print("medium")
+        }
+    } else {
+        print("small")
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### nested_if.expected.ts
+```ts
+function main(): void {
+    const x: number = 10;
+    if (x > 5) {
+        if (x > 8) {
+            console.log("large");
+        } else {
+            console.log("medium");
+        }
+    } else {
+        console.log("small");
+    }
+}
+
+main();
+```

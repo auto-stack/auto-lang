@@ -5,6 +5,6 @@ suite {
   schema: "autolang.suite/2"
   id: "case-ace-m1-a2r-semantics-916"
   fixture_root: ".."
-  include: ["a2r-semantics-916.case.ad"]
+  include: ["a2r-semantics-916.document.case.ad"]
 }
 ```

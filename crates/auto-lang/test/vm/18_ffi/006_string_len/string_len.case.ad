@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/006_string_len
+
+## Case: legacy-18-ffi-006-string-len
+id: "legacy.18_ffi.006_string_len"
+entry-mode: "program"
+
+### Auto
+path: "string_len.at"
+```auto
+Str.len("hello")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+5
+```

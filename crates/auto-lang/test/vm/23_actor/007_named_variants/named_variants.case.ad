@@ -1,0 +1,42 @@
+# Legacy vm corpus: 23_actor/007_named_variants
+
+## Case: legacy-23-actor-007-named-variants
+id: "legacy.23_actor.007_named_variants"
+entry-mode: "program"
+
+### Auto
+path: "named_variants.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        Add(val) -> {
+            count = count + val
+            if count == 8 {
+                print("reached eight")
+            }
+        }
+        Reset -> {
+            count = 0
+            print("reset")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(Add(3))
+    h.send(Add(5))
+    h.send(Reset)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+reached eight
+reset
+```

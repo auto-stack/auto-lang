@@ -1,0 +1,302 @@
+// ACE assembled stdlib text module (PLAN-972 T-02): pure Auto single-source
+// text algorithms over the lane's admitted surface (Str owned values,
+// len/len_bytes/char_at/slice + concat + codepoints; loops via recursion —
+// while/range-for stay outside the packages-aggregates-ct face; owned
+// arguments move at calls — mid-body reuses pass clones).
+// Unicode unit discipline: scalar_len counts scalars, byte_len counts UTF-8
+// bytes; the A中😀 (8 bytes / 3 scalars) and e+U+0301 (3 bytes) oracles are
+// asserted by the 972 conformance (V-02). NUL never truncates (explicit
+// lengths; no C-string semantics). str `==` is not bound on this lane —
+// equality is the scalar-by-scalar `equal` below. ASCII upper/lower are
+// table-mapped below; full-Unicode case tables and trim remain a later
+// batch (named boundary).
+pub fn byte_len(s Str) int {
+    return s.len_bytes()
+}
+
+pub fn scalar_len(s Str) int {
+    return s.len()
+}
+
+pub fn char_code_at(s Str, i int) int {
+    let c = s.char_at(i)
+    return c.to_codepoint()
+}
+
+pub fn equal(s Str, t Str) bool {
+    if (s.len() != t.len()) {
+        return false
+    }
+    return eq_at(s, t, 0)
+}
+
+fn eq_at(s Str, t Str, i int) bool {
+    if (i == s.len()) {
+        return true
+    }
+    let a = s.char_at(i)
+    let b = t.char_at(i)
+    if (a.to_codepoint() != b.to_codepoint()) {
+        return false
+    }
+    return eq_at(s, t, i + 1)
+}
+
+pub fn starts_with(s Str, prefix Str) bool {
+    if (prefix.len() > s.len()) {
+        return false
+    }
+    let n = prefix.len()
+    return eq_at(s.slice(0, n).clone(), prefix, 0)
+}
+
+pub fn ends_with(s Str, suffix Str) bool {
+    if (suffix.len() > s.len()) {
+        return false
+    }
+    let n = suffix.len()
+    return eq_at(s.slice(s.len() - n, s.len()).clone(), suffix, 0)
+}
+
+pub fn contains(s Str, needle Str) bool {
+    if (needle.len() > s.len()) {
+        return false
+    }
+    return contains_at(s, needle, 0)
+}
+
+fn contains_at(s Str, needle Str, i int) bool {
+    if (i + needle.len() > s.len()) {
+        return false
+    }
+    let end = i + needle.len()
+    if (eq_at(s.slice(i, end).clone(), needle.clone(), 0)) {
+        return true
+    }
+    return contains_at(s, needle, i + 1)
+}
+
+pub fn repeat(s Str, n int) Str {
+    return repeat_into(s, n, "")
+}
+
+fn repeat_into(s Str, n int, acc Str) Str {
+    if (n <= 0) {
+        // explicit owned copy: returning a borrowed param as the owned
+        // result is outside the coll family's param rendering (named
+        // boundary, PLAN-972) — clone is semantically transparent.
+        return acc.clone()
+    }
+    let next Str = acc + s
+    return repeat_into(s, n - 1, next)
+}
+
+// ASCII case mapping (T-02 named boundary closed): each scalar is located
+// in the 26-letter table and re-taken from the counterpart table via the
+// slice construction (no char→Str builtin on this surface); non-ASCII
+// scalars pass through unchanged. Full-Unicode case tables remain a later
+// batch (named boundary).
+pub fn upper_ascii(s Str) Str {
+    return case_at(s, 0, "", true)
+}
+
+pub fn lower_ascii(s Str) Str {
+    return case_at(s, 0, "", false)
+}
+
+// Branch-exclusive table moves; every path tail-moves `s` exactly once
+// after all its reads (the contains_at ownership discipline — no Str var
+// reassignment, no helper taking `s`).
+fn case_at(s Str, i int, acc Str, up bool) Str {
+    if (i == s.len()) {
+        return acc.clone()
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    let lower Str = "abcdefghijklmnopqrstuvwxyz"
+    let upper Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if (up) {
+        let j = table_index(lower, p, 0)
+        if (j >= 0) {
+            let piece Str = upper.slice(j, j + 1).clone()
+            let next Str = acc + piece
+            return case_at(s, i + 1, next, up)
+        }
+    } else {
+        let j = table_index(upper, p, 0)
+        if (j >= 0) {
+            let piece Str = lower.slice(j, j + 1).clone()
+            let next Str = acc + piece
+            return case_at(s, i + 1, next, up)
+        }
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    let next Str = acc + piece
+    return case_at(s, i + 1, next, up)
+}
+
+fn table_index(t Str, p int, i int) int {
+    if (i == t.len()) {
+        return -1
+    }
+    let c = t.char_at(i)
+    if (c.to_codepoint() == p) {
+        return i
+    }
+    return table_index(t, p, i + 1)
+}
+
+// The remaining legacy str-surface operations (T-08 (b) batch close):
+// scalar-index find, reverse, ASCII trim, replace, split and lines —
+// pure Auto over the established primitives (find walk, slice+clone
+// materialization, concat). split/lines return List<Str> (the lane's
+// instantiated container discipline).
+pub fn find(s Str, sub Str) ?int {
+    if (sub.len() > s.len()) {
+        return None
+    }
+    return find_at(s, sub, 0)
+}
+
+fn find_at(s Str, sub Str, i int) ?int {
+    if (i + sub.len() > s.len()) {
+        return None
+    }
+    let end = i + sub.len()
+    if (eq_at(s.slice(i, end).clone(), sub.clone(), 0)) {
+        return Some(i)
+    }
+    return find_at(s, sub, i + 1)
+}
+
+pub fn reverse(s Str) Str {
+    return rev_at(s, 0, "")
+}
+
+fn rev_at(s Str, i int, acc Str) Str {
+    if (i == s.len()) {
+        return acc.clone()
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    let next Str = piece + acc
+    return rev_at(s, i + 1, next)
+}
+
+pub fn trim(s Str) Str {
+    return trim_start_at(s, 0)
+}
+
+fn trim_start_at(s Str, i int) Str {
+    if (i == s.len()) {
+        return s.slice(i, i).clone()
+    }
+    let c = s.char_at(i)
+    if (is_ws_cp(c.to_codepoint())) {
+        return trim_start_at(s, i + 1)
+    }
+    let n = s.len()
+    return trim_end_at(s, n, i)
+}
+
+fn trim_end_at(s Str, i int, lo int) Str {
+    if (i == lo) {
+        return s.slice(lo, lo).clone()
+    }
+    let c = s.char_at(i - 1)
+    if (is_ws_cp(c.to_codepoint())) {
+        return trim_end_at(s, i - 1, lo)
+    }
+    return s.slice(lo, i).clone()
+}
+
+fn is_ws_cp(p int) bool {
+    if (p == 32) {
+        return true
+    }
+    if (p == 9) {
+        return true
+    }
+    if (p == 10) {
+        return true
+    }
+    if (p == 13) {
+        return true
+    }
+    return false
+}
+
+pub fn replace(s Str, from Str, into Str) Str {
+    if (from.len() == 0) {
+        return s.clone()
+    }
+    return rep_at(s, from, into, 0, "")
+}
+
+fn rep_at(s Str, from Str, into Str, i int, acc Str) Str {
+    let hit = find_at(s.clone(), from.clone(), i)
+    is hit {
+        Some(at) -> {
+            let end = at + from.len()
+            let head Str = s.slice(i, at).clone()
+            let with_head Str = acc + head
+            let with_to Str = with_head + into.clone()
+            return rep_at(s, from, into, end, with_to)
+        }
+        None -> {
+            let tail Str = s.slice(i, s.len()).clone()
+            let out Str = acc + tail
+            return out
+        }
+    }
+}
+
+pub fn split(s Str, sep Str) List<Str> {
+    var out = List<Str>.new()
+    split_into(s, sep, 0, out)
+    return out
+}
+
+// Same tail-return-own-local discipline as list.sort's drain (the C
+// epilogue double-frees a mut-ptr local aliased into a returned result).
+fn split_into(s Str, sep Str, i int, out List<Str>) int {
+    if (sep.len() == 0) {
+        let whole Str = s.clone()
+        out.push(whole.move)
+        return 0
+    }
+    // an exhaustive `is` inside a list-returning fn needs a fabricable
+    // result filler this surface refuses — the match lives in the int
+    // helper below (named boundary, same discipline as conv's pick);
+    // s/sep ride CLONES into find_at (the owned-Str pass moves — the
+    // contains_at discipline) so the walk can continue.
+    let at = hit_or(find_at(s.clone(), sep.clone(), i), -1)
+    if (at >= 0) {
+        let piece Str = s.slice(i, at).clone()
+        out.push(piece.move)
+        let nxt = at + sep.len()
+        return split_into(s, sep, nxt, out)
+    }
+    let tail Str = s.slice(i, s.len()).clone()
+    out.push(tail.move)
+    return 0
+}
+
+pub fn lines(s Str) List<Str> {
+    var out = List<Str>.new()
+    lines_into(s, 0, out)
+    return out
+}
+
+fn lines_into(s Str, i int, out List<Str>) int {
+    if (i == s.len()) {
+        return 0
+    }
+    return split_into(s, "\n", i, out)
+}
+
+fn hit_or(r ?int, d int) int {
+    is r {
+        Some(v) -> { return v }
+        None -> { return d }
+    }
+}

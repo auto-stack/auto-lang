@@ -1,0 +1,51 @@
+# Legacy a2c corpus: 23_stdlib/008_char_io
+
+## Case: legacy-23-stdlib-008-char-io
+id: "legacy.23_stdlib.008_char_io"
+entry-mode: "program"
+
+### Auto
+path: "char_io.at"
+```auto
+use auto.io: File, open_write, open_read
+
+fn main() {
+    let file = open_write("char_test.txt")
+    file.putc(65)
+    file.putc(66)
+    file.putc(67)
+    file.close()
+
+    let file2 = open_write("string_test.txt")
+    file2.puts("Hello from puts!")
+    file2.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### char_io.expected.c
+```c
+#include "char_io.h"
+
+int main(void) {
+    unknown file = open_write("char_test.txt");
+    file.putc(65);
+    file.putc(66);
+    file.putc(67);
+    file.close();
+
+    unknown file2 = open_write("string_test.txt");
+    file2.puts("Hello from puts!");
+    file2.close();
+    return 0;
+}
+```
+
+#### char_io.expected.h
+```c
+#pragma once
+
+#include "auto/io.h"
+```

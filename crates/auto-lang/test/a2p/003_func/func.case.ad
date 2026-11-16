@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 003_func
+
+## Case: legacy-a2p-003-func
+id: "legacy.a2p.003_func"
+entry-mode: "program"
+
+### Auto
+path: "func.at"
+```auto
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let result = add(5, 3)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### func.expected.py
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+
+def main():
+    result = add(5, 3)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

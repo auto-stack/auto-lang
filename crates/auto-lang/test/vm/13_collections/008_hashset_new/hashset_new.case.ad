@@ -1,0 +1,21 @@
+# Legacy vm corpus: 13_collections/008_hashset_new
+
+## Case: legacy-13-collections-008-hashset-new
+id: "legacy.13_collections.008_hashset_new"
+entry-mode: "program"
+
+### Auto
+path: "hashset_new.at"
+```auto
+var s = HashSet.new()
+s.drop()
+0
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+0
+```

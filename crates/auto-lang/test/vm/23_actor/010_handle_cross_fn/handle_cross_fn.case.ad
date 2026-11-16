@@ -1,0 +1,39 @@
+# Legacy vm corpus: 23_actor/010_handle_cross_fn
+
+## Case: legacy-23-actor-010-handle-cross-fn
+id: "legacy.23_actor.010_handle_cross_fn"
+entry-mode: "program"
+
+### Auto
+path: "handle_cross_fn.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            print("got one")
+        }
+    }
+}
+
+fn spawn_and_send() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+    h.send(1)
+}
+
+fn main() {
+    spawn_and_send()
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+got one
+got one
+```

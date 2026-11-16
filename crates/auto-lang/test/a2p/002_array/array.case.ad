@@ -1,0 +1,33 @@
+# Legacy a2p corpus: 002_array
+
+## Case: legacy-a2p-002-array
+id: "legacy.a2p.002_array"
+entry-mode: "program"
+
+### Auto
+path: "array.at"
+```auto
+fn main() {
+    let array = [1, 2, 3, 4, 5]
+    print(array[1])
+
+    let a = array[0]
+    print(a)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### array.expected.py
+```python
+def main():
+    array = [1, 2, 3, 4, 5]
+    print(array[1])
+
+    a = array[0]
+    print(a)
+
+if __name__ == "__main__":
+    main()
+```

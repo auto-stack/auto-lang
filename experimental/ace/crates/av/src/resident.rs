@@ -247,6 +247,16 @@ impl ResidentRunner {
         self.paused = None;
     }
 
+    /// PLAN-970: consume the runner and hand the session back (any
+    /// paused chain is dropped first — the `stop()` semantics). Hosts
+    /// that need a SECOND async chain on the same session use this to
+    /// return the incremental session to direct ownership; additive API,
+    /// no change to the runner's own chain discipline.
+    pub fn into_session(mut self) -> FunctionIncrementalSession {
+        self.stop();
+        self.session
+    }
+
     /// Advance the chain by one fuel slice.
     ///
     /// After a terminal state this is a controlled no-op (state echoed,

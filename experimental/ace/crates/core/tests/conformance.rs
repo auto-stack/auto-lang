@@ -104,6 +104,10 @@ mod plan981_model_handlers;
 mod plan981_view_exits;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
+#[path = "cases/plan980_dialect_full.rs"]
+mod plan980_dialect_full;
+#[path = "cases/plan980_field_manifest.rs"]
+mod plan980_field_manifest;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]

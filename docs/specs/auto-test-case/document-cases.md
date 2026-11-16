@@ -1,10 +1,14 @@
 # 文档式用例（AutoDown Document Cases）
 
-> 状态：两批推广已交付（PLAN-1057 首批三份 30 例 / 60 检查 + PLAN-1059 第二批
-> `legacy-composite` 14 例 / 28 检查，累计四份 44 例 / 88 检查进入日常固定组；PLAN-1002
-> 四例七检查试点保留为独立回归、不重复计数）。本文记录当前已交付的文档式入口能力与边界；完整目标格式见
-> [docs/design/testing/autodown-document-cases.md](../../design/testing/autodown-document-cases.md)。
+> 状态：全量交付（PLAN-1062 收尾迁移：全部 75 个固定 case 组的活跃作者文件为文档式，
+> 176 份旧围栏 case 全部迁移为 `<stem>.document.case.ad`，1062 个唯一 (文件,case,check)
+> 检查对与 95 个既有文档位合计 1174 个位置全部 document 格式，旧围栏行=0；B 层 1227+
+> 逐条目文档 vm/a2r/cookbook/a2c/a2ts/a2p/conformance/ffi_dual 由原消费者直读）。
+> 此前批次（PLAN-1002 试点、PLAN-1057/1059 两批 44 例/88 检查）已并入该总量。
+> 完整目标格式见 [docs/design/testing/autodown-document-cases.md](../../design/testing/autodown-document-cases.md)。
 > 解码器即合同：`crates/auto-test-case/src/author.rs`（逐标题/属性拒绝集以它为准）。
+> 迁移收尾口径（阶段门、expected-red 元 oracle、A↔B 映射与历史/外仓边界）见
+> [document-migration-closure](document-migration-closure.md)。
 
 ## 入口与分派
 

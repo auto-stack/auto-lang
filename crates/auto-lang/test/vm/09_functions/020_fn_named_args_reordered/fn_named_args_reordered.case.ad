@@ -1,0 +1,23 @@
+# Legacy vm corpus: 09_functions/020_fn_named_args_reordered
+
+## Case: legacy-09-functions-020-fn-named-args-reordered
+id: "legacy.09_functions.020_fn_named_args_reordered"
+entry-mode: "program"
+
+### Auto
+path: "fn_named_args_reordered.at"
+```auto
+fn sub(a int, b int) int {
+    a * 3 + b * 2
+}
+
+sub(b: 2, a: 1)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+7
+```

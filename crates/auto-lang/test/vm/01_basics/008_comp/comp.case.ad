@@ -1,0 +1,19 @@
+# Legacy vm corpus: 01_basics/008_comp
+
+## Case: legacy-01-basics-008-comp
+id: "legacy.01_basics.008_comp"
+entry-mode: "program"
+
+### Auto
+path: "comp.at"
+```auto
+1 < 2
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+true
+```

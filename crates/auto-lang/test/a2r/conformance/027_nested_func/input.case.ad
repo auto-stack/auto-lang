@@ -1,0 +1,31 @@
+# Legacy conformance corpus: 027_nested_func
+
+## Case: legacy-conf-027-nested-func
+id: "legacy.conf.027_nested_func"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 027: Nested function calls
+fn double(x int) int {
+    return x * 2
+}
+
+fn add_one(x int) int {
+    return x + 1
+}
+
+fn main() {
+    print(double(add_one(4)))
+    print(add_one(double(3)))
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+10
+7
+```

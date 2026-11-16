@@ -1,0 +1,43 @@
+# Legacy a2c corpus: 10_collections/010_array_loop
+
+## Case: legacy-10-collections-010-array-loop
+id: "legacy.10_collections.010_array_loop"
+entry-mode: "program"
+
+### Auto
+path: "array_loop.at"
+```auto
+let arr [4]int = [1, 2, 3, 4]
+fn main() {
+    var sum = 0
+    var i = 0
+    for {
+        if i >= 4 {
+            break
+        }
+        sum = sum + arr[i]
+        i = i + 1
+    }
+    sum
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_loop.expected.c
+```c
+int arr[4] = {1, 2, 3, 4};
+int main(void) {
+    int sum = 0;
+    int i = 0;
+    while (1) {
+        if (i >= 4) {
+            break;
+        }
+        sum = sum + arr[i];
+        i = i + 1;
+    }
+    return sum;
+}
+```

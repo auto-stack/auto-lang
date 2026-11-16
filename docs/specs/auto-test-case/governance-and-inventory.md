@@ -84,3 +84,15 @@ producer与公开收据consumer共用原baseline/retirement/migration/floor，�
 - 成本登记=只读报告（[ace-cost-attribution.md](ace-cost-attribution.md)）：真实终态+命令meter+
   逐测试exec_time关联；父侧判定/persist-GC/copy/cleanup在命令粒度UNOBSERVED有界，不填0；
   旧成本跨树/配置漂移标STALE不得复用。不新增执行目录、不改触发/频率/预算。
+
+
+## 迁移冻结清单与无损投影（PLAN-1062）
+
+- `auto-case migration-inventory --schema-version 2`：`autolang.case-migration/2` 无损投影
+  （含每文件/逐步骤 payload 文本）；`helper-inventory`：python/conformance 语料生产 syn AST
+  闭集（99+33，bootstrap 生成器 30 例闭集具名）。
+- `document_case_migration.py manifest|pair --manifest|verify --manifest|controls --manifest`：
+  冻结清单（1062 对/176 文件/1204 注册拆分 623/575/6）、新旧语义对照（表征白名单）、
+  actual 离线重读、expected-red 元 oracle（旧红轴必须同轴复现）与 NC-01/02/18/19/27 控制。
+- A↔B：20 个内容级同源源经 `baseline/a-b-overlap.json` 具名；同源聚合按消费者身份键，
+  不删义务。

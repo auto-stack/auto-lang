@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/061_bytecode_var
+
+## Case: legacy-99-bootstrap-061-bytecode-var
+id: "legacy.99_bootstrap.061_bytecode_var"
+entry-mode: "program"
+
+### Auto
+path: "bytecode_var.at"
+```auto
+// Test: bytecode compilation + execution — variables and arithmetic
+fn main() {
+    var result = run_bytecode("fn main() {\nlet x = 10\nlet y = 20\nprint(x + y)\n}")
+    if result == "30\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

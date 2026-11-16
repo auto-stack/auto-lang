@@ -1,0 +1,37 @@
+# Legacy conformance corpus: 013_negation
+
+## Case: legacy-conf-013-negation
+id: "legacy.conf.013_negation"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 013: Negation and compound assignment
+fn main() {
+    var x = 10
+    print(-x)
+    x += 5
+    print(x)
+    x -= 3
+    print(x)
+    x *= 2
+    print(x)
+    x /= 4
+    print(x)
+    x %= 3
+    print(x)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+-10
+15
+12
+24
+6
+0
+```

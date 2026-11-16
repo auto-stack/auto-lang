@@ -1,0 +1,22 @@
+# Legacy vm corpus: 14_borrow/013_str_slice_multi
+
+## Case: legacy-14-borrow-013-str-slice-multi
+id: "legacy.14_borrow.013_str_slice_multi"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_multi.at"
+```auto
+let s = "hello"
+let v1 = s.view
+let v2 = s.view
+f"[$v1, $v2]"
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+[hello, hello]
+```

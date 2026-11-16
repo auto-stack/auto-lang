@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/047_eval_multi_fn
+
+## Case: legacy-99-bootstrap-047-eval-multi-fn
+id: "legacy.99_bootstrap.047_eval_multi_fn"
+entry-mode: "program"
+
+### Auto
+path: "eval_multi_fn.at"
+```auto
+// Test: eval — sum of two integers
+fn main() {
+    var r1 = run_eval("print(10)
+print(20)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:10
+20
+
+```

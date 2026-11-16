@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 10_collections/003_object_literal
+
+## Case: legacy-a2p-10-collections-003-object-literal
+id: "legacy.a2p.10_collections.003_object_literal"
+entry-mode: "program"
+
+### Auto
+path: "object_literal.at"
+```auto
+fn main() {
+    let obj = {name: "Alice", age: 30}
+    print(obj)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### object_literal.expected.py
+```python
+def main():
+    obj = {"name": "Alice", "age": 30}
+    print(obj)
+
+if __name__ == "__main__":
+    main()
+```

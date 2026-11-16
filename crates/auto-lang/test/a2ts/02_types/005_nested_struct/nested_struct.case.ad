@@ -1,0 +1,57 @@
+# Legacy a2ts corpus: 02_types/005_nested_struct
+
+## Case: legacy-02-types-005-nested-struct
+id: "legacy.02_types.005_nested_struct"
+entry-mode: "program"
+
+### Auto
+path: "nested_struct.at"
+final-newline: false
+```auto
+type Inner {
+    val int
+}
+
+type Outer {
+    inner Inner
+    name str
+}
+
+fn main() {
+    let i = Inner(42)
+    let o = Outer(i, "test")
+    print(o.inner.val)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### nested_struct.expected.ts
+```ts
+export class Inner {
+    val: number;
+
+    constructor(val: number) {
+        this.val = val;
+    }
+}
+
+export class Outer {
+    inner: Inner;
+    name: string;
+
+    constructor(inner: Inner, name: string) {
+        this.inner = inner;
+        this.name = name;
+    }
+}
+
+function main(): void {
+    const i = new Inner(42);
+    const o = new Outer(i, "test");
+    console.log(o.inner.val);
+}
+
+main();
+```

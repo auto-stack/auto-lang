@@ -1,0 +1,50 @@
+# Legacy a2ts corpus: 11_methods/005_method_params
+
+## Case: legacy-11-methods-005-method-params
+id: "legacy.11_methods.005_method_params"
+entry-mode: "program"
+
+### Auto
+path: "method_params.at"
+final-newline: false
+```auto
+type Counter {
+    count int
+
+    fn add(self, n int) {
+        self.count = self.count + n
+    }
+}
+
+fn main() {
+    let c = Counter(0)
+    c.add(5)
+    print(c.count)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### method_params.expected.ts
+```ts
+export class Counter {
+    count: number;
+
+    constructor(count: number) {
+        this.count = count;
+    }
+
+    add(n: number): void {
+        count = count + n;
+    }
+}
+
+function main(): void {
+    const c = new Counter(0);
+    c.add(5);
+    console.log(c.count);
+}
+
+main();
+```

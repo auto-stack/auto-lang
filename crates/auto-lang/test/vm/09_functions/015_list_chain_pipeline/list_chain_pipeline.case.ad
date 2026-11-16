@@ -1,0 +1,27 @@
+# Legacy vm corpus: 09_functions/015_list_chain_pipeline
+
+## Case: legacy-09-functions-015-list-chain-pipeline
+id: "legacy.09_functions.015_list_chain_pipeline"
+entry-mode: "program"
+
+### Auto
+path: "list_chain_pipeline.at"
+```auto
+// Test: filter -> map -> reduce pipeline
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let evens = nums.filter(x => x % 2 == 0)
+let doubled = evens.map(x => x * 2)
+let total = doubled.reduce(0, (acc, x) => acc + x)
+print(total)
+print(evens.len())
+print(doubled.len())
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+60
+5
+5
+```

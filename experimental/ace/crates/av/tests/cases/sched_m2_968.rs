@@ -15,9 +15,7 @@ use ace_core::source::compile_scheduler_source;
 
 /// Full producer→consumer chain: scheduler source → compile → lower →
 /// verify → ABC admit → the deterministic cooperative scheduler.
-fn run_sched(
-    src: &str,
-) -> Result<(ExecOutcome, String), String> {
+fn run_sched(src: &str) -> Result<(ExecOutcome, String), String> {
     let compiled = compile_scheduler_source(src, "probe.at", &[]).map_err(|ds| {
         ds.iter()
             .map(|d| d.render("probe.at", src))
@@ -53,9 +51,9 @@ fn ok(src: &str, want_stdout: &str, want_exit: Option<i32>) {
                 assert_eq!(got, w, "exit mismatch for source:\n{src}");
             }
         }
-        Ok((other, stdout)) => panic!(
-            "expected success, got {other:?} (stdout {stdout:?}) for source:\n{src}"
-        ),
+        Ok((other, stdout)) => {
+            panic!("expected success, got {other:?} (stdout {stdout:?}) for source:\n{src}")
+        }
         Err(e) => panic!("compile failed: {e} for source:\n{src}"),
     }
     let (_, stdout) = run_sched(src).expect("second run deterministic");

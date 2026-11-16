@@ -1,0 +1,23 @@
+# Legacy a2r corpus: 19_ownership/007_self_ref/self_ref
+
+## Case: legacy-19-ownership-007-self-ref-self-ref
+id: "legacy.19_ownership.007_self_ref.self_ref"
+entry-mode: "program"
+
+### Auto
+path: "self_ref.at"
+```auto
+// Plan 310 Phase 4: direct self-reference must be rejected.
+// type Node { next Node } is an infinite-size struct in Rust.
+type Node {
+    value int
+    next Node
+}
+
+fn main() {
+    let n = Node(1, Node(2, Node(3)))
+}
+```
+
+### Rust
+check-id: "rust-smoke"

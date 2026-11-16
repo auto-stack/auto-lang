@@ -1,0 +1,20 @@
+# Legacy vm corpus: 09_functions/005_fn_in_expr
+
+## Case: legacy-09-functions-005-fn-in-expr
+id: "legacy.09_functions.005_fn_in_expr"
+entry-mode: "program"
+
+### Auto
+path: "fn_in_expr.at"
+```auto
+fn add(a, b) { a + b }
+10 + add(5, 3)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+18
+```

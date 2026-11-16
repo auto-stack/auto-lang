@@ -1,0 +1,57 @@
+# Legacy a2c corpus: 11_methods/001_method
+
+## Case: legacy-11-methods-001-method
+id: "legacy.11_methods.001_method"
+entry-mode: "program"
+
+### Auto
+path: "method.at"
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point(3, 4)
+    let m int = p.modulus()
+    print("Modulus:", m)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### method.expected.c
+```c
+#include "method.h"
+
+int Point_Modulus(struct Point *self) {
+    return self->x * self->x + self->y * self->y;
+}
+
+int main(void) {
+    struct Point p = {.x = 3, .y = 4};
+    int m = Point_Modulus(&p);
+    printf("%s %d\n", "Modulus:", m);
+    return 0;
+}
+```
+
+#### method.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+struct Point {
+    int x;
+    int y;
+};
+
+int Point_Modulus(struct Point *self);
+```

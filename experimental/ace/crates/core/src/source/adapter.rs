@@ -79,6 +79,11 @@ pub fn compile_source(
 /// The numeric profile owns its vocabulary (the closures-superset VERIFICATION
 /// domain it maps to would reject the numeric kinds).
 fn profile_descriptor(profile: SourceProfile) -> &'static crate::descriptor::Descriptor {
+    // PLAN-972（T-02）：aggregates 用自身描述符（numeric 超集 + 文本
+    // 表达式面）；numeric 等其余 profile 描述符不变。
+    if profile.is_aggregates() {
+        return crate::aggregates_descriptor();
+    }
     if profile.is_numeric() {
         return crate::numeric_descriptor();
     }
@@ -3796,7 +3801,11 @@ impl<'p> Emitter<'p> {
         };
         // PLAN-961: the numeric profile renders its own identity triple
         // (its Atom text binds against the numeric descriptor).
-        let (schema, profile_word) = if self.profile.is_numeric() {
+        // PLAN-972 (T-02): the aggregates profile renders its own identity
+        // triple (numeric superset + text expression surface descriptor).
+        let (schema, profile_word) = if self.profile.is_aggregates() {
+            ("auto.hir.aggregates.draft", "source-aggregates-draft")
+        } else if self.profile.is_numeric() {
             ("auto.hir.numeric.draft", "source-numeric-draft")
         } else {
             (schema, profile_word)
@@ -3920,7 +3929,10 @@ impl<'p> Emitter<'p> {
                 nl!(12);
                 // PLAN-909: the closures surface admits  — the shared
                 // cell value domain is int/bool/char (SEM-04 / V-03).
-                if self.profile == super::SourceProfile::Closures {
+                // PLAN-972 (T-02): the aggregates profile rides the same
+                // closures-superset verification domain (char locals and
+                // char-typed expressions admitted) — t_char rides along.
+                if self.profile == super::SourceProfile::Closures || self.profile.is_aggregates() {
                     frag!("type t_char char {}", program_span);
                     spans.types.push(program_span);
                     nl!(12);

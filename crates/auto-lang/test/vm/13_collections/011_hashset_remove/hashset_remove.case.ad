@@ -1,0 +1,21 @@
+# Legacy vm corpus: 13_collections/011_hashset_remove
+
+## Case: legacy-13-collections-011-hashset-remove
+id: "legacy.13_collections.011_hashset_remove"
+entry-mode: "program"
+
+### Auto
+path: "hashset_remove.at"
+```auto
+var s = HashSet.new()
+s.insert("key")
+s.remove("key")
+var has = s.contains("key")
+s.drop()
+has
+```
+
+### VM diagnostic
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"

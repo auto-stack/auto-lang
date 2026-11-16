@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/106_a2r_generic_enum
+
+## Case: legacy-99-bootstrap-106-a2r-generic-enum
+id: "legacy.99_bootstrap.106_a2r_generic_enum"
+entry-mode: "program"
+
+### Auto
+path: "a2r_generic_enum.at"
+```auto
+fn main() {
+    var result = run_a2r("enum Option<T> {\nSome(T)\nNone\n}\nfn main() {\nprint(42)\n}")
+    var has_enum = result.find("enum Option<T>")
+    if has_enum >= 0 {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

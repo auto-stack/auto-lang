@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/025_str_case
+
+## Case: legacy-18-ffi-025-str-case
+id: "legacy.18_ffi.025_str_case"
+entry-mode: "program"
+
+### Auto
+path: "str_case.at"
+```auto
+Str.to_upper("hello")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+HELLO
+```

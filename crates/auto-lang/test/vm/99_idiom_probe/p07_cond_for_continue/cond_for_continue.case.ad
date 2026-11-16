@@ -1,0 +1,43 @@
+# Legacy vm corpus: 99_idiom_probe/p07_cond_for_continue
+
+## Case: legacy-99-idiom-probe-p07-cond-for-continue
+id: "legacy.99_idiom_probe.p07_cond_for_continue"
+entry-mode: "program"
+
+### Auto
+path: "cond_for_continue.at"
+```auto
+// H2: 条件 for 循环内 continue 穿透
+// 预期：只打印 "cond 1" 和 "cond 3"，不打印 "cond 2"
+// 实际（bug）：会打印 "cond 2"（穿透执行 continue 之后的语句）
+fn main() {
+    var i = 0
+    while i < 4 {
+        i = i + 1
+        if i == 2 { 
+            continue 
+        }
+        print("cond " + i.str())  // bug: i=2 时仍然执行此行
+    }
+    
+    // 对比：range-for 的 continue 正常工作（已修复）
+    for j in 0..4 {
+        if j == 2 { 
+            continue 
+        }
+        print("range " + j.str())  // 正确：j=2 时跳过
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+cond 1
+cond 3
+cond 4
+range 0
+range 1
+range 3
+```

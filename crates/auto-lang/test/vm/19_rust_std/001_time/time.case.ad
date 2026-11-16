@@ -1,0 +1,22 @@
+# Legacy vm corpus: 19_rust_std/001_time
+
+## Case: legacy-19-rust-std-001-time
+id: "legacy.19_rust_std.001_time"
+entry-mode: "program"
+
+### Auto
+path: "time.at"
+```auto
+use.rs std::time::Instant
+fn main() {
+    let t = Instant.now()
+    print("ok")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

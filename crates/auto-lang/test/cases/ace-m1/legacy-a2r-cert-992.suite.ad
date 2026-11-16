@@ -5,6 +5,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "legacy-a2r-cert-992", include: [
-  "legacy-a2r-cert-992.case.ad",
+  "legacy-a2r-cert-992.document.case.ad",
 ] }
 ```

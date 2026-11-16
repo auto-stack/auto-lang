@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 05_expressions/011_lambda_map
+
+## Case: legacy-a2p-05-expressions-011-lambda-map
+id: "legacy.a2p.05_expressions.011_lambda_map"
+entry-mode: "program"
+
+### Auto
+path: "lambda_map.at"
+```auto
+fn main() {
+    let nums = [1, 2, 3]
+    let doubled = nums.map((x int) => x * 2)
+    print(doubled)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### lambda_map.expected.py
+```python
+def main():
+    nums = [1, 2, 3]
+    doubled = nums.map(lambda x: x * 2)
+    print(doubled)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,23 @@
+# Legacy vm corpus: 16_option_result/014_is_none_match
+
+## Case: legacy-16-option-result-014-is-none-match
+id: "legacy.16_option_result.014_is_none_match"
+entry-mode: "program"
+
+### Auto
+path: "is_none_match.at"
+```auto
+let opt = None
+is opt {
+  Some(v) -> v
+  None -> -1
+}
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+-1
+```

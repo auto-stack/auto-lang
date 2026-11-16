@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/016_str_slice_take
+
+## Case: legacy-14-borrow-016-str-slice-take
+id: "legacy.14_borrow.016_str_slice_take"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_take.at"
+```auto
+let s = "hello"
+let t = s.move
+t
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

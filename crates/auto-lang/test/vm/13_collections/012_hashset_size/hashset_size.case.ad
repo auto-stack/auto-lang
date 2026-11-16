@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/012_hashset_size
+
+## Case: legacy-13-collections-012-hashset-size
+id: "legacy.13_collections.012_hashset_size"
+entry-mode: "program"
+
+### Auto
+path: "hashset_size.at"
+```auto
+var s = HashSet.new()
+s.insert("a")
+s.insert("b")
+s.insert("c")
+var sz = s.size()
+s.drop()
+sz
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

@@ -1,0 +1,26 @@
+# Legacy vm corpus: 19_rust_std/008_box_cell
+
+## Case: legacy-19-rust-std-008-box-cell
+id: "legacy.19_rust_std.008_box_cell"
+entry-mode: "program"
+
+### Auto
+path: "box_cell.at"
+```auto
+use.rs std::boxed::Box
+use.rs std::cell::RefCell
+fn main() {
+    let b = Box.new(42)
+    print(b)
+    let cell = RefCell.new(0)
+    print(cell)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+<Box>
+<RefCell>
+```

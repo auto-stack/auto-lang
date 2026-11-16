@@ -1,0 +1,42 @@
+# Legacy a2p corpus: 02_types/004_union_match
+
+## Case: legacy-a2p-02-types-004-union-match
+id: "legacy.a2p.02_types.004_union_match"
+entry-mode: "program"
+
+### Auto
+path: "union_match.at"
+```auto
+union Value {
+    i int
+    s str
+    d double
+}
+
+fn main() {
+    let v = Value(i: 42)
+    print("Union match")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### union_match.expected.py
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Value:
+    kind: str = ''
+    i: int = 0
+    s: str = ""
+    d: float = 0.0
+
+def main():
+    v = Value(i=42)
+    print("Union match")
+
+if __name__ == "__main__":
+    main()
+```

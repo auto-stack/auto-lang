@@ -1,0 +1,20 @@
+# Legacy vm corpus: 03_variables/004_var_if
+
+## Case: legacy-03-variables-004-var-if
+id: "legacy.03_variables.004_var_if"
+entry-mode: "program"
+
+### Auto
+path: "var_if.at"
+```auto
+var x = if true { 1 } else { 2 }
+x+1
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```

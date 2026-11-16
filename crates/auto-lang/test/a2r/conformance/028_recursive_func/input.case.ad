@@ -1,0 +1,34 @@
+# Legacy conformance corpus: 028_recursive_func
+
+## Case: legacy-conf-028-recursive-func
+id: "legacy.conf.028_recursive_func"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 028: Recursive function (fibonacci)
+fn fib(n int) int {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    print(fib(0))
+    print(fib(1))
+    print(fib(5))
+    print(fib(10))
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+0
+1
+5
+55
+```

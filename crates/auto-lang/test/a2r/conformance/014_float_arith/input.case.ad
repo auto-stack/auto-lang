@@ -1,0 +1,27 @@
+# Legacy conformance corpus: 014_float_arith
+
+## Case: legacy-conf-014-float-arith
+id: "legacy.conf.014_float_arith"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 014: Float arithmetic
+fn main() {
+    print(1.5 + 2.5)
+    print(5.0 - 1.5)
+    print(3.0 * 2.0)
+    print(7.0 / 2.0)
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+4
+3.5
+6
+3.5
+```

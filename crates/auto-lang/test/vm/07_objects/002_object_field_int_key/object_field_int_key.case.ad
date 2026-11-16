@@ -1,0 +1,20 @@
+# Legacy vm corpus: 07_objects/002_object_field_int_key
+
+## Case: legacy-07-objects-002-object-field-int-key
+id: "legacy.07_objects.002_object_field_int_key"
+entry-mode: "program"
+
+### Auto
+path: "object_field_int_key.at"
+```auto
+var a = { 1: 2, 3: 4 }
+a.3
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+4
+```

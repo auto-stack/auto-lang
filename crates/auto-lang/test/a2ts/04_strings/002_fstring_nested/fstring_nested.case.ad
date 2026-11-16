@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 04_strings/002_fstring_nested
+
+## Case: legacy-04-strings-002-fstring-nested
+id: "legacy.04_strings.002_fstring_nested"
+entry-mode: "program"
+
+### Auto
+path: "fstring_nested.at"
+final-newline: false
+```auto
+fn main() {
+    let a = 3
+    let b = 4
+    print(f"result: ${a + b}")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### fstring_nested.expected.ts
+```ts
+function main(): void {
+    const a: number = 3;
+    const b: number = 4;
+    console.log(`result: ${a + b}`);
+}
+
+main();
+```

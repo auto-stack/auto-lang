@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/043_eval_recursion
+
+## Case: legacy-99-bootstrap-043-eval-recursion
+id: "legacy.99_bootstrap.043_eval_recursion"
+entry-mode: "program"
+
+### Auto
+path: "eval_recursion.at"
+```auto
+// Test: eval — zero integer
+fn main() {
+    var r1 = run_eval("print(0)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:0
+
+```

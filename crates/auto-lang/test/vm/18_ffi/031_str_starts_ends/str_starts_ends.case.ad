@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/031_str_starts_ends
+
+## Case: legacy-18-ffi-031-str-starts-ends
+id: "legacy.18_ffi.031_str_starts_ends"
+entry-mode: "program"
+
+### Auto
+path: "str_starts_ends.at"
+```auto
+Str.starts_with("hello", "hel")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

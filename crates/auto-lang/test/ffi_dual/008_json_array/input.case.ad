@@ -1,0 +1,25 @@
+# Legacy ffi_dual corpus: 008_json_array
+
+## Case: legacy-ffi-dual-008-json-array
+id: "legacy.ffi_dual.008_json_array"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: JSON array operations — #[rust_fn] JSON
+let arr = Json.parse("[10,20,30]")
+print(Json.len(arr))
+print(Json.is_valid(arr))
+let obj = Json.parse("{\"x\":1,\"y\":2}")
+print(Json.len(obj))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+3
+true
+2
+```

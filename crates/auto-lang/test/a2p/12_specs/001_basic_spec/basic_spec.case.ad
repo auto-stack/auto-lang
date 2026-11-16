@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 12_specs/001_basic_spec
+
+## Case: legacy-a2p-12-specs-001-basic-spec
+id: "legacy.a2p.12_specs.001_basic_spec"
+entry-mode: "program"
+
+### Auto
+path: "basic_spec.at"
+```auto
+spec Flyer {
+    fn fly()
+}
+
+fn main() {
+    print("Spec defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### basic_spec.expected.py
+```python
+from typing import Protocol
+
+class Flyer(Protocol):
+    def fly(self): ...
+
+def main():
+    print("Spec defined")
+
+if __name__ == "__main__":
+    main()
+```

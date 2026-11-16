@@ -1,0 +1,20 @@
+# Legacy vm corpus: 02_bit_ops/001_binary_literal
+
+## Case: legacy-02-bit-ops-001-binary-literal
+id: "legacy.02_bit_ops.001_binary_literal"
+entry-mode: "program"
+
+### Auto
+path: "binary_literal.at"
+```auto
+fn main() {
+    print(0b1010)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+10
+```

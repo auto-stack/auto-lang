@@ -1,0 +1,22 @@
+## Case: av-owned-admission-partial-move
+id: "av.owned.admission-partial-move"
+tags: ["av-data-821", "probe", "admission"]
+links: ["PLAN-821"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+type Note { body Str; n int }
+fn make() Note { return Note { body: "x", n: 1 } }
+fn main() int {
+    let b Note = make().move
+    return b.n
+}
+~~~~
+
+### Probe run-owned-rejected
+recipe: "ac-av/owned-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "verify.partial-move"

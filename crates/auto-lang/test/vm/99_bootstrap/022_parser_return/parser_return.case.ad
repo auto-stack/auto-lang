@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_bootstrap/022_parser_return
+
+## Case: legacy-99-bootstrap-022-parser-return
+id: "legacy.99_bootstrap.022_parser_return"
+entry-mode: "program"
+
+### Auto
+path: "parser_return.at"
+```auto
+// Test: return statement — return 42
+fn main() {
+    let source = "return 42"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+(return 42)
+```

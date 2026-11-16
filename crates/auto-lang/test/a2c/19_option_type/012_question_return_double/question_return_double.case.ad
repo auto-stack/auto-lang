@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 19_option_type/012_question_return_double
+
+## Case: legacy-19-option-type-012-question-return-double
+id: "legacy.19_option_type.012_question_return_double"
+entry-mode: "program"
+
+### Auto
+path: "question_return_double.at"
+```auto
+fn test_question_return_double() ?double {
+    2.71
+}
+
+fn main() {
+    let result = test_question_return_double()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_return_double.expected.c
+```c
+#include "question_return_double.h"
+
+double test_question_return_double(void) {
+    return 2.71;
+}
+
+int main(void) {
+    unknown result = test_question_return_double();
+    return 0;
+}
+```
+
+#### question_return_double.expected.h
+```c
+#pragma once
+
+double test_question_return_double(void);
+```

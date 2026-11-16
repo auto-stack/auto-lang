@@ -1,0 +1,36 @@
+# Legacy vm corpus: 16_option_result/019_result_heap
+
+## Case: legacy-16-option-result-019-result-heap
+id: "legacy.16_option_result.019_result_heap"
+entry-mode: "program"
+
+### Auto
+path: "result_heap.at"
+```auto
+fn try_divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    Ok(a / b)
+}
+
+let r1 = try_divide(10, 3)
+is r1 {
+    Ok(n) -> print(n)
+    Err(e) -> print("error")
+}
+
+let r2 = try_divide(10, 0)
+is r2 {
+    Ok(n) -> print(n)
+    Err(e) -> print("error")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+error
+```

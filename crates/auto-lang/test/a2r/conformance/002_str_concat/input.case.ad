@@ -1,0 +1,25 @@
+# Legacy conformance corpus: 002_str_concat
+
+## Case: legacy-conf-002-str-concat
+id: "legacy.conf.002_str_concat"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 002: String concatenation
+fn main() {
+    print("hello" + " " + "world")
+    print("a" + "b")
+    print("" + "x")
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+hello world
+ab
+x
+```

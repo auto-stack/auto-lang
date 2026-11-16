@@ -1,0 +1,120 @@
+// ACE assembled stdlib conv module (PLAN-972 T-02): the S-05 parse/format
+// family as pure Auto algorithms (scalar-indexed, codepoint arithmetic;
+// i64 accumulator with explicit range checks — never a silent trap).
+// Errors are Option-valued (V-DETAIL-02): invalid digit, empty input,
+// lone sign, and out-of-i32-range all return None; "-2147483648" (i32::MIN)
+// parses. int→Str covers both signs (from_uint is the non-negative
+// domain; from_int handles negatives incl. i32::MIN); byte-level
+// encodings live in std.bytes.
+pub fn to_int(s Str) ?int {
+    if (s.len() == 0) {
+        return None
+    }
+    var i = 0
+    var neg = false
+    let c0 = s.char_at(0)
+    if (c0.to_codepoint() == 45) {
+        neg = true
+        i = 1
+    }
+    if (i == s.len()) {
+        return None
+    }
+    return parse_at(s, i, neg, 0i64)
+}
+
+fn parse_at(s Str, i int, neg bool, acc i64) ?int {
+    if (i == s.len()) {
+        if (neg) {
+            if (acc > 2147483648i64) {
+                return None
+            }
+            let n = -acc
+            return Some(n.to(i32))
+        }
+        if (acc > 2147483647i64) {
+            return None
+        }
+        return Some(acc.to(i32))
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    if (p < 48) {
+        return None
+    }
+    if (p > 57) {
+        return None
+    }
+    let d = p - 48
+    return parse_at(s, i + 1, neg, acc * 10i64 + d.to(i64))
+}
+
+pub fn is_uint(s Str) bool {
+    if (s.len() == 0) {
+        return false
+    }
+    return digits_at(s, 0)
+}
+
+fn digits_at(s Str, i int) bool {
+    if (i == s.len()) {
+        return true
+    }
+    let c = s.char_at(i)
+    let p = c.to_codepoint()
+    if (p < 48) {
+        return false
+    }
+    if (p > 57) {
+        return false
+    }
+    return digits_at(s, i + 1)
+}
+
+// int→Str formatting via the digit-table slice (no char→Str builtin on
+// this surface — the digit's Str comes from the literal table's slice).
+fn digit_str(d int) Str {
+    let table Str = "0123456789"
+    return table.slice(d, d + 1).clone()
+}
+
+pub fn from_uint(n int) Str {
+    if (n < 0) {
+        return ""
+    }
+    return digits_of(n, "")
+}
+
+fn digits_of(n int, acc Str) Str {
+    let d = n % 10
+    let rest = n / 10
+    let with_d Str = digit_str(d) + acc
+    if (rest == 0) {
+        return with_d
+    }
+    return digits_of(rest, with_d)
+}
+
+// Signed int→Str (S-03/T-02 named boundary closed): the negative form is
+// "-" + the magnitude's digits. The magnitude walk runs in i64 so
+// i32::MIN (-2147483648) formats without an abs() overflow — checked
+// arithmetic never traps here.
+pub fn from_int(n int) Str {
+    if (n >= 0) {
+        return from_uint(n)
+    }
+    let wide = n.to(i64)
+    let mag = -wide
+    let digits = digits_of64(mag, "")
+    return "-" + digits
+}
+
+fn digits_of64(m i64, acc Str) Str {
+    let d = (m % 10i64).to(i32)
+    let rest = m / 10i64
+    let with_d Str = digit_str(d) + acc
+    if (rest == 0i64) {
+        return with_d
+    }
+    return digits_of64(rest, with_d)
+}

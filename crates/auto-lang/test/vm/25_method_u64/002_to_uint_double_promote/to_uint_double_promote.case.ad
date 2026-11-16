@@ -1,0 +1,21 @@
+# Legacy vm corpus: 25_method_u64/002_to_uint_double_promote
+
+## Case: legacy-25-method-u64-002-to-uint-double-promote
+id: "legacy.25_method_u64.002_to_uint_double_promote"
+entry-mode: "program"
+
+### Auto
+path: "to_uint_double_promote.at"
+```auto
+let s = "10"
+print(s.to_uint() + 1.5)
+print(s.to_uint() * 2.0)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+11.5
+20
+```

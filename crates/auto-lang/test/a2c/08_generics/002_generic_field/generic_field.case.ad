@@ -1,0 +1,51 @@
+# Legacy a2c corpus: 08_generics/002_generic_field
+
+## Case: legacy-08-generics-002-generic-field
+id: "legacy.08_generics.002_generic_field"
+entry-mode: "program"
+
+### Auto
+path: "generic_field.at"
+```auto
+// Test generic type fields in structs (Plan 059 Phase 1)
+// Simplified test: just checks that generic type in field declaration works
+
+type Box<T> {
+    value T
+}
+
+type Container {
+    data Box<int>
+}
+
+fn main() {
+    let x = 42
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### generic_field.expected.c
+```c
+#include "generic_field.h"
+
+
+
+int main(void) {
+    int x = 42;
+    return 0;
+}
+```
+
+#### generic_field.expected.h
+```c
+#pragma once
+
+struct Box {
+    void* value;
+};
+struct Container {
+    box_int data;
+};
+```

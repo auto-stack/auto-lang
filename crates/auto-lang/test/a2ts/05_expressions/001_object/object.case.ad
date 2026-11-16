@@ -1,0 +1,39 @@
+# Legacy a2ts corpus: 05_expressions/001_object
+
+## Case: legacy-05-expressions-001-object
+id: "legacy.05_expressions.001_object"
+entry-mode: "program"
+
+### Auto
+path: "object.at"
+```auto
+fn main() {
+    // Object literal test
+    let obj = {x: 1, y: 2}
+    print("obj")
+
+    // Pair expression test
+    let pair = x: 10
+    print("pair")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### object.expected.ts
+```ts
+function main(): void {
+    
+
+    const obj = { x: 1, y: 2 };
+    console.log("obj");
+    
+
+
+    const pair = x: 10;
+    console.log("pair");
+}
+
+main();
+```

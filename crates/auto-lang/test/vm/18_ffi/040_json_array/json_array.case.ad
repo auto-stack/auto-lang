@@ -1,0 +1,24 @@
+# Legacy vm corpus: 18_ffi/040_json_array
+
+## Case: legacy-18-ffi-040-json-array
+id: "legacy.18_ffi.040_json_array"
+entry-mode: "program"
+
+### Auto
+path: "json_array.at"
+```auto
+let arr = Json.parse("[10,20,30]")
+print(Json.len(arr))
+print(Json.is_valid(arr))
+let obj = Json.parse("{\"x\":1,\"y\":2}")
+print(Json.len(obj))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+1
+2
+```

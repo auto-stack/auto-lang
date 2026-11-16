@@ -10,6 +10,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-entry-862", include: [
-  "entry-unit-862.case.ad",
+  "entry-unit-862.document.case.ad",
 ] }
 ```

@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/021_str_substr
+
+## Case: legacy-18-ffi-021-str-substr
+id: "legacy.18_ffi.021_str_substr"
+entry-mode: "program"
+
+### Auto
+path: "str_substr.at"
+```auto
+Str.substr("hello world", 0, 5)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

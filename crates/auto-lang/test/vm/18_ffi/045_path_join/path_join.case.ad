@@ -1,0 +1,22 @@
+# Legacy vm corpus: 18_ffi/045_path_join
+
+## Case: legacy-18-ffi-045-path-join
+id: "legacy.18_ffi.045_path_join"
+entry-mode: "program"
+
+### Auto
+path: "path_join.at"
+```auto
+print(Path.extension("archive.tar.gz"))
+print(Path.filename("/home/user/docs/readme.md"))
+print(Path.parent("/home/user/docs"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+gz
+readme.md
+/home/user
+```

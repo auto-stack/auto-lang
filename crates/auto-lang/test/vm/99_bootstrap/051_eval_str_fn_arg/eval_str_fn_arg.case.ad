@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/051_eval_str_fn_arg
+
+## Case: legacy-99-bootstrap-051-eval-str-fn-arg
+id: "legacy.99_bootstrap.051_eval_str_fn_arg"
+entry-mode: "program"
+
+### Auto
+path: "eval_str_fn_arg.at"
+```auto
+// Test: eval — string function argument
+fn main() {
+    var r1 = run_eval("fn greet(name) {\n  print(name)\n}\ngreet(\"world\")")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:world
+
+```

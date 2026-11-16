@@ -1,0 +1,50 @@
+# Legacy a2ts corpus: 06_pattern_matching/002_switch_guards
+
+## Case: legacy-06-pattern-matching-002-switch-guards
+id: "legacy.06_pattern_matching.002_switch_guards"
+entry-mode: "program"
+
+### Auto
+path: "switch_guards.at"
+final-newline: false
+```auto
+fn classify(x int) {
+    is x {
+        0 -> print("zero")
+        1 -> print("one")
+        _ -> print("other")
+    }
+}
+
+fn main() {
+    classify(0)
+    classify(5)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### switch_guards.expected.ts
+```ts
+export function classify(x: number): void {
+    switch (x) {
+        case 0:
+            console.log("zero");
+            break;
+        case 1:
+            console.log("one");
+            break;
+        case _:
+            console.log("other");
+            break;
+    }
+}
+
+function main(): void {
+    classify(0);
+    classify(5);
+}
+
+main();
+```

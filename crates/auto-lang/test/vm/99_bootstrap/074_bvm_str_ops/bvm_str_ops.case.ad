@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/074_bvm_str_ops
+
+## Case: legacy-99-bootstrap-074-bvm-str-ops
+id: "legacy.99_bootstrap.074_bvm_str_ops"
+entry-mode: "program"
+
+### Auto
+path: "bvm_str_ops.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar a = \"hello\"\nvar b = \"world\"\nvar c = a + b\nprint(c)\nprint(c.len())\nprint(c.substr(0, 5))\nprint(c.substr(5, 10))\n}")
+    if result == "helloworld\n10\nhello\nworld\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

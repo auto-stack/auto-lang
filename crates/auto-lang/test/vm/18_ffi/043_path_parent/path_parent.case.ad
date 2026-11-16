@@ -1,0 +1,22 @@
+# Legacy vm corpus: 18_ffi/043_path_parent
+
+## Case: legacy-18-ffi-043-path-parent
+id: "legacy.18_ffi.043_path_parent"
+entry-mode: "program"
+
+### Auto
+path: "path_parent.at"
+```auto
+print(Path.parent("/usr/local/bin"))
+print(Path.parent("/usr/local"))
+print(Path.parent("/usr"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+/usr/local
+/usr
+/
+```

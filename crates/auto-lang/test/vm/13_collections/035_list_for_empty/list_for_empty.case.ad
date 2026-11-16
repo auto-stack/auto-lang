@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/035_list_for_empty
+
+## Case: legacy-13-collections-035-list-for-empty
+id: "legacy.13_collections.035_list_for_empty"
+entry-mode: "program"
+
+### Auto
+path: "list_for_empty.at"
+```auto
+var list = List.new()
+var count = 0
+for item in list {
+  count = count + 1
+}
+list.drop()
+count
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+0
+```

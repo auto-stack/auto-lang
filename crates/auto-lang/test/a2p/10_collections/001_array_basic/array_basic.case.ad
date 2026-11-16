@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 10_collections/001_array_basic
+
+## Case: legacy-a2p-10-collections-001-array-basic
+id: "legacy.a2p.10_collections.001_array_basic"
+entry-mode: "program"
+
+### Auto
+path: "array_basic.at"
+```auto
+fn main() {
+    let arr = [1, 2, 3, 4, 5]
+    print(arr)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### array_basic.expected.py
+```python
+def main():
+    arr = [1, 2, 3, 4, 5]
+    print(arr)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,27 @@
+# Legacy conformance corpus: 021_string_methods
+
+## Case: legacy-conf-021-string-methods
+id: "legacy.conf.021_string_methods"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// Conformance 021: String methods
+fn main() {
+    print("hello".len())
+    print("  hi  ".trim())
+    print("a-b-c".replace("-", "_"))
+    print("hello world".contains("world"))
+}
+```
+
+### VM result
+check-id: "conformance-trim"
+
+```text
+5
+hi
+a_b_c
+true
+```

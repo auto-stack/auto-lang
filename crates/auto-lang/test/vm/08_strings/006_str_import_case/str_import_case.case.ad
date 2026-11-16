@@ -1,0 +1,22 @@
+# Legacy vm corpus: 08_strings/006_str_import_case
+
+## Case: legacy-08-strings-006-str-import-case
+id: "legacy.08_strings.006_str_import_case"
+entry-mode: "program"
+
+### Auto
+path: "str_import_case.at"
+```auto
+use auto.str: upper, lower
+
+print(upper("hello"))
+print(lower("HELLO"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+HELLO
+hello
+```

@@ -1,0 +1,177 @@
+// ACE assembled stdlib math module (PLAN-972 T-02/T-09): the S-01 int/i64
+// domain as pure Auto single-source algorithms. The i64 public family
+// abs/min/max keeps the frozen i64 signatures (no narrowing adapter —
+// PLAN-945 policy). abs of i64::MIN traps IntOverflow under the
+// checked-arithmetic contract (PLAN-961); the boundary is independently
+// asserted by the 972 conformance. The double family (sqrt/abs_f/powf/
+// sin/cos, T-09) is pure Auto over the f64 emission surface — see the
+// family's own header for the recorded deviations and domains.
+pub fn abs(n i64) i64 {
+    if (n < 0i64) {
+        return -n
+    }
+    return n
+}
+
+pub fn min(a i64, b i64) i64 {
+    if (a < b) {
+        return a
+    }
+    return b
+}
+
+pub fn max(a i64, b i64) i64 {
+    if (a > b) {
+        return a
+    }
+    return b
+}
+
+pub fn square(x int) int {
+    return x * x
+}
+
+pub fn cube(x int) int {
+    return x * x * x
+}
+
+// The double family (PLAN-972 T-09): pure Auto single-source algorithms
+// over IEEE double arithmetic — the default-own-library ruling (no libm /
+// host-math delegation; external engines ride 967). All loops are
+// recursions; division stays inside the checked-±0 contract, so NaN is
+// unconstructible: sqrt of a non-positive input returns 0.0 and powf of a
+// non-positive base returns 0.0 (the recorded deviations from the old
+// host-NaN #[vm] semantics). Range reduction truncates through checked
+// float→int conversions: |sin/cos x| ≤ ~1.4e18 and |y·ln x| within i32
+// scale2 are the supported domains (out-of-domain traps, never silent).
+// Precision: series/iteration algorithms converge to ~1e-15 relative —
+// NOT correctly-rounded libm parity; the five ends share one source and
+// one IEEE op sequence, so results are identical across ends.
+pub fn abs_f(x double) double {
+    if (x < 0.0d) {
+        return -x
+    }
+    return x
+}
+
+pub fn sqrt(x double) double {
+    if (x <= 0.0d) {
+        return 0.0d
+    }
+    return sqrt_scale(x, 0)
+}
+
+// Normalize x·4^k with x in [0.25, 1) (exact power-of-four steps), run
+// Newton from the 0.5 seed, then unscale by 2^k.
+fn sqrt_scale(x double, k int) double {
+    if (x >= 1.0d) {
+        return sqrt_scale(x * 0.25d, k + 1)
+    }
+    if (x < 0.25d) {
+        return sqrt_scale(x * 4.0d, k - 1)
+    }
+    return unscale(sqrt_iter(x, 0.5d, 0), k)
+}
+
+fn unscale(r double, k int) double {
+    if (k == 0) {
+        return r
+    }
+    if (k > 0) {
+        return unscale(r * 2.0d, k - 1)
+    }
+    return unscale(r * 0.5d, k + 1)
+}
+
+fn sqrt_iter(x double, y double, i int) double {
+    let ny double = (y + x / y) * 0.5d
+    if (ny == y) {
+        return ny
+    }
+    if (i >= 80) {
+        return ny
+    }
+    return sqrt_iter(x, ny, i + 1)
+}
+
+pub fn sin(x double) double {
+    let t double = x / 6.283185307179586d
+    let k int = t.to(i64).to(i32)
+    let r double = x - k.to(double) * 6.283185307179586d
+    return taylor(r * r, r, 2, 0.0d)
+}
+
+pub fn cos(x double) double {
+    let t double = x / 6.283185307179586d
+    let k int = t.to(i64).to(i32)
+    let r double = x - k.to(double) * 6.283185307179586d
+    return taylor(r * r, 1.0d, 1, 0.0d)
+}
+
+// Shared Maclaurin accumulator: term_{n+2} = term_n · (-x²)/(n(n+1)) —
+// sin starts from x with n=2, cos from 1 with n=1.
+fn taylor(x2 double, term double, n int, acc double) double {
+    if (n > 32) {
+        return acc
+    }
+    let f double = (0.0d - x2) / (n.to(double) * ((n + 1)).to(double))
+    return taylor(x2, term * f, n + 2, acc + term)
+}
+
+pub fn powf(x double, y double) double {
+    if (x <= 0.0d) {
+        return 0.0d
+    }
+    return exp_f64(y * ln_f64(x))
+}
+
+// ln: normalize x = m·2^k with m in [0.7071, 1.4142); ln m via the atanh
+// series (|z| < 0.1716 — one decade per term); add k·ln2.
+fn ln_f64(x double) double {
+    return ln_norm(x, 0)
+}
+
+fn ln_norm(x double, k int) double {
+    if (x >= 1.4142135623730951d) {
+        return ln_norm(x * 0.5d, k + 1)
+    }
+    if (x < 0.7071067811865476d) {
+        return ln_norm(x * 2.0d, k - 1)
+    }
+    let z double = (x - 1.0d) / (x + 1.0d)
+    let series double = 2.0d * atanh_acc(z * z, z, 1, 0.0d)
+    return series + 0.6931471805599453d * k.to(double)
+}
+
+fn atanh_acc(z2 double, term double, n int, acc double) double {
+    if (n > 27) {
+        return acc
+    }
+    return atanh_acc(z2, term * z2, n + 2, acc + term / n.to(double))
+}
+
+// exp: v/ln2 = k + f (k truncated, f in [0,1)); e^f by Maclaurin, then
+// scale by 2^k (exact powers of two).
+fn exp_f64(v double) double {
+    let t double = v / 0.6931471805599453d
+    let k int = t.to(i64).to(i32)
+    let f double = t - k.to(double)
+    return scale2(exp_frac(f, 1.0d, 1, 0.0d), k)
+}
+
+fn exp_frac(f double, term double, n int, acc double) double {
+    if (n > 20) {
+        return acc
+    }
+    return exp_frac(f, term * f / n.to(double), n + 1, acc + term)
+}
+
+fn scale2(r double, k int) double {
+    if (k == 0) {
+        return r
+    }
+    if (k > 0) {
+        return scale2(r * 2.0d, k - 1)
+    }
+    return scale2(r * 0.5d, k + 1)
+}

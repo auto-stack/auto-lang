@@ -217,6 +217,66 @@ pub fn collections_runtime_source(marks: &[&'static str]) -> String {
             val = value
         ));
     }
+    // PLAN-972 (T-03): the numeric runtime helpers join the collections
+    // family fileset too (the numeric surface — typed literals/binops/casts —
+    // rides the collections family for the assembled stdlib; mirrors the
+    // record-text family's RT_NUMERIC join).
+    s.push_str(crate::rt::RT_NUMERIC);
+    // PLAN-972 (T-03): the char expression helpers (scalar codepoints).
+    s.push_str(
+        "
+pub fn a2x_char_to_codepoint(c: char) -> i32 { c as i32 }
+
+pub fn a2x_char_from_codepoint(n: i32) -> A2xResult<char> {
+    char::from_u32(n as u32).ok_or(AutoTrap::InvalidScalar)
+}
+",
+    );
+    // PLAN-972 (T-03): the scalar-indexed text expression helpers
+    // (byte length, char access, slice view, owned copy).
+    s.push_str(
+        "
+pub fn a2x_str_len_bytes(s: &str) -> A2xResult<i32> {
+    i32::try_from(s.len()).map_err(|_| AutoTrap::Resource)
+}
+
+pub fn a2x_str_char_at(s: &str, i: i32) -> A2xResult<char> {
+    if i < 0 {
+        return Err(AutoTrap::TextIndex);
+    }
+    s.chars().nth(i as usize).ok_or(AutoTrap::TextIndex)
+}
+
+pub fn a2x_str_slice<'b>(s: &'b str, start: i32, end: i32) -> A2xResult<&'b str> {
+    if start < 0 || end < start {
+        return Err(AutoTrap::TextIndex);
+    }
+    let start = start as usize;
+    let end = end as usize;
+    let mut byte_start = None;
+    let mut byte_end = None;
+    for (i, (b, _)) in s.char_indices().enumerate() {
+        if i == start {
+            byte_start = Some(b);
+        }
+        if i == end {
+            byte_end = Some(b);
+        }
+    }
+    let byte_start = byte_start.ok_or(AutoTrap::TextIndex)?;
+    let byte_end = match byte_end {
+        Some(b) => b,
+        None if start <= s.chars().count() && end == s.chars().count() => s.len(),
+        None => return Err(AutoTrap::TextIndex),
+    };
+    s.get(byte_start..byte_end).ok_or(AutoTrap::TextIndex)
+}
+
+pub fn a2x_str_to_owned(s: &str) -> A2xResult<A2xStr> {
+    a2x_str_clone(s)
+}
+",
+    );
     s
 }
 
@@ -466,9 +526,6 @@ pub fn a2x_str_from_lit(s: &str) -> A2xResult<A2xStr> {
 }
 pub fn a2x_str_clone(s: &str) -> A2xResult<A2xStr> {
     alloc_buffer(s.len(), s)
-}
-pub fn a2x_str_to_owned(s: &str) -> A2xResult<A2xStr> {
-    a2x_str_from_lit(s)
 }
 pub fn a2x_str_display_i32(value: i32) -> A2xResult<A2xStr> {
     let rendered = format!("{}", value);

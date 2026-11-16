@@ -264,6 +264,15 @@ impl Descriptor {
             && self.profile == "source-numeric-draft"
     }
 
+    /// PLAN-972 (T-02): whether this descriptor carries the aggregates
+    /// identity (`auto.hir.aggregates.draft/1/source-aggregates-draft`,
+    /// the numeric superset + text expression surface).
+    pub fn is_aggregates(&self) -> bool {
+        self.schema == "auto.hir.aggregates.draft"
+            && self.revision == 1
+            && self.profile == "source-aggregates-draft"
+    }
+
     pub fn domain(&self) -> Option<hir::HirDomain> {
         if self.schema == "auto.hir.core.draft"
             && self.revision == 1
@@ -323,6 +332,14 @@ impl Descriptor {
             // VERIFICATION domain (the numeric typing rules live in the
             // shared walks and the MIR-level contract, not a domain gate);
             // the descriptor identity itself stays distinct.
+            Some(hir::HirDomain::Closures)
+        } else if self.schema == "auto.hir.aggregates.draft"
+            && self.revision == 1
+            && self.profile == "source-aggregates-draft"
+        {
+            // PLAN-972 (T-02): the aggregates descriptor (numeric superset +
+            // the text expression surface) rides the same closures-superset
+            // verification domain as numeric; its identity stays distinct.
             Some(hir::HirDomain::Closures)
         } else {
             None
@@ -3532,7 +3549,12 @@ impl<'d> Binder<'d> {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Bool))
             }
             // PLAN-961: numeric builtin type words (numeric identity only).
-            Value::Ident(word) if self.desc.is_numeric() && numeric_builtin(word).is_some() => {
+            // PLAN-972 (T-02): the aggregates descriptor is the numeric
+            // superset — the numeric words bind under it as well.
+            Value::Ident(word)
+                if (self.desc.is_numeric() || self.desc.is_aggregates())
+                    && numeric_builtin(word).is_some() =>
+            {
                 Some(hir::TypeUse::Builtin(numeric_builtin(word).unwrap()))
             }
             // PLAN-862: `unit` is the entry-unit domain's result word; under

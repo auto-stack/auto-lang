@@ -1,0 +1,39 @@
+# Legacy a2p corpus: 11_methods/003_method_params
+
+## Case: legacy-a2p-11-methods-003-method-params
+id: "legacy.a2p.11_methods.003_method_params"
+entry-mode: "program"
+
+### Auto
+path: "method_params.at"
+```auto
+type Calculator {
+    fn multiply(a int, b int) int {
+        a * b
+    }
+}
+
+fn main() {
+    let c = Calculator()
+    print(c.multiply(6, 7))
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### method_params.expected.py
+```python
+@dataclass
+class Calculator:
+
+    def multiply(self, a: int, b: int) -> int:
+        return a * b
+
+def main():
+    c = Calculator()
+    print(c.multiply(6, 7))
+
+if __name__ == "__main__":
+    main()
+```

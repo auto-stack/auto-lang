@@ -1,0 +1,18 @@
+# Legacy vm corpus: 04_control_flow/013_to_int_from_str
+
+## Case: legacy-04-control-flow-013-to-int-from-str
+id: "legacy.04_control_flow.013_to_int_from_str"
+entry-mode: "program"
+
+### Auto
+path: "to_int_from_str.at"
+```auto
+print("42".to(int))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+42
+```

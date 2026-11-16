@@ -1468,6 +1468,7 @@ pub(crate) fn resolve_closures_env(
             sigs: ix.sigs,
             trace_enabled: ix.trace_enabled,
             profile: SourceProfile::Closures,
+            asm_lane: false,
             resolve_walks: 0,
             check_walks: 0,
             id: next_env_id(),
@@ -1867,6 +1868,13 @@ fn resolve_detailed(
     // PLAN-936（T-04）：meta 查询与 CT 表达式能力（各自独立门；meta 默认关）。
     let meta_enabled = capabilities.iter().any(|c| c == META_CAPABILITY);
     let ct_enabled = capabilities.iter().any(|c| c == super::cst::CT_CAPABILITY);
+    // PLAN-972（T-02）：装配 aggregates 面（packages-aggregates-ct lane）——
+    // `av.aggregates/1` 准入 + `ac.source.cte.in/v1` 装配能力同时在手时，
+    // 闭包字面量按 972 域放行（HOF 公共算法）。
+    let asm_lane = surface.is_aggregates()
+        && capabilities
+            .iter()
+            .any(|c| c == super::packages::IN_CAPABILITY);
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
     // PLAN-962: the aggregates surface widens the collections admission.
@@ -2417,6 +2425,7 @@ fn resolve_detailed(
             meta_enabled,
             ct_enabled,
             surface,
+            asm_lane,
             &mut diags,
             fn_receiver[i],
             fn_owner[i],
@@ -3137,6 +3146,9 @@ pub struct CheckedEnv {
     pub(crate) sigs: BTreeMap<String, FnSig>,
     pub(crate) trace_enabled: bool,
     pub(crate) profile: SourceProfile,
+    /// PLAN-972（T-02）：装配 aggregates 面（packages-aggregates-ct）——
+    /// 闭包字面量按 972 域放行（见 FnResolver.asm_lane）。
+    pub(crate) asm_lane: bool,
     /// Producer walk counters (D-01 observation; see [`env_walk_stats`]).
     pub(crate) resolve_walks: u64,
     pub(crate) check_walks: u64,
@@ -3376,6 +3388,7 @@ pub(crate) fn checked_env_from_parts(
         sigs,
         trace_enabled,
         profile: SourceProfile::Closures,
+        asm_lane: false,
         resolve_walks: 0,
         check_walks: 0,
         id: next_env_id(),
@@ -3399,6 +3412,7 @@ pub(crate) fn checked_env_from_parts_profile(
         sigs,
         trace_enabled,
         profile,
+        asm_lane: false,
         resolve_walks: 0,
         check_walks: 0,
         id: next_env_id(),
@@ -3456,6 +3470,8 @@ pub fn resolve_env_with_sched(
         },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
+        // PLAN-968 wrapper constructs outside the assembled lane.
+        asm_lane: false,
         trace_enabled: ix.trace_enabled,
         profile: surface,
         resolve_walks: 0,
@@ -3514,6 +3530,10 @@ pub fn resolve_env_with_supply(
         sigs: ix.sigs,
         trace_enabled: ix.trace_enabled,
         profile: surface,
+        asm_lane: surface.is_aggregates()
+            && capabilities
+                .iter()
+                .any(|c| c == super::packages::IN_CAPABILITY),
         resolve_walks: 0,
         check_walks: 0,
         id: next_env_id(),
@@ -3851,6 +3871,7 @@ pub(crate) fn recheck_swap_with_supply(
         false,
         false,
         env.profile,
+        env.asm_lane,
         &mut diags,
         recv,
         owner_rec,
@@ -3971,6 +3992,7 @@ pub(crate) fn resolve_lambda_in_context(
             // PLAN-968: lambdas never carry the scheduler surface.
             sched: None,
             profile: SourceProfile::Closures,
+            asm_lane: false,
             // callback-by-name is a text-record-only surface; the closures
             // face never reads the boundary.
             source_fn_count: 0,
@@ -4188,6 +4210,7 @@ pub(crate) fn resolve_owner_in_env(
         false,
         false,
         SourceProfile::Closures,
+        false,
         &mut diags,
         ast::Receiver::Free,
         None,
@@ -5148,6 +5171,10 @@ struct FnResolver<'a, 's> {
     /// first-class argument values (text profile unwraps them into
     /// CallBinding.moved markers instead).
     profile: SourceProfile,
+    /// PLAN-972（T-02）：装配 aggregates 面（packages-aggregates-ct lane——
+    /// `av.aggregates/1` 准入 + `ac.source.cte.in/v1`）——闭包字面量按 972
+    /// 域放行；其余面保持 `resolve_closure` 的 PLAN-964 具名拒绝。
+    asm_lane: bool,
     diags: &'a mut Vec<Diagnostic>,
     locals: Vec<LocalDecl>,
     scopes: Vec<Scope>,
@@ -5245,6 +5272,7 @@ fn resolve_fn_agg(
     meta_enabled: bool,
     ct_enabled: bool,
     surface: SourceProfile,
+    asm_lane: bool,
     diags: &mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
@@ -5267,6 +5295,7 @@ fn resolve_fn_agg(
         meta_enabled,
         ct_enabled,
         surface,
+        asm_lane,
         diags,
         receiver,
         owner_rec,
@@ -5292,6 +5321,7 @@ fn resolve_fn(
     meta_enabled: bool,
     ct_enabled: bool,
     surface: SourceProfile,
+    asm_lane: bool,
     diags: &mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
@@ -5310,6 +5340,7 @@ fn resolve_fn(
         meta_enabled,
         ct_enabled,
         surface,
+        asm_lane,
         diags,
         receiver,
         owner_rec,
@@ -5339,6 +5370,7 @@ fn resolve_fn_reuse<'a, 's>(
     meta_enabled: bool,
     ct_enabled: bool,
     surface: SourceProfile,
+    asm_lane: bool,
     diags: &'a mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
@@ -5368,6 +5400,7 @@ fn resolve_fn_reuse<'a, 's>(
         ct_enabled,
         ct_depth: 0,
         profile: surface,
+        asm_lane,
         diags,
         locals: Vec::new(),
         scopes: vec![Scope {
@@ -5894,7 +5927,7 @@ impl<'a, 's> FnResolver<'a, 's> {
         body_ast: &ast::ClosureBody,
         span: Span,
     ) -> ResolvedExpr {
-        if self.profile != SourceProfile::Closures {
+        if self.profile != SourceProfile::Closures && !self.asm_lane {
             self.bind_err(
                 "source.unsupported",
                 "lambda expressions are available only in the closures source profile",

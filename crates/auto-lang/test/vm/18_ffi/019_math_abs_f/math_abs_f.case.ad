@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/019_math_abs_f
+
+## Case: legacy-18-ffi-019-math-abs-f
+id: "legacy.18_ffi.019_math_abs_f"
+entry-mode: "program"
+
+### Auto
+path: "math_abs_f.at"
+```auto
+Math.abs_f(-3.14)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3.14
+```

@@ -1,0 +1,25 @@
+# Legacy a2c corpus: 10_collections/007_array_slice
+
+## Case: legacy-10-collections-007-array-slice
+id: "legacy.10_collections.007_array_slice"
+entry-mode: "program"
+
+### Auto
+path: "array_slice.at"
+```auto
+let arr [5]int = [10, 20, 30, 40, 50]
+let sub = arr[1..4]
+sub
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_slice.expected.c
+```c
+int arr[5] = {10, 20, 30, 40, 50};
+int main(void) {
+    int sub = arr/* [1..4] */;
+    return sub;
+}
+```

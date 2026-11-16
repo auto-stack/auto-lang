@@ -8,6 +8,7 @@ mod cache_tier;
 mod choose_instances_935;
 #[path = "cases/cli.rs"]
 mod cli;
+
 #[path = "cases/closures_compat.rs"]
 mod closures_compat;
 #[path = "cases/closures_native_924_performance.rs"]
@@ -70,6 +71,8 @@ mod incremental_churn_gc_1000;
 mod incremental_tier;
 #[path = "cases/numeric_codegen_tier.rs"]
 mod numeric_codegen_tier;
+#[path = "cases/p969_audit03_surface_routing.rs"]
+mod p969_audit03_surface_routing;
 #[path = "cases/parity_tier.rs"]
 mod parity_tier;
 #[path = "cases/record_method_tier.rs"]

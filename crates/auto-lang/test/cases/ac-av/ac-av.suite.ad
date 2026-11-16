@@ -6,15 +6,15 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ac-av", include: [
-  "av-core-vertical.case.ad",
-  "av-core-semantics.case.ad",
-  "av-core-traps.case.ad",
-  "av-core-trace.case.ad",
-  "av-core-kind.case.ad",
-  "av-resources-front-door.case.ad",
-  "av-data-first.case.ad",
-  "av-data-typed.case.ad",
-  "av-data-bool.case.ad",
-  "av-data-int-zero.case.ad",
+  "av-core-vertical.document.case.ad",
+  "av-core-semantics.document.case.ad",
+  "av-core-traps.document.case.ad",
+  "av-core-trace.document.case.ad",
+  "av-core-kind.document.case.ad",
+  "av-resources-front-door.document.case.ad",
+  "av-data-first.document.case.ad",
+  "av-data-typed.document.case.ad",
+  "av-data-bool.document.case.ad",
+  "av-data-int-zero.document.case.ad",
 ] }
 ```

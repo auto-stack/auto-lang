@@ -1,0 +1,19 @@
+# Legacy vm corpus: 11_compound_ops/006_div_eq_oneline
+
+## Case: legacy-11-compound-ops-006-div-eq-oneline
+id: "legacy.11_compound_ops.006_div_eq_oneline"
+entry-mode: "program"
+
+### Auto
+path: "div_eq_oneline.at"
+```auto
+var a = 20; a /= 4; a
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+5
+```

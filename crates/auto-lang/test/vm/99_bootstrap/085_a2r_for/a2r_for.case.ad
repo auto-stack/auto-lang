@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/085_a2r_for
+
+## Case: legacy-99-bootstrap-085-a2r-for
+id: "legacy.99_bootstrap.085_a2r_for"
+entry-mode: "program"
+
+### Auto
+path: "a2r_for.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nfor i in 0..5 {\nprint(i)\n}\n}")
+    var expected = "fn main() {\n    for i in 0..5 {\n        println!(\"{}\", i);\n    }\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

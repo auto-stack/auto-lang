@@ -1,0 +1,28 @@
+# Legacy a2p corpus: 03_control_flow/045_for_inclusive
+
+## Case: legacy-a2p-03-control-flow-045-for-inclusive
+id: "legacy.a2p.03_control_flow.045_for_inclusive"
+entry-mode: "program"
+
+### Auto
+path: "for_inclusive.at"
+```auto
+fn main() {
+    for i in 0..=5 {
+        print(i)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### for_inclusive.expected.py
+```python
+def main():
+    for i in range(0, 5 + 1):
+        print(i)
+
+if __name__ == "__main__":
+    main()
+```

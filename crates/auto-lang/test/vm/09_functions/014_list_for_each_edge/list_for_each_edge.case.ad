@@ -1,0 +1,32 @@
+# Legacy vm corpus: 09_functions/014_list_for_each_edge
+
+## Case: legacy-09-functions-014-list-for-each-edge
+id: "legacy.09_functions.014_list_for_each_edge"
+entry-mode: "program"
+
+### Auto
+path: "list_for_each_edge.at"
+```auto
+// Test: for_each with side effects
+let nums = [10, 20, 30]
+nums.for_each(x => print(x))
+
+// Test: empty list
+let empty = []
+let mapped = empty.map(x => x * 2)
+print(mapped.len())
+
+let sum = empty.reduce(0, (acc, x) => acc + x)
+print(sum)
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+10
+20
+30
+0
+0
+```

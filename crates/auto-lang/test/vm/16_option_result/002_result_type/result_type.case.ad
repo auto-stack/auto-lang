@@ -1,0 +1,20 @@
+# Legacy vm corpus: 16_option_result/002_result_type
+
+## Case: legacy-16-option-result-002-result-type
+id: "legacy.16_option_result.002_result_type"
+entry-mode: "program"
+
+### Auto
+path: "result_type.at"
+```auto
+let x !int = Ok(42)
+1
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

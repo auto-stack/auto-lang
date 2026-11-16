@@ -1,0 +1,27 @@
+# Legacy vm corpus: 24_generics/002_to_array
+
+## Case: legacy-24-generics-002-to-array
+id: "legacy.24_generics.002_to_array"
+entry-mode: "program"
+
+### Auto
+path: "to_array.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "a" },
+        Note { id: 1, title: "b" },
+    ])
+    let arr = notes.to_array()
+    print("ok")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

@@ -1,0 +1,49 @@
+# Legacy a2c corpus: 18_c_interop/002_alias
+
+## Case: legacy-18-c-interop-002-alias
+id: "legacy.18_c_interop.002_alias"
+entry-mode: "program"
+
+### Auto
+path: "alias.at"
+```auto
+fn my_add(a int, b int) int {
+    a + b
+}
+
+alias add = my_add
+
+fn main() {
+    let s int = add(3, 5)
+    print("Sum:", s)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### alias.expected.c
+```c
+#include "alias.h"
+
+int my_add(int a, int b) {
+    return a + b;
+}
+
+#define add my_add
+
+int main(void) {
+    int s = add(3, 5);
+    printf("%s %d\n", "Sum:", s);
+    return 0;
+}
+```
+
+#### alias.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int my_add(int a, int b);
+```

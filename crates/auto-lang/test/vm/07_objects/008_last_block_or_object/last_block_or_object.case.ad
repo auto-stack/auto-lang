@@ -1,0 +1,19 @@
+# Legacy vm corpus: 07_objects/008_last_block_or_object
+
+## Case: legacy-07-objects-008-last-block-or-object
+id: "legacy.07_objects.008_last_block_or_object"
+entry-mode: "program"
+
+### Auto
+path: "last_block_or_object.at"
+```auto
+{ a: 1, b: 2 }
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+{a: 1, b: 2}
+```

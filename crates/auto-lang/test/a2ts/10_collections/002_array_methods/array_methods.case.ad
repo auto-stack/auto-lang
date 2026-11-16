@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 10_collections/002_array_methods
+
+## Case: legacy-10-collections-002-array-methods
+id: "legacy.10_collections.002_array_methods"
+entry-mode: "program"
+
+### Auto
+path: "array_methods.at"
+final-newline: false
+```auto
+fn main() {
+    let arr = [10, 20, 30]
+    var len = arr.len()
+    print(len)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### array_methods.expected.ts
+```ts
+function main(): void {
+    const arr: number[] = [10, 20, 30];
+    let len = arr.len();
+    console.log(len);
+}
+
+main();
+```

@@ -1,5 +1,5 @@
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m2-control-effects-965", include: [
-  "control_effects.case.ad",
+  "control_effects.document.case.ad",
 ] }
 ```

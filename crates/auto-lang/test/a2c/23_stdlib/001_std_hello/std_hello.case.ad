@@ -1,0 +1,35 @@
+# Legacy a2c corpus: 23_stdlib/001_std_hello
+
+## Case: legacy-23-stdlib-001-std-hello
+id: "legacy.23_stdlib.001_std_hello"
+entry-mode: "program"
+
+### Auto
+path: "std_hello.at"
+```auto
+use auto.io: say
+
+fn main() {
+    say("hello!")
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_hello.expected.c
+```c
+#include "std_hello.h"
+
+int main(void) {
+    say("hello!");
+    return 0;
+}
+```
+
+#### std_hello.expected.h
+```c
+#pragma once
+
+#include "auto/io.h"
+```

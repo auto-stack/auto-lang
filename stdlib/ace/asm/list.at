@@ -1,0 +1,140 @@
+// ACE assembled stdlib list module (PLAN-972 T-02): the PLAN-946 frozen
+// slice superset (sum/find_first_gt/pop/total_len over the frozen collections
+// method table new/push/get/set/remove/len/clear) plus the closure-HOF family
+// (reduce/find/any/all/filter/map over instantiated List<int>) — the
+// HOF composition 946 explicitly deferred to 972. Signatures stay
+// instantiated (List<int>/List<Str>); generic stdlib APIs belong to the
+// 963 full-generics consumption slice, not this module.
+//
+// Lane: packages-aggregates-ct (assembled aggregates) — same identity rules
+// as the frozen slice (anti-shadow: only this repo file can be `std.list`
+// on this lane). `pop` keeps the ORIGINAL empty contract (None, not a trap).
+pub fn sum(xs List<int>) int {
+    var total = 0
+    for x in xs {
+        total = total + x
+    }
+    return total
+}
+
+pub fn find_first_gt(xs List<int>, threshold int) ?int {
+    for x in xs {
+        if (x > threshold) {
+            return Some(x)
+        }
+    }
+    return None
+}
+
+pub fn pop(xs List<int>) ?int {
+    if xs.len() == 0 {
+        return None
+    }
+    return Some(xs.remove(xs.len() - 1))
+}
+
+pub fn total_len(xs List<Str>) int {
+    var total = 0
+    for s in xs {
+        total = total + s.len()
+    }
+    return total
+}
+
+pub fn reduce(xs List<int>, init int, f fn(int, int) -> int) int {
+    var acc = init
+    for x in xs {
+        acc = f(acc, x)
+    }
+    return acc
+}
+
+pub fn find(xs List<int>, p fn(int) -> bool) ?int {
+    for x in xs {
+        if p(x) {
+            return Some(x)
+        }
+    }
+    return None
+}
+
+pub fn any(xs List<int>, p fn(int) -> bool) bool {
+    for x in xs {
+        if p(x) {
+            return true
+        }
+    }
+    return false
+}
+
+pub fn all(xs List<int>, p fn(int) -> bool) bool {
+    for x in xs {
+        if !p(x) {
+            return false
+        }
+    }
+    return true
+}
+
+pub fn filter(xs List<int>, p fn(int) -> bool) List<int> {
+    var ys = List<int>.new()
+    for x in xs {
+        if p(x) {
+            ys.push(x)
+        }
+    }
+    return ys
+}
+
+pub fn map(xs List<int>, f fn(int) -> int) List<int> {
+    var ys = List<int>.new()
+    for x in xs {
+        ys.push(f(x))
+    }
+    return ys
+}
+
+// PLAN-972 (T-08 (b) close): ascending insertion-min sort over the
+// instantiated List<int> (stable — first minimum wins; pure Auto via the
+// frozen get/set/remove method table; Str-keyed/generic sorts belong to
+// the 963 full-generics slice).
+pub fn sort(xs List<int>) List<int> {
+    var work = List<int>.new()
+    var ys = List<int>.new()
+    copy_all(xs, work, 0)
+    drain_into(work, ys, xs.len())
+    return ys
+}
+
+fn copy_all(src List<int>, dst List<int>, i int) int {
+    if (i == src.len()) {
+        return dst.len()
+    }
+    dst.push(src.get(i))
+    return copy_all(src, dst, i + 1)
+}
+
+// The accumulator drains in a void-shaped step (mutating both lists via
+// their handles) so `sort` TAIL-RETURNS its own local — a mut-ptr local
+// aliased into a returned CALL result gets double-freed by the C
+// epilogue today (named emitter boundary, PLAN-972 §9).
+fn drain_into(work List<int>, ys List<int>, remaining int) int {
+    if (remaining == 0) {
+        return 0
+    }
+    let mi = min_index(work, 0, 1, work.get(0))
+    ys.push(work.get(mi))
+    work.remove(mi)
+    return drain_into(work, ys, remaining - 1)
+}
+
+fn min_index(xs List<int>, best int, i int, best_v int) int {
+    if (i == xs.len()) {
+        return best
+    }
+    let v = xs.get(i)
+    if (v < best_v) {
+        return min_index(xs, i, i + 1, v)
+    }
+    return min_index(xs, best, i + 1, best_v)
+}

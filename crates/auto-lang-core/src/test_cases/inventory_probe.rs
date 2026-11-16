@@ -1,15 +1,12 @@
 //! Typed probe declarations for read-only obligation discovery.
-use auto_test_case::contract::{CheckSpec, ProbeStep};
+use auto_test_case::contract::{CheckSpec, Options, ProbeStep};
 use auto_test_case::ir::ResolvedOracle;
 
-pub(super) fn append(
-    row: &mut serde_json::Value,
-    check: &CheckSpec,
-    oracle: &ResolvedOracle,
-    fixture_base: &std::path::Path,
-) {
-    let options = &check.options;
-    row["probe_bindings"] = serde_json::json!({
+/// Structured per-family probe binding projection (PLAN-1062 T-02 shared
+/// with case-migration/2): every nested spec field is typed JSON, never a
+/// Debug string or an `is_some` boolean.
+pub(super) fn options_bindings(options: &Options) -> serde_json::Value {
+    serde_json::json!({
         "av":options.probe_av.as_ref().map(|v| serde_json::json!({
             "entry":v.entry, "caps":v.caps, "session":v.session, "profile":v.profile,
             "resource":v.resource.as_ref().map(|r| serde_json::json!({
@@ -32,6 +29,12 @@ pub(super) fn append(
                 "max_codegen_units":d.max_codegen_units,"stable_defs":d.stable_defs,
             })),
             "typed":v.typed.as_ref().map(|t| serde_json::json!({"fixture":t.fixture,"args":t.args})),
+            "history":v.history.as_ref().map(|h| serde_json::json!({
+                "min_cache_hit_coff":h.min_cache_hit_coff,
+            })),
+            "turnaround":v.turnaround.as_ref().map(|t| serde_json::json!({
+                "p90_max_ms":t.p90_max_ms,"min_edits":t.min_edits,
+            })),
         })),
         "a2x_hir":options.probe_a2x_hir.as_ref().map(|v| serde_json::json!({
             "profile":v.profile,"entry":v.entry,"caps":v.caps,
@@ -43,7 +46,43 @@ pub(super) fn append(
         "sema":options.probe_sema.as_ref().map(|v| serde_json::json!({
             "package":v.package,"module":v.module,"kind":v.kind,"fn_name":v.fn_name,
         })),
-    });
+    })
+}
+
+/// Structured per-step resolved probe oracle projection (bindings sidecar
+/// content-bound by sha256; `bytes_len` records the resolved payload size).
+pub(super) fn resolved_probe_oracles(oracle: &ResolvedOracle) -> serde_json::Value {
+    oracle
+        .probe
+        .as_ref()
+        .map(|steps| {
+            steps
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "cache":s.cache,"compute_calls":s.compute_calls,
+                        "bindings_file":s.bindings_file,
+                        "bindings_bytes_len":s.bindings_bytes.as_ref().map(|b| b.len()),
+                        "bindings_sha256":s.bindings_sha256,
+                        // PLAN-1062 CF-07: inline bindings payload text
+                        "bindings_text":s.bindings_bytes.as_ref()
+                            .and_then(|b| std::str::from_utf8(b).ok()),
+                        "stages_include":s.stages_include,"pe_exit":s.pe_exit,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .into()
+}
+
+pub(super) fn append(
+    row: &mut serde_json::Value,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    fixture_base: &std::path::Path,
+) {
+    let options = &check.options;
+    row["probe_bindings"] = options_bindings(options);
     row["declared_probe_steps"] = options
         .probe_steps
         .as_ref()

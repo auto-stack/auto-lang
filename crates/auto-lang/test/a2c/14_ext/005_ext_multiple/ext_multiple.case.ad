@@ -1,0 +1,66 @@
+# Legacy a2c corpus: 14_ext/005_ext_multiple
+
+## Case: legacy-14-ext-005-ext-multiple
+id: "legacy.14_ext.005_ext_multiple"
+entry-mode: "program"
+
+### Auto
+path: "ext_multiple.at"
+```auto
+// Test multiple ext blocks for same type (Plan 035)
+
+ext int {
+    fn double() int {
+        self + self
+    }
+}
+
+ext int {
+    fn triple() int {
+        self + self + self
+    }
+}
+
+fn main() {
+    let x = 5
+    let d = x.double()
+    let t = x.triple()
+    print(d)
+    print(t)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### ext_multiple.expected.c
+```c
+#include "ext_multiple.h"
+
+int int_double(int self) {
+    return self + self;
+}
+
+int int_triple(int self) {
+    return self + self + self;
+}
+
+int main(void) {
+    int x = 5;
+    unknown d = int_double(x);
+    unknown t = int_triple(x);
+    printf("%d\n", d);
+    printf("%d\n", t);
+    return 0;
+}
+```
+
+#### ext_multiple.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int int_double(int self);
+int int_triple(int self);
+```

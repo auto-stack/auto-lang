@@ -158,6 +158,14 @@ pub fn coll_type_table_block(seed: &SeedColl) -> Result<String, String> {
             e.elem_tag()
         ));
     }
+    // PLAN-972 (T-03): list RESULT wrappers (filter/map-style signatures
+    // return lists through the trap-carrying channel).
+    for e in &seed.lists {
+        out.push_str(&format!(
+            "typedef struct {{ a2x_list_{tag} value; a2x_trap_code trap; }} a2x_res_list_{tag};\n",
+            tag = e.elem_tag()
+        ));
+    }
     // 2) result wrappers + value/fwd constructors
     for r in &seed.records {
         let cr = c_record_name(&r.name);
@@ -217,7 +225,9 @@ pub fn coll_type_table_block(seed: &SeedColl) -> Result<String, String> {
              void a2x_coll_list_{tag}_clear(a2x_list_{tag}* l);\n\
              void a2x_coll_list_{tag}_free(a2x_list_{tag}* l);\n\
              void a2x_coll_elem_{tag}_free({et}* v);\n\
-             a2x_trap_code a2x_coll_elem_{tag}_clone(const {et}* src, {et}* out);\n\n",
+             a2x_trap_code a2x_coll_elem_{tag}_clone(const {et}* src, {et}* out);\n\n\
+             a2x_res_list_{tag} a2x_list_{tag}_value(a2x_list_{tag} v);\n\
+             a2x_res_list_{tag} a2x_fwd_list_{tag}(a2x_trap_code t);\n\n",
             tag = tag,
             et = et
         ));
@@ -442,6 +452,12 @@ fn emit_variant_helpers(out: &mut String, v: &crate::seed_coll::SeedCollVariant)
 fn emit_list_helpers(out: &mut String, e: &SeedCollTy) {
     let tag = e.elem_tag();
     let et = c_ty(e);
+    // PLAN-972 (T-03): the list result constructors (value/fwd).
+    out.push_str(&format!(
+        "a2x_res_list_{t} a2x_list_{t}_value(a2x_list_{t} v) {{ return (a2x_res_list_{t}){{ v, A2X_TRAP_NONE }}; }}\n\
+         a2x_res_list_{t} a2x_fwd_list_{t}(a2x_trap_code t) {{ return (a2x_res_list_{t}){{ {{ NULL, 0, 0 }}, t }}; }}\n\n",
+        t = tag
+    ));
     let esz = format!("sizeof({})", et);
     // element free/clone (Rust A2xCollElem parity)
     match e {

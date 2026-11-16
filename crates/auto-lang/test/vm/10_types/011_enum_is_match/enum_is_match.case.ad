@@ -1,0 +1,31 @@
+# Legacy vm corpus: 10_types/011_enum_is_match
+
+## Case: legacy-10-types-011-enum-is-match
+id: "legacy.10_types.011_enum_is_match"
+entry-mode: "program"
+
+### Auto
+path: "enum_is_match.at"
+```auto
+enum Color { Red = 1, Green = 2, Blue = 3 }
+
+fn check(c int) str {
+    is c {
+        1 -> "red"
+        2 -> "green"
+        3 -> "blue"
+        else -> "unknown"
+    }
+}
+
+print(check(1))
+print(check(3))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+red
+blue
+```

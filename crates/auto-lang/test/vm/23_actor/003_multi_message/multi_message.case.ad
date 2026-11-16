@@ -1,0 +1,38 @@
+# Legacy vm corpus: 23_actor/003_multi_message
+
+## Case: legacy-23-actor-003-multi-message
+id: "legacy.23_actor.003_multi_message"
+entry-mode: "program"
+
+### Auto
+path: "multi_message.at"
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(1)
+    h.send(2)
+    h.send(1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+got one
+got two
+got one
+```

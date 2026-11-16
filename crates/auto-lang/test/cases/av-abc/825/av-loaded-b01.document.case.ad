@@ -1,0 +1,16 @@
+## Case: av-loaded-b01
+id: "av.loaded.b01"
+tags: ["av-abc-825", "probe", "ace-m1"]
+links: ["PLAN-825", "PLAN-852"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int { return 2 + 3 * 4 }
+~~~~
+
+### Probe run-loaded-b01
+recipe: "ac-av/loaded-run-v1"
+entry: "d_main"
+exit: 14

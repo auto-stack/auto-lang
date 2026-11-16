@@ -1,0 +1,28 @@
+# Legacy a2ts corpus: 10_collections/003_map_type
+
+## Case: legacy-10-collections-003-map-type
+id: "legacy.10_collections.003_map_type"
+entry-mode: "program"
+
+### Auto
+path: "map_type.at"
+final-newline: false
+```auto
+fn main() {
+    let scores = {"alice": 90, "bob": 85}
+    print(scores)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### map_type.expected.ts
+```ts
+function main(): void {
+    const scores = { "alice": 90, "bob": 85 };
+    console.log(scores);
+}
+
+main();
+```

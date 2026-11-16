@@ -971,6 +971,26 @@ fn c_min_or_cast_i32(v: i32) -> String {
         format!("(int32_t){v}")
     }
 }
+/// PLAN-972 (T-03): the shared typed-constant literal forms (the text
+/// lane's inline match extracted for the collections lane).
+pub(crate) fn numeric_const_c(ty: hir::BuiltinType, bits: u64) -> Result<String, A2xReject> {
+    Ok(match ty {
+        hir::BuiltinType::I8 => c_min_or_cast_i8((bits as u8) as i8),
+        hir::BuiltinType::I32 => c_min_or_cast_i32(bits as i32),
+        hir::BuiltinType::U8 => format!("(uint8_t){}", bits as u8),
+        hir::BuiltinType::U32 => format!("(uint32_t){}u", bits as u32),
+        hir::BuiltinType::I64 => c_min_or_cast_i64(bits as i64),
+        hir::BuiltinType::U64 => format!("(uint64_t){}ull", bits),
+        hir::BuiltinType::F32 => format!("a2x_f32_bits({}u)", bits as u32),
+        hir::BuiltinType::F64 => format!("a2x_f64_bits({}ull)", bits),
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "{other:?} is not a numeric builtin"
+            )))
+        }
+    })
+}
+
 fn c_min_or_cast_i64(v: i64) -> String {
     if v == i64::MIN {
         "(int64_t)(-9223372036854775807LL - 1)".to_string()

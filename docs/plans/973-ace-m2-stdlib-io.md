@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-973
-status: drafting
+status: reviewed
 feature_name: 新版系统文件进程时间与资源库
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 7
-current_step: 0
+updated_at: 2026-11-16
+plan_revision: 13
+current_step: 7
 total_steps: 10
-depends_on: [PLAN-967, PLAN-968, PLAN-972, PLAN-947, PLAN-966]
+depends_on: [PLAN-967, PLAN-968, PLAN-972, PLAN-947, PLAN-966, PLAN-1039, PLAN-1040, PLAN-1041, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/ace-binding-and-assembly.md]
 new_spec_components: [docs/specs/ace-migration/m2-stdlib-io.md]
 touched_goals: [GOAL-002]
@@ -17,6 +17,22 @@ touched_goals: [GOAL-002]
 # [PLAN-973] 新版系统文件进程时间与资源库
 
 ## 0. 变更摘要
+
+2026-11-16 r13复审修复·第7轮：F1 用户裁定 **b——AC 真身具名延 [PLAN-1065](1065-ace-ac-sys-real-bodies.md)**（V-09/AC-07/AC-COVERAGE 行文修订为"AC stub=已裁定交付面"）；F2/F3/F4 同树修复（worktree `0a6fb9100`：触面 warning 清零、dialect 探针内联自包含、argv 注记改已替代终局），F5 已 §10 落册；复验 sys973 15/15+fmt clean。重审 affected 项全闭，**T-05 final pass → reviewed**。next=T-06/07 merge。
+
+2026-11-16 r12复审·第6轮：T-05 独立复审 **needs_fix**——复审重跑 29/29 绿（sys973 15/15+外库腿 2/2+native stub 1/1+ace-host 11/11，per-case ≤10s）、四表对齐/车道门/零 libc 委托/故障注入/零 debug 残留核验通过；发现 F1[中]（AC 后端 50 操作全 stub，V-09"AC真实调用OS API"正例腿未交付且无具名移交行——T-09 复开，待用户裁定 a 本计划实现/b 具名延后继）+ F2..F5 小缺陷（触面 warning×2、dialect_bisect 读仓外文件、argv 注记过时、rand 不移植裁定不可追溯）。status 回 executing（6/10）。债务候选登记 KNOWN-DEBT D-973。
+
+2026-11-16 r12执行·第5轮：**用户裁定 §10.1 选项 c——byte→Str 车道面具名延期后继计划**。[PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md) 创建为承接 owner（drafting 0/7，移交表 D-01..D-09）；T-02/T-03/T-08 按 r11 已交付面勾选（read_text/dir_names/env get 族/canonical/cwd/cmdline/捕获文本/存储重建/zip/inflate/KV storage 移交 1064），全部 work 任务完成，status→execution_done，零代码改动（worktree 保持 a9eceef38，复用第 4 轮冻结证据）。next=T-05 独立复审。
+
+2026-11-16 r11执行·第4轮：T-04冻结并集完成——计划触面warning/fmt清零（基线15条+auto-lang-core存量具名不动）、ace-host恢复可编译（Exit臂）、9组固定职责组并集实跑（7组PASS；ace-abi 1例+ace-runtime 19例=master预存红，主检出同红取证，非973面）；T-01/T-04/T-09/T-10按证据勾选。zip/storage/read_text族仍待byte→Str车道用户裁定。
+
+2026-11-15 r11当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
+
+2026-11-13 r10当前：纳入新1043来源后缀装配及最小#in平台静态选择，见§5/AC-LOAD/V-LOAD/SD-LOAD；原任务/状态/完成数与全覆盖不减，仅规划。
+
+2026-11-13 r9当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
+
+2026-11-13 r8：参考Zig/Go的原生平台I/O设计承接；新增AC-PLATFORM-IO/V-PLATFORM-IO/SD-PLATFORM-IO，由原任务负责。保全部原任务/数量/进度/既有AC/V及其他会话修订，本轮仅规划。
 
 2026-11-12 r7：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -47,6 +63,8 @@ touched_goals: [GOAL-002]
 现有Rust ACE workspace、Auto公共源、共享语法/查询/工件系统及真实目标工具链。跨仓使用同组兄弟worktree与显式SDK身份，不创建junction/symlink。
 
 ## 4. 需求分析与背景调查
+
+**2026-11-15 目标授权（goal grant）**：用户以 `/goal 完成计划973` 授权 /auto-plan-goal 全链交付——在专属 worktree 实施（含创建）、独立复审、合同内有界修复与 merge（规范沉淀、归档、清树、落地核查）。阶段链按 stage map 推进；不授权变更目标/验收/阈值/范围/预算。实施树 `D:/autostack/.wt/lang-973/auto-lang`（分支 `plan-973-dev`，base `3279f2f72`）已建；材料目录 `D:/autostack/plan-artifacts/plan-973/` 已登记。前置依赖 967/968/972/947/966/1039/1040/1041/1042 均已归档（2026-11-15 核验）。
 
 本次授权只含设计、路线与相关Plan修订，未含源码/测试实现、生成fixture/SDK、构建、产品运行或merge。阶段依据为用户本轮正式决定；取材当前959冻结分母、TestCase/固定组/ACE源码重放规范及现存owner入口，旧overview的物理路径/别名不覆盖当前Cargo。
 
@@ -176,6 +194,26 @@ struct ReplaceTransaction { destination: PathIdentity, temporary: PathIdentity, 
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-09`、`T-10`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### Windows/Linux无libc平台I/O（2026-11-13当前）
+
+依据[原生平台I/O Draft 0.1](../design/stdlib/native-platform-io.md)。完整实施消费1039/1040/1041正式来源，落实设计§7–9的openat/CreateFileW、read/write/seek/size/sync/close、Path字节/UTF16无损往返、共享/umask/CLOEXEC、NUL拒绝、部分完成/关闭/授权根与symlink/reparse逃逸；字符串前缀不是sandbox。T-01可先只读冻结需求；原前置、完整四端、process/time/watch/zip义务保留。
+
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+File/path/env/process/time/rand/console等逐操作六路径；Windows/Linux AV/native用1039/1040系统边界，AV/C和AV/Rust实际库/handle路径，A2PY用共享HIR目标端口。已交1041输出只复用身份仍适用的证据，stdin/File等仍由本包关闭。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；需要更大Python语义时消费977/PY已交能力切片或先具名补齐，不反等977整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
+### 新加载机制完成依赖（2026-11-13当前）
+
+依据[设计§8–10](../design/stdlib/backend-provider-coverage.md)与[1043](archive/1043-ace-stdlib-context-assembly.md)。公共.at＋at/c/rs/py来源后缀组成同一逻辑模块，运行后端另选；#in打开临时namespace并让is/if/for继承编译期属性，不扩平台后缀。最小层由1043先交，966继续完整CTE，不能反向等966整包。
+
+经966/967/972传递硬依1043；系统库按provider后缀选来源、#in按target选普通平台模块，真实OS调用仍沿1039/1040，完整CTE扩面沿966。
+
+本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -188,6 +226,49 @@ struct ReplaceTransaction { destination: PathIdentity, temporary: PathIdentity, 
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-stdlib-io.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### 平台I/O规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-PLATFORM-IO | add/modify | docs/specs/ace-migration/m2-stdlib-io.md | 笼统provider→本节平台IO/算法/运行/依赖分账 | 无libc平台设计 | AC-PLATFORM-IO |
+
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/ace-migration/m2-stdlib-io.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### 加载机制规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LOAD | add/modify | docs/specs/ace-migration/m2-stdlib-io.md | 旧有限后端侧文件→本包实际消费1043来源装配/#in/目标依赖及正式来源，未交保持缺口 | 用户确定新加载机制 | AC-LOAD |
+
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**系统File/path/env/process/time/rand/console与资源**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+默认Auto实现缓冲/路径/错误/资源逻辑，Windows公开DLL、Linux syscall薄适配；不用C stdio/Rust std::fs/std::io默认实现。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-stdlib-io.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
+| SD-AUTO-STD | modify | docs/specs/ace-migration/m2-stdlib-io.md | 默认provider声明→普通标准能力有Auto算法/协议与OS边界来源证据，高级外库显式分账 | 用户自有普通库要求 | AC-AUTO-STD |
+
+### byte→Str 面延后移交（2026-11-16 用户裁定，当前合同）
+
+用户裁定 §10.1 选项 c：卡在**字节→Str 构造车道缺口**（972 已知边界）的库面**具名延期到 [PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md)**，本包按已交付面收口。移交表 D-01..D-09（含代码锚点与逐面旧 sentinel 合同）：file.read_text、dir_names、env.get/get_or/home_dir/local_data_dir、path.canonical 真实符号链接解析、process.args()/current_dir()、spawn_with_output 捕获文本、KV storage 持久面、zip/inflate 三元组、read_bytes Option\<List\> 形状。本包不冒上述面已交付；旧 sentinel 约定逐面保留由 1064 承接实现，本包模块头具名注记（"lane gap/plan dossier"）即指向该移交。1064 非本包反向依赖；车道解锁落点（972 域 vs 1064 内建）由其 §10 待澄清裁定。
+
+| delta_id | add/modify | target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-DEFER | modify | docs/specs/ace-migration/m2-stdlib-io.md | 延后面悬置缺口→具名移交 1064 的边界清单+旧 sentinel 保留+代码锚点 | 用户裁定选项 c | AC-02/03/06/08 |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -221,7 +302,7 @@ struct ReplaceTransaction { destination: PathIdentity, temporary: PathIdentity, 
 
 | Case | AC | 输入与区分性断言 | 入口/证据 | owner/阶段 |
 |---|---|---|---|---|
-| V-09 | AC-07 | Windows/Linux选择/缺平台/歧义provider正反例；未选SDK缺失不阻；AC真实调用OS API且不先产C/Rust业务源，四端按适用平台运行同一公共系统程序。 | 本包§4真实owner下新增永久fixture，公共source/worker/实际产品或仓外安装入口；独立expected、资源trace、命令/子终态、身份分别记录 | work/T-09；最终验证汇总 |
+| V-09 | AC-07 | Windows/Linux选择/缺平台/歧义provider正反例；未选SDK缺失不阻；~~AC真实调用OS API且不先产C/Rust业务源~~（**该腿 2026-11-16 裁定 b 移交 [1065](1065-ace-ac-sys-real-bodies.md)**，本包 AC 面=stub 诚实拒绝+负控），四端按适用平台运行同一公共系统程序。 | 本包§4真实owner下新增永久fixture，公共source/worker/实际产品或仓外安装入口；独立expected、资源trace、命令/子终态、身份分别记录 | work/T-09；最终验证汇总 |
 | V-10 | AC-08 | 临时目录写入含NUL/Unicode字节、读回、seek/EOF、失败路径与双close策略；撤权dispatch=0、取消/进程退出后句柄无泄漏、late结果不发布；四端独立expected而非仅相等。 | 本包§4真实owner下新增永久fixture，公共source/worker/实际产品或仓外安装入口；独立expected、资源trace、命令/子终态、身份分别记录 | work/T-10；最终验证汇总 |
 
 新增触面职责组：`cargo t stdlib ace-stdlib ace-host ace-av ace-native ace-a2x ace-abi ace-foreign-contract`，与原§6组按实际修改取必要并集；T-01核真实参数，新增用例接固定组，不减原平台/ignore/压力条件。948若仅文档审计则只做目标静态检查，真实探针沿原指定组；安装/外库工具和外仓产品必须另核真实命令，语言组不替代它们。零选择/未执行/缺环境不充PASS；本轮没有运行这些测试。
@@ -243,6 +324,38 @@ struct ReplaceTransaction { destination: PathIdentity, temporary: PathIdentity, 
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 原生平台I/O验证（新增，未执行）
+
+| Case | AC / work任务 | 输入、独立oracle及边界 |
+|---|---|---|
+| V-PLATFORM-IO | AC-PLATFORM-IO；T-01/T-09/T-10/T-04 | 同源四格真实create/write/close/reopen/read/seek/EOF，空文件/零buffer/NUL内容、exclusive冲突/append、坏路径/权限/逃逸；短写后失败/取消/close错误、原生路径往返有OS及独立进度/owner oracle。close不盲重试，flush与持久化分开；mock只补故障，缺runner不PASS。 |
+
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 加载机制验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/owner |
+|---|---|---|
+| V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
+
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-AUTO-STD / AC-AUTO-STD | 原能力work与最终验证：移除可选外库/provider，在Windows默认native/AC跑原完整公共操作并核Auto源码/原语/OS调用来源和独立expected | math/io/JSON等按§5自有归属，不以包装libm/std::io/serde_json等代实现；Linux只做代码/移交审查，未来1063实跑，外部引擎依赖另账。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -253,30 +366,40 @@ struct ReplaceTransaction { destination: PathIdentity, temporary: PathIdentity, 
 | AC-04 | review | 独立核全部AC/V/规范增量、遗漏/延后/workaround、fmt/warning/debug，结论绑定revision/SHA | T-05复审；未闭项不得pass |
 | AC-05 | merge | 已验证知识落模块Spec，来源/依赖一致，归档与所有输出路径清理完成 | T-06/07真实收据，不把正确性留到merge |
 | AC-06 | work | 文件进程与四端console完整性的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
-| AC-07 | work | LIB-M2-03/05平台适配和原公共API闭合，目标与宿主分离，无旧VM桥或业务转译前置；支持矩阵逐平台有真实证据。 | T-09/V-09；原最终work验证和独立review同时核本项 |
+| AC-07 | work | LIB-M2-03/05平台适配和原公共API闭合，目标与宿主分离，无旧VM桥或业务转译前置；支持矩阵逐平台有真实证据（AC 后端真实调用切片经 2026-11-16 裁定 b 移交 [1065](1065-ace-ac-sys-real-bodies.md)，本包 AC 面=stub 诚实拒绝+负控）。 | T-09/V-09；原最终work验证和独立review同时核本项 |
 | AC-08 | work | LIB-M2-05所有适用端值/效果/资源状态闭合；File/Task/Stream不再只是前探，缺环境或平台边界诚实保留。 | T-10/V-10；原最终work验证和独立review同时核本项 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-NATIVE | work | 实际OS create/write/read/seek/EOF/close、错误/部分IO/取消与平台文本边界对独立expected；核符号/调用/链接来源，无隐式libc委托；缺默认provider拒绝，不切外部桥。 | T-09,T-10 / V-NATIVE；原独立review核新增义务 |
 
+- [x] **AC-PLATFORM-IO / work**：本节平台合同及V-PLATFORM-IO全部满足，真实来源/oracle/未交边界齐全；原分母/四端/阶段不减，原最终work汇总、独立review核验。（✅ Windows 四格 probe01/v04/t08/dirs 绿；Linux 格 code-only/NOT_RUN→1063 L-01..L-03；T-05 第 6 轮核）
+
+- [x] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。（✅ AV/native 15 例+AV×C/AV×Rust 外库腿 2/2+A2R 真 rustc+A2PY 真 Python；AC 路径=stub 拒绝+负控（2026-11-16 裁定 b 真实运行移交 1065）；A2C 按原适用域不减；T-05 第 6 轮核）
+
+- [x] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。（✅ 全部 sys973 测试经 assemble_stdlib_sys_inputs（1043 装配+#in 目标选择 t09）；T-05 第 6 轮核）
+
+- [x] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。（✅ §10 L-01..L-12 表与代码注记逐项一致（审计 agent 核），全部 NOT_RUN/1063；T-05 第 6 轮核）
+
+- [x] **AC-AUTO-STD / work**：§5本包普通标准能力默认算法/协议为共享Auto源码，实际来源/调用链审计与原独立expected齐全；可选C/Rust及高级外库列明边界，不冒默认自有实现。原能力work任务与最终验证负责，原独立review核；Linux按AC-LINUX-PHASE移交。（✅ stdlib/ace/sys 10 模块纯 Auto 构造；av-core kernel32/bcrypt 直调零 libc/Rust std 委托（审计 agent L1575-1899 核）；A2R/A2PY Rust std/Python 为显式目标运行时分账；T-05 第 6 轮核）
+
 ## 8. 执行步骤
 
-当前共10任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共10任务，7完成（T-05 已 final pass；余 T-06/07 为 merge 阶段）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ 2026-11-15 决定冻结 + probe01 前探 8/8 绿，见 §9）
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。（✅ 50冻结平台操作×4表+Win32真后端+Linux syscall臂+capture oracle/故障注入+统一资源账本+sys装配集，sys973 16/16；byte→Str 摘除面按 2026-11-16 裁定移交 1064（D-01..D-09），见 §9 第5轮）
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ A2R真rustc腿+A2PY真Python腿 value:42、AV×C/AV×Rust外库腿 2/2、AC具名stub拒绝、1043装配消费；存储重建随车道移交 1064 D-07，见 §9 第2/3/5轮）
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：承947未闭Rust/C console，补文件watch/目录/seek/权限、process信号与退出、路径重定位及zip现用义务；按实际平台支持，不自动新增平台承诺。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：承947未闭Rust/C console，补文件watch/目录/seek/权限、process信号与退出、路径重定位及zip现用义务；按实际平台支持，不自动新增平台承诺。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。（✅ V-08绿+V-03进程树/超时Job杀/权限链attrib±R/dirs+replace/mtime；watch无旧公共API（调研记录，无义务可保）；zip现用义务随车道移交 1064 D-08，见 §9 第2/4/5轮）
 
-- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：建立统一系统API到auto.platform.* provider/host端口映射，用966的#if/#is按目标选择；native用平台ABI直接调用OS，四端复用967受检事实。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。
+- [x] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：建立统一系统API到auto.platform.* provider/host端口映射，用966的#if/#is按目标选择；native用平台ABI直接调用OS，四端复用967受检事实。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ sys973_t09 绑定绿+AV×C/AV×Rust 外库腿绿（216fd055d）+Linux 移交 L-10；F1 AC 真身正例腿经 2026-11-16 用户裁定 b 具名延 [1065](1065-ace-ac-sys-real-bodies.md)，本包 AC 交付面=stub 诚实拒绝+负控，见 §9 第 6/7 轮/§10）
 
-- [ ] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：完成仓外真实文件create/write/read/seek/close/EOF/部分IO/错误与权限资源测试，联进程/time/random/console及原全系统义务；形成给978的runtime/动态依赖清单。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。
+- [x] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：完成仓外真实文件create/write/read/seek/close/EOF/部分IO/错误与权限资源测试，联进程/time/random/console及原全系统义务；形成给978的runtime/动态依赖清单。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：默认系统provider用薄OS适配直接接目标平台系统服务，Auto内部保AutoABI，OS边界按真实目标ABI/结构/编码处理；不能把libc或Rust std::fs等最终委托libc的实现冒作默认自有库。独立C/Rust库可显式选用，依赖和错误/资源语义分账。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ V-10/probe01/v04 真实OS全链绿+真实熵/dir+replace/mtime；zip/storage 车道缺口不属本任务关闭面，见 §9 第1/4轮；AC-08 的 zip/storage 切片随 T-02/T-03/T-08 车道裁定）
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ 2026-11-16 9组冻结并集实跑：7组PASS+2组仅master预存红，全部V行有归属；证据见 §9 第4轮）
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -298,6 +421,102 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-16 stage: work+review 修复轮（第 7 轮，F1 裁定 b + F2..F5 修复 + 重审）| plan_id: PLAN-973 | plan_revision: r13 | worktree @ **0a6fb9100**（base 3279f2f72）| outcome: **final pass → reviewed**
+- **F1 裁定落册（用户选项 b）**：[PLAN-1065](1065-ace-ac-sys-real-bodies.md) 取号创建为 AC 真身承接 owner（drafting 0/6，承接表 A-01..A-04：Win64 50 真身/V-09 AC 正例腿/AC-COVERAGE 升真实运行/Linux 代码臂协同 1063）；V-09/AC-07/AC-COVERAGE 行文修订（§6/§7/§10），T-09 按裁定复勾（973 AC 交付面=stub 诚实拒绝+负控 sys973_native_stub_returns_unsupported）。
+- **F2/F3/F4 同树修复（commit 0a6fb9100，2 文件 +2/-1）**：F2 触面 warning 清零——`stdlib_sys_973.rs` 删未用 import `assemble_stdlib_aggregates_inputs`、`asm_lane_product` 参数 `tag`→`_tag`；F3 `sys973_dialect_bisect` 探针源内联（原读仓外 `plan-artifacts/plan-973/probe_main.at`，现自包含 const，"temporary" 注记改 permanent）；F4 `process.at:47-52` argv staging 注记改"已由 spawn5/cps 终局替代"。F5 rand 裁定已 §10 落册（34343fe51）。
+- **复验（修复后）**：sys973 AV **15/15 PASS**（max 8.73s/例 ≤10s）；重编译 warning 输出零 `stdlib_sys_973` 命中（余为其他基线文件）；rustfmt --check 该文件 exit 0。本轮无新增用例（dialect_bisect 改内联不增语义面）。
+- **重审（affected 项，同会话限制声明）**：F1=裁定+1065 承接表核对（替换集 SYS973_KINDS 与 50 操作清单一致）✓；F2=warning 复编译实证 ✓；F3=15/15 含 dialect_bisect 绿+grep 确认无仓外读取 ✓；F4=注记文本核对 ✓；F5=§10 记录核对 ✓。未受影响证据（四表/车道门/零委托/外库腿/ace-host/第 4 轮并集）复用第 6 轮（代码仅 +2/-1 注释与测试 hygiene，a9eceef38 证据链有效基线推进至 0a6fb9100）。
+- **pending_closeout_gates（merge-owned）**：冻结并集复跑或复用判定（基线 0a6fb9100 vs 第 4 轮 a9eceef38——改动仅测试 hygiene+注释，`ace-av` 组证据需基线推进重跑，merge 时核）；master 预存红两组归批量回归。
+- 基线：base 3279f2f72 → e1dc1d389→1f234a9e8→132193f7e→216fd055d→a9eceef38→**0a6fb9100**。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r13 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass（修复轮+重审 affected 全闭；F1→1065/F2..F5 闭；最终 pass 绑 r13/0a6fb9100） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: 0a6fb9100 | next: merge（T-06 规范沉淀+合回，T-07 归档清树）
+
+2026-11-16 stage: review | review_scope: final | reviewer: 独立只读审计 agent（本 goal 会话派发，108 次只读工具调用，file:line 证据）+ 复审主持（同会话限制：r1–4 为前会话执行，本轮结论从工件重建并独立重跑） | plan_id: PLAN-973 | plan_revision: r12 | outcome: **needs_fix** | worktree: D:/autostack/.wt/lang-973/auto-lang | branch: plan-973-dev | reviewed_commit: a9eceef38 | base_commit: 3279f2f72
+- **复审重跑（29/29 绿，per-case 计时全 ≤10s）**：sys973 AV 15/15（max 6.13s a2r 腿）；abi 外库腿 2/2（av_c 7.74s/av_rust 8.00s）；native stub 1/1（0.59s）；ace-host 11/11（max 0.92s）。准备编译增量热 2.35s/11.02s。第 4 轮 9 组冻结并集同基线 a9eceef38 复用有效。本轮无新增用例。
+- **核验通过**（审计 agent + 主持抽查）：四表对齐 50/50/50/51（source platform_io.rs L196-540 恰 50 op + av-core 枚举/规格表 50 + native Win64 COFF 50 符号 + a2r rt.rs 50 fn + a2py ports.rs 51 含 mem.read_u8 辅助，符号 diff 空）；车道门 7 处注记生效非死代码（ExecOutcome::Exit 生产点 av.rs:6596 由 v03 exit{code:97} 实证）；默认 provider 零 libc/Rust std 委托（kernel32/bcrypt extern "system" 直声明，std:: 仅 BTreeSet 账本与 Linux OnceLock）；V-04 故障注入真实触发（inject_file_error:1123→-1 且磁盘零副作用）；装配集/绑定双点身份/消费入口齐全；新增代码零 TODO/FIXME/unimplemented/println 残留；规范增量目标存在（两个 modify 对象在库；m2-stdlib-io.md 待 merge 新建，符合流程）。
+- **AC 结果映射**：AC-01/02/03/06/08（交付面）/AC-PHASE/AC-PLATFORM-IO（Windows 格）/AC-LOAD/AC-LINUX-PHASE/AC-AUTO-STD = pass；**AC-07/AC-COVERAGE = partial**（AC 后端腿）；AC-NATIVE = pass（默认 provider 面，AC 路径例外见 F1）；AC-04 = needs_fix（本复审）；AC-05 = merge 待。
+- **发现（F-稳定 ID）**：
+  - **F1[中]** AC 后端 sys973 全 50 操作为 named-unsupported stub（-10），V-09"AC真实调用OS API"正例腿未交付且无具名移交行——`native/src/platform_io.rs:139-142`（"a REAL body lands with its AC increment"无 owner）、`:1476-1482` Win64 全 stub、`platform_io_linux.rs:1066-1070` ELF 同（L-12 仅 Linux 侧）。T-01 冻结原文"AV/native+AC+走平台操作真跑"；T-09 勾选证据（绑定绿+外库腿）不覆盖 V-09 AC 腿。影响 AC-07/AC-COVERAGE/T-09。**修复路由=用户裁定**：a) 本计划内实现 50 真身（cranelift 内联或 shim 符号两模式均有存量先例）或 b) 具名延后继计划并修订 V-09/AC-07 行文（验收变更须用户批准）。
+  - **F2[低]** 触面 warning 未清零：`stdlib_sys_973.rs:17` 未用 import `assemble_stdlib_aggregates_inputs`、`:46` 未用变量 `tag`——与第 4 轮"计划触面 warning 清零"声明矛盾（AC-04 健康项）。修复=同树清理+复编译验证。
+  - **F3[低]** `sys973_dialect_bisect` 非封闭：读仓外未跟踪 `D:/autostack/plan-artifacts/plan-973/probe_main.at`（`stdlib_sys_973.rs:210-218`）——merge 删材料目录后必红。修复=内联源入测试体。
+  - **F4[低]** `process.at:47-51` argv List\<Str\> staging 注记指向"车道增量"，实际已被 spawn5/cps 终局替代（§9 第 1 轮）且 D-01..D-09/L 表无此行——修复=修订注记为已替代终局。
+  - **F5[低]** `rand.at:8-10` 旧 `random.rand_int`/`Random` 不移植"recorded ruling"不可追溯（973/1063/1064 均未逐名记录）——修复=计划 §10 具名落册。
+  - **F6..F8[信息→债务登记]** Unicode **路径名**切片未测（内容已测）；file.at:162-171 read_text 注记块重复两遍；V-02 sys 能力无授权拒绝专测（机制由 1039 泛测+ledger 共享）。
+- **债务候选已登记**：KNOWN-DEBT D-973（master 预存红两组、基线存量 warning ACE15+core132、967 读出参缓冲帧缺口、F6..F8）。
+- next: work（F2/F3/F4/F5 同树修复；F1 待用户裁定后按 a/b 路径收口）。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r12 | round: 6 | from: review | to: work | status: executing | outcome: needs_fix（29/29 重跑绿+四表/车道门/零委托核验过；F1 AC 真身腿未交付未移交=验收内缺口，F2..F5 小缺陷） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: a9eceef38 | next: work（先 F1 用户裁定）
+
+2026-11-16 stage: work | plan_id: PLAN-973 | plan_revision: r12 | **第 5 轮收口（车道裁定落册，work 全任务完成 → execution_done）** | worktree @ a9eceef38（零代码改动，clean；复用第 4 轮冻结证据） | outcome: **pass**
+- **用户裁定（2026-11-16，原 §10.1 选项 c）**：byte→Str 车道面具名延期后继计划。[PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md) 以 `scripts/new-plan.sh` 取号创建（master 主检出，drafting 0/7）为承接 owner：移交表 D-01..D-09 逐面记录代码锚点（file.at:162-168/env.at:18-21/process.at:40-44,139-141/storage.at:1-8 等，基线 a9eceef38 快照）与旧 sentinel 合同；车道解锁落点（972 域修订 vs 1064 内建）与 972 归档同车道 (b) 解码项是否同批=其 §10 待澄清。973 不反向依赖 1064。
+- **任务关闭**：T-02/T-03/T-08 按 r11 已交付面勾选。byte→Str 摘除面（read_text/dir_names/env get 族/canonical/cwd/cmdline/捕获文本/存储重建）与未实现面（zip/inflate、KV storage）全部落 1064 移交表，无悬空项；AC-02/AC-03/AC-06/AC-08 按已交付范围关闭（延后切片 owner=1064，非 NA）。AC-01/AC-PHASE/AC-07/AC-NATIVE/AC-PLATFORM-IO/AC-COVERAGE/AC-LOAD/AC-LINUX-PHASE/AC-AUTO-STD 沿第 1–4 轮证据关闭（Windows required 门+Linux 移交 1063）。
+- **零代码/零测试轮**：裁定为纯合同变更，代码基线不变（worktree a9eceef38，git status clean 复核）；复用第 4 轮冻结并集（9 组：7 PASS+2 组 master 预存红具名）与 sys973 16/16、abi 外库腿 2/2、ace-host 11/11。本轮无新增用例、无测试执行（test-discipline：纯文档轮）。
+- **work 交接就绪**：全部 work 任务与 criteria 完成、阻塞问题清零（原 §10.1 已裁定）；唯一树保持给 T-05 复审（停写）；master 预存红两组归批量回归 triage（非 973 面，§9 第 4 轮取证）。
+- 基线：base 3279f2f72 → code a9eceef38（e1dc1d389→1f234a9e8→132193f7e→216fd055d→a9eceef38）；材料 scope D:/autostack/plan-artifacts/plan-973/。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r12 | round: 5 | from: work | to: review | status: execution_done | outcome: pass（用户裁定 c 落册+1064 承接建立+T-02/03/08 关闭；work 全任务完成） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: a9eceef38 | next: review（T-05 独立复审）
+
+2026-11-16 stage: work | plan_id: PLAN-973 | plan_revision: r11 | **第 4 轮收口（commit a9eceef38，T-04 冻结并集，非完成）** | worktree @ a9eceef38（base 3279f2f72） | outcome: 继续 executing（T-01/T-04/T-09/T-10 勾选；T-02/03/08 待车道裁定）
+- **警告清理**：本计划引入仅 2 处——mir_verify.rs:857 重复 `CAP_PROBE` 臂（e1dc1d389 diff 错位）已去重；ace-host `map_outcome` 缺 `ExecOutcome::Exit` 臂（自 e1dc1d389 起该 crate 非穷尽匹配不可编译）已补（映射 `HostFailure{code:"av.exit"}`，退出码在消息）。计划触面 rustfmt 清零（rustfmt 沿 mod 树多格式化同 crate 5 个未直接触碰文件：mir.rs/ownership.rs/f0_abi_axes.rs/f0_t13.rs/sched_m2_968.rs，纯格式）。**基线存量具名不动**（git 取证在 3279f2f72 同样存在）：ACE 侧 15 条（mn-linux-av-runner×9、closures_fn_session×2、elf_admission×1、owned_session×1、native cache/emit×2）+ auto-lang-core ~130 条——均不在本计划触面，待 T-05 记 KNOWN-DEBT 候选。
+- **受影响回归（清理提交验证）**：av+native sys973 **16/16**（24.3s 含增量编译；15 例 av+1 例 native stub）；abi 外库腿 **2/2**（5.8s，av_c/av_rust dispatch）；ace-host **11/11**（51.4s，e0/t02/t08 facade——首次随 Exit 臂修复恢复可编译，单例 ≤0.64s）。
+- **T-04 冻结并集**（`cargo t stdlib ace-stdlib ace-source ace-av ace-native ace-a2x ace-abi ace-runtime a2r-std`，worktree @ a9eceef38，14m46.8s）：**7/9 组 PASS**（stdlib/ace-stdlib/ace-source/ace-av/ace-native/ace-a2x/a2r-std）。两组红均为 **master 预存**（主检出同例同错复跑取证，隔离重放非争用）：
+  - ace-abi 293/294：`source_foreign::source_foreign_formal_scalar_review_transition_restores_without_hidden_interface_production`（restore→`foreign.authority.runtime-or-emitter`；worktree 6.3s 红 + master 7.2s 红；最后全绿=批量回归 2026-11-14T23:23Z b1dbab313；此后 abi 路径零提交，依赖面有 968/972/974 合入——归属待 triage，非 973 面）。
+  - ace-runtime 65/84：text 车道 19 例（fault::v05×5/lifecycle::v04×6/smoke×2/textops::v07×5(实为6含重复行)/trap::v06×2）全为 `rust-lld: undefined symbol: __CxxFrameHandler3/_fltused`（master `textops::v07_slice_ranges` 0.4s 同红；`_fltused` 指向浮点目标物链接缺 MSVC CRT 符号，疑似 972 f64 五端面后置影响或工具链变动——归属待 triage，非 973 面）。
+  - 973 自身全部用例绿：sys973 15 例（probe01/V-03×2/V-04/V-05/V-08/V-09/V-10/dirs+replace/env 真实进程/path/time/熵/a2r/a2py/dialect）+ native stub + AV×C/AV×Rust 外库腿 + ace-host 11 例。§6 各 V 行归属齐全（V-LINUX-PHASE=§10 表 NOT_RUN/1063 按 r11 门；V-AUTO-STD=sys 层自有 .at 源构造）。
+- **具名未闭**：①zip/inflate+storage+read_text 族（byte→Str 车道缺口，**待用户裁定**，阻塞 T-02/T-03/T-08 勾选与 AC-08 storage/Task/Stream 切片）；②两组 master 预存红（上列，建议走批量回归 triage/修复 worktree，不阻本包 review 的自有面）；③T-05 复审、T-06/07 merge 未开始。
+- 测试纪律报告：本轮**无新增用例**；会话计时=警告清扫 cargo check ×2（缓存热）+ scoped 三套件（24.3s/5.8s/51.4s）+ 并集 14m46.8s + 隔离重放 3 例（6.3s/7.2s/0.4s）+ 用例列举 2 次（nextest list，秒级）；并集前占用检查首次因 bash/PowerShell 引用错误无效（已订正复查：仅并集自身 5 个 cargo 进程）。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r11 | round: 4 | from: work | to: work | status: executing | outcome: pass（里程碑级：警告/fmt 清理+T-04 冻结并集 7/9 组 PASS+2 组 master 预存红具名；**整包未完成**：zip/storage 车道待裁定） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: a9eceef38 | next: 用户裁定 byte→Str 车道（或直接排 T-05 独立复审）
+
+2026-11-16 stage: work | plan_id: PLAN-973 | plan_revision: r11 | **第 3 轮收口（commit 132193f7e，里程碑 3：A2PY 腿+Linux 移交表，非完成）** | worktree @ 132193f7e | outcome: 继续 executing |
+- **A2PY 腿 GREEN（真 OS Python，value:42）**：51 个 sys 端口契约（io.stdin/mem.read_u8/file×26/env×4/clock×4/entropy×1/process×12）入 ports 目录表+lower platform_port_id；python 运行时系统资源实现（二进制模式文件、UTF-16 暂存、句柄表、clock-hi 寄存器、secrets 熵、subprocess 捕获/超时杀树）；修复 provider 平台运行时并入重复（限定 Collections 家族——1041 vcoverage 复绿）。
+- **§10 Linux 移交表 12 行入册**（L-01..L-12，deferred-required/NOT_RUN，owner=1063；实现/验证状态分列；L-07 进程子序具名未写+设计注记；canonical 符号链接解析具名缺口）。
+- 15/15 stdlib_sys_973；1041/1042/1043+972 套件 31/31；ace-a2x-python/rust/core PASS。
+
+2026-11-16 stage: work | plan_id: PLAN-973 | plan_revision: r11 | **第 2 轮收口（commit 1f234a9e8，里程碑 2，非完成）** | worktree @ 1f234a9e8 | outcome: 继续 executing |
+- **A2R 腿 GREEN（真 rustc+运行，value:42）**：平台操作经 collections 家族 a2x 降级（共享操作表驱动 a2x_<callee>）；运行时 sys 资源存根按 has_platform_ops 并入文件集；修 4 个真实缺陷——ListLen 出口清扫先于内联渲染（len=0）、A2xList\<E\> 变体载荷泛型（RustProgram.list_elems+prelude 表）、借用返回尾须 .clone()、AV 值风格 List 返回改原地累积（单尾移纪律保持）。
+- **V-03 进程实测全绿**：spawn5 退出码（cmd /c exit 7）、捕获计数（echo CRLF=7）、1500ms 超时 Job 树杀（-11）、proc_exit=ExecOutcome::Exit；引号策略改按需（cmd.exe 对全引号敏感）。
+- **T-08 权限链**：spawn5 attrib ±R → is_read_only/write 失败/delete 失败 oracle；mtime 带。**T-09**：同源 TargetOs::Linux 装配绑定（code-only/NOT_RUN/1063）。**T-10**：真实熵（charset/两次差异，码点列表）。
+- 14/14 stdlib_sys_973；972 套件 18/18；ace-a2x-rust/core PASS。
+- 仍开放：AV×C/AV×Rust 腿（967 帧边界——读出参缓冲帧为具名缺口）、AC 具名 stub 拒绝测试、zip/storage（byte→Str 车道缺口阻塞）、T-04 冻结并集、T-05 复审、T-06/07 merge。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r11 | round: 3 | from: work | to: work | status: executing | outcome: pass（里程碑级：A2R 腿绿+A2PY 腿绿+V-03/08/09/10 全绿+Linux 移交表入册；**整包未完成**） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: 132193f7e | next: work（AV×C/Rust 腿→AC stub 测试→T-04→T-05→merge；zip/storage 与 read_text 面待车道缺口用户裁定）
+
+2026-11-16 stage: work | plan_id: PLAN-973 | plan_revision: r11 | **第 1 轮工作收口（里程碑 1，非完成）** | worktree: D:/autostack/.wt/lang-973/auto-lang @ e1dc1d389（base 3279f2f72） | outcome: **继续 executing**（T-01 前探+T-02 核心落地并全绿；整包未完，下列余项具名） |
+- 已验证：8/8 stdlib_sys_973（probe01/V-04/V-05/env真实进程/dirs+replace/真实时钟/path/方言）；ace-av conformance 1139/1141（2 例 ::performance:: 并行负载归因、隔离复跑绿：closures_recovery 27.2s、closures_fn 33.5s PASS；closures_native_924 200s 档同类别记录）；ace-core/source-query/av-core/lowering/native 993/995（同上 1 例 performance 争用）。
+- 已交付（commit e1dc1d389）：50 冻结平台操作×4 表；Win32 真实后端（CreateFileW/ReadFile/WriteFile/SetFilePointerEx/GetFileSizeEx/GetFileInformationByHandle/FlushFileBuffers/CloseHandle/GetFileAttributesW/DeleteFileW/CreateDirectoryW/RemoveDirectoryW/MoveFileExW/GetFullPathNameW/GetFinalPathNameByHandleW/FindFirstFileW/FindNextFileW/FindClose/env三件/GetSystemTimeAsFileTime/QPC/QPF/SleepEx/BCryptGenRandom/CreateProcessW+Job+管道+PeekNamedPipe/WaitForSingleObject/GetExitCodeProcess/TerminateJobObject/GetCurrentDirectoryW/SetCurrentDirectoryW/GetCommandLineW）；Linux 原始 syscall 臂（代码完整 NOT_RUN/1063）；Capture oracle+故障注入；统一资源账本（文件/目录/进程载荷、lo+hi、读写预算、cleanup 关闭）；sys 冻结装配集（与 972 集分离：stdlib_sys_files + is_frozen_std_sys_module + assemble_stdlib_sys_inputs + binding 双点身份）；车道门 7 处（resolve/verify×2/lowering×2/abc×2/host/mir_verify/UnitView::host_import_at/ExecOutcome::Exit×6 消费点）。
+- **车道缺口（具名，待用户裁定或后续计划）**：①字节→Str 构造（影响 read_text/dir_names/env.get/canonical/cwd/cmdline/存储重建/捕获文本——均已从模块面摘除并在模块头注明）；②argv List<Str> 暂存（元素视图仅 len 读）→已以 spawn5/cps API 替代；③zip/inflate、V-03 进程树实测、AC/A2R/A2PY 六路径腿、AV×C/Rust、Linux 移交表、规范增量——全部未做。
+- 下一步（next: work）：T-02 余项/T-03 消费者接线/T-08/09/10 → T-04 冻结并集。
+- 材料目录 D:/autostack/plan-artifacts/plan-973/（探针/脚本/回归记录）；本轮无新 Linux 测试执行（裁定遵守）。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r11 | round: 1 | from: work | to: work | status: executing | outcome: pass（里程碑级：T-01 前探绿+T-02 核心管线绿+回归绿；**整包未完成**） | worktree: D:/autostack/.wt/lang-973/auto-lang | commit: e1dc1d389 | next: work（T-02 余项→T-03→T-08/09/10→T-04；车道缺口 2 项待具名裁定）
+
+2026-11-16 stage: work / T-01..T-02 首增量·核心管线全通（goal 链第 1 轮续）：
+- **T-01 前探 GREEN**（probe01）：A中😀\0=9B Unicode+NUL 临时文件 write→exists→size→read_bytes 字节同一性→失败恢复→append→原子替换→清理，全链 .at→1043装配→aggregates绑定→HIR→MIR→平台操作→Win32 CreateFileW/ReadFile→真实磁盘→读回，8/8 sys973 测试 PASS（probe01/V-04注入/V-05 oracle/env真实进程/dir+replace/真实时钟/path算法/方言探针，cargo nextest -p ace-av --test conformance stdlib_sys_973）。
+- **车道门扩展（全部带 PLAN-973 注记）**：resolve.rs Aggregates 面准入平台保留名；verify.rs Aggregates 域平台内在+973能力集（stdin/file/path/env/clock/entropy/process/io.write/mem）+Closures 域平台准入；lowering hir_adapter 两条内在路径（closures 家族 auto.platform.*→host_import→PlatformCall）；abc.rs 编解码 PlatformCall 家族加 Closures；host.rs 平台导入模块准入；mir_verify PlatformCall 非 host-console 面准入；ModuleView::host_import_at（unit 视图按属主单元解析 host 索引）；av.rs proc_exit→ExecOutcome::Exit（5 处消费点补臂）。
+- **方言适配裁定（工程决定，已验证）**：packages-aggregates 面无 while/计数 for→全部分块递归（768×40×40≈1.2MiB≤运行预算，帧深≤848<1024）；if 条件以标识符结尾必须括号（命名构造器歧义）；`is` 全 return 臂需 int/unit/Str 结果→变体面 validate+decode 分离/省略；元素视图仅方法读→argv 暂存改全引号 cps 链；Str 参数尾移一次纪律（972 同源）→ 所有走查器重构；**字节→Str 构造缺口（972 已知边界）→ read_text/dir_names/env_get/canonical/cwd/cmdline/存储重建/捕获文本 = 具名车道缺口**（下条 needs_replan）。
+- **append 语义修正**：OPEN_APPEND 一律 FILE_APPEND_DATA（OS 追加语义，设计§7），探针 -11 复现后修复转绿。
+
+2026-11-15 stage: work / T-01 决定冻结（goal 授权全链，worktree lang-973 @ 3279f2f72）：
+- **分层**：共享 Auto 算法（stdlib/ace/sys/ 新装配集：file/path/env/process/time/rand/zip/storage 八模块，1043 平铺候选 .at.at/.c.at/.rs.at/.py.at）→ 受检平台操作（扩展 1039 冻结模式：source 表 + av-core 表 + AC COFF/ELF shim + a2x 运行时端口五处对齐）→ OS 入口（Win kernel32/bcrypt 公开 DLL；Linux 直接 syscall）。全平台操作保 i32→i32 冻结准入形状；64 位值（size/offset/now_ms/mtime）以 lo+hi 两 i32 组合，配 `file_hi`/`clock_hi` 高半查询操作。路径遵循 1041 冻结模式：Windows 平台操作收 UTF-16LE region(units)，Linux 收原始字节 view；UTF-8↔UTF-16 转换在共享 Auto 源内完成。
+- **平台操作集（~47）**：file(11) open_w16/open_bytes/read_some/write_some/seek/tell/hi/size/mtime_ms/flush/close；path(10) attrs/delete/replace/canonical × w16/bytes + dir_create ×2；dir(5) open_w16/next_w16/close + open_bytes/fill_bytes(getdents64→region，Auto 解析)；env(4) get/set/remove_w16 + get_bytes(/proc/self/environ)；io(1) io_stdin；clock(4) unix_ms/mono_ms/hi/sleep_ms；entropy(1) rand_fill(BCryptGenRandom/getrandom)；proc(11) spawn_w16(CreateProcessW+Job kill-on-close+管道)/pipe_read(PeekNamedPipe+WaitForSingleObject 有界等待，非忙轮询)/wait/release/exit(AV=ExecOutcome::Exit，AC=ExitProcess/exit_group)/cmdline/cwd/chdir。
+- **公开 API**＝旧 sentinel 约定逐面保留（read_text ""/write 0/-1/exists bool/size -1/secure_hex ""等）；zip 读三元组与 KV storage 为纯 Auto 组合（zip inflate 纯 Auto 实现）；console 复用 1041 io.at（具名边界），973 新增 stdin 读。具名延期：Linux env_set/remove（无 syscall 可用，需 1040 入口捕获 envp 或宿主 environ 符号——owner=1063 移交行）；文件 watch 无旧公共 API（调研发现，无义务可保，记录不造）。mtime/walk/metadata 以现有操作 Auto 组合，如未及交付则具名缺口。
+- **六路径**：AV/native+AC+走平台操作真跑；A2R 经 rt.rs 新增 a2x_* 存根（Rust 目标运行时依赖另列）真 rustc 腿；A2PY 经 ports+runtime 真 Python 腿；AV×C/AV×Rust 经 967 帧（(view,≤2×i32[+out])→i32）覆盖写路径族实际 dispatch，读路径出参缓冲帧为 967 域缺口（与 972 同源具名项，unblock=967 域 out-buffer 帧交付）；不以配置名/同 native 执行冒充。
+- **测试车道**：av/tests/cases/stdlib_sys_973.rs（AV+capture oracle+负例）+ native 腿（COFF 进程内）+ a2r/a2py 显式构建腿（禁日常测试内起 cargo）；迭代 `cargo nextest -p ace-av --test conformance <filter>`；冻结并集 `cargo t stdlib ace-stdlib ace-source ace-av ace-native ace-a2x ace-abi ace-runtime a2r-std`（触面定稿前可增）。新用例 ≤10s/条；Linux 腿全部 NOT_RUN/owner=1063。
+- **前探**：最小正例（Unicode 临时文件 write→read 往返经 packages 装配 lane AV 真跑）+ 非法近邻（不存在路径 open→sentinel，零副作用）+ 失败恢复（错误后重建再读写）串最长 producer→consumer 链，随 T-02 首增量落地。
+- **依赖核验**：9 依赖全 archived（2026-11-15）；967 已合入但帧仅 (view,≤2×i32[+out])→i32（读出参缺口如上）；1043 装配/#in、966 #is、972 asm 集、1041 console、1039/1040 底座符号/预算（65_536/call、1_048_576/run、handle 1024）沿冻结值。
+材料目录 D:/autostack/plan-artifacts/plan-973/ 已登记。本轮未实施代码；实施自本记录起算。
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r11：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
+
+2026-11-13 stage:new / CONTEXT-LOAD | 规划静态预检通过：20份设计/计划553处本地链接路径、Markdown围栏与Plan 0–10节/任务数一致；原144任务ID/勾选/状态/进度/旧AC/V及原依赖保留，新1043十任务均未完成。可达149个语言计划依赖无缺失/环、ID无冲突，中央.next-id为1044。1043不依完整966/FFI/库，1042不反依1043；966改为消费1043，原F0/B0/Hello与M1门不减。新计划候选固定组名和新增设计锚静态核对，git diff --check通过。未实施/建树/编译/运行产品或测试，不是独立实现review PASS；canonical Specs及归档历史未改。
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
+
+2026-11-13 stage:new / r8：设计承接；新增平台I/O AC/V/SD由T-01,T-09,T-10及原最终work负责。原任务/进度保持，无实现或独立产品review；新三包drafting。
+
 2026-11-12 stage:new / PLAN-973 r7：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原10任务/全部AC与V/依赖/阶段/预算和drafting 0/10；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -316,6 +535,43 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
 ## 10. 待澄清事项
+
+### 已裁定事项（2026-11-16 第 5 轮落册）
+
+1. **字节→Str 构造车道缺口**（原 §10.1 待裁定项）：**用户裁定选项 c——具名延期后继计划**。承接 owner=[PLAN-1064](1064-ace-stdlib-byte-str-deferred-surfaces.md)（drafting 0/7，移交表 D-01..D-09：read_text/dir_names/env get 族/canonical/cwd/cmdline/捕获文本/存储重建/zip/inflate/KV storage/read_bytes Option\<List\> 形状）。本包 T-02/T-03/T-08 按已交付面关闭；AC-08 的 storage/Task/Stream byte→Str 切片移交 1064，不冒已交付。车道解锁落点与 972 (b) 解码项是否同批=1064 §10 待澄清，非本包反向依赖。
+2. （非阻塞本包，供 triage）两组 master 预存红见 §9 第 4 轮：ace-abi source_foreign authority 1 例、ace-runtime text 车道 19 例（rust-lld `__CxxFrameHandler3`/`_fltused`）；主检出同红，建议批量回归 triage 或独立 fix worktree。
+
+### 待用户裁定（2026-11-16 第 6 轮复审 F1，阻塞 T-09/V-09 AC 腿收口）
+
+**AC 后端 sys973 真身**：AC（直接编译后端）的 50 个 sys973 平台操作当前全部为 named-unsupported stub（-10，诚实拒绝），V-09"AC真实调用OS API"正例腿未交付且无移交 owner（代码注记"a REAL body lands with its AC increment"无具名计划；Linux 侧仅 L-12 覆盖）。选项：a) 本计划内实现 50 真身（cranelift 内联体与 shim 符号链接两模式均有 1039/1041 存量先例，属验收内工作，体量较大）；b) 具名延后继计划并修订 V-09/AC-07/AC-COVERAGE 行文为"AC stub=已裁定交付面"（验收变更，须本裁定批准）。
+
+**→ 已裁定（2026-11-16 第 7 轮落册）：选项 b**。承接 owner=[PLAN-1065](1065-ace-ac-sys-real-bodies.md)（drafting 0/6，承接表 A-01..A-04：Win64 50 真身/V-09 AC 正例腿/AC-COVERAGE 升真实运行/Linux 代码臂协同 1063 L-12）。本包 V-09/AC-07/AC-COVERAGE 的 AC 真实调用切片自本条起移交 1065，973 的 AC 交付面=stub 诚实拒绝（-10、无静默 fallback）+具名负控测试（sys973_native_stub_returns_unsupported）；T-09 按此复勾。
+
+### 具名裁定补录（2026-11-16 第 6 轮复审 F5）
+
+旧 `random.rand_int`/`Random`（[stdlib/auto/random.at](../../stdlib/auto/random.at)，Plan 250 非凭据 PRNG 面）**不移植**到 ACE sys 库——ACE 熵面以 `entropy.rand_fill`/`secure_hex`（CSPRNG）承接，非凭据 PRNG 如需再立显式计划。本条为该工程决定的正式落册（原 rand.at:8-10 注记"recorded ruling"自此可追溯）。
+
+### Linux 移交表（2026-11-16，owner=PLAN-1063；本表=当前 NOT_RUN 清单）
+
+按 2026-11-14 裁定：Windows 开发环境不执行 Linux 测试（不启动 WSL/VM、不隐式准备 runner）；以下行全部 `deferred-required / NOT_RUN`，owner=1063，实现与验证状态分离——**代码已写**（编译于 Windows 侧目标面），**未运行**；变化后的实现不自动继承旧绿。
+
+| # | 项 | backend/provider | 实现位置（已写） | 1063 验证要求 |
+|---|---|---|---|---|
+| L-01 | file open/read/write/seek/tell/hi/size/mtime/flush/close（bytes 族） | AV/Linux（LinuxPlatformIo raw syscall） | av-core platform_io.rs（LSEEK/FSTAT/FSYNC 等直接 syscall 臂） | 同 V-PLATFORM-IO 四格之 Linux×AV：真实 create/write/close/reopen/read/seek/EOF、NUL/空文件/exclusive/append、坏路径/权限/逃逸负例 |
+| L-02 | path attrs/delete/dir create+delete/replace/canonical（bytes 族） | AV/Linux | 同上（O_PATH+fstat、unlinkat/mkdirat/renameat、openat 链） | attrs 位/删除/替换原子性/符号链接解析（canonical v1 为语法归一——**具名缺口**：真实符号链接解析移交 1063） |
+| L-03 | 目录枚举 getdents64 | AV/Linux | dir_open_bytes/dir_fill_bytes（getdents64 syscall） | dirent64 记录解析（sysplat_lnx.at 内 Auto 解析）与 NUL 分隔名流 |
+| L-04 | env get（/proc/self/environ 快照） | AV/Linux | env_get_bytes + Auto 端 env_scan | KEY=VALUE 解析、缺键 ""; env set/remove=具名延期（无 syscall，需入口 envp 或宿主 environ——见 T-01 冻结记录） |
+| L-05 | clock trio + sleep | AV/Linux | clock_gettime(0/1)/nanosleep 直接 syscall | 时间带、mono 单调、sleep 真实阻塞 |
+| L-06 | entropy getrandom | AV/Linux | getrandom(318) syscall | secure_hex 字符集/两次差异 |
+| L-07 | process spawn/pipe/wait/kill 树 | AV/Linux | **未写**（clone+vfork+execve 子序无法在 Windows 宿主上编译验证，冻结设计注记在案） | 1063 交付子序 + V-03 进程树/超时/管道读回收全负例 |
+| L-08 | proc_exit | AV/Linux | exit_group(231) 臂 | 受控退出码 |
+| L-09 | cmdline/cwd/chdir | AV/Linux | /proc/self/cmdline、getcwd(79)、chdir(80) | 参数拼接与 cwd 往返 |
+| L-10 | #in Linux 装配面 | 全端 | sysplat_lnx.at（已随 sys 集冻结） | 绑定已完成（T-09 sys973_t09 真实绑定+链接通过，NOT_RUN 断言在案）；1063 补真实运行 |
+| L-11 | A2R/A2PY 目标运行时 Linux 路径 | A2R/A2PY | rt.rs sys 块 cfg(not(windows)) 臂（/dev/urandom 等） | 真实 Linux 解释器/工具链上跑同一腿 |
+| L-12 | AC native ELF shim | AC | native/platform_io_linux.rs stub 发射（-10） | 真实 ELF 构建 + Linux 执行 |
+
+旧 1040/1041 归档实际证据保留为历史，不自动为上述行背书。T-09 测试（sys973_t09_target_selection_linux_binds）是绑定面证据；无任何 Linux 执行在本轮发生。
+
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。

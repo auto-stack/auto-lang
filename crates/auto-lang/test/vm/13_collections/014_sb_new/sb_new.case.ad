@@ -1,0 +1,21 @@
+# Legacy vm corpus: 13_collections/014_sb_new
+
+## Case: legacy-13-collections-014-sb-new
+id: "legacy.13_collections.014_sb_new"
+entry-mode: "program"
+
+### Auto
+path: "sb_new.at"
+```auto
+var sb = StringBuilder.new(1024)
+sb.drop()
+0
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+0
+```

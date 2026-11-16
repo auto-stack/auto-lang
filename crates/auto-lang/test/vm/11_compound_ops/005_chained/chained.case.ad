@@ -1,0 +1,23 @@
+# Legacy vm corpus: 11_compound_ops/005_chained
+
+## Case: legacy-11-compound-ops-005-chained
+id: "legacy.11_compound_ops.005_chained"
+entry-mode: "program"
+
+### Auto
+path: "chained.at"
+```auto
+var a = 1
+a += 1
+a += 2
+a += 3
+a
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+7
+```

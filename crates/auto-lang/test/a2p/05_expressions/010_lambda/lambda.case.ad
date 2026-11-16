@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 05_expressions/010_lambda
+
+## Case: legacy-a2p-05-expressions-010-lambda
+id: "legacy.a2p.05_expressions.010_lambda"
+entry-mode: "program"
+
+### Auto
+path: "lambda.at"
+```auto
+fn main() {
+    let add = (a int, b int) => a + b
+    let result = add(5, 3)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### lambda.expected.py
+```python
+def main():
+    add = lambda a, b: a + b
+    result = add(5, 3)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-971
-status: drafting
+status: executing
 feature_name: 调试LSP测试与Playground接管
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 5
-current_step: 0
+updated_at: 2026-11-16
+plan_revision: 6
+current_step: 4
 total_steps: 11
 depends_on: [PLAN-970, PLAN-966]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -57,6 +57,10 @@ touched_goals: [GOAL-002]
 
 外仓路径仅只读调研；跨仓实施前T-01须读取当地AGENTS并由owner确认同组实施路径与实际门禁。工具真实实现归属须按当前模块Spec与源码核定；LSP已由971确认在auto-ui，不能从语言仓残留固定组名推断package归属。
 
+### 2026-11-16 goal 实施授权（r6）
+
+用户以 `/goal 完成计划971` 授权本链（auto-plan-goal 范式）：在专属 worktree 实施（含建树）、复审、批准合同内有界修复与 merge（含 phase fold A切片）。不授权改目标/验收阈值/兼容承诺/仓与动作范围/预算。B 期开工仍受 §5 阶段合同 M2A-08 前置约束（该约束是本计划已批准的合同内容，不是本链新增限制）。
+
 ### 2026-11-12 本轮规划取材与授权
 
 用户要求细化其余ACE M2计划，复用已有研究/合同，仍只规划；本轮不创建实施树/集成分支、不执行T-01探针或产品/正式性能测试、不提交/合入/tag/发布、不改canonical Specs或legacy索引。945–948原M1-TAG及各A/B正式来源门均不因本次文档静态取材放行；既有实施证据/暂停/等待由原owner维护。
@@ -106,6 +110,16 @@ LSP已迁auto-ui/crates/auto-lsp，本包直接核其现存completion/hover/sign
 ### A期PROOF批次（新增、未实施）
 
 最小前置：L966, L969, L970。实际改面：`crates/auto-lang-core/src/test_cases/ac_protocol.rs`；`D:/autostack/auto-ui/crates/auto-lsp`（均核存在）；永久ACE fixture由B-PROOF-I在原owner建立，临时材料仍归本Plan的plan-artifacts scope，不新增第二runner/语义实现。
+
+### T-01 A期冻结记录（2026-11-16，goal授权执行，r6）
+
+前置核实：966/969/970 均已归档（A最小前置满足）；M2A-08 未闭（985 r15 drafting 0/14）→ 按§5阶段表只启动 M2-A 批，B 期任务保持登记不实施。worktree：`D:/autostack/.wt/lang-971/auto-lang`（分支 `plan-971-dev`，基面 master@858bbc271）+ 同组兄弟 `D:/autostack/.wt/lang-971/auto-ui`（分支 `plan-971-dev`，基面 auto-ui master@f2b03dcb）；无 junction/symlink。
+
+**策略比较与选型**：现有三条显式入口——(a) acworker/1 case-worker（进程边界、单源、check/build/run，无多文件/测试面）；(b) 969 E0 facade `run_ace`（同步一次执行、单源）；(c) 970 session daemon（REPL int/bool）。多文件执行域已存在于 960 包面（`compile_package_product`→`PackageAvTarget::cold_with_entry`，`PackageDiagnostic{module,原span}`、AV core `CancelFlag`）。选型：**沿 (b) facade 在 `auto-lang-core::ace_entry` 补中立项目契约 `run_ace_project` + 独立项目executor注册表（镜像E0纪律：未注册=具名HostFailure、零legacy dispatch）**，参考宿主在 `auto-lang-ace-host` 消费960包面；不扩 acworker/1 线（acworker为一致性adapter面非产品入口，扩线使改面翻倍且不增证明力；ac_protocol.rs 无漂移不改——r5改面列表中该路径为规划期锚点，实际改面以本冻结为准）。断点/栈/locals 全量语义= T-02/V-01 的 B 义务；A 只交停止/回收协议能力（cancel→Cancelled+scratch store回收+后续运行不受影响）。
+
+**冻结的A能力（具名PROOF `ace.project/1`）**：`AceModuleSpec{package,version,id,source}`；`AceProjectRequest{modules,entry,tests,capabilities,wall,cancel}`（entry=`pkg::mod`入口模块键+`d_<sym>`入口def；tests=显式测试名列表——A期发现留在现有test owner `test_runner::collect_tests`（legacy AST walk），B期T-02迁发现进producer）；结果 `AceProjectReport{outcome,tests,exit_code,wall_ms}`，`outcome∈{Success,Diagnostic{module=原文件`pkg::mod`身份+原span},Denied,ResourceDenied,Cancelled,HostFailure}`。测试合同：`fn <name>() int` 经包面执行，passed=完成且返回0；非零返回/trap/编译诊断=failed（带module+span）；协议级 `exit_code`=0 iff 全部passed（测试失败非零）。资源：每请求 wall 预算；scratch store 于 temp 下按请求nonce建立、RAII结束删除（停止回收）；cancel 在编译前/每测试前检查，运行内粒度=B期义务。
+
+**V-A-PROOF 冻结命令/输入/平台**：lang=`cargo t ace-host ace-source auto-test-case`（主证明在 `crates/auto-lang-ace-host/tests/p971_project_proof.rs`：真实多文件工程 app+math 跨模块 2+3*4=14、坏源诊断定位原文件原span、修复后消失、测试失败 exit_code=1、cancel→Cancelled+回收、未知引擎名具名拒、合法近邻复跑；ace-source/auto-test-case 为未改消费面确认组）；UI=auto-ui 仓 `cargo test -p auto-lsp`（真CLI往返持久fixture `tests/lsp_cli_roundtrip_971.rs`：spawn 真实 `auto-lsp` bin，JSON-RPC/stdio initialize→didOpen坏源→publishDiagnostics定位该文件→didChange修复→诊断消失→shutdown；错binary负控=客户端对非LSP进程具名失败；LSP后端仍legacy，T-08/B 迁移，本fixture锁协议行为）。平台：Windows x64（桥crate Windows-only）。新增用例≤10s/条（test-discipline 2026-11-14）。
 
 I：在现有诊断/source map、LSP与debug/test owner上，补ACE显式入口的一个真实多文件工程往返；值/诊断原span、断点/停止与测试失败退出正确；只交协议能力，不迁全部编辑器/Playground入口。
 V：坏源诊断定位原文件，恢复后诊断消失；测试失败非零、未知协议/错binary拒绝、停止回收；合法近邻仍可执行。
@@ -232,13 +246,17 @@ LSP测试在auto-ui专属worktree按当地owner入口执行；语言仓仍留同
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A准备｜work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。
+- [x] **T-01｜M2-A准备｜work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。
+  [✅ 2026-11-16] 前置核实（966/969/970已归档、M2A-08未闭→只启动M2-A批）；A期冻结记录见§5"T-01 A期冻结记录"；goal授权链=本轮 /goal 完成计划971。策略比较（acworker线 vs facade线 vs 960包面承载）与选型、冻结命令/平台/资源合同已记录；worktree `D:/autostack/.wt/lang-971/{auto-lang,auto-ui}` 已建。
 
-- [ ] **B-PROOF-I｜M2-A｜owner_stage: work｜AC-A-PROOF**：在现有诊断/source map、LSP与debug/test owner上，补ACE显式入口的一个真实多文件工程往返；值/诊断原span、断点/停止与测试失败退出正确；只交协议能力，不迁全部编辑器/Playground入口。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。
+- [x] **B-PROOF-I｜M2-A｜owner_stage: work｜AC-A-PROOF**：在现有诊断/source map、LSP与debug/test owner上，补ACE显式入口的一个真实多文件工程往返；值/诊断原span、断点/停止与测试失败退出正确；只交协议能力，不迁全部编辑器/Playground入口。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。
+  [✅ 2026-11-16] 按§5冻结实现：中立项目契约 `ace_entry::run_ace_project`（`AceModuleSpec/AceProjectRequest/AceProjectReport{outcome,tests,exit_code}`、独立project executor注册表、未注册/锁毒=具名HostFailure、未知与旧引擎名=具名拒零dispatch；纪律测试 `p971_project_face_freezes_engine_and_registry_discipline` 0.00s 绿）；参考宿主 `auto-lang-ace-host/src/project.rs`（960包面 `compile_package_product`→`PackageAvTarget::cold_with_entry`，`PackageDiagnostic{module,原span}` 直映，测试车道逐名隔离世代+协议exit_code，相位界cancel，per-request scratch RAII 回收）；`install()` 并装项目宿主（E0 `shutdown()` 语义不变）。永久fixture：lang `tests/p971_project_proof.rs`（真实 app+math 跨模块 2+3*4=14、坏源诊断定位 math::core 原span含nosuch、修复消失、测试失败 exit_code=1、cancel→Cancelled+temp无 `ace-p971-project-*` 残留、旧引擎名拒、合法近邻复跑；1 test 1.09s 绿）＋ core单测 1例；UI `auto-ui/crates/auto-lsp/tests/lsp_cli_roundtrip_971.rs`（真 `auto-lsp` bin stdio JSON-RPC：initialize→didOpen坏源→publishDiagnostics定位该文档界内→didChange修复→诊断消失→未知方法JSON-RPC error→shutdown/exit码0；错binary（非LSP进程）=客户端具名失败不挂起；2 tests 0.17s 绿）。组内补 detached 依赖兄弟 `.wt/lang-971/{auto-web@0adebc0,auto-down@5af11a3}`（auto-ui workspace 路径解析需要，零改动）。
 
-- [ ] **B-PROOF-V｜M2-A｜owner_stage: work｜AC-A-PROOF**：运行V-A-PROOF及完整受影响职责/必要consumer，记录坏源诊断定位原文件，恢复后诊断消失；测试失败非零、未知协议/错binary拒绝、停止回收；合法近邻仍可执行。 核子终态与身份，未执行不PASS。
+- [x] **B-PROOF-V｜M2-A｜owner_stage: work｜AC-A-PROOF**：运行V-A-PROOF及完整受影响职责/必要consumer，记录坏源诊断定位原文件，恢复后诊断消失；测试失败非零、未知协议/错binary拒绝、停止回收；合法近邻仍可执行。 核子终态与身份，未执行不PASS。
+  [✅ 2026-11-16] oracle逐项有真实结果（p971_project_proof 1.09s 绿：math::core原span含nosuch、修复消失、bad_check/trap_check/missing_check→exit_code=1、cancel→Cancelled+temp无 `ace-p971-project-*` 残留、旧引擎名4种具名拒、合法近邻复跑14；UI 2例0.17s绿：坏源→publishDiagnostics定位该文档界内→修复清空、未知方法JSON-RPC error、shutdown/exit码0、错binary具名失败）。**组纠正（T-01冻结修正）**：`ace-host` 组实为 experimental/ace 的 ace-conformance（非桥组）；桥组=`ace-facade`。V-A-PROOF 实际执行：lang worktree `cargo t ace-facade`=PASS 28例（60.9s 含冷编译）、`cargo t ace-source`=PASS 597、`cargo t auto-test-case`=PASS 151（后两者与ace-host同跑，总13m38s）、定向 `cargo test -p auto-lang-core --lib ace_entry`=5绿0.00s；UI worktree `cargo test -p auto-lsp`=16例全绿（10 lib+4 protocol+2 新CLI，12.7s 含构建）。新增用例均≤10s（1.09/0.17/0.00s）。**基线既有红（与本批无构造关联）**：`cargo t ace-host`=164例中11红16skip；复放证据①governance document_base_cli_list 期望68行实得97（文档语料冻结期望漂移）；②ace_m1_closures_source_suite_green 期望Pass实Fail（155.7s复放）；worktree `experimental/`与`test/cases`与基面858bbc271逐字节一致（git status空），主工作区仅本批4文件且experimental无依赖路径→红为先存基线问题，登记债务候选，不判本批。
 
-- [ ] **B-PROOF-R｜M2-A｜owner_stage: review｜AC-A-PROOF**：停写后独立核本批全源路径/正反例/差额，绑定revision与SHA；owner按阶段fold正式合入后，才交985/A。
+- [x] **B-PROOF-R｜M2-A｜owner_stage: review｜AC-A-PROOF**：停写后独立核本批全源路径/正反例/差额，绑定revision与SHA；owner按阶段fold正式合入后，才交985/A。
+  [✅ 2026-11-16] phase复审（局限：实施会话内复审，从提交工件重建）发现 F-971-R-01（世代内丢请求wall/cancel，弱于E0纪律）与 F-971-R-02（LSP行断言偏弱），均已修复并复验闭合（详见§9复审收据：needs_fix→修复 lang e1a600ebe/ui 2f70bbf7→re-pass，相位门 ace-facade 28例18.0s + UI全包绿）。AC-A-PROOF 六断言逐项pass（映射见§9）。阶段fold已正式合入：两仓 ff-only，delivery lang `2f1eed27f`（range-diff全等重写映射 a2faad900→a1b78d9b4 / e1a600ebe→82d659bba / fb838e3da→2f1eed27f）、auto-ui `c1561d94`（a6065a59→b156de4e / 2f70bbf7→c1561d94）；canonical `docs/specs/ace-migration/m2-tools.md` sha256前16 `c69d0afd1aa1fdf3` 已在 master；同树保留至B。可供985/A消费（M2A-08仍未闭，消费时按985自身门核本收据）。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -274,6 +292,86 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 25 | from: work(975) | to: work(975) | status: executing | outcome: pass(975 T-02 sqlite :memory:腿) | 记录: 967钉版provider以:memory:开启（零973依赖），独立oracle复核SUM=9，双负控（bb8d56e07 5.6s）；Auto API面=console foreign缝具名后续 | next: 975 redis RESP腿→T-03..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 24 | from: work(975) | to: work(975) | status: executing | outcome: pass(975 T-01冻结+T-02 JSON encode族) | 记录: 975开工——T-01三域选型冻结（JSON自有codec/967 FFI sqlite/RESP over 974 net）+973分账；T-02首增量 std.json encode族交付（bc19182d9，14 oracle 0.09s） | next: 975 sqlite :memory:/redis腿→T-03..07；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 23 | from: work(974) | to: work(依赖链) | status: executing | outcome: pass(**974整包归档——M2A-03标准库门获正式来源**) | 记录: PLAN-974 整包A交付完成：T-05复审pass(0阻塞)→T-06落主681efa26b+spec m2-stdlib-network sha16 a8338b81e6b5f0ee+归档7534f4eef→T-07清理(worktree/分支/plan-artifacts全删,guard clean)。M2A依赖链：**973/977PY/978/974已闭**；剩973(在途)/979(在途)/981(在途)/975/976/980(部分在途980已见)/982/983/984/OS064/977GD+SCENE | next: 无主包975/976/982/983/984继续或等在途落主→985 T-A03..A05→M2A-08→971 M2-B
+
+stage: goal | PLAN-971 | r6 | round: 22 | from: work(974) | to: review(974/T-05) | status: executing | outcome: pass(974/T-04全V行) | 记录: T-04冻结并集执行——ace-av 1257+ace-native 280+ace-source 597 全PASS（2134例）；V-01..05逐行状态+具名pending（长流背压/上传文件973/TLS-provider道）；974→5/8 | next: 974/T-05独立复审→T-06/07归档（整包A交付喁M2A-03）；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 21 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 WebSocket帧层) | 记录: net_tcp_write_region raw面+真RFC-6455客户端往返（101/掩码帧/无掩码回显），net974 9/9绿（206fdf901） | next: 974 TLS/proxy provider道→T-04..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 20 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 HTTP方法族) | 记录: std.net全方法族（put/patch/delete/head加入），net974 8/8绿（5925768e9） | next: 974 WebSocket→TLS/proxy→T-04..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 19 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 URL族) | 记录: std.url落地（encode族+join_path，net974 7/7绿 c397befd2）；decode/query族=子串物化核心决定具名pending | next: 974 HTTP扩面→WebSocket→TLS/proxy→T-04..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 18 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08分母核) | 记录: T-08协议分母核交付（13族逐项：已交7核心=TCP双向/HTTP client+server核心/SSE解析/redirect/timeout，证据net974 6/6；具名pending=URL族11符号/TLS/proxy/WebSocket/HTTP全方法面/多跳redirect/可配置timeout/upload-download973腿；分母零删行+关闭序冻结） | next: 974实现腿（URL族→HTTP扩面→WebSocket→TLS/proxy）→T-04..07；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 17 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-03缝裁定+std.net包装) | 记录: 装配缝裁定=(c)PLAN-1041内联约定；stdlib/ace/std/net.at落地+内联包装测试真回环6010012；net974 6/6绿（bd173aff0）；packages面接线具名后续 | next: 974/T-08协议分母核→T-04..07整包A交付；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 16 | from: work(974) | to: user | status: executing | outcome: pass(974 T-03装配缝探针) | 记录: T-03首个有界决定已定案输入——console道单源为设计事实，多模块std.net包装须先裁定装配缝（console前门接纳packages产物 vs 新宿主车道复用execute_platform）；974已交面稳定（net974 5/5绿） | next: 974/T-03缝决定→包装→T-08→T-04..07；或在途包落主后985 T-A03；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 15 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量4) | 记录: SSE流式解析+redirect跟随+拒绝负控交付（cf1b29c9e）；net974 5/5绿（SSE 20002/redirect 30200→20000/refused -8） | next: 974 std.net包装→T-03/T-08→T-04..07 或按裁定；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 14 | from: work(974) | to: work(974) | status: executing | outcome: pass(974回环谜题关闭) | 记录: 具名开放发现已关闭（d090a48bb）：根因=补丁脚本转义损坏客户端实发29字节LF（非内核）+非阻塞复原+paced read三修；net974 4/4绿（server腿0.56s稳定） | next: 974/SSE/redirect/timeout 或按裁定；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 13 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量3)+named-open-finding | 记录: platform.net/1 server面落地（23d47952f：listen/accept/local_port+paced accept）；978已由他会话归档（M2A链推进）；server腿E2E具名挂起（回环29/31部分投递谜题，#[ignore]带因非静默） | next: 974谜题关闭/SSE/redirect 或按裁定；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 12 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量2) | 记录: Auto侧HTTP协议API面交付（54e09069e）：旧a2p http_client_sync义务经platform.net/1真TCP承载，GET/builder/post三腿独立oracle精确命中（6010012），net974三测全绿 | next: 974/T-02余量（SSE/server/redirect/timeout）或按裁定；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 11 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02 OS薄适配增量) | 记录: 974/T-02 首增量交付（c226a7215，+754行）：platform.net/1 全栈（av-core四op/caps/预算/台账+Win32 std::net后端+mir_verify准入+core源表+native具名拒）；net_974双测绿（真实TCP HTTP往返 oracle 20043 + 六负控含准入拒零dispatch）；回归48/48 | next: 974/T-02续（http API面/SSE/server腿）或按裁定；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 10 | from: work(依赖链) | to: work(974 A批) | status: executing | outcome: pass(974/T-01冻结) | 记录: 按既定裁定模式开工974：T-01 A期冻结交付（974→r9 executing 1/8；S1选型=扩展platform_io增platform.net/1；973依赖分账=核心TCP/HTTP/SSE腿不前置、File/Stream/upload文件腿具名阻塞；worktree .wt/lang-974/auto-lang已建） | next: 974/T-02（platform.net/1薄适配+最小真实HTTP往返）；GD/SCENE待Godot；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 9 | from: work(977 A批) | to: work(依赖链) | status: executing | outcome: pass(977/PY批A切片落主) | 记录: 977 B-PY-V(9fc1d2a34→4b9c367ba)+B-PY-R+phase fold 完成：**master=56aadead4**，spec m2-other-targets sha16 83af83e29cd299f4；相位门 ace-a2x 247+a2py 105 全PASS；977→4/16(T-01/B-PY-I/V/R)；**985/A 的 COVERAGE Python腿(A2PY路径)已获正式来源** | next: 无主包剩余974/975/976/980/982/983/984（M2A-03标准库门建议974/975；M2A-05 RG-A建议982/983）或在途包落主后985 T-A03；GD/SCENE待Godot；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 8 | from: work(977 A批) | to: work(977 A批) | status: executing | outcome: pass(977/B-PY-I) | 记录: 977/B-PY-I 已交付（977 worktree 727f45616，977→2/16）：旧a2p公开面9/9家族真实Python 3.14.2车道全绿（1.56s），路由事实冻结（instances-cap/cold_aggregates/is表达式），零车道缺口 | next: 977/B-PY-V（全语料case扫描+负控）→ B-PY-R；GD/SCENE待Godot；971/B 等 M2A-08（977/PY批R后phase fold即补COVERAGE Python腿）
+
+stage: goal | PLAN-971 | r6 | round: 7 | from: user(选项A裁定) | to: work(977 A批) | status: executing | outcome: pass(977/T-01) | 记录: 用户裁定选项A→977 A批开工：T-01 A期冻结已交付（前置全归档核实/python.rs漂移重锚定/1042消费面登记/环境冻结Python3.14.2在机·Godot缺席→PY批先行·GD+SCENE不半途开工/命令平台冻结；977→r9 executing 1/16，worktree .wt/lang-977/auto-lang 已建） | next: work——977/B-PY-I（消费1042扩Python provider完整映射+保旧公开格+adapter+永久fixture），其后 B-PY-V/R；GD/SCENE 待Godot环境；REVERSE属B。971/B 仍待 M2A-08（977/PY落主后补齐COVERAGE Python腿之一）
+
+stage: goal | PLAN-971 | r6 | round: 6 | from: work(985链) | to: user | status: executing | outcome: pass(985/T-09已交来源部分)+blocked(985 A批到边界) | 记录: 985/T-09 已交来源部分交付（f0全集33/33实测、FFI行逐行绑定、986/987 pending项；985→4/14）。**985 A批当前可执行边界已到**：T-A03..A05 阻塞于 973-984/OS064 各包A批（973/978/979/981 他会在途；974/975/976/977/980/982/983/984 无主）；T-08[A] 阻塞于 RG 正式输入+File(973) | next: user——选项A：指定无主包A批开工（建议977，阻塞COVERAGE Python腿；次选974/975喂M2A-03）；选项B：等在途包（973/978/979/981）落主后985继续T-A03；971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 5 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A02) | 记录: 985/T-A02 已交付（985 worktree d6342f534，985→3/14）：m2-cover两配方语料+冻结父表真值+四准入族具名红控绑定+V-A-COVER命令冻结 | next: 985/T-09/T-08[A]（已交来源部分）或用户裁定转无主包A批；971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 4 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A01) | 记录: 985/T-A01 义务矩阵+V-A-MAP红控已交付（985 worktree 0dff19cd4，簿记 247c345e6，985→executing 2/14）：162行 `autolang.ab-obligations/1` 矩阵（959冻结行+FFI/LIB增补+早期切片去重）+ 7例真实红控（缺行/重复/错source/非收据路径/词表无owner/pending虚报,0.03s绿,`cargo test -p auto-lang-core --lib obligation_ledger`） | next: 985/T-A02（下一就绪）或按用户改道无主包A批；971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 3 | from: user(续行指令) | to: work(985链) | status: executing | outcome: blocked(外部依赖扩大) | 记录: 2026-11-16 续行指令"推进985 A批至T-A05/V-A-LAND后回971 B"已执行第一步——985/T-01 A期冻结完成并提交（df9a75568，985 r16 executing 1/14，worktree .wt/lang-985/auto-lang 已建）；985 冻结结论：**M2A-08 需 973-984/OS064 各包A批正式落主**，其中 973/979/981 在途属其他会话、978 reviewed收口中——本会话不可替代；无主可开工的包：974/975/976/977/980/982/983/984；985 下一就绪任务=T-A01 义务矩阵 | next: user/work——后续轮次按续行指令继续（985 T-A01 或无主包A批），971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 2 | from: merge | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-971/auto-lang（保留） | commit: 2f1eed27f (lang) / c1561d94 (auto-ui) | next: user——M2-B 阻塞于 M2A-08（985 A批未闭），A切片已正式合入可消费；同目标恢复B期即可
+
+stage: merge | phase fold (A期PROOF切片；plan 保持 executing，同树保留至B——不归档/不清理/plan-artifacts 在途保留) | PLAN-971 | r6 | outcome: pass (phase) | prepared: 审查基线=phase re-pass e1a600ebe/2f70bbf7 + 相位门绿（ace-facade 28例18.0s、UI全包）；spec增量=新增 `docs/specs/ace-migration/m2-tools.md`（A切片28行已验接口与边界） | landed: 两仓均 rebase 后 `--ff-only`（lang master 增量仅978 docs提交、ui master 增量仅085 docs提交，零代码触面，证据基线有效；rebase后冒烟 fixture 0.50s/CLI 0.18s 绿）；**lang delivery `2f1eed27f`**（range-diff 全等：a2faad900→a1b78d9b4、e1a600ebe→82d659bba、fb838e3da→2f1eed27f）、**auto-ui delivery `c1561d94`**（a6065a59→b156de4e、2f70bbf7→c1561d94）；master tip=delivery ✓ 两仓 | canonical_verified: `docs/specs/ace-migration/m2-tools.md` @2f1eed27f，sha256前16 `c69d0afd1aa1fdf3`（5100字节）；无 legacy ledger 写；specs.json 未触碰 | archived: N/A（phase——B期未完不归档） | cleaned: N/A（phase——worktree/分支保留：`.wt/lang-971/{auto-lang,auto-ui}` 均与各自 master tip 同步；detached 依赖兄弟 auto-web/auto-down 保留至B；plan-artifacts/plan-971 在途保留含规范草案源稿） | 部署观察: 本切片纯库API+测试，无发行二进制/打包产物受影响；批量回归不因相位落地触发（971%5=1，归档时另核） | next: M2-B 全部任务阻塞于 M2A-08（985 A批未闭），goal 以具名阻塞停止
+
+stage: review | phase re-pass (B-PROOF-R, A期PROOF切片) | reviewer: 同上局限（实施会话内） | PLAN-971 | r6 | outcome: pass (phase) | reviewed_commit: e1a600ebe（lang，含a2faad900+R-01修复）/ 2f70bbf7（ui，含a6065a59+R-02修复） | 相位门: `cargo t ace-facade`=PASS 28例 18.0s（热构建，冻结修复版）；`cargo test -p auto-lsp`=全绿（10 lib+0+4 protocol+2 新CLI+4 integration，10.8s 含构建）；修复复验：fixture 0.82s 绿、project单测绿 | F-971-R-01/R-02 闭合（closure: 发现→不变量[世代内预算/取消不丢]→修复→单测+端到端负控→当前结果全绿；剩余边界=端到端墙判别受冻结步预算限制，如实记录于规范边界） | 机器占用：等待外部 `cargo t ace-artifacts ace-semantics ace-a2x ace-av ace-native generated-delivery-controls ace-m2-build`（01:32启动）至0进程后启动lang门；ui门前再查（无输出=空闲）；ace-facade启动瞬间观察到12个进程（前任务收尾/新任务启动不明——本组结果18s热跑不受影响，如实记录） | next: phase fold 合入A切片（两仓），plan保持executing，同树保留至B（M2A-08前置）
+
+stage: goal | PLAN-971 | r6 | round: 1 | from: work | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-971/auto-lang | commit: a2faad900 (lang) / a6065a59 (auto-ui) | next: review（B-PROOF-R，A切片独立复审）
+
+stage: review | phase (B-PROOF-R, A期PROOF切片) | reviewer: 实施会话内复审（本环境无独立复审上下文——从已提交工件重建结论，不采信执行摘要；该局限随收据记录） | PLAN-971 | r6 | outcome: needs_fix → 已修复待相位门 | worktree: D:/autostack/.wt/lang-971/auto-lang @ plan-971-dev | reviewed_commit: a2faad900（lang）/ a6065a59（auto-ui） | base: 858bbc271（lang）/ f2b03dcb（ui） | findings: **F-971-R-01**[moderate,合同内] 项目执行器在单世代内丢弃请求 wall/cancel（ExecLimits::default() 2s默认墙+恒false取消旗标），弱于E0同脊柱纪律（limits_from/cancel_flag），中立契约"整请求wall预算"承诺未闭环 → 修复：generation_limits 以剩余预算封顶 ExecLimits.wall + 请求取消旗标透传 execute_program（AV in-run 轮询）；判别证据=单测 p971_generation_wall_is_the_requests_remaining_budget（修复前红：默认2s>300ms上限）+端到端1ms墙spin负控（kind wall/ExecutionWall, exit 1；端到端对修复的判别力受编译耗时>1ms限制——相位检查先触发，判别由单测承担，如实记录）；**F-971-R-02**[minor] LSP CLI fixture 诊断范围断言未钉 line==0（单行坏源） → 收紧。修复提交：lang e1a600ebe、ui 2f70bbf7 | evidence: 复核 fixture 0.82s 绿、ace-host lib 2测试绿、UI 2测试0.32s绿；验收映射：AC-A-PROOF 六断言全 pass（定位原文件原span/恢复消失/测试失败非零/未知协议与错binary拒/停止回收/合法近邻）；AC-01（T-01冻结）pass | pending: 冻结修复版受影响完整组门（ace-facade + UI全包）——竞争组任务运行中按test-discipline等待后执行；规范增量（SD-01/SD-PHASE A切片段落）由 merge/phase-fold 沉淀 | next: 相位门通过后 phase fold 合入A切片（plan 保持 executing，同树保留至B）
+
+stage: work | PLAN-971 | r6 | 2026-11-16 | outcome: pass (A批) | worktree: D:/autostack/.wt/lang-971/auto-lang @ plan-971-dev（基面 master@858bbc271，code commit a2faad900）+ 同组 D:/autostack/.wt/lang-971/auto-ui @ plan-971-dev（基面 auto-ui master@f2b03dcb，code commit a6065a59）+ detached 依赖兄弟 auto-web@0adebc0/auto-down@5af11a3（零改动） | task_ids: T-01, B-PROOF-I, B-PROOF-V | evidence: §5 T-01冻结记录、§8各任务[✅]行与组证据 | dependency_revisions: 966/969/970已归档；M2A-08未闭（985 r15 drafting） | blockers: M2-B全部任务（T-02/03/08/04/05/06/07）前置M2A-08收据未满足——按§5阶段合同B不启动，待985 A批关闭M2A-08 | next_responsible_role: B-PROOF-R（A切片独立复审，同树停写后进行；pass后按owner流程phase fold合入A切片，同树保留至B）
+
+本轮会话测试模块表（test-discipline 2026-11-14）：
+
+| 测试模块/实际范围 | 结果与执行数 | 准备/构建 | 运行 | 总墙钟 |
+|---|---|---|---|---|
+| lang `cargo t ace-facade`（-p auto-lang-ace-host --lib --tests，含新fixture） | PASS 28/28 | ~55s（含冷编译） | ~6s | 60.9s |
+| lang `cargo t ace-source`（未改消费面确认组） | PASS 597/597 | 三组共享 | — | 三组合计13m38s |
+| lang `cargo t auto-test-case`（契约确认组） | PASS 151/151 | 三组共享 | — | 同上 |
+| lang `cargo t ace-host`（ace-conformance，**非本批受影响组**，计划原文组名核实） | 153 pass/11 fail/16 skip——11红为基线既有红（复放证据×2见§8 B-PROOF-V行），本批experimental/零改动无依赖路径，不判本批 | — | — | 同上 |
+| lang 定向 `cargo test -p auto-lang-core --lib ace_entry` | PASS 5/5（含新纪律测试） | 已热 | 0.00s | <1s |
+| UI `cargo test -p auto-lsp`（auto-ui worktree，全包含既有测试） | PASS 16/16（10 lib+4 protocol+2 新CLI） | ~12s | <1s | 12.7s |
+
+新增用例：`p971_project_face_freezes_engine_and_registry_discipline`（~0.00s）、`p971_project_proof_roundtrip`（V-A-PROOF完整oracle，1.09s）、`p971_lsp_cli_real_binary_roundtrip`（~0.1s）、`p971_lsp_cli_wrong_binary_is_a_named_failure`（~0.07s）——全部≤10s门通过；机器占用核查=无竞争cargo/rustc/nextest进程；无>10s新用例。
+
 2026-11-12 stage:new / PLAN-971 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原11任务/全部AC与V/依赖/阶段/预算和drafting 0/11；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -288,6 +386,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
 ## 10. 待澄清事项
+
+**M2-B 开工阻塞（2026-11-16 goal 会话具名）**：M2-B 全部任务（T-02/03/08/04 及收口 T-05/06/07）按§5阶段合同须先核 **M2A-08 已合入收据**（PLAN-985 A批 T-A05/V-A-LAND，当前985 r15 drafting 0/14 未闭）。解锁动作：985 A批完成并正式合入 M2A-08 收据后，以同一目标（`/goal 完成计划971` 或等价授权）恢复本计划 B 期——同树 `D:/autostack/.wt/lang-971/{auto-lang,auto-ui}` 保留在途，resync 后继续。B期开工时还须按§5核 A接口无变化（A接口变化回能力owner修复并定向更新A收据）。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。

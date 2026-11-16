@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/024_str_replace
+
+## Case: legacy-18-ffi-024-str-replace
+id: "legacy.18_ffi.024_str_replace"
+entry-mode: "program"
+
+### Auto
+path: "str_replace.at"
+```auto
+Str.replace("hello world", "world", "auto")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello auto
+```

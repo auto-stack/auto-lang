@@ -1,0 +1,42 @@
+# Legacy a2c corpus: 08_generics/003_generic_ptr_field
+
+## Case: legacy-08-generics-003-generic-ptr-field
+id: "legacy.08_generics.003_generic_ptr_field"
+entry-mode: "program"
+
+### Auto
+path: "generic_ptr_field.at"
+```auto
+// Test generic pointer fields in structs (Plan 059 Phase 1)
+
+type MyStruct<T> {
+    value *const T
+}
+
+fn main() {
+    let x = 42
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### generic_ptr_field.expected.c
+```c
+#include "generic_ptr_field.h"
+
+
+int main(void) {
+    int x = 42;
+    return 0;
+}
+```
+
+#### generic_ptr_field.expected.h
+```c
+#pragma once
+
+struct MyStruct {
+    void** value;
+};
+```

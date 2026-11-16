@@ -1,0 +1,30 @@
+# Legacy vm corpus: 08_strings/016_heaprc_string_pool
+
+## Case: legacy-08-strings-016-heaprc-string-pool
+id: "legacy.08_strings.016_heaprc_string_pool"
+entry-mode: "program"
+
+### Auto
+path: "heaprc_string_pool.at"
+```auto
+var total = 0
+for i in 0..2000 {
+    let lines = "alpha: one two|beta: three four|gamma: five six".split("|")
+    for line in lines {
+        let t = line.trim()
+        let ci = t.find(":")
+        if ci > 0 {
+            total = total + t.sub(ci + 1, t.len()).trim().len()
+        }
+    }
+}
+total
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+50000
+```

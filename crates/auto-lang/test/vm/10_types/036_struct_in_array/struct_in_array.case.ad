@@ -1,0 +1,34 @@
+# Legacy vm corpus: 10_types/036_struct_in_array
+
+## Case: legacy-10-types-036-struct-in-array
+id: "legacy.10_types.036_struct_in_array"
+entry-mode: "program"
+
+### Auto
+path: "struct_in_array.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = [
+        Note { id: 0, title: "Welcome" },
+        Note { id: 1, title: "Shopping" },
+    ]
+    let n = notes[0]
+    if n.title == "Welcome" {
+        print("array field ok")
+    }
+    let second = notes[1]
+    if second.id == 1 {
+        print("second id ok")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+array field ok
+second id ok
+```

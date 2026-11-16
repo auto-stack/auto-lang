@@ -1,0 +1,102 @@
+# Legacy a2c corpus: 12_specs/002_spec
+
+## Case: legacy-12-specs-002-spec
+id: "legacy.12_specs.002_spec"
+entry-mode: "program"
+
+### Auto
+path: "spec.at"
+```auto
+// a new spec that say's anything that conforms this Flyer spec should implement a fly() method.
+spec Flyer {
+    fn fly()
+}
+
+// a concreate type that conforms to the Flyer spec
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap Flap")
+    }
+}
+
+// a concreate type that conforms to the Flyer spec
+type Hawk as Flyer {
+    fn fly() {
+        print("Gawk! Gawk!")
+    }
+}
+
+fn main() {
+    // create an instance for each concrete type
+    let b1 = Pigeon()
+    let b2 = Hawk()
+
+    // As they both conform to the Flyer spec, we can store them in an array
+    // This is dynamic polymorphism at runtime
+    let arr []Flyer = [b1, b2]
+    for b in arr {
+        b.fly()
+    }
+}
+
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### spec.expected.c
+```c
+#include "spec.h"
+
+
+void Pigeon_Fly(struct Pigeon *self) {
+    printf("%s\n", "Flap Flap");
+}
+Flyer_vtable Pigeon_Flyer_vtable = {
+    .fly = Pigeon_Fly
+};
+
+
+void Hawk_Fly(struct Hawk *self) {
+    printf("%s\n", "Gawk! Gawk!");
+}
+Flyer_vtable Hawk_Flyer_vtable = {
+    .fly = Hawk_Fly
+};
+
+
+int main(void) {
+
+    struct Pigeon b1 = {};
+    struct Hawk b2 = {};
+
+    void* arr[2] = {&b1, &b2};
+    for (int i = 0; i < 0; i++) {
+        void* b = arr[i];
+        b.fly();
+    }
+    return 0;
+}
+```
+
+#### spec.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+typedef struct Flyer_vtable {
+    void (*fly)(void *self);
+} Flyer_vtable;
+
+struct Pigeon {
+};
+
+void Pigeon_Fly(struct Pigeon *self);
+struct Hawk {
+};
+
+void Hawk_Fly(struct Hawk *self);
+
+
+```

@@ -1,0 +1,40 @@
+# Legacy a2p corpus: 02_types/008_enum_simple
+
+## Case: legacy-a2p-02-types-008-enum-simple
+id: "legacy.a2p.02_types.008_enum_simple"
+entry-mode: "program"
+
+### Auto
+path: "enum_simple.at"
+```auto
+enum Direction {
+    North
+    South
+    East
+    West
+}
+
+fn main() {
+    print("Enum defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### enum_simple.expected.py
+```python
+from enum import Enum, auto
+
+class Direction(Enum):
+    North = auto()
+    South = auto()
+    East = auto()
+    West = auto()
+
+def main():
+    print("Enum defined")
+
+if __name__ == "__main__":
+    main()
+```

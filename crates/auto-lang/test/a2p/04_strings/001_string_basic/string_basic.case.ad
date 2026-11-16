@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 04_strings/001_string_basic
+
+## Case: legacy-a2p-04-strings-001-string-basic
+id: "legacy.a2p.04_strings.001_string_basic"
+entry-mode: "program"
+
+### Auto
+path: "string_basic.at"
+```auto
+fn main() {
+    let greeting = "hello"
+    print(greeting)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### string_basic.expected.py
+```python
+def main():
+    greeting = "hello"
+    print(greeting)
+
+if __name__ == "__main__":
+    main()
+```

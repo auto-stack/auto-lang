@@ -1,0 +1,63 @@
+# Legacy a2c corpus: 06_pattern_matching/003_hetero_enum_types
+
+## Case: legacy-06-pattern-matching-003-hetero-enum-types
+id: "legacy.06_pattern_matching.003_hetero_enum_types"
+entry-mode: "program"
+
+### Auto
+path: "hetero_enum_types.at"
+```auto
+enum Atom {
+    Int int
+    Float float
+
+    fn get_value() int {
+        42
+    }
+}
+
+fn main() {
+    let a = Atom.Int(10)
+    let v = a.get_value()
+    v
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### hetero_enum_types.expected.c
+```c
+#include "hetero_enum_types.h"
+
+int Atom_GetValue(struct Atom* self) {
+{
+    return 42;
+}
+}
+
+int main(void) {
+    struct Atom a = {.tag = ATOM_INT, .as.Int = 10};
+    int v = Atom_GetValue(&a);
+    return v;
+}
+```
+
+#### hetero_enum_types.expected.h
+```c
+#pragma once
+
+enum AtomKind {
+    ATOM_INT,
+    ATOM_FLOAT,
+};
+
+struct Atom {
+    enum AtomKind tag;
+    union {
+        int Int;
+        float Float;
+    } as;
+};
+int Atom_GetValue(struct Atom* self);
+```

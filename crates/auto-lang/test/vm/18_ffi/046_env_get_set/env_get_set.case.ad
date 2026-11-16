@@ -1,0 +1,21 @@
+# Legacy vm corpus: 18_ffi/046_env_get_set
+
+## Case: legacy-18-ffi-046-env-get-set
+id: "legacy.18_ffi.046_env_get_set"
+entry-mode: "program"
+
+### Auto
+path: "env_get_set.at"
+```auto
+Env.set("AUTO_TEST_VAR", "hello")
+let val = Env.get("AUTO_TEST_VAR")
+print(val)
+Env.remove("AUTO_TEST_VAR")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello
+```

@@ -4,6 +4,6 @@
 # (auto-lang-core) judges values, the P/R axes and the warm-edit identity.
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-closures-recovery-913", include: [
-  "closures-recovery-913.case.ad",
+  "closures-recovery-913.document.case.ad",
 ] }
 ```

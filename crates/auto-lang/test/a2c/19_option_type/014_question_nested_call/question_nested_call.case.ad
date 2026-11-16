@@ -1,0 +1,50 @@
+# Legacy a2c corpus: 19_option_type/014_question_nested_call
+
+## Case: legacy-19-option-type-014-question-nested-call
+id: "legacy.19_option_type.014_question_nested_call"
+entry-mode: "program"
+
+### Auto
+path: "question_nested_call.at"
+```auto
+fn helper() int {
+    42
+}
+
+fn test_nested_call() ?int {
+    helper()
+}
+
+fn main() {
+    let result = test_nested_call()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_nested_call.expected.c
+```c
+#include "question_nested_call.h"
+
+int helper(void) {
+    return 42;
+}
+
+int test_nested_call(void) {
+    return helper();
+}
+
+int main(void) {
+    unknown result = test_nested_call();
+    return 0;
+}
+```
+
+#### question_nested_call.expected.h
+```c
+#pragma once
+
+int helper(void);
+int test_nested_call(void);
+```

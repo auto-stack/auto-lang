@@ -1,0 +1,27 @@
+# Legacy vm corpus: 08_strings/010_str_ext_import
+
+## Case: legacy-08-strings-010-str-ext-import
+id: "legacy.08_strings.010_str_ext_import"
+entry-mode: "program"
+
+### Auto
+path: "str_ext_import.at"
+```auto
+use auto.str: char_at
+
+fn main() {
+    let a = "hello"
+    let c0 = a.char_at(0)
+    let c4 = a.char_at(4)
+    print(c0)
+    print(c4)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+104
+111
+```

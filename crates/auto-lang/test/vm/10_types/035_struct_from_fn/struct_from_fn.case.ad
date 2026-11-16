@@ -1,0 +1,33 @@
+# Legacy vm corpus: 10_types/035_struct_from_fn
+
+## Case: legacy-10-types-035-struct-from-fn
+id: "legacy.10_types.035_struct_from_fn"
+entry-mode: "program"
+
+### Auto
+path: "struct_from_fn.at"
+```auto
+type Note { id int; title str }
+
+fn make_note(i int, t str) Note {
+    Note { id: i, title: t }
+}
+
+fn main() {
+    let n = make_note(42, "world")
+    if n.title == "world" {
+        print("title from fn ok")
+    }
+    if n.id == 42 {
+        print("id from fn ok")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+title from fn ok
+id from fn ok
+```

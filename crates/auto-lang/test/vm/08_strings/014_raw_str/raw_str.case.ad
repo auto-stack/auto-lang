@@ -1,0 +1,25 @@
+# Legacy vm corpus: 08_strings/014_raw_str
+
+## Case: legacy-08-strings-014-raw-str
+id: "legacy.08_strings.014_raw_str"
+entry-mode: "program"
+
+### Auto
+path: "raw_str.at"
+```auto
+let a = `hello world`
+assert_eq(a, "hello world")
+
+let b = `path\to\file`
+assert_eq(b, "path\\to\\file")
+
+let c = `say "hi"`
+print("raw_str: all passed")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+raw_str: all passed
+```

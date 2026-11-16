@@ -1,0 +1,19 @@
+# Legacy vm corpus: 04_control_flow/011_as_float_to_int
+
+## Case: legacy-04-control-flow-011-as-float-to-int
+id: "legacy.04_control_flow.011_as_float_to_int"
+entry-mode: "program"
+
+### Auto
+path: "as_float_to_int.at"
+```auto
+var x = 3
+print(x.as(float).as(int))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+```

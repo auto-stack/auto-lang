@@ -1,0 +1,28 @@
+# Legacy vm corpus: 13_collections/026_list_get_set
+
+## Case: legacy-13-collections-026-list-get-set
+id: "legacy.13_collections.026_list_get_set"
+entry-mode: "program"
+
+### Auto
+path: "list_get_set.at"
+```auto
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var v0 = list.get(0)
+list.set(1, 99)
+var v1 = list.get(1)
+var v2 = list.get(2)
+list.drop()
+f"[$v0, $v1, $v2]"
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+[10, 99, 30]
+```

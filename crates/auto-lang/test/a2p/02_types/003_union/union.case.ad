@@ -1,0 +1,38 @@
+# Legacy a2p corpus: 02_types/003_union
+
+## Case: legacy-a2p-02-types-003-union
+id: "legacy.a2p.02_types.003_union"
+entry-mode: "program"
+
+### Auto
+path: "union.at"
+```auto
+union MyUnion {
+    i int
+    f float
+}
+
+fn main() {
+    print("Union defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### union.expected.py
+```python
+from dataclasses import dataclass
+
+@dataclass
+class MyUnion:
+    kind: str = ''
+    i: int = 0
+    f: float = 0.0
+
+def main():
+    print("Union defined")
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,21 @@
+# Legacy vm corpus: 09_functions/004_fn_nested
+
+## Case: legacy-09-functions-004-fn-nested
+id: "legacy.09_functions.004_fn_nested"
+entry-mode: "program"
+
+### Auto
+path: "fn_nested.at"
+```auto
+fn add(a, b) { a + b }
+fn mul(a, b) { a * b }
+add(mul(3, 4), mul(2, 7))
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+26
+```

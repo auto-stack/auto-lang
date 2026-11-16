@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/075_list_str_push_get
+
+## Case: legacy-99-bootstrap-075-list-str-push-get
+id: "legacy.99_bootstrap.075_list_str_push_get"
+entry-mode: "program"
+
+### Auto
+path: "list_str_push_get.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(\"hello\")\nlist.push(\"world\")\nprint(list.get(0))\nprint(list.get(1))\nprint(list.len())\n}")
+    if result == "hello\nworld\n2\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

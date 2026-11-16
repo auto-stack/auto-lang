@@ -1,0 +1,48 @@
+# Legacy a2c corpus: 03_control_flow/002_for_range
+
+## Case: legacy-03-control-flow-002-for-range
+id: "legacy.03_control_flow.002_for_range"
+entry-mode: "program"
+
+### Auto
+path: "for_range.at"
+```auto
+fn main() {
+    for j in 0..10 {
+        print(j)
+    }
+
+    let arr = [1, 2, 3]
+    for n in arr {
+        print(n)
+    }
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### for_range.expected.c
+```c
+#include "for_range.h"
+
+int main(void) {
+    for (int j = 0; j < 10; j++) {
+        printf("%d\n", j);
+    }
+
+    int arr[3] = {1, 2, 3};
+    for (int i = 0; i < 3; i++) {
+        int n = arr[i];
+        printf("%d\n", n);
+    }
+    return 0;
+}
+```
+
+#### for_range.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

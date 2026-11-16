@@ -1,0 +1,20 @@
+# Legacy vm corpus: 16_option_result/006_err_ctor
+
+## Case: legacy-16-option-result-006-err-ctor
+id: "legacy.16_option_result.006_err_ctor"
+entry-mode: "program"
+
+### Auto
+path: "err_ctor.at"
+```auto
+let x = Err("error message")
+1
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

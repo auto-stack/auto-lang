@@ -1,0 +1,21 @@
+# Legacy vm corpus: 03_variables/003_var_mut
+
+## Case: legacy-03-variables-003-var-mut
+id: "legacy.03_variables.003_var_mut"
+entry-mode: "program"
+
+### Auto
+path: "var_mut.at"
+```auto
+var x = 1
+x = 10
+x+1
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+11
+```

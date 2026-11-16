@@ -1,0 +1,19 @@
+# Legacy vm corpus: 04_control_flow/001_if_true
+
+## Case: legacy-04-control-flow-001-if-true
+id: "legacy.04_control_flow.001_if_true"
+entry-mode: "program"
+
+### Auto
+path: "if_true.at"
+```auto
+if true { 1 } else { 2 }
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

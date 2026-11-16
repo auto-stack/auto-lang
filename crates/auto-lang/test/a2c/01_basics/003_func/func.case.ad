@@ -1,0 +1,46 @@
+# Legacy a2c corpus: 01_basics/003_func
+
+## Case: legacy-01-basics-003-func
+id: "legacy.01_basics.003_func"
+entry-mode: "program"
+
+### Auto
+path: "func.at"
+```auto
+// use defined function
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let result int = add(5, 3);
+    print("The result is:", result);
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### func.expected.c
+```c
+#include "func.h"
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int main(void) {
+    int result = add(5, 3);
+    printf("%s %d\n", "The result is:", result);
+    return 0;
+}
+```
+
+#### func.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int add(int a, int b);
+```

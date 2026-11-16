@@ -728,6 +728,42 @@ pub fn valid_check_id(id: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
 }
 
+/// Cross-check admission shared by the contract decoder and the document
+/// author path (PLAN-1062: author-decoded specs pass the same graph rules).
+pub fn validate_check_graph(checks: &[CheckSpec]) -> Result<(), ContractError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for c in checks {
+        if !seen.insert(c.id.clone()) {
+            return Err(err(
+                "case.checks",
+                format!("duplicate check id {:?} (unique within the case)", c.id),
+            ));
+        }
+    }
+    // product_from must reference an existing check and stay acyclic
+    // (edges may only point to EARLIER checks by declaration order).
+    for (i, c) in checks.iter().enumerate() {
+        if let Some(up) = &c.product_from {
+            match checks.iter().position(|x| &x.id == up) {
+                Some(pos) if pos < i => {}
+                Some(_) => {
+                    return Err(err(
+                        &format!("case.checks[{}].product_from", i),
+                        format!("must reference an earlier check (cycle), got {:?}", up),
+                    ));
+                }
+                None => {
+                    return Err(err(
+                        &format!("case.checks[{}].product_from", i),
+                        format!("references unknown check {:?}", up),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Decode one `case { … }` node into a [`CaseSpec`] under admission limits.
 pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError> {
     let (name, props) = v.as_node().ok_or_else(|| {
@@ -859,36 +895,7 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
         }
     }
 
-    let mut seen = std::collections::BTreeSet::new();
-    for c in &checks {
-        if !seen.insert(c.id.clone()) {
-            return Err(err(
-                "case.checks",
-                format!("duplicate check id {:?} (unique within the case)", c.id),
-            ));
-        }
-    }
-    // product_from must reference an existing check and stay acyclic
-    // (edges may only point to EARLIER checks by declaration order).
-    for (i, c) in checks.iter().enumerate() {
-        if let Some(up) = &c.product_from {
-            match checks.iter().position(|x| &x.id == up) {
-                Some(pos) if pos < i => {}
-                Some(_) => {
-                    return Err(err(
-                        &format!("case.checks[{}].product_from", i),
-                        format!("must reference an earlier check (cycle), got {:?}", up),
-                    ));
-                }
-                None => {
-                    return Err(err(
-                        &format!("case.checks[{}].product_from", i),
-                        format!("references unknown check {:?}", up),
-                    ));
-                }
-            }
-        }
-    }
+    validate_check_graph(&checks)?;
 
     Ok(CaseSpec {
         schema,
@@ -3479,6 +3486,10 @@ pub struct ProbeStepExpect {
     pub compute_calls: Option<u32>,
     /// Sidecar JSON with the expected bindings (name/ty list).
     pub bindings_file: Option<String>,
+    /// PLAN-1062 CF-07: inline bindings payload (document cases inline the
+    /// oracle; bytes/hash identical to the sidecar form — mutually
+    /// exclusive with `bindings_file`).
+    pub bindings_text: Option<String>,
     /// Stage names the step trace must include.
     pub stages_include: Vec<String>,
     /// PLAN-939 T-09: per-step PE exit override for multi-query flows
@@ -4056,6 +4067,30 @@ fn decode_expect(
                             ));
                         }
                     };
+                    let bindings_text = match pf.sub("bindings_text") {
+                        None => None,
+                        Some(CVal::Str(t)) => {
+                            if bindings_file.is_some() {
+                                return Err(err(
+                                    &pf.path_of("bindings_text"),
+                                    "bindings_text and bindings_file are mutually exclusive",
+                                ));
+                            }
+                            if t.is_empty() {
+                                return Err(err(
+                                    &pf.path_of("bindings_text"),
+                                    "bindings_text must be non-empty (use no binding at all instead)",
+                                ));
+                            }
+                            Some(t.clone())
+                        }
+                        Some(other) => {
+                            return Err(err(
+                                &pf.path_of("bindings_text"),
+                                format!("expected string, got {}", other.type_name()),
+                            ));
+                        }
+                    };
                     let stages_include = match pf.sub("stages_include") {
                         None => Vec::new(),
                         Some(v) => {
@@ -4095,6 +4130,7 @@ fn decode_expect(
                         cache,
                         compute_calls,
                         bindings_file,
+                        bindings_text,
                         stages_include,
                         pe_exit,
                     });

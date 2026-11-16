@@ -1,0 +1,31 @@
+# Legacy a2p corpus: 01_basics/043_multi_expr
+
+## Case: legacy-a2p-01-basics-043-multi-expr
+id: "legacy.a2p.01_basics.043_multi_expr"
+entry-mode: "program"
+
+### Auto
+path: "multi_expr.at"
+```auto
+fn main() {
+    let a = 1
+    let b = 2
+    let c = a + b
+    print(c)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### multi_expr.expected.py
+```python
+def main():
+    a = 1
+    b = 2
+    c = a + b
+    print(c)
+
+if __name__ == "__main__":
+    main()
+```

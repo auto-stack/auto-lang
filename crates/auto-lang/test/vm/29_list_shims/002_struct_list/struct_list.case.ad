@@ -1,0 +1,36 @@
+# Legacy vm corpus: 29_list_shims/002_struct_list
+
+## Case: legacy-29-list-shims-002-struct-list
+id: "legacy.29_list_shims.002_struct_list"
+entry-mode: "program"
+
+### Auto
+path: "struct_list.at"
+```auto
+// Plan 335: 结构体 List 端到端（push/get/字段访问/pop）。
+// Auto 用 `type` 声明结构体（struct 不是 Auto 关键字）。
+// 依赖 List shim 双查（ListData<Value>）+ type 声明的 .new() 构造。
+type Item { name str }
+fn main() {
+    var items List<Item> = List<Item>.new([])
+    items.push(Item.new("alpha"))
+    items.push(Item.new("beta"))
+    print(items.len())
+    print(items.get(0).name)
+    print(items.get(1).name)
+    let popped = items.pop()
+    print(popped.name)
+    print(items.len())
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+2
+alpha
+beta
+beta
+1
+```

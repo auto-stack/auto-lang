@@ -1,0 +1,22 @@
+# Legacy vm corpus: 09_functions/013_closure_capture_hof
+
+## Case: legacy-09-functions-013-closure-capture-hof
+id: "legacy.09_functions.013_closure_capture_hof"
+entry-mode: "program"
+
+### Auto
+path: "closure_capture_hof.at"
+```auto
+// Test: closure captures outer variable + HOF
+let factor = 3
+let nums = [1, 2, 3]
+let scaled = nums.map(x => x * factor)
+print(scaled.len())
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+```

@@ -1,0 +1,21 @@
+# Legacy vm corpus: 15_nested_mutation/002_array_element
+
+## Case: legacy-15-nested-mutation-002-array-element
+id: "legacy.15_nested_mutation.002_array_element"
+entry-mode: "program"
+
+### Auto
+path: "array_element.at"
+```auto
+var arr = [1, 2, 3]
+arr[0] = 10
+arr[0]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```

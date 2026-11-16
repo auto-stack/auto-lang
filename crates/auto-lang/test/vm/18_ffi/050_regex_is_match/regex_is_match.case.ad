@@ -1,0 +1,26 @@
+# Legacy vm corpus: 18_ffi/050_regex_is_match
+
+## Case: legacy-18-ffi-050-regex-is-match
+id: "legacy.18_ffi.050_regex_is_match"
+entry-mode: "program"
+
+### Auto
+path: "regex_is_match.at"
+```auto
+print(Regex.is_match("\\d+", "abc123"))
+print(Regex.is_match("\\d+", "abcdef"))
+print(Regex.is_match("hello\\s+world", "hello world"))
+print(Regex.is_match("^abc", "abcdef"))
+print(Regex.is_match("xyz$", "abcdef"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+1
+0
+1
+1
+0
+```

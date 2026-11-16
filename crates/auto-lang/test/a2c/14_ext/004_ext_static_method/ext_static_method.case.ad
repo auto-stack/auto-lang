@@ -1,0 +1,49 @@
+# Legacy a2c corpus: 14_ext/004_ext_static_method
+
+## Case: legacy-14-ext-004-ext-static-method
+id: "legacy.14_ext.004_ext_static_method"
+entry-mode: "program"
+
+### Auto
+path: "ext_static_method.at"
+```auto
+// Test ext statement with static method (Plan 035)
+
+ext int {
+    static fn default() int {
+        42
+    }
+}
+
+fn main() {
+    let x = int.default()
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### ext_static_method.expected.c
+```c
+#include "ext_static_method.h"
+
+int int_default(void) {
+    return 42;
+}
+
+int main(void) {
+    unknown x = int_default(int);
+    printf("%d\n", x);
+    return 0;
+}
+```
+
+#### ext_static_method.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int int_default(void);
+```

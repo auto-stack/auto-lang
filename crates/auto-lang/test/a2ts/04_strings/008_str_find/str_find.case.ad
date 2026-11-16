@@ -1,0 +1,34 @@
+# Legacy a2ts corpus: 04_strings/008_str_find
+
+## Case: legacy-04-strings-008-str-find
+id: "legacy.04_strings.008_str_find"
+entry-mode: "program"
+
+### Auto
+path: "str_find.at"
+final-newline: false
+```auto
+fn main() {
+    let s = "hello world"
+    let found = s.find("world")
+    let contains_hello = s.contains("hello")
+    print(found)
+    print(contains_hello)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### str_find.expected.ts
+```ts
+function main(): void {
+    const s: string = "hello world";
+    const found = s.find("world");
+    const contains_hello = s.contains("hello");
+    console.log(found);
+    console.log(contains_hello);
+}
+
+main();
+```

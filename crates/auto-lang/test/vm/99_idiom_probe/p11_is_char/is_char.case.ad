@@ -1,0 +1,33 @@
+# Legacy vm corpus: 99_idiom_probe/p11_is_char
+
+## Case: legacy-99-idiom-probe-p11-is-char
+id: "legacy.99_idiom_probe.p11_is_char"
+entry-mode: "program"
+
+### Auto
+path: "is_char.at"
+```auto
+// Plan 447 probe p11: is-on-char（绿件加固）
+fn main() {
+    let c = 'x'
+    is c {
+        'x' -> print("ex")
+        'y' -> print("why")
+        else -> print("other")
+    }
+
+    let d = 'z'
+    is d {
+        'x' | 'y' -> print("xy")
+        else -> print("not xy")
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ex
+not xy
+```

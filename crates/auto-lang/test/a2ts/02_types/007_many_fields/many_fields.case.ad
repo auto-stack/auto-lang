@@ -1,0 +1,49 @@
+# Legacy a2ts corpus: 02_types/007_many_fields
+
+## Case: legacy-02-types-007-many-fields
+id: "legacy.02_types.007_many_fields"
+entry-mode: "program"
+
+### Auto
+path: "many_fields.at"
+final-newline: false
+```auto
+type Record {
+    id int
+    name str
+    active bool
+    score float
+}
+
+fn main() {
+    let r = Record(1, "test", true, 95.5)
+    print(r.name)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### many_fields.expected.ts
+```ts
+export class Record {
+    id: number;
+    name: string;
+    active: boolean;
+    score: number;
+
+    constructor(id: number, name: string, active: boolean, score: number) {
+        this.id = id;
+        this.name = name;
+        this.active = active;
+        this.score = score;
+    }
+}
+
+function main(): void {
+    const r = new Record(1, "test", true, 95.5);
+    console.log(r.name);
+}
+
+main();
+```

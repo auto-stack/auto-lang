@@ -1,0 +1,21 @@
+## Case: mn-trap-div-overflow
+id: "mn.trap.div-overflow"
+tags: ["ac-mn", "probe", "trap"]
+links: ["PLAN-818"]
+
+### Auto
+path: "main.at"
+
+~~~~auto
+fn main() int {
+    var m = 0 - 2147483647
+    m = m - 1
+    var d = 0 - 1
+    return m / d
+}
+~~~~
+
+### Probe run-trap
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 70

@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/017_json_as_bool
+
+## Case: legacy-18-ffi-017-json-as-bool
+id: "legacy.18_ffi.017_json_as_bool"
+entry-mode: "program"
+
+### Auto
+path: "json_as_bool.at"
+```auto
+Json.as_bool("true")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

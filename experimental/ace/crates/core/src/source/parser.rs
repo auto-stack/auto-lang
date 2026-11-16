@@ -161,6 +161,7 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
                                 end: src.len(),
                             },
                             message: msg,
+                            surface: None,
                         })
                     }
                 }
@@ -631,7 +632,22 @@ impl<'s> Parser<'s> {
     }
 
     fn unsupported(&self, msg: impl Into<String>, span: Span) -> Diagnostic {
+        // PLAN-969 (AUDIT-03): every legacy-front-door "not part of this
+        // source profile" refusal carries the structured surface fact —
+        // escalation ladders route on THIS, never on the message.
         self.err("source.unsupported", msg, span)
+            .tagged(crate::atom_text::SurfaceFact::ProfileSurface)
+    }
+
+    /// PLAN-969 (AUDIT-03): the structured surface fact for the CURRENT
+    /// token when it is a wider-profile-owned shape (the legacy-lane
+    /// mirror of the projector's `surface_shape_of_token`).
+    fn surface_fact_cur(&self) -> Option<crate::atom_text::SurfaceFact> {
+        match self.peek().map(|t| &t.tok) {
+            Some(Tok::Punct(P::LBrace)) => Some(crate::atom_text::SurfaceFact::OwnedShape),
+            Some(Tok::Punct(P::LBracket)) => Some(crate::atom_text::SurfaceFact::OwnedToken),
+            _ => None,
+        }
     }
 
     fn describe_cur(&self) -> String {
@@ -1058,10 +1074,14 @@ impl<'s> Parser<'s> {
                 }) => break,
                 Some(t) if !any_member || after_semi || t.line > self.toks[self.pos - 1].line => {}
                 Some(_) => {
-                    return Err(self.syntax(format!(
+                    let mut diag = self.syntax(format!(
                         "expected `;`, newline or `}}`, found {}",
                         self.describe_cur()
-                    )))
+                    ));
+                    if let Some(fact) = self.surface_fact_cur() {
+                        diag = diag.tagged(fact);
+                    }
+                    return Err(diag);
                 }
             }
             any_member = true;
@@ -1077,7 +1097,11 @@ impl<'s> Parser<'s> {
                             f.name.span,
                         ));
                     }
-                    let slot = if hook == "start" { &mut start } else { &mut stop };
+                    let slot = if hook == "start" {
+                        &mut start
+                    } else {
+                        &mut stop
+                    };
                     if slot.is_some() {
                         return Err(self.err(
                             "source.task-lifecycle",
@@ -1125,14 +1149,19 @@ impl<'s> Parser<'s> {
                                 tok: Tok::Punct(P::RBrace),
                                 ..
                             }) => break,
-                            Some(t) if !any_arm
-                                || arm_after_semi
-                                || t.line > self.toks[self.pos - 1].line => {}
+                            Some(t)
+                                if !any_arm
+                                    || arm_after_semi
+                                    || t.line > self.toks[self.pos - 1].line => {}
                             Some(_) => {
-                                return Err(self.syntax(format!(
+                                let mut diag = self.syntax(format!(
                                     "expected `;`, newline or `}}`, found {}",
                                     self.describe_cur()
-                                )))
+                                ));
+                                if let Some(fact) = self.surface_fact_cur() {
+                                    diag = diag.tagged(fact);
+                                }
+                                return Err(diag);
                             }
                         }
                         any_arm = true;
@@ -1181,9 +1210,9 @@ impl<'s> Parser<'s> {
                 }
                 Some(_) => {
                     return Err(self.syntax(format!(
-                        "expected a task member (state field, `fn start`/`fn stop` or `on`), found {}",
-                        self.describe_cur()
-                    )))
+                    "expected a task member (state field, `fn start`/`fn stop` or `on`), found {}",
+                    self.describe_cur()
+                )))
                 }
             }
         }
@@ -1259,8 +1288,7 @@ impl<'s> Parser<'s> {
                 Ok(TaskPattern::Wildcard(span))
             }
             Some(Token {
-                tok: Tok::Ident(_),
-                ..
+                tok: Tok::Ident(_), ..
             }) => {
                 let name = self.expect_ident("message binding name")?;
                 let ty = self.param_type(&name)?;
@@ -1327,12 +1355,10 @@ impl<'s> Parser<'s> {
                 kind: TypeRef::Builtin(TypeWord::Void),
                 span: bang_span,
             }),
-            _ => {
-                return Err(self.unsupported(
-                    "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
-                    name.span.join(rparen),
-                ))
-            }
+            _ => return Err(self.unsupported(
+                "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
+                name.span.join(rparen),
+            )),
         }
     }
 
@@ -1374,10 +1400,14 @@ impl<'s> Parser<'s> {
                 }) => break,
                 Some(t) if !any_member || after_semi || t.line > self.toks[self.pos - 1].line => {}
                 Some(_) => {
-                    return Err(self.syntax(format!(
+                    let mut diag = self.syntax(format!(
                         "expected `;`, newline or `}}`, found {}",
                         self.describe_cur()
-                    )))
+                    ));
+                    if let Some(fact) = self.surface_fact_cur() {
+                        diag = diag.tagged(fact);
+                    }
+                    return Err(diag);
                 }
             }
             any_member = true;
@@ -4004,8 +4034,12 @@ impl<'s> Parser<'s> {
                             self.take_named_label(&mut frames)?;
                             continue 'outer;
                         }
-                        return Err(self
-                            .syntax(format!("expected operator, found {}", self.describe_cur())));
+                        let mut diag = self
+                            .syntax(format!("expected operator, found {}", self.describe_cur()));
+                        if let Some(fact) = self.surface_fact_cur() {
+                            diag = diag.tagged(fact);
+                        }
+                        return Err(diag);
                     }
                     Tok::Punct(P::RBrace) => {
                         // PLAN-771: closes a named-constructor frame
@@ -4165,7 +4199,11 @@ impl<'s> Parser<'s> {
                             self.take_named_label(&mut frames)?;
                             continue 'outer; // next argument primary
                         }
-                        return Err(self.syntax("expected operator, found `,`"));
+                        // PLAN-969 (AUDIT-03): the tuple-literal comma shape
+                        // is aggregates-owned — structured, not message-routed.
+                        return Err(self
+                            .syntax("expected operator, found `,`")
+                            .tagged(crate::atom_text::SurfaceFact::OwnedShape));
                     }
                     _ => {
                         // PLAN-771: inside a named ctor braces, a NEWLINE

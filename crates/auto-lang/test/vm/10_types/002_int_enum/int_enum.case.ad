@@ -1,0 +1,20 @@
+# Legacy vm corpus: 10_types/002_int_enum
+
+## Case: legacy-10-types-002-int-enum
+id: "legacy.10_types.002_int_enum"
+entry-mode: "program"
+
+### Auto
+path: "int_enum.at"
+```auto
+enum Color { Red = 1, Green = 2, Blue = 3 }
+Color.Red
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

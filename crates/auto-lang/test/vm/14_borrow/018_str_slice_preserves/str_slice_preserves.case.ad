@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/018_str_slice_preserves
+
+## Case: legacy-14-borrow-018-str-slice-preserves
+id: "legacy.14_borrow.018_str_slice_preserves"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_preserves.at"
+```auto
+let s = "hello"
+let v = s.view
+s
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

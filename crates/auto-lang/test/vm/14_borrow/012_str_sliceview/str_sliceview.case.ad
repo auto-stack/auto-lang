@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/012_str_sliceview
+
+## Case: legacy-14-borrow-012-str-sliceview
+id: "legacy.14_borrow.012_str_sliceview"
+entry-mode: "program"
+
+### Auto
+path: "str_sliceview.at"
+```auto
+let s = "hello world"
+let v = s.view
+v
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello world
+```

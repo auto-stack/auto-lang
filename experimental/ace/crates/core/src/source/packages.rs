@@ -240,6 +240,23 @@ pub fn parse_package_source_aggregates(
     super::cst::parse_packages_front_aggregates(src, budget)
 }
 
+/// PLAN-972（T-02）：装配 aggregates 域的包模块解析入口
+/// （packages-aggregates-ct 裁剪面 = packages-aggregates 全表面 +
+/// packages-ct 装配项 `#in`/`pub spec fn` + `fn(T..) -> R` 闭包类型注解/
+/// 闭包字面量实参——std 装配标准库与集合 HOF 公共算法的承载面）。同一
+/// packages 能力准入；由装配 aggregates 前门（`ac.source.cte.in/v1` +
+/// PLAN-962 `av.aggregates/1` 准入线）调用。
+pub fn parse_package_source_aggregates_ct(
+    src: &str,
+    capabilities: &[String],
+    budget: FrontBudget,
+) -> Result<PackageSyntax, Vec<Diagnostic>> {
+    if let Err(ds) = require_packages_capabilities(capabilities) {
+        return Err(ds);
+    }
+    super::cst::parse_packages_front_aggregates_ct(src, budget)
+}
+
 fn require_packages_capabilities(capabilities: &[String]) -> Result<(), Vec<Diagnostic>> {
     let reason = if !capabilities.iter().any(|c| c == PACKAGES_CAPABILITY) {
         Some("package modules require explicit ac.source.modules.packages/v1")
@@ -283,6 +300,12 @@ pub fn packages_age_grammar() -> Result<&'static super::cst::CachedGrammar, Stri
 /// packages 线的存储准入；与 plain/ct 存档互不互认）。
 pub fn packages_aggregates_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
     super::cst::packages_aggregates_grammar()
+}
+
+/// PLAN-972（T-02）：packages-aggregates-ct 裁剪 grammar 身份（装配
+/// aggregates 线的存储准入；与 plain/ct/aggregates 存档互不互认）。
+pub fn packages_aggregates_ct_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
+    super::cst::packages_aggregates_ct_grammar()
 }
 
 /// Re-project content-verified stored CST declarations (no scanning/parsing;
@@ -414,10 +437,11 @@ pub fn parse_package_source_age(
 mod binding;
 pub use binding::{
     bind_package_syntax, bind_package_syntax_aggregates, bind_package_syntax_assembled,
-    bind_packages, bind_packages_age, bind_packages_aggregates, bind_packages_assembled,
-    fn_symbol, global_symbol, init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl,
-    PackagedAgeComponent, PackageDiagnostic, PackageImplLayer, PackageImplSyntax,
-    PackageModuleInput, PackageSegment, GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
+    bind_package_syntax_assembled_aggregates, bind_packages, bind_packages_age, bind_packages_aggregates,
+    bind_packages_assembled, bind_packages_assembled_aggregates, fn_symbol, global_symbol,
+    init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl, PackageDiagnostic,
+    PackageImplLayer, PackageImplSyntax, PackageModuleInput, PackageSegment, PackagedAgeComponent, GLOBAL_GET_PREFIX,
+    GLOBAL_SET_PREFIX,
 };
 mod provider_sources;
 pub use provider_sources::{
@@ -427,8 +451,9 @@ pub use provider_sources::{
 };
 mod stdlib;
 pub use stdlib::{
-    is_frozen_std_module, stdlib_aggregates_inputs, stdlib_inputs, unwired_reason, STDLIB_PACKAGE,
-    STDLIB_RESERVED, STDLIB_UNWIRED, STDLIB_VERSION,
+    is_frozen_std_assembled_module, is_frozen_std_module, stdlib_aggregates_inputs,
+    stdlib_assembled_files, stdlib_inputs, unwired_reason, STDLIB_PACKAGE, STDLIB_RESERVED,
+    STDLIB_UNWIRED, STDLIB_VERSION,
 };
 
 #[cfg(test)]

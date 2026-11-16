@@ -29,6 +29,11 @@ members = [
     # parser/compile/VM/trans 随 T-02..T-06 迁入）；normal/build/dev 闭包
     # 无 UI 实现/Man（闭包钉：test/fixtures/modularity/language-sdk-consumer）。
     "crates/auto-lang-core",
+    # PLAN-969 E0 (T-E0-I): the reference explicit-ACE executor bridge
+    # (auto-lang-core's neutral ace_entry contract over the ACE AV spine).
+    # NOT a dependency of auto-lang/auto-lang-core — ordinary daily groups
+    # never build it; its tests run in the explicit ace-facade group.
+    "crates/auto-lang-ace-host",
     # PLAN-807: text foundation crate (persistent rope, file-backed paging,
     # snapshots, diff engine), extracted verbatim from auto-lang's
     # ui/code_editor; auto-lang keeps thin re-export facades at the old

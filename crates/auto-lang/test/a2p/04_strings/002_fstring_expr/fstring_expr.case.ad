@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 04_strings/002_fstring_expr
+
+## Case: legacy-a2p-04-strings-002-fstring-expr
+id: "legacy.a2p.04_strings.002_fstring_expr"
+entry-mode: "program"
+
+### Auto
+path: "fstring_expr.at"
+```auto
+fn main() {
+    let x = 10
+    let y = 20
+    print(f"Sum: ${x + y}")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### fstring_expr.expected.py
+```python
+def main():
+    x = 10
+    y = 20
+    print(f"Sum: {x + y}")
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_bootstrap/031_parser_spec
+
+## Case: legacy-99-bootstrap-031-parser-spec
+id: "legacy.99_bootstrap.031_parser_spec"
+entry-mode: "program"
+
+### Auto
+path: "parser_spec.at"
+```auto
+// Test: spec declaration — spec Flyer { fn fly() }
+fn main() {
+    let source = "spec Flyer {\n    fn fly()\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+(spec Flyer fly)
+```

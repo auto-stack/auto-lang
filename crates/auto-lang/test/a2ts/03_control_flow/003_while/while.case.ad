@@ -1,0 +1,41 @@
+# Legacy a2ts corpus: 03_control_flow/003_while
+
+## Case: legacy-03-control-flow-003-while
+id: "legacy.03_control_flow.003_while"
+entry-mode: "program"
+
+### Auto
+path: "while.at"
+```auto
+fn main() {
+    var count = 0
+    loop {
+        if count >= 10 {
+            break
+        }
+        print(count)
+        count = count + 1
+    }
+    print("done")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### while.expected.ts
+```ts
+function main(): void {
+    let count: number = 0;
+    while (true) {
+        if (count >= 10) {
+            break;
+        }
+        console.log(count);
+        count = count + 1;
+    }
+    console.log("done");
+}
+
+main();
+```

@@ -1,0 +1,26 @@
+# Legacy cookbook corpus: asynchronous/rt/001_tokio_macro
+
+## Case: legacy-asynchronous-rt-001-tokio-macro
+id: "legacy.asynchronous.rt.001_tokio_macro"
+entry-mode: "program"
+
+### Auto
+path: "001_tokio_macro.at"
+```auto
+fn fetch_network_request() ~uint {
+    return 89
+}
+
+fn main() ~void {
+    let result = fetch_network_request().await
+    print(f"Result: ${result}")
+    assert(true)
+}
+```
+
+### VM result
+check-id: "cookbook-stdout"
+
+```text
+Result: 89
+```

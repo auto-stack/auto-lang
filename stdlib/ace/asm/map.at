@@ -1,0 +1,81 @@
+// ACE assembled stdlib map module (PLAN-972 T-02): the collections
+// full-set map slice as a pure Auto algorithm over the instantiated
+// List<int> — entries interleaved [k0, v0, k1, v1, ...] on the frozen
+// collections method table (new/push/get/set/remove/len; reference
+// semantics, insert order preserved). map_put of an existing key
+// overwrites in place; map_remove compacts the shift (value first, then
+// the key). Signatures stay instantiated per the list.at discipline:
+// Str-keyed and generic maps belong to the 963 full-generics consumption
+// slice (named boundary).
+pub fn map_new() List<int> {
+    return List<int>.new()
+}
+
+pub fn map_put(m List<int>, k int, v int) int {
+    return put_at(m, k, v, 0)
+}
+
+fn put_at(m List<int>, k int, v int, i int) int {
+    if (i + 1 >= m.len()) {
+        m.push(k)
+        m.push(v)
+        return 0
+    }
+    let key = m.get(i)
+    if (key == k) {
+        m.set(i + 1, v)
+        return 1
+    }
+    return put_at(m, k, v, i + 2)
+}
+
+pub fn map_get(m List<int>, k int) ?int {
+    return get_at(m, k, 0)
+}
+
+fn get_at(m List<int>, k int, i int) ?int {
+    if (i + 1 >= m.len()) {
+        return None
+    }
+    let key = m.get(i)
+    if (key == k) {
+        return Some(m.get(i + 1))
+    }
+    return get_at(m, k, i + 2)
+}
+
+pub fn map_has(m List<int>, k int) bool {
+    return has_at(m, k, 0)
+}
+
+fn has_at(m List<int>, k int, i int) bool {
+    if (i + 1 >= m.len()) {
+        return false
+    }
+    let key = m.get(i)
+    if (key == k) {
+        return true
+    }
+    return has_at(m, k, i + 2)
+}
+
+pub fn map_len(m List<int>) int {
+    return m.len() / 2
+}
+
+pub fn map_remove(m List<int>, k int) bool {
+    return remove_at(m, k, 0)
+}
+
+fn remove_at(m List<int>, k int, i int) bool {
+    if (i + 1 >= m.len()) {
+        return false
+    }
+    let key = m.get(i)
+    if (key == k) {
+        m.remove(i + 1)
+        m.remove(i)
+        return true
+    }
+    return remove_at(m, k, i + 2)
+}

@@ -4,6 +4,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "av-data-822", include: [
-  "av-collections-first-case.case.ad",
+  "av-collections-first-case.document.case.ad",
 ] }
 ```

@@ -1,0 +1,36 @@
+# Legacy a2p corpus: 09_option_result/009_propagate_in_call
+
+## Case: legacy-a2p-09-option-result-009-propagate-in-call
+id: "legacy.a2p.09_option_result.009_propagate_in_call"
+entry-mode: "program"
+
+### Auto
+path: "propagate_in_call.at"
+```auto
+fn double(x int) int {
+    x * 2
+}
+
+fn main() {
+    let val = Some(10)
+    let result = double(val.?)
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### propagate_in_call.expected.py
+```python
+def double(x: int) -> int:
+    return x * 2
+
+def main():
+    val = 10
+    result = double(val)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```

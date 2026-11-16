@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/101_a2r_is_multi
+
+## Case: legacy-99-bootstrap-101-a2r-is-multi
+id: "legacy.99_bootstrap.101_a2r_is_multi"
+entry-mode: "program"
+
+### Auto
+path: "a2r_is_multi.at"
+```auto
+fn main() {
+    var result = run_a2r("fn main() {\nvar x = 1\nis x {\n1 -> {\nprint(\"a\")\nprint(\"b\")\n}\nelse -> print(\"c\")\n}\n}")
+    var expected = "fn main() {\n    let mut x = 1;\n    match x {\n        1 => {\n            println!(\"a\");\n            println!(\"b\");\n        },\n        _ => println!(\"c\"),\n    }\n}\n"
+    if result == expected {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

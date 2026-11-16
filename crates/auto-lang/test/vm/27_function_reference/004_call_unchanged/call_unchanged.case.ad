@@ -1,0 +1,25 @@
+# Legacy vm corpus: 27_function_reference/004_call_unchanged
+
+## Case: legacy-27-function-reference-004-call-unchanged
+id: "legacy.27_function_reference.004_call_unchanged"
+entry-mode: "program"
+
+### Auto
+path: "call_unchanged.at"
+```auto
+// Plan 383 回归守护：命名函数的直接调用行为完全不变。
+// double(5) 是 Expr::Call（调用），不是函数引用（值位置）。
+fn double(x int) int { return x * 2 }
+fn main() {
+    print(double(5))
+    print(double(7))
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+10
+14
+```

@@ -1,0 +1,89 @@
+# Legacy a2c corpus: 02_types/005_inheritance
+
+## Case: legacy-02-types-005-inheritance
+id: "legacy.02_types.005_inheritance"
+entry-mode: "program"
+
+### Auto
+path: "inheritance.at"
+```auto
+// Test basic single inheritance syntax
+
+type Animal {
+    name str
+
+    fn speak() {
+        print("Animal sound")
+    }
+}
+
+type Dog is Animal {
+    breed str
+
+    fn bark() {
+        print("Woof!")
+    }
+}
+
+fn main() {
+    let dog = Dog()
+    dog.name = "Buddy"
+    dog.breed = "Labrador"
+
+    dog.speak()
+    dog.bark()
+
+    print("Test passed")
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### inheritance.expected.c
+```c
+#include "inheritance.h"
+
+void Animal_Speak(struct Animal *self) {
+    printf("%s\n", "Animal sound");
+}
+
+void Dog_Bark(struct Dog *self) {
+    printf("%s\n", "Woof!");
+}
+void Dog_Speak(struct Dog *self) {
+    printf("%s\n", "Animal sound");
+}
+
+int main(void) {
+    struct Dog dog = {};
+    dog.name = "Buddy";
+    dog.breed = "Labrador";
+
+    Dog_Speak(&dog);
+    Dog_Bark(&dog);
+
+    printf("%s\n", "Test passed");
+    return 0;
+}
+```
+
+#### inheritance.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+struct Animal {
+    char* name;
+};
+
+void Animal_Speak(struct Animal *self);
+struct Dog {
+    char* breed;
+    char* name;
+};
+
+void Dog_Bark(struct Dog *self);
+void Dog_Speak(struct Dog *self);
+```

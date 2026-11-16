@@ -1,0 +1,27 @@
+# Legacy vm corpus: 05_loops/005_loop_keyword
+
+## Case: legacy-05-loops-005-loop-keyword
+id: "legacy.05_loops.005_loop_keyword"
+entry-mode: "program"
+
+### Auto
+path: "loop_keyword.at"
+```auto
+fn main() {
+    var count = 0
+    loop {
+        count += 1
+        if count >= 3 {
+            break
+        }
+    }
+    print(count)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+```

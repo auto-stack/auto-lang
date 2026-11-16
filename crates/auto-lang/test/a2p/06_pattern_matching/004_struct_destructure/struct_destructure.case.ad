@@ -1,0 +1,43 @@
+# Legacy a2p corpus: 06_pattern_matching/004_struct_destructure
+
+## Case: legacy-a2p-06-pattern-matching-004-struct-destructure
+id: "legacy.a2p.06_pattern_matching.004_struct_destructure"
+entry-mode: "program"
+
+### Auto
+path: "struct_destructure.at"
+```auto
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point(x: 3, y: 4)
+    is p {
+        Point { x, y } -> print(x)
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### struct_destructure.expected.py
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+def main():
+    p = Point(x=3, y=4)
+    match p:
+        case Point(x, y):
+            print(x)
+
+if __name__ == "__main__":
+    main()
+```

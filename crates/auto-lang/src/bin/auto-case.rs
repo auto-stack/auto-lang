@@ -92,6 +92,15 @@ fn run(args: &[String]) -> Result<i32, String> {
         );
         return Ok(0);
     }
+    if cmd == "helper-inventory" {
+        let root = PathBuf::from(require(args, "--root")?);
+        let inventory = auto_lang::test_cases::inventory::helper_inventory(&root)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+        );
+        return Ok(0);
+    }
     let suite = PathBuf::from(require(args, "--suite")?);
     match cmd.as_str() {
         "lint" => lint(&suite),
@@ -117,10 +126,25 @@ fn run(args: &[String]) -> Result<i32, String> {
             Ok(0)
         }
         "migration-inventory" => {
-            let inventory = auto_lang::test_cases::inventory::suite_migration_inventory(
-                &suite,
-                &Limits::defaults(),
-            )?;
+            let inventory = match flag(args, "--schema-version").as_deref() {
+                None | Some("1") => {
+                    auto_lang::test_cases::inventory::suite_migration_inventory(
+                        &suite,
+                        &Limits::defaults(),
+                    )?
+                }
+                // PLAN-1062 T-02: lossless structured projection (options
+                // bindings, syntax edits, resolved probe oracles, typed).
+                Some("2") => auto_lang::test_cases::inventory::suite_migration_inventory_v2(
+                    &suite,
+                    &Limits::defaults(),
+                )?,
+                Some(other) => {
+                    return Err(format!(
+                        "unsupported migration-inventory schema version {other:?} (1|2)"
+                    ))
+                }
+            };
             println!(
                 "{}",
                 serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
@@ -138,7 +162,7 @@ fn run(args: &[String]) -> Result<i32, String> {
 }
 
 fn usage() -> String {
-    "usage: auto-case <lint|list|inventory|identity-inventory|migration-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case parent-inventory"
+        "usage: auto-case <lint|list|inventory|identity-inventory|migration-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case helper-inventory --root <path>; auto-case parent-inventory"
         .to_string()
 }
 

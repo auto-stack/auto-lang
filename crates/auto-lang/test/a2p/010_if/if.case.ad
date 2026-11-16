@@ -1,0 +1,30 @@
+# Legacy a2p corpus: 010_if
+
+## Case: legacy-a2p-010-if
+id: "legacy.a2p.010_if"
+entry-mode: "program"
+
+### Auto
+path: "if.at"
+```auto
+fn main() {
+    let x = 10
+    if x > 5 {
+        print("Greater than 5")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### if.expected.py
+```python
+def main():
+    x = 10
+    if x > 5:
+        print("Greater than 5")
+
+if __name__ == "__main__":
+    main()
+```

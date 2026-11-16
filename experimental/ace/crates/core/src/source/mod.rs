@@ -30,6 +30,9 @@ pub mod console;
 pub mod cst;
 pub mod decl_env;
 pub mod domain;
+// PLAN-980（IF-980-FIELDS）：字段级投影完整性清单的通用机制（接既有
+// mapping_complete/component_coverage 的字段粒度层）。
+pub mod field_manifest;
 pub mod fstr;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;

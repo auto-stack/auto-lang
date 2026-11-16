@@ -1,0 +1,41 @@
+# Legacy a2ts corpus: 06_pattern_matching/007_option_match
+
+## Case: legacy-06-pattern-matching-007-option-match
+id: "legacy.06_pattern_matching.007_option_match"
+entry-mode: "program"
+
+### Auto
+path: "option_match.at"
+final-newline: false
+```auto
+fn main() {
+    let val = Some(42)
+
+    is val {
+        Some(v) -> print("value:", v)
+        None -> print("none")
+    }
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### option_match.expected.ts
+```ts
+function main(): void {
+    const val: number | null = 42;
+    
+
+        const __auto_is_0 = val;
+    if (__auto_is_0 !== null) {
+        const v = __auto_is_0;
+        console.log("value:", v);
+    }
+    else if (__auto_is_0 === null) {
+        console.log("none");
+    }
+}
+
+main();
+```

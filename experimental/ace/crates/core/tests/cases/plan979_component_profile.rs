@@ -377,8 +377,12 @@ fn p979_component_vdetail02_named_refusals_keep_original_spans() {
         // (名称, 源, 期望码, 期望 span 起点在源中的锚点)
         (
             // 解析形状错误也必须走领域 hint（age-component 与 age-h0 同策略）。
+            // PLAN-980（B-DIALECT-I 完整批，2026-11-16）：`text <label> { 属性行 }`
+            //（001-helloworld 的 selectable/style 形）已由 980 接线为合法
+            // age-text-props（见 plan980_dialect_full 的 001 腿）；本反例改用
+            // 仍然非法的"无冒号属性"形，具名结构拒绝合同不变。
             "unknown-attribute",
-            "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" { size: 1 }\n    }\n}\n",
+            "node C {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" { size }\n    }\n}\n",
             "source.age.structure",
             0,
         ),

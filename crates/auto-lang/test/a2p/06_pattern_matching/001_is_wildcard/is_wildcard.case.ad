@@ -1,0 +1,37 @@
+# Legacy a2p corpus: 06_pattern_matching/001_is_wildcard
+
+## Case: legacy-a2p-06-pattern-matching-001-is-wildcard
+id: "legacy.a2p.06_pattern_matching.001_is_wildcard"
+entry-mode: "program"
+
+### Auto
+path: "is_wildcard.at"
+```auto
+fn main() {
+    let x = 5
+    is x {
+        0 -> print("zero")
+        1 -> print("one")
+        _ -> print("other")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### is_wildcard.expected.py
+```python
+def main():
+    x = 5
+    match x:
+        case 0:
+            print("zero")
+        case 1:
+            print("one")
+        case _:
+            print("other")
+
+if __name__ == "__main__":
+    main()
+```

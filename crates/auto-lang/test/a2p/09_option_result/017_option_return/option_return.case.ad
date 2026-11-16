@@ -1,0 +1,36 @@
+# Legacy a2p corpus: 09_option_result/017_option_return
+
+## Case: legacy-a2p-09-option-result-017-option-return
+id: "legacy.a2p.09_option_result.017_option_return"
+entry-mode: "program"
+
+### Auto
+path: "option_return.at"
+```auto
+fn maybe_val() ?int {
+    Some(42)
+}
+
+fn main() {
+    let v = maybe_val()
+    print(v)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### option_return.expected.py
+```python
+from typing import Optional
+
+def maybe_val() -> Optional[int]:
+    return 42
+
+def main():
+    v = maybe_val()
+    print(v)
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,24 @@
+# Legacy vm corpus: 09_functions/011_list_map_filter
+
+## Case: legacy-09-functions-011-list-map-filter
+id: "legacy.09_functions.011_list_map_filter"
+entry-mode: "program"
+
+### Auto
+path: "list_map_filter.at"
+```auto
+// Test: List.filter + List.map chain
+let nums = [1, 2, 3, 4, 5, 6]
+let evens = nums.filter(x => x % 2 == 0)
+print(evens.len())
+let big = nums.filter(x => x > 3)
+print(big.len())
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+3
+```

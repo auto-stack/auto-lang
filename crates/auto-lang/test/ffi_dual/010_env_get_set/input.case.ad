@@ -1,0 +1,24 @@
+# Legacy ffi_dual corpus: 010_env_get_set
+
+## Case: legacy-ffi-dual-010-env-get-set
+id: "legacy.ffi_dual.010_env_get_set"
+entry-mode: "program"
+
+### Auto
+path: "input.at"
+```auto
+// FFI Dual Test: Env get/set — #[rust_fn] Env
+Env.set("AUTO_DUAL_TEST", "hello")
+let val = Env.get("AUTO_DUAL_TEST")
+print(val)
+Env.remove("AUTO_DUAL_TEST")
+print(Env.get("AUTO_DUAL_TEST"))
+```
+
+### VM result
+check-id: "ffi-dual-stdout"
+
+```text
+hello
+
+```

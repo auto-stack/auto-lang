@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/010_hashset_duplicate
+
+## Case: legacy-13-collections-010-hashset-duplicate
+id: "legacy.13_collections.010_hashset_duplicate"
+entry-mode: "program"
+
+### Auto
+path: "hashset_duplicate.at"
+```auto
+var s = HashSet.new()
+s.insert("a")
+s.insert("a")
+s.insert("a")
+var sz = s.size()
+s.drop()
+sz
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

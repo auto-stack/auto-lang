@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/015_json_len
+
+## Case: legacy-18-ffi-015-json-len
+id: "legacy.18_ffi.015_json_len"
+entry-mode: "program"
+
+### Auto
+path: "json_len.at"
+```auto
+Json.len("[1,2,3]")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

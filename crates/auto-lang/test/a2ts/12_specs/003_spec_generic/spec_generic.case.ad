@@ -1,0 +1,35 @@
+# Legacy a2ts corpus: 12_specs/003_spec_generic
+
+## Case: legacy-12-specs-003-spec-generic
+id: "legacy.12_specs.003_spec_generic"
+entry-mode: "program"
+
+### Auto
+path: "spec_generic.at"
+final-newline: false
+```auto
+spec Printable {
+    fn format(self) str
+}
+
+fn main() {
+    print("spec defined")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### spec_generic.expected.ts
+```ts
+export interface Printable { {
+    format(self: number): string;
+}
+
+
+function main(): void {
+    console.log("spec defined");
+}
+
+main();
+```

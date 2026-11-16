@@ -1,0 +1,43 @@
+# Legacy a2c corpus: 23_stdlib/014_std_file_read
+
+## Case: legacy-23-stdlib-014-std-file-read
+id: "legacy.23_stdlib.014_std_file_read"
+entry-mode: "program"
+
+### Auto
+path: "std_file_read.at"
+```auto
+use auto.io: File
+
+fn main() {
+    let f = File.open("test.txt")
+    let ch = f.read_char()
+    let buf = "   "
+    let n = f.read_buf(buf, 3)
+    f.close()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_file_read.expected.c
+```c
+#include "std_file_read.h"
+
+int main(void) {
+    unknown f = File.open("test.txt");
+    unknown ch = f.read_char();
+    char* buf = "   ";
+    unknown n = f.read_buf(buf, 3);
+    f.close();
+    return 0;
+}
+```
+
+#### std_file_read.expected.h
+```c
+#pragma once
+
+#include "auto/io.h"
+```

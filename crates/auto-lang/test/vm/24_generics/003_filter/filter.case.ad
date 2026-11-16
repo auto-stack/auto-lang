@@ -1,0 +1,30 @@
+# Legacy vm corpus: 24_generics/003_filter
+
+## Case: legacy-24-generics-003-filter
+id: "legacy.24_generics.003_filter"
+entry-mode: "program"
+
+### Auto
+path: "filter.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "a" },
+        Note { id: 1, title: "b" },
+        Note { id: 2, title: "c" },
+    ])
+    let filtered = notes.filter(fn(n Note) bool {
+        return n.id > 0
+    })
+    print("ok")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

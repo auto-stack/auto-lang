@@ -3,6 +3,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-residual-999", include: [
-  "ace-m1-residual-999.case.ad",
+  "ace-m1-residual-999.document.case.ad",
 ] }
 ```

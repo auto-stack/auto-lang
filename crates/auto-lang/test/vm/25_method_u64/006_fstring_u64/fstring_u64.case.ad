@@ -1,0 +1,21 @@
+# Legacy vm corpus: 25_method_u64/006_fstring_u64
+
+## Case: legacy-25-method-u64-006-fstring-u64
+id: "legacy.25_method_u64.006_fstring_u64"
+entry-mode: "program"
+
+### Auto
+path: "fstring_u64.at"
+```auto
+let s = "2024"
+print(f"year: ${s.to_uint()}")
+print(f"next: ${s.to_uint() + 1}")
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+year: 2024
+next: 2025
+```

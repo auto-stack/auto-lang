@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 05_expressions/004_ternary
+
+## Case: legacy-05-expressions-004-ternary
+id: "legacy.05_expressions.004_ternary"
+entry-mode: "program"
+
+### Auto
+path: "ternary.at"
+final-newline: false
+```auto
+fn main() {
+    let x = 10
+    let result = x > 5
+    print(result)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### ternary.expected.ts
+```ts
+function main(): void {
+    const x: number = 10;
+    const result: boolean = x > 5;
+    console.log(result);
+}
+
+main();
+```

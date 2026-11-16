@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_bootstrap/020_parser_if_else
+
+## Case: legacy-99-bootstrap-020-parser-if-else
+id: "legacy.99_bootstrap.020_parser_if_else"
+entry-mode: "program"
+
+### Auto
+path: "parser_if_else.at"
+```auto
+// Test: if-else — if true { 1 } else { 2 }
+fn main() {
+    let source = "if true {\n    1\n} else {\n    2\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+(if true (body 1) (else 2))
+```

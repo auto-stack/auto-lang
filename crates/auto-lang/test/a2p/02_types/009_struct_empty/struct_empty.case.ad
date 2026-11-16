@@ -1,0 +1,32 @@
+# Legacy a2p corpus: 02_types/009_struct_empty
+
+## Case: legacy-a2p-02-types-009-struct-empty
+id: "legacy.a2p.02_types.009_struct_empty"
+entry-mode: "program"
+
+### Auto
+path: "struct_empty.at"
+```auto
+type Empty {
+}
+
+fn main() {
+    print("Empty struct defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### struct_empty.expected.py
+```python
+@dataclass
+class Empty:
+    pass
+
+def main():
+    print("Empty struct defined")
+
+if __name__ == "__main__":
+    main()
+```

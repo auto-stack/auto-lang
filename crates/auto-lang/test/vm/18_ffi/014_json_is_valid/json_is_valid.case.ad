@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/014_json_is_valid
+
+## Case: legacy-18-ffi-014-json-is-valid
+id: "legacy.18_ffi.014_json_is_valid"
+entry-mode: "program"
+
+### Auto
+path: "json_is_valid.at"
+```auto
+Json.is_valid("{}")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

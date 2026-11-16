@@ -1,0 +1,64 @@
+# Legacy a2c corpus: 12_specs/001_basic_spec
+
+## Case: legacy-12-specs-001-basic-spec
+id: "legacy.12_specs.001_basic_spec"
+entry-mode: "program"
+
+### Auto
+path: "basic_spec.at"
+```auto
+// Test basic spec declaration
+spec Flyer {
+    fn fly()
+}
+
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap")
+    }
+}
+
+fn main() {
+    let p = Pigeon()
+    p.fly()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### basic_spec.expected.c
+```c
+#include "basic_spec.h"
+
+
+void Pigeon_Fly(struct Pigeon *self) {
+    printf("%s\n", "Flap");
+}
+Flyer_vtable Pigeon_Flyer_vtable = {
+    .fly = Pigeon_Fly
+};
+
+
+int main(void) {
+    struct Pigeon p = {};
+    Pigeon_Fly(&p);
+    return 0;
+}
+```
+
+#### basic_spec.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+typedef struct Flyer_vtable {
+    void (*fly)(void *self);
+} Flyer_vtable;
+
+struct Pigeon {
+};
+
+void Pigeon_Fly(struct Pigeon *self);
+```

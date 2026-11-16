@@ -1,0 +1,20 @@
+# Legacy vm corpus: 03_variables/005_let_binding
+
+## Case: legacy-03-variables-005-let-binding
+id: "legacy.03_variables.005_let_binding"
+entry-mode: "program"
+
+### Auto
+path: "let_binding.at"
+```auto
+let x = 41
+x
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+41
+```

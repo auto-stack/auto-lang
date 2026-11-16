@@ -1,0 +1,34 @@
+# Legacy a2p corpus: 09_option_result/004_option_pattern
+
+## Case: legacy-a2p-09-option-result-004-option-pattern
+id: "legacy.a2p.09_option_result.004_option_pattern"
+entry-mode: "program"
+
+### Auto
+path: "option_pattern.at"
+```auto
+fn main() {
+    let x = Some(42)
+    is x {
+        Some(v) -> print(v)
+        None -> print("is none")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### option_pattern.expected.py
+```python
+def main():
+    x = 42
+    match x:
+        case SomeCase(v):
+            print(v)
+        case None:
+            print("is none")
+
+if __name__ == "__main__":
+    main()
+```

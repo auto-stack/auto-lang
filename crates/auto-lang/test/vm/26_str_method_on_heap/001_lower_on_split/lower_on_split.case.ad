@@ -1,0 +1,33 @@
+# Legacy vm corpus: 26_str_method_on_heap/001_lower_on_split
+
+## Case: legacy-26-str-method-on-heap-001-lower-on-split
+id: "legacy.26_str_method_on_heap.001_lower_on_split"
+entry-mode: "program"
+
+### Auto
+path: "lower_on_split.at"
+```auto
+// str.lower() on a string produced by str.split() returns garbage
+// (-2147483647 suffix). str.upper() on the same element is correct.
+// Root cause hypothesis: split/lines return heap-based strings whose
+// in-memory representation differs from const-pool strings; str.lower()'s
+// native shim mishandles that case. Literal/variable .lower() is fine.
+let parts = "a.RS".split(".")
+let p1 = parts[1]
+print(p1)
+print(p1.lower())
+print(p1.upper())
+let lines = "X\nY".lines()
+let l0 = lines[0]
+print(l0.lower())
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+RS
+rs
+RS
+x
+```

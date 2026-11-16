@@ -1,0 +1,39 @@
+# Legacy a2ts corpus: 03_control_flow/005_loop
+
+## Case: legacy-03-control-flow-005-loop
+id: "legacy.03_control_flow.005_loop"
+entry-mode: "program"
+
+### Auto
+path: "loop.at"
+```auto
+fn main() {
+    var x = 0
+    loop {
+        x = x + 1
+        if x > 5 {
+            break
+        }
+    }
+    print(x)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### loop.expected.ts
+```ts
+function main(): void {
+    let x: number = 0;
+    while (true) {
+        x = x + 1;
+        if (x > 5) {
+            break;
+        }
+    }
+    console.log(x);
+}
+
+main();
+```

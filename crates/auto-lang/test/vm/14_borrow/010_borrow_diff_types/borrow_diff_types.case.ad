@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/010_borrow_diff_types
+
+## Case: legacy-14-borrow-010-borrow-diff-types
+id: "legacy.14_borrow.010_borrow_diff_types"
+entry-mode: "program"
+
+### Auto
+path: "borrow_diff_types.at"
+```auto
+let x = 42
+let s = "hello"
+[x.view, s.view]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+[42, "hello"]
+```

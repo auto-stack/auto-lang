@@ -1,0 +1,23 @@
+# Legacy vm corpus: 99_bootstrap/039_eval_variable
+
+## Case: legacy-99-bootstrap-039-eval-variable
+id: "legacy.99_bootstrap.039_eval_variable"
+entry-mode: "program"
+
+### Auto
+path: "eval_variable.at"
+```auto
+// Test: eval — positive integer
+fn main() {
+    var r1 = run_eval("print(99)")
+    print("r1:" + r1)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+r1:99
+
+```

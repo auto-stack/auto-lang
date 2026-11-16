@@ -185,6 +185,18 @@ pub enum RExpr {
         func: String,
         args: Vec<RExpr>,
     },
+    /// PLAN-972 (T-03): capture-free closure literal — `move |p: t, ...|
+    /// func(p, ...)` over the closure body fn (fallible call deferred to
+    /// the invocation).
+    ClosureLit {
+        func: String,
+        params: Vec<(String, String)>,
+    },
+    /// PLAN-972 (T-03): indirect call through a closure value — fallible.
+    IndirectCall {
+        func: Box<RExpr>,
+        args: Vec<RExpr>,
+    },
     /// Authorized trace intrinsic call — fallible, effectful.
     Trace {
         func: &'static str,
@@ -284,7 +296,10 @@ impl RExpr {
     pub fn is_fallible_root(&self) -> bool {
         matches!(
             self,
-            RExpr::Checked { .. } | RExpr::Call { .. } | RExpr::StrFn { .. }
+            RExpr::Checked { .. }
+                | RExpr::Call { .. }
+                | RExpr::StrFn { .. }
+                | RExpr::IndirectCall { .. }
         )
     }
 
@@ -318,6 +333,8 @@ impl RExpr {
             RExpr::Ref { .. } => "ref",
             RExpr::RefMut { .. } => "ref-mut",
             RExpr::CharToI32 { .. } => "char-to-i32",
+            RExpr::ClosureLit { .. } => "closure-lit",
+            RExpr::IndirectCall { .. } => "indirect-call",
             RExpr::Wrap { .. } => "wrap",
             RExpr::CollCall { .. } => "coll-call",
             RExpr::VariantIs { .. } => "variant-is",
@@ -376,6 +393,10 @@ pub struct RustFn {
     pub result: Ty,
     pub origin: (u32, u32),
     pub body: Vec<RStmt>,
+    /// PLAN-972 (T-03): pre-baked result type text for the types the
+    /// PrintCtx cannot resolve alone (List elements, closure sigs); None
+    /// keeps the historical rendering.
+    pub result_text: Option<String>,
 }
 
 /// The whole lowered program (all module functions + entry name).
@@ -548,6 +569,7 @@ fn lower_fn<'a>(view: &SemanticView<'a>, f: &FnFacts<'a>) -> Result<(RustFn, Vec
         result: f.result,
         origin: f.origin,
         body,
+        result_text: None,
     };
     Ok((rf, std::mem::take(&mut lx.clones)))
 }
@@ -2296,6 +2318,21 @@ pub(super) fn num_bin_expr(
     let is_cmp = matches!(op, K::Lt | K::Le | K::Gt | K::Ge | K::Eq | K::Ne);
     let res_ty = if is_cmp { Ty::Bool } else { out_ty };
     if ty.is_float() {
+        if is_cmp {
+            let c = match op {
+                K::Lt => CmpOp::Lt,
+                K::Le => CmpOp::Le,
+                K::Gt => CmpOp::Gt,
+                K::Ge => CmpOp::Ge,
+                K::Eq => CmpOp::Eq,
+                _ => CmpOp::Ne,
+            };
+            // Float comparisons use Rust's native IEEE operators (the
+            // arith helper-name match below has no compare cases — a
+            // compare previously fell into it and rejected as "float op
+            // Eq"; PLAN-972 T-09).
+            return Ok((cmp(c, l, r), Ty::Bool));
+        }
         let f: &'static str = match (op, is_float32(ty)) {
             (K::Add, true) => "a2x_add_f32",
             (K::Add, false) => "a2x_add_f64",
@@ -2309,18 +2346,6 @@ pub(super) fn num_bin_expr(
             (K::Rem, false) => "a2x_rem_f64",
             _ => return Err(A2xReject::unsupported_op(format!("float op {op:?}"))),
         };
-        if is_cmp {
-            let c = match op {
-                K::Lt => CmpOp::Lt,
-                K::Le => CmpOp::Le,
-                K::Gt => CmpOp::Gt,
-                K::Ge => CmpOp::Ge,
-                K::Eq => CmpOp::Eq,
-                _ => CmpOp::Ne,
-            };
-            // Float comparisons use Rust's native IEEE operators.
-            return Ok((cmp(c, l, r), Ty::Bool));
-        }
         // Float arith is infallible except div — uniform Checked
         // helpers keep the fallible-root discipline.
         return Ok((

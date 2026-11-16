@@ -1,0 +1,19 @@
+# Legacy vm corpus: 01_basics/007_group
+
+## Case: legacy-01-basics-007-group
+id: "legacy.01_basics.007_group"
+entry-mode: "program"
+
+### Auto
+path: "group.at"
+```auto
+(1 + 2) * 3
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+9
+```

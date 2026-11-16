@@ -1,0 +1,32 @@
+# Legacy a2ts corpus: 01_basics/006_const
+
+## Case: legacy-01-basics-006-const
+id: "legacy.01_basics.006_const"
+entry-mode: "program"
+
+### Auto
+path: "const.at"
+final-newline: false
+```auto
+fn main() {
+    const PI = 3.14159
+    const MAX = 100
+    print(PI)
+    print(MAX)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### const.expected.ts
+```ts
+function main(): void {
+    const PI: number = 3.14159;
+    const MAX: number = 100;
+    console.log(PI);
+    console.log(MAX);
+}
+
+main();
+```

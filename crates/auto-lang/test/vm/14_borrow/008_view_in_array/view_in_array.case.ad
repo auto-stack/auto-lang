@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/008_view_in_array
+
+## Case: legacy-14-borrow-008-view-in-array
+id: "legacy.14_borrow.008_view_in_array"
+entry-mode: "program"
+
+### Auto
+path: "view_in_array.at"
+```auto
+let x = 10
+let y = 20
+[x.view, y.view]
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+[10, 20]
+```

@@ -1,0 +1,42 @@
+# Legacy vm corpus: 23_actor/021_handle_struct_field
+
+## Case: legacy-23-actor-021-handle-struct-field
+id: "legacy.23_actor.021_handle_struct_field"
+entry-mode: "program"
+
+### Auto
+path: "handle_struct_field.at"
+```auto
+task Sink {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("sink got one")
+        }
+    }
+}
+
+type Worker {
+    handle TaskRef<i64>
+
+    fn emit() {
+        self.handle.send(1)
+        self.handle.send(1)
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    let w = Worker { handle: h }
+    w.emit()
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+sink got one
+sink got one
+```

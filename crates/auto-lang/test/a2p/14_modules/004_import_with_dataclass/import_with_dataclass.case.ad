@@ -1,0 +1,43 @@
+# Legacy a2p corpus: 14_modules/004_import_with_dataclass
+
+## Case: legacy-a2p-14-modules-004-import-with-dataclass
+id: "legacy.a2p.14_modules.004_import_with_dataclass"
+entry-mode: "program"
+
+### Auto
+path: "import_with_dataclass.at"
+```auto
+use json
+
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point(1, 2)
+    print(p.x)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### import_with_dataclass.expected.py
+```python
+import json
+
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+def main():
+    p = Point(1, 2)
+    print(p.x)
+
+if __name__ == "__main__":
+    main()
+```

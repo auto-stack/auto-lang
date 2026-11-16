@@ -1,0 +1,32 @@
+# Legacy a2ts corpus: 09_option_result/004_result_ok_err
+
+## Case: legacy-09-option-result-004-result-ok-err
+id: "legacy.09_option_result.004_result_ok_err"
+entry-mode: "program"
+
+### Auto
+path: "result_ok_err.at"
+final-newline: false
+```auto
+fn main() {
+    let val = Ok(42)
+    let err = Err("something failed")
+    print(val)
+    print(err)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### result_ok_err.expected.ts
+```ts
+function main(): void {
+    const val: number | Error = 42;
+    const err: any | Error = new Error("something failed");
+    console.log(val);
+    console.log(err);
+}
+
+main();
+```

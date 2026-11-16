@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/073_bvm_list_pop
+
+## Case: legacy-99-bootstrap-073-bvm-list-pop
+id: "legacy.99_bootstrap.073_bvm_list_pop"
+entry-mode: "program"
+
+### Auto
+path: "bvm_list_pop.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(10)\nlist.push(20)\nvar v = list.pop()\nprint(v)\nprint(list.len())\n}")
+    if result == "20\n1\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

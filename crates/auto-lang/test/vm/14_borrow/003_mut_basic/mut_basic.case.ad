@@ -1,0 +1,22 @@
+# Legacy vm corpus: 14_borrow/003_mut_basic
+
+## Case: legacy-14-borrow-003-mut-basic
+id: "legacy.14_borrow.003_mut_basic"
+entry-mode: "program"
+
+### Auto
+path: "mut_basic.at"
+```auto
+var s = "hello"
+var m = s.mut
+m.append(" world")
+s
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

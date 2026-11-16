@@ -5,6 +5,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m2-f0-rust-967", include: [
-  "f0-rust-ffi-967.case.ad",
+  "f0-rust-ffi-967.document.case.ad",
 ] }
 ```

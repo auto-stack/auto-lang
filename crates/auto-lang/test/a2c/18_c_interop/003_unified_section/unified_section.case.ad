@@ -1,0 +1,51 @@
+# Legacy a2c corpus: 18_c_interop/003_unified_section
+
+## Case: legacy-18-c-interop-003-unified-section
+id: "legacy.18_c_interop.003_unified_section"
+entry-mode: "program"
+
+### Auto
+path: "unified_section.at"
+```auto
+// Test unified section functions
+// This test verifies that functions from different sections work together
+
+// Common function (Auto implementation)
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let sum = add(1, 2)
+    print(sum)
+    print("\n")
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### unified_section.expected.c
+```c
+#include "unified_section.h"
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int main(void) {
+    unknown sum = add(1, 2);
+    printf("%d\n", sum);
+    printf("%s\n", "\n");
+    return 0;
+}
+```
+
+#### unified_section.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+
+int add(int a, int b);
+```

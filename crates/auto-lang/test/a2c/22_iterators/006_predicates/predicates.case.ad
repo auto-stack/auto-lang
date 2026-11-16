@@ -1,0 +1,121 @@
+# Legacy a2c corpus: 22_iterators/006_predicates
+
+## Case: legacy-22-iterators-006-predicates
+id: "legacy.22_iterators.006_predicates"
+entry-mode: "program"
+
+### Auto
+path: "predicates.at"
+```auto
+// Test Predicate Terminal Operators - Plan 051 Phase 7
+// Test any, all, and find operations
+
+use auto.list: List
+
+// Predicate: checks if value is greater than 3
+fn is_gt_3(x int) bool {
+    x > 3
+}
+
+// Predicate: checks if value is positive
+fn is_positive(x int) bool {
+    x > 0
+}
+
+// Predicate: checks if value equals 5
+fn is_5(x int) bool {
+    x == 5
+}
+
+fn main() {
+    // Create a list
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    list.push(4)
+    list.push(5)
+
+    // Test any: check if any element > 3
+    // Should be true (4 and 5 are > 3)
+    let has_gt_3 = list.iter().any(is_gt_3)
+    say(has_gt_3)
+
+    // Test any: check if any element < 0
+    // Should be false (all elements positive)
+    let has_lt_0 = list.iter().any(is_positive)  // Using is_positive which checks > 0
+    say(has_lt_0)
+
+    // Test all: check if all elements are positive
+    // Should be true (all elements > 0)
+    let all_positive = list.iter().all(is_positive)
+    say(all_positive)
+
+    // Test all: check if all elements > 3
+    // Should be false (1, 2, 3 are not > 3)
+    let all_gt_3 = list.iter().all(is_gt_3)
+    say(all_gt_3)
+
+    // Test find: find first element > 3
+    // Should find 4
+    let found = list.iter().find(is_gt_3)
+    say(found)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### predicates.expected.c
+```c
+#include "predicates.h"
+
+bool is_gt_3(int x) {
+    return x > 3;
+}
+
+bool is_positive(int x) {
+    return x > 0;
+}
+
+bool is_5(int x) {
+    return x == 5;
+}
+
+int main(void) {
+
+    unknown list = List.new();
+    list.push(1);
+    list.push(2);
+    list.push(3);
+    list.push(4);
+    list.push(5);
+
+    unknown has_gt_3 = list.iter().any(is_gt_3);
+    say(has_gt_3);
+
+    unknown has_lt_0 = list.iter().any(is_positive);
+    say(has_lt_0);
+
+    unknown all_positive = list.iter().all(is_positive);
+    say(all_positive);
+
+    unknown all_gt_3 = list.iter().all(is_gt_3);
+    say(all_gt_3);
+
+    unknown found = list.iter().find(is_gt_3);
+    say(found);
+    return 0;
+}
+```
+
+#### predicates.expected.h
+```c
+#pragma once
+
+#include "auto/list.h"
+
+bool is_gt_3(int x);
+bool is_positive(int x);
+bool is_5(int x);
+```

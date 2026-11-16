@@ -1,0 +1,32 @@
+# Legacy a2p corpus: 567_with_as/001_with_as
+
+## Case: legacy-a2p-567-with-as-001-with-as
+id: "legacy.a2p.567_with_as.001_with_as"
+entry-mode: "program"
+
+### Auto
+path: "with_as.at"
+```auto
+use.py builtins: open
+
+fn main() {
+    with open("out.txt", "w") as f {
+        f.write("hi")
+    }
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### with_as.expected.py
+```python
+from builtins import open
+
+def main():
+    with open("out.txt", "w") as f:
+        f.write("hi")
+
+if __name__ == "__main__":
+    main()
+```

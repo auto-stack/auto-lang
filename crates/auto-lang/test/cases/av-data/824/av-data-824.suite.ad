@@ -4,7 +4,7 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "av-data-824", include: [
-  "av-dynamic-first-case.case.ad",
-  "av-dynamic-take-probe.case.ad",
+  "av-dynamic-first-case.document.case.ad",
+  "av-dynamic-take-probe.document.case.ad",
 ] }
 ```

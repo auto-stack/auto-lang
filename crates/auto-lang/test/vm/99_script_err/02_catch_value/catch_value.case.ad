@@ -1,0 +1,30 @@
+# Legacy vm corpus: 99_script_err/02_catch_value
+
+## Case: legacy-99-script-err-02-catch-value
+id: "legacy.99_script_err.02_catch_value"
+entry-mode: "program"
+
+### Auto
+path: "catch_value.as"
+syntax: "auto-script"
+```auto
+use.py builtins: int
+
+fn main() {
+    try {
+        var x = int("abc")
+        print("no-error")
+    } catch e {
+        print("caught: " + e.to(str))
+    }
+    print("end")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+caught: PyException ValueError: invalid literal for int() with base 10: 'abc'
+end
+```

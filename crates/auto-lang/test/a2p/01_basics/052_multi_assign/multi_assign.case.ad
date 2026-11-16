@@ -1,0 +1,35 @@
+# Legacy a2p corpus: 01_basics/052_multi_assign
+
+## Case: legacy-a2p-01-basics-052-multi-assign
+id: "legacy.a2p.01_basics.052_multi_assign"
+entry-mode: "program"
+
+### Auto
+path: "multi_assign.at"
+```auto
+fn main() {
+    let a = 1
+    let b = 2
+    let c = 3
+    print(a)
+    print(b)
+    print(c)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### multi_assign.expected.py
+```python
+def main():
+    a = 1
+    b = 2
+    c = 3
+    print(a)
+    print(b)
+    print(c)
+
+if __name__ == "__main__":
+    main()
+```

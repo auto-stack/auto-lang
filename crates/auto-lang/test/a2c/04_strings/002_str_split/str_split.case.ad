@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 04_strings/002_str_split
+
+## Case: legacy-04-strings-002-str-split
+id: "legacy.04_strings.002_str_split"
+entry-mode: "program"
+
+### Auto
+path: "str_split.at"
+```auto
+// Test Plan 036 Phase 4: String methods with array returns
+
+fn main() {
+    let text = "hello world"
+    let words = text.split()
+    print(words[0])
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### str_split.expected.c
+```c
+#include "str_split.h"
+
+int main(void) {
+    char* text = "hello world";
+    unknown words = str_split(text);
+    printf("%d\n", words[0]);
+    return 0;
+}
+```
+
+#### str_split.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

@@ -1,0 +1,25 @@
+# Legacy vm corpus: 13_collections/031_list_index
+
+## Case: legacy-13-collections-031-list-index
+id: "legacy.13_collections.031_list_index"
+entry-mode: "program"
+
+### Auto
+path: "list_index.at"
+```auto
+var list = List.new()
+list.push(10)
+list.push(20)
+list.push(30)
+var v = list[1]
+list.drop()
+v
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+20
+```

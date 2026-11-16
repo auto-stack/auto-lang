@@ -1,0 +1,36 @@
+# Legacy a2ts corpus: 09_option_result/006_is_some
+
+## Case: legacy-09-option-result-006-is-some
+id: "legacy.09_option_result.006_is_some"
+entry-mode: "program"
+
+### Auto
+path: "is_some.at"
+final-newline: false
+```auto
+fn main() {
+    let x = Some(10)
+    let y = None
+    let a = x.is_some()
+    let b = y.is_some()
+    print(a)
+    print(b)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### is_some.expected.ts
+```ts
+function main(): void {
+    const x: number | null = 10;
+    const y: any | null = null;
+    const a = x.is_some();
+    const b = y.is_some();
+    console.log(a);
+    console.log(b);
+}
+
+main();
+```

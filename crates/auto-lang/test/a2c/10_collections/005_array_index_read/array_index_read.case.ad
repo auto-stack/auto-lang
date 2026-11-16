@@ -1,0 +1,25 @@
+# Legacy a2c corpus: 10_collections/005_array_index_read
+
+## Case: legacy-10-collections-005-array-index-read
+id: "legacy.10_collections.005_array_index_read"
+entry-mode: "program"
+
+### Auto
+path: "array_index_read.at"
+```auto
+let arr [3]int = [100, 200, 300]
+let x = arr[1]
+x
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_index_read.expected.c
+```c
+int arr[3] = {100, 200, 300};
+int main(void) {
+    int x = arr[1];
+    return x;
+}
+```

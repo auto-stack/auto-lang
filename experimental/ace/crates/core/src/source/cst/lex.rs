@@ -346,6 +346,7 @@ fn non_ascii_diag(snap: &Snapshot, start: u64) -> Diagnostic {
         format!("non-ASCII character `{ch}` is not part of this source profile"),
         sp(start, start + len),
     )
+    .tagged(crate::atom_text::SurfaceFact::ProfileSurface)
 }
 
 fn unknown_char_diag(snap: &Snapshot, start: u64) -> Diagnostic {
@@ -354,12 +355,19 @@ fn unknown_char_diag(snap: &Snapshot, start: u64) -> Diagnostic {
         .ok()
         .and_then(|s| s.bytes().next())
         .unwrap_or(b'?');
-    Diagnostic::new(
+    let mut diag = Diagnostic::new(
         Stage::Text,
         "source.lex",
         format!("unknown character `{}`", byte as char),
         sp(start, start + 1),
-    )
+    );
+    // PLAN-969 (AUDIT-03): the numeric-profile-owned operator characters
+    // carry the structured escalation fact — routing never reads this
+    // message again.
+    if matches!(byte, b'&' | b'|' | b'^') {
+        diag = diag.tagged(crate::atom_text::SurfaceFact::OwnedCharacter);
+    }
+    diag
 }
 
 /// PLAN-936（T-04）：ct 面感知的首词法事实——字符串 token 在 ct 面上进入

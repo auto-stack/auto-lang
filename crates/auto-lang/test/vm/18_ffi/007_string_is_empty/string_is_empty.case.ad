@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/007_string_is_empty
+
+## Case: legacy-18-ffi-007-string-is-empty
+id: "legacy.18_ffi.007_string_is_empty"
+entry-mode: "program"
+
+### Auto
+path: "string_is_empty.at"
+```auto
+Str.is_empty("")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```

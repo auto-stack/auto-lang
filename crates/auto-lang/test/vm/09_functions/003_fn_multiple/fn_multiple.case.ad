@@ -1,0 +1,20 @@
+# Legacy vm corpus: 09_functions/003_fn_multiple
+
+## Case: legacy-09-functions-003-fn-multiple
+id: "legacy.09_functions.003_fn_multiple"
+entry-mode: "program"
+
+### Auto
+path: "fn_multiple.at"
+```auto
+fn add(a, b) { a + b }
+add(add(1, 2), add(3, 4))
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```

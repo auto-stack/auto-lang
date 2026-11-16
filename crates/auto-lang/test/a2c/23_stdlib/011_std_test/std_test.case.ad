@@ -1,0 +1,37 @@
+# Legacy a2c corpus: 23_stdlib/011_std_test
+
+## Case: legacy-23-stdlib-011-std-test
+id: "legacy.23_stdlib.011_std_test"
+entry-mode: "program"
+
+### Auto
+path: "std_test.at"
+final-newline: false
+```auto
+use auto.test: test
+
+fn main() {
+    print(test())
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### std_test.expected.c
+```c
+#include "std_test.h"
+
+int main(void) {
+    printf("%d\n", test());
+    return 0;
+}
+```
+
+#### std_test.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+#include "auto/test.h"
+```

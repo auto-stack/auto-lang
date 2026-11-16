@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/079_list_str_fn_arg
+
+## Case: legacy-99-bootstrap-079-list-str-fn-arg
+id: "legacy.99_bootstrap.079_list_str_fn_arg"
+entry-mode: "program"
+
+### Auto
+path: "list_str_fn_arg.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(\"alpha\")\nlist.push(\"beta\")\nvar s = list.get(0)\nprint(s)\nvar combined = s + \"!\"\nprint(combined)\n}")
+    if result == "alpha\nalpha!\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

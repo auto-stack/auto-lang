@@ -1,0 +1,29 @@
+# Legacy a2p corpus: 14_modules/002_from_import
+
+## Case: legacy-a2p-14-modules-002-from-import
+id: "legacy.a2p.14_modules.002_from_import"
+entry-mode: "program"
+
+### Auto
+path: "from_import.at"
+```auto
+use json: dumps, loads
+
+fn main() {
+    print("from import test")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### from_import.expected.py
+```python
+from json import dumps, loads
+
+def main():
+    print("from import test")
+
+if __name__ == "__main__":
+    main()
+```

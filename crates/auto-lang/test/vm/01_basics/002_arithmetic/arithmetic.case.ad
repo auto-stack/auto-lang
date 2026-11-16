@@ -1,0 +1,19 @@
+# Legacy vm corpus: 01_basics/002_arithmetic
+
+## Case: legacy-01-basics-002-arithmetic
+id: "legacy.01_basics.002_arithmetic"
+entry-mode: "program"
+
+### Auto
+path: "arithmetic.at"
+```auto
+1 + 2
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```

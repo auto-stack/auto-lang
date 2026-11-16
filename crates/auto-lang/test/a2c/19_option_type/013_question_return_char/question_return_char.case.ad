@@ -1,0 +1,41 @@
+# Legacy a2c corpus: 19_option_type/013_question_return_char
+
+## Case: legacy-19-option-type-013-question-return-char
+id: "legacy.19_option_type.013_question_return_char"
+entry-mode: "program"
+
+### Auto
+path: "question_return_char.at"
+```auto
+fn test_question_return_char() ?char {
+    'a'
+}
+
+fn main() {
+    let result = test_question_return_char()
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### question_return_char.expected.c
+```c
+#include "question_return_char.h"
+
+char test_question_return_char(void) {
+    return 'a';
+}
+
+int main(void) {
+    unknown result = test_question_return_char();
+    return 0;
+}
+```
+
+#### question_return_char.expected.h
+```c
+#pragma once
+
+char test_question_return_char(void);
+```

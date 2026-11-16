@@ -20,6 +20,7 @@ members = [
   "crates/data-runtime",
   "crates/foreign-contract",
   "crates/lowering",
+  "crates/m2-build",
   "crates/native",
   "crates/semantics",
   "crates/semantics-contract",

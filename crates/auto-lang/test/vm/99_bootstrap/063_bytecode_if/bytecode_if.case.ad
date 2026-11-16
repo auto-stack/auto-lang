@@ -1,0 +1,26 @@
+# Legacy vm corpus: 99_bootstrap/063_bytecode_if
+
+## Case: legacy-99-bootstrap-063-bytecode-if
+id: "legacy.99_bootstrap.063_bytecode_if"
+entry-mode: "program"
+
+### Auto
+path: "bytecode_if.at"
+```auto
+// Test: bytecode compilation + execution — if/else
+fn main() {
+    var result = run_bytecode("fn main() {\nlet x = 10\nif x > 5 {\nprint(\"big\")\n} else {\nprint(\"small\")\n}\n}")
+    if result == "big\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

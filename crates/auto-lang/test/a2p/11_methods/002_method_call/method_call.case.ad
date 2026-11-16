@@ -1,0 +1,53 @@
+# Legacy a2p corpus: 11_methods/002_method_call
+
+## Case: legacy-a2p-11-methods-002-method-call
+id: "legacy.a2p.11_methods.002_method_call"
+entry-mode: "program"
+
+### Auto
+path: "method_call.at"
+```auto
+type Counter {
+    count int
+
+    fn inc() {
+        .count = .count + 1
+    }
+
+    fn get() int {
+        .count
+    }
+}
+
+fn main() {
+    let c = Counter(count: 0)
+    c.inc()
+    c.inc()
+    print(c.get())
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### method_call.expected.py
+```python
+@dataclass
+class Counter:
+    count: int
+
+    def inc(self):
+        self.count = self.count + 1
+
+    def get(self) -> int:
+        return self.count
+
+def main():
+    c = Counter(count=0)
+    c.inc()
+    c.inc()
+    print(c.get())
+
+if __name__ == "__main__":
+    main()
+```

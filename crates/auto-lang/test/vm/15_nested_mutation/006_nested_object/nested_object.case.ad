@@ -1,0 +1,21 @@
+# Legacy vm corpus: 15_nested_mutation/006_nested_object
+
+## Case: legacy-15-nested-mutation-006-nested-object
+id: "legacy.15_nested_mutation.006_nested_object"
+entry-mode: "program"
+
+### Auto
+path: "nested_object.at"
+```auto
+var obj = { inner: { x: 10 } }
+obj.inner.x = 30
+obj.inner.x
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+30
+```

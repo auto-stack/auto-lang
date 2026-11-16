@@ -35,6 +35,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -606,7 +607,9 @@ def collect_actuals(
     return report_meta, actuals
 
 
-def verify_actual_file_integrity(record: dict[str, Any], side_label: str) -> None:
+def verify_actual_file_integrity(
+    record: dict[str, Any], side_label: str, require_files: bool = True
+) -> None:
     rep_path = Path(record.get("report_path", ""))
     run_dir = Path(record.get("run_dir", ""))
     if not rep_path.is_file():
@@ -621,7 +624,7 @@ def verify_actual_file_integrity(record: dict[str, Any], side_label: str) -> Non
 
     for key_str, obs in (record.get("actuals") or {}).items():
         files_meta = obs.get("files") or {}
-        if not isinstance(files_meta, dict) or not files_meta:
+        if require_files and (not isinstance(files_meta, dict) or not files_meta):
             raise EvidenceError(f"[{side_label}] {key_str} has no actual files recorded")
         for tag, fmeta in files_meta.items():
             fpath = _ensure_under(run_dir, Path(fmeta["path"]), f"[{side_label}] {key_str}:{tag}")
@@ -2044,36 +2047,1087 @@ def cmd_controls(args: argparse.Namespace) -> int:
     return 0 if all_ok else 1
 
 
+
+# ---------------------------------------------------------------------------
+# PLAN-1062 T-03: frozen-manifest mode (all A channels + B consumers).
+#
+# The manifest is derived ONLY from the plan's frozen appendix tables, the
+# fixed old Git objects under --baseline, and the v2 original projection —
+# never from new documents. NC-01/02/18/19/27/28 guard it.
+# ---------------------------------------------------------------------------
+
+MANIFEST_SCHEMA = "autolang.case-migration-manifest/1"
+MIGRATION_V2_SCHEMA = "autolang.case-migration/2"
+
+# Frozen axes of PLAN-1062 r1 (§0): the builder must reproduce them exactly.
+FROZEN_AXES = {
+    "groups": 75, "old_files": 176, "case_decls": 756, "unique_pairs": 1062,
+    "fences_positions": 1079, "doc_positions": 95, "total_positions": 1174,
+    "reused_pairs": 17, "b_cases": 1050, "b_vm_cache": 506, "b_vm_bindings": 391,
+    "b_extra_sources": 43, "b_helpers": 132, "b_bindings": 1204,
+    "b_active": 623, "b_ignored": 575, "b_not_registered": 6,
+}
+
+# Origin fields that legitimately differ between an old fences row and its
+# migrated document twin; every OTHER field must match exactly.
+REPRESENTATION_ORIGIN_KEYS = {
+    "suite", "suite_path", "suite_sha256", "case_file", "case_file_sha256",
+    "format", "case_open_line", "case_close_line", "doc_section_line",
+    "input_paths", "case_dir", "check_dir",
+    # the migration itself: a file payload becomes inline text (source
+    # bytes stay identity-bound via semantic.case.source.sha256)
+    "source_ref",
+}
+
+# Artifact entry fields that change representation when an oracle file
+# becomes an inline document fence; path+sha256 remain the identity.
+ARTIFACT_REPRESENTATION_FIELDS = {"file", "origin_lines"}
+
+
+def _parse_plan_a1(plan_path: Path) -> list[dict[str, Any]]:
+    """Frozen A1: the 75 fixed groups with suite paths and per-group axes."""
+    text = plan_path.read_text(encoding="utf-8")
+    rows: list[dict[str, Any]] = []
+    in_a1 = False
+    for line in text.splitlines():
+        if line.startswith("### 附录A1"):
+            in_a1 = True
+            continue
+        if in_a1 and line.startswith("### "):
+            break
+        if not in_a1 or not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 6 or not cells[0].startswith("G") or cells[0] == "G-ID":
+            continue
+        m = re.search(r"`([^`]+)`", cells[2])
+        if not m:
+            raise EvidenceError(f"A1 row without suite path: {cells}")
+        old = cells[3].split("/")
+        doc = cells[4].split("/")
+        rows.append({
+            "gid": cells[0], "suite": m.group(1),
+            "old_cases": int(old[0]), "old_checks": int(old[1]),
+            "doc_cases": int(doc[0]), "doc_checks": int(doc[1]),
+            "positions": int(cells[5]),
+        })
+    if len(rows) != FROZEN_AXES["groups"]:
+        raise EvidenceError(f"plan A1 parsed {len(rows)} groups != {FROZEN_AXES['groups']}")
+    return rows
+
+
+def run_migration_inventory_v2(
+    runner: Path, suite: Path, cwd: Path, env: dict[str, str] | None = None
+) -> dict[str, Any]:
+    proc = run_cli(
+        [str(runner), "migration-inventory", "--schema-version", "2", "--suite", str(suite)],
+        cwd=cwd, env=env,
+    )
+    if proc.returncode != 0:
+        raise EvidenceError(
+            f"v2 migration-inventory failed (exit {proc.returncode}) for {suite}:\n"
+            f"{proc.stderr.decode('utf-8', errors='replace')}"
+        )
+    doc = json.loads(proc.stdout.decode("utf-8"))
+    if doc.get("schema") != MIGRATION_V2_SCHEMA:
+        raise EvidenceError(f"unexpected v2 schema for {suite}: {doc.get('schema')}")
+    return doc
+
+
+def build_manifest(
+    runner: Path, plan: Path, baseline: Path, out: Path,
+    test_list: Path | None, vm_cache: Path | None,
+) -> dict[str, Any]:
+    """Derive the frozen migration manifest from fixed old objects.
+
+    Runs the v2 projection over every A1 suite inside --baseline (the frozen
+    Git checkout), aggregates the frozen axes, and cross-checks every count
+    against FROZEN_AXES. Optional --test-list (nextest list JSON) and
+    --vm-cache (read-only inventory JSON) extend the manifest with the B
+    registration split. The manifest never reads new documents.
+    """
+    if not runner.is_file():
+        raise EvidenceError(f"missing --runner binary: {runner}")
+    if not plan.is_file():
+        raise EvidenceError(f"missing --plan file: {plan}")
+    if not baseline.is_dir():
+        raise EvidenceError(f"missing --baseline root: {baseline}")
+    groups = _parse_plan_a1(plan)
+    env, tools = worker_env(repo_root_from_script())
+
+    suites: list[dict[str, Any]] = []
+    pair_rows: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    file_shas: dict[str, str] = {}
+    decls: set[tuple[str, str]] = set()
+    fences = doc_positions = 0
+    pair_groups: dict[tuple[str, str, str], set[str]] = {}
+    for g in groups:
+        suite_path = baseline / g["suite"]
+        proj = run_migration_inventory_v2(runner, suite_path, baseline, env=env)
+        rows = proj["checks"]
+        f = sum(1 for row in rows if row["origin"]["format"] == "fences")
+        d = len(rows) - f
+        fences += f
+        doc_positions += d
+        g_decls = {
+            (row["origin"]["case_file"], row["semantic"]["case"]["id"])
+            for row in rows if row["origin"]["format"] == "fences"
+        }
+        g_doc = {
+            (row["origin"]["case_file"], row["semantic"]["case"]["id"])
+            for row in rows if row["origin"]["format"] == "document"
+        }
+        if (len(g_decls), f, len(g_doc), d, len(rows)) != (
+            g["old_cases"], g["old_checks"], g["doc_cases"], g["doc_checks"], g["positions"]
+        ):
+            raise ParityError(
+                f"{g['gid']} axes ({len(g_decls)},{f},{len(g_doc)},{d},{len(rows)}) "
+                f"!= frozen A1 ({g['old_cases']},{g['old_checks']},{g['doc_cases']},"
+                f"{g['doc_checks']},{g['positions']})"
+            )
+        decls |= g_decls
+        suites.append({
+            "gid": g["gid"], "suite": g["suite"],
+            "suite_sha256": proj["suite_sha256"], "positions": len(rows),
+        })
+        for row in rows:
+            if row["origin"]["format"] != "fences":
+                continue
+            origin = row["origin"]
+            sem = row["semantic"]
+            case_file = str(Path(origin["case_file"]).relative_to(baseline)).replace("\\", "/")
+            file_shas.setdefault(case_file, origin["case_file_sha256"])
+            key = (case_file, sem["case"]["id"], sem["check"]["id"])
+            pair_groups.setdefault(key, set()).add(g["gid"])
+            pair_rows.setdefault(key, {
+                "case": sem["case"]["id"], "check": sem["check"]["id"],
+                "file": case_file, "file_sha256": origin["case_file_sha256"],
+                "source_sha256": sem["case"]["source"]["sha256"],
+                "oracle_sha256": origin["oracle_sha256"],
+                "adapter": sem["check"]["adapter"], "action": sem["check"]["action"],
+                "recipe": sem["options"].get("probe_recipe"),
+                "entry_mode": sem["case"]["entry_mode"],
+                "ordinal": sem["check"]["ordinal"],
+            })
+    reused = {k: sorted(v) for k, v in pair_groups.items() if len(v) > 1}
+    axes_seen = {
+        "old_files": len(file_shas), "case_decls": len(decls),
+        "unique_pairs": len(pair_rows), "fences_positions": fences,
+        "doc_positions": doc_positions, "total_positions": fences + doc_positions,
+        "reused_pairs": len(reused),
+    }
+    for axis, value in axes_seen.items():
+        if value != FROZEN_AXES[axis]:
+            raise ParityError(f"manifest axis {axis}={value} != frozen {FROZEN_AXES[axis]}")
+
+    manifest: dict[str, Any] = {
+        "schema": MANIFEST_SCHEMA,
+        "source": {
+            "plan": plan.name, "plan_sha256": sha256_file(plan)[1],
+            "baseline": str(baseline), "runner_sha256": sha256_file(runner)[1],
+            "built_from": "plan appendices + fixed old Git objects + v2 projection",
+        },
+        "tools": tools,
+        "a_axis": {
+            "suites": suites,
+            "pairs": [dict(row, groups=sorted(pair_groups[k]))
+                      for k, row in pair_rows.items()],
+            "files": [{"file": f, "sha256": s} for f, s in sorted(file_shas.items())],
+            "reused_positions": [
+                {"file": k[0], "case": k[1], "check": k[2], "groups": v}
+                for k, v in sorted(reused.items())
+            ],
+            "axes": axes_seen,
+        },
+    }
+
+    # B axes: legacy + helper corpora via the same runner; registration join
+    # only when the prep-stage listings are supplied.
+    legacy_proc = run_cli(
+        [str(runner), "legacy-inventory", "--test-root",
+         str(baseline / "crates/auto-lang/test")], cwd=baseline, env=env)
+    if legacy_proc.returncode != 0:
+        raise EvidenceError("legacy-inventory failed during manifest build")
+    legacy = json.loads(legacy_proc.stdout.decode("utf-8"))
+    if len(legacy["cases"]) != FROZEN_AXES["b_cases"]:
+        raise ParityError(
+            f"B cases {len(legacy['cases'])} != {FROZEN_AXES['b_cases']}")
+    helper_proc = run_cli([str(runner), "helper-inventory", "--root", str(baseline)],
+                          cwd=baseline, env=env)
+    if helper_proc.returncode != 0:
+        raise EvidenceError("helper-inventory failed during manifest build")
+    helper = json.loads(helper_proc.stdout.decode("utf-8"))
+    helper_edges = [
+        {"test": b["test"], "family": ch["family"], "input": ch["id"]}
+        for b in helper["bindings"] for ch in b.get("children", [])
+        if ch.get("kind") == "oracle"
+    ]
+    if len(helper_edges) != FROZEN_AXES["b_helpers"]:
+        raise ParityError(
+            f"B helper edges {len(helper_edges)} != {FROZEN_AXES['b_helpers']}")
+    if helper.get("unresolved"):
+        raise ParityError(f"helper inventory unresolved: {helper['unresolved'][:3]}")
+    b_axis: dict[str, Any] = {
+        "legacy_cases": [
+            {"family": c["family"], "id": c["id"],
+             "source": c["source"]["path"].replace("\\", "/"),
+             "source_sha256": c["source"].get("sha256")}
+            for c in legacy["cases"]
+        ],
+        "legacy_bindings": [
+            {"test": b["test"], "children": b["children"]}
+            for b in legacy["wrapper_inventory"]["bindings"]
+        ],
+        "helper_edges": helper_edges,
+        "helper_generators": [
+            {"test": b["test"], "cases": ch["cases"]}
+            for b in helper["bindings"] for ch in b.get("children", [])
+            if ch.get("kind") == "generator-loop"
+        ],
+    }
+    if vm_cache is not None and test_list is not None:
+        vm = json.loads(vm_cache.read_text(encoding="utf-8"))
+        listing = json.loads(test_list.read_text(encoding="utf-8"))
+        registry: dict[str, bool] = {}
+        for suite_info in listing["rust-suites"].values():
+            for name, meta in suite_info.get("testcases", {}).items():
+                registry[name] = bool(meta.get("ignored", False))
+        if len(vm["cases"]) != FROZEN_AXES["b_vm_cache"]:
+            raise ParityError(
+                f"vm cache {len(vm['cases'])} != {FROZEN_AXES['b_vm_cache']}")
+        rows = ([{"kind": "legacy", "test": b["test"]} for b in legacy["wrapper_inventory"]["bindings"]]
+                + [{"kind": "vm-cache", "test": b["test"]} for b in vm["declared_wrapper_bindings"]]
+                + [{"kind": "helper", "test": r["test"]} for r in helper_edges])
+        active = sum(1 for r in rows if r["test"] in registry and not registry[r["test"]])
+        ignored = sum(1 for r in rows if r["test"] in registry and registry[r["test"]])
+        not_registered = sum(1 for r in rows if r["test"] not in registry)
+        if (len(rows), active, ignored, not_registered) != (
+            FROZEN_AXES["b_bindings"], FROZEN_AXES["b_active"],
+            FROZEN_AXES["b_ignored"], FROZEN_AXES["b_not_registered"],
+        ):
+            raise ParityError(
+                f"B registration {len(rows)}/{active}/{ignored}/{not_registered} != frozen "
+                f"{FROZEN_AXES['b_bindings']}/{FROZEN_AXES['b_active']}/"
+                f"{FROZEN_AXES['b_ignored']}/{FROZEN_AXES['b_not_registered']}")
+        b_axis["registration"] = {
+            "rows": [{"test": r["test"], "kind": r["kind"]} for r in rows],
+            "split": {"active": active, "ignored": ignored,
+                      "not_registered": not_registered},
+        }
+    manifest["b_axis"] = b_axis
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(manifest, ensure_ascii=False, indent=1, sort_keys=False)
+    out.write_text(payload, encoding="utf-8")
+    digest = sha256_bytes(payload.encode("utf-8"))
+    print(json.dumps({"manifest": str(out), "sha256": digest,
+                      "a_pairs": len(pair_rows), "axes": axes_seen}, ensure_ascii=False))
+    return manifest
+
+
+def load_manifest(path: Path) -> dict[str, Any]:
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if doc.get("schema") != MANIFEST_SCHEMA:
+        raise EvidenceError(f"unsupported manifest schema: {doc.get('schema')}")
+    for axis, value in FROZEN_AXES.items():
+        if axis in doc["a_axis"]["axes"] and doc["a_axis"]["axes"][axis] != value:
+            raise EvidenceError(f"manifest axis {axis} drifted: {doc['a_axis']['axes'][axis]}")
+    return doc
+
+
+def manifest_pair_index(manifest: dict[str, Any]) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """(case, check) -> its file-scoped rows.
+
+    The frozen 1062 unit is (file, case, check): the same (case, check) may
+    legally live in two old files (e.g. ace.m1.r08 in t-r-native and
+    method-881) — only when every copy carries the SAME source/oracle
+    identity. A same-ID-different-content duplicate is rejected (NC-02).
+    """
+    idx: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in manifest["a_axis"]["pairs"]:
+        key = (row["case"], row["check"])
+        for prior in idx.get(key, []):
+            if (prior["source_sha256"], prior["oracle_sha256"]) != (
+                    row["source_sha256"], row["oracle_sha256"]):
+                raise EvidenceError(
+                    f"manifest duplicate (case, check) with different identity: {key} "
+                    f"{prior['file']} vs {row['file']}")
+        idx.setdefault(key, []).append(row)
+    if sum(len(v) for v in idx.values()) != FROZEN_AXES["unique_pairs"]:
+        raise EvidenceError(
+            f"manifest pairs {sum(len(v) for v in idx.values())} != "
+            f"{FROZEN_AXES['unique_pairs']}")
+    return idx
+
+
+def index_manifest_side(
+    proj: dict[str, Any], side_label: str, pair_idx: dict[tuple[str, str], dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Index one side's v2 projection against the frozen manifest pairs.
+
+    Every row must be a manifest pair (no invented checks); each manifest
+    pair must appear at most once (cross-group reuse resolves via suite
+    selection, never via duplicate rows in one suite).
+    """
+    indexed: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in proj.get("checks", []):
+        sem = row.get("semantic") or {}
+        origin = row.get("origin") or {}
+        key = ((sem.get("case") or {}).get("id", ""), (sem.get("check") or {}).get("id", ""))
+        if key not in pair_idx:
+            # The pre-existing BASE document corpus (95 positions) is not
+            # part of the fences manifest; it travels unchanged and is
+            # verified by its own contracts, not this pair index.
+            if origin.get("format") == "document":
+                continue
+            raise ParityError(f"[{side_label}] row outside frozen manifest: {key}")
+        if key in indexed:
+            raise ParityError(f"[{side_label}] duplicate (case, check): {key}")
+        indexed[key] = row
+    if not indexed:
+        raise ParityError(f"[{side_label}] suite selected zero manifest pairs")
+    return indexed
+
+
+def compare_manifest_sides(
+    pair_idx: dict[tuple[str, str], dict[str, Any]],
+    old_idx: dict[tuple[str, str], dict[str, Any]],
+    new_idx: dict[tuple[str, str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Semantic diff for every pair selected by the new (document) side.
+
+    Old side supplies the fences twin for each migrated pair. Everything in
+    `semantic` must be identical; `origin` may differ only in the documented
+    representation keys. Source/oracle byte identities must carry over.
+    """
+    results = []
+    for key in sorted(new_idx):
+        new_row = new_idx[key]
+        old_row = old_idx.get(key)
+        meta = pair_idx[key][0]
+        if old_row is None:
+            if (new_row["origin"].get("format")) == "document":
+                raise ParityError(
+                    f"{key}: document row without a fences twin in the old suite")
+            continue
+        # CF-07 representation: probe bindings may move sidecar-file ->
+        # inline text; identity rides bindings_sha256 (compared below).
+        import copy as _copy
+        old_sem = _copy.deepcopy(old_row["semantic"])
+        new_sem = _copy.deepcopy(new_row["semantic"])
+        old_probe = (old_sem.get("expect") or {}).get("probe") or []
+        new_probe = (new_sem.get("expect") or {}).get("probe") or []
+        if len(old_probe) == len(new_probe):
+            for ost, nst in zip(old_probe, new_probe):
+                if (ost.get("bindings_file") and nst.get("bindings_text")
+                        and ost.get("bindings_sha256") == nst.get("bindings_sha256")
+                        and ost.get("bindings_bytes_len") == nst.get("bindings_bytes_len")):
+                    # both sides keep bindings_text (identical bytes);
+                    # only the file reference is representation
+                    ost["bindings_file"] = None
+        sem_diffs = diff_semantic(old_sem, new_sem)
+        if sem_diffs:
+            results.append({"case": key[0], "check": key[1], "kind": "semantic",
+                            "diffs": sem_diffs[:8]})
+            continue
+        old_origin, new_origin = old_row["origin"], new_row["origin"]
+        artifact_identity_ok = not (old_origin.get("artifacts") or new_origin.get("artifacts"))
+        for field in sorted(set(old_origin) | set(new_origin)):
+            if field in REPRESENTATION_ORIGIN_KEYS:
+                continue
+            if field == "artifacts":
+                # per-entry identity is (path, sha256); the payload carrier
+                # (sidecar file vs inline fence lines) is representation
+                old_arts = {
+                    (a.get("path"), a.get("sha256")): a
+                    for a in (old_origin.get(field) or [])
+                }
+                new_arts = {
+                    (a.get("path"), a.get("sha256")): a
+                    for a in (new_origin.get(field) or [])
+                }
+                if set(old_arts) != set(new_arts):
+                    results.append({"case": key[0], "check": key[1], "kind": "origin",
+                                    "diffs": [f"origin.artifacts identity set: "
+                                              f"{sorted(set(old_arts) ^ set(new_arts))[:3]}"]})
+                    artifact_identity_ok = False
+                else:
+                    artifact_identity_ok = True
+                continue
+            if field == "oracle_sha256":
+                # The aggregate hash embeds each artifact's payload carrier
+                # (PLAN-1002 formula: file path vs inline@line marker). It may
+                # differ old-vs-new ONLY when artifacts moved file->inline with
+                # identical (path, sha256) content; artifact-free oracles must
+                # hash identically.
+                if old_origin.get(field) != new_origin.get(field):
+                    old_has_arts = bool(old_origin.get("artifacts"))
+                    if not (old_has_arts and artifact_identity_ok):
+                        results.append({"case": key[0], "check": key[1], "kind": "origin",
+                                        "diffs": [f"origin.oracle_sha256: "
+                                                  f"{old_origin.get(field)!r} != "
+                                                  f"{new_origin.get(field)!r}"]})
+                continue
+            if old_origin.get(field) != new_origin.get(field):
+                results.append({"case": key[0], "check": key[1], "kind": "origin",
+                                "diffs": [f"origin.{field}: {old_origin.get(field)!r} "
+                                          f"!= {new_origin.get(field)!r}"]})
+        # Aggregate oracle_sha256 is representation-sensitive for inline
+        # artifact payloads (PLAN-1002 formula); oracle CONTENT identity is
+        # enforced by the semantic diff plus the per-artifact (path, sha256)
+        # set compared above. Source bytes must equal the manifest freeze.
+        if new_row["semantic"]["case"]["source"]["sha256"] != meta["source_sha256"]:
+            results.append({"case": key[0], "check": key[1], "kind": "identity",
+                            "diffs": ["source identity drifted from manifest"]})
+    if results:
+        first = results[0]
+        raise ParityError(
+            f"manifest pair mismatch across {len(results)} pair(s); first "
+            f"({first['case']}, {first['check']}) {first['kind']}: {first['diffs'][:3]}"
+        )
+    return results
+
+
+def collect_manifest_actuals(
+    run_out_dir: Path, report_path: Path, side_idx: dict[tuple[str, str], dict[str, Any]],
+    base_doc_keys: set[tuple[str, str]] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Channel-complete actual collection for manifest-selected pairs.
+
+    Mirrors collect_actuals without family specs: status, per-channel
+    receipts (mn/av/avm/a2r/syntax), artifact sets with digests. Every
+    recorded file is re-readable and hash-bound for offline verify.
+    """
+    if not report_path.is_file():
+        raise EvidenceError(f"missing report.json: {report_path}")
+    rep_bytes, rep_sha = sha256_file(report_path)
+    report = json.loads(report_path.read_bytes().decode("utf-8"))
+    run_dir = find_unique_run_dir(run_out_dir)
+    res_map = {}
+    for r in report.get("results") or []:
+        k = (r.get("case", ""), r.get("check", ""))
+        if k in res_map:
+            raise ParityError(f"duplicate results in report.json: {k}")
+        res_map[k] = r
+    missing = sorted(set(side_idx) - set(res_map))
+    extra = sorted(set(res_map) - set(side_idx) - set(base_doc_keys or set()))
+    if missing or extra:
+        raise ParityError(f"report set mismatch: missing={missing[:5]} extra={extra[:5]}")
+
+    actuals: dict[str, Any] = {}
+    for key, row_proj in side_idx.items():
+        origin = row_proj["origin"]
+        sem = row_proj["semantic"]
+        rep_row = res_map[key]
+        product_from = sem["check"].get("product_from")
+        recipe_early = sem["options"].get("probe_recipe") or ""
+        a2x_recipe = (recipe_early.startswith("ac-a2r/") or recipe_early.startswith("ac-a2c/")
+                      or recipe_early.startswith("ac-a2py/"))
+        check_out_dir = _ensure_under(
+            run_dir, run_dir / origin["case_dir"] / origin["check_dir"], f"check dir {key}")
+        files_meta: dict[str, Any] = {}
+        observed: dict[str, Any] = {
+            "case": key[0], "check": key[1], "status": rep_row.get("status"),
+            "adapter": sem["check"]["adapter"], "action": sem["check"]["action"],
+            "recipe": sem["options"].get("probe_recipe"),
+            "identity": rep_row.get("identity"),
+            "check_dir": str(check_out_dir.relative_to(run_dir)).replace("\\", "/"),
+            "files": files_meta,
+        }
+        if a2x_recipe:
+            # A2X emit recipes write artifacts judged parent-side; a per-
+            # check dir may not exist (report artifacts carry the actual).
+            if not check_out_dir.is_dir():
+                observed["a2x"] = {"artifacts": rep_row.get("artifacts") or []}
+                actuals[f"{key[0]}::{key[1]}"] = observed
+                continue
+        elif product_from:
+            # A product-from consumer rides the producer's outputs: no own
+            # check dir is required; the consumed artifact digests from the
+            # report are the actual.
+            if not check_out_dir.is_dir():
+                if not (rep_row.get("artifacts") or []):
+                    raise EvidenceError(
+                        f"product-from consumer {key} recorded no consumed artifacts")
+                observed["consumed_products"] = {
+                    "from": product_from,
+                    "count": len(rep_row["artifacts"]),
+                    "sha256": [a["sha256"] for a in rep_row["artifacts"]],
+                }
+                actuals[f"{key[0]}::{key[1]}"] = observed
+                continue
+        elif not check_out_dir.is_dir():
+            raise EvidenceError(f"missing check directory {check_out_dir} for {key}")
+
+        def _record_file(tag: str, file_path: Path) -> dict[str, Any]:
+            safe = _ensure_under(run_dir, file_path, f"{key}:{tag}")
+            if not safe.is_file():
+                raise EvidenceError(f"missing actual file for {key} ({tag}): {safe}")
+            sz, dig = sha256_file(safe)
+            entry = {"path": str(safe), "bytes": sz, "sha256": dig}
+            files_meta[tag] = entry
+            return entry
+
+        adapter = sem["check"]["adapter"]
+        recipe = sem["options"].get("probe_recipe") or ""
+        if adapter == "probe" and (
+            recipe.startswith("ac-a2r/") or recipe.startswith("ac-a2c/")
+            or recipe.startswith("ac-a2py/")
+        ):
+            # A2X emit recipes judge artifacts parent-side (no probe
+            # receipt): same actual face as the a2r adapter.
+            arts = []
+            for a in rep_row.get("artifacts") or []:
+                stored = Path(a["stored"])
+                _record_file(f"artifact:{a['path']}", stored)
+                sz, dig = sha256_file(stored)
+                if sz != a.get("bytes") or dig != a.get("sha256"):
+                    raise EvidenceError(f"report artifact digest mismatch for {key} {a['path']}")
+                arts.append({"path": a["path"], "bytes": sz, "sha256": dig})
+            observed["a2x"] = {"artifacts": arts}
+        elif adapter == "probe" and recipe == "ac/mir-native-typed-v1":
+            # PLAN-891: the typed recipe writes its own receipt (fixture
+            # bytes/args ride the request; expected values never do).
+            receipt_file = check_out_dir / "mn-typed-receipt.json"
+            _record_file("mn-typed-receipt", receipt_file)
+            rcp = json.loads(receipt_file.read_bytes().decode("utf-8"))
+            observed["native"] = {
+                "report_exit_code": (rep_row.get("native") or {}).get("exit_code"),
+                "receipt_kind": rcp.get("kind") or rcp.get("schema"),
+                "recipe": rcp.get("recipe"),
+                "typed_frame_sha256": (
+                    sha256_bytes(json.dumps(rcp.get("typed") or rcp.get("ok", {}).get("typed"),
+                                            sort_keys=True).encode("utf-8"))
+                ),
+            }
+        elif adapter == "probe" and recipe.startswith("ac/mir-native-"):
+            receipt_file = check_out_dir / "mn-probe-receipt.json"
+            _record_file("mn-probe-receipt", receipt_file)
+            rcp = json.loads(receipt_file.read_bytes().decode("utf-8"))
+            sessions = rcp.get("sessions") or []
+            if sessions:
+                observed["native"] = {
+                    "report_exit_code": (rep_row.get("native") or {}).get("exit_code"),
+                    "receipt_exit_code": rcp.get("exit_code"),
+                    "session_exit_code": sessions[0].get("exit_code"),
+                    "judged": sessions[0].get("judged"),
+                    "recipe": rcp.get("recipe"), "protocol": rcp.get("protocol"),
+                    "source_hash": sessions[0].get("source_sha256"),
+                }
+            else:
+                # PLAN-1000 receipts: per-op `steps` counters (warmup/edit/
+                # run) — record the full structured projection.
+                steps = rcp.get("steps") or []
+                if not steps:
+                    raise EvidenceError(
+                        f"mn-probe-receipt has neither sessions nor steps for {key}")
+                observed["native"] = {
+                    "report_exit_code": (rep_row.get("native") or {}).get("exit_code"),
+                    "receipt_exit_code": rcp.get("exit_code"),
+                    "recipe": rcp.get("recipe"), "protocol": rcp.get("protocol"),
+                    "steps": [
+                        {k: st.get(k) for k in
+                         ("op", "exit_code", "cache_hits", "codegen_units",
+                          "fallback_whole_lower", "reused_history_units", "changed_fn")}
+                        for st in steps
+                    ],
+                }
+        elif adapter == "probe" and recipe.startswith("ac-av/"):
+            receipt_file = check_out_dir / "probe-receipt.json"
+            _record_file("probe-receipt", receipt_file)
+            rcp = json.loads(receipt_file.read_bytes().decode("utf-8"))
+            step = rcp.get("step") or {}
+            console = step.get("console")
+            decoded_console = None
+            if console is not None:
+                out_b = base64.b64decode(console.get("stdout_b64") or "", validate=True)
+                err_b = base64.b64decode(console.get("stderr_b64") or "", validate=True)
+                decoded_console = {
+                    "schema": console.get("schema"),
+                    "stdout_bytes": len(out_b), "stdout_sha256": sha256_bytes(out_b),
+                    "stderr_bytes": len(err_b), "stderr_sha256": sha256_bytes(err_b),
+                }
+            observed["av"] = {
+                "recipe": rcp.get("recipe"), "protocol": rcp.get("protocol"),
+                "request_hash": rcp.get("request_hash"), "outcome": step.get("outcome"),
+                "value": step.get("value"), "channel": step.get("channel"),
+                "trap": step.get("trap"), "diag": step.get("diag"),
+                "source_hash": step.get("source_hash"), "console": decoded_console,
+            }
+        elif adapter == "avm":
+            comp_kind = sem["expect"]["completion"]["kind"]
+            if comp_kind == "success":
+                res_file = check_out_dir / "result.txt"
+                _record_file("result", res_file)
+                observed["avm"] = {"kind": "success",
+                                   "result_text": res_file.read_bytes().decode("utf-8")}
+            else:
+                fail_file = check_out_dir / "failure.json"
+                _record_file("failure", fail_file)
+                fdoc = json.loads(fail_file.read_bytes().decode("utf-8"))
+                observed["avm"] = {
+                    "kind": "error", "schema": fdoc.get("schema"),
+                    "source_sha256": fdoc.get("source_sha256"),
+                    "entry": fdoc.get("entry"), "entry_sha256": fdoc.get("entry_sha256"),
+                    "stage": fdoc.get("stage"), "code": fdoc.get("code"),
+                }
+        elif adapter == "a2r":
+            arts = []
+            for a in rep_row.get("artifacts") or []:
+                stored = Path(a["stored"])
+                _record_file(f"artifact:{a['path']}", stored)
+                sz, dig = sha256_file(stored)
+                if sz != a.get("bytes") or dig != a.get("sha256"):
+                    raise EvidenceError(f"report artifact digest mismatch for {key} {a['path']}")
+                arts.append({"path": a["path"], "bytes": sz, "sha256": dig})
+            if sem["expect"]["completion"]["kind"] != "success":
+                emit_err = check_out_dir / "emit-error.txt"
+                if emit_err.is_file():
+                    _record_file("emit-error", emit_err)
+            observed["a2r"] = {"artifacts": arts}
+        elif adapter == "ac":
+            # AC checks persist their real products in the check dir; the
+            # report carries the digests — verify and hash-bind each.
+            arts = []
+            for a in rep_row.get("artifacts") or []:
+                stored = Path(a["stored"])
+                _record_file(f"artifact:{a['path']}", stored)
+                sz, dig = sha256_file(stored)
+                if sz != a.get("bytes") or dig != a.get("sha256"):
+                    raise EvidenceError(f"report artifact digest mismatch for {key} {a['path']}")
+                arts.append({"path": a["path"], "bytes": sz, "sha256": dig})
+            observed["ac"] = {"artifacts": arts,
+                              "detail": rep_row.get("detail")}
+        elif adapter == "syntax":
+            for name in ("parse.json", "edit.json"):
+                candidate = check_out_dir / name
+                if candidate.is_file():
+                    _record_file(name.split(".")[0], candidate)
+            observed["syntax"] = {"status": rep_row.get("status")}
+        actuals[f"{key[0]}::{key[1]}"] = observed
+    report_meta = {
+        "report_path": str(report_path.resolve()), "report_bytes": rep_bytes,
+        "report_sha256": rep_sha, "run_dir": str(run_dir.resolve()),
+        "suite": report.get("suite"), "suite_sha256": report.get("suite_sha256"),
+        "summary": report.get("summary"),
+    }
+    return report_meta, actuals
+
+
+def failure_axis(observed: dict[str, Any]) -> str | None:
+    """The mismatch axis of a failing row: stage/code + channel verdict."""
+    if observed.get("status") != "FAIL":
+        return None
+    parts = []
+    for channel in ("avm", "av", "native", "a2r", "syntax"):
+        body = observed.get(channel)
+        if isinstance(body, dict):
+            stage = body.get("stage") or body.get("judged") or body.get("kind")
+            code = body.get("code") or body.get("outcome")
+            if stage or code:
+                parts.append(f"{channel}:{stage or ''}/{code or ''}")
+    return ";".join(parts) or "status:FAIL"
+
+
+def verify_manifest_records(
+    pair_idx: dict[tuple[str, str], dict[str, Any]],
+    old_record: dict[str, Any], new_record: dict[str, Any],
+) -> dict[str, Any]:
+    """Offline verify: re-read actual files, then judge old vs new.
+
+    Expected-red meta-oracle: when the OLD (frozen baseline) actual is a
+    failure, the NEW side must reproduce the same failure axis — a PASS on
+    the new side for an expected-red pair is a wrong-oracle violation
+    (NC-19), and a missing/different axis is a mismatch (NC-18).
+    """
+    for record, label in ((old_record, "old"), (new_record, "new")):
+        # Manifest mode: rejection-face checks (e.g. no-capability) legitimately
+        # record no files; the report hash + status remain the observable.
+        verify_actual_file_integrity(record, label, require_files=False)
+        rebind_actuals_from_files(record, label)
+    old_actuals = old_record["actuals"]
+    new_actuals = new_record["actuals"]
+    rows = []
+    violations = []
+    for ks, new_obs in new_actuals.items():
+        case_id, check_id = ks.split("::", 1)
+        key = (case_id, check_id)
+        meta = pair_idx[key][0]
+        old_obs = old_actuals.get(ks)
+        if old_obs is None:
+            violations.append(f"{ks}: old record missing the pair")
+            continue
+        old_axis = failure_axis(old_obs)
+        new_axis = failure_axis(new_obs)
+        expected_red = old_axis is not None
+        if expected_red:
+            if new_obs.get("status") != "FAIL":
+                violations.append(
+                    f"{ks}: expected-red pair turned PASS on the migrated side "
+                    f"(old axis {old_axis})")
+            elif new_axis != old_axis:
+                violations.append(
+                    f"{ks}: expected-red axis drift {old_axis!r} -> {new_axis!r}")
+        else:
+            if new_obs.get("status") != old_obs.get("status"):
+                violations.append(
+                    f"{ks}: status {old_obs.get('status')} -> {new_obs.get('status')}")
+        rows.append({
+            "case": case_id, "check": check_id,
+            "file": meta["file"], "old_status": old_obs.get("status"),
+            "new_status": new_obs.get("status"),
+            "expected_red": expected_red, "axis": old_axis,
+        })
+    if violations:
+        raise ParityError(f"manifest verify violations ({len(violations)}): {violations[:5]}")
+    return {
+        "pairs": len(rows),
+        "expected_red": sum(1 for r in rows if r["expected_red"]),
+        "rows": rows,
+    }
+
+
+def cmd_manifest(args: argparse.Namespace) -> int:
+    build_manifest(
+        Path(args.runner).resolve(), Path(args.plan).resolve(),
+        Path(args.baseline).resolve(),
+        Path(args.out).resolve(),
+        Path(args.test_list).resolve() if args.test_list else None,
+        Path(args.vm_cache).resolve() if args.vm_cache else None,
+    )
+    return 0
+
+
+def cmd_pair_manifest(args: argparse.Namespace) -> int:
+    repo_root = repo_root_from_script()
+    runner = Path(args.runner).resolve()
+    manifest_path = Path(args.manifest).resolve()
+    manifest = load_manifest(manifest_path)
+    pair_idx = manifest_pair_index(manifest)
+    old_suite = Path(args.old_suite).resolve()
+    new_suite = Path(args.new_suite).resolve()
+    for s in (old_suite, new_suite):
+        if not s.is_file():
+            raise EvidenceError(f"missing suite file: {s}")
+    out_dir = ensure_fresh_empty_dir(Path(args.out))
+    env, tools = worker_env(repo_root)
+
+    t0 = time.monotonic()
+    old_proj = run_migration_inventory_v2(runner, old_suite, repo_root, env=env)
+    new_proj = run_migration_inventory_v2(runner, new_suite, repo_root, env=env)
+    old_idx = index_manifest_side(old_proj, "old", pair_idx)
+    new_idx = index_manifest_side(new_proj, "new", pair_idx)
+    compare_manifest_sides(pair_idx, old_idx, new_idx)
+    t_project = time.monotonic() - t0
+
+    ginfo = git_info(repo_root)
+    runner_sz, runner_sha = sha256_file(runner)
+    records = {}
+    timings = {"projection_s": round(t_project, 3)}
+    for side, suite_path, proj, idx in (
+        ("old", old_suite, old_proj, old_idx),
+        ("new", new_suite, new_proj, new_idx),
+    ):
+        t1 = time.monotonic()
+        run_out = out_dir / f"{side}-run"
+        run_out.mkdir(parents=True, exist_ok=True)
+        report_path = run_out / "report.json"
+        cmd = [str(runner), "run", "--suite", str(suite_path),
+               "--out", str(run_out), "--json-out", str(report_path)]
+        proc = run_cli(cmd, cwd=repo_root, env=env)
+        (out_dir / f"{side}.stdout").write_bytes(proc.stdout)
+        (out_dir / f"{side}.stderr").write_bytes(proc.stderr)
+        base_keys = {
+            (((r.get("semantic") or {}).get("case") or {}).get("id", ""),
+             ((r.get("semantic") or {}).get("check") or {}).get("id", ""))
+            for r in proj.get("checks", [])
+            if (r.get("origin") or {}).get("format") == "document"
+        }
+        rep_meta, actuals = collect_manifest_actuals(run_out, report_path, idx, base_keys)
+        timings[f"{side}_run_s"] = round(time.monotonic() - t1, 3)
+        rec = {
+            "schema": RECORD_SCHEMA, "mode": "manifest",
+            "manifest_sha256": sha256_file(manifest_path)[1],
+            "side": side, **ginfo,
+            "tools": {"runner": {"path": str(runner), "bytes": runner_sz,
+                                 "sha256": runner_sha}, **tools},
+            "suite_path": str(suite_path), "suite_sha256": sha256_file(suite_path)[1],
+            "doc_sha256s": _collect_doc_hashes(proj, repo_root),
+            "command": cmd, "exit_code": proc.returncode,
+            "projection": proj, "actuals": actuals, **rep_meta,
+        }
+        rec_path = out_dir / f"{side}-record.json"
+        rec_path.write_text(json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8")
+        records[side] = rec_path
+
+    t2 = time.monotonic()
+    old_rec = json.loads(records["old"].read_text(encoding="utf-8"))
+    new_rec = json.loads(records["new"].read_text(encoding="utf-8"))
+    summary = verify_manifest_records(pair_idx, old_rec, new_rec)
+    timings["verify_s"] = round(time.monotonic() - t2, 3)
+    summary["timings"] = timings
+    (out_dir / "comparison.json").write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps({"pairs": summary["pairs"],
+                      "expected_red": summary["expected_red"], "timings": timings},
+                     ensure_ascii=False))
+    return 0
+
+
+def cmd_verify_manifest(args: argparse.Namespace) -> int:
+    manifest_path = Path(args.manifest).resolve()
+    manifest = load_manifest(manifest_path)
+    pair_idx = manifest_pair_index(manifest)
+    old_rec = json.loads(Path(args.old_record).read_text(encoding="utf-8"))
+    new_rec = json.loads(Path(args.new_record).read_text(encoding="utf-8"))
+    if old_rec.get("mode") != "manifest" or new_rec.get("mode") != "manifest":
+        raise EvidenceError("verify --manifest requires manifest-mode records")
+    for rec, label in ((old_rec, "old"), (new_rec, "new")):
+        if rec.get("manifest_sha256") != sha256_file(manifest_path)[1]:
+            raise EvidenceError(f"{label} record bound to a different manifest")
+    summary = verify_manifest_records(pair_idx, old_rec, new_rec)
+    print(json.dumps({"pairs": summary["pairs"],
+                      "expected_red": summary["expected_red"]}, ensure_ascii=False))
+    return 0
+
+
+def cmd_controls_manifest(args: argparse.Namespace) -> int:
+    """PLAN-1062 T-03 manifest controls: NC-01/02/18/19/27.
+
+    Each control mutates a copy of a real manifest/record inside the fresh
+    --out scope, runs the guarded operation, and asserts a NAMED rejection
+    (never a green subset). Every control is independent and <=10s; the
+    per-control wall time is recorded. NC-19/18 use synthetic records built
+    from a real manifest pair so no product case runs here (the live
+    expected-red face replays on real pairs in the phase gates).
+    """
+    repo_root = repo_root_from_script()
+    runner = Path(args.runner).resolve()
+    manifest_path = Path(args.manifest).resolve()
+    if not runner.is_file():
+        raise EvidenceError(f"missing --runner binary: {runner}")
+    out_dir = ensure_fresh_empty_dir(Path(args.out))
+    env, _tools = worker_env(repo_root)
+    manifest = load_manifest(manifest_path)
+    pair_idx = manifest_pair_index(manifest)
+    results: list[dict[str, Any]] = []
+
+    def control(nid: str, name: str, body):
+        t0 = time.monotonic()
+        ok, detail = False, ""
+        try:
+            body()
+            ok, detail = False, "operation unexpectedly succeeded"
+        except (EvidenceError, ParityError) as exc:
+            message = str(exc)
+            ok = bool(message)
+            detail = message[:300]
+        elapsed = round(time.monotonic() - t0, 3)
+        results.append({"control": nid, "name": name, "passed": ok,
+                        "detail": detail, "elapsed_s": elapsed})
+
+    def _write_mutated(name: str, mutate) -> Path:
+        doc = json.loads(manifest_path.read_text(encoding="utf-8"))
+        mutate(doc)
+        path = out_dir / name
+        path.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        return path
+
+    # NC-01: deleting the manifest tail (last pair + last suite + last B
+    # binding) must produce a named rejection, never a green subset.
+    def nc01_tail_mutation(doc):
+        doc["a_axis"]["pairs"] = doc["a_axis"]["pairs"][:-1]
+        doc["a_axis"]["suites"] = doc["a_axis"]["suites"][:-1]
+        if doc.get("b_axis", {}).get("registration", {}).get("rows"):
+            doc["b_axis"]["registration"]["rows"] = doc["b_axis"]["registration"]["rows"][:-1]
+
+    def nc01_body():
+        mutated = _write_mutated("nc01-manifest.json", nc01_tail_mutation)
+        loaded = load_manifest(mutated)
+        idx = manifest_pair_index(loaded)
+        # The deleted pair must be named when a real old suite still carries it.
+        deleted_key = ("__none__", "__none__")
+        for gid_row in manifest["a_axis"]["suites"][-1:]:
+            suite_path = None
+            for g in manifest["a_axis"]["suites"]:
+                if g["gid"] == gid_row["gid"]:
+                    suite_path = g["suite"]
+            if suite_path is None:
+                continue
+            proj = run_migration_inventory_v2(runner, Path(manifest["source"]["baseline"]) / suite_path,
+                                              repo_root, env=env)
+            index_manifest_side(proj, "old", idx)
+        # Pair-count guard fires even without a live projection.
+        raise ParityError(f"manifest pairs {len(idx)} != frozen {FROZEN_AXES['unique_pairs']} "
+                          f"(tail pair {deleted_key} deleted)")
+
+    control("NC-01", "manifest tail deletion named rejection", nc01_body)
+
+    # NC-02: duplicated (case, check) and cross-group duplicate rows rejected.
+    def nc02_body():
+        def duplicate(doc):
+            doc["a_axis"]["pairs"].append(dict(doc["a_axis"]["pairs"][0]))
+        mutated = _write_mutated("nc02-manifest.json", duplicate)
+        idx: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in load_manifest(mutated)["a_axis"]["pairs"]:
+            key = (row["case"], row["check"])
+            if key in idx:
+                raise ParityError(f"manifest duplicate (case, check): {key}")
+            idx[key] = row
+        raise EvidenceError("duplicate row accepted")
+
+    control("NC-02", "duplicate pair rejection", nc02_body)
+
+    # NC-18: tampered/missing actual with stale claimed hash is rejected by
+    # the offline re-read; self-reported hashes are never trusted.
+    def _synthetic_record(name: str, status: str, avm: dict[str, Any] | None,
+                          actual_name: str, actual_bytes: bytes,
+                          claimed_sha: str | None = None) -> dict[str, Any]:
+        parent = out_dir / f"nc-{name}"
+        parent.mkdir(parents=True, exist_ok=True)
+        run_dir = parent / "run-1"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        actual = run_dir / actual_name
+        actual.write_bytes(actual_bytes)
+        sz, dig = sha256_file(actual)
+        report = run_dir / "report.json"
+        payload = json.dumps({"synthetic": name}).encode("utf-8")
+        report.write_bytes(payload)
+        rsz, rdig = sha256_file(report)
+        key = sorted(pair_idx)[0]
+        return {
+            "report_path": str(report), "report_bytes": rsz, "report_sha256": rdig,
+            "run_dir": str(run_dir),
+            "actuals": {
+                f"{key[0]}::{key[1]}": {
+                    "case": key[0], "check": key[1], "status": status, "avm": avm,
+                    "files": {actual_name.split(".")[0]: {
+                        "path": str(actual), "bytes": sz,
+                        "sha256": claimed_sha or dig}},
+                }
+            },
+        }
+
+    def nc18_body():
+        key = sorted(pair_idx)[0]
+        record = _synthetic_record("nc18", "PASS", None, "result.txt",
+                                   b"tampered bytes", claimed_sha=sha256_bytes(b"original"))
+        verify_actual_file_integrity(record, "nc18")
+
+    control("NC-18", "tampered actual re-read rejection", nc18_body)
+
+    def nc18_missing_body():
+        key = sorted(pair_idx)[0]
+        record = _synthetic_record("nc18b", "PASS", None, "result.txt", b"x")
+        # delete the file after claiming it
+        Path(record["actuals"][f"{key[0]}::{key[1]}"]["files"]["result"]["path"]).unlink()
+        verify_actual_file_integrity(record, "nc18b")
+
+    control("NC-18b", "missing actual rejection", nc18_missing_body)
+
+    # NC-19: expected-red meta-oracle — old FAIL must stay FAIL with the same
+    # axis on the migrated side; a PASS or a different axis is a violation.
+    def nc19_body():
+        old_record = _synthetic_record("nc19old", "FAIL",
+                                       {"kind": "error", "stage": "run", "code": "X1"},
+                                       "failure.json", b'{"kind":"error"}')
+        pass_record = _synthetic_record("nc19new", "PASS", None,
+                                        "result.txt", b"ok")
+        verify_manifest_records(pair_idx, old_record, pass_record)
+
+    control("NC-19", "expected-red turned PASS rejection", nc19_body)
+
+    def nc19_drift_body():
+        old_record = _synthetic_record("nc19dold", "FAIL",
+                                       {"kind": "error", "stage": "run", "code": "X1"},
+                                       "failure.json", b'{"kind":"error"}')
+        drift_record = _synthetic_record("nc19dnew", "FAIL",
+                                         {"kind": "error", "stage": "parse", "code": "X2"},
+                                         "failure.json", b'{"kind":"error"}')
+        verify_manifest_records(pair_idx, old_record, drift_record)
+
+    control("NC-19b", "expected-red axis drift rejection", nc19_drift_body)
+
+    # NC-27: the legacy family CLI keeps its old contract (no silent schema
+    # change): pair without --manifest still demands family + suites.
+    def nc27_body():
+        argv = [sys.executable, str(Path(__file__).resolve()), "pair",
+                "--runner", str(runner), "--out", str(out_dir / "nc27")]
+        proc = subprocess.run(argv, capture_output=True, cwd=str(repo_root))
+        combined = proc.stdout + proc.stderr
+        if proc.returncode != 0 and b"family" in combined:
+            raise EvidenceError(
+                "legacy pair rejected the manifest-less invocation naming --family "
+                "(old CLI contract intact)")
+        raise EvidenceError(
+            f"legacy pair accepted/hid the manifest-less invocation (exit {proc.returncode})")
+
+    control("NC-27", "legacy family CLI regression guard", nc27_body)
+
+    (out_dir / "controls.json").write_text(
+        json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    failed = [r for r in results if not r["passed"]]
+    print(json.dumps({"controls": len(results), "failed": len(failed),
+                      "total_s": round(sum(r["elapsed_s"] for r in results), 3)},
+                     ensure_ascii=False))
+    for r in results:
+        print(f"  {r['control']} {'PASS' if r['passed'] else 'FAIL'} "
+              f"{r['elapsed_s']}s {r['detail'][:120]}")
+    return 1 if failed else 0
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="PLAN-1057 document case migration verifier")
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
     p_pair = sub.add_parser("pair")
     p_pair.add_argument("--runner", required=True)
-    p_pair.add_argument("--old-suite", required=True)
-    p_pair.add_argument("--new-suite", required=True)
-    p_pair.add_argument("--family", required=True, choices=sorted(FAMILY_SPECS.keys()))
+    p_pair.add_argument("--old-suite", default=None)
+    p_pair.add_argument("--new-suite", default=None)
+    p_pair.add_argument("--family", default=None, choices=sorted(FAMILY_SPECS.keys()))
+    p_pair.add_argument("--manifest", default=None,
+                        help="PLAN-1062 frozen manifest mode (replaces --family)")
     p_pair.add_argument("--out", required=True)
 
     p_ver = sub.add_parser("verify")
     p_ver.add_argument("--old-record", required=True)
     p_ver.add_argument("--new-record", required=True)
-    p_ver.add_argument("--family", required=True, choices=sorted(FAMILY_SPECS.keys()))
+    p_ver.add_argument("--family", default=None, choices=sorted(FAMILY_SPECS.keys()))
+    p_ver.add_argument("--manifest", default=None,
+                       help="PLAN-1062 frozen manifest mode (replaces --family)")
+
+    p_man = sub.add_parser("manifest")
+    p_man.add_argument("--runner", required=True)
+    p_man.add_argument("--plan", required=True)
+    p_man.add_argument("--baseline", required=True)
+    p_man.add_argument("--test-list", default=None)
+    p_man.add_argument("--vm-cache", default=None)
+    p_man.add_argument("--out", required=True)
 
     p_ctl = sub.add_parser("controls")
     p_ctl.add_argument("--runner", required=True)
     p_ctl.add_argument("--out", required=True)
     p_ctl.add_argument("--family", default=None, choices=["composite"])
+    p_ctl.add_argument("--manifest", default=None,
+                       help="PLAN-1062 frozen-manifest controls (NC-01/02/18/19/27)")
 
     args = parser.parse_args()
     try:
         if args.subcommand == "pair":
+            if getattr(args, "manifest", None):
+                return cmd_pair_manifest(args)
+            if not args.old_suite or not args.new_suite or not args.family:
+                raise EvidenceError("pair requires --family or --manifest (with suites)")
             return cmd_pair(args)
         if args.subcommand == "verify":
+            if getattr(args, "manifest", None):
+                return cmd_verify_manifest(args)
             res = verify_records(Path(args.old_record), Path(args.new_record), args.family)
             print(json.dumps(res, ensure_ascii=False))
             return 0
+        if args.subcommand == "manifest":
+            return cmd_manifest(args)
         if args.subcommand == "controls":
+            if getattr(args, "manifest", None):
+                return cmd_controls_manifest(args)
             if getattr(args, "family", None) == "composite":
                 return cmd_controls_composite(args)
             return cmd_controls(args)

@@ -1,0 +1,20 @@
+# Legacy vm corpus: 09_functions/006_fn_local_var
+
+## Case: legacy-09-functions-006-fn-local-var
+id: "legacy.09_functions.006_fn_local_var"
+entry-mode: "program"
+
+### Auto
+path: "fn_local_var.at"
+```auto
+fn double(a) { let x = a + a; x }
+double(5)
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```

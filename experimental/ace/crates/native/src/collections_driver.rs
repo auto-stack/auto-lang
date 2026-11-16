@@ -80,7 +80,10 @@ fn collection_interface_parts(
     let function = &unit.funcs[0];
     let mut imports = Vec::with_capacity(unit.imports.len());
     for import in &unit.imports {
-        if import.env.is_some() {
+        // PLAN-972 (T-03): a capture-free closure body carries an EMPTY
+        // env decl — allowed (the callee binds as a plain unit import);
+        // a NON-empty env is the capturing-closure boundary (named).
+        if import.env.as_ref().is_some_and(|e| !e.is_empty()) {
             return Err(bad(
                 "collection function imports cannot carry closure environments",
             ));

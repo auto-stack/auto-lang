@@ -1,0 +1,23 @@
+# Legacy a2c corpus: 10_collections/008_array_nested
+
+## Case: legacy-10-collections-008-array-nested
+id: "legacy.10_collections.008_array_nested"
+entry-mode: "program"
+
+### Auto
+path: "array_nested.at"
+```auto
+let matrix [2][3]int = [[1, 2, 3], [4, 5, 6]]
+matrix[0][1]
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### array_nested.expected.c
+```c
+int matrix[2][3] = {{1, 2, 3}, {4, 5, 6}};
+int main(void) {
+    return matrix[0][1];
+}
+```

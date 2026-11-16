@@ -1,0 +1,228 @@
+# Legacy a2c corpus: 10_collections/011_list_storage
+
+## Case: legacy-10-collections-011-list-storage
+id: "legacy.10_collections.011_list_storage"
+entry-mode: "program"
+
+### Auto
+path: "list_storage.at"
+```auto
+// Test Plan 052: List<T, S> with storage strategies
+
+spec Storage<T> {
+    fn data() *T
+    fn capacity() u32
+    fn try_grow(min_cap u32) bool
+}
+
+type Heap<T> as Storage<T> {
+    ptr *T
+    cap u32
+}
+
+type InlineInt64 as Storage<int> {
+    buffer [64]int
+}
+
+type List<T, S> {
+    len u32
+    store S
+}
+
+ext Heap {
+    #[c]
+    static fn new() Heap {
+        return Heap(ptr: 0 as *void, cap: 0)
+    }
+
+    #[c]
+    fn data() *void {
+        return .ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return .cap
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return .cap >= min_cap
+    }
+}
+
+ext InlineInt64 {
+    #[c]
+    static fn new() InlineInt64 {
+        return InlineInt64(buffer: [0])
+    }
+
+    #[c]
+    fn data() *int {
+        return .buffer.ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return 64
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 64
+    }
+}
+
+ext List {
+    #[c]
+    static fn new() List {
+        return List(len: 0, store: S.new())
+    }
+
+    #[c]
+    fn len() u32 {
+        return .len
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return .store.capacity()
+    }
+}
+
+fn main() {
+    // Heap-backed list for general use
+    let heap_list = List<int, Heap>.new()
+    let heap_len = heap_list.len()
+    let heap_cap = heap_list.capacity()
+
+    // Inline-backed list for embedded systems
+    let inline_list = List<int, InlineInt64>.new()
+    let inline_len = inline_list.len()
+    let inline_cap = inline_list.capacity()
+
+    return 0
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### list_storage.expected.c
+```c
+#include "list_storage.h"
+
+
+struct Heap Heap_New(struct Heap *self) {
+}
+void* Heap_Data(struct Heap *self) {
+}
+unsigned int Heap_Capacity(struct Heap *self) {
+}
+bool Heap_TryGrow(struct Heap *self, unsigned int) {
+}
+Storage_vtable Heap_Storage_vtable = {
+    .data = Heap_Data
+    .capacity = Heap_Capacity
+    .try_grow = Heap_TryGrow
+};
+
+Storage_void__vtable Heap_Storage_void__vtable = {
+    .data = Heap_Data
+    .capacity = Heap_Capacity
+    .try_grow = Heap_TryGrow
+};
+
+
+struct InlineInt64 InlineInt64_New(struct InlineInt64 *self) {
+}
+int* InlineInt64_Data(struct InlineInt64 *self) {
+}
+unsigned int InlineInt64_Capacity(struct InlineInt64 *self) {
+}
+bool InlineInt64_TryGrow(struct InlineInt64 *self, unsigned int) {
+}
+Storage_vtable InlineInt64_Storage_vtable = {
+    .data = InlineInt64_Data
+    .capacity = InlineInt64_Capacity
+    .try_grow = InlineInt64_TryGrow
+};
+
+Storage_int_vtable InlineInt64_Storage_int_vtable = {
+    .data = InlineInt64_Data
+    .capacity = InlineInt64_Capacity
+    .try_grow = InlineInt64_TryGrow
+};
+
+
+struct List List_New(struct List *self) {
+}
+unsigned int List_Len(struct List *self) {
+}
+unsigned int List_Capacity(struct List *self) {
+}
+
+int main(void) {
+
+    struct List heap_list = List_New(List<int, Heap>);
+    unsigned int heap_len = List_Len(&heap_list);
+    unsigned int heap_cap = List_Capacity(&heap_list);
+
+
+    struct List inline_list = List_New(List<int, InlineInt64>);
+    unsigned int inline_len = List_Len(&inline_list);
+    unsigned int inline_cap = List_Capacity(&inline_list);
+
+    return 0;
+}
+```
+
+#### list_storage.expected.h
+```c
+#pragma once
+
+typedef struct Storage_vtable {
+    void (*data)(void *self);
+    void (*capacity)(void *self);
+    void (*try_grow)(void *self, unsigned int min_cap);
+} Storage_vtable;
+
+struct Heap {
+    void** ptr;
+    unsigned int cap;
+};
+
+struct Heap Heap_New(struct Heap *self);
+void* Heap_Data(struct Heap *self);
+unsigned int Heap_Capacity(struct Heap *self);
+bool Heap_TryGrow(struct Heap *self, unsigned int);
+typedef struct Storage_void__vtable {
+    void** (*data)(void *self);
+    unsigned int (*capacity)(void *self);
+    bool (*try_grow)(void *self, unsigned int min_cap);
+} Storage_void__vtable;
+
+struct InlineInt64 {
+    int[64] buffer;
+};
+
+struct InlineInt64 InlineInt64_New(struct InlineInt64 *self);
+int* InlineInt64_Data(struct InlineInt64 *self);
+unsigned int InlineInt64_Capacity(struct InlineInt64 *self);
+bool InlineInt64_TryGrow(struct InlineInt64 *self, unsigned int);
+typedef struct Storage_int_vtable {
+    void** (*data)(void *self);
+    unsigned int (*capacity)(void *self);
+    bool (*try_grow)(void *self, unsigned int min_cap);
+} Storage_int_vtable;
+
+struct List {
+    unsigned int len;
+    void* store;
+};
+
+struct List List_New(struct List *self);
+unsigned int List_Len(struct List *self);
+unsigned int List_Capacity(struct List *self);
+
+```

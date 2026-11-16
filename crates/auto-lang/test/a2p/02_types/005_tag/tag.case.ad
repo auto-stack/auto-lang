@@ -1,0 +1,36 @@
+# Legacy a2p corpus: 02_types/005_tag
+
+## Case: legacy-a2p-02-types-005-tag
+id: "legacy.a2p.02_types.005_tag"
+entry-mode: "program"
+
+### Auto
+path: "tag.at"
+```auto
+tag Shape {
+    Circle
+    Rect
+}
+
+fn main() {
+    print("Tag defined")
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### tag.expected.py
+```python
+from enum import Enum, auto
+
+class Shape(Enum):
+    Circle = auto()
+    Rect = auto()
+
+def main():
+    print("Tag defined")
+
+if __name__ == "__main__":
+    main()
+```

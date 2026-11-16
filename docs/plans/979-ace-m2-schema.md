@@ -4,8 +4,8 @@ status: executing
 feature_name: Schema领域语言包与UI AGE投影接口
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-15
-plan_revision: 10
+updated_at: 2026-11-16
+plan_revision: 11
 current_step: 6
 total_steps: 12
 depends_on: [PLAN-960, PLAN-963, PLAN-966]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-979] Schema领域语言包与UI AGE投影接口
 
 ## 0. 变更摘要
+
+2026-11-15 r11（当前合同）：按用户本轮授权落实跨计划承接与无环交接。960维持已归档；原“等待960”的多模块领域集成由981/SOURCE的原B-SOURCE-I/V/R承接，980交UI完整字段清单，981交AGE完整构造清单、实例可见性与g01原源CPU证明。979保留全部AC/V与T-03/T-08/T-04/T-05完整复核责任，收到正式接口后组合验收；不得以已交A切片归档。当前§5–8覆盖r10末尾“等待960/980/981”的编号泛称，保留其等待各owner交付、不自行缩范围的裁定。原12任务、6/12、executing及既有勾选不变；只规划，不启动/恢复实施或解除其他会话的blocked状态。
 
 2026-11-13 r10（本轮当前合同）：H0首源改为AGE node/view/text；Schema同时驱动解析、结构校验与位置/上下文敏感的node名称识别。旧widget仅为同一领域包的显式兼容别名，不另建传统widget前门。 用户仅授权规划修订；保原任务ID/数量、既有AC/V与进度、完整分母及阶段门，不建树、不写实现/fixture、不构建/运行/合入。此前§0修订描述为历史，冲突以本次§5–8为准。
 
@@ -90,7 +92,30 @@ touched_goals: [GOAL-002]
 
 物理路径核对：原`D:/autostack/ag-examples`已更名为`D:/autostack/age-examples`；本轮修复旧样例/计划链接到实际文件，原AG计划ID/依赖身份与历史源码hash不改。执行者按现路径核正式来源，不能重新复制内容仓或生成替代旧用例。
 
+### 2026-11-15 本轮交接修订取材与授权
+
+用户明确要求修订979/980/981及相关路线，复用现有计划承接原960多模块缺口、消除循环、保留979完整验收；**只规划**。本轮不创建计划号/工作树/agent/chat，不实施、探针、fixture、编译/测试/GPU、提交/合入/发布，不恢复979目标或AG029暂停。读取语言基面`86c7fd50bc6dac5ff6d2a5c6215ad01fbfefc1f7`及当前文档WIP；保其既有改动、任务ID/勾选/计数与历史收据。已归档960只读。
+
+已核规范/代码SHA256前16：`docs/specs/ace-migration/m2-modules.md`=`be25b0c69f2f8cc0`、`m2-schema.md`=`5797e15925b07e14`；`experimental/ace/crates/core/src/source/packages/binding.rs`=`afa4f886dfc2fab9`、`source/domain.rs`=`1613b66c2383bc40`、`source/age_component.rs`=`58081b0e1eb6347a`、`source/cst/frontdoor.rs`=`17016eecbc0fbd61`；`experimental/ace/crates/av/src/age_component.rs`=`55b84b8f1ca9d5a8`；auto-ui `docs/specs/auto-graphics/node-basic-ui.md`=`0a3e8616b8d2239b`、`crates/auto-ui-dialect/src/ast.rs`=`1d10f5ff2566422e`。这是读取身份，不是本轮运行PASS。960的普通模块与979的单模块领域接口已分别存在，跨模块AGE组合/字段适配/实例引用与原源CPU交接仍是拟实现；§5拟类型/样例不是现存API。现行Spec保已验事实，仅在本包规范增量表登记未来更新，不改canonical Specs伪造支持。
+
 ## 5. 详细设计
+
+### r11跨计划承接与完整收口（当前交接权威）
+
+**生产依赖与回验输入分开。** frontmatter的960/963/966是本包通用能力的生产依赖，均已归档；本次不把980/981整个Plan加入该列表。最终T-03/T-08/T-04另依下表具名正式输入；980/981消费已交979基础接口，不依979最终T-05/归档，因此任务图无环。后文“最小消费者不等产品终验”继续成立，但不能再解释为无需下表输入即可关闭全部V。以T-02、H0及组件A已落主且已验的接口为起点，不把r10增量review pass冒r11整包pass。
+
+| 原未闭义务 | 实际生产owner及原任务 | 正式输入标识与最低交付 | 979保留的验收责任 |
+|---|---|---|---|
+| V-09④ 多模块Node工程（原误挂960） | **981/SOURCE：B-SOURCE-I/V/R**；auto-lang负责共用前门/绑定/双后端，auto-ui负责领域规则 | **IF-981-MODULE**：复用960的包输入/绑定图与979领域包，将普通Auto项和AGE候选按模块共同检查；至少两文件Node工程、跨模块helper、两同定义独立实例、2:1定向事件、N Tick、typed view，AV与真实rustc后的A2R各有独立值/trace/span | T-03消费同源同图并实际观察，T-08核组合/来源与非法近邻，T-04核V-09完整分母；960归档不是该组合已经支持的证明 |
+| V-10 未声明/越权实例引用部分 | **981/SOURCE的B-SOURCE-I/V/R**交最小实例引用规则与CPU行为；**981/LANGUAGE的B-LANGUAGE-I/V/R**继承完整语义 | **IF-981-REF**：声明、实例身份、可见性及合法引用的typed表示；同类型合法/不存在/不可见引用、跨模块原span、拒绝前无AV/A2R执行与失败恢复 | T-08/T-03复核生产者真实拒绝位置、无dispatch及修复后合法运行；坏事件/篡改投影等已验部分仍逐项对账，不用本项取代原V-10 |
+| V-11 UI字段与完整Node构造映射 | **980/DIALECT的B-DIALECT-I/V/R**、**981/SOURCE的B-SOURCE-I/V/R**（AGE构造表由LANGUAGE原任务继承扩大） | **IF-980-FIELDS + IF-981-FIELDS**：分别按现行WidgetDecl全部字段和AGE-L/AG-A完整构造交版本化必需清单、原源/span→候选→共享检查→产品owner映射，接既有mapping_complete/component_coverage；合法、坏字段及实际删除必需映射的反控 | T-08对完整双向表执行覆盖/拒绝检查，T-04核无缺行、无未知列/构造静默丢弃；不以产品owner签字或最小text样本代测试 |
+| V-DETAIL-01 g01原四图形值/visibility/来源 | **981/SOURCE的B-SOURCE-I/V/R**；980提供涉及既有UI组件的字段事实，UI完整产品运行仍归980 | **IF-981-ORIGINAL**：复用g01完整原模块闭包及资源声明，交Schema投影、typed属性/资源引用/原span和CPU读取入口；对原坐标、尺寸、颜色/alpha、order、隐藏黄quad作独立断言 | T-02/T-03/T-08/T-04保留原V-DETAIL-01，消费完整原输入并核CPU数据；本项原本不要求GPU，不以新CPU证明关闭980/981实际窗口/渲染/游戏门 |
+
+上述IF标识是原任务中的交接合同键，**不是新任务、计划或里程碑**。981/SOURCE可以先对最小CPU模块/引用/字段/原源子面独立复核并phase fold；不能据其把完整SOURCE、LANGUAGE或981勾完。980同理只交DIALECT字段子面，不提前关闭整个DIALECT/980。各IF只消费979已交基础与实际所用的已交语言能力；不把969/SESSION、978完整SDK、980/PARITY、981整包、985/A或B游戏作为这些CPU交接的新增前置。若实际能力缺失，生产owner在原I任务记录精确接口和修订，不回退旧链或改成等待979整包。
+
+**交接准入。** 每件须绑定repo/已落主SHA、生产Plan revision与子面范围、普通源/模块/资源闭包hash、grammar/domain/compat、模块/定义身份与原文件span、Checked消费接口、后端/工具链/能力与预算、永久case/独立oracle及失败恢复结果。普通清单、分支tip、手写HIR或“等owner完成”不合格。允许复用输入/身份未变的有效证据；改变本次新增集成的证据不能沿用r10单模块PASS。979最后独立核全部AC/V，缺任一IF或原required项仍保持executing，不得删项、改NA、仅签A表归档。
+
+**任务级无环顺序。** `960已交 + 979已交基础 → 981/SOURCE的IF-981-MODULE/REF/FIELDS/ORIGINAL`；旁线`979已交基础 → 980/DIALECT的IF-980-FIELDS`；两线正式交付 → `979 T-03/T-08 → T-04 → T-05 → T-06/T-07`。980/981其他任务仍按其实际宿主/库/SDK接口推进；其完整产品PASS不是979回验的门。979保留通用接面维护责任，生产者集成变更分别在980/981原任务实施，Core不反依UI crate，不产生第二套parser/verify/FFI/发射器。
 
 ### M2阶段执行合同（当前优先）
 
@@ -100,7 +125,7 @@ touched_goals: [GOAL-002]
 |---|---|
 | M2-A | T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08, T-H0-I, T-H0-V, T-H0-R, T-H0-D |
 
-本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。frontmatter仍是整Plan最终依赖并集，局部A按本节/各批最小接口前置启动，不把985全Plan或B消费者整包置为A前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
+本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。本包frontmatter为通用能力生产依赖，最终回验另核本节具名IF；不把980/981/985整包置为生产前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
 
 跨阶段同Plan按已有phase fold规约先独立复核并正式合入A切片，记录repo/SHA/接口与实际测试来源后供985/A消费；同一唯一tree保留/resync至B完成，不能用分支reviewed/WIP当D。公共文件单写；最终归档/清树仍按全包原门执行。本轮未做fold/merge或建树。
 
@@ -122,7 +147,7 @@ touched_goals: [GOAL-002]
 
 交接件须包含repo/commit、Plan revision、领域包/grammar版本、支持构造组合、投影及Checked消费API、source map、后端/runtime身份、正反例与资源边界。不得只交AST codec或手写HIR夹具；Node的model/msg/on行为也必须经同一verify，不能只检查场景字段。
 
-顺序：T-01后，T-02的通用包/投影与T-08的相容/恢复用例可在不相交文件上并行；T-03等所需投影就绪后分AV、A2R两腿推进；T-04汇总所有work结果，之后T-05→T-06→T-07串行。960的适用接口可支持基础准备，泛型/CT组合须等963/966相应接口；整个979交付仍核frontmatter依赖并集。979不依赖980/981完工、AGE整阶段、985认证或987退役；979用自己的最小消费者闭合，981只按稳定合同准备，最终产品证据须消费已正式合入的979来源，不能拿分支tip当交付。
+顺序：已交T-02/H0/组件基础先供980/981的§5具名IF生产；T-03/T-08在相应IF正式交付后补齐全部原V，T-04汇总后T-05→T-06→T-07。960/963/966基础已归档；仍核实际接口身份。979不等980/981整包完工、AGE整阶段、985认证或987退役，但保留§5具体输入和自身最小消费者完整回验；不能拿分支tip当交付。
 
 阶段接口边界：合并AGE M2的G2/G3图形服务可与本包并行，使用版本化typed领域描述/资源需求，新增能力声明不复制Node语义或旧生成器。具体增强验收归UI058/AG023及后续冻结能力合同；979不反向等这些计划。新增grammar/类型需求由领域owner交本包或实际语言owner确认，不能仅因“AX可转Rust”假定所有图形/运行接口已支持。AX为A2X目标族，本轮必验的编译发行目标仍是A2R，不自动扩成所有目标/平台。
 
@@ -278,7 +303,14 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 | SD-HELLO | add | docs/specs/ace-migration/m2-schema.md（沿原owner） | 未有早期交接→本切片实际已验接口/源/拒绝及剩余完整义务；交付后沉淀 | 最小Hello不冒全包完成 | AC-H0/AC-H0-REVIEW/AC-H0-LAND |
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-schema.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
 | SD-NODE-NAME | add | `docs/specs/ace-migration/m2-schema.md`（拟新增；真实交付后） | 未交领域前门→AGE Schema/NodeName槽、上下文激活/身份、Node首源及widget显式兼容同链 | 本轮用户架构纠正 | AC-H0/AC-NODE-NAME |
+| SD-HANDOFF | modify | `docs/specs/ace-migration/m2-schema.md`（仅真实交付后） | 编号等待→已交基础接口、981模块/引用/原源及980/981清单正式输入和979完整组合验收的身份/范围 | 消除循环且不减验收 | AC-HANDOFF、AC-02/03/04/06/07/08 |
 ## 6. 测试设计
+
+### r11交接验证增量（拟执行，不覆盖既有结果）
+
+V-09/V-10/V-11/V-DETAIL-01的原输入、范围、独立oracle和后端义务全部保留；按§5 IF补齐其未验部分，永久case由980/981原I任务创建并由979 T-03/T-08消费。多模块必须包含文件A的公共helper与文件B的AGE Node，改变A函数体使两个后端结果实际改变；私有helper、缺模块、图环分别走正确阶段的原文件诊断，拒绝时无运行/新工件，修复同入口成功。两实例各2/1次Inc后各4次Life.Tick（每次+1）的独立状态应为6/5（helper初值0），逐实例文本与状态一致；同时保原N矩阵，不能仅比较两端相等。该用例为拟输入，由981/SOURCE冻结合法Schema拼写和现有observer实际返回形态，不强行沿用单模块驱动的内部编码。
+
+IF-981-REF用同类型的合法引用、同类型但未声明引用、同类型且已声明却不可见引用隔离错误原因；错误必须是引用/可见性诊断而非偶然类型错，带源文件/节点/字段span，合法邻例两端真跑。V-11在实际清单中删除一条必需映射后检查红、恢复后绿；g01原四图形按原源闭包取值，不能手写期望结构喂消费者。979 T-04核这些真实生产接口与正式输入；T-05按r11重核全部AC/V，原r10增量review仅沿已验面复用。
 
 ### 阶段适用验证（新增合同、未执行）
 
@@ -287,7 +319,7 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 | V-PHASE | AC-PHASE | T-04及本包原固定组/真实owner入口，按§5阶段表选取 | 该阶段原required义务与新check逐行可追溯；普通源/独立expected、适用后端/平台/错误/资源真实执行；A仅RG指定产品，B全范围。删行/错producer/零选择/缺工具不能过；B-pending不改NA。 |
 
 
-以下全部未执行；T-01落实具体源码与调用符号，T-02/03创建永久fixture，T-04闭合。原源与独立expected/现行语义裁定为oracle；旧引擎仅作为有版本的调查对照，不能以四端相等掩盖共同bug。
+以下为完整验收合同，已验部分见§8–9对应收据；本轮r11新增交接尚未执行。T-01落实具体源码与调用符号，T-02/03创建永久fixture，T-04闭合。原源与独立expected/现行语义裁定为oracle；旧引擎仅作为有版本的调查对照，不能以四端相等掩盖共同bug。
 
 | Case ID | AC/invariant | 输入/区分性断言 | 真实入口与证据 | owner/边界 |
 |---|---|---|---|---|
@@ -345,6 +377,7 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 | AC-06 | work | Schema组合语言与依赖闭合的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
 | AC-07 | work | 普通Node工程直接经共同前门/唯一verify，最小领域描述与行为真实到AV和A2R编译运行；值/事件/实例隔离一致且分别满足独立oracle；非法近邻报原span，无旧源码生成/重解析或后端语义分叉 | T-01/02/03/08实施，T-04核V-09/10及结构依赖闭包；981接收版本化接面，完整游戏另验 |
 | AC-08 | work | 传统AutoUI与完整AGE语言分母有来源/投影/检查/接收owner的双向映射，通用接面不硬编码三种view或少量UI字段，遗漏/坏投影具名拒绝；完整产品支持交980/981逐项关闭 | T-01/02/08，T-04核V-11；不以最小双方言PASS冒完整语言PASS |
+| AC-HANDOFF | work | §5五个IF具名输入正式交付且979自身完成V-09/10/11/V-DETAIL-01全部未闭部分；960不重开，980/981不反等979归档，缺项不删/不改NA，原AC/V全部保留 | T-03/T-08/T-04与§6交接反控；T-05独立核全量并绑定r11 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-H0 | work | AGE node/view/text及普通函数文本表达式通过Schema驱动的唯一前门，受检领域描述/原span/错误与恢复正确 | T-H0-I/V；V-H0-* |
 | AC-H0-REVIEW | review | 独立核H0前门/行为verify/拒绝/版本和CPU consumer，无旧解析或硬编码样本 | T-H0-R |
@@ -379,13 +412,21 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 - [x] **T-02｜M2-A｜owner_stage: work｜AC-02/07**：实现通用领域包/CST/typed投影与唯一verify接面；领域owner通过同一接口接规范Node源码及同Schema的旧widget兼容别名正反例，保原span，不另造语义分析或旧源码生成链。
   - [✅ 已完成 2026-11-15｜代码 `5238db37b`] **通用接面**：新增 `ace_core::source::domain`（`DomainPackage{id, version, profile, hidden_prefix, compat: Option<CompatRule>, project: fn(&FrontOk,&str)}`、未受信 `DomainCandidate{structure: Vec<DomainItem>, behaviors, requirements}`、`DomainCompilation{id, version, grammar_id, compat, description: Vec<DomainRow>, checked, input_hash, atom_text}`），共享驱动 `compile_domain` 负责 领域前门→包投影→兼容闸→隐藏名冲突→行为脱糖（普通 `Str` 函数）→**唯一 text-record verify**→从 Checked HIR 读回（文本种类+def id）→通用行树；非领域 profile 由驱动具名拒绝 `source.domain-package`（不再 debug 断言）。**AGE 迁移**：`AGE_H0_PACKAGE` 成为经同一驱动的第一个包（`project_age_h0` 只做 AGE 候选→通用行/行为映射），`compile_age_h0` 与 `AgeH0Description` 公开面不变（22 个 H0 用例全绿）。**owner 可扩展性证明**：测试内第二包 `test.pair/v1`（同 grammar，自有 `pair`/`card` 结构、自有兼容码 `test.pair.compat`、自有隐藏前缀 `__pair_val_`）仅经公开 API 注册即被同一驱动消费；兼容正反例（`widget` 关闭=包名码@声明头 span；开启=同结构+行标记 compat）、包级隐藏前缀冲突（AGE 前缀在 pair 包内是普通名）、行为检查仍归共享 verify（`1+2`→`source.age.text-type`@原 span、未定义函数→`source.age.leaf-expr`+共享消息）。**未另造**语义分析器/发射器/解析器。证据：core conformance **488/488**（27 个 `plan979`：22 H0+5 package）、av p979 7/7、syntax-grammar p979 13/13、`cargo t ace-syntax ace-source ace-av` 全 PASS（`gate-t02.log`）。规范沉积留 T-06 全量合并（本节为 LLM 内部接缝，H0 spec 的 `compile_age_h0` 公开面未变）。T-08 仍负责双向表逐字段覆盖/五种呈现槽与恢复用例；T-03 负责 AV/A2R 两腿消费。
 
-- [ ] **T-03｜M2-A｜owner_stage: work｜AC-02/03/07**：消费T-02/08已就绪接面，AV与新A2R两腿可并行；后者必须真实rustc编译运行；核领域描述、状态/事件、装配/权限/增量/失败恢复，交981版本化接口，不以模型替运行。
+- [ ] **T-03｜M2-A｜owner_stage: work｜AC-02/03/07/AC-HANDOFF**：消费已交T-02/08及§5 IF-981-MODULE/REF/ORIGINAL正式接口，AV与新A2R两腿真实运行并补齐V-09/10/V-DETAIL-01；后者须真实rustc。核原领域描述/状态事件/装配/权限/增量/恢复，保全部独立oracle，交回版本化验收结论；不等待960重开或980/981整包，不以模型替运行。
   - [🚧 进行中 2026-11-15｜双后端文本/表达式面已实跑，代码 `982c60a88`] **已交付**：**同一份 AGE 源**（`node`+文本叶+普通 helper+`fn main() int`）两腿真实消费——AV 腿经 `observe_age_h0` 取叶值 `few`（`crates/av` 新例）；A2R 腿用**同一 `CheckedModule`** 经 `SemanticView::from_checked`→`lower_program("main")`→`assemble_record_text_file_set`→写 fileset→**真实 rustc** 编译→运行→断言 `value:4`（`len("many")`），无手写 Rust、无 emit 冒运行、无第二套语义（`crates/a2x-worker/tests/cases/plan979_age_a2r.rs`）。失败/恢复：把叶换成 `1+2` 时前门在共享检查处拒（`source.age.text-type` @原 span）且**不产出任何 fileset 工件**，修复后同入口恢复正常。断言权威：双后端值/失败均由父侧独立断言，不用 trace 自报。证据：`cargo t ace-a2x ace-av` 两组 **PASS**（`gate-t03.log` `a07b00c2b52e6096`）、av p979 8/8、a2x-worker plan979 2/2。②**双后端矩阵 + 恢复/增量**（代码 `4653eef04`）：三个源（字面量叶/函数叶/helper 算术）在 AV 侧观察值与 A2R 侧真实运行值成对断言（`Hello`↔5、`few`↔4、`ab`↔8，A2R 值为 `len`/算术的独立 oracle）；好→坏→好 循环保持观察值与身份稳定、坏源在原表达式 span 处具名拒（`source.age.text-type`）——领域驱动无跨调用状态。`cargo t ace-a2x ace-av` 双组 PASS（`gate-t03b.log` `a9fc22977e7d9d4f`）。**未闭**：V-09 的 `model`/`msg`/`on`/`Life.Tick` 与"两实例事件 2:1、N tick 独立推进"需要**组件状态/事件运行时**（含实例隔离、typed view 状态绑定）——该运行时是 981 产品层与语言槽的联合实现，须在 979 的领域包/共享 verify 之上建模；V-10 的坏事件/未声明引用、V-11 的字段级覆盖随之。当前未以"文本双后端"冒充 V-09 全量。
+  - [🔶 2026-11-16｜981/SOURCE 四命令独立回验：V-09④/V-10/V-DETAIL-01 PASS，V-11 部分] **落主前回验**（绑定 981 `plan-981-dev` @ `291f2b5cb`，工作树 clean；四命令原文见 981 §6.7）：`ace-core plan981` **142/142**、`ace-av p981_age_package` **3/3**、`ace-a2x-worker p981_age_package` **2/2（真实 rustc）**、`ace-syntax-grammar` **45/45**，退出码全 0；逐文件 case 数与 §6.7 一致（9/7/12/8/15/8/6=142）。**V-09④ PASS**：两模块 helper+main 同前门；AV 两实例 2:1 事件+各 4 Tick ⇒ **6/5**、typed view `six`/`other`，helper 0→10 ⇒ **16/15**；A2R 同一 `CheckedModule` 经真实 rustc ⇒ **6**（改 helper ⇒ **16**）；模块换序身份不变/环具名拒/`symbols_by_module` 均验证。边界：A2R 入口只取实例 0 值，实例 1 以状态符号存在性断言。**V-10 PASS**：`ref-undeclared`/`ref-invisible`/`ref-not-a-node`/`ref-ambiguous` 四类具名互斥 + 原模块 span + 修复后恢复；拒绝在编译期（无 `CheckedModule` ⇒ 结构上零 AV/A2R/新工件）。**V-DETAIL-01 PASS**：三文件原源闭包 hash 与 age-examples 原件逐字节一致（`9b809a1c6d99985b`/`6f993775477ebc39`/`dbdc5243ec590dab`）；CPU 行四图形坐标/尺寸/颜色 alpha/声明序/黄 quad `visible:false` 逐值，坏 kind 落原 token span，改资源值消费值变、恢复。收据 `plan-artifacts/plan-979/v981-source-handoff.md` `43d38ff2cca243c0`。
+  - [✅ 2026-11-16｜981 轮 51 修复后复核：四命令复跑 + V-11 AGE 半 PASS] **复核 `f94a29293`**（树 clean；相对 `291f2b5cb` 仅 5 文件 +237/−10，**grammar 零改动**——`age-package` id 与 `291f2b5cb` 一致）：`plan981` **146/146**（0.29s；age_fields 10、three_views 8）、AV **3/3**、A2R **2/2（真实 rustc）**、`ace-syntax-grammar` **45/45**；`--test conformance` 全量 **664/664**（4.06s）。**上轮三条缺口均已闭**：①`collect_facts` 改为按出口产生 `view`/`view-2d`/`view-3d`（纯场景 node 不再冒充 UI view，也不因无文本叶缺事实）；②描述面新增 `AgePackageComponent.exit: AgeViewExit`（按**后缀 token 字节**判定，未知后缀具名拒 `source.age.view-suffix`），`AGE_CONSTRUCTS` 增至 **12 行**（含 `view-2d`/`view-3d`），分母冻结与 12 行逐行删反控同步；③AGE-L04/AG-A01..09 改为 `AGE_CONSTRUCTS_OUT_OF_SCOPE` 显式登记真实 owner（L04→981/LANGUAGE+966；AG-A01..09→980+981/LANGUAGE），`p981_fields_requirement_split_is_exhaustive` 机械核“表内/范围外”二分且无交集。979 独立审计 `v981b-fields-audit.ps1`（`6b027ec5161d4085`）**12/12 PASS**。环境边界：`cargo test -p ace-core`（lib 80）首跑 2 红 = `link` 两例**时延**断言（5.67s/6.64s 超 3s 门，并发构建负载），隔离重跑 16/16 绿、conformance **664/664** 绿——按环境归因记录，非代码失败。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06/07/08**：提供普通语言+领域组合相容、包冲突/版本、畸形推进性/无损来源及完整构造映射，创建V-08/09/10/11；不塞完整CAP求解。投影用正式接面，传统UI/完整Node产品运行归980/981；T-04统一汇总，不反向等待产品终验。
+- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06/07/08/AC-HANDOFF**：保普通语言+领域组合、冲突/版本、畸形推进性/来源及全部V-08/09/10/11；按§5正式IF补实例引用、UI完整字段及AGE完整构造覆盖与删除映射反控。981/980原I任务生产接口，979实际核通用准入/完整性；不塞CAP、不等待产品整包，T-04统一汇总。
   - [🚧 进行中 2026-11-15｜V-08 已闭，代码 `f3c1526fe`] **已交付**：①**组合相容**——同源含普通函数+新 `node`+旧 `widget` 按配置分别准入（compat 开=2 个候选、legacy 头 span 精确；关=旧头在自身头 span 具名拒，纯 node 源不受连坐）；②**包冲突/版本/推进性**——未受信投影自检：越界/重复绑定、空角色、过深/过大结构 → `source.domain-candidate`（不死循环、不静默丢）；③**无关语义不变**——`fn node()`/`fn widget()` 的普通模块经领域前门与 text-record 前门 `atom_text`+`input_hash` 全等；④**热换失效**——`DomainIdentity{id, version, grammar_id}` + `same_evidence`：包版本/包切换→不等（同一 grammar 也不同），同输入→相等；⑤**完整构造映射机制**——通用 `mapping_complete`（必需 role 清单）在删除 `view` 行的坏近邻上返回 `Err(["view"])`，合法近邻 `Ok`；⑥覆盖核对表落 `plan-artifacts/plan-979/t08-coverage.md`（sha256/16 `66e9a9a76415de15`）。证据：core conformance **493/493**（p979 32=22 H0+5 package+5 combined）、fmt clean、`t08-core-full.log` `c6dedb3f5d5434a2`。**未闭（本任务保持 open）**：V-09/10/11 永久 fixture（双实例 Counter、坏事件/未声明引用、AV+A2R 真实运行）依赖**完整 Node 投影**（model/msg/on、五呈现、`Life.*`）——该投影与 981 协同归 T-03；传统 UI 字段级 fixture 归 980 owner 经同一接面接入（979 不实现产品语义）。投影全程使用 T-02 正式接面，未另造检查器/发射器。
+  - [🔶 2026-11-16｜V-11 UI 字段半已核，AGE 半待 981] **IF-980-FIELDS 消费核验**（不新增代码）：980/DIALECT 整批落主（lang `3de0bea0b`（DIALECT 批）与 `46f4ac0ec`（字段子面）、ui `f864f33b`；规范 `docs/specs/ace-migration/m2-autoui.md`）后**独立核，不采信 980 摘要**：清单 `ui.widget-decl/v1` **115 行**（16 required / 91 optional / 8 conditional），ID 唯一；`P980_CONSTRUCTS` **115 键**与行集**双向精确相等**；从 `ast.rs::WidgetDecl` 独立解析 **19 字段**并逐一在清单行锚定（19/19，无遗漏）；16 条必需行全部 002 锚定、条件行 8/8 带可核理由；owner 集合 `{980/DIALECT, 980/STATE, 980/PARITY, 980/WEB, 980/NATIVE}`；删除反控目标 `widget.msg` / `widget.design.entry` 均为必需行。控制实跑：lang `plan980` **13/13**（含删清单行 → unknown 红、换映射 → missing+unknown 可区分、恢复绿），ui dialect `p980` **3/3**（含删映射项 `ui.field-unknown`、清单↔映射双向对账 + 删行红），ui compiler `ui_domain_validation` **5/5**（含 `p980_required_fields_handoff` / `p980_required_field_mapping_controls`）。979 独立审计脚本 `v11-ui-audit.ps1`（`9aeca4081043408e`）**19 项检查全 PASS**。判定：**V-11 的 UI 字段半 = 已核**；**V-11 仍不闭**——AGE 半需 IF-981-FIELDS（981 交付仅在 `plan-981-dev`，未 phase fold 落主，按 §5 交接准入不合格）；4 个具名拒绝槽位（style/setup/actions/widget 级 `use{}`）按 980 规范计“具名拒绝即交付面”，不冒完整产品支持。收据：`plan-artifacts/plan-979/v11-ui-handoff.md` `447fa9780e8e95e9`。
+  - [🔶 2026-11-16｜V-11 AGE 半**部分**：10 行清单三条缺口，V-11 不闭] **IF-981-FIELDS 回验**（绑定 `291f2b5cb`）：`AGE_CONSTRUCTS`（`age_package.rs:1158`）10 行 = node/model/model.init/on/on.lifecycle/view/view.text/view.node-ref/view.scene/view.scene.resource，分母冻结 + 逐行删投影反控 8 例全绿；但：①`view` 事实仅在**有文本叶**时产生（`age_package.rs:1287`），纯 `view-2d`/`view-3d` node 永不满足 `view`；②`view-2d`/`view-3d` 出口在语法面存在（`auto-source.at:412/413`、`464/472`，`plan981_model3d` 实跑）但清单**无行**，删除 3D 出口不被抓；③AGE-L04 与 AG-A01..09 无行（requirement 仅 L01/02/03/05）。故“完整 AGE 构造分母”未达（清单 requirement 与 IF-981-FIELDS 合同点名 L01..05+AG-A01..09 不符），**V-11 保持 open**；两条修法见回验收据 §5（补出口行+事实泛化 / 用户裁定范围）。
+  - [✅ 2026-11-16｜V-11 **AGE 半复核通过**（取代上条“部分”状态）] 按 `f94a29293` 复核：清单 **12 行** = node/model/model.init/on/on.lifecycle/view/view-2d/view-3d/view.text/view.node-ref/view.scene/view.scene.resource，requirement = L01/L02/L03/L05；L04/AG-A 在 `AGE_CONSTRUCTS_OUT_OF_SCOPE` 带 owner；删 12 行任一投影均红、删清单行由冻结键集红、合法近邻绿；未知出口 `view-2x` 具名拒 `source.age.view-suffix`。**V-11 = PASS（带具名边界）**：该表承诺的是 `age-package` 裁剪**可表达**的构造；L04/AG-A 的完整投影仍归 981/LANGUAGE(+980)，记为 AC-08 残留范围而非 979 缺口。待 981 phase fold 后按落主 SHA 复核关闭。
 
-- [ ] **T-04｜M2-A｜owner_stage: work｜AC-01..03/06/07/08**：汇总T-02/03/08，运行§6全部V行及按修改面冻结的职责/必要消费者并集，记录独立oracle、来源、子终态与条件排除；缺最小双后端或完整分母交接证据不得pass。
+- [ ] **T-04｜M2-A｜owner_stage: work｜AC-01..03/06/07/08/AC-HANDOFF**：汇总T-02/03/08与§5五个正式IF，运行§6全部原V行及修改面职责/必要消费者并集；逐项核独立oracle、模块/原span/源身份、子终态、条件排除及无循环来源。缺最小双后端、跨模块、实例引用、完整分母或g01原源CPU证据不得pass。
+  - [🔶 2026-11-16｜首个 IF 汇总（V-11 UI 字段半）] **T-04 增量**：IF-980-FIELDS 已按 r11 §5 交接准入逐项核（落主 SHA、r10 子面范围、清单版本与锚定源 `04937c35`、span/owner、消费接口、永久正反例与删行反控、边界声明），V-11 的 UI 字段半记入已验面；V-11 全行与 V-09④/V-10/V-DETAIL-01 仍缺 IF-981-*（未落主），故 T-04 不汇总、不判 pass，979 保持 `executing`。
+  - [🔶 2026-11-16｜IF-981 回验后仍**不汇总**] **T-04 状态**：V-09④/V-10/V-DETAIL-01 已独立回验 PASS（落主前、绑定 `291f2b5cb`），但 V-11 AGE 半有缺口（见 T-08）且 981 未 phase fold 落主；故 **AC-HANDOFF 不关闭**、T-04 不 pass，979 保持 `executing`。落主后须按落主 SHA 复核（ff-only 或等价改写需 range-diff 证明）再汇总。
+  - [🔶 2026-11-16｜四行全部通过（落主前），AC-HANDOFF 待落主关闭] **T-04 状态**：V-09④/V-10/V-11/V-DETAIL-01 在 `f94a29293` 上均通过（V-11 带 L04/AG-A 范围外登记）；981 仍未 phase fold，按 §5 不得以分支 tip 当正式输入，故 **AC-HANDOFF 不关闭、T-04 不 pass**。落主后须按落主 SHA 复核（ff-only/等价改写需 range-diff 证明）再汇总 → T-05。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -406,6 +447,10 @@ T-02依赖T-01；T-08依赖T-01和相应T-02接口；T-03按已就绪T-02/08接�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-15 r11规划静态预检：979/980/981原81任务的ID/顺序/勾选及状态/进度保持，原52项AC、66项V和22项SD均保留，各Plan仅增1项AC-HANDOFF及1项SD-HANDOFF；三份0–10章节/围栏、实际承载任务与新增7个本地链接/锚点核对通过，具名IF交接图静态拓扑无环。960归档文件及.next-id内容hash未变。只证明合同结构/交接边界，不是新接口、CPU/AV/A2R/UI/GPU实跑或独立实现review PASS；未创建任何产品用例/产物或实施树。
+
+2026-11-15 stage: new/revision | PLAN-979 r11 | outcome: 规划合同已修订，非实现/产品review PASS。按本轮授权把原960组合缺口交981/SOURCE，980/981原任务生产具名接口，979保留全部原AC/V与自身组合回验；不以A切片归档，不新增整包反向依赖。原任务/勾选/状态/计数保持，旧revision的真实已验部分可按身份复用，但不能证明本次新增交接；未来独立review须绑定r11及实现SHA。仍只规划，next=由原owner获得后续实施指令后按§5–8执行；本记录不恢复任何目标/实施树或解除既有暂停。
 
 2026-11-12 stage:new / PLAN-979 r9：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原12任务/全部AC与V/依赖/阶段/预算和drafting 0/12；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -459,6 +504,8 @@ stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 4 | from: review |
 stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 5 | from: review | to: merge | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-979/auto-lang | commit: 71472d975 | next: merge
 
 ## 10. 待澄清事项
+
+本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
 
 2026-11-15 T-H0-I 规划文字与现况差异（已按"保持普通Auto规则"读法实施，未改公共面）：§5 r10 写"普通表达式/函数体中的 `let view = 1` … 保持普通Auto规则"，但当前 Auto 源面 `view` 已是保留字（auto-source.at 的 `r-view`，927 七面未消费的保留字先例），普通 profile 同样拒绝 `let view = 1`。为使 AGE 不改变既有公共接受面，本切片保持该保留字不变（未授权扩大改动；解除保留字属公共源码面承诺变更，需用户显式裁定），槽位声明改用 `r-view` token；V-H0-POSITION 的"AGE 开/关同值同型"证据改为：普通模块经 AGE 前门与 plain text-record 前门产出逐字节相同的共享 Atom 文本，且 `node`/`text`/`widget` 在两种面里都是普通标识符。若用户希望 `view` 在 AGE 面成为普通绑定（即解除保留字），需显式裁定并修订 AC-NODE-NAME 措辞。
 
@@ -588,3 +635,9 @@ stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 46 | from: work | 
 2026-11-15 stage: review / **3c 复审 needs_fix 的根因修复：文档修正此前留在主检出未提交** | plan_id: PLAN-979 | plan_revision: 10 | finding: 复审绑定 75cd2da39 指出 N1 的台账行、规范去重与零 node 范围**并未进入任何提交**（只存在于主检出的未提交改动），且 a2x 测试有未用 import——收据 89dace144 因此过度声明 | fix: 我在主检出的那些改动已保存为 `pending-doc-edits.diff` 并从主检出撤回；**改在 plan-979-dev 上重做并提交**：D-979 的 F11 行改为「程序项解析一次；投影的 CST 解析是独立一遍」（含 N1 更正标注）、规范只保留**一处** `component-duplicate`（合并重复字段说明）、零 node 接受范围限定为「可解析但无 `node` 声明」（空源仍报 `source.syntax`）、a2x 测试去掉未用 import；rebased 后 **ff 落主** = `ecd3c1845` | verification: master @ecd3c1845 —— core p979 57/57、av 26/26、a2x 7/7；检查器重绑该提交：46 声明 / 90 实测 / 0 缺失、计数 57/26/7 一致；`denominator.md` `8a6be41e7ce3cf7a` | process_lesson: 规范/台账同类文档也必须经 worktree 分支提交再 fold，不得直接改主检出（本轮已纠正）| remaining: 待 3d 确认 + B 表四项裁定 | blockers: none | next_responsible_role: review
 2026-11-15 stage: review / **T-05 增量复审 pass（绑定 a6a72af0f）** | plan_id: PLAN-979 | plan_revision: 10 | verdict: **pass** —— 复审在 a6a72af0f 逐项核销 N1/N4/N5 与三个 P3（台账 F11 行、规范单条 component-duplicate、零 node 范围、a2x 未用 import），并确认 master 折叠态**已复审**（本增量）；核心/av/a2x p979 实测 57/26/7 | fixes_from_residuals: ①检查器新增**绑定断言**（读 `denominator.md` 的绑定 sha；HEAD 非该提交时必须证明是**仅文档**后代，否则 exit 1）——本轮实测输出 `OK: HEAD a6a72af0f… is a docs-only descendant of bound ecd3c1845`；②标题由「完整分母对账」改为「V 行分母对账」（46/90 具名，余下仅计数，避免"完整"过度声明）| artifacts: `denominator.md` `f91ab3ed4cb74595`、`check-denominator.ps1` `44254f3a4dd5e929`（三项断言全绿）| plan_checklist: T-05 仍**未勾**——复审通过的是**本增量**，T-05 口径是"全部 AC/V"复核，待 B 表四项关闭；已在该行附进度说明 | remaining: 跨 plan 四项（V-09④/V-10 跨实例/V-11/V-DETAIL-01）+ T-06/T-07；收尾包 `closeout-package.md` 就绪待裁定 | blockers: none | next_responsible_role: user（B 表裁定）/ work
 2026-11-15 stage: review / **用户裁定：等待 960/980/981 交付后由 979 组合收口** | plan_id: PLAN-979 | plan_revision: 10 | ruling: 用户选择「等待 960/980/981」——B 表四项（V-09④ 多模块容器→960、V-10 跨实例状态引用→981、V-11 产品字段清单→980、V-DETAIL-01 原产品图形→980/981）**不由 979 自行实现**，也不授权以 A 表交付收档；979 保持 `executing`，待各 owner 交付后由 979 组合并复核再走 T-06/T-07 | implication: 计划目标「完成」需跨 plan 依赖交付；本会话不自行缩范围、不把 A 表当作整包交付 | state: A 切片已 fold 且经复审 pass（a6a72af0f；core 57/av 26/a2x 7；规范 §6 已沉淀；分母件含绑定断言）；B 表四项在 D-979 具名（owner + 关闭条件），状态=等待依赖 | goal_policy: 同一外部依赖条件已连续多轮（≈27→42）且经用户确认等待，故 goal 置 blocked 并记录具体条件，而非继续消耗轮次 | next_responsible_role: 960/980/981 owner（交付后回 979 work）
+
+2026-11-16 stage: work / T-08 **V-11 UI 字段半**（IF-980-FIELDS 消费核验）+ T-04 增量 | plan_id: PLAN-979 | plan_revision: 11 | outcome: partial（子面 pass；V-11 未闭，T-08/T-04 保持 open）| worktree: D:/autostack/.wt/lang-979/auto-lang @ `c19102e40`（resync 后 clean；本切片无代码改动）| handoff_identity: auto-lang master `3de0bea0b`（DIALECT 批）+ `46f4ac0ec`（字段子面）、auto-ui master `f864f33b`；均为落主提交，非分支 tip | manifest: `ui.widget-decl/v1` **115 行**（16 required / 91 optional / 8 conditional），`P980_CONSTRUCTS` **115 键**双向相等，`WidgetDecl` **19 字段**全锚定，16 必需行均 002 锚定，条件行 8/8 带可核理由 | controls_run: lang `plan980` **13/13**（0.06s）、ui dialect `p980` **3/3**（构建 1m27s）、ui compiler `ui_domain_validation` **5/5**（构建 1m11s，含 handoff/mapping controls）| independent_audit: `v11-ui-audit.ps1` `9aeca4081043408e` → **19/19 PASS**（`v11-ui-audit.txt` `596a3aaf2b3b1c9f`）| judgment: V-11 UI 字段半=已核（清单可表达、坏字段/缺映射具名红、删必需映射/删清单行红且恢复绿）；V-11 未闭（AGE 半 IF-981-FIELDS 未落主）；4 槽位具名拒绝计交付面 | remaining: IF-981-MODULE/REF/FIELDS/ORIGINAL（`plan-981-dev` 领先 53 提交、未 phase fold 落主）→ V-09④/V-10/V-11-AGE/V-DETAIL-01 → T-04 汇总 → T-05 | blockers: 981 IF 未落主，按 §5 不得以分支 tip 当正式输入 | raw_evidence: D:/autostack/plan-artifacts/plan-979/{v11-ui-handoff.md `447fa9780e8e95e9`, v11-ui-audit.ps1, v11-ui-audit.txt} | note: 主检出该文件的 r11 修订原为先前会话未提交 WIP，本次仅追加本条并一并提交（r11 正文未改）| next_responsible_role: work（等 981 落主后组合收口）
+
+2026-11-16 stage: work / T-03/T-08 **981/SOURCE 独立回验**（V-09④/V-10/V-11/V-DETAIL-01）| plan_id: PLAN-979 | plan_revision: 11 | outcome: partial（V-09④/V-10/V-DETAIL-01 pass；V-11 AGE 半未闭）| verify_target: PLAN-981 B-SOURCE-I/V/R @ `plan-981-dev` `291f2b5cb`（工作树 clean；**未落主**）| commands: `cargo test -p ace-core --test conformance plan981`=**142/142**（0.29s）、`-p ace-av ... p981_age_package`=**3/3**（0.03s）、`-p ace-a2x-worker ... p981_age_package`=**2/2**（0.68s，真实 rustc）、`-p ace-syntax-grammar`=**45/45**（0.37s）；全部 exit 0 | identity: g01 `main.at`/`resources.at`/`shapes.at` 与 age-examples 原件逐字节一致（`9b809a1c6d99985b`/`6f993775477ebc39`/`dbdc5243ec590dab`）；逐文件 case 数 9/7/12/8/15/8/6=142 | rows: **V-09④ PASS**（AV 6/5、helper→16/15、A2R 6/16；边界：A2R 仅实例 0 值）、**V-10 PASS**（四类引用诊断互斥 + 原模块 span + 恢复；拒绝在编译期）、**V-DETAIL-01 PASS**（四图形 CPU 值/颜色 alpha/声明序/`visible:false`/坏 kind 原 token/资源改值变/恢复）、**V-11 PARTIAL**（UI 半已核；AGE 10 行清单覆盖 L01/02/03/05 但：①`view` 仅文本叶产生 `age_package.rs:1287`；②`view-2d`/`view-3d` 出口无行，而语法 `auto-source.at:412/413`、`464/472` 有且 `plan981_model3d` 实跑；③AGE-L04/AG-A01..09 无行）| verdict: **AC-HANDOFF 不关闭**（V-11 未闭 + 981 未落主；§5 要求落主 SHA）；979 保持 `executing`，T-03/T-08/T-04 均 open | artifacts: D:/autostack/plan-artifacts/plan-979/{v981-source-handoff.md `43d38ff2cca243c0`, v981-core.log `91e4161bc0fc94b0`, v981-av.log `1126d130bf4a0665`, v981-a2x.log `6ce45b568141c7d3`, v981-syntax.log `2bf3e7605d7c9428`} | next: 981 补 `view` 出口行+事实泛化（或用户裁定 V-11 AGE 范围）→ 981 phase fold → 979 按落主 SHA 复核后 T-04 汇总/T-05
+
+2026-11-16 stage: work / T-03/T-08 **981 轮 51 修复后复核**（V-11 AGE 半 PASS；四行齐，落主前）| plan_id: PLAN-979 | plan_revision: 11 | outcome: pass（预落主；AC-HANDOFF 仍待落主）| verify_target: PLAN-981 @ `plan-981-dev` **`f94a29293`**（树 clean；相对 `291f2b5cb` 仅 5 文件 +237/−10，grammar 零改动）| commands: `plan981` **146/146**（0.29s）、AV `p981_age_package` **3/3**、`a2x-worker p981_age_package` **2/2**（真实 rustc）、`ace-syntax-grammar` **45/45**；另 `--test conformance` 全量 **664/664**（4.06s）；逐文件 10/8/9/7/12/15/8/6=146 | gaps_closed: ①`collect_facts` 按出口产 `view`/`view-2d`/`view-3d`（纯场景不冒充 UI view）；②`AgePackageComponent.exit: AgeViewExit`（后缀字节判定；未知后缀 `source.age.view-suffix`）+ `AGE_CONSTRUCTS` **12 行**（含 view-2d/view-3d）+ 冻结键集与 12 行逐行删反控；③`AGE_CONSTRUCTS_OUT_OF_SCOPE` = {AGE-L04→981/LANGUAGE+966；AG-A01..09→980+981/LANGUAGE}，`p981_fields_requirement_split_is_exhaustive` 核表内/范围外二分不重叠 | independent_audit: `v981b-fields-audit.ps1` `6b027ec5161d4085` → **12/12 PASS**（12 行/键唯一/三个出口行/requirement L01/L02/L03/L05/owner 非空/范围外 2 项且无交集；`v981b-fields-audit.txt` `6079801f2d946d0c`）| env_boundary: `cargo test -p ace-core`（lib 80）首跑 2 红 = `link::tests::{containment_failure_is_controlled_rejection, collect_deadline_when_descendant_holds_pipe}` 时延断言（5.67s/6.64s 超 3s 门，并发构建负载）；隔离重跑 **16/16** 绿、conformance 664/664 绿——首次红/重放绿分列，按环境归因，不充代码通过 | verdict: **V-09④/V-10/V-11/V-DETAIL-01 四行均通过**（V-11 带 L04/AG-A 具名范围外登记=AC-08 残留）；**AC-HANDOFF 不关闭**（981 未落主，§5 要求落主 SHA）；979 保持 executing，T-03/T-08/T-04 待落主复核后关闭 | artifacts: D:/autostack/plan-artifacts/plan-979/{v981b-fields-audit.ps1, v981b-fields-audit.txt, v981b-core.log `e561f28a2431b31a`, v981b-av.log `28589e26418546be`, v981b-a2x.log `93fa52ebb183cc2c`, v981b-syntax.log `7d40a73bbd580eaf`, v981b-core-conformance.log `3a713c3e07fc7262`} | next: 981 phase fold 落主 → 979 按落主 SHA 复核（range-diff/树等同）→ 关闭 AC-HANDOFF → T-04 汇总 → T-05

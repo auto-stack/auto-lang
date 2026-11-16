@@ -4,6 +4,6 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-unified-source-929", include: [
-  "unified-source-syntax-929.case.ad",
+  "unified-source-syntax-929.document.case.ad",
 ] }
 ```

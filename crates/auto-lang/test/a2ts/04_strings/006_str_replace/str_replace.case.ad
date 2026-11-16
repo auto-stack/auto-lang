@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 04_strings/006_str_replace
+
+## Case: legacy-04-strings-006-str-replace
+id: "legacy.04_strings.006_str_replace"
+entry-mode: "program"
+
+### Auto
+path: "str_replace.at"
+final-newline: false
+```auto
+fn main() {
+    let s = "hello world"
+    let r = s.replace("world", "Auto")
+    print(r)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### str_replace.expected.ts
+```ts
+function main(): void {
+    const s: string = "hello world";
+    const r = s.replace("world", "Auto");
+    console.log(r);
+}
+
+main();
+```

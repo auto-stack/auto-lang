@@ -1,0 +1,34 @@
+# Legacy a2ts corpus: 14_modules/003_export_fn
+
+## Case: legacy-14-modules-003-export-fn
+id: "legacy.14_modules.003_export_fn"
+entry-mode: "program"
+
+### Auto
+path: "export_fn.at"
+final-newline: false
+```auto
+pub fn greet(name str) {
+    print(name)
+}
+
+fn main() {
+    greet("World")
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### export_fn.expected.ts
+```ts
+export function greet(name: string): void {
+    console.log(name);
+}
+
+function main(): void {
+    greet("World");
+}
+
+main();
+```

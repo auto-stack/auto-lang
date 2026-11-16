@@ -97,6 +97,35 @@ pub fn descriptors(m: &MirModule) -> Result<Vec<Descriptor>, MnError> {
                 text(&mut h, "bool");
                 (0, 0)
             }
+            // PLAN-972 (T-03): char/numeric scalars are immediate kind-0
+            // values (distinct fingerprints; same register/cell-word
+            // immediates as i32).
+            MirType::Char => {
+                text(&mut h, "char");
+                (0, 0)
+            }
+            // PLAN-972 (T-03): a closure value — the signature rides the
+            // fingerprint (params/result); the cell word holds the callee
+            // address when constructed.
+            MirType::Closure(sig) => {
+                text(&mut h, "closure");
+                h.update(&(sig.params.len() as u64).to_le_bytes());
+                for p in &sig.params {
+                    h.update(&result[*p as usize].fingerprint);
+                }
+                h.update(&result[sig.result as usize].fingerprint);
+                (0, sig.params.len() as u32)
+            }
+            MirType::I64
+            | MirType::U64
+            | MirType::I8
+            | MirType::U8
+            | MirType::U32
+            | MirType::F32
+            | MirType::F64 => {
+                text(&mut h, "numeric-immediate");
+                (0, 0)
+            }
             MirType::Str | MirType::StrView => {
                 text(&mut h, "utf8");
                 (1, 0)

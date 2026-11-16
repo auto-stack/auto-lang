@@ -1,0 +1,34 @@
+# Legacy vm corpus: 22_generator/004_indirect_return
+
+## Case: legacy-22-generator-004-indirect-return
+id: "legacy.22_generator.004_indirect_return"
+entry-mode: "program"
+
+### Auto
+path: "indirect_return.at"
+```auto
+fn counter() ~Iter<int> {
+    yield 1
+    yield 2
+    yield 3
+}
+
+fn get_counter() ~Iter<int> {
+    return counter()
+}
+
+fn main() {
+    var sum = 0
+    for n in get_counter() {
+        sum = sum + n
+    }
+    print(sum)
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+6
+```

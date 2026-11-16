@@ -1,0 +1,21 @@
+# Legacy vm corpus: 14_borrow/005_view_preserves
+
+## Case: legacy-14-borrow-005-view-preserves
+id: "legacy.14_borrow.005_view_preserves"
+entry-mode: "program"
+
+### Auto
+path: "view_preserves.at"
+```auto
+let x = 100
+let v = x.view
+x
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+100
+```

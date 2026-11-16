@@ -1,0 +1,22 @@
+# Legacy vm corpus: 15_nested_mutation/005_type_field
+
+## Case: legacy-15-nested-mutation-005-type-field
+id: "legacy.15_nested_mutation.005_type_field"
+entry-mode: "program"
+
+### Auto
+path: "type_field.at"
+```auto
+type Point { x int; y int }
+var p = Point { x: 10, y: 20 }
+p.x = 30
+p.x
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+30
+```

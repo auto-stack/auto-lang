@@ -1,0 +1,20 @@
+# Legacy vm corpus: 01_basics/001_hello
+
+## Case: legacy-01-basics-001-hello
+id: "legacy.01_basics.001_hello"
+entry-mode: "program"
+
+### Auto
+path: "hello.at"
+```auto
+fn main() {
+    print("hello")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hello
+```

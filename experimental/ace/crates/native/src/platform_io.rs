@@ -82,6 +82,17 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         // PLAN-1041 Windows text-console classification + Unicode write.
         PlatformOpKind::IoConsoleKind => "mn_pio_console_kind",
         PlatformOpKind::IoConsoleWrite16 => "mn_pio_console_write16",
+        // PLAN-974: rejected by name before lowering — these arms are
+        // unreachable; the match stays exhaustive so a new platform
+        // category can never silently fall through.
+        PlatformOpKind::NetTcpConnect
+        | PlatformOpKind::NetTcpWriteSome
+        | PlatformOpKind::NetTcpWriteRegion
+        | PlatformOpKind::NetTcpReadInto
+        | PlatformOpKind::NetTcpClose
+        | PlatformOpKind::NetTcpListen
+        | PlatformOpKind::NetTcpAccept
+        | PlatformOpKind::NetTcpLocalPort => "mn_pio_net_unsupported",
     }
 }
 
@@ -127,6 +138,15 @@ pub fn cranelift_shim_sig_for(
             AbiParam::new(types::I32),
         ],
         PlatformOpKind::MemReadU8 => vec![AbiParam::new(types::I32), AbiParam::new(types::I32)],
+        // PLAN-974: rejected by name before lowering (unreachable).
+        PlatformOpKind::NetTcpConnect
+        | PlatformOpKind::NetTcpWriteSome
+        | PlatformOpKind::NetTcpWriteRegion
+        | PlatformOpKind::NetTcpReadInto
+        | PlatformOpKind::NetTcpClose
+        | PlatformOpKind::NetTcpListen
+        | PlatformOpKind::NetTcpAccept
+        | PlatformOpKind::NetTcpLocalPort => vec![],
         PlatformOpKind::MemWriteU8 => vec![
             AbiParam::new(types::I32),
             AbiParam::new(types::I32),

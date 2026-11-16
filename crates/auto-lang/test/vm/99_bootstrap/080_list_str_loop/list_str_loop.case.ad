@@ -1,0 +1,25 @@
+# Legacy vm corpus: 99_bootstrap/080_list_str_loop
+
+## Case: legacy-99-bootstrap-080-list-str-loop
+id: "legacy.99_bootstrap.080_list_str_loop"
+entry-mode: "program"
+
+### Auto
+path: "list_str_loop.at"
+```auto
+fn main() {
+    var result = run_bytecode("fn main() {\nvar list = List.new()\nlist.push(\"a\")\nlist.push(\"b\")\nlist.push(\"c\")\nvar i = 0\nfor i < list.len() {\nprint(list.get(i))\ni = i + 1\n}\n}")
+    if result == "a\nb\nc\n" {
+        print("ok")
+    } else {
+        print("fail:" + result)
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+ok
+```

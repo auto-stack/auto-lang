@@ -1,0 +1,27 @@
+# Legacy a2p corpus: 01_basics/044_const_decl
+
+## Case: legacy-a2p-01-basics-044-const-decl
+id: "legacy.a2p.01_basics.044_const_decl"
+entry-mode: "program"
+
+### Auto
+path: "const_decl.at"
+```auto
+fn main() {
+    const PI = 3.14159
+    print(PI)
+}
+```
+
+### Rust
+check-id: "a2p-emit"
+
+#### const_decl.expected.py
+```python
+def main():
+    PI = 3.14159
+    print(PI)
+
+if __name__ == "__main__":
+    main()
+```

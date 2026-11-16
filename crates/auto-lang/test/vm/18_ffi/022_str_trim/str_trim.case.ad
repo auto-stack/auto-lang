@@ -1,0 +1,19 @@
+# Legacy vm corpus: 18_ffi/022_str_trim
+
+## Case: legacy-18-ffi-022-str-trim
+id: "legacy.18_ffi.022_str_trim"
+entry-mode: "program"
+
+### Auto
+path: "str_trim.at"
+```auto
+Str.trim("  hello  ")
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```

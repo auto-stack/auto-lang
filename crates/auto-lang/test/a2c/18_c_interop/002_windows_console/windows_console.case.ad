@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 18_c_interop/002_windows_console
+
+## Case: legacy-18-c-interop-002-windows-console
+id: "legacy.18_c_interop.002_windows_console"
+entry-mode: "program"
+
+### Auto
+path: "windows_console.at"
+```auto
+// Plan 595 (004 §5①③): kernel32 console manifest consumption —
+// `use.c <windows.h>` registers the manifest functions for direct calls,
+// mirroring 200_auto_cffi_math. FnPtr-bearing entries (SetConsoleCtrlHandler)
+// are exercised in 003_autoterm_ctrlc.
+use.c <windows.h>
+
+fn main() {
+    Sleep(10)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### windows_console.expected.c
+```c
+#include "windows_console.h"
+
+int main(void) {
+    Sleep(10);
+    return 0;
+}
+```
+
+#### windows_console.expected.h
+```c
+#pragma once
+
+#include <windows.h>
+```

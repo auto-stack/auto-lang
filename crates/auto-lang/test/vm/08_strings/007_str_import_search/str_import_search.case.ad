@@ -1,0 +1,26 @@
+# Legacy vm corpus: 08_strings/007_str_import_search
+
+## Case: legacy-08-strings-007-str-import-search
+id: "legacy.08_strings.007_str_import_search"
+entry-mode: "program"
+
+### Auto
+path: "str_import_search.at"
+```auto
+use auto.str: contains, starts_with, ends_with, find
+
+print(contains("hello world", "world"))
+print(starts_with("hello", "he"))
+print(ends_with("hello", "lo"))
+print(find("hello world", "world"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+1
+1
+1
+6
+```

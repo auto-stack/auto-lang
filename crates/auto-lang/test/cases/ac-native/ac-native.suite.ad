@@ -4,12 +4,12 @@
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ac-native", include: [
-    "core-run.case.ad",
-    "scalar-run.case.ad",
-    "src-invalid.case.ad",
-    "hir-invalid.case.ad",
-    "hir-valid.case.ad",
-    "red-controls.case.ad",
-    "syntax.case.ad"
+    "core-run.document.case.ad",
+    "scalar-run.document.case.ad",
+    "src-invalid.document.case.ad",
+    "hir-invalid.document.case.ad",
+    "hir-valid.document.case.ad",
+    "red-controls.document.case.ad",
+    "syntax.document.case.ad"
 ], defaults: { tier: "ac-native" } }
 ```

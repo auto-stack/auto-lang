@@ -1,0 +1,21 @@
+# Legacy vm corpus: 09_functions/010_closure_hof_map
+
+## Case: legacy-09-functions-010-closure-hof-map
+id: "legacy.09_functions.010_closure_hof_map"
+entry-mode: "program"
+
+### Auto
+path: "closure_hof_map.at"
+```auto
+// Test: List.map with closure
+let nums = [1, 2, 3]
+let doubled = nums.map(x => x * 2)
+print(doubled.len())
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+3
+```

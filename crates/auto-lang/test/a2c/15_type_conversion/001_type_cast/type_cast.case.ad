@@ -1,0 +1,39 @@
+# Legacy a2c corpus: 15_type_conversion/001_type_cast
+
+## Case: legacy-15-type-conversion-001-type-cast
+id: "legacy.15_type_conversion.001_type_cast"
+entry-mode: "program"
+
+### Auto
+path: "type_cast.at"
+```auto
+// Plan 162: Type cast — expr.as(Type)
+
+fn main() {
+    let x int = 42
+    let y u32 = x.as(u32)
+    print(y)
+}
+```
+
+### Rust
+check-id: "a2c-emit"
+
+#### type_cast.expected.c
+```c
+#include "type_cast.h"
+
+int main(void) {
+    int x = 42;
+    unsigned int y = ((unsigned int)(x));
+    printf("%d\n", y);
+    return 0;
+}
+```
+
+#### type_cast.expected.h
+```c
+#pragma once
+
+#include <stdio.h>
+```

@@ -1,0 +1,21 @@
+# Legacy vm corpus: 10_types/006_field_addition
+
+## Case: legacy-10-types-006-field-addition
+id: "legacy.10_types.006_field_addition"
+entry-mode: "program"
+
+### Auto
+path: "field_addition.at"
+```auto
+type Point { x int; y int }
+var p = Point { x: 100, y: 200 }
+p.x + p.y
+```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+300
+```

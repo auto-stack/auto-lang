@@ -50,6 +50,7 @@ pub(crate) fn first_diag(diags: &[Diagnostic]) -> Diagnostic {
 }
 
 // PLAN-950: metadata-preserving module projection is consumed only by the module binder.
+pub use frontdoor::packages_aggregates_ct_grammar;
 pub use frontdoor::packages_aggregates_grammar;
 pub use frontdoor::packages_age_grammar;
 pub use frontdoor::packages_ct_grammar;
@@ -58,6 +59,7 @@ pub use frontdoor::CachedGrammar;
 pub(crate) use frontdoor::{
     module_grammar, parse_domain_whole_module, parse_module_fragment, parse_module_front,
     parse_packages_front, parse_packages_front_age, parse_packages_front_aggregates,
+    parse_packages_front_aggregates_ct,
     parse_packages_front_ct, project_module_front, project_packages_front, PackagesFace,
 };
 

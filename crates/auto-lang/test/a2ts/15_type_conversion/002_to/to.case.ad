@@ -1,0 +1,30 @@
+# Legacy a2ts corpus: 15_type_conversion/002_to
+
+## Case: legacy-15-type-conversion-002-to
+id: "legacy.15_type_conversion.002_to"
+entry-mode: "program"
+
+### Auto
+path: "to.at"
+final-newline: false
+```auto
+fn main() {
+    let n = 42
+    let s = n.to(str)
+    print(s)
+}
+```
+
+### Rust
+check-id: "a2ts-emit"
+
+#### to.expected.ts
+```ts
+function main(): void {
+    const n: number = 42;
+    const s: string = String(n);
+    console.log(s);
+}
+
+main();
+```

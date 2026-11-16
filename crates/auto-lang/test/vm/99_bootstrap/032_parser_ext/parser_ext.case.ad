@@ -1,0 +1,29 @@
+# Legacy vm corpus: 99_bootstrap/032_parser_ext
+
+## Case: legacy-99-bootstrap-032-parser-ext
+id: "legacy.99_bootstrap.032_parser_ext"
+entry-mode: "program"
+
+### Auto
+path: "parser_ext.at"
+```auto
+// Test: ext block — ext str { fn len() int }
+fn main() {
+    let source = "ext str {\n    fn len() int {\n        0\n    }\n}"
+    let tokens = tokenize_list(source)
+    let p = parser_new(tokens)
+    let stmts = parse_program(p)
+    var i = 0
+    for i < stmts.len() {
+        print(ast_to_string(stmts.get(i)))
+        i = i + 1
+    }
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+(ext str (fn len (params) int (body 0)))
+```

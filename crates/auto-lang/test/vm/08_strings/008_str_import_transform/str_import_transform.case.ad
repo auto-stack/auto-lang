@@ -1,0 +1,24 @@
+# Legacy vm corpus: 08_strings/008_str_import_transform
+
+## Case: legacy-08-strings-008-str-import-transform
+id: "legacy.08_strings.008_str_import_transform"
+entry-mode: "program"
+
+### Auto
+path: "str_import_transform.at"
+```auto
+use auto.str: trim, replace, reverse
+
+print(trim("  hi  "))
+print(replace("hello world", "world", "rust"))
+print(reverse("hello"))
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+hi
+hello rust
+olleh
+```

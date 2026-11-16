@@ -1,0 +1,1706 @@
+# Legacy a2r corpus: a2r/26_plan577/001_block_model
+
+## Case: legacy-a2r-26-plan577-001-block-model
+id: "legacy.a2r.26_plan577.001_block_model"
+entry-mode: "program"
+
+### Auto
+path: "block_model.at"
+```auto
+// AutoDown Core — unified block model (plan 016, Phase 1).
+//
+// Single Auto source for the document kernel: block tree + selection +
+// operation sequence, dual-emittable (a2ts acceptance now, a2r per
+// tmp/dsl-probes/plan016/REPORT.md discipline).
+//
+// Dual-emission discipline applied here (all verified by probes):
+// - enum payloads use paren form `Variant(T, U)` (space form is a parse error)
+// - no `else ->` arm in `is` (a2ts emits broken `else if (`); enumerate all
+//   variants and put a fallback return after the `is` block
+// - no `is` match on optionals (a2ts emits broken identity compare); consume
+//   `T?` via `??` on a plain identifier (never `f(x) ?? dflt` — a2r misses the
+//   arg clone inside `??` and the value is moved)
+// - struct field names avoid Rust keywords (`kind`, not `type`; a2r does not
+//   emit `r#` escapes)
+// - attrs are `List<Attr>` and marks are `List<Mark>`, NOT Map/Set: a2ts maps
+//   `Map` to Record but passes `.contains` through unmapped (broken JS), and
+//   a2r cannot index maps natively (probe A3); list scan is O(n) over tiny
+//   sets and is 100% portable. This deviates from docs/designs/09 §5.1's schematic
+//   `Map<str, Value>`/`Set<Mark>` deliberately.
+// - string ops limited to `.slice(a, b)` / `.slice(a)` / `.length` / `+` /
+//   `==` (verified dual-safe); no char indexing `s[i]` (broken in a2r, B5)
+// - `.length.to(int)` when the length feeds arithmetic or `<` comparisons
+//   (a2r drops the `as i64` cast in those contexts — probes A5/B10/t_len2)
+// - find-by-id helpers use index loops, not `for x in xs` + `return Some(x)`
+//   (a2r misses the deref-clone on the loop binding)
+// - when a value is needed twice (e.g. split copies attrs into both halves),
+//   route through dupAttrs/dupSpans/dupNodes — a2r is move semantics and has
+//   no portable `.clone()` spelling
+//
+// Semantics notes (MVP):
+// - New ids are supplied by the caller (op payloads), keeping the model pure
+//   and deterministic; the BlockId generation/reuse strategy lands in Phase 3.
+// - splitBlock copies the target's attrs into both halves; source ranges are
+//   split at the text offset (approximate for nested blocks).
+// - mergeBlocks concatenates inline spans without merging boundary spans.
+// - liftBlock of a multi-child wrapper: the before-part keeps the wrapper id,
+//   the after-part gets `<id>-l` (deterministic, documented).
+// - replaceRange across blocks requires anchor/head to share the same parent
+//   (siblings); deeper cross-hierarchy ranges are a no-op (MVP limit).
+// - invertOp is exact for same-block edits and sole-child lift/wrap; for
+//   cross-block replaceRange it restores the flattened text (structure loss
+//   is a documented MVP limit, to be revisited with op-sequence undo).
+
+// ------------------------------------------------------------------ ranges
+
+pub type SourceRange {
+    start int
+    end int
+}
+
+pub fn rng(s int, e int) SourceRange {
+    return SourceRange(s, e)
+}
+
+// ------------------------------------------------------------------ values
+
+// Null covers IAL-style "auto"/absent values (e.g. table cols spec) that are
+// distinct from a zero/empty value.
+pub enum Value {
+    Null
+    Str(str)
+    Int(int)
+    Bool(bool)
+    ListV(List<Value>)
+    AttrsV(List<Attr>)
+}
+
+pub type Attr {
+    key str
+    value Value
+}
+
+pub fn attrGet(attrs List<Attr>, key str) Value? {
+    for i in 0..attrs.length.to(int) {
+        if attrs[i].key == key { return Some(attrs[i].value) }
+    }
+    return None
+}
+
+pub fn attrGetStr(attrs List<Attr>, key str, dflt str) str {
+    let found = attrGet(attrs, key)
+    let v = found ?? Value.Str(dflt)
+    is v {
+        Value.Null -> return dflt
+        Value.Str(s) -> return s
+        Value.Int(i) -> return dflt
+        Value.Bool(b) -> return dflt
+        Value.ListV(l) -> return dflt
+        Value.AttrsV(m) -> return dflt
+    }
+    return dflt
+}
+
+pub fn attrGetInt(attrs List<Attr>, key str, dflt int) int {
+    let found = attrGet(attrs, key)
+    let v = found ?? Value.Int(dflt)
+    is v {
+        Value.Null -> return dflt
+        Value.Str(s) -> return dflt
+        Value.Int(i) -> return i
+        Value.Bool(b) -> return dflt
+        Value.ListV(l) -> return dflt
+        Value.AttrsV(m) -> return dflt
+    }
+    return dflt
+}
+
+pub fn attrGetBool(attrs List<Attr>, key str, dflt bool) bool {
+    let found = attrGet(attrs, key)
+    let v = found ?? Value.Bool(dflt)
+    is v {
+        Value.Null -> return dflt
+        Value.Str(s) -> return dflt
+        Value.Int(i) -> return dflt
+        Value.Bool(b) -> return b
+        Value.ListV(l) -> return dflt
+        Value.AttrsV(m) -> return dflt
+    }
+    return dflt
+}
+
+pub fn attrSet(attrs List<Attr>, key str, value Value) List<Attr> {
+    // Index-then-write shape: moving `value` inside a for-in loop is rejected
+    // by a2r (move in loop), so the replacement happens exactly once via a
+    // list index write or a tail push.
+    var out List<Attr> = []
+    var idx int = -1
+    for i in 0..attrs.length.to(int) {
+        if attrs[i].key == key { idx = i }
+        out.push(attrs[i])
+    }
+    if idx >= 0 {
+        out[idx] = Attr(key, value)
+    } else {
+        out.push(Attr(key, value))
+    }
+    return out
+}
+
+pub fn attrDel(attrs List<Attr>, key str) List<Attr> {
+    var out List<Attr> = []
+    for a in attrs {
+        if a.key != key { out.push(a) }
+    }
+    return out
+}
+
+pub fn dupAttrs(attrs List<Attr>) List<Attr> {
+    var out List<Attr> = []
+    for a in attrs { out.push(a) }
+    return out
+}
+
+// ------------------------------------------------------------------ marks
+
+pub enum Mark {
+    Strong
+    Em
+    Code
+    Link
+    Image
+    Del
+    Underline
+}
+
+// Mark ops use index loops, not for-in: a2r iterates Vec by reference and
+// does not deref-clone the binding in `==` position (probe: E0277 &Mark vs
+// Mark).
+pub fn hasMark(marks List<Mark>, m Mark) bool {
+    for i in 0..marks.length.to(int) {
+        if marks[i] == m { return true }
+    }
+    return false
+}
+
+pub fn addMark(marks List<Mark>, m Mark) List<Mark> {
+    var out List<Mark> = []
+    var found bool = false
+    for i in 0..marks.length.to(int) {
+        if marks[i] == m { found = true }
+        out.push(marks[i])
+    }
+    if !found { out.push(m) }
+    return out
+}
+
+pub fn delMark(marks List<Mark>, m Mark) List<Mark> {
+    var out List<Mark> = []
+    for i in 0..marks.length.to(int) {
+        if marks[i] != m { out.push(marks[i]) }
+    }
+    return out
+}
+
+// ------------------------------------------------------------------ spans
+
+// attrs carries mark payloads that don't fit the unit Mark enum: link
+// href/title, image src/alt/title (Phase 2 parser wiring).
+pub type InlineSpan {
+    text str
+    marks List<Mark>
+    attrs List<Attr>
+}
+
+pub fn span(text str) InlineSpan {
+    return InlineSpan(text, [], [])
+}
+
+pub fn markedSpan(text str, marks List<Mark>) InlineSpan {
+    return InlineSpan(text, marks, [])
+}
+
+pub fn spanWith(text str, marks List<Mark>, attrs List<Attr>) InlineSpan {
+    return InlineSpan(text, marks, attrs)
+}
+
+pub fn spansText(spans List<InlineSpan>) str {
+    var t str = ""
+    for s in spans { t = t + s.text }
+    return t
+}
+
+pub fn dupSpans(spans List<InlineSpan>) List<InlineSpan> {
+    var out List<InlineSpan> = []
+    for s in spans { out.push(s) }
+    return out
+}
+
+// Insert text at a flattened-text offset. The offset lands inside the span
+// that contains it (extending that span's marks); an offset at a span
+// boundary goes into the left span. Offset beyond the end appends a plain
+// span at the tail.
+pub fn spansInsert(spans List<InlineSpan>, offset int, text str) List<InlineSpan> {
+    var out List<InlineSpan> = []
+    var pos int = 0
+    var done bool = false
+    for s in spans {
+        if done {
+            out.push(s)
+        } else {
+            let sLen = s.text.length.to(int)
+            if offset <= pos + sLen {
+                let at = offset - pos
+                let nt = s.text.slice(0, at) + text + s.text.slice(at)
+                out.push(InlineSpan(nt, s.marks, s.attrs))
+                done = true
+            } else {
+                out.push(s)
+            }
+            pos = pos + sLen
+        }
+    }
+    if !done { out.push(span(text)) }
+    return out
+}
+
+// Delete the flattened-text range [lo, hi). Spans left empty are dropped.
+// Keep-branches push the span as-is (a2r cannot move `s.text` out of the
+// for-in reference binding; pushing the whole span gets an auto-clone).
+pub fn spansDelete(spans List<InlineSpan>, lo int, hi int) List<InlineSpan> {
+    var out List<InlineSpan> = []
+    var pos int = 0
+    for s in spans {
+        let sLen = s.text.length.to(int)
+        let sEnd = pos + sLen
+        var overlapped bool = true
+        if sEnd <= lo { overlapped = false }
+        if pos >= hi { overlapped = false }
+        if overlapped {
+            var nt str = ""
+            if lo > pos { nt = s.text.slice(0, lo - pos) }
+            if hi < sEnd { nt = nt + s.text.slice(hi - pos) }
+            if nt.length.to(int) > 0 { out.push(InlineSpan(nt, s.marks, s.attrs)) }
+        } else {
+            out.push(s)
+        }
+        pos = sEnd
+    }
+    return out
+}
+
+pub type SpanSplit {
+    before List<InlineSpan>
+    after List<InlineSpan>
+}
+
+// Split a span list at a flattened-text offset; a split inside a span divides
+// it into two spans with the same marks (empty halves are dropped).
+pub fn spansSplitAt(spans List<InlineSpan>, offset int) SpanSplit {
+    var before List<InlineSpan> = []
+    var after List<InlineSpan> = []
+    var pos int = 0
+    var done bool = false
+    for s in spans {
+        if done {
+            after.push(s)
+        } else {
+            let sLen = s.text.length.to(int)
+            let sEnd = pos + sLen
+            if offset <= pos {
+                after.push(s)
+                done = true
+            } else {
+                if offset >= sEnd {
+                    before.push(s)
+                } else {
+                    let lt = s.text.slice(0, offset - pos)
+                    let rt = s.text.slice(offset - pos)
+                    if lt.length.to(int) > 0 { before.push(InlineSpan(lt, s.marks, s.attrs)) }
+                    if rt.length.to(int) > 0 { after.push(InlineSpan(rt, s.marks, s.attrs)) }
+                    done = true
+                }
+            }
+            pos = sEnd
+        }
+    }
+    return SpanSplit(before, after)
+}
+
+// ------------------------------------------------------------------ blocks
+
+pub enum BlockType {
+    Heading
+    Paragraph
+    Fence
+    Blockquote
+    ListBlock
+    ListItem
+    Table
+    TableRow
+    TableCell
+    ThematicBreak
+    Callout
+    Details
+    WikilinkBlock
+    QueryBlock
+    BlockEmbed
+    Mermaid
+    MathBlock
+}
+
+pub type BlockNode {
+    id str
+    kind BlockType
+    attrs List<Attr>
+    children List<BlockNode>
+    inlines List<InlineSpan>
+    source SourceRange
+}
+
+pub fn block(id str, kind BlockType) BlockNode {
+    return BlockNode(id, kind, [], [], [], rng(0, 0))
+}
+
+// Full-field constructor (plan 019 Phase 1): cross-module constructions of
+// BlockNode fall back to call syntax in a2r (the emitter only knows the
+// field list of same-file structs) — importing modules construct through
+// these factories instead.
+pub fn blockFull(id str, kind BlockType, attrs List<Attr>, children List<BlockNode>, inlines List<InlineSpan>, source SourceRange) BlockNode {
+    return BlockNode(id, kind, attrs, children, inlines, source)
+}
+
+pub fn attrOf(key str, value Value) Attr {
+    return Attr(key, value)
+}
+
+pub fn leafBlock(id str, kind BlockType, text str) BlockNode {
+    return BlockNode(id, kind, [], [], [span(text)], rng(0, text.length.to(int)))
+}
+
+pub fn blockText(node BlockNode) str {
+    return spansText(node.inlines)
+}
+
+pub fn withInlines(node BlockNode, spans List<InlineSpan>) BlockNode {
+    return BlockNode(node.id, node.kind, node.attrs, node.children, spans, node.source)
+}
+
+pub fn withKind(node BlockNode, kind BlockType) BlockNode {
+    return BlockNode(node.id, kind, node.attrs, node.children, node.inlines, node.source)
+}
+
+pub fn withChildren(node BlockNode, kids List<BlockNode>) BlockNode {
+    return BlockNode(node.id, node.kind, node.attrs, kids, node.inlines, node.source)
+}
+
+pub fn dupNodes(nodes List<BlockNode>) List<BlockNode> {
+    var out List<BlockNode> = []
+    for n in nodes { out.push(n) }
+    return out
+}
+
+// ------------------------------------------------------------------ lookup
+
+// The block's PERSISTENT anchor (`^token` in the .ad text), lifted by
+// applyAnchorsDeep at parse time and re-emitted by withIdSuffix. Engine
+// fallback ids (`block-<i>`, `b-xxxxxx`) carry no anchor attr -> "".
+pub fn anchorOf(node BlockNode) str {
+    return attrGetStr(node.attrs, "anchor", "")
+}
+
+pub fn withBlockAnchor(node BlockNode, newId str) BlockNode {
+    return BlockNode(newId, node.kind, attrSet(node.attrs, "anchor", Value.Str(newId)), node.children, node.inlines, node.source)
+}
+
+// Direct-struct-literal form (a2r-safe): the id field init borrows newId
+// BEFORE the attrs arg moves it, so one str feeds both positions without a
+// double-move — unlike going through blockFull whose &str borrow spans the call.
+pub fn withIdAndAnchor(node BlockNode, newId str) BlockNode {
+    return BlockNode(newId, node.kind, attrSet(node.attrs, "anchor", Value.Str(newId)), node.children, node.inlines, node.source)
+}
+
+pub fn hasIdDeep(tree BlockNode, id str) bool {
+    if tree.id == id { return true }
+    for i in 0..tree.children.length.to(int) {
+        if hasIdDeep(tree.children[i], id) { return true }
+    }
+    return false
+}
+
+// Assign a persistent anchor to the block with engine-internal `id`
+// (on-demand anchoring, e.g. copy-block-link). Returns the tree unchanged
+// when the id is absent so applyTree callers can no-op safely.
+pub fn retargetAnchor(tree BlockNode, id str, newId str) BlockNode {
+    if !hasIdDeep(tree, id) { return tree }
+    if tree.id == id { return withBlockAnchor(tree, newId) }
+    if tree.children.length.to(int) == 0 { return tree }
+    var out List<BlockNode> = []
+    for i in 0..tree.children.length.to(int) {
+        out.push(retargetAnchor(tree.children[i], id, newId))
+    }
+    return BlockNode(tree.id, tree.kind, tree.attrs, out, tree.inlines, tree.source)
+}
+
+pub fn findBlock(node BlockNode, id str) BlockNode? {
+    if node.id == id { return Some(node) }
+    for i in 0..node.children.length.to(int) {
+        let r = findBlock(node.children[i], id)
+        if r != None { return r }
+    }
+    return None
+}
+
+pub fn parentOf(node BlockNode, id str) BlockNode? {
+    for i in 0..node.children.length.to(int) {
+        if node.children[i].id == id { return Some(node) }
+        let r = parentOf(node.children[i], id)
+        if r != None { return r }
+    }
+    return None
+}
+
+// Ids from the given node down to the target (inclusive); empty when absent.
+pub fn pathOf(node BlockNode, id str) List<str> {
+    if node.id == id { return [node.id] }
+    for i in 0..node.children.length.to(int) {
+        let sub = pathOf(node.children[i], id)
+        if sub.length.to(int) > 0 {
+            var out List<str> = [node.id]
+            for s in sub { out.push(s) }
+            return out
+        }
+    }
+    return []
+}
+
+pub fn childIndex(node BlockNode, id str) int {
+    for i in 0..node.children.length.to(int) {
+        if node.children[i].id == id { return i }
+    }
+    return -1
+}
+
+// ------------------------------------------------------------- tree surgery
+
+// Replace the child with the given id (anywhere in the subtree) by a list of
+// zero or more replacement blocks. Pure: returns a rebuilt spine.
+pub fn spliceChildren(node BlockNode, id str, repl List<BlockNode>) BlockNode {
+    let idx = childIndex(node, id)
+    if idx >= 0 {
+        var kids List<BlockNode> = []
+        for i in 0..node.children.length.to(int) {
+            if i == idx {
+                for r in repl { kids.push(r) }
+            } else {
+                kids.push(node.children[i])
+            }
+        }
+        return withChildren(node, kids)
+    }
+    var kids2 List<BlockNode> = []
+    for c in node.children { kids2.push(spliceChildren(c, id, repl)) }
+    return withChildren(node, kids2)
+}
+
+// Same, plus the degenerate case where the target is the node itself (only a
+// single replacement node is meaningful there; an empty list is a no-op).
+pub fn replaceNode(node BlockNode, id str, repl List<BlockNode>) BlockNode {
+    if node.id == id {
+        if repl.length.to(int) > 0 { return repl[0] }
+        return node
+    }
+    return spliceChildren(node, id, repl)
+}
+
+// Replace children [lo, hi) of the node with the given parent id.
+pub fn spliceRange(node BlockNode, parentId str, lo int, hi int, repl List<BlockNode>) BlockNode {
+    if node.id == parentId {
+        var kids List<BlockNode> = []
+        for i in 0..node.children.length.to(int) {
+            if i < lo { kids.push(node.children[i]) }
+            if i == lo {
+                for r in repl { kids.push(r) }
+            }
+            if i >= hi { kids.push(node.children[i]) }
+        }
+        return withChildren(node, kids)
+    }
+    var kids2 List<BlockNode> = []
+    for c in node.children { kids2.push(spliceRange(c, parentId, lo, hi, repl)) }
+    return withChildren(node, kids2)
+}
+
+// ------------------------------------------------------------------ selection
+
+pub type BlockPos {
+    blockId str
+    offset int
+}
+
+pub type Selection {
+    anchor BlockPos
+    head BlockPos
+}
+
+pub fn collapsedSel(blockId str, offset int) Selection {
+    return Selection(BlockPos(blockId, offset), BlockPos(blockId, offset))
+}
+
+pub fn pos(blockId str, offset int) BlockPos {
+    return BlockPos(blockId, offset)
+}
+
+// ------------------------------------------------------------------ ops
+
+// Op payloads are single-field structs (NOT multi-payload variants):
+// a2ts defines multi-payload variant constructors as single-tuple lambdas but
+// emits multi-arg calls at construction sites (TS2554) — probe t_ts2. Single
+// struct payloads construct and destructure cleanly on both targets.
+
+pub type InsertTextOp {
+    pos BlockPos
+    text str
+}
+
+pub type SplitBlockOp {
+    pos BlockPos
+    newId str
+}
+
+pub type MergeBlocksOp {
+    aId str
+    bId str
+}
+
+pub type SetBlockTypeOp {
+    id str
+    kind BlockType
+}
+
+pub type LiftBlockOp {
+    id str
+}
+
+pub type WrapBlockOp {
+    id str
+    kind BlockType
+    newId str
+}
+
+pub type ReplaceRangeOp {
+    sel Selection
+    text str
+}
+
+pub enum Op {
+    InsertText(InsertTextOp)
+    SplitBlock(SplitBlockOp)
+    MergeBlocks(MergeBlocksOp)
+    SetBlockType(SetBlockTypeOp)
+    LiftBlock(LiftBlockOp)
+    WrapBlock(WrapBlockOp)
+    ReplaceRange(ReplaceRangeOp)
+}
+
+pub type EditResult {
+    tree BlockNode
+    selection Selection
+}
+
+pub fn missingBlock() BlockNode {
+    return block("", BlockType.Paragraph)
+}
+
+pub fn applyOp(tree BlockNode, selection Selection, op Op) EditResult {
+    is op {
+        Op.InsertText(a) -> {
+            let found = findBlock(tree, a.pos.blockId)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let spans2 = spansInsert(target.inlines, a.pos.offset, a.text)
+            let tree2 = replaceNode(tree, target.id, [withInlines(target, spans2)])
+            return EditResult(tree2, collapsedSel(a.pos.blockId, a.pos.offset + a.text.length.to(int)))
+        }
+        Op.SplitBlock(a) -> {
+            let found = findBlock(tree, a.pos.blockId)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let split = spansSplitAt(target.inlines, a.pos.offset)
+            let left = BlockNode(target.id, target.kind, dupAttrs(target.attrs), dupNodes(target.children), split.before, rng(target.source.start, target.source.start + a.pos.offset))
+            let right = BlockNode(a.newId, target.kind, dupAttrs(target.attrs), dupNodes(target.children), split.after, rng(target.source.start + a.pos.offset, target.source.end))
+            let tree2 = replaceNode(tree, target.id, [left, right])
+            return EditResult(tree2, collapsedSel(a.newId, 0))
+        }
+        Op.MergeBlocks(a) -> {
+            let foundA = findBlock(tree, a.aId)
+            let nodeA = foundA ?? missingBlock()
+            let foundB = findBlock(tree, a.bId)
+            let nodeB = foundB ?? missingBlock()
+            if nodeA.id == "" { return EditResult(tree, selection) }
+            if nodeB.id == "" { return EditResult(tree, selection) }
+            let junction = blockText(nodeA).length.to(int)
+            var merged List<InlineSpan> = []
+            for s in nodeA.inlines { merged.push(s) }
+            for s in nodeB.inlines { merged.push(s) }
+            var kids List<BlockNode> = []
+            for c in nodeA.children { kids.push(c) }
+            for c in nodeB.children { kids.push(c) }
+            let a2 = BlockNode(nodeA.id, nodeA.kind, nodeA.attrs, kids, merged, rng(nodeA.source.start, nodeB.source.end))
+            let tree1 = replaceNode(tree, a.bId, [])
+            let tree2 = replaceNode(tree1, a.aId, [a2])
+            return EditResult(tree2, collapsedSel(a.aId, junction))
+        }
+        Op.SetBlockType(a) -> {
+            let found = findBlock(tree, a.id)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let tree2 = replaceNode(tree, a.id, [withKind(target, a.kind)])
+            return EditResult(tree2, selection)
+        }
+        Op.LiftBlock(a) -> {
+            let foundT = findBlock(tree, a.id)
+            let target = foundT ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let foundP = parentOf(tree, a.id)
+            let parent = foundP ?? missingBlock()
+            if parent.id == "" { return EditResult(tree, selection) }
+            if parent.id == tree.id { return EditResult(tree, selection) }
+            let idx = childIndex(parent, a.id)
+            var beforeKids List<BlockNode> = []
+            var afterKids List<BlockNode> = []
+            for i in 0..parent.children.length.to(int) {
+                if i < idx { beforeKids.push(parent.children[i]) }
+                if i > idx { afterKids.push(parent.children[i]) }
+            }
+            var repl List<BlockNode> = []
+            if beforeKids.length.to(int) > 0 {
+                repl.push(BlockNode(parent.id, parent.kind, dupAttrs(parent.attrs), beforeKids, parent.inlines, parent.source))
+            }
+            repl.push(target)
+            if afterKids.length.to(int) > 0 {
+                repl.push(BlockNode(parent.id + "-l", parent.kind, dupAttrs(parent.attrs), afterKids, parent.inlines, parent.source))
+            }
+            let tree2 = replaceNode(tree, parent.id, repl)
+            return EditResult(tree2, selection)
+        }
+        Op.WrapBlock(a) -> {
+            let found = findBlock(tree, a.id)
+            let target = found ?? missingBlock()
+            if target.id == "" { return EditResult(tree, selection) }
+            let wrapper = BlockNode(a.newId, a.kind, [], [target], [], rng(target.source.start, target.source.end))
+            let tree2 = replaceNode(tree, a.id, [wrapper])
+            return EditResult(tree2, selection)
+        }
+        Op.ReplaceRange(a) -> {
+            let sel = a.sel
+            if sel.anchor.blockId == sel.head.blockId {
+                let found = findBlock(tree, sel.anchor.blockId)
+                let target = found ?? missingBlock()
+                if target.id == "" { return EditResult(tree, selection) }
+                var lo = sel.anchor.offset
+                var hi = sel.head.offset
+                if lo > hi {
+                    let tmp = lo
+                    lo = hi
+                    hi = tmp
+                }
+                let spans2 = spansInsert(spansDelete(target.inlines, lo, hi), lo, a.text)
+                let tree2 = replaceNode(tree, target.id, [withInlines(target, spans2)])
+                return EditResult(tree2, collapsedSel(sel.anchor.blockId, lo + a.text.length.to(int)))
+            }
+            let foundPA = parentOf(tree, sel.anchor.blockId)
+            let pa = foundPA ?? missingBlock()
+            let foundPH = parentOf(tree, sel.head.blockId)
+            let ph = foundPH ?? missingBlock()
+            if pa.id == "" { return EditResult(tree, selection) }
+            if ph.id == "" { return EditResult(tree, selection) }
+            if pa.id != ph.id { return EditResult(tree, selection) }
+            let ai = childIndex(pa, sel.anchor.blockId)
+            let hi2 = childIndex(pa, sel.head.blockId)
+            if ai < 0 { return EditResult(tree, selection) }
+            if hi2 < 0 { return EditResult(tree, selection) }
+            if ai > hi2 { return EditResult(tree, selection) }
+            let aBlock = pa.children[ai]
+            let hBlock = pa.children[hi2]
+            let mergedText = blockText(aBlock).slice(0, sel.anchor.offset) + a.text + blockText(hBlock).slice(sel.head.offset)
+            var kids3 List<BlockNode> = []
+            for c in aBlock.children { kids3.push(c) }
+            for c in hBlock.children { kids3.push(c) }
+            let merged = BlockNode(aBlock.id, aBlock.kind, aBlock.attrs, kids3, [span(mergedText)], rng(aBlock.source.start, hBlock.source.end))
+            let tree2 = spliceRange(tree, pa.id, ai, hi2 + 1, [merged])
+            return EditResult(tree2, collapsedSel(sel.anchor.blockId, sel.anchor.offset + a.text.length.to(int)))
+        }
+    }
+    return EditResult(tree, selection)
+}
+
+// Text covered by a selection (for undo inversion). Exact within one block;
+// cross-block returns the concatenated full texts of anchor and head blocks
+// (documented MVP approximation).
+pub fn textInRange(tree BlockNode, sel Selection) str {
+    if sel.anchor.blockId == sel.head.blockId {
+        let found = findBlock(tree, sel.anchor.blockId)
+        let target = found ?? missingBlock()
+        if target.id == "" { return "" }
+        var lo = sel.anchor.offset
+        var hi = sel.head.offset
+        if lo > hi {
+            let tmp = lo
+            lo = hi
+            hi = tmp
+        }
+        return blockText(target).slice(lo, hi)
+    }
+    let foundA = findBlock(tree, sel.anchor.blockId)
+    let a = foundA ?? missingBlock()
+    let foundH = findBlock(tree, sel.head.blockId)
+    let h = foundH ?? missingBlock()
+    return blockText(a) + blockText(h)
+}
+
+// Invert an op against the pre-op tree; applying the result to the post-op
+// tree undoes the edit (with the documented cross-block caveat above).
+pub fn invertOp(tree BlockNode, op Op) Op {
+    is op {
+        Op.InsertText(a) -> {
+            return Op.ReplaceRange(ReplaceRangeOp(Selection(a.pos, BlockPos(a.pos.blockId, a.pos.offset + a.text.length.to(int))), ""))
+        }
+        Op.SplitBlock(a) -> {
+            return Op.MergeBlocks(MergeBlocksOp(a.pos.blockId, a.newId))
+        }
+        Op.MergeBlocks(a) -> {
+            let foundA = findBlock(tree, a.aId)
+            let nodeA = foundA ?? missingBlock()
+            return Op.SplitBlock(SplitBlockOp(BlockPos(a.aId, blockText(nodeA).length.to(int)), a.bId))
+        }
+        Op.SetBlockType(a) -> {
+            let found = findBlock(tree, a.id)
+            let target = found ?? missingBlock()
+            return Op.SetBlockType(SetBlockTypeOp(a.id, target.kind))
+        }
+        Op.LiftBlock(a) -> {
+            let foundP = parentOf(tree, a.id)
+            let parent = foundP ?? missingBlock()
+            if parent.id == "" { return Op.SetBlockType(SetBlockTypeOp(a.id, BlockType.Paragraph)) }
+            if parent.id == tree.id { return Op.SetBlockType(SetBlockTypeOp(a.id, BlockType.Paragraph)) }
+            return Op.WrapBlock(WrapBlockOp(a.id, parent.kind, parent.id))
+        }
+        Op.WrapBlock(a) -> {
+            return Op.LiftBlock(LiftBlockOp(a.id))
+        }
+        Op.ReplaceRange(a) -> {
+            let oldText = textInRange(tree, a.sel)
+            return Op.ReplaceRange(ReplaceRangeOp(Selection(a.sel.anchor, BlockPos(a.sel.anchor.blockId, a.sel.anchor.offset + a.text.length.to(int))), oldText))
+        }
+    }
+    return Op.SetBlockType(SetBlockTypeOp("", BlockType.Paragraph))
+}
+```
+
+### Rust
+check-id: "rust"
+
+#### block_model.rs
+```rust
+// Auto-generated by a2r transpiler
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SourceRange {
+    pub start: i64,
+    pub end: i64,
+}
+
+pub fn rng(s: i64, e: i64) -> SourceRange {
+    return SourceRange { start: s, end: e };
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    Null,
+    Str(String),
+    Int(i64),
+    Bool(bool),
+    ListV(Vec<Value>),
+    AttrsV(Vec<Attr>),
+}
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Attr {
+    pub key: String,
+    pub value: Value,
+}
+
+pub fn attrGet(mut attrs: Vec<Attr>, key: &str) -> Option<Value> {
+    for i in 0..(attrs.len() as i64) {
+        if attrs[(i) as usize].clone().key == key {
+            return Some(attrs[(i) as usize].clone().value);
+        }
+    }
+    return None;
+}
+
+pub fn attrGetStr(mut attrs: Vec<Attr>, key: &str, dflt: &str) -> String {
+    let found = attrGet(attrs.clone(), key);
+    let v = found.unwrap_or(Value::Str(dflt.to_string()));
+    match v {
+        Value::Null => return dflt.to_string(),
+        Value::Str(s) => return s,
+        Value::Int(i) => return dflt.to_string(),
+        Value::Bool(b) => return dflt.to_string(),
+        Value::ListV(l) => return dflt.to_string(),
+        Value::AttrsV(m) => return dflt.to_string(),
+    };
+    return dflt.to_string();
+}
+
+pub fn attrGetInt(mut attrs: Vec<Attr>, key: &str, dflt: i64) -> i64 {
+    let found = attrGet(attrs.clone(), key);
+    let v = found.unwrap_or(Value::Int(dflt));
+    match v {
+        Value::Null => return dflt,
+        Value::Str(s) => return dflt,
+        Value::Int(i) => return i,
+        Value::Bool(b) => return dflt,
+        Value::ListV(l) => return dflt,
+        Value::AttrsV(m) => return dflt,
+    };
+    return dflt;
+}
+
+pub fn attrGetBool(mut attrs: Vec<Attr>, key: &str, dflt: bool) -> bool {
+    let found = attrGet(attrs.clone(), key);
+    let v = found.unwrap_or(Value::Bool(dflt));
+    match v {
+        Value::Null => return dflt,
+        Value::Str(s) => return dflt,
+        Value::Int(i) => return dflt,
+        Value::Bool(b) => return b,
+        Value::ListV(l) => return dflt,
+        Value::AttrsV(m) => return dflt,
+    };
+    return dflt;
+}
+
+pub fn attrSet(mut attrs: Vec<Attr>, key: &str, value: Value) -> Vec<Attr> {
+
+
+
+    let mut out: Vec<Attr> = vec![];
+    let mut idx: i64 = -1;
+    for i in 0..(attrs.len() as i64) {
+        if attrs[(i) as usize].clone().key == key {
+            idx = i;
+        }
+        out.push(attrs[(i) as usize].clone());
+    }
+    if idx >= 0 {
+        out[(idx) as usize] = Attr { key: key.to_string(), value: value };
+    } else {
+        out.push(Attr { key: key.to_string(), value: value });
+    }
+
+    return out;
+}
+
+pub fn attrDel(attrs: Vec<Attr>, key: &str) -> Vec<Attr> {
+    let mut out: Vec<Attr> = vec![];
+    for a in &attrs {
+        if a.key != key {
+            out.push(a.clone().clone());
+        }
+    }
+    return out;
+}
+
+pub fn dupAttrs(attrs: Vec<Attr>) -> Vec<Attr> {
+    let mut out: Vec<Attr> = vec![];
+    for a in &attrs {
+        out.push(a.clone().clone());
+    }
+    return out;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Mark {
+    Strong = 0,
+    Em = 1,
+    Code = 2,
+    Link = 3,
+    Image = 4,
+    Del = 5,
+    Underline = 6,
+}
+
+impl std::fmt::Display for Mark {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Mark::Strong => write!(f, "Strong"),
+            Mark::Em => write!(f, "Em"),
+            Mark::Code => write!(f, "Code"),
+            Mark::Link => write!(f, "Link"),
+            Mark::Image => write!(f, "Image"),
+            Mark::Del => write!(f, "Del"),
+            Mark::Underline => write!(f, "Underline"),
+        }
+    }
+}
+impl Mark {
+    pub fn from_id(id: &str) -> Self {
+        match id {
+            "Strong" | "strong" => Mark::Strong,
+            "Em" | "em" => Mark::Em,
+            "Code" | "code" => Mark::Code,
+            "Link" | "link" => Mark::Link,
+            "Image" | "image" => Mark::Image,
+            "Del" | "del" => Mark::Del,
+            "Underline" | "underline" => Mark::Underline,
+            _ => Mark::Strong
+        }
+    }
+}
+
+pub fn hasMark(mut marks: Vec<Mark>, m: Mark) -> bool {
+    for i in 0..(marks.len() as i64) {
+        if marks[(i) as usize].clone() == m {
+            return true;
+        }
+    }
+    return false;
+}
+
+pub fn addMark(mut marks: Vec<Mark>, mut m: Mark) -> Vec<Mark> {
+    let mut out: Vec<Mark> = vec![];
+    let mut found: bool = false;
+    for i in 0..(marks.len() as i64) {
+        if marks[(i) as usize].clone() == m {
+            found = true;
+        }
+        out.push(marks[(i) as usize].clone());
+    }
+    if !(found) {
+        out.push(m.clone());
+    }
+    return out;
+}
+
+pub fn delMark(mut marks: Vec<Mark>, m: Mark) -> Vec<Mark> {
+    let mut out: Vec<Mark> = vec![];
+    for i in 0..(marks.len() as i64) {
+        if marks[(i) as usize].clone() != m {
+            out.push(marks[(i) as usize].clone());
+        }
+    }
+    return out;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineSpan {
+    pub text: String,
+    pub marks: Vec<Mark>,
+    pub attrs: Vec<Attr>,
+}
+
+pub fn span(text: &str) -> InlineSpan {
+    return InlineSpan { text: text.to_string(), marks: vec![], attrs: vec![] };
+}
+
+pub fn markedSpan(text: &str, marks: Vec<Mark>) -> InlineSpan {
+    return InlineSpan { text: text.to_string(), marks: marks, attrs: vec![] };
+}
+
+pub fn spanWith(text: &str, marks: Vec<Mark>, attrs: Vec<Attr>) -> InlineSpan {
+    return InlineSpan { text: text.to_string(), marks: marks, attrs: attrs };
+}
+
+pub fn spansText(spans: Vec<InlineSpan>) -> String {
+    let mut t: String = "".to_string();
+    for s in &spans {
+        t = format!("{}{}", t, s.text);
+    }
+    return t;
+}
+
+pub fn dupSpans(spans: Vec<InlineSpan>) -> Vec<InlineSpan> {
+    let mut out: Vec<InlineSpan> = vec![];
+    for s in &spans {
+        out.push(s.clone().clone());
+    }
+    return out;
+}
+
+pub fn spansInsert(spans: Vec<InlineSpan>, offset: i64, text: &str) -> Vec<InlineSpan> {
+    let mut out: Vec<InlineSpan> = vec![];
+    let mut pos: i64 = 0;
+    let mut done: bool = false;
+    for s in &spans {
+        if done {
+            out.push(s.clone().clone());
+        } else {
+            let sLen: i64 = (s.text.len() as i64);
+            if offset <= pos + sLen {
+                let at: i64 = offset - pos;
+                let nt: String = format!("{}{}", format!("{}{}", s.text[0..(at) as usize].to_string(), text), s.text[(at) as usize..].to_string());
+                out.push(InlineSpan { text: nt.to_string(), marks: s.marks.clone(), attrs: s.attrs.clone() });
+                done = true;
+            } else {
+                out.push(s.clone().clone());
+            }
+            pos = pos + sLen;
+        }
+
+    }
+    if !(done) {
+        out.push(span(text));
+    }
+    return out;
+}
+
+pub fn spansDelete(spans: Vec<InlineSpan>, lo: i64, hi: i64) -> Vec<InlineSpan> {
+    let mut out: Vec<InlineSpan> = vec![];
+    let mut pos: i64 = 0;
+    for s in &spans {
+        let sLen: i64 = (s.text.len() as i64);
+        let sEnd: i64 = pos + sLen;
+        let mut overlapped: bool = true;
+        if sEnd <= lo {
+            overlapped = false;
+        }
+        if pos >= hi {
+            overlapped = false;
+        }
+        if overlapped {
+            let mut nt: String = "".to_string();
+            if lo > pos {
+                nt = s.text[0..(lo - pos) as usize].to_string();
+            }            if hi < sEnd {
+                nt = format!("{}{}", nt, s.text[(hi - pos) as usize..].to_string());
+            }            if (nt.chars().count() as i64) > 0 {
+                out.push(InlineSpan { text: nt.to_string(), marks: s.marks.clone(), attrs: s.attrs.clone() });
+            }        } else {
+            out.push(s.clone().clone());
+        }
+
+        pos = sEnd;
+    }
+    return out;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpanSplit {
+    pub before: Vec<InlineSpan>,
+    pub after: Vec<InlineSpan>,
+}
+
+pub fn spansSplitAt(spans: Vec<InlineSpan>, offset: i64) -> SpanSplit {
+    let mut before: Vec<InlineSpan> = vec![];
+    let mut after: Vec<InlineSpan> = vec![];
+    let mut pos: i64 = 0;
+    let mut done: bool = false;
+    for s in &spans {
+        if done {
+            after.push(s.clone().clone());
+        } else {
+            let sLen: i64 = (s.text.len() as i64);
+            let sEnd: i64 = pos + sLen;
+            if offset <= pos {
+                after.push(s.clone().clone());
+                done = true;
+            } else {
+                if offset >= sEnd {
+                    before.push(s.clone().clone());
+                } else {
+                    let lt = s.text[0..(offset - pos) as usize].to_string();
+                    let rt = s.text[(offset - pos) as usize..].to_string();
+                    if (lt.chars().count() as i64) > 0 {
+                        before.push(InlineSpan { text: lt.to_string(), marks: s.marks.clone(), attrs: s.attrs.clone() });
+                    }                    if (rt.chars().count() as i64) > 0 {
+                        after.push(InlineSpan { text: rt.to_string(), marks: s.marks.clone(), attrs: s.attrs.clone() });
+                    }                    done = true;
+                }
+            }
+            pos = sEnd;
+        }
+
+    }
+    return SpanSplit { before: before, after: after };
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum BlockType {
+    Heading = 0,
+    Paragraph = 1,
+    Fence = 2,
+    Blockquote = 3,
+    ListBlock = 4,
+    ListItem = 5,
+    Table = 6,
+    TableRow = 7,
+    TableCell = 8,
+    ThematicBreak = 9,
+    Callout = 10,
+    Details = 11,
+    WikilinkBlock = 12,
+    QueryBlock = 13,
+    BlockEmbed = 14,
+    Mermaid = 15,
+    MathBlock = 16,
+}
+
+impl std::fmt::Display for BlockType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            BlockType::Heading => write!(f, "Heading"),
+            BlockType::Paragraph => write!(f, "Paragraph"),
+            BlockType::Fence => write!(f, "Fence"),
+            BlockType::Blockquote => write!(f, "Blockquote"),
+            BlockType::ListBlock => write!(f, "ListBlock"),
+            BlockType::ListItem => write!(f, "ListItem"),
+            BlockType::Table => write!(f, "Table"),
+            BlockType::TableRow => write!(f, "TableRow"),
+            BlockType::TableCell => write!(f, "TableCell"),
+            BlockType::ThematicBreak => write!(f, "ThematicBreak"),
+            BlockType::Callout => write!(f, "Callout"),
+            BlockType::Details => write!(f, "Details"),
+            BlockType::WikilinkBlock => write!(f, "WikilinkBlock"),
+            BlockType::QueryBlock => write!(f, "QueryBlock"),
+            BlockType::BlockEmbed => write!(f, "BlockEmbed"),
+            BlockType::Mermaid => write!(f, "Mermaid"),
+            BlockType::MathBlock => write!(f, "MathBlock"),
+        }
+    }
+}
+impl BlockType {
+    pub fn from_id(id: &str) -> Self {
+        match id {
+            "Heading" | "heading" => BlockType::Heading,
+            "Paragraph" | "paragraph" => BlockType::Paragraph,
+            "Fence" | "fence" => BlockType::Fence,
+            "Blockquote" | "blockquote" => BlockType::Blockquote,
+            "ListBlock" | "listblock" => BlockType::ListBlock,
+            "ListItem" | "listitem" => BlockType::ListItem,
+            "Table" | "table" => BlockType::Table,
+            "TableRow" | "tablerow" => BlockType::TableRow,
+            "TableCell" | "tablecell" => BlockType::TableCell,
+            "ThematicBreak" | "thematicbreak" => BlockType::ThematicBreak,
+            "Callout" | "callout" => BlockType::Callout,
+            "Details" | "details" => BlockType::Details,
+            "WikilinkBlock" | "wikilinkblock" => BlockType::WikilinkBlock,
+            "QueryBlock" | "queryblock" => BlockType::QueryBlock,
+            "BlockEmbed" | "blockembed" => BlockType::BlockEmbed,
+            "Mermaid" | "mermaid" => BlockType::Mermaid,
+            "MathBlock" | "mathblock" => BlockType::MathBlock,
+            _ => BlockType::Heading
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlockNode {
+    pub id: String,
+    pub kind: BlockType,
+    pub attrs: Vec<Attr>,
+    pub children: Vec<BlockNode>,
+    pub inlines: Vec<InlineSpan>,
+    pub source: SourceRange,
+}
+
+pub fn block(id: &str, kind: BlockType) -> BlockNode {
+    return BlockNode { id: id.to_string(), kind: kind, attrs: vec![], children: vec![], inlines: vec![], source: rng(0, 0) };
+}
+
+pub fn blockFull(id: &str, kind: BlockType, attrs: Vec<Attr>, children: Vec<BlockNode>, inlines: Vec<InlineSpan>, source: SourceRange) -> BlockNode {
+    return BlockNode { id: id.to_string(), kind: kind, attrs: attrs, children: children, inlines: inlines, source: source };
+}
+
+pub fn attrOf(key: &str, value: Value) -> Attr {
+    return Attr { key: key.to_string(), value: value };
+}
+
+pub fn leafBlock(id: &str, kind: BlockType, text: &str) -> BlockNode {
+    return BlockNode { id: id.to_string(), kind: kind, attrs: vec![], children: vec![], inlines: vec![span(text)], source: rng(0, (text.chars().count() as i64)) };
+}
+
+pub fn blockText(node: BlockNode) -> String {
+    return spansText(node.inlines.clone());
+}
+
+pub fn withInlines(node: BlockNode, spans: Vec<InlineSpan>) -> BlockNode {
+    return BlockNode { id: node.id.to_string(), kind: node.kind.clone(), attrs: node.attrs.clone(), children: node.children.clone(), inlines: spans, source: node.source.clone() };
+}
+
+pub fn withKind(node: BlockNode, kind: BlockType) -> BlockNode {
+    return BlockNode { id: node.id.to_string(), kind: kind, attrs: node.attrs.clone(), children: node.children.clone(), inlines: node.inlines.clone(), source: node.source.clone() };
+}
+
+pub fn withChildren(node: BlockNode, kids: Vec<BlockNode>) -> BlockNode {
+    return BlockNode { id: node.id.to_string(), kind: node.kind.clone(), attrs: node.attrs.clone(), children: kids, inlines: node.inlines.clone(), source: node.source.clone() };
+}
+
+pub fn dupNodes(nodes: Vec<BlockNode>) -> Vec<BlockNode> {
+    let mut out: Vec<BlockNode> = vec![];
+    for n in &nodes {
+        out.push(n.clone().clone());
+    }
+    return out;
+}
+
+pub fn anchorOf(node: BlockNode) -> String {
+    return attrGetStr(node.attrs.clone(), "anchor", "");
+}
+
+pub fn withBlockAnchor(node: BlockNode, newId: &str) -> BlockNode {
+    return BlockNode { id: newId.to_string(), kind: node.kind.clone(), attrs: attrSet(node.attrs.clone(), "anchor", Value::Str(newId.to_string())), children: node.children.clone(), inlines: node.inlines.clone(), source: node.source.clone() };
+}
+
+pub fn withIdAndAnchor(node: BlockNode, newId: &str) -> BlockNode {
+    return BlockNode { id: newId.to_string(), kind: node.kind.clone(), attrs: attrSet(node.attrs.clone(), "anchor", Value::Str(newId.to_string())), children: node.children.clone(), inlines: node.inlines.clone(), source: node.source.clone() };
+}
+
+pub fn hasIdDeep(mut tree: BlockNode, id: &str) -> bool {
+    if tree.id == id {
+        return true;
+    }
+    for i in 0..(tree.children.len() as i64) {
+        if hasIdDeep(tree.children[(i) as usize].clone(), id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+pub fn retargetAnchor(mut tree: BlockNode, id: &str, newId: &str) -> BlockNode {
+    if !(hasIdDeep(tree.clone(), id)) {
+        return tree;
+    }
+    if tree.id == id {
+        return withBlockAnchor(tree.clone(), newId);
+    }
+    if (tree.children.len() as i64) == 0 {
+        return tree;
+    }
+    let mut out: Vec<BlockNode> = vec![];
+    for i in 0..(tree.children.len() as i64) {
+        out.push(retargetAnchor(tree.children[(i) as usize].clone(), id, newId));
+    }
+    return BlockNode { id: tree.id.to_string(), kind: tree.kind.clone(), attrs: tree.attrs.clone(), children: out, inlines: tree.inlines.clone(), source: tree.source.clone() };
+}
+
+pub fn findBlock(mut node: BlockNode, id: &str) -> Option<BlockNode> {
+    if node.id == id {
+        return Some(node);
+    }
+    for i in 0..(node.children.len() as i64) {
+        let r = findBlock(node.children[(i) as usize].clone(), id);
+        if r != None {
+            return r;
+        }
+    }
+    return None;
+}
+
+pub fn parentOf(node: BlockNode, id: &str) -> Option<BlockNode> {
+    for i in 0..(node.children.len() as i64) {
+        if node.children[(i) as usize].clone().id == id {
+            return Some(node);
+        }
+        let r = parentOf(node.children[(i) as usize].clone(), id);
+        if r != None {
+            return r;
+        }
+    }
+    return None;
+}
+
+pub fn pathOf(mut node: BlockNode, id: &str) -> Vec<String> {
+    if node.id == id {
+        return vec![node.id];
+    }
+    for i in 0..(node.children.len() as i64) {
+        let sub = pathOf(node.children[(i) as usize].clone(), id);
+        if (sub.len() as i64) > 0 {
+            let mut out: Vec<String> = vec![node.id];
+            for s in &sub {
+                out.push(s.to_string());
+            }
+            return out;
+        }
+    }
+    return vec![];
+}
+
+pub fn childIndex(node: BlockNode, id: &str) -> i64 {
+    for i in 0..(node.children.len() as i64) {
+        if node.children[(i) as usize].clone().id == id {
+            return i;
+        }
+    }
+    return -1;
+}
+
+pub fn spliceChildren(mut node: BlockNode, id: &str, mut repl: Vec<BlockNode>) -> BlockNode {
+    let idx = childIndex(node.clone(), id);
+    if idx >= 0 {
+        let mut kids: Vec<BlockNode> = vec![];
+        for i in 0..(node.children.len() as i64) {
+            if i == idx {
+                for r in &repl {
+                    kids.push(r.clone().clone());
+                }
+            } else {
+                kids.push(node.children[(i) as usize].clone());
+            }
+
+        }
+        return withChildren(node.clone(), kids.clone());
+    }
+    let mut kids2: Vec<BlockNode> = vec![];
+    for c in &node.children {
+        kids2.push(spliceChildren(c.clone(), id, repl.clone()));
+    }
+    return withChildren(node.clone(), kids2.clone());
+}
+
+pub fn replaceNode(mut node: BlockNode, id: &str, mut repl: Vec<BlockNode>) -> BlockNode {
+    if node.id == id {
+        if (repl.len() as i64) > 0 {
+            return repl[0].clone();
+        }        return node;
+    }
+    return spliceChildren(node.clone(), id, repl.clone());
+}
+
+pub fn spliceRange(mut node: BlockNode, parentId: &str, lo: i64, hi: i64, mut repl: Vec<BlockNode>) -> BlockNode {
+    if node.id == parentId {
+        let mut kids: Vec<BlockNode> = vec![];
+        for i in 0..(node.children.len() as i64) {
+            if i < lo {
+                kids.push(node.children[(i) as usize].clone());
+            }
+            if i == lo {
+                for r in &repl {
+                    kids.push(r.clone().clone());
+                }
+            }
+            if i >= hi {
+                kids.push(node.children[(i) as usize].clone());
+            }
+        }
+        return withChildren(node.clone(), kids.clone());
+    }
+    let mut kids2: Vec<BlockNode> = vec![];
+    for c in &node.children {
+        kids2.push(spliceRange(c.clone(), parentId, lo, hi, repl.clone()));
+    }
+    return withChildren(node.clone(), kids2.clone());
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BlockPos {
+    pub blockId: String,
+    pub offset: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Selection {
+    pub anchor: BlockPos,
+    pub head: BlockPos,
+}
+
+pub fn collapsedSel(blockId: &str, offset: i64) -> Selection {
+    return Selection { anchor: BlockPos { blockId: blockId.to_string(), offset: offset }, head: BlockPos { blockId: blockId.to_string(), offset: offset } };
+}
+
+pub fn pos(blockId: &str, offset: i64) -> BlockPos {
+    return BlockPos { blockId: blockId.to_string(), offset: offset };
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct InsertTextOp {
+    pub pos: BlockPos,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SplitBlockOp {
+    pub pos: BlockPos,
+    pub newId: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MergeBlocksOp {
+    pub aId: String,
+    pub bId: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SetBlockTypeOp {
+    pub id: String,
+    pub kind: BlockType,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LiftBlockOp {
+    pub id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WrapBlockOp {
+    pub id: String,
+    pub kind: BlockType,
+    pub newId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReplaceRangeOp {
+    pub sel: Selection,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Op {
+    InsertText(InsertTextOp),
+    SplitBlock(SplitBlockOp),
+    MergeBlocks(MergeBlocksOp),
+    SetBlockType(SetBlockTypeOp),
+    LiftBlock(LiftBlockOp),
+    WrapBlock(WrapBlockOp),
+    ReplaceRange(ReplaceRangeOp),
+}
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EditResult {
+    pub tree: BlockNode,
+    pub selection: Selection,
+}
+
+pub fn missingBlock() -> BlockNode {
+    return block("", BlockType::Paragraph.clone());
+}
+
+pub fn applyOp(mut tree: BlockNode, selection: Selection, op: Op) -> EditResult {
+    match op {
+        Op::InsertText(a) => {
+            let found = findBlock(tree.clone(), a.pos.blockId.as_str());
+            let mut target = found.unwrap_or(missingBlock());
+            if target.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let mut spans2 = spansInsert(target.inlines.clone(), a.pos.offset, a.text.as_str());
+            let tree2 = replaceNode(tree.clone(), target.id.as_str(), vec![withInlines(target.clone(), spans2.clone())]);
+            return EditResult { tree: tree2, selection: collapsedSel(a.pos.blockId.as_str(), a.pos.offset + (a.text.len() as i64)) };
+        },
+        Op::SplitBlock(a) => {
+            let found = findBlock(tree.clone(), a.pos.blockId.as_str());
+            let mut target = found.unwrap_or(missingBlock());
+            if target.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let split = spansSplitAt(target.inlines.clone(), a.pos.offset);
+            let left = BlockNode { id: target.id.to_string(), kind: target.kind.clone(), attrs: dupAttrs(target.attrs.clone()), children: dupNodes(target.children.clone()), inlines: split.before.clone(), source: rng(target.source.start, target.source.start + a.pos.offset) };
+            let right = BlockNode { id: a.newId.to_string(), kind: target.kind.clone(), attrs: dupAttrs(target.attrs.clone()), children: dupNodes(target.children.clone()), inlines: split.after.clone(), source: rng(target.source.start + a.pos.offset, target.source.end) };
+            let tree2 = replaceNode(tree.clone(), target.id.as_str(), vec![left.clone(), right.clone()]);
+            return EditResult { tree: tree2, selection: collapsedSel(a.newId.as_str(), 0) };
+        },
+        Op::MergeBlocks(a) => {
+            let foundA = findBlock(tree.clone(), a.aId.as_str());
+            let mut nodeA = foundA.unwrap_or(missingBlock());
+            let foundB = findBlock(tree.clone(), a.bId.as_str());
+            let mut nodeB = foundB.unwrap_or(missingBlock());
+            if nodeA.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            if nodeB.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let junction: i64 = (blockText(nodeA.clone()).len() as i64);
+            let mut merged: Vec<InlineSpan> = vec![];
+            for s in &nodeA.inlines {
+                merged.push(s.clone().clone());
+            }
+            for s in &nodeB.inlines {
+                merged.push(s.clone().clone());
+            }
+            let mut kids: Vec<BlockNode> = vec![];
+            for c in &nodeA.children {
+                kids.push(c.clone().clone());
+            }
+            for c in &nodeB.children {
+                kids.push(c.clone().clone());
+            }
+            let a2 = BlockNode { id: nodeA.id.to_string(), kind: nodeA.kind.clone(), attrs: nodeA.attrs.clone(), children: kids, inlines: merged, source: rng(nodeA.source.start, nodeB.source.end) };
+            let tree1 = replaceNode(tree.clone(), a.bId.as_str(), vec![]);
+            let tree2 = replaceNode(tree1.clone(), a.aId.as_str(), vec![a2.clone()]);
+            return EditResult { tree: tree2, selection: collapsedSel(a.aId.as_str(), junction) };
+        },
+        Op::SetBlockType(a) => {
+            let found = findBlock(tree.clone(), a.id.as_str());
+            let mut target = found.unwrap_or(missingBlock());
+            if target.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let tree2 = replaceNode(tree.clone(), a.id.as_str(), vec![withKind(target.clone(), a.kind.clone())]);
+            return EditResult { tree: tree2, selection: selection };
+        },
+        Op::LiftBlock(a) => {
+            let foundT = findBlock(tree.clone(), a.id.as_str());
+            let mut target = foundT.unwrap_or(missingBlock());
+            if target.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let foundP = parentOf(tree.clone(), a.id.as_str());
+            let mut parent = foundP.unwrap_or(missingBlock());
+            if parent.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            if parent.id == tree.id {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let idx = childIndex(parent.clone(), a.id.as_str());
+            let mut beforeKids: Vec<BlockNode> = vec![];
+            let mut afterKids: Vec<BlockNode> = vec![];
+            for i in 0..(parent.children.len() as i64) {
+                if i < idx {
+                    beforeKids.push(parent.children[(i) as usize].clone());
+                }
+                if i > idx {
+                    afterKids.push(parent.children[(i) as usize].clone());
+                }
+            }
+            let mut repl: Vec<BlockNode> = vec![];
+            if (beforeKids.len() as i64) > 0 {
+                repl.push(BlockNode { id: parent.id.to_string(), kind: parent.kind.clone(), attrs: dupAttrs(parent.attrs.clone()), children: beforeKids, inlines: parent.inlines.clone(), source: parent.source.clone() });
+            }
+            repl.push(target.clone());
+            if (afterKids.len() as i64) > 0 {
+                repl.push(BlockNode { id: format!("{}{}", parent.id, "-l").to_string(), kind: parent.kind.clone(), attrs: dupAttrs(parent.attrs.clone()), children: afterKids, inlines: parent.inlines.clone(), source: parent.source.clone() });
+            }
+            let tree2 = replaceNode(tree.clone(), parent.id.as_str(), repl.clone());
+            return EditResult { tree: tree2, selection: selection };
+        },
+        Op::WrapBlock(a) => {
+            let found = findBlock(tree.clone(), a.id.as_str());
+            let mut target = found.unwrap_or(missingBlock());
+            if target.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let wrapper = BlockNode { id: a.newId.to_string(), kind: a.kind.clone(), attrs: vec![], children: vec![target.clone()], inlines: vec![], source: rng(target.source.start, target.source.end) };
+            let tree2 = replaceNode(tree.clone(), a.id.as_str(), vec![wrapper.clone()]);
+            return EditResult { tree: tree2, selection: selection };
+        },
+        Op::ReplaceRange(a) => {
+            let sel: Selection = a.sel.clone();
+            if sel.anchor.blockId == sel.head.blockId {
+                let found = findBlock(tree.clone(), sel.anchor.blockId.as_str());
+                let mut target = found.unwrap_or(missingBlock());
+                if target.id == "" {
+                    return EditResult { tree: tree, selection: selection };
+                }                let mut lo: i64 = sel.anchor.offset;
+                let mut hi: i64 = sel.head.offset;
+                if lo > hi {
+                    let tmp: i64 = lo;
+                    lo = hi;
+                    hi = tmp;
+                }                let spans2 = spansInsert(spansDelete(target.inlines.clone(), lo, hi), lo, a.text.as_str());
+                let tree2 = replaceNode(tree.clone(), target.id.as_str(), vec![withInlines(target.clone(), spans2.clone())]);
+                return EditResult { tree: tree2, selection: collapsedSel(sel.anchor.blockId.as_str(), lo + (a.text.len() as i64)) };
+            }
+            let foundPA = parentOf(tree.clone(), sel.anchor.blockId.as_str());
+            let mut pa = foundPA.unwrap_or(missingBlock());
+            let foundPH = parentOf(tree.clone(), sel.head.blockId.as_str());
+            let mut ph = foundPH.unwrap_or(missingBlock());
+            if pa.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            if ph.id == "" {
+                return EditResult { tree: tree, selection: selection };
+            }
+            if pa.id != ph.id {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let ai = childIndex(pa.clone(), sel.anchor.blockId.as_str());
+            let hi2 = childIndex(pa.clone(), sel.head.blockId.as_str());
+            if ai < 0 {
+                return EditResult { tree: tree, selection: selection };
+            }
+            if hi2 < 0 {
+                return EditResult { tree: tree, selection: selection };
+            }
+            if ai > hi2 {
+                return EditResult { tree: tree, selection: selection };
+            }
+            let aBlock = pa.children[(ai) as usize].clone();
+            let hBlock = pa.children[(hi2) as usize].clone();
+            let mergedText: String = format!("{}{}", format!("{}{}", blockText(aBlock.clone())[0..(sel.anchor.offset) as usize].to_string(), a.text), blockText(hBlock.clone())[(sel.head.offset) as usize..].to_string());
+            let mut kids3: Vec<BlockNode> = vec![];
+            for c in &aBlock.children {
+                kids3.push(c.clone().clone());
+            }
+            for c in &hBlock.children {
+                kids3.push(c.clone().clone());
+            }
+            let merged = BlockNode { id: aBlock.id.to_string(), kind: aBlock.kind.clone(), attrs: aBlock.attrs.clone(), children: kids3, inlines: vec![span(mergedText.as_str())], source: rng(aBlock.source.start, hBlock.source.end) };
+            let tree2 = spliceRange(tree.clone(), pa.id.as_str(), ai, hi2 + 1, vec![merged.clone()]);
+            return EditResult { tree: tree2, selection: collapsedSel(sel.anchor.blockId.as_str(), sel.anchor.offset + (a.text.len() as i64)) };
+        },
+    };
+    return EditResult { tree: tree, selection: selection };
+}
+
+pub fn textInRange(mut tree: BlockNode, sel: Selection) -> String {
+    if sel.anchor.blockId == sel.head.blockId {
+        let found = findBlock(tree.clone(), sel.anchor.blockId.as_str());
+        let mut target = found.unwrap_or(missingBlock());
+        if target.id == "" {
+            return "".to_string();
+        }        let mut lo: i64 = sel.anchor.offset;
+        let mut hi: i64 = sel.head.offset;
+        if lo > hi {
+            let tmp: i64 = lo;
+            lo = hi;
+            hi = tmp;
+        }        return blockText(target.clone())[(lo) as usize..(hi) as usize].to_string();
+    }
+    let foundA = findBlock(tree.clone(), sel.anchor.blockId.as_str());
+    let a = foundA.unwrap_or(missingBlock());
+    let foundH = findBlock(tree.clone(), sel.head.blockId.as_str());
+    let h = foundH.unwrap_or(missingBlock());
+    return format!("{}{}", blockText(a.clone()), blockText(h.clone()));
+}
+
+pub fn invertOp(mut tree: BlockNode, op: Op) -> Op {
+    match op {
+        Op::InsertText(a) => return Op::ReplaceRange(ReplaceRangeOp { sel: Selection { anchor: a.pos.clone(), head: BlockPos { blockId: a.pos.blockId.to_string(), offset: a.pos.offset + (a.text.len() as i64) } }, text: "".to_string() }),
+        Op::SplitBlock(a) => return Op::MergeBlocks(MergeBlocksOp { aId: a.pos.blockId.to_string(), bId: a.newId.to_string() }),
+        Op::MergeBlocks(a) => {
+            let foundA = findBlock(tree.clone(), a.aId.as_str());
+            let nodeA = foundA.unwrap_or(missingBlock());
+            return Op::SplitBlock(SplitBlockOp { pos: BlockPos { blockId: a.aId.to_string(), offset: (blockText(nodeA.clone()).len() as i64) }, newId: a.bId.to_string() });
+        },
+        Op::SetBlockType(a) => {
+            let found = findBlock(tree.clone(), a.id.as_str());
+            let target = found.unwrap_or(missingBlock());
+            return Op::SetBlockType(SetBlockTypeOp { id: a.id.to_string(), kind: target.kind.clone() });
+        },
+        Op::LiftBlock(a) => {
+            let foundP = parentOf(tree.clone(), a.id.as_str());
+            let mut parent = foundP.unwrap_or(missingBlock());
+            if parent.id == "" {
+                return Op::SetBlockType(SetBlockTypeOp { id: a.id.to_string(), kind: BlockType::Paragraph.clone() });
+            }
+            if parent.id == tree.id {
+                return Op::SetBlockType(SetBlockTypeOp { id: a.id.to_string(), kind: BlockType::Paragraph.clone() });
+            }
+            return Op::WrapBlock(WrapBlockOp { id: a.id.to_string(), kind: parent.kind.clone(), newId: parent.id.to_string() });
+        },
+        Op::WrapBlock(a) => return Op::LiftBlock(LiftBlockOp { id: a.id.to_string() }),
+        Op::ReplaceRange(a) => {
+            let oldText = textInRange(tree.clone(), a.sel.clone());
+            return Op::ReplaceRange(ReplaceRangeOp { sel: Selection { anchor: a.sel.anchor.clone(), head: BlockPos { blockId: a.sel.anchor.blockId.to_string(), offset: a.sel.anchor.offset + (a.text.len() as i64) } }, text: oldText.to_string() });
+        },
+    };
+    return Op::SetBlockType(SetBlockTypeOp { id: "".to_string(), kind: BlockType::Paragraph.clone() });
+}
+```

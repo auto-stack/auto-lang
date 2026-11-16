@@ -1,0 +1,23 @@
+# Legacy vm corpus: 04_control_flow/009_is_or_groups
+
+## Case: legacy-04-control-flow-009-is-or-groups
+id: "legacy.04_control_flow.009_is_or_groups"
+entry-mode: "program"
+
+### Auto
+path: "is_or_groups.at"
+```auto
+var n = 3
+is n {
+    1 | 2 -> print("low")
+    3 | 4 -> print("high")
+    else -> print("other")
+}
+```
+
+### VM result
+check-id: "vm-stdout"
+
+```text
+high
+```
