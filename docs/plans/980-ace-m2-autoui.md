@@ -643,6 +643,10 @@ next_responsible_role: work（980 剩余批次按 §5 前置继续：STATE→NAT
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 6 | from: merge | to: work | status: executing（3/35，DIALECT 批已落主）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang 3de0bea0b | next: done（目标范围=980/DIALECT 批次已交付）
 
+2026-11-16 stage: goal（目标完成核验轮，verify-and-route，无阶段施工）| PLAN-980 r10 | 目标「完成计划980/DIALECT」= DIALECT 批次按完整口径交付并落主。磁盘级核验（非采信收据）：①落主身份——lang master 含 fold #1 46f4ac0ec 与 fold #2 3de0bea0b（b08b3af5f 代码→ef2bb5ad1 复核反例→3de0bea0b 规范，merge-base 祖先核验通过，fast-forward 无 merge commit）；auto-ui master 含 f864f33b。②规范沉淀——master 上 docs/specs/ace-migration/m2-autoui.md Status=DIALECT 批已验、§4「AGE 组件面的 widget 成员接线（DIALECT 批，2026-11-16）」在库。③永久 case——experimental/ace/crates/core/tests/cases/{plan980_dialect_full,plan980_field_manifest}.rs 均在 master 树。④簿记——计划收据（round 1–6）已由 3c902bc93/6a1ad25eb 入库；frontmatter executing 3/35，B-DIALECT-I/V/R 勾选与交付范围一致。⑤唯一树——lang-980 clean @ plan-980-dev 3de0bea0b，按 §5 phase fold 合同保留续 STATE/NATIVE 等批（不删）。⑥主检出代码路径 clean（docs WIP 为他节会话簿记）。门禁证据绑定冻结基线（ace-source 607+155、UI 5+105，round 5/6 实测），身份未变按裁定复用，不重复执行。结论：目标范围已达成且经磁盘核验；980 整包（32/35 余量）不在本目标内，后续批次由 work 续行。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 7 | from: verify | to: done | status: executing（3/35，DIALECT 批已交付落主）| outcome: pass | worktree: D:/autostack/.wt/lang-980（保留）| commit: lang 3de0bea0b ui f864f33b | next: done
+
 ## 10. 待澄清事项
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
