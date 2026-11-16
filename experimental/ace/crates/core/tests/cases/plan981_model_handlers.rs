@@ -83,6 +83,54 @@ fn p981_handler_bodies_are_distinguishable() {
     );
 }
 
+/// **model 初值也有 CPU 面**——与场景属性同一条纪律。
+///
+/// 只给 `Expr` 等于把形状判断推给消费者。979 核"改 helper 初值后两后端结果随之
+/// 改变"时要直接读得到值；而 `count int = seed()` 这类函数调用**不猜**，给
+/// `Unresolved`，让消费者回看 `field_inits`。
+#[test]
+fn p981_model_initializer_has_a_cpu_face() {
+    use ace_core::source::age_package::AgeSceneValue;
+
+    // 字面量初值 → 已解码。
+    let out = compile(
+        "node M {\n    model { n int = 42 }\n    view { text \"t\" {} }\n}\n",
+    );
+    let m = &out.description.components[0];
+    let v = m
+        .field_init_cpu
+        .iter()
+        .find(|(k, _)| k == "n")
+        .expect("n initializer")
+        .1
+        .clone();
+    assert_eq!(v, AgeSceneValue::Int(42), "int literal decodes");
+    assert_eq!(v.as_int(), Some(42));
+    assert_eq!(v.as_float(), None, "an int is not a float");
+
+    // 函数调用初值 → Unresolved，且原始表达式仍在。
+    let out2 = compile(
+        "fn seed() int {\n    return 7\n}\nnode M {\n    model { n int = seed() }\n    view { text \"t\" {} }\n}\n",
+    );
+    let m2 = &out2.description.components[0];
+    let v2 = m2
+        .field_init_cpu
+        .iter()
+        .find(|(k, _)| k == "n")
+        .expect("n initializer")
+        .1
+        .clone();
+    assert_eq!(
+        v2,
+        AgeSceneValue::Unresolved,
+        "a call initializer must not be given a fabricated value"
+    );
+    assert!(
+        m2.field_inits.iter().any(|(k, _)| k == "n"),
+        "and the raw initializer must still be available"
+    );
+}
+
 /// 顺序与声明序一致（979 要按声明序对事件）。
 #[test]
 fn p981_handler_order_matches_declaration() {

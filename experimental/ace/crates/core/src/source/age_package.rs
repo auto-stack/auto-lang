@@ -88,6 +88,12 @@ pub struct AgePackageComponent {
     /// `fields` 只给 `(名字, 类型拼写)`；`count int = 3` 里的 `3` 原先不在描述面，
     /// 979 无法核对"改 helper 初值后两个后端结果应随之改变"。
     pub field_inits: Vec<(String, Expr)>,
+    /// PLAN-981：`model` 字段初值的 **CPU 已解析值**。
+    ///
+    /// 与场景属性同理：只给 `Expr` 等于把形状判断推给消费者。979 要核"改 helper
+    /// 初值后两后端结果随之改变"，需要直接读得到值——而 `count int = seed()` 这类
+    /// 函数调用我们**不猜**，给 `Unresolved`，消费者回看 `field_inits`。
+    pub field_init_cpu: Vec<(String, AgeSceneValue)>,
     /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
     pub public: bool,
     /// PLAN-981（IF-981-FIELDS）：本组件的 `model` 初值是否真的进了求值链
@@ -130,6 +136,8 @@ pub struct AgeSceneRow {
 pub enum AgeSceneValue {
     /// `x: -20.0` / `diameter: 30.0` —— 单个 f32。
     Float(f32),
+    /// `n int = 42` —— 单个整数（model 初值常见）。
+    Int(i64),
     /// `position: (1.0, 2.0)` / `size: (30.0, 30.0)` —— f32 元组（按书写序）。
     Floats(Vec<f32>),
     /// `visible: false`。
@@ -146,6 +154,12 @@ impl AgeSceneValue {
     pub fn as_float(&self) -> Option<f32> {
         match self {
             AgeSceneValue::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            AgeSceneValue::Int(v) => Some(*v),
             _ => None,
         }
     }
@@ -431,6 +445,15 @@ fn scene_value_cpu(e: &Expr) -> AgeSceneValue {
     if let Some(v) = f32_literal(e) {
         return AgeSceneValue::Float(v);
     }
+    // 整数：IntLit（含负号折叠）与 TypedLit{Int}。
+    match &e.kind {
+        ExprKind::IntLit(v) => return AgeSceneValue::Int(*v as i64),
+        ExprKind::TypedLit {
+            ty: super::ast::TypeWord::Int | super::ast::TypeWord::I32,
+            bits,
+        } => return AgeSceneValue::Int(*bits as i32 as i64),
+        _ => {}
+    }
     match &e.kind {
         ExprKind::TupleLit(items) => {
             let mut vals = Vec::with_capacity(items.len());
@@ -572,6 +595,12 @@ fn read_back_components(
                 .fields
                 .iter()
                 .map(|f| (f.name.clone(), f.init.clone()))
+                .collect(),
+            field_init_cpu: p
+                .node
+                .fields
+                .iter()
+                .map(|f| (f.name.clone(), scene_value_cpu(&f.init)))
                 .collect(),
             public: p.node.public,
             initialized: state_functions_present(bound, &p.module, &p.node.fields),
