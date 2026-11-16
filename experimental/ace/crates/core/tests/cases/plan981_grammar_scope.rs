@@ -83,7 +83,16 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             SourceProfile::Scheduler,
             "f26f378633dd7b3df5754ee754836cfc2759c8435df1d04ecb952712c81d0d5e",
         ),
-        // AGE 自己的既有两面同样是"不得被本次打包裁剪波及"的邻居。
+        // R65-5（2026-11-16）：**980 WEB #6i（`b043117b8`）的语法域扩**是本次身份
+        // 变化的唯一原因，语义差如实记录（不是"把哈希替成当前值"）：
+        //   - `age-msg-member` 增加可选具名段 `ident(field:"msg_name")`；
+        //   - `age-on-widget-handler` 增加可选参数段，并新增 `age-on-handler-params`
+        //     / `age-on-handler-param-tail` 两条辅助规则；
+        //   - 新段/新规则均标注 `profiles: [age-component, age-package]`，所以**只有**
+        //     这两个 profile 的 grammar id 必须移动；13 个邻居行的字节未变（本表逐行
+        //     冻结，任何邻居漂移都会红）。
+        // 981 侧对这些新段的消费（具名集合/参数/未知消息的 A 语义）见
+        // `plan981_event_a.rs`；身份基线不替代行为用例。        // AGE 自己的既有两面同样是"不得被本次打包裁剪波及"的邻居。
         // B-LANGUAGE-I（2026-11-16）：age-component 的 `msg` payload 语法修复（`Set(int)` 此前在两个面都解析失败，整 node 退化成 `expected fn, found node` @0；现在用独立的 `age-msg-payload`/`age-msg-ty`，两个面都能解析 payload）。// resync（2026-11-16，并入 master 的 980/972 面）后该行再次变化：age-package 采纳 980 富 view 时给 AGE 规则的 profile 门列表补了 `age-package`，规则文本字节变、语义不变（age-component 仍不收 view-2d/3d 与 node-ref）。此前一段历史：// 注意：`age-component` 的这一行是**变后值**——它在阶段 H 因与新增的
         // `age-view2d/3d-member` 共用同一个 alt 列表而被重排，基线 `ca88cde14`
         // 的值是 `b244ee1614428379afb61a756e84adfd8c947fc8584e92d7a0f04bc7bf7222e0`。
@@ -91,7 +100,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // 而不是被一个看似中性的数字掩盖。
         (
             SourceProfile::AgeComponent,
-            "f230c61ea531ad564203e3735ddeebdcd3361f456492171b45e519a600f62a00",
+            "96ecc4372a53665e4eb3819a51ad28c634bbdb0341e3e06ee388b95a7cf33708",
         ),
         (
             SourceProfile::AgeH0,
@@ -154,6 +163,6 @@ fn p981_age_package_grammar_identity_is_stable_across_lookups() {
 fn p981_age_package_grammar_id_is_frozen() {
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "01c8ae389b9320f1d82074b4590233f20d99658dfc2d86f4c84e402bb5620d9e"
+        "145617968fcc6d0602b1f5bcc62eaaf164ae1fdb062b09a9c79ec86eb26f5199"
     );
 }

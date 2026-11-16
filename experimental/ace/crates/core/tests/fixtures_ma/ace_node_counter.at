@@ -1,0 +1,28 @@
+// PLAN-980 MIN-A-UI（B-NATIVE-I）：由 002-counter 原计数业务派生的最小 Node
+// Counter——msg Inc/Dec/Reset + model count int + on 复合赋值（轨迹 0→1→0→0、
+// 两实例定向 2:1 的业务面与 002 同源）。002 完整主题/design/f-string/内联
+// lambda 归 W1 B-AV；本 fixture 是 MIN-A-UI 的第三类源（Node 计数业务）。
+node Counter {
+    msg { Inc, Dec, Reset }
+
+    model {
+        var count int = 0
+    }
+
+    view {
+        col {
+            text "Counter"
+            row {
+                button "-" { onclick: .Dec }
+                button "Reset" { onclick: .Reset }
+                button "+" { onclick: .Inc }
+            }
+        }
+    }
+
+    on {
+        .Inc -> { .count += 1 }
+        .Dec -> { .count -= 1 }
+        .Reset -> { .count = 0 }
+    }
+}

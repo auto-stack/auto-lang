@@ -213,3 +213,24 @@ Rust provider 既有 `print_version` 轴从 `a2x-print/2` 升为
 - 失效轴：layout/mode/provider/contract 变更经 digest 键精确失效。
 - **具名后继（非现状）**：事实面 text-record typed-leaf 增量（solver 输入
   投影+页编码携带）使资源体获得真 R 复用——见 KNOWN-DEBT 与 939 §10。
+
+## PLAN-1033：暖编辑晚发布失败一致性（AXTX-01/02，1024 F25）
+
+- **适用面**（target×family 锚定现状的明确化）：Scalar 全后端 AXP1；
+  RecordText/Collections 在 C/Python/TS/JS 后端分别为 AXP2/AXP3 种子锚；
+  Rust 后端两族保持冻结无锚（恢复=新会话 store 命中重建，非纯恢复）。
+- **单接受点**：一次暖编辑（fragment-only 或 ranged）的全部可失败操作——
+  候选 prepare/verify、片段生产与分层持久化、`assemble_fileset`、（锚定
+  通道）`publish_anchor`——先在暂存本地完成；随后**单点提交** source_sha256、
+  当前后端居民集、居民 id 绑定、last_anchor 与返回文件集。prepare/assemble/
+  store/anchor 任一晚失败（含同键异字节 store 冲突、配额拒绝）使会话完整
+  保持旧接受态：旧锚与其 required 闭包不动，会话绑定仍旧源（B 基=具名
+  stale-base）；失败尝试的片段持久化为**无根可回收 CAS 副产物**（不虚称
+  磁盘零写）；清障后同源重试经真实 store 命中成功并重绑锚；restart 后对
+  旧源的下一次读/纯恢复仍可用旧产物。
+- **锚 required 边**跟随被编辑片段的真实 artifact id（新产或 store 命中），
+  不再指向编辑前片段工件（防 GC 后恢复缺件）。
+- 永久反例：`ace-a2x-worker` conformance `audit1033_axtx_01 / _c_scalar /
+  _c_anchored_families / _02 / _02_boundaries`——委托 provider（仅指定
+  `assemble_fileset` 次数具名拒绝）注入 assemble 晚失败；预置同键异字节
+  冲突工件注入锚发布失败。两者均为真实 seam，非 cfg(test)。

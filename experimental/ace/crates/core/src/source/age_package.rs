@@ -177,6 +177,15 @@ pub struct AgePackageComponent {
     pub text_exits: Vec<Option<AgeViewExit>>,
     /// PLAN-981（R61-4/R62-5）：命名 view 的有界结构事实（按声明序）。
     pub named_views: Vec<AgeNamedViewFact>,
+    /// PLAN-981（IF-981-EVENT-A）：`msg Msg { … }` 的具名段（匿名 msg 为 None）。
+    pub message_set_name: Option<String>,
+    /// PLAN-981（B-LANGUAGE-V，980/A 真实源）：view 属性里的**事件绑定**
+    /// `(属性键, 消息名, span)`（如 `onclick: .Inc`）。绑定是事实；点击→dispatch
+    /// 的宿主行为归 AV/SESSION。
+    pub view_events: Vec<(String, String, Span)>,
+    /// PLAN-981（IF-981-EVENT-A）：每个 handler 的参数名（按声明序；空 = unit handler）。
+    /// 参数**执行**在 A 切片未实现，前门对带参 handler 具名拒绝。
+    pub handler_params: Vec<(String, Vec<String>)>,
     /// 声明所在模块键。
     pub module: String,
     /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
@@ -1048,6 +1057,28 @@ fn read_back_components(
                 .iter()
                 .map(|e| e.as_deref().map(exit_from_kind))
                 .collect(),
+            message_set_name: p.node.message_set_name.clone(),
+            view_events: {
+                let msgs: Vec<String> =
+                    p.node.messages.iter().map(|m| m.name.clone()).collect();
+                let mut out = Vec::new();
+                collect_view_event_bindings(&p.node.view.tree, &msgs, &mut out);
+                for (_, items) in &p.node.view.named_trees {
+                    collect_view_event_bindings(items, &msgs, &mut out);
+                }
+                out
+            },
+            handler_params: p
+                .node
+                .handlers
+                .iter()
+                .map(|h| {
+                    (
+                        h.msg.clone(),
+                        h.params.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>(),
+                    )
+                })
+                .collect(),
             named_views: p
                 .node
                 .view
@@ -1511,6 +1542,39 @@ fn resolve_refs(
 /// `model` 初值事实是否成立：该模块里每个字段都存在实例 0 的状态函数。
 ///
 /// 用绑定器自己的 `origins` 表查（源名 → 符号），不猜命名规则。
+/// PLAN-981（B-LANGUAGE-V，980/A 真实源）：view 属性里的 `.Msg` 事件绑定。
+/// 只认 `on*` 键 + `Field{base: Var("self"), name}` 且 name 是本 node 声明的消息。
+fn collect_view_event_bindings(
+    items: &[crate::source::age_component::ComponentViewItem],
+    msgs: &[String],
+    out: &mut Vec<(String, String, Span)>,
+) {
+    use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
+    for it in items {
+        match it {
+            ComponentViewItem::Text(_) => {}
+            ComponentViewItem::Element(e) => {
+                collect_view_event_bindings(&e.items, msgs, out);
+            }
+            ComponentViewItem::Entry(en) => {
+                if !en.is_event {
+                    continue;
+                }
+                if let ComponentEntryValue::Expr(Expr {
+                    kind: crate::source::ast::ExprKind::Field { base, name },
+                    ..
+                }) = &en.value
+                {
+                    if matches!(base.kind, crate::source::ast::ExprKind::Var(ref v) if v.name == "self")
+                        && msgs.iter().any(|m| *m == name.name)
+                    {
+                        out.push((en.key.clone(), name.name.clone(), en.span));
+                    }
+                }
+            }
+        }
+    }
+}
 fn state_functions_present(
     bound: &super::packages::BoundPackages,
     module: &str,

@@ -872,6 +872,54 @@ pub(crate) fn project_packages_front(
                 &snap,
                 SourceProfile::AgePackage,
             )?;
+            // PLAN-981（IF-981-EVENT-A）：payload 的**执行**未实现——向声明了载荷的
+            // 消息投递一个没有载荷的 Send 必须具名拒绝（零效果），不能当 unit 消息
+            // 静默跑常量体。
+            for op in &scenario.ops {
+                if let crate::source::age_component::ScenarioOp::Send { msg, .. } = op {
+                    for node in &nodes {
+                        // R65-2：**任一**同名变体带 payload 就拒（首个 unit 变体不能
+                        // 掩盖后面的有载荷变体）。
+                        if let Some(v) = node
+                            .messages
+                            .iter()
+                            .find(|v| &v.name == msg && !v.payload.is_empty())
+                        {
+                            let detail = format!(
+                                "message `{msg}` declares a payload ({}); payload event \
+                                 execution is not supported in this slice, so the dispatch \
+                                 is rejected instead of running the handler without its value",
+                                v.payload.join(", ")
+                            );
+                            let span = v.span;
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.event-payload-unsupported",
+                                detail,
+                                span,
+                            )]);
+                        }
+                        // R65-8：带参 handler 的派发在 dispatch 前具名拒（零效果）。
+                        if let Some(h) = node
+                            .handlers
+                            .iter()
+                            .find(|h| h.msg == *msg && !h.params.is_empty())
+                        {
+                            let (param, span) = h.params[0].clone();
+                            let detail = format!(
+                                "handler `{}` declares parameter `{param}`, but parameterised \
+                                 event execution is not implemented in this slice; the dispatch \
+                                 is rejected instead of running the handler without its value",
+                                h.msg
+                            );
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.event-params-unsupported",
+                                detail,
+                                span,
+                            )]);
+                        }
+                    }
+                }
+            }
             for node in nodes {
         // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
         let node_index = age_components.len();
@@ -1047,8 +1095,38 @@ pub(crate) fn project_packages_front(
                         }
                     }                    // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
                     // 同样进唯一 verify——`class: nosuch_ident` 不能静默通过。
+                    // PLAN-981（B-LANGUAGE-V，980/A 真实源）：`onclick: .Msg` 这类
+                    // **事件绑定**是事实，不是值表达式——`.Msg` 不是 `self` 字段引用，
+                    // 不能送进值 verify（否则整源报 `no local named self`）。
+                    fn event_binding_msg<'a>(
+                        en: &'a crate::source::age_component::ComponentViewEntry,
+                        msgs: &[String],
+                    ) -> Option<&'a str> {
+                        if !en.is_event {
+                            return None;
+                        }
+                        match &en.value {
+                            crate::source::age_component::ComponentEntryValue::Expr(
+                                crate::source::ast::Expr {
+                                    kind: crate::source::ast::ExprKind::Field { base, name },
+                                    ..
+                                },
+                            ) if matches!(
+                                base.kind,
+                                crate::source::ast::ExprKind::Var(ref v) if v.name == "self"
+                            ) =>
+                            {
+                                msgs.iter()
+                                    .find(|m| **m == name.name)
+                                    .map(|_| name.name.as_str())
+                            }
+                            _ => None,
+                        }
+                    }
+
                     fn collect_item_exprs<'a>(
                         items: &'a [crate::source::age_component::ComponentViewItem],
+                        msgs: &[String],
                         out: &mut Vec<&'a crate::source::ast::Expr>,
                     ) {
                         use crate::source::age_component::ComponentEntryValue;
@@ -1060,29 +1138,54 @@ pub(crate) fn project_packages_front(
                                     if let Some(l) = &e.label {
                                         out.push(l);
                                     }
-                                    collect_item_exprs(&e.items, out);
+                                    collect_item_exprs(&e.items, msgs, out);
                                 }
-                                ComponentViewItem::Entry(en) => match &en.value {
-                                    ComponentEntryValue::Expr(x) => out.push(x),
-                                    ComponentEntryValue::Lambda(asgs) => {
-                                        for a in asgs {
-                                            out.push(&a.rhs);
+                                ComponentViewItem::Entry(en) => {
+                                    if event_binding_msg(en, msgs).is_some() {
+                                        continue;
+                                    }
+                                    match &en.value {
+                                        ComponentEntryValue::Expr(x) => out.push(x),
+                                        ComponentEntryValue::Lambda(asgs) => {
+                                            for a in asgs {
+                                                out.push(&a.rhs);
+                                            }
                                         }
                                     }
-                                },
+                                }
                             }
                         }
                     }
+                    let declared_msgs: Vec<String> =
+                        node.messages.iter().map(|m| m.name.clone()).collect();
                     let mut entry_exprs = Vec::new();
-                    collect_item_exprs(&node.view.tree, &mut entry_exprs);
+                    collect_item_exprs(&node.view.tree, &declared_msgs, &mut entry_exprs);
                     for (_, items) in &node.view.named_trees {
-                        collect_item_exprs(items, &mut entry_exprs);
+                        collect_item_exprs(items, &declared_msgs, &mut entry_exprs);
                     }
                     for e in entry_exprs {
                         check_value(e)?;
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
+                    // R65-3：widget 形 handler 必须指向本 node 声明的消息。
+                    // R65-8：带参 handler 允许解析/描述（参数事实可读），派发时再具名拒
+                    // （见上方 Send 守卫）——解析成功 ≠ 可执行。
+                    for h in &node.handlers {
+                        if h.from_widget
+                            && !node.messages.iter().any(|m| m.name == h.msg)
+                        {
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.msg-unknown",
+                                format!(
+                                    "handler `{}` names a message that no `msg` block declares \
+                                     in this node",
+                                    h.msg
+                                ),
+                                h.span,
+                            )]);
+                        }
+                    }
                     // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
                     for m in &node.members {
                         // R62-2：诊断落在**源 token** 上；修饰形只检查头字段。

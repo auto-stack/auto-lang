@@ -24,6 +24,8 @@ mod a2c_scalar_semantics;
 mod a2r_owned_temporaries_931;
 #[path = "cases/a2x_decl_env_929.rs"]
 mod a2x_decl_env_929;
+#[path = "cases/audit1033_axtx.rs"]
+mod audit1033_axtx;
 #[path = "cases/sched_m2_968.rs"]
 mod sched_m2_968;
 
