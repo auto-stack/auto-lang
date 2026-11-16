@@ -93,6 +93,21 @@ fn main() {
         "stderr-line" => {
             eprintln!("{}", arg1());
         }
+        // PLAN-1034: ARG1 = KiB 数;stderr 写满该量后小睡 ARG2 秒(镜像
+        // stdout-kib,供 run_bounded 的 stderr cap 反例)。
+        "stderr-kib" => {
+            let kib: usize = arg1().trim().parse().unwrap_or(1).min(8192);
+            let nap: u64 = arg2().trim().parse().unwrap_or(0).min(30);
+            let chunk = [b'e'; 1024];
+            let mut out = std::io::stderr();
+            for _ in 0..kib {
+                out.write_all(&chunk).unwrap();
+            }
+            out.flush().unwrap();
+            if nap > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(nap));
+            }
+        }
         // stdin 全量读到 EOF 后原样写 stdout(stdin 管道往返)。
         "stdin-echo" => {
             let mut data = Vec::new();

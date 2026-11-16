@@ -873,6 +873,8 @@ pub(crate) fn project_packages_front(
                 SourceProfile::AgePackage,
             )?;
             for node in nodes {
+        // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
+        let node_index = age_components.len();
                 let mut text_fns = Vec::new();
                 // PLAN-981：把场景里的 `Tick` 归一到本 node 实际声明的生命周期
                 // 消息拼写（`Life.Tick` 优先），再交给共享脱糖/检查。
@@ -913,7 +915,8 @@ pub(crate) fn project_packages_front(
                         items.push(crate::source::ast::Item::Fn(
                             crate::source::ast::FnItem {
                                 name: crate::source::ast::Ident {
-                                    name: crate::source::age_component::state_fn_name(
+                                    name: crate::source::age_component::state_fn_name_at(
+                                        node_index,
                                         inst, &f.name,
                                     ),
                                     span: f.span,
@@ -958,7 +961,10 @@ pub(crate) fn project_packages_front(
                         );
                         let bound = match crate::source::age_component::rename_expr(
                             &leaf.expr,
-                            crate::source::age_component::FieldBinding::StateFn(inst),
+                            crate::source::age_component::FieldBinding::StateFnAt {
+                                node: node_index,
+                                inst,
+                            },
                             &node.fields,
                         ) {
                             Ok(b) => b,
@@ -974,7 +980,144 @@ pub(crate) fn project_packages_front(
                         text_fns.push((name, leaf.span));
                     }
                 }
-                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                // B-LANGUAGE-I（R59-3）：`design` / 成员槽位的**值表达式**也必须进
+                // 唯一 verify。此前只投影形状，于是 `design { theme: nosuch_ident }`、
+                // `computed { double => count + "x" }` 之类的非法输入被静默接受；
+                // 现在按文本叶同一机制生成检查函数（`let` 绑定 + 定值返回），
+                // 名字解析/类型/可见性都由共享检查判定，诊断落回作者 span。
+                {
+                    let component_index = age_components.len();
+                    let mut value_fns = 0usize;
+                    let mut check_value = |expr: &crate::source::ast::Expr| {
+                        let bound = match crate::source::age_component::rename_expr(
+                            expr,
+                            crate::source::age_component::FieldBinding::StateFnAt {
+                                node: node_index,
+                                inst: 0,
+                            },
+                            &node.fields,
+                        ) {
+                            Ok(b) => b,
+                            Err(ds) => return Err(ds),
+                        };
+                        let name = format!(
+                            "{}val_{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            component_index,
+                            value_fns
+                        );
+                        value_fns += 1;
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::age_package::hidden_value_fn(
+                                &name,
+                                &bound,
+                                expr.span,
+                            ),
+                        ));
+                        Ok(())
+                    };
+                    for d in &node.design {
+                        if let Some(v) = &d.value {
+                            check_value(v)?;
+                        }
+                    }
+                    // R60-4：`if` 形态的条件/分支同样进唯一 verify。
+                    for d in &node.design {
+                        for part in [&d.then_value, &d.else_value] {
+                            if let Some(v) = part {
+                                check_value(v)?;
+                            }
+                        }
+                        // R61-3：条件必须能当 bool 用——用 `!cond` 把它放进布尔
+                        // 位置（`!` 只接受 bool），诊断落在条件表达式上。
+                        if let Some(cond) = &d.cond {
+                            let neg = crate::source::ast::Expr {
+                                span: cond.span,
+                                kind: crate::source::ast::ExprKind::Unary {
+                                    op: crate::source::ast::UnaryOp::Not,
+                                    operand: Box::new(cond.clone()),
+                                },
+                            };
+                            check_value(&neg)?;
+                        }
+                    }
+                    for m in &node.members {
+                        if let Some(v) = &m.value {
+                            check_value(v)?;
+                        }
+                    }                    // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
+                    // 同样进唯一 verify——`class: nosuch_ident` 不能静默通过。
+                    fn collect_item_exprs<'a>(
+                        items: &'a [crate::source::age_component::ComponentViewItem],
+                        out: &mut Vec<&'a crate::source::ast::Expr>,
+                    ) {
+                        use crate::source::age_component::ComponentEntryValue;
+                        use crate::source::age_component::ComponentViewItem;
+                        for it in items {
+                            match it {
+                                ComponentViewItem::Text(_) => {}
+                                ComponentViewItem::Element(e) => {
+                                    if let Some(l) = &e.label {
+                                        out.push(l);
+                                    }
+                                    collect_item_exprs(&e.items, out);
+                                }
+                                ComponentViewItem::Entry(en) => match &en.value {
+                                    ComponentEntryValue::Expr(x) => out.push(x),
+                                    ComponentEntryValue::Lambda(asgs) => {
+                                        for a in asgs {
+                                            out.push(&a.rhs);
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                    let mut entry_exprs = Vec::new();
+                    collect_item_exprs(&node.view.tree, &mut entry_exprs);
+                    for (_, items) in &node.view.named_trees {
+                        collect_item_exprs(items, &mut entry_exprs);
+                    }
+                    for e in entry_exprs {
+                        check_value(e)?;
+                    }
+                    // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
+                    // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
+                    // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
+                    for m in &node.members {
+                        // R62-2：诊断落在**源 token** 上；修饰形只检查头字段。
+                        for (source, source_span) in m.sources.iter().zip(m.source_spans.iter()) {
+                            let head = source.split('.').next().unwrap_or(source);
+                            if !node.fields.iter().any(|f| f.name == head) {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.member-field",
+                                    format!(
+                                        "`{source}` is not a `model` field of this node; \
+                                         the `{}` member watches it",
+                                        m.role
+                                    ),
+                                    *source_span,
+                                )]);
+                            }
+                        }
+                    }
+                    for m in &node.members {
+                        for (field, rhs) in &m.stmts {
+                            if !node.fields.iter().any(|f| f.name == *field) {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.member-field",
+                                    format!(
+                                        "`{field}` is not a `model` field of this node; \
+                                         the `{}` member assigns it",
+                                        m.role
+                                    ),
+                                    rhs.span,
+                                )]);
+                            }
+                            check_value(rhs)?;
+                        }
+                    }
+                }                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                 // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                 // 不另建求值器，也不把手写数值当常量。
                 for (si, scene) in node.view.scene_components.iter().enumerate() {

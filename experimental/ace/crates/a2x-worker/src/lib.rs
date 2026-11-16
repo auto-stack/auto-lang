@@ -8,6 +8,9 @@ pub mod load256;
 pub mod coll_formal_load;
 pub mod crun;
 pub mod pyrun;
+/// PLAN-976 T-03: the controlled node execution leg for the TypeScript /
+/// JavaScript filesets.
+pub mod tsrun;
 
 #[cfg(test)]
 mod tests {

@@ -16,6 +16,9 @@ pub const RUST_PRODUCER: &str = "ace-a2x-rust/modules/1";
 pub const NATIVE_PRODUCER: &str = "ace-native/modules/1";
 pub const C_PRODUCER: &str = "ace-a2x-c/modules/1";
 pub const PYTHON_PRODUCER: &str = "ace-a2x-python/modules/1";
+/// PLAN-976: the shared TypeScript/JavaScript provider module-bundle
+/// producer (one identity for both legs; the manifest carries `backend`).
+pub const TS_PRODUCER: &str = "ace-a2x-ts/modules/1";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -239,7 +242,12 @@ impl Manifest {
         }
         if !matches!(
             c.producer.as_str(),
-            AV_PRODUCER | RUST_PRODUCER | NATIVE_PRODUCER | C_PRODUCER | PYTHON_PRODUCER
+            AV_PRODUCER
+                | RUST_PRODUCER
+                | NATIVE_PRODUCER
+                | C_PRODUCER
+                | PYTHON_PRODUCER
+                | TS_PRODUCER
         ) {
             return Err("assembly.producer".into());
         }

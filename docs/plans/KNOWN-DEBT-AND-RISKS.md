@@ -1,3 +1,24 @@
+### D-981-SESSION-MULTI — SESSION 宿主面单组件与双 node 字段撞名（2026-11-16，auto-ui `3e63fa0d`，V 前置）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| ① 宿主 `exits()/request_layout()` 只读首组件，双组件 2:1 事件链不可表达；② 两个 node 同名 model 字段在包级撞 `__age_state_0_<field>`（`source.module-duplicate-declaration`），普通两个 Counter 无法同包 | 981 review-64 R64-3/R64-4；`plan981_*` 双组件用例缺宿主面 | ① 组件选择器/逐组件观察与布局 API 已交（auto-ui `3604f2f2`）；**剩余**：AV 场景 op 是实例级，组件级 2:1 调度需 ACE 场景扩展 + 永久双组件 2:1 用例；② **已关闭**（auto-lang `e36b7ffcd`）：状态函数按节点消歧（node 0 保持 `__age_state_0_count`，其余 `__age_state_n<node>_<inst>_<field>`），包前门/描述读回/AV 观察共用 helper；A2R 单节点合同复跑未变 |
+### D-981-MODULE-GLOBAL-A2R — 模块级 const/var 的 A2R 目标合法化（2026-11-16，落主 `1738c2a1c`，具名缺口）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| 含模块级 `const`/`var` 的包图在 `SemanticView::from_checked` 被 `module.global.*` intrinsic 拒（V-R-FAIL 负控）；A2R 消费 **HIR**，而全局的 init 值/可变性只在 MIR 降级里出现，HIR 无此事实 | 981 §6.7/§9（R60-8/R59-5 收据旁）、`plan981_age_package_a2r.rs` 头注释、`plan981_rust_public.rs` V-R-FAIL | RUST 批（B-RUST-I 后继）：二选一——① HIR 承载 global 的 init/mutability 事实（`core/src/hir.rs` + `lowering/src/hir_adapter.rs`）后 A2R 生成 `static`/`static mut` 与读写；② A2R 改消费含 globals 表的 MIR。关闭条件=真实 rustc 腿跑通含 const/var 的包图 + 原 V-R-FAIL 负控改为正例/保留对照 |
+### D-985-A-FREEZE — A正确性必闭与B研究/载体迁移分账（2026-11-16，仅规划）
+
+权威为[985 r23 A-FREEZE](985-ace-m2-certification.md) F01..35逐项表和[1066 r3](1066-autodown-migration-gap-closure.md) A/B切片。本记录不关闭任何债项：1027/28只复用其正式交付范围；1024审计仍reviewed 4/5、T-05未交。A八个正确性包1029、1031–1037当前均未实施/未交，尤其1035 RES-01/02/03必须实际值/资源/失败后恢复与充分反证/独立来源；不能只补故障标题或把注入Infra强改Resource。F03/05/08/12约束及F14/20守恒由985 T-A03/A04核。
+
+1030历史864外层及1038结构研究B，若实际A消费864则先提升；1066两个缺result/九空H/正常路径零作者写入/真实选择证据属A，原T-12[A]/T-13[A]正式交片。D-1062-CLOSURE其余S/N/P/C载体/v2/proposal/250编译完整迁移在B按原任务关闭，旧根/条件/1170角色/独立oracle不减，原D-1062债表继续有效，不因后移写PASS。所有新负控/adapter/矩阵分类与正式A收据待原owner实施/复核/合入；本轮无实现或产品验证。
+
+### D-981-EXIT-CONTRACT — SOURCE 期"单出口"契约被 r13 AGE-L03 撤销（2026-11-16，落主 `1738c2a1c`，待 979 复核）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| 979 SOURCE 交付（V-11/detail 行）可能记录"一个 node 恰一个 view 出口、混合出口必拒";r13 AGE-L03 现允许不同键并存（`view`+`view-portrait`、`view-2d`+`view-3d`），同键重复仍拒 | 981 §9 review-59/60/61 收据；`plan981_view_exits.rs` 多出口用例；`61155ce37` | 979（已归档）：按**落主 SHA**（`1738c2a1c`）重跑 V-11/detail 相关行；若其判据依赖"混合必拒"，改判为"不同键合法、同键重复拒"并在 979 归档件补注。关闭条件=复核记录 + 判据一致 |
 ### D-1062-CLOSURE — AutoDown收口遗漏（2026-11-16，只规划，未修复）
 
 原[1062](archive/1062-remaining-code-cases-to-autodown.md)保持归档/原交付证据；全量收口声明已事后更正，统一owner为[1066](1066-autodown-migration-gap-closure.md) drafting 0/13。以下不因新计划建立而关闭：
@@ -58,7 +79,7 @@
 | F21 | P1 | Pratt引用未验；panic未运行 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-02 | 技术未知/修复未闭 |
 | F22 | P1 | commit缺负依赖；错误target未执行 | [1031](1031-ace-query-negative-dependency-commit.md) | NEG-01/02 | 技术未知/修复未闭 |
 | F23 | P2 | size/tag/EOF缺口；上层仍可能拒 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-03 | 技术未知/修复未闭 |
-| F24 | P1 | typed接受态部分改写；未运行 | [1032](1032-ace-native-typed-batch-atomicity.md) | NTX-01/02 | 技术未知/修复未闭 |
+| F24 | P1 | typed接受态部分改写；未运行 | [1032](archive/1032-ace-native-typed-batch-atomicity.md) | NTX-01/02 | **已交付**（PLAN-1032 r3 @`45fcd50f4`，归档于 `docs/plans/archive/`；NTX-01/02 永久断言 + 冻结组 298/298；A 出口消费见 985 T-A03/A04） |
 | F25 | P1 | resident/SHA/anchor缺单一接受点 | [1033](1033-ace-a2x-late-publication-atomicity.md) | AXTX-01/02 | 技术未知/修复未闭 |
 | F26 | P2 | AV到达字段错误；非语言假PASS | [1037](1037-ace-cte-named-walk-and-attempt-facts.md) | CT-02 | 技术未知/修复未闭 |
 | F27 | P1 | 局部父等待无界；进程树后果未测 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-03 | 技术未知/修复未闭 |
@@ -4506,6 +4527,17 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   单组件面内无承载语义，归 981/IF-981-MODULE 多单元接线；computed 以逐字段
   状态函数+字面量/函数文本叶为已验面（f-string 叶见上条）。关闭=981 多单元
   接线后经组件间路由用例验收。owner=981。
+- **NATIVE 批边界（2026-11-16）**：①文字选择/复制、IME、媒体、终端的
+  **真实交互**实测属仓内既有档（selectable_text 单测族+手工/环境门控——
+  t5_smoke/plan804 模式）；本批交付 selectable 属性入叶+宿主适配器安装面，
+  交互档不因通道新增而复制。②路由/页面切换的组件面运行语义未交付（001
+  无路由；归 981/后续批接线）。③`AUTO_UI_ENGINE=ace` 为显式 opt-in，产品
+  默认仍旧 vm 链（沿 STATE 批默认链边界，退役归 987）。owner=后续轮/981。
+- **JET/ARK 归 M3（v0.7）——v0.6 移除（2026-11-16 用户裁定，取代同日环境
+  阻塞记录）**：B-JET/B-ARK 批整体迁出 v0.6 执行清单（原义务留 980 §9）。
+  环境事实仍在案（无 Jet 工具链，driver V06c `gradlew exit 9009`；Ark 同为
+  环境门控）。关闭=M3（v0.7）按原任务实施 B-JET-I/V/R、B-ARK-I/V/R 并在
+  对应工具链环境真实构建运行。owner=M3/后续轮。
 - **RUST 批边界（AXR0 先行，2026-11-16）**：①产品级 `rust_ui.rs` 旧 AST
   emitter 未替换——多文件 store/组件/sidecar 与 props/msg/route 对齐需组件面
   表达真实产品源（981 age-package 面刚落主、UI 接线未建）；关闭=后续轮经
@@ -4527,3 +4559,46 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   leg "z"`、m1 语言面/comptime/rust_lowering/source inventory/governance）；
   与 973 登记的 ace-abi/ace-runtime 预存红同类。非 980 触面。关闭=批量回归
   triage 或独立 fix worktree 修复绿。owner=批量回归 triage。
+
+### PLAN-975 M2-A 收尾候选边界与 master 预存红观察 — 2026-11-16
+
+- **动态 `JsonValue` / 泛型 `encode[T]` / 任意字段名类型迭代反射（B 阶段边界）**：M2-A 已交付纯 Auto `json.at` 编解码与点路径数组访问、`spec JsonDecodable` 泛型 `<T has JsonDecodable> decode<T>`、`app::service` `pub type Service` 跨模块编解码，及 `966` `ct_field_count`/`ct_has_field` 合约检查；动态 `JsonValue` AST 对象（`keys`/`as_array`/`as_number`/`prettify`/`minify`）、泛型 `encode[T]`/`encode_pretty` 与按字段名/类型遍历反射超出 M2-A 范围（`966` A 切片仅提供字段数与 `has_field`），关闭=B 阶段/comptime 字段遍历能力就绪后增量扩展。owner=M2-B/966 后续轮。
+- **`encoding/csv.at` 外部未迁移占位**：`stdlib/auto/encoding/csv.at`（`csv_parse`/`csv_parse_with_delimiter`/`csv_encode`/`csv_encode_with_delimiter`）仍仅存在于旧 VM/A2R 外部清单，不在 ACE M2-A 已交付 `json`/`sqlite`/`redis` 集合内。关闭=如需支持则按纯 Auto codec 迁移或明确废弃。owner=M2-B/stdlib-encoding。
+- **跨 Plan 外部承接边界（已具名）**：SQLite 宿主文件持久化/崩溃恢复归 `PLAN-973`/`PLAN-1064`；`packages` 跨模块 `p967_*` provider 执行装配归 `PLAN-1043`；schema 迁移策略归 `PLAN-986`；Linux 端实跑 `L-01..L-05` 归 `PLAN-1063`。
+- **T-04 并集观察到的 master 预存红（非 Plan 975 引入）**：① `ace-a2x-c::admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin` 与 `ace-abi::source_foreign`（25 例）— `master@82d032c8e`（Plan 972）改 `a2x-c/src/runtime.rs` 后 `CERTIFICATION_C_RUNTIME_SHA256`（`bd260a8b...` vs `0a4f68e3...`）未重钉；② `ace-av::stdlib_list_946::stdlib_list_946_grammar_face` — `master@4ba167930`（Plan 1064）放宽 `if` 条件文法后旧负控断言过时；③ `ace-runtime` `ace-text-conformance` 19 例 Windows `rust-lld` 缺 `__CxxFrameHandler3`/`_fltused`。关闭=批量回归 triage 或各自 owner/fix worktree 修复。owner=批量回归 triage。
+
+## PLAN-976（共享HIR到TS/JS，2026-11-16 T-05 复审登记 @9da498211）
+
+### D-976 — 具名拒绝两族的源级永久负控缺位 — 2026-11-16
+
+- **`a2ts.foreign-unsupported` 与 `a2ts.closure-owned-capture` 永久负控缺位**：两处拒绝
+  代码路径已复审核读（`a2x-ts/src/provider.rs` `validate_view` 在任何发射前拒绝首个
+  foreign 声明；`a2x-ts/src/lower/mod.rs` 拒绝捕获拥有 `Str` 的闭包创建），但无源级
+  永久负控用例——foreign 需 f0-rust-ffi-967 provider deck（packages+provider_source
+  专用装配），owned-capture 需闭包语料 fixture；同形 a2py 先例（a2x-python）同样
+  只有实现无负控。sched/depth 两族已由 `a2x-ts/tests/ts_named_rejections.rs` 补齐
+  （真实 PLAN-968 fixture 双腿 + 80 嵌套拒绝/80 兄弟语句放行）。
+  关闭=f0 FFI deck 或闭包语料有廉价仓内 fixture 后补两例负控（或随 987 旧 emitter
+  退役的语料迁移一并建立）。owner=PLAN-976 后续轮/987。
+
+### 批量回归新红：infra-fixed `ace` 集治理期望滞后 — 2026-11-16
+
+- **`test_fixed_groups.FixedGroups.test_ace_set_is_explicit_and_separate_from_daily`**：
+  `cargo t all`（run-4tyrocgf，covered 5cedb4715）实测 `ace` 集展开为
+  [ace-workspace, ace-adapters, ace-batch, **ace-facade**]，治理测试冻结期望缺
+  ace-facade。由 PLAN-969 E0 facade 落主 `278b912043`（2026-11-15，前收据之后）
+  引入——969 加组未同步 scripts/tests/test_fixed_groups.py 的显式清单；非 976 触面
+  （976 仅改 ace-a2x 组 args）。关闭=L0 fix worktree 一行期望更新（或 969 线后续）。
+  owner=PLAN-969 线/批量回归 triage。
+
+## PLAN-1032（typed 批量编辑失败原子性，2026-11-16 re-review 登记 @2cf01df05）
+
+### D-1032-RUNTIME-PREP — `typed_runtime::prepare` 仅进程内串行（既有系统性风险，非本包合同）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+**PLAN-1032 交付记录**：F24 技术闭环已交付——`45fcd50f4` 落主（ff-only）、两 Spec 沉淀、`cargo t ace-native` 298/298、归档 `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md`。遗留导航（非本 Plan 权限）：`docs/design/strategy/ace-m2-delivery-roadmap.md`（主检出他人 WIP）、`docs/design/strategy/ace-route-plan-map.md`（未跟踪新件）、`docs/plans/1024-*.md` F24 行（他人 WIP）仍指向活跃路径/交付前状态，owner=对应文档维护者/战略文档收口轮。
+
+| 会话启动路径 `typed_runtime::prepare` 的 `static SERIAL: Mutex<()>` 只串行**同进程**；跨进程存在窗口（`target/<target>/runtime-release/ace_typed_entry_runtime.lib` + `.identity.json` 的 `remove_file`/`file_hash`/`cargo build` 交错）。测试侧的 lib 二进制与两个集成测试二进制会并发启动会话 | PLAN-1032 re-review（2026-11-16，`2cf01df05`）：首轮独立复跑出现 1 次 `tier.rs:317 .expect("session starts")`（0.264s），随后单例复跑 PASS、6 例复跑 10/10 绿、两进程并发 3 轮绿、组级 298/298 绿；基线 `16a58402e` 已有 `typed_entry_tier`/`typed_entry_incremental_tier` 两二进制并发 starter，故窗口为既有风险，1032 的 lib 用例仅边际增加暴露。原始记录见 [1032 §9](archive/1032-ace-native-typed-batch-atomicity.md)（归档前曾位于 `docs/plans/`） | owner = ACE native runtime 准备线（PLAN-891 后继）/ 批量回归 triage。关闭条件=二选一：①跨进程串行化（文件锁/独占 rename 发布，release 二进制与测试共用）；②会话启动测试收敛到单二进制（或 test-group 串行化）并附并发压力复跑绿。边界：不阻塞 PLAN-1032（§5 范围为批编辑接受事务，`start()` 与基线逐字节相同） |
+
+**PLAN-1032 交付记录**：F24 技术闭环已交付——`45fcd50f4` 落主（ff-only）、两 Spec 沉淀、`cargo t ace-native` 298/298、归档 `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md`。遗留导航（非本 Plan 权限）：`docs/design/strategy/ace-m2-delivery-roadmap.md`（主检出他人 WIP）、`docs/design/strategy/ace-route-plan-map.md`（未跟踪新件）、`docs/plans/1024-*.md` F24 行（他人 WIP）仍指向活跃路径/交付前状态，owner=对应文档维护者/战略文档收口轮。

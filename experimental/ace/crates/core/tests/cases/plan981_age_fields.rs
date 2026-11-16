@@ -24,7 +24,38 @@ node Widget {\n\
     view { text \"w\" {} }\n\
 }\n\
 node Counter {\n\
+    design {\n\
+        theme: \"dark\"\n\
+    }\n\
+    msg {\n\
+        Inc,\n\
+        Set(int)\n\
+    }\n\
     model { count int = 3 }\n\
+    view main {\n\
+        text \"named\" {}\n\
+    }\n\
+    bind {\n\
+        \"title\" -> .Title\n\
+    }\n\
+    routes {\n\
+        \"/a\" -> use home\n\
+    }\n\
+    expose {\n\
+        count\n\
+    }\n\
+    lifecycle {\n\
+        mounted => {\n\
+            .count = count + 1\n\
+        }\n\
+    }\n\
+    computed {\n\
+        double => count + count\n\
+    }\n\
+    watch { .count -> { .count = count + 1 } }\n\
+    timer {\n\
+        Tick (every_ms: 1)\n\
+    }\n\
     on Inc { count = count + 1 }\n\
     on Life.Tick { count = count + 1 }\n\
     view {\n\
@@ -47,6 +78,16 @@ node Tower {\n\
         cylinder3d tower {\n\
             position: (0.0, 1.0, 2.0)\n\
         }\n\
+    }\n\
+}\n\
+node Portrait {\n\
+    view-portrait {\n\
+        text \"portrait\" {}\n\
+    }\n\
+}\n\
+node Wide {\n\
+    view-widget {\n\
+        text \"widget\" {}\n\
     }\n\
 }\n";
 
@@ -123,14 +164,26 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
     // `view.scene` 删掉投影后无人发现（轮 48 R47-2 的探针实证）。
     for drop in [
         "node",
+        "bind",
+        "computed",
+        "design",
+        "expose",
+        "lifecycle",
         "model",
         "model.init",
+        "msg",
         "on",
         "on.lifecycle",
         "view",
         "view-2d",
         "view-3d",
+        "view-portrait",
+        "view-widget",
         "view.text",
+        "named-view",
+        "route",
+        "timer",
+        "watch",
         "view.node-ref",
         "view.scene",
         "view.scene.resource",
@@ -148,6 +201,11 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     }
                     "model.init" => c.initialized = false,
                     "on" | "on.lifecycle" => c.handler_msgs.clear(),
+                    "msg" => c.messages.clear(),
+                    "design" => c.design.clear(),
+                    "named-view" | "bind" | "route" | "expose" | "lifecycle" | "computed" | "watch" | "timer" => {
+                        c.members.retain(|m| m.role != drop);
+                    }
                     // 出口事实：把该出口换成另一个，代表"投影不再产出这一行"。
                     "view" => {
                         if c.exit == AgeViewExit::View {
@@ -161,6 +219,16 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     }
                     "view-3d" => {
                         if c.exit == AgeViewExit::View3d {
+                            c.exit = AgeViewExit::View;
+                        }
+                    }
+                    "view-portrait" => {
+                        if c.exit == AgeViewExit::ViewPortrait {
+                            c.exit = AgeViewExit::View;
+                        }
+                    }
+                    "view-widget" => {
+                        if c.exit == AgeViewExit::ViewWidget {
                             c.exit = AgeViewExit::View;
                         }
                     }
@@ -193,18 +261,32 @@ fn p981_fields_construct_table_is_frozen() {
     assert_eq!(
         keys,
         vec![
+            "bind",
+            "computed",
+            "design",
+            "expose",
+            "lifecycle",
             "model",
             "model.init",
+            "msg",
+            "named-view",
             "node",
             "on",
             "on.lifecycle",
+            "route",
+            "timer",
             "view",
             "view-2d",
             "view-3d",
+            // B-LANGUAGE-I（AGE-L03）：五 view 面把两个直属呈现出口纳入分母。
+            // 这是 SOURCE 12 行交接表的**增长**（不缩分母），不是替换。
+            "view-portrait",
+            "view-widget",
             "view.node-ref",
             "view.scene",
             "view.scene.resource",
             "view.text",
+            "watch",
         ],
         "deleting or renaming a required construct row must be red, never a smaller \
          denominator that still passes"

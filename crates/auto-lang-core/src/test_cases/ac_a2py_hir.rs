@@ -14,7 +14,6 @@
 //!   fallback NEVER pass: they produce controlled errors/rejections.
 
 use std::path::Path;
-use std::process::Command;
 use std::time::Instant;
 
 use auto_test_case::compare::{compare_bytes, Mismatch};
@@ -123,6 +122,52 @@ pub fn validate_worker_response(
     {
         return Err(format!(
             "daily Python emit `{recipe}` must stay spawn-zero with execution_claimed=false"
+        ));
+    }
+    Ok(())
+}
+
+/// PLAN-1034 r4：run-py 响应分域准入（在 oracle 比较之前）：
+/// * 每流 `stdout_hex`/`stderr_hex` 文本 ≤2MiB（每 raw byte 最坏 2 hex
+///   字符），解码后每流原始 bytes ≤1MiB——超量在解码前拒绝；
+/// * 去除 `stdout`/`stderr`/`stdout_hex`/`stderr_hex` 四个流值后的同一
+///   JSON 编码 ≤4MiB（identity/manifest/credential 等非流元数据）。
+/// 程序 NUL/坏 UTF-8 的 lossy 显示文本不作 byte oracle——hex 字段才是。
+pub fn validate_run_py_response_domains(resp: &serde_json::Value) -> Result<(), String> {
+    const STREAM_HEX_CAP: usize = 2 << 20;
+    const STREAM_DECODED_CAP: usize = 1 << 20;
+    const METADATA_CAP: usize = 4 << 20;
+    for field in ["stdout_hex", "stderr_hex"] {
+        let text = resp[field].as_str().unwrap_or("");
+        if text.len() > STREAM_HEX_CAP {
+            return Err(format!(
+                "a2x.run-py-limit: {field} is {} chars; exceeds the {}-char hex cap \
+                 (decode refused before admission)",
+                text.len(),
+                STREAM_HEX_CAP
+            ));
+        }
+        let decoded_len = text.len() / 2;
+        if decoded_len > STREAM_DECODED_CAP {
+            return Err(format!(
+                "a2x.run-py-limit: {field} decodes to {} bytes; exceeds the {}-byte stream cap",
+                decoded_len, STREAM_DECODED_CAP
+            ));
+        }
+    }
+    let mut metadata = resp.clone();
+    for field in ["stdout", "stderr", "stdout_hex", "stderr_hex"] {
+        if metadata.get(field).is_some() {
+            metadata[field] = serde_json::Value::Null;
+        }
+    }
+    let encoded = serde_json::to_vec(&metadata)
+        .map_err(|e| format!("a2x.run-py-metadata: re-encode: {e}"))?;
+    if encoded.len() > METADATA_CAP {
+        return Err(format!(
+            "a2x.run-py-limit: non-stream metadata is {} bytes; exceeds the {}-byte cap",
+            encoded.len(),
+            METADATA_CAP
         ));
     }
     Ok(())
@@ -237,19 +282,36 @@ pub fn run_check(
         &worker_sha,
         request_text.as_bytes(),
     )?;
-    let out = Command::new(&worker)
-        .arg(&request_text)
-        .output()
-        .map_err(|e| format!("spawn a2x worker {}: {e}", worker.display()))?;
+    // PLAN-1034: 有界交换——run-py 整响应 20MiB 档（双流 text+hex 最坏
+    // 16MiB + 非流元数据 ≤4MiB）；emit 仍 4MiB 元数据档；stderr 1MiB；
+    // 70s/单一3s；cap/期限命中即 Infra，绝无截断成功。
+    let policy = if op == "run-py" {
+        super::a2x_exchange::A2XExchangePolicy::run_py()
+    } else {
+        super::a2x_exchange::A2XExchangePolicy::daily_emit()
+    };
+    let out = match super::a2x_exchange::exchange(&worker, &request_text, policy) {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(exchange) = exchange {
+                let _ = exchange.finish(&[], &[], None, Some(&e.0));
+            }
+            return Ok(Verdict {
+                status: Status::Error,
+                detail: Some(e.0),
+                ..Verdict::pass()
+            });
+        }
+    };
     if let Some(exchange) = exchange {
-        exchange.finish(&out.stdout, &out.stderr, out.status.code(), None)?;
+        exchange.finish(&out.stdout, &out.stderr, Some(0), None)?;
     }
-    if !out.status.success() {
+    if out.exit_kind != auto_tool_execution::ExitKind::Success {
         return Ok(Verdict {
             status: Status::Error,
             detail: Some(format!(
-                "a2x worker failed (exit {:?}): {}",
-                out.status.code(),
+                "a2x worker failed ({:?}): {}",
+                out.exit_kind,
                 String::from_utf8_lossy(&out.stdout).trim()
             )),
             ..Verdict::pass()
@@ -257,8 +319,20 @@ pub fn run_check(
     }
     let resp: serde_json::Value = serde_json::from_slice(&out.stdout)
         .map_err(|e| format!("worker response not json: {e}"))?;
-    let manifest_bytes = std::fs::read(actual_dir.join("manifest.json"))
-        .map_err(|e| format!("read manifest: {e}"))?;
+    // PLAN-1034 r4 Py 决定：run-py 响应分域准入——每流 hex ≤2MiB 且解码
+    // 后每流 ≤1MiB（解码前拒超量，以原始 bytes 判 oracle）；非流元数据
+    // ≤4MiB（去除四个流值后按同一 JSON 编码计量）。
+    if recipe == A2PY_STDLIB_RUN_RECIPE {
+        if let Err(reason) = validate_run_py_response_domains(&resp) {
+            return Ok(Verdict {
+                status: Status::Error,
+                detail: Some(reason),
+                ..Verdict::pass()
+            });
+        }
+    }
+    let mut artifacts = super::a2x_exchange::ArtifactBudget::new();
+    let manifest_bytes = artifacts.read_manifest(&actual_dir.join("manifest.json"))?;
     let manifest_sha = hex(&sha256(&manifest_bytes));
     if let Err(reason) = validate_worker_response(&resp, recipe, &manifest_sha) {
         return Ok(Verdict {
@@ -338,15 +412,22 @@ pub fn run_check(
                 for want in &oracle.artifacts {
                     expected_paths.push(want.path.clone());
                     let path = actual_dir.join(&want.path);
-                    match std::fs::read(&path) {
-                        Err(_) => mismatches.push(Mismatch {
+                    match artifacts.read_file(&path, false) {
+                        Err(limit) => {
+                            return Ok(Verdict {
+                                status: Status::Error,
+                                detail: Some(limit),
+                                ..Verdict::pass()
+                            })
+                        }
+                        Ok(None) => mismatches.push(Mismatch {
                             observation: format!("artifact {}", want.path),
                             kind: "missing",
                             expected: format!("{} bytes", want.bytes.len()),
                             actual: "absent".to_string(),
                             first_diff: None,
                         }),
-                        Ok(actual) => {
+                        Ok(Some(actual)) => {
                             if let Some(m) = compare_bytes(
                                 &want.bytes,
                                 &actual,
@@ -416,6 +497,7 @@ mod tests {
     use auto_test_case::contract::decode_case;
     use auto_test_case::document::CaseDocument;
     use auto_test_case::ir::{resolve_case, resolve_oracle};
+    use std::process::Command;
 
     #[test]
     fn reject_emit_only_impersonation_for_run_recipe() {
@@ -662,5 +744,37 @@ case {
         assert_eq!(v.status, Status::Pass, "verdict mismatch: {:?}", v.detail);
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// PLAN-1034：run-py 响应分域准入（纯函数，解码前拒超量）。
+    #[test]
+    fn run_py_response_domains_reject_oversize_before_decode() {
+        let base = serde_json::json!({
+            "status": "ok", "mode": "run-py", "exit_code": 0,
+            "stdout_hex": "", "stderr_hex": "", "stdout": "", "stderr": "",
+            "python_identity": {"exe": "py", "version": "3", "version_sha256": "0".repeat(64), "os": "win"},
+        });
+        // 合法小响应通过。
+        validate_run_py_response_domains(&base).unwrap();
+        // 每流 hex 超 2MiB（解码前拒绝）。
+        let mut oversize_hex = base.clone();
+        oversize_hex["stdout_hex"] = serde_json::json!("ab".repeat((2 << 20) + 1));
+        let err = validate_run_py_response_domains(&oversize_hex).unwrap_err();
+        assert!(err.contains("hex cap"), "{err}");
+        // 1MiB 流边界（decoded=hex/2）：hex 2MiB+2 → 解码 1MiB+1，先落
+        // hex 门（算术上 hex≤2MiB 蕴含 decoded≤1MiB；解码门是对解码器
+        // 实现的防御性独立断言）。
+        let mut stream_edge = base.clone();
+        stream_edge["stderr_hex"] = serde_json::json!("ab".repeat((2 << 20) + 2));
+        let err = validate_run_py_response_domains(&stream_edge).unwrap_err();
+        assert!(
+            err.contains("hex cap"),
+            "1MiB stream edge binds at the hex gate: {err}"
+        );
+        // 非流元数据超 4MiB（去四流字段后计量）。
+        let mut meta_over = base.clone();
+        meta_over["filler"] = serde_json::json!("m".repeat((4 << 20) + 2));
+        let err = validate_run_py_response_domains(&meta_over).unwrap_err();
+        assert!(err.contains("metadata"), "{err}");
     }
 }

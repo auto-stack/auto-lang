@@ -48,6 +48,19 @@ pub struct ComponentHandler {
     pub span: Span,
 }
 
+/// B-LANGUAGE-I（AGE-L03）：一个**直属出口**事实（`view` / `view-2d` / `view-3d` /
+/// `view-portrait` / `view-widget`）。
+///
+/// 计划要求"重复直属选择键拒绝，多同域内部区域合法"：不同键的直属出口可以并存
+/// （`view` + `view-portrait` 等），同一键写两次仍拒绝；出口事实按**后缀字节**落定。
+#[derive(Clone, Debug)]
+pub struct ComponentExit {
+    /// 出口键（`view` / `view-2d` / `view-3d` / `view-portrait` / `view-widget`）。
+    pub kind: String,
+    /// 该出口作者的 head/variant span。
+    pub span: Span,
+}
+
 /// 组件 view（文本叶沿用 H0 形状；PLAN-980 增补完整树结构）。
 #[derive(Clone, Debug)]
 pub struct ComponentView {
@@ -58,6 +71,15 @@ pub struct ComponentView {
     /// 在描述面完全丢失：纯场景 node 无法与 UI node 区分，3D 出口删掉也无人发现。
     /// 出口由**后缀 token 的字节**决定（`2d`/`3d`），不是由命中的 grammar alt 猜。
     pub exit: String,
+    /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重后按声明序）。
+    pub exits: Vec<ComponentExit>,
+    /// R60-8：逐文本叶的**出口归属**（与 `texts` 同序；普通 view 的叶记
+    /// `view` / `view-2d` / …，命名 view 的叶记 `named-view:<name>` 或空）。
+    pub text_exits: Vec<Option<String>>,
+    /// R61-4/R62-5：命名 view 的**结构树**（`(name, items)`，按声明序）。
+    /// 描述面暂不暴露（V 批次决定形状），但树里的属性/lambda 表达式现在
+    /// 由前门送进唯一 verify——不能因为"未入描述"就不检查。
+    pub named_trees: Vec<(String, Vec<ComponentViewItem>)>,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
     /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。
@@ -98,6 +120,11 @@ pub struct ComponentMsgVariant {
 pub struct ComponentDesignEntry {
     pub key: String,
     pub value: Option<Expr>,
+    /// R60-4：`key: if <cond> { <then> } else { <else> }` 的三段表达式——
+    /// 此前只保留 `value=None` + span，条件与分支从不进 verify。
+    pub cond: Option<Expr>,
+    pub then_value: Option<Expr>,
+    pub else_value: Option<Expr>,
     pub span: Span,
 }
 
@@ -143,7 +170,15 @@ pub struct ComponentMemberRow {
     pub name: String,
     pub value: Option<Expr>,
     pub text: Option<String>,
-    pub num: Option<i64>,    pub span: Span,
+    pub num: Option<i64>,
+    /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`），按声明序；
+    /// RHS 进唯一 verify，LHS 字段存在性由前门另查。
+    pub stmts: Vec<(String, Expr)>,
+    /// R61-2/R62-2：`watch { .a, .b -> … }` 的全部源（按声明序；带修饰写
+    /// `a.b`），与 `source_spans` 同序（span 指向源 token，不是整个成员）。
+    pub sources: Vec<String>,
+    pub source_spans: Vec<Span>,
+    pub span: Span,
 }
 
 /// 一个组件 node 声明的未受信候选。
@@ -750,6 +785,8 @@ pub fn compile_component_scenario_observing(
     scenario: &ComponentScenario,
     observed: Option<&str>,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    // 979 冻结打包车道：无 int 观测字段仍具名拒（observe_compiled 依赖
+    // `__age_drive` 打包编码）。免驱动模式只开给 980 新入口。
     compile_component_scenario_full(
         src,
         module_path,
@@ -759,6 +796,7 @@ pub fn compile_component_scenario_observing(
         observed,
         None,
         true,
+        false,
     )
 }
 
@@ -782,6 +820,7 @@ pub fn compile_component_scenario_with_initials(
         scenario,
         observed,
         Some(initials),
+        true,
         true,
     )
 }
@@ -810,6 +849,7 @@ pub fn compile_component_scenario_states(
         None,
         Some(initials),
         false,
+        true,
     )
 }
 
@@ -822,6 +862,7 @@ fn compile_component_scenario_full(
     observed: Option<&str>,
     initials: Option<&ComponentInitials>,
     emit_view_texts: bool,
+    allow_driverless: bool,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
     let src = &desugar_widget_src(src)?;
@@ -930,16 +971,23 @@ fn compile_component_scenario_full(
             .iter()
             .find(|f| field_type(f) == Some(TypeWord::I32)),
     };
-    let Some(observed_field) = observed else {
-        return Err(vec![text_diag(
-            "source.age.component-unsupported",
-            "the scenario needs at least one `int` model field to observe (the driver encodes it \
-             as i32)",
-            node.fields
-                .first()
-                .map(|f| f.ty_span)
-                .unwrap_or(node.view.span),
-        )]);
+    // PLAN-980 NATIVE：observed=None 且无 int 字段 = **免驱动模式**（001 形：
+    // str/bool 状态 + 文本叶）——不发射 `__age_drive`，texts/states 照发（逐
+    // 字段观察与文本叶不依赖打包编码）。仅 980 新入口（allow_driverless）开放；
+    // 979 冻结打包车道保持编译期具名拒。缺省有 int 仍取首个 int（口径不变）。
+    let observed_field = match observed {
+        Some(f) => Some(f),
+        None if allow_driverless => None,
+        None => {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                "the scenario needs at least one `int` model field to observe (the driver encodes it                  as i32)",
+                node.fields
+                    .first()
+                    .map(|f| f.ty_span)
+                    .unwrap_or(node.view.span),
+            )])
+        }
     };
     if node.view.texts.is_empty() {
         return Err(vec![text_diag(
@@ -1040,69 +1088,73 @@ fn compile_component_scenario_full(
             }
         }
     }
-    // 驱动：各实例观测字段状态按 256^i 求和（instance 0 在个位）。
-    let mut terms: Option<Expr> = None;
-    for inst in 0..scenario.instances {
-        let call = Expr {
-            span: node.span,
-            kind: ExprKind::Call {
-                callee: Ident {
-                    name: state_fn_name(inst, &observed_field.name),
-                    span: node.span,
-                },
-                args: Vec::new(),
-            },
-        };
-        let term = if inst == 0 {
-            call
-        } else {
-            Expr {
+    // 驱动：各实例观测字段状态按 256^i 求和（instance 0 在个位）。免驱动模式
+    //（PLAN-980 NATIVE：无 int 观测字段）跳过发射——`observe_compiled` 的打包
+    // 车道对该类源不适用，消费者走逐字段/文本叶观察。
+    if let Some(observed_field) = observed_field {
+        let mut terms: Option<Expr> = None;
+        for inst in 0..scenario.instances {
+            let call = Expr {
                 span: node.span,
-                kind: ExprKind::Binary {
-                    op: crate::source::ast::BinOp::Mul,
-                    lhs: Box::new(call),
-                    rhs: Box::new(Expr {
+                kind: ExprKind::Call {
+                    callee: Ident {
+                        name: state_fn_name(inst, &observed_field.name),
                         span: node.span,
-                        kind: ExprKind::IntLit(256i32.saturating_pow(inst as u32)),
-                    }),
+                    },
+                    args: Vec::new(),
                 },
-            }
-        };
-        terms = Some(match terms {
-            None => term,
-            Some(prev) => Expr {
+            };
+            let term = if inst == 0 {
+                call
+            } else {
+                Expr {
+                    span: node.span,
+                    kind: ExprKind::Binary {
+                        op: crate::source::ast::BinOp::Mul,
+                        lhs: Box::new(call),
+                        rhs: Box::new(Expr {
+                            span: node.span,
+                            kind: ExprKind::IntLit(256i32.saturating_pow(inst as u32)),
+                        }),
+                    },
+                }
+            };
+            terms = Some(match terms {
+                None => term,
+                Some(prev) => Expr {
+                    span: node.span,
+                    kind: ExprKind::Binary {
+                        op: crate::source::ast::BinOp::Add,
+                        lhs: Box::new(prev),
+                        rhs: Box::new(term),
+                    },
+                },
+            });
+        }
+        items.push(Item::Fn(FnItem {
+            name: Ident {
+                name: "__age_drive".to_string(),
                 span: node.span,
-                kind: ExprKind::Binary {
-                    op: crate::source::ast::BinOp::Add,
-                    lhs: Box::new(prev),
-                    rhs: Box::new(term),
-                },
             },
-        });
-    }
-    items.push(Item::Fn(FnItem {
-        name: Ident {
-            name: "__age_drive".to_string(),
-            span: node.span,
-        },
-        type_params: Vec::new(),
-        params: Vec::new(),
-        ret: TypeAnn {
-            kind: TypeRef::Builtin(TypeWord::I32),
-            span: node.span,
-        },
-        body: Block {
-            stmts: vec![Stmt::Return {
-                value: terms.expect("at least one instance"),
+            type_params: Vec::new(),
+            params: Vec::new(),
+            ret: TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
                 span: node.span,
-            }],
+            },
+            body: Block {
+                stmts: vec![Stmt::Return {
+                    value: terms.expect("at least one instance"),
+                    span: node.span,
+                }],
+                span: node.span,
+            },
             span: node.span,
-        },
-        span: node.span,
-        receiver: Receiver::Free,
-        owner: None,
-        script: false,
-    }));
+            receiver: Receiver::Free,
+            owner: None,
+            script: false,
+        }));
+    }
     let desugared = Program { items };
     let parts = match super::adapter::compile_program_parts(
         &desugared,
@@ -1260,6 +1312,16 @@ pub(crate) fn rename_expr(
                             args: Vec::new(),
                         },
                     },
+                    FieldBinding::StateFnAt { node, inst } => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: state_fn_name_at(node, inst, &f.name),
+                                span: name.span,
+                            },
+                            args: Vec::new(),
+                        },
+                    },
                 },
                 None => expr.clone(),
             }
@@ -1286,6 +1348,16 @@ pub(crate) fn rename_expr(
                     kind: ExprKind::Call {
                         callee: Ident {
                             name: state_fn_name(inst, &f.name),
+                            span: id.span,
+                        },
+                        args: Vec::new(),
+                    },
+                },
+                FieldBinding::StateFnAt { node, inst } => Expr {
+                    span: expr.span,
+                    kind: ExprKind::Call {
+                        callee: Ident {
+                            name: state_fn_name_at(node, inst, &f.name),
                             span: id.span,
                         },
                         args: Vec::new(),
@@ -1437,6 +1509,16 @@ pub(crate) fn instance_stmts(
     Ok(stmts)
 }
 
+/// R64-4：包内**多 node 同名字段**的消歧名——node 0 保持旧拼写（A2R 冻结的
+/// `__age_state_0_count` 不变），其余 node 带节点下标。
+pub fn state_fn_name_at(node: usize, inst: usize, field: &str) -> String {
+    if node == 0 {
+        state_fn_name(inst, field)
+    } else {
+        format!("__age_state_n{node}_{inst}_{field}")
+    }
+}
+
 pub(crate) fn state_fn_name(inst: usize, field: &str) -> String {
     format!("__age_state_{inst}_{field}")
 }
@@ -1446,6 +1528,8 @@ pub(crate) fn state_fn_name(inst: usize, field: &str) -> String {
 pub(crate) enum FieldBinding {
     Local(usize),
     StateFn(usize),
+    /// R64-4：包内第 `node` 个组件的实例 `inst` 状态函数。
+    StateFnAt { node: usize, inst: usize },
 }
 /// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动）——用户顶层名不得占用。
 const COMPONENT_RESERVED_NAMES: [&str; 3] =

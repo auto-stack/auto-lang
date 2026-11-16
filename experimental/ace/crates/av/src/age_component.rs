@@ -16,7 +16,8 @@ use ace_lowering::lower_checked_owned;
 // 依赖 ace-core。再导出为纯加法，既有路径不受影响。
 pub use ace_core::source::age_component::{
     compile_component_scenario_states, compile_component_scenario_with_initials,
-    ComponentCompilation, ComponentInitials, ComponentScenario, InitialValue, ScenarioOp,
+    project_component_candidates, ComponentCompilation, ComponentInitials, ComponentScenario,
+    InitialValue, ScenarioOp,
 };
 pub use ace_core::source::age_h0::LegacyWidgetAlias;
 
@@ -166,6 +167,25 @@ pub fn observe_component_states(compiled: &ComponentCompilation) -> Result<Obser
         }
     }
     Ok(ObservedStates { per_instance })
+}
+
+/// 逐字段状态 + 文本叶双观察（PLAN-980 NATIVE：免驱动源的完整观察面——
+/// states 按 int/bool/str 全域、texts 按实例取共享 Str 真值）。
+pub fn observe_component_states_and_texts(
+    compiled: &ComponentCompilation,
+) -> Result<(ObservedStates, Vec<Vec<String>>), String> {
+    let states = observe_component_states(compiled)?;
+    let mut texts: Vec<Vec<String>> = Vec::new();
+    for node in &compiled.description.nodes {
+        for per in &node.instance_texts {
+            let mut row = Vec::new();
+            for t in per {
+                row.push(execute_text(&compiled.checked, &t.def_id)?);
+            }
+            texts.push(row);
+        }
+    }
+    Ok((states, texts))
 }
 
 /// 场景级便捷入口：**states-only** 编译（带初值）→ 逐字段状态观察

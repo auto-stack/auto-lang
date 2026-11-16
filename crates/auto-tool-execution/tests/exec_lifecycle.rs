@@ -974,3 +974,173 @@ fn output_adapter_retains_original_unix_signal_status() {
     assert_eq!(output.status.signal(), Some(6));
     assert_eq!(output.status.code(), None);
 }
+
+// ---- PLAN-1034 T-02/T-03（IPC-03 设施面）：opt-in 有界捕获入口 run_bounded ----
+// 小 cap/短 deadline 仅测试配置；生产默认（70s/3s/4MiB/1MiB）由
+// A2X 父 adapter 侧持有（auto-lang-core a2x_exchange）。每例自带计时。
+
+use auto_tool_execution::{run_bounded, BoundedError, BoundedPolicy};
+
+fn bounded_child(mode: &str) -> ExecutionSpec {
+    child_spec(mode)
+}
+
+fn small_policy(
+    exec_ms: u64,
+    cleanup_ms: u64,
+    stdout_cap: Option<usize>,
+    stderr_cap: Option<usize>,
+) -> BoundedPolicy {
+    BoundedPolicy {
+        exec_deadline: Duration::from_millis(exec_ms),
+        cleanup_deadline: Duration::from_millis(cleanup_ms),
+        stdout_cap,
+        stderr_cap,
+    }
+}
+
+/// 正常路径：stdout 完整收集、无截断、不触发 cap/期限（含 stdin_data
+/// 经 owned 写入全量到达并被回读——A2X 父请求送 stdin 的设施面）。
+#[test]
+fn audit1034_run_bounded_ipc03_normal_exchange_and_stdin_request() {
+    let started = Instant::now();
+    let mut spec = bounded_child("stdin-echo");
+    spec.stdin = StdioPolicy::Piped;
+    spec.stdin_data = Some(b"{\"op\":\"daily-emit\"}".to_vec());
+    spec.tree_scope = TreeScope::ProcessTree;
+    let result = run_bounded(
+        &spec,
+        &small_policy(5_000, 1_000, Some(4 << 20), Some(1 << 20)),
+    )
+    .expect("normal bounded exchange");
+    assert_eq!(result.kind, ExitKind::Success);
+    assert_eq!(
+        result.stdout.as_deref(),
+        Some(&b"{\"op\":\"daily-emit\"}"[..])
+    );
+    assert_eq!(result.stderr.as_deref(), Some(&b""[..]));
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+/// stdout cap 命中：cap+1 观测、owned 树立即终止、单一收尾期限内完
+/// 成清理，绝无截断文本成功。
+#[test]
+fn audit1034_run_bounded_ipc03_stdout_cap_terminates_tree() {
+    let started = Instant::now();
+    let spec = with_args(bounded_child("stdout-kib"), "8", Some("30"));
+    let err = run_bounded(&spec, &small_policy(5_000, 1_000, Some(128), Some(64)))
+        .expect_err("stdout flood must hit the cap");
+    match &err {
+        BoundedError::StreamCap {
+            stream,
+            cap,
+            observed,
+            cleanup,
+        } => {
+            assert_eq!(*stream, "stdout");
+            assert_eq!(*cap, 128);
+            assert_eq!(*observed, 129, "observed saturates at cap+1");
+            assert!(cleanup.completed, "cleanup residuals: {}", cleanup.detail);
+        }
+        other => panic!("expected StreamCap, got {other:?}"),
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "cap must fire immediately, not wait for natural exit: {:?}",
+        started.elapsed()
+    );
+}
+
+/// stderr cap 命中（父侧即时强制，独立于 stdout）。
+#[test]
+fn audit1034_run_bounded_ipc03_stderr_cap_terminates_tree() {
+    let spec = with_args(bounded_child("stderr-kib"), "8", Some("30"));
+    let err = run_bounded(&spec, &small_policy(5_000, 1_000, Some(4 << 20), Some(64)))
+        .expect_err("stderr flood must hit the cap");
+    match &err {
+        BoundedError::StreamCap {
+            stream,
+            cap,
+            observed,
+            cleanup,
+        } => {
+            assert_eq!(*stream, "stderr");
+            assert_eq!(*cap, 64);
+            assert_eq!(*observed, 65);
+            assert!(cleanup.completed, "cleanup residuals: {}", cleanup.detail);
+        }
+        other => panic!("expected StreamCap(stderr), got {other:?}"),
+    }
+}
+
+/// exec 期限命中：owned 树终止并收尸于单一收尾期限内；返回 ExecDeadline
+/// 而非悬挂或成功。
+#[test]
+fn audit1034_run_bounded_ipc03_exec_deadline_terminates_and_reaps() {
+    let started = Instant::now();
+    let spec = with_args(bounded_child("sleep"), "30", None);
+    let err = run_bounded(
+        &spec,
+        &small_policy(300, 2_000, Some(4 << 20), Some(1 << 20)),
+    )
+    .expect_err("hanging child must hit the exec deadline");
+    match &err {
+        BoundedError::ExecDeadline { after, cleanup } => {
+            assert!(*after >= Duration::from_millis(280), "{after:?}");
+            assert!(cleanup.completed, "cleanup residuals: {}", cleanup.detail);
+            assert!(
+                cleanup.elapsed <= Duration::from_millis(2_000) + Duration::from_millis(300),
+                "single cleanup deadline honored: {:?}",
+                cleanup.elapsed
+            );
+        }
+        other => panic!("expected ExecDeadline, got {other:?}"),
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "deadline path must be bounded: {:?}",
+        started.elapsed()
+    );
+}
+
+/// 父退出而孙进程持管道：owned 树终止（Job/组杀）后 EOF 抵达，成功收
+/// 集完整输出，不悬挂、不谎报 PipesHeld。
+#[test]
+fn audit1034_run_bounded_ipc03_grandchild_holding_pipe_is_reaped() {
+    let scratch = TempDir::new("p1034-orphan");
+    let hb = scratch.path().join("beat.txt");
+    let mut spec = with_args(bounded_child("orphan"), "10", Some(&hb.to_string_lossy()));
+    spec.tree_scope = TreeScope::ProcessTree;
+    let started = Instant::now();
+    let result = run_bounded(
+        &spec,
+        &small_policy(5_000, 2_000, Some(4 << 20), Some(1 << 20)),
+    )
+    .expect("orphan exchange must complete after tree termination");
+    assert_eq!(result.kind, ExitKind::Success);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "descendant-held pipe must not hang the exchange: {:?}",
+        started.elapsed()
+    );
+}
+
+/// 零期限策略拒绝（InvalidSpec 透传，不 spawn）。
+#[test]
+fn audit1034_run_bounded_ipc03_zero_deadline_policy_rejected() {
+    let err = run_bounded(&bounded_child("exit"), &small_policy(0, 0, None, None))
+        .expect_err("zero policy must be rejected");
+    match err {
+        BoundedError::Infra { source, .. } => {
+            assert!(
+                matches!(source, ExecutionError::InvalidSpec(_)),
+                "{source:?}"
+            );
+        }
+        other => panic!("expected Infra(InvalidSpec), got {other:?}"),
+    }
+}

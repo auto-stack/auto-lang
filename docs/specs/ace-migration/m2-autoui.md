@@ -109,9 +109,13 @@ if/else、component、outlet/memo、memo/exact、link）、view-fn、style-recip
 - `ViewEvent.inline` 在 parse 输出上恒 `None`（内联 lambda parse 期铸造为
   `__evt` handler；分母行 Optional 并注记铸造去向）；插值文本在 002 形态归一为
   元素 `text` prop（`view.node.text.interp` 行同理）。
-- 本切片不含窗口行为（NATIVE）、各目标工程（WEB/RUST/TAURI/JET/ARK）与全模式
-  联合覆盖（PARITY）。组件状态/事件执行已由 STATE 批交付（§6），但
-  DynamicComponent 产品默认链未切换（旧 bytecode 链并行，退役归 PLAN-987）。
+- 本切片不含窗口行为（NATIVE）与全模式联合覆盖（PARITY）。组件状态/事件执行
+  已由 STATE 批交付（§6），但 DynamicComponent 产品默认链未切换（旧 bytecode
+  链并行，退役归 PLAN-987）。
+- **r11（2026-11-16 用户裁定）：JET/ARK 后端归 M3（v0.7），v0.6 不含**——
+  980 的 B-JET/B-ARK 批与 V-B-JET/V-B-ARK/AC-B-JET/AC-B-ARK 随批迁移（原义务
+  留计划 §9 历史）；PARITY 的 v0.6 联合覆盖=现役模式（NATIVE/WEB/RUST/TAURI）。
+  WEB（Vue+TS）保留 v0.6（前置 L976）。
 - f-string 文本叶（`${int}` → HIR `TextDisplay`）不可在 av.owned/1 车道执行：
   完整文本观察对 f-string 源具名拒绝；状态通道走 states-only（§6）。KNOWN-DEBT
   登记，关闭=profile/接线工作。
@@ -193,3 +197,354 @@ PLAN-980 T-HELLO-I/V/R 已验：AGE node 单 text 源 → 真实 Iced 主线程�
   rustc/缺前置具名拒绝最小面）；V-HELLO-LIFE 以 20 轮 CPU 生命周期+每证据
   1 真窗轮实现（进程内二次 iced 事件环被 PLAN-698 禁止；测试内 RSS 断言不稳
   定，具名）；AXR0 同源 A2R 腿归 RUST 批；不改产品默认链。
+
+## 8. 同源 A2R 先行切片（RUST 批 AXR0，2026-11-16）
+
+PLAN-980 B-RUST-I/V/R 已验：同源 AGE 组件经**新 A2R**（902/979 面）生成
+Rust → 真 rustc → 真运行 → 窗口派生显示；旧 AST emitter 未替换（边界在案）。
+收据见计划 §9 round 14–16。
+
+- **Leg A（同源语义）**：`examples/ui/ace-hello-minimal/src/front/app-a2r.at`
+  （node+model+on+单 text）→ 组件场景 A2R 文件集（`ui/ace_a2r_bridge.rs`
+  `component_a2r_fileset`：场景编译→SemanticView→lower `__age_drive`→
+  record-text 三文件+manifest）→ 构建道真 rustc → `value:2`（冻结场景
+  2×Inc）。改 scenario/handler/初值即改产物字节（发射身份 oracle）。
+- **Leg B（F0×A2R，967/T-12 桥）**：同一文本字节经 text-record 源 →
+  文件集（provider `#[no_mangle]` 符号 + extern 块）→ rustc 链接**预构建**
+  F0 provider（新鲜度缓存，零 rustc 于测试）→ `value:9`（"Hello A2R" 字节
+  数）——同字节经 provider 的 A2R 侧证明。
+- **构建道纪律**：真 rustc 只在显式构建道 `examples/ace_a2r_axr0_build.rs`
+  （一次性，回执 `target/ace-a2r-axr0/receipt.json`）；日用例（
+  `tests/ace_a2r_axr0.rs` 4 项）只做发射控制+回执消费+排窗窗口腿。
+- **窗口腿（V-UI-AXR0）**：`ace_hello_window --a2r-run <exe>` 派生 A2R 产物
+  exe、显示其真实 stdout（"A2R value:2"）——零 AV/旧 VM；改函数结果随变
+  于 drive 值层。
+- **ace-bridge feature 门（结构性）**：STATE/HELLO/RUST 的 ACE 桥生产依赖
+  经 `ace-bridge`（默认关）optional 化；交付投影（rust_ui）剥 7 optional
+  行+dev ace-av+feature 改写为空（autodown-core 同型先例）——792 受管交付
+  闭包保持。AXR0/HELLO/STATE 测试命令带 `--features ace-bridge`。
+- **交付闭包修复（driver 43/43 全绿）**：①DIALECT 批 ace-core dev-dep
+  越根 → 投影 `strip_dev_deps`（新引擎面，三态幂等）+ compiler 专用 spec；
+  ②spec 须全行形态（裸名键取空误入已剥离分支——单测实证）；③bindgen 的
+  ace-foreign-contract（967/973 谱系预存）→ DELIVERY_VENDOR_TREES 补
+  foreign-contract 树。原工程 runner（PLAN-792 driver V01..V06）真实执行
+  **43/43 PASS**（V01 fresh-lock/V02 重定位 locked/V03 负控/V06 全 profile
+  矩阵+vm-run；jet/ark 环境门控为 driver 原语义）。
+- **边界**：产品级 `rust_ui.rs` 旧 emitter 未替换（多文件 store/组件/
+  sidecar/props/msg/route 对齐待 981 面接线，KNOWN-DEBT）；文本不可经 A2R
+  出岛（902 冻结 i32 `value:` 协议）——窗口文本腿以 A2R stdout 上窗实现；
+  ui_gen::rust 2 例 master 预存红（台账）；AXR0-PACK 完整打包闭包 pending。
+
+## 9. ACE 原生 run 通道（NATIVE 批，2026-11-16）
+
+PLAN-980 B-NATIVE-I/V/R 已验：001 形真源经 ACE 面编译 + AV 真值 + 现有
+View→Iced 窗口服务的**原生 run 通道**；`AUTO_UI_ENGINE=ace` 引擎缝接入
+`-r vm` 流（旧 vm 通道不变）。收据见计划 §9 round 19–21。
+
+- **免驱动场景编译**（core，980 入口专属）：observed 缺省且 model 无 int
+  字段（001 形：str/bool + 文本叶）时不发射 `__age_drive`，texts/states 照
+  发；979 冻结打包入口（`compile_component_scenario`/`_observing`→
+  `observe_compiled`）保持编译期具名拒（口径不变，p979 16/16 回归实证）。
+- **av 面**：`observe_component_states_and_texts`（逐字段 int/bool/str +
+  文本叶 Str 真值双观察）+ `project_component_candidates` 再导出（view 树
+  消费）。
+- **UI 通道**（`ui/ace_native.rs`，feature=ace-bridge）：`AceNativeSession`
+  ——001 真源（legacy `widget` 头 Accept 别名）装载：文本叶值（AV）+ 属性
+  （style/selectable 经候选投影 view 树按声明序对齐）+ 状态；**状态写**
+  =按当前状态重建初值→重编译→重观察（001 的外部 state 写语义），
+  `dark_mode` 写翻转窗口主题线程局部（`style_iced_adapter`，与旧链同
+  机制）。窗口=`run_app` 泛型宿主（`examples/ace_native_window.exe`：
+  帧内状态写/证据 JSON/自动退出；关闭重开=顺序多轮进程级窗口）。
+- **引擎缝**（run_vm）：`AUTO_UI_ENGINE=ace` → `run_ace_native_entry`
+  （无条件编译，feature 关=具名拒）；出面外源 ACE 面具名拒，不静默回旧 VM。
+- **永久 case**（`tests/ace_native_window.rs` 5 项）：001 装载（selectable/
+  style 入叶）、状态写主题翻转（CPU 可观察）、出面外具名拒、双叶属性对齐
+  反例、排窗 e2e（真窗+帧内写+两轮关闭重开）。命令：
+  `cargo test -p auto-ui-runtime --features ace-bridge --test ace_native_window -- --test-threads=1`（窗口面 AUTO_UI_ACE_HELLO_E2E=1 + prep 构建 exe）。
+- **V 行点名门**：desktop_behavior 11 过/1 ignored（原条件 P488-D1）+
+  image_surface_contract 1/1 不动绿；`auto run -r vm` 隔离工程身份=driver
+  V06e 真跑证据复用（vm-session 子进程=本工具 exe，MCP/cancel 全过）。
+- **边界**：文字选择/复制、IME、媒体、终端的**真实交互**实测属仓内既有档
+  （selectable_text 单测族+手工/环境门控档；宿主适配器安装面已随通道接）；
+  路由/页面切换的组件面运行语义未交付（001 无路由；归 981/后续批）；
+  DynamicComponent 默认链未切换（沿 STATE 批既定边界）。
+
+## 10. 分母与命令冻结（T-01，2026-11-16，r11 口径）
+
+v0.6 面积（29 任务）的分母/来源/命令/oracle 单表——各批实测冻结，后续批按
+此备料开工；漂移即修本表。**r11 裁定后 JET/ARK 归 M3（v0.7）不在本表。**
+
+### 10.1 批次×状态×冻结命令
+
+| 批 | 状态 | 冻结命令（实测） | 输入源（冻结身份） |
+|---|---|---|---|
+| DIALECT | ✅ 落主 | lang `cargo t ace-source ace-syntax`；ui `cargo test -p auto-ui-dialect --lib` + `-p auto-ui-compiler --test ui_domain_validation` | 002 真源 sha16=04937c35325faa74；ast.rs=1d10f5ff2566422e |
+| STATE | ✅ 落主 | lang `cargo t ace-source ace-av ace-host`（ace-host 预存红具名排除）；ui `cargo test -p auto-ui-runtime --test plan041_instance_ownership --test plan033_b1_scope_isolation -- --test-threads=1` | 002 真源（同上）；store 形 fixture（内联冻结） |
+| HELLO | ✅ 落主 | `AUTO_UI_ACE_HELLO_E2E=1 cargo test -p auto-ui-runtime --features ace-bridge --test ace_ui_hello -- --test-threads=1`；prep=build example + `--prep-only` 预构建 F0（target/ace-hello-f0 缓存 stamp） | ace-hello-minimal/{app,app-body}.at（仓内 fixture） |
+| RUST(AXR0) | ✅ 落主 | lang `cargo t ace-a2x generated-delivery-controls`；ui `--features ace-bridge --test ace_a2r_axr0`；构建道=`ace_a2r_axr0_build.exe` 一次性（回执 target/ace-a2r-axr0/）；driver=PLAN-792 全量（43/43） | app-a2r.at + "Hello A2R"=9 字节；F0 冻结 provider |
+| NATIVE | ✅ 落主 | `--features ace-bridge --test ace_native_window`（窗口面同 env 门控）；V 行点名=desktop_behavior+image_surface_contract 原样；run 缝=`AUTO_UI_ENGINE=ace` | 001 真源（examples/ui/001-helloworld） |
+| WEB | 待做（976 已归档解锁） | 见 §6 V-B-WEB 行（cargo tu 单进程 + 真实浏览器挂载）；I 冻结 ts provider 消费命令时更新本表 | 待 I 冻结（vue 例程源） |
+| TAURI | 待 WEB | 见 §6 V-B-TAURI | 待 I 冻结 |
+| PARITY | 待 NATIVE✓/WEB/TAURI；**源面（V-UI-SOURCE）+NATIVE 腿可先行** | 见 §6 V-B-PARITY + V-UI-SOURCE | 001/002 + 覆盖表（V-UI-SOURCE） |
+
+### 10.2 模式网格（r11：v0.6=NATIVE/WEB/RUST/TAURI）
+
+| 格 | 状态 |
+|---|---|
+| NATIVE | ✅（001 真窗/状态写主题/关闭重开；交互档=既有手工/环境门控档） |
+| RUST | AXR0 ✅；多文件 emitter 替换待 IF-981-MODULE 消费（已落主 e352e462b） |
+| WEB | 976 provider 已归档（660fe72b5）——适配器切换归本包 WEB 批 |
+| TAURI | 传递依赖 WEB |
+| JET/ARK | M3（v0.7）——r11 裁定 |
+
+### 10.3 共享纪律（冻结）
+
+- 前门短窗单写权（979 grammar/schema 共享文件）逐批核取；981 executing 中，
+  消费其面时按 979 规约。
+- F0 provider 构建走 target/ace-hello-f0 新鲜度缓存（预构建后测试零 rustc）；
+  真编译一律显式构建道（978 裁定）。
+- 排窗：`AUTO_UI_ACE_HELLO_E2E=1` 单实例串行；GPU/媒体档沿仓内既有门。
+- 预存红台账（KNOWN-DEBT）：ace-abi source_foreign 25、ui_gen::rust 2、
+  ace-host 13——不判 980、不充 PASS。
+
+## 11. WEB 首切片：976 provider 的 UI fragment 消费（2026-11-16）
+
+PLAN-980 WEB 批首个已验切片（B-WEB 任务保持开放）：生产表达式形态经
+**976 TS/JS provider**（fragment 接口）发射+执行+宿主映射成立；完整适配器
+切换（ts_adapter 四处旧 TypeScriptTrans 委托替换 + 全 UI 合法表面 + 浏览器
+挂载档）为后续步。收据见计划 §9 round 23。
+
+- **桥（`ui/ace_ts_provider.rs`，feature=ace-bridge）**：UI 表达式/语句
+  **源文本** → 合成包装函数（core 面：int 域；宿主状态=参数/`var` 可变局部；
+  体含 return 不补尾——HIR 块图连通）→ `ace_core::source::compile_source`
+  （与 976 tsfrag 同一前门）→ `SemanticView`（按源名取函数事实）→ 976
+  `emit_{expr,stmt}_fragment`（checked-helper 模式：操作数住 helper 行、
+  表达式本体=临时引用；`a2x_*` helper 义务首用序报告）→ **宿主映射**（两跳：
+  发射名→源名→reactive 宿主名，如 `count`→`count.value`——词法整词替换；
+  976 合同的反应性/捕获/宿主变量职责在适配器）。
+- **真 node 验证**：`run_fragment_on_node` 拼宿主驱动（helper 导入+预声明
+  宿主变量+fragment 行+断言）跑真 node（FRAG_OK 协议，`A2TS_NODE` 覆写）。
+- **永久 case**（`tests/ace_ts_provider.rs` 4 项）：绑定表达式（count+1→
+  count.value+a2x_add+node 42）、赋值语句（var sum 可变局部→node 42）、
+  未定位/越界=具名拒绝、源类型错误带 ACE 码透传。命令：
+  `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1`。
+- **边界**：str/结构形态与 watch/setup 回调形状未接（core 面 int 域+
+  fragment 语句面限制——完整合法表面需 text-record/collections 面扩展或
+  适配器组合）；ts_adapter 生产委托未替换；浏览器挂载档未建。**无旧
+  emitter 回退**：新车道未覆盖形态=具名拒绝。
+
+## 12. MIN-A-UI 通用 Node 桌面入口（NATIVE r13 批，2026-11-16）
+
+PLAN-980 B-NATIVE-I/V/R（r13 重开范围）已验：通用 Node 项目入口 +
+**实际 UI-FFI 效果** + **typed 事件回 AV**。收据见计划 §9 round 24–26；
+r11 §9 的快照窗口面保留给自己的测试/exe，但 `AUTO_UI_ENGINE=ace` 产品缝
+自本批起指向 `run_ace_node_desktop_entry`（§9 引擎缝行为由此取代）。
+
+- **ui980 provider**（`ui/ace_node_desktop.rs`，hooks trampoline）：依赖
+  无关注解源经 `build_source` 构建（root=target/ace-node-desktop，新鲜度
+  缓存；lang 侧通用注册面 `auto_lang_ace_host::register_source_provider`）。
+  **967 冻结 AV 外呼可调用域 = view + 2×i32（`ViewI32I32ToI32`）**——7 函
+  数全部 `(view,i32,i32)->i32`：`ui_open`（tag+instances）、
+  `ui_apply_text/ui_apply_str`（view 即载荷，instance\*1000+slot 打包，当前
+  session）、`ui_apply_int/ui_apply_bool`（tag+打包+值，当前 session）、
+  `ui_poll_event/ui_close`（tag+显式句柄）。具名状态码：-1 未知句柄 /
+  -2 过期或未开 / -3 越槽 / -4 坏字节 / -5 错车道标签 / -100 hooks 未装。
+  宿主与 AV 经同一 DLL 模块（LoadLibraryW 引用计数）共享 statics；UI
+  session 状态（显示模型/typed 队列/世代/证据计数）归 auto-ui-runtime。
+- **事件回 AV（业务全在 AV）**：窗口点击→typed 队列（世代纪律）→tick
+  受控调用点 AV 外调 `ui_poll_event`（事件编码 (instance+1)\*1000+
+  (target+1)）→`AceStateEngine::dispatch`（§6 场景重放）→状态差量经 AV
+  外调 `ui_apply_*` 提交实际 UI 更新→Iced（`run_app` 泛型宿主，tick 订阅
+  驱动）。`text_byte_len` 不是 UI dispatch（判别力反例已固化）。
+- **三类源**：ace-hello-minimal 双源（字面量/函数中文）+ `examples/ui/
+  ace-node-counter/src/front/app.at`（002 计数业务派生 node）。文本面两
+  段：driverless-full（带 model/on）→静态观察面（无 model 的 Hello 类具
+  名回退；静态面拒 `on`=具名）。
+- **产品缝**（run_vm）：`AUTO_UI_ENGINE=ace` → `run_ace_node_desktop_entry`
+  （feature 关=具名拒；r11 `run_ace_native_entry` 保留为快照面 API）。
+- **永久 case**（`tests/ace_node_desktop.rs` 8 项 + 排窗 e2e 1 项）：轨迹
+  0→1→0→0 与两实例定向 2:1、hello 双源字节级 FFI、坏 Schema（无绑定
+  target/未声明 msg）、坏 ABI（未知句柄/越槽）、close/reopen/late 世代
+  纪律、byte_len 反例、撤权/复权、车道标签+跨 session 队列隔离+双重
+  close（复核 authored）。命令：`cargo test -p auto-ui-runtime --features
+  ace-bridge --test ace_node_desktop -- --test-threads=1`（排窗
+  `AUTO_UI_ACE_NODE_E2E=1`，prep=构建 example+`--prep-only`）。
+- **边界**：f-string 文本叶在两条文本车道均具名拒（沿 §5 既有债务；计数
+  值显示走 int 状态槽呈现）；真实鼠标/IME 交互属手工/环境门控档（沿 §9）；
+  打包位为 MIN-A 界内约定（实例 ≤4、槽 <1000）；完整 001/002 主题/全部
+  组件/Widgets 归 W1 B-AV。
+
+## 13. WEB 切片 #2：fragment 车道覆盖普查（2026-11-16）
+
+PLAN-980 WEB 批切片 #2 已验：类型域参数（int/bool——str 被 profile 拒）
++ **车道覆盖普查冻结表**（`tests/ace_ts_provider.rs::
+p980_web_lane_census_frozen_forms`，11 形态逐项 Ok/具名拒）。收据见计划
+§9 round 27。
+
+- **关键事实（切换前置义务）**：976 fragment 车道经 `compile_source`
+  （**Core profile**）编译——**比较算子（`>`/`==`）、布尔算子（`!`/`&&`）、
+  `str` 类型、f-string 插值、多函数源均不在 profile 内**（具名码
+  `source.unsupported`/`source.lex`/`source.syntax`）；非字面 var-init
+  （参数引用/表达式初始化）触发 `verify.block-structure` 拒（O-C2 形状
+  缺口——字面初始化的两步赋值形态 OK）。今日 OK 面=字面 init 两步赋值/
+  return 表达式（int 算术）+宿主 reactive 映射+真 node 执行。
+- **推论**：ts_adapter 委托替换的实底不是（只是）AST→HIR 线程化——
+  生产 UI 表达表面（比较/布尔/str/插值/调用）**先须扩 fragment 编译
+  profile/入口**（976 后继或 richer entry），普查表即该义务的可测分母
+  （表变化须具名修订，防静默漂移）。
+
+### §13.1 入口扩域评估结论（切片 #3，2026-11-16）
+
+**组件面 = fragment 扩域可行入口（机制已钉）**：生产形态源（`!` 一元/
+str/bool 字段——Core profile 具名拒的形态）经组件面 states-only 编译 →
+`SemanticView::from_checked` → 976 fragment 发射器可运行（`p980_web_
+component_face_entry_fragments`：span 定位→发射→宿主映射→真 node 读值
+FRAG_OK）。**形态=脱糖调用链**：handler 内 model 访问脱糖为
+`__age_state_<i>_<field>()` 调用——fragment 为调用形，宿主映射面=
+"状态函数调用 `fn()` → reactive 值"（吃括号替换，测试已固化）。**O-C3**：
+脱糖 drive 的 span 精度（`!.on` 源段定位落到 count 调用——PLAN-964 span
+移位同族边界）：精确 per-handler 定位=适配器接线（切片 #4）前置。结论：
+WEB 完整切换不需要 976 后继扩 profile 前置——组件面入口路线成立；剩余=
+span 精度/逐 handler 定位 + ts_adapter 接线 + 全量切换 + 浏览器档。
+
+### §13.2 逐 handler 精确定位（切片 #4，O-C3 解除，2026-11-16）
+
+`ComponentFragmentLane`（`ui/ace_ts_provider.rs`）：生产形态源 → 组件面
+states-only 编译（ops=**待定位 handler 的 msg 重放**——ops 空则 handler
+体缺席状态函数，切片#4 探针实证）→ 状态函数 HIR 的 expr **span=原源坐
+标** → `emit_expr_at_span(fn, span)` 精确定位发射。**同 span 多表达式取
+索引序最大者=组合形**（`!on` 的 NOT 与纯读形同 span，NOT 在后——
+`(!l1___age_s_0_on)` 发射实证）；host 映射（`l1___age_s_0_on`→reactive
+值）后真 node 取反执行（!false===true）。逐 handler 区域可分辨（Inc 的
+`1` vs Toggle 的 `!on`）；越界 span/无命中/未知状态函数=具名拒。永久
+case `p980_web_handler_precise_location`。**WEB 剩余**=ts_adapter 四委托
+点接此 lane（源 span 从 widget 提取管线取）→ 全量切换 → 浏览器档。
+
+### §13.3 lane 消费真实生产源（切片 #5，2026-11-16）
+
+`ComponentFragmentLane` 坐标基准明确为 **f-string 脱糖后源**（组件面入口
+统一脱糖，`ace_core::source::fstr::desugar_fstrings_widget` 公共出口；
+无 f-string 源时与原源一致）——lane 暴露 `desugared_source()` 并提供
+`emit_expr_at_text`（文本锚包含定位，同 span 组合形优先）。**真实生产
+002 全源**（msg 6 变体/model 3 字段/design/f-string/view 内联 lambda）
+经 lane 端到端：ToggleMode 的 `!.dark_mode` NOT 组合形（`l2___age_s_0_
+dark_mode` 局部名，字段序即局部序）按脱糖源 span 精确定位→宿主 reactive
+映射→真 node `!false===true`；Inc handler 同 lane 在 count 状态函数定位
+（002 的 `.count += 1` 首现于 view 内联 lambda——**on 块 occurrence 推导**
+是适配器配方）。永久 case `p980_web_lane_consumes_production_002_source`。
+**WEB 剩余**：OnHandler 方言层 span 捕获 + LogicPayload 源区间线程化 +
+ts_adapter 四委托点接线 → 90 项全量 → 浏览器档（多会话）。
+
+### §13.4 提取携带 span → lane 接线（切片 #6a，2026-11-16）
+
+方言 `OnHandler` 增源 span（`#[serde(default)] (byte_offset, byte_length)`
+**原源坐标**；on 块解析捕获，view 内联 lambda 铸造形 None）——DIALECT 字段
+清单登记 `widget.on.handler.span`（002 计数 6：声明形带、铸造形缺）。
+`extract_handler_spans(decl)`（compiler，零涟漪独立面）→ 真实解析管线
+（CompilerSession+Parser+extract）→ 提取区间核验 → lane 区间内文本锚 →
+NOT fragment：永久 case `p980_web_extraction_carried_spans_feed_lane`
+（ace_ts_provider 9/9）。**O-C4**：span 起点落 pattern 中段小偏移（终点
+正确、body 完整）——#6b 校准。**观察**：vue_capabilities 10 红=master
+预存（stash 取证，疑 981 邻面；KNOWN-DEBT 在案）。**WEB 剩余**：span
+起点校准 + 生成器源通道 + ts_adapter 四委托点接线 → 90 项 → 浏览器档。
+
+### §13.5 O-C4 解除：span 语义=body 覆盖区间 + 接线设计决策（切片 #6b，2026-11-16）
+
+**O-C4 解除（重定义为语义而非缺陷）**：全 6 handler span 诊断实证——
+`OnHandler.span` 的捕获语义是 **body 覆盖区间**（起点在 pattern 末 token
+至 body `{` 之间（±1 token，随 cur_pos 快照点波动），终点=body 闭括号
+后；`.ToggleMode` 含 on 块尾 `}` 的 1 token 余量）。**lane 合同只需
+expr 包含性**——对全部 handler 成立（002 六例核验）。精确 pattern 起点
+不承诺、不需要。
+
+**四委托点接线设计决策（双路线，#6c 起实施）**：
+- **路线 A（表达式级，受阻）**：ts_adapter 两处 Expr 委托点直接换 lane——
+  **受阻于旧 AST 无 span**（auto_lang_core::ast 的 Expr/Stmt 枚举零位置
+  信息；方言 parse_body 产出旧 AST；为每 variant 加 span=语言侧大手术）。
+  文本回印定位需 Auto AST printer（不存在）。不采用（本轮裁定）。
+- **路线 B（handler 体级，采纳）**：script 生成器按 handler 携
+  **源文本 + extract_handler_spans 区间**整经 lane 发射——状态函数 HIR
+  内该区间中的 exprs（原源 span）即该 handler 的表达式集，逐 expr 发射
+  +宿主映射组装 handler 函数体。改动面：vue/script.rs handler 生成道 +
+  VueGenerator 源通道（`generate_with_source`）——UI 侧自有面，无语言侧
+  手术。**剩余**：路线 B 实施 → vue_capabilities 全量双轨 → 浏览器档。
+
+### §13.6 路线 B 核心：lane_handler_bodies（切片 #6c，2026-11-16）
+
+`ui/ace_vue_script.rs`（feature=ace-bridge）：`lane_handler_bodies(src,
+path, patterns)` → 每 handler 的 Vue script 函数体行（reactive 语义）。
+算法：lane（ops=去点 msg 重放）→ pattern**带箭头**锚定位体区间（view 内
+联引用无箭头——排除歧义）→ **写目标=体文本 LHS 首个 `.field`**（所有状
+态函数含全部 handler 的重放表达式，span 包含性不可区分写路径——具名边
+界：单赋值形 002 族已验，多语句/控制流形体归 #6d 结构分析）→ 区间最宽
+RHS 发射 → 宿主映射（`l<i>___age_s_<inst>_<field>` → `field.value`，剥
+实例段）→ `[helper 行..., field.value = rhs;]`。永久 case
+`p980_web_route_b_handler_bodies`（ace_ts_provider 10/10）：002 五
+handler 体全派生（Inc=加、ToggleMode=取反、UseAuto=字面量），**Inc 体
+真 node 执行 41→42**（a2x_rt helper 就位）。**WEB 剩余**：SFC 拼接
+（#6d）→ 全量双轨 → 浏览器档。
+
+### §13.7 SFC 拼接（切片 #6d，2026-11-16）
+
+`splice_lane_handler_bodies(sfc, bodies)`（`ui/ace_vue_script.rs`）：lane
+派生体替换编译器 SFC 内对应 handler 函数体——锚=`function <Variant>():
+void {` 括号配对；pattern 去点=Variant；只动 handler 体，**锚外段落字节
+不变**（模板/状态声明区前后对账断言）。永久 case `p980_web_sfc_splice`
+（ace_ts_provider 11/11）：002 真实编译器管线（parse→extract→
+VueGenerator SFC）+ 六 lane 体 → splice——Inc/其他 handler 体替换、
+template 与 pre-state 区 byte-identical、ToggleMode 取反体就位。
+**WEB 剩余**：`generate_sfc_with_lane` 一体化入口 + 90 项全量双轨 +
+浏览器挂载档。
+
+### §13.8 一体化入口 + 覆盖普查 v2（切片 #6e，2026-11-16）
+
+`generate_sfc_with_lane(src, path)`（`ui/ace_vue_script.rs`）：源文本 →
+真实编译器管线 SFC + lane handler 体拼接，一调返回 `(sfc, bodies, absent)`
+——**absent 中的 handler 保持编译器旧道体**（双轨期合同：缺席不拒绝）。
+**覆盖普查 v2 冻结表**（`p980_web_unified_entry_census_v2`，代表性能力族
+语料，2026-11-16 实测）：msg 引用赋值族全覆盖（counter-3h=3 spliced、
+str 字面量=1）；无 on 块/watch-only=passthrough（0 spliced）；
+**参数化 handler（`.Add(t) ->`）= lane 缺席，旧道保持**（#6f 扩面：参数
+进入 lane 体）。ace_ts_provider 12/12。**WEB 剩余**：参数化 handler 扩面
+→ 90 项全量双轨 → 浏览器挂载档（013/017 playwright 先例）。
+
+### §13.9 参数化 handler 域缺口具名（切片 #6f，2026-11-16）
+
+**结论**：参数化 handler（`.Add(t) ->`）与内联 lambda 铸造 handler 的 lane
+覆盖**不是 UI 适配器可闭合项**——根因=组件面 `ScenarioOp::Send` **无
+payload 字段**（参数化事件不可场景重放，状态函数 HIR 无从携带参数）+
+铸造形无源锚。属**语言侧后继义务**（979/981 谱系扩展 ScenarioOp 或参数
+绑定面）。双轨期合同下二者永远走编译器旧道直至语言侧交付。普查 v2 冻结
+表已扩两行（param-handler/inline-lambda-only=absent；ace_ts_provider
+12/12）。**WEB 剩余（UI 侧）**：90 项全量双轨（普查表=分母仪表）+
+浏览器挂载档（013/017 playwright 先例）。
+
+### §13.10 全量双轨普查 + 语言侧前置清单（切片 #6g，2026-11-16）
+
+**双轨普查冻结聚合表**（`p980_web_full_dual_track_census`，ace_ts_provider
+13/13）：vue_capabilities 全部 83 源语料（文件级 r#"…"# 提取）经
+`generate_sfc_with_lane`——ok=72 / err=11（2 store + 9="duplicate view
+block"族=**master 预存红同族**，归 triage）/ spliced=0 / absent=23。
+**state-slot 同长归一化**（`state {`→`model {`，5↔5 字节 span 零位移）
+已入 lane compile——匿名 msg+state 形态可进 lane。
+
+**语言侧前置清单（组件面语法域缺口×3——非 UI 可闭合，979/981 谱系）**：
+①`ScenarioOp::Send` 无 payload（参数化事件不可重放）；②具名 msg 语法
+（`msg Msg {...}`）不在组件面槽位语法——真语料主导形态；③参数绑定面
+（铸造 lambda handler 无源锚）。三者交付前，真语料 handler 体全部走编译
+器旧道（双轨期合同——缺席不拒绝）。**WEB 批 UI 侧状态**：机制链全通
+（组件面→HIR→span 定位→发射→reactive 映射→函数体→SFC 拼接→一体化
+入口→双轨仪表），交付切换的语言侧前置已具名；浏览器挂载档待做。
+
+### §13.11 浏览器挂载档（切片 #6h，2026-11-16）
+
+`examples/ui/ace-web-lane/tests/test_lane_browser.mjs`（013-todo 先例：
+playwright 解析→无头 chromium→DOM 断言）+ 永久 case
+`p980_web_lane_browser_mount`（排窗 `AUTO_UI_ACE_WEB_E2E=1`）：002 的
+lane 派生 Inc handler 体在**真实浏览器** reactive 宿主（`{value, notify}`
+对象 + DOM 更新回调）中执行——点击按钮 → `a2x_add(count.value, 1)` →
+`count.value = t0` → DOM 文本 41→42。a2x_rt helper 内联（ES module 的
+export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<script>`
+非 module 环境限制）。ace_ts_provider 14/14。**WEB 批 UI 侧全部项已交**
+（机制链 + 双轨仪表 + 浏览器档）；真语料 spliced 切换待语言侧前置×3
+（§13.10）。

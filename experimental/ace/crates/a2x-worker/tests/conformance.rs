@@ -79,6 +79,8 @@ mod plan979_age_a2r;
 mod plan979_component_a2r;
 #[path = "cases/plan981_age_package_a2r.rs"]
 mod plan981_age_package_a2r;
+#[path = "cases/plan981_rust_public.rs"]
+mod plan981_rust_public;
 #[path = "cases/query_release_941.rs"]
 mod query_release_941;
 #[path = "cases/record_text_902.rs"]
@@ -105,6 +107,8 @@ mod store_coll_904;
 mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;
+#[path = "cases/tsready_976.rs"]
+mod tsready_976;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
 

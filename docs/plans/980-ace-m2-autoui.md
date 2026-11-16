@@ -5,9 +5,9 @@ feature_name: 现有AutoUI全模式ACE兼容接入
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
-plan_revision: 11
-current_step: 9
-total_steps: 35
+plan_revision: 15
+current_step: 12
+total_steps: 32
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-autoui.md]
@@ -17,6 +17,14 @@ touched_goals: [GOAL-002]
 # [PLAN-980] 现有AutoUI全模式ACE兼容接入
 
 ## 0. 变更摘要
+
+2026-11-16 r15当前：EVENT-SPLIT-20261116明确A/B逐切片等待，三消息缺口归981原LANGUAGE/SESSION、980原AV/WEB消费者及985原认证任务；复用980/NATIVE与#6i，A关最小真实事件/保真/安全拒绝，B关完整payload/绑定/WEB及三端产品。旧980/981/985整包互等不再作为前置；原任务/勾选/完成数和全部验收保留，仅规划。
+
+2026-11-16 r13当前：M2-A由B-NATIVE-I/V/R交AV＋Rust FFI驱动Iced的可复用Node桌面入口；已交HELLO仅为有界真窗，A2R/AC分别取真实后端证据。M2-B AC桌面由既有1068/T-04承接，交981/FUSION/AUDIT和985/B；保留任务ID/历史收据，新范围NATIVE I/V/R重新打开（15/29→12/29）。本轮仅规划。
+
+2026-11-16 r12最新阶段：AV/AC/A2R最终完整一致；A期AC基础以外差额可逐行交M2-B，1067/1068承接原生异步与三端补齐，A2C完整对齐增强。原任务/勾选/实际进度不变；新阶段条款不能冒实现或复审已过。
+
+2026-11-16 r11（当前，用户范围裁定）：**JET/ARK 两后端归 M3（v0.7），从 v0.6 移除**——B-JET-I/V/R 与 B-ARK-I/V/R 六任务行撤出执行清单（原条目及 AC/V 留 §9 历史），total 35→29、进度口径 12/29；AC-B-JET/AC-B-ARK/V-B-JET/V-B-ARK 随批归 M3；PARITY 的 v0.6 联合覆盖改为现役模式（NATIVE/WEB/RUST/TAURI），JET/ARK 的模式覆盖由 M3 联合验收补。**WEB（Vue+TS）保留 v0.6**（前置仍为 L976）。本裁定同步 M2 路线与 m2-autoui 规范；此前 §9 round 17 的 JET 环境阻塞记录由本裁定取代（归 M3 后 v0.6 不再含该腿）。本包已交付各批（DIALECT/STATE/HELLO/RUST-AXR0）不受影响。
 
 2026-11-16 r11（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包WEB/TAURI/ARK等生产TS/JS能力仍required，真实消费976新受检provider；不保旧TypeScriptTrans fallback，不以Hello或少量Demo代完整现用UI合法表面。DIALECT已交证据与3/35保持，Godot不成为本包或979/981交接前置。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
@@ -38,6 +46,8 @@ touched_goals: [GOAL-002]
 建立旧widget/model/msg/on/store/props/computed/theme/actions/routes/setup/watch等到Schema领域IR映射，消除handler合成旧bytecode。保持现有Vue/VM-Iced/Rust/Tauri/jet/ark的真实支持格；TS-only行为不默认为全端已有支持。
 
 设计与路线：[Design55](../design/55-ace-m2-complete-language-and-product-replacement.md)、[M2执行路线](../design/strategy/ace-m2-delivery-roadmap.md)。本包是拟议执行合同，非已实现声明。
+
+2026-11-16 r14当前：A只交MIN-A真实基础，完整UI/Widgets按W1 AV→W2 AC→W3 A2R转B，再做OS全量。复用现有Plan，新增B-AV-I/V/R三任务；原29→32任务。已交AXR0保历史，原B-RUST三项因新增完整W3范围重开，12→9完成，不回滚代码。旧A全UI/全A2R口径由§5本轮合同取代。
 
 ## 1. 目标
 
@@ -103,43 +113,117 @@ touched_goals: [GOAL-002]
 
 Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2R/其他required后端义务不能随Godot一起撤掉。规范中旧“全部在用A2X目标”的历史范围由本次用户裁定覆盖，未来实际交付时落对应SD；当前Spec已验事实不伪造。受修改的旧revision范围/矩阵证明仅保历史，未来独立review须绑定当前revision与真正实现提交。
 
+本轮授权与取材（2026-11-16）：用户明确要求修订980/NATIVE、981及相关路线，仅规划，不实施/建树/运行/合入/恢复目标，不新增Plan号。读语言主线1d2f01238e787f964c2293762f02a7969a907d29、UI主线34bb4326dd83e038902c15a957c8934aa39872dc；现行`docs/specs/ace-migration/m2-autoui.md` §7/8与UI `src/ui/ace_hello.rs::{HelloSession::run_f0,AceHelloWindow::view}`、`examples/ace_hello_window.rs`表明F0是字节验证、窗口由Rust组件绘制，AXR0为有界A2R证明。以上是已观察边界；下面新增接面/用例仍待原任务实施。
+
+本轮用户授权：仅修订现有980、981、1068、OS064、985–987及相关路线，不新立项、不启动实施。采用A最小真实交付→985/A M2A-08→B完整UI/Widgets的AV→AC→A2R三波→AutoOS全量迁移→候选/安装/退役。读取语言主线aa257fa1425c31fab48bd544cbd116b2fdce7dcd及现有Specs/已交HELLO、AXR0、SOURCE；UI示例真实源在auto-ui/examples/ui，Widgets源在auto-os/widgets-gallery/src/front/{pages,components}，ui-gallery副本需和规范源去重。新增接面/用例/收据仅是合同，不代表已运行。语言/标准库/非图形FFI的既定基础与测试守恒仍保留，不能借UI延期把普通语言必需能力全部后移。
+
+### 本轮事件阶段修订的授权与取材（2026-11-16）
+
+用户明确仅修订980/981/985及相关路线，落实三缺口、A/B边界/任务/验收与无环顺序；不启动实施、不新立项、不建树/运行/恢复目标。原勾选/完成数/状态/依赖并集和历史结果保留，语义合同revision递增。本轮读取主线`f7f6843a1f8c6c248232014831fa4d8df9ffdeb9`、auto-ui `876c99a3f69c5ae12f9ddf20bdada0ad7481e3d5`；979已归档，仅复用已交平台不重开。`m2-autoui.md`为当前已交规范；`docs/specs/ace-migration/m2-age.md`尚无正式文件，是原Plan拟新增Spec目标，不冒当前依据。
+
+| 已读源/规范 | SHA256前16 | 静态用途 |
+|---|---|---|
+| `D:/autostack/auto-lang/experimental/ace/grammars/auto-source.at` | `5bc6ec43d65e680c` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-lang/experimental/ace/crates/core/src/source/age_component.rs` | `c5780b5c7419bfda` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-lang/experimental/ace/crates/core/src/source/cst/project.rs` | `2a688a55bff2c931` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-lang/experimental/ace/crates/av/src/age_component.rs` | `cce492ce3013be2f` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-ui/crates/auto-ui-runtime/src/ui/ace_state_bridge.rs` | `cc12cc5bef6141f0` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-ui/crates/auto-ui-runtime/src/ui/ace_ts_provider.rs` | `10a804e8f75006f1` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-ui/crates/auto-ui-runtime/tests/ace_ts_provider.rs` | `204368e0642c8fcb` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-ui/crates/auto-ui-runtime/tests/ace_node_desktop.rs` | `0de0db78c17e9535` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-ui/examples/ui/ace-node-counter/src/front/app.at` | `6016eb863f94499e` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-ui/crates/auto-ui-runtime/tests/vue_capabilities.rs` | `ebc68e21966eadf3` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+| `D:/autostack/auto-lang/docs/specs/ace-migration/m2-autoui.md` | `bf01874c6fa2e8ba` | 原源/现结构/独立oracle或已交规范；非本轮运行证据 |
+
+
 ## 5. 详细设计
+
+### EVENT-SPLIT-20261116：A/B交付与等待的当前权威
+
+本节落实用户本轮修订，优先于旧§9中的“980 executing所以981不能验V”、round39/40三条件总等待和旧全量A前置。历史收据保留；本轮不改变自动目标状态、不恢复执行。前缀`B-`是既有批次ID，不代表该ID全部属于M2-B，执行以原任务的A/B子面及本节为准。
+
+正式A来源已交：`IF-980-NODE-DESKTOP-A`（auto-lang `7f431bd5f`／auto-ui `403c936d`），源为`ace-hello-minimal`双源与`ace-node-counter/src/front/app.at`；独立oracle可直接绑定`tests/ace_node_desktop.rs`中的预期轨迹/状态及e2e断言，不强制另造不存在的expected文件。交接至少绑定repo/SHA、源闭包hash、原/脱糖source map、Schema/profile、SDK/host/provider ABI、用例/独立expected位置及实际结果。**980整包executing不等于正式A源未交；已交源也不自动证明981领域组合验收已通过。**
+
+刚落主的980 WEB #6i（lang `b043117b8`／ui `876c99a3`）已在共同grammar增加`msg Msg {...}`及`.Add(t) -> {...}`入口，并更新SFC体定位/拼接与census；只按实际范围复用，不重复造语法。当前静态事实仍为：`ComponentMsgVariant.payload`保存类型拼写，`ScenarioOp::Send`仅`instance/msg`，`ComponentHandler`没有参数列表，CST的`msg_name/params`还需真实保真/绑定核验。已有`param-handler`样本体为`.n = 1`且不读取`t`，其spliced=1不能证明payload传递或参数绑定正确；本轮未运行产品、不能据这些静态事实签修复PASS。
+
+| 缺口键 | A必须关闭的有界责任 | B保留的完整责任及具体任务owner |
+|---|---|---|
+| UI-EVT-PAYLOAD | 981 T-01与B-LANGUAGE-I/V/R[A]核空载荷unit消息、声明/调用一致性；B-SESSION-I/V/R[A]用已交980源验真实AV事件/双实例/关闭恢复。合法但当前车道不支持的有载荷执行必须具名拒绝且零效果；不能丢参数后执行常量体、补假值或伪装unit成功。 | 981 B-LANGUAGE-I/V/R[B-W1]承接共享ScenarioOp及声明→typed参数→唯一verify的真实载荷语义；981 B-SESSION-I/V/R[B-W1]承接AV队列/宿主调度/世代/所有权；980 B-AV-I/V/R消费AV，B-WEB-I/V/R消费受检TS/JS。AC域格由既有1068/T-04＋981 FUSION在W2接，A2R由980/981 B-RUST在W3接。 |
+| UI-EVT-MSG | 复用#6i语法；981 B-LANGUAGE-I/V/R[A]核匿名/具名unit声明的名字、变体、原span保真与重名/未知消息拒绝，合法具名unit源对同一独立轨迹；不把普通标识符升全局关键字。完整消息类型命名空间/quoted等不借此扩成A全量。 | 同一981 LANGUAGE[B-W1]补全部原msg声明/变体/类型/引用及错误表面，交IF-981-MSG-B；980 B-WEB-I/V/R核原具名/quoted/emit公开接口与实际新provider；无需重开979或新立后继。 |
+| UI-EVT-BIND | 981 B-LANGUAGE-I/V/R[A]读取并保留#6i handler参数名/span，核unit空参数合法、重复/错arity/未绑定名字拒绝；有效带参行为未实现时在verify/admit或dispatch前具名能力拒绝，零状态/UI效果。必须区分“解析成功”“发射/拼接成功”和“参数实际执行成功”。 | 981 LANGUAGE[B-W1]承接handler形参与消息载荷逐位置/类型的绑定、作用域与源映射；SESSION[B-W1]消费typed值；980 B-AV/B-WEB承接实际事件参数/$event及旧例消费。内联lambda铸造的原span→合成handler来源映射也归该LANGUAGE/980既有任务，不能继续写“谱系后继”。 |
+
+上述A是既有MIN-A真实事件/错误安全义务的细化，不要求在A实现全量UI带参业务。**普通函数/node参数、既有任务/actor消息、库/非图形FFI等原A语言义务不后移。** 981/T-01须把原MIN-A-UI/AGE/OS实际源与上述三键逐行对应：真实A业务确实依赖某项载荷/绑定时，只提升所用最小子面到同一LANGUAGE/SESSION A任务，补独立正反例并正式交；不得改原业务/expected以逃避缺口，也不得把整个WEB/全UI趁机列A前置。提升影响r23原A/B原子行时由985 T-A03记录映射/来源理由，A-required不打折。
+
+拟定交接`IF-981-EVENT-A`是上述A核对/guard与实际最小事件结果的phase来源，不替MIN-A-AGE全部UI/2D/3D验收。B分别交`IF-981-EVENT-PAYLOAD-B`、`IF-981-MSG-B`、`IF-981-PARAMS-B`；可同一冻结revision联合review/fold，不创建新Plan/runner/注册器。每件必须列明确支持/具名拒绝、source/Schema/SDK身份、独立oracle、producer→consumer和未闭行；部分语法收据不冒完整交接。
+
+### 本包逐批解锁，不是三个条件的AND总门
+
+| 原批次/动作 | 最小恢复条件 | 明确不等待 |
+|---|---|---|
+| 已交NATIVE A的来源消费/身份核对 | 981 T-01读取上述正式源、测试断言及ABI；缺文件/版本由980原NATIVE交接owner补记具体缺件 | 980全包、WEB/TAURI、985/A签发、1068、981整包 |
+| B-AV-I/V/R（W1） | M2A-08；每组实际所需981 EVENT-B/领域接口正式可用 | UI-W2-AC、W3、完整WEB/TAURI或OS |
+| B-WEB-I/V/R完整受检闭合 | M2A-08及所用IF-981-MSG/PAYLOAD/PARAMS-B、976正式provider；已落主切片逐项复用 | 980 B-AV全波、1068整包、981整包、983全产品 |
+| B-RUST-I/V/R新增图形W3 | UI-W2-AC及所用981 RUST/领域正式输入；原AXR0只复用已验范围 | OS/985 B最终、1068全包最终三端汇总 |
+| B-TAURI | WEB所用正式功能与原invoke/权限接口 | 与其无关的整包/后端收口；最终合同仍全验 |
+| B-PARITY及T-05/06/07 | 分波先接各自真实收据；整包终验才汇合全部现役模式/原完整义务 | 不以PARITY整项/全包完成反卡任何前一波 |
+
+980在B可按实际功能子集消费已交事件接口；未支持行必须pending/具名拒绝，不能把旧编译通路或lane缺席算ACE生产通过。旧round39/40等待策略的事实与用户当时选择留档，本次新合同改为逐批满足即具备规划恢复条件，不自动恢复其目标。
+
+### WAVES-20261116：本轮唯一阶段与交接合同
+
+本节与各原任务的新阶段标签为当前权威；原§9已交收据保留。旧文的“A须完整UI/Widgets/图形AV-A2R/完整LANGUAGE/PARITY”属于本轮正式迁交，不再是A出口前提；最终产品义务不删。只有下表MIN-A部分进入985/A，全部其余图形产品覆盖按同一行ID移交B波，未实现标pending，不冒PASS/NA。
+
+| A最小真实交付 / owner | 精确关闭条件 / 移交边界 |
+|---|---|
+| MIN-A-UI / 980 NATIVE＋已交DIALECT/STATE/HELLO | 普通Node项目公开入口：字面量Hello、普通函数返回中文、由002原计数业务派生的最小Node Counter，真实AV→967自动binding/shim受检Rust FFI实际UI更新→Iced，真实事件回AV；单例0→1→0→0、两实例定向2:1，坏Schema/ABI/权限在UI效果前拒、关闭/重开/late事件及坏更新恢复。反例移除实际UI提交而只留byte_len须红。001/002的完整主题/选择/全部组件和其余示例归W1，不把最小副本冒完整原例通过。 |
+| MIN-A-AGE / 981 SOURCE、SESSION/LANGUAGE/PROOF的A部分 | 正常多模块Node/helper原span与共享verify，复用既有g01/Showcase来源建立最小真实UI＋一个2D/一个3D呈现及一次事件/更新/关闭，独立CPU值/可见ROI与资源owner一致；只AV，错误编辑保旧、修复恢复。完整AGE-L01..05/五view/全场景/完整游戏及A2R转W1/W3，不能以旧整包LANGUAGE/RUST/PARITY作此A前置。 |
+| MIN-A-OS / OS064 HOST/PROOF的A部分 | 真实OS启动/注册/激活/窗口会话链，隔离候选只注册上述Hello与Counter Node见证，真实输入/双实例隔离、关闭回收、错host协议拒绝；不以空host/DryRun/附加无业务窗口代替。原shell完整业务、Notes/Clock全源码旅程、28项App和双Host/配置/数据/全桌面Node根均归OS波，不作为A前提。 |
+| 语言/库/FFI/SDK与其他RG / 原owner＋985 | 既定普通语言/新版标准库、AC真实基础、非图形A2R/FFI与982/983/984的A基础不因UI波次取消；只取所用精确正式接口。A矩阵保全分母并标明所有B承接行及关闭oracle。MIN-A均真验证、独立复核、正式合入且其余A-required齐，985/T-A05才出M2A-08。 |
+
+MIN-A不是语法/能力的永久上限，是本轮明确的代表性产品验收。完整旧例和组件的原业务/错误/资源/独立expected留在B；所有后延逐行绑定原case/source/hash→原AC/V→阶段/波次→真实producer/consumer→owner/关闭条件。已交Hello（AV文本＋F0字节探针＋Rust绘制）和AXR0（A2R有界输出上窗）只复用原范围，不代新的UI-FFI入口或任何完整波次。
+### B三波与批次粒度：同源继承，按后端整条爬梯
+
+| 波次 / 原执行owner | 开工与正式交付 / 后继 |
+|---|---|
+| W1 / 980新增B-AV-I/V/R；981 SESSION/LANGUAGE/CONTENT/FUSION的AV部分 | M2A-08后，从真正UI-FFI Hello到完整examples/ui及Widgets相关组件；逐组只实施/真实验证AV。交`UI-W1-AV`（完整示例/组件分母及所需AGE语义/宿主AV行），不等AC、A2R、WEB/TAURI全产品或OS全量。 |
+| W2 / 1068 T-04；981 FUSION等AC领域部分 | UI-W1-AV正式来源后接同源AC机器业务/事件→同一Rust/Iced宿主；复用实际AAC模块暴露缺口、1067提供所需原生异步。交`UI-W2-AC`，不等1068整包/T-06三端汇总/完整AAC自举或W3。 |
+| W3 / 980 B-RUST-I/V/R；981 RUST、相关RUST2D/3D与FUSION的A2R部分 | UI-W2-AC正式来源后才新增图形A2R实现/生成/真实rustc编译/运行；全UI/Widgets交`UI-W3-A2R`。已有A2R代码/收据保留，不重做已验部分；最终完整游戏包仍核981原G2/G3义务，不据一个stdout窗通过。 |
+| OS波 / OS064 HOST/PROOF的完整B部分、A01..28、ASSEMBLY | 三个UI波次正式齐后做完整桌面/应用迁移，先真实桌面Node根/生命周期，再按App依赖分组，最终装配/数据/模式/双Host；不等985/B最终签或986/987。OS核心实现/注册/gitlink只归OS064。 |
+| 汇合 / 985 B、986、987；984 CLOSURE | 三波＋OS与其余原产品/库/服务/游戏required齐→985/B候选认证→986安装升级默认→987无旧链重建终验。不得反向要求OS波先拿985/B，或让W2先等本包三端最终完成。 |
+
+`UI-W1-AV/UI-W2-AC/UI-W3-A2R`是**拟定阶段收据标识**，沿现有owner phase review/fold正式交接，不是新Plan/状态/注册系统。每波独立满足其后端的行为/交互/错误/资源oracle即可交，不要求同批三端；第三波/最终门才汇合三端。每条来源变化只使实际受影响证据失效。AC非图形补齐、AAC工作可按各自已授权阶段推进；完整AAC Gen2/3不成为W2前置。
+
+AV波日常不编译执行A2R UI，不跑整套多端UI；Rust宿主/FFI provider可以预构建复用，AV-only不承诺首建宿主无需rustc。共享IR/ABI变更仍做必要受影响内部/非图形检查，不能以AV-only掩盖回归，但不得以此恢复每批整套A2R应用构建。W2/W3分别只跑当前后端＋受影响已交后端；最终联合验收复用有效来源，需重放时按真实改动和身份选择。
 
 ### M2-TARGET-SCOPE-20261116：本包当前边界
 
 本包WEB/TAURI/ARK等生产TS/JS能力仍required，真实消费976新受检provider；不保旧TypeScriptTrans fallback，不以Hello或少量Demo代完整现用UI合法表面。DIALECT已交证据与3/35保持，Godot不成为本包或979/981交接前置。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
-### M2阶段执行合同（当前优先）
+### M2阶段执行合同（本轮当前）
 
-依据[Design55两阶段合同](../design/55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)；本包=M2-A。本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。
+本包跨A/B。A=MIN-A-UI、必要DIALECT/STATE基础与HELLO正式来源；B完整AV/UI、A2R及原WEB/TAURI/PARITY。每个任务仅在§8登记一次，A部分可独立phase review/fold供985，整包review/归档/清树留B。原唯一tree保留/resync，不为各波复制权威树。
 
-| 阶段 | 当前任务归属（保原ID/义务） |
+| 阶段 | 原/新增任务归属 |
 |---|---|
-| M2-A | T-01, B-DIALECT-I, B-DIALECT-V, B-DIALECT-R, B-STATE-I, B-STATE-V, B-STATE-R, B-NATIVE-I, B-NATIVE-V, B-NATIVE-R, B-WEB-I, B-WEB-V, B-WEB-R, B-RUST-I, B-RUST-V, B-RUST-R, B-TAURI-I, B-TAURI-V, B-TAURI-R, B-JET-I, B-JET-V, B-JET-R, B-ARK-I, B-ARK-V, B-ARK-R, B-PARITY-I, B-PARITY-V, B-PARITY-R, T-05, T-06, T-07, T-HELLO-I, T-HELLO-V, T-HELLO-R, T-HELLO-D |
-
-本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。frontmatter仍是整Plan最终依赖并集，局部A按本节/各批最小接口前置启动，不把985全Plan或B消费者整包置为A前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
-
-跨阶段同Plan按已有phase fold规约先独立复核并正式合入A切片，记录repo/SHA/接口与实际测试来源后供985/A消费；同一唯一tree保留/resync至B完成，不能用分支reviewed/WIP当D。公共文件单写；最终归档/清树仍按全包原门执行。本轮未做fold/merge或建树。
-
-语言/库相关case继承旧公开行为义务并补规范/组合/边界/负控，每条按当前规范与独立expected验证，M1有限豁免不自动继承；产品专有全量用例归B，未执行/缺环境不PASS。详见Design55 §16.5，TestCase/固定原生组沿用，不另建tm/全仓调度。AC自举独立后续、非本包或M2硬门。
-
-
-本Plan各批独立实施/验证/复核，同一唯一worktree保留至全包归档；局部review不冒正式D。frontmatter为整包正式依赖并集，最小前置如下；LNNN=auto-lang/PLAN-NNN。下游可用冻结SHA准备，最终须已合入来源。共享文件单写，不建第二权威tree或链接。
-
-唯一组D:/autostack/.wt/lang-980/，各实际改动仓一个兄弟tree；OS/App用OS064当地规约。
+| A准备/基础 | T-01、T-HELLO-I/V/R/D、DIALECT/STATE已交基础、B-NATIVE-I/V/R（只MIN-A-UI） |
+| B-W1 AV | B-AV-I/V/R，消费已交A；DIALECT/STATE新增覆盖由此原owner扩展；PARITY保波次分账 |
+| B-W2 AC | 1068/T-04主责，本包只交同版领域/宿主接口，不新增并行AC实现任务 |
+| B-W3 A2R | B-RUST-I/V/R，完整同源示例/组件生成编译运行，AXR0证据仅按原边界复用 |
+| B其他现役模式与最终 | B-WEB-I/V/R、B-TAURI-I/V/R按自身前置并行，B-PARITY-I/V/R在各波收分账后最终汇总，T-05/06/07最后 |
+| M3 | JET/ARK仍归M3，不恢复为A/W1前置；Godot仍移出M2 |
 
 | 批次 | 交付 | 最小前置 | owner |
 |---|---|---|---|
 | 980/HELLO | 单text普通源的AV→Rust FFI→真实Iced；同源A2R由RUST批并行 | 967/F0-D、979/H0-D、969/E0-D、978/B0-D正式来源；不等完整STATE/973/PARITY | auto-ui主责，语言守公共能力 |
 | 980/DIALECT | AGE Schema下的AutoUI声明兼容/组件投影；先交IF-980-FIELDS | L979已正式交付的通用包/投影/覆盖基础 + L960/L963；多模块实际接线再消费981/IF-981-MODULE，不等979归档 | auto-ui领域主责，通用代码由auto-lang owner按本任务维护 |
 | 980/STATE | 实例Store handler与异步状态 | 980/DIALECT; L967/L968/L969 | auto-ui |
-| 980/NATIVE | Iced窗口输入与资源 | 980/STATE; L973/L978 | auto-ui |
+| 980/NATIVE | MIN-A-UI可复用AV入口/typed事件/生命周期 | 已交DIALECT/STATE/HELLO及967/969/978、所用库精确接口；不等完整981/976/PARITY | auto-ui |
 | 980/WEB | Vue与TS/JS表达式后端 | 980/DIALECT; L976/L972/L978 | auto-ui |
-| 980/RUST | Rust UI静态工程 | 980/DIALECT; L978 | auto-ui |
+| 980/RUST | W3完整A2R示例/组件与工程；已交AXR0保留 | UI-W2-AC及同版AV源码/ABI、978/967所用正式来源 | auto-ui＋新A2R owner |
 | 980/TAURI | Tauri桌面工程 | 980/WEB; L978 | auto-ui |
-| 980/JET | Jet目标工程 | 980/DIALECT; L978 | auto-ui |
-| 980/ARK | Ark目标工程 | 980/DIALECT; L976/L978 | auto-ui |
-| 980/PARITY | 主题控件Demo及模式联合覆盖 | 980/NATIVE; 980/WEB; 980/RUST; 980/TAURI; 980/JET; 980/ARK | auto-ui |
+| 980/JET | **归 M3（v0.7）**——v0.6 移除（r11 用户裁定 2026-11-16） | —（原 980/DIALECT; L978，M3 再启） | auto-ui→M3 |
+| 980/ARK | **归 M3（v0.7）**——v0.6 移除（r11 用户裁定 2026-11-16） | —（原 980/DIALECT; L976/L978，M3 再启） | auto-ui→M3 |
+| 980/PARITY | B分波收据＋最终全部现役模式/组件覆盖 | 波次收据分别独立产生；最终收W1/W2/W3和WEB/TAURI，不反置为A/W1/W2前置 | auto-ui |
 
 ### r10：向979交付完整字段事实，消费基础接口而非最终归档
 
@@ -153,6 +237,8 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 **正式交接。** B-DIALECT-I/V完成上述子面 → 原R任务同树独立核此子面 → 按原phase fold规约正式落主，记录repo/SHA、r10、源/清单/Schema/compat/ABI及真实永久case/命令/结果和剩余完整任务，交979 T-08/T-04。r9或WIP证据不自动证明新增合同。此交付不依赖979 T-04/T-05或完整981；多模块产品接线依981/SOURCE的IF-981-MODULE，字段定义/覆盖子面可先按独立模块验证。后续完整能力保留原最小前置，不从此子面推出全包可整段归档。
 
+阶段注记：以下“完整传统UI”、各模式和旧例覆盖均为最终B义务；A只取MIN-A-UI清单。不能从这些最终完整性说明反推A须完成所有示例或A2R。
+
 ### 传统AutoUI完整性与AGE M2硬门
 
 T-01及DIALECT/PARITY建立逐项分母：现行WidgetDecl、Store/主题/样式/组件语法和普通Auto表达式→Spec/原源位置→模式/平台适用格→ACE producer/runtime/实际oracle。至少核model/msg/on、props/emit/bind/computed、use/多文件、named_views/slot、keyed条件/列表挂载的既有语义、routes/setup/watch/expose/actions/menubar/toolbar/timer、lifecycle/design/style/theme/ext_imports及全部现用组件/布局/资源/错态；再与真实grammar/AST/Specs双向对账，未被Demo覆盖的必需语法/变体补永久case。可解析或首帧可见不等于实际运行支持。
@@ -165,61 +251,75 @@ WEB/TAURI/JET/ARK保各自现用模式的全部实际支持格，不把TS-only�
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-dialect/src/ast.rs`；`D:/autostack/auto-ui/crates/auto-ui-compiler/tests/ui_domain_validation.rs`。
 I实现：按WidgetDecl全部字段逐项投影/明确模式适用性，schema→typed领域IR→ACE行为；字段覆盖表包含named_views/bind/routes/setup/watch/expose/actions/timer/theme。
 V验收：普通标识符上下文保持；旧widget原源经同一AGE Schema兼容别名的解析/绑定/错误span正确，规范Node保相同body/组件行为；坏字段拒绝，缺字段不能悄悄忽略。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 980/STATE：实例Store handler与异步状态
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-runtime/src/ui/vm_bridge.rs`；`D:/autostack/auto-ui/crates/auto-ui-runtime/src/ui/handler_codegen.rs`；`D:/autostack/auto-ui/crates/auto-ui-runtime/tests/plan041_instance_ownership.rs`。
 I实现：用ACE执行服务替旧handler bytecode生成/调用，接组件props/emit/computed与App store、挂起/唤醒、卸载和late generation。
 V验收：双App各两组件不串；异步任务返回只写仍存活实例；MIX-03无HTTP版本用真实异步host，HTTP实腿由983/联验补齐。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
-### 980/NATIVE：Iced窗口输入与资源
-改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-tools/src/run_vm.rs`；`D:/autostack/auto-ui/crates/auto-ui-runtime/tests/desktop_behavior.rs`；`D:/autostack/auto-ui/crates/auto-ui-runtime/tests/image_surface_contract.rs`。
-I实现：接原生run入口、路由/页面/主题/媒体/terminal等宿主；实际旧vm参数可保兼容名字但dispatch为ACE。
-V验收：001原文字选择复制/主题，页面切换、输入法/捕获、媒体/终端、关闭重开与资源回收逐项实测；不是首帧即通过。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+r13进度说明：并发原owner刚交r11 NATIVE（ui 34bb4326/lang 32e8e951c，原15/29）；其ace_native.rs由Rust组件消费AV文本/属性/重建状态，原成果及§9收据完整保留。新增“通用项目＋实际UI-FFI效果与事件”尚无证据，B-NATIVE-I/V/R重新打开，current_step 15→12、总任务29不变。原验收不是新增r13要求的PASS，T-05必须核新范围后再允许收口；不回滚任何代码。
+
+本轮进度：原r13 NATIVE三项仍待交MIN-A-UI；下列通用ABI/owned/队列规则保留。001/002完整主题/选择/全部布局及媒体/terminal等完整产品格正式交B-AV与PARITY，不再要求NATIVE在A关闭这些格。
+
+### 980/NATIVE：MIN-A-UI可复用入口（完整覆盖交B-AV）
+
+既有改面：auto-ui `crates/auto-ui-tools/src/run_vm.rs`、runtime `src/ui/{ace_hello,vm_bridge,handler_codegen}.rs`、`src/ui/iced/renderer/{host,projection}.rs`及`tests/{desktop_behavior,image_surface_contract,ace_ui_hello,plan041_instance_ownership}.rs`；语言967/969现有ABI/foreign调用owner。新一般化adapter/永久case由B-NATIVE-I在这些owner内建立，不复制parser、控件库或Hello专用renderer。
+
+**B-NATIVE-I的MIN-A有界决定与实现**：先用已有`ace-hello-minimal`双源及002-counter的Node声明头迁移副本跑通最长链、一个非法近邻、失败后恢复；已有run_vm的`AUTO_UI_ENGINE=ace`分支及`run_ace_native_entry`可复用；核其真实runner/帮助和项目配置，冻结显式ACE AV选择与公开命令，不把拟定`--engine ace`当已有参数。复用既有AutoUI项目入口，使用户换路径/Node名/函数/文本/合法组件即可运行，不要求手写Rust壳。旧`-r vm`若保留兼容名须记录其实际ACE dispatch；默认切换仍按原产品合同，不由本批擅改。
+
+实际数据流为`原Node/普通模块→活动AGE Schema/CST/唯一verify→AV业务和绑定求值→967自动binding/shim受检UI调用→UI-owned更新/事件队列→现有Iced投影/主线程窗口`。允许typed领域表示/帧更新为接口，**FFI实际承载UI创建/提交/更新/关闭中的必要效果，事件经typed队列回AV**；不能继续用独立`text_byte_len`调用充UI dispatch，也不能由Rust固定读取AV快照画特定Hello。宿主只实现通用控件/布局/设备服务，计数/绑定/业务保在Auto。
+
+接口逻辑冻结为`open/apply/poll_event/close`四种职责，具体已有函数复用与符号/布局由I的全链决定写回；`UiSessionHandle`、`UiUpdate`、`UiEvent`为**拟定逻辑类型**，不是已存在的ABI。session句柄含身份/代际和授权；更新绑定schema/组件/属性/handler身份及typed值，事件含目标实例/代际/事件ID/受检payload。复用967 typed ABI、自动binding/shim、现有owned字节/record/队列，禁止直接跨ABI暴露`iced::Element`、Rust trait/闭包/String/借用私有布局或第二套字符串JSON重解析。UI操作权限与ABI/类型在调用前校验；布局/窗口失败与guest错误分态并保原源位置。
+
+借用文本/更新只在调用期有效，provider返回前复制/促升到UI session所有；Iced对象仅UI主线程访问。事件从宿主队列在受控AV调用点分派，不从OS回调线程重入AV，handler按实例与generation绑定。关闭/取消拒新请求、失效句柄具名拒绝、late callback不复活；在途旧代pin按最后owner释放，坏更新不替已发布代。先冻结预算/容量/错误分类，超限不静默截断；沿970/STATE现有更新规则，不承诺任意状态迁移。
+
+**正式交接IF-980-NODE-DESKTOP-A**（B-NATIVE-I/V→独立R→owner phase fold，原最终任务不提前勾）：含真实CLI/项目配置、源码/Schema/模块闭包hash、AV/ABI/provider/宿主版本及目标、typed命令/事件/错误/权限/owner表、001/002旧例映射、真实窗口/FFI效果/事件/恢复用例及B后延AC行。981按此复用，1068按同版ABI接AC，不回头要求980实现AC才可归档。打包中源＋AV运行时与AC/A2R二进制明确分型；A入口交978所需工程/资源依赖清单，986仍负安装升级，完整产品包不能用验收exe冒充。
+
+**V/R**：A只须MIN-A-UI与V-UI-A-MIN；V-NODE-DESKTOP-*、原V-B-NATIVE/V-UI-FULL的完整产品格由W1 B-AV-I/V/R及最终PARITY关闭；保001选择复制/主题、页面/输入法/捕获、媒体/terminal、关开及资源回收原义务；可先正式交一般化入口接口，不据此提前勾完整NATIVE。R从实际输入追到FFI副作用、主线程窗口和AV事件，不以帧截图或byte_len代理。新增证据均未执行。
 
 ### 980/WEB：Vue与TS/JS表达式后端
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-tools/src/run_vue.rs`；`D:/autostack/auto-ui/crates/auto-ui-tools/src/vue.rs`；`D:/autostack/auto-ui/crates/auto-ui-compiler/src/ui_gen/ts_adapter.rs`。
 I实现：Vue生成使用新TS/JS provider，保watch/setup/expose/ext_imports/style及绑定；服务端使用已交宿主接口或隔离真实fixture，不等整个983才能证UI表达式。
 V验收：真实浏览器挂载/事件/绑定与源expected一致；setup只一次、watch卸载停止；生产表达式不走旧TypeScriptTrans。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 980/RUST：Rust UI静态工程
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-tools/src/rust_ui.rs`。
 I实现：先按§5 AXR0切片运行同源单text V-UI-AXR0并独立复核/正式交接；随后多文件store/组件与sidecar经新A2R生成，保持原Rust UI行为和增量产物；旧AST emitter无回退。
 V验收：未改生成物冷编译运行，props/msg/route与原独立oracle相符；坏源保旧工程。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 980/TAURI：Tauri桌面工程
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-tools/src/tauri.rs`。
 I实现：接新TS/JS与Rust backend生成，保持前后端invoke/事件/权限边界；旧AST emitter无回退。
 V验收：真实Tauri窗的invoke和事件、失败诊断及重开，不能仅浏览器前端通过。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 980/JET：Jet目标工程
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-tools/src/jet.rs`。
 I实现：保持现有Jet生成模式，以受检UI领域IR供目标adapter；不新增原未承诺能力；旧AST emitter无回退。
 V验收：原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 980/ARK：Ark目标工程
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-tools/src/ark.rs`。
 I实现：接Ark领域投影和表达式adapter，保现有Ark工程/资源/模块输出；旧AST emitter无回退。
 V验收：原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 980/PARITY：主题控件Demo及模式联合覆盖
 改面（核存在）：`D:/autostack/auto-ui/crates/auto-ui-runtime/tests/gallery_golden.rs`；`D:/autostack/auto-ui/crates/auto-ui-runtime/tests/theme_scope_isolation.rs`；`D:/autostack/auto-ui/docs/specs/ui/examples-ownership.md`。
 I实现：从001开始按文字布局→表单列表滚动→菜单Blueprint→媒体编辑分小组；同一覆盖表列全部现用组件/变体/模式，未被demo覆盖的错态补永久case。
 V验收：主题scope与原画面/交互/生命周期对照，UI058等AGE新能力不是本包替代；每格source/backend/runtime/行为收据齐。
-R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
+R关闭：独立核当前阶段的真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 各批I的有界决定门：用该批最小真实正例、同类型非法近邻、一次失败后恢复跑最长producer→consumer链；仅对未决策略比较适用实现再冻结接口，不拿日历/语法深度缩范围。资源由session持候选、generation持已发布产物、在途pin持旧代，last-owner释放；错误/取消/late不得覆盖CURRENT。继承原预算/平台条件，新增资源单位/上限/超限分类在本批I冻结并有边界反例，改变承诺先修合同。
 
 ### HELLO：首个ACE AGE Node文字窗口（当前最小入口）
 
-HELLO归M2-A必要能力验证，不是B全产品迁移；不用等待M2A-08、981或AGE M2总签。原九个完整能力批次继续，新增HELLO使本包十批、35任务。最小正式来源：967/F0-D（AV/Rust受检互操作）、979/H0-D（AGE Schema驱动的最小node/view/text、位置名称及普通函数表达式受检投影）、969/E0-D（公开ACE AV同步run/授权/关闭）、978/B0-D（最小宿主/adapter构建闭包）。任一未落主只可准备，不以分支tip作产品证据。
+HELLO已交历史切片与r13一般化NATIVE的边界以NODE-DESKTOP表为准；下文保留原最小合同，不作通用UI-FFI已交宣称。HELLO归M2-A必要能力验证，不是B全产品迁移；不用等待M2A-08、981或AGE M2总签。原九个完整能力批次继续，新增HELLO使本包十批、35任务。最小正式来源：967/F0-D（AV/Rust受检互操作）、979/H0-D（AGE Schema驱动的最小node/view/text、位置名称及普通函数表达式受检投影）、969/E0-D（公开ACE AV同步run/授权/关闭）、978/B0-D（最小宿主/adapter构建闭包）。任一未落主只可准备，不以分支tip作产品证据。
 
 首源拟新增在auto-ui既有examples/ui下独立`ace-hello-minimal/src/front/app.at`及必要显式项目配置（T-HELLO-I创建）。第一输入为一个AGE node根、一个view、一个text字面量；第二输入仍一个text，内容来自普通Auto函数返回的中文/ASCII字符串。任意合法Node/函数名及改文字都须工作，不硬编码Hello。该验证工程不修改/精简001；原001含themes包/model/design/col/selectable，后续按DIALECT/STATE/NATIVE/PARITY完整迁移。新增fixture不自动进入旧全部Demo分母。
 
@@ -227,7 +327,7 @@ HELLO归M2-A必要能力验证，不是B全产品迁移；不用等待M2A-08、9
 
 UI text provider在返回前复制借用文本到当前UI session所有的Rust值，再在OS主线程构造/刷新Iced文字；它不能持有已失效AV视图。字体/窗口/布局由Rust宿主持有，guest尚无事件回调/状态模型；关闭窗口/取消释放当前session，旧请求/撤权不得写新窗口。F0输入上限/错误规则沿967，程序与宿主失败分态；不扩guest异步、跨线程callback或Rust泛型语义。
 
-同源A2R首窗属于原B-RUST-I/V/R的AXR0先行切片，另消费967/T-12与978/T-03/09的AXR0正式来源；同一作者源还须经新A2R生成Rust、实际编译、链接同一逻辑UI provider并真实显示；若采用直接crate adapter须证明与F0 ABI adapter等价的字节/错误/owner规则。guest业务不能由AV/旧VM解释或Rust手写替代。HELLO-I/V/R/D只闭AV首窗全部V-HELLO-*即可交接，AXR0的V-UI-AXR0结果由B-RUST复核/phase fold另交；AV不反等A2R。完整980仍须原AV/A2R与全部模式，单text不证明按钮/组件状态、主题/选择复制/全UI语法已支持。
+已交同源A2R首窗属于原B-RUST-I/V/R的AXR0历史切片；新增完整UI A2R按W3执行。原AXR0先行切片，另消费967/T-12与978/T-03/09的AXR0正式来源；同一作者源还须经新A2R生成Rust、实际编译、链接同一逻辑UI provider并真实显示；若采用直接crate adapter须证明与F0 ABI adapter等价的字节/错误/owner规则。guest业务不能由AV/旧VM解释或Rust手写替代。HELLO-I/V/R/D只闭AV首窗全部V-HELLO-*即可交接，AXR0的V-UI-AXR0结果由B-RUST复核/phase fold另交；AV不反等A2R。完整980仍须原AV/A2R与全部模式，单text不证明按钮/组件状态、主题/选择复制/全UI语法已支持。
 
 既有owner改面：auto-ui `crates/auto-ui-tools/src/run_vm.rs`、runtime `src/dynamic_build.rs`、`src/ui/{dynamic,vm_bridge,handler_codegen}.rs`与`src/ui/iced/renderer/{host,projection}.rs`；ACE分流由E0公开入口，旧组件支路不能被新候选隐式调用。新最小ACE组件adapter/consumer测试在原runtime/tests owner创建，拟`tests/ace_ui_hello.rs`；公共运行入口参数由I冻结，不虚构当前有--engine ace。仅窗口host可继续依赖Iced，ACE core/AV不得反依UI crate。 T-HELLO-I先核现有run_dynamic_iced的DynamicComponent具体类型及其VmBridge字段耦合，用至多两种机制比较共同Component/视图消费接口与最小ACE组件adapter；必须复用现有Iced投影/窗口服务，必要时抽出中立宿主接面，不能创建假旧VmBridge或另写一次性Iced Hello绕开AutoUI链。该决定/最小正例/同类非法近邻/失败后恢复先闭再扩实现；无法隔离旧执行依赖则具名needs_replan。旧代码是否仍被其他产品编译与Hello新链是否dispatch旧VM分开记录，全面不可达/删除仍由987终验。
 
@@ -337,6 +437,21 @@ struct UiInstance { execution: SessionId, model_owner: OwnerId, mounts: MountSet
 
 本节由原`T-01`冻结来源/未决，`B-DIALECT-I`、`B-DIALECT-V`、`B-STATE-I`、`B-STATE-V`、`B-PARITY-I`、`B-PARITY-V`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### UI/Widgets爬梯分组与旧例映射（B-AV-I冻结，非新计划）
+
+分母从`auto-ui/examples/ui/*/pac.at`与真实作者源、`auto-os/widgets-gallery/src/front/pages/*.at`和components依赖闭包、原Spec/测试并集冻结；themes/stylekit、缓存/gen/测试探针不按目录数冒应用，排除有原理由。031同号等按真实路径/稳定ID＋source hash区分。ui-gallery的Demo副本与规范源建立映射，不双计；Widgets组件验证可在隔离UI宿主消费原源，完整gallery容器/OS注册归OS064 ASSEMBLY，不反卡W1。
+
+| 组/建议成组示例（最终以实际功能依赖冻结） | 组件/新增能力 | 每波独立关闭oracle |
+|---|---|---|
+| U01 Hello、002-counter、003-converter、011-calculator | 文本/函数/状态/按钮/数值；Gallery button/label/input | 原值/事件轨迹、中文/非法输入、两实例隔离，不一例一Plan |
+| U02 004–010静态与表单类 | 布局/样式/主题、表单/选择/对话框/菜单/焦点 | 主题/可访问输入/布局与原独立预期；001选择复制完整保留 |
+| U03 012–018及022等 | 时间/任务/列表/滚动/日期/编辑/路由、弹层 | timer不倍速、编辑/关闭/取消、列表与焦点隔离 |
+| U04 014/017/023/025/026/027等服务/数据例 | 网络/异步/文件/数据库/权限/错误恢复 | 真服务/文件/DB oracle及故障/资源；依赖实际库正式切片，不用fake PASS |
+| U05 019/020/024/029/030/031等媒体/图表/绘图 | 媒体/图片/图表/画布/GPU、原Gallery相关组件 | 实际输入/ROI/播放状态/坏资源恢复，原平台条件保持 |
+| U06 032/038/041及剩余原例、复杂Widgets页/组件 | async/游戏/编辑器/嵌入和混合Node | 原状态/事件/卸载/资源与复杂组合、全部分母余行=0 |
+
+这些是批次分组而非新增Plan号或新任务清单；同能力简单例可合并，复杂边界拆组，不能据编号跳依赖。每行由原case/check＋原源/expected hash映射到Node输入或同Schema widget兼容输入、当前后端、组件/场景/错误/资源oracle及原AC/V。原001、002和所有剩余例/Widgets页面明确归U01..06至少一组；新增/未覆盖构造补永久case。W1/W2/W3复用同一业务源与oracle；后端差异只记平台/产物/合法调度，不改业务规避支持。全部新分组验证未执行。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -358,7 +473,58 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 新增V-TS-CONSUMER-UI由B-WEB-I/V/R、B-ARK-I/V/R及B-TAURI-V/R落实，原PARITY核完整合法UI表面和非Demo导入/函数。976能力可先独立交付，980最终产品接线不反成为其前置；HELLO的node/text→AV/FFI首窗仍沿原最小链，不新增976整包等待。Godot目标后置不改变AGE自有Node/2D/3D或本包UI义务。
 
+### 三端最终一致与AC阶段移交（2026-11-16当前优先）
+
+本包适用范围为**UI/AGE领域及原生host/事件回调**。A按MIN-A精确表及既定非图形语言/库/FFI基础验收；完整UI/Widgets和图形A2R已迁交B三波，AC真实基础仍保留，A2PY标准库/AV三provider与原其他required保持。AC基础外剩余差额允许B后延，逐原行ID/输入/独立oracle/资源/错误/源身份记录B-owner与关闭条件，交[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)，异步调度交[1067](1067-ace-ac-native-async-and-task-parity.md)。不能以stub或原profile不支持签AC已实现；M2最终三端必须同平台可用，A后延只是时间调整。A2C完整对齐增强，既有代码/用例/支持事实保留，缺完整面不阻M2。
+
+在本包原能力work/最终验证/review明确区分“A已验接口”“B后延AC行”：移交有正式producer/版本/所需前置，最终真实实现和补验归1068及原owner协作，不回落旧VM或重写归档Plan。985/A可收本包A正式切片，不反等1068；本包如已有B则保唯一树续行，A切片不能勾全包完成。
+
+本包NATIVE是AV桌面宿主模式，不能自动当AC证明。B-NATIVE-I/V/R交IF-980-NODE-DESKTOP-A；981的SOURCE/SESSION/LANGUAGE提供领域语义，1068/T-04接AC机器码业务并交IF-1068-AC-DESKTOP。完整状态/事件/挂载/关闭与真实UI/renderer门不缩减，不能只测序列化文件。
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-AC-STAGED | modify | docs/specs/ace-migration/m2-autoui.md（实际交付） | A所有AC必齐→A基础/具名B移交，最终三端完整，A2C增强 | 用户明确排程 | AC-AC-STAGED |
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-NODE-DESKTOP | modify | docs/specs/ace-migration/m2-autoui.md及原UI runtime owner Spec（实际交付后） | Hello快照/字节验证边界→A可复用AV UI-FFI入口/事件/owner；AC桌面交1068在B补齐，A2R独立 | 用户本轮裁定 | AC-NODE-DESKTOP、AC-AC-STAGED |
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-UI-WAVES | modify | docs/specs/ace-migration/m2-autoui.md及replacement-scope-and-evidence.md（真实交付后） | A全UI/AV-A2R→MIN-A-UI；完整示例/Widgets W1 AV→W2 AC→W3 A2R，B全部原模式保持 | 用户本轮三波与A最小出口裁定 | AC-UI-WAVES、AC-PHASE |
+
+### EVENT-SPLIT拟议规范增量（交付时由原merge任务沉淀）
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-EVENT-PHASE | modify（拟议） | `docs/specs/ace-migration/m2-autoui.md` | 交付只沉淀实际完成的A空载荷/声明保真/拒绝、B typed payload/参数/来源与各consumer；明确逐批解锁，r23分母与完整义务保持 | 三缺口具体owner与避免整包循环 | AC-EVENT-PHASE |
+
+
 ## 6. 测试设计
+
+### EVENT-SPLIT消费验证（拟议，原B-AV/B-WEB建立并运行）
+
+| V / owner任务 | 输入→consumer与独立oracle | 条件/边界 |
+|---|---|---|
+| V-EVT-UI-A-SOURCE / 原NATIVE已交来源核对，981 T-01与985 T-A03接收 | 绑定三类MIN-A源、`ace_node_desktop`独立预期和真实FFI/事件/ABI；缺具体文件/hash/oracle指出缺件，不因executing拒收。 | 不重开已交NATIVE；上游改面仅重验受影响接口，旧PASS不扩大范围。 |
+| V-EVT-WEB-CONSUME / B-WEB-I/V/R | 现p980_web_unified_entry_census_v2的param-handler保原常量体，但另取QueryInput实际读参、多载荷emit、bool/float及真实浏览器事件；同作者业务源走新Checked provider→SFC→执行，对原独立结果/DOM。 | 分列parse/typed/fragment/splice/browser/资源，spliced=1不等价动态载荷支持；无参数环境、假数值、旧provider回退需红。census全部原语料/条件/预存红与修复归属保留。 |
+| V-EVT-AV-CONSUME / B-AV-I/V/R | 消费981 EVENT-B与SESSION typed事件，payload真改变值、双实例隔离、关闭/late/撤权/坏更新恢复；覆盖原UI/Widgets所有相关组。 | 只AV当前波，不每组编译A2R；最终完整AV仍需全部原分母。 |
+| V-EVT-GATE-UI / B-PARITY-I/V/R及985接收 | 逐批实证：有M2A-08但无UI-W2-AC可进B-AV/所需WEB；无M2A-08不能用B结果签A；仅UI-W2-AC不冒完整W3。 | 这是原阶段/收据准入的负控，不新建调度器/runner；不能用“外部三件都未齐”拦已就绪批。 |
+
+
+### 可复用Node桌面入口验证（拟议，全部未执行）
+
+B-NATIVE-I在现有runtime/tests建立拟新增`ace_node_desktop.rs`；旧001/002及`ace_ui_hello` case保留，旧widget原源走同Schema兼容别名、Node副本只改声明头/具名必需语法适配，保原业务/expected/hash，一项义务不双计。以下由B-NATIVE-V实跑、B-NATIVE-R独立核，不因Hello/STATE旧PASS自动关闭。
+
+| Case / AC | 实际入口与输入 | 区分性oracle/负控 |
+|---|---|---|
+| V-NODE-DESKTOP-ENTRY / AC-NODE-DESKTOP | 真实项目runner装载`ace-hello-minimal/{app,app-body}.at`、另一个Node名/普通模块函数、001完整原源和Node副本；仓外cwd | 正确文字/中文/原span，原001选择复制/主题不减；只换源不手写Rust或重编宿主，预构建后body变化cargo/rustc=0；坏Schema/字段在UI dispatch前拒、修复后同入口真窗。  本轮A只取V-UI-A-MIN对应子面；本行完整格由B-AV/W1与最终PARITY核。 |
+| V-NODE-DESKTOP-FFI / AC-NODE-DESKTOP | runner→实际967自动binding/shim→所选UI provider的apply/open；对同长度不同文字改源，原002绑定 | UI收到并渲染实际typed更新，记录独立宿主接收值/调用/实例身份；**移除/替换实际UI提交为仅byte_len**须因缺UI效果而红，不能用相同截图/字节数或宿主直读快照旁路通过；错ABI/provider/权限及过期handle调用前拒，UI无新增效果。  本轮A只取V-UI-A-MIN对应子面；本行完整格由B-AV/W1与最终PARITY核。 |
+| V-NODE-DESKTOP-EVENT / AC-NODE-DESKTOP | 002完整主题/计数副本，两实例，真实鼠标点击/键盘输入→typed队列→AV handler→FFI更新 | 单例0→1→0→0，定向事件两实例2:1、业务值与窗口一致；断开事件回AV或令Rust手写计数须红；按已交STATE核异步late只写存活实例。  本轮A只取V-UI-A-MIN对应子面；本行完整格由B-AV/W1与最终PARITY核。 |
+| V-NODE-DESKTOP-LIFE / AC-NODE-DESKTOP | 创建/运行/关闭/重开、撤权/坏更新/修复、UTF8借用输入释放后刷新、旧代late事件 | UTF8/NUL按原组件显示/数据合同不悬空，UI主线程；失败保旧，关闭后句柄/事件拒绝、资源按last-owner净回收，重开独立；原Frame/Tick/资源计量oracle保留，不拿“进程退出”冒所有引用释放。  本轮A只取V-UI-A-MIN对应子面；本行完整格由B-AV/W1与最终PARITY核。 |
+| V-NODE-DESKTOP-HANDOFF / AC-NODE-DESKTOP、AC-AC-STAGED | 正式IF源码/ABI/SDK与独立消费工程，三类AV/A2R/AC收据 | 只有HELLO/AXR0或AC缺owner不可签一般化A入口/最终AC；A可以明确AC待补且交1068，不等待其运行。已交A2R仍按原范围，不可当AC。  本轮A只取V-UI-A-MIN对应子面；本行完整格由B-AV/W1与最终PARITY核。 |
+
+未来命令在唯一980工作树：UI已存在`cargo test -p auto-ui-runtime --features ace-bridge --test ace_ui_hello -- --test-threads=1`；新target由I创建后才用`--test ace_node_desktop`，原desktop_behavior/image_surface_contract/plan041按触面串行运行，真实CLI命令由I读help冻结，不能以测试构造器替CLI。语言选既有`cargo t ace-source ace-av ace-host ace-foreign-contract ace-abi`中真实职责及必要集成组，新增source/schema/ABI触面须核下游；窗口GPU排单实例，AG仅命名受影响例；Linux/正式perf沿既定条件，不附全AG/全仓门。准备/选择/实际执行/条件排除及子终态分账。独立review在实施停写后的同树上下文重构，角色未另指派，不创建新会话/第二树。
 
 ### r10字段交接验证（拟执行）
 
@@ -381,12 +547,12 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 |---|---|---|---|
 | V-B-DIALECT | AC-B-DIALECT | ui: cargo test -p auto-ui-dialect --lib；cargo test -p auto-ui-compiler --test ui_domain_validation；lang: cargo t ace-source ace-syntax | 普通标识符上下文保持；旧widget原源经同一AGE Schema兼容别名的解析/绑定/错误span正确，规范Node保相同body/组件行为；坏字段拒绝，缺字段不能悄悄忽略。 |
 | V-B-STATE | AC-B-STATE | ui: cargo test -p auto-ui-runtime --test plan041_instance_ownership --test plan033_b1_scope_isolation -- --test-threads=1；lang: cargo t ace-av ace-host | 双App各两组件不串；异步任务返回只写仍存活实例；MIX-03无HTTP版本用真实异步host，HTTP实腿由983/联验补齐。 |
-| V-B-NATIVE | AC-B-NATIVE | ui: cargo test -p auto-ui-runtime --test desktop_behavior --test image_surface_contract -- --test-threads=1；工具现有auto run -r vm执行隔离工程，记录实际binary身份 | 001原文字选择复制/主题，页面切换、输入法/捕获、媒体/终端、关闭重开与资源回收逐项实测；不是首帧即通过。 |
+| V-B-NATIVE | AC-B-NATIVE | ui: cargo test -p auto-ui-runtime --test desktop_behavior --test image_surface_contract -- --test-threads=1；工具现有auto run -r vm执行隔离工程，记录实际binary身份 | 001原文字选择复制/主题，页面切换、输入法/捕获、媒体/终端、关闭重开与资源回收逐项实测；不是首帧即通过。  本轮A只取V-UI-A-MIN对应子面；本行完整格由B-AV/W1与最终PARITY核。 |
 | V-B-WEB | AC-B-WEB | ui: cargo tu（保原单进程）；cargo test -p auto-ui-runtime --test vue_capabilities；实际生成工程按自身package.json锁定脚本构建并操作 | 真实浏览器挂载/事件/绑定与源expected一致；setup只一次、watch卸载停止；生产表达式不走旧TypeScriptTrans。 |
 | V-B-RUST | AC-B-RUST | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；RUST原工程runner与工具版本由I冻结并真实执行，不能emit-only | 未改生成物冷编译运行，props/msg/route与原独立oracle相符；坏源保旧工程。 |
 | V-B-TAURI | AC-B-TAURI | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；TAURI原工程runner与工具版本由I冻结并真实执行，不能emit-only | 真实Tauri窗的invoke和事件、失败诊断及重开，不能仅浏览器前端通过。 |
-| V-B-JET | AC-B-JET | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；JET原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。 |
-| V-B-ARK | AC-B-ARK | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；ARK原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。 |
+| V-B-JET | AC-B-JET | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；JET原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。（r11：归 M3/v0.7，v0.6 不执行） |
+| V-B-ARK | AC-B-ARK | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；ARK原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。（r11：归 M3/v0.7，v0.6 不执行） |
 | V-B-PARITY | AC-B-PARITY | ui: cargo test -p auto-ui-runtime --test theme_scope_isolation --test gallery_golden -- --test-threads=1；实机与浏览器逐原支持模式验证，窗口单实例 | 主题scope与原画面/交互/生命周期对照，UI058等AGE新能力不是本包替代；每格source/backend/runtime/行为收据齐。 |
 | V-UI-SOURCE | AC-07 | B-DIALECT-I建完整分母普通源码正反例，B-PARITY-I接字段/构造覆盖检查；V按现有ui_domain_validation/领域target运行新命名case | 合法传统UI字段有投影/模式/owner，坏字段或错事件参数报原span；删除一条必需字段/模式行检查红、合法近邻仍绿；修复后同入口成功，不能静默丢字段 |
 | V-UI-FULL | AC-07/AC-NODE-COMPAT | B-NATIVE-I/B-RUST-I建纯UI多文件工程（旧widget原源走同一Schema兼容别名，另建声明头迁移Node对照），V跑AV及新A2R→编译→实际UI运行；B-PARITY-V汇总原组件/模式必需格 | 无2D/3D声明仍完整工作，双App各两组件、局部2:1事件、Store/路由/异步卸载/主题/输入各对独立oracle；AV改源无Cargo/rustc，A2R实际执行生成逻辑，无VM fallback。001或少量控件绿不代未覆盖格 |
@@ -427,6 +593,21 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 |---|---|---|
 | V-TS-CONSUMER-UI | AC-TS-CONSUMER-UI；WEB/ARK/TAURI原I/V/R | 真实Vue/Ark及Tauri适用工程→976新provider→框架adapter→原运行器；观察handler/computed/watch/setup、props/store及导入调用的实际值/事件/资源/错误span。注入旧TypeScriptTrans fallback、删合法函数或误绑响应式引用须失败；禁用Godot不影响node/text首窗，首窗成功不代完整Web/Ark通过。 |
 
+| V / AC | 原owner/输入 | 独立预期与边界 |
+|---|---|---|
+| V-AC-STAGED / AC-AC-STAGED | 原work及最终验证：A真实基础/AV-A2R结果＋完整AC后延账，缺owner/基础stub负控；B回验真AC | A基础真实且B每行去向/关闭条件齐才可交A；不得记AC PASS/NA或从分母消失；B真实三端与原独立oracle齐才关闭后延行。 |
+
+### 分阶段必验（拟议，未执行；优先于旧全量A表述）
+
+| V / owner | 输入/入口 | 独立关闭/负控 |
+|---|---|---|
+| V-UI-A-MIN / B-NATIVE-I/V/R | 现有真实项目入口/Schema与UI-FFI；MIN-A-UI三类源及双实例 | 真窗文字/中文、0→1→0→0、两实例2:1，关开/late/权限/坏更新恢复；断实际UI submit只留byte_len必红。完整Widgets/A2R缺证但有B承接不阻此A；A最小本身缺证不能签。 |
+| V-UI-W1 / B-AV-I/V/R | U01..06全部原例/Widgets依赖，经普通Node或Schema兼容源→AV→同一宿主 | 全部分母对独立交互/错误/资源oracle，目录空选/漏页/只截图/只CPU/手写Rust业务红；不要求AC/A2R或rustc guest。新target由I建于原runtime/tests/领域owner，原ace_ui_hello/desktop_behavior等按触面复用。 |
+| V-UI-W3 / B-RUST-I/V/R | W2后同源U01..06→新A2R生成→真实rustc→真实窗/事件/资源及包 | 生成物不手改、guest不AV/旧VM，完整值/交互/关闭/失败恢复；AXR0 stdout上窗不代一般UI。源码/ABI失配或emit-only红，宿主预编译与guest编译分别计时。 |
+| V-UI-WAVE-RECEIPT / PARITY原I/V/R | 每波正式source/Schema/ABI/provider/SDK/后端/用例/独立oracle/结果与残余行 | W1可正式交而W2/W3仍pending；W2可正式交而W3 pending。错把另端产物/缺行/branch WIP当当前波或最终三端必须红；最终PARITY收三波及WEB/TAURI。 |
+
+拟补波次case由B-AV-I/B-RUST-I建在原测试owner，沿现有TestCase/固定组，不造新tm或每波新runner。AV用ace-source/ace-av/ace-host/ace-abi/ace-foreign-contract等真实职责和受影响UI `--features ace-bridge`命名target；AC归1068，A2R到W3才跑图形生成编译端。GPU窗口单实例，AG只受影响命名例；Linux/perf原条件不变。旧表V-UI-FULL/V-B-NATIVE/V-NODE-DESKTOP-*覆盖完整U组，在B按当前波执行；不是A全量门。各I读真实CLI/help冻结参数，不虚构新后端选择已存在。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察标准 | 验证 |
@@ -440,12 +621,12 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 | AC-07 | work | 传统UI全部既有语法/字段/组件/模式必需格经ACE接管，原源不强制改Node；纯UI可AV开发及A2R编译运行，输入/状态/主题/资源/恢复不减、无旧执行/发射fallback；接面供981但不等其产品PASS | V-UI-SOURCE/FULL及原各批V；T-01、DIALECT/STATE/NATIVE/RUST/PARITY的I/V |
 | AC-B-DIALECT | work | 普通标识符上下文保持；旧widget原源经同一AGE Schema兼容别名的解析/绑定/错误span正确，规范Node保相同body/组件行为；坏字段拒绝，缺字段不能悄悄忽略。 | B-DIALECT-V/R |
 | AC-B-STATE | work | 双App各两组件不串；异步任务返回只写仍存活实例；MIX-03无HTTP版本用真实异步host，HTTP实腿由983/联验补齐。 | B-STATE-V/R |
-| AC-B-NATIVE | work | 001原文字选择复制/主题，页面切换、输入法/捕获、媒体/终端、关闭重开与资源回收逐项实测；不是首帧即通过。 | B-NATIVE-V/R |
+| AC-B-NATIVE | work | A仅MIN-A-UI/V-UI-A-MIN；原001选择复制/主题、页面/输入法/捕获、媒体/terminal等完整原生产品义务在B-AV/W1按原oracle实测，首帧不能代完整覆盖 | B-NATIVE-V/R交A；B-AV-V/R与最终PARITY交完整格 |
 | AC-B-WEB | work | 真实浏览器挂载/事件/绑定与源expected一致；setup只一次、watch卸载停止；生产表达式不走旧TypeScriptTrans。 | B-WEB-V/R |
 | AC-B-RUST | work | 未改生成物冷编译运行，props/msg/route与原独立oracle相符；坏源保旧工程。 | B-RUST-V/R |
 | AC-B-TAURI | work | 真实Tauri窗的invoke和事件、失败诊断及重开，不能仅浏览器前端通过。 | B-TAURI-V/R |
-| AC-B-JET | work | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。 | B-JET-V/R |
-| AC-B-ARK | work | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。 | B-ARK-V/R |
+| AC-B-JET | work | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。 | B-JET-V/R（r11：随批归 M3/v0.7） |
+| AC-B-ARK | work | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。 | B-ARK-V/R（r11：随批归 M3/v0.7） |
 | AC-B-PARITY | work | 主题scope与原画面/交互/生命周期对照，UI058等AGE新能力不是本包替代；每格source/backend/runtime/行为收据齐。 | B-PARITY-V/R |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、各批V/I与原最终work验证；原独立review复核 |
 | AC-HELLO | work | AGE Schema驱动的Node单text字面量/Auto函数源在AV→真实Rust FFI→Iced窗口成立，原span/文本寿命/失败恢复/冷消费可核 | T-HELLO-I/V；V-HELLO-* |
@@ -454,17 +635,35 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 | AC-NODE-COMPAT | work | 首Hello直接用AGE Node；旧widget原源仅经同一Schema兼容别名，声明头迁移另计；组件/状态/模式/独立oracle不减，无第二传统接入线或全局关键字替换 | T-HELLO-I/V、B-DIALECT/STATE/PARITY-I/V；V-HELLO-SCHEMA、V-UI-NODE-COMPAT，原R独立复核 |
 | AC-HANDOFF | work | IF-980-FIELDS覆盖完整WidgetDecl/引用构造分母并有实际覆盖/拒绝/删映射/删清单行反控，来源正式可供979回验；只消费979已交接口，不反等其归档或981整包，原UI全量义务保持 | B-DIALECT-I/V/R及原phase fold；V-B-DIALECT/V-UI-SOURCE/V-DETAIL-04，交979 V-11 |
 
+| ID | owner_stage | 标准 | 核验 |
+|---|---|---|---|
+| AC-NODE-DESKTOP | work | A的MIN-A-UI真实项目入口经AV/自动Rust FFI产生UI效果与typed事件/owner/恢复；原V-NODE-DESKTOP-*完整覆盖在B-AV，AC/A2R分别W2/W3，不以HELLO/byte_len/AXR0代一般化或某完整波 | B-NATIVE-I/V/R及V-UI-A-MIN；B-AV/W1、1068/W2、RUST/W3，原final |
+
 ### 当前目标范围验收
 
 | ID | owner_stage | 标准 | 核验 |
 |---|---|---|---|
 | AC-TS-CONSUMER-UI | work | WEB/ARK/TAURI完整生产TS/JS接976新provider，无TypeScriptTrans委托残留，规范合法非Demo模块/函数仍支持；首Hello最小链不被附加独立TS/Godot前置 | B-WEB-I/V/R、B-ARK-I/V/R、B-TAURI-V/R、V-TS-CONSUMER-UI；原独立review逐项复核 |
 
+- [ ] **AC-AC-STAGED / work**：V-AC-STAGED闭合，AC基础真实、剩余差额完整移交1067/1068/实际owner，AV/A2R及原其他A-required不减；最终三端未验不得冒支持。原work落实、原独立review核，无新增任务或本轮完成数。
+
+| ID | owner_stage | 标准 | 核验 |
+|---|---|---|---|
+| AC-UI-WAVES | work | MIN-A-UI独立正式可交；完整U01..06/Widgets按W1 AV、W2 AC、W3 A2R分别对独立oracle关闭，最终全部原产品/模式义务齐；UI-only三端不逐批同时实现 | V-UI-A-MIN/W1/W3/WAVE-RECEIPT；原R、T-05独立final |
+
+### EVENT-SPLIT验收补充（owner_stage沿原work/review/merge，待实施）
+
+| AC | 原承接任务 | 可观察关闭条件 |
+|---|---|---|
+| AC-EVENT-PHASE | 981 T-01、LANGUAGE/SESSION/PROOF各I/V/R[A/B]；本包B-AV/B-WEB及PARITY；985 T-A03/A04/A05与B原任务 | §5三缺口逐阶段/真实source/oracle/owner/现有任务可追；A真实正例/保真/安全拒绝齐，B支持/执行/资源/错误与完整原用例全部闭；语法/splice/历史或worker总绿不越级。对应本节V-EVT-*，独立review绑定revision与正式来源；当前规划不得勾PASS。 |
+
+
+
 ## 8. 执行步骤
 
-当前共35任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共32任务，已完成12项（B-NATIVE-I/V/R r13 批已复核勾选）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
-### M2-A：能力与必要真实验证
+### A最小与B各波唯一任务清单（阶段按行标签）
 
 早期任务可按§5最小前置先行，不要求T-01完整分母冻结已完成；各I自行冻结本切片输入/接口/命令，不提前勾T-01或其它原整项。以下行序不是额外前置。
 
@@ -478,7 +677,7 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 
 
-- [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/07/AC-PHASE**：核959行及§5完整传统UI的grammar/AST/Spec/组件/模式分母、来源/接口与唯一树/写窗，冻结纯UI AV/A2R及各批命令/oracle/资源，不能只列图形小例。
+- [x] **T-01｜M2-A｜owner_stage: work｜AC-01/07/AC-PHASE**：核959行及§5完整传统UI的grammar/AST/Spec/组件/模式分母、来源/接口与唯一树/写窗，冻结纯UI AV/A2R及各批命令/oracle/资源，不能只列图形小例。
 
 - [x] **B-DIALECT-I｜M2-A｜owner_stage: work｜AC-B-DIALECT/AC-02/03/06/07/AC-NODE-COMPAT/AC-HANDOFF**：按WidgetDecl全部字段逐项投影/明确模式适用性，schema→typed领域IR→ACE行为；包含named_views/bind/routes/setup/watch/expose/actions/timer/theme及实际AST/Spec其余字段。先落实§5 IF-980-FIELDS的可执行字段清单/通用适配和永久正反例，R复核/正式交付子面后继续完整DIALECT；消费已交979基础、不等979归档。按§6冻结命令，原传统UI/V-UI-SOURCE/FULL义务不减。
 
@@ -492,53 +691,49 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [x] **B-STATE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-NATIVE-I｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：接原生run入口、路由/页面/主题/媒体/terminal等宿主；实际旧vm参数可保兼容名字但dispatch为ACE。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
+- [x] **B-NATIVE-I｜M2-A最小｜owner_stage: work｜AC-B-NATIVE/AC-02/03/06/07**：实现MIN-A-UI普通Node入口/实际UI-FFI/typed事件与owner；新用例V-UI-A-MIN；完整001/002与所有Widgets、媒体/terminal迁B-AV。 [✅ r13批 round 24/25：ui980 provider+桥+通用入口，收据 §9]
 
-- [ ] **B-NATIVE-V｜M2-A｜owner_stage: work｜AC-B-NATIVE/AC-07**：运行V-B-NATIVE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
+- [x] **B-NATIVE-V｜M2-A最小｜owner_stage: work｜AC-B-NATIVE/AC-07**：只关闭V-UI-A-MIN及所用接口/错误/资源原义务，真实窗/事件/恢复，不以字节探针代UI；完整V-UI-FULL交B波。 [✅ r13批 round 24：CPU 7/7+排窗 e2e 1/1+受影响面全绿]
 
-- [ ] **B-NATIVE-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [x] **B-NATIVE-R｜M2-A最小｜owner_stage: review｜AC-04**：独立核MIN-A-UI/正式source/ABI/FFI效果与B承接，phase fold交IF-980-NODE-DESKTOP-A；不要求完整Widgets/图形A2R，也不签完整NATIVE产品覆盖。 [✅ round 25 批次终核 pass，authored 反例 e203caa8]
 
-- [ ] **B-WEB-I｜M2-A｜owner_stage: work｜AC-B-WEB/AC-02/03/06**：Vue生成使用新TS/JS provider，保watch/setup/expose/ext_imports/style及绑定；服务端使用已交宿主接口或隔离真实fixture，不等整个983才能证UI表达式。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-AV-I｜M2-B-W1｜owner_stage: work｜AC-UI-WAVES/AC-07**：M2A-08后冻结U01..06原源/Widgets分母和旧新oracle映射，在既有DIALECT/STATE/NATIVE owner扩完整AV组件/场景/输入/错误/资源；只做AV，多个简单例按能力成组，不另建引擎/runner。 EVENT-SPLIT：只等M2A-08及本组实际IF-981-EVENT-*-B接口，不等W2/WEB全包；无参已交面复用。
 
-- [ ] **B-WEB-V｜M2-A｜owner_stage: work｜AC-B-WEB**：运行V-B-WEB完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+- [ ] **B-AV-V｜M2-B-W1｜owner_stage: work｜AC-UI-WAVES/AC-07**：运行V-UI-W1与该组受影响完整职责/真实窗口；原001/002和全部示例/Widgets余行闭合，不运行图形A2R；收981所需AV域格，不能等AC/OS全量再交。 EVENT-SPLIT：实跑V-EVT-AV-CONSUME；完整payload/绑定用实际值，不用常量体代参。
 
-- [ ] **B-WEB-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **B-AV-R｜M2-B-W1｜owner_stage: review｜AC-UI-WAVES/AC-04**：同树停写独立核完整AV分母/原oracle/失败控制/来源，phase fold交UI-W1-AV及宿主/域ABI供1068 W2；不提前签三端/整包PARITY或归档。 EVENT-SPLIT：核AC-EVENT-PHASE/真实EVENT-B来源后逐组交AV，不等全域终验。
 
-- [ ] **B-RUST-I｜M2-A｜owner_stage: work｜AC-B-RUST/AC-02/03/06/07**：先按§5 AXR0切片运行同源单text V-UI-AXR0并独立复核/正式交接；随后多文件store/组件与sidecar经新A2R生成，保持原Rust UI行为和增量产物；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
+- [ ] **B-WEB-I｜M2-B独立现役模式｜owner_stage: work｜AC-B-WEB/AC-02/03/06**：Vue生成使用新TS/JS provider，保watch/setup/expose/ext_imports/style及绑定；服务端使用已交宿主接口或隔离真实fixture，不等整个983才能证UI表达式。 按§5真实改面补永久fixture并固定§6命令。 EVENT-SPLIT：复用#6i，具体消费981 B-LANGUAGE-I/V/R的MSG/PAYLOAD/PARAMS-B与B-SESSION所需typed接口；本批完整实现门=M2A-08及所用接口，不等W1/W2整波。
 
-- [ ] **B-RUST-V｜M2-A｜owner_stage: work｜AC-B-RUST/AC-07**：运行V-B-RUST完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
+- [ ] **B-WEB-V｜M2-B独立现役模式｜owner_stage: work｜AC-B-WEB**：运行V-B-WEB完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 EVENT-SPLIT：V-EVT-WEB-CONSUME按真实旧语料＋实际读参区分例对独立oracle，缺席/旧道不计ACE覆盖。
 
-- [ ] **B-RUST-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **B-WEB-R｜M2-B独立现役模式｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。 EVENT-SPLIT：核AC-EVENT-PHASE及三件语义范围，不能以#6i语法/拼接计数关闭完整WEB。
 
-- [ ] **B-TAURI-I｜M2-A｜owner_stage: work｜AC-B-TAURI/AC-02/03/06**：接新TS/JS与Rust backend生成，保持前后端invoke/事件/权限边界；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-RUST-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST/AC-02/03/06/07**：先按§5 AXR0切片运行同源单text V-UI-AXR0并独立复核/正式交接；随后多文件store/组件与sidecar经新A2R生成，保持原Rust UI行为和增量产物；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。 新增完整图形范围只在UI-W2-AC正式后按V-UI-W3执行；原AXR0仅复用已验切片，不能提前签完整第三波。 EVENT-SPLIT：W3只取UI-W2-AC及所用正式接口，不要求980所有等待条件先齐。
 
-- [ ] **B-TAURI-V｜M2-A｜owner_stage: work｜AC-B-TAURI**：运行V-B-TAURI完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+- [ ] **B-RUST-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST/AC-07**：运行V-B-RUST完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。 新增完整图形范围只在UI-W2-AC正式后按V-UI-W3执行；原AXR0仅复用已验切片，不能提前签完整第三波。
 
-- [ ] **B-TAURI-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **B-RUST-R｜M2-B-W3｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。 新增完整图形范围只在UI-W2-AC正式后按V-UI-W3执行；原AXR0仅复用已验切片，不能提前签完整第三波。
 
-- [ ] **B-JET-I｜M2-A｜owner_stage: work｜AC-B-JET/AC-02/03/06**：保持现有Jet生成模式，以受检UI领域IR供目标adapter；不新增原未承诺能力；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-TAURI-I｜M2-B独立现役模式｜owner_stage: work｜AC-B-TAURI/AC-02/03/06**：接新TS/JS与Rust backend生成，保持前后端invoke/事件/权限边界；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
 
-- [ ] **B-JET-V｜M2-A｜owner_stage: work｜AC-B-JET**：运行V-B-JET完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+- [ ] **B-TAURI-V｜M2-B独立现役模式｜owner_stage: work｜AC-B-TAURI**：运行V-B-TAURI完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
-- [ ] **B-JET-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **B-TAURI-R｜M2-B独立现役模式｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-ARK-I｜M2-A｜owner_stage: work｜AC-B-ARK/AC-02/03/06**：接Ark领域投影和表达式adapter，保现有Ark工程/资源/模块输出；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
+<!-- r11（2026-11-16 用户裁定）：B-JET-I/V/R 与 B-ARK-I/V/R 六任务行撤出 v0.6 执行清单，归 M3（v0.7）。原文与 AC/V 留档：B-JET-I=保持现有Jet生成模式，以受检UI领域IR供目标adapter；不新增原未承诺能力；旧AST emitter无回退（AC-B-JET/V-B-JET：原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行）。B-ARK 同型（AC-B-ARK/V-B-ARK）。M3 再启时按原义务实施。 -->
 
-- [ ] **B-ARK-V｜M2-A｜owner_stage: work｜AC-B-ARK**：运行V-B-ARK完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+- [ ] **B-PARITY-I｜M2-B分波接收/最终汇合｜owner_stage: work｜AC-B-PARITY/AC-02/03/06/07/AC-NODE-COMPAT**：从001按文字布局→表单列表滚动→菜单Blueprint→媒体编辑分组；核完整语法/字段/组件/变体/模式双向表，补未被Demo覆盖的语法/错态及删除必需行负控，建V-UI-SOURCE/FULL并汇总纯传统UI AV/A2R实际结果。按§5接fixture/固定命令，不等981完整Node终验。 按V-UI-WAVE-RECEIPT独立接W1/W2/W3，不以本任务整项完成反卡前一波；最终收全部现役模式。 EVENT-SPLIT：按V-EVT-GATE-UI逐批接收，最终才汇合全部现役模式。
 
-- [ ] **B-ARK-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **B-PARITY-V｜M2-B分波接收/最终汇合｜owner_stage: work｜AC-B-PARITY/AC-07/AC-NODE-COMPAT**：运行V-B-PARITY完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。 按V-UI-WAVE-RECEIPT独立接W1/W2/W3，不以本任务整项完成反卡前一波；最终收全部现役模式。
 
-- [ ] **B-PARITY-I｜M2-A｜owner_stage: work｜AC-B-PARITY/AC-02/03/06/07/AC-NODE-COMPAT**：从001按文字布局→表单列表滚动→菜单Blueprint→媒体编辑分组；核完整语法/字段/组件/变体/模式双向表，补未被Demo覆盖的语法/错态及删除必需行负控，建V-UI-SOURCE/FULL并汇总纯传统UI AV/A2R实际结果。按§5接fixture/固定命令，不等981完整Node终验。
+- [ ] **B-PARITY-R｜M2-B分波接收/最终汇合｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。 按V-UI-WAVE-RECEIPT独立接W1/W2/W3，不以本任务整项完成反卡前一波；最终收全部现役模式。
 
-- [ ] **B-PARITY-V｜M2-A｜owner_stage: work｜AC-B-PARITY/AC-07/AC-NODE-COMPAT**：运行V-B-PARITY完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
+- [ ] **T-05｜M2-B最终｜owner_stage: review｜AC-04**：全包独立final核全部批收据/组合/遗漏/延期/workaround、warning/fmt/debug和Spec；缺必需结果不得pass。
 
-- [ ] **B-PARITY-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **T-06｜M2-B最终｜owner_stage: merge｜AC-05**：按owner次序合入/落规范，核真实来源/consumer同版，全部齐后归档。
 
-- [ ] **T-05｜M2-A｜owner_stage: review｜AC-04**：全包独立final核全部批收据/组合/遗漏/延期/workaround、warning/fmt/debug和Spec；缺必需结果不得pass。
-
-- [ ] **T-06｜M2-A｜owner_stage: merge｜AC-05**：按owner次序合入/落规范，核真实来源/consumer同版，全部齐后归档。
-
-- [ ] **T-07｜M2-A｜owner_stage: merge｜AC-05**：摘要折Plan、输出逐目录对账/清scope/登记，guard clean后清树。
+- [ ] **T-07｜M2-B最终｜owner_stage: merge｜AC-05**：摘要折Plan、输出逐目录对账/清scope/登记，guard clean后清树。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -552,6 +747,12 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-DIALECT-I/B-DIALECT-V/B-STATE-I/B-STATE-V/B-PARITY-I/B-PARITY-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+> EVENT-SPLIT-20261116历史解释：本节旧blocked/“等待980正式源”、round39/40及旧全量A门只证明当时核对/选择；当前依§5和§8逐切片合同，不用executing/整包未勾代接口缺失。旧产品结果不因本次修订自动扩大为参数/载荷或新A验收PASS。
+
+2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
+
+2026-11-16 stage:new / r12：按用户最新三端目标修阶段/移交，增SD/V/AC-AC-STAGED；原任务/状态/进度保留，仅规划，无新增实际验证/签章。
 
 2026-11-16 stage: new/revision | PLAN-980 r11 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
 
@@ -752,17 +953,285 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 12 | from: review 
 next_responsible_role: work（980/RUST 批：前置 DIALECT✓+L978✅已归档；AXR0 切片消费 967/T-12、978/T-03/09 正式来源——已归档可取）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 13 | from: merge | to: work | status: executing（9/35，HELLO 批已交付落主）| outcome: pass（phase fold #4）| worktree: D:/autostack/.wt/lang-980（保留）| commit: lang 1991021a5 ui e529dde6 | next: work（RUST 批）
+2026-11-16 stage: work（B-RUST-I/V 批，round 14：AXR0 先行 + 交付闭包修复链）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次可交付独立复核；UI 侧因 driver 修复验证需要**提前 ff 落主**——与 review→merge 顺序的偏差具名记录，review 按同内容终核）| worktree: lang-980 | code_commit: auto-ui master 链 80e676f6f→ef21e4e9→aee85e13→d92d89cd→e2aadd45（lang 侧本批零代码；规范 4156f25c4→f46fb4408）。
+
+**交付（AC-B-RUST AXR0 面 + 交付闭包）。** ①AXR0 双腿：`ui/ace_a2r_bridge.rs`（Leg A 组件场景 A2R 文件集 `__age_drive`；Leg B F0×A2R 967/T-12 桥——同文本字节经 provider）+ `examples/ace_a2r_axr0_build.rs` 显式构建道（真 rustc，回执 target/ace-a2r-axr0/receipt.json：leg_a `value:2`/leg_b `value:9`）+ `tests/ace_a2r_axr0.rs` 4 项（发射身份控制/回执消费/排窗窗口腿——窗口派生 A2R exe 显示真实 stdout，零 AV/旧 VM）。②**结构性修复链（driver 显形）**：DIALECT 批 ace-core dev-dep 越根致交付生成具名拒（本计划引入的回归）→ 交付投影新引擎面 `strip_dev_deps`（三态幂等）+ compiler 专用 spec；spec 须全行形态（裸名键取空误入已剥离分支——单测实证 `p980_delivery_projection_strips_compiler_dev_only_ace_core`）；STATE/HELLO/RUST 的 ACE 生产依赖 → `ace-bridge` feature 门（默认关，7 optional dep + dev ace-av）+ runtime 投影剥除/feature 空改写（autodown-core 同型）；bindgen 的 ace-foreign-contract（967/973 谱系预存）→ DELIVERY_VENDOR_TREES 补树。③**原工程 runner 真实执行**：PLAN-792 driver V01..V06 **43/43 PASS**（V01 fresh-lock 真构建/V02 重定位 locked/V03 负控/V06 全 profile 矩阵+vm-run；jet/ark 环境门控=driver 原语义；日志 plan-artifacts/plan-980/rust-driver-run{1..7}.log，run7=绿）。
+
+**V-B-RUST 验证。** ui `cargo tu`=889 过/2 红（ui_gen::rust master 预存红，主检出同红取证，台账）；lang `cargo t ace-a2x generated-delivery-controls`=**双 PASS**；AXR0 4/4（2.91s 含窗口）+ HELLO 7/7 + plan041 9/9 + plan033 2/2（`--features ace-bridge` 终态）；driver 43/43。命令冻结：AXR0/HELLO/STATE 永久命令带 `--features ace-bridge`；构建道/排窗 prep 流程见测试文件头注。
+
+**边界（KNOWN-DEBT 在案）。** 旧 rust_ui emitter 未替换（981 面接线）；A2R 文本出岛（902 冻结 i32 协议）窗口腿以 stdout 上窗；AXR0-PACK 完整打包 pending；ui_gen 2 例预存红。
+
+2026-11-16 stage: review（B-RUST-R 终核，round 15）| review_scope: batch-final | reviewer: 同会话独立复核（工件重构：终态重放+authored 反例+driver 全量重放）| outcome: pass（批次闭合；B-RUST-I/V/R 勾选，12/35）| reviewed_commit: ui e2aadd45（=master）/ lang f46fb4408 | 复核：①冻结重放（投影双单测 2/2、AXR0 4/4 带 env、tu/a2x 门在 work 轮实测）；②authored 反例 `p980_delivery_projection_strips_runtime_ace_bridge`（runtime 投影剥 7 optional+dev+feature 空改写+幂等——删任一 strip/改写即红；首版断言过宽抓到注释词，探针修正记录在案）；③driver 43/43 全量重放=交付闭包修复的直接 oracle；④机械审计：本批 UI 增量=桥/构建道/测试/投影（交付语义修复三处均单测+driver 实证）；lang 零代码（规范 only）。findings: 无阻断。
+
+2026-11-16 stage: merge（B-RUST-D phase fold #5，round 16）| outcome: pass（批次交付）| delivery_commit: auto-ui master **e2aadd45**（链 80e676f6f…e2aadd45，全部 ff-only 提前落主——偏差已于 work 轮具名）、auto-lang master **f46fb4408**（规范 §8，rebase 后全等落主）| canonical: m2-autoui.md sha256/16=**a9c1233f29ebda9d**（§8 AXR0 双腿/构建道纪律/feature 门/闭包修复）| 落地后复核：投影双单测 2/2@master、AXR0 4/4@终态内容、driver 43/43@master 内容（run7）。统一回归门：本批受影响组（ace-a2x/generated-delivery-controls/tu/projection 单测/driver）已按冻结内容实测全绿；ace-abi source_foreign 25 例预存红具名排除（台账）。
+
+next_responsible_role: work（980/JET 批：前置 DIALECT✓+L978✅；Jet 工具链缺环境格按合同记 pending 不判红）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 16 | from: merge | to: work | status: executing（12/35，RUST 批已交付落主）| outcome: pass（phase fold #5）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui e2aadd45 lang f46fb4408 | next: work（JET 批）
+2026-11-16 stage: work（B-JET 批启动评估，round 17）| plan_id: PLAN-980 | plan_revision: r10 | outcome: blocked（环境前置缺失，具名）| 现场证据：driver V06c（run7，master 内容）`jet=env-gated`——`gradlew assembleDebug exited 9009`（Jet/Android 工具链不在场）；生成面 `jet generate_ok=True files_written=24` 在库正常。本机可执行面已绿（cargo tu 889/2 预存红、cargo t ace-a2x generated-delivery-controls 双 PASS——本会话 RUST 轮实测）。**不做无验证的 IR 重布线**：B-JET-I「受检 UI 领域 IR 供目标 adapter」与 V-B-JET 真实构建腿需要 Jet 工具链就地验证；任务保持未勾选（12/35 不变）。unblock=在 Jet 专用环境（gradlew/AGP 在场）执行 B-JET-I/V/R（KNOWN-DEBT 已立，owner=Jet 专用环境/后续轮）。WEB/ARK 仍卡 976、NATIVE 卡 STATE✓+973、TAURI/PARITY 如 §5——本 goal 链（用户裁定顺序 STATE→HELLO→RUST→JET）至此：前三个批完整交付落主，JET 具名环境阻塞。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 17 | from: work | to: user | status: executing（12/35）| outcome: blocked（JET 平台环境缺失，具名 unblock）| worktree: D:/autostack/.wt/lang-980（保留续）| commit: ui e2aadd45 lang f46fb4408 | next: user（JET 需 Jet 专用环境或裁定后续）
+
+2026-11-16 stage: new/revision | PLAN-980 r11 | 用户范围裁定（直接授权）：**JET/ARK 后端归 M3（v0.7），从 v0.6 移除；WEB（Vue+TS）保留 v0.6**。执行：§8 六任务行撤出（原文留档 HTML 注记）、total 35→29（当前 12/29）、§5 批表/阶段表与 PARITY 依赖改写、§6/§7 对应 V/AC 行注记归 M3；round 17 的 JET 环境阻塞记录由本裁定取代（v0.6 不再含该腿；M3 再启时原环境缺口仍在案）。WEB 保留意味着 L976（TypeScript provider，drafting）为 v0.6 WEB 批关键路径。DIALECT/STATE/HELLO/RUST-AXR0 已交付面不受影响；唯一树 lang-980 保留续 NATIVE/WEB/TAURI/PARITY。同步：M2 路线图 dated 注记 + m2-autoui 规范边界刷新 + KNOWN-DEBT JET 条目改写。本修订只改范围归属，不改已交付验收/其余义务。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 18 | from: new | to: work | status: executing（12/29，JET/ARK 归 M3）| outcome: pass（范围修订落档）| worktree: D:/autostack/.wt/lang-980 | commit: pending | next: work（NATIVE/WEB/TAURI/PARITY 按前置续行）
+2026-11-16 stage: work（B-NATIVE-I/V 批，round 19）| plan_id: PLAN-980 | plan_revision: r11 | outcome: pass（批次可交付独立复核；勾选留 R）| code_commit: lang 32e8e951c（免驱动面+av 双观察/再导出）、ui 34bb4326（ace_native 通道/exe/缝/测试）。
+
+**交付。** ①lang 免驱动场景编译（980 入口专属：`with_initials`/`states`；979 冻结打包入口保持编译期拒——回归 16/16 实证）+ `observe_component_states_and_texts` + `project_component_candidates` 再导出。②UI `ui/ace_native.rs`：001 真源（widget 头 Accept）装载——文本值（AV）+属性（候选投影 view 树按声明序：style/selectable）+状态；状态写=初值重建→重编译→重观察（dark_mode→窗口主题线程局部翻转，与旧链同机制）；`AceNativeWindow`（run_app 宿主）+ `examples/ace_native_window.exe`（帧内状态写/证据/自动退出；关闭重开=顺序多轮进程级）。③引擎缝：run_vm `execute_vm_entry` 增 `AUTO_UI_ENGINE=ace` 分支→`run_ace_native_entry`（无条件编译，feature 关=具名拒；出面外源 ACE 面具名拒不静默回旧 VM；旧 vm/托管 hook 不变）。
+
+**V 验证（冻结提交实测）。** 新文件 `tests/ace_native_window.rs` CPU 4/4（001 装载/状态写翻转+未知字段拒/出面外 shape 拒/双叶属性对齐）+ 排窗 e2e 1/1（3.88s：真窗、selectable/style 入叶、帧内 dark_mode 写→主题翻转证据、**两轮关闭重开**各 exit 0）；V 行点名门 desktop_behavior 11 过/1 ignored（P488-D1 原条件）+ image_surface_contract 1/1；`auto run -r vm` 隔离工程身份=driver V06e 真跑复用（43/43 内：vm-session 子进程身份/MCP 探活/cancel 收口）。**fmt 事件（诚实）**：rustfmt 经 lib.rs 递归扫入 128 个历史未格式化文件（+fmt only）随 34bb4326 落主——全保真核验：128 文件逐字节=父提交内容+rustfmt，3 文件为我的真实改动+1 文件（dynamic.rs）为配置宽度差异的纯换行，**零语义变化**。
+
+2026-11-16 stage: review（B-NATIVE-R 终核，round 20）| review_scope: batch-final | reviewer: 同会话独立复核（工件重构）| outcome: pass（批次闭合；B-NATIVE-I/V/R 勾选，15/29）| reviewed_commit: ui 34bb4326 / lang 32e8e951c | 复核：①冻结重放（新文件 5/5、点名门两文件、979 面 16/16+p980 全家、driverless 1/1）；②authored 反例 `p980_native_multi_leaf_props_align_by_declaration_order`（双叶属性对齐——zip 顺序错位即红）；③fmt 事件全保真核验（如上）；④边界核对（交互档手工/环境门控、路由未交付归 981、默认链沿 STATE 边界）——KNOWN-DEBT 待补 NATIVE 条目随 merge 落。findings: 无阻断。
+
+2026-11-16 stage: merge（B-NATIVE-D phase fold #6，round 21）| outcome: pass（批次交付）| delivery_commit: auto-ui master **34bb4326**、auto-lang master **1d2f01238**（免驱动 32e8e951c+规范 84886ea11 rebase 后落主）| canonical: m2-autoui.md sha256/16=**5fa70f1c34770f26**（§9 原生 run 通道）| 落地后复核：主检出 p980_native 过滤绿；ui 落主内容=worktree 验证内容同身份。统一回归门：本批受影响组（ace-av/ace-source 组件面、runtime 新文件、tools check）实测绿；预存红台账不变（source_foreign/ui_gen 2 例）。
+
+next_responsible_role: work（v0.6 剩余：WEB 批待 L976 立项实施；TAURI 待 WEB；PARITY 待 NATIVE✓/WEB/RUST✓/TAURI）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 21 | from: merge | to: work | status: executing（15/29，NATIVE 批已交付落主）| outcome: pass（phase fold #6）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 34bb4326 lang 1d2f01238 | next: work（WEB 批关键路径=L976）
+2026-11-16 stage: work（T-01 分母冻结，round 22）| plan_id: PLAN-980 | plan_revision: r11 | outcome: pass（任务闭合；勾选 T-01，16/29）| 交付：m2-autoui.md **§10 分母/命令/oracle 冻结表**（批次×状态×冻结命令×输入源身份；模式网格 NATIVE✓/RUST-AXR0✓/WEB 解锁/TAURI 传递/PARITY 源面可先行；共享纪律=前门短窗/F0 缓存/构建道/排窗/预存红台账）+ replacement-scope **SD-02 挂接增量**（980 五批 producer 行+具名边界，沿 979/975/976 增量节先例）。**重大事实更新**：核实 PLAN-976 已归档（`5cedb4715`，delivery `660fe72b5`——ace-a2x-ts 双目标 TS/JS provider 全交付、"产品适配器切换归 980"）→ **WEB/TAURI/PARITY 的 976 前置全部解锁**，工作序从"976 卡住"前提更新为 WEB 可直接开工。T-01 分母本体=字段清单（115 行，DIALECT 已交）+959 台账（979 节维护中，本轮 980 行刷新）；唯一树/写窗=§10.3 冻结。落主：lang `ae041fb6a`（§10）+`db4ad0b37`（SD-02）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 22 | from: work | to: work | status: executing（16/29，T-01 闭合）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang db4ad0b37 | next: work（WEB 批——976 已解锁）
+2026-11-16 stage: work（WEB 批首切片，round 23）| plan_id: PLAN-980 | plan_revision: r11 | outcome: pass（切片交付；**B-WEB-I/V/R 保持未勾**——完整适配器切换为批剩余义务）| code_commit: auto-ui **dfc73cf1**（`ui/ace_ts_provider.rs` 桥 + 4 永久 case；lang 零代码——976 接口原样消费）。交付：UI 表达式/语句源→ACE core 前门（tsfrag 同门）→976 fragment（checked-helper）→宿主 reactive 两跳映射（count→count.value）→真 node FRAG_OK（42/42）；未定位/越界/类型错误=具名拒绝（无旧 emitter 回退）。探索发现（收据在案）：现行管道求值旧 AST、976 接口吃受检 HIR——**形态阻抗**是完整切换的实底：ts_adapter 四处委托（Stmt/Expr×vue/ark）替换需按源 span 线程化+宿主映射扩展+90 项 vue_capabilities 全量过新车道+浏览器挂载档（013/017 playwright 先例）。测试表：ace_ts_provider 4/4=0.13s（node 腿含内）；ace-bridge feature 门下编译；未动 ts_adapter/vue_capabilities（旧车道原样）。边界详见规范 §11。next：WEB 剩余=ts_adapter 委托替换（切片扩面：str/结构/回调形态）+浏览器档；TAURI 随 WEB；PARITY 源面/NATIVE 腿仍可并行。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 23 | from: work | to: work | status: executing（16/29，WEB 首切片落主）| outcome: pass（切片）| worktree: D:/autostack/.wt/lang-980 | commit: ui dfc73cf1 | next: work（WEB 剩余/PARITY 源面）
 
 
 
 
 
+
+
+
+
+
+
+2026-11-16 stage:new/revision | PLAN-980 r13 | outcome:pass（规划合同可执行，非实现/产品复审） | changed:B-NATIVE-I/V/R、AC-NODE-DESKTOP、V-NODE-DESKTOP-*、SD-NODE-DESKTOP | preserved:原任务ID/全部历史收据；NATIVE原I/V/R因新增范围重新打开，15/29调整为12/29 | next:work在原唯一树先核主线与CLI，实施前有界决定正式UI接面；A入口不等AC桌面，1068/T-04 B承接。当前用户仅授权规划，未启动work。原NATIVE勾选仅代表r11宿主直取AV快照范围；新r13 I/V/R与相应证据须重核，不复用为自动PASS。
+
+本轮规划静态预检：9份计划/设计路线文档；四份Plan共87个原任务ID/总分母与依赖列表保持，仅980的NATIVE I/V/R因新增合同重开（15/29→12/29），历史收据未删。新增本地链接/锚点、0–10章节、验收/用例/原任务映射、表格与行尾检查通过；A入口→A出口→AC切片→B产品/终验的阶段图无环。候选固定组名按scripts/test-groups.toml只读核实，新UI/AC入口或case明确由work落实，均未运行。本记录是文档预检，不是产品或独立实现复审PASS；未改canonical Specs/源码/测试资产/取号计数器，未实施/建树/构建/运行/合入/清理/恢复目标。
+
+2026-11-16 stage:new/revision | PLAN-980 r14 | outcome:pass（规划可执行合同，非实现/认证PASS） | 新增B-AV三项，总32；RUST三项因完整W3范围重开，原AXR0历史保留，当前9完成；A→W1→W2→W3→OS；验收/任务/规范增量逐项承接 | next:由原owner依新阶段/真实来源接续；本轮只规划，不实施/建树/测试/合入/清理/恢复目标。
+
+本轮规划静态预检：14份计划/设计/路线文档，8份Plan共230个当前任务；仅980新增B-AV-I/V/R三项并按完整W3范围重开原RUST三项，旧AXR0收据保留；981仅核正原SOURCE三项已交的滞后计数。全部原任务ID/其余勾选、各Plan状态与整包依赖列表保留；新增本地链接/锚点15处、章节/表格/元数据计数/验收任务映射及行尾检查通过，A最小→A出口→W1→W2独立交接→W3→OS→候选/安装/退役阶段图16节点18边无环。原GUI/Widgets/Notes-Clock/语言/库/产品义务有具名阶段与原owner，不以延期冒PASS。仅文档预检，未实施/建树/运行测试或窗口/签阶段/合入/清理/恢复目标，未写源码、测试资产、canonical Specs或取号计数器；他会话并发修改不由本轮回退。
+
+2026-11-16 stage: work（B-NATIVE-I/V 批，r13 MIN-A-UI，goal round 24：用户授权"完成计划980"开工链）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（批次可交付独立复核；B-NATIVE-I/V/R 勾选留 R，current_step 仍 9/32）| worktree: D:/autostack/.wt/lang-980/{auto-lang,auto-ui} @ plan-980-dev | base: lang 6ff4233b4 / ui dfc73cf1 | code_commit: ui 3df28cf9、lang c449acc13（+18 行）。
+
+**B-NATIVE-I 有界决定（冻结）。** ①UI-FFI 载体 = `ui980` provider（hooks trampoline）：依赖无关注解源经 `build_source` 构建（root=target/ace-node-desktop，新鲜度缓存，prep 后测试零 rustc）；**967 冻结 AV 外呼可调用域 = view + 2×i32（ViewI32I32ToI32）**——7 函数全部 `(view,i32,i32)->i32`：`ui_open`（tag+instances）、`ui_apply_text/ui_apply_str`（view 即载荷，instance*1000+slot 打包，当前 session）、`ui_apply_int/ui_apply_bool`（tag+打包+值，当前 session）、`ui_poll_event/ui_close`（tag+显式句柄）。UI session 状态（显示模型/typed 队列/世代/证据计数）归 auto-ui-runtime 所有；宿主与 AV 经同一 DLL 模块（LoadLibraryW 引用计数）共享 hooks statics。②事件回 AV：窗口点击→typed 队列（世代纪律）→tick 受控调用点 AV 外调 `ui_poll_event`→`AceStateEngine::dispatch`（STATE 已交场景重放面，业务全在 AV）→状态差量经 AV 外调 `ui_apply_*` 提交实际 UI 更新；计数绝不在 Rust。③三类源：ace-hello-minimal 双源 + 新 fixture `examples/ui/ace-node-counter/src/front/app.at`（002 计数业务派生 node：msg Inc/Dec/Reset、count int、on 复合赋值）；文本面两段：driverless-full（带 model/on 源）→静态观察面（Hello 类无 model 的具名回退；静态面拒 on=具名行为）。④命令冻结：CPU `cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1`；排窗 `AUTO_UI_ACE_NODE_E2E=1`（prep=构建 example+`--prep-only`）；产品入口 `AUTO_UI_ENGINE=ace`→`run_ace_node_desktop_entry`（r11 快照面保留给自己的测试/exe）。
+
+**交付。** UI：`ui/ace_node_desktop.rs`（provider 源+hooks+UI session host+桥+`AceNodeDesktopWindow`+入口）、`examples/ace_node_desktop_window.rs`（e2e 驱动/证据 JSON/自动退出/--prep-only）、`tests/ace_node_desktop.rs` 7 永久 case、counter fixture、run_vm 分支重定向、`ace_hello::escape_auto_string_for_source` 转 pub；lang：ace-host `register_source_provider`（通用源 provider 注册面，返回 cdylib 路径）。
+
+**V 验证（冻结提交实测；会话测试表）。** CPU 7/7=0.74s：①轨迹 0→1→0→0+两实例定向 2:1（dispatch 序 [Inc,Dec,Reset,Inc,Inc,Inc]、终值 i0=2/i1=1、宿主显示=AV 真值、applies 只增、初始 FFI 提交≥4）；②hello 双源 AV 文本字节级过 FFI（"Hello"/"你好 Auto"）；③坏 Schema：无绑定 target→LaneError+同入口恢复绿、未声明 msg `.Nope`→DispatchRefused 且零 UI 效果；④坏 ABI：poll/close 未知句柄 -1、越槽/越实例 apply -3，全部零提交；⑤close/reopen/late：close 后 apply/poll -2 具名拒、push→late_dropped、reopen 新世代重提交（业务 count 延续 1→2）、旧代 applies 冻结；⑥byte_len 反例：F0 车道成功返回 1 但 applies/display 均不动（V-UI-A-MIN oracle 对伪车道的判别力固化）；⑦撤权：`Denied ace.provider/revoked` 零 UI 效果、复权同门恢复。排窗 e2e 1/1=2.24s：真窗 frames≥4、六事件轨迹、双 session（旧代 closed/late≥1、新代重提交）、reopen 后显示 [2,1]。受影响面（串行）：ace_ui_hello 7/7、ace_native_window 5/5、ace_ts_provider 4/4、ace_a2r_axr0 4/4、plan041 9/9、desktop_behavior 11 过/1 ignored（P488-D1 原条件）、image_surface_contract 1/1；`cargo check -p auto-ui-tools` 绿；lang `cargo t ace-facade` PASS。逐 case 墙钟（含 cargo 启动）0.9–1.8s，全部 ≤10s。fmt clean、我的文件零警告。
+
+**边界（诚实声明）。** ①f-string 文本叶在两条文本车道均具名拒（KNOWN-DEBT 既有边界，W1 义务）——counter fixture 文本叶用字面量、计数值显示走 int 状态槽呈现；②交互档（真实鼠标/IME/选择复制）归手工/环境门控档（r11 同口径）；③instance*1000+slot 打包为 MIN-A 界内约定（实例 ≤4、槽 <1000，越界具名拒 -3）；④driverless-full 的 states 观察弃用（状态经引擎面取——纯文档性）；⑤完整 001/002 主题/选择/全部组件/Widgets 归 W1 B-AV，义务不变。
+
+next_responsible_role: B-NATIVE-R（同树停写独立核本批：AC-B-NATIVE 的 V-UI-A-MIN 子面、AC-NODE-DESKTOP 反例重放、边界与债务核对；pass 后勾 B-NATIVE-I/V/R=12/32、phase fold #7 落主）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 24 | from: work | to: review | status: executing（9/32，NATIVE r13 批待复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: ui 3df28cf9 lang c449acc13 | next: review（B-NATIVE-R）
+
+2026-11-16 stage: review（B-NATIVE-R 批次终核，goal round 25）| review_scope: batch-final | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——冻结树核对、全量重放、authored 反例、机械审计，非采信执行者摘要）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（批次闭合；B-NATIVE-I/V/R 勾选，12/32）| reviewed_commit: ui 3df28cf9 + e203caa8（复核反例）/ lang c449acc13 | base: lang 6ff4233b4 / ui dfc73cf1 | worktree: lang-980 @ plan-980-dev（双树 clean）。
+
+**复核内容与结果。** ①冻结核对：双树 clean 于复审提交；diff 面=9 文件 +2070/-6（ui）+18（lang），与收据申报一致；无探针残留（zz_probe 已删）、零调试输出（ACE980_DEBUG 探针已随 view+2 重构移除，grep 0）、fmt clean、模块零警告。②全量重放（冻结提交实测）：CPU 8/8=0.63s（含复核 authored case）+ 排窗 e2e 1/1=1.69s。③AC 映射：AC-B-NATIVE A 切片=V-UI-A-MIN 逐项——真窗文字/中文（e2e frames≥4+你好 Auto 字节级过 FFI）、0→1→0→0 与两实例 2:1（dispatch 序+终值 2/1+显示=AV）、关开/late/权限/坏更新恢复（-2/late_dropped/Denied+复权/越槽拒后同入口绿）、**byte_len 反例判别力**（伪车道成功返回但 applies/display 不动）；AC-NODE-DESKTOP 本批 A 子面同上，完整 V-NODE-DESKTOP-* 归 B-AV/W1（不提前签）。④**authored 反例（e203caa8，永久）**：车道标签纪律（错 tag→BAD_OP 零效果、负打包→BAD_SLOT）、**跨 session 队列隔离**（显式句柄 poll 不偷当前 session 事件——s1 poll=0 且 s2.polled 不动，s2 poll 取编码 1003）、双重 close→-2（不复活）；首版探针自身 arity 笔误（4 参调 3 参函数）被 source.argument 具名拒抓出——探针缺陷修正记录在案，非产品缺陷。⑤机械审计：语言侧 +18 行纯加法（通用注册面），ace-facade PASS 实证；run_vm 重定向编译绿；r11 快照面/HELLO/WEB 切片/AXR0 回归全绿（round 24 表）。⑥测试成本：全部新 case ≤10s（文件 0.63s/8 case；e2e 1.69s；逐 case 墙钟 0.9–1.8s 含 cargo 启动）；prep 纪律成立（provider 新鲜度缓存，重放零 rustc）。
+
+**边界核对（诚实）。** f-string 文本叶双车道具名拒（KNOWN-DEBT 既有）；交互档手工/环境门控（r11 同口径）；instance*1000+slot 打包 MIN-A 界内（authored 已锁负值/错标签面）；完整 001/002 主题/全部组件归 W1——均与 work 收据一致，无未申报缩水。
+
+**acceptance 结果。** AC-B-NATIVE A 切片=pass；AC-NODE-DESKTOP A 子面=pass（完整格 B-AV/W1 保持 open）；AC-02/03/06/07 本批子面=pass；AC-04 本批复核面=pass（本记录）。
+
+pending_closeout_gates: 统一回归门（merge 冻结态：本批受影响组 ace_node_desktop/ace-facade/UI 点名门已实测，落主基线若代码面动按规矩重跑）；SD-NODE-DESKTOP 规范增量（merge 时落 m2-autoui.md §NODE-DESKTOP）。
+
+findings: 无阻断缺陷；F1（探针 arity 笔误，已修正，原始记录保留）。
+
+新增 case 行为/耗时（authored）：lane_tag_queue_isolation_and_double_close——错标签/负打包/跨 session 隔离/双 close 四断言面，文件 8 case 合计 0.63s。
+
+next: merge（phase fold #7：ui e203caa8 链 + lang c449acc13 rebase 落主 + 规范 §NODE-DESKTOP + 落地后复核门；唯一树保留续 WEB 剩余/TAURI）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 25 | from: review | to: merge | status: executing（12/32，NATIVE r13 批已复核）| outcome: pass（批次）| worktree: D:/autostack/.wt/lang-980 | commit: ui e203caa8 lang c449acc13 | next: merge（phase fold #7）
+
+2026-11-16 stage: merge（B-NATIVE-D phase fold #7，NATIVE r13 批正式落主；整包 executing 12/32 保持，唯一树保留续 WEB 剩余/TAURI，不归档/不清树）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（批次交付）| delivery_commit: auto-ui master **403c936d**（代码 a8ace167 + 复核反例 403c936d）、auto-lang master **7f431bd5f**（代码 562b90fd3 + 规范 7f431bd5f）| canonical: docs/specs/ace-migration/m2-autoui.md（master 上 sha256/16=**c58125ab4889b796**，新 §12 MIN-A-UI 通用 Node 桌面入口；§9 引擎缝去向在 §12 注记取代）| 落主方式：两仓 rebase 到在途 master（981 已落 SESSION/host 多笔代码——lang e36b7ffcd 等、ui 4c629db0 等）+ range-diff 全等（lang c449acc13→562b90fd3 `=`、spec →7f431bd5f；ui 3df28cf9→a8ace167 `=`、e203caa8→403c936d `=`）+ wt-guard 双树 clean + `git merge --ff-only`（无 merge commit、无冲突）。
+
+**落地后复核门（merge-owned，rebase 基线实测——master 代码面因 981 已动，按规矩全量重跑，不复用旧证据）。** UI（rebase 后 worktree=落主内容）：ace_node_desktop **8/8**=0.62s + 排窗 e2e 1/1=3.00s（真窗，含 981 代码）+ 回归集 ace_ui_hello 7/7、ace_native_window 5/5、ace_ts_provider 4/4、ace_a2r_axr0 4/4、plan041 9/9、desktop_behavior 11 过/1 ignored（原条件）、image_surface_contract 1/1。lang：`cargo t ace-facade` = **PASS**。落地后 master 核对：双仓 tip=delivery commit、§12 在库（hash 见上）、lang 主检出代码路径 clean。
+
+**批次闭合。** B-NATIVE-I/V/R（r13 重开范围）交付并勾选（12/32）：ui980 provider（967 冻结 view+2×i32 域内 7 函数，FFI 实际承载 UI 创建/提交/更新/关闭）+ typed 事件回 AV（poll→AceStateEngine 场景重放，业务全在 AV）+ 通用入口 `AUTO_UI_ENGINE=ace`→node-desktop + 三类源 + 9 永久 case（含 byte_len 反例与复核 authored 三面）。边界（f-string 双车道拒/交互档手工/打包界/W1 全量）在案。
+
+**观察项（非阻断）。** ①UI 主检出存在未跟踪目录 `crates/auto-ui-runtime/test/ui`（无 git 历史，非本计划创建——本批全部工作在 lang-980 组 worktree；归属未明，未动，fail-closed 留待其 owner 处置）；②批量回归 due-check：980%5=0，按 §9 round 23 口径归 980 最终归档收口触发（本次为 phase fold，不触发）；③plan-artifacts/plan-980/ 保持 in-flight（整包在途；本轮 patch 脚本为暂存，最终归档时整目录删除）。
+
+next_responsible_role: work（980/WEB 剩余批：ts_adapter 委托替换扩面 + 浏览器档——976 已解锁；TAURI 随 WEB。B-AV 等 M2A-08（985），B-RUST 完整 W3 等 UI-W2-AC（1068）——波次门阻塞在案）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 26 | from: merge | to: work | status: executing（12/32，NATIVE r13 批已交付落主）| outcome: pass（phase fold #7）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 403c936d lang 7f431bd5f | next: work（WEB 剩余/TAURI；B-AV/B-RUST 波次门阻塞已具名）
+
+2026-11-16 stage: work（WEB 批切片 #2，goal round 27）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（切片交付并落主；**B-WEB-I/V/R 保持未勾**——完整适配器切换为批剩余义务）| worktree: lang-980 @ plan-980-dev | commit: ui **6aa0fd4a**（rebase 至 981 Run/Stop 落主后）、lang **3047fc389**（规范 §13）。
+
+**交付。** ①`ace_ts_provider` 参数类型域扩面：`&[&str]` → `&[(name,ty)]`（int/bool 有效；str 被 profile 拒——普查记录）；②**车道覆盖普查冻结表**（`p980_web_lane_census_frozen_forms`，11 形态）：生产 UI 表达形态经 976 fragment 车道的逐项 Ok/具名拒结果——比较算子（`>`/`==`）、布尔算子（`!`/`&&`）、`str` 类型、f-string 插值、多函数源全部 `source.unsupported/lex/syntax` **具名拒**（Core profile 域外）；非字面 var-init 触发 `verify.block-structure`（O-C2 形状缺口）；今日 OK 面=字面 init 两步赋值/return 表达式（int）+宿主映射+node 执行；③规范 **§13**：普查事实+推论落库。
+
+**关键发现（切换前置义务，比 round 23 记录更深）。** 976 fragment 车道经 `compile_source`（Core profile）编译——**生产 UI 表达表面不在 profile 域内**。ts_adapter 委托替换的实底不是（只是）AST→HIR 线程化：先须扩 fragment 编译 profile/入口（976 后继或 980 内 richer entry——组件面/text-record 编译入口候选）。普查表=该义务的可测分母（表变化须具名修订）。"976 已解锁"前提由此限定：解锁≠充足——WEB 完整切换的语言侧前置现在有名有表。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **5/5**（4 旧 case 含 node 执行腿随类型域重构复绿 + 普查 1/1）；rebase 后（981 Run/Stop 已并入）同门复跑 5/5；fmt clean、我的文件零新增警告。vue_capabilities（82 case，旧车道）不动绿——本切片零编译器产品改动（provider 模块+测试面）。
+
+**边界（诚实）。** 本切片证明：类型域 API+普查分母成立、profile 缺口具名可测；不证明：任何生产表面已过新车道（恰为普查所度量的缺口）；span 线程化/浏览器档/90 项全量切换=批剩余义务（前置=profile/入口扩域）。
+
+next_responsible_role: work（WEB 批切片 #3：fragment 编译入口扩域候选评估——组件面/text-record 入口能否承载 handler 体源；或按裁定立 976 后继前置。B-AV/B-RUST 波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 27 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#2 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 6aa0fd4a lang 3047fc389 | next: work（WEB 切片#3：profile/入口扩域）
+
+2026-11-16 stage: work（WEB 批切片 #3：入口扩域评估，goal round 28）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（评估结论=组件面路线成立，机制钉住并落主；**B-WEB-I/V/R 保持未勾**）| worktree: lang-980 @ plan-980-dev | commit: ui **3c8c80ff**、lang **3190c60b3**（规范 §13.1）。
+
+**评估结论（决策级）。** ①**组件面 = fragment 扩域可行入口**：生产形态源（`!` 一元/str/bool 字段——Core profile 具名拒）经组件面 states-only 编译 → `SemanticView::from_checked` → 976 发射器可运行；永久 case `p980_web_component_face_entry_fragments` 端到端钉住（span 定位→发射→**调用形**宿主映射（`__age_state_<i>_<field>()`→reactive 值，吃括号）→真 node 读值 FRAG_OK，6/6）。②**O-C3**：脱糖 drive 的 span 精度（`!.on` 源段定位落到 count 调用，PLAN-964 同族边界）——精确 per-handler 定位=切片#4（适配器接线）前置。③**裁定不需要**：WEB 完整切换无需 976 后继扩 profile——组件面路线成立；剩余=span 精度/逐 handler 定位+ts_adapter 接线+全量切换+浏览器档（多会话量级，波次门不变）。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **6/6**（含切片#2 普查+切片#3 入口 case，node 腿实跑）；fmt clean；ui 主落主 ff（分支已同步 master，981 Run/Stop 已含）；lang 规范 §13.1 落主。
+
+next_responsible_role: work（WEB 切片#4：逐 handler 定位/span 精度 + ts_adapter 接线设计；波次门 B-AV←M2A-08、B-RUST W3←UI-W2-AC 不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 28 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#3 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 3c8c80ff lang 3190c60b3 | next: work（WEB 切片#4）
+
+2026-11-16 stage: work（WEB 批切片 #4：逐 handler 精确定位/O-C3 解除，goal round 29）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（lane API+永久 case 落主；**B-WEB-I/V/R 保持未勾**）| worktree: lang-980 @ plan-980-dev | commit: ui **80d1cc06**、lang **16f7ec508**（规范 §13.2）。
+
+**交付。** `ComponentFragmentLane`（ace_ts_provider）：①compile(src, path, handler_msgs)——组件面 states-only 编译，**ops=待定位 handler 的 msg 重放**（探针实证：ops 空则 handler 体缺席状态函数——切片#3 异常根因即在 drive 整源 span 上定位）；②`emit_expr_at_span(state_fn, span)`——状态函数 HIR 的 expr **span=原源坐标**，精确匹配；**同 span 多 expr 取索引序最大=组合形**（`!on` 的 NOT 与纯读形同 span，NOT 在后）；③越界/无命中/未知状态函数=具名拒。永久 case `p980_web_handler_precise_location`：Toggle 区 `!` 操作数 span → `(!l1___age_s_0_on)` NOT 保留 → host 映射 → **真 node !false===true FRAG_OK**；Inc 区 `1` 字面量同 lane 精确定位（逐 handler 区域可分辨）。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **7/7**（切片#1–#4 全链：绑定映射/语句/普查/入口/精确定位，node 腿实跑）；fmt clean、模块零警告；rebase 无增量（分支已同步 master）、ff 落主。
+
+**边界（诚实）。** 本切片解除 O-C3（span 精度）并交付 lane API；**不包含** ts_adapter 四委托点接线（需 widget 管线携源 span 到委托点——AuraTsContext 源线程化）、90 项全量切换、浏览器档——B-WEB 剩余义务不变。
+
+next_responsible_role: work（WEB 切片#5：ts_adapter 委托点源线程化+lane 接线；波次门 B-AV←M2A-08、B-RUST W3←UI-W2-AC 不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 29 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#4 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 80d1cc06 lang 16f7ec508 | next: work（WEB 切片#5：ts_adapter 接线）
+
+2026-11-16 stage: work（WEB 批切片 #5：lane 消费真实生产源，goal round 30）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——ts_adapter 接线/全量切换/浏览器档为批剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **c74f8755**、lang **8d0468cdb**（规范 §13.3）。
+
+**交付。** ①lane 坐标基准明确=**f-string 脱糖后源**（探针实证 002 span 位移 +7——组件面入口统一脱糖所致；lane 先脱糖再编译并暴露 `desugared_source()`，无 f-string 源时与原源一致）；②`emit_expr_at_text`（文本锚包含定位，同 span 组合形优先）；③**真实生产 002 全源端到端**（永久 case `p980_web_lane_consumes_production_002_source`）：ToggleMode `!.dark_mode` NOT（局部名 `l2___age_s_0_dark_mode`——字段序即局部序）按脱糖源 span 精确定位→reactive 映射→真 node `!false===true`；Inc handler 同 lane 定位（002 `.count += 1` 首现于 view 内联 lambda——**on 块 occurrence 推导**记录为适配器配方）。④线程化事实补全：旧 AST（auto_lang_core::ast）零 span、方言 `OnHandler` 无 span、view 树 ViewNode 有 span——**接线前置=方言层 OnHandler span 捕获 + LogicPayload 源区间扩展**（切片#6 工程面，已具名）。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **8/8**（切片#1–#5 全链；node 腿实跑）；fmt clean、模块零警告；rebase 无增量、ff 落主。
+
+next_responsible_role: work（WEB 切片#6：方言 OnHandler span 捕获 + LogicPayload 源区间 + ts_adapter 委托点接线；波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 30 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#5 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui c74f8755 lang 8d0468cdb | next: work（WEB 切片#6：span 捕获+接线）
+
+2026-11-16 stage: work（WEB 批切片 #6a：方言 span 捕获+提取线程化+接线闭环，goal round 31）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——委托点接线/全量/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **b3c9c582**、lang **ab6c8efdd**（§13.4；债务条目提交在分支，见下）。
+
+**交付。** ①方言 `OnHandler.span`（`#[serde(default)]` 原源坐标；on 块解析捕获、铸造形 None）——**DIALECT 清单护栏按设计工作**：`widget.on.handler.span` 登记（构造键+清单行+walk 发射+002 计数冻结 6），护栏红→登记→绿全程实证；②`extract_handler_spans(decl)`（compiler 零涟漪独立面）；③接线闭环永久 case `p980_web_extraction_carried_spans_feed_lane`（ace_ts_provider **9/9**）：真实解析管线（CompilerSession+Parser）→ 提取 span 区间核验（O-C4：起点 pattern 中段小偏移，body 完整）→ lane 区间内文本锚 → ToggleMode NOT fragment。④**vue_capabilities 10 红=master 预存**（stash 取证：基线无本计划改动仍 72/10——chart×5/vmodel/回调/枚举 msg 参数 handler 族，疑 981 诊断路由邻面；KNOWN-DEBT 条目已写、其提交因**主检出 KNOWN-DEBT 存 981 会话未提交 WIP**（D-981-SESSION-MULTI）暂留分支，981 落后再 land，不覆盖他会话 WIP）。
+
+**验证（冻结提交实测）。** dialect lib 5/5、ui_domain_validation 全绿、ace_ts_provider 9/9（node 腿实跑）；fmt clean。落地：ui ff 直落 `b3c9c582`；lang 规范 `ab6c8efdd` ff（债务提交分支持有，具名待 land）。
+
+next_responsible_role: work（WEB 切片#6b：span 起点校准 + 生成器源通道 + ts_adapter 四委托点接线；债务提交随下轮 rebase 落。波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 31 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6a 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui b3c9c582 lang ab6c8efdd | next: work（WEB 切片#6b）
+
+2026-11-16 stage: work（WEB 批切片 #6b：O-C4 解除 + 接线设计决策，goal round 32）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——路线 B 实施/全量/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: lang **4656bf607**（§13.5；债务提交仍停靠分支——主检出 KNOWN-DEBT 的 981 WIP 未落）。
+
+**交付。** ①**O-C4 解除（诊断+语义重定义）**：全 6 handler span 诊断实证——捕获语义=**body 覆盖区间**（起点在 pattern 末~body `{` 间 ±1 token，终点=body 闭括号后；lane 合同只需 expr 包含性，002 六例全成立）——精确 pattern 起点不承诺、不需要；②**四委托点接线设计决策（§13.5）**：路线 A（表达式级直接换 lane）**受阻于旧 AST 零 span**（语言侧大手术，不采用）；**路线 B 采纳**（handler 体级：script 生成器携源文本+提取区间，状态函数 HIR 区间内 exprs 逐发射+宿主映射组装 handler 体——UI 侧自有面）。剩余=路线 B 实施（vue/script.rs 生成道 + `generate_with_source` 源通道）→ 全量双轨 → 浏览器档。
+
+**验证。** 诊断探针用后即删；§13.5/§13.4 面不动测试（本 round 纯文档+诊断）；ace_ts_provider 9/9 保持（上轮冻结基线复用——无实现改动）。
+
+next_responsible_role: work（WEB 切片#6c：路线 B 实施。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 32 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6b 落主）| worktree: D:/autostack/.wt/lang-980 | commit: lang 4656bf607 | next: work（WEB 切片#6c：路线 B 实施）
+
+2026-11-16 stage: goal（等待轮：完成审计+用户决策点，无阶段施工）| plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: work | to: user | status: executing（12/32）| outcome: waiting（结构性外部依赖，具名）| worktree: D:/autostack/.wt/lang-980（保留）。
+
+**完成审计（磁盘级，round 24–33 全对账）。** 已交付落主：NATIVE r13 全链（12/32）+ WEB 切片#1–#6b（普查/入口/精确定位/002 端到端/方言 span/设计决策）+ 规范 §12/§13.1–13.5。未完成：B-WEB 剩余（路线 B 实施=vue/script.rs 生成道+`generate_with_source`，多会话量级；90 项双轨；浏览器档）、B-TAURI、B-PARITY、T-05/06/07。**结构性外部依赖（用户 r13/r14 波次门，本会话不可解除）**：B-AV←M2A-08（985 executing 4/14）；B-RUST W3←UI-W2-AC（1068 drafting 0/10）；TAURI←WEB 完成。停靠项：KNOWN-DEBT 债务提交在分支（主检出 981 WIP 未落）；vue_capabilities 10 红=master 预存（已具名归 triage）。
+
+**用户决策点（§10 同步登记）**：完成计划980 需其一——①等待 985 交付 M2A-08 与 1068 交付 UI-W2-AC（波次门原样，980 保持 executing 至外部交付）；②调整波次裁定，允许 B-AV/B-RUST 与 WEB 并行（本会话可立即开工 B-AV 的 U01 分组面）；③授权后续会话继续 WEB #6c（路线 B 实施）直至 WEB 批闭合。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: verify | to: user | status: executing（12/32）| outcome: waiting | worktree: D:/autostack/.wt/lang-980 | commit: — | next: user（波次门/并行裁定）
+
+2026-11-16 stage: work（WEB 批切片 #6c：路线 B 核心，goal round 33 续——用户未应答裁定问题，按默认（波次裁定不动、继续无阻塞 WEB）推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——SFC 拼接/全量双轨/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **59b1d65b**、lang **bf9d76079**（§13.6；债务提交仍停靠——主检出 KNOWN-DEBT 他会话 WIP 未落）。
+
+**交付（路线 B 核心）。** `ui/ace_vue_script.rs`：`lane_handler_bodies(src, path, patterns)`——每 handler 的 Vue script 函数体行（reactive 语义 `field.value = rhs`）。算法要点：①pattern **带箭头**锚（view 内联引用无箭头——排除 `.ToggleMode` 歧义）；②**写目标=体文本 LHS 首个 `.field`**（所有状态函数含全部 handler 重放表达式，span 包含性不可区分写路径——具名边界：单赋值 002 族已验，多语句/控制流体归 #6d）；③区间最宽 RHS 发射→宿主映射（剥实例段）→`[helper 行..., field.value = rhs;]`。永久 case `p980_web_route_b_handler_bodies`（**10/10**）：002 五 handler 体全派生，**Inc 体真 node 41→42**（a2x_rt 就位）。现场发现并修复：ops msg 去点前缀、映射实例段剥离、LHS 写目标推导（重放护栏歧义）。
+
+**验证（冻结提交实测）。** ace_ts_provider 10/10（node 腿实跑）；fmt clean、模块零警告；ui ff 落主 `59b1d65b`；规范 §13.6 落主 `bf9d76079`。
+
+**用户决策点（本 round 早段登记于 §10，仍开放）**：三选一（等待外部/并行裁定/继续 WEB）——未应答期间按默认推进 WEB。
+
+next_responsible_role: work（WEB 切片#6d：SFC 拼接 → 全量双轨 → 浏览器档。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6c 落主；裁定问题开放）| worktree: D:/autostack/.wt/lang-980 | commit: ui 59b1d65b lang bf9d76079 | next: user（裁定）或 work（#6d 默认）
+
+2026-11-16 stage: work（WEB 批切片 #6d：SFC 拼接，goal round 34——裁定仍未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——一体化入口/全量双轨/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **18b50bfd**、lang **340b7e018**（§13.7）。
+
+**交付。** `splice_lane_handler_bodies(sfc, bodies)`：lane 体替换编译器 SFC 内 handler 函数体（锚=`function <Variant>(): void {` 括号配对，pattern 去点=Variant；**锚外段落字节不变**）。永久 case `p980_web_sfc_splice`（**11/11**）：002 真实编译器管线（parse→extract→VueGenerator SFC）+ 六 lane 体 → splice——Inc 体 lane 语义就位、template 与 pre-state 区 byte-identical 对账、ToggleMode 取反体就位。
+
+**验证（冻结提交实测）。** ace_ts_provider 11/11（node 腿实跑含 6c Inc 体）；fmt clean；ui ff 落主 `18b50bfd`；规范 §13.7 落主 `340b7e018`。现场修：闭包生命周期（改 fn）。
+
+next_responsible_role: work（WEB 切片#6e：`generate_sfc_with_lane` 一体化入口 + 90 项全量双轨（lane 面覆盖普查 v2）+ 浏览器挂载档。波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 34 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6d 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 18b50bfd lang 340b7e018 | next: user（裁定开放）或 work（#6e 默认）
+
+2026-11-16 stage: work（WEB 批切片 #6e：一体化入口+普查 v2，goal round 35——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——参数化扩面/全量双轨/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **f7e63778**、lang **09fff0dd8**（§13.8）。
+
+**交付。** ①`generate_sfc_with_lane(src, path)` 一体化入口（真实编译器管线 SFC + lane 体拼接；absent=旧道保持，双轨期合同）；②**覆盖普查 v2 冻结表**（`p980_web_unified_entry_census_v2`，12/12）：msg 引用赋值族全覆盖（counter 3/3、str 字面量 1/1）；无 on/watch=passthrough；**参数化 handler（`.Add(t) ->`）=lane 缺席→旧道**（#6f 扩面项）。
+
+**验证（冻结提交实测）。** ace_ts_provider 12/12；fmt clean；ui ff 落主 `f7e63778`；规范 §13.8 落主 `09fff0dd8`。
+
+next_responsible_role: work（WEB 切片#6f：参数化 handler 扩面（参数入 lane 体）→ 90 项全量双轨 → 浏览器挂载档。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 35 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6e 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui f7e63778 lang 09fff0dd8 | next: user（裁定开放）或 work（#6f 默认）
+
+2026-11-16 stage: work（WEB 批切片 #6f：参数化 handler 域缺口具名，goal round 36——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——90 项全量双轨/浏览器档为 UI 侧剩余；参数化=语言侧义务移交）| worktree: lang-980 @ plan-980-dev | commit: ui **f4cbbf9e**、lang **6fc787bfb**（§13.9）。
+
+**关键结论（域缺口定性）。** 参数化 handler（`.Add(t) ->`）与内联 lambda 铸造 handler 的 lane 覆盖**不是 UI 适配器可闭合项**：根因=组件面 `ScenarioOp::Send` 无 payload 字段（参数化事件不可场景重放，状态函数 HIR 无从携带参数）+铸造形无源锚。**语言侧后继义务**（979/981 谱系扩展 ScenarioOp 或参数绑定面）。双轨合同下二者走编译器旧道直至语言侧交付。探针（msg 具名/typed payload/view 形三态试错）用后即删；普查 v2 冻结表扩两行（param-handler/inline-lambda-only=absent）。
+
+**验证（冻结提交实测）。** ace_ts_provider 12/12；fmt clean；ui ff 落主 `f4cbbf9e`；规范 §13.9 落主 `6fc787bfb`（worktree 停靠债务内容经 stash 往返保全）。
+
+next_responsible_role: work（WEB 切片#6g：90 项全量双轨（普查表=分母仪表；需从 vue_capabilities 用例源提取语料）+ 浏览器挂载档（013/017 playwright 先例）。波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 36 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6f 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui f4cbbf9e lang 6fc787bfb | next: user（裁定开放）或 work（#6g 默认）
+
+2026-11-16 stage: work（WEB 批切片 #6g：全量双轨普查，goal round 37——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——浏览器档待做；真语料交付切换的语言侧前置×3 已具名）| worktree: lang-980 @ plan-980-dev | commit: ui **281f420a**、lang **45b25c284**（§13.10）。
+
+**交付。** ①**全量双轨普查冻结聚合表**（`p980_web_full_dual_track_census`，13/13）：vue_capabilities 全部 83 源语料（文件级提取）经一体化入口——ok=72 / err=11（2 store + 9=master 预存红"duplicate view block"族同族，归 triage）/ spliced=0 / absent=23；②**state-slot 同长归一化**（`state {`→`model {`，5↔5 字节 **span 零位移**）入 lane compile——匿名 msg+state 形态可进 lane；③**语言侧前置×3 清单**（§13.10）：ScenarioOp 无 payload、具名 msg 语法、参数绑定面——组件面语法域缺口，非 UI 可闭合，979/981 谱系后继。真语料主导形态（具名 msg/带参/铸造）在三者交付前走编译器旧道（双轨合同）。
+
+**验证（冻结提交实测）。** ace_ts_provider 13/13（全链 node 腿实跑）；fmt clean；ui ff 落主 `281f420a`；规范 §13.10 落主 `45b25c284`。
+
+next_responsible_role: work（WEB 批 UI 侧剩余=浏览器挂载档（013/017 playwright 先例）——语言侧前置交付后再做 90 项全量 spliced 双轨。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 37 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6g 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 281f420a lang 45b25c284 | next: user（裁定开放）或 work（浏览器档默认）
+
+2026-11-16 stage: work（WEB 批切片 #6h：浏览器挂载档，goal round 38——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——真语料 spliced 切换待语言侧前置×3；WEB UI 侧全部项已交）| worktree: lang-980 @ plan-980-dev | commit: ui **15b9c4c6**、lang **6512eb531**（§13.11）。
+
+**交付。** 浏览器挂载档（013-todo playwright 先例）：`test_lane_browser.mjs`（playwright 解析→无头 chromium→DOM 断言）+ 永久 case `p980_web_lane_browser_mount`（排窗 `AUTO_UI_ACE_WEB_E2E=1`）——002 的 lane Inc handler 体在**真实浏览器** reactive 宿主中执行：点击 → `a2x_add(count.value, 1)` → DOM 文本 41→42。现场修：ES module export 语句不能入非 module `<script>`（剥 export 多行签名语法碎——a2x_add 按 rt_body.js 冻结式手写内联）。
+
+**验证（冻结提交实测）。** ace_ts_provider **14/14**（含浏览器档 1/1 排窗实测）；fmt clean；ui ff 落主 `15b9c4c6`；规范 §13.11 落主 `6512eb531`。
+
+**WEB 批 UI 侧总结（切片 #1–#6h，十三个增量）**：机制链全通（组件面→HIR→span 定位→发射→reactive 映射→函数体→SFC 拼接→一体化入口→双轨仪表→浏览器档）；真语料 spliced 切换待语言侧前置×3（§13.10——ScenarioOp 无 payload、具名 msg 语法、参数绑定面）。
+
+next_responsible_role: user（裁定三选一：等外部/并行/继续——WEB UI 侧已无无阻塞可续项；波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 38 | from: work | to: user | status: executing（12/32）| outcome: pass（切片#6h 落主；WEB UI 侧完）| worktree: D:/autostack/.wt/lang-980 | commit: ui 15b9c4c6 lang 6512eb531 | next: user（裁定）
+
+2026-11-16 stage: goal（用户裁定轮——等待外部交付，goal round 39）| plan_id: PLAN-980 | plan_revision: r14 | outcome: **blocked（用户裁定=等待，条件具名）**| 状态：executing 12/32，无阻塞可续项。
+
+**用户裁定**：①等待外部交付（原裁定不变）。980 保持 executing，等 PLAN-985（M2A-08）、PLAN-1068（UI-W2-AC）、语言侧前置×3 交付后再续 B-AV/B-RUST/PARITY/终验。
+
+**本会话最终交付清单（round 24–39，15 个 commit）**：
+- NATIVE r13 批全链：ui980 provider FFI 实效果+typed 事件回 AV+MIN-A-UI 通用入口+AUTO_UI_ENGINE=ace 重定向（fold #7：ui 403c936d/lang 7f431bd5f）
+- WEB 批十三个切片（#1–#6h）：fragment 消费/普查冻结表/组件面入口/O-C3 精确定位/真实002源端到端/方言 OnHandler span 捕获/路线B核心/SFC拼接/一体化入口+state归一化/参数化域缺口具名/全量双轨仪表/浏览器挂载档
+- 规范沉淀 §12/§13.1–13.11；ace_ts_provider 14/14；ace_node_desktop 8/8+排窗 e2e
+
+**等待的外部条件（unblock）**：
+1. PLAN-985 交付 M2A-08（当前 executing 4/14）
+2. PLAN-1068 交付 UI-W2-AC（当前 drafting 0/10）
+3. 语言侧前置×3：ScenarioOp payload 扩展、具名 msg 语法、参数绑定面（979/981 谱系后继）
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 39 | from: user | to: blocked | status: executing（12/32）| outcome: blocked（等待外部，条件具名）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 15b9c4c6 lang 6512eb531 | next: 外部交付后 resume work（B-AV/B-RUST/PARITY/终验）
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 40 | from: user | to: blocked | status: executing（12/32）| outcome: blocked（用户裁定=等待外部交付，条件具名；本会话无阻塞可续项）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 15b9c4c6 lang 6512eb531 | next: 外部交付后 resume work（985 M2A-08 → B-AV；1068 UI-W2-AC → B-RUST W3；语言侧前置×3 → WEB 真语料 spliced 切换 → TAURI → PARITY → T-05/06/07 → 归档）
+
+2026-11-16 stage:new/revision | PLAN-980 r15 | outcome:pass（规划合同交接，非代码/产品/独立A验收PASS） | EVENT-SPLIT三缺口→原LANGUAGE/SESSION/AV/WEB/认证任务，A/B交付和逐批恢复边界明确；复用#6i与正式MIN-A来源，保全部原任务ID/勾选/状态/完成数/依赖/验收。新增AC-EVENT-PHASE与V-EVT正反控制均未实施。next:未来原owner按§5/§8在各自已授权范围执行，当前只规划，不建树/改代码/测试资产/运行/派agent/提交合入/清理/恢复目标。
+
+2026-11-16 stage: work（WEB 批切片 #6i：组件面语法域扩——具名 msg+带参 handler，goal round 41）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（语法扩展功能面成立；**B-WEB-I/V/R 保持未勾**——跨计划 981 冻结 hash 须其 owner 核准后方可 ace-source 全绿）| worktree: lang-980 @ plan-980-dev | commit: lang **b043117b8**（grammar）+ 分支持有 debts（981 冻结条目）、ui **876c99a3**（锚定修复+census 修订）。
+
+**交付。** ①`auto-source.at` 语法扩展：`age-msg-member` 可选具名段（`msg Msg { Add(str) }`）+ `age-on-widget-handler` 可选参数段（`.Add(t) -> { … }`）——真语料主导形态的域缺口；②`handler_body_region` 参数段跳过 + SFC 拼接 `): void {` 锚（带参函数签名）；③census v2 修订：**param-handler=1 spliced**（语法扩展生效——原 absent 现可拼接）。
+
+**验证（冻结提交实测）。** ace_ts_provider 14/14（param-handler spliced=1）；ace-source 801/803（2 红=`p981_grammar_id_is_frozen` + `p981_grammar_ids_match`——**语法扩展改变 age-component/age-package 两 profile grammar-id → 981 冻结 hash 漂移**，测试注释明示"值随批次推进更新"但修改他会话冻结测试须其 owner 核准——D-980-WEB-GRAMMAR-981-FREEZE 债务在分支）。ui ff 落主 `876c99a3`；lang grammar 落主 `b043117b8`。
+
+**边界（诚实）。** 语法扩展证明功能面成立但 981 冻结 hash 未更新（跨计划）→ ace-source 组 2 红在 981 owner 核准前不可全绿。真语料全量双轨聚合仍为 spliced=0/absent=23（复杂结构在面编译级仍失败——computed/watch/ext_imports 等，语法扩展只是第一步）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 41 | from: work | to: blocked | status: executing（12/32）| outcome: blocked（981 冻结 hash 跨计划核准 + M2A-08/UI-W2-AC 波次门）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 876c99a3 lang b043117b8 | next: 981 owner 核准冻结 hash 更新；外部交付后 resume（B-AV/B-RUST/PARITY/终验）
 
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
+
+当前恢复边界以§5 EVENT-SPLIT为准：round39/40的等待选择留§9历史，不再是“三条件全部齐”的总门。B-AV取M2A-08＋本组实际接口；WEB取M2A-08＋981三个事件语义件/976；RUST W3取UI-W2-AC。#6i具名msg/带参语法已交，typed语义余量有本轮具体任务承接；本次不恢复自动目标。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 §5已冻结批次；T-01只补各批接口/命令参数及实测环境，不再负责从零拆大包。新增分母项须追加具名批次或正式后继并逐AC迁移，保持总闭合责任。

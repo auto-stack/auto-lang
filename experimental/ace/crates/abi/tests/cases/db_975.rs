@@ -44,11 +44,7 @@ fn scope(tag: &str) -> Scope {
 
 /// fallible-status raw call helper (the F0 physical frame):
 /// (out-ptr path, len) -> Err(raw_status) | Ok(out_value)
-fn call_view(
-    lib: &RawLibrary,
-    name: &str,
-    arg: &[u8],
-) -> Result<i32, i32> {
+fn call_view(lib: &RawLibrary, name: &str, arg: &[u8]) -> Result<i32, i32> {
     let ptr = lib.symbol(name).expect("symbol");
     let f: extern "C" fn(*const u8, u64, *mut i32) -> i32 = unsafe { std::mem::transmute(ptr) };
     let mut out = 0i32;
@@ -76,12 +72,8 @@ fn call_ack(lib: &RawLibrary, name: &str) -> Result<i32, i32> {
 #[test]
 fn db975_sqlite_memory_leg_on_pinned_provider() {
     let root = scope("db-mem");
-    let Ok(sqlite_346) = locate_pinned_sqlite("3.46.0") else {
-        eprintln!(
-            "p975 sqlite :memory: leg pending: f0.sqlite-missing — no pinned SQLite 3.46.0 in the cargo registry"
-        );
-        return;
-    };
+    let sqlite_346 = locate_pinned_sqlite("3.46.0")
+        .expect("pinned SQLite 3.46.0 required in cargo registry (missing pin cannot PASS)");
     verify_sqlite_pin(&sqlite_346, "3.46.0").expect("the staged pin matches by content");
 
     // the clean provider project (dep + provider only)
@@ -164,7 +156,10 @@ int main(void) {
     .expect("oracle spawn");
     assert_eq!(run.exit_code, Some(0));
     let out = String::from_utf8_lossy(&run.stdout).into_owned();
-    assert!(out.contains("sum=9"), "the independent oracle agrees: {out}");
+    assert!(
+        out.contains("sum=9"),
+        "the independent oracle agrees: {out}"
+    );
 }
 
 // ---- the Auto-side sqlite.* API face: `stdlib/ace/std/sqlite.at`
@@ -213,12 +208,8 @@ fn run_p975(
 #[test]
 fn db975_auto_sqlite_api_face_on_av_foreign_lane() {
     let root = scope("db-auto");
-    let Ok(sqlite_346) = locate_pinned_sqlite("3.46.0") else {
-        eprintln!(
-            "p975 sqlite auto face pending: f0.sqlite-missing — no pinned SQLite 3.46.0 in the cargo registry"
-        );
-        return;
-    };
+    let sqlite_346 = locate_pinned_sqlite("3.46.0")
+        .expect("pinned SQLite 3.46.0 required in cargo registry (missing pin cannot PASS)");
     verify_sqlite_pin(&sqlite_346, "3.46.0").expect("the staged pin matches by content");
 
     // the clean provider project + the once-compiled amalgamation object
@@ -293,8 +284,8 @@ fn main() int {{ return sqlite_exec("SELECT 1") }}"#
         "exec before open -> ForeignStatus trap, got {neg1:?}"
     );
 
-    // ---- the wrapper face roundtrip: open/exec/query/close with the
-    // hand oracle SUM(4,5)=9; every wrapper return checked in-source
+    // ---- the wrapper face roundtrip + V-02 explicit rollback:
+    // open/exec/query, then BEGIN; INSERT 100; ROLLBACK -> reads original SUM=9, COUNT=2
     let ok = run_p975(
         &format!(
             r#"use.c p967_sqlite
@@ -308,9 +299,15 @@ fn main() int {{
     if s != 9 {{ return 300 + s }}
     let n = sqlite_query_int("SELECT COUNT(*) FROM t")
     if n != 2 {{ return 400 + n }}
+    let rb = sqlite_exec("BEGIN; INSERT INTO t VALUES (100); ROLLBACK;")
+    if rb != 1 {{ return 450 + rb }}
+    let s2 = sqlite_query_int("SELECT SUM(a) FROM t")
+    if s2 != 9 {{ return 460 + s2 }}
+    let n2 = sqlite_query_int("SELECT COUNT(*) FROM t")
+    if n2 != 2 {{ return 470 + n2 }}
     let cl = sqlite_close()
     if cl != 1 {{ return 500 + cl }}
-    return s
+    return s2
 }}"#
         ),
         &mut table,
@@ -325,6 +322,62 @@ fn main() int {{
             }
         ),
         "the sqlite_* wrapper face roundtrip returns the hand oracle 9, got {ok:?}"
+    );
+
+    // ---- V-02 failure-rollback: fail inside transaction -> ForeignStatus trap,
+    // then ROLLBACK on live handle restores pre-tx SUM=9, COUNT=2
+    let tx_fail = run_p975(
+        &format!(
+            r#"use.c p967_sqlite
+{stdlib_sqlite}
+fn main() int {{
+    let o = sqlite_open_memory()
+    if o != 1 {{ return 1 }}
+    let _seed = sqlite_exec("CREATE TABLE t(a INTEGER); INSERT INTO t VALUES (4); INSERT INTO t VALUES (5); BEGIN; INSERT INTO t VALUES (50);")
+    return sqlite_exec("INSERT INTO missing_tbl VALUES (1)")
+}}"#
+        ),
+        &mut table,
+        &environment,
+    );
+    assert!(
+        matches!(
+            &tx_fail,
+            ExecOutcome::Trap {
+                kind: TrapKind::ForeignStatus,
+                ..
+            }
+        ),
+        "failing statement inside tx -> ForeignStatus trap, got {tx_fail:?}"
+    );
+    let tx_rollback = run_p975(
+        &format!(
+            r#"use.c p967_sqlite
+{stdlib_sqlite}
+fn main() int {{
+    let rb = sqlite_exec("ROLLBACK")
+    if rb != 1 {{ return 10 + rb }}
+    let s = sqlite_query_int("SELECT SUM(a) FROM t")
+    if s != 9 {{ return 20 + s }}
+    let n = sqlite_query_int("SELECT COUNT(*) FROM t")
+    if n != 2 {{ return 30 + n }}
+    let cl = sqlite_close()
+    if cl != 1 {{ return 40 + cl }}
+    return s
+}}"#
+        ),
+        &mut table,
+        &environment,
+    );
+    assert!(
+        matches!(
+            &tx_rollback,
+            ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(9),
+                ..
+            }
+        ),
+        "rollback after SQL failure must preserve original SUM=9, got {tx_rollback:?}"
     );
 
     // ---- negative 2: double close traps (not-open after a real close)
@@ -356,8 +409,8 @@ fn main() int {{
     );
     assert_eq!(
         table.callee_count(),
-        9,
-        "real dispatches: 1 (neg1 exec) + 5 (open/exec/query/query/close) + 3 (neg2 open/close/close)"
+        19,
+        "real dispatches: 1 (neg1 exec) + 8 (ok + rollback) + 3 (tx_fail) + 4 (tx_rollback) + 3 (neg2)"
     );
 
     // ---- the seam negative: WITHOUT `use.c p967_sqlite` the wrapper's
@@ -385,5 +438,75 @@ fn main() int {{ return sqlite_open_memory() }}"#
     assert!(
         !rejected.is_empty() && rejected.iter().all(|d| !d.code.is_empty()),
         "a named diagnostic, got {rejected:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-975 T-03 MODULE leg (post IF-1064-MODULE): the canonical pub-fn
+// sqlite.at now ALSO serves the packages module face — it parses as a
+// package module with exactly the 5 pub exports, and a pub-stripped
+// mirror is visibility-RED. Provider EXECUTION (p967_*) stays on the
+// foreign lane (db975 above) — foreign declarations on package modules
+// are the named 1043 remainder.
+// ---------------------------------------------------------------------------
+#[test]
+fn db975_sqlite_at_packages_module_face() {
+    use ace_core::source::cst::FrontBudget;
+    use ace_core::source::packages::{
+        parse_package_source, PackageModuleInput, PACKAGES_CAPABILITY,
+    };
+    use ace_source_query::modules::packages::compile_package_product;
+
+    let sqlite_at = include_str!("../../../../../../stdlib/ace/std/sqlite.at");
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let m = parse_package_source(sqlite_at, &caps, FrontBudget::WORK_OWNED_64MIB)
+        .expect("the canonical pub-fn sqlite.at parses as a package module");
+    let mut exports: Vec<&String> = m.exports.iter().collect();
+    exports.sort();
+    assert_eq!(
+        exports,
+        vec![
+            &"sqlite_close".to_string(),
+            &"sqlite_exec".to_string(),
+            &"sqlite_open".to_string(),
+            &"sqlite_open_memory".to_string(),
+            &"sqlite_query_int".to_string(),
+        ],
+        "exactly the 5 pub exports"
+    );
+
+    // the pub-stripped mirror is visibility-RED (the 删pub tamper)
+    let mirror = sqlite_at.replace("pub fn sqlite_", "fn sqlite_");
+    let err = match compile_package_product(
+        &[
+            PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "sqlited".into(),
+                source: mirror,
+                provider: None,
+            },
+            PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "main".into(),
+                source: "use app.sqlited.sqlite_open_memory\npub fn main() int { return 1 }".into(),
+                provider: None,
+            },
+        ],
+        "app::main",
+        &caps,
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => panic!("the pub-stripped mirror must be visibility-RED"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err.iter()
+            .any(|d| d.diagnostic.code == "source.module-private"),
+        "named module-private, got {:?}",
+        err.iter()
+            .map(|d| d.diagnostic.code.clone())
+            .collect::<Vec<_>>()
     );
 }

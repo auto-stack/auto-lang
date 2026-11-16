@@ -1,15 +1,15 @@
 {
-  "last_covered_plan_id": 1060,
-  "timestamp": "2026-11-14T23:23:08Z",
-  "covered_commit": "b1dbab313d4664c2f4b810e80f151c2affb1bacc",
+  "last_covered_plan_id": 1064,
+  "timestamp": "2026-11-16T10:04:09Z",
+  "covered_commit": "5cedb4715 (HEAD at run start; run config_sha256 8364456127bd..f3a24a9d; concurrent 981 bookkeeping commits during run, selected-group code unchanged; HEAD at receipt-write 9e67676f61)",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
-  "new_reds": [],
-  "known_reds_seen": [
-    "auto-generation-core: plan988_source_bytes_compile_run_and_preserve_rejected_targets TIMEOUT at nextest slow-timeout 120s (45/46 passed; identical shape to prior receipt) = KNOWN-DEBT-AND-RISKS D-1014-P988-BUDGET (open since 2026-11-12, owner 测试预算治理/auto-generation-core)"
+  "new_reds": [
+    "infra-fixed: test_fixed_groups.FixedGroups.test_ace_set_is_explicit_and_separate_from_daily — `ace` set now expands to [ace-workspace, ace-adapters, ace-batch, ace-facade] but the governance test's frozen expectation lacks ace-facade. Introduced by PLAN-969 E0 facade landing 278b912043 (2026-11-15, after prior receipt b1dbab313d); PLAN-976 (this window's merge) touched only the ace-a2x group args line. Attribution: PLAN-969 facade governance-test lag; fix-forward: one-line expectation update in scripts/tests/test_fixed_groups.py via L0 fix worktree (owner: 969 line)."
   ],
-  "verdict": "known-reds-plus-environment-attributed",
-  "notes": "Due trigger: Plan 1060 (%5) landed after covered 1057; merged window eb76560bf..b1dbab313 includes 948/966/967/979(bookkeeping)/1059/1060. Run 2 (receipted): 36 groups = 31 PASS, 3 NOT_APPLICABLE (aavm/a2r-actor-tests/auto-vm conditional), 2 FAIL groups. auto-lang PASS incl. HTTP e2e plan724/727 async matrices after the corrupted persistent TEMP e2e project dirs (rustversion out/version.expr missing, shared deterministic temp path raced by concurrent sessions) were removed; run 1 had shown those two red before the cleanup, plus mid-run source drift from concurrent 979 docs commits (gate_passed false) -> run 1 not receipted. auto-tool-execution FAIL = 2 timing-sensitive tests (prepared_command_timeout_keeps_partial_capture, deadline_covers_blocked_stdin_with_unowned_holder) only under batch parallel load with concurrent foreign builds; isolated replay on same HEAD: 2/2 PASS (0.53s/5.05s); no commits in window touch crates/auto-tool-execution; recorded as environment-attributed, not source regressions. discovery_complete=false on run 2 reflects concurrent docs-only bookkeeping edits on the main checkout working tree during execution; code/config of selected groups unchanged at covered commit. Single instance on main; run 2 wall 614.5s after ~quiet-window wait; prior 10-minute occupancy waits listed in session record. Leftover observation (not this gate's scope): plan724/727 e2e leak deterministic TEMP dirs across runs (dozens of plan727-e2e-* dirs observed) — owner: http e2e hygiene."
+  "known_reds_seen": [],
+  "verdict": "new-reds-attributed",
+  "notes": "Due trigger: PLAN-975 (%5=0) archived after prior receipt (2026-11-14T23:23Z). Run: 36 groups = 32 PASS, 3 NOT_APPLICABLE (conditional aavm/a2r-actor/auto-vm, same as prior), 1 FAIL (infra-fixed, above); 4639 tests executed; wall 1072.4s; single instance on main, no competing builds (tasklist clean before start); results target/test-groups/run-4tyrocgf/results.json. Prior receipt's known reds resolved: auto-generation-core plan988 TIMEOUT now PASS (46/46); auto-tool-execution timing pair PASS this run. Window b1dbab313d..HEAD includes 969 facade, 972/975 archives, 976 delivery, 980/981 native rounds. discovery_complete=false reflects concurrent bookkeeping commits on main during the run (same shape as prior receipt)."
 }

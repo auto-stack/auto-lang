@@ -32,7 +32,7 @@
 
 ## 4. 资源账本与拒绝语义
 
-统一资源账本（`PlatformResourceLedger`）：文件/目录/进程/socket/listener 载荷、代际 handle、读写字节预算（65_536/call、1_048_576/run、handle 1024 沿 1039 冻结值）、cleanup 恰好关闭一次（net 载荷按 master 语义仅显式 `net_tcp_close` 释放）。拒绝诚实分态：不支持=具名错误码（AC stub `-10`）、越权/过期 handle/重复 close/非法编码分态，拒绝时 OS 副作用计 0；无静默 fallback、无 link hole。
+统一资源账本（`PlatformResourceLedger`）：文件/目录/进程/socket/listener 载荷、代际 handle、读写字节预算（65_536/call、1_048_576/run、handle 1024 沿 1039 冻结值）、cleanup 恰好关闭一次（net 载荷按 master 语义仅显式 `net_tcp_close` 释放）。拒绝诚实分态：不支持=具名错误码（Windows：36 个 W 形已为真身，14 个 bytes 形 N 具名 `-10`，Linux 全 stub→1063）、越权/过期 handle/重复 close/非法编码分态，拒绝时 OS 副作用计 0；无静默 fallback、无 link hole。
 
 ## 5. 车道门与装配（SD-LOAD）
 
@@ -44,7 +44,7 @@ sys 模块经 packages-aggregates 装配集冻结：`stdlib_sys_files()` + `is_f
 |---|---|---|
 | AV/native（Win32 真后端） | verified | `stdlib_sys_973.rs` 15 例（probe01 Unicode+NUL 往返/V-03 进程树/V-04 故障注入/V-05 oracle/t08 权限/seek/mtime/t09 绑定/t10 真熵/dirs+replace/env 真进程/时钟带/path/dialect） |
 | AV×C / AV×Rust 外库 | verified | `sys973_av_foreign.rs` 2 例（967 帧真 dispatch） |
-| AC（直接编译） | stub 拒绝 verified；**真身→PLAN-1065**（用户裁定 b） | `sys973_native_stub_returns_unsupported`（-10 负控） |
+| AC（直接编译） | verified Windows（PLAN-1065：36 W 真身+14 N 具名 -10） | native `stdlib_sys_973.rs` 11 例（smoke/文件roundtrip/目录/canonical+env/进程 V-03/exit/资源/14N表/PE审计/V-09 窗口；磁盘/env/epoch/子进程独立 oracle；mutation 反证 stub 化必红） |
 | A2R（真 rustc+运行） | verified | `sys973_a2r_real_rustc_leg`（value:42+磁盘 oracle） |
 | A2PY（真 OS Python） | verified | `sys973_a2py_real_python_leg`（value:42） |
 | 宿主 facade | verified | ace-host e0/t02/t08 11 例 |
@@ -57,7 +57,7 @@ sys 模块经 packages-aggregates 装配集冻结：`stdlib_sys_files()` + `is_f
 | 缺口 | owner | 裁定 |
 |---|---|---|
 | byte→Str 面：read_text/dir_names/env get 族/canonical/cwd/cmdline/捕获文本/存储重建/zip inflate/KV storage/read_bytes Option\<List\> 形状（D-01..D-09） | [PLAN-1064](../../plans/1064-ace-stdlib-byte-str-deferred-surfaces.md) | 2026-11-16 用户裁定 c |
-| AC 50 操作真身+V-09 AC 正例腿 | [PLAN-1065](../../plans/1065-ace-ac-sys-real-bodies.md) | 2026-11-16 用户裁定 b（F1） |
+| ~~AC 50 操作真身+V-09 AC 正例腿~~ **已交付**（Windows 36W+14N+V-09；Linux 腿仍属 1063） | [PLAN-1065](../../plans/archive/1065-ace-ac-sys-real-bodies.md) | 2026-11-16 交付 |
 | Linux 全部实跑认证（L-01..L-12，含 env set/remove、spawn 子序、canonical 符号链接） | [PLAN-1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md) | 2026-11-14 裁定 |
 | 967 读出参缓冲帧（AV×C/Rust 读路径 dispatch） | 967 域后续 | 具名边界（KNOWN-DEBT D-973） |
 | master 预存红 ace-abi×1/ace-runtime×19（rust-lld CRT 符号） | 批量回归 triage | 非 973 面（主检出同红取证） |

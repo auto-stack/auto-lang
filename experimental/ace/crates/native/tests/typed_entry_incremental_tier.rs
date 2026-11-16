@@ -267,3 +267,160 @@ fn typed_session_cold_restart_readmits_from_store_without_remission() {
     );
     s2.close();
 }
+
+// ==== PLAN-1032 F24: typed batch-edit atomicity ==========================
+//
+// A multi-unit change set (a callee edit plus caller updates, or unrelated
+// units submitted together) is ONE acceptance transaction. The oracle here is
+// PUBLIC state only: resident (fingerprint, generation, object hash), the
+// entry plan, and an actual run of the previous closure. A failure anywhere in
+// the batch must leave all of it identical and the old entry executable; the
+// repaired batch then installs the whole set. (Document/history/generation
+// internals are asserted by the in-module oracle in typed_session.rs — no
+// production accessor was added for them.)
+
+const ATOMIC_HELPER_B: &str = r#"{"name":"helper","params":[["a","i64"]],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"00000000000000ff"}],"ret":"t0"}"#;
+const ATOMIC_HELPER_WIDE: &str = r#"{"name":"helper","params":[["a","i64"],["b","i64"]],"result":"i64","body":[{"op":"copy","dst":"t0","src":"b"}],"ret":"t0"}"#;
+const ATOMIC_DISJOINT_BAD: &str =
+    r#"{"name":"disjoint","params":[],"result":"i64","body":[],"ret":"missing"}"#;
+const ATOMIC_DISJOINT_GOOD: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000003"}],"ret":"t0"}"#;
+const ATOMIC_DISJOINT_LATER: &str = r#"{"name":"disjoint","params":[],"result":"i64","body":[{"op":"const","dst":"t0","kind":"i64","bits":"0000000000000007"}],"ret":"t0"}"#;
+
+fn residents_snapshot(session: &TypedSession) -> Vec<(String, String, u64, String)> {
+    session
+        .residents()
+        .map(|r| {
+            (
+                r.name.clone(),
+                r.fp.clone(),
+                r.generation,
+                ace_native::cache::content_hash(&r.coff),
+            )
+        })
+        .collect()
+}
+
+#[test]
+#[cfg(windows)]
+fn audit1032_ntx_01_failed_batch_keeps_previous_entry_runnable() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — PLAN-1032 NTX-01 skipped");
+        return;
+    }
+    let dir = workdir("atomic");
+    let mut session = TypedSession::start(
+        doc_from(BASE),
+        &dir,
+        None,
+        ace_native::typed_pipeline::TypedCacheMode::Reuse,
+    )
+    .expect("session starts");
+
+    let run = session
+        .run(&[arg("i64", "0000000000000010")], 11, None)
+        .expect("baseline run");
+    assert_eq!(value_bits(&run), "0000000000000010", "helper identity");
+    let residents = residents_snapshot(&session);
+    let plan = session.entry_plan().expect("entry plan");
+    assert_eq!(session.counters().whole_fallback, 0);
+
+    // (1) A single invalid replacement: rejected, nothing installed.
+    let err = session
+        .edit_unit(unit_decl(ATOMIC_DISJOINT_BAD))
+        .expect_err("an invalid replacement must be rejected");
+    assert!(
+        matches!(err, ace_native::MnError::Unsupported(..)),
+        "unexpected error class: {}",
+        err.code()
+    );
+    assert_eq!(residents_snapshot(&session), residents, "no resident moved");
+    assert_eq!(
+        session.entry_plan().expect("entry plan"),
+        plan,
+        "the entry plan is untouched"
+    );
+
+    // (2) Valid head, LATE verify failure in the tail: the head must not be
+    // installed by its own success.
+    let err = session
+        .edit_units(vec![
+            unit_decl(ATOMIC_HELPER_B),
+            unit_decl(ATOMIC_DISJOINT_BAD),
+        ])
+        .expect_err("the tail failure must reject the whole change set");
+    assert!(matches!(err, ace_native::MnError::Unsupported(..)));
+    assert_eq!(
+        residents_snapshot(&session),
+        residents,
+        "the already-prepared head must not be installed"
+    );
+    assert_eq!(session.entry_plan().expect("entry plan"), plan);
+
+    // (3) BAD-FIRST neighbor: same rejection, so (2) is not an ordering
+    // artifact of the fixture decoder.
+    let err = session
+        .edit_units(vec![
+            unit_decl(ATOMIC_DISJOINT_BAD),
+            unit_decl(ATOMIC_HELPER_B),
+        ])
+        .expect_err("a failing head must reject the whole change set");
+    assert!(matches!(err, ace_native::MnError::Unsupported(..)));
+    assert_eq!(residents_snapshot(&session), residents);
+
+    // (4) Signature change whose real dependent is stale: the callee's own
+    // success must not install it while the caller fails verify.
+    let err = session
+        .edit_unit(unit_decl(ATOMIC_HELPER_WIDE))
+        .expect_err("the stale caller must reject the change set");
+    assert!(matches!(err, ace_native::MnError::Unsupported(..)));
+    assert_eq!(
+        residents_snapshot(&session),
+        residents,
+        "the widened callee must not be installed without its caller"
+    );
+
+    // The previously accepted closure still links AND runs.
+    let run = session
+        .run(&[arg("i64", "0000000000000010")], 12, None)
+        .expect("the old accepted closure still runs");
+    assert_eq!(
+        value_bits(&run),
+        "0000000000000010",
+        "the pre-failure entry plan and objects are still the accepted ones"
+    );
+    assert_eq!(session.counters().whole_fallback, 0);
+
+    // (5) Repair the defect and retry the SAME change set: it installs and
+    // the batch result is the helper constant.
+    let obs = session
+        .edit_units(vec![
+            unit_decl(ATOMIC_HELPER_B),
+            unit_decl(ATOMIC_DISJOINT_GOOD),
+        ])
+        .expect("the repaired change set installs");
+    assert_eq!(
+        obs.reprepared_units,
+        vec!["helper".to_string(), "disjoint".to_string()],
+        "both replacements re-prepare in change-set order"
+    );
+    assert_eq!(obs.emit_units, 2, "two genuine new identities emit once");
+    assert_eq!(obs.whole_fallback, 0);
+    let run = session
+        .run(&[arg("i64", "0000000000000010")], 13, None)
+        .expect("run the repaired batch");
+    assert_eq!(
+        value_bits(&run),
+        "00000000000000ff",
+        "the repaired batch is the new accepted result"
+    );
+
+    // (6) Legitimate single-unit neighbor still produces exactly one object
+    // (the atomic path did not freeze normal edits).
+    let obs = session
+        .edit_unit(unit_decl(ATOMIC_DISJOINT_LATER))
+        .expect("a legitimate single edit still installs");
+    assert_eq!(obs.reprepared_units, vec!["disjoint".to_string()]);
+    assert_eq!(obs.emit_units, 1, "one new disjoint identity emits");
+    assert_eq!(obs.cache_hits, 0);
+    session.close();
+}

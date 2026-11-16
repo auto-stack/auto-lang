@@ -29,7 +29,7 @@
 // an empty crate rather than failing on ace-abi types)
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -162,6 +162,23 @@ fn clone_build(
         provider_digest: build.provider_digest.clone(),
         rustc_identity: build.rustc_identity.clone(),
     }
+}
+
+/// PLAN-980 NATIVE (B-NATIVE-I): register an arbitrary annotated Rust
+/// provider SOURCE under `name` — the generic admission face for
+/// domain-owned providers (the frozen F0 fixtures above stay the only
+/// special-cased identities). The build rides `build_source`'s freshness
+/// cache (same provider/shim digests + rustc identity + artifacts on
+/// disk ⇒ no rustc); `root` is the caller-owned scratch root. Returns
+/// the built cdylib path (hosts load it to install their own
+/// side-channel exports — same module, LoadLibraryW refcounting).
+#[cfg(windows)]
+pub fn register_source_provider(name: &str, root: &Path, source: &str) -> Result<PathBuf, String> {
+    let build = ace_abi::rust_provider::build_source(root, source)
+        .map_err(|e| format!("source provider build failed: {e}"))?;
+    let cdylib = build.cdylib.clone();
+    register_built_provider(name, &build)?;
+    Ok(cdylib)
 }
 
 /// Revoke a provider: every later request naming it is refused before any

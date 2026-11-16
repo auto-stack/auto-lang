@@ -5,8 +5,8 @@ feature_name: ACE共同模块装配、byte→Str与延后系统库交付
 author: [ZCode]
 created_at: 2026-11-16
 updated_at: 2026-11-16
-plan_revision: 2
-current_step: 4
+plan_revision: 3
+current_step: 10
 total_steps: 13
 depends_on: [PLAN-973, PLAN-972, PLAN-967, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-stdlib-io.md, docs/specs/stdlib/design/ace-binding-and-assembly.md, docs/specs/ace-migration/m2-host.md, docs/specs/auto-abi/checked-source-foreign-calls.md]
@@ -18,6 +18,8 @@ affects: [stdlib, ace]
 # [PLAN-1064] ACE标准库byte→Str车道、共同模块装配与延后面交付
 
 ## 0. 变更摘要
+
+2026-11-16 r3最新阶段：AV/AC/A2R最终完整一致；A期AC基础以外差额可逐行交M2-B，1067/1068承接原生异步与三端补齐，A2C完整对齐增强。原任务/勾选/实际进度不变；新阶段条款不能冒实现或复审已过。
 
 2026-11-16 r2（本轮当前）：依用户要求复用973/975已有成果、承接975模块语法与装配缺口。新增独立MODULE I/V/R/D四任务及受检输出帧T-FRAME、持久存储T-KV；原T-01..07/AC-01..07/V-01..04保留并细化，当前drafting **0/13**（原0/7；新增合同任务，非实现进度）。973已归档，保持其已验范围/终态；本包承接后继，不重开973/972/967。首次正式交付先选MODULE切片，byte→Str/其余库面可并行准备，最终AC运行消费1065，不能反等975全包。只规划，全部拟接口/验证未实施。
 
@@ -142,6 +144,18 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 
 本轮不改canonical Specs；实际交付后原review核delta，merge才沉淀已验知识。
 
+### 三端最终一致与AC阶段移交（2026-11-16当前优先）
+
+本包适用范围为**本包公共标准库及真实AC调用**。A仍须AV/A2R完整原required及AC真实基础，A2PY标准库/AV三provider与原其他required保持。AC基础外剩余差额允许B后延，逐原行ID/输入/独立oracle/资源/错误/源身份记录B-owner与关闭条件，交[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)，异步调度交[1067](1067-ace-ac-native-async-and-task-parity.md)。不能以stub或原profile不支持签AC已实现；M2最终三端必须同平台可用，A后延只是时间调整。A2C完整对齐增强，既有代码/用例/支持事实保留，缺完整面不阻M2。
+
+在本包原能力work/最终验证/review明确区分“A已验接口”“B后延AC行”：移交有正式producer/版本/所需前置，最终真实实现和补验归1068及原owner协作，不回落旧VM或重写归档Plan。985/A可收本包A正式切片，不反等1068；本包如已有B则保唯一树续行，A切片不能勾全包完成。
+
+默认库继续共享Auto算法＋OS薄层，真实网络/系统/数据/FFI调用不得以Rust std/libc或旧VM隐式补。Linux代码/原完整case仍NOT_RUN交1063，当期不测试，不能据阶段调整宣称Linux通过。
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-AC-STAGED | modify | docs/specs/auto-abi/checked-source-foreign-calls.md（实际交付） | A所有AC必齐→A基础/具名B移交，最终三端完整，A2C增强 | 用户明确排程 | AC-AC-STAGED |
+
 ## 6. 测试设计
 
 全部拟实施/未运行。T-01冻结真实命令/身份，永久fixture由各work任务建立，独立review在冻结SHA/同树停写后进行，merge不承担实现正确性。六路径不是彼此相等oracle；新增平台OS面分别核实际磁盘/进程/环境值/资源，Linux全NOT_RUN交1063，不冒PASS/NA。
@@ -172,6 +186,10 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 
 职责组已静态核存在：MODULE `cargo t ace-source ace-syntax`＋实际共享变更的必要consumer；BSTR/sys `cargo t ace-av ace-stdlib`；输出帧 `cargo t ace-abi ace-foreign-contract`；适用AC `ace-native`；A2X `ace-a2x`；语言case线`auto-test-case`和原`a2r a2py`按真实修改选完整并集。不得把全部组合反复全仓跑，普通组排正式performance，Linux/WSL在Windows排除且不计PASS。具体新例在既有tests/cases注册，不另造runner；发现/运行/原条件排除、准备/运行/清理/总时分列，首次红/重放绿保留。
 
+| V / AC | 原owner/输入 | 独立预期与边界 |
+|---|---|---|
+| V-AC-STAGED / AC-AC-STAGED | 原work及最终验证：A真实基础/AV-A2R结果＋完整AC后延账，缺owner/基础stub负控；B回验真AC | A基础真实且B每行去向/关闭条件齐才可交A；不得记AC PASS/NA或从分母消失；B真实三端与原独立oracle齐才关闭后延行。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -189,11 +207,13 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
 | AC-D09 | work | Option<List>真实实现及全部适用端空/非空/失败闭合，不只裁定 | T-02/V-D09 |
 | AC-FRAME | work | 输出借用权限/owner/长度/ABI及自动binding→AV C/Rust真读闭合，无手工manifest | T-FRAME/V-FRAME |
 
+- [ ] **AC-AC-STAGED / work**：V-AC-STAGED闭合，AC基础真实、剩余差额完整移交1067/1068/实际owner，AV/A2R及原其他A-required不减；最终三端未验不得冒支持。原work落实、原独立review核，无新增任务或本轮完成数。
+
 ## 8. 执行步骤
 
-当前4/13（MODULE切片I/V/R/D已交付，余9项待执行）；下列是唯一当前任务表。
+当前10/13（MODULE切片I/V/R/D + T-01 + T-02 + T-FRAME + T-KV + T-04 + T-03已交付，余3项待执行：T-05/T-06/T-07）；下列是唯一当前任务表。
 
-- [ ] **T-01｜work｜AC-01**：核取材/正式依赖与原D/旧例表，冻结MODULE声明/exports、必要输出帧、UTF8/资源和ZIP完整方法/预算清单、hex/base64旧合同冲突；以最小真实正例＋非法近邻＋失败恢复的最长链先验策略，不造平行系统，不把未决全部留给后续。
+- [x] **T-01｜work｜AC-01**：核取材/正式依赖与原D/旧例表，冻结MODULE声明/exports、必要输出帧、UTF8/资源和ZIP完整方法/预算清单、hex/base64旧合同冲突；以最小真实正例＋非法近邻＋失败恢复的最长链先验策略，不造平行系统，不把未决全部留给后续。（已完成@`e9a359f5e`，冻结档案见 `D:/autostack/plan-artifacts/plan-1064/t01-freeze.md`：§4锚点SHA重核、`IF-975-B1` 已落地`8e0c4d1d6`、`project.rs` 修复 `Aggregates/Closures` 下 `char.from_codepoint`/`.to(Str)`、实测 `bstr_1064` 1KB/4KB/8KB/16KB 步数与恢复、冻结 `D-03 env_get_w16` `-203`/empty 0 与 `D-04 canonical_w16` 禁回退及 `D-09 ?List<int>` 缺口。）
 - [x] **T-MODULE-I｜work｜AC-MODULE**：在已核grammar/frontdoor/packages/binding/stdlib owner统一合法声明/可见性和冻结身份；建立V-MODULE/RESTORE；canonical sqlite pub迁移由975原T-03负责，不代其业务实现。
   [✅ 2026-11-16, commits 208cc04a5+e2e9b4724] r1=**条件缝闭合**（诊断：json.at不可解析根因是packages-modules用贪婪expr解析for/if条件，'x < ident {'把块括号提交为record ctor、误报挂'fn unsupported'——非pub/private拼写；修复=record族condition-expr全链扩至packages-modules的if-cond/for-cond）；r2=**模块域'use demo'**（frontdoor一段路径=模块域导入、整模块reexport命名拒；binding绑定模块命名空间BoundImport+模块边+未知名拒；限定调用沿既有module_prefix/cross_call路径带exports可见性执法）。正例负例全绿（module_1064 6/6：§5.2 demo verbatim编译、demo.helper限定私调=module-private、demo()裸调=module-symbol、pub use demo=module-path、use nope=module-missing）。
 - [x] **T-MODULE-V｜work｜AC-MODULE**：运行MODULE完整职责与实际JSON/Redis/SQLite装配消费、原源/错误/冷恢复负控；完整文本consumer所需B1先核独立正式切片，不等975全包/1065/ZIP/KV。
@@ -202,16 +222,32 @@ ZIP规范：中央目录原顺序和name原样，list_json字段name/size/comp_s
   [✅ 2026-11-16 phase pass] reviewed_commit 6ee22e770（=208cc04a5+e2e9b4724+6ee22e770）；同会话复审（局限性在案，从工件重构：AC-MODULE矩阵逐项对6/6+7/7测试、V-MODULE各RED负控核panic路径、RESTORE三层核identity机制）；**突变负控**：condition-ops pratt表回缩→json真实源装配测试RED（source.infra命名拒绝）→回退后13/13绿（绑定证明）；健康：两测试文件fmt净、无debug打印、无新警告；消费组（module_packages_960 4/4、stdlib_core_945 4/4、module_sources 2/2）r2后重跑绿。SQLite腿/装配provider线=具名分账非本切片。
 - [x] **T-MODULE-D｜merge｜AC-MODULE-LAND**：phase pass后正式合入与沉淀已验MODULE，交IF-1064-MODULE；保唯一tree/resync继续余项，不归档整包/删除树。
   [✅ 2026-11-16] phase fold落主 **master@4ba167930**（代码6文件；与在途PLAN-981同owner冲突按并集解决：age-package∪packages-modules条件机扩面+Node构造is_module）＋ **master@58b383eea**（`SD-MODULE` 规范沉淀落位 `docs/specs/stdlib/design/ace-binding-and-assembly.md`，sha256/16=`c1f10e6dbb135789`，`--ff-only` 合并）；**合入纪律事故已纠正**：首合并误git add -u裹入40文件他WIP→soft reset重做干净合并（他WIP全部保留未暂存）；合并基线实测：`cargo t ace-source ace-syntax`（`results.json`：`ace-source` PASS 757执行/1 ignored `run_exe_60s_deadline_bounds_descendant_pipe_hold`，prep 30.40s+run 20.74s；`ace-syntax` PASS 155执行/0排除，prep 24.51s+run 27.47s），新增13例均≤10s门（`module_1064` 6/6=0.168s，最大`module_1064_json_at_parses_with_pub_private_split` 0.168s；`module_v_1064` 7/7=0.319s，最大`module_1064_v_json_at_real_source_executes` 0.316s；前序合入check另见`plan979_age` 26/26+`packages units` 43/43）；`wt-guard.ps1` clean，worktree保留并resync至master继续余项（整包维持`executing`）。**IF-1064-MODULE**（975 T-03/V-LOAD-MODULE消费接口）：①json.at/redis.at等pub fn+私有helper作者源现可作为packages模块逐字节装配消费（条件缝闭合）；②模块域`use mod`+限定调用`mod.fn()`带exports可见性（跨模块私有=命名`source.module-private`+原span）；③std冻结身份/重复身份/坏digest拒绝在案；④canonical sqlite pub迁移归975原T-03（其tracked文件现为plain fn内联拼写）。
-- [ ] **T-02｜work｜AC-02/AC-D09**：消费975/B1正式原语，实作共享UTF8/owned及972同车道解码、D09 Option/List全端合法化与V-01/V-CODEC/V-D09，不新造同义原语。
-- [ ] **T-FRAME｜work｜AC-FRAME**：在967现有typed/ABI/binding/runtime owner内补必要受检输出借用＋V-FRAME，自动导入C/Rust真读，无另一个FFI模型。
-- [ ] **T-03｜work｜AC-03**：按D01..06具体合同落公开面/原兼容包装，真实OS/错误/生命周期与V-02，不以常量/计数充文本/args。
-- [ ] **T-04｜work｜AC-04**：实现ZIP central-directory/原required解压方法/CRC/预算及三公开面，V-03 ZIP部分；复用原source/fixtures，不能缩成Stored-only。
-- [ ] **T-KV｜work｜AC-04**：实现本节KV格式/读写/原子替换/重开及V-03 KV部分；不依975 JSON/DB业务循环，不重复既有atomic replace底座。
+- [x] **T-02｜work｜AC-02/AC-D09**：消费975/B1正式原语，实作共享UTF8/owned及972同车道解码、D09 Option/List全端合法化与V-01/V-CODEC/V-D09，不新造同义原语。（已完成@`987fe53de`：`std.bytes` 交付 `decode_utf8`/`decode_hex`/`decode_base64`/`decode_hex_str`/`decode_base64_str`；`std.syscommon` 交付 `read_region_bytes`/`decode_utf8_region`；`std.file.read_bytes` 交付 `?List<int>`；`resolve.rs`+`a2x-{rust,c,python}`+`collections-runtime`/`native` 补齐 `Option<List<int>>` 与 `StrFromChar`/`a2x_str_from_char` 及 Python move 析构与 C temp list 析构；验证：`bstr_1064` 7/7、`v08_surface_972` 五端 1/1、`stdlib_asm_972` 16/16、`stdlib_sys_973` 15/15、`ace-core` 79/79、`ace-a2x-{rust,python}` 各 2/2 均 PASS。）
+- [x] **T-FRAME｜work｜AC-FRAME**：在967现有typed/ABI/binding/runtime owner内补必要受检输出借用＋V-FRAME，自动导入C/Rust真读，无另一个FFI模型。（已完成@worktree `plan-1064-dev`：`ResKind::OutBytes` + `auto-bindgen/{rust,c}_import` `&mut [u8]`/`uint8_t* dst, uint64_t cap` + `av-core::foreign_exec::{OutBufferFrame, dispatch_view_out_bytes}` 具 owner/origin/generation/rights/bounds/guard bytes/RAII pin 隔离与 `0<=n<=cap` 发布；`out_frame_1064` 3/3 + `sys973_av_foreign` 2/2 + `f0_av_c`/`f0_rich` 5/5 + `auto-bindgen` 10/10 + `ace-foreign-contract` 56/56 + `ace-core` 79/79 均 PASS。）
+- [x] **T-03｜work｜AC-03**：按D01..06具体合同落公开面/原兼容包装，真实OS/错误/生命周期与V-02，不以常量/计数充文本/args。（已完成@`cd936c05b`：修复 `av-core` `Win32::canonical_w16`（移除缺失路径 `GetFullPathNameW` 回退 + `op_proc_release` 同步杀并等待未退进程树）、`Win32::env_get_w16`（`SetLastError(0)` 区分 `Ok(0)` 空串与 `Err(203)` 未设置）、`a2x-rust` (`-203` + `win32_quote_arg` + `split_cmdline` + `a2x_env_get_bytes`/`a2x_proc_cmdline_fill_bytes` 3参对齐)、`a2x-python` (`os.stat` 缺失路径拒 + `-203` + `_win32_quote_arg` + `_split_win32_cmdline` + `stream.read1`)；`std.syscommon` 交付 `json_escape`/`parse_win32_cmdline` 及迭代化 `read_region_bytes`、`ticks16`/`ticks64`；`std.sysplat_{win,lnx}` 交付 `decode_w16_region` 与 `pf_{dir_names,env_get_opt,home_dir,local_data_dir,canonical,current_dir,args}`（同步修 `seek64` `lo_signed=0` 符号位）；`std.{file,path,env,process}` 交付 D-01..D-06 全公开面；`sys_d01_d06_1064` 5/5（含 058 10行/046 oracle/A2R+A2Py CLI 参数还原与 spawn cap/kill）+ `stdlib_sys_973` 15/15 + `kv_zip_1064` 8/8 + `bstr_1064` 7/7 + `ace-av-core --lib` 63/63 + `ace-core --lib` 79/79 + `ace-a2x-{rust,python}` 各 2/2 均 PASS。）
+- [x] **T-04｜work｜AC-04**：实现ZIP central-directory/原required解压方法/CRC/预算及三公开面，V-03 ZIP部分；复用原source/fixtures，不能缩成Stored-only。（已完成@`0fb14fe93`：`std.zip` 交付纯 Auto `list_json`/`read_text`/`extract_entry`，含 EOCD+Central Directory+Local Header 校验、IEEE CRC-32 半字节表、`Stored`/`Deflated` RFC 1951 BTYPE 00/01/10、流式 `max_bytes` 预算止损、拒绝加密/ZIP64/BZip2/坏 CRC/非法 UTF-8 且不覆写既有 `dest_path`，`.acezip.tmp` 原子替换；`std.syscommon` `region_leaf` 8B 展开降步数；`kv_zip_1064` 8/8（ZIP 4/4：plan897+BTYPE00 14.220s、neg+preserve 2.288s、A2R 8.464s、A2Py 8.022s）+ `stdlib_sys_973` 15/15 + `bstr_1064` 7/7 + `ace-core --lib` 79/79 均 PASS。）
+- [x] **T-KV｜work｜AC-04**：实现本节KV格式/读写/原子替换/重开及V-03 KV部分；不依975 JSON/DB业务循环，不重复既有atomic replace底座。（已完成@`52bb2dcdc`：`std.storage` 交付 `KVRead { status, found, value }` 及 `kv_get`/`get`、`kv_set`/`set`、`kv_remove`/`remove`，`ACE-KV/1\n` 分段校验＋UTF-8 严格解码＋1024 桶最后有效记录去重＋`.acekv.tmp` flush/close 后原子替换，`std.file.write_bytes` 补 `pf_flush`，`a2x-rust` 补 `lower_coll` `StrCmp` 与 `rt.rs` 1 基复用 `PIO_BUFS`；`kv_zip_1064` 4/4（AV wire oracle/重开 5.700s、AV 损坏/IO/只读保留/256KiB 3.697s、A2R 4096 往返/4097 超限 9.408s、A2Py 4096 往返/4097 超限 8.689s）+ `stdlib_sys_973` 15/15 + `ace-a2x-rust` 2/2 + `ace-core --lib` 79/79 均 PASS。）
 - [ ] **T-05｜work｜AC-05**：各work能力齐后核全部原例/新增V、六路径/原A2C、1065 AC正式来源与1063完整移交，形成冻结并集/真实结果；未闭required阻work完成。
 - [ ] **T-06｜review｜AC-06**：同树停写后的全包独立final，核全部AC/原后延义务与新增差额/健康/SD，阶段R不冒final。
 - [ ] **T-07｜merge｜AC-07**：final pass后核正式来源/沉淀/合入归档；输出逐目录对账、摘要折Plan、按现行政策清scope/guard清树，未知持有不盲删。
 
 ## 9. 复审记录
+
+2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
+
+2026-11-16 stage:new / r3：按用户最新三端目标修阶段/移交，增SD/V/AC-AC-STAGED；原任务/状态/进度保留，仅规划，无新增实际验证/签章。
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-03 | status: executing (10/13; T-03 closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`cd936c05b`) | gates: sys_d01_d06_1064 5/5 PASS (AV D01/D02 2.946s, AV D03..D05 2.488s, AV D06 2.790s, A2R 10.720s, A2Py 10.141s; 058 10-line & 046 oracles) + stdlib_sys_973 15/15 PASS + kv_zip_1064 8/8 PASS + bstr_1064 7/7 PASS + ace-av-core --lib 63/63 PASS (0 warnings) + ace-core --lib 79/79 PASS (1 ignored) + ace-a2x-{rust,python} 2/2 each | next: T-05 (merge/sync PLAN-1065 IF-1065-ACSYS + V-04 + AC/all-backends parity matrix)
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-04 | status: executing (9/13; T-04 closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`0fb14fe93`) | gates: kv_zip_1064 8/8 PASS (ZIP: AV plan897+BTYPE00 14.220s, AV neg+preserve 2.288s, A2R 8.464s, A2Py 8.022s; KV: 4/4) + stdlib_sys_973 15/15 PASS + bstr_1064 7/7 PASS + ace-core --lib 79/79 PASS (1 ignored) | next: T-03 (D-01..D-06 deferred std.{file,path,env,process} + runtime canonical_w16/env_get_w16 fixes)
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-KV | status: executing (8/13; T-KV closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`52bb2dcdc`) | gates: kv_zip_1064 KV 4/4 PASS (AV wire oracle+reopen 5.700s, AV 8 corrupt+missing+dir+256KiB+readonly atomic preserve 3.697s, A2R 4096 roundtrip+4097 -3 9.408s, A2Py 4096 roundtrip+4097 -3 8.689s) + stdlib_sys_973 15/15 PASS + ace-a2x-rust 2/2 PASS + ace-core --lib 79/79 PASS | next: T-04 (D-08 pure-Auto ZIP container)
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-FRAME | status: executing (7/13; T-FRAME closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev | gates: out_frame_1064 3/3 PASS (V-FRAME Rust+C read_into, NUL+UTF8+binary, cap=0, partial, missing=-2, n>cap reject, guard bytes reject, owner/origin/readonly/gen/bounds/aliased/pinned-under-cancel) + sys973_av_foreign 2/2 + f0_av_c/f0_rich 5/5 + auto-bindgen 10/10 + ace-foreign-contract 56/56 + ace-core 79/79 | next: T-KV (D-07 persistent ACE-KV/1)
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-02 | status: executing (6/13; T-02 closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`987fe53de`) | gates: bstr_1064 7/7 PASS (V-01 AV 192B/1100B+region & illegal sequences, V-01 A2R 64KB, V-CODEC 5-end hex/base64, V-D09 AV/A2R/A2PY `?List<int>`) + v08_surface_972 5-end PASS (1/1) + stdlib_asm_972 PASS (16/16) + stdlib_sys_973 PASS (15/15) + ace-core --lib PASS (79/79, 1 ignored) + ace-a2x-rust/python PASS (2/2 each) | next: T-FRAME (checked writable output borrow frame on 967 owner)
+
+stage: work | plan_id: PLAN-1064 | plan_revision: r2 | task: T-01 | status: executing (5/13; T-01 closed) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (`e9a359f5e`) | policy_scope: plan-artifacts/plan-1064 (in-flight registered; t01-freeze.md) | gates: bstr_1064 3/3 PASS (1024B=108692 steps/30ms, 4096B=456277 steps/106ms, 8192B=956097 steps/792ms, 16384B=Resource::InstrSteps@991ms, CharInvalid 0xD800/0x110000, tight-budget recovery) + `cargo t ace-source` PASS (757 executed, 0 failed) | findings: fixed `project.rs` `char.from_codepoint`/`.to(Str)` gating for `Aggregates`; frozen `hex/base64`/`env_get_w16`/`canonical_w16`/`ZIP`/`KV`/`T-FRAME`; next: T-02 (BSTR UTF-8 + 972 hex/base64 + D-09 `?List<int>`)
 
 stage: goal | plan_id: PLAN-1064 | plan_revision: r2 | scope: MODULE (T-MODULE-I/V/R/D) | status: executing (4/13; MODULE phase delivered) | outcome: pass | worktree: D:/autostack/.wt/lang-1064/auto-lang @ plan-1064-dev (retained, wt-guard clean, resynced) | code_commit: 4ba167930 | spec_commit: 58b383eea (docs/specs/stdlib/design/ace-binding-and-assembly.md sha256/16=c1f10e6dbb135789, --ff-only) | gates: ace-source PASS 757/1 ignored (30.40s+20.74s) + ace-syntax PASS 155/0 (24.51s+27.47s) + module_1064 6/6 (0.168s, max 0.168s) + module_v_1064 7/7 (0.319s, max 0.316s); spec-lint 0 new issues | next: T-01 / BSTR / T-FRAME / T-03..07 (remaining 9/13)
 

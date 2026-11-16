@@ -289,3 +289,53 @@ env get 族/zip/storage 等）→1064、AC 50 操作真身→1065（用户裁定
 - auto-ui 仓 `ace-migration-feasibility.md` 的领域侧增量归 UI owner（本仓不可沉淀）。
 
 规范落点：[m2-schema.md](m2-schema.md)；证据与边界见 PLAN-979 §9。
+
+## PLAN-975 增量：M2-A 数据标准库与跨端业务（SD-02 挂接，2026-11-16）
+
+PLAN-975（M2-A 数据标准库：`json` / `sqlite` / `redis`）全部 work 任务经 round-1 `needs_fix`（`F-01..F-06`）→ 修复 → round-2 `final pass` 归档：
+
+- **三模块与原语**：`char.to(Str)` 物化原语（六路径 AV/`MnDriver`/AV-C/A2R/A2PY/AC）；纯 Auto `stdlib/ace/std/json.at`（encode/decode 族、数组点路径、`i32::MIN`、UTF-16 代理对、控制字符与非法转义拒绝）五端（AV/`MnDriver`/A2R/A2C/A2PY）同得 `42`（含修复 `a2x-c/src/lower_rt.rs` 内容视图参数转发）；纯 Auto RESP2 `stdlib/ace/std/redis.at`（严格 UTF-8 逐字节校验 + `badutf8`/`overlong`/`surr`→`""`）；canonical `pub fn` `stdlib/ace/std/sqlite.at` 单源服务 `text-record`（`TextRecord` `pub fn` 准入）与 `packages-modules`（`:memory:` CRUD + `BEGIN`/`ROLLBACK` + SQL 失败 `ROLLBACK` = `9`）。
+- **结构感知与模块边界**：`spec JsonDecodable` + `<T has JsonDecodable> decode<T>` + `966` `ct_field_count`/`ct_has_field` + `app::service` `pub type Service` 跨模块解码；`V-LOAD-MODULE` 私有 helper `source.module-private`、`pub`-stripped RED、`std::json` `ace.stdlib-reserved`、`PackageStore::restore` 与私有体变更 hash 移动全验。
+- **具名边界与外部承接**：动态 `JsonValue` AST / 泛型 `encode[T]` / 任意字段遍历反射（M2-B / `966`）；`encoding/csv.at` 未迁移占位；SQLite 文件持久化（`973`/`1064`）；`packages` `p967_*` provider 执行装配（`1043`）；schema 迁移（`986`）；Linux 实跑 `L-01..L-05`（`1063`, `deferred-required / NOT_RUN`）。规范落点：[m2-stdlib-data.md](m2-stdlib-data.md)。
+
+## PLAN-980 增量：传统 AutoUI 全模式 ACE 接入 producer 挂接（SD-02 挂接，2026-11-16，r11）
+
+五批落主（DIALECT/STATE/HELLO/RUST-AXR0/NATIVE，r11 口径 15/29；JET/ARK 归
+M3 裁定）。已验 producer（状态=实现可核对，产品门另计）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| 组件面场景族（`compile_component_scenario*`：initials/states-only/免驱动）+ `observe_component_states(_and_texts)` | auto-lang `1d2f01238` | implemented-verified（STATE/NATIVE CPU+真窗） | 免驱动仅 980 入口；打包车道口径不变；观测字段限 int（driverless 除外） |
+| `AceStateEngine`（实例世代/异步完成世代纪律=MIX-03 无 HTTP） | auto-ui `ae1c53ad` | implemented-verified | 多单元接线待 IF-981-MODULE 消费；HTTP 实腿 983 |
+| HELLO 首窗链（H0→AV→F0×E0→run_app 真窗；分派时重观察防漂移） | auto-ui `e529dde6` / lang `1991021a5` | implemented-verified | PACK 完整打包闭包 pending；单 text 族 |
+| F0 构建新鲜度缓存 + ace-host Exit 臂修复 | lang `1991021a5` | implemented-verified | 缓存只认输入身份 |
+| AXR0 双腿（组件 A2R `value:2`；F0×A2R 链接 `value:9`）+ 交付闭包修复链（strip_dev_deps/feature 门/foreign-contract vendor） | auto-ui `e2aadd45` | implemented-verified（driver 43/43） | 多文件 emitter 替换待 981 面；A2R 文本出岛 pending（902 冻结协议） |
+| ACE 原生 run 通道（`AUTO_UI_ENGINE=ace`；001 真源 Accept 别名/属性树/状态写主题翻转/关闭重开） | auto-ui `34bb4326` + lang `1d2f01238` | implemented-verified | 交互档=既有手工/环境门控；路由运行语义未交付；opt-in 默认链不切换 |
+| 分母/命令冻结（T-01） | 本文件 + m2-autoui §10 | implemented-verified | WEB/TAURI/PARITY 行待各自 I 冻结 |
+
+未闭/范围外（保持显式）：WEB 批适配器切换（976 producer 已归档 660fe72b5，
+切换归 980/WEB）、TAURI、PARITY 模式网格、T-05..07 终门；JET/ARK=M3 裁定；
+KNOWN-DEBT 各具名边界（f-string 文本叶 AV 车道/emit 归 981/默认链 987/交互
+档归属等）。规范落点：[m2-autoui.md](m2-autoui.md) §6–§10。
+
+## PLAN-976 增量：M2-A 脚本目标（TS/JS）producer 挂接（SD-02 挂接，2026-11-16）
+
+PLAN-976（共享 Checked-HIR TypeScript/JavaScript provider）work 全毕 → T-05 final pass
+（`9da498211`）→ 归档：
+
+- **已验证 producer**：[m2-typescript.md](m2-typescript.md)——新 crate `ace-a2x-ts`
+  双目标 `TargetProvider`（backend `auto-a2x-typescript`/`auto-a2x-javascript`，层
+  `AXTS1..3`/`AXJS1..3`，fileset schema `ace.a2ts-hir.*.fileset/1`，producer
+  `ace-a2x-ts/modules/1`）；i64/u64=bigint、UTF-8 字节文本、checked 算术 trap、
+  计划驱动 owned-Str 清理（复合值 JS GC=具名目标差异）；UI 中立 fragment 接口
+  `emit_stmt_fragment`/`emit_expr_fragment`；worker `daily-emit-ts`/`run-ts` 真实
+  node 通道；多模块 packages lane（`PackageA2xTarget`）与 source map 原 span、
+  tsc `--strict` 类型腿（缺 tsc=具名 infra skip）。全部真实 dispatch 无旧
+  `TypeScriptTrans`/`JavaScriptTrans` fallback（boundaries 白名单/扫描面已纳入）。
+- **范围裁定沿 2026-11-16 r6**：Godot 后置；独立全语言通用 a2ts/a2js CLI 非自动
+  门；生产闭包（Vue/Ark/Web/982/983/984 的模块、runtime helper、工具链）为 required，
+  产品适配器切换归 980，旧 emitter 退役归 987。
+- **具名未闭（KNOWN-DEBT D-976）**：`a2ts.foreign-unsupported`/
+  `a2ts.closure-owned-capture` 两族源级永久负控缺位（代码路径复审核读+a2py 同形
+  先例）；sched/depth 两族负控已补 `ts_named_rejections.rs`。台账相关行保持
+  required/unknown 原状，不因 976 交付消失。

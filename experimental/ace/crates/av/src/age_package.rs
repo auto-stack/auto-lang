@@ -45,7 +45,7 @@ pub fn observe_age_package(
     instances: usize,
 ) -> Result<ObservedAgePackage, String> {
     let mut components = Vec::new();
-    for c in &compiled.description.components {
+    for (component_index, c) in compiled.description.components.iter().enumerate() {
         if c.texts.is_empty() {
             components.push(ObservedAgeComponent {
                 name: c.name.clone(),
@@ -85,7 +85,10 @@ pub fn observe_age_package(
             .collect();
         for inst in 0..per_instance {
             for f in &int_fields {
-                let name = format!("__age_state_{inst}_{f}");
+                // R64-4：与包前门同一套多 node 消歧命名。
+                let name = ace_core::source::age_component::state_fn_name_at(
+                    component_index, inst, f,
+                );
                 let symbol = resolve_symbol(compiled, &c.name, &name)?;
                 instance_states[inst].push(execute_i32(&compiled.checked, &symbol)?);
             }

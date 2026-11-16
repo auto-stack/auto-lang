@@ -3,11 +3,12 @@
 // the real SQL engine behind FFI view frames, never a re-write. The
 // consumer source opens with `use.c p967_sqlite` beside this module
 // (PLAN-1041 inline convention: this file's text is concatenated into
-// the consuming source). This module serves the delivered source
-// foreign/record lane (text-record profile + the admitted stub table);
-// the host-console/packages serving lane follows 973's io assembly —
-// the console lane has no foreign dispatch today (the named seam), and
-// with it the `pub fn` spelling of the other stdlib slices.
+// the consuming source). PLAN-1064 T-MODULE slice closed the seam:
+// this module is now the CANONICAL `pub fn` author source serving the
+// text/foreign lane verbatim (pub admitted, projecting as a plain fn
+// inline) AND the packages module face (pub = the exports); the
+// provider-dependent execution rides the foreign lane (db975) — the
+// assembled-provider packages lane is the named 1043 remainder.
 //
 // Legacy face mapping (stdlib/auto/sqlite.at): the opaque SqliteDb
 // handle becomes the provider's single connection — no RAII objects on
@@ -18,7 +19,7 @@
 // nul-path/too-long/open-failed/close-error) surface as the lane's
 // named ForeignStatus traps — the wrapper adds no silent fallback.
 
-fn sqlite_open(path str) int {
+pub fn sqlite_open(path str) int {
     return p967_open(path)
 }
 
@@ -26,20 +27,20 @@ fn sqlite_open(path str) int {
 // (zero 973 dependency — no host file, no file lock, no crash-recovery
 // face). The file-backed leg is named-blocked on 973 per the T-01
 // dependency freeze.
-fn sqlite_open_memory() int {
+pub fn sqlite_open_memory() int {
     return p967_open(":memory:")
 }
 
-fn sqlite_exec(sql str) int {
+pub fn sqlite_exec(sql str) int {
     return p967_exec(sql)
 }
 
-fn sqlite_query_int(sql str) int {
+pub fn sqlite_query_int(sql str) int {
     return p967_query_i32(sql)
 }
 
 // The close frame's ack view is ignored by the provider; "" is the
 // canonical empty ack (same shape as the 967 T-15 Auto sources).
-fn sqlite_close() int {
+pub fn sqlite_close() int {
     return p967_close("")
 }

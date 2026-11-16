@@ -38,3 +38,10 @@
 
 - 旧 M1 acceptance 不变；C RT 首例独立登记（套件+固定组+本合同）；CA-E 才
   定义总签章。旧 A2R cert-gap 豁免**不适用**于新 C 认证。
+
+## 父侧有界交换与产物准入（PLAN-1034）
+
+C record-text 日常 `daily-emit-c` 同一 r4 worker 资源 policy 与产物有界准入（同 scalar/
+collections 条目）；各 source profile（record/text/text-record）与原 certify/证书、reference
+轴保持不变。
+

@@ -38,3 +38,11 @@
 - 旧 M1 acceptance（binding.tsv/applicability.json/required313）不因
   C 通道改变；C 首例独立登记（套件+固定组+本合同），CA-E 后续才定义
   AND 旧门+新 C 门的总签章——当前总 M1 不可因 C 而签。
+
+## 父侧有界交换与产物准入（PLAN-1034）
+
+C scalar 日常 `daily-emit-c` 与 collections/record-text 同一 r4 worker 资源 policy（stdin 请求、
+70s/单一3s、stdout 4MiB/stderr 1MiB、产物 4MiB/64MiB/128MiB 有界准入），spawn0 合同与
+`certify-c` 正式认证轴（四文件、手写 reference、真 cl）保持不变；certify-c 的 golden_path
+未声明保证书 None，声明则 64MiB 一次有界读取/hash，缺文件/坏编码/超限具名 Infra。
+

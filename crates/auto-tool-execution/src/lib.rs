@@ -27,7 +27,7 @@ use std::ffi::OsString;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -510,6 +510,10 @@ enum ReaderEnd {
     /// 设施主动停止（stop 标志）：管道写端仍被非拥有方持有时收尾自有
     /// reader 的手段；捕获字节截至停止点，语义由调用方语境决定。
     Stopped,
+    /// PLAN-1034 T-02：capped reader 观测到超限（cap+1 事实）——缓冲最多
+    /// 保留 cap 字节，观测计数饱和记录；首个溢出通知调度侧立即终止
+    /// owned 树（见 [`run_bounded`]），绝无"截断文本当成功"。
+    CapExceeded,
 }
 
 /// 捕获流的产出：字节 + 结束方式。线程 panic 时通道断开、无消息。
@@ -724,7 +728,7 @@ impl PipePoll for std::io::PipeWriter {
 }
 
 /// stop 排空的结构化结束状态（F-816-R5-01：排空不得把流失败抹成正常
-/// 停止——EOF/读错按真实终态映射）。
+/// 停止——EOF/读错按真实终态映射；PLAN-1034：capped 排空的溢出同列）。
 #[derive(Debug)]
 enum DrainEnd {
     /// 管道空（无更多已到达数据）——真正的"被停止"。
@@ -733,24 +737,38 @@ enum DrainEnd {
     Eof,
     /// 排空中读错（具名 I/O 失败）。
     Io(io::Error),
+    /// PLAN-1034 T-02：排空路径扩容前核帽命中（capped reader 专用）。
+    CapExceeded,
 }
 
 /// 排空当前已可读的内容（F-816-R3-01：stop/收尾语义=先排空再退出；
 /// R5-01：结束状态结构化返回）。有界：管道空即止；DRAIN_CAP 防御仍
 /// 活跃的写入方无限供数（stop 仅在 owned 树终止后的收尾语境使用）。
+/// PLAN-1034 T-02：带可选 cap——扩容前核帽，溢出即 CapExceeded（缓冲
+/// 保 cap 字节、计数饱和 cap+1），read 与 stop-drain 两条路径同一门。
 fn drain_readable<R: io::Read + PipePoll>(
     r: &mut R,
     bytes: &mut Vec<u8>,
     chunk: &mut [u8],
+    cap: Option<usize>,
+    overflow: &AtomicUsize,
 ) -> DrainEnd {
-    let cap = Instant::now() + DRAIN_CAP;
-    while Instant::now() < cap {
+    let drain_until = Instant::now() + DRAIN_CAP;
+    while Instant::now() < drain_until {
         if !r.poll_ready(Duration::from_millis(0)) {
             return DrainEnd::Empty;
         }
         match r.read(chunk) {
             Ok(0) => return DrainEnd::Eof,
-            Ok(n) => bytes.extend_from_slice(&chunk[..n]),
+            Ok(n) => {
+                if let Some(cap) = cap {
+                    if cap_before_extend(bytes, &chunk[..n], cap, overflow) {
+                        return DrainEnd::CapExceeded;
+                    }
+                } else {
+                    bytes.extend_from_slice(&chunk[..n]);
+                }
+            }
             Err(e) => return DrainEnd::Io(e),
         }
     }
@@ -759,6 +777,26 @@ fn drain_readable<R: io::Read + PipePoll>(
 
 /// 排空上限（防御性;owned 树已终止时数据有限,远用不满）。
 const DRAIN_CAP: Duration = Duration::from_millis(500);
+
+/// PLAN-1034 T-02：capped 排空/追加的扩容前核帽——返回 true 表示已记
+/// 溢出（调用方以 `CapExceeded` 终止），缓冲最多保留 cap 字节，观测
+/// 计数饱和在 cap+1（保"超 1 字节即事实"，不保完整字数）。
+fn cap_before_extend(
+    bytes: &mut Vec<u8>,
+    incoming: &[u8],
+    cap: usize,
+    overflow: &AtomicUsize,
+) -> bool {
+    if bytes.len() + incoming.len() <= cap {
+        bytes.extend_from_slice(incoming);
+        return false;
+    }
+    let keep = cap.saturating_sub(bytes.len());
+    bytes.extend_from_slice(&incoming[..keep]);
+    let observed = (bytes.len() + incoming.len()).min(cap + 1);
+    overflow.store(observed, Ordering::Release);
+    true
+}
 
 /// 一条捕获 reader 线程的控制器。
 ///
@@ -781,10 +819,37 @@ impl CaptureWorker {
     where
         R: io::Read + PipePoll + Send + 'static,
     {
+        Self::spawn_inner::<R>(stream, r, None, Arc::new(AtomicUsize::new(0)))
+    }
+
+    /// PLAN-1034 T-02：opt-in capped reader——读取与 stop-drain 两条路径
+    /// 均在扩容前核 cap；返回共享溢出计数（0=未溢出，否则观测字节饱和
+    /// cap+1），调度侧轮询首个溢出即终止 owned 树。
+    fn spawn_capped<R>(stream: &'static str, r: R, cap: Option<usize>) -> (Self, Arc<AtomicUsize>)
+    where
+        R: io::Read + PipePoll + Send + 'static,
+    {
+        let overflow = Arc::new(AtomicUsize::new(0));
+        (
+            Self::spawn_inner::<R>(stream, r, cap, Arc::clone(&overflow)),
+            overflow,
+        )
+    }
+
+    fn spawn_inner<R>(
+        stream: &'static str,
+        r: R,
+        cap: Option<usize>,
+        overflow: Arc<AtomicUsize>,
+    ) -> Self
+    where
+        R: io::Read + PipePoll + Send + 'static,
+    {
         let (tx, done) = std::sync::mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
         let owned_closed = Arc::new(AtomicBool::new(false));
         let (flag, closed) = (Arc::clone(&stop), Arc::clone(&owned_closed));
+        let ovf = Arc::clone(&overflow);
         let join = std::thread::spawn(move || {
             let mut r = r;
             let mut bytes = Vec::new();
@@ -794,11 +859,12 @@ impl CaptureWorker {
                 if flag.load(Ordering::Relaxed) {
                     // F-816-R3-01: stop 不丢弃已到达数据——先排空可读
                     // 内容;R5-01:排空的结束状态按真实终态映射,不把
-                    // EOF/读错抹成 Stopped。
-                    end = match drain_readable(&mut r, &mut bytes, &mut chunk) {
+                    // EOF/读错抹成 Stopped。PLAN-1034:排空同样核 cap。
+                    end = match drain_readable(&mut r, &mut bytes, &mut chunk, cap, &ovf) {
                         DrainEnd::Empty => ReaderEnd::Stopped,
                         DrainEnd::Eof => ReaderEnd::Eof,
                         DrainEnd::Io(source) => ReaderEnd::Io(source),
+                        DrainEnd::CapExceeded => ReaderEnd::CapExceeded,
                     };
                     break;
                 }
@@ -813,7 +879,16 @@ impl CaptureWorker {
                 }
                 match r.read(&mut chunk) {
                     Ok(0) => break,
-                    Ok(n) => bytes.extend_from_slice(&chunk[..n]),
+                    Ok(n) => {
+                        if let Some(cap) = cap {
+                            if cap_before_extend(&mut bytes, &chunk[..n], cap, &overflow) {
+                                end = ReaderEnd::CapExceeded;
+                                break;
+                            }
+                        } else {
+                            bytes.extend_from_slice(&chunk[..n]);
+                        }
+                    }
                     Err(e)
                         if e.kind() == io::ErrorKind::WouldBlock
                             || e.kind() == io::ErrorKind::Interrupted =>
@@ -842,6 +917,12 @@ impl CaptureWorker {
         self.stop.store(true, Ordering::Relaxed);
     }
 
+    /// join 句柄是否已被取走（wait/stop_and_join 已收场）——收尾侧
+    /// 据此跳过已收集线程，避免二次 recv 的 Disconnected 误报。
+    fn join_is_taken(&self) -> bool {
+        self.join.is_none()
+    }
+
     /// 标记 owned 写端已全部关闭（EOF 判定依据之一）。
     fn mark_owned_closed(&self) {
         self.owned_closed.store(true, Ordering::Relaxed);
@@ -849,10 +930,22 @@ impl CaptureWorker {
 
     /// 等待自然完成（EOF/Io/panic），不请求停止；None = 宽限内未完成
     ///（如管道被非拥有方持有）。`Some(Err(()))` = 线程 panic。
-    fn wait(&self, grace: Duration) -> Option<Result<Capture, ()>> {
+    /// PLAN-1034：取 `&mut` 并在 Some 结局收割 join——消息被本方法消费
+    /// 后线程已收场，后续收尾侧凭 `join_is_taken` 跳过，杜绝二次 recv
+    /// 的 Disconnected 误报 panicked（镜像 WriterWorker::wait）。
+    fn wait(&mut self, grace: Duration) -> Option<Result<Capture, ()>> {
         match self.done.recv_timeout(grace) {
-            Ok(cap) => Some(Ok(cap)),
-            Err(RecvTimeoutError::Disconnected) => Some(Err(())),
+            Ok(cap) => {
+                let joined = self.join.take().map(|h| h.join());
+                match joined {
+                    Some(Ok(())) => Some(Ok(cap)),
+                    _ => Some(Err(())),
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                let _ = self.join.take().map(|h| h.join());
+                Some(Err(()))
+            }
             Err(RecvTimeoutError::Timeout) => None,
         }
     }
@@ -894,6 +987,11 @@ fn finish_capture(
                 source,
             }),
             ReaderEnd::Stopped => Err(ExecutionError::PipesHeld { after: grace }),
+            // capped reader 只经 run_bounded 收集；走未封顶收尾路径即 API
+            // 误用（不可达于现调用图，具名而非吞错）。
+            ReaderEnd::CapExceeded => Err(ExecutionError::InvalidSpec(
+                "cap-exceeded capture handed to the uncapped finish path".into(),
+            )),
         },
         Some(Err(())) => {
             w.stop_and_join(TEARDOWN_GRACE)?;
@@ -1124,6 +1222,11 @@ impl WriterWorker {
         self.stop.store(true, Ordering::Relaxed);
     }
 
+    /// join 句柄是否已被取走（wait/stop_and_join 已收场）。
+    fn join_is_taken(&self) -> bool {
+        self.join.is_none()
+    }
+
     /// 等待自然完成（不停止）：通知驱动,经 join 收割取回 outcome。
     fn wait(&mut self, grace: Duration) -> Option<Result<WriterOutcome, ()>> {
         match self.done.recv_timeout(grace) {
@@ -1317,6 +1420,522 @@ fn output_io_error(error: ExecutionError) -> io::Error {
         | ExecutionError::ReaderIo { source, .. } => source,
         other => io::Error::other(other.to_string()),
     }
+}
+
+// ---- PLAN-1034 T-02：opt-in 有界捕获入口（同 run_prepared/CaptureWorker
+// 生命周期，非既有 run/run_command_capture 合同的改动）----
+
+/// PLAN-1034 §5 r4 DEC-IPC-LIMIT 的显式 opt-in 有界执行策略。与既有
+/// 入口互不相干：`run`/`run_command_capture`/`run_command_output` 保持
+/// 无默认截断合同；本策略仅由显式传入的调用方（A2X 三父 adapter）
+/// 生效。
+#[derive(Clone, Debug)]
+pub struct BoundedPolicy {
+    /// owned 交换的绝对期限（入口起）：stdin 写入/关闭、根等待与双流
+    /// 收集共用；成功（含收尾收集）必须全部落在其中。
+    pub exec_deadline: Duration,
+    /// 终止触发后的**单一**收尾期限（触发时刻起）：两轮 kill/reap、
+    /// reader/writer 真停与 guard 兜底共用同一剩余量，不每路另加。
+    pub cleanup_deadline: Duration,
+    /// stdout 字节上限（收集过程中扩容前核帽；cap+1 事实立即终止
+    /// owned 树并 `BoundedError::StreamCap`）。None = 不封顶。
+    pub stdout_cap: Option<usize>,
+    /// stderr 字节上限（同 stdout，父侧即时强制）。
+    pub stderr_cap: Option<usize>,
+}
+
+/// 终止触发后的单一收尾期限内的清理事实（不写"保证全收敛"）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CleanupReport {
+    /// 全部 owned 等待（reap + 三个线程真停）都在期限内完成。
+    pub completed: bool,
+    /// 具名残留：未确认 reap 的 PID、未真停的线程（可为空串）。
+    pub detail: String,
+    pub elapsed: Duration,
+}
+
+/// PLAN-1034 opt-in 有界执行的具名失败。cap/超时先保原失败因，清理
+/// 结果随行携带；IO/reader panic/writer/kill/reap 失败均为独立 Infra，
+/// 不被进程 exit 0 覆盖。
+#[derive(Debug)]
+pub enum BoundedError {
+    /// 每流 cap 命中（cap+1 已观测）：owned 树已终止，绝无截断文本
+    /// 成功；`observed` 饱和在 cap+1。
+    StreamCap {
+        stream: &'static str,
+        cap: usize,
+        observed: usize,
+        cleanup: CleanupReport,
+    },
+    /// exec 期限命中（根仍在运行）：owned 树已按单一收尾期限终止。
+    ExecDeadline {
+        after: Duration,
+        cleanup: CleanupReport,
+    },
+    /// 基础设施失败（spawn/io/reader/writer/panic/pipes-held 透传）。
+    Infra {
+        source: ExecutionError,
+        cleanup: Option<CleanupReport>,
+    },
+}
+
+impl std::fmt::Display for BoundedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BoundedError::StreamCap {
+                stream,
+                cap,
+                observed,
+                cleanup,
+            } => write!(
+                f,
+                "{stream} exceeded its {cap}-byte cap (observed {observed}); \
+                 owned tree terminated; cleanup completed={} {}",
+                cleanup.completed, cleanup.detail
+            ),
+            BoundedError::ExecDeadline { after, cleanup } => write!(
+                f,
+                "exec deadline exceeded after {after:?}; owned tree terminated; \
+                 cleanup completed={} {}",
+                cleanup.completed, cleanup.detail
+            ),
+            BoundedError::Infra { source, cleanup } => match cleanup {
+                Some(c) => write!(
+                    f,
+                    "bounded execution infra failure: {source}; cleanup: {c:?}"
+                ),
+                None => write!(f, "bounded execution infra failure: {source}"),
+            },
+        }
+    }
+}
+
+impl std::error::Error for BoundedError {}
+
+/// opt-in 有界执行的结果（成功路径：EOF 完整收集、无截断）。
+#[derive(Clone, Debug)]
+pub struct BoundedResult {
+    pub kind: ExitKind,
+    pub stdout: Option<Vec<u8>>,
+    pub stderr: Option<Vec<u8>>,
+    /// exec 阶段（入口到含收集的返回）耗时。
+    pub elapsed: Duration,
+    /// 终止触发后的单一收尾期限耗时（成功路径为 None 或终态收集若触
+    /// 发了期限则 Some——见 §5"成功必须含清理在 exec 期限内"）。
+    pub cleanup_elapsed: Option<Duration>,
+}
+
+fn bounded_infra(source: ExecutionError) -> BoundedError {
+    BoundedError::Infra {
+        source,
+        cleanup: None,
+    }
+}
+
+/// 两轮终止+收尸，但全部等待取**同一绝对截止**的剩余量（PLAN-1034
+/// §5：单一 cleanup deadline，不每轮各得全额宽限）。失败具名返回。
+fn cancel_within_absolute(proc: &mut OwnedProcess, at: Instant) -> Result<(), io::Error> {
+    let first = proc.terminate();
+    if first.is_ok() {
+        let remaining = at.saturating_duration_since(Instant::now());
+        if let Ok(Some(_)) = proc.wait_deadline(remaining) {
+            return Ok(());
+        }
+    }
+    proc.terminate()?;
+    let remaining = at.saturating_duration_since(Instant::now());
+    match proc.wait_deadline(remaining)? {
+        Some(_) => Ok(()),
+        None => Err(io::Error::other(
+            "process did not exit within two terminations under the single cleanup deadline",
+        )),
+    }
+}
+
+/// 终止触发后的统一收尾：先停自有 reader/writer（标志生效于轮询切片），
+/// 再两轮 kill/reap（根已确认收尸时跳过 reap），随后三线程逐一确认真
+/// 停——所有等待共享 `at` 的剩余量；任一失败具名记入 report（不覆盖、
+/// 不重写、不谎报收敛）。
+fn bounded_cleanup(
+    proc: &mut OwnedProcess,
+    stdout_w: &mut Option<CaptureWorker>,
+    stderr_w: &mut Option<CaptureWorker>,
+    writer_w: &mut Option<WriterWorker>,
+    cleanup_deadline: Duration,
+) -> CleanupReport {
+    let t0 = Instant::now();
+    let at = t0 + cleanup_deadline;
+    let mut residuals: Vec<String> = Vec::new();
+    if let Some(w) = stdout_w.as_mut() {
+        w.request_stop();
+        w.mark_owned_closed();
+    }
+    if let Some(w) = stderr_w.as_mut() {
+        w.request_stop();
+        w.mark_owned_closed();
+    }
+    if let Some(w) = writer_w.as_mut() {
+        w.request_stop();
+    }
+    if !proc.reaped {
+        if let Err(e) = cancel_within_absolute(proc, at) {
+            residuals.push(format!("reap unconfirmed: pid {} ({e})", proc.id()));
+        }
+    }
+    for w in [stdout_w, stderr_w] {
+        if let Some(w) = w.as_mut() {
+            // PLAN-1034 修复：wait() 已消费消息并 join 的线程（正常收尾
+            // 路径）不重复 stop_and_join——二次 recv 只会得到 Disconnected，
+            // 把已干净收场的线程误报成 panicked。
+            if w.join_is_taken() {
+                continue;
+            }
+            let remaining = at.saturating_duration_since(Instant::now());
+            match w.stop_and_join(remaining) {
+                Ok(_) => {}
+                Err(e) => residuals.push(format!("{} reader: {e}", w.stream)),
+            }
+        }
+    }
+    if let Some(w) = writer_w.as_mut() {
+        if w.join_is_taken() {
+            return CleanupReport {
+                completed: residuals.is_empty(),
+                detail: residuals.join("; "),
+                elapsed: t0.elapsed(),
+            };
+        }
+        let remaining = at.saturating_duration_since(Instant::now());
+        if let Err(e) = w.stop_and_join(remaining) {
+            residuals.push(format!("stdin writer: {e}"));
+        }
+    }
+    CleanupReport {
+        completed: residuals.is_empty(),
+        detail: residuals.join("; "),
+        elapsed: t0.elapsed(),
+    }
+}
+
+/// PLAN-1034 T-02：显式 opt-in 的有界捕获执行——同一 owned 生命周期
+/// （Windows Job / Unix 进程组、cancel/reap、pipe-poll reader/writer）
+/// 之上叠加 per-stream cap 与双期限：
+///
+/// * 首个 cap 溢出（cap+1 事实）→ 立即终止 owned 树 + 单一收尾期限 →
+///   [`BoundedError::StreamCap`]（不等自然退出，不以截断文本成功）；
+/// * exec 期限命中 → 终止 + 单一收尾期限 → [`BoundedError::ExecDeadline`]；
+/// * 成功必须含清理在 exec 期限内完成（正常路径的收尾收集共享 exec
+///   剩余量；超限只准清理并具名失败）；
+/// * reader/writer 的 IO/panic 与 kill/reap 失败独立 [`BoundedError::Infra`]，
+///   不被 exit 0 覆盖。
+///
+/// 既有入口的合同不因本函数存在而改变；默认无 cap 的调用方继续用 `run`。
+pub fn run_bounded(
+    spec: &ExecutionSpec,
+    policy: &BoundedPolicy,
+) -> Result<BoundedResult, BoundedError> {
+    if policy.exec_deadline.is_zero() || policy.cleanup_deadline.is_zero() {
+        return Err(bounded_infra(ExecutionError::InvalidSpec(
+            "bounded policy deadlines must be nonzero".into(),
+        )));
+    }
+    validate(spec).map_err(bounded_infra)?;
+    let start = Instant::now();
+    let exec_at = start + policy.exec_deadline;
+    let mut proc = spawn(spec).map_err(bounded_infra)?;
+
+    // 与 run_prepared 相同的写端准入：失败时无自有线程需收尾。
+    let mut stdin_admitted: Option<(StdinPipe, Option<CancelSlot>)> = None;
+    if spec.stdin_data.is_some() {
+        let stdin = proc.take_stdin().map_err(|e| {
+            bounded_infra(match e {
+                StdinTakeError::Missing => ExecutionError::InvalidSpec("stdin pipe missing".into()),
+                StdinTakeError::Credential(source) => ExecutionError::Io {
+                    stage: "create stdin cancel credential",
+                    source,
+                },
+            })
+        })?;
+        #[cfg(windows)]
+        let slot = stdin
+            .cancel_handle()
+            .map(|h| Some(Arc::new(Mutex::new(Some(h)))) as Option<CancelSlot>)
+            .map_err(|source| {
+                bounded_infra(ExecutionError::Io {
+                    stage: "clone stdin cancel credential",
+                    source,
+                })
+            })?;
+        #[cfg(not(windows))]
+        let slot: Option<CancelSlot> = stdin.cancel_handle().map(|_| None).map_err(|source| {
+            bounded_infra(ExecutionError::Io {
+                stage: "clone stdin cancel credential",
+                source,
+            })
+        })?;
+        stdin_admitted = Some((stdin, slot));
+    }
+
+    let no_overflow = Arc::new(AtomicUsize::new(0));
+    let (mut stdout_w, stdout_overflow) = match proc.take_stdout() {
+        Some(r) => {
+            let (w, o) = CaptureWorker::spawn_capped("stdout", r, policy.stdout_cap);
+            (Some(w), o)
+        }
+        None => (None, Arc::clone(&no_overflow)),
+    };
+    let (mut stderr_w, stderr_overflow) = match proc.take_stderr() {
+        Some(r) => {
+            let (w, o) = CaptureWorker::spawn_capped("stderr", r, policy.stderr_cap);
+            (Some(w), o)
+        }
+        None => (None, Arc::clone(&no_overflow)),
+    };
+    let mut writer_w = stdin_admitted.map(|(stdin, slot)| {
+        let data = spec.stdin_data.clone().unwrap_or_default();
+        WriterWorker::spawn_with(stdin, data, slot)
+    });
+
+    // 等待循环：切片轮询，首个 cap 溢出即时触发终止；exec 期限到期转
+    // 清理路径。IO 失败先清理（exec 剩余量内）再具名返回。
+    let mut timed_out = false;
+    let mut cap_hit: Option<(&'static str, usize, usize)> = None;
+    let status = loop {
+        let remaining = exec_at.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            timed_out = true;
+            break None;
+        }
+        match proc.wait_deadline(remaining.min(PIPE_POLL_SLICE)) {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {
+                // 切片耗在 wait 轮询上；先查 cap 再继续（首个溢出即出循环）。
+                for (stream, overflow, cap) in [
+                    ("stdout", &stdout_overflow, policy.stdout_cap),
+                    ("stderr", &stderr_overflow, policy.stderr_cap),
+                ] {
+                    if let Some(cap) = cap {
+                        let observed = overflow.load(Ordering::Acquire);
+                        if observed != 0 {
+                            cap_hit = Some((stream, cap, observed));
+                            break;
+                        }
+                    }
+                }
+                if cap_hit.is_some() {
+                    break None;
+                }
+            }
+            Err(source) => {
+                let err = ExecutionError::Io {
+                    stage: "wait",
+                    source,
+                };
+                let cleanup = bounded_cleanup(
+                    &mut proc,
+                    &mut stdout_w,
+                    &mut stderr_w,
+                    &mut writer_w,
+                    policy.cleanup_deadline,
+                );
+                return Err(BoundedError::Infra {
+                    source: err,
+                    cleanup: Some(cleanup),
+                });
+            }
+        }
+    };
+
+    if let Some((stream, cap, observed)) = cap_hit {
+        let cleanup = bounded_cleanup(
+            &mut proc,
+            &mut stdout_w,
+            &mut stderr_w,
+            &mut writer_w,
+            policy.cleanup_deadline,
+        );
+        return Err(BoundedError::StreamCap {
+            stream,
+            cap,
+            observed,
+            cleanup,
+        });
+    }
+    if timed_out {
+        let after = start.elapsed();
+        let cleanup = bounded_cleanup(
+            &mut proc,
+            &mut stdout_w,
+            &mut stderr_w,
+            &mut writer_w,
+            policy.cleanup_deadline,
+        );
+        return Err(BoundedError::ExecDeadline { after, cleanup });
+    }
+
+    // 根已退出：终止仍持管道的 owned 后代（同 run_prepared）；随后全部
+    // 收尾共享 exec 剩余量——成功含清理在 exec 期限内。
+    let Some(status) = status else {
+        return Err(bounded_infra(ExecutionError::InvalidSpec(
+            "bounded scheduler lost the root status".into(),
+        )));
+    };
+    proc.reaped = true;
+    if proc.tree_scope == TreeScope::ProcessTree {
+        if let Err(source) = proc.terminate() {
+            let err = ExecutionError::Io {
+                stage: "terminate after root exit",
+                source,
+            };
+            let cleanup = bounded_cleanup(
+                &mut proc,
+                &mut stdout_w,
+                &mut stderr_w,
+                &mut writer_w,
+                policy.cleanup_deadline,
+            );
+            return Err(BoundedError::Infra {
+                source: err,
+                cleanup: Some(cleanup),
+            });
+        }
+    }
+    if let Some(w) = &stdout_w {
+        w.mark_owned_closed();
+    }
+    if let Some(w) = &stderr_w {
+        w.mark_owned_closed();
+    }
+    let grace = exec_at.saturating_duration_since(Instant::now());
+    let mut late_cap: Option<(&'static str, usize, usize)> = None;
+    let mut infra: Option<ExecutionError> = None;
+    // 每流三态：Some(Ok(bytes)) 完成 / Some(Err) 具名失败 / None 宽限内
+    // 未完成（ PipesHeld 语境，下方统一停收尾）。
+    let stdout: Option<Option<Vec<u8>>> = match stdout_w.as_mut() {
+        Some(w) => match w.wait(grace) {
+            Some(Ok(cap)) => match cap.end {
+                ReaderEnd::Eof => Some(Some(cap.bytes)),
+                ReaderEnd::Io(source) => {
+                    infra = Some(ExecutionError::ReaderIo {
+                        stream: "stdout",
+                        source,
+                    });
+                    Some(None)
+                }
+                ReaderEnd::CapExceeded => {
+                    late_cap = Some((
+                        "stdout",
+                        policy.stdout_cap.unwrap_or(0),
+                        stdout_overflow.load(Ordering::Acquire),
+                    ));
+                    Some(None)
+                }
+                ReaderEnd::Stopped => {
+                    infra = Some(ExecutionError::PipesHeld { after: grace });
+                    Some(None)
+                }
+            },
+            Some(Err(())) => {
+                infra = Some(ExecutionError::ReaderPanicked { stream: "stdout" });
+                Some(None)
+            }
+            None => None,
+        },
+        None => Some(None),
+    };
+    // stderr 同门（独立记录，不互相覆盖）。
+    let stderr: Option<Option<Vec<u8>>> = match stderr_w.as_mut() {
+        Some(w) => match w.wait(grace) {
+            Some(Ok(cap)) => match cap.end {
+                ReaderEnd::Eof => Some(Some(cap.bytes)),
+                ReaderEnd::Io(source) => {
+                    infra = infra.or(Some(ExecutionError::ReaderIo {
+                        stream: "stderr",
+                        source,
+                    }));
+                    Some(None)
+                }
+                ReaderEnd::CapExceeded => {
+                    if late_cap.is_none() {
+                        late_cap = Some((
+                            "stderr",
+                            policy.stderr_cap.unwrap_or(0),
+                            stderr_overflow.load(Ordering::Acquire),
+                        ));
+                    }
+                    Some(None)
+                }
+                ReaderEnd::Stopped => {
+                    infra = infra.or(Some(ExecutionError::PipesHeld { after: grace }));
+                    Some(None)
+                }
+            },
+            Some(Err(())) => {
+                infra = infra.or(Some(ExecutionError::ReaderPanicked { stream: "stderr" }));
+                Some(None)
+            }
+            None => None,
+        },
+        None => Some(None),
+    };
+    let writer: Option<Result<(), ExecutionError>> = match writer_w.as_mut() {
+        Some(w) => match w.wait(grace) {
+            Some(Ok(out)) => Some(match out.end {
+                WriterEnd::Done => Ok(()),
+                WriterEnd::Io(source) => Err(ExecutionError::Io {
+                    stage: "write stdin",
+                    source,
+                }),
+                WriterEnd::Stopped => Err(ExecutionError::PipesHeld { after: grace }),
+            }),
+            Some(Err(())) => Some(Err(ExecutionError::ReaderPanicked {
+                stream: "stdin writer",
+            })),
+            None => None,
+        },
+        None => Some(Ok(())),
+    };
+
+    if late_cap.is_some()
+        || infra.is_some()
+        || stdout.is_none()
+        || stderr.is_none()
+        || writer.is_none()
+        || writer.as_ref().is_some_and(|r| r.is_err())
+    {
+        // 收集期失败/溢出/期限内未完成：单一收尾期限停齐三线程（root 已
+        // 收尸，跳过 reap），先保原失败因再记清理结果。
+        let cleanup = bounded_cleanup(
+            &mut proc,
+            &mut stdout_w,
+            &mut stderr_w,
+            &mut writer_w,
+            policy.cleanup_deadline,
+        );
+        if let Some((stream, cap, observed)) = late_cap {
+            return Err(BoundedError::StreamCap {
+                stream,
+                cap,
+                observed,
+                cleanup,
+            });
+        }
+        let source = infra
+            .or_else(|| writer.and_then(|r| r.err()))
+            .unwrap_or_else(|| ExecutionError::PipesHeld { after: grace });
+        return Err(BoundedError::Infra {
+            source,
+            cleanup: Some(cleanup),
+        });
+    }
+
+    Ok(BoundedResult {
+        kind: ExitKind::from_status(&status),
+        stdout: stdout.flatten(),
+        stderr: stderr.flatten(),
+        elapsed: start.elapsed(),
+        cleanup_elapsed: None,
+    })
 }
 
 #[cfg(test)]
@@ -1927,7 +2546,13 @@ mod tests {
         };
         let mut bytes = Vec::new();
         let mut chunk = [0u8; 16 * 1024];
-        match drain_readable(&mut fake, &mut bytes, &mut chunk) {
+        match drain_readable(
+            &mut fake,
+            &mut bytes,
+            &mut chunk,
+            None,
+            &AtomicUsize::new(0),
+        ) {
             DrainEnd::Io(ref e) => assert!(e.to_string().contains("stop-drain"), "{e}"),
             other => panic!("expected Io from stop-drain, got {other:?}"),
         }
@@ -2106,14 +2731,11 @@ mod owned_close_953 {
         Some(worker)
     }
     fn join(worker: &mut Option<CaptureWorker>) {
-        worker
-            .as_mut()
-            .unwrap()
-            .join
-            .take()
-            .unwrap()
-            .join()
-            .unwrap();
+        // PLAN-1034: wait() 已在 Some 结局收割 join——此处仅兜底（宽限
+        // 内未完成等 None 情形），不再要求句柄仍存在。
+        if let Some(h) = worker.as_mut().unwrap().join.take() {
+            h.join().unwrap();
+        }
     }
     #[test]
     fn last_bytes_after_empty_peek_preserved_on_both_streams() {
