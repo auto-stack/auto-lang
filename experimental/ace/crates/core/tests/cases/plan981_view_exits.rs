@@ -40,7 +40,7 @@ fn p981_duplicate_view2d_is_rejected() {
     .expect_err("a second view-2d is rejected");
     assert_eq!(ds[0].code, "source.age.view-exit", "{ds:?}");
     assert!(
-        ds[0].message.contains("exactly one view exit"),
+        ds[0].message.contains("declared twice"),
         "{}",
         ds[0].message
     );
@@ -56,14 +56,21 @@ fn p981_duplicate_view_is_rejected() {
     assert_eq!(ds[0].code, "source.age.view-exit", "{ds:?}");
 }
 
-/// 2D 与 3D 并存（规范点名"single view exit per node"）。
+/// AGE-L03（多出口版）：不同键的直属出口可以并存；声明事实列出全部出口。
 #[test]
-fn p981_mixed_2d_and_3d_exits_are_rejected() {
-    let ds = compile(
-        "node M {\n    view-2d {\n        shape2d q {\n            kind: quad\n        }\n    }\n    view-3d {\n        cylinder3d c {\n            position: (0.0, 0.0, 0.0)\n        }\n    }\n}\n",
+fn p981_distinct_exits_coexist_and_are_all_recorded() {
+    use ace_core::source::age_package::AgeViewExit;
+    let out = compile(
+        "node M {\n    view {\n        text \"u\" {}\n    }\n    view-portrait {\n        text \"p\" {}\n    }\n}\n",
     )
-    .expect_err("view-2d + view-3d is rejected");
-    assert_eq!(ds[0].code, "source.age.view-exit", "{ds:?}");
+    .expect("distinct direct exits coexist");
+    let c = &out.description.components[0];
+    assert_eq!(
+        c.exits,
+        vec![AgeViewExit::View, AgeViewExit::ViewPortrait],
+        "both declared exits are recorded in declaration order"
+    );
+    assert_eq!(c.exit, AgeViewExit::View, "the first exit stays the primary fact");
 }
 
 /// 单个出口仍然合法（收紧不能破坏正常源）。
@@ -105,8 +112,7 @@ fn p981_portrait_and_widget_exits_are_recognised() {
 fn p981_duplicate_portrait_or_widget_exits_are_rejected() {
     for src in [
         "node M {\n    view-portrait {\n        text \"a\" {}\n    }\n    view-portrait {\n        text \"b\" {}\n    }\n}\n",
-        "node M {\n    view-portrait {\n        text \"a\" {}\n    }\n    view-widget {\n        text \"b\" {}\n    }\n}\n",
-        "node M {\n    view {\n        text \"a\" {}\n    }\n    view-widget {\n        text \"b\" {}\n    }\n}\n",
+        "node M {\n    view-widget {\n        text \"a\" {}\n    }\n    view-widget {\n        text \"b\" {}\n    }\n}\n",
     ] {
         let ds = compile(src).expect_err("a second exit is rejected");
         assert_eq!(ds[0].code, "source.age.view-exit", "{ds:?}");

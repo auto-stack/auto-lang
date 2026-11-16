@@ -154,6 +154,8 @@ pub struct AgePackageComponent {
     /// 复刻绑定器的导入/可见性规则。
     pub resource_refs: Vec<AgeResolvedResourceRef>,
     pub texts: Vec<AgePackageText>,
+    /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重、按声明序）。
+    pub exits: Vec<AgeViewExit>,
     /// 声明所在模块键。
     pub module: String,
     /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
@@ -220,33 +222,36 @@ pub struct AgeSelectionError {
 /// - 无候选（如场景请求遇到纯 UI 出口、或 UI 请求遇到纯场景出口）→ 具名拒绝。
 /// - 零尺寸 → 具名拒绝（不伪装成空画面）。
 pub fn select_exit(
-    declared: AgeViewExit,
+    declared: &[AgeViewExit],
     request: AgeViewRequest,
 ) -> Result<AgeViewExit, AgeSelectionError> {
-    let declared_label = exit_label(declared);
+    let declared_label = || {
+        declared
+            .iter()
+            .map(|e| exit_label(*e))
+            .collect::<Vec<_>>()
+            .join(" / ")
+    };
+    let pick = |want: AgeViewExit| -> Option<AgeViewExit> {
+        declared.iter().copied().find(|e| *e == want)
+    };
     match request {
-        AgeViewRequest::Scene2d => match declared {
-            AgeViewExit::View2d => Ok(AgeViewExit::View2d),
-            other => Err(AgeSelectionError {
-                code: "source.age.exit-unavailable",
-                message: format!(
-                    "a 2D scene request cannot be served by `{}`; declare `view-2d` \
-                     (no cross-domain fallback)",
-                    exit_label(other)
-                ),
-            }),
-        },
-        AgeViewRequest::Scene3d => match declared {
-            AgeViewExit::View3d => Ok(AgeViewExit::View3d),
-            other => Err(AgeSelectionError {
-                code: "source.age.exit-unavailable",
-                message: format!(
-                    "a 3D scene request cannot be served by `{}`; declare `view-3d` \
-                     (no cross-domain fallback)",
-                    exit_label(other)
-                ),
-            }),
-        },
+        AgeViewRequest::Scene2d => pick(AgeViewExit::View2d).ok_or_else(|| AgeSelectionError {
+            code: "source.age.exit-unavailable",
+            message: format!(
+                "a 2D scene request needs a `view-2d` exit; declared: [{}] (no cross-domain \
+                 fallback)",
+                declared_label()
+            ),
+        }),
+        AgeViewRequest::Scene3d => pick(AgeViewExit::View3d).ok_or_else(|| AgeSelectionError {
+            code: "source.age.exit-unavailable",
+            message: format!(
+                "a 3D scene request needs a `view-3d` exit; declared: [{}] (no cross-domain \
+                 fallback)",
+                declared_label()
+            ),
+        }),
         AgeViewRequest::Ui {
             width,
             height,
@@ -260,27 +265,35 @@ pub fn select_exit(
                     ),
                 });
             }
-            match declared {
-                AgeViewExit::ViewWidget if widget_host => Ok(AgeViewExit::ViewWidget),
-                AgeViewExit::ViewPortrait if height > width => Ok(AgeViewExit::ViewPortrait),
-                AgeViewExit::View => Ok(AgeViewExit::View),
-                // 声明了合适形态但请求不匹配：仍可落到默认出口；没有默认出口才拒。
-                AgeViewExit::ViewWidget | AgeViewExit::ViewPortrait => Err(AgeSelectionError {
-                    code: "source.age.exit-unavailable",
-                    message: format!(
-                        "`{}` is the only declared UI exit, but this request is not \
-                         widget/portrait; declare a default `view`",
-                        declared_label
-                    ),
-                }),
-                other => Err(AgeSelectionError {
-                    code: "source.age.exit-unavailable",
-                    message: format!(
-                        "`{}` is a scene exit and cannot serve a UI request",
-                        exit_label(other)
-                    ),
-                }),
+            // 计划 AGE-L04 的顺序：widget → portrait（仅 H>W）→ 默认 view；方形走默认。
+            let order: [AgeViewExit; 3] = [
+                AgeViewExit::ViewWidget,
+                AgeViewExit::ViewPortrait,
+                AgeViewExit::View,
+            ];
+            for (i, cand) in order.iter().enumerate() {
+                let eligible = match i {
+                    0 => widget_host,
+                    1 => height > width,
+                    _ => true,
+                };
+                if eligible {
+                    if let Some(found) = pick(*cand) {
+                        return Ok(found);
+                    }
+                }
             }
+            Err(AgeSelectionError {
+                code: "source.age.exit-unavailable",
+                message: format!(
+                    "this UI request ({}x{}, widget_host={}) is not served by any declared \
+                     exit [{}]",
+                    width,
+                    height,
+                    widget_host,
+                    declared_label()
+                ),
+            })
         }
     }
 }
@@ -337,6 +350,16 @@ pub fn lifecycle_budget(
         ticks,
         frames,
     })
+}
+/// B-LANGUAGE-I（AGE-L03）：出口键拼写 → 出口枚举（唯一映射，不按命名猜）。
+pub(crate) fn exit_from_kind(kind: &str) -> AgeViewExit {
+    match kind {
+        "view-2d" => AgeViewExit::View2d,
+        "view-3d" => AgeViewExit::View3d,
+        "view-portrait" => AgeViewExit::ViewPortrait,
+        "view-widget" => AgeViewExit::ViewWidget,
+        _ => AgeViewExit::View,
+    }
 }
 /// 出口的稳定标签（与 description 的 exit 事实同字）。
 fn exit_label(exit: AgeViewExit) -> &'static str {
@@ -974,13 +997,14 @@ fn read_back_components(
                 .get(&(p.module.clone(), p.node.name.name.clone()))
                 .cloned()
                 .unwrap_or_default(),
-            exit: match p.node.view.exit.as_str() {
-                "view-2d" => AgeViewExit::View2d,
-                "view-3d" => AgeViewExit::View3d,
-                "view-portrait" => AgeViewExit::ViewPortrait,
-                "view-widget" => AgeViewExit::ViewWidget,
-                _ => AgeViewExit::View,
-            },
+            exits: p
+                .node
+                .view
+                .exits
+                .iter()
+                .map(|e| exit_from_kind(&e.kind))
+                .collect(),
+            exit: exit_from_kind(&p.node.view.exit),
             members: p
                 .node
                 .members

@@ -4371,7 +4371,7 @@ impl<'a> Engine<'a> {
         // 只是被重复赋值，于是两个 `view-2d`（或两个 `view`、或 2D+3D 并存）
         // 会静默合并——后者还把两个出口的行融成一条扁平列表，丢失归属。
         // 规范明说 "single view exit per node"。
-        let mut first_exit_span: Option<Span> = None;
+        let mut exits: Vec<crate::source::age_component::ComponentExit> = Vec::new();
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
         let mut messages = Vec::new();
         let mut design = Vec::new();
@@ -4504,7 +4504,7 @@ impl<'a> Engine<'a> {
                     let suffix = suffix_leaf
                         .map(|w| self.cx.spelling(w))
                         .unwrap_or_default();
-                    view_exit = match suffix.as_str() {
+                    let kind = match suffix.as_str() {
                         "2d" => "view-2d".to_string(),
                         "3d" => "view-3d".to_string(),
                         "portrait" => "view-portrait".to_string(),
@@ -4528,12 +4528,14 @@ impl<'a> Engine<'a> {
                             "view".to_string()
                         }
                     };
-                    if let Some(first) = first_exit_span {
+                    // B-LANGUAGE-I（AGE-L03）：不同键的直属出口可以并存；**同一键**
+                    // 写两次仍拒绝（"重复直属选择键拒绝"）。出口值由后缀字节落定。
+                    if exits.iter().any(|e| e.kind == kind) {
                         let msg = format!(
-                            "a node declares exactly one view exit (view / view-2d / view-3d / view-portrait / view-widget); a second exit \
-                             at byte {} would silently merge its \
-                             leaves with the first at byte {}",
-                            view_span.start, first.start
+                            "the `{}` exit is declared twice; distinct exits (view / view-2d / \
+                             view-3d / view-portrait / view-widget) may coexist, but the same \
+                             exit key may appear only once",
+                            kind
                         );
                         self.cx.reject(view_span, move || {
                             Diagnostic::new(
@@ -4544,7 +4546,13 @@ impl<'a> Engine<'a> {
                             )
                         });
                     } else {
-                        first_exit_span = Some(view_span);
+                        if exits.is_empty() {
+                            view_exit = kind.clone();
+                        }
+                        exits.push(crate::source::age_component::ComponentExit {
+                            kind: kind.clone(),
+                            span: view_span,
+                        });
                     }
                     for raw in self.cx.children(member) {
                         let c = self
@@ -4615,6 +4623,7 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
+                    let mut kind = "view".to_string();
                     // B-LANGUAGE-I（AGE-L03）：portrait/widget 是直属呈现出口。两条
                     // 成员规则的形状相同（`view - <suffix>`），所以出口必须按**后缀
                     // 字节**落定，不能按命中的规则名（否则 `view-widget` 会先命中
@@ -4630,7 +4639,7 @@ impl<'a> Engine<'a> {
                         let suffix = suffix_leaf
                             .map(|w| self.cx.spelling(w))
                             .unwrap_or_default();
-                        view_exit = match suffix.as_str() {
+                        kind = match suffix.as_str() {
                             "portrait" => "view-portrait".to_string(),
                             "widget" => "view-widget".to_string(),
                             _ => {
@@ -4654,12 +4663,14 @@ impl<'a> Engine<'a> {
                             }
                         };
                     }
-                    if let Some(first) = first_exit_span {
+                    // B-LANGUAGE-I（AGE-L03）：不同键的直属出口可以并存；**同一键**
+                    // 写两次仍拒绝（"重复直属选择键拒绝"）。出口值由后缀字节落定。
+                    if exits.iter().any(|e| e.kind == kind) {
                         let msg = format!(
-                            "a node declares exactly one view exit (view / view-2d / view-3d / view-portrait / view-widget); a second exit \
-                             at byte {} would silently merge its \
-                             leaves with the first at byte {}",
-                            view_span.start, first.start
+                            "the `{}` exit is declared twice; distinct exits (view / view-2d / \
+                             view-3d / view-portrait / view-widget) may coexist, but the same \
+                             exit key may appear only once",
+                            kind
                         );
                         self.cx.reject(view_span, move || {
                             Diagnostic::new(
@@ -4670,7 +4681,13 @@ impl<'a> Engine<'a> {
                             )
                         });
                     } else {
-                        first_exit_span = Some(view_span);
+                        if exits.is_empty() {
+                            view_exit = kind.clone();
+                        }
+                        exits.push(crate::source::age_component::ComponentExit {
+                            kind: kind.clone(),
+                            span: view_span,
+                        });
                     }
                     for raw in self.cx.children(member) {
                         // `age-view-item` 是分派 wrapper：实质成员是它的首个非 trivia 孩子。
@@ -4782,6 +4799,7 @@ impl<'a> Engine<'a> {
             view: ComponentView {
                 role: view_role,
                 exit: view_exit,
+                exits,
                 span: view_span,
                 texts,
                 node_refs,
