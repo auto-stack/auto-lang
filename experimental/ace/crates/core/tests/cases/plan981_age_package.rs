@@ -1,0 +1,137 @@
+//! PLAN-981（SOURCE 批，T-01）：AGE **多模块包面**（`age-package` 裁剪）的存在性
+//! 与身份回归。
+//!
+//! 本文件的断言是 IF-981-MODULE 的第一层（L1）：包模块图与 AGE 组件必须能在
+//! **同一个**裁剪面里被解析，且该面与 H0/组件面是两个不同的 grammar 身份；别的
+//! profile 的裁剪不得因此改变规则集。L2（真源解析/绑定/verify/双后端）在
+//! `ace_core::source::age_package` 与其后续用例。
+use ace_core::source::cst::{profile_from_slug, profile_grammar};
+use ace_core::source::SourceProfile;
+
+fn rule_names(p: SourceProfile) -> Vec<String> {
+    profile_grammar(p)
+        .expect("grammar")
+        .program()
+        .rules
+        .iter()
+        .map(|r| r.name.clone())
+        .collect()
+}
+
+fn grammar_id(p: SourceProfile) -> String {
+    format!(
+        "{}",
+        profile_grammar(p).expect("grammar").program().identity.grammar_id.0
+    )
+}
+
+/// 包模块面与 AGE 组件面在 `age-package` 上**同时**存在。
+#[test]
+fn p981_age_package_trim_is_the_package_and_age_union() {
+    let pkg = rule_names(SourceProfile::AgePackage);
+    for want in [
+        // 包模块面（PLAN-960 的 packages-modules 表面）
+        "use-item-p",
+        "public-item",
+        "const-item",
+        "var-item",
+        "use-path",
+        // AGE 组件面（PLAN-979 T-03）
+        "age-node-c-item",
+        "age-model-member",
+        "age-on-member",
+        "age-view-member",
+        "age-text-item",
+    ] {
+        assert!(
+            pkg.iter().any(|r| r == want),
+            "the age-package trim is missing `{want}`"
+        );
+    }
+}
+
+/// 三个 AGE 面是**三个**身份：包面不能靠改 H0/组件面来"顺便"得到。
+#[test]
+fn p981_age_package_is_its_own_grammar_identity() {
+    assert_ne!(
+        grammar_id(SourceProfile::AgePackage),
+        grammar_id(SourceProfile::AgeComponent)
+    );
+    assert_ne!(
+        grammar_id(SourceProfile::AgePackage),
+        grammar_id(SourceProfile::AgeH0)
+    );
+    // H0 保持最小面：有 node 项、无 model/on 成员（新面不改旧合同）。
+    let h0 = rule_names(SourceProfile::AgeH0);
+    assert!(h0.iter().any(|r| r == "age-node-item"));
+    assert!(!h0.iter().any(|r| r == "age-model-member"));
+    assert!(!h0.iter().any(|r| r == "age-on-member"));
+}
+
+/// profile 身份的往返：slug ↔ profile ↔ 文档 profile 串。
+#[test]
+fn p981_age_package_profile_identity_round_trips() {
+    assert_eq!(
+        SourceProfile::of("auto.source.age-package.draft"),
+        Some(SourceProfile::AgePackage)
+    );
+    assert_eq!(
+        profile_from_slug("age-package"),
+        Some(SourceProfile::AgePackage)
+    );
+    assert_eq!(
+        SourceProfile::AgePackage.as_str(),
+        "auto.source.age-package.draft"
+    );
+    assert_eq!(
+        SourceProfile::AgePackage.hir_domain(),
+        ace_core::hir::HirDomain::TextRecord
+    );
+}
+/// resync 后 age-package **不得**偷偷接受 980 的 widget 成员槽位。
+///
+/// R52-1：门并集一度把 `msg`/`design`/`bind`/`expose` 等槽位带进 age-package——
+/// 它们能解析，但 981 描述面没有对应字段、内部表达式也从不进唯一 verify
+/// （`design{theme: nosuch_ident}` 曾被 ACCEPTED）。现在这些槽位只属于
+/// age-component 面；age-package 必须在**解析期**拒绝（`source.syntax`），
+/// 而不是静默丢。这里是 11 个槽位形态的逐项回归。
+#[test]
+fn p981_age_package_rejects_widget_member_slots() {
+    use ace_core::source::age_h0::LegacyWidgetAlias;
+    use ace_core::source::age_package::compile_age_package;
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+
+    let bodies = [
+        "msg { Inc }",
+        "design {\n        theme: nosuch_ident\n    }",
+        "view main {\n        text \"hi\" {}\n    }",
+        "bind {\n        \"title\" -> .NoSuchHandler\n    }",
+        "routes {\n        \"/a\" -> use home\n    }",
+        "expose {\n        nosuch_field\n    }",
+        "lifecycle {\n        mounted => { .nosuch = 1 }\n    }",
+        "computed {\n        double => nosuch_ident + 1\n    }",
+        "watch { .count -> { .count = 1 } }",
+        "timer {\n        Tick (every_ms: 1)\n    }",
+        "on {\n        .Inc -> {\n            .count = 1\n        }\n    }",
+    ];
+    for body in bodies {
+        let src = format!("node M {{\n    {body}\n    view {{ text \"t\" {{}} }}\n}}\n");
+        let ds = compile_age_package(
+            &[PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "main".into(),
+                source: src.clone(),
+                provider: None,
+            }],
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &[PACKAGES_CAPABILITY.to_string()],
+        )
+        .expect_err(&format!("`{body}` must not be accepted by age-package"));
+        assert_eq!(
+            ds[0].code, "source.syntax",
+            "`{body}` must be rejected at parse time, not silently dropped: {ds:?}"
+        );
+    }
+}

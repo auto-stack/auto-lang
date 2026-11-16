@@ -38,7 +38,7 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false, false)
+    project_program_with_caps(p, k, tree, snap, profile, false, false, false, false)
 }
 
 /// PLAN-963（V-G06）：包模块的投影入口——记录模板**推迟**到扁平程序（全部模块
@@ -51,8 +51,9 @@ pub(crate) fn project_program_deferring_templates(
     tree: &CstTree,
     snap: &Snapshot,
     profile: SourceProfile,
+    age_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false, true)
+    project_program_with_caps(p, k, tree, snap, profile, false, false, true, age_face)
 }
 
 /// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
@@ -69,6 +70,7 @@ pub(crate) fn project_program_with_caps(
     ct_face: bool,
     instances_face: bool,
     defer_templates: bool,
+    age_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
     // PLAN-936（T-04）：ct 面上字符串 token 仅作为 meta 字段选择子进入词法事实（值位置由
@@ -76,7 +78,7 @@ pub(crate) fn project_program_with_caps(
     if let Some(d) = lex::first_lex_fact_ct(tree, snap, k, profile, ct_face) {
         return Err(vec![d]);
     }
-    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face);
+    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face, age_face);
     let tree_has_errors = tree.has_error_nodes();
     // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
     // 其余面无此二规则 = 保持原分派行为）。
@@ -84,6 +86,12 @@ pub(crate) fn project_program_with_caps(
         .rules
         .iter()
         .position(|r| r.name == "const-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 资源绑定（不可变，同 const）。
+    let age_let_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-let-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let var_item_kind = p
         .rules
@@ -220,6 +228,8 @@ pub(crate) fn project_program_with_caps(
             || kind == k.union_item.unwrap_or(u32::MAX)
             || Some(kind) == const_item_kind
             || Some(kind) == var_item_kind
+            // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 也是声明位项。
+            || Some(kind) == age_let_item_kind
             || Some(kind) == k.spec_item
             // PLAN-963（T-03）：`ext` 块也是声明项（须在 script 前）。
             || Some(kind) == k.ext_item
@@ -251,6 +261,54 @@ pub(crate) fn project_program_with_caps(
                 // ——同构投影到 Enum AST（union 的读语义由变体 guard 承载：
                 // 非活动臂 is-分支不匹配）。
                 items.push(Item::Enum(eng.run_enum_item(node)));
+            } else if Some(kind) == age_let_item_kind {
+                // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 无注解，类型由**初值**
+                // 推断。本切片只覆盖作者实际写法：初值是 AGE 资源服务调用，其返回
+                // 类型由声明表给出（`material2d.color -> Material2D` 等）。其它初值
+                // 形状具名拒绝——不假装有通用推断器，也不猜成 i32。
+                let span = first_leaf_span(&eng.cx, node);
+                let value_n = match eng.cx.field_child(node, "value") {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let inferred = age_service_result_port(&eng.cx, value_n);
+                match inferred {
+                    Some(port) => {
+                        // 与 `const` 同一 Item 形状，注解取推断出的端口类型。
+                        let name_leaf =
+                            eng.cx.field_child(node, "name").expect("let name");
+                        let name = ident_of(&mut eng.cx, name_leaf);
+                        let ann = TypeAnn {
+                            kind: TypeRef::Record(Ident {
+                                name: port.to_string(),
+                                span: eng.cx.span_of(value_n),
+                            }),
+                            span: eng.cx.span_of(value_n),
+                        };
+                        let value = eng.project_expr_sync(value_n);
+                        items.push(Item::Const(crate::source::ast::ConstItem {
+                            name,
+                            ty: ann,
+                            value,
+                            span: eng.cx.span_of(node),
+                        }));
+                        continue;
+                    }
+                    None => {
+                        eng.cx.reject(span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.module-let-inference",
+                                "a module-level `let` is typed from its initializer; this slice \
+                                 infers only AGE resource-service calls (e.g. \
+                                 `material2d.color(...)`). Write `const <name>: <type> = <expr>` \
+                                 for other initializers",
+                                span,
+                            )
+                        });
+                        continue;
+                    }
+                }
             } else if Some(kind) == const_item_kind || Some(kind) == var_item_kind {
                 // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
                 // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。
@@ -303,6 +361,18 @@ pub(crate) fn project_program_with_caps(
             } else if Some(kind) == k.task_item {
                 // PLAN-968: task actor declaration.
                 items.push(Item::Task(eng.run_task_item(node)));
+            } else if p
+                .rules
+                .iter()
+                .position(|r| r.name == "age-node-item" || r.name == "age-node-c-item"
+                    || r.name == "age-pub-node-item")
+                .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+                .is_some_and(|k2| kind == k2)
+            {
+                // PLAN-979/981：AGE node 声明由**领域前门**单独投影（候选 + 脱糖），
+                // 不是普通声明项。这里必须显式跳过——否则下面的 `Item::Type`
+                // 兜底会把一个 node 静默变成同名记录类型（本批实测过的静默丢弃）。
+                continue;
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -1600,7 +1670,9 @@ impl<'c, 'a> Walker<'c, 'a> {
     }
     fn is_raw(&self, g: u32) -> bool {
         let k = self.k();
-        g == k.tok_affix_num || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open
+        // PLAN-981：AGE 作者面合法使用浮点字面量，本面不把 affix-num 当裸 token。
+        let affix = g == k.tok_affix_num && !self.cx.age_face;
+        affix || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open
     }
 
     /// 块体：语句序列到 `}`（或 EOF 错误）。
@@ -3198,10 +3270,16 @@ fn decode_typed_literal(raw: &str) -> Result<ExprKind, String> {
     };
     // Split the alphabetic suffix from the numeric body (the token shape
     // guarantees digits lead and the suffix is contiguous letters).
-    let split = rest
-        .find(|ch: char| ch.is_ascii_alphabetic())
-        .ok_or_else(|| format!("numeric literal `{raw}` carries no digits"))?;
-    let (body, suffix) = (&rest[..split], &rest[split..]);
+    // 没有字母后缀（`0.9`/`12`/`1_000`）是**合法**的无后缀字面量：body 即整个
+    // 数字体、suffix 为空。只有连一个数字都没有时才报错。
+    let split = rest.find(|ch: char| ch.is_ascii_alphabetic());
+    let (body, suffix) = match split {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    if body.is_empty() || !body.chars().any(|c| c.is_ascii_digit()) {
+        return Err(format!("numeric literal `{raw}` carries no digits"));
+    }
     let has_dot = body.contains('.');
     if has_dot && radix != 10 {
         return Err(format!("radix literal `{raw}` cannot carry a fraction"));
@@ -3689,6 +3767,10 @@ pub(crate) struct Cx<'a> {
     /// `generic-call`（`rep<2>(21)`）只在这一面成立；plain 面沿用 935 的
     /// 具名拒（`source.instances-unsupported`）。
     instances_face: bool,
+    /// PLAN-981（IF-981-ORIGINAL）：AGE 作者面（`age-package` 裁剪）激活——
+    /// 浮点字面量等作者构造合法。由包前门显式传入（不按 profile 猜：包门在面
+    /// 之上用 TextRecord 投影）。
+    age_face: bool,
     /// PLAN-935：当前投影中函数声明的类型参数名（fn 投影期间有效——
     /// 引擎栈在 run_fn_item 内驱完，无跨函数交错）。
     ty_params: Vec<String>,
@@ -3859,6 +3941,37 @@ fn range_parts(cx: &Cx, node: u32) -> (u32, u32, bool) {
     (start_n, end_n, inclusive)
 }
 
+/// PLAN-981（IF-981-ORIGINAL）：初值是 AGE 资源服务调用时，其返回的端口类型名。
+///
+/// 与 resolver 的服务分类**同一判据**：`MethodCall{recv: Var(ns), name}` 且
+/// `ns.op` 命中声明表 → 该 op 的 `result_port`。其它形状返回 None（调用方具名
+/// 拒绝，不猜类型）。
+fn age_service_result_port(cx: &Cx, expr_n: u32) -> Option<&'static str> {
+    // 表达式节点 → 找到其中的 `MethodCall-like` 形状。CST 里点分调用是
+    // `expr` 下的 receiver `ident` + `.` + `ident` + 实参块；这里用词法子叶
+    // 序列判定，避免依赖投影后的 AST。
+    let mut leaves: Vec<(u64, String)> = Vec::new();
+    let mut stack = vec![expr_n];
+    while let Some(n) = stack.pop() {
+        let kids = cx.children(n);
+        if kids.is_empty() {
+            if cx.tree.node(n).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0 {
+                let (a, _) = cx.tree.abs_range(n);
+                leaves.push((a, cx.spelling(n)));
+            }
+        }
+        for c in kids.into_iter().rev() {
+            stack.push(c);
+        }
+    }
+    leaves.sort_by_key(|(a, _)| *a);
+    if leaves.len() < 3 {
+        return None;
+    }
+    let dotted = format!("{}.{}", leaves[0].1, leaves[2].1);
+    crate::source::age_resources::lookup(&dotted).map(|op| op.result_port)
+}
+
 fn ident_of(cx: &mut Cx, leaf: u32) -> Ident {
     let id = Ident {
         name: cx.spelling(leaf),
@@ -3888,7 +4001,7 @@ pub(crate) fn project_age_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
-    let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, false);
     let mut out = Vec::new();
     for d in &tree.decls {
         let node = if tree.kind(d.node) == k.item {
@@ -3929,7 +4042,7 @@ pub(crate) fn project_component_nodes(
         Some(kind) => kind,
         None => return Ok(Vec::new()),
     };
-    let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, true);
     let mut out = Vec::new();
     for d in &tree.decls {
         let node = if tree.kind(d.node) == k.item {
@@ -3940,10 +4053,20 @@ pub(crate) fn project_component_nodes(
         } else {
             d.node
         };
-        if tree.kind(node) != item_kind {
+        // PLAN-981（IF-981-REF）：`pub node Foo { .. }` 壳——可见性位进候选，
+        // 实体是它包裹的 node 声明。
+        let public = p
+            .rules
+            .iter()
+            .position(|r| r.name == "age-pub-node-item")
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+            .is_some_and(|pk| tree.kind(node) == pk);
+        // `pub node` 与本面 node 声明**同形**（head/name/body 字段一致），只是
+        // 多一个 `pub` 前缀，故直接投影该壳节点本身（不再找嵌套子节点）。
+        if tree.kind(node) != item_kind && !public {
             continue;
         }
-        out.push(eng.run_component_node_item(node));
+        out.push(eng.run_component_node_item(node, public));
     }
     if let Some(first) = eng.cx.first_diag() {
         return Err(vec![first]);
@@ -3960,6 +4083,7 @@ impl<'a> Engine<'a> {
         profile: SourceProfile,
         ct_face: bool,
         instances_face: bool,
+        age_face: bool,
     ) -> Self {
         Engine {
             cx: Cx {
@@ -3970,6 +4094,7 @@ impl<'a> Engine<'a> {
                 profile,
                 ct_face,
                 instances_face,
+                age_face,
                 ty_params: Vec::new(),
                 visited: 0,
                 diags: Vec::new(),
@@ -4142,6 +4267,7 @@ impl<'a> Engine<'a> {
     fn run_component_node_item(
         &mut self,
         node: u32,
+        public: bool,
     ) -> crate::source::age_component::ComponentNode {
         use crate::source::age_component::{
             ComponentAssign, ComponentField, ComponentHandler, ComponentMemberRow, ComponentNode,
@@ -4178,22 +4304,74 @@ impl<'a> Engine<'a> {
             .cx
             .field_child(node, "body")
             .expect("component node body");
+        // PLAN-981（IF-981-ORIGINAL）：作者 typed 参数（`(x: float, …)`）。
+        // 语法面已产出；此处投影，避免合法参数被静默丢弃。
+        let mut params = Vec::new();
+        if let Some(pn) = self.cx.field_child(node, "params") {
+            // 逐个 `age-node-param`：第一个是 `first`，后续嵌在 `age-node-param-tail`
+            // 里面（逗号 + param），故按子树收集而不是只看直接孩子。
+            let want = |slf: &Self, name: &str, n: u32| -> bool {
+                slf.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                    r.name == name
+                        && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                            == slf.cx.tree.kind(n)
+                })
+            };
+            let mut collect = |slf: &mut Self, n: u32| {
+                let name_leaf = slf.cx.field_child(n, "name").expect("param name");
+                let ty_node = slf.cx.field_child(n, "ty").expect("param type");
+                let ty_leaf = slf
+                    .cx
+                    .children(ty_node)
+                    .into_iter()
+                    .find(|&x| {
+                        slf.cx.tree.node(x).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0
+                    })
+                    .unwrap_or(ty_node);
+                let name = slf.cx.spelling(name_leaf);
+                let ty = slf.cx.spelling(ty_leaf);
+                let ty_span = slf.cx.span_of(ty_leaf);
+                let span = slf.cx.span_of(n);
+                params.push(crate::source::age_component::ComponentParam {
+                    name,
+                    ty,
+                    ty_span,
+                    span,
+                });
+            };
+            for c in self.cx.children(pn) {
+                if want(self, "age-node-param", c) {
+                    collect(self, c);
+                } else if want(self, "age-node-param-tail", c) {
+                    for inner in self.cx.children(c) {
+                        if want(self, "age-node-param", inner) {
+                            collect(self, inner);
+                        }
+                    }
+                }
+            }
+        }
         let text_role = self
             .ctx_role_of_rule("age-text-item")
             .map(|(role, _)| role)
             .unwrap_or_else(|| "text".to_string());
-        let text_kind = self
-            .cx
-            .p
-            .rules
-            .iter()
-            .position(|r| r.name == "age-text-item")
-            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
         let mut fields = Vec::new();
         let mut handlers = Vec::new();
         let mut texts = Vec::new();
+        let mut node_refs = Vec::new();
+        // PLAN-981（IF-981-ORIGINAL）：场景出口里的组件实例行。
+        let mut scene_components = Vec::new();
         let mut view_role = "view".to_string();
+        // PLAN-981（轮 51）：view 出口（`view` / `view-2d` / `view-3d`）是作者输入，
+        // 必须按**后缀 token 的字节**记录——grammar 的 2d/3d 成员 alt 共用同一
+        // `name(age-view-head)` 与同形后缀规则，命中哪个 alt 不能决定出口。
+        let mut view_exit = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
+        // PLAN-981（复审 M1）：一个 node **恰一个** view 出口。此前 `view_role`
+        // 只是被重复赋值，于是两个 `view-2d`（或两个 `view`、或 2D+3D 并存）
+        // 会静默合并——后者还把两个出口的行融成一条扁平列表，丢失归属。
+        // 规范明说 "single view exit per node"。
+        let mut first_exit_span: Option<Span> = None;
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
         let mut messages = Vec::new();
         let mut design = Vec::new();
@@ -4264,6 +4442,16 @@ impl<'a> Engine<'a> {
                 }
                 "age-on-member" => {
                     let msg_leaf = self.cx.field_child(member, "msg").expect("on message name");
+                    // PLAN-981：限定消息名（`Life.Tick`）——尾巴只在 age-package
+                    // 裁剪存在；拼成与单段名同形的点分串交领域层，领域层按
+                    // Schema 语义解释（不在此处硬编码任何消息名）。
+                    let mut msg = self.cx.spelling(msg_leaf);
+                    if let Some(tail) = self.cx.field_child(member, "msg_tail") {
+                        if let Some(seg) = self.cx.field_child(tail, "seg") {
+                            msg.push('.');
+                            msg.push_str(&self.cx.spelling(seg));
+                        }
+                    }
                     let mut assigns = Vec::new();
                     for assign in self.cx.children(member) {
                         let assign_kind = self.cx.tree.kind(assign);
@@ -4288,10 +4476,132 @@ impl<'a> Engine<'a> {
                         });
                     }
                     handlers.push(ComponentHandler {
-                        msg: self.cx.spelling(msg_leaf),
+                        msg,
                         assigns,
                         span: self.cx.span_of(member),
                     });
+                }
+                // PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口。成员是组件实例
+                // （`Disc red_disc { x: -20.0 … }`），不是文本叶/节点引用——必须
+                // 单独处理，否则实例块会被当成普通成员解析（实测把 `Material2D`
+                // 变成了一个不存在的类型注解）。
+                "age-view2d-member" | "age-view3d-member" => {
+                    let view_leaf = self
+                        .cx
+                        .field_child(member, "view")
+                        .expect("scene view head spelling leaf");
+                    view_role = self
+                        .ctx_role_of_rule("age-view-head")
+                        .map(|(role, _)| role)
+                        .unwrap_or_else(|| "view".to_string());
+                    view_span = self.cx.span_of(view_leaf);
+                    // 出口由**后缀 token 的字节**决定（`2d` / `3d`）；未知后缀具名拒绝，
+                    // 不让 `view-2x` 之类的拼写静默落成普通 `view`。
+                    let suffix_leaf = self
+                        .cx
+                        .field_child(member, "suffix")
+                        .and_then(|s| self.cx.field_child(s, "word"));
+                    let suffix = suffix_leaf
+                        .map(|w| self.cx.spelling(w))
+                        .unwrap_or_default();
+                    view_exit = match suffix.as_str() {
+                        "2d" => "view-2d".to_string(),
+                        "3d" => "view-3d".to_string(),
+                        _ => {
+                            let span = suffix_leaf
+                                .map(|w| self.cx.span_of(w))
+                                .unwrap_or(view_span);
+                            let msg = format!(
+                                "a scene view exit must be `view-2d` or `view-3d`; \
+                                 `view-{suffix}` is not an AGE export"
+                            );
+                            self.cx.reject(span, move || {
+                                Diagnostic::new(
+                                    Stage::Text,
+                                    "source.age.view-suffix",
+                                    msg.clone(),
+                                    span,
+                                )
+                            });
+                            "view".to_string()
+                        }
+                    };
+                    if let Some(first) = first_exit_span {
+                        let msg = format!(
+                            "a node declares exactly one view exit (view / view-2d / \
+                             view-3d); a second exit at byte {} would silently merge its \
+                             leaves with the first at byte {}",
+                            view_span.start, first.start
+                        );
+                        self.cx.reject(view_span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.age.view-exit",
+                                msg.clone(),
+                                view_span,
+                            )
+                        });
+                    } else {
+                        first_exit_span = Some(view_span);
+                    }
+                    for raw in self.cx.children(member) {
+                        let c = self
+                            .cx
+                            .children(raw)
+                            .into_iter()
+                            .find(|&x| {
+                                self.cx.tree.node(x).flags & ace_syntax_runtime::cst::FLAG_TRIVIA
+                                    == 0
+                            })
+                            .unwrap_or(raw);
+                        let is_comp = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                            r.name == "age-comp-item"
+                                && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                    == self.cx.tree.kind(c)
+                        });
+                        if !is_comp {
+                            continue;
+                        }
+                        // 组件实例 → 一条场景行：kind + name + 属性值表达式。
+                        let kind_leaf =
+                            self.cx.field_child(c, "kind").expect("component kind");
+                        let name_leaf =
+                            self.cx.field_child(c, "name").expect("component name");
+                        let kind = self.cx.spelling(kind_leaf);
+                        let cname = self.cx.spelling(name_leaf);
+                        let mut attrs = Vec::new();
+                        for a in self.cx.children(c) {
+                            let is_attr = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                                r.name == "age-attr"
+                                    && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                        == self.cx.tree.kind(a)
+                            });
+                            if !is_attr {
+                                continue;
+                            }
+                            let key_leaf =
+                                self.cx.field_child(a, "key").expect("attr key");
+                            let key = self.cx.spelling(key_leaf);
+                            let value_n = self
+                                .cx
+                                .field_child(a, "value")
+                                .expect("attr value");
+                            let value = self.project_expr_sync(value_n);
+                            attrs.push(crate::source::age_component::ComponentSceneAttr {
+                                key,
+                                value,
+                                span: self.cx.span_of(a),
+                            });
+                        }
+                        scene_components.push(
+                            crate::source::age_component::ComponentSceneInstance {
+                                kind,
+                                name: cname,
+                                attrs,
+                                span: self.cx.span_of(c),
+                            },
+                        );
+                    }
                 }
                 "age-view-member" => {
                     let view_leaf = self
@@ -4303,26 +4613,61 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
-                    for c in self.cx.children(member) {
-                        if Some(self.cx.tree.kind(c)) != text_kind {
-                            continue;
-                        }
-                        let comp = self
-                            .cx
-                            .field_child(c, "component")
-                            .expect("component text leaf");
-                        let expr_node = self
-                            .cx
-                            .field_child(c, "text")
-                            .expect("component text expression");
-                        let expr = self.project_expr_sync(expr_node);
-                        texts.push(crate::source::age_h0::AgeTextLeaf {
-                            role: text_role.clone(),
-                            spelling: self.cx.spelling(comp),
-                            component_span: self.cx.span_of(comp),
-                            expr,
-                            span: self.cx.span_of(c),
+                    if let Some(first) = first_exit_span {
+                        let msg = format!(
+                            "a node declares exactly one view exit (view / view-2d / \
+                             view-3d); a second exit at byte {} would silently merge its \
+                             leaves with the first at byte {}",
+                            view_span.start, first.start
+                        );
+                        self.cx.reject(view_span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.age.view-exit",
+                                msg.clone(),
+                                view_span,
+                            )
                         });
+                    } else {
+                        first_exit_span = Some(view_span);
+                    }
+                    for raw in self.cx.children(member) {
+                        // `age-view-item` 是分派 wrapper：实质成员是它的首个非 trivia 孩子。
+                        let c = self
+                            .cx
+                            .children(raw)
+                            .into_iter()
+                            .find(|&x| {
+                                self.cx.tree.node(x).flags & ace_syntax_runtime::cst::FLAG_TRIVIA
+                                    == 0
+                            })
+                            .unwrap_or(raw);
+                        // PLAN-981（IF-981-REF）：`Meter m1 {}` = 节点实例引用。
+                        if let Some(ref_kind) = self
+                            .cx
+                            .p
+                            .rules
+                            .iter()
+                            .position(|r| r.name == "age-node-ref")
+                            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+                        {
+                            if self.cx.tree.kind(c) == ref_kind {
+                                let ty_leaf =
+                                    self.cx.field_child(c, "ty").expect("node ref type");
+                                let name_leaf =
+                                    self.cx.field_child(c, "name").expect("node ref name");
+                                let ty = ident_of(&mut self.cx, ty_leaf);
+                                let n = ident_of(&mut self.cx, name_leaf);
+                                node_refs.push(
+                                    crate::source::age_component::ComponentNodeRef {
+                                        ty,
+                                        name: n,
+                                        span: self.cx.span_of(c),
+                                    },
+                                );
+                                continue;
+                            }
+                        }
                     }
                     tree = self.collect_view_items(member, &mut texts, &text_role);
                 }
@@ -4388,13 +4733,18 @@ impl<'a> Engine<'a> {
             head_spelling: head_spelling.clone(),
             head_span,
             legacy_widget: head_spelling != canonical_head,
+            public,
+            params,
             name,
             fields,
             handlers,
             view: ComponentView {
                 role: view_role,
+                exit: view_exit,
                 span: view_span,
                 texts,
+                node_refs,
+                scene_components,
                 tree,
             },
             messages,
@@ -7496,7 +7846,7 @@ impl<'a> Engine<'a> {
                 // PLAN-961: the numeric profile decodes the typed literal
                 // (prefix/suffix/fraction per the frozen T-01 §1 table);
                 // every other profile keeps the frozen raw rejection.
-                if self.cx.profile.is_numeric() {
+                if self.cx.profile.is_numeric() || self.cx.age_face {
                     match decode_typed_literal(&raw) {
                         Ok(kind) => {
                             self.vals.push(Val::E(Expr { kind, span }));
@@ -11176,7 +11526,7 @@ pub(crate) fn in_decl_projector<'a>(
     profile: SourceProfile,
 ) -> InDeclProjector<'a> {
     InDeclProjector {
-        eng: Engine::new(p, k, tree, snap, profile, false, false),
+        eng: Engine::new(p, k, tree, snap, profile, false, false, false),
     }
 }
 

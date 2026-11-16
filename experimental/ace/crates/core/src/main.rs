@@ -248,6 +248,19 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
                 )],
             ));
         }
+        // PLAN-981: the AGE package face is consumed by its own domain front
+        // door (module graph ∪ AGE components), never by this binary.
+        SourceProfile::AgePackage => {
+            return Err((
+                EXIT_PIPELINE,
+                vec![ace_core::atom_text::Diagnostic::new(
+                    ace_core::atom_text::Stage::Text,
+                    "source.domain-frontend",
+                    "the age-package profile is consumed by its domain front door, not this binary",
+                    ace_core::atom_text::Span { start: 0, end: 0 },
+                )],
+            ));
+        }
         SourceProfile::AgeH0 => {
             return match ace_core::source::age_h0::compile_age_h0(
                 &src,

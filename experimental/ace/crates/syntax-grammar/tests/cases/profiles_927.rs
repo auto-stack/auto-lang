@@ -26,6 +26,10 @@ const DECLARED: &[&str] = &[
     // PLAN-979（T-03）：AGE 组件面（`node { model … on … view … }`，同一
     // auto-source.at 的另一裁剪；声明序紧随 age-h0，H0 面逐字节不变）。
     "age-component",
+    // PLAN-981（T-01）：AGE 多模块包面（包模块图 ∪ AGE 组件，同一
+    // auto-source.at 的第三个 AGE 裁剪；声明序紧随 age-component，
+    // H0/组件面逐字节不变）。
+    "age-package",
     "entry-unit",
     "host-console",
     // PLAN-928：集合/闭包两面。

@@ -151,6 +151,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::EntryUnit => "entry-unit",
         // PLAN-979 T-03：组件面（age-h0 的同源异裁剪）。
         SourceProfile::AgeComponent => "age-component",
+        // PLAN-981: the AGE package trim (package modules ∪ AGE components).
+        SourceProfile::AgePackage => "age-package",
         SourceProfile::HostConsole => "host-console",
         // PLAN-928 T-02/T-03：闭包/集合两面经统一前门（差分全集与冷入口
         // 切换由 T-04/T-07 冻结）。
@@ -184,6 +186,8 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         "numeric" => SourceProfile::Numeric,
         "aggregates" => SourceProfile::Aggregates,
         "age-h0" => SourceProfile::AgeH0,
+        // PLAN-981: AGE package slug round-trip.
+        "age-package" => SourceProfile::AgePackage,
         _ => return None,
     })
 }
@@ -207,7 +211,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 14]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 15]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -308,6 +312,16 @@ pub fn packages_aggregates_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&PACKAGES_AGGREGATES_GRAMMAR, "packages-aggregates")
 }
 
+/// PLAN-981（IF-981-MODULE）：`age-package` 裁剪程序（packages-modules 全表面
+/// ∪ AGE 组件面）。独立缓存槽：其它三个包面与三个 AGE 面的裁剪字节不变，
+/// grammar-id 自然隔离。
+static PACKAGES_AGE_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// age-package 裁剪编译并缓存（进程内一次）。
+pub fn packages_age_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&PACKAGES_AGE_GRAMMAR, "age-package")
+}
+
 /// PLAN-972（T-02）：`packages-aggregates-ct` 裁剪程序（packages-aggregates
 /// 全表面 + packages-ct 装配项 + `fn(T..) -> R` 闭包类型注解/闭包字面量）。
 /// 独立缓存槽：plain packages-modules/packages-ct/packages-aggregates 程序
@@ -362,7 +376,15 @@ pub(crate) fn parse_packages_front(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Modules, src, budget)
+    parse_packages_with(
+        PackagesFace::Modules,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-1043（T-03）：packages-ct 前门（`ac.source.cte.in/v1` 能力线；
@@ -371,7 +393,15 @@ pub(crate) fn parse_packages_front_ct(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Ct, src, budget)
+    parse_packages_with(
+        PackagesFace::Ct,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// PLAN-946（T-02）：packages-aggregates 前门（PLAN-962 `av.aggregates/1`
@@ -381,7 +411,24 @@ pub(crate) fn parse_packages_front_aggregates(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Aggregates, src, budget)
+    parse_packages_with(
+        PackagesFace::Aggregates,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
+}
+
+/// PLAN-981（IF-981-MODULE）：`age-package` 前门（包模块图 ∪ AGE 组件）。
+pub(crate) fn parse_packages_front_age(
+    src: &str,
+    budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(PackagesFace::Age, src, budget, scenario)
 }
 
 /// PLAN-972（T-02）：packages-aggregates-ct 前门（装配 aggregates 线；
@@ -391,7 +438,15 @@ pub(crate) fn parse_packages_front_aggregates_ct(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::AggregatesCt, src, budget)
+    parse_packages_with(
+        PackagesFace::AggregatesCt,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+    )
 }
 
 /// 包面前门的三种裁剪面（旧布尔 `ct_face` 的结构化形态）。
@@ -403,6 +458,9 @@ pub(crate) enum PackagesFace {
     Ct,
     /// packages-aggregates（PLAN-946；ct 专属规则在本面裁剪缺席→不可达）。
     Aggregates,
+    /// PLAN-981（IF-981-MODULE）：`age-package` —— 包模块面 ∪ AGE 组件面。
+    /// 与其它三面的差别只有两点：解析用该裁剪，且本面额外投影 AGE 候选。
+    Age,
     /// packages-aggregates-ct（PLAN-972；aggregates 全表面 + ct 装配项 +
     /// 闭包类型注解/字面量——std 装配标准库的承载面）。
     AggregatesCt,
@@ -414,6 +472,7 @@ impl PackagesFace {
             PackagesFace::Modules => packages_grammar(),
             PackagesFace::Ct => packages_ct_grammar(),
             PackagesFace::Aggregates => packages_aggregates_grammar(),
+            PackagesFace::Age => packages_age_grammar(),
             PackagesFace::AggregatesCt => packages_aggregates_ct_grammar(),
         }
     }
@@ -440,6 +499,7 @@ fn parse_packages_with(
     face: PackagesFace,
     src: &str,
     budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
@@ -452,12 +512,26 @@ fn parse_packages_with(
     crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
-    let parsed = parse_snapshot(
-        &cached.program,
-        &cached.scanner,
-        &snap,
-        &Budget::from(budget),
-    )
+    // PLAN-981：`age-package` 裁剪带 `contextual` 槽位（`node`/`model`/`on`…），
+    // 解析必须拿到**真实快照字节**才能识别限定拼写；其它包面无该表，走原
+    // 无上下文入口（字节与诊断面不变）。
+    let ctx_text = SnapshotTokenText { snap: &snap };
+    let parsed = if matches!(face, PackagesFace::Age) {
+        parse_snapshot_with_ctx(
+            &cached.program,
+            &cached.scanner,
+            &snap,
+            &Budget::from(budget),
+            Some(&ctx_text),
+        )
+    } else {
+        parse_snapshot(
+            &cached.program,
+            &cached.scanner,
+            &snap,
+            &Budget::from(budget),
+        )
+    }
     .map_err(|e| match e {
         ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit } => err(
             "source.resource",
@@ -466,7 +540,7 @@ fn parse_packages_with(
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
     })?;
-    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), face)
+    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), face, scenario)
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -673,6 +747,7 @@ pub(crate) fn project_packages_front(
     trees: Vec<CstTree>,
     tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
     face: PackagesFace,
+    scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
@@ -707,6 +782,12 @@ pub(crate) fn project_packages_front(
     let public_item = rule("public-item");
     let const_item = rule("const-item");
     let var_item = rule("var-item");
+    // PLAN-981（IF-981-REF）：`pub node Foo {..}` —— 公共 node 声明的导出面。
+    let age_pub_node = rule("age-pub-node-item");
+    // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 与符号表导入。
+    let age_let_item = rule("age-let-item");
+    let age_use_sym = rule("age-use-sym-item");
+    let age_use_sym_tail = rule("age-use-sym-tail");
     // PLAN-1043（T-03）/PLAN-966（T-02）：项位 CT 选择/需求规则 id（仅
     // packages-ct 裁剪存在；plain 面全 None → 分支不可达，行为不变）。
     let fn_require_p = rule("fn-require-p");
@@ -743,6 +824,8 @@ pub(crate) fn project_packages_front(
     let mut imports = Vec::new();
     let mut requires = Vec::new();
     let mut ct_items = Vec::new();
+    // PLAN-981：本模块的 AGE 领域候选（仅 age-package 面有内容）。
+    let mut age_components = Vec::new();
     let mut saw_decl = false;
     let mut items = Vec::new();
     let node_span = |tree: &CstTree, n| {
@@ -770,8 +853,310 @@ pub(crate) fn project_packages_front(
             tree,
             &snap,
             proj_profile,
+            // PLAN-981：AGE 作者面（age-package 裁剪）——浮点字面量等合法。
+            matches!(face, PackagesFace::Age),
         )?;
         items.extend(program.items);
+        // PLAN-981（IF-981-MODULE）：AGE 领域候选从**同一次** CST 里投影，
+        // 与普通包项并排记录（结构名按 Schema 的 role 归属，不按拼写猜）。
+        // 只有 `age-package` 裁剪存在 `age-node-c-item` 规则，其余面保持空集。
+        //
+        // 每条文本叶随即脱糖成**普通隐藏函数**并进本模块 items —— 这样共享
+        // 绑定器会像对待普通函数一样给它 mangle 符号/平移 span/走唯一 verify，
+        // 领域层不另建求值路径。
+        if matches!(face, PackagesFace::Age) {
+            let nodes = project::project_component_nodes(
+                &cached.program,
+                &cached.kinds,
+                tree,
+                &snap,
+                SourceProfile::AgePackage,
+            )?;
+            for node in nodes {
+                let mut text_fns = Vec::new();
+                // PLAN-981：把场景里的 `Tick` 归一到本 node 实际声明的生命周期
+                // 消息拼写（`Life.Tick` 优先），再交给共享脱糖/检查。
+                let node_scenario =
+                    crate::source::age_package::resolve_tick_spelling(scenario, &node);
+                // `model` 字段：按场景实例数脱糖成普通状态函数
+                // `__age_state_<i>_<field>()`（init + 该实例的定向 ops + 返回）。
+                // 静态面（`instances == 0`）仍生成**实例 0** 的状态，否则文本叶里的
+                // 字段引用没有绑定——"静态"只表示不额外复制实例，不等于没有 model。
+                let state_instances = if node_scenario.instances == 0 {
+                    1
+                } else {
+                    node_scenario.instances
+                };
+                for inst in 0..state_instances {
+                    for f in &node.fields {
+                        let mut stmts =
+                            match crate::source::age_component::instance_stmts(
+                                inst, &node, &node_scenario, &std::collections::HashMap::new(),
+                            ) {
+                                Ok(s) => s,
+                                Err(ds) => return Err(ds),
+                            };
+                        stmts.push(crate::source::ast::Stmt::Return {
+                            value: crate::source::ast::Expr {
+                                span: f.span,
+                                kind: crate::source::ast::ExprKind::Var(
+                                    crate::source::ast::Ident {
+                                        name: crate::source::age_component::local_name(
+                                            inst, &f.name,
+                                        ),
+                                        span: f.span,
+                                    },
+                                ),
+                            },
+                            span: f.span,
+                        });
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::ast::FnItem {
+                                name: crate::source::ast::Ident {
+                                    name: crate::source::age_component::state_fn_name(
+                                        inst, &f.name,
+                                    ),
+                                    span: f.span,
+                                },
+                                type_params: Vec::new(),
+                                params: Vec::new(),
+                                ret: crate::source::ast::TypeAnn {
+                                    // 状态函数返回**字段自己的类型**（int/i32/bool）——
+                                    // 原先硬编码 i32，于是 `flag bool = true` 被共享
+                                    // 检查判成 `expected i32, found bool`（轮 48 R47-3）。
+                                    // 不支持的类型已由上面的 `instance_stmts` 具名拒绝。
+                                    kind: crate::source::ast::TypeRef::Builtin(
+                                        crate::source::age_component::field_type(f).expect(
+                                            "instance_stmts rejected unsupported model field types",
+                                        ),
+                                    ),
+                                    span: f.ty_span,
+                                },
+                                body: crate::source::ast::Block {
+                                    stmts,
+                                    span: node.span,
+                                },
+                                span: node.span,
+                                receiver: crate::source::ast::Receiver::Free,
+                                owner: None,
+                                script: false,
+                            },
+                        ));
+                    }
+                }
+                // 文本叶：每个实例一份求值函数（字段引用 → 该实例状态函数调用）。
+                // 静态面同样按实例 0 生成（与上面的状态函数一致：有 model 就有状态，
+                // "静态"只表示不复制实例，不表示叶可以无绑定地脱离 model）。
+                let insts: Vec<usize> = (0..state_instances).collect();
+                for inst in insts {
+                    for leaf in &node.view.texts {
+                        let name = format!(
+                            "{}{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            age_components.len(),
+                            text_fns.len()
+                        );
+                        let bound = match crate::source::age_component::rename_expr(
+                            &leaf.expr,
+                            crate::source::age_component::FieldBinding::StateFn(inst),
+                            &node.fields,
+                        ) {
+                            Ok(b) => b,
+                            Err(ds) => return Err(ds),
+                        };
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::age_package::hidden_fn(
+                                &name,
+                                &bound,
+                                leaf.expr.span,
+                            ),
+                        ));
+                        text_fns.push((name, leaf.span));
+                    }
+                }
+                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
+                // 不另建求值器，也不把手写数值当常量。
+                for (si, scene) in node.view.scene_components.iter().enumerate() {
+                    // PLAN-981：属性名在**一行内必须唯一**。此前重复键被静默接受，
+                    // 后值覆盖前值、零诊断——写两遍 `kind:` 的作者得不到任何反馈。
+                    let mut seen_keys: std::collections::BTreeMap<&str, Span> =
+                        std::collections::BTreeMap::new();
+                    for attr in &scene.attrs {
+                        if let Some(first) = seen_keys.insert(attr.key.as_str(), attr.span) {
+                            let msg = format!(
+                                "attribute `{}` is written twice on `{}` (first at byte {}, \
+                                 again at byte {})",
+                                attr.key, scene.name, first.start, attr.span.start
+                            );
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.scene-attr-duplicate",
+                                msg,
+                                attr.span,
+                            )]);
+                        }
+                    }
+                    for (ai, attr) in scene.attrs.iter().enumerate() {
+                        let name = format!(
+                            "{}scene_{}_{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            age_components.len(),
+                            si,
+                            ai
+                        );
+                        // PLAN-981（IF-981-ORIGINAL）：按**属性类别**校验，而不是
+                        // 把所有值塞进同一个值函数：
+                        //  - `kind:` 是冻结几何符号（circle/quad）→ 查符号表；
+                        //  - `material:`/`tint:` 是具名资源引用 → 查导入/声明事实；
+                        //  - 其余是普通 Auto 值 → 降级成函数交共享 verify。
+                        // 该场景行是不是 2D 叶（`shape2d`）——决定 `kind:` 是否适用。
+                        let is_2d_leaf = scene.kind == "shape2d";
+                        // 3D 叶种类必须属于冻结集合（`cylinder3d`/`model3d`/`group3d`）；
+                        // 2D 场景只允许 `shape2d`（以及 `Disc` 这类组件实例名）。
+                        if scene.kind != "shape2d"
+                            && !scene.kind.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                            && !crate::source::age_resources::is_3d_element(&scene.kind)
+                        {
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.scene-element",
+                                format!(
+                                    "`{}` is not an AGE scene element (2D: `shape2d` or a \
+                                     component name; 3D: cylinder3d/model3d/group3d)",
+                                    scene.kind
+                                ),
+                                scene.span,
+                            )]);
+                        }
+                        // 属性必须**适用于**该元素（`yaw:` 不属 shape2d 等）。
+                        if !crate::source::age_resources::attr_applies_to(
+                            scene.kind.as_str(),
+                            attr.key.as_str(),
+                        ) {
+                            return Err(vec![crate::source::age_h0::text_diag(
+                                "source.age.scene-attr",
+                                format!(
+                                    "`{}` does not apply to `{}`",
+                                    attr.key, scene.kind
+                                ),
+                                attr.span,
+                            )]);
+                        }
+                        use crate::source::age_resources::AttrValueKind;
+                        // 组件实例的属性名就是该 node 声明的**参数名**，作者自定，
+                        // 无法在 `attr_value_kind` 的扁平表里穷举。故实例上的未知键
+                        // 按普通值处理；`shape2d` / 3D 元素仍只接受已知属性。
+                        let is_component_instance =
+                            !crate::source::age_resources::is_3d_element(scene.kind.as_str())
+                                && scene.kind != "shape2d";
+                        let kind = match crate::source::age_resources::attr_value_kind(&attr.key) {
+                            Some(k) => k,
+                            None if is_component_instance => {
+                                crate::source::age_resources::AttrValueKind::Value
+                            }
+                            None => {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.scene-attr",
+                                    format!(
+                                        "`{}` is not an AGE 2D scene attribute (expected \
+                                         kind/position/size/material/visible, or x/y/diameter/tint)",
+                                        attr.key
+                                    ),
+                                    attr.span,
+                                )]);
+                            }
+                        };
+                        match kind {
+                            AttrValueKind::GeometryKind => {
+                                // `kind:` 只属于 **2D** 叶（`shape2d`）——规范里
+                                // `view-2d` 的叶是 `shape2d { kind: circle|quad }`，
+                                // 而 `view-3d` 的叶种类是元素名本身（`cylinder3d`
+                                // 等），没有 `kind` 属性。两套符号表不可互套。
+                                if !is_2d_leaf {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-attr",
+                                        format!(
+                                            "`kind` is a `shape2d` (view-2d) attribute; \
+                                             `{elem}` declares its kind by its element name",
+                                            elem = scene.kind
+                                        ),
+                                        attr.span,
+                                    )]);
+                                }
+                                let spelled = match &attr.value.kind {
+                                    crate::source::ast::ExprKind::Var(id) => id.name.clone(),
+                                    _ => String::new(),
+                                };
+                                if !crate::source::age_resources::is_geometry_kind(&spelled) {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-kind",
+                                        format!(
+                                            "`kind` must be one of the frozen AGE geometry \
+                                             symbols (circle/quad), got `{spelled}`"
+                                        ),
+                                        attr.value.span,
+                                    )]);
+                                }
+                            }
+                            AttrValueKind::ResourceRef => {
+                                // 具名资源引用：值必须是**引用形状**（不是字面量/任意
+                                // 表达式）。名字是否存在、是否可见——本层**不能**担保
+                                // （实测：不存在的 `tint: no_such_resource` 曾静默通过）。
+                                // 故把引用**降级成求值函数**，由共享 resolver/binder 按
+                                // 960 的导入/可见性规则真正解析符号；这里只拒绝非引用形状。
+                                let literal = matches!(
+                                    &attr.value.kind,
+                                    crate::source::ast::ExprKind::IntLit(_)
+                                        | crate::source::ast::ExprKind::BoolLit(_)
+                                        | crate::source::ast::ExprKind::StrLit(_)
+                                        | crate::source::ast::ExprKind::TupleLit(_)
+                                        | crate::source::ast::ExprKind::Unary { .. }
+                                        | crate::source::ast::ExprKind::Binary { .. }
+                                );
+                                if literal {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-resource",
+                                        format!(
+                                            "`{}` must name a resource (`resources.<symbol>`), \
+                                             not a literal or computed value",
+                                            attr.key
+                                        ),
+                                        attr.value.span,
+                                    )]);
+                                }
+                                // 引用的**存在性/可见性/端口类型**由前门用 binder 事实
+                                // 裁定（`age_package::check_scene_resource_refs`）；这里
+                                // 不伪造值类型，也不降级成函数（目标声明决定其类型）。
+                            }
+                            AttrValueKind::Value => {
+                                match crate::source::age_package::hidden_fns_scene_value(
+                                    &name,
+                                    &attr.value,
+                                    attr.span,
+                                    &node.params,
+                                ) {
+                                    Some(fs) => items.extend(
+                                        fs.into_iter()
+                                            .map(crate::source::ast::Item::Fn),
+                                    ),
+                                    None => {
+                                        return Err(vec![crate::source::age_h0::text_diag(
+                                            "source.age.scene-value",
+                                            format!(
+                                                "scene attribute `{}` has a value shape this \
+                                                 slice cannot type yet",
+                                                attr.key
+                                            ),
+                                            attr.span,
+                                        )]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                age_components.push((node, text_fns));
+            }
+        }
         // PLAN-1043（T-03）：#in 结构投影器（共享同一声明子树投影引擎）。
         let mut in_face = ct_face.then(|| InFace {
             cached,
@@ -840,6 +1225,52 @@ pub(crate) fn project_packages_front(
                 continue;
             }
             // use 项（含 public-item 内的 use 尾）——路径/别名字段读取。
+            // PLAN-981（IF-981-ORIGINAL）：`use mod: a, b` → 每个符号一条
+            // 与 `use mod.a` **同义**的绑定（同一命名空间、同一可见性规则）。
+            if Some(kind) == age_use_sym {
+                if saw_decl {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede declarations".into(),
+                        node_span(tree, node),
+                    ));
+                }
+                let module = text(tree, field(tree, node, "module").expect("use module"));
+                let mut syms: Vec<(String, u64)> = Vec::new();
+                let head = field(tree, node, "head").expect("use sym head");
+                let (ha, _) = tree.abs_range(head);
+                syms.push((text(tree, head), ha));
+                for c in tree.children(node) {
+                    if Some(tree.kind(c)) != age_use_sym_tail {
+                        continue;
+                    }
+                    let leaf = field(tree, c, "sym").expect("use sym");
+                    let (a, _) = tree.abs_range(leaf);
+                    syms.push((text(tree, leaf), a));
+                }
+                for (sym, at) in syms {
+                    let span = Span {
+                        start: at as usize,
+                        end: at as usize + sym.len(),
+                    };
+                    if imports
+                        .iter()
+                        .any(|i: &PackageImport| i.bound_name() == sym)
+                    {
+                        return Err(err(
+                            "source.module-duplicate-import",
+                            format!("duplicate imported name `{sym}`"),
+                            span,
+                        ));
+                    }
+                    imports.push(PackageImport {
+                        path: vec![module.clone(), sym],
+                        alias: None,
+                        reexport: false,
+                        span,
+                    });
+                }
+            }
             let use_node = if Some(kind) == use_item_p {
                 Some(node)
             } else if Some(kind) == public_item {
@@ -946,6 +1377,22 @@ pub(crate) fn project_packages_front(
                     }
                     _ => {}
                 }
+            } else if Some(kind) == age_pub_node {
+                // PLAN-981（IF-981-REF）：`pub node Foo` 进本模块**公共面**，别的
+                // 模块才能按 node 名引用其实例。可见性语义沿用 960 的 exports。
+                saw_decl = true;
+                let name = text(tree, field(tree, node, "name").expect("pub node name"));
+                exports.insert(name.clone());
+                declarations.insert(name, node_span(tree, node));
+            } else if Some(kind) == age_let_item {
+                // PLAN-981（IF-981-ORIGINAL）：`let name = expr` 是**不可变**模块
+                // 绑定，语义等同 `const`（同初始化序、同跨模块 get）。资源模块靠
+                // 这些名字对外供给，故进公共面；可见性仍由共享 binder 裁定。
+                saw_decl = true;
+                let name = text(tree, field(tree, node, "name").expect("let name"));
+                exports.insert(name.clone());
+                const_exports.insert(name.clone());
+                declarations.insert(name, node_span(tree, node));
             } else if Some(kind) == const_item || Some(kind) == var_item {
                 saw_decl = true;
                 let name = text(tree, field(tree, node, "name").expect("global name"));
@@ -1006,6 +1453,7 @@ pub(crate) fn project_packages_front(
         declarations,
         requires,
         ct_items,
+        age_components,
     })
 }
 
@@ -1621,6 +2069,8 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::AgeH0 => 11,
         // PLAN-979 T-03：组件面槽位。
         SourceProfile::AgeComponent => 12,
+        // PLAN-981：AGE 包面槽位（包模块图 ∪ AGE 组件）。
+        SourceProfile::AgePackage => 14,
         // PLAN-968：调度器面槽位。
         SourceProfile::Scheduler => 13,
     };
@@ -1671,9 +2121,17 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
         kind,
         budget,
     } = req;
-    // PLAN-979 F2：AGE 领域 profile 只经 `source::age_h0` 的整模块入口消费；
-    // 通用入口（含片段入口，它们没有槽位拼写的事实源）一律具名拒绝。
-    if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
+    // PLAN-979 F2 / PLAN-981：AGE 领域 profile（H0、组件面、**包面**）只经各自的
+    // 领域前门消费；通用入口（含片段入口，它们没有槽位拼写的事实源）一律具名拒绝。
+    //
+    // 复审 M5：`domain_profile_refusal` 早已包含 `AgePackage`，但**这里的 matches!
+    // 没同步**——于是通用入口对 `age-package` 返回 `Ok`（零项目、零领域行），
+    // 而 `age_package.rs` 里那个专门的 `age_package_refusal` **零调用**、是死代码。
+    // 现在两者一致：入口拒绝，且拒绝理由指向正确的前门。
+    if matches!(
+        profile,
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage
+    ) {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }
@@ -1780,6 +2238,8 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         // `<const N>` 与 `generic-call` 的唯一成立面。
         instances || record_instances || text_record_instances,
         // PLAN-963（V-G06）：记录面就地单态化（模块/包面走上面的推迟入口）。
+        false,
+        // PLAN-981：整模块入口不属于 AGE 作者面。
         false,
     ) {
         Ok(program) => FrontOutcome::Ok(FrontOk {
@@ -1980,7 +2440,14 @@ pub fn parse_fragment_front(
     use crate::atom_text::Stage;
     // PLAN-979（评审 F2 观察）：片段入口同样拒绝领域 profile——片段不承载领域
     // 声明，且没有槽位拼写的字节事实源；只经领域前门消费整模块。
-    if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
+    //
+    // 复审 M5 第二半：`parse_front` 的**整模块**守卫会先拦住片段请求，所以从那里
+    // 永远到不了本函数；只测 `parse_front` 会让"本函数是否拒绝"成为盲区（实测：
+    // 直接调用本函数在修复前返回 `Ok`）。故本函数必须自己拒绝，并有专测直接调它。
+    if matches!(
+        profile,
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage
+    ) {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }

@@ -8,6 +8,7 @@
 //! Nothing here feeds product paths.
 
 pub mod age_component;
+pub mod age_package;
 pub mod age_h0;
 pub mod bench;
 pub mod cache;

@@ -54,6 +54,9 @@ pub struct GlobalDecl {
     pub mutable: bool,
     /// 本模块源内的名字 span。
     pub span: Span,
+    /// PLAN-981（IF-981-ORIGINAL）：初值表达式。此前只留声明类型，导致模块常量
+    /// 的**值**（g01 的资源颜色）无法被任何断言看到。
+    pub init: Option<super::super::ast::Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -171,6 +174,12 @@ fn valid_version(v: &str) -> bool {
 pub fn unit_key(package: &str, module: &str) -> String {
     format!("{package}::{module}")
 }
+/// PLAN-981：AGE node 的稳定符号（领域命名空间，与 fn/type/const 分开）。
+pub fn age_node_symbol(package: &str, name: &str) -> String {
+    format!("n{}_{}_{}", package.len(), sym_part(package), name)
+}
+
+
 fn split_key(key: &str) -> (&str, &str) {
     key.split_once("::").unwrap_or((key, ""))
 }
@@ -239,6 +248,9 @@ enum Target {
     Fn(String),
     Type(String),
     Const(String),
+    /// PLAN-981（IF-981-ORIGINAL）：导入的是 AGE **node 声明**（领域引用目标）。
+    /// 带稳定符号，但**不**进入值/类型命名空间。
+    Node(String),
 }
 
 struct BoundImport {
@@ -270,12 +282,105 @@ pub fn bind_packages_aggregates(
     bind_packages_face(inputs, entry, caps, budget, true)
 }
 
+/// PLAN-981（IF-981-MODULE）：`age-package` 面的包绑定 —— 同一绑定器、同一
+/// 身份/预算/可见性/初始化序规则，只换解析裁剪（包模块面 ∪ AGE 组件面）。
+///
+/// 与 [`bind_packages`] 的关系是**同一条**链：领域候选与该模块的普通包项在
+/// 同一次解析里产出，绑定走查不区分二者（AGE 行的行为已是普通隐藏函数）。
+pub fn bind_packages_age(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
+) -> Result<PackagedAge, PackageDiagnostic> {
+    let mut collected: Vec<PackagedAgeComponent> = Vec::new();
+    let bound = bind_packages_face_with(
+        inputs,
+        entry,
+        caps,
+        budget,
+        Faces::Age,
+        scenario,
+        Some(&mut collected),
+    )?;
+    let sources = bound
+        .segments
+        .iter()
+        .map(|s| crate::source::age_package::AgeModuleSource {
+            key: unit_key(&s.package, &s.module),
+            source_len: s.source.len(),
+            flat_start: s.start,
+        })
+        .collect();
+    Ok(PackagedAge {
+        grammar_id: bound.grammar_id.clone(),
+        bound,
+        age_components: collected,
+        sources,
+    })
+}
+
+/// PLAN-981：`age-package` 面绑定的产物（绑定图 + 每模块 AGE 候选 + 源事实）。
+pub struct PackagedAge {
+    pub bound: BoundPackages,
+    pub age_components: Vec<PackagedAgeComponent>,
+    pub sources: Vec<crate::source::age_package::AgeModuleSource>,
+    pub grammar_id: String,
+}
+
+/// PLAN-981：一个模块里的 AGE 组件候选（未受信）+ 其隐藏求值函数名。
+pub struct PackagedAgeComponent {
+    pub module: String,
+    pub node: crate::source::age_component::ComponentNode,
+    /// 文本叶的 (隐藏函数源名, 原模块内 span)，与 `node.view.texts` 同序。
+    pub text_fns: Vec<(String, Span)>,
+}
+
 fn bind_packages_face(
     inputs: &[PackageModuleInput],
     entry: &str,
     caps: &[String],
     budget: FrontBudget,
     aggregates: bool,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    let face = if aggregates {
+        Faces::Aggregates
+    } else {
+        Faces::Plain
+    };
+    bind_packages_face_with(
+        inputs,
+        entry,
+        caps,
+        budget,
+        face,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+        None,
+    )
+}
+
+/// PLAN-981：包面的三态（plain / aggregates / age）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Faces {
+    Plain,
+    Aggregates,
+    /// PLAN-972：装配 aggregates 线（aggregates 全表面 + ct 装配项）。
+    AggregatesCt,
+    Age,
+}
+
+fn bind_packages_face_with(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    face: Faces,
+    scenario: &crate::source::age_component::ComponentScenario,
+    mut age_out: Option<&mut Vec<PackagedAgeComponent>>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     let mut units = BTreeMap::new();
@@ -325,19 +430,45 @@ fn bind_packages_face(
                 zero,
             ));
         }
-        let parse = if aggregates {
-            parse_package_source_aggregates
-        } else {
-            parse_package_source
+        // PLAN-981：AGE 面的解析要带消费者场景（实例数/定向事件），故按面
+        // 直接调用而不是取函数指针（其它面的参数面保持不变）。
+        let parsed = match face {
+            Faces::Aggregates => parse_package_source_aggregates(&input.source, caps, budget),
+            Faces::AggregatesCt => parse_package_source_aggregates_ct(&input.source, caps, budget),
+            Faces::Age => parse_package_source_age(&input.source, caps, budget, scenario),
+            Faces::Plain => parse_package_source(&input.source, caps, budget),
         };
-        let syntax = parse(&input.source, caps, budget).map_err(|mut ds| PackageDiagnostic {
+        let syntax = parsed.map_err(|mut ds| PackageDiagnostic {
             module: key.clone(),
             diagnostic: ds.remove(0),
         })?;
+        // PLAN-981：本模块的 AGE 候选（未受信）+ 其隐藏函数源名，收进产物。
+        if let Some(out) = age_out.as_deref_mut() {
+            for (node, text_fns) in &syntax.age_components {
+                out.push(PackagedAgeComponent {
+                    module: key.clone(),
+                    node: node.clone(),
+                    text_fns: text_fns.clone(),
+                });
+            }
+        }
         units.insert(key, syntax);
     }
-    if aggregates {
+    if matches!(face, Faces::Aggregates) {
         bind_package_syntax_aggregates(inputs, entry, caps, budget, units)
+    } else if matches!(face, Faces::Age) {
+        // PLAN-981：AGE 包面走同一内层绑定，只把面标成 Age（grammar 身份与
+        // 领域候选都按该面裁定）；不另建绑定器。
+        bind_package_syntax_inner(
+            inputs,
+            entry,
+            caps,
+            budget,
+            units,
+            BTreeMap::new(),
+            None,
+            Faces::Age,
+        )
     } else {
         bind_package_syntax(inputs, entry, caps, budget, units)
     }
@@ -360,7 +491,7 @@ pub fn bind_package_syntax(
         units,
         BTreeMap::new(),
         None,
-        false,
+        Faces::Plain,
     )
 }
 
@@ -381,7 +512,7 @@ pub fn bind_package_syntax_aggregates(
         units,
         BTreeMap::new(),
         None,
-        true,
+        Faces::Aggregates,
     )
 }
 
@@ -395,7 +526,7 @@ pub fn bind_package_syntax_assembled(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), false)
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), Faces::Plain)
 }
 
 /// 一个模块的已解析实现层（kind + 源 + 语法）。
@@ -414,7 +545,7 @@ fn bind_package_syntax_inner(
     mut units: BTreeMap<String, PackageSyntax>,
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: Option<&super::provider_sources::PackageAssemblyContext>,
-    aggregates: bool,
+    face: Faces,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     if !caps.iter().any(|c| c == PACKAGES_CAPABILITY)
@@ -434,12 +565,18 @@ fn bind_package_syntax_inner(
     // PLAN-972（T-02）：装配 aggregates 线用 packages-aggregates-ct 裁剪
     //（aggregates 全表面 + ct 装配项 + 闭包类型注解/字面量）。
     let in_face = caps.iter().any(|c| c == super::IN_CAPABILITY);
+    // PLAN-972/981 resync：`aggregates` 线含装配 ct 线（Walker 的 aggregates/asm_lane 位）。
+    let aggregates = matches!(face, Faces::Aggregates | Faces::AggregatesCt);
     let grammar = if in_face && aggregates {
         super::packages_aggregates_ct_grammar()
     } else if in_face {
         super::packages_ct_grammar()
-    } else if aggregates {
+    } else if matches!(face, Faces::Aggregates) {
         super::packages_aggregates_grammar()
+    } else if matches!(face, Faces::Age) {
+        // PLAN-981：AGE 包面的 grammar 身份是 `age-package` 裁剪（在仍走
+        // `bind_package_syntax` 的冷/恢复路径上同样必须对上）。
+        super::packages_age_grammar()
     } else {
         packages_grammar()
     }
@@ -740,6 +877,16 @@ fn bind_package_syntax_inner(
                     ))
                 };
             }
+            // PLAN-981（IF-981-ORIGINAL）：AGE node 导出。**先于**通用 `exported`
+            // 闸：AGE 作者面用 `node Disc` + `use shapes: Disc` 表达跨模块意愿，
+            // 不需要 `pub`（g01 原源如此）。符号走 node 命名空间。
+            if unit
+                .age_components
+                .iter()
+                .any(|(n, _)| n.name.name == cursor.1)
+            {
+                return Ok(Target::Node(age_node_symbol(&cursor.0, &cursor.1)));
+            }
             if d.stores.contains_key(&cursor.1) {
                 return Err(fail(
                     owner,
@@ -803,6 +950,12 @@ fn bind_package_syntax_inner(
                     is_type: false,
                     is_const: true,
                 },
+                // AGE node 导入：带符号但**不是**值/类型。
+                Target::Node(s) => BoundImport {
+                    symbol: s,
+                    is_type: false,
+                    is_const: false,
+                },
             };
             binds.insert(i.bound_name().to_string(), b);
             edges.get_mut(key).unwrap().insert(target_key);
@@ -837,9 +990,9 @@ fn bind_package_syntax_inner(
     for (key, unit) in &units {
         let (pkg, module) = split_key(key);
         for item in &unit.program.items {
-            let (name, ty, mutable, span) = match item {
-                Item::Const(c) => (&c.name, &c.ty, false, c.name.span),
-                Item::Store(v) => (&v.name, &v.ty, true, v.name.span),
+            let (name, ty, mutable, span, init) = match item {
+                Item::Const(c) => (&c.name, &c.ty, false, c.name.span, Some(&c.value)),
+                Item::Store(v) => (&v.name, &v.ty, true, v.name.span, Some(&v.value)),
                 _ => continue,
             };
             globals.insert(
@@ -851,6 +1004,7 @@ fn bind_package_syntax_inner(
                     ty: ty.clone(),
                     mutable,
                     span,
+                    init: init.cloned(),
                 },
             );
         }
@@ -2005,6 +2159,11 @@ impl<'a> Walker<'a> {
         if self.my_decls().types.contains_key(&name.name) {
             return Ok(type_symbol(self.pkg(), self.module(), &name.name));
         }
+        // PLAN-981：AGE typed 端口是内建领域类型——不是模块符号，保持原名交
+        // resolver（与上面 aggregates 的内建名义类型同一处理）。
+        if crate::source::age_resources::is_port_type(&name.name) {
+            return Ok(name.name.clone());
+        }
         if let Some(b) = self.binds.get(&name.name) {
             return if b.is_type {
                 Ok(b.symbol.clone())
@@ -2025,7 +2184,11 @@ impl<'a> Walker<'a> {
         ))
     }
     fn is_type_name(&self, name: &str) -> bool {
-        self.my_decls().types.contains_key(name) || self.binds.get(name).is_some_and(|b| b.is_type)
+        self.my_decls().types.contains_key(name)
+            || self.binds.get(name).is_some_and(|b| b.is_type)
+            // PLAN-981：AGE typed 端口（`Material2D`/`Mesh2D`）是内建领域类型，
+            // 既非本模块声明也非导入；按内建类型词同等待遇。
+            || crate::source::age_resources::is_port_type(name)
     }
     /// 裸全局名 -> 全局符号（本模块 const/store，或导入常量）。
     fn global_of(&self, name: &str) -> Option<String> {
@@ -3491,7 +3654,7 @@ pub fn bind_package_syntax_assembled_aggregates(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), true)
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), Faces::AggregatesCt)
 }
 
 /// 编译期标量值（与 source-cte `CtValue` 同域：i32/bool）。
@@ -3817,6 +3980,8 @@ fn assemble_unit(
         declarations,
         requires: all_requires,
         ct_items: public.ct_items.clone(),
+        // PLAN-981：AGE 领域候选随公共模块源一起穿过装配（实现层不带领域行）。
+        age_components: public.age_components.clone(),
     })
 }
 

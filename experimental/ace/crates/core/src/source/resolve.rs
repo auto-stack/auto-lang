@@ -1810,6 +1810,47 @@ pub fn validate_foreign_declarations(
     }
 }
 
+/// PLAN-981：该块里是否出现 AGE 资源服务调用（`material2d.color(...)` 等）。
+///
+/// 判据与 resolver 的分类**同一条件**（`MethodCall{recv: Var(ns), name}` 且
+/// `ns.op` 命中声明表），不另立规则。
+fn uses_age_service(b: &ast::Block) -> bool {
+    fn is_service(e: &ast::Expr) -> bool {
+        if let ast::ExprKind::MethodCall { recv, name, .. } = &e.kind {
+            if let ast::ExprKind::Var(id) = &recv.kind {
+                let dotted = format!("{}.{}", id.name, name.name);
+                return crate::source::age_resources::lookup(&dotted).is_some();
+            }
+        }
+        false
+    }
+    fn block(b: &ast::Block) -> bool {
+        b.stmts.iter().any(|s| match s {
+            ast::Stmt::Let { value, .. } => is_service(value),
+            ast::Stmt::Assign { value, .. } => is_service(value),
+            ast::Stmt::Return { value, .. } => is_service(value),
+            ast::Stmt::ExprStmt { value, .. } => is_service(value),
+            ast::Stmt::If { cond, then, els, .. } => {
+                is_service(cond) || block(then) || els.as_ref().is_some_and(|e| block(e))
+            }
+            ast::Stmt::Loop { body, .. } => block(body),
+            _ => false,
+        })
+    }
+    block(b)
+}
+
+/// PLAN-981：该类型注解是否点名了 AGE typed 端口（`Material2D`/`Mesh2D`）。
+///
+/// 端口可能**只**出现在注解里（g01 `shapes.at` 的 `tint: Material2D` 就没有任何
+/// 服务调用），因此登记判据必须包含注解位，不能只看服务使用。
+fn ann_mentions_age_port(ann: &ast::TypeAnn) -> bool {
+    match &ann.kind {
+        ast::TypeRef::Record(id) => crate::source::age_resources::is_port_type(&id.name),
+        _ => false,
+    }
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -1869,6 +1910,62 @@ fn resolve_detailed(
                 fields: Vec::new(),
                 methods: Vec::new(),
             });
+        }
+    }
+    // PLAN-981（IF-981-ORIGINAL）：AGE typed 端口（`Material2D`/`Mesh2D`）登记为
+    // **无字段名义记录**——身份即端口（两种端口互不相等），资源语义仍归领域
+    // owner 解释；这里不把资源压平成带颜色字段的普通 record。
+    // 包前门用 TextRecord 做领域解析（面在 profile 之上），所以 profile 判据在这里
+    // 永远不成立——按**是否使用 AGE 资源服务**登记。
+    // 端口类型只要**可能被提到**就必须在场：AGE 作者面的 node 参数不落在
+    // `program.items` 的 fn 上（它们在领域行里），故仅凭"程序是否用到服务/注解"
+    // 会漏掉 `node Disc(…, tint: Material2D)` 这种合法源。AGE 前门本来就把
+    // 整份文档交给本函数，所以对它一律登记——这也是与发射器同一判据。
+    let uses_age_ports = surface == SourceProfile::AgePackage
+        || program.items.iter().any(|it| match it {
+            ast::Item::Fn(f) => {
+                uses_age_service(&f.body)
+                    || f.params.iter().any(|p| ann_mentions_age_port(&p.ty))
+                    || ann_mentions_age_port(&f.ret)
+            }
+            ast::Item::Type(t) => t.fields.iter().any(|f| ann_mentions_age_port(&f.ty)),
+            _ => false,
+        });
+    if surface == SourceProfile::AgePackage || uses_age_ports {
+        for port in crate::source::age_resources::AGE_PORT_TYPES {
+            if !rec_index.contains_key(*port) {
+                rec_index.insert(port.to_string(), records.len());
+                let fields = crate::source::age_resources::AGE_PORT_FIELDS
+                    .iter()
+                    .find(|(p, _)| *p == *port)
+                    .map(|(_, fs)| {
+                        fs.iter()
+                            .map(|(n, ty)| ResolvedField {
+                                name: n.to_string(),
+                                // 未知拼写**不得**静默回落 i32：那样 `Str` 会被
+                                // 当成整数，端口字段类型就悄悄错了（实测发生过）。
+                                vt: match *ty {
+                                    "f32" => VT::F32,
+                                    "i32" => VT::I32,
+                                    "bool" => VT::Bool,
+                                    "Str" => VT::StrOwned,
+                                    "str" => VT::Str,
+                                    other => panic!(
+                                        "AGE port field `{n}` declares unsupported type `{other}`"
+                                    ),
+                                },
+                                span: Span { start: 0, end: 0 },
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                records.push(ResolvedRecord {
+                    name: port.to_string(),
+                    name_span: Span { start: 0, end: 0 },
+                    fields,
+                    methods: Vec::new(),
+                });
+            }
         }
     }
     // PLAN-889: resolve nominal variant references through the same type
@@ -5054,6 +5151,9 @@ enum RecvClass {
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
     VariantArm { vi: usize, disc: u32 },
+    /// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务命名空间接收者
+    /// （`material2d.color(...)`）。携带声明表里那一条 op。
+    AgeService(&'static super::age_resources::AgeResourceOp),
     /// PLAN-864: `<list<Str>-local>.get(i).len()` — a whole-Str element
     /// view consumed by len (contract C4).
     ElemViewLen {
@@ -12791,7 +12891,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                         let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind {
                             self.classify_generic_recv(name, args)
                         } else if let ExprKind::Var(id) = &recv.kind {
+                            // PLAN-981：AGE 资源服务（`material2d.color`）——接收者
+                            // 是**命名空间**不是值；按声明表分类，绝不求值它。
                             if self.lookup(&id.name).is_none()
+                                && crate::source::age_resources::lookup(&format!(
+                                    "{}.{}",
+                                    id.name, name.name
+                                ))
+                                .is_some()
+                            {
+                                let dotted = format!("{}.{}", id.name, name.name);
+                                RecvClass::AgeService(
+                                    crate::source::age_resources::lookup(&dotted)
+                                        .expect("checked above"),
+                                )
+                            } else if self.lookup(&id.name).is_none()
                                 && self.rec_index.contains_key(&id.name)
                             {
                                 RecvClass::Static(self.rec_index[&id.name])
@@ -13164,6 +13278,64 @@ impl<'a, 's> FnResolver<'a, 's> {
                         }
                     };
                     match recv_kind {
+                        // PLAN-981（IF-981-ORIGINAL）：AGE 资源服务调用。接收者是
+                        // 命名空间（未求值）；参数按声明表校验后落成固定符号的
+                        // intrinsic 调用，返回类型是该 op 的**端口类型**。
+                        RecvClass::AgeService(op) => {
+                            if rargs.len() != op.params.len() {
+                                self.bind_err(
+                                    "source.age.resource-arity",
+                                    format!(
+                                        "`{}` takes {} argument(s), got {}",
+                                        op.callee,
+                                        op.params.len(),
+                                        rargs.len()
+                                    ),
+                                    node_span,
+                                );
+                            }
+                            let mut args = Vec::with_capacity(rargs.len());
+                            for (arg, expected) in rargs.into_iter().zip(op.params.iter()) {
+                                if arg.value.vt != *expected {
+                                    self.bind_err(
+                                        "source.age.resource-argument",
+                                        format!(
+                                            "`{}` argument must be `{}`, got `{}`",
+                                            op.callee,
+                                            expected.as_str(),
+                                            arg.value.vt.as_str()
+                                        ),
+                                        arg.value.span,
+                                    );
+                                }
+                                args.push(arg.value);
+                            }
+                            // 端口在解析开始时已登记；缺失是内部不变量破坏，
+                            // not a silent downgrade to i32.
+                            let port = match self.rec_index.get(op.result_port) {
+                                Some(&i) => VT::Rec(i),
+                                None => {
+                                    self.bind_err(
+                                        "source.age.resource-port",
+                                        format!(
+                                            "AGE port type `{}` is not registered for this document",
+                                            op.result_port
+                                        ),
+                                        node_span,
+                                    );
+                                    VT::I32
+                                }
+                            };
+                            self.used_intrinsics.insert(op.symbol);
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: port,
+                                kind: RExprKind::CallIntrinsic {
+                                    symbol: op.symbol,
+                                    args,
+                                },
+                            };
+                        }
                         RecvClass::Value => {
                             out[dest] = self.method_call_out(rrecv, None, &name, rargs, node_span);
                         }

@@ -52,10 +52,34 @@ pub struct ComponentHandler {
 #[derive(Clone, Debug)]
 pub struct ComponentView {
     pub role: String,
+    /// PLAN-981（轮 51）：作者的 **view 出口拼写**——`view` / `view-2d` / `view-3d`。
+    ///
+    /// 此前只有 `role`（恒为 `"view"`），于是"这个 node 是 UI、2D 还是 3D 出口"
+    /// 在描述面完全丢失：纯场景 node 无法与 UI node 区分，3D 出口删掉也无人发现。
+    /// 出口由**后缀 token 的字节**决定（`2d`/`3d`），不是由命中的 grammar alt 猜。
+    pub exit: String,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
-    /// 完整 view 树（元素/属性行/文本叶；texts 仍为叶子平铺——场景驱动消费）。
+    /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。
+    /// 只在 age-package 面产出；解析/可见性由共享绑定器裁定。
+    pub node_refs: Vec<ComponentNodeRef>,
+    /// PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口里的组件实例行
+    /// （`Disc red_disc { x: -20.0 … }`）。属性值是普通 Auto 表达式。
+    pub scene_components: Vec<ComponentSceneInstance>,
+    /// PLAN-980（B-DIALECT-I 完整批）：完整 view 树（元素/属性行/文本叶；
+    /// texts 仍为叶子平铺——场景驱动消费）。
     pub tree: Vec<ComponentViewItem>,
+}
+
+/// PLAN-981（IF-981-REF）：一个节点实例引用（未受信候选）。
+#[derive(Clone, Debug)]
+pub struct ComponentNodeRef {
+    /// 被引用类型的作者拼写（`Meter`）。
+    pub ty: Ident,
+    /// 实例名（`m1`）。
+    pub name: Ident,
+    /// 引用处 span（原模块内）。
+    pub span: Span,
 }
 
 /// PLAN-980（B-DIALECT-I 完整批）：`msg` 变体（结构投影）。
@@ -119,8 +143,7 @@ pub struct ComponentMemberRow {
     pub name: String,
     pub value: Option<Expr>,
     pub text: Option<String>,
-    pub num: Option<i64>,
-    pub span: Span,
+    pub num: Option<i64>,    pub span: Span,
 }
 
 /// 一个组件 node 声明的未受信候选。
@@ -130,6 +153,10 @@ pub struct ComponentNode {
     pub head_spelling: String,
     pub head_span: Span,
     pub legacy_widget: bool,
+    /// PLAN-981（IF-981-REF）：`pub node` 声明的可见性位。
+    pub public: bool,
+    /// PLAN-981（IF-981-ORIGINAL）：作者写的 typed 参数（`(x: float, tint: Material2D)`）。
+    pub params: Vec<ComponentParam>,
     pub name: Ident,
     pub fields: Vec<ComponentField>,
     pub handlers: Vec<ComponentHandler>,
@@ -138,6 +165,35 @@ pub struct ComponentNode {
     pub messages: Vec<ComponentMsgVariant>,
     pub design: Vec<ComponentDesignEntry>,
     pub members: Vec<ComponentMemberRow>,
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：一个 node 参数（未受信候选）。
+#[derive(Clone, Debug)]
+pub struct ComponentParam {
+    pub name: String,
+    /// 作者写的类型拼写（`float` / `Material2D` / ...）。
+    pub ty: String,
+    pub ty_span: Span,
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：场景组件实例的一行属性。
+#[derive(Clone, Debug)]
+pub struct ComponentSceneAttr {
+    pub key: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+/// PLAN-981（IF-981-ORIGINAL）：场景出口里的一个组件实例。
+#[derive(Clone, Debug)]
+pub struct ComponentSceneInstance {
+    /// 组件种类拼写（`Disc` / `shape2d`）。
+    pub kind: String,
+    /// 实例名（`red_disc`）。
+    pub name: String,
+    pub attrs: Vec<ComponentSceneAttr>,
     pub span: Span,
 }
 
@@ -150,6 +206,12 @@ pub struct ComponentText {
     pub kind: TextKind,
     pub fn_name: String,
     pub def_id: String,
+    /// PLAN-981：该文本表达式**引用到的名字**（按出现序、去重）。
+    ///
+    /// 补这个是因为实测发现：`text label(c)` 的实参 `c` 完全没进描述——只有
+    /// 函数名与 def_id。979 要核"文本是否由 model 字段驱动"时，拿不到这层关系，
+    /// 只能自己去反查隐藏函数的 HIR 体，等于把工作推给消费者。
+    pub references: Vec<String>,
 }
 
 /// 受检组件描述的一行。
@@ -161,6 +223,19 @@ pub struct ComponentNodeOut {
     pub legacy_widget: bool,
     pub fields: Vec<(String, String)>,
     pub handler_msgs: Vec<String>,
+    /// PLAN-981：每个 `on` 处理器**做的事**（消息名 → 赋值列表）。
+    ///
+    /// 此前只透出 `handler_msgs`（名字），handler 体内的 `count = count + 1`
+    /// 与 `count = count + 2` 的**区别完全丢失**。979 要核"2:1 事件、各 N 次 Tick
+    /// 后两实例各自推进几次"就必须知道每个 handler 的行为，否则只能去反查 HIR 体。
+    ///
+    /// 赋值右手是**原始表达式**；需要已解码值时看 `handler_assigns`。
+    pub handler_assigns: Vec<(String, Vec<(String, Expr)>)>,
+    /// PLAN-981：模型字段的**初值表达式**（名字 → 初值）。
+    ///
+    /// `fields` 只有 `(name, ty)` 拼写；作者的 `count int = 3` 里的 `3` 原先不在
+    /// 描述面，979 无法核对"helper 初值改了，两个后端结果应随之改变"。
+    pub field_inits: Vec<(String, Expr)>,
     /// 场景模式下每个实例的文本叶值（实例序；非场景编译为空）。
     pub instance_texts: Vec<Vec<ComponentText>>,
     /// 场景模式下每个实例、每个 model 字段的状态函数出口（PLAN-980 STATE：
@@ -185,6 +260,8 @@ pub struct ComponentViewOut {
     pub role: String,
     pub span: Span,
     pub texts: Vec<ComponentText>,
+    /// PLAN-981：已解析的实例引用（类型名已按绑定器符号解析）。
+    pub node_refs: Vec<ComponentNodeRef>,
 }
 
 /// 版本化描述（981 消费面）。
@@ -408,6 +485,7 @@ pub fn compile_age_component(
                 kind,
                 fn_name,
                 def_id,
+                references: collect_expr_names(&leaf.expr),
             });
         }
         nodes.push(ComponentNodeOut {
@@ -421,12 +499,27 @@ pub fn compile_age_component(
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect(),
             handler_msgs: n.handlers.iter().map(|h| h.msg.clone()).collect(),
+            handler_assigns: n
+                .handlers
+                .iter()
+                .map(|h| {
+                    (
+                        h.msg.clone(),
+                        h.assigns
+                            .iter()
+                            .map(|a| (a.field.clone(), a.rhs.clone()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+            field_inits: n.fields.iter().map(|f| (f.name.clone(), f.init.clone())).collect(),
             instance_texts: Vec::new(),
             instance_states: Vec::new(),
             view: ComponentViewOut {
                 role: n.view.role.clone(),
                 span: n.view.span,
                 texts,
+                node_refs: n.view.node_refs.clone(),
             },
             span: n.span,
         });
@@ -471,6 +564,59 @@ fn parse_program_items(src: &str) -> Result<Vec<Item>, Vec<Diagnostic>> {
 }
 
 /// 隐藏求值函数：`fn <prefix><n>() Str { return (<expr>).clone() }`。
+/// 收集表达式里**引用到的名字**（按出现序、去重）。
+///
+/// 这是给描述面用的最小事实：`text label(c)` → `["c"]`，`text "x".to(...)` → `[]`。
+/// 只做名字提取，不做类型/绑定判断（那些由共享 resolver 负责）。
+pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    fn walk(e: &Expr, out: &mut Vec<String>) {
+        match &e.kind {
+            ExprKind::Var(id) => {
+                if !out.contains(&id.name) {
+                    out.push(id.name.clone());
+                }
+            }
+            ExprKind::Field { base, name } => {
+                walk(base, out);
+                if !out.contains(&name.name) {
+                    out.push(name.name.clone());
+                }
+            }
+            ExprKind::TupleLit(items) => items.iter().for_each(|i| walk(i, out)),
+            ExprKind::Unary { operand, .. } => walk(operand, out),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                walk(lhs, out);
+                walk(rhs, out);
+            }
+            ExprKind::Call { callee, args } => {
+                if !out.contains(&callee.name) {
+                    out.push(callee.name.clone());
+                }
+                for a in args {
+                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a {
+                        walk(x, out);
+                    }
+                }
+            }
+            ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
+                walk(recv, out);
+                if !out.contains(&name.name) {
+                    out.push(name.name.clone());
+                }
+                for a in args {
+                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a {
+                        walk(x, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(e, &mut out);
+    out
+}
+
 fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
     let clone = Expr {
         span,
@@ -857,7 +1003,17 @@ fn compile_component_scenario_full(
                 type_params: Vec::new(),
                 params: Vec::new(),
                 ret: TypeAnn {
-                    kind: TypeRef::Builtin(field_type(f).expect("field type gate")),
+                    kind: TypeRef::Builtin(field_type(f).ok_or_else(|| {
+                        vec![text_diag(
+                            "source.age.component-unsupported",
+                            format!(
+                                "`model` field `{}` has type `{}`, which this slice cannot hold \
+                                 yet (supported: int/i32/bool)",
+                                f.name, f.ty
+                            ),
+                            f.ty_span,
+                        )]
+                    })?),
                     span: f.span,
                 },
                 body: Block {
@@ -980,6 +1136,7 @@ fn compile_component_scenario_full(
             kind,
             fn_name: fn_name.clone(),
             def_id,
+            references: collect_expr_names(&node.view.texts[*ti].expr),
         });
     }
     // 状态函数出口：每 (实例, 字段) 的 def id 按共享 adapter 的自由函数约定
@@ -1014,12 +1171,31 @@ fn compile_component_scenario_full(
                     .map(|f| (f.name.clone(), f.ty.clone()))
                     .collect(),
                 handler_msgs: node.handlers.iter().map(|h| h.msg.clone()).collect(),
+                handler_assigns: node
+                    .handlers
+                    .iter()
+                    .map(|h| {
+                        (
+                            h.msg.clone(),
+                            h.assigns
+                                .iter()
+                                .map(|a| (a.field.clone(), a.rhs.clone()))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+                field_inits: node
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.clone(), f.init.clone()))
+                    .collect(),
                 instance_texts,
                 instance_states,
                 view: ComponentViewOut {
                     role: node.view.role.clone(),
                     span: node.view.span,
                     texts: Vec::new(),
+                    node_refs: node.view.node_refs.clone(),
                 },
                 span: node.span,
             }],
@@ -1046,12 +1222,12 @@ impl ScenarioOp {
     }
 }
 
-fn local_name(instance: usize, field: &str) -> String {
+pub(crate) fn local_name(instance: usize, field: &str) -> String {
     format!("__age_s_{instance}_{field}")
 }
 
 /// 表达式重命名：model 字段标识符 → 实例局部变量（只支持下述形状，其余具名拒）。
-fn rename_expr(
+pub(crate) fn rename_expr(
     expr: &Expr,
     binding: FieldBinding,
     fields: &[ComponentField],
@@ -1174,7 +1350,7 @@ fn rename_arg(
 }
 /// 场景：单个实例的局部状态 + 定向 ops（驱动、状态函数与文本函数共用形状）。
 /// PLAN-980 STATE：`overrides` 命中的字段以初值字面量替换源内 init（源不变）。
-fn instance_stmts(
+pub(crate) fn instance_stmts(
     inst: usize,
     node: &ComponentNode,
     scenario: &ComponentScenario,
@@ -1182,6 +1358,20 @@ fn instance_stmts(
 ) -> Result<Vec<Stmt>, Vec<Diagnostic>> {
     let mut stmts = Vec::new();
     for f in &node.fields {
+        // 轮 49 契约：不支持的类型在**类型 token** 处具名拒绝。必须在 init 的
+        // 表达式脱糖之前判——980 STATE 的 init 形状诊断会先命中（同样的
+        // `source.age.component-unsupported`，但定位在初值字面量上）。
+        let ty = field_type(f).ok_or_else(|| {
+            vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "`model` field `{}` has type `{}`, which this slice cannot hold yet \
+                     (supported: int/i32/bool/str)",
+                    f.name, f.ty
+                ),
+                f.ty_span,
+            )]
+        })?;
         let init = match overrides.get(&f.name) {
             Some(v) => initial_literal(v, f.span),
             None => rename_expr(&f.init, FieldBinding::Local(inst), &node.fields)?,
@@ -1193,7 +1383,7 @@ fn instance_stmts(
                 span: f.span,
             },
             ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(field_type(f).expect("field type gate")),
+                kind: TypeRef::Builtin(ty),
                 span: f.ty_span,
             }),
             mutable: true,
@@ -1247,13 +1437,13 @@ fn instance_stmts(
     Ok(stmts)
 }
 
-fn state_fn_name(inst: usize, field: &str) -> String {
+pub(crate) fn state_fn_name(inst: usize, field: &str) -> String {
     format!("__age_state_{inst}_{field}")
 }
 
 /// 字段标识符的绑定方式：实例局部（驱动内）或状态函数调用（文本求值函数内）。
 #[derive(Clone, Copy)]
-enum FieldBinding {
+pub(crate) enum FieldBinding {
     Local(usize),
     StateFn(usize),
 }
@@ -1378,7 +1568,7 @@ fn initial_literal(v: &InitialValue, span: Span) -> Expr {
 }
 
 /// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool）。
-fn field_type(f: &ComponentField) -> Option<TypeWord> {
+pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {
         "int" | "i32" => Some(TypeWord::I32),
         "bool" => Some(TypeWord::Bool),
