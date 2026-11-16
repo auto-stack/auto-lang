@@ -153,3 +153,45 @@ Windows/Linux 装配绑定已验，Linux 运行归 1063）。sys 模块走 Aggre
 公开合同逐面保留。byte→Str 摘除面（read_text 族/zip/storage）以模块头具名注记
 移交 1064，不在装配面伪装可绑。资源/预算/capability 语义见
 [m2-stdlib-io.md](../../ace-migration/m2-stdlib-io.md)。
+
+## 共同模块装配与可见性投影（PLAN-1064 MODULE 切片，2026-11-16）
+
+承接标准库作者源（`pub fn`＋私有 helper、循环条件体）在 `packages-modules`
+平面的统一投影、模块域导入与受检装配交接（`IF-1064-MODULE`；完整 PLAN-1064
+其余 `byte→Str`/KV/ZIP/输出帧切片仍在途，详见 [PLAN-1064](../../../plans/1064-ace-stdlib-byte-str-deferred-surfaces.md)）：
+
+- **条件语法缝闭合（`auto-source.at`）**：`packages-modules` 原在 `if-cond`
+  与 `for-cond-stmt` 使用贪婪 `expr`，导致 `x < ident {` 将块左括号误提交为
+  `ctor-expr` 并在恢复路径报 `fn` 不属于该 profile。现将 `condition-expr`
+  （及 `condition-unary`/`condition-postfix`/`condition-ctor`/`condition-atom`/
+  `condition-ops`）扩至 `packages-modules`（并保留与 `age-package` 的并集），
+  使含循环条件的真实标准库作者源无需删改语法即可按包模块解析；`grammar_id`
+  变更按设计触发包缓存重建。
+- **模块域导入与可见性执法**：
+  - `frontdoor.rs::project_packages_front` 接受单段导入 `use <mod>`（声明
+    模块依赖边，成员保持 `<mod>.<item>` 限定访问），对整模块重导出
+    `pub use <mod>` 以 `source.module-path` 具名拒绝。
+  - `binding.rs` 为单段导入建立 `BoundImport { is_module: true }` 与依赖边
+    （自导入报 `source.module-path`，缺失模块报 `source.module-missing`）；
+    直接把模块命名空间当函数调用（`demo()`）报 `source.module-symbol`；
+    限定调用 `demo.answer()` 沿 `module_prefix`/`cross_call` 查 `exports`
+    集合，跨模块调用私有函数（如 `demo.helper(41)`）或删 `pub` 镜面报
+    `source.module-private` 并保留调用点 span；同模块 `pub` 函数可正常调用
+    私有 helper，私有声明进入 `declarations` 而不进入 `exports`。
+- **真实作者源、恢复失效与具名边界**：
+  - `stdlib/ace/std/json.at`（19 导出 + 8 私有 helper）与
+    `stdlib/ace/std/redis.at` 逐字节原源通过 `compile_package_product` 达
+    checked HIR；`json.at` 跨模块消费已在 AV 实跑执行（`user.name`＝
+    `"Michi"`、`services.0.port` 数组路径→42）；`redis.at` 跨模块绑定已达
+    checked HIR，其 `av.owned/1` 首刀降级在 `lower.intrinsic` 具名拒绝
+    （redis 网络实跑留在 platform lane，不伪装 owned 执行）。
+  - 保留 `std` 包身份冻结（`ace.stdlib-reserved`）与重名模块拒绝
+    （`source.module-identity`）；`PackageStore::prepare`/`restore` 绑定
+    `input_hash` 与摘要校验——恢复产物保持同身份并可执行（42），修改私有
+    helper 正文即移动 `input_hash` 使陈旧 readers 失效，篡改摘要拒绝恢复。
+  - **具名边界**：`stdlib/ace/std/sqlite.at` 的 canonical packages 装配腿
+    具名阻塞于 PLAN-975 `T-03` 的 `pub fn` 迁移（当前为 foreign-lane plain
+    `fn`，合同禁止镜像源替代）；1043 provider 候选发现/装配线本切片未触。
+- **证据入口**：`ace-source-query::module_1064`（6 例）与
+  `ace-av::conformance module_v_1064::`（7 例）；职责组 `ace-source`、
+  `ace-syntax`（及共享消费面）。

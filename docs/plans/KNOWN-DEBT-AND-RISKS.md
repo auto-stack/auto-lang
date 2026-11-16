@@ -4506,6 +4506,11 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   单组件面内无承载语义，归 981/IF-981-MODULE 多单元接线；computed 以逐字段
   状态函数+字面量/函数文本叶为已验面（f-string 叶见上条）。关闭=981 多单元
   接线后经组件间路由用例验收。owner=981。
+- **JET/ARK 归 M3（v0.7）——v0.6 移除（2026-11-16 用户裁定，取代同日环境
+  阻塞记录）**：B-JET/B-ARK 批整体迁出 v0.6 执行清单（原义务留 980 §9）。
+  环境事实仍在案（无 Jet 工具链，driver V06c `gradlew exit 9009`；Ark 同为
+  环境门控）。关闭=M3（v0.7）按原任务实施 B-JET-I/V/R、B-ARK-I/V/R 并在
+  对应工具链环境真实构建运行。owner=M3/后续轮。
 - **RUST 批边界（AXR0 先行，2026-11-16）**：①产品级 `rust_ui.rs` 旧 AST
   emitter 未替换——多文件 store/组件/sidecar 与 props/msg/route 对齐需组件面
   表达真实产品源（981 age-package 面刚落主、UI 接线未建）；关闭=后续轮经

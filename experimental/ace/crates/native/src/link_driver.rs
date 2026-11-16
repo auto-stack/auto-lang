@@ -551,6 +551,10 @@ pub fn link_only(
     }
     cmd.arg(format!("/libpath:{}", sdk.display()));
     cmd.arg("kernel32.lib");
+    // PLAN-1065: the sys973 entropy entry (BCryptGenRandom) resolves from
+    // bcrypt.lib — the only extra system import lib; unreferenced links
+    // pull in no bcrypt.dll import.
+    cmd.arg("bcrypt.lib");
     // PLAN-870: the link line carries every support library (the trace
     // lib, the text runtime lib) in the given order.
     for lib in support_libs {

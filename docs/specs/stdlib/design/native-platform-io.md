@@ -51,10 +51,15 @@
 
 - **Native PE（AC/mn）**：`experimental/ace/crates/native/src/platform_io.rs` 在 `MirInstr::PlatformCall`
   存在时由 `console_native_build` 注入 `mn-platform-shim`（纯 Win64 FASTCALL 机械码生成 COFF）；
-  仅从 `KERNEL32.dll` 静态导入 `GetStdHandle`、`WriteFile`、`GetLastError`、`GetSystemInfo`、`VirtualAlloc`、`VirtualFree`
-  （外加 `console.rs` 的 `ExitProcess`），不调用 CRT、libc、`malloc`/`free` 或 Rust `std::io`。
-- **PE 审计门**：`audit_pe_imports(&[u8])` 解析 PE64 导入表并验证 `ALLOWED_KERNEL32_IMPORTS` 白名单与禁令列表
-  （`ucrtbase`/`msvcrt`/`vcruntime`/`api-ms-win-crt-*` 与 `printf`/`malloc`/`free` 等），由 `pio04` 正反控钉死。
+  从 `KERNEL32.dll` 静态导入冻结白名单（1039 基础集 + PLAN-1065 sys973 文件/目录/env/时钟/进程入口集）并从 `bcrypt.dll`
+  仅导入 `BCryptGenRandom`（CSPRNG）；仍不调用 CRT、libc、`malloc`/`free` 或 Rust `std::io`。
+  PLAN-1065 起 shim 内嵌 sys973 36 个 Windows 真身（同 `mn_pio_state` 账本语义镜像 AV `Win32PlatformIo`；
+  槽位 96B×1024、目录首项暂存区与 4×64KiB `.bss` scratch——PE 默认小栈约束下大缓冲不得入栈），
+  14 个 bytes 形 N 保持具名 `-10`（Linux 腿→1063）。
+- **PE 审计门**：`audit_pe_imports(&[u8])` 解析 PE64 导入表并验证 DLL 冻结集 `kernel32.dll`+`bcrypt.dll` 与
+  `ALLOWED_KERNEL32_IMPORTS`/`ALLOWED_BCRYPT_IMPORTS` 白名单及禁令列表
+  （`ucrtbase`/`msvcrt`/`vcruntime`/`api-ms-win-crt-*` 与 `printf`/`malloc`/`free` 等），由 `pio01`/`pio04` 与
+  PLAN-1065 `sys973_win_pe_import_audit` 正反控钉死。
 - **AV 宿主**：AV 侧真实 Windows backend（`Win32PlatformIo`）同样直连 Win32 `kernel32.dll` 入口且可由测试捕获/故障注入
   （`CapturePlatformIo`）；AV 宿主自身仍作为 Rust 二进制运行，不宣称整个 AV VM 过程无 CRT。
 

@@ -42,6 +42,7 @@ pub mod observe;
 pub mod owned_source_incremental;
 pub mod platform_io;
 pub mod platform_io_linux;
+pub mod platform_io_sys973;
 pub mod resources;
 pub mod source_diagnostics;
 pub mod symbols;
