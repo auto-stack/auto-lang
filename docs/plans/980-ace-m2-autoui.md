@@ -1002,6 +1002,18 @@ next_responsible_role: work（WEB 切片#4：逐 handler 定位/span 精度 + ts
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 28 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#3 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 3c8c80ff lang 3190c60b3 | next: work（WEB 切片#4）
 
+2026-11-16 stage: work（WEB 批切片 #4：逐 handler 精确定位/O-C3 解除，goal round 29）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（lane API+永久 case 落主；**B-WEB-I/V/R 保持未勾**）| worktree: lang-980 @ plan-980-dev | commit: ui **80d1cc06**、lang **16f7ec508**（规范 §13.2）。
+
+**交付。** `ComponentFragmentLane`（ace_ts_provider）：①compile(src, path, handler_msgs)——组件面 states-only 编译，**ops=待定位 handler 的 msg 重放**（探针实证：ops 空则 handler 体缺席状态函数——切片#3 异常根因即在 drive 整源 span 上定位）；②`emit_expr_at_span(state_fn, span)`——状态函数 HIR 的 expr **span=原源坐标**，精确匹配；**同 span 多 expr 取索引序最大=组合形**（`!on` 的 NOT 与纯读形同 span，NOT 在后）；③越界/无命中/未知状态函数=具名拒。永久 case `p980_web_handler_precise_location`：Toggle 区 `!` 操作数 span → `(!l1___age_s_0_on)` NOT 保留 → host 映射 → **真 node !false===true FRAG_OK**；Inc 区 `1` 字面量同 lane 精确定位（逐 handler 区域可分辨）。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **7/7**（切片#1–#4 全链：绑定映射/语句/普查/入口/精确定位，node 腿实跑）；fmt clean、模块零警告；rebase 无增量（分支已同步 master）、ff 落主。
+
+**边界（诚实）。** 本切片解除 O-C3（span 精度）并交付 lane API；**不包含** ts_adapter 四委托点接线（需 widget 管线携源 span 到委托点——AuraTsContext 源线程化）、90 项全量切换、浏览器档——B-WEB 剩余义务不变。
+
+next_responsible_role: work（WEB 切片#5：ts_adapter 委托点源线程化+lane 接线；波次门 B-AV←M2A-08、B-RUST W3←UI-W2-AC 不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 29 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#4 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 80d1cc06 lang 16f7ec508 | next: work（WEB 切片#5：ts_adapter 接线）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
