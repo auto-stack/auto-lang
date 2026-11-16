@@ -32,6 +32,30 @@ node Counter {\n\
         Set(int)\n\
     }\n\
     model { count int = 3 }\n\
+    view main {\n\
+        text \"named\" {}\n\
+    }\n\
+    bind {\n\
+        \"title\" -> .Title\n\
+    }\n\
+    routes {\n\
+        \"/a\" -> use home\n\
+    }\n\
+    expose {\n\
+        count\n\
+    }\n\
+    lifecycle {\n\
+        mounted => {\n\
+            .count = count + 1\n\
+        }\n\
+    }\n\
+    computed {\n\
+        double => count + count\n\
+    }\n\
+    watch { .count -> { .count = count + 1 } }\n\
+    timer {\n\
+        Tick (every_ms: 1)\n\
+    }\n\
     on Inc { count = count + 1 }\n\
     on Life.Tick { count = count + 1 }\n\
     view {\n\
@@ -140,7 +164,11 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
     // `view.scene` 删掉投影后无人发现（轮 48 R47-2 的探针实证）。
     for drop in [
         "node",
+        "bind",
+        "computed",
         "design",
+        "expose",
+        "lifecycle",
         "model",
         "model.init",
         "msg",
@@ -152,6 +180,10 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
         "view-portrait",
         "view-widget",
         "view.text",
+        "named-view",
+        "route",
+        "timer",
+        "watch",
         "view.node-ref",
         "view.scene",
         "view.scene.resource",
@@ -171,6 +203,9 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     "on" | "on.lifecycle" => c.handler_msgs.clear(),
                     "msg" => c.messages.clear(),
                     "design" => c.design.clear(),
+                    "named-view" | "bind" | "route" | "expose" | "lifecycle" | "computed" | "watch" | "timer" => {
+                        c.members.retain(|m| m.role != drop);
+                    }
                     // 出口事实：把该出口换成另一个，代表"投影不再产出这一行"。
                     "view" => {
                         if c.exit == AgeViewExit::View {
@@ -226,13 +261,20 @@ fn p981_fields_construct_table_is_frozen() {
     assert_eq!(
         keys,
         vec![
+            "bind",
+            "computed",
             "design",
+            "expose",
+            "lifecycle",
             "model",
             "model.init",
             "msg",
+            "named-view",
             "node",
             "on",
             "on.lifecycle",
+            "route",
+            "timer",
             "view",
             "view-2d",
             "view-3d",
@@ -244,6 +286,7 @@ fn p981_fields_construct_table_is_frozen() {
             "view.scene",
             "view.scene.resource",
             "view.text",
+            "watch",
         ],
         "deleting or renaming a required construct row must be red, never a smaller \
          denominator that still passes"

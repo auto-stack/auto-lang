@@ -5146,12 +5146,14 @@ impl<'a> Engine<'a> {
         let expose_span = self.cx.span_of(member);
         let mut names: Vec<String> = Vec::new();
         fn walk(eng: &mut Engine, node: u32, out: &mut Vec<String>) {
+            // `expose { a, b }` 的名字是 member 的**直接** ident 子叶（不是包一层
+            // 子规则），所以先查本节点自己的 `name` 字段再看孩子。
+            if let Some(n) = eng.cx.field_child(node, "name") {
+                out.push(eng.cx.spelling(n));
+                return;
+            }
             for c in eng.cx.children(node) {
-                if let Some(n) = eng.cx.field_child(c, "name") {
-                    out.push(eng.cx.spelling(n));
-                } else {
-                    walk(eng, c, out);
-                }
+                walk(eng, c, out);
             }
         }
         walk(self, member, &mut names);

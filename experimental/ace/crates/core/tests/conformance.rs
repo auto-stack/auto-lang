@@ -108,6 +108,8 @@ mod plan981_view_select;
 mod plan981_msg_slot;
 #[path = "cases/plan981_design_slot.rs"]
 mod plan981_design_slot;
+#[path = "cases/plan981_members_slot.rs"]
+mod plan981_members_slot;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
 #[path = "cases/plan980_dialect_full.rs"]

@@ -87,6 +87,22 @@ pub struct AgeDesignEntry {
     pub value: Option<Expr>,
     pub span: Span,
 }
+/// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行。
+///
+/// 与 `design` 同原则：槽位恢复必须留下**可见事实**（角色 + 名字 + 作者值/文本/
+/// 数字 + 原 span）。语义执行（绑定/路由/生命周期/计算/侦听/定时器）由 980 面的
+/// consumer 负责，投影层不冒充已执行。
+#[derive(Clone, Debug)]
+pub struct AgeMemberRow {
+    /// 槽位角色（`named-view` / `bind` / `route` / `expose` / `lifecycle` /
+    /// `computed` / `watch` / `timer`）。
+    pub role: String,
+    pub name: String,
+    pub value: Option<Expr>,
+    pub text: Option<String>,
+    pub num: Option<i64>,
+    pub span: Span,
+}
 /// 受检的一个 AGE 组件（一个 node 声明）。
 #[derive(Clone, Debug)]
 pub struct AgePackageComponent {
@@ -99,6 +115,8 @@ pub struct AgePackageComponent {
     pub handler_msgs: Vec<String>,
     /// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体（名字 + payload 类型拼写，按声明序）。
     pub messages: Vec<AgeMessageVariant>,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行（按声明序）。
+    pub members: Vec<AgeMemberRow>,
     /// PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式，按声明序）。
     pub design: Vec<AgeDesignEntry>,
     /// PLAN-981：每个 `on` 处理器做的事（消息名 → `(字段, 赋值右手)`，按声明序）。
@@ -267,6 +285,20 @@ pub fn select_exit(
     }
 }
 
+/// 成员槽位角色的稳定标签（事实面用 `&'static str`，避免把动态串泄漏进清单）。
+fn member_role_label(role: &str) -> &'static str {
+    match role {
+        "named-view" => "named-view",
+        "bind" => "bind",
+        "route" => "route",
+        "expose" => "expose",
+        "lifecycle" => "lifecycle",
+        "computed" => "computed",
+        "watch" => "watch",
+        "timer" => "timer",
+        _ => "member",
+    }
+}
 /// 出口的稳定标签（与 description 的 exit 事实同字）。
 fn exit_label(exit: AgeViewExit) -> &'static str {
     match exit {
@@ -910,6 +942,19 @@ fn read_back_components(
                 "view-widget" => AgeViewExit::ViewWidget,
                 _ => AgeViewExit::View,
             },
+            members: p
+                .node
+                .members
+                .iter()
+                .map(|m| AgeMemberRow {
+                    role: m.role.to_string(),
+                    name: m.name.clone(),
+                    value: m.value.clone(),
+                    text: m.text.clone(),
+                    num: m.num,
+                    span: m.span,
+                })
+                .collect(),
             design: p
                 .node
                 .design
@@ -1363,7 +1408,63 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "av::age_package (instance_states)",
         requirement: "AGE-L01",
     },
-    // PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式）。
+    // PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行。
+    AgeConstruct {
+        key: "named-view",
+        spelling: "view <name> { … }",
+        fact: "a named-view row with its face name",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "bind",
+        spelling: "bind { key -> .Handler }",
+        fact: "a bind row (key + handler target in author spelling)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "route",
+        spelling: "routes { path -> use module }",
+        fact: "a route row (path + module target)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "expose",
+        spelling: "expose { name, … }",
+        fact: "an expose row (exposed name)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "lifecycle",
+        spelling: "lifecycle { method => { … } }",
+        fact: "a lifecycle row (method name)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "computed",
+        spelling: "computed { name => <expr> }",
+        fact: "a computed row (name + author expression)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "watch",
+        spelling: "watch { .src -> { … } }",
+        fact: "a watch row (source + declaration text)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "timer",
+        spelling: "timer { Msg (every_ms: n) }",
+        fact: "a timer row (message + interval)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },    // PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式）。
     AgeConstruct {
         key: "design",
         spelling: "design { key: <expr> }",
@@ -1548,6 +1649,13 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
         };
         if !out.contains(&exit_fact) {
             out.push(exit_fact);
+        }
+        // B-LANGUAGE-I（AGE-L02）：每个出现的成员槽位角色都产生事实行。
+        for m in &c.members {
+            let label = member_role_label(&m.role);
+            if !out.contains(&label) {
+                out.push(label);
+            }
         }
         // B-LANGUAGE-I（AGE-L02）：`design` 条目进入事实面。
         if !c.design.is_empty() && !out.contains(&"design") {
@@ -2207,6 +2315,13 @@ fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
 pub fn component_roles(description: &AgePackageDescription) -> Vec<&str> {
     let mut out = vec!["node", "view", "text"];
     for c in &description.components {
+        // B-LANGUAGE-I（AGE-L02）：每个出现的成员槽位角色都产生事实行。
+        for m in &c.members {
+            let label = member_role_label(&m.role);
+            if !out.contains(&label) {
+                out.push(label);
+            }
+        }
         // B-LANGUAGE-I（AGE-L02）：`design` 条目进入事实面。
         if !c.design.is_empty() && !out.contains(&"design") {
             out.push("design");
