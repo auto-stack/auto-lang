@@ -447,3 +447,24 @@ NOT fragment：永久 case `p980_web_extraction_carried_spans_feed_lane`
 正确、body 完整）——#6b 校准。**观察**：vue_capabilities 10 红=master
 预存（stash 取证，疑 981 邻面；KNOWN-DEBT 在案）。**WEB 剩余**：span
 起点校准 + 生成器源通道 + ts_adapter 四委托点接线 → 90 项 → 浏览器档。
+
+### §13.5 O-C4 解除：span 语义=body 覆盖区间 + 接线设计决策（切片 #6b，2026-11-16）
+
+**O-C4 解除（重定义为语义而非缺陷）**：全 6 handler span 诊断实证——
+`OnHandler.span` 的捕获语义是 **body 覆盖区间**（起点在 pattern 末 token
+至 body `{` 之间（±1 token，随 cur_pos 快照点波动），终点=body 闭括号
+后；`.ToggleMode` 含 on 块尾 `}` 的 1 token 余量）。**lane 合同只需
+expr 包含性**——对全部 handler 成立（002 六例核验）。精确 pattern 起点
+不承诺、不需要。
+
+**四委托点接线设计决策（双路线，#6c 起实施）**：
+- **路线 A（表达式级，受阻）**：ts_adapter 两处 Expr 委托点直接换 lane——
+  **受阻于旧 AST 无 span**（auto_lang_core::ast 的 Expr/Stmt 枚举零位置
+  信息；方言 parse_body 产出旧 AST；为每 variant 加 span=语言侧大手术）。
+  文本回印定位需 Auto AST printer（不存在）。不采用（本轮裁定）。
+- **路线 B（handler 体级，采纳）**：script 生成器按 handler 携
+  **源文本 + extract_handler_spans 区间**整经 lane 发射——状态函数 HIR
+  内该区间中的 exprs（原源 span）即该 handler 的表达式集，逐 expr 发射
+  +宿主映射组装 handler 函数体。改动面：vue/script.rs handler 生成道 +
+  VueGenerator 源通道（`generate_with_source`）——UI 侧自有面，无语言侧
+  手术。**剩余**：路线 B 实施 → vue_capabilities 全量双轨 → 浏览器档。
