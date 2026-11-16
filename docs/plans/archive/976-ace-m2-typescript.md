@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-976
-status: reviewed
+status: archived
 feature_name: 共享HIR到TypeScript和JavaScript
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 6
-current_step: 6
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-964, PLAN-965, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -337,7 +337,7 @@ M2-A的976用完整闭包语料和真实TS/JS工具链验证provider，可用代
 
 ## 8. 执行步骤
 
-当前共8任务，5完成（work 阶段全毕，T-05/06/07 为 review/merge）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共8任务，8完成（已归档）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
@@ -353,9 +353,9 @@ M2-A的976用完整闭包语料和真实TS/JS工具链验证provider，可用代
 
 - [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 已完成（final pass 绑定 9da498211，见 §9 review 收据；发现 F-R1 已同树修复并复验；债务候选 D-976 已登记 KNOWN-DEBT）]
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 [✅ 已完成：spec 沉淀 m2-typescript.md(sha256前16 914bbadae9af3f85)+replacement-scope 挂接，随 delivery commit 660fe72b5 ff-only 落 master；rebase 补丁全等（range-diff 全 `=`，旧→新 9da498211→ef028d1c3、498d7a205→660fe72b5）；冻结门禁 rebased 基线复跑 `cargo t ace-a2x` PASS 288 执行 gate True wall 229s]
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。 [✅ 已完成：plan-artifacts/plan-976 整目录删除（e2e/tool/rt_check/seedcert-check/ports-check/ref 全 scratch，关键数字已折入计划文件）；wt-guard clean 后移除 worktree/分支/组目录；retention 登记刷新]
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -370,6 +370,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-16 stage: merge | PLAN-976 | r6 | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang（已移除） | delivery_commit: 660fe72b5（master tip，ff-only，无 merge commit） | checkpoints: prepared=reviewed 9da498211+冻结spec增量（498d7a205） | landed=rebase onto master 补丁全等（range-diff 全=；映射 1d30914ff→d4945b802、67b5c0804→6259fb3f5、82b3dc665→6f7cdcce9、968e2c76c→7fb7ee058、9da498211→ef028d1c3、498d7a205→660fe72b5）后 `git merge --ff-only` 成功 | canonical_verified=m2-typescript.md sha256前16 914bbadae9af3f85 于 660fe72b5、replacement-scope-and-evidence.md 挂接节在位 | archived=docs/plans/archive/976-ace-m2-typescript.md status archived 本提交 | merge 门禁=rebased 基线 `cargo t ace-a2x` PASS 288 执行 gate True wall 229s（run-n65_bt60）；受触 crate 零 warning | 时间表（本会话实测）：tsrt 3例0.18s、tsfrag 4例0.18s、tsrej 2例0.03s、tsready 6例~8s（最大单例~7s<10s）、ace-semantics-contract 19例0s | cleaned=见 T-07 行 | 批量回归到期检查：976%5=1 非5倍数；.last-batch-regression.json 见 §10 后记 | next: done
 
 2026-11-16 stage: goal | plan_id: PLAN-976 | plan_revision: r6 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | commit: 9da498211（冻结复审基线） | next: merge
 
