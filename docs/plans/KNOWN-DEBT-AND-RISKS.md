@@ -1,3 +1,34 @@
+### D-1062-CLOSURE — AutoDown收口遗漏（2026-11-16，只规划，未修复）
+
+原[1062](archive/1062-remaining-code-cases-to-autodown.md)保持归档/原交付证据；全量收口声明已事后更正，统一owner为[1066](1066-autodown-migration-gap-closure.md) drafting 0/13。以下不因新计划建立而关闭：
+
+| finding / 优先级 | 实际残留 | owner任务与关闭条件 |
+|---|---|---|
+| F-1062-S / P2 | 第76固定组scheduler 11例/11检查仍旧围栏，已在原1062交付祖先链中 | 1066 T-04/09；逐项v2+真实actual/负控后切include，重扫当前全组 |
+| F-1062-N / P2 | 四个公开Test.run_*_dir可达的发现/执行仍依赖旧源码和oracle；五根1050项虽有doc但未全接线 | 1066 T-02/03/08/09；原集合/比较器/条件守恒，doc-only可发现执行，旧文本污染无影响/缺doc硬错 |
+| F-1062-P / P2 | 两个a2r工程读main.at；250子项编译门测试体读旧源并调用rustc | 1066 T-05/06；5源/19原断言doc消费，250真实编译/ledger义务保留，日常无隐式编译、专项准备/验证 |
+| F-1062-C / P1 | 普通conformance_bootstrap读30旧input.at并覆写仓内expected，错误仅打印；“仅proposal可写”未实现 | 1066 T-07；退出普通生成器注册，显式scope候选/写入保护与子失败，33固定独立验证及原trim不减 |
+
+现状更正见[收口Spec](../specs/auto-test-case/document-migration-closure.md)。禁止用新增文档数、旧快照子集全绿或archived状态代上述实际入口关闭；已迁75组的有效证据保持，不倒填或抹除原历史。
+
+### D-975-MODULE-LOAD / D-973-DEFER — 本轮实际承接（2026-11-16，只规划，未修复）
+
+| 缺口 | 原证据/旧义务 | 实际owner任务 | 关闭条件/边界 |
+|---|---|---|---|
+| public/private跨profile模块与std装配 | 975 r9 §10，真实json私有helpers/text-record pub冲突；973装配域原泛称未接收 | [1064 r2](1064-ace-stdlib-byte-str-deferred-surfaces.md) T-MODULE-I/V/R/D | canonical原源＋exports/可见性/冷恢复/错误span＋真实consumer/独立oracle，经独立phase复核正式交IF；不能删pub/全pub镜面源/仅parse |
+| B1正式来源 | 975已实现TextFromChar/多端源码，不等于主线正式切片 | [975 r10](975-ace-m2-stdlib-data.md) T-B1-V/R/D | 原语各适用端/owner/指纹/错误独立实跑及正式来源；不等MODULE或整包975 |
+| byte→Str/D01..09/编码解码/KV/ZIP与AV×C/Rust读出参 | [973归档](archive/973-ace-m2-stdlib-io.md)原D表/967帧边界 | 1064原T-02/03/04＋T-KV/T-FRAME | 原D09真实Option/List、ZIP原required方法/预算、KV重开/失败保旧及各端证据，读帧沿967 owner实现，不再无主等待 |
+| AC系统操作真实OS结果 | 973原F1，50符号原stub=-10 | [1065 r2](1065-ace-ac-sys-real-bodies.md) T-01..04/05/06 | Windows W36真body/独立OS/资源，N14具名拒绝，Linux代码/完整用例交1063 NOT_RUN；旧N stub绿不代W |
+
+[985 r19](985-ace-m2-certification.md)按原D/A行及MODULE/B1子行接真实source/测试与剩余；973已归档不重开，后继未实现不冒PASS，也不豁免完整M2-A库/AC/coverage。此表是原问题的当前owner补充，不重复立项、不新增“已关闭”结论；本轮不实施/运行/清理。
+
+### D-M2-GODOT-TARGET-SCOPE — 用户后置Godot目标（2026-11-16，非本版M2阻塞）
+
+- **决定/来源**：用户本轮明确去掉ACE M2的Godot支持；范围权威为[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)、`M2-TARGET-SCOPE-20261116`。这是版本范围变更，不是实现PASS或因缺工具自行豁免。
+- **原义务与owner**：[977](977-ace-m2-other-targets.md) r10的GD/SCENE六任务、[982](982-ace-m2-man-gen.md) r7的GODOT三任务及原AC/V转各Plan §9；旧GDScript/TSCN源码、用例、预期和原ID留存。未来Godot目标路线再经用户授权规划，本轮不另建Plan。AGE自有Node/2D/3D/光影不在后置范围；共享旧源的普通Auto语义/其他required后端保留。
+- **当前执行去向**：[985](985-ace-m2-certification.md) r17/T-A03版本化继承旧162行矩阵/adapter，按目标腿记`user-deferred/not-required`及决定来源，不计PASS/无理由NA；[986](986-ace-m2-release.md)/[987](987-ace-m2-retirement.md) r9保证发行宣称/真实可达闭包一致，不支持的新ACE Godot请求具名拒绝。旧VM/A2R和生产Vue/Ark旧TS emitter仍须退役。
+- **后续条件**：将来明确重纳入某版本时，原owner按保留源/义务重核真实provider、Godot工具链、脚本/场景/工程运行和独立oracle，再独立复核交付；当前不等待Godot安装。本条保持“用户后置、未实现/未验证”，不能冒关闭；当前范围台账落地由985/986/987原任务检查。
+
 ### D-1024-AUDIT — ACE静态审计发现承接（2026-11-13，后继风险未修）
 
 来源：[1024当前逐项分配](1024-ace-m2-code-quality-and-refactoring-audit.md)，r2、源码81d8fc03f10f4a7d179b0bc3a917602406ed7b91；只读审计复审通过不等于产品修复/运行通过。以下35项各有主owner/具名关闭case；confirmed只确认所述静态机制，candidate/收益unknown及正向实践单列。F12不计缺陷，F14静态映射部分已闭，F20保原正式验收与分档。各承接Plan按case取得真实反例/邻例、修复及独立review后更新，登记不批准延期或豁免。
@@ -4455,3 +4486,24 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | F6: Unicode 路径名切片未测 | P3 | sys973 测试 Unicode 仅在内容面；UTF-8→UTF-16 路径转换未受非 ASCII 文件名检验。关闭=1064/后续补 Unicode 文件名往返正例 | 1064 候选 |
 | F7: file.at read_text 注记块重复两遍 | P4 | 纯文案冗余（file.at:162-171），随 1064 D-01 落地时清理 | 1064 |
 | F8: V-02 sys 能力无授权拒绝专测 | P3 | 越权=0 副作用由 probe01/v04 近邻+1039 泛测+ledger 检查共享覆盖；无 sys973 专属"缺 platform.file grant"负例。关闭=1064/后续补专属负例 | 1064 候选 |
+
+### PLAN-980 B-STATE：f-string 文本叶 AV 执行车道 + 默认链未切 + ace-host 预存红 — 2026-11-16
+
+- **f-string 文本叶不可在 av.owned/1 执行**：组件面视图叶的反引号 f-string
+  （`${int}` → HIR `TextDisplay`）仅在 collections/closures profile 可 lowering；
+  组件面 AV 观察走 av.owned/1，整模块 lowering 连带失败。STATE 批以
+  **states-only 编译**（`compile_component_scenario_states`，不发射文本叶函数）
+  承载状态通道；完整文本观察（`observe_compiled`）对 f-string 源保持具名拒绝
+  （永久反例 `p980_state_fstring_view_leaf_states_observe_text_lane_refuses` 断
+  `text-display`）。关闭=f-string 叶获得 profile/接线（collections 车道接入或
+  owned 面内等价展开）后在文本车道转绿并撤本条。owner=组件面后续轮/981。
+- **DynamicComponent 默认链未切换**：ACE 状态执行桥（`ui/ace_state_bridge.rs`）
+  为并行新路径，产品默认仍是旧 `handler_codegen` bytecode 链；多单元源
+  （host/store 内嵌跨引用）接线依赖 981/IF-981-MODULE，全面退役归 PLAN-987。
+  在此期间两路并存（plan041 旧 4 case 不动即为对照）。关闭=后续批按面扩展逐
+  步切默认并删旧链（987 终验）。
+- **master 预存红：ace-host（ace-conformance）13 例**：STATE 门禁实测 153/166，
+  13 红在主检出 master `2cdb28fb3`（无 980 代码）逐一复现同错（`unknown ABI
+  leg "z"`、m1 语言面/comptime/rust_lowering/source inventory/governance）；
+  与 973 登记的 ace-abi/ace-runtime 预存红同类。非 980 触面。关闭=批量回归
+  triage 或独立 fix worktree 修复绿。owner=批量回归 triage。
