@@ -444,8 +444,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-component, age-package]) { age-timer-member() {} }
         }
         // PLAN-980：`msg { Inc, Dec, Set(int) }`——消息变体声明。
+        // PLAN-980 WEB #6i：具名 msg 形 `msg Msg { Add(str), … }`——名段
+        // 可选（与匿名 `msg { Inc }` 并存；真语料主导形态，vue_capabilities
+        // 双轨实测发现的语法域缺口——同批 DIALECT 批改面先例）。
         age-msg-member(profiles: [age-component, age-package], expect: "a `msg { Variant, … }` block") {
             name(of: "age-msg-head", field: "head") {}
+            opt { ident(field: "msg_name") {} }
             lbrace(same-line: true) {}
             age-msg-variant(field: "head") {} many { age-msg-variant-tail() {} }
             rbrace() {}
@@ -519,12 +523,24 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-on-widget-handler(profiles: [age-component, age-package]) {
             dot() {}
             ident(field: "msg")
+            // PLAN-980 WEB #6i：带参 handler `.Msg(param) -> { … }`——参数
+            // 段可选（零参 `.Inc -> { … }` 不受影响；真语料参数化事件）。
+            opt { age-on-handler-params(field: "params") {} }
             arrow() {}
             lbrace(same-line: true, cut: true) {}
             // R61-1：watch 体允许单行与多语句（`many` 不强制换行）；语句以 `.`
             // 开头，pratt 在下一个 `.` 处自然停下。
             many { age-view-stmt() {} }
             rbrace() {}
+        }
+        age-on-handler-params(profiles: [age-component, age-package]) {
+            lparen(same-line: true) {}
+            ident(field: "param")
+            many { age-on-handler-param-tail() {} }
+            rparen() {}
+        }
+        age-on-handler-param-tail(profiles: [age-component, age-package]) {
+            comma() {} ident(field: "param")
         }
         // PLAN-980：widget DSL 语句子集——`.field (=|+=|=) <expr>`。
         age-view-stmt(profiles: [age-component, age-package]) {
