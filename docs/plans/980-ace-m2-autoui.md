@@ -1084,6 +1084,16 @@ next_responsible_role: work（WEB 切片#6f：参数化 handler 扩面（参数�
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 35 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6e 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui f7e63778 lang 09fff0dd8 | next: user（裁定开放）或 work（#6f 默认）
 
+2026-11-16 stage: work（WEB 批切片 #6f：参数化 handler 域缺口具名，goal round 36——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——90 项全量双轨/浏览器档为 UI 侧剩余；参数化=语言侧义务移交）| worktree: lang-980 @ plan-980-dev | commit: ui **f4cbbf9e**、lang **6fc787bfb**（§13.9）。
+
+**关键结论（域缺口定性）。** 参数化 handler（`.Add(t) ->`）与内联 lambda 铸造 handler 的 lane 覆盖**不是 UI 适配器可闭合项**：根因=组件面 `ScenarioOp::Send` 无 payload 字段（参数化事件不可场景重放，状态函数 HIR 无从携带参数）+铸造形无源锚。**语言侧后继义务**（979/981 谱系扩展 ScenarioOp 或参数绑定面）。双轨合同下二者走编译器旧道直至语言侧交付。探针（msg 具名/typed payload/view 形三态试错）用后即删；普查 v2 冻结表扩两行（param-handler/inline-lambda-only=absent）。
+
+**验证（冻结提交实测）。** ace_ts_provider 12/12；fmt clean；ui ff 落主 `f4cbbf9e`；规范 §13.9 落主 `6fc787bfb`（worktree 停靠债务内容经 stash 往返保全）。
+
+next_responsible_role: work（WEB 切片#6g：90 项全量双轨（普查表=分母仪表；需从 vue_capabilities 用例源提取语料）+ 浏览器挂载档（013/017 playwright 先例）。波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 36 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6f 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui f4cbbf9e lang 6fc787bfb | next: user（裁定开放）或 work（#6g 默认）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
