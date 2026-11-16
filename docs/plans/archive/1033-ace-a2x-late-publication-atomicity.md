@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1033
-status: reviewed
+status: archived
 feature_name: ACE A2X暖编辑与晚发布失败一致性
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 3
-current_step: 3
+current_step: 5
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-a2x/incremental-and-cache.md]
@@ -154,8 +154,8 @@ T-01落点裁定：真实provider链无法寄宿于a2x-store内部（a2x-rust/a2
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，所有§6反例及邻例可在实际入口运行，重大未决先定，不私改expected。（§8 T-01证据：漂移重核、适用表、双seam、接受态/副产物清单、单提交点决定=可行；测试落位裁定记录于§6）
 - [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。（红/绿：未修代码区分断言FAILED→修复后5/5 PASS；C标量/RT/COLL/Rust无锚/边界各有独立oracle）
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（ace-a2x组全绿含全部既有消费者腿；ace-a2c-abi预存红具名归属；SD-01已在worktree准备；G1002不触及——未改新作者格式/adapter接线）
-- [ ] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
+- [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
@@ -165,8 +165,8 @@ T-01落点裁定：真实provider链无法寄宿于a2x-store内部（a2x-rust/a2
 | T-01 / work | [x] 1024交接、实施授权（/goal 2026-11-16）及当前源 | 冻结target×family适用表、A41/B61、委托provider及anchor晚失败seam，列完整接受态/副产物清单并完成单提交点可行性决定。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合。证据：开工漂移重核仅lib.rs（PLAN-1042/976加性consumer注册/片段层，发布路径未动），其余5个钉源/Spec字节一致；适用表=anchors_family/lib.rs；A41/B61沿用store_cache冻结fixture；seam=①set_target委托provider（仅指定assemble_fileset次数具名拒绝）②下一锚键预置同键异字节冲突工件（store永不覆写→真实Conflict→受控a2x.resource）；接受态=source_sha256/当前后端居民集/居民id绑定/last_anchor/返回文件集，副产物=B sem/frag无根CAS行（允许），env非接受态（prepare候选事务性已核core/source/adapter.rs:1005）；单提交点可行性=可行（staging+末尾不可失败提交块，publish_anchor保持为store侧最后可失败操作）。测试落位裁定见§6。 |
 | T-02 / work | [x] T-01决定与可区分输入（review RV1/RV2重开后闭合） | 按现prepare/assemble/publish/swap边界修复，分开ranged/core/有anchor与无anchor路径，补AXTX永久反例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。证据：warm_edit_targeted改staged返回（WarmStaged：下一居民集+id更新+manifest next_sha override）；commit_warm=单一接受点；ranged路径删除source预切换（错误恢复块随之删除），锚rebind读staged居民、required边随被编辑片段真实artifact id（修stale边），publish_anchor后一次性提交source/居民/ids/anchor；冷路径assemble_view_with_contexts同样staged后提交；produce_fragment*返回(片段,Option<id>)，公开checked-fragment API签名不变。永久反例5个（§6表）红/绿验证：未修代码上audit1033_axtx_01/02 FAILED（重试store-hit/whitespace居民复用/stale-base三项区分断言），修复后5/5 PASS（2.85s）。 |
 | T-03 / work | [x] T-02 | 每类失败后读取旧files/manifest、运行或restore旧A，再清故障同批重试B61；核其他target/read-only/原quota，完成A2X和C ABI职责组。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。证据：restore旧A纯P0+字节一致并真实运行（Rust 41/C 41/RT 2217/COLL 44），清障重试运行61/2218/49且锚重绑next_sha；失败后stale-base探针证会话绑定仍旧；跨target居民存活（C居民+1复用且含A体字节，Rust命名空间restart回原A字节）；read-only零写零锚（非会话不变性照实断言）；早parse拒绝具名。固定组：`cargo t ace-a2x` 全PASS（含全部conformance腿与新增5锚，T-03在实际组结果核锚点被发现/执行）；`cargo t ace-a2c-abi` 8/9，唯一红=KNOWN-DEBT-AND-RISKS.md:4578已登记master预存红（admitted_text认证pin bd260a8b…vs 0a4f68e3…，master@82d032c8e/Plan 972改runtime未重钉，owner=批量回归triage），在干净基线复现一致，非本Plan触面——具名排除，不充PASS。原quota/A→B→A正反控由ace-a2x组内既有测试保持绿。 |
-| T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-04 / review | [x] T-01..03完成、冻结提交（首轮needs_fix+受影响复审final pass，见§9两条review收据） | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass（冻结并集@305bbd0c1：ace-a2x PASS(312ok,run-02wtivh8)、ace-a2c-abi 8/9具名预存pin红(run-6gp4qjgt)；rebase等价range-diff全=、ff-only落主、canonical spec fa6476e5…核验） | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
