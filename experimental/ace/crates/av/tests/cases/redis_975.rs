@@ -270,6 +270,7 @@ fn redis975_std_redis_packaging_inline() {
                 ("SET", 3) => b"+OK\r\n".to_vec(),
                 ("GET", 2) if args[1] == "k" => b"$5\r\nhello\r\n".to_vec(),
                 ("GET", 2) if args[1] == "missing" => b"$-1\r\n".to_vec(),
+                ("GET", 2) if args[1] == "u" => b"$4\r\n\xe4\xb8\xadA\r\n".to_vec(),
                 ("INCR", 2) => b":3\r\n".to_vec(),
                 ("EXISTS", 2) => b":1\r\n".to_vec(),
                 ("PING", 1) => b"+PONG\r\n".to_vec(),
@@ -302,6 +303,16 @@ fn main() int {{
     let c = redis_incr(s, "counter")            // :3       -> 3
     let e = redis_exists(s, "k")                // :1       -> 1
     let p = redis_ping(s)                       // +PONG    -> 1
+    // PLAN-975 T-03: get's Str return (B1 materialization) — ASCII,
+    // nil -> "", and a multi-byte UTF-8 payload pass through intact
+    let g Str = redis_get(s, "k")               // $5 hello -> "hello"
+    let want_g Str = "hello"
+    if g != want_g {{ return 40 }}
+    let gm Str = redis_get(s, "missing")        // $-1      -> ""
+    if gm.len_bytes() != 0 {{ return 41 }}
+    let gu Str = redis_get(s, "u")              // $4 中A   -> "中A"
+    let want_u Str = "中A"
+    if gu != want_u {{ return 42 }}
     // payload BYTES observable through the reader face
     let region = mem_alloc(4096)
     let end = redis_cmd(s, region, 0, redis_cmd_get("k"))
@@ -370,6 +381,9 @@ fn main() int {{
             vec!["INCR", "counter"],
             vec!["EXISTS", "k"],
             vec!["PING"],
+            vec!["GET", "k"],
+            vec!["GET", "missing"],
+            vec!["GET", "u"],
             vec!["GET", "k"],
             vec!["FOO"],
             vec!["DEL", "k"],

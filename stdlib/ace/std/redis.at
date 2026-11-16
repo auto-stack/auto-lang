@@ -8,10 +8,12 @@
 // Legacy sentinel face mapping (stdlib/auto/redis.at): the opaque
 // RedisClient handle becomes the socket int with an EXPLICIT
 // redis_close (no RAII objects in this lane); bool sentinels become
-// 1/0; get's Str return is named-pending on the shared substring-
-// materialization decision (974 url_decode / 975 JSON decode) — this
-// lane observes the payload LENGTH (nil = -1) plus redis_bulk_* byte
-// readers over a caller-held region. Lane error codes (-2..-10) pass
+// 1/0; get's Str return LANDED with the B1 substring-materialization
+// primitive (PLAN-975 T-03): redis_get decodes the payload's UTF-8
+// scalars and re-materializes them via char.to(Str); nil/error/non-
+// bulk/malformed-UTF-8 yields "" (distinguish via redis_get_len and
+// the redis_bulk_* byte readers over a caller-held region — binary
+// payloads stay on the byte face). Lane error codes (-2..-10) pass
 // through op returns; -100/-101 are the module's own failure
 // sentinels (error reply / malformed reply).
 
@@ -233,6 +235,82 @@ pub fn redis_get_len(s int, key Str) int {
     }
     let _f3 = mem_free(region)
     return -100
+}
+
+// PLAN-975 T-03 (B1-unlocked, the named pending in the header above):
+// the legacy get Str return — the bulk payload MATERIALIZED as an owned
+// Str. The payload bytes are a UTF-8 sequence; each SCALAR is decoded
+// from its encoding and re-materialized via char.to(Str) (byte-wise
+// from_codepoint would corrupt multi-byte payloads). A nil bulk ($-1),
+// an error reply, a non-bulk reply, or a malformed/overshooting UTF-8
+// payload yields "" — callers that must distinguish use redis_get_len
+// and the byte-reader face (binary payloads stay there).
+pub fn redis_get(s int, key Str) Str {
+    let region = mem_alloc(4096)
+    let end = redis_cmd(s, region, 0, redis_cmd_get(key))
+    if end < 0 {
+        let _f = mem_free(region)
+        return ""
+    }
+    if mem_read_u8(region, 0) != 36 {
+        let _f2 = mem_free(region)
+        return ""
+    }
+    let n = redis_bulk_header_num(region, 0)
+    if n < 0 {
+        let _f3 = mem_free(region)
+        return ""
+    }
+    let p = redis_bulk_payload_at(region, 0, end)
+    if p < 0 {
+        let _f4 = mem_free(region)
+        return ""
+    }
+    var out Str = ""
+    var i = 0
+    for i < n {
+        let b0 = mem_read_u8(region, p + i)
+        var cp = b0
+        var step = 1
+        if b0 >= 240 {
+            if b0 <= 247 {
+                if i + 3 < n {
+                    cp = (b0 - 240) * 262144 + (mem_read_u8(region, p + i + 1) - 128) * 4096 + (mem_read_u8(region, p + i + 2) - 128) * 64 + (mem_read_u8(region, p + i + 3) - 128)
+                    step = 4
+                } else {
+                    let _fb = mem_free(region)
+                    return ""
+                }
+            }
+        }
+        if b0 >= 224 {
+            if b0 <= 239 {
+                if i + 2 < n {
+                    cp = (b0 - 224) * 4096 + (mem_read_u8(region, p + i + 1) - 128) * 64 + (mem_read_u8(region, p + i + 2) - 128)
+                    step = 3
+                } else {
+                    let _fb = mem_free(region)
+                    return ""
+                }
+            }
+        }
+        if b0 >= 192 {
+            if b0 <= 223 {
+                if i + 1 < n {
+                    cp = (b0 - 192) * 64 + (mem_read_u8(region, p + i + 1) - 128)
+                    step = 2
+                } else {
+                    let _fb = mem_free(region)
+                    return ""
+                }
+            }
+        }
+        let c char = char.from_codepoint(cp)
+        out = out + c.to(Str)
+        i = i + step
+    }
+    let _f5 = mem_free(region)
+    return out
 }
 
 pub fn redis_int_op(s int, cmd Str) int {
