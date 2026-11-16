@@ -524,13 +524,12 @@ fn json975_packages_coverage_av_mn_a2r() {
     );
 }
 
-/// V-COVERAGE leg 2: canonical `json.at` via packages on A2C (`cl`) and A2PY (OS Python).
+/// V-COVERAGE leg 2a: canonical `json.at` via packages on A2C (`cl`).
 #[test]
-fn json975_packages_coverage_a2c_a2py() {
+fn json975_packages_coverage_a2c() {
     let prod = coverage_product();
-    let store = scratch("cov-c-py-store");
+    let store = scratch("cov-c-store");
 
-    // 4. A2C (cl)
     let c = PackageA2xTarget::cold(
         &store,
         "p975covc",
@@ -553,8 +552,14 @@ fn json975_packages_coverage_a2c_a2py() {
         "value:42",
         "A2C json.at oracle 42"
     );
+}
 
-    // 5. A2PY (real OS Python)
+/// V-COVERAGE leg 2b: canonical `json.at` via packages on A2PY (OS Python).
+#[test]
+fn json975_packages_coverage_a2py() {
+    let prod = coverage_product();
+    let store = scratch("cov-py-store");
+
     let py = PackageA2xTarget::cold(
         &store,
         "p975covpy",
