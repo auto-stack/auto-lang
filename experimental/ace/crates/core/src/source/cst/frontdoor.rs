@@ -1072,8 +1072,38 @@ pub(crate) fn project_packages_front(
                         }
                     }                    // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
                     // 同样进唯一 verify——`class: nosuch_ident` 不能静默通过。
+                    // PLAN-981（B-LANGUAGE-V，980/A 真实源）：`onclick: .Msg` 这类
+                    // **事件绑定**是事实，不是值表达式——`.Msg` 不是 `self` 字段引用，
+                    // 不能送进值 verify（否则整源报 `no local named self`）。
+                    fn event_binding_msg<'a>(
+                        en: &'a crate::source::age_component::ComponentViewEntry,
+                        msgs: &[String],
+                    ) -> Option<&'a str> {
+                        if !en.is_event {
+                            return None;
+                        }
+                        match &en.value {
+                            crate::source::age_component::ComponentEntryValue::Expr(
+                                crate::source::ast::Expr {
+                                    kind: crate::source::ast::ExprKind::Field { base, name },
+                                    ..
+                                },
+                            ) if matches!(
+                                base.kind,
+                                crate::source::ast::ExprKind::Var(ref v) if v.name == "self"
+                            ) =>
+                            {
+                                msgs.iter()
+                                    .find(|m| **m == name.name)
+                                    .map(|_| name.name.as_str())
+                            }
+                            _ => None,
+                        }
+                    }
+
                     fn collect_item_exprs<'a>(
                         items: &'a [crate::source::age_component::ComponentViewItem],
+                        msgs: &[String],
                         out: &mut Vec<&'a crate::source::ast::Expr>,
                     ) {
                         use crate::source::age_component::ComponentEntryValue;
@@ -1085,23 +1115,30 @@ pub(crate) fn project_packages_front(
                                     if let Some(l) = &e.label {
                                         out.push(l);
                                     }
-                                    collect_item_exprs(&e.items, out);
+                                    collect_item_exprs(&e.items, msgs, out);
                                 }
-                                ComponentViewItem::Entry(en) => match &en.value {
-                                    ComponentEntryValue::Expr(x) => out.push(x),
-                                    ComponentEntryValue::Lambda(asgs) => {
-                                        for a in asgs {
-                                            out.push(&a.rhs);
+                                ComponentViewItem::Entry(en) => {
+                                    if event_binding_msg(en, msgs).is_some() {
+                                        continue;
+                                    }
+                                    match &en.value {
+                                        ComponentEntryValue::Expr(x) => out.push(x),
+                                        ComponentEntryValue::Lambda(asgs) => {
+                                            for a in asgs {
+                                                out.push(&a.rhs);
+                                            }
                                         }
                                     }
-                                },
+                                }
                             }
                         }
                     }
+                    let declared_msgs: Vec<String> =
+                        node.messages.iter().map(|m| m.name.clone()).collect();
                     let mut entry_exprs = Vec::new();
-                    collect_item_exprs(&node.view.tree, &mut entry_exprs);
+                    collect_item_exprs(&node.view.tree, &declared_msgs, &mut entry_exprs);
                     for (_, items) in &node.view.named_trees {
-                        collect_item_exprs(items, &mut entry_exprs);
+                        collect_item_exprs(items, &declared_msgs, &mut entry_exprs);
                     }
                     for e in entry_exprs {
                         check_value(e)?;
