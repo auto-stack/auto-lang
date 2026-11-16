@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-976
-status: drafting
+status: execution_done
 feature_name: 共享HIR到TypeScript和JavaScript
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 5
-current_step: 0
+updated_at: 2026-11-16
+plan_revision: 6
+current_step: 5
 total_steps: 8
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-964, PLAN-965, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-976] 共享HIR到TypeScript和JavaScript
 
 ## 0. 变更摘要
+
+2026-11-16 r6（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包保留M2-A，交完整生产消费闭包所需的共享TS/JS受检发射/provider，976/T-01据Vue/Ark/Web实际委托和合法作者表面冻结范围；不再自动承诺独立通用a2ts/a2js全语言CLI产品。8任务/0进度保持。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
 2026-11-12 r5：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -68,7 +70,17 @@ touched_goals: [GOAL-002]
 
 - [crates/auto-lang-core/src/trans/typescript.rs](../../crates/auto-lang-core/src/trans/typescript.rs)：旧目标行为/模块/源码映射研究；读取SHA256前16 `be945041d9789508`
 
+### 2026-11-16 用户目标范围修订与取材
+
+用户明确要求从ACE M2去掉Godot转译，并核实a2vue对TS的真实依赖；本轮仅规划，不删除实现/原源/旧用例，不运行测试/安装Godot或创建/恢复实施树/目标，不改canonical Specs或归档959。读取基面`8a686e8d2399f01c3aa91112aa683f141c0a0922`及并行文档WIP。auto-ui代码核实：`ui_gen/ts_adapter.rs` SHA256前16 `84efe1eb8306dc25`（Stmt回退约858行、Expr委托约2458行）、`ui_gen/vue/script.rs`=`8120f939878ed68d`（handler约288/1732行及computed/body约2596行）、`ui_gen/ark_adapter.rs`=`038454e31c87e786`（同类TS委托）；现行`docs/specs/ui/vue-store-generation.md`=`f422fe6df24cc398`。这是静态读取，不是新ACE TS运行证据。
+
+Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2R/其他required后端义务不能随Godot一起撤掉。规范中旧“全部在用A2X目标”的历史范围由本次用户裁定覆盖，未来实际交付时落对应SD；当前Spec已验事实不伪造。受修改的旧revision范围/矩阵证明仅保历史，未来独立review须绑定当前revision与真正实现提交。
+
 ## 5. 详细设计
+
+### M2-TARGET-SCOPE-20261116：本包当前边界
+
+本包保留M2-A，交完整生产消费闭包所需的共享TS/JS受检发射/provider，976/T-01据Vue/Ark/Web实际委托和合法作者表面冻结范围；不再自动承诺独立通用a2ts/a2js全语言CLI产品。8任务/0进度保持。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
 ### M2阶段执行合同（当前优先）
 
@@ -87,7 +99,7 @@ touched_goals: [GOAL-002]
 
 新增共享HIR TS/JS provider（新路径），取代旧TypeScriptTrans/JavaScriptTrans；源映射、模块、UI表达式/handler、异步与runtime helper分层。JS Number不能隐式承接i64/u64，按语义用明确表示，环境API由provider。
 
-支持集继承959分母与Design55的完整语言定义；若本包先于分母完成，仅允许静态准备。T-01冻结到符号/语法/consumer，不能把不支持项从范围删掉。新IR节点、provider、领域接面与测试fixture均为拟新增，位置由已核owner下确定，不声称当前存在。
+支持集按Design55 §5.1冻结完整生产消费闭包，并继承959中属于该闭包的义务；闭包内不能因实现困难删项，闭包外独立目标额外面须逐项保留范围分类。T-01冻结到符号/语法/consumer，不以旧emitter类的完整职责自动扩大为通用CLI产品。新IR节点、provider、领域接面与测试fixture均为拟新增，位置由已核owner下确定，不声称当前存在。
 
 T-01有界前探：用一个最小真实正例、同类型非法近邻和一次失败后恢复串起本包最长producer→consumer路径；先比较最相关的可行实现策略，形成决定与资源/平台适用表后进入实现。不以任意日历或固定语法深度削范围；探针不能闭合则列具体阻塞/修订，不能只交设计宣布完成。
 资源所有者：编译session持候选，发布后当前generation持产物；运行/宿主pin保在途，最后owner释放。取消/错误/late结果不得覆盖当前已发布版本。现行预算保持，新增域的计量单位/上限/超限分类在T-01冻结并有边界反例；改变承诺须显式修订。
@@ -151,9 +163,114 @@ struct ScriptArtifact { module: ModuleIdentity, semantic: CheckedRef, target: Sc
 | SD-01 | add | `docs/specs/ace-migration/m2-typescript.md`（拟新增；可在review归并真实模块Spec，必须保持可追溯） | 未交付/有限切片→本包实际已验证支持、接口、拒绝及资源边界 | 防计划代现状 | AC-01..03/AC-06 |
 | SD-02 | modify | `docs/specs/ace-migration/replacement-scope-and-evidence.md` | 仅口径→关联本包已验证新producer及未闭缺口；不改旧义务 | 替换追踪 | AC-03/05 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-typescript.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
-
-
+| SD-TARGET-SCOPE | modify | `docs/specs/ace-migration/m2-typescript.md`及`replacement-scope-and-evidence.md`（真实交付后归原owner） | 原全目标并集→按Design55 §5.1的用户范围：Godot后置，生产TS/JS required，范围/证据/发行宣称一致；旧实现与用例保留 | 本轮用户明确裁定，防止旧Godot门残留或误删Vue能力 | AC-01/02/04/05、AC-PHASE；原work/review与范围核对 |
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-typescript.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### 976当前交付合同：完整生产TS/JS消费闭包（r6）
+
+已核实的调用链如下，均为旧实现的取材事实，不能当作新ACE已支持：
+
+| 已有入口 | 实际委托 | 新链职责与原任务 |
+|---|---|---|
+| `auto-ui/.../ui_gen/vue/script.rs` handler/computed/watch/setup、返回表达式 | `ts_adapter.rs`保留Vue响应式/props/store/宿主映射；普通Stmt约858行、Expr约2458行调用旧`TypeScriptTrans` | T-01列出每个委托分支及允许的Auto构造；T-02交共享Checked HIR TS/JS发射；T-03交可独立消费接口，980/WEB接完整UI |
+| `auto-ui/.../ui_gen/ark_adapter.rs`普通Stmt/Expr | 同一旧TS emitter约139/629行 | 共用976新provider，980/ARK保Ark框架映射；不能因Vue用到的较少而漏Ark合法构造 |
+| 982/WEBTARGET、983 Web、984/OS实际生产生成工程 | 模块、运行helper和真实TS/JS工具链，准确CLI依赖由T-01核实 | T-08冻结module/runtime/target manifest；实际使用公开CLI的consumer仍须该CLI可用 |
+
+范围不是“挑现有Demo用到的语法”。T-01须冻结**规范允许的UI表达式/语句/完整函数、转调函数、导入模块和库的传递闭包**，逐项记录旧委托分支/符号→原源及expected→新provider入口→实际consumer→适用目标与独立oracle。没有Demo但合法可达的构造仍required；旧`a2ts/a2js`语料按此归required、规范冲突待裁定或本版无消费的独立目标额外面，逐条保留去向，不能整目录丢弃。新provider不得回调旧TypeScriptTrans/JavaScriptTrans或重做一套语义分析。
+
+沿a2x-core受检语义/目标协议交付`ScriptArtifact`；模块身份、原span/source-map、target/module格式、runtime身份和依赖清单不可省。UI反应性、capture与宿主变量替换归UI适配层，976负责一般Auto语义到TS/JS表示；接口按该职责分界冻结，不给旧AST发射器加一个ACE名字。调用次序、短路、异常/async、模块初始化、字符串/资源、i64/u64精度与库引用均按Auto独立oracle保真。
+
+M2-A的976用完整闭包语料和真实TS/JS工具链验证provider，可用代表真实UI接面的独立fixture而不反等980整包；980/982/983/984接真实产品并承担其原A/RG或B验收。**独立、全语言、通用a2ts/a2js CLI产品不是自动新增的M2门**；T-01若发现生产工程实际依赖其中某项，就纳入required闭包，不能以“独立CLI”名义排除。未承诺额外面在能力清单具名列出；未支持请求按既有诊断入口拒绝，无旧链fallback。
+
+### T-01 冻结决定（2026-11-16 实施轮，goal 授权链内）
+
+本节是 T-01 的有界前探结论，冻结 §5「976当前交付合同」的实现边界；依据为 `SemanticView` 的实际准入名单（`a2x-core/src/semantic_view.rs` §1.5–1.7）与 auto-ui 真实委托面（4 处 fragment 级 `stmt`/`expr` 调用），不是旧 emitter 的类职责。以下事实为本轮静态读取 + 工具链实测，**新 provider 尚未实现**。
+
+**A. 输入→输出链（已核 owner，非新增）**
+
+| 阶段 | owner/事实 | 本包接入点 |
+|---|---|---|
+| 源→Checked HIR | `ace_core::source` 各 profile 前门 → `CheckedModule`；`a2x-store` `cold_assemble_profile` 调 `SemanticView::from_checked` | 不新建前端 |
+| 多模块/包 | `BoundPackages` 在 view 之前扁平化（`init_order`/`module_init_order`/mangled 名），provider **看不到 module 语法**；`std.*` 仅以 `ExternalFn.source_name` + 端口目录出现 | 不新建模块系统 |
+| 受检语义 | `SemanticView`（只读，target-neutral） | provider 唯一输入 |
+| 发射/装配 | 新 `ace-a2x-ts` crate：`TargetProvider` 8 方法 → `FileSet` | T-02 |
+| 持久/恢复/锚 | `a2x-store` LayerSpec + anchor（可复算 seed） | T-03 注册 id |
+| 真实运行 | `a2x-worker` 新 `emit-ts`/`run-ts` recipe → 真实 `node` | T-03/T-08 |
+
+**B. 目标与工具链（实测）**
+
+| 目标 | 工具链 | 已验证事实 |
+|---|---|---|
+| TypeScript | node **v25.2.1** 原生 type-strip 执行 `.ts`；tsc **5.9.3**（本机 `auto-ui/examples/ui/001-helloworld/gen/front/vue/node_modules/typescript/bin/tsc`，env `A2TS_TSC` 可覆盖） | `node x.ts` 退出 0；enum/namespace 等非可擦语法报 `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` ⇒ 生成物只用**可擦语法**（无 enum/namespace/参数属性）；`tsc --noEmit --target es2022 --module nodenext --strict` 可对 `.ts` 生成物 + `.d.mts` 声明通过 |
+| JavaScript | node v25.2.1 ESM（`.mjs`） | `import`/`export`、BigInt（`2n**64n`）、`TextEncoder` UTF-8 字节与码点计数均实测可用 |
+| 观察协议 | stdout `value:<i32>\n`（bool→0/1）、`trap:<Code>\n`；短路 marks 走 stderr（`mark_a`/`mark_b`） | 与 a2py 冻结面一致；`process.stdout.write`（不用 `console.log`，避免附加换行/二进制失真） |
+
+缺 tsc 只影响类型检查腿（具名 infra skip，由 T-04 记录；不冒充 PASS 也不判语言失败）；真实运行腿始终由 node 执行。
+
+**C. 支持集 = `SemanticView` 的 Scalar/RecordText/Collections 全部准入构造（无按 Demo 缩面）**
+
+| Family | 必须支持（准入表全量） |
+|---|---|
+| Scalar | `ReadLocal/Constant/Binary(11 legacy ops)/Unary/Logical/Call`、`Let/Return/If/Loop/Assign/Break/Continue`；入口 `view.entry(name)`（0 参 i32 free fn） |
+| Text / RecordText | 上表 + `StrLit/CharLit/TextLen/TextLenBytes/TextCharAt/TextSlice/TextConcat/TextClone/TextToOwned/TextToBorrowed/CharToCodepoint/CharFromCodepoint/TextFromChar`、`RecordCtor/FieldGet/BorrowView/BorrowMut/RecordClone/Move`；`CallbackRef` 随 foreign 一起具名拒绝（见 D） |
+| Collections（含 aggregates/scheduler profile 绑定到 Closures 域） | 上表 + `ListNew/ListLen/ListPush/ListInsert/ListGet/ListSet/ListRemove/ListClear`、`VariantCtor/VariantGuardTest/VariantProject`、`TextDisplay`、`CreateClosure/CallClosure`、`Eval/Fail`、以及仅此域准入的 `NumericConst/Cast/BinOp::Num/Unary::NegNumeric`（i8/u8/u32/i64/u64/f32/f64 全量） |
+
+`Stmt::Drop` 在任何域都被 view 拒绝（清理是计划驱动的），`Unit/NilLit/ObjectCtor/ObjectGet/ObjectSet/ClosureClone` 在任何域都不准入 ⇒ 不属于本包义务，也不得在文档中宣称支持。
+
+**D. 具名拒绝（具名、可诊断、无旧链 fallback）**
+
+| 拒绝码 | 触发 | 依据 |
+|---|---|---|
+| `a2ts.foreign-unsupported` | `DefKind::Foreign` 声明、`foreign_call_credential`、`CallbackRef` | 原生 FFI 无生产消费（UI/Web 闭包不接 C ABI）；同 native/A2C 具名拒绝先例，不做假桥 |
+| `a2ts.sched-unsupported` | `__sched_*` 内在符号 | 共享 HIR 无 await 节点，scheduler 是独立 profile 的并发运行面；m2-scheduler 已记 Native/A2C 具名拒绝先例，本包同样具名拒绝而非静默降级 |
+| `a2ts.unsupported-*` | 视图之外的构造/类型/操作 | 沿 `A2xReject` 词表 |
+| `a2ts.depth-budget` | 嵌套深度超 `MAX_STRUCTURE_DEPTH` | 与 a2py 同常量同码位纪律 |
+| `a2ts.seed` / `a2ts.credential` | 无 view 且无 seed、凭证不匹配 | provider 侧自检 |
+
+**E. 值表示决定（JS/TS）**
+
+| Auto 类型 | 生成物表示 | helper 族 | 边界/陷阱 |
+|---|---|---|---|
+| `i32/i8/u8/u32` | `number` | `a2x_add/sub/mul/div/rem/check_range/shl/shr` | checked：越界 throw `trap:Overflow`；`/`、`%` 为 C 语义向零截断（不用 JS 浮点除） |
+| `i64/u64` | **`bigint`**（字面量带 `n`） | 同族 BigInt 版 helper + `a2x_check_range` BigInt 分支 | JS Number 不能隐式承接 i64/u64（>2^53 丢失）；混用 number/bigint 立即 throw `TypeError`，故 cast 点显式 |
+| `f32/f64` | `number` | `a2x_f32_round`（`Math.fround`）、`a2x_f32_bits/a2x_f64_bits`、`a2x_fdiv` | `-0.0`/NaN 载荷位保真；f32 运算每步 round |
+| `bool` | `boolean` | 断言 `x !== 0` 型转换 helper | 不用 `Boolean()`（NaN 差异） |
+| `char` | `number`（Unicode scalar） | `a2x_char_from_codepoint`/`to_codepoint` | 越界/代理区 → `trap:InvalidScalar` |
+| `str`（借用） | `Uint8Array` 视图 | `a2x_str_len/len_bytes/char_at/slice/eq` | UTF-8 字节精确，内嵌 NUL 保留；不用 JS `string`（UTF-16 语义会给错 len/char_at） |
+| `Str`（拥有） | `A2xOwnedStr`（`Uint8Array` + id + freed 标志） | `a2x_str_from_lit/clone/concat/from_char/free` | 显式 free + ledger；重复 free → `trap:DoubleClose` |
+| `Record(n)` | 普通 object，键为字段名 | `a2x_rec_clone_*`（seed 生成） | 字段按声明序；Nominal 身份由类型表决定，不进运行时布局 |
+| `List(n)` | `A2xList`（数组 + elem 族） | `a2x_list_new/len/push/insert/get/set/remove/clear` | 越界 → `trap:Index`；元素族由 `list_elem_tag` 决定 |
+| `Variant(n)` | `A2xVariant{disc,payload}` + `tag` getter | `a2x_variant_project` | 投影是**破坏性移出**（移出后 disc=-1），与 a2py/a2r 一致 |
+| `Closure(n)` | JS function；捕获经 env 工厂 | `a2x_closure_env_*`（工厂内联） | Move/Borrow 在创建点快照，Shared 传同一个 cell 句柄；捕获的拥有 `Str` 不在 env 内 free（具名限制入 spec） |
+| `Unit` | `null` | — | 仅结果位置；不产生值 |
+
+**F. 资源/清理合同**
+
+- 拥有 `Str` 的释放集合**取自计划**：text/text-record 用 `body_plan(f).owned` / `owned_returns` / `replace_frees`；collections 用 `body_facts(f).owned`（`is_empty()` 可跳过）。provider 不再按类型自推拥有集合（a2py 的 `is_owned_ty` 自推是已知偏差）。
+- 函数级 `try/finally` + 返回 skip 变量的单一清理点（与 a2py 同形，已验证可执行）；`Assign` 的旧缓冲在 RHS 物化后释放；`CallBinding.moved` 与 `ExprKind::Move` 的移出本地**加入 skip 集合**（修正 a2py 已知 double-free 漂移，本包作为永久正反例）。
+- 复合值（record/list/variant/closure）由 JS 运行时 GC 管理，ledger 只统计拥有 `Str`；这是 JS 目标与 a2py 的**具名差异**，写入 SD-01/spec，不冒充"全部 Auto 资源语义等价"。
+- 失败：`throw A2xTrap(code)` → `a2x_run_main` 捕获 → stdout `trap:<Code>`、退出码 1；`finally` 仍清理。
+- 预算：`a2x_bill` 单位/上限沿用 a2py 常量族，超限 `trap:Budget`。
+
+**G. 模块/文件集/清单**
+
+- 模块与 `use` 由 store 前端扁平化（合成 init 函数 + `init_order`）；provider 只发射扁平函数集，故 **V-DETAIL-01 的模块初始化序** 由 packages lane（多模块包）真实执行验证，stdout 与原始 `.at` 独立 oracle 对齐。
+- fileset（TS）：`a2x_rt.mjs`、`a2x_rt.d.mts`、`generated.ts`、`a2x_main.ts`、`source_map.json`、`manifest.json`；（JS）：`a2x_rt.mjs`、`generated.mjs`、`a2x_main.mjs`、`source_map.json`、`manifest.json`。
+- 身份：backend `auto-a2x-typescript` / `auto-a2x-javascript`；fragment layer `AXTS1..3` / `AXJS1..3`；fileset schema `ace.a2ts-hir.{scalar,record-text,collections}.fileset/1`；producer `ace-a2x-ts/modules/1`；provider recipe `a2ts-hir-{typescript,javascript}-checked`。
+- 清单绑定：`backend/backend_version/runtime_version/runtime_sha256/print_version/stdlib_port_catalog/input_hash/source_sha256/entry/functions[]/files[]`（与 a2py 同形，files 逐文件 sha256）。
+
+**H. 增量与失败恢复**
+
+- fragment key inputs = backend/standard + runtime_version + runtime_sha256 + print_version + stdlib port catalog fingerprint ⇒ 运行时或端口目录变化只失效对应产物；source map 随 fragment 重发，不陈旧。
+- 失败发布保旧：worker 先写 staging 目录，全部成功才替换（沿 a2py 的隔离断言）；失败不覆盖既有 `manifest.json`。
+
+**I. 消费接口（T-03）**
+
+1. `TargetProvider` 全链路（单源 cold/warm/restore + packages lane）——store/A2X 正式消费者；
+2. **UI 中立 fragment 接口**：`emit_stmt_fragment` / `emit_expr_fragment`（输入：view + body + stmt/expr id + 显式程序上下文：scalar enum 集、struct 集、unit variant 集；输出：文本 + 需要的 runtime helper 名 + 诊断）——供 980 替换 4 处 legacy 委托；本包以真实 node 执行的独立 fixture 验证该接口，不等 980 整包；
+3. worker `emit-ts`/`run-ts` recipe 作为产品入口的真实接线与观察面。
+
+**J. 未决项：无阻塞项。** 旧 `a2ts/a2js` 语料（85 例，全部 `#[ignore]`，金样与现 emitter 已漂移且含非法 TS）不作新 oracle，仅作构造清单；新永久用例按 §6 V 行与本节 C 表逐族建立。
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -194,6 +311,12 @@ struct ScriptArtifact { module: ModuleIdentity, semantic: CheckedRef, target: Sc
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 当前目标范围验证（拟实施，未运行）
+
+| Case | AC/任务 | 输入→producer→consumer→独立oracle与负控 |
+|---|---|---|
+| V-TS-CONSUMER | AC-TS-CONSUMER；T-01/02/03/08/04 | 冻结的Vue/Ark合法原源及转调函数/导入模块→Checked HIR→新TS/JS provider→真实工具链/consumer，对独立值、调用顺序、响应式效果、模块初始化与原span；大整数、async错误及旧委托各分支保区分性输入。删一个合法非Demo构造/传递模块、错capture/map、注入旧TypeScriptTrans fallback或将Vue TS标后置必须失败；仅tsc/emit不得关闭运行。对无生产消费的独立CLI额外面检查范围清单，不要求伪造全语言CLI已支持。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -206,21 +329,27 @@ struct ScriptArtifact { module: ModuleIdentity, semantic: CheckedRef, target: Sc
 | AC-06 | work | TS/JS目标宿主闭包的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 
+### 当前目标范围验收
+
+| ID | owner_stage | 标准 | 核验 |
+|---|---|---|---|
+| AC-TS-CONSUMER | work | §5完整生产闭包及所有旧委托分支有可追溯映射，合法非Demo函数/模块与各框架适配均有去向；所需TS和JS真实运行、数值/效果/错误/来源正确且无旧emitterfallback；独立CLI额外面不冒本版承诺 | T-01/T-02/T-03/T-08/T-04、V-TS-CONSUMER；原独立review逐项复核 |
+
 ## 8. 执行步骤
 
-当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共8任务，5完成（work 阶段全毕，T-05/06/07 为 review/merge）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 本次须按§5冻结完整生产消费闭包/旧委托分支和独立CLI额外面去向；不以Demo集合或旧类全量职责代替边界。 [✅ 已完成：§5「T-01 冻结决定」A–J 表全量落本 Plan（输入链/工具链实测 node v25.2.1 + tsc 5.9.3/支持集=SemanticView 准入全量/具名拒绝/值表示/资源合同/fileset·manifest 身份/增量失效/消费接口/无阻塞未决）；probe 证据在 plan-artifacts/plan-976/{tool,rt_check,ref}（scratch，merge 折叠后删）]
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 实现§5共享受检TS/JS provider及AC-TS-CONSUMER所需语义，禁止旧emitter回调。 [✅ 已完成：新 crate `experimental/ace/crates/a2x-ts`（provider/lower/ports/print/seed/cert/runtime~6000行，TypeScript/JavaScript 双 TargetProvider，唯一输入 SemanticView）；永久测试 `tests/ts_runtime_and_provider.rs` 3 例（真实 node 执行 runtime：UTF-8/NUL/checked算术/bigint/f32位保真/variant破坏性投影/list越界/端口合同/budget/marks stderr/入口协议 value·trap·Internal + manifest tamper/错producer/错schema + fragment层身份与 legacy-emitter 禁令）+ crate 内 20 单元例，commit 1d30914ff]
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 交UI中立消费接口；框架反应性/捕获映射由980消费，不反等整包980交付才验provider。 [✅ 已完成：`a2x-ts/src/fragment.rs` `emit_stmt_fragment`/`emit_expr_fragment`/`innermost_expr_in_span`（§5 I.2 冻结面：view+body+id+显式程序上下文；输出文本+helpers+locals映射；程序上下文缺失=具名拒 `a2ts.fragment-context`），真实 node fixture `tests/ts_ui_fragment.rs` 4 例；worker `tsrun.rs` 受控 node 执行腿 + `daily-emit-ts`/`run-ts`/identity(certification_target typescript/javascript) ops；a2x-store 注册 AXTS1..3/AXJS1..3 层 + semantics-contract 注册 `ace-a2x-ts/modules/1`；失败保旧断言（拒绝的 emit 不触碰既有 out_dir，67b5c0804）]
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：冻结Node/browser/框架现用目标、module格式、runtime helpers与manifest；四端公共语义到TS/JS表示适配不依赖尚未迁移UI产品，UI表达式用真实独立消费fixture，980接最终UI。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：冻结Node/browser/框架现用目标、module格式、runtime helpers与manifest；四端公共语义到TS/JS表示适配不依赖尚未迁移UI产品，UI表达式用真实独立消费fixture，980接最终UI。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 target/runtime/module与CLI能力清单按§5当前闭包，不自动承诺独立全语言通用CLI。 [✅ 已完成：身份冻结 `a2x-ts/src/target.rs`（TS_STANDARD=typescript5.9-es2022-erasable/JS_STANDARD=es2022-node-esm/AXTS·AXJS 层/fileset schema/recipe 常量，boundaries.rs 断言层不碰撞+store 无 target-crate 依赖）；V-08=tsready_01（两模块 packages lane，V-DETAIL-01 模块腿）+tsready_04（tsc --noEmit --strict 冻结旗标，缺 tsc=具名 infra skip，node 腿恒真实）+tsready_03（cold/restart 同 store 字节同 manifest）+tsrt_01（BigInt/trap:Internal 合同）+source_map 原span断言]
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 新增V-TS-CONSUMER必须通过，按实际触面选择原完整职责组，不执行已由用户后置的独立目标额外面。 [✅ 已完成：V-01=tsready_06（>2^53 双腿 e2e）+tsrt_01 bigint；V-02=tsready_05（短路+命名实参源序，marks stderr 区分性）；V-03=tsfrag_01/02（UI 表达式真实编译运行）；V-04=tsready_04 source_map 原 span；V-05=tsrt_02/tsready/boundaries legacy 禁令；V-08/V-DETAIL-01..04 如上（模块腿经真实 PackageA2xTarget lane 关闭，非推迟）；固定组 `cargo t ace-a2x`（已注册 ace-a2x-ts）PASS 284 执行/gate True；`cargo test -p ace-semantics-contract` 19 绿；组选择理由：crates/auto-lang 零改动故 a2ts/a2js 旧 emitter 组与 auto-test-case 不在本次触面（旧 emitter 退役归 987）；Linux/WSL 腿按 2026-11-14 裁定排除]
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -232,15 +361,19 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 ### 工作位置与材料
 
-预定唯一实施树 `D:/autostack/.wt/lang-976/auto-lang`，分支 `plan-976-dev`（沿仓规），尚未创建。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
+预定唯一实施树 `D:/autostack/.wt/lang-976/auto-lang`，分支 `plan-976-dev`（沿仓规）——已创建并在用（base 2961a2aa，实施 1d30914ff/67b5c0804/82b3dc665）。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
 
 T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06→07串行。外仓owner交付可按稳定接口提前准备，但最终不得拿未交付接口背书。
-材料唯一目录 `D:/autostack/plan-artifacts/plan-976/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
+材料唯一目录 `D:/autostack/plan-artifacts/plan-976/`（已建：e2e/tool/rt_check/seedcert-check/ports-check/ref，全为 scratch；merge 收尾折叠摘要后整目录删除）。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
 
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-16 stage: work | PLAN-976 | r6 | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | branch: plan-976-dev | base_commit: 2961a2aa | code_commit: 1d30914ff（主实施）+67b5c0804（失败保旧断言）+82b3dc665（trap:Internal 合同） | dependency_revisions: master aa257fa（分叉仅 docs/av/age 文件，与本包触面无冲突，merge 时合入） | task_ids: T-01,T-02,T-03,T-08,T-04（5/8 work 完成，T-05/06/07 为 review/merge） | evidence: 见 §8 各任务行内证据；门禁 `cargo t ace-a2x` PASS 284 执行 gate True（含新 crate 27 测试与 worker tsready 6 例）；`cargo test -p ace-semantics-contract` 19 绿；e2e scratch 22/22（plan-artifacts，merge 时折叠删除） | blockers: 无 | 本轮新用例均 <10s（tsready 套件 6 例共 ~8s；tsrt 0.18s；tsfrag 0.18s；准备=既有 debug 增量构建）；已知非本包债务：ace-av/ace-native 9 个既有 warning、sched_m2_968.rs/plan981_age_package_a2r.rs 的 master fmt 漂移（未触碰） | next: review（T-05 独立复审）
+
+2026-11-16 stage: new/revision | PLAN-976 r6 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
 
 2026-11-12 stage:new / PLAN-976 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -255,7 +388,11 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
+本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
+
 ## 10. 待澄清事项
+
+Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
