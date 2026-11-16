@@ -767,3 +767,155 @@ fn audit1035_res_01_derived_facts() {
         facts.owned
     );
 }
+
+// ---- PLAN-1036 (AUDIT-1024 F28/F29): for-in latch and endpoint ----------
+//
+// F28: the desugared counted loop runs `If (i <cond> hi) { body; i = i + 1 }`;
+// `continue` jumps to the loop header, so it SKIPPED the hidden index
+// advance and repeated the current element (the audit's finite model:
+// four passes of i = 0 -> `return i` yields 0 instead of the correct 99).
+// Every counterexample below is bounded by an independent guard so a
+// repeated element can never hang the harness: the wrong implementation
+// returns the distinguishing sentinel 0 / 777 / 10 instead of timing out.
+
+/// F28 / LOOP-01: `continue` runs THIS loop's latch exactly once; `break`
+/// and `return` do not advance; a nested `continue` advances only the
+/// inner loop; the existing iterate-mutate rejection is unchanged.
+#[test]
+fn audit1036_loop_01_continue_advances_this_loop_only() {
+    // Range (the plan's frozen finite counterexample): 3 iterations then
+    // 99. The pre-fix path repeats i = 0 and returns 0.
+    let range = "fn main() int {\n    var n = 0\n    for i in 0 .. 3 {\n        n = n + 1\n        if n == 4 { return i }\n        if n < 4 { continue }\n    }\n    return 99\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(range, "d_main")
+        .expect("range for-in with a conditional continue executes");
+    assert_eq!(run.value, 99, "continue must advance the range index");
+    assert_eq!(run.live_after, 0);
+
+    // List neighbour (same cause, different legitimate neighbour): the
+    // pre-fix path re-reads element 0 and returns 10.
+    let list = "fn main() int {\n    var xs = List<int>.new()\n    xs.push(10)\n    xs.push(20)\n    xs.push(30)\n    var n = 0\n    for x in xs {\n        n = n + 1\n        if n == 4 { return x }\n        if n < 4 { continue }\n    }\n    return 99\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(list, "d_main")
+        .expect("List for-in with a conditional continue executes");
+    assert_eq!(run.value, 99, "continue must advance the List index");
+    assert_eq!(run.live_after, 0);
+    assert_eq!(
+        run.allocs, run.frees,
+        "the iteration view keeps a closed ledger"
+    );
+
+    // Nested ownership: the inner `continue` advances only the inner
+    // index — 2 outer x 2 inner iterations (the body counts BOTH members
+    // of each inner pass) = 24. The pre-fix path repeats j = 0 forever, so
+    // the body self-limits with 777 (never a hang / timeout).
+    let nested = "fn main() int {\n    var outer = 0\n    var inner = 0\n    for i in 0 .. 2 {\n        outer = outer + 1\n        for j in 0 .. 2 {\n            inner = inner + 1\n            if inner > 100 { return 777 }\n            if j == 0 { continue }\n        }\n    }\n    return outer * 10 + inner\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(nested, "d_main")
+        .expect("nested for-in with an inner continue executes");
+    assert_eq!(
+        run.value, 24,
+        "the inner continue advances only the inner loop"
+    );
+
+    // break leaves the loop without an extra advance: 3 x (10 + 1).
+    let brk = "fn main() int {\n    var t = 0\n    for i in 0 .. 3 {\n        t = t + 10\n        for j in 0 .. 5 {\n            if j == 1 { break }\n            t = t + 1\n        }\n    }\n    return t\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(brk, "d_main")
+        .expect("break inside a nested for-in executes");
+    assert_eq!(run.value, 33, "break must not advance the index");
+
+    // return leaves the loop without an extra advance: 3*100 + 2.
+    let ret = "fn main() int {\n    var n = 0\n    for i in 0 .. 10 {\n        n = n + 1\n        if i == 2 { return n * 100 + i }\n    }\n    return -1\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(ret, "d_main")
+        .expect("return inside a for-in executes");
+    assert_eq!(run.value, 302, "return must not advance the index");
+
+    // An OWNED element iterated as a view: the same latch rule keeps the
+    // view index moving and the per-iteration ledger closed (lengths are
+    // distinct, so a repeated element cannot accidentally match).
+    let owned_view = "fn main() int {\n    var xs = List<Str>.new()\n    xs.push(\"a\")\n    xs.push(\"bb\")\n    xs.push(\"cccc\")\n    var n = 0\n    for x in xs {\n        n = n + 1\n        if n < 3 { continue }\n        return x.len()\n    }\n    return 99\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(owned_view, "d_main")
+        .expect("owned-element view iteration with continue executes");
+    assert_eq!(run.value, 4, "the third (distinct) element must be reached");
+    assert_eq!(run.live_after, 0, "the view ledger closes at loop exit");
+    assert_eq!(run.allocs, run.frees);
+
+    // The same obligation on the ROUTED path: a `continue` inside a `try`
+    // in the loop body reaches the loop through the control-state dispatch,
+    // which must also run the latch (3 iterations of n = n + 1 => 30).
+    let via_try = "fn main() int {\n    var n = 0\n    var t = 0\n    for i in 0 .. 3 {\n        try {\n            n = n + 1\n            if n < 3 { continue }\n        } catch e {\n            t = t + 1\n        }\n    }\n    return n * 10 + t\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(via_try, "d_main")
+        .expect("continue through a try dispatch executes");
+    assert_eq!(run.value, 30, "the routed continue advances the loop too");
+    assert_eq!(run.allocs, run.frees);
+
+    // The iteration-guard obligations do not loosen: structurally
+    // mutating the iterated list inside the body still rejects.
+    let mutate = "fn main() int {\n    var xs = List<int>.new()\n    xs.push(1)\n    for x in xs {\n        xs.push(2)\n    }\n    return 0\n}";
+    let err = ace_core::source::compile_aggregates_source(mutate, "p.at", &[])
+        .err()
+        .expect("mutating the iterated list inside for-in must reject");
+    assert!(
+        err.iter().any(|d| d.code == "source.iterate-mutate"),
+        "expected the iterate-mutate rejection, got {:?}",
+        err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// F29 / LOOP-02: an inclusive i32 range ends at its last member — the
+/// synthesized advance never produces hi + 1 (no user-body overflow, no
+/// widened value type). Empty / reversed / normal neighbours keep their
+/// iteration counts, and the endpoint guard covers `continue` and
+/// `break` on the last member too.
+#[test]
+fn audit1036_loop_02_inclusive_endpoint_no_synthetic_overflow() {
+    fn run(src: &str) -> ace_av::collections_864_support::CollectionsRun {
+        ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+            .unwrap_or_else(|e| panic!("source must execute: {e}\nsource: {src}"))
+    }
+
+    // Single-point inclusive range at the i32 maximum: one iteration.
+    // The pre-fix path computes 2147483647 + 1 (trap: IntOverflow).
+    let single =
+        "fn main() int {\n    var n = 0\n    for i in 2147483647 ..= 2147483647 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(single).value, 1, "the last inclusive member is the end");
+
+    // Empty and reversed inclusive ranges execute zero times.
+    let empty = "fn main() int {\n    var n = 0\n    for i in 2 ..= 1 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(empty).value, 0);
+    let empty_excl = "fn main() int {\n    var n = 0\n    for i in 3 .. 3 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(empty_excl).value, 0);
+
+    // Normal half-open / inclusive counts are unchanged.
+    let half_open = "fn main() int {\n    var n = 0\n    for i in 0 .. 3 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(half_open).value, 3);
+    let incl = "fn main() int {\n    var n = 0\n    for i in 0 ..= 2 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(incl).value, 3);
+
+    // Endpoint neighbours: MAX-1 ..= MAX is two members; the i32 minimum
+    // lower bound keeps the existing i32 evaluation order.
+    let max_minus = "fn main() int {\n    var n = 0\n    for i in 2147483646 ..= 2147483647 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(max_minus).value, 2);
+    let min_low = "fn main() int {\n    var n = 0\n    for i in -2147483648 ..= -2147483647 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(min_low).value, 2);
+
+    // The continue-side latch takes the same endpoint guard: skipping the
+    // first member of the last pair still ends after the maximum.
+    let cont_last = "fn main() int {\n    var n = 0\n    for i in 2147483646 ..= 2147483647 {\n        if i == 2147483646 { continue }\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(cont_last).value, 1);
+
+    // break on the single maximum member: no latch runs after it.
+    let brk_last = "fn main() int {\n    var n = 0\n    for i in 2147483647 ..= 2147483647 {\n        n = n + 1\n        break\n    }\n    return n\n}";
+    assert_eq!(run(brk_last).value, 1);
+
+    // A bound that is not a literal stays OUTSIDE the admitted range
+    // grammar (`for i in hi ..= hi` is a named `source.syntax` rejection,
+    // not a silent pass): the endpoint rule above is proven on literals,
+    // and the unsupported surface is not being extended here.
+    let dynamic = "fn main() int {\n    var hi int = 2147483647\n    var n = 0\n    for i in hi ..= hi {\n        n = n + 1\n    }\n    return n\n}";
+    let err = ace_core::source::compile_aggregates_source(dynamic, "p.at", &[])
+        .err()
+        .expect("a non-literal range bound is a named grammar rejection");
+    assert!(
+        err.iter().any(|d| d.code == "source.syntax"),
+        "expected the syntax rejection for an identifier range bound, got {:?}",
+        err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+    );
+}

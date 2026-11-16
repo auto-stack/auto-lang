@@ -139,6 +139,7 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         f,
         facts,
         locals: Vec::new(),
+        loop_stack: Vec::new(),
     };
     // param names follow the HIR local table (l<LocalId>_<name>) so body
     // references and the signature agree on one naming
@@ -210,6 +211,9 @@ struct CollLower<'a, 'v> {
     f: &'v FnFacts<'a>,
     facts: &'v CollectionsBodyFacts,
     locals: Vec<hir::LocalDef>,
+    /// PLAN-1036 (AUDIT-1024 F35): the enclosing loops' (id, body block) —
+    /// a `continue` must pay the same back-edge poll as the fall-through.
+    loop_stack: Vec<(hir::LoopId, hir::BlockId)>,
 }
 
 impl<'a, 'v> CollLower<'a, 'v> {
@@ -274,6 +278,51 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 };
                 format!("a2x_coll_free_{}", name)
             }
+        }
+    }
+
+    /// PLAN-1036 (AUDIT-1024 F35): the cooperative back-edge statement for
+    /// the loop whose body block is `lb` — 1 WU + the cancel check, with the
+    /// per-iteration deaths AND the loop survivors on its error path (the
+    /// frees are idempotent, so the overlap with the fall-through schedule
+    /// stays safe). Emitted once per real back edge: at the body's
+    /// fall-through and at every `continue` into this loop.
+    fn back_edge_poll(&self, lb: hir::BlockId) -> RStmt {
+        let mut poll_frees = self
+            .facts
+            .exit_frees
+            .get(&(lb.0, None))
+            .map(|f| {
+                f.iter()
+                    .filter_map(|r| match r {
+                        FreeRef::Local(l) => {
+                            let ty = self.local_ty(hir::LocalId(*l)).ok()?;
+                            let k = self.owned_kind_of_ty(ty)?;
+                            Some((self.local_name_of(hir::LocalId(*l)), self.free_call(k)))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
+            for l in surv {
+                if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
+                    if let Some(k) = self.owned_kind_of_ty(ty) {
+                        poll_frees.push((self.local_name_of(hir::LocalId(*l)), self.free_call(k)));
+                    }
+                }
+            }
+        }
+        RStmt::EvalExpr {
+            expr: RExpr::Wrap {
+                inner: Box::new(RExpr::CollCall {
+                    func: "a2x_coll_poll".into(),
+                    turbo: None,
+                    args: Vec::new(),
+                }),
+                frees: poll_frees,
+            },
         }
     }
 
@@ -508,8 +557,14 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         els: e,
                     });
                 }
-                hir::Stmt::Loop { body: lb, .. } => {
-                    let mut body_stmts = self.block(*lb)?;
+                hir::Stmt::Loop { id, body: lb } => {
+                    // PLAN-1036 (F35): lower the body with this loop on the
+                    // stack so every `continue` into it carries the same
+                    // back-edge poll.
+                    self.loop_stack.push((*id, *lb));
+                    let lowered_body = self.block(*lb);
+                    self.loop_stack.pop();
+                    let mut body_stmts = lowered_body?;
                     // back-edge: per-iteration scoped frees (recorded at the
                     // body block's fall-through), then the cooperative poll
                     // whose error path frees the survivors too
@@ -517,48 +572,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         body_stmts.extend(self.free_stmts(frees));
                     }
                     if !ace_a2x_core::semantic_view::block_always_terminates(self.f.body, *lb) {
-                        let mut poll_frees = self
-                            .facts
-                            .exit_frees
-                            .get(&(lb.0, None))
-                            .map(|f| {
-                                f.iter()
-                                    .filter_map(|r| match r {
-                                        FreeRef::Local(l) => {
-                                            let ty = self.local_ty(hir::LocalId(*l)).ok()?;
-                                            let k = self.owned_kind_of_ty(ty)?;
-                                            Some((
-                                                self.local_name_of(hir::LocalId(*l)),
-                                                self.free_call(k),
-                                            ))
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                            .unwrap_or_default();
-                        if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
-                            for l in surv {
-                                if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
-                                    if let Some(k) = self.owned_kind_of_ty(ty) {
-                                        poll_frees.push((
-                                            self.local_name_of(hir::LocalId(*l)),
-                                            self.free_call(k),
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                        body_stmts.push(RStmt::EvalExpr {
-                            expr: RExpr::Wrap {
-                                inner: Box::new(RExpr::CollCall {
-                                    func: "a2x_coll_poll".into(),
-                                    turbo: None,
-                                    args: Vec::new(),
-                                }),
-                                frees: poll_frees,
-                            },
-                        });
+                        body_stmts.push(self.back_edge_poll(*lb));
                     }
                     out.push(RStmt::Loop { body: body_stmts });
                 }
@@ -568,9 +582,23 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     }
                     out.push(RStmt::Break);
                 }
-                hir::Stmt::Continue { .. } => {
+                hir::Stmt::Continue { target } => {
                     if let Some(frees) = self.facts.exit_frees.get(&(block.0, Some(si))) {
                         out.extend(self.free_stmts(frees));
+                    }
+                    // PLAN-1036 (F35): every `continue` IS a back edge — it
+                    // pays the same 1-WU poll and cancel check the
+                    // fall-through back edge pays, and its error path frees
+                    // the same survivors.
+                    let poll = self
+                        .loop_stack
+                        .iter()
+                        .rev()
+                        .find(|(id, _)| id == target)
+                        .map(|(_, lb)| (*lb, self.back_edge_poll(*lb)))
+                        .map(|(_, poll)| poll);
+                    if let Some(poll) = poll {
+                        out.push(poll);
                     }
                     out.push(RStmt::Continue);
                 }

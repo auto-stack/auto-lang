@@ -864,6 +864,28 @@ fn rblock_always_returns(block: &RBlock) -> bool {
     })
 }
 
+/// PLAN-1036 (F28/F29): may control reach the END of `block`? The counted
+/// for-in appends its latch there; when the body's last statement already
+/// terminates (`break`/`continue`/`return`/`fail`) the appended latch
+/// would be unreachable code, so it is omitted and the `continue` sites
+/// carry the latch instead. Conservative: only a definitively terminating
+/// last statement reports `false`.
+fn rblock_can_fall_through(block: &RBlock) -> bool {
+    match block.stmts.last() {
+        None => true,
+        Some(RStmt::Break { .. })
+        | Some(RStmt::Continue { .. })
+        | Some(RStmt::Return { .. })
+        | Some(RStmt::Fail { .. }) => false,
+        Some(RStmt::If {
+            then,
+            els: Some(els),
+            ..
+        }) => rblock_can_fall_through(then) || rblock_can_fall_through(els),
+        Some(_) => true,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RBlock {
     pub stmts: Vec<RStmt>,
@@ -4083,6 +4105,7 @@ pub(crate) fn resolve_lambda_in_context(
             rec_index: &env.rec_index,
             coll: &mut coll,
             iterate_targets: Vec::new(),
+            for_latches: Vec::new(),
             shared_cell_spans,
             owner_name: site.owner.clone(),
             closure_count: site.ordinal,
@@ -5272,6 +5295,14 @@ struct FnResolver<'a, 's> {
     /// type). Method resolution rejects structural modification of the
     /// iterated list inside the body (`source.iterate-mutate`).
     iterate_targets: Vec<(LocalRef, VT, Span)>,
+    /// PLAN-1036 (AUDIT-1024 F28/F29): the counted `for-in` LATCH — the
+    /// hidden index advance that closes one iteration. The normal
+    /// fall-through runs it at the body's tail; a `continue` into the same
+    /// loop must run the very same sequence before the header condition is
+    /// re-tested, otherwise the iteration repeats the current element
+    /// (a lowering jump cannot target a mid-loop label, so the latch is
+    /// re-emitted at each continue site instead of restructured).
+    for_latches: Vec<(LoopRef, Vec<RStmt>)>,
     /// PLAN-909: start offsets of cell-eligible `var` bindings this
     /// function's non-move closures write (function-wide static grouping;
     /// `scan_shared_capture_cells` owns the scope model).
@@ -5488,6 +5519,7 @@ fn resolve_fn_reuse<'a, 's>(
         rec_index,
         coll,
         iterate_targets: Vec::new(),
+        for_latches: Vec::new(),
         shared_cell_spans: super::closure_capture::scan_shared_capture_cells(&f.params, &f.body),
         owner_name: f.name.name.clone(),
         closure_count: 0,
@@ -6526,6 +6558,28 @@ impl<'a, 's> FnResolver<'a, 's> {
         })
     }
 
+    /// PLAN-1036 (F28/F29): the latch of the counted for-in loop `target`,
+    /// if any. Iterating `for` loops (`ForIter`) re-enter through `next()`
+    /// at the header and carry no latch; `while`/`loop` re-test their own
+    /// condition, so only the counted range/List desugar registers one.
+    fn for_latch_of(&self, target: LoopRef) -> Option<Vec<RStmt>> {
+        self.for_latches
+            .iter()
+            .rev()
+            .find(|(t, _)| *t == target)
+            .map(|(_, latch)| latch.clone())
+    }
+
+    /// Emit the latch sequence a `continue` into `target` must run before
+    /// the loop header. A no-op for loops without one.
+    fn emit_for_latch(&self, target: Option<LoopRef>, out: &mut Vec<RStmt>) {
+        if let Some(target) = target {
+            if let Some(latch) = self.for_latch_of(target) {
+                out.extend(latch);
+            }
+        }
+    }
+
     fn has_enclosing_try(&self) -> bool {
         self.ctrl_frames
             .iter()
@@ -6722,6 +6776,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             if is_break {
                 out.push(RStmt::Break { target, span });
             } else {
+                // PLAN-1036 (F28): `continue` into a counted for-in runs its
+                // latch before the header re-tests the bounds.
+                self.emit_for_latch(target, out);
                 out.push(RStmt::Continue { target, span });
             }
             return;
@@ -6757,6 +6814,7 @@ impl<'a, 's> FnResolver<'a, 's> {
         } else if is_break {
             out.push(RStmt::Break { target, span });
         } else {
+            self.emit_for_latch(target, out);
             out.push(RStmt::Continue { target, span });
         }
     }
@@ -6848,13 +6906,18 @@ impl<'a, 's> FnResolver<'a, 's> {
                 handle_stmts.push(RStmt::If {
                     cond: is_cont_here,
                     then: RBlock {
-                        stmts: vec![
-                            clear_kind.clone(),
-                            RStmt::Continue {
+                        stmts: {
+                            // PLAN-1036 (F28): a routed `continue` into a
+                            // counted for-in runs the latch here, exactly as
+                            // the direct jump does at its own site.
+                            let mut cont_stmts = vec![clear_kind.clone()];
+                            self.emit_for_latch(Some(target), &mut cont_stmts);
+                            cont_stmts.push(RStmt::Continue {
                                 target: Some(target),
                                 span,
-                            },
-                        ],
+                            });
+                            cont_stmts
+                        },
                         span,
                     },
                     els: Some(RBlock {
@@ -10617,14 +10680,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     } else {
                         let target = self.loop_stack.last().copied();
-                        stack
-                            .last_mut()
-                            .expect("resolve frame")
-                            .stmts
-                            .push(RStmt::Continue {
-                                target,
-                                span: *span,
-                            });
+                        let mut stmts = Vec::new();
+                        // PLAN-1036 (F28): same latch obligation on the
+                        // non-aggregates (collections) face.
+                        self.emit_for_latch(target, &mut stmts);
+                        stmts.push(RStmt::Continue {
+                            target,
+                            span: *span,
+                        });
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     }
                 }
                 // PLAN-864: exhaustive `is` dispatch — resolve the arm
@@ -10742,9 +10806,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // compile-checked above), present so the shared
                     // no-return-path walk sees a Returned spine. The filler
                     // value is typed from the function result.
-                    let all_return = resolved
-                        .iter()
-                        .all(|(_, _, b)| rblock_always_returns(b));
+                    let all_return = resolved.iter().all(|(_, _, b)| rblock_always_returns(b));
                     let mut current = if all_return {
                         let filler = self.default_return_filler(*span);
                         Some(RBlock {
@@ -10878,12 +10940,6 @@ impl<'a, 's> FnResolver<'a, 's> {
                         if self.profile.is_aggregates() {
                             self.ctrl_frames.push(CtrlFrame::Loop { target });
                         }
-                        let mut b = self.resolve_body(body, false);
-                        if self.profile.is_aggregates() {
-                            self.ctrl_frames.pop();
-                        }
-                        self.scopes.pop();
-                        self.loop_stack.pop();
                         let read_i = |sp: Span| ResolvedExpr {
                             span: sp,
                             vt: VT::I32,
@@ -10907,7 +10963,56 @@ impl<'a, 's> FnResolver<'a, 's> {
                             },
                             span: *span,
                         };
-                        b.stmts.push(incr);
+                        // PLAN-1036 (F29): the half-open step can never
+                        // overflow (i < hi <= i32::MAX => i + 1 <= MAX); the
+                        // inclusive step is guarded by the endpoint so the
+                        // LAST member ends the loop instead of synthesizing
+                        // `hi + 1` (a body-independent overflow).
+                        let latch: Vec<RStmt> = if *inclusive {
+                            vec![RStmt::If {
+                                cond: ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::Bool,
+                                    kind: RExprKind::Binary {
+                                        op: ast::BinOp::Eq,
+                                        lhs: Box::new(read_i(*span)),
+                                        rhs: Box::new(ResolvedExpr {
+                                            span: *span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::ReadLocal(hi_l),
+                                        }),
+                                    },
+                                },
+                                then: RBlock {
+                                    stmts: vec![RStmt::Break {
+                                        target: Some(target),
+                                        span: *span,
+                                    }],
+                                    span: *span,
+                                },
+                                els: Some(RBlock {
+                                    stmts: vec![incr],
+                                    span: *span,
+                                }),
+                                span: *span,
+                            }]
+                        } else {
+                            vec![incr]
+                        };
+                        // PLAN-1036 (F28): a `continue` inside the body must
+                        // run this latch before the header re-tests `i <= hi`.
+                        self.for_latches.push((target, latch.clone()));
+                        let mut b = self.resolve_body(body, false);
+                        self.for_latches.pop();
+                        if self.profile.is_aggregates() {
+                            self.ctrl_frames.pop();
+                        }
+                        self.scopes.pop();
+                        self.loop_stack.pop();
+                        // The fall-through back edge runs the same latch.
+                        if rblock_can_fall_through(&b) {
+                            b.stmts.extend(latch);
+                        }
                         let cond = ResolvedExpr {
                             span: *span,
                             vt: VT::Bool,
@@ -11053,6 +11158,34 @@ impl<'a, 's> FnResolver<'a, 's> {
                             span: *span,
                         },
                     ];
+                    // PLAN-1036 (F28): the List latch is the hidden index
+                    // advance; `i < n` bounds it, so the step cannot
+                    // overflow (i <= n - 1 <= MAX).
+                    let one = ResolvedExpr {
+                        span: *span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(1),
+                    };
+                    let incr = RStmt::Assign {
+                        local: i_lref,
+                        path: Vec::new(),
+                        value: ResolvedExpr {
+                            span: *span,
+                            vt: VT::I32,
+                            kind: RExprKind::Binary {
+                                op: ast::BinOp::Add,
+                                lhs: Box::new(ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(i_lref),
+                                }),
+                                rhs: Box::new(one),
+                            },
+                        },
+                        span: *span,
+                    };
+                    let latch: Vec<RStmt> = vec![incr];
+                    self.for_latches.push((target, latch.clone()));
                     let body_res = if owned {
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
@@ -11112,35 +11245,18 @@ impl<'a, 's> FnResolver<'a, 's> {
                     };
                     self.iterate_targets.pop();
                     self.loop_stack.pop();
+                    self.for_latches.pop();
                     if self.profile.is_aggregates() {
                         self.ctrl_frames.pop();
                     }
-                    let one = ResolvedExpr {
-                        span: *span,
-                        vt: VT::I32,
-                        kind: RExprKind::IntLit(1),
-                    };
-                    let incr = RStmt::Assign {
-                        local: i_lref,
-                        path: Vec::new(),
-                        value: ResolvedExpr {
-                            span: *span,
-                            vt: VT::I32,
-                            kind: RExprKind::Binary {
-                                op: ast::BinOp::Add,
-                                lhs: Box::new(ResolvedExpr {
-                                    span: *span,
-                                    vt: VT::I32,
-                                    kind: RExprKind::ReadLocal(i_lref),
-                                }),
-                                rhs: Box::new(one),
-                            },
-                        },
-                        span: *span,
-                    };
                     let mut body_res = body_res;
+                    let falls = rblock_can_fall_through(&body_res);
                     let mut then_stmts = std::mem::take(&mut body_res.stmts);
-                    then_stmts.push(incr);
+                    // The fall-through back edge runs the latch (a body that
+                    // already terminates carries it on its own `continue`).
+                    if falls {
+                        then_stmts.extend(latch);
+                    }
                     let cond = ResolvedExpr {
                         span: *span,
                         vt: VT::Bool,

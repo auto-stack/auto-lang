@@ -394,6 +394,7 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
         out: Vec::new(),
         temp_counter: 0,
         wrapper_temps: std::collections::BTreeSet::new(),
+        loop_stack: Vec::new(),
     };
     // callee-frame work charge (4 WU per call frame); its failure path
     // frees nothing (the frame is empty at entry)
@@ -427,6 +428,9 @@ struct CollLowerC<'a, 'v> {
     /// (`a2x_stro_result` / `a2x_res_*` from fallible calls): their free
     /// schedule addresses `.value`, not the wrapper.
     wrapper_temps: std::collections::BTreeSet<u32>,
+    /// PLAN-1036 (AUDIT-1024 F35): the enclosing loops' (id, body block) —
+    /// a `continue` must pay the same back-edge poll as the fall-through.
+    loop_stack: Vec<(hir::LoopId, hir::BlockId)>,
 }
 
 impl<'a, 'v> CollLowerC<'a, 'v> {
@@ -545,6 +549,39 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
     /// Render one scheduled free set as statements.
     fn free_stmts(&self, frees: &[FreeRef]) -> Vec<String> {
         frees.iter().filter_map(|r| self.free_stmt_of(r)).collect()
+    }
+
+    /// PLAN-1036 (AUDIT-1024 F35): the fresh temp plus the free list of the
+    /// cooperative back-edge poll for the loop whose body block is `lb` —
+    /// the per-iteration deaths AND the loop survivors (idempotent frees
+    /// keep the overlap with the fall-through schedule safe). The caller
+    /// renders the same `a2x_coll_poll()` trap-check the fall-through
+    /// back edge emits.
+    fn back_edge_poll(&mut self, lb: hir::BlockId) -> (String, String) {
+        let mut poll_frees: Vec<String> = Vec::new();
+        if let Some(frees) = self.facts.exit_frees.get(&(lb.0, None)) {
+            poll_frees.extend(self.free_stmts(frees));
+        }
+        if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
+            for l in surv {
+                if let Ok(ty) = self.local_ty(hir::LocalId(*l)) {
+                    if let Some(kind) = self.owned_kind_of_ty(ty) {
+                        poll_frees.push(format!(
+                            "{}(&{});",
+                            self.free_call(kind, Some(ty)),
+                            self.local_name_of(hir::LocalId(*l))
+                        ));
+                    }
+                }
+            }
+        }
+        let t = self.fresh_temp();
+        let frees = if poll_frees.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", poll_frees.join(" "))
+        };
+        (t, frees)
     }
 
     fn free_stmt_of(&self, r: &FreeRef) -> Option<String> {
@@ -774,38 +811,19 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 self.out.push("}".to_string());
                 Ok(())
             }
-            hir::Stmt::Loop { body: lb, .. } => {
+            hir::Stmt::Loop { id, body: lb } => {
                 self.out.push("for (;;) {".to_string());
-                self.block(*lb)?;
+                self.loop_stack.push((*id, *lb));
+                let lowered = self.block(*lb);
+                self.loop_stack.pop();
+                lowered?;
                 // back-edge: the body block's fall-through scoped deaths
                 // were already emitted by `block()`; the cooperative
                 // poll's error path re-lists them plus the loop
                 // survivors (idempotent frees make the overlap safe —
                 // the T-02 freeze)
                 if !ace_a2x_core::semantic_view::block_always_terminates(self.f.body, *lb) {
-                    let mut poll_frees: Vec<String> = Vec::new();
-                    if let Some(frees) = self.facts.exit_frees.get(&(lb.0, None)) {
-                        poll_frees.extend(self.free_stmts(frees));
-                    }
-                    if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
-                        for l in surv {
-                            if let Ok(ty) = self.local_ty(hir::LocalId(*l)) {
-                                if let Some(kind) = self.owned_kind_of_ty(ty) {
-                                    poll_frees.push(format!(
-                                        "{}(&{});",
-                                        self.free_call(kind, Some(ty)),
-                                        self.local_name_of(hir::LocalId(*l))
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    let t = self.fresh_temp();
-                    let frees = if poll_frees.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" {}", poll_frees.join(" "))
-                    };
+                    let (t, frees) = self.back_edge_poll(*lb);
                     self.out.push(format!(
                         "{{ a2x_trap_code {t} = a2x_coll_poll(); if ({t} != A2X_TRAP_NONE) {{{frees} return {fwd}({t}); }} }}",
                         t = t,
@@ -825,11 +843,29 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 self.out.push("break;".to_string());
                 Ok(())
             }
-            hir::Stmt::Continue { .. } => {
+            hir::Stmt::Continue { target } => {
                 if let Some(frees) = self.facts.exit_frees.get(&(block, Some(si))) {
                     for line in self.free_stmts(frees) {
                         self.out.push(line);
                     }
+                }
+                // PLAN-1036 (F35): every `continue` IS a back edge — it pays
+                // the same 1-WU poll and cancel check the fall-through back
+                // edge pays, and its error path frees the same survivors.
+                if let Some(lb) = self
+                    .loop_stack
+                    .iter()
+                    .rev()
+                    .find(|(id, _)| id == target)
+                    .map(|(_, lb)| *lb)
+                {
+                    let (t, frees) = self.back_edge_poll(lb);
+                    self.out.push(format!(
+                        "{{ a2x_trap_code {t} = a2x_coll_poll(); if ({t} != A2X_TRAP_NONE) {{{frees} return {fwd}({t}); }} }}",
+                        t = t,
+                        frees = frees,
+                        fwd = self.ret_fwd
+                    ));
                 }
                 self.out.push("continue;".to_string());
                 Ok(())
