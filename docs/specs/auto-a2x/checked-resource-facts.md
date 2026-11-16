@@ -46,6 +46,10 @@
   逐可失败节点 `err_frees`（含 pending 临时与存活局部——trap/cancel 出口同样清帧一次）、
   `loop_survivors`（回边轮询错误路径的存活集）。目标 lowering 只消费该计划，不再推导
   ownership；Rust 编译器交叉核对调度（错调度=生成代码编译错）。
+- **回边轮询的覆盖（PLAN-1036）**：**每实际回边都消费同一合作 poll**（1 WU + 取消检查），
+  包含 `continue` 驱动的回边——`continue` 先执行本循环的推进（counted for-in 的 latch）并在
+  本迭代 scoped 集释放之后方才 poll；`break`/`return` 出口不 poll。poll 错误路径=该迭代
+  scoped 集 + `loop_survivors`，因此目标端释放必须**真幂等**（见下条）。
 - `body_content_digest`：规范 span 无关 body 序列化摘要，凭证层绑定事实与 body 内容
   （V-13）。
 - resolve `.len()` 视图融合的延迟索引任务已修正入节点 subtask 序（修复前第二个融合视图
@@ -65,7 +69,10 @@
 - **C 消费（PLAN-926）**：C 集合降低以同一 `CollectionsBodyFacts` 为唯一清理
   权威（owned/exit/replace/err/loop_survivors + body digest 凭证），不重推
   ownership；包装临时（a2x_stro_result/a2x_res_*）被调度引用时释放 `.value`；
-  释放幂等（take 置空/memset）使回边 poll 错误路径重列安全。S 面 join 修复
+  释放幂等（take 置空/memset）使回边 poll 错误路径重列安全。**Rust list 释放的幂等是
+  同一规则的一部分（PLAN-1036）**：`a2x_coll_list_free` 先取出缓冲（take）并令陈旧
+  handle 的 cap=0，第二次释放是**真 no-op**——不二次 drop、不重发释放事件（此前只清空
+  元素、未失效缓冲，围栏错误路径重列会二次释放并 0xC0000374 堆损坏）。S 面 join 修复
   （终止分支不约束 join）对两目标同时生效（golden-L03 最小重冻结）。
 
 ## Rust 消费锚（PLAN-931）

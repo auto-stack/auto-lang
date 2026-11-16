@@ -28,6 +28,9 @@ builder 输出为公开未信任输入：仅经真 `verify_mir` 授信后编码/
 全部展开为既有 822 指令序列：
 
 - `for-in` 降为显式索引循环（len 循环前读一次；`LIST_LEN` + `LIST_GET`；无迭代器对象）。
+  计数循环的回边推进（latch）与 `continue` 同源（PLAN-1036）：`continue` 先经该 latch 再回到条件测试，
+  故每次迭代恰推进一次、不重复当前元素；闭区间 `a ..= b` 以**端点守卫**结束（末成员后不再合成加一，
+  i32 上界不 overflow），半开区间按 `i < hi` 步进。两者都只用既有比较/分支/Add，不新增指令。
 - `is` 降为受检分支链：每臂 `VARIANT_GUARD` → `Branch` → 臂内 `VARIANT_PROJECT`（guard 事实格点的
   must-fact 经分支边传播使正臂投影合法）；穷尽缺失在编译期拒。
 - 变体槽赋值/绑定经 `VARIANT_SWITCH`（非裸 Move——旧活臂恰释放一次、guard 失效）。
