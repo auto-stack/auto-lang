@@ -1132,6 +1132,8 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 38 | from: work | 
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 39 | from: user | to: blocked | status: executing（12/32）| outcome: blocked（等待外部，条件具名）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 15b9c4c6 lang 6512eb531 | next: 外部交付后 resume work（B-AV/B-RUST/PARITY/终验）
 
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 40 | from: user | to: blocked | status: executing（12/32）| outcome: blocked（用户裁定=等待外部交付，条件具名；本会话无阻塞可续项）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 15b9c4c6 lang 6512eb531 | next: 外部交付后 resume work（985 M2A-08 → B-AV；1068 UI-W2-AC → B-RUST W3；语言侧前置×3 → WEB 真语料 spliced 切换 → TAURI → PARITY → T-05/06/07 → 归档）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
