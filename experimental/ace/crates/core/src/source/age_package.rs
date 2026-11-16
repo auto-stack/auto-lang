@@ -1021,6 +1021,54 @@ fn read_back_components(
     Ok(out)
 }
 
+/// B-LANGUAGE-I（R59-3 修复）：成员/`design` 的**值表达式**检查函数。
+///
+/// 形状：`fn <name>() int { let __v = (<expr>); return 0 }`——返回值固定 int，
+/// 让任意类型的表达式都能被**唯一 verify** 检查（名字解析/类型/可见性），
+/// 同时不引入第二套判据。表达式 span 原样保留，诊断落回作者源。
+pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
+    let let_stmt = Stmt::Let {
+        kw: span,
+        name: Ident {
+            name: "__v".to_string(),
+            span,
+        },
+        ann: None,
+        mutable: false,
+        value: expr.clone(),
+        span,
+    };
+    let zero = Expr {
+        span,
+        kind: ExprKind::IntLit(0),
+    };
+    FnItem {
+        name: Ident {
+            name: name.to_string(),
+            span,
+        },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn {
+            kind: TypeRef::Builtin(TypeWord::Int),
+            span,
+        },
+        body: Block {
+            stmts: vec![
+                let_stmt,
+                Stmt::Return {
+                    value: zero,
+                    span,
+                },
+            ],
+            span,
+        },
+        span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+    }
+}
 /// 隐藏求值函数的**源形状**：`fn <prefix><n>() Str { return (<expr>).clone() }`。
 ///
 /// 这是普通 Auto 源，交给唯一 verify；本函数不改判据、不建第二套检查。

@@ -5102,13 +5102,26 @@ impl<'a> Engine<'a> {
             if self.cx.tree.kind(c) != item_kind {
                 continue;
             }
+            // 直接字段优先；`watch { .src -> … }` 的源在嵌套 `age-watch-source`
+            // 里（字段 `source`），所以要能往下找一层（R59-4：此前 watch 行名字为空）。
             let name = self
                 .cx
                 .field_child(c, "key")
                 .or_else(|| self.cx.field_child(c, "path"))
                 .or_else(|| self.cx.field_child(c, "method"))
                 .or_else(|| self.cx.field_child(c, "name"))
-                .or_else(|| self.cx.field_child(c, "event"));
+                .or_else(|| self.cx.field_child(c, "event"))
+                .or_else(|| self.cx.field_child(c, "source"))
+                .or_else(|| {
+                    let mut found = None;
+                    for sub in self.cx.children(c) {
+                        if let Some(v) = self.cx.field_child(sub, "source") {
+                            found = Some(v);
+                            break;
+                        }
+                    }
+                    found
+                });
             let name = match name {
                 Some(n) => self.cx.spelling(n),
                 None => String::new(),
@@ -5125,6 +5138,17 @@ impl<'a> Engine<'a> {
                 .cx
                 .field_child(c, "handler")
                 .or_else(|| self.cx.field_child(c, "module"))
+                .or_else(|| {
+                    // watch 的"声明文本"就是它的源（`.count` / `.a.b`）。
+                    let mut found = None;
+                    for sub in self.cx.children(c) {
+                        if let Some(v) = self.cx.field_child(sub, "source") {
+                            found = Some(v);
+                            break;
+                        }
+                    }
+                    found
+                })
                 .map(|t| self.cx.spelling(t));
             let num = self
                 .cx
@@ -5146,11 +5170,11 @@ impl<'a> Engine<'a> {
         let expose_span = self.cx.span_of(member);
         let mut names: Vec<String> = Vec::new();
         fn walk(eng: &mut Engine, node: u32, out: &mut Vec<String>) {
-            // `expose { a, b }` 的名字是 member 的**直接** ident 子叶（不是包一层
-            // 子规则），所以先查本节点自己的 `name` 字段再看孩子。
+            // `expose { a, b }`：名字是 member 的**直接** ident 子叶，尾随名字在
+            // `age-expose-name-tail` 的 `name` 字段里。必须收集**所有** name 字段
+            // 再递归（R59-1：此前的 early-return 只留下第一个名字）。
             if let Some(n) = eng.cx.field_child(node, "name") {
                 out.push(eng.cx.spelling(n));
-                return;
             }
             for c in eng.cx.children(node) {
                 walk(eng, c, out);

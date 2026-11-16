@@ -80,3 +80,43 @@ fn p981_malformed_member_slot_is_rejected() {
         .expect_err("a route without a target is a syntax error");
     assert_eq!(ds[0].code, "source.syntax", "{ds:?}");
 }
+/// R59-1：`expose { alpha, beta }` 的**每个**名字都要成行（此前只留第一个）。
+#[test]
+fn p981_expose_projects_every_name() {
+    let out = compile(&body("expose {\n        alpha, beta\n    }")).expect("expose compiles");
+    let names: Vec<&str> = out.description.components[0]
+        .members
+        .iter()
+        .filter(|m| m.role == "expose")
+        .map(|m| m.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["alpha", "beta"], "every expose name becomes a row");
+}
+
+/// R59-4：`watch` 行必须带源（名字 `.count` 的 `count`，声明文本 `.count`），
+/// 不能是空名字的空壳行。
+#[test]
+fn p981_watch_row_keeps_its_source() {
+    let out = compile(&body("watch { .count -> { .count = count + 1 } }"))
+        .expect("watch compiles");
+    let row = out.description.components[0]
+        .members
+        .iter()
+        .find(|m| m.role == "watch")
+        .expect("a watch row");
+    assert_eq!(row.name, "count", "the watch source name is preserved");
+    assert_eq!(row.text.as_deref(), Some("count"), "the source name is preserved as declaration text");
+}
+
+/// R59-3：成员值表达式进唯一 verify——未声明名字在**作者 span** 具名拒绝。
+#[test]
+fn p981_member_value_expressions_are_verified() {
+    let src = "node M {\n    design {\n        theme: nosuch_ident\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let want = src.find("nosuch_ident").expect("fixture has the bad name");
+    let ds = match compile(src) {
+        Ok(_) => panic!("an undefined design value must be rejected"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
+    assert_eq!(ds[0].span.start, want, "the diagnostic points at the name");
+}

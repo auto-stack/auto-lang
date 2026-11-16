@@ -974,7 +974,50 @@ pub(crate) fn project_packages_front(
                         text_fns.push((name, leaf.span));
                     }
                 }
-                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                // B-LANGUAGE-I（R59-3）：`design` / 成员槽位的**值表达式**也必须进
+                // 唯一 verify。此前只投影形状，于是 `design { theme: nosuch_ident }`、
+                // `computed { double => count + "x" }` 之类的非法输入被静默接受；
+                // 现在按文本叶同一机制生成检查函数（`let` 绑定 + 定值返回），
+                // 名字解析/类型/可见性都由共享检查判定，诊断落回作者 span。
+                {
+                    let component_index = age_components.len();
+                    let mut value_fns = 0usize;
+                    let mut check_value = |expr: &crate::source::ast::Expr| {
+                        let bound = match crate::source::age_component::rename_expr(
+                            expr,
+                            crate::source::age_component::FieldBinding::StateFn(0),
+                            &node.fields,
+                        ) {
+                            Ok(b) => b,
+                            Err(ds) => return Err(ds),
+                        };
+                        let name = format!(
+                            "{}val_{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            component_index,
+                            value_fns
+                        );
+                        value_fns += 1;
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::age_package::hidden_value_fn(
+                                &name,
+                                &bound,
+                                expr.span,
+                            ),
+                        ));
+                        Ok(())
+                    };
+                    for d in &node.design {
+                        if let Some(v) = &d.value {
+                            check_value(v)?;
+                        }
+                    }
+                    for m in &node.members {
+                        if let Some(v) = &m.value {
+                            check_value(v)?;
+                        }
+                    }
+                }                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                 // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                 // 不另建求值器，也不把手写数值当常量。
                 for (si, scene) in node.view.scene_components.iter().enumerate() {
