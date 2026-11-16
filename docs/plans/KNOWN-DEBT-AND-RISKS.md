@@ -1,3 +1,13 @@
+### D-980-981-EVENT-PHASE — 三消息缺口与整包等待拆分（2026-11-16，仅规划，未关闭）
+
+| 原问题/当前事实 | A承接与关闭条件 | B承接与关闭条件 |
+|---|---|---|
+| 980 round39/40把M2A-08、UI-W2-AC与事件三缺口列等待；981旧记录按980 executing拒收A正式源，形成阶段混淆。980 NATIVE A早已正式交，#6i具名msg/handler参数语法也已落主；常量体spliced成功不是typed参数执行证明。 | 981 T-01＋LANGUAGE/SESSION/PROOF I/V/R[A]拆V_PENDING_INPUTS，保声明/参数/span，真实unit/最小事件、资源/关闭/恢复；不支持payload具名零效果拒绝。取980正式源/原测试oracle并独立R/fold，985 T-A03/A04拒错版/缺A输入，A全齐才A05。实际最小源用到的载荷须先补，不改业务规避。 | 981 LANGUAGE I/V/R[B-W1]交PAYLOAD/MSG/PARAMS-B，SESSION接typed AV队列/资源，980 B-AV/B-WEB逐组真消费并读参对独立值/DOM，后续1068 W2/980-981 RUST W3沿原合同。payload/type/arity/卫生绑定/来源/错误/资源/完整旧例全验，不以#6i或旧fallback关闭。 |
+
+#6i原债名`D-980-WEB-GRAMMAR-981-FREEZE`（r41收据所报两条冻结身份红）现明确归981 T-01/LANGUAGE[A]核规则/Schema/构造/原span差额、其它profile、冻结期望/SDK/cache与原例/错身份负控，独立phase正式交后985接收；不只换hash，不据规划关闭或挪B。
+
+权威为[980 r15](980-ace-m2-autoui.md)、[981 r17](981-ace-m2-age.md)、[985 r24](985-ace-m2-certification.md) EVENT-SPLIT。前置按批，不取三条件AND；不重开979、不新增计划。本文只登记owner/关闭条件，不声称代码修复/产品PASS，不覆盖既有SESSION-MULTI/EXIT等独立债项。
+
 ### D-981-SESSION-MULTI — SESSION 宿主面单组件与双 node 字段撞名（2026-11-16，auto-ui `3e63fa0d`，V 前置）
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
@@ -4602,3 +4612,4 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | 会话启动路径 `typed_runtime::prepare` 的 `static SERIAL: Mutex<()>` 只串行**同进程**；跨进程存在窗口（`target/<target>/runtime-release/ace_typed_entry_runtime.lib` + `.identity.json` 的 `remove_file`/`file_hash`/`cargo build` 交错）。测试侧的 lib 二进制与两个集成测试二进制会并发启动会话 | PLAN-1032 re-review（2026-11-16，`2cf01df05`）：首轮独立复跑出现 1 次 `tier.rs:317 .expect("session starts")`（0.264s），随后单例复跑 PASS、6 例复跑 10/10 绿、两进程并发 3 轮绿、组级 298/298 绿；基线 `16a58402e` 已有 `typed_entry_tier`/`typed_entry_incremental_tier` 两二进制并发 starter，故窗口为既有风险，1032 的 lib 用例仅边际增加暴露。原始记录见 [1032 §9](archive/1032-ace-native-typed-batch-atomicity.md)（归档前曾位于 `docs/plans/`） | owner = ACE native runtime 准备线（PLAN-891 后继）/ 批量回归 triage。关闭条件=二选一：①跨进程串行化（文件锁/独占 rename 发布，release 二进制与测试共用）；②会话启动测试收敛到单二进制（或 test-group 串行化）并附并发压力复跑绿。边界：不阻塞 PLAN-1032（§5 范围为批编辑接受事务，`start()` 与基线逐字节相同） |
 
 **PLAN-1032 交付记录**：F24 技术闭环已交付——`45fcd50f4` 落主（ff-only）、两 Spec 沉淀、`cargo t ace-native` 298/298、归档 `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md`。遗留导航（非本 Plan 权限）：`docs/design/strategy/ace-m2-delivery-roadmap.md`（主检出他人 WIP）、`docs/design/strategy/ace-route-plan-map.md`（未跟踪新件）、`docs/plans/1024-*.md` F24 行（他人 WIP）仍指向活跃路径/交付前状态，owner=对应文档维护者/战略文档收口轮。
+| **A2X会话同族原子性缺口（预存，PLAN-1033 review 登记）**：①`cold_assemble_profile`入口在可失败操作前预置 profile/caps/source_sha256/retained_excl/env——活动会话上失败的冷重装留混合态（绑定/环境=新，居民/锚=旧），后续 ranged rebind 会把 A 锚 origins 嫁接到 B 基（slice hash 重算不比对）；②`restore_source_bound` 验证环内（a2x-store lib.rs resident_ids insert）提前写入居民 id 绑定——失败的 restore 可留 id 半绑；③read-only ranged 编辑提交未持久化居民文本，其后续同片段真编辑经居民复用发布的锚对该片段 restore 按键查 miss（project 软根保活使 GC 腿不可区分） | PLAN-1033 review（2026-11-16，66f3c6bfb，独立agent全量diff审计+主会话核证；三项均 base 64ed621a3 前已存在、不在本 Plan 冻结暖编辑入口内，SD-01 明确 warm 范围无过度声明） | owner = A2X 会话线后继计划。关闭条件=独立 fix：cold 入口 staging 化（或失败回滚）、restore 居民 id 晚装、read-only 居民持久化或锚闭包补齐，各配永久反例（可沿用 audit1033 FaultyAssembleProvider/冲突种子 seam 与 artifact_edges oracle） |
