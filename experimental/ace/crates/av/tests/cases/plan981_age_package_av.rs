@@ -158,3 +158,36 @@ fn p981_dual_nodes_same_field_are_observed_separately() {
     assert_eq!(observed.components[0].instance_states[0][0], 2);
     assert_eq!(observed.components[1].instance_states[0][0], 2);
 }
+
+/// B-LANGUAGE-V（AV 腿）：真实 980/A Counter 源在 AV 观察下与 A2R oracle 同值。
+#[test]
+fn p981_ma_counter_av_leg_matches_the_arithmetic_oracle() {
+    const SRC: &str = include_str!("../../../core/tests/fixtures_ma/ace_node_counter.at");
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![
+            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
+            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
+            ScenarioOp::Send { instance: 0, msg: "Dec".into() },
+        ],
+    };
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", SRC)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+    )
+    .expect("the delivered A source compiles");
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect("AV observes the real A source");
+    assert_eq!(observed.components.len(), 1);
+    assert_eq!(observed.components[0].name, "Counter");
+    // 2 Inc + 1 Dec = 1：与 A2R 二进制 oracle 同值（独立算术）。
+    assert_eq!(observed.components[0].instance_states, vec![vec![1]]);
+    assert_eq!(
+        observed.components[0].instance_texts,
+        vec![vec!["Counter".to_string()]],
+        "the real view text is observed"
+    );
+}

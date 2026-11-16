@@ -13,10 +13,11 @@ use ace_core::source::age_package::{
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 /// V 批需要的、目前还不存在的正式输入（980 交付后逐项替换）。
-const V_PENDING_INPUTS: [&str; 3] = [
-    "V-B-LANGUAGE: 980 正式 UI/事件源（typed 事件回 AV 的正式切片）",
-    "V-B-SESSION: 980 正式 typed UI/资源接口 + 多 Run/Stop 资源净归零宿主面（R64-10）",
-    "V-L-*: 与 980 合流的正式 oracle 期望文件（不是 981 自造样本）",
+const V_PENDING_INPUTS: [&str; 2] = [
+    // 2026-11-17：980/A 正式源已交（IF-980-NODE-DESKTOP-A），本项从清单移除；
+    // 真实源已进 `plan981_ma_sources.rs` / AV 腿 / A2R 腿。
+    "V-B-SESSION: 980 正式 typed UI/资源接口 + 多 Run/Stop 资源净归零宿主面（R64-10 异步面）",
+    "V-L-*: 与 980 合流的正式 oracle 期望文件（当前用独立算术 oracle，不是 980 expected）",
 ];
 
 fn input(src: &str) -> PackageModuleInput {
@@ -143,7 +144,7 @@ fn v_l_construct_denominator_is_frozen() {
 fn v_l_pending_inputs_are_named() {
     assert_eq!(
         V_PENDING_INPUTS.len(),
-        3,
+        2,
         "the 980-dependent V inputs are a frozen list"
     );
 }
