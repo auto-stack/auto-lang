@@ -1024,6 +1024,16 @@ next_responsible_role: work（WEB 切片#6：方言 OnHandler span 捕获 + Logi
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 30 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#5 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui c74f8755 lang 8d0468cdb | next: work（WEB 切片#6：span 捕获+接线）
 
+2026-11-16 stage: work（WEB 批切片 #6a：方言 span 捕获+提取线程化+接线闭环，goal round 31）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——委托点接线/全量/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **b3c9c582**、lang **ab6c8efdd**（§13.4；债务条目提交在分支，见下）。
+
+**交付。** ①方言 `OnHandler.span`（`#[serde(default)]` 原源坐标；on 块解析捕获、铸造形 None）——**DIALECT 清单护栏按设计工作**：`widget.on.handler.span` 登记（构造键+清单行+walk 发射+002 计数冻结 6），护栏红→登记→绿全程实证；②`extract_handler_spans(decl)`（compiler 零涟漪独立面）；③接线闭环永久 case `p980_web_extraction_carried_spans_feed_lane`（ace_ts_provider **9/9**）：真实解析管线（CompilerSession+Parser）→ 提取 span 区间核验（O-C4：起点 pattern 中段小偏移，body 完整）→ lane 区间内文本锚 → ToggleMode NOT fragment。④**vue_capabilities 10 红=master 预存**（stash 取证：基线无本计划改动仍 72/10——chart×5/vmodel/回调/枚举 msg 参数 handler 族，疑 981 诊断路由邻面；KNOWN-DEBT 条目已写、其提交因**主检出 KNOWN-DEBT 存 981 会话未提交 WIP**（D-981-SESSION-MULTI）暂留分支，981 落后再 land，不覆盖他会话 WIP）。
+
+**验证（冻结提交实测）。** dialect lib 5/5、ui_domain_validation 全绿、ace_ts_provider 9/9（node 腿实跑）；fmt clean。落地：ui ff 直落 `b3c9c582`；lang 规范 `ab6c8efdd` ff（债务提交分支持有，具名待 land）。
+
+next_responsible_role: work（WEB 切片#6b：span 起点校准 + 生成器源通道 + ts_adapter 四委托点接线；债务提交随下轮 rebase 落。波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 31 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6a 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui b3c9c582 lang ab6c8efdd | next: work（WEB 切片#6b）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
