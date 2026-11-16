@@ -67,6 +67,50 @@ pub struct AgePackageText {
     pub references: Vec<String>,
 }
 
+/// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg { Variant, … }` 的变体事实。
+///
+/// 名字是作者拼写；`payload` 是**类型拼写**（本面不做隐式解析——消费者需要时
+/// 按共同 Schema 解析；不接受"悄悄把拼写当已解析类型"）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgeMessageVariant {
+    pub name: String,
+    pub payload: Vec<String>,
+    pub span: Span,
+}
+/// PLAN-981（B-LANGUAGE-I / AGE-L02）：`design { key: <expr> … }` 的一条条目。
+///
+/// `value` 是作者表达式（含 span）；`if/else` 形在本切片结构性保留为 `None`
+/// （不是静默丢——span 仍锚定原位，消费者能看到"这里有一条未求值的条目"）。
+#[derive(Clone, Debug)]
+pub struct AgeDesignEntry {
+    pub key: String,
+    pub value: Option<Expr>,
+    /// R60-4：`if` 形态的三段（条件/Then/Else）；普通条目三项为空。
+    pub cond: Option<Expr>,
+    pub then_value: Option<Expr>,
+    pub else_value: Option<Expr>,
+    pub span: Span,
+}
+/// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行。
+///
+/// 与 `design` 同原则：槽位恢复必须留下**可见事实**（角色 + 名字 + 作者值/文本/
+/// 数字 + 原 span）。语义执行（绑定/路由/生命周期/计算/侦听/定时器）由 980 面的
+/// consumer 负责，投影层不冒充已执行。
+#[derive(Clone, Debug)]
+pub struct AgeMemberRow {
+    /// 槽位角色（`named-view` / `bind` / `route` / `expose` / `lifecycle` /
+    /// `computed` / `watch` / `timer`）。
+    pub role: String,
+    pub name: String,
+    pub value: Option<Expr>,
+    pub text: Option<String>,
+    pub num: Option<i64>,
+    /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体语句（`.field = rhs`），按声明序。
+    pub stmts: Vec<(String, Expr)>,
+    /// R61-2：`watch` 的全部源（按声明序）。
+    pub sources: Vec<String>,
+    pub span: Span,
+}
 /// 受检的一个 AGE 组件（一个 node 声明）。
 #[derive(Clone, Debug)]
 pub struct AgePackageComponent {
@@ -77,6 +121,12 @@ pub struct AgePackageComponent {
     pub fields: Vec<(String, String)>,
     /// `on <msg>` 消息名（按声明序；可能带 `.`，如 `Life.Tick`）。
     pub handler_msgs: Vec<String>,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体（名字 + payload 类型拼写，按声明序）。
+    pub messages: Vec<AgeMessageVariant>,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行（按声明序）。
+    pub members: Vec<AgeMemberRow>,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式，按声明序）。
+    pub design: Vec<AgeDesignEntry>,
     /// PLAN-981：每个 `on` 处理器做的事（消息名 → `(字段, 赋值右手)`，按声明序）。
     ///
     /// 只有 `handler_msgs` 时，`count = count + 1` 与 `count = count + 2` 的区别
@@ -112,6 +162,8 @@ pub struct AgePackageComponent {
     /// 复刻绑定器的导入/可见性规则。
     pub resource_refs: Vec<AgeResolvedResourceRef>,
     pub texts: Vec<AgePackageText>,
+    /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重、按声明序）。
+    pub exits: Vec<AgeViewExit>,
     /// 声明所在模块键。
     pub module: String,
     /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
@@ -133,6 +185,199 @@ pub enum AgeViewExit {
     View2d,
     /// 3D 场景出口 `view-3d { … }`。
     View3d,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L03）：竖屏 UI 出口 `view-portrait { … }`。
+    ViewPortrait,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L03）：widget 出口 `view-widget { … }`。
+    ViewWidget,
+}
+
+/// PLAN-981（B-LANGUAGE-I / AGE-L04）：一次呈现请求——选择的唯一输入。
+///
+/// 选择是**纯函数**：只看 node 已声明的出口与这次请求（用途/领域/逻辑尺寸），
+/// 不偷看宿主、不按命名猜平台。选择规则见
+/// `plan-artifacts/plan-981/language/L04-L05-decisions.md`。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgeViewRequest {
+    /// UI 呈现：可选 widget 宿主形态，逻辑宽高用于 portrait 判定。
+    Ui {
+        /// 逻辑宽（像素；作者/宿主给定）。
+        width: u32,
+        /// 逻辑高（像素）。
+        height: u32,
+        /// 该次请求是否来自 widget 宿主（`view-widget` 只在此命中）。
+        widget_host: bool,
+    },
+    /// 2D 场景请求（只接受 `view-2d`）。
+    Scene2d,
+    /// 3D 场景请求（只接受 `view-3d`）。
+    Scene3d,
+}
+
+/// 选择失败（纯函数没有源 span，故带 `&'static str` 码 + 人读消息）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgeSelectionError {
+    /// 稳定诊断码（`source.age.…`）。
+    pub code: &'static str,
+    /// 人读消息（含请求与已声明出口，便于定位）。
+    pub message: String,
+}
+
+/// AGE-L04：按"用途/领域 + 逻辑尺寸"从 node 已声明出口里选一个。
+///
+/// - UI：`view-widget`（仅 widget 宿主）→ `view-portrait`（仅 H > W）→ 默认 `view`；
+///   方形（H == W）**走默认**，不隐式选 portrait。
+/// - 2D/3D：只接受对应场景出口，**无跨域 fallback**。
+/// - 无候选（如场景请求遇到纯 UI 出口、或 UI 请求遇到纯场景出口）→ 具名拒绝。
+/// - 零尺寸 → 具名拒绝（不伪装成空画面）。
+pub fn select_exit(
+    declared: &[AgeViewExit],
+    request: AgeViewRequest,
+) -> Result<AgeViewExit, AgeSelectionError> {
+    let declared_label = || {
+        declared
+            .iter()
+            .map(|e| exit_label(*e))
+            .collect::<Vec<_>>()
+            .join(" / ")
+    };
+    let pick = |want: AgeViewExit| -> Option<AgeViewExit> {
+        declared.iter().copied().find(|e| *e == want)
+    };
+    match request {
+        AgeViewRequest::Scene2d => pick(AgeViewExit::View2d).ok_or_else(|| AgeSelectionError {
+            code: "source.age.exit-unavailable",
+            message: format!(
+                "a 2D scene request needs a `view-2d` exit; declared: [{}] (no cross-domain \
+                 fallback)",
+                declared_label()
+            ),
+        }),
+        AgeViewRequest::Scene3d => pick(AgeViewExit::View3d).ok_or_else(|| AgeSelectionError {
+            code: "source.age.exit-unavailable",
+            message: format!(
+                "a 3D scene request needs a `view-3d` exit; declared: [{}] (no cross-domain \
+                 fallback)",
+                declared_label()
+            ),
+        }),
+        AgeViewRequest::Ui {
+            width,
+            height,
+            widget_host,
+        } => {
+            if width == 0 || height == 0 {
+                return Err(AgeSelectionError {
+                    code: "source.age.view-request",
+                    message: format!(
+                        "a UI request needs a non-zero logical size (got {width}x{height})"
+                    ),
+                });
+            }
+            // 计划 AGE-L04 的顺序：widget → portrait（仅 H>W）→ 默认 view；方形走默认。
+            let order: [AgeViewExit; 3] = [
+                AgeViewExit::ViewWidget,
+                AgeViewExit::ViewPortrait,
+                AgeViewExit::View,
+            ];
+            for (i, cand) in order.iter().enumerate() {
+                let eligible = match i {
+                    0 => widget_host,
+                    1 => height > width,
+                    _ => true,
+                };
+                if eligible {
+                    if let Some(found) = pick(*cand) {
+                        return Ok(found);
+                    }
+                }
+            }
+            Err(AgeSelectionError {
+                code: "source.age.exit-unavailable",
+                message: format!(
+                    "this UI request ({}x{}, widget_host={}) is not served by any declared \
+                     exit [{}]",
+                    width,
+                    height,
+                    widget_host,
+                    declared_label()
+                ),
+            })
+        }
+    }
+}
+
+/// 成员槽位角色的稳定标签（事实面用 `&'static str`，避免把动态串泄漏进清单）。
+fn member_role_label(role: &str) -> &'static str {
+    match role {
+        "named-view" => "named-view",
+        "bind" => "bind",
+        "route" => "route",
+        "expose" => "expose",
+        "lifecycle" => "lifecycle",
+        "computed" => "computed",
+        "watch" => "watch",
+        "timer" => "timer",
+        _ => "member",
+    }
+}
+/// PLAN-981（B-LANGUAGE-I / AGE-L05）：一个逻辑 owner 在一次测试调度下的
+/// Start/Tick/Frame 预算。
+///
+/// 这是 LANGUAGE 冻结的 **oracle**（§5："5 Tick + 3 owner Frame 周期、两个出口，
+/// Start=1 / Tick=5 / Frame=3"）：`Frame` 是呈现时钟，**不随出口/view 数量倍增**；
+/// `Tick` 是逻辑时钟，按调度次数计；`Start` 每个逻辑 owner 恰一次。
+/// 真实调度由 SESSION 宿主执行，V-L-LIFE 用本函数给出的数字核对宿主计数。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AgeLifecycleBudget {
+    /// 每个逻辑 owner 的启动次数（恒 1）。
+    pub starts: u32,
+    /// 逻辑 Tick 次数（= 调度给定次数）。
+    pub ticks: u32,
+    /// 呈现 Frame 周期数（= 调度给定周期数；**不**乘出口数）。
+    pub frames: u32,
+}
+
+/// AGE-L05：给定调度次数与出口数，返回期望的 Start/Tick/Frame 计数。
+///
+/// 出口数只做**合法性**检查（0 个出口没有可呈现的面 → 具名拒绝），不参与计数：
+/// 这正是 "Frame/Tick 不随 view 倍增" 的机械表达。
+pub fn lifecycle_budget(
+    ticks: u32,
+    frames: u32,
+    exit_count: usize,
+) -> Result<AgeLifecycleBudget, AgeSelectionError> {
+    if exit_count == 0 {
+        return Err(AgeSelectionError {
+            code: "source.age.lifecycle",
+            message: "a scheduled owner needs at least one declared presentation exit"
+                .to_string(),
+        });
+    }
+    Ok(AgeLifecycleBudget {
+        starts: 1,
+        ticks,
+        frames,
+    })
+}
+/// B-LANGUAGE-I（AGE-L03）：出口键拼写 → 出口枚举（唯一映射，不按命名猜）。
+pub(crate) fn exit_from_kind(kind: &str) -> AgeViewExit {
+    match kind {
+        "view-2d" => AgeViewExit::View2d,
+        "view-3d" => AgeViewExit::View3d,
+        "view-portrait" => AgeViewExit::ViewPortrait,
+        "view-widget" => AgeViewExit::ViewWidget,
+        _ => AgeViewExit::View,
+    }
+}
+/// 出口的稳定标签（与 description 的 exit 事实同字）。
+fn exit_label(exit: AgeViewExit) -> &'static str {
+    match exit {
+        AgeViewExit::View => "view",
+        AgeViewExit::View2d => "view-2d",
+        AgeViewExit::View3d => "view-3d",
+        AgeViewExit::ViewPortrait => "view-portrait",
+        AgeViewExit::ViewWidget => "view-widget",
+    }
 }
 
 /// 一条场景行（组件实例）。
@@ -663,7 +908,23 @@ fn read_back_components(
                 )]);
             };
             texts.push(AgePackageText {
-                role: p.node.view.role.clone(),
+                // R60-2：文本叶的 role 按叶自身记录（命名 view 的叶是
+                // `named-view:<name>`），不再一律写 view 的 role。
+                role: p
+                    .node
+                    .view
+                    .texts
+                    .get(ti)
+                    .map(|t| {
+                        // 命名 view 的叶保留 `named-view:<name>`；普通 view 的叶
+                        // 沿用面 role（历史合同是 `view`）。
+                        if t.role.starts_with("named-view:") {
+                            t.role.clone()
+                        } else {
+                            p.node.view.role.clone()
+                        }
+                    })
+                    .unwrap_or_else(|| p.node.view.role.clone()),
                 span: *orig_span,
                 kind,
                 fn_name: fn_name.clone(),
@@ -760,11 +1021,52 @@ fn read_back_components(
                 .get(&(p.module.clone(), p.node.name.name.clone()))
                 .cloned()
                 .unwrap_or_default(),
-            exit: match p.node.view.exit.as_str() {
-                "view-2d" => AgeViewExit::View2d,
-                "view-3d" => AgeViewExit::View3d,
-                _ => AgeViewExit::View,
-            },
+            exits: p
+                .node
+                .view
+                .exits
+                .iter()
+                .map(|e| exit_from_kind(&e.kind))
+                .collect(),
+            exit: exit_from_kind(&p.node.view.exit),
+            members: p
+                .node
+                .members
+                .iter()
+                .map(|m| AgeMemberRow {
+                    role: m.role.to_string(),
+                    name: m.name.clone(),
+                    value: m.value.clone(),
+                    text: m.text.clone(),
+                    num: m.num,
+                    stmts: m.stmts.clone(),
+                    sources: m.sources.clone(),
+                    span: m.span,
+                })
+                .collect(),
+            design: p
+                .node
+                .design
+                .iter()
+                .map(|d| AgeDesignEntry {
+                    key: d.key.clone(),
+                    value: d.value.clone(),
+                    cond: d.cond.clone(),
+                    then_value: d.then_value.clone(),
+                    else_value: d.else_value.clone(),
+                    span: d.span,
+                })
+                .collect(),
+            messages: p
+                .node
+                .messages
+                .iter()
+                .map(|m| AgeMessageVariant {
+                    name: m.name.clone(),
+                    payload: m.payload.clone(),
+                    span: m.span,
+                })
+                .collect(),
             texts,
             module: p.module.clone(),
         });
@@ -772,6 +1074,54 @@ fn read_back_components(
     Ok(out)
 }
 
+/// B-LANGUAGE-I（R59-3 修复）：成员/`design` 的**值表达式**检查函数。
+///
+/// 形状：`fn <name>() int { let __v = (<expr>); return 0 }`——返回值固定 int，
+/// 让任意类型的表达式都能被**唯一 verify** 检查（名字解析/类型/可见性），
+/// 同时不引入第二套判据。表达式 span 原样保留，诊断落回作者源。
+pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
+    let let_stmt = Stmt::Let {
+        kw: span,
+        name: Ident {
+            name: "__v".to_string(),
+            span,
+        },
+        ann: None,
+        mutable: false,
+        value: expr.clone(),
+        span,
+    };
+    let zero = Expr {
+        span,
+        kind: ExprKind::IntLit(0),
+    };
+    FnItem {
+        name: Ident {
+            name: name.to_string(),
+            span,
+        },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn {
+            kind: TypeRef::Builtin(TypeWord::Int),
+            span,
+        },
+        body: Block {
+            stmts: vec![
+                let_stmt,
+                Stmt::Return {
+                    value: zero,
+                    span,
+                },
+            ],
+            span,
+        },
+        span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+    }
+}
 /// 隐藏求值函数的**源形状**：`fn <prefix><n>() Str { return (<expr>).clone() }`。
 ///
 /// 这是普通 Auto 源，交给唯一 verify；本函数不改判据、不建第二套检查。
@@ -1198,7 +1548,78 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "av::age_package (instance_states)",
         requirement: "AGE-L01",
     },
+    // PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行。
     AgeConstruct {
+        key: "named-view",
+        spelling: "view <name> { … }",
+        fact: "a named-view row with its face name",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "bind",
+        spelling: "bind { key -> .Handler }",
+        fact: "a bind row (key + handler target in author spelling)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "route",
+        spelling: "routes { path -> use module }",
+        fact: "a route row (path + module target)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "expose",
+        spelling: "expose { name, … }",
+        fact: "an expose row (exposed name)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "lifecycle",
+        spelling: "lifecycle { method => { … } }",
+        fact: "a lifecycle row (method name)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "computed",
+        spelling: "computed { name => <expr> }",
+        fact: "a computed row (name + author expression)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "watch",
+        spelling: "watch { .src -> { … } }",
+        fact: "a watch row (source + declaration text)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },
+    AgeConstruct {
+        key: "timer",
+        spelling: "timer { Msg (every_ms: n) }",
+        fact: "a timer row (message + interval)",
+        consumer: "age_package::AgePackageComponent.members",
+        requirement: "AGE-L02",
+    },    // PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式）。
+    AgeConstruct {
+        key: "design",
+        spelling: "design { key: <expr> }",
+        fact: "the design entries with their author expressions and spans",
+        consumer: "age_package::AgePackageComponent.design",
+        requirement: "AGE-L02",
+    },    // PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体是 AGE 作者语法的一部分；
+    // SOURCE 交接时它属 AG-A 范围外（B-LANGUAGE 消费），现在以完整投影进入本面。
+    AgeConstruct {
+        key: "msg",
+        spelling: "msg { Variant, Variant(<ty>, …) }",
+        fact: "the declared message variants with their payload type spellings",
+        consumer: "age_package::AgePackageComponent.messages",
+        requirement: "AGE-L01",
+    },    AgeConstruct {
         key: "on",
         spelling: "on <Msg> { <field> = <expr> }",
         fact: "the handler message names in declaration order",
@@ -1233,6 +1654,20 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         spelling: "view-3d { <element> … }",
         fact: "the 3D scene exit appears in the description's exit fact",
         consumer: "age_package::AgePackageComponent.exit / scene",
+        requirement: "AGE-L03",
+    },    // PLAN-981（B-LANGUAGE-I / AGE-L03）：五 view 的另外两个直属呈现出口。
+    AgeConstruct {
+        key: "view-portrait",
+        spelling: "view-portrait { … }",
+        fact: "the portrait UI exit appears in the description's exit fact",
+        consumer: "age_package::AgePackageComponent.{exit,texts,tree}",
+        requirement: "AGE-L03",
+    },
+    AgeConstruct {
+        key: "view-widget",
+        spelling: "view-widget { … }",
+        fact: "the widget UI exit appears in the description's exit fact",
+        consumer: "age_package::AgePackageComponent.{exit,texts,tree}",
         requirement: "AGE-L03",
     },
     AgeConstruct {
@@ -1281,7 +1716,7 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
 pub const AGE_CONSTRUCTS_OUT_OF_SCOPE: &[(&str, &str)] = &[
     (
         "AGE-L04",
-        "条件与选择（if/#if、widget→portrait→默认的用途选择）：981/LANGUAGE + 966 CT 语义",
+        "`#if`/CT 条件归 966（LANGUAGE 只消费）；选择已由 `select_exit` 落地（AGE-L04 的用途/领域序）",
     ),
     (
         "AG-A01..AG-A09",
@@ -1349,9 +1784,26 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
             AgeViewExit::View => "view",
             AgeViewExit::View2d => "view-2d",
             AgeViewExit::View3d => "view-3d",
+            AgeViewExit::ViewPortrait => "view-portrait",
+            AgeViewExit::ViewWidget => "view-widget",
         };
         if !out.contains(&exit_fact) {
             out.push(exit_fact);
+        }
+        // B-LANGUAGE-I（AGE-L02）：每个出现的成员槽位角色都产生事实行。
+        for m in &c.members {
+            let label = member_role_label(&m.role);
+            if !out.contains(&label) {
+                out.push(label);
+            }
+        }
+        // B-LANGUAGE-I（AGE-L02）：`design` 条目进入事实面。
+        if !c.design.is_empty() && !out.contains(&"design") {
+            out.push("design");
+        }
+        // B-LANGUAGE-I（AGE-L01）：`msg` 变体进入事实面（有变体即产生该行）。
+        if !c.messages.is_empty() && !out.contains(&"msg") {
+            out.push("msg");
         }
         for t in &c.texts {
             if !t.fn_name.is_empty() && !t.def_id.is_empty() && !out.contains(&"view.text") {
@@ -2003,6 +2455,21 @@ fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
 pub fn component_roles(description: &AgePackageDescription) -> Vec<&str> {
     let mut out = vec!["node", "view", "text"];
     for c in &description.components {
+        // B-LANGUAGE-I（AGE-L02）：每个出现的成员槽位角色都产生事实行。
+        for m in &c.members {
+            let label = member_role_label(&m.role);
+            if !out.contains(&label) {
+                out.push(label);
+            }
+        }
+        // B-LANGUAGE-I（AGE-L02）：`design` 条目进入事实面。
+        if !c.design.is_empty() && !out.contains(&"design") {
+            out.push("design");
+        }
+        // B-LANGUAGE-I（AGE-L01）：`msg` 变体进入事实面（有变体即产生该行）。
+        if !c.messages.is_empty() && !out.contains(&"msg") {
+            out.push("msg");
+        }
         for t in &c.texts {
             if !out.contains(&t.role.as_str()) {
                 out.push(&t.role);

@@ -974,7 +974,104 @@ pub(crate) fn project_packages_front(
                         text_fns.push((name, leaf.span));
                     }
                 }
-                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                // B-LANGUAGE-I（R59-3）：`design` / 成员槽位的**值表达式**也必须进
+                // 唯一 verify。此前只投影形状，于是 `design { theme: nosuch_ident }`、
+                // `computed { double => count + "x" }` 之类的非法输入被静默接受；
+                // 现在按文本叶同一机制生成检查函数（`let` 绑定 + 定值返回），
+                // 名字解析/类型/可见性都由共享检查判定，诊断落回作者 span。
+                {
+                    let component_index = age_components.len();
+                    let mut value_fns = 0usize;
+                    let mut check_value = |expr: &crate::source::ast::Expr| {
+                        let bound = match crate::source::age_component::rename_expr(
+                            expr,
+                            crate::source::age_component::FieldBinding::StateFn(0),
+                            &node.fields,
+                        ) {
+                            Ok(b) => b,
+                            Err(ds) => return Err(ds),
+                        };
+                        let name = format!(
+                            "{}val_{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            component_index,
+                            value_fns
+                        );
+                        value_fns += 1;
+                        items.push(crate::source::ast::Item::Fn(
+                            crate::source::age_package::hidden_value_fn(
+                                &name,
+                                &bound,
+                                expr.span,
+                            ),
+                        ));
+                        Ok(())
+                    };
+                    for d in &node.design {
+                        if let Some(v) = &d.value {
+                            check_value(v)?;
+                        }
+                    }
+                    // R60-4：`if` 形态的条件/分支同样进唯一 verify。
+                    for d in &node.design {
+                        for part in [&d.then_value, &d.else_value] {
+                            if let Some(v) = part {
+                                check_value(v)?;
+                            }
+                        }
+                        // R61-3：条件必须能当 bool 用——用 `!cond` 把它放进布尔
+                        // 位置（`!` 只接受 bool），诊断落在条件表达式上。
+                        if let Some(cond) = &d.cond {
+                            let neg = crate::source::ast::Expr {
+                                span: cond.span,
+                                kind: crate::source::ast::ExprKind::Unary {
+                                    op: crate::source::ast::UnaryOp::Not,
+                                    operand: Box::new(cond.clone()),
+                                },
+                            };
+                            check_value(&neg)?;
+                        }
+                    }
+                    for m in &node.members {
+                        if let Some(v) = &m.value {
+                            check_value(v)?;
+                        }
+                    }
+                    // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
+                    // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
+                    // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
+                    for m in &node.members {
+                        for source in &m.sources {
+                            if !node.fields.iter().any(|f| f.name == *source) {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.member-field",
+                                    format!(
+                                        "`{source}` is not a `model` field of this node; \
+                                         the `{}` member watches it",
+                                        m.role
+                                    ),
+                                    m.span,
+                                )]);
+                            }
+                        }
+                    }
+                    for m in &node.members {
+                        for (field, rhs) in &m.stmts {
+                            if !node.fields.iter().any(|f| f.name == *field) {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.member-field",
+                                    format!(
+                                        "`{field}` is not a `model` field of this node; \
+                                         the `{}` member assigns it",
+                                        m.role
+                                    ),
+                                    rhs.span,
+                                )]);
+                            }
+                            check_value(rhs)?;
+                        }
+                    }
+                }                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                 // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                 // 不另建求值器，也不把手写数值当常量。
                 for (si, scene) in node.view.scene_components.iter().enumerate() {

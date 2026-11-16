@@ -48,6 +48,19 @@ pub struct ComponentHandler {
     pub span: Span,
 }
 
+/// B-LANGUAGE-I（AGE-L03）：一个**直属出口**事实（`view` / `view-2d` / `view-3d` /
+/// `view-portrait` / `view-widget`）。
+///
+/// 计划要求"重复直属选择键拒绝，多同域内部区域合法"：不同键的直属出口可以并存
+/// （`view` + `view-portrait` 等），同一键写两次仍拒绝；出口事实按**后缀字节**落定。
+#[derive(Clone, Debug)]
+pub struct ComponentExit {
+    /// 出口键（`view` / `view-2d` / `view-3d` / `view-portrait` / `view-widget`）。
+    pub kind: String,
+    /// 该出口作者的 head/variant span。
+    pub span: Span,
+}
+
 /// 组件 view（文本叶沿用 H0 形状；PLAN-980 增补完整树结构）。
 #[derive(Clone, Debug)]
 pub struct ComponentView {
@@ -58,6 +71,8 @@ pub struct ComponentView {
     /// 在描述面完全丢失：纯场景 node 无法与 UI node 区分，3D 出口删掉也无人发现。
     /// 出口由**后缀 token 的字节**决定（`2d`/`3d`），不是由命中的 grammar alt 猜。
     pub exit: String,
+    /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重后按声明序）。
+    pub exits: Vec<ComponentExit>,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
     /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。
@@ -98,6 +113,11 @@ pub struct ComponentMsgVariant {
 pub struct ComponentDesignEntry {
     pub key: String,
     pub value: Option<Expr>,
+    /// R60-4：`key: if <cond> { <then> } else { <else> }` 的三段表达式——
+    /// 此前只保留 `value=None` + span，条件与分支从不进 verify。
+    pub cond: Option<Expr>,
+    pub then_value: Option<Expr>,
+    pub else_value: Option<Expr>,
     pub span: Span,
 }
 
@@ -143,7 +163,13 @@ pub struct ComponentMemberRow {
     pub name: String,
     pub value: Option<Expr>,
     pub text: Option<String>,
-    pub num: Option<i64>,    pub span: Span,
+    pub num: Option<i64>,
+    /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`），按声明序；
+    /// RHS 进唯一 verify，LHS 字段存在性由前门另查。
+    pub stmts: Vec<(String, Expr)>,
+    /// R61-2：`watch { .a, .b -> … }` 的全部源（按声明序）。
+    pub sources: Vec<String>,
+    pub span: Span,
 }
 
 /// 一个组件 node 声明的未受信候选。

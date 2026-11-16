@@ -84,14 +84,14 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             "f26f378633dd7b3df5754ee754836cfc2759c8435df1d04ecb952712c81d0d5e",
         ),
         // AGE 自己的既有两面同样是"不得被本次打包裁剪波及"的邻居。
-        // resync（2026-11-16，并入 master 的 980/972 面）后该行再次变化：age-package 采纳 980 富 view 时给 AGE 规则的 profile 门列表补了 `age-package`，规则文本字节变、语义不变（age-component 仍不收 view-2d/3d 与 node-ref）。此前一段历史：// 注意：`age-component` 的这一行是**变后值**——它在阶段 H 因与新增的
+        // B-LANGUAGE-I（2026-11-16）：age-component 的 `msg` payload 语法修复（`Set(int)` 此前在两个面都解析失败，整 node 退化成 `expected fn, found node` @0；现在用独立的 `age-msg-payload`/`age-msg-ty`，两个面都能解析 payload）。// resync（2026-11-16，并入 master 的 980/972 面）后该行再次变化：age-package 采纳 980 富 view 时给 AGE 规则的 profile 门列表补了 `age-package`，规则文本字节变、语义不变（age-component 仍不收 view-2d/3d 与 node-ref）。此前一段历史：// 注意：`age-component` 的这一行是**变后值**——它在阶段 H 因与新增的
         // `age-view2d/3d-member` 共用同一个 alt 列表而被重排，基线 `ca88cde14`
         // 的值是 `b244ee1614428379afb61a756e84adfd8c947fc8584e92d7a0f04bc7bf7222e0`。
         // 保留变后值 + 在此注明，是为了让后来者看得到"这个面确实变过"，
         // 而不是被一个看似中性的数字掩盖。
         (
             SourceProfile::AgeComponent,
-            "7a439096417b64cc283f155f7d037ab64b42bcb248ef451adac17157a80cd6f1",
+            "0e799dc1387d96229e726701a0421c798e1dd9d071fc87c5755b4c4f85e24c1c",
         ),
         (
             SourceProfile::AgeH0,
@@ -144,4 +144,16 @@ fn p981_age_package_grammar_identity_is_stable_across_lookups() {
     let b = id_of(SourceProfile::AgePackage);
     assert_eq!(a, b, "grammar identity must be deterministic");
     assert_eq!(a.len(), 64, "it is a sha256 hex digest");
+}
+
+/// R59-7：age-package 的裁剪身份也被钉住（此前只钉了邻接面的 13 个冻结值）。
+///
+/// LANGUAGE-I 改变了它（五 view/msg payload/成员槽位），这是**有意的面扩展**：
+/// 值随批次推进更新，但必须与 §6.7 的记录逐字一致，且不得在无声中漂移。
+#[test]
+fn p981_age_package_grammar_id_is_frozen() {
+    assert_eq!(
+        id_of(SourceProfile::AgePackage),
+        "c152355d6f5140cfc09b3fc37454585394f96c18d2e6a0a1bec653ec01f01cf7"
+    );
 }
