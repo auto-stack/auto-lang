@@ -601,7 +601,8 @@ fn audit1033_axtx_01_c_scalar() {
     let cold = s
         .cold_assemble_profile(COLD, SourceProfile::Scalar, &[], "main", false)
         .unwrap();
-    assert_eq!(run_c("c-cold41", &cold), "value:41");
+    // (the cold VALUE oracle rides the restore run below — restored files
+    // are byte-identical to cold's, keeping this case at 2 cl compiles)
     let a_sha = sha256_hex(COLD.as_bytes());
     let anchor_a = s.last_anchor().expect("C cold publishes AXP1").clone();
     assert_eq!(anchor_a.source_sha256, a_sha);
@@ -703,11 +704,8 @@ fn audit1033_axtx_01_c_rt() {
     let cold = s
         .cold_assemble_profile(RT_SRC, SourceProfile::Record, &[], "main", false)
         .unwrap();
-    let a_val = run_c("rt-cold", &cold);
-    assert_eq!(
-        a_val, "value:2217",
-        "frozen RT corpus oracle (20*100+21*10+7)"
-    );
+    // (the cold VALUE oracle rides the restore run below — restored files
+    // are byte-identical to cold's, keeping this case at 2 cl compiles)
     let a_sha = sha256_hex(RT_SRC.as_bytes());
     let anchor_a = s.last_anchor().expect("C rt cold publishes AXP2").clone();
     assert_eq!(anchor_a.source_sha256, a_sha);
@@ -798,7 +796,8 @@ fn audit1033_axtx_01_c_coll() {
     let cold2 = s2
         .cold_assemble_profile(COLL_SRC, SourceProfile::Collections, &[], "main", false)
         .unwrap();
-    assert_eq!(run_c("coll-cold", &cold2), "value:44");
+    // (the cold VALUE oracle rides the restore run below — restored files
+    // are byte-identical to cold's, keeping this case at 2 cl compiles)
     let a_sha2 = sha256_hex(COLL_SRC.as_bytes());
     let anchor_a2 = s2
         .last_anchor()
