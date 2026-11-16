@@ -1,3 +1,8 @@
+### D-981-SESSION-MULTI — SESSION 宿主面单组件与双 node 字段撞名（2026-11-16，auto-ui `3e63fa0d`，V 前置）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| ① 宿主 `exits()/request_layout()` 只读首组件，双组件 2:1 事件链不可表达；② 两个 node 同名 model 字段在包级撞 `__age_state_0_<field>`（`source.module-duplicate-declaration`），普通两个 Counter 无法同包 | 981 review-64 R64-3/R64-4；`plan981_*` 双组件用例缺宿主面 | ① 组件选择器/逐组件观察与布局 API 已交（auto-ui `3604f2f2`）；**剩余**：AV 场景 op 是实例级，组件级 2:1 调度需 ACE 场景扩展 + 永久双组件 2:1 用例；② **已关闭**（auto-lang `e36b7ffcd`）：状态函数按节点消歧（node 0 保持 `__age_state_0_count`，其余 `__age_state_n<node>_<inst>_<field>`），包前门/描述读回/AV 观察共用 helper；A2R 单节点合同复跑未变 |
 ### D-981-MODULE-GLOBAL-A2R — 模块级 const/var 的 A2R 目标合法化（2026-11-16，落主 `1738c2a1c`，具名缺口）
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
@@ -4585,3 +4590,11 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   引入——969 加组未同步 scripts/tests/test_fixed_groups.py 的显式清单；非 976 触面
   （976 仅改 ace-a2x 组 args）。关闭=L0 fix worktree 一行期望更新（或 969 线后续）。
   owner=PLAN-969 线/批量回归 triage。
+
+## PLAN-1032（typed 批量编辑失败原子性，2026-11-16 re-review 登记 @2cf01df05）
+
+### D-1032-RUNTIME-PREP — `typed_runtime::prepare` 仅进程内串行（既有系统性风险，非本包合同）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| 会话启动路径 `typed_runtime::prepare` 的 `static SERIAL: Mutex<()>` 只串行**同进程**；跨进程存在窗口（`target/<target>/runtime-release/ace_typed_entry_runtime.lib` + `.identity.json` 的 `remove_file`/`file_hash`/`cargo build` 交错）。测试侧的 lib 二进制与两个集成测试二进制会并发启动会话 | PLAN-1032 re-review（2026-11-16，`2cf01df05`）：首轮独立复跑出现 1 次 `tier.rs:317 .expect("session starts")`（0.264s），随后单例复跑 PASS、6 例复跑 10/10 绿、两进程并发 3 轮绿、组级 298/298 绿；基线 `16a58402e` 已有 `typed_entry_tier`/`typed_entry_incremental_tier` 两二进制并发 starter，故窗口为既有风险，1032 的 lib 用例仅边际增加暴露。原始记录见 [1032 §9](archive/1032-ace-native-typed-batch-atomicity.md)（归档前为 [1032](1032-ace-native-typed-batch-atomicity.md)） | owner = ACE native runtime 准备线（PLAN-891 后继）/ 批量回归 triage。关闭条件=二选一：①跨进程串行化（文件锁/独占 rename 发布，release 二进制与测试共用）；②会话启动测试收敛到单二进制（或 test-group 串行化）并附并发压力复跑绿。边界：不阻塞 PLAN-1032（§5 范围为批编辑接受事务，`start()` 与基线逐字节相同） |
