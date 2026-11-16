@@ -72,12 +72,24 @@ fn main() int {
 
     let pe_bytes = std::fs::read(&pe.exe_path).expect("read exe");
     let report = audit_pe_imports(&pe_bytes).expect("PE import audit pass");
-    assert_eq!(report.dlls.len(), 1);
-    assert!(report.dlls[0].eq_ignore_ascii_case("kernel32.dll"));
-    for (_, sym) in &report.symbols {
+    // PLAN-1065: the platform shim carries the sys973 real bodies, so the
+    // frozen import closure is kernel32.dll + bcrypt.dll (CSPRNG entry) —
+    // still zero CRT/libc.
+    let mut dlls: Vec<String> = report.dlls.iter().map(|d| d.to_ascii_lowercase()).collect();
+    dlls.sort();
+    assert_eq!(
+        dlls,
+        vec!["bcrypt.dll".to_string(), "kernel32.dll".to_string()]
+    );
+    for (dll, sym) in &report.symbols {
+        let allowed = if dll.eq_ignore_ascii_case("kernel32.dll") {
+            ALLOWED_KERNEL32_IMPORTS
+        } else {
+            ace_native::platform_io::ALLOWED_BCRYPT_IMPORTS
+        };
         assert!(
-            ALLOWED_KERNEL32_IMPORTS.contains(&sym.as_str()),
-            "unexpected symbol {sym}"
+            allowed.contains(&sym.as_str()),
+            "unexpected symbol {sym} from {dll}"
         );
     }
 
@@ -184,7 +196,16 @@ fn main() int {
     let dir_pio = temp_workdir("pio04-plat");
     let pio_pe = console_native_build(&pio_mir, "d_main", &dir_pio).unwrap();
     let pio_report = audit_pe_imports(&std::fs::read(&pio_pe.exe_path).unwrap()).unwrap();
-    assert_eq!(pio_report.dlls, vec!["KERNEL32.dll"]);
+    let mut pio_dlls: Vec<String> = pio_report
+        .dlls
+        .iter()
+        .map(|d| d.to_ascii_lowercase())
+        .collect();
+    pio_dlls.sort();
+    assert_eq!(
+        pio_dlls,
+        vec!["bcrypt.dll".to_string(), "kernel32.dll".to_string()]
+    );
     let pio_syms: Vec<&str> = pio_report.symbols.iter().map(|(_, s)| s.as_str()).collect();
     for expected in [
         "ExitProcess",
