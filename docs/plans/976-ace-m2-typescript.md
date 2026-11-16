@@ -371,6 +371,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-16 stage: goal | plan_id: PLAN-976 | plan_revision: r6 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | commit: 82b3dc665（树头） | next: review
+
 2026-11-16 stage: work | PLAN-976 | r6 | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | branch: plan-976-dev | base_commit: 2961a2aa | code_commit: 1d30914ff（主实施）+67b5c0804（失败保旧断言）+82b3dc665（trap:Internal 合同） | dependency_revisions: master aa257fa（分叉仅 docs/av/age 文件，与本包触面无冲突，merge 时合入） | task_ids: T-01,T-02,T-03,T-08,T-04（5/8 work 完成，T-05/06/07 为 review/merge） | evidence: 见 §8 各任务行内证据；门禁 `cargo t ace-a2x` PASS 284 执行 gate True（含新 crate 27 测试与 worker tsready 6 例）；`cargo test -p ace-semantics-contract` 19 绿；e2e scratch 22/22（plan-artifacts，merge 时折叠删除） | blockers: 无 | 本轮新用例均 <10s（tsready 套件 6 例共 ~8s；tsrt 0.18s；tsfrag 0.18s；准备=既有 debug 增量构建）；已知非本包债务：ace-av/ace-native 9 个既有 warning、sched_m2_968.rs/plan981_age_package_a2r.rs 的 master fmt 漂移（未触碰） | next: review（T-05 独立复审）
 
 2026-11-16 stage: new/revision | PLAN-976 r6 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
