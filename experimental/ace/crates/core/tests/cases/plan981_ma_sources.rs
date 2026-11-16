@@ -12,7 +12,7 @@
 //! - Counter：`msg { Inc, Dec, Reset }`、`var count int = 0`、三条 `on` 复合赋值、
 //!   view 里的 `onclick: .Dec` 等**事件绑定**（绑定是事实，不是 `self` 字段引用）。
 use ace_core::source::age_h0::LegacyWidgetAlias;
-use ace_core::source::age_package::compile_age_package;
+use ace_core::source::age_package::{collect_facts, compile_age_package};
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 const HELLO: &str = include_str!("../fixtures_ma/ace_hello_minimal.at");
@@ -93,4 +93,47 @@ fn p981_ma_unknown_event_binding_is_rejected() {
         &[PACKAGES_CAPABILITY.to_string()],
     );
     assert!(r.is_err(), "an unknown `.Boom` binding must not compile silently");
+}
+
+/// B-LANGUAGE-V（V-L-VIEW / V-L-WIRE / V-L-COVER）：真实 A 源在 SOURCE/LANGUAGE
+/// 面的 V 判据——出口选择、事件绑定、构造分母、原 span 保真。
+#[test]
+fn p981_ma_sources_satisfy_the_language_v_checks() {
+    use ace_core::source::age_package::{select_exit, AgeViewExit, AgeViewRequest};
+    let d = compile(COUNTER);
+    let c = &d.components[0];
+
+    // V-L-VIEW：真实源只有默认 view 出口；任意 UI 请求都选它，场景请求无跨域。
+    assert_eq!(c.exits, vec![AgeViewExit::View]);
+    let ui = AgeViewRequest::Ui { width: 400, height: 900, widget_host: false };
+    assert_eq!(select_exit(&c.exits, ui).unwrap(), AgeViewExit::View);
+    assert!(select_exit(&c.exits, AgeViewRequest::Scene2d).is_err());
+
+    // V-L-WIRE：三条 unit 消息 + 三条 handler + onclick 绑定，键与消息都对得上。
+    let handlers: Vec<&str> = c.handler_msgs.iter().map(|s| s.as_str()).collect();
+    assert_eq!(handlers, vec!["Inc", "Dec", "Reset"]);
+    for (key, msg, span) in &c.view_events {
+        assert_eq!(key, "onclick");
+        assert!(
+            c.messages.iter().any(|m| &m.name == msg),
+            "binding `{msg}` names a declared message"
+        );
+        let text = &COUNTER[span.start..span.end];
+        assert!(
+            text.contains(msg),
+            "binding span {span:?} must cover `{msg}` in the real source, got {text:?}"
+        );
+    }
+
+    // V-L-COVER：真实源覆盖 node/model/on/view 四类事实。
+    let facts = collect_facts(&d);
+    for key in ["node", "model", "on", "view"] {
+        assert!(facts.contains(&key), "real A source must cover `{key}`: {facts:?}");
+    }
+
+    // 原名保真：消息变体的原 span 指回真实源文本。
+    for v in &c.messages {
+        let text = &COUNTER[v.span.start..v.span.end];
+        assert!(text.starts_with(&v.name), "variant span must start at its name: {text:?}");
+    }
 }
