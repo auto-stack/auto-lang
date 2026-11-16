@@ -1052,6 +1052,18 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 32 | from: work | 
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: verify | to: user | status: executing（12/32）| outcome: waiting | worktree: D:/autostack/.wt/lang-980 | commit: — | next: user（波次门/并行裁定）
 
+2026-11-16 stage: work（WEB 批切片 #6c：路线 B 核心，goal round 33 续——用户未应答裁定问题，按默认（波次裁定不动、继续无阻塞 WEB）推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——SFC 拼接/全量双轨/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **59b1d65b**、lang **bf9d76079**（§13.6；债务提交仍停靠——主检出 KNOWN-DEBT 他会话 WIP 未落）。
+
+**交付（路线 B 核心）。** `ui/ace_vue_script.rs`：`lane_handler_bodies(src, path, patterns)`——每 handler 的 Vue script 函数体行（reactive 语义 `field.value = rhs`）。算法要点：①pattern **带箭头**锚（view 内联引用无箭头——排除 `.ToggleMode` 歧义）；②**写目标=体文本 LHS 首个 `.field`**（所有状态函数含全部 handler 重放表达式，span 包含性不可区分写路径——具名边界：单赋值 002 族已验，多语句/控制流体归 #6d）；③区间最宽 RHS 发射→宿主映射（剥实例段）→`[helper 行..., field.value = rhs;]`。永久 case `p980_web_route_b_handler_bodies`（**10/10**）：002 五 handler 体全派生，**Inc 体真 node 41→42**（a2x_rt 就位）。现场发现并修复：ops msg 去点前缀、映射实例段剥离、LHS 写目标推导（重放护栏歧义）。
+
+**验证（冻结提交实测）。** ace_ts_provider 10/10（node 腿实跑）；fmt clean、模块零警告；ui ff 落主 `59b1d65b`；规范 §13.6 落主 `bf9d76079`。
+
+**用户决策点（本 round 早段登记于 §10，仍开放）**：三选一（等待外部/并行裁定/继续 WEB）——未应答期间按默认推进 WEB。
+
+next_responsible_role: work（WEB 切片#6d：SFC 拼接 → 全量双轨 → 浏览器档。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 33 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6c 落主；裁定问题开放）| worktree: D:/autostack/.wt/lang-980 | commit: ui 59b1d65b lang bf9d76079 | next: user（裁定）或 work（#6d 默认）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
