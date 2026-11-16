@@ -189,9 +189,14 @@ Windows/Linux 装配绑定已验，Linux 运行归 1063）。sys 模块走 Aggre
     （`source.module-identity`）；`PackageStore::prepare`/`restore` 绑定
     `input_hash` 与摘要校验——恢复产物保持同身份并可执行（42），修改私有
     helper 正文即移动 `input_hash` 使陈旧 readers 失效，篡改摘要拒绝恢复。
-  - **具名边界**：`stdlib/ace/std/sqlite.at` 的 canonical packages 装配腿
-    具名阻塞于 PLAN-975 `T-03` 的 `pub fn` 迁移（当前为 foreign-lane plain
-    `fn`，合同禁止镜像源替代）；1043 provider 候选发现/装配线本切片未触。
+  - **具名边界**：`packages` 外来 `p967_*` provider 装配执行仍属 1043 线余量；
+    `stdlib/ace/std/sqlite.at` 本身的 canonical `pub fn` 迁移、双 lane 单源服务与
+    `V-LOAD-MODULE` 完整数据业务闭包已由 PLAN-975 闭合（见下节）。
 - **证据入口**：`ace-source-query::module_1064`（6 例）与
   `ace-av::conformance module_v_1064::`（7 例）；职责组 `ace-source`、
   `ace-syntax`（及共享消费面）。
+
+## M2-A 数据模块单源服务、TextRecord `pub fn` 与内容视图转发（PLAN-975，2026-11-16）
+
+- **`sqlite.at` 双 lane 同源与 `TextRecord` `pub fn` 准入**：`experimental/ace/grammars/auto-source.at` 将 `r-pub` / `public-fn` 扩至 `text-record` profile（`plan981_grammar_scope` 中仅 `SourceProfile::TextRecord` 的 `grammar_id` 更新为 post-change 值 `fb3d3883...`，其余 13 个 profile 逐字节不变），使 canonical `pub fn` 拼写的 `stdlib/ace/std/sqlite.at` 单源免改同时服务 `text-record` foreign lane（`db975` 2 例）与 `packages-modules` 边界（`db975_sqlite_at_packages_module_face` 5 精确 `pub` 导出、`pub`-stripped 镜面 `source.module-private` RED）。
+- **数据模块 `V-LOAD-MODULE` 与五端内容视图转发**：`stdlib_contract_975::json975_v_load_module_closure` 闭合 `json.at`/`redis.at` 跨模块业务、`json_cp` `source.module-private`、`pub`-stripped RED、`std::json` `ace.stdlib-reserved` 与 `PackageStore::restore`；`a2x-c/src/lower_rt.rs` 调用实参槽不再用 HIR 原始 `Ty::StrOwned` 覆盖 `lower_view_value`/`lower_pure` 返回的 `ContentView`（`Ty::Str`）类型，修复 A2C 跨函数转发 `Str` 视图参数触发 `C4133` 类型不兼容的实虫。

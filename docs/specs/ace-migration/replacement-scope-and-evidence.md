@@ -289,3 +289,11 @@ env get 族/zip/storage 等）→1064、AC 50 操作真身→1065（用户裁定
 - auto-ui 仓 `ace-migration-feasibility.md` 的领域侧增量归 UI owner（本仓不可沉淀）。
 
 规范落点：[m2-schema.md](m2-schema.md)；证据与边界见 PLAN-979 §9。
+
+## PLAN-975 增量：M2-A 数据标准库与跨端业务（SD-02 挂接，2026-11-16）
+
+PLAN-975（M2-A 数据标准库：`json` / `sqlite` / `redis`）全部 work 任务经 round-1 `needs_fix`（`F-01..F-06`）→ 修复 → round-2 `final pass` 归档：
+
+- **三模块与原语**：`char.to(Str)` 物化原语（六路径 AV/`MnDriver`/AV-C/A2R/A2PY/AC）；纯 Auto `stdlib/ace/std/json.at`（encode/decode 族、数组点路径、`i32::MIN`、UTF-16 代理对、控制字符与非法转义拒绝）五端（AV/`MnDriver`/A2R/A2C/A2PY）同得 `42`（含修复 `a2x-c/src/lower_rt.rs` 内容视图参数转发）；纯 Auto RESP2 `stdlib/ace/std/redis.at`（严格 UTF-8 逐字节校验 + `badutf8`/`overlong`/`surr`→`""`）；canonical `pub fn` `stdlib/ace/std/sqlite.at` 单源服务 `text-record`（`TextRecord` `pub fn` 准入）与 `packages-modules`（`:memory:` CRUD + `BEGIN`/`ROLLBACK` + SQL 失败 `ROLLBACK` = `9`）。
+- **结构感知与模块边界**：`spec JsonDecodable` + `<T has JsonDecodable> decode<T>` + `966` `ct_field_count`/`ct_has_field` + `app::service` `pub type Service` 跨模块解码；`V-LOAD-MODULE` 私有 helper `source.module-private`、`pub`-stripped RED、`std::json` `ace.stdlib-reserved`、`PackageStore::restore` 与私有体变更 hash 移动全验。
+- **具名边界与外部承接**：动态 `JsonValue` AST / 泛型 `encode[T]` / 任意字段遍历反射（M2-B / `966`）；`encoding/csv.at` 未迁移占位；SQLite 文件持久化（`973`/`1064`）；`packages` `p967_*` provider 执行装配（`1043`）；schema 迁移（`986`）；Linux 实跑 `L-01..L-05`（`1063`, `deferred-required / NOT_RUN`）。规范落点：[m2-stdlib-data.md](m2-stdlib-data.md)。
