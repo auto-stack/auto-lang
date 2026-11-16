@@ -6,8 +6,8 @@
 //! - **UI-EVT-BIND**：handler 参数名/span 被**读取保留**；参数**行为**在 A 未实现，因此带参
 //!   handler 在 admit 前具名拒（`source.age.event-params-unsupported`），零状态/UI 效果——
 //!   不静默丢参后跑常量体；
-//! - **UI-EVT-PAYLOAD**：声明侧允许（`Add(str)`），但执行侧未实现；该拒绝由 SESSION 宿主在
-//!   dispatch 前给出（见 auto-ui 侧 `s2` 用例），这里冻结声明面的 payload 事实。
+//! - **UI-EVT-PAYLOAD**：声明侧允许（`Add(str)`），但执行侧未实现；拒绝由 AGE 前门在
+//!   dispatch 前给出（编译期拒绝，宿主透出该诊断；见 auto-ui 侧 `s2` 用例）。
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::compile_age_package;
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
@@ -50,20 +50,120 @@ fn p981_event_a_named_unit_messages_are_projected() {
     assert_eq!(d.components[0].messages.len(), 1);
 }
 
-/// UI-EVT-BIND：参数名/span 被保留，但带参 handler 在 admit 前**具名拒**。
+/// UI-EVT-BIND：参数名/span 被保留并可从描述面读到；**派发**时具名拒（零效果）。
 #[test]
 fn p981_event_a_param_handler_is_named_rejected() {
-    let src = "node M {\n    msg Msg {\n        Add(str)\n    }\n    on {\n        .Add(t) -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let src = "node M {\n    msg Msg {\n        Add\n    }\n    on {\n        .Add(t) -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     let want = src.find("(t)").expect("fixture has the param") + 1;
-    let ds = match compile(src) {
-        Ok(_) => panic!("a parameterised handler must be rejected in the A slice"),
-        Err(ds) => ds,
+    // 解析与描述成功：参数事实可读（不是静默丢弃）。
+    let d = compile(src).expect("a parameterised handler parses and is described");
+    assert_eq!(
+        d.components[0].handler_params,
+        vec![("Add".to_string(), vec!["t".to_string()])]
+    );
+    // 派发时具名拒，span 指参数名。
+    use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Add".into(),
+        }],
     };
-    assert_eq!(ds[0].code, "source.age.event-params-unsupported", "{ds:?}");
-    assert_eq!(ds[0].span.start, want, "the diagnostic points at the parameter name");
-    assert_eq!(ds[0].span.end, want + 1);
+    let r = ace_core::source::age_package::compile_age_package_with_scenario(
+        &[input(src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+    );
+    match r {
+        Ok(_) => panic!("dispatching a parameterised handler must be rejected"),
+        Err(ds) => {
+            assert_eq!(ds[0].code, "source.age.event-params-unsupported", "{ds:?}");
+            assert_eq!(ds[0].span.start, want);
+        }
+    }
 }
 
+/// R65-1/R65-4：跨 `msg` 块的重复变体、第二个具名集合都具名拒。
+#[test]
+fn p981_event_a_cross_block_duplicates_are_rejected() {
+    let cross = "node M {\n    msg {\n        Inc\n    }\n    msg {\n        Inc\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    match compile(cross) {
+        Ok(_) => panic!("cross-block duplicate variants must be rejected"),
+        Err(ds) => assert_eq!(ds[0].code, "source.age.msg-duplicate", "{ds:?}"),
+    }
+    let sets = "node M {\n    msg A {\n        Inc\n    }\n    msg B {\n        Dec\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    match compile(sets) {
+        Ok(_) => panic!("a second named message set must be rejected"),
+        Err(ds) => assert_eq!(ds[0].code, "source.age.msg-set-duplicate", "{ds:?}"),
+    }
+}
+
+/// R65-3：widget 形 handler 指向未声明消息 → 具名拒。
+#[test]
+fn p981_event_a_unknown_handler_message_is_rejected() {
+    let src = "node M {\n    on {\n        .Unknown -> {\n            .count = 0\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    match compile(src) {
+        Ok(_) => panic!("a handler for an undeclared message must be rejected"),
+        Err(ds) => assert_eq!(ds[0].code, "source.age.msg-unknown", "{ds:?}"),
+    }
+}
+
+/// R65-2：unit 变体在前、有载荷变体在后时，无值派发仍必须拒。
+#[test]
+fn p981_event_a_unit_first_payload_second_dispatch_is_rejected() {
+    use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
+    let src = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Add(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    // 该源本身因跨块重复变体被拒（R65-1）；构造一个只声明一次、跨块不重复的
+    // 对照组：unit `Add` 与 payload `Set`，两处都能走到 payload 守卫。
+    let ok = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Set(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    assert!(compile(src).is_err(), "cross-block duplicates already rejected");
+    let d = compile(ok).expect("distinct variants across blocks stay legal");
+    assert_eq!(d.components[0].messages.len(), 2);
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Set".into(),
+        }],
+    };
+    let r = ace_core::source::age_package::compile_age_package_with_scenario(
+        &[input(ok)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+    );
+    match r {
+        Ok(_) => panic!("dispatching the payload variant must be rejected"),
+        Err(ds) => assert_eq!(ds[0].code, "source.age.event-payload-unsupported", "{ds:?}"),
+    }
+}
+
+/// R65-11：具名 unit 集合的消息派发仍然工作（同一独立轨迹）。
+#[test]
+fn p981_event_a_named_unit_dispatch_works() {
+    use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
+    let src = "node M {\n    msg Msg {\n        Add\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Add".into(),
+        }],
+    };
+    let out = ace_core::source::age_package::compile_age_package_with_scenario(
+        &[input(src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+    )
+    .expect("a named unit set dispatches");
+    assert_eq!(out.description.components[0].message_set_name.as_deref(), Some("Msg"));
+}
 /// UI-EVT-PAYLOAD：声明侧允许 payload 变体（执行拒绝在 SESSION dispatch 前）。
 #[test]
 fn p981_event_a_payload_variants_are_declared_not_executed() {

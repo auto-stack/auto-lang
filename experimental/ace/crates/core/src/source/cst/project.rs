@@ -4482,6 +4482,7 @@ impl<'a> Engine<'a> {
                         msg,
                         // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
                         params: Vec::new(),
+                        from_widget: false,
                         assigns,
                         span: self.cx.span_of(member),
                     });
@@ -4748,7 +4749,26 @@ impl<'a> Engine<'a> {
                     self.collect_msg_variants(member, &mut messages);
                     // PLAN-980 WEB #6i：可选的具名段（`msg Msg { … }`）。
                     if let Some(name) = self.cx.field_child(member, "msg_name") {
-                        message_set_name = Some(self.cx.spelling(name));
+                        let spelling = self.cx.spelling(name);
+                        let span = self.cx.span_of(name);
+                        match message_set_name.clone() {
+                            Some(prev) => {
+                                // R65-4：第二个具名集合不能静默覆盖第一个。
+                                let msg = format!(
+                                    "a second named message set `{spelling}` would hide the \
+                                     earlier set `{prev}`; declare one named set per node"
+                                );
+                                self.cx.reject(span, move || {
+                                    Diagnostic::new(
+                                        Stage::Text,
+                                        "source.age.msg-set-duplicate",
+                                        msg.clone(),
+                                        span,
+                                    )
+                                });
+                            }
+                            None => message_set_name = Some(spelling),
+                        }
                     }
                 }
                 "age-design-member" => {
@@ -4819,6 +4839,7 @@ impl<'a> Engine<'a> {
                 _ => {}
             }
         }
+        self.reject_duplicate_variants(&messages);
         ComponentNode {
             head_role,
             head_spelling: head_spelling.clone(),
@@ -5041,12 +5062,14 @@ impl<'a> Engine<'a> {
 
     /// msg 变体（含逗号 tail 包装内的递归变体）。
     fn collect_msg_variants(&mut self, member: u32, messages: &mut Vec<ComponentMsgVariant>) {
-        let before = messages.len();
         self.collect_msg_variants_inner(member, messages);
-        // PLAN-981（IF-981-EVENT-A）：同一 `msg` 集合里重复变体具名拒（985 要求
-        // 名字/变体/原 span 保真，同时有重复拒绝；不静默合并）。
+    }
+
+    /// R65-1：重复变体必须**跨 `msg` 块**也拒——块内去重会漏掉 `msg { Inc }` +
+    /// `msg { Inc }`，并让 payload 的匹配命中错误变体。
+    fn reject_duplicate_variants(&mut self, messages: &[ComponentMsgVariant]) {
         let mut seen: Vec<(String, Span)> = Vec::new();
-        for v in &messages[before..] {
+        for v in messages {
             if let Some((name, first)) = seen.iter().find(|(n, _)| *n == v.name) {
                 let msg = format!(
                     "duplicate message variant `{}` (first declared at byte {}); a duplicate \
@@ -5212,6 +5235,7 @@ impl<'a> Engine<'a> {
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
                 params: self.handler_params(c),
+                from_widget: true,
                 assigns,
                 span: self.cx.span_of(c),
             });

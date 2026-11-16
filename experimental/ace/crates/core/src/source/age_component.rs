@@ -45,8 +45,10 @@ pub struct ComponentAssign {
 pub struct ComponentHandler {
     pub msg: String,
     /// PLAN-981（IF-981-EVENT-A）：作者写的 handler 参数名与 span（`.Add(t)`）。
-    /// 空 = 零参 handler。参数**行为**在 A 切片未实现，前门会具名拒绝。
+    /// 空 = 零参 handler。参数**执行**在 A 切片未实现，派发时具名拒绝。
     pub params: Vec<(String, Span)>,
+    /// R65-3：是否来自 `on { .Msg -> … }`（widget 形）——该形必须指向已声明消息。
+    pub from_widget: bool,
     pub assigns: Vec<ComponentAssign>,
     pub span: Span,
 }
