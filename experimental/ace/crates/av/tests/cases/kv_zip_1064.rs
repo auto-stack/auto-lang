@@ -96,6 +96,7 @@ fn run_av_i32_budget(tag: &str, main_src: &str, max_steps: u64) -> i32 {
     let mut backend = Win32PlatformIo::default();
     let limits = ExecLimits {
         max_steps,
+        wall: std::time::Duration::from_secs(8),
         ..ExecLimits::default()
     };
     let (out, _trace, _summary) = ace_av_core::execute_program_platform(
@@ -392,7 +393,7 @@ fn main() int {{
 }}
 "#
     );
-    let rc = run_av_i32("kv-av-misc", &misc_src);
+    let rc = run_av_i32_budget("kv-av-misc", &misc_src, ExecLimits::default().max_steps);
     // Restore write bit so scratch cleanup always succeeds cleanly
     let mut perms2 = std::fs::metadata(&ro).unwrap().permissions();
     perms2.set_readonly(false);
