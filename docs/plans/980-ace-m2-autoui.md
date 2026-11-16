@@ -978,6 +978,20 @@ next_responsible_role: work（980/WEB 剩余批：ts_adapter 委托替换扩面 
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 26 | from: merge | to: work | status: executing（12/32，NATIVE r13 批已交付落主）| outcome: pass（phase fold #7）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui 403c936d lang 7f431bd5f | next: work（WEB 剩余/TAURI；B-AV/B-RUST 波次门阻塞已具名）
 
+2026-11-16 stage: work（WEB 批切片 #2，goal round 27）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（切片交付并落主；**B-WEB-I/V/R 保持未勾**——完整适配器切换为批剩余义务）| worktree: lang-980 @ plan-980-dev | commit: ui **6aa0fd4a**（rebase 至 981 Run/Stop 落主后）、lang **3047fc389**（规范 §13）。
+
+**交付。** ①`ace_ts_provider` 参数类型域扩面：`&[&str]` → `&[(name,ty)]`（int/bool 有效；str 被 profile 拒——普查记录）；②**车道覆盖普查冻结表**（`p980_web_lane_census_frozen_forms`，11 形态）：生产 UI 表达形态经 976 fragment 车道的逐项 Ok/具名拒结果——比较算子（`>`/`==`）、布尔算子（`!`/`&&`）、`str` 类型、f-string 插值、多函数源全部 `source.unsupported/lex/syntax` **具名拒**（Core profile 域外）；非字面 var-init 触发 `verify.block-structure`（O-C2 形状缺口）；今日 OK 面=字面 init 两步赋值/return 表达式（int）+宿主映射+node 执行；③规范 **§13**：普查事实+推论落库。
+
+**关键发现（切换前置义务，比 round 23 记录更深）。** 976 fragment 车道经 `compile_source`（Core profile）编译——**生产 UI 表达表面不在 profile 域内**。ts_adapter 委托替换的实底不是（只是）AST→HIR 线程化：先须扩 fragment 编译 profile/入口（976 后继或 980 内 richer entry——组件面/text-record 编译入口候选）。普查表=该义务的可测分母（表变化须具名修订）。"976 已解锁"前提由此限定：解锁≠充足——WEB 完整切换的语言侧前置现在有名有表。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **5/5**（4 旧 case 含 node 执行腿随类型域重构复绿 + 普查 1/1）；rebase 后（981 Run/Stop 已并入）同门复跑 5/5；fmt clean、我的文件零新增警告。vue_capabilities（82 case，旧车道）不动绿——本切片零编译器产品改动（provider 模块+测试面）。
+
+**边界（诚实）。** 本切片证明：类型域 API+普查分母成立、profile 缺口具名可测；不证明：任何生产表面已过新车道（恰为普查所度量的缺口）；span 线程化/浏览器档/90 项全量切换=批剩余义务（前置=profile/入口扩域）。
+
+next_responsible_role: work（WEB 批切片 #3：fragment 编译入口扩域候选评估——组件面/text-record 入口能否承载 handler 体源；或按裁定立 976 后继前置。B-AV/B-RUST 波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 27 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#2 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 6aa0fd4a lang 3047fc389 | next: work（WEB 切片#3：profile/入口扩域）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
