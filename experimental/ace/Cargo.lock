@@ -96,6 +96,7 @@ dependencies = [
  "ace-source-query",
  "auto-tool-execution",
  "serde_json",
+ "sha2",
  "windows-sys 0.59.0",
 ]
 
@@ -803,6 +804,7 @@ dependencies = [
  "auto-terminal-core",
  "auto-test-case",
  "auto-text-core",
+ "auto-tool-execution",
  "auto-val",
  "auto-web-contract",
  "base64 0.22.1",

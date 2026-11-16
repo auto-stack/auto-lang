@@ -52,7 +52,10 @@ fn manifest_face_only_sanctioned_dependencies() {
         "serde",               // PLAN-950: data-only module root/fragment codec derive;
         // no backend, frontend or executor dependency
         "serde_json", // probe-only: the a2xworker/1 JSON protocol (the same
-                      // crate the 783 store already depends on)
+        // crate the 783 store already depends on)
+        "sha2", // PLAN-1034: pyrun interpreter content hash — STREAMED
+                // 64KiB chunks (never caching the binary whole); the
+                // same pure hash primitive ace-native already uses
     ];
     let members = [
         "crates/a2x-c",

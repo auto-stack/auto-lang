@@ -8,6 +8,8 @@ publish = false
 
 [dependencies]
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+# PLAN-1034: pyrun 解释器内容 hash 流式计算（不整缓存 binary）。
+sha2 = "0.10"
 ace-a2x-c = { path = "../a2x-c" }
 ace-a2x-core = { path = "../a2x-core" }
 ace-a2x-python = { path = "../a2x-python" }

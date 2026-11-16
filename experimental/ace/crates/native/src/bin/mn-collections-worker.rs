@@ -60,18 +60,37 @@ fn worker_memory() -> Value {
     let base = PRIVATE_BASE.load(std::sync::atomic::Ordering::Relaxed);
     json!({"base":base,"current":current,"peak":peak,"delta":peak.saturating_sub(base),"ok":u32::from(ok)})
 }
+/// PLAN-1034 IPC-02: the reader's three ends stay DISTINCT — pure EOF at
+/// the frame start (Ok(None) = "missing request"), a frame that exceeds
+/// the LINE_CAP (which counts the trailing LF — this channel REQUIRES a
+/// final LF and strict `serde_json::from_slice` byte admission; it must
+/// NOT be loosened to match the other line workers), and EOF mid-frame
+/// without the terminating LF. I/O errors propagate as named errors from
+/// `read_until`. All three keep their own message; none is folded into
+/// another.
 fn read_line(reader: &mut impl BufRead) -> Result<Option<Value>, String> {
+    read_line_with_cap(reader, LINE_CAP)
+}
+
+fn read_line_with_cap(reader: &mut impl BufRead, cap: usize) -> Result<Option<Value>, String> {
     use std::io::Read;
     let mut bytes = Vec::new();
     reader
-        .take((LINE_CAP + 1) as u64)
+        .take((cap + 1) as u64)
         .read_until(b'\n', &mut bytes)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("request line i/o: {e}"))?;
     if bytes.is_empty() {
         return Ok(None);
     }
-    if bytes.len() > LINE_CAP || bytes.last() != Some(&b'\n') {
-        return Err("missing/over-cap request line".into());
+    if bytes.len() > cap {
+        return Err(format!(
+            "request line exceeds the {}-byte cap ({} observed, LF included)",
+            cap,
+            bytes.len()
+        ));
+    }
+    if bytes.last() != Some(&b'\n') {
+        return Err("request line missing the terminating LF (EOF mid-frame)".into());
     }
     serde_json::from_slice(&bytes)
         .map(Some)
@@ -626,5 +645,82 @@ mod allocation_controls {
         after.push(7);
         assert_eq!(meter::snapshot().current[0], initial[0]);
         drop(after);
+    }
+}
+
+// ---- PLAN-1034 T-03（IPC-02 同族断言）：mn line 的含LF cap/必须尾LF/严格字节 ----
+#[cfg(test)]
+mod audit1034_ipc_02_mn {
+    use super::*;
+
+    /// 冻结 cap 值自检：5657941 = (4MiB * 4/3) + 64KiB（含 LF 计量）。
+    #[test]
+    fn line_cap_is_the_frozen_native_inclusive_value() {
+        assert_eq!(LINE_CAP, (4usize << 20) * 4 / 3 + (64 << 10));
+        assert_eq!(LINE_CAP, 5_657_941);
+    }
+
+    /// 恰 cap（含 LF）接受；cap+1 拒绝——本通道 LF 计入 cap。
+    #[test]
+    fn cap_includes_lf_boundary() {
+        let cap = 8usize;
+        // 帧 b'{',"a",:,"1",}' = 7B + LF = 8B == cap：接受。
+        let frame: &[u8] = &[b'{', b'"', b'a', b'"', b':', b'1', b'}', 0x0au8];
+        assert_eq!(frame.len(), cap);
+        match read_line_with_cap(&mut &frame[..], cap) {
+            Ok(Some(v)) => assert_eq!(v["a"], 1),
+            other => panic!("cap-equal (LF included) must pass, got {other:?}"),
+        }
+        // 8B 帧 + LF = 9B = cap+1：超限。
+        let over: &[u8] = &[b'{', b'"', b'a', b'"', b':', b'1', b'2', b'}', 0x0au8];
+        assert_eq!(over.len(), cap + 1);
+        match read_line_with_cap(&mut &over[..], cap) {
+            Err(m) => assert!(m.contains("exceeds the 8-byte cap"), "{m}"),
+            other => panic!("cap+1 must be rejected, got {other:?}"),
+        }
+    }
+
+    /// EOF 起始 → Ok(None)（missing request 语境）；EOF 半帧无尾 LF →
+    /// 具名拒绝（不与超限混淆）；IO 错误经 read_until 具名传播。
+    #[test]
+    fn eof_overcap_and_missing_lf_stay_distinct() {
+        match read_line_with_cap(&mut &b""[..], 8) {
+            Ok(None) => {}
+            other => panic!("empty start is Ok(None), got {other:?}"),
+        }
+        let half: &[u8] = &[b'{', b'"', b'a', b'"'];
+        match read_line_with_cap(&mut &half[..], 8) {
+            Err(m) => assert!(m.contains("missing the terminating LF"), "{m}"),
+            other => panic!("EOF mid-frame must be named missing-LF, got {other:?}"),
+        }
+        struct IoReader;
+        impl std::io::Read for IoReader {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("kernel read gone"))
+            }
+        }
+        impl std::io::BufRead for IoReader {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                Err(std::io::Error::other("kernel read gone"))
+            }
+            fn consume(&mut self, _: usize) {}
+        }
+        match read_line_with_cap(&mut IoReader, 8) {
+            Err(m) => assert!(m.contains("i/o"), "{m}"),
+            other => panic!("IO must be named, got {other:?}"),
+        }
+    }
+
+    /// 严格字节准入：非 UTF-8 字节帧（有尾 LF）拒绝，不 lossy。
+    #[test]
+    fn strict_bytes_reject_invalid_utf8() {
+        let frame: &[u8] = &[b'{', 0xffu8, b'}', 0x0au8];
+
+        match read_line_with_cap(&mut &frame[..], 8) {
+            // 严格 from_slice：非法字节帧拒绝（serde 的语法/UTF-8 错误皆
+            // 可），绝不 lossy 成可解析文本。
+            Err(_) => {}
+            other => panic!("invalid utf-8 must be rejected strictly, got {other:?}"),
+        }
     }
 }
