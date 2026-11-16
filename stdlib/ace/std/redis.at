@@ -1,0 +1,285 @@
+// ACE stdlib redis slice (PLAN-975 T-02, S3 selection): the RESP2
+// protocol in Auto over the platform.net/1 thin adapter — the 974
+// discipline (protocol owned in Auto, OS thinly adapted). `pub fn`
+// spelling per the PLAN-1041 convention: the SAME file serves the
+// host-console lane (inline single-source) and, once the packages-lane
+// platform host lands (973's io assembly), the packages face.
+//
+// Legacy sentinel face mapping (stdlib/auto/redis.at): the opaque
+// RedisClient handle becomes the socket int with an EXPLICIT
+// redis_close (no RAII objects in this lane); bool sentinels become
+// 1/0; get's Str return is named-pending on the shared substring-
+// materialization decision (974 url_decode / 975 JSON decode) — this
+// lane observes the payload LENGTH (nil = -1) plus redis_bulk_* byte
+// readers over a caller-held region. Lane error codes (-2..-10) pass
+// through op returns; -100/-101 are the module's own failure
+// sentinels (error reply / malformed reply).
+
+pub fn redis_connect(host Str, port int) int {
+    return net_tcp_connect(host, port)
+}
+
+pub fn redis_close(s int) int {
+    return net_tcp_close(s)
+}
+
+// int → decimal Str (RESP "$len" headers; non-negative inputs — reply
+// values with a sign are parsed by redis_reply_int_value instead).
+pub fn redis_int_to_str(v int) Str {
+    if v == 0 { return "0" }
+    var n = v
+    var out Str = ""
+    for n > 0 {
+        let d = n - (n / 10) * 10
+        out = redis_int_digit(d) + out
+        n = n / 10
+    }
+    return out
+}
+
+pub fn redis_int_digit(d int) Str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+// ---- command builders: proper RESP2 arrays ("*N" + N "$len" args) ----
+
+pub fn redis_cmd_set(key Str, val Str) Str {
+    let k Str = "$" + redis_int_to_str(key.len_bytes()) + "\r\n" + key + "\r\n"
+    let v Str = "$" + redis_int_to_str(val.len_bytes()) + "\r\n" + val + "\r\n"
+    return "*3\r\n$3\r\nSET\r\n" + k + v
+}
+
+pub fn redis_cmd_get(key Str) Str {
+    return "*2\r\n$3\r\nGET\r\n$" + redis_int_to_str(key.len_bytes()) + "\r\n" + key + "\r\n"
+}
+
+pub fn redis_cmd_del(key Str) Str {
+    return "*2\r\n$3\r\nDEL\r\n$" + redis_int_to_str(key.len_bytes()) + "\r\n" + key + "\r\n"
+}
+
+pub fn redis_cmd_incr(key Str) Str {
+    return "*2\r\n$4\r\nINCR\r\n$" + redis_int_to_str(key.len_bytes()) + "\r\n" + key + "\r\n"
+}
+
+pub fn redis_cmd_exists(key Str) Str {
+    return "*2\r\n$6\r\nEXISTS\r\n$" + redis_int_to_str(key.len_bytes()) + "\r\n" + key + "\r\n"
+}
+
+pub fn redis_cmd_ping() Str {
+    return "*1\r\n$4\r\nPING\r\n"
+}
+
+// ---- reply framing: offset of the payload after a "$N\r\n" header,
+// scanned within [at, end); -1 while the header CRLF is not in yet.
+
+pub fn redis_bulk_payload_at(region int, at int, end int) int {
+    var j = at + 1
+    for j + 1 < end {
+        let c0 = mem_read_u8(region, j)
+        let c1 = mem_read_u8(region, j + 1)
+        if c0 == 13 {
+            if c1 == 10 { return j + 2 }
+        }
+        j = j + 1
+    }
+    return -1
+}
+
+// The "N" of a "$N" header (nil bulk "$-1" → -1).
+pub fn redis_bulk_header_num(region int, at int) int {
+    var j = at + 1
+    var sign = 1
+    let c = mem_read_u8(region, j)
+    if c == 45 {
+        sign = -1
+        j = j + 1
+    }
+    var n = 0
+    var digits = 0
+    for j < 4096 {
+        let b = mem_read_u8(region, j)
+        if b < 48 { break }
+        if b > 57 { break }
+        n = n * 10 + (b - 48)
+        digits = digits + 1
+        j = j + 1
+    }
+    if digits == 0 { return -101 }
+    return sign * n
+}
+
+// One byte of a bulk payload (i is 0-based within the payload).
+pub fn redis_bulk_byte(region int, at int, end int, i int) int {
+    let p = redis_bulk_payload_at(region, at, end)
+    if p < 0 { return -101 }
+    return mem_read_u8(region, p + i)
+}
+
+// The value of an integer reply ":N" (sign allowed); -101 malformed.
+pub fn redis_reply_int_value(region int, at int) int {
+    if mem_read_u8(region, at) != 58 { return -101 }
+    var j = at + 1
+    var sign = 1
+    let c = mem_read_u8(region, j)
+    if c == 45 {
+        sign = -1
+        j = j + 1
+    }
+    var n = 0
+    var digits = 0
+    for j < 4096 {
+        let b = mem_read_u8(region, j)
+        if b < 48 { break }
+        if b > 57 { break }
+        n = n * 10 + (b - 48)
+        digits = digits + 1
+        j = j + 1
+    }
+    if digits == 0 { return -101 }
+    return sign * n
+}
+
+// 1 when the reply is an error ("-ERR ..."), else 0.
+pub fn redis_reply_is_error(region int, at int) int {
+    if mem_read_u8(region, at) == 45 { return 1 }
+    return 0
+}
+
+// ---- one roundtrip: send a full RESP command, frame exactly ONE
+// reply into region[at..); returns the reply END offset (a negative
+// lane code on write/read failure). Bulk "$N" replies complete only
+// when N payload bytes + trailing CRLF are in; would-block (-10) is
+// retried; EOF ends the loop with what arrived.
+
+pub fn redis_cmd(s int, region int, at int, cmd Str) int {
+    let w = net_tcp_write_some(s, cmd)
+    if w <= 0 { return w }
+    var t = at
+    for t - at < 4096 {
+        let n = net_tcp_read_into(s, region, t, 512)
+        if n < 0 {
+            if n != -10 { return n }
+        }
+        if n == 0 { break }
+        t = t + n
+        if t - at >= 2 {
+            let k = mem_read_u8(region, at)
+            if k == 36 {
+                let p = redis_bulk_payload_at(region, at, t)
+                if p >= 0 {
+                    let num = redis_bulk_header_num(region, at)
+                    if num < 0 { return t }
+                    if t - p >= num + 2 { return t }
+                }
+            } else {
+                let c0 = mem_read_u8(region, t - 2)
+                let c1 = mem_read_u8(region, t - 1)
+                if c0 == 13 {
+                    if c1 == 10 { return t }
+                }
+            }
+        }
+    }
+    return t
+}
+
+// ---- legacy-shaped ops: each = one roundtrip on its own region;
+// bool sentinels → 1/0, integer replies returned raw, failures -100
+// (error/malformed reply), lane codes pass through negative.
+
+pub fn redis_set(s int, key Str, val Str) int {
+    let region = mem_alloc(4096)
+    let end = redis_cmd(s, region, 0, redis_cmd_set(key, val))
+    if end < 0 {
+        let _f = mem_free(region)
+        return end
+    }
+    var ok = 0
+    if end >= 5 {
+        if mem_read_u8(region, 0) == 43 {
+            if mem_read_u8(region, 1) == 79 {
+                if mem_read_u8(region, 2) == 75 {
+                    if mem_read_u8(region, 3) == 13 { ok = 1 }
+                }
+            }
+        }
+    }
+    let _f2 = mem_free(region)
+    return ok
+}
+
+// Payload length of a GET (nil = -1); -100 on error/malformed reply.
+// The payload BYTES stay observable via redis_cmd + redis_bulk_*.
+pub fn redis_get_len(s int, key Str) int {
+    let region = mem_alloc(4096)
+    let end = redis_cmd(s, region, 0, redis_cmd_get(key))
+    if end < 0 {
+        let _f = mem_free(region)
+        return end
+    }
+    if mem_read_u8(region, 0) == 36 {
+        let n = redis_bulk_header_num(region, 0)
+        let _f2 = mem_free(region)
+        return n
+    }
+    let _f3 = mem_free(region)
+    return -100
+}
+
+pub fn redis_int_op(s int, cmd Str) int {
+    let region = mem_alloc(4096)
+    let end = redis_cmd(s, region, 0, cmd)
+    if end < 0 {
+        let _f = mem_free(region)
+        return end
+    }
+    let v = redis_reply_int_value(region, 0)
+    let _f2 = mem_free(region)
+    return v
+}
+
+pub fn redis_incr(s int, key Str) int {
+    return redis_int_op(s, redis_cmd_incr(key))
+}
+
+pub fn redis_del(s int, key Str) int {
+    return redis_int_op(s, redis_cmd_del(key))
+}
+
+pub fn redis_exists(s int, key Str) int {
+    return redis_int_op(s, redis_cmd_exists(key))
+}
+
+pub fn redis_ping(s int) int {
+    let region = mem_alloc(4096)
+    let end = redis_cmd(s, region, 0, redis_cmd_ping())
+    if end < 0 {
+        let _f = mem_free(region)
+        return end
+    }
+    var ok = 0
+    if end >= 7 {
+        if mem_read_u8(region, 0) == 43 {
+            if mem_read_u8(region, 1) == 80 {
+                if mem_read_u8(region, 2) == 79 {
+                    if mem_read_u8(region, 3) == 78 {
+                        if mem_read_u8(region, 4) == 71 {
+                            if mem_read_u8(region, 5) == 13 { ok = 1 }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let _f2 = mem_free(region)
+    return ok
+}
