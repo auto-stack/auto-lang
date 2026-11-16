@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 5
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-semantics/source-query-session.md]
@@ -164,7 +164,7 @@ P1如上；P2只在末尾追加fn helper(v int) int { return v }，main body/签
 | T-03 / work | [x] T-02 | 重跑sq06及sq26..28、body-only正控和取消/late/sink失败；核缓存命中与安装准入一致，完成semantics职责组。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -262,6 +262,19 @@ merge 会话测试报表：rebase+range-diff <2s；冻结组门 1.76s（294 例�
 stage: merge | plan_id: PLAN-1031 | plan_revision: r3 | outcome: pass（landed+canonical_verified+archived；cleaned 待 T-06） | delivery_commit: 4e6d28522（rebased from 472450af9，range-diff 全等） | canonical_spec: docs/specs/auto-semantics/source-query-session.md@15a56be1… | archive_path: docs/plans/archive/1031-ace-query-negative-dependency-commit.md | cleanup: pending | next: T-06 清理
 
 stage: goal | plan_id: PLAN-1031 | plan_revision: r3 | round: 5 | from: merge | to: merge(T-06) | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1031/auto-lang | commit: 4e6d28522 | next: cleanup
+
+
+### PLAN-1031 cleaned 收据与全链闭合（2026-11-17，merge T-06）
+
+| Checkpoint | 证据 |
+|---|---|
+| cleaned | worktree `D:/autostack/.wt/lang-1031/auto-lang` 移除前 `wt-guard.ps1` fresh clean（"无任何 reparse point"）；`git worktree remove` + `git branch -d plan-1031-dev`（was 4e6d28522，`merge-base --is-ancestor` 证实全部落在 master）+ 组目录 `D:/autostack/.wt/lang-1031` 删除，`git worktree list` 0 残留；`plan-artifacts/plan-1031/` 整 scope 删除（4 份 receipt 已逐字折入本 Plan §9，目录内无其他材料）；构建中间产物随 worktree 删除未回收。**具名外部未决（非本 Plan 义务）**：`.retention/policy.json` 因并发写坏（v2 数组 + 旧 map 双 schema 撕裂拼接，172 处 `"plan":` 仅 110 条可完整解析；writer mtime 2026-11-17 01:08:06 后静默），本 closeout 按 fail-closed 不盲修他人登记表——PLAN-1031 的删除事实以本收据为准；恢复材料已留存：`policy.json.corrupt-20261117.bak`（原件）、`policy.json.partial-rebuild-110of172-20261117.draft`（110 条完整条目草稿）、`registry-analyze.py`/`registry-rebuild.py`（分析脚本）；修复责任归属该 01:08 writer 会话/登记表 owner。 |
+
+收尾路径对账：本 Plan 命令/日志实际使用的全部输出目录 = worktree（已删）、`plan-artifacts/plan-1031/`（已删）、`target/test-groups/run-*`（worktree target 内，随树删除）、主检出 `experimental/ace/target`（既有共享 target，常规测试编译，非本 Plan 专属外置）——无其他盘符/散落目录。批量回归 due 检查：`.last-batch-regression.json` last_covered_plan_id=1064（2026-11-16T10:04Z），1031 < 1064 且非 5 倍数、回执 <48h → **不到期**。生产制品：无受影响 release/bundle（§merge 记录）。
+
+stage: merge | plan_id: PLAN-1031 | plan_revision: r3 | outcome: pass（delivered：landed/canonical_verified/archived/cleaned 全链核验；唯一具名外部未决=登记表并发损坏，已备份+留证+归责，不阻塞本 Plan 终态） | delivery_commit: 4e6d28522 | archive: docs/plans/archive/1031-ace-query-negative-dependency-commit.md（status: archived，T-01..06 全 [x]，6/6） | cleanup: 完成（worktree/分支/组目录/plan-artifacts 全删） | next: done
+
+stage: goal | plan_id: PLAN-1031 | plan_revision: r3 | round: 6 | from: merge | to: done | status: archived | outcome: pass | worktree: （已删除） | commit: 4e6d28522 | next: done
 
 ## 10. 待澄清事项
 
