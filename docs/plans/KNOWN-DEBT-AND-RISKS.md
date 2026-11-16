@@ -4502,6 +4502,10 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   （host/store 内嵌跨引用）接线依赖 981/IF-981-MODULE，全面退役归 PLAN-987。
   在此期间两路并存（plan041 旧 4 case 不动即为对照）。关闭=后续批按面扩展逐
   步切默认并删旧链（987 终验）。
+- **emit/child→parent 路由未接线**：B-STATE I 文本的 emit 子项属跨组件路由，
+  单组件面内无承载语义，归 981/IF-981-MODULE 多单元接线；computed 以逐字段
+  状态函数+字面量/函数文本叶为已验面（f-string 叶见上条）。关闭=981 多单元
+  接线后经组件间路由用例验收。owner=981。
 - **master 预存红：ace-host（ace-conformance）13 例**：STATE 门禁实测 153/166，
   13 红在主检出 master `2cdb28fb3`（无 980 代码）逐一复现同错（`unknown ABI
   leg "z"`、m1 语言面/comptime/rust_lowering/source inventory/governance）；
