@@ -278,8 +278,8 @@ IPC-03测试stub具名模式：正常、永不退出、持续stdout、持续stde
 - [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
 - [x] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
 
@@ -289,8 +289,8 @@ IPC-03测试stub具名模式：正常、永不退出、持续stdout、持续stde
 | T-02 / work | [x] T-01反例设置与r4既定决定 | 先接有界一次快照/hash与Py版本probe，再在auto-tool-execution同生命周期增加opt-in cap并接Rust/C/Py三父adapter的stdin/70s交换及单一3s cleanup/产物有界准入；原三line分别修IO分类，不抽新跨crate reader、不改默认无界工具调用。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-03 / work | [x] T-02 | 对Rust/C/Py三adapter跑IPC全部状态和正常old suite/golden；记录PID/reader收尾/错身份及spawn计数，不能只测替身helper或以timeout父kill代case终态。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -456,6 +456,20 @@ prepared: reviewed 761b6e949（r5 final pass）+ docs-only 后裔；SD-01..06 �
 landed: **master=140c1a626=plan-1034-dev（--ff-only，无 merge commit）**。rebase 两次（master 期间前移：981 落地 bd0698890、980 docs 至 714366aaa），range-diff 全 `=` 等价；映射链 761b6e949→62ba5e4ad→7db528b93（实现）、aefe8a3e3→b46889546→140c1a626（沉淀）。第二次 rebase 仅叠 980 docs 两提交（980-ace-m2-autoui.md/m2-autoui.md），代码零变化，冻结门证据绑定的代码树不变。
 canonical_verified: 六目标在 landed 提交内（HEAD grep 实证 §「worker IPC 读取与输入限额单位（PLAN-1034）」等六节齐备）；architecture.md 工作树差异=1062 既有 WIP（保留未动）。landed hash：a2r-hir 31779745…、a2c-coll 32aae23d…、a2c-scalar 2f02b419…、a2c-rt f168016c…、py-readiness 695a26c3…、architecture(HEAD) 21129c88…
 merge-owned 冻结组门（rebased 基线 b46889546 代码树，run-v2if6oid）：ace-a2x 297 PASS、ace-native-worker 43 PASS、ace-native 295 PASS、auto-test-case 151 PASS、auto-tool-execution 49 执行 48 绿+1 既有 816 计时例负载闪红（隔离 5.05s 绿+整组 49/49 重放绿，环境归因）、ace-semantics 291 绿+1 既有（1062 恢复文件）、ace-adapters 94 绿+1 既有（abi，pristine master 复现取证）。三既有红具名不充 PASS（同 review 记录）。
+
+
+cleaned: worktree D:/autostack/.wt/lang-1034/auto-lang 移除前 guard clean 复核、树零脏、分支完全落
+master（merge-base --is-ancestor 实证）；worktree+分支 plan-1034-dev+空组目录已删（构建中间产物随
+树销毁，未回收）；plan-artifacts/plan-1034 整 scope 删除（7 项过程文件，耐久证据已折入本计划
+§9）；登记表 .retention/policy.json 刷新（deleted-at-merge，无具名持有；四处既有红归因随档）。
+输出路径对账：本计划全部实际输出=worktree（随树删）、plan-artifacts/plan-1034（已删）、
+target/test-groups/run-{t6mf2uz_,x5eytdkb,7runm5ea,v2if6oid,ojs4mb67}（cargo t 工作目录内建物，
+随 worktree 树销毁）、experimental/ace/target/release/a2x-worker.exe（worktree 构建产物，随树销
+毁）；无 D:/autostack-build、无其他盘符目录、无散落 planNNN-* 目录（pwsh/ls 抽查）。landing 观
+察：主检出 release 预构建 worker 未随本计划重建（stale 观察记录，非部署授权面——生产/发行构建
+不在本计划交付范围）。
+
+stage: goal | plan_id: PLAN-1034 | plan_revision: r5 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 140c1a626 | next: done
 
 ## 10. 待澄清事项
 
