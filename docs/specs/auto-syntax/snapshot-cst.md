@@ -56,6 +56,25 @@
 - 迟到/取消：修订仲裁适用域=编辑会话（见 artifact-contract 发布仲裁）；
   旧 revision 任务晚完成只入库不覆盖当前根/诊断；显式事件屏障复现逆序完成。
 
+## 恢复输入准入（PLAN-1029）
+
+- 语法程序 canonical 装载（`program_codec::decode_program`）：全部计数
+  预留位（现行 14 处：PLAN-979 增 rule_expects/ctx_names 后实况）在
+  **任何预留前**按各表最小 wire 字节对借入剩余字节准入（坏 count 先于
+  分配受控拒，不触发巨大预留）；预留走 `try_reserve_exact` 受控分配，
+  请求字节（count×size_of、字符串字节、规范重编码、身份临时）分配前
+  计费入同一封套。
+- 装载预算 = `FromWire`（默认；封套由已验证 wire 推导，无固定装载门——
+  `Budget::work_bytes` 的 256MiB 只约束解析工作，不冒充旧 loader 上限）
+  或显式 `Bytes(B)`（仅真实装载调用者/测试显式传入，不让旧调用暗中
+  继承）。
+- 错误分账：缺字节/溢出/错版本/tag/引用/UTF-8/尾随字节 =
+  InvalidProgram（store 装载入口映射 Admissions，受控 miss/重算语义
+  不变）；预算或 allocator 拒绝 = ResourceExhausted（保持
+  AdapterError::Rt，不冒坏 chunk）。引用按命名空间准入（TokenId/RuleId
+  各归各表；`call_args`/`postfix_tail` 是 RuleId）——坏引用在
+  FirstSets/parse 授信前受控拒绝，不进入直接索引。
+
 ## 会话驻留消费（PLAN-828）
 
 增量编辑/重扫（`incremental_reparse`+`project_decl_strict` 单声明严格投影）被 828
