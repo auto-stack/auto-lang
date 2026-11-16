@@ -38,9 +38,12 @@ use ace_a2x_core::semantic_view::{FnFacts, SemanticView};
 use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::target::{Family, FileSet, FilesetRequest, TargetDescriptor, TargetProvider};
 use ace_a2x_rust::RustTargetProvider;
-use ace_a2x_store::{A2xRejectOrResource, A2xSession, LAYER_SOURCE_ANCHOR};
+use ace_a2x_store::{
+    A2xRejectOrResource, A2xSession, LAYER_FRAGMENT, LAYER_FRAGMENT_C_COLL, LAYER_FRAGMENT_C_RT,
+    LAYER_SOURCE_ANCHOR, LAYER_SOURCE_ANCHOR_COLL, LAYER_SOURCE_ANCHOR_RT,
+};
 use ace_artifacts::codec::ChunkKind;
-use ace_artifacts::identity::QueryKey;
+use ace_artifacts::identity::{QueryKey, RefKind};
 use ace_artifacts::schema::LayerSpec;
 use ace_artifacts::store::{ManagedStore, PutRequest};
 use ace_core::source::SourceProfile;
@@ -223,6 +226,29 @@ impl<P: TargetProvider> TargetProvider for FaultyAssembleProvider<P> {
 /// `publish_anchor` put then deterministically fails with
 /// `StoreError::Conflict` (the store never overwrites) — a controlled
 /// `a2x.resource` exactly at the anchor publication point.
+/// The anchor-layer QueryKey of one assembly state — exactly the five
+/// components `A2xSession::anchor_key` builds (QueryKey canonicalizes
+/// the order itself).
+fn anchor_query_key(
+    layer: &'static LayerSpec,
+    owner: &str,
+    profile: &str,
+    source_sha: &str,
+    backend: &str,
+    entry: &str,
+) -> QueryKey {
+    QueryKey::new(
+        layer,
+        vec![
+            ("owner".into(), owner.to_string()),
+            ("profile".into(), profile.to_string()),
+            ("source_sha256".into(), source_sha.to_string()),
+            ("backend".into(), backend.to_string()),
+            ("entry".into(), entry.to_string()),
+        ],
+    )
+}
+
 fn seed_anchor_conflict(
     root: &Path,
     layer: &'static LayerSpec,
@@ -233,16 +259,7 @@ fn seed_anchor_conflict(
     entry: &str,
 ) {
     let store = ManagedStore::open(root).expect("open store for the seed");
-    let key = QueryKey::new(
-        layer,
-        vec![
-            ("owner".into(), owner.to_string()),
-            ("profile".into(), profile.to_string()),
-            ("source_sha256".into(), next_sha.to_string()),
-            ("backend".into(), backend.to_string()),
-            ("entry".into(), entry.to_string()),
-        ],
-    );
+    let key = anchor_query_key(layer, owner, profile, next_sha, backend, entry);
     store
         .put_artifact(PutRequest {
             layer: layer.id,
@@ -253,6 +270,94 @@ fn seed_anchor_conflict(
             project: None,
         })
         .expect("seed the conflicting anchor row");
+}
+
+/// Resolve the fragment-layer artifact id of one anchored function under
+/// a published anchor — the EXACT key the restore path rebuilds
+/// (owner/decl/sem_fp + the provider's target-identity inputs).
+fn fragment_artifact_id(
+    root: &Path,
+    layer: &'static LayerSpec,
+    owner: &str,
+    decl: &str,
+    sem_fp: &str,
+    runtime_sha256: &str,
+    provider: &dyn TargetProvider,
+) -> String {
+    let store = ManagedStore::open(root).expect("open store read-only");
+    let mut comps = vec![
+        ("owner".into(), owner.to_string()),
+        ("decl".into(), decl.to_string()),
+        ("sem_fp".into(), sem_fp.to_string()),
+    ];
+    comps.extend(provider.fragment_key_inputs(runtime_sha256));
+    let key = QueryKey::new(layer, comps);
+    store
+        .get_artifact(layer.id, &key)
+        .expect("fragment lookup")
+        .unwrap_or_else(|| panic!("fragment for `{decl}` is persisted"))
+        .artifact_id
+}
+
+/// RV2 oracle (review round 1): the published anchor's REQUIRED edges
+/// follow the EDITED fragment's real artifact id — the pre-edit id must
+/// not be required (the stale-edge defect would exactly revert this).
+#[track_caller]
+fn assert_required_edge_follows_edited_fragment(
+    root: &Path,
+    anchor_layer: &'static LayerSpec,
+    anchor_sha: &str,
+    profile: &str,
+    backend: &str,
+    entry: &str,
+    owner: &str,
+    frag_layer: &'static LayerSpec,
+    decl: &str,
+    edited_fp: &str,
+    pre_edit_fp: &str,
+    runtime_sha256: &str,
+    provider: &dyn TargetProvider,
+) {
+    let store = ManagedStore::open(root).expect("open store read-only");
+    let anchor_id = store
+        .get_artifact(
+            anchor_layer.id,
+            &anchor_query_key(anchor_layer, owner, profile, anchor_sha, backend, entry),
+        )
+        .expect("anchor lookup")
+        .unwrap_or_else(|| panic!("anchor for {anchor_sha:?} is published"))
+        .artifact_id;
+    let edges = store.artifact_edges(&anchor_id).expect("anchor edges");
+    let edited_id = fragment_artifact_id(
+        root,
+        frag_layer,
+        owner,
+        decl,
+        edited_fp,
+        runtime_sha256,
+        provider,
+    );
+    assert!(
+        edges
+            .iter()
+            .any(|(dst, k)| dst == &edited_id && *k == RefKind::RequiredData),
+        "the rebound anchor requires the EDITED fragment `{decl}`"
+    );
+    if edited_fp != pre_edit_fp {
+        let pre_edit_id = fragment_artifact_id(
+            root,
+            frag_layer,
+            owner,
+            decl,
+            pre_edit_fp,
+            runtime_sha256,
+            provider,
+        );
+        assert!(
+            edges.iter().all(|(dst, _)| dst != &pre_edit_id),
+            "the rebound anchor must NOT require the pre-edit fragment of `{decl}` (stale edge)"
+        );
+    }
 }
 
 /// Assert the rejection is the named injected fault.
@@ -373,6 +478,24 @@ fn audit1033_axtx_01() {
     let anchor_b = s.last_anchor().expect("anchor rebound").clone();
     assert_eq!(anchor_b.source_sha256, next_sha);
     assert_ne!(helper_fp(&anchor_b, "helper"), helper_a_fp);
+    // RV2: the rebound anchor's REQUIRED edges follow the EDITED helper
+    // fragment's real artifact id — the pre-edit id must not be required
+    // (the stale-edge defect reverted exactly this).
+    assert_required_edge_follows_edited_fragment(
+        &root,
+        &LAYER_SOURCE_ANCHOR,
+        &next_sha,
+        "core",
+        "auto-a2x-rust",
+        "main",
+        "probe",
+        &LAYER_FRAGMENT,
+        "helper",
+        &helper_fp(&anchor_b, "helper"),
+        &helper_a_fp,
+        &anchor_b.runtime_sha256,
+        &RustTargetProvider::v1(),
+    );
     // the file set really switched (helper fragment changed, main kept)
     assert_ne!(
         generated_of(&cold, "generated.rs"),
@@ -560,13 +683,14 @@ fn audit1033_axtx_01_c_scalar() {
     assert_eq!(run_c("c-restore41", &restored), "value:41");
 }
 
-/// C record-text (AXP2) and C collections (AXP3): the seed-carrying
-/// anchors — a late assemble failure keeps the old anchor WITH ITS SEED
-/// and the whole old closure; the restart restore of A is pure
-/// (blind, seed-driven) and byte-identical; the retry rebinds.
+/// C record-text (AXP2, review round-1 split of the anchored-families
+/// case for the ≤10s per-case gate): the seed-carrying anchor — a late
+/// assemble failure keeps the old anchor WITH ITS SEED and the whole old
+/// closure; the retry rebinds and its REQUIRED edges follow the EDITED
+/// fragment (RV2 oracle); the restart restore of A is pure (blind,
+/// seed-driven) and byte-identical.
 #[test]
-fn audit1033_axtx_01_c_anchored_families() {
-    // ---- record text (AXP2) ----
+fn audit1033_axtx_01_c_rt() {
     let root = scratch("axtx01-crt");
     let mut s = A2xSession::open(
         &root,
@@ -613,10 +737,27 @@ fn audit1033_axtx_01_c_anchored_families() {
         .warm_edit_ranged("read", RT_SRC, range, READ_B, "main", false)
         .expect("rt retry succeeds");
     assert_eq!(run_c("rt-retry", &b), "value:2218");
+    let anchor_b = s.last_anchor().expect("anchor rebound").clone();
     assert_eq!(
-        s.last_anchor().unwrap().source_sha256,
-        next_sha,
+        anchor_b.source_sha256, next_sha,
         "the rt retry's anchor rebinds to B"
+    );
+    // RV2: the AXP2 anchor's required edges follow the EDITED `read`
+    // fragment (record profile label is "record")
+    assert_required_edge_follows_edited_fragment(
+        &root,
+        &LAYER_SOURCE_ANCHOR_RT,
+        &next_sha,
+        "record",
+        "auto-a2x-c",
+        "main",
+        "probe",
+        &LAYER_FRAGMENT_C_RT,
+        "read",
+        &helper_fp(&anchor_b, "read"),
+        &helper_fp(&anchor_a, "read"),
+        &anchor_b.runtime_sha256,
+        &CTargetProvider::v1(),
     );
 
     // restart: fresh session restore of A is pure and byte-identical
@@ -639,8 +780,12 @@ fn audit1033_axtx_01_c_anchored_families() {
     assert_eq!(after.persist, before.persist);
     assert_eq!(restored.files, cold.files, "blind re-assembly == cold A");
     assert_eq!(run_c("rt-restore", &restored), "value:2217");
+}
 
-    // ---- collections (AXP3) ----
+/// C collections (AXP3, review round-1 split of the anchored-families
+/// case): the same late-failure contract on the collections seed anchor.
+#[test]
+fn audit1033_axtx_01_c_coll() {
     let root2 = scratch("axtx01-ccoll");
     let mut s2 = A2xSession::open(
         &root2,
@@ -663,6 +808,8 @@ fn audit1033_axtx_01_c_anchored_families() {
     let seed_a2 = anchor_a2.prelude_seed.clone().unwrap_or_default();
 
     let range2 = range_of_decl(COLL_SRC, "left_value");
+    let full_after2 = next_source(COLL_SRC, range2, LEFT_B);
+    let next_sha2 = sha256_hex(full_after2.as_bytes());
     s2.set_target(FaultyAssembleProvider::fail_on_nth(
         CTargetProvider::v1(),
         1,
@@ -683,6 +830,23 @@ fn audit1033_axtx_01_c_anchored_families() {
         .expect("coll retry succeeds");
     // "ab".len()=2 + code(25+22=47) = 49
     assert_eq!(run_c("coll-retry", &b2), "value:49");
+    // RV2: the AXP3 anchor's required edges follow the EDITED left_value
+    // fragment (collections profile label is "unsupported" — frozen)
+    assert_required_edge_follows_edited_fragment(
+        &root2,
+        &LAYER_SOURCE_ANCHOR_COLL,
+        &next_sha2,
+        "unsupported",
+        "auto-a2x-c",
+        "main",
+        "probe",
+        &LAYER_FRAGMENT_C_COLL,
+        "left_value",
+        &helper_fp(s2.last_anchor().unwrap(), "left_value"),
+        &helper_fp(&anchor_a2, "left_value"),
+        &s2.last_anchor().unwrap().runtime_sha256,
+        &CTargetProvider::v1(),
+    );
 
     drop(s2);
     let mut r2 = A2xSession::open(
