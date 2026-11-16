@@ -624,9 +624,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // R60-3：watch 源允许跨行（`watch {\n    .count -> …`）；此前 `dot(same-line)`
         // 让多行与多源声明都退化成 `source.syntax@0`。
         age-watch-source(profiles: [age-component, age-package]) {
-            dot() {} ident(field: "source") opt { dot() {} ident(field: "modifier") }
+            // R62-7：源允许换行（`.count` 可另起一行），但**修饰**必须紧跟源
+            // 同行的 `.x`——这正是 `.a.b` 形态此前整体不可解析的原因。
+            dot() {} ident(field: "source") opt { age-watch-modifier() {} }
         }
-        age-watch-source-tail(profiles: [age-component, age-package]) {
+        age-watch-modifier(profiles: [age-component, age-package]) {
+            dot(same-line: true) {} ident(field: "modifier")
+        }        age-watch-source-tail(profiles: [age-component, age-package]) {
             comma() {} age-watch-source() {}
         }
         age-timer-member(profiles: [age-component, age-package], expect: "a `timer { Msg (every_ms: n) }` block") {

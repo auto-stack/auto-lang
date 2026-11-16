@@ -297,3 +297,20 @@ fn p981_dual_nodes_with_same_field_compile() {
     assert!(cs[0].fields.iter().any(|(n, _)| n == "count"));
     assert!(cs[1].fields.iter().any(|(n, _)| n == "count"));
 }
+
+/// R62-7：watch 修饰形 `.a.b`（源 token + 同行修饰）现在可解析并保留完整拼写。
+#[test]
+fn p981_watch_modifier_source_parses_and_keeps_its_spelling() {
+    for src in [
+        "node M {\n    model {\n        alpha int = 0\n    }\n    watch { .alpha.x -> { .alpha = alpha + 1 } }\n    view {\n        text \"t\" {}\n    }\n}\n",
+        "node M {\n    model {\n        alpha int = 0\n    }\n    watch {\n        .alpha.x -> {\n            .alpha = alpha + 1\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+    ] {
+        let out = compile(src).expect("a modifier watch source parses");
+        let row = out.description.components[0]
+            .members
+            .iter()
+            .find(|m| m.role == "watch")
+            .expect("a watch row");
+        assert_eq!(row.sources, vec!["alpha.x".to_string()], "{src}");
+    }
+}
