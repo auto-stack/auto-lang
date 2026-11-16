@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-973
-status: reviewed
+status: archived
 feature_name: 新版系统文件进程时间与资源库
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 13
-current_step: 7
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-972, PLAN-947, PLAN-966, PLAN-1039, PLAN-1040, PLAN-1041, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/ace-binding-and-assembly.md]
@@ -18,7 +18,9 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-16 r13复审修复·第7轮：F1 用户裁定 **b——AC 真身具名延 [PLAN-1065](1065-ace-ac-sys-real-bodies.md)**（V-09/AC-07/AC-COVERAGE 行文修订为"AC stub=已裁定交付面"）；F2/F3/F4 同树修复（worktree `0a6fb9100`：触面 warning 清零、dialect 探针内联自包含、argv 注记改已替代终局），F5 已 §10 落册；复验 sys973 15/15+fmt clean。重审 affected 项全闭，**T-05 final pass → reviewed**。next=T-06/07 merge。
+2026-11-16 r13 merge·第8轮：**delivered+archived**——rebase 到 master（6 提交映射+和解修复 d59c92331），规范三源落 9d0f973cb（m2-stdlib-io.md 新建+两挂接），merge-owned 冻结并集 7 组 PASS=3098 绿+2 组 master 预存红具名（主检出同红取证），wt-guard clean 后 ff-only 落地（master tip=9d0f973cb），清树/删 scope/刷 registry，**status: archived**。移交在案：1064（byte→Str 面）/1065（AC 真身）/1063（Linux）。
+
+2026-11-16 r13复审修复·第7轮：F1 用户裁定 **b——AC 真身具名延 PLAN-1065**（V-09/AC-07/AC-COVERAGE 行文修订为"AC stub=已裁定交付面"）；F2/F3/F4 同树修复（worktree `0a6fb9100`：触面 warning 清零、dialect 探针内联自包含、argv 注记改已替代终局），F5 已 §10 落册；复验 sys973 15/15+fmt clean。重审 affected 项全闭，**T-05 final pass → reviewed**。next=T-06/07 merge。
 
 2026-11-16 r12复审·第6轮：T-05 独立复审 **needs_fix**——复审重跑 29/29 绿（sys973 15/15+外库腿 2/2+native stub 1/1+ace-host 11/11，per-case ≤10s）、四表对齐/车道门/零 libc 委托/故障注入/零 debug 残留核验通过；发现 F1[中]（AC 后端 50 操作全 stub，V-09"AC真实调用OS API"正例腿未交付且无具名移交行——T-09 复开，待用户裁定 a 本计划实现/b 具名延后继）+ F2..F5 小缺陷（触面 warning×2、dialect_bisect 读仓外文件、argv 注记过时、rand 不移植裁定不可追溯）。status 回 executing（6/10）。债务候选登记 KNOWN-DEBT D-973。
 
@@ -401,11 +403,11 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 
 - [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。（✅ 2026-11-16 9组冻结并集实跑：7组PASS+2组仅master预存红，全部V行有归属；证据见 §9 第4轮）
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。（✅ 第 6 轮 needs_fix（重跑 29/29 绿+独立审计 agent 核四表/车道门/零委托；F1..F8）→第 7 轮修复+重审 final pass 绑 r13/0a6fb9100；勾选补落于 merge 轮，见 §9 第 6/7 轮）
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。（✅ rebase 到 master（6 提交重映射+和解修复 d59c92331：修复冲突清理截断的 sys caps 准入、补全并集边界吞失的 974 net 臂/条目/NetListener 字段、net 载荷 cleanup no-op 臂保 master teardown 语义）；规范三源 9d0f973cb（m2-stdlib-io.md 新建 67 行 sha256 45f9db6a2270253f、replacement-scope +13、binding-and-assembly +12）；merge-owned 冻结并集 9 组 18m15s：**7 组 PASS=3098 绿**（stdlib 171/ace-stdlib 2/ace-source 610/ace-av 1272/ace-native 281/ace-a2x 247/a2r-std 115）+2 组 FAIL=master 预存红（ace-abi 1 例/ace-runtime 19 例，主检出同例同红 7.78s/1.24s 取证，owner=批量回归 triage）；wt-guard clean 后 ff-only 落地 master tip=9d0f973cb；补提交他-session 遗留 untracked 1063 骨架 fe75d239b，见 §9 第 8 轮）
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。（✅ 见 §9 第 8 轮 cleaned 检查点）
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -420,6 +422,19 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-16 stage: merge | plan_id: PLAN-973:r13 | completion_kind: delivered | outcome: **pass**（landed+canonical_verified+archived+cleaned）
+- **prepared**：reviewed 基线 0a6fb9100（r13 final pass）→ rebase 到 master fe75d239b；提交映射（旧→新，经两次 rebase）：e1dc1d389→3ccb1b77a、1f234a9e8→7d9dd671f、132193f7e→2f86a9288、216fd055d→f29935840、a9eceef38→6c0facac9、0a6fb9100→01be31d4e、+和解修复 d59c92331、+规范沉淀 9d0f973cb=**delivery commit**。range-diff 非全等（冲突和解增量并入首尾提交：974 net 臂/条目补全、NetListener released 字段、RandFill/NetTcpListen 条目修复、net 载荷 cleanup no-op 臂、sys caps 准入被截断分号修复——后者由 post-rebase 复跑 sys973 捕获并实证修复），等价性以 rebased 基线上的实跑证据替代证明（见下）。
+- **rebase 后 sanity**：sys973 AV 15/15+native stub 1/1 绿（首跑 a2py 13.9s/a2r 14.6s 冷缓存超 10s 线→热复跑 2.95s/3.79s 归因闭环）；ace-av-core/ace-native/ace-abi 编译零错。
+- **merge-owned 冻结并集**（worktree @9d0f973cb，`cargo t stdlib ace-stdlib ace-source ace-av ace-native ace-a2x ace-abi ace-runtime a2r-std`，wall 1095.0s）：7 组 PASS（3098 例）+2 组 FAIL=master 预存红（ace-abi `source_foreign_formal_scalar_review_transition…` 1 例；ace-runtime text 车道 19 例 fault::v05×5/lifecycle::v04×6/smoke×2/textops::v07×6/trap::v06×2，rust-lnd `__CxxFrameHandler3/_fltused`）——两组均在主检出 master fe75d239b 同例同红隔离复现（7.78s/1.24s），非 973 面，owner=批量回归 triage（KNOWN-DEBT D-973）。
+- **landed**：主检出仅 conformance.rs CRLF 工件碰撞（numstat 0/0 零内容，还原后放行）；`git merge --ff-only plan-973-dev` 成功，master tip=9d0f973cb=分支 tip，无 merge commit；主检出代码路径零 WIP（余脏项均为他-session docs/design/plans 簿记）。
+- **canonical_verified**：docs/specs/ace-migration/m2-stdlib-io.md（新建 67 行，sha256 前16 `45f9db6a2270253f`）、replacement-scope-and-evidence.md（+13，PLAN-973 A 切片挂接节）、stdlib/design/ace-binding-and-assembly.md（+12，sys 装配集增量节）均在交付提交；遗留 untracked 的 1063 计划骨架补提交 fe75d239b（规范/计划引用依赖）。
+- **archived**：git mv → docs/plans/archive/973-ace-m2-stdlib-io.md，status: archived，T-05/06/07 勾选，本收据落档。
+- **cleaned**：wt-guard clean → 移除 worktree D:/autostack/.wt/lang-973/auto-lang+分支 plan-973-dev+空组目录；plan-artifacts/plan-973/ 整目录删除（材料已折入本 Plan；无具名持有）；retention registry 刷新；批量回归 due check：**未到期**（973 非 5 倍数；收据 2026-11-14T23:23Z+36h<48h）。
+- 测试纪律：本 stage 执行=冻结并集 9 组 1095.0s（准备含增量编译）+sys973 sanity 三套+主检出隔离重放 2 例；无新增用例；a2x 腿冷/热计时分列如上。
+- 移交在案：1064（byte→Str 面 D-01..D-09）/1065（AC 真身）/1063（Linux L-01..L-12）；KNOWN-DEBT D-973（master 预存红两组/基线 warning/967 读出参帧/F6..F8）。
+
+stage: goal | plan_id: PLAN-973 | plan_revision: r13 | round: 8 | from: merge | to: done | status: archived | outcome: pass（delivered：landed 9d0f973cb+规范三源+归档+清树；known reds 具名非 973 面） | worktree: （已移除） | commit: 9d0f973cb | next: done
 
 2026-11-16 stage: work+review 修复轮（第 7 轮，F1 裁定 b + F2..F5 修复 + 重审）| plan_id: PLAN-973 | plan_revision: r13 | worktree @ **0a6fb9100**（base 3279f2f72）| outcome: **final pass → reviewed**
 - **F1 裁定落册（用户选项 b）**：[PLAN-1065](1065-ace-ac-sys-real-bodies.md) 取号创建为 AC 真身承接 owner（drafting 0/6，承接表 A-01..A-04：Win64 50 真身/V-09 AC 正例腿/AC-COVERAGE 升真实运行/Linux 代码臂协同 1063）；V-09/AC-07/AC-COVERAGE 行文修订（§6/§7/§10），T-09 按裁定复勾（973 AC 交付面=stub 诚实拒绝+负控 sys973_native_stub_returns_unsupported）。
