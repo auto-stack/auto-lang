@@ -278,3 +278,177 @@ fn main() int {{
         "json decode family oracles, got {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-975 T-02 coverage increment — the B1 `c.to(Str)` primitive on the
+// A2X ends (AC-COVERAGE follow-up): the SAME public source through the
+// packages producer chain, observed on AV (value), native/mn (exit
+// code), Rust (rustc exe stdout) and C (cl exe stdout). Hand oracle:
+// materialized 'A'(1B) + U+4E2D(3B) + U+1F600(4B) give lens 134, the
+// concatenation equals the literal "A中😀" (+7) -> 134*10+7 = 1347.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn json975_char_to_str_a2x_ends() {
+    use ace_a2x_c::CTargetProvider;
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::packages::PackageA2xTarget;
+    use ace_av::modules::packages::PackageAvTarget;
+    use ace_core::source::cst::FrontBudget;
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+    use ace_source_query::modules::packages::{compile_package_product, stdlib_inputs};
+
+    let src = r#"use std.text.byte_len
+use std.text.equal
+fn mk(cp int) Str {
+    return char.from_codepoint(cp).to(Str)
+}
+fn sel(c bool, t int, f int) int {
+    if (c) { return t }
+    return f
+}
+fn main() int {
+    let a Str = mk(65)
+    let zh Str = mk(20013)
+    let em Str = mk(128512)
+    let lens int = byte_len(a.to(str)) * 100 + byte_len(zh.to(str)) * 10 + byte_len(em.to(str))
+    let all Str = a + zh + em
+    let eq int = sel(equal(all.to(str), "A中😀"), 7, 0)
+    return lens * 10 + eq
+}"#;
+
+    let mut inputs = stdlib_inputs();
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "main".into(),
+        source: src.into(),
+        provider: None,
+    });
+    let product = compile_package_product(
+        &inputs,
+        "app::main",
+        &[PACKAGES_CAPABILITY.into()],
+        FrontBudget::WORK_OWNED_64MIB,
+    )
+    .expect("compiles on the packages chain");
+
+    // ---- AV
+    let av_dir = std::env::temp_dir().join(format!("p975-c2s-av-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&av_dir);
+    std::fs::create_dir_all(&av_dir).unwrap();
+    assert_eq!(
+        PackageAvTarget::cold(&av_dir, &product)
+            .unwrap()
+            .run_value(),
+        Ok(ace_av_core::contract::Value::I32(1347))
+    );
+    let _ = std::fs::remove_dir_all(&av_dir);
+
+    // ---- Rust (A2R): rustc-built exe stdout
+    let store = std::env::temp_dir().join(format!("p975-c2s-rs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    let mut rust = PackageA2xTarget::cold(
+        &store,
+        "pkg975c2s",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &product,
+    )
+    .unwrap();
+    let rust_dir = store.join("build");
+    std::fs::create_dir_all(&rust_dir).unwrap();
+    for (path, content) in &rust.current.files {
+        std::fs::write(rust_dir.join(path), content).unwrap();
+    }
+    let rust_exe = rust_dir.join("pkg.exe");
+    let mut rust_cmd =
+        std::process::Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+    rust_cmd
+        .args(["--edition", "2021", "main.rs", "-o"])
+        .arg(&rust_exe)
+        .current_dir(&rust_dir);
+    let rust_build = rust_cmd.output().expect("rustc spawn");
+    assert!(
+        rust_build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let rust_run = std::process::Command::new(&rust_exe)
+        .current_dir(&rust_dir)
+        .output()
+        .expect("run rust exe");
+    assert!(
+        rust_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&rust_run.stdout).trim(),
+        "value:1347",
+        "the A2R end materializes the same bytes"
+    );
+    let _ = std::fs::remove_dir_all(&store);
+
+    // ---- C (AC): cl-built exe stdout
+    let c_store = std::env::temp_dir().join(format!("p975-c2s-c-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&c_store);
+    let mut c = PackageA2xTarget::cold(
+        &c_store,
+        "pkg975c2s",
+        "app",
+        16 << 20,
+        CTargetProvider::v1(),
+        &product,
+    )
+    .unwrap();
+    let c_dir = c_store.join("build");
+    std::fs::create_dir_all(&c_dir).unwrap();
+    for (path, content) in &c.current.files {
+        std::fs::write(c_dir.join(path), content).unwrap();
+    }
+    std::fs::write(c_dir.join("manifest.json"), &c.current.manifest).unwrap();
+    let c_exe = c_dir.join("pkg_c.exe");
+    ace_a2x_worker::crun::compile_c_fileset(&c_dir, &c_exe)
+        .unwrap_or_else(|e| panic!("cl failed: {e}"));
+    let c_run = std::process::Command::new(&c_exe)
+        .current_dir(&c_dir)
+        .output()
+        .expect("run c exe");
+    assert!(
+        c_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&c_run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&c_run.stdout).trim(),
+        "value:1347",
+        "the AC end materializes the same bytes"
+    );
+    let _ = std::fs::remove_dir_all(&c_store);
+
+    // ---- native/mn exit code
+    let mn_dir = std::env::temp_dir().join(format!("p975-c2s-mn-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mn_dir);
+    std::fs::create_dir_all(&mn_dir).unwrap();
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    let built = driver
+        .build_checked(
+            &product.compiled.checked,
+            "d_main",
+            &mn_dir,
+            None,
+            None,
+            975,
+        )
+        .expect("mn build");
+    let code = std::process::Command::new(&built.exe_path)
+        .current_dir(&mn_dir)
+        .status()
+        .expect("run mn exe")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 1347, "the native/mn end materializes the same bytes");
+    let _ = std::fs::remove_dir_all(&mn_dir);
+}

@@ -752,6 +752,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 let o = self.expr(operand, out)?;
                 self.checked_temp_ty("a2x_char_from_codepoint", vec![o], id, out, Ty::Char)
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let o = self.expr(operand, out)?;
+                self.checked_temp_ty("a2x_str_from_char", vec![o], id, out, Ty::StrOwned)
+            }
             // PLAN-972 (T-03): the scalar-indexed text expression surface
             // (the shared runtime helpers; slices stay borrowed views).
             hir::ExprKind::TextLenBytes { operand } => {
@@ -1301,6 +1307,20 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     RExpr::StrFn {
                         func: "a2x_str_concat".into(),
                         args: vec![l, r],
+                    },
+                    out,
+                )
+            }
+            hir::ExprKind::TextFromChar { operand } => {
+                // PLAN-975 B1: the scheduler chain can materialize a
+                // dynamic codepoint the same way (fresh owned 1-scalar).
+                let o = self.expr(operand, out)?;
+                self.coll_temp(
+                    id,
+                    "A2xStr".into(),
+                    RExpr::StrFn {
+                        func: "a2x_str_from_char".into(),
+                        args: vec![o],
                     },
                     out,
                 )

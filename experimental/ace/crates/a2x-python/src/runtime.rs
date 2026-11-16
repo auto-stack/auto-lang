@@ -375,6 +375,15 @@ def a2x_char_from_codepoint(cp: int) -> int:
     return ic
 
 
+def a2x_str_from_char(cp: int) -> A2xOwnedStr:
+    # PLAN-975 B1: char materialized as a fresh owned 1-scalar Str (the
+    # decode/parse substring-materialization primitive; `c.to(Str)`).
+    ic = int(cp)
+    if ic < 0 or ic > 0x10FFFF or (0xD800 <= ic <= 0xDFFF):
+        raise A2xTrap("InvalidScalar", f"invalid Unicode scalar {ic}")
+    return A2xOwnedStr(chr(ic).encode("utf-8"))
+
+
 class A2xList:
     __slots__ = ("id", "elems", "elem_kind", "freed")
 

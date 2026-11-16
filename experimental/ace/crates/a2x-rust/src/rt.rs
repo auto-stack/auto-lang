@@ -535,6 +535,21 @@ pub fn a2x_str_concat(l: &str, r: &str) -> A2xResult<A2xStr> {
     Ok(A2xStr { buf: Some(b) })
 }
 
+/// PLAN-975 B1: char materialized as a fresh owned 1-scalar Str (the
+/// decode/parse substring-materialization primitive; `c.to(Str)`).
+/// The operand is a typed char — already a valid scalar; only the
+/// allocation can fail.
+pub fn a2x_str_from_char(c: char) -> A2xResult<A2xStr> {
+    let cap = c.len_utf8();
+    let mut b = String::new();
+    if b.try_reserve(cap).is_err() {
+        return Err(AutoTrap::Resource);
+    }
+    rt_alloc(cap)?;
+    b.push(c);
+    Ok(A2xStr { buf: Some(b) })
+}
+
 /// PLAN-964 (L-22/FStr): render an i32 as a decimal owned Str (the M2-A
 /// display domain; the general format algorithms belong to 972).
 pub fn a2x_str_display_i32(value: i32) -> A2xResult<A2xStr> {

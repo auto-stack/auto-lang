@@ -1515,6 +1515,19 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     "a2x_char_result",
                 )
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let mark = self.pending_frees.len();
+                let (v, _) = self.lower_pure(*operand)?;
+                self.one_arg_result(
+                    mark,
+                    "a2x_str_from_char",
+                    &[v],
+                    Ty::StrOwned,
+                    "a2x_stro_result",
+                )
+            }
             // ---- record operations ----
             hir::ExprKind::RecordCtor {
                 record,
