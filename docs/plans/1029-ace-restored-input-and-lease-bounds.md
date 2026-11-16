@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1029
-status: execution_done
+status: reviewed
 feature_name: ACE恢复输入准入与语法租约索引有界性
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 6
-current_step: 3
+current_step: 4
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/snapshot-cst.md, docs/specs/auto-syntax/grammar-contract.md, docs/specs/auto-semantics/source-scalar-instances.md]
@@ -264,7 +264,7 @@ ADM-04正常单页/一个声明作底，分别走inline与decl_index分页；只
 - [x] AC-01 / work：T-01冻结五个ADM的真实源、格式/资源边界和前置，合法邻例可在实际入口运行；巨大预留坏包修前仅核静态证据、修后要求实际decoder早拒，不为使反例可运行先触发OOM；落实r4修订DEC-ADM的命名空间/FromWire/Bytes预算与立即清零键断言，不改expected。 [✅ 2026-11-17 §4漂移冻结 + audit1029_adm_01（22字节头/14计数位/等界多1/FromWire≡Bytes 身份）全绿，无OOM裸跑]
 - [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。 [✅ 2026-11-17 r6 首交 @8d09bd94c + 修复 @66543dd2d：F-R1-01 paged origin 准入 oracle 已补（"decl origin 17 beyond source total_len 16" 双消费者断言，span 臂文案区分），F-R1-02 SD-01 改为"各表计数最小 wire 下界（现行 14 处计数位）"；五锚 5/5（0.006-0.114s）]
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。 [✅ 2026-11-17 cargo t ace-syntax ace-semantics 292/293（唯一红=master 既有 cache-roundtrip.document.case.ad 缺 executed 状态，非本 diff，证据见§9）；反依赖（av/comptime/native/abi/a2x-worker/case-worker/core/m2-build/conformance）check 全绿；decode_canonical 旧调用面不变；canonical Specs 留 T-05]
-- [ ] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
+- [x] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。 [✅ 2026-11-17 final pass 绑定 66543dd2d（r6 T-04 首轮 needs_fix 两 P2 已修复复验；健康/遗漏扫描/规范增量核验通过；冻结并集门=merge 义务见 §9 复审记录）]
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
@@ -275,7 +275,7 @@ ADM-04正常单页/一个声明作底，分别走inline与decl_index分页；只
 | T-01 / work | [x] 1024交接、实施授权（/goal 2026-11-17）及当前源 | 按§5 r4修订DEC-ADM重核5个ADM真实入口/源漂移；建立不同token/rule表长、FromWire/Bytes小预算、v4合法等界页及即时删零观察；巨大预留修前只静态核证。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 §4 漂移冻结 + 五入口重读，五缺陷全在、无他Plan顺带修复；观察设置落进五锚测试] |
 | T-02 / work | [x] T-01反例设置与r4既定决定 | 按reader/TreeSession逐片补准入与索引回收；每个ADM有合法邻例和永久断言，F23只补当前剩余size/EOF，保v4四tag/consts。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 首交 8d09bd94c + 修复 66543dd2d（F-R1-01 oracle 补齐；F-R1-02 SD-01 事实修正）；待 T-04 复审确认] |
 | T-03 / work | [x] T-02 | 分别核query实例消费/恢复、inline/paged子树、FirstSets及多lease生命周期；完成syntax/semantics职责组，短包不做OOM实验。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 cargo t ace-syntax ace-semantics 293执行292过1既有红（§9具名）；五锚在固定组 nextest 被发现并执行] |
-| T-04 / review | [ ] T-01..03完成、冻结提交 8d09bd94c | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-04 / review | [x] T-01..03完成、冻结提交 66543dd2d（首审 8d09bd94c→needs_fix→修复→复验） | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 final pass @66543dd2d；见 §9 r6 复审与回复审记录] |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
@@ -437,6 +437,23 @@ stage: work | plan_id: PLAN-1029 | plan_revision: r6 | outcome: repair-complete�
 本会话测试（修复轮，影响面最小集）：adm_04 单测 1/1 PASS（0.115s）+ 五锚过滤 5/5 PASS（0.114s 汇总；其余 4 锚输入/代码未变，属重放确认）；未跑全局（复用 r6 首轮组证据中不受影响部分；merge 冻结并集待复审后按 merge 技能执行）。新 case 计时门：修复未新增 case（adm_04 增强），0.113s ≤10s。
 
 stage: goal | plan_id: PLAN-1029 | plan_revision: r6 | round: 3 | from: work | to: review | status: execution_done | outcome: pass（修复轮） | worktree: D:/autostack/.wt/lang-1029/auto-lang | commit: 66543dd2d | next: review
+
+### r6 T-04 回复审记录（2026-11-17，goal 会话第 4 轮）
+
+stage: review | review_scope: final（受影响项复验 + 全量证据对账） | reviewer_identity: 本 goal 会话（与实施同会话；从修复 diff/代码/断言/计划文件重建，不以执行者摘要为证） | plan_id: PLAN-1029 | plan_revision: r6 | outcome: **pass（final）** | worktree_path: D:/autostack/.wt/lang-1029/auto-lang | branch: plan-1029-dev | reviewed_commit: 66543dd2d | base_commit: 19d1f8dc0（原始）/8d09bd94c（修复基线） | dependency_revisions: 无
+
+受影响发现复验：
+
+- F-1029-R1-01 关闭确认：修复 diff 仅 `syntax_admission.rs` 测试（+23/−5，worktree clean、无其他漂移）；`idx_b` 第三条目 {origin:17,total_len:16} 使 `decl_range(2)`/`decl_subtree(2)` 断言 `"decl origin 17 beyond source total_len 16"`——与 `admit_decl_entry` 格式串 `"decl origin {} beyond source total_len {}"`（origin=17/total=16）逐字匹配，命中**准入臂**；oracle 具区分性（变异推演：若无该准入臂，decl_range(2) 落入 span 臂渲染 "decl span [17,23) beyond…"，不含 needle，测试必红）；b1 needle 收紧为完整 span 臂文案消除两臂歧义。重放 PASS 0.105s（绑定 66543dd2d）。
+- F-1029-R1-02 关闭确认：计划 §5 SD-01 行现文 "各表计数最小 wire 下界（现行 14 处计数位：PLAN-979 增 rule_expects/ctx_names 后实况）"——与本树 program_codec.rs 14 处计数位（§4 漂移冻结）一致；SD-02/SD-03 行文与实现一致性维持 r6 首审结论。
+
+acceptance_results：AC-01=pass、AC-02=pass（修复后）、AC-03=pass（r6 首审证据复用——实现代码在两提交间零变更，仅测试增强）、AC-04=pass（本记录）。AC-05/06=merge 义务。遗漏/延后/workaround：r6 首审扫描结论维持，无新增项；三条 master 既有问题归因不变。测试成本：无新增 case（adm_04 增强），0.105-0.116s ≤10s；未跑全局（按复验范围规则复用首轮组证据中不受影响部分）。
+
+pending_closeout_gates（merge 义务，不阻塞 reviewed）：冻结提交 66543dd2d 上的固定组并集 `cargo t ace-syntax ace-semantics`（首轮组证据绑定 8d09bd94c，修复改变了 conformance 二进制内容，须在冻结基线重跑该并集；预期含 adm_04 增强断言）；其余 reuse。规范沉积 SD-01..03 按本计划 §5 行文执行。
+
+next: merge（T-05/T-06）
+
+stage: goal | plan_id: PLAN-1029 | plan_revision: r6 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1029/auto-lang | commit: 66543dd2d | next: merge
 
 ## 10. 待澄清事项
 
