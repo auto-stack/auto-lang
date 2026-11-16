@@ -4372,6 +4372,7 @@ impl<'a> Engine<'a> {
         // 会静默合并——后者还把两个出口的行融成一条扁平列表，丢失归属。
         // 现在是 AGE-L03 的多出口规则（同键重复仍是具名错误）。
         let mut exits: Vec<crate::source::age_component::ComponentExit> = Vec::new();
+    let mut text_exits: Vec<Option<String>> = Vec::new();
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
         let mut messages = Vec::new();
         let mut design = Vec::new();
@@ -4554,6 +4555,9 @@ impl<'a> Engine<'a> {
                             span: view_span,
                         });
                     }
+                    while text_exits.len() < texts.len() {
+                        text_exits.push(Some(kind.clone()));
+                    }
                     for raw in self.cx.children(member) {
                         let c = self
                             .cx
@@ -4689,6 +4693,9 @@ impl<'a> Engine<'a> {
                             span: view_span,
                         });
                     }
+                    while text_exits.len() < texts.len() {
+                        text_exits.push(Some(kind.clone()));
+                    }
                     for raw in self.cx.children(member) {
                         // `age-view-item` 是分派 wrapper：实质成员是它的首个非 trivia 孩子。
                         let c = self
@@ -4728,6 +4735,10 @@ impl<'a> Engine<'a> {
                         }
                     }
                     tree = self.collect_view_items(member, &mut texts, &text_role);
+                    // R60-8：文本在收集之后才有叶，归属按本出口补齐（含 `view` 本身）。
+                    while text_exits.len() < texts.len() {
+                        text_exits.push(Some(kind.clone()));
+                    }
                 }
                 "age-msg-member" => {
                     self.collect_msg_variants(member, &mut messages);
@@ -4813,6 +4824,7 @@ impl<'a> Engine<'a> {
                 role: view_role,
                 exit: view_exit,
                 exits,
+                text_exits,
                 span: view_span,
                 texts,
                 node_refs,
