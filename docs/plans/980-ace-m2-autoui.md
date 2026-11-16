@@ -1034,6 +1034,16 @@ next_responsible_role: work（WEB 切片#6b：span 起点校准 + 生成器源�
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 31 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6a 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui b3c9c582 lang ab6c8efdd | next: work（WEB 切片#6b）
 
+2026-11-16 stage: work（WEB 批切片 #6b：O-C4 解除 + 接线设计决策，goal round 32）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——路线 B 实施/全量/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: lang **4656bf607**（§13.5；债务提交仍停靠分支——主检出 KNOWN-DEBT 的 981 WIP 未落）。
+
+**交付。** ①**O-C4 解除（诊断+语义重定义）**：全 6 handler span 诊断实证——捕获语义=**body 覆盖区间**（起点在 pattern 末~body `{` 间 ±1 token，终点=body 闭括号后；lane 合同只需 expr 包含性，002 六例全成立）——精确 pattern 起点不承诺、不需要；②**四委托点接线设计决策（§13.5）**：路线 A（表达式级直接换 lane）**受阻于旧 AST 零 span**（语言侧大手术，不采用）；**路线 B 采纳**（handler 体级：script 生成器携源文本+提取区间，状态函数 HIR 区间内 exprs 逐发射+宿主映射组装 handler 体——UI 侧自有面）。剩余=路线 B 实施（vue/script.rs 生成道 + `generate_with_source` 源通道）→ 全量双轨 → 浏览器档。
+
+**验证。** 诊断探针用后即删；§13.5/§13.4 面不动测试（本 round 纯文档+诊断）；ace_ts_provider 9/9 保持（上轮冻结基线复用——无实现改动）。
+
+next_responsible_role: work（WEB 切片#6c：路线 B 实施。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 32 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6b 落主）| worktree: D:/autostack/.wt/lang-980 | commit: lang 4656bf607 | next: work（WEB 切片#6c：路线 B 实施）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
