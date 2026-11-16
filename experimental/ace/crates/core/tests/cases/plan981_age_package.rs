@@ -110,7 +110,7 @@ fn p981_age_package_rejects_widget_member_slots() {
         "expose {\n        nosuch_field\n    }",
         "lifecycle {\n        mounted => { .nosuch = 1 }\n    }",
         "computed {\n        double => nosuch_ident + 1\n    }",
-        "watch {\n        .count -> {\n            .count = 1\n        }\n    }",
+        "watch { .count -> { .count = 1 } }",
         "timer {\n        Tick (every_ms: 1)\n    }",
         "on {\n        .Inc -> {\n            .count = 1\n        }\n    }",
     ];
