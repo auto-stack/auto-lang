@@ -6,6 +6,7 @@ use ace_a2x_python::PythonTargetProvider;
 use ace_a2x_rust::RustTargetProvider;
 use ace_a2x_store::modules::packages::PackageA2xTarget;
 use ace_av::modules::packages::PackageAvTarget;
+use ace_av_core::av::{CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::platform_io::Win32PlatformIo;
 use ace_core::source::cst::FrontBudget;
@@ -79,6 +80,33 @@ fn run_av_i32(tag: &str, main_src: &str) -> i32 {
     let (out, _summary) = target
         .run_platform_value(&sys_grants(), &mut backend)
         .expect("AV platform run");
+    match out {
+        ExecOutcome::Success {
+            value: Value::I32(v),
+            ..
+        } => v,
+        other => panic!("{tag}: unexpected AV outcome {other:?}"),
+    }
+}
+
+fn run_av_i32_budget(tag: &str, main_src: &str, max_steps: u64) -> i32 {
+    let product = compile_sys(AssemblyBackend::Av, main_src);
+    let store = scratch(tag);
+    let target = PackageAvTarget::cold(&store, &product).expect("AV cold link");
+    let mut backend = Win32PlatformIo::default();
+    let limits = ExecLimits {
+        max_steps,
+        ..ExecLimits::default()
+    };
+    let (out, _trace, _summary) = ace_av_core::execute_program_platform(
+        &target.current,
+        &limits,
+        &CancelFlag::default(),
+        &sys_grants(),
+        None,
+        &mut backend,
+    )
+    .expect("AV platform run");
     match out {
         ExecOutcome::Success {
             value: Value::I32(v),
@@ -469,4 +497,376 @@ fn v03_kv_a2r_roundtrip_and_budget_4096() {
 #[test]
 fn v03_kv_a2py_roundtrip_and_budget_4096() {
     run_kv_cross_backend_leg("kv-a2py", false);
+}
+
+// ---- V-03 ZIP tests (D-08 / T-04) -----------------------------------------
+
+fn crc32_ieee(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in data {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB8_8320u32 & mask);
+        }
+    }
+    !crc
+}
+
+/// Build a raw ZIP archive in Rust for deterministic edge/corrupt/BTYPE=00 oracle cases.
+fn build_raw_zip(entries: &[(&[u8], u16, u16, u32, u32, &[u8])]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut cd = Vec::new();
+    for &(name, flags, method, crc, uncomp_len, comp_data) in entries {
+        let lfh_off = out.len() as u32;
+        out.extend_from_slice(b"PK\x03\x04");
+        out.extend_from_slice(&20u16.to_le_bytes());
+        out.extend_from_slice(&flags.to_le_bytes());
+        out.extend_from_slice(&method.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&crc.to_le_bytes());
+        out.extend_from_slice(&(comp_data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&uncomp_len.to_le_bytes());
+        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(name);
+        out.extend_from_slice(comp_data);
+
+        cd.extend_from_slice(b"PK\x01\x02");
+        cd.extend_from_slice(&20u16.to_le_bytes());
+        cd.extend_from_slice(&20u16.to_le_bytes());
+        cd.extend_from_slice(&flags.to_le_bytes());
+        cd.extend_from_slice(&method.to_le_bytes());
+        cd.extend_from_slice(&0u16.to_le_bytes());
+        cd.extend_from_slice(&0u16.to_le_bytes());
+        cd.extend_from_slice(&crc.to_le_bytes());
+        cd.extend_from_slice(&(comp_data.len() as u32).to_le_bytes());
+        cd.extend_from_slice(&uncomp_len.to_le_bytes());
+        cd.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        cd.extend_from_slice(&0u16.to_le_bytes());
+        cd.extend_from_slice(&0u16.to_le_bytes());
+        cd.extend_from_slice(&0u16.to_le_bytes());
+        cd.extend_from_slice(&0u16.to_le_bytes());
+        cd.extend_from_slice(&0u32.to_le_bytes());
+        cd.extend_from_slice(&lfh_off.to_le_bytes());
+        cd.extend_from_slice(name);
+    }
+    let cd_off = out.len() as u32;
+    let cd_size = cd.len() as u32;
+    out.extend_from_slice(&cd);
+    out.extend_from_slice(b"PK\x05\x06");
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&cd_size.to_le_bytes());
+    out.extend_from_slice(&cd_off.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out
+}
+
+fn plan897_logo_bytes() -> Vec<u8> {
+    let mut v = vec![0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    for i in 0..64u32 {
+        v.push((i % 251) as u8);
+    }
+    v
+}
+
+/// Generate a real external Python `zipfile` oracle archive (Stored + Deflated fixed + dynamic Huffman).
+fn make_python_zip_fixture(zip_path: &std::path::Path) -> Vec<u8> {
+    let logo_hex: String = plan897_logo_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let dyn_text = "alpha-0 beta-1 gamma-2\n".repeat(20);
+    let rt = ace_a2x_python::python_runtime_source(&[]);
+    let rt_hash = ace_core::runtime_contract::sha256_hex(rt.as_bytes());
+    let tool = ace_a2x_worker::pyrun::resolve_python(&rt_hash)
+        .expect("OS Python required to generate external ZIP test fixture");
+    let py_script = format!(
+        r#"import zipfile
+p = r"{}"
+with zipfile.ZipFile(p, "w") as zf:
+    zf.writestr("ascii.txt", "The quick brown fox", compress_type=zipfile.ZIP_DEFLATED)
+    zf.writestr("cjk.txt", "山月不知心底事，水调歌头。".encode("utf-8"), compress_type=zipfile.ZIP_DEFLATED)
+    zf.writestr("bin/logo.png", bytes.fromhex("{}"), compress_type=zipfile.ZIP_STORED)
+    zf.writestr("dyn.txt", ("alpha-0 beta-1 gamma-2\n" * 20).encode("utf-8"), compress_type=zipfile.ZIP_DEFLATED)
+    zf.writestr("empty.txt", b"", compress_type=zipfile.ZIP_STORED)
+"#,
+        zip_path.display(),
+        logo_hex
+    );
+    let script_path = zip_path.with_extension("gen.py");
+    std::fs::write(&script_path, py_script).unwrap();
+    let out = std::process::Command::new(&tool.program)
+        .args(&tool.pre_args)
+        .arg(&script_path)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "python zip gen failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    dyn_text.into_bytes()
+}
+
+#[test]
+fn v03_zip_plan897_and_btypes_av() {
+    let dir = scratch("zip-av-pos");
+    let py_zip = dir.join("plan897.zip");
+    let dyn_bytes = make_python_zip_fixture(&py_zip);
+
+    // Hand-crafted BTYPE=00 uncompressed deflate block ("hello")
+    let b0_raw = b"hello";
+    let b0_deflate = [0x01u8, 0x05, 0x00, 0xFA, 0xFF, b'h', b'e', b'l', b'l', b'o'];
+    let b0_zip = dir.join("btype0.zip");
+    std::fs::write(
+        &b0_zip,
+        build_raw_zip(&[(b"b0.txt", 0, 8, crc32_ieee(b0_raw), 5, &b0_deflate)]),
+    )
+    .unwrap();
+
+    let zs = slash(&py_zip);
+    let b0s = slash(&b0_zip);
+    let out_logo = dir.join("out_logo.png");
+    let out_dyn = dir.join("out_dyn.txt");
+    let ols = slash(&out_logo);
+    let ods = slash(&out_dyn);
+    let cjk_str = "山月不知心底事，水调歌头。";
+    let dyn_str = std::str::from_utf8(&dyn_bytes).unwrap();
+
+    let src1a = format!(
+        r#"
+use std.zip.read_text
+
+fn main() int {{
+    let ok_s Str = read_text("{zs}", "ascii.txt", 19)
+    if (ok_s != "The quick brown fox") {{ return -2 }}
+    if (read_text("{zs}", "ascii.txt", 18) != "") {{ return -3 }}
+    if (read_text("{zs}", "ascii.txt", 0) != "") {{ return -4 }}
+    let cjk Str = read_text("{zs}", "cjk.txt", 256)
+    if (cjk != "{cjk_str}") {{ return -5 }}
+    return 87
+}}
+"#
+    );
+    assert_eq!(run_av_i32_budget("zip-av-pos-1a", &src1a, 5_000_000), 87);
+
+    let src1b = format!(
+        r#"
+use std.zip.list_json
+use std.zip.read_text
+
+fn main() int {{
+    if (read_text("{zs}", "empty.txt", 16) != "") {{ return -7 }}
+    if (read_text("{zs}", "bin/logo.png", 1024) != "") {{ return -8 }}
+    if (read_text("{b0s}", "b0.txt", 5) != "hello") {{ return -9 }}
+    if (read_text("{b0s}", "b0.txt", 4) != "") {{ return -10 }}
+    if (list_json("{b0s}") != "[{{\"name\":\"b0.txt\",\"size\":5,\"comp_size\":10,\"method\":\"Deflated\"}}]") {{ return -11 }}
+    return 88
+}}
+"#
+    );
+    assert_eq!(run_av_i32_budget("zip-av-pos-1b", &src1b, 5_000_000), 88);
+
+    let src2 = format!(
+        r#"
+use std.zip.list_json
+use std.zip.read_text
+
+fn has_sub(hay Str, needle Str) bool {{
+    let hn = hay.len()
+    let nn = needle.len()
+    if (nn > hn) {{ return false }}
+    return has_sub_at(hay, needle, 0, hn - nn)
+}}
+
+fn has_sub_at(hay Str, needle Str, i int, last int) bool {{
+    if (i > last) {{ return false }}
+    if (hay.slice(i, i + needle.len()).clone() == needle) {{ return true }}
+    return has_sub_at(hay, needle, i + 1, last)
+}}
+
+fn main() int {{
+    let js Str = list_json("{zs}")
+    if (!has_sub(js.clone(), "\"name\":\"ascii.txt\"")) {{ return -1 }}
+    if (!has_sub(js.clone(), "\"name\":\"cjk.txt\"")) {{ return -2 }}
+    if (!has_sub(js.clone(), "\"name\":\"bin/logo.png\",\"size\":72,\"comp_size\":72,\"method\":\"Stored\"")) {{ return -3 }}
+    if (!has_sub(js, "\"method\":\"Deflated\"")) {{ return -4 }}
+    let dyn Str = read_text("{zs}", "dyn.txt", 1024)
+    if (dyn != "{dyn_str}") {{ return -6 }}
+    return 89
+}}
+"#
+    );
+    assert_eq!(run_av_i32_budget("zip-av-pos-2", &src2, 5_000_000), 89);
+
+    let src3 = format!(
+        r#"
+use std.zip.extract_entry
+
+fn main() int {{
+    if (extract_entry("{zs}", "bin/logo.png", "{ols}", 72) != 0) {{ return -11 }}
+    if (extract_entry("{zs}", "dyn.txt", "{ods}", 460) != 0) {{ return -12 }}
+    return 90
+}}
+"#
+    );
+    assert_eq!(run_av_i32_budget("zip-av-pos-3", &src3, 5_000_000), 90);
+    assert_eq!(std::fs::read(&out_logo).unwrap(), plan897_logo_bytes());
+    assert_eq!(std::fs::read(&out_dyn).unwrap(), dyn_bytes);
+}
+
+#[test]
+fn v03_zip_negative_corrupt_bomb_and_preserve_av() {
+    let dir = scratch("zip-av-neg");
+    let sub = dir.join("subdir");
+    std::fs::create_dir_all(&sub).unwrap();
+    let dest = dir.join("keep.bin");
+    std::fs::write(&dest, b"KEEP-ME-INTACT").unwrap();
+    let keep_hash = ace_core::runtime_contract::sha256_hex(b"KEEP-ME-INTACT");
+
+    let missing_z = dir.join("missing.zip");
+    let bad_crc_z = dir.join("badcrc.zip");
+    std::fs::write(
+        &bad_crc_z,
+        build_raw_zip(&[(b"a.txt", 0, 0, 0x1234_5678, 5, b"hello")]),
+    )
+    .unwrap();
+
+    let enc_z = dir.join("enc.zip");
+    std::fs::write(
+        &enc_z,
+        build_raw_zip(&[(b"e.txt", 1, 0, crc32_ieee(b"hi"), 2, b"hi")]),
+    )
+    .unwrap();
+
+    let bzip_z = dir.join("bzip.zip");
+    std::fs::write(&bzip_z, build_raw_zip(&[(b"bz.txt", 0, 12, 0, 2, b"hi")])).unwrap();
+
+    let zip64_z = dir.join("zip64.zip");
+    std::fs::write(
+        &zip64_z,
+        build_raw_zip(&[(b"z64.txt", 0, 0, 0, 0xFFFF_FFFF, b"hi")]),
+    )
+    .unwrap();
+
+    // Header lies uncomp_len=2, but real Deflate BTYPE=00 emits 10 bytes -> max_bytes=9 MUST return -2
+    let bomb_z = dir.join("bomb.zip");
+    let bomb_raw = b"0123456789";
+    let mut bomb_def = vec![0x01u8, 10, 0, 245, 255];
+    bomb_def.extend_from_slice(bomb_raw);
+    std::fs::write(
+        &bomb_z,
+        build_raw_zip(&[(b"../evil.txt", 0, 8, crc32_ieee(bomb_raw), 2, &bomb_def)]),
+    )
+    .unwrap();
+
+    let corrupt_z = dir.join("corrupt.zip");
+    std::fs::write(&corrupt_z, b"NOT_A_ZIP_ARCHIVE").unwrap();
+
+    let ms = slash(&missing_z);
+    let ss = slash(&sub);
+    let bcs = slash(&bad_crc_z);
+    let es = slash(&enc_z);
+    let bzs = slash(&bzip_z);
+    let z64s = slash(&zip64_z);
+    let bms = slash(&bomb_z);
+    let cs = slash(&corrupt_z);
+    let ds = slash(&dest);
+    let explicit_safe = dir.join("safe_dest.bin");
+    let sds = slash(&explicit_safe);
+
+    let src = format!(
+        r#"
+use std.zip.list_json
+use std.zip.read_text
+use std.zip.extract_entry
+
+fn main() int {{
+    if (list_json("{ms}") != "" || extract_entry("{ms}", "a", "{ds}", 64) != -1) {{ return -1 }}
+    if (list_json("{ss}") != "" || extract_entry("{ss}", "a", "{ds}", 64) != -1) {{ return -2 }}
+    if (list_json("{cs}") != "" || extract_entry("{cs}", "a", "{ds}", 64) != -1) {{ return -3 }}
+    if (read_text("{bcs}", "a.txt", 64) != "" || extract_entry("{bcs}", "a.txt", "{ds}", 64) != -1) {{ return -4 }}
+    if (read_text("{es}", "e.txt", 64) != "" || extract_entry("{es}", "e.txt", "{ds}", 64) != -1) {{ return -5 }}
+    let bzjs Str = list_json("{bzs}")
+    if (bzjs != "[{{\"name\":\"bz.txt\",\"size\":2,\"comp_size\":2,\"method\":\"Bzip2\"}}]") {{ return -6 }}
+    if (read_text("{bzs}", "bz.txt", 64) != "" || extract_entry("{bzs}", "bz.txt", "{ds}", 64) != -1) {{ return -7 }}
+    if (list_json("{z64s}") != "" || extract_entry("{z64s}", "z64.txt", "{ds}", 64) != -1) {{ return -8 }}
+    // Dishonest header bomb: max_bytes=9 -> -2, max_bytes=10 -> 0 into explicit_safe ONLY
+    if (extract_entry("{bms}", "../evil.txt", "{ds}", 9) != -2) {{ return -9 }}
+    if (extract_entry("{bms}", "../evil.txt", "{ds}", 0) != -1) {{ return -10 }}
+    if (extract_entry("{bms}", "../evil.txt", "{sds}", 10) != 0) {{ return -11 }}
+    return 99
+}}
+"#
+    );
+    assert_eq!(run_av_i32("zip-av-neg-run", &src), 99);
+    assert_eq!(
+        ace_core::runtime_contract::sha256_hex(&std::fs::read(&dest).unwrap()),
+        keep_hash,
+        "pre-existing dest modified by failed extract_entry"
+    );
+    assert_eq!(std::fs::read(&explicit_safe).unwrap(), b"0123456789");
+    assert!(!dir.parent().unwrap().join("evil.txt").exists());
+}
+
+fn run_zip_cross_backend_leg(tag: &str, is_rust: bool) {
+    let dir = scratch(tag);
+    let py_zip = dir.join("oracle.zip");
+    let dyn_bytes = make_python_zip_fixture(&py_zip);
+    let bad_crc_z = dir.join("badcrc.zip");
+    std::fs::write(
+        &bad_crc_z,
+        build_raw_zip(&[(b"a.txt", 0, 0, 0xDEAD_BEEF, 2, b"ok")]),
+    )
+    .unwrap();
+
+    let zs = slash(&py_zip);
+    let bcs = slash(&bad_crc_z);
+    let out_logo = dir.join("out_logo.png");
+    let ols = slash(&out_logo);
+    let cjk_str = "山月不知心底事，水调歌头。";
+    let dyn_str = std::str::from_utf8(&dyn_bytes).unwrap();
+
+    let src = format!(
+        r#"
+use std.zip.list_json
+use std.zip.read_text
+use std.zip.extract_entry
+
+fn main() int {{
+    let js Str = list_json("{zs}")
+    if (js == "") {{ return -1 }}
+    if (read_text("{zs}", "ascii.txt", 19) != "The quick brown fox") {{ return -2 }}
+    if (read_text("{zs}", "cjk.txt", 256) != "{cjk_str}") {{ return -3 }}
+    if (read_text("{zs}", "dyn.txt", 460) != "{dyn_str}") {{ return -4 }}
+    if (read_text("{zs}", "bin/logo.png", 1024) != "") {{ return -5 }}
+    if (extract_entry("{zs}", "dyn.txt", "{ols}", 459) != -2) {{ return -6 }}
+    if (extract_entry("{bcs}", "a.txt", "{ols}", 16) != -1) {{ return -7 }}
+    if (extract_entry("{zs}", "bin/logo.png", "{ols}", 72) != 0) {{ return -8 }}
+    return 55
+}}
+"#
+    );
+    let got = if is_rust {
+        run_a2r_i32(tag, &src)
+    } else {
+        run_a2py_i32(tag, &src)
+    };
+    assert_eq!(got, 55, "{tag}");
+    assert_eq!(std::fs::read(&out_logo).unwrap(), plan897_logo_bytes());
+}
+
+#[test]
+fn v03_zip_a2r_roundtrip_and_budget() {
+    run_zip_cross_backend_leg("zip-a2r", true);
+}
+
+#[test]
+fn v03_zip_a2py_roundtrip_and_budget() {
+    run_zip_cross_backend_leg("zip-a2py", false);
 }

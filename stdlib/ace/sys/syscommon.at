@@ -298,8 +298,21 @@ pub fn read_region_bytes(region int, offset int, length int, out List<int>) int 
 }
 
 fn region_leaf(region int, i int, stop int, rem int, out List<int>) int {
-    if (rem <= 0) { return i }
-    if (i >= stop) { return i }
+    if (rem <= 0 || i >= stop) { return i }
+    if (rem >= 8 && i + 8 <= stop) {
+        let b0 = mem_read_u8(region, i)
+        let b1 = mem_read_u8(region, i + 1)
+        let b2 = mem_read_u8(region, i + 2)
+        let b3 = mem_read_u8(region, i + 3)
+        let b4 = mem_read_u8(region, i + 4)
+        let b5 = mem_read_u8(region, i + 5)
+        let b6 = mem_read_u8(region, i + 6)
+        let b7 = mem_read_u8(region, i + 7)
+        if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0 || b4 < 0 || b5 < 0 || b6 < 0 || b7 < 0) { return -1 }
+        out.push(b0); out.push(b1); out.push(b2); out.push(b3)
+        out.push(b4); out.push(b5); out.push(b6); out.push(b7)
+        return region_leaf(region, i + 8, stop, rem - 8, out)
+    }
     let b = mem_read_u8(region, i)
     if (b < 0) { return -1 }
     out.push(b)
@@ -308,7 +321,7 @@ fn region_leaf(region int, i int, stop int, rem int, out List<int>) int {
 
 fn region_outer(region int, i int, stop int, out List<int>) int {
     if (i >= stop) { return 0 }
-    let next_i = region_leaf(region, i, stop, 64, out)
+    let next_i = region_leaf(region, i, stop, 256, out)
     if (next_i < 0) { return -1 }
     return region_outer(region, next_i, stop, out)
 }
