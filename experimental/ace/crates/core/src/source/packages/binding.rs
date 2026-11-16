@@ -245,6 +245,9 @@ struct BoundImport {
     symbol: String,
     is_type: bool,
     is_const: bool,
+    /// PLAN-1064 T-MODULE-I r2: a module-scope import (`use demo`) — the
+    /// bound name is a module namespace; members stay qualified.
+    is_module: bool,
 }
 
 /// 绑定宿主提供的包闭包。无文件系统发现、源拼接、parser 回退、类型
@@ -777,6 +780,40 @@ fn bind_package_syntax_inner(
     for (key, unit) in &units {
         let mut binds = BTreeMap::new();
         for i in &unit.imports {
+            // PLAN-1064 T-MODULE-I r2: `use demo` — the module-scope
+            // import. Declares the module edge (cycle detection, cold
+            // identity); members stay qualified `demo.item` through the
+            // existing module_prefix/cross_call visibility path.
+            if i.path.len() == 1 {
+                let target_key = unit_key(&split_key(key).0, &i.path[0]);
+                if target_key == *key {
+                    return Err(fail(
+                        key,
+                        "source.module-path",
+                        "a module cannot import from itself",
+                        i.span,
+                    ));
+                }
+                if !units.contains_key(&target_key) {
+                    return Err(fail(
+                        key,
+                        "source.module-missing",
+                        format!("unknown module `{}`", i.path[0]),
+                        i.span,
+                    ));
+                }
+                binds.insert(
+                    i.bound_name().to_string(),
+                    BoundImport {
+                        symbol: target_key.clone(),
+                        is_type: false,
+                        is_const: false,
+                        is_module: true,
+                    },
+                );
+                edges.get_mut(key).unwrap().insert(target_key);
+                continue;
+            }
             let (target_key, item) = resolve_path(key, &i.path, i.span)?;
             if target_key == *key {
                 return Err(fail(
@@ -792,16 +829,19 @@ fn bind_package_syntax_inner(
                     symbol: s,
                     is_type: false,
                     is_const: false,
+                    is_module: false,
                 },
                 Target::Type(s) => BoundImport {
                     symbol: s,
                     is_type: true,
                     is_const: false,
+                    is_module: false,
                 },
                 Target::Const(s) => BoundImport {
                     symbol: s,
                     is_type: false,
                     is_const: true,
+                    is_module: false,
                 },
             };
             binds.insert(i.bound_name().to_string(), b);
@@ -2398,6 +2438,17 @@ impl<'a> Walker<'a> {
                         self.record_call(&sym);
                         callee.name = sym;
                     } else if let Some(b) = self.binds.get(&callee.name) {
+                        if b.is_module {
+                            return Err(fail(
+                                self.key,
+                                "source.module-symbol",
+                                format!(
+                                    "`{}` is a module namespace; call its members as `{}.<fn>`",
+                                    callee.name, callee.name
+                                ),
+                                callee.span,
+                            ));
+                        }
                         if b.is_const {
                             return Err(fail(
                                 self.key,

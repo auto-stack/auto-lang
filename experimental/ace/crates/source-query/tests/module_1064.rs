@@ -192,3 +192,127 @@ fn module_1064_author_constructs_parse() {
         failures.join("\n")
     );
 }
+
+/// The §5.2 demo VERBATIM (module-scope form): `use demo` declares the
+/// dependency; `demo.answer()` is the qualified call; the private helper
+/// stays callable in-module. Cross-module `demo.helper(41)` is the named
+/// visibility rejection (the qualified call's own span).
+#[test]
+fn module_1064_demo_module_scope_form() {
+    let demo = "fn helper(x int) int { return x + 1 }
+pub fn answer() int { return helper(41) }";
+    // positive: the contract's exact shape compiles
+    let ok = compile_package_product(
+        &[
+            input("app", "demo", demo),
+            input(
+                "app",
+                "main",
+                "use demo
+pub fn main() int { return demo.answer() }",
+            ),
+        ],
+        "app::main",
+        &caps(),
+        FrontBudget::WORK_OWNED_64MIB,
+    );
+    assert!(
+        ok.is_ok(),
+        "the §5.2 module-scope demo compiles: {:?}",
+        ok.err()
+            .map(|ds| ds.iter().map(|d| format!("{}: {}", d.diagnostic.code, d.diagnostic.message)).collect::<Vec<_>>())
+    );
+
+    // negative: the qualified call to the PRIVATE helper is named-rejected
+    let err = match compile_package_product(
+        &[
+            input("app", "demo", demo),
+            input(
+                "app",
+                "main",
+                "use demo
+pub fn main() int { return demo.helper(41) }",
+            ),
+        ],
+        "app::main",
+        &caps(),
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => panic!("demo.helper must be visibility-rejected"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err.iter().any(|d| d.diagnostic.code == "source.module-private"),
+        "named module-private rejection on the qualified call, got {:?}",
+        err.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+    );
+
+    // negative: a module namespace is not directly callable
+    let err2 = match compile_package_product(
+        &[
+            input("app", "demo", demo),
+            input(
+                "app",
+                "main",
+                "use demo
+pub fn main() int { return demo() }",
+            ),
+        ],
+        "app::main",
+        &caps(),
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => panic!("calling a module namespace must be rejected"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err2.iter().any(|d| d.diagnostic.code == "source.module-symbol"),
+        "named module-symbol rejection, got {:?}",
+        err2.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+    );
+
+    // negative: whole-module re-export is a named rejection
+    let err3 = match compile_package_product(
+        &[
+            input("app", "demo", demo),
+            input(
+                "app",
+                "main",
+                "pub use demo
+pub fn main() int { return 0 }",
+            ),
+        ],
+        "app::main",
+        &caps(),
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => panic!("whole-module re-export must be rejected"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err3.iter().any(|d| d.diagnostic.code == "source.module-path"),
+        "named module-path rejection for module re-export, got {:?}",
+        err3.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+    );
+
+    // negative: `use demo` of an unknown module is named-missing
+    let err4 = match compile_package_product(
+        &[input(
+            "app",
+            "main",
+            "use nope
+pub fn main() int { return 0 }",
+        )],
+        "app::main",
+        &caps(),
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(_) => panic!("unknown module import must be rejected"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err4.iter().any(|d| d.diagnostic.code == "source.module-missing"),
+        "named module-missing rejection, got {:?}",
+        err4.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+    );
+}
