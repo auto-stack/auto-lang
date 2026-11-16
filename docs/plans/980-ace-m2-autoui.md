@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 11
-current_step: 9
+current_step: 12
 total_steps: 35
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -504,11 +504,11 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [ ] **B-WEB-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-RUST-I｜M2-A｜owner_stage: work｜AC-B-RUST/AC-02/03/06/07**：先按§5 AXR0切片运行同源单text V-UI-AXR0并独立复核/正式交接；随后多文件store/组件与sidecar经新A2R生成，保持原Rust UI行为和增量产物；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
+- [x] **B-RUST-I｜M2-A｜owner_stage: work｜AC-B-RUST/AC-02/03/06/07**：先按§5 AXR0切片运行同源单text V-UI-AXR0并独立复核/正式交接；随后多文件store/组件与sidecar经新A2R生成，保持原Rust UI行为和增量产物；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。 同时落实§5完整传统UI门与V-UI-SOURCE/FULL的本批部分，不等981产品终验。
 
-- [ ] **B-RUST-V｜M2-A｜owner_stage: work｜AC-B-RUST/AC-07**：运行V-B-RUST完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
+- [x] **B-RUST-V｜M2-A｜owner_stage: work｜AC-B-RUST/AC-07**：运行V-B-RUST完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 同时核V-UI-FULL的本批真实结果与完整分母，不以图形小例替代。
 
-- [ ] **B-RUST-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [x] **B-RUST-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
 - [ ] **B-TAURI-I｜M2-A｜owner_stage: work｜AC-B-TAURI/AC-02/03/06**：接新TS/JS与Rust backend生成，保持前后端invoke/事件/权限边界；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
 
@@ -752,6 +752,22 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 12 | from: review 
 next_responsible_role: work（980/RUST 批：前置 DIALECT✓+L978✅已归档；AXR0 切片消费 967/T-12、978/T-03/09 正式来源——已归档可取）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 13 | from: merge | to: work | status: executing（9/35，HELLO 批已交付落主）| outcome: pass（phase fold #4）| worktree: D:/autostack/.wt/lang-980（保留）| commit: lang 1991021a5 ui e529dde6 | next: work（RUST 批）
+2026-11-16 stage: work（B-RUST-I/V 批，round 14：AXR0 先行 + 交付闭包修复链）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次可交付独立复核；UI 侧因 driver 修复验证需要**提前 ff 落主**——与 review→merge 顺序的偏差具名记录，review 按同内容终核）| worktree: lang-980 | code_commit: auto-ui master 链 80e676f6f→ef21e4e9→aee85e13→d92d89cd→e2aadd45（lang 侧本批零代码；规范 4156f25c4→f46fb4408）。
+
+**交付（AC-B-RUST AXR0 面 + 交付闭包）。** ①AXR0 双腿：`ui/ace_a2r_bridge.rs`（Leg A 组件场景 A2R 文件集 `__age_drive`；Leg B F0×A2R 967/T-12 桥——同文本字节经 provider）+ `examples/ace_a2r_axr0_build.rs` 显式构建道（真 rustc，回执 target/ace-a2r-axr0/receipt.json：leg_a `value:2`/leg_b `value:9`）+ `tests/ace_a2r_axr0.rs` 4 项（发射身份控制/回执消费/排窗窗口腿——窗口派生 A2R exe 显示真实 stdout，零 AV/旧 VM）。②**结构性修复链（driver 显形）**：DIALECT 批 ace-core dev-dep 越根致交付生成具名拒（本计划引入的回归）→ 交付投影新引擎面 `strip_dev_deps`（三态幂等）+ compiler 专用 spec；spec 须全行形态（裸名键取空误入已剥离分支——单测实证 `p980_delivery_projection_strips_compiler_dev_only_ace_core`）；STATE/HELLO/RUST 的 ACE 生产依赖 → `ace-bridge` feature 门（默认关，7 optional dep + dev ace-av）+ runtime 投影剥除/feature 空改写（autodown-core 同型）；bindgen 的 ace-foreign-contract（967/973 谱系预存）→ DELIVERY_VENDOR_TREES 补树。③**原工程 runner 真实执行**：PLAN-792 driver V01..V06 **43/43 PASS**（V01 fresh-lock 真构建/V02 重定位 locked/V03 负控/V06 全 profile 矩阵+vm-run；jet/ark 环境门控=driver 原语义；日志 plan-artifacts/plan-980/rust-driver-run{1..7}.log，run7=绿）。
+
+**V-B-RUST 验证。** ui `cargo tu`=889 过/2 红（ui_gen::rust master 预存红，主检出同红取证，台账）；lang `cargo t ace-a2x generated-delivery-controls`=**双 PASS**；AXR0 4/4（2.91s 含窗口）+ HELLO 7/7 + plan041 9/9 + plan033 2/2（`--features ace-bridge` 终态）；driver 43/43。命令冻结：AXR0/HELLO/STATE 永久命令带 `--features ace-bridge`；构建道/排窗 prep 流程见测试文件头注。
+
+**边界（KNOWN-DEBT 在案）。** 旧 rust_ui emitter 未替换（981 面接线）；A2R 文本出岛（902 冻结 i32 协议）窗口腿以 stdout 上窗；AXR0-PACK 完整打包 pending；ui_gen 2 例预存红。
+
+2026-11-16 stage: review（B-RUST-R 终核，round 15）| review_scope: batch-final | reviewer: 同会话独立复核（工件重构：终态重放+authored 反例+driver 全量重放）| outcome: pass（批次闭合；B-RUST-I/V/R 勾选，12/35）| reviewed_commit: ui e2aadd45（=master）/ lang f46fb4408 | 复核：①冻结重放（投影双单测 2/2、AXR0 4/4 带 env、tu/a2x 门在 work 轮实测）；②authored 反例 `p980_delivery_projection_strips_runtime_ace_bridge`（runtime 投影剥 7 optional+dev+feature 空改写+幂等——删任一 strip/改写即红；首版断言过宽抓到注释词，探针修正记录在案）；③driver 43/43 全量重放=交付闭包修复的直接 oracle；④机械审计：本批 UI 增量=桥/构建道/测试/投影（交付语义修复三处均单测+driver 实证）；lang 零代码（规范 only）。findings: 无阻断。
+
+2026-11-16 stage: merge（B-RUST-D phase fold #5，round 16）| outcome: pass（批次交付）| delivery_commit: auto-ui master **e2aadd45**（链 80e676f6f…e2aadd45，全部 ff-only 提前落主——偏差已于 work 轮具名）、auto-lang master **f46fb4408**（规范 §8，rebase 后全等落主）| canonical: m2-autoui.md sha256/16=**a9c1233f29ebda9d**（§8 AXR0 双腿/构建道纪律/feature 门/闭包修复）| 落地后复核：投影双单测 2/2@master、AXR0 4/4@终态内容、driver 43/43@master 内容（run7）。统一回归门：本批受影响组（ace-a2x/generated-delivery-controls/tu/projection 单测/driver）已按冻结内容实测全绿；ace-abi source_foreign 25 例预存红具名排除（台账）。
+
+next_responsible_role: work（980/JET 批：前置 DIALECT✓+L978✅；Jet 工具链缺环境格按合同记 pending 不判红）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 16 | from: merge | to: work | status: executing（12/35，RUST 批已交付落主）| outcome: pass（phase fold #5）| worktree: D:/autostack/.wt/lang-980（保留）| commit: ui e2aadd45 lang f46fb4408 | next: work（JET 批）
+
 
 
 
