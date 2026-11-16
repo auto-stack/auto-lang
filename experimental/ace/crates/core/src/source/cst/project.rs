@@ -4334,6 +4334,10 @@ impl<'a> Engine<'a> {
         // PLAN-981（IF-981-ORIGINAL）：场景出口里的组件实例行。
         let mut scene_components = Vec::new();
         let mut view_role = "view".to_string();
+        // PLAN-981（轮 51）：view 出口（`view` / `view-2d` / `view-3d`）是作者输入，
+        // 必须按**后缀 token 的字节**记录——grammar 的 2d/3d 成员 alt 共用同一
+        // `name(age-view-head)` 与同形后缀规则，命中哪个 alt 不能决定出口。
+        let mut view_exit = "view".to_string();
         let mut view_span = Span { start: 0, end: 0 };
         // PLAN-981（复审 M1）：一个 node **恰一个** view 出口。此前 `view_role`
         // 只是被重复赋值，于是两个 `view-2d`（或两个 `view`、或 2D+3D 并存）
@@ -4452,6 +4456,37 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
+                    // 出口由**后缀 token 的字节**决定（`2d` / `3d`）；未知后缀具名拒绝，
+                    // 不让 `view-2x` 之类的拼写静默落成普通 `view`。
+                    let suffix_leaf = self
+                        .cx
+                        .field_child(member, "suffix")
+                        .and_then(|s| self.cx.field_child(s, "word"));
+                    let suffix = suffix_leaf
+                        .map(|w| self.cx.spelling(w))
+                        .unwrap_or_default();
+                    view_exit = match suffix.as_str() {
+                        "2d" => "view-2d".to_string(),
+                        "3d" => "view-3d".to_string(),
+                        _ => {
+                            let span = suffix_leaf
+                                .map(|w| self.cx.span_of(w))
+                                .unwrap_or(view_span);
+                            let msg = format!(
+                                "a scene view exit must be `view-2d` or `view-3d`; \
+                                 `view-{suffix}` is not an AGE export"
+                            );
+                            self.cx.reject(span, move || {
+                                Diagnostic::new(
+                                    Stage::Text,
+                                    "source.age.view-suffix",
+                                    msg.clone(),
+                                    span,
+                                )
+                            });
+                            "view".to_string()
+                        }
+                    };
                     if let Some(first) = first_exit_span {
                         let msg = format!(
                             "a node declares exactly one view exit (view / view-2d / \
@@ -4630,6 +4665,7 @@ impl<'a> Engine<'a> {
             handlers,
             view: ComponentView {
                 role: view_role,
+                exit: view_exit,
                 span: view_span,
                 texts,
                 node_refs,

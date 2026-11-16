@@ -50,6 +50,12 @@ pub struct ComponentHandler {
 #[derive(Clone, Debug)]
 pub struct ComponentView {
     pub role: String,
+    /// PLAN-981（轮 51）：作者的 **view 出口拼写**——`view` / `view-2d` / `view-3d`。
+    ///
+    /// 此前只有 `role`（恒为 `"view"`），于是"这个 node 是 UI、2D 还是 3D 出口"
+    /// 在描述面完全丢失：纯场景 node 无法与 UI node 区分，3D 出口删掉也无人发现。
+    /// 出口由**后缀 token 的字节**决定（`2d`/`3d`），不是由命中的 grammar alt 猜。
+    pub exit: String,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
     /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。

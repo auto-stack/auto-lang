@@ -112,3 +112,44 @@ fn p981_kind_attribute_is_2d_only() {
     .expect_err("a 3D element name is not a 2D geometry kind");
     assert_eq!(ds2[0].code, "source.age.scene-kind", "{ds2:?}");
 }
+
+/// 三个出口在描述面**各自可辨**（轮 51，V-11 缺口）。
+///
+/// `ComponentView.role` 恒为 `"view"`，出口拼写此前完全丢失；`view-3d` 甚至可能
+/// 命中 2d 的 grammar alt，所以出口必须按**后缀 token 的字节**判定。
+#[test]
+fn p981_view_exits_are_recorded_distinctly() {
+    use ace_core::source::age_package::AgeViewExit;
+
+    let ui = compile("node U {\n    view { text \"t\" {} }\n}\n").expect("UI view");
+    assert_eq!(ui.description.components[0].exit, AgeViewExit::View);
+
+    let two = compile(
+        "node D {\n    view-2d {\n        shape2d q {\n            kind: circle\n        }\n    }\n}\n",
+    )
+    .expect("2D view");
+    assert_eq!(two.description.components[0].exit, AgeViewExit::View2d);
+
+    let three = compile(
+        "node T {\n    view-3d {\n        cylinder3d tower {\n            position: (0.0, 1.0, 2.0)\n        }\n    }\n}\n",
+    )
+    .expect("3D view");
+    assert_eq!(
+        three.description.components[0].exit,
+        AgeViewExit::View3d,
+        "the suffix bytes decide the exit, not which grammar alt matched"
+    );
+}
+
+/// 未知出口后缀必须**具名拒绝**（不静默落成普通 `view`）。
+#[test]
+fn p981_unknown_view_suffix_is_named() {
+    let src = "node X {\n    view-2x {\n        shape2d q {\n            kind: circle\n        }\n    }\n}\n";
+    let ds = compile(src).expect_err("`view-2x` is not an AGE export");
+    assert_eq!(ds[0].code, "source.age.view-suffix", "{ds:?}");
+    assert!(
+        ds[0].message.contains("view-2x"),
+        "the diagnostic names the rejected spelling: {}",
+        ds[0].message
+    );
+}

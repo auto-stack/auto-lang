@@ -8,15 +8,16 @@
 //!   3) 合法近邻（产物多出别的事实）不受影响。
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::{
-    age_construct_coverage, collect_facts, compile_age_package, AGE_COMPAT_CONSTRUCTS,
-    AGE_CONSTRUCTS,
+    age_construct_coverage, collect_facts, compile_age_package, AgeViewExit, AGE_COMPAT_CONSTRUCTS,
+    AGE_CONSTRUCTS, AGE_CONSTRUCTS_OUT_OF_SCOPE,
 };
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 /// 覆盖清单里**每一行**构造的真实作者源。
 ///
-/// 两个常驻限制决定了它必须拆成两个组件：
-/// - 一个 node 恰一个 view 出口（M1），所以场景出口不能塞进已有 `view` 的 `Counter`；
+/// 常驻限制决定了它必须拆成多个组件：
+/// - 一个 node 恰一个 view 出口（M1），所以三个出口（`view`/`view-2d`/`view-3d`）
+///   必须落在不同组件上（轮 51：2D/3D 出口现在各有自己的清单行）；
 /// - `Widget` 是无 model 的纯文本组件，用来覆盖 `view.node-ref` 的引用方。
 const FULL: &str = "let tint = material2d.color(0.9, 0.3, 0.2, 0.5)\n\
 node Widget {\n\
@@ -38,6 +39,13 @@ node Scene {\n\
             position: (1.0, 2.0)\n\
             material: tint\n\
             visible: false\n\
+        }\n\
+    }\n\
+}\n\
+node Tower {\n\
+    view-3d {\n\
+        cylinder3d tower {\n\
+            position: (0.0, 1.0, 2.0)\n\
         }\n\
     }\n\
 }\n";
@@ -120,6 +128,8 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
         "on",
         "on.lifecycle",
         "view",
+        "view-2d",
+        "view-3d",
         "view.text",
         "view.node-ref",
         "view.scene",
@@ -138,7 +148,23 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     }
                     "model.init" => c.initialized = false,
                     "on" | "on.lifecycle" => c.handler_msgs.clear(),
-                    "view" | "view.text" => c.texts.clear(),
+                    // 出口事实：把该出口换成另一个，代表"投影不再产出这一行"。
+                    "view" => {
+                        if c.exit == AgeViewExit::View {
+                            c.exit = AgeViewExit::View2d;
+                        }
+                    }
+                    "view-2d" => {
+                        if c.exit == AgeViewExit::View2d {
+                            c.exit = AgeViewExit::View;
+                        }
+                    }
+                    "view-3d" => {
+                        if c.exit == AgeViewExit::View3d {
+                            c.exit = AgeViewExit::View;
+                        }
+                    }
+                    "view.text" => c.texts.clear(),
                     "view.node-ref" => c.refs.clear(),
                     "view.scene" => c.scene.clear(),
                     "view.scene.resource" => c.resource_refs.clear(),
@@ -173,6 +199,8 @@ fn p981_fields_construct_table_is_frozen() {
             "on",
             "on.lifecycle",
             "view",
+            "view-2d",
+            "view-3d",
             "view.node-ref",
             "view.scene",
             "view.scene.resource",
@@ -181,6 +209,56 @@ fn p981_fields_construct_table_is_frozen() {
         "deleting or renaming a required construct row must be red, never a smaller \
          denominator that still passes"
     );
+}
+
+/// 纯场景 node 不产生 `view`（UI 出口）事实，只产生自己的 2D/3D 出口事实。
+///
+/// 轮 51 的 V-11 缺口：旧实现 `view` 只在**有文本叶**时产生，纯 `view-2d`/`view-3d`
+/// 的 node 于是永不满足 `view` 行（与 fact 文本不符），而 2D/3D 出口本身没有清单行。
+#[test]
+fn p981_fields_scene_only_nodes_do_not_claim_a_ui_view() {
+    let out = compile(
+        "node Scene2 {\n    view-2d {\n        shape2d q {\n            kind: circle\n        }\n    }\n}\n",
+    );
+    let facts = collect_facts(&out.description);
+    assert!(facts.contains(&"view-2d"), "{facts:?}");
+    assert!(
+        !facts.contains(&"view"),
+        "a scene-only node has no UI view exit: {facts:?}"
+    );
+
+    let out3d = compile(
+        "node T {\n    view-3d {\n        cylinder3d tower {\n            position: (0.0, 1.0, 2.0)\n        }\n    }\n}\n",
+    );
+    let facts = collect_facts(&out3d.description);
+    assert!(facts.contains(&"view-3d"), "{facts:?}");
+    assert!(!facts.contains(&"view"), "{facts:?}");
+}
+
+/// IF-981-FIELDS 的 requirement 分母：合同点名的每个必须项要么在本表、要么在
+/// 显式范围外清单（带 owner）——不能被悄悄丢掉。
+#[test]
+fn p981_fields_requirement_split_is_exhaustive() {
+    let mut covered: Vec<&str> = AGE_CONSTRUCTS.iter().map(|c| c.requirement).collect();
+    covered.sort_unstable();
+    covered.dedup();
+    assert_eq!(
+        covered,
+        vec!["AGE-L01", "AGE-L02", "AGE-L03", "AGE-L05"],
+        "the table covers L01/L02/L03/L05; L04 belongs to LANGUAGE"
+    );
+    let mut out: Vec<&str> = AGE_CONSTRUCTS_OUT_OF_SCOPE
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    out.sort_unstable();
+    assert_eq!(out, vec!["AG-A01..AG-A09", "AGE-L04"]);
+    for (id, owner) in AGE_CONSTRUCTS_OUT_OF_SCOPE {
+        assert!(
+            !owner.is_empty(),
+            "out-of-scope requirement `{id}` must name its real owner"
+        );
+    }
 }
 
 /// **投影真的被移除时**，覆盖检查必须红——这是上一版逐行守卫**做不到**的那一半。

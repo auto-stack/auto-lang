@@ -114,9 +114,25 @@ pub struct AgePackageComponent {
     pub texts: Vec<AgePackageText>,
     /// 声明所在模块键。
     pub module: String,
+    /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
+    pub exit: AgeViewExit,
     /// PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口里的组件实例行，**按声明序**
     /// （即 2D 绘制序）。属性值保留作者表达式与其 span，领域语义由消费端解释。
     pub scene: Vec<AgeSceneRow>,
+}
+
+/// 一个 node 的 **view 出口**（M1：一个 node 恰有一个出口）。
+///
+/// PLAN-981（轮 51）：此前描述面只有 `texts[].role`（恒为 `"view"`），出口种类
+/// 完全不可见——纯场景 node 与 UI node 无法区分，`view-3d` 出口删掉也无人发现。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgeViewExit {
+    /// UI `view { … }`。
+    View,
+    /// 2D 场景出口 `view-2d { … }`。
+    View2d,
+    /// 3D 场景出口 `view-3d { … }`。
+    View3d,
 }
 
 /// 一条场景行（组件实例）。
@@ -145,7 +161,7 @@ pub struct AgeSceneRow {
     pub cpu: Vec<(String, AgeSceneValue)>,
 }
 
-/// 场景行元素的**解析结果**（PLAN-981 轮 47）。
+/// 一条场景行元素的**解析结果**（PLAN-981 轮 47）。
 #[derive(Clone, Debug, PartialEq)]
 pub enum AgeSceneElement {
     /// 冻结 2D 叶（`shape2d`）。
@@ -744,6 +760,11 @@ fn read_back_components(
                 .get(&(p.module.clone(), p.node.name.name.clone()))
                 .cloned()
                 .unwrap_or_default(),
+            exit: match p.node.view.exit.as_str() {
+                "view-2d" => AgeViewExit::View2d,
+                "view-3d" => AgeViewExit::View3d,
+                _ => AgeViewExit::View,
+            },
             texts,
             module: p.module.clone(),
         });
@@ -1194,9 +1215,25 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
     AgeConstruct {
         key: "view",
         spelling: "view { … }",
-        fact: "the view role + its member rows",
-        consumer: "age_package::AgePackageComponent.texts",
+        fact: "the UI `view` exit + its text leaves",
+        consumer: "age_package::AgePackageComponent.{exit,texts}",
         requirement: "AGE-L02",
+    },
+    // PLAN-981（轮 51，V-11 缺口）：2D/3D 出口此前没有清单行——语法明确支持
+    // （`view-2d`/`view-3d`），但删掉 3D 出口不会被完整性检查抓到。
+    AgeConstruct {
+        key: "view-2d",
+        spelling: "view-2d { <element> … }",
+        fact: "the 2D scene exit appears in the description's exit fact",
+        consumer: "age_package::AgePackageComponent.exit / scene",
+        requirement: "AGE-L03",
+    },
+    AgeConstruct {
+        key: "view-3d",
+        spelling: "view-3d { <element> … }",
+        fact: "the 3D scene exit appears in the description's exit fact",
+        consumer: "age_package::AgePackageComponent.exit / scene",
+        requirement: "AGE-L03",
     },
     AgeConstruct {
         key: "view.text",
@@ -1231,6 +1268,25 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "age_package::AgePackageComponent.resource_refs",
         requirement: "AGE-L03",
     },
+];
+
+/// IF-981-FIELDS 合同（AGE-L01..05、AG-A01..09 与 980 IF-980-FIELDS 取并集）里
+/// **不由本表覆盖**的 requirement，以及其真实 owner。
+///
+/// 本表只覆盖 `age-package` 裁剪**可表达**的 AGE node 构造。把不可表达的构造
+/// 硬塞成 forever-red 的行，只会逼人删行；把它悄悄删掉，又违反 V-11"分母不许
+/// 自己变小"。所以这里显式登记范围外项，并由
+/// `p981_fields_requirement_split_is_exhaustive` 机械核对：合同点名的每个
+/// requirement 必须出现在本表或本清单里，二者只能居其一。
+pub const AGE_CONSTRUCTS_OUT_OF_SCOPE: &[(&str, &str)] = &[
+    (
+        "AGE-L04",
+        "条件与选择（if/#if、widget→portrait→默认的用途选择）：981/LANGUAGE + 966 CT 语义",
+    ),
+    (
+        "AG-A01..AG-A09",
+        "UI 组件/authoring 矩阵：980 IF-980-FIELDS（与 981/LANGUAGE 并集）",
+    ),
 ];
 
 /// 构造清单覆盖检查：清单里每一行的 `fact` 必须在**实际产物**里出现。
@@ -1284,8 +1340,18 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
         if c.handler_msgs.iter().any(|m| m.contains('.')) && !out.contains(&"on.lifecycle") {
             out.push("on.lifecycle");
         }
-        if !c.texts.is_empty() && !out.contains(&"view") {
-            out.push("view");
+        // view 出口事实：作者写的是 UI / 2D / 3D 哪个出口（轮 51）。
+        //
+        // 此前 `view` 只在**有文本叶**时产生，于是纯 `view-2d`/`view-3d` 的 node
+        // 永远不满足 `view` 行（与 fact 文本不符），而 2D/3D 出口本身没有清单行，
+        // 删掉 3D 出口不会被完整性检查抓到。
+        let exit_fact = match c.exit {
+            AgeViewExit::View => "view",
+            AgeViewExit::View2d => "view-2d",
+            AgeViewExit::View3d => "view-3d",
+        };
+        if !out.contains(&exit_fact) {
+            out.push(exit_fact);
         }
         for t in &c.texts {
             if !t.fn_name.is_empty() && !t.def_id.is_empty() && !out.contains(&"view.text") {
