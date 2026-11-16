@@ -109,9 +109,13 @@ if/else、component、outlet/memo、memo/exact、link）、view-fn、style-recip
 - `ViewEvent.inline` 在 parse 输出上恒 `None`（内联 lambda parse 期铸造为
   `__evt` handler；分母行 Optional 并注记铸造去向）；插值文本在 002 形态归一为
   元素 `text` prop（`view.node.text.interp` 行同理）。
-- 本切片不含窗口行为（NATIVE）、各目标工程（WEB/RUST/TAURI/JET/ARK）与全模式
-  联合覆盖（PARITY）。组件状态/事件执行已由 STATE 批交付（§6），但
-  DynamicComponent 产品默认链未切换（旧 bytecode 链并行，退役归 PLAN-987）。
+- 本切片不含窗口行为（NATIVE）与全模式联合覆盖（PARITY）。组件状态/事件执行
+  已由 STATE 批交付（§6），但 DynamicComponent 产品默认链未切换（旧 bytecode
+  链并行，退役归 PLAN-987）。
+- **r11（2026-11-16 用户裁定）：JET/ARK 后端归 M3（v0.7），v0.6 不含**——
+  980 的 B-JET/B-ARK 批与 V-B-JET/V-B-ARK/AC-B-JET/AC-B-ARK 随批迁移（原义务
+  留计划 §9 历史）；PARITY 的 v0.6 联合覆盖=现役模式（NATIVE/WEB/RUST/TAURI）。
+  WEB（Vue+TS）保留 v0.6（前置 L976）。
 - f-string 文本叶（`${int}` → HIR `TextDisplay`）不可在 av.owned/1 车道执行：
   完整文本观察对 f-string 源具名拒绝；状态通道走 states-only（§6）。KNOWN-DEBT
   登记，关闭=profile/接线工作。

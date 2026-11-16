@@ -7,7 +7,7 @@ created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 11
 current_step: 12
-total_steps: 35
+total_steps: 29
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-autoui.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-980] 现有AutoUI全模式ACE兼容接入
 
 ## 0. 变更摘要
+
+2026-11-16 r11（当前，用户范围裁定）：**JET/ARK 两后端归 M3（v0.7），从 v0.6 移除**——B-JET-I/V/R 与 B-ARK-I/V/R 六任务行撤出执行清单（原条目及 AC/V 留 §9 历史），total 35→29、进度口径 12/29；AC-B-JET/AC-B-ARK/V-B-JET/V-B-ARK 随批归 M3；PARITY 的 v0.6 联合覆盖改为现役模式（NATIVE/WEB/RUST/TAURI），JET/ARK 的模式覆盖由 M3 联合验收补。**WEB（Vue+TS）保留 v0.6**（前置仍为 L976）。本裁定同步 M2 路线与 m2-autoui 规范；此前 §9 round 17 的 JET 环境阻塞记录由本裁定取代（归 M3 后 v0.6 不再含该腿）。本包已交付各批（DIALECT/STATE/HELLO/RUST-AXR0）不受影响。
 
 2026-11-16 r11（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包WEB/TAURI/ARK等生产TS/JS能力仍required，真实消费976新受检provider；不保旧TypeScriptTrans fallback，不以Hello或少量Demo代完整现用UI合法表面。DIALECT已交证据与3/35保持，Godot不成为本包或979/981交接前置。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
@@ -115,7 +117,8 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 | 阶段 | 当前任务归属（保原ID/义务） |
 |---|---|
-| M2-A | T-01, B-DIALECT-I, B-DIALECT-V, B-DIALECT-R, B-STATE-I, B-STATE-V, B-STATE-R, B-NATIVE-I, B-NATIVE-V, B-NATIVE-R, B-WEB-I, B-WEB-V, B-WEB-R, B-RUST-I, B-RUST-V, B-RUST-R, B-TAURI-I, B-TAURI-V, B-TAURI-R, B-JET-I, B-JET-V, B-JET-R, B-ARK-I, B-ARK-V, B-ARK-R, B-PARITY-I, B-PARITY-V, B-PARITY-R, T-05, T-06, T-07, T-HELLO-I, T-HELLO-V, T-HELLO-R, T-HELLO-D |
+| M2-A（r11：v0.6 范围，29 任务） | T-01, B-DIALECT-I, B-DIALECT-V, B-DIALECT-R, B-STATE-I, B-STATE-V, B-STATE-R, B-NATIVE-I, B-NATIVE-V, B-NATIVE-R, B-WEB-I, B-WEB-V, B-WEB-R, B-RUST-I, B-RUST-V, B-RUST-R, B-TAURI-I, B-TAURI-V, B-TAURI-R, B-PARITY-I, B-PARITY-V, B-PARITY-R, T-05, T-06, T-07, T-HELLO-I, T-HELLO-V, T-HELLO-R, T-HELLO-D |
+| M3/v0.7（r11 移入） | B-JET-I, B-JET-V, B-JET-R, B-ARK-I, B-ARK-V, B-ARK-R（原 M2-A 行项，随 2026-11-16 用户裁定迁移；AC/V 原文见 §7/§6 与 §9 历史） |
 
 本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。frontmatter仍是整Plan最终依赖并集，局部A按本节/各批最小接口前置启动，不把985全Plan或B消费者整包置为A前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
 
@@ -137,9 +140,9 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 | 980/WEB | Vue与TS/JS表达式后端 | 980/DIALECT; L976/L972/L978 | auto-ui |
 | 980/RUST | Rust UI静态工程 | 980/DIALECT; L978 | auto-ui |
 | 980/TAURI | Tauri桌面工程 | 980/WEB; L978 | auto-ui |
-| 980/JET | Jet目标工程 | 980/DIALECT; L978 | auto-ui |
-| 980/ARK | Ark目标工程 | 980/DIALECT; L976/L978 | auto-ui |
-| 980/PARITY | 主题控件Demo及模式联合覆盖 | 980/NATIVE; 980/WEB; 980/RUST; 980/TAURI; 980/JET; 980/ARK | auto-ui |
+| 980/JET | **归 M3（v0.7）**——v0.6 移除（r11 用户裁定 2026-11-16） | —（原 980/DIALECT; L978，M3 再启） | auto-ui→M3 |
+| 980/ARK | **归 M3（v0.7）**——v0.6 移除（r11 用户裁定 2026-11-16） | —（原 980/DIALECT; L976/L978，M3 再启） | auto-ui→M3 |
+| 980/PARITY | 主题控件Demo及模式联合覆盖（r11：v0.6 覆盖=NATIVE/WEB/RUST/TAURI 现役模式；JET/ARK 归 M3 由其联合验收补） | 980/NATIVE; 980/WEB; 980/RUST; 980/TAURI | auto-ui |
 
 ### r10：向979交付完整字段事实，消费基础接口而非最终归档
 
@@ -385,8 +388,8 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 | V-B-WEB | AC-B-WEB | ui: cargo tu（保原单进程）；cargo test -p auto-ui-runtime --test vue_capabilities；实际生成工程按自身package.json锁定脚本构建并操作 | 真实浏览器挂载/事件/绑定与源expected一致；setup只一次、watch卸载停止；生产表达式不走旧TypeScriptTrans。 |
 | V-B-RUST | AC-B-RUST | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；RUST原工程runner与工具版本由I冻结并真实执行，不能emit-only | 未改生成物冷编译运行，props/msg/route与原独立oracle相符；坏源保旧工程。 |
 | V-B-TAURI | AC-B-TAURI | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；TAURI原工程runner与工具版本由I冻结并真实执行，不能emit-only | 真实Tauri窗的invoke和事件、失败诊断及重开，不能仅浏览器前端通过。 |
-| V-B-JET | AC-B-JET | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；JET原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。 |
-| V-B-ARK | AC-B-ARK | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；ARK原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。 |
+| V-B-JET | AC-B-JET | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；JET原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。（r11：归 M3/v0.7，v0.6 不执行） |
+| V-B-ARK | AC-B-ARK | ui: cargo tu（原单进程）；lang: cargo t ace-a2x generated-delivery-controls；ARK原工程runner与工具版本由I冻结并真实执行，不能emit-only | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。（r11：归 M3/v0.7，v0.6 不执行） |
 | V-B-PARITY | AC-B-PARITY | ui: cargo test -p auto-ui-runtime --test theme_scope_isolation --test gallery_golden -- --test-threads=1；实机与浏览器逐原支持模式验证，窗口单实例 | 主题scope与原画面/交互/生命周期对照，UI058等AGE新能力不是本包替代；每格source/backend/runtime/行为收据齐。 |
 | V-UI-SOURCE | AC-07 | B-DIALECT-I建完整分母普通源码正反例，B-PARITY-I接字段/构造覆盖检查；V按现有ui_domain_validation/领域target运行新命名case | 合法传统UI字段有投影/模式/owner，坏字段或错事件参数报原span；删除一条必需字段/模式行检查红、合法近邻仍绿；修复后同入口成功，不能静默丢字段 |
 | V-UI-FULL | AC-07/AC-NODE-COMPAT | B-NATIVE-I/B-RUST-I建纯UI多文件工程（旧widget原源走同一Schema兼容别名，另建声明头迁移Node对照），V跑AV及新A2R→编译→实际UI运行；B-PARITY-V汇总原组件/模式必需格 | 无2D/3D声明仍完整工作，双App各两组件、局部2:1事件、Store/路由/异步卸载/主题/输入各对独立oracle；AV改源无Cargo/rustc，A2R实际执行生成逻辑，无VM fallback。001或少量控件绿不代未覆盖格 |
@@ -444,8 +447,8 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 | AC-B-WEB | work | 真实浏览器挂载/事件/绑定与源expected一致；setup只一次、watch卸载停止；生产表达式不走旧TypeScriptTrans。 | B-WEB-V/R |
 | AC-B-RUST | work | 未改生成物冷编译运行，props/msg/route与原独立oracle相符；坏源保旧工程。 | B-RUST-V/R |
 | AC-B-TAURI | work | 真实Tauri窗的invoke和事件、失败诊断及重开，不能仅浏览器前端通过。 | B-TAURI-V/R |
-| AC-B-JET | work | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。 | B-JET-V/R |
-| AC-B-ARK | work | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。 | B-ARK-V/R |
+| AC-B-JET | work | 原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行。 | B-JET-V/R（r11：随批归 M3/v0.7） |
+| AC-B-ARK | work | 原支持工程在真实Ark工具链执行，原widget/事件/状态正确，缺平台未执行。 | B-ARK-V/R（r11：随批归 M3/v0.7） |
 | AC-B-PARITY | work | 主题scope与原画面/交互/生命周期对照，UI058等AGE新能力不是本包替代；每格source/backend/runtime/行为收据齐。 | B-PARITY-V/R |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、各批V/I与原最终work验证；原独立review复核 |
 | AC-HELLO | work | AGE Schema驱动的Node单text字面量/Auto函数源在AV→真实Rust FFI→Iced窗口成立，原span/文本寿命/失败恢复/冷消费可核 | T-HELLO-I/V；V-HELLO-* |
@@ -516,17 +519,7 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 - [ ] **B-TAURI-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-JET-I｜M2-A｜owner_stage: work｜AC-B-JET/AC-02/03/06**：保持现有Jet生成模式，以受检UI领域IR供目标adapter；不新增原未承诺能力；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
-
-- [ ] **B-JET-V｜M2-A｜owner_stage: work｜AC-B-JET**：运行V-B-JET完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
-
-- [ ] **B-JET-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
-
-- [ ] **B-ARK-I｜M2-A｜owner_stage: work｜AC-B-ARK/AC-02/03/06**：接Ark领域投影和表达式adapter，保现有Ark工程/资源/模块输出；旧AST emitter无回退。 按§5真实改面补永久fixture并固定§6命令。
-
-- [ ] **B-ARK-V｜M2-A｜owner_stage: work｜AC-B-ARK**：运行V-B-ARK完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
-
-- [ ] **B-ARK-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+<!-- r11（2026-11-16 用户裁定）：B-JET-I/V/R 与 B-ARK-I/V/R 六任务行撤出 v0.6 执行清单，归 M3（v0.7）。原文与 AC/V 留档：B-JET-I=保持现有Jet生成模式，以受检UI领域IR供目标adapter；不新增原未承诺能力；旧AST emitter无回退（AC-B-JET/V-B-JET：原支持工程在实际Jet工具链构建运行，事件/状态独立oracle，缺平台未执行）。B-ARK 同型（AC-B-ARK/V-B-ARK）。M3 再启时按原义务实施。 -->
 
 - [ ] **B-PARITY-I｜M2-A｜owner_stage: work｜AC-B-PARITY/AC-02/03/06/07/AC-NODE-COMPAT**：从001按文字布局→表单列表滚动→菜单Blueprint→媒体编辑分组；核完整语法/字段/组件/变体/模式双向表，补未被Demo覆盖的语法/错态及删除必需行负控，建V-UI-SOURCE/FULL并汇总纯传统UI AV/A2R实际结果。按§5接fixture/固定命令，不等981完整Node终验。
 
@@ -770,6 +763,10 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 16 | from: merge |
 2026-11-16 stage: work（B-JET 批启动评估，round 17）| plan_id: PLAN-980 | plan_revision: r10 | outcome: blocked（环境前置缺失，具名）| 现场证据：driver V06c（run7，master 内容）`jet=env-gated`——`gradlew assembleDebug exited 9009`（Jet/Android 工具链不在场）；生成面 `jet generate_ok=True files_written=24` 在库正常。本机可执行面已绿（cargo tu 889/2 预存红、cargo t ace-a2x generated-delivery-controls 双 PASS——本会话 RUST 轮实测）。**不做无验证的 IR 重布线**：B-JET-I「受检 UI 领域 IR 供目标 adapter」与 V-B-JET 真实构建腿需要 Jet 工具链就地验证；任务保持未勾选（12/35 不变）。unblock=在 Jet 专用环境（gradlew/AGP 在场）执行 B-JET-I/V/R（KNOWN-DEBT 已立，owner=Jet 专用环境/后续轮）。WEB/ARK 仍卡 976、NATIVE 卡 STATE✓+973、TAURI/PARITY 如 §5——本 goal 链（用户裁定顺序 STATE→HELLO→RUST→JET）至此：前三个批完整交付落主，JET 具名环境阻塞。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 17 | from: work | to: user | status: executing（12/35）| outcome: blocked（JET 平台环境缺失，具名 unblock）| worktree: D:/autostack/.wt/lang-980（保留续）| commit: ui e2aadd45 lang f46fb4408 | next: user（JET 需 Jet 专用环境或裁定后续）
+
+2026-11-16 stage: new/revision | PLAN-980 r11 | 用户范围裁定（直接授权）：**JET/ARK 后端归 M3（v0.7），从 v0.6 移除；WEB（Vue+TS）保留 v0.6**。执行：§8 六任务行撤出（原文留档 HTML 注记）、total 35→29（当前 12/29）、§5 批表/阶段表与 PARITY 依赖改写、§6/§7 对应 V/AC 行注记归 M3；round 17 的 JET 环境阻塞记录由本裁定取代（v0.6 不再含该腿；M3 再启时原环境缺口仍在案）。WEB 保留意味着 L976（TypeScript provider，drafting）为 v0.6 WEB 批关键路径。DIALECT/STATE/HELLO/RUST-AXR0 已交付面不受影响；唯一树 lang-980 保留续 NATIVE/WEB/TAURI/PARITY。同步：M2 路线图 dated 注记 + m2-autoui 规范边界刷新 + KNOWN-DEBT JET 条目改写。本修订只改范围归属，不改已交付验收/其余义务。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r11 | round: 18 | from: new | to: work | status: executing（12/29，JET/ARK 归 M3）| outcome: pass（范围修订落档）| worktree: D:/autostack/.wt/lang-980 | commit: pending | next: work（NATIVE/WEB/TAURI/PARITY 按前置续行）
 
 
 
