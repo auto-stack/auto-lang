@@ -41,13 +41,21 @@ fn five_ticks() -> ComponentScenario {
 
 /// 源 → 受检 → A2R → rustc → 运行；返回 (stdout, 产物目录)。
 fn run_public_chain(name: &str, src: &str) -> (String, std::path::PathBuf) {
+    run_public_chain_with(name, src, &five_ticks())
+}
+
+fn run_public_chain_with(
+    name: &str,
+    src: &str,
+    scenario: &ComponentScenario,
+) -> (String, std::path::PathBuf) {
     let caps = [PACKAGES_CAPABILITY.to_string()];
     let compiled = compile_age_package_with_scenario(
         &[input("main", src)],
         "app::main",
         LegacyWidgetAlias::Reject,
         &caps,
-        &five_ticks(),
+        scenario,
     )
     .unwrap_or_else(|ds| {
         panic!(
@@ -106,6 +114,28 @@ fn run_public_chain(name: &str, src: &str) -> (String, std::path::PathBuf) {
     (out, dir)
 }
 
+/// B-RUST-V：**980/A 交付的 Counter 源**（fixture，来源见 `plan981_ma_sources.rs`）
+/// 经同一公共链跑真实 rustc：2×Inc + 1×Dec ⇒ 独立算术 oracle = 1。
+#[test]
+fn p981_rust_ma_counter_source_runs_through_the_public_chain() {
+    const MA_COUNTER: &str = include_str!("../../../core/tests/fixtures_ma/ace_node_counter.at");
+    let src = format!(
+        "{MA_COUNTER}\nfn main() int {{\n    return __age_state_0_count()\n}}\n"
+    );
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![
+            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
+            ScenarioOp::Send { instance: 0, msg: "Inc".into() },
+            ScenarioOp::Send { instance: 0, msg: "Dec".into() },
+        ],
+    };
+    let (out, _dir) = run_public_chain_with("MA_COUNTER", &src, &scenario);
+    assert!(
+        out.trim().ends_with('1'),
+        "2 Inc then 1 Dec must print 1 through the A2R binary, got {out:?}"
+    );
+}
 /// 公共链正例：同源 AGE 包经 A2R 真实编译运行，输出对**独立算术 oracle**（5）。
 #[test]
 fn p981_rust_public_chain_runs_the_same_source() {
