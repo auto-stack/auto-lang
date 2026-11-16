@@ -30,6 +30,8 @@ fn manifest_face_only_sanctioned_dependencies() {
         "ace-a2x-python", // PLAN-1042: Python target provider (a2x-core + core HIR)
         "ace-a2x-rust",
         "ace-a2x-store",
+        "ace-a2x-ts", // PLAN-976: the shared TypeScript/JavaScript target
+        // provider (a2x-core + core HIR + foreign-contract model)
         "ace-core",
         "ace-artifacts",
         // PLAN-934 T-08: the ordinary scalar source cold path is compiled by
@@ -58,6 +60,7 @@ fn manifest_face_only_sanctioned_dependencies() {
         "crates/a2x-python",
         "crates/a2x-rust",
         "crates/a2x-store",
+        "crates/a2x-ts",
         "crates/a2x-worker",
     ];
     for m in members {
@@ -114,6 +117,7 @@ fn source_face_no_forbidden_references() {
         "crates/a2x-python/src",
         "crates/a2x-rust/src",
         "crates/a2x-store/src",
+        "crates/a2x-ts/src",
         "crates/a2x-worker/src",
         "crates/a2x-worker/tests",
     ];
@@ -189,6 +193,21 @@ fn two_target_identities_and_neutral_store_seam() {
     assert_eq!(py.fragment_layer_id(Family::Scalar).unwrap(), "AXPY1");
     assert_eq!(py.fragment_layer_id(Family::RecordText).unwrap(), "AXPY2");
     assert_eq!(py.fragment_layer_id(Family::Collections).unwrap(), "AXPY3");
+    // PLAN-976: the script targets are REAL backends with their own
+    // identities and fragment namespaces (AXTS1..3 / AXJS1..3), never
+    // colliding with the Rust/C/Python layers.
+    let ts = ace_a2x_ts::TypeScriptTargetProvider;
+    let tsd = ts.descriptor();
+    assert_eq!(tsd.lang, "typescript");
+    assert_eq!(tsd.backend, "auto-a2x-typescript");
+    assert_eq!(ts.fragment_layer_id(Family::Scalar).unwrap(), "AXTS1");
+    assert_eq!(ts.fragment_layer_id(Family::RecordText).unwrap(), "AXTS2");
+    assert_eq!(ts.fragment_layer_id(Family::Collections).unwrap(), "AXTS3");
+    let js = ace_a2x_ts::JavaScriptTargetProvider;
+    assert_eq!(js.descriptor().backend, "auto-a2x-javascript");
+    assert_eq!(js.fragment_layer_id(Family::Scalar).unwrap(), "AXJS1");
+    assert_eq!(js.fragment_layer_id(Family::RecordText).unwrap(), "AXJS2");
+    assert_eq!(js.fragment_layer_id(Family::Collections).unwrap(), "AXJS3");
     // the shared session layer is target-neutral: a2x-store carries no
     // target-crate dependency
     let store_manifest =
@@ -204,5 +223,9 @@ fn two_target_identities_and_neutral_store_seam() {
     assert!(
         !store_manifest.contains("ace-a2x-python ="),
         "a2x-store must not depend on the Python target crate (PLAN-1042 seam)"
+    );
+    assert!(
+        !store_manifest.contains("ace-a2x-ts ="),
+        "a2x-store must not depend on the script target crate (PLAN-976 seam)"
     );
 }

@@ -6,6 +6,7 @@ members = [
   "crates/a2x-python",
   "crates/a2x-rust",
   "crates/a2x-store",
+  "crates/a2x-ts",
   "crates/a2x-worker",
   "crates/abi",
   "crates/artifacts",

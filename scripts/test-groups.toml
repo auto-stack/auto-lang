@@ -1488,7 +1488,7 @@ name = "ace-a2x"
 title = "ACE A2X共享表示与Rust输出"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-ts", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
 # PLAN-1060 T-13: ace-a2x-worker's certification tests spawn the real release
 # worker (experimental/ace/target/release/a2x-worker.exe) and failed with

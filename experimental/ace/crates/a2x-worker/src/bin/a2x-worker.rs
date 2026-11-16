@@ -115,6 +115,15 @@ const PY_RECIPE: &str = "ac-a2py/hir-scalar-emit-v1";
 const PY_RT_RECIPE: &str = "ac-a2py/hir-record-text-emit-v1";
 const PY_COLL_RECIPE: &str = "ac-a2py/hir-collections-emit-v1";
 const PY_STDLIB_RUN_RECIPE: &str = "ac-a2py/hir-stdlib-run-v1";
+/// PLAN-976: the TypeScript/JavaScript channels (one shared provider crate;
+/// each manifest carries its concrete `backend`). Dispatched by the
+/// `daily-emit-ts`/`run-ts` ops with `target_lang` selecting the leg.
+const TS_RECIPE: &str = ace_a2x_ts::TS_RECIPE;
+const TS_RT_RECIPE: &str = ace_a2x_ts::TS_RT_RECIPE;
+const TS_COLL_RECIPE: &str = ace_a2x_ts::TS_COLL_RECIPE;
+const JS_RECIPE: &str = ace_a2x_ts::JS_RECIPE;
+const JS_RT_RECIPE: &str = ace_a2x_ts::JS_RT_RECIPE;
+const JS_COLL_RECIPE: &str = ace_a2x_ts::JS_COLL_RECIPE;
 
 fn main() {
     let mut req = String::new();
@@ -137,6 +146,8 @@ fn main() {
         "certify-c" => certify_c(&v),
         "daily-emit-py" => daily_emit_py(&v),
         "run-py" => run_py(&v),
+        "daily-emit-ts" => daily_emit_ts(&v),
+        "run-ts" => run_ts(&v),
         other => fail(&format!("unknown op `{}`", other)),
     };
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -210,15 +221,20 @@ fn identity(v: &serde_json::Value) -> serde_json::Value {
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
         "recipe": RECIPE,
-        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE, PY_RECIPE, PY_RT_RECIPE, PY_COLL_RECIPE, PY_STDLIB_RUN_RECIPE],
+        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE, PY_RECIPE, PY_RT_RECIPE, PY_COLL_RECIPE, PY_STDLIB_RUN_RECIPE, TS_RECIPE, TS_RT_RECIPE, TS_COLL_RECIPE, JS_RECIPE, JS_RT_RECIPE, JS_COLL_RECIPE],
         "backend": t.backend,
         "backend_version": t.backend_version,
         "edition": t.edition,
-        "targets": ["rust", "c", "python"],
+        "targets": ["rust", "c", "python", "typescript", "javascript"],
         "c_backend": "auto-a2x-c",
         "c_standard": ace_a2x_c::C_STANDARD,
         "python_backend": "auto-a2x-python",
         "python_producer": ace_a2x_python::PY_PRODUCER,
+        "ts_backend": ace_a2x_ts::TS_BACKEND,
+        "ts_standard": ace_a2x_ts::TS_STANDARD,
+        "ts_producer": ace_a2x_ts::TS_PRODUCER,
+        "js_backend": ace_a2x_ts::JS_BACKEND,
+        "js_standard": ace_a2x_ts::JS_STANDARD,
     });
     // Explicit certification preparation only. Ordinary identity/daily calls
     // keep their original spawn-zero behavior. The composer never calls this.
@@ -250,7 +266,23 @@ fn identity(v: &serde_json::Value) -> serde_json::Value {
                     "os": py.identity.target_triple,
                 })
             }
-            _ => fail("certification_target must be rust, c, or python"),
+            // PLAN-976: the script engine identity (node) for the TS/JS legs.
+            Some("typescript") | Some("javascript") => {
+                let rt_sha = ace_a2x_ts::runtime_body_sha256();
+                let node = ace_a2x_worker::tsrun::resolve_node(&rt_sha)
+                    .unwrap_or_else(|e| fail(&format!("node identity: {e}")));
+                serde_json::json!({
+                    "kind": "node",
+                    "engine": node.identity.engine,
+                    "exe": node.program.to_string_lossy(),
+                    "version": node.identity.version,
+                    "version_sha256": node.identity.executable_sha256,
+                    "runtime_version": node.identity.runtime_version,
+                    "runtime_sha256": node.identity.runtime_sha256,
+                    "os": node.identity.target_triple,
+                })
+            }
+            _ => fail("certification_target must be rust, c, python, typescript, or javascript"),
         };
     }
     identity
@@ -1195,6 +1227,278 @@ fn run_py(v: &serde_json::Value) -> serde_json::Value {
         "version": py.identity.version,
         "version_sha256": py.identity.executable_sha256,
         "os": py.identity.target_triple,
+    });
+    r["stdout"] = String::from_utf8_lossy(&exec.stdout).to_string().into();
+    r["stderr"] = String::from_utf8_lossy(&exec.stderr).to_string().into();
+    r["stdout_hex"] = bytes_hex(&exec.stdout).into();
+    r["stderr_hex"] = bytes_hex(&exec.stderr).into();
+    r["exit_code"] = exec
+        .exit_code
+        .map(serde_json::Value::from)
+        .unwrap_or(serde_json::Value::Null);
+    r
+}
+
+fn check_ts_admission(v: &serde_json::Value) {
+    if v["use_legacy_ts_trans"].as_bool() == Some(true) {
+        fail("admission.legacy_ts_trans: legacy TypeScriptTrans/JavaScriptTrans AST emitters are forbidden on ace-a2x-ts");
+    }
+    if v["use_vm"].as_bool() == Some(true) {
+        fail("admission.avm_fallback: AutoVM fallback is forbidden on ace-a2x-ts");
+    }
+    if v.get("expected").is_some() {
+        fail("admission.self_oracle: expected value must be verified parent-side, never supplied to worker");
+    }
+}
+
+/// PLAN-976: emit a TypeScript/JavaScript fileset through the shared
+/// `ace-a2x-ts` provider (the SAME `TargetProvider` path the session uses;
+/// `target_lang` selects the leg).
+fn emit_ts(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
+    use ace_a2x_core::target::{Family, FilesetRequest, FragmentText, TargetProvider};
+    check_ts_admission(v);
+    let (src, source_sha256) = read_source(v);
+    let profile = v["profile"].as_str().unwrap_or("core").to_string();
+    let entry = v["entry"].as_str().unwrap_or("main").to_string();
+    let lang = match v["target_lang"].as_str().unwrap_or("typescript") {
+        "typescript" => ace_a2x_ts::ScriptLang::TypeScript,
+        "javascript" => ace_a2x_ts::ScriptLang::JavaScript,
+        other => fail(&format!(
+            "a2ts.target_lang: must be `typescript` or `javascript`, not `{other}`"
+        )),
+    };
+    let caps: Vec<String> = v["caps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let compiled = match profile.as_str() {
+        "core" => compile_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_product_934(&src, &caps),
+        "record" => compile_record_source(&src, "a2x-worker", &caps),
+        "text" => compile_text_source(&src, "a2x-worker", &caps),
+        "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
+        "collections" => compile_collections_source(&src, "a2x-worker", &caps),
+        other => fail(&format!(
+            "a2ts.domain: the script channel serves core/scalar/record/text/text-record/collections, not `{}`",
+            other
+        )),
+    };
+    let compiled = match compiled {
+        Ok(c) => c,
+        Err(ds) => {
+            let detail = ds
+                .iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ");
+            fail_source_diagnostics(
+                &format!("a2x.compile: {detail}"),
+                v["source_path"].as_str().unwrap_or(""),
+                &src,
+                &source_sha256,
+                &profile,
+                &ds,
+            );
+        }
+    };
+    let view = match SemanticView::from_checked(&compiled.checked) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let ts_provider = ace_a2x_ts::TypeScriptTargetProvider;
+    let js_provider = ace_a2x_ts::JavaScriptTargetProvider;
+    let provider: &dyn TargetProvider = match lang {
+        ace_a2x_ts::ScriptLang::TypeScript => &ts_provider,
+        ace_a2x_ts::ScriptLang::JavaScript => &js_provider,
+    };
+    let family = match profile.as_str() {
+        "record" | "text" | "text-record" => Family::RecordText,
+        "collections" => Family::Collections,
+        _ => Family::Scalar,
+    };
+    let expected_schema = match family {
+        Family::Scalar => ace_a2x_ts::TS_SCALAR_FILESET_SCHEMA,
+        Family::RecordText => ace_a2x_ts::TS_RT_FILESET_SCHEMA,
+        Family::Collections => ace_a2x_ts::TS_COLL_FILESET_SCHEMA,
+    };
+    let default_recipe = match (lang, family) {
+        (ace_a2x_ts::ScriptLang::TypeScript, Family::Scalar) => TS_RECIPE,
+        (ace_a2x_ts::ScriptLang::TypeScript, Family::RecordText) => TS_RT_RECIPE,
+        (ace_a2x_ts::ScriptLang::TypeScript, Family::Collections) => TS_COLL_RECIPE,
+        (_, Family::Scalar) => JS_RECIPE,
+        (_, Family::RecordText) => JS_RT_RECIPE,
+        (_, Family::Collections) => JS_COLL_RECIPE,
+    };
+    let recipes: &[&str] = match lang {
+        ace_a2x_ts::ScriptLang::TypeScript => &[TS_RECIPE, TS_RT_RECIPE, TS_COLL_RECIPE],
+        ace_a2x_ts::ScriptLang::JavaScript => &[JS_RECIPE, JS_RT_RECIPE, JS_COLL_RECIPE],
+    };
+    let recipe = match v["recipe"].as_str() {
+        Some(r) if recipes.contains(&r) => r,
+        Some(other) => fail(&format!("unregistered script recipe `{other}`")),
+        None => default_recipe,
+    };
+    let runtime = match provider.runtime_source(&view, family) {
+        Ok(r) => r,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
+    let texts = match provider.produce_fragments(&view, &fns, family) {
+        Ok(t) => t,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let mut sem_fps = Vec::with_capacity(fns.len());
+    for f in &fns {
+        match ace_a2x_core::semantic_fingerprint(&view, f) {
+            Ok(fp) => sem_fps.push(fp),
+            Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+        }
+    }
+    let frags: Vec<FragmentText<'_>> = fns
+        .iter()
+        .zip(texts.iter())
+        .zip(sem_fps.iter())
+        .map(|((f, text), fp)| FragmentText {
+            def_index: f.def_index,
+            source_name: f.source_name,
+            sem_fp: fp.as_str(),
+            text: text.as_str(),
+        })
+        .collect();
+    let prelude_seed = match provider.capture_prelude_seed(&view, family) {
+        Ok(s) => s,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fileset = match provider.assemble_fileset(FilesetRequest {
+        entry: &entry,
+        input_hash: &compiled.input_hash,
+        family,
+        fragments: &frags,
+        view: Some(&view),
+        runtime: &runtime,
+        prelude_seed: prelude_seed.as_deref(),
+        origins: None,
+        source_sha256: Some(&source_sha256),
+    }) {
+        Ok(fs) => fs,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    if let Err(reason) = ace_a2x_ts::verify_script_fileset_manifest(
+        &fileset.manifest,
+        &fileset.files,
+        ace_a2x_ts::TS_PRODUCER,
+        expected_schema,
+    ) {
+        fail(&format!("a2ts.manifest: {reason}"));
+    }
+    let outcome = EmitOutcome {
+        files: fileset.files.clone(),
+        manifest: fileset.manifest.clone(),
+        input_hash: compiled.input_hash.clone(),
+        entry_fn: ace_a2x_ts::ts_fn_name(&entry),
+        profile,
+        source_sha256,
+        recipe: recipe.to_string(),
+        hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
+    };
+    (outcome, fileset)
+}
+
+/// PLAN-976: spawn-zero script fileset emit (`execution_claimed == false`).
+fn daily_emit_ts(v: &serde_json::Value) -> serde_json::Value {
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let target_lang = v["target_lang"]
+        .as_str()
+        .unwrap_or("typescript")
+        .to_string();
+    let (out, _fs) = emit_ts(v);
+    write_out_dir(out_dir, &out);
+    let mut r = ok_base(&out.recipe);
+    r["mode"] = "daily-emit-ts".into();
+    r["target_lang"] = target_lang.into();
+    r["producer"] = ace_a2x_ts::TS_PRODUCER.into();
+    r["runtime_version"] = ace_a2x_ts::A2TS_RUNTIME_VERSION.into();
+    r["runtime_sha256"] = ace_a2x_ts::runtime_body_sha256().into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_node"] = 0.into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r["spawned_python"] = 0.into();
+    r["execution_claimed"] = false.into();
+    r
+}
+
+/// PLAN-976: real OS node execution of files emitted by the shared
+/// TS/JS provider (node type-strips `.ts` natively; `.mjs` is plain ESM).
+fn run_ts(v: &serde_json::Value) -> serde_json::Value {
+    if v["emit_only"].as_bool() == Some(true) {
+        fail("admission.emit_only: emit_only cannot claim script execution");
+    }
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let target_lang = match v["target_lang"].as_str().unwrap_or("typescript") {
+        "typescript" => ace_a2x_ts::ScriptLang::TypeScript,
+        "javascript" => ace_a2x_ts::ScriptLang::JavaScript,
+        other => fail(&format!(
+            "a2ts.target_lang: must be `typescript` or `javascript`, not `{other}`"
+        )),
+    };
+    let rt_sha = ace_a2x_ts::runtime_body_sha256();
+    let node = match ace_a2x_worker::tsrun::resolve_node(&rt_sha) {
+        Ok(n) => n,
+        Err(e) => fail(&format!("node.missing: {e}")),
+    };
+    let (out, _fileset) = emit_ts(v);
+    write_out_dir(out_dir, &out);
+    let exec = match ace_a2x_worker::tsrun::run_script_fileset(
+        &node,
+        std::path::Path::new(out_dir),
+        target_lang,
+        &[],
+    ) {
+        Ok(e) => e,
+        Err(e) => fail(&format!("node.exec: {e}")),
+    };
+    let mut r = ok_base(&out.recipe);
+    r["mode"] = "run-ts".into();
+    r["target_lang"] = target_lang.lang_name().into();
+    r["producer"] = ace_a2x_ts::TS_PRODUCER.into();
+    r["runtime_version"] = ace_a2x_ts::A2TS_RUNTIME_VERSION.into();
+    r["runtime_sha256"] = rt_sha.into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_node"] = 1.into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r["spawned_python"] = 0.into();
+    r["execution_claimed"] = true.into();
+    r["node_identity"] = serde_json::json!({
+        "engine": node.identity.engine,
+        "version": node.identity.version,
+        "version_sha256": node.identity.executable_sha256,
+        "runtime_version": node.identity.runtime_version,
+        "runtime_sha256": node.identity.runtime_sha256,
+        "os": node.identity.target_triple,
     });
     r["stdout"] = String::from_utf8_lossy(&exec.stdout).to_string().into();
     r["stderr"] = String::from_utf8_lossy(&exec.stderr).to_string().into();

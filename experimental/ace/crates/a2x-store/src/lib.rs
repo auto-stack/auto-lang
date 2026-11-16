@@ -58,7 +58,13 @@ pub const LAYER_SEMANTIC: LayerSpec = LayerSpec {
     producer: "auto-a2x-core prepare",
     // PLAN-921: the C target consumes the SAME semantic facts (keys and
     // bytes unchanged; additive consumer registration only).
-    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
+    consumers: &[
+        "auto-a2x-rust",
+        "auto-a2x-c",
+        "auto-a2x-python",
+        "auto-a2x-typescript",
+        "auto-a2x-javascript",
+    ],
     key_inputs: &[
         "owner",
         "decl",
@@ -134,7 +140,13 @@ pub const LAYER_SEMANTIC_RT: LayerSpec = LayerSpec {
     name: "a2x-rt-function-semantic",
     schema_id: "a2902/axs-rt-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
+    consumers: &[
+        "auto-a2x-rust",
+        "auto-a2x-c",
+        "auto-a2x-python",
+        "auto-a2x-typescript",
+        "auto-a2x-javascript",
+    ],
     key_inputs: &[
         "owner",
         "decl",
@@ -187,7 +199,13 @@ pub const LAYER_SEMANTIC_COLL: LayerSpec = LayerSpec {
     name: "a2x-collections-function-semantic",
     schema_id: "a2904/axs-coll-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
+    consumers: &[
+        "auto-a2x-rust",
+        "auto-a2x-c",
+        "auto-a2x-python",
+        "auto-a2x-typescript",
+        "auto-a2x-javascript",
+    ],
     key_inputs: &[
         "owner",
         "decl",
@@ -383,6 +401,77 @@ pub const LAYER_FRAGMENT_PY_COLL: LayerSpec = LayerSpec {
     schema_id: "a21042/axpy-coll-fn/v1",
     producer: "auto-a2x-python",
     ..LAYER_FRAGMENT_PY
+};
+/// PLAN-976: TypeScript scalar fragment layer (`AXTS1`), isolated from the
+/// Rust/C/Python fragment namespaces.
+pub const LAYER_FRAGMENT_TS: LayerSpec = LayerSpec {
+    id: "AXTS1",
+    name: "a2x-ts-fragment",
+    schema_id: "a20976/axts-fn/v1",
+    producer: "auto-a2x-typescript",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "standard",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+        "stdlib_port_catalog",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed TypeScript scalar fragment artifact per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
+/// PLAN-976: TypeScript RecordText fragment layer (`AXTS2`).
+pub const LAYER_FRAGMENT_TS_RT: LayerSpec = LayerSpec {
+    id: "AXTS2",
+    name: "a2x-ts-rt-fragment",
+    schema_id: "a20976/axts-rt-fn/v1",
+    producer: "auto-a2x-typescript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: TypeScript Collections fragment layer (`AXTS3`).
+pub const LAYER_FRAGMENT_TS_COLL: LayerSpec = LayerSpec {
+    id: "AXTS3",
+    name: "a2x-ts-coll-fragment",
+    schema_id: "a20976/axts-coll-fn/v1",
+    producer: "auto-a2x-typescript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: JavaScript scalar fragment layer (`AXJS1`).
+pub const LAYER_FRAGMENT_JS: LayerSpec = LayerSpec {
+    id: "AXJS1",
+    name: "a2x-js-fragment",
+    schema_id: "a20976/axjs-fn/v1",
+    producer: "auto-a2x-javascript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: JavaScript RecordText fragment layer (`AXJS2`).
+pub const LAYER_FRAGMENT_JS_RT: LayerSpec = LayerSpec {
+    id: "AXJS2",
+    name: "a2x-js-rt-fragment",
+    schema_id: "a20976/axjs-rt-fn/v1",
+    producer: "auto-a2x-javascript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: JavaScript Collections fragment layer (`AXJS3`).
+pub const LAYER_FRAGMENT_JS_COLL: LayerSpec = LayerSpec {
+    id: "AXJS3",
+    name: "a2x-js-coll-fragment",
+    schema_id: "a20976/axjs-coll-fn/v1",
+    producer: "auto-a2x-javascript",
+    ..LAYER_FRAGMENT_TS
 };
 
 /// PLAN-921 T-06: the source-bound anchor layer — the per-function source
@@ -777,6 +866,12 @@ impl A2xSession {
             Ok("AXPY1") => &LAYER_FRAGMENT_PY,
             Ok("AXPY2") => &LAYER_FRAGMENT_PY_RT,
             Ok("AXPY3") => &LAYER_FRAGMENT_PY_COLL,
+            Ok("AXTS1") => &LAYER_FRAGMENT_TS,
+            Ok("AXTS2") => &LAYER_FRAGMENT_TS_RT,
+            Ok("AXTS3") => &LAYER_FRAGMENT_TS_COLL,
+            Ok("AXJS1") => &LAYER_FRAGMENT_JS,
+            Ok("AXJS2") => &LAYER_FRAGMENT_JS_RT,
+            Ok("AXJS3") => &LAYER_FRAGMENT_JS_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -811,6 +906,12 @@ impl A2xSession {
             Ok("AXPY1") => &LAYER_FRAGMENT_PY,
             Ok("AXPY2") => &LAYER_FRAGMENT_PY_RT,
             Ok("AXPY3") => &LAYER_FRAGMENT_PY_COLL,
+            Ok("AXTS1") => &LAYER_FRAGMENT_TS,
+            Ok("AXTS2") => &LAYER_FRAGMENT_TS_RT,
+            Ok("AXTS3") => &LAYER_FRAGMENT_TS_COLL,
+            Ok("AXJS1") => &LAYER_FRAGMENT_JS,
+            Ok("AXJS2") => &LAYER_FRAGMENT_JS_RT,
+            Ok("AXJS3") => &LAYER_FRAGMENT_JS_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -826,12 +927,16 @@ impl A2xSession {
             Family::RecordText => {
                 self.current_backend() == "auto-a2x-c"
                     || self.current_backend() == "auto-a2x-python"
+                    || self.current_backend() == "auto-a2x-typescript"
+                    || self.current_backend() == "auto-a2x-javascript"
             }
             // PLAN-926 / PLAN-1042: C and Python collections channels anchor
             // (their seed-carrying anchors re-assemble blind); Rust keeps frozen no-anchor.
             Family::Collections => {
                 self.current_backend() == "auto-a2x-c"
                     || self.current_backend() == "auto-a2x-python"
+                    || self.current_backend() == "auto-a2x-typescript"
+                    || self.current_backend() == "auto-a2x-javascript"
             }
         }
     }
@@ -1107,8 +1212,8 @@ impl A2xSession {
                 // DESUGARED program with its task side-table (the raw
                 // source never resolves — Task.spawn/h.send are desugar
                 // spellings).
-                let (dprogram, dsched) =
-                    ace_core::source::sched_desugar::desugar_program(&program).map_err(|ds| {
+                let (dprogram, dsched) = ace_core::source::sched_desugar::desugar_program(&program)
+                    .map_err(|ds| {
                         A2xRejectOrResource::Reject(A2xReject::new(
                             "a2x.compile",
                             ds.first()
@@ -1116,12 +1221,7 @@ impl A2xSession {
                                 .unwrap_or_else(|| "scheduler desugar failed".into()),
                         ))
                     })?;
-                ace_core::source::resolve::resolve_env_with_sched(
-                    &dprogram,
-                    caps,
-                    profile,
-                    &dsched,
-                )
+                ace_core::source::resolve::resolve_env_with_sched(&dprogram, caps, profile, &dsched)
             }
             None => resolve_env(&program, caps, profile),
         }
@@ -2826,6 +2926,12 @@ fn static_layer(id: &str) -> &'static str {
         "AXPY1" => LAYER_FRAGMENT_PY.id,
         "AXPY2" => LAYER_FRAGMENT_PY_RT.id,
         "AXPY3" => LAYER_FRAGMENT_PY_COLL.id,
+        "AXTS1" => LAYER_FRAGMENT_TS.id,
+        "AXTS2" => LAYER_FRAGMENT_TS_RT.id,
+        "AXTS3" => LAYER_FRAGMENT_TS_COLL.id,
+        "AXJS1" => LAYER_FRAGMENT_JS.id,
+        "AXJS2" => LAYER_FRAGMENT_JS_RT.id,
+        "AXJS3" => LAYER_FRAGMENT_JS_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
         "AXP3" => LAYER_SOURCE_ANCHOR_COLL.id,

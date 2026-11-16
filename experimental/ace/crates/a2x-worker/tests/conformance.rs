@@ -107,6 +107,8 @@ mod store_coll_904;
 mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;
+#[path = "cases/tsready_976.rs"]
+mod tsready_976;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
 

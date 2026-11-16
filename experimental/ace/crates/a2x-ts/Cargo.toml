@@ -1,0 +1,11 @@
+[package]
+name = "ace-a2x-ts"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-976 TypeScript/JavaScript A2X target provider (Checked HIR -> TS/JS scripts)"
+publish = false
+
+[dependencies]
+ace-a2x-core = { path = "../a2x-core" }
+ace-foreign-contract = { path = "../foreign-contract" }
+ace-core = { path = "../core" }

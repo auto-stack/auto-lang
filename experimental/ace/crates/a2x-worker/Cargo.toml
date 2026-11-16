@@ -15,6 +15,7 @@ ace-abi = { path = "../abi" }
 ace-artifacts = { path = "../artifacts" }
 ace-a2x-rust = { path = "../a2x-rust" }
 ace-a2x-store = { path = "../a2x-store" }
+ace-a2x-ts = { path = "../a2x-ts" }
 ace-core = { path = "../core" }
 ace-source-query = { path = "../source-query" }
 ace-source-cte = { path = "../source-cte" }
