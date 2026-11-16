@@ -165,6 +165,8 @@ pub struct AgePackageComponent {
     pub texts: Vec<AgePackageText>,
     /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重、按声明序）。
     pub exits: Vec<AgeViewExit>,
+    /// R60-8：逐文本叶的出口归属（与 `texts` 同序）。
+    pub text_exits: Vec<Option<AgeViewExit>>,
     /// 声明所在模块键。
     pub module: String,
     /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
@@ -1028,6 +1030,13 @@ fn read_back_components(
                 .exits
                 .iter()
                 .map(|e| exit_from_kind(&e.kind))
+                .collect(),
+            text_exits: p
+                .node
+                .view
+                .text_exits
+                .iter()
+                .map(|e| e.as_deref().map(exit_from_kind))
                 .collect(),
             exit: exit_from_kind(&p.node.view.exit),
             members: p

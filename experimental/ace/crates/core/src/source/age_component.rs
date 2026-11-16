@@ -73,6 +73,9 @@ pub struct ComponentView {
     pub exit: String,
     /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重后按声明序）。
     pub exits: Vec<ComponentExit>,
+    /// R60-8：逐文本叶的**出口归属**（与 `texts` 同序；普通 view 的叶记
+    /// `view` / `view-2d` / …，命名 view 的叶记 `named-view:<name>` 或空）。
+    pub text_exits: Vec<Option<String>>,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
     /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。

@@ -128,3 +128,19 @@ fn p981_unknown_view_suffix_is_still_rejected() {
     .expect_err("view-2x is not an AGE exit");
     assert_eq!(ds[0].code, "source.age.view-suffix", "{ds:?}");
 }
+/// R60-8：每个文本叶带**出口归属**（多出口并存时不再是一张扁平表）。
+#[test]
+fn p981_texts_carry_their_exit() {
+    use ace_core::source::age_package::AgeViewExit;
+    let out = compile(
+        "node M {\n    view {\n        text \"u\" {}\n    }\n    view-portrait {\n        text \"p\" {}\n    }\n}\n",
+    )
+    .expect("distinct exits with texts coexist");
+    let c = &out.description.components[0];
+    assert_eq!(c.texts.len(), 2, "{c:?}");
+    assert_eq!(
+        c.text_exits,
+        vec![Some(AgeViewExit::View), Some(AgeViewExit::ViewPortrait)],
+        "each text leaf knows which exit it belongs to"
+    );
+}
