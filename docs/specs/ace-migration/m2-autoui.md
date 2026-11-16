@@ -268,3 +268,41 @@ View→Iced 窗口服务的**原生 run 通道**；`AUTO_UI_ENGINE=ace` 引擎�
   （selectable_text 单测族+手工/环境门控档；宿主适配器安装面已随通道接）；
   路由/页面切换的组件面运行语义未交付（001 无路由；归 981/后续批）；
   DynamicComponent 默认链未切换（沿 STATE 批既定边界）。
+
+## 10. 分母与命令冻结（T-01，2026-11-16，r11 口径）
+
+v0.6 面积（29 任务）的分母/来源/命令/oracle 单表——各批实测冻结，后续批按
+此备料开工；漂移即修本表。**r11 裁定后 JET/ARK 归 M3（v0.7）不在本表。**
+
+### 10.1 批次×状态×冻结命令
+
+| 批 | 状态 | 冻结命令（实测） | 输入源（冻结身份） |
+|---|---|---|---|
+| DIALECT | ✅ 落主 | lang `cargo t ace-source ace-syntax`；ui `cargo test -p auto-ui-dialect --lib` + `-p auto-ui-compiler --test ui_domain_validation` | 002 真源 sha16=04937c35325faa74；ast.rs=1d10f5ff2566422e |
+| STATE | ✅ 落主 | lang `cargo t ace-source ace-av ace-host`（ace-host 预存红具名排除）；ui `cargo test -p auto-ui-runtime --test plan041_instance_ownership --test plan033_b1_scope_isolation -- --test-threads=1` | 002 真源（同上）；store 形 fixture（内联冻结） |
+| HELLO | ✅ 落主 | `AUTO_UI_ACE_HELLO_E2E=1 cargo test -p auto-ui-runtime --features ace-bridge --test ace_ui_hello -- --test-threads=1`；prep=build example + `--prep-only` 预构建 F0（target/ace-hello-f0 缓存 stamp） | ace-hello-minimal/{app,app-body}.at（仓内 fixture） |
+| RUST(AXR0) | ✅ 落主 | lang `cargo t ace-a2x generated-delivery-controls`；ui `--features ace-bridge --test ace_a2r_axr0`；构建道=`ace_a2r_axr0_build.exe` 一次性（回执 target/ace-a2r-axr0/）；driver=PLAN-792 全量（43/43） | app-a2r.at + "Hello A2R"=9 字节；F0 冻结 provider |
+| NATIVE | ✅ 落主 | `--features ace-bridge --test ace_native_window`（窗口面同 env 门控）；V 行点名=desktop_behavior+image_surface_contract 原样；run 缝=`AUTO_UI_ENGINE=ace` | 001 真源（examples/ui/001-helloworld） |
+| WEB | 待做（976 已归档解锁） | 见 §6 V-B-WEB 行（cargo tu 单进程 + 真实浏览器挂载）；I 冻结 ts provider 消费命令时更新本表 | 待 I 冻结（vue 例程源） |
+| TAURI | 待 WEB | 见 §6 V-B-TAURI | 待 I 冻结 |
+| PARITY | 待 NATIVE✓/WEB/TAURI；**源面（V-UI-SOURCE）+NATIVE 腿可先行** | 见 §6 V-B-PARITY + V-UI-SOURCE | 001/002 + 覆盖表（V-UI-SOURCE） |
+
+### 10.2 模式网格（r11：v0.6=NATIVE/WEB/RUST/TAURI）
+
+| 格 | 状态 |
+|---|---|
+| NATIVE | ✅（001 真窗/状态写主题/关闭重开；交互档=既有手工/环境门控档） |
+| RUST | AXR0 ✅；多文件 emitter 替换待 IF-981-MODULE 消费（已落主 e352e462b） |
+| WEB | 976 provider 已归档（660fe72b5）——适配器切换归本包 WEB 批 |
+| TAURI | 传递依赖 WEB |
+| JET/ARK | M3（v0.7）——r11 裁定 |
+
+### 10.3 共享纪律（冻结）
+
+- 前门短窗单写权（979 grammar/schema 共享文件）逐批核取；981 executing 中，
+  消费其面时按 979 规约。
+- F0 provider 构建走 target/ace-hello-f0 新鲜度缓存（预构建后测试零 rustc）；
+  真编译一律显式构建道（978 裁定）。
+- 排窗：`AUTO_UI_ACE_HELLO_E2E=1` 单实例串行；GPU/媒体档沿仓内既有门。
+- 预存红台账（KNOWN-DEBT）：ace-abi source_foreign 25、ui_gen::rust 2、
+  ace-host 13——不判 980、不充 PASS。
