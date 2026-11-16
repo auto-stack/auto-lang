@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 3
-current_step: 5
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-mir/native-typed-entry.md, docs/specs/auto-ac/mir-native-cache.md]
@@ -152,7 +152,7 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。证据：固定组 `cargo t ace-native` PASS（298/298 executed，0 excluded/not_run，gate_passed，执行期 checkout 未漂移）；原三例 warm/A→B→A/param-only、签名变更、冷恢复全绿；实质调用者仅同 crate（`typed_entry_tier.rs`、本 tier、`mn-worker` bin 无 `#[test]` 体），无跨仓消费者；SD-01/02 文本仍按 §5 供 merge 沉淀；无 1002 硬前置（未触作者格式/IR/adapter）。
 - [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。证据：`cargo t ace-native` PASS 298/298 @ delivery `45fcd50f4`（source_state 复核一致）、两 Spec 落主（post 哈希见 §9 merge 收据）、`git mv` 归档 + `status: archived`。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。证据：见 §9 `cleaned` 行（wt-guard clean、worktree/branch/组目录/scope 删除、注册表双份刷新、D-1032-RUNTIME-PREP 具名持有）。
 
 ## 8. 执行步骤
 
@@ -163,7 +163,7 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 `D:/autost
 | T-03 / work | [x] T-02（组证据已重跑并绑定 `2cf01df05`） | 对每种失败复核旧run与同批重试、A→B→A、param-only与signature-dependent；运行typed_entry_incremental_tier及native职责组，工具缺失不计成功。 AC-02/03 ✅ `cargo t ace-native` PASS：298 executed/298 selected、0 not_run/0 excluded、gate_passed、source_state `15ad563b…`、wall 679.93s（工具准备 577.8s/12项、发现 34.85s、执行 66.80s）；工具齐备（rust-lld/SDK 可用，无 infra-blocked）。 |
 | T-04 / review | [x] T-01..03完成、冻结提交（re-review PASS @ `2cf01df05`） | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [x] T-04 pass（落主+Spec+归档已核 @ `45fcd50f4`） | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-06 / merge | [x] T-05（guard clean + 树/分支/组目录/scope 删除 + 注册表刷新，见下） | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -318,6 +318,18 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **新增用例**：本 Plan 的 3 个锚点（`audit1032_ntx_01_*`、`audit1032_ntx_02_*`×2）在 delivery 组门内被执行并通过；耗时为 work/review 实测 0.5–2.45s（≤10s 门），merge 未新增用例。
 
 **证据折叠**：`plan-artifacts/plan-1032/` 原始记录（`group-run/results.json`、`group-run-2/results.json`、`group-run-3/results.json`、`ace-native-run{,2,3}.log`、`typed_session.rs.pre-mutation`、`base_typed_session.rs`、`base_fmt.txt`、本轮收据草稿）已全部以命令/退出码/数字/哈希折入本 Plan §6/§9；随后整 scope 删除并刷新注册表（D-1032-RUNTIME-PREP 为具名持有，登记于 KNOWN-DEBT）。
+
+2026-11-16 stage:merge / checkpoint **cleaned** | PLAN-1032:r3 | outcome: **pass**（delivery+canonical+archived+cleaned 全部实测）
+
+| Checkpoint | 证据 |
+|---|---|
+| cleaned | ① 移除前 fresh `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-1032/auto-lang` = **clean（无 reparse point）**；`git worktree remove` 成功、`git branch -d plan-1032-dev`（was `45fcd50f4`）、空组目录 `D:/autostack/.wt/lang-1032` 删除；`git worktree list` 与 `git branch --list "plan-1032*"` 均已无该项（`Test-Path` 两路径 False）。② `plan-artifacts/plan-1032/` 折叠前 **111 文件 / 2,383,661 字节**（group-run{,2,3} 的 results.json/selection/command/meter、12 工具 build 日志、三轮 log、预变异源副本、base 源、四份收据草稿）中的命令/退出码/数字/哈希/映射已全部折入本 Plan §6/§9；整目录删除，`Test-Path`=False。③ 注册表刷新：`D:/autostack/plan-artifacts/.retention/policy.json` → `plans+=auto-lang/PLAN-1032 (deleted-at-merge)`、`scopes["plan-1032"]={status:deleted, archived_plan, delivery_commit:45fcd50f4, closed:2026-11-16, holds:[]}`、`last_merge_closeout=PLAN-1032`；legacy `D:/autostack/.retention/policy.json` 同项改 `deleted-at-merge`（注明让位于 plan-artifacts 注册表并指向归档件），避免悬挂 in-flight 声明。④ 具名未解决问题 **D-1032-RUNTIME-PREP** 不持有本地文件：owner=ACE native runtime 准备线/批量回归 triage，关闭条件=跨进程串行化或会话启动测试收敛单二进制，登记于 [KNOWN-DEBT-AND-RISKS](../KNOWN-DEBT-AND-RISKS.md)。⑤ 落主后目标路径 clean（主检出其他会话 docs WIP 未被触碰/未纳入本 Plan 提交），归档件与 Spec 均已入库；master 线性（三次 ff-only/无 merge commit）。 |
+
+**落主即终点、非部署（freshness 观察）**：本 Plan 交付 ACE experimental 会话正确性，不含发行/打包范围——组工具准备期间构建的 release `mn-worker`/`mn-collections-worker`/`abi-worker` 等仅存在于已删除的 worktree target 中，随树销毁；**未**执行 release 重建、安装副本替换或服务重启（按裁定不允许隐式触发）。任何消费 typed 会话的上层需自行从 `45fcd50f4` 重建 ace-native；`auto.exe` 薄包装不受影响（ACE 为独立 workspace，本 Plan 未改 `crates/auto*`）。
+
+**批量回归到期核（PLAN-898）**：`docs/plans/.last-batch-regression.json` = last_covered_plan_id 1064、2026-11-16T10:04:09Z、covered `5cedb4715`。核查：1065（%5=0）落主 `babe4b3f7` 15:32+08 **早于**该收据且是 `5cedb4715` 的祖先 → 已被覆盖；收据之后落主的归档计划为 1034（%5=4）与本 1032（%5=2），收据年龄 ≈4h <48h → **未到期（not due）**，无需 `cargo t all`，不启批量回归。
+
+2026-11-16 stage:goal | plan_id: PLAN-1032 | plan_revision: r3 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 45fcd50f4 | next: done
 
 ## 10. 待澄清事项
 
