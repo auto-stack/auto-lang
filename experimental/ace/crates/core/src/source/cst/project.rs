@@ -4373,6 +4373,7 @@ impl<'a> Engine<'a> {
         // 现在是 AGE-L03 的多出口规则（同键重复仍是具名错误）。
         let mut exits: Vec<crate::source::age_component::ComponentExit> = Vec::new();
     let mut text_exits: Vec<Option<String>> = Vec::new();
+    let mut named_trees: Vec<(String, Vec<ComponentViewItem>)> = Vec::new();
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位投影状态。
         let mut messages = Vec::new();
         let mut design = Vec::new();
@@ -4761,9 +4762,10 @@ impl<'a> Engine<'a> {
                     // verify；结构树本切片暂不投影（具名边界见 §6.7）。
                     let named_role = format!("named-view:{face_name}");
                     let mut named_texts = Vec::new();
-                    let _named_tree =
+                    let named_tree =
                         self.collect_view_items(member, &mut named_texts, &named_role);
                     texts.extend(named_texts);
+                    named_trees.push((face_name.clone(), named_tree));
                     member_rows.push(ComponentMemberRow {
                         role: "named-view",
                         name: face_name,
@@ -4825,6 +4827,7 @@ impl<'a> Engine<'a> {
                 exit: view_exit,
                 exits,
                 text_exits,
+                named_trees,
                 span: view_span,
                 texts,
                 node_refs,

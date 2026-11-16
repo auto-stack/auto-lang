@@ -1066,6 +1066,9 @@ pub(crate) fn project_packages_front(
                     }
                     let mut entry_exprs = Vec::new();
                     collect_item_exprs(&node.view.tree, &mut entry_exprs);
+                    for (_, items) in &node.view.named_trees {
+                        collect_item_exprs(items, &mut entry_exprs);
+                    }
                     for e in entry_exprs {
                         check_value(e)?;
                     }

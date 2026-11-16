@@ -112,6 +112,14 @@ pub struct AgeMemberRow {
     pub source_spans: Vec<Span>,
     pub span: Span,
 }
+/// PLAN-981（R61-4/R62-5）：一个命名 view 的**有界结构事实**——名字、文本叶数、
+/// 结构项数（深层形状留给 V 批次的描述面决定，这里不冒充完整树）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgeNamedViewFact {
+    pub name: String,
+    pub texts: usize,
+    pub items: usize,
+}
 /// 受检的一个 AGE 组件（一个 node 声明）。
 #[derive(Clone, Debug)]
 pub struct AgePackageComponent {
@@ -167,6 +175,8 @@ pub struct AgePackageComponent {
     pub exits: Vec<AgeViewExit>,
     /// R60-8：逐文本叶的出口归属（与 `texts` 同序）。
     pub text_exits: Vec<Option<AgeViewExit>>,
+    /// PLAN-981（R61-4/R62-5）：命名 view 的有界结构事实（按声明序）。
+    pub named_views: Vec<AgeNamedViewFact>,
     /// 声明所在模块键。
     pub module: String,
     /// PLAN-981（轮 51）：该 node 的 view 出口（`view` / `view-2d` / `view-3d`）。
@@ -1037,6 +1047,40 @@ fn read_back_components(
                 .text_exits
                 .iter()
                 .map(|e| e.as_deref().map(exit_from_kind))
+                .collect(),
+            named_views: p
+                .node
+                .view
+                .named_trees
+                .iter()
+                .map(|(name, items)| {
+                    use crate::source::age_component::ComponentViewItem;
+                    fn count_texts(items: &[ComponentViewItem]) -> usize {
+                        items
+                            .iter()
+                            .map(|it| match it {
+                                ComponentViewItem::Text(_) => 1,
+                                ComponentViewItem::Element(e) => count_texts(&e.items),
+                                ComponentViewItem::Entry(_) => 0,
+                            })
+                            .sum()
+                    }
+                    fn count_items(items: &[ComponentViewItem]) -> usize {
+                        items
+                            .iter()
+                            .map(|it| match it {
+                                ComponentViewItem::Text(_) => 1,
+                                ComponentViewItem::Element(e) => 1 + count_items(&e.items),
+                                ComponentViewItem::Entry(_) => 1,
+                            })
+                            .sum()
+                    }
+                    AgeNamedViewFact {
+                        name: name.clone(),
+                        texts: count_texts(items),
+                        items: count_items(items),
+                    }
+                })
                 .collect(),
             exit: exit_from_kind(&p.node.view.exit),
             members: p
