@@ -894,6 +894,188 @@ fn sq28_target_ready_is_attached_at_the_same_switch() {
     assert_eq!(rec.key.query, QueryKind::InferBody);
 }
 
+// -- PLAN-1031: commit re-verifies the negative candidate set -------------
+
+/// PLAN-1031 NEG-01 input: `main` reads the ABSENT `helper`; P2 only
+/// appends `fn helper` (main's body/signature stay byte-identical).
+const P1_1031: &str = "fn old() int { return 42 }\n\nfn main() int { return helper(1) }\n";
+const P2_1031: &str =
+    "fn old() int { return 42 }\n\nfn main() int { return helper(1) }\n\nfn helper(v int) int { return v }\n";
+
+#[test]
+fn audit1031_neg_01() {
+    let p1 = parse(P1_1031);
+    let p2 = parse(P2_1031);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut host = QueryHost::new(MemorySink::new());
+
+    // A legal current record first: `old` with a real target handle is the
+    // identity a stale candidate must never disturb.
+    let mut old_cand = host.prepare(&mut s, &p1, "old").expect("prepare old");
+    crate::host::QueryHost::<MemorySink>::attach_target(&mut old_cand, TargetHandle(77));
+    let old_rec = host
+        .commit(old_cand, &s, &p1, None)
+        .expect("install old")
+        .clone();
+    assert_eq!(old_rec.revision, 1);
+    assert_eq!(old_rec.target, Some(TargetHandle(77)));
+    assert_eq!(old_rec.facts.name, "old");
+    let old_artifact = old_rec.artifact.clone();
+
+    // Prepare `main` under P1: helper is ABSENT, so the solve records an
+    // fn-domain negative. No executable target is fabricated for a
+    // diagnostic candidate (the facts are not machine code).
+    let main_cand = host.prepare(&mut s, &p1, "main").expect("prepare main");
+    assert!(main_cand.target.is_none());
+    assert!(
+        main_cand
+            .facts
+            .negatives
+            .iter()
+            .any(|n| n.domain == "fn" && n.name == "helper"),
+        "the absent callee is a negative read of the candidate set"
+    );
+
+    // Host revision unchanged; ONLY the program's fn candidate set changed.
+    // commit must refuse the stale candidate BEFORE publishing anything.
+    let sink_before = host.sink().len();
+    let err = host
+        .commit(main_cand, &s, &p2, None)
+        .map(|_| ())
+        .expect_err("helper appeared after prepare: the stale candidate must be refused");
+    assert_eq!(err, crate::host::CommitError::NegativeFlipped);
+
+    // The old record is untouched: revision, artifact, facts and target.
+    let cur = host.current().expect("old record still installed").clone();
+    assert_eq!(cur.revision, 1);
+    assert_eq!(cur.facts.name, "old");
+    assert_eq!(cur.artifact, old_artifact);
+    assert_eq!(cur.target, Some(TargetHandle(77)));
+    assert_eq!(host.sink().len(), sink_before, "no page was published");
+
+    // The coarse page_deps_fresh granularity: adding an UNRELATED fn name
+    // flips the same whole-candidate-set fingerprint, so the negative
+    // candidate prepared under P1 is equally stale.
+    let p3 = parse("fn old() int { return 42 }\n\nfn main() int { return helper(1) }\n\nfn unrelated(v int) int { return v }\n");
+    let again = host
+        .prepare(&mut s, &p1, "main")
+        .expect("re-prepare under P1");
+    let err = host
+        .commit(again, &s, &p3, None)
+        .map(|_| ())
+        .expect_err("unrelated name added: the candidate set still changed");
+    assert_eq!(err, crate::host::CommitError::NegativeFlipped);
+    assert_eq!(host.current().map(|c| c.revision), Some(1));
+    assert_eq!(host.sink().len(), sink_before);
+
+    // Re-preparing under the CURRENT source (P2) installs the fresh facts.
+    let fresh = host
+        .prepare(&mut s, &p2, "main")
+        .expect("re-prepare under P2");
+    assert!(
+        fresh.facts.negatives.is_empty(),
+        "helper now resolves: no stale negatives"
+    );
+    let rec2 = host
+        .commit(fresh, &s, &p2, None)
+        .expect("commit the re-prepared candidate")
+        .clone();
+    assert_eq!(rec2.revision, 2);
+    assert_eq!(rec2.facts.name, "main");
+    assert!(rec2.facts.is_complete() && rec2.facts.is_clean());
+    assert_eq!(host.sink().len(), sink_before + 1);
+    assert!(
+        host.sink().get(&old_artifact).is_some(),
+        "the old page is immutable history, not deleted"
+    );
+}
+
+#[test]
+fn audit1031_neg_02() {
+    // (a) Body-only edit of an unrelated EXISTING fn: the candidate set
+    // and every signature read are unchanged, so the candidate stays
+    // committable. A NEW declaration is NOT such a control (NEG-01).
+    let p1 = parse(P1_1031);
+    let p_body = parse("fn old() int { return 43 }\n\nfn main() int { return helper(1) }\n");
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let mut host = QueryHost::new(MemorySink::new());
+    let cand = host
+        .prepare(&mut s, &p1, "main")
+        .expect("prepare main under P1");
+    let rec = host
+        .commit(cand, &s, &p_body, None)
+        .expect("body-only edit keeps the candidate fresh")
+        .clone();
+    assert_eq!(rec.revision, 1);
+    assert_eq!(host.sink().len(), 1);
+
+    // (b) Body-only edit of an EXISTING callee (A's leaf): the positive
+    // signature read is unchanged, so commit is allowed.
+    let pa = parse(A);
+    let pb = parse(&A.replace("+ 1", "+ 1000"));
+    let mut s2 = SourceQuerySession::new("pkg", "mod");
+    let mut host2 = QueryHost::new(MemorySink::new());
+    let cand2 = host2
+        .prepare(&mut s2, &pa, "main")
+        .expect("prepare main over A");
+    host2
+        .commit(cand2, &s2, &pb, None)
+        .expect("callee body-only edit: signature read unchanged");
+
+    // (c) Cache-hit admission and commit admission agree on both shapes:
+    // the negative flip (P1→P2) is a session MISS, the body-only edit is
+    // a session HIT (sq06/sq03 rules).
+    let mut s3 = SourceQuerySession::new("pkg", "mod");
+    let cold = s3.infer_body(&p1, "main").expect("solve P1");
+    assert!(!cold.hit);
+    let p2 = parse(P2_1031);
+    let warm = s3.infer_body(&p2, "main").expect("re-solve after flip");
+    assert!(!warm.hit, "the negative flip is a cache miss");
+    let mut s4 = SourceQuerySession::new("pkg", "mod");
+    s4.infer_body(&pa, "main").expect("cold A");
+    let body_warm = s4
+        .infer_body(&pb, "main")
+        .expect("warm after body-only edit");
+    assert!(body_warm.hit, "body-only edit keeps the reader warm");
+
+    // (d) A positive signature change still refuses at commit (sq27 rule)
+    // and never publishes: DepChanged, not NegativeFlipped.
+    let p_sig = parse("fn leaf(x bool) int { return 1 }\n\nfn main() int { return leaf(41) }\n");
+    let mut s5 = SourceQuerySession::new("pkg", "mod");
+    let mut host3 = QueryHost::new(MemorySink::new());
+    let cand3 = host3.prepare(&mut s5, &pa, "main").expect("prepare over A");
+    assert_eq!(
+        host3.commit(cand3, &s5, &p_sig, None).map(|_| ()),
+        Err(crate::host::CommitError::DepChanged {
+            name: "leaf".to_string()
+        })
+    );
+    assert!(host3.current().is_none());
+    assert!(host3.sink().is_empty());
+
+    // (e) A failing sink refuses the switch and keeps the old record: the
+    // refusal happens after revalidation but before any visible change.
+    struct FailingSink;
+    impl crate::host::PageSink for FailingSink {
+        fn put(&mut self, _key: &QueryKey, _facts: &InferBodyFacts) -> Result<String, String> {
+            Err("sink down".into())
+        }
+        fn get(&self, _artifact: &str) -> Option<InferBodyFacts> {
+            None
+        }
+    }
+    let mut host4 = QueryHost::new(FailingSink);
+    let cand4 = host4
+        .prepare(&mut s, &p1, "old")
+        .expect("prepare old for sink failure");
+    assert_eq!(
+        host4.commit(cand4, &s, &p1, None).map(|_| ()),
+        Err(crate::host::CommitError::Sink("sink down".to_string()))
+    );
+    assert!(host4.current().is_none());
+    assert_eq!(host4.revision(), 0);
+}
+
 #[test]
 fn sq29_single_flight_shares_one_computation_per_key() {
     let p = parse(A);
