@@ -211,7 +211,7 @@ fn p981_ma_counter_av_leg_matches_the_arithmetic_oracle() {
     );
 }
 
-/// V-EVT-A-UNIT：匿名 unit Counter 的真实轨迹 **0→1→0→0**（Inc/Dec/Reset/Reset），
+/// V-EVT-A-UNIT：匿名 unit Counter 的**终值 + 单步 oracle**（0→1 与 2→0）；
 /// 以及具名 unit 镜面（`msg Msg { Inc }`）同轨迹。
 #[test]
 fn p981_evt_a_unit_counter_trace_and_named_mirror() {
@@ -247,7 +247,7 @@ fn p981_evt_a_unit_counter_trace_and_named_mirror() {
         },
     )
     .expect("the anonymous unit counter compiles");
-    // 逐 op 轨迹：0 → 1 → 0 → 0 → 0（编译期展开，状态即末值；逐步由独立 oracle 核）。
+    // 终值 oracle：Inc,Dec,Reset,Reset 后为 0；Reset/Dec 的区分由下面的单步用例承担。
     let observed = ace_av::age_package::observe_age_package(&compiled, 1).expect("observes");
     assert_eq!(observed.components[0].instance_states, vec![vec![0]]);
 
@@ -273,21 +273,42 @@ fn p981_evt_a_unit_counter_trace_and_named_mirror() {
     let observed = ace_av::age_package::observe_age_package(&compiled, 1).expect("observes");
     assert_eq!(observed.components[0].instance_states, vec![vec![0]]);
 
-    // 中间步骤 oracle：Inc 后 1、Dec 后 0。
-    let mid = compile_age_package_with_scenario(
-        &[input("main", SRC)],
-        "app::main",
-        LegacyWidgetAlias::Reject,
-        &[PACKAGES_CAPABILITY.to_string()],
-        &ComponentScenario {
-            instances: 1,
-            ops: vec![ScenarioOp::Send {
+    // 单步 oracle：Inc 后 1；Inc,Inc,Reset 后 0（Reset 若被当 no-op 会剩 2 → 红）。
+    for (ops, want) in [
+        (
+            vec![ScenarioOp::Send {
                 instance: 0,
                 msg: "Inc".into(),
             }],
-        },
-    )
-    .expect("compiles");
-    let observed = ace_av::age_package::observe_age_package(&mid, 1).expect("observes");
-    assert_eq!(observed.components[0].instance_states, vec![vec![1]]);
+            1i64,
+        ),
+        (
+            vec![
+                ScenarioOp::Send {
+                    instance: 0,
+                    msg: "Inc".into(),
+                },
+                ScenarioOp::Send {
+                    instance: 0,
+                    msg: "Inc".into(),
+                },
+                ScenarioOp::Send {
+                    instance: 0,
+                    msg: "Reset".into(),
+                },
+            ],
+            0i64,
+        ),
+    ] {
+        let compiled = compile_age_package_with_scenario(
+            &[input("main", SRC)],
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &[PACKAGES_CAPABILITY.to_string()],
+            &ComponentScenario { instances: 1, ops },
+        )
+        .expect("compiles");
+        let observed = ace_av::age_package::observe_age_package(&compiled, 1).expect("observes");
+        assert_eq!(observed.components[0].instance_states, vec![vec![want as i32]]);
+    }
 }
