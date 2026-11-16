@@ -710,6 +710,16 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 8 | from: work | t
 pending_closeout_gates: 统一回归门（merge 冻结态：lang ace-source+ace-av 复核于落主基线，ace-host 预存红具名排除；UI 两文件同基线）。findings: 无阻断缺陷；emit 具名边界补登记（非缺陷，原收据漏项）。next: merge（phase fold #3 落主 lang d43eb9618/ui 94b9334b + 规范 §6；NATIVE 前置之一 STATE 已就绪）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 9 | from: review | to: merge | status: executing（6/35，STATE 批已复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang d43eb9618 ui 94b9334b | next: merge
+2026-11-16 stage: merge（phase fold #3，STATE 批正式落主；整包 executing 6/35 保持，唯一树保留续 HELLO/RUST/JET 等批，不归档/不清树）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次交付）| delivery_commit: auto-lang master **fc5610783**（代码 9bba65eaf + 复核反例 6fc7da3db + 规范 fc5610783）、auto-ui master **ae1c53ad**（代码 fd7861ed + 复核反例 ae1c53ad）| canonical: docs/specs/ace-migration/m2-autoui.md（master 上 sha256/16=**e3d600d851923fd3**，新 §6 组件面状态执行服务 + §5 边界刷新）| 落主方式：两仓 rebase 到在途 master（lang 1f1ff700e——PLAN-973 55 文件代码并入、ui c4bdd83c——PLAN-098 窗口修复并入）+ range-diff 全等（lang 3/3 `=`：09a6274af→9bba65eaf / d43eb9618→6fc7da3db / 0a7bbfd90→fc5610783；ui 2/2 `=`：a6b7fb4c→fd7861ed / 94b9334b→ae1c53ad；无冲突）+ wt-guard clean + `git merge --ff-only`（无 merge commit）。
+
+**落地后复核门（merge-owned，rebase 基线实测——master 代码面已动故按规矩重跑，不复用旧 union）。** lang `cargo t ace-source ace-av`（worktree@fc5610783 内容，全量日志 plan-artifacts/plan-980/state-fold3-union.log）= **ace-source PASS 610 执行 0 红 / ace-av PASS 1279 执行 0 红**（含 973 新 sys case + 本批 7 项 p980_state），union wall 607.5s；主检出落主后 p980_state 过滤 **7/7**（0.064s）。ace-host 13 红=master 预存红（KNOWN-DEBT 台账，非本批触面）。UI：rebase 合并态（=落主内容）plan041 **9/9**（0.34s）+ plan033 **2/2**（0.17s）。
+
+**批次闭合。** B-STATE-I/V/R 勾选（6/35）：002 真源经组件面 states-only/初值/逐字段观察/scheduler 入口 + AceStateEngine 生命周期世代纪律成立；MIX-03 无 HTTP 版已验（真实异步宿主=968 调度器，完成只写存活实例，世代隔离）；边界（f-string 文本叶 AV 车道/emit 归 981/默认链未切归 987/ace-host 预存红）全部 KNOWN-DEBT 在案（7a3fc610e/18701b519）。plan-artifacts/plan-980/ 保持 in-flight（整包在途；fold#3 union 日志在 scope）。批量回归 due-check 归最终归档收口（980%5=0，届时触发）。
+
+next_responsible_role: work（980/HELLO 批：967/F0-D、979/H0-D、969/E0-D、978/B0-D 四正式来源均已落主，前置齐；T-HELLO-I 冻结首源/Schema 激活与 ace-hello-minimal fixture）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 10 | from: merge | to: work | status: executing（6/35，STATE 批已交付落主）| outcome: pass（phase fold #3）| worktree: D:/autostack/.wt/lang-980（保留）| commit: lang fc5610783 ui ae1c53ad | next: work（HELLO 批）
+
 
 
 ## 10. 待澄清事项
