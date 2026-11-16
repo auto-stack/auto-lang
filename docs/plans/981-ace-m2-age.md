@@ -924,6 +924,24 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: review（event A 批：review-65 needs_fix → review-66 pass → R66 修补）| PLAN-981 | outcome: pass（批级）
+
+- **review-65 = needs_fix（11 项）**：R65-1..11 全部修复（`a5214be59`→master `49409c6fb`；auto-ui
+  `fdd3ba69`→`ff10e990`），详见上一条收据。
+- **review-66 = pass**：11 项逐条核销（跨块重复、payload 判定、未知消息、双具名集合、#6i 注释、
+  实测数字、overlay 逐 blob 保真、参数派发拒绝、簿记落主、注释措辞、覆盖）；证据含 `git archive`
+  抽取上独立 probe（20 例）与 tool-guard 测试（派生 stamp/拒绝错 stamp/拒绝脏路径/非 git）。
+- **R66 残余（Low/Info）修补**：R66-1 payload 守卫只对**真的处理该消息**的 node 生效
+  （`ed807f393`→master `862f8694e`，+跨组件回归用例）；R66-2 payload 谓词标注为纵深防御并补注释；
+  R66-3 `refresh_overlay.py` 文档写明 `--verify-only` 只比 manifest↔`.sdk-source`、不回溯 git；
+  R66-4 #6i 注释恢复独立成行。
+- **SDK 可复现性**：overlay 钉 `auto-lang 862f8694e`；`.sdk-source` 由 `git archive` 该提交物化
+  （`plan-artifacts/plan-981/sdk-pin-862f8694e` 临时抽取，验后删除），1361/1361 blob 保真 PASS。
+- **门禁（当前 master 实测）**：plan981 **206/206**、plan980 13/13、ace-core **737/737**、AV 3/3、
+  A2R 4/4、grammar 45/45；driver lib 47/47、`s2_age_routing` **14/14**、bridge S1 4 + S3 3 + S4 10；
+  `prepare_sdk --verify-only` PASS。
+- **未闭**：B 侧参数/载荷执行与 AV 消费（`D-981-EVENT-A-REMAINDER`）；981 事件 A 交接包以
+  `49409c6fb`/`ff10e990`（含 R66 修补后 `862f8694e`/`e450d8a0`）为可绑定 revision。
 2026-11-16 stage: work（980/A 真实源编译 + review-65 needs_fix 修复）| PLAN-981 | outcome: partial
 
 **批次 A（真实 A 源）**：`eb026ab6a` → master `a4d94b567`——把交付的 980/A 两源作为 fixture
