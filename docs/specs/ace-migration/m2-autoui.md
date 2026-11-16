@@ -234,3 +234,37 @@ Rust → 真 rustc → 真运行 → 窗口派生显示；旧 AST emitter 未替
   sidecar/props/msg/route 对齐待 981 面接线，KNOWN-DEBT）；文本不可经 A2R
   出岛（902 冻结 i32 `value:` 协议）——窗口文本腿以 A2R stdout 上窗实现；
   ui_gen::rust 2 例 master 预存红（台账）；AXR0-PACK 完整打包闭包 pending。
+
+## 9. ACE 原生 run 通道（NATIVE 批，2026-11-16）
+
+PLAN-980 B-NATIVE-I/V/R 已验：001 形真源经 ACE 面编译 + AV 真值 + 现有
+View→Iced 窗口服务的**原生 run 通道**；`AUTO_UI_ENGINE=ace` 引擎缝接入
+`-r vm` 流（旧 vm 通道不变）。收据见计划 §9 round 19–21。
+
+- **免驱动场景编译**（core，980 入口专属）：observed 缺省且 model 无 int
+  字段（001 形：str/bool + 文本叶）时不发射 `__age_drive`，texts/states 照
+  发；979 冻结打包入口（`compile_component_scenario`/`_observing`→
+  `observe_compiled`）保持编译期具名拒（口径不变，p979 16/16 回归实证）。
+- **av 面**：`observe_component_states_and_texts`（逐字段 int/bool/str +
+  文本叶 Str 真值双观察）+ `project_component_candidates` 再导出（view 树
+  消费）。
+- **UI 通道**（`ui/ace_native.rs`，feature=ace-bridge）：`AceNativeSession`
+  ——001 真源（legacy `widget` 头 Accept 别名）装载：文本叶值（AV）+ 属性
+  （style/selectable 经候选投影 view 树按声明序对齐）+ 状态；**状态写**
+  =按当前状态重建初值→重编译→重观察（001 的外部 state 写语义），
+  `dark_mode` 写翻转窗口主题线程局部（`style_iced_adapter`，与旧链同
+  机制）。窗口=`run_app` 泛型宿主（`examples/ace_native_window.exe`：
+  帧内状态写/证据 JSON/自动退出；关闭重开=顺序多轮进程级窗口）。
+- **引擎缝**（run_vm）：`AUTO_UI_ENGINE=ace` → `run_ace_native_entry`
+  （无条件编译，feature 关=具名拒）；出面外源 ACE 面具名拒，不静默回旧 VM。
+- **永久 case**（`tests/ace_native_window.rs` 5 项）：001 装载（selectable/
+  style 入叶）、状态写主题翻转（CPU 可观察）、出面外具名拒、双叶属性对齐
+  反例、排窗 e2e（真窗+帧内写+两轮关闭重开）。命令：
+  `cargo test -p auto-ui-runtime --features ace-bridge --test ace_native_window -- --test-threads=1`（窗口面 AUTO_UI_ACE_HELLO_E2E=1 + prep 构建 exe）。
+- **V 行点名门**：desktop_behavior 11 过/1 ignored（原条件 P488-D1）+
+  image_surface_contract 1/1 不动绿；`auto run -r vm` 隔离工程身份=driver
+  V06e 真跑证据复用（vm-session 子进程=本工具 exe，MCP/cancel 全过）。
+- **边界**：文字选择/复制、IME、媒体、终端的**真实交互**实测属仓内既有档
+  （selectable_text 单测族+手工/环境门控档；宿主适配器安装面已随通道接）；
+  路由/页面切换的组件面运行语义未交付（001 无路由；归 981/后续批）；
+  DynamicComponent 默认链未切换（沿 STATE 批既定边界）。
