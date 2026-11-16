@@ -1041,8 +1041,10 @@ pub(crate) fn project_packages_front(
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
                     // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
                     for m in &node.members {
-                        for source in &m.sources {
-                            if !node.fields.iter().any(|f| f.name == *source) {
+                        // R62-2：诊断落在**源 token** 上；修饰形只检查头字段。
+                        for (source, source_span) in m.sources.iter().zip(m.source_spans.iter()) {
+                            let head = source.split('.').next().unwrap_or(source);
+                            if !node.fields.iter().any(|f| f.name == head) {
                                 return Err(vec![crate::source::age_h0::text_diag(
                                     "source.age.member-field",
                                     format!(
@@ -1050,7 +1052,7 @@ pub(crate) fn project_packages_front(
                                          the `{}` member watches it",
                                         m.role
                                     ),
-                                    m.span,
+                                    *source_span,
                                 )]);
                             }
                         }
