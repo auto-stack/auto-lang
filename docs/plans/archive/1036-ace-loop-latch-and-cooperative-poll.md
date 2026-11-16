@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1036
-status: reviewed
+status: archived
 feature_name: ACE循环continue推进、闭区间终点与协作检查
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 4
-current_step: 4
+current_step: 5
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-ac/source-collections-variants.md, docs/specs/auto-mir/collection-place-profile.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/auto-a2c/collections-hir-backend.md, docs/specs/auto-a2r/collections-hir-backend.md]
@@ -233,7 +233,7 @@ LOOP-03独立poll例为普通loop计数n从0加到4，n==4 break，其余条件c
 - [x] AC-02 / work（review F-R1-01..03 已闭，2026-11-17 a628ad594）：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。 — 2026-11-17：三案修前红/修后绿双向证据见§6 r4表与§9；修复点在 resolve.rs(前三continue路径+latch)与 a2x-rust/a2x-c lower_coll(continue回边poll)，未删/未放宽任何原断言。
 - [x] AC-03 / work（review F-R1-04 已闭：SD重定向+frontmatter，2026-11-17）：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。 — 2026-11-17：冻结并集组实测（§9组表）：ace-source 821 / ace-lowering 5 / ace-av 1340 / ace-a2x 306 / ace-native 299 全PASS；ace-a2c-abi 8/9，唯一红为本仓已登记master预存红（runtime pin bd260a8b vs 0a4f68e3，KNOWN-DEBT 4588），非本计划引入。SD-01/02/03 正文待T-05按实际交付收敛。
 - [x] AC-04 / review（2026-11-17 final 复审 pass @a628ad594）：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
+- [x] AC-05 / merge（2026-11-17 ff-only 落 master @3b734996b）：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
@@ -244,7 +244,7 @@ LOOP-03独立poll例为普通loop计数n从0加到4，n==4 break，其余条件c
 | T-02 / work | [x] T-01决定与可区分输入（F-R1-01/02 已补，见§6 r4复审修复表） | 按本loop latch保推进/终点/poll，嵌套归属和cleanup分开；分别新增三类永久反例，不用单一值绿替代预算绿。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 — 2026-11-17：resolve.rs 增 `for_latches` latch 与 `rblock_can_fall_through`（range闭区间端点守卫=Break；List/半开=增量），三条continue路径（直跳/路由dispatch/collections面）同源注入；a2x-rust/a2x-c 增 `back_edge_poll(lb)` 并在 Loop 体尾与每个 Continue 前注入同一 poll（break不poll）。提交 d766ce811。 |
 | T-03 / work | [x] T-02（F-R1-03 已闭：幂等free修复+两腿cleanup用例） | 运行range/List/MAX及C/Rust真实poll/cancel/预算边界/owned清理；保共享MIR与目标原拒绝，完成职责并集。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 — 2026-11-17：冻结并集组5绿1具名预存红（§9组表）；三个新案修前红/修后绿，逐例≤2.8s。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
@@ -356,6 +356,17 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 
 **pending_closeout_gates（merge所有，同前轮）**：① 主检出仍领先 base 30+ 提交（含他人代码/测试落 main），merge 后须在合并基线重跑受影响并集 `cargo t ace-source ace-lowering ace-av ace-a2x ace-native ace-a2c-abi`；② `ace-a2c-abi::admitted_text…certification_pin` 既有红按 KNOWN-DEBT(4588) 具名排除；③ 按 §5 新目标把 SD-01a/01b/02/03a/03b 正文沉淀并核对落地文本；④ Python/TS 同形缺口入 KNOWN-DEBT 具名持有；⑤ 归档前 guard clean + 清树/分支/scope。
 2026-11-17 stage: goal | plan_id: PLAN-1036 | plan_revision: r4 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1036/auto-lang | commit: a628ad594 | next: merge
+2026-11-17 stage: merge | PLAN-1036:r4 | outcome: pass | checkpoint: prepared+landed+canonical_verified+archived（cleaned 待执行） | delivery_commit: 3b734996b | reviewed_commit(before rebase): a628ad594 → rebased 68924c748 | base_commit: 6de19aa39 | canonical: 5份（auto-ac/source-collections-variants sha256 cc52d3ae…、auto-mir/collection-place-profile f37ff295…、auto-a2x/checked-resource-facts ae5bb206…、auto-a2c/collections-hir-backend 6f0f22a9…、auto-a2r/collections-hir-backend 7d18ff1f…） | archive: docs/plans/archive/1036-ace-loop-latch-and-cooperative-poll.md
+
+**准备**：review pass 绑 r4+reviewed_commit a628ad594+5份已审 delta（SD-01a/01b/02/03a/03b），T-01..T-04 全勾、AC-01..04 全勾。主检出已领先 base 33 提交（含1029/981等他人代码与测试）。
+
+**重放/落标**：worktree 内 `git rebase master` → 2 个提交重写（d766ce811→b9713e10f、a628ad594→68924c748）；`git range-diff 6de19aa39..a628ad594 9b73b70d4..68924c748` 输出两条 `=`（补丁等价证明）。随后在**重放基线**上跑合并自有并集门：`cargo t ace-source ace-lowering ace-av ace-a2x ace-native ace-a2c-abi` → ace-source 821 PASS/8.4s、ace-lowering 5 PASS/0.7s、ace-av 1341 PASS/46.5s、ace-a2x 308 PASS/78.7s、ace-native 299 PASS/43.5s、ace-a2c-abi 8/9（唯一红=`admitted_text::…certification_pin`，`0a4f68e3…` vs 钉 `bd260a8b…`，**与 KNOWN-DEBT(4588) 登记的 master 预存红逐字一致**，非本计划引入，具名排除不计PASS）；整命令 wall=519s、gate_passed=false（仅该具名预存红）。规范增量提交前复核：本增量**纯文档**，代码/依赖/配置与已审提交一致 → delivery_commit=3b734996b。
+
+**落地与规范核对**：`git merge --ff-only plan-1036-dev` → master tip=3b734996b（线性、无merge提交）。5份 canonical 文档在 master 上逐一核到本计划规则文本（PLAN-1036 标记计数 1/1/2/1/1）并记录 sha256（见上）。未写任何 ledger/specs.json、未发布索引。
+
+**归档**：`git mv` 至 `docs/plans/archive/`，frontmatter `status: archived`；本次提交即归档簿记（另见 commit）。AC-05/T-05 勾选；AC-06/T-06 留待清理完成。
+
+**未闭（T-06）**：worktree/branch/组目录移除、`plan-artifacts/plan-1036` 摘要折叠后删除、registry 刷新、landing 制品观察、批量回归 due 检查。
 ## 10. 待澄清事项
 
 F28值/迭代、F29宽度、F35预算/取消三个oracle分别关闭；不把所有目标未支持面计为PASS，不新增无限规模承诺。 T-01使真实反例/资源或IO故障可运行，未取得前不声称动态后果已证。等价实现不需重复审批；新支持/预算/公共合同变化先最小决定，不能用隐式门限或延期替原义务。不等待“新测试框架全部完成”。
