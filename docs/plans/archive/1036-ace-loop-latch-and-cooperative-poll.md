@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 4
-current_step: 5
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-ac/source-collections-variants.md, docs/specs/auto-mir/collection-place-profile.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/auto-a2c/collections-hir-backend.md, docs/specs/auto-a2r/collections-hir-backend.md]
@@ -234,7 +234,7 @@ LOOP-03独立poll例为普通loop计数n从0加到4，n==4 break，其余条件c
 - [x] AC-03 / work（review F-R1-04 已闭：SD重定向+frontmatter，2026-11-17）：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。 — 2026-11-17：冻结并集组实测（§9组表）：ace-source 821 / ace-lowering 5 / ace-av 1340 / ace-a2x 306 / ace-native 299 全PASS；ace-a2c-abi 8/9，唯一红为本仓已登记master预存红（runtime pin bd260a8b vs 0a4f68e3，KNOWN-DEBT 4588），非本计划引入。SD-01/02/03 正文待T-05按实际交付收敛。
 - [x] AC-04 / review（2026-11-17 final 复审 pass @a628ad594）：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [x] AC-05 / merge（2026-11-17 ff-only 落 master @3b734996b）：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-06 / merge（2026-11-17 cleaned：guard clean、树/分支/组目录与 plan-artifacts 删除；登记表因他人损坏 fail-closed 留 pending 条目原文）：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
 
@@ -245,7 +245,7 @@ LOOP-03独立poll例为普通loop计数n从0加到4，n==4 break，其余条件c
 | T-03 / work | [x] T-02（F-R1-03 已闭：幂等free修复+两腿cleanup用例） | 运行range/List/MAX及C/Rust真实poll/cancel/预算边界/owned清理；保共享MIR与目标原拒绝，完成职责并集。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 — 2026-11-17：冻结并集组5绿1具名预存红（§9组表）；三个新案修前红/修后绿，逐例≤2.8s。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -367,6 +367,21 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **归档**：`git mv` 至 `docs/plans/archive/`，frontmatter `status: archived`；本次提交即归档簿记（另见 commit）。AC-05/T-05 勾选；AC-06/T-06 留待清理完成。
 
 **未闭（T-06）**：worktree/branch/组目录移除、`plan-artifacts/plan-1036` 摘要折叠后删除、registry 刷新、landing 制品观察、批量回归 due 检查。
+2026-11-17 stage: merge | PLAN-1036:r4 | outcome: pass | completion_kind: delivered | checkpoint: cleaned | delivery_commit: 3b734996b | worktree: D:/autostack/.wt/lang-1036/auto-lang（已移除） | branch: plan-1036-dev（已删，was 3b734996b） | archive: docs/plans/archive/1036-ace-loop-latch-and-cooperative-poll.md
+
+**清理（逐项实测）**：① `wt-guard.ps1` 移除前 fresh 运行=clean（无 reparse point）；② `git worktree remove` 成功、`git worktree list` 已无 lang-1036；③ `git branch -d plan-1036-dev` 成功（was 3b734996b=交付提交，证明已落主）；④ 组目录 `D:/autostack/.wt/lang-1036` 空后删除（`Test-Path`=False）；⑤ `plan-artifacts/plan-1036` 整 scope 删除：6文件 1,458,039B（`coll_rs_fixed.bak` 29,607B sha256 b6cb088c…、`groups-t03.log` 2,597B d678cf2c…、`lower_coll_c_fixed.rs.bak` 75,578B 7f8c6e57…、`lower_coll_fixed.rs.bak` 80,843B 829a7bed…、`resolve_fixed.rs.bak` 634,732B ad30b52b…、`resolve_mut_base.bak` 634,682B b3f9f3d8…），内容已折叠为本计划§6/§9摘要；⑥ 无具名财产持有（named holds: none）。
+
+**登记表刷新：pending（他人数据损坏，fail-closed 未改写）**。`D:/autostack/plan-artifacts/.retention/policy.json` 当前**不能解析**：`plans[34].holds[1]`（~L314/315）之后缺 `]`/`}` 直接接入下一对象，尾部同类断裂再次出现；mtime 2026-11-17 01:08（他人会话合并 1029/981 期间）。按"不覆盖他人记录"原则本包未改写该文件；本计划应插入的条目原文如下，owner=下次 merge/批量回归 triage，关闭条件=该 JSON 可解析且此条目插入：
+
+```json
+{"plan":"auto-lang/PLAN-1036","status":"deleted-at-merge (no holds)","deleted_at":"2026-11-17","completion":"delivered r4 @3b734996b (master ff-only via plan-1036-dev; reviewed a628ad594 rebase→68924c748, range-diff two '='). AUDIT-1024 F28/F29/F35: for-in continue latch (resolve for_latches on the direct/dispatch/collections continue paths), inclusive-range endpoint guard (no synthesized hi+1), per-actual-back-edge poll in C/Rust collections incl. continue; surfaced + fixed non-idempotent Rust list release (0xC0000374 heap corruption on the poll error path -> take + cap==0 no-op). 6 permanent cases <=5.8s; 5 canonical specs (SD-01a/01b/02/03a/03b). Union on rebased baseline: ace-source 821, ace-lowering 5, ace-av 1341, ace-a2x 308, ace-native 299 PASS; ace-a2c-abi 8/9 with the named pre-existing runtime-pin red (KNOWN-DEBT 4588).","scope":"plan-artifacts/plan-1036 (deleted whole; 6 files 1,458,039B; folded into docs/plans/archive/1036-ace-loop-latch-and-cooperative-poll.md)","named_leftovers":"none held; two non-blocking boundaries recorded in the archived plan (a2x-python/a2x-ts same-shape continue poll gap = D-1036-PYTS-POLL in KNOWN-DEBT; 'cleanup never bill/poll' closed by inspection of the sole release path)"}
+```
+
+**landing / 制品观察（不部署）**：本计划只改 `experimental/ace`（resolve/lowering/a2x C+Rust/runtime/测试）与 docs/specs；**未触 `crates/**`**，故 PATH 上的 `auto` CLI 与 web 产物均不涉及，无需重建/重启。ACE worker 的 `experimental/ace/target/release/*.exe` 是测试工具、按组需要现建（本轮并集门在 worktree 内自建并按 sha 绑定），随 worktree 一并消失；主检出的同类副本是更早构建的测试工具，不构成生产制品陈旧问题。无 release/打包/守护进程动作被触发。
+
+**批量回归 due 检查（auto-lang）**：`docs/plans/.last-batch-regression.json` 存在，`last_covered_plan_id=1064`、`timestamp=2026-11-16T10:04:09Z`。本计划 1036 `%5=1`（非 0），receipt 年龄 <48h，窗口内无 `%5==0` 的计划在此 receipt 之后归档 → **当前 not due**；owner=周期批量回归（下次 %5 计划归档或 >48h 有合并时再触发）。
+
+**最终计数**：6/6 任务、AC-01..06 全部勾选（AC-05/06 为本条落地）；`git status` clean（仅他人 docs WIP 保留、未纳入）。
 ## 10. 待澄清事项
 
 F28值/迭代、F29宽度、F35预算/取消三个oracle分别关闭；不把所有目标未支持面计为PASS，不新增无限规模承诺。 T-01使真实反例/资源或IO故障可运行，未取得前不声称动态后果已证。等价实现不需重复审批；新支持/预算/公共合同变化先最小决定，不能用隐式门限或延期替原义务。不等待“新测试框架全部完成”。

@@ -4623,3 +4623,19 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 **PLAN-1032 交付记录**：F24 技术闭环已交付——`45fcd50f4` 落主（ff-only）、两 Spec 沉淀、`cargo t ace-native` 298/298、归档 `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md`。遗留导航（非本 Plan 权限）：`docs/design/strategy/ace-m2-delivery-roadmap.md`（主检出他人 WIP）、`docs/design/strategy/ace-route-plan-map.md`（未跟踪新件）、`docs/plans/1024-*.md` F24 行（他人 WIP）仍指向活跃路径/交付前状态，owner=对应文档维护者/战略文档收口轮。
 | **A2X会话同族原子性缺口（预存，PLAN-1033 review 登记）**：①`cold_assemble_profile`入口在可失败操作前预置 profile/caps/source_sha256/retained_excl/env——活动会话上失败的冷重装留混合态（绑定/环境=新，居民/锚=旧），后续 ranged rebind 会把 A 锚 origins 嫁接到 B 基（slice hash 重算不比对）；②`restore_source_bound` 验证环内（a2x-store lib.rs resident_ids insert）提前写入居民 id 绑定——失败的 restore 可留 id 半绑；③read-only ranged 编辑提交未持久化居民文本，其后续同片段真编辑经居民复用发布的锚对该片段 restore 按键查 miss（project 软根保活使 GC 腿不可区分） | PLAN-1033 review（2026-11-16，66f3c6bfb，独立agent全量diff审计+主会话核证；三项均 base 64ed621a3 前已存在、不在本 Plan 冻结暖编辑入口内，SD-01 明确 warm 范围无过度声明） | owner = A2X 会话线后继计划。关闭条件=独立 fix：cold 入口 staging 化（或失败回滚）、restore 居民 id 晚装、read-only 居民持久化或锚闭包补齐，各配永久反例（可沿用 audit1033 FaultyAssembleProvider/冲突种子 seam 与 artifact_edges oracle） |
+
+## PLAN-1036（ACE 循环 continue 推进/闭区间终点/协作检查，2026-11-17 merge 登记 @3b734996b）
+
+### D-1036-PYTS-POLL — a2x-python / a2x-ts 的 Collections `continue` 同样绕过回边 poll（AUDIT-1024 F35 同形，非本包范围）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| `a2x-python/src/lower.rs:620-635` 与 `a2x-ts/src/lower/mod.rs:427-436` 的 Collections emitter 把 `a2x_coll_poll()` 追加在 loop 体尾、`continue` 直接跳循环头——与 F35 在 C/Rust 上的形状相同：continue 驱动的回边不扣 1 WU、不查取消。本计划 §5 把 F35 范围限定为「C/Rust collections 生成」、§2 禁止「因共用文件扩大范围」，故**未修**，且不声称全后端闭合。 | 1036 复审 F-R1-03 期间实核同形；两后端均已持有 `loop_stack`，可直接复用 C/Rust 的「continue 处注入同一 poll」机制 | owner=其后端各自的后续 Plan（a2x-python / a2x-ts 能力线）；关闭条件=同源的 continue 回边 poll/WU/取消用例在各自**真实链**上红→绿，且「每实际回边恰一次」口径在对应 runtime 计费表中具名 |
+
+### D-1036-REGISTRY — `plan-artifacts/.retention/policy.json` 结构损坏（他人写入，非本包改动）
+
+| 缺口 | 原证据 | owner/关闭条件 |
+|---|---|---|
+| merge 收尾刷新登记表时无法解析：`plans[34].holds[1]`（~L314/315）之后缺 `]`/`}` 直接接入下一对象，尾部同类断裂重复出现。按「不覆盖他人记录」原则本包**未改写**该文件，把 plan-1036 的待插入条目原文留在归档计划§9。 | `ConvertFrom-Json` 报 `After parsing a value an unexpected character was encountered: {. Path 'plans[34].holds[1]', line 314`；mtime 2026-11-17 01:08（他人会话合并 1029/981 期间） | owner=下一次 merge 或批量回归 triage；关闭条件=文件可解析，且 plan-1036 条目按归档计划所载文本插入 |
+
+**PLAN-1036 交付记录**：F28/F29/F35 交付 `3b734996b` 落主（ff-only，reviewed `a628ad594` rebase→`68924c748`，`git range-diff` 两条 `=`）；5 份 canonical spec 沉淀（SD-01a/01b/02/03a/03b：source-collections-variants、collection-place-profile、checked-resource-facts、a2c/a2r collections-hir-backend）；6 个永久用例（audit1036_loop_01/02/03/03_c/03_owned_cleanup/03_c_owned_cleanup，均 ≤5.8s）；重放基线并集 ace-source 821 / ace-lowering 5 / ace-av 1341 / ace-a2x 308 / ace-native 299 全 PASS，`ace-a2c-abi` 8/9（唯一红=runtime pin 预存红，本文件 4588 行条目，非本计划引入）；归档 `docs/plans/archive/1036-ace-loop-latch-and-cooperative-poll.md`。**附带实现缺陷修复**：Rust `a2x_coll_list_free` 非幂等（回边 poll 错误路径重列 → 二次释放 → 0xC0000374 堆损坏），已修为 take + `cap==0` 真 no-op——该缺陷由本计划的 poll 错误路径 oracle 发现，属冻结规则「释放幂等」的原实现违背。
