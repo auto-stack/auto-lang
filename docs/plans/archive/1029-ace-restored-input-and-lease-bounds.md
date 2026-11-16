@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1029
-status: reviewed
+status: archived
 feature_name: ACE恢复输入准入与语法租约索引有界性
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 6
-current_step: 4
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/snapshot-cst.md, docs/specs/auto-syntax/grammar-contract.md, docs/specs/auto-semantics/source-scalar-instances.md]
@@ -265,8 +265,8 @@ ADM-04正常单页/一个声明作底，分别走inline与decl_index分页；只
 - [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。 [✅ 2026-11-17 r6 首交 @8d09bd94c + 修复 @66543dd2d：F-R1-01 paged origin 准入 oracle 已补（"decl origin 17 beyond source total_len 16" 双消费者断言，span 臂文案区分），F-R1-02 SD-01 改为"各表计数最小 wire 下界（现行 14 处计数位）"；五锚 5/5（0.006-0.114s）]
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。 [✅ 2026-11-17 cargo t ace-syntax ace-semantics 292/293（唯一红=master 既有 cache-roundtrip.document.case.ad 缺 executed 状态，非本 diff，证据见§9）；反依赖（av/comptime/native/abi/a2x-worker/case-worker/core/m2-build/conformance）check 全绿；decode_canonical 旧调用面不变；canonical Specs 留 T-05]
 - [x] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。 [✅ 2026-11-17 final pass 绑定 66543dd2d（r6 T-04 首轮 needs_fix 两 P2 已修复复验；健康/遗漏扫描/规范增量核验通过；冻结并集门=merge 义务见 §9 复审记录）]
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。 [✅ 2026-11-17 并集 @1ea540a19 294/295（1=具名既有红）；SD-01..03 沉积并哈希核验；master ff-only 合入；归档见 §9 合并收据]
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。 [✅ 2026-11-17 wt-guard clean→树/分支/组目录删除；plan-artifacts/plan-1029 全删；登记表刷新；对账见 §9 合并收据]
 
 ## 8. 执行步骤
 
@@ -276,8 +276,8 @@ ADM-04正常单页/一个声明作底，分别走inline与decl_index分页；只
 | T-02 / work | [x] T-01反例设置与r4既定决定 | 按reader/TreeSession逐片补准入与索引回收；每个ADM有合法邻例和永久断言，F23只补当前剩余size/EOF，保v4四tag/consts。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 首交 8d09bd94c + 修复 66543dd2d（F-R1-01 oracle 补齐；F-R1-02 SD-01 事实修正）；待 T-04 复审确认] |
 | T-03 / work | [x] T-02 | 分别核query实例消费/恢复、inline/paged子树、FirstSets及多lease生命周期；完成syntax/semantics职责组，短包不做OOM实验。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 cargo t ace-syntax ace-semantics 293执行292过1既有红（§9具名）；五锚在固定组 nextest 被发现并执行] |
 | T-04 / review | [x] T-01..03完成、冻结提交 66543dd2d（首审 8d09bd94c→needs_fix→修复→复验） | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 final pass @66543dd2d；见 §9 r6 复审与回复审记录] |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 delivery=1ea540a19（rebase 映射+range-diff 全等）；并集 294/295；SD 沉积哈希核验；ff-only 落 master] |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合。 [✅ 2026-11-17 对账无散落输出；guard clean；树/分支/组目录/scope 全清；登记表刷新] |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -454,6 +454,34 @@ pending_closeout_gates（merge 义务，不阻塞 reviewed）：冻结提交 665
 next: merge（T-05/T-06）
 
 stage: goal | plan_id: PLAN-1029 | plan_revision: r6 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1029/auto-lang | commit: 66543dd2d | next: merge
+
+### r6 合并收据 PLAN-1029:r6（2026-11-17，goal 会话第 5 轮）
+
+stage: merge | plan_id: PLAN-1029 | plan_revision: r6 | outcome: pass（delivered） | worktree_path: D:/autostack/.wt/lang-1029/auto-lang（已清理） | branch: plan-1029-dev（已删除） | delivery_commit: **1ea540a19**（master tip，ff-only）
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | reviewed baseline 66543dd2d（final pass 收据 723c03142）；SD-01..03 于 worktree 沉积成提交 305c6e2d6（docs-only 后裔，实现/依赖零变更）；规范来源目标哈希：snapshot-cst.md=311a0d047ae559ad62692927fbcb498ce2e1c994d9914d471c61cd4ef4bdd56c、grammar-contract.md=4d02cdb171c1b381ea6c51df9617d79b16e8fbd774fab574d11b0bc43bc0e11f、source-scalar-instances.md=799640ac0c09fce3f6ab871b746497a9eb7daaecc86e6b50c274136ae0a76f91 |
+| landed | rebase master 干净（映射 8d09bd94c→b0ce468a3、66543dd2d→4edd97634、305c6e2d6→1ea540a19；`git range-diff 19d1f8dc0..305c6e2d6 master..plan-1029-dev` 三对全 `=` 全等）；`git merge --ff-only plan-1029-dev` 无 merge commit，master tip==dev tip==1ea540a19（rev-parse 去重=1） |
+| canonical_verified | master:三 spec `git show master:<path>` SHA256 与 prepared 哈希逐一相等；PLAN-1029 三节在 master 内容各 1 处命中；无 legacy ledger 写入（diff 零 .autoos 路径） |
+| frozen_union_gate | `cargo t ace-syntax ace-semantics` @1ea540a19（worktree）：295 执行/294 过/10 skip；唯一红=ace-semantics-store sema_boundary_case_files_executed_status_honest——具名既有 master 红（§9 r6 复审记录：PLAN-1062 恢复文件缺 executed 状态，两侧 grep=0，非本 diff；owner=1062 线，具名不判红不充 PASS）；nextest 测试段 1.908s。占用检查见 3 个未归属 cargo PID（可能含本会话进程），实际运行无争用 |
+| archived | `git mv docs/plans/1029-…md docs/plans/archive/` + status: archived（本提交，docs 随归档入 master；PLAN-104 UAT-K13 口径）；6/6 任务、AC-01..06 全勾 |
+| cleaned | wt-guard clean → `git worktree remove` + `git branch -d plan-1029-dev` + 组目录 `D:/autostack/.wt/lang-1029/` 删除；`D:/autostack/plan-artifacts/plan-1029/` 整目录删除（含 adm04_test.rs 草稿——其内容已折入本计划 §6/§9 描述）；`.retention/policy.json` 刷新为 deleted-at-merge、无具名持有（三条 master 既有问题已具名归因 1062/963 线，不需要本 scope 持有） |
+
+landing checks（部署观察，非日常验证）：本包为 experimental/ace 库级改动，无 release 二进制/Web bundle 生产面受影响——按裁定记录为"无受影响生产工件需刷新"，未触发任何 release 构建/重启。批量回归 due 检查：`.last-batch-regression.json` last_covered_plan_id=1064、时间戳 2026-11-16T10:04Z（约 7.5h 前，<48h），1029%5=4 且 1029<1064 → **不到期**，未触发 cargo t all。
+
+收尾路径对账：本计划全部命令/日志实际输出=worktree target/（随树删除）、组运行 driver 自管临时目录（target/test-groups/，随树删除）、`D:/autostack/plan-artifacts/plan-1029/`（已删）；无其他盘符/第二证据目录/外部安装根输出；登记表已刷新。
+
+merge 会话测试表：
+
+| 范围 | 结果 | 时间 |
+|---|---|---|
+| cargo t ace-syntax ace-semantics（冻结并集 @1ea540a19，worktree） | 294/295 过 +1 具名既有红 +10 skip | 准备≈复用缓存；测试段 1.908s；总≈25s |
+| canonical 核验（git show 哈希三路径） | 一致 | 常量 |
+| wt-guard（pwsh） | clean | <1s |
+| 无新增 case（adm_04 增强已计入 r6 前段证据；本轮 295 较首轮 293 的 +2 来自 master 侧 rebase 带入） | — | — |
+
+stage: goal | plan_id: PLAN-1029 | plan_revision: r6 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: （已清理） | commit: 1ea540a19 | next: done
 
 ## 10. 待澄清事项
 
