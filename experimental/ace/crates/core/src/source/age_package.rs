@@ -299,6 +299,45 @@ fn member_role_label(role: &str) -> &'static str {
         _ => "member",
     }
 }
+/// PLAN-981（B-LANGUAGE-I / AGE-L05）：一个逻辑 owner 在一次测试调度下的
+/// Start/Tick/Frame 预算。
+///
+/// 这是 LANGUAGE 冻结的 **oracle**（§5："5 Tick + 3 owner Frame 周期、两个出口，
+/// Start=1 / Tick=5 / Frame=3"）：`Frame` 是呈现时钟，**不随出口/view 数量倍增**；
+/// `Tick` 是逻辑时钟，按调度次数计；`Start` 每个逻辑 owner 恰一次。
+/// 真实调度由 SESSION 宿主执行，V-L-LIFE 用本函数给出的数字核对宿主计数。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AgeLifecycleBudget {
+    /// 每个逻辑 owner 的启动次数（恒 1）。
+    pub starts: u32,
+    /// 逻辑 Tick 次数（= 调度给定次数）。
+    pub ticks: u32,
+    /// 呈现 Frame 周期数（= 调度给定周期数；**不**乘出口数）。
+    pub frames: u32,
+}
+
+/// AGE-L05：给定调度次数与出口数，返回期望的 Start/Tick/Frame 计数。
+///
+/// 出口数只做**合法性**检查（0 个出口没有可呈现的面 → 具名拒绝），不参与计数：
+/// 这正是 "Frame/Tick 不随 view 倍增" 的机械表达。
+pub fn lifecycle_budget(
+    ticks: u32,
+    frames: u32,
+    exit_count: usize,
+) -> Result<AgeLifecycleBudget, AgeSelectionError> {
+    if exit_count == 0 {
+        return Err(AgeSelectionError {
+            code: "source.age.lifecycle",
+            message: "a scheduled owner needs at least one declared presentation exit"
+                .to_string(),
+        });
+    }
+    Ok(AgeLifecycleBudget {
+        starts: 1,
+        ticks,
+        frames,
+    })
+}
 /// 出口的稳定标签（与 description 的 exit 事实同字）。
 fn exit_label(exit: AgeViewExit) -> &'static str {
     match exit {

@@ -110,6 +110,8 @@ mod plan981_msg_slot;
 mod plan981_design_slot;
 #[path = "cases/plan981_members_slot.rs"]
 mod plan981_members_slot;
+#[path = "cases/plan981_lifecycle.rs"]
+mod plan981_lifecycle;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
 #[path = "cases/plan980_dialect_full.rs"]
