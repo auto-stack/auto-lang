@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1035
-status: reviewed
+status: archived
 feature_name: ACE聚合资源分类、字段投影与真实故障回归
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-16
 plan_revision: 5
-current_step: 4
+current_step: 5
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-syntax/composite-source-projection.md, docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resource-fault-and-generation-conformance.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/ace-migration/m2-aggregates.md, docs/specs/auto-mir/owned-access-profile.md, docs/specs/auto-a2x/python-stdlib-readiness.md]
@@ -21,7 +21,7 @@ affects: [ACE]
 
 2026-11-13 r4当前：r3复审发现MutBorrow跨层表述可能抹平拥有槽/MutRet写回，以及故障统一Resource和epoch不变的笼统断言。已按现MIR ABI、915两seam的Infra及List代际/slot gen分域修订责任表与oracle，不扩大聚合/closure/clone支持。 本轮只改计划；drafting 0/6及原Task/AC/Case编号保留，无实现/测试/配置/canonical Spec改动或ACE执行。
 
-承接[1024](1024-ace-m2-code-quality-and-refactoring-audit.md)的F30/F33/F34，优先级**P1（F30证据缺口P2）**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。真实动态影响由T-01反例界定，不把静态风险冒实际失败。
+承接[1024](../1024-ace-m2-code-quality-and-refactoring-audit.md)的F30/F33/F34，优先级**P1（F30证据缺口P2）**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。真实动态影响由T-01反例界定，不把静态风险冒实际失败。
 
 2026-11-16 r5阶段裁定：F30/F33/F34全部A-required，先关闭原RES-01/02/03及r4完整矩阵与对应独立oracle再供985/A；资源分类、Named字段融合、真实聚合故障与清理均影响A普通语言/FFI/owned合同；三个发现全部A，不只补一个漂亮fault例。原6任务/0完成/既定设计与历史保留，仅规划。
 
@@ -49,19 +49,19 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。后续唯一树D:/au
 
 | 已核源路径 | 字节SHA256 | 状态 |
 |---|---|---|
-| [experimental/ace/crates/core/src/source/resolve.rs](../../experimental/ace/crates/core/src/source/resolve.rs) | 80eb12467732dd657008918c90bf36158d52d6bbea63bc87e7c511a698263c10 | 静态取材，非运行证据 |
-| [experimental/ace/crates/core/src/collections_facts.rs](../../experimental/ace/crates/core/src/collections_facts.rs) | 4ce74d59e6a5305ad1f2540cc5298ed077607a33208af58fe68f041e2421827f | 静态取材，非运行证据 |
-| [experimental/ace/crates/lowering/src/hir_adapter.rs](../../experimental/ace/crates/lowering/src/hir_adapter.rs) | fa54e8c60ac15ff33c6663638f8c000ae951af0d19ddde9f598b5b4758f51761 | 静态取材，非运行证据 |
-| [experimental/ace/crates/av-core/src/ownership.rs](../../experimental/ace/crates/av-core/src/ownership.rs) | 6be41a08ecf80af6a5c1acffe4df139ba77741850a568a44b4d4ba01807673c9 | 静态取材，非运行证据 |
-| [experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs](../../experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs) | 9103e290ef8891f41d8acc7300c50e23daf145c47a1ad489d7d23b398bbe4552 | 静态取材，非运行证据 |
-| [experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs](../../experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs) | bda3489be2e11390a1dd4deba752dcb9a3e49e9b797c5603b85ca6061a12adfe | 静态取材，非运行证据 |
+| [experimental/ace/crates/core/src/source/resolve.rs](../../../experimental/ace/crates/core/src/source/resolve.rs) | 80eb12467732dd657008918c90bf36158d52d6bbea63bc87e7c511a698263c10 | 静态取材，非运行证据 |
+| [experimental/ace/crates/core/src/collections_facts.rs](../../../experimental/ace/crates/core/src/collections_facts.rs) | 4ce74d59e6a5305ad1f2540cc5298ed077607a33208af58fe68f041e2421827f | 静态取材，非运行证据 |
+| [experimental/ace/crates/lowering/src/hir_adapter.rs](../../../experimental/ace/crates/lowering/src/hir_adapter.rs) | fa54e8c60ac15ff33c6663638f8c000ae951af0d19ddde9f598b5b4758f51761 | 静态取材，非运行证据 |
+| [experimental/ace/crates/av-core/src/ownership.rs](../../../experimental/ace/crates/av-core/src/ownership.rs) | 6be41a08ecf80af6a5c1acffe4df139ba77741850a568a44b4d4ba01807673c9 | 静态取材，非运行证据 |
+| [experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs](../../../experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs) | 9103e290ef8891f41d8acc7300c50e23daf145c47a1ad489d7d23b398bbe4552 | 静态取材，非运行证据 |
+| [experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs](../../../experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs) | bda3489be2e11390a1dd4deba752dcb9a3e49e9b797c5603b85ca6061a12adfe | 静态取材，非运行证据 |
 
 | Spec来源 | SHA256 | 适用边界 |
 |---|---|---|
-| [docs/specs/auto-syntax/composite-source-projection.md](../../docs/specs/auto-syntax/composite-source-projection.md) | 529bc7eccd6f9028d4ad0224d5db86f66d36b54689e4e11ad1a50a44fa8bb891 | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-av/collections-variants.md](../../docs/specs/auto-av/collections-variants.md) | 5801fc0d16d7ee4099fdbf6e33fd995e65e74793f6f7d33a1cdb6c552df1cd1b | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-av/resource-fault-and-generation-conformance.md](../../docs/specs/auto-av/resource-fault-and-generation-conformance.md) | 1aeb5c68e65813e4671481d9c69b9446c32988c80b9612545e389df0ba82af95 | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-a2x/checked-resource-facts.md](../../docs/specs/auto-a2x/checked-resource-facts.md) | 38da0f0d66e92992b408741320616820856aed8111ec73dd3ec3d5f8249e31da | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-syntax/composite-source-projection.md](../../../docs/specs/auto-syntax/composite-source-projection.md) | 529bc7eccd6f9028d4ad0224d5db86f66d36b54689e4e11ad1a50a44fa8bb891 | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-av/collections-variants.md](../../../docs/specs/auto-av/collections-variants.md) | 5801fc0d16d7ee4099fdbf6e33fd995e65e74793f6f7d33a1cdb6c552df1cd1b | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-av/resource-fault-and-generation-conformance.md](../../../docs/specs/auto-av/resource-fault-and-generation-conformance.md) | 1aeb5c68e65813e4671481d9c69b9446c32988c80b9612545e389df0ba82af95 | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-a2x/checked-resource-facts.md](../../../docs/specs/auto-a2x/checked-resource-facts.md) | 38da0f0d66e92992b408741320616820856aed8111ec73dd3ec3d5f8249e31da | 当前规则保持；开工重读核漂移 |
 
 源码/Spec是实际规则依据。1024 M/S/D/L/A/N/U为保留账，不代Rust reader/nextest发现；同文件在途修改串行单写，正式合入来源重核，不用他Plan WIP当已交付依赖。
 
@@ -257,9 +257,9 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 
 | 原Case ID | 拟新增永久测试名（当前不存在） | 既有源码/目标落点 | 使其可运行的owner |
 |---|---|---|---|
-| RES-01 | audit1035_res_01 | [experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs](../../experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
-| RES-02 | audit1035_res_02 | [experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs](../../experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
-| RES-03 | audit1035_res_03 | [experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs](../../experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
+| RES-01 | audit1035_res_01 | [experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs](../../../experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
+| RES-02 | audit1035_res_02 | [experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs](../../../experimental/ace/crates/av/tests/cases/aggregates_t01_probe.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
+| RES-03 | audit1035_res_03 | [experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs](../../../experimental/ace/crates/av/tests/cases/aggregates_v_rows.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
 
 ### T-02 实落永久锚点（2026-11-16，含复审 R1-01..04 补齐）
 
@@ -301,7 +301,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 - [x] AC-02 / work：r4具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
 - [x] AC-04 / review：逐项核r4独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
@@ -312,7 +312,7 @@ RES-02完整近邻沿现Item{name Str;code int}与xs.push(Item("ab",42))，对�
 | T-02 / work | [x] T-01反例设置与r4既定决定 | 按最小owner/drop边界修F34与融合前置参数门；原v03正常义务保留，新增真实聚合fault永久例，不重推后端ownership。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：commit=34c8fc04a（11 文件）。F34 资源叶闭包统一到 source resolve / core verify（两处同义元素判据合一）/ lowering HIR walk / av-core ownership+layout；F33 两处融合点接受 Named 且移除用户可触发 `unreachable!`；F30 增 `resource_915::aggregates_fault_sweep` + `aggregates_commit_fault_probe`（测试私有 aggregates 前门，不改 `SourceFrontend`/recipe/旧 915 负载）。11 个永久例在修复后全绿，回退分类修复后 6 红重现（见 §9 红/绿表）。 |
 | T-03 / work | [x] T-02 | 按类型/操作与失败出口追下游MIR/AV/native及受影响C事实consumer；记录真实值/ledger/旧dst/epoch与N+1，完成职责组和必要消费者。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 **2026-11-16 完成**：冻结并集门 `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi` 全跑（结果见 §9）：ace-lowering/ace-native/ace-a2x PASS；ace-source 2 红、ace-av 1 红、ace-a2c-abi 1 红均为 base b043117b8 已存在（回退本包修改逐项复现），ace-av 另 1 红 `sys973_v03_process_spawn_capture_timeout_exit` 隔离重放绿=环境抖动归因；本包 10 个永久锚点在该组结果中被发现并执行。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
@@ -419,11 +419,11 @@ stage: work | plan_id: PLAN-1035 | plan_revision: 5 | worktree_path: D:/autostac
 
 | 层 | 位置 | 改动 |
 |---|---|---|
-| source | [core/src/source/resolve.rs](../../experimental/ace/crates/core/src/source/resolve.rs) | `record_reaches_str` → `record_reaches_resource(records, tuples)`：字段闭包到 owned Str/List/Variant/Function/Object 或 tuple 元素即资源；`vt_is_coll_owned`/`VT::is_owned_coll` 改用之（旧 live helper 与公开 helper 同义）。F33：两个融合点（`xs.get(i).f`、`xs.get(i).len()`）接受 Named 索引，去掉用户可触发 `unreachable!`。 |
-| HIR verify | [core/src/verify.rs](../../experimental/ace/crates/core/src/verify.rs) | 两处同义元素判据合一为 `list_elem_owned`；新增 `type_reaches_resource`/`record_reaches_resource`（record 字段闭包到资源叶）。**保持 962 面**：裸 List/Closure/Object 元素仍是链式 view，不判 owned。 |
-| lowering | [lowering/src/hir_adapter.rs](../../experimental/ace/crates/lowering/src/hir_adapter.rs) | `hir_record_reaches_str` → `hir_record_reaches_resource`（同叶集），`hir_elem_owned` 用资源闭包判 record 元素。 |
-| MIR | [av-core/src/ownership.rs](../../experimental/ace/crates/av-core/src/ownership.rs)、[layout.rs](../../experimental/ace/crates/av-core/src/layout.rs) | `record_reaches_str` → `record_reaches_resource`（List/Variant/Closure 叶即真）；`type_is_owned(Record)` 与 `LayoutDesc.is_copy` 同源派生。 |
-| 故障证据 | [av/src/resource_915.rs](../../experimental/ace/crates/av/src/resource_915.rs) | 新增测试私有 `compile_aggregates_module`、`aggregates_fault_sweep`（同 sweep 体，不改 `SourceFrontend`/`worker recipe`/旧 915 负载）、`aggregates_commit_fault_probe`（PLAN-919 lifecycle 观测真实 dst：replaced/swept/free id）。 |
+| source | [core/src/source/resolve.rs](../../../experimental/ace/crates/core/src/source/resolve.rs) | `record_reaches_str` → `record_reaches_resource(records, tuples)`：字段闭包到 owned Str/List/Variant/Function/Object 或 tuple 元素即资源；`vt_is_coll_owned`/`VT::is_owned_coll` 改用之（旧 live helper 与公开 helper 同义）。F33：两个融合点（`xs.get(i).f`、`xs.get(i).len()`）接受 Named 索引，去掉用户可触发 `unreachable!`。 |
+| HIR verify | [core/src/verify.rs](../../../experimental/ace/crates/core/src/verify.rs) | 两处同义元素判据合一为 `list_elem_owned`；新增 `type_reaches_resource`/`record_reaches_resource`（record 字段闭包到资源叶）。**保持 962 面**：裸 List/Closure/Object 元素仍是链式 view，不判 owned。 |
+| lowering | [lowering/src/hir_adapter.rs](../../../experimental/ace/crates/lowering/src/hir_adapter.rs) | `hir_record_reaches_str` → `hir_record_reaches_resource`（同叶集），`hir_elem_owned` 用资源闭包判 record 元素。 |
+| MIR | [av-core/src/ownership.rs](../../../experimental/ace/crates/av-core/src/ownership.rs)、[layout.rs](../../../experimental/ace/crates/av-core/src/layout.rs) | `record_reaches_str` → `record_reaches_resource`（List/Variant/Closure 叶即真）；`type_is_owned(Record)` 与 `LayoutDesc.is_copy` 同源派生。 |
+| 故障证据 | [av/src/resource_915.rs](../../../experimental/ace/crates/av/src/resource_915.rs) | 新增测试私有 `compile_aggregates_module`、`aggregates_fault_sweep`（同 sweep 体，不改 `SourceFrontend`/`worker recipe`/旧 915 负载）、`aggregates_commit_fault_probe`（PLAN-919 lifecycle 观测真实 dst：replaced/swept/free id）。 |
 
 **红/绿判别（同一永久例；红=回退上述分类修改后重跑）**
 
@@ -476,7 +476,7 @@ ace-av 组结果 JSON 中本包 10 个 `audit1035_*` 锚点均被发现并执行
 | cargo t ace-a2c-abi | 9 | 0.02s（meter wall 0.75s） | 1 红=base 已存在 certification pin |
 
 准备/发现/执行：组门由 cargo t 一次性完成 discovery+run（日志中 per-group Summary 可复核）；冷编译首轮 32.8s（debug），后续增量 2-10s。复用证据：T-03 冻结提交 f86894ce3 的并集结果即为 merge 前的同身份证据，未重复跑全目录。
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 1 | from: drafting | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: review
 
 ### 2026-11-16 stage: review（final scope；同会话非独立上下文，结论由冻结提交重建）
 
@@ -557,12 +557,25 @@ stage: review | review_scope: final | reviewer_identity: 本会话（与实现�
 
 
 
+### 2026-11-16 stage: merge（PLAN-1035:r5）
+
+stage: merge | plan_id: PLAN-1035 | plan_revision: 5 | outcome: pass（cleaned 收据见末尾） | delivery_commit: d2847bf4c | archive_path: docs/plans/archive/1035-ace-aggregate-resource-classification.md | next: cleaned
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed=`4d4a6b89c`（r5 final pass）；canonical diff=+102 行且仅 `docs/specs`（`b20028ad5`）；目标 7 份；交付身份 `d2847bf4c` |
+| landed | `git merge --ff-only plan-1035-dev` → master tip `d2847bf4c` == worktree tip（无 merge commit）。因并发合入经历 3 次 rebase，旧→新映射：34c8fc04a→d56f1e7b9→8d1f3e5f3、7d06f14e9→015ae96f9→0dcf4152e、f86894ce3→d8634c5c2→e856bc45c、4d4a6b89c→076f4b2b7→da8f09efd、b20028ad5→05b8ccd0b→d2847bf4c；每次 `git range-diff` 全 5 段 `=`（补丁等价） |
+| canonical_verified | landed commit 上 7 份 canonical 各含 PLAN-1035 增量节（sha16）：composite-source-projection=caac516edcd7b01e、collections-variants=1a835a093f8b0332、resource-fault-and-generation-conformance=94b12803a019aef2、checked-resource-facts=2e4d0714b57e28cb、m2-aggregates=3ab46b8b004859d7、owned-access-profile=cf293cf2830bb23d、python-stdlib-readiness=cbf0c2862af2ad58 |
+| archived | 本文件移至 `docs/plans/archive/`，`status: archived`；14 条相对链接按 archive 深度改写（13×`../../../` + 1×`../`）并逐条校验目标存在 |
+| cleaned | 排空中（worktree/branch/组目录 + plan-artifacts scope + 登记表） |
+
+**交付门（merge-owned，最终冻结身份 `d2847bf4c`）**：`cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-a2c-abi`（run-txuyszxm 于 `05b8ccd0b`；此后 master 仅新增 4 个 plan981 测试文件、零生产 src 变更，故该生产门证据在同生产输入下复用，并在 landed tip 重放 PLAN-1035 锚点：av 13/13、core 4/4、native 3/3）：ace-source PASS、ace-lowering PASS、ace-av PASS、ace-native PASS、ace-a2x PASS；ace-a2c-abi 8/9——唯一红 `admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin` 已在 base `b043117b8`（回退本包改动）复现，属既有 certification pin 漂移，不充 PASS。测试时长：av 13 例 0.09s、core 4 例 0.03s、native 3 例 1.28s；组门 50s（ace-av 1317 例）+ 各组增量构建；无新增 >10s 用例，未用 release。
 ## 10. 待澄清事项
 
 DEC-RES经r4复审修订后无关键设计未决：S/D/R、MutBorrow在HIR与各MIR/目标表示中的临时拥有/写回、fault Infra/预算Resource及List代际/slot gen分域已定。F34动态严重度/真实N及失败提交观察仍待实施，不据静态差额声称双free；不扩962未交付的聚合mut/closure/clone或运行期失效句柄保证。原具名能力债仍归原owner，本包资源闭包与Named受控准入不能延期。**2026-11-16 work 更新**：T-01..T-03 已实施（详见 §9 实施记录），F34 的真实动态后果已观察（List-only record 的帧账/move 纪律/四层分类一致），未观察到双 free 或错机器结果；F30 仍无缺陷证据（旧代码同绿），只补永久真实故障例。drafting→executing→execution_done 3/6。
 
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 2 | from: review | to: work | status: reviewed | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: work
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 2 | from: review | to: work | status: archived | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: f86894ce3 | next: work
 
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 3 | from: work(repair) | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: review
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 3 | from: work(repair) | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: review
 
-stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: merge
+stage: goal | plan_id: PLAN-1035 | plan_revision: 5 | round: 4 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1035/auto-lang | commit: 4d4a6b89c | next: merge
