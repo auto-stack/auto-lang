@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1033
-status: execution_done
+status: reviewed
 feature_name: ACE A2X暖编辑与晚发布失败一致性
 author: [Codex]
 created_at: 2026-11-13
@@ -163,8 +163,8 @@ T-01落点裁定：真实provider链无法寄宿于a2x-store内部（a2x-rust/a2
 | task / owner_stage | 依赖 / 状态 | 操作、交付与验证 / AC |
 |---|---|---|
 | T-01 / work | [x] 1024交接、实施授权（/goal 2026-11-16）及当前源 | 冻结target×family适用表、A41/B61、委托provider及anchor晚失败seam，列完整接受态/副产物清单并完成单提交点可行性决定。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合。证据：开工漂移重核仅lib.rs（PLAN-1042/976加性consumer注册/片段层，发布路径未动），其余5个钉源/Spec字节一致；适用表=anchors_family/lib.rs；A41/B61沿用store_cache冻结fixture；seam=①set_target委托provider（仅指定assemble_fileset次数具名拒绝）②下一锚键预置同键异字节冲突工件（store永不覆写→真实Conflict→受控a2x.resource）；接受态=source_sha256/当前后端居民集/居民id绑定/last_anchor/返回文件集，副产物=B sem/frag无根CAS行（允许），env非接受态（prepare候选事务性已核core/source/adapter.rs:1005）；单提交点可行性=可行（staging+末尾不可失败提交块，publish_anchor保持为store侧最后可失败操作）。测试落位裁定见§6。 |
-| T-02 / work | [x] T-01决定与可区分输入 | 按现prepare/assemble/publish/swap边界修复，分开ranged/core/有anchor与无anchor路径，补AXTX永久反例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。证据：warm_edit_targeted改staged返回（WarmStaged：下一居民集+id更新+manifest next_sha override）；commit_warm=单一接受点；ranged路径删除source预切换（错误恢复块随之删除），锚rebind读staged居民、required边随被编辑片段真实artifact id（修stale边），publish_anchor后一次性提交source/居民/ids/anchor；冷路径assemble_view_with_contexts同样staged后提交；produce_fragment*返回(片段,Option<id>)，公开checked-fragment API签名不变。永久反例5个（§6表）红/绿验证：未修代码上audit1033_axtx_01/02 FAILED（重试store-hit/whitespace居民复用/stale-base三项区分断言），修复后5/5 PASS（2.85s）。 |
-| T-03 / work | [x] T-02 | 每类失败后读取旧files/manifest、运行或restore旧A，再清故障同批重试B61；核其他target/read-only/原quota，完成A2X和C ABI职责组。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。证据：restore旧A纯P0+字节一致并真实运行（Rust 41/C 41/RT 2217/COLL 44），清障重试运行61/2218/49且锚重绑next_sha；失败后stale-base探针证会话绑定仍旧；跨target居民存活（C居民+1复用且含A体字节，Rust命名空间restart回原A字节）；read-only零写零锚（非会话不变性照实断言）；早parse拒绝具名。固定组：`cargo t ace-a2x` 全PASS（含全部conformance腿与新增5锚，T-03在实际组结果核锚点被发现/执行）；`cargo t ace-a2c-abi` 8/9，唯一红=KNOWN-DEBT-AND-RISKS.md:4568已登记master预存红（admitted_text认证pin bd260a8b…vs 0a4f68e3…，master@82d032c8e/Plan 972改runtime未重钉，owner=批量回归triage），在干净基线复现一致，非本Plan触面——具名排除，不充PASS。原quota/A→B→A正反控由ace-a2x组内既有测试保持绿。 |
+| T-02 / work | [x] T-01决定与可区分输入（review RV1/RV2重开后闭合） | 按现prepare/assemble/publish/swap边界修复，分开ranged/core/有anchor与无anchor路径，补AXTX永久反例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。证据：warm_edit_targeted改staged返回（WarmStaged：下一居民集+id更新+manifest next_sha override）；commit_warm=单一接受点；ranged路径删除source预切换（错误恢复块随之删除），锚rebind读staged居民、required边随被编辑片段真实artifact id（修stale边），publish_anchor后一次性提交source/居民/ids/anchor；冷路径assemble_view_with_contexts同样staged后提交；produce_fragment*返回(片段,Option<id>)，公开checked-fragment API签名不变。永久反例5个（§6表）红/绿验证：未修代码上audit1033_axtx_01/02 FAILED（重试store-hit/whitespace居民复用/stale-base三项区分断言），修复后5/5 PASS（2.85s）。 |
+| T-03 / work | [x] T-02 | 每类失败后读取旧files/manifest、运行或restore旧A，再清故障同批重试B61；核其他target/read-only/原quota，完成A2X和C ABI职责组。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。证据：restore旧A纯P0+字节一致并真实运行（Rust 41/C 41/RT 2217/COLL 44），清障重试运行61/2218/49且锚重绑next_sha；失败后stale-base探针证会话绑定仍旧；跨target居民存活（C居民+1复用且含A体字节，Rust命名空间restart回原A字节）；read-only零写零锚（非会话不变性照实断言）；早parse拒绝具名。固定组：`cargo t ace-a2x` 全PASS（含全部conformance腿与新增5锚，T-03在实际组结果核锚点被发现/执行）；`cargo t ace-a2c-abi` 8/9，唯一红=KNOWN-DEBT-AND-RISKS.md:4578已登记master预存红（admitted_text认证pin bd260a8b…vs 0a4f68e3…，master@82d032c8e/Plan 972改runtime未重钉，owner=批量回归triage），在干净基线复现一致，非本Plan触面——具名排除，不充PASS。原quota/A→B→A正反控由ace-a2x组内既有测试保持绿。 |
 | T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
@@ -208,6 +208,28 @@ Spec准备：SD-01已落worktree（docs/specs/auto-a2x/incremental-and-cache.md�
 next_responsible_role: review（T-04，独立上下文，冻结提交66f3c6bfb）。统一回归门保持pending，owner=final review/merge。
 
 stage: goal | plan_id: PLAN-1033 | plan_revision: r3 | round: 1 | from: drafting | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1033/auto-lang | commit: 66f3c6bfbdd5e7f93914952f1fc357aefc0f9a43 | next: review
+
+2026-11-16 stage:review | review_scope:final | reviewer: 同会话独立重构（限制：与work同上下文；另派只读独立验证agent对66f3c6bfb全量diff做变异路径/失败窗口/边对等/oracle质量/绕行扫描，其报告按证据采纳） | PLAN-1033 r3 | outcome:needs_fix | worktree D:/autostack/.wt/lang-1033/auto-lang @ plan-1033-dev | reviewed_commit 66f3c6bfbdd5e7f93914952f1fc357aefc0f9a43 | base 64ed621a319cc945feede259bf797b237088b89b | deps:无跨仓 | spec输入: docs/specs/auto-a2x/incremental-and-cache.md c8bdda7a…（reviewed delta为worktree追加节）| AC-01 pass；AC-02 partial（RV1/RV2）；AC-03 pass（预存红具名）。pending_closeout_gates: 冻结并集 cargo t ace-a2x ace-a2c-abi（merge所有，复用同身份证据）。
+
+发现（修复轮1，全部回work同树）：
+- RV1/MAJOR（AC-02，2026-11-14测试纪律硬门）：新增用例 audit1033_axtx_01_c_anchored_families 在冻结组实测 exec_time=10.15s > 10s 上限——断言虽全绿仍 needs_fix。修法：按"一个Case可需多个同族函数"拆为 _c_rt 与 _c_coll 两个用例（同断言不减）。计时（冻结组实测）：_02=0.23s、_02_boundaries=0.18s、_01=2.18s、_01_c_scalar=7.56s、_01_c_anchored_families=10.15s。
+- RV2/MAJOR（AC-02 oracle缺口，独立agent发现4）：缺陷③（required边随被编辑片段真实id）无区分性永久oracle——若实现回退为仅读旧resident_ids，5个用例仍全绿（restore按键查不经边；project软根保活使GC腿不可区分）。修法：新增只读 ManagedStore::artifact_edges 访问器，在 Rust标量重试腿与C RT重试腿直接断言：B锚的required边含被编辑片段B artifact id且不含其A id（id经 provider.fragment_key_inputs(anchor.runtime_sha256)+anchor sem_fp 重构键取回）。
+- RV3/MINOR（预存同族缺口，非本Plan触面，登记债务不修）：①cold_assemble_profile入口在可失败操作前预置profile/caps/source_sha256/retained_excl/env，冷重装失败留混合态（base即有）；②restore_source_bound验证环内提前insert resident_ids（base:2196即有）；③work已具名的read-only未持久化居民→后续锚restore按键miss。均与失败原子性同族但不在冻结§6入口内，SD-01明确warm范围无过度声明。
+- RV4/NIT：§8 T-03证据中KNOWN-DEBT行号4568应为4578（实质一致：pin bd260a8b…vs 0a4f68e3…）。
+
+核证通过面（不变，供复用）：暖路径（fragment/ranged）单接受点逐赋值审计无洞（独立agent对全部24 hunk逐一核位）；失败窗口五注入点全核（seam真实、conflict按键命中验证于store层）；锚rebuild字段级对等；read_only/幂等重发布行为保持；测试oracle区分性（居民污染/绑定污染/锚污染三轴）、无时钟依赖、根隔离；绕行/调试输出/断言弱化扫描干净；a2x-store零警告；Spec增量准确无过度声明。
+
+next: work（修复轮1：拆用例+边oracle+行号nit），随后受影响复审。T-02勾选重开，current_step 3→2，status→executing。
+
+stage: goal | plan_id: PLAN-1033 | plan_revision: r3 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1033/auto-lang | commit: 66f3c6bfb | next: work
+
+2026-11-16 stage:work（修复轮1） | PLAN-1033 r3 | outcome:pass | worktree D:/autostack/.wt/lang-1033/auto-lang @ plan-1033-dev | base 64ed621a3（代码提交链：66f3c6bfb → 37ef9f3c2 → 8c665a325） | task_ids T-02（RV1/RV2闭合；RV3已登记债务3bb0ab4eb；RV4已改行号）| 修复内容：①RV1——audit1033_axtx_01_c_anchored_families 拆为 _c_rt/_c_coll（同断言不减）；②RV2——新增只读 ManagedStore::artifact_edges（ace-artifacts），Rust标量/AXP2/AXP3三重试腿直接断言B锚required边含被编辑片段B artifact id且不含A id（id经restore同构键重构取回）；**突变红检**：把ranged边解析改回仅读resident_ids后，恰有三处oracle的audit1033_axtx_01/_c_rt/_c_coll FAILED（其余3个用例不受影响），修复代码恢复后6/6绿——oracle具区分性；③计时收敛——三C用例各减一次冗余冷值编译（旧产物值经字节一致restore运行腿认证）。计时（最终冻结修订8c665a325实际组跑 run-02wtivh8）：_02=0.23s、_02_boundaries=0.23s、_01=2.68s、_c_coll=8.77s、_c_scalar=8.98s、_c_rt=9.07s——全部≤10s；组内260并发腿CPU争用为计时主因（孤立过滤跑全6例共2.4-2.9s），编译数已减33-50%。固定组复跑：cargo t ace-a2x = PASS（worker 260/core 9/python 2/rust 2/store 1/ts 29 全ok，含6锚）；ace-a2c-abi于37ef9f3c2复跑8/9（唯一红=同一已登记预存pin红，KNOWN-DEBT:4578，修复未触a2x-c）。next_responsible_role: review（受影响复审）。
+
+stage: goal | plan_id: PLAN-1033 | plan_revision: r3 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1033/auto-lang | commit: 8c665a325 | next: review
+
+2026-11-16 stage:review（受影响复审） | review_scope:final | reviewer: 同会话（限制同首轮；首轮独立agent审计面未失效——修复仅触及测试文件与只读accessor，lib.rs修复66f3c6bfb字节未变，其"核证通过面"按同输入复用） | PLAN-1033 r3 | outcome:pass | worktree D:/autostack/.wt/lang-1033/auto-lang @ plan-1033-dev | reviewed_commit 8c665a325 | base 64ed621a3（链66f3c6bfb→37ef9f3c2→8c665a325；37ef9f3c2→8c665a325仅测试文件±7行，a2x-c源同一性保持，ace-a2c-abi证据可复用） | 发现闭合：RV1✓（拆分后最终组跑实测 0.23/0.23/2.68/8.77/8.98/9.07s 全≤10s；计时膨胀主因=组内260腿CPU争用，已核并减编译）；RV2✓（artifact_edges只读accessor + 三腿直接边oracle + 突变红检：回退边解析恰使三oracle腿FAILED、其余不受影响）；RV3✓（债务登记KNOWN-DEBT-AND-RISKS尾行，master提交3bb0ab4eb）；RV4✓（行号已改4578）。附加受影响核查（accessor触面）：ace-artifacts lib+conformance在worktree全绿（含新fixture te-child.exe于worktree根target补建后）；具名排除：subproc::adapter_controls 3例在主检出同样失败（te-child.exe缺失=两检出的环境预置缺口，非本Plan触面）；review_r3::r3_f01_concurrent_staging_budget_is_atomic 在主检出与worktree同断言失败、单测隔离4/4绿=负载敏感预存flake（owner=artifacts线/批量triage，非本Plan）。pending_closeout_gates: merge冻结并集（cargo t ace-a2x ace-a2c-abi @8c665a325——ace-a2x已PASS(run-02wtivh8，312ok含6锚)，ace-a2c-abi复用37ef9f3c2同源证据8/9+具名预存pin红，或merge重跑）。计时表与新增用例行为/时长见work修复轮1收据。next: merge。
+
+stage: goal | plan_id: PLAN-1033 | plan_revision: r3 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1033/auto-lang | commit: 8c665a325 | next: merge
 
 ## 10. 待澄清事项
 
