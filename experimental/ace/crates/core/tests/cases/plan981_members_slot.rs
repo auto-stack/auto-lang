@@ -120,3 +120,27 @@ fn p981_member_value_expressions_are_verified() {
     assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
     assert_eq!(ds[0].span.start, want, "the diagnostic points at the name");
 }
+
+/// R59-3 尾项：lifecycle/watch 体内语句的 **RHS** 进唯一 verify（未声明名字具名拒）。
+#[test]
+fn p981_member_statement_rhs_is_verified() {
+    let src = "node M {\n    model {\n        count int = 0\n    }\n    lifecycle {\n        mounted => {\n            .count = nosuch_ident\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let want = src.find("nosuch_ident").expect("fixture has the bad name");
+    let ds = match compile(src) {
+        Ok(_) => panic!("an undefined lifecycle RHS must be rejected"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
+    assert_eq!(ds[0].span.start, want, "the diagnostic points at the name");
+}
+
+/// R59-3 尾项：语句 LHS 必须是本 node 的 `model` 字段（写不存在的字段具名拒）。
+#[test]
+fn p981_member_statement_field_must_exist() {
+    let src = "node M {\n    model {\n        count int = 0\n    }\n    lifecycle {\n        mounted => {\n            .nosuch = 1\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let ds = match compile(src) {
+        Ok(_) => panic!("assigning an undeclared model field must be rejected"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.age.member-field", "{ds:?}");
+}

@@ -1017,6 +1017,24 @@ pub(crate) fn project_packages_front(
                             check_value(v)?;
                         }
                     }
+                    // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
+                    // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
+                    for m in &node.members {
+                        for (field, rhs) in &m.stmts {
+                            if !node.fields.iter().any(|f| f.name == *field) {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.member-field",
+                                    format!(
+                                        "`{field}` is not a `model` field of this node; \
+                                         the `{}` member assigns it",
+                                        m.role
+                                    ),
+                                    rhs.span,
+                                )]);
+                            }
+                            check_value(rhs)?;
+                        }
+                    }
                 }                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                 // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                 // 不另建求值器，也不把手写数值当常量。

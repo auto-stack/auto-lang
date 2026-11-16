@@ -158,7 +158,11 @@ pub struct ComponentMemberRow {
     pub name: String,
     pub value: Option<Expr>,
     pub text: Option<String>,
-    pub num: Option<i64>,    pub span: Span,
+    pub num: Option<i64>,
+    /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`），按声明序；
+    /// RHS 进唯一 verify，LHS 字段存在性由前门另查。
+    pub stmts: Vec<(String, Expr)>,
+    pub span: Span,
 }
 
 /// 一个组件 node 声明的未受信候选。

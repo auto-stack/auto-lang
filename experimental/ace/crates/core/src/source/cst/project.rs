@@ -4749,6 +4749,7 @@ impl<'a> Engine<'a> {
                         value: None,
                         text: None,
                         num: None,
+                        stmts: Vec::new(),
                         span: self.cx.span_of(member),
                     });
                 }
@@ -5105,6 +5106,36 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`）按声明序。
+    fn member_stmts(&mut self, item: u32) -> Vec<(String, crate::source::ast::Expr)> {
+        let stmt_kind = self.rule_kind_of("age-view-stmt");
+        let mut out = Vec::new();
+        fn walk(
+            eng: &mut Engine,
+            node: u32,
+            stmt_kind: Option<u32>,
+            out: &mut Vec<(String, crate::source::ast::Expr)>,
+        ) {
+            for c in eng.cx.children(node) {
+                if Some(eng.cx.tree.kind(c)) == stmt_kind {
+                    let field = eng
+                        .cx
+                        .field_child(c, "field")
+                        .map(|f| eng.cx.spelling(f))
+                        .unwrap_or_default();
+                    if let Some(rhs) = eng.cx.field_child(c, "rhs") {
+                        let inner = eng.unwrap_child(rhs);
+                        let expr = eng.project_expr_sync(inner);
+                        out.push((field, expr));
+                    }
+                } else {
+                    walk(eng, c, stmt_kind, out);
+                }
+            }
+        }
+        walk(self, item, stmt_kind, &mut out);
+        out
+    }
     /// 通用成员槽位行（bind/route/lifecycle/computed/watch/timer）。
     fn collect_member_rows(
         &mut self,
@@ -5178,6 +5209,7 @@ impl<'a> Engine<'a> {
                 value,
                 text,
                 num,
+                stmts: self.member_stmts(c),
                 span: self.cx.span_of(c),
             });
         }
@@ -5206,6 +5238,7 @@ impl<'a> Engine<'a> {
                 value: None,
                 text: None,
                 num: None,
+                stmts: Vec::new(),
                 span: expose_span,
             });
         }
