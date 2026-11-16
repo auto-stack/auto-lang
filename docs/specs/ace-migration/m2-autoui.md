@@ -518,3 +518,20 @@ payload 字段**（参数化事件不可场景重放，状态函数 HIR 无从�
 表已扩两行（param-handler/inline-lambda-only=absent；ace_ts_provider
 12/12）。**WEB 剩余（UI 侧）**：90 项全量双轨（普查表=分母仪表）+
 浏览器挂载档（013/017 playwright 先例）。
+
+### §13.10 全量双轨普查 + 语言侧前置清单（切片 #6g，2026-11-16）
+
+**双轨普查冻结聚合表**（`p980_web_full_dual_track_census`，ace_ts_provider
+13/13）：vue_capabilities 全部 83 源语料（文件级 r#"…"# 提取）经
+`generate_sfc_with_lane`——ok=72 / err=11（2 store + 9="duplicate view
+block"族=**master 预存红同族**，归 triage）/ spliced=0 / absent=23。
+**state-slot 同长归一化**（`state {`→`model {`，5↔5 字节 span 零位移）
+已入 lane compile——匿名 msg+state 形态可进 lane。
+
+**语言侧前置清单（组件面语法域缺口×3——非 UI 可闭合，979/981 谱系）**：
+①`ScenarioOp::Send` 无 payload（参数化事件不可重放）；②具名 msg 语法
+（`msg Msg {...}`）不在组件面槽位语法——真语料主导形态；③参数绑定面
+（铸造 lambda handler 无源锚）。三者交付前，真语料 handler 体全部走编译
+器旧道（双轨期合同——缺席不拒绝）。**WEB 批 UI 侧状态**：机制链全通
+（组件面→HIR→span 定位→发射→reactive 映射→函数体→SFC 拼接→一体化
+入口→双轨仪表），交付切换的语言侧前置已具名；浏览器挂载档待做。
