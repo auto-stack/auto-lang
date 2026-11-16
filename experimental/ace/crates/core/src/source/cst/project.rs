@@ -4997,13 +4997,28 @@ impl<'a> Engine<'a> {
             for c in eng.cx.children(node) {
                 if eng.cx.tree.kind(c) == variant_kind {
                     let name = eng.cx.field_child(c, "name").expect("variant name");
+                    // B-LANGUAGE-I：payload 类型在 `age-msg-payload` 包装里（`age-msg-ty`），
+                    // 旧写法（`age-model-ty` 直接挂在 variant 下）仍兼容。
                     let mut payload = Vec::new();
-                    for p in eng.cx.children(c) {
-                        let ty_kind = eng.rule_kind_of("age-model-ty");
-                        if Some(eng.cx.tree.kind(p)) == ty_kind {
-                            payload.push(eng.cx.spelling(p));
+                    let wanted: Vec<u32> = ["age-msg-ty", "age-model-ty"]
+                        .iter()
+                        .filter_map(|n| eng.rule_kind_of(n))
+                        .collect();
+                    fn collect(
+                        eng: &mut Engine,
+                        node: u32,
+                        wanted: &[u32],
+                        out: &mut Vec<String>,
+                    ) {
+                        for p in eng.cx.children(node) {
+                            if wanted.contains(&eng.cx.tree.kind(p)) {
+                                out.push(eng.cx.spelling(p));
+                            } else {
+                                collect(eng, p, wanted, out);
+                            }
                         }
                     }
+                    collect(eng, c, &wanted, &mut payload);
                     out.push(ComponentMsgVariant {
                         name: eng.cx.spelling(name),
                         payload,

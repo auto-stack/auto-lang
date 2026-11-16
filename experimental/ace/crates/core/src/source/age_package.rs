@@ -67,6 +67,16 @@ pub struct AgePackageText {
     pub references: Vec<String>,
 }
 
+/// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg { Variant, … }` 的变体事实。
+///
+/// 名字是作者拼写；`payload` 是**类型拼写**（本面不做隐式解析——消费者需要时
+/// 按共同 Schema 解析；不接受"悄悄把拼写当已解析类型"）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgeMessageVariant {
+    pub name: String,
+    pub payload: Vec<String>,
+    pub span: Span,
+}
 /// 受检的一个 AGE 组件（一个 node 声明）。
 #[derive(Clone, Debug)]
 pub struct AgePackageComponent {
@@ -77,6 +87,8 @@ pub struct AgePackageComponent {
     pub fields: Vec<(String, String)>,
     /// `on <msg>` 消息名（按声明序；可能带 `.`，如 `Life.Tick`）。
     pub handler_msgs: Vec<String>,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体（名字 + payload 类型拼写，按声明序）。
+    pub messages: Vec<AgeMessageVariant>,
     /// PLAN-981：每个 `on` 处理器做的事（消息名 → `(字段, 赋值右手)`，按声明序）。
     ///
     /// 只有 `handler_msgs` 时，`count = count + 1` 与 `count = count + 2` 的区别
@@ -886,6 +898,16 @@ fn read_back_components(
                 "view-widget" => AgeViewExit::ViewWidget,
                 _ => AgeViewExit::View,
             },
+            messages: p
+                .node
+                .messages
+                .iter()
+                .map(|m| AgeMessageVariant {
+                    name: m.name.clone(),
+                    payload: m.payload.clone(),
+                    span: m.span,
+                })
+                .collect(),
             texts,
             module: p.module.clone(),
         });
@@ -1319,7 +1341,15 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "av::age_package (instance_states)",
         requirement: "AGE-L01",
     },
+    // PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体是 AGE 作者语法的一部分；
+    // SOURCE 交接时它属 AG-A 范围外（B-LANGUAGE 消费），现在以完整投影进入本面。
     AgeConstruct {
+        key: "msg",
+        spelling: "msg { Variant, Variant(<ty>, …) }",
+        fact: "the declared message variants with their payload type spellings",
+        consumer: "age_package::AgePackageComponent.messages",
+        requirement: "AGE-L01",
+    },    AgeConstruct {
         key: "on",
         spelling: "on <Msg> { <field> = <expr> }",
         fact: "the handler message names in declaration order",
@@ -1489,6 +1519,10 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
         };
         if !out.contains(&exit_fact) {
             out.push(exit_fact);
+        }
+        // B-LANGUAGE-I（AGE-L01）：`msg` 变体进入事实面（有变体即产生该行）。
+        if !c.messages.is_empty() && !out.contains(&"msg") {
+            out.push("msg");
         }
         for t in &c.texts {
             if !t.fn_name.is_empty() && !t.def_id.is_empty() && !out.contains(&"view.text") {
@@ -2140,6 +2174,10 @@ fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
 pub fn component_roles(description: &AgePackageDescription) -> Vec<&str> {
     let mut out = vec!["node", "view", "text"];
     for c in &description.components {
+        // B-LANGUAGE-I（AGE-L01）：`msg` 变体进入事实面（有变体即产生该行）。
+        if !c.messages.is_empty() && !out.contains(&"msg") {
+            out.push("msg");
+        }
         for t in &c.texts {
             if !out.contains(&t.role.as_str()) {
                 out.push(&t.role);

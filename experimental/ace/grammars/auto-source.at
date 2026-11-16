@@ -432,7 +432,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-package]) { age-view-widget-member() {} }
             // PLAN-980（B-DIALECT-I 完整批）：WidgetDecl 其余成员槽位逐项
             // 投影（结构 + 原 span）；行为接线按槽位 applicability 分批。
-            alt(profiles: [age-component]) { age-msg-member() {} }
+            alt(profiles: [age-component, age-package]) { age-msg-member() {} }
             alt(profiles: [age-component]) { age-design-member() {} }
             alt(profiles: [age-component]) { age-named-view-member() {} }
             alt(profiles: [age-component]) { age-bind-member() {} }
@@ -444,21 +444,36 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-component]) { age-timer-member() {} }
         }
         // PLAN-980：`msg { Inc, Dec, Set(int) }`——消息变体声明。
-        age-msg-member(profiles: [age-component], expect: "a `msg { Variant, … }` block") {
+        age-msg-member(profiles: [age-component, age-package], expect: "a `msg { Variant, … }` block") {
             name(of: "age-msg-head", field: "head") {}
             lbrace(same-line: true) {}
             age-msg-variant(field: "head") {} many { age-msg-variant-tail() {} }
             rbrace() {}
         }
-        age-msg-variant(profiles: [age-component]) {
+        age-msg-variant(profiles: [age-component, age-package]) {
             ident(field: "name")
-            opt { lparen(same-line: true, cut: true) {} age-model-ty(field: "payload") {} many { age-payload-tail() {} } rparen() {} }
+            opt { age-msg-payload() {} }
         }
-        age-msg-variant-tail(profiles: [age-component]) {
+        age-msg-variant-tail(profiles: [age-component, age-package]) {
             comma() {} age-msg-variant() {}
         }
-        age-payload-tail(profiles: [age-component]) {
-            comma() {} age-model-ty(field: "payload") {}
+        // B-LANGUAGE-I：`msg` payload 用独立类型规则（不借用 model 字段的类型槽——实测两者共用时整块退化成 `expected fn, found node` @0）。
+        age-msg-payload(profiles: [age-component, age-package]) {
+            lparen(same-line: true) {}
+            age-msg-ty(field: "payload") {}
+            many { age-payload-tail() {} }
+            rparen() {}
+        }
+        age-msg-ty(profiles: [age-component, age-package]) {
+            alt { int-kw() {} }
+            alt { i32() {} }
+            alt { bool() {} }
+            alt(profiles: [age-package]) { float-kw() {} }
+            alt(profiles: [age-package]) { f32-kw() {} }
+            alt { ident(field: "name") {} }
+        }
+        age-payload-tail(profiles: [age-component, age-package]) {
+            comma() {} age-msg-ty(field: "payload") {}
         }
         // PLAN-980：`design { theme: <expr> mode: <expr> }`——主题设计块。
         age-design-member(profiles: [age-component], expect: "a `design { theme: <expr> }` block") {

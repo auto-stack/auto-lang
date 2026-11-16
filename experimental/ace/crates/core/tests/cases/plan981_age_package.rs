@@ -101,8 +101,9 @@ fn p981_age_package_rejects_widget_member_slots() {
     use ace_core::source::age_package::compile_age_package;
     use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
+    // `msg` 已由 B-LANGUAGE-I 以完整投影交付（见 plan981_msg_slot），不再属于拒绝清单；
+    // 其余槽位仍等各自的投影切片。
     let bodies = [
-        "msg { Inc }",
         "design {\n        theme: nosuch_ident\n    }",
         "view main {\n        text \"hi\" {}\n    }",
         "bind {\n        \"title\" -> .NoSuchHandler\n    }",

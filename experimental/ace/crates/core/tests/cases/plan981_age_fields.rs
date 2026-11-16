@@ -24,6 +24,10 @@ node Widget {\n\
     view { text \"w\" {} }\n\
 }\n\
 node Counter {\n\
+    msg {\n\
+        Inc,\n\
+        Set(int)\n\
+    }\n\
     model { count int = 3 }\n\
     on Inc { count = count + 1 }\n\
     on Life.Tick { count = count + 1 }\n\
@@ -135,6 +139,7 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
         "node",
         "model",
         "model.init",
+        "msg",
         "on",
         "on.lifecycle",
         "view",
@@ -160,6 +165,7 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     }
                     "model.init" => c.initialized = false,
                     "on" | "on.lifecycle" => c.handler_msgs.clear(),
+                    "msg" => c.messages.clear(),
                     // 出口事实：把该出口换成另一个，代表"投影不再产出这一行"。
                     "view" => {
                         if c.exit == AgeViewExit::View {
@@ -217,6 +223,7 @@ fn p981_fields_construct_table_is_frozen() {
         vec![
             "model",
             "model.init",
+            "msg",
             "node",
             "on",
             "on.lifecycle",
