@@ -109,5 +109,53 @@ if/else、component、outlet/memo、memo/exact、link）、view-fn、style-recip
 - `ViewEvent.inline` 在 parse 输出上恒 `None`（内联 lambda parse 期铸造为
   `__evt` handler；分母行 Optional 并注记铸造去向）；插值文本在 002 形态归一为
   元素 `text` prop（`view.node.text.interp` 行同理）。
-- 本切片不含运行时行为：组件状态/事件执行（980/STATE）、窗口（NATIVE）、各
-  目标工程（WEB/RUST/TAURI/JET/ARK）与全模式联合覆盖（PARITY）均未交付。
+- 本切片不含窗口行为（NATIVE）、各目标工程（WEB/RUST/TAURI/JET/ARK）与全模式
+  联合覆盖（PARITY）。组件状态/事件执行已由 STATE 批交付（§6），但
+  DynamicComponent 产品默认链未切换（旧 bytecode 链并行，退役归 PLAN-987）。
+- f-string 文本叶（`${int}` → HIR `TextDisplay`）不可在 av.owned/1 车道执行：
+  完整文本观察对 f-string 源具名拒绝；状态通道走 states-only（§6）。KNOWN-DEBT
+  登记，关闭=profile/接线工作。
+- emit/child→parent 路由未接线：属跨组件路由，归 981/IF-981-MODULE 多单元接线
+  （KNOWN-DEBT）。
+
+## 6. 组件面状态执行服务（STATE 批，2026-11-16）
+
+PLAN-980 B-STATE-I/V/R 已验：组件形 widget 源的 model 状态与事件执行经
+ACE（AGE Schema 场景脱糖 → 唯一共享 verify → AV 真值），替代旧
+`handler_codegen` bytecode 合成路径**在本交付面上**的职责。收据见计划 §9
+round 8/9（work/review 终核）。
+
+- **states-only 场景编译**（ace-core `compile_component_scenario_states`）：
+  发射状态函数与驱动、不发射文本叶求值函数（`instance_texts` 空行）。f-string
+  叶的 `TextDisplay` 在 av.owned/1 不可 lowering（整模块 lowering 连带失败），
+  状态通道不依赖文本叶——states-only 对 f-string 源可用；完整文本观察保持
+  拒绝（`p980_state_fstring_view_leaf_states_observe_text_lane_refuses` 断
+  `text-display`；复核反例断言 states-only 工件级无 `__age_c_text`）。
+- **逐字段状态观察**（ace-av `observe_component_states` /
+  `observe_component_scenario_states`）：按 `__age_state_<i>_<field>` def id
+  执行，int/bool/str 全域映射（`ComponentFieldValue`）；与既有 `__age_drive`
+  打包编码互补且一致（`p980_state_field_view_agrees_with_packed_driver`）。
+- **每实例初值（props 种子）**（`ComponentInitials`/`InitialValue`）：mount 期
+  覆盖源内 init（源与 `input_hash` 不变，`desugar_hash` 随初值变化）。拒绝面：
+  未声明字段 `component-unknown-field`/类型不匹配与超 i32 域
+  `component-unsupported`/单实例重复 `component-duplicate`/覆盖数错位
+  `component-scenario`（`p980_state_initials_rejections_are_named`）。
+- **scheduler 一次性执行入口**（ace-av `scheduler_run::run_task_source`）：
+  968 调度器面（task/on、`Task.spawn`、`await`/`sleep`、虚拟时钟）的进程内
+  公共 API——编译 → lower → MIR verify → ABC admit → `execute_sched` 到静止，
+  stdout 由 ConsoleCapture 收集（UI 异步宿主；一次性运行，无跨调用状态）。
+- **ACE 状态执行桥**（auto-ui-runtime `ui/ace_state_bridge.rs`，生产依赖
+  ace-av）：`AceStateEngine`——keyed mount/unmount（世代递增）/晚到事件丢弃
+  （`UnknownIdentity`/`InstanceReleased` 可区分）/重挂全新/dispatch 失败回滚
+  （引擎不毒化）/props=mount 初值。**MIX-03 无 HTTP 版已验**：
+  `spawn_async` 钉 (identity, mount generation)，任务先在 ACE scheduler 真实
+  执行到静止（失败具名拒、不可伪造完成），完成回写只落在存活且同世代实例
+  （`StaleGeneration` 丢弃对齐 CompletionPorts DropLate；HTTP 实腿归 983）。
+  永久 case：`plan041_instance_ownership.rs` `p980_ace_state` 5 项（真实 002
+  源；双 App 双实例隔离/store 形 handler/卸载-晚到-重挂/异步世代纪律/失败
+  不伪造）。旧 plan041 4 case 不动（两路并存对照）。
+- **已验输入**：examples/ui/002-counter 真源（sha256/16=04937c35325faa74，
+  lang 侧冻结）经 `LegacyWidgetAlias::Accept` + initials 种子 + 定向 ops。
+- **边界**（KNOWN-DEBT）：f-string 文本叶 AV 车道（上）；emit 路由与多单元源
+  （host/store 内嵌跨引用）归 981/IF-981-MODULE；产品默认链未切换、旧
+  bytecode 退役归 987；观测字段仍须 int（打包驱动口径不变）。
