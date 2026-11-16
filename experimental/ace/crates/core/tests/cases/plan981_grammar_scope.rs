@@ -48,9 +48,12 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             SourceProfile::Record,
             "00158ab07c08588e2381d589031b5d21977a597b2ced2bf8f31ed992efd5e346",
         ),
+        // PLAN-975（T-03 MODULE text 侧，`52d2720dd`）：`r-pub`/`public-fn` 准入 `text-record`（使 `sqlite.at` 单源服务 packages/foreign 双 lane），
+        // 该面 grammar id 由基线 `d820ae7fe3a0a1c02e06d5a6fa5887a8264cc350e488298ac1bd45762ec8e752` 变为下述 post-change 值；
+        // 其余 13 个 profile 逐字节未变（下表全部仍与冻结值相等）。
         (
             SourceProfile::TextRecord,
-            "d820ae7fe3a0a1c02e06d5a6fa5887a8264cc350e488298ac1bd45762ec8e752",
+            "fb3d3883b935eb4c59d29909126918ffca5692cd2b8a82fac3c4d19f40cc5dc7",
         ),
         (
             SourceProfile::EntryUnit,
