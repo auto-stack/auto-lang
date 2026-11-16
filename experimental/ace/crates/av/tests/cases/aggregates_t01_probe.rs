@@ -655,3 +655,15 @@ fn audit1035_res_02_named_whole_element_stays_a_view() {
         "{err:?}"
     );
 }
+
+/// RES-01 matrix row: a TUPLE carrying a List owns (S = any member S), and
+/// destructuring still yields the owned elements with a closing ledger.
+#[test]
+fn audit1035_res_01_tuple_of_list_is_owned() {
+    let src = "fn main() int {\n    var xs = [40, 2]\n    let t = (xs.move, 7)\n    let (a, b) = t\n    return a.get(0) + a.get(1) + b - 7\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("tuple-of-list executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}

@@ -109,3 +109,20 @@ fn nested_list_only_record_chain_is_owned_at_the_hir_gate() {
         ),
     }
 }
+
+/// RES-01 matrix row: a record whose ONLY resource carrier is a Variant
+/// field is owned too (`S=true`, even when the payload is Copy) — the HIR
+/// element gate rejects the bare read exactly like the List-field case.
+#[test]
+fn record_with_variant_field_is_owned_at_the_hir_gate() {
+    let src = "enum Tag { A(int)\nEnd }\ntype W { t Tag; code int }\nfn main() int {\n    var xs = List<W>.new()\n    var w = W(Tag.A(1), 7)\n    xs.push(w.move)\n    return xs.get(0).code\n}";
+    let parts = bare_element_bundle(src);
+    let errs = verify::verify_closures(parts.bundle)
+        .err()
+        .expect("the bare Variant-carrying element read must reject");
+    assert!(
+        errs.iter().any(|d| d.code == "verify.view-escape"),
+        "expected verify.view-escape for the Variant-carrying record element, got {:?}",
+        codes(&errs)
+    );
+}
