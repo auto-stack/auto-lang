@@ -452,3 +452,76 @@ fn main() int {
     assert_eq!(code, 1347, "the native/mn end materializes the same bytes");
     let _ = std::fs::remove_dir_all(&mn_dir);
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-975 T-03/T-08 — array segments in dotted paths (the legacy
+// JsonValue.get_at face mapped onto the readers) + the V-08 JSON
+// fidelity legs. The legacy 007_json fixture shape (nested object with
+// an array of public records, field "ClearDiagnosticInformation") is
+// read through the tracked module verbatim; independent hand oracle.
+// ---------------------------------------------------------------------------
+#[test]
+fn json975_array_paths_and_legacy_shape() {
+    let stdlib_json = include_str!("../../../../../../stdlib/ace/std/json.at");
+    let src = format!(
+        r#"{stdlib_json}
+fn main() int {{
+    // the legacy 007_json fixture shape: services[0].name
+    let doc str = "{{\"services\": [{{\"name\": \"ClearDiagnosticInformation\", \"port\": 8090}}, {{\"name\": \"UpdateData\", \"port\": 8091}}]}}"
+    if !json_is_valid(doc) {{ return 1 }}
+    if json_kind_at(doc, "services") != 5 {{ return 2 }}
+    if json_kind_at(doc, "services.0") != 6 {{ return 3 }}
+    if json_kind_at(doc, "services.0.name") != 4 {{ return 4 }}
+    let n Str = json_parse_str(doc, "services.0.name")
+    let want_n Str = "ClearDiagnosticInformation"
+    if n != want_n {{ return 5 }}
+    let n2 Str = json_parse_str(doc, "services.1.name")
+    let want_n2 Str = "UpdateData"
+    if n2 != want_n2 {{ return 6 }}
+    if json_parse_int(doc, "services.0.port") != 8090 {{ return 7 }}
+    if json_parse_int(doc, "services.1.port") != 8091 {{ return 8 }}
+    // nested arrays: index chains
+    let nested str = "{{\"grid\": [[1, 2], [3, 4]]}}"
+    if json_kind_at(nested, "grid.0") != 5 {{ return 9 }}
+    if json_parse_int(nested, "grid.1.0") != 3 {{ return 10 }}
+    if json_parse_int(nested, "grid.0.1") != 2 {{ return 11 }}
+    // negatives: out-of-range index and non-digit segment are MISSING
+    if json_kind_at(doc, "services.2.name") != 0 {{ return 12 }}
+    if json_kind_at(nested, "grid.0.9") != 0 {{ return 13 }}
+    if json_kind_at(doc, "services.x.name") != 0 {{ return 14 }}
+    if json_kind_at(doc, "services..name") != 0 {{ return 15 }}
+    // descending through a SCALAR is missing (0), malformed doc is -1
+    if json_kind_at(doc, "services.0.name.deeper") != 0 {{ return 16 }}
+    if json_kind_at("{{\"a\": [", "a.0") != -1 {{ return 17 }}
+    // ---- V-08 fidelity legs: null vs missing vs wide-int no loss
+    let d2 str = "{{\"a\": null, \"b\": 2147483647, \"c\": true}}"
+    if json_kind_at(d2, "a") != 1 {{ return 18 }}
+    if json_kind_at(d2, "zz") != 0 {{ return 19 }}
+    if json_parse_int(d2, "b") != 2147483647 {{ return 20 }}
+    if json_parse_bool(d2, "c") != 1 {{ return 21 }}
+    return 0
+}}"#
+    );
+    let mut backend = Win32PlatformIo::default();
+    let grants: Vec<String> = vec!["platform.mem".into()];
+    let program = ace_av::console_host::compile(&src, "d_main").expect("compile array-path source");
+    let (out, _t, _s) = program
+        .run_platform(
+            &grants,
+            &ace_av_core::av::ExecLimits::default(),
+            &ace_av_core::av::CancelFlag::new(false),
+            None,
+            &mut backend,
+        )
+        .expect("run platform array-path");
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "array paths + V-08 fidelity oracles, got {out:?}"
+    );
+}
