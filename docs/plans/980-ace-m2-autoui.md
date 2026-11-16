@@ -1074,6 +1074,16 @@ next_responsible_role: work（WEB 切片#6e：`generate_sfc_with_lane` 一体化
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 34 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6d 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 18b50bfd lang 340b7e018 | next: user（裁定开放）或 work（#6e 默认）
 
+2026-11-16 stage: work（WEB 批切片 #6e：一体化入口+普查 v2，goal round 35——裁定未应答，默认推进）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——参数化扩面/全量双轨/浏览器档为剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **f7e63778**、lang **09fff0dd8**（§13.8）。
+
+**交付。** ①`generate_sfc_with_lane(src, path)` 一体化入口（真实编译器管线 SFC + lane 体拼接；absent=旧道保持，双轨期合同）；②**覆盖普查 v2 冻结表**（`p980_web_unified_entry_census_v2`，12/12）：msg 引用赋值族全覆盖（counter 3/3、str 字面量 1/1）；无 on/watch=passthrough；**参数化 handler（`.Add(t) ->`）=lane 缺席→旧道**（#6f 扩面项）。
+
+**验证（冻结提交实测）。** ace_ts_provider 12/12；fmt clean；ui ff 落主 `f7e63778`；规范 §13.8 落主 `09fff0dd8`。
+
+next_responsible_role: work（WEB 切片#6f：参数化 handler 扩面（参数入 lane 体）→ 90 项全量双轨 → 浏览器挂载档。波次门不变：B-AV←M2A-08（985）、B-RUST W3←UI-W2-AC（1068）、TAURI←WEB）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 35 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#6e 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui f7e63778 lang 09fff0dd8 | next: user（裁定开放）或 work（#6f 默认）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
