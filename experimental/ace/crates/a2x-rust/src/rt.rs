@@ -210,18 +210,15 @@ mod pio_win {
     }
 }
 
-static mut PIO_BUFS: [Option<Vec<u8>>; 16] = [
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None,
-];
-static mut PIO_NEXT: i32 = 0;
+const PIO_BUF_SLOTS: usize = 64;
+static mut PIO_BUFS: [Option<Vec<u8>>; PIO_BUF_SLOTS] = [const { None }; PIO_BUF_SLOTS];
 static mut PIO_LAST_ERROR: i32 = 0;
 
 unsafe fn pio_slot(id: i32) -> Option<&'static mut Vec<u8>> {
-    if id < 0 || id >= 16 {
+    if id <= 0 || id as usize > PIO_BUF_SLOTS {
         return None;
     }
-    (&mut PIO_BUFS)[id as usize].as_mut()
+    (&mut PIO_BUFS)[(id - 1) as usize].as_mut()
 }
 
 pub fn a2x_io_stdout() -> i32 {
@@ -349,13 +346,13 @@ pub fn a2x_mem_alloc(n: i32) -> i32 {
         return -4;
     }
     unsafe {
-        let id = PIO_NEXT;
-        PIO_NEXT += 1;
-        if id >= 16 {
-            return -9;
+        for (i, slot) in (&mut PIO_BUFS).iter_mut().enumerate() {
+            if slot.is_none() {
+                *slot = Some(Vec::with_capacity(n as usize));
+                return (i + 1) as i32;
+            }
         }
-        (&mut PIO_BUFS)[id as usize] = Some(Vec::with_capacity(n as usize));
-        id
+        -9
     }
 }
 
@@ -389,10 +386,10 @@ pub fn a2x_mem_write_u8(b: i32, off: i32, v: i32) -> i32 {
 
 pub fn a2x_mem_free(b: i32) -> i32 {
     unsafe {
-        if b < 0 || b >= 16 {
+        if b <= 0 || b as usize > PIO_BUF_SLOTS {
             return -2;
         }
-        match (&mut PIO_BUFS)[b as usize].take() {
+        match (&mut PIO_BUFS)[(b - 1) as usize].take() {
             Some(_) => 0,
             None => -2,
         }

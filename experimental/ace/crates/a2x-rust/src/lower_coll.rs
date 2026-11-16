@@ -813,6 +813,18 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 })
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+                let lt = self
+                    .view
+                    .resolve_use_ty(self.f.body.exprs[lhs.0 as usize].ty)?;
+                if matches!(op, hir::BinOp::Eq | hir::BinOp::Ne) && lt.is_text() {
+                    let l = self.operand_str_view(lhs, out)?;
+                    let r = self.operand_str_view(rhs, out)?;
+                    return Ok(RExpr::StrCmp {
+                        eq: matches!(op, hir::BinOp::Eq),
+                        lhs: Box::new(l),
+                        rhs: Box::new(r),
+                    });
+                }
                 let l = self.expr(lhs, out)?;
                 let r = self.expr(rhs, out)?;
                 match op {

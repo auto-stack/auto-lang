@@ -245,6 +245,8 @@ mod net_974;
 mod module_v_1064;
 #[path = "cases/bstr_1064.rs"]
 mod bstr_1064;
+#[path = "cases/kv_zip_1064.rs"]
+mod kv_zip_1064;
 #[path = "cases/json_975.rs"]
 mod json_975;
 #[path = "cases/b1_slice_975.rs"]

@@ -262,8 +262,12 @@ pub fn write_bytes(path Str, bytes List<int>) int {
     }
     let r = write_bytes_all(h, region, bytes, 0)
     let d2_buf_free = buf_free(region)
+    var f = 0
+    if (r == 0) {
+        f = pf_flush(h)
+    }
     let c = pf_close(h)
-    if (r != 0 || c < 0) {
+    if (r != 0 || f != 0 || c < 0) {
         return -1
     }
     return 0
@@ -283,6 +287,17 @@ fn write_bytes_all(h int, region int, bytes List<int>, from int) int {
 }
 
 fn stage_bytes(region int, bytes List<int>, from int, stop int, k int) int {
+    if (from + k + 8 <= stop) {
+        let d0 = mem_write_u8(region, k, bytes.get(from + k))
+        let d1 = mem_write_u8(region, k + 1, bytes.get(from + k + 1))
+        let d2 = mem_write_u8(region, k + 2, bytes.get(from + k + 2))
+        let d3 = mem_write_u8(region, k + 3, bytes.get(from + k + 3))
+        let d4 = mem_write_u8(region, k + 4, bytes.get(from + k + 4))
+        let d5 = mem_write_u8(region, k + 5, bytes.get(from + k + 5))
+        let d6 = mem_write_u8(region, k + 6, bytes.get(from + k + 6))
+        let d7 = mem_write_u8(region, k + 7, bytes.get(from + k + 7))
+        return stage_bytes(region, bytes, from, stop, k + 8)
+    }
     if (from + k >= stop) {
         return 0
     }
