@@ -1014,6 +1014,16 @@ next_responsible_role: work（WEB 切片#5：ts_adapter 委托点源线程化+la
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 29 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#4 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui 80d1cc06 lang 16f7ec508 | next: work（WEB 切片#5：ts_adapter 接线）
 
+2026-11-16 stage: work（WEB 批切片 #5：lane 消费真实生产源，goal round 30）| plan_id: PLAN-980 | plan_revision: r14 | outcome: pass（**B-WEB-I/V/R 保持未勾**——ts_adapter 接线/全量切换/浏览器档为批剩余）| worktree: lang-980 @ plan-980-dev | commit: ui **c74f8755**、lang **8d0468cdb**（规范 §13.3）。
+
+**交付。** ①lane 坐标基准明确=**f-string 脱糖后源**（探针实证 002 span 位移 +7——组件面入口统一脱糖所致；lane 先脱糖再编译并暴露 `desugared_source()`，无 f-string 源时与原源一致）；②`emit_expr_at_text`（文本锚包含定位，同 span 组合形优先）；③**真实生产 002 全源端到端**（永久 case `p980_web_lane_consumes_production_002_source`）：ToggleMode `!.dark_mode` NOT（局部名 `l2___age_s_0_dark_mode`——字段序即局部序）按脱糖源 span 精确定位→reactive 映射→真 node `!false===true`；Inc handler 同 lane 定位（002 `.count += 1` 首现于 view 内联 lambda——**on 块 occurrence 推导**记录为适配器配方）。④线程化事实补全：旧 AST（auto_lang_core::ast）零 span、方言 `OnHandler` 无 span、view 树 ViewNode 有 span——**接线前置=方言层 OnHandler span 捕获 + LogicPayload 源区间扩展**（切片#6 工程面，已具名）。
+
+**验证（冻结提交实测）。** `cargo test -p auto-ui-runtime --features ace-bridge --test ace_ts_provider -- --test-threads=1` = **8/8**（切片#1–#5 全链；node 腿实跑）；fmt clean、模块零警告；rebase 无增量、ff 落主。
+
+next_responsible_role: work（WEB 切片#6：方言 OnHandler span 捕获 + LogicPayload 源区间 + ts_adapter 委托点接线；波次门不变）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r14 | round: 30 | from: work | to: work | status: executing（12/32）| outcome: pass（切片#5 落主）| worktree: D:/autostack/.wt/lang-980 | commit: ui c74f8755 lang 8d0468cdb | next: work（WEB 切片#6：span 捕获+接线）
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
