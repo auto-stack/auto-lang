@@ -392,3 +392,17 @@ p980_web_lane_census_frozen_forms`，11 形态逐项 Ok/具名拒）。收据见
   生产 UI 表达表面（比较/布尔/str/插值/调用）**先须扩 fragment 编译
   profile/入口**（976 后继或 richer entry），普查表即该义务的可测分母
   （表变化须具名修订，防静默漂移）。
+
+### §13.1 入口扩域评估结论（切片 #3，2026-11-16）
+
+**组件面 = fragment 扩域可行入口（机制已钉）**：生产形态源（`!` 一元/
+str/bool 字段——Core profile 具名拒的形态）经组件面 states-only 编译 →
+`SemanticView::from_checked` → 976 fragment 发射器可运行（`p980_web_
+component_face_entry_fragments`：span 定位→发射→宿主映射→真 node 读值
+FRAG_OK）。**形态=脱糖调用链**：handler 内 model 访问脱糖为
+`__age_state_<i>_<field>()` 调用——fragment 为调用形，宿主映射面=
+"状态函数调用 `fn()` → reactive 值"（吃括号替换，测试已固化）。**O-C3**：
+脱糖 drive 的 span 精度（`!.on` 源段定位落到 count 调用——PLAN-964 span
+移位同族边界）：精确 per-handler 定位=适配器接线（切片 #4）前置。结论：
+WEB 完整切换不需要 976 后继扩 profile 前置——组件面入口路线成立；剩余=
+span 精度/逐 handler 定位 + ts_adapter 接线 + 全量切换 + 浏览器档。
