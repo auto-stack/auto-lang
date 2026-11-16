@@ -19,9 +19,7 @@
 //! §5.2 demo is the named remainder (resolve has no module-namespace
 //! bindings yet); the item-import spelling is the current-Auto face.
 use ace_core::source::cst::FrontBudget;
-use ace_core::source::packages::{
-    parse_package_source, PackageModuleInput, PACKAGES_CAPABILITY,
-};
+use ace_core::source::packages::{parse_package_source, PackageModuleInput, PACKAGES_CAPABILITY};
 use ace_source_query::modules::packages::compile_package_product;
 
 const JSON_AT: &str = include_str!("../../../../../stdlib/ace/std/json.at");
@@ -92,13 +90,9 @@ fn module_1064_json_module_consumed_cross_module() {
             "use app.jsond.json_is_valid\npub fn main() int {\n    if json_is_valid(\"{\\\"a\\\":1}\") { return 42 }\n    return 1\n}",
         ),
     ];
-    let product = compile_package_product(
-        &inputs,
-        "app::main",
-        &caps(),
-        FrontBudget::WORK_OWNED_64MIB,
-    )
-    .expect("the json.at packages seam is closed (condition-expr widening)");
+    let product =
+        compile_package_product(&inputs, "app::main", &caps(), FrontBudget::WORK_OWNED_64MIB)
+            .expect("the json.at packages seam is closed (condition-expr widening)");
     assert!(
         product
             .compiled
@@ -135,8 +129,10 @@ fn module_1064_demo_visibility_item_form() {
     assert!(
         ok.is_ok(),
         "demo pub consumption compiles: {:?}",
-        ok.err()
-            .map(|ds| ds.iter().map(|d| d.diagnostic.message.clone()).collect::<Vec<_>>())
+        ok.err().map(|ds| ds
+            .iter()
+            .map(|d| d.diagnostic.message.clone())
+            .collect::<Vec<_>>())
     );
 
     // cross-module PRIVATE import: named rejection
@@ -157,9 +153,12 @@ fn module_1064_demo_visibility_item_form() {
         Err(ds) => ds,
     };
     assert!(
-        err.iter().any(|d| d.diagnostic.code == "source.module-private"),
+        err.iter()
+            .any(|d| d.diagnostic.code == "source.module-private"),
         "named module-private rejection, got {:?}",
-        err.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+        err.iter()
+            .map(|d| d.diagnostic.code.clone())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -219,8 +218,10 @@ pub fn main() int { return demo.answer() }",
     assert!(
         ok.is_ok(),
         "the §5.2 module-scope demo compiles: {:?}",
-        ok.err()
-            .map(|ds| ds.iter().map(|d| format!("{}: {}", d.diagnostic.code, d.diagnostic.message)).collect::<Vec<_>>())
+        ok.err().map(|ds| ds
+            .iter()
+            .map(|d| format!("{}: {}", d.diagnostic.code, d.diagnostic.message))
+            .collect::<Vec<_>>())
     );
 
     // negative: the qualified call to the PRIVATE helper is named-rejected
@@ -242,9 +243,12 @@ pub fn main() int { return demo.helper(41) }",
         Err(ds) => ds,
     };
     assert!(
-        err.iter().any(|d| d.diagnostic.code == "source.module-private"),
+        err.iter()
+            .any(|d| d.diagnostic.code == "source.module-private"),
         "named module-private rejection on the qualified call, got {:?}",
-        err.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+        err.iter()
+            .map(|d| d.diagnostic.code.clone())
+            .collect::<Vec<_>>()
     );
 
     // negative: a module namespace is not directly callable
@@ -266,9 +270,12 @@ pub fn main() int { return demo() }",
         Err(ds) => ds,
     };
     assert!(
-        err2.iter().any(|d| d.diagnostic.code == "source.module-symbol"),
+        err2.iter()
+            .any(|d| d.diagnostic.code == "source.module-symbol"),
         "named module-symbol rejection, got {:?}",
-        err2.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+        err2.iter()
+            .map(|d| d.diagnostic.code.clone())
+            .collect::<Vec<_>>()
     );
 
     // negative: whole-module re-export is a named rejection
@@ -290,9 +297,12 @@ pub fn main() int { return 0 }",
         Err(ds) => ds,
     };
     assert!(
-        err3.iter().any(|d| d.diagnostic.code == "source.module-path"),
+        err3.iter()
+            .any(|d| d.diagnostic.code == "source.module-path"),
         "named module-path rejection for module re-export, got {:?}",
-        err3.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+        err3.iter()
+            .map(|d| d.diagnostic.code.clone())
+            .collect::<Vec<_>>()
     );
 
     // negative: `use demo` of an unknown module is named-missing
@@ -311,8 +321,11 @@ pub fn main() int { return 0 }",
         Err(ds) => ds,
     };
     assert!(
-        err4.iter().any(|d| d.diagnostic.code == "source.module-missing"),
+        err4.iter()
+            .any(|d| d.diagnostic.code == "source.module-missing"),
         "named module-missing rejection, got {:?}",
-        err4.iter().map(|d| d.diagnostic.code.clone()).collect::<Vec<_>>()
+        err4.iter()
+            .map(|d| d.diagnostic.code.clone())
+            .collect::<Vec<_>>()
     );
 }

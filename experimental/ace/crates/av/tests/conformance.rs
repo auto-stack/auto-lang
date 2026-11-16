@@ -241,6 +241,8 @@ mod module_packages_960;
 mod module_sources_950;
 #[path = "cases/net_974.rs"]
 mod net_974;
+#[path = "cases/module_v_1064.rs"]
+mod module_v_1064;
 #[path = "cases/json_975.rs"]
 mod json_975;
 #[path = "cases/b1_slice_975.rs"]
