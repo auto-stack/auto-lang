@@ -1,3 +1,14 @@
+### D-981-MODULE-GLOBAL-A2R — 模块级 const/var 的 A2R 目标合法化（2026-11-16，落主 `1738c2a1c`，具名缺口）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| 含模块级 `const`/`var` 的包图在 `SemanticView::from_checked` 被 `module.global.*` intrinsic 拒（V-R-FAIL 负控）；A2R 消费 **HIR**，而全局的 init 值/可变性只在 MIR 降级里出现，HIR 无此事实 | 981 §6.7/§9（R60-8/R59-5 收据旁）、`plan981_age_package_a2r.rs` 头注释、`plan981_rust_public.rs` V-R-FAIL | RUST 批（B-RUST-I 后继）：二选一——① HIR 承载 global 的 init/mutability 事实（`core/src/hir.rs` + `lowering/src/hir_adapter.rs`）后 A2R 生成 `static`/`static mut` 与读写；② A2R 改消费含 globals 表的 MIR。关闭条件=真实 rustc 腿跑通含 const/var 的包图 + 原 V-R-FAIL 负控改为正例/保留对照 |
+### D-985-A-FREEZE — A正确性必闭与B研究/载体迁移分账（2026-11-16，仅规划）
+
+权威为[985 r23 A-FREEZE](985-ace-m2-certification.md) F01..35逐项表和[1066 r3](1066-autodown-migration-gap-closure.md) A/B切片。本记录不关闭任何债项：1027/28只复用其正式交付范围；1024审计仍reviewed 4/5、T-05未交。A八个正确性包1029、1031–1037当前均未实施/未交，尤其1035 RES-01/02/03必须实际值/资源/失败后恢复与充分反证/独立来源；不能只补故障标题或把注入Infra强改Resource。F03/05/08/12约束及F14/20守恒由985 T-A03/A04核。
+
+1030历史864外层及1038结构研究B，若实际A消费864则先提升；1066两个缺result/九空H/正常路径零作者写入/真实选择证据属A，原T-12[A]/T-13[A]正式交片。D-1062-CLOSURE其余S/N/P/C载体/v2/proposal/250编译完整迁移在B按原任务关闭，旧根/条件/1170角色/独立oracle不减，原D-1062债表继续有效，不因后移写PASS。所有新负控/adapter/矩阵分类与正式A收据待原owner实施/复核/合入；本轮无实现或产品验证。
+
 ### D-981-EXIT-CONTRACT — SOURCE 期"单出口"契约被 r13 AGE-L03 撤销（2026-11-16，落主 `1738c2a1c`，待 979 复核）
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
@@ -4564,3 +4575,13 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   （真实 PLAN-968 fixture 双腿 + 80 嵌套拒绝/80 兄弟语句放行）。
   关闭=f0 FFI deck 或闭包语料有廉价仓内 fixture 后补两例负控（或随 987 旧 emitter
   退役的语料迁移一并建立）。owner=PLAN-976 后续轮/987。
+
+### 批量回归新红：infra-fixed `ace` 集治理期望滞后 — 2026-11-16
+
+- **`test_fixed_groups.FixedGroups.test_ace_set_is_explicit_and_separate_from_daily`**：
+  `cargo t all`（run-4tyrocgf，covered 5cedb4715）实测 `ace` 集展开为
+  [ace-workspace, ace-adapters, ace-batch, **ace-facade**]，治理测试冻结期望缺
+  ace-facade。由 PLAN-969 E0 facade 落主 `278b912043`（2026-11-15，前收据之后）
+  引入——969 加组未同步 scripts/tests/test_fixed_groups.py 的显式清单；非 976 触面
+  （976 仅改 ace-a2x 组 args）。关闭=L0 fix worktree 一行期望更新（或 969 线后续）。
+  owner=PLAN-969 线/批量回归 triage。
