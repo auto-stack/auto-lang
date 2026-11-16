@@ -535,3 +535,16 @@ block"族=**master 预存红同族**，归 triage）/ spliced=0 / absent=23。
 器旧道（双轨期合同——缺席不拒绝）。**WEB 批 UI 侧状态**：机制链全通
 （组件面→HIR→span 定位→发射→reactive 映射→函数体→SFC 拼接→一体化
 入口→双轨仪表），交付切换的语言侧前置已具名；浏览器挂载档待做。
+
+### §13.11 浏览器挂载档（切片 #6h，2026-11-16）
+
+`examples/ui/ace-web-lane/tests/test_lane_browser.mjs`（013-todo 先例：
+playwright 解析→无头 chromium→DOM 断言）+ 永久 case
+`p980_web_lane_browser_mount`（排窗 `AUTO_UI_ACE_WEB_E2E=1`）：002 的
+lane 派生 Inc handler 体在**真实浏览器** reactive 宿主（`{value, notify}`
+对象 + DOM 更新回调）中执行——点击按钮 → `a2x_add(count.value, 1)` →
+`count.value = t0` → DOM 文本 41→42。a2x_rt helper 内联（ES module 的
+export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<script>`
+非 module 环境限制）。ace_ts_provider 14/14。**WEB 批 UI 侧全部项已交**
+（机制链 + 双轨仪表 + 浏览器档）；真语料 spliced 切换待语言侧前置×3
+（§13.10）。
