@@ -66,6 +66,49 @@ fn p981_model3d_is_a_valid_parameter_port() {
     );
 }
 
+/// `model3d.glb("…")` 的**路径实参必须被保留**——不能静默丢弃。
+///
+/// 实测发现的丢弃：`collect_age_resources` 原先只收 f32 实参，字符串实参被直接跳过，
+/// 于是 `let ship = model3d.glb("assets/ship.glb")` 得到一个**空的** `components`，
+/// 而别处也没有承载路径的字段——消费者根本拿不到 GLB 位置。
+#[test]
+fn p981_model3d_keeps_its_glb_path() {
+    let out = compile(
+        "let ship = model3d.glb(\"assets/ship.glb\")\nnode T {\n    view { text \"t\" {} }\n}\n",
+    )
+    .expect("the GLB constructor compiles");
+    let r = out
+        .description
+        .resources
+        .iter()
+        .find(|r| r.name == "ship")
+        .expect("ship");
+    assert_eq!(r.port, "Model3D");
+    assert_eq!(
+        r.symbol.as_deref(),
+        Some("assets/ship.glb"),
+        "the GLB path must survive into the description"
+    );
+    assert!(r.components.is_empty(), "Model3D has no f32 components");
+}
+
+/// 数值构造器（`material2d.color`）的 `symbol` 必须为空——两个字段互斥。
+#[test]
+fn p981_numeric_constructor_has_no_symbol() {
+    let out = compile(
+        "let red = material2d.color(0.9, 0.3, 0.2, 0.5)\nnode T {\n    view { text \"t\" {} }\n}\n",
+    )
+    .expect("compiles");
+    let r = out
+        .description
+        .resources
+        .iter()
+        .find(|r| r.name == "red")
+        .expect("red");
+    assert_eq!(r.components, vec![0.9, 0.3, 0.2, 0.5]);
+    assert_eq!(r.symbol, None, "a colour has no path argument");
+}
+
 /// `model3d` 叶的 `model:` 绑定一个具名 GLB 资源。
 #[test]
 fn p981_model3d_leaf_binds_a_named_resource() {

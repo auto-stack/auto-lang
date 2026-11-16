@@ -177,10 +177,19 @@ pub struct AgeResource {
     pub name: String,
     /// 声明所在模块键。
     pub module: String,
-    /// 端口类型名（`Material2D` / `Mesh2D`）。
+    /// 端口类型名（`Material2D` / `Mesh2D` / `Model3D`）。
     pub port: String,
     /// 构造器实参的 f32 分量（按书写序）；非字面量参数不在此列。
+    ///
+    /// **只对以数值构造的资源有意义**（`material2d.color` / `mesh2d.*`）。
+    /// `Model3D` 的构造器收的是**路径字符串**，它的参数走 [`Self::symbol`]。
     pub components: Vec<f32>,
+    /// 构造器的**符号实参**（按书写序）。
+    ///
+    /// 补这个字段是因为实测发现的静默丢弃：`let ship = model3d.glb("assets/ship.glb")`
+    /// 原先 `components` 为**空**——字符串实参既不进 `components`，也没有别处承载，
+    /// 消费者拿不到 GLB 路径。现在字符串进本字段。
+    pub symbol: Option<String>,
 }
 
 /// 一次 AGE 包编译结果。
@@ -1490,7 +1499,12 @@ fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResou
         let Some(op) = super::age_resources::lookup(&dotted) else {
             continue;
         };
+        // 实参按形状分流：数值进 `components`，字符串进 `symbol`。
+        //
+        // 此前只收 f32，非数值实参被**静默跳过**——`model3d.glb("ship.glb")` 于是
+        // 得到空的 `components`，而别处也没有承载路径的地方，消费者拿不到 GLB 位置。
         let mut components = Vec::new();
+        let mut symbol: Option<String> = None;
         for a in args {
             let e = match a {
                 super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => x,
@@ -1498,6 +1512,8 @@ fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResou
             };
             if let Some(v) = f32_literal(e) {
                 components.push(v);
+            } else if let super::ast::ExprKind::StrLit(text) = &e.kind {
+                symbol = Some(text.clone());
             }
         }
         out.push(AgeResource {
@@ -1505,6 +1521,7 @@ fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResou
             module: super::packages::unit_key(&decl.package, &decl.module),
             port: op.result_port.to_string(),
             components,
+            symbol,
         });
     }
     out.sort_by(|a, b| (&a.module, &a.name).cmp(&(&b.module, &b.name)));
