@@ -4888,6 +4888,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
                 Ok(dst)
             }
+            hir::ExprKind::TextFromChar { operand } if self.owned => {
+                // PLAN-975 B1: char -> fresh owned 1-scalar Str.
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrFromChar { dst, ch: v }, sp)?;
+                Ok(dst)
+            }
             hir::ExprKind::TextToBorrowed { operand } if self.owned => {
                 // `.to(str)` of an owned Str slot mints a rooted VIEW; of a
                 // view it is the identity borrow (a legal view share).
@@ -5472,6 +5479,14 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 }
                 Ok(dst)
             }
+            hir::ExprKind::TextFromChar { operand } if self.collections() => {
+                // PLAN-975 B1: char -> fresh owned 1-scalar Str (same MIR
+                // instruction as the owned profile's lane).
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrFromChar { dst, ch: v }, sp)?;
+                Ok(dst)
+            }
             hir::ExprKind::TextLenBytes { operand } if self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty)?;
@@ -5919,6 +5934,7 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         TextClone { .. } => "text-clone",
         ClosureClone { .. } => "closure-clone",
         TextToOwned { .. } => "text-to-owned",
+        TextFromChar { .. } => "text-from-char",
         TextToBorrowed { .. } => "text-to-borrowed",
         CharToCodepoint { .. } => "char-to-codepoint",
         CharFromCodepoint { .. } => "char-from-codepoint",

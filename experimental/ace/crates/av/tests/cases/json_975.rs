@@ -90,3 +90,191 @@ fn main() int {{
         "json encode family oracles, got {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-975 B1 — the char->Str materialization primitive receipt
+// (`c.to(Str)`): fresh owned 1-scalar buffers, multi-byte UTF-8 shapes,
+// cross-function owned returns, and composition with views (slice) and
+// concat. Hand oracles: scalar counts, byte lengths, codepoints.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn json975_char_to_str_primitive() {
+    let src = r#"
+fn mk(cp int) Str {
+    return char.from_codepoint(cp).to(Str)
+}
+fn main() int {
+    let a Str = mk(65)
+    if a.len() != 1 { return 1 }
+    if a.char_at(0).to_codepoint() != 65 { return 2 }
+    // concat of materialized chars equals the literal (byte equality)
+    let hi Str = mk(104) + mk(105)
+    let lit Str = "hi"
+    if hi != lit { return 3 }
+    // multi-byte: U+4E2D = 20013 (3 UTF-8 bytes, 1 scalar)
+    let zh Str = mk(20013)
+    if zh.len() != 1 { return 4 }
+    if zh.len_bytes() != 3 { return 5 }
+    if zh.char_at(0).to_codepoint() != 20013 { return 6 }
+    let mixed Str = mk(20013) + mk(25991) + mk(111) + mk(107)
+    if mixed.len() != 4 { return 7 }
+    if mixed.len_bytes() != 8 { return 8 }
+    if mixed.char_at(2).to_codepoint() != 111 { return 9 }
+    // 2-byte scalar U+00E9 = 233
+    let e Str = mk(233)
+    if e.len_bytes() != 2 { return 10 }
+    // 4-byte scalar U+1F600 = 128512
+    let em Str = mk(128512)
+    if em.len() != 1 { return 11 }
+    if em.len_bytes() != 4 { return 12 }
+    // materialized char + view slice + materialized char
+    let s Str = "hello"
+    let combo Str = mk(33) + s.slice(1, 3) + mk(63)
+    let want Str = "!el?"
+    if combo != want { return 13 }
+    return 0
+}
+"#;
+    let mut backend = Win32PlatformIo::default();
+    let grants: Vec<String> = vec!["platform.mem".into()];
+    let program = ace_av::console_host::compile(src, "d_main").expect("compile primitive source");
+    let (out, _t, _s) = program
+        .run_platform(
+            &grants,
+            &ace_av_core::av::ExecLimits::default(),
+            &ace_av_core::av::CancelFlag::new(false),
+            None,
+            &mut backend,
+        )
+        .expect("run platform primitive");
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "char.to(Str) materialization oracles, got {out:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-975 T-02 decode family — json.at's parse face inline: dotted-path
+// kind routing, typed extraction (str with EVERY escape incl. \uXXXX via
+// B1, int incl. negative, bool), full recursive validity, and the named
+// negatives (malformed forms, trailing garbage, wrong-kind reads).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn json975_decode_family_inline() {
+    let stdlib_json = include_str!("../../../../../../stdlib/ace/std/json.at");
+    let src = format!(
+        r#"{stdlib_json}
+fn main() int {{
+    let doc str = "{{\"user\":{{\"name\":\"Michi\",\"age\":7,\"tags\":[\"a\"],\"active\":true,\"note\":null}},\"msg\":\"h\\u0069\",\"esc\":\"a\\\"b\\\\c\\nd\",\"pos\":42,\"neg\":-7,\"f\":1.5,\"zero\":0}}"
+    // kind routing (-1/0/1/2/3/4/5/6/7)
+    if json_kind_at(doc, "user") != 6 {{ return 1 }}
+    if json_kind_at(doc, "user.name") != 4 {{ return 2 }}
+    if json_kind_at(doc, "user.age") != 3 {{ return 3 }}
+    if json_kind_at(doc, "user.tags") != 5 {{ return 4 }}
+    if json_kind_at(doc, "user.active") != 2 {{ return 5 }}
+    if json_kind_at(doc, "user.note") != 1 {{ return 6 }}
+    if json_kind_at(doc, "nope") != 0 {{ return 9 }}
+    if json_kind_at(doc, "msg") != 4 {{ return 7 }}
+    if json_kind_at(doc, "f") != 7 {{ return 8 }}
+    // nested string decode (V-DETAIL-01)
+    let name Str = json_parse_str(doc, "user.name")
+    let want_name Str = "Michi"
+    if name != want_name {{ return 10 }}
+    // \uXXXX through the B1 primitive: "h\u0069" -> "hi"
+    let msg Str = json_parse_str(doc, "msg")
+    let want_msg Str = "hi"
+    if msg != want_msg {{ return 11 }}
+    // full fixed-escape set: value a " b \ c LF d (7 scalars)
+    let esc Str = json_parse_str(doc, "esc")
+    if esc.len() != 7 {{ return 12 }}
+    if esc.char_at(0).to_codepoint() != 97 {{ return 13 }}
+    if esc.char_at(1).to_codepoint() != 34 {{ return 14 }}
+    if esc.char_at(2).to_codepoint() != 98 {{ return 15 }}
+    if esc.char_at(3).to_codepoint() != 92 {{ return 16 }}
+    if esc.char_at(4).to_codepoint() != 99 {{ return 17 }}
+    if esc.char_at(5).to_codepoint() != 10 {{ return 18 }}
+    if esc.char_at(6).to_codepoint() != 100 {{ return 19 }}
+    // typed extraction
+    if json_parse_int(doc, "user.age") != 7 {{ return 20 }}
+    if json_parse_int(doc, "pos") != 42 {{ return 21 }}
+    if json_parse_int(doc, "neg") != -7 {{ return 22 }}
+    if json_parse_int(doc, "zero") != 0 {{ return 23 }}
+    if json_parse_int(doc, "f") != 0 {{ return 24 }}
+    if json_parse_int(doc, "user.name") != 0 {{ return 25 }}
+    if json_parse_bool(doc, "user.active") != 1 {{ return 26 }}
+    if json_parse_bool(doc, "user.age") != -1 {{ return 27 }}
+    // status pairing
+    if json_parse_str_ok(doc, "user.name") != 1 {{ return 28 }}
+    if json_parse_str_ok(doc, "nope") != 0 {{ return 29 }}
+    if json_parse_str_ok(doc, "user.age") != -1 {{ return 30 }}
+    // full recursive validity
+    if json_is_valid(doc) != true {{ return 31 }}
+    let v2 str = "[1, -2.5e3]"
+    if json_is_valid(v2) != true {{ return 32 }}
+    let v3 str = "{{\"a\":{{\"b\":[1,{{\"c\":null}}]}}}}"
+    if json_is_valid(v3) != true {{ return 33 }}
+    let v4 str = "\"\""
+    if json_is_valid(v4) != true {{ return 34 }}
+    let v5 str = "0"
+    if json_is_valid(v5) != true {{ return 35 }}
+    let v6 str = "  {{\"a\": 1}}  "
+    if json_is_valid(v6) != true {{ return 36 }}
+    // negatives: malformed forms and trailing garbage
+    let b1 str = "{{\"a\":}}"
+    if json_is_valid(b1) != false {{ return 37 }}
+    let b2 str = "{{\"a\" 1}}"
+    if json_is_valid(b2) != false {{ return 38 }}
+    let b3 str = "[1,]"
+    if json_is_valid(b3) != false {{ return 39 }}
+    let b4 str = "{{\"a\":1"
+    if json_is_valid(b4) != false {{ return 40 }}
+    let b5 str = "\"ab"
+    if json_is_valid(b5) != false {{ return 41 }}
+    let b6 str = "tru"
+    if json_is_valid(b6) != false {{ return 42 }}
+    let b7 str = "01"
+    if json_is_valid(b7) != false {{ return 43 }}
+    let b8 str = "{{\"a\":1}} x"
+    if json_is_valid(b8) != false {{ return 44 }}
+    let b9 str = "1.5.5"
+    if json_is_valid(b9) != false {{ return 45 }}
+    // malformed document -> kind_at reports -1 (not 0/other)
+    if json_kind_at(b1, "a") != -1 {{ return 46 }}
+    // missing string -> "" pairs with kind 0 (owned literal context)
+    let empty Str = ""
+    if json_parse_str(doc, "nope") != empty {{ return 47 }}
+    return 0
+}}
+"#
+    );
+    let mut backend = Win32PlatformIo::default();
+    let grants: Vec<String> = vec!["platform.mem".into()];
+    let program = ace_av::console_host::compile(&src, "d_main").expect("compile decode source");
+    let (out, _t, _s) = program
+        .run_platform(
+            &grants,
+            &ace_av_core::av::ExecLimits::default(),
+            &ace_av_core::av::CancelFlag::new(false),
+            None,
+            &mut backend,
+        )
+        .expect("run platform decode");
+    assert!(
+        matches!(
+            &out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(0),
+                ..
+            }
+        ),
+        "json decode family oracles, got {out:?}"
+    );
+}

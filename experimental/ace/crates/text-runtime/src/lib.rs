@@ -905,6 +905,49 @@ fn utf8_scalar_at(ptr: *const u8, len: u32, idx: u32) -> Result<(u32, u32), i32>
     Err(ERR_RANGE_OOB)
 }
 
+/// PLAN-975 B1: char (Unicode scalar on the I32 channel) materialized
+/// as a fresh OWNED 1-scalar UTF-8 buffer (`c.to(Str)`). Invalid scalars
+/// fail ERR_INVALID_SCALAR (same rule as char_from_codepoint).
+#[no_mangle]
+pub extern "system" fn ac_rt_own_from_char(ch: i32, out_len: *mut i32) -> *mut u8 {
+    if !(0..=0x10FFFF).contains(&ch) || (0xD800..=0xDFFF).contains(&ch) {
+        rt_fail(ERR_INVALID_SCALAR);
+        unsafe { write_volatile(out_len, ERR_INVALID_SCALAR) };
+        return core::ptr::null_mut();
+    }
+    let scalar = char::from_u32(ch as u32).expect("validated above");
+    let mut buf = [0u8; 4];
+    let bytes = scalar.encode_utf8(&mut buf).as_bytes();
+    trace_line(|l| {
+        l.s("FROMCHAR len=");
+        l.i(bytes.len() as i32);
+    });
+    match try_alloc(bytes.len() as u32) {
+        Ok((p, _id)) if p.is_null() => {
+            unsafe { write_volatile(out_len, 0) };
+            core::ptr::null_mut()
+        }
+        Ok((p, id)) => {
+            if !unsafe { copy_poll(p, bytes.as_ptr(), bytes.len()) } {
+                rt_fail(ERR_CANCELLED);
+                unsafe { write_volatile(out_len, ERR_CANCELLED) };
+                return core::ptr::null_mut();
+            }
+            trace_line(|l| {
+                l.s("FROMCHAR id=");
+                l.u(id);
+            });
+            unsafe { write_volatile(out_len, bytes.len() as i32) };
+            p
+        }
+        Err(code) => {
+            rt_fail(code);
+            unsafe { write_volatile(out_len, code) };
+            core::ptr::null_mut()
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "system" fn ac_rt_text_scalars(ptr: *const u8, len: i32) -> i32 {
     if len < 0 {

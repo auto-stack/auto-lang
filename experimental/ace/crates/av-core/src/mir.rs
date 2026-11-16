@@ -607,6 +607,14 @@ pub enum MirInstr {
         dst: SlotId,
         view: SlotId,
     },
+    /// `c.to(Str)` — char materialized as a fresh OWNED 1-scalar Str
+    /// buffer (PLAN-975 B1, the decode/parse substring-materialization
+    /// core decision). A `Value::Char` operand always encodes; invalid
+    /// scalars were rejected where the char was built.
+    StrFromChar {
+        dst: SlotId,
+        ch: SlotId,
+    },
     /// View equality/inequality (782 eq/ne): byte-wise comparison of the
     /// two views' ranges (result Bool).
     StrCmp {

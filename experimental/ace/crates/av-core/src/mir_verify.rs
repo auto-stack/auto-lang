@@ -4029,6 +4029,28 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
+            MirInstr::StrFromChar { dst, ch } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "from-char dst")?;
+                let ct = slot_ty_of(f, *ch, sp, "from-char char")?;
+                if !matches!(self.module.types.get(ct as usize), Some(MirType::Char)) {
+                    return Err(err(
+                        "mir.type-op",
+                        "from_char operand must be char".to_string(),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("from_char dst type {} is not Str", dt),
+                    ));
+                }
+            }
             MirInstr::StrCmp { dst, lhs, rhs, .. } => {
                 if !self.is_owned && !self.collections_surface() {
                     return Err(err(
@@ -4616,6 +4638,7 @@ impl MirInstr {
             | MirInstr::StrSlice { dst, .. }
             | MirInstr::StrConcat { dst, .. }
             | MirInstr::StrToOwned { dst, .. }
+            | MirInstr::StrFromChar { dst, .. }
             | MirInstr::StrCmp { dst, .. }
             | MirInstr::CharToCodepoint { dst, .. }
             | MirInstr::CharFromCodepoint { dst, .. } => Some(*dst),
@@ -4752,6 +4775,7 @@ impl MirInstr {
             | MirInstr::StrLenBytes { view, .. }
             | MirInstr::StrToOwned { view, .. }
             | MirInstr::CharToCodepoint { ch: view, .. } => vec![*view],
+            MirInstr::StrFromChar { ch, .. } => vec![*ch],
             MirInstr::StrCharAt { view, index, .. } => vec![*view, *index],
             MirInstr::StrSlice {
                 view, start, end, ..
