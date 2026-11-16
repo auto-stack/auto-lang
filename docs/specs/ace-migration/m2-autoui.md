@@ -434,3 +434,16 @@ dark_mode` 局部名，字段序即局部序）按脱糖源 span 精确定位→
 是适配器配方）。永久 case `p980_web_lane_consumes_production_002_source`。
 **WEB 剩余**：OnHandler 方言层 span 捕获 + LogicPayload 源区间线程化 +
 ts_adapter 四委托点接线 → 90 项全量 → 浏览器档（多会话）。
+
+### §13.4 提取携带 span → lane 接线（切片 #6a，2026-11-16）
+
+方言 `OnHandler` 增源 span（`#[serde(default)] (byte_offset, byte_length)`
+**原源坐标**；on 块解析捕获，view 内联 lambda 铸造形 None）——DIALECT 字段
+清单登记 `widget.on.handler.span`（002 计数 6：声明形带、铸造形缺）。
+`extract_handler_spans(decl)`（compiler，零涟漪独立面）→ 真实解析管线
+（CompilerSession+Parser+extract）→ 提取区间核验 → lane 区间内文本锚 →
+NOT fragment：永久 case `p980_web_extraction_carried_spans_feed_lane`
+（ace_ts_provider 9/9）。**O-C4**：span 起点落 pattern 中段小偏移（终点
+正确、body 完整）——#6b 校准。**观察**：vue_capabilities 10 红=master
+预存（stash 取证，疑 981 邻面；KNOWN-DEBT 在案）。**WEB 剩余**：span
+起点校准 + 生成器源通道 + ts_adapter 四委托点接线 → 90 项 → 浏览器档。
