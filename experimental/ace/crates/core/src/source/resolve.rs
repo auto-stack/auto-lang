@@ -848,6 +848,18 @@ pub enum RStmt {
     },
 }
 
+fn rblock_always_returns(block: &RBlock) -> bool {
+    block.stmts.iter().any(|stmt| match stmt {
+        RStmt::Return { .. } | RStmt::Fail { .. } => true,
+        RStmt::If {
+            then,
+            els: Some(els),
+            ..
+        } => rblock_always_returns(then) && rblock_always_returns(els),
+        _ => false,
+    })
+}
+
 #[derive(Clone, Debug)]
 pub struct RBlock {
     pub stmts: Vec<RStmt>,
@@ -10678,7 +10690,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // value is typed from the function result.
                     let all_return = resolved
                         .iter()
-                        .all(|(_, _, b)| matches!(b.stmts.last(), Some(RStmt::Return { .. })));
+                        .all(|(_, _, b)| rblock_always_returns(b));
                     let mut current = if all_return {
                         let filler = self.default_return_filler(*span);
                         Some(RBlock {
