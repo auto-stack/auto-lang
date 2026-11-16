@@ -179,6 +179,10 @@ pub struct AgePackageComponent {
     pub named_views: Vec<AgeNamedViewFact>,
     /// PLAN-981（IF-981-EVENT-A）：`msg Msg { … }` 的具名段（匿名 msg 为 None）。
     pub message_set_name: Option<String>,
+    /// PLAN-981（B-LANGUAGE-V，980/A 真实源）：view 属性里的**事件绑定**
+    /// `(属性键, 消息名, span)`（如 `onclick: .Inc`）。绑定是事实；点击→dispatch
+    /// 的宿主行为归 AV/SESSION。
+    pub view_events: Vec<(String, String, Span)>,
     /// PLAN-981（IF-981-EVENT-A）：每个 handler 的参数名（按声明序；空 = unit handler）。
     /// 参数**执行**在 A 切片未实现，前门对带参 handler 具名拒绝。
     pub handler_params: Vec<(String, Vec<String>)>,
@@ -1054,6 +1058,16 @@ fn read_back_components(
                 .map(|e| e.as_deref().map(exit_from_kind))
                 .collect(),
             message_set_name: p.node.message_set_name.clone(),
+            view_events: {
+                let msgs: Vec<String> =
+                    p.node.messages.iter().map(|m| m.name.clone()).collect();
+                let mut out = Vec::new();
+                collect_view_event_bindings(&p.node.view.tree, &msgs, &mut out);
+                for (_, items) in &p.node.view.named_trees {
+                    collect_view_event_bindings(items, &msgs, &mut out);
+                }
+                out
+            },
             handler_params: p
                 .node
                 .handlers
@@ -1528,6 +1542,39 @@ fn resolve_refs(
 /// `model` 初值事实是否成立：该模块里每个字段都存在实例 0 的状态函数。
 ///
 /// 用绑定器自己的 `origins` 表查（源名 → 符号），不猜命名规则。
+/// PLAN-981（B-LANGUAGE-V，980/A 真实源）：view 属性里的 `.Msg` 事件绑定。
+/// 只认 `on*` 键 + `Field{base: Var("self"), name}` 且 name 是本 node 声明的消息。
+fn collect_view_event_bindings(
+    items: &[crate::source::age_component::ComponentViewItem],
+    msgs: &[String],
+    out: &mut Vec<(String, String, Span)>,
+) {
+    use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
+    for it in items {
+        match it {
+            ComponentViewItem::Text(_) => {}
+            ComponentViewItem::Element(e) => {
+                collect_view_event_bindings(&e.items, msgs, out);
+            }
+            ComponentViewItem::Entry(en) => {
+                if !en.is_event {
+                    continue;
+                }
+                if let ComponentEntryValue::Expr(Expr {
+                    kind: crate::source::ast::ExprKind::Field { base, name },
+                    ..
+                }) = &en.value
+                {
+                    if matches!(base.kind, crate::source::ast::ExprKind::Var(ref v) if v.name == "self")
+                        && msgs.iter().any(|m| *m == name.name)
+                    {
+                        out.push((en.key.clone(), name.name.clone(), en.span));
+                    }
+                }
+            }
+        }
+    }
+}
 fn state_functions_present(
     bound: &super::packages::BoundPackages,
     module: &str,
