@@ -667,3 +667,103 @@ fn audit1035_res_01_tuple_of_list_is_owned() {
     assert_eq!(run.live_after, 0);
     assert_eq!(run.allocs, run.frees);
 }
+
+/// RES-01 (F34) DERIVED FACTS, pinned permanently (review R-1035-R1-01):
+/// the four-layer classification the plan's matrix names for a List-only
+/// record — source (behaviour above) → HIR CollectionsPlan Deep (the local
+/// appears in the body's owned set) → shared MIR `type_is_owned` → layout
+/// `is_copy=false`. The pure-scalar record is the discriminating control
+/// (not owned, copyable, allocates nothing).
+#[test]
+fn audit1035_res_01_derived_facts() {
+    use ace_av_core::layout::compute_layout;
+    use ace_av_core::mir::{MirModule, MirType};
+    use ace_av_core::ownership::type_is_owned;
+
+    fn record_type_idx(mir: &MirModule, suffix: &str) -> u32 {
+        mir.types
+            .iter()
+            .position(|t| matches!(t, MirType::Record(r) if r.name.ends_with(suffix)))
+            .unwrap_or_else(|| panic!("MIR has no record type ending in `{suffix}`")) as u32
+    }
+    fn record_hir_type(m: &ace_core::hir::Module, suffix: &str) -> ace_core::hir::TypeId {
+        m.types
+            .iter()
+            .enumerate()
+            .find(|(_, td)| {
+                td.id_text.ends_with(suffix)
+                    && matches!(td.kind, ace_core::hir::TypeKind::Record(_))
+            })
+            .map(|(i, _)| ace_core::hir::TypeId(i as u32))
+            .unwrap_or_else(|| panic!("HIR has no record type ending in `{suffix}`"))
+    }
+
+    // --- List-only record: owned at HIR facts + MIR, never copyable -------
+    let bag_src = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var a = Bag(xs.move)\n    var b = a.move\n    return b.items.get(0)\n}";
+    let compiled = ace_core::source::compile_aggregates_source(bag_src, "facts.at", &[])
+        .expect("Bag compiles");
+    let mir =
+        ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0).expect("Bag lowers");
+    let bag_ty = record_type_idx(&mir, "Bag");
+    assert!(
+        type_is_owned(&mir, bag_ty),
+        "MIR must classify a List-only record as owned"
+    );
+    let layout = compute_layout(&mir, bag_ty).expect("Bag lays out");
+    assert!(
+        !layout.is_copy,
+        "a List-carrying record is not a copyable value"
+    );
+
+    let m = &compiled.checked.bundle().modules[0];
+    let body = &m.bodies[0];
+    let bag_hir = record_hir_type(m, "Bag");
+    let facts = ace_core::collections_facts::compute_body_facts(m, body);
+    let bag_locals: Vec<u32> = body
+        .locals
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.ty, ace_core::hir::TypeUse::Ref(t) if t == bag_hir))
+        .map(|(i, _)| i as u32)
+        .collect();
+    assert!(
+        !bag_locals.is_empty(),
+        "the Bag-typed local must exist in the HIR body"
+    );
+    assert!(
+        bag_locals.iter().all(|l| facts.owned.contains(l)),
+        "the HIR facts must release every Bag local (Deep): owned={:?} locals={bag_locals:?}",
+        facts.owned
+    );
+
+    // --- pure-scalar record: the discriminating control -------------------
+    let pair_src = "type Pair { a int; b int }\nfn main() int {\n    let p = Pair(20, 22)\n    let q = p\n    return p.a + q.b\n}";
+    let compiled = ace_core::source::compile_aggregates_source(pair_src, "facts2.at", &[])
+        .expect("Pair compiles");
+    let mir =
+        ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0).expect("Pair lowers");
+    let pair_ty = record_type_idx(&mir, "Pair");
+    assert!(
+        !type_is_owned(&mir, pair_ty),
+        "a pure-scalar record owns nothing"
+    );
+    let layout = compute_layout(&mir, pair_ty).expect("Pair lays out");
+    assert!(layout.is_copy, "a pure-scalar record stays copyable");
+    let m = &compiled.checked.bundle().modules[0];
+    let body = &m.bodies[0];
+    let pair_hir = record_hir_type(m, "Pair");
+    let facts = ace_core::collections_facts::compute_body_facts(m, body);
+    let pair_locals: Vec<u32> = body
+        .locals
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.ty, ace_core::hir::TypeUse::Ref(t) if t == pair_hir))
+        .map(|(i, _)| i as u32)
+        .collect();
+    assert!(!pair_locals.is_empty(), "the Pair local must exist");
+    assert!(
+        pair_locals.iter().all(|l| !facts.owned.contains(l)),
+        "a pure value record is not in the owned set: {:?} {pair_locals:?}",
+        facts.owned
+    );
+}

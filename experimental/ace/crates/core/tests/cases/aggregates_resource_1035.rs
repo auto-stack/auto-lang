@@ -126,3 +126,59 @@ fn record_with_variant_field_is_owned_at_the_hir_gate() {
         codes(&errs)
     );
 }
+
+/// RES-02 single evaluation (review R-1035-R1-04): the Named label is not
+/// part of the resolved shape, so `xs.get(index:0).code` and
+/// `xs.get(0).code` produce the SAME HIR; and with a CALL as the index the
+/// call node appears exactly once and IS the ListGet index operand (the
+/// profile exposes no observable index side effect — this structural
+/// identity is the feasible single-evaluation oracle).
+#[test]
+fn named_and_pos_get_have_one_identical_index_evaluation() {
+    let pos = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(0).code\n}";
+    let named = pos.replace("get(0)", "get(index:0)");
+    let shape = |src: &str| -> Vec<String> {
+        let env = env(src);
+        let (parts, _) = ac::emit_function_body(&env, 0, src, "p1035.at").unwrap();
+        parts.bundle.modules[0].bodies[0]
+            .exprs
+            .iter()
+            .map(|e| format!("{:?}", e.kind))
+            .collect()
+    };
+    assert_eq!(
+        shape(&named),
+        shape(pos),
+        "a Named index must not change the HIR shape (no extra evaluation)"
+    );
+
+    // The single evaluation site with a real call index.
+    let with_call = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index: idx()).code\n}\nfn idx() int { return 0 }";
+    let env = env(with_call);
+    let (parts, _) = ac::emit_function_body(&env, 0, with_call, "p1035.at").unwrap();
+    let body = &parts.bundle.modules[0].bodies[0];
+    let calls: Vec<usize> = body
+        .exprs
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| matches!(e.kind, hir::ExprKind::Call { .. }))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(
+        calls.len(),
+        1,
+        "the index call must appear exactly once, got {calls:?}"
+    );
+    let index_operand = body
+        .exprs
+        .iter()
+        .find_map(|e| match &e.kind {
+            hir::ExprKind::ListGet { index, .. } => Some(index.0 as usize),
+            _ => None,
+        })
+        .expect("the fused project keeps a ListGet node");
+    assert_eq!(
+        index_operand, calls[0],
+        "the single call node must BE the ListGet index"
+    );
+}

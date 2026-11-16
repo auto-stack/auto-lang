@@ -269,3 +269,5 @@ mod redis_975;
 mod sq_source_facts_934;
 #[path = "cases/stdlib_contract_975.rs"]
 mod stdlib_contract_975;
+#[path = "cases/aggregates_typed_1035.rs"]
+mod aggregates_typed_1035;
