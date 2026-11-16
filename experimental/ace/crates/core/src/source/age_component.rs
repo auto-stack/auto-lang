@@ -750,6 +750,8 @@ pub fn compile_component_scenario_observing(
     scenario: &ComponentScenario,
     observed: Option<&str>,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    // 979 冻结打包车道：无 int 观测字段仍具名拒（observe_compiled 依赖
+    // `__age_drive` 打包编码）。免驱动模式只开给 980 新入口。
     compile_component_scenario_full(
         src,
         module_path,
@@ -759,6 +761,7 @@ pub fn compile_component_scenario_observing(
         observed,
         None,
         true,
+        false,
     )
 }
 
@@ -782,6 +785,7 @@ pub fn compile_component_scenario_with_initials(
         scenario,
         observed,
         Some(initials),
+        true,
         true,
     )
 }
@@ -810,6 +814,7 @@ pub fn compile_component_scenario_states(
         None,
         Some(initials),
         false,
+        true,
     )
 }
 
@@ -822,6 +827,7 @@ fn compile_component_scenario_full(
     observed: Option<&str>,
     initials: Option<&ComponentInitials>,
     emit_view_texts: bool,
+    allow_driverless: bool,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
     let src = &desugar_widget_src(src)?;
@@ -930,16 +936,23 @@ fn compile_component_scenario_full(
             .iter()
             .find(|f| field_type(f) == Some(TypeWord::I32)),
     };
-    let Some(observed_field) = observed else {
-        return Err(vec![text_diag(
-            "source.age.component-unsupported",
-            "the scenario needs at least one `int` model field to observe (the driver encodes it \
-             as i32)",
-            node.fields
-                .first()
-                .map(|f| f.ty_span)
-                .unwrap_or(node.view.span),
-        )]);
+    // PLAN-980 NATIVE：observed=None 且无 int 字段 = **免驱动模式**（001 形：
+    // str/bool 状态 + 文本叶）——不发射 `__age_drive`，texts/states 照发（逐
+    // 字段观察与文本叶不依赖打包编码）。仅 980 新入口（allow_driverless）开放；
+    // 979 冻结打包车道保持编译期具名拒。缺省有 int 仍取首个 int（口径不变）。
+    let observed_field = match observed {
+        Some(f) => Some(f),
+        None if allow_driverless => None,
+        None => {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                "the scenario needs at least one `int` model field to observe (the driver encodes it                  as i32)",
+                node.fields
+                    .first()
+                    .map(|f| f.ty_span)
+                    .unwrap_or(node.view.span),
+            )])
+        }
     };
     if node.view.texts.is_empty() {
         return Err(vec![text_diag(
@@ -1040,69 +1053,73 @@ fn compile_component_scenario_full(
             }
         }
     }
-    // 驱动：各实例观测字段状态按 256^i 求和（instance 0 在个位）。
-    let mut terms: Option<Expr> = None;
-    for inst in 0..scenario.instances {
-        let call = Expr {
-            span: node.span,
-            kind: ExprKind::Call {
-                callee: Ident {
-                    name: state_fn_name(inst, &observed_field.name),
-                    span: node.span,
-                },
-                args: Vec::new(),
-            },
-        };
-        let term = if inst == 0 {
-            call
-        } else {
-            Expr {
+    // 驱动：各实例观测字段状态按 256^i 求和（instance 0 在个位）。免驱动模式
+    //（PLAN-980 NATIVE：无 int 观测字段）跳过发射——`observe_compiled` 的打包
+    // 车道对该类源不适用，消费者走逐字段/文本叶观察。
+    if let Some(observed_field) = observed_field {
+        let mut terms: Option<Expr> = None;
+        for inst in 0..scenario.instances {
+            let call = Expr {
                 span: node.span,
-                kind: ExprKind::Binary {
-                    op: crate::source::ast::BinOp::Mul,
-                    lhs: Box::new(call),
-                    rhs: Box::new(Expr {
+                kind: ExprKind::Call {
+                    callee: Ident {
+                        name: state_fn_name(inst, &observed_field.name),
                         span: node.span,
-                        kind: ExprKind::IntLit(256i32.saturating_pow(inst as u32)),
-                    }),
+                    },
+                    args: Vec::new(),
                 },
-            }
-        };
-        terms = Some(match terms {
-            None => term,
-            Some(prev) => Expr {
+            };
+            let term = if inst == 0 {
+                call
+            } else {
+                Expr {
+                    span: node.span,
+                    kind: ExprKind::Binary {
+                        op: crate::source::ast::BinOp::Mul,
+                        lhs: Box::new(call),
+                        rhs: Box::new(Expr {
+                            span: node.span,
+                            kind: ExprKind::IntLit(256i32.saturating_pow(inst as u32)),
+                        }),
+                    },
+                }
+            };
+            terms = Some(match terms {
+                None => term,
+                Some(prev) => Expr {
+                    span: node.span,
+                    kind: ExprKind::Binary {
+                        op: crate::source::ast::BinOp::Add,
+                        lhs: Box::new(prev),
+                        rhs: Box::new(term),
+                    },
+                },
+            });
+        }
+        items.push(Item::Fn(FnItem {
+            name: Ident {
+                name: "__age_drive".to_string(),
                 span: node.span,
-                kind: ExprKind::Binary {
-                    op: crate::source::ast::BinOp::Add,
-                    lhs: Box::new(prev),
-                    rhs: Box::new(term),
-                },
             },
-        });
-    }
-    items.push(Item::Fn(FnItem {
-        name: Ident {
-            name: "__age_drive".to_string(),
-            span: node.span,
-        },
-        type_params: Vec::new(),
-        params: Vec::new(),
-        ret: TypeAnn {
-            kind: TypeRef::Builtin(TypeWord::I32),
-            span: node.span,
-        },
-        body: Block {
-            stmts: vec![Stmt::Return {
-                value: terms.expect("at least one instance"),
+            type_params: Vec::new(),
+            params: Vec::new(),
+            ret: TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
                 span: node.span,
-            }],
+            },
+            body: Block {
+                stmts: vec![Stmt::Return {
+                    value: terms.expect("at least one instance"),
+                    span: node.span,
+                }],
+                span: node.span,
+            },
             span: node.span,
-        },
-        span: node.span,
-        receiver: Receiver::Free,
-        owner: None,
-        script: false,
-    }));
+            receiver: Receiver::Free,
+            owner: None,
+            script: false,
+        }));
+    }
     let desugared = Program { items };
     let parts = match super::adapter::compile_program_parts(
         &desugared,

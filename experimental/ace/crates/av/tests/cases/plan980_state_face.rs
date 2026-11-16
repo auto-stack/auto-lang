@@ -8,8 +8,9 @@
 
 use ace_av::age_component::{
     compile_component_scenario_states, compile_component_scenario_with_initials, observe_compiled,
-    observe_component_scenario_states, observe_component_states, ComponentFieldValue,
-    ComponentInitials, ComponentScenario, InitialValue, LegacyWidgetAlias, ScenarioOp,
+    observe_component_scenario_states, observe_component_states, observe_component_states_and_texts,
+    project_component_candidates, ComponentFieldValue, ComponentInitials, ComponentScenario,
+    InitialValue, LegacyWidgetAlias, ScenarioOp,
 };
 
 /// int/bool/str 三型字段 + 三条消息的最小组件源（冻结输入；与 002 同族形状）。
@@ -352,5 +353,86 @@ fn p980_state_states_only_emits_no_text_fns_in_artifact() {
     assert!(
         full.atom_text.contains("__age_c_text_"),
         "full compile emits text leaf functions (control)"
+    );
+}
+
+/// PLAN-980 NATIVE：**免驱动模式**——001 形（model 无 int 字段：str/bool +
+/// 文本叶带属性体）经完整场景编译（observed 缺省）不发射驱动；states+texts
+/// 双观察可用；既有口径不变（有 int 仍发射；显式观测非 int 仍拒）。
+#[test]
+fn p980_native_driverless_compile_observes_states_and_texts() {
+    const SRC_001_FORM: &str = concat!(
+        "node App {\n",
+        "    model {\n",
+        "        var theme_name str = \"Auto\"\n",
+        "        var dark_mode bool = false\n",
+        "    }\n",
+        "    view {\n",
+        "        text \"Hello, World!\" { style: \"text-4xl\", selectable: true }\n",
+        "    }\n",
+        "}\n",
+    );
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![],
+    };
+    let caps = ["ac.runtime.text.v1".to_string()];
+    let compiled = compile_component_scenario_with_initials(
+        SRC_001_FORM,
+        "app.at",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &scenario,
+        None,
+        &empty_initials(1),
+    )
+    .expect("driverless compile (str/bool model, no int)");
+    assert!(
+        !compiled.atom_text.contains("__age_drive"),
+        "no packed driver in driverless mode"
+    );
+    let (states, texts) = observe_component_states_and_texts(&compiled).expect("dual observe");
+    assert_eq!(
+        field(&states.per_instance[0], "theme_name"),
+        &ComponentFieldValue::Str("Auto".into())
+    );
+    assert_eq!(
+        field(&states.per_instance[0], "dark_mode"),
+        &ComponentFieldValue::Bool(false)
+    );
+    assert_eq!(texts[0], vec!["Hello, World!".to_string()]);
+
+    // 结构面：完整 view 树（元素/属性行）可从候选投影消费（selectable 进树）。
+    let candidates = project_component_candidates(SRC_001_FORM).expect("candidates project");
+    assert_eq!(candidates.len(), 1);
+    assert!(!candidates[0].view.tree.is_empty(), "view tree delivered");
+
+    // 口径不变：同源显式观测非 int 字段仍拒；int 源缺省仍发射驱动。
+    let err = compile_component_scenario_with_initials(
+        SRC_001_FORM,
+        "app.at",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &scenario,
+        Some("theme_name"),
+        &empty_initials(1),
+    )
+    .expect_err("explicit non-int observed still refuses");
+    assert!(err.iter().any(|d| d.code == "source.age.component-unsupported"));
+
+    let with_int = "node C {\n    model {\n        n int = 0\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let compiled2 = compile_component_scenario_with_initials(
+        with_int,
+        "c.at",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &scenario,
+        None,
+        &empty_initials(1),
+    )
+    .expect("int source default still compiles");
+    assert!(
+        compiled2.atom_text.contains("__age_drive"),
+        "int source keeps the packed driver"
     );
 }
