@@ -521,7 +521,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "msg")
             arrow() {}
             lbrace(same-line: true, cut: true) {}
-            list-nl { age-view-stmt() {} }
+            // R61-1：watch 体允许单行与多语句（`many` 不强制换行）；语句以 `.`
+            // 开头，pratt 在下一个 `.` 处自然停下。
+            many { age-view-stmt() {} }
             rbrace() {}
         }
         // PLAN-980：widget DSL 语句子集——`.field (=|+=|=) <expr>`。
@@ -614,7 +616,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             age-watch-source(field: "head") {} many { age-watch-source-tail() {} }
             arrow() {}
             lbrace(same-line: true, cut: true) {}
-            list-nl { age-view-stmt() {} }
+            // R61-1：watch 体允许单行与多语句（`many` 不强制换行）；语句以 `.`
+            // 开头，pratt 在下一个 `.` 处自然停下。
+            many { age-view-stmt() {} }
             rbrace() {}
         }
         // R60-3：watch 源允许跨行（`watch {\n    .count -> …`）；此前 `dot(same-line)`

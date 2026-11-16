@@ -167,6 +167,8 @@ pub struct ComponentMemberRow {
     /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`），按声明序；
     /// RHS 进唯一 verify，LHS 字段存在性由前门另查。
     pub stmts: Vec<(String, Expr)>,
+    /// R61-2：`watch { .a, .b -> … }` 的全部源（按声明序）。
+    pub sources: Vec<String>,
     pub span: Span,
 }
 

@@ -1014,10 +1014,22 @@ pub(crate) fn project_packages_front(
                     }
                     // R60-4：`if` 形态的条件/分支同样进唯一 verify。
                     for d in &node.design {
-                        for part in [&d.cond, &d.then_value, &d.else_value] {
+                        for part in [&d.then_value, &d.else_value] {
                             if let Some(v) = part {
                                 check_value(v)?;
                             }
+                        }
+                        // R61-3：条件必须能当 bool 用——用 `!cond` 把它放进布尔
+                        // 位置（`!` 只接受 bool），诊断落在条件表达式上。
+                        if let Some(cond) = &d.cond {
+                            let neg = crate::source::ast::Expr {
+                                span: cond.span,
+                                kind: crate::source::ast::ExprKind::Unary {
+                                    op: crate::source::ast::UnaryOp::Not,
+                                    operand: Box::new(cond.clone()),
+                                },
+                            };
+                            check_value(&neg)?;
                         }
                     }
                     for m in &node.members {
@@ -1027,6 +1039,22 @@ pub(crate) fn project_packages_front(
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
+                    // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
+                    for m in &node.members {
+                        for source in &m.sources {
+                            if !node.fields.iter().any(|f| f.name == *source) {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.member-field",
+                                    format!(
+                                        "`{source}` is not a `model` field of this node; \
+                                         the `{}` member watches it",
+                                        m.role
+                                    ),
+                                    m.span,
+                                )]);
+                            }
+                        }
+                    }
                     for m in &node.members {
                         for (field, rhs) in &m.stmts {
                             if !node.fields.iter().any(|f| f.name == *field) {

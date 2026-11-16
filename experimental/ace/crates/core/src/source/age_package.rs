@@ -107,6 +107,8 @@ pub struct AgeMemberRow {
     pub num: Option<i64>,
     /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体语句（`.field = rhs`），按声明序。
     pub stmts: Vec<(String, Expr)>,
+    /// R61-2：`watch` 的全部源（按声明序）。
+    pub sources: Vec<String>,
     pub span: Span,
 }
 /// 受检的一个 AGE 组件（一个 node 声明）。
@@ -1038,6 +1040,7 @@ fn read_back_components(
                     text: m.text.clone(),
                     num: m.num,
                     stmts: m.stmts.clone(),
+                    sources: m.sources.clone(),
                     span: m.span,
                 })
                 .collect(),

@@ -215,3 +215,23 @@ fn p981_watch_multiline_and_multisource_parse() {
         "the multi-source watch leaves a row"
     );
 }
+
+/// R61-1/R61-2：`watch` 单行体 + 多源声明可解析；**每个**源都进描述面并被检查。
+#[test]
+fn p981_watch_multisource_single_line_body() {
+    let two_sources = "node M {\n    model {\n        alpha int = 0\n        beta int = 1\n    }\n    watch { .alpha, .beta -> { .alpha = alpha + 1 } }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let out = compile(two_sources).expect("a single-line body with two sources parses");
+    let row = out.description.components[0]
+        .members
+        .iter()
+        .find(|m| m.role == "watch")
+        .expect("a watch row");
+    assert_eq!(row.sources, vec!["alpha".to_string(), "beta".to_string()]);
+    // 第二个源若是未声明名字 → 具名拒（不能只验第一个）。
+    let bad = "node M {\n    model {\n        alpha int = 0\n    }\n    watch { .alpha, .nosuch -> { .alpha = alpha + 1 } }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let ds = match compile(bad) {
+        Ok(_) => panic!("the second watch source must be checked"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.age.member-field", "{ds:?}");
+}

@@ -82,3 +82,20 @@ fn p981_design_if_value_is_verified() {
         assert_eq!(ds[0].span.start, want, "diagnostic at the name");
     }
 }
+
+/// R61-3：`design` 的 `if` 条件必须是 `bool`（非 bool 条件具名拒）。
+#[test]
+fn p981_design_if_condition_must_be_bool() {
+    for src in [
+        "node M {\n    model {\n        count int = 0\n    }\n    design {\n        theme: if count { 1 } else { 2 }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+        "node M {\n    design {\n        theme: if \"x\" { 1 } else { 2 }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n",
+    ] {
+        match compile(src) {
+            Ok(_) => panic!("a non-bool if-condition must be rejected: {src}"),
+            Err(ds) => assert!(
+                ds[0].code.starts_with("source."),
+                "named rejection expected, got {ds:?}"
+            ),
+        }
+    }
+}

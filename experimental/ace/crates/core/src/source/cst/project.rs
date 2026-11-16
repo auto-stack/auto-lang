@@ -4760,6 +4760,7 @@ impl<'a> Engine<'a> {
                         text: None,
                         num: None,
                         stmts: Vec::new(),
+                        sources: Vec::new(),
                         span: self.cx.span_of(member),
                     });
                 }
@@ -5147,6 +5148,24 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// R61-2：`watch { .a, .b -> … }` 的全部源（head + 每个 tail）。
+    fn member_sources(&mut self, item: u32) -> Vec<String> {
+        let source_kind = self.rule_kind_of("age-watch-source");
+        let mut out = Vec::new();
+        fn walk(eng: &mut Engine, node: u32, source_kind: Option<u32>, out: &mut Vec<String>) {
+            for c in eng.cx.children(node) {
+                if Some(eng.cx.tree.kind(c)) == source_kind {
+                    if let Some(s) = eng.cx.field_child(c, "source") {
+                        out.push(eng.cx.spelling(s));
+                    }
+                } else {
+                    walk(eng, c, source_kind, out);
+                }
+            }
+        }
+        walk(self, item, source_kind, &mut out);
+        out
+    }
     /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`）按声明序。
     fn member_stmts(&mut self, item: u32) -> Vec<(String, crate::source::ast::Expr)> {
         let stmt_kind = self.rule_kind_of("age-view-stmt");
@@ -5250,6 +5269,7 @@ impl<'a> Engine<'a> {
                 text,
                 num,
                 stmts: self.member_stmts(c),
+                sources: self.member_sources(c),
                 span: self.cx.span_of(c),
             });
         }
@@ -5279,6 +5299,7 @@ impl<'a> Engine<'a> {
                 text: None,
                 num: None,
                 stmts: Vec::new(),
+                sources: Vec::new(),
                 span: expose_span,
             });
         }
