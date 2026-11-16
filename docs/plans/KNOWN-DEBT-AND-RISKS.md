@@ -1,3 +1,8 @@
+### D-981-EXIT-CONTRACT — SOURCE 期"单出口"契约被 r13 AGE-L03 撤销（2026-11-16，落主 `1738c2a1c`，待 979 复核）
+
+| 缺口 | 原证据/旧义务 | owner/关闭条件 |
+|---|---|---|
+| 979 SOURCE 交付（V-11/detail 行）可能记录"一个 node 恰一个 view 出口、混合出口必拒";r13 AGE-L03 现允许不同键并存（`view`+`view-portrait`、`view-2d`+`view-3d`），同键重复仍拒 | 981 §9 review-59/60/61 收据；`plan981_view_exits.rs` 多出口用例；`61155ce37` | 979（已归档）：按**落主 SHA**（`1738c2a1c`）重跑 V-11/detail 相关行；若其判据依赖"混合必拒"，改判为"不同键合法、同键重复拒"并在 979 归档件补注。关闭条件=复核记录 + 判据一致 |
 ### D-1062-CLOSURE — AutoDown收口遗漏（2026-11-16，只规划，未修复）
 
 原[1062](archive/1062-remaining-code-cases-to-autodown.md)保持归档/原交付证据；全量收口声明已事后更正，统一owner为[1066](1066-autodown-migration-gap-closure.md) drafting 0/13。以下不因新计划建立而关闭：
@@ -4545,3 +4550,17 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - **`encoding/csv.at` 外部未迁移占位**：`stdlib/auto/encoding/csv.at`（`csv_parse`/`csv_parse_with_delimiter`/`csv_encode`/`csv_encode_with_delimiter`）仍仅存在于旧 VM/A2R 外部清单，不在 ACE M2-A 已交付 `json`/`sqlite`/`redis` 集合内。关闭=如需支持则按纯 Auto codec 迁移或明确废弃。owner=M2-B/stdlib-encoding。
 - **跨 Plan 外部承接边界（已具名）**：SQLite 宿主文件持久化/崩溃恢复归 `PLAN-973`/`PLAN-1064`；`packages` 跨模块 `p967_*` provider 执行装配归 `PLAN-1043`；schema 迁移策略归 `PLAN-986`；Linux 端实跑 `L-01..L-05` 归 `PLAN-1063`。
 - **T-04 并集观察到的 master 预存红（非 Plan 975 引入）**：① `ace-a2x-c::admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin` 与 `ace-abi::source_foreign`（25 例）— `master@82d032c8e`（Plan 972）改 `a2x-c/src/runtime.rs` 后 `CERTIFICATION_C_RUNTIME_SHA256`（`bd260a8b...` vs `0a4f68e3...`）未重钉；② `ace-av::stdlib_list_946::stdlib_list_946_grammar_face` — `master@4ba167930`（Plan 1064）放宽 `if` 条件文法后旧负控断言过时；③ `ace-runtime` `ace-text-conformance` 19 例 Windows `rust-lld` 缺 `__CxxFrameHandler3`/`_fltused`。关闭=批量回归 triage 或各自 owner/fix worktree 修复。owner=批量回归 triage。
+
+## PLAN-976（共享HIR到TS/JS，2026-11-16 T-05 复审登记 @9da498211）
+
+### D-976 — 具名拒绝两族的源级永久负控缺位 — 2026-11-16
+
+- **`a2ts.foreign-unsupported` 与 `a2ts.closure-owned-capture` 永久负控缺位**：两处拒绝
+  代码路径已复审核读（`a2x-ts/src/provider.rs` `validate_view` 在任何发射前拒绝首个
+  foreign 声明；`a2x-ts/src/lower/mod.rs` 拒绝捕获拥有 `Str` 的闭包创建），但无源级
+  永久负控用例——foreign 需 f0-rust-ffi-967 provider deck（packages+provider_source
+  专用装配），owned-capture 需闭包语料 fixture；同形 a2py 先例（a2x-python）同样
+  只有实现无负控。sched/depth 两族已由 `a2x-ts/tests/ts_named_rejections.rs` 补齐
+  （真实 PLAN-968 fixture 双腿 + 80 嵌套拒绝/80 兄弟语句放行）。
+  关闭=f0 FFI deck 或闭包语料有廉价仓内 fixture 后补两例负控（或随 987 旧 emitter
+  退役的语料迁移一并建立）。owner=PLAN-976 后续轮/987。

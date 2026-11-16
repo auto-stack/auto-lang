@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-976
-status: execution_done
+status: reviewed
 feature_name: 共享HIR到TypeScript和JavaScript
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 6
-current_step: 5
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-964, PLAN-965, PLAN-968]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -351,7 +351,7 @@ M2-A的976用完整闭包语料和真实TS/JS工具链验证provider，可用代
 
 - [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 新增V-TS-CONSUMER必须通过，按实际触面选择原完整职责组，不执行已由用户后置的独立目标额外面。 [✅ 已完成：V-01=tsready_06（>2^53 双腿 e2e）+tsrt_01 bigint；V-02=tsready_05（短路+命名实参源序，marks stderr 区分性）；V-03=tsfrag_01/02（UI 表达式真实编译运行）；V-04=tsready_04 source_map 原 span；V-05=tsrt_02/tsready/boundaries legacy 禁令；V-08/V-DETAIL-01..04 如上（模块腿经真实 PackageA2xTarget lane 关闭，非推迟）；固定组 `cargo t ace-a2x`（已注册 ace-a2x-ts）PASS 284 执行/gate True；`cargo test -p ace-semantics-contract` 19 绿；组选择理由：crates/auto-lang 零改动故 a2ts/a2js 旧 emitter 组与 auto-test-case 不在本次触面（旧 emitter 退役归 987）；Linux/WSL 腿按 2026-11-14 裁定排除]
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 已完成（final pass 绑定 9da498211，见 §9 review 收据；发现 F-R1 已同树修复并复验；债务候选 D-976 已登记 KNOWN-DEBT）]
 
 - [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
@@ -370,6 +370,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-16 stage: goal | plan_id: PLAN-976 | plan_revision: r6 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | commit: 9da498211（冻结复审基线） | next: merge
+
+2026-11-16 stage: review | review_scope: final | reviewer_identity: 与实施同会话/同上下文（goal 授权链；独立性受限已在收据声明，结论自 artifact 重建非执行者自述） | PLAN-976 | r6 | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | branch: plan-976-dev | reviewed_commit: 9da498211（修复后冻结基线；work 头 82b3dc665 + F-R1 修复 968e2c76c + fmt 9da498211） | base_commit: 2961a2aa | dependency_revisions: master 50d62ceac（簿记后） | spec_inputs: §5 规范增量表（SD-01/02/PHASE/TARGET-SCOPE/DETAIL）经复核——目标路径合法、before/after 规则描述当前行为，m2-typescript.md 为拟新增（merge 沉淀），replacement-scope-and-evidence.md 存在 | acceptance_results: AC-01 pass（§5 A–J 冻结表逐节复核）；AC-02 pass（V-01=tsready_06+tsrt_01 bigint、V-02=tsready_05 marks stderr 序、V-03=tsfrag_01/02 真实node、V-04=tsready_04 source_map原span、V-05=tsrt_02/tsready/boundaries legacy禁令、V-DETAIL-02/03/04=tsrt_01负控+fragment keys+失败保旧+restart字节同manifest）；AC-03 pass（worker daily-emit-ts/run-ts 真实接线、无旧链 fallback、变化=fragment_key_inputs 五键断言、失败保旧=拒绝emit不触碰out_dir、恢复=restart同store字节同manifest）；AC-06 pass（V-08：tsc --noEmit --strict 冻结旗标真实过 + BigInt/trap:Internal 合同 + 缺tsc=具名infra skip）；AC-PHASE pass（A切片映射齐、B消费者未提前勾选）；AC-TS-CONSUMER pass（中立面=fragment接口真实node fixture+packages lane+source map；Vue/Ark适配器替换为980 B职责，非本包等待项）；AC-04 本收据 | pending_closeout_gates: merge 拥有冻结并集复跑（已预跑 `cargo t ace-a2x` PASS 286 执行 gate True wall 161.3s @9da498211）与 spec 沉淀 | findings: F-R1（§5 T-01 D 具名拒绝表缺永久负控——sched/depth 两族已补 `ts_named_rejections.rs` 2 例并复验；foreign/closure-owned-capture 两族源级负控缺位=代码路径复审核读+D-976 债务候选，a2py 同形先例）已闭合 | evidence: 全部证据为仓内永久测试（27+2 a2x-ts、6 tsready、boundaries 扩展、19 semantics-contract）；时间表：tsrt 3例0.18s、tsfrag 4例0.18s、tsrej 2例0.03s、tsready 6例~8s（最大单例 tsready_02 ~7s 含8次worker bin spawn，<10s）；新用例均<10s ✅；健康检查：受触 crate 零 warning 零 debug 输出、cargo fmt 过（预存漂移 plan981/sched_968 未触碰属其 owner）；分组选择理由复核：crates/auto-lang 零改动故 a2ts/a2js 旧emitter组不属本次触面（退役归987），ace-semantics-contract 直跑（无小固定组） | next: merge（T-06/07）
 
 2026-11-16 stage: goal | plan_id: PLAN-976 | plan_revision: r6 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-976/auto-lang | commit: 82b3dc665（树头） | next: review
 
