@@ -263,3 +263,24 @@ fn p981_view_attribute_expressions_are_verified() {
     assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
     assert_eq!(ds[0].span.start, want, "diagnostic at the attribute value");
 }
+
+/// R61-4/R62-5：命名 view 的结构事实（名字/文本数/项数）进描述面，且树里的
+/// 属性表达式进唯一 verify。
+#[test]
+fn p981_named_view_structure_is_described_and_verified() {
+    let good = "node M {\n    view main {\n        col {\n            class: \"w\"\n            text \"hi\" {}\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let out = compile(good).expect("a named view with an element compiles");
+    let facts = &out.description.components[0].named_views;
+    assert_eq!(facts.len(), 1, "{facts:?}");
+    assert_eq!(facts[0].name, "main");
+    assert_eq!(facts[0].texts, 1, "the text leaf is counted");
+    assert_eq!(facts[0].items, 3, "element + class entry + text");
+    let bad = "node M {\n    view main {\n        col {\n            class: nosuch_ident\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let want = bad.find("nosuch_ident").expect("fixture has the bad name");
+    let ds = match compile(bad) {
+        Ok(_) => panic!("an undefined attribute inside a named view must be rejected"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
+    assert_eq!(ds[0].span.start, want);
+}

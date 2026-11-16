@@ -76,6 +76,10 @@ pub struct ComponentView {
     /// R60-8：逐文本叶的**出口归属**（与 `texts` 同序；普通 view 的叶记
     /// `view` / `view-2d` / …，命名 view 的叶记 `named-view:<name>` 或空）。
     pub text_exits: Vec<Option<String>>,
+    /// R61-4/R62-5：命名 view 的**结构树**（`(name, items)`，按声明序）。
+    /// 描述面暂不暴露（V 批次决定形状），但树里的属性/lambda 表达式现在
+    /// 由前门送进唯一 verify——不能因为"未入描述"就不检查。
+    pub named_trees: Vec<(String, Vec<ComponentViewItem>)>,
     pub span: Span,
     pub texts: Vec<AgeTextLeaf>,
     /// PLAN-981（IF-981-REF）：view 内的节点实例引用（`Meter m1 {}`）。
