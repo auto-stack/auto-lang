@@ -104,15 +104,15 @@ fn p981_age_package_rejects_widget_member_slots() {
     let bodies = [
         "msg { Inc }",
         "design {\n        theme: nosuch_ident\n    }",
-        "named-view {\n        main\n    }",
+        "view main {\n        text \"hi\" {}\n    }",
         "bind {\n        \"title\" -> .NoSuchHandler\n    }",
-        "routes {\n        / -> .NoSuchHandler\n    }",
+        "routes {\n        \"/a\" -> use home\n    }",
         "expose {\n        nosuch_field\n    }",
         "lifecycle {\n        mounted => { .nosuch = 1 }\n    }",
         "computed {\n        double => nosuch_ident + 1\n    }",
-        "watch {\n        count => nosuch_ident\n    }",
-        "timer {\n        every: 1\n    }",
-        "on {\n        count = 1\n    }",
+        "watch {\n        .count -> {\n            .count = 1\n        }\n    }",
+        "timer {\n        Tick (every_ms: 1)\n    }",
+        "on {\n        .Inc -> {\n            .count = 1\n        }\n    }",
     ];
     for body in bodies {
         let src = format!("node M {{\n    {body}\n    view {{ text \"t\" {{}} }}\n}}\n");
@@ -121,7 +121,7 @@ fn p981_age_package_rejects_widget_member_slots() {
                 package: "app".into(),
                 version: "1.0.0".into(),
                 id: "main".into(),
-                source: src,
+                source: src.clone(),
                 provider: None,
             }],
             "app::main",
