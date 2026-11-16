@@ -3403,11 +3403,18 @@ impl Verifier {
     }
 
     /// PLAN-864 / PLAN-1035 (F34): whether a List type's element is owned —
-    /// the ONE shared element-ownership rule for this core verifier. An
-    /// element owns when its type IS a resource leaf (owned Str, List,
-    /// Variant, closure/function environment, object cell) or a record/tuple
-    /// whose field closure reaches one. Both former twins (`owned_elem` and
-    /// this fn) were Str-only walks; they must not drift again.
+    /// the ONE shared element-ownership rule for this core verifier. Both
+    /// former twins (`owned_elem` and this fn) were Str-only walks; they must
+    /// not drift again.
+    ///
+    /// The frozen 962/822 surface keeps two deliberate boundaries:
+    /// * a VARIANT element is owned (its payload project is a transfer);
+    /// * a bare `List`/`Function`/`Closure`/`Object` element is NOT classified
+    ///   owned HERE: chained whole-element reads over nested lists/closures
+    ///   (`xs.get(i).get(j)`) are the delivered view surface, not value
+    ///   materializations (the lowering owns that path).
+    /// What this gate adds (the F34 hole) is the RECORD closure: a record
+    /// element owns when its fields reach any resource leaf.
     fn list_elem_owned(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
         let hir::TypeUse::Ref(tid) = list_ty else {
             return false;
@@ -3419,17 +3426,32 @@ impl Verifier {
         match elem {
             hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
             hir::TypeUse::Builtin(_) => false,
-            hir::TypeUse::Ref(e) => v.type_reaches_resource(m, *e),
+            hir::TypeUse::Ref(e) => {
+                matches!(
+                    m.types.get(e.0 as usize).map(|t| &t.kind),
+                    Some(hir::TypeKind::Variant { .. })
+                ) || v.type_reaches_resource(m, *e)
+            }
         }
     }
 
-    /// PLAN-864 / PLAN-1035 (F34): resource reachability over the module type
-    /// table. Leaves: owned `Str`, a `List` buffer, a `Variant` payload, a
-    /// runtime closure/function environment, an object cell. `str` (borrowed)
-    /// stays classified with the owned text kinds — the collections gate is
-    /// deliberately conservative there (view fields are rejected elsewhere;
-    /// no admission is widened by this walk).
+    /// PLAN-864 / PLAN-1035 (F34): whether this VALUE type owns resources at
+    /// the collections gate. `str`/`Str` keep the historic conservative
+    /// classification; a record owns when its transitive field closure
+    /// reaches a resource leaf (owned Str, `List` buffer, `Variant` payload,
+    /// closure/function environment or object cell). A direct `List`/closure
+    /// type is deliberately NOT a value-materializing owner here (see
+    /// [`Self::list_elem_owned`]).
     fn type_reaches_resource(&self, m: &hir::Module, t: hir::TypeId) -> bool {
+        match m.types.get(t.0 as usize).map(|x| &x.kind) {
+            Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => true,
+            Some(hir::TypeKind::Record(_)) => self.record_reaches_resource(m, t),
+            _ => false,
+        }
+    }
+
+    /// The record half of the F34 closure: walk fields until a resource leaf.
+    fn record_reaches_resource(&self, m: &hir::Module, t: hir::TypeId) -> bool {
         let mut stack = vec![t.0];
         let mut seen = BTreeSet::new();
         while let Some(i) = stack.pop() {

@@ -366,7 +366,7 @@ fn main() int { return 1 }";
     let src = "type Node { v int; next Box<Node> }
 fn main() int {
     let tail = Node(41, List<Node>.new())
-    let cell = Box(tail)
+    let cell = Box(tail.move)
     let n = Node(1, cell.move)
     return n.v + n.next.get(0).v
 }";
