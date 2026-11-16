@@ -4506,6 +4506,17 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   单组件面内无承载语义，归 981/IF-981-MODULE 多单元接线；computed 以逐字段
   状态函数+字面量/函数文本叶为已验面（f-string 叶见上条）。关闭=981 多单元
   接线后经组件间路由用例验收。owner=981。
+- **RUST 批边界（AXR0 先行，2026-11-16）**：①产品级 `rust_ui.rs` 旧 AST
+  emitter 未替换——多文件 store/组件/sidecar 与 props/msg/route 对齐需组件面
+  表达真实产品源（981 age-package 面刚落主、UI 接线未建）；关闭=后续轮经
+  981 面接线后逐产品切换并删旧发射（AXR0 并行新面已交：组件场景 A2R +
+  F0×A2R 链接 + 真窗派生显示）。②文本不可经 A2R 出岛（902 冻结 wrapper 为
+  i32 `value:` 协议）——窗口文本腿以"A2R exe 真实 stdout 上窗"实现；关闭=
+  A2R 文本输出面扩展后直连。owner=980 后续轮/981。
+- **master 预存红：auto-ui `ui_gen::rust` 2 例**：`test_bare_popover_point_anchor_codegen`
+  / `test_display_family_codegen_arm_fixture` 在 auto-ui 主检出（未含 980 触面）
+  同红复现。非 980 触面（980 未改 auto-ui-compiler）。关闭=批量回归 triage。
+  owner=批量回归 triage。
 - **master 预存红：ace-abi `source_foreign` 族 ~24 例**：PLAN-980 HELLO 门禁
   实测 272/296；同族在主检出 master `8e0c4d1d6`（975 B1 落主后）复现同红
   （973 台账原记 authority restore 1 例，975 落主后扩大）。非 980 触面
