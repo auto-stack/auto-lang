@@ -249,3 +249,5 @@ mod plan979_age_h0_cpu;
 mod platform_io_1039;
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;
+#[path = "cases/plan980_state_face.rs"]
+mod plan980_state_face;
