@@ -103,6 +103,14 @@ pub struct AgePackageComponent {
     pub params: Vec<(String, String)>,
     /// PLAN-981（IF-981-REF）：本组件 view 里**已解析**的实例引用。
     pub refs: Vec<AgeResolvedRef>,
+    /// PLAN-981（IF-981-ORIGINAL）：场景行资源引用的**已解析**关系。
+    ///
+    /// 与 `AgeSceneValue::Symbol` 的差别是实质性的：`material: res2.red` 在 CPU
+    /// 值面只剩末段 `"red"`，而两个模块都可以各声明一个 `red`。消费者若按名字
+    /// 匹配就可能在两个模块间选错——那正是 §5 禁止的"按名字字符串决定引用关系"。
+    /// 本字段给出检查器已经解析过的目标（声明模块 + 名字 + 端口），消费者不必
+    /// 复刻绑定器的导入/可见性规则。
+    pub resource_refs: Vec<AgeResolvedResourceRef>,
     pub texts: Vec<AgePackageText>,
     /// 声明所在模块键。
     pub module: String,
@@ -207,17 +215,47 @@ pub struct AgeResource {
     pub module: String,
     /// 端口类型名（`Material2D` / `Mesh2D` / `Model3D`）。
     pub port: String,
+    /// PLAN-981（轮 46）：构造器的**稳定符号**（`age.mesh2d.circle.v1`）。
+    ///
+    /// 只有 `port` 时，`mesh2d.circle(30.0)` 与 `mesh2d.quad(30.0, 40.0)` 都是
+    /// `Mesh2D`，构造身份完全丢失：消费者只能按实参个数**猜**形状，而端口声明
+    /// 的字段（`Mesh2D` = w,h）对 circle 的单个直径根本不成立。符号来自
+    /// `age_resources` 声明表，是跨后端身份，不是本层重新命名的。
+    pub op: String,
+    /// PLAN-981（轮 46）：作者书写的实参个数（含具名实参与非字面量实参）。
+    pub arity: usize,
+    /// PLAN-981（轮 46）：**按书写序**的每个实参，缺口用 `Unresolved` 显式占位。
+    ///
+    /// 此前非字面量实参被整段跳过，`material2d.color(base.r, 0.3, 0.2, 0.5)`
+    /// 于是得到 `[0.3, 0.2, 0.5]`——消费者会读成 r=0.3,g=0.2,b=0.5，**静默错位**。
+    /// 现在第 4 个分量缺失这件事是可见的，而不是被压缩掉。
+    pub args: Vec<AgeResourceArg>,
     /// 构造器实参的 f32 分量（按书写序）；非字面量参数不在此列。
     ///
-    /// **只对以数值构造的资源有意义**（`material2d.color` / `mesh2d.*`）。
-    /// `Model3D` 的构造器收的是**路径字符串**，它的参数走 [`Self::symbol`]。
+    /// **只在全部实参都是 f32 字面量时才是完整的**；否则为空（不给局部列表，
+    /// 见 `args` 的逐位事实）。`Model3D` 的构造器收**路径字符串**，其值在
+    /// [`Self::symbol`]。
     pub components: Vec<f32>,
     /// 构造器的**符号实参**（按书写序）。
     ///
     /// 补这个字段是因为实测发现的静默丢弃：`let ship = model3d.glb("assets/ship.glb")`
     /// 原先 `components` 为**空**——字符串实参既不进 `components`，也没有别处承载，
-    /// 消费者拿不到 GLB 路径。现在字符串进本字段。
+    /// 消费者拿不到 GLB 路径。现在字符串进本字段；仅在"恰好一个实参且为字符串"
+    /// 时给出（多实参下不再用"最后一个字符串"冒充整条构造）。
     pub symbol: Option<String>,
+}
+
+/// 一个资源构造器实参的**逐位**事实（PLAN-981 轮 46）。
+#[derive(Clone, Debug, PartialEq)]
+pub enum AgeResourceArg {
+    /// f32 字面量（含一元负号）。
+    Float(f32),
+    /// 字符串字面量原文（`model3d.glb("assets/ship.glb")` 的路径）。
+    Str(String),
+    /// 名字实参的末段拼写（模块常量/参数引用，值不在此层求）。
+    Symbol(String),
+    /// 本批无法解码的实参（字段访问、调用、计算值）。位置仍保留。
+    Unresolved,
 }
 
 /// 一次 AGE 包编译结果。
@@ -331,7 +369,7 @@ pub fn compile_age_package_with_scenario(
     // 3b) 场景资源引用：`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
     //     缺失或不符类型都具名拒绝——实测过"不存在的资源名静默通过"的缺口。
     check_scene_element_kinds(&product.age_components, &product.bound)?;
-    check_scene_resource_refs(&product.bound, &product.age_components)?;
+    let resolved_resource_refs = check_scene_resource_refs(&product.bound, &product.age_components)?;
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
     // 解析/检查用**本面的真实身份**（AgePackage），与发射一致：AGE 的资源端口、
@@ -365,8 +403,13 @@ pub fn compile_age_package_with_scenario(
     // 5) 从 Checked HIR 读回每条行为的结论（共享 resolver 的判定，不是本层猜的）。
     //    隐藏函数的 HIR 名已被绑定器 mangle（`sf_p3_appm4_main___age_p_hidden_0`），
     //    故用共享 `origins` 表把源名映到真实符号再查——不猜命名规则。
-    let components =
-        read_back_components(&product.age_components, &checked, &product.bound, &resolved_refs)?;
+    let components = read_back_components(
+        &product.age_components,
+        &checked,
+        &product.bound,
+        &resolved_refs,
+        &resolved_resource_refs,
+    )?;
 
     Ok(AgePackageCompilation {
         description: AgePackageDescription {
@@ -521,6 +564,7 @@ fn read_back_components(
     checked: &CheckedModule,
     bound: &super::packages::BoundPackages,
     refs: &std::collections::BTreeMap<(String, String), Vec<AgeResolvedRef>>,
+    resource_refs: &std::collections::BTreeMap<(String, String), Vec<AgeResolvedResourceRef>>,
 ) -> Result<Vec<AgePackageComponent>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for p in packaged {
@@ -635,6 +679,10 @@ fn read_back_components(
                 .get(&(p.module.clone(), p.node.name.name.clone()))
                 .cloned()
                 .unwrap_or_default(),
+            resource_refs: resource_refs
+                .get(&(p.module.clone(), p.node.name.name.clone()))
+                .cloned()
+                .unwrap_or_default(),
             texts,
             module: p.module.clone(),
         });
@@ -713,6 +761,43 @@ pub(crate) fn resolve_tick_spelling(
         instances: scenario.instances,
         ops,
     }
+}
+
+/// PLAN-981（轮 46，IF-981-ORIGINAL）：一条**已解析**的场景资源引用。
+///
+/// 场景属性里的 `material: tint` / `tint: resources.red_alpha` 在 CPU 值面只剩
+/// 末段符号（`"tint"` / `"red_alpha"`），丢失了"它指向**哪个**声明"这一事实。
+/// 本类型承载检查器的结论；`spelling` 保留作者原拼写（含限定词）。
+#[derive(Clone, Debug)]
+pub struct AgeResolvedResourceRef {
+    /// 场景行实例名（`red_disc`）。
+    pub row: String,
+    /// 属性名（`material` / `tint` / `model`）。
+    pub attr: String,
+    /// 作者拼写（`resources.red_alpha` / `tint`）。
+    pub spelling: String,
+    /// 解析结果。
+    pub target: AgeResourceTarget,
+    /// 引用处 span（与 `AgeSceneRow.span` 同坐标）。
+    pub span: Span,
+}
+
+/// 一个场景资源引用的解析目标。
+#[derive(Clone, Debug, PartialEq)]
+pub enum AgeResourceTarget {
+    /// 本 node 的 typed 参数（`node Disc(..., tint: Material2D)`）。
+    ///
+    /// 实际值由实例化处的实参决定：消费者要沿着"定义行参数 → 实例行同名实参"
+    /// 这一层关系取值，而不是把参数名当资源名去找。
+    Param { name: String, port: String },
+    /// 模块级具名资源（`let red_alpha = material2d.color(...)`）。
+    Resource {
+        /// 声明模块的全键（`pkg::mod`，与 `AgeResource.module` 同一身份）。
+        module: String,
+        name: String,
+        /// 该资源的端口类型（`Material2D` / `Mesh2D` / `Model3D`）。
+        port: String,
+    },
 }
 
 /// PLAN-981（IF-981-REF）：一条**已解析**的节点实例引用。
@@ -1085,6 +1170,15 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         consumer: "age_package::AgeSceneRow",
         requirement: "AGE-L03",
     },
+    // PLAN-981（轮 46）：场景行里的**资源引用**也是一类构造事实——只留末段符号
+    // 等于把"指向哪个声明"推给消费者。本行要求产物留下**已解析**的目标。
+    AgeConstruct {
+        key: "view.scene.resource",
+        spelling: "material: <resource> / tint: <resource> / model: <resource>",
+        fact: "a resolved resource reference row (declaring module + name, or a node parameter)",
+        consumer: "age_package::AgePackageComponent.resource_refs",
+        requirement: "AGE-L03",
+    },
 ];
 
 /// 构造清单覆盖检查：清单里每一行的 `fact` 必须在**实际产物**里出现。
@@ -1152,6 +1246,10 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
         // 场景出口的事实：只要有行，就必须能在产物里看见（不只是"解析过"）。
         if !c.scene.is_empty() && !out.contains(&"view.scene") {
             out.push("view.scene");
+        }
+        // 资源引用的事实：解析结果必须真的落在产物里（不是检查完就丢）。
+        if !c.resource_refs.is_empty() && !out.contains(&"view.scene.resource") {
+            out.push("view.scene.resource");
         }
     }
     out
@@ -1363,7 +1461,12 @@ fn check_scene_element_kinds(
 fn check_scene_resource_refs(
     bound: &super::packages::BoundPackages,
     packaged: &[PackagedAgeComponent],
-) -> Result<(), Vec<Diagnostic>> {
+) -> Result<
+    std::collections::BTreeMap<(String, String), Vec<AgeResolvedResourceRef>>,
+    Vec<Diagnostic>,
+> {
+    let mut out: std::collections::BTreeMap<(String, String), Vec<AgeResolvedResourceRef>> =
+        std::collections::BTreeMap::new();
     for comp in packaged {
         for row in &comp.node.view.scene_components {
             for attr in &row.attrs {
@@ -1412,6 +1515,22 @@ fn check_scene_resource_refs(
                         )]);
                     }
                 };
+                // 作者原拼写（含限定词）：消费者复核引用时看到的就是它。
+                let spelling = match module_spelling.as_deref() {
+                    Some(m) => format!("{m}.{symbol_spelling}"),
+                    None => symbol_spelling.clone(),
+                };
+                let mut push_ref = |target: AgeResourceTarget| {
+                    out.entry((comp.module.clone(), comp.node.name.name.clone()))
+                        .or_default()
+                        .push(AgeResolvedResourceRef {
+                            row: row.name.clone(),
+                            attr: attr.key.clone(),
+                            spelling: spelling.clone(),
+                            target,
+                            span: attr.span,
+                        });
+                };
                 // `material: tint` 里的 `tint` 是**本 node 自己的参数**——它不是
                 // 模块全局资源，但它**仍然必须**是该位置期望的端口类型。此前这里
                 // 无条件 `continue`，于是 `node Disc(tint: int)` 把一个整数塞进
@@ -1436,6 +1555,10 @@ fn check_scene_resource_refs(
                             )]);
                         }
                     }
+                    push_ref(AgeResourceTarget::Param {
+                        name: param.name.clone(),
+                        port: param.ty.clone(),
+                    });
                     continue;
                 }
                 // 找声明：**必须**尊重导入可见性。
@@ -1462,6 +1585,31 @@ fn check_scene_resource_refs(
                     .get(this_module)
                     .map(|u| u.imports.iter().map(|i| i.bound_name()).collect())
                     .unwrap_or_default();
+                // 限定写法的可见性必须核到**限定词所指的那个模块**。
+                //
+                // 只按裸名导入集判会放行跨模块冒名：实测 `use res1: red` +
+                // `material: res2.red`（res2 从未被导入，只是它也有个 `red`）
+                // 会被接受——因为导入集里有裸名 `red`。导入路径的首段（2 段
+                // `mod.item`）或中段（3 段 `pkg.mod.item`）就是来源模块。
+                let imports_of_this_module = bound
+                    .units
+                    .get(this_module)
+                    .map(|u| u.imports.as_slice())
+                    .unwrap_or(&[]);
+                let imported_from = |m: &str, symbol: &str| {
+                    imports_of_this_module.iter().any(|i| {
+                        let origin = match i.path.len() {
+                            2 => Some(i.path[0].as_str()),
+                            3 => Some(i.path[1].as_str()),
+                            _ => None,
+                        };
+                        origin == Some(m) && i.bound_name() == symbol
+                    })
+                };
+                let visible = match module_spelling.as_deref() {
+                    Some(m) => imported_from(m, &symbol_spelling),
+                    None => imported_names.contains(symbol_spelling.as_str()),
+                };
                 let found = bound.globals.iter().find(|(sym, decl)| {
                     if decl.name != symbol_spelling || !sym.starts_with('g') {
                         return false;
@@ -1472,9 +1620,8 @@ fn check_scene_resource_refs(
                             return false;
                         }
                     }
-                    // 可见性：本模块自有的资源，或本模块导入的名字。
-                    decl.module == this_short || decl.module == this_module
-                        || imported_names.contains(symbol_spelling.as_str())
+                    // 可见性：本模块自有的资源，或**本模块确实从该来源导入**的名字。
+                    decl.module == this_short || decl.module == this_module || visible
                 });
                 let Some((_sym, decl)) = found else {
                     // 区分"根本不存在"与"存在但本模块没导入"——979 V-10 要求两类
@@ -1543,10 +1690,15 @@ fn check_scene_resource_refs(
                         )]);
                     }
                 }
+                push_ref(AgeResourceTarget::Resource {
+                    module: super::packages::unit_key(&decl.package, &decl.module),
+                    name: decl.name.clone(),
+                    port: ty_name,
+                });
             }
         }
     }
-    Ok(())
+    Ok(out)
 }
 
 /// PLAN-981（IF-981-ORIGINAL）：从 binder 的全局事实里取出**具名 AGE 资源**。
@@ -1571,33 +1723,68 @@ fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResou
         let Some(op) = super::age_resources::lookup(&dotted) else {
             continue;
         };
-        // 实参按形状分流：数值进 `components`，字符串进 `symbol`。
+        // 实参**逐位**解码（轮 46）。
         //
-        // 此前只收 f32，非数值实参被**静默跳过**——`model3d.glb("ship.glb")` 于是
-        // 得到空的 `components`，而别处也没有承载路径的地方，消费者拿不到 GLB 位置。
-        let mut components = Vec::new();
-        let mut symbol: Option<String> = None;
+        // 此前具名实参被整体 `continue`、非字面量实参被跳过且不留位——于是
+        // `material2d.color(base.r, 0.3, 0.2, 0.5)` 得到 `[0.3, 0.2, 0.5]`，消费者
+        // 会读成 r=0.3,g=0.2,b=0.5，**静默错位**；`material2d.color(r: 0.9, …)`
+        // 则得到空表。共享调用检查按**书写序**把实参与声明参数对齐（具名实参也
+        // 不按名字重排），所以本表同样按书写序取值，不猜。
+        let mut decoded = Vec::with_capacity(args.len());
         for a in args {
             let e = match a {
                 super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => x,
-                super::ast::Arg::Named { .. } => continue,
+                super::ast::Arg::Named { value, .. } => value,
             };
-            if let Some(v) = f32_literal(e) {
-                components.push(v);
-            } else if let super::ast::ExprKind::StrLit(text) = &e.kind {
-                symbol = Some(text.clone());
-            }
+            decoded.push(resource_arg(e));
         }
+        // `components` 只在**全部**实参都是 f32 字面量时才是完整列表；否则为空，
+        // 逐位事实看 `args`。不给局部列表——那会让消费者把第 2 个分量当第 1 个。
+        let components: Vec<f32> =
+            if decoded.iter().all(|a| matches!(a, AgeResourceArg::Float(_))) {
+                decoded
+                    .iter()
+                    .filter_map(|a| match a {
+                        AgeResourceArg::Float(v) => Some(*v),
+                        _ => None,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+        // `symbol` 只在"恰好一个字符串实参"时给出（`model3d.glb(path)`）；多实参
+        // 或名字实参下不再用最后一个字符串冒充整条构造。
+        let symbol = match decoded.as_slice() {
+            [AgeResourceArg::Str(s)] => Some(s.clone()),
+            _ => None,
+        };
+        let arity = decoded.len();
         out.push(AgeResource {
             name: decl.name.clone(),
             module: super::packages::unit_key(&decl.package, &decl.module),
             port: op.result_port.to_string(),
+            op: op.symbol.to_string(),
+            arity,
+            args: decoded,
             components,
             symbol,
         });
     }
     out.sort_by(|a, b| (&a.module, &a.name).cmp(&(&b.module, &b.name)));
     out
+}
+
+/// 一个构造器实参的逐位事实（不猜：认不出就 `Unresolved`，但**位置不丢**）。
+fn resource_arg(e: &super::ast::Expr) -> AgeResourceArg {
+    if let Some(v) = f32_literal(e) {
+        return AgeResourceArg::Float(v);
+    }
+    match &e.kind {
+        super::ast::ExprKind::StrLit(text) => AgeResourceArg::Str(text.clone()),
+        // 名字实参（模块常量/参数引用）：记末段拼写，值由后续检查/后端求。
+        super::ast::ExprKind::Var(id) => AgeResourceArg::Symbol(id.name.clone()),
+        _ => AgeResourceArg::Unresolved,
+    }
 }
 
 /// 表达式的 f32 字面量值（`0.9` 或 `-45.0`）；非字面量返回 `None`（不猜）。

@@ -138,3 +138,5 @@ mod source_units_928;
 mod source_units_928_t09;
 #[path = "cases/text_replacement.rs"]
 mod text_replacement;
+#[path = "cases/plan981_resource_identity.rs"]
+mod plan981_resource_identity;

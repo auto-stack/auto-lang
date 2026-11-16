@@ -18,7 +18,8 @@ use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 /// 两个常驻限制决定了它必须拆成两个组件：
 /// - 一个 node 恰一个 view 出口（M1），所以场景出口不能塞进已有 `view` 的 `Counter`；
 /// - `Widget` 是无 model 的纯文本组件，用来覆盖 `view.node-ref` 的引用方。
-const FULL: &str = "node Widget {\n\
+const FULL: &str = "let tint = material2d.color(0.9, 0.3, 0.2, 0.5)\n\
+node Widget {\n\
     view { text \"w\" {} }\n\
 }\n\
 node Counter {\n\
@@ -35,6 +36,7 @@ node Scene {\n\
         shape2d badge {\n\
             kind: circle\n\
             position: (1.0, 2.0)\n\
+            material: tint\n\
             visible: false\n\
         }\n\
     }\n\
@@ -109,7 +111,7 @@ fn p981_fields_dropping_a_projection_row_is_red() {
 /// 逐行删：清单里任意一行被真正删掉投影，都必须能被抓到（不是只抓 on）。
 #[test]
 fn p981_fields_every_projection_row_is_individually_guarded() {
-    for drop in ["model", "view.text", "view.node-ref"] {
+    for drop in ["model", "view.text", "view.node-ref", "view.scene.resource"] {
         let out = compile(FULL);
         let mut weakened = out.description.clone();
         for c in &mut weakened.components {
@@ -120,6 +122,7 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                 }
                 "view.text" => c.texts.clear(),
                 "view.node-ref" => c.refs.clear(),
+                "view.scene.resource" => c.resource_refs.clear(),
                 other => panic!("unknown drop {other}"),
             }
         }
@@ -172,6 +175,18 @@ fn p981_real_projection_actually_produces_rows() {
             "the real projection must yield `{want}`; got {present:?}"
         );
     }
+    // 场景行里的资源引用也必须留下**解析结果**（不是只在检查里用过）。
+    let scene = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "Scene")
+        .expect("the fixture declares Scene");
+    assert!(
+        !scene.resource_refs.is_empty(),
+        "Scene writes `material: tint`, so the projection must produce a resolved row"
+    );
+    assert!(present.contains(&"view.scene.resource"));
 }
 
 /// 兼容变体单独验证：旧 `widget` 头在 compat 开启时留下 legacy 事实，
