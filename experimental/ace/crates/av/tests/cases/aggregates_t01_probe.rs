@@ -837,6 +837,23 @@ fn audit1036_loop_01_continue_advances_this_loop_only() {
     assert_eq!(run.live_after, 0, "the view ledger closes at loop exit");
     assert_eq!(run.allocs, run.frees);
 
+    // Nested NON-counted loops (review F-R1-01): a bare `loop` and a
+    // `for <cond>` (while) inside the counted loop carry their OWN
+    // `continue` target — the counted loop's latch is keyed by target and
+    // must NOT fire for them, and the outer index must still advance.
+    // Bare loop: 2 inner passes per outer pass (k = 1 continue, k = 2 break).
+    let nested_bare_loop = "fn main() int {\n    var outer = 0\n    var inner = 0\n    var k = 0\n    for i in 0 .. 3 {\n        outer = outer + 10\n        loop {\n            k = k + 1\n            inner = inner + 1\n            if k == 2 {\n                k = 0\n                break\n            }\n            continue\n        }\n    }\n    return outer + inner\n}";
+    let run =
+        ace_av::collections_864_support::compile_and_execute_aggregates(nested_bare_loop, "d_main")
+            .expect("a bare loop nested in a counted for-in executes");
+    assert_eq!(run.value, 36, "3 outer x 10 + 2 inner passes each");
+    // `for <cond>` (while) nested the same way: 2 passes per outer pass.
+    let nested_while = "fn main() int {\n    var outer = 0\n    var inner = 0\n    for i in 0 .. 2 {\n        outer = outer + 10\n        var j = 0\n        for j < 2 {\n            j = j + 1\n            inner = inner + 1\n            continue\n        }\n    }\n    return outer + inner\n}";
+    let run =
+        ace_av::collections_864_support::compile_and_execute_aggregates(nested_while, "d_main")
+            .expect("a while-shaped loop nested in a counted for-in executes");
+    assert_eq!(run.value, 24, "2 outer x 10 + 2 inner passes each");
+
     // The same obligation on the ROUTED path: a `continue` inside a `try`
     // in the loop body reaches the loop through the control-state dispatch,
     // which must also run the latch (3 iterations of n = n + 1 => 30).
@@ -904,6 +921,14 @@ fn audit1036_loop_02_inclusive_endpoint_no_synthetic_overflow() {
     // break on the single maximum member: no latch runs after it.
     let brk_last = "fn main() int {\n    var n = 0\n    for i in 2147483647 ..= 2147483647 {\n        n = n + 1\n        break\n    }\n    return n\n}";
     assert_eq!(run(brk_last).value, 1);
+
+    // return at the LAST member (review F-R1-02): `return` exits without the
+    // synthesized advance, so the i32 maximum is a value, never MAX + 1.
+    let ret_single = "fn main() int {\n    for i in 2147483647 ..= 2147483647 {\n        return i\n    }\n    return 0\n}";
+    assert_eq!(run(ret_single).value, 2147483647);
+    // ... and after a normal advance into the last member.
+    let ret_last = "fn main() int {\n    var n = 0\n    for i in 2147483646 ..= 2147483647 {\n        n = n + 1\n        if i == 2147483647 { return n * 10 + 7 }\n    }\n    return -1\n}";
+    assert_eq!(run(ret_last).value, 27);
 
     // A bound that is not a literal stays OUTSIDE the admitted range
     // grammar (`for i in hi ..= hi` is a named `source.syntax` rejection,
