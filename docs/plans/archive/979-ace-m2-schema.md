@@ -665,4 +665,4 @@ stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 46 | from: work | 
 - **archived**: `docs/plans/archive/979-ace-m2-schema.md`，status `archived`，任务 **12/12**（T-05/T-06/T-07 勾选）。
 - **cleaned**: `plan-artifacts/plan-979/` **整目录删除**（T-01/T-03/T-04/T-05 证据与门禁日志已折入本文件上述收据；无具名未解决持有——L04/AG-A、L03 残余归 981/LANGUAGE+980，属范围外登记而非本包持有）；`wt-guard` 报 clean；worktree `D:/autostack/.wt/lang-979/auto-lang` 与分支 `plan-979-dev` 移除、组目录删除；`.retention/policy.json` 已刷新为 deleted-at-merge。
 - **gates**: T-04 六组并集 5/6 PASS（唯一红=`sema_boundary_case_files_executed_status_honest`=PLAN-1062 语料基线，KNOWN-DEBT PLAN-978 节具名，**具名排除、不充 PASS**；ace-a2x 首红/重放绿 251/251）；denominator 检查器在 `40bec290a`/规范提交上 exit 0（claimed=46/actual=90/missing=0；core=57 av=26 a2x=7）。落主为 docs-only，代码身份仍 `e352e462b`，main 无需重跑代码面。
-- **deployment**: 不涉及发布/安装物（docs-only）；`.last-batch-regression.json` 到期检查见清理轮记录。
+- **deployment**: 不涉及发布/安装物（docs-only）。**批次回归到期检查**：`.last-batch-regression.json` = last_covered_plan_id 1060 / `2026-11-14T23:23:08Z`；其后无 %5 计划落主（1064 非 %5、1065 未归档），receipt 年龄约 31h < 48h ⇒ **not due**（下次 48h 或 %5 落主时交 `auto-plan-regress`）。
