@@ -48,6 +48,16 @@ node Tower {\n\
             position: (0.0, 1.0, 2.0)\n\
         }\n\
     }\n\
+}\n\
+node Portrait {\n\
+    view-portrait {\n\
+        text \"portrait\" {}\n\
+    }\n\
+}\n\
+node Wide {\n\
+    view-widget {\n\
+        text \"widget\" {}\n\
+    }\n\
 }\n";
 
 fn input(id: &str, source: &str) -> PackageModuleInput {
@@ -130,6 +140,8 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
         "view",
         "view-2d",
         "view-3d",
+        "view-portrait",
+        "view-widget",
         "view.text",
         "view.node-ref",
         "view.scene",
@@ -161,6 +173,16 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     }
                     "view-3d" => {
                         if c.exit == AgeViewExit::View3d {
+                            c.exit = AgeViewExit::View;
+                        }
+                    }
+                    "view-portrait" => {
+                        if c.exit == AgeViewExit::ViewPortrait {
+                            c.exit = AgeViewExit::View;
+                        }
+                    }
+                    "view-widget" => {
+                        if c.exit == AgeViewExit::ViewWidget {
                             c.exit = AgeViewExit::View;
                         }
                     }
@@ -201,6 +223,10 @@ fn p981_fields_construct_table_is_frozen() {
             "view",
             "view-2d",
             "view-3d",
+            // B-LANGUAGE-I（AGE-L03）：五 view 面把两个直属呈现出口纳入分母。
+            // 这是 SOURCE 12 行交接表的**增长**（不缩分母），不是替换。
+            "view-portrait",
+            "view-widget",
             "view.node-ref",
             "view.scene",
             "view.scene.resource",

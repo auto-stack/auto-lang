@@ -133,6 +133,10 @@ pub enum AgeViewExit {
     View2d,
     /// 3D 场景出口 `view-3d { … }`。
     View3d,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L03）：竖屏 UI 出口 `view-portrait { … }`。
+    ViewPortrait,
+    /// PLAN-981（B-LANGUAGE-I / AGE-L03）：widget 出口 `view-widget { … }`。
+    ViewWidget,
 }
 
 /// 一条场景行（组件实例）。
@@ -763,6 +767,8 @@ fn read_back_components(
             exit: match p.node.view.exit.as_str() {
                 "view-2d" => AgeViewExit::View2d,
                 "view-3d" => AgeViewExit::View3d,
+                "view-portrait" => AgeViewExit::ViewPortrait,
+                "view-widget" => AgeViewExit::ViewWidget,
                 _ => AgeViewExit::View,
             },
             texts,
@@ -1234,6 +1240,20 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         fact: "the 3D scene exit appears in the description's exit fact",
         consumer: "age_package::AgePackageComponent.exit / scene",
         requirement: "AGE-L03",
+    },    // PLAN-981（B-LANGUAGE-I / AGE-L03）：五 view 的另外两个直属呈现出口。
+    AgeConstruct {
+        key: "view-portrait",
+        spelling: "view-portrait { … }",
+        fact: "the portrait UI exit appears in the description's exit fact",
+        consumer: "age_package::AgePackageComponent.{exit,texts,tree}",
+        requirement: "AGE-L03",
+    },
+    AgeConstruct {
+        key: "view-widget",
+        spelling: "view-widget { … }",
+        fact: "the widget UI exit appears in the description's exit fact",
+        consumer: "age_package::AgePackageComponent.{exit,texts,tree}",
+        requirement: "AGE-L03",
     },
     AgeConstruct {
         key: "view.text",
@@ -1349,6 +1369,8 @@ pub fn collect_facts(description: &AgePackageDescription) -> Vec<&'static str> {
             AgeViewExit::View => "view",
             AgeViewExit::View2d => "view-2d",
             AgeViewExit::View3d => "view-3d",
+            AgeViewExit::ViewPortrait => "view-portrait",
+            AgeViewExit::ViewWidget => "view-widget",
         };
         if !out.contains(&exit_fact) {
             out.push(exit_fact);

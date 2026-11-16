@@ -427,6 +427,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-981（IF-981-ORIGINAL）：2D/3D 直属出口（仅包面）。
             alt(profiles: [age-package]) { age-view2d-member() {} }
             alt(profiles: [age-package]) { age-view3d-member() {} }
+            // PLAN-981（B-LANGUAGE-I / AGE-L03）：另外两个直属呈现出口。
+            alt(profiles: [age-package]) { age-view-portrait-member() {} }
+            alt(profiles: [age-package]) { age-view-widget-member() {} }
             // PLAN-980（B-DIALECT-I 完整批）：WidgetDecl 其余成员槽位逐项
             // 投影（结构 + 原 span）；行为接线按槽位 applicability 分批。
             alt(profiles: [age-component]) { age-msg-member() {} }
@@ -693,6 +696,29 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             lbrace(same-line: true) {}
             list-nl { age-scene-item() {} }
             rbrace() {}
+        }
+        // PLAN-981（B-LANGUAGE-I / AGE-L03）：`view-portrait` / `view-widget` 是
+        // 980 传统 UI 的呈现出口；直属定义用富 view 成员（文本叶/元素/属性行/
+        // 节点引用），与 `view` 同一投影面，只是出口事实不同。
+        age-view-portrait-member(profiles: [age-package], expect: "a `view-portrait { … }` node view") {
+            name(of: "age-view-head", field: "view") {}
+            minus(same-line: true) {}
+            age-view-suffix-word(field: "suffix") {}
+            lbrace(same-line: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-view-widget-member(profiles: [age-package], expect: "a `view-widget { … }` node view") {
+            name(of: "age-view-head", field: "view") {}
+            minus(same-line: true) {}
+            age-view-suffix-word(field: "suffix") {}
+            lbrace(same-line: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-view-suffix-word(profiles: [age-package]) {
+            alt { ident(field: "word") {} }
+            alt { affix-num(field: "word") {} }
         }
         // 出口后缀：`2d` / `3d`（ident 接受，投影期按字节校验，不在词法层硬编码）。
         age-view-suffix-2d(profiles: [age-package]) {

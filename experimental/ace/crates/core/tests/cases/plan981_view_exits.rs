@@ -79,3 +79,46 @@ fn p981_single_exit_is_accepted() {
         compile(src).unwrap_or_else(|ds| panic!("single/no exit must compile: {ds:?}"));
     }
 }
+
+// ---- B-LANGUAGE-I（AGE-L03）：五 view 面 ----
+
+/// `view-portrait` / `view-widget` 是直属呈现出口；出口事实按成员规则落定，
+/// 文本叶仍走同一投影（不是只认 `view`）。
+#[test]
+fn p981_portrait_and_widget_exits_are_recognised() {
+    use ace_core::source::age_package::AgeViewExit;
+    let out = compile("node M {\n    view-portrait {\n        text \"p\" {}\n    }\n}\n")
+        .expect("a view-portrait exit compiles");
+    let c = &out.description.components[0];
+    assert_eq!(c.exit, AgeViewExit::ViewPortrait, "portrait exit fact");
+    assert_eq!(c.texts.len(), 1, "the portrait text leaf is carried");
+
+    let out = compile("node M {\n    view-widget {\n        text \"w\" {}\n    }\n}\n")
+        .expect("a view-widget exit compiles");
+    let c = &out.description.components[0];
+    assert_eq!(c.exit, AgeViewExit::ViewWidget, "widget exit fact");
+    assert_eq!(c.texts.len(), 1, "the widget text leaf is carried");
+}
+
+/// 五 view 不改变"恰一个出口"：任意两个直属出口并存仍具名拒绝。
+#[test]
+fn p981_duplicate_portrait_or_widget_exits_are_rejected() {
+    for src in [
+        "node M {\n    view-portrait {\n        text \"a\" {}\n    }\n    view-portrait {\n        text \"b\" {}\n    }\n}\n",
+        "node M {\n    view-portrait {\n        text \"a\" {}\n    }\n    view-widget {\n        text \"b\" {}\n    }\n}\n",
+        "node M {\n    view {\n        text \"a\" {}\n    }\n    view-widget {\n        text \"b\" {}\n    }\n}\n",
+    ] {
+        let ds = compile(src).expect_err("a second exit is rejected");
+        assert_eq!(ds[0].code, "source.age.view-exit", "{ds:?}");
+    }
+}
+
+/// 未知后缀仍在后缀 token 处具名拒绝——新增出口不会把 `view-2x` 合法化。
+#[test]
+fn p981_unknown_view_suffix_is_still_rejected() {
+    let ds = compile(
+        "node M {\n    view-2x {\n        shape2d q {\n            kind: quad\n        }\n    }\n}\n",
+    )
+    .expect_err("view-2x is not an AGE exit");
+    assert_eq!(ds[0].code, "source.age.view-suffix", "{ds:?}");
+}

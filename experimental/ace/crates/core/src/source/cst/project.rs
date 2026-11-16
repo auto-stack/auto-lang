@@ -4507,12 +4507,14 @@ impl<'a> Engine<'a> {
                     view_exit = match suffix.as_str() {
                         "2d" => "view-2d".to_string(),
                         "3d" => "view-3d".to_string(),
+                        "portrait" => "view-portrait".to_string(),
+                        "widget" => "view-widget".to_string(),
                         _ => {
                             let span = suffix_leaf
                                 .map(|w| self.cx.span_of(w))
                                 .unwrap_or(view_span);
                             let msg = format!(
-                                "a scene view exit must be `view-2d` or `view-3d`; \
+                                "a view exit must be `view-2d`, `view-3d`, `view-portrait` or `view-widget`; \
                                  `view-{suffix}` is not an AGE export"
                             );
                             self.cx.reject(span, move || {
@@ -4528,8 +4530,8 @@ impl<'a> Engine<'a> {
                     };
                     if let Some(first) = first_exit_span {
                         let msg = format!(
-                            "a node declares exactly one view exit (view / view-2d / \
-                             view-3d); a second exit at byte {} would silently merge its \
+                            "a node declares exactly one view exit (view / view-2d / view-3d / view-portrait / view-widget); a second exit \
+                             at byte {} would silently merge its \
                              leaves with the first at byte {}",
                             view_span.start, first.start
                         );
@@ -4603,7 +4605,7 @@ impl<'a> Engine<'a> {
                         );
                     }
                 }
-                "age-view-member" => {
+                "age-view-member" | "age-view-portrait-member" | "age-view-widget-member" => {
                     let view_leaf = self
                         .cx
                         .field_child(member, "view")
@@ -4613,10 +4615,49 @@ impl<'a> Engine<'a> {
                         .map(|(role, _)| role)
                         .unwrap_or_else(|| "view".to_string());
                     view_span = self.cx.span_of(view_leaf);
+                    // B-LANGUAGE-I（AGE-L03）：portrait/widget 是直属呈现出口。两条
+                    // 成员规则的形状相同（`view - <suffix>`），所以出口必须按**后缀
+                    // 字节**落定，不能按命中的规则名（否则 `view-widget` 会先命中
+                    // portrait alt 而记成 portrait）。
+                    if matches!(
+                        member_rule.as_str(),
+                        "age-view-portrait-member" | "age-view-widget-member"
+                    ) {
+                        let suffix_leaf = self
+                            .cx
+                            .field_child(member, "suffix")
+                            .and_then(|s| self.cx.field_child(s, "word"));
+                        let suffix = suffix_leaf
+                            .map(|w| self.cx.spelling(w))
+                            .unwrap_or_default();
+                        view_exit = match suffix.as_str() {
+                            "portrait" => "view-portrait".to_string(),
+                            "widget" => "view-widget".to_string(),
+                            _ => {
+                                let span = suffix_leaf
+                                    .map(|w| self.cx.span_of(w))
+                                    .unwrap_or(view_span);
+                                let msg = format!(
+                                    "a view exit must be `view-2d`, `view-3d`, \
+                                     `view-portrait` or `view-widget`; `view-{suffix}` \
+                                     is not an AGE export"
+                                );
+                                self.cx.reject(span, move || {
+                                    Diagnostic::new(
+                                        Stage::Text,
+                                        "source.age.view-suffix",
+                                        msg.clone(),
+                                        span,
+                                    )
+                                });
+                                "view".to_string()
+                            }
+                        };
+                    }
                     if let Some(first) = first_exit_span {
                         let msg = format!(
-                            "a node declares exactly one view exit (view / view-2d / \
-                             view-3d); a second exit at byte {} would silently merge its \
+                            "a node declares exactly one view exit (view / view-2d / view-3d / view-portrait / view-widget); a second exit \
+                             at byte {} would silently merge its \
                              leaves with the first at byte {}",
                             view_span.start, first.start
                         );
