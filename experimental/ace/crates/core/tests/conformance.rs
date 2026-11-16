@@ -116,8 +116,6 @@ mod plan981_event_a;
 mod plan981_v_harness;
 #[path = "cases/plan981_lifecycle.rs"]
 mod plan981_lifecycle;
-#[path = "cases/plan981_tmp_6i.rs"]
-mod plan981_tmp_6i;
 #[path = "cases/plan981_model3d.rs"]
 mod plan981_model3d;
 #[path = "cases/plan980_dialect_full.rs"]
