@@ -719,6 +719,22 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 9 | from: review |
 next_responsible_role: work（980/HELLO 批：967/F0-D、979/H0-D、969/E0-D、978/B0-D 四正式来源均已落主，前置齐；T-HELLO-I 冻结首源/Schema 激活与 ace-hello-minimal fixture）。
 
 stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 10 | from: merge | to: work | status: executing（6/35，STATE 批已交付落主）| outcome: pass（phase fold #3）| worktree: D:/autostack/.wt/lang-980（保留）| commit: lang fc5610783 ui ae1c53ad | next: work（HELLO 批）
+2026-11-16 stage: work（T-HELLO-I/V 批，round 11：按裁定顺序 HELLO）| plan_id: PLAN-980 | plan_revision: r10 | outcome: pass（批次可交付独立复核；T-HELLO-I/V/R 勾选留 R）| worktree: D:/autostack/.wt/lang-980/{auto-lang,auto-ui} @ plan-980-dev | base: lang fc5610783 / ui ae1c53ad | code_commit: lang b3887f887、ui 3e85a7f1。
+
+**T-HELLO-I 有界决定（两机制比较，冻结）。** 选 `run_app::<C>` 泛型单窗宿主（devtools 链：View→rewrite_viewport_units→into_iced、Inter 字体、主题服务；ui_hello_loader 等 20+ example 同链）——组件零旧链依赖；弃 daemon `run_session`（`AppSession` 硬绑 `DynamicComponent`/旧 bytecode 链，接入需造假 VmBridge，合同明禁）。无第二解析器；中立宿主接面无需新抽（run_app 泛型即现成接面）。
+
+**交付。** ①lang：F0 构建新鲜度缓存（`rust_provider::build_source` 按 (provider digest, shim digest, rustc identity)+双产物在位跳过 rustc；篡改/缺产物/digest 变化即重建；永久 case `plan980_f0_cache.rs` 2 项）+ **ace-host Exit 臂修复**（973 给 ExecOutcome 增 `Exit` 后本 crate 匹配面非穷尽=master 预存编译红，3 处具名映射：test failed/project av.exit/session.eval/exit）。②auto-ui：fixture `examples/ui/ace-hello-minimal/src/front/{app,app-body}.at`（node Hello 静态 text + 普通函数返回中文/ASCII）；`ui/ace_hello.rs` 桥（H0 面共享 verify→AV 真值文本，复制为 UI 所有 String；F0 腿合成 TextRecord 源经 969 E0 门面分派——同一文本字节由 `text_byte_len` 证实被 provider 收到；幂等注册）+ `AceHelloWindow` 组件（OnceLock 会话注入）+ `examples/ace_hello_window.rs`（真 Iced 主线程窗口；--prep-only 预构建模式；帧计数/证据 JSON/自动退出，Process.exit 语义同 plan804）；`tests/ace_ui_hello.rs` 5 项永久 case。③依赖：runtime+dev-deps 增 ace-av/auto-lang-ace-host/auto-lang-core/serde_json（生产闭包含 ACE——HELLO 即该集成）。
+
+**V-HELLO 验证（冻结提交实测）。** CPU 面（恒跑）：SCHEMA（root=node/grammar 身份/任意 Node 名与文本变体/无 AGE 具名拒绝）、BODY（函数返回值改文随变）、REJECT（int 文本叶 source.age 拒；错 provider 名 ace.provider/unknown 且零 dispatch）、LIFE（20 轮装载/AV/F0 分派/释放 + teardown 旧名直连门面具名失效 + 重注册新代恢复）。窗口+FFI 面（`AUTO_UI_ACE_HELLO_E2E=1` 显式排窗）：prep（build example + exe --prep-only 预构建 provider 到 target/ace-hello-f0 缓存 stamp）后子进程真窗 × 2 fixture（静态 Hello 5 字节 / 你好 Auto 11 字节），断言 AV 文本=源字节、F0 byte_len=AV 字节数、callee_count=1/rejected=0、frames≥2、任意 cwd（仓外异根）。命令冻结：`cargo test -p auto-ui-runtime --test ace_ui_hello -- --test-threads=1`（窗口面先 prep 再带 env）。
+
+**会话测试表。** UI ace_ui_hello 全 5/5=4.32s（窗口腿 3.09s；CPU 5 项 1.95s；单条最大 e2e 3.09s ≤10s）；lang `cargo t ace-abi ace-facade`：**ace-facade PASS**（Exit 修复实证）；ace-abi 272/296——24 红全在 `source_foreign` 族=master 预存红（主检出 `8e0c4d1d6` 同红复现；973 台账原记 1 例、975 落主后扩大；已入 KNOWN-DEBT，非本批触面），本批 2 个 f0 缓存 case 组内绿。
+
+**边界（诚实）。** V-HELLO-PACK 最小面交付（仓外 cwd/预构建零 rustc/缺前置具名拒绝）；完整 B0 打包闭包（发行包形态）具名 pending（owner=后续 PACK/986 面）。V-HELLO-LIFE 以 20 轮 CPU 生命周期+teardown/新代 + 每证据 1 真窗轮实现（进程内二次 iced 事件环被 PLAN-698 禁止→多窗须进程级；测试内 RSS 断言不稳定，具名）。AXR0 同源 A2R 腿归 RUST 批并行（合同原文）。F0 面不返回文本（967 冻结 provider 计算文本事实）——窗口文本=AV 真值，F0 证明同字节抵达，二者分立为已交付接口的现实映射。
+
+next_responsible_role: T-HELLO-R（同树独立核：AC-HELLO/AC-NODE-COMPAT 面、真窗链、反控、边界与债务；pass 后勾 T-HELLO-I/V/R=9/35、fold #4 落主）。
+
+stage: goal | plan_id: PLAN-980 | plan_revision: r10 | round: 11 | from: work | to: review | status: executing（6/35，HELLO 批待复核）| outcome: pass | worktree: D:/autostack/.wt/lang-980 | commit: lang b3887f887 ui 3e85a7f1 | next: review（T-HELLO-R）
+
 
 
 
