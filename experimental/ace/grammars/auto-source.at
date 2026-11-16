@@ -422,49 +422,49 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-node-member(profiles: [age-component, age-package]) {
             alt { age-model-member() {} }
             alt { age-on-member() {} }
-            alt { age-on-widget-member() {} }
+            alt(profiles: [age-component]) { age-on-widget-member() {} }
             alt { age-view-member() {} }
             // PLAN-981（IF-981-ORIGINAL）：2D/3D 直属出口（仅包面）。
             alt(profiles: [age-package]) { age-view2d-member() {} }
             alt(profiles: [age-package]) { age-view3d-member() {} }
             // PLAN-980（B-DIALECT-I 完整批）：WidgetDecl 其余成员槽位逐项
             // 投影（结构 + 原 span）；行为接线按槽位 applicability 分批。
-            alt { age-msg-member() {} }
-            alt { age-design-member() {} }
-            alt { age-named-view-member() {} }
-            alt { age-bind-member() {} }
-            alt { age-routes-member() {} }
-            alt { age-expose-member() {} }
-            alt { age-lifecycle-member() {} }
-            alt { age-computed-member() {} }
-            alt { age-watch-member() {} }
-            alt { age-timer-member() {} }
+            alt(profiles: [age-component]) { age-msg-member() {} }
+            alt(profiles: [age-component]) { age-design-member() {} }
+            alt(profiles: [age-component]) { age-named-view-member() {} }
+            alt(profiles: [age-component]) { age-bind-member() {} }
+            alt(profiles: [age-component]) { age-routes-member() {} }
+            alt(profiles: [age-component]) { age-expose-member() {} }
+            alt(profiles: [age-component]) { age-lifecycle-member() {} }
+            alt(profiles: [age-component]) { age-computed-member() {} }
+            alt(profiles: [age-component]) { age-watch-member() {} }
+            alt(profiles: [age-component]) { age-timer-member() {} }
         }
         // PLAN-980：`msg { Inc, Dec, Set(int) }`——消息变体声明。
-        age-msg-member(profiles: [age-component, age-package], expect: "a `msg { Variant, … }` block") {
+        age-msg-member(profiles: [age-component], expect: "a `msg { Variant, … }` block") {
             name(of: "age-msg-head", field: "head") {}
             lbrace(same-line: true) {}
             age-msg-variant(field: "head") {} many { age-msg-variant-tail() {} }
             rbrace() {}
         }
-        age-msg-variant(profiles: [age-component, age-package]) {
+        age-msg-variant(profiles: [age-component]) {
             ident(field: "name")
             opt { lparen(same-line: true, cut: true) {} age-model-ty(field: "payload") {} many { age-payload-tail() {} } rparen() {} }
         }
-        age-msg-variant-tail(profiles: [age-component, age-package]) {
+        age-msg-variant-tail(profiles: [age-component]) {
             comma() {} age-msg-variant() {}
         }
-        age-payload-tail(profiles: [age-component, age-package]) {
+        age-payload-tail(profiles: [age-component]) {
             comma() {} age-model-ty(field: "payload") {}
         }
         // PLAN-980：`design { theme: <expr> mode: <expr> }`——主题设计块。
-        age-design-member(profiles: [age-component, age-package], expect: "a `design { theme: <expr> }` block") {
+        age-design-member(profiles: [age-component], expect: "a `design { theme: <expr> }` block") {
             name(of: "age-design-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-design-entry() {} }
             rbrace() {}
         }
-        age-design-entry(profiles: [age-component, age-package]) {
+        age-design-entry(profiles: [age-component]) {
             ident(field: "key")
             colon() {}
             age-design-value(field: "value") {}
@@ -492,7 +492,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-980：`on { .Msg -> { <stmts> } … }`——传统 widget on 块形态
         //（与 979 的 `on <Msg> { assigns }` 并存，投影为同一 handler 结构）。
-        age-on-widget-member(profiles: [age-component, age-package], expect: "an `on { .Msg -> { … } }` block") {
+        age-on-widget-member(profiles: [age-component], expect: "an `on { .Msg -> { … } }` block") {
             name(of: "age-on-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-on-widget-handler() {} }
@@ -522,14 +522,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-op-plus-assign(profiles: [age-component, age-package]) { plus() {} assign() {} }
         age-op-minus-assign(profiles: [age-component, age-package]) { minus() {} assign() {} }
         // PLAN-980：命名视图 `view <name> { … }`（head 复用 age-view-head 槽位名）。
-        age-named-view-member(profiles: [age-component, age-package], expect: "a named `view <name> { … }` face") {
+        age-named-view-member(profiles: [age-component], expect: "a named `view <name> { … }` face") {
             name(of: "age-view-head", field: "head") {}
             ident(field: "face")
             lbrace(same-line: true, cut: true) {}
             many { age-view-item() {} }
             rbrace() {}
         }
-        age-bind-member(profiles: [age-component, age-package], expect: "a `bind { key -> .Handler }` block") {
+        age-bind-member(profiles: [age-component], expect: "a `bind { key -> .Handler }` block") {
             name(of: "age-bind-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-bind-key() {} }
@@ -541,7 +541,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             dot(same-line: true) {}
             ident(field: "handler")
         }
-        age-routes-member(profiles: [age-component, age-package], expect: "a `routes { path -> use module }` block") {
+        age-routes-member(profiles: [age-component], expect: "a `routes { path -> use module }` block") {
             r-routes(field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-route-def() {} }
@@ -553,7 +553,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             r-use(field: "use") {}
             ident(field: "module")
         }
-        age-expose-member(profiles: [age-component, age-package], expect: "an `expose { name, … }` block") {
+        age-expose-member(profiles: [age-component], expect: "an `expose { name, … }` block") {
             name(of: "age-expose-head", field: "head") {}
             lbrace(same-line: true) {}
             ident(field: "name") {} many { age-expose-name-tail() {} }
@@ -562,7 +562,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-expose-name-tail(profiles: [age-component, age-package]) {
             comma() {} ident(field: "name") {}
         }
-        age-lifecycle-member(profiles: [age-component, age-package], expect: "a `lifecycle { method => { … } }` block") {
+        age-lifecycle-member(profiles: [age-component], expect: "a `lifecycle { method => { … } }` block") {
             name(of: "age-lifecycle-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-lifecycle-method() {} }
@@ -575,7 +575,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list-nl { age-view-stmt() {} }
             rbrace() {}
         }
-        age-computed-member(profiles: [age-component, age-package], expect: "a `computed { name => <expr> }` block") {
+        age-computed-member(profiles: [age-component], expect: "a `computed { name => <expr> }` block") {
             name(of: "age-computed-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-computed-property() {} }
@@ -586,7 +586,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             fat-arrow() {}
             pratt(of: "wide-ops", field: "value")
         }
-        age-watch-member(profiles: [age-component, age-package], expect: "a `watch { .src -> { … } }` block") {
+        age-watch-member(profiles: [age-component], expect: "a `watch { .src -> { … } }` block") {
             name(of: "age-watch-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-watch-decl() {} }
@@ -605,7 +605,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-watch-source-tail(profiles: [age-component, age-package]) {
             comma() {} age-watch-source() {}
         }
-        age-timer-member(profiles: [age-component, age-package], expect: "a `timer { Msg (every_ms: n) }` block") {
+        age-timer-member(profiles: [age-component], expect: "a `timer { Msg (every_ms: n) }` block") {
             name(of: "age-timer-head", field: "head") {}
             lbrace(same-line: true) {}
             list-nl { age-timer-entry() {} }

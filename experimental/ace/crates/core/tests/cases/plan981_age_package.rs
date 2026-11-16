@@ -88,3 +88,43 @@ fn p981_age_package_profile_identity_round_trips() {
         ace_core::hir::HirDomain::TextRecord
     );
 }
+
+/// resync 后 age-package **不得**偷偷接受 980 的 widget 成员槽位。
+///
+/// R52-1：门并集一度把 `msg`/`design`/`bind`/`expose` 等槽位带进 age-package——
+/// 它们能解析，但 981 描述面没有对应字段、内部表达式也从不进唯一 verify
+/// （`design{theme: nosuch_ident}` 曾被 ACCEPTED）。现在这些槽位只属于
+/// age-component 面；age-package 必须在**解析期**拒绝，而不是静默丢。
+/// resync 后 age-package **不得**偷偷接受 980 的 widget 成员槽位。
+///
+/// R52-1：门并集一度把 `msg`/`design`/`bind`/`expose` 等槽位带进 age-package——
+/// 它们能解析，但 981 描述面没有对应字段、内部表达式也从不进唯一 verify
+/// （`design{theme: nosuch_ident}` 曾被 ACCEPTED）。现在这些槽位只属于
+/// age-component 面；age-package 必须在**解析期**拒绝，而不是静默丢。
+#[test]
+fn p981_age_package_rejects_widget_member_slots() {
+    use ace_core::source::age_h0::LegacyWidgetAlias;
+    use ace_core::source::age_package::compile_age_package;
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+    for body in [
+        "design {\n        theme: nosuch_ident\n    }",
+        "msg { Inc }",
+        "bind {\n        \"title\" -> .NoSuchHandler\n    }",
+        "expose {\n        nosuch_field\n    }",
+    ] {
+        let src = format!("node M {{\n    {body}\n    view {{ text \"t\" {{}} }}\n}}\n");
+        let r = compile_age_package(
+            &[PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "main".into(),
+                source: src,
+                provider: None,
+            }],
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &[PACKAGES_CAPABILITY.to_string()],
+        );
+        assert!(r.is_err(), "`{body}` must not be accepted by age-package");
+    }
+}
