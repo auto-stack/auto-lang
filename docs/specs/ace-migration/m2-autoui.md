@@ -406,3 +406,16 @@ FRAG_OK）。**形态=脱糖调用链**：handler 内 model 访问脱糖为
 移位同族边界）：精确 per-handler 定位=适配器接线（切片 #4）前置。结论：
 WEB 完整切换不需要 976 后继扩 profile 前置——组件面入口路线成立；剩余=
 span 精度/逐 handler 定位 + ts_adapter 接线 + 全量切换 + 浏览器档。
+
+### §13.2 逐 handler 精确定位（切片 #4，O-C3 解除，2026-11-16）
+
+`ComponentFragmentLane`（`ui/ace_ts_provider.rs`）：生产形态源 → 组件面
+states-only 编译（ops=**待定位 handler 的 msg 重放**——ops 空则 handler
+体缺席状态函数，切片#4 探针实证）→ 状态函数 HIR 的 expr **span=原源坐
+标** → `emit_expr_at_span(fn, span)` 精确定位发射。**同 span 多表达式取
+索引序最大者=组合形**（`!on` 的 NOT 与纯读形同 span，NOT 在后——
+`(!l1___age_s_0_on)` 发射实证）；host 映射（`l1___age_s_0_on`→reactive
+值）后真 node 取反执行（!false===true）。逐 handler 区域可分辨（Inc 的
+`1` vs Toggle 的 `!on`）；越界 span/无命中/未知状态函数=具名拒。永久
+case `p980_web_handler_precise_location`。**WEB 剩余**=ts_adapter 四委托
+点接此 lane（源 span 从 widget 提取管线取）→ 全量切换 → 浏览器档。
