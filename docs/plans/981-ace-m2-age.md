@@ -924,6 +924,23 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: work（V-B-SESSION / V-B-LANGUAGE[A] 实跑证据）| PLAN-981 | outcome: partial
+
+- **V-B-SESSION 规定命令实跑**（auto-ui 主检出 master）：`cargo test --manifest-path
+  experimental/autographics-auto-driver/Cargo.toml --test authoring_session --test
+  mixed_regions_lifecycle_flow -- --test-threads=1` → **authoring_session 4/4**、
+  **mixed_regions_lifecycle_flow 7/7**，exit 0（A 子面 AV 宿主腿；两组件 2:1 与异步资源净归零
+  仍列 B 波，见 V-B-SESSION[B]）。
+- **V-B-LANGUAGE[A] 实跑**：① V-L 判据在真实 A 源上（`plan981_ma_sources.rs`，前一条收据）——
+  出口选择/事件绑定/构造分母/原 span；② **V-EVT-A-UNIT**（auto-lang `0b98c143b`→master
+  `230e4abc6`，`p981_evt_a_unit_counter_trace_and_named_mirror`）：匿名 unit Counter 轨迹
+  **0→1→0→0** + 中间步 oracle（Inc→1），具名镜面 `msg Msg { … }` 同语义并暴露集合名。
+- **V-EVT-A-GRAMMAR-ID**：已在 §9 前条（#6i 差额 + 两冻结测试 + 邻居不动 + 语义注释）。
+- **V-EVT-A-ADMIT**：合法 unit 近邻可派发；带参/带载荷派发按 A 口径**具名拒且零效果**
+  （`event-params-unsupported` / `event-payload-unsupported`）；**错 arity/type、重复 binder、
+  未绑定名**的**逐项**诊断归 B-W1（`D-981-EVENT-A-REMAINDER`），A 以"参数一律不可执行"兜住。
+- **门禁**：AV p981 **6/6**、plan981 207/207、plan980 13/13、A2R 5/5、grammar 45/45；
+  auto-ui `s2_age_routing` 16/16、driver lib 49/49、bridge 4+3+10。
 2026-11-17 stage: review（review-68 = pass；事件 A / V 证据批闭）| PLAN-981 | outcome: pass（批级）
 
 - **review-68 = pass**：R68-1 闭包核销；三个真实源 session 测试全部 `include_str!` canonical 源、
