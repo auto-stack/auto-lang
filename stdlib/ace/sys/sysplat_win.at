@@ -5,9 +5,13 @@
 // open via CreateFileW, processes run under a kill-on-close job. Selected
 // by `#in sys is current { Windows -> ... }` in the public sys modules.
 
+use std.bytes.decode_utf8
 use std.syscommon.encode_into
 use std.syscommon.min_i
 use std.syscommon.str_bytes_len
+use std.syscommon.ticks16
+use std.syscommon.ticks64
+use std.syscommon.parse_win32_cmdline
 use std.syscommon.INNER
 use std.syscommon.MID
 
@@ -156,7 +160,10 @@ fn seek64(h int, origin int, pos i64) int {
     // div/mod arithmetic only (no bit ops on this surface).
     let lo_norm = ((pos % 4294967296i64) + 4294967296i64) % 4294967296i64
     let hi = (pos - lo_norm) / 4294967296i64
-    let lo_signed = lo_norm - 2147483648i64
+    var lo_signed = lo_norm
+    if (lo_norm >= 2147483648i64) {
+        lo_signed = lo_norm - 4294967296i64
+    }
     return file_seek(h, origin, lo_signed.to(i32), hi.to(i32))
 }
 
@@ -431,4 +438,243 @@ pub fn pf_chdir(path Str) int {
     }
     let d43_buf_free = buf_free(region)
     return r
+}
+
+// ---- UTF-16LE decoding & D-02..D-05 platform implementations --------------------
+
+pub fn decode_w16_region(region int, off int, n_units int) ?Str {
+    if (n_units < 0) { return None }
+    if (n_units == 0) { return Some("") }
+    var bytes = List<int>.new()
+    let t16 = ticks16()
+    let t64 = ticks64()
+    var i = 0
+    var bad = false
+    for a in t16 {
+        if (i >= n_units || bad) { break }
+        for b in t64 {
+            if (i >= n_units || bad) { break }
+            for c in t64 {
+                if (i >= n_units || bad) { break }
+                let pos = off + i * 2
+                let b0 = mem_read_u8(region, pos)
+                let b1 = mem_read_u8(region, pos + 1)
+                if (b0 < 0 || b1 < 0) {
+                    bad = true
+                    break
+                }
+                let u = b0 + b1 * 256
+                if (u < 128) {
+                    bytes.push(u)
+                    i = i + 1
+                } else {
+                    if (u < 2048) {
+                        bytes.push(192 + u / 64)
+                        bytes.push(128 + u % 64)
+                        i = i + 1
+                    } else {
+                        if (u >= 55296 && u <= 56319) {
+                            if (i + 1 >= n_units) {
+                                bad = true
+                                break
+                            }
+                            let c0 = mem_read_u8(region, pos + 2)
+                            let c1 = mem_read_u8(region, pos + 3)
+                            if (c0 < 0 || c1 < 0) {
+                                bad = true
+                                break
+                            }
+                            let lo = c0 + c1 * 256
+                            if (lo < 56320 || lo > 57343) {
+                                bad = true
+                                break
+                            }
+                            let cp = 65536 + (u - 55296) * 1024 + (lo - 56320)
+                            bytes.push(240 + cp / 262144)
+                            bytes.push(128 + (cp / 4096) % 64)
+                            bytes.push(128 + (cp / 64) % 64)
+                            bytes.push(128 + cp % 64)
+                            i = i + 2
+                        } else {
+                            if (u >= 56320 && u <= 57343) {
+                                bad = true
+                                break
+                            }
+                            bytes.push(224 + u / 4096)
+                            bytes.push(128 + (u / 64) % 64)
+                            bytes.push(128 + u % 64)
+                            i = i + 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (bad || i < n_units) { return None }
+    return decode_utf8(bytes)
+}
+
+pub fn pf_dir_names(path Str) List<Str> {
+    var out = List<Str>.new()
+    if (path.len() == 0) { return out }
+    let cap = (path.len() * 2 + 2) * 2
+    let preg = buf_alloc(cap)
+    if (preg < 0) { return out }
+    let pn = stage_w16(path, preg, 0)
+    if (pn <= 0) {
+        let df1 = buf_free(preg)
+        return out
+    }
+    let dh = dir_open_w16(preg, 0, pn)
+    let df2 = buf_free(preg)
+    if (dh <= 0) { return out }
+    let nreg = buf_alloc(1284)
+    if (nreg < 0) {
+        let dc1 = dir_close(dh)
+        return out
+    }
+    let t16 = ticks16()
+    let t64 = ticks64()
+    var done = false
+    for a in t16 {
+        if (done) { break }
+        for b in t64 {
+            if (done) { break }
+            for c in t64 {
+                let nu = dir_next_w16(dh, nreg, 640)
+                if (nu <= 0) {
+                    done = true
+                    break
+                }
+                let dec = decode_w16_region(nreg, 0, nu)
+                is dec {
+                    Some(name) -> {
+                        if (name == "." || name == "..") {
+                        } else {
+                            out.push(name.move)
+                        }
+                    }
+                    None -> {}
+                }
+            }
+        }
+    }
+    let dc2 = dir_close(dh)
+    let df3 = buf_free(nreg)
+    return out
+}
+
+pub fn pf_env_get_opt(key Str) ?Str {
+    if (key.len() == 0) { return None }
+    let nreg = buf_alloc((key.len() * 2 + 2) * 2)
+    if (nreg < 0) { return None }
+    let nn = stage_w16(key, nreg, 0)
+    if (nn <= 0) {
+        let df1 = buf_free(nreg)
+        return None
+    }
+    let vreg = buf_alloc(65540)
+    if (vreg < 0) {
+        let df2 = buf_free(nreg)
+        return None
+    }
+    let r = env_get_w16(nreg, 0, nn, vreg, 32768)
+    let df3 = buf_free(nreg)
+    if (r < 0) {
+        let df4 = buf_free(vreg)
+        return None
+    }
+    if (r == 0) {
+        let df5 = buf_free(vreg)
+        return Some("")
+    }
+    let dec = decode_w16_region(vreg, 0, r)
+    let df6 = buf_free(vreg)
+    return dec
+}
+
+pub fn pf_home_dir() Str {
+    var out = "."
+    let r = pf_env_get_opt("USERPROFILE")
+    is r {
+        Some(v) -> { out = v }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_local_data_dir() Str {
+    var out = "."
+    let r = pf_env_get_opt("APPDATA")
+    is r {
+        Some(v) -> { out = v }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_canonical(path Str) Str {
+    if (path.len() == 0) { return "" }
+    let ireg = buf_alloc((path.len() * 2 + 2) * 2)
+    if (ireg < 0) { return "" }
+    let n = stage_w16(path, ireg, 0)
+    if (n <= 0) {
+        let df1 = buf_free(ireg)
+        return ""
+    }
+    let oreg = buf_alloc(8196)
+    if (oreg < 0) {
+        let df2 = buf_free(ireg)
+        return ""
+    }
+    let r = canonical_w16(ireg, 0, n, oreg, 4096)
+    let df3 = buf_free(ireg)
+    if (r <= 0) {
+        let df4 = buf_free(oreg)
+        return ""
+    }
+    let dec = decode_w16_region(oreg, 0, r)
+    let df5 = buf_free(oreg)
+    var out = ""
+    is dec {
+        Some(s) -> { out = s }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_current_dir() Str {
+    let reg = buf_alloc(8196)
+    if (reg < 0) { return "" }
+    let r = proc_cwd_w16(reg, 4096)
+    if (r <= 0) {
+        let df1 = buf_free(reg)
+        return ""
+    }
+    let dec = decode_w16_region(reg, 0, r)
+    let df2 = buf_free(reg)
+    var out = ""
+    is dec {
+        Some(s) -> { out = s }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_args() List<Str> {
+    let reg = buf_alloc(65540)
+    if (reg < 0) { return List<Str>.new() }
+    let r = proc_cmdline_w16(reg, 32768)
+    if (r <= 0) {
+        let df1 = buf_free(reg)
+        return List<Str>.new()
+    }
+    let dec = decode_w16_region(reg, 0, r)
+    let df2 = buf_free(reg)
+    var out = List<Str>.new()
+    is dec {
+        Some(s) -> { out = parse_win32_cmdline(s) }
+        None -> {}
+    }
+    return out
 }

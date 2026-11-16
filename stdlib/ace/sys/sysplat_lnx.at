@@ -6,9 +6,13 @@
 // ruling (deferred-required / NOT_RUN, owner PLAN-1063) — selected by
 // `#in sys is current { Linux -> ... }` at assembly time.
 
+use std.bytes.decode_utf8
+use std.syscommon.decode_utf8_region
 use std.syscommon.encode_into
 use std.syscommon.str_bytes_len
 use std.syscommon.max_i
+use std.syscommon.ticks16
+use std.syscommon.ticks64
 
 pub fn buf_alloc(bytes int) int {
     return mem_alloc(bytes)
@@ -61,7 +65,10 @@ pub fn pf_write_some(h int, region int, off int, len int) int {
 fn seek64(h int, origin int, pos i64) int {
     let lo_norm = ((pos % 4294967296i64) + 4294967296i64) % 4294967296i64
     let hi = (pos - lo_norm) / 4294967296i64
-    let lo_signed = lo_norm - 2147483648i64
+    var lo_signed = lo_norm
+    if (lo_norm >= 2147483648i64) {
+        lo_signed = lo_norm - 4294967296i64
+    }
     return file_seek(h, origin, lo_signed.to(i32), hi.to(i32))
 }
 
@@ -246,4 +253,220 @@ pub fn pf_exit(code int) int {
 
 pub fn pf_chdir(path Str) int {
     return proc_chdir_bytes(path)
+}
+
+// ---- Linux D-02..D-05 surfaces (code-only on Windows -> PLAN-1063) -----------
+
+pub fn pf_dir_names(path Str) List<Str> {
+    var out = List<Str>.new()
+    if (path.len() == 0) { return out }
+    let dh = dir_open_bytes(path)
+    if (dh <= 0) { return out }
+    let reg = buf_alloc(4096)
+    if (reg < 0) {
+        let dc1 = dir_close(dh)
+        return out
+    }
+    let t16 = ticks16()
+    let t64 = ticks64()
+    var done = false
+    for b in t16 {
+        if (done) { break }
+        let n = dir_fill_bytes(dh, reg, 4096)
+        if (n <= 0) {
+            done = true
+            break
+        }
+        var pos = 0
+        for g1 in t64 {
+            if (pos + 19 > n) { break }
+            for g2 in t64 {
+                if (pos + 19 > n) { break }
+                let reclen = u16_at(reg, pos + 16)
+                if (reclen < 19 || pos + reclen > n) {
+                    pos = n
+                    break
+                }
+                var xs = List<int>.new()
+                var k = pos + 19
+                let stop = pos + reclen
+                for nc in t64 {
+                    if (k >= stop) { break }
+                    let ch = mem_read_u8(reg, k)
+                    if (ch <= 0) { break }
+                    xs.push(ch)
+                    k = k + 1
+                }
+                if (xs.len() > 0) {
+                    let dec = decode_utf8(xs)
+                    is dec {
+                        Some(name) -> {
+                            if (name == "." || name == "..") {
+                            } else {
+                                out.push(name.move)
+                            }
+                        }
+                        None -> {}
+                    }
+                }
+                pos = pos + reclen
+            }
+        }
+    }
+    let dc2 = dir_close(dh)
+    let df1 = buf_free(reg)
+    return out
+}
+
+pub fn pf_env_get_opt(key Str) ?Str {
+    if (key.len() == 0) { return None }
+    let reg = buf_alloc(65536)
+    if (reg < 0) { return None }
+    let n = env_get_bytes(reg, 0, 65536)
+    if (n <= 0) {
+        let df1 = buf_free(reg)
+        return None
+    }
+    var kb = List<int>.new()
+    let kreg = buf_alloc(key.len() * 4 + 8)
+    if (kreg < 0) {
+        let df2 = buf_free(reg)
+        return None
+    }
+    let kn = encode_into(key, kreg, 0)
+    var ki = 0
+    let t64 = ticks64()
+    for a in t64 {
+        if (ki >= kn) { break }
+        kb.push(mem_read_u8(kreg, ki))
+        ki = ki + 1
+    }
+    let df3 = buf_free(kreg)
+    var pos = 0
+    var match_start = -1
+    var match_end = -1
+    let t16 = ticks16()
+    for a in t16 {
+        if (pos >= n || match_start >= 0) { break }
+        for b in t64 {
+            if (pos >= n || match_start >= 0) { break }
+            var end = pos
+            for c in t64 {
+                if (end >= n) { break }
+                if (mem_read_u8(reg, end) == 0) { break }
+                end = end + 1
+            }
+            if (end - pos > kn && mem_read_u8(reg, pos + kn) == 61) {
+                var same = true
+                var j = 0
+                for kj in t64 {
+                    if (j >= kn) { break }
+                    if (mem_read_u8(reg, pos + j) != kb.get(j)) {
+                        same = false
+                        break
+                    }
+                    j = j + 1
+                }
+                if (same) {
+                    match_start = pos + kn + 1
+                    match_end = end
+                    break
+                }
+            }
+            pos = end + 1
+        }
+    }
+    if (match_start < 0) {
+        let df4 = buf_free(reg)
+        return None
+    }
+    let dec = decode_utf8_region(reg, match_start, match_end - match_start)
+    let df5 = buf_free(reg)
+    return dec
+}
+
+pub fn pf_home_dir() Str {
+    var out = "."
+    let r = pf_env_get_opt("HOME")
+    is r {
+        Some(v) -> { out = v }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_local_data_dir() Str {
+    return pf_home_dir() + "/.local/share"
+}
+
+pub fn pf_canonical(path Str) Str {
+    if (path.len() == 0) { return "" }
+    let reg = buf_alloc(4096)
+    if (reg < 0) { return "" }
+    let r = canonical_bytes(path, reg, 4096)
+    if (r <= 0) {
+        let df1 = buf_free(reg)
+        return ""
+    }
+    let dec = decode_utf8_region(reg, 0, r)
+    let df2 = buf_free(reg)
+    var out = ""
+    is dec {
+        Some(s) -> { out = s }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_current_dir() Str {
+    let reg = buf_alloc(4096)
+    if (reg < 0) { return "" }
+    var r = proc_cwd_bytes(reg, 4096)
+    if (r <= 0) {
+        let df1 = buf_free(reg)
+        return ""
+    }
+    if (mem_read_u8(reg, r - 1) == 0) { r = r - 1 }
+    let dec = decode_utf8_region(reg, 0, r)
+    let df2 = buf_free(reg)
+    var out = ""
+    is dec {
+        Some(s) -> { out = s }
+        None -> {}
+    }
+    return out
+}
+
+pub fn pf_args() List<Str> {
+    var out = List<Str>.new()
+    let reg = buf_alloc(65536)
+    if (reg < 0) { return out }
+    let n = proc_cmdline_fill_bytes(reg, 65536, 0)
+    if (n <= 0) {
+        let df1 = buf_free(reg)
+        return out
+    }
+    var pos = 0
+    let t16 = ticks16()
+    let t64 = ticks64()
+    for a in t16 {
+        if (pos >= n) { break }
+        for b in t64 {
+            if (pos >= n) { break }
+            var end = pos
+            for c in t64 {
+                if (end >= n) { break }
+                if (mem_read_u8(reg, end) == 0) { break }
+                end = end + 1
+            }
+            let dec = decode_utf8_region(reg, pos, end - pos)
+            is dec {
+                Some(s) -> { out.push(s.move) }
+                None -> {}
+            }
+            pos = end + 1
+        }
+    }
+    let df2 = buf_free(reg)
+    return out
 }

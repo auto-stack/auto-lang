@@ -998,6 +998,7 @@ def _sys_path_op(op_id, args):
             os.replace(src, dst)
             return 0
         if op_id.startswith("file.canonical"):
+            os.stat(src)
             out = os.path.realpath(src).replace("\\", "/")
             if op_id.endswith("_w16"):
                 data = out.encode("utf-16-le")
@@ -1084,7 +1085,7 @@ def _sys_env_op(op_id, args):
             return -4
         val = os.environ.get(key)
         if val is None:
-            return 0
+            return -203
         data = val.encode("utf-16-le")
         buf = _RT.pio_bufs.get(a2x_i32(args[3]))
         cap = a2x_i32(args[4])
@@ -1155,6 +1156,67 @@ def _sys_rand_fill(args):
     buf[off:off + n] = data
     return 0
 
+def _win32_quote_arg(arg):
+    if arg and not any(c in arg for c in (" ", "\t", "\n", '"')):
+        return arg
+    out = ['"']
+    bs = 0
+    for ch in arg:
+        if ch == "\\":
+            bs += 1
+        elif ch == '"':
+            out.append("\\" * (bs * 2 + 1))
+            out.append('"')
+            bs = 0
+        else:
+            out.append("\\" * bs)
+            bs = 0
+            out.append(ch)
+    out.append("\\" * (bs * 2))
+    out.append('"')
+    return "".join(out)
+
+def _split_win32_cmdline(cmd):
+    n = len(cmd)
+    parts = []
+    i = 0
+    while i < n:
+        while i < n and cmd[i] in (" ", "\t"):
+            i += 1
+        if i >= n:
+            break
+        cur = []
+        in_q = False
+        while i < n:
+            ch = cmd[i]
+            if ch == "\\":
+                bs = 0
+                while i < n and cmd[i] == "\\":
+                    bs += 1
+                    i += 1
+                if i < n and cmd[i] == '"':
+                    cur.append("\\" * (bs // 2))
+                    if bs % 2 == 1:
+                        cur.append('"')
+                        i += 1
+                else:
+                    cur.append("\\" * bs)
+                continue
+            if ch == '"':
+                if in_q and i + 1 < n and cmd[i + 1] == '"':
+                    cur.append('"')
+                    i += 2
+                else:
+                    in_q = not in_q
+                    i += 1
+                continue
+            if not in_q and ch in (" ", "\t"):
+                break
+            cur.append(ch)
+            i += 1
+        parts.append("".join(cur))
+    return parts
+
 def _sys_proc_op(op_id, args):
     import subprocess
     if op_id in ("process.spawn_w16", "process.spawn_bytes"):
@@ -1167,8 +1229,7 @@ def _sys_proc_op(op_id, args):
                 return -4
         if not cmd:
             return -4
-        parts = cmd.split("\x00") if "\x00" in cmd else cmd.split()
-        parts = [p for p in parts if p]
+        parts = [p for p in cmd.split("\x00") if p] if "\x00" in cmd else _split_win32_cmdline(cmd)
         if not parts:
             return -4
         capture = a2x_i32(args[-1]) & 1 if op_id == "process.spawn_w16" else a2x_i32(args[1]) & 1
@@ -1209,7 +1270,7 @@ def _sys_proc_op(op_id, args):
         cap = a2x_i32(args[4])
         if stream is None or buf is None or off < 0 or cap <= 0:
             return -4
-        data = stream.read(cap) if False else stream.readline()
+        data = stream.read1(cap) if hasattr(stream, "read1") else stream.read(cap)
         if not data:
             return 0
         n = min(len(data), cap)
@@ -1248,7 +1309,7 @@ def _sys_proc_op(op_id, args):
     if op_id in ("process.cmdline_w16", "process.cwd_w16"):
         import sys as _sys
         if op_id == "process.cmdline_w16":
-            val = " ".join(_sys.argv)
+            val = " ".join(_win32_quote_arg(a) for a in _sys.argv)
         else:
             val = os.getcwd().replace("\\", "/")
         data = val.encode("utf-16-le")

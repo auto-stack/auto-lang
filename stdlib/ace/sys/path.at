@@ -1,8 +1,13 @@
-// ACE system library — path module (PLAN-973 T-02). Pure-Auto string
-// algorithms (no OS calls): both `/` and `\` are separators (the legacy
-// basename parity), no global normalization, NUL is an ordinary char.
-// slice(a, b) is the scalar-index view slice (start inclusive, end
-// exclusive); scalar positions keep every algorithm char-safe.
+// ACE system library — path module (PLAN-973 T-02 + PLAN-1064 D-04).
+
+#in sys is current {
+    Windows -> {
+        use std.sysplat_win.pf_canonical
+    }
+    Linux -> {
+        use std.sysplat_lnx.pf_canonical
+    }
+}
 
 pub fn is_sep(c char) bool {
     let p = c.to_codepoint()
@@ -82,6 +87,15 @@ pub fn extension(path Str) Str {
 pub fn stem(path Str) Str {
     let n = path.len()
     return pp_trim(path, 4, n)
+}
+
+// D-04: resolve real canonical path ("" on missing/invalid/unopenable target).
+pub fn canonicalize(path Str) Str {
+    return pf_canonical(path)
+}
+
+pub fn canonical(path Str) Str {
+    return pf_canonical(path)
 }
 
 fn pp_trim(path Str, mode int, end int) Str {

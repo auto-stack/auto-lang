@@ -1081,7 +1081,7 @@ pub fn a2x_env_get_w16(nregion: i32, noff: i32, nlen: i32, oregion: i32, ocap: i
             return -4;
         };
         match std::env::var(&key) {
-            Err(_) => 0,
+            Err(_) => -203,
             Ok(v) => {
                 let units: Vec<u16> = v.encode_utf16().collect();
                 if units.len() > ocap as usize {
@@ -1127,7 +1127,10 @@ pub fn a2x_env_remove_w16(nregion: i32, noff: i32, nlen: i32) -> i32 {
     }
 }
 
-pub fn a2x_env_get_bytes(oregion: i32, ocap: i32) -> i32 {
+pub fn a2x_env_get_bytes(oregion: i32, ooff: i32, ocap: i32) -> i32 {
+    if ooff < 0 || ocap < 0 {
+        return -4;
+    }
     // NUL-separated KEY=VALUE snapshot (Linux parity).
     let mut blob: Vec<u8> = Vec::new();
     for (k, v) in std::env::vars_os() {
@@ -1145,11 +1148,12 @@ pub fn a2x_env_get_bytes(oregion: i32, ocap: i32) -> i32 {
         let Some(buf) = pio_slot(oregion) else {
             return -2;
         };
+        let off = ooff as usize;
         for (i, b) in blob.iter().enumerate() {
-            while buf.len() <= i {
+            while buf.len() <= off + i {
                 buf.push(0);
             }
-            buf[i] = *b;
+            buf[off + i] = *b;
         }
     }
     blob.len() as i32
@@ -1240,32 +1244,93 @@ fn getrandom_fill(out: &mut [u8]) {
 // tree kill is the AV/native Win32 path's contract; documented boundary).
 
 fn split_cmdline(cmd: &str) -> Vec<String> {
+    // Win32 CommandLineToArgvW-compatible parser preserving quoted spaces,
+    // empty quoted args `""`, escaped `\"`, and backslash runs before quotes.
+    let bytes = cmd.as_bytes();
+    let n = bytes.len();
     let mut parts = Vec::new();
-    let mut cur = String::new();
-    let mut in_q = false;
-    let mut has = false;
-    for c in cmd.chars() {
-        match c {
-            '"' => {
-                in_q = !in_q;
-                has = true;
-            }
-            ' ' if !in_q => {
-                if has {
-                    parts.push(std::mem::take(&mut cur));
-                    has = false;
-                }
-            }
-            _ => {
-                cur.push(c);
-                has = true;
-            }
+    let mut i = 0;
+    while i < n {
+        while i < n && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
         }
-    }
-    if has {
-        parts.push(cur);
+        if i >= n {
+            break;
+        }
+        let mut cur = Vec::new();
+        let mut in_q = false;
+        while i < n {
+            let b = bytes[i];
+            if b == b'\\' {
+                let mut bs = 0usize;
+                while i < n && bytes[i] == b'\\' {
+                    bs += 1;
+                    i += 1;
+                }
+                if i < n && bytes[i] == b'"' {
+                    for _ in 0..(bs / 2) {
+                        cur.push(b'\\');
+                    }
+                    if bs % 2 == 1 {
+                        cur.push(b'"');
+                        i += 1;
+                    }
+                } else {
+                    for _ in 0..bs {
+                        cur.push(b'\\');
+                    }
+                }
+                continue;
+            }
+            if b == b'"' {
+                if in_q && i + 1 < n && bytes[i + 1] == b'"' {
+                    cur.push(b'"');
+                    i += 2;
+                } else {
+                    in_q = !in_q;
+                    i += 1;
+                }
+                continue;
+            }
+            if !in_q && (b == b' ' || b == b'\t') {
+                break;
+            }
+            cur.push(b);
+            i += 1;
+        }
+        parts.push(String::from_utf8_lossy(&cur).into_owned());
     }
     parts
+}
+
+fn win32_quote_arg(arg: &str, out: &mut String) {
+    if !arg.is_empty() && !arg.bytes().any(|b| b == b' ' || b == b'\t' || b == b'\n' || b == b'"') {
+        out.push_str(arg);
+        return;
+    }
+    out.push('"');
+    let mut bs = 0usize;
+    for ch in arg.chars() {
+        if ch == '\\' {
+            bs += 1;
+        } else if ch == '"' {
+            for _ in 0..(bs * 2 + 1) {
+                out.push('\\');
+            }
+            out.push('"');
+            bs = 0;
+        } else {
+            for _ in 0..bs {
+                out.push('\\');
+            }
+            bs = 0;
+            out.push(ch);
+        }
+    }
+    for _ in 0..(bs * 2) {
+        out.push('\\');
+    }
+    out.push('"');
 }
 
 pub fn a2x_proc_spawn_w16(region: i32, uoff: i32, ulen: i32, mode: i32) -> i32 {
@@ -1490,7 +1555,13 @@ pub fn a2x_proc_cmdline_w16(oregion: i32, ocap: i32) -> i32 {
         if args.is_empty() {
             args.push(String::new());
         }
-        let line = args.join(" ");
+        let mut line = String::new();
+        for (idx, a) in args.iter().enumerate() {
+            if idx > 0 {
+                line.push(' ');
+            }
+            win32_quote_arg(a, &mut line);
+        }
         let units: Vec<u16> = line.encode_utf16().collect();
         if units.len() > ocap as usize {
             return -122;
@@ -1503,7 +1574,7 @@ pub fn a2x_proc_cmdline_w16(oregion: i32, ocap: i32) -> i32 {
     }
 }
 
-pub fn a2x_proc_cmdline_fill_bytes(oregion: i32, ocap: i32) -> i32 {
+pub fn a2x_proc_cmdline_fill_bytes(oregion: i32, ocap: i32, _off: i32) -> i32 {
     let line = std::env::args().collect::<Vec<_>>().join("\0");
     let bytes = line.as_bytes();
     unsafe {
