@@ -873,6 +873,8 @@ pub(crate) fn project_packages_front(
                 SourceProfile::AgePackage,
             )?;
             for node in nodes {
+        // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
+        let node_index = age_components.len();
                 let mut text_fns = Vec::new();
                 // PLAN-981：把场景里的 `Tick` 归一到本 node 实际声明的生命周期
                 // 消息拼写（`Life.Tick` 优先），再交给共享脱糖/检查。
@@ -913,7 +915,8 @@ pub(crate) fn project_packages_front(
                         items.push(crate::source::ast::Item::Fn(
                             crate::source::ast::FnItem {
                                 name: crate::source::ast::Ident {
-                                    name: crate::source::age_component::state_fn_name(
+                                    name: crate::source::age_component::state_fn_name_at(
+                                        node_index,
                                         inst, &f.name,
                                     ),
                                     span: f.span,
@@ -958,7 +961,10 @@ pub(crate) fn project_packages_front(
                         );
                         let bound = match crate::source::age_component::rename_expr(
                             &leaf.expr,
-                            crate::source::age_component::FieldBinding::StateFn(inst),
+                            crate::source::age_component::FieldBinding::StateFnAt {
+                                node: node_index,
+                                inst,
+                            },
                             &node.fields,
                         ) {
                             Ok(b) => b,
@@ -985,7 +991,10 @@ pub(crate) fn project_packages_front(
                     let mut check_value = |expr: &crate::source::ast::Expr| {
                         let bound = match crate::source::age_component::rename_expr(
                             expr,
-                            crate::source::age_component::FieldBinding::StateFn(0),
+                            crate::source::age_component::FieldBinding::StateFnAt {
+                                node: node_index,
+                                inst: 0,
+                            },
                             &node.fields,
                         ) {
                             Ok(b) => b,

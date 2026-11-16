@@ -1295,6 +1295,16 @@ pub(crate) fn rename_expr(
                             args: Vec::new(),
                         },
                     },
+                    FieldBinding::StateFnAt { node, inst } => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: state_fn_name_at(node, inst, &f.name),
+                                span: name.span,
+                            },
+                            args: Vec::new(),
+                        },
+                    },
                 },
                 None => expr.clone(),
             }
@@ -1321,6 +1331,16 @@ pub(crate) fn rename_expr(
                     kind: ExprKind::Call {
                         callee: Ident {
                             name: state_fn_name(inst, &f.name),
+                            span: id.span,
+                        },
+                        args: Vec::new(),
+                    },
+                },
+                FieldBinding::StateFnAt { node, inst } => Expr {
+                    span: expr.span,
+                    kind: ExprKind::Call {
+                        callee: Ident {
+                            name: state_fn_name_at(node, inst, &f.name),
                             span: id.span,
                         },
                         args: Vec::new(),
@@ -1472,6 +1492,16 @@ pub(crate) fn instance_stmts(
     Ok(stmts)
 }
 
+/// R64-4：包内**多 node 同名字段**的消歧名——node 0 保持旧拼写（A2R 冻结的
+/// `__age_state_0_count` 不变），其余 node 带节点下标。
+pub fn state_fn_name_at(node: usize, inst: usize, field: &str) -> String {
+    if node == 0 {
+        state_fn_name(inst, field)
+    } else {
+        format!("__age_state_n{node}_{inst}_{field}")
+    }
+}
+
 pub(crate) fn state_fn_name(inst: usize, field: &str) -> String {
     format!("__age_state_{inst}_{field}")
 }
@@ -1481,6 +1511,8 @@ pub(crate) fn state_fn_name(inst: usize, field: &str) -> String {
 pub(crate) enum FieldBinding {
     Local(usize),
     StateFn(usize),
+    /// R64-4：包内第 `node` 个组件的实例 `inst` 状态函数。
+    StateFnAt { node: usize, inst: usize },
 }
 /// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动）——用户顶层名不得占用。
 const COMPONENT_RESERVED_NAMES: [&str; 3] =

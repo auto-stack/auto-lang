@@ -284,3 +284,16 @@ fn p981_named_view_structure_is_described_and_verified() {
     assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
     assert_eq!(ds[0].span.start, want);
 }
+
+/// R64-4：同一 AGE 包内两个 node 使用**同名字段**不再撞状态函数名。
+#[test]
+fn p981_dual_nodes_with_same_field_compile() {
+    let src = "node A {\n    model { count int = 0 }\n    on Tick { count = count + 1 }\n    view {\n        text \"a\" {}\n    }\n}\nnode B {\n    model { count int = 0 }\n    view {\n        text \"b\" {}\n    }\n}\n";
+    let out = compile(src).expect("two nodes with the same field name compile in one package");
+    let cs = &out.description.components;
+    assert_eq!(cs.len(), 2, "{cs:?}");
+    assert_eq!(cs[0].name, "A");
+    assert_eq!(cs[1].name, "B");
+    assert!(cs[0].fields.iter().any(|(n, _)| n == "count"));
+    assert!(cs[1].fields.iter().any(|(n, _)| n == "count"));
+}

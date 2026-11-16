@@ -133,3 +133,28 @@ fn p981_age_package_scenario_failures_are_named() {
         "{ds:?}"
     );
 }
+
+/// R64-4：两个 node 同名字段各自可观察（状态函数命名已按节点消歧）。
+#[test]
+fn p981_dual_nodes_same_field_are_observed_separately() {
+    let src = "node A {\n    model { count int = 0 }\n    on Tick { count = count + 1 }\n    view {\n        text \"a\" {}\n    }\n}\nnode B {\n    model { count int = 0 }\n    on Tick { count = count + 1 }\n    view {\n        text \"b\" {}\n    }\n}\n";
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 2,
+            ops: vec![
+                ScenarioOp::Tick { instance: 0 },
+                ScenarioOp::Tick { instance: 0 },
+            ],
+        },
+    )
+    .expect("two nodes sharing a field name compile");
+    let observed = ace_av::age_package::observe_age_package(&compiled, 2).expect("observation resolves both components");
+    assert_eq!(observed.components.len(), 2);
+    // 实例级调度：两个组件都声明了 `on Tick`，实例 0 各 Tick 两次。
+    assert_eq!(observed.components[0].instance_states[0][0], 2);
+    assert_eq!(observed.components[1].instance_states[0][0], 2);
+}
