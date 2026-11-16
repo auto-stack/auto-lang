@@ -49,16 +49,21 @@ pub fn type_is_owned(m: &MirModule, ty: u32) -> bool {
 pub fn type_is_owned_type_of(m: &MirModule, t: &MirType) -> bool {
     match t {
         MirType::Str => true,
-        MirType::Record(r) => record_reaches_str(m, r),
+        MirType::Record(r) => record_reaches_resource(m, r),
         // PLAN-822: containers own (buffers/elements/payloads need drop).
         MirType::List(_) | MirType::Variant(_) | MirType::Closure(_) => true,
         _ => false,
     }
 }
 
-/// Transitive Str-reachability from one record shape (the derived resource
-/// classification of PLAN-782; shared with layout's `is_copy` derivation).
-pub fn record_reaches_str(m: &MirModule, r: &crate::mir::RecordTypeRef) -> bool {
+/// PLAN-1035 (F34): whether a record's transitive field closure reaches a
+/// RESOURCE LEAF — an owned `Str`, a `List` buffer, a `Variant` payload, or a
+/// closure environment. This is the derived resource classification shared
+/// with layout's `is_copy` derivation; a record carrying any of these needs
+/// a real transfer/drop and is therefore NOT copyable. Records reaching only
+/// scalars (and borrowed views, which mirror.field-borrow rejects as fields)
+/// stay pure values and keep their implicit Copy.
+pub fn record_reaches_resource(m: &MirModule, r: &crate::mir::RecordTypeRef) -> bool {
     // Iterative transitive closure over the (verified acyclic) field graph.
     let mut stack: Vec<u32> = r.fields.iter().map(|f| f.ty).collect();
     let mut seen = std::collections::BTreeSet::new();
@@ -68,6 +73,12 @@ pub fn record_reaches_str(m: &MirModule, r: &crate::mir::RecordTypeRef) -> bool 
         }
         match m.types.get(t as usize) {
             Some(MirType::Str) => return true,
+            // PLAN-1035: the non-Str owned leaves end the search immediately
+            // (a List/Variant/Closure field is a resource edge; its inner
+            // carriers are the runtime's responsibility, not this shape's).
+            Some(MirType::List(_)) | Some(MirType::Variant(_)) | Some(MirType::Closure(_)) => {
+                return true
+            }
             Some(MirType::Record(inner)) => {
                 for f in &inner.fields {
                     stack.push(f.ty);

@@ -508,3 +508,150 @@ fn v08_nested_place_self_alias_and_partial_move_controls() {
         .expect("view materialization must reject");
     assert!(err.iter().any(|d| d.code == "source.view-escape"));
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1035 (T-02): RES-01 / RES-02 — the aggregate resource classification
+// and the Named field-projection fusion, through the real source front doors.
+// ---------------------------------------------------------------------------
+
+/// RES-01 (F34): a List-only record (`Bag { items List<int> }`) is a RESOURCE
+/// record at every layer. The move transfers it (no implicit Copy), the
+/// projection reads through, and the frame ledger closes — a "not owned"
+/// classification shows up here as a leaked inner buffer.
+#[test]
+fn audit1035_res_01_list_only_record_ownership() {
+    let src = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var a = Bag(xs.move)\n    var b = a.move\n    return b.items.get(0)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("RES-01 list-only record executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0, "the inner List buffer must be released");
+    assert_eq!(run.allocs, run.frees, "every buffer releases exactly once");
+}
+
+/// RES-01 control: the Str+List record stays owned (it did before) and a
+/// PURE-SCALAR record stays a copyable value (the fix must not turn every
+/// record into a resource).
+#[test]
+fn audit1035_res_01_str_plus_list_and_scalar_record() {
+    // Str + List carrier: value through the Str field and the List field.
+    let src = "type Node { name Str; items List<int> }\nfn main() int {\n    var xs = [40, 2]\n    let n = Node(\"\", xs.move)\n    return n.items.get(0) + n.items.get(1)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("RES-01 Str+List record executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+
+    // Pure scalar record: NOT a resource — an implicit copy stays legal and
+    // both bindings read (no move discipline on a copyable value).
+    let pair = "type Pair { a int; b int }\nfn main() int {\n    let p = Pair(20, 22)\n    let q = p\n    return p.a + q.b\n}";
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(pair, "d_main")
+        .expect("RES-01 pure scalar record copies");
+    assert_eq!(run2.value, 42);
+    assert_eq!(run2.live_after, 0);
+    assert_eq!(run2.allocs, 0, "a pure value record allocates nothing");
+}
+
+/// RES-01 (F34): moving an owned aggregate out and then reading it again is
+/// a use-after-move rejection at the MIR ownership gate, not a silent alias.
+/// Before the classification fix a List-only record was "not owned", so the
+/// transfer killed nothing; the fix makes it behave exactly like a
+/// Str-bearing record (`mir.use-after-move`).
+#[test]
+fn audit1035_res_01_move_then_read_rejects() {
+    let bad = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var a = Bag(xs.move)\n    var b = a.move\n    return a.items.get(0)\n}";
+    let err = ace_av::collections_864_support::compile_and_execute_aggregates(bad, "d_main")
+        .err()
+        .expect("reading a moved Bag must reject");
+    assert!(
+        err.contains("mir.use-after-move"),
+        "expected the MIR ownership verdict, got: {err}"
+    );
+
+    // The same gate for a plain List local moved into a deeper list.
+    let list = "fn main() int {\n    var k = [1, 2]\n    var xs = List<List<int>>.new()\n    xs.push(k.move)\n    return k.get(0)\n}";
+    let err = ace_av::collections_864_support::compile_and_execute_aggregates(list, "d_main")
+        .err()
+        .expect("reading a moved List must reject");
+    assert!(
+        err.contains("mir.use-after-move") || err.contains("source."),
+        "expected a move-discipline verdict, got: {err}"
+    );
+}
+
+/// RES-01: the frozen rejections stay frozen — a source `List.clone` and the
+/// aggregate record builtin clone are not opened by this fix.
+#[test]
+fn audit1035_res_01_clone_stays_unsupported() {
+    let src = "fn main() int {\n    var xs = [1, 2]\n    return xs.clone().get(0)\n}";
+    let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+        .err()
+        .expect("List.clone stays unsupported");
+    assert!(err.iter().any(|d| d.code == "source.unsupported"));
+}
+
+/// RES-02 (F33): `xs.get(index:0).code` is the Named spelling of the Pos
+/// projection. The ordinary `get` admits a Named index (single argument by
+/// value), so the fused projection must too — and never panic.
+#[test]
+fn audit1035_res_02_named_get_projection() {
+    let named = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:0).code\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(named, "d_main")
+        .expect("Named index projection executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+
+    let pos = named.replace("get(index:0)", "get(0)");
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(&pos, "d_main")
+        .expect("Pos index projection executes");
+    assert_eq!(run2.value, 42);
+
+    // The frozen collections face admits the same shape (the fusion gate is
+    // the shared resolve path, not an aggregates-only branch).
+    let run3 = ace_av::collections_864_support::compile_and_execute(named, "d_main")
+        .expect("Named projection on the frozen collections face");
+    assert_eq!(run3.value, 42);
+}
+
+/// RES-02: the Named index is admitted like the Pos one but a genuinely
+/// wrong program still gets a NAMED diagnostic (never an executor/Infra
+/// panic): wrong index type, wrong arity and a missing field.
+#[test]
+fn audit1035_res_02_named_neighbours_reject_with_diagnostics() {
+    for (name, src) in [
+        (
+            "wrong-index-type",
+            "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:\"0\").code\n}",
+        ),
+        (
+            "arity",
+            "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:0, 1).code\n}",
+        ),
+        (
+            "missing-field",
+            "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:0).nope\n}",
+        ),
+    ] {
+        let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+            .err()
+            .unwrap_or_else(|| panic!("{name}: must reject"));
+        assert!(
+            !err.is_empty(),
+            "{name}: expected a named source diagnostic, got an empty list"
+        );
+    }
+}
+
+/// RES-02: projecting a whole owned element through the Named spelling is
+/// still a view, not a materialized value.
+#[test]
+fn audit1035_res_02_named_whole_element_stays_a_view() {
+    let bad = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    let y = xs.get(index:0)\n    return y.code\n}";
+    let err = ace_core::source::compile_aggregates_source(bad, "p.at", &[])
+        .err()
+        .expect("a whole owned element view cannot be bound");
+    assert!(
+        err.iter().any(|d| d.code == "source.view-escape"),
+        "{err:?}"
+    );
+}

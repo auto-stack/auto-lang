@@ -63,9 +63,10 @@ pub enum MirType {
     /// Two records of equal width but different owner/name never compare
     /// equal — `MirType`'s derived `PartialEq` IS the frozen type-equivalence
     /// rule applied at every consumption point. In the owned profile a
-    /// record whose transitive field closure reaches `Str` is a RESOURCE
-    /// record (derived, never input-claimed); copyability follows the same
-    /// derivation (Design44 §4.2).
+    /// record whose transitive field closure reaches a RESOURCE LEAF (owned
+    /// `Str`, List buffer, Variant payload or closure environment — PLAN-1035
+    /// F34) is a RESOURCE record (derived, never input-claimed); copyability
+    /// follows the same derivation (Design44 §4.2).
     Record(RecordTypeRef),
     /// Read-only borrow of a record value (PLAN-821 R1-F08, 782 ABI-D
     /// `*const` borrowed record params): the frozen language surface's

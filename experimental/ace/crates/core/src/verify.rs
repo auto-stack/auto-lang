@@ -3004,25 +3004,6 @@ impl Verifier {
     /// - variant dispatch/project roots are whole-local reads;
     /// - `eval` statement values carry the unit type.
     fn check_collections_rules(&mut self, m: &hir::Module, selected: Option<BodyId>) {
-        fn owned_elem(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
-            let hir::TypeUse::Ref(tid) = list_ty else {
-                return false;
-            };
-            let Some(hir::TypeKind::List { elem }) = m.types.get(tid.0 as usize).map(|t| &t.kind)
-            else {
-                return false;
-            };
-            match elem {
-                hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
-                hir::TypeUse::Builtin(_) => false,
-                hir::TypeUse::Ref(e) => {
-                    matches!(
-                        m.types.get(e.0 as usize).map(|t| &t.kind),
-                        Some(hir::TypeKind::Variant { .. })
-                    ) || v.type_reaches_str(m, *e)
-                }
-            }
-        }
         for (index, body) in m.bodies.iter().enumerate() {
             if selected.is_some_and(|id| id.0 as usize != index) {
                 continue;
@@ -3047,7 +3028,7 @@ impl Verifier {
             for (ei, e) in body.exprs.iter().enumerate() {
                 match &e.kind {
                     hir::ExprKind::ListGet { list, .. } => {
-                        if owned_elem(m, &body.exprs[list.0 as usize].ty, self)
+                        if Self::list_elem_owned(m, &body.exprs[list.0 as usize].ty, self)
                             && !projected.contains(&(ei as u32))
                             && !len_consumed.contains(&(ei as u32))
                         {
@@ -3076,13 +3057,13 @@ impl Verifier {
                             }
                         }
                         if let Some(list_ty) = root_list_ty {
-                            if owned_elem(m, &list_ty, self) {
+                            if Self::list_elem_owned(m, &list_ty, self) {
                                 // terminal field type through the record table
                                 let term =
                                     Self::field_terminal(m, &body.exprs[cur as usize].ty, path);
                                 let owned_term = match term {
                                     Some(hir::TypeUse::Builtin(hir::BuiltinType::StrOwned)) => true,
-                                    Some(hir::TypeUse::Ref(t)) => self.type_reaches_str(m, t),
+                                    Some(hir::TypeUse::Ref(t)) => self.type_reaches_resource(m, t),
                                     _ => false,
                                 };
                                 if owned_term && !len_consumed.contains(&(ei as u32)) {
@@ -3421,8 +3402,12 @@ impl Verifier {
         }
     }
 
-    /// PLAN-864: whether a List type's element is owned (Str / record
-    /// reaching Str / variant).
+    /// PLAN-864 / PLAN-1035 (F34): whether a List type's element is owned —
+    /// the ONE shared element-ownership rule for this core verifier. An
+    /// element owns when its type IS a resource leaf (owned Str, List,
+    /// Variant, closure/function environment, object cell) or a record/tuple
+    /// whose field closure reaches one. Both former twins (`owned_elem` and
+    /// this fn) were Str-only walks; they must not drift again.
     fn list_elem_owned(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
         let hir::TypeUse::Ref(tid) = list_ty else {
             return false;
@@ -3434,17 +3419,17 @@ impl Verifier {
         match elem {
             hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
             hir::TypeUse::Builtin(_) => false,
-            hir::TypeUse::Ref(e) => {
-                matches!(
-                    m.types.get(e.0 as usize).map(|t| &t.kind),
-                    Some(hir::TypeKind::Variant { .. })
-                ) || v.type_reaches_str(m, *e)
-            }
+            hir::TypeUse::Ref(e) => v.type_reaches_resource(m, *e),
         }
     }
 
-    /// PLAN-864: transitive Str-reachability over the module type table.
-    fn type_reaches_str(&self, m: &hir::Module, t: hir::TypeId) -> bool {
+    /// PLAN-864 / PLAN-1035 (F34): resource reachability over the module type
+    /// table. Leaves: owned `Str`, a `List` buffer, a `Variant` payload, a
+    /// runtime closure/function environment, an object cell. `str` (borrowed)
+    /// stays classified with the owned text kinds — the collections gate is
+    /// deliberately conservative there (view fields are rejected elsewhere;
+    /// no admission is widened by this walk).
+    fn type_reaches_resource(&self, m: &hir::Module, t: hir::TypeId) -> bool {
         let mut stack = vec![t.0];
         let mut seen = BTreeSet::new();
         while let Some(i) = stack.pop() {
@@ -3452,7 +3437,13 @@ impl Verifier {
                 continue;
             }
             match m.types.get(i as usize).map(|x| &x.kind) {
-                Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => return true,
+                Some(hir::TypeKind::StrOwned)
+                | Some(hir::TypeKind::Str)
+                | Some(hir::TypeKind::List { .. })
+                | Some(hir::TypeKind::Variant { .. })
+                | Some(hir::TypeKind::Closure(_))
+                | Some(hir::TypeKind::Function(_))
+                | Some(hir::TypeKind::Object { .. }) => return true,
                 Some(hir::TypeKind::Record(shape)) => {
                     for f in &shape.fields {
                         match f.ty {

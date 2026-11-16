@@ -164,3 +164,5 @@ mod plan981_resource_identity;
 mod plan981_multimodule_identity;
 #[path = "cases/plan981_model_field_types.rs"]
 mod plan981_model_field_types;
+#[path = "cases/aggregates_resource_1035.rs"]
+mod aggregates_resource_1035;

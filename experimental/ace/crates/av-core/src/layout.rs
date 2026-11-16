@@ -288,10 +288,11 @@ fn place_fields(
     let pad = if rem == 0 { 0 } else { max_align - rem };
     let size = offset.checked_add(pad).ok_or(LayoutError::Overflow)?;
     // PLAN-821: copyability is DERIVED, never input-claimed — a record is
-    // copyable iff its transitive field closure contains no owned Str
-    // (resource records are move/clone/replace-only). View/token fields
+    // copyable iff its transitive field closure reaches no resource leaf
+    // (PLAN-1035: owned Str, List buffer, Variant payload or closure env);
+    // resource records are move/clone/replace-only. View/token fields
     // never reach here (mir.field-borrow rejects them at verification).
-    let is_copy = !crate::ownership::record_reaches_str(module, r);
+    let is_copy = !crate::ownership::record_reaches_resource(module, r);
     Ok(LayoutDesc {
         size,
         align: max_align,

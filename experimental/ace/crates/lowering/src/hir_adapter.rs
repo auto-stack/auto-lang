@@ -2638,9 +2638,12 @@ fn list_get_root(body: &hir::Body, eid: hir::ExprId) -> Option<hir::ExprKind> {
     }
 }
 
-/// PLAN-864: transitive Str-reachability over the HIR type table (the
-/// source-level twin of `ownership::record_reaches_str`).
-fn hir_record_reaches_str(m: &hir::Module, root: hir::TypeId) -> bool {
+/// PLAN-864 / PLAN-1035 (F34): resource reachability over the HIR type table
+/// (the lowering-side twin of `ownership::record_reaches_resource`). Leaves:
+/// owned `Str` (with borrowed `str` kept conservative), `List`, `Variant`,
+/// closure/function environment and object cell; records recurse through
+/// their fields.
+fn hir_record_reaches_resource(m: &hir::Module, root: hir::TypeId) -> bool {
     let mut stack = vec![root.0];
     let mut seen = std::collections::BTreeSet::new();
     while let Some(i) = stack.pop() {
@@ -2648,7 +2651,13 @@ fn hir_record_reaches_str(m: &hir::Module, root: hir::TypeId) -> bool {
             continue;
         }
         match m.types.get(i as usize).map(|t| &t.kind) {
-            Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => return true,
+            Some(hir::TypeKind::StrOwned)
+            | Some(hir::TypeKind::Str)
+            | Some(hir::TypeKind::List { .. })
+            | Some(hir::TypeKind::Variant { .. })
+            | Some(hir::TypeKind::Closure(_))
+            | Some(hir::TypeKind::Function(_))
+            | Some(hir::TypeKind::Object { .. }) => return true,
             Some(hir::TypeKind::Record(shape)) => {
                 for f in &shape.fields {
                     match f.ty {
@@ -3419,8 +3428,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         self.out.is_collections_profile() || self.out.is_closures_profile()
     }
 
-    /// PLAN-864: HIR-level owned classification for a List element type
-    /// (mirrors verify's rule): Str / record-reaching-Str / Variant.
+    /// PLAN-864 / PLAN-1035 (F34): HIR-level owned classification for a List
+    /// element type (mirrors verify's shared rule): any resource leaf, or a
+    /// record reaching one, or a nested list/closure/object cell.
     fn hir_elem_owned(&self, list_expr: hir::ExprId) -> Result<bool, AdapterError> {
         let ty = self.expr_ty_hir(list_expr)?;
         let Some(hir::TypeUse::Ref(tid)) = Some(ty) else {
@@ -3436,8 +3446,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::TypeUse::Builtin(_) => false,
             hir::TypeUse::Ref(e) => {
                 match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind) {
-                    Some(hir::TypeKind::Variant { .. }) => true,
-                    Some(hir::TypeKind::Record(_)) => hir_record_reaches_str(self.hir_module, *e),
+                    Some(hir::TypeKind::Variant { .. })
+                    | Some(hir::TypeKind::Closure(_))
+                    | Some(hir::TypeKind::Function(_))
+                    | Some(hir::TypeKind::Object { .. }) => true,
+                    // PLAN-1035 (F34): a record owns when its field closure
+                    // reaches a resource leaf (the Str-only walk missed
+                    // List/Variant/closure carriers — a List-only record
+                    // element was treated as a copyable value).
+                    Some(hir::TypeKind::Record(_)) => {
+                        hir_record_reaches_resource(self.hir_module, *e)
+                    }
                     // PLAN-962: a nested List element owns its arena buffer.
                     Some(hir::TypeKind::List { .. }) => true,
                     _ => false,

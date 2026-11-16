@@ -107,12 +107,16 @@ impl VT {
     }
 
     /// PLAN-864: whether this type owns resources under the collections
-    /// contract (List/Variant containers, owned Str, records reaching
-    /// Str). Copyable element types copy out; owned ones move.
+    /// contract (List/Variant containers, owned Str, records reaching a
+    /// resource leaf). Copyable element types copy out; owned ones move.
     pub fn is_owned_coll(self, prog: &ResolvedProgram) -> bool {
         match self {
             VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) | VT::Object(_) => true,
-            VT::Rec(ri) => record_reaches_str(ri, &prog.records),
+            VT::Rec(ri) => record_reaches_resource(ri, &prog.records, &prog.tuples),
+            VT::Tuple(ti) => prog
+                .tuples
+                .get(ti)
+                .is_some_and(|elems| elems.iter().any(|&v| v.is_owned_coll(prog))),
             _ => false,
         }
     }
@@ -1119,24 +1123,71 @@ impl CollTables {
     }
 }
 
-/// Transitive Str-reachability over the record table (PLAN-782 derivation,
-/// reused by the collections owned-classification, PLAN-864).
-pub(crate) fn record_reaches_str(ri: usize, records: &[ResolvedRecord]) -> bool {
+/// PLAN-1035 (F34): resource reachability over the record/tuple tables —
+/// a record "owns" when its field closure reaches an owned `Str`, a `List`
+/// buffer, a `Variant` payload, a runtime closure (`Function`), an object
+/// cell or another (tuple) aggregate carrying one. This replaces the
+/// PLAN-782 Str-only walk for the collections owned-classification
+/// (PLAN-864): a List-only record (`type Bag { items List<int> }`) is a
+/// resource record, exactly like one holding `Str`.
+pub(crate) fn record_reaches_resource(
+    ri: usize,
+    records: &[ResolvedRecord],
+    tuples: &[Vec<VT>],
+) -> bool {
     let mut stack: Vec<usize> = vec![ri];
     let mut seen: BTreeSet<usize> = BTreeSet::new();
     while let Some(r) = stack.pop() {
         if !seen.insert(r) {
             continue;
         }
-        for f in &records[r].fields {
-            match f.vt {
-                VT::StrOwned => return true,
-                VT::Rec(inner) => stack.push(inner),
-                _ => {}
-            }
+        if records[r]
+            .fields
+            .iter()
+            .any(|f| vt_reaches_resource(f.vt, records, tuples, &mut seen))
+        {
+            return true;
         }
     }
     false
+}
+
+/// One value type's resource-edge test shared by the record/tuple closure
+/// walk: leaf resources return true, aggregates recurse.
+fn vt_reaches_resource(
+    vt: VT,
+    records: &[ResolvedRecord],
+    tuples: &[Vec<VT>],
+    seen: &mut BTreeSet<usize>,
+) -> bool {
+    match vt {
+        VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) | VT::Object(_) => true,
+        VT::Rec(inner) => record_reaches_resource_inner(inner, records, tuples, seen),
+        VT::Tuple(ti) => tuples.get(ti).is_some_and(|elems| {
+            elems
+                .iter()
+                .any(|&e| vt_reaches_resource(e, records, tuples, seen))
+        }),
+        _ => false,
+    }
+}
+
+/// The record half of the closure walk, sharing the caller's `seen` set so
+/// nested aggregates do not re-walk (the cycle gate already rejected direct
+/// record recursion; this guard keeps the walk bounded regardless).
+fn record_reaches_resource_inner(
+    ri: usize,
+    records: &[ResolvedRecord],
+    tuples: &[Vec<VT>],
+    seen: &mut BTreeSet<usize>,
+) -> bool {
+    if !seen.insert(ri) {
+        return false;
+    }
+    records[ri]
+        .fields
+        .iter()
+        .any(|f| vt_reaches_resource(f.vt, records, tuples, seen))
 }
 
 /// One resolved record type: fields in declaration order with their value
@@ -1842,9 +1893,9 @@ fn uses_age_service(b: &ast::Block) -> bool {
             ast::Stmt::Assign { value, .. } => is_service(value),
             ast::Stmt::Return { value, .. } => is_service(value),
             ast::Stmt::ExprStmt { value, .. } => is_service(value),
-            ast::Stmt::If { cond, then, els, .. } => {
-                is_service(cond) || block(then) || els.as_ref().is_some_and(|e| block(e))
-            }
+            ast::Stmt::If {
+                cond, then, els, ..
+            } => is_service(cond) || block(then) || els.as_ref().is_some_and(|e| block(e)),
             ast::Stmt::Loop { body, .. } => block(body),
             _ => false,
         })
@@ -8584,7 +8635,10 @@ impl<'a, 's> FnResolver<'a, 's> {
     fn vt_is_coll_owned(&self, vt: VT) -> bool {
         match vt {
             VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
-            VT::Rec(ri) => record_reaches_str(ri, self.records),
+            // PLAN-1035 (F34): a record owns iff its field closure reaches a
+            // resource leaf — Str OR List OR Variant OR closure env OR a
+            // tuple aggregate carrying one (the Str-only walk was the hole).
+            VT::Rec(ri) => record_reaches_resource(ri, self.records, &self.coll.tuples),
             // PLAN-962: a tuple owns iff any element owns.
             VT::Tuple(ti) => self.coll.tuples[ti]
                 .iter()
@@ -12868,9 +12922,16 @@ impl<'a, 's> FnResolver<'a, 's> {
                                                             let idx_ast = match &ma[0] {
                                                                 ast::Arg::Pos(e)
                                                                 | ast::Arg::MovePos(e) => e,
-                                                                _ => unreachable!(
-                                                                    "get takes one positional index"
-                                                                ),
+                                                                // PLAN-1035 (F33): the ordinary
+                                                                // `get` builtin admits a Named
+                                                                // index (single argument by
+                                                                // value, label not validated) —
+                                                                // the fused projection must match
+                                                                // it instead of panicking on a
+                                                                // user program.
+                                                                ast::Arg::Named {
+                                                                    value, ..
+                                                                } => value,
                                                             };
                                                             let idx_read =
                                                                 self.expr_iterative(idx_ast);
@@ -12997,7 +13058,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                             {
                                 if gn.name == "get"
                                     && ga.len() == 1
-                                    && matches!(&ga[0], ast::Arg::Pos(_) | ast::Arg::MovePos(_))
+                                    && matches!(
+                                        &ga[0],
+                                        ast::Arg::Pos(_)
+                                            | ast::Arg::MovePos(_)
+                                            | ast::Arg::Named { .. }
+                                    )
                                 {
                                     if let ExprKind::Var(id) = &gr.kind {
                                         if let Some(xl) = self.lookup(&id.name) {
@@ -13011,9 +13077,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                                                         ast::Arg::Pos(e) | ast::Arg::MovePos(e) => {
                                                             e
                                                         }
-                                                        _ => unreachable!(
-                                                            "get takes one positional index"
-                                                        ),
+                                                        // PLAN-1035 (F33): same Named-index
+                                                        // admission as the ordinary `get`.
+                                                        ast::Arg::Named { value, .. } => value,
                                                     };
                                                     elemview_idx_task = Some(Task::Visit {
                                                         node: idx_ast,
