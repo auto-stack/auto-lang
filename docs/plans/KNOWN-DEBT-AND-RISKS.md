@@ -79,7 +79,7 @@
 | F21 | P1 | Pratt引用未验；panic未运行 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-02 | 技术未知/修复未闭 |
 | F22 | P1 | commit缺负依赖；错误target未执行 | [1031](1031-ace-query-negative-dependency-commit.md) | NEG-01/02 | 技术未知/修复未闭 |
 | F23 | P2 | size/tag/EOF缺口；上层仍可能拒 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-03 | 技术未知/修复未闭 |
-| F24 | P1 | typed接受态部分改写；未运行 | [1032](1032-ace-native-typed-batch-atomicity.md) | NTX-01/02 | 技术未知/修复未闭 |
+| F24 | P1 | typed接受态部分改写；未运行 | [1032](archive/1032-ace-native-typed-batch-atomicity.md) | NTX-01/02 | **已交付**（PLAN-1032 r3 @`45fcd50f4`，归档于 `docs/plans/archive/`；NTX-01/02 永久断言 + 冻结组 298/298；A 出口消费见 985 T-A03/A04） |
 | F25 | P1 | resident/SHA/anchor缺单一接受点 | [1033](1033-ace-a2x-late-publication-atomicity.md) | AXTX-01/02 | 技术未知/修复未闭 |
 | F26 | P2 | AV到达字段错误；非语言假PASS | [1037](1037-ace-cte-named-walk-and-attempt-facts.md) | CT-02 | 技术未知/修复未闭 |
 | F27 | P1 | 局部父等待无界；进程树后果未测 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-03 | 技术未知/修复未闭 |
@@ -4597,4 +4597,8 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
 |---|---|---|
-| 会话启动路径 `typed_runtime::prepare` 的 `static SERIAL: Mutex<()>` 只串行**同进程**；跨进程存在窗口（`target/<target>/runtime-release/ace_typed_entry_runtime.lib` + `.identity.json` 的 `remove_file`/`file_hash`/`cargo build` 交错）。测试侧的 lib 二进制与两个集成测试二进制会并发启动会话 | PLAN-1032 re-review（2026-11-16，`2cf01df05`）：首轮独立复跑出现 1 次 `tier.rs:317 .expect("session starts")`（0.264s），随后单例复跑 PASS、6 例复跑 10/10 绿、两进程并发 3 轮绿、组级 298/298 绿；基线 `16a58402e` 已有 `typed_entry_tier`/`typed_entry_incremental_tier` 两二进制并发 starter，故窗口为既有风险，1032 的 lib 用例仅边际增加暴露。原始记录见 [1032 §9](archive/1032-ace-native-typed-batch-atomicity.md)（归档前为 [1032](1032-ace-native-typed-batch-atomicity.md)） | owner = ACE native runtime 准备线（PLAN-891 后继）/ 批量回归 triage。关闭条件=二选一：①跨进程串行化（文件锁/独占 rename 发布，release 二进制与测试共用）；②会话启动测试收敛到单二进制（或 test-group 串行化）并附并发压力复跑绿。边界：不阻塞 PLAN-1032（§5 范围为批编辑接受事务，`start()` 与基线逐字节相同） |
+**PLAN-1032 交付记录**：F24 技术闭环已交付——`45fcd50f4` 落主（ff-only）、两 Spec 沉淀、`cargo t ace-native` 298/298、归档 `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md`。遗留导航（非本 Plan 权限）：`docs/design/strategy/ace-m2-delivery-roadmap.md`（主检出他人 WIP）、`docs/design/strategy/ace-route-plan-map.md`（未跟踪新件）、`docs/plans/1024-*.md` F24 行（他人 WIP）仍指向活跃路径/交付前状态，owner=对应文档维护者/战略文档收口轮。
+
+| 会话启动路径 `typed_runtime::prepare` 的 `static SERIAL: Mutex<()>` 只串行**同进程**；跨进程存在窗口（`target/<target>/runtime-release/ace_typed_entry_runtime.lib` + `.identity.json` 的 `remove_file`/`file_hash`/`cargo build` 交错）。测试侧的 lib 二进制与两个集成测试二进制会并发启动会话 | PLAN-1032 re-review（2026-11-16，`2cf01df05`）：首轮独立复跑出现 1 次 `tier.rs:317 .expect("session starts")`（0.264s），随后单例复跑 PASS、6 例复跑 10/10 绿、两进程并发 3 轮绿、组级 298/298 绿；基线 `16a58402e` 已有 `typed_entry_tier`/`typed_entry_incremental_tier` 两二进制并发 starter，故窗口为既有风险，1032 的 lib 用例仅边际增加暴露。原始记录见 [1032 §9](archive/1032-ace-native-typed-batch-atomicity.md)（归档前曾位于 `docs/plans/`） | owner = ACE native runtime 准备线（PLAN-891 后继）/ 批量回归 triage。关闭条件=二选一：①跨进程串行化（文件锁/独占 rename 发布，release 二进制与测试共用）；②会话启动测试收敛到单二进制（或 test-group 串行化）并附并发压力复跑绿。边界：不阻塞 PLAN-1032（§5 范围为批编辑接受事务，`start()` 与基线逐字节相同） |
+
+**PLAN-1032 交付记录**：F24 技术闭环已交付——`45fcd50f4` 落主（ff-only）、两 Spec 沉淀、`cargo t ace-native` 298/298、归档 `docs/plans/archive/1032-ace-native-typed-batch-atomicity.md`。遗留导航（非本 Plan 权限）：`docs/design/strategy/ace-m2-delivery-roadmap.md`（主检出他人 WIP）、`docs/design/strategy/ace-route-plan-map.md`（未跟踪新件）、`docs/plans/1024-*.md` F24 行（他人 WIP）仍指向活跃路径/交付前状态，owner=对应文档维护者/战略文档收口轮。
