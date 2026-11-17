@@ -555,6 +555,115 @@ impl AceConfigReport {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Consumer adapter: the owned snapshot -> the legacy `auto_val` shape
+// ---------------------------------------------------------------------------
+
+/// Why a document could not be projected onto the legacy `auto_val` shape.
+///
+/// The projection is a **pure data conversion** for existing consumers
+/// (`Pac`, project-model readers). It never evaluates anything, never calls the
+/// parser/VM, and refuses instead of silently losing value identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigProjectionError {
+    /// `auto_val` has no unsigned 64-bit value; a larger-than-`i64::MAX` U64
+    /// would change its value, so it is refused.
+    U64OutOfRange { value: u64 },
+    /// The document nests deeper than the projection guard (no stack overflow).
+    TooDeep { depth: usize },
+}
+
+impl std::fmt::Display for ConfigProjectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigProjectionError::U64OutOfRange { value } => write!(
+                f,
+                "config.projection/u64-out-of-range: {value} has no exact auto-val representation"
+            ),
+            ConfigProjectionError::TooDeep { depth } => write!(
+                f,
+                "config.projection/too-deep: depth {depth} exceeds the projection guard \
+                 (MAX_PROJECTION_DEPTH = {MAX_PROJECTION_DEPTH})"
+            ),
+        }
+    }
+}
+
+/// Depth guard of the consumer projection (iterative accounting has no such
+/// limit; this one exists so the recursive auto_val shape cannot overflow).
+pub const MAX_PROJECTION_DEPTH: usize = 512;
+
+impl ConfigDocument {
+    /// Project the owned snapshot onto the legacy `auto_val` shape for existing
+    /// consumers. Order and duplicates are preserved for nodes; object and prop
+    /// entries keep the snapshot's order, and the projection applies the
+    /// document's own override rule (a later entry for the same key wins, with
+    /// the `auto_val` container's insertion-order semantics).
+    pub fn to_auto_val_node(&self) -> Result<auto_val::Node, ConfigProjectionError> {
+        project_node(&self.root, 0)
+    }
+}
+
+fn project_node(node: &ConfigNode, depth: usize) -> Result<auto_val::Node, ConfigProjectionError> {
+    if depth > MAX_PROJECTION_DEPTH {
+        return Err(ConfigProjectionError::TooDeep { depth });
+    }
+    let mut out = auto_val::Node::new(node.name.as_str());
+    if let Some(id) = &node.id {
+        out.add_arg(auto_val::Arg::Pos(auto_val::Value::Str(
+            auto_val::AutoStr::from(id.as_str()),
+        )));
+    }
+    for arg in &node.args {
+        out.add_arg(auto_val::Arg::Pos(project_value(arg, depth + 1)?));
+    }
+    for (key, value) in &node.props {
+        out.set_prop(key.as_str(), project_value(value, depth + 1)?);
+    }
+    for child in &node.children {
+        out.add_kid(project_node(child, depth + 1)?);
+    }
+    Ok(out)
+}
+
+fn project_value(
+    value: &ConfigValue,
+    depth: usize,
+) -> Result<auto_val::Value, ConfigProjectionError> {
+    if depth > MAX_PROJECTION_DEPTH {
+        return Err(ConfigProjectionError::TooDeep { depth });
+    }
+    Ok(match value {
+        ConfigValue::Null => auto_val::Value::Nil,
+        ConfigValue::Bool(v) => auto_val::Value::Bool(*v),
+        ConfigValue::I64(v) => auto_val::Value::I64(*v),
+        ConfigValue::U64(v) => {
+            if *v <= i64::MAX as u64 {
+                auto_val::Value::I64(*v as i64)
+            } else {
+                return Err(ConfigProjectionError::U64OutOfRange { value: *v });
+            }
+        }
+        ConfigValue::F64(bits) => auto_val::Value::Double(f64::from_bits(*bits)),
+        ConfigValue::Char(c) => auto_val::Value::Char(*c),
+        ConfigValue::Text(text) => auto_val::Value::Str(auto_val::AutoStr::from(text.as_str())),
+        ConfigValue::List(items) => {
+            let mut projected = Vec::with_capacity(items.len());
+            for item in items {
+                projected.push(project_value(item, depth + 1)?);
+            }
+            auto_val::Value::Array(auto_val::Array::from_vec(projected))
+        }
+        ConfigValue::Object(entries) => {
+            let mut obj = auto_val::Obj::new();
+            for (key, item) in entries {
+                obj.set(key.as_str(), project_value(item, depth + 1)?);
+            }
+            auto_val::Value::Obj(Box::new(obj))
+        }
+        ConfigValue::Node(node) => auto_val::Value::node(project_node(node, depth + 1)?),
+    })
+}
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x100_0000_01b3;
 
