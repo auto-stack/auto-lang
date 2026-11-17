@@ -80,7 +80,7 @@
   `p982_config_empty_list`（正例）与 `List([I64(1), I64(2)])`（非空）共同钉住值面。
 - **注入**：bool/i32/char/text 可注入并在文档中按名可见；对象/数组注入是
   `ace.config/inject-unsupported`，超 i32 是 `ace.config/inject-range`。
-- **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：未支持。**现状已钉住**：
+- **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：**经实测修正**——`k["f"]` 只对**体内绑定的局部**成立，**根属性名直接索引会被 bind 期拒**（`source.undefined`，"no local named …"）；FStr 里带引号字符串是 `source.fstr-syntax`；FStr 点形式是 bind 期 `source.undefined`。全部钉在 `p982_config_field_spelling`。**原记录**：
   `${obj.x}` 在 **bind 期**失败为 `stage:"bind", code:"source.undefined"`（"no local named `obj` in scope"），
   永久用例 `p982_config_dot_form`；实现时该用例会自动转为"必须取到字段值"的正例。
 - **保留字作 pair key**（如 `tag:`）仍被当保留 token 拒绝。
