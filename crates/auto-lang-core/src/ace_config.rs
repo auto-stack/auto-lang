@@ -876,20 +876,36 @@ fn project_node(node: &ConfigNode, depth: usize) -> Result<auto_val::Node, Confi
     if depth > MAX_PROJECTION_DEPTH {
         return Err(ConfigProjectionError::TooDeep { depth });
     }
-    let mut out = auto_val::Node::new(node.name.as_str());
-    // D-982-CFG-IDENTITY: positional arguments (identity first) live in the
-    // unified args/props slot under `_arg{n}`, which is exactly the shape the
-    // legacy configuration evaluator produced (`dep kernel { _arg0: ... }`).
-    // `Node.id` stays empty: the identity is one argument, not a second name.
-    if let Some(id) = &node.id {
-        out.add_arg_unified(
-            "_arg0",
-            auto_val::Value::Str(auto_val::AutoStr::from(id.as_str())),
-        );
+    // 文档根沿用 legacy 消费形状的名字 `root`（配置求值结果的根节点）。
+    let name = if depth == 0 && node.name.is_empty() {
+        "root"
+    } else {
+        node.name.as_str()
+    };
+    let mut out = auto_val::Node::new(name);
+    // D-982-CFG-IDENTITY: 身份与前序位置实参都落在统一 args/props 槽的
+    // `_arg{n}`（legacy 形状：`dep kernel { _arg0: "kernel" }`；`app("x")`
+    // 也是 `_arg0`）。有身份时位置实参从 `_arg1` 起，无身份时从 `_arg0` 起。
+    // 这些键是**普通 prop**（legacy 的 config 求值不把它们计入 `num_args`），
+    // 且身份同时镜像到 `Node.id`（legacy 对 `app("x")` 也是这样）。
+    // legacy 形状区分两种写法：**裸/字符串身份**（`dep bps {}`）只落在 `id`，
+    // 不产生 `_arg0` 属性；**括号实参**（`dep("kernel")`、`app("x")`）落在
+    // `_arg0…` 属性，且首个文本实参同时镜像到 `id`。
+    let mut identity: Option<String> = node.id.clone();
+    let mut next_arg = 0usize;
+    for arg in node.args.iter() {
+        if next_arg == 0 {
+            // 无身份时首个文本实参同时作为身份（legacy `app("x")` 形状）。
+            if let ConfigValue::Text(t) = arg {
+                identity.get_or_insert_with(|| t.clone());
+            }
+        }
+        let key = format!("_arg{next_arg}");
+        out.set_prop(key, project_value(arg, depth + 1)?);
+        next_arg += 1;
     }
-    for (index, arg) in node.args.iter().enumerate() {
-        let key = format!("_arg{}", index + 1);
-        out.add_arg_unified(key, project_value(arg, depth + 1)?);
+    if let Some(id) = identity {
+        out.id = auto_val::AutoStr::from(id.as_str());
     }
     for (key, value) in &node.props {
         out.set_prop(key.as_str(), project_value(value, depth + 1)?);
@@ -910,7 +926,12 @@ fn project_value(
     Ok(match value {
         ConfigValue::Null => auto_val::Value::Nil,
         ConfigValue::Bool(v) => auto_val::Value::Bool(*v),
-        ConfigValue::I64(v) => auto_val::Value::I64(*v),
+        // legacy config 求值把整数放进 `Int`（i32）；超范围才用 `I64`，
+        // 这样消费面的种类与旧引擎一致（不是"看起来相等"）。
+        ConfigValue::I64(v) => match i32::try_from(*v) {
+            Ok(n) => auto_val::Value::Int(n),
+            Err(_) => auto_val::Value::I64(*v),
+        },
         ConfigValue::U64(v) => {
             if *v <= i64::MAX as u64 {
                 auto_val::Value::I64(*v as i64)

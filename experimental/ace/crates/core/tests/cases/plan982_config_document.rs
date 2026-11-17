@@ -457,3 +457,64 @@ fn p982_config_document_rejects_non_document_statements() {
     assert!(!codes.is_empty(), "`return` is not a document line");
     assert!(codes.iter().all(|c| c.starts_with("source.")));
 }
+
+/// E7 前置（真实语料）：`#` 行注释、JSON 形整份文档、块形对象值（含字符串键）
+/// 都从 CST 投影成文档候选——这三类是 auto-man 语料里 131→149 的主要缺口。
+#[test]
+fn p982_config_document_accepts_hash_comments_json_and_block_objects() {
+    // `#` 说明行（真实 pac.at 的常见写法）不产生文档行。
+    let src = "# PLAN-683: explanation line\nname: \"x\"\n";
+    let syntax = parse_config_document(src).expect("hash comments are trivia");
+    assert_eq!(syntax.lines.len(), 1, "the comment must not become a line");
+
+    // JSON 形整份文档：字符串键 + 数组值 + 尾逗号。
+    let json = r#"{
+  "scene": "workspace",
+  "members": ["back"],
+}
+"#;
+    let syntax = parse_config_document(json).expect("a JSON-shaped document parses");
+    assert_eq!(syntax.lines.len(), 2, "one document line per JSON entry");
+    match &syntax.lines[0] {
+        ConfigLine::Pair(p) => {
+            assert_eq!(p.key.name, "scene");
+            match &p.value {
+                ConfigPairValue::Expr(e) => {
+                    assert!(matches!(e.kind, ExprKind::StrLit(ref s) if s == "workspace"))
+                }
+                other => panic!("expected an expression value, got {other:?}"),
+            }
+        }
+        other => panic!("expected a pair line, got {other:?}"),
+    }
+    match &syntax.lines[1] {
+        ConfigLine::Pair(p) => {
+            assert_eq!(p.key.name, "members");
+            match &p.value {
+                ConfigPairValue::Expr(e) => match &e.kind {
+                    ExprKind::ArrayLit(items) => assert_eq!(items.len(), 1),
+                    other => panic!("expected an array value, got {other:?}"),
+                },
+                other => panic!("expected an expression value, got {other:?}"),
+            }
+        }
+        other => panic!("expected a pair line, got {other:?}"),
+    }
+
+    // 块形对象值（换行分隔、无逗号）＋字符串键去引号。
+    let block = "npm_deps: {\n  \"@scope/x\": \"link:/tmp/x\"\n}\n";
+    let syntax = parse_config_document(block).expect("a block object value parses");
+    match &syntax.lines[0] {
+        ConfigLine::Pair(p) => match &p.value {
+            ConfigPairValue::Expr(e) => match &e.kind {
+                ExprKind::ObjectLit { fields } => {
+                    assert_eq!(fields.len(), 1);
+                    assert_eq!(fields[0].key, "@scope/x", "string keys are decoded");
+                }
+                other => panic!("expected an object literal, got {other:?}"),
+            },
+            other => panic!("expected an expression value, got {other:?}"),
+        },
+        other => panic!("expected a pair line, got {other:?}"),
+    }
+}

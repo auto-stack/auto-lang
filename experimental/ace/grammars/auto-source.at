@@ -121,6 +121,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
     tokens {
         ws(trivia: true) { charset: " \t\r\n" }
         line-comment(trivia: true) { line-comment: "//" }
+        // PLAN-982（B-CONFIG-I E7）：配置文档的 `#` 行注释。真实 pac.at 语料里
+        // `# ...` 是说明行（legacy config 也把它当注释）；只在 config-document
+        // 面成立——其它面的 `#` 仍是注解/CT 引入符，逐字节不变。
+        hash-comment(trivia: true, profiles: [config-document]) { line-comment: "#" }
         // 关键字（声明先于 ident：同长取声明序）
         fn { literal: "fn" }
         let { literal: "let" }
@@ -1719,6 +1723,34 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { cfg-var() {} }
             alt { cfg-if() {} }
             alt { cfg-for() {} }
+            // JSON 形文档：整份文档就是一个对象字面量 `{ "k": v, ... }`
+            // （真实 pac.at 语料存在这种平台侧清单，legacy config 同样接受）。
+            alt { cfg-json-document() {} }
+        }
+        // JSON 形文档：`{ "k": v, ... }`，逗号分隔、允许尾逗号；条目值仍是
+        // `cfg-pair-value`（表达式或带体节点值），因此与 `key: value` 行同语义。
+        cfg-json-document(profiles: [config-document], expect: "a `{ \"k\": v, ... }` document object") {
+            lbrace() {}
+            opt { cfg-json-fields(field: "fields") {} }
+            rbrace() {}
+        }
+        cfg-json-fields(profiles: [config-document]) {
+            cfg-json-entry() {}
+            many { cfg-json-entry-tail() {} }
+            opt { comma() {} }
+        }
+        cfg-json-entry-tail(profiles: [config-document]) {
+            comma() {}
+            cfg-json-entry() {}
+        }
+        cfg-json-entry(profiles: [config-document]) {
+            cfg-json-key(field: "key")
+            colon(same-line: true)
+            cfg-pair-value(field: "value")
+        }
+        cfg-json-key(profiles: [config-document]) {
+            alt { ident(field: "key") {} }
+            alt { str-lit(field: "key") {} }
         }
         // `key: value`／`key: node(…) { … }`（节点值**必须**带体：无体的
         // `k: f(…)` 是普通调用表达式，交给 expr 备选）。
@@ -1728,11 +1760,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             cfg-pair-value(field: "value")
         }
         cfg-pair-value(profiles: [config-document]) {
+            // 块形对象值 `{ k: v … }`（换行分隔、无逗号）——真实 pac.at 的
+            // 常见写法（`workspace: { front: "./source/front" }`）；JSON 逗号
+            // 形走普通对象字面量表达式备选。
+            alt { cfg-object-block() {} }
             // 带体节点值优先（`icf: file("linker/x.icf") { … }`）：它必须**带体**，
             // 否则无体的 `kernel: kernel_config` 会被吃成节点；节点备选失败
             // （没有体）时回退到表达式备选。
             alt { cfg-value-node() {} }
             alt { expr() {} }
+        }
+        // 块形对象值：`{ key: value … }`，条目按换行/`;` 分隔，值是
+        // `cfg-pair-value`（因此可嵌套块形对象）。
+        cfg-object-block(profiles: [config-document], expect: "a `{ key: value … }` object value") {
+            lbrace() {}
+            list-nl { cfg-pair() {} }
+            rbrace() {}
         }
         cfg-value-node(profiles: [config-document], expect: "a node value with a body (`name(args) { … }`)") {
             cfg-node-head(field: "head")

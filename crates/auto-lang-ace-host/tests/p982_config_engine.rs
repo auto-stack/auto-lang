@@ -83,13 +83,14 @@ dep("kernel") {
     assert_eq!(config.root.get_prop("version").to_astr().as_str(), "1.0.0");
     let deps: Vec<_> = config.root.get_kids("dep");
     assert_eq!(deps.len(), 3, "dep children stay in source order");
-    // 旧消费面形状：身份在统一 args/props 槽的 `_arg0`（与 legacy 一致）。
+    // 旧消费面形状（与 legacy 逐字对齐）：裸/字符串身份只落在 `id`，不产生
+    // `_arg0` 属性；括号实参才进 `_arg0…`（投影层按这两种源写法区分）。
     let stylekit = config
         .root
         .get_kids("dep")
         .into_iter()
-        .find(|n| n.get_prop("_arg0").to_astr().as_str() == "stylekit")
-        .expect("the string-id dep keeps its identity argument");
+        .find(|n| n.id().as_str() == "stylekit")
+        .expect("the string-id dep keeps its identity");
     assert_eq!(stylekit.get_prop("path").to_astr().as_str(), "../stylekit");
 
     // ---- 3. 坏文档：具名诊断（原 span），不静默成功、不回退 ----------------
