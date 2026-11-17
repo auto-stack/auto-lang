@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
 plan_revision: 7
-current_step: 5
+current_step: 6
 total_steps: 11
 depends_on: [PLAN-970, PLAN-966]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -133,15 +133,17 @@ LSP已迁auto-ui/crates/auto-lsp，本包直接核其现存completion/hover/sign
 2. **测试发现闸门（T-02/V-03）**：`run_ace_project_tests`/`_named` = 先检查再按**发现名**在项目道执行（每测试独立世代+独立 scratch），`AceTestRunOutcome::{Passed,Failed,NoTestsDiscovered,Diagnostic,Denied,ResourceDenied,Cancelled,HostFailure}`。**零发现=具名 `NoTestsDiscovered` 且 exit 1，绝不成 PASS**。发现契约（本轮冻结）：零参数且声明返回 `int` 的声明、排除入口 `main`；ACE 源码面**无 `#[test]` 注解**（legacy 属性不在该源面），故发现读 producer 声明事实，不做名字猜测/旧 AST walk。证据同上用例2：零发现具名失败、通过=exit 0、失败具名归因、超时（50ms墙+死循环测试）=该测试 failed+资源终态且不为 PASS、编译拒绝带模块身份、旧引擎拒。
 3. **源码级调试面（T-02/V-01/V-05）**：av-core 暴露真实暂停链事实 `PausedRun::debug_position`（函数/模块/原源 span/是否函数入口）、`debug_snapshot`（外层→内层调用栈 + 每帧原 span + named slot 值）、`frame_depth`，并新增 `execute_program_steps_after_init`（模块初始化先跑一次，随后停在入口**首指令**）；`ace_entry` 中立调试合同 `AceBreakpoint{module,symbol,span(Option)}`/`AceDebugCommand::{Continue,Step,StepOver,StepOut}`/`AceDebugStop::{Entry,Breakpoint{index},Step,StepOver,StepOut,Finished}`/`AceDebugSession`/`start_ace_debug(_named)`，项目执行器 `start_debug` 默认具名 `ace.debug/unsupported`；参考宿主 `auto-lang-ace-host/src/debug.rs` 实现函数入口断点（仅首指令）与 span 交集断点、四命令、每步 wall/cancel、结束态携带真实 `AceProjectOutcome`、close 回收 scratch。局部变量名取自**同一 lowering 世代**的 `PackageAvTarget::slot_names`（ABC 线不序列化槽名），平面 MIR span 按模块段起点回映为模块内原 span。证据 `tests/p971_debug_face.rs`（1 例 0.40s）：跨模块 2 帧栈、局部 `x=I32(2)`、断点 span 切片 `math::core` 原文、调用者帧切片 `app::main` 调用点、单步推进真实指令计数、step-out 回调用者、continue 到真实值 `3`、span 断点、**热更后新会话 span 不复用旧值**（V-08 腿）、旧引擎拒、坏工程启动失败带原模块诊断、关闭后无 `ace-p971-project-*` 残留。
 4. **LSP 诊断接管（T-08 切片，auto-ui）**：`auto-lsp` 诊断后端由 legacy `Parser` 换成 `check_ace_project`（编译期、多文档；单合成包名取工作区根目录名，模块 id=相对路径去扩展名并把分隔符压平为 `_`）；诊断按模块身份落到所属文档，用**该文档自身文本**把模块内字节 span 换成 UTF-16 范围并钳制；V-08：按文档内容世代快照丢弃过期结果、发布携带被检内容的 LSP 版本、乱序 didChange 丢弃、保留 ~150ms debounce；legacy 诊断通道整体删除（**无回退**）。证据 `crates/auto-lsp/tests/lsp_ace_diagnostics_971.rs`（真 `auto-lsp` bin stdio JSON-RPC，4.57s）：双文档干净打开零诊断、util 坏源只报 util 且范围切中 `nosuch`、修复清空、main 坏源只报 main、v3 坏/v4 好连发后最后发布为 v4 空且旧结果不覆盖、shutdown exit 0；`cargo test -p auto-lsp` 25 例全绿（实施会话与 owner 复跑一致）。
+6. **LSP 既存能力面核验＋跨包 goto 修复（T-08 第二批，auto-ui `9a352b8a`）**：真二进制下核验 `completion/hover/signature/semanticTokens/goto/inlay/workspace` 的既有实现（本包不重写其分析器）：新增 `lsp_ace_diagnostics_971` 第二用例（1.08s）——跨包 goto 落到被导入模块**自己的源文件**且位置精确（line 0 / character 3，指向 `hello` 声明本身）、hover 给出该符号信息、`workspace/symbol` 列出该符号、`semanticTokens/full` 非空、completion 在调用点有响应、shutdown exit 0。**发现并修复 F-971-B-01**（同树修复、合同内）：跨包 goto 在 Windows 上从未生效——文档路径用 `strip_prefix("file://")` 留下 `/D:/…`、目标 URI 用字符串拼 `file://C:\…`，目标 URI 解析失败使 goto 静默返回 null；且数据库 fragment span 不是 LSP 位置（名字在 col 3 却给 col 26）。修复：`document_uri_to_path`/`path_string_to_uri` 走 URL 平台正确转换；定义位置由目标文件自身文本按 `fn/type/enum/const/spec + 名字` token 推导，退化时才用记录 span。证据：上述用例 + `cargo test -p auto-lsp` 26 例全绿（14 lib + 4 integration + 2 ACE fixture + 2 CLI + 4 protocol）。
+7. **编辑器客户端（T-08 的“编辑器客户端”项）**：按§4“外仓只读调研”边界审计 `D:/autostack/auto-vscode/vscode-extension/src/extension.ts`（第14–16/218/229–245/258 行）：`vscode-languageclient` 以 `auto-lsp-wrapper.cmd`（Windows）spawn 服务器、`documentSelector=[{scheme:'file',language:'auto'}]`、标准 stdio `TransportKind`——客户端接线与服务器真实二进制协议面一致。该仓无自动化 editor-host harness（无 test 目录/脚本），本环境无 VS Code 运行器 → **编辑器宿主内端到端未执行（不记 PASS，具名归编辑器仓）**；本包职责面（auto-lsp 服务器）已由真二进制用例核验。
 5. **Playground notebook 接管（T-03/V-04）**：notebook 会话=ACE session（970 中立 `ace_session` 合同），进程级安装一次（`ace_runtime::ensure_session_host`，guard 常驻）；单元格经 `AceSessionOp::Eval` 执行、结果/诊断取自报告，inspector=carry 表 + 累积源派生函数清单，销毁即 `Close`；**无旧 VM REPL 回退**。证据 `crates/auto-playground/src/notebook/mod.rs` 用例 `p971_v04_two_user_notebook_sessions_are_isolated`：两用户会话 id 不同、A 的变量在 B 不可解析（具名诊断且无值）、各自只观察自身 carry 表、inspector 互不含对方、关闭 A 后 B 仍可用；crate 15/15 绿。
 
 **B 具名边界/未闭项（不得记 PASS，归后续 B 轮）**：
 
-- LSP 其余能力（completion/hover/signature/semantic tokens/goto/inlay/workspace）本轮**未换** ACE 事实，仍由既有分析实现承载；跨包 goto 的 V-08 腿未单独取证；编辑器客户端未核 → **T-08 未闭**。
+- LSP 其余能力（completion/hover/signature/semantic tokens/goto/inlay/workspace）**沿用既有分析器**（本包 T-08 的义务是“核”其能力，不是重写分析器）；本轮已用真二进制用例核验其可用且 goto 指向正确源（F-971-B-01 修复）。编辑器宿主（auto-vscode）端到端未跑（该仓无 harness、本环境无 VS Code）：只读审计接线一致，E2E 不记 PASS、归编辑器仓。
 - LSP 模块集=已打开文档（不读磁盘 `.at`）；嵌套模块 id 被 packages `valid_id` 拒（`lib/util.at`→`lib_util`）；诊断仅 ERROR（旧 parser 的 warning 无 ACE 等价面），发布形态变化须在最终 Spec 记明；ACE host 仅 Windows（其他平台发具名 `ace.host/unavailable`）。
 - ACE 源面无 `#[test]` 注解；会话 reshape **不接受**尾表达式函数体（旧 VM 接受），Playground/LSP 据实呈现 producer 具名诊断（语言面边界归 ACE 前门，不在消费者伪造）。
 - acworker/1 线按 T-01 冻结决定**不扩展**（一致性 adapter 非产品入口；扩线翻倍改面且不增证明力）；多文件产品入口=项目面。
-- Playground 其余执行路由（`code_runner`/`vm_runner`/`agent_debug`/`debugger` 路由）未随本轮迁移，归后续 B 轮具名。
+- Playground 其余执行路由（`code_runner`/`vm_runner`/`agent_debug`/`debugger` 路由）本包**未迁**，具名原因：这些是 legacy 形态的产品前门（WS `state` 载荷含 bytecode/registers、`locals.value: i32`；run 路由返回 VM 反汇编字节码面板），迁移需要（a）步进执行带 console host 捕获（`execute_program_steps*` 目前无 host 参数，打印程序在调试面会 `host.unauthorized`）、（b）WS/前端载荷形状变化、（c）i32→类型化值的协议扩展；本包§5 点名的 Playground 义务是 notebook（已交），上述前门迁移归后续编辑器/调试 UI 波次（具名承接，不记 PASS）。
 
 ### T-01 A期冻结记录（2026-11-16，goal授权执行，r6）
 
@@ -243,7 +245,7 @@ LSP测试在auto-ui专属worktree按当地owner入口执行；语言仓仍留同
 | V-03 | `p971_tool_face` 用例2 零发现腿 | `NoTestsDiscovered`＋exit 1，零发现绝不 PASS；发现=零参 int 声明（入口排除） | 无 `#[test]` 注解面（ACE 源面事实） |
 | V-04 | `cargo t auto-playground`（15 例，含 `p971_v04_two_user_notebook_sessions_are_isolated`） | 两用户会话 id 不同、A 变量在 B 不可解析、各自 carry 表、关闭 A 不影响 B | Playground 其余执行路由未迁 |
 | V-05 | `p971_debug_face` 断点/调用者帧 span＋`p971_tool_face` 诊断 span | 停点/诊断 span 均切中**原模块原文**（`app::main` 调用点 `bump(a)`、`math::core` 表达式），非旧 AST/生成文本 | 生成式 UI 目标的源回映归 UI 波次 |
-| V-08 | auto-ui `lsp_ace_diagnostics_971`（4.57s）＋`p971_debug_face` 热更腿 | 旧版本诊断不覆盖新版本（v3 坏/v4 好后仅 v4 空发布）；热更后停点 span 不复用旧值 | 跨包 goto 腿、测试失败/超时/零发现的 LSP 侧区分未单独取证 |
+| V-08 | auto-ui `lsp_ace_diagnostics_971`（2 例：4.54s + 1.08s）＋`p971_debug_face` 热更腿 | 旧版本诊断不覆盖新版本（v3 坏/v4 好后仅 v4 空发布）；热更后停点 span 不复用旧值；跨包 goto 落原模块原声明位置（line0/char3） | LSP 无 test-run 请求面（测试失败/超时/零发现区分由 lang 工具面 `p971_tool_face` 取证） |
 
 ### 补充验证
 
@@ -284,7 +286,7 @@ LSP测试在auto-ui专属worktree按当地owner入口执行；语言仓仍留同
 
 ## 8. 执行步骤
 
-当前共11任务，5完成（T-01/B-PROOF-I/B-PROOF-V/B-PROOF-R/T-02）；T-03/T-08 为具名部分交付，T-04 收尾中。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共11任务，6完成（T-01/B-PROOF-I/B-PROOF-V/B-PROOF-R/T-02/T-08）；T-03 为具名部分交付（Playground 其余路由未迁），T-04 收尾中。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
@@ -310,10 +312,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
   [✅ 2026-11-17] 依§5「B期执行记录」1–3 交付 producer 侧主能力与永久正反例：编译期检查面（`check_ace_project`，全量诊断/声明表/测试候选，只编译不执行）＋发现闸门（`run_ace_project_tests`，零发现=具名失败 exit 1）＋源码级调试面（真实 AV 暂停链：断点/step/step-over/step-out/栈/locals/原源 span/热更不复用旧 span）。冻结：发现契约=零参 `int` 声明（入口 `main` 排除；ACE 源面无 `#[test]` 注解）；局部名取自同一 lowering 世代的 `slot_names`；平面 MIR span 按模块段起点回映。证据 `p971_tool_face.rs`（2 例 0.23s）＋`p971_debug_face.rs`（1 例 0.40s）＋core `ace_entry` 纪律单测；ace-facade 组 32 例绿。acworker/1 线按 T-01 冻结不扩（具名）。
 
 - [ ] **T-03｜M2-B｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
-  [◐ 2026-11-17] 已接线两个真实消费者：LSP 诊断改 ACE 检查面（auto-ui `3c9cfe30`，真 bin stdio fixture 4.57s，25 例绿）；Playground notebook 会话改 ACE session（V-04 两用户隔离用例，crate 15/15 绿）。**未闭**：Playground 其余执行路由（code_runner/vm_runner/agent_debug/debugger）未迁；LSP 其余语言能力未换 ACE 事实（见 T-08）→ 不勾本任务。
+  [◐ 2026-11-17] 已接线两个真实消费者：LSP 诊断改 ACE 检查面（auto-ui `3c9cfe30`，真 bin stdio fixture 4.57s，25 例绿）；Playground notebook 会话改 ACE session（V-04 两用户隔离用例，crate 15/15 绿）。T-08 批次的诊断/发现/源码映射均已交付并与本任务共用证据。**未闭**：Playground 其余执行路由（`code_runner`/`vm_runner`/`agent_debug`/`debugger`）为 legacy 形态产品前门，迁移需步进执行 console host、WS/前端载荷与 i32 局部值协议扩展——具名归后续编辑器/调试 UI 波次（§5 B 边界；不记 PASS）→ 不勾本任务。
 
-- [ ] **T-08｜M2-B｜owner_stage: work｜AC-06**：LSP已迁auto-ui/crates/auto-lsp，本包直接核其现存completion/hover/signature/semantic tokens/goto/inlay/workspace能力及编辑器客户端；将多文件诊断、测试发现和调试源码映射分批验收。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
-  [◐ 2026-11-17] 已交付：多文件诊断批次（ACE 检查面、按模块身份落文档、V-08 版本见证/过期丢弃/乱序丢弃、旧 parser 通道删除，auto-ui `3c9cfe30`）；调试源码映射批次（断点/栈/locals 原源 span + 热更不复用旧 span，`p971_debug_face.rs`）。**未闭**：completion/hover/signature/semantic tokens/goto/inlay/workspace 未换 ACE 事实、跨包 goto 的 V-08 腿未单独取证、编辑器客户端未核 → 不勾本任务。
+- [x] **T-08｜M2-B｜owner_stage: work｜AC-06**：LSP已迁auto-ui/crates/auto-lsp，本包直接核其现存completion/hover/signature/semantic tokens/goto/inlay/workspace能力及编辑器客户端；将多文件诊断、测试发现和调试源码映射分批验收。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+  [✅ 2026-11-17] 三批交付齐：多文件诊断换 ACE 检查面（V-08 版本见证/过期丢弃/乱序丢弃，auto-ui `3c9cfe30`）；测试发现迁 producer（lang `p971_tool_face` 零发现/通过/失败/超时区分）；调试源码映射（`p971_debug_face` 断点/栈/locals 原源 span + 热更不复用旧 span）。既存能力核验（auto-ui `9a352b8a`）：真二进制用例核 completion/hover/semanticTokens/goto(inlay/workspace 由既有 protocol 用例与 workspace/symbol 断言覆盖) 可用，跨包 goto 落原模块原声明位置；同时发现并修复 **F-971-B-01**（Windows 跨包 goto 目标 URI 构造非法 + 定义位置取自不可用 fragment span → 修复为平台正确 URI 转换与源文推导位置）。证据：`cargo test -p auto-lsp` 26 例全绿（2 例真 bin ACE fixture）；编辑器客户端按§4 只读边界审计 auto-vscode 接线一致，其宿主内 E2E 无 harness/环境未跑（具名归编辑器仓，不记 PASS）。
 
 - [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
   [◐ 2026-11-17] V行映射与实跑见§6「B期验证映射」。职责组 `cargo t ace-facade auto-playground ace-source auto-test-case ace-av integration`（lang worktree @ f6dac410b，495.96s）= ace-facade 32 PASS / auto-playground 15 PASS / ace-source 597 PASS / auto-test-case 151 PASS / ace-av 1248 PASS / integration 3354/3355（唯一红 `auto-lang tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped`，2.107s）——integration 组单独复跑仍红（181.02s，同例 2.213s，其余 3354 绿），单向复跑 3/3 绿；本批 diff 无 `crates/auto-lang` 触面（该测试所在 crate）；4f123a50e 已因并行调度 flake 把该例宽限 300ms→2s，PLAN-868 §T-07 已把 `plan707_spike` 判为「AGENTS.md 预存红族、与触面无关」，THR-D4 族在案 → 判基线并行负载 flake、不判本批（如实记录，不充 PASS）。**未闭**：UI 侧 LSP/editor 组门与跨包 goto 证据。 
@@ -337,6 +339,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: goal | plan_id: PLAN-971 | plan_revision: r7 | round: 2 | from: work | to: work | status: executing | outcome: pass（T-08 闭：既存 LSP 能力真二进制核验 + 跨包 goto 修复；T-03 仍具名部分） | worktree: D:/autostack/.wt/lang-971/auto-lang @ plan-971-dev / D:/autostack/.wt/lang-971/auto-ui @ plan-971-dev | commit: auto-ui 9a352b8a；lang 本轮无代码改动（worktree clean @ a983e2a23） | 记录: (1) **F-971-B-01**（同树修复）：跨包 goto 在 Windows 从未生效——文档路径 `strip_prefix("file://")` 留 `/D:/…`、目标 URI 字符串拼 `file://C:\…` 解析失败→goto 静默 null；且定义位置取自不可用 fragment span（名字 col3 却给 col26）。修复为平台正确 URL 转换（`document_uri_to_path`/`path_string_to_uri`）＋从目标源文按 `fn/type/enum/const/spec <name>` token 推导位置。(2) 真二进制核验既存能力面（fixture 第二用例 1.08s）：跨包 goto 落原模块原声明位置（line0/char3）、hover 有符号信息、workspace/symbol 列出、semanticTokens 非空、completion 有响应、shutdown exit0；既存 protocol 用例覆盖 signature/inlay。(3) 编辑器客户端按§4 只读边界审计 auto-vscode 接线（wrapper spawn/`documentSelector auto`/stdio transport）；该仓无 harness、本环境无 VS Code → 宿主内 E2E 未跑，具名归编辑器仓不记 PASS。证据：`cargo test -p auto-lsp` 26 例全绿（14 lib + 4 integration + 2 ACE fixture + 2 CLI + 4 protocol）。T-03 未闭项在§5 B 边界与§8 T-03 行具名（Playground WS debugger/run 前门：步进 console host、WS/前端载荷、i32→类型化局部值协议） | next: work（T-03 余量评估/若判定前门迁移归后续波次则转 T-04 收门→T-05 独立复审）
 
 stage: goal | plan_id: PLAN-971 | plan_revision: r7 | round: 1 | from: work | to: work | status: executing | outcome: pass（B批开工：producer 工具面＋两消费者切片；T-03/T-08 具名部分） | worktree: D:/autostack/.wt/lang-971/auto-lang @ plan-971-dev / D:/autostack/.wt/lang-971/auto-ui @ plan-971-dev | commit: lang f0984d6b8,f02d44bf8,67793f6cb,f6dac410b,a983e2a23 / ui 3c9cfe30 | 前置: 985 A批 phase fold 落主 95c7fbad8 → M2A-08 成立（按§5阶段表解锁B） | 记录: T-02 完成（检查面/发现闸门/调试面，§5 B期执行记录1–3）；T-03 部分（Playground notebook ACE 会话 V-04、LSP 诊断消费者）；T-08 部分（多文档诊断+V-08 版本腿、调试源码映射）；证据：`p971_tool_face` 2例0.23s、`p971_debug_face` 1例0.40s、auto-ui `lsp_ace_diagnostics_971` 1例4.57s、`cargo test -p auto-lsp` 25绿（owner复跑）、`cargo t ace-facade auto-playground` PASS（32/15例）；组门 `cargo t ace-facade auto-playground ace-source auto-test-case ace-av integration` 全跑 495.96s：ace-facade 32 PASS / auto-playground 15 PASS / ace-source 597 PASS / auto-test-case 151 PASS / ace-av 1248 PASS / integration 3355 例 3354 绿 1 红（`plan707_spike_cancel_gap_active_job_future_not_stopped` 2.107s）——**基线并行负载 flake，非本批**：同一 integration 组单独复跑仍红（181.02s，同例 2.213s，其余 3354 绿）；单向 `cargo test -p auto-lang --lib <name>` 3/3 绿；本批 diff 零 `crates/auto-lang` 触面（该测试所在 crate）；历史依据 4f123a50e 把该例宽限 300ms→2s 即为并行调度 flake，PLAN-868 §T-07 归档已把 `plan707_spike` 判为「AGENTS.md 预存红族、与本计划触面无关」，THR-D4 并行负载 flake 族在案。裸 `cargo test -p auto-lang --lib` 不是仓定入口（305 红为缺 nextest 配置/特性面），不作为判据 | 未闭具名: LSP 其余能力/跨包goto/编辑器客户端、Playground 其余路由、acworker线按冻结不扩 | next: work（T-04 组门收尾证据→T-03/T-08 余量评估）
 
@@ -445,4 +449,6 @@ Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于�
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
+
+
 
