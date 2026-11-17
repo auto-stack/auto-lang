@@ -4768,3 +4768,10 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 归属：ace-av / collections_session（822 会话）+ store 身份线；修它需改公共身份/查询键，属具名设计与合同修约（不许在别的修复里顺带改）。
 - 关闭条件：给出 body 身份进键（或等价的内容寻址）的具名设计并落地，使“已持久化单元换 body”能正常 put 且旧件按既有 GC/历史语义退役；用一条真实增量编辑 + 两个不同 body 的 store 断言取证（不得只删冲突检查或只放宽为覆盖写）。
 - 状态：open（不阻塞 PLAN-1030：该 Plan 用冷准入取“清故障后同源成功”腿，并以可重放反证 + 合法邻例修约，原 6 项状态义务未减）。
+
+## D-1066-VERIFY-INPUTS-SIDECAR — 未接线的 `verify_inputs` 仍从 sidecar 重算 VM oracle（2026-11-17 PLAN-1066 T-08 work 登记）
+
+- 现象：`scripts/test-governance/input_inventory.py::verify_inputs` 用 `case["source_path"]`（`.at`）与 `.expected.out/.result` sidecar 重算 oracle 再比对；文档权威后该重算对 10 个 doc-only 条目必然失配。当前**无任何调用者**（全仓 grep 仅定义，`fixed-tests.py` 只调 `discover_inputs`/`attach_inputs`），故不是活跃回读路径，不构成本轮红。
+- 归属：PLAN-1066 T-08 治理 v2（input_inventory owner）。
+- 关闭条件：改为按文档重算（或改为比对 inventory 工具输出的文档 hash 而非 sidecar 字节），并接回一个明确门；或正式退役该函数并在 README 记明理由。
+- 状态：open（不阻塞 T-06/T-08 身份切片；T-11 联合门前处置）。
