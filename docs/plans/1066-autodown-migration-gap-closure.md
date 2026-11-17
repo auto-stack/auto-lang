@@ -1860,9 +1860,30 @@ blockers: 无。goal round 2 receipt 见 §9 末。
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 2 | from: work | to: review | status: executing | outcome: pass（A 子面 work 完：dec529355+289e71b37，cargo t vm corpus PASS 1137/1137，NC-A1..4 全绿） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 289e71b37 | next: review（T-12[A]）
 
-### 2026-11-17 T-12[A] 独立 phase 复核：pass（F-1066A-R1/R2 已修闭）
+### 2026-11-17 T-12[A] 独立 phase 复核：pass（F-1066A-R1/R2 已修闭）stage: review | review_scope: phase（A 切片） | reviewer: 独立上下文代理（与实施会话分离；同树只读重建） | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | reviewed_commit: 289e71b37（初判）→ 2e606d28f（修复确认，终判冻结点） | base_commit: fa8e3ccdb | dependency_revisions: 无跨仓 | spec_inputs: 本 Plan §5 A-EXIT/§6.3/§7/§8；canonical Specs 未动（SD-01..05/SD-A-PHASE 沉淀归 T-13[B]） | acceptance_results: A-DEN pass / A-ORACLE pass / A-NOWRITE pass / A-EVIDENCE pass（R1 修复后） / NC-A1..4 pass / B 义务保持 pass（13 任务框未勾、树/分支保留、旧 oracle 未动） | findings: F-1066A-R1（低，verify_receipt 空选择漏拒）→ 2e606d28f 修复+NC-A4(g) 实证；F-1066A-R2（低，segments 未对账）→ 2e606d28f 修复+NC-A1(f) 实证；F-1066A-R3（信息，tests.rs rustfmt 重排惰性）不处置 | evidence: 复核代理独立重析 fixture（python 逐段再哈希 24 项全对）、全 diff 逐文件核对（14 文件无越界）、P mini-lexer 逐行对照两旧测试体（19 断言 1:1 零误报）、NC-A2 变异精度核查、receipt 重哈希、基线告警溯源（2 条告警均在 fa8e3ccdb 存在=零新增）；计时 integrity 1088ms/nc-a1 1097ms/nc-a2 188ms/nc-a3 365ms/nc-a4 186ms（≤10s 全过） | 修复后门：cargo t vm corpus @2e606d28f PASS（run-0o5gxy7_，executed 1137/excluded 467，wall 182.1s；excluded 名单可见 conformance_bootstrap 以 ignore 理由退场=生成器-1、33 验证不减的账面证据；结果归档 plan-artifacts/plan-1066/probes/vm_corpus_gate_2e606d28f.json） | next: T-13[A] phase fold（保树予 B）；Plan 状态保持 executing（phase pass 不授 reviewed/归档）
 
-stage: review | review_scope: phase（A 切片） | reviewer: 独立上下文代理（与实施会话分离；同树只读重建） | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | reviewed_commit: 289e71b37（初判）→ 2e606d28f（修复确认，终判冻结点） | base_commit: fa8e3ccdb | dependency_revisions: 无跨仓 | spec_inputs: 本 Plan §5 A-EXIT/§6.3/§7/§8；canonical Specs 未动（SD-01..05/SD-A-PHASE 沉淀归 T-13[B]） | acceptance_results: A-DEN pass / A-ORACLE pass / A-NOWRITE pass / A-EVIDENCE pass（R1 修复后） / NC-A1..4 pass / B 义务保持 pass（13 任务框未勾、树/分支保留、旧 oracle 未动） | findings: F-1066A-R1（低，verify_receipt 空选择漏拒）→ 2e606d28f 修复+NC-A4(g) 实证；F-1066A-R2（低，segments 未对账）→ 2e606d28f 修复+NC-A1(f) 实证；F-1066A-R3（信息，tests.rs rustfmt 重排惰性）不处置 | evidence: 复核代理独立重析 fixture（python 逐段再哈希 24 项全对）、全 diff 逐文件核对（14 文件无越界）、P mini-lexer 逐行对照两旧测试体（19 断言 1:1 零误报）、NC-A2 变异精度核查、receipt 重哈希、基线告警溯源（2 条告警均在 fa8e3ccdb 存在=零新增）；计时 integrity 1088ms/nc-a1 1097ms/nc-a2 188ms/nc-a3 365ms/nc-a4 186ms（≤10s 全过） | 修复后门：cargo t vm corpus @2e606d28f PASS（run-0o5gxy7_，executed 1137/excluded 467，wall 182.1s；excluded 名单可见 conformance_bootstrap 以 ignore 理由退场=生成器-1、33 验证不减的账面证据；结果归档 plan-artifacts/plan-1066/probes/vm_corpus_gate_2e606d28f.json） | next: T-13[A] phase fold（保树予 B）；Plan 状态保持 executing（phase pass 不授 reviewed/归档）
+### 2026-11-17 T-13[A] A 片段正式 fold：IF-1066-A-CORRECTNESS 交付（保树予 B）
+
+stage: merge | review_scope: phase | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（A 片段交付；B 余量在途） | worktree: D:/autostack/.wt/lang-1066/auto-lang（保留） | branch: plan-1066-dev（保留）
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | 复核冻结点 2e606d28f（phase pass，R1/R2 闭）；wt-guard clean（无 reparse point）；无 canonical Spec delta（本 Plan 规范增量节明示 SD-01..05/SD-A-PHASE 实施后由 B 的 review/merge 沉淀，A 片段零 spec 改动=合同内 no-impact） |
+| landed | rebase plan-1066-dev → master（docs-only 基线 34cbfbd6b + 旁会话 b73a3fc70，无冲突）；`git range-diff master..2e606d28f master..HEAD` 三提交全 `=`（dec529355=a18ab5a88、289e71b37=ed33c0a3e、2e606d28f=7c131286d=delivery commit）；`git diff 2e606d28f HEAD -- crates/ scripts/` 空（代码/配置/输入零漂移→门证据复用合法）；`git merge --ff-only` 落地，master tip=7c131286d，线性历史无 merge commit |
+| canonical_verified | A 片段无 canonical spec 改动（上述批准的 no-impact）；B 的 SD-01..05/SD-A-PHASE 沉淀义务保留在 §5 规范增量表，T-13[B] 完整 merge 时落地 |
+| archived | 不适用（Plan 保 executing；A 片段不假归档，13 任务整项待 B 完整范围） |
+| cleaned | 不适用（worktree/分支/plan-artifacts scope 全部保留予 B；REGISTRY 更新 in-flight(B)） |
+
+**IF-1066-A-CORRECTNESS 交付内容（985/A 可消费的正确性切片，真实来源=master 7c131286d）**：
+1. 冻结分母契约 `crates/auto-lang/test/governance/plan1066_a_obligations.json`（schema plan1066-a-obligations/1）+ 常驻逐键门 `tests::plan1066_a_slice::plan1066_a_denominator_integrity`（corpus 组日常；篡改/缺项/并键/空H缺席/segments 改动必红）。
+2. N0028/N0030 双通道 oracle 恢复（vm-result succ/10 无尾LF）+ 单次运行双轴判定消费者（run_vm_doc_once/diff_vm_channels）+ 旧入口身份绑定绿（receipt children）。
+3. A 执行路径零作者树写入（diag_scope：默认丢弃/AUTO_TEST_DIAG_SCOPE 镜像）；conformance_bootstrap 退普通注册（33 验证不减，gate excluded 名单可证）。
+4. 证据 receipt 合同（schema plan1066-a-receipt/1）+ verify_receipt 拒签轴（过期 hash/旧文件冒 doc-face/父PASS掩盖/缺工具/NOT_RUN/缺通道/空选择）+ NC-A1..4 常驻负控。
+5. 边界：engine 身份=legacy-autovm（金通道原引擎，具名对照；不冒 ACE 通过——985 adapter dispatch 归 985）；doc-only 发现/全量载体迁移/proposal/v2 治理/250 编译=保 B，原义务与 27NC 不减。
+
+**落地检查**：master 主检出 `cargo test -p auto-lang --lib plan1066` 5 passed/1.28s（主检出代码面 clean）；goal round 4 收据见下。批次回归不触发（未达 cleaned；1066 非 5 倍数，due 检查归 B 的完整 T-13 或独立 regress 档）。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 4 | from: merge | to: done(A) | status: executing（B 在途） | outcome: pass（IF-1066-A-CORRECTNESS 已交付 master 7c131286d；worktree/branch/scope 保留予 B） | next: user（B 实施另行授权启动）
 
 ## 10. 待澄清事项
 
