@@ -1803,14 +1803,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { cfg-node-id(field: "id") {} }
         }
         cfg-node-call(profiles: [config-document]) {
-            ident(field: "word")
+            ident(same-line: true, field: "word")
             lparen(same-line: true) {}
             opt { args(field: "args") {} }
             rparen() {}
         }
+        // 节点头的 id 必须**同行**：否则 `z: mode` 的值会把下一行 `lib("a")`
+        // 吃成 `mode` 的调用尾部（实测：resolve 报 "no function named lib"）。
         cfg-node-id(profiles: [config-document]) {
-            alt { ident(field: "id") {} }
-            alt { str-lit(field: "id") {} }
+            alt { ident(same-line: true, field: "id") {} }
+            alt { str-lit(same-line: true, field: "id") {} }
         }
         cfg-node-args(profiles: [config-document], expect: "a parenthesized argument list") {
             lparen(same-line: true) {}

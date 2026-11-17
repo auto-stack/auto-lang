@@ -297,7 +297,7 @@ pub fn compile_config_document_with_injection(
     // 1) root 句柄（一份文档一个 root，顺序语义的起点）。
     let root = emit_call(&mut stmts, &mut ctx, "cfg_root", Vec::new(), doc_span)?;
     // 1b) 注入的上下文变量（用户 `var` 同名者不注入：文档声明遮蔽注入值）。
-    emit_injected(&syntax.lines, injected, &mut stmts, doc_span)?;
+    emit_injected(injected, &mut stmts, &mut ctx, doc_span)?;
     // 2) 文档行（用户 `var` 名与隐藏前缀冲突 = 具名拒绝）。
     let body = ConfigBody {
         lines: syntax.lines.clone(),
@@ -373,6 +373,8 @@ pub fn compile_config_document_with_injection(
 struct EmitCtx {
     next: usize,
     locals: std::collections::BTreeMap<String, LocalClass>,
+    /// 已声明过的文档局部（`var` 重声明 = 赋值，不是二次 `let`）。
+    declared: std::collections::BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -414,24 +416,47 @@ fn emit_line(
                 )]);
             }
             let (value, class) = emit_value(&v.value, out, ctx)?;
-            out.push(Stmt::Let {
-                kw: v.kw_span,
-                name: v.name.clone(),
-                ann: None,
-                mutable: true,
-                value,
-                span: v.span,
-            });
+            // legacy 口径：`var x` 在同一块内**可重声明**，后者生效
+            // （V-CFG-FLOW 的 `test_config_var_redeclared_takes_latest`）。
+            // 物化侧把重声明落成一次赋值，避免 `let` 重复绑定被 resolve 拒。
+            if ctx.declared.contains(&v.name.name) {
+                out.push(Stmt::Assign {
+                    target: super::ast::AssignTarget {
+                        base: v.name.clone(),
+                        path: Vec::new(),
+                    },
+                    value,
+                    span: v.span,
+                });
+            } else {
+                out.push(Stmt::Let {
+                    kw: v.kw_span,
+                    name: v.name.clone(),
+                    ann: None,
+                    mutable: true,
+                    value,
+                    span: v.span,
+                });
+                ctx.declared.insert(v.name.name.clone());
+            }
             if class != LocalClass::Scalar {
                 ctx.locals.insert(v.name.name.clone(), class);
             }
             Ok(())
         }
         ConfigLine::If(i) => {
+            // 分支体是**独立块作用域**：各自可以 `var x`（不互相成重声明），
+            // 分支里声明的名字也不泄漏到外层（块作用域语义）。
+            let outer_declared = ctx.declared.clone();
+            let outer_locals = ctx.locals.clone();
             let mut then = Vec::new();
+            ctx.declared = outer_declared.clone();
+            ctx.locals = outer_locals.clone();
             emit_body(&i.then, cur, &mut then, ctx)?;
             let els = match &i.els {
                 Some(e) => {
+                    ctx.declared = outer_declared.clone();
+                    ctx.locals = outer_locals.clone();
                     let mut stmts = Vec::new();
                     emit_body(e, cur, &mut stmts, ctx)?;
                     Some(Block {
@@ -441,6 +466,8 @@ fn emit_line(
                 }
                 None => None,
             };
+            ctx.declared = outer_declared;
+            ctx.locals = outer_locals;
             out.push(Stmt::If {
                 cond: i.cond.clone(),
                 then: Block {
@@ -550,7 +577,12 @@ fn build_node(
         }
     }
     if let Some(body) = &node.body {
+        // 节点体同样是独立块作用域（体内 `var` 不与外层互撞、不泄漏）。
+        let outer_declared = ctx.declared.clone();
+        let outer_locals = ctx.locals.clone();
         emit_body(body, &handle, out, ctx)?;
+        ctx.declared = outer_declared;
+        ctx.locals = outer_locals;
     }
     Ok(handle)
 }
@@ -743,22 +775,16 @@ impl InjectValue {
 }
 
 fn emit_injected(
-    lines: &[ConfigLine],
     injected: &[(String, InjectValue)],
     out: &mut Vec<Stmt>,
+    ctx: &mut EmitCtx,
     span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
     if injected.is_empty() {
         return Ok(());
     }
-    let mut declared = std::collections::BTreeSet::new();
-    collect_var_names(lines, &mut declared);
     let mut seen = std::collections::BTreeSet::new();
     for (name, value) in injected {
-        if declared.contains(name) {
-            // 文档自己的声明优先（legacy 里同名局部同样遮蔽注入的全局）。
-            continue;
-        }
         if !is_document_ident(name) {
             return Err(vec![document_diag(
                 "source.config-document/inject-name",
@@ -776,6 +802,8 @@ fn emit_injected(
                 span,
             )]);
         }
+        // 注入值按 legacy 语义是**可变全局**：文档后面的 `var <same>` 就是一次
+        // 重新赋值（不是二次声明），之前的引用仍看到注入值。
         out.push(Stmt::Let {
             kw: span,
             name: Ident {
@@ -783,15 +811,17 @@ fn emit_injected(
                 span,
             },
             ann: None,
-            mutable: false,
+            mutable: true,
             value: value.to_expr(span),
             span,
         });
+        ctx.declared.insert(name.clone());
     }
     Ok(())
 }
 
-/// 文档里所有 `var` 名（递归含嵌套体），用于"注入不覆盖用户声明"。
+/// 文档里所有 `var` 名（递归含嵌套体）。保留给需要枚举声明面的调用方。
+#[allow(dead_code)]
 fn collect_var_names(lines: &[ConfigLine], out: &mut std::collections::BTreeSet<String>) {
     for line in lines {
         match line {
