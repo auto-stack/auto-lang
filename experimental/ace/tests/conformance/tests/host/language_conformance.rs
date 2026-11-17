@@ -1320,7 +1320,7 @@ mod performance {
     #[test]
     #[ignore = "PLAN-889 formal release-worker timing and512-revision retained campaign; run explicitly in a serial measurement window"]
     fn ace_m1_native_collections_formal_performance_and_churn() {
-            let source =
+        let source =
             include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/N889Load.at");
         let root = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
             .join("../../docs/plans/attachments/889/baseline")
@@ -1345,7 +1345,7 @@ mod performance {
     #[test]
     #[ignore = "PLAN-889 affected fresh/restart timing repair; needs full-matrix reuse receipt"]
     fn ace_m1_native_collections_formal_cold_verifier_repair() {
-            let source =
+        let source =
             include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/N889Load.at");
         let root = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
             .join("../../docs/plans/attachments/889/baseline")
@@ -1564,5 +1564,151 @@ fn ace_m2_p977_py_wrong_oracle_is_red() {
                 && r.check_id == "py-run"
                 && r.status == Status::Pass),
         "overflow trap stays green under the localized mutation"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-977 B-REVERSE-V / AC-COVERAGE — the cover-977 six-path corpus
+// (V-COVERAGE, Plan §6): ONE public Auto source (`fn main() int { return
+// 2 + 3 * 4 }`, hand-computed expected 14) through the source-consuming
+// paths: av-native (run), ac-native (run), a2py-run (real Python, parent
+// judged), a2r-emit and a2c-emit (EMISSION locks: worker identity + byte
+// goldens; the real rustc/cl compile+run of those lanes is the explicit
+// certify axis recorded in the Plan receipt, never claimed by these
+// checks). Two controls below prove the reading can't be faked: a wrong
+// exit oracle must go RED on the exit axis, and the emit leg REFUSES an
+// exit expectation (emit cannot masquerade as run).
+// ---------------------------------------------------------------------------
+
+/// The cover-977 corpus runs END TO END green: five checks, real producers.
+#[test]
+fn ace_m2_p977_cover_suite_green() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("cover-977");
+    let report = run_suite(
+        &cases_dir.join("ace-m2/cover-977/cover-977.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("cover-977 suite runs");
+    let failing: Vec<String> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} = {:?} | {:?} | mismatches: {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(
+        failing.is_empty(),
+        "cover-977 six-path corpus has non-PASS checks:\n{}",
+        failing.join("\n")
+    );
+    assert_eq!(report.results.len(), 5, "five coverage checks");
+    for (check, _axis) in [
+        ("av-native", "run"),
+        ("ac-native", "run"),
+        ("a2py-run", "run"),
+        ("a2r-emit", "emit"),
+        ("a2c-emit", "emit"),
+    ] {
+        assert!(
+            report
+                .results
+                .iter()
+                .any(|r| r.check_id == check && r.status == Status::Pass),
+            "coverage leg `{check}` must be present and green"
+        );
+    }
+}
+
+/// Wrong-oracle RED control on the cover-977 registration: mutating the
+/// frozen exit oracle (14 -> 15) must turn the av-native leg RED naming
+/// the exit axis, while the sibling ac-native leg stays green.
+#[test]
+fn ace_m2_p977_cover_wrong_oracle_is_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("cover-977-neg");
+    let corpus = root.join("corpus");
+    copy_tree(&cases_dir.join("ace-m2/cover-977"), &corpus);
+    let doc = corpus.join("cover-977.case.ad");
+    let text = std::fs::read_to_string(&doc).unwrap();
+    let mutated = text.replacen("exit: 14", "exit: 15", 1);
+    assert_ne!(&mutated, &text, "mutation must hit the av-native oracle");
+    std::fs::write(&doc, mutated).unwrap();
+    let report = run_suite(
+        &corpus.join("cover-977.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated cover-977 suite still runs");
+    let av = report
+        .results
+        .iter()
+        .find(|r| r.check_id == "av-native")
+        .expect("av-native check present");
+    assert_eq!(av.status, Status::Fail, "wrong exit must be RED");
+    assert!(
+        av.mismatches.iter().any(|m| m.observation == "exit"),
+        "the failure must name the exit axis: {:?}",
+        av.mismatches
+    );
+    assert!(
+        report
+            .results
+            .iter()
+            .any(|r| r.check_id == "ac-native" && r.status == Status::Pass),
+        "ac-native stays green under the localized mutation"
+    );
+}
+
+/// EMIT-AS-RUN control: giving the A2R emission leg an exit expectation
+/// must be refused (named error), never silently accepted as a run
+/// observation.
+#[test]
+fn ace_m2_p977_cover_emit_cannot_masquerade_as_run() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("cover-977-emit-run");
+    let corpus = root.join("corpus");
+    copy_tree(&cases_dir.join("ace-m2/cover-977"), &corpus);
+    let doc = corpus.join("cover-977.case.ad");
+    let text = std::fs::read_to_string(&doc).unwrap();
+    let mutated = text.replacen(
+        "expect: { completion: \"success\", artifacts: [\n        { path: \"main.rs\"",
+        "expect: { completion: \"success\", exit: 14, artifacts: [\n        { path: \"main.rs\"",
+        1,
+    );
+    assert_ne!(
+        &mutated, &text,
+        "mutation must add an exit expectation to the a2r emit leg"
+    );
+    std::fs::write(&doc, mutated).unwrap();
+    let report = run_suite(
+        &corpus.join("cover-977.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated cover-977 suite still runs");
+    let emit = report
+        .results
+        .iter()
+        .find(|r| r.check_id == "a2r-emit")
+        .expect("a2r-emit check present");
+    assert_ne!(
+        emit.status,
+        Status::Pass,
+        "an emit leg given an exit expectation must NOT pass (emit cannot masquerade as run); detail: {:?}",
+        emit.detail
+    );
+    let detail = emit.detail.clone().unwrap_or_default();
+    assert!(
+        detail.contains("success completions only") || detail.contains("emit"),
+        "the refusal must be named, got: {detail:?}"
     );
 }

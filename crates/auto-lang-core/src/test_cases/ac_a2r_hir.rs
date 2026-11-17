@@ -279,6 +279,26 @@ pub fn run_check(
 
     match &oracle.completion {
         Completion::Success => {
+            // PLAN-977 AC-COVERAGE negative control: an EMISSION check must
+            // not carry run-observation expectations — emit cannot
+            // masquerade as run. Exit/stdout/stderr/AV-channel oracles are
+            // run legs (the certify op / run adapters), never this lane.
+            if oracle.exit.is_some()
+                || oracle.stdout.is_some()
+                || oracle.stderr.is_some()
+                || oracle.av_channel.is_some()
+            {
+                return Ok(Verdict {
+                    status: Status::Error,
+                    detail: Some(
+                        "a2r emit checks declare artifact expectations only \
+                         (exit/stdout/stderr/av-channel are run observations; \
+                         emit cannot masquerade as run)"
+                            .into(),
+                    ),
+                    ..Verdict::pass()
+                });
+            }
             let mut mismatches = Vec::new();
             let mut refs = Vec::new();
             let mut expected_paths: Vec<String> = Vec::new();

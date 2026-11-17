@@ -101,10 +101,10 @@ fn lower_in(src: &str, dialect: EmitDialect) -> AutoResult<(String, Vec<SourceMa
 ///
 /// 每条顶层语句的产物行原本都记语句起点行；同一语句内，若某产物行的
 /// trim 文本在原源的该语句行区间内（起点行到下一语句起点行之前）按序
-/// 找到完全相同的行（或作为该行的子串），则把该产物行改记到那一原行。
-/// 结构行（以 `{` 收尾的块头、`}`/`else` 片段）与空行不参与；被规则
-/// 改写过的行（文本变了且不再是任何原行的子串）保持语句起点行——**不猜**
-/// 近似位置。
+/// 找到完全相同的行，或（≥6 字符时）作为该行的子串，则把该产物行改记到
+/// 那一原行。结构行（以 `{` 收尾的块头、`}`/`else` 片段）与空行不参与；
+/// 被规则改写过的行（文本变了且不再是任何原行的子串）保持语句起点行——
+/// **不猜**近似位置。
 fn refine_map_with_source(src: &str, emitted: &str, map: &[SourceMapEntry]) -> Vec<SourceMapEntry> {
     if map.is_empty() {
         return Vec::new();

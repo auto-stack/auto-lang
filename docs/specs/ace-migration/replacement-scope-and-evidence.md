@@ -356,3 +356,21 @@ producer/consumer（RG-A02）：
 规范落点：[m2-web.md](m2-web.md)（A 切片接口+边界）。台账 Web 相关行
 不因 A 切片消失：全 Web API 面、AVSERVICE/GENERATED/CONSUMERS、四仓
 生产链与 T-05..07 仍 required（B 域）。
+
+## PLAN-977 增量：其余 A2X 目标与独立转换工具 producer 挂接（SD-02 挂接，2026-11-17）
+
+PLAN-977 的 PY 切片（T-01/B-PY-I/V/R，phase fold `56aadead4`）与 REVERSE 切片
+（B-REVERSE-I/V `f2606fa91`；前置 M2A-08 = PLAN-985 delivery `95c7fbad8`）已验
+producer/consumer（台账 B-03/B-08/B-09 行）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| A2PY 车道（`ace-a2x-python` AXPY1..3 + `a2x-worker run-py`：Checked HIR→确定性 Python 模块→真实 OS Python） | auto-lang `56aadead4` | implemented-verified | 标量/记录文本/集合面；观察五轴（值/stdout/短路/异常/资源）；旧 99 例字节金样属旧实现，新面按家族代表+路由台账承接并持续逐例扩充；Linux runner 归 1063 |
+| r2a 独立逆向工具（中立 `syn` 解析+自有发射；不消费 Auto 前端/AST、不经旧执行器或旧目标发射；37 例 golden 逐字节） | auto-lang `f2606fa91` | implemented-verified | 已支持形态保行为；受检面 `transpile_r2a_checked` 为**库级**具名拒绝（17 具名键+1 兜底 `lossy-marker`），CLI 命名开关归 982/REVERSE |
+| s2s 源码改写（消费旧前端；`EmitDialect::{Legacy,AceCanonical}`+行级 source map；规范产物经 ACE AV 真跑、诊断回原源行） | auto-lang `f2606fa91` | implemented-verified | Legacy 产物逐字节不变；ACE 执行面只覆盖纯 Auto 标量面；`use.py` 桥面仍归旧脚本管线 |
+| 六路径覆盖语料 `cover-977`（同一公共源 expected 14：av-native/ac-native/a2py-run 真跑；a2r/a2c 发射字节锁 + certify 轴真编译运行） | auto-lang `f2606fa91`+本批 | implemented-verified（覆盖） | AV/C、AV/Rust provider 腿用 provider 前门源（provider 身份在源内）绑定 ace-abi F0 证据；legacy A2C 绑 `a2c` 组；Linux 全部 NOT_RUN→1063 |
+
+规范落点：[m2-other-targets.md](m2-other-targets.md)（PY/REVERSE 已验接口、边界、
+覆盖矩阵与 Linux 移交审计）。台账 B-03 行证据 pin 随该 spec 更新；B-08/B-09 在
+T-06 落主后由 `inflight` 翻 `landed`。本节只挂接来源，不改 SD-01 分类口径；
+未闭项（s2s→ACE 记录面、r2a CLI 拒绝面、Linux 腿）具名于该 spec。

@@ -114,6 +114,8 @@ mod tsready_976;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
 
+#[path = "cases/p977_cover_certify.rs"]
+mod p977_cover_certify;
 #[path = "cases/p977_py_public_surface.rs"]
 mod p977_py_public_surface;
 #[path = "cases/pyready_1042.rs"]
