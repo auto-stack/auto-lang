@@ -100,7 +100,7 @@ pub(crate) struct Frozen {
     pub e78: Vec<DocHash>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SegmentMeta {
     pub stage: String,
     pub platform: String,
@@ -1047,6 +1047,20 @@ pub(crate) fn compare_frozen(frozen: &Frozen, actual: &Frozen) -> Vec<String> {
         ));
     }
 
+    // F-1066A-R2: the family-level A/B/platform/ignore/actual-source
+    // mapping is itself a frozen obligation — an edited segment must not
+    // keep the integrity gate green.
+    if frozen.segments != actual.segments {
+        for fam in ["vm", "a2r", "a2c", "a2ts", "cookbook"] {
+            if frozen.segments.get(fam) != actual.segments.get(fam) {
+                errs.push(format!(
+                    "segment[{fam}] meta differs: frozen {:?} != actual {:?}",
+                    frozen.segments.get(fam),
+                    actual.segments.get(fam)
+                ));
+            }
+        }
+    }
     for family in ["vm", "a2r", "a2c", "a2ts", "cookbook"] {
         let fr: BTreeMap<&str, &NRow> = frozen
             .n_rows
@@ -1294,6 +1308,11 @@ pub(crate) fn verify_receipt(r: &ARReceipt) -> Result<(), Vec<String>> {
     }
     if r.engine.trim().is_empty() || r.engine_class.trim().is_empty() {
         errs.push("engine identity missing (every actual must record its engine)".into());
+    }
+    // F-1066A-R1: an empty selection signs nothing — vacuous receipts must
+    // not verify (plan §5 A-EVIDENCE lists 空选择 among what cannot sign A).
+    if r.checks.is_empty() {
+        errs.push("empty selection cannot sign A (no check evidence)".into());
     }
     let failed_children: Vec<&ChildRun> = r.children.iter().filter(|c| !c.ok).collect();
     for c in &r.checks {
@@ -1640,6 +1659,15 @@ fn plan1066_nc_a1_denominator_tamper_rejected() {
         "dropped P assertion must be rejected, got: {errs:?}"
     );
 
+    // (f) tampered family segment metadata (A/B/actual-source mapping).
+    let mut m = frozen.clone();
+    m.segments.get_mut("vm").unwrap().stage = "A".into();
+    let errs = compare_frozen(&m, &actual);
+    assert!(
+        errs.iter().any(|e| e.contains("segment[vm] meta differs")),
+        "edited segment meta must be rejected, got: {errs:?}"
+    );
+
     let mut m = frozen.clone();
     m.s11.pop();
     m.c_verify.pop();
@@ -1970,6 +1998,15 @@ fn plan1066_nc_a4_receipt_verification() {
     let errs = verify_receipt(&r).expect_err("missing channel");
     assert!(
         errs.iter().any(|e| e.contains("observed channels")),
+        "{errs:?}"
+    );
+
+    // (g) empty selection signs nothing (F-1066A-R1).
+    let mut r = genuine.clone();
+    r.checks.clear();
+    let errs = verify_receipt(&r).expect_err("empty selection");
+    assert!(
+        errs.iter().any(|e| e.contains("empty selection")),
         "{errs:?}"
     );
 
