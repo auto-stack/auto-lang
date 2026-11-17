@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 0
+current_step: 1
 total_steps: 13
 depends_on: [PLAN-1062]
 supersedes_spec_components: [docs/specs/auto-test-case/document-migration-closure.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/module-selection.md]
@@ -1795,7 +1795,7 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 | [ ] | T-01/work | A：后续实施指令/原集合；B：源漂移复核 | 建唯一树/scope；同源重冻S/N/P/C/E78、cache506/8脚本、B108/6多源实选，旧Git/实际发现/注册/构造消费者和1170原角色/ledger/依赖，1050逐项完整hash；记录增量，不调用隐式prepare作只读发现；V-01/AC-01  本轮阶段：A冻结基线＋B漂移复核；片段完成不勾整项。 |
 | [ ] | T-02/work | A：T-01[A]；B：T-01完整冻结 | 冻结共享doc视图、五根资格/E78/缓存与cookbook绑定、public structs兼容/原身份module参数、source-dir/path与actual；落实§5.2 v2及§5.3精确ignored编译接线/唯一proposal共享接口；S/P能力审计和各族小例，不闭门不做依赖项；AC-02/04/05/06  本轮阶段：A正确性子面；完整迁移接口B；片段完成不勾整项。 |
 | [ ] | T-03/work | A：T-02[A]；B：T-02[B]所用接口 | test_runner+entry四族+sys_env/runners切doc；补N0028/N0030原result、九项空H判据；VM缓存is_script/载荷、cookbook108选择与诊断输出切doc/scope，原名字/module/失败数/排序/条件保；运行局部NC-02～07/21～24。此任务关运行接线，治理v2和最终V-11由T-08/09/10完成，不提前认领全局门；AC-02  本轮阶段：A两个result/空H/必要实际消费者；N/caches/cookbook全量切换B；片段完成不勾整项。 |
-| [ ] | T-04/work | B：T-02[B]（不作A前置） | scheduler recipe author准入/双流诊断规则、11源/expect内联；v2/actual/控制后切suite唯一include，保持ID和75组旧身份；NC-08/09；AC-03  本轮阶段：B-FORMAT；片段完成不勾整项。 |
+| [x] | T-04/work | B：T-02[B]（不作A前置） | scheduler recipe author准入/双流诊断规则、11源/expect内联；v2/actual/控制后切suite唯一include，保持ID和75组旧身份；NC-08/09；AC-03  **[✅ 2026-11-17]** 载体 `scheduler.document.case.ad`（11例，源/期望逐字节由冻结件生成）+ suite 唯一include切换（aba42ca3a）；真门 `cargo t case-ace-m2-scheduler-968` 11/11 PASS、旧fence镜像↔新doc逐行等价（id/check/status/detail+source/oracle内容哈希11/11同，仅suite/case_file/contract结构轴按已记录口径漂移）；NC-08 常驻（`plan1066-s-doc-controls` 组，case-parent+av 显式工具，6控5.1s，单轴具名红+clean镜像11/11绿）、NC-09 常驻（`scripts/test-governance/document_case_active_scan.py` + `infra-fixed` 2测，真树76组/183文件全document、0 fence/0 unknown，陈旧fence/新增旧组/投毒各具名定位）；另记 master 既有红：`infra-fixed::test_ace_set_is_explicit_and_separate_from_daily`（PLAN-969 278b91204 加 `ace-facade` 未更新断言，基面 7c131286d 即红，非本任务）|
 | [ ] | T-05/work | B：T-02[B]（不作A前置） | 两份main.project.case.ad内联5源，19期望有限exists/contains+源闭包/受管物化；两旧Rust test转doc消费者，不依赖旧工程文件；NC-10～12；AC-04  本轮阶段：B-FORMAT；片段完成不勾整项。 |
 | [ ] | T-06/work | B：T-02/03/08所用正式子面；不作T-09[A]前置 | 原250编译子项doc源+M三个手动guard/6份doc Rust产物；显式准备真实rustc/stub+source-bound收据/产物、原始exit/stderr重判及M真实guest/参考判据；全部scope独占输出，a2r-compile/M精确ignored重放、旧身份/ledger/ignore保；NC-13～15/26/27；AC-05  本轮阶段：B-COMPILE；片段完成不勾整项。 |
 | [ ] | T-07/work | A：T-01/02的写入边界；B：T-02[B]完整proposal接口 | 普通bootstrap退出注册/旧读写；显式conformance-proposal读30 doc、scope候选与错误；33验证及trim保；conformance wrong/cookbook GENERATE_EXPECTED旁路不得写作者根；NC-16～18/25；AC-06  本轮阶段：A-NOWRITE；完整proposal/全旁路迁移B；片段完成不勾整项。 |
@@ -1904,6 +1904,20 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: partial（T-04 �
 **同机资源**：本轮起跑前观测到 977/1067/727 等旁会话 cargo/nextest 构建并发；S 门与侧跑均在真实竞争下完成，已按实测记录（准备/执行分列）。
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 1 | from: work | to: work | status: executing | outcome: partial（T-04 载体迁移+等价+NC-08/09 scope 实证已交 aba42ca3a；常驻控接线与 T-03[B] 起未开） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: aba42ca3a | next: work（B 期继续：常驻 NC-08/09 接线 → T-03[B] doc-only 发现/执行切换）
+
+### 2026-11-17 B 期 work（round 2）：T-04 关闭——NC-08/09 常驻化落地
+
+stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-04 整项关闭，13任务 1/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | base: 7c131286d | code_commits: aba42ca3a（载体）+ 1aea0ef5e（常驻门） | dependency_revisions: 无跨仓 | task_ids: T-04 | next_responsible_role: work（T-03[B]）
+
+**NC-09 常驻（治理扫描，纯只读）**：新 `scripts/test-governance/document_case_active_scan.py`（`scan(root)`：读 test-groups.toml 每组真 suite → include → 逐个分类 document/fence/unknown，报 group/suite/case；`report()` 人读；CLI 非零退出）。`scripts/tests/test_fixed_groups.py` 新增 `ActiveDocumentCaseEntries` 2 测（0.068s）：①真树 `fence=0/unknown=0/offenders=[]/missing=[]` 且 groups≥76、files≥183（防空跑绿）；②临时树镜像控——文档式绿、陈旧 fence include 报 `OFFENDER[fence] group=case-stale suite=... case=...`、投毒文件报 `[unknown]`、缺 include 报 `missing`。归 `infra-fixed`（日常 python 组）。
+
+**NC-08 常驻（真 consumer CLI 级）**：新 `scripts/tests/test_plan1066_case_doc_controls.py`（6 测，实测 5.14s，单测 ≤1.5s）+ 显式 ACE 组 `plan1066-s-doc-controls`（runner=python、domain=ace、tools=[case-parent,av]、all=false，登记于 `scripts/test-groups.toml`）：clean 镜像与真文档逐字节同且 11/11 绿；五个单轴变异各具名红——`final-newline: false`→`stdout[bytes] mismatch`、stderr 非空→`stderr[bytes] mismatch`、exit 0→1→`exit[exit] mismatch`、S09 code 错→`code[code] mismatch`、S11 message 不命中→`message[...] mismatch`；每控断言变异不泄漏到邻例（其余 10 例全 PASS）。`cargo t plan1066-s-doc-controls` → PASS（executed 6、skipped 0、failures 0；wall 26.37s 含工具身份复检，用例本体 5.14s）。组为显式（all=false），不进日常。
+
+**同轮门与既有红归属**：`cargo t infra-fixed` 70 测 4.04s，唯一失败 `test_ace_set_is_explicit_and_separate_from_daily`（期望 3 组，实得含 `ace-facade`）——静态归属 PLAN-969 提交 278b91204 把 `ace-facade` 加进 `ace` 集合却未更新断言；该断言在基面 7c131286d 的测试文本与 toml 集合已互相矛盾（`git show 7c131286d:scripts/tests/test_fixed_groups.py:281` vs 同提交 toml `ace = [... "ace-facade"]`），故为**基面既有红，非本任务引入**；本轮新增 2 测在该次运行内通过。未在本树修（属 969 面，需各自 fix worktree），供 T-11 联合门前处置/通知用户。
+
+**AC-03 证据（S）**：①S11 原实际值——11/11 真实 consumer PASS，逐例 duration_ms 351–672；②完整 v2 无损——新 doc 11 例投影与冻结 fence 件逐行等价，`identity.source`/`identity.oracle` 11/11 内容哈希相同，native counters/toolchain 相同；③正常 suite 全 doc——真树 76 组/183 include 文件 100% document（扫描常驻）；④其他已迁身份保持——本任务 diff 仅 scheduler 目录 + 治理/组登记，其余 75 组文件零改动。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 2 | from: work | to: work | status: executing | outcome: pass（T-04 关闭：载体 aba42ca3a + 常驻 NC-08/09 1aea0ef5e；13任务 1/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 1aea0ef5e | next: work（T-03[B] N 四族 doc-only 发现/执行切换）
 
 ## 10. 待澄清事项
 
