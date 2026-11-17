@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 1
+current_step: 2
 total_steps: 13
 depends_on: [PLAN-1062]
 supersedes_spec_components: [docs/specs/auto-test-case/document-migration-closure.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/module-selection.md]
@@ -1794,7 +1794,7 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 |---|---|---|---|
 | [ ] | T-01/work | A：后续实施指令/原集合；B：源漂移复核 | 建唯一树/scope；同源重冻S/N/P/C/E78、cache506/8脚本、B108/6多源实选，旧Git/实际发现/注册/构造消费者和1170原角色/ledger/依赖，1050逐项完整hash；记录增量，不调用隐式prepare作只读发现；V-01/AC-01  本轮阶段：A冻结基线＋B漂移复核；片段完成不勾整项。 |
 | [ ] | T-02/work | A：T-01[A]；B：T-01完整冻结 | 冻结共享doc视图、五根资格/E78/缓存与cookbook绑定、public structs兼容/原身份module参数、source-dir/path与actual；落实§5.2 v2及§5.3精确ignored编译接线/唯一proposal共享接口；S/P能力审计和各族小例，不闭门不做依赖项；AC-02/04/05/06  本轮阶段：A正确性子面；完整迁移接口B；片段完成不勾整项。 |
-| [ ] | T-03/work | A：T-02[A]；B：T-02[B]所用接口 | test_runner+entry四族+sys_env/runners切doc；补N0028/N0030原result、九项空H判据；VM缓存is_script/载荷、cookbook108选择与诊断输出切doc/scope，原名字/module/失败数/排序/条件保；运行局部NC-02～07/21～24。此任务关运行接线，治理v2和最终V-11由T-08/09/10完成，不提前认领全局门；AC-02  本轮阶段：A两个result/空H/必要实际消费者；N/caches/cookbook全量切换B；片段完成不勾整项。 |
+| [x] | T-03/work | A：T-02[A]；B：T-02[B]所用接口 | test_runner+entry四族+sys_env/runners切doc；补N0028/N0030原result、九项空H判据；VM缓存is_script/载荷、cookbook108选择与诊断输出切doc/scope，原名字/module/失败数/排序/条件保；运行局部NC-02～07/21～24。此任务关运行接线，治理v2和最终V-11由T-08/09/10完成，不提前认领全局门；AC-02  **[✅ 2026-11-17]** 四族发现/执行均以 `<stem>.case.ad` 为唯一作者源（72d7c2bd3）；VM cache `is_script` 由文档路径判定、cookbook108 选唯一文档且 oracle=`cookbook-stdout`、`.wrong.*` 全部转 `diag_scope`；载荷等价证明 1060 源 + 663 artifact + 556 check oracle 与冻结 sidecar 逐字节相同（4 个 `a2r/22_actors/*.expected.out` 属 a2r-actor-tests 外消费者，非 N oracle）；逐例 actual：a2r 351 项 1 红、a2c 118 项 8 红、a2ts 85 项 85 红（§D-1066-IGNORED-CORPUS-DRIFT / A2TS-GOLDEN，均被 `#[ignore]` 掩盖的既有漂移，同输入同 oracle 旧路径同样红）；NC-02..07/21/22/23/24 常驻控 9+2 测 1.16s（镜像 doc-only、删文档硬错、sidecar 污染无关、双通道 result 轴、bootstrap 规则/正文、空H 角色 vs header 轴、族 artifact 词汇不串、E78 键集边界、`.as` 诱饵/cookbook 001_* 选择）；`cargo t vm corpus` PASS 1137/0、child_validation valid；runner 全量重放遇 CWD 敏感挂起→§D-1066-SHIM-CWD-HANG（以镜像/路由等价 + wrapper 全量绿取证，不冒 shim 全量 PASS）|
 | [x] | T-04/work | B：T-02[B]（不作A前置） | scheduler recipe author准入/双流诊断规则、11源/expect内联；v2/actual/控制后切suite唯一include，保持ID和75组旧身份；NC-08/09；AC-03  **[✅ 2026-11-17]** 载体 `scheduler.document.case.ad`（11例，源/期望逐字节由冻结件生成）+ suite 唯一include切换（aba42ca3a）；真门 `cargo t case-ace-m2-scheduler-968` 11/11 PASS、旧fence镜像↔新doc逐行等价（id/check/status/detail+source/oracle内容哈希11/11同，仅suite/case_file/contract结构轴按已记录口径漂移）；NC-08 常驻（`plan1066-s-doc-controls` 组，case-parent+av 显式工具，6控5.1s，单轴具名红+clean镜像11/11绿）、NC-09 常驻（`scripts/test-governance/document_case_active_scan.py` + `infra-fixed` 2测，真树76组/183文件全document、0 fence/0 unknown，陈旧fence/新增旧组/投毒各具名定位）；另记 master 既有红：`infra-fixed::test_ace_set_is_explicit_and_separate_from_daily`（PLAN-969 278b91204 加 `ace-facade` 未更新断言，基面 7c131286d 即红，非本任务）|
 | [ ] | T-05/work | B：T-02[B]（不作A前置） | 两份main.project.case.ad内联5源，19期望有限exists/contains+源闭包/受管物化；两旧Rust test转doc消费者，不依赖旧工程文件；NC-10～12；AC-04  本轮阶段：B-FORMAT；片段完成不勾整项。 |
 | [ ] | T-06/work | B：T-02/03/08所用正式子面；不作T-09[A]前置 | 原250编译子项doc源+M三个手动guard/6份doc Rust产物；显式准备真实rustc/stub+source-bound收据/产物、原始exit/stderr重判及M真实guest/参考判据；全部scope独占输出，a2r-compile/M精确ignored重放、旧身份/ledger/ignore保；NC-13～15/26/27；AC-05  本轮阶段：B-COMPILE；片段完成不勾整项。 |
@@ -1932,6 +1932,22 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: partial（T-03[B
 **本族既有红/债务（不代修、不充 PASS）**：①a2ts 85 例金样早于当前 emit（`console.log`→`globalThis.console.log`），整族显式重放统一 `transpiler output mismatch` 且全 `#[ignore]`——记 D-1066-A2TS-GOLDEN（改写期望需用户许可）；②治理 input inventory 以 `source_state:"unknown"` 收据复用陈旧 auto-case（实测造成假红，删收据重建后 PASS）——记 D-1066-STALE-TOOL-RECEIPT；③`infra-fixed` 的 ace-facade 基面红记 D-1066-INFRA-FIXED-ACE-FACADE。另见 `KNOWN-DEBT` 既有 D-1037-01（ac-semantics 文档语料缺 `status: executed` 谓词，owner 记 1062/1066）——下一轮按 1066 owner 处置。
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 3 | from: work | to: work | status: executing | outcome: partial（T-03[B] 主体 72d7c2bd3 + T-08 首片 250b93e49；vm corpus 门 PASS 1137/0；13任务仍 1/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 250b93e49 | next: work（NC-07/22/23/24 + 四 shim 1050 重放 → 再 T-05/T-06）
+
+### 2026-11-17 B 期 work（round 4）：T-03 关闭——余下负控 + 载荷/逐例证据
+
+stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-03 整项关闭，13任务 2/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | code_commit: 9bd255fbc | dependency_revisions: 无跨仓 | task_ids: T-03 | next_responsible_role: work（T-05/T-06）
+
+**余下负控（常驻，`crates/auto-lang/src/tests/plan1066_b_slice.rs`）**：NC-06 bootstrap 规则=原 `99_bootstrap` 类目、文档正文被 prepend、改正文即红；NC-07 族 artifact 词汇不串（a2c 仅 .c/.h、a2ts 仅 .ts、a2r 仅 .rs、cookbook 有 VM oracle 时必须 `cookbook-stdout` 而非 Rust 面）；NC-22 空 H 零字节角色仍过（9 例）且 header 轴独立判红（`C header mismatch`，与 `.c` 同次转译分轴）；NC-23 E78 为键集非计数（N∩E78=∅、五根全部文档恰好分类一次、挪一个边界文档进 N 必须具名重复）；NC-24 `.as` 诱饵（删 frozen `.as`、放诱饵 `.at`）后虚拟源仍 `.as`、模式由文档定、镜像判定与仓库判定逐轴相同且诱饵正文从未执行；cookbook 六个多源目录选 `001_*` 文档。B 片共 10 测（含 2 个显式工具），活动 8 测 0.87s + bootstrap 0.29s；全套 plan1066 14 passed/3 ignored，1.66s。
+
+**载荷等价（关键证据，`plan1066_b_payload_proof` 工具 + scope 比对）**：用产品解码器逐项取文档源/内联 artifact/check oracle 的 sha256，与冻结 sidecar 比对——**1060/1060 源、663/663 artifact、556/556 check oracle 全部逐字节相同**；4 个 `a2r/22_actors/*.expected.out` 属 `crates/a2r-actor-tests` 外消费者（`actor_parity.rs` 具名读取），不列入 N oracle（NC-07 反证）。故文档权威改变的是「谁读」，不是「读到的值」。
+
+**逐例 actual（`plan1066_b_family_actuals` 工具，V-02）**：a2r 351 项（250+101 cookbook）1 红 `a2r/16_interop/024_nested_async_await`；a2c 118 项 8 红（field_access 类型错、const_generics/array_nested/list_iter C mismatch、array_zero_size 编译拒等）；a2ts 85 项 85 红（金样早于 `globalThis.console` emit）。三者逐例 wrapper 日常均 `#[ignore]`；同输入同 oracle 下旧 sidecar 路径判红相同（载荷等价已证），故为既有漂移、非迁移回归——登记 D-1066-IGNORED-CORPUS-DRIFT（a2r/a2c）与 D-1066-A2TS-GOLDEN，不充 PASS。
+
+**V-03 shim 取证与边界**：`test/runners/{vm,a2r,a2c,a2ts}_tests.at` 四 shim 调用的就是被切换的 entry（`sys_env` 不改代码、只改其下游）；以镜像/路由等价控（NC-02..06/24）证明 shim 下游判定与仓库判定逐轴一致。全量 runner 重放（`test_file("test/runners/vm_tests.at")`，CWD=工作区根）推进到 2218 行后在 `99_plan230/001_struct_f64` 之后停住 >20min，另有 `99_p588debt/{002,003}` stdout mismatch——CWD/path 通道敏感，1066 前即存在，记 D-1066-SHIM-CWD-HANG，未以 wrappr 绿冒充 shim 全量绿。
+
+**门**：`cargo t vm corpus` **PASS**（executed 1137、0 errors、child_validation valid、wall 50.2s）。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 4 | from: work | to: work | status: executing | outcome: pass（T-03 关闭：载荷 1060/663/556 全等 + 9 负控 + 逐例 actual；13任务 2/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 9bd255fbc | next: work（T-05 P 两工程 doc 化 → T-06 250 编译 doc 源）
 
 ## 10. 待澄清事项
 

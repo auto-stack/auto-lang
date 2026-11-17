@@ -4742,3 +4742,19 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 现象：auto-vscode 无自动化 editor-host harness，本环境无 VS Code 运行器；仅完成只读接线审计（wrapper spawn/`documentSelector auto`/stdio transport）与服务器真二进制协议面核验。
 - owner：auto-vscode 仓；关闭条件：该仓提供可复跑的 editor-host 测试（启动真实扩展+auto-lsp，覆盖诊断/跳转/悬停各一次）。
 - 状态：open（外仓，不阻塞本包）。
+
+## D-1066-SHIM-CWD-HANG — runner 全量重放的 CWD 敏感挂起（2026-11-17 PLAN-1066 T-03[B] V-03 登记，非本包引入）
+
+- 现象：以 `auto_lang_core::test_file("test/runners/vm_tests.at")` 从工作区根重放 VM shim（`Test.run_vm_dir`）时，2218 行逐例输出后停在 `99_plan230/001_struct_f64` 之后不再推进（>20 分钟无新行，已 kill）；同批 `99_p588debt/002_str_return_fn`、`003_operand_shapes` 报 `stdout mismatch`。日常 wrapper（`tests::vm_file_tests::test_vm`，cache+`run_with_capture`）同语料全绿、`cargo t vm corpus` PASS。
+- 归因：shim 路径走 `entry::run_vm_file_test`（`run_with_capture_and_path`，带模块解析/硬化门控通道）且按 runner 的根相对路径运行（CWD=工作区根），与 wrapper 的 CWD（crate 根）+ 无 path 通道不同；以上差异在 1066 前即存在（旧 shim 读同一 `.at` 字节、同一 path 通道），故属既有环境/CWD 敏感差，不是文档迁移回归。载荷等价已独立证明（1060 源/663 artifact/556 check oracle 与冻结 sidecar 逐字节同）。
+- 归属：VM shim/runner 线（sys_env `Test.run_*_dir` 与 runner 运行约定）；1066 只证明文档权威不改变该路由判定（NC-24 路由等价控）。
+- 关闭条件：给出 runner 的确定运行约定（固定 CWD 或 path 通道语义）并对 CWD 敏感例给出具名 expect-red/隔离；全量重放可完成且逐例 actual 可归档。
+- 状态：open（不阻塞 T-03 文档权威交付；V-03 以镜像/路由等价控 + wrapper 全量绿取证）。
+
+## D-1066-IGNORED-CORPUS-DRIFT — 被 `#[ignore]` 掩盖的 a2r/a2c 逐例 actual 漂移（2026-11-17 PLAN-1066 T-03[B] V-02 登记）
+
+- 现象（文档权威下逐例 actual，载荷已证与冻结 sidecar 逐字节等价）：a2r 351 项（250 a2r + 101 cookbook）中 1 红 `a2r/16_interop/024_nested_async_await: transpiler output mismatch`；a2c 118 项中 8 红（`05_expressions/002_field_access` 类型错、`08_generics/001_const_generics`、`10_collections/008_array_nested`、`012_list_iter`、`10_collections/009_array_zero_size` 编译拒、`23_stdlib/015_hashmap`、`016_hashset`、`25_type_checking/001_type_error` 等）；这些逐例 wrapper 均 `#[ignore]`，日常门不执行。
+- 归因：既有 actual 与冻结金样漂移（与 a2ts 同族，见 D-1066-A2TS-GOLDEN），非 1066 引入（同输入同 oracle 下旧路径同样判红）。
+- 归属：a2r/a2c 语料 owner（金样或 emit 二选一，改写期望须用户显式许可）。
+- 关闭条件：具名处置每一条（修 emit 或授权重生成金样），并在显式重放中该族全绿；不得仅因被忽略而冒充 PASS。
+- 状态：open。
