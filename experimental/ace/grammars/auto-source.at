@@ -1748,14 +1748,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             colon(same-line: true)
             cfg-pair-value(field: "value")
         }
-        cfg-json-key(profiles: [config-document]) {
+        // 文档键：标识符、字符串字面量，**以及保留字**（真实 pac.at 会把
+        // `tag`／`type` 这类清单词当键用；键位置是文档语义、不是语句关键字）。
+        // 982/CONFIG 的语料缺口（`static-unknown-node-content.pac.at`）。
+        cfg-doc-key(profiles: [config-document]) {
             alt { ident(field: "key") {} }
             alt { str-lit(field: "key") {} }
+            alt { r-tag(field: "key") {} }
+            alt { type-kw(field: "key") {} }
+        }
+        cfg-json-key(profiles: [config-document]) {
+            cfg-doc-key(field: "key")
         }
         // `key: value`／`key: node(…) { … }`（节点值**必须**带体：无体的
         // `k: f(…)` 是普通调用表达式，交给 expr 备选）。
         cfg-pair(profiles: [config-document], expect: "a `key: value` document pair") {
-            ident(field: "key")
+            cfg-doc-key(field: "key")
             colon(same-line: true)
             cfg-pair-value(field: "value")
         }
