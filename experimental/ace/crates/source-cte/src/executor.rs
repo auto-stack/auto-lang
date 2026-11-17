@@ -54,9 +54,10 @@ pub struct CtExecOutcome {
 }
 
 /// Why an execution failed. `av_reached` distinguishes the attempt
-/// accounting: a failure AFTER the AV was reached (trap/resource/cancel)
-/// is still a REAL ct_execute attempt (the §5.8 rule); a failure before
-/// it (frontend/lowering/admission) is not.
+/// accounting: a failure AFTER the AV was reached (trap/resource/cancel,
+/// and a publication failure after a successful execution) is still a
+/// REAL ct_execute attempt (the §5.8 rule); a failure before it
+/// (frontend/lowering/admission) is not.
 #[derive(Clone, Debug)]
 pub struct CtExecError {
     pub code: String,

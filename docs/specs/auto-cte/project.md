@@ -26,6 +26,15 @@ AV 驱动的有限 CTE（compile-time evaluation）查询与冻结缓存闭环�
 text/record 运行值、任意 IO/env/时间/随机/网络/FFI、JIT、发布器、自举。只读消费
 796/798/783/ac-core 公开 API；MIR/AV 接口零复制（无第二套推导/执行器）。
 
+## 观察事实分账（PLAN-1037）
+
+执行成功后发布失败仍保持 `av_reached=true`：尝试（`ct_execute` 与执行边界日志的
+`ok` 条目）、发布（`ct_freeze_publishes`）、命中（`ct_hits`）与语言结果分开记账，
+失败发布不重跑 AV、不写页；未写的页不产生幻觉命中，下一次请求真实重执行，修复发布
+后的 hit 才闭环。AV 前拒绝（前门/准入/`forbid_av` 冷 miss）保持 `false`。
+命名实参与位置/移动实参同属一条 `Arg.value` 子树：发现、闭包、meta、替换、查点与
+产品回灌按同一顺序遍历。
+
 ## 验证
 
 `powershell -File scripts/verify-ac-cte-817.ps1 -Scope <scope>`

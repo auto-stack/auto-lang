@@ -1630,6 +1630,449 @@ fn t10_original_scale_baseline_with_ct_demand() {
     );
 }
 
+// -- PLAN-1037: named-argument CT subtree + post-execution publish facts -----
+
+use crate::envelope::{CtExecutedV1, EnvelopeError};
+use crate::identity::ExecKey;
+use crate::store::CtEnvelopeSink;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+/// 独立 AST 收集器（测试侧 oracle，不复用被测遍历）：Pos/MovePos/Named 三种
+/// 实参值位都算同一条 Arg.value 子树。
+fn arg_value_expr(a: &ace_core::source::ast::Arg) -> &ace_core::source::ast::Expr {
+    match a {
+        ace_core::source::ast::Arg::Pos(e) | ace_core::source::ast::Arg::MovePos(e) => e,
+        ace_core::source::ast::Arg::Named { value, .. } => value,
+    }
+}
+
+fn collect_hash_spans(e: &ace_core::source::ast::Expr, out: &mut Vec<(u64, u64)>) {
+    use ace_core::source::ast::ExprKind as K;
+    if matches!(e.kind, K::HashExpr { .. }) {
+        out.push((e.span.start as u64, e.span.end as u64));
+        return;
+    }
+    match &e.kind {
+        K::Call { args, .. } | K::Method { args, .. } | K::MethodCall { args, .. } => {
+            for a in args {
+                collect_hash_spans(arg_value_expr(a), out);
+            }
+        }
+        K::CallValue { callee, args } => {
+            collect_hash_spans(callee, out);
+            for a in args {
+                collect_hash_spans(arg_value_expr(a), out);
+            }
+        }
+        K::Binary { lhs, rhs, .. } => {
+            collect_hash_spans(lhs, out);
+            collect_hash_spans(rhs, out);
+        }
+        K::Unary { operand, .. } => collect_hash_spans(operand, out),
+        K::Field { base, .. } => collect_hash_spans(base, out),
+        K::Index { base, index } => {
+            collect_hash_spans(base, out);
+            collect_hash_spans(index, out);
+        }
+        _ => {}
+    }
+}
+
+/// The hash sites of the statement shapes these cases use (return/expr-stmt/
+/// let/assign). A served product must report none; an unserved one reports
+/// the demand the CT lane has to answer.
+fn program_hash_spans(p: &Program) -> Vec<(u64, u64)> {
+    let mut out = Vec::new();
+    for item in &p.items {
+        if let Item::Fn(f) = item {
+            for s in &f.body.stmts {
+                match s {
+                    Stmt::Return { value, .. }
+                    | Stmt::ExprStmt { value, .. }
+                    | Stmt::Let { value, .. }
+                    | Stmt::Assign { value, .. } => collect_hash_spans(value, &mut out),
+                    _ => {}
+                }
+            }
+        }
+    }
+    out
+}
+
+/// CT-01: a `#{ }` in a NAMED argument is the SAME Arg.value subtree as Pos/
+/// MovePos — discovery, inner-first nested demand, meta selector, substitution
+/// and product backfill traverse it; the served value is 3 and the AV end
+/// observes 3 in both arg shapes. Leaving the subtree unserved is a controlled
+/// rejection (`source.cte.unserved`), never a silent pass.
+#[test]
+fn audit1037_ct_01_named_argument_subtree_is_served_and_backfilled() {
+    let started = std::time::Instant::now();
+    const NAMED: &str = "\
+fn id(x int) int {
+    return x
+}
+fn main() int {
+    return id(x: #{ 1 + 2 })
+}
+";
+    const POS: &str = "\
+fn id(x int) int {
+    return x
+}
+fn main() int {
+    return id(#{ 1 + 2 })
+}
+";
+    // 1) Before serving: the independent collector finds the single real
+    //    demand in the NAMED value position; the CT face binds it (inner type,
+    //    CT depth) and the typecheck walk rejects it by name — a hash is never
+    //    a runtime expression and never silently accepted.
+    let unserved = parse_ct(NAMED, false);
+    let unserved_spans = program_hash_spans(&unserved);
+    assert_eq!(
+        unserved_spans.len(),
+        1,
+        "the named-argument hash is a real CT site"
+    );
+    let caps = ct_caps();
+    let resolved = ace_core::source::resolve_with(&unserved, &caps, SourceProfile::Scalar)
+        .expect("the CT face binds the named-argument hash at CT depth");
+    let ds = ace_core::source::typecheck_with(&resolved, SourceProfile::Scalar)
+        .expect_err("an unserved named-argument hash is rejected by the typecheck walk");
+    assert!(
+        ds.iter().any(|d| d.code == "source.cte.unserved"),
+        "the typecheck walk names the unserved demand, got {ds:?}"
+    );
+
+    // 2) Served: Named and Pos are the same subtree — value 3, no residual
+    //    hash in the product, and the AV end observes 3.
+    for src in [NAMED, POS] {
+        let mut svc = CtService::new(MemoryEnvelopeSink::new());
+        let p = compile_scalar_ct(&mut svc, src, "m.at", &caps, "pkg", "mod")
+            .expect("the argument-value hash serves in both arg shapes");
+        assert_eq!(svc.counters().ct_execute, 1, "one real AV execution");
+        assert_eq!(svc.counters().ct_hits, 0);
+        assert!(
+            program_hash_spans(&p.program).is_empty(),
+            "the backfilled product carries no unserved hash"
+        );
+        assert_eq!(p.served.values.len(), 1, "one served site");
+        assert_eq!(p.served.values.values().next(), Some(&CtValue::I32(3)));
+        let mut served_spans = p.served.values.keys().copied().collect::<Vec<_>>();
+        served_spans.sort_unstable();
+        let mut expected = program_hash_spans(&parse_ct(src, false));
+        expected.sort_unstable();
+        assert_eq!(
+            served_spans, expected,
+            "the served site is exactly the demand span the independent collector finds in this source"
+        );
+        let (v, _) = crate::executor::run_entry_on_av(
+            &p.checked,
+            "d_main",
+            61,
+            &ace_av_core::ExecLimits::default(),
+            &ace_av_core::CancelFlag::new(false),
+        )
+        .expect("AV end observes the backfilled module");
+        assert_eq!(v, ace_av_core::contract::Value::I32(3));
+    }
+
+    // 3) A nested demand inside a named argument is served inner-first; the
+    //    literal inner runs no AV, the outer call runs one, value 3.
+    const NESTED: &str = "\
+fn inc(x int) int {
+    return x + 1
+}
+fn main() int {
+    return #{ inc(x: #{ 2 }) }
+}
+";
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p = compile_scalar_ct(&mut svc, NESTED, "m.at", &caps, "pkg", "mod")
+        .expect("a nested demand inside a named argument is served inner-first");
+    assert_eq!(svc.counters().ct_execute, 1, "the outer call runs one AV");
+    assert_eq!(p.served.values.len(), 2, "both sites hold frozen values");
+    assert!(
+        p.served.values.values().any(|v| *v == CtValue::I32(2)),
+        "the nested named-argument site is served"
+    );
+    assert!(
+        p.served.values.values().any(|v| *v == CtValue::I32(3)),
+        "the enclosing site is served"
+    );
+    assert!(program_hash_spans(&p.program).is_empty());
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        62,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v, ace_av_core::contract::Value::I32(3));
+
+    // 4) A meta selector in a named argument evaluates locally (no AV for the
+    //    selector) and becomes the real arg: 2 + 40 = 42.
+    const META: &str = "\
+type Pair {
+    x int
+    y int
+}
+fn sum(a int, b int) int {
+    return a+b
+}
+fn main() int {
+    return #{ sum(b: 40, a: ct_field_count(Pair)) }
+}
+";
+    let mut caps_meta = ct_caps();
+    caps_meta.push("cte.meta.fields/v1".to_string());
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p = compile_scalar_ct(&mut svc, META, "m.at", &caps_meta, "pkg", "mod")
+        .expect("a meta selector inside a named argument evaluates locally");
+    assert_eq!(
+        p.served.meta_queries, 1,
+        "the selector was evaluated locally"
+    );
+    assert_eq!(svc.counters().ct_execute, 1, "the outer call runs one AV");
+    assert_eq!(p.served.values.values().next(), Some(&CtValue::I32(42)));
+    assert!(program_hash_spans(&p.program).is_empty());
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        63,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v, ace_av_core::contract::Value::I32(42));
+
+    // 5) Reordered named arguments with different types keep their own value
+    //    subtrees; a literal argument-value demand is planned, never executed.
+    const REORDERED: &str = "\
+fn pick(a int, b bool) int {
+    if b { return a }
+    return 0
+}
+fn main() int {
+    return pick(b: #{ true }, a: 7)
+}
+";
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p = compile_scalar_ct(&mut svc, REORDERED, "m.at", &caps, "pkg", "mod")
+        .expect("reordered named arguments serve their own subtrees");
+    assert_eq!(
+        p.served.values.values().next(),
+        Some(&CtValue::Bool(true)),
+        "the bool-named site keeps its own type and value"
+    );
+    assert_eq!(
+        svc.counters().ct_execute,
+        0,
+        "a literal demand never runs the AV"
+    );
+    assert!(program_hash_spans(&p.program).is_empty());
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        64,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v, ace_av_core::contract::Value::I32(7));
+
+    // 6) Without the CT capability the same source is refused at the front
+    //    door: a typed diagnostic, not a folded/ignored demand.
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let refused = compile_scalar_ct(&mut svc, NAMED, "m.at", &[], "pkg", "mod")
+        .expect_err("without the CT capability the demand is refused");
+    match refused {
+        crate::product::CtProductError::Diagnostics(ds) => {
+            assert!(!ds.is_empty(), "the front door reports a diagnostic");
+        }
+        other => panic!("the capability refusal must be a typed diagnostic, got {other:?}"),
+    }
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "new case stays within 10s, took {:?}",
+        started.elapsed()
+    );
+}
+
+/// The injected publish failure: probe delegates to a REAL in-memory store
+/// (so "no readable page" is a real observation), publish records the key and
+/// returns the existing `EnvelopeError::Decode` carrier while armed.
+#[derive(Default)]
+struct FailPublishState {
+    fail: bool,
+    publishes: u64,
+    keys: Vec<String>,
+    inner: MemoryEnvelopeSink,
+}
+
+struct FailPublishSink {
+    state: Rc<RefCell<FailPublishState>>,
+}
+
+impl CtEnvelopeSink for FailPublishSink {
+    fn probe(&self, key: &ExecKey) -> Result<Option<CtExecutedV1>, EnvelopeError> {
+        self.state.borrow().inner.probe(key)
+    }
+
+    fn publish(&mut self, key: &ExecKey, env: &CtExecutedV1) -> Result<(), EnvelopeError> {
+        let mut st = self.state.borrow_mut();
+        st.publishes += 1;
+        st.keys.push(key.hash());
+        if st.fail {
+            return Err(EnvelopeError::Decode("injected-publish".into()));
+        }
+        st.inner.publish(key, env)
+    }
+}
+
+/// CT-02: a REAL call/expr demand that succeeded on the AV but whose
+/// publication failed keeps the reached fact — `av_reached=true` (not
+/// rewritten to false), attempt counted, one real "ok" boundary entry, no
+/// readable frozen page, a retry re-executes instead of hitting a phantom
+/// page, and only a repaired publication + hit closes the loop.
+#[test]
+fn audit1037_ct_02_publish_failure_keeps_the_av_reached_fact() {
+    let started = std::time::Instant::now();
+    const CALL: &str = "\
+fn id(x int) int {
+    return x
+}
+fn main() int {
+    return #{ id(3) }
+}
+";
+    const EXPR: &str = "\
+fn main() int {
+    return #{ 1 + 2 }
+}
+";
+    for src in [CALL, EXPR] {
+        let program = parse_ct(src, false);
+        let state = Rc::new(RefCell::new(FailPublishState {
+            fail: true,
+            ..Default::default()
+        }));
+        let mut svc = CtService::new(FailPublishSink {
+            state: Rc::clone(&state),
+        });
+        let budget = || RootBudget::new(RootBudget::default_total());
+
+        // The real execution succeeded; the publication failed.
+        let refused = serve_program(&mut svc, &program, src, "m.at", "pkg", "mod", &budget())
+            .expect_err("the injected publish failure fails the demand");
+        let err = match refused {
+            PlanError::Demand { err, .. } => err,
+            other => panic!("the publish failure is a demand failure, got {other:?}"),
+        };
+        assert_eq!(err.code, "cte.freeze/publish");
+        assert!(
+            err.av_reached,
+            "the AV really ran before the publish failed"
+        );
+        let c = svc.counters();
+        assert_eq!(c.ct_execute, 1, "the reached attempt is counted");
+        assert_eq!(c.ct_freeze_publishes, 0, "nothing was published");
+        assert_eq!(c.ct_rejections, 1, "the failed publication is a rejection");
+        let log = svc.exec_log();
+        assert_eq!(log.len(), 1, "one real execute-boundary entry");
+        assert_eq!(log[0].outcome, "ok", "the AV itself succeeded");
+        assert!(!log[0].from_cache);
+        assert!(log[0].steps > 0, "the attempt carries measured steps");
+        let (publishes, attempted) = {
+            let st = state.borrow();
+            (st.publishes, st.keys.clone())
+        };
+        assert_eq!(publishes, 1, "exactly one publication was attempted");
+        assert_eq!(
+            attempted,
+            vec![log[0].key_hash.clone()],
+            "the attempted page is exactly the executed key"
+        );
+
+        // A second request must not hit a page that was never written: the
+        // store is really empty, so it executes again.
+        let refused = serve_program(&mut svc, &program, src, "m.at", "pkg", "mod", &budget())
+            .expect_err("still failing");
+        let err = match refused {
+            PlanError::Demand { err, .. } => err,
+            other => panic!("the second publish failure is a demand failure, got {other:?}"),
+        };
+        assert_eq!(err.code, "cte.freeze/publish");
+        assert!(err.av_reached);
+        assert_eq!(svc.counters().ct_execute, 2, "the retry re-executed");
+        assert_eq!(svc.counters().ct_hits, 0, "no phantom page answered");
+
+        // Clear the fault: the re-execution publishes, and only then does a
+        // later request hit (a hit never executes).
+        state.borrow_mut().fail = false;
+        let root = serve_program(&mut svc, &program, src, "m.at", "pkg", "mod", &budget())
+            .expect("publishing succeeds once the fault clears");
+        assert_eq!(
+            root.values.values().next(),
+            Some(&CtValue::I32(3)),
+            "the repaired attempt serves the real value"
+        );
+        assert_eq!(
+            svc.counters().ct_execute,
+            3,
+            "the repaired attempt executed"
+        );
+        assert_eq!(svc.counters().ct_freeze_publishes, 1);
+        let root = serve_program(&mut svc, &program, src, "m.at", "pkg", "mod", &budget())
+            .expect("the frozen page answers the next request");
+        assert_eq!(root.values.values().next(), Some(&CtValue::I32(3)));
+        assert_eq!(svc.counters().ct_hits, 1, "the frozen page answered");
+        assert_eq!(svc.counters().ct_execute, 3, "a hit never executes");
+        assert!(
+            svc.exec_log()
+                .iter()
+                .any(|e| e.from_cache && e.outcome == "hit"),
+            "the hit is a real boundary entry too"
+        );
+        assert_eq!(state.borrow().publishes, 3, "two failures + one repaired");
+    }
+
+    // The control: a refusal BEFORE the AV (forbid_av cold miss) must keep
+    // av_reached=false — the repair does not blanket-mark every error.
+    let program = parse_ct(CALL, false);
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    svc.set_forbid_av(true);
+    let refused = serve_program(
+        &mut svc,
+        &program,
+        CALL,
+        "m.at",
+        "pkg",
+        "mod",
+        &RootBudget::new(RootBudget::default_total()),
+    )
+    .expect_err("a cold miss cannot complete under forbid_av");
+    let err = match refused {
+        PlanError::Demand { err, .. } => err,
+        other => panic!("the forbidden miss is a demand failure, got {other:?}"),
+    };
+    assert_eq!(err.code, "cte.infra/av-forbidden");
+    assert!(
+        !err.av_reached,
+        "a pre-AV refusal never claims the AV was reached"
+    );
+    assert_eq!(svc.counters().ct_execute, 0);
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "new case stays within 10s, took {:?}",
+        started.elapsed()
+    );
+}
+
 mod performance {
     use super::*;
 }

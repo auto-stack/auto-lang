@@ -431,6 +431,25 @@ fn serve_site_inner<S: CtEnvelopeSink>(
 
 // -- discovery walks ------------------------------------------------------
 
+/// The value expression of one argument in ANY source position — `Pos`,
+/// `MovePos` and `Named` carry the same `Arg.value` subtree, so every CT
+/// walk (discovery, callee closure, meta selectors, substitution, site
+/// lookup and product backfill) must traverse exactly these values (F26).
+fn arg_value(a: &Arg) -> &Expr {
+    match a {
+        Arg::Pos(x) | Arg::MovePos(x) => x,
+        Arg::Named { value, .. } => value,
+    }
+}
+
+/// The mutable form of [`arg_value`] (in-place substitution/backfill).
+fn arg_value_mut(a: &mut Arg) -> &mut Expr {
+    match a {
+        Arg::Pos(x) | Arg::MovePos(x) => x,
+        Arg::Named { value, .. } => value,
+    }
+}
+
 /// Every hash site of the program: (owner fn name, HashExpr span).
 pub fn all_hash_sites(program: &Program) -> Vec<(String, Span)> {
     let mut out = Vec::new();
@@ -551,17 +570,13 @@ fn collect_hashes_expr(e: &Expr, owner: &str, out: &mut Vec<(String, Span)>) {
         | ExprKind::Method { args, .. }
         | ExprKind::MethodCall { args, .. } => {
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    collect_hashes_expr(x, owner, out);
-                }
+                collect_hashes_expr(arg_value(a), owner, out);
             }
         }
         ExprKind::CallValue { callee, args } => {
             collect_hashes_expr(callee, owner, out);
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    collect_hashes_expr(x, owner, out);
-                }
+                collect_hashes_expr(arg_value(a), owner, out);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
@@ -729,24 +744,18 @@ fn callees_expr(e: &Expr, out: &mut Vec<String>) {
         ExprKind::Call { callee, args } => {
             out.push(callee.name.clone());
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    callees_expr(x, out);
-                }
+                callees_expr(arg_value(a), out);
             }
         }
         ExprKind::Method { args, .. } | ExprKind::MethodCall { args, .. } => {
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    callees_expr(x, out);
-                }
+                callees_expr(arg_value(a), out);
             }
         }
         ExprKind::CallValue { callee, args } => {
             callees_expr(callee, out);
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    callees_expr(x, out);
-                }
+                callees_expr(arg_value(a), out);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
@@ -804,25 +813,19 @@ fn walk_meta(e: &Expr, out: &mut Vec<MetaSelector>) {
             }
         }
         for a in args {
-            if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                walk_meta(x, out);
-            }
+            walk_meta(arg_value(a), out);
         }
     }
     match &e.kind {
         ExprKind::Method { args, .. } | ExprKind::MethodCall { args, .. } => {
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    walk_meta(x, out);
-                }
+                walk_meta(arg_value(a), out);
             }
         }
         ExprKind::CallValue { callee, args } => {
             walk_meta(callee, out);
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    walk_meta(x, out);
-                }
+                walk_meta(arg_value(a), out);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
@@ -869,10 +872,7 @@ fn substitute(e: &Expr, hash_vals: &ServedRoot, meta_vals: &BTreeMap<(u64, u64),
             callee: callee.clone(),
             args: args
                 .iter()
-                .map(|a| match a {
-                    Arg::Pos(x) => Arg::Pos(substitute(x, hash_vals, meta_vals)),
-                    other => other.clone(),
-                })
+                .map(|a| substitute_arg(a, hash_vals, meta_vals))
                 .collect(),
         },
         ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary {
@@ -887,6 +887,25 @@ fn substitute(e: &Expr, hash_vals: &ServedRoot, meta_vals: &BTreeMap<(u64, u64),
         other => other.clone(),
     };
     Expr { span: e.span, kind }
+}
+
+/// Substitute nested-hash/meta values inside ONE argument, keeping its source
+/// shape (`Pos`/`MovePos`/`Named` with its label and span) — the same
+/// `Arg.value` subtree the discovery walks traverse (F26).
+fn substitute_arg(
+    a: &Arg,
+    hash_vals: &ServedRoot,
+    meta_vals: &BTreeMap<(u64, u64), CtValue>,
+) -> Arg {
+    match a {
+        Arg::Pos(x) => Arg::Pos(substitute(x, hash_vals, meta_vals)),
+        Arg::MovePos(x) => Arg::MovePos(substitute(x, hash_vals, meta_vals)),
+        Arg::Named { name, value, span } => Arg::Named {
+            name: name.clone(),
+            value: substitute(value, hash_vals, meta_vals),
+            span: *span,
+        },
+    }
 }
 
 /// The per-site compile program: every served hash site replaced by its
@@ -921,19 +940,13 @@ fn replace_at(e: &mut Expr, served: &ServedRoot, site: Span, site_expr: &Expr) {
         | ExprKind::Method { args, .. }
         | ExprKind::MethodCall { args, .. } => {
             for a in args.iter_mut() {
-                match a {
-                    Arg::Pos(x) | Arg::MovePos(x) => replace_at(x, served, site, site_expr),
-                    _ => {}
-                }
+                replace_at(arg_value_mut(a), served, site, site_expr);
             }
         }
         ExprKind::CallValue { callee, args } => {
             replace_at(callee, served, site, site_expr);
             for a in args.iter_mut() {
-                match a {
-                    Arg::Pos(x) | Arg::MovePos(x) => replace_at(x, served, site, site_expr),
-                    _ => {}
-                }
+                replace_at(arg_value_mut(a), served, site, site_expr);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
@@ -1283,17 +1296,13 @@ fn find_hash_expr<'a>(e: &'a Expr, span: Span, found: &mut Option<&'a Expr>) {
         | ExprKind::Method { args, .. }
         | ExprKind::MethodCall { args, .. } => {
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    find_hash_expr(x, span, found);
-                }
+                find_hash_expr(arg_value(a), span, found);
             }
         }
         ExprKind::CallValue { callee, args } => {
             find_hash_expr(callee, span, found);
             for a in args {
-                if let Arg::Pos(x) | Arg::MovePos(x) = a {
-                    find_hash_expr(x, span, found);
-                }
+                find_hash_expr(arg_value(a), span, found);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
