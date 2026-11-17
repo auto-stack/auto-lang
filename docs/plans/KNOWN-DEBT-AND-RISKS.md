@@ -117,23 +117,25 @@
 
 来源：[1024当前逐项分配](archive/1024-ace-m2-code-quality-and-refactoring-audit.md)，r2、源码81d8fc03f10f4a7d179b0bc3a917602406ed7b91；只读审计复审通过不等于产品修复/运行通过。以下35项各有主owner/具名关闭case；confirmed只确认所述静态机制，candidate/收益unknown及正向实践单列。F12不计缺陷，F14静态映射部分已闭，F20保原正式验收与分档。各承接Plan按case取得真实反例/邻例、修复及独立review后更新，登记不批准延期或豁免。
 
+2026-11-17 更新：承接 F04/F07/F09/F11/F13/F15 的 [1038 研究包](archive/1038-ace-reuse-candidates-and-cost-decisions.md) r3 已复审并归档（6/6，SD-00 无规范增量）。六项决定：D04 go（先按合同实施首个有界切片，含补 i32 陷阱 oracle）、D13 go（仅 mir_verify init family 一个私有边界）、D15 go（5 处纯文档更正）；D07/D09/D11 为 retain/no-go 并具名重开前置。研究决定不使 F 行进入“已修”：上表状态只表示决定已出，实际实施/更正仍归后继有界 Plan 与各自关闭 case。
+
 | 发现 | 优先级 | 证据分类/边界 | 主owner Plan | 关闭case | 当前状态 |
 |---|---|---|---|---|---|
 | F01 | P1 | 算法保真缺口；真实PE后果未测 | [1027](1027-ace-native-utf8-edit-fidelity.md) | UTF-01/02 | 技术未知/修复未闭 |
 | F02 | P1 | 同类嵌套/unwind恢复缺口 | [1028](1028-ace-scoped-observation-restoration.md) | OBS-01/02 | 技术未知/修复未闭 |
 | F03 | P2 | 文案耦合确认；替代方案候选 | [969](969-ace-m2-facade.md) | AUDIT-03 | **已修@969**（结构化SurfaceFact选路，消息文本零参与；native 3 E2E+消息无关单测，2026-11-15） |
-| F04 | P2 | 52行机制重复；复用候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-01 | 技术未知/修复未闭 |
+| F04 | P2 | 52行机制重复；复用候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-01 | 研究已决 go@1038（首片合同冻结；实施待后继有界 Plan；i32 陷阱 oracle 缺口已具名） |
 | F05 | P2 | 职责分散；不可整套删除 | [970](970-ace-m2-sessions.md) | AUDIT-05 | 技术未知/修复未闭 |
 | F06 | P1 | 条件性重试缺口；仅历史测试consumer | [1030](1030-ace-av-864-failed-edit-transaction.md) | AVTX-01/02 | 技术未知/修复未闭 |
-| F07 | P2 | 转换事实；收益未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
+| F07 | P2 | 转换事实；收益未知 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 研究已决 retain@1038（收益 unknown；重开前置：1017 同源归因+授信面证明+G1002） |
 | F08 | P2 | profile权威差额；无成功fallback证据 | [969](969-ace-m2-facade.md) | AUDIT-08 | **已修@969**（事实权威表+4守卫；未覆盖域具名保留不强删，2026-11-15） |
-| F09 | P2 | 依赖/宿主混合事实；成本未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
+| F09 | P2 | 依赖/宿主混合事实；成本未知 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 研究已决 retain/no-go@1038（拆crate收益 unknown；保留 core 执行器与 subproc 委托） |
 | F10 | P2 | reader有界且差异确认；协议后果待核 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-02 | 技术未知/修复未闭 |
-| F11 | P2 | 同源不等同合同；共享候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
+| F11 | P2 | 同源不等同合同；共享候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 研究已决 no-go@1038（保留双 no_std runtime；重开前置：符号/预算/trace/取消等价表） |
 | F12 | 保留约束 | 正向复用基础；非缺陷 | [978](978-ace-m2-build.md) | AUDIT-12 | 非缺陷，长期保留约束 |
-| F13 | P2 | 维护热点；拆分候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 技术未知/修复未闭 |
+| F13 | P2 | 维护热点；拆分候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 研究已决 go@1038（仅一个私有边界：mir_verify init family；其余五热点不改，实施待后继 Plan） |
 | F14 | P2 | 静态保留账已闭；迁移/运行覆盖待认证 | [985](985-ace-m2-certification.md) | AUDIT-14 | 静态映射已闭；迁移/认证后继 |
-| F15 | P3 | 陈旧注释；非依赖违规 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 技术未知/修复未闭 |
+| F15 | P3 | 陈旧注释；非依赖违规 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 研究已决 go@1038（5 处纯文档更正；不改依赖/身份，待后继 Plan） |
 | F16 | P1 | 内部计数先预留；真实allocator后果未测 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-01 | 技术未知/修复未闭 |
 | F17 | P2 | 零租约索引增长；非整树泄漏 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-05 | 技术未知/修复未闭 |
 | F18 | P1 | 源与SHA两读；未证明父侧误PASS | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-01 | 技术未知/修复未闭 |

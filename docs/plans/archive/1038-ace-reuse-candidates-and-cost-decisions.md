@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1038
-status: reviewed
+status: archived
 feature_name: ACE复用候选、成本与模块边界有界研究
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 4
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: []
@@ -19,15 +19,17 @@ affects: [ACE]
 
 ## 0. 变更摘要
 
-2026-11-17路线状态联络：本包仍drafting r3、0/6，尚无登记的实施树；本次只更新状态与排程，不推进Task/AC。当前位置为**第3：B有界研究（P2/F15 P3）**；总表见[1024当前路线状态](archive/1024-ace-m2-code-quality-and-refactoring-audit.md#quality-route-20261117)。9个同路线包已交付归档，不再照2026-11-13旧队列重复开工；实施合同/Case/独立oracle保持。
+2026-11-17路线状态联络：本包仍drafting r3、0/6，尚无登记的实施树；本次只更新状态与排程，不推进Task/AC。当前位置为**第3：B有界研究（P2/F15 P3）**；总表见[1024当前路线状态](1024-ace-m2-code-quality-and-refactoring-audit.md#quality-route-20261117)。9个同路线包已交付归档，不再照2026-11-13旧队列重复开工；实施合同/Case/独立oracle保持。
 
 2026-11-13 r2当前：用户要求对1028以外计划逐份核是否足够定制。本包补真实输入、状态/故障设置、独立关闭断言、测试落点、任务改面和Spec具体增量；原发现/AC/Case/T-ID及6任务、drafting 0/6保留。只做规划与静态源码核对，不修改实现/测试/配置，不接管1028实施，也不宣称动态反例或产品通过。
 
-承接[1024](archive/1024-ace-m2-code-quality-and-refactoring-audit.md)的F04/F07/F09/F11/F13/F15，优先级**P2（F15为P3）**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。本包交付六项有界研究决定与后继合同，不实施重构。
+承接[1024](1024-ace-m2-code-quality-and-refactoring-audit.md)的F04/F07/F09/F11/F13/F15，优先级**P2（F15为P3）**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。本包交付六项有界研究决定与后继合同，不实施重构。
 
 2026-11-16 r3阶段裁定：本包归B，不作为985/A整包前置；原6任务/0完成、Case和独立关闭条件保持，当前仅规划。
 
 2026-11-17 r3执行（/goal 完成计划1038，work）：T-01/T-02/T-03 完成，3/6。六项决定按当时源重核后出齐：D04 go（首个有界切片合同见§9 T-03）、D13 go（单一私有模块首片，次序列）、D15 go（纯文档更正）；D07/D09/D11 retain/no-go 并具名理由与重开前置。全部为只读研究与 Plan 簿记，未改实现/测试/配置/canonical Spec、未建树、未运行 ACE 或性能门，无产品 PASS。
+
+2026-11-17 r3归档（/goal 完成计划1038，merge）：T-04 独立复审 pass@r3、T-05/T-06 合并/归档/清理完成，6/6；本文件已移入 `docs/plans/archive/` 并置 `status: archived`，SD-00 无规范增量的 approved no-impact 结论与关闭收据见 §9 T-05/T-06。
 
 ## 1. 目标
 
@@ -55,22 +57,22 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。后续唯一树D:/au
 
 | 已核源路径 | 字节SHA256 | 状态 |
 |---|---|---|
-| [experimental/ace/crates/native/src/collections_lower.rs](../../experimental/ace/crates/native/src/collections_lower.rs) | 844b233e0b04f2a3566a5ee748bc8dce6c3e8dfacefabf1dd12dc08c5182b5aa | 静态取材，非运行证据 |
-| [experimental/ace/crates/native/src/closures_lower.rs](../../experimental/ace/crates/native/src/closures_lower.rs) | 6b5345401301b1dc64c5e6dfc12cbd4736bf6e5df337c431778d924b6585e438 | 静态取材，非运行证据 |
-| [experimental/ace/crates/core/src/source/adapter.rs](../../experimental/ace/crates/core/src/source/adapter.rs) | 64fb2234a0c39875e4100fb873f6b1ef696f3d180d585072c2060931553d4300 | 静态取材，非运行证据 |
-| [experimental/ace/crates/core/src/link.rs](../../experimental/ace/crates/core/src/link.rs) | 7e19a7d49894d30a4d20297c36690559e5dc3dff70f15922f54fa1a361cda0d0 | 静态取材，非运行证据 |
-| [experimental/ace/crates/data-runtime/src/lib.rs](../../experimental/ace/crates/data-runtime/src/lib.rs) | 4c2327b22406e09b24f46edadcf1b1deb1f5fa95db9de980c283470d948d5226 | 静态取材，非运行证据 |
-| [experimental/ace/crates/text-runtime/src/lib.rs](../../experimental/ace/crates/text-runtime/src/lib.rs) | 5ec6d366ef69f223a73b6603de6559f04440cf2e80a56b9f535682fff4222b5e | 静态取材，非运行证据 |
-| [experimental/ace/crates/core/src/source/resolve.rs](../../experimental/ace/crates/core/src/source/resolve.rs) | 80eb12467732dd657008918c90bf36158d52d6bbea63bc87e7c511a698263c10 | 静态取材，非运行证据 |
-| [experimental/ace/crates/core/src/verify.rs](../../experimental/ace/crates/core/src/verify.rs) | cba93ead10ab8ab01ddbdd91e615453870d2fae7b851666c110fc5348baf3632 | 静态取材，非运行证据 |
-| [experimental/ace/crates/av-core/src/mir_verify.rs](../../experimental/ace/crates/av-core/src/mir_verify.rs) | 9f1427164bd6a54f9d7b6d5893b7ebd649af1975a4e12dfc191d91a12f69d1d3 | 静态取材，非运行证据 |
+| [experimental/ace/crates/native/src/collections_lower.rs](../../../experimental/ace/crates/native/src/collections_lower.rs) | 844b233e0b04f2a3566a5ee748bc8dce6c3e8dfacefabf1dd12dc08c5182b5aa | 静态取材，非运行证据 |
+| [experimental/ace/crates/native/src/closures_lower.rs](../../../experimental/ace/crates/native/src/closures_lower.rs) | 6b5345401301b1dc64c5e6dfc12cbd4736bf6e5df337c431778d924b6585e438 | 静态取材，非运行证据 |
+| [experimental/ace/crates/core/src/source/adapter.rs](../../../experimental/ace/crates/core/src/source/adapter.rs) | 64fb2234a0c39875e4100fb873f6b1ef696f3d180d585072c2060931553d4300 | 静态取材，非运行证据 |
+| [experimental/ace/crates/core/src/link.rs](../../../experimental/ace/crates/core/src/link.rs) | 7e19a7d49894d30a4d20297c36690559e5dc3dff70f15922f54fa1a361cda0d0 | 静态取材，非运行证据 |
+| [experimental/ace/crates/data-runtime/src/lib.rs](../../../experimental/ace/crates/data-runtime/src/lib.rs) | 4c2327b22406e09b24f46edadcf1b1deb1f5fa95db9de980c283470d948d5226 | 静态取材，非运行证据 |
+| [experimental/ace/crates/text-runtime/src/lib.rs](../../../experimental/ace/crates/text-runtime/src/lib.rs) | 5ec6d366ef69f223a73b6603de6559f04440cf2e80a56b9f535682fff4222b5e | 静态取材，非运行证据 |
+| [experimental/ace/crates/core/src/source/resolve.rs](../../../experimental/ace/crates/core/src/source/resolve.rs) | 80eb12467732dd657008918c90bf36158d52d6bbea63bc87e7c511a698263c10 | 静态取材，非运行证据 |
+| [experimental/ace/crates/core/src/verify.rs](../../../experimental/ace/crates/core/src/verify.rs) | cba93ead10ab8ab01ddbdd91e615453870d2fae7b851666c110fc5348baf3632 | 静态取材，非运行证据 |
+| [experimental/ace/crates/av-core/src/mir_verify.rs](../../../experimental/ace/crates/av-core/src/mir_verify.rs) | 9f1427164bd6a54f9d7b6d5893b7ebd649af1975a4e12dfc191d91a12f69d1d3 | 静态取材，非运行证据 |
 
 | Spec来源 | SHA256 | 适用边界 |
 |---|---|---|
-| [docs/specs/auto-ac/native-backend-and-retirement.md](../../docs/specs/auto-ac/native-backend-and-retirement.md) | 77ba8a3c2fa19128b7bbc958d21c5d928de788157daa39b6978b9d8fb0731a78 | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-a2x/architecture.md](../../docs/specs/auto-a2x/architecture.md) | 9984e8854b3bd7e9fbd00a195154a0c62e78861c2d46a3121b64b188c350cfdd | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-test-case/architecture.md](../../docs/specs/auto-test-case/architecture.md) | 2e37d29c0df993f95809bf262af6a53b4b53acebf353453dcfc3e1626bc89fe4 | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-av/architecture.md](../../docs/specs/auto-av/architecture.md) | 05bd373cfff3d9901c5a790786ad5152842d2360ff2f2723aa23fb81322a0282 | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-ac/native-backend-and-retirement.md](../../specs/auto-ac/native-backend-and-retirement.md) | 77ba8a3c2fa19128b7bbc958d21c5d928de788157daa39b6978b9d8fb0731a78 | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-a2x/architecture.md](../../specs/auto-a2x/architecture.md) | 9984e8854b3bd7e9fbd00a195154a0c62e78861c2d46a3121b64b188c350cfdd | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-test-case/architecture.md](../../specs/auto-test-case/architecture.md) | 2e37d29c0df993f95809bf262af6a53b4b53acebf353453dcfc3e1626bc89fe4 | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-av/architecture.md](../../specs/auto-av/architecture.md) | 05bd373cfff3d9901c5a790786ad5152842d2360ff2f2723aa23fb81322a0282 | 当前规则保持；开工重读核漂移 |
 
 源码/Spec是实际规则依据。1024 M/S/D/L/A/N/U为保留账，不代Rust reader/nextest发现；同文件在途修改串行单写，正式合入来源重核，不用他Plan WIP当已交付依赖。
 
@@ -173,8 +175,8 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。后续唯一树D:/au
 - [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；六项决定各有源/consumer/保留表，明确成本及unknown，无实现改动，原义务不减。（证据：§9 T-02 D04/07/09/11/13/15 六行决定 + D04 保留表；i32 陷阱 oracle 缺口具名）
 - [x] AC-03 / work：六项决定逐一列明消费者、原测试、恢复/失败责任及1002依赖；首个go项有可执行有界后继合同，no-go/保留项有理由；没有把研究或成本unknown冒实现/收益通过。（证据：§9 T-03 D04 合同；D07/D09/D11 重开前置；D13/D15 边界与序列）
 - [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。（证据：§9 T-04 独立复审，19项身份逐项重核、六项决定逐条重建、R-1038-1..3 非阻塞发现；结论 pass @ r3）
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。（证据：§9 T-05/T-06 合并收据——SD-00 无规范增量的 approved no-impact 结论、归档路径与 status:archived 已入库；本包无代码变更故无固定组并集门，按 docs-only 内容检查）
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。（证据：无实施树/分支、无 plan-artifacts scope 可清；registry 无 1038 持有；主检出他会话 WIP 未纳入）
 
 ## 8. 执行步骤
 
@@ -184,8 +186,8 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。后续唯一树D:/au
 | T-02 / work | [x] T-01决定与可区分输入 | 逐项完成D04/07/09/11/13/15 go/no-go/保留，交同异合同与独立oracle/源hash，不创建模块或第二基础层。 AC-02（六项决定已落§9，D04 保留表含 i32 与 typed 分界；oracle 缺口具名；无模块/实现创建） |
 | T-03 / work | [x] T-02 | 交首个go项完整有界后继合同，或六项无go的具体理由；对照1002/1017及本批正确性修复新源核失效，做纯文档验证。 AC-02/03（D04 合同见§9 T-03：切片/不变量/oracle/门禁/退出条件；D07/D09/D11 重开前置已列） |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04（2026-11-17 完成：§9 T-04 复审 pass@r3，19项身份重核一致、六项决定逐条重建、R-1038-1..3 非阻塞且不改决定） |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06 |
+| T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05（2026-11-17：docs-only 交付，无固定组并集门；SD-00 无规范增量；`docs/plans/archive/1038-…md` status:archived 已入库） |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06（无树/分支/scope 可清；registry 无 1038 持有；他会话 WIP 未纳入） |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -303,7 +305,7 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **D15 / F15 — 头注释事实漂移：go（纯文档更正）**
 
 - 事实（逐处，对照当前 Cargo/Spec）：
-  1. `core/src/lib.rs:4–6` 仍写 “Atom text → … → native lowering (Cranelift) → COFF object → platform link”；Cargo 注释（core/Cargo.toml:10–11）与 [auto-ac/native-backend-and-retirement.md](../specs/auto-ac/native-backend-and-retirement.md) §1 已定 lowering 移出 core（`native.rs` 删除、不再依赖 Cranelift）。
+  1. `core/src/lib.rs:4–6` 仍写 “Atom text → … → native lowering (Cranelift) → COFF object → platform link”；Cargo 注释（core/Cargo.toml:10–11）与 [auto-ac/native-backend-and-retirement.md](../../specs/auto-ac/native-backend-and-retirement.md) §1 已定 lowering 移出 core（`native.rs` 删除、不再依赖 Cranelift）。
   2. `core/src/lib.rs:8–9` “must not depend on any auto-lang / auto-atom / auto-val product crates” 与当前图不符：core 正常依赖 ace-syntax-grammar，而 syntax-grammar 正常依赖 auto-atom/auto-val（syntax-grammar/Cargo.toml）——应改述为“不依赖产品运行时/UI，允许共享 syntax 叶子”。
   3. `av-core/src/lib.rs:16` “This crate has zero external dependencies” 不成立：Cargo 正常依赖 ace-foreign-contract + serde_json。
   4. `native/src/lib.rs:1–12` 仍以 “PLAN-818 probe / parity loop against … the old HIR-native reference” 描述，而旧 HIR-native 参照已随 PLAN-871 退役（Spec §7 G-DELETE）；且 Spec §1 已把 `ac-native` 定为 native 构建面，Cargo 消费者为 abi/av/case-worker/comptime/m2-build——“Nothing here feeds product paths” 的措辞需按当前 Spec 角色收敛（是否属产品路径以 Spec 为准，不以旧注释判定）。
@@ -365,6 +367,28 @@ AC 复核表：AC-01 pass（19 项身份/漂移可复核、无 expected 改动�
 复审结论：**pass（final）**。本包交付为研究决定 + 有界后继合同，无代码/测试改动；merge 可执行归档，须在 closeout 确认 SD-00 无规范增量、Plan 提交与归档、无 scope/树需清理。
 
 `stage: goal | plan_id: PLAN-1038 | plan_revision: r3 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: none | commit: none | next: merge`
+
+### T-05/T-06 合并、归档与清理（merge，2026-11-17）
+
+`stage: merge | plan_id: PLAN-1038 | plan_revision: r3 | outcome: pass | completion_kind: delivered | review: final pass @ r3（§9 T-04） | delivery_commit: 本归档提交（SHA 由收据提交 2 绑定，见下方 merge-receipt 行） | canonical: SD-00 无规范增量（approved no-impact） | archive: docs/plans/archive/1038-ace-reuse-candidates-and-cost-decisions.md（status: archived） | cleanup: 无实施树/分支、无 plan-artifacts scope、registry 无持有 | next: done`
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed r3 + final pass；T-01 19项身份；本包无代码变更；SD-00 无影响；归档目标 `docs/plans/archive/1038-…md` |
+| landed | docs-only 交付直接在 master（无 dev 分支/树、无 merge commit）；本提交只含 Plan 归档与 `KNOWN-DEBT-AND-RISKS.md` 六行导航更新，他会话 WIP 未纳入；`git log -1 --stat` 可验 |
+| canonical_verified | 交付提交内 `docs/specs/` 零改动（`git show --stat` 核）；approved no-impact：六项决定仅研究，go 项的实施/文档更正及其规范增量归各自后继有界 Plan（D04 合同 §9 T-03） |
+| archived | `docs/plans/archive/1038-…md` 已入库且 `status: archived`；6 处 `KNOWN-DEBT-AND-RISKS.md` 导航指向归档路径（`1038`→`archive/1038`）；归档位置 15 个本地链接全部可解析 |
+| cleaned | `git worktree list` 无 1038 树、无 `plan-1038-dev` 分支；`D:/autostack/plan-artifacts/plan-1038` 不存在（本包从未创建 scope）；registry 无 1038 scope/持有；wt-guard 无树可扫（无树可删） |
+
+门禁与观察：
+
+- **测试/构建**：本包无新增 case、未执行任何产品测试（研究+文档交付），无代码变更 → 固定组冻结并集门不适用；按 docs-only 走内容检查：frontmatter（plan_id/status/current_step=6）/章节/任务与 AC 计数/16 个本地链接/围栏 0/尾随空白 0。
+- **`python scripts/spec-lint.py`**：退出码 1，4 errors + 78 warnings，均为既有仓库态（errors=`ace-migration`/`ase`/`design`/`history` 缺 `project.md`；warnings 为历史 ledger/plans.md 的既有断链），无 1038 相关项；本交付未改 `docs/specs/`。
+- **部署新鲜度**：无生产产物/生成物受影响 → 无需 rebuild/restart（记录为“无需刷新”的观察，不声称已刷新）。
+- **批量回归到期**：`docs/plans/.last-batch-regression.json` = last_covered 1064 @2026-11-16T10:04:09Z；1038%5=3 且距今约 24h < 48h → 未到期，不触发 `cargo t all`。
+- **他会话 WIP**：主检出 `a2x-worker/tests/cases/sched_m2_968.rs` 与 docs/plans 等未提交改动保留原状，未纳入本交付。
+
+归档后状态：任务 6/6、AC-01..06 全部关闭；D04 首个有界切片合同、D13 单一私有边界、D15 文档更正分别由后继有界 Plan 承接，D07/D09/D11 保持 retain/no-go 并带重开前置。
 
 
 ## 10. 待澄清事项
