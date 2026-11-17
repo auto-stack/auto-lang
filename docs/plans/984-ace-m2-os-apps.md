@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-984
-status: drafting
+status: executing
 feature_name: AutoOS全部应用与系统宿主迁移
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 8
-current_step: 0
+updated_at: 2026-11-17
+plan_revision: 10
+current_step: 3
 total_steps: 25
 depends_on: [PLAN-959, PLAN-969, PLAN-970, PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-977, PLAN-978, PLAN-980, PLAN-981, PLAN-982, PLAN-983, auto-os/PLAN-064]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-984] AutoOS全部应用与系统宿主迁移
 
 ## 0. 变更摘要
+
+2026-11-16 r9（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用Vue/Ark/Web及AGE自有2D/3D仍完整保留，25任务不变。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
 2026-11-12 r8：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -79,7 +81,25 @@ touched_goals: [GOAL-002]
 
 - [docs/specs/ace-migration/m2-denominator.md](../specs/ace-migration/m2-denominator.md)：959冻结分母/新增delta，不以manifest快照封顶；读取SHA256前16 `c3dd5491ec1395aa`
 
+### 2026-11-16 用户目标范围修订与取材
+
+用户明确要求从ACE M2去掉Godot转译，并核实a2vue对TS的真实依赖；本轮仅规划，不删除实现/原源/旧用例，不运行测试/安装Godot或创建/恢复实施树/目标，不改canonical Specs或归档959。读取基面`8a686e8d2399f01c3aa91112aa683f141c0a0922`及并行文档WIP。auto-ui代码核实：`ui_gen/ts_adapter.rs` SHA256前16 `84efe1eb8306dc25`（Stmt回退约858行、Expr委托约2458行）、`ui_gen/vue/script.rs`=`8120f939878ed68d`（handler约288/1732行及computed/body约2596行）、`ui_gen/ark_adapter.rs`=`038454e31c87e786`（同类TS委托）；现行`docs/specs/ui/vue-store-generation.md`=`f422fe6df24cc398`。这是静态读取，不是新ACE TS运行证据。
+
+Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2R/其他required后端义务不能随Godot一起撤掉。规范中旧“全部在用A2X目标”的历史范围由本次用户裁定覆盖，未来实际交付时落对应SD；当前Spec已验事实不伪造。受修改的旧revision范围/矩阵证明仅保历史，未来独立review须绑定当前revision与真正实现提交。
+
+本轮用户授权：仅修订现有980、981、1068、OS064、985–987及相关路线，不新立项、不启动实施。采用A最小真实交付→985/A M2A-08→B完整UI/Widgets的AV→AC→A2R三波→AutoOS全量迁移→候选/安装/退役。读取语言主线aa257fa1425c31fab48bd544cbd116b2fdce7dcd及现有Specs/已交HELLO、AXR0、SOURCE；UI示例真实源在auto-ui/examples/ui，Widgets源在auto-os/widgets-gallery/src/front/{pages,components}，ui-gallery副本需和规范源去重。新增接面/用例/收据仅是合同，不代表已运行。语言/标准库/非图形FFI的既定基础与测试守恒仍保留，不能借UI延期把普通语言必需能力全部后移。
+
 ## 5. 详细设计
+
+### 三波/OS接收边界（本轮当前）
+
+本包A仍只EMBED的真实最小仓外consumer，原语言/库/文件/后台/配置/资源oracle保持；不等待980/981完整图形、UI三波或OS全量。B的UI消费者按980当前后端/域接口准备；OS实际产品只由OS064在UI-W1-AV→UI-W2-AC→UI-W3-A2R后迁，B-CLOSURE最终核其完整桌面Node根公共三端及每App声明模式/数据/双Host和登记增量，不能将旧“AV/A2R”当遗漏AC的豁免。
+
+OS不依本包CLOSURE/985 B最终；本包CLOSURE单向收OS和原其他生态来源。AGE AG031消费OS相关正式切片不反成为UI波或A出口前置。原25任务/0完成不变；旧OS/App规则和非桌面SHELL/AI/CODER/CODERS/EDIT义务不删，不复制OS实施表。V-B-CLOSURE在原行补错波次/错后端/漏App控制，原R与T-05核，本轮未执行。
+
+### M2-TARGET-SCOPE-20261116：本包当前边界
+
+本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用Vue/Ark/Web及AGE自有2D/3D仍完整保留，25任务不变。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
 ### M2阶段执行合同（当前优先）
 
@@ -156,6 +176,53 @@ AGE交接切片：OS064正式收据齐后，B-CLOSURE-V先按959/实际可达OS�
 I实现：对959每个可达产品/API/副本逐行核OS064和各批正式来源，包含书稿/插件/后台及当前漏登consumer；新增项须先追加具名批次或当地计划，不能T-01空承诺。
 V验收：OS064当前正式HOST/桌面`.at`及Node根AV+A2R、28 App全部原AC与MIX-05/06、非manifest各入口齐；删桌面源/候选/模式结果或任一App行、错来源/旧dispatch控制红。未知/不可读阻984与985，不写NA；OS正文只在OS064，本包不重复实现。
 R独立复核：绑定本批revision/source/工具/SDK/consumer身份核正反例，未执行/缺环境不PASS。
+
+#### T-01 A期冻结记录（2026-11-17，goal 授权链开工）
+
+授权：用户以 `/goal 完成计划984/A` 授权本链（auto-plan-goal 范式）——A切片= T-01 +
+B-EMBED-I/V/R + A交接 phase fold；B期任务（SHELL/AI/CODER/CODERS/EDIT/CLOSURE/
+T-05..07）不动，仍等 M2A-08。不授权改目标/验收阈值/兼容承诺/仓与动作范围/预算。
+
+A最小前置核实：959/969/970/973/978 已归档；971-A 切片已 phase fold 落主（lang
+`2f1eed27f`，spec `docs/specs/ace-migration/m2-tools.md` sha16 `c69d0afd1aa1fdf3`
+在 master）→ §5 A批（984/EMBED）前置满足；M2A-08 未闭（985 A批在途）→ 按§5阶段表
+**只启动 M2-A 批**。唯一实施树 `D:/autostack/.wt/lang-984/auto-lang`（分支
+`plan-984-dev`，基面 master@`e85096628`）；材料 scope
+`D:/autostack/plan-artifacts/plan-984/`（owner=本链，登记于本记录）。
+
+A切片嵌入合同冻结（B-EMBED 实现/V 遵此，不另立）：
+
+- **仓外独立consumer**：crate `p984-embed-consumer`（scope `embed-consumer/`），
+  path deps 仅 `auto-lang-core`+`auto-lang-ace-host` 两公开 crate（指向本树），
+  scope 内 `cargo build`（dev）冷构建，target 不入任何仓。腿=boot/run-project/
+  sessions/deny/closed。
+- **公开接口消费集**：969 facade（`run_ace`/`AceRequest`/引擎选择/args-input拒）、
+  967 F0 provider 生命周期（`build_f0_text_provider`/`revoke_provider`/
+  `readmit_provider`/`teardown_provider`）、970 会话（`ace_session_create/op/Close`）、
+  971-A 工程面（`install_ace_project_executor(project_host())`/`run_ace_project`）、
+  978 SDK 入口（`ac-build build|sdk|run|verify|restore`，本树 dev 构建）。
+- **原多模块脚本**：原 `stdlib/ace/std/math.at`+`text.at`（文件原样，冻结 SHA256 前16
+  math=`0fe2cfc94f75785d`、text=`9b86f97c9c639abb`）为 `std` 包模块 + 最小 entry
+  （app::main，跨包 use）；独立 oracle：square(7)×100+byte_len("Auto")=**4904**。
+  产品级多模块工程（coder 等 str/env/fs 域）归 B 批，不冒 A 切片。
+- **错误合同（逐码）**：错SDK=`m2build.recipe.missing/integrity/extra-file`；权限=
+  `m2build.selection.authorization`（错 grant）、`ace.grant/no-provider`、
+  `ace.capability/unsupported`（foreign 车道未冻结 cap）、`ace.provider/revoked`；
+  坏更新=`m2build.selection.pin`（工件更新+声明哈希更新而 pin 未重钉，不自动升级）；
+  关闭资源=teardown 后 `ace.provider/unknown` HostFailure、会话 Close 后具名拒；兼容门=
+  `ace.args|input/unsupported`；每次拒后合法近邻复跑。
+- **SDK腿**：`run-sdk-legs.sh`（scope）驱动 9 腿；SDK 工程=单公共源（978 冻结单源模型，
+  多源具名拒归 978 owner 域不扩）；隔离异根重定位运行，oracle=49（原 math 合同）。
+- **命令冻结**：仓内 `cargo t integration ace-av ace-host`（本树，nextest）；仓外
+  `cargo build` + 各腿二进制（scope）+ `bash run-sdk-legs.sh`；平台 Windows x64。
+- **资源**：scope target/、sdk-legs/{root,out,负控目录} 为可删缓存；每例 ≤10s
+  （2026-11-14 测试裁定）；仓内新增 4 例永久用例在 `ace-host` 组
+  （`p984_embed.rs`，nextest 每例独立进程——同进程单例冲突由组约定隔离）。
+- **规范落点**：`docs/specs/ace-migration/m2-os-apps.md`（SD-01 A切片段，树内准备，
+  fold 时落主）。
+
+B期登记（只登记不实施）：SHELL/AI/CODER/CODERS/EDIT/CLOSURE 各批输入/oracle/命令见
+§5/§6 原文；开工门=M2A-08 正式收据；OS 产品正文在 OS064。
 
 各批I的有界决定门：用该批最小真实正例、同类型非法近邻、一次失败后恢复跑最长producer→consumer链；仅对未决策略比较适用实现再冻结接口，不拿日历/语法深度缩范围。资源由session持候选、generation持已发布产物、在途pin持旧代，last-owner释放；错误/取消/late不得覆盖CURRENT。继承原预算/平台条件，新增资源单位/上限/超限分类在本批I冻结并有边界反例，改变承诺先修合同。
 
@@ -255,9 +322,12 @@ struct ConsumerCoverage { entry: EntryIdentity, source: SourceId, engine_path: P
 | SD-01 | add | docs/specs/ace-migration/m2-os-apps.md | 总口径→通用嵌入/非桌面consumer与OS正式收据指针，不复制OS产品规范 | 各owner唯一知识 | AC-01..06、全部AC-B-* |
 | SD-02 | modify | docs/specs/ace-migration/replacement-scope-and-evidence.md | 959分母→每consumer已验证新producer/差额 | 替换闭合 | AC-03/05/06 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-os-apps.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
-
-
+| SD-TARGET-SCOPE | modify | `docs/specs/ace-migration/m2-os-apps.md`及`replacement-scope-and-evidence.md`（真实交付后归原owner） | 原全目标并集→按Design55 §5.1的用户范围：Godot后置，生产TS/JS required，范围/证据/发行宣称一致；旧实现与用例保留 | 本轮用户明确裁定，防止旧Godot门残留或误删Vue能力 | AC-01/02/04/05、AC-PHASE；原work/review与范围核对 |
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-os-apps.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-OS-WAVES | modify | docs/specs/ace-migration/m2-os-apps.md（真实交付） | EMBED A不反等全UI；CLOSURE B单向收三波后的OS正式产品，公共三端与App模式分账 | 用户本轮三波与A最小出口裁定 | AC-B-CLOSURE、AC-PHASE |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -317,11 +387,14 @@ struct ConsumerCoverage { entry: EntryIdentity, source: SourceId, engine_path: P
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。
+- [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。
+  [✅ 2026-11-17] A期冻结记录见§5"T-01 A期冻结记录"（前置核实：959/969/970/973/978归档+971-A已fold@2f1eed27f，M2A-08未闭→只启A批；嵌入合同/命令/平台/资源逐项冻结；B期只登记）。goal授权链=`/goal 完成计划984/A`；树 `.wt/lang-984/auto-lang`@plan-984-dev（基面 e85096628）已建。
 
-- [ ] **B-EMBED-I｜M2-A｜owner_stage: work｜AC-B-EMBED/AC-02/AC-03/AC-06**：补齐经959确认的非UI嵌入缺口，验证独立宿主消费公开ACE session/host/工具接口；形成source、候选SDK与兼容错误合同，不在本包重新实现OS host。 按§5路径补永久fixture，固定§6命令。
+- [x] **B-EMBED-I｜M2-A｜owner_stage: work｜AC-B-EMBED/AC-02/AC-03/AC-06**：补齐经959确认的非UI嵌入缺口，验证独立宿主消费公开ACE session/host/工具接口；形成source、候选SDK与兼容错误合同，不在本包重新实现OS host。 按§5路径补永久fixture，固定§6命令。
+  [✅ 2026-11-17] 仓外consumer `p984-embed-consumer`（scope，5腿）+ 仓内永久fixture `crates/auto-lang-ace-host/tests/p984_embed.rs`（4例，nextest 各≤0.2s 绿）+ SDK腿脚本 `run-sdk-legs.sh`（9腿）+ 错误合同逐码冻结（§5记录）；spec delta `docs/specs/ace-migration/m2-os-apps.md`（A切片段，树内待fold）。多源SDK工程=978冻结具名拒，不扩其owner域。
 
-- [ ] **B-EMBED-V｜M2-A｜owner_stage: work｜AC-B-EMBED**：执行V-B-EMBED完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
+- [x] **B-EMBED-V｜M2-A｜owner_stage: work｜AC-B-EMBED**：执行V-B-EMBED完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
+  [✅ 2026-11-17] 冻结命令全执行（scope 收据 v-groups{,-2,-3,-4}.log/consumer-*.log/sdk-legs-v.log）：lang 组并集= integration 3352/3355（2红=master基线既有：cb_web_mime 主检出复放红 30.1s、plan814 declared_path_deps 主检出复放红；plan707_spike_cancel_gap 轮间浮现/隔离复放3/3绿=负载环境归因；首轮 plan702 红=组内缺 auto-ui 兄弟检出所致跨仓扫描路径空——补 `.wt/lang-984/auto-ui` 兄弟后复跑绿）+ **ace-av PASS** + ace-host(=ace-conformance 固定组) 155/11/16——11红全为已登记基线债（D-1001-R2×4/D-932-2/1060-R4/R5族，零本切片触面）+ **ace-facade（真实受影响组，含 p984_embed 4新例）PASS 43.1s**。仓外 consumer 5/5 腿 PASS（boot/run-project 4904/sessions 隔离+关闭/deny 具名拒/closed 资源）；SDK 腿 9/9 PASS（3s）。新用例 4 例实测 0.032–0.201s（≤10s 门）。机器占用如实：门期他会话 auto-web 定向测试并行（3–19 进程波动），ace-host 组内红与之无关（基线债身份独立成立）。
 
 - [ ] **B-EMBED-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
@@ -363,7 +436,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 - [ ] **B-CLOSURE-I｜M2-B｜owner_stage: work｜AC-B-CLOSURE/AC-02/AC-03/AC-06**：对959每个可达产品/API/副本逐行核OS064和各批正式来源，包含书稿/插件/后台及当前漏登consumer；新增项须先追加具名批次或当地计划，不能T-01空承诺。 按§5路径补永久fixture，固定§6命令。
 
-- [ ] **B-CLOSURE-V｜M2-B｜owner_stage: work｜AC-B-CLOSURE**：执行V-B-CLOSURE完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
+- [ ] **B-CLOSURE-V｜M2-B｜owner_stage: work｜AC-B-CLOSURE**：执行V-B-CLOSURE完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。 按本轮UI三波/OS来源表核公共桌面三端和App实际模式，不以旧AV/A2R用语豁免AC，缺波次/App/producer须红。
 
 - [ ] **B-CLOSURE-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
@@ -385,6 +458,33 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-EMBED-I/B-EMBED-V/B-CLOSURE-I/B-CLOSURE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: review | review_scope: phase（B-EMBED-R，A切片；整体Plan保持executing） | reviewer: 实施会话内复审（本环境无独立复审上下文——从已提交工件重建结论，不采信执行摘要；该局限随收据记录） | PLAN-984 | r10 | outcome: pass (phase) | worktree: D:/autostack/.wt/lang-984/auto-lang @ plan-984-dev（clean；同组只读兄弟 auto-ui@2f42d661 detached） | reviewed_commit: f35c318b1 | base: master@e85096628 | dependency_revisions: 959/969/970/973/978归档；971-A fold@2f1eed27f；M2A-08未闭（B期阻塞保持，正确未越界）
+spec_inputs: m2-facade.md/m2-sessions.md/m2-host.md/m2-build.md/m2-tools.md（969/970/967/978/971-A 已验接口）；SD-01 A切片段=m2-os-apps.md@f35c318b1（40行）
+acceptance_results: AC-B-EMBED=pass（仓外consumer原多模块4904=49×100+4、原模块sha16与仓树逐字节同、跨session隔离+Close具名拒、错SDK三负控/权限/坏更新pin/关闭资源逐码独立结果——复审者以**自造异payload**独立复现 m2build.selection.pin 拒绝+完体SDK 49控制）；AC-01=pass（§5冻结记录）；AC-PHASE A切片=pass（B任务零触、M2A-08门遵守、无范围缩减）
+reviewer独立执行: p984_embed 4/4 PASS 0.029-0.137s@f35c318b1；新文件零警告（全部为依赖既有警告）；fmt clean；git show stat=恰2新文件355行
+findings: 无阻断缺陷。具名澄清2条（非缺陷）：(1) §6 组名"ace-host"实为ace-conformance固定组（971已记录的同名陷阱）——A切片真实受影响组=ace-facade已补跑PASS，冻结记录已如实登记；(2) frontmatter supersedes(replacement-scope-and-evidence.md)=整Plan终态声明，A切片仅落m2-os-apps.md新文件，SD-02分母行更新保持B/CLOSURE期pending（与971 phase fold同形，非遗漏）。fixture对"零dispatch"不重复断言callee_count——该纪律由969 e0_facade既有收据持有（复用边界，如实记录）
+pending_closeout_gates: 全包终审=T-05（B期后）；984%5=4≠0、无>48h合并到期 → 本切片phase fold不触发 cargo t all 批量回归
+evidence: §5冻结记录+§8三[✅]行+§9 work收据（组并集数字/基线红分诊/计时表）；scope收据 v-groups{,-2,-3,-4}.log+consumer-*.log+sdk-legs-v.log
+next: phase fold 合入A切片（rebase master tip→ff-only；plan保持executing；同树保留至B；985/A消费时按其自身门核本收据）
+
+stage: work | PLAN-984 | r10 | 2026-11-17 | outcome: pass（A批：T-01 + B-EMBED-I + B-EMBED-V；B期不动） | worktree: D:/autostack/.wt/lang-984/auto-lang @ plan-984-dev（基面 master@e85096628；同组只读依赖兄弟 auto-ui@2f42d661 detached） | code_commit: f35c318b1（crates/auto-lang-ace-host/tests/p984_embed.rs + docs/specs/ace-migration/m2-os-apps.md 两新文件，零改动既有源） | scope: D:/autostack/plan-artifacts/plan-984/（embed-consumer + sdk-legs + run-sdk-legs.sh + v-groups*.log/consumer-*.log 收据） | task_ids: T-01, B-EMBED-I, B-EMBED-V | evidence: §5 T-01冻结记录 + §8 三任务[✅]行；组并集/基线红分诊/新用例计时见 B-EMBED-V 行；spec delta m2-os-apps.md（A切片段）树内待fold | dependency_revisions: 959/969/970/973/978 归档；971-A fold@2f1eed27f；M2A-08 未闭→B期阻塞保持 | blockers: M2-B 全部任务前置 M2A-08（985 A批）——按§5阶段合同不启动；本批无未闭缺陷 | next_responsible_role: B-EMBED-R（A切片独立复审，同树停写后进行；pass后 phase fold 合入A切片，同树保留至B）
+
+本轮会话测试模块表（test-discipline 2026-11-14）：
+
+| 测试模块/实际范围 | 结果与执行数 | 准备/构建 | 运行 | 总墙钟 |
+|---|---|---|---|---|
+| worktree `cargo t integration`（两轮） | 3352/3355×2；2红=master基线既有（cb_web_mime/plan814，主检出复放红证据）；plan707=轮间负载抖动（隔离3/3绿）；首轮plan702=缺组内auto-ui兄弟（补后绿） | 首轮冷编译~10m | 153.9s/121.1s | 含编译~18m |
+| worktree `cargo t ace-av` | PASS（组内无FAIL行） | 共享首轮 | — | 15m38s 三组一次调度 |
+| worktree `cargo t ace-host`（=ace-conformance 固定组，非本批受影响组） | 155 pass/11 fail/16 skip——11红全为已登记基线债（D-1001-R2×4/D-932-2/1060-R4/R5族） | 共享 | 117.1s | 同上 |
+| worktree `cargo t ace-facade`（真实受影响组，含p984_embed） | PASS | 增量~40s | 43.1s | 43.1s |
+| 主检出基线复放（cb_web_mime/plan814/plan702×2） | 红/红/绿/绿（判基线归属与兄弟修复） | 暖 | 30.1s最长 | ~6m |
+| 仓外 consumer 5 腿（scope 冷构建） | 5/5 PASS（boot 126ms/run-project 277ms/sessions 218ms/deny 791ms/closed 626ms） | scope冷编译~4m（dev） | <2s | ~4m |
+| SDK 腿 run-sdk-legs.sh（9腿） | 9/9 PASS（异根重定位49/错SDK三负控/错grant/pin未重钉/完体复跑） | ac-build dev 44.8s | 3s | ~1m |
+
+新增永久用例（ace-host 真实落位=ace-facade 组，nextest 每例独立进程）：p984_embed_host_boots_all_public_faces=0.074s（三公开面单进程组合安装+幂等+真工程跑通）、p984_embed_original_stdlib_modules_run_cross_package=0.201s（原stdlib math/text跨包4904+std::math原身份诊断+恢复）、p984_embed_session_isolation_and_close=0.074s（双会话隔离/关闭具名拒/幸存者不受影响）、p984_embed_permission_refusals_are_named=0.032s（grant/caps/args/input具名拒+合法近邻）。全部≤10s门。
+
+2026-11-16 stage: new/revision | PLAN-984 r9 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
 
 2026-11-12 stage:new / PLAN-984 r8：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原25任务/全部AC与V/依赖/阶段/预算和drafting 0/25；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -410,6 +510,14 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 2026-11-11 / planning_validation: pass（仅文档静态预检）。本轮8份新建/修订合同§0–10唯一、119任务/frontmatter/当前AC到任务覆盖一致、全部drafting/0完成；原任务/AC/V保留（UI058仅新增AC-11/V-S08），4份新合同各10任务/9AC/6验证。当前四仓可达221个Plan节点，无缺失引用/依赖环；UI039原活动影子/归档双文件按既有同号身份处理，不新计交付。十九份触达规划/导航的393个本地文件链接可解析，16处旧归档链接已纠正，定向diff空白检查通过；研究Spec、r187的621原表和pipeline研究输入hash保持不变。批次级检查确认979/980/981不反等新增增强/AG031，985/A不反等G2/G3或AG031，984只交OS覆盖切片而不要求AGE等全生态。未构建/运行用例、制作素材、创建实施树/新证书/新canonical、提交/push或打tag；此记录不代实现独立final。
 
+本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
+
+2026-11-16 stage:new/revision | PLAN-984 r10 | outcome:pass（规划可执行合同，非实现/认证PASS） | 25原任务/0完成保留；仅同步A EMBED与B CLOSURE来源边界，OS主责仍OS064 | next:由原owner依新阶段/真实来源接续；本轮只规划，不实施/建树/测试/合入/清理/恢复目标。
+
+本轮规划静态预检：14份计划/设计/路线文档，8份Plan共230个当前任务；仅980新增B-AV-I/V/R三项并按完整W3范围重开原RUST三项，旧AXR0收据保留；981仅核正原SOURCE三项已交的滞后计数。全部原任务ID/其余勾选、各Plan状态与整包依赖列表保留；新增本地链接/锚点15处、章节/表格/元数据计数/验收任务映射及行尾检查通过，A最小→A出口→W1→W2独立交接→W3→OS→候选/安装/退役阶段图16节点18边无环。原GUI/Widgets/Notes-Clock/语言/库/产品义务有具名阶段与原owner，不以延期冒PASS。仅文档预检，未实施/建树/运行测试或窗口/签阶段/合入/清理/恢复目标，未写源码、测试资产、canonical Specs或取号计数器；他会话并发修改不由本轮回退。
+
 ## 10. 待澄清事项
+
+Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 未决接口/工具与源码/Spec差额由具体批次I有界决定；当前批次已具名，不再把拆分推迟给总T-01。959新增consumer须追加有owner/原模式/命令/oracle的批次或当地Plan，逐AC迁移后再实施；不可读项保持阻签。后续实施须用户指令，本轮仅规划。
