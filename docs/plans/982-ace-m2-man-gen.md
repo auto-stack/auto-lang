@@ -131,13 +131,16 @@ CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要
 | B-CONFIG-I（配置引擎） | **已交付并 fold** | lang `0b6d3198d`、man `39bc016`；§9 round 12–17 |
 | B-CONFIG-V（九行 V-CFG） | **已交付并 fold** | §9 round 16（九行同 HEAD 实跑），round 46 语料级复核 |
 | B-CONFIG-R（独立复审 ×4） | **pass** | §9 round 12/14/15/16（含 needs_fix 修复与更正） |
-| 982/CONFIG 对象字段访问 | **部分交付并 fold** | `k["f"]`／链式 `k["a"]["b"]`／对象值保形；点形态 `k.x` 具名未支持（`4cabe9468`） |
+| 982/CONFIG 对象字段访问 | **部分交付并 fold** | `k["f"]`／链式 `k["a"]["b"]`／对象值保形；点形态 `k.x` 具名未支持，现状钉在 **bind 期** `source.undefined`（`p982_config_dot_form`；round 97 证明物化层加同义臂无效） |
+| 982/CONFIG 空列表 `[]` | **已交付并 fold** | 配置面专用规则 `cfg-empty-array-lit`（共享 `array-lit` 未改）；投影空列表；`p982_config_empty_list` 由钉住拒绝转正例（lang `7f0ebe09c`，round 96） |
 | 982/EXEC | **第一步已交付并 fold**；其余具名 | run 家族在候选腿下具名拒绝、零写、无 fallback（`da07c6b`）；stdin/项目 run/req/debug/test 待做 |
 | 982/RUST | **多面已交付并 fold**；多文件/点面具名 | `AUTO_ACE_RUST` 选择+回执、宿主驱动、`--merge` 独立可构建、scalar/records/collections 冷构建 `value:5/7/42`、scheduler 具名拒绝、差异清单（`da07c6b`） |
 | 982/TEMPLATE | **部分交付并 fold** | 五族 ACE 求值 `plan982_template_probe`；`AUTO_ACE_TEMPLATE` 开关＋拷贝端到端 `plan982_ace_template`；族键派生 `plan982_template_family`；坏模板零残留 `plan982_ace_template_neg`；**用户模板目录** `plan982_ace_user_template`；事务式物化；资产 `build.rs`。仍缺：取消通道、写盘中断回滚 |
 | 982/PY | **部分交付（语言侧）** | A2Py 宿主驱动 `p982_python_driver`（渲染＋确定性＋**python 真跑**）。产品侧**无 py 目标**（`Target.lang` 仅 rust/ts），故产品面不适用 |
 | 982/WEBTARGET | **部分交付并 fold** | A2JS 驱动（node 真跑 `5`）；`AUTO_ACE_TS` 引擎选择＋具名拒绝；TS 强类型通道渲染确定性；`AUTO_ACE_TS_PROOF` 回执（两腿对称＋真实计数）；独立进程"零 A2JS 派发"；**真 Pac/Target 工程级**构建用例。仍缺：多模块、`pac.build()`（ninja）链路、TS 通道接产品 |
-| 982/C、REVERSE、EXPORT、DEVSDK | **未开始** | §5 各切片合同（C/EXPORT 另需本机 C 工具链，当前缺） |
+| 982/REVERSE | **部分交付并 fold** | r2a（Rust→Auto→**真跑**）与 s2s（Auto→Auto 保语义＋解析级负例）两组用例；仍缺 s2s 真实改写规则、独立核 producer/consumer |
+| 982/DEVSDK | **部分交付** | 安装事务 `pytest` 基线 9+3；watch 源码级护栏（不 spawn cargo/rustc）；默认构建修复（`E0433`）；仍缺候选 SDK 发现（需产品决策） |
+| 982/C、982/EXPORT | **受环境阻塞** | V 需实际构建/链接，本机**无 C 工具链**（`cl`/`gcc`/`clang` 均缺）⇒ 只能"未执行" |
 
 **下一批可交付队列（按依赖与可交付性）**：①EXEC stdin（需 `console.stdin` 能力键 + provider + 文本返回面 + CLI 分派，四件联动）；②RUST 项目多文件写盘（`FileSet` → 工程树）；③点形态 `k.x`（需前端适配层为 config-document 生成 `ObjectGet`，影响面需单独评审）；④TEMPLATE 切片。
 ### B-CONFIG-I 引擎侧执行台账（2026-11-17，供下一次施工照做）
