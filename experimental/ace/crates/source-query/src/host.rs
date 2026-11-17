@@ -10,8 +10,9 @@
 //! 2. **target-ready**: the backend lane preparing an executable target
 //!    attaches its ready handle;
 //! 3. **revalidate**: the base revision is still current, the complete key
-//!    still matches the source (body/signature/capabilities), and every
-//!    positive dependency version is unchanged;
+//!    still matches the source (body/signature/capabilities), every
+//!    positive dependency version is unchanged, and no negative dependency
+//!    (an absent name whose fn candidate set was read) has flipped;
 //! 4. **switch**: publish the immutable page, then replace the current
 //!    record once. Any failure before the switch keeps the old record and
 //!    its target untouched; a cancelled or late result is never installed.
@@ -28,7 +29,7 @@
 //! The `PageSink` seam is where the unified ManagedStore adapter lands; the
 //! in-memory sink implements the same protocol for bounded verification.
 
-use crate::facts::InferBodyFacts;
+use crate::facts::{InferBodyFacts, NegativeDep};
 use crate::keys::QueryKey;
 use crate::session::{QueryError, SourceQuerySession};
 use ace_core::source::ast::Program;
@@ -85,7 +86,9 @@ impl PageSink for MemorySink {
 }
 
 /// A prepared candidate: facts for one complete key, bound to the host
-/// revision it was computed under, plus the dependency versions it read.
+/// revision it was computed under, plus the dependency versions it read —
+/// positive (callee signature versions) and negative (names absent at
+/// prepare time, guarded by the fn candidate-set fingerprint).
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub name: String,
@@ -93,6 +96,13 @@ pub struct Candidate {
     pub facts: InferBodyFacts,
     pub base: Revision,
     pub deps: Vec<(String, ContentVersion)>,
+    /// Negative dependencies the solve recorded (a name that did NOT
+    /// resolve in this domain). Mirrors what a session cache page keeps.
+    pub negatives: Vec<NegativeDep>,
+    /// Function candidate-set fingerprint at prepare time. When any
+    /// fn-domain negative was read, commit requires it unchanged — the
+    /// same coarse rule a session cache hit applies (page_deps_fresh).
+    pub fn_candidates_fp: String,
     pub target: Option<TargetHandle>,
 }
 
@@ -123,6 +133,11 @@ pub enum CommitError {
     KeyChanged { expected: String, current: String },
     /// A positive dependency changed after the candidate was prepared.
     DepChanged { name: String },
+    /// A negative dependency flipped after the candidate was prepared: a
+    /// name the facts recorded as ABSENT is now defined (the fn candidate
+    /// set changed), so the prepared facts no longer describe the current
+    /// source. Nothing was published or switched.
+    NegativeFlipped,
     /// The sink failed to publish; nothing was switched.
     Sink(String),
 }
@@ -145,6 +160,10 @@ impl std::fmt::Display for CommitError {
                     "dependency `{name}` changed after the candidate was prepared"
                 )
             }
+            CommitError::NegativeFlipped => write!(
+                f,
+                "a negative dependency flipped: the fn candidate set changed after the candidate was prepared"
+            ),
             CommitError::Sink(m) => write!(f, "page sink failed: {m}"),
         }
     }
@@ -240,12 +259,15 @@ impl<S: PageSink> QueryHost<S> {
                 deps.push((callee.clone(), v.clone()));
             }
         }
+        let negatives = out.facts.negatives.clone();
         Ok(Candidate {
             name: name.to_string(),
             key,
             facts: out.facts,
             base: self.revision,
             deps,
+            negatives,
+            fn_candidates_fp: catalog.candidates_fp().to_string(),
             target: None,
         })
     }
@@ -296,6 +318,15 @@ impl<S: PageSink> QueryHost<S> {
                 Some(v) if v == version => {}
                 _ => return Err(CommitError::DepChanged { name: dep.clone() }),
             }
+        }
+        // Every negative dependency must still hold: when the candidate
+        // read any ABSENT fn name, the whole fn candidate-set fingerprint
+        // must be unchanged — the same coarse rule a session cache hit
+        // applies (page_deps_fresh), checked before anything publishes.
+        if candidate.negatives.iter().any(|n| n.domain == "fn")
+            && candidate.fn_candidates_fp != catalog.candidates_fp()
+        {
+            return Err(CommitError::NegativeFlipped);
         }
         let artifact = self
             .sink

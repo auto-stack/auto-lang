@@ -172,13 +172,20 @@ pub fn serve() -> i32 {
         return fail_protocol("bad begin (expected op=begin, schema=semaworker/1)");
     }
     // request — the envelope shape mirrors acworker/1: {"op":"request","request":{…}}
+    // PLAN-1034 IPC-02: an I/O error is a NAMED infra end of the incomplete
+    // request (never a clean EOF, never an accepted prefix).
     let req_owned: String = match next_raw(&mut lines) {
         Ok(Some(l)) => l,
         Ok(None) => return fail_protocol("request line missing"),
-        Err(observed) => {
+        Err(LineError::TooLong(observed)) => {
             return fail_protocol(&format!(
                 "request line exceeds the {}-byte bound ({} observed)",
                 MAX_LINE, observed
+            ))
+        }
+        Err(LineError::Io(e)) => {
+            return fail_protocol(&format!(
+                "request stdin read ended with an I/O error (not EOF, not accepted): {e}"
             ))
         }
     };
@@ -197,10 +204,15 @@ pub fn serve() -> i32 {
     let req = env.request;
     let end = match next_raw(&mut lines) {
         Ok(v) => v,
-        Err(observed) => {
+        Err(LineError::TooLong(observed)) => {
             return fail_protocol(&format!(
                 "end line exceeds the {}-byte bound ({} observed)",
                 MAX_LINE, observed
+            ))
+        }
+        Err(LineError::Io(e)) => {
+            return fail_protocol(&format!(
+                "end stdin read ended with an I/O error (not EOF, not accepted): {e}"
             ))
         }
     };
@@ -263,19 +275,27 @@ fn fail_protocol(msg: &str) -> i32 {
 
 /// Read ONE line with a hard PRE-ALLOCATION cap (F-796-R6-03): the
 /// buffer never exceeds `MAX_LINE`, no matter how hostile the input.
-/// Ok(None) = EOF; Err(observed) = the line exceeded the cap.
-fn next_raw<R: BufRead>(r: &mut R) -> Result<Option<String>, usize> {
+/// PLAN-1034 IPC-02: the cap counts RAW frame bytes (lossy conversion
+/// happens after admission) and EXCLUDES the delimiter LF; a final
+/// non-empty frame without LF stays parseable; an I/O error is named and
+/// discards the partial frame — never folded into clean EOF, never an
+/// accepted prefix.
+#[derive(Debug)]
+enum LineError {
+    TooLong(usize),
+    Io(std::io::Error),
+}
+
+fn next_raw<R: BufRead>(r: &mut R) -> Result<Option<String>, LineError> {
+    next_raw_with_cap(r, MAX_LINE)
+}
+
+fn next_raw_with_cap<R: BufRead>(r: &mut R, cap: usize) -> Result<Option<String>, LineError> {
     let mut line: Vec<u8> = Vec::new();
     loop {
         let available = match r.fill_buf() {
             Ok(b) => b,
-            Err(_) => {
-                return if line.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(String::from_utf8_lossy(&line).to_string()))
-                }
-            }
+            Err(e) => return Err(LineError::Io(e)),
         };
         if available.is_empty() {
             return if line.is_empty() {
@@ -286,16 +306,16 @@ fn next_raw<R: BufRead>(r: &mut R) -> Result<Option<String>, usize> {
         }
         match available.iter().position(|&b| b == b'\n') {
             Some(nl) => {
-                if line.len() + nl > MAX_LINE {
-                    return Err(line.len() + nl);
+                if line.len() + nl > cap {
+                    return Err(LineError::TooLong(line.len() + nl));
                 }
                 line.extend_from_slice(&available[..nl]);
                 r.consume(nl + 1);
                 return Ok(Some(String::from_utf8_lossy(&line).to_string()));
             }
             None => {
-                if line.len() + available.len() > MAX_LINE {
-                    return Err(line.len() + available.len());
+                if line.len() + available.len() > cap {
+                    return Err(LineError::TooLong(line.len() + available.len()));
                 }
                 let take = available.len();
                 line.extend_from_slice(available);
@@ -539,4 +559,74 @@ fn b64_decode(s: &str) -> Result<String, String> {
         .decode(s)
         .map_err(|e| format!("source_b64: {e}"))?;
     String::from_utf8(bytes).map_err(|e| format!("source is not utf-8: {e}"))
+}
+
+// ---- PLAN-1034 T-03（IPC-02 同族断言）：sema line reader 的 EOF/IO/TooLong ----
+#[cfg(test)]
+mod audit1034_ipc_02_sema {
+    use super::*;
+
+    /// 4MiB cap 不计分隔 LF；恰 cap 帧接受、cap+1 拒绝（机制等界）。
+    #[test]
+    fn line_cap_counts_raw_frame_bytes_excluding_lf() {
+        let cap = 8usize;
+        let mut r: &[u8] = b"12345678\n";
+        match next_raw_with_cap(&mut r, cap) {
+            Ok(Some(l)) => assert_eq!(l, "12345678"),
+            other => panic!("cap-equal frame must pass, got {other:?}"),
+        }
+        let mut r: &[u8] = b"123456789\n";
+        match next_raw_with_cap(&mut r, cap) {
+            Err(LineError::TooLong(n)) => assert_eq!(n, 9),
+            other => panic!("cap+1 must be TooLong, got {other:?}"),
+        }
+    }
+
+    /// 纯 EOF → Ok(None)（request missing 语境）；无 LF 终帧可解析；
+    /// lossy UTF-8 在 raw 计量后转换。
+    #[test]
+    fn eof_and_final_frame_and_lossy_semantics_hold() {
+        let mut r: &[u8] = b"";
+        assert!(matches!(next_raw_with_cap(&mut r, 8), Ok(None)));
+        let mut r: &[u8] = b"tail";
+        match next_raw_with_cap(&mut r, 8) {
+            Ok(Some(l)) => assert_eq!(l, "tail"),
+            other => panic!("final frame without LF stays parseable, got {other:?}"),
+        }
+        let frame: &[u8] = &[b'x', 0xff];
+        let mut r = frame;
+        match next_raw_with_cap(&mut r, 8) {
+            Ok(Some(l)) => assert_eq!(l, "x\u{fffd}"),
+            other => panic!("lossy conversion expected, got {other:?}"),
+        }
+    }
+
+    /// IO 错误（前缀后）具名，不折 EOF、不接受前缀。
+    struct HalfThenIo {
+        first: bool,
+    }
+    impl std::io::Read for HalfThenIo {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("kernel read gone"))
+        }
+    }
+    impl BufRead for HalfThenIo {
+        fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            if self.first {
+                self.first = false;
+                Ok(&b"{\"op\":"[..])
+            } else {
+                Err(std::io::Error::other("kernel read gone"))
+            }
+        }
+        fn consume(&mut self, _: usize) {}
+    }
+    #[test]
+    fn io_error_mid_frame_is_named_not_eof_not_prefix() {
+        let mut r = HalfThenIo { first: true };
+        match next_raw_with_cap(&mut r, 64) {
+            Err(LineError::Io(e)) => assert!(e.to_string().contains("kernel read gone")),
+            other => panic!("IO mid-frame must be named Io, got {other:?}"),
+        }
+    }
 }

@@ -276,7 +276,10 @@ pub fn assembled_caps() -> Vec<String> {
 /// 编译期命名空间 + PLAN-962 `av.aggregates/1` 准入）。
 pub fn assembled_aggregates_caps() -> Vec<String> {
     let mut caps = assembled_caps();
-    if !caps.iter().any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP) {
+    if !caps
+        .iter()
+        .any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP)
+    {
         caps.push(ace_core::source::AGGREGATES_ADMISSION_CAP.into());
     }
     caps
@@ -427,6 +430,29 @@ pub fn compile_assembled_inputs(
     compile_bound_packages(bound, &caps)
 }
 
+/// PLAN-973（T-02）：系统库消费者入口——app 文件 + 972 冻结装配集 +
+/// **系统库冻结装配集**（std 下的 sysplat/path/file/env/process/time/
+/// rand/storage/syscommon）。两集身份同纪律；只有系统入口的消费者并入
+/// sys 集，普通 972 消费者的 whole-set 构建不携带系统平台声明。
+pub fn assemble_stdlib_sys_inputs(
+    app_files: &[(String, String)],
+    entry: &str,
+    ctx: &mut PackageAssemblyContext,
+) -> Result<Vec<AsmInput>, String> {
+    let mut inputs = assemble_stdlib_aggregates_inputs(app_files, entry, ctx)?;
+    for (name, content) in ace_core::source::packages::stdlib_sys_files() {
+        let base = name.trim_end_matches(".at").to_string();
+        inputs.push(AsmInput {
+            package: ace_core::source::packages::STDLIB_PACKAGE.to_string(),
+            version: ace_core::source::packages::STDLIB_VERSION.to_string(),
+            id: base.clone(),
+            source: content.clone(),
+            provider: None,
+        });
+    }
+    Ok(inputs)
+}
+
 /// PLAN-972（T-02）：装配 aggregates 线的冻结装配 std 集输入（package
 /// `std`；公共 `.at` 成模块，候选按同一显式上下文选择——现集为纯 Auto
 /// 模块，无候选）。实现层身份在绑定面按 `is_frozen_std_assembled_module`
@@ -457,7 +483,9 @@ pub fn frozen_std_assembled_inputs(
                 }
             }
             None => {
-                return Err(format!("std assembled file `{name}` is not a provider-source name"))
+                return Err(format!(
+                    "std assembled file `{name}` is not a provider-source name"
+                ))
             }
         }
     }
@@ -476,9 +504,8 @@ pub fn frozen_std_assembled_inputs(
                         _ => None,
                     })
                     .collect();
-                let sel =
-                    select_provider_source(base, &set, ctx.backend, ctx.provider, ctx.target)
-                        .map_err(|e: ProviderSourceError| format!("{}: {}", e.code(), e.message()))?;
+                let sel = select_provider_source(base, &set, ctx.backend, ctx.provider, ctx.target)
+                    .map_err(|e: ProviderSourceError| format!("{}: {}", e.code(), e.message()))?;
                 sel.provider.map(|kind| PackageImplLayer {
                     kind,
                     source: kinds.get(kind.label()).cloned().unwrap_or_default(),
@@ -543,11 +570,7 @@ pub fn compile_assembled_aggregates_inputs(
 ) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
     let lane_caps = assembled_aggregates_caps();
     let bound = ace_core::source::packages::bind_packages_assembled_aggregates(
-        inputs,
-        entry,
-        &lane_caps,
-        budget,
-        ctx,
+        inputs, entry, &lane_caps, budget, ctx,
     )
     .map_err(|e| vec![convert_asm_diag(e)])?;
     compile_bound_packages_aggregates(bound, &lane_caps)

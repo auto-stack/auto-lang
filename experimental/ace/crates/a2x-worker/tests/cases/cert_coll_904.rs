@@ -9,7 +9,6 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-
 const WORKER: &str = "../../target/release/a2x-worker.exe";
 
 fn worker_path() -> PathBuf {
@@ -274,4 +273,261 @@ fn cert_coll_schema_isolation() {
         ..no_cfg
     };
     assert!(old.validate().is_ok());
+}
+
+// ---- PLAN-1036 (AUDIT-1024 F35): the continue back-edge poll ----------
+//
+// F35: the C/Rust collections emitters appended the cooperative poll at the
+// END of the loop body. A `continue` jumped straight to the loop header, so
+// every continue-driven back edge skipped BOTH the 1-WU budget charge and
+// the cancellation check. The loop below routes every back edge through a
+// conditional `continue` and its only other exit is `break` — so the
+// pre-fix run observes ZERO polls while the fixed run observes exactly
+// three (3 back edges, 0 from the never-executed fall-through).
+
+/// The frozen LOOP-03 source: n counts 1..=4, `break` at 4, conditional
+/// `continue` otherwise. Value oracle: 40 (n*10 + t, t never reached).
+pub const LOOP_03_SRC: &str =
+    "fn main() int {\n    var n = 0\n    var t = 0\n    loop {\n        n = n + 1\n        if n == 4 { break }\n        if n < 4 { continue }\n        t = t + 1\n    }\n    return n * 10 + t\n}";
+
+/// Emit + compile (real rustc) + run the collections Rust leg with `env`;
+/// returns (stdout, stderr).
+fn run_coll_rust_leg(name: &str, src: &str, env: &[(&str, &str)]) -> (String, String) {
+    use ace_a2x_core::sha256::sha256_hex;
+    use ace_a2x_core::SemanticView;
+    use ace_a2x_rust::coll::assemble_collections_file_set;
+    use ace_a2x_rust::lower_coll::lower_collections_program;
+    use ace_core::source::compile_collections_source;
+
+    let compiled = compile_collections_source(src, "m.at", &[]).unwrap_or_else(|ds| {
+        panic!(
+            "frontend diagnostics for {name}: {}",
+            ds.iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    });
+    let view = SemanticView::from_checked(&compiled.checked).expect("view admission");
+    let program = lower_collections_program(&view, "main").expect("collections lowering");
+    let set = assemble_collections_file_set(
+        &view,
+        &program,
+        "input-hash",
+        &sha256_hex(src.as_bytes()),
+        "{\"budget_work_units\":16777216,\"cancel\":false,\"events\":false,\"fault_alloc\":null,\"mode\":\"debug\"}",
+        "main",
+    );
+    let dir = out_base().join(format!("loop-03-{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &set.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &set.manifest).unwrap();
+
+    let exe = dir.join("loop03.exe");
+    let mut compiler = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()));
+    compiler
+        .args(["--edition", "2021", "-o"])
+        .arg(&exe)
+        .arg("main.rs")
+        .current_dir(&dir);
+    let out = auto_tool_execution::run_command_capture(
+        compiler,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("spawn rustc");
+    assert_eq!(
+        out.kind,
+        auto_tool_execution::ExitKind::Success,
+        "rustc failed for {name}: {}",
+        String::from_utf8_lossy(out.stderr.as_ref().expect("captured stderr"))
+    );
+
+    let mut command = Command::new(&exe);
+    command.current_dir(&dir);
+    for (k, v) in env {
+        command.env(k, v);
+    }
+    let run = auto_tool_execution::run_command_capture(
+        command,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run exe");
+    assert_eq!(
+        run.kind,
+        auto_tool_execution::ExitKind::Success,
+        "wrapper exit non-zero for {name}"
+    );
+    (
+        String::from_utf8_lossy(run.stdout.as_ref().expect("captured stdout")).to_string(),
+        String::from_utf8_lossy(run.stderr.as_ref().expect("captured stderr")).to_string(),
+    )
+}
+
+fn count_polls(stderr: &str) -> usize {
+    stderr.lines().filter(|l| l.trim() == "coll:poll").count()
+}
+
+/// F35 / LOOP-03 (Rust leg): exactly one poll per real back edge — three
+/// continue-driven back edges, none for the `break` exit — and the poll is
+/// the charge/cancel point the budget and cancellation knobs observe.
+#[test]
+fn audit1036_loop_03_continue_backedge_polls() {
+    // clean run: value + exactly 3 polls (pre-fix: 0)
+    let (out, err) = run_coll_rust_leg("clean", LOOP_03_SRC, &[("A2X_RT_EVENTS", "1")]);
+    assert_eq!(out, "value:40\n", "LOOP-03 value");
+    assert_eq!(
+        count_polls(&err),
+        3,
+        "each continue back edge polls exactly once; stderr:\n{err}"
+    );
+
+    // The same loop through the FALL-THROUGH shape (no continue on the
+    // last pass) must also account exactly one poll per back edge.
+    let fallthrough = "fn main() int {\n    var n = 0\n    loop {\n        n = n + 1\n        if n == 3 { break }\n        if n == 1 { continue }\n    }\n    return n\n}";
+    let (out, err) = run_coll_rust_leg("fallthrough", fallthrough, &[("A2X_RT_EVENTS", "1")]);
+    assert_eq!(out, "value:3\n");
+    assert_eq!(
+        count_polls(&err),
+        2,
+        "n=1 continues (1 poll), n=2 falls through (1 poll), n=3 breaks; stderr:\n{err}"
+    );
+
+    // Budget boundary: Wbase is the clean run's own charge total
+    // (4 WU call frame + 3 polls = 7). Wbase completes; Wbase-1 traps at
+    // the third poll — the pre-fix path (no poll charge) completed both.
+    let (out, err) = run_coll_rust_leg("budget-exact", LOOP_03_SRC, &[("A2X_RT_BUDGET", "7")]);
+    assert_eq!(out, "value:40\n", "Wbase = 4 call + 3 polls: {err}");
+    let (out, _err) = run_coll_rust_leg("budget-short", LOOP_03_SRC, &[("A2X_RT_BUDGET", "6")]);
+    assert_eq!(out, "trap:Budget\n", "one WU short must trap at a poll");
+
+    // Cancellation reaches the guest loop at its FIRST poll.
+    let (out, _err) = run_coll_rust_leg("cancel", LOOP_03_SRC, &[("A2X_RT_CANCEL", "1")]);
+    assert_eq!(
+        out, "trap:Cancelled\n",
+        "an armed cancel must be observed by a continue-driven back edge"
+    );
+}
+
+// ---- PLAN-1036 F-R1-03: the poll error path's cleanup schedule ---------
+//
+// The back-edge poll's ERROR path deliberately re-lists the per-iteration
+// deaths plus the loop survivors (`loop_survivors`), so release must be
+// idempotent. The C runtime guards on `data == NULL`; the Rust list release
+// did NOT (it re-dropped the Vec) — a continue-driven (or fall-through)
+// poll trap with an owned per-iteration local crashed with heap
+// corruption (0xC0000374). These two shapes freeze the invariant on both
+// real legs: exactly one real release per allocation (byte ledger closed),
+// no double free, survivor freed once.
+
+/// Ledger of the Rust runtime's event stream: (allocs, bytes, frees, bytes).
+fn rust_ledger(stderr: &str) -> (usize, u64, usize, u64) {
+    let mut allocs = 0usize;
+    let mut alloc_bytes = 0u64;
+    let mut frees = 0usize;
+    let mut free_bytes = 0u64;
+    for line in stderr.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("coll:alloc:") {
+            allocs += 1;
+            if let Some((_, bytes)) = rest.rsplit_once(':') {
+                alloc_bytes += bytes.parse::<u64>().unwrap_or(0);
+            }
+        } else if let Some(rest) = l.strip_prefix("coll:free-backing:") {
+            frees += 1;
+            free_bytes += rest.parse::<u64>().unwrap_or(0);
+        }
+    }
+    (allocs, alloc_bytes, frees, free_bytes)
+}
+
+/// Total work units the run charged (each `coll:charge:<n>:<why>` line).
+fn rust_charge_total(stderr: &str) -> i64 {
+    stderr
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("coll:charge:"))
+        .filter_map(|rest| rest.split(':').next())
+        .filter_map(|u| u.parse::<i64>().ok())
+        .sum()
+}
+
+/// A loop that owns one per-iteration List and keeps one List alive across
+/// the loop; `CONTINUE` drives the only back edge of the first shape.
+fn owned_loop_src(shape: &str) -> String {
+    let drive = if shape == "continue" {
+        "if total == 8 { continue }\n        if total == 16 { break }"
+    } else {
+        "n = n + 1\n        if n == 2 { break }"
+    };
+    format!(
+        "fn main() int {{\n    var keep = List<int>.new()\n    keep.push(7)\n    var total int = 0\n    var n int = 0\n    loop {{\n        var tmp = List<int>.new()\n        tmp.push(1)\n        total = total + tmp.get(0) + keep.get(0)\n        {drive}\n    }}\n    return total + keep.len()\n}}"
+    )
+}
+
+/// F-R1-03 (Rust leg): a poll trap with an owned per-iteration local and an
+/// owned loop survivor releases every buffer exactly once — value path,
+/// cancel path and budget path each keep the ledger closed.
+#[test]
+fn audit1036_loop_03_owned_cleanup() {
+    for shape in ["continue", "fallthrough"] {
+        let src = owned_loop_src(shape);
+
+        // value path: total = 8 then break; keep survives; ledger closes
+        let (out, err) =
+            run_coll_rust_leg(&format!("{shape}-clean"), &src, &[("A2X_RT_EVENTS", "1")]);
+        assert_eq!(out, "value:17\n", "{shape}: value oracle");
+        let (a, ab, f, fb) = rust_ledger(&err);
+        assert!(a >= 2, "{shape}: expected several allocations, got {a}");
+        assert_eq!((a, ab), (f, fb), "{shape}: clean ledger must close\n{err}");
+
+        // cancel at the poll (continue-driven AND fall-through sibling):
+        // the error path frees the loop survivors + the per-iteration set
+        let (out, err) = run_coll_rust_leg(
+            &format!("{shape}-cancel"),
+            &src,
+            &[("A2X_RT_CANCEL", "1"), ("A2X_RT_EVENTS", "1")],
+        );
+        assert_eq!(
+            out, "trap:Cancelled\n",
+            "{shape}: cancel must trap at the poll"
+        );
+        let (a, ab, f, fb) = rust_ledger(&err);
+        assert_eq!(
+            (a, ab),
+            (f, fb),
+            "{shape}: cancel ledger must close exactly once per buffer (a leak or a \
+             double free shows up here)\n{err}"
+        );
+
+        // budget: Wbase (the clean run's own charge total PLUS its polls —
+        // a back-edge poll is a 1-WU deduction logged as `coll:poll`, not as
+        // a `coll:charge:` line) completes; one WU short traps AT the poll
+        // and still closes the ledger
+        let (_out, clean_err) =
+            run_coll_rust_leg(&format!("{shape}-wbase"), &src, &[("A2X_RT_EVENTS", "1")]);
+        let wbase = rust_charge_total(&clean_err) + count_polls(&clean_err) as i64;
+        assert!(wbase > 0, "{shape}: charge ledger must name work units");
+        let (out, _err) = run_coll_rust_leg(
+            &format!("{shape}-budget-exact"),
+            &src,
+            &[("A2X_RT_BUDGET", &wbase.to_string())],
+        );
+        assert_eq!(out, "value:17\n", "{shape}: Wbase = {wbase} must complete");
+        let (out, err) = run_coll_rust_leg(
+            &format!("{shape}-budget-short"),
+            &src,
+            &[("A2X_RT_BUDGET", &(wbase - 1).to_string())],
+        );
+        assert_eq!(out, "trap:Budget\n", "{shape}: Wbase-1 must trap");
+        let (a, ab, f, fb) = rust_ledger(&err);
+        assert_eq!(
+            (a, ab),
+            (f, fb),
+            "{shape}: budget trap ledger must close\n{err}"
+        );
+    }
 }

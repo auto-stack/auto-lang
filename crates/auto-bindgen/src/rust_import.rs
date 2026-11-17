@@ -83,6 +83,7 @@ pub const FRAME_FORMAT: &str = "p967.frame/1";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RustParam {
     ViewUtf8,
+    OutBytes,
     I32,
     Bool,
     /// `frame: &F0Frame` — the whole call rides the tag frame (the only
@@ -502,6 +503,7 @@ fn require_pub_fn_signature(
     let params_text = after[..close].trim();
     let mut params = Vec::new();
     let mut views = 0usize;
+    let mut out_bufs = 0usize;
     if !params_text.is_empty() {
         for raw in params_text.split(',') {
             let param = raw.trim();
@@ -517,6 +519,17 @@ fn require_pub_fn_signature(
                 }
                 views += 1;
                 params.push(RustParam::ViewUtf8);
+                continue;
+            }
+            if borrowed == "mut [u8]" || ty.replace(' ', "") == "&mut[u8]" {
+                if out_bufs == 1 {
+                    return Err(err(
+                        "rust-import.domain",
+                        format!("fn `{name}` has two writable byte-slice parameters; at most one `&mut [u8]` is importable"),
+                    ));
+                }
+                out_bufs += 1;
+                params.push(RustParam::OutBytes);
                 continue;
             }
             if borrowed == "F0Frame" {
@@ -687,6 +700,16 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
         for p in &f.params {
             match p {
                 RustParam::ViewUtf8 => {}
+                RustParam::OutBytes => {
+                    if !params_c.is_empty() {
+                        params_c.push_str(", ");
+                        args_rust.push_str(", ");
+                    }
+                    params_c.push_str("dst: *mut u8, cap: u64");
+                    args_rust.push_str(
+                        "if cap == 0 || dst.is_null() { &mut [] } else { unsafe { std::slice::from_raw_parts_mut(dst, cap as usize) } }",
+                    );
+                }
                 // frame fns are emitted by emit_frame_fn (they never
                 // reach the general frame loop; import() enforces the
                 // single-parameter shape)
@@ -922,6 +945,7 @@ pub fn to_manual_manifest(
             .iter()
             .map(|p| match p {
                 RustParam::ViewUtf8 | RustParam::FrameCall => ResKind::ViewText,
+                RustParam::OutBytes => ResKind::OutBytes,
                 RustParam::I32 => ResKind::I32,
                 RustParam::Bool => ResKind::Bool,
             })

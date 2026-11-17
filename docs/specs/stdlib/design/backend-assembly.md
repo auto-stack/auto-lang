@@ -128,3 +128,12 @@ Core保留语言native、声明快照、值转换、请求/资源hooks及local�
 HTTP Rust/TypeScript生成归Web，IPC/Tauri和非HTTPadapter留原owner；四个共享生成机制仅auto-generation-core单源。
 VM Axum0.8/生成Rust Axum0.7对象不跨端口传递。显式安装及worker launch规则见[http-host-port](../../language-sdk/http-host-port.md)，
 领域规范只在[Web](../../../../../auto-web/docs/specs/project.md)；原协议和受限支持表不因迁仓扩大。
+
+## PLAN-978 增量：预编译消费与恢复（SD-04/SD-ID-ADMISSION 工作稿）
+
+预编译 provider 消费模式（候选 SDK `run`：selection 准入→runtime 兼容→dispatch，
+运行不要求 rustc/cargo/bindgen 或开发树；缺预编译产物=具名拒绝，不以 emit 冒 run）
+与失败恢复（坏收据行具名拒绝保旧、restore=purge 可再生 M978B 层+CURRENT 复验+重建）
+的合同沉淀于 [ace-migration/m2-build.md](../../ace-migration/m2-build.md)。同一 AV
+执行器下 native/C/Rust 三来源与 A2PY 的覆盖/运行证据、PE imports 声明族检查同彼处。
+本节为工作稿，独立 review 定稿。

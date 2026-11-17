@@ -468,6 +468,21 @@ pub fn oracle_for(key: &str) -> Option<&'static ResourceEventsOracle> {
 /// judged by the native face (`ac_mn`), not here.
 static ORACLES: &[(&str, ResourceEventsOracle)] = &[
     (
+        // PLAN-985 T-A02 m2-cover registration (owned-relay probe; the
+        // frozen values are derived from a real parent-side run).
+        "ace.m2.p985.cover.owned-relay/av-owned",
+        ResourceEventsOracle {
+            profile: "owned",
+            outcome: "success",
+            value: Some(405),
+            trap: None,
+            resource: None,
+            frames: 2,
+            created: &[("record", 2), ("str", 4)],
+            free_order: &[3, 0, 1, 2],
+        },
+    ),
+    (
         "ace.m1.r01.av/av-owned",
         ResourceEventsOracle {
             profile: "owned",

@@ -70,3 +70,17 @@ corpus `av-owned-mut-writeback`（exit 808）。
 - copyable record 的 `.mut`（av.owned/1）：借用临时与写回为 **Copy**（此
   前 Move 表示被 mir.ownership-required 拒）；资源 record（可达 Str）保持
   Move 传递对不变。
+
+## PLAN-1035 增量：资源闭包分类的消费者边界（2026-11-16）
+
+- mut record move-in / `t_MutRet_{fn}` / f0+wb 完整消费**逐条不变**；分类修正不新增
+  聚合 MutBorrow ABI，也不改 wrapper 装配与写回规则。
+- copyable 与资源 record 判定同源派生：`record_reaches_resource`（owned Str / List /
+  Variant / Closure 叶）同时驱动 `type_is_owned` 与 `LayoutDesc.is_copy`——纯标量
+  record 仍 Copy，`List`/`Variant`/`Closure` 字段即资源（Move 传递）。
+- MIR `MOVE` 对 copyable 仍 `mir.ownership-required`；资源 record（含 List-only）的
+  MOVE/CLONE 纪律与 Str-bearing record 同规则（typed `CLONE` 深拷贝、源码域 clone
+  仍拒）。
+- 证据锚：`av_owned_*` 固定组（mut 写回 808/810/8917/801/9 复跑绿）、
+  `audit1035_res_01_derived_facts`、
+  `audit1035_res_01_typed_clone_of_list_only_record_is_deep`。

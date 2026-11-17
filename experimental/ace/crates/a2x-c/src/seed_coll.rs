@@ -68,6 +68,7 @@ pub enum SeedCollTy {
     StrOwned,
     Record(String),
     Variant(String),
+    List(Box<SeedCollTy>),
 }
 
 impl SeedCollTy {
@@ -79,6 +80,7 @@ impl SeedCollTy {
             SeedCollTy::StrOwned => "Str".into(),
             SeedCollTy::Record(n) => format!("R:{}", n),
             SeedCollTy::Variant(n) => format!("V:{}", n),
+            SeedCollTy::List(e) => format!("L:{}", e.token()),
         }
     }
 
@@ -90,6 +92,7 @@ impl SeedCollTy {
             SeedCollTy::StrOwned => "str".into(),
             SeedCollTy::Record(n) => format!("rec_{}", crate::lower::sanitize(n)),
             SeedCollTy::Variant(n) => format!("var_{}", crate::lower::sanitize(n)),
+            SeedCollTy::List(e) => format!("list_{}", e.elem_tag()),
         }
     }
 
@@ -101,6 +104,7 @@ impl SeedCollTy {
             SeedCollTy::StrOwned => "a2x_str".into(),
             SeedCollTy::Record(n) => crate::lower_rt::c_record_name(n),
             SeedCollTy::Variant(n) => c_variant_name(n),
+            SeedCollTy::List(e) => format!("a2x_list_{}", e.elem_tag()),
         }
     }
 }
@@ -123,6 +127,10 @@ fn seed_coll_ty(view: &SemanticView<'_>, ty: Ty) -> Result<SeedCollTy, A2xReject
             .variant(i)
             .map(|v| SeedCollTy::Variant(v.name.clone()))
             .ok_or_else(|| A2xReject::new("a2x.internal", "seed: unknown variant index")),
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            Ok(SeedCollTy::List(Box::new(seed_coll_ty(view, elem)?)))
+        }
         other => Err(A2xReject::unsupported_type(format!(
             "seed: type `{:?}` is outside the collections domain",
             other
@@ -183,6 +191,13 @@ fn valid_name(s: &str) -> bool {
 }
 
 fn parse_ty(tok: &str) -> Result<SeedCollTy, A2xReject> {
+    parse_ty_depth(tok, 0)
+}
+
+fn parse_ty_depth(tok: &str, depth: usize) -> Result<SeedCollTy, A2xReject> {
+    if depth > 16 {
+        return Err(A2xReject::new("a2x.seed", "type token nesting too deep"));
+    }
     match tok {
         "i32" => Ok(SeedCollTy::I32),
         "bool" => Ok(SeedCollTy::Bool),
@@ -197,6 +212,12 @@ fn parse_ty(tok: &str) -> Result<SeedCollTy, A2xReject> {
                 if valid_name(name) {
                     return Ok(SeedCollTy::Variant(name.to_string()));
                 }
+            }
+            if let Some(inner) = other.strip_prefix("L:") {
+                return Ok(SeedCollTy::List(Box::new(parse_ty_depth(
+                    inner,
+                    depth + 1,
+                )?)));
             }
             Err(A2xReject::new(
                 "a2x.seed",

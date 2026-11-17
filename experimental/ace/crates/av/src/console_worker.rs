@@ -135,6 +135,13 @@ pub fn serve(request: &Json) -> Result<Json, String> {
                         step["outcome"] = json!("infra");
                         step["diag"] = json!({"stage":"run","code":"host.infra","message":message});
                     }
+                    // PLAN-973: a guest exit request is a normal named
+                    // outcome (the worker process keeps running).
+                    ExecOutcome::Exit { code } => {
+                        step["outcome"] = json!("exit");
+                        step["channel"] = json!("value");
+                        step["value"] = json!(code);
+                    }
                 },
             }
         }

@@ -75,6 +75,21 @@ pub fn unwired_reason(unit_key: &str, name: &str) -> Option<String> {
 // 混装）；仓外来源两条线都不认。身份 = 仓库文件内容本身（include_str!）。
 // ---------------------------------------------------------------------------
 
+// PLAN-973（T-02）：系统库装配模块（file/path/env/process/time/rand/storage
+// + syscommon + 双 OS 平台模块）。同 972 集：纯 Auto、无 provider 候选；
+// #in 在公共模块内按装配目标选择平台模块。
+const SYS_SYSCOMMON: &str = include_str!("../../../../../../../stdlib/ace/sys/syscommon.at");
+const SYS_SYSPLAT_WIN: &str = include_str!("../../../../../../../stdlib/ace/sys/sysplat_win.at");
+const SYS_SYSPLAT_LNX: &str = include_str!("../../../../../../../stdlib/ace/sys/sysplat_lnx.at");
+const SYS_PATH: &str = include_str!("../../../../../../../stdlib/ace/sys/path.at");
+const SYS_FILE: &str = include_str!("../../../../../../../stdlib/ace/sys/file.at");
+const SYS_ENV: &str = include_str!("../../../../../../../stdlib/ace/sys/env.at");
+const SYS_PROCESS: &str = include_str!("../../../../../../../stdlib/ace/sys/process.at");
+const SYS_TIME: &str = include_str!("../../../../../../../stdlib/ace/sys/time.at");
+const SYS_RAND: &str = include_str!("../../../../../../../stdlib/ace/sys/rand.at");
+const SYS_STORAGE: &str = include_str!("../../../../../../../stdlib/ace/sys/storage.at");
+const SYS_ZIP: &str = include_str!("../../../../../../../stdlib/ace/sys/zip.at");
+
 const ASM_LIST_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/list.at");
 const ASM_MATH_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/math.at");
 const ASM_TEXT_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/text.at");
@@ -98,6 +113,43 @@ pub fn stdlib_assembled_files() -> Vec<(String, String)> {
         ("bytes.at".to_string(), ASM_BYTES_PUBLIC.to_string()),
         ("map.at".to_string(), ASM_MAP_PUBLIC.to_string()),
     ]
+}
+
+/// PLAN-973（T-02）：系统库装配集（file/path/env/process/time/rand/storage
+/// + syscommon + 双 OS 平台模块）——与 972 纯算法集**分离**的第二个冻结
+/// 装配集：系统库的消费者（std 系统入口）显式并入本集；普通 972 集消费
+/// 者不受系统模块的平台声明/依赖影响。同 972 纪律：纯 Auto、无 provider
+/// 候选、#in 在公共模块内按装配目标选择平台模块；身份 = 仓库文件内容。
+pub fn stdlib_sys_files() -> Vec<(String, String)> {
+    vec![
+        ("syscommon.at".to_string(), SYS_SYSCOMMON.to_string()),
+        ("sysplat_win.at".to_string(), SYS_SYSPLAT_WIN.to_string()),
+        ("sysplat_lnx.at".to_string(), SYS_SYSPLAT_LNX.to_string()),
+        ("path.at".to_string(), SYS_PATH.to_string()),
+        ("file.at".to_string(), SYS_FILE.to_string()),
+        ("env.at".to_string(), SYS_ENV.to_string()),
+        ("process.at".to_string(), SYS_PROCESS.to_string()),
+        ("time.at".to_string(), SYS_TIME.to_string()),
+        ("rand.at".to_string(), SYS_RAND.to_string()),
+        ("storage.at".to_string(), SYS_STORAGE.to_string()),
+        ("zip.at".to_string(), SYS_ZIP.to_string()),
+    ]
+}
+
+/// 系统库装配集的 `std` 身份保留（与 972 集同一防遮蔽纪律）。
+pub fn is_frozen_std_sys_module(id: &str, version: &str, source: &str) -> bool {
+    version == STDLIB_VERSION
+        && (matches!(id, "syscommon" if source == SYS_SYSCOMMON)
+            || matches!(id, "sysplat_win" if source == SYS_SYSPLAT_WIN)
+            || matches!(id, "sysplat_lnx" if source == SYS_SYSPLAT_LNX)
+            || matches!(id, "path" if source == SYS_PATH)
+            || matches!(id, "file" if source == SYS_FILE)
+            || matches!(id, "env" if source == SYS_ENV)
+            || matches!(id, "process" if source == SYS_PROCESS)
+            || matches!(id, "time" if source == SYS_TIME)
+            || matches!(id, "rand" if source == SYS_RAND)
+            || matches!(id, "storage" if source == SYS_STORAGE)
+            || matches!(id, "zip" if source == SYS_ZIP))
 }
 
 /// PLAN-972（T-02）：装配线 `std` 身份保留。模块 id/版本/公共源（以及实现

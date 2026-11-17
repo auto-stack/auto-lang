@@ -776,6 +776,7 @@ dependencies = [
  "auto-terminal-core",
  "auto-test-case",
  "auto-text-core",
+ "auto-tool-execution",
  "auto-val",
  "auto-web-contract",
  "base64 0.22.1",

@@ -165,6 +165,10 @@ pub struct FirstSets {
 
 impl FirstSets {
     pub fn compute(p: &GrammarProgram) -> Result<FirstSets, RtError> {
+        // PLAN-1029（ADM-02）：引用命名空间在 FirstSets/parse 授信前准入
+        // （TokenId/RuleId 各归各表；坏 primary/call_args 等此前会在
+        // first[prim]/Machine 的直接索引处 panic）。
+        p.validate_references()?;
         let n = p.rules.len();
         let nt = p.tokens.len();
         let mut first = vec![vec![false; nt]; n];
@@ -2501,5 +2505,272 @@ mod tests {
         text.push_str(&format!("{}1{}", "(".repeat(n), ")".repeat(n)));
         let (out, snap) = parse_mini(&text);
         out.tree.assert_lossless(&snap).unwrap();
+    }
+
+    /// PLAN-1029 ADM-02：引用命名空间准入——坏 primary 不再 panic 而是
+    /// 具名 InvalidProgram；合法邻例（base Tok(0)/expr Pratt(0)，primary=0、
+    /// start=1）真实解析成功；call_args/postfix_tail 按 **RuleId** 命名空间
+    /// 双向核（R-1029-01）；其余 TokenId/field/mode 命名空间逐项拒绝；
+    /// 合法递归 grammar 不被误拒。
+    #[test]
+    fn audit1029_adm_02_reference_namespaces_admitted_before_trust() {
+        use crate::program::{
+            Atom, NewlinePolicy, PrattOp, PrattSpec, RecoverySpec, RuleSpec, Step,
+        };
+
+        fn step(atom: Atom) -> Step {
+            Step {
+                atom,
+                field: None,
+                repeat: crate::program::Repeat::Once,
+                same_line: false,
+                cut: false,
+            }
+        }
+        fn rule(name: &str, steps: Vec<Step>) -> RuleSpec {
+            RuleSpec {
+                name: name.into(),
+                alts: vec![crate::program::Alt { steps }],
+                recover: false,
+            }
+        }
+        fn pratt(primary: u32) -> PrattSpec {
+            PrattSpec {
+                primary,
+                ops: Vec::new(),
+                group_open: None,
+                group_close: None,
+                call_paren: None,
+                call_args: None,
+                postfix_tail: None,
+            }
+        }
+        fn prog(
+            n_tok: usize,
+            rules: Vec<RuleSpec>,
+            pratt: Vec<PrattSpec>,
+            start: u32,
+        ) -> GrammarProgram {
+            let n_rule = rules.len();
+            GrammarProgram {
+                name: "adm1029".into(),
+                revision: 0,
+                schema_version: 1,
+                scanner: crate::program::ScannerProgram {
+                    mode_names: vec!["m".into()],
+                    rules: Vec::new(),
+                },
+                tokens: (0..n_tok)
+                    .map(|i| crate::program::TokenSpec {
+                        name: format!("t{i}"),
+                    })
+                    .collect(),
+                rule_expects: vec![None; n_rule],
+                rules,
+                pratt,
+                field_names: Vec::new(),
+                ctx_names: Vec::new(),
+                start,
+                newline: NewlinePolicy {
+                    significant: false,
+                    stmt_end: Vec::new(),
+                    sep_consume: Vec::new(),
+                },
+                recovery: RecoverySpec { sync: Vec::new() },
+                outline: None,
+                identity: crate::identity::PackageIdentity {
+                    name: String::new(),
+                    grammar_id: crate::identity::GrammarId(String::new()),
+                },
+            }
+        }
+
+        // 单 rule + 坏 primary=1（修前 first[1] 越界 panic；修后具名拒绝）。
+        let bad_primary = prog(
+            1,
+            vec![rule("expr", vec![step(Atom::Pratt(0))])],
+            vec![pratt(1)],
+            0,
+        );
+        match FirstSets::compute(&bad_primary) {
+            Err(RtError::InvalidProgram(m)) => assert!(
+                m.contains("pratt primary"),
+                "bad primary must be named: {m}"
+            ),
+            other => panic!(
+                "bad primary must be rejected, not panicked: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+
+        // 合法邻例：base=Tok(0)、expr=Pratt(0)、primary=base(0)、start=expr(1)
+        // ——对单个 token0 真实解析成功（恢复 parse 入口，不只 FirstSets）。
+        let legal = prog(
+            1,
+            vec![
+                rule("base", vec![step(Atom::Tok(0))]),
+                rule("expr", vec![step(Atom::Pratt(0))]),
+            ],
+            vec![pratt(0)],
+            1,
+        );
+        let first = FirstSets::compute(&legal).expect("legal two-rule program");
+        assert!(first.starts(1, 0), "expr starts with token 0");
+        let out = parse_tokens(
+            &legal,
+            vec![crate::lexer::Token {
+                token: 0,
+                start: 0,
+                end: 1,
+                line: 1,
+                error: false,
+            }],
+            Vec::new(),
+            &Budget::default(),
+        )
+        .expect("legal neighbor must parse a single token");
+        assert_eq!(out.tokens.len(), 1);
+        // 只改 primary=2（越 rule 表）→ 受控拒绝、合法邻例语义不变。
+        let mut bad2 = legal.clone();
+        bad2.pratt[0].primary = 2;
+        match FirstSets::compute(&bad2) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("pratt primary"), "{m}"),
+            other => panic!(
+                "primary=2 out of 2 rules must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+
+        // R-1029-01 双向：call_args/postfix_tail 是 RuleId 命名空间。
+        let mut tokens2_rules5 = prog(2, vec![rule("r", vec![]); 5], Vec::new(), 0);
+        tokens2_rules5.pratt = {
+            let mut t = pratt(0);
+            t.call_args = Some(4); // 4 < 5 rules、但 > 2 tokens——必须通过
+            t.postfix_tail = Some(3); // 3 < 5 rules、但 > 2 tokens——必须通过
+            vec![t]
+        };
+        assert!(
+            FirstSets::compute(&tokens2_rules5).is_ok(),
+            "call_args=4/postfix_tail=3 with 2 tokens / 5 rules are legal RuleIds"
+        );
+        let mut tokens5_rules2 = prog(5, vec![rule("r", vec![]); 2], Vec::new(), 0);
+        tokens5_rules2.pratt = {
+            let mut t = pratt(0);
+            t.call_args = Some(4); // 4 < 5 tokens 但 ≥ 2 rules——必须拒绝
+            vec![t]
+        };
+        match FirstSets::compute(&tokens5_rules2) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("call_args"), "{m}"),
+            other => panic!(
+                "call_args=4 with only 2 rules must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut tokens5_rules2b = prog(5, vec![rule("r", vec![]); 2], Vec::new(), 0);
+        tokens5_rules2b.pratt = {
+            let mut t = pratt(0);
+            t.postfix_tail = Some(4);
+            vec![t]
+        };
+        match FirstSets::compute(&tokens5_rules2b) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("postfix_tail"), "{m}"),
+            other => panic!(
+                "postfix_tail=4 with only 2 rules must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+
+        // 其余命名空间逐项：step Tok / step Rule / step field / scanner
+        // token+mode / newline / recovery / pratt op / group_open。
+        let bad_step_tok = prog(1, vec![rule("r", vec![step(Atom::Tok(5))])], Vec::new(), 0);
+        match FirstSets::compute(&bad_step_tok) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("unknown token"), "{m}"),
+            other => panic!(
+                "step token 5 out of 1 must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let bad_step_rule = prog(1, vec![rule("r", vec![step(Atom::Rule(3))])], Vec::new(), 0);
+        match FirstSets::compute(&bad_step_rule) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("unknown rule"), "{m}"),
+            other => panic!(
+                "step rule 3 out of 1 must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut bad_field = prog(1, vec![rule("r", vec![])], Vec::new(), 0);
+        bad_field.rules[0].alts[0].steps.push(Step {
+            field: Some(0),
+            ..step(Atom::Tok(0))
+        });
+        match FirstSets::compute(&bad_field) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("field"), "{m}"),
+            other => panic!(
+                "field 0 with empty field table must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut bad_scan = prog(1, vec![rule("r", vec![])], Vec::new(), 0);
+        bad_scan.scanner.rules = vec![crate::program::ScanRule {
+            mode: 0,
+            matcher: crate::program::Matcher::Literal("x".into()),
+            token: 9,
+            trivia: false,
+            next_mode: 3,
+        }];
+        match FirstSets::compute(&bad_scan) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("scan rule"), "{m}"),
+            other => panic!(
+                "scan rule token/mode out of range must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut bad_newline = prog(1, vec![rule("r", vec![])], Vec::new(), 0);
+        bad_newline.newline.stmt_end = vec![9];
+        match FirstSets::compute(&bad_newline) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("stmt_end"), "{m}"),
+            other => panic!(
+                "newline token 9 out of 1 must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut bad_sync = prog(1, vec![rule("r", vec![])], Vec::new(), 0);
+        bad_sync.recovery.sync = vec![9];
+        match FirstSets::compute(&bad_sync) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("sync"), "{m}"),
+            other => panic!(
+                "recovery token 9 out of 1 must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut bad_op = prog(1, vec![rule("r", vec![])], vec![pratt(0)], 0);
+        bad_op.pratt[0].ops = vec![PrattOp {
+            op: 9,
+            binding: 1,
+            assoc: crate::program::Assoc::Left,
+        }];
+        match FirstSets::compute(&bad_op) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("pratt op"), "{m}"),
+            other => panic!(
+                "pratt op token 9 out of 1 must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+        let mut bad_group = prog(1, vec![rule("r", vec![])], vec![pratt(0)], 0);
+        bad_group.pratt[0].group_open = Some(9);
+        match FirstSets::compute(&bad_group) {
+            Err(RtError::InvalidProgram(m)) => assert!(m.contains("group_open"), "{m}"),
+            other => panic!(
+                "group_open 9 out of 1 must be rejected: {:?}",
+                other.map_err(|e| e.to_string()).map(|_| "Ok(FirstSets)")
+            ),
+        }
+
+        // 合法递归 grammar 控制：自引用 Rule(0) 不被“禁递归”式修复误拒。
+        let recursive = prog(1, vec![rule("r", vec![step(Atom::Rule(0))])], Vec::new(), 0);
+        assert!(
+            FirstSets::compute(&recursive).is_ok(),
+            "legal recursive grammar must pass admission"
+        );
     }
 }

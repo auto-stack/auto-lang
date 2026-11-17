@@ -71,30 +71,39 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
     // PLAN-968: scheduler-surface modules (closures profile carrying
     // SCHED operations) admit console host imports for task-handler
     // stdout observation.
-    let sched_module = module
-        .funcs
-        .iter()
-        .any(|f| {
-            f.blocks.iter().any(|b| {
-                b.instrs.iter().any(|i| {
-                    matches!(
-                        i,
-                        crate::mir::MirInstr::SchedSpawn { .. }
-                            | crate::mir::MirInstr::SchedSend { .. }
-                            | crate::mir::MirInstr::SchedAsk { .. }
-                            | crate::mir::MirInstr::SchedReply { .. }
-                            | crate::mir::MirInstr::SchedStop { .. }
-                            | crate::mir::MirInstr::SchedSleep { .. }
-                            | crate::mir::MirInstr::SchedAwait { .. }
-                            | crate::mir::MirInstr::SchedGo { .. }
-                            | crate::mir::MirInstr::SchedRecv { .. }
-                            | crate::mir::MirInstr::SchedPort { .. }
-                            | crate::mir::MirInstr::SchedStopping { .. }
-                    )
-                })
+    let sched_module = module.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    crate::mir::MirInstr::SchedSpawn { .. }
+                        | crate::mir::MirInstr::SchedSend { .. }
+                        | crate::mir::MirInstr::SchedAsk { .. }
+                        | crate::mir::MirInstr::SchedReply { .. }
+                        | crate::mir::MirInstr::SchedStop { .. }
+                        | crate::mir::MirInstr::SchedSleep { .. }
+                        | crate::mir::MirInstr::SchedAwait { .. }
+                        | crate::mir::MirInstr::SchedGo { .. }
+                        | crate::mir::MirInstr::SchedRecv { .. }
+                        | crate::mir::MirInstr::SchedPort { .. }
+                        | crate::mir::MirInstr::SchedStopping { .. }
+                )
             })
-        });
-    if !module.is_host_console_profile() && !sched_module && !module.host_imports.is_empty() {
+        })
+    });
+    // PLAN-973: packages-lane system-library modules carry PLATFORM
+    // imports (auto.platform.*) on the closures family — the same
+    // admission seam, granted at run time by the ledger.
+    let platform_module = module
+        .host_imports
+        .iter()
+        .all(|h| h.symbol.starts_with("auto.platform."))
+        && !module.host_imports.is_empty();
+    if !module.is_host_console_profile()
+        && !sched_module
+        && !platform_module
+        && !module.host_imports.is_empty()
+    {
         return Err(err(
             "host.profile",
             "host imports require the host-console profile",

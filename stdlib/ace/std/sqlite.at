@@ -1,0 +1,46 @@
+// ACE stdlib sqlite slice (PLAN-975 T-02, S2 selection): the Auto-side
+// sqlite.* API face over the PLAN-967 content-pinned SQLite provider —
+// the real SQL engine behind FFI view frames, never a re-write. The
+// consumer source opens with `use.c p967_sqlite` beside this module
+// (PLAN-1041 inline convention: this file's text is concatenated into
+// the consuming source). PLAN-1064 T-MODULE slice closed the seam:
+// this module is now the CANONICAL `pub fn` author source serving the
+// text/foreign lane verbatim (pub admitted, projecting as a plain fn
+// inline) AND the packages module face (pub = the exports); the
+// provider-dependent execution rides the foreign lane (db975) — the
+// assembled-provider packages lane is the named 1043 remainder.
+//
+// Legacy face mapping (stdlib/auto/sqlite.at): the opaque SqliteDb
+// handle becomes the provider's single connection — no RAII objects on
+// this lane; sqlite_open_memory is the 973-independent :memory: leg
+// (no host file); exec returns sqlite3_changes of the LAST statement;
+// query_int returns column 0 of the first row (sqlite3_column_int);
+// the fallible statuses of the frozen frames (not-open/sql-error/
+// nul-path/too-long/open-failed/close-error) surface as the lane's
+// named ForeignStatus traps — the wrapper adds no silent fallback.
+
+pub fn sqlite_open(path str) int {
+    return p967_open(path)
+}
+
+// The :memory: convenience: the connection-private in-memory database
+// (zero 973 dependency — no host file, no file lock, no crash-recovery
+// face). The file-backed leg is named-blocked on 973 per the T-01
+// dependency freeze.
+pub fn sqlite_open_memory() int {
+    return p967_open(":memory:")
+}
+
+pub fn sqlite_exec(sql str) int {
+    return p967_exec(sql)
+}
+
+pub fn sqlite_query_int(sql str) int {
+    return p967_query_i32(sql)
+}
+
+// The close frame's ack view is ignored by the provider; "" is the
+// canonical empty ack (same shape as the 967 T-15 Auto sources).
+pub fn sqlite_close() int {
+    return p967_close("")
+}

@@ -557,6 +557,14 @@ pub(crate) fn hidden_conclusion(
         DefKind::Function { name, .. } => name == &symbol,
         _ => false,
     })?;
+    conclusion_of_def(module, def)
+}
+
+/// 一个函数 def 的 (def id, 文本种类) 结论（两个查名入口共用同一判据）。
+fn conclusion_of_def(
+    module: &crate::hir::Module,
+    def: &crate::hir::Def,
+) -> Option<(String, TextKind)> {
     let body_id = match &def.kind {
         DefKind::Function { body, .. } => *body,
         _ => return None,

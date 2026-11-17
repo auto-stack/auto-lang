@@ -364,6 +364,8 @@ pub enum CParam {
     ScalarBool,
     /// `const uint8_t* data, uint64_t len` — the ViewText pair.
     ViewText,
+    /// `uint8_t* dst, uint64_t cap` — checked writable output byte buffer.
+    OutBytes,
     /// `const <record>* p` / `<record>* p` — a record view (role by the
     /// annotation contract: importer emits Const; Mut/Out join with the
     /// ownership annotations at T-13, never by guesswork).
@@ -696,6 +698,19 @@ fn parse_function(line: &str) -> Option<CDecl> {
                 }
                 return None;
             }
+            // `uint8_t* dst, uint64_t cap` / `unsigned char* dst, uint64_t cap` -> the OutBytes pair
+            if (tokens.len() == 2 && tokens[0] == "uint8_t*")
+                || (tokens.len() == 3 && tokens[0] == "unsigned" && tokens[1] == "char*")
+            {
+                if let Some(cap) = raw.get(i + 1) {
+                    if cap.first().map(|t| t == "uint64_t").unwrap_or(false) && cap.len() == 2 {
+                        params.push(CParam::OutBytes);
+                        i += 2;
+                        continue;
+                    }
+                }
+                return None;
+            }
             // `const <record>* p` -> a record view
             if first == "const" && tokens.len() == 3 && tokens[1].ends_with('*') {
                 let record = tokens[1].trim_end_matches('*').to_string();
@@ -943,6 +958,9 @@ pub fn to_manual_manifest(
                 }
                 CParam::ViewText => {
                     lanes.push(ResKind::ViewText);
+                }
+                CParam::OutBytes => {
+                    lanes.push(ResKind::OutBytes);
                 }
                 CParam::RecordView { record } => {
                     // a `const <ty>* p` parameter: a RECORD view when the

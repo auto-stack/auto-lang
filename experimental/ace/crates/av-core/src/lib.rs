@@ -48,10 +48,10 @@ pub use abc_verify::{
 };
 pub use av::{
     execute, execute_entry, execute_entry_reference, execute_platform, execute_program,
-    execute_program_reference, execute_program_steps, execute_program_steps_after_init,
-    execute_reference, resume_program, CancelCheck, CancelFlag, DebugFrame, DebugLocal,
-    DebugPosition, DebugSnapshot, ExecLimits, ExecTrace, PausedRun, PlatformSessionSummary,
-    SteppedOutcome,
+    execute_program_platform, execute_program_reference, execute_program_steps,
+    execute_program_steps_after_init, execute_reference, resume_program, CancelCheck, CancelFlag,
+    DebugFrame, DebugLocal, DebugPosition, DebugSnapshot, ExecLimits, ExecTrace, PausedRun,
+    PlatformSessionSummary, SteppedOutcome,
 };
 pub use compact_abc::{
     decode_compact_abc, encode_compact_abc, DecodedCompactAbc, COMPACT_ABC_MAGIC,
@@ -73,3 +73,4 @@ pub mod frame_allocation;
 pub mod host;
 /// Checked platform I/O and OS memory region primitives (PLAN-1039).
 pub mod platform_io;
+

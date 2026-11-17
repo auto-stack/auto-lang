@@ -514,6 +514,7 @@ pub fn descriptor_from_plan(
         ResKind::I64 => descriptor::ParamKind::I64,
         ResKind::Bool => descriptor::ParamKind::Bool,
         ResKind::ViewText => descriptor::ParamKind::BufViewUtf8,
+        ResKind::OutBytes => descriptor::ParamKind::BufViewBytes,
         ResKind::BufViewI64 => descriptor::ParamKind::BufViewI64,
         ResKind::Rec { rec, role, .. } => descriptor::ParamKind::RecView {
             rec: rec.clone(),

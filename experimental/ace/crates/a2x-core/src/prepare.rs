@@ -221,7 +221,9 @@ fn collect_expr(
             | hir::ExprKind::TextToOwned { operand }
             | hir::ExprKind::TextToBorrowed { operand }
             | hir::ExprKind::CharToCodepoint { operand }
-            | hir::ExprKind::CharFromCodepoint { operand } => {
+            | hir::ExprKind::CharFromCodepoint { operand }
+            // PLAN-975 B1: char materialization joins the compute surface.
+            | hir::ExprKind::TextFromChar { operand } => {
                 let tag = match &e.kind {
                     hir::ExprKind::TextLen { .. } => "text_len",
                     hir::ExprKind::TextLenBytes { .. } => "text_len_bytes",
@@ -229,6 +231,7 @@ fn collect_expr(
                     hir::ExprKind::TextToOwned { .. } => "text_to_owned",
                     hir::ExprKind::TextToBorrowed { .. } => "text_to_borrowed",
                     hir::ExprKind::CharToCodepoint { .. } => "char_to_codepoint",
+                    hir::ExprKind::TextFromChar { .. } => "text_from_char",
                     _ => "char_from_codepoint",
                 };
                 ops.insert(tag);
@@ -857,6 +860,12 @@ fn ser_expr(
         }
         hir::ExprKind::CharFromCodepoint { operand } => {
             out.push_str("from_cp(");
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
+        // PLAN-975 B1: char materialization serialization.
+        hir::ExprKind::TextFromChar { operand } => {
+            out.push_str("from_char(");
             ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
             out.push(')');
         }

@@ -1,0 +1,516 @@
+// ACE system library — File/path module (PLAN-973 T-02). The public API
+// keeps the legacy sentinel contracts (read_text "" on error, write_text
+// 0/-1, exists bool, size -1, delete 0/-1); NUL is an ordinary byte
+// (length-based, never C-string); short reads/writes loop with real
+// progress and the bounded retry discipline of the 1041 out_* algorithms.
+// The OS boundary is selected at assembly time via `#in` (Windows: UTF-16
+// staging + CreateFileW ops; Linux: raw byte paths + direct syscalls —
+// Linux arms are code-only / deferred to PLAN-1063). Counted walks are
+// chunked recursions (this face has no while/conditional-for; the AV
+// frame cap is 1024 — see std.syscommon's budget note).
+
+#in sys is current {
+    Windows -> {
+        use std.sysplat_win.pf_open
+        use std.sysplat_win.pf_read_some
+        use std.sysplat_win.pf_write_some
+        use std.sysplat_win.pf_seek_set
+        use std.sysplat_win.pf_tell
+        use std.sysplat_win.pf_size
+        use std.sysplat_win.pf_mtime_ms
+        use std.sysplat_win.pf_flush
+        use std.sysplat_win.pf_close
+        use std.sysplat_win.pf_attrs
+        use std.sysplat_win.pf_delete
+        use std.sysplat_win.pf_mkdir
+        use std.sysplat_win.pf_rmdir
+        use std.sysplat_win.pf_replace
+        use std.sysplat_win.pf_dir_names
+        use std.sysplat_win.buf_alloc
+        use std.sysplat_win.buf_free
+        use std.sysplat_win.OPEN_READ
+        use std.sysplat_win.OPEN_WRITE
+        use std.sysplat_win.OPEN_CREATE
+        use std.sysplat_win.OPEN_TRUNCATE
+        use std.sysplat_win.OPEN_EXCLUSIVE
+        use std.sysplat_win.OPEN_APPEND
+    }
+    Linux -> {
+        use std.sysplat_lnx.pf_open
+        use std.sysplat_lnx.pf_read_some
+        use std.sysplat_lnx.pf_write_some
+        use std.sysplat_lnx.pf_seek_set
+        use std.sysplat_lnx.pf_tell
+        use std.sysplat_lnx.pf_size
+        use std.sysplat_lnx.pf_mtime_ms
+        use std.sysplat_lnx.pf_flush
+        use std.sysplat_lnx.pf_close
+        use std.sysplat_lnx.pf_attrs
+        use std.sysplat_lnx.pf_delete
+        use std.sysplat_lnx.pf_mkdir
+        use std.sysplat_lnx.pf_rmdir
+        use std.sysplat_lnx.pf_replace
+        use std.sysplat_lnx.pf_dir_names
+        use std.sysplat_lnx.buf_alloc
+        use std.sysplat_lnx.buf_free
+        use std.sysplat_lnx.OPEN_READ
+        use std.sysplat_lnx.OPEN_WRITE
+        use std.sysplat_lnx.OPEN_CREATE
+        use std.sysplat_lnx.OPEN_TRUNCATE
+        use std.sysplat_lnx.OPEN_EXCLUSIVE
+        use std.sysplat_lnx.OPEN_APPEND
+    }
+}
+
+use std.bytes.decode_utf8
+use std.syscommon.encode_into
+use std.syscommon.str_bytes_len
+use std.syscommon.min_i
+use std.syscommon.read_region_bytes
+use std.syscommon.from_i64
+use std.syscommon.json_escape
+use std.syscommon.ticks64
+
+fn READ_CHUNK() int {
+    return 32768
+}
+
+// ---- exists / classification -------------------------------------------------
+
+pub fn exists(path Str) bool {
+    return pf_attrs(path) >= 0
+}
+
+pub fn is_dir(path Str) bool {
+    let a = pf_attrs(path)
+    if (a < 0) {
+        return false
+    }
+    return a % 2 == 1
+}
+
+pub fn is_read_only(path Str) bool {
+    let a = pf_attrs(path)
+    if (a < 0) {
+        return false
+    }
+    return (a / 2) % 2 == 1
+}
+
+// ---- whole-file text ----------------------------------------------------------
+
+// read_all_bytes(h, acc) -> 0 ok / -1 error: accumulates INTO the list
+// param in place (the 972 view-discipline — AV handles and A2R &mut
+// borrows both carry the mutations; nothing is returned through the
+// param).
+fn push_bytes(region int, i int, n int, rem int, acc List<int>) int {
+    if (rem <= 0) {
+        return i
+    }
+    if (i >= n) {
+        return i
+    }
+    let b = mem_read_u8(region, i)
+    if (b < 0) {
+        return -1
+    }
+    acc.push(b)
+    return push_bytes(region, i + 1, n, rem - 1, acc)
+}
+
+fn push_bytes_outer(region int, i int, n int, acc List<int>) int {
+    if (i >= n) {
+        return 0
+    }
+    let next_i = push_bytes(region, i, n, 64, acc)
+    if (next_i < 0) {
+        return -1
+    }
+    return push_bytes_outer(region, next_i, n, acc)
+}
+
+fn read_all_bytes(h int, acc List<int>) int {
+    let region = buf_alloc(READ_CHUNK())
+    if (region < 0) {
+        return -1
+    }
+    let n = pf_read_some(h, region, 0, READ_CHUNK())
+    if (n < 0) {
+        let d1_buf_free = buf_free(region)
+        return -1
+    }
+    if (n == 0) {
+        let d2_buf_free = buf_free(region)
+        return 0
+    }
+    let staged = push_bytes_outer(region, 0, n, acc)
+    let d3_buf_free = buf_free(region)
+    if (staged != 0) {
+        return -1
+    }
+    return read_all_bytes(h, acc)
+}
+
+// PLAN-1064 D-09: strict Option<List<int>> read_bytes:
+//   missing/unreadable -> None, empty file -> Some([]), bytes -> Some(bytes).
+pub fn read_bytes(path Str) ?List<int> {
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return None
+    }
+    var acc = List<int>.new()
+    let status = read_all_bytes(h, acc)
+    let d1_pf_close = pf_close(h)
+    if (status != 0) {
+        return None
+    }
+    return Some(acc.move)
+}
+
+// Legacy thin compatibility wrapper (empty list on error; use read_bytes for ?List<int>).
+pub fn read_bytes_or_empty(path Str) List<int> {
+    let opt = read_bytes(path)
+    is opt {
+        Some(xs) -> { return xs.move }
+        None -> {}
+    }
+    return List<int>.new()
+}
+
+pub fn read_bytes_len(path Str) int {
+    let opt = read_bytes(path)
+    is opt {
+        None -> { return -1 }
+        Some(xs) -> { return xs.len() }
+    }
+}
+
+// D-01: whole-file UTF-8 text read; "" on any open/read/UTF-8 error.
+pub fn read_text(path Str) Str {
+    var out = ""
+    let rb = read_bytes(path)
+    is rb {
+        Some(xs) -> {
+            let dec = decode_utf8(xs)
+            is dec {
+                Some(s) -> { out = s }
+                None -> {}
+            }
+        }
+        None -> {}
+    }
+    return out
+}
+
+fn rtr_err() Str {
+    return "{\"text\":\"\",\"total\":-1,\"next_offset\":null}"
+}
+
+fn read_exact_region(h int, region int, off int, need int) int {
+    var have = 0
+    let t64 = ticks64()
+    for a in t64 {
+        if (have >= need) { break }
+        for b in t64 {
+            if (have >= need) { break }
+            let n = pf_read_some(h, region, off + have, need - have)
+            if (n <= 0) { return -1 }
+            have = have + n
+        }
+    }
+    if (have < need) { return -1 }
+    return 0
+}
+
+fn read_exact_list(h int, region int, total_need int, out List<int>) int {
+    var rem = total_need
+    let t64 = ticks64()
+    for a in t64 {
+        if (rem <= 0) { break }
+        let want = min_i(rem, READ_CHUNK())
+        let n = pf_read_some(h, region, 0, want)
+        if (n <= 0) { return -1 }
+        if (read_region_bytes(region, 0, n, out) != 0) { return -1 }
+        rem = rem - n
+    }
+    if (rem > 0) { return -1 }
+    return 0
+}
+
+fn is_cont_byte(b int) bool {
+    return b >= 128 && b < 192
+}
+
+// D-01: byte-offset range read with UTF-8 char-boundary clamping and legacy JSON envelope.
+pub fn read_text_range(path Str, offset int, limit int) Str {
+    if (offset < 0 || limit <= 0) { return rtr_err() }
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) { return rtr_err() }
+    let total64 = pf_size(h)
+    if (total64 < 0i64) {
+        let dc1 = pf_close(h)
+        return rtr_err()
+    }
+    let off64 = offset.to(i64)
+    if (off64 >= total64) {
+        let dc2 = pf_close(h)
+        return "{\"text\":\"\",\"total\":" + from_i64(total64) + ",\"next_offset\":null}"
+    }
+    var win_start = 0i64
+    if (off64 >= 3i64) { win_start = off64 - 3i64 }
+    let pre_len = (off64 - win_start).to(i32) + 1
+    if (pf_seek_set(h, win_start) < 0) {
+        let dc3 = pf_close(h)
+        return rtr_err()
+    }
+    let reg_pre = buf_alloc(16)
+    if (reg_pre < 0) {
+        let dc4 = pf_close(h)
+        return rtr_err()
+    }
+    if (read_exact_region(h, reg_pre, 0, pre_len) != 0) {
+        let df1 = buf_free(reg_pre)
+        let dc5 = pf_close(h)
+        return rtr_err()
+    }
+    var s_off = off64
+    var idx = pre_len - 1
+    if (idx > 0 && is_cont_byte(mem_read_u8(reg_pre, idx))) { idx = idx - 1; s_off = s_off - 1i64 }
+    if (idx > 0 && is_cont_byte(mem_read_u8(reg_pre, idx))) { idx = idx - 1; s_off = s_off - 1i64 }
+    if (idx > 0 && is_cont_byte(mem_read_u8(reg_pre, idx))) { idx = idx - 1; s_off = s_off - 1i64 }
+    let df2 = buf_free(reg_pre)
+    var end_guess = s_off + limit.to(i64)
+    if (end_guess > total64) { end_guess = total64 }
+    var need_tail = end_guess
+    if (end_guess < total64) { need_tail = end_guess + 1i64 }
+    if (need_tail - s_off > 1048576i64) {
+        let dc6 = pf_close(h)
+        return rtr_err()
+    }
+    let read_len = (need_tail - s_off).to(i32)
+    if (pf_seek_set(h, s_off) < 0) {
+        let dc7 = pf_close(h)
+        return rtr_err()
+    }
+    let reg = buf_alloc(READ_CHUNK())
+    if (reg < 0) {
+        let dc8 = pf_close(h)
+        return rtr_err()
+    }
+    var raw = List<int>.new()
+    let rr = read_exact_list(h, reg, read_len, raw)
+    let df3 = buf_free(reg)
+    let dc9 = pf_close(h)
+    if (rr != 0 || raw.len() != read_len) { return rtr_err() }
+    var e_idx = (end_guess - s_off).to(i32)
+    if (end_guess < total64) {
+        if (e_idx > 0 && is_cont_byte(raw.get(e_idx))) { e_idx = e_idx - 1 }
+        if (e_idx > 0 && is_cont_byte(raw.get(e_idx))) { e_idx = e_idx - 1 }
+        if (e_idx > 0 && is_cont_byte(raw.get(e_idx))) { e_idx = e_idx - 1 }
+    }
+    if (raw.len() > e_idx) { let dp1 = raw.remove(raw.len() - 1) }
+    if (raw.len() > e_idx) { let dp2 = raw.remove(raw.len() - 1) }
+    if (raw.len() > e_idx) { let dp3 = raw.remove(raw.len() - 1) }
+    if (raw.len() > e_idx) { let dp4 = raw.remove(raw.len() - 1) }
+    var out = rtr_err()
+    let dec = decode_utf8(raw)
+    is dec {
+        Some(text) -> {
+            let next_abs = s_off + e_idx.to(i64)
+            var next_str = "null"
+            if (next_abs < total64) { next_str = from_i64(next_abs) }
+            out = "{\"text\":\"" + json_escape(text) + "\",\"total\":" + from_i64(total64) + ",\"next_offset\":" + next_str + "}"
+        }
+        None -> {}
+    }
+    return out
+}
+
+// D-02: direct child entry names (excluding "." and ".."), empty list on error.
+pub fn dir_names(path Str) List<Str> {
+    return pf_dir_names(path)
+}
+
+// write_all: content flows in the tail recursion ONLY (the 972
+// tail-move discipline); chunks are SCALAR ranges (8000 scalars <= 32000
+// worst-case bytes fit the 32 KiB region — no byte-cap walk needed).
+fn write_all(h int, content Str, ci int) int {
+    if (ci >= content.len()) {
+        return 0
+    }
+    let stop = min_i(content.len(), ci + 8000)
+    let region = buf_alloc(READ_CHUNK())
+    if (region < 0) {
+        return -1
+    }
+    let n = str_bytes_len(content.slice(ci, stop).clone())
+    let d1_encode = encode_into(content.slice(ci, stop).clone(), region, 0)
+    let w = write_region_all(h, region, 0, n)
+    let d2_buf_free = buf_free(region)
+    if (w != 0) {
+        return -1
+    }
+    return write_all(h, content, stop)
+}
+
+// send one region slice fully (bounded zero-progress retries per 1041).
+fn write_region_all(h int, region int, off int, len int) int {
+    if (len <= 0) {
+        return 0
+    }
+    let w = pf_write_some(h, region, off, len)
+    if (w <= 0) {
+        return -1
+    }
+    return write_region_all(h, region, off + w, len - w)
+}
+
+pub fn write_text(path Str, content Str) int {
+    let flags = OPEN_WRITE() + OPEN_CREATE() + OPEN_TRUNCATE()
+    let h = pf_open(path, flags)
+    if (h <= 0) {
+        return -1
+    }
+    let r = write_all(h, content, 0)
+    let c = pf_close(h)
+    if (r != 0 || c < 0) {
+        return -1
+    }
+    return 0
+}
+
+pub fn append_text(path Str, content Str) int {
+    let flags = OPEN_WRITE() + OPEN_CREATE() + OPEN_APPEND()
+    let h = pf_open(path, flags)
+    if (h <= 0) {
+        return -1
+    }
+    let r = write_all(h, content, 0)
+    let c = pf_close(h)
+    if (r != 0 || c < 0) {
+        return -1
+    }
+    return 0
+}
+
+// write_bytes(bytes) — the byte-surface write (NUL-safe).
+pub fn write_bytes(path Str, bytes List<int>) int {
+    let flags = OPEN_WRITE() + OPEN_CREATE() + OPEN_TRUNCATE()
+    let h = pf_open(path, flags)
+    if (h <= 0) {
+        return -1
+    }
+    let region = buf_alloc(READ_CHUNK())
+    if (region < 0) {
+        let d1_close = pf_close(h)
+        return -1
+    }
+    let r = write_bytes_all(h, region, bytes, 0)
+    let d2_buf_free = buf_free(region)
+    var f = 0
+    if (r == 0) {
+        f = pf_flush(h)
+    }
+    let c = pf_close(h)
+    if (r != 0 || f != 0 || c < 0) {
+        return -1
+    }
+    return 0
+}
+
+fn write_bytes_all(h int, region int, bytes List<int>, from int) int {
+    if (from >= bytes.len()) {
+        return 0
+    }
+    let stop = min_i(bytes.len(), from + READ_CHUNK())
+    let d1_stage = stage_bytes(region, bytes, from, stop, 0)
+    let w = write_region_all(h, region, 0, stop - from)
+    if (w != 0) {
+        return -1
+    }
+    return write_bytes_all(h, region, bytes, stop)
+}
+
+fn stage_bytes(region int, bytes List<int>, from int, stop int, k int) int {
+    if (from + k + 8 <= stop) {
+        let d0 = mem_write_u8(region, k, bytes.get(from + k))
+        let d1 = mem_write_u8(region, k + 1, bytes.get(from + k + 1))
+        let d2 = mem_write_u8(region, k + 2, bytes.get(from + k + 2))
+        let d3 = mem_write_u8(region, k + 3, bytes.get(from + k + 3))
+        let d4 = mem_write_u8(region, k + 4, bytes.get(from + k + 4))
+        let d5 = mem_write_u8(region, k + 5, bytes.get(from + k + 5))
+        let d6 = mem_write_u8(region, k + 6, bytes.get(from + k + 6))
+        let d7 = mem_write_u8(region, k + 7, bytes.get(from + k + 7))
+        return stage_bytes(region, bytes, from, stop, k + 8)
+    }
+    if (from + k >= stop) {
+        return 0
+    }
+    let b = bytes.get(from + k)
+    let d1_write = mem_write_u8(region, k, b)
+    return stage_bytes(region, bytes, from, stop, k + 1)
+}
+
+// ---- size / mtime ---------------------------------------------------------------
+
+pub fn size(path Str) i64 {
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return -1i64
+    }
+    let s = pf_size(h)
+    let d1_close = pf_close(h)
+    return s
+}
+
+pub fn mtime_ms(path Str) i64 {
+    let h = pf_open(path, OPEN_READ())
+    if (h <= 0) {
+        return -1i64
+    }
+    let m = pf_mtime_ms(h)
+    let d1_close = pf_close(h)
+    return m
+}
+
+// ---- mutation --------------------------------------------------------------------
+
+pub fn delete(path Str) int {
+    return pf_delete(path)
+}
+
+pub fn create_dir(path Str) int {
+    return pf_mkdir(path)
+}
+
+pub fn remove_dir(path Str) int {
+    return pf_rmdir(path)
+}
+
+// rename/atomic replace: the OS replaces the destination in one step; a
+// failure keeps the old file untouched (V-08/V-DETAIL-01 contract).
+pub fn rename(src Str, dst Str) int {
+    return pf_replace(src, dst)
+}
+
+pub fn replace_atomic(src Str, dst Str) int {
+    return pf_replace(src, dst)
+}
+
+pub fn copy_file(src Str, dst Str) int {
+    // single tail pass of src (the 972 discipline): open inside the args
+    return copy_open(dst, pf_open(src, OPEN_READ()))
+}
+
+fn copy_open(dst Str, h int) int {
+    if (h <= 0) {
+        return -1
+    }
+    let acc = List<int>.new()
+    let status = read_all_bytes(h, acc)
+    let d1_close = pf_close(h)
+    if (status != 0) {
+        return -1
+    }
+    return write_bytes(dst, acc)
+}

@@ -12,6 +12,8 @@
 
 use crate::ast::Code;
 use crate::error::AutoResult;
+use crate::trans::emit::EmitDialect;
+use crate::trans::SourceMapEntry;
 
 /// 一条 lowering 规则。设计 §3 边界目录按 `A1..F4` 编号键控。
 ///
@@ -61,12 +63,106 @@ pub fn builtin_rules() -> Vec<LoweringRule> {
 /// - 空表 = 规范化 identity（AST 发射产物，语义等价、布局规范化——
 ///   幂等性由单测钉死：lower(lower(x)) == lower(x)）。
 pub fn lower_source(src: &str) -> AutoResult<String> {
+    lower_in(src, EmitDialect::Legacy).map(|(text, _)| text)
+}
+
+/// PLAN-977 B-REVERSE-I: 改写 + 行级 source map（历史方言，产物逐字节
+/// 等于 [`lower_source`]）。
+///
+/// map 粒度 = 顶层语句起点行（`Code::source_lines` 口径）；同一语句内
+/// 与原文逐行同形的产物行细化为该原行（见 [`refine_map_with_source`]），
+/// 故未改写行的映射是精确行、被改写行回落到语句起点行。
+pub fn lower_source_with_map(src: &str) -> AutoResult<(String, Vec<SourceMapEntry>)> {
+    lower_in(src, EmitDialect::Legacy)
+}
+
+/// PLAN-977 B-REVERSE-I: 改写 + ACE 规范形 + source map。
+///
+/// 产物面 = ACE 执行器（M2 唯一执行器）frontend 接受的规范 Auto 源：
+/// fn 返回类型不带历史 `->`（见 [`EmitDialect::AceCanonical`]）。调用方
+/// 把产物连同 map 交给 ACE 门（`auto_lang_core::run_ace`），诊断位置用
+/// [`crate::trans::emit::source_line_for_output`] 回到原源行。
+pub fn lower_source_for_ace(src: &str) -> AutoResult<(String, Vec<SourceMapEntry>)> {
+    lower_in(src, EmitDialect::AceCanonical)
+}
+
+fn lower_in(src: &str, dialect: EmitDialect) -> AutoResult<(String, Vec<SourceMapEntry>)> {
     let mut parser = crate::parser::Parser::new(src);
     let mut code = parser.parse()?;
     for rule in builtin_rules() {
         (rule.transform)(&mut code)?;
     }
-    crate::trans::emit::emit_code(&code)
+    let (text, map) = crate::trans::emit::emit_code_with_map(&code, dialect)?;
+    let map = refine_map_with_source(src, &text, &map);
+    Ok((text, map))
+}
+
+/// 把语句粒度的 map 细化为"逐行同形即精确行"。
+///
+/// 每条顶层语句的产物行原本都记语句起点行；同一语句内，若某产物行的
+/// trim 文本在原源的该语句行区间内（起点行到下一语句起点行之前）按序
+/// 找到完全相同的行，或（≥6 字符时）作为该行的子串，则把该产物行改记到
+/// 那一原行。结构行（以 `{` 收尾的块头、`}`/`else` 片段）与空行不参与；
+/// 被规则改写过的行（文本变了且不再是任何原行的子串）保持语句起点行——
+/// **不猜**近似位置。
+fn refine_map_with_source(src: &str, emitted: &str, map: &[SourceMapEntry]) -> Vec<SourceMapEntry> {
+    if map.is_empty() {
+        return Vec::new();
+    }
+    let original: Vec<&str> = src.lines().map(|l| l.trim()).collect();
+    let emitted_lines: Vec<&str> = emitted.lines().collect();
+    let mut refined = map.to_vec();
+    // 连续同 source_line 的一段产物行 = 一条顶层语句的产物。
+    let mut start = 0usize;
+    while start < refined.len() {
+        let stmt_line = refined[start].source_line;
+        let mut end = start + 1;
+        while end < refined.len() && refined[end].source_line == stmt_line {
+            end += 1;
+        }
+        // 原源区间：本语句起点行 .. 下一语句起点行（不含），1-based。
+        let range_start = stmt_line.saturating_sub(1).min(original.len());
+        let range_end = refined
+            .get(end)
+            .map(|e| e.source_line.saturating_sub(1))
+            .unwrap_or(original.len())
+            .min(original.len())
+            .max(range_start);
+        let mut cursor = range_start;
+        for entry in refined.iter_mut().take(end).skip(start) {
+            let output_line = entry.output_line;
+            let trimmed = emitted_lines
+                .get(output_line.saturating_sub(1))
+                .map(|l| l.trim())
+                .unwrap_or("");
+            if trimmed.is_empty() || is_structural_line(trimmed) {
+                continue;
+            }
+            let window = &original[cursor..range_end];
+            if let Some(offset) = window.iter().position(|line| *line == trimmed) {
+                entry.source_line = cursor + offset + 1;
+                cursor = cursor + offset + 1;
+            } else if trimmed.len() >= 6 {
+                if let Some(offset) = window.iter().position(|line| line.contains(trimmed)) {
+                    entry.source_line = cursor + offset + 1;
+                    cursor += offset;
+                }
+            }
+        }
+        start = end;
+    }
+    refined
+}
+
+/// 产物里的结构行：块头（以 `{` 收尾）、闭括号行、`else`/`catch`/`finally`
+/// 片段。这些行不与原源行做同形匹配（一对多/多对一，匹配会误导向）。
+fn is_structural_line(trimmed: &str) -> bool {
+    trimmed.ends_with('{')
+        || trimmed.starts_with('}')
+        || trimmed == "} else"
+        || trimmed.starts_with("else")
+        || trimmed.starts_with("catch")
+        || trimmed.starts_with("finally")
 }
 
 #[cfg(test)]
@@ -329,5 +425,87 @@ fn main() {
                 lower_source(&once).unwrap_or_else(|e| panic!("{}: 二次 lower 失败: {}", rel, e));
             assert_eq!(twice, once, "{}: 不幂等", rel);
         }
+    }
+
+    // ── PLAN-977 B-REVERSE-I: ACE 规范形 + 行级 source map ──
+
+    /// ACE 执行器只能解析规范返回类型（`fn f(...) T`，无 `->`）；s2s 的
+    /// ACE 产物面就是规范方言，历史方言逐字节不变。行映射：每条产物行
+    /// 都有条目，未改写行精确回到原行，结构/规范化行回落到语句起点行。
+    #[test]
+    fn p977_s2s_ace_dialect_is_canonical_and_mapped() {
+        let src = "fn fib(n int) -> int {\n    if n < 2 { return n }\n    return fib(n - 1) + fib(n - 2)\n}\nfn main() -> int {\n    return fib(10)\n}\n";
+
+        // 历史方言（公开命令面）逐字节不变。
+        let legacy = lower_source(src).unwrap();
+        let (mapped_legacy, legacy_map) = lower_source_with_map(src).unwrap();
+        assert_eq!(
+            legacy, mapped_legacy,
+            "带 map 入口在历史方言下必须逐字节同产物"
+        );
+        assert!(legacy.contains("fn fib(n int) -> int {"), "{}", legacy);
+        assert_eq!(legacy_map.len(), legacy.lines().count());
+
+        // ACE 方言：签名无箭头，产物仍可被原 parser 再解析（同一语言）。
+        let (canonical, map) = lower_source_for_ace(src).unwrap();
+        assert!(
+            !canonical.contains("->"),
+            "ACE 规范形不得含签名箭头:\n{}",
+            canonical
+        );
+        assert!(
+            canonical.contains("fn fib(n int) int {"),
+            "规范形返回类型是裸 type word:\n{}",
+            canonical
+        );
+        assert!(crate::parser::Parser::new(&canonical).parse().is_ok());
+        assert_eq!(map.len(), canonical.lines().count(), "每行都要有条目");
+
+        let at = |line: usize| {
+            crate::trans::emit::source_line_for_output(&map, line)
+                .unwrap_or_else(|| panic!("产物行 {} 无映射", line))
+        };
+        // 产物行：1 fn fib / 2 if / 3 return n / 4 } / 5 return fib(..) /
+        // 6 } / 7 fn main / 8 return fib(10) / 9 }
+        assert_eq!(at(1), 1, "fn fib 声明行");
+        assert_eq!(at(3), 2, "单行 if 内的 return n 细化到 if 原行");
+        assert_eq!(at(5), 3, "未改写的 return 行精确回到原行");
+        assert_eq!(at(7), 5, "fn main 声明行");
+        assert_eq!(at(8), 6, "return fib(10) 精确回到原行");
+        // 规范化行（声明）回落到语句起点行——文档化粒度，不是错误映射。
+        assert_eq!(at(2), 1);
+        assert_eq!(at(6), 1);
+    }
+
+    /// 规则改写过的那一行没有原行同形文本：map 回落到语句起点行（不猜），
+    /// 未改写行仍精确。
+    #[test]
+    fn p977_s2s_map_falls_back_to_statement_start_on_rewrite() {
+        let src =
+            "use.py torch: arange\nfn main() {\n    var t = arange(6)\n    let s = t.sum()\n}\n";
+        let (out, map) = lower_source_with_map(src).unwrap();
+        assert!(out.contains("py_call_may(t, \"sum\").?"), "{}", out);
+        assert_eq!(map.len(), out.lines().count());
+        let at = |line: usize| crate::trans::emit::source_line_for_output(&map, line).unwrap();
+        assert_eq!(at(1), 1, "use 行");
+        assert_eq!(at(3), 3, "未改写的 var 行精确");
+        assert_eq!(at(4), 2, "改写行回落到 fn main 起点行");
+    }
+
+    /// 规范形只动签名位：字符串/字符字面量里的 `) -> ` 逐字保留。
+    #[test]
+    fn p977_s2s_canonical_keeps_arrow_inside_literals() {
+        let src = "fn main() -> str {\n    return \") -> \"\n}\n";
+        let (canonical, _) = lower_source_for_ace(src).unwrap();
+        assert!(
+            canonical.contains("fn main() str {"),
+            "签名归一:\n{}",
+            canonical
+        );
+        assert!(
+            canonical.contains("\") -> \""),
+            "字面量内的箭头必须原样:\n{}",
+            canonical
+        );
     }
 }

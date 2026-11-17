@@ -68,6 +68,64 @@ mod plan979_combined;
 mod plan979_component_profile;
 #[path = "cases/plan979_domain_package.rs"]
 mod plan979_domain_package;
+#[path = "cases/plan981_age_package.rs"]
+mod plan981_age_package;
+#[path = "cases/plan981_age_package_modules.rs"]
+mod plan981_age_package_modules;
+#[path = "cases/plan981_age_ref.rs"]
+mod plan981_age_ref;
+#[path = "cases/plan981_age_fields.rs"]
+mod plan981_age_fields;
+#[path = "cases/plan981_age_resources.rs"]
+mod plan981_age_resources;
+#[path = "cases/plan981_original_g01.rs"]
+mod plan981_original_g01;
+#[path = "cases/plan981_grammar_scope.rs"]
+mod plan981_grammar_scope;
+#[path = "cases/plan981_three_views.rs"]
+mod plan981_three_views;
+#[path = "cases/plan981_scene_elements.rs"]
+mod plan981_scene_elements;
+#[path = "cases/plan981_param_ports.rs"]
+mod plan981_param_ports;
+#[path = "cases/plan981_resource_refs.rs"]
+mod plan981_resource_refs;
+#[path = "cases/plan981_attr_shape.rs"]
+mod plan981_attr_shape;
+#[path = "cases/plan981_ref_aggregation.rs"]
+mod plan981_ref_aggregation;
+#[path = "cases/plan981_cpu_surface.rs"]
+mod plan981_cpu_surface;
+#[path = "cases/plan981_text_refs.rs"]
+mod plan981_text_refs;
+#[path = "cases/plan981_model_handlers.rs"]
+mod plan981_model_handlers;
+#[path = "cases/plan981_view_exits.rs"]
+mod plan981_view_exits;
+#[path = "cases/plan981_view_select.rs"]
+mod plan981_view_select;
+#[path = "cases/plan981_msg_slot.rs"]
+mod plan981_msg_slot;
+#[path = "cases/plan981_design_slot.rs"]
+mod plan981_design_slot;
+#[path = "cases/plan981_members_slot.rs"]
+mod plan981_members_slot;
+#[path = "cases/plan981_event_a.rs"]
+mod plan981_event_a;
+#[path = "cases/plan981_ma_sources.rs"]
+mod plan981_ma_sources;
+#[path = "cases/plan981_proof_a.rs"]
+mod plan981_proof_a;
+#[path = "cases/plan981_v_harness.rs"]
+mod plan981_v_harness;
+#[path = "cases/plan981_lifecycle.rs"]
+mod plan981_lifecycle;
+#[path = "cases/plan981_model3d.rs"]
+mod plan981_model3d;
+#[path = "cases/plan980_dialect_full.rs"]
+mod plan980_dialect_full;
+#[path = "cases/plan980_field_manifest.rs"]
+mod plan980_field_manifest;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]
@@ -102,3 +160,11 @@ mod source_units_928;
 mod source_units_928_t09;
 #[path = "cases/text_replacement.rs"]
 mod text_replacement;
+#[path = "cases/plan981_resource_identity.rs"]
+mod plan981_resource_identity;
+#[path = "cases/plan981_multimodule_identity.rs"]
+mod plan981_multimodule_identity;
+#[path = "cases/plan981_model_field_types.rs"]
+mod plan981_model_field_types;
+#[path = "cases/aggregates_resource_1035.rs"]
+mod aggregates_resource_1035;

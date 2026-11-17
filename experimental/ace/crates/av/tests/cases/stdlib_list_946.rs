@@ -1087,11 +1087,11 @@ fn stdlib_list_946_rust_end_fault_env_traps_typed() {
 /// Grammar face (packages-aggregates): the admitted constructs parse —
 /// List<int>/List<Str> params, for-in bodies, `?int` returns, the pop
 /// body, if-inside-for with a PARENTHESIZED comparison — and the whole
-/// frozen list.at parses. The unparenthesized `if a > t {` shape (var RHS
-/// + same-line brace) stays a reject under BOTH packages faces: the
-/// record-ctor `t { .. }` shape commits first — a pre-existing packages-
-/// face ambiguity (PLAN-946 T-02 record; 945's own stdlib sources use
-/// the parenthesized form).
+/// frozen list.at parses. Since PLAN-1064 (T-MODULE-I / SD-MODULE),
+/// `packages-modules` (`parse_package_source`) closes the unparenthesized
+/// `if a > t {` condition-expr gap so canonical module sources parse,
+/// while `packages-aggregates-ct` keeps rejecting the unparenthesized
+/// var-RHS + same-line brace ambiguity unless parenthesized.
 #[test]
 fn stdlib_list_946_grammar_face() {
     let admitted = [
@@ -1112,31 +1112,24 @@ fn stdlib_list_946_grammar_face() {
         .unwrap_or_else(|ds| panic!("must parse under packages-aggregates: {ds:?} — {src}"));
     }
     let ambiguous = "pub fn f(a int, t int) int {\n    if a > t {\n    }\n    return 0\n}";
-    for (face, parse) in [
-        (
-            "plain",
-            ace_core::source::packages::parse_package_source(
-                ambiguous,
-                &[PACKAGES_CAPABILITY.into()],
-                FrontBudget::WORK_OWNED_64MIB,
-            )
-            .is_err(),
-        ),
-        (
-            "aggregates",
-            ace_core::source::packages::parse_package_source_aggregates(
-                ambiguous,
-                &[PACKAGES_CAPABILITY.into()],
-                FrontBudget::WORK_OWNED_64MIB,
-            )
-            .is_err(),
-        ),
-    ] {
-        assert!(
-            parse,
-            "unparenthesized var-RHS condition must reject under the {face} face"
-        );
-    }
+    assert!(
+        ace_core::source::packages::parse_package_source(
+            ambiguous,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .is_ok(),
+        "packages-modules closed the condition-expr gap for unparenthesized `if a > t {{` (PLAN-1064)"
+    );
+    assert!(
+        ace_core::source::packages::parse_package_source_aggregates(
+            ambiguous,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .is_err(),
+        "unparenthesized var-RHS condition must reject under the aggregates face"
+    );
     // and the plain face still rejects for-in (collections-family stmt).
     assert!(
         ace_core::source::packages::parse_package_source(

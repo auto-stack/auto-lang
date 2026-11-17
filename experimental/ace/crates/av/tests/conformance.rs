@@ -220,6 +220,9 @@ mod stdlib_assembly_1043;
 #[path = "cases/probe972.rs"]
 mod probe972;
 // PLAN-972 T-02：装配标准库（packages-aggregates-ct lane）AV 正反例。
+#[path = "cases/stdlib_sys_973.rs"]
+mod stdlib_sys_973;
+
 #[path = "cases/stdlib_asm_972.rs"]
 mod stdlib_asm_972;
 // PLAN-972 T-08/V-08：逐操作覆盖对账——面清单奇偶校验 + 全公开符号五端演练。
@@ -232,15 +235,39 @@ mod v10_layers_972;
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;
 
+#[path = "cases/b1_slice_975.rs"]
+mod b1_slice_975;
+#[path = "cases/json_975.rs"]
+mod json_975;
 #[path = "cases/module_packages_960.rs"]
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
+#[path = "cases/module_v_1064.rs"]
+mod module_v_1064;
+#[path = "cases/bstr_1064.rs"]
+mod bstr_1064;
+#[path = "cases/kv_zip_1064.rs"]
+mod kv_zip_1064;
+#[path = "cases/sys_d01_d06_1064.rs"]
+mod sys_d01_d06_1064;
+#[path = "cases/net_974.rs"]
+mod net_974;
 #[path = "cases/plan979_age_component_cpu.rs"]
 mod plan979_age_component_cpu;
 #[path = "cases/plan979_age_h0_cpu.rs"]
 mod plan979_age_h0_cpu;
+#[path = "cases/plan980_state_face.rs"]
+mod plan980_state_face;
+#[path = "cases/plan981_age_package_av.rs"]
+mod plan981_age_package_av;
 #[path = "cases/platform_io_1039.rs"]
 mod platform_io_1039;
+#[path = "cases/redis_975.rs"]
+mod redis_975;
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;
+#[path = "cases/stdlib_contract_975.rs"]
+mod stdlib_contract_975;
+#[path = "cases/aggregates_typed_1035.rs"]
+mod aggregates_typed_1035;

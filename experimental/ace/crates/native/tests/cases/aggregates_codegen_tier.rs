@@ -124,3 +124,29 @@ fn main() int {
         let _obj = ace_native::collections_lower::emit_unit_coff(u).unwrap();
     }
 }
+
+/// PLAN-1035 (F34) native leg: a List-only record (`type Bag { items
+/// List<int> }`) is an OWNED resource record in the shared MIR, so the
+/// aggregates lane must ADMIT it and EMIT a real COFF object. The case stops
+/// at emission on purpose — arena-carrying native machine execution stays the
+/// named D-962 debt and is not claimed here.
+#[test]
+#[cfg(windows)]
+fn mn_aggregates_list_only_record_admits_and_emits() {
+    if !common::tools_available() {
+        panic!("infra-blocked: rust-lld/SDK unavailable");
+    }
+    let src = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var b = Bag(xs.move)\n    return b.items.get(0)\n}";
+    let compiled = ace_core::source::compile_aggregates_source(src, "ag1035.at", &[])
+        .expect("the List-only record compiles under the aggregates profile");
+    let m = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0)
+        .expect("lowers to the shared MIR");
+    ace_av_core::verify_mir(&m).expect("the owned record module verifies");
+    let units = ace_av::cache::split_units(&m).expect("unit split");
+    assert!(!units.is_empty(), "the split must produce a unit");
+    for u in &units {
+        ace_native::collections_lower::admit_unit(u).expect("the native lane admits the unit");
+        let _coff = ace_native::collections_lower::emit_unit_coff(u)
+            .expect("COFF emission succeeds for the List-only record unit");
+    }
+}

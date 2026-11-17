@@ -26,7 +26,6 @@
 //!   re-verified parent-side from the emitted files (trust but verify).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use auto_test_case::compare::{compare_bytes, Mismatch};
@@ -233,20 +232,32 @@ pub fn run_check(
         request_text.as_bytes(),
     )?;
     // The ONLY process this adapter ever spawns (plan §5.5 spawn-zero).
-    let out = Command::new(&worker)
-        .arg(&request_text)
-        .output()
-        .map_err(|e| format!("spawn a2x worker {}: {e}", worker.display()))?;
+    // PLAN-1034: 有界交换（同 a2r 父合同——stdin 请求、70s/单一3s、
+    // stdout 4MiB / stderr 1MiB；cap/期限命中即 Infra，绝无截断成功）。
+    let policy = super::a2x_exchange::A2XExchangePolicy::daily_emit();
+    let out = match super::a2x_exchange::exchange(&worker, &request_text, policy) {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(exchange) = exchange {
+                let _ = exchange.finish(&[], &[], None, Some(&e.0));
+            }
+            return Ok(Verdict {
+                status: Status::Error,
+                detail: Some(e.0),
+                ..Verdict::pass()
+            });
+        }
+    };
     if let Some(exchange) = exchange {
-        exchange.finish(&out.stdout, &out.stderr, out.status.code(), None)?;
+        exchange.finish(&out.stdout, &out.stderr, Some(0), None)?;
     }
-    if !out.status.success() {
+    if out.exit_kind != auto_tool_execution::ExitKind::Success {
         // A worker refusal is INFRA, never a language verdict.
         return Ok(Verdict {
             status: Status::Error,
             detail: Some(format!(
-                "a2x worker failed (exit {:?}): {}",
-                out.status.code(),
+                "a2x worker failed ({:?}): {}",
+                out.exit_kind,
                 String::from_utf8_lossy(&out.stdout).trim()
             )),
             ..Verdict::pass()
@@ -283,9 +294,10 @@ pub fn run_check(
         });
     }
     // Parent-side manifest re-hash: the reported digest must match the
-    // emitted manifest bytes on disk.
-    let manifest_bytes = std::fs::read(actual_dir.join("manifest.json"))
-        .map_err(|e| format!("read manifest: {e}"))?;
+    // emitted manifest bytes on disk. PLAN-1034: 产物有界准入（manifest
+    // 4MiB / 单文件 64MiB / 单 check 总量 128MiB）。
+    let mut artifacts = super::a2x_exchange::ArtifactBudget::new();
+    let manifest_bytes = artifacts.read_manifest(&actual_dir.join("manifest.json"))?;
     let manifest_sha = hex(&sha256(&manifest_bytes));
     if resp["manifest_sha256"].as_str() != Some(manifest_sha.as_str()) {
         return Ok(Verdict {
@@ -297,6 +309,21 @@ pub fn run_check(
 
     match &oracle.completion {
         Completion::Success => {
+            // PLAN-977 AC-COVERAGE negative control (V-COVERAGE): an
+            // EMISSION check must not carry run-observation expectations —
+            // emit cannot masquerade as run. The shared predicate covers
+            // every run-observation field (exit/stdout/stderr/av-channel/
+            // trace/result/perf/probe steps); artifact expectations only.
+            if let Some(field) = super::a2x_exchange::emit_only_violation(oracle) {
+                return Ok(Verdict {
+                    status: Status::Error,
+                    detail: Some(format!(
+                        "{recipe} emit checks declare artifact expectations only \
+                         (got a `{field}` run observation; emit cannot masquerade as run)"
+                    )),
+                    ..Verdict::pass()
+                });
+            }
             let mut mismatches = Vec::new();
             let mut refs = Vec::new();
             let mut expected_paths: Vec<String> = Vec::new();
@@ -318,15 +345,20 @@ pub fn run_check(
             for want in &oracle.artifacts {
                 expected_paths.push(want.path.clone());
                 let path = actual_dir.join(&want.path);
-                match std::fs::read(&path) {
-                    Err(_) => mismatches.push(Mismatch {
+                match artifacts.read_file(&path, false) {
+                    Err(limit) => return Ok(Verdict {
+                        status: Status::Error,
+                        detail: Some(limit),
+                        ..Verdict::pass()
+                    }),
+                    Ok(None) => mismatches.push(Mismatch {
                         observation: format!("artifact {}", want.path),
                         kind: "missing",
                         expected: format!("{} bytes", want.bytes.len()),
                         actual: "absent".to_string(),
                         first_diff: None,
                     }),
-                    Ok(actual) => {
+                    Ok(Some(actual)) => {
                         if let Some(m) = compare_bytes(
                             &want.bytes,
                             &actual,

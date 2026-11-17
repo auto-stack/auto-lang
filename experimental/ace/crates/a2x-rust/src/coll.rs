@@ -123,12 +123,12 @@ pub fn assemble_collections_file_set(
         "    let outcome: A2xResult<i32> = generated::{}();\n",
         program.entry
     ));
-        // PLAN-968: the orderly scheduler drain runs after the user main
+    // PLAN-968: the orderly scheduler drain runs after the user main
     // returns (pending mailboxes deliver, stop hooks run, threads join).
     if view.has_sched_ops() {
         wrapper.push_str("    a2x_runtime::a2x_sched_drain();\n");
     }
-wrapper.push_str("    match outcome {\n");
+    wrapper.push_str("    match outcome {\n");
     wrapper.push_str("        Ok(v) => println!(\"value:{}\", v),\n");
     wrapper.push_str("        Err(t) => println!(\"trap:{}\", t.name()),\n");
     wrapper.push_str("    }\n}\n");
@@ -524,6 +524,11 @@ fn alloc_buffer(cap: usize, fill: &str) -> A2xResult<A2xStr> {
 pub fn a2x_str_from_lit(s: &str) -> A2xResult<A2xStr> {
     alloc_buffer(s.len(), s)
 }
+pub fn a2x_str_from_char(c: char) -> A2xResult<A2xStr> {
+    let mut buf = [0u8; 4];
+    let s = c.encode_utf8(&mut buf);
+    alloc_buffer(s.len(), s)
+}
 pub fn a2x_str_clone(s: &str) -> A2xResult<A2xStr> {
     alloc_buffer(s.len(), s)
 }
@@ -773,15 +778,56 @@ pub fn a2x_coll_list_clear<E: A2xCollElem>(l: &mut A2xList<E>) {
 
 /// The ONLY list release path: elements in reverse index order, buffer
 /// last. Zero-charge/zero-poll/zero-allocation.
+///
+/// PLAN-1036 (F-R1-03): release is IDEMPOTENT — the frozen cleanup rule
+/// (`checked-resource-facts` "list free 后 data=NULL/cap=0"; the C runtime
+/// already guards on `data == NULL`) is load-bearing because the back-edge
+/// poll's error path deliberately RE-LISTS the per-iteration deaths and the
+/// loop survivors. Taking the buffer out first makes a second call a true
+/// no-op: no second drop (heap corruption), no second release event.
 pub fn a2x_coll_list_free<E: A2xCollElem>(l: &mut A2xList<E>) {
-    while let Some(mut e) = l.buf.pop() {
+    let mut taken = std::mem::replace(&mut l.buf, std::mem::ManuallyDrop::new(Vec::new()));
+    if taken.capacity() == 0 {
+        // already released (or never allocated): nothing to free, no event
+        return;
+    }
+    while let Some(mut e) = taken.pop() {
         e.a2x_elem_free();
         coll_with(|s| s.live_nodes -= 1);
     }
-    let cap = l.buf.capacity();
-    let bytes = list_cap_bytes::<E>(cap);
-    unsafe { std::mem::ManuallyDrop::drop(&mut l.buf) };
+    let bytes = list_cap_bytes::<E>(taken.capacity());
+    unsafe { std::mem::ManuallyDrop::drop(&mut taken) };
     coll_alloc_release(bytes);
+}
+
+pub fn a2x_coll_list_clone<E: A2xCollElem>(src: &A2xList<E>) -> A2xResult<A2xList<E>> {
+    let mut out = a2x_coll_list_new::<E>()?;
+    for elem in src.buf.iter() {
+        let cloned = match elem.a2x_elem_deep_clone() {
+            Ok(v) => v,
+            Err(e) => {
+                a2x_coll_list_free(&mut out);
+                return Err(e);
+            }
+        };
+        if let Err(e) = a2x_coll_list_push(&mut out, cloned) {
+            a2x_coll_list_free(&mut out);
+            return Err(e);
+        }
+    }
+    Ok(out)
+}
+
+impl<E: A2xCollElem> A2xCollElem for A2xList<E> {
+    fn a2x_elem_free(&mut self) {
+        a2x_coll_list_free(self);
+    }
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {
+        a2x_coll_list_clone(self)
+    }
+    fn a2x_elem_str_bytes(&self) -> u64 {
+        self.buf.iter().map(|e| e.a2x_elem_str_bytes()).sum()
+    }
 }
 
 // ---- deep-link witness chain (helper probes; iterative, no host

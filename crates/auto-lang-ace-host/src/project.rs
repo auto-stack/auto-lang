@@ -410,6 +410,11 @@ fn run_one_test(
         )),
         ExecOutcome::Trap { kind, .. } => failed(format!("language trap: {kind:?}")),
         ExecOutcome::Error { message, .. } => failed(format!("run error: {message}")),
+        // PLAN-980 HELLO 修复：973 为 ExecOutcome 增加 `Exit`（进程退出内建），
+        // 本匹配面随之非穷尽（master 预存编译红；随 ace-facade 组修复）。
+        ExecOutcome::Exit { code } => failed(format!(
+            "test exited with code {code}; the frozen test contract is `fn {name}() int`              returning 0"
+        )),
         ExecOutcome::Resource { kind, message } => {
             failed(format!("resource denied: {kind:?}: {message}"))
         }
@@ -468,6 +473,14 @@ pub(crate) fn outcome_from_exec(out: ExecOutcome) -> AceProjectOutcome {
                 start: s.start as u64,
                 end: s.end as u64,
             }),
+        },
+        // PLAN-980 HELLO 修复：Exit（进程退出内建）→ run 段具名诊断。
+        ExecOutcome::Exit { code } => AceProjectOutcome::Diagnostic {
+            module: String::new(),
+            stage: "run".to_string(),
+            code: "av.exit".to_string(),
+            message: format!("the entry requested process exit with code {code}"),
+            span: None,
         },
         ExecOutcome::Error { message, span } => AceProjectOutcome::Diagnostic {
             module: String::new(),

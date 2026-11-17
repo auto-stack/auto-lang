@@ -51,6 +51,8 @@ shim-metadata = { path = "../shim-metadata" }
 # PLAN-901：TestCase 协议核心转常驻依赖（原 optional + test-cases feature
 # 门拍平；SDK 发行闭包随之包含 auto-test-case 及其 vendored parser）。
 auto-test-case = { path = "../auto-test-case" }
+# PLAN-1034: A2X 三父 adapter 的 opt-in 有界 worker 交换（run_bounded）。
+auto-tool-execution = { path = "../auto-tool-execution" }
 auto-bindgen = { path = "../auto-bindgen" }
 auto-terminal-core = { path = "../auto-terminal-core" }
 rustyline = { workspace = true, features = ["with-file-history"] }

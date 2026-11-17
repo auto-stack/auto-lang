@@ -39,6 +39,7 @@ use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
 pub mod a2r_emit_917_cert;
+pub mod a2x_exchange;
 pub mod abi;
 mod abi_source;
 pub mod ac;
@@ -58,6 +59,7 @@ pub mod avm;
 pub mod execution_trace;
 pub mod inventory;
 pub mod materialize;
+pub mod obligation_ledger;
 pub mod sema;
 pub mod stale;
 

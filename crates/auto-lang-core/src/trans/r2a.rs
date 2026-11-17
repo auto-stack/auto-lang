@@ -20,6 +20,171 @@ pub fn transpile_r2a(_name: &str, rust_code: &str) -> AutoResult<String> {
 }
 
 // ──────────────────────────────────────────────────────────────
+// PLAN-977 B-REVERSE-I: 不支持形态的具名拒绝（受检入口）
+// ──────────────────────────────────────────────────────────────
+
+/// r2a 无法如实表达的 Rust 形态（产物里以 `/* ... */` 标记占位）。
+///
+/// 历史公开命令（[`transpile_r2a`] / `transpile_r2a_file`）保留宽松面：
+/// 有损标记随产物返回。受检入口 [`transpile_r2a_checked`] 则**拒绝**返回
+/// 有损产物，并按稳定键逐条具名——工具契约"不支持形态具名拒绝"的落点。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct R2aUnsupportedForm {
+    /// 稳定键（负控/台账用）：`dyn-trait`/`macro-call`/`tuple-type` …
+    pub form: &'static str,
+    /// 产物内行号（1-based）。
+    pub output_line: usize,
+    /// 产物内的标记原文（`/* ... */`）。
+    pub marker: String,
+}
+
+impl std::fmt::Display for R2aUnsupportedForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{} {}", self.form, self.output_line, self.marker)
+    }
+}
+
+/// 受检转译：返回 AUTO 源，或具名拒绝（不返回有损产物）。
+///
+/// - Rust 语法错误 → `Rust parse error: ...`（原有诊断，位置留给 axis）。
+/// - 产物含任何未支持形态标记 → `r2a: unsupported Rust forms: <form>@<line> ...`
+/// - 干净产物 → 与 [`transpile_r2a`] **逐字节相同**。
+pub fn transpile_r2a_checked(name: &str, rust_code: &str) -> AutoResult<String> {
+    let output = transpile_r2a(name, rust_code)?;
+    let forms = r2a_unsupported_forms(&output);
+    if forms.is_empty() {
+        return Ok(output);
+    }
+    let listed = forms
+        .iter()
+        .map(|f| format!("{}@{}", f.form, f.output_line))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(crate::error::AutoError::Msg(format!(
+        "r2a: unsupported Rust forms ({}): {}",
+        forms.len(),
+        listed
+    )))
+}
+
+/// 扫描 r2a 产物里的有损标记并按稳定键命名。
+///
+/// 只认**注释位**的 `/* ... */`：字符串/字符字面量与 `//` 行注释内的同形
+/// 文本不参与（产物由本模块生成，字符串内容不会被误判为标记）。
+/// `/* unimplemented!() */`、`/* todo!() */`、`/* unreachable!() */`
+/// 是**显式**的 panic 翻译而非有损丢弃，不计入。
+pub fn r2a_unsupported_forms(emitted: &str) -> Vec<R2aUnsupportedForm> {
+    let mut forms = Vec::new();
+    for (line_idx, line) in emitted.lines().enumerate() {
+        let bytes = line.as_bytes();
+        let mut i = 0usize;
+        let mut in_str = false;
+        let mut in_char = false;
+        let mut escaped = false;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if in_str {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'"' {
+                    in_str = false;
+                }
+                i += 1;
+                continue;
+            }
+            if in_char {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'\'' {
+                    in_char = false;
+                }
+                i += 1;
+                continue;
+            }
+            match b {
+                b'"' => {
+                    in_str = true;
+                    i += 1;
+                }
+                b'\'' => {
+                    in_char = true;
+                    i += 1;
+                }
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => break,
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                    let start = i;
+                    let mut j = i + 2;
+                    let mut close = None;
+                    while j + 1 < bytes.len() {
+                        if bytes[j] == b'*' && bytes[j + 1] == b'/' {
+                            close = Some(j);
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let Some(close) = close else {
+                        // 跨行/未闭合的标记形态：失败闭合（不静默放行有损产物）。
+                        forms.push(R2aUnsupportedForm {
+                            form: "lossy-marker",
+                            output_line: line_idx + 1,
+                            marker: line[start..].trim_end().to_string(),
+                        });
+                        break;
+                    };
+                    let marker = &line[start..close + 2];
+                    if let Some(form) = classify_r2a_marker(marker) {
+                        forms.push(R2aUnsupportedForm {
+                            form,
+                            output_line: line_idx + 1,
+                            marker: marker.to_string(),
+                        });
+                    }
+                    i = close + 2;
+                }
+                _ => i += 1,
+            }
+        }
+    }
+    forms
+}
+
+fn classify_r2a_marker(marker: &str) -> Option<&'static str> {
+    let inner = marker
+        .strip_prefix("/*")
+        .and_then(|m| m.strip_suffix("*/"))
+        .unwrap_or(marker)
+        .trim();
+    // 显式 panic 翻译：语义保留（运行时 panic），不是有损丢弃。
+    if matches!(inner, "unimplemented!()" | "todo!()" | "unreachable!()") {
+        return None;
+    }
+    Some(match inner {
+        "unknown" => "unknown-type",
+        "unknown op" => "unknown-operator",
+        "unknown self type" => "unknown-self-type",
+        "unknown pat" | "unknown pattern" => "unknown-pattern",
+        "unknown lit" => "unknown-literal",
+        "unsupported expr" | "expr" => "unsupported-expression",
+        "async block" => "async-block",
+        "macro stmt" => "macro-statement",
+        "nested item" => "nested-item",
+        "empty path" => "empty-path",
+        "?" => "try-operator",
+        _ if inner.starts_with("dyn ") => "dyn-trait",
+        _ if inner.starts_with("impl ") => "impl-trait",
+        _ if inner.starts_with('|') => "closure",
+        _ if inner.starts_with(".await") => "await",
+        _ if inner.starts_with('(') => "tuple-type",
+        _ if inner.ends_with(')') && inner.contains("!(") => "macro-call",
+        _ => "lossy-marker",
+    })
+}
+
+// ──────────────────────────────────────────────────────────────
 // Type Mapping: syn::Type → AutoLang type string
 // ──────────────────────────────────────────────────────────────
 
@@ -2762,5 +2927,92 @@ fn main() {
             "missing Rc simplification in: {}",
             result
         );
+    }
+
+    // ── PLAN-977 B-REVERSE-I: 受检入口与具名拒绝 ──
+
+    /// 已支持的 Rust→Auto 用例在受检入口下逐字节等于宽松入口（保行为）。
+    #[test]
+    fn p977_r2a_checked_matches_legacy_on_supported_case() {
+        let rust_code = std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../auto-lang/test/r2a/08_generics/003_generic_fn.rs"),
+        )
+        .expect("the frozen r2a generic input is present");
+        let legacy = transpile_r2a("generic_fn", &rust_code).unwrap();
+        let checked = transpile_r2a_checked("generic_fn", &rust_code).expect("supported input");
+        assert_eq!(
+            checked, legacy,
+            "受检入口在已支持输入上必须与历史产物逐字节相同"
+        );
+        assert!(r2a_unsupported_forms(&checked).is_empty());
+    }
+
+    /// 不支持形态：受检入口具名拒绝，且拒绝信息带稳定键与产物行号；
+    /// 宽松入口保留历史产物（公开命令不因受检面改变）。
+    #[test]
+    fn p977_r2a_checked_rejects_unsupported_forms_by_name() {
+        let rust_code = r#"fn show(x: Box<dyn std::fmt::Debug>) {
+    log_event!(x);
+}"#;
+        let legacy = transpile_r2a("show", rust_code).unwrap();
+        let forms = r2a_unsupported_forms(&legacy);
+        let names: Vec<&str> = forms.iter().map(|f| f.form).collect();
+        assert!(
+            names.contains(&"dyn-trait"),
+            "dyn trait 必须具名，got {:?} in {}",
+            names,
+            legacy
+        );
+        assert!(
+            names.contains(&"macro-call"),
+            "未知宏调用必须具名，got {:?} in {}",
+            names,
+            legacy
+        );
+        assert!(forms.iter().all(|f| f.output_line >= 1));
+
+        let err = transpile_r2a_checked("show", rust_code)
+            .expect_err("unsupported input must be refused");
+        let message = err.to_string();
+        assert!(message.contains("unsupported Rust forms"), "{}", message);
+        assert!(message.contains("dyn-trait@"), "{}", message);
+        assert!(message.contains("macro-call@"), "{}", message);
+    }
+
+    /// 标记扫描只认注释位标记：字符串/字符字面量与 `//` 注释内的同形
+    /// 文本不误报；显式 panic 翻译（unimplemented!/todo!/unreachable!）
+    /// 不是有损形态。
+    #[test]
+    fn p977_r2a_marker_scan_ignores_literals_and_comments() {
+        let emitted = concat!(
+            "let s = \"/* unknown */\"\n",
+            "let c = '/'\n",
+            "// /* dyn Debug */\n",
+            "let t = /* unknown */ null\n",
+            "/* unimplemented!() */\n",
+        );
+        let forms = r2a_unsupported_forms(emitted);
+        assert_eq!(forms.len(), 1, "只有注释位的真实标记计入，got {:?}", forms);
+        assert_eq!(forms[0].form, "unknown-type");
+        assert_eq!(forms[0].output_line, 4);
+        assert_eq!(forms[0].marker, "/* unknown */");
+    }
+
+    /// 跨行/未闭合标记 fail closed：不能因为同行找不到 `*/` 就静默放行。
+    #[test]
+    fn p977_r2a_marker_scan_fails_closed_on_unterminated_marker() {
+        let emitted = "let x = /* |a| {\n    return a\n}\n";
+        let forms = r2a_unsupported_forms(emitted);
+        assert_eq!(forms.len(), 1, "未闭合标记必须计入: {:?}", forms);
+        assert_eq!(forms[0].form, "lossy-marker");
+        assert_eq!(forms[0].output_line, 1);
+    }
+
+    /// 语法错误仍是解析错误（具名诊断前缀不变），不是"不支持形态"。
+    #[test]
+    fn p977_r2a_checked_keeps_parse_error_diagnostic() {
+        let err = transpile_r2a_checked("broken", "fn broken {{{{").expect_err("syntax error");
+        assert!(err.to_string().contains("Rust parse error"), "got {}", err);
     }
 }

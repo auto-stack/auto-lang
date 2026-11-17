@@ -68,6 +68,7 @@ pub enum SeedCollTy {
     StrOwned,
     Record(String),
     Variant(String),
+    List(Box<SeedCollTy>),
 }
 
 impl SeedCollTy {
@@ -78,10 +79,18 @@ impl SeedCollTy {
             SeedCollTy::StrOwned => "Str".into(),
             SeedCollTy::Record(n) => format!("R:{n}"),
             SeedCollTy::Variant(n) => format!("V:{n}"),
+            SeedCollTy::List(e) => format!("L:{}", e.token()),
         }
     }
 
     fn parse_token(tok: &str) -> Result<Self, A2xReject> {
+        Self::parse_token_depth(tok, 0)
+    }
+
+    fn parse_token_depth(tok: &str, depth: usize) -> Result<Self, A2xReject> {
+        if depth > 16 {
+            return Err(A2xReject::new("a2py.seed", "type token nesting too deep"));
+        }
         match tok {
             "i32" => Ok(SeedCollTy::I32),
             "bool" => Ok(SeedCollTy::Bool),
@@ -95,6 +104,10 @@ impl SeedCollTy {
                 let name = &other[2..];
                 validate_ident_token(name, "variant ref")?;
                 Ok(SeedCollTy::Variant(name.to_string()))
+            }
+            other if other.starts_with("L:") => {
+                let inner = Self::parse_token_depth(&other[2..], depth + 1)?;
+                Ok(SeedCollTy::List(Box::new(inner)))
             }
             other => Err(A2xReject::new(
                 "a2py.seed",
@@ -111,6 +124,7 @@ impl SeedCollTy {
             SeedCollTy::StrOwned => "str".into(),
             SeedCollTy::Record(n) => format!("rec_{}", sanitize_ident(n)),
             SeedCollTy::Variant(n) => format!("var_{}", sanitize_ident(n)),
+            SeedCollTy::List(e) => format!("list_{}", e.elem_tag()),
         }
     }
 }
@@ -199,6 +213,10 @@ fn seed_coll_ty(view: &SemanticView<'_>, ty: Ty) -> Result<SeedCollTy, A2xReject
                 .variant(i)
                 .ok_or_else(|| A2xReject::new("a2x.internal", "seed: unknown variant index"))?;
             Ok(SeedCollTy::Variant(var.name.clone()))
+        }
+        Ty::List(i) => {
+            let elem = view.list_elem(i)?;
+            Ok(SeedCollTy::List(Box::new(seed_coll_ty(view, elem)?)))
         }
         other => Err(A2xReject::unsupported_type(format!(
             "python collections seed does not admit type `{other:?}`"
@@ -523,6 +541,11 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                     out.push_str(&format!("    a2x_py_var_free_{iv}(rec['{sfn}'])\n"));
                     wrote = true;
                 }
+                SeedCollTy::List(inner) => {
+                    let tag = inner.elem_tag();
+                    out.push_str(&format!("    a2x_py_list_free_{tag}(rec['{sfn}'])\n"));
+                    wrote = true;
+                }
                 _ => {}
             }
         }
@@ -551,6 +574,12 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                     let iv = sanitize_ident(inner);
                     out.push_str(&format!(
                         "        out['{sfn}'] = a2x_py_var_clone_{iv}(src['{sfn}'])\n"
+                    ));
+                }
+                SeedCollTy::List(inner) => {
+                    let tag = inner.elem_tag();
+                    out.push_str(&format!(
+                        "        out['{sfn}'] = a2x_py_list_clone_{tag}(src['{sfn}'])\n"
                     ));
                 }
                 _ => {
@@ -591,6 +620,12 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                             "    {prefix} tag == {idx}:\n        a2x_py_var_free_{iv}(val.payload)\n"
                         ));
                     }
+                    SeedCollTy::List(inner) => {
+                        let tag = inner.elem_tag();
+                        out.push_str(&format!(
+                            "    {prefix} tag == {idx}:\n        a2x_py_list_free_{tag}(val.payload)\n"
+                        ));
+                    }
                     _ => {}
                 }
             }
@@ -614,6 +649,9 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                     }
                     SeedCollTy::Variant(inner) => {
                         format!("a2x_py_var_clone_{}(src.payload)", sanitize_ident(inner))
+                    }
+                    SeedCollTy::List(inner) => {
+                        format!("a2x_py_list_clone_{}(src.payload)", inner.elem_tag())
                     }
                     _ => "src.payload".to_string(),
                 };
@@ -651,6 +689,12 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                     "    for item in lst.elems:\n        a2x_py_var_free_{iv}(item)\n    a2x_list_clear(lst)\n\n"
                 ));
             }
+            SeedCollTy::List(inner) => {
+                let itag = inner.elem_tag();
+                out.push_str(&format!(
+                    "    for item in lst.elems:\n        a2x_py_list_free_{itag}(item)\n    a2x_list_clear(lst)\n\n"
+                ));
+            }
             _ => {
                 out.push_str("    a2x_list_clear(lst)\n\n");
             }
@@ -671,6 +715,12 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                 let iv = sanitize_ident(inner);
                 out.push_str(&format!(
                     "        for item in src.elems:\n            out.elems.append(a2x_py_var_clone_{iv}(item))\n"
+                ));
+            }
+            SeedCollTy::List(inner) => {
+                let itag = inner.elem_tag();
+                out.push_str(&format!(
+                    "        for item in src.elems:\n            out.elems.append(a2x_py_list_clone_{itag}(item))\n"
                 ));
             }
             _ => {

@@ -22,3 +22,11 @@ check-id: "vm-stdout"
 ```text
 Here is 10!
 ```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```

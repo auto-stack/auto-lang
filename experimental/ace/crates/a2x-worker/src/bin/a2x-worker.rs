@@ -115,16 +115,23 @@ const PY_RECIPE: &str = "ac-a2py/hir-scalar-emit-v1";
 const PY_RT_RECIPE: &str = "ac-a2py/hir-record-text-emit-v1";
 const PY_COLL_RECIPE: &str = "ac-a2py/hir-collections-emit-v1";
 const PY_STDLIB_RUN_RECIPE: &str = "ac-a2py/hir-stdlib-run-v1";
+/// PLAN-976: the TypeScript/JavaScript channels (one shared provider crate;
+/// each manifest carries its concrete `backend`). Dispatched by the
+/// `daily-emit-ts`/`run-ts` ops with `target_lang` selecting the leg.
+const TS_RECIPE: &str = ace_a2x_ts::TS_RECIPE;
+const TS_RT_RECIPE: &str = ace_a2x_ts::TS_RT_RECIPE;
+const TS_COLL_RECIPE: &str = ace_a2x_ts::TS_COLL_RECIPE;
+const JS_RECIPE: &str = ace_a2x_ts::JS_RECIPE;
+const JS_RT_RECIPE: &str = ace_a2x_ts::JS_RT_RECIPE;
+const JS_COLL_RECIPE: &str = ace_a2x_ts::JS_COLL_RECIPE;
 
 fn main() {
-    let mut req = String::new();
-    if let Some(arg) = std::env::args().nth(1) {
-        req = arg;
-    } else {
-        std::io::stdin()
-            .read_to_string(&mut req)
-            .expect("read request");
-    }
+    // PLAN-1034 IPC-03 负控缝（TEST-ONLY，镜像 sema worker 的
+    // SEMA_TEST_* 先例；生产路径永不设置）。具名模式由父测试经子进程
+    // env 显式提供——stub 身份即本预构建 worker（hash 可钉），case
+    // 文件永远不能凭空指定可执行文件。
+    run_ipc1034_fault_seams();
+    let req = read_request();
     let v: serde_json::Value = match serde_json::from_str(&req) {
         Ok(v) => v,
         Err(e) => fail(&format!("bad request json: {e}")),
@@ -137,9 +144,148 @@ fn main() {
         "certify-c" => certify_c(&v),
         "daily-emit-py" => daily_emit_py(&v),
         "run-py" => run_py(&v),
+        "daily-emit-ts" => daily_emit_ts(&v),
+        "run-ts" => run_ts(&v),
         other => fail(&format!("unknown op `{}`", other)),
     };
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
+}
+
+/// PLAN-1034 §5 r4 DEC-IPC-LIMIT：一次请求的原始 JSON UTF-8 字节上限
+/// （argv 与 stdin 两入口同门；含空白/尾LF，不含传输EOF；超限在 serde
+/// 解析前拒绝）。8MiB=8388608；等于上限可进入下一步，超 1 字节即资源
+/// 拒绝。数值参照 TestCase 文档硬上限，但对象是 worker 私有请求信封，
+/// 不是 8MiB 源码上限。
+const REQUEST_MAX_BYTES: usize = 8 << 20;
+/// 选中文件源（source_path / certify reference_path / certify-c
+/// golden_path）的原始内容上限 64MiB=67108864：一次 cap+1 有界快照转
+/// UTF-8 并 hash/compile（metadata 不预读；实际以 cap+1 读防文件增长）。
+const SOURCE_FILE_MAX_BYTES: usize = 64 << 20;
+
+/// 读 one-shot 请求（argv 或 stdin）。argv 先按 OsStr 借用长度准入再
+/// 创建 String（非 UTF-8 具名拒绝）；stdin 以 cap+1 有界读取——必须读
+/// 完整个 one-shot 文档，不能把第一行当请求。
+fn read_request() -> String {
+    if let Some(arg) = std::env::args_os().nth(1) {
+        if arg.len() > REQUEST_MAX_BYTES {
+            fail(&format!(
+                "a2x.request-limit: argv request {} bytes exceeds the 8MiB cap ({REQUEST_MAX_BYTES}); rejected before parsing",
+                arg.len()
+            ));
+        }
+        match arg.into_string() {
+            Ok(s) => s,
+            Err(_) => fail("a2x.request-utf8: argv request is not valid unicode"),
+        }
+    } else {
+        read_request_bounded(std::io::stdin(), REQUEST_MAX_BYTES)
+    }
+}
+
+fn read_request_bounded(mut r: impl std::io::Read, cap: usize) -> String {
+    match read_request_bounded_result(&mut r, cap) {
+        Ok(s) => s,
+        Err(m) => fail(&m),
+    }
+}
+
+/// 有界 one-shot 读取的 Result 核心（`a2x.request-*` 具名拒绝；测试直
+/// 调本函数断言拒绝文本，不触发进程退出）。
+fn read_request_bounded_result(r: &mut dyn std::io::Read, cap: usize) -> Result<String, String> {
+    let mut buf = Vec::new();
+    let mut limited = r.take((cap + 1) as u64);
+    limited
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("a2x.request-io: read stdin request: {e}"))?;
+    if buf.len() > cap {
+        return Err(format!(
+            "a2x.request-limit: request {} bytes exceeds the cap ({cap}); rejected before parsing",
+            buf.len()
+        ));
+    }
+    String::from_utf8(buf).map_err(|e| format!("a2x.request-utf8: {e}"))
+}
+
+/// IPC-03 负控具名模式（见 main 注释）：
+/// - `hang`：读请求前永不退出（父 exec deadline 终止）；
+/// - `flood-stdout` / `flood-stderr`：持续超量双流（父流 cap 终止）；
+/// - `bad-json`：返回畸形 JSON 后退 0（父协议拒绝，非 crash 掩盖）；
+/// - `orphan-holds-pipe`：派生继承 stdout 的后代（re-exec `hang`）后
+///   根退 0——父退出而孙进程持管道的树终止反例；PID 见
+///   `A2X_TEST_PID_FILE`（若提供，两行 root/descendant）。
+fn run_ipc1034_fault_seams() {
+    let mode = std::env::var("A2X_TEST_FAULT").unwrap_or_default();
+    let note_pid = |label: &str, pid: u32| {
+        if let Ok(path) = std::env::var("A2X_TEST_PID_FILE") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+            {
+                let _ = writeln!(f, "{label} {pid}");
+            }
+        }
+    };
+    match mode.as_str() {
+        "hang" => {
+            note_pid("root", std::process::id());
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3600));
+            }
+        }
+        "flood-stdout" => {
+            note_pid("root", std::process::id());
+            let chunk = [b'x'; 4096];
+            use std::io::Write;
+            let mut out = std::io::stdout();
+            loop {
+                if out.write_all(&chunk).is_err() {
+                    std::process::exit(0);
+                }
+            }
+        }
+        "flood-stderr" => {
+            note_pid("root", std::process::id());
+            let chunk = [b'e'; 4096];
+            use std::io::Write;
+            let mut out = std::io::stderr();
+            loop {
+                if out.write_all(&chunk).is_err() {
+                    std::process::exit(0);
+                }
+            }
+        }
+        "bad-json" => {
+            note_pid("root", std::process::id());
+            println!("{{not-json-at-all");
+            std::process::exit(0);
+        }
+        // PLAN-1034: 合法 JSON 响应但回显错误 recipe（父侧
+        // trust-but-verify 身份门的负控）。
+        "wrong-identity" => {
+            note_pid("root", std::process::id());
+            println!(
+                "{{\"status\":\"ok\",\"tool\":\"a2x-worker\",\"protocol\":\"{PROTOCOL}\",                 \"recipe\":\"ac-a2r/hir-record-text-emit-v1\"}}"
+            );
+            std::process::exit(0);
+        }
+        "orphan-holds-pipe" => {
+            note_pid("root", std::process::id());
+            let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("a2x-worker"));
+            let _child = std::process::Command::new(&exe)
+                .env("A2X_TEST_FAULT", "hang")
+                .env_remove("A2X_TEST_PID_FILE")
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            if let Ok(child) = &_child {
+                note_pid("descendant", child.id());
+            }
+            std::process::exit(0);
+        }
+        _ => {}
+    }
 }
 
 fn fail(detail: &str) -> ! {
@@ -210,15 +356,20 @@ fn identity(v: &serde_json::Value) -> serde_json::Value {
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
         "recipe": RECIPE,
-        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE, PY_RECIPE, PY_RT_RECIPE, PY_COLL_RECIPE, PY_STDLIB_RUN_RECIPE],
+        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE, PY_RECIPE, PY_RT_RECIPE, PY_COLL_RECIPE, PY_STDLIB_RUN_RECIPE, TS_RECIPE, TS_RT_RECIPE, TS_COLL_RECIPE, JS_RECIPE, JS_RT_RECIPE, JS_COLL_RECIPE],
         "backend": t.backend,
         "backend_version": t.backend_version,
         "edition": t.edition,
-        "targets": ["rust", "c", "python"],
+        "targets": ["rust", "c", "python", "typescript", "javascript"],
         "c_backend": "auto-a2x-c",
         "c_standard": ace_a2x_c::C_STANDARD,
         "python_backend": "auto-a2x-python",
         "python_producer": ace_a2x_python::PY_PRODUCER,
+        "ts_backend": ace_a2x_ts::TS_BACKEND,
+        "ts_standard": ace_a2x_ts::TS_STANDARD,
+        "ts_producer": ace_a2x_ts::TS_PRODUCER,
+        "js_backend": ace_a2x_ts::JS_BACKEND,
+        "js_standard": ace_a2x_ts::JS_STANDARD,
     });
     // Explicit certification preparation only. Ordinary identity/daily calls
     // keep their original spawn-zero behavior. The composer never calls this.
@@ -250,7 +401,23 @@ fn identity(v: &serde_json::Value) -> serde_json::Value {
                     "os": py.identity.target_triple,
                 })
             }
-            _ => fail("certification_target must be rust, c, or python"),
+            // PLAN-976: the script engine identity (node) for the TS/JS legs.
+            Some("typescript") | Some("javascript") => {
+                let rt_sha = ace_a2x_ts::runtime_body_sha256();
+                let node = ace_a2x_worker::tsrun::resolve_node(&rt_sha)
+                    .unwrap_or_else(|e| fail(&format!("node identity: {e}")));
+                serde_json::json!({
+                    "kind": "node",
+                    "engine": node.identity.engine,
+                    "exe": node.program.to_string_lossy(),
+                    "version": node.identity.version,
+                    "version_sha256": node.identity.executable_sha256,
+                    "runtime_version": node.identity.runtime_version,
+                    "runtime_sha256": node.identity.runtime_sha256,
+                    "os": node.identity.target_triple,
+                })
+            }
+            _ => fail("certification_target must be rust, c, python, typescript, or javascript"),
         };
     }
     identity
@@ -269,22 +436,57 @@ struct EmitOutcome {
     hir_domain: String,
 }
 
+/// PLAN-1034 IPC-01：一次 cap+1 有界快照——text/hash/compile 消费同一
+/// bytes。旧实现 `read_to_string` + `fs::read` 双读存在 TOCTOU（文件在
+/// 两读之间变化时报告的 SHA 与实际编译文本脱钩）且无界；本函数消除第
+/// 二次读取：IO/超限/坏编码具名拒绝，绝不以 hash(empty) 或截断文本成功。
+/// `source_path` 优先级保持；未选中的 `source_text` 不作前置内容门。
 fn read_source(v: &serde_json::Value) -> (String, String) {
     if let Some(p) = v["source_path"].as_str() {
-        let text = match std::fs::read_to_string(p) {
-            Ok(t) => t,
-            Err(e) => fail(&format!("read source {p}: {e}")),
-        };
-        (
-            text,
-            sha256_hex(std::fs::read(p).unwrap_or_default().as_slice()),
-        )
+        read_bounded_utf8(p, SOURCE_FILE_MAX_BYTES, "source")
     } else if let Some(t) = v["source_text"].as_str() {
+        // 选中内联文本：64MiB 内容门由整请求 8MiB 信封先行约束（实际
+        // 可内联大小取交集；r4 R-1034-01 删除了额外 1MiB 字段门）。
         let h = sha256_hex(t.as_bytes());
         (t.to_string(), h)
     } else {
         fail("request needs source_path or source_text");
     }
+}
+
+/// 一次有界快照读取：open → take(cap+1) → read_to_end → cap 门 → 同
+/// bytes hash → 严格 UTF-8 解码（解码失败具名拒绝，不 lossy）。
+fn read_bounded_utf8(path: &str, cap: usize, what: &str) -> (String, String) {
+    match read_bounded_utf8_result(path, cap, what) {
+        Ok(pair) => pair,
+        Err(m) => fail(&m),
+    }
+}
+
+/// 有界快照的 Result 核心（测试直调断言具名拒绝文本）。
+fn read_bounded_utf8_result(
+    path: &str,
+    cap: usize,
+    what: &str,
+) -> Result<(String, String), String> {
+    let mut file =
+        std::fs::File::open(path).map_err(|e| format!("a2x.{what}-io: open {path}: {e}"))?;
+    let mut bytes = Vec::new();
+    let mut limited = (&mut file).take((cap + 1) as u64);
+    limited
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("a2x.{what}-io: read {path}: {e}"))?;
+    if bytes.len() > cap {
+        return Err(format!(
+            "a2x.{what}-limit: {path} is {} bytes; exceeds the {}-byte cap; rejected before decode",
+            bytes.len(),
+            cap
+        ));
+    }
+    let hash = sha256_hex(&bytes);
+    String::from_utf8(bytes)
+        .map(|s| (s, hash))
+        .map_err(|e| format!("a2x.{what}-utf8: {path}: {e}"))
 }
 
 fn emit(v: &serde_json::Value) -> EmitOutcome {
@@ -665,8 +867,10 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
     if let Err(e) = std::fs::create_dir_all(&ref_dir) {
         fail(&format!("create reference dir: {e}"));
     }
-    let ref_src = std::fs::read_to_string(reference_path)
-        .unwrap_or_else(|e| fail(&format!("read reference: {e}")));
+    // PLAN-1034: reference 源一次 cap+1 有界快照（r4 R-1034-03：certify-c
+    // 的 reference/golden 与 source 同门——IO/超限/坏编码具名 Infra）。
+    let (ref_src, reference_sha256) =
+        read_bounded_utf8(reference_path, SOURCE_FILE_MAX_BYTES, "reference");
     let ref_file = ref_dir.join("reference.c");
     std::fs::write(&ref_file, &ref_src).unwrap_or_else(|e| fail(&format!("write reference: {e}")));
     let ref_exe = ref_dir.join("reference.exe");
@@ -683,7 +887,6 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
             expected_line.trim()
         ));
     }
-    let reference_sha256 = sha256_hex(ref_src.as_bytes());
 
     // 4) the strict certificate
     let toolchain = ace_a2x_worker::crun::toolchain_identity()
@@ -701,9 +904,14 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
         .find(|(p, _)| p == "main.c")
         .map(|(_, c)| sha256_hex(c.as_bytes()))
         .unwrap_or_default();
-    let golden = v["golden_path"]
+    // PLAN-1034 r4 R-1034-03：golden_path 未声明保持证书该项 None；声明
+    // 则实际 UTF-8 文件 ≤64MiB 并一次有界读取/hash——缺文件、IO、坏
+    // 编码、超量明确 Infra，不再 `.ok()` 把读取失败降级成"未声明"。
+    // 该文件仅显式认证的 hash 键材，不参与生产 emit；daily 父侧 golden
+    // 仍绝不传 worker。
+    let golden: Option<String> = v["golden_path"]
         .as_str()
-        .and_then(|g| std::fs::read_to_string(g).ok());
+        .map(|g| read_bounded_utf8(g, SOURCE_FILE_MAX_BYTES, "golden").0);
     let caps: Vec<String> = v["caps"]
         .as_array()
         .map(|a| {
@@ -843,9 +1051,11 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     let (actual_out, actual_err, actual_processes) =
         compile_and_run(&dir, "main.rs", "a2x_actual.exe");
     let actual_wall_ms = t0.elapsed().as_millis() as u64;
-    // independent hand-written reference: compile + run separately
-    let reference_src = std::fs::read_to_string(&reference_path)
-        .unwrap_or_else(|e| fail(&format!("read reference {reference_path}: {e}")));
+    // independent hand-written reference: compile + run separately.
+    // PLAN-1034: reference 源同一次 cap+1 有界快照（读取/hash 同 bytes，
+    // IO/超限/坏编码具名拒绝）。
+    let (reference_src, reference_sha256) =
+        read_bounded_utf8(&reference_path, SOURCE_FILE_MAX_BYTES, "reference");
     std::fs::write(dir.join("reference.rs"), &reference_src)
         .unwrap_or_else(|e| fail(&format!("write reference: {e}")));
     let t1 = std::time::Instant::now();
@@ -929,7 +1139,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
                 .map(|(_, c)| c.as_bytes())
                 .unwrap_or(&[]),
         ),
-        reference_sha256: sha256_hex(reference_src.as_bytes()),
+        reference_sha256,
         backend: "auto-a2x-rust",
         backend_version: "0.1.0",
         shared_view_version: "0.1.0",
@@ -1207,6 +1417,278 @@ fn run_py(v: &serde_json::Value) -> serde_json::Value {
     r
 }
 
+fn check_ts_admission(v: &serde_json::Value) {
+    if v["use_legacy_ts_trans"].as_bool() == Some(true) {
+        fail("admission.legacy_ts_trans: legacy TypeScriptTrans/JavaScriptTrans AST emitters are forbidden on ace-a2x-ts");
+    }
+    if v["use_vm"].as_bool() == Some(true) {
+        fail("admission.avm_fallback: AutoVM fallback is forbidden on ace-a2x-ts");
+    }
+    if v.get("expected").is_some() {
+        fail("admission.self_oracle: expected value must be verified parent-side, never supplied to worker");
+    }
+}
+
+/// PLAN-976: emit a TypeScript/JavaScript fileset through the shared
+/// `ace-a2x-ts` provider (the SAME `TargetProvider` path the session uses;
+/// `target_lang` selects the leg).
+fn emit_ts(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
+    use ace_a2x_core::target::{Family, FilesetRequest, FragmentText, TargetProvider};
+    check_ts_admission(v);
+    let (src, source_sha256) = read_source(v);
+    let profile = v["profile"].as_str().unwrap_or("core").to_string();
+    let entry = v["entry"].as_str().unwrap_or("main").to_string();
+    let lang = match v["target_lang"].as_str().unwrap_or("typescript") {
+        "typescript" => ace_a2x_ts::ScriptLang::TypeScript,
+        "javascript" => ace_a2x_ts::ScriptLang::JavaScript,
+        other => fail(&format!(
+            "a2ts.target_lang: must be `typescript` or `javascript`, not `{other}`"
+        )),
+    };
+    let caps: Vec<String> = v["caps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let compiled = match profile.as_str() {
+        "core" => compile_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_product_934(&src, &caps),
+        "record" => compile_record_source(&src, "a2x-worker", &caps),
+        "text" => compile_text_source(&src, "a2x-worker", &caps),
+        "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
+        "collections" => compile_collections_source(&src, "a2x-worker", &caps),
+        other => fail(&format!(
+            "a2ts.domain: the script channel serves core/scalar/record/text/text-record/collections, not `{}`",
+            other
+        )),
+    };
+    let compiled = match compiled {
+        Ok(c) => c,
+        Err(ds) => {
+            let detail = ds
+                .iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ");
+            fail_source_diagnostics(
+                &format!("a2x.compile: {detail}"),
+                v["source_path"].as_str().unwrap_or(""),
+                &src,
+                &source_sha256,
+                &profile,
+                &ds,
+            );
+        }
+    };
+    let view = match SemanticView::from_checked(&compiled.checked) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let ts_provider = ace_a2x_ts::TypeScriptTargetProvider;
+    let js_provider = ace_a2x_ts::JavaScriptTargetProvider;
+    let provider: &dyn TargetProvider = match lang {
+        ace_a2x_ts::ScriptLang::TypeScript => &ts_provider,
+        ace_a2x_ts::ScriptLang::JavaScript => &js_provider,
+    };
+    let family = match profile.as_str() {
+        "record" | "text" | "text-record" => Family::RecordText,
+        "collections" => Family::Collections,
+        _ => Family::Scalar,
+    };
+    let expected_schema = match family {
+        Family::Scalar => ace_a2x_ts::TS_SCALAR_FILESET_SCHEMA,
+        Family::RecordText => ace_a2x_ts::TS_RT_FILESET_SCHEMA,
+        Family::Collections => ace_a2x_ts::TS_COLL_FILESET_SCHEMA,
+    };
+    let default_recipe = match (lang, family) {
+        (ace_a2x_ts::ScriptLang::TypeScript, Family::Scalar) => TS_RECIPE,
+        (ace_a2x_ts::ScriptLang::TypeScript, Family::RecordText) => TS_RT_RECIPE,
+        (ace_a2x_ts::ScriptLang::TypeScript, Family::Collections) => TS_COLL_RECIPE,
+        (_, Family::Scalar) => JS_RECIPE,
+        (_, Family::RecordText) => JS_RT_RECIPE,
+        (_, Family::Collections) => JS_COLL_RECIPE,
+    };
+    let recipes: &[&str] = match lang {
+        ace_a2x_ts::ScriptLang::TypeScript => &[TS_RECIPE, TS_RT_RECIPE, TS_COLL_RECIPE],
+        ace_a2x_ts::ScriptLang::JavaScript => &[JS_RECIPE, JS_RT_RECIPE, JS_COLL_RECIPE],
+    };
+    let recipe = match v["recipe"].as_str() {
+        Some(r) if recipes.contains(&r) => r,
+        Some(other) => fail(&format!("unregistered script recipe `{other}`")),
+        None => default_recipe,
+    };
+    let runtime = match provider.runtime_source(&view, family) {
+        Ok(r) => r,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
+    let texts = match provider.produce_fragments(&view, &fns, family) {
+        Ok(t) => t,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let mut sem_fps = Vec::with_capacity(fns.len());
+    for f in &fns {
+        match ace_a2x_core::semantic_fingerprint(&view, f) {
+            Ok(fp) => sem_fps.push(fp),
+            Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+        }
+    }
+    let frags: Vec<FragmentText<'_>> = fns
+        .iter()
+        .zip(texts.iter())
+        .zip(sem_fps.iter())
+        .map(|((f, text), fp)| FragmentText {
+            def_index: f.def_index,
+            source_name: f.source_name,
+            sem_fp: fp.as_str(),
+            text: text.as_str(),
+        })
+        .collect();
+    let prelude_seed = match provider.capture_prelude_seed(&view, family) {
+        Ok(s) => s,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fileset = match provider.assemble_fileset(FilesetRequest {
+        entry: &entry,
+        input_hash: &compiled.input_hash,
+        family,
+        fragments: &frags,
+        view: Some(&view),
+        runtime: &runtime,
+        prelude_seed: prelude_seed.as_deref(),
+        origins: None,
+        source_sha256: Some(&source_sha256),
+    }) {
+        Ok(fs) => fs,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    if let Err(reason) = ace_a2x_ts::verify_script_fileset_manifest(
+        &fileset.manifest,
+        &fileset.files,
+        ace_a2x_ts::TS_PRODUCER,
+        expected_schema,
+    ) {
+        fail(&format!("a2ts.manifest: {reason}"));
+    }
+    let outcome = EmitOutcome {
+        files: fileset.files.clone(),
+        manifest: fileset.manifest.clone(),
+        input_hash: compiled.input_hash.clone(),
+        entry_fn: ace_a2x_ts::ts_fn_name(&entry),
+        profile,
+        source_sha256,
+        recipe: recipe.to_string(),
+        hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
+    };
+    (outcome, fileset)
+}
+
+/// PLAN-976: spawn-zero script fileset emit (`execution_claimed == false`).
+fn daily_emit_ts(v: &serde_json::Value) -> serde_json::Value {
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let target_lang = v["target_lang"]
+        .as_str()
+        .unwrap_or("typescript")
+        .to_string();
+    let (out, _fs) = emit_ts(v);
+    write_out_dir(out_dir, &out);
+    let mut r = ok_base(&out.recipe);
+    r["mode"] = "daily-emit-ts".into();
+    r["target_lang"] = target_lang.into();
+    r["producer"] = ace_a2x_ts::TS_PRODUCER.into();
+    r["runtime_version"] = ace_a2x_ts::A2TS_RUNTIME_VERSION.into();
+    r["runtime_sha256"] = ace_a2x_ts::runtime_body_sha256().into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_node"] = 0.into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r["spawned_python"] = 0.into();
+    r["execution_claimed"] = false.into();
+    r
+}
+
+/// PLAN-976: real OS node execution of files emitted by the shared
+/// TS/JS provider (node type-strips `.ts` natively; `.mjs` is plain ESM).
+fn run_ts(v: &serde_json::Value) -> serde_json::Value {
+    if v["emit_only"].as_bool() == Some(true) {
+        fail("admission.emit_only: emit_only cannot claim script execution");
+    }
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let target_lang = match v["target_lang"].as_str().unwrap_or("typescript") {
+        "typescript" => ace_a2x_ts::ScriptLang::TypeScript,
+        "javascript" => ace_a2x_ts::ScriptLang::JavaScript,
+        other => fail(&format!(
+            "a2ts.target_lang: must be `typescript` or `javascript`, not `{other}`"
+        )),
+    };
+    let rt_sha = ace_a2x_ts::runtime_body_sha256();
+    let node = match ace_a2x_worker::tsrun::resolve_node(&rt_sha) {
+        Ok(n) => n,
+        Err(e) => fail(&format!("node.missing: {e}")),
+    };
+    let (out, _fileset) = emit_ts(v);
+    write_out_dir(out_dir, &out);
+    let exec = match ace_a2x_worker::tsrun::run_script_fileset(
+        &node,
+        std::path::Path::new(out_dir),
+        target_lang,
+        &[],
+    ) {
+        Ok(e) => e,
+        Err(e) => fail(&format!("node.exec: {e}")),
+    };
+    let mut r = ok_base(&out.recipe);
+    r["mode"] = "run-ts".into();
+    r["target_lang"] = target_lang.lang_name().into();
+    r["producer"] = ace_a2x_ts::TS_PRODUCER.into();
+    r["runtime_version"] = ace_a2x_ts::A2TS_RUNTIME_VERSION.into();
+    r["runtime_sha256"] = rt_sha.into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_node"] = 1.into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r["spawned_python"] = 0.into();
+    r["execution_claimed"] = true.into();
+    r["node_identity"] = serde_json::json!({
+        "engine": node.identity.engine,
+        "version": node.identity.version,
+        "version_sha256": node.identity.executable_sha256,
+        "runtime_version": node.identity.runtime_version,
+        "runtime_sha256": node.identity.runtime_sha256,
+        "os": node.identity.target_triple,
+    });
+    r["stdout"] = String::from_utf8_lossy(&exec.stdout).to_string().into();
+    r["stderr"] = String::from_utf8_lossy(&exec.stderr).to_string().into();
+    r["stdout_hex"] = bytes_hex(&exec.stdout).into();
+    r["stderr_hex"] = bytes_hex(&exec.stderr).into();
+    r["exit_code"] = exec
+        .exit_code
+        .map(serde_json::Value::from)
+        .unwrap_or(serde_json::Value::Null);
+    r
+}
+
 fn toolchain_vv() -> String {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let out = Command::new(&rustc)
@@ -1285,4 +1767,229 @@ fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String, se
             serde_json::Value::Null
         },
     )
+}
+
+// ---- PLAN-1034 T-03（IPC-01）：一次有界快照 / 请求门 / golden 有界 ----
+#[cfg(test)]
+mod audit1034_ipc_01 {
+    use super::*;
+
+    /// §6 冻结输入：28 字节固定源 + 恰一个尾 LF（SHA256 与计划一致）。
+    const FIXED: &[u8] = b"fn main() int { return 42 }
+";
+    const FIXED_SHA: &str = "a1458aa7834a132d416cdc044693771f9719ca5febaad7df69fcd8f08534fc5d";
+
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "plan1034_{tag}_{}_{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn err_of(r: Result<(String, String), String>) -> String {
+        r.expect_err("expected a named refusal")
+    }
+
+    /// FIXED 的文本视图（json! 字面量直写 LF 会被编辑器/传输层改写成真
+    /// 换行+缩进——统一从字节常量派生，杜绝该类脏字面量）。
+    fn fixed_text() -> String {
+        String::from_utf8(FIXED.to_vec()).unwrap()
+    }
+
+    /// text/hash/compile 同一快照：source_path 报告的 SHA 恰为该 bytes 的
+    /// SHA（真实 oracle）；单读之后文件变化不再影响结果。
+    #[test]
+    fn source_path_hash_and_text_come_from_one_snapshot() {
+        let d = tmp_dir("ipc01a");
+        let p = d.join("src.at");
+        std::fs::write(&p, FIXED).unwrap();
+        let (text, sha) = read_source(&serde_json::json!({ "source_path": p }));
+        assert_eq!(text, fixed_text());
+        assert_eq!(sha, FIXED_SHA, "hash must be of the exact read bytes");
+        // 写坏文件不影响已返回快照（单读语义），再读则按新内容计。
+        std::fs::write(&p, b"changed").unwrap();
+        let (text2, sha2) = read_source(&serde_json::json!({ "source_path": p }));
+        assert_eq!(text2, "changed");
+        assert_eq!(sha2, sha256_hex(b"changed"));
+    }
+
+    /// source_text 邻例：同 bytes 的内联路径 hash 一致（64MiB 内容门由
+    /// 整请求 8MiB 信封先行约束，无额外字段门）。
+    #[test]
+    fn source_text_neighbor_hashes_the_same_bytes() {
+        let (text, sha) = read_source(&serde_json::json!({
+            "source_text": fixed_text()
+        }));
+        assert_eq!(text, fixed_text());
+        assert_eq!(sha, FIXED_SHA);
+    }
+
+    /// cap 等界接受、超 1 字节拒绝（小 cap 机制等界；生产 64MiB 同门，
+    /// 不在单测里分配巨型文件）。
+    #[test]
+    fn source_file_cap_boundary_accepts_cap_rejects_cap_plus_one() {
+        let d = tmp_dir("ipc01b");
+        let p = d.join("cap.at");
+        std::fs::write(&p, vec![b'a'; 1024]).unwrap();
+        let (t, _) = read_bounded_utf8_result(p.to_str().unwrap(), 1024, "source").unwrap();
+        assert_eq!(t.len(), 1024, "exactly-cap is admitted");
+        std::fs::write(&p, vec![b'a'; 1025]).unwrap();
+        let msg = err_of(read_bounded_utf8_result(
+            p.to_str().unwrap(),
+            1024,
+            "source",
+        ));
+        assert!(
+            msg.contains("a2x.source-limit"),
+            "named resource refusal, got: {msg}"
+        );
+    }
+
+    /// 坏 UTF-8 具名拒绝（严格解码，不 lossy）。
+    #[test]
+    fn source_file_invalid_utf8_is_named_refusal() {
+        let d = tmp_dir("ipc01c");
+        let p = d.join("bad.at");
+        std::fs::write(
+            &p,
+            vec![0xffu8, 0xfe, b' ', b'i', b'l', b'l', b'e', b'g', b'a', b'l'],
+        )
+        .unwrap();
+        let msg = err_of(read_bounded_utf8_result(p.to_str().unwrap(), 64, "source"));
+        assert!(
+            msg.contains("a2x.source-utf8"),
+            "named utf8 refusal, got: {msg}"
+        );
+    }
+
+    /// 文件缺失是具名 IO，不是 hash(empty) 成功（IPC-01 关闭断言）。
+    #[test]
+    fn source_file_missing_is_named_infra_not_empty_hash_success() {
+        let d = tmp_dir("ipc01d");
+        let missing = d.join("absent.at");
+        let msg = err_of(read_bounded_utf8_result(
+            missing.to_str().unwrap(),
+            SOURCE_FILE_MAX_BYTES,
+            "source",
+        ));
+        assert!(
+            msg.contains("a2x.source-io"),
+            "named io refusal, got: {msg}"
+        );
+    }
+
+    /// stdin one-shot 请求门：多行 JSON + 尾 LF 全量读取；cap 拒绝在
+    /// serde 之前；首行可解析不提前接受（整文档解析）。
+    #[test]
+    fn request_stream_gate_reads_whole_document_before_parse() {
+        // 小 cap 机制等界（生产 8MiB 同门）。&mut &[u8] 读取会推进切片
+        // 视图——每次断言前重新绑定新鲜切片。
+        const DOC: &[u8] = b"{
+  \"op\": \"identity\"
+}
+";
+        let mut doc = DOC;
+        let at_cap = DOC.len();
+        let expect = String::from_utf8_lossy(DOC).into_owned();
+        assert_eq!(
+            read_request_bounded_result(&mut doc, at_cap).unwrap(),
+            expect
+        );
+        let over_cap = DOC.len() - 1;
+        let mut doc = DOC;
+        let msg =
+            read_request_bounded_result(&mut doc, over_cap).expect_err("cap+1 must be rejected");
+        assert!(
+            msg.contains("a2x.request-limit"),
+            "named request-limit, got: {msg}"
+        );
+        // 坏 UTF-8 信封具名拒绝。
+        let mut bad: &[u8] = &[b'{', b'"', b'o', b'p', b'"', b':', 0xffu8, b'}'][..];
+        let msg = read_request_bounded_result(&mut bad, 64)
+            .expect_err("invalid utf-8 envelope must be rejected");
+        assert!(
+            msg.contains("a2x.request-utf8"),
+            "named request-utf8, got: {msg}"
+        );
+        // 两行 JSON（首行独立可解析）不是合法 one-shot 文档：整文档解析
+        // 拒绝，不接受首行前缀。
+        let mut two: &[u8] = b"{\"op\":\"identity\"}
+{\"op\":\"identity\"}
+";
+        let s = read_request_bounded_result(&mut two, 1 << 20).unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&s).is_err(),
+            "two concatenated documents must not parse as one"
+        );
+    }
+
+    /// certify-c golden：未声明 None；声明则同门读取（IO/坏编码具名，
+    /// 不 `.ok()` 降级成"未声明"）。
+    #[test]
+    fn certify_c_golden_declared_reads_bounded_missing_stays_none() {
+        let d = tmp_dir("ipc01e");
+        let g = d.join("golden.txt");
+        std::fs::write(
+            &g,
+            b"golden bytes
+",
+        )
+        .unwrap();
+        let got = golden_text_of(&serde_json::json!({ "golden_path": g })).unwrap();
+        assert_eq!(
+            got.as_deref(),
+            Some(
+                "golden bytes
+"
+            )
+        );
+        assert_eq!(
+            golden_text_of(&serde_json::json!({})).unwrap(),
+            None,
+            "undeclared golden stays certificate-None"
+        );
+        let missing = d.join("nope.txt");
+        let msg = golden_text_of(&serde_json::json!({ "golden_path": missing }))
+            .expect_err("declared-but-missing golden is named infra");
+        assert!(
+            msg.contains("a2x.golden-io"),
+            "declared-but-missing golden is named infra, got: {msg}"
+        );
+        std::fs::write(&g, vec![0xffu8, b' ', b'b', b'a', b'd']).unwrap();
+        let msg = golden_text_of(&serde_json::json!({ "golden_path": g }))
+            .expect_err("bad-encoding golden is named infra");
+        assert!(
+            msg.contains("a2x.golden-utf8"),
+            "bad-encoding golden is named infra, got: {msg}"
+        );
+    }
+
+    /// r4 断言：1MiB+1 ASCII 内联源可进入（无额外字段门，交集由请求
+    /// 8MiB 信封先行约束）；等价的 1MiB 边界在 source 上无独立门。
+    #[test]
+    fn inline_source_over_1mib_is_admitted_no_field_gate() {
+        let mut text = String::from("fn main() int { return 42 } //");
+        while text.len() < (1 << 20) + 1 {
+            text.push('a');
+        }
+        assert_eq!(text.len(), (1 << 20) + 1);
+        let (t, sha) = read_source(&serde_json::json!({ "source_text": text }));
+        assert_eq!(t.len(), (1 << 20) + 1, "no 1MiB field gate on inline text");
+        assert_eq!(sha.len(), 64);
+    }
+
+    /// golden 读取 Result 核心（certify_c 同语义，供测试直调）；
+    /// 未声明 → Ok(None)；声明 → 有界读取，IO/超限/坏编码具名 Err。
+    fn golden_text_of(v: &serde_json::Value) -> Result<Option<String>, String> {
+        v["golden_path"]
+            .as_str()
+            .map(|g| read_bounded_utf8_result(g, SOURCE_FILE_MAX_BYTES, "golden").map(|(t, _)| t))
+            .transpose()
+    }
 }

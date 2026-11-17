@@ -87,6 +87,9 @@ pub const OP_STR_CHAR_AT: u8 = 0x15;
 pub const OP_STR_SLICE: u8 = 0x16;
 pub const OP_STR_CONCAT: u8 = 0x17;
 pub const OP_STR_TO_OWNED: u8 = 0x18;
+/// PLAN-975 B1: `c.to(Str)` char materialization (first free slot
+/// after the 0x40..0x4B block).
+pub const OP_STR_FROM_CHAR: u8 = 0x4C;
 pub const OP_STR_CMP: u8 = 0x19;
 pub const OP_CHAR_TO_CODEPOINT: u8 = 0x1A;
 pub const OP_CHAR_FROM_CODEPOINT: u8 = 0x1B;
@@ -1522,7 +1525,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *arg);
                     }
                     MirInstr::PlatformCall { dst, host, args } => {
-                        if family != WireFamily::HostConsole || args.len() > 8 {
+                        // PLAN-973: the closures family (packages-aggregates
+                        // lane, std system-library modules) rides the same
+                        // platform-call seam as AVHC.
+                        if (family != WireFamily::HostConsole && family != WireFamily::Closures)
+                            || args.len() > 8
+                        {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "platform call requires AVHC and bounded arity".into(),
@@ -1837,6 +1845,17 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u8(&mut w, OP_STR_TO_OWNED);
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *view);
+                    }
+                    MirInstr::StrFromChar { dst, ch } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_FROM_CHAR);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *ch);
                     }
                     MirInstr::StrCmp { eq, dst, lhs, rhs } => {
                         if !family.allows_owned_tags() {
@@ -3611,7 +3630,9 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         }
                     }
                     OP_PLATFORM_CALL => {
-                        if family != WireFamily::HostConsole {
+                        // PLAN-973: the closures family rides the same
+                        // platform-call seam (packages std system library).
+                        if family != WireFamily::HostConsole && family != WireFamily::Closures {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.profile",
                                 "platform opcode in a legacy family".into(),
@@ -3749,6 +3770,11 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let dst = c.u32()?;
                         let view = c.u32()?;
                         MirInstr::StrToOwned { dst, view }
+                    }
+                    OP_STR_FROM_CHAR if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let ch = c.u32()?;
+                        MirInstr::StrFromChar { dst, ch }
                     }
                     OP_STR_CMP if family.allows_owned_tags() => {
                         let sub = c.u8()?;

@@ -107,12 +107,16 @@ impl VT {
     }
 
     /// PLAN-864: whether this type owns resources under the collections
-    /// contract (List/Variant containers, owned Str, records reaching
-    /// Str). Copyable element types copy out; owned ones move.
+    /// contract (List/Variant containers, owned Str, records reaching a
+    /// resource leaf). Copyable element types copy out; owned ones move.
     pub fn is_owned_coll(self, prog: &ResolvedProgram) -> bool {
         match self {
             VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) | VT::Object(_) => true,
-            VT::Rec(ri) => record_reaches_str(ri, &prog.records),
+            VT::Rec(ri) => record_reaches_resource(ri, &prog.records, &prog.tuples),
+            VT::Tuple(ti) => prog
+                .tuples
+                .get(ti)
+                .is_some_and(|elems| elems.iter().any(|&v| v.is_owned_coll(prog))),
             _ => false,
         }
     }
@@ -175,6 +179,11 @@ pub fn builtin_method(recv: VT, name: &str) -> Option<(BuiltinMethod, &'static [
         (Str, "slice") | (StrOwned, "slice") => Some((BuiltinMethod::Slice, &[I32, I32], Str)),
         (Str, "clone") | (StrOwned, "clone") => Some((BuiltinMethod::Clone, &[], StrOwned)),
         (Str, "to") | (StrOwned, "to") => Some((BuiltinMethod::To, &[], Str)),
+        // PLAN-975 B1 (decode/parse core decision): `c.to(Str)` — a char
+        // materialized as a fresh owned 1-scalar Str. The To arm in
+        // `resolve_method` carries the target word and enforces the
+        // owned-only rule (a computed scalar has no buffer to borrow).
+        (Char, "to") => Some((BuiltinMethod::To, &[], Str)),
         (Char, "to_codepoint") => Some((BuiltinMethod::ToCodepoint, &[], I32)),
         (Char, "from_codepoint") => Some((BuiltinMethod::FromCodepoint, &[I32], Char)),
         _ => None,
@@ -843,6 +852,40 @@ pub enum RStmt {
     },
 }
 
+fn rblock_always_returns(block: &RBlock) -> bool {
+    block.stmts.iter().any(|stmt| match stmt {
+        RStmt::Return { .. } | RStmt::Fail { .. } => true,
+        RStmt::If {
+            then,
+            els: Some(els),
+            ..
+        } => rblock_always_returns(then) && rblock_always_returns(els),
+        _ => false,
+    })
+}
+
+/// PLAN-1036 (F28/F29): may control reach the END of `block`? The counted
+/// for-in appends its latch there; when the body's last statement already
+/// terminates (`break`/`continue`/`return`/`fail`) the appended latch
+/// would be unreachable code, so it is omitted and the `continue` sites
+/// carry the latch instead. Conservative: only a definitively terminating
+/// last statement reports `false`.
+fn rblock_can_fall_through(block: &RBlock) -> bool {
+    match block.stmts.last() {
+        None => true,
+        Some(RStmt::Break { .. })
+        | Some(RStmt::Continue { .. })
+        | Some(RStmt::Return { .. })
+        | Some(RStmt::Fail { .. }) => false,
+        Some(RStmt::If {
+            then,
+            els: Some(els),
+            ..
+        }) => rblock_can_fall_through(then) || rblock_can_fall_through(els),
+        Some(_) => true,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RBlock {
     pub stmts: Vec<RStmt>,
@@ -1102,24 +1145,71 @@ impl CollTables {
     }
 }
 
-/// Transitive Str-reachability over the record table (PLAN-782 derivation,
-/// reused by the collections owned-classification, PLAN-864).
-pub(crate) fn record_reaches_str(ri: usize, records: &[ResolvedRecord]) -> bool {
+/// PLAN-1035 (F34): resource reachability over the record/tuple tables —
+/// a record "owns" when its field closure reaches an owned `Str`, a `List`
+/// buffer, a `Variant` payload, a runtime closure (`Function`), an object
+/// cell or another (tuple) aggregate carrying one. This replaces the
+/// PLAN-782 Str-only walk for the collections owned-classification
+/// (PLAN-864): a List-only record (`type Bag { items List<int> }`) is a
+/// resource record, exactly like one holding `Str`.
+pub(crate) fn record_reaches_resource(
+    ri: usize,
+    records: &[ResolvedRecord],
+    tuples: &[Vec<VT>],
+) -> bool {
     let mut stack: Vec<usize> = vec![ri];
     let mut seen: BTreeSet<usize> = BTreeSet::new();
     while let Some(r) = stack.pop() {
         if !seen.insert(r) {
             continue;
         }
-        for f in &records[r].fields {
-            match f.vt {
-                VT::StrOwned => return true,
-                VT::Rec(inner) => stack.push(inner),
-                _ => {}
-            }
+        if records[r]
+            .fields
+            .iter()
+            .any(|f| vt_reaches_resource(f.vt, records, tuples, &mut seen))
+        {
+            return true;
         }
     }
     false
+}
+
+/// One value type's resource-edge test shared by the record/tuple closure
+/// walk: leaf resources return true, aggregates recurse.
+fn vt_reaches_resource(
+    vt: VT,
+    records: &[ResolvedRecord],
+    tuples: &[Vec<VT>],
+    seen: &mut BTreeSet<usize>,
+) -> bool {
+    match vt {
+        VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) | VT::Object(_) => true,
+        VT::Rec(inner) => record_reaches_resource_inner(inner, records, tuples, seen),
+        VT::Tuple(ti) => tuples.get(ti).is_some_and(|elems| {
+            elems
+                .iter()
+                .any(|&e| vt_reaches_resource(e, records, tuples, seen))
+        }),
+        _ => false,
+    }
+}
+
+/// The record half of the closure walk, sharing the caller's `seen` set so
+/// nested aggregates do not re-walk (the cycle gate already rejected direct
+/// record recursion; this guard keeps the walk bounded regardless).
+fn record_reaches_resource_inner(
+    ri: usize,
+    records: &[ResolvedRecord],
+    tuples: &[Vec<VT>],
+    seen: &mut BTreeSet<usize>,
+) -> bool {
+    if !seen.insert(ri) {
+        return false;
+    }
+    records[ri]
+        .fields
+        .iter()
+        .any(|f| vt_reaches_resource(f.vt, records, tuples, seen))
 }
 
 /// One resolved record type: fields in declaration order with their value
@@ -1413,7 +1503,7 @@ pub fn resolve_closures_cached(
             variants: coll.variants,
             function_types: coll.function_types,
             objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
+            sched_tasks: coll.sched_tasks,
         },
         warm.out,
         warm.reused,
@@ -1462,7 +1552,7 @@ pub(crate) fn resolve_closures_env(
                 variants: coll.variants,
                 function_types: coll.function_types,
                 objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
+                sched_tasks: coll.sched_tasks,
             },
             rec_index: ix.rec_index,
             sigs: ix.sigs,
@@ -1484,7 +1574,8 @@ pub fn resolve_with(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None, None, None)?;
+    let (fns, records, coll, _) =
+        resolve_detailed(program, capabilities, surface, None, None, None)?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
         foreign_slots: Vec::new(),
@@ -1804,6 +1895,47 @@ pub fn validate_foreign_declarations(
     }
 }
 
+/// PLAN-981：该块里是否出现 AGE 资源服务调用（`material2d.color(...)` 等）。
+///
+/// 判据与 resolver 的分类**同一条件**（`MethodCall{recv: Var(ns), name}` 且
+/// `ns.op` 命中声明表），不另立规则。
+fn uses_age_service(b: &ast::Block) -> bool {
+    fn is_service(e: &ast::Expr) -> bool {
+        if let ast::ExprKind::MethodCall { recv, name, .. } = &e.kind {
+            if let ast::ExprKind::Var(id) = &recv.kind {
+                let dotted = format!("{}.{}", id.name, name.name);
+                return crate::source::age_resources::lookup(&dotted).is_some();
+            }
+        }
+        false
+    }
+    fn block(b: &ast::Block) -> bool {
+        b.stmts.iter().any(|s| match s {
+            ast::Stmt::Let { value, .. } => is_service(value),
+            ast::Stmt::Assign { value, .. } => is_service(value),
+            ast::Stmt::Return { value, .. } => is_service(value),
+            ast::Stmt::ExprStmt { value, .. } => is_service(value),
+            ast::Stmt::If {
+                cond, then, els, ..
+            } => is_service(cond) || block(then) || els.as_ref().is_some_and(|e| block(e)),
+            ast::Stmt::Loop { body, .. } => block(body),
+            _ => false,
+        })
+    }
+    block(b)
+}
+
+/// PLAN-981：该类型注解是否点名了 AGE typed 端口（`Material2D`/`Mesh2D`）。
+///
+/// 端口可能**只**出现在注解里（g01 `shapes.at` 的 `tint: Material2D` 就没有任何
+/// 服务调用），因此登记判据必须包含注解位，不能只看服务使用。
+fn ann_mentions_age_port(ann: &ast::TypeAnn) -> bool {
+    match &ann.kind {
+        ast::TypeRef::Record(id) => crate::source::age_resources::is_port_type(&id.name),
+        _ => false,
+    }
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -1863,6 +1995,62 @@ fn resolve_detailed(
                 fields: Vec::new(),
                 methods: Vec::new(),
             });
+        }
+    }
+    // PLAN-981（IF-981-ORIGINAL）：AGE typed 端口（`Material2D`/`Mesh2D`）登记为
+    // **无字段名义记录**——身份即端口（两种端口互不相等），资源语义仍归领域
+    // owner 解释；这里不把资源压平成带颜色字段的普通 record。
+    // 包前门用 TextRecord 做领域解析（面在 profile 之上），所以 profile 判据在这里
+    // 永远不成立——按**是否使用 AGE 资源服务**登记。
+    // 端口类型只要**可能被提到**就必须在场：AGE 作者面的 node 参数不落在
+    // `program.items` 的 fn 上（它们在领域行里），故仅凭"程序是否用到服务/注解"
+    // 会漏掉 `node Disc(…, tint: Material2D)` 这种合法源。AGE 前门本来就把
+    // 整份文档交给本函数，所以对它一律登记——这也是与发射器同一判据。
+    let uses_age_ports = surface == SourceProfile::AgePackage
+        || program.items.iter().any(|it| match it {
+            ast::Item::Fn(f) => {
+                uses_age_service(&f.body)
+                    || f.params.iter().any(|p| ann_mentions_age_port(&p.ty))
+                    || ann_mentions_age_port(&f.ret)
+            }
+            ast::Item::Type(t) => t.fields.iter().any(|f| ann_mentions_age_port(&f.ty)),
+            _ => false,
+        });
+    if surface == SourceProfile::AgePackage || uses_age_ports {
+        for port in crate::source::age_resources::AGE_PORT_TYPES {
+            if !rec_index.contains_key(*port) {
+                rec_index.insert(port.to_string(), records.len());
+                let fields = crate::source::age_resources::AGE_PORT_FIELDS
+                    .iter()
+                    .find(|(p, _)| *p == *port)
+                    .map(|(_, fs)| {
+                        fs.iter()
+                            .map(|(n, ty)| ResolvedField {
+                                name: n.to_string(),
+                                // 未知拼写**不得**静默回落 i32：那样 `Str` 会被
+                                // 当成整数，端口字段类型就悄悄错了（实测发生过）。
+                                vt: match *ty {
+                                    "f32" => VT::F32,
+                                    "i32" => VT::I32,
+                                    "bool" => VT::Bool,
+                                    "Str" => VT::StrOwned,
+                                    "str" => VT::Str,
+                                    other => panic!(
+                                        "AGE port field `{n}` declares unsupported type `{other}`"
+                                    ),
+                                },
+                                span: Span { start: 0, end: 0 },
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                records.push(ResolvedRecord {
+                    name: port.to_string(),
+                    name_span: Span { start: 0, end: 0 },
+                    fields,
+                    methods: Vec::new(),
+                });
+            }
         }
     }
     // PLAN-889: resolve nominal variant references through the same type
@@ -3427,7 +3615,7 @@ pub fn resolve_env_with_supply(
             variants: coll.variants,
             function_types: coll.function_types,
             objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
+            sched_tasks: coll.sched_tasks,
         },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
@@ -3917,6 +4105,7 @@ pub(crate) fn resolve_lambda_in_context(
             rec_index: &env.rec_index,
             coll: &mut coll,
             iterate_targets: Vec::new(),
+            for_latches: Vec::new(),
             shared_cell_spans,
             owner_name: site.owner.clone(),
             closure_count: site.ordinal,
@@ -5048,6 +5237,9 @@ enum RecvClass {
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
     VariantArm { vi: usize, disc: u32 },
+    /// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务命名空间接收者
+    /// （`material2d.color(...)`）。携带声明表里那一条 op。
+    AgeService(&'static super::age_resources::AgeResourceOp),
     /// PLAN-864: `<list<Str>-local>.get(i).len()` — a whole-Str element
     /// view consumed by len (contract C4).
     ElemViewLen {
@@ -5103,6 +5295,14 @@ struct FnResolver<'a, 's> {
     /// type). Method resolution rejects structural modification of the
     /// iterated list inside the body (`source.iterate-mutate`).
     iterate_targets: Vec<(LocalRef, VT, Span)>,
+    /// PLAN-1036 (AUDIT-1024 F28/F29): the counted `for-in` LATCH — the
+    /// hidden index advance that closes one iteration. The normal
+    /// fall-through runs it at the body's tail; a `continue` into the same
+    /// loop must run the very same sequence before the header condition is
+    /// re-tested, otherwise the iteration repeats the current element
+    /// (a lowering jump cannot target a mid-loop label, so the latch is
+    /// re-emitted at each continue site instead of restructured).
+    for_latches: Vec<(LoopRef, Vec<RStmt>)>,
     /// PLAN-909: start offsets of cell-eligible `var` bindings this
     /// function's non-move closures write (function-wide static grouping;
     /// `scan_shared_capture_cells` owns the scope model).
@@ -5319,6 +5519,7 @@ fn resolve_fn_reuse<'a, 's>(
         rec_index,
         coll,
         iterate_targets: Vec::new(),
+        for_latches: Vec::new(),
         shared_cell_spans: super::closure_capture::scan_shared_capture_cells(&f.params, &f.body),
         owner_name: f.name.name.clone(),
         closure_count: 0,
@@ -6152,11 +6353,43 @@ impl<'a, 's> FnResolver<'a, 's> {
                 vt: VT::Unit,
                 kind: RExprKind::Unit,
             },
+            VT::Bool => ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::BoolLit(false),
+            },
             VT::StrOwned => ResolvedExpr {
                 span,
                 vt: VT::StrOwned,
                 kind: RExprKind::StrLit(String::new()),
             },
+            VT::List(li) => ResolvedExpr {
+                span,
+                vt: VT::List(li),
+                kind: RExprKind::ListNew { list: li },
+            },
+            VT::Variant(vi)
+                if self
+                    .coll
+                    .variants
+                    .get(vi)
+                    .is_some_and(|v| v.arms.iter().any(|a| a.1.is_none())) =>
+            {
+                let disc = self.coll.variants[vi]
+                    .arms
+                    .iter()
+                    .position(|a| a.1.is_none())
+                    .unwrap() as u32;
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc,
+                        payload: None,
+                    },
+                }
+            }
             other => {
                 self.bind_err(
                     "source.is-tail-return",
@@ -6323,6 +6556,28 @@ impl<'a, 's> FnResolver<'a, 's> {
                 try_loop: target, ..
             } => Some(*target),
         })
+    }
+
+    /// PLAN-1036 (F28/F29): the latch of the counted for-in loop `target`,
+    /// if any. Iterating `for` loops (`ForIter`) re-enter through `next()`
+    /// at the header and carry no latch; `while`/`loop` re-test their own
+    /// condition, so only the counted range/List desugar registers one.
+    fn for_latch_of(&self, target: LoopRef) -> Option<Vec<RStmt>> {
+        self.for_latches
+            .iter()
+            .rev()
+            .find(|(t, _)| *t == target)
+            .map(|(_, latch)| latch.clone())
+    }
+
+    /// Emit the latch sequence a `continue` into `target` must run before
+    /// the loop header. A no-op for loops without one.
+    fn emit_for_latch(&self, target: Option<LoopRef>, out: &mut Vec<RStmt>) {
+        if let Some(target) = target {
+            if let Some(latch) = self.for_latch_of(target) {
+                out.extend(latch);
+            }
+        }
     }
 
     fn has_enclosing_try(&self) -> bool {
@@ -6521,6 +6776,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             if is_break {
                 out.push(RStmt::Break { target, span });
             } else {
+                // PLAN-1036 (F28): `continue` into a counted for-in runs its
+                // latch before the header re-tests the bounds.
+                self.emit_for_latch(target, out);
                 out.push(RStmt::Continue { target, span });
             }
             return;
@@ -6556,6 +6814,7 @@ impl<'a, 's> FnResolver<'a, 's> {
         } else if is_break {
             out.push(RStmt::Break { target, span });
         } else {
+            self.emit_for_latch(target, out);
             out.push(RStmt::Continue { target, span });
         }
     }
@@ -6647,13 +6906,18 @@ impl<'a, 's> FnResolver<'a, 's> {
                 handle_stmts.push(RStmt::If {
                     cond: is_cont_here,
                     then: RBlock {
-                        stmts: vec![
-                            clear_kind.clone(),
-                            RStmt::Continue {
+                        stmts: {
+                            // PLAN-1036 (F28): a routed `continue` into a
+                            // counted for-in runs the latch here, exactly as
+                            // the direct jump does at its own site.
+                            let mut cont_stmts = vec![clear_kind.clone()];
+                            self.emit_for_latch(Some(target), &mut cont_stmts);
+                            cont_stmts.push(RStmt::Continue {
                                 target: Some(target),
                                 span,
-                            },
-                        ],
+                            });
+                            cont_stmts
+                        },
                         span,
                     },
                     els: Some(RBlock {
@@ -8434,7 +8698,10 @@ impl<'a, 's> FnResolver<'a, 's> {
     fn vt_is_coll_owned(&self, vt: VT) -> bool {
         match vt {
             VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
-            VT::Rec(ri) => record_reaches_str(ri, self.records),
+            // PLAN-1035 (F34): a record owns iff its field closure reaches a
+            // resource leaf — Str OR List OR Variant OR closure env OR a
+            // tuple aggregate carrying one (the Str-only walk was the hole).
+            VT::Rec(ri) => record_reaches_resource(ri, self.records, &self.coll.tuples),
             // PLAN-962: a tuple owns iff any element owns.
             VT::Tuple(ti) => self.coll.tuples[ti]
                 .iter()
@@ -10413,14 +10680,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     } else {
                         let target = self.loop_stack.last().copied();
-                        stack
-                            .last_mut()
-                            .expect("resolve frame")
-                            .stmts
-                            .push(RStmt::Continue {
-                                target,
-                                span: *span,
-                            });
+                        let mut stmts = Vec::new();
+                        // PLAN-1036 (F28): same latch obligation on the
+                        // non-aggregates (collections) face.
+                        self.emit_for_latch(target, &mut stmts);
+                        stmts.push(RStmt::Continue {
+                            target,
+                            span: *span,
+                        });
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     }
                 }
                 // PLAN-864: exhaustive `is` dispatch — resolve the arm
@@ -10538,14 +10806,19 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // compile-checked above), present so the shared
                     // no-return-path walk sees a Returned spine. The filler
                     // value is typed from the function result.
-                    let filler = self.default_return_filler(*span);
-                    let mut current = Some(RBlock {
-                        stmts: vec![RStmt::Return {
-                            value: filler,
+                    let all_return = resolved.iter().all(|(_, _, b)| rblock_always_returns(b));
+                    let mut current = if all_return {
+                        let filler = self.default_return_filler(*span);
+                        Some(RBlock {
+                            stmts: vec![RStmt::Return {
+                                value: filler,
+                                span: *span,
+                            }],
                             span: *span,
-                        }],
-                        span: *span,
-                    });
+                        })
+                    } else {
+                        None
+                    };
                     let resolved_rev: Vec<(u32, Option<(LocalRef, VT)>, RBlock)> =
                         resolved.into_iter().rev().collect();
                     for (disc, bind, mut body) in resolved_rev {
@@ -10667,12 +10940,6 @@ impl<'a, 's> FnResolver<'a, 's> {
                         if self.profile.is_aggregates() {
                             self.ctrl_frames.push(CtrlFrame::Loop { target });
                         }
-                        let mut b = self.resolve_body(body, false);
-                        if self.profile.is_aggregates() {
-                            self.ctrl_frames.pop();
-                        }
-                        self.scopes.pop();
-                        self.loop_stack.pop();
                         let read_i = |sp: Span| ResolvedExpr {
                             span: sp,
                             vt: VT::I32,
@@ -10696,7 +10963,56 @@ impl<'a, 's> FnResolver<'a, 's> {
                             },
                             span: *span,
                         };
-                        b.stmts.push(incr);
+                        // PLAN-1036 (F29): the half-open step can never
+                        // overflow (i < hi <= i32::MAX => i + 1 <= MAX); the
+                        // inclusive step is guarded by the endpoint so the
+                        // LAST member ends the loop instead of synthesizing
+                        // `hi + 1` (a body-independent overflow).
+                        let latch: Vec<RStmt> = if *inclusive {
+                            vec![RStmt::If {
+                                cond: ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::Bool,
+                                    kind: RExprKind::Binary {
+                                        op: ast::BinOp::Eq,
+                                        lhs: Box::new(read_i(*span)),
+                                        rhs: Box::new(ResolvedExpr {
+                                            span: *span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::ReadLocal(hi_l),
+                                        }),
+                                    },
+                                },
+                                then: RBlock {
+                                    stmts: vec![RStmt::Break {
+                                        target: Some(target),
+                                        span: *span,
+                                    }],
+                                    span: *span,
+                                },
+                                els: Some(RBlock {
+                                    stmts: vec![incr],
+                                    span: *span,
+                                }),
+                                span: *span,
+                            }]
+                        } else {
+                            vec![incr]
+                        };
+                        // PLAN-1036 (F28): a `continue` inside the body must
+                        // run this latch before the header re-tests `i <= hi`.
+                        self.for_latches.push((target, latch.clone()));
+                        let mut b = self.resolve_body(body, false);
+                        self.for_latches.pop();
+                        if self.profile.is_aggregates() {
+                            self.ctrl_frames.pop();
+                        }
+                        self.scopes.pop();
+                        self.loop_stack.pop();
+                        // The fall-through back edge runs the same latch.
+                        if rblock_can_fall_through(&b) {
+                            b.stmts.extend(latch);
+                        }
                         let cond = ResolvedExpr {
                             span: *span,
                             vt: VT::Bool,
@@ -10842,6 +11158,34 @@ impl<'a, 's> FnResolver<'a, 's> {
                             span: *span,
                         },
                     ];
+                    // PLAN-1036 (F28): the List latch is the hidden index
+                    // advance; `i < n` bounds it, so the step cannot
+                    // overflow (i <= n - 1 <= MAX).
+                    let one = ResolvedExpr {
+                        span: *span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(1),
+                    };
+                    let incr = RStmt::Assign {
+                        local: i_lref,
+                        path: Vec::new(),
+                        value: ResolvedExpr {
+                            span: *span,
+                            vt: VT::I32,
+                            kind: RExprKind::Binary {
+                                op: ast::BinOp::Add,
+                                lhs: Box::new(ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(i_lref),
+                                }),
+                                rhs: Box::new(one),
+                            },
+                        },
+                        span: *span,
+                    };
+                    let latch: Vec<RStmt> = vec![incr];
+                    self.for_latches.push((target, latch.clone()));
                     let body_res = if owned {
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
@@ -10901,35 +11245,18 @@ impl<'a, 's> FnResolver<'a, 's> {
                     };
                     self.iterate_targets.pop();
                     self.loop_stack.pop();
+                    self.for_latches.pop();
                     if self.profile.is_aggregates() {
                         self.ctrl_frames.pop();
                     }
-                    let one = ResolvedExpr {
-                        span: *span,
-                        vt: VT::I32,
-                        kind: RExprKind::IntLit(1),
-                    };
-                    let incr = RStmt::Assign {
-                        local: i_lref,
-                        path: Vec::new(),
-                        value: ResolvedExpr {
-                            span: *span,
-                            vt: VT::I32,
-                            kind: RExprKind::Binary {
-                                op: ast::BinOp::Add,
-                                lhs: Box::new(ResolvedExpr {
-                                    span: *span,
-                                    vt: VT::I32,
-                                    kind: RExprKind::ReadLocal(i_lref),
-                                }),
-                                rhs: Box::new(one),
-                            },
-                        },
-                        span: *span,
-                    };
                     let mut body_res = body_res;
+                    let falls = rblock_can_fall_through(&body_res);
                     let mut then_stmts = std::mem::take(&mut body_res.stmts);
-                    then_stmts.push(incr);
+                    // The fall-through back edge runs the latch (a body that
+                    // already terminates carries it on its own `continue`).
+                    if falls {
+                        then_stmts.extend(latch);
+                    }
                     let cond = ResolvedExpr {
                         span: *span,
                         vt: VT::Bool,
@@ -12711,9 +13038,16 @@ impl<'a, 's> FnResolver<'a, 's> {
                                                             let idx_ast = match &ma[0] {
                                                                 ast::Arg::Pos(e)
                                                                 | ast::Arg::MovePos(e) => e,
-                                                                _ => unreachable!(
-                                                                    "get takes one positional index"
-                                                                ),
+                                                                // PLAN-1035 (F33): the ordinary
+                                                                // `get` builtin admits a Named
+                                                                // index (single argument by
+                                                                // value, label not validated) —
+                                                                // the fused projection must match
+                                                                // it instead of panicking on a
+                                                                // user program.
+                                                                ast::Arg::Named {
+                                                                    value, ..
+                                                                } => value,
                                                             };
                                                             let idx_read =
                                                                 self.expr_iterative(idx_ast);
@@ -12785,7 +13119,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                         let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind {
                             self.classify_generic_recv(name, args)
                         } else if let ExprKind::Var(id) = &recv.kind {
+                            // PLAN-981：AGE 资源服务（`material2d.color`）——接收者
+                            // 是**命名空间**不是值；按声明表分类，绝不求值它。
                             if self.lookup(&id.name).is_none()
+                                && crate::source::age_resources::lookup(&format!(
+                                    "{}.{}",
+                                    id.name, name.name
+                                ))
+                                .is_some()
+                            {
+                                let dotted = format!("{}.{}", id.name, name.name);
+                                RecvClass::AgeService(
+                                    crate::source::age_resources::lookup(&dotted)
+                                        .expect("checked above"),
+                                )
+                            } else if self.lookup(&id.name).is_none()
                                 && self.rec_index.contains_key(&id.name)
                             {
                                 RecvClass::Static(self.rec_index[&id.name])
@@ -12826,7 +13174,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                             {
                                 if gn.name == "get"
                                     && ga.len() == 1
-                                    && matches!(&ga[0], ast::Arg::Pos(_) | ast::Arg::MovePos(_))
+                                    && matches!(
+                                        &ga[0],
+                                        ast::Arg::Pos(_)
+                                            | ast::Arg::MovePos(_)
+                                            | ast::Arg::Named { .. }
+                                    )
                                 {
                                     if let ExprKind::Var(id) = &gr.kind {
                                         if let Some(xl) = self.lookup(&id.name) {
@@ -12840,9 +13193,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                                                         ast::Arg::Pos(e) | ast::Arg::MovePos(e) => {
                                                             e
                                                         }
-                                                        _ => unreachable!(
-                                                            "get takes one positional index"
-                                                        ),
+                                                        // PLAN-1035 (F33): same Named-index
+                                                        // admission as the ordinary `get`.
+                                                        ast::Arg::Named { value, .. } => value,
                                                     };
                                                     elemview_idx_task = Some(Task::Visit {
                                                         node: idx_ast,
@@ -13158,6 +13511,64 @@ impl<'a, 's> FnResolver<'a, 's> {
                         }
                     };
                     match recv_kind {
+                        // PLAN-981（IF-981-ORIGINAL）：AGE 资源服务调用。接收者是
+                        // 命名空间（未求值）；参数按声明表校验后落成固定符号的
+                        // intrinsic 调用，返回类型是该 op 的**端口类型**。
+                        RecvClass::AgeService(op) => {
+                            if rargs.len() != op.params.len() {
+                                self.bind_err(
+                                    "source.age.resource-arity",
+                                    format!(
+                                        "`{}` takes {} argument(s), got {}",
+                                        op.callee,
+                                        op.params.len(),
+                                        rargs.len()
+                                    ),
+                                    node_span,
+                                );
+                            }
+                            let mut args = Vec::with_capacity(rargs.len());
+                            for (arg, expected) in rargs.into_iter().zip(op.params.iter()) {
+                                if arg.value.vt != *expected {
+                                    self.bind_err(
+                                        "source.age.resource-argument",
+                                        format!(
+                                            "`{}` argument must be `{}`, got `{}`",
+                                            op.callee,
+                                            expected.as_str(),
+                                            arg.value.vt.as_str()
+                                        ),
+                                        arg.value.span,
+                                    );
+                                }
+                                args.push(arg.value);
+                            }
+                            // 端口在解析开始时已登记；缺失是内部不变量破坏，
+                            // not a silent downgrade to i32.
+                            let port = match self.rec_index.get(op.result_port) {
+                                Some(&i) => VT::Rec(i),
+                                None => {
+                                    self.bind_err(
+                                        "source.age.resource-port",
+                                        format!(
+                                            "AGE port type `{}` is not registered for this document",
+                                            op.result_port
+                                        ),
+                                        node_span,
+                                    );
+                                    VT::I32
+                                }
+                            };
+                            self.used_intrinsics.insert(op.symbol);
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: port,
+                                kind: RExprKind::CallIntrinsic {
+                                    symbol: op.symbol,
+                                    args,
+                                },
+                            };
+                        }
                         RecvClass::Value => {
                             out[dest] = self.method_call_out(rrecv, None, &name, rargs, node_span);
                         }
@@ -13760,6 +14171,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                     span,
                 );
             }
+            // PLAN-975 B1: a char receiver has no source buffer to borrow —
+            // char `.to` is the owned materialization only.
+            if recv.vt == VT::Char && target != VT::StrOwned {
+                self.bind_err(
+                    "source.type-mismatch",
+                    "char `.to` materializes an owned Str: use `.to(Str)`",
+                    span,
+                );
+            }
             if args.len() > 1 {
                 self.bind_err("source.syntax", "`.to` takes a single type argument", span);
             }
@@ -14313,6 +14733,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             // 准入平台保留名——公共 stdlib 源（如 io 输出循环）单源服务
             // console 单模块面与 1043 装配面；能力仍在准入层核。
             || self.profile == SourceProfile::TextRecord
+            // PLAN-973: 装配 aggregates 面（std 系统库集：sysplat_win/lnx 的
+            // 平台原语包装）同样准入平台保留名；能力/授权仍在运行准入层核。
+            || self.profile == SourceProfile::Aggregates
         {
             if let Some(op) = super::platform_io::lookup_callee(&callee.name) {
                 if rargs.len() != op.params.len() || rargs.iter().any(|a| a.name.is_some()) {
@@ -14569,22 +14992,26 @@ impl<'a, 's> FnResolver<'a, 's> {
         match name {
             "__sched_spawn" => {
                 if args.len() < 2 {
-                    arity_err(self, "a task name string, a mailbox capacity and the spawn initializers");
+                    arity_err(
+                        self,
+                        "a task name string, a mailbox capacity and the spawn initializers",
+                    );
                     return named_i32(call_span);
                 }
                 let task_idx = match &args[0].kind {
-                    RExprKind::StrLit(tname) => match surface.tasks.iter().position(|t| &t.name == tname)
-                    {
-                        Some(i) => i,
-                        None => {
-                            self.bind_err(
-                                "source.sched-task",
-                                format!("no task named `{tname}` is declared in this module"),
-                                args[0].span,
-                            );
-                            return named_i32(call_span);
+                    RExprKind::StrLit(tname) => {
+                        match surface.tasks.iter().position(|t| &t.name == tname) {
+                            Some(i) => i,
+                            None => {
+                                self.bind_err(
+                                    "source.sched-task",
+                                    format!("no task named `{tname}` is declared in this module"),
+                                    args[0].span,
+                                );
+                                return named_i32(call_span);
+                            }
                         }
-                    },
+                    }
                     _ => {
                         self.bind_err(
                             "source.sched-task",
@@ -14642,10 +15069,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 ResolvedExpr {
                     span: call_span,
                     vt: self.node_ty(call_span, VT::Task(task_idx)),
-                    kind: RExprKind::CallIntrinsic {
-                        symbol: sym,
-                        args,
-                    },
+                    kind: RExprKind::CallIntrinsic { symbol: sym, args },
                 }
             }
             "__sched_send" | "__sched_ask" => {
@@ -14658,7 +15082,14 @@ impl<'a, 's> FnResolver<'a, 's> {
                     _ => {
                         self.bind_err(
                             "source.sched-argument",
-                            format!("`{}`'s first argument must be a task handle", if name == "__sched_send" { "send" } else { "ask" }),
+                            format!(
+                                "`{}`'s first argument must be a task handle",
+                                if name == "__sched_send" {
+                                    "send"
+                                } else {
+                                    "ask"
+                                }
+                            ),
                             args[0].span,
                         );
                         return named_i32(call_span);
@@ -14829,10 +15260,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     if a.vt != want[k] {
                         self.bind_err(
                             "source.sched-argument",
-                            format!(
-                                "`go {fname}` argument {k} must be {}",
-                                want[k].as_str()
-                            ),
+                            format!("`go {fname}` argument {k} must be {}", want[k].as_str()),
                             a.span,
                         );
                         return named_i32(call_span);
@@ -14841,10 +15269,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 // The symbol carries the resolved fn INDEX (stable across
                 // the def-order MIR function table) — the lowering does not
                 // depend on body-lowering order.
-                let go_sym = Self::sched_sym(
-                    "__sched_go",
-                    &format!("{}_{fname}", sig.index),
-                );
+                let go_sym = Self::sched_sym("__sched_go", &format!("{}_{fname}", sig.index));
                 ResolvedExpr {
                     span: call_span,
                     vt: VT::I32,
@@ -14865,19 +15290,17 @@ impl<'a, 's> FnResolver<'a, 's> {
                 };
                 let tname = self.coll.sched_tasks[ti].name.clone();
                 let (vt, symbol): (VT, &'static str) = match name {
-                    "__sched_recv" => {
-                        (self.coll.sched_tasks[ti].msg, Self::sched_sym("__sched_recv", &tname))
-                    }
+                    "__sched_recv" => (
+                        self.coll.sched_tasks[ti].msg,
+                        Self::sched_sym("__sched_recv", &tname),
+                    ),
                     "__sched_port" => (VT::I32, Self::sched_sym("__sched_port", &tname)),
                     _ => (VT::Bool, Self::sched_sym("__sched_stopping", &tname)),
                 };
                 ResolvedExpr {
                     span: call_span,
                     vt: self.node_ty(call_span, vt),
-                    kind: RExprKind::CallIntrinsic {
-                        symbol,
-                        args,
-                    },
+                    kind: RExprKind::CallIntrinsic { symbol, args },
                 }
             }
             _ => {

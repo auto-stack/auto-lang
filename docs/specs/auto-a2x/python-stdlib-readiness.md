@@ -30,3 +30,25 @@
   - 完整 Python 语言与存量语料扩面归 `PLAN-977/PY`（复用本 `ace-a2x-python` 与 `AXPY1..3`，不复制后端）。
   - `#in` 源码与标准库装载归 `PLAN-1043`；Python→Auto 嵌入归 `PLAN-1026`；C/Rust FFI provider 归 `PLAN-967`。
   - Linux 宿主机真实 Python runner 取证依赖 Linux 执行环境（当前仅于 Windows `Python 3.14.2` 实机取证）。
+
+## 父侧有界捕获与响应分域（PLAN-1034）
+
+- 两个 Py 父入口（emit/run）接同一 opt-in 有界捕获（`run_bounded`）：stdin 请求、exec 70s/
+  单一 cleanup 3s、stderr 1MiB；emit 响应元数据 cap 4MiB，run-py 原始响应 cap 20MiB。
+- run-py 响应分域（解码前拒超量）：每流 `stdout_hex`/`stderr_hex` 文本 ≤2MiB 且解码后每流
+  ≤1MiB（原始 bytes 是 oracle，lossy 显示文本不是）；去除四个流字段后的同一 JSON 编码 ≤4MiB
+  （非流元数据）。hex 2MiB 门在算术上蕴含解码 1MiB 门，双门均为合同。
+- 显式执行与身份保持：run recipe 保 `spawned_python==1`、`execution_claimed==true`、完整
+  `python_identity`；emit 保 spawn0/`execution_claimed==false`；原 30s 执行腿与程序流
+  PY_STREAM_CAP=1MiB 不变。
+- 版本探针有界：`resolve_python` 走受管 capped runner，全部候选共享一次 30s 探测期限、每流
+  1MiB；解释器内容 hash 流式计算（不整缓存 binary），读取失败具名 Infra，不以路径字符串 hash
+  兜底。平台准入不变（非 Windows 受管 runner 拒绝即拒绝）。
+
+## PLAN-1035 增量：作为共享分类事实的 consumer（2026-11-16）
+
+- Python 目标只消费 core verifier 的 Collections/资源事实与参数模式事实；资源 record
+  闭包分类修正（List-only record 归资源）经 `ace-a2x` 组（含 `ace-a2x-python`）回归
+  验证，未改变本文件的准入、句柄/`finally` 显式清理与 `A2xOwnedStr`/
+  `A2xResourceHandle` 契约，也未引入 GC/`__del__` 兜底或复制 ownership 分析。
+- 证据锚：`ace-a2x` 固定组（含 `ace-a2x-python`）在 PLAN-1035 冻结提交上的全绿结果。

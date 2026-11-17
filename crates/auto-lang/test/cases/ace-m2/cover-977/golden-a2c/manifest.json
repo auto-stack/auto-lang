@@ -1,0 +1,13 @@
+{
+  "schema": "auto.a2x.c.fileset/1",
+  "input_hash": "7576b8f10aec4f98",
+  "entry": "main",
+  "functions": [
+    { "decl": "main", "sem_fp": "e0cd5d18bd91aa3ed407f188ff2dd225487ac03e54564140b7b6bca20772d714", "origin": [0, 34] }
+  ],
+  "files": [
+    { "path": "main.c", "sha256": "513d837b269a75e6de8bfa550c844c26562a873b238d8da5a29a090a2eaba52c" },
+    { "path": "a2x_c_runtime.h", "sha256": "0a4f68e30d7c445f2772ba480b4ac828c9dc6e27489e39af27ba40dc5a440299" },
+    { "path": "generated.c", "sha256": "8d2097dfa75d1e323138a86a51ab75bb241c37255dca1deb867137921bb56f91" }
+  ]
+}

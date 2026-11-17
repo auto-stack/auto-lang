@@ -31,7 +31,10 @@
 - 每出口（return/分支汇合/回边/break/continue/每 fallible 节点错误路径）按 facts
   LIFO 清帧；嵌套块 fall-through scoped 死亡（exit_frees[(block,None)]）由块尾发射
   （尾终结语句保持自身出口键）；for-in 脱糖为 `loop{ if(i<n){体;i++} else break }`，
-  回边 poll 错误路径=每迭代 scoped 集+幸存者（幂等释放使重叠安全）。
+  回边 poll 错误路径=每迭代 scoped 集+幸存者（幂等释放使重叠安全）。**PLAN-1036**：`continue`
+  亦为本循环推进并在本迭代 scoped 集释放之后消费**同一**回边 poll（每实际回边恰一次；
+  无构造/无分配的简单循环因此每回边恰 1 条 `coll:charge:1`，call 帧是独立的 4 WU 行，
+  两账不可混计）；`break`/`return` 出口不 poll。
 - **幂等 free**（T-02 冻结）：Str take 置空、list free 后 data=NULL/cap=0、record/
   variant free 后 memset owned 字节——第二次释放为 no-op（回边 poll 错误路径故意
   重列每迭代集合）。

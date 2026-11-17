@@ -13,8 +13,7 @@
 use std::path::PathBuf;
 
 use ace_abi::rust_provider::{
-    build_source, f0_provider_source, f0_tframe_provider_source,
-    open_session_from_build,
+    build_source, f0_provider_source, f0_tframe_provider_source, open_session_from_build,
 };
 
 fn scope(tag: &str) -> Scope {

@@ -1,0 +1,959 @@
+// ACE system library — persistent atomic KV storage (`ACE-KV/1`, PLAN-1064 D-07 / T-KV).
+//
+// Wire format (`ACE-KV/1\n`):
+//   Magic header: "ACE-KV/1\n" (9 ASCII bytes)
+//   Followed by zero or more records:
+//     <klen_dec> <vlen_dec>\n<key_utf8_bytes><val_utf8_bytes>\n
+//
+// Properties:
+//   - Lengths are canonical non-negative ASCII decimals (no leading zeros, no sign,
+//     bounded by file budget 262,144 B); payloads preserve arbitrary UTF-8 bytes
+//     including NUL ('\0'), LF ('\n'), and spaces.
+//   - Strict validation on parse: any bad magic, bad length, truncated payload,
+//     missing trailing LF, or invalid UTF-8 on ANY key or value rejects the entire
+//     operation with status -2 without publishing partial data.
+//   - Duplicate keys: last effective record in file order wins.
+//   - Atomic writes: set/remove rebuild into `<path>.acekv.tmp`, flush, close,
+//     and atomically replace `<path>`, cleaning temp on error and preserving
+//     prior file bytes intact.
+
+use std.file.exists
+use std.file.is_dir
+use std.file.size
+use std.file.read_bytes
+use std.file.write_bytes
+use std.file.delete
+use std.file.replace_atomic
+use std.bytes.decode_utf8
+use std.syscommon.byte_of
+use std.syscommon.min_i
+
+pub type KVRead {
+    status int
+    found bool
+    value Str
+}
+
+fn KV_MAX_FILE_BYTES() int {
+    return 262144
+}
+
+fn KV_MAX_ENTRIES() int {
+    return 4096
+}
+
+fn KV_ERR_IO() int {
+    return -1
+}
+
+fn KV_ERR_CORRUPT() int {
+    return -2
+}
+
+fn KV_ERR_BUDGET() int {
+    return -3
+}
+
+fn kv_err_read(code int) KVRead {
+    return KVRead { status: code, found: false, value: "" }
+}
+
+fn check_magic(raw List<int>) bool {
+    if (raw.len() < 9) {
+        return false
+    }
+    if (raw.get(0) != 65 || raw.get(1) != 67 || raw.get(2) != 69) {
+        return false
+    }
+    if (raw.get(3) != 45 || raw.get(4) != 75 || raw.get(5) != 86) {
+        return false
+    }
+    if (raw.get(6) != 47 || raw.get(7) != 49 || raw.get(8) != 10) {
+        return false
+    }
+    return true
+}
+
+// Scan canonical decimal integer ending at `stop_ch` (space=32 or LF=10).
+// Valid canonical integers in budget (<= 262,144) have 1..=6 digits; no leading zeros on multi-digit.
+fn scan_dec_end(raw List<int>, pos int, stop_ch int) int {
+    let n = raw.len()
+    if (pos >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let d0 = raw.get(pos)
+    if (d0 < 48 || d0 > 57) {
+        return KV_ERR_CORRUPT()
+    }
+    if (d0 == 48) {
+        if (pos + 1 >= n || raw.get(pos + 1) != stop_ch) {
+            return KV_ERR_CORRUPT()
+        }
+        return pos + 1
+    }
+    if (pos + 1 >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let c1 = raw.get(pos + 1)
+    if (c1 == stop_ch) {
+        return pos + 1
+    }
+    if (c1 < 48 || c1 > 57 || pos + 2 >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let c2 = raw.get(pos + 2)
+    if (c2 == stop_ch) {
+        return pos + 2
+    }
+    if (c2 < 48 || c2 > 57 || pos + 3 >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let c3 = raw.get(pos + 3)
+    if (c3 == stop_ch) {
+        return pos + 3
+    }
+    if (c3 < 48 || c3 > 57 || pos + 4 >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let c4 = raw.get(pos + 4)
+    if (c4 == stop_ch) {
+        return pos + 4
+    }
+    if (c4 < 48 || c4 > 57 || pos + 5 >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let c5 = raw.get(pos + 5)
+    if (c5 == stop_ch) {
+        return pos + 5
+    }
+    if (c5 < 48 || c5 > 57 || pos + 6 >= n) {
+        return KV_ERR_CORRUPT()
+    }
+    let c6 = raw.get(pos + 6)
+    if (c6 == stop_ch) {
+        return pos + 6
+    }
+    return KV_ERR_CORRUPT()
+}
+
+fn eval_dec(raw List<int>, pos int, end int) int {
+    let digits = end - pos
+    if (digits <= 0 || digits > 6) {
+        return KV_ERR_CORRUPT()
+    }
+    var acc = raw.get(pos) - 48
+    if (digits >= 2) {
+        acc = acc * 10 + (raw.get(pos + 1) - 48)
+    }
+    if (digits >= 3) {
+        acc = acc * 10 + (raw.get(pos + 2) - 48)
+    }
+    if (digits >= 4) {
+        acc = acc * 10 + (raw.get(pos + 3) - 48)
+    }
+    if (digits >= 5) {
+        acc = acc * 10 + (raw.get(pos + 4) - 48)
+    }
+    if (digits >= 6) {
+        acc = acc * 10 + (raw.get(pos + 5) - 48)
+    }
+    if (acc > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_CORRUPT()
+    }
+    return acc
+}
+
+// Binary divide-and-conquer slice copy (max live stack depth <= 21 frames for 256 KiB).
+fn slice_bytes(raw List<int>, pos int, end int, out List<int>) int {
+    let len = end - pos
+    if (len <= 0) {
+        return 0
+    }
+    if (len <= 64) {
+        return slice_leaf(raw, pos, end, out)
+    }
+    let mid = pos + len / 2
+    let d1 = slice_bytes(raw, pos, mid, out)
+    return slice_bytes(raw, mid, end, out)
+}
+
+fn slice_leaf(raw List<int>, pos int, end int, out List<int>) int {
+    if (pos + 8 <= end) {
+        out.push(raw.get(pos))
+        out.push(raw.get(pos + 1))
+        out.push(raw.get(pos + 2))
+        out.push(raw.get(pos + 3))
+        out.push(raw.get(pos + 4))
+        out.push(raw.get(pos + 5))
+        out.push(raw.get(pos + 6))
+        out.push(raw.get(pos + 7))
+        return slice_leaf(raw, pos + 8, end, out)
+    }
+    if (pos >= end) {
+        return 0
+    }
+    out.push(raw.get(pos))
+    return slice_leaf(raw, pos + 1, end, out)
+}
+
+fn is_valid_utf8_slice(raw List<int>, pos int, end int) bool {
+    var sub = List<int>.new()
+    let d1 = slice_bytes(raw, pos, end, sub)
+    let opt = decode_utf8(sub.move)
+    is opt {
+        None -> { return false }
+        Some(s) -> { return s.len() >= 0 }
+    }
+}
+
+fn decode_slice_kvread(raw List<int>, pos int, end int) KVRead {
+    var sub = List<int>.new()
+    let d1 = slice_bytes(raw, pos, end, sub)
+    let opt = decode_utf8(sub.move)
+    is opt {
+        Some(s) -> { return KVRead { status: 0, found: true, value: s.move } }
+        None -> {}
+    }
+    return kv_err_read(KV_ERR_CORRUPT())
+}
+
+// Flat index table layout: `[koff0, klen0, voff0, vlen0, koff1, klen1, voff1, vlen1, ...]`
+fn parse_one_record(raw List<int>, pos int, spans List<int>) int {
+    let n = raw.len()
+    let kend = scan_dec_end(raw, pos, 32)
+    if (kend < 0) {
+        return KV_ERR_CORRUPT()
+    }
+    let klen = eval_dec(raw, pos, kend)
+    if (klen < 0) {
+        return KV_ERR_CORRUPT()
+    }
+    let vend = scan_dec_end(raw, kend + 1, 10)
+    if (vend < 0) {
+        return KV_ERR_CORRUPT()
+    }
+    let vlen = eval_dec(raw, kend + 1, vend)
+    if (vlen < 0) {
+        return KV_ERR_CORRUPT()
+    }
+    let pay = vend + 1
+    let rem = n - pay
+    if (klen > rem - 1) {
+        return KV_ERR_CORRUPT()
+    }
+    if (vlen > rem - 1 - klen) {
+        return KV_ERR_CORRUPT()
+    }
+    let trail_pos = pay + klen + vlen
+    if (raw.get(trail_pos) != 10) {
+        return KV_ERR_CORRUPT()
+    }
+    if (!is_valid_utf8_slice(raw, pay, pay + klen)) {
+        return KV_ERR_CORRUPT()
+    }
+    if (!is_valid_utf8_slice(raw, pay + klen, trail_pos)) {
+        return KV_ERR_CORRUPT()
+    }
+    spans.push(pay)
+    spans.push(klen)
+    spans.push(pay + klen)
+    spans.push(vlen)
+    return trail_pos + 1
+}
+
+// 8-ary tree record parsing (8^4 = 4096 max records, max stack depth = 5 frames).
+fn parse_kv_spans(raw List<int>, spans List<int>) int {
+    if (raw.len() > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_BUDGET()
+    }
+    if (!check_magic(raw)) {
+        return KV_ERR_CORRUPT()
+    }
+    let end_pos = parse_r4096(raw, 9, raw.len(), spans)
+    if (end_pos < 0) {
+        return end_pos
+    }
+    if (end_pos < raw.len()) {
+        return KV_ERR_BUDGET()
+    }
+    return 0
+}
+
+fn parse_r8(raw List<int>, pos int, n int, spans List<int>) int {
+    var p = pos
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_one_record(raw, p, spans)
+    if (p < 0 || p >= n) { return p }
+    return parse_one_record(raw, p, spans)
+}
+
+fn parse_r64(raw List<int>, pos int, n int, spans List<int>) int {
+    var p = pos
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r8(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    return parse_r8(raw, p, n, spans)
+}
+
+fn parse_r512(raw List<int>, pos int, n int, spans List<int>) int {
+    var p = pos
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r64(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    return parse_r64(raw, p, n, spans)
+}
+
+fn parse_r4096(raw List<int>, pos int, n int, spans List<int>) int {
+    var p = pos
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    p = parse_r512(raw, p, n, spans)
+    if (p < 0 || p >= n) { return p }
+    return parse_r512(raw, p, n, spans)
+}
+
+fn ranges_eq(a List<int>, a_off int, b List<int>, b_off int, len int) bool {
+    return ranges_eq_range(a, a_off, b, b_off, 0, len)
+}
+
+fn ranges_eq_range(a List<int>, a_off int, b List<int>, b_off int, lo int, hi int) bool {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return true
+    }
+    if (seg <= 64) {
+        return ranges_eq_leaf(a, a_off, b, b_off, lo, hi)
+    }
+    let mid = lo + seg / 2
+    if (!ranges_eq_range(a, a_off, b, b_off, lo, mid)) {
+        return false
+    }
+    return ranges_eq_range(a, a_off, b, b_off, mid, hi)
+}
+
+fn ranges_eq_leaf(a List<int>, a_off int, b List<int>, b_off int, k int, hi int) bool {
+    if (k + 8 <= hi) {
+        if (a.get(a_off + k) != b.get(b_off + k)) { return false }
+        if (a.get(a_off + k + 1) != b.get(b_off + k + 1)) { return false }
+        if (a.get(a_off + k + 2) != b.get(b_off + k + 2)) { return false }
+        if (a.get(a_off + k + 3) != b.get(b_off + k + 3)) { return false }
+        if (a.get(a_off + k + 4) != b.get(b_off + k + 4)) { return false }
+        if (a.get(a_off + k + 5) != b.get(b_off + k + 5)) { return false }
+        if (a.get(a_off + k + 6) != b.get(b_off + k + 6)) { return false }
+        if (a.get(a_off + k + 7) != b.get(b_off + k + 7)) { return false }
+        return ranges_eq_leaf(a, a_off, b, b_off, k + 8, hi)
+    }
+    if (k >= hi) {
+        return true
+    }
+    if (a.get(a_off + k) != b.get(b_off + k)) {
+        return false
+    }
+    return ranges_eq_leaf(a, a_off, b, b_off, k + 1, hi)
+}
+
+fn self_ranges_eq(raw List<int>, a_off int, b_off int, len int) bool {
+    return self_ranges_eq_range(raw, a_off, b_off, 0, len)
+}
+
+fn self_ranges_eq_range(raw List<int>, a_off int, b_off int, lo int, hi int) bool {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return true
+    }
+    if (seg <= 64) {
+        return self_ranges_eq_leaf(raw, a_off, b_off, lo, hi)
+    }
+    let mid = lo + seg / 2
+    if (!self_ranges_eq_range(raw, a_off, b_off, lo, mid)) {
+        return false
+    }
+    return self_ranges_eq_range(raw, a_off, b_off, mid, hi)
+}
+
+fn self_ranges_eq_leaf(raw List<int>, a_off int, b_off int, k int, hi int) bool {
+    if (k + 8 <= hi) {
+        if (raw.get(a_off + k) != raw.get(b_off + k)) { return false }
+        if (raw.get(a_off + k + 1) != raw.get(b_off + k + 1)) { return false }
+        if (raw.get(a_off + k + 2) != raw.get(b_off + k + 2)) { return false }
+        if (raw.get(a_off + k + 3) != raw.get(b_off + k + 3)) { return false }
+        if (raw.get(a_off + k + 4) != raw.get(b_off + k + 4)) { return false }
+        if (raw.get(a_off + k + 5) != raw.get(b_off + k + 5)) { return false }
+        if (raw.get(a_off + k + 6) != raw.get(b_off + k + 6)) { return false }
+        if (raw.get(a_off + k + 7) != raw.get(b_off + k + 7)) { return false }
+        return self_ranges_eq_leaf(raw, a_off, b_off, k + 8, hi)
+    }
+    if (k >= hi) {
+        return true
+    }
+    if (raw.get(a_off + k) != raw.get(b_off + k)) {
+        return false
+    }
+    return self_ranges_eq_leaf(raw, a_off, b_off, k + 1, hi)
+}
+
+// ---- Serialization helpers -------------------------------------------------
+
+fn write_magic(out List<int>) int {
+    out.push(65)
+    out.push(67)
+    out.push(69)
+    out.push(45)
+    out.push(75)
+    out.push(86)
+    out.push(47)
+    out.push(49)
+    out.push(10)
+    return 0
+}
+
+fn push_dec(n int, out List<int>) int {
+    if (n >= 10) {
+        let d1 = push_dec(n / 10, out)
+    }
+    out.push(48 + (n % 10))
+    return 0
+}
+
+fn push_cp(p int, out List<int>) int {
+    if (p < 128) {
+        out.push(p)
+        return 0
+    }
+    out.push(byte_of(p, 0))
+    out.push(byte_of(p, 1))
+    if (p >= 2048) {
+        out.push(byte_of(p, 2))
+    }
+    if (p >= 65536) {
+        out.push(byte_of(p, 3))
+    }
+    return 0
+}
+
+fn enc_str_outer(s Str, ci int, tmp List<int>) int {
+    if (ci >= s.len()) {
+        return 0
+    }
+    let stop = min_i(s.len(), ci + 256)
+    return enc_str_inner(s, ci, stop, tmp)
+}
+
+fn enc_str_inner(s Str, ci int, stop int, tmp List<int>) int {
+    if (ci + 4 <= stop) {
+        let p0 = s.char_at(ci).to_codepoint()
+        let p1 = s.char_at(ci + 1).to_codepoint()
+        let p2 = s.char_at(ci + 2).to_codepoint()
+        let p3 = s.char_at(ci + 3).to_codepoint()
+        if (p0 < 128 && p1 < 128 && p2 < 128 && p3 < 128) {
+            tmp.push(p0)
+            tmp.push(p1)
+            tmp.push(p2)
+            tmp.push(p3)
+        } else {
+            let d0 = push_cp(p0, tmp)
+            let d1 = push_cp(p1, tmp)
+            let d2 = push_cp(p2, tmp)
+            let d3 = push_cp(p3, tmp)
+        }
+        return enc_str_inner(s, ci + 4, stop, tmp)
+    }
+    if (ci >= stop) {
+        return enc_str_outer(s, stop, tmp)
+    }
+    let d1 = push_cp(s.char_at(ci).to_codepoint(), tmp)
+    return enc_str_inner(s, ci + 1, stop, tmp)
+}
+
+fn append_bytes_list(src List<int>, out List<int>) int {
+    return slice_bytes(src, 0, src.len(), out)
+}
+
+fn dec_digits_len(n int) int {
+    if (n < 10) { return 1 }
+    if (n < 100) { return 2 }
+    if (n < 1000) { return 3 }
+    if (n < 10000) { return 4 }
+    if (n < 100000) { return 5 }
+    return 6
+}
+
+fn emit_byte_slices(raw List<int>, koff int, klen int, voff int, vlen int, out List<int>) int {
+    let overhead = dec_digits_len(klen) + dec_digits_len(vlen) + 3
+    if (klen > KV_MAX_FILE_BYTES() || vlen > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_BUDGET()
+    }
+    if (out.len() + overhead + klen + vlen > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_BUDGET()
+    }
+    let d1 = push_dec(klen, out)
+    out.push(32)
+    let d2 = push_dec(vlen, out)
+    out.push(10)
+    let d3 = slice_bytes(raw, koff, koff + klen, out)
+    let d4 = slice_bytes(raw, voff, voff + vlen, out)
+    out.push(10)
+    return 0
+}
+
+fn emit_two_lists(kb List<int>, vb List<int>, out List<int>) int {
+    let klen = kb.len()
+    let vlen = vb.len()
+    let overhead = dec_digits_len(klen) + dec_digits_len(vlen) + 3
+    if (klen > KV_MAX_FILE_BYTES() || vlen > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_BUDGET()
+    }
+    if (out.len() + overhead + klen + vlen > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_BUDGET()
+    }
+    let d1 = push_dec(klen, out)
+    out.push(32)
+    let d2 = push_dec(vlen, out)
+    out.push(10)
+    let d3 = append_bytes_list(kb, out)
+    let d4 = append_bytes_list(vb, out)
+    out.push(10)
+    return 0
+}
+
+// Returns 0 if regular readable-size file exists, 1 if absent, or < 0 error (-1, -3).
+fn check_existing_path(path Str) int {
+    if (!exists(path.clone())) {
+        return 1
+    }
+    if (is_dir(path.clone())) {
+        return KV_ERR_IO()
+    }
+    let sz = size(path)
+    if (sz < 0i64) {
+        return KV_ERR_IO()
+    }
+    if (sz > 262144i64) {
+        return KV_ERR_BUDGET()
+    }
+    return 0
+}
+
+fn commit_bytes_atomic(path Str, out List<int>) int {
+    if (out.len() > KV_MAX_FILE_BYTES()) {
+        return KV_ERR_BUDGET()
+    }
+    let tmp = path + ".acekv.tmp"
+    let w = write_bytes(tmp.clone(), out)
+    if (w != 0) {
+        let d1_del = delete(tmp.clone())
+        return KV_ERR_IO()
+    }
+    let r = replace_atomic(tmp.clone(), path)
+    if (r != 0) {
+        let d2_del = delete(tmp)
+        return KV_ERR_IO()
+    }
+    return 0
+}
+
+fn push_neg1_16(xs List<int>) int {
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    xs.push(-1)
+    return 0
+}
+
+fn init_heads_128(heads List<int>) int {
+    let d0 = push_neg1_16(heads)
+    let d1 = push_neg1_16(heads)
+    let d2 = push_neg1_16(heads)
+    let d3 = push_neg1_16(heads)
+    let d4 = push_neg1_16(heads)
+    let d5 = push_neg1_16(heads)
+    let d6 = push_neg1_16(heads)
+    return push_neg1_16(heads)
+}
+
+fn init_heads_1024(heads List<int>) int {
+    let d0 = init_heads_128(heads)
+    let d1 = init_heads_128(heads)
+    let d2 = init_heads_128(heads)
+    let d3 = init_heads_128(heads)
+    let d4 = init_heads_128(heads)
+    let d5 = init_heads_128(heads)
+    let d6 = init_heads_128(heads)
+    return init_heads_128(heads)
+}
+
+fn push_zero_neg1_n(keep List<int>, nexts List<int>, n int) int {
+    if (n <= 0) {
+        return 0
+    }
+    if (n <= 8) {
+        keep.push(0)
+        nexts.push(-1)
+        if (n >= 2) { keep.push(0); nexts.push(-1) }
+        if (n >= 3) { keep.push(0); nexts.push(-1) }
+        if (n >= 4) { keep.push(0); nexts.push(-1) }
+        if (n >= 5) { keep.push(0); nexts.push(-1) }
+        if (n >= 6) { keep.push(0); nexts.push(-1) }
+        if (n >= 7) { keep.push(0); nexts.push(-1) }
+        if (n >= 8) { keep.push(0); nexts.push(-1) }
+        return 0
+    }
+    let h = n / 2
+    let d1 = push_zero_neg1_n(keep, nexts, h)
+    return push_zero_neg1_n(keep, nexts, n - h)
+}
+
+fn hash_step8(raw List<int>, pos int, rem int, acc int) int {
+    var h = acc
+    if (rem >= 1) { h = (h * 131 + raw.get(pos)) % 65521 }
+    if (rem >= 2) { h = (h * 131 + raw.get(pos + 1)) % 65521 }
+    if (rem >= 3) { h = (h * 131 + raw.get(pos + 2)) % 65521 }
+    if (rem >= 4) { h = (h * 131 + raw.get(pos + 3)) % 65521 }
+    if (rem >= 5) { h = (h * 131 + raw.get(pos + 4)) % 65521 }
+    if (rem >= 6) { h = (h * 131 + raw.get(pos + 5)) % 65521 }
+    if (rem >= 7) { h = (h * 131 + raw.get(pos + 6)) % 65521 }
+    if (rem >= 8) { h = (h * 131 + raw.get(pos + 7)) % 65521 }
+    return h
+}
+
+fn hash_key_1024(raw List<int>, off int, len int) int {
+    var h = (len * 131 + 17) % 65521
+    if (len <= 8) {
+        return hash_step8(raw, off, len, h) % 1024
+    }
+    h = hash_step8(raw, off, 8, h)
+    if (len > 16) {
+        h = hash_step8(raw, off + 8, 8, h)
+    }
+    h = hash_step8(raw, off + len - 8, 8, h)
+    return h % 1024
+}
+
+fn bucket_contains(raw List<int>, spans List<int>, cur int, nexts List<int>, koff int, klen int) bool {
+    if (cur < 0) {
+        return false
+    }
+    let b0 = cur * 4
+    if (spans.get(b0 + 1) == klen && self_ranges_eq(raw, spans.get(b0), koff, klen)) {
+        return true
+    }
+    let n1 = nexts.get(cur)
+    if (n1 < 0) {
+        return false
+    }
+    let b1 = n1 * 4
+    if (spans.get(b1 + 1) == klen && self_ranges_eq(raw, spans.get(b1), koff, klen)) {
+        return true
+    }
+    let n2 = nexts.get(n1)
+    if (n2 < 0) {
+        return false
+    }
+    let b2 = n2 * 4
+    if (spans.get(b2 + 1) == klen && self_ranges_eq(raw, spans.get(b2), koff, klen)) {
+        return true
+    }
+    let n3 = nexts.get(n2)
+    if (n3 < 0) {
+        return false
+    }
+    let b3 = n3 * 4
+    if (spans.get(b3 + 1) == klen && self_ranges_eq(raw, spans.get(b3), koff, klen)) {
+        return true
+    }
+    return bucket_contains(raw, spans, nexts.get(n3), nexts, koff, klen)
+}
+
+// Visit [lo, hi) right-to-left (hi-1 down to lo) so only the LAST record per key is marked keep[i]=1.
+fn mark_keep_range(raw List<int>, spans List<int>, tkey List<int>, lo int, hi int, heads List<int>, nexts List<int>, keep List<int>, kept List<int>, max_keep int) int {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return 0
+    }
+    if (seg == 1) {
+        let base = lo * 4
+        let koff = spans.get(base)
+        let klen = spans.get(base + 1)
+        if (klen == tkey.len() && ranges_eq(raw, koff, tkey, 0, klen)) {
+            return 0
+        }
+        let b = hash_key_1024(raw, koff, klen)
+        let head = heads.get(b)
+        if (bucket_contains(raw, spans, head, nexts, koff, klen)) {
+            return 0
+        }
+        let next_kept = kept.get(0) + 1
+        if (next_kept > max_keep) {
+            return KV_ERR_BUDGET()
+        }
+        kept.set(0, next_kept)
+        keep.set(lo, 1)
+        nexts.set(lo, head)
+        heads.set(b, lo)
+        return 0
+    }
+    let mid = lo + seg / 2
+    let rr = mark_keep_range(raw, spans, tkey, mid, hi, heads, nexts, keep, kept, max_keep)
+    if (rr != 0) {
+        return rr
+    }
+    return mark_keep_range(raw, spans, tkey, lo, mid, heads, nexts, keep, kept, max_keep)
+}
+
+fn emit_kept_range(raw List<int>, spans List<int>, keep List<int>, lo int, hi int, out List<int>) int {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return 0
+    }
+    if (seg == 1) {
+        if (keep.get(lo) == 1) {
+            let base = lo * 4
+            return emit_byte_slices(raw, spans.get(base), spans.get(base + 1), spans.get(base + 2), spans.get(base + 3), out)
+        }
+        return 0
+    }
+    let mid = lo + seg / 2
+    let r1 = emit_kept_range(raw, spans, keep, lo, mid, out)
+    if (r1 != 0) {
+        return r1
+    }
+    return emit_kept_range(raw, spans, keep, mid, hi, out)
+}
+
+fn copy_unshadowed_outer(raw List<int>, spans List<int>, tkey List<int>, idx int, total int, max_keep int, kept List<int>, out List<int>) int {
+    if (idx >= total) {
+        return 0
+    }
+    var heads = List<int>.new()
+    let d1 = init_heads_1024(heads)
+    var keep = List<int>.new()
+    var nexts = List<int>.new()
+    let d2 = push_zero_neg1_n(keep, nexts, total)
+    let mr = mark_keep_range(raw, spans, tkey, idx, total, heads, nexts, keep, kept, max_keep)
+    if (mr != 0) {
+        return mr
+    }
+    return emit_kept_range(raw, spans, keep, idx, total, out)
+}
+
+fn find_last_match_rev(raw List<int>, spans List<int>, tkey List<int>, idx int) int {
+    if (idx < 0) {
+        return -1
+    }
+    return find_last_match_range(raw, spans, tkey, 0, idx + 1)
+}
+
+fn find_last_match_range(raw List<int>, spans List<int>, tkey List<int>, lo int, hi int) int {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return -1
+    }
+    if (seg == 1) {
+        let base = lo * 4
+        if (spans.get(base + 1) == tkey.len() && ranges_eq(raw, spans.get(base), tkey, 0, tkey.len())) {
+            return lo
+        }
+        return -1
+    }
+    let mid = lo + seg / 2
+    let right = find_last_match_range(raw, spans, tkey, mid, hi)
+    if (right >= 0) {
+        return right
+    }
+    return find_last_match_range(raw, spans, tkey, lo, mid)
+}
+
+// ---- Public KV API ---------------------------------------------------------
+
+fn kv_get_raw(raw List<int>, key Str) KVRead {
+    var spans = List<int>.new()
+    let pst = parse_kv_spans(raw, spans)
+    if (pst != 0) {
+        return kv_err_read(pst)
+    }
+    var tkey = List<int>.new()
+    let dk = enc_str_outer(key, 0, tkey)
+    let hit = find_last_match_rev(raw, spans, tkey, (spans.len() / 4) - 1)
+    if (hit < 0) {
+        return KVRead { status: 0, found: false, value: "" }
+    }
+    let base = hit * 4
+    let voff = spans.get(base + 2)
+    let vlen = spans.get(base + 3)
+    return decode_slice_kvread(raw, voff, voff + vlen)
+}
+
+pub fn kv_get(path Str, key Str) KVRead {
+    let cst = check_existing_path(path.clone())
+    if (cst == 1) {
+        return KVRead { status: 0, found: false, value: "" }
+    }
+    if (cst < 0) {
+        return kv_err_read(cst)
+    }
+    let opt = read_bytes(path)
+    is opt {
+        Some(raw) -> { return kv_get_raw(raw, key) }
+        None -> {}
+    }
+    return kv_err_read(KV_ERR_IO())
+}
+
+pub fn get(path Str, key Str) KVRead {
+    return kv_get(path, key)
+}
+
+fn kv_set_with_raw(path Str, raw List<int>, has_existing bool, key Str, value Str) int {
+    var spans = List<int>.new()
+    if (has_existing) {
+        let pst = parse_kv_spans(raw, spans)
+        if (pst != 0) {
+            return pst
+        }
+    }
+    var tkey = List<int>.new()
+    let dk = enc_str_outer(key, 0, tkey)
+    var tval = List<int>.new()
+    let dv = enc_str_outer(value, 0, tval)
+
+    var out = List<int>.new()
+    let d1_magic = write_magic(out)
+    var kept = List<int>.new()
+    kept.push(0)
+    let total = spans.len() / 4
+    let cp = copy_unshadowed_outer(raw, spans, tkey, 0, total, KV_MAX_ENTRIES() - 1, kept, out)
+    if (cp != 0) {
+        return cp
+    }
+    let ew = emit_two_lists(tkey, tval, out)
+    if (ew != 0) {
+        return ew
+    }
+    return commit_bytes_atomic(path, out)
+}
+
+pub fn kv_set(path Str, key Str, value Str) int {
+    let cst = check_existing_path(path.clone())
+    if (cst == 1) {
+        var empty_raw = List<int>.new()
+        return kv_set_with_raw(path, empty_raw, false, key, value)
+    }
+    if (cst < 0) {
+        return cst
+    }
+    let opt = read_bytes(path.clone())
+    is opt {
+        None -> { return KV_ERR_IO() }
+        Some(raw) -> { return kv_set_with_raw(path, raw, true, key, value) }
+    }
+}
+
+pub fn set(path Str, key Str, value Str) int {
+    return kv_set(path, key, value)
+}
+
+fn kv_remove_raw(path Str, raw List<int>, key Str) int {
+    var spans = List<int>.new()
+    let pst = parse_kv_spans(raw, spans)
+    if (pst != 0) {
+        return pst
+    }
+    var tkey = List<int>.new()
+    let dk = enc_str_outer(key, 0, tkey)
+    let total = spans.len() / 4
+    let hit = find_last_match_rev(raw, spans, tkey, total - 1)
+    if (hit < 0) {
+        return 0
+    }
+    var out = List<int>.new()
+    let d1_magic = write_magic(out)
+    var kept = List<int>.new()
+    kept.push(0)
+    let cp = copy_unshadowed_outer(raw, spans, tkey, 0, total, KV_MAX_ENTRIES(), kept, out)
+    if (cp != 0) {
+        return cp
+    }
+    let cr = commit_bytes_atomic(path, out)
+    if (cr != 0) {
+        return cr
+    }
+    return 1
+}
+
+pub fn kv_remove(path Str, key Str) int {
+    let cst = check_existing_path(path.clone())
+    if (cst == 1) {
+        return 0
+    }
+    if (cst < 0) {
+        return cst
+    }
+    let opt = read_bytes(path.clone())
+    is opt {
+        None -> { return KV_ERR_IO() }
+        Some(raw) -> { return kv_remove_raw(path, raw, key) }
+    }
+}
+
+pub fn remove(path Str, key Str) int {
+    return kv_remove(path, key)
+}

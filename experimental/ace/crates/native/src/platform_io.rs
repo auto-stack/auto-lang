@@ -11,8 +11,8 @@ use crate::emit::{make_isa, WINCALL};
 use crate::MnError;
 use ace_av_core::platform_io::{
     PlatformOpKind, ERR_ALREADY_RELEASED, ERR_BORROWED, ERR_BUDGET, ERR_INVALID_BOUNDS,
-    ERR_INVALID_HANDLE, ERR_INVALID_VALUE, ERR_OS_FAILED, ERR_WRONG_ORIGIN, MAX_OS_REGION_BYTES,
-    MAX_PLATFORM_CALL_BYTES, MAX_PLATFORM_RUN_BYTES,
+    ERR_INVALID_HANDLE, ERR_INVALID_VALUE, ERR_OS_FAILED, ERR_UNSUPPORTED, ERR_WRONG_ORIGIN,
+    MAX_OS_REGION_BYTES, MAX_PLATFORM_CALL_BYTES, MAX_PLATFORM_RUN_BYTES,
 };
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
@@ -22,10 +22,37 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{default_libcall_names, DataDescription, DataId, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
-pub(crate) const MAX_NATIVE_SLOTS: usize = 256;
+pub(crate) const MAX_NATIVE_SLOTS: usize = 1024;
 pub(crate) const STATE_HEADER_BYTES: usize = 64;
-pub(crate) const SLOT_BYTES: usize = 64;
+pub(crate) const SLOT_BYTES: usize = 96;
 pub(crate) const STATE_BYTES: usize = STATE_HEADER_BYTES + MAX_NATIVE_SLOTS * SLOT_BYTES;
+/// PLAN-1065: per-dir-slot staging for the `FindFirstFileW` first entry
+/// (cFileName ≤ 260 UTF-16 units; 520 bytes + slack).
+pub(crate) const DIR_STAGE_UNIT_BYTES: usize = 520;
+/// PLAN-1065: fixed .bss scratch areas for the large sys973 buffers
+/// (env name/value, canonical final path, spawn cmdline — 32,768 UTF-16
+/// units each, the AV parity cap). They live in the state, NOT on the
+/// stack: the PE's small default stack reserve cannot take 2×64KB
+/// frames, and platform calls are single-threaded/non-reentrant.
+pub(crate) const STATE_SCRATCH_COUNT: usize = 4;
+pub(crate) const STATE_SCRATCH_BYTES: usize = 65_568;
+pub(crate) const STATE_TOTAL_BYTES: usize = STATE_BYTES
+    + MAX_NATIVE_SLOTS * DIR_STAGE_UNIT_BYTES
+    + STATE_SCRATCH_COUNT * STATE_SCRATCH_BYTES;
+
+/// Address of .bss scratch slot `idx` (0..STATE_SCRATCH_COUNT).
+pub(crate) fn state_scratch_ptr(
+    om: &mut cranelift_object::ObjectModule,
+    fb: &mut cranelift_frontend::FunctionBuilder<'_>,
+    state: cranelift_module::DataId,
+    idx: usize,
+) -> cranelift_codegen::ir::Value {
+    debug_assert!(idx < STATE_SCRATCH_COUNT);
+    let base = state_ptr(om, state, fb);
+    let off =
+        (STATE_BYTES + MAX_NATIVE_SLOTS * DIR_STAGE_UNIT_BYTES + idx * STATE_SCRATCH_BYTES) as i64;
+    fb.ins().iadd_imm(base, off)
+}
 
 // Header field byte offsets inside `mn_pio_state`
 pub(crate) const H_NEXT_GEN: i32 = 0; // i32
@@ -36,8 +63,10 @@ pub(crate) const H_WRITTEN_TOTAL: i32 = 16; // i64
 pub(crate) const H_LIVE_MAPPED: i32 = 24; // i64
 pub(crate) const H_NUM_SLOTS: i32 = 32; // i32
 pub(crate) const H_BYTES_WRITTEN_TMP: i32 = 36; // i32
+pub(crate) const H_READ_TOTAL: i32 = 40; // i64 (PLAN-1065: run read budget)
+pub(crate) const H_LAST_CLOCK_HI: i32 = 48; // i32 (PLAN-1065: clock_hi)
 
-// Per-slot field byte offsets (stride 64 bytes)
+// Per-slot field byte offsets (stride 96 bytes)
 pub(crate) const S_KIND: i32 = 0; // i32 (0=empty, 1=StdStream, 2=OsMemRegion)
 pub(crate) const S_RELEASED: i32 = 4; // i32
 pub(crate) const S_GEN: i32 = 8; // i32
@@ -45,9 +74,19 @@ pub(crate) const S_BORROW: i32 = 12; // i32
 pub(crate) const S_OS_PTR: i32 = 16; // i64
 pub(crate) const S_LOGICAL_LEN: i32 = 24; // i64
 pub(crate) const S_MAPPED_LEN: i32 = 32; // i64
+pub(crate) const S_STREAM_ID: i32 = 40; // i32 (-10 stdin, -11 stdout, -12 stderr)
+pub(crate) const S_LAST_HI: i32 = 44; // i32 (OsFile: high 32 of last 64-bit result)
+pub(crate) const S_PROC_JOB: i32 = 48; // i64 (OsProcess: kill-on-close job)
+pub(crate) const S_PROC_OUT: i32 = 56; // i64 (OsProcess: stdout read end; 0 = no capture)
+pub(crate) const S_PROC_ERR: i32 = 64; // i64 (OsProcess: stderr read end)
+pub(crate) const S_DIR_PENDING: i32 = 72; // i32 (OsDir: 1 = first entry staged)
+pub(crate) const S_DIR_PENDING_LEN: i32 = 76; // i32 (OsDir: staged unit count)
 
 pub(crate) const KIND_STREAM: i64 = 1;
 pub(crate) const KIND_MEM: i64 = 2;
+pub(crate) const KIND_FILE: i64 = 3;
+pub(crate) const KIND_DIR: i64 = 4;
+pub(crate) const KIND_PROC: i64 = 5;
 
 const MEM_COMMIT_RESERVE: i64 = 0x3000;
 const PAGE_READWRITE: i64 = 0x04;
@@ -82,7 +121,243 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         // PLAN-1041 Windows text-console classification + Unicode write.
         PlatformOpKind::IoConsoleKind => "mn_pio_console_kind",
         PlatformOpKind::IoConsoleWrite16 => "mn_pio_console_write16",
+        // PLAN-974: rejected by name before lowering — these arms are
+        // unreachable; the match stays exhaustive so a new platform
+        // category can never silently fall through.
+        PlatformOpKind::NetTcpConnect
+        | PlatformOpKind::NetTcpWriteSome
+        | PlatformOpKind::NetTcpWriteRegion
+        | PlatformOpKind::NetTcpReadInto
+        | PlatformOpKind::NetTcpClose
+        | PlatformOpKind::NetTcpListen
+        | PlatformOpKind::NetTcpAccept
+        | PlatformOpKind::NetTcpLocalPort => "mn_pio_net_unsupported",
+        // PLAN-973 system-resource ops (symbol = mn_pio_<callee>).
+        PlatformOpKind::IoStdin => "mn_pio_stdin",
+        PlatformOpKind::FileOpenW16 => "mn_pio_file_open_w16",
+        PlatformOpKind::FileOpenBytes => "mn_pio_file_open_bytes",
+        PlatformOpKind::FileReadSome => "mn_pio_file_read_some",
+        PlatformOpKind::FileWriteSome => "mn_pio_file_write_some",
+        PlatformOpKind::FileSeek => "mn_pio_file_seek",
+        PlatformOpKind::FileTell => "mn_pio_file_tell",
+        PlatformOpKind::FileHi => "mn_pio_file_hi",
+        PlatformOpKind::FileSize => "mn_pio_file_size",
+        PlatformOpKind::FileMtimeMs => "mn_pio_file_mtime_ms",
+        PlatformOpKind::FileFlush => "mn_pio_file_flush",
+        PlatformOpKind::FileClose => "mn_pio_file_close",
+        PlatformOpKind::PathAttrsW16 => "mn_pio_path_attrs_w16",
+        PlatformOpKind::PathAttrsBytes => "mn_pio_path_attrs_bytes",
+        PlatformOpKind::FileDeleteW16 => "mn_pio_file_delete_w16",
+        PlatformOpKind::FileDeleteBytes => "mn_pio_file_delete_bytes",
+        PlatformOpKind::DirCreateW16 => "mn_pio_dir_create_w16",
+        PlatformOpKind::DirCreateBytes => "mn_pio_dir_create_bytes",
+        PlatformOpKind::DirDeleteW16 => "mn_pio_dir_delete_w16",
+        PlatformOpKind::DirDeleteBytes => "mn_pio_dir_delete_bytes",
+        PlatformOpKind::FileReplaceW16 => "mn_pio_file_replace_w16",
+        PlatformOpKind::FileReplaceBytes => "mn_pio_file_replace_bytes",
+        PlatformOpKind::CanonicalW16 => "mn_pio_canonical_w16",
+        PlatformOpKind::CanonicalBytes => "mn_pio_canonical_bytes",
+        PlatformOpKind::DirOpenW16 => "mn_pio_dir_open_w16",
+        PlatformOpKind::DirNextW16 => "mn_pio_dir_next_w16",
+        PlatformOpKind::DirClose => "mn_pio_dir_close",
+        PlatformOpKind::DirOpenBytes => "mn_pio_dir_open_bytes",
+        PlatformOpKind::DirFillBytes => "mn_pio_dir_fill_bytes",
+        PlatformOpKind::EnvGetW16 => "mn_pio_env_get_w16",
+        PlatformOpKind::EnvSetW16 => "mn_pio_env_set_w16",
+        PlatformOpKind::EnvRemoveW16 => "mn_pio_env_remove_w16",
+        PlatformOpKind::EnvGetBytes => "mn_pio_env_get_bytes",
+        PlatformOpKind::ClockUnixMs => "mn_pio_clock_unix_ms",
+        PlatformOpKind::ClockMonoMs => "mn_pio_clock_mono_ms",
+        PlatformOpKind::ClockHi => "mn_pio_clock_hi",
+        PlatformOpKind::SleepMs => "mn_pio_sleep_ms",
+        PlatformOpKind::RandFill => "mn_pio_rand_fill",
+        PlatformOpKind::ProcSpawnW16 => "mn_pio_proc_spawn_w16",
+        PlatformOpKind::ProcSpawnBytes => "mn_pio_proc_spawn_bytes",
+        PlatformOpKind::ProcPipeRead => "mn_pio_proc_pipe_read",
+        PlatformOpKind::ProcWait => "mn_pio_proc_wait",
+        PlatformOpKind::ProcRelease => "mn_pio_proc_release",
+        PlatformOpKind::ProcExit => "mn_pio_proc_exit",
+        PlatformOpKind::ProcCmdlineW16 => "mn_pio_proc_cmdline_w16",
+        PlatformOpKind::ProcCmdlineFillBytes => "mn_pio_proc_cmdline_fill_bytes",
+        PlatformOpKind::ProcCwdW16 => "mn_pio_proc_cwd_w16",
+        PlatformOpKind::ProcCwdBytes => "mn_pio_proc_cwd_bytes",
+        PlatformOpKind::ProcChdirW16 => "mn_pio_proc_chdir_w16",
+        PlatformOpKind::ProcChdirBytes => "mn_pio_proc_chdir_bytes",
     }
+}
+
+/// PLAN-973: true for the system-resource op kinds. The shim emitters
+/// install the named-unsupported stub set for these (a REAL body per op
+/// lands with its AC increment; a stub is an honest named rejection, never
+/// a silent fallback).
+pub fn is_sys973_kind(kind: PlatformOpKind) -> bool {
+    use PlatformOpKind::*;
+    matches!(
+        kind,
+        IoStdin
+            | FileOpenW16
+            | FileOpenBytes
+            | FileReadSome
+            | FileWriteSome
+            | FileSeek
+            | FileTell
+            | FileHi
+            | FileSize
+            | FileMtimeMs
+            | FileFlush
+            | FileClose
+            | PathAttrsW16
+            | PathAttrsBytes
+            | FileDeleteW16
+            | FileDeleteBytes
+            | DirCreateW16
+            | DirCreateBytes
+            | DirDeleteW16
+            | DirDeleteBytes
+            | FileReplaceW16
+            | FileReplaceBytes
+            | CanonicalW16
+            | CanonicalBytes
+            | DirOpenW16
+            | DirNextW16
+            | DirClose
+            | DirOpenBytes
+            | DirFillBytes
+            | EnvGetW16
+            | EnvSetW16
+            | EnvRemoveW16
+            | EnvGetBytes
+            | ClockUnixMs
+            | ClockMonoMs
+            | ClockHi
+            | SleepMs
+            | RandFill
+            | ProcSpawnW16
+            | ProcSpawnBytes
+            | ProcPipeRead
+            | ProcWait
+            | ProcRelease
+            | ProcExit
+            | ProcCmdlineW16
+            | ProcCmdlineFillBytes
+            | ProcCwdW16
+            | ProcCwdBytes
+            | ProcChdirW16
+            | ProcChdirBytes
+    )
+}
+
+/// The sys973 kinds in op-table order (stub emission set).
+pub const SYS973_KINDS: &[PlatformOpKind] = &[
+    PlatformOpKind::IoStdin,
+    PlatformOpKind::FileOpenW16,
+    PlatformOpKind::FileOpenBytes,
+    PlatformOpKind::FileReadSome,
+    PlatformOpKind::FileWriteSome,
+    PlatformOpKind::FileSeek,
+    PlatformOpKind::FileTell,
+    PlatformOpKind::FileHi,
+    PlatformOpKind::FileSize,
+    PlatformOpKind::FileMtimeMs,
+    PlatformOpKind::FileFlush,
+    PlatformOpKind::FileClose,
+    PlatformOpKind::PathAttrsW16,
+    PlatformOpKind::PathAttrsBytes,
+    PlatformOpKind::FileDeleteW16,
+    PlatformOpKind::FileDeleteBytes,
+    PlatformOpKind::DirCreateW16,
+    PlatformOpKind::DirCreateBytes,
+    PlatformOpKind::DirDeleteW16,
+    PlatformOpKind::DirDeleteBytes,
+    PlatformOpKind::FileReplaceW16,
+    PlatformOpKind::FileReplaceBytes,
+    PlatformOpKind::CanonicalW16,
+    PlatformOpKind::CanonicalBytes,
+    PlatformOpKind::DirOpenW16,
+    PlatformOpKind::DirNextW16,
+    PlatformOpKind::DirClose,
+    PlatformOpKind::DirOpenBytes,
+    PlatformOpKind::DirFillBytes,
+    PlatformOpKind::EnvGetW16,
+    PlatformOpKind::EnvSetW16,
+    PlatformOpKind::EnvRemoveW16,
+    PlatformOpKind::EnvGetBytes,
+    PlatformOpKind::ClockUnixMs,
+    PlatformOpKind::ClockMonoMs,
+    PlatformOpKind::ClockHi,
+    PlatformOpKind::SleepMs,
+    PlatformOpKind::RandFill,
+    PlatformOpKind::ProcSpawnW16,
+    PlatformOpKind::ProcSpawnBytes,
+    PlatformOpKind::ProcPipeRead,
+    PlatformOpKind::ProcWait,
+    PlatformOpKind::ProcRelease,
+    PlatformOpKind::ProcExit,
+    PlatformOpKind::ProcCmdlineW16,
+    PlatformOpKind::ProcCmdlineFillBytes,
+    PlatformOpKind::ProcCwdW16,
+    PlatformOpKind::ProcCwdBytes,
+    PlatformOpKind::ProcChdirW16,
+    PlatformOpKind::ProcChdirBytes,
+];
+
+/// PLAN-1065: the sys973 kinds whose raw-bytes form does not apply to the
+/// Windows platform form (W16 is the Windows face; the bytes legs belong
+/// to the Linux target, PLAN-1063). These stay named-unsupported stubs.
+pub const SYS973_WINDOWS_N_KINDS: &[PlatformOpKind] = &[
+    PlatformOpKind::FileOpenBytes,
+    PlatformOpKind::PathAttrsBytes,
+    PlatformOpKind::FileDeleteBytes,
+    PlatformOpKind::DirCreateBytes,
+    PlatformOpKind::DirDeleteBytes,
+    PlatformOpKind::FileReplaceBytes,
+    PlatformOpKind::CanonicalBytes,
+    PlatformOpKind::DirOpenBytes,
+    PlatformOpKind::DirFillBytes,
+    PlatformOpKind::EnvGetBytes,
+    PlatformOpKind::ProcSpawnBytes,
+    PlatformOpKind::ProcCmdlineFillBytes,
+    PlatformOpKind::ProcCwdBytes,
+    PlatformOpKind::ProcChdirBytes,
+];
+
+/// PLAN-973: the shim signature for a sys973 kind, derived from the
+/// frozen op table (each StrView param lowers to an I64 pointer + I32
+/// byte-length pair, exactly like `IoWriteSome`).
+pub fn sys973_shim_sig(kind: PlatformOpKind, conv: cranelift_codegen::isa::CallConv) -> Signature {
+    use ace_av_core::mir::MirType;
+    let spec = ace_av_core::platform_io::PLATFORM_OPS
+        .iter()
+        .find(|op| op.kind == kind)
+        .expect("sys973 kind is in the op table");
+    let mut params = Vec::new();
+    for p in spec.params {
+        if *p == MirType::StrView {
+            params.push(AbiParam::new(types::I64));
+            params.push(AbiParam::new(types::I32));
+        } else {
+            params.push(AbiParam::new(types::I32));
+        }
+    }
+    Signature {
+        call_conv: conv,
+        params,
+        returns: vec![AbiParam::new(types::I32)],
+    }
+}
+
+/// Emit the named-unsupported stub for one sys973 kind (returns
+/// `ERR_UNSUPPORTED`; the REAL body replaces the stub in its increment).
+pub fn emit_sys973_stub(
+    om: &mut ObjectModule,
+    kind: PlatformOpKind,
+    conv: cranelift_codegen::isa::CallConv,
+) -> Result<(), MnError> {
+    let s = sys973_shim_sig(kind, conv);
+    let id = declare_fn(om, shim_symbol_for(kind), Linkage::Export, &s)?;
+    define_fn(om, id, s, |_om, fb, _entry| {
+        ret_err(fb, ERR_UNSUPPORTED);
+    })
 }
 
 pub fn cranelift_shim_sig(kind: PlatformOpKind) -> Signature {
@@ -127,6 +402,15 @@ pub fn cranelift_shim_sig_for(
             AbiParam::new(types::I32),
         ],
         PlatformOpKind::MemReadU8 => vec![AbiParam::new(types::I32), AbiParam::new(types::I32)],
+        // PLAN-974: rejected by name before lowering (unreachable).
+        PlatformOpKind::NetTcpConnect
+        | PlatformOpKind::NetTcpWriteSome
+        | PlatformOpKind::NetTcpWriteRegion
+        | PlatformOpKind::NetTcpReadInto
+        | PlatformOpKind::NetTcpClose
+        | PlatformOpKind::NetTcpListen
+        | PlatformOpKind::NetTcpAccept
+        | PlatformOpKind::NetTcpLocalPort => vec![],
         PlatformOpKind::MemWriteU8 => vec![
             AbiParam::new(types::I32),
             AbiParam::new(types::I32),
@@ -145,6 +429,9 @@ pub fn cranelift_shim_sig_for(
             AbiParam::new(types::I32),
         ],
         PlatformOpKind::ProbeClose => vec![AbiParam::new(types::I32)],
+        // PLAN-973: every remaining kind is a sys973 op — its signature
+        // derives from the frozen op table.
+        _ => sys973_shim_sig(kind, conv).params,
     };
     Signature {
         call_conv: conv,
@@ -153,7 +440,7 @@ pub fn cranelift_shim_sig_for(
     }
 }
 
-fn sig(params: &[types::Type], ret: Option<types::Type>) -> Signature {
+pub(crate) fn sig(params: &[types::Type], ret: Option<types::Type>) -> Signature {
     Signature {
         call_conv: WINCALL,
         params: params.iter().copied().map(AbiParam::new).collect(),
@@ -173,11 +460,11 @@ struct Win32Ids {
     write_console_w: FuncId,
 }
 
-struct LocalIds {
-    state_sysinfo: FuncId,
-    find_slot: FuncId,
-    alloc_slot: FuncId,
-    write_slice: FuncId,
+pub(crate) struct LocalIds {
+    pub(crate) state_sysinfo: FuncId,
+    pub(crate) find_slot: FuncId,
+    pub(crate) alloc_slot: FuncId,
+    pub(crate) write_slice: FuncId,
 }
 
 pub(crate) fn state_ptr(
@@ -241,7 +528,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         .declare_data("mn_pio_state", Linkage::Local, true, false)
         .map_err(|e| MnError::Backend(format!("declare mn_pio_state: {e}")))?;
     let mut dd = DataDescription::new();
-    dd.define_zeroinit(STATE_BYTES);
+    dd.define_zeroinit(STATE_TOTAL_BYTES);
     om.define_data(state, &dd)
         .map_err(|e| MnError::Backend(format!("define mn_pio_state: {e}")))?;
 
@@ -308,7 +595,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
     let state_sysinfo_sig = sig(&[], Some(types::I64));
     let find_slot_sig = sig(&[types::I32, types::I32], Some(types::I64));
     let alloc_slot_sig = sig(
-        &[types::I32, types::I64, types::I64, types::I64],
+        &[types::I32, types::I64, types::I64, types::I64, types::I32],
         Some(types::I32),
     );
     let write_slice_sig = sig(
@@ -520,7 +807,8 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         },
     )?;
 
-    // Helper closure for stdout / stderr
+    // Helper closure for stdout / stderr / stdin (PLAN-1065: stdin joins
+    // with its own std id so file-read target checks can distinguish it).
     let mut emit_std_query = |kind: PlatformOpKind, std_id: i64| -> Result<(), MnError> {
         let name = shim_symbol_for(kind);
         let s = cranelift_shim_sig(kind);
@@ -558,7 +846,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
             fb.ins().store(flags, z32, base, H_LAST_OS_ERROR);
             let alloc = om.declare_func_in_func(loc.alloc_slot, fb.func);
             let k = fb.ins().iconst(types::I32, KIND_STREAM);
-            let ac = fb.ins().call(alloc, &[k, raw, z64, z64]);
+            let ac = fb.ins().call(alloc, &[k, raw, z64, z64, sid]);
             let h = fb.inst_results(ac)[0];
             fb.ins().return_(&[h]);
         })
@@ -566,6 +854,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
 
     emit_std_query(PlatformOpKind::IoStdout, -11)?;
     emit_std_query(PlatformOpKind::IoStderr, -12)?;
+    emit_std_query(PlatformOpKind::IoStdin, -10)?;
 
     // IoWriteSome(h, ptr, len) -> write_slice(h, ptr, len, 0, len)
     {
@@ -972,7 +1261,8 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
             fb.switch_to_block(ok_os);
             let alloc = om.declare_func_in_func(loc.alloc_slot, fb.func);
             let k = fb.ins().iconst(types::I32, KIND_MEM);
-            let ac = fb.ins().call(alloc, &[k, ptr, logical, aligned]);
+            let z32m = fb.ins().iconst(types::I32, 0);
+            let ac = fb.ins().call(alloc, &[k, ptr, logical, aligned, z32m]);
             let h = fb.inst_results(ac)[0];
             fb.ins().store(flags, next_live, base, H_LIVE_MAPPED);
             fb.ins().store(flags, z32, base, H_LAST_OS_ERROR);
@@ -1265,6 +1555,16 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         })?;
     }
 
+    // PLAN-1065: the Windows-applicable sys973 ops (36 W) get REAL bodies
+    // (Win32 calls under the same ledger); the bytes-form ops that do not
+    // apply to this platform form (14 N) keep the honest named-unsupported
+    // stub — never a silent fallback or a link hole. The Linux legs of the
+    // shared table ship with PLAN-1063 (Windows runs none of them).
+    for kind in SYS973_WINDOWS_N_KINDS {
+        emit_sys973_stub(&mut om, *kind, WINCALL)?;
+    }
+    crate::platform_io_sys973::emit_sys973_win_bodies(&mut om, state, &loc, WINCALL)?;
+
     let product = om.finish();
     let bytes = product
         .emit()
@@ -1315,7 +1615,7 @@ pub(crate) fn emit_find_slot_body(
 
     fb.switch_to_block(chk_slot);
     let idx64 = fb.ins().sextend(types::I64, idx);
-    let off64 = fb.ins().ishl_imm(idx64, 6); // * 64
+    let off64 = fb.ins().imul_imm(idx64, SLOT_BYTES as i64);
     let hdr = fb.ins().iconst(types::I64, STATE_HEADER_BYTES as i64);
     let slot_off = fb.ins().iadd(off64, hdr);
     let slot = fb.ins().iadd(base, slot_off);
@@ -1373,6 +1673,14 @@ pub(crate) fn emit_alloc_slot_body(
     let os_ptr = fb.block_params(entry)[1];
     let logical = fb.block_params(entry)[2];
     let mapped = fb.block_params(entry)[3];
+    // PLAN-1065: 5th param `extra` — the std-stream id for stream slots
+    // (0 otherwise); the declared signature carries it even when a caller
+    // lane never passes a nonzero id.
+    let extra = fb
+        .block_params(entry)
+        .get(4)
+        .copied()
+        .unwrap_or_else(|| fb.ins().iconst(types::I32, 0));
     let base = state_ptr(om, state, fb);
     let num = fb.ins().load(types::I32, flags, base, H_NUM_SLOTS);
     let cap = fb.ins().iconst(types::I32, MAX_NATIVE_SLOTS as i64);
@@ -1400,7 +1708,7 @@ pub(crate) fn emit_alloc_slot_body(
     fb.ins().store(flags, ng, base, H_NEXT_GEN);
 
     let num64 = fb.ins().sextend(types::I64, num);
-    let off64 = fb.ins().ishl_imm(num64, 6);
+    let off64 = fb.ins().imul_imm(num64, SLOT_BYTES as i64);
     let hdr = fb.ins().iconst(types::I64, STATE_HEADER_BYTES as i64);
     let slot_off = fb.ins().iadd(off64, hdr);
     let slot = fb.ins().iadd(base, slot_off);
@@ -1411,6 +1719,7 @@ pub(crate) fn emit_alloc_slot_body(
     fb.ins().store(flags, os_ptr, slot, S_OS_PTR);
     fb.ins().store(flags, logical, slot, S_LOGICAL_LEN);
     fb.ins().store(flags, mapped, slot, S_MAPPED_LEN);
+    fb.ins().store(flags, extra, slot, S_STREAM_ID);
 
     let next_num = fb.ins().iadd(num, one32);
     fb.ins().store(flags, next_num, base, H_NUM_SLOTS);
@@ -1431,7 +1740,49 @@ pub const ALLOWED_KERNEL32_IMPORTS: &[&str] = &[
     // PLAN-1041: Windows text-console classification + Unicode write.
     "GetConsoleMode",
     "WriteConsoleW",
+    // PLAN-1065: sys973 system-resource bodies (public kernel32 entry
+    // points only — file/path/dir/env/clock/process surfaces).
+    "CloseHandle",
+    "CreateDirectoryW",
+    "CreateFileW",
+    "CreateJobObjectW",
+    "CreatePipe",
+    "CreateProcessW",
+    "DeleteFileW",
+    "FindClose",
+    "FindFirstFileW",
+    "FindNextFileW",
+    "FlushFileBuffers",
+    "GetCommandLineW",
+    "GetCurrentDirectoryW",
+    "GetEnvironmentVariableW",
+    "GetExitCodeProcess",
+    "GetFileAttributesW",
+    "GetFileInformationByHandle",
+    "GetFileSizeEx",
+    "GetFinalPathNameByHandleW",
+    "GetSystemTimeAsFileTime",
+    "MoveFileExW",
+    "PeekNamedPipe",
+    "QueryPerformanceCounter",
+    "QueryPerformanceFrequency",
+    "ReadFile",
+    "RemoveDirectoryW",
+    "SetCurrentDirectoryW",
+    "SetEnvironmentVariableW",
+    "SetFilePointerEx",
+    "SetHandleInformation",
+    "SetInformationJobObject",
+    "SetLastError",
+    "SleepEx",
+    "WaitForSingleObject",
+    "AssignProcessToJobObject",
+    "TerminateJobObject",
 ];
+
+/// PLAN-1065: the CSPRNG entry lives in bcrypt.dll — the ONE non-kernel32
+/// system DLL the lane may depend on, exactly this symbol and nothing else.
+pub const ALLOWED_BCRYPT_IMPORTS: &[&str] = &["BCryptGenRandom"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeImportReport {
@@ -1439,9 +1790,11 @@ pub struct PeImportReport {
     pub symbols: Vec<(String, String)>,
 }
 
-/// Inspect a linked Win64 PE executable and reject ANY non-kernel32 DLL
-/// (such as `msvcrt.dll`, `ucrtbase.dll`, `vcruntime*.dll`, `api-ms-win-crt-*`)
-/// or unapproved / CRT-delegated import symbol (`malloc`, `free`, `puts`, `printf`, etc.).
+/// Inspect a linked Win64 PE executable and reject ANY DLL outside the
+/// frozen set (kernel32.dll + bcrypt.dll for the PLAN-1065 CSPRNG entry)
+/// — `msvcrt.dll`, `ucrtbase.dll`, `vcruntime*.dll`, `api-ms-win-crt-*`
+/// stay forbidden — and any unapproved / CRT-delegated import symbol
+/// (`malloc`, `free`, `puts`, `printf`, etc.).
 pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
     use cranelift_object::object::pe::{ImageNtHeaders64, IMAGE_DIRECTORY_ENTRY_IMPORT};
     use cranelift_object::object::read::pe::{ImageThunkData, PeFile64};
@@ -1474,12 +1827,18 @@ pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
             .name(desc.name.get(LE))
             .map_err(|e| MnError::Infra(format!("pe.audit.dll-name: {e}")))?;
         let dll = String::from_utf8_lossy(raw_dll).into_owned();
-        if !dll.eq_ignore_ascii_case("kernel32.dll") {
+        let allowed_syms: &[&str] = if dll.eq_ignore_ascii_case("kernel32.dll") {
+            ALLOWED_KERNEL32_IMPORTS
+        } else if dll.eq_ignore_ascii_case("bcrypt.dll") {
+            ALLOWED_BCRYPT_IMPORTS
+        } else {
             return Err(MnError::Unsupported(
                 "pe.audit.forbidden-dll",
-                format!("unexpected DLL `{dll}` in native platform-io executable (expected kernel32.dll only)"),
+                format!(
+                    "unexpected DLL `{dll}` in native platform-io executable (expected kernel32.dll/bcrypt.dll only)"
+                ),
             ));
-        }
+        };
         dlls.push(dll.clone());
 
         let ilt = desc.original_first_thunk.get(LE);
@@ -1505,7 +1864,7 @@ pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
                 .hint_name(thunk.address())
                 .map_err(|e| MnError::Infra(format!("pe.audit.hint-name: {e}")))?;
             let sym = String::from_utf8_lossy(name_bytes).into_owned();
-            if !ALLOWED_KERNEL32_IMPORTS.contains(&sym.as_str()) {
+            if !allowed_syms.contains(&sym.as_str()) {
                 return Err(MnError::Unsupported(
                     "pe.audit.forbidden-symbol",
                     format!("unexpected Win32 import `{sym}` from `{dll}`"),

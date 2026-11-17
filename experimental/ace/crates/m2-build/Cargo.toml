@@ -1,0 +1,61 @@
+[package]
+autotests = false
+name = "ace-m2-build"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-978 engineering incremental multi-target build + precompiled candidate SDK (identity layer, runtime compatibility, provider selection, SDK recipe, build/run driver)"
+publish = false
+
+# Layering (plan §5 ID-01..06): this crate OWNS the project-level
+# engineering build identity, runtime compatibility, provider artifact
+# selection, the candidate-SDK recipe and the build/run driver. It
+# CONSUMES the delivered owners read-only — the 783 ManagedStore, the
+# a2x semantic/fragment layers, the 967 S967B provider build cache, the
+# AV executor and the shared-MIR native lane — and never re-implements
+# them (no second loader/store/FFI generator).
+[dependencies]
+ace-artifacts = { path = "../artifacts" }
+ace-a2x-core = { path = "../a2x-core" }
+ace-a2x-rust = { path = "../a2x-rust" }
+ace-a2x-c = { path = "../a2x-c" }
+ace-a2x-python = { path = "../a2x-python" }
+ace-a2x-store = { path = "../a2x-store" }
+ace-abi = { path = "../abi" }
+ace-av = { path = "../av" }
+ace-av-core = { path = "../av-core" }
+ace-native = { path = "../native" }
+ace-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "ac-build"
+path = "src/bin/ac-build.rs"
+
+[[test]]
+name = "b0_closure"
+path = "tests/b0_closure.rs"
+
+[[test]]
+name = "identity_cache"
+path = "tests/identity_cache.rs"
+
+[[test]]
+name = "compat_selection"
+path = "tests/compat_selection.rs"
+
+[[test]]
+name = "sdk_pack"
+path = "tests/sdk_pack.rs"
+
+[[test]]
+name = "restore_recovery"
+path = "tests/restore_recovery.rs"
+
+[[test]]
+name = "coverage_lanes"
+path = "tests/coverage_lanes.rs"
+
+[[test]]
+name = "load_selection"
+path = "tests/load_selection.rs"

@@ -150,6 +150,7 @@ pub fn source_sig(
             ResKind::I32 => (VT::I32, false),
             ResKind::Bool => (VT::Bool, false),
             ResKind::ViewText => (VT::Str, false),
+            ResKind::OutBytes => (VT::I32, false),
             ResKind::Rec { rec, fields, role } => (
                 VT::Rec(record_index(rec, fields, records)?),
                 matches!(role, ViewRole::Mut | ViewRole::Out),
@@ -213,6 +214,7 @@ pub fn source_sig_readonly(
             ResKind::I32 => (VT::I32, false),
             ResKind::Bool => (VT::Bool, false),
             ResKind::ViewText => (VT::Str, false),
+            ResKind::OutBytes => (VT::I32, false),
             ResKind::Rec { rec, fields, role } => (
                 VT::Rec(record_index(rec, fields, records)?),
                 matches!(role, ViewRole::Mut | ViewRole::Out),
@@ -407,6 +409,10 @@ pub fn body_foreign_plan(
             let lane = lane as u32;
             match p {
                 ResKind::ViewText => {
+                    let owner = arg_of(lane as usize).and_then(|a| view_owner(body, a));
+                    cred.view_borrows.push((lane, owner));
+                }
+                ResKind::OutBytes => {
                     let owner = arg_of(lane as usize).and_then(|a| view_owner(body, a));
                     cred.view_borrows.push((lane, owner));
                 }

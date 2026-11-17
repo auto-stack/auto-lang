@@ -262,7 +262,11 @@ impl<S: CtEnvelopeSink> CtService<S> {
                         return Err(CtExecError {
                             code: "cte.freeze/publish".into(),
                             message: e.to_string(),
-                            av_reached: false,
+                            // The AV really ran and produced this value: a
+                            // failed publication is a POST-execution failure,
+                            // so the reached fact stays true (it is counted
+                            // in ct_execute and the execute-boundary log).
+                            av_reached: true,
                         });
                     }
                 }
@@ -411,7 +415,10 @@ impl<S: CtEnvelopeSink> CtService<S> {
                         return Err(CtExecError {
                             code: "cte.freeze/publish".into(),
                             message: e.to_string(),
-                            av_reached: false,
+                            // Same post-execution fact as the call entry: the
+                            // AV ran, so the publication failure cannot claim
+                            // it did not.
+                            av_reached: true,
                         });
                     }
                 }

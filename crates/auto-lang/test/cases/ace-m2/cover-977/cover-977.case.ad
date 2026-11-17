@@ -1,0 +1,67 @@
+# PLAN-977 B-REVERSE-V/AC-COVERAGE — the six-path coverage corpus
+# (`V-COVERAGE`, §6): ONE public Auto source and ONE independent expected
+# value (2 + 3*4 = 14, hand-computed) observed through the source-consuming
+# paths that can consume the same bytes:
+#
+#   av-native  AV executor (native stdlib/adapter lane)   -> run, exit 14
+#   ac-native  AC native compiler backend                -> run, exit 14
+#   a2py-run   A2PY (real OS Python, parent-side judged)  -> run, stdout value:14
+#   a2r-emit   A2R (HIR -> Rust fileset)                  -> EMISSION lock (bytes)
+#   a2c-emit   A2C (HIR -> C fileset)                     -> EMISSION lock (bytes)
+#
+# Honesty: the A2R/A2C legs are *emission* legs (worker protocol/recipe
+# identity + reviewed byte goldens); they are NOT run legs and the emit
+# checks declare no exit/stdout expectation. Their real compile+run
+# (rustc / MSVC cl) is the explicit certify axis (`certify`/`certify-c`
+# ops with hand-written references, permanent certify suites), recorded in
+# the Plan receipt; the `p977_cover_emit_cannot_masquerade_as_run` control
+# below mutates this corpus to expect an exit from the emit leg and proves
+# the harness refuses that reading.
+#
+# The public source bytes are the frozen ACE-M1 B01 bytes (own copy,
+# provenance: ../../ace-m1/src/B01.at), so the AV/AC oracles are the same
+# frozen 14 and the A2R leg rides the reviewed B01 emission profile.
+#
+# Provider-dispatch legs (AV/C, AV/Rust) cannot share this pure source:
+# the provider identity is declared IN the source (`use.c`/`use.rs`), so
+# they are bound to the ace-abi F0 provider suites (real C machine code /
+# real Rust provider with independent op oracles), recorded in the Plan
+# receipt. Legacy A2C is bound to its own frozen `a2c` group.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.cover.scalar"
+  tags: ["ace-m2", "cover-977", "plan-977", "six-path"]
+  links: ["PLAN-977"]
+  source: { file: "src/scalar.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-native", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 14 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 14 } },
+    { id: "a2py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "scalar", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "value:14\n", compare: "bytes" } } },
+    { id: "a2r-emit", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2r/hir-scalar-emit-v1", a2x_hir: { profile: "core", entry: "main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-a2r/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-a2r/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-a2r/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-a2r/manifest.json", compare: "bytes" }
+      ] } },
+    { id: "a2c-emit", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2c/hir-scalar-emit-v1", a2x_hir: { profile: "scalar", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-a2c/main.c", compare: "bytes" },
+        { path: "a2x_c_runtime.h", file: "golden-a2c/a2x_c_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-a2c/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-a2c/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

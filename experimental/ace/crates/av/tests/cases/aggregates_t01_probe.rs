@@ -366,7 +366,7 @@ fn main() int { return 1 }";
     let src = "type Node { v int; next Box<Node> }
 fn main() int {
     let tail = Node(41, List<Node>.new())
-    let cell = Box(tail)
+    let cell = Box(tail.move)
     let n = Node(1, cell.move)
     return n.v + n.next.get(0).v
 }";
@@ -507,4 +507,440 @@ fn v08_nested_place_self_alias_and_partial_move_controls() {
         .err()
         .expect("view materialization must reject");
     assert!(err.iter().any(|d| d.code == "source.view-escape"));
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-1035 (T-02): RES-01 / RES-02 — the aggregate resource classification
+// and the Named field-projection fusion, through the real source front doors.
+// ---------------------------------------------------------------------------
+
+/// RES-01 (F34): a List-only record (`Bag { items List<int> }`) is a RESOURCE
+/// record at every layer. The move transfers it (no implicit Copy), the
+/// projection reads through, and the frame ledger closes — a "not owned"
+/// classification shows up here as a leaked inner buffer.
+#[test]
+fn audit1035_res_01_list_only_record_ownership() {
+    let src = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var a = Bag(xs.move)\n    var b = a.move\n    return b.items.get(0)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("RES-01 list-only record executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0, "the inner List buffer must be released");
+    assert_eq!(run.allocs, run.frees, "every buffer releases exactly once");
+}
+
+/// RES-01 control: the Str+List record stays owned (it did before) and a
+/// PURE-SCALAR record stays a copyable value (the fix must not turn every
+/// record into a resource).
+#[test]
+fn audit1035_res_01_str_plus_list_and_scalar_record() {
+    // Str + List carrier: value through the Str field and the List field.
+    let src = "type Node { name Str; items List<int> }\nfn main() int {\n    var xs = [40, 2]\n    let n = Node(\"\", xs.move)\n    return n.items.get(0) + n.items.get(1)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("RES-01 Str+List record executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+
+    // Pure scalar record: NOT a resource — an implicit copy stays legal and
+    // both bindings read (no move discipline on a copyable value).
+    let pair = "type Pair { a int; b int }\nfn main() int {\n    let p = Pair(20, 22)\n    let q = p\n    return p.a + q.b\n}";
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(pair, "d_main")
+        .expect("RES-01 pure scalar record copies");
+    assert_eq!(run2.value, 42);
+    assert_eq!(run2.live_after, 0);
+    assert_eq!(run2.allocs, 0, "a pure value record allocates nothing");
+}
+
+/// RES-01 (F34): moving an owned aggregate out and then reading it again is
+/// a use-after-move rejection at the MIR ownership gate, not a silent alias.
+/// Before the classification fix a List-only record was "not owned", so the
+/// transfer killed nothing; the fix makes it behave exactly like a
+/// Str-bearing record (`mir.use-after-move`).
+#[test]
+fn audit1035_res_01_move_then_read_rejects() {
+    let bad = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var a = Bag(xs.move)\n    var b = a.move\n    return a.items.get(0)\n}";
+    let err = ace_av::collections_864_support::compile_and_execute_aggregates(bad, "d_main")
+        .err()
+        .expect("reading a moved Bag must reject");
+    assert!(
+        err.contains("mir.use-after-move"),
+        "expected the MIR ownership verdict, got: {err}"
+    );
+
+    // The same gate for a plain List local moved into a deeper list.
+    let list = "fn main() int {\n    var k = [1, 2]\n    var xs = List<List<int>>.new()\n    xs.push(k.move)\n    return k.get(0)\n}";
+    let err = ace_av::collections_864_support::compile_and_execute_aggregates(list, "d_main")
+        .err()
+        .expect("reading a moved List must reject");
+    assert!(
+        err.contains("mir.use-after-move") || err.contains("source."),
+        "expected a move-discipline verdict, got: {err}"
+    );
+}
+
+/// RES-01: the frozen rejections stay frozen — a source `List.clone` and the
+/// aggregate record builtin clone are not opened by this fix.
+#[test]
+fn audit1035_res_01_clone_stays_unsupported() {
+    let src = "fn main() int {\n    var xs = [1, 2]\n    return xs.clone().get(0)\n}";
+    let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+        .err()
+        .expect("List.clone stays unsupported");
+    assert!(err.iter().any(|d| d.code == "source.unsupported"));
+}
+
+/// RES-02 (F33): `xs.get(index:0).code` is the Named spelling of the Pos
+/// projection. The ordinary `get` admits a Named index (single argument by
+/// value), so the fused projection must too — and never panic.
+#[test]
+fn audit1035_res_02_named_get_projection() {
+    let named = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:0).code\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(named, "d_main")
+        .expect("Named index projection executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+
+    let pos = named.replace("get(index:0)", "get(0)");
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(&pos, "d_main")
+        .expect("Pos index projection executes");
+    assert_eq!(run2.value, 42);
+
+    // The frozen collections face admits the same shape (the fusion gate is
+    // the shared resolve path, not an aggregates-only branch).
+    let run3 = ace_av::collections_864_support::compile_and_execute(named, "d_main")
+        .expect("Named projection on the frozen collections face");
+    assert_eq!(run3.value, 42);
+}
+
+/// RES-02: the Named index is admitted like the Pos one but a genuinely
+/// wrong program still gets a NAMED diagnostic (never an executor/Infra
+/// panic): wrong index type, wrong arity and a missing field.
+#[test]
+fn audit1035_res_02_named_neighbours_reject_with_diagnostics() {
+    for (name, src) in [
+        (
+            "wrong-index-type",
+            "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:\"0\").code\n}",
+        ),
+        (
+            "arity",
+            "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:0, 1).code\n}",
+        ),
+        (
+            "missing-field",
+            "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    return xs.get(index:0).nope\n}",
+        ),
+    ] {
+        let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+            .err()
+            .unwrap_or_else(|| panic!("{name}: must reject"));
+        assert!(
+            !err.is_empty(),
+            "{name}: expected a named source diagnostic, got an empty list"
+        );
+    }
+}
+
+/// RES-02: projecting a whole owned element through the Named spelling is
+/// still a view, not a materialized value.
+#[test]
+fn audit1035_res_02_named_whole_element_stays_a_view() {
+    let bad = "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"ab\", 42))\n    let y = xs.get(index:0)\n    return y.code\n}";
+    let err = ace_core::source::compile_aggregates_source(bad, "p.at", &[])
+        .err()
+        .expect("a whole owned element view cannot be bound");
+    assert!(
+        err.iter().any(|d| d.code == "source.view-escape"),
+        "{err:?}"
+    );
+}
+
+/// RES-01 matrix row: a TUPLE carrying a List owns (S = any member S), and
+/// destructuring still yields the owned elements with a closing ledger.
+#[test]
+fn audit1035_res_01_tuple_of_list_is_owned() {
+    let src = "fn main() int {\n    var xs = [40, 2]\n    let t = (xs.move, 7)\n    let (a, b) = t\n    return a.get(0) + a.get(1) + b - 7\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("tuple-of-list executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}
+
+/// RES-01 (F34) DERIVED FACTS, pinned permanently (review R-1035-R1-01):
+/// the four-layer classification the plan's matrix names for a List-only
+/// record — source (behaviour above) → HIR CollectionsPlan Deep (the local
+/// appears in the body's owned set) → shared MIR `type_is_owned` → layout
+/// `is_copy=false`. The pure-scalar record is the discriminating control
+/// (not owned, copyable, allocates nothing).
+#[test]
+fn audit1035_res_01_derived_facts() {
+    use ace_av_core::layout::compute_layout;
+    use ace_av_core::mir::{MirModule, MirType};
+    use ace_av_core::ownership::type_is_owned;
+
+    fn record_type_idx(mir: &MirModule, suffix: &str) -> u32 {
+        mir.types
+            .iter()
+            .position(|t| matches!(t, MirType::Record(r) if r.name.ends_with(suffix)))
+            .unwrap_or_else(|| panic!("MIR has no record type ending in `{suffix}`")) as u32
+    }
+    fn record_hir_type(m: &ace_core::hir::Module, suffix: &str) -> ace_core::hir::TypeId {
+        m.types
+            .iter()
+            .enumerate()
+            .find(|(_, td)| {
+                td.id_text.ends_with(suffix)
+                    && matches!(td.kind, ace_core::hir::TypeKind::Record(_))
+            })
+            .map(|(i, _)| ace_core::hir::TypeId(i as u32))
+            .unwrap_or_else(|| panic!("HIR has no record type ending in `{suffix}`"))
+    }
+
+    // --- List-only record: owned at HIR facts + MIR, never copyable -------
+    let bag_src = "type Bag { items List<int> }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(42)\n    var a = Bag(xs.move)\n    var b = a.move\n    return b.items.get(0)\n}";
+    let compiled = ace_core::source::compile_aggregates_source(bag_src, "facts.at", &[])
+        .expect("Bag compiles");
+    let mir =
+        ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0).expect("Bag lowers");
+    let bag_ty = record_type_idx(&mir, "Bag");
+    assert!(
+        type_is_owned(&mir, bag_ty),
+        "MIR must classify a List-only record as owned"
+    );
+    let layout = compute_layout(&mir, bag_ty).expect("Bag lays out");
+    assert!(
+        !layout.is_copy,
+        "a List-carrying record is not a copyable value"
+    );
+
+    let m = &compiled.checked.bundle().modules[0];
+    let body = &m.bodies[0];
+    let bag_hir = record_hir_type(m, "Bag");
+    let facts = ace_core::collections_facts::compute_body_facts(m, body);
+    let bag_locals: Vec<u32> = body
+        .locals
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.ty, ace_core::hir::TypeUse::Ref(t) if t == bag_hir))
+        .map(|(i, _)| i as u32)
+        .collect();
+    assert!(
+        !bag_locals.is_empty(),
+        "the Bag-typed local must exist in the HIR body"
+    );
+    assert!(
+        bag_locals.iter().all(|l| facts.owned.contains(l)),
+        "the HIR facts must release every Bag local (Deep): owned={:?} locals={bag_locals:?}",
+        facts.owned
+    );
+
+    // --- pure-scalar record: the discriminating control -------------------
+    let pair_src = "type Pair { a int; b int }\nfn main() int {\n    let p = Pair(20, 22)\n    let q = p\n    return p.a + q.b\n}";
+    let compiled = ace_core::source::compile_aggregates_source(pair_src, "facts2.at", &[])
+        .expect("Pair compiles");
+    let mir =
+        ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0).expect("Pair lowers");
+    let pair_ty = record_type_idx(&mir, "Pair");
+    assert!(
+        !type_is_owned(&mir, pair_ty),
+        "a pure-scalar record owns nothing"
+    );
+    let layout = compute_layout(&mir, pair_ty).expect("Pair lays out");
+    assert!(layout.is_copy, "a pure-scalar record stays copyable");
+    let m = &compiled.checked.bundle().modules[0];
+    let body = &m.bodies[0];
+    let pair_hir = record_hir_type(m, "Pair");
+    let facts = ace_core::collections_facts::compute_body_facts(m, body);
+    let pair_locals: Vec<u32> = body
+        .locals
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.ty, ace_core::hir::TypeUse::Ref(t) if t == pair_hir))
+        .map(|(i, _)| i as u32)
+        .collect();
+    assert!(!pair_locals.is_empty(), "the Pair local must exist");
+    assert!(
+        pair_locals.iter().all(|l| !facts.owned.contains(l)),
+        "a pure value record is not in the owned set: {:?} {pair_locals:?}",
+        facts.owned
+    );
+}
+
+// ---- PLAN-1036 (AUDIT-1024 F28/F29): for-in latch and endpoint ----------
+//
+// F28: the desugared counted loop runs `If (i <cond> hi) { body; i = i + 1 }`;
+// `continue` jumps to the loop header, so it SKIPPED the hidden index
+// advance and repeated the current element (the audit's finite model:
+// four passes of i = 0 -> `return i` yields 0 instead of the correct 99).
+// Every counterexample below is bounded by an independent guard so a
+// repeated element can never hang the harness: the wrong implementation
+// returns the distinguishing sentinel 0 / 777 / 10 instead of timing out.
+
+/// F28 / LOOP-01: `continue` runs THIS loop's latch exactly once; `break`
+/// and `return` do not advance; a nested `continue` advances only the
+/// inner loop; the existing iterate-mutate rejection is unchanged.
+#[test]
+fn audit1036_loop_01_continue_advances_this_loop_only() {
+    // Range (the plan's frozen finite counterexample): 3 iterations then
+    // 99. The pre-fix path repeats i = 0 and returns 0.
+    let range = "fn main() int {\n    var n = 0\n    for i in 0 .. 3 {\n        n = n + 1\n        if n == 4 { return i }\n        if n < 4 { continue }\n    }\n    return 99\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(range, "d_main")
+        .expect("range for-in with a conditional continue executes");
+    assert_eq!(run.value, 99, "continue must advance the range index");
+    assert_eq!(run.live_after, 0);
+
+    // List neighbour (same cause, different legitimate neighbour): the
+    // pre-fix path re-reads element 0 and returns 10.
+    let list = "fn main() int {\n    var xs = List<int>.new()\n    xs.push(10)\n    xs.push(20)\n    xs.push(30)\n    var n = 0\n    for x in xs {\n        n = n + 1\n        if n == 4 { return x }\n        if n < 4 { continue }\n    }\n    return 99\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(list, "d_main")
+        .expect("List for-in with a conditional continue executes");
+    assert_eq!(run.value, 99, "continue must advance the List index");
+    assert_eq!(run.live_after, 0);
+    assert_eq!(
+        run.allocs, run.frees,
+        "the iteration view keeps a closed ledger"
+    );
+
+    // Nested ownership: the inner `continue` advances only the inner
+    // index — 2 outer x 2 inner iterations (the body counts BOTH members
+    // of each inner pass) = 24. The pre-fix path repeats j = 0 forever, so
+    // the body self-limits with 777 (never a hang / timeout).
+    let nested = "fn main() int {\n    var outer = 0\n    var inner = 0\n    for i in 0 .. 2 {\n        outer = outer + 1\n        for j in 0 .. 2 {\n            inner = inner + 1\n            if inner > 100 { return 777 }\n            if j == 0 { continue }\n        }\n    }\n    return outer * 10 + inner\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(nested, "d_main")
+        .expect("nested for-in with an inner continue executes");
+    assert_eq!(
+        run.value, 24,
+        "the inner continue advances only the inner loop"
+    );
+
+    // break leaves the loop without an extra advance: 3 x (10 + 1).
+    let brk = "fn main() int {\n    var t = 0\n    for i in 0 .. 3 {\n        t = t + 10\n        for j in 0 .. 5 {\n            if j == 1 { break }\n            t = t + 1\n        }\n    }\n    return t\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(brk, "d_main")
+        .expect("break inside a nested for-in executes");
+    assert_eq!(run.value, 33, "break must not advance the index");
+
+    // return leaves the loop without an extra advance: 3*100 + 2.
+    let ret = "fn main() int {\n    var n = 0\n    for i in 0 .. 10 {\n        n = n + 1\n        if i == 2 { return n * 100 + i }\n    }\n    return -1\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(ret, "d_main")
+        .expect("return inside a for-in executes");
+    assert_eq!(run.value, 302, "return must not advance the index");
+
+    // An OWNED element iterated as a view: the same latch rule keeps the
+    // view index moving and the per-iteration ledger closed (lengths are
+    // distinct, so a repeated element cannot accidentally match).
+    let owned_view = "fn main() int {\n    var xs = List<Str>.new()\n    xs.push(\"a\")\n    xs.push(\"bb\")\n    xs.push(\"cccc\")\n    var n = 0\n    for x in xs {\n        n = n + 1\n        if n < 3 { continue }\n        return x.len()\n    }\n    return 99\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(owned_view, "d_main")
+        .expect("owned-element view iteration with continue executes");
+    assert_eq!(run.value, 4, "the third (distinct) element must be reached");
+    assert_eq!(run.live_after, 0, "the view ledger closes at loop exit");
+    assert_eq!(run.allocs, run.frees);
+
+    // Nested NON-counted loops (review F-R1-01): a bare `loop` and a
+    // `for <cond>` (while) inside the counted loop carry their OWN
+    // `continue` target — the counted loop's latch is keyed by target and
+    // must NOT fire for them, and the outer index must still advance.
+    // Bare loop: 2 inner passes per outer pass (k = 1 continue, k = 2 break).
+    let nested_bare_loop = "fn main() int {\n    var outer = 0\n    var inner = 0\n    var k = 0\n    for i in 0 .. 3 {\n        outer = outer + 10\n        loop {\n            k = k + 1\n            inner = inner + 1\n            if k == 2 {\n                k = 0\n                break\n            }\n            continue\n        }\n    }\n    return outer + inner\n}";
+    let run =
+        ace_av::collections_864_support::compile_and_execute_aggregates(nested_bare_loop, "d_main")
+            .expect("a bare loop nested in a counted for-in executes");
+    assert_eq!(run.value, 36, "3 outer x 10 + 2 inner passes each");
+    // `for <cond>` (while) nested the same way: 2 passes per outer pass.
+    let nested_while = "fn main() int {\n    var outer = 0\n    var inner = 0\n    for i in 0 .. 2 {\n        outer = outer + 10\n        var j = 0\n        for j < 2 {\n            j = j + 1\n            inner = inner + 1\n            continue\n        }\n    }\n    return outer + inner\n}";
+    let run =
+        ace_av::collections_864_support::compile_and_execute_aggregates(nested_while, "d_main")
+            .expect("a while-shaped loop nested in a counted for-in executes");
+    assert_eq!(run.value, 24, "2 outer x 10 + 2 inner passes each");
+
+    // The same obligation on the ROUTED path: a `continue` inside a `try`
+    // in the loop body reaches the loop through the control-state dispatch,
+    // which must also run the latch (3 iterations of n = n + 1 => 30).
+    let via_try = "fn main() int {\n    var n = 0\n    var t = 0\n    for i in 0 .. 3 {\n        try {\n            n = n + 1\n            if n < 3 { continue }\n        } catch e {\n            t = t + 1\n        }\n    }\n    return n * 10 + t\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(via_try, "d_main")
+        .expect("continue through a try dispatch executes");
+    assert_eq!(run.value, 30, "the routed continue advances the loop too");
+    assert_eq!(run.allocs, run.frees);
+
+    // The iteration-guard obligations do not loosen: structurally
+    // mutating the iterated list inside the body still rejects.
+    let mutate = "fn main() int {\n    var xs = List<int>.new()\n    xs.push(1)\n    for x in xs {\n        xs.push(2)\n    }\n    return 0\n}";
+    let err = ace_core::source::compile_aggregates_source(mutate, "p.at", &[])
+        .err()
+        .expect("mutating the iterated list inside for-in must reject");
+    assert!(
+        err.iter().any(|d| d.code == "source.iterate-mutate"),
+        "expected the iterate-mutate rejection, got {:?}",
+        err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// F29 / LOOP-02: an inclusive i32 range ends at its last member — the
+/// synthesized advance never produces hi + 1 (no user-body overflow, no
+/// widened value type). Empty / reversed / normal neighbours keep their
+/// iteration counts, and the endpoint guard covers `continue` and
+/// `break` on the last member too.
+#[test]
+fn audit1036_loop_02_inclusive_endpoint_no_synthetic_overflow() {
+    fn run(src: &str) -> ace_av::collections_864_support::CollectionsRun {
+        ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+            .unwrap_or_else(|e| panic!("source must execute: {e}\nsource: {src}"))
+    }
+
+    // Single-point inclusive range at the i32 maximum: one iteration.
+    // The pre-fix path computes 2147483647 + 1 (trap: IntOverflow).
+    let single =
+        "fn main() int {\n    var n = 0\n    for i in 2147483647 ..= 2147483647 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(single).value, 1, "the last inclusive member is the end");
+
+    // Empty and reversed inclusive ranges execute zero times.
+    let empty = "fn main() int {\n    var n = 0\n    for i in 2 ..= 1 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(empty).value, 0);
+    let empty_excl = "fn main() int {\n    var n = 0\n    for i in 3 .. 3 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(empty_excl).value, 0);
+
+    // Normal half-open / inclusive counts are unchanged.
+    let half_open = "fn main() int {\n    var n = 0\n    for i in 0 .. 3 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(half_open).value, 3);
+    let incl = "fn main() int {\n    var n = 0\n    for i in 0 ..= 2 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(incl).value, 3);
+
+    // Endpoint neighbours: MAX-1 ..= MAX is two members; the i32 minimum
+    // lower bound keeps the existing i32 evaluation order.
+    let max_minus = "fn main() int {\n    var n = 0\n    for i in 2147483646 ..= 2147483647 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(max_minus).value, 2);
+    let min_low = "fn main() int {\n    var n = 0\n    for i in -2147483648 ..= -2147483647 {\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(min_low).value, 2);
+
+    // The continue-side latch takes the same endpoint guard: skipping the
+    // first member of the last pair still ends after the maximum.
+    let cont_last = "fn main() int {\n    var n = 0\n    for i in 2147483646 ..= 2147483647 {\n        if i == 2147483646 { continue }\n        n = n + 1\n    }\n    return n\n}";
+    assert_eq!(run(cont_last).value, 1);
+
+    // break on the single maximum member: no latch runs after it.
+    let brk_last = "fn main() int {\n    var n = 0\n    for i in 2147483647 ..= 2147483647 {\n        n = n + 1\n        break\n    }\n    return n\n}";
+    assert_eq!(run(brk_last).value, 1);
+
+    // return at the LAST member (review F-R1-02): `return` exits without the
+    // synthesized advance, so the i32 maximum is a value, never MAX + 1.
+    let ret_single = "fn main() int {\n    for i in 2147483647 ..= 2147483647 {\n        return i\n    }\n    return 0\n}";
+    assert_eq!(run(ret_single).value, 2147483647);
+    // ... and after a normal advance into the last member.
+    let ret_last = "fn main() int {\n    var n = 0\n    for i in 2147483646 ..= 2147483647 {\n        n = n + 1\n        if i == 2147483647 { return n * 10 + 7 }\n    }\n    return -1\n}";
+    assert_eq!(run(ret_last).value, 27);
+
+    // A bound that is not a literal stays OUTSIDE the admitted range
+    // grammar (`for i in hi ..= hi` is a named `source.syntax` rejection,
+    // not a silent pass): the endpoint rule above is proven on literals,
+    // and the unsupported surface is not being extended here.
+    let dynamic = "fn main() int {\n    var hi int = 2147483647\n    var n = 0\n    for i in hi ..= hi {\n        n = n + 1\n    }\n    return n\n}";
+    let err = ace_core::source::compile_aggregates_source(dynamic, "p.at", &[])
+        .err()
+        .expect("a non-literal range bound is a named grammar rejection");
+    assert!(
+        err.iter().any(|d| d.code == "source.syntax"),
+        "expected the syntax rejection for an identifier range bound, got {:?}",
+        err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+    );
 }

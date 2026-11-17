@@ -63,7 +63,16 @@
   caller 键）；死表项/span/快照不入键。
 - typed 居民会话：暖 body 编辑只重备/重验/重 emit 受影响单元（签名变更
   时含真实依赖者），whole-module fallback 计数恒 0；A→B→A 复用历史受检
-  对象而非再 mint；原子多单元编辑承载 callee 签名变更与其 caller 更新。
+  对象而非再 mint。
+- 多单元编辑（callee 签名变更与其 caller 更新，或互不相关单元同批提交）
+  是**同一接受事务**：候选文档与全部受影响单元先行构建/验证/准入/产出，
+  全部成功后才一次切换文档/居民/代际；任一步（build/verify/admit/emit/
+  store 写）失败不部分安装，失败不消耗 history 键，旧 entry_plan 与已接受
+  COFF 继续可 link/run，修复后同批可重试。尝试计数（verify/prepare/fp/
+  admit/emit/persist/cache hit）可因失败尝试增长，接受态与 whole-module
+  fallback=0 不变；store 中无根对象字节是内容寻址可回收副产物，晚失败不
+  因此改变会话接受态。source 入口保持其既有零写拒绝语义（见
+  [native cache](../auto-ac/mir-native-cache.md)），本条不扩大 typed 公开能力。
 - 冷恢复从 store 按指纹重准入（emit 0、wrapper 恢复），PE 实际运行。
 
 ## 范围与拒绝（非目标保留）

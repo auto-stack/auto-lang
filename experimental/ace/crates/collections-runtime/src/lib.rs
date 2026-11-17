@@ -36,6 +36,7 @@ extern "system" {
         b_len: i32,
         out_len: *mut i32,
     ) -> *mut u8;
+    fn ac_rt_own_from_char(ch: i32, out_len: *mut i32) -> *mut u8;
     fn ac_rt_char_from_codepoint(cp: i32) -> i32;
     fn ac_rt_summary();
 }
@@ -1023,6 +1024,29 @@ pub unsafe extern "system" fn mn_coll_str_char_at(bits: u64, index: i32) -> i32 
 #[no_mangle]
 pub unsafe extern "system" fn mn_coll_char_from_codepoint(cp: i32) -> i32 {
     ac_rt_char_from_codepoint(cp)
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_str_from_char(dst: *mut Cell, ch: i32) -> i32 {
+    status((|| {
+        let mut out = 0i32;
+        let data = ac_rt_own_from_char(ch, &mut out);
+        if data.is_null() {
+            return Err(if out == ac_text_runtime::ERR_CANCELLED {
+                CANCELLED
+            } else if out == ac_text_runtime::ERR_INVALID_SCALAR {
+                INVALID
+            } else {
+                RESOURCE
+            });
+        }
+        let n = new_node(TEXT, 0, out as usize)?;
+        (*n).data = data;
+        (*n).len = out as usize;
+        commit(dst, owner(n));
+        ev_own(dst, false);
+        Ok(())
+    })())
 }
 
 #[no_mangle]

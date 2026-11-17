@@ -216,6 +216,7 @@ pub(crate) fn admit_layouts(
                     | MirInstr::StrCharAt { .. }
                     | MirInstr::StrSlice { .. }
                     | MirInstr::StrToOwned { .. }
+                    | MirInstr::StrFromChar { .. }
                     | MirInstr::StrConcat { .. }
                     | MirInstr::CharToCodepoint { .. }
                     | MirInstr::CharFromCodepoint { .. }
@@ -669,6 +670,7 @@ impl Lower<'_, '_> {
             // the literal's own binding).
             | StrSlice { dst, .. }
             | StrConcat { dst, .. }
+            | StrFromChar { dst, .. }
             | StrToOwned { dst, .. } => Some(*dst),
             VariantSwitch { root, .. } => Some(*root),
             _ => None,
@@ -692,6 +694,7 @@ impl Lower<'_, '_> {
                     // own binding).
                     | StrSlice { .. }
                     | StrConcat { .. }
+                    | StrFromChar { .. }
                     | StrToOwned { .. }
             );
             self.check_slot(dst, bind)?;
@@ -854,6 +857,11 @@ impl Lower<'_, '_> {
                 let d = self.addr(*dst);
                 let v = self.addr(*view);
                 self.checked("mn_coll_clone", &[(d, types::I64), (v, types::I64)])?;
+            }
+            StrFromChar { dst, ch } => {
+                let d = self.addr(*dst);
+                let c = self.scalar(*ch);
+                self.checked("mn_coll_str_from_char", &[(d, types::I64), (c, types::I32)])?;
             }
             CharToCodepoint { dst, ch } => {
                 let v = self.scalar(*ch);

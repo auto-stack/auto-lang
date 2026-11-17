@@ -120,3 +120,13 @@ schema 5 空选择节）拒绝；篡改选择记录破坏指纹即拒。选择�
 与 grant 前置检查见 [ace-binding-and-assembly.md](ace-binding-and-assembly.md)
 四轴节；收据永不携带授权或 provider 地址——恢复重授权由选择合同的
 `assembly.missing-grant` 在 dispatch 前承担。
+
+## PLAN-978 增量：工程构建身份与候选 SDK 装配账目（SD-03/SD-ID-ASSEMBLY/SD-COVERAGE/SD-LOAD 工作稿）
+
+工程级多目标构建（av/native/a2r/a2c/a2py）与可重定位候选 SDK 的装配合同沉淀于
+[ace-migration/m2-build.md](../../ace-migration/m2-build.md)：per-(project,target)
+工程构建身份（真实读轴：源/闭包/grammar/工具溯源/provider 构建）、runtime 兼容与
+provider 选择投影独立分账（rustc 身份不作运行准入）、构建工具与运行依赖分列。
+1043 后缀来源层（public `.at` + `<base>.<suffix>.at`）进入 SDK 闭包的选择账目
+（选中 vs 同目录候选，未知后缀/缺公共层/重复实现具名拒绝）在 m2-build 侧落地；
+语言侧装配计划/合并语义仍归本规范与 1043。本节为工作稿，独立 review 定稿。

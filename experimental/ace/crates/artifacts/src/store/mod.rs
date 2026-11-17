@@ -1230,6 +1230,28 @@ impl ManagedStore {
         Ok(art_id)
     }
 
+    /// PLAN-1033: read one artifact's published (dst, kind) edges — a
+    /// read-only observability accessor (no liveness/GC semantics); an
+    /// unknown artifact id is an empty list, matching `get_artifact`'s
+    /// miss-as-absence convention.
+    pub fn artifact_edges(&self, artifact_id: &str) -> Result<Vec<(String, RefKind)>, StoreError> {
+        let rows: Vec<(String, String)> = self
+            .db
+            .lock()
+            .unwrap()
+            .prepare("SELECT dst, kind FROM edges WHERE src = ?1")?
+            .query_map(params![artifact_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut edges = Vec::with_capacity(rows.len());
+        for (dst, kind) in rows {
+            let kind = RefKind::parse(&kind).ok_or_else(|| {
+                StoreError::Internal(format!("bad edge kind `{kind}` on {artifact_id}"))
+            })?;
+            edges.push((dst, kind));
+        }
+        Ok(edges)
+    }
+
     /// Lookup by (layer, key); a tombstoned chunk reads as a miss (the
     /// caller recomputes) — never a partial read and never an error.
     pub fn get_artifact(

@@ -43,6 +43,10 @@ pub type ViewI32I32ToI32Fn =
 pub type ViewI32ToBoolFn = unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32) -> u8;
 pub type ViewI32OutI32Fn =
     unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32, out: *mut i32) -> i32;
+/// PLAN-1064 T-FRAME: checked writable byte output borrow frames.
+pub type ViewOutBytesI32Fn =
+    unsafe extern "C" fn(data: *const u8, byte_len: u64, dst: *mut u8, cap: u64) -> i32;
+pub type OutBytesI32Fn = unsafe extern "C" fn(dst: *mut u8, cap: u64) -> i32;
 
 /// The frozen F0/T-11 physical callables.
 #[derive(Clone, Copy, Debug)]
@@ -54,6 +58,61 @@ pub enum ForeignCallable {
     ViewI32I32ToI32(ViewI32I32ToI32Fn),
     ViewI32ToBool(ViewI32ToBoolFn),
     ViewI32FallibleI32(ViewI32OutI32Fn),
+    /// PLAN-1064 T-FRAME: checked writable out-buffer frames.
+    ViewOutBytesToI32(ViewOutBytesI32Fn),
+    OutBytesToI32(OutBytesI32Fn),
+}
+
+/// Access rights for a host-managed checked writable output borrow frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutBufferRights {
+    ReadOnly,
+    ReadWrite,
+}
+
+/// Checked writable output borrow frame `{owner, origin, generation, offset, capacity, rights}`
+/// backing `ResKind::OutBytes` calls on the AV host. Runtime pointers never enter build caches.
+#[derive(Clone, Debug)]
+pub struct OutBufferFrame {
+    pub owner: String,
+    pub origin: String,
+    pub generation: u64,
+    pub backing: Vec<u8>,
+    pub offset: usize,
+    pub capacity: usize,
+    pub rights: OutBufferRights,
+    pub pin_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub closed: bool,
+    pub last_published: usize,
+}
+
+impl OutBufferFrame {
+    pub fn new(
+        owner: impl Into<String>,
+        origin: impl Into<String>,
+        generation: u64,
+        backing: Vec<u8>,
+        offset: usize,
+        capacity: usize,
+        rights: OutBufferRights,
+    ) -> Self {
+        Self {
+            owner: owner.into(),
+            origin: origin.into(),
+            generation,
+            backing,
+            offset,
+            capacity,
+            rights,
+            pin_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            closed: false,
+            last_published: 0,
+        }
+    }
+
+    pub fn is_pinned(&self) -> bool {
+        self.pin_flag.load(std::sync::atomic::Ordering::SeqCst)
+    }
 }
 
 /// One admitted stub: the (provider, symbol, content_version) identity
@@ -387,6 +446,10 @@ pub struct ForeignStubTable {
     /// after every call. `null` = the in-process test tables (no flag;
     /// the belt catch_unwind below is the only channel there).
     panic_flag: *mut u32,
+    /// PLAN-1064 T-FRAME: host-checked writable output borrow frames.
+    out_buffers: std::collections::BTreeMap<i32, OutBufferFrame>,
+    out_expected_owner: String,
+    out_expected_origin: String,
 }
 
 impl ForeignStubTable {
@@ -398,7 +461,45 @@ impl ForeignStubTable {
             callee_count: 0,
             rejected_count: 0,
             panic_flag: std::ptr::null_mut(),
+            out_buffers: std::collections::BTreeMap::new(),
+            out_expected_owner: "av".into(),
+            out_expected_origin: "guest".into(),
         }
+    }
+
+    pub fn set_out_context(&mut self, owner: impl Into<String>, origin: impl Into<String>) {
+        self.out_expected_owner = owner.into();
+        self.out_expected_origin = origin.into();
+    }
+
+    pub fn register_out_buffer(&mut self, id: i32, frame: OutBufferFrame) {
+        self.out_buffers.insert(id, frame);
+    }
+
+    pub fn out_buffer(&self, id: i32) -> Option<&OutBufferFrame> {
+        self.out_buffers.get(&id)
+    }
+
+    pub fn out_buffer_mut(&mut self, id: i32) -> Option<&mut OutBufferFrame> {
+        self.out_buffers.get_mut(&id)
+    }
+
+    pub fn close_out_buffer(&mut self, id: i32) -> Result<(), ForeignExecError> {
+        let Some(frame) = self.out_buffers.get_mut(&id) else {
+            return Err(reject("foreign.out-missing", format!("unknown out buffer `{id}`")));
+        };
+        if frame.is_pinned() {
+            return Err(reject(
+                "foreign.out-pinned",
+                format!("cannot release out buffer `{id}` while native borrow is active"),
+            ));
+        }
+        frame.closed = true;
+        Ok(())
+    }
+
+    pub fn callable_of(&self, declaration: &SourceDecl) -> Option<ForeignCallable> {
+        self.lookup(declaration).ok().map(|i| self.entries[i].callable)
     }
 
     /// Bind the provider's exported panic flag (the loader resolves it).
@@ -503,6 +604,16 @@ impl ForeignStubTable {
                         Some(ace_foreign_contract::ResourceForm::Fallible {
                             out: Some(ace_foreign_contract::ResOut::I32),
                             ..
+                        })
+                    ) | (
+                        ForeignCallable::ViewOutBytesToI32(_),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::I32
+                        })
+                    ) | (
+                        ForeignCallable::OutBytesToI32(_),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::I32
                         })
                     )
                 )
@@ -679,6 +790,9 @@ impl ForeignStubTable {
                     let status = unsafe { f(data, byte_len, scalars[0], &mut out) };
                     ForeignDispatch::Fallible(status, out)
                 }
+                ForeignCallable::ViewOutBytesToI32(_) | ForeignCallable::OutBytesToI32(_) => {
+                    panic!("out-buffer callable must dispatch via dispatch_view_out_bytes")
+                }
             }))
             .map_err(|payload| {
                 self.rejected_count += 1;
@@ -710,6 +824,246 @@ impl ForeignStubTable {
             }
         }
         Ok(result)
+    }
+
+    /// PLAN-1064 T-FRAME: checked dispatch for `ResKind::OutBytes` (`ViewText + OutBytes -> i32`
+    /// or `OutBytes -> i32`). Validates owner/origin/generation/rights/bounds/pin before calling,
+    /// shields backing storage with leading + trailing guard bytes on a temporary shadow buffer,
+    /// holds an RAII pin across the native call (never unpinned until native returns or unwinds),
+    /// and commits ONLY `0 <= n <= cap` written bytes after guard integrity passes.
+    pub fn dispatch_view_out_bytes(
+        &mut self,
+        declaration: &SourceDecl,
+        path_bytes: &[u8],
+        buf_id: i32,
+        cancel: &crate::av::CancelFlag,
+    ) -> Result<ForeignDispatch, ForeignExecError> {
+        const GUARD_LEN: usize = 16;
+        const GUARD_PRE: u8 = 0xA5;
+        const GUARD_POST: u8 = 0x5A;
+
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.cancelled",
+                "cancelled before foreign out-borrow dispatch",
+            ));
+        }
+        let idx = self.lookup(declaration).map_err(|r| {
+            self.rejected_count += 1;
+            ForeignExecError::Reject(r)
+        })?;
+        if self.entries[idx].generation != self.current_generation {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.generation",
+                format!(
+                    "stub generation {} is not the current generation {} (session moved on)",
+                    self.entries[idx].generation, self.current_generation
+                ),
+            ));
+        }
+        let callable = self.entries[idx].callable;
+        if matches!(callable, ForeignCallable::ViewOutBytesToI32(_))
+            && std::str::from_utf8(path_bytes).is_err()
+        {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.utf8",
+                "view bytes are not valid UTF-8 (the ViewText contract)",
+            ));
+        }
+        let (offset, cap, pin_flag) = {
+            let Some(frame) = self.out_buffers.get(&buf_id) else {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-missing",
+                    format!("unknown writable out buffer `{buf_id}`"),
+                ));
+            };
+            if frame.closed {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-closed",
+                    format!("out buffer `{buf_id}` is already closed"),
+                ));
+            }
+            if frame.is_pinned() {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-aliased",
+                    format!("out buffer `{buf_id}` is already pinned by an active mutable borrow"),
+                ));
+            }
+            if frame.rights != OutBufferRights::ReadWrite {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-readonly",
+                    format!("out buffer `{buf_id}` lacks write permission"),
+                ));
+            }
+            if frame.owner != self.out_expected_owner {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-owner",
+                    format!(
+                        "out buffer `{buf_id}` owner `{}` does not match `{}`",
+                        frame.owner, self.out_expected_owner
+                    ),
+                ));
+            }
+            if frame.origin != self.out_expected_origin {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-origin",
+                    format!(
+                        "out buffer `{buf_id}` origin `{}` does not match `{}`",
+                        frame.origin, self.out_expected_origin
+                    ),
+                ));
+            }
+            if frame.generation != self.current_generation {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-generation",
+                    format!(
+                        "out buffer `{buf_id}` generation {} != current {}",
+                        frame.generation, self.current_generation
+                    ),
+                ));
+            }
+            let Some(end) = frame.offset.checked_add(frame.capacity) else {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-bounds",
+                    "out buffer offset + capacity overflow",
+                ));
+            };
+            if end > frame.backing.len() {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.out-bounds",
+                    format!(
+                        "out buffer slice {}..{} exceeds backing length {}",
+                        frame.offset,
+                        end,
+                        frame.backing.len()
+                    ),
+                ));
+            }
+            (frame.offset, frame.capacity, frame.pin_flag.clone())
+        };
+
+        let call_bytes = path_bytes.len().saturating_add(cap);
+        if call_bytes > MAX_CALL_BYTES {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.call-bytes",
+                format!("out call {call_bytes} bytes exceeds per-call budget {MAX_CALL_BYTES}"),
+            ));
+        }
+        let total = self.run_bytes.checked_add(call_bytes).unwrap_or(usize::MAX);
+        if total > MAX_RUN_BYTES {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.run-bytes",
+                format!("charged run bytes would reach {total}; budget {MAX_RUN_BYTES}"),
+            ));
+        }
+
+        let _scope = crate::host::ProviderScope::enter().ok_or_else(|| {
+            self.rejected_count += 1;
+            reject(
+                "foreign.reentry",
+                "synchronous provider reentry is forbidden",
+            )
+        })?;
+
+        struct PinGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for PinGuard {
+            fn drop(&mut self) {
+                self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        pin_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _pin_guard = PinGuard(pin_flag);
+
+        let mut shadow = vec![0u8; GUARD_LEN + cap + GUARD_LEN];
+        for b in &mut shadow[..GUARD_LEN] {
+            *b = GUARD_PRE;
+        }
+        for b in &mut shadow[GUARD_LEN + cap..] {
+            *b = GUARD_POST;
+        }
+        let dst_ptr = unsafe { shadow.as_mut_ptr().add(GUARD_LEN) };
+        let path_ptr = path_bytes.as_ptr();
+        let path_len = path_bytes.len() as u64;
+        let cap_u64 = cap as u64;
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match callable {
+            ForeignCallable::ViewOutBytesToI32(f) => unsafe {
+                f(path_ptr, path_len, dst_ptr, cap_u64)
+            },
+            ForeignCallable::OutBytesToI32(f) => unsafe { f(dst_ptr, cap_u64) },
+            _ => unreachable!("validated callable variant"),
+        }))
+        .map_err(|payload| {
+            self.rejected_count += 1;
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "provider panicked".into());
+            ForeignExecError::Panic(message)
+        });
+
+        self.run_bytes = total;
+        self.callee_count += 1;
+        let written = result?;
+
+        if !self.panic_flag.is_null() {
+            let flag = unsafe {
+                std::sync::atomic::AtomicU32::from_ptr(self.panic_flag)
+                    .swap(0, std::sync::atomic::Ordering::SeqCst)
+            };
+            if flag != 0 {
+                self.rejected_count += 1;
+                return Err(ForeignExecError::Panic(
+                    "provider panic raised the exported flag (in-unit catch)".into(),
+                ));
+            }
+        }
+        if shadow[..GUARD_LEN].iter().any(|&b| b != GUARD_PRE)
+            || shadow[GUARD_LEN + cap..].iter().any(|&b| b != GUARD_POST)
+        {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.out-guard",
+                "native callee corrupted guard bytes adjacent to out buffer",
+            ));
+        }
+        if written < 0 {
+            if let Some(frame) = self.out_buffers.get_mut(&buf_id) {
+                frame.last_published = 0;
+            }
+            return Ok(ForeignDispatch::PureI32(written));
+        }
+        let written_usize = written as usize;
+        if written_usize > cap {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.out-overflow",
+                format!("native returned written count {written_usize} > capacity {cap}"),
+            ));
+        }
+        if let Some(frame) = self.out_buffers.get_mut(&buf_id) {
+            if written_usize > 0 {
+                frame.backing[offset..offset + written_usize]
+                    .copy_from_slice(&shadow[GUARD_LEN..GUARD_LEN + written_usize]);
+            }
+            frame.last_published = written_usize;
+        }
+        Ok(ForeignDispatch::PureI32(written))
     }
 }
 

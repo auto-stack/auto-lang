@@ -23,7 +23,6 @@
 //!   re-verified parent-side from the emitted files (trust but verify).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use auto_test_case::compare::{compare_bytes, Mismatch};
@@ -200,20 +199,34 @@ pub fn run_check(
         request_text.as_bytes(),
     )?;
     // The ONLY process this adapter ever spawns (plan §5.5 spawn-zero).
-    let out = Command::new(&worker)
-        .arg(&request_text)
-        .output()
-        .map_err(|e| format!("spawn a2x worker {}: {e}", worker.display()))?;
+    // PLAN-1034: 有界交换——请求经 stdin 全量送达（argv 不再携带），
+    // exec 70s / 单一 cleanup 3s / stdout 4MiB / stderr 1MiB；cap 或期限
+    // 命中即 Status::Error（Infra，保 Resource 子因），绝无截断成功。
+    let policy = super::a2x_exchange::A2XExchangePolicy::daily_emit();
+    let out = match super::a2x_exchange::exchange(&worker, &request_text, policy) {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(exchange) = exchange {
+                let _ = exchange.finish(&[], &[], None, Some(&e.0));
+            }
+            // 交换失败是 INFRA，永不充当语言判定。
+            return Ok(Verdict {
+                status: Status::Error,
+                detail: Some(e.0),
+                ..Verdict::pass()
+            });
+        }
+    };
     if let Some(exchange) = exchange {
-        exchange.finish(&out.stdout, &out.stderr, out.status.code(), None)?;
+        exchange.finish(&out.stdout, &out.stderr, Some(0), None)?;
     }
-    if !out.status.success() {
+    if out.exit_kind != auto_tool_execution::ExitKind::Success {
         // A worker refusal is INFRA, never a language verdict.
         return Ok(Verdict {
             status: Status::Error,
             detail: Some(format!(
-                "a2x worker failed (exit {:?}): {}",
-                out.status.code(),
+                "a2x worker failed ({:?}): {}",
+                out.exit_kind,
                 String::from_utf8_lossy(&out.stdout).trim()
             )),
             ..Verdict::pass()
@@ -250,9 +263,11 @@ pub fn run_check(
         });
     }
     // Parent-side manifest re-hash: the reported digest must match the
-    // emitted manifest bytes on disk.
-    let manifest_bytes = std::fs::read(actual_dir.join("manifest.json"))
-        .map_err(|e| format!("read manifest: {e}"))?;
+    // emitted manifest bytes on disk. PLAN-1034: 产物有界准入——manifest
+    // 4MiB、单文件 64MiB、单 check 总量 128MiB，cap+1 有界读取 + checked
+    // 累加（生产者报告 bytes 只作声明，父侧核真实字节）。
+    let mut artifacts = super::a2x_exchange::ArtifactBudget::new();
+    let manifest_bytes = artifacts.read_manifest(&actual_dir.join("manifest.json"))?;
     let manifest_sha = hex(&sha256(&manifest_bytes));
     if resp["manifest_sha256"].as_str() != Some(manifest_sha.as_str()) {
         return Ok(Verdict {
@@ -264,6 +279,21 @@ pub fn run_check(
 
     match &oracle.completion {
         Completion::Success => {
+            // PLAN-977 AC-COVERAGE negative control (V-COVERAGE): an
+            // EMISSION check must not carry run-observation expectations —
+            // emit cannot masquerade as run. The shared predicate covers
+            // every run-observation field (exit/stdout/stderr/av-channel/
+            // trace/result/perf/probe steps); artifact expectations only.
+            if let Some(field) = super::a2x_exchange::emit_only_violation(oracle) {
+                return Ok(Verdict {
+                    status: Status::Error,
+                    detail: Some(format!(
+                        "{recipe} emit checks declare artifact expectations only \
+                         (got a `{field}` run observation; emit cannot masquerade as run)"
+                    )),
+                    ..Verdict::pass()
+                });
+            }
             let mut mismatches = Vec::new();
             let mut refs = Vec::new();
             let mut expected_paths: Vec<String> = Vec::new();
@@ -286,15 +316,20 @@ pub fn run_check(
             for want in &oracle.artifacts {
                 expected_paths.push(want.path.clone());
                 let path = actual_dir.join(&want.path);
-                match std::fs::read(&path) {
-                    Err(_) => mismatches.push(Mismatch {
+                match artifacts.read_file(&path, false) {
+                    Err(limit) => return Ok(Verdict {
+                        status: Status::Error,
+                        detail: Some(limit),
+                        ..Verdict::pass()
+                    }),
+                    Ok(None) => mismatches.push(Mismatch {
                         observation: format!("artifact {}", want.path),
                         kind: "missing",
                         expected: format!("{} bytes", want.bytes.len()),
                         actual: "absent".to_string(),
                         first_diff: None,
                     }),
-                    Ok(actual) => {
+                    Ok(Some(actual)) => {
                         if let Some(m) = compare_bytes(
                             &want.bytes,
                             &actual,
@@ -416,5 +451,303 @@ mod path_domain_tests {
         let problems = v(&["main.rs", "Main.RS"]);
         assert_eq!(problems.len(), 1, "{problems:?}");
         assert!(problems[0].contains("collides"), "{problems:?}");
+    }
+}
+
+// ---- PLAN-1034 T-03（IPC-03）：真实父 adapter 的有界交换终态反例 ----
+// 驱动真实 `run_check`（非替身 helper），stub = 预构建 a2x-worker 的
+// TEST-ONLY 故障缝（A2X_TEST_FAULT，子进程 env 继承；生产路径永不设置）。
+// 小 cap/短 deadline 经 A2X_TEST_* env 覆盖（仅测试配置，生产默认
+// 70s/3s/4MiB/1MiB 不变）；使用 env 的测试串行持有 TEST_POLICY_LOCK 并
+// 在结束前恢复。正常路径/golden 的正向重放由 case-a2r/a2c-hir-* case
+// 组承担（同代码路径、真 goldens）。
+#[cfg(test)]
+mod audit1034_ipc_03 {
+    use super::*;
+    use crate::test_cases::a2x_exchange::{
+        A2X_TEST_CLEANUP_MS_ENV, A2X_TEST_EXEC_MS_ENV, A2X_TEST_STDERR_CAP_ENV,
+        A2X_TEST_STDOUT_CAP_ENV, TEST_POLICY_LOCK,
+    };
+    use auto_test_case::admission::Limits;
+    use auto_test_case::atom::parse_contract;
+    use auto_test_case::contract::decode_case;
+    use auto_test_case::document::CaseDocument;
+    use auto_test_case::ir::{resolve_case, resolve_oracle};
+
+    const CASE_MD: &str = r#"
+```test-case
+case {
+    schema: "autolang.case/2"
+    id: "ipc03_a2r_scalar"
+    tags: ["ipc"]
+    links: ["PLAN-1034"]
+    source: { text: "fn main() int { return 42 }\n", syntax: "auto", path: "main.at" }
+    entry: { mode: "program" }
+    checks: [
+        {
+            id: "c1"
+            adapter: "probe"
+            action: "run"
+            options: {
+                recipe: "ac-a2r/hir-scalar-emit-v1"
+                a2x_hir: { profile: "scalar", entry: "main", caps: [] }
+                steps: [{ op: "run" }]
+            }
+            expect: { completion: "success" }
+        }
+    ]
+}
+```
+"#;
+
+    /// 经真实 run_check 执行一次 a2r scalar emit check。
+    fn drive(tmp: &std::path::Path) -> Result<Verdict, String> {
+        let limits = Limits::defaults();
+        let doc = CaseDocument::parse_with(CASE_MD.as_bytes(), &limits).unwrap();
+        let tc = doc.fences().first().unwrap();
+        let cval = parse_contract(std::str::from_utf8(doc.payload_bytes(tc)).unwrap()).unwrap();
+        let spec = decode_case(&cval, &limits).unwrap();
+        let check = spec.checks[0].clone();
+        let oracle = resolve_oracle(&spec.id, &check, tmp, &limits).unwrap();
+        let resolved = resolve_case(spec, &doc, tmp, &limits).unwrap();
+        run_check(&resolved, &check, &oracle, tmp, &tmp.join("art"), tmp)
+    }
+
+    fn tmp_root(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "plan1034_ipc03_{}_{}_{:?}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// 断言 worker 预构建存在（ace-adapters 组工具面），缺则本测试不运
+    /// 行、不冒 PASS。
+    fn require_worker() -> Option<std::path::PathBuf> {
+        worker_binary().ok()
+    }
+
+    /// 环境负控助手：持锁设置子进程故障缝 + 小 cap/短期限，执行后恢复
+    /// （不留全局残值）。
+    fn with_fault_env<R>(
+        fault: &str,
+        exec_ms: u64,
+        cleanup_ms: u64,
+        stdout_cap: usize,
+        stderr_cap: usize,
+        pid_file: Option<&std::path::Path>,
+        f: impl FnOnce() -> R,
+    ) -> R {
+        let _guard = TEST_POLICY_LOCK.lock().unwrap();
+        std::env::set_var("A2X_TEST_FAULT", fault);
+        std::env::set_var(A2X_TEST_EXEC_MS_ENV, exec_ms.to_string());
+        std::env::set_var(A2X_TEST_CLEANUP_MS_ENV, cleanup_ms.to_string());
+        std::env::set_var(A2X_TEST_STDOUT_CAP_ENV, stdout_cap.to_string());
+        std::env::set_var(A2X_TEST_STDERR_CAP_ENV, stderr_cap.to_string());
+        if let Some(p) = pid_file {
+            let _ = std::fs::remove_file(p);
+            std::env::set_var("A2X_TEST_PID_FILE", p);
+        }
+        let result = f();
+        std::env::remove_var("A2X_TEST_FAULT");
+        std::env::remove_var(A2X_TEST_EXEC_MS_ENV);
+        std::env::remove_var(A2X_TEST_CLEANUP_MS_ENV);
+        std::env::remove_var(A2X_TEST_STDOUT_CAP_ENV);
+        std::env::remove_var(A2X_TEST_STDERR_CAP_ENV);
+        std::env::remove_var("A2X_TEST_PID_FILE");
+        result
+    }
+
+    /// 挂起 worker：短 exec 期限触发 → Status::Error（deadline 终态），
+    /// 具名清理结果随行，绝不悬挂；无 rustc/cargo 额外 spawn（PID 单行）。
+    #[test]
+    fn hang_hits_exec_deadline_as_error() {
+        if require_worker().is_none() {
+            eprintln!("prebuilt a2x-worker missing; not run, not PASS");
+            return;
+        }
+        let tmp = tmp_root("hang");
+        let pid_file = tmp.join("pids.txt");
+        let started = std::time::Instant::now();
+        let v = with_fault_env(
+            "hang",
+            200,
+            1_000,
+            4 << 20,
+            1 << 20,
+            Some(&pid_file),
+            || drive(&tmp).unwrap(),
+        );
+        assert_eq!(v.status, Status::Error, "detail: {:?}", v.detail);
+        let detail = v.detail.unwrap_or_default();
+        assert!(
+            detail.contains("exceeded") && detail.contains("deadline"),
+            "deadline termination named, got: {detail}"
+        );
+        assert!(
+            detail.contains("cleanup_completed=1"),
+            "cleanup completed within the single deadline: {detail}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "no hang: {:?}",
+            started.elapsed()
+        );
+        let pids = std::fs::read_to_string(&pid_file).unwrap_or_default();
+        assert_eq!(pids.lines().count(), 1, "exactly one spawn: {pids}");
+    }
+
+    /// 持续 stdout 超 cap：立即终止 → Error（Resource 子因），PID 单行。
+    #[test]
+    fn stdout_flood_hits_cap_as_error() {
+        if require_worker().is_none() {
+            eprintln!("prebuilt a2x-worker missing; not run, not PASS");
+            return;
+        }
+        let tmp = tmp_root("floodout");
+        let pid_file = tmp.join("pids.txt");
+        let started = std::time::Instant::now();
+        let v = with_fault_env(
+            "flood-stdout",
+            5_000,
+            1_000,
+            128,
+            1 << 20,
+            Some(&pid_file),
+            || drive(&tmp).unwrap(),
+        );
+        assert_eq!(v.status, Status::Error, "detail: {:?}", v.detail);
+        let detail = v.detail.unwrap_or_default();
+        assert!(
+            detail.contains("stdout exceeded its 128-byte cap"),
+            "stdout cap named: {detail}"
+        );
+        assert!(
+            detail.contains("cleanup_completed=1"),
+            "cleanup completed: {detail}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "cap fires immediately: {:?}",
+            started.elapsed()
+        );
+        let pids = std::fs::read_to_string(&pid_file).unwrap_or_default();
+        assert_eq!(pids.lines().count(), 1, "exactly one spawn: {pids}");
+    }
+
+    /// 持续 stderr 超 cap：独立于 stdout 的同一门。
+    #[test]
+    fn stderr_flood_hits_cap_as_error() {
+        if require_worker().is_none() {
+            eprintln!("prebuilt a2x-worker missing; not run, not PASS");
+            return;
+        }
+        let tmp = tmp_root("flooderr");
+        let v = with_fault_env("flood-stderr", 5_000, 1_000, 4 << 20, 64, None, || {
+            drive(&tmp).unwrap()
+        });
+        assert_eq!(v.status, Status::Error, "detail: {:?}", v.detail);
+        let detail = v.detail.unwrap_or_default();
+        assert!(
+            detail.contains("stderr exceeded its 64-byte cap"),
+            "stderr cap named: {detail}"
+        );
+    }
+
+    /// 返回畸形 JSON 后退 0：父协议解析拒绝（run_check Err），worker
+    /// exit 0 不覆盖。
+    #[test]
+    fn bad_json_is_protocol_refusal_not_exit_zero() {
+        if require_worker().is_none() {
+            eprintln!("prebuilt a2x-worker missing; not run, not PASS");
+            return;
+        }
+        let tmp = tmp_root("badjson");
+        let err = match with_fault_env("bad-json", 5_000, 1_000, 4 << 20, 1 << 20, None, || {
+            drive(&tmp)
+        }) {
+            Err(e) => e,
+            Ok(_) => panic!("garbage response must be a protocol refusal"),
+        };
+        assert!(
+            err.contains("not json"),
+            "exit-0 garbage must fail parent parse: {err}"
+        );
+    }
+
+    /// 合法 JSON 但回错 recipe：trust-but-verify 身份门 → Error（非语言
+    /// 判定）。
+    #[test]
+    fn wrong_identity_echo_is_error() {
+        if require_worker().is_none() {
+            eprintln!("prebuilt a2x-worker missing; not run, not PASS");
+            return;
+        }
+        let tmp = tmp_root("wrongid");
+        let v = with_fault_env(
+            "wrong-identity",
+            5_000,
+            1_000,
+            4 << 20,
+            1 << 20,
+            None,
+            || drive(&tmp).unwrap(),
+        );
+        assert_eq!(v.status, Status::Error, "detail: {:?}", v.detail);
+        let detail = v.detail.unwrap_or_default();
+        assert!(
+            detail.contains("identity mismatch"),
+            "identity gate named: {detail}"
+        );
+    }
+
+    /// 父退出而孙进程持管道：owned 树终止后 EOF 抵达，交换有界完成不
+    /// 悬挂；PID 记录 root+descendant 两行（descendant 为 worker 自身
+    /// re-exec，无 rustc/cargo）。
+    #[test]
+    fn grandchild_holding_pipe_completes_bounded() {
+        if require_worker().is_none() {
+            eprintln!("prebuilt a2x-worker missing; not run, not PASS");
+            return;
+        }
+        let tmp = tmp_root("orphan");
+        let pid_file = tmp.join("pids.txt");
+        let started = std::time::Instant::now();
+        let outcome = with_fault_env(
+            "orphan-holds-pipe",
+            5_000,
+            1_000,
+            4 << 20,
+            1 << 20,
+            Some(&pid_file),
+            || drive(&tmp),
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "descendant-held pipe must not hang the exchange: {:?}",
+            started.elapsed()
+        );
+        match outcome {
+            Err(e) => assert!(e.contains("not json"), "empty stdout refusal: {e}"),
+            Ok(v) => assert_eq!(
+                v.status,
+                Status::Error,
+                "no PASS on a fault seam: {:?}",
+                v.detail
+            ),
+        }
+        let pids = std::fs::read_to_string(&pid_file).unwrap_or_default();
+        assert_eq!(
+            pids.lines().count(),
+            2,
+            "root + descendant recorded: {pids}"
+        );
+        assert!(pids.contains("root") && pids.contains("descendant"));
     }
 }

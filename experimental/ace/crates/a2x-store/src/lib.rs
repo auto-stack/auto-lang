@@ -58,7 +58,13 @@ pub const LAYER_SEMANTIC: LayerSpec = LayerSpec {
     producer: "auto-a2x-core prepare",
     // PLAN-921: the C target consumes the SAME semantic facts (keys and
     // bytes unchanged; additive consumer registration only).
-    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
+    consumers: &[
+        "auto-a2x-rust",
+        "auto-a2x-c",
+        "auto-a2x-python",
+        "auto-a2x-typescript",
+        "auto-a2x-javascript",
+    ],
     key_inputs: &[
         "owner",
         "decl",
@@ -134,7 +140,13 @@ pub const LAYER_SEMANTIC_RT: LayerSpec = LayerSpec {
     name: "a2x-rt-function-semantic",
     schema_id: "a2902/axs-rt-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
+    consumers: &[
+        "auto-a2x-rust",
+        "auto-a2x-c",
+        "auto-a2x-python",
+        "auto-a2x-typescript",
+        "auto-a2x-javascript",
+    ],
     key_inputs: &[
         "owner",
         "decl",
@@ -187,7 +199,13 @@ pub const LAYER_SEMANTIC_COLL: LayerSpec = LayerSpec {
     name: "a2x-collections-function-semantic",
     schema_id: "a2904/axs-coll-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
+    consumers: &[
+        "auto-a2x-rust",
+        "auto-a2x-c",
+        "auto-a2x-python",
+        "auto-a2x-typescript",
+        "auto-a2x-javascript",
+    ],
     key_inputs: &[
         "owner",
         "decl",
@@ -384,6 +402,77 @@ pub const LAYER_FRAGMENT_PY_COLL: LayerSpec = LayerSpec {
     producer: "auto-a2x-python",
     ..LAYER_FRAGMENT_PY
 };
+/// PLAN-976: TypeScript scalar fragment layer (`AXTS1`), isolated from the
+/// Rust/C/Python fragment namespaces.
+pub const LAYER_FRAGMENT_TS: LayerSpec = LayerSpec {
+    id: "AXTS1",
+    name: "a2x-ts-fragment",
+    schema_id: "a20976/axts-fn/v1",
+    producer: "auto-a2x-typescript",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "standard",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+        "stdlib_port_catalog",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed TypeScript scalar fragment artifact per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
+/// PLAN-976: TypeScript RecordText fragment layer (`AXTS2`).
+pub const LAYER_FRAGMENT_TS_RT: LayerSpec = LayerSpec {
+    id: "AXTS2",
+    name: "a2x-ts-rt-fragment",
+    schema_id: "a20976/axts-rt-fn/v1",
+    producer: "auto-a2x-typescript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: TypeScript Collections fragment layer (`AXTS3`).
+pub const LAYER_FRAGMENT_TS_COLL: LayerSpec = LayerSpec {
+    id: "AXTS3",
+    name: "a2x-ts-coll-fragment",
+    schema_id: "a20976/axts-coll-fn/v1",
+    producer: "auto-a2x-typescript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: JavaScript scalar fragment layer (`AXJS1`).
+pub const LAYER_FRAGMENT_JS: LayerSpec = LayerSpec {
+    id: "AXJS1",
+    name: "a2x-js-fragment",
+    schema_id: "a20976/axjs-fn/v1",
+    producer: "auto-a2x-javascript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: JavaScript RecordText fragment layer (`AXJS2`).
+pub const LAYER_FRAGMENT_JS_RT: LayerSpec = LayerSpec {
+    id: "AXJS2",
+    name: "a2x-js-rt-fragment",
+    schema_id: "a20976/axjs-rt-fn/v1",
+    producer: "auto-a2x-javascript",
+    ..LAYER_FRAGMENT_TS
+};
+
+/// PLAN-976: JavaScript Collections fragment layer (`AXJS3`).
+pub const LAYER_FRAGMENT_JS_COLL: LayerSpec = LayerSpec {
+    id: "AXJS3",
+    name: "a2x-js-coll-fragment",
+    schema_id: "a20976/axjs-coll-fn/v1",
+    producer: "auto-a2x-javascript",
+    ..LAYER_FRAGMENT_TS
+};
 
 /// PLAN-921 T-06: the source-bound anchor layer — the per-function source
 /// binding (full-source sha256 → per-function origins/slice hashes/sem_fps
@@ -522,6 +611,21 @@ pub struct ResidentFragment {
 pub struct Assembly {
     pub files: Vec<(String, String)>,
     pub manifest: String,
+}
+
+/// PLAN-1033 (AXTX-01): the staged outcome of one warm edit — every
+/// fallible operation (fragment production/persistence, file-set
+/// assembly) has run, but NO session acceptance state has switched yet.
+/// The caller publishes the source-bound anchor (anchored channels) and
+/// then commits residents/ids/source binding at ONE point.
+#[derive(Debug)]
+struct WarmStaged {
+    assembly: Assembly,
+    /// the NEXT resident set of the current backend (fully built).
+    residents: BTreeMap<(String, String), ResidentFragment>,
+    /// (backend, decl) → fragment artifact id updates for the commit
+    /// (store hits and fresh publications; reuse keeps the old binding).
+    resident_id_updates: BTreeMap<(String, String), String>,
 }
 
 /// A controlled A2X resource/quota rejection (§5.6): the store keeps its
@@ -777,6 +881,12 @@ impl A2xSession {
             Ok("AXPY1") => &LAYER_FRAGMENT_PY,
             Ok("AXPY2") => &LAYER_FRAGMENT_PY_RT,
             Ok("AXPY3") => &LAYER_FRAGMENT_PY_COLL,
+            Ok("AXTS1") => &LAYER_FRAGMENT_TS,
+            Ok("AXTS2") => &LAYER_FRAGMENT_TS_RT,
+            Ok("AXTS3") => &LAYER_FRAGMENT_TS_COLL,
+            Ok("AXJS1") => &LAYER_FRAGMENT_JS,
+            Ok("AXJS2") => &LAYER_FRAGMENT_JS_RT,
+            Ok("AXJS3") => &LAYER_FRAGMENT_JS_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -811,6 +921,12 @@ impl A2xSession {
             Ok("AXPY1") => &LAYER_FRAGMENT_PY,
             Ok("AXPY2") => &LAYER_FRAGMENT_PY_RT,
             Ok("AXPY3") => &LAYER_FRAGMENT_PY_COLL,
+            Ok("AXTS1") => &LAYER_FRAGMENT_TS,
+            Ok("AXTS2") => &LAYER_FRAGMENT_TS_RT,
+            Ok("AXTS3") => &LAYER_FRAGMENT_TS_COLL,
+            Ok("AXJS1") => &LAYER_FRAGMENT_JS,
+            Ok("AXJS2") => &LAYER_FRAGMENT_JS_RT,
+            Ok("AXJS3") => &LAYER_FRAGMENT_JS_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -826,12 +942,16 @@ impl A2xSession {
             Family::RecordText => {
                 self.current_backend() == "auto-a2x-c"
                     || self.current_backend() == "auto-a2x-python"
+                    || self.current_backend() == "auto-a2x-typescript"
+                    || self.current_backend() == "auto-a2x-javascript"
             }
             // PLAN-926 / PLAN-1042: C and Python collections channels anchor
             // (their seed-carrying anchors re-assemble blind); Rust keeps frozen no-anchor.
             Family::Collections => {
                 self.current_backend() == "auto-a2x-c"
                     || self.current_backend() == "auto-a2x-python"
+                    || self.current_backend() == "auto-a2x-typescript"
+                    || self.current_backend() == "auto-a2x-javascript"
             }
         }
     }
@@ -1107,8 +1227,8 @@ impl A2xSession {
                 // DESUGARED program with its task side-table (the raw
                 // source never resolves — Task.spawn/h.send are desugar
                 // spellings).
-                let (dprogram, dsched) =
-                    ace_core::source::sched_desugar::desugar_program(&program).map_err(|ds| {
+                let (dprogram, dsched) = ace_core::source::sched_desugar::desugar_program(&program)
+                    .map_err(|ds| {
                         A2xRejectOrResource::Reject(A2xReject::new(
                             "a2x.compile",
                             ds.first()
@@ -1116,12 +1236,7 @@ impl A2xSession {
                                 .unwrap_or_else(|| "scheduler desugar failed".into()),
                         ))
                     })?;
-                ace_core::source::resolve::resolve_env_with_sched(
-                    &dprogram,
-                    caps,
-                    profile,
-                    &dsched,
-                )
+                ace_core::source::resolve::resolve_env_with_sched(&dprogram, caps, profile, &dsched)
             }
             None => resolve_env(&program, caps, profile),
         }
@@ -1207,6 +1322,10 @@ impl A2xSession {
         // therefore the generated-file bytes) is exactly the frozen one.
         let mut misses: Vec<(&FnFacts<'_>, String)> = Vec::new();
         let mut miss_slots: Vec<usize> = Vec::new();
+        // PLAN-1033 (AXTX-01): staged id bindings — the session's
+        // resident_ids switch only at the single acceptance point after
+        // every fallible op (assembly + anchor publication).
+        let mut staged_ids: BTreeMap<(String, String), String> = BTreeMap::new();
 
         for f in view.functions() {
             self.stats.verify += 1;
@@ -1237,7 +1356,7 @@ impl A2xSession {
                     ))
                 })?;
                 self.stats.store_hit_fragment += 1;
-                self.resident_ids.insert(
+                staged_ids.insert(
                     (backend.clone(), f.source_name.to_string()),
                     hit.artifact_id.clone(),
                 );
@@ -1310,19 +1429,24 @@ impl A2xSession {
                         text.as_bytes(),
                         vec![(sem_id, RefKind::Provenance)],
                     )?;
-                    self.resident_ids
-                        .insert((backend.clone(), f.source_name.to_string()), frag_id);
+                    staged_ids.insert((backend.clone(), f.source_name.to_string()), frag_id);
                 }
                 fragments[miss_slots[i]].1.text = text;
             }
         }
 
-        // publish residents (current target's namespace) + assemble the
-        // file set through the provider
-        self.resident.retain(|(b, _), _| b != &backend);
+        // PLAN-1033 (AXTX-01): stage the NEXT resident set (the current
+        // backend's namespace rebuilt from this assembly; other targets'
+        // residents untouched). The session map switches only at the
+        // acceptance point after assembly and anchor publication.
+        let mut next_residents: BTreeMap<(String, String), ResidentFragment> = self
+            .resident
+            .iter()
+            .filter(|((b, _), _)| b != &backend)
+            .map(|(k, r)| (k.clone(), r.clone()))
+            .collect();
         for (_, r) in &fragments {
-            self.resident
-                .insert((backend.clone(), r.source_name.clone()), r.clone());
+            next_residents.insert((backend.clone(), r.source_name.clone()), r.clone());
         }
         let prelude_seed = if family == Family::RecordText || family == Family::Collections {
             self.provider
@@ -1419,11 +1543,18 @@ impl A2xSession {
                     None
                 },
             };
+            // PLAN-1033: the required edges follow the STAGED ids of this
+            // assembly (store hits and fresh puts alike), falling back to
+            // a still-valid prior binding.
             let edges: Vec<(String, RefKind)> = fragments
                 .iter()
                 .filter_map(|(_, r)| {
-                    self.resident_ids
+                    staged_ids
                         .get(&(backend.clone(), r.source_name.clone()))
+                        .or_else(|| {
+                            self.resident_ids
+                                .get(&(backend.clone(), r.source_name.clone()))
+                        })
                         .map(|id| (id.clone(), RefKind::RequiredData))
                 })
                 .collect();
@@ -1431,6 +1562,11 @@ impl A2xSession {
             self.last_anchor = Some(a);
             self.last_anchor_id = Some(id);
         }
+        // PLAN-1033 (AXTX-01): the cold path's single acceptance point —
+        // after every fallible op, the resident set and id bindings
+        // switch together, infallibly.
+        self.resident = next_residents;
+        self.resident_ids.extend(staged_ids);
         Ok(assembly)
     }
 
@@ -1750,26 +1886,21 @@ impl A2xSession {
                 ),
             )));
         }
-        // 4) the replaced full source identity binds the NEXT manifest —
-        //    but only AFTER the edit succeeds: a failed/cancelled edit
-        //    keeps the OLD binding (§5.4 失败保旧 source)
+        // 4) the replaced full source identity binds the NEXT manifest.
         let full_after = format!("{}{}{}", &base_src[..start], fragment, &base_src[end..]);
         let next_sha = sha256_hex(full_after.as_bytes());
         // 5) the ordinary warm machinery (prepare → verify → produce →
-        //    swap → assemble) runs on the fragment; the manifest built
-        //    under it carries the replaced-full-source identity. A FAILED
-        //    edit restores the OLD binding (§5.4 失败保旧 source).
-        // PLAN-921: a session restored without an env rebuilds it from
-        // the bound base now (the ranged path carries the base source)
-        let prev_sha = self.source_sha256.clone();
-        self.source_sha256 = Some(next_sha.clone());
-        let assembly = match self.warm_edit_targeted(target, fragment, entry, read_only) {
-            Ok(a) => a,
-            Err(e) => {
-                self.source_sha256 = prev_sha;
-                return Err(e);
-            }
-        };
+        //    assemble) runs STAGED (PLAN-1033 AXTX-01): no acceptance
+        //    state switches inside — the manifest is built under the
+        //    NEXT identity through the staging override, while the
+        //    session's own binding rides the single commit point after
+        //    the anchor publication. A failure at ANY stage (prepare /
+        //    produce / store put / assemble / anchor publish) therefore
+        //    leaves the session wholly at the OLD accepted state
+        //    (§5.4 失败保旧 source).
+        let backend = self.current_backend().to_string();
+        let staged =
+            self.warm_edit_targeted(target, fragment, entry, read_only, Some(&next_sha))?;
         // PLAN-921 T-06: rebind the source-bound anchor to the NEXT full
         // source (per-function origins shift past the edit; the edited
         // function re-binds its slice sha + sem_fp). The anchor publishes
@@ -1783,7 +1914,6 @@ impl A2xSession {
             WarmTarget::Method { owner, name } => format!("{}_{}", owner, name),
         };
         if self.anchors_family(self.family()) && !read_only {
-            let full_after = format!("{}{}{}", &base_src[..start], fragment, &base_src[end..]);
             let delta = fragment.len() as i64 - (end - start) as i64;
             let prev = self.last_anchor.clone();
             if let Some(prev) = prev {
@@ -1808,19 +1938,17 @@ impl A2xSession {
                             ))
                         })?;
                     af.slice_sha256 = sha256_hex(slice.as_bytes());
-                    // the edited function's NEW sem_fp rides the resident
-                    // set (the unchanged keep theirs)
+                    // the edited function's NEW sem_fp rides the STAGED
+                    // resident set (the unchanged keep theirs)
                     if af.decl == edited_decl {
-                        if let Some(r) = self
-                            .resident
-                            .get(&(self.current_backend().to_string(), af.decl.clone()))
-                        {
+                        if let Some(r) = staged.residents.get(&(backend.clone(), af.decl.clone())) {
                             af.sem_fp = r.sem_fp.clone();
                         }
                     }
                     fns.push(af);
                 }
-                let fileset_receipt: Vec<(String, String)> = assembly
+                let fileset_receipt: Vec<(String, String)> = staged
+                    .assembly
                     .files
                     .iter()
                     .map(|(p, c)| (p.clone(), sha256_hex(c.as_bytes())))
@@ -1844,13 +1972,17 @@ impl A2xSession {
                     // a body edit never changes the record table
                     prelude_seed: prev.prelude_seed.clone(),
                 };
-                let backend = self.current_backend().to_string();
+                // PLAN-1033: the required edges follow the STAGED ids —
+                // the edited function's freshly persisted (or hit)
+                // fragment artifact, not a stale pre-edit binding.
                 let edges: Vec<(String, RefKind)> = a
                     .functions
                     .iter()
                     .filter_map(|af| {
-                        self.resident_ids
+                        staged
+                            .resident_id_updates
                             .get(&(backend.clone(), af.decl.clone()))
+                            .or_else(|| self.resident_ids.get(&(backend.clone(), af.decl.clone())))
                             .map(|id| (id.clone(), RefKind::RequiredData))
                     })
                     .collect();
@@ -1859,6 +1991,12 @@ impl A2xSession {
                 self.last_anchor_id = Some(id);
             }
         }
+        // PLAN-1033 (AXTX-01): the SINGLE acceptance point — after the
+        // last fallible op (anchor publication on anchored channels,
+        // file-set assembly otherwise) the source binding, resident set,
+        // id bindings and anchor all switch together, infallibly.
+        self.source_sha256 = Some(next_sha);
+        let assembly = self.commit_warm(&backend, staged);
         Ok(assembly)
     }
 
@@ -2251,12 +2389,17 @@ impl A2xSession {
         entry: &str,
         read_only: bool,
     ) -> Result<Assembly, A2xRejectOrResource> {
-        self.warm_edit_targeted(
+        // PLAN-1033: the fragment-only path's acceptance point — commit
+        // immediately after assembly succeeded (no anchor to publish).
+        let backend = self.current_backend().to_string();
+        let staged = self.warm_edit_targeted(
             &WarmTarget::Free { name: fn_name },
             edited_src,
             entry,
             read_only,
-        )
+            None,
+        )?;
+        Ok(self.commit_warm(&backend, staged))
     }
 
     /// PLAN-925 (§5.4): WARM body edit of ONE method — the narrow method
@@ -2278,7 +2421,10 @@ impl A2xSession {
                 "collections warm edits take the ranged authorization (warm_edit_ranged)",
             )));
         }
-        self.warm_edit_targeted(
+        // PLAN-1033: same single acceptance point as the free-function
+        // fragment path.
+        let backend = self.current_backend().to_string();
+        let staged = self.warm_edit_targeted(
             &WarmTarget::Method {
                 owner,
                 name: fn_name,
@@ -2286,22 +2432,44 @@ impl A2xSession {
             edited_src,
             entry,
             read_only,
-        )
+            None,
+        )?;
+        Ok(self.commit_warm(&backend, staged))
     }
 
+    /// PLAN-1033 (AXTX-01): the staged warm-edit core. Every fallible op
+    /// runs here (candidate prepare/verify, fragment production and its
+    /// layered persistence, file-set assembly) but NO acceptance state
+    /// switches — the next resident set and id bindings ride the staged
+    /// result and the caller commits them at ONE point after the last
+    /// fallible op (anchor publication on the anchored channels). A late
+    /// assemble/publish failure therefore finds the session wholly at the
+    /// OLD accepted state (§5.4 失败保旧). `next_source_sha` is the ranged
+    /// path's NEXT full-source binding (the manifest must carry it even
+    /// though the session binding itself switches only at commit).
     fn warm_edit_targeted(
         &mut self,
         target: &WarmTarget<'_>,
         edited_src: &str,
         entry: &str,
         read_only: bool,
-    ) -> Result<Assembly, A2xRejectOrResource> {
+        next_source_sha: Option<&str>,
+    ) -> Result<WarmStaged, A2xRejectOrResource> {
         let fn_name = target.name();
         let profile = self.profile;
         let backend = self.current_backend().to_string();
         // produce the candidate fragment text + identity while the
         // candidate is alive (SourceParts is not Clone — borrowed use only)
-        let (frag_def, frag_name, frag_sem_fp, frag_text, input_hash, runtime, prelude_seed) = {
+        let (
+            frag_def,
+            frag_name,
+            frag_sem_fp,
+            frag_text,
+            input_hash,
+            runtime,
+            prelude_seed,
+            frag_artifact_id,
+        ) = {
             let env = self.env.as_mut().ok_or_else(|| {
                 A2xRejectOrResource::Reject(A2xReject::new(
                     "a2x.session",
@@ -2390,20 +2558,24 @@ impl A2xSession {
             })?;
             let sem_fp = semantic_fingerprint(&view, f).map_err(A2xRejectOrResource::Reject)?;
             // reuse by store hit / resident; else produce now
-            let text = if let Some(r) = self
+            // PLAN-1033: reuse keeps the CURRENT id binding (None — no
+            // update); a store hit or fresh production reports the
+            // fragment artifact id so the commit rebinds it (the ranged
+            // anchor's required edge must follow the EDITED fragment).
+            let (text, frag_artifact_id) = if let Some(r) = self
                 .resident
                 .get(&(backend.clone(), f.source_name.to_string()))
             {
                 if r.sem_fp == sem_fp {
                     self.stats.fragments_reused_resident += 1;
-                    r.text.clone()
+                    (r.text.clone(), None)
                 } else {
-                    self.produce_fragment(&view, f, &sem_fp, &runtime_sha, read_only)?
-                        .text
+                    self.produce_fragment(&view, f, &sem_fp, &runtime_sha, read_only)
+                        .map(|(r, id)| (r.text, id))?
                 }
             } else {
-                self.produce_fragment(&view, f, &sem_fp, &runtime_sha, read_only)?
-                    .text
+                self.produce_fragment(&view, f, &sem_fp, &runtime_sha, read_only)
+                    .map(|(r, id)| (r.text, id))?
             };
             // the rt/coll prelude needs the (record-carrying) fragment view
             // AFTER the borrow ends — capture the provider-opaque seed now
@@ -2422,6 +2594,7 @@ impl A2xSession {
                 parts.input_hash.clone(),
                 runtime,
                 prelude_seed,
+                frag_artifact_id,
             )
         };
         let def_index = frag_def;
@@ -2432,30 +2605,30 @@ impl A2xSession {
             text: frag_text,
         };
 
-        // swap the edited fragment into the CURRENT target's resident set
-        // (other targets' residents are untouched) and assemble
-        let mut frags: Vec<ResidentFragment> = self
+        // PLAN-1033 (AXTX-01): stage the NEXT resident set locally — the
+        // current backend's residents with the edited fragment swapped
+        // in. The session map itself switches only at the caller's
+        // commit point (after assembly and, on anchored channels, after
+        // the anchor publication), so a late failure leaves the OLD
+        // published residents in place.
+        let mut next_residents: BTreeMap<(String, String), ResidentFragment> = self
             .resident
             .iter()
             .filter(|((b, _), _)| b == &backend)
-            .map(|(_, r)| r.clone())
+            .map(|(k, r)| (k.clone(), r.clone()))
             .collect();
-        frags.retain(|r| r.source_name != fragment.source_name);
-        frags.push(fragment);
-        frags.sort_by_key(|r| r.def_index);
-        self.resident.retain(|(b, _), _| b != &backend);
-        self.resident.extend(
-            frags
-                .into_iter()
-                .map(|r| ((backend.clone(), r.source_name.clone()), r)),
-        );
+        next_residents.remove(&(backend.clone(), fragment.source_name.clone()));
+        let mut resident_id_updates: BTreeMap<(String, String), String> = BTreeMap::new();
+        if let Some(id) = frag_artifact_id {
+            resident_id_updates.insert((backend.clone(), fragment.source_name.clone()), id);
+        }
+        next_residents.insert((backend.clone(), fragment.source_name.clone()), fragment);
 
-        // assemble from residents (no extra production; manifest built
-        // here) — the prelude re-derives from the captured seed
-        let mut residents: Vec<(usize, ResidentFragment)> = self
-            .resident
+        // assemble from the staged residents (no extra production; the
+        // manifest is built here) — the prelude re-derives from the
+        // captured seed
+        let mut residents: Vec<(usize, ResidentFragment)> = next_residents
             .iter()
-            .filter(|((b, _), _)| b == &backend)
             .map(|(_, r)| (r.def_index, r.clone()))
             .collect();
         // declaration order (BTreeMap iteration is name-alphabetical;
@@ -2483,15 +2656,43 @@ impl A2xSession {
                 runtime: &runtime,
                 prelude_seed: prelude_seed.as_deref(),
                 origins: None,
-                source_sha256: self.source_sha256.as_deref(),
+                // PLAN-1033: the ranged path binds the NEXT full-source
+                // identity into the manifest even though the session's
+                // binding switches only at commit.
+                source_sha256: next_source_sha.or(self.source_sha256.as_deref()),
             })
             .map_err(A2xRejectOrResource::Reject)?;
-        Ok(Assembly {
-            files: fileset.files,
-            manifest: fileset.manifest,
+        Ok(WarmStaged {
+            assembly: Assembly {
+                files: fileset.files,
+                manifest: fileset.manifest,
+            },
+            residents: next_residents,
+            resident_id_updates,
         })
     }
 
+    /// PLAN-1033 (AXTX-01): the staged outcome of one warm edit — every
+    /// fallible op has run (fragment production/persistence, file-set
+    /// assembly) but NO acceptance state has switched yet. The caller
+    /// publishes the anchor (anchored channels) and then commits in one
+    /// infallible step.
+    ///
+    /// PLAN-1033: the single acceptance point of a warm edit — swap the
+    /// current backend's resident set and id bindings together (§5.4
+    /// 失败保旧 — a failed edit never leaves a partially published
+    /// session).
+    fn commit_warm(&mut self, backend: &str, staged: WarmStaged) -> Assembly {
+        self.resident.retain(|(b, _), _| b != backend);
+        self.resident.extend(staged.residents);
+        self.resident_ids.extend(staged.resident_id_updates);
+        staged.assembly
+    }
+
+    /// PLAN-1033: returns the fragment plus its fragment-layer artifact
+    /// id when one is materialized (store hit or fresh persistence) —
+    /// `None` on resident reuse paths and read-only recomputation (no
+    /// id change to bind at commit).
     fn produce_fragment(
         &mut self,
         view: &SemanticView<'_>,
@@ -2499,7 +2700,7 @@ impl A2xSession {
         sem_fp: &str,
         runtime_sha: &str,
         read_only: bool,
-    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+    ) -> Result<(ResidentFragment, Option<String>), A2xRejectOrResource> {
         self.produce_fragment_with_context(view, f, sem_fp, runtime_sha, read_only, None)
     }
 
@@ -2511,7 +2712,7 @@ impl A2xSession {
         runtime_sha: &str,
         read_only: bool,
         context: Option<&str>,
-    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+    ) -> Result<(ResidentFragment, Option<String>), A2xRejectOrResource> {
         self.produce_fragment_with_context_observed(
             view,
             f,
@@ -2534,6 +2735,9 @@ impl A2xSession {
             &mut Vec<ace_source_query::work::Work>,
         )>,
     ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        // the checked-fragment public API has no acceptance point of its
+        // own — the artifact id is the caller's business only via the
+        // warm staging path.
         self.produce_fragment_with_context_observed(
             view,
             f,
@@ -2543,6 +2747,7 @@ impl A2xSession {
             None,
             observation,
         )
+        .map(|(r, _)| r)
     }
     fn produce_fragment_with_context_observed(
         &mut self,
@@ -2556,7 +2761,7 @@ impl A2xSession {
             &ace_source_query::work::Ledger,
             &mut Vec<ace_source_query::work::Work>,
         )>,
-    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+    ) -> Result<(ResidentFragment, Option<String>), A2xRejectOrResource> {
         let frag_key = self.fragment_key_with_context(f, sem_fp, runtime_sha, context);
         let lookup = observation.as_ref().map(|(l, _)| {
             l.begin(
@@ -2586,12 +2791,18 @@ impl A2xSession {
                     ledger.reuse(f.source_name, "c-fragment", 1);
                 }
                 self.stats.store_hit_fragment += 1;
-                return Ok(ResidentFragment {
-                    source_name: f.source_name.to_string(),
-                    def_index: f.def_index,
-                    sem_fp: sem_fp.to_string(),
-                    text,
-                });
+                return Ok((
+                    ResidentFragment {
+                        source_name: f.source_name.to_string(),
+                        def_index: f.def_index,
+                        sem_fp: sem_fp.to_string(),
+                        text,
+                    },
+                    // PLAN-1033: a store hit rebinds the id binding to the
+                    // HIT artifact (the warm commit follows the edited
+                    // fragment's real identity).
+                    Some(hit.artifact_id),
+                ));
             }
         }
         let mut print = observation.as_ref().map(|(l, _)| {
@@ -2617,6 +2828,10 @@ impl A2xSession {
         if let Some(print) = &mut print {
             print.produced(1);
         }
+        // PLAN-1033: the persisted fragment's artifact id rides the
+        // result so the warm commit (and the rebound anchor's required
+        // edge) binds the EDITED fragment, not a stale one.
+        let mut frag_id = None;
         if !read_only {
             let sig_input = self.signature_input(view, f);
             let sem_key = self.semantic_key(f, sem_fp, view.domain.schema(), &sig_input);
@@ -2640,23 +2855,26 @@ impl A2xSession {
             if let Some((ledger, _)) = &observation {
                 ledger.io(f.source_name, "c-cache", 0, text.len() as u64);
             }
-            self.quota_put(
+            frag_id = Some(self.quota_put(
                 self.layer_fragment().id,
                 frag_key,
                 ChunkKind::Object,
                 text.as_bytes(),
                 vec![(sem_id, RefKind::Provenance)],
-            )?;
+            )?);
         }
         if let (Some(print), Some((_, work))) = (print, observation.as_mut()) {
             work.push(print);
         }
-        Ok(ResidentFragment {
-            source_name: f.source_name.to_string(),
-            def_index: f.def_index,
-            sem_fp: sem_fp.to_string(),
-            text,
-        })
+        Ok((
+            ResidentFragment {
+                source_name: f.source_name.to_string(),
+                def_index: f.def_index,
+                sem_fp: sem_fp.to_string(),
+                text,
+            },
+            frag_id,
+        ))
     }
 
     /// RESTART re-admission: a fresh session over the same store must HIT
@@ -2826,6 +3044,12 @@ fn static_layer(id: &str) -> &'static str {
         "AXPY1" => LAYER_FRAGMENT_PY.id,
         "AXPY2" => LAYER_FRAGMENT_PY_RT.id,
         "AXPY3" => LAYER_FRAGMENT_PY_COLL.id,
+        "AXTS1" => LAYER_FRAGMENT_TS.id,
+        "AXTS2" => LAYER_FRAGMENT_TS_RT.id,
+        "AXTS3" => LAYER_FRAGMENT_TS_COLL.id,
+        "AXJS1" => LAYER_FRAGMENT_JS.id,
+        "AXJS2" => LAYER_FRAGMENT_JS_RT.id,
+        "AXJS3" => LAYER_FRAGMENT_JS_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
         "AXP3" => LAYER_SOURCE_ANCHOR_COLL.id,

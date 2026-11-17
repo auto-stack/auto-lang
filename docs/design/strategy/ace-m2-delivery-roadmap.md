@@ -1,8 +1,26 @@
 # ACE M2执行路线：完整语言到全部产品替换
 
+> 2026-11-17最新状态与A执行前沿见§40（r38）；事件/阶段合同沿§39与980 r15／981 r17／985 r24，旧日期待办不覆盖新交付。
+
+> 当前阶段等待/事件缺口与状态接续以§39（r37）及980 r15／981 r17／985 r24为准；§38是1032交付前快照，r23验收分母保持。
+
+> 当前A待办/状态与执行顺序以§38（r36）为准；985/A验收合同仍为§37及985 r23，旧状态快照不覆盖最新正式交付。
+
+> 本轮r35：985/A分母、审计A/B与1066正确性切片见§37；UI三波与OS顺序沿§36。
+
+> 本轮r34：A最小真实出口与B三波/OS迁交以§36为准；旧日期快照及§35不覆盖最新Plan合同。
+
+> 2026-11-16 Node桌面最新执行合同见§35（本轮r33）；旧日期快照不能覆盖980/981/1068/985当前合同与正式收据。
+
+2026-11-16最新裁定：**M2最终AV/AC/A2R公共能力一致；A2C完整对齐增强。** 985/A可接真实AC基础＋完整B差额账，非基础AC缺口在B期间由1067/1068结合AAC真实模块逐项补齐。完整AAC代际签章仍独立，相关AC能力闭合为M2最终硬门，不能以原适用profile拒绝豁免。此条取代旧A四端全齐与“AAC同B完全无交接”的排程；原A2PY标准库/AV三provider/Linux1063延期规则保持。
+
+2026-11-16 全计划最新状态/A-B顺序见[统一总览§17](ace-route-plan-map.md#17-2026-11-16-aceage-m2全计划状态与ab顺序本轮当前)，六计划清空视角见§34：Godot脚本/TSCN/工程不再要求M2支持；TS/JS保生产消费闭包。以下日期状态是历史快照，不能覆盖原Plan最新正式来源。
+
+> 2026-11-16早时状态快照见§33；本轮目标范围与排程优先看§34。早时记录：970/978已归档；971/A、977/PY已阶段交付；973/974/981与985/A在途；M2A-08尚未产生。交接合同见§31，状态以各原Plan及正式收据为准；本轮只规划。
+
 > 当前计划分类、状态和跨路线执行顺序先看[统一总览](ace-route-plan-map.md)。本文件保留历次日期快照，旧“未打M1 tag”或旧drafting计数不能覆盖当前Plan/正式收据；各批次合同不因总览改变。
 
-2026-11-14，r24（AAC独立路线与M2-A后并行门见§29；两项全仓旧红后移M2与M1收尾边界见§21；ace-perf成本优化专项见§20；AutoDown 文档式测试试点见§15；默认自有库/非libc选择与字符串边界见§19；标准库准备的M1-TAG进入门见§12；完整FFI/新版标准库增补见§11；AGE两阶段接洽见§10；历史核验记录保留原日期）。设计权威：[Design55](../55-ace-m2-complete-language-and-product-replacement.md)。初轮创建29份草案并重排945–948；r5已修订十份M2草案纳入[Design56](../56-ace-m2-ffi-and-native-stdlib.md)；r6修订945–948的M1 tag后进入安排；r7正式拆M2-A/B并明确阶段出口/跨仓证明与测试守恒；不施工、不修改M1在途合同，不把路线草案当已批准实现。旧REP-01..11/V06门保留。当前路线替代“只有M2标签、尚未立项”的旧排程描述，历史状态不覆盖当前事实。
+2026-11-16，r32（977归档门/最新状态/当前接续见§34；早时状态/低占用接续见§33；§32为11-15历史快照；Linux延期与普通库自有实现见§30；AAC独立路线与M2-A后并行门见§29；两项全仓旧红后移M2与M1收尾边界见§21；ace-perf成本优化专项见§20；AutoDown 文档式测试试点见§15；默认自有库/非libc选择与字符串边界见§19；标准库准备的M1-TAG进入门见§12；完整FFI/新版标准库增补见§11；AGE两阶段接洽见§10；历史核验记录保留原日期）。设计权威：[Design55](../55-ace-m2-complete-language-and-product-replacement.md)。初轮创建29份草案并重排945–948；r5已修订十份M2草案纳入[Design56](../56-ace-m2-ffi-and-native-stdlib.md)；r6修订945–948的M1 tag后进入安排；r7正式拆M2-A/B并明确阶段出口/跨仓证明与测试守恒；不施工、不修改M1在途合同，不把路线草案当已批准实现。旧REP-01..11/V06门保留。当前路线替代“只有M2标签、尚未立项”的旧排程描述，历史状态不覆盖当前事实。
 
 当前完整AGE上游根与M2隔离集成建议见§18；962/963均已8/8归档，后继按实际Plan推进；本轮Node首Hello与并行合同见§24。967/F0是并行Hello切片，979通用Schema不串行反等完整执行/SDK；其余计划的具体化复查见§23。
 
@@ -14,7 +32,7 @@ ACE/Hello/AGE统一排程见§17：一个依赖总览、两个里程碑视图、
 
 当前排程由§13正式两阶段取代此前全面交错迁移；11-10执行清单整理见§14，M2-A 测试框架试点见§15。阶段次序为：A能力/新库＋RG-A真实验证→985/A出口→B全产品替换＋发行退役。保原M1-TAG/REP/V06与独立自举后续路线；仅规划。
 
-当前标准库加载/#in分工及下一实施入口以§28为准，后端/provider覆盖见§27，平台方案及强制底座依赖见§26（§25保初稿过程）；见[原生平台I/O设计](../stdlib/native-platform-io.md)。947已归档；新增1039–1041仅规划，完整系统库仍归973；历史零进度快照不覆盖各Plan当前状态。
+当前标准库Linux延期和普通库归属以§30为准；加载/#in分工设计见§28，后端/provider覆盖见§27，平台方案及强制底座依赖见§26（§25保初稿过程）；见[原生平台I/O设计](../stdlib/native-platform-io.md)。947已归档；新增1039–1041仅规划，完整系统库仍归973；历史零进度快照不覆盖各Plan当前状态。
 
 ## 数值与组合类型
 
@@ -38,30 +56,30 @@ ACE/Hello/AGE统一排程见§17：一个依赖总览、两个里程碑视图、
 | Plan | 独立交付职责 | 正式依赖（裸编号属语言仓；跨仓显式标仓） | 阶段 | 本轮状态 |
 |---|---|---|---|---|
 | [945](../../plans/archive/945-ace-stdlib-core-math-and-text.md) | ACE 基础数学与文本标准库最小切片 | 943, 944, 960, 947；M1-TAG | M2-A | drafting r7 / 0 of 8 |
-| [946](../../plans/946-ace-stdlib-collections-and-owned-algorithms.md) | ACE 集合与拥有资源公共算法 | 943, 944, 945, 962；M1-TAG | M2-A | drafting r7 / 0 of 8 |
+| [946](../../plans/archive/946-ace-stdlib-collections-and-owned-algorithms.md) | ACE 集合与拥有资源公共算法 | 943, 944, 945, 962；M1-TAG | M2-A | drafting r7 / 0 of 8 |
 | [947](../../plans/archive/947-ace-stdlib-console-and-resource-host-contract.md) | ACE 控制台接入、标准库分层与装配合同 | 943, 944, 960；M1-TAG | M2-A | drafting r9 / 0 of 10 |
-| [948](../../plans/948-stdlib-domain-migration-and-release-readiness.md) | 标准库领域迁移差额与发行接管准备 | 943, 945, 946, 947；M1-TAG | M2-A | drafting r9 / 0 of 9 |
+| [948](../../plans/archive/948-stdlib-domain-migration-and-release-readiness.md) | 标准库领域迁移差额与发行接管准备 | 943, 945, 946, 947；M1-TAG | M2-A | drafting r9 / 0 of 9 |
 | [959](../../plans/archive/959-ace-m2-denominator.md) | M2 全语言与全产品兼容分母冻结 | 只读冻结分母（已交） | 已交A底座（不重开） | archived r2 / 7 of 7 |
 | [960](../../plans/archive/960-ace-m2-modules.md) | 完整模块包与公共类型绑定 | 959, 950 | 已交A底座（不重开） | archived r2 / 8 of 8 |
 | [961](../../plans/archive/961-ace-m2-numbers.md) | 完整数值源码与四端一致语义 | 959 | 已交A底座（不重开） | archived r2 / 8 of 8 |
 | [962](../../plans/archive/962-ace-m2-aggregates.md) | 组合数据结构与递归拥有资源 | 960, 961 | M2-A | archived r4 / 8 of 8 |
 | [963](../../plans/archive/963-ace-m2-generics.md) | 通用泛型spec与方法实例化 | 960, 962, 935 | M2-A | archived r5 / 8 of 8 |
-| [964](../../plans/964-ace-m2-dynamic.md) | 动态值对象反射与通用闭包 | 962, 963 | M2-A | drafting r5 / 0 of 8 |
-| [965](../../plans/965-ace-m2-control-effects.md) | 完整控制流错误传播与生成器 | 962, 964 | M2-A | drafting r5 / 0 of 8 |
-| [966](../../plans/966-ace-m2-metaprogramming.md) | 完整编译期执行宏与领域生成 | 960, 963, 964, 965, 936, 958 | M2-A | drafting r6 / 0 of 10 |
-| [967](../../plans/967-ace-m2-host.md) | 完整C/Rust FFI、自动binding与通用宿主资源 | 960, 962, 963, 938, 939 | M2-A | drafting r8 / 0 of 19 |
-| [968](../../plans/968-ace-m2-scheduler.md) | 任务async actor与事件调度 | 965, 967 | M2-A | drafting r5 / 0 of 8 |
-| [969](../../plans/969-ace-m2-facade.md) | ACE 产品执行配置与嵌入前门 | 960, 964, 967, 968 | M2-A | drafting r6 / 0 of 12 |
-| [970](../../plans/970-ace-m2-sessions.md) | REPL持久会话daemon与在线更新 | 969, 968 | M2-A | drafting r5 / 0 of 8 |
+| [964](../../plans/archive/964-ace-m2-dynamic.md) | 动态值对象反射与通用闭包 | 962, 963 | M2-A | drafting r5 / 0 of 8 |
+| [965](../../plans/archive/965-ace-m2-control-effects.md) | 完整控制流错误传播与生成器 | 962, 964 | M2-A | drafting r5 / 0 of 8 |
+| [966](../../plans/archive/966-ace-m2-metaprogramming.md) | 完整编译期执行宏与领域生成 | 960, 963, 964, 965, 936, 958 | M2-A | drafting r6 / 0 of 10 |
+| [967](../../plans/archive/967-ace-m2-host.md) | 完整C/Rust FFI、自动binding与通用宿主资源 | 960, 962, 963, 938, 939 | M2-A | drafting r8 / 0 of 19 |
+| [968](../../plans/archive/968-ace-m2-scheduler.md) | 任务async actor与事件调度 | 965, 967 | M2-A | drafting r5 / 0 of 8 |
+| [969](../../plans/archive/969-ace-m2-facade.md) | ACE 产品执行配置与嵌入前门 | 960, 964, 967, 968 | M2-A | drafting r6 / 0 of 12 |
+| [970](../../plans/archive/970-ace-m2-sessions.md) | REPL持久会话daemon与在线更新 | 969, 968 | M2-A | drafting r5 / 0 of 8 |
 | [971](../../plans/971-ace-m2-tools.md) | 调试LSP测试与Playground接管 | 970, 966 | 跨M2-A/B | drafting r5 / 0 of 11 |
-| [972](../../plans/972-ace-m2-stdlib-core.md) | 新版标准库完整基础与集合 | 961, 962, 963, 964, 945, 946, 948 | M2-A | drafting r7 / 0 of 10 |
-| [973](../../plans/973-ace-m2-stdlib-io.md) | 新版系统文件进程时间与资源库 | 967, 968, 972, 947, 966 | M2-A | drafting r7 / 0 of 10 |
-| [974](../../plans/974-ace-m2-stdlib-network.md) | 新版网络HTTP与流式服务库 | 968, 973 | M2-A | drafting r5 / 0 of 8 |
-| [975](../../plans/975-ace-m2-stdlib-data.md) | 新版JSON序列化数据库与扩展库 | 972, 973, 948 | M2-A | drafting r5 / 0 of 8 |
-| [976](../../plans/976-ace-m2-typescript.md) | 共享HIR到TypeScript和JavaScript | 960, 961, 962, 964, 965, 968 | M2-A | drafting r5 / 0 of 8 |
+| [972](../../plans/archive/972-ace-m2-stdlib-core.md) | 新版标准库完整基础与集合 | 961, 962, 963, 964, 945, 946, 948 | M2-A | drafting r7 / 0 of 10 |
+| [973](../../plans/archive/973-ace-m2-stdlib-io.md) | 新版系统文件进程时间与资源库 | 967, 968, 972, 947, 966 | M2-A | drafting r7 / 0 of 10 |
+| [974](../../plans/archive/974-ace-m2-stdlib-network.md) | 新版网络HTTP与流式服务库 | 968, 973 | M2-A | drafting r5 / 0 of 8 |
+| [975](../../plans/archive/975-ace-m2-stdlib-data.md) | 新版JSON序列化数据库与扩展库 | 972, 973, 948 | M2-A | drafting r5 / 0 of 8 |
+| [976](../../plans/archive/976-ace-m2-typescript.md) | 共享HIR到TypeScript和JavaScript | 960, 961, 962, 964, 965, 968 | M2-A | drafting r5 / 0 of 8 |
 | [977](../../plans/977-ace-m2-other-targets.md) | 其余A2X目标与独立转换工具接管 | 959, 960, 962, 964, 965, 968 | 跨M2-A/B | drafting r6 / 0 of 16 |
-| [978](../../plans/978-ace-m2-build.md) | 工程增量多目标构建与预编译SDK | 960, 966, 972, 967, 942 | M2-A | drafting r8 / 0 of 14 |
-| [979](../../plans/979-ace-m2-schema.md) | Schema领域语言包与UI AGE投影接口 | 960, 963, 966 | M2-A | drafting r10 / 0 of 12 |
+| [978](../../plans/archive/978-ace-m2-build.md) | 工程增量多目标构建与预编译SDK | 960, 966, 972, 967, 942 | M2-A | drafting r8 / 0 of 14 |
+| [979](../../plans/archive/979-ace-m2-schema.md) | Schema领域语言包与UI AGE投影接口 | 960, 963, 966 | M2-A | drafting r10 / 0 of 12 |
 | [980](../../plans/980-ace-m2-autoui.md) | 现有AutoUI全模式ACE兼容接入 | 960, 963, 967, 968, 969, 972, 973, 976, 978, 979 | M2-A | drafting r9 / 0 of 35 |
 | [981](../../plans/981-ace-m2-age.md) | AGE Node直接接入ACE与AV开发及A2R游戏发行 | 960, 961, 962, 966, 967, 968, 969, 970, 972, 978, 979, 980, ag-examples/024, ag-examples/025, ag-examples/028, auto-ui/061, auto-ui/062, auto-ui/063, auto-ui/067, auto-ui/072 | 跨M2-A/B | drafting r12 / 0 of 34 |
 | [982](../../plans/982-ace-m2-man-gen.md) | AutoMan配置任务模板与生成器迁移 | 960, 964, 966, 969, 970, 971, 973, 976, 977, 978 | 跨M2-A/B | drafting r6 / 0 of 40 |
@@ -82,6 +100,8 @@ ACE/Hello/AGE统一排程见§17：一个依赖总览、两个里程碑视图、
 **M2-A2，出口**：985/T-A01..A03建立旧义务→新check映射、按规范补case并汇总四端/新库/RG-A真实结果；T-A04独立review，T-A05核已合入来源与候选SDK，M2A-01..08齐才产生可消费的A收据。完整语言/标准库既不能由旧“全部”绿替代，也不能由少量演示或typed fixture替代。
 
 **M2-B1，全产品替换**：A收据后实施971全工具、977/REVERSE、981内容/两游戏/融合、982全部剩余CLI/模板/target、983全部服务/四仓、984其余消费者及OS064全部App/组合；逐原数据/模式/业务和MIX验收。A只读准备不算B开工或交付。
+
+> **2026-11-16 用户范围裁定（v0.6 面积调整）**：PLAN-980 的 **JET/ARK 两后端归 M3（v0.7），从 v0.6 移除**（B-JET/B-ARK 六任务行撤出、原义务留 980 §9 历史；PARITY 的 v0.6 联合覆盖=现役模式 NATIVE/WEB/RUST/TAURI）；**WEB（Vue+TS）保留 v0.6**（关键路径=PLAN-976 TypeScript provider）。v0.6=完整 M2 的签发口径不变，M2 的传统 UI 门按此缩面后的批次分母执行；JET/ARK 环境事实（无 gradlew/DevEco）随批归 M3。
 
 **M2-B2，发行退役**：984/CLOSURE→985原B全产品联合候选验收→986安装升级/默认→987无legacy冻结重建及最终安装/产品证据→全部REP/V06齐才签完整M2/v0.6。B发现基础缺陷按真实owner修复/定向复核A基线，保原义务。
 
@@ -275,27 +295,27 @@ UI080只做公共能力，AG029纯2D两田种植/生长/收获/最小存档和�
 | Plan | A期能力/真实验证 | B期接管 | A最小交接（最终整包依赖仍看frontmatter） |
 |---|---|---|---|
 | [945](../../plans/archive/945-ace-stdlib-core-math-and-text.md) r7 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [946](../../plans/946-ace-stdlib-collections-and-owned-algorithms.md) r7 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [946](../../plans/archive/946-ace-stdlib-collections-and-owned-algorithms.md) r7 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [947](../../plans/archive/947-ace-stdlib-console-and-resource-host-contract.md) r9 / archived 10 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [948](../../plans/948-stdlib-domain-migration-and-release-readiness.md) r9 / 0 of 9 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [948](../../plans/archive/948-stdlib-domain-migration-and-release-readiness.md) r9 / 0 of 9 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [962](../../plans/archive/962-ace-m2-aggregates.md) r4 / 8 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [963](../../plans/archive/963-ace-m2-generics.md) r5 / archived 8 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [964](../../plans/964-ace-m2-dynamic.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [965](../../plans/965-ace-m2-control-effects.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [966](../../plans/966-ace-m2-metaprogramming.md) r6 / 0 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [967](../../plans/967-ace-m2-host.md) r8 / 0 of 19 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [968](../../plans/968-ace-m2-scheduler.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [969](../../plans/969-ace-m2-facade.md) r6 / 0 of 12 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [970](../../plans/970-ace-m2-sessions.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [964](../../plans/archive/964-ace-m2-dynamic.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [965](../../plans/archive/965-ace-m2-control-effects.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [966](../../plans/archive/966-ace-m2-metaprogramming.md) r6 / 0 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [967](../../plans/archive/967-ace-m2-host.md) r8 / 0 of 19 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [968](../../plans/archive/968-ace-m2-scheduler.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [969](../../plans/archive/969-ace-m2-facade.md) r6 / 0 of 12 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [970](../../plans/archive/970-ace-m2-sessions.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [971](../../plans/971-ace-m2-tools.md) r5 / 0 of 11 | 批次 PROOF；T-01 | 原T任务（逐项见Plan） | A/PROOF仅等966/969/970的实际接口；原T-02/03/08的全工具迁移属B并消费M2A-08收据。 |
-| [972](../../plans/972-ace-m2-stdlib-core.md) r7 / 0 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [973](../../plans/973-ace-m2-stdlib-io.md) r7 / 0 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [974](../../plans/974-ace-m2-stdlib-network.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [975](../../plans/975-ace-m2-stdlib-data.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [976](../../plans/976-ace-m2-typescript.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [972](../../plans/archive/972-ace-m2-stdlib-core.md) r7 / 0 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [973](../../plans/archive/973-ace-m2-stdlib-io.md) r7 / 0 of 10 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [974](../../plans/archive/974-ace-m2-stdlib-network.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [975](../../plans/archive/975-ace-m2-stdlib-data.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [976](../../plans/archive/976-ace-m2-typescript.md) r5 / 0 of 8 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [977](../../plans/977-ace-m2-other-targets.md) r6 / 0 of 16 | 批次 GD,PY,SCENE；T-01 | 批次 REVERSE；T-05,T-06,T-07 | A的PY/GD/SCENE按原最小语言接口；REVERSE及其全部公开入口接管属B，不能由982/PROOF反等。 |
-| [978](../../plans/978-ace-m2-build.md) r8 / 0 of 14 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
-| [979](../../plans/979-ace-m2-schema.md) r10 / 0 of 12 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [978](../../plans/archive/978-ace-m2-build.md) r8 / 0 of 14 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
+| [979](../../plans/archive/979-ace-m2-schema.md) r10 / 0 of 12 | 原T任务（逐项见Plan） | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [980](../../plans/980-ace-m2-autoui.md) r9 / 0 of 35 | 批次 ARK,DIALECT,JET,NATIVE,PARITY,RUST,STATE,TAURI,WEB；T-01,T-05,T-06,T-07 | — | 本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。 |
 | [981](../../plans/981-ace-m2-age.md) r12 / 0 of 34 | 批次 LANGUAGE,PROOF,RUST,SESSION,SOURCE；T-01 | 批次 AUDIT,CONTENT,FUSION,RUST2D,RUST3D；T-05,T-06,T-07 | A=SOURCE/SESSION/RUST/LANGUAGE/PROOF；LANGUAGE-A验证不等CONTENT/RUST2D/RUST3D/FUSION/AUDIT。LANGUAGE原全产品组合义务由B/FUSION及AUDIT接收；A仍核完整语法/组件互操作，不能用最小例减范围。B=CONTENT/RUST2D/RUST3D/FUSION/AUDIT，消费A正式收据及原AG/UI所需接口。 |
 | [982](../../plans/982-ace-m2-man-gen.md) r6 / 0 of 40 | 批次 CONFIG,PROOF；T-01 | 批次 C,DEVSDK,EXEC,EXPORT,GODOT,PY,REVERSE,RUST,TEMPLATE,WEBTARGET；T-05,T-06,T-07 | A=CONFIG/PROOF；CONFIG只等960/964/969/973，PROOF补970/978；不等971整包、977/REVERSE或所有目标CLI。其他原批次全部B，消费M2A-08及原最小前置。 |
@@ -361,16 +381,28 @@ AC/AAC自举仍独立后续v0.7，技术上可在稳定基线后另评并行，�
 
 2026-11-14 首批推广已交付：[PLAN-1057](../../plans/archive/1057-autodown-document-cases-first-wave.md) 承接已归档1002，把标量/Rust、控制台、赋值诊断三份完整语料（30 例 60 检查）迁入 AutoDown 文档，并接通 script 入口、console channel 与失败 stage/code 双流；新旧逐行对跑与具名负控通过后，三个日常固定组（`case-ace-m1-base`/`-console-863`/`-immutable-avm-920`）已切到 `ace-document-*` suite，旧 suite 保留为冻结历史与 M1 来源。交付提交 `389c80f6a`（ff-only），规范落在 [document-cases](../../specs/auto-test-case/document-cases.md)、[module-selection](../../specs/auto-test-case/module-selection.md)、[ace-m1-conformance](../../specs/auto-test-case/ace-m1-conformance.md)、[legacy-immutable-diagnostic](../../specs/auto-test-case/legacy-immutable-diagnostic.md)。
 
+2026-11-14 第二批推广已规划：[PLAN-1059](../../plans/archive/1059-autodown-composite-cases-migration.md) 将 `legacy-composite.case.ad` 的14例28检查迁入单份文档，沿用旧AutoVM结果与a2r字节快照合同。新旧BASE97项逐行/actual对照及15个具名控制通过后，再替换现行BASE的一个include；迁后BASE为24个文档式case/68检查加12个旧格式case/29检查。计划含逐项映射、真实源/金样摘要、四例完整范例与宿主/治理复制入口验收；当前drafting，0/7任务，只做规划。
+
+2026-11-14 普通测试成本后继：[PLAN-1060](../../plans/archive/1060-ace-regular-test-latency-audit.md) 对当前21个普通职责组、36个workspace成员与71个ACE域case组逐模块实测/扫描：性能漏标迁显式ace-perf，功能慢例保原oracle并优化。完整warm模块调用以60秒为目标、120秒为验收上限，首次冷编译单列、测试体真实冷构建仍计入；聚合入口另报总时长，保原正式规模/阈值与串行纪律。计划含逐模块任务、用途判决、预算负控、覆盖守恒和review/merge证据复用；不重开1017的M2后正式深层优化。r2已只读定位946的8组Group union与source单项235.6秒、967宿主发现202.1秒/执行243.2秒，并补具体组/当前阶段可读性验收；这些共享负载观测不冒1060的干净预算成绩。当前executing，发现/准备进行中，0/29验收完成；建议先于1059实施以减少迁移验收成本。
+
+2026-11-14 Linux测试环境新裁定：[PLAN-1061](../../plans/1061-ace-linux-suite-isolation.md) 隔离1040/1041首批11个真实身份并扫描其余Linux专属义务；新ace-linux只在原生Linux VM显式执行，Windows普通/ace聚合/ace-perf不选择、不准备Linux腿、不启动WSL。需要将WSL路径/执行/定点清理改成本机Linux，前置debug runner构建，保原ELF/AV/双流/信号/资源与跨格式拒绝。当前drafting 0/9；允许Windows隔离切片独立phase review/门禁后先落，VM实际验证仍pending且全包不提前完成。1060已按r3增加native完整组前置（2/29已完成保持），不再将WSL启动/截止当Windows日常预算的一部分。
+
+1061 r2补充确认：Linux用例直接假设当前已在真实Linux，使用本地路径/argv/信号/进程清理；VM创建/连接/工具准备在测试外，不保留WSL发行版、Windows路径转换或远程启动包装。此约束已绑定T-03/T-08及AC-04/08，仍未实施或认证VM运行。
+
+2026-11-15 语料统一收尾已规划：[PLAN-1062](../../plans/archive/1062-remaining-code-cases-to-autodown.md) 在同一计划内分P0～P7执行，20任务均未开始。固定case层冻结75个入口、176份旧文件、756处case声明、1062项去重检查（1079个旧入口位置），逐文件/逐检查对照，并保持已有95个文档式入口位置；传统文件夹层另列1050个发现项、VM实际cache、Python/TypeScript/C及各原生包装和比较器，活跃消费者全部纳入，ignored/未注册/缺失引用单列。先补12类格式能力与无损投影，再分阶段迁移；30个具名负控、真实旧新actual和正常入口验收齐备后切换，最终活跃旧作者格式/文本sidecar回读为零。1060已归档，1061缺Linux环境不阻Windows迁移；Linux不借WSL执行。当前只规划，附录清单与只读发现不代表迁移或产品测试通过。
+
+2026-11-16事后更正：1062已经归档20/20，但“全部入口已切/旧载荷零回读/bootstrap仅proposal”结论不成立。当前76组中75组文档式、968调度器11项仍旧围栏；原生TestRunner五根1050项仍有旧发现/载荷读取，a2r两工程及250子项编译门、conformance普通生成器也有残留。统一补漏[PLAN-1066](../../plans/1066-autodown-migration-gap-closure.md)当前drafting 0/13，列逐项输入/19工程断言/30生成与33验证、20个负控、入口切换和当前全量重发现。1062状态/历史收据保留并已追加更正，当前权威边界见[收口Spec](../../specs/auto-test-case/document-migration-closure.md)；本轮只规划及纠正事实，无修复/运行。
+
 ## 16. 首个ACE UI Hello：FFI与最小宿主路线（2026-11-11，当前）
 
 本轮用户要求按AV/Rust FFI方向规划首个Hello并检查旧M2合同，不启动实施。采用原计划局部重排，不新增Plan号或重开归档；详[Design56 §0.1](../56-ace-m2-ffi-and-native-stdlib.md#01-首个ace-ui-hello最小ffi架构先行2026-11-11当前)。当前五包新增I/V/R/D共20任务，全部drafting/0完成。
 
 | 顺序 / 原Plan | 最小前置与真正交付 | 保留的完整义务 |
 |---|---|---|
-| [967/F0](../../plans/967-ace-m2-host.md) r8，0/19 | 已交938/939与现有text/AV基础→自动Rust binding/shim→共享受检FFI→真实非UI Rust文本函数；I/V/R/D正式交接，不等完整962/963 | 完整C/Rust importer、泛型/owned/async/四端与真实库仍由原任务闭合 |
-| [979/H0](../../plans/979-ace-m2-schema.md) r10，0/12；可与F0并行 | grammar/CST/现有普通函数/text/verify→最小AGE node/view/text与函数文本（Schema驱动解析/校验）→CPU受检描述；不等963/966全包 | 完整Schema、UI/Node构造/组合与最小双方言双后端 |
-| [969/E0](../../plans/969-ace-m2-facade.md) r6，0/12 | F0正式来源→公开显式ACE AV同步run/provider准入/结果/关闭；不等Dynamic/async | 全入口/配置/stdin/错误通道，970继续持久会话/热更 |
-| [978/B0](../../plans/978-ace-m2-build.md) r8，0/14 | 已交942/944/960＋F0/E0→最小预编译宿主/provider闭包与冷消费，改Auto不重建不变Rust | 全新库/foreign/目标SDK、精确缓存/原性能和最终安装退役 |
+| [967/F0](../../plans/archive/967-ace-m2-host.md) r8，0/19 | 已交938/939与现有text/AV基础→自动Rust binding/shim→共享受检FFI→真实非UI Rust文本函数；I/V/R/D正式交接，不等完整962/963 | 完整C/Rust importer、泛型/owned/async/四端与真实库仍由原任务闭合 |
+| [979/H0](../../plans/archive/979-ace-m2-schema.md) r10，0/12；可与F0并行 | grammar/CST/现有普通函数/text/verify→最小AGE node/view/text与函数文本（Schema驱动解析/校验）→CPU受检描述；不等963/966全包 | 完整Schema、UI/Node构造/组合与最小双方言双后端 |
+| [969/E0](../../plans/archive/969-ace-m2-facade.md) r6，0/12 | F0正式来源→公开显式ACE AV同步run/provider准入/结果/关闭；不等Dynamic/async | 全入口/配置/stdin/错误通道，970继续持久会话/热更 |
+| [978/B0](../../plans/archive/978-ace-m2-build.md) r8，0/14 | 已交942/944/960＋F0/E0→最小预编译宿主/provider闭包与冷消费，改Auto不重建不变Rust | 全新库/foreign/目标SDK、精确缓存/原性能和最终安装退役 |
 | [980/HELLO](../../plans/980-ace-m2-autoui.md) r9，0/35 | F0/H0/E0/B0正式接口→单text/函数文本源→真AV FFI→既有Iced窗口/恢复/退出 | 原001全功能、九个完整能力批次/全模式及RG-A03，不用Hello替完整UI |
 
 AV首窗口不反等A2R：967原T-12的AXR0简单签名→978原T-03/09装配→980原RUST同源Hello，在同合同上并行I/V/独立复核/正式phase fold；整项仍保完整范围。Hello源码/值/ABI/owner与资源事实共用，A2R须真实生成/编译/dispatch，禁AV/旧VM解释provider仍运行；peer相等不替独立oracle。
@@ -492,7 +524,7 @@ M2-A验默认库与显式外库双腿、四端独立oracle和真实符号/调用
 
 ## 20. M2-A工程支撑：ace-perf成本优化专项（2026-11-12，新增）
 
-新建[PLAN-1017：M2 ace-perf串行套件成本与压力负载优化](../../plans/1017-ace-perf-m2-cost-and-workload-optimization.md)，
+新建[PLAN-1017：M2 ace-perf串行套件成本与压力负载优化](../../plans/archive/1017-ace-perf-m2-cost-and-workload-optimization.md)，
 当前drafting r1、0/9，仅规划；Plan §5–8是执行、目标与验收的唯一合同。本节不复制第二套进度计数。
 
 | 项目 | 当前安排 |
@@ -560,25 +592,25 @@ ASE是实际消费者而非ACE/AGE上游整体前置；它不复制FFI、Schema�
 | 原合同 | 本次revision / 原进度 | 具体化焦点 |
 |---|---|---|
 | [945](../../plans/archive/945-ace-stdlib-core-math-and-text.md) | r7，drafting 0/8 | 有限基础数学/长度文本公共算法 |
-| [946](../../plans/946-ace-stdlib-collections-and-owned-algorithms.md) | r7，drafting 0/8 | 有限集合/拥有元素公共算法 |
+| [946](../../plans/archive/946-ace-stdlib-collections-and-owned-algorithms.md) | r7，drafting 0/8 | 有限集合/拥有元素公共算法 |
 | [947](../../plans/archive/947-ace-stdlib-console-and-resource-host-contract.md) | r9，drafting 0/10 | 公共标准库分层/装配与console宿主合同 |
-| [948](../../plans/948-stdlib-domain-migration-and-release-readiness.md) | r9，drafting 0/9 | 已有标准库迁移差额与有限consumer研究 |
-| [964](../../plans/964-ace-m2-dynamic.md) | r5，drafting 0/8 | 动态对象/反射/可调用值与通用闭包 |
-| [965](../../plans/965-ace-m2-control-effects.md) | r5，drafting 0/8 | 控制流/错误传播/生成器清理 |
-| [966](../../plans/966-ace-m2-metaprogramming.md) | r6，drafting 0/10 | #编译期求值/条件/展开/元信息 |
-| [967](../../plans/967-ace-m2-host.md) | r8，drafting 0/19 | C/Rust自动导入与中立FFI/资源 |
-| [968](../../plans/968-ace-m2-scheduler.md) | r5，drafting 0/8 | 任务/await/actor与取消调度 |
-| [969](../../plans/969-ace-m2-facade.md) | r6，drafting 0/12 | 公开执行facade/配置与嵌入选择 |
-| [970](../../plans/970-ace-m2-sessions.md) | r5，drafting 0/8 | REPL/daemon/同PID编辑与恢复 |
+| [948](../../plans/archive/948-stdlib-domain-migration-and-release-readiness.md) | r9，drafting 0/9 | 已有标准库迁移差额与有限consumer研究 |
+| [964](../../plans/archive/964-ace-m2-dynamic.md) | r5，drafting 0/8 | 动态对象/反射/可调用值与通用闭包 |
+| [965](../../plans/archive/965-ace-m2-control-effects.md) | r5，drafting 0/8 | 控制流/错误传播/生成器清理 |
+| [966](../../plans/archive/966-ace-m2-metaprogramming.md) | r6，drafting 0/10 | #编译期求值/条件/展开/元信息 |
+| [967](../../plans/archive/967-ace-m2-host.md) | r8，drafting 0/19 | C/Rust自动导入与中立FFI/资源 |
+| [968](../../plans/archive/968-ace-m2-scheduler.md) | r5，drafting 0/8 | 任务/await/actor与取消调度 |
+| [969](../../plans/archive/969-ace-m2-facade.md) | r6，drafting 0/12 | 公开执行facade/配置与嵌入选择 |
+| [970](../../plans/archive/970-ace-m2-sessions.md) | r5，drafting 0/8 | REPL/daemon/同PID编辑与恢复 |
 | [971](../../plans/971-ace-m2-tools.md) | r5，drafting 0/11 | LSP/调试/测试/Playground接管 |
-| [972](../../plans/972-ace-m2-stdlib-core.md) | r7，drafting 0/10 | 完整默认Auto基础/文本/集合库 |
-| [973](../../plans/973-ace-m2-stdlib-io.md) | r7，drafting 0/10 | 文件/进程/时间/环境等系统资源库 |
-| [974](../../plans/974-ace-m2-stdlib-network.md) | r5，drafting 0/8 | TCP/HTTP客户端与服务/流生命周期 |
-| [975](../../plans/975-ace-m2-stdlib-data.md) | r5，drafting 0/8 | JSON/序列化/SQLite等数据库与扩展库 |
-| [976](../../plans/976-ace-m2-typescript.md) | r5，drafting 0/8 | 新TS/JS provider与浏览器运行 |
+| [972](../../plans/archive/972-ace-m2-stdlib-core.md) | r7，drafting 0/10 | 完整默认Auto基础/文本/集合库 |
+| [973](../../plans/archive/973-ace-m2-stdlib-io.md) | r7，drafting 0/10 | 文件/进程/时间/环境等系统资源库 |
+| [974](../../plans/archive/974-ace-m2-stdlib-network.md) | r5，drafting 0/8 | TCP/HTTP客户端与服务/流生命周期 |
+| [975](../../plans/archive/975-ace-m2-stdlib-data.md) | r5，drafting 0/8 | JSON/序列化/SQLite等数据库与扩展库 |
+| [976](../../plans/archive/976-ace-m2-typescript.md) | r5，drafting 0/8 | 新TS/JS provider与浏览器运行 |
 | [977](../../plans/977-ace-m2-other-targets.md) | r6，drafting 0/16 | Python/GDScript/场景/逆向目标 |
-| [978](../../plans/978-ace-m2-build.md) | r8，drafting 0/14 | 工程增量/foreign闭包与候选SDK |
-| [979](../../plans/979-ace-m2-schema.md) | r10，drafting 0/12 | 通用Schema领域包/typed投影 |
+| [978](../../plans/archive/978-ace-m2-build.md) | r8，drafting 0/14 | 工程增量/foreign闭包与候选SDK |
+| [979](../../plans/archive/979-ace-m2-schema.md) | r10，drafting 0/12 | 通用Schema领域包/typed投影 |
 | [980](../../plans/980-ace-m2-autoui.md) | r9，drafting 0/35 | 完整AutoUI声明/状态/所有运行模式接入 |
 | [981](../../plans/981-ace-m2-age.md) | r12，drafting 0/34 | AGE Node直接前门/AV会话/A2R发行与完整语言 |
 | [982](../../plans/982-ace-m2-man-gen.md) | r6，drafting 0/40 | AutoMan配置/命令/模板/生成工程迁移 |
@@ -588,7 +620,7 @@ ASE是实际消费者而非ACE/AGE上游整体前置；它不复制FFI、Schema�
 | [986](../../plans/986-ace-m2-release.md) | r7，drafting 0/9 | 安装/升级/重定位/正式发行 |
 | [987](../../plans/987-ace-m2-retirement.md) | r7，drafting 0/9 | 默认接管/旧引擎禁用与移除后重建 |
 | [1002](../../plans/archive/1002-autodown-document-cases.md) | r6，drafting 0/4 | AutoDown文档式四例七检查试点 |
-| [1017](../../plans/1017-ace-perf-m2-cost-and-workload-optimization.md) | r2，drafting 0/9 | ACE正式性能套件十倍成本治理 |
+| [1017](../../plans/archive/1017-ace-perf-m2-cost-and-workload-optimization.md) | r2，drafting 0/9 | ACE正式性能套件十倍成本治理 |
 | [1024](../../plans/1024-ace-m2-code-quality-and-refactoring-audit.md) | r2，executing 1/5 | 已实现ACE架构/重复/状态与测试接缝只读审计 |
 | [OS064](../../../../auto-os/docs/plans/064-ace-desktop-and-app-migration-batches.md) | r5，drafting 0/97 | 真实桌面/28App与普通Node根迁移 |
 
@@ -629,9 +661,9 @@ M1时序刷新：本地正式v0.6-ACE-M1已存在（目标b923362f47bc8861407e9a
 | owner / 状态 | 顺序与交付 | 不变边界 |
 |---|---|---|
 | 943/944/947已归档 | 正式底座；947已有Windows有限console/四轴选择 | 不重开、不倒填新平台/Unicode实现 |
-| [1039](../../plans/1039-ace-platform-io-primitives.md) drafting 0/9 | 受检平台I/O/内存区域、AV缓冲/授权/资源与Windows原语 | 不反等完整FFI/调度/全库；复用共同事实 |
-| [1040](../../plans/1040-ace-linux-native-elf-and-syscalls.md) drafting 0/9 | 1039后Linux x64 ELF/自有入口/直接syscall/匿名内存/实际运行 | COFF/PE不是Linux支持；保Windows回归/原缓存发布规则 |
-| [1041](../../plans/1041-ace-native-stdio-and-console-unicode.md) drafting 0/8 | 1039+945可先Windows切片，1040后四格收口 | 947bytes/换行/预算保留；真控制台另验；完整A2X/stdin归973 |
+| [1039](../../plans/archive/1039-ace-platform-io-primitives.md) drafting 0/9 | 受检平台I/O/内存区域、AV缓冲/授权/资源与Windows原语 | 不反等完整FFI/调度/全库；复用共同事实 |
+| [1040](../../plans/archive/1040-ace-linux-native-elf-and-syscalls.md) drafting 0/9 | 1039后Linux x64 ELF/自有入口/直接syscall/匿名内存/实际运行 | COFF/PE不是Linux支持；保Windows回归/原缓存发布规则 |
+| [1041](../../plans/archive/1041-ace-native-stdio-and-console-unicode.md) drafting 0/8 | 1039+945可先Windows切片，1040后四格收口 | 947bytes/换行/预算保留；真控制台另验；完整A2X/stdin归973 |
 | 946 r8 / 948 r10 / 972 r9 / 973 r8 | 948登记分母/owner不等新包；972算法不反等973；973消费三包实现完整File/系统库 | 原任务/进度/四端及process/time/watch/zip等不减 |
 | 978 r11 / 985 r12 | 完整SDK核PE/ELF依赖与AV宿主分账；完整M2-A收真实四格/独立oracle | B0/F0/Hello不新增Linux整包前置；原FFI/RG/产品/退役保持 |
 
@@ -704,3 +736,284 @@ M1时序刷新：本地正式v0.6-ACE-M1已存在（目标b923362f47bc8861407e9a
 当前时序为：M2-A完整语言/新版标准库及原RG-A验证 → 985/T-A04独立复核、T-A05已落主稳定出口 → M2-B产品替换与AAC独立实施两条线可并行。AAC各包仍需未来实施授权；不把当前只读审计或有限已归档能力当A稳定。AAC不等984/985-B/986/987整包，M2-B不反等AAC，自举仍非A/B/v0.6硬门，交付沿独立后续v0.7路线。此条取代§13及旧战略文档中必须整个M2全产品迁完再启动AAC的排期。
 
 M2现有能力/标准库/产品Plan的目标、任务、进度和分母保持；它们向AAC交已冻结API/SDK/ABI/grammar/执行收据，不增加AAC通过前置。需求缺口回真实owner活动计划或另立后继，归档Plan不重开。CS（编译器源码需求）与CL（可编译完整Auto面）分列，Gen1自编译不代完整CL支持、Rust参考对拍不代独立oracle。新增Plan的详细依赖、跨仓交接、普通固定组与代际出口见AAC路线。2026-11-14 r2补基础MIR/CT启动与精确摘要/codec：1044→1056→1045→1046→1047→1051→1055→1048→1049→1050→1052→1053→1054，解除隐式CT/lowering环，不改变本M2的A/B出口。
+
+## 30. 标准库Linux先代码后验证、Windows DLL与自有普通库（2026-11-15当前）
+
+用户最新裁定：整个ACE标准库路线的Linux分支先实现、当前不测试；Windows所需各路径照常验证。新[1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md)承972–975/978等Linux实现和完整原分母/fixture/oracle，环境完善后接1061原生Linux入口实跑。1061管隔离/执行设施，1063管标准库能力认证；不回退WSL，不改已归档1040/1041历史。Linux行deferred-required/NOT_RUN，不冒verified；能力包不反等1063，当前Windows认证/发行须清楚标平台范围。
+
+普通math/io/net/JSON/编码等默认Auto实现算法与协议，底层接Linux syscall / Windows公开系统DLL和受检CPU/OS原语。Windows固定API由PE imports/IAT让loader加载解析，动态/可选API复用受检加载器按需解析；不等于依赖CRT。高级数据库/TLS等引擎暂显式FFI，不能顺带接管默认普通库。AV/C/Rust可选provider及各转译方向义务保持。
+
+最新状态见§33：968/969/970/972/978已归档；973/974在途、975等973，976尚未开工且直接前置齐。1063在相关能力和真实Linux环境就绪后执行，不在当前可无阻完成队列；详[平台设计Draft0.6](../stdlib/native-platform-io.md)、[覆盖设计Draft0.4](../stdlib/backend-provider-coverage.md)、Design56 §0.7。历史快照与旧“必须四格当期跑”排程由本节取代。
+
+## 31. 979完整收口与980/981接口生产的无环顺序（2026-11-15，当前）
+
+> 本节固定交接边界保留；条目中的11-15进度属于历史快照，现时状态/剩余阻塞以2026-11-16的§33为准。
+
+合同权威：[979 r11](../../plans/archive/979-ace-m2-schema.md) §5–8、[980 r10](../../plans/980-ace-m2-autoui.md) §5–8、[981 r13](../../plans/981-ace-m2-age.md) §5–8及[Design55 §7.2](../55-ace-m2-complete-language-and-product-replacement.md#72-模块领域集成与979完整回验的无环交接2026-11-15当前)。只修订现有任务/验收/导航，不取号或施工。
+
+960已归档，原“Wait for 960”不是可执行任务；模块图×AGE领域的组合正式归981/SOURCE原B-SOURCE-I/V/R，含共同grammar/CST、逐模块投影与包绑定/唯一verify、source map及AV/新A2R真实运行。979已交基础作为生产输入；981交IF-981-MODULE/REF/FIELDS/ORIGINAL，980/DIALECT交IF-980-FIELDS。交接必须独立复核并按原phase fold正式落主、绑定API/源闭包/Schema/compat/实际case和独立oracle。各IF不是新任务，不提前勾完整批次；979仍保全部原AC/V和最终review/归档义务。
+
+```mermaid
+flowchart TD
+  B["960已交模块 + 979已交H0/通用包/组件基础"] --> S["981/SOURCE：MODULE/REF/FIELDS/ORIGINAL"]
+  B --> D["980/DIALECT：UI FIELDS"]
+  S --> C["979 T-03/T-08：完整回验"]
+  D --> C
+  C --> R["979 T-04/T-05/T-06/T-07"]
+  S --> P["981其余SOURCE/SESSION/RUST/LANGUAGE/PROOF"]
+  D --> U["980其余组件/模式与真实验证"]
+  R --> A["全部required A齐后985/A"]
+  P --> A
+  U --> A
+```
+
+当前执行顺序按实际依赖选任务：
+
+1. 968/969/972已归档，970原树续行1/8；981执行中0/34（有SOURCE代码进展、整批未勾选），979仍6/12等待正式交接；目标恢复由原会话/用户管理，本次不操作。
+2. 980/DIALECT先生产完整WidgetDecl字段/来源/可执行覆盖证明；981/SOURCE先生产上述四个CPU交接。它们消费979已交基础，不等979整包；不把SESSION/RUST整批、978完整SDK或产品B追加为这组CPU输入的新前置。实际缺能力按原I任务记录精确接口及实现owner。
+3. 具名输入各自正式交付后，979补齐V-09④、V-10、V-11、V-DETAIL-01的原范围与独立oracle，T-04核全部原V，再T-05独立review→原合入/清理。不能凭D-979登记或A增量pass归档。
+4. 970继续；973/976/978均已具备直接计划前置，973之后974/975。首Hello尚需978/B0→980/HELLO，967/F0、979/H0、969/E0已交，不新增多模块、981完整能力或979归档门。
+5. 980/981其余A职责及工具/库/目标/OS/真实PROOF汇合985/A；M2A-08后B产品与AGE内容、发行、退役沿原门推进。G2/G3不重复中立研究，AG029用户暂停保持；本修订不新增当下可整包归档的图形内容候选。
+
+该顺序含现有Plan内部必要交接，不等于宣称980/981现在可从开工无阻完成整包；不能为满足“整包执行”偏好强加等待其全包归档的循环。原完整UI、AGE语言、真实GPU/窗口、两个游戏/最终包、各模式/平台义务全部保留。Linux适用/后验证政策沿§30与各原合同，本次不改平台承诺或把缺环境记PASS。
+
+## 32. 最新计划状态与后续执行顺序（2026-11-15，r26）
+
+> 历史快照：当前以2026-11-16的§33为准；下列970/978/let推断等进度不再作为现时等待。
+
+读取主线`3279f2f728f5699250a88eb94d76352ece132cb7`、原Plan/正式收据与worktree登记；只做规划核对，未重新运行产品/测试或创建/恢复实施。总表以[统一总览§11/§14](ace-route-plan-map.md#11-建议的实际排程)为当前入口，各Plan仍为进度/验收权威。
+
+| 最近计划 | 本轮确认状态 | 正式交付/后续 |
+|---|---|---|
+| 968 / 969 | archived 8/8、12/12 | 2fe30f52f / 6fd48b4f1均在主线，树已不在登记中；969/E0可供B0/Hello消费 |
+| 972 / 1062 | archived 10/10、20/20 | aa7b56864 / 42a1b19d1均在主线，树已清；不沿用旧reviewed或执行中快照 |
+| 970 | executing 1/8 r6 | T-01前探冻结，原树继续T-02及剩余任务；直接前置已交，可按原合同整包收口 |
+| 979 | executing 6/12 r11 | 已交H0/组件基础；待981四IF及980字段IF，按正式输入逐项回验后全包收口 |
+| 981 | executing 0/34 r13 | SOURCE在实施树1c2fcdbd5有代码，四IF未完整正式交付；0表示原整批未勾选 |
+| 980 | drafting 0/35 r10 | 字段交接可先；完整模式仍需973/976/978、979及适用模块接口 |
+| 973 / 976 / 978 | 973 executing 0/10；976/978 drafting 0/8、0/14 | 973在核对期间已开工；976/978为当前新增整包候选，直接计划前置均已归档；各自T-01核实际准入 |
+| 974 / 975 | drafting，各0/8 | 等973；其余直接计划前置已交 |
+| 971 / 977 / 982–985 | drafting | 各A能力/PROOF按实际接口汇合985/A，B保M2A-08；不要求混合Plan整包先归档 |
+| 1061 / 1063 | drafting 0/9、0/8 | 原生Linux环境/正式来源未齐；沿既定延期验证，不反阻Windows能力包 |
+
+**981实际剩余项。** 已选择A路线：在共同Schema/CST接入既有AGE作者表面，复用原语义/源与独立oracle，不让旧AST/旧parser进入新链。1c2fcdbd5已补age-package的g01语法，但对模块级let仍报`source.module-let-inference`；应在原SOURCE任务继续补合法初值推断、资源构造器受检签名/绑定、typed描述与原g01完整CPU证明。不能要求作者改const、不能以解析通过/23例内部绿/45例grammar绿关闭ORIGINAL，也不把尚未正式落主的MODULE/REF/FIELDS当979已收输入。本次不改变981的paused目标状态或宣称新实现已交。
+
+**推荐接续。** 保留现有970、973和981原树续行；980/DIALECT仅先交完整字段事实/可执行反控，981各IF正式交付后979可逐项T-03/T-08回验，再T-04全部原V→T-05→T-06/T-07尽快归档。整包主队列倾向`在途973→新增976→978`逐包完成/清理，避免一次展开所有后继；三者之间是资源优先建议，不是新增硬依赖。若首窗优先，可先做978，再980/HELLO；此首例不等979归档、完整SOURCE、全模式或985/A。
+
+后续973→974/975；970→971/A与981/SESSION；相关接口齐后980全模式/PARITY可完成整包A并归档；981完成其SOURCE/SESSION/RUST/LANGUAGE/PROOF及其他required A证明后汇合985/A，取得M2A-08才做CONTENT/两游戏发行/FUSION/AUDIT。981全包仍跨A/B，不能以SOURCE交接删除其唯一树。最后985/B候选→986→987及各独立里程碑原门保持。
+
+AGE UI058/AG023/AG030/AG031仍各0/10，UI080 3/10，AG029 2/10且用户暂停；G2/G3暂无新增可从开工无阻整包归档的独立候选，不重复已交中立研究。1026语言前置已齐，但Python/PyTorch实际环境与专用接口本轮未实测，作为条件支线，不挤入当前无阻主队列。归档计划的计数滞后、具名债务和平台边界按原收据/owner解释，不为本轮状态核对重开旧计划。
+
+## 33. 早时状态与阶段执行顺序（2026-11-16，r27历史；当前见§34）
+
+读取主线`5360b8833822b66e951c113e1de88d79ffb9afec`、原Plan/§9收据与工作树登记；只读核对、更新路线，无产品测试或实施。详[统一总览§11](ace-route-plan-map.md#11-建议的实际排程)和[最新核对§15](ace-route-plan-map.md#15-2026-11-16最新核对与实施边界)。
+
+| 最近计划 | 当前状态 | 已交范围或剩余边界 |
+|---|---|---|
+| 970 / 978 | archived 8/8、14/14 | 900ba5ba9 / b8f80afcf均在主线，原树已清；会话与B0已可供下游消费 |
+| 971 | executing 4/11 r6 | A/PROOF已在两仓phase fold（lang 2f1eed27f、ui c1561d94）；B仍等M2A-08，不能整包归档 |
+| 973 | executing 0/10 r11 | 有系统/平台核心实现e1dc1d389，但完整文本公共API/资源/进程树/压缩与多端等尚未闭；0不代表没代码 |
+| 974 | executing 1/8 r9 | T-01已冻结，TCP/HTTP/SSE可推进；File/Stream/upload文件腿与io port依赖973正式输入 |
+| 977 | executing 4/16 r9 | PY批已正式交56aadead4；GD/SCENE缺Godot、REVERSE属B；不重做PY或据此宣布全目标齐 |
+| 979 / 980 | executing 6/12 / drafting 0/35 | 979待五个具名IF完整回验；980字段交接及HELLO可先行，完整模式仍等剩余库/目标/Schema接口 |
+| 981 | executing 0/34 r13 | SOURCE已补资源类型/签名、受支持模块let推断、场景属性与类型检查；原g01当前卡构造调用的record借用/所有权，完整IF-981-ORIGINAL未交 |
+| 985 | executing 4/14 r16 | 矩阵/覆盖接面及T-09部分已有来源已推进；T-A03..A05仍等required能力/RG，不能把开工当M2A-08 |
+| 976 / 975 | drafting 0/8 / 0/8 | 976直接前置齐，是当前未开工的完整候选；975仍等973，不以半段算法准备充整包 |
+| 982 / 983 / 984 | drafting 0/40、0/19、0/25 | 分别依实际A接口交CONFIG/PROOF、Web PROOF、系统EMBED/OS064 HOST+PROOF；B全产品后置 |
+
+981最新已提交`b7f5a913d`不在主线：AGE node按最新用户裁定，普通use导入不再要求pub；AGE前门统一用AgePackage解析/检查/发射，端口类型覆盖注解位，值函数只携其实际引用参数。原源已越过解析/绑定/类型检查，当前未闭是实例/隐藏值调用计划对record实参的借用包装与所有权验证。原树当前另有未提交修改/探针，仅属在途；不能用内部29例/core547例绿替完整g01描述、独立oracle、四IF正式交付或979回验。类型与推断不再列作“完全不存在”的现时阻塞；原源不改写、旧parser不回退、公共Auto规则不擅改。
+
+**推荐顺序**：
+
+1. 973继续完整原API/资源/多端闭合；974按T-01继续核心网络腿，其文件相关腿等973，不用替代API默删义务。981/SOURCE集中完成Node调用/所有权、g01完整原源CPU观察与正反控，再独立复核正式交IF。
+2. 980/DIALECT可先交UI字段；979随正式输入到达做T-03/T-08，全部原V齐再T-04/T-05/T-06/T-07，争取优先收掉已有树。两边不互等整包归档。
+3. 若只新增一个可整包完成的核心计划，选976；它供980 WEB/ARK等和A目标能力。若当前首窗优先，980/HELLO四项最小正式前置F0/H0/E0/B0现已齐，可直接进入原I/V/R/D，不再安排“先做978”。首窗仍需真实AV/FFI/Iced与资源/错误反控，前置齐不是窗口PASS。
+4. 973正式输入齐→975与974文件腿；973/976/979及适用981模块接口齐→980全模式/PARITY与整包A归档。970已交→981/SESSION、971/A可复用其既证来源，971/A本身也已交，不重复开工。
+5. 981其余A、977/GD/SCENE（Godot环境齐后）、982 CONFIG/PROOF、983/984与OS064 required A及全部库/组合/RG齐→985 T-A03→A04→A05。只核各required A，不反等这些混合Plan全包B。
+6. 取得M2A-08后才971/B、977/REVERSE、981内容/两游戏发行/FUSION/AUDIT及其他产品B；最后985/B候选→986安装默认→987退役后重建/终验。各独立AGE/ROS/AAC门仍保留。
+
+当前G2/G3没有新增可从开工完整归档的独立候选，UI080 3/10和AG029 2/10暂停保持；不重复中立研究。Linux1061/1063与Godot环境条件不冒PASS，1026的PyTorch/专用接口本轮未核，不作为无阻主队列。此状态刷新不修改Plan任务/计数、源文件、canonical Specs，不创建/恢复目标或工作树，不清理任何在途目录。
+
+## 34. 全计划A/B状态与后续顺序（2026-11-16，r32当前）
+
+完整单表见[统一总览§17](ace-route-plan-map.md#17-2026-11-16-aceage-m2全计划状态与ab顺序本轮当前)，清树操作仍按各原Plan/仓规。本轮读40bec290a；979已9/12（T-04汇总完成，待final/收尾）、975为8/11（B1已正式、MODULE/完整业务仍须核）、980 9/35（Hello已批审未正式D）、981 0/34但SOURCE正式已交；1064执行0/13且有MODULE实现，1065用户确认已工作/有树、原metadata仍drafting0/6待owner更新。
+
+A整包队列：979先收→1065独立收→1064完整D/FRAME/ZIP/KV与AC验收收→975实际原义务全齐收；MODULE可先独立交释放975，975可按真齐情况提前。976当前0/8可完整实施，供980 WEB/ARK及TAURI；980全部原模式/组件/PARITY齐后在A整包归档。981 SESSION/RUST/LANGUAGE就绪任务与之并行，不反等整个980，但最终PROOF取其适用正式能力。
+
+跨A/B：971 4/11的A-PROOF已交，977 4/10的PY已交；981 SOURCE/SESSION/RUST/LANGUAGE/PROOF、982 CONFIG/PROOF（0/37）、983 PORT/PROOF（0/19）、984 EMBED（0/25）、OS064 HOST/PROOF（0/97）先正式交A。985当前4/14，各required A库/语言/FFI/RG/组合齐→T-08[A]/T-A03→A04→A05正式交M2A-08；这些混合计划不需要先全包归档，不等待其B来签A。
+
+M2A-08后：971/B、977 REVERSE、981内容/两游戏/FUSION/AUDIT按实际前置可推进；982完整命令/目标工具→983完整消费者，OS064各App/ASSEMBLY及984各产品按真实输入，984/CLOSURE最后汇合所有原生态/OS证据；各包完成原final/合入/归档就核依赖后清树。985/B最后全产品/组合候选齐→986 0/9→987 0/9。等待的是985/A而非985全包；当前仍保A后唯一树到B闭，不因磁盘压力跳阶段。
+
+AGE独立：UI058/AG023各0/10、UI080 3/10按所用981 A正式接口接线；AG029 2/10用户暂停、AG030 0/10正式产品保M2A-08；AG031 0/10最后四线真实OS联合验收。1061/1063为Linux延期原生环境/认证，Windows不跑Linux/WSL，不能充PASS。完整底座归档情况与历史计数滞后解释见总览，复用原收据，不重开已归档计划。
+
+仅文档汇总与静态检查，不实施、产品测试、取号、建树、合入、清理或恢复目标。
+
+## M2最终三端一致、A基础与AAC实证（2026-11-16当前）
+
+阶段为：A完整AV/A2R与原required真实验证＋AC基础可用/具名差额 → 985/A正式出口 → B产品迁移与AC补齐/AAC实证并行 → 985/B核三端完整 → 986/987最终产物。A2C完整对齐增强，旧实现/原例/支持事实保留；A2PY标准库原承诺不变。所有B后延行保原输入/oracle/资源/失败及实际owner，不记PASS/NA。基本AC本身仅stub或差额无owner仍不能签A。
+
+新增[1067：AC Future/异步/Task](../../plans/1067-ace-ac-native-async-and-task-parity.md)和[1068：三端能力与AAC实证](../../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md)。1067接968的native拒绝缺口；1068与库/FFI/UI/AGE原owner接真实AC调用及组合，消费AAC1044/1045及逐步已交实际模块；AAC没用的特性用原完整语料补验。985/B收1068正式来源，A不反等两包。1044/1045不依整个985或1068，避免“先AC全齐才写AAC、又等AAC补AC”的环。
+
+完整AAC1053/1054的CL/代际/主体签章继续独立；M2最终三端能力不能借独立签章延期。所有改动仅设计/计划，未改产品代码或已验Spec、未运行编译/测试或启动AAC。
+
+## 35. Node桌面：A先AV＋Rust FFI，B补AC原生（2026-11-16，r33）
+
+当前排程见[统一总览§18](ace-route-plan-map.md#18-2026-11-16-node桌面入口当前顺序)。复用980/NATIVE原I/V/R、981 SESSION/LANGUAGE/FUSION/AUDIT、1068/T-04及985现有任务，不新增Plan/任务/终态。已交Hello是真窗有界证据，FFI目前只验byte_len，尚不是通用UI操作/回调入口；AXR0/A2R是另一个后端，不算AC。原历史收据保留；980 NATIVE三项因新UI-FFI范围重开（15/29→12/29），其他原勾选/状态不变，旧PASS不代表新增要求已验。
+
+A：980普通Node项目→Schema/verify→AV→967自动受检Rust FFI实际UI创建/更新/关闭、typed事件回AV→现有Iced；先静态/函数文字→002 Counter→两实例→原001/全NATIVE，交IF-980-NODE-DESKTOP-A。接口使981 SESSION/LANGUAGE可按来源并行，原A2R/RUST与PROOF义务不减；976只约束WEB相关，不能等AC或全981才交AV入口。全部原required A/RG齐→985/A正式M2A-08，AC桌面逐行B-required移交，语言/库AC基础仍真实可用。
+
+B：1068/T-04按已交A ABI/领域接面运行同源AC机器码业务/handler，经同一Rust/Iced宿主交IF-1068-AC-DESKTOP；981/FUSION/AUDIT核真实混合UI/2D/3D、输入/代际/资源/包，双方按正式切片协作不互等整包。宿主可由Rust预编译，guest不能回AV或A2R/rustc代跑；最终三端/全产品结果→985/B→986/987。980原完整A交完可归档，不为B保树，B源码变更归1068/981原owner组。Godot/JET/ARK既定范围、AGE独立G2/G3/AG031、Linux/性能与窗口单实例条件保持。
+
+本轮仅文档规划/静态预检，未实施、建树、测试、运行窗口、合入、归档、取号或恢复任何目标。
+
+## 36. A最小出口、AV→AC→A2R三波与OS产品迁移（2026-11-16，r34）
+
+正式执行表见[统一总览§19](ace-route-plan-map.md#19-2026-11-16-a最小出口与完整ui三波os迁移本轮当前)，阶段权威为Design55 §0/16、980/981/1068/OS064及985–987原任务。A仅MIN-A真实产品贯通＋既定语言/标准库/非图形FFI/SDK基础；完整UI示例/Widgets/AGE语言/复杂场景、图形A2R、全桌面/App原行正式迁B，不能继续作为A门，也不能删旧oracle。985/T-A03重冻全分母/阶段，T-A04独立复核、T-A05正式落主出M2A-08。
+
+B：980新增B-AV-I/V/R与981原域任务完成U01..06全部AV，交UI-W1-AV；1068/T-04及981 AC域在W1后交完整UI-W2-AC，不等整个1068或完整AAC；980/981 RUST等在W2后新增完整图形A2R并交UI-W3-A2R。每波只当前新后端，旧源码/Expected/事件/资源/错误oracle及有效结果复用，简单例可合组。已有Hello/AXR0是历史局部证明，不能冒实际通用UI-FFI或完整某波；Rust宿主可预编译，AV-only不承诺无初次Rust构建。必要共享变更仍做受影响内部回归，不强制每批A2R图形。
+
+三波后OS064 HOST/PROOF剩余完整业务、A01..28及登记增量、ASSEMBLY迁真实桌面/Node根/App与gallery容器；原Notes与Clock完整旅程分别归A15/A12。最小A OS仅真启动/激活/窗口链的隔离Node见证，不要求完整shell/双Host/图形A2R。原公共桌面三端与各App声明模式/数据分开验。OS不等985 B最终；984 CLOSURE收OS后，985 B候选→986安装升级默认→987无旧链重建/重装终验，最终全required齐才签M2。
+
+原Plan/任务复用；仅980增3个完整AV波任务（29→32）并重开3个RUST完整W3任务（12→9完成），旧AXR0成果保留；981仅核正已交SOURCE三项的滞后元数据（0→3/34），其他原勾选/进度保留。跨A/B树按现合同保留，未授权删除/另建。Godot/JET/ARK/WEB-TAURI和独立AGE/G2/G3/AG031、Linux/压力/窗口单实例既定边界保持。本轮只规划与静态预检，没有实施/建树/产品测试/合入/取号或目标恢复。
+
+## 37. 985/A验收分母重冻与审计后继、1066分账（2026-11-16，r35）
+
+以[985 r23](../../plans/985-ace-m2-certification.md)的A-FREEZE-20261116-r23为合同：162父行逐check/backend/consumer分类（原矩阵取材SHA见Plan）、F01..35全覆盖、1066各集合/原oracle/阶段与actual分开。1027/28已交复用；1029/1031–1037八个A正确性包必须真实修复或有充分反证并独立review/正式交；1035的F30聚合真fault、F33 Named投影、F34跨层资源分类全A，不能以证据P2或图形后移名义留B。F03/05/08/12为A约束保留，F14/20为A测试守恒/来源，归985原任务核。
+
+1030只历史864外层、1038复用/拆分研究可B；若864实际进入A消费者须先提升缺口。1066 A只A-DEN/ORACLE/NOWRITE/EVIDENCE（两个result、九空H角色、正常零作者写入、真实选择/证据），原T-12[A]/T-13[A]交IF-1066-A-CORRECTNESS。全S/N/P/C载体迁移/v2/proposal及250编译campaign在B按原13任务及全部原负控关闭，不把格式延期当语义/判据延期，也不要求先全迁移才修核心正确性。
+
+排程先1035、1029/1034按写窗并行；再收1031/1036/1037与1032/1033，1066 A与1064/976/领域MIN-A、982/983/984 A同步。1024 T-05的审计正式来源独立收尾，不等待后继；无新Plan/实现。最后所有A正确性/约束/1066切片/原能力/RG/MIN-A正式齐→985 T-08[A]/T-A03→A04→A05。B仍三UI波→OS全量→985候选→986→987，研究/迁移不反卡A。详情[总览§20](ace-route-plan-map.md#20-2026-11-16-985a分母重冻与审计1066排程本轮当前)。仅规划/静态检查，运行矩阵/adapter/执行结果尚未更新，未签A。
+
+## 38. M2-A出口前全部待办与执行顺序（2026-11-16，r36当前状态）
+
+> 本节是1032交付前历史快照；当前15计划前沿与事件/等待边界见§39，保留本表用于追溯。
+
+本节更新**状态与排程**，不改[985 r23](../../plans/985-ace-m2-certification.md)的`A-FREEZE-20261116-r23`、162父义务及逐原子验收规则，不新增Plan，不把规划或历史总绿当产品PASS。§37保留验收合同，旧§33–37的状态/推荐排序由本节覆盖；原Plan最新任务与正式收据仍是交付权威。
+
+### 已交复用，不再列为A实施待办
+
+- 976已归档8/8，正式交付`660fe72b5`；1034已归档，正式交付`140c1a626`（以final/merge收据为准，归档头部残留3/6不是尚缺三个任务的证据）。1065已正式交付。不得据旧drafting/进度快照重复实施。
+- 971/A-PROOF、977/PY已经阶段交付，整包仍executing是B余量；985/A核来源/适用性，不要求两包现在全归档。
+- 980/NATIVE的MIN-A-UI已独立复审并正式落主：auto-lang `7f431bd5f`、auto-ui `403c936d`；[规范§12](../../specs/ace-migration/m2-autoui.md#12-min-a-ui-通用-node-桌面入口native-r13-批2026-11-16)包含真实UI-FFI、事件回AV、源与永久例。980整包仍executing，不等于UI正式源尚未交付；其WEB/TAURI或完整PARITY并非本轮MIN-A的整包前置。
+- 959–970、972–976、978/979及相关原生底座、1027/1028等已交成果只核身份/真实适用性。跨仓消费者仍未运行的行不能因底座归档而自动PASS。
+
+### 全部尚未闭合的A计划/切片
+
+共有**16个原计划仍有A相关交付或收尾**：8个整包实施修复（7个审计后继＋1064）、1024审计收尾、7个跨阶段/认证计划的A子面。数字是计划数，不能与162父行、35发现、用例数或待做任务数相加。下表进度是整包元数据，不代表A子面完成率；drafting只表示文档尚未登记施工，开工需核实际树/来源。
+
+| 原计划 | 最新状态 | A出口前实际剩余 | 交付粒度 |
+|---|---|---|---|
+| 1024／[审计正式来源收尾](../../plans/1024-ace-m2-code-quality-and-refactoring-audit.md) | reviewed，4/5（整包） | T-04已复审；T-05审计摘要/正式来源与归档收尾。不等后继修复全部完成；后继可按已复审冻结材料开始。 | 独立收尾 |
+| 1029／[恢复输入准入与lease边界](../../plans/1029-ace-restored-input-and-lease-bounds.md) | drafting，0/6（整包） | ADM-01..05：尺寸/预算、语法身份、实例页、分页声明准入和最后lease释放；原T-01..06全链。 | 整包 |
+| 1031／[query负依赖提交](../../plans/1031-ace-query-negative-dependency-commit.md) | drafting，0/6（整包） | NEG-01/02：提交核正负依赖；失败保旧，重新prepare后可成功；原T-01..06全链。 | 整包 |
+| 1032／[native批编辑原子性](../../plans/1032-ace-native-typed-batch-atomicity.md) | drafting，0/6（整包） | NTX-01/02：真实typed批后项晚失败保旧接受态/旧机器结果，同批修复重试；原T-01..06全链。 | 整包 |
+| 1033／[A2X晚发布原子性](../../plans/archive/1033-ace-a2x-late-publication-atomicity.md) | drafting，0/6（整包） | AXTX-01/02：resident、source SHA、anchor/root统一接受点，失败/重启真读保旧；原T-01..06全链。 | 整包 |
+| 1035／[聚合资源与所有权](../../plans/archive/1035-ace-aggregate-resource-classification.md) | drafting，0/6（整包） | RES-01/02/03全为A：跨层资源分类、Named/Pos真实源投影、聚合真中途失败/旧dst/ledger/N+1；原T-01..06全链。 | 整包 |
+| 1036／[循环推进与协作poll](../../plans/1036-ace-loop-latch-and-cooperative-poll.md) | drafting，0/6（整包） | LOOP-01/02/03：continue推进、闭区间MAX边界、取消/poll/清理；原T-01..06全链。 | 整包 |
+| 1037／[CTE遍历及attempt事实](../../plans/1037-ace-cte-named-walk-and-attempt-facts.md) | drafting，0/6（整包） | CT-01/02：Named/Pos/MovePos的CT发现/替换/真实值，以及执行到达后发布失败的事实/重试；原T-01..06全链。 | 整包 |
+| 1064／[系统库公开面与ZIP余量](../../plans/archive/1064-ace-stdlib-byte-str-deferred-surfaces.md) | executing，8/13（整包） | T-03（D01..06）→T-04（ZIP），再T-05完整适用验证→T-06独立final→T-07正式交付/归档；原已勾MODULE/bytes/FRAME/KV按正式来源接收。 | 整包 |
+| 1066／[测试正确性A切片](../../plans/1066-autodown-migration-gap-closure.md) | drafting，0/13（整包） | A-DEN/ORACLE/NOWRITE/EVIDENCE：两个result、九空H角色、正常运行零作者写入、真实选择/来源/actual/oracle；原T-01/02/03/07/08/09/10/11的A子面→T-12[A]→T-13[A]，交IF-1066-A-CORRECTNESS。 | A切片，保树 |
+| 981／[MIN-A-AGE](../../plans/981-ace-m2-age.md) | executing，3/34（整包） | 复用已交SOURCE；SESSION/LANGUAGE/PROOF的A子面：真实AV多模块Node、最小UI＋2D＋3D、事件/更新/关闭、资源与错误编辑恢复，独立R/fold。重核980已交NATIVE正式源，V_PENDING_INPUTS缺项逐接口认领；不等完整RUST/五view/全UI。 | A切片，保树 |
+| 982／[Man CONFIG＋PROOF](../../plans/982-ace-m2-man-gen.md) | drafting，0/37（整包） | T-01→CONFIG I/V/R→PROOF I/V/R；真实配置/包锁及最小CLI，分别独立审查并正式交接。 | A切片，保树 |
+| 983／[Web PORT＋PROOF](../../plans/983-ace-m2-web.md) | drafting，0/19（整包） | T-01→PORT I/V/R→PROOF I/V/R；真实AV与新A2R服务、独立HTTP/DB结果及资源关闭。不等982/EXEC、980/WEB或四仓CONSUMERS整包。 | A切片，保树 |
+| 984／[EMBED](../../plans/984-ace-m2-os-apps.md) | drafting，0/25（整包） | T-01→EMBED I/V/R：仓外独立consumer用公开ACE/SDK，多模块执行、跨session隔离、坏SDK/权限/更新恢复/关闭；不重造OS host。 | A切片，保树 |
+| [OS064](../../../../auto-os/docs/plans/064-ace-desktop-and-app-migration-batches.md) | drafting，0/97（整包） | T-01及HOST/PROOF各自A子面：真实OS启动/注册/激活/窗口链中的Node Hello/Counter、双实例/关闭/错协议，独立R/fold交IF-OS064-A-MIN；不等完整Notes/Clock/28App或完整AGE。 | A切片，保树 |
+| 985／[A汇总、复审和出口](../../plans/985-ace-m2-certification.md) | executing，4/14（整包） | T-08[A]及T-A03更新/运行真实r23分类矩阵与adapter，核所有正式输入→T-A04独立A复审→T-A05正式M2A-08；T-A01/A02/T-09已勾需核当前合同适用性，不能复用旧全绿冒新范围通过。 | A阶段，保树 |
+
+### 先后与并行：最小接口就绪，不制造整包等待
+
+1. **立即收尾来源与已在途工作。** 1024/T-05可独立正式交审计来源，不等待7个剩余修复；1064继续原树完成余量。980继续其已授权剩余批，981先按980已落主A接口核缺项并推进MIN-A-AGE，不再以980为executing作整包阻塞。
+2. **新增一个可整包清树的执行名额，优先1032，其后1033。** 两包只取1024已复审交接，不反等980/981、1066全量迁移或M2A-08；原T-01需重核最新源码，已有修复可按原充分反证关闭，不强行重复改实现。
+3. **核心正确性并行流。** 1035保持A关键优先级；另一路可1029→1031。1036/1037按共享resolve/lowering/CT文件的写入窗口接续1035。这里的箭头是推荐减少冲突的调度，**不是新增计划硬依赖**；实际文件不重叠且输入已稳定时可并行。1032/1033也按真实写面协调，尤其与1064、981共用的native/A2X/公共类型。
+4. **代表性consumer与证据流可同时开始。** 982/CONFIG→PROOF；983/PORT→PROOF；984/EMBED；OS064/HOST[A]→PROOF[A]；1066正确性A子面。各流当前最小底座已交，可按原T-01核接口进入，不要求先完成上面全部修复。使用到真实1064/其他producer未交接口的行具名等待；正式验收必须绑定落主来源。上游后续修改只失效受影响证据，不把一次全仓重跑加成新开工门。
+5. **认证收口。** 所有A-required正确性/库/consumer/MIN-A及1066 A正式来源齐后，985完成T-08[A]与T-A03的冻结并集和真实矩阵执行→T-A04独立复审→T-A05落主，才产生可消费的M2A-08。985可提前更新r23矩阵/adapter与收据身份，但准备不能冒T-A03最终通过。
+
+推荐有限执行名额：先保留980/981/1064既有owner；新增名额给1032，随后1033；另有独立名额则优先1035或982/CONFIG＋PROOF（按共享文件写入压力择一）。982/983/984/OS064/1066只交A子面，唯一tree仍保留到B；若主要目标是降低残留磁盘，先清8个整包修复，不能把跨A/B切片承诺成可归档全包。
+
+精确最小前置沿原合同：982/CONFIG取960/964/969/973，PROOF补970/978；983/PORT取967/968/969/974，PROOF补975/978；984/EMBED取959/969/970/971-A/973/978；OS064 A取980 MIN-A-UI＋969/970/978及实际所用库/平台/协议；981 A取SOURCE、980 MIN-A-UI与最小场景/资源接面。OS最小Hello/Counter见证不反等981完整LANGUAGE/RUST或整个982/983。使用共同库时不把已归档973/975当1064余量已交。
+
+### A出口保留条件与不等待项
+
+- 985仍要核F03/F05/F08/F12/F14/F20六条约束/证据、1066 A四类正确性及原普通语言/库/FFI/SDK/AC基础/非图形A2R等适用义务。UI按AV→AC→A2R三波不取消原非图形后端义务。缺oracle、子项红、错SDK/source或仅旧引擎运行都不能充ACE PASS；新发现的实际A阻断交既有真实owner关闭，不用总数/环境归因抹红。
+- `D-981-EXIT-CONTRACT`由现有981/T-01及LANGUAGE A子面核当前Schema/多出口与旧979收据的身份差额；985拒错版收据。不重开979，不要求合法新源满足旧“混合出口必拒”规则。R59-5按981/LANGUAGE＋syntax-grammar既有owner处理，并按实际A使用/诊断义务判适用性，不能把投影重试或980 WEB进展当关闭证明。
+- **不等待**1030历史864修复、1038结构研究、1066完整载体/v2/proposal/250编译迁移、1067/1068全包、完整AAC自举、980/981全UI/Widgets/全语言/图形AC-A2R、982/983/984全产品、OS全量应用、986/987。若1030历史consumer实际进入A，按原r23规则先提升对应缺口；不是无条件豁免。
+- Linux验证按1063/当前用户裁定留专用环境，Windows不跑Linux/WSL；保原分母与未执行状态。Godot及JET/ARK按现合同后移。ROS2、Python互操作、独立AGE增强等专项不因相关就新增为985/A前置，各自原里程碑责任不取消。
+- M2A-08之后才开B：完整UI/Widgets **AV整波→AC整波→A2R整波**，再接AutoOS全量迁移；其余B产品按各自最小接口并行，最终985/B→986→987。本表不调整已授权范围或让当前会话启动实施。
+
+### 本轮只读核对与文档交接
+
+取材主线`16a58402e572c47151b2cd26b8949c2d906ea26a`，各Plan元数据/任务、980两仓NATIVE正式收据与规范§12、1034归档final/merge、985 r23逐发现与A/B冻结、OS064 r6。仅刷新本路线状态/导航/建议顺序；未改原Plan状态/勾选/验收分母或canonical Specs，未实施/建树/构建/运行测试或窗口/派agent/提交合入/清理或恢复目标。其他会话原WIP完整保留。后续以原owner最新正式交付覆盖本日期快照；A出口仍未签发。
+
+本轮文档静态检查：16行待办表、链接/锚点、表格与空白通过；22份取材Plan的内容哈希在读写前后未变，原状态/任务/验收未改。`git diff --check`通过。这里只证明状态整理与文档结构，不是产品、A验收或正式独立review PASS。
+
+## 39. 消除980/981/985循环等待与事件三缺口承接（2026-11-16，r37当前）
+
+当前权威：[980 r15](../../plans/980-ace-m2-autoui.md)、[981 r17](../../plans/981-ace-m2-age.md)、[985 r24](../../plans/985-ace-m2-certification.md)的EVENT-SPLIT；985沿原r23冻结分母不重设总数。§38为1032交付前状态快照，本轮1032已归档6/6，正式`45fcd50f4`；1034/976已归档。A尚有15个原计划的实施/子面/收尾：1024；1029/1031/1033/1035/1036/1037；1064；1066[A]；981/982/983/984[A]；OS064[A]；985[A]。不是15个都要全归档。
+
+| 当前交付/等待 | 原任务/owner与恢复条件 | 不等待/范围约束 |
+|---|---|---|
+| 980 MIN-A-UI已交 | lang7f431bd5f/ui403c936d，源/原Rust测试独立oracle可供981 T-01与985读取 | 980 executing不是接口未交；缺件逐文件补，不等WEB/TAURI或985 |
+| 981 A | 原LANGUAGE/SESSION/PROOF的MIN-A＋IF-981-EVENT-A独立R/fold，取980已交最小源 | 不等980完整、完整V-B-RUST/五view/全UI或M2A-08 |
+| 985 A | 所有原A-required/六个剩余审计包/1064/1066A/RG齐→T-08[A]/T-A03真实并集→A04独立review→A05正式M2A-08 | 可提前分类/adapter/接收准备，不能提前签“解锁自身”；不等B三事件全件/1068 |
+| 事件B producer | M2A-08后，981 LANGUAGE I/V/R[B-W1]补MSG/PAYLOAD/PARAMS，SESSION I/V/R接AV typed调度/资源，短phase正式交 | 不等980完整AV/WEB或W1完成后才造producer；不重开979/新Plan |
+| 980 B-AV/WEB | B-AV=M2A-08＋本组事件/领域接口；WEB=M2A-08＋所用三件＋976受检provider | 两者按真实写面并行，WEB不等W1/W2全波；旧TS/缺席lane不充新ACE PASS |
+| W2/W3/最终 | W1→1068/T-04＋981域格 W2→980/981 RUST W3；三UI波后OS全量→985 B→986→987 | W3只等实际W2来源，不等1068整包/OS/985 B；PARITY最终汇合不反卡前波 |
+
+三缺口分账与现成果：#6i（lang b043117b8/ui876c99a3）已有具名msg/带参handler语法；ScenarioOp仍仅unit，Handler参数/声明名需保真和真实绑定。A为既有最小真事件、保真/安全拒绝，不强加完整UI带参实现；B由981 LANGUAGE/SESSION完成真实payload/作用域/值/资源，980 AV/WEB实跑原旧例及补充读参控制。`param-handler`常量体spliced=1只证明语法/拼接，不证明参数语义。若A实际原源真依赖某项，同原任务先补所用最小面并更新985映射，不改原业务/expected；普通函数/node/actor/库/非图形FFI原A义务不后移。
+
+当前执行：①981先核已交980 A源与oracle，并在原T-01/LANGUAGE[A]关闭#6i两AGE profile冻结身份红（规则/Schema/构造/span/其它profile差额＋维护期望/SDK/cache＋真实正反回验，不能只换hash），拆V_PENDING_INPUTS并完成A；1064继续收尾。②新增可整包清树名额优先1033；1035保持关键优先，1029→1031、1036/1037按共享写窗；1024收尾独立。③982 CONFIG→PROOF、983 PORT→PROOF、984 EMBED、OS064 HOST[A]→PROOF[A]、1066正确性A按实际接口并行。④985可同步整理/接入，最终等全部A结果才A03→A04→A05。⑤B按上表分件开，不把980三个外部条件做AND总门，也不恢复每批图形三端同测。
+
+本轮只修订既有计划与路线，保32/34/14个原任务、当前12/3/4完成及executing；不改实际矩阵/源码/测试/SDK/目标状态，不实施或签A。原全部语言/UI/图形/资源/错误/产品验收及B承接不删。
+
+## 40. 2026-11-17状态核对与M2-A执行前沿（r38当前）
+
+本节只更新状态、正式来源接收与建议顺序，不修订980 r15／981 r17／985 r24的EVENT-SPLIT和r23冻结分母；§39仍是阶段/三缺口合同，§38/39的当日待做状态由本节覆盖。元数据是整包进度，A子面依原review/正式fold认定。未开新计划、未实施或签A。
+
+### 新交付与复用范围
+
+| 计划/切片 | 当前状态与正式依据 | 对当前A排程的影响 |
+|---|---|---|
+| 1033 | archived 6/6；正式305bbd0c1已在主线祖先 | 从A实施待办移除，985接实际来源/适用性 |
+| 1064 | archived 13/13；主线a9c35237e已含全包，规范/归档/清理收据齐 | D01..09、bytes/FRAME/ZIP/KV等不再排重复开发；consumer仍实际验证，1068/1063具名余量不冒A已验 |
+| 1032 / 1034 | 已归档；1034头部残留3/6以其final/merge全交收据解释 | 不重开、不重复实施，985核source/consumer适用性 |
+| 1035 | archived 5/6；正式d2847bf4c已在主线，reviewed→landed映射/规范收据齐 | A修复来源已交，可接1036；清理排空按原owner最新收据单列，不因归档头部残留计数重开功能 |
+| 980/A | NATIVE最小入口已交，整包executing 12/32 | 取已交UI/事件源供981/OS最小见证，B-AV等M2A-08；完整WEB/RUST各按§39自己的门 |
+| 971/A、977/PY | 两个A切片已正式交，整包仍executing 4/11、4/10 | 只核来源/适用性；不等B全包 |
+| 981 EVENT-A | 2026-11-17 review-66批级pass；lang49409c6fb/862f8694e、ui ff10e990/e450d8a0等修补已落主 | 语法身份重基线、声明/参数保真与零效果拒绝等已有可绑定来源；不再把#6i两身份红或“980未正式交源”泛列当前阻碍；MIN-A-AGE完整组合仍独立待验 |
+
+981的新增实测来源：SESSION-V真实980/A Counter两实例定向与Stop/Restart见ui0a87676b（其轨迹为[2,0]，区别于980自有另一事件序列的[2,1]，不得改expected混用）；公共A2R真实rustc同源值=1见lang399edd447；overlay按git archive逐blob保真1393/1393见ui4e7a2fb0。最新lang777c68b3b又落V-L及AV A源用例（收据fb7b45820）；V_PENDING_INPUTS由3降2，已移除“980正式源”项，剩typed UI/资源宿主面（R64-10异步面）与980合流oracle，须按实际A/B义务逐项关闭。这些是原owner报告/正式提交，本轮未运行复测；review-67（已闭：review-68 pass）（SESSION-V/RUST-V批）在所读最新收据仍待回，不能把event-A批级pass外推到所有批/全MIN-A-AGE。
+
+### 全部仍需A交付/收尾的12个原计划
+
+| 计划 | 当前整包记录 | A出口前实际剩余 | 推进粒度 |
+|---|---|---|---|
+| [1024](../../plans/1024-ace-m2-code-quality-and-refactoring-audit.md) | reviewed，4/5 | 原T-05审计正式来源/归档收尾；不等修复全完成，也不把审计归档当问题已修。 | 审计收尾 |
+| [1029](../../plans/1029-ace-restored-input-and-lease-bounds.md) | drafting，0/6 | 恢复输入/尺寸预算/分页/lease的原ADM-01..05，T-01..06整包。 | 整包开发 |
+| [1031](../../plans/1031-ace-query-negative-dependency-commit.md) | drafting，0/6 | query正负依赖commit、失败保旧及重新prepare恢复，T-01..06整包。 | 整包开发 |
+| [1036](../../plans/1036-ace-loop-latch-and-cooperative-poll.md) | drafting，0/6 | continue推进、闭区间MAX、poll/取消/清理，T-01..06整包。 | 整包开发 |
+| [1037](../../plans/1037-ace-cte-named-walk-and-attempt-facts.md) | drafting，0/6 | CTE Named遍历/替换和执行后发布失败事实/恢复，T-01..06整包。 | 整包开发 |
+| [1066](../../plans/1066-autodown-migration-gap-closure.md) | drafting，0/13 | A-DEN/ORACLE/NOWRITE/EVIDENCE，两个result/九空H角色/正常零作者写入/真实执行身份；原T-12[A]独立review→T-13[A]正式fold。完整迁移留B。 | 仅A切片，保树 |
+| [981](../../plans/981-ace-m2-age.md) | executing，3/34 | EVENT-A已获批级review/pass并有正式来源；继续MIN-A-AGE完整UI＋2D＋3D的实际呈现/事件/资源/恢复、SESSION/LANGUAGE/PROOF对应A面独立复审/fold。新Counter/AV/A2R证据只复用已验范围，不能据3/34或单Counter判断A已全过。 | 仅A切片，保树 |
+| [982](../../plans/982-ace-m2-man-gen.md) | drafting，0/37 | T-01→CONFIG I/V/R→PROOF I/V/R：配置包锁/最小CLI真实见证。 | 仅A切片，保树 |
+| [983](../../plans/983-ace-m2-web.md) | drafting，0/19 | T-01→PORT I/V/R→PROOF I/V/R：真实AV/生成服务/HTTP与DB结果/资源。 | 仅A切片，保树 |
+| [984](../../plans/984-ace-m2-os-apps.md) | drafting，0/25 | T-01→EMBED I/V/R：仓外独立consumer使用公开session/候选SDK与错误恢复。 | 仅A切片，保树 |
+| [OS064](../../../../auto-os/docs/plans/064-ace-desktop-and-app-migration-batches.md) | drafting，0/97 | HOST[A]→PROOF[A]：真实OS启动/注册/激活/窗口链中的Node Hello/Counter双实例/关闭/错协议。 | 仅A切片，保树 |
+| [985](../../plans/985-ace-m2-certification.md) | executing，4/14 | 同步接收新来源、准备r24/r23矩阵与adapter；A-required全齐后T-08[A]/T-A03真实联合验证→T-A04独立review→T-A05正式M2A-08。 | A认证阶段，保树 |
+
+12个是计划数，不是验收分母或测试数：4个尚需整包开发（1029/1031/1036/1037）＋1024审计收尾＋7个跨阶段/认证A面（1066/981/982/983/984/OS064/985）。1035已正式交付，原owner的清理排空单列，不作为重做功能或反等A签章的理由；原A约束/证据与普通语言/库/FFI/SDK后端义务都保持，不能据表行数缩分母。
+
+### 当前执行顺序与可并行组
+
+1. **先收审计来源，不重开已交修复。** 1024 T-05独立收审计正式来源，不等其他修复。1035的代码/规范/归档已正式交，清理排空由原owner按其最新收据收尾，本会话不执行merge或清理。
+2. **981/A继续验收，不再等980全包。** 复用EVENT-A及真实源新证据，补齐MIN-A-AGE真实UI/2D/3D、更新/关闭/资源与独立review/fold；旧历史blocked记录不覆盖新来源。现新Counter/A2R证据不强制把图形A2R重新纳A，也不替真实2D/3D呈现和PROOF。
+3. **新增一个可整包清树的开发名额，优先1029，然后1031。** 两者共享恢复/query改面时按写窗接续，非新增硬依赖。1035现已正式落主，可立即接1036，随后/另窗1037，以减少resolve/lowering/CT同文件重合；稳定接口/文件分离时可并行，不为排程制造整包等待。
+4. **产品A与证据流现在可独立开始。** 982 CONFIG→PROOF；983 PORT→PROOF；984 EMBED；OS064 HOST[A]→PROOF[A]；1066正确性A子面。最小底座已交，1064也正式齐，不用等981整包、完整WEB或其他产品全包；需要的实际接口若缺仍具名记录，最终必须真实consumer/独立oracle/正式来源。若新增名额希望直接做产品见证，优先982/A；它只交A，树按原规约留B。
+5. **985/A同步准备，最后签发。** 可立即接1033/1064、已交EVENT-A等新正式来源并更新现矩阵/adapter/去向；所有尚余A-required、六条约束/证据、1066A与RG/MIN-A正式齐后，才T-08[A]/T-A03完整联合验证→T-A04独立复审→T-A05正式M2A-08。不能为解锁981先签A，不能用已交EVENT-A等已交子面代缺失输入。
+
+A之后仍按§39：981事件B producer短phase→980所需AV/WEB消费，完整图形W1 AV→W2 AC→W3 A2R，再OS全量/其余产品汇合；WEB不等W1/W2全波，W3不等1068整包，完整产品义务全保。1030/1038、1066完整格式/编译迁移、1067/1068整包和AAC完整自举不新增为A门；实际A调用历史1030时仍按原合同提升缺口。Linux/WSL与正式性能按用户原裁定，不在本次状态更新中运行。
+
+### 取材与验证边界
+
+本轮取材主线`d2847bf4c973efad4098362f1794bffcf5846fb9`、auto-ui`979d4cfd2327ee4f78367201629e3b20ff39984a`及各原Plan/正式收据；1033/1064/981事件修补已核主线祖先，1035正式交付d2847bf4c已核主线祖先。只修改路线状态/导航，不改原Plan状态/勾选/验收、源码/测试/SDK/实际矩阵/canonical Specs；不建树、运行产品、提交合入、归档清理、启动/恢复目标或派agent。当前M2A-08尚未产生。
+
+1035交付收据保留`ace-a2c-abi 8/9`中既有certification pin漂移红：不充PASS。985 T-A03/A04须按当前source/ABI及原A适用行核身份/实际结果，需修复的真实A消费者问题沿原owner关闭；不能因1035归档抹红，也不据旧pin要求重开已归档1035。

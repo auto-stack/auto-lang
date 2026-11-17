@@ -44,6 +44,17 @@
 - 关键字拼写与运算优先级两个配置反控：不改 runtime 也必须改变实际解析
   结果（排除"Atom 仅包装硬编码 parser"）。
 
+## 目录与租约恢复边界（PLAN-1029）
+
+- CST manifest 声明目录 inline 与 paged（`DeclIndexPage`）**同等准入**：
+  分页条目取出后、消费前复用 inline 同一验证——页存在、节点页归属
+  （下界先判后算）、node_lo ≤ node、origin ≤ total_len；
+  `decl_range`/`decl_subtree` 的 origin+start+len 全部 checked（坏目录
+  受控 Admissions，不 panic、不 wrap 成合法跨度；合法恰等跨度不误拒）。
+- TreeSession 租约索引有界：最后一份 `TreeLease` 释放（计数 1→0）
+  **立即删除**零计数键；仍为正的键保留；旧树 entry 由下次 publish 淘汰
+  （无租约才淘汰），活租约句柄跨代可读。
+
 ## 验证锚
 
 grammar_/grammar_reject_ 族（配置反控、拒绝定位、合法兄弟可装载）；

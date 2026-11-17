@@ -160,7 +160,7 @@ title = "VM/Cookbook/书稿完整语料"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "test(/^tests::(vm_file_tests|cookbook_vm_tests|conformance_tests|book_listing_tests)::/)"
+expression = "test(/^tests::(vm_file_tests|cookbook_vm_tests|conformance_tests|book_listing_tests|plan1066_a_slice|diag_scope)::/)"
 tools = []
 domain = "legacy"
 all = false
@@ -531,6 +531,17 @@ workspace = "experimental/ace"
 args = ["-p", "ace-artifacts", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["execution-fixture"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-m2-build"
+title = "ACE包 experimental/ace/crates/m2-build（PLAN-978 工程增量多目标构建与预编译SDK）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-m2-build", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
 domain = "ace"
 all = false
 
@@ -1477,7 +1488,7 @@ name = "ace-a2x"
 title = "ACE A2X共享表示与Rust输出"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-ts", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
 # PLAN-1060 T-13: ace-a2x-worker's certification tests spawn the real release
 # worker (experimental/ace/target/release/a2x-worker.exe) and failed with

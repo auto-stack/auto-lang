@@ -26,6 +26,7 @@ use std::collections::HashMap;
 struct PrintCtx<'p> {
     variants: HashMap<u32, &'p crate::lower::RustVariant>,
     records: HashMap<u32, &'p RustRecord>,
+    list_elems: &'p std::collections::BTreeMap<u32, Ty>,
 }
 
 impl<'p> PrintCtx<'p> {
@@ -38,7 +39,11 @@ impl<'p> PrintCtx<'p> {
         for v in &program.variants {
             variants.insert(v.type_index, v);
         }
-        PrintCtx { records, variants }
+        PrintCtx {
+            records,
+            variants,
+            list_elems: &program.list_elems,
+        }
     }
 
     /// Rust type text of a target-neutral type. Scalar types render
@@ -71,7 +76,15 @@ impl<'p> PrintCtx<'p> {
                 .get(&id)
                 .map(|v| v.name.clone())
                 .unwrap_or_else(|| format!("A2xv_#{}", id)),
-            Ty::List(_) => "A2xList".to_string(),
+            // PLAN-973: the element generic rides the rendered name
+            // (); a variant payload List without it fails to
+            // compile (the record-text lane never carried list payloads
+            // before the system library).
+            Ty::List(id) => self
+                .list_elems
+                .get(&id)
+                .map(|e| format!("A2xList<{}>", self.ty_str(*e)))
+                .unwrap_or_else(|| "A2xList".to_string()),
             Ty::Unit => "()".to_string(),
         }
     }
@@ -175,6 +188,7 @@ pub fn print_fn(f: &RustFn) -> String {
         &PrintCtx {
             records: HashMap::new(),
             variants: HashMap::new(),
+            list_elems: &std::collections::BTreeMap::new(),
         },
         f,
         false,
@@ -192,6 +206,7 @@ pub fn print_fn_records(records: &[crate::lower::RustRecord], f: &RustFn) -> Str
         &PrintCtx {
             records: map,
             variants: HashMap::new(),
+            list_elems: &std::collections::BTreeMap::new(),
         },
         f,
         false,
@@ -635,6 +650,7 @@ fn render_block_value(side: &RBlock) -> String {
         let ctx = PrintCtx {
             records: HashMap::new(),
             variants: HashMap::new(),
+            list_elems: &std::collections::BTreeMap::new(),
         };
         let mut inner = String::new();
         for s in &side.stmts {
@@ -722,6 +738,7 @@ fn rt_prelude_into(
         i += 1;
     }
     let fake = RustProgram {
+        list_elems: std::collections::BTreeMap::new(),
         functions: vec![],
         entry: String::new(),
         marks: vec![],
@@ -792,6 +809,15 @@ fn coll_record_helpers(
                 free_body.push_str(&format!("    a2x_coll_free_{}(&mut v.{});\n", inner, fname));
                 bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
             }
+            Ty::Variant(id) => {
+                let inner = variant_name_of(p, *id);
+                free_body.push_str(&format!("    a2x_coll_free_{}(&mut v.{});\n", inner, fname));
+                bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
+            }
+            Ty::List(_) => {
+                free_body.push_str(&format!("    a2x_coll_list_free(&mut v.{});\n", fname));
+                bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
+            }
             _ => {}
         }
     }
@@ -818,6 +844,25 @@ fn coll_record_helpers(
                 ));
                 owned.push((fname.clone(), call));
             }
+            Ty::Variant(id) => {
+                let inner = variant_name_of(p, *id);
+                let call = format!("a2x_coll_free_{}", inner);
+                clone_stmts.push_str(&format!(
+                    "    let c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    f = fname,
+                    inner = inner,
+                    rollback = rollback_stmts(&owned)
+                ));
+                owned.push((fname.clone(), call));
+            }
+            Ty::List(_) => {
+                clone_stmts.push_str(&format!(
+                    "    let c_{f} = match a2x_coll_list_clone(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    f = fname,
+                    rollback = rollback_stmts(&owned)
+                ));
+                owned.push((fname.clone(), "a2x_coll_list_free".to_string()));
+            }
             _ => {}
         }
     }
@@ -825,7 +870,9 @@ fn coll_record_helpers(
         .fields
         .iter()
         .map(|(fname, ty)| match ty {
-            Ty::StrOwned | Ty::Record(_) => format!("{}: c_{}", fname, fname),
+            Ty::StrOwned | Ty::Record(_) | Ty::Variant(_) | Ty::List(_) => {
+                format!("{}: c_{}", fname, fname)
+            }
             _ => format!("{}: src.{}", fname, fname),
         })
         .collect();
@@ -883,6 +930,7 @@ fn coll_variant_helpers(
             Some(Ty::Variant(id)) => {
                 format!("    a2x_coll_free_{}(p);\n", variant_name_of(p, *id))
             }
+            Some(Ty::List(_)) => "    a2x_coll_list_free(p);\n".to_string(),
             _ => String::new(),
         };
         match payload {
@@ -928,6 +976,11 @@ fn coll_variant_helpers(
                 a = arm,
                 inner = variant_name_of(p, *id)
             )),
+            Some(Ty::List(_)) => clone_arms.push_str(&format!(
+                "            {n}::{a}(p) => Ok({n}::{a}(a2x_coll_list_clone(p)?)),\n",
+                n = v.name,
+                a = arm
+            )),
             Some(_) => clone_arms.push_str(&format!(
                 "            {n}::{a}(p) => Ok({n}::{a}(p.clone())),\n",
                 n = v.name,
@@ -956,7 +1009,7 @@ fn coll_variant_helpers(
                 n = v.name,
                 a = arm
             )),
-            Some(Ty::Record(_)) | Some(Ty::Variant(_)) => out.push_str(&format!(
+            Some(Ty::Record(_)) | Some(Ty::Variant(_)) | Some(Ty::List(_)) => out.push_str(&format!(
                 " {n}::{a}(p) => p.a2x_elem_str_bytes(),",
                 n = v.name,
                 a = arm
@@ -988,6 +1041,7 @@ pub fn print_coll_fn(
         &PrintCtx {
             records: map,
             variants: vmap,
+            list_elems: &std::collections::BTreeMap::new(),
         },
         f,
         false,
@@ -1000,8 +1054,10 @@ pub fn print_coll_fn(
 pub fn print_coll_prelude_from(
     records: &[crate::lower::RustRecord],
     variants: &[crate::lower::RustVariant],
+    list_elems: &std::collections::BTreeMap<u32, Ty>,
 ) -> String {
     let fake = RustProgram {
+        list_elems: list_elems.clone(),
         functions: vec![],
         entry: String::new(),
         marks: vec![],

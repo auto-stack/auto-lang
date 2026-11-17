@@ -170,3 +170,9 @@ unauthorized_rebind`（V-02 合法身份真成功；V-01 teardown 后 admission 
 dispatch 计数冻结；V-06 空绑定 unauthorized 且 callee_count=0；provider 重绑定同入口恢复）。
 V-03 cancel/late 与回调形态 V-04 全量仍在 939 native 道（callback/txn fixtures）直至 T-08
 异步完成端口；V-05 重入 = foreign_exec 单测 + console ProviderScope 同律。
+
+## T-FRAME：受检可写输出借用帧（PLAN-1064 SD-FRAME，2026-11-17）
+
+- **合同与自动绑定（无手工 manifest）**：`ace-foreign-contract` 新增 `ResKind::OutBytes`；`crates/auto-bindgen/src/{rust,c}_import.rs` 从 Rust `&mut [u8]` 与 C `(uint8_t* dst, uint64_t cap)` 自动导出输出帧声明（保留 `&mut i32` 等非字节切片的 `rust-import` 具名拒绝，不放宽任意 `&mut`）。
+- **物理执行与守卫（`av-core::foreign_exec`）**：新增 `OutBufferFrame` 与 `dispatch_view_out_bytes`，在调用前校验 `owner`/`origin`/session `generation`/可写权限/`0 <= off <= cap` 与 `run_bytes` 预算，分配带前导/尾随 guard bytes 的隔离暂存区并在返回后校验 `0 <= n <= cap` 与 guard bytes 完整性（错写即主机失败、`0` 字节泄露，过期/取消/跨代帧调用前拒、`callee_count = 0`）。
+- **永久证据与 B 分账**：`ace-abi::out_frame_1064`（3 E2E：`v_frame_rust_provider_read_into_and_guards` / `v_frame_c_provider_read_into` / `v_frame_security_lifecycle_and_import_negatives`）+ `auto-bindgen` 10/10；`AC` native 机器代码侧 `OutBytes` 调用与帧守卫校验已依 `SD-AC-STAGED` 移交 `PLAN-1068 T-03`。

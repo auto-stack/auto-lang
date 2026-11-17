@@ -1,0 +1,15 @@
+// PLAN-985 T-A02 M2-cover owned-resource observation case (av owned
+// profile): clone/move on an owned Str (T03 shape), an owned record
+// construction (R04 shape) and a `move` parameter relay across a frame
+// (R05 shape). Hand oracle: "ab".clone() -> move -> +"cd" = "abcd" (4);
+// Item("hi",3) relay: code 3 + name len 2 = 5; exit = 4*100 + 5 = 405.
+type Item { name Str; code int }
+fn relay(move x Item) int { return x.code + x.name.len() }
+fn main() int {
+    let a Str = "ab"
+    let b Str = a.clone()
+    var c Str = b.move
+    c = c + "cd"
+    let it Item = Item("hi", 3)
+    return c.len() * 100 + relay(it.move)
+}
