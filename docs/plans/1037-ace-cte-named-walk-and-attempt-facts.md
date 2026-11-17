@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1037
-status: execution_done
+status: reviewed
 feature_name: ACE CT命名实参遍历与发布失败观察事实
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 3
+current_step: 4
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-cte/project.md]
@@ -172,7 +172,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，所有§6反例及邻例可在实际入口运行，重大未决先定，不私改expected。（2026-11-17：caps=ac.source.cte.scalar/v1 与 compile_scalar_ct/serve_program/CtService 两入口冻结；两例在真实入口首红→绿，见§9 work 收据。）
 - [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。（2026-11-17 两轮：首轮遍历修复落 tests.rs；review 复开 **F-1037-R1**（Named 值/标签未入执行键→33≠34、5≠−5）后本轮修复：`expr_canonical` 编码命名的标签+值，`audit1037_ct_01b` 三族断言（同标签异值/跨编译重标签/位置对照 + 相同需求仍复用）在受控落回旧编码时红、修复后绿；独立探针 5/5 绿。见§9 work-repair 与 review 收据。）
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（2026-11-17：冻结并集 ace-comptime/ace-av/ace-native/ace-a2x 全绿，ace-semantics 1 具名既有红不判本包红、不充 PASS；SD-01/02 在工作树就位待 merge 沉淀；1002 无硬前置。）
-- [ ] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
+- [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。（2026-11-17 二审 @df2e7bf81：R1 发现已闭（永久例+受控变异+独立探针 5/5 复放），AC-01..04 全 pass；残留仅 D-1037-01 具名既有红与 merge-owned 收尾门，见§9。）
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
@@ -183,7 +183,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 | T-01 / work | [x] 1024交接、实施授权及当前源 | 固定cap/公开入口、完整Named源、参数同族与FailPublishSink（probe/publish/读取）并明确真实日志/counters差分。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：caps/入口于 e85096628 冻结；首红 CT-01=`source.cte.bind "1 expression node(s) have no type fact"`（命名实参未遍历，F26）、CT-02=`av_reached=false`（F32）。 |
 | T-02 / work | [x] T-01决定与可区分输入 | 补相同Arg.value子树面及call/expr publish错误事实，保持真实AV单执行、依赖/root budget和权限；新增CT-01/02永久例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。 **证据（首轮）**：`arg_value`/`arg_value_mut`/`substitute_arg` 统一发现/闭包/meta/替换/查点，product 回灌同名子树；`audit1037_ct_01` 绿。 **review 复开 F-1037-R1 → 本轮修复（df2e7bf81）**：`expr_canonical` Named 编码「标签+值」（Pos/MovePos 保持共享编码：移动只标所有权、CT 值相同）；新增 `audit1037_ct_01b`（同标签异值 34/双站点，跨编译重标签 5 与 −5，位置对照，相同命名需求仍 execute=1/hit=1）；受控落回旧编码时该例红（execute=1≠2），修复后 0.034s 绿；独立探针 5/5。 |
 | T-03 / work | [x] T-02 | 沿真实产品回灌/AV值与service两入口失效→重试→发布→hit验证，覆盖前置拒绝/到达后错误/计数；不提前实现966完整宏。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：`audit1037_ct_02` 0.45s 绿（publish Err→av_reached=true、execute+1、freeze_publishes+0、rejections+1、ok 边界日志一条同键、无页、重执行、修复发布→hit、forbid_av 前门 false）；并集 4 组全绿 + ace-semantics 具名既有红，见§9。 |
-| T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：一审 needs_fix（F-1037-R1）→ repair df2e7bf81 → 二审 pass；独立探针 5/5 复放、定向 3 例 0.034–0.052s、冻结并集沿用 run-jpwwg_0o（同 HEAD、树 clean、依赖/配置未变）。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
@@ -294,6 +294,41 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 **覆盖边界**：本修复覆盖「`#{ }` 内直接调用带命名实参」这一标量可达形状的键独立性；命名实参在**已服务站点替换/回灌**（首轮修复）与**执行键**（本轮）两侧均已闭合。`walk_meta` 的选择器提取保持位置式（与 resolve `meta_query` 的 arity/位置要求一致，命名选择器在上游即受控拒）；`direct_call_args` 对命名实参返回 None → 走表达式入口（真实 AV + 表达式键），值正确，属具名边界，不改。
 
 2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:3 | from:work | to:review | status:execution_done | outcome:pass | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:df2e7bf816 | next:review
+
+2026-11-17 stage:review（二审，repair 后） | review_scope:final | reviewer_identity:实现同会话（Plan §6 明示无另起 agent/独立模型授权；结论由产物重构+独立探针复放） | plan_id:PLAN-1037 | plan_revision:3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-1037/auto-lang | branch:plan-1037-dev | reviewed_commit:df2e7bf816（父 e6973193c） | base_commit:e85096628c468376c0c3632d832420a2e7f6d439 | dependency_revisions:同树 df2e7bf81（无外部在途依赖） | spec_inputs:docs/specs/auto-cte/source-query-integration.md@df2e7bf81（§3 +9 行；§5 命名身份句修正）、docs/specs/auto-cte/project.md@e6973193c（+9 行） | acceptance_results:AC-01 pass / AC-02 pass（R1 闭合）/ AC-03 pass / AC-04 pass（本条审）| pending_closeout_gates:merge 收尾（落地校验+Spec 沉淀确认+归档+清树/分支+plan-artifacts 删除）；冻结并集已在 reviewed_commit 上取得（4 绿 + 1 具名既有红），merge 复用同身份证据不再重跑 | findings:none open（F-1037-R1 CLOSED；D-1037-01 仍为具名既有债，非本包）| evidence:r3-probe-review.log（5/5）、r3-review-targeted.log（3/3）、run-jpwwg_0o、t02b-prefix-red.log（受控变异红）| next:merge
+
+**R1 闭合核证（不只看执行者摘要）**
+
+- 复核修复 diff（e6973193c→df2e7bf81 仅 3 文件）：`expr_canonical` 只为 `Arg::Named` 增加 `named:<label>=<value>` 编码，Pos/MovePos 编码未动（附理由：move 只标所有权，CT 值相同）；Spec 仅改一句身份表述；无其他实现/配置/依赖改动（`git diff --stat` 188+/4-）。
+- 一审反例复放：同一独立探针（仓外、不同实现）在 df2e7bf81 上 5/5 PASS——`named_value_independence` 34（execute=2/hits=0）、`named_label_order_independence` 5 与 **−5**（execute=2/hits=0）、位置对照 34、`id(x: #{1+2})`=3、F32 链（av_reached=true、失败后 execute=1/publishes=0、修复后 publishes=1 且 hit）；warm 0.31s。
+- 永久例在 reviewed_commit 上：`audit1037_ct_01b` 0.034s、`audit1037_ct_01` 0.052s、`audit1037_ct_02` 0.030s，3/3 PASS；含「相同命名需求仍 execute=1/hit=1」的 dedup 控制（修复未牺牲复用）。
+- 吸收判据：受控变异（把 Named 编码落回 `_ => b'?'`）时 `audit1037_ct_01b` 红于 `each named value is really executed`（1≠2）——该例确实能抓到缺陷，而非恒绿；记录留存 t02b-prefix-red.log。
+- 健康：`rustfmt --check` 干净；并集日志无新增告警（唯一告警为基面既有 `mod performance { use super::*; }`）；diff 无 dbg/println/TODO；无未提交实现（树 clean @df2e7bf81）。
+- 漂移：依赖、`.config/nextest-full.toml`、组定义、输入语料均未变；冻结并集 run-jpwwg_0o 与当前 HEAD 同树身份，故复用而非重跑。
+
+**acceptance 证据映射**
+
+| AC | 判据 | 证据 | 结果 |
+|---|---|---|---|
+| AC-01 | 真实入口/caps/反例可运行、未决先定 | T-01 首红日志、caps=ac.source.cte.scalar/v1、`compile_scalar_ct`/`serve_program`/两 service 入口 | pass |
+| AC-02 | §6 每行独立 oracle、修前/修后、同族边界 | `audit1037_ct_01/01b/02` + 独立探针（修前 2 fail→修后 5/5）+ 受控变异红 | pass |
+| AC-03 | 消费者/原测试/恢复责任守恒、适用门 | 冻结并集 df2e7bf81：ace-comptime 136/136、ace-av 1341/1341、ace-native 299/299、ace-a2x 308/308；ace-semantics 294/295（D-1037-01 具名既有红） | pass |
+| AC-04 | 逐项独立核验、遗漏/延后/绕行/健康/来源 | 本条（含 R1 closed、no open findings、health/drift 核） | pass |
+
+**Spec delta 复核**：SD-01（§5 命名身份：标签+值∈身份；相同需求共享页）与 SD-02（§3 发布失败事实 + project.md 分账）均描述已实现行为且不越出本包；`supersedes_spec_components` 两路径真实、`new_spec_components` 空（无新增文档）、`touched_goals` 空（无产品目标变更）。
+
+**本轮实际执行（review 侧，不重跑无关全量）**
+
+| 范围 | 结果 | 计时 |
+|---|---|---|
+| 独立探针 5 case（仓外） | 5/5 PASS，exit 0 | warm 0.31s |
+| 定向 3 例 `-E "test(audit1037)"` | 3/3 PASS | 增量 1.63s + 0.053s |
+| 冻结并集（run-jpwwg_0o @df2e7bf81） | 复用：4 组全绿 + ace-semantics 具名既有红 | 324.05s（work 轮） |
+| 代码/规范/健康/漂移审计 | 只读 | — |
+
+新增用例计时：`audit1037_ct_01b` 0.034s、`audit1037_ct_01` 0.052s、`audit1037_ct_02` 0.030s（均 ≤10s）；无超限、无 release 路径、无隐式日构建。
+
+2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:4 | from:review | to:merge | status:reviewed | outcome:pass | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:df2e7bf816 | next:merge
 
 ## 10. 待澄清事项
 
