@@ -383,6 +383,7 @@ pub fn apply_facts_to_resolved(
             Item::Const(_) | Item::Store(_) => Ok(String::new()),
             // PLAN-967 F0: the import frontdoor carries no body facts.
             Item::UseRs(_) => Ok(String::new()),
+            Item::UsePy(_) => Ok(String::new()),
             Item::Enum(_) => Err(ApplyError::Profile {
                 what: "enum declaration",
             }),
@@ -645,6 +646,7 @@ pub fn bind_with_facts(
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor declares no function.
             Item::UseRs(_) => {}
+            Item::UsePy(_) => {}
             // PLAN-968: task declarations declare no free function here.
             Item::Task(_) => {}
             Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),

@@ -218,6 +218,7 @@ fn decl_spans(program: &ace_core::source::ast::Program) -> (Vec<DeclFn>, Vec<(u6
             Item::Task(_) => {}
             // PLAN-967 F0: the import frontdoor carries no decl span.
             Item::UseRs(_) => {}
+            Item::UsePy(_) => {}
             Item::Type(t) => {
                 types.push((t.span.start as u64, t.span.end as u64));
                 for m in &t.methods {

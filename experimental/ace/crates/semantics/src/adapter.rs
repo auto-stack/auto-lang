@@ -181,6 +181,7 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
             core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor projects nothing.
             core_ast::Item::UseRs(_) => {}
+            core_ast::Item::UsePy(_) => {}
             // PLAN-968: task declarations desugar before this projection
             // on the scheduler face; nothing to project here.
             core_ast::Item::Task(_) => {}
@@ -306,6 +307,7 @@ pub fn project_body_scoped_with_caps(
             core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor projects nothing.
             core_ast::Item::UseRs(_) => {}
+            core_ast::Item::UsePy(_) => {}
             // PLAN-968: task declarations desugar before this projection
             // on the scheduler face; nothing to project here.
             core_ast::Item::Task(_) => {}

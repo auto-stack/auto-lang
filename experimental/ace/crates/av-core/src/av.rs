@@ -419,6 +419,43 @@ pub fn execute_console(
     ))
 }
 
+/// PLAN-1026: the py training lane — a module mixing console/1 host
+/// calls with source foreign calls: per-run console grants AND the
+/// foreign stub table are both re-checked (the two admission paths are
+/// independent; neither preserves the other's authority).
+pub fn execute_console_foreign(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    provider: &mut dyn crate::host::ConsoleHost,
+    stubs: &mut crate::foreign_exec::ForeignStubTable,
+) -> Result<(ExecOutcome, ExecTrace), crate::host::AdmissionError> {
+    // PLAN-1026: console authority is per-IMPORT — a closures-profile
+    // module (the py lane) mixes at most console print intrinsics with
+    // foreign calls; the strict host-console-profile rule stays with
+    // `execute_console`. No console imports → no console authority used.
+    if module.module().host_imports.is_empty() {
+        crate::host::validate(module.module())?;
+    } else {
+        crate::host::authorize(module.module(), grants)?;
+    }
+    stubs.authorize_module(module.module())?;
+    stubs.reset_run_bytes();
+    Ok(execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        false,
+        Some(provider),
+        None,
+        Some(stubs),
+        None,
+    ))
+}
+
 /// PLAN-967 F0: execute a module carrying source foreign calls through
 /// the executor's admitted stub table. Per-run authority is re-checked
 /// (structural credentials never preserve grants): every `ForeignCall`
@@ -9425,6 +9462,27 @@ fn foreign_view(input: &Value) -> Result<ForeignView<'_>, ExecOutcome> {
     }
 }
 
+/// PLAN-1026 G-2: display formatting for the f64 console lane — Plan 403
+/// parity with the old stack's `fmt_f64` (NaN/Infinity spellings, whole
+/// numbers within 1e-9 render as integers, else Rust Display).
+fn fmt_console_f64(f: f64) -> String {
+    if f.is_nan() {
+        return "NaN".to_string();
+    }
+    if f.is_infinite() {
+        return if f > 0.0 {
+            "Infinity".to_string()
+        } else {
+            "-Infinity".to_string()
+        };
+    }
+    let rounded = f.round();
+    if (f - rounded).abs() < 1e-9 && rounded.abs() < 1e15 {
+        return format!("{}", rounded as i64);
+    }
+    format!("{f}")
+}
+
 fn with_console_input<T>(
     input: &Value,
     f: impl FnOnce(&[u8]) -> Result<T, ExecOutcome>,
@@ -9449,6 +9507,29 @@ fn with_console_input<T>(
             f(&buf[cursor..])
         }
         Value::Bool(v) => f(if *v { b"true" } else { b"false" }),
+        // PLAN-1026 G-2: the general Auto float console lanes (Plan 403
+        // formatting parity from the old stack — NaN/Infinity spellings,
+        // whole numbers render without a decimal part, otherwise Rust's
+        // shortest-round-trip Display).
+        Value::F64(v) => {
+            let text = fmt_console_f64(*v);
+            f(text.as_bytes())
+        }
+        Value::F32(v) => {
+            let text = if v.is_nan() {
+                "NaN".to_string()
+            } else if v.is_infinite() {
+                if *v > 0.0 { "Infinity" } else { "-Infinity" }.to_string()
+            } else {
+                let rounded = v.round();
+                if (*v - rounded).abs() < 1e-9 && rounded.abs() < 1e15 {
+                    format!("{}", rounded as i64)
+                } else {
+                    format!("{v}")
+                }
+            };
+            f(text.as_bytes())
+        }
         Value::Char(c) => {
             let mut buf = [0u8; 4];
             f(c.encode_utf8(&mut buf).as_bytes())

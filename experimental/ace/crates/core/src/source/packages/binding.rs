@@ -781,6 +781,9 @@ fn bind_package_syntax_inner(
                 }
                 // PLAN-967 F0: the frontdoor is not a named declaration.
                 Item::UseRs(_) => continue,
+                // PLAN-1026: same as use.rs — the py frontdoor is not a named
+                // package declaration.
+                Item::UsePy(_) => continue,
             };
             if all.insert(name.name.clone(), span).is_some()
                 || unit.imports.iter().any(|i| i.bound_name() == name.name)
@@ -797,7 +800,7 @@ fn bind_package_syntax_inner(
                 Item::Type(_) => d.types.insert(name.name, span),
                 Item::Const(_) => d.consts.insert(name.name, span),
                 Item::Store(_) => d.stores.insert(name.name, span),
-                Item::Enum(_) | Item::UseRs(_) | Item::Task(_) => unreachable!(),
+                Item::Enum(_) | Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => unreachable!(),
             };
         }
         decls.insert(key.clone(), d);
@@ -1162,6 +1165,14 @@ fn bind_package_syntax_inner(
                         key,
                         "source.use-rs.surface",
                         "the use.rs import belongs to the single-module source surface, not package modules",
+                        u.span,
+                    ))
+                }
+                Item::UsePy(u) => {
+                    return Err(fail(
+                        key,
+                        "source.use-py.surface",
+                        "the use.py import belongs to the single-module source surface, not package modules",
                         u.span,
                     ))
                 }
@@ -3908,7 +3919,7 @@ fn assemble_unit(
         match item {
             // PLAN-967 F0: impl segments never carry the frontdoor item.
             // PLAN-968: nor task declarations (single-module scheduler face).
-            Item::UseRs(_) | Item::Task(_) => {}
+            Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => {}
             Item::Fn(f) => {
                 let name = f.name.name.clone();
                 if let Some(req) = unfilled.remove(&name) {
@@ -4852,6 +4863,19 @@ fn shift_item(item: Item, offset: usize) -> Item {
             u.span.start += offset;
             u.span.end += offset;
             Item::UseRs(u)
+        }
+        Item::UsePy(mut u) => {
+            for m in u.module.iter_mut() {
+                m.span.start += offset;
+                m.span.end += offset;
+            }
+            for m in u.members.iter_mut() {
+                m.span.start += offset;
+                m.span.end += offset;
+            }
+            u.span.start += offset;
+            u.span.end += offset;
+            Item::UsePy(u)
         }
     }
 }

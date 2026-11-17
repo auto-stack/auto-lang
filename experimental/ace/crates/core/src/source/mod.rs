@@ -50,18 +50,17 @@ pub mod sched_desugar;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_aggregates_source, compile_closures_source, compile_closures_source_incremental,
-    compile_collections_source, compile_entry_unit_source, compile_host_console_source,
-    compile_numeric_source, compile_parts, compile_parts_with, compile_program_parts,
-    compile_scheduler_source,
-    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
-    compile_text_source, emit_collections_function_batch, emit_function_body,
-    emit_resolved_module_parts, emit_resolved_packages_parts, emit_resolved_packages_parts_profile,
-    emit_resolved_parts, prepare_candidate_document, prepare_function_candidate,
-    prepare_module_candidate, BodyEmitReceipt, ClosuresFrontendLedger, CompiledSource, FnCandidate,
-    SourceParts, RUNTIME_TEXT_CAPABILITY,
+    compile_aggregates_source, compile_aggregates_source_with_foreign, compile_closures_source,
+    compile_closures_source_incremental, compile_collections_source, compile_entry_unit_source,
+    compile_host_console_source, compile_numeric_source, compile_parts, compile_parts_with,
+    compile_program_parts, compile_record_source, compile_scalar_source, compile_scheduler_source,
+    compile_source, compile_text_record_source, compile_text_source,
+    emit_collections_function_batch, emit_function_body, emit_resolved_module_parts,
+    emit_resolved_packages_parts, emit_resolved_packages_parts_profile, emit_resolved_parts,
+    prepare_candidate_document, prepare_function_candidate, prepare_module_candidate,
+    BodyEmitReceipt, ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts,
+    RUNTIME_TEXT_CAPABILITY,
 };
-pub use parser::{parse_program, parse_program_with};
 /// PLAN-982（B-CONFIG-I）：配置文档前门（文档行 → 单顺序入口）。
 pub use config_document::{
     compile_config_document, compile_config_document_with_injection, config_profile_refusal,
@@ -70,6 +69,7 @@ pub use config_document::{
     ConfigVar, InjectValue, CONFIG_DOCUMENT_DOMAIN, CONFIG_DOCUMENT_ENTRY_NAME,
     CONFIG_DOCUMENT_HIDDEN_PREFIX, CONFIG_DOCUMENT_VALUE_SCHEMA,
 };
+pub use parser::{parse_program, parse_program_with};
 // PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——
 // 仅测试/`legacy-syntax-oracle` feature 可见（编译期不可达=退役门）。
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]

@@ -1550,6 +1550,7 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor adds no fn summary.
             Item::UseRs(_) => {}
+            Item::UsePy(_) => {}
             // PLAN-968: task declarations synthesize their driver
             // functions at the desugar stage; the pre-desugar summary
             // carries only the task name (no free functions).

@@ -1443,8 +1443,14 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         // call WITH named callback targets encodes under
                         // the CB opcode; a callback-free call keeps the
                         // byte-identical 0x36 form.
-                        if !matches!(family, WireFamily::ForeignScalar | WireFamily::Owned)
-                            || args.len() > 255
+                        // PLAN-1026: the CLOSURES family also carries
+                        // foreign calls (the py training lane — the
+                        // py-bridge adapter's frame ops in aggregates
+                        // units); the declaration encoding is unchanged.
+                        if !matches!(
+                            family,
+                            WireFamily::ForeignScalar | WireFamily::Owned | WireFamily::Closures
+                        ) || args.len() > 255
                             || callbacks.len() > 16
                         {
                             return Err(AbcDecodeError::fmt_err(
@@ -3494,7 +3500,12 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         src: c.u32()?,
                     },
                     OP_FOREIGN_CALL | OP_FOREIGN_CALL_CB => {
-                        if !matches!(family, WireFamily::ForeignScalar | WireFamily::Owned) {
+                        // PLAN-1026: the CLOSURES family carries foreign
+                        // calls (py training lane) — same gate as encode.
+                        if !matches!(
+                            family,
+                            WireFamily::ForeignScalar | WireFamily::Owned | WireFamily::Closures
+                        ) {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.foreign-profile",
                                 "foreign opcode outside AVFI/owned".into(),

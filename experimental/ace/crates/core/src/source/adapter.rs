@@ -173,6 +173,37 @@ pub fn compile_aggregates_source(
     })
 }
 
+/// PLAN-1026: the py training lane — the AGGREGATES surface with the
+/// py-bridge adapter's declared frame ops grafted in (use.py member
+/// imports and the Python op sugar ride this entry).
+pub fn compile_aggregates_source_with_foreign(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let program = match super::parse_program_with(src, SourceProfile::Aggregates) {
+        Ok(p) => p,
+        Err(d) => return Err(vec![d]),
+    };
+    let parts = compile_program_observed_with(
+        &program,
+        src,
+        module_path,
+        capabilities,
+        SourceProfile::Aggregates,
+        None,
+        Some(foreign),
+    )?;
+    let checked = crate::verify::verify_foreign_closures(parts.bundle, foreign)?;
+    Ok(CompiledSource {
+        profile: super::AGGREGATES_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 pub fn compile_scalar_source(
     src: &str,
     module_path: &str,
@@ -1070,7 +1101,36 @@ fn compile_program_observed(
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    let resolved = match super::resolve_with(program, capabilities, profile) {
+    compile_program_observed_with(
+        program,
+        src,
+        module_path,
+        capabilities,
+        profile,
+        observer,
+        None,
+    )
+}
+
+fn compile_program_observed_with(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    mut observer: Option<&mut dyn SourceObserver>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    // PLAN-1026: the py-bridge training lane grafts the adapter's
+    // declared frame ops into the AGGREGATES surface (the F0 text-record
+    // lane keeps its own entry); every other profile ignores the env.
+    let resolved_in = match (profile, foreign) {
+        (SourceProfile::Aggregates, Some(env)) => {
+            super::resolve::resolve_aggregates_with_foreign(program, capabilities, env)
+        }
+        _ => super::resolve_with(program, capabilities, profile),
+    };
+    let resolved = match resolved_in {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Resolve, &[]);

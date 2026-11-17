@@ -2526,6 +2526,7 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
             Item::Store(s) => Some(&s.name),
             Item::Task(t) => Some(&t.name),
             Item::UseRs(_) => None,
+            Item::UsePy(_) => None,
         };
         if let Some(u) = user {
             for reserved in COMPONENT_RESERVED_NAMES {

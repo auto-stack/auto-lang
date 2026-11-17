@@ -42,6 +42,8 @@ pub fn signature(symbol: &str) -> Option<(MirType, Stream)> {
         match rest {
             "i32.v1" => MirType::I32,
             "bool.v1" => MirType::Bool,
+            "f64.v1" => MirType::F64,
+            "f32.v1" => MirType::F32,
             "str.v1" => MirType::StrView,
             "char.v1" => MirType::Char,
             _ => return None,

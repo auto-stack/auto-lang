@@ -132,6 +132,7 @@ pub fn restore_bind(
             Item::Task(_) => {}
             // PLAN-967 F0: the import frontdoor declares no function.
             Item::UseRs(_) => {}
+            Item::UsePy(_) => {}
             Item::Enum(_) => {
                 return Err(RestoreError::Profile {
                     what: "enum declaration",

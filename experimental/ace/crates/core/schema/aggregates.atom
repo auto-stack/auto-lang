@@ -51,7 +51,7 @@ descriptor(schema: "auto.hir.aggregates.draft", revision: 1u32, profile: "source
             fields { path: Text }
             containers {
                 types: [type]
-                declarations: [function, intrinsic]
+                declarations: [function, intrinsic, foreign]
                 bodies: [body]
             }
         }
@@ -64,6 +64,14 @@ descriptor(schema: "auto.hir.aggregates.draft", revision: 1u32, profile: "source
         node function {
             slots: [Id, TypeRef]
             fields { name: Text; body: BodyRef }
+        }
+
+        // PLAN-1026: resource foreign declarations (the py-bridge
+        // adapter's frame ops) in the aggregates domain — the serialized
+        // contract only, same shape as the text-record domain.
+        node foreign {
+            slots: [Id, TypeRef]
+            fields { contract: Text }
         }
 
         node intrinsic {
@@ -169,6 +177,8 @@ descriptor(schema: "auto.hir.aggregates.draft", revision: 1u32, profile: "source
         branch(key: "type.object") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "function") { require: [name]; forbid: [symbol, effect] }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name] }
+        // PLAN-1026: foreign declarations carry the serialized contract only.
+        branch(key: "foreign") { require: [contract]; forbid: [name, body, symbol, effect, record, receiver] }
         branch(key: "body") { require: [owner, entry] }
         branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }
         branch(key: "local.binding") { require: [name, role]; forbid: [index] }

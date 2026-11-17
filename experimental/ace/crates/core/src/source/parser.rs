@@ -905,7 +905,8 @@ impl<'s> Parser<'s> {
     /// PLAN-967 F0: `use.rs <provider>` — the public Rust import
     /// frontdoor. Exactly `use` `.` `rs` `<ident>`; any other `use ...`
     /// spelling stays outside every current profile (same unsupported
-    /// diagnostic as before).
+    /// diagnostic as before). PLAN-1026: `use.py <dotted>: <members>` —
+    /// the Python import frontdoor (multiple items per module).
     fn use_rs_item(&mut self) -> Result<Item, Diagnostic> {
         let start = self.bump().span; // `use`
         let ok_dot = matches!(
@@ -925,13 +926,16 @@ impl<'s> Parser<'s> {
             ));
         }
         self.bump(); // `.`
-        let lang = self.expect_ident("`rs`/`c`")?;
+        let lang = self.expect_ident("`rs`/`c`/`py`")?;
+        if lang.name == "py" {
+            return self.use_py_tail(start);
+        }
         if lang.name != "rs" && lang.name != "c" {
             return Err(Diagnostic::new(
                 Stage::Text,
                 "source.use-rs.syntax",
                 format!(
-                    "`use.{}` is not a supported import; the imports are `use.rs`/`use.c`",
+                    "`use.{}` is not a supported import; the imports are `use.rs`/`use.c`/`use.py`",
                     lang.name
                 ),
                 start.join(lang.span),
@@ -950,6 +954,62 @@ impl<'s> Parser<'s> {
         Ok(Item::UseRs(UseRsItem {
             lang: lang.name,
             provider,
+            span,
+        }))
+    }
+
+    /// PLAN-1026: the `use.py <module.path>: <member, ...>` tail (the
+    /// `use` `.` `py` prefix is already consumed). The dotted module
+    /// path is at least one identifier; the member list is
+    /// comma-separated with no trailing comma.
+    fn use_py_tail(&mut self, start: Span) -> Result<Item, Diagnostic> {
+        let mut module = vec![self.expect_ident("use.py module name")?];
+        while matches!(
+            self.peek(),
+            Some(Token {
+                tok: Tok::Punct(P::Dot),
+                ..
+            })
+        ) {
+            self.bump(); // `.`
+            module.push(self.expect_ident("use.py module path segment")?);
+        }
+        let colon = matches!(
+            self.peek(),
+            Some(Token {
+                tok: Tok::Punct(P::Colon),
+                ..
+            })
+        );
+        if !colon {
+            let span = self.peek().map(|t| t.span).unwrap_or(start);
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.use-py.syntax",
+                "`use.py` takes a dotted module path then `: members`",
+                start.join(span),
+            ));
+        }
+        self.bump(); // `:`
+        let mut members = vec![self.expect_ident("use.py member name")?];
+        loop {
+            if matches!(
+                self.peek(),
+                Some(Token {
+                    tok: Tok::Punct(P::Comma),
+                    ..
+                })
+            ) {
+                self.bump();
+                members.push(self.expect_ident("use.py member name")?);
+            } else {
+                break;
+            }
+        }
+        let span = start.join(members.last().map(|m| m.span).unwrap_or(start));
+        Ok(Item::UsePy(UsePyItem {
+            module,
+            members,
             span,
         }))
     }
@@ -1012,8 +1072,13 @@ impl<'s> Parser<'s> {
             // text-record surface (the CST rule's profile set); every
             // other surface keeps the historical unsupported rejection
             // (differential oracle agreement, source_cst_927 edge#17).
+            // PLAN-1026: the AGGREGATES surface (the py training lane)
+            // admits the same frontdoor — use.py member imports graft
+            // through the aggregates foreign resolve entry.
             Some(Tok::Reserved(word))
-                if word == "use" && self.surface == SourceProfile::TextRecord =>
+                if word == "use"
+                    && (self.surface == SourceProfile::TextRecord
+                        || self.surface == SourceProfile::Aggregates) =>
             {
                 self.use_rs_item()
             }

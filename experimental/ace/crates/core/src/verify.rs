@@ -1891,6 +1891,10 @@ fn check_foreign_declarations(
     match (bundle.domain, has_resource) {
         (HirDomain::Scalar, false) => {}
         (HirDomain::TextRecord, _) => {}
+        // PLAN-1026: the py training lane — the closures family admits
+        // the py-bridge adapter's resource (frame) declarations through
+        // `verify_foreign_closures`, exactly like the text-record F0 lane.
+        (HirDomain::Closures, _) => {}
         (_, true) => {
             return Err(reject(
                 Span { start: 0, end: 0 },
@@ -2336,9 +2340,29 @@ pub fn verify_closures(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnos
     verify_collection_family(bundle, HirDomain::Closures)
 }
 
+/// PLAN-1026: the closures family WITH foreign declarations (the py
+/// training lane) — the foreign admission prelude and the
+/// `foreign_allowed` bit are the only differences from the plain entry
+/// (mirrors `verify_foreign_text_record`).
+pub fn verify_foreign_closures(
+    bundle: hir::Bundle,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    check_foreign_declarations(&bundle, environment)?;
+    verify_collection_family_impl(bundle, HirDomain::Closures, true)
+}
+
 fn verify_collection_family(
     bundle: hir::Bundle,
     expected: HirDomain,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_impl(bundle, expected, false)
+}
+
+fn verify_collection_family_impl(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+    foreign_allowed: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     // PLAN-912 §5.4 whole-axis observation: verifying every body is a
     // module-axis attempt (the warm closures path must never reach here).
@@ -2356,7 +2380,7 @@ fn verify_collection_family(
         )]);
     }
     let mut v = Verifier {
-        foreign_allowed: false,
+        foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
         domain: expected,

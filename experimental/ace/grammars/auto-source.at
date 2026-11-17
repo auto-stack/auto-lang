@@ -322,8 +322,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-modules]) { use-item() {} }
             // PLAN-967（F0）：`use.rs <provider>` —— 公共 Rust 导入前门
             //（text-record 面首个 F0 切片；`rs` 拼写与 provider 匹配在投影/解析期校验）。
-            alt(profiles: [text-record, age-h0, age-component, age-package, config-document]) { use-rs-item() {} }
-            alt(profiles: [text-record, age-h0, age-component, age-package, config-document]) { use-c-item() {} }
+            alt(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) { use-rs-item() {} }
+            alt(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) { use-c-item() {} }
+            // PLAN-1026：`use.py <module.path>: <members>` —— Python 成员导入
+            //前门（aggregates py 训练面；lang 叶必须恰为 py，点路径与成员
+            //清单在投影/解析期校验）。
+            alt(profiles: [aggregates]) { use-py-item() {} }
             // PLAN-980：`use themes.themes: Auto, Solarized` 模块成员导入
             //（002-counter 等传统工程的主题包导入形；仅 age-component 面）。
             alt(profiles: [age-component, age-package]) { age-use-module-item() {} }
@@ -975,17 +979,37 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-967（F0/T-10）：`use.rs <provider>` / `use.c <provider>` 项
         //——单 ident provider；lang 叶必须是 rs/c（投影期命名拒绝其它
         // 拼写，不静默解释为模块 use）。
-        use-rs-item(profiles: [text-record, age-h0, age-component, age-package, config-document]) {
+        use-rs-item(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) {
             r-use(field: "kw") {}
             dot(field: "dot") {}
             ident(field: "lang")
             ident(field: "provider")
         }
-        use-c-item(profiles: [text-record, age-h0, age-component, age-package, config-document]) {
+        use-c-item(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) {
             r-use(field: "kw") {}
             dot(field: "dot") {}
             ident(field: "lang")
             ident(field: "provider")
+        }
+        // PLAN-1026：`use.py a.b: m1, m2` 项——点路径模块 + 冒号 + 成员清单
+        //（many 尾规则各带一个分隔符 + 标识符；投影期合成 Item::UsePy）。
+        use-py-item(profiles: [aggregates]) {
+            r-use(field: "kw") {}
+            dot(field: "dot") {}
+            ident(field: "lang")
+            ident(field: "mod-head")
+            many { use-py-mod-tail() {} }
+            colon() {}
+            ident(field: "member-head")
+            many { use-py-member-tail() {} }
+        }
+        use-py-mod-tail(profiles: [aggregates]) {
+            dot() {}
+            ident(field: "seg")
+        }
+        use-py-member-tail(profiles: [aggregates]) {
+            comma() {}
+            ident(field: "member")
         }
         qualified-name(profiles: [scalar-modules]) {
             ident(field: "module")

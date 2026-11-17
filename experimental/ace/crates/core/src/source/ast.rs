@@ -262,6 +262,10 @@ pub enum Item {
     /// Exactly one per module; the provider id must match the session's
     /// admitted foreign manifest (validated in resolve, never parsed away).
     UseRs(UseRsItem),
+    /// PLAN-1026: the Python import frontdoor `use.py <module>: <members>`
+    /// (dotted module path, explicit member list; multiple items per
+    /// module are legal, each member binds once in source order).
+    UsePy(UsePyItem),
     /// PLAN-968: a `task` actor declaration (scheduler surface only).
     Task(TaskItem),
 }
@@ -318,6 +322,19 @@ pub struct UseRsItem {
     pub lang: String,
     pub provider: Ident,
     /// `use` keyword through the provider identifier.
+    pub span: Span,
+}
+
+/// A `use.py <module.path>: <member, ...>` module item (PLAN-1026). The
+/// dotted module path and member names are runtime import facts — the
+/// resolve pass binds each member to a py-bridge token local and lowers
+/// uses through the frozen Python op set; nothing is imported at compile
+/// time (R-01).
+#[derive(Clone, Debug)]
+pub struct UsePyItem {
+    pub module: Vec<Ident>,
+    pub members: Vec<Ident>,
+    /// `use` keyword through the last member.
     pub span: Span,
 }
 

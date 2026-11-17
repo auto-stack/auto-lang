@@ -109,6 +109,22 @@ pub(crate) fn project_program_with_caps(
         .iter()
         .position(|r| r.name == "use-c-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    // PLAN-1026：`use.py <module.path>: <members>` 项 kind（aggregates 裁剪）。
+    let use_py_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "use-py-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    let use_py_mod_tail_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "use-py-mod-tail")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    let use_py_member_tail_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "use-py-member-tail")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let mut items = Vec::new();
     // PLAN-963（T-03）：`spec` 声明在投影期擦除——收集到投影侧表，遵从检查
     // 与默认方法注入在语法期单态化之后统一完成（spec 不进入 AST/downstream，
@@ -236,6 +252,8 @@ pub(crate) fn project_program_with_caps(
             // PLAN-967（F0/T-10）：导入前门也是声明区项（须在 script 前）。
             || Some(kind) == use_rs_item_kind
             || Some(kind) == use_c_item_kind
+            // PLAN-1026：py 导入前门也是声明区项（须在 script 前）。
+            || Some(kind) == use_py_item_kind
             // PLAN-968: `task` declarations are declaration-position items.
             || Some(kind) == k.task_item
         {
@@ -345,6 +363,59 @@ pub(crate) fn project_program_with_caps(
                 items.push(Item::UseRs(UseRsItem {
                     lang,
                     provider,
+                    span,
+                }));
+            } else if Some(kind) == use_py_item_kind {
+                // PLAN-1026：`use.py <module.path>: <members>` —— lang 叶
+                // 必须恰为 `py`；点路径段与成员清单从 many 尾子树收集。
+                let lang_leaf = eng.cx.field_child(node, "lang").expect("use.py lang leaf");
+                let lang = eng.cx.spelling(lang_leaf);
+                let kw_leaf = eng.cx.field_child(node, "kw").expect("use.py kw leaf");
+                if lang != "py" {
+                    let span = eng.cx.span_of(lang_leaf);
+                    eng.cx.reject(span, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.use-py.syntax",
+                            format!(
+                                "`use.{lang}` is not the Python import; the spelling is `use.py <module>: <members>`"
+                            ),
+                            span,
+                        )
+                    });
+                    continue;
+                }
+                let head_leaf = eng
+                    .cx
+                    .field_child(node, "mod-head")
+                    .expect("use.py module head");
+                let mut module = vec![ident_of(&mut eng.cx, head_leaf)];
+                let member_head_leaf = eng
+                    .cx
+                    .field_child(node, "member-head")
+                    .expect("use.py member head");
+                let mut members = vec![ident_of(&mut eng.cx, member_head_leaf)];
+                let mut last_end = eng.cx.span_of(member_head_leaf).end;
+                for c in eng.cx.children(node) {
+                    let ck = eng.cx.tree.kind(c);
+                    if Some(ck) == use_py_mod_tail_kind {
+                        let seg = eng.cx.field_child(c, "seg").expect("use.py module segment");
+                        module.push(ident_of(&mut eng.cx, seg));
+                    } else if Some(ck) == use_py_member_tail_kind {
+                        let m = eng.cx.field_child(c, "member").expect("use.py member");
+                        let id = ident_of(&mut eng.cx, m);
+                        last_end = id.span.end;
+                        members.push(id);
+                    }
+                }
+                let kw_span = eng.cx.span_of(kw_leaf);
+                let span = Span {
+                    start: kw_span.start,
+                    end: last_end,
+                };
+                items.push(Item::UsePy(UsePyItem {
+                    module,
+                    members,
                     span,
                 }));
             } else if Some(kind) == k.spec_item {
@@ -12223,6 +12294,9 @@ impl GenericExpand {
             Item::Enum(_) => {}
             // PLAN-967 F0: the import frontdoor carries no expressions.
             Item::UseRs(_) => {}
+            // PLAN-1026: the py frontdoor carries no expressions either
+            // (member imports are hoisted py_import calls in the script).
+            Item::UsePy(_) => {}
             // PLAN-968: task declarations carry expressions in field
             // defaults, hook bodies and handler arms.
             Item::Task(t) => {

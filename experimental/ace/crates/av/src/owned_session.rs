@@ -334,6 +334,7 @@ fn decl_facts_of(
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor contributes no fn decl.
             Item::UseRs(_) => {}
+            Item::UsePy(_) => {}
             Item::Type(t) => {
                 let shell_end = t
                     .methods

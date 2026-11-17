@@ -350,6 +350,8 @@ pub(super) fn collect_agg_iter_records(
     for item in &program.items {
         match item {
             ast::Item::Fn(f) => collect_fn_anns(f, &mut anns),
+            // PLAN-1026: the py import frontdoor carries no type anns.
+            ast::Item::UsePy(_) => {}
             // PLAN-968: task declarations carry anns in arm binding patterns;
             // hook/field/body anns flow through the resolve-synthesized
             // functions (never this ast-level walk).

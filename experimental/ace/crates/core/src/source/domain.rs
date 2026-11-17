@@ -253,6 +253,8 @@ pub fn compile_domain(
             Item::Store(s) => Some(&s.name),
             Item::UseRs(_) => None,
             // PLAN-968: task names join the hidden-name conflict check.
+            Item::UsePy(_) => None,
+            // PLAN-968: task names join the hidden-name conflict check.
             Item::Task(t) => Some(&t.name),
         };
         if let Some(u) = user {

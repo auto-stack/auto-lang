@@ -1456,6 +1456,9 @@ pub(crate) fn decl_context_fp(program: &ast::Program, src: &str) -> u64 {
             // PLAN-967 F0: the frontdoor spelling participates in the
             // module content identity (provider identity is load-bearing).
             ast::Item::UseRs(u) => mix(&src[u.span.start..u.span.end], &mut h),
+            // PLAN-1026: the py frontdoor spelling participates in the
+            // module content identity (module/member lists are load-bearing).
+            ast::Item::UsePy(u) => mix(&src[u.span.start..u.span.end], &mut h),
         }
     }
     h
@@ -1661,6 +1664,65 @@ pub trait TypeSupply {
 /// — no solver facts exist for this surface (the 934 inference surface is
 /// scalar-only), so every body resolves with its own full walk. The
 /// scalar lane's fact-supplied shortcut is untouched.
+
+/// PLAN-1026: a foreign-only supply (the py-bridge lane grafts the
+/// adapter's declared ops into the AGGREGATES surface; body typing stays
+/// the resolver's own full walk — `facts_enabled() == false`).
+pub struct ForeignOnlySupply<'a> {
+    foreign: &'a ace_foreign_contract::manual::AdmittedForeign,
+}
+impl<'a> ForeignOnlySupply<'a> {
+    pub fn new(foreign: &'a ace_foreign_contract::manual::AdmittedForeign) -> Self {
+        Self { foreign }
+    }
+}
+impl TypeSupply for ForeignOnlySupply<'_> {
+    fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
+        Some(self.foreign)
+    }
+    fn facts_enabled(&self) -> bool {
+        false
+    }
+    fn expr_ty(&self, _span: Span) -> Option<VT> {
+        None
+    }
+    fn binding_ty(&self, _span: Span) -> Option<VT> {
+        None
+    }
+}
+
+/// PLAN-1026: the AGGREGATES foreign lane — the py-bridge training
+/// surface (aggregates numerics/text/collections + the adapter's
+/// declared frame ops, grafted through the same supply lane the
+/// text-record F0 path uses). Body typing is the resolver's own walk.
+pub fn resolve_aggregates_with_foreign(
+    program: &ast::Program,
+    capabilities: &[String],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let supply = ForeignOnlySupply::new(foreign);
+    let (fns, records, coll, _) = resolve_detailed(
+        program,
+        capabilities,
+        SourceProfile::Aggregates,
+        None,
+        Some(&supply),
+        None,
+    )?;
+    Ok(ResolvedProgram {
+        foreign_slots: Vec::new(),
+        foreign: foreign.source_declarations(),
+        fns,
+        records,
+        lists: coll.lists,
+        tuples: coll.tuples,
+        variants: coll.variants,
+        function_types: coll.function_types,
+        objects: coll.objects,
+        sched_tasks: coll.sched_tasks,
+    })
+}
+
 pub fn resolve_text_record_with_foreign(
     program: &ast::Program,
     capabilities: &[String],
@@ -1810,6 +1872,9 @@ pub fn validate_foreign_context(
             // PLAN-967 F0: the import frontdoor contributes no callable
             // name; it is validated against the admitted provider below.
             ast::Item::UseRs(_) => ("", Span { start: 0, end: 0 }, false),
+            // PLAN-1026: py imports contribute no callable name here; the
+            // member bindings are hoisted script locals (validated below).
+            ast::Item::UsePy(_) => ("", Span { start: 0, end: 0 }, false),
         })
         .collect();
     // The use.rs frontdoor: at most one, and its provider id must be the
@@ -2220,6 +2285,9 @@ fn resolve_detailed(
             }
             // PLAN-967 F0: the frontdoor declares no function.
             ast::Item::UseRs(_) => {}
+            // PLAN-1026: the py frontdoor declares no function (members
+            // lower to hoisted py_import calls in the script body).
+            ast::Item::UsePy(_) => {}
             ast::Item::Type(t) => {
                 for m in &t.methods {
                     fn_receiver.push(m.receiver);

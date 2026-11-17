@@ -147,6 +147,8 @@ pub fn desugar_program(
                     }
                 }
                 Item::Enum(_) | Item::Const(_) | Item::Store(_) | Item::UseRs(_) => {}
+                // PLAN-1026: the py frontdoor has no sched surface.
+                Item::UsePy(_) => {}
                 Item::Task(_) => unreachable!("pass A replaced every task item"),
             }
         }

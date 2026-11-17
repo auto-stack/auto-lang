@@ -534,6 +534,7 @@ fn find_free_fn<'a>(program: &'a Program, name: &str) -> Result<&'a FnItem, Prod
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor declares no function.
             Item::UseRs(_) => {}
+            Item::UsePy(_) => {}
             Item::Enum(_) => {
                 return Err(ProduceError::Profile {
                     what: "enum declaration",
