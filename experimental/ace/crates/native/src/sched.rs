@@ -156,7 +156,28 @@ pub fn sched_callees(module: &MirModule) -> Result<lower::SchedCtx, SchedDiag> {
                 }
             }
         }
-        callees.push(lower::SchedCallee { symbol, params });
+        // PLAN-1067 review3 T-1067-1: carry the callee own unit signature so
+        // the spawn thunk declares exactly the same shape (see `SchedCallee`).
+        let full = emit::cranelift_sig_of_for(
+            module,
+            f.sig,
+            cranelift_codegen::isa::CallConv::WindowsFastcall,
+        )
+        .map_err(|e| SchedDiag {
+            stage: "lower".into(),
+            code: "native.sched-callee".into(),
+            message: format!("scheduler callee `{}` signature: {e}", f.name),
+        })?;
+        let result_text = module
+            .sig_of(f.sig)
+            .and_then(|s| module.types.get(s.result as usize))
+            .is_some_and(|t| matches!(t, MirType::Str | MirType::StrView));
+        callees.push(lower::SchedCallee {
+            symbol,
+            params,
+            sig: full,
+            result_text,
+        });
     }
     Ok(lower::SchedCtx { callees })
 }

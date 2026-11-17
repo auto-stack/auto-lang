@@ -114,7 +114,9 @@ fn call(callee: &str, args: Vec<Expr>, span: Span) -> Expr {
 /// Desugar one scheduler-profile program. Returns the rewritten program
 /// plus the side-table; all rejections are named `source.task-*`
 /// diagnostics with byte spans into the original source.
-pub fn desugar_program(program: &super::ast::Program) -> Result<(super::ast::Program, SchedSurface), Vec<Diagnostic>> {
+pub fn desugar_program(
+    program: &super::ast::Program,
+) -> Result<(super::ast::Program, SchedSurface), Vec<Diagnostic>> {
     let mut diags: Vec<Diagnostic> = Vec::new();
     let mut surface = SchedSurface::default();
     let mut items: Vec<Item> = Vec::new();
@@ -185,7 +187,11 @@ fn pattern_word(p: &TaskPattern, diags: &mut Vec<Diagnostic>) -> Option<TypeWord
         ),
         TaskPattern::Bind { ty, .. } => match &ty.kind {
             TypeRef::Builtin(w @ (TypeWord::I32 | TypeWord::Int | TypeWord::Bool)) => {
-                Some(if matches!(w, TypeWord::Int) { TypeWord::I32 } else { *w })
+                Some(if matches!(w, TypeWord::Int) {
+                    TypeWord::I32
+                } else {
+                    *w
+                })
             }
             TypeRef::Builtin(TypeWord::StrOwned) | TypeRef::Builtin(TypeWord::Str) => {
                 Some(TypeWord::StrOwned)
@@ -214,15 +220,15 @@ fn scan_reply_word(b: &Block, out: &mut Option<(TypeWord, Span)>) {
 fn scan_reply_word_stmt(s: &Stmt, out: &mut Option<(TypeWord, Span)>) {
     match s {
         Stmt::ExprStmt { value, .. } => scan_reply_word_expr(value, out),
-        Stmt::Let { value, .. } | Stmt::Assign { value, .. } => {
-            scan_reply_word_expr(value, out)
-        }
+        Stmt::Let { value, .. } | Stmt::Assign { value, .. } => scan_reply_word_expr(value, out),
         Stmt::IndexAssign(ia) => {
             scan_reply_word_expr(&ia.value, out);
         }
         Stmt::LetDestruct { value, .. } => scan_reply_word_expr(value, out),
         Stmt::Return { value, .. } => scan_reply_word_expr(value, out),
-        Stmt::If { cond, then, els, .. } => {
+        Stmt::If {
+            cond, then, els, ..
+        } => {
             scan_reply_word_expr(cond, out);
             scan_reply_word(then, out);
             if let Some(e) = els {
@@ -246,16 +252,12 @@ fn scan_reply_word_expr(e: &Expr, out: &mut Option<(TypeWord, Span)>) {
         // BOTH spellings — otherwise every task's reply type silently
         // defaulted to i32 and non-int replies were unreachable from source.
         ExprKind::Call { callee, args }
-            if (callee.name == "reply" || callee.name == "__sched_reply")
-                && args.len() == 1 =>
+            if (callee.name == "reply" || callee.name == "__sched_reply") && args.len() == 1 =>
         {
             if let Arg::Pos(v) = &args[0] {
-                if let Some(w) = literal_word(
-                    v,
-                    "reply value",
-                    "source.task-reply-type",
-                    &mut Vec::new(),
-                ) {
+                if let Some(w) =
+                    literal_word(v, "reply value", "source.task-reply-type", &mut Vec::new())
+                {
                     if out.is_none() {
                         *out = Some((w, v.span));
                     }
@@ -324,8 +326,7 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
                 hook.name.span,
             ));
         }
-        if matches!(hook.ret.kind, TypeRef::Builtin(w) if !matches!(w, TypeWord::Void))
-        {
+        if matches!(hook.ret.kind, TypeRef::Builtin(w) if !matches!(w, TypeWord::Void)) {
             diags.push(diag(
                 "source.task-lifecycle",
                 format!(
@@ -378,10 +379,7 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
 
     // 1) state locals from the spawn parameters
     for (i, (fname, w)) in fields.iter().enumerate() {
-        let init = lit_expr(
-            ExprKind::Var(ident(&format!("__init_{i}"), sp)),
-            sp,
-        );
+        let init = lit_expr(ExprKind::Var(ident(&format!("__init_{i}"), sp)), sp);
         // The annotation stays implicit: an owned-text field's let-copy
         // materializes through inference (an explicit StrOwned annotation
         // on the param alias elides the copy).
@@ -477,10 +475,7 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
                     name: name.clone(),
                     ann: None,
                     mutable: false,
-                    value: lit_expr(
-                        ExprKind::Var(ident("__sched_msg", arm.span)),
-                        arm.span,
-                    ),
+                    value: lit_expr(ExprKind::Var(ident("__sched_msg", arm.span)), arm.span),
                     span: arm.span,
                 }];
                 bs.extend(arm.body.stmts.iter().cloned());
@@ -621,7 +616,6 @@ fn inner_span(s: &Stmt) -> Span {
     }
 }
 
-
 fn word_name(w: TypeWord) -> &'static str {
     match w {
         TypeWord::I32 | TypeWord::Int => "int",
@@ -704,10 +698,7 @@ fn rewrite_expr(e: &mut Expr, diags: &mut Vec<Diagnostic>) {
     match &mut e.kind {
         ExprKind::Await(inner) => {
             rewrite_expr(inner, diags);
-            let inner_v = std::mem::replace(
-                inner.as_mut(),
-                lit_expr(ExprKind::IntLit(0), e.span),
-            );
+            let inner_v = std::mem::replace(inner.as_mut(), lit_expr(ExprKind::IntLit(0), e.span));
             e.kind = ExprKind::Call {
                 callee: ident("__sched_await", e.span),
                 args: vec![Arg::Pos(inner_v)],
@@ -715,10 +706,7 @@ fn rewrite_expr(e: &mut Expr, diags: &mut Vec<Diagnostic>) {
         }
         ExprKind::Go(inner) => {
             rewrite_expr(inner, diags);
-            let inner_v = std::mem::replace(
-                inner.as_mut(),
-                lit_expr(ExprKind::IntLit(0), e.span),
-            );
+            let inner_v = std::mem::replace(inner.as_mut(), lit_expr(ExprKind::IntLit(0), e.span));
             match &inner_v.kind {
                 ExprKind::Call { callee, args } => {
                     let mut new_args = vec![Arg::Pos(lit_expr(

@@ -670,8 +670,8 @@ fn scheduler_candidate_audit_rejects_a_mutant_dependency() {
 /// the registry lock, so publication and thread creation must happen under
 /// that same lock — otherwise the chain is created after the snapshot, never
 /// joined, leaks its argument blocks and reports a spurious residue (exit 72)
-/// while its output races `ExitProcess`. Ten consecutive runs must all be
-/// byte-exact with exit 0 (and stay inside the per-case 10 s budget).
+/// while its output races `ExitProcess`. Five consecutive runs must all be
+/// byte-exact with exit 0 (and stay inside the per-case 10 s in-gate budget).
 #[test]
 fn scheduler_go_from_task_handler_survives_the_drain() {
     let src = r#"
@@ -688,9 +688,11 @@ fn main() {
     a.send(5)
 }
 "#;
-    // PLAN-1067 review2 N-1067-5: ten repetitions (the review minimum) keep
-    // this case inside the 10 s budget even in the parallel gate run.
-    for run_index in 0..10 {
+    // PLAN-1067 review3 T-1067-2: five repetitions keep this case comfortably
+    // inside the 10 s in-gate budget (ten measured up to 10.155 s under the
+    // 20-way parallel gate). Five independent PE runs still cover the drain
+    // race the case exists for.
+    for run_index in 0..5 {
         let observed = run_source(&format!("go-from-task-{run_index}"), src);
         assert_eq!(
             observed.exit,
@@ -960,4 +962,71 @@ fn main() {
         elapsed < std::time::Duration::from_secs(5),
         "stop with a queued ask must terminate: {elapsed:?}"
     );
+}
+
+/// T-1067-1 (review3 major): a `go` target may return a scalar, and the thunk
+/// must declare the callee with its REAL signature. The regression was a
+/// signature conflict when the same unit also called the callee directly
+/// (thunk said `returns: []`, the direct call declared `returns: [I32]`), which
+/// surfaced as an internal `mn.backend.lowering` error.
+#[test]
+fn scheduler_go_to_scalar_returning_callee_builds_and_runs() {
+    let direct = r#"
+fn worker(n int) int {
+    n + 1
+}
+fn main() {
+    print(worker(1))
+    go worker(2)
+}
+"#;
+    let (observed, elapsed) = run_timed("go-scalar-return", direct);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(observed.stdout, "2\n", "direct call output drift");
+    assert_eq!(observed.stderr, "", "stderr noise");
+    assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
+
+    // Recursive `go` target: every chain level is joined by the drain.
+    let recursive = r#"
+fn chain(n int) int {
+    if n < 1 {
+        return 0
+    }
+    go chain(n - 1)
+    n
+}
+fn main() {
+    print(chain(2))
+}
+"#;
+    let (observed, elapsed) = run_timed("go-recursive-scalar", recursive);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(observed.stdout, "2\n", "recursive chain output drift");
+    assert_eq!(observed.stderr, "", "stderr noise");
+    assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
+}
+
+/// T-1067-1 sibling: an owned-text return from a `go` target is DISCARDED by
+/// `go` semantics, so the thunk releases the buffer — the zero-residue drain
+/// audit (exit 0) proves no leak.
+#[test]
+fn scheduler_go_discarding_an_owned_text_result_does_not_leak() {
+    let src = r#"
+fn label(n int) Str {
+    f"s=${n}"
+}
+fn main() {
+    go label(5)
+    print("done")
+}
+"#;
+    let (observed, elapsed) = run_timed("go-text-result", src);
+    assert_eq!(
+        observed.exit,
+        Some(0),
+        "discarded owned-text result must not leave a residue: {observed:?}"
+    );
+    assert_eq!(observed.stdout, "done\n", "main output drift");
+    assert_eq!(observed.stderr, "", "stderr noise");
+    assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
 }

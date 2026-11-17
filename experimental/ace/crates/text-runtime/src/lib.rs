@@ -635,7 +635,6 @@ pub extern "system" fn ac_rt_own_clone_quiet(
     }
 }
 
-
 #[no_mangle]
 pub extern "system" fn ac_rt_own_clone(src: *const u8, len: i32, out_len: *mut i32) -> *mut u8 {
     if len < 0 {
@@ -680,7 +679,8 @@ pub extern "system" fn ac_rt_own_concat(
     b_ptr: *const u8,
     b_len: i32,
     out_len: *mut i32,
-) -> *mut u8 {    trace_line(|l| {
+) -> *mut u8 {
+    trace_line(|l| {
         l.s("CONCAT a=");
         l.i(a_len);
         l.s(" b=");
@@ -736,10 +736,7 @@ pub extern "system" fn ac_rt_own_concat(
 /// 972); a negative value carries a leading `-`. Deterministic itoa —
 /// no host-locale dependence.
 #[no_mangle]
-pub extern "system" fn ac_rt_own_display_i32(
-    value: i32,
-    out_len: *mut i32,
-) -> *mut u8 {
+pub extern "system" fn ac_rt_own_display_i32(value: i32, out_len: *mut i32) -> *mut u8 {
     let mut buf = [0u8; 12];
     let mut len = 0usize;
     if value == i32::MIN {

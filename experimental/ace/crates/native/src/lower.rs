@@ -129,6 +129,16 @@ pub enum SchedArgKind {
 pub struct SchedCallee {
     pub symbol: String,
     pub params: Vec<SchedArgKind>,
+    /// PLAN-1067 review3 T-1067-1: the callee own unit signature, exactly as
+    /// its own emission declares it. The spawn thunk must declare the SAME
+    /// signature (return shape included) — declaring `returns: []` collided
+    /// with an existing declaration whenever the unit also called the callee
+    /// directly, and the build failed with an internal lowering error.
+    pub sig: Signature,
+    /// The callee returns owned text: the thunk frees the discarded result so
+    /// a `go f()` that produces text leaks nothing (the drain audit would
+    /// otherwise report it).
+    pub result_text: bool,
 }
 
 /// The lane-level callee table, indexed by the MIR function index the
@@ -3831,22 +3841,12 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         if let Some(reference) = self.sched_callee_refs.get(&callee) {
             return Ok(*reference);
         }
-        let mut driver_sig = Signature::new(self.conv);
-        for p in &info.params {
-            match p {
-                SchedArgKind::I32 | SchedArgKind::Bool => {
-                    driver_sig.params.push(AbiParam::new(types::I32))
-                }
-                SchedArgKind::Str => {
-                    // The private ABI crosses owned text as (ptr, len).
-                    driver_sig.params.push(AbiParam::new(types::I64));
-                    driver_sig.params.push(AbiParam::new(types::I32));
-                }
-            }
-        }
-        // The callee's result is intentionally not declared: the spawn
-        // driver returns its orderly-stop code and a `go` target may return
-        // any scalar — the thunk discards it (no ABI cleanup difference).
+        // PLAN-1067 review3 T-1067-1: declare the callee with its OWN full
+        // signature (the lane table carries it). The thunk still discards the
+        // result, but the declaration must match the one the same unit (or any
+        // other unit) already emitted for this symbol, otherwise Cranelift
+        // rejects the module with an internal signature-conflict error.
+        let driver_sig = info.sig.clone();
         let driver_id = self
             .om
             .declare_function(&info.symbol, Linkage::Import, &driver_sig)
@@ -3895,7 +3895,25 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 }
             }
             let driver_ref = self.om.declare_func_in_func(driver_id, tfb.func);
-            tfb.ins().call(driver_ref, &argv);
+            let call = tfb.ins().call(driver_ref, &argv);
+            // A discarded owned-text result must be released, not leaked: the
+            // reported value is dropped by `go` semantics, so its buffer dies
+            // here (the drain audit counts every owned block).
+            if info.result_text {
+                let results = tfb.inst_results(call).to_vec();
+                if let Some(ptr) = results.first().copied() {
+                    let free_id = self
+                        .om
+                        .declare_function("ac_rt_own_free", Linkage::Import, &{
+                            let mut s = Signature::new(self.conv);
+                            s.params.push(AbiParam::new(types::I64));
+                            s
+                        })
+                        .map_err(|e| format!("declare discard free: {e}"))?;
+                    let free_ref = self.om.declare_func_in_func(free_id, tfb.func);
+                    tfb.ins().call(free_ref, &[ptr]);
+                }
+            }
             let zero = tfb.ins().iconst(types::I32, 0);
             tfb.ins().return_(&[zero]);
             tfb.finalize();

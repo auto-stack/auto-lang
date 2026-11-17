@@ -78,6 +78,11 @@ panic/unwind 符号上冲突。
 
 ## 6. 拒绝与边界（具名）
 
+- **入口限定**：`Task.spawn` 仅在程序入口 `main` 中合法；task driver 与普通 helper 内均为
+  `source.sched-task` 具名前门拒绝（三端同规则，非 native 特有）。
+- **邮箱容量**：`cap >= 1`；`cap < 1` 为具名语言错误（native/A2R stderr+trap 70、AV `ExecOutcome::Error`，
+  文本统一 `task mailbox capacity must be at least 1`）。
+
 `native.sched-unsupported`（非调度车道遇 `SCHED_*`）、`native.sched-platform`（`platform.*`）、
 `native.sched-value`/`native.sched-arity`/`native.sched-callee`/`native.sched-context`（值/元数/
 callee 表/上下文形状）、`mn.unsupported.pe.audit.forbidden-dll|forbidden-symbol|ordinal-import`、
