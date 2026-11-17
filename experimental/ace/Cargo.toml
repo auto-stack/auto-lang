@@ -23,6 +23,7 @@ members = [
   "crates/lowering",
   "crates/m2-build",
   "crates/native",
+  "crates/sched-runtime",
   "crates/semantics",
   "crates/semantics-contract",
   "crates/semantics-store",

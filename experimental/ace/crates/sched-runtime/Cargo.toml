@@ -1,0 +1,22 @@
+[package]
+name = "ace-sched-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-1067 M2-B native task scheduler runtime: real OS threads, bounded mailboxes, ask/reply ports, orderly drain (callee side of the mn.sched.runtime/1 ABI)"
+publish = false
+
+# Staticlib linked into every native scheduler PE. no_std on purpose: the PE
+# keeps its kernel32-only import set (no CRT). The no_std #[panic_handler]
+# exits the process, so no unwinding can cross the ABI.
+
+[lib]
+crate-type = ["staticlib"]
+name = "ac_sched_runtime"
+
+[dependencies]
+# The scheduler runtime is the lane's SINGLE Rust support staticlib. The
+# owned-text runtime rides it as a normal dependency so its allocator/text
+# ABI (and the compiler-generated mem* intrinsics every no_std runtime
+# needs) are embedded in this one staticlib — two Rust staticlibs in one
+# link would collide on the panic/unwind runtime symbols.
+ace-text-runtime = { path = "../text-runtime" }

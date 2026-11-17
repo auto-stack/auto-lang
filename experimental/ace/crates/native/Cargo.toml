@@ -57,6 +57,10 @@ path = "tests/typed_entry_tier.rs"
 name = "typed_entry_incremental_tier"
 path = "tests/typed_entry_incremental_tier.rs"
 
+[[test]]
+name = "sched_m2_1067"
+path = "tests/sched_m2_1067.rs"
+
 [dev-dependencies]
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 

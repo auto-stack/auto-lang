@@ -69,21 +69,29 @@ pub enum LowerMode {
     /// and performs one atomic OS write per call. Non-zero shim status
     /// exits with the console reject code; nothing half-commits.
     Console,
+    /// PLAN-1067: the scheduler lane — the `Numeric` value surface (the
+    /// scheduler profile is an aggregates superset) plus the SCHED_* task
+    /// operations and the console/1 host imports scheduler modules carry.
+    Sched,
 }
 
 impl LowerMode {
     /// The PLAN-961 numeric emission lane (carriers, typed numeric ops,
     /// conversion matrix) — `TrapProbe` mirrors production `Numeric`
-    /// semantics exactly.
+    /// semantics exactly. PLAN-1067's scheduler lane is the same value
+    /// surface plus the SCHED_* operations.
     pub fn numeric_lane(self) -> bool {
-        matches!(self, LowerMode::Numeric | LowerMode::TrapProbe)
+        matches!(
+            self,
+            LowerMode::Numeric | LowerMode::TrapProbe | LowerMode::Sched
+        )
     }
 
     /// Wide typed carriers (I64/U64/F64 on I64, F32 on I32) are live.
     pub fn wide_carriers(self) -> bool {
         matches!(
             self,
-            LowerMode::Typed | LowerMode::Numeric | LowerMode::TrapProbe
+            LowerMode::Typed | LowerMode::Numeric | LowerMode::TrapProbe | LowerMode::Sched
         )
     }
 
@@ -92,6 +100,39 @@ impl LowerMode {
     pub fn trap_carries_reason(self) -> bool {
         matches!(self, LowerMode::Typed | LowerMode::TrapProbe)
     }
+
+    /// The lane admits console/1 host calls (console/1 lane and the
+    /// scheduler modules that print from main and from task drivers).
+    pub fn allows_host_calls(self) -> bool {
+        matches!(self, LowerMode::Console | LowerMode::Sched)
+    }
+}
+
+/// PLAN-1067: the value kind one scheduler callee parameter crosses the
+/// spawn thunk as. Owned text is named out of the first cut (the runtime
+/// has to materialize into the text runtime's own allocator shape — T-03);
+/// i32/bool ride the `SchedVal` payload word.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SchedArgKind {
+    I32,
+    Bool,
+}
+
+/// One scheduler callee (a desugared `__task_<Name>` driver or a plain
+/// `go` target) as the spawn/go site sees it: the linked symbol and the
+/// parameter kinds of its own unit signature.
+#[derive(Clone, Debug)]
+pub struct SchedCallee {
+    pub symbol: String,
+    pub params: Vec<SchedArgKind>,
+}
+
+/// The lane-level callee table, indexed by the MIR function index the
+/// SCHED_SPAWN/SCHED_GO instruction carries (indices stay program-scoped;
+/// the per-function unit split never rewrites them).
+#[derive(Clone, Debug, Default)]
+pub struct SchedCtx {
+    pub callees: Vec<SchedCallee>,
 }
 
 /// Emit the single function of `unit` into `ctx.func`, declaring callees
@@ -110,6 +151,10 @@ pub fn emit_function(
     mode: LowerMode,
     console_write: Option<cranelift_module::FuncId>,
     conv: cranelift_codegen::isa::CallConv,
+    // PLAN-1067: the scheduler lane's program-scoped callee table (the
+    // SCHED_SPAWN/SCHED_GO driver symbols + their parameter kinds); `None`
+    // on every other lane — SCHED_* stays the named rejection there.
+    sched: Option<&SchedCtx>,
 ) -> Result<(), String> {
     let f = &unit.funcs[0];
 
@@ -303,6 +348,9 @@ pub fn emit_function(
         console_write: None,
         console_scratch: None,
         console_reject_block: None,
+        sched_ctx: sched,
+        sched_refs: BTreeMap::new(),
+        sched_callee_refs: BTreeMap::new(),
         blocks,
     };
     fx.sweep_live = !fx.sweep.is_empty();
@@ -627,6 +675,10 @@ struct FnLowerer<'a, 'b> {
     console_scratch: Option<cranelift_module::DataId>,
     /// PLAN-947: console resource-reject exit block (console mode only).
     console_reject_block: Option<cranelift_codegen::ir::Block>,
+    /// PLAN-1067: the scheduler lane's callee table + runtime helper refs.
+    sched_ctx: Option<&'a SchedCtx>,
+    sched_refs: BTreeMap<&'static str, FuncRef>,
+    sched_callee_refs: BTreeMap<u32, Value>,
     blocks: Vec<cranelift_codegen::ir::Block>,
 }
 
@@ -3264,17 +3316,33 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     "av.closures/1 instructions are outside the mn scalar surface".to_string(),
                 );
             }
-            MirInstr::HostCall { host, arg } if self.mode == LowerMode::Console => {
+            MirInstr::HostCall { host, arg } if self.mode.allows_host_calls() => {
                 self.emit_console_host_call(*host, *arg)?;
             }
-            MirInstr::PlatformCall { dst, host, args } if self.mode == LowerMode::Console => {
+            MirInstr::PlatformCall { dst, host, args } if self.mode.allows_host_calls() => {
                 self.emit_console_platform_call(*dst, *host, args)?;
             }
             MirInstr::HostCall { .. } | MirInstr::PlatformCall { .. } => {
                 return Err("av.host-console/1 calls are outside the native surface".into())
             }
-            // PLAN-968: the scheduler surface is outside the native
-            // backend's support domain (D3: named rejection).
+            // PLAN-1067: the scheduler surface executes on the dedicated
+            // scheduler lane; every other lane keeps PLAN-968's named
+            // rejection (the D3 arm is superseded only by the real lane).
+            MirInstr::SchedSpawn { .. }
+            | MirInstr::SchedSend { .. }
+            | MirInstr::SchedAsk { .. }
+            | MirInstr::SchedReply { .. }
+            | MirInstr::SchedStop { .. }
+            | MirInstr::SchedSleep { .. }
+            | MirInstr::SchedAwait { .. }
+            | MirInstr::SchedGo { .. }
+            | MirInstr::SchedRecv { .. }
+            | MirInstr::SchedPort { .. }
+            | MirInstr::SchedStopping { .. }
+                if self.mode == LowerMode::Sched =>
+            {
+                self.emit_sched_instr(i)?;
+            }
             MirInstr::SchedSpawn { .. }
             | MirInstr::SchedSend { .. }
             | MirInstr::SchedAsk { .. }
@@ -3564,6 +3632,357 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     /// i32, calls the target's own unit symbol and widens the i32 result.
     /// The target fn's body trap stays the process trap it always was —
     /// never a success sentinel.
+    // ---- PLAN-1067: the native scheduler lane --------------------------
+
+    /// Declare (once) and resolve one `mn_sched_*` runtime helper.
+    fn sched_helper(&mut self, sym: &'static str) -> Result<FuncRef, String> {
+        if let Some(r) = self.sched_refs.get(sym) {
+            return Ok(*r);
+        }
+        let (params, returns_status): (&[types::Type], bool) = match sym {
+            "mn_sched_spawn" => (&[types::I32, types::I64, types::I32, types::I64], true),
+            "mn_sched_go" => (&[types::I64, types::I32, types::I64], true),
+            "mn_sched_send" => (&[types::I32, types::I64], true),
+            "mn_sched_ask" => (&[types::I32, types::I64], true),
+            "mn_sched_reply" => (&[types::I64], true),
+            "mn_sched_await" => (&[types::I32, types::I64], true),
+            "mn_sched_recv" => (&[types::I64], true),
+            "mn_sched_port" => (&[], true),
+            "mn_sched_stopping" => (&[], true),
+            "mn_sched_stop" => (&[types::I32], true),
+            "mn_sched_sleep" => (&[types::I32], true),
+            "mn_sched_fail" => (&[types::I32], false),
+            other => return Err(format!("unknown scheduler helper `{other}`")),
+        };
+        let mut sig = Signature::new(self.conv);
+        for p in params {
+            sig.params.push(AbiParam::new(*p));
+        }
+        if returns_status {
+            sig.returns.push(AbiParam::new(types::I32));
+        }
+        let id = self
+            .om
+            .declare_function(sym, Linkage::Import, &sig)
+            .map_err(|e| format!("declare {sym}: {e}"))?;
+        let r = self.om.declare_func_in_func(id, self.fb.func);
+        self.sched_refs.insert(sym, r);
+        Ok(r)
+    }
+
+    fn sched_call(&mut self, sym: &'static str, args: &[Value]) -> Result<Value, String> {
+        let f = self.sched_helper(sym)?;
+        let call = self.fb.ins().call(f, args);
+        let results = self.fb.inst_results(call);
+        results
+            .first()
+            .copied()
+            .ok_or_else(|| format!("scheduler helper {sym} returned no status"))
+    }
+
+    /// Turn a negative runtime status into the named language error (the
+    /// runtime's `mn_sched_fail` writes the frozen message and exits with
+    /// the native trap code — never a silent success sentinel).
+    fn sched_guard(&mut self, status: Value, positive: bool) -> Result<(), String> {
+        let fail = self.fb.create_block();
+        let cont = self.fb.create_block();
+        let zero = self.fb.ins().iconst(types::I32, 0);
+        let bad = if positive {
+            self.fb
+                .ins()
+                .icmp(IntCC::SignedLessThanOrEqual, status, zero)
+        } else {
+            self.fb.ins().icmp(IntCC::SignedLessThan, status, zero)
+        };
+        self.fb.ins().brif(bad, fail, &[], cont, &[]);
+        self.fb.seal_block(fail);
+        self.fb.seal_block(cont);
+        self.fb.switch_to_block(fail);
+        let helper = self.sched_helper("mn_sched_fail")?;
+        self.fb.ins().call(helper, &[status]);
+        self.fb
+            .ins()
+            .trap(TrapCode::user(2).expect("valid user trap code"));
+        self.fb.switch_to_block(cont);
+        Ok(())
+    }
+
+    /// The scheduler value kind a slot crosses the handoff as. Owned text is
+    /// named out of this cut: the runtime must materialize it through the
+    /// text runtime's own allocator shape (PLAN-1067 T-03).
+    fn sched_arg_kind_of(&self, slot: u32) -> Result<SchedArgKind, String> {
+        match self.unit.types.get(self.slot_ty(slot) as usize) {
+            Some(MirType::I32) | Some(MirType::Char) => Ok(SchedArgKind::I32),
+            Some(MirType::Bool) => Ok(SchedArgKind::Bool),
+            Some(MirType::Str) | Some(MirType::StrView) => Err(
+                "native.sched-value: owned text across the scheduler handoff is not in the mn scheduler lane's first cut (PLAN-1067 T-03)".into(),
+            ),
+            other => Err(format!(
+                "native.sched-value: slot type {other:?} cannot cross the scheduler handoff"
+            )),
+        }
+    }
+
+    /// A three-word `SchedVal` array on the stack: tag, payload, spare.
+    fn sched_val_slot(&mut self, count: usize) -> (StackSlot, Value) {
+        let size = (count * 24) as u32;
+        let ss = self.fb.create_sized_stack_slot(StackSlotData::new(
+            cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+            size.max(24),
+            3,
+        ));
+        let addr = self.fb.ins().stack_addr(types::I64, ss, 0);
+        (ss, addr)
+    }
+
+    fn sched_store_val(
+        &mut self,
+        base: Value,
+        offset: i32,
+        slot: u32,
+        kind: SchedArgKind,
+    ) -> Result<(), String> {
+        let value = self.fb.use_var(self.v_scalar(slot)?);
+        let wide = self.fb.ins().sextend(types::I64, value);
+        let tag = match kind {
+            SchedArgKind::I32 => 0i64,
+            SchedArgKind::Bool => 1i64,
+        };
+        let tagv = self.fb.ins().iconst(types::I64, tag);
+        let spare = self.fb.ins().iconst(types::I64, 0);
+        self.fb
+            .ins()
+            .store(MemFlags::trusted(), tagv, base, offset);
+        self.fb
+            .ins()
+            .store(MemFlags::trusted(), wide, base, offset + 8);
+        self.fb
+            .ins()
+            .store(MemFlags::trusted(), spare, base, offset + 16);
+        Ok(())
+    }
+
+    fn sched_load_val(&mut self, base: Value, offset: i32, dst: u32) -> Result<(), String> {
+        match self.unit.types.get(self.slot_ty(dst) as usize) {
+            Some(MirType::I32) | Some(MirType::Char) | Some(MirType::Bool) => {
+                let wide =
+                    self.fb
+                        .ins()
+                        .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                let value = self.fb.ins().ireduce(types::I32, wide);
+                self.def_scalar(dst, value)
+            }
+            other => Err(format!(
+                "native.sched-value: slot type {other:?} cannot cross the scheduler handoff"
+            )),
+        }
+    }
+
+    fn sched_callee(&self, index: u32) -> Result<SchedCallee, String> {
+        let ctx = self
+            .sched_ctx
+            .ok_or_else(|| "native.sched-context: scheduler emission without a callee table".to_string())?;
+        ctx.callees
+            .get(index as usize)
+            .cloned()
+            .ok_or_else(|| format!("native.sched-callee: callee index {index} is outside the lane table"))
+    }
+
+    /// Emit (once per callee) the unit-local spawn thunk: a uniform
+    /// `extern "system" fn(*const SchedVal) -> i32` that unpacks the driver
+    /// initializer words and calls the driver's own unit symbol, then
+    /// returns 0. The thunk is unit-local (unique owner/unit/callee symbol),
+    /// so it never joins the unit's declared import set.
+    fn sched_thunk(&mut self, callee: u32, info: &SchedCallee) -> Result<Value, String> {
+        if let Some(addr) = self.sched_callee_refs.get(&callee) {
+            return Ok(*addr);
+        }
+        let mut driver_sig = Signature::new(self.conv);
+        for p in &info.params {
+            match p {
+                SchedArgKind::I32 | SchedArgKind::Bool => {
+                    driver_sig.params.push(AbiParam::new(types::I32))
+                }
+            }
+        }
+        // The callee's result is intentionally not declared: the spawn
+        // driver returns its orderly-stop code and a `go` target may return
+        // any scalar — the thunk discards it (no ABI cleanup difference).
+        let driver_id = self
+            .om
+            .declare_function(&info.symbol, Linkage::Import, &driver_sig)
+            .map_err(|e| format!("declare scheduler callee {}: {e}", info.symbol))?;
+        let thunk_sym = format!(
+            "ac1067tk.{}.{}.{}",
+            crate::symbols::owner_axis(&self.unit.owner),
+            self.unit.funcs[0].name,
+            callee
+        );
+        let mut thunk_sig = Signature::new(self.conv);
+        thunk_sig.params.push(AbiParam::new(types::I64));
+        thunk_sig.returns.push(AbiParam::new(types::I32));
+        let thunk_id = self
+            .om
+            .declare_function(&thunk_sym, Linkage::Export, &thunk_sig)
+            .map_err(|e| format!("declare scheduler thunk `{thunk_sym}`: {e}"))?;
+        let mut ctx = self.om.make_context();
+        ctx.func.signature = thunk_sig;
+        {
+            let mut fbc = FunctionBuilderContext::new();
+            let mut tfb = FunctionBuilder::new(&mut ctx.func, &mut fbc);
+            let entry = tfb.create_block();
+            tfb.append_block_params_for_function_params(entry);
+            tfb.switch_to_block(entry);
+            tfb.seal_block(entry);
+            let base = tfb.block_params(entry)[0];
+            let mut argv = Vec::with_capacity(info.params.len());
+            for (i, kind) in info.params.iter().enumerate() {
+                let offset = (i * 24) as i32;
+                let wide =
+                    tfb.ins()
+                        .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                match kind {
+                    SchedArgKind::I32 | SchedArgKind::Bool => {
+                        argv.push(tfb.ins().ireduce(types::I32, wide));
+                    }
+                }
+            }
+            let driver_ref = self.om.declare_func_in_func(driver_id, tfb.func);
+            tfb.ins().call(driver_ref, &argv);
+            let zero = tfb.ins().iconst(types::I32, 0);
+            tfb.ins().return_(&[zero]);
+            tfb.finalize();
+        }
+        self.om
+            .define_function(thunk_id, &mut ctx)
+            .map_err(|e| format!("define scheduler thunk `{thunk_sym}`: {e}"))?;
+        self.om.clear_context(&mut ctx);
+        let thunk_ref = self.om.declare_func_in_func(thunk_id, self.fb.func);
+        let addr = self.fb.ins().func_addr(types::I64, thunk_ref);
+        self.sched_callee_refs.insert(callee, addr);
+        Ok(addr)
+    }
+
+    /// Marshal one spawn initializer list into a stack `SchedVal` array
+    /// (arity must match the callee's own parameter list).
+    fn sched_args(
+        &mut self,
+        args: &[u32],
+        info: &SchedCallee,
+    ) -> Result<(Value, Value), String> {
+        if args.len() != info.params.len() {
+            return Err(format!(
+                "native.sched-arity: {} spawn initializers for a {}-parameter callee",
+                args.len(),
+                info.params.len()
+            ));
+        }
+        if args.is_empty() {
+            let null = self.fb.ins().iconst(types::I64, 0);
+            let zero = self.fb.ins().iconst(types::I32, 0);
+            return Ok((null, zero));
+        }
+        for (slot, kind) in args.iter().zip(info.params.iter()) {
+            // Validate the source slot kind against the callee parameter.
+            if self.sched_arg_kind_of(*slot)? != *kind {
+                return Err(
+                    "native.sched-arity: spawn initializer type does not match the callee parameter"
+                        .into(),
+                );
+            }
+        }
+        let (_, base) = self.sched_val_slot(args.len());
+        for (i, (slot, kind)) in args.iter().zip(info.params.iter()).enumerate() {
+            self.sched_store_val(base, (i * 24) as i32, *slot, *kind)?;
+        }
+        let count = self.fb.ins().iconst(types::I32, args.len() as i64);
+        Ok((base, count))
+    }
+
+    /// Emit one SCHED_* operation against the `mn.sched.runtime/1` ABI.
+    fn emit_sched_instr(&mut self, instr: &MirInstr) -> Result<(), String> {
+        use MirInstr as I;
+        match instr {
+            I::SchedSpawn {
+                callee,
+                capacity,
+                args,
+                dst,
+            } => {
+                let info = self.sched_callee(*callee)?;
+                let thunk = self.sched_thunk(*callee, &info)?;
+                let cap = self.fb.use_var(self.v_scalar(*capacity)?);
+                let (base, argc) = self.sched_args(args, &info)?;
+                let status = self.sched_call("mn_sched_spawn", &[cap, thunk, argc, base])?;
+                self.sched_guard(status, true)?;
+                self.def_scalar(*dst, status)
+            }
+            I::SchedGo { callee, args } => {
+                let info = self.sched_callee(*callee)?;
+                let thunk = self.sched_thunk(*callee, &info)?;
+                let (base, argc) = self.sched_args(args, &info)?;
+                let status = self.sched_call("mn_sched_go", &[thunk, argc, base])?;
+                self.sched_guard(status, false)
+            }
+            I::SchedSend { handle, msg } => {
+                let h = self.fb.use_var(self.v_scalar(*handle)?);
+                let kind = self.sched_arg_kind_of(*msg)?;
+                let (_, base) = self.sched_val_slot(1);
+                self.sched_store_val(base, 0, *msg, kind)?;
+                let status = self.sched_call("mn_sched_send", &[h, base])?;
+                self.sched_guard(status, false)
+            }
+            I::SchedAsk { handle, msg, dst } => {
+                let h = self.fb.use_var(self.v_scalar(*handle)?);
+                let kind = self.sched_arg_kind_of(*msg)?;
+                let (_, base) = self.sched_val_slot(1);
+                self.sched_store_val(base, 0, *msg, kind)?;
+                let port = self.sched_call("mn_sched_ask", &[h, base])?;
+                self.sched_guard(port, true)?;
+                self.def_scalar(*dst, port)
+            }
+            I::SchedReply { value } => {
+                let kind = self.sched_arg_kind_of(*value)?;
+                let (_, base) = self.sched_val_slot(1);
+                self.sched_store_val(base, 0, *value, kind)?;
+                let status = self.sched_call("mn_sched_reply", &[base])?;
+                self.sched_guard(status, false)
+            }
+            I::SchedStop { handle } => {
+                let h = self.fb.use_var(self.v_scalar(*handle)?);
+                let status = self.sched_call("mn_sched_stop", &[h])?;
+                self.sched_guard(status, false)
+            }
+            I::SchedSleep { ms } => {
+                let value = self.fb.use_var(self.v_scalar(*ms)?);
+                let status = self.sched_call("mn_sched_sleep", &[value])?;
+                self.sched_guard(status, false)
+            }
+            I::SchedAwait { future, dst } => {
+                let port = self.fb.use_var(self.v_scalar(*future)?);
+                let (_, base) = self.sched_val_slot(1);
+                let status = self.sched_call("mn_sched_await", &[port, base])?;
+                self.sched_guard(status, false)?;
+                self.sched_load_val(base, 0, *dst)
+            }
+            I::SchedRecv { dst } => {
+                let (_, base) = self.sched_val_slot(1);
+                let status = self.sched_call("mn_sched_recv", &[base])?;
+                self.sched_guard(status, false)?;
+                self.sched_load_val(base, 0, *dst)
+            }
+            I::SchedPort { dst } => {
+                let port = self.sched_call("mn_sched_port", &[])?;
+                self.def_scalar(*dst, port)
+            }
+            I::SchedStopping { dst } => {
+                let stopping = self.sched_call("mn_sched_stopping", &[])?;
+                self.def_scalar(*dst, stopping)
+            }
+            other => Err(format!("not a scheduler instruction: {other:?}")),
+        }
+    }
+
     fn emit_callback_trampoline(&mut self, name: &str) -> Result<Value, String> {
         const CALLBACK_DOMAIN_STATUS: i64 = -2147483645;
         let import_sym = crate::symbols::import_symbol(&self.unit.owner, &format!("fn:{name}"))

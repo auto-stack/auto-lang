@@ -44,6 +44,8 @@ pub mod platform_io;
 pub mod platform_io_linux;
 pub mod platform_io_sys973;
 pub mod resources;
+pub mod sched;
+pub mod sched_runtime;
 pub mod source_diagnostics;
 pub mod symbols;
 pub mod typed_entry;

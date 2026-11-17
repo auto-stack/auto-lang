@@ -308,8 +308,75 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
     Ok(())
 }
 
-fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
-    // PLAN-961: the closures profile (the numeric source surface's MIR
+/// PLAN-1067: the scheduler-lane admission door. The scheduler profile is
+/// the closures-superset MIR family, so the unit shape and the value
+/// surface are the closures lane's; the additions are the scheduler
+/// intrinsics (lowered to SCHED_* operations, so their declared import
+/// entries are inert) and console/1 host imports (scheduler modules print
+/// from main and from task drivers). `platform.*` calls stay a named
+/// rejection until the timer/OS-wait slice (T-05) wires real completion
+/// ports.
+pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
+    if unit.profile != ace_av_core::contract::AV_CLOSURES_PROFILE {
+        return Err(MnError::Unsupported(
+            "profile",
+            format!(
+                "the scheduler lane admits the closures-superset profile, not `{}`",
+                unit.profile
+            ),
+        ));
+    }
+    if !unit.is_unit || unit.funcs.len() != 1 {
+        return Err(MnError::Unsupported(
+            "unit-shape",
+            "scheduler codegen consumes single-function units only".to_string(),
+        ));
+    }
+    if has_foreign(unit) {
+        return Err(MnError::Unsupported(
+            "foreign.authority",
+            "scheduler units cannot carry foreign calls".into(),
+        ));
+    }
+    for b in &unit.funcs[0].blocks {
+        for i in &b.instrs {
+            match i {
+                ace_av_core::mir::MirInstr::HostCall { host, .. } => {
+                    let Some(h) = unit.host_imports.get(*host as usize) else {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("host declaration {host} is missing in the unit"),
+                        ));
+                    };
+                    if ace_av_core::host::signature(&h.symbol).is_none() {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("host symbol `{}` is not a console/1 symbol", h.symbol),
+                        ));
+                    }
+                }
+                ace_av_core::mir::MirInstr::PlatformCall { .. } => {
+                    return Err(MnError::Unsupported(
+                        "native.sched-platform",
+                        "platform.* calls are outside the scheduler lane's first cut (PLAN-1067 T-05)"
+                            .into(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    for imp in &unit.imports {
+        if imp.symbol.starts_with("__sched_") {
+            // Lowered into SCHED_* operations: the declared entry is inert.
+            continue;
+        }
+        symbols::import_symbol(&unit.owner, &imp.symbol)?;
+    }
+    Ok(())
+}
+
+fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {    // PLAN-961: the closures profile (the numeric source surface's MIR
     // family) joins the admitted set — its numeric emission rides the
     // same object lane.
     let admitted = unit.profile == AV_PROFILE
@@ -413,6 +480,7 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
         lower::LowerMode::Numeric,
         false,
         crate::mn_target::MnOsTarget::WinMsvc,
+        None,
     )
     .map(|(object, _)| object)
 }
@@ -430,6 +498,27 @@ pub fn emit_console_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
         lower::LowerMode::Console,
         true,
         crate::mn_target::MnOsTarget::WinMsvc,
+        None,
+    )
+    .map(|(object, _)| object)
+}
+
+/// PLAN-1067: lower and emit one scheduler-lane unit (the closures-superset
+/// value surface + SCHED_* operations + console/1 host calls). The lane
+/// table resolves each SCHED_SPAWN/SCHED_GO callee index to its unit symbol
+/// and parameter kinds.
+pub fn emit_sched_unit_coff(
+    unit: &MirModule,
+    sched: &lower::SchedCtx,
+) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(
+        unit,
+        None,
+        None,
+        lower::LowerMode::Sched,
+        false,
+        crate::mn_target::MnOsTarget::WinMsvc,
+        Some(sched),
     )
     .map(|(object, _)| object)
 }
@@ -445,6 +534,7 @@ pub fn emit_console_unit_elf(unit: &MirModule) -> Result<UnitObject, MnError> {
         lower::LowerMode::Console,
         true,
         crate::mn_target::MnOsTarget::LinuxGnu,
+        None,
     )
     .map(|(object, _)| object)
 }
@@ -463,6 +553,7 @@ pub fn emit_unit_coff_trap_probe(unit: &MirModule) -> Result<UnitObject, MnError
         lower::LowerMode::TrapProbe,
         false,
         crate::mn_target::MnOsTarget::WinMsvc,
+        None,
     )
     .map(|(object, _)| object)
 }
@@ -478,6 +569,7 @@ pub fn emit_foreign_unit_coff(
         lower::LowerMode::Numeric,
         false,
         crate::mn_target::MnOsTarget::WinMsvc,
+        None,
     )
     .map(|(object, _)| object)
 }
@@ -495,6 +587,7 @@ pub fn emit_foreign_unit_coff_reserved(
         lower::LowerMode::Numeric,
         false,
         crate::mn_target::MnOsTarget::WinMsvc,
+        None,
     )?;
     Ok((object, reservation.expect("host-backed COFF reservation")))
 }
@@ -527,8 +620,11 @@ fn emit_unit_coff_impl(
     mode: lower::LowerMode,
     console: bool,
     target: crate::mn_target::MnOsTarget,
+    sched: Option<&lower::SchedCtx>,
 ) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
-    if console {
+    if sched.is_some() {
+        admit_sched_unit(unit)?;
+    } else if console {
         admit_console_unit(unit)?;
     } else if let Some(environment) = environment {
         admit_unit_shape(unit)?;
@@ -573,7 +669,19 @@ fn emit_unit_coff_impl(
     // Imports first: logical symbols per the scheme.
     let mut import_ids = Vec::with_capacity(unit.imports.len());
     let mut import_syms = Vec::with_capacity(unit.imports.len());
-    for imp in &unit.imports {
+    for (ii, imp) in unit.imports.iter().enumerate() {
+        // PLAN-1067: the scheduler intrinsics are lowered into SCHED_*
+        // operations, so their declared import entries are INERT — they are
+        // never called and never resolve to a guest unit symbol. The slot
+        // stays index-aligned with `unit.imports` (Call indices never move).
+        if sched.is_some() && imp.symbol.starts_with("__sched_") {
+            let inert = format!("mn.sched.inert.{ii}");
+            let id = om
+                .declare_function(&inert, Linkage::Import, &Signature::new(conv))
+                .map_err(|e| MnError::Backend(format!("declare inert import {ii}: {e}")))?;
+            import_ids.push(id);
+            continue;
+        }
         let logical = symbols::import_symbol(&unit.owner, &imp.symbol)?;
         let sig = cranelift_sig_of_for(unit, imp.sig, conv)?;
         let id = om
@@ -644,7 +752,7 @@ fn emit_unit_coff_impl(
 
     // PLAN-947: console units with a live host call target the console
     // shim import (resolved by the shim object at the console link).
-    let console_write = if console {
+    let console_write = if console || sched.is_some() {
         let uses_host = f.blocks.iter().any(|b| {
             b.instrs
                 .iter()
@@ -694,6 +802,7 @@ fn emit_unit_coff_impl(
         mode,
         console_write,
         conv,
+        sched,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)
