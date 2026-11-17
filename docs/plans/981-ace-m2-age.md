@@ -4,8 +4,8 @@ status: executing
 feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-16
-plan_revision: 17
+updated_at: 2026-11-17
+plan_revision: 18
 current_step: 3
 total_steps: 34
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, ag-examples/PLAN-024, ag-examples/PLAN-025, ag-examples/PLAN-028, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067, auto-ui/PLAN-072]
@@ -137,6 +137,20 @@ touched_goals: [GOAL-002]
 补读原冻结身份测试`experimental/ace/crates/core/tests/cases/plan981_grammar_scope.rs`，SHA256前16 `9bd4c795284c0da4`；属原SOURCE/LANGUAGE的防漂移用例，新增r41取材未运行或修改该文件。
 
 ## 5. 详细设计
+
+### AGE首批后能力与AutoForge接面（2026-11-17，分阶段接收）
+
+统一[三路线strategy](../design/strategy/age-m2-three-route-strategy.md)与[公共架构](../design/autographics/age-m2-three-route-architecture.md)。保34任务、原十批、当前进度及A/B全部义务；本条不宣布新实现或解除实际未交接口。
+
+| 现owner/原任务 | 新增精确交付 | 所用前置/不反向等待 |
+|---|---|---|
+| SOURCE/LANGUAGE/SESSION I/V/R | 消费UI058/080和UI099–102事实定义，补对应ResourceType/服务签名、float/向量/资源/clip typed字段、原span和唯一verify/自动Rust binding/owner端口。Forge要用的文本输入/选择/具名msg/参数payload沿原EVENT-B关闭 | 先生产最小接口及独立合法/错误/生命周期case，不等图形包/Forge终验；cap neutral事实可先准备，AV产品用M2A-08及其实际接口 |
+| LANGUAGE/SESSION/FUSION AV部分 | 同源MAP/ASSET/PBR/CLIP的AV域接入/资源/错误与真实产品，由UI099–102给中立实现和AV作者场景；UI包完成需精确正式端口 | 接口先独立R/fold→UI真实AV→本包接正式cap-AV来源。阶段子面不等本包十批全交，不能让双方等对方整包 |
+| LANGUAGE/FUSION AC部分＋1068/T-04 | IF-AGE-GFX-AC/<cap>：同源AC机器业务/同host资源事件、独立CPU/GPU/错误/恢复/包；原G2/G3子面同理 | UI-W2-AC、对应cap AV及其最小AC接口齐；W2原UI基线不等待全部新cap，本包不重复AC compiler |
+| RUST/FUSION、所用RUST2D/3D/CONTENT部分 | IF-AGE-GFX-A2R/<cap>：同源生成/真实rustc/dispatch/GPU与资源冷包、独立oracle；旧A2R结果仅同身份复用 | UI-W3-A2R、对应cap AC及其A2R接口；不每个AV迭代编A2R，不等待AG031总签来生产 |
+| AUDIT I/V/R | 将四cap的三端来源/具体V/AC差额交AG031原门＋新增扩展门，保旧完整语言/两游戏/包/OS/融合义务 | 逐行接正式已交，最后才核全包；原UI波先按原分母签。Forge仅消费接口，不成为本包/985 A出口前置 |
+
+新增cap复用UI099–102同一源、资产、预算/profile和独立oracle；AV、AC、A2R分别交，禁AV回退冒AC/emit冒A2R。IF字段与命名见共同架构，不建第二领域模型/解释器/renderer。公共字段不足必须回本LANGUAGE/SESSION owner，不能在内容/pilot用字符串特判。阶段交付均独立R/fold并绑定实际source/Schema/SDK/ABI/工具/平台；完整任务必须所有适用格闭合才勾，原全包review/merge仍保留。
 
 ### EVENT-SPLIT-20261116：A/B交付与等待的当前权威
 
@@ -494,6 +508,10 @@ struct AgeInstance { model: OwnerId, logic_clock: TickClock, frames: MountClockS
 
 ## 6. 测试设计
 
+### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
+
+按§5原任务冻结实际cap/owner/源/平台与各端oracle：原UI波基线齐且新cap pending可交对应UI-W1/2/3，但不能签cap/AGE全齐；cap合法来源可逐端交，删cap/错源/把AV冒AC或仅emit冒A2R必须红，恢复真实产物可通过。用于新增cap的typed接口须先有独立合法/错误/owner测试，消费方真实GPU/交互/资源/包另验；缺模型/Forge产品不影响基线。AC-AGE-CAP-HANDOFF由本表原owner及最终review核。
+
 ### EVENT-SPLIT补充验证（拟议，原任务建立并运行；本轮未执行）
 
 | V / 阶段 / owner任务 | 真入口、输入与独立oracle | 覆盖边界/失败控制 |
@@ -754,6 +772,8 @@ cargo test -p ace-syntax-grammar                               # 45/45
 
 ## 7. 验收标准
 
+- [ ] **AC-AGE-CAP-HANDOFF / work**：V-AGE-CAP-HANDOFF及§5本包实际producer/consumer逐cap义务闭合；UI三波与新图形cap来源分开、无循环、原验收不减，新cap不成为985/A新增前置。阶段R/fold不冒整包final。
+
 | ID | owner_stage | 标准 | 验证 |
 |---|---|---|---|
 | AC-01 | work | 分母/批次/前置/平台/输入oracle完整 | T-01及各I |
@@ -796,13 +816,25 @@ cargo test -p ace-syntax-grammar                               # 45/45
 
 ## 8. 执行步骤
 
-当前共34任务，已完成3项（原已交范围核账，本轮未新增实施）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共34任务，勾选仅按整任务计（仍 3 项：B-SOURCE-I/V/R）；A 子面交付见下方台账，不提前勾整任务。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### A最小与共享任务（完整余量按B波关闭）
 
+**A 子面交付台账（2026-11-17，985 r26 要求；勾选仍按整任务，不提前勾）**
+
+| A 子面 | 状态 | 绑定 revision | 复审 |
+|---|---|---|---|
+| SOURCE I/V/R | 已交（整任务已勾） | 979 核验落主 + `plan981_original_g01` | SOURCE 批复审 |
+| B-LANGUAGE-I（含 event A） | 已交 | auto-lang `24b4ba4a7`/`75015a49b`、auto-ui `771be6a9` | review-62、review-65→66 |
+| B-LANGUAGE-V[A]（V-L-* / V-EVT-A-*） | 已交 | `0b98c143b`/`230e4abc6`、`c286fb8d0` | review-67→68、review-69 |
+| B-SESSION-I | 已交 | auto-ui `15102c48`→`4c629db0` | review-64 |
+| B-SESSION-V[A]（单组件双实例/关闭恢复） | 已交 | `332ef407`/`0a87676b`、`9032d69c` | review-67→68、review-69 |
+| B-RUST-I 公共链 + V[A] | 已交 | `eb487f3cf`/`399edd447`、`0b98c143b` | review-67→68、review-69 |
+| **B-PROOF-I/V[A]（2D/3D 呈现事实 + UI 事件/更新/关闭）** | 已交（A 面） | auto-lang `d1002b433`/`a5e6642e0`、auto-ui `6301c7c5`/`b3940d0f`、overlay `ea429095`/`fcf8cafc`+`02def83c`/`8d5b2648` | review-70 needs_fix→修补→复验在途 |
+| T-01（A 决定/源/命令冻结） | 已交 | 本台账 + §9 收据 | — |
 **本轮执行入口**：A先复用已交SOURCE，只做MIN-A-AGE所需SESSION/LANGUAGE/PROOF的真实AV接口与验收，不等待完整RUST/五view/PARITY或976 WEB。三波在M2A-08后按§5执行；W1的980组件接口与981 AV领域格按组协作正式交接，981不先等完整UI-W1-AV才贡献同一收据。W2只等完整W1，W3只等W2正式切片。下面每个原任务只登记一次，跨阶段任务仅子面交付不勾整项。
 
-- [ ] **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 EVENT-SPLIT：先核980/NATIVE正式源/原测试oracle，将V_PENDING_INPUTS逐键拆A必需与B全量；三个消息缺口归本包现有LANGUAGE/SESSION，缺件不泛称980未归档。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
+- [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 EVENT-SPLIT：先核980/NATIVE正式源/原测试oracle，将V_PENDING_INPUTS逐键拆A必需与B全量；三个消息缺口归本包现有LANGUAGE/SESSION，缺件不泛称980未归档。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
 
 - [x] **B-SOURCE-I｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-02/AC-03/AC-06/AC-NODE-CHAIN/AC-HANDOFF**：按§5先落实IF-981-MODULE/REF/FIELDS/ORIGINAL的有界最长路径决定、模块图×领域组合、实例引用/完整构造表/g01原源CPU与永久正反例，消费已交979基础，不等其归档；auto-lang在本任务维护所需共享接口。继续完整SOURCE，领域/行为共同verify，保f32/数组/bool/实例/原span及旧生成骨架全部公开义务，不保旧重解析链。子面正式交接不提前勾整任务。
 
@@ -3178,6 +3210,8 @@ g01 三文件与 `age-examples` **逐字节一致**（reviewer 直接比对，�
 本轮文档静态预检（非产品PASS）：8份规划/路线/债务文档；980/981/985原80个任务ID、勾选、32/34/14总数与12/3/4完成、状态及依赖并集保留，原AC/V/SD标识未删除。新增表格/引用/任务和阶段映射、Markdown围栏（含985原四反引号嵌套例）与空白通过；最终阶段图32节点37边无环。12份读取的代码/用例/规范内容hash未变，980并发round41收据完整保留；所报两红只完成归属规划、未修复/复测。新增V-EVT均未创建/运行，实际矩阵/SDK/目标状态及canonical Specs未改。next为原owner后续按现合同执行；当前只规划，不签代码/独立产品review或A出口。
 
 ## 10. 待澄清事项
+
+**985/A接收反馈（2026-11-17，985 r26，需本包继续补充）**：review-68批级收据（event A＋B-LANGUAGE-V[A]/B-SESSION-V[A]/B-RUST-V[A]证据面闭，绑定版本已核落主）985已接收；但对照985 §5 WAVES的MIN-A-AGE合同（"SOURCE、SESSION/LANGUAGE/PROOF的A部分"），**PROOF批A面未交付**（B-PROOF-I/V/R未实施未勾、批级结论未提及）。待补五项（详985计划§5"r26增量"反馈块）：①B-PROOF-I/V/R[A]——g01/Showcase最小真实UI＋2D＋3D呈现＋一次事件/更新/关闭，只AV，错误编辑保旧/修复恢复，独立CPU值/可见ROI；②PROOF批fold后与event A批联合出**MIN-A-AGE整体正式交接收据**（985合同：MIN-A-AGE全required及IF-981-EVENT-A独立R/fold后交985/A）；③簿记同步（master版仍3/34、T-01未勾、已交A子面任务勾选未更新）；④具名债务A/B归属确认（D-981-EVENT-A-REMAINDER列A-required子集；D-981-EXIT-CONTRACT核979旧oracle失效；R59-5、R64-1..10现值）；⑤review-69收口（R69-1修补已落主，§9补pass行）。⑥保险条款（985 r26 L-45裁定）：PROOF批实际源（g01/Showcase）若出现NavCall/导航用法，按EVENT-SPLIT提升规则在本包LANGUAGE/PROOF A任务内具名提升并补独立正反例——不新增980任务、不把NavCall语法提前引入共同grammar（避免再次扰动#6i冻结身份）。985待交清单现为：本包PROOF批/整体交接＋1066/A两件。
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
 
