@@ -4,8 +4,8 @@ status: executing
 feature_name: 现有AutoUI全模式ACE兼容接入
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-16
-plan_revision: 15
+updated_at: 2026-11-18
+plan_revision: 16
 current_step: 12
 total_steps: 32
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
@@ -139,6 +139,14 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 补读原冻结身份测试`experimental/ace/crates/core/tests/cases/plan981_grammar_scope.rs`，SHA256前16 `9bd4c795284c0da4`；属原SOURCE/LANGUAGE的防漂移用例，新增r41取材未运行或修改该文件。
 
 ## 5. 详细设计
+
+### AGE三路线接面补充（2026-11-17，A分母不扩）
+
+原MIN-A/事件A/B与全部既有32任务/进度不变。统一[AGE三路线strategy](../design/strategy/age-m2-three-route-strategy.md)。UI-W1-AV、UI-W2-AC、UI-W3-A2R只签原UI示例/Widgets全集，**不等待新增UI099–102或AutoForge**；新增引擎cap由981/1068独立域格承接，不倒置成B-AV/PARITY各波交付前置。
+
+B-AV-I/V/R可在完整W1前将已验文本、按钮、文本输入、列表/选择与场景预览宿主子面独立R/fold，交精确组件/props/事件payload/绑定/权限/资源与源码/ABI身份；供Forge001使用，不能把MIN-A Counter当完整编辑组件或把早期子面当UI-W1。事件缺口仍归981 EVENT-B，普通widget兼容仍同Node/Schema，不另开旧通路。
+
+B-RUST与981 RUST/FUSION协作第三波后新增cap-A2R（MAP/ASSET/PBR/CLIP），保持同业务源/资产/独立oracle，真实rustc/运行；原UI-W3完整基线先按原分母交，不反等全部cap。额外cap来源由981交AG031逐行收，本包不重造renderer/FFI/打包器。原WEB/TAURI/TS及其验收义务保持，Godot不复活。新cap/Forge不加985/A，原全包final义务不减。
 
 ### EVENT-SPLIT-20261116：A/B交付与等待的当前权威
 
@@ -506,6 +514,10 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 ## 6. 测试设计
 
+### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
+
+按§5原任务冻结实际cap/owner/源/平台与各端oracle：原UI波基线齐且新cap pending可交对应UI-W1/2/3，但不能签cap/AGE全齐；cap合法来源可逐端交，删cap/错源/把AV冒AC或仅emit冒A2R必须红，恢复真实产物可通过。用于新增cap的typed接口须先有独立合法/错误/owner测试，消费方真实GPU/交互/资源/包另验；缺模型/Forge产品不影响基线。AC-AGE-CAP-HANDOFF由本表原owner及最终review核。
+
 ### EVENT-SPLIT消费验证（拟议，原B-AV/B-WEB建立并运行）
 
 | V / owner任务 | 输入→consumer与独立oracle | 条件/边界 |
@@ -613,6 +625,8 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 拟补波次case由B-AV-I/B-RUST-I建在原测试owner，沿现有TestCase/固定组，不造新tm或每波新runner。AV用ace-source/ace-av/ace-host/ace-abi/ace-foreign-contract等真实职责和受影响UI `--features ace-bridge`命名target；AC归1068，A2R到W3才跑图形生成编译端。GPU窗口单实例，AG只受影响命名例；Linux/perf原条件不变。旧表V-UI-FULL/V-B-NATIVE/V-NODE-DESKTOP-*覆盖完整U组，在B按当前波执行；不是A全量门。各I读真实CLI/help冻结参数，不虚构新后端选择已存在。
 
 ## 7. 验收标准
+
+- [ ] **AC-AGE-CAP-HANDOFF / work**：V-AGE-CAP-HANDOFF及§5本包实际producer/consumer逐cap义务闭合；UI三波与新图形cap来源分开、无循环、原验收不减，新cap不成为985/A新增前置。阶段R/fold不冒整包final。
 
 | ID | owner_stage | 可观察标准 | 验证 |
 |---|---|---|---|
@@ -751,6 +765,12 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-DIALECT-I/B-DIALECT-V/B-STATE-I/B-STATE-V/B-PARITY-I/B-PARITY-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+### 2026-11-17 三路线修订的规划预检（不是实施验收）
+
+本轮仅文档：统一strategy/架构、四个引擎AV新合同与四个新版AutoForge合同；保本包原任务ID/进度/全部旧AC/V/SD，新增阶段义务见§5–7。静态核对8新Plan共74任务、9既有Plan共140原任务ID、阶段DAG 44节点/90依赖无环、新增本地链接均可达，16份取材源码/规范/已归档合同身份未改变；四仓文档diff格式检查通过。981并发实施会话的T-01勾选保留，不计本轮交付。下方历史记录原样保留。
+
+只说明规划合同可审阅；未运行Cargo/GUI/模型/构建/产品测试，未建实施树、未resume暂停工作、未合入/归档/签章。所需正式接口/最低负载/真实oracle仍须未来work→独立review→merge实际验证；原已存在历史失效链接不作为当前入口，新增链接已单独核对。
 
 > EVENT-SPLIT-20261116历史解释：本节旧blocked/“等待980正式源”、round39/40及旧全量A门只证明当时核对/选择；当前依§5和§8逐切片合同，不用executing/整包未勾代接口缺失。旧产品结果不因本次修订自动扩大为参数/载荷或新A验收PASS。
 
@@ -1246,6 +1266,7 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r15 | round: 42 | from: user | 
 
 规则：980 各批**分别解锁**；981/A 不等 980 整包；985 不能提前签发解锁自身前置。
 
+
 **980 各批新解锁条件**：
 | 批次 | 新解锁条件 | 备注 |
 |---|---|---|
@@ -1256,6 +1277,36 @@ stage: goal | plan_id: PLAN-980 | plan_revision: r15 | round: 42 | from: user | 
 | B-PARITY / T-05/06/07 | 各随前序 | 不变 |
 
 **980/A 现状**：A 期全部已交付（12/32）——无剩余 A 期工作需解锁。下一可开工位=⑤。
+
+### 2026-11-17 WEB 批 981 B-W1 消费（goal round 43+，切片 #6j/#6k）
+
+2026-11-17 stage: work（WEB 批切片 #6j/#6k：981 B-W1 三接口消费——TS provider 参数环境 + V-EVT-B-ORIGIN）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——真语料全量 spliced 切换/生成器道为批剩余）| worktree: lang-980 @ plan-980-dev | code_commit: ui **4b1304fc**（#6j 参数环境）+ **后续#6k**、lang **待提交**（age_component `__age_vl_` 铸造+保留名+规范 §13.12）。
+
+**解锁核验（磁盘级）。** 981 B-W1 事件批已落主：lang `f4158e499`+`7b127afc8`、ui `ba92217b`（SESSION typed 队列 fold）——IF-981-EVENT-PAYLOAD-B/MSG-B/PARAMS-B 三接口明确「for 980 B-AV/B-WEB」；grammar 冻结身份已按 #6i 重基线（981 owner，grammar 零改动）→ **r41 两红已闭**（ace-source 组本轮 0 红实证）。r15 WAVES-v2 的 WEB 解锁条件（981/A face 扩展交付）满足且更强（②④ 均交）。分支停靠债务提交 58bf1e3d7（D-980-WEB-GRAMMAR-981-FREEZE，含历史 stash 冲突标记）在 rebase 中**丢弃**——其三项内容均已被 master 更优形态覆盖（KNOWN-DEBT D-980-981-EVENT-PHASE 行 62-68 归 981 已交付；vue 10 预存红/O-C4 已在计划 §9 round 31/32 收据持久化）。
+
+**交付 #6j（参数环境）。** param handler 发射源=981 声明级检查函数 `__age_hv_<n>_<h>_<pos>`（真形参，无代表值/无假数值）：ops 只含 unit handler（`Send` 对载荷变体=981 arity 域错误）；`check_fn_covering`（span 相交发现）+ `map_emitted_with`（`___age_hv_` 按位→SFC 形参名）。str 载荷 owned 转移=`a2x_str_clone`（单次求值拷贝）；多载荷 `(int,int)`=`a2x_add(dx, dy)` 双参实读；bool 直读；float 等不可承载=具名缺席（fail-closed）；unit spec 求导载荷变体=编译期具名拒（不再拼接常量体）。census v2 具名修订#2：param-handler 0→1 + param-read/float-payload 行。永久 case `p980_web_param_environment`（typed/fragment/splice/node+双负控）+ 浏览器档 `p980_web_param_browser_mount`（真实 input 事件实读参+多载荷/bool 点击；test_lane_browser_params.mjs）。
+
+**交付 #6k（V-EVT-B-ORIGIN）。** 语言侧：组件面为 view 树（含命名 view）每条 `Lambda(assigns)` 铸 `__age_vl_<seq>` 值函数（DFS 序、赋值 RHS **原源 span**、无参环境、`__age_vl_` 入保留名表）。UI 侧：`lambda_body_regions`（脱糖源 `=> {` 区间，`desugared_lane_source` 公共坐标出口）↔ 带体 `__evt_*` 铸造 handler（mint 计数序）配对——计数失配全体缺席（fail-closed）；SFC 合成 `__evt_*` 体经 lane 拼接，负控=拼接体不得是旧 TS fallback 形（`n.value += 1` vs lane `a2x_add`）。002 真源端到端 **9/9**（6 on-block+3 view lambda 全 lane 派生）。census v2 具名修订#3：inline-lambda-only 0+absent→1。永久 case `p980_web_lambda_origin` + 浏览器档 `p980_web_lambda_browser_mount`（真实点击 5→6；test_lane_browser_lambda.mjs）。
+
+**验证（冻结提交实测）。** UI ace_ts_provider **18/18**（CPU 档 2.6s；含 3 浏览器档排窗 AUTO_UI_ACE_WEB_E2E=1 实跑 17.1s——param str 输入事件/多载荷/bool/lambda 点击四腿全绿）；新 case 单条：param_environment 0.24s、lambda_origin（含 002 e2e+node）≈1s、浏览器档 ≤3.2s。lang `cargo t ace-source ace-av`：**ace-source 0 红**（含 981 冻结/全部 p979/p980/p981 core case）；ace-av 7 红=cl.exe spawn Deadline/ExecutionWall/wall-budget 族（bstr/console_1041/json_975/kv_zip_1064/packages_960/stdlib_1043/975——全为 C 工具链/a2r 外部腿，当时 3 个并发 cargo 在场；组件面 p979/p980/p981 case 全绿）——隔离串行重放（ace workspace 根、--test-threads=1）**7/7 全绿**（11.04s）——环境归因成立（台账记，不判 980）。
+
+**边界（诚实）。** 全量普查聚合 (83 源 ok=72/err=11/spliced=0/absent=23) **未变**——真语料阻塞形非 param/lambda（主导=无 on 块结构源/多语句体/store/computed 族，#6d/#6g 具名边界保持）。单赋值 handler 家族为已验面；真语料全量 spliced 切换（vue/script.rs 生成道+watch/setup/expose/ext_imports）与 vue_capabilities 10 预存红（master 预存归 triage）为 B-WEB 剩余义务。
+
+next_responsible_role: review（#6j/#6k 批级复核：AC-B-WEB 映射/反例重放/边界核对）→ merge（phase fold #8）。
+
+2026-11-17 stage: review（#6j/#6k 批级复核）| review_scope: phase | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——authored 反例、命令重放、机械审计，非采信执行者摘要）| plan_id: PLAN-980 | plan_revision: r16 | outcome: **pass（批增量；B-WEB-I/V/R 保持未勾）** | reviewed_commit: ui 4b1304fc+0f3a2ffa+复核修复 **f256276f** / lang **0b34c9776** | base: ui ba92217b / lang 01e44bb1a。
+
+**复核内容与结果。** ①authored 反例（F-1，真缺陷）：`.Set(n) -> { .n = n }`（形参遮蔽同拼写字段）——node 实证 lane 体 `n.value = n;` 在 SFC 函数形参数字上写属性=TypeError（PARAMS-B「`.field` 恒指实例」在 TS 宿主不可表达）→ **修复=碰撞族具名缺席**（fail-closed 旧道承载，f256276f）+ 永久反例 `p980_web_param_shadowing_is_param_not_field`。②V-EVT-WEB-CONSUME 映射：实读参/多载荷/bool/浏览器事件/双负控（float 缺席、unit-spec arity 拒）逐项在永久 case；spliced 判别力由 census v2 param-read 行+体文本断言承担。③V-EVT-B-ORIGIN 映射：origin 链（`__age_vl_` span 相交发现→发射→SFC `__evt_*` 拼接）+旧 TS fallback 负控+002 端到端 9/9+浏览器真实点击 5→6。④门禁重放：UI ace_ts_provider **19/19**（CPU 8.4s；排窗 21.2s 含 3 浏览器档）；lang ace-source **0 红**（联合 run 实测）；ace-av 7 红=C 工具链竞争族（隔离串行重放 7/7 绿=环境归因，台账记）。⑤机械审计：双树 clean 于复审提交；探针全删（grep zz_probe=0）；fmt clean；零台账/legacy 写入；保留名表加法无精确断言测试冲突。⑥规范 §13.12 与交付现实一致（机制/边界/census 修订三处具名）。
+
+**新增 case 行为/耗时表。** param_environment 0.24s；lambda_origin ≈1s（002 e2e+node）；param_browser 3.2s/lambda_browser ≈1s（排窗）；shadow 反例 <0.1s——全部 ≤10s。
+
+**findings**: F-1（已修复闭环）；无阻断缺陷。边界核对：真语料聚合 (72,11,0,23) 未变如实记录；单赋值家族=已验面；全量 spliced 切换/生成器道=批剩余（B-WEB-I/V/R 未勾，正确）。
+
+next: merge（phase fold #8：ui 4b1304fc+0f3a2ffa+f256276f 链 + lang 0b34c9776 rebase 落主 + 规范 §13.12）。
+
+2026-11-17 stage: merge（phase fold #8，WEB #6j/#6k 批增量正式落主；整包 executing 12/32 保持，唯一树保留续 WEB 剩余/TAURI/PARITY，不归档/不清树）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（批增量交付）| delivery_commit: auto-ui master **f256276f**（4b1304fc→0f3a2ffa→f256276f 复核修复，零 rebase 直 ff）、auto-lang master **e6690691a**（0b34c9776 rebase onto 前进后 master——982 docs 落主所致；`git range-diff` **1/1 `=`** 全等=安全改写证明，无冲突）| canonical: docs/specs/ace-migration/m2-autoui.md §13.12（master sha256/16=**780ea992efd6f5a4**）| 落主方式：wt-guard 双树 clean + `git merge --ff-only`（无 merge commit）。**落地后核对**：双仓 tip=delivery commit ✓；ui 落主内容与复审态逐字节同一（零 rebase）、lang range-diff 全等——19/19（含 3 浏览器档）与 ace-source 0 红证据按**输入同一性复用**（裁定口径），master 过滤重放未重复执行。主检出 ui 存他会话 WIP（Cargo.lock/docs/design/**）原样保留未纳入本 fold。
+
+next_responsible_role: work（WEB 批剩余=真语料全量 spliced 切换（vue/script.rs 生成道：watch/setup/expose/ext_imports/style）——多会话量级；B-WEB-I/V/R 勾选前置。TAURI 随 WEB；波次门 B-AV←⑤、B-RUST←⑦ 不变）。
 
 ## 10. 待澄清事项
 
