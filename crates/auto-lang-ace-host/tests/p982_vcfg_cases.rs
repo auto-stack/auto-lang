@@ -352,6 +352,18 @@ shadowed: label
         other => panic!("an i32 field must be carried under the pair key, got {other:?}"),
     }
 
+    // 对象值字段的搬运：字段本身是对象时，搬进去的仍是**对象**（不是被拍平/丢弃）。
+    match run("var k = { a: { b: 1 } }\nx: k[\"a\"]\n", &empty_context()).outcome {
+        AceConfigOutcome::Success { document, .. } => match prop(&document, "x") {
+            Some(ConfigValue::Object(fields)) => {
+                assert_eq!(fields.len(), 1, "the nested object keeps its field");
+                assert_eq!(fields[0].0, "b");
+            }
+            other => panic!("an object-valued field must stay an object, got {other:?}"),
+        },
+        other => panic!("object-valued carry must succeed, got {other:?}"),
+    }
+
     // 缺字段：具名诊断（不是空值、不是 panic）。
     match run("var k = { port: 1 }\np: k[\"nope\"]\n", &empty_context()).outcome {
         AceConfigOutcome::Diagnostic { code, .. } => {
