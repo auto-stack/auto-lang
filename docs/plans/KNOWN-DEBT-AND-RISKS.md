@@ -19,7 +19,11 @@
   `av.owned/1` 的 F32 处具名拒（`lower.type-use`）；纯场景包可观察为空状态，纯 UI 包可观察
   状态/文本。证据：`plan981_age_package_av.rs::p981_proof_a_av_scene_package_and_mixed_profile`。
 - **归属/关闭条件**：AV 的 2D/3D/混合观察格归 B-AV（980/981 W1 域）；关闭 = 混合包在 AV 下给出
-  与场景事实一致的观察（不静默、不假绿）。A 面已用前门描述事实覆盖 2D/3D 呈现。
+  与场景事实一致的观察（不静默、不假绿）。**A 面口径（R70-1/R71-1 更正）**：A 只在**前门描述面**
+  给出 2D/3D 呈现事实（行/位置/缩放/可见性 CPU 值），**未在 AV 下观察** 2D/3D；场景节点带 model
+  时 AV **具名拒**（`no text leaves … named rejection`，不静默空行）。证据：
+  `plan981_age_package_av.rs::{p981_proof_a_av_scene_package_and_mixed_profile,p981_proof_a_av_scene_model_is_named_rejected}`；
+  待 985 确认该 A 子面边界。
 #### D-981-EVENT-A-REMAINDER（2026-11-16，残留部分具名；2026-11-17 A/B 归属确认）
 
 - **A-required 子集（已交，985 三键）**：具名/匿名 unit 消息、变体/原 span 保真、跨块重复变体拒、
