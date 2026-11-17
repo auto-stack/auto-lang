@@ -301,6 +301,16 @@ shadowed: label
         }
     }
 
+    // 根级 `for` 体同理（同一 `ctx.depth` 路径，B-CONFIG-R F-982B-32）。
+    let mut looped = empty_context();
+    looped.args.push(("x".to_string(), ConfigValue::I64(11)));
+    match run("for d in ([\"a\", \"b\"]) { x: 1 / 0 }\n", &looped).outcome {
+        AceConfigOutcome::Success { document, .. } => assert_eq!(i64_of(prop(&document, "x")), 11),
+        other => {
+            panic!("a root-level for-body default must not execute when overridden, got {other:?}")
+        }
+    }
+
     // 非空证：同一文档在**没有**注入时确实被 RHS 的失败挡住（traps ⇒ 具名诊断）。
     match run(guarded, &empty_context()).outcome {
         AceConfigOutcome::Diagnostic { code, stage, .. } => {
@@ -553,9 +563,10 @@ fn p982_vcfg_identity_tracks_context() {
     }
 }
 
-/// V-CFG-VALUE（深度轴，B-CONFIG-R F-982B-07）：设计 §5 的 **2000 层深文档**
-/// 经真桥求值并被投影成中立文档（`MAX_PROJECTION_DEPTH` 已与 av-core 的 2048
-/// 守卫对齐，不再是旧的 512 硬墙）。递归投影仍在 2048 处具名拒绝（已登记）。
+/// V-CFG-VALUE（深度轴，B-CONFIG-R F-982B-07/F-982B-26/F-982B-30）：**1000 层整链
+/// 投影是永久断言**（`MAX_PROJECTION_DEPTH` 已与 av-core 的 2048 守卫对齐，不再
+/// 是旧的 512 硬墙）；**2000 层只要求不崩**——要么整链服务，要么 MIR 校验的
+/// `VerifyMemory` 预算具名拒绝（预算本身也被断言，见下）。
 #[test]
 fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
     let _g = setup();
@@ -588,10 +599,21 @@ fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
         AceConfigOutcome::Success { document, .. } => {
             assert_eq!(counted_depth(&document), DEEP);
         }
-        AceConfigOutcome::Diagnostic { stage, code, .. } => {
+        AceConfigOutcome::Diagnostic {
+            stage,
+            code,
+            message,
+            ..
+        } => {
             assert_eq!(stage, "verify");
             assert_eq!(code, "ace.config/verify");
-            eprintln!("2000-deep document refused by a named verify budget (no crash)");
+            // 拒绝的**原因**必须是冻结的校验内存预算（B-CONFIG-R F-982B-29）：
+            // 否则任何别的校验回归在这个深度都会保持绿。
+            assert!(
+                message.contains("VerifyMemory") && message.contains("above"),
+                "the 2000-deep refusal must be the frozen verify-memory budget, got: {message}"
+            );
+            eprintln!("2000-deep document refused by the verify-memory budget (no crash)");
         }
         other => panic!("a {DEEP}-deep document must not crash, got {other:?}"),
     }
