@@ -72,6 +72,7 @@ pub enum TranspileProfile {
     Scalar,
     Collections,
     Records,
+    Scheduler,
 }
 
 /// 同 [`transpile_scalar_source`]，但显式选择受检 profile（collections/records
@@ -88,6 +89,9 @@ pub fn transpile_with_profile(
             ace_core::source::compile_collections_source(source, module, &[])
         }
         TranspileProfile::Records => ace_core::source::compile_record_source(source, module, &[]),
+        TranspileProfile::Scheduler => {
+            ace_core::source::compile_scheduler_source(source, module, &[])
+        }
     };
     let compiled = compiled_result.map_err(|diags| {
         AceRustError::new(
@@ -130,6 +134,17 @@ pub fn transpile_with_profile(
                 files: set.files,
                 manifest: set.manifest,
             }
+        }
+        // scheduler 家族的产物还需要**文本/记录前导表**（`prelude_seed` 解码出的
+        // records/variants/lists）——那是提供者框架的装配路径，本无缓存驱动没有它。
+        // 与其吐出一个**编译不过**的 file set，不如具名拒绝（本轮实测：缺 A2xStr
+        // 与 a2x_sched_* 前导时 rustc 直接 E0425）。
+        TranspileProfile::Scheduler => {
+            return Err(AceRustError::new(
+                "ace.rust/profile-unsupported",
+                "scheduler assembly needs the provider prelude seed (records/text tables); \
+                 the uncached driver refuses instead of emitting a non-buildable file set",
+            ))
         }
         _ => ace_a2x_rust::assemble_file_set(&view, &program, &input_hash, entry),
     };

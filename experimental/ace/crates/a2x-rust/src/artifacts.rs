@@ -29,6 +29,22 @@ pub struct FileSet {
     pub manifest: String,
 }
 
+/// 调度器家族的运行时前导（`sched_rt.txt`）。产品化装配需要它，否则
+/// `a2x_sched_*` 在冷构建里找不到（PLAN-982 982/RUST 实测 E0425）。
+pub fn scheduler_runtime_source() -> &'static str {
+    include_str!("sched_rt.txt")
+}
+
+/// 在标量装配结果上补调度运行时（scheduler 家族专用）。
+pub fn append_scheduler_runtime(mut fileset: FileSet) -> FileSet {
+    for (name, text) in fileset.files.iter_mut() {
+        if name == "a2x_runtime.rs" {
+            text.push('\n');
+            text.push_str(scheduler_runtime_source());
+        }
+    }
+    fileset
+}
 /// Assemble the complete file set for a lowered program.
 pub fn assemble_file_set(
     view: &SemanticView<'_>,

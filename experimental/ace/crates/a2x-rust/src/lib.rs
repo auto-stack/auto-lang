@@ -32,7 +32,9 @@ pub mod provider;
 pub mod rt;
 pub mod target;
 
-pub use artifacts::{assemble_file_set, runtime_source, FileSet};
+pub use artifacts::{
+    append_scheduler_runtime, assemble_file_set, runtime_source, scheduler_runtime_source, FileSet,
+};
 pub use cert::{
     BoundFile, CertDraft, ToolchainIdentity, CERT_SCHEMA, RECIPE, RT_CERT_SCHEMA, RT_RECIPE,
 };
