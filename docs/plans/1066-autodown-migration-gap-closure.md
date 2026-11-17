@@ -95,11 +95,11 @@ D-P3-A2X-DRIFT（54对旧金样漂移）、mn温存环境红、cb_file_png CWD�
 
 ### A-EXIT-20261116：A必须的正确性与B载体迁移分账（本轮当前）
 
-现存N0028/N0030文档确实只有vm-stdout，旧result分别是4字节`succ`和2字节`10`、均无尾LF；本轮只读重核旧oracle与doc hash匹配r2，未修改。九项原缺H文件的角色仍是**空字节header比较**，不能改成无检查。1050输入/1161文件引用＋9空H=1170判决角色是不同层次的量；cache506/B108/E78/P250/C30/33/S11有重叠，不能相加冒唯一case或PASS。
+现存N0028/N0030文档确实只有vm-stdout，旧result分别是4字节`succ`和2字节`10`、均无尾LF；本轮只读重核旧oracle与doc hash匹配r2，未修改。九项原缺H文件的角色仍是**空字节header比较**，不能改成无检查。**A 期快照（r3）：1050 输入/1161 文件引用＋9 空 H = 1170 判决角色**；B 期登记 10 个 doc-only VM 项后为 **1060 输入/1171 角色**（见 r4 修订）；cache506/B108/E78/P250/C30/33/S11有重叠，不能相加冒唯一case或PASS。
 
 | 切片 / 原任务与AC | A出口前必须关闭 / 精确oracle | B保留义务/关闭条件 |
 |---|---|---|
-| A-DEN / T-01/02、09/10/11子面；AC-01/07/08 | 冻结S11、N1050/1170角色、E78、cache506/8脚本、B108/6目录实选、P2工程5源19断言/P250/M3-6输入、C30生成与33验证的**原义务和当前消费者**；逐键映射A/B/平台/ignore/actual来源，缺项/合并同名族/空H变缺席须红。A全部required正常验证仍按985真实来源执行，不以仅数目录签覆盖。 | 全入口doc-only迁移、完整v2治理/trace与零活跃旧载荷扫描在T-03/08/09/10的B部分完成，原集合/条件/新增合法doc选择不减；E78不得误入N。 |
+| A-DEN / T-01/02、09/10/11子面；AC-01/07/08 | 冻结S11、**A 快照 N1050/1170**（B 期实为 1060/1171，见 r4）、E78（A 78 → B 70）、cache506/8脚本、B108/6目录实选、P2工程5源19断言/P250/M3-6输入、C30生成与33验证的**原义务和当前消费者**；逐键映射A/B/平台/ignore/actual来源，缺项/合并同名族/空H变缺席须红。A全部required正常验证仍按985真实来源执行，不以仅数目录签覆盖。 | 全入口doc-only迁移、完整v2治理/trace与零活跃旧载荷扫描在T-03/08/09/10的B部分完成，原集合/条件/新增合法doc选择不减；E78不得误入N。 |
 | A-ORACLE / T-03、10/11子面；AC-01/02 | N0028/N0030补原vm-result和final-newline=false，A实际采用的doc/ACE adapter同一次运行独立采stdout/result；只错result或删通道必须红。九空H角色显式保零字节及header轴，A适用C控制不能因不存在.expected.h跳过。A若用旧入口，必须绑定真实未改变原oracle/选择身份，不能借旧入口绿声称新doc已完整。 | 所有native目录/VM cache/cookbook切doc及原NC-21/22/24全路径在T-03/08/09/10 B关；两个原result的缺口本身不得留B。 |
 | A-NOWRITE / T-07、03/08、10/11子面；AC-06/07/08 | A验收实际会执行的普通路径禁自动生成/覆盖oracle及仓内wrong输出；复用既有scope输出/关闭bootstrap普通写入或选择显式只读验证路径，作者树hash＋新增文件/实际写路径核实，错oracle仍真实红。原33独立conformance验证与原检查保持；generator/proposal是作者操作，不算语言验证PASS。不能靠运行后回滚作者文件掩盖写入。 | T-07完整显式proposal读30 doc/只写scope、所有普通bootstrap/GENERATE_EXPECTED旁路退出，以及NC-16..18/25全局回查仍B；A防护不等于这些已迁完。 |
 | A-EVIDENCE / T-02/08/09/10/11子面；AC-02/07/08 | A每个实际check记录source/oracle/选择资格/虚拟path/工具/producer/actual与独立判决；同族/多源/脚本原lower位置与原条件保持。源/hash不同、只stdout冒双通道、假的父PASS、空选择、缺工具/NOT_RUN不能签A。旧载体或doc路径按当前实际版本标识，不能拿旧路径结果当doc-only证据。 | 完整v2库存/trace/文档唯一路由的T-08/09及NC-19/23/24/26 B关闭，保显式历史v1和兼容规则；本轮允许载体迁移时序后移，不允许A执行语义/判据或证据失真后移。 |
@@ -150,9 +150,9 @@ VM有同时判stdout/result的项，C可同时判C/H，故1161文件oracle引用
 
 原身份需分消费者保持：VM/C/TS的FileTestCase.name为category/case；a2r/cookbook目录入口的A2rTestCase.name为suite_name/category/case（suite_name分别a2r/cookbook）。原native Rust/TS/C转译module参数取虚拟源stem，而a2r_rustc_real_compile_gate原来传完整case.name（如a2r/01_basics/001_hello）；二者不能为了共用视图强行归一。旧path字段可保为虚拟标签，禁止再被当成当前可读取的作者文件；结果命名、ledger键和trace均核原身份。
 
-78个非N文档为VM10/a2r34（含C附录33个conformance）/C2/cookbook32；详附录E，TS0。它们可能属于另一包装、smoke或更深目录，不能一概叫“未注册”或停用，但不能因新版遍历所有.case.ad而加入原N1050。P的两份未来project文档也不能误入单源目录执行。反过来，N新增合法doc不得因没有旧.at而丢失：资格由本次冻结的消费者合同和文档声明确定，不能永远只准旧1050名单。
+**B 期实测 70 个非 N 文档**为 a2r 36（含附录 C 的 33 个 conformance + 3 项目/T 文档）/cookbook 32/a2c 2；详附录 E（附 A 快照差：A 期 78 = 上述 70 + 已被 B 登记的 10 个 doc-only VM 文档 − 2 份 B 新增 project 文档）。它们可能属于另一包装、smoke或更深目录，不能一概叫“未注册”或停用，但不能因新版遍历所有.case.ad而加入原N1050。P的两份未来project文档也不能误入单源目录执行。反过来，N新增合法doc不得因没有旧.at而丢失：资格由本次冻结的消费者合同和文档声明确定，不能永远只准旧1050名单。
 
-1. 四个discover函数以doc为唯一正常载荷/资格来源，可用dir+stem的惯例；不能继续要求原.at/.as/.expected.*存在，也不能缺doc时静默跳过原已登记义务。保1050旧入选项；VM cache另506项，其中10个无oracle或旧发现排除项不能因有doc被擅自升级为目录验证。显式空目录保持原no tests错误；已登记doc缺失须具名报缺，不冒合法空集或更少用例。
+1. 四个discover函数以doc为唯一正常载荷/资格来源，可用dir+stem的惯例；不能继续要求原.at/.as/.expected.*存在，也不能缺doc时静默跳过原已登记义务。保1050旧入选项；**B 期已把 10 个 doc-only VM 项登记进目录验证分母（1060）**——它们此前只被 VM cache 消费、旧发现规则排除；VM cache 仍另计 506 项（与目录项有重叠，不相加冒唯一用例数）。显式空目录保持原no tests错误；已登记doc缺失须具名报缺，不冒合法空集或更少用例。**（B 期 R7 强化）** VM 族的 doc-only 项没有 stem 命名的 sidecar oracle，其文档被删时 discovery 仍保留该项并让执行报 `migration document … .case.ad missing`（a2r/a2c 的 doc-less 目录从不入选，不因该规则变成新增项）；
 2. 优先从doc checks/虚拟source/注册family映射推导原发现资格；原smoke、空字符串、缺席与同目录不同消费者不能混淆。确有歧义时补有限、显式legacy-consumers元属性及author合同，T-02先以全部1050+额外10项证明无损，不新建与文档内容竞争的case作者索引。治理冻结清单仅用于独立守恒和缺失检测，不代载荷。
 3. family+目录ID+check/消费通道作为义务键，不能只按doc case ID去重（不同族可能同ID）。cookbook同doc的VM面不能用于a2r判据，C/TS legacy文档即使暂用Rust产物节承载文本也不得误派a2r；消费端按原family和明确artifact逻辑路径取值。
 4. VM保原stdout/result逐字节、error文件“存在性=期望任意错误”、.at/.as硬化通道及99_bootstrap库前置；不能改成无path内联运行绕过门，不能读取旧源码作bootstrap正文。原Auto标准库实现可作具名support，case自身不能列support。
@@ -1462,7 +1462,13 @@ N0001～N1050为 A 期冻结快照行号；**B 期增量 10 项**（vm `08_strin
 | C32 | 042_try_no_error | conformance_042_try_no_error | 仅验证；不加入30例proposal | crates/auto-lang/test/a2r/conformance/042_try_no_error/input.case.ad | f9b1f199ae860ab04a6dd66621eaa9e96e36f6e2eb3e646692181a62fd65845c |
 | C33 | 043_try_catch_param | conformance_043_try_catch_param | 仅验证；不加入30例proposal | crates/auto-lang/test/a2r/conformance/043_try_catch_param/input.case.ad | 49366cb6a16f84ef7e331650ff6131ddc89d3ce51f59d495c8a45a2d41d34e80 |
 
-### 附录E（r2）：78份已有文档的其他消费者边界
+### 附录E（r2 行清单，B 期分母更正）：其他消费者边界文档
+
+**B 期实测分母为 70 份**（a2r 36 / cookbook 32 / a2c 2），不是 78：A 期的 78 份 = 当前 70 份
++ 已被 B 登记进 N 的 10 份 doc-only VM 文档（`08_strings/017_sub_semantics`、`10_types/033_array_len_user_type`、
+`17_cffi/{001,002,003}`、`18_ffi/{047,055}`、`99_bootstrap/{066,067,068}`）− B 新增的 2 份 project 文档。
+下表保留 A 期 78 行原样作为**冻结快照**（含已进 N 的 10 行），当前集合以
+`crates/auto-lang/test/governance/plan1066_a_obligations.json` 的 `e78` 为准（A-DEN 常驻核）。
 
 这些文档不属原N1050目录选择集合，但各自原包装/ignore/闭集继续有效；不随意启用或批量ignore。本表精确记录当前文档路径/hash，用于资格反控；新P两份工程doc另属P消费者，不误入N。C的33份与附录C重复引用，不是新增33个独立case。T-01核各实际owner，最终新增项继续纳入对账。
 
@@ -2123,6 +2129,22 @@ stage: review | review_scope: final | reviewer: 独立上下文代理（review-1
 E78 由 78 改为 **70**（T-05 两份 project 文档进入边界）、并在 R2 修复中把 `017_sub_semantics` 的
 13 字节冻结 stdout 角色补进文档（角色总数 **1171**）。这是合同数字的实质变更（非簿记），故按规范升版并
 逐处更正 AC-01/§5.2/附录N；原 1050 行快照与全部原 oracle/条件不减。
+
+### 2026-11-17 T-12[B] repair 复审（r4 / d6e9e4e1f）：R2/R3/R4 关闭，R1 数字关闭、文本残留，新增 R7 → needs_fix（低）
+
+stage: review | review_scope: final（repair re-review） | plan_id: PLAN-1066 | plan_revision: r4 | outcome: **needs_fix（低）** | worktree: D:/autostack/.wt/lang-1066/auto-lang（clean） | branch: plan-1066-dev | reviewed_commit: d6e9e4e1f | base_commit: 7c131286d | reviewer: 独立上下文代理（review-1066，实施会话分离）
+
+| finding | 结论 | 本轮独立证据 |
+|---|---|---|
+| F-1066B-R1 | **数字已闭、文本残留** | fixture 实算 n_rows **1060**（vm506/a2r250/a2c118/a2ts85/cookbook101）、e78 **70**（a2r36/cookbook32/a2c2）、`sum(len(roles))` **1171**（与 AC-01 的 1161+9+1 两种算法一致；我上轮「1180」系 h-empty 重复计数，特此更正）。`plan_revision: 4`、AC-01/§5.2 表/appendix N 引言/§9 升版说明均已改。**残留**：附录E 仍 78 行（含已成 N 的 10 个 VM 文档、缺 2 份 project 文档）；§5.2 第 153 行仍写「VM10/a2r34/C2/cookbook32」、第 155 行仍写「10 个…不能因有 doc 被擅自升级为目录验证」（与已登记 1060 相反）；§5 A-EXIT 第 98/102 行的 1050/1170 若作 A 期历史快照需明示 |
+| F-1066B-R2 | **closed** | 017 文档现声明 `vm-stdout`，产品解码 13 字节 sha `3b9f0da24bdf7950…` 与冻结 `017_sub_semantics.expected.result` 完全相同；我的镜像探针：仓库/删 sidecar 镜像均 PASS、改 doc oracle → `stdout mismatch`；VM cache 包装 `test_08_strings_017_sub_semantics` PASS 0.32s；T-03 更正段保留原文 |
+| F-1066B-R3 | **closed** | `cargo check -p auto-lang --lib --tests` 无 plan1066/legacy_doc/conformance_tests/test_runner 诊断（仅剩 entry.rs:2480/2563，6682a6d0a 已在且 diff 外）；四处删除已核（import、`temp`/`root`、`has_check`、`parse_project_assertions` 无残留调用）；4 个改动 .rs 全部 rustfmt-clean |
+| F-1066B-R4 | **closed** | AC-07 已限定「五根内无未具名读者 + 文件级 allowlist + ±2 行窗口」；allowlist 增 gdscript/javascript/tscn 具名边界、needle 增 `.expected.gd/.js/.tscn`；定向块断言三文件仍读各自 golden 且在 allowlist |
+| F-1066B-R7（新，low） | 待处置 | 删除 doc 时，**无 stem 命名 sidecar 的登记项被静默移出发现集**：`discover_vm_tests` 的 `Ok(None)` 分支回落 `legacy_vm_selection`，而 `08_strings/017_sub_semantics`（及其余 9 个 doc-only 项）无 stem 命名 `.expected.*` → `continue`。实测（doc_removal 探针，OS temp 镜像）：017 删 doc 后 `discovered=0`；对照 `01_basics/001_hello` 删 doc 后 `discovered=1` 且报具名 `migration document … case.ad`。与 §5.2「已登记 doc 缺失须具名报缺，不冒…更少用例」及 NC-03 不符；缓解：A-DEN（1060 行）与 E/N 键集测试会因此变红，故不是静默绿 |
+
+**本轮门（我实跑 @d6e9e4e1f）**：`cargo t vm corpus` PASS（executed 1138 / excluded 468 / wall 38.8s / gate 49.7s，source_state `885a11c0…`；excluded 仍含 conformance_bootstrap/proposal）；`cargo test -p auto-lang --lib plan1066` 21 passed/3 ignored（4.08s，同机 15 个 cargo/rustc 并发）；显式 250 门重跑 **159 compiled/55 skip/36 known-broken/0 obsolete/0 unexpected = 250**（17.92s，收据落我 scope）；`test_08_strings_017_sub_semantics` 0.32s PASS；`wt-guard` clean；工作树 clean @d6e9e4e1f。Proposal/33 验证输入未变，复用上轮证据（30 written/0 failed）。
+
+**next**：work 做两处低风险收口 →（a）附录E 与 §5.2 第 153/155 行按 1060/70 与「已登记 10 项」重写（或明示为历史快照）；（b）R7 二选一：为无 sidecar 的登记项保留具名失败，或在 §5.2/NC-03 明示这 10 项由 A-DEN 兜底。随后 T-12 即可 pass；T-13 仍按 R5 落地 SD。Plan 保持 executing/9-13，status 与任务框未动。
 
 ## 10. 待澄清事项
 
