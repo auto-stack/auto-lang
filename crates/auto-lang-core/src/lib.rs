@@ -25,6 +25,8 @@ pub mod dep_scanner;
 mod dependency_scan;
 #[path = "legacy_doc_for_trans.rs"]
 pub mod legacy_doc_for_trans;
+// PLAN-982 B-CONFIG: the neutral configuration-document contract.
+pub mod ace_config;
 pub mod mode;
 pub mod os_paths;
 // PLAN-982 A slice: the single SDK identity shared by the config leg and the
