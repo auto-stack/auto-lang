@@ -374,3 +374,10 @@ producer/consumer（台账 B-03/B-08/B-09 行）：
 覆盖矩阵与 Linux 移交审计）。台账 B-03 行证据 pin 随该 spec 更新；B-08/B-09 在
 T-06 落主后由 `inflight` 翻 `landed`。本节只挂接来源，不改 SD-01 分类口径；
 未闭项（s2s→ACE 记录面、r2a CLI 拒绝面、Linux 腿）具名于该 spec。
+
+## M2-B 工具面消费者接线（PLAN-971 交付增量，2026-11-17 r8；lang `a9d20f01f` / auto-ui `95bc1689`）
+
+- **已由 ACE 后端接线的真实消费者（无 legacy 回退）**：`auto-lsp` 诊断（`check_ace_project` 编译期多文档；旧 `Parser` 通道整体删除；V-08 版本见证/过期丢弃/乱序丢弃；模块集=已打开文档、诊断仅 ERROR、嵌套模块 id 压平、Windows-only host）；Playground notebook（ACE `ace_session`；旧 `AutovmReplSession` 删除；两用户会话结构性隔离）。
+- **仍未迁移的具名路径**：Playground 脚本式 run/debug 前门（`code_runner`/`vm_runner`/`agent_debug`/`debugger` 路由，被语言面阻断——包/项目道拒绝表达式语句，console 仅单模块 profile）；LSP 的语义能力所用既有分析器（hover/goto/completion/inlay/signature/workspace，本轮按 T-08 只“核”不重写，跨包/跨文件 goto 已真 bin 核验并修复 Windows 目标 URI/位置缺陷）；编辑器宿主 `auto-vscode`（只读审计接线，E2E 未跑）。
+- **义务承接**：D-971-B-01（发现契约 helper 假阳性）、D-971-B-02（notebook 无 console）、D-971-B-03（脚本前门语言面）、D-971-B-04（debug/test UI 消费者）、D-971-B-05（inlay 内容断言）、D-971-B-06（编辑器宿主 E2E），均记录于 `docs/plans/KNOWN-DEBT-AND-RISKS.md`（owner+关闭条件）。
+- **范围裁定**：SD-TARGET-SCOPE 无改动——本批未新增/删除 Godot 代码，Godot 后置与生产 TS required 的既有裁定不受影响。
