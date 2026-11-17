@@ -22,8 +22,8 @@ use super::age_h0::{text_diag, LegacyWidgetAlias, TextKind};
 use super::ast::{
     Block, Expr, ExprKind, FnItem, Ident, Item, Receiver, Stmt, TypeAnn, TypeRef, TypeWord,
 };
-use super::packages::{bind_packages_age, PackagedAgeComponent, PackageModuleInput};
 use super::cst::FrontBudget;
+use super::packages::{bind_packages_age, PackageModuleInput, PackagedAgeComponent};
 use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span};
 use crate::verify::CheckedModule;
@@ -193,6 +193,26 @@ pub struct AgePackageComponent {
     /// PLAN-981（IF-981-ORIGINAL）：2D/3D 场景出口里的组件实例行，**按声明序**
     /// （即 2D 绘制序）。属性值保留作者表达式与其 span，领域语义由消费端解释。
     pub scene: Vec<AgeSceneRow>,
+    /// PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值**函数**的登记事实——
+    /// AV 观察通道按它逐属性取 f32/int/bool 真值（`cpu` 是前门 CPU 面的
+    /// 已解码值；本字段是**执行通道**的入口，两者并存互证）。
+    pub scene_values: Vec<AgeSceneValueFn>,
+}
+
+/// PLAN-981 B-W1（IF-981-PROOF-AV）：一条场景属性值函数的登记事实。
+#[derive(Clone, Debug)]
+pub struct AgeSceneValueFn {
+    /// 场景行实例名（`red_disc` / `bar`）。
+    pub row: String,
+    /// 属性名（`position` / `x`）。
+    pub attr: String,
+    /// 元组属性的第几分量（单值属性为 `None`）。
+    pub component: Option<usize>,
+    /// 隐藏函数**源名**（消费者经 `symbols_by_module`/origins 解析成真实符号）。
+    pub fn_name: String,
+    /// 形参数。`>0` = 参数化行（引用 node 参数），AV 观察通道**不执行**、
+    /// 具名跳过（不猜实参、不填默认值）。
+    pub params: usize,
 }
 
 /// 一个 node 的 **view 出口**（M1：一个 node 恰有一个出口）。
@@ -371,8 +391,7 @@ pub fn lifecycle_budget(
     if exit_count == 0 {
         return Err(AgeSelectionError {
             code: "source.age.lifecycle",
-            message: "a scheduled owner needs at least one declared presentation exit"
-                .to_string(),
+            message: "a scheduled owner needs at least one declared presentation exit".to_string(),
         });
     }
     Ok(AgeLifecycleBudget {
@@ -658,11 +677,7 @@ pub fn compile_age_package_with_scenario(
 
     // 2) 兼容闸：旧 `widget` 声明头只在显式开启时准入（同 979 口径）。
     if !alias.is_accept() {
-        if let Some(c) = product
-            .age_components
-            .iter()
-            .find(|c| c.node.legacy_widget)
-        {
+        if let Some(c) = product.age_components.iter().find(|c| c.node.legacy_widget) {
             return Err(vec![text_diag(
                 "source.age.legacy-widget",
                 "legacy `widget` declarations require the AGE legacy-widget compat config; \
@@ -680,9 +695,8 @@ pub fn compile_age_package_with_scenario(
         .flat_map(|c| c.text_fns.iter().map(|(n, _)| n.as_str()))
         .collect();
     // 场景属性值函数同样由本前门生成（阶段 N），按前缀一并排除。
-    let is_injected = |name: &str| {
-        injected.contains(&name) || name.starts_with(AGE_PACKAGE_HIDDEN_PREFIX)
-    };
+    let is_injected =
+        |name: &str| injected.contains(&name) || name.starts_with(AGE_PACKAGE_HIDDEN_PREFIX);
     if let Some(d) = hidden_name_conflict(&product.bound, &is_injected) {
         return Err(vec![d]);
     }
@@ -691,7 +705,8 @@ pub fn compile_age_package_with_scenario(
     //     除外），`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
     //     缺失或不符类型都具名拒绝——实测过"不存在的资源名静默通过"的缺口。
     let resolved_elements = resolve_scene_elements(&product.age_components, &product.bound)?;
-    let resolved_resource_refs = check_scene_resource_refs(&product.bound, &product.age_components)?;
+    let resolved_resource_refs =
+        check_scene_resource_refs(&product.bound, &product.age_components)?;
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
     // 解析/检查用**本面的真实身份**（AgePackage），与发射一致：AGE 的资源端口、
@@ -784,10 +799,7 @@ fn relabel_package_diags(mut diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
 }
 
 /// 扁平坐标的诊断归位到所属模块（保模块内偏移）——跨模块错误不报合成偏移。
-fn locate_all(
-    bound: &super::packages::BoundPackages,
-    ds: Vec<Diagnostic>,
-) -> Vec<Diagnostic> {
+fn locate_all(bound: &super::packages::BoundPackages, ds: Vec<Diagnostic>) -> Vec<Diagnostic> {
     ds.into_iter().map(|d| bound.locate(d).diagnostic).collect()
 }
 
@@ -914,13 +926,12 @@ fn read_back_components(
                 .origins
                 .iter()
                 .find(|(_, (pkg, module, original))| {
-                    original == fn_name
-                        && super::packages::unit_key(pkg, module) == p.module
+                    original == fn_name && super::packages::unit_key(pkg, module) == p.module
                 })
                 .map(|(sym, _)| sym.clone());
-            let conclusion = symbol.as_deref().and_then(|sym| {
-                super::domain::hidden_conclusion(checked, sym)
-            });
+            let conclusion = symbol
+                .as_deref()
+                .and_then(|sym| super::domain::hidden_conclusion(checked, sym));
             let Some((def_id, kind)) = conclusion else {
                 return Err(vec![text_diag(
                     "source.age.text-type",
@@ -1035,6 +1046,9 @@ fn read_back_components(
                         .collect(),
                 })
                 .collect(),
+            // PLAN-981 B-W1（IF-981-PROOF-AV）：值函数登记事实直接透传
+            //（前门发射时按 `(row, attr, 分量)` 收集；观察通道按 origins 解析）。
+            scene_values: p.scene_fns.clone(),
             refs: refs
                 .get(&(p.module.clone(), p.node.name.name.clone()))
                 .cloned()
@@ -1059,8 +1073,7 @@ fn read_back_components(
                 .collect(),
             message_set_name: p.node.message_set_name.clone(),
             view_events: {
-                let msgs: Vec<String> =
-                    p.node.messages.iter().map(|m| m.name.clone()).collect();
+                let msgs: Vec<String> = p.node.messages.iter().map(|m| m.name.clone()).collect();
                 let mut out = Vec::new();
                 collect_view_event_bindings(&p.node.view.tree, &msgs, &mut out);
                 for (_, items) in &p.node.view.named_trees {
@@ -1193,13 +1206,7 @@ pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
             span,
         },
         body: Block {
-            stmts: vec![
-                let_stmt,
-                Stmt::Return {
-                    value: zero,
-                    span,
-                },
-            ],
+            stmts: vec![let_stmt, Stmt::Return { value: zero, span }],
             span,
         },
         span,
@@ -1254,7 +1261,7 @@ pub(crate) fn resolve_tick_spelling(
     scenario: &crate::source::age_component::ComponentScenario,
     node: &ComponentNode,
 ) -> crate::source::age_component::ComponentScenario {
-    use crate::source::age_component::{ScenarioOp, ComponentScenario};
+    use crate::source::age_component::{ComponentScenario, ScenarioOp};
     let declared = node
         .handlers
         .iter()
@@ -1271,6 +1278,18 @@ pub(crate) fn resolve_tick_spelling(
             ScenarioOp::Tick { instance } => ScenarioOp::Send {
                 instance: *instance,
                 msg: declared.clone(),
+            },
+            // PLAN-981 B-W1：组件限定的 Tick 同样归一到目标组件的生命周期
+            // 拼写（`ForNode{Tick}` → `ForNode{Send}`，限定制保留）。
+            ScenarioOp::ForNode { node, op: inner } => ScenarioOp::ForNode {
+                node: *node,
+                op: Box::new(match inner.as_ref() {
+                    ScenarioOp::Tick { instance } => ScenarioOp::Send {
+                        instance: *instance,
+                        msg: declared.clone(),
+                    },
+                    other => other.clone(),
+                }),
             },
             other => other.clone(),
         })
@@ -1437,9 +1456,8 @@ fn resolve_refs(
                 continue;
             }
             // 3) 导入表里绑定的是**非 node** 的名字 → 具名 NotANode。
-            if let Some(imp) = unit.and_then(|u| {
-                u.imports.iter().find(|i| i.bound_name() == want)
-            }) {
+            if let Some(imp) = unit.and_then(|u| u.imports.iter().find(|i| i.bound_name() == want))
+            {
                 let (target_key, item) = match imp.path.len() {
                     2 => (
                         super::packages::unit_key(
@@ -1587,12 +1605,9 @@ fn state_functions_present(
     fields.iter().all(|f| {
         // R64-4：与包前门同一套多 node 消歧命名。
         let want = crate::source::age_component::state_fn_name_at(node_index, 0, &f.name);
-        bound
-            .origins
-            .iter()
-            .any(|(_, (pkg, m, original))| {
-                original == &want && super::packages::unit_key(pkg, m) == module
-            })
+        bound.origins.iter().any(|(_, (pkg, m, original))| {
+            original == &want && super::packages::unit_key(pkg, m) == module
+        })
     })
 }
 
@@ -1601,9 +1616,7 @@ fn ref_diag(kind: RefFailure, message: String, span: Span) -> Diagnostic {
 }
 
 /// 绑定器给出的模块源坐标（供诊断归位；与描述面同源）。
-fn bound_sources(
-    bound: &super::packages::BoundPackages,
-) -> Vec<AgeModuleSource> {
+fn bound_sources(bound: &super::packages::BoundPackages) -> Vec<AgeModuleSource> {
     bound
         .segments
         .iter()
@@ -1725,14 +1738,14 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         fact: "a timer row (message + interval)",
         consumer: "age_package::AgePackageComponent.members",
         requirement: "AGE-L02",
-    },    // PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式）。
+    }, // PLAN-981（B-LANGUAGE-I / AGE-L02）：`design` 条目（key + 作者表达式）。
     AgeConstruct {
         key: "design",
         spelling: "design { key: <expr> }",
         fact: "the design entries with their author expressions and spans",
         consumer: "age_package::AgePackageComponent.design",
         requirement: "AGE-L02",
-    },    // PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体是 AGE 作者语法的一部分；
+    }, // PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体是 AGE 作者语法的一部分；
     // SOURCE 交接时它属 AG-A 范围外（B-LANGUAGE 消费），现在以完整投影进入本面。
     AgeConstruct {
         key: "msg",
@@ -1740,7 +1753,8 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         fact: "the declared message variants with their payload type spellings",
         consumer: "age_package::AgePackageComponent.messages",
         requirement: "AGE-L01",
-    },    AgeConstruct {
+    },
+    AgeConstruct {
         key: "on",
         spelling: "on <Msg> { <field> = <expr> }",
         fact: "the handler message names in declaration order",
@@ -1776,7 +1790,7 @@ pub const AGE_CONSTRUCTS: &[AgeConstruct] = &[
         fact: "the 3D scene exit appears in the description's exit fact",
         consumer: "age_package::AgePackageComponent.exit / scene",
         requirement: "AGE-L03",
-    },    // PLAN-981（B-LANGUAGE-I / AGE-L03）：五 view 的另外两个直属呈现出口。
+    }, // PLAN-981（B-LANGUAGE-I / AGE-L03）：五 view 的另外两个直属呈现出口。
     AgeConstruct {
         key: "view-portrait",
         spelling: "view-portrait { … }",
@@ -2105,10 +2119,7 @@ fn scene_value_type(
 fn resolve_scene_elements(
     packaged: &[PackagedAgeComponent],
     bound: &super::packages::BoundPackages,
-) -> Result<
-    std::collections::BTreeMap<(String, String), Vec<AgeSceneElement>>,
-    Vec<Diagnostic>,
-> {
+) -> Result<std::collections::BTreeMap<(String, String), Vec<AgeSceneElement>>, Vec<Diagnostic>> {
     // 每个模块**自己**声明的 node 名（同模块引用天然可见）。
     let mut own: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
         std::collections::BTreeMap::new();
@@ -2159,10 +2170,7 @@ fn resolve_scene_elements(
             };
             rows.push(element);
         }
-        out.insert(
-            (comp.module.clone(), comp.node.name.name.clone()),
-            rows,
-        );
+        out.insert((comp.module.clone(), comp.node.name.name.clone()), rows);
     }
     Ok(out)
 }
@@ -2183,10 +2191,7 @@ fn imported_node_origin(
         return None;
     }
     // 该模块自己声明了它 → 就是声明地。
-    if own
-        .get(module_key)
-        .is_some_and(|s| s.contains(name))
-    {
+    if own.get(module_key).is_some_and(|s| s.contains(name)) {
         return Some(module_key.to_string());
     }
     let unit = bound.units.get(module_key)?;
@@ -2203,14 +2208,9 @@ fn imported_node_origin(
             3 => format!("{}::{}", imp.path[0], imp.path[1]),
             _ => continue,
         };
-        if let Some(found) = imported_node_origin(
-            own,
-            bound,
-            origin.as_str(),
-            name,
-            depth - 1,
-            true,
-        ) {
+        if let Some(found) =
+            imported_node_origin(own, bound, origin.as_str(), name, depth - 1, true)
+        {
             return Some(found);
         }
     }
@@ -2252,9 +2252,7 @@ fn check_scene_resource_refs(
                 // 方法/字段链里的未知资源**从未被存在性检查**（复审 B6）。
                 let (module_spelling, symbol_spelling) = match &attr.value.kind {
                     super::ast::ExprKind::Field { base, name } => match &base.kind {
-                        super::ast::ExprKind::Var(id) => {
-                            (Some(id.name.clone()), name.name.clone())
-                        }
+                        super::ast::ExprKind::Var(id) => (Some(id.name.clone()), name.name.clone()),
                         // 深链（`a.b.c`）：根不是简单模块名，按非引用拒绝。
                         _ => {
                             return Err(vec![text_diag(
@@ -2303,8 +2301,7 @@ fn check_scene_resource_refs(
                 // 模块全局资源，但它**仍然必须**是该位置期望的端口类型。此前这里
                 // 无条件 `continue`，于是 `node Disc(tint: int)` 把一个整数塞进
                 // `Material2D` 位也无人过问（复审 B4）。
-                if let Some(param) = comp.node.params.iter().find(|p| p.name == symbol_spelling)
-                {
+                if let Some(param) = comp.node.params.iter().find(|p| p.name == symbol_spelling) {
                     if let Some(want) =
                         super::age_resources::attr_port(row.kind.as_str(), &attr.key)
                     {
@@ -2396,9 +2393,7 @@ fn check_scene_resource_refs(
                     // 诊断**互斥可辨**，不能用一个笼统的 "unknown" 混过去。
                     let exists_elsewhere = bound.globals.values().any(|d| {
                         d.name == symbol_spelling
-                            && module_spelling
-                                .as_deref()
-                                .is_none_or(|m| d.module == m)
+                            && module_spelling.as_deref().is_none_or(|m| d.module == m)
                     });
                     let (code, msg) = if exists_elsewhere {
                         (
@@ -2508,18 +2503,20 @@ fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResou
         }
         // `components` 只在**全部**实参都是 f32 字面量时才是完整列表；否则为空，
         // 逐位事实看 `args`。不给局部列表——那会让消费者把第 2 个分量当第 1 个。
-        let components: Vec<f32> =
-            if decoded.iter().all(|a| matches!(a, AgeResourceArg::Float(_))) {
-                decoded
-                    .iter()
-                    .filter_map(|a| match a {
-                        AgeResourceArg::Float(v) => Some(*v),
-                        _ => None,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+        let components: Vec<f32> = if decoded
+            .iter()
+            .all(|a| matches!(a, AgeResourceArg::Float(_)))
+        {
+            decoded
+                .iter()
+                .filter_map(|a| match a {
+                    AgeResourceArg::Float(v) => Some(*v),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         // `symbol` 只在"恰好一个字符串实参"时给出（`model3d.glb(path)`）；多实参
         // 或名字实参下不再用最后一个字符串冒充整条构造。
         let symbol = match decoded.as_slice() {
@@ -2570,7 +2567,6 @@ fn f32_literal(e: &super::ast::Expr) -> Option<f32> {
         _ => None,
     }
 }
-
 
 /// 描述里的叶角色汇总（最小资源要求面；本切片不申请运行时资源）。
 pub fn component_roles(description: &AgePackageDescription) -> Vec<&str> {

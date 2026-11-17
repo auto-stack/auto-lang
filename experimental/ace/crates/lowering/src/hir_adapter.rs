@@ -1318,6 +1318,18 @@ fn collections_fn_sig_for_def(
 
 /// PLAN-960: the global cell index for `name` in `out` (registered on first
 /// reference; the cell type is the accessor's declared value type).
+/// PLAN-981 B-W1（IF-981-PROOF-AV）：全局 cell 的**拥有**类型——record 值经
+/// 借用视图进入 setter（verify 的记录实参纪律），cell 恒存 owned record：
+/// `RecordView(r)` 归一到 `Record(r)`（运行时同构；读出侧 dst 由访问子
+/// 签名裁定 owned/view）。
+fn global_cell_ty(out: &mut MirModule, ty: TypeIdx) -> TypeIdx {
+    if let Some(MirType::RecordView(r)) = out.types.get(ty as usize).cloned() {
+        out.intern_type(MirType::Record(r))
+    } else {
+        ty
+    }
+}
+
 fn global_cell_index(out: &mut MirModule, name: &str, ty: TypeIdx) -> u32 {
     if let Some(i) = out.globals.iter().position(|g| g.name == name) {
         return i as u32;
@@ -1459,6 +1471,26 @@ pub fn lower_checked_owned(
             // over the module's global cell table.
             hir::DefKind::Intrinsic { symbol, effect, ty }
                 if symbol.starts_with("module.global.") =>
+            {
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
+                def_map.insert(di as u32, CalleeRef::Import(out.imports.len() as u32));
+                out.imports.push(MirImport {
+                    symbol: symbol.clone(),
+                    effect: match effect {
+                        hir::Effect::Observable => ace_av_core::mir::Effect::Observable,
+                        hir::Effect::Pure => ace_av_core::mir::Effect::Pure,
+                    },
+                    sig,
+                    env: None,
+                });
+            }
+            // PLAN-981 B-W1（IF-981-PROOF-AV）：AGE typed 端口**构造器**是纯值
+            // 构造（`material2d.color(r,g,b,a)` = 端口 record 的字段实参）——
+            // 按声明准入为 import，调用点 lower 成 Aggregate；`model3d.glb`
+            // 的身份是文件内容哈希（IO），不在此车道（保持具名拒）。
+            hir::DefKind::Intrinsic { symbol, effect, ty }
+                if ace_core::source::age_resources::by_symbol(symbol).is_some()
+                    && symbol != "age.model3d.glb.v1" =>
             {
                 let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                 def_map.insert(di as u32, CalleeRef::Import(out.imports.len() as u32));
@@ -3045,6 +3077,17 @@ fn owned_type_idx_of(
                 hir::TypeKind::Str => Ok(out.intern_type(MirType::StrView)),
                 hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
                 hir::TypeKind::Char => Ok(out.intern_type(MirType::Char)),
+                // PLAN-981 B-W1（IF-981-PROOF-AV）：PLAN-961 的数值**具名**类型表
+                // 条目（AGE 作者面发 f32 类型表——场景位置/尺寸值函数）按
+                // mir_verify 既有契约映射（"owned 吸收 data 面"：I64/U64/F32/
+                // F64/窄整数在 owned profile 已合法），不再整模块具名拒。
+                hir::TypeKind::F32 => Ok(out.intern_type(MirType::F32)),
+                hir::TypeKind::F64 => Ok(out.intern_type(MirType::F64)),
+                hir::TypeKind::I64 => Ok(out.intern_type(MirType::I64)),
+                hir::TypeKind::U64 => Ok(out.intern_type(MirType::U64)),
+                hir::TypeKind::I8 => Ok(out.intern_type(MirType::I8)),
+                hir::TypeKind::U8 => Ok(out.intern_type(MirType::U8)),
+                hir::TypeKind::U32 => Ok(out.intern_type(MirType::U32)),
                 hir::TypeKind::Record(shape) => {
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
@@ -4248,6 +4291,50 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 }
                                 return Ok(dst);
                             }
+                            // PLAN-981 B-W1（IF-981-PROOF-AV）：AGE 端口构造器
+                            // 调用 = 端口 record 的 Aggregate（实参与
+                            // AGE_PORT_FIELDS 一一对应；上游 verify 已核参数型）。
+                            if let Some(op) = ace_core::source::age_resources::by_symbol(&symbol) {
+                                if symbol == "age.model3d.glb.v1" {
+                                    return Err(AdapterError::uns(
+                                        "lower.intrinsic",
+                                        "model3d.glb carries file-content identity and is                                          outside the av.owned/1 observation lane".to_string(),
+                                    ));
+                                }
+                                let sig = self.out.imports[imp as usize].sig;
+                                let result_ty =
+                                    self.out.sig_of(sig).map(|f| f.result).ok_or_else(|| {
+                                        AdapterError::inv(
+                                            "age-port.signature",
+                                            "port constructor signature".into(),
+                                        )
+                                    })?;
+                                let want = ace_core::source::age_resources::AGE_PORT_FIELDS
+                                    .iter()
+                                    .find(|(n, _)| *n == op.result_port)
+                                    .map(|(_, fs)| fs.len())
+                                    .unwrap_or(0);
+                                if arg_slots.len() != want {
+                                    return Err(AdapterError::inv(
+                                        "age-port.arity",
+                                        format!(
+                                            "port constructor `{}` takes {want} field(s);                                              call carries {}",
+                                            symbol,
+                                            arg_slots.len()
+                                        ),
+                                    ));
+                                }
+                                let dst = self.temp_ty(result_ty)?;
+                                self.emit(
+                                    MirInstr::Aggregate {
+                                        dst,
+                                        record_ty: result_ty,
+                                        operands: arg_slots.clone(),
+                                    },
+                                    sp,
+                                )?;
+                                return Ok(dst);
+                            }
                             // PLAN-960: module global cell read/write.
                             if let Some(gname) = symbol.strip_prefix("module.global.get:") {
                                 let sig = self.out.imports[imp as usize].sig;
@@ -4258,7 +4345,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                             "accessor signature".into(),
                                         )
                                     })?;
-                                let g = global_cell_index(self.out, gname, result_ty);
+                                let cell_ty = global_cell_ty(self.out, result_ty);
+                                let g = global_cell_index(self.out, gname, cell_ty);
                                 let dst = self.temp_ty(result_ty)?;
                                 self.emit(MirInstr::GlobalGet { dst, global: g }, sp)?;
                                 return Ok(dst);
@@ -4281,13 +4369,32 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                         "global write needs one argument".into(),
                                     ));
                                 }
-                                let g = global_cell_index(self.out, gname, value_ty);
+                                let cell_ty = global_cell_ty(self.out, value_ty);
+                                let g = global_cell_index(self.out, gname, cell_ty);
+                                // record 借用视图 → cell 拥有值：实参槽已是 owned
+                                // record（标量字段 record 在运行时按值复制；非复制
+                                // record 的视图槽经显式 Clone 拷贝——GlobalSet 的
+                                // src 槽型必须与 cell 型一致）。
+                                let arg_ty = self.slot_ty_all(arg_slots[0]);
+                                let src = if arg_ty == cell_ty {
+                                    arg_slots[0]
+                                } else {
+                                    let owned = self.temp_ty(cell_ty)?;
+                                    self.emit(
+                                        MirInstr::Clone {
+                                            dst: owned,
+                                            src: arg_slots[0],
+                                        },
+                                        sp,
+                                    )?;
+                                    owned
+                                };
                                 let dst = self.temp_ty(self.t_i32)?;
                                 self.emit(
                                     MirInstr::GlobalSet {
                                         dst,
                                         global: g,
-                                        src: arg_slots[0],
+                                        src,
                                     },
                                     sp,
                                 )?;

@@ -34,6 +34,34 @@ pub struct ObservedAgeComponent {
     pub instance_states: Vec<Vec<i32>>,
     /// 逐实例的 `on` 消息名（作者拼写，含 `Life.Tick` 这类限定名）。
     pub handler_msgs: Vec<String>,
+    /// PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的 AV 真值（按
+    /// `description.components[].scene_values` 登记序一一对应——含被具名
+    /// 跳过的参数化行，不静默丢行）。场景值函数按**组件**发射（本切片场景
+    /// 不按实例复制），故不按实例分组。
+    pub scene_values: Vec<ObservedSceneValue>,
+}
+
+/// 一条场景属性值的观察结果（与 `AgeSceneValueFn` 登记序对位）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObservedSceneValue {
+    /// 场景行实例名（`red_disc` / `bar`）。
+    pub row: String,
+    /// 属性名（`position` / `x`）。
+    pub attr: String,
+    /// 元组属性的第几分量（单值属性为 `None`）。
+    pub component: Option<usize>,
+    /// 执行结果；参数化行（引用 node 参数）不执行、具名跳过（不猜实参）。
+    pub value: SceneObserved,
+}
+
+/// 场景属性值的 AV 执行结果。
+#[derive(Debug, Clone, PartialEq)]
+pub enum SceneObserved {
+    F32(f32),
+    I32(i32),
+    Bool(bool),
+    /// 参数化值函数：无实例实参不可执行（登记保留，值面看 `cpu`/`attrs`）。
+    Parametric,
 }
 
 /// 观察 AGE 包：编译结果里的每个实例函数走共享链取真值。
@@ -57,12 +85,17 @@ pub fn observe_age_package(
                     c.name
                 ));
             }
+            // PLAN-981 B-W1（IF-981-PROOF-AV）：纯场景组件（无文本叶、无 model）
+            // 现在给出场景值函数的 AV 真值——不再只回空行；"混合 UI+2D/3D 在
+            // AV 具名拒 F32"的旧边界由 owned 车道的 f32 映射关闭。
+            let scene_values = observe_scene_values(compiled, c)?;
             components.push(ObservedAgeComponent {
                 name: c.name.clone(),
                 module: c.module.clone(),
                 instance_texts: Vec::new(),
                 instance_states: Vec::new(),
                 handler_msgs: c.handler_msgs.clone(),
+                scene_values,
             });
             continue;
         }
@@ -98,15 +131,74 @@ pub fn observe_age_package(
                 instance_states[inst].push(execute_i32(&compiled.checked, &symbol)?);
             }
         }
+        // PLAN-981 B-W1（IF-981-PROOF-AV）：混合包的 2D/3D 场景值与 UI 文本/
+        // 状态同一次观察（同一 AV 车道，不再整模块拒 F32）。
+        let scene_values = observe_scene_values(compiled, c)?;
         components.push(ObservedAgeComponent {
             name: c.name.clone(),
             module: c.module.clone(),
             instance_texts,
             instance_states,
             handler_msgs: c.handler_msgs.clone(),
+            scene_values,
         });
     }
     Ok(ObservedAgePackage { components })
+}
+
+/// PLAN-981 B-W1（IF-981-PROOF-AV）：逐条执行场景属性值函数（登记序对位）。
+/// 参数化行（形参数 > 0）具名跳过——不猜实参、不填默认值。
+fn observe_scene_values(
+    compiled: &AgePackageCompilation,
+    c: &ace_core::source::age_package::AgePackageComponent,
+) -> Result<Vec<ObservedSceneValue>, String> {
+    let mut out = Vec::new();
+    for f in &c.scene_values {
+        let value = if f.params > 0 {
+            SceneObserved::Parametric
+        } else {
+            let symbol = resolve_symbol(compiled, &c.name, &f.fn_name)?;
+            match execute_scene_scalar(&compiled.checked, &symbol)? {
+                Value::F32(v) => SceneObserved::F32(v),
+                Value::I32(v) => SceneObserved::I32(v),
+                Value::Bool(v) => SceneObserved::Bool(v),
+                other => {
+                    return Err(format!(
+                        "scene value `{}.{}` did not produce a scene scalar: {other:?}",
+                        f.row, f.attr
+                    ))
+                }
+            }
+        };
+        out.push(ObservedSceneValue {
+            row: f.row.clone(),
+            attr: f.attr.clone(),
+            component: f.component,
+            value,
+        });
+    }
+    Ok(out)
+}
+
+/// 场景标量值函数：lower→verify→ABC→AV（与状态/文本函数同一条链）。
+fn execute_scene_scalar(
+    checked: &ace_core::verify::CheckedModule,
+    symbol: &str,
+) -> Result<Value, String> {
+    let def_id = format!("d_{symbol}");
+    let mir = lower_checked_owned(checked, &def_id, 0x981)
+        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
+    mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
+    let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
+    let flat = wire.to_flat();
+    let decoded = decode_abc(&flat).map_err(|e| format!("decode `{def_id}`: {e:?}"))?;
+    let loaded = abc_verify::verify_abc(decoded, &mir.owner)
+        .map_err(|e| format!("admit `{def_id}`: {e:?}"))?;
+    let (outcome, _trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    match outcome {
+        ExecOutcome::Success { value, .. } => Ok(value),
+        other => Err(format!("scene value function did not succeed: {other:?}")),
+    }
 }
 
 /// 源名 → 绑定器给出的 HIR 符号（`sf_<mangled>`）。

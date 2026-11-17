@@ -202,6 +202,7 @@ pub struct PackageSyntax {
     pub age_components: Vec<(
         crate::source::age_component::ComponentNode,
         Vec<(String, Span)>,
+        Vec<crate::source::age_package::AgeSceneValueFn>,
     )>,
 }
 
@@ -437,11 +438,11 @@ pub fn parse_package_source_age(
 mod binding;
 pub use binding::{
     bind_package_syntax, bind_package_syntax_aggregates, bind_package_syntax_assembled,
-    bind_package_syntax_assembled_aggregates, bind_packages, bind_packages_age, bind_packages_aggregates,
-    bind_packages_assembled, bind_packages_assembled_aggregates, fn_symbol, global_symbol,
-    init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl, PackageDiagnostic,
-    PackageImplLayer, PackageImplSyntax, PackageModuleInput, PackageSegment, PackagedAgeComponent, GLOBAL_GET_PREFIX,
-    GLOBAL_SET_PREFIX,
+    bind_package_syntax_assembled_aggregates, bind_packages, bind_packages_age,
+    bind_packages_aggregates, bind_packages_assembled, bind_packages_assembled_aggregates,
+    fn_symbol, global_symbol, init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl,
+    PackageDiagnostic, PackageImplLayer, PackageImplSyntax, PackageModuleInput, PackageSegment,
+    PackagedAgeComponent, GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
 };
 mod provider_sources;
 pub use provider_sources::{

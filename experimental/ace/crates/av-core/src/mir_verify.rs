@@ -797,6 +797,19 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 None => {
                     matches!(imp.symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b")
                         || imp.symbol.starts_with("__sched_")
+                        // PLAN-960/981：模块全局访问子与 AGE typed 端口构造器
+                        // 走 import 缝只是 **def 侧身份**——调用点在 lowering 已
+                        // 改写为 GlobalGet/GlobalSet 与端口 record 的 Aggregate，
+                        // 运行时从不按 import 派发（与 `__sched_` 同一理由）。
+                        // 符号注册表在 ace-core `source::age_resources`（本 crate
+                        // 不依赖它，字面量与注册表冻结同步）。
+                        || imp.symbol.starts_with("module.global.")
+                        || matches!(
+                            imp.symbol.as_str(),
+                            "age.material2d.color.v1"
+                                | "age.mesh2d.quad.v1"
+                                | "age.mesh2d.circle.v1"
+                        )
                 }
             };
             if !known {
@@ -837,6 +850,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // has no foreign call of its own (e.g. a callback target
                 // fn); the grant was admitted with the environment.
                 || (self.is_owned && c == ace_foreign_contract::resource::RESOURCE_CAP)
+                // PLAN-981 B-W1（IF-981-PROOF-AV）：AGE 资源服务能力（2D/3D）
+                // ——AGE 包声明资源端口（g01 的 `resources.*`）即携带；观察
+                // 车道把端口构造 lower 成 record Aggregate（无 IO/宿主授予）。
+                || (self.is_owned && matches!(c.as_str(), "age2d.resource" | "age3d.resource"))
                 // PLAN-968: scheduler-surface modules admit the console
                 // capabilities (task-handler stdout observation).
                 || (self.module.host_imports.iter().any(|h| h.symbol.starts_with("auto.console."))
