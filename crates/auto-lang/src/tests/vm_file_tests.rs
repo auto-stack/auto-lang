@@ -261,19 +261,28 @@ fn inventory_vm_cache_read_only() {
     for key in keys {
         let data = &cache[key];
         let stem = key.rsplit('/').next().unwrap().split_once('_').unwrap().1;
-        let path = root.join(key).join(format!(
-            "{stem}.{}",
-            if data.is_script { "as" } else { "at" }
-        ));
-        let bytes = std::fs::read(&path).expect("source actually loaded by VM cache");
+        // PLAN-1066 T-08 (NC-19/NC-26): the cache entry's identity is its
+        // migration document — the frozen `.at`/`.as` sidecar is never read, so
+        // a doc-only tree inventories identically and a polluted sidecar cannot
+        // change this row.
+        let document = root.join(key).join(format!("{stem}.case.ad"));
+        let doc_bytes = std::fs::read(&document).expect("migration document of a cache entry");
+        let doc = crate::tests::legacy_doc::load_case(&root.join(key), &stem)
+            .unwrap_or_else(|e| panic!("{key}: {e}"));
         assert_eq!(
-            bytes,
+            doc.source_text().as_bytes(),
             data.source.as_bytes(),
-            "source changed during inventory"
+            "cache source differs from its document"
         );
         let oracle = serde_json::json!({"stdout":data.expected_out,"result":data.expected_result,
                                       "error_presence":data.expected_error});
-        rows.push(serde_json::json!({"id":key,"source_path":path,"source_sha256":hex(&sha256(&bytes)),
+        rows.push(serde_json::json!({"id":key,"source_path":document,
+            // `source_sha256` stays the RUNTIME binding axis (the executed source
+            // text, as the cache trace reports it); `document_sha256` is the
+            // governance identity of the author document.
+            "source_sha256":hex(&sha256(data.source.as_bytes())),
+            "document_sha256":hex(&sha256(&doc_bytes)),
+            "declared_source":doc.source_path(),
             "is_script":data.is_script,"oracle_sha256":hex(&sha256(&serde_json::to_vec(&oracle).unwrap())),
             "oracle":oracle,"error_assertion":"presence-only, unchanged legacy semantics"}));
     }

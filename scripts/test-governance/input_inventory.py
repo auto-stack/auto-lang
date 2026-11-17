@@ -77,12 +77,36 @@ def attach_inputs(catalog,receipt,directory):
                 "source_sha256":case["source_sha256"],"oracle_sha256":case["oracle_sha256"]}
             path=Path(case["source_path"])
             stem=path.stem
-            row["input_paths"]=[path.as_posix(),*[(path.parent/(stem+suffix)).as_posix()
-                for suffix in (".expected.out",".expected.result",".expected.error") if (ROOT/path.parent/(stem+suffix)).is_file()]]
+            # PLAN-1066 T-08: the document is the single input edge of a cache
+            # entry (sidecars are frozen history and never a consumer edge).
+            row["input_paths"]=[path.as_posix()]
     catalog["input_inventory"]=inputs
     from wrapper_bindings import apply
     apply(catalog)
 
+
+
+def _document_channel(text, check_id):
+    """Decode one VM document channel the way the product decoder does.
+
+    `vm-stdout`/`vm-result` sections are `### VM result` blocks whose
+    `check-id` matches; the payload is the single author fence, with
+    `final-newline: false` removing the closing newline.
+    """
+    marker = 'check-id: "%s"' % check_id
+    index = text.find(marker)
+    if index < 0:
+        return None
+    tail = text[index:]
+    fence = tail.find("```")
+    if fence < 0:
+        return None
+    body_start = tail.find(chr(10), fence) + 1
+    closing = tail.find(chr(10) + "```", body_start)
+    body = tail[body_start:closing] if closing >= 0 else ""
+    if "final-newline: false" in tail[:fence]:
+        return body
+    return body + chr(10)
 
 def verify_inputs(catalog):
     # Reconstruct bindings from the source-bound discovered metadata so a
@@ -101,17 +125,23 @@ def verify_inputs(catalog):
         raise ValueError("input wrapper source stale")
     lookup={r["test"]:r for r in catalog["obligations"] if r["recipe"]=="language" and r["binary"]=="auto-lang"}
     cases={r["id"]:r for r in vm["cases"]}
+    import re
     for case in cases.values():
-        source=ROOT/case["source_path"]
-        if hashlib.sha256(source.read_bytes()).hexdigest()!=case["source_sha256"]:
-            raise ValueError("VM input source hash differs")
-        oracle={"stdout":None,"result":None,"error_presence":source.with_suffix('.expected.error').is_file()}
-        for key,suffix in (("stdout",".expected.out"),("result",".expected.result")):
-            path=source.with_suffix(suffix)
-            if path.is_file():oracle[key]=path.read_bytes().decode('utf-8')
+        # PLAN-1066 T-08: the entry identity is its migration document. The
+        # frozen `.at`/`.as`/`.expected.*` sidecars are history and are never
+        # read here (a doc-only tree verifies identically).
+        document=ROOT/case["source_path"]
+        if document.suffix!=".ad":
+            raise ValueError("VM inventory row is not document-identified")
+        digest=hashlib.sha256(document.read_bytes()).hexdigest()
+        if digest!=case.get("document_sha256"):
+            raise ValueError("VM input document hash differs")
+        text=document.read_text(encoding="utf-8")
+        stdout=_document_channel(text,"vm-stdout")
+        result=_document_channel(text,"vm-result")
+        oracle={"stdout":stdout,"result":result,
+                "error_presence":'check-id: "vm-error"' in text}
         import json
-        # serde_json preserve_order is enabled in this build. Keep the exact
-        # producer order in its identity; compare reconstructed values first.
         if oracle!=case['oracle'] or hashlib.sha256(json.dumps(case['oracle'],separators=(',',':'),ensure_ascii=False).encode()).hexdigest()!=case["oracle_sha256"]:
             raise ValueError("VM input oracle hash differs")
     for binding in vm["declared_wrapper_bindings"]:
@@ -122,6 +152,6 @@ def verify_inputs(catalog):
         if row['ignored']!=binding['runtime_ignored'] or row.get("legacy_input")!={"kind":"vm-cache","id":case["id"],"source_sha256":case["source_sha256"],"oracle_sha256":case["oracle_sha256"]}:
             raise ValueError("VM input binding lost or altered")
         source=Path(case["source_path"])
-        paths=[source.as_posix(),*[source.with_suffix(suffix).as_posix() for suffix in
-            ('.expected.out','.expected.result','.expected.error') if (ROOT/source.with_suffix(suffix)).is_file()]]
+        # The document is the single input/consumer edge for a cache entry.
+        paths=[source.as_posix()]
         if row.get("input_paths")!=paths:raise ValueError("VM input source/consumer edge lost")

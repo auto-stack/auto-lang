@@ -213,11 +213,15 @@ def source_bindings(document, expected, output):
                      'tests::a2ts_tests::', 'tests::cookbook_vm_tests::')
     needs_bindings = any(r['binary'] == 'auto-lang' and r['test'].startswith(wrapper_names) for r in bound)
     if needs_bindings:
-        from input_inventory import discover_inputs, attach_inputs
+        from input_inventory import discover_inputs, attach_inputs, verify_inputs
         inventories = output / 'inputs'; inventories.mkdir(parents=True)
         records = discover_inputs(inventories, document)
         binding_set = {'obligations': bound}
         attach_inputs(binding_set, {'inputs': records}, inventories)
+        # PLAN-1066 T-08: the document-identity cross-check is an ACTIVE gate
+        # (it used to be an uncalled helper that re-derived oracles from the
+        # retired sidecars).
+        verify_inputs(binding_set)
         bound = binding_set['obligations']
     return bound
 
