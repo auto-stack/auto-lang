@@ -254,6 +254,34 @@ ACE 当前**没有配置文档求值面**——文档值种类、求值语义、
 | A/B 边界 | A 只闭 CONFIG/PROOF 切片；EXEC/TEMPLATE/各 target/EXPORT/DEVSDK/安装仍 B |
 | B 侧登记（本 Task 只登记，不实现） | B-EXEC/TEMPLATE/RUST/C/WEBTARGET/PY/REVERSE/EXPORT/DEVSDK 依赖 976/977 受检 provider 及其自有 A 切片；本轮**未**冻结其接口，不构成接口已交声明 |
 
+### A 切片定义（route C，2026-11-17 用户裁定，当前 A 执行合同）
+
+用户在 §10 Q-982-1 三选一中裁定 **route C（收窄 A）**：982/A 只交"同一 SDK 身份＋无 legacy fallback＋失败/隔离纪律"的 PROOF 与 CONFIG 消费改造；配置**引擎**迁移随 `GAP-982-CONFIG-ACE` 并入 M2-B，并在 A 收据具名差额。该裁定只收窄 A 的接受面，不改原 AC 分母、不改 B 义务。
+
+**A 的实现合同（本轮冻结）**
+
+| 面 | A 交付 | 不属 A（具名差额，B/能力 owner） |
+|---|---|---|
+| CONFIG 消费 | 产品配置读取仍由 SDK 的**指定 owner**（969 已验规范冻结的 `eval_config_with_vm`）承担，并与执行腿同属一个 SDK 构建；候选腿对配置文档做真实求值并记录逐值证据 | 配置引擎迁移到 ACE（`GAP-982-CONFIG-ACE`） |
+| 执行腿 | `auto <script.at>` 的**显式 ACE 候选入口**（`AUTO_ACE_CANDIDATE=1`，opt-in；默认/`core` 形态闭包不含 ACE），经 `run_ace` console 车道真实执行；argv/不支持形态/诊断/资源/取消一律**具名拒绝且零 legacy dispatch** | run/service/req/debug/test、模板、各 target、watch/安装（B 各族） |
+| 身份 | 一次运行同时记录配置腿与执行腿身份并断言同 package+version（`auto-lang-core::sdk_identity`） | SDK 分发/候选安装身份（B-DEVSDK） |
+| 纪律 | 坏配置在执行前具名拒绝且**不写 state/lock**；两工程同脚本不同配置互不串值 | 全产品失败面（B） |
+
+**RG-A01 接受面解释（经用户裁定）**：原句"缺 ACE 不能回退旧 VM"在 route C 下按**命令执行腿**解释——候选入口一旦选中，任何拒绝都不得落回旧执行器；配置腿按 969 规范本来就是 legacy owner（不是 fallback），其引擎迁移单列 B。
+
+**A 实现落点（本轮已实施，收据见 §9）**
+
+| 仓 | 文件 | 作用 |
+|---|---|---|
+| auto-lang | `crates/auto-lang-core/src/sdk_identity.rs`（＋`lib.rs` 一行注册） | 单一 SDK 身份面：`SDK_IDENTITY_SCHEMA`/`config_owner_identity()`/`execution_owner_identity()`/`same_sdk()`，纯数据无求值 |
+| auto-man | `crates/auto/src/ace_candidate.rs`（新，特性门控） | 显式候选执行腿：安装桥→配置腿求值→`run_ace` console 执行→身份/证据回执→具名拒绝（argv/诊断/拒绝/资源/取消/身份不符）；`AUTO_ACE_PROOF_RECEIPT`/`AUTO_ACE_WALL_MS`/`AUTO_ACE_CANCEL_AFTER_MS` 为测试钩子 |
+| auto-man | `crates/auto/Cargo.toml`、`crates/auto/src/main.rs`、`crates/auto/src/cmd_run.rs` | 可选依赖 `auto-lang-ace-host`＋特性 `ace-candidate`（不进 default/`core`）；模块注册；裸脚本执行前的候选分岔（拒绝即返回，不落到旧执行器） |
+| auto-man | `test/fixtures/plan982/{proj-a,proj-b,bad-config,budget}` | 真实配置文档/脚本/坏配置/预算输入（永久 fixture） |
+| auto-man | `crates/auto/tests/plan982_ace_candidate_config.rs` | 五条永久验证：同 SDK＋真实值/stdout/exit；双工程隔离；坏配置零写（解析/求值两型）；两臂无 fallback（argv＋dump-lowered）；预算/取消具名终态 |
+| auto-man | `crates/auto/tests/plan982_ace_candidate_feature_gate.rs` | 特性关闭时显式跳过说明，避免"0 test 绿" |
+
+**落地（2026-11-17 fold）**：auto-lang `e4b2c06b4`（3 提交：身份面＋命名注记＋规范沉淀 `docs/specs/ace-migration/m2-man-gen.md`）、auto-man `11fe79c`（4 提交：候选腿＋lock＋review 修复＋两 MINOR 关闭）；两仓 master 均 ff-only 线性落主，树保留至 B。
+
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r6当前）
 
 **具体输入与期望。** 原件[auto-man/test/fixtures/plan446/j2check/auto/pac.at](../../../auto-man/test/fixtures/plan446/j2check/auto/pac.at)（下列节选L1–L3；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
@@ -403,19 +431,19 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 - [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 [✅ 2026-11-17：冻结记录落 §5"T-01 冻结记录"——六前置 archived 交付核验、两仓改面/owner 重核、ACE 接口实测（`av-worker request` 对真实 pac.at＝`frontend:source.syntax` 拒；legacy 面正常求值）、具名缺口 `GAP-982-CONFIG-ACE`、A 输入/预期/入口/材料/树/A-B 边界冻结；零源码/测试改动，A 实现待 §10 Q-982-1 裁定]
 
-- [ ] **B-CONFIG-I｜M2-A｜owner_stage: work｜AC-B-CONFIG/AC-02/03/06**：pac/am/index/state与参数/环境双阶段求值接ACE；路径锁身份与可求值静态子集不混用。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-CONFIG-I｜M2-A｜owner_stage: work｜AC-B-CONFIG/AC-02/03/06**：pac/am/index/state与参数/环境双阶段求值接ACE；路径锁身份与可求值静态子集不混用。 按§5真实改面补永久fixture并固定§6命令。 [A切片✅2026-11-17：候选腿已消费 SDK 配置 owner 并记录逐值证据（`ace_candidate.rs`）；引擎迁移＝本批 B 差额]
 
-- [ ] **B-CONFIG-V｜M2-A｜owner_stage: work｜AC-B-CONFIG**：运行V-B-CONFIG完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
+- [ ] **B-CONFIG-V｜M2-A｜owner_stage: work｜AC-B-CONFIG**：运行V-B-CONFIG完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 [A切片✅2026-11-17：真实 pac 值/stdout/exit/隔离/坏配置零写五例实跑（见 §9 review/merge 收据）]
 
-- [ ] **B-CONFIG-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
+- [ ] **B-CONFIG-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。 [A切片✅2026-11-17：独立复审 r1 NEEDS_FIX→r2/r3 PASS（1 MAJOR 已闭）]
 
-- [ ] **B-PROOF-I｜M2-A｜owner_stage: work｜AC-A-PROOF**：从原CLI/runtime fixture冻结多模块pac、args/env及最小脚本，接显式ACE candidate入口，证明配置与实际命令消费同一SDK；不等待整个EXEC/TEMPLATE/各target迁移。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。
+- [ ] **B-PROOF-I｜M2-A｜owner_stage: work｜AC-A-PROOF**：从原CLI/runtime fixture冻结多模块pac、args/env及最小脚本，接显式ACE candidate入口，证明配置与实际命令消费同一SDK；不等待整个EXEC/TEMPLATE/各target迁移。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。 [A切片✅2026-11-17：永久 fixture＋显式候选入口接通（feature `ace-candidate`＋env）]
 
-- [ ] **B-PROOF-V｜M2-A｜owner_stage: work｜AC-A-PROOF**：运行V-A-PROOF及完整受影响职责/必要consumer，记录双配置/作用域隔离，真实值/stdout/exit正确；坏配置不写state/lock，缺ACE身份拒绝无fallback；取消子任务回收。 核子终态与身份，未执行不PASS。
+- [ ] **B-PROOF-V｜M2-A｜owner_stage: work｜AC-A-PROOF**：运行V-A-PROOF及完整受影响职责/必要consumer，记录双配置/作用域隔离，真实值/stdout/exit正确；坏配置不写state/lock，缺ACE身份拒绝无fallback；取消子任务回收。 核子终态与身份，未执行不PASS。 [A切片✅2026-11-17：core/full 两形态各 5/5 PASS，receipt 绑定身份/输入/引擎]
 
-- [ ] **B-PROOF-R｜M2-A｜owner_stage: review｜AC-A-PROOF**：停写后独立核本批全源路径/正反例/差额，绑定revision与SHA；owner按阶段fold正式合入后，才交985/A。
+- [ ] **B-PROOF-R｜M2-A｜owner_stage: review｜AC-A-PROOF**：停写后独立核本批全源路径/正反例/差额，绑定revision与SHA；owner按阶段fold正式合入后，才交985/A。 [A切片✅2026-11-17：独立复审 PASS 并记录 985/A 可消费的 repo/SHA/接口/测试来源]
 
-A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
+A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。 **A 切片收口（2026-11-17，route C）**：work→独立 review r1（NEEDS_FIX 1 MAJOR/7 MINOR）→修复→r2 PASS→两 MINOR＋两 NOTE→r3 PASS(mergeable)→phase fold 落主（auto-lang `e4b2c06b4`／auto-man `11fe79c`，规范 `docs/specs/ace-migration/m2-man-gen.md`），同树/分支/组保留至 B；985/A 可消费下列已验来源：显式候选入口（`ace-candidate` 特性＋`AUTO_ACE_CANDIDATE`）、具名拒绝码表、`auto.sdk/1` 身份面、五条永久 case 与两形态实测结果；配置**引擎**迁移＝`GAP-982-CONFIG-ACE` 仍属 B。
 
 ### M2-B：全产品接管与完整收口
 
@@ -536,9 +564,22 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 2026-11-17 簿记：T-01 冻结记录与上述两条收据随 docs 簿记提交 `258c3fea2` 落 master；同一提交逐字带上该文件里**既有的未提交 r7 修订**（Godot 后置、40→37），未改写他人内容。`.retention/policy.json` 为本仓未跟踪的本地登记表，已加入 plan-982 scope（in-flight）。探针原件与 legacy 对照输出在 `D:/autostack/plan-artifacts/plan-982/probe-t01/`（本地 scratch，按政策不入库、A 收尾折叠后删除）。
 
+2026-11-17 stage: work / route C 实施（B-CONFIG-I + B-PROOF-I 的 A 切片）| 依据: 用户对 §10 Q-982-1 裁定 **route C**（收窄 A；A 合同见 §5"切片定义"）| tree: 唯一组 `D:/autostack/.wt/lang-982/`＝`auto-lang@076fae81c`（branch `plan-982-dev`，基面 master `e85096628`）＋`auto-man@b2a253c`（branch `plan-982-dev`，基面 master `54fe407`）＋只读兄弟 `auto-web@0adebc0`/`auto-ui@2f42d661`/`auto-down@5af11a3`（均 detached，仅为跨仓 path 依赖解析；未改动、未纳入提交）| 产出（auto-lang）：`crates/auto-lang-core/src/sdk_identity.rs`＋`lib.rs` 一行注册（`076fae81c`）——身份 schema、config/execution 两腿身份、`same_sdk()` 机器可判谓词，纯数据零求值/零 ACE 依赖 | 产出（auto-man）：`crates/auto/src/ace_candidate.rs`＋`Cargo.toml`（可选依赖 `auto-lang-ace-host`＋特性 `ace-candidate`，不进 default/`core`）＋`main.rs`＋`cmd_run.rs` 候选分岔＋`test/fixtures/plan982/{proj-a,proj-b,bad-config,budget}`＋`crates/auto/tests/plan982_ace_candidate_config.rs`（`9c3c940`）；`Cargo.lock` 增量解析（`b2a253c`，仅新增 ace-*/cranelift 条目，455 行、零删除） | 验证（本树实跑）：`cargo test -p auto --no-default-features --features ace-candidate --test plan982_ace_candidate_config -- --test-threads=1`＝**5/5 PASS**（0.47s；同 SDK＋真实配置值/deps=1/targets=1＋engine=av＋stdout=42＋返回值 7；双工程 name/version 隔离；坏配置 `ace.config/invalid` 且目录快照逐字节不变；两臂无 fallback——legacy 臂同命令成功且出 42、candidate 臂 `ace.args/unsupported` 且 42 零出现；预算臂 `ace.resource/ExecutionWall` 具名拒、取消臂 cancelled/resource-denied，且无预算时同脚本成功=非空证）| `cargo test -p auto-lang-core --lib sdk_identity`＝4/4 PASS（含两腿 same_sdk 正反例）| `cargo check -p auto --no-default-features`（关特性）＝绿（ACE 闭包不进入 core/default）| `cargo build -p auto --no-default-features --features ace-candidate`＝绿（1m45s）| 格式/告警：两仓新增文件 `rustfmt --check` 干净；新增代码零告警，仅余既有 `cmd_run.rs:132 unused_mut`（HEAD 行 124 同款，非本包）| 未执行（具名差额）：配置**引擎**迁移到 ACE（`GAP-982-CONFIG-ACE`，B）；run/service/req/debug/test、模板、各 target/watch/安装（B）；默认 full profile 构建（进行中，结果见下条）| next: B-CONFIG-R/B-PROOF-R 独立复审（另一上下文）
+
+2026-11-17 stage: goal | plan_id: PLAN-982 | plan_revision: r7 | round: 4 | from: work | to: work | status: executing | outcome: pass（A 切片实现完成、5/5 永久验证绿；待独立复审） | worktree: D:/autostack/.wt/lang-982/auto-lang | commit: 076fae81c(auto-lang)/b2a253c(auto-man) | next: review
+
+2026-11-17 补记（同一 work 切片，full profile）：`cargo build -p auto --features ace-candidate`＝绿（1m58s；默认 full 形态＋候选特性），`cargo test -p auto --features ace-candidate --test plan982_ace_candidate_config -- --test-threads=1`＝**5/5 PASS**（1.07s）。即核心形态与出货（full）形态两条构建面都已实跑通过；默认/`core` 关特性构建见上条 `cargo check`。新增代码零告警，余下告警均为既有（`cmd_autodesk.rs:74` unused doc comment 等）。
+
+2026-11-17 stage: review / B-CONFIG-R＋B-PROOF-R（A 切片独立复审，独立上下文 agent，未参与实现）| 冻结基线: auto-lang `076fae81c`（r1）/`de45e9339`（r2）、auto-man `9c3c940`+`b2a253c`（r1）/`5a1fc29`（r2）| **r1 NEEDS_FIX**（0 BLOCKER/1 MAJOR/7 MINOR/4 NOTE）：F-982A-01 MAJOR＝候选选中时 `--dump-lowered` 早退仍打印旧 lowering 且 exit 0（`ace.dump-lowered/unsupported` 不可达）；F-02 `same_sdk` 对产品输入恒真＋`identity-mismatch` 死分支；F-03 关特性 0 test 静默绿；F-04 坏配置 fixture 实为解析失败；F-05 非 Windows 开特性不可编译；F-07 "零写"oracle 只比 path+size 且 receipt 写入与 docs 措辞冲突；F-08 继承 env 可污染非空证臂；NOTE＝身份命名重叠/空行节奏/祖先 `pac.at` 回溯 | 修复 `5a1fc29`：候选检查**前置于** dump 早退并补三臂 oracle（候选拒/旧腿仍打印/argv 臂）；`same_sdk` 追加"实际服务引擎＝身份引擎"＋receipt `engine_is_identity_engine`/`script_bytes`/`started_unix_ms`；新增 `plan982_ace_candidate_feature_gate.rs`（关特性显式跳过说明）；新增 `bad-eval` 求值失败 fixture（`Undefined variable`）与既有解析失败并列；桥依赖移入 `[target.'cfg(windows)'.dependencies]`、非 Windows 具名拒 `ace.host/unsupported-platform`；快照改内容哈希（FNV-1a）且"零写"限定**工程树**；helper 清继承预算 env；严格 `same_sdk==true`；成功腿补旧腿尾随空行 | **r2 PASS**（0 BLOCKER/0 MAJOR/2 MINOR/6 NOTE；MAJOR 已闭、legacy 面零改动、`cmd_run.rs` 仅 18/8 hook 无格式 churn、三形态命令全绿）| r2 两 MINOR → `11fe79c`＋`de45e9339`：坏配置分支按 fixture 钉失败种类（parse=`Expected term`／eval=`Undefined variable`）、`sdk_identity` 补命名轴注记 | **r3 PASS(mergeable)**：实测证明新断言非空（把 `bad-eval` 换成 parse 错时该 arm 会红；两文件 diff 仅声明改动）| 复审原件 `D:/autostack/plan-artifacts/plan-982/review-a/{review.md,review-r2.md,review-r3.md}`（本地 scratch，不入库）| 未动代码以外内容；复审后仅上述 MINOR 修复与文档注记
+
+2026-11-17 stage: merge / A 切片 phase fold（对应 T-06/T-07 的 A 切片部分；整包**不**归档）| **landed**：auto-lang `e4b2c06b4`（ff-only；3 提交 ac1e869ac/a25d2f092/58b9accdf，rebase 两次追平 master `c53b34a3b`；含规范 `docs/specs/ace-migration/m2-man-gen.md`）、auto-man `11fe79c`（ff-only；4 提交 9c3c940/b2a253c/5a1fc29/11fe79c，基面 master `54fe407`）| **落主核对**（两树 resync 到 master 后实跑）：`cargo test -p auto-lang-core --lib sdk_identity`＝4 green；`cargo test -p auto --no-default-features --features ace-candidate --test plan982_ace_candidate_config`＝**5/5 PASS**（0.44s）；full 形态同测＝**5/5 PASS**（1.17s）；`cargo check -p auto`（默认关特性）绿 | **外来 WIP 处置**：auto-man 主检出 `Cargo.lock` 携他会话未提交改动（sha256 `E0D99CF48347B09D…`，12 行：`ace-foreign-contract` stanza＋auto-bindgen/auto-tool-client 依赖行）——字节备份 `plan-artifacts/plan-982/merge-wip/auto-man-Cargo.lock.wip` → `git stash` → ff 合并 → 逐行核对 12 行**全部**包含于合并后 lock（缺失 0）→ drop stash（内容被合并吸收，无需回写）；auto-lang 主检出 WIP 与本切片路径零重叠 | **规范**：`docs/specs/ace-migration/m2-man-gen.md` 落主（只写已验 A 面＋具名差额；SD-02/959 行产品级闭合仍属 B）| **树/分支/组**：保留（`D:/autostack/.wt/lang-982/{auto-lang,auto-man}`＋只读兄弟 `auto-web/auto-ui/auto-down`），`plan-982-dev` 与 master 同步，供 B 使用；plan-artifacts 保留至 B 收尾（A 证据已在 §9 折叠）| **985/A 可消费来源**：repo/SHA 如上；接口＝`ace-candidate` 特性＋`AUTO_ACE_CANDIDATE`＋具名拒绝码表＋`auto.sdk/1`＋receipt schema；测试＝`plan982_ace_candidate_config.rs`＋`plan982_ace_candidate_feature_gate.rs` 与 §6 命令；适用性＝Windows、最小 CLI 腿、配置引擎仍 SDK 指定 legacy owner | **不声明**：全产品迁移、其它 target/模板/安装、配置引擎已迁 ACE
+
+2026-11-17 stage: goal | plan_id: PLAN-982 | plan_revision: r7 | round: 4 | from: merge | to: done | status: executing（整包 B 未开）| outcome: pass（A 切片 delivered＋landed＋verified＋spec deposited；树保留）| worktree: D:/autostack/.wt/lang-982/auto-lang | commit: e4b2c06b4(auto-lang)/11fe79c(auto-man) | next: user（A 目标达成；B 另行授权）
 ## 10. 待澄清事项
 
-### Q-982-1（2026-11-17，A 实现路由，待用户裁定）
+### Q-982-1（2026-11-17，A 实现路由）——**已裁定：route C**（2026-11-17，用户）
+
+**裁定结果**：用户在三选一中选 **C（收窄 A）**。A 只交"同一 SDK 身份＋无 legacy fallback＋失败/隔离纪律"的 PROOF 与 CONFIG 消费改造；配置**引擎**迁移随 `GAP-982-CONFIG-ACE` 并入 M2-B，并在 A 收据具名差额。RG-A01 的"缺 ACE 不能回退旧 VM"按**命令执行腿**解释（配置腿按 969 规范本来就是 legacy owner，不是 fallback）。A 合同见 §5"切片定义"，交付/复审/落主收据见 §9。原问题与三选项保留如下供追溯。
 
 **事实**（证据见 §5"T-01 冻结记录"）：982/CONFIG 的"接 ACE"需要一个当前**不存在**的 ACE 配置文档求值面——ACE 无 config/document `SourceProfile`、无文档值种类、`canonical_owned` 拒 `Value::Object`，真探针 `av-worker request` 对真实 `pac.at` 直接 `frontend:source.syntax` 拒；而 969 的已验规范把 `eval_config_with_vm` 显式留在 legacy owner（`m2-facade.md` §边界）。故 `GAP-982-CONFIG-ACE` 是 A 的硬前置，且 owner 未指派。
 
