@@ -830,7 +830,7 @@ cargo test -p ace-syntax-grammar                               # 45/45
 | B-SESSION-I | 已交 | auto-ui `15102c48`→`4c629db0` | review-64 |
 | B-SESSION-V[A]（单组件双实例/关闭恢复） | 已交 | `332ef407`/`0a87676b`、`9032d69c` | review-67→68、review-69 |
 | B-RUST-I 公共链 + V[A] | 已交 | `eb487f3cf`/`399edd447`、`0b98c143b` | review-67→68、review-69 |
-| **B-PROOF-I/V[A]（2D/3D 呈现事实 + UI 事件/更新/关闭）** | 已交（A 面） | auto-lang `d1002b433`/`a5e6642e0`、auto-ui `6301c7c5`/`b3940d0f`、overlay `ea429095`/`fcf8cafc`+`02def83c`/`8d5b2648` | review-70 needs_fix→修补→复验在途 |
+| **B-PROOF-I/V[A]（2D/3D 呈现事实 + UI 事件/更新/关闭）** | 已交（A 面） | auto-lang `ad7882cbe`/`6340934a1`/`0520c7f3b`、auto-ui `1eb27697`/`ab6fff5c`、overlay `dd4cf388`/`ab6fff5c`（1395 文件） | review-70 needs_fix→修补→**review-71 pass** |
 | T-01（A 决定/源/命令冻结） | 已交 | 本台账 + §9 收据 | — |
 **本轮执行入口**：A先复用已交SOURCE，只做MIN-A-AGE所需SESSION/LANGUAGE/PROOF的真实AV接口与验收，不等待完整RUST/五view/PARITY或976 WEB。三波在M2A-08后按§5执行；W1的980组件接口与981 AV领域格按组协作正式交接，981不先等完整UI-W1-AV才贡献同一收据。W2只等完整W1，W3只等W2正式切片。下面每个原任务只登记一次，跨阶段任务仅子面交付不勾整项。
 
@@ -920,6 +920,12 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-SOURCE-I/B-SOURCE-V/B-SESSION-I/B-SESSION-V/B-RUST-I/B-RUST-V/B-LANGUAGE-I/B-LANGUAGE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+### 2026-11-17 三路线修订的规划预检（不是实施验收）
+
+本轮仅文档：统一strategy/架构、四个引擎AV新合同与四个新版AutoForge合同；保本包原任务ID/进度/全部旧AC/V/SD，新增阶段义务见§5–7。静态核对8新Plan共74任务、9既有Plan共140原任务ID、阶段DAG 44节点/90依赖无环、新增本地链接均可达，16份取材源码/规范/已归档合同身份未改变；四仓文档diff格式检查通过。981并发实施会话的T-01勾选保留，不计本轮交付。下方历史记录原样保留。
+
+只说明规划合同可审阅；未运行Cargo/GUI/模型/构建/产品测试，未建实施树、未resume暂停工作、未合入/归档/签章。所需正式接口/最低负载/真实oracle仍须未来work→独立review→merge实际验证；原已存在历史失效链接不作为当前入口，新增链接已单独核对。
 
 > EVENT-SPLIT-20261116历史解释：本节旧blocked/“等待980正式源”、round39/40及旧全量A门只证明当时核对/选择；当前依§5和§8逐切片合同，不用executing/整包未勾代接口缺失。旧产品结果不因本次修订自动扩大为参数/载荷或新A验收PASS。
 
@@ -1022,6 +1028,35 @@ R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
   未绑定名**的**逐项**诊断归 B-W1（`D-981-EVENT-A-REMAINDER`），A 以"参数一律不可执行"兜住。
 - **门禁**：AV p981 **6/6**、plan981 207/207、plan980 13/13、A2R 5/5、grammar 45/45；
   auto-ui `s2_age_routing` 16/16、driver lib 49/49、bridge 4+3+10。
+2026-11-17 stage: handoff（MIN-A-AGE 整体正式交接：IF-981-EVENT-A + B-PROOF-I/V/R[A]）| PLAN-981 | outcome: pass（A 面整体交接）
+
+**去向**：985/A（T-A03/A04）按原子行接收；本包不新增 Plan、不勾整任务、不声称 plan-level execution_done。
+
+**绑定 revision（全部已落主、独立复审 pass）**
+- 语言/SOURCE 面：auto-lang `0520c7f3b`（代码 `6340934a1`、`ad7882cbe`）；event A `24b4ba4a7`/`75015a49b`；V[A] `0b98c143b`/`230e4abc6`。
+- 宿主面：auto-ui `ab6fff5c`（代码 `658ad515`/`1eb27697`；SESSION-V `771be6a9`/`9032d69c`）。
+- 两层 SDK：base 681 + overlay **1395** 文件，overlay 源 = `auto-lang 0520c7f3b`，逐 blob 保真 PASS；`.sdk-source` 复核 PASS。
+- Schema/profile：age-package `145617968fcc6d06…5199`、age-component `96ecc4372a53665e…3708`（#6i 语义差已注释；13 邻居 profile 未动）。
+
+**独立 oracle / producer→consumer**
+- 2D：g01 原三模块源（`fixtures_g01`，与 SOURCE 批同源；SHA256 前 16 `9b809a1c…`/`6f993775…`/`dbdc5243…`）→ 前门 4 行场景事实（位置/尺寸/可见性 CPU 值对齐原 G01 基线，变异即红）；AV 腿：纯场景包观察为空、混合 UI+2D 具名拒 F32。
+- 3D：g08/3d **派生真实源**（`fixtures_proof/g08_3d_cylinders.at`；来源 `main.at` `4bef459e4f854715`、基线 `scene.agscene` `46b2bb9ca50dffd1`）→ `view-3d` 4 行位置/缩放对齐原 scene。
+- UI/事件：组合包（UI+2D+3D 三节点）出口选择互不跨域；1 vs 3 出口预算同为 Start=1/Tick=5/Frame=3；UI 事件 2:1 实例状态与文本；宿主腿 event→update→坏编辑具名拒保旧→修复恢复→stop 冻结观察/拒派发→restart 回初值。
+- event A：见前条 IF-981-EVENT-A 交接包（具名/匿名 unit、重复/未知/双集合拒、参数保留但派发拒、payload 声明合法/派发拒、#6i 身份）。
+- producer→consumer：981 SOURCE/LANGUAGE/PROOF（producer）→ AV 观察腿 + 985/A 认证（consumer）；980/A 源（`403c936d`/`7f431bd5f`）为正式输入。
+
+**复审链**：review-62（LANGUAGE-I）、review-64（SESSION-I）、review-65→66（event A）、review-67→68（V 证据）、review-69（tier-1 A 面终审）、review-70→71（PROOF A，**pass**）；R69-1 修补已落主（`cedf5331c`），R65/R67/R69 低危项均已处置或具名。
+
+**未闭（不冒充，按原 owner/波次）**
+- `D-981-PROOF-AV-SCENE`：AV 的 2D/3D/混合观察格（f32 不在 `av.owned/1`）→ B-AV；A 只在门面描述事实，场景+model 在 AV 具名拒。
+- `D-981-EVENT-A-REMAINDER`：B-W1 的载荷/参数**执行**、逐项 arity/type/dup/未绑定诊断、AV 队列/调度/世代。
+- `D-981-SESSION-MULTI ①`：两组件事件 2:1 与异步资源净归零 → V-B-SESSION[B]；R64-10 异步面。
+- `D-981-MODULE-GLOBAL-A2R`：模块级 const/var 的 A2R 目标合法化 → B-W3。
+- B-W3：运行时 dispatch/AGE 端口/GPU/输入/音频；`camera3d`/`character3d`/`solid` 与 g03-3d 原始叶/层级集；完整 Showcase。
+- R59-5（坏槽位诊断 @0，owner syntax-grammar）；`D-981-EXIT-CONTRACT` 已关（旧 979"恰一出口" oracle 失效，新契约永久用例在 `plan981_v_harness`/`plan981_proof_a`）。
+- R64-1..7 已修（原子调度/诊断/多组件/命名/代数/overlay/rustfmt），R64-8/9 无登记，R64-10 见上。
+
+**门禁实测**：plan981 **211/211**、plan980 13/13、AV p981 **9/9**、A2R p981 5/5、grammar 45/45、ace-core **746/746**；driver lib 49/49、`s2_age_routing` 17/17、bridge 4+3+10、V-B-SESSION 规定命令 4/4 + 7/7；`prepare_sdk --verify-only` PASS；overlay 1395 逐 blob 保真 PASS。
 2026-11-17 stage: review（review-68 = pass；事件 A / V 证据批闭）| PLAN-981 | outcome: pass（批级）
 
 - **review-68 = pass**：R68-1 闭包核销；三个真实源 session 测试全部 `include_str!` canonical 源、
