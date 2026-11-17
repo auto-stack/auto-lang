@@ -21,13 +21,15 @@ use std::time::{Duration, Instant};
 use ace_av::modules::packages::PackageAvTarget;
 use ace_av_core::av::{CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
+use ace_core::source::ast::{Item, TypeRef, TypeWord};
 use ace_core::source::cst::FrontBudget;
-use ace_core::source::packages::{PackageDiagnostic, PackageModuleInput};
+use ace_core::source::packages::{unit_key, PackageDiagnostic, PackageModuleInput};
 use ace_source_query::modules::packages::{compile_package_product, PackageProduct};
 
 use auto_lang_core::{
-    AceModuleSpec, AceProjectExecutor, AceProjectOutcome, AceProjectReport, AceProjectRequest,
-    AceSpan, AceTestOutcome,
+    AceCheckOutcome, AceCheckReport, AceCheckRequest, AceDeclaration, AceDiagnostic, AceModuleSpec,
+    AceProjectExecutor, AceProjectOutcome, AceProjectReport, AceProjectRequest, AceSpan,
+    AceTestOutcome,
 };
 
 use crate::map_value;
@@ -51,6 +53,169 @@ pub fn project_host() -> Arc<dyn auto_lang_core::AceProjectExecutor> {
 impl AceProjectExecutor for ProjectHost {
     fn execute_project(&self, request: &AceProjectRequest<'_>) -> AceProjectReport {
         execute_project(request)
+    }
+
+    fn check_project(&self, request: &AceCheckRequest<'_>) -> AceCheckReport {
+        check_project(request)
+    }
+}
+
+/// PLAN-971 B (T-02/T-08): compile-only project check over the same 960
+/// packages lane — the producer's facts WITHOUT executing anything. The
+/// declaration table and the test candidates come from the binder's bound
+/// declarations (`origins` + per-unit declaration spans), so tooling and
+/// the test lane consume producer facts instead of walking a legacy AST.
+fn check_project(request: &AceCheckRequest<'_>) -> AceCheckReport {
+    let cancelled = || {
+        request
+            .cancel
+            .is_some_and(|flag: &AtomicBool| flag.load(Ordering::Relaxed))
+    };
+    if cancelled() {
+        return AceCheckReport {
+            engine: crate::ENGINE_ID,
+            outcome: AceCheckOutcome::Cancelled,
+            declarations: Vec::new(),
+            tests: Vec::new(),
+            wall_ms: 0.0,
+        };
+    }
+    let inputs: Vec<PackageModuleInput> = request.modules.iter().map(package_input).collect();
+    match compile_package_product(
+        &inputs,
+        request.entry_module,
+        request.capabilities,
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        Ok(product) => {
+            let declarations = declarations(&product);
+            let tests = discover_tests(&declarations);
+            AceCheckReport {
+                engine: crate::ENGINE_ID,
+                outcome: AceCheckOutcome::Clean,
+                declarations,
+                tests,
+                wall_ms: 0.0,
+            }
+        }
+        Err(diags) => AceCheckReport {
+            engine: crate::ENGINE_ID,
+            outcome: AceCheckOutcome::Diagnostics(diagnostics(&diags)),
+            declarations: Vec::new(),
+            tests: Vec::new(),
+            wall_ms: 0.0,
+        },
+    }
+}
+
+/// Every diagnostic of a rejected project, in pipeline order, each keeping
+/// the ORIGINAL module identity and the module-relative span the binder
+/// already rebased (the same convention as the project face's primary
+/// diagnostic).
+fn diagnostics(diags: &[PackageDiagnostic]) -> Vec<AceDiagnostic> {
+    diags
+        .iter()
+        .map(|d| AceDiagnostic {
+            module: d.module.clone(),
+            stage: d.diagnostic.stage.as_str().to_string(),
+            code: d.diagnostic.code.clone(),
+            message: d.diagnostic.message.clone(),
+            span: Some(AceSpan {
+                start: d.diagnostic.span.start as u64,
+                end: d.diagnostic.span.end as u64,
+            }),
+        })
+        .collect()
+}
+
+/// The producer's declaration table: every bound function declaration with
+/// its original name, owning module, symbol, arity, rendered result type and
+/// module-relative span. Synthetic module initializers are not declarations
+/// and are omitted.
+fn declarations(product: &PackageProduct) -> Vec<AceDeclaration> {
+    let bound = &product.bound;
+    let mut out = Vec::new();
+    for item in &bound.program.items {
+        let Item::Fn(f) = item else { continue };
+        let Some((pkg, module, original)) = bound.origins.get(&f.name.name) else {
+            // No origin: a synthesized function (global accessors, task
+            // drivers) — never a source declaration.
+            continue;
+        };
+        if original == "__init" {
+            continue;
+        }
+        let span = bound
+            .units
+            .get(&unit_key(pkg, module))
+            .and_then(|unit| unit.declarations.get(original))
+            .map(|sp| AceSpan {
+                start: sp.start as u64,
+                end: sp.end as u64,
+            });
+        out.push(AceDeclaration {
+            name: original.clone(),
+            module: format!("{pkg}::{module}"),
+            symbol: f.name.name.clone(),
+            params: f.params.len(),
+            ret: render_type(&f.ret.kind),
+            span,
+        });
+    }
+    out.sort_by(|a, b| (a.module.as_str(), a.name.as_str()).cmp(&(b.module.as_str(), b.name.as_str())));
+    out
+}
+
+/// Discovered test candidates under the frozen ACE test contract: a
+/// zero-parameter declaration whose declared result is `int`, excluding the
+/// conventional project entry (`main`). The ACE grammar carries no
+/// `#[test]` attribute (the legacy attribute is not part of the source
+/// surface), so discovery is the producer's declaration facts filtered by
+/// the SAME contract the test lane executes — never a name-list guess.
+fn discover_tests(declarations: &[AceDeclaration]) -> Vec<AceDeclaration> {
+    declarations
+        .iter()
+        .filter(|d| d.params == 0 && d.ret == "int" && d.name != "main")
+        .cloned()
+        .collect()
+}
+
+/// Render a declared type annotation for the neutral declaration table.
+fn render_type(kind: &TypeRef) -> String {
+    match kind {
+        TypeRef::Builtin(word) => match word {
+            TypeWord::Int | TypeWord::I32 => "int",
+            TypeWord::Bool => "bool",
+            TypeWord::Str => "str",
+            TypeWord::StrOwned => "Str",
+            TypeWord::Char => "char",
+            TypeWord::Void => "void",
+            TypeWord::I8 => "i8",
+            TypeWord::U8 | TypeWord::Byte => "u8",
+            TypeWord::Uint | TypeWord::U32 => "u32",
+            TypeWord::I64 => "i64",
+            TypeWord::U64 => "u64",
+            TypeWord::Float => "f32",
+            TypeWord::Double | TypeWord::F64 => "f64",
+        }
+        .to_string(),
+        TypeRef::Record(name) => name.name.clone(),
+        TypeRef::TyVar(name) => name.name.clone(),
+        TypeRef::Optional(inner) => format!("?{}", render_type(&inner.kind)),
+        TypeRef::Generic { name, args } => {
+            let args: Vec<String> = args.iter().map(|a| render_type(&a.kind)).collect();
+            format!("{}<{}>", name.name, args.join(","))
+        }
+        TypeRef::Tuple(items) => {
+            let items: Vec<String> = items.iter().map(|a| render_type(&a.kind)).collect();
+            format!("({})", items.join(","))
+        }
+        TypeRef::Function { params, result } => {
+            let params: Vec<String> = params.iter().map(|a| render_type(&a.kind)).collect();
+            format!("fn({})->{}", params.join(","), render_type(&result.kind))
+        }
+        TypeRef::ResultBang(inner) => format!("!{}", render_type(&inner.kind)),
+        TypeRef::Stream(inner) => format!("~{}", render_type(&inner.kind)),
     }
 }
 

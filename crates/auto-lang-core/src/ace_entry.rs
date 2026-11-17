@@ -503,6 +503,18 @@ impl AceProjectReport {
 /// the UI main thread (synchronous, no thread spawning).
 pub trait AceProjectExecutor: Send + Sync {
     fn execute_project(&self, request: &AceProjectRequest<'_>) -> AceProjectReport;
+
+    /// PLAN-971 B: compile-only project check — diagnostics (all of them),
+    /// the producer's declaration table and its discovered test candidates.
+    /// The default is a NAMED refusal so an executor that predates this
+    /// face still compiles and never silently pretends the check passed.
+    fn check_project(&self, _request: &AceCheckRequest<'_>) -> AceCheckReport {
+        AceCheckReport::host_failure(
+            "?",
+            "ace.host/check-unsupported",
+            "the installed project executor does not implement the compile-only check face",
+        )
+    }
 }
 
 static ACE_PROJECT_EXECUTOR: RwLock<Option<Arc<dyn AceProjectExecutor>>> = RwLock::new(None);
@@ -580,6 +592,411 @@ pub fn run_ace_project_named(engine: &str, request: &AceProjectRequest<'_>) -> A
         }
     };
     run_ace_project(choice, request)
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-971 B (T-02/T-08): the compile-only project CHECK face.
+//
+// The same explicit project modules are compiled through the installed
+// project executor WITHOUT executing anything, returning (a) EVERY
+// diagnostic with the original module identity and module-relative span
+// (the LSP analysis backend's multi-file diagnostics), (b) the producer's
+// bound declaration table, and (c) the discovered test candidates. The
+// test lane in turn gates on discovery: a project with ZERO discovered
+// test candidates is a NAMED failure, never a pass (V-03).
+//
+// This face never runs the entry or any test, and like every other ace_entry
+// face it has no path into the legacy AutoVM: an unregistered executor or a
+// host that does not implement the check face is a named host failure.
+// ---------------------------------------------------------------------------
+
+/// One source-level diagnostic of a compile-only project check. `module`
+/// is the ORIGINAL module identity (`pkg::mod`) and `span` is relative to
+/// that module's own source text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceDiagnostic {
+    pub module: String,
+    pub stage: String,
+    pub code: String,
+    pub message: String,
+    pub span: Option<AceSpan>,
+}
+
+/// One declaration the producer bound for the project: the producer's
+/// declaration table, not a legacy AST walk. Callers (the test lane, the
+/// LSP test-discovery surface) consume these facts directly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceDeclaration {
+    /// Source-level declaration name (the original name, not the symbol).
+    pub name: String,
+    /// Owning module identity (`pkg::mod`).
+    pub module: String,
+    /// The bound symbol the executor resolves the declaration by.
+    pub symbol: String,
+    /// Declared parameter count.
+    pub params: usize,
+    /// Rendered declared result type (`int`, `bool`, ...).
+    pub ret: String,
+    /// Module-relative declaration span.
+    pub span: Option<AceSpan>,
+}
+
+/// A compile-only project check request: the project's source modules and
+/// the binding root (`entry_module` selects the module the package binder
+/// roots the graph at; the LSP passes the document's own module).
+pub struct AceCheckRequest<'a> {
+    pub modules: &'a [AceModuleSpec<'a>],
+    /// Binding root module key (`pkg::mod`) — must be one of `modules`.
+    pub entry_module: &'a str,
+    pub capabilities: &'a [String],
+    pub cancel: Option<&'a AtomicBool>,
+}
+
+impl<'a> AceCheckRequest<'a> {
+    pub fn new(
+        modules: &'a [AceModuleSpec<'a>],
+        entry_module: &'a str,
+        capabilities: &'a [String],
+    ) -> Self {
+        AceCheckRequest {
+            modules,
+            entry_module,
+            capabilities,
+            cancel: None,
+        }
+    }
+}
+
+/// Terminal states of a compile-only project check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AceCheckOutcome {
+    /// Compiles with no diagnostics.
+    Clean,
+    /// The pipeline rejected the project; contains EVERY diagnostic (with
+    /// original module identity and span), not just the primary one.
+    Diagnostics(Vec<AceDiagnostic>),
+    Cancelled,
+    ResourceDenied { kind: String, message: String },
+    Denied { code: String, message: String },
+    HostFailure { code: String, message: String },
+}
+
+/// Evidence companion of one compile-only project check.
+#[derive(Debug, Clone)]
+pub struct AceCheckReport {
+    pub engine: &'static str,
+    pub outcome: AceCheckOutcome,
+    /// The producer's bound declaration table (empty unless the project
+    /// compiled: a rejected project has no admitted declarations).
+    pub declarations: Vec<AceDeclaration>,
+    /// Discovered test candidates: zero-parameter `int`-returning
+    /// declarations under the frozen test contract, the conventional entry
+    /// (`main`) excluded and module initializers skipped. An empty list is
+    /// evidence of zero discovery — the test lane treats it as a NAMED
+    /// failure ([`AceTestRunOutcome::NoTestsDiscovered`]), never a pass.
+    pub tests: Vec<AceDeclaration>,
+    /// Executor-measured wall time (milliseconds; filled by
+    /// [`check_ace_project`]).
+    pub wall_ms: f64,
+}
+
+impl AceCheckReport {
+    fn host_failure(engine: &'static str, code: &str, message: impl Into<String>) -> Self {
+        AceCheckReport {
+            engine,
+            outcome: AceCheckOutcome::HostFailure {
+                code: code.to_string(),
+                message: message.into(),
+            },
+            declarations: Vec::new(),
+            tests: Vec::new(),
+            wall_ms: 0.0,
+        }
+    }
+
+    fn denied(engine: &'static str, code: &str, message: impl Into<String>) -> Self {
+        AceCheckReport {
+            engine,
+            outcome: AceCheckOutcome::Denied {
+                code: code.to_string(),
+                message: message.into(),
+            },
+            declarations: Vec::new(),
+            tests: Vec::new(),
+            wall_ms: 0.0,
+        }
+    }
+}
+
+/// Run one compile-only project check synchronously through the installed
+/// project executor. Nothing is executed; no executor / unknown engine /
+/// unsupported check face is a NAMED terminal state.
+pub fn check_ace_project(
+    choice: AceEngineChoice,
+    request: &AceCheckRequest<'_>,
+) -> AceCheckReport {
+    let started = std::time::Instant::now();
+    let executor = match ACE_PROJECT_EXECUTOR.read() {
+        Ok(slot) => slot.clone(),
+        Err(_) => {
+            return AceCheckReport::host_failure(
+                choice.as_str(),
+                "ace.host/project-executor-lock-poisoned",
+                "project executor lock poisoned",
+            )
+        }
+    };
+    let Some(executor) = executor else {
+        return AceCheckReport::host_failure(
+            choice.as_str(),
+            "ace.host/project-executor-unregistered",
+            "no ACE project executor installed; the host must install one (auto-lang-ace-host)",
+        );
+    };
+    let mut report = executor.check_project(request);
+    report.wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    report
+}
+
+/// Name-driven form of [`check_ace_project`]: an unknown name — including
+/// every legacy engine name — is a named refusal with zero dispatch.
+pub fn check_ace_project_named(engine: &str, request: &AceCheckRequest<'_>) -> AceCheckReport {
+    let choice = match parse_ace_engine(engine) {
+        Ok(choice) => choice,
+        Err(message) => return AceCheckReport::denied("?", "ace.engine/unknown", message),
+    };
+    check_ace_project(choice, request)
+}
+
+/// A discovered-test run request: the project modules plus the entry the
+/// project lane runs after the tests. Test NAMES are not carried — they are
+/// discovered from the producer's declaration table (T-02: discovery moved
+/// into the producer), and zero discovery is a named failure.
+pub struct AceTestRunRequest<'a> {
+    pub modules: &'a [AceModuleSpec<'a>],
+    pub entry_module: &'a str,
+    /// Entry def id (`"d_main"` for the conventional entry).
+    pub entry_def_id: &'a str,
+    pub capabilities: &'a [String],
+    pub wall: Option<Duration>,
+    pub cancel: Option<&'a AtomicBool>,
+}
+
+impl<'a> AceTestRunRequest<'a> {
+    pub fn simple(
+        modules: &'a [AceModuleSpec<'a>],
+        entry_module: &'a str,
+        capabilities: &'a [String],
+    ) -> Self {
+        AceTestRunRequest {
+            modules,
+            entry_module,
+            entry_def_id: "d_main",
+            capabilities,
+            wall: None,
+            cancel: None,
+        }
+    }
+}
+
+/// Terminal states of a discovered-test run.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AceTestRunOutcome {
+    /// Every discovered test passed AND the project entry run succeeded
+    /// (the protocol exit is 0).
+    Passed,
+    /// At least one discovered test failed, or the entry run did not
+    /// succeed. `message` names the first failure.
+    Failed { message: String },
+    /// The producer discovered ZERO test candidates: a test claim without a
+    /// test is a NAMED failure, never a pass (V-03).
+    NoTestsDiscovered { message: String },
+    /// The project did not compile; diagnostic carries the original module
+    /// identity and module-relative span.
+    Diagnostic(AceDiagnostic),
+    Denied { code: String, message: String },
+    ResourceDenied { kind: String, message: String },
+    Cancelled,
+    HostFailure { code: String, message: String },
+}
+
+/// Evidence companion of one discovered-test run.
+#[derive(Debug, Clone)]
+pub struct AceTestRunReport {
+    pub engine: &'static str,
+    pub outcome: AceTestRunOutcome,
+    /// The producer's discovered candidates (empty when discovery was zero
+    /// or the project did not compile).
+    pub discovered: Vec<AceDeclaration>,
+    /// Per-test results in discovery order (empty when nothing ran).
+    pub tests: Vec<AceTestOutcome>,
+    /// `0` iff the outcome is [`AceTestRunOutcome::Passed`]; `1` otherwise
+    /// — a failed test, an empty discovery and a compile rejection never
+    /// exit zero.
+    pub exit_code: i32,
+    pub wall_ms: f64,
+}
+
+impl AceTestRunReport {
+    fn from_check(engine: &'static str, check: AceCheckReport) -> Option<Self> {
+        let outcome = match &check.outcome {
+            AceCheckOutcome::Clean => return None,
+            AceCheckOutcome::Diagnostics(diags) => match diags.first() {
+                Some(d) => AceTestRunOutcome::Diagnostic(d.clone()),
+                None => AceTestRunOutcome::HostFailure {
+                    code: "ace.test/empty-diagnostics".to_string(),
+                    message: "the project was rejected without a diagnostic".to_string(),
+                },
+            },
+            AceCheckOutcome::Cancelled => AceTestRunOutcome::Cancelled,
+            AceCheckOutcome::ResourceDenied { kind, message } => AceTestRunOutcome::ResourceDenied {
+                kind: kind.clone(),
+                message: message.clone(),
+            },
+            AceCheckOutcome::Denied { code, message } => AceTestRunOutcome::Denied {
+                code: code.clone(),
+                message: message.clone(),
+            },
+            AceCheckOutcome::HostFailure { code, message } => AceTestRunOutcome::HostFailure {
+                code: code.clone(),
+                message: message.clone(),
+            },
+        };
+        Some(AceTestRunReport {
+            engine,
+            outcome,
+            discovered: Vec::new(),
+            tests: Vec::new(),
+            exit_code: 1,
+            wall_ms: 0.0,
+        })
+    }
+}
+
+/// Run the project's DISCOVERED tests: compile-check the project through the
+/// installed project executor, refuse a zero-discovery result, then execute
+/// every discovered test on the project lane (each in its own generation,
+/// per the frozen A test contract), followed by the entry run. Discovery
+/// lives in the producer — this function carries no test names.
+pub fn run_ace_project_tests(
+    choice: AceEngineChoice,
+    request: &AceTestRunRequest<'_>,
+) -> AceTestRunReport {
+    let started = std::time::Instant::now();
+    let check_request = AceCheckRequest {
+        modules: request.modules,
+        entry_module: request.entry_module,
+        capabilities: request.capabilities,
+        cancel: request.cancel,
+    };
+    let check = check_ace_project(choice, &check_request);
+    let engine = check.engine;
+    if let Some(mut report) = AceTestRunReport::from_check(engine, check.clone()) {
+        report.wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+        return report;
+    }
+    let discovered = check.tests;
+    if discovered.is_empty() {
+        return AceTestRunReport {
+            engine,
+            outcome: AceTestRunOutcome::NoTestsDiscovered {
+                message: "the producer discovered zero test candidates in the project \
+                          (frozen test contract: a zero-parameter `int` declaration, entry `main` excluded)"
+                    .to_string(),
+            },
+            discovered,
+            tests: Vec::new(),
+            exit_code: 1,
+            wall_ms: started.elapsed().as_secs_f64() * 1000.0,
+        };
+    }
+    let names: Vec<&str> = discovered.iter().map(|d| d.name.as_str()).collect();
+    let project_request = AceProjectRequest {
+        modules: request.modules,
+        entry_module: request.entry_module,
+        entry_def_id: request.entry_def_id,
+        tests: &names,
+        capabilities: request.capabilities,
+        wall: request.wall,
+        cancel: request.cancel,
+    };
+    let project = run_ace_project(choice, &project_request);
+    let outcome = match &project.outcome {
+        AceProjectOutcome::Success { .. } => {
+            if project.tests.iter().all(|t| t.passed) {
+                AceTestRunOutcome::Passed
+            } else {
+                AceTestRunOutcome::Failed {
+                    message: project
+                        .tests
+                        .iter()
+                        .find(|t| !t.passed)
+                        .map(|t| format!("{}: {}", t.name, t.message))
+                        .unwrap_or_else(|| "a discovered test failed".to_string()),
+                }
+            }
+        }
+        AceProjectOutcome::Diagnostic {
+            module,
+            stage,
+            code,
+            message,
+            span,
+        } => AceTestRunOutcome::Diagnostic(AceDiagnostic {
+            module: module.clone(),
+            stage: stage.clone(),
+            code: code.clone(),
+            message: message.clone(),
+            span: *span,
+        }),
+        AceProjectOutcome::Denied { code, message } => AceTestRunOutcome::Denied {
+            code: code.clone(),
+            message: message.clone(),
+        },
+        AceProjectOutcome::ResourceDenied { kind, message } => AceTestRunOutcome::ResourceDenied {
+            kind: kind.clone(),
+            message: message.clone(),
+        },
+        AceProjectOutcome::Cancelled => AceTestRunOutcome::Cancelled,
+        AceProjectOutcome::HostFailure { code, message } => AceTestRunOutcome::HostFailure {
+            code: code.clone(),
+            message: message.clone(),
+        },
+    };
+    let exit_code = if matches!(outcome, AceTestRunOutcome::Passed) {
+        0
+    } else {
+        1
+    };
+    AceTestRunReport {
+        engine,
+        outcome,
+        discovered,
+        tests: project.tests,
+        exit_code,
+        wall_ms: started.elapsed().as_secs_f64() * 1000.0,
+    }
+}
+
+/// Name-driven form of [`run_ace_project_tests`].
+pub fn run_ace_project_tests_named(engine: &str, request: &AceTestRunRequest<'_>) -> AceTestRunReport {
+    let choice = match parse_ace_engine(engine) {
+        Ok(choice) => choice,
+        Err(message) => {
+            return AceTestRunReport {
+                engine: "?",
+                outcome: AceTestRunOutcome::Denied {
+                    code: "ace.engine/unknown".to_string(),
+                    message,
+                },
+                discovered: Vec::new(),
+                tests: Vec::new(),
+                exit_code: 1,
+                wall_ms: 0.0,
+            }
+        }
+    };
+    run_ace_project_tests(choice, request)
 }
 
 #[cfg(test)]
@@ -776,5 +1193,110 @@ mod tests {
             AceProjectOutcome::HostFailure { .. }
         ));
         assert!(!shutdown_ace_project_executor());
+
+        // PLAN-971 B (T-02/T-08): the compile-only check face and the
+        // zero-discovery gate, frozen WITHOUT any ACE dependency.
+        let modules = [AceModuleSpec {
+            package: "app",
+            version: "0",
+            id: "main",
+            source: "fn main() int { return 0 }",
+        }];
+        let check_req = AceCheckRequest::new(&modules, "app::main", &caps);
+        for bad in ["autovm", "vm", "evaluator", ""] {
+            assert!(
+                matches!(&check_ace_project_named(bad, &check_req).outcome, AceCheckOutcome::Denied { code, .. } if code == "ace.engine/unknown"),
+                "engine `{bad}` must be refused on the check face"
+            );
+        }
+        assert!(matches!(
+            check_ace_project(AceEngineChoice::AceAV, &check_req).outcome,
+            AceCheckOutcome::HostFailure { ref code, .. } if code == "ace.host/project-executor-unregistered"
+        ));
+        // An executor that predates the check face refuses it by NAME (never
+        // a silently clean check), and the discovered-test run inherits it.
+        let legacy_face = Arc::new(Probe(true));
+        assert!(install_ace_project_executor(legacy_face).is_ok());
+        assert!(matches!(
+            check_ace_project(AceEngineChoice::AceAV, &check_req).outcome,
+            AceCheckOutcome::HostFailure { ref code, .. } if code == "ace.host/check-unsupported"
+        ));
+        let test_req = AceTestRunRequest::simple(&modules, "app::main", &caps);
+        let run = run_ace_project_tests(AceEngineChoice::AceAV, &test_req);
+        assert!(
+            matches!(&run.outcome, AceTestRunOutcome::HostFailure { code, .. } if code == "ace.host/check-unsupported"),
+            "unsupported check face must not become a test pass: {:?}",
+            run.outcome
+        );
+        assert_eq!(run.exit_code, 1);
+        assert!(shutdown_ace_project_executor());
+
+        struct CheckProbe {
+            tests: Vec<AceDeclaration>,
+        }
+        impl AceProjectExecutor for CheckProbe {
+            fn execute_project(&self, request: &AceProjectRequest<'_>) -> AceProjectReport {
+                AceProjectReport {
+                    engine: "av",
+                    outcome: AceProjectOutcome::Success {
+                        value: AceValue::I32(0),
+                        steps: 0,
+                    },
+                    tests: request
+                        .tests
+                        .iter()
+                        .map(|name| AceTestOutcome {
+                            name: (*name).to_string(),
+                            module: "app::main".to_string(),
+                            passed: true,
+                            message: String::new(),
+                        })
+                        .collect(),
+                    exit_code: 0,
+                    diag_count: 0,
+                    wall_ms: 0.0,
+                }
+            }
+            fn check_project(&self, _request: &AceCheckRequest<'_>) -> AceCheckReport {
+                AceCheckReport {
+                    engine: "av",
+                    outcome: AceCheckOutcome::Clean,
+                    declarations: self.tests.clone(),
+                    tests: self.tests.clone(),
+                    wall_ms: 0.0,
+                }
+            }
+        }
+        // Zero discovered test candidates: a test claim without a test is a
+        // NAMED failure (V-03) — never `Passed`, never exit 0.
+        assert!(install_ace_project_executor(Arc::new(CheckProbe { tests: vec![] })).is_ok());
+        let run = run_ace_project_tests(AceEngineChoice::AceAV, &test_req);
+        assert!(
+            matches!(&run.outcome, AceTestRunOutcome::NoTestsDiscovered { .. }),
+            "zero discovery must be a named failure, got {:?}",
+            run.outcome
+        );
+        assert_eq!(run.exit_code, 1);
+        assert!(shutdown_ace_project_executor());
+        // One discovered candidate: the run executes it through the project
+        // lane and exits zero only when it passed.
+        let discovered = AceDeclaration {
+            name: "check_one".to_string(),
+            module: "app::main".to_string(),
+            symbol: "d_check_one".to_string(),
+            params: 0,
+            ret: "int".to_string(),
+            span: Some(AceSpan { start: 0, end: 12 }),
+        };
+        assert!(install_ace_project_executor(Arc::new(CheckProbe {
+            tests: vec![discovered]
+        }))
+        .is_ok());
+        let run = run_ace_project_tests(AceEngineChoice::AceAV, &test_req);
+        assert_eq!(run.outcome, AceTestRunOutcome::Passed);
+        assert_eq!(run.exit_code, 0);
+        assert_eq!(run.discovered.len(), 1);
+        assert_eq!(run.tests[0].name, "check_one");
+        assert!(shutdown_ace_project_executor());
     }
 }
