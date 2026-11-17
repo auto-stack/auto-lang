@@ -35,7 +35,7 @@
 **语言/宿主面已验**：`#` 行注释、JSON 形整份文档（字符串键/逗号/尾逗号）、块形对象值、
 模板 `${…}`（字符串位置插值；节点头占位按 legacy 留字面）、`var` 重声明=赋值、分支/
 节点体块作用域、注入 args 作**可变全局**并**胜出**同名的文档默认 pair（被覆盖的 RHS
-**不执行**）、字面数组 `for` 展开（运行期列表仍具名 pending）、2000 层嵌套投影。
+**不执行**）、字面数组 `for` 展开（运行期列表仍具名 pending）、**≤1976 层嵌套整链投影**（2000 层在 MIR 校验由冻结的 16 MiB `VerifyMemory` 预算具名拒绝，不崩）。
 
 ## 2. 已验接口（可依赖）
 
@@ -59,7 +59,7 @@
   MIR→ABC 准入→宿主会话执行→owned 快照（4 例）。
 - `crates/auto-lang-ace-host/tests/p982_config_engine.rs` — 真桥**六段**（成功 / SDK 消费面 / 诊断 / 值预算 / context 注入 / 无桥），含 `ConfigContext.args` 注入与根属性播种。
 - `crates/auto-lang-ace-host/tests/p982_vcfg_cases.rs` — V-CFG 语言侧：SYNTAX/FLOW/CONTEXT/
-  VALUE/FAIL/LIMIT/IDENTITY + 2000 层深度（8 例）。
+  VALUE/FAIL/LIMIT/IDENTITY + 深度双档（8 例；1000 层整链服务为永久断言，2000 层只要求不崩）。
 - `crates/auto-lang-ace-host/tests/p982_pac_corpus_probe.rs` — 真实 pac 语料与 legacy 逐字
   比对（`diff.is_empty()` + `ok>=140` 断言，当前 145 OK / 0 分歧）。
 
@@ -81,7 +81,7 @@
 - **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：未支持。
 - **保留字作 pair key**（如 `tag:`）仍被当保留 token 拒绝。
 - **投影深度**：2048 处具名 `config.projection/too-deep`（递归实现；设计允许的"无固定阈值"
-  需迭代式投影，未做）。2000 层已实测通过。
+  需迭代式投影，未做）。实测 ≤1976 层可服务（1980+ 由冻结的 16 MiB 校验预算具名拒绝）；永久用例：1000 层整链 + 2000 层不崩。
 - **默认构建**：无 `ace-candidate` 特性 ⇒ 无桥 ⇒ pac 读取落 legacy，且选择可观测；把 ACE
   设为默认发行路径属 PLAN-986（安装/退役）。
 - **二阶段 context/dep**：dep props 已作为注入 args 覆盖子包文档根属性；更完整的二阶段
