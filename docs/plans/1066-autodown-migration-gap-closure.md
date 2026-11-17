@@ -1885,6 +1885,26 @@ stage: merge | review_scope: phase | plan_id: PLAN-1066 | plan_revision: r3 | ou
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 4 | from: merge | to: done(A) | status: executing（B 在途） | outcome: pass（IF-1066-A-CORRECTNESS 已交付 master 7c131286d；worktree/branch/scope 保留予 B） | next: user（B 实施另行授权启动）
 
+### 2026-11-17 B 期 work（round 1）：T-04 S 载体迁移交付（NC-08/09 控已实证，常驻接线待落）
+
+stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: partial（T-04 主体交付；整项不勾，常驻负控接线未落） | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | base: 7c131286d（A fold 交付点，主线此后仅他计划 docs/ACE 提交） | code_commit: aba42ca3a | dependency_revisions: 无跨仓 | task_ids: T-04（B-FORMAT，其中 NC-08/09 仅 scope 探针） | next_responsible_role: work（同树继续 B）
+
+**T-04 交付内容**：`crates/auto-lang/test/cases/ace-m2/scheduler/scheduler.document.case.ad`（11 例 AutoDown 文档式：`## Case:` + 内联 `### Auto` + `### Probe av-scheduler`/`#### stdout`/`#### stderr`，负例 stage+code，S11 保 message-contains）；suite 唯一 include 切到该文档，`scheduler.case.ad` 留盘作冻结历史且不再进入活跃入口。生成器逐字节取冻结 `src/*.at` 与冻结 atom 块期望（脚本 `plan-artifacts/plan-1066/probes/gen_s_doc.py`，非手抄）。
+
+**实跑门（真 consumer）**：`cargo t case-ace-m2-scheduler-968` → PASS，executed 11/11（wall 171.77s：prepare 冷建 av-worker release + auto-case；run 1.18s）；逐例 duration_ms 351～672，最大 0.672s ≪10s。standalone `auto-case run --suite scheduler.suite.ad` 1.49s 11/11（未预热工具时受同机他计划构建影响的一次侧跑另计，属资源等待非用例成本）。
+
+**新旧等价（S11 原身份）**：冻结 fence suite 镜像（只含 `scheduler.case.ad` + `src/`）与新文档 suite 各跑一次真实 consumer，`report.json` 逐行比对（脚本 `probes/compare_s_runs.py`）：11/11 case id/check id/status/detail 全同；`identity.source` 与 `identity.oracle` 内容哈希 11/11 逐例相同；native counters/toolchain 相同。仅 `identity.suite`/`identity.case_file`/`identity.contract` 三轴随载体迁移漂移 33 行——与 `docs/specs/auto-test-case/document-cases.md`「内联期望与身份」已记录的 contract/check 表示轴漂移同口径（source/oracle 内容轴不变），不冒源/期望漂移。
+
+**NC-08（scope 探针，真 auto-case；`probes/nc08_s_controls.py`）**：单轴变异各具名红——S01 stdout 去尾 LF（`final-newline: false`）→ `stdout[bytes] mismatch at byte 7`；S02 stderr 由空改非空 → `stderr[bytes] mismatch at byte 0`；exit 0→1 → `exit[exit] mismatch`；S09 code 错 → `code[code] mismatch`；S11 message-contains 不命中 → 红。未变异镜像 11/11 绿且与真文档逐字节同。单控 ≈1.5s。
+
+**NC-09（scope 探针，活跃入口作者格式扫描；`probes/active_entry_scan.py`+`nc09_scan_controls.py`）**：真实树 76 个 `suite` 组、183 个被 include 的 case 文件 → document 183 / fence 0 / unknown 0（T-04 切换后旧围栏已零活跃入口，与 r2「75组」表述的差额正是本任务补的 scheduler）。控：suite 仍 include 旧 fence 文件、新增旧格式组、被投毒文件三种各自具名定位到 group/suite/case；文档式镜像绿。扫描 0.6s。
+
+**未闭/下一手**：①T-04 整项待两件事——NC-08/09 由 scope 探针提为常驻门（决定：按 `test_case_pilot_ace.py` 先例落一个显式 ACE python 组 `tools=[case-parent,av]` 承载 CLI 级控，NC-09 扫描落 `scripts/test-governance/` 并入 `infra-fixed`），以及 AC-03 逐项证据表；②T-03[B]/T-05/T-06/T-07[B]/T-08[B]/T-09[B]/T-10[B]/T-11[B] 未开工（A 已冻结的 1050 分母与四家族旧文件读取路径仍在：`test_runner::discover_*` 仍按 `.at`/`.expected.*` 存在性选例、`entry::run_*_file_test_impl` 仍直接读旧源/旧 expected、a2r/a2c/a2ts 仍写 `.wrong.*` 到作者树、VM cache `is_script` 仍由旧 `.as` 文件判、cookbook108/506 缓存与 v2 治理未切）。③本 Plan 13 任务仍 0 勾（T-04 只闭其中载体+控的实证）。
+
+**同机资源**：本轮起跑前观测到 977/1067/727 等旁会话 cargo/nextest 构建并发；S 门与侧跑均在真实竞争下完成，已按实测记录（准备/执行分列）。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 1 | from: work | to: work | status: executing | outcome: partial（T-04 载体迁移+等价+NC-08/09 scope 实证已交 aba42ca3a；常驻控接线与 T-03[B] 起未开） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: aba42ca3a | next: work（B 期继续：常驻 NC-08/09 接线 → T-03[B] doc-only 发现/执行切换）
+
 ## 10. 待澄清事项
 
 四类补漏范围/原oracle/副作用边界已明确，无需用户先决定日常与显式编译的常规实现细节。T-02有界确定共享资格表达、public structs兼容与唯一proposal入口（不得保旧fallback）；真实不可行性在本Plan具名修约，不拆后继/不缩水。1061环境与外仓owner不阻Windows迁移，NOT_RUN不冒通过。原语义/编译债务保持独立，不用两侧同FAIL充功能绿。
