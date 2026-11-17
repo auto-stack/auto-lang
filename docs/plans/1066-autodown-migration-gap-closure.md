@@ -2015,6 +2015,8 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-07 整�
 
 **外仓边界（记 debt）**：`book_listing_tests::generate_book_expected` 仍是未 ignore 的生成器并写 `book/` 仓（非本仓作者根，本计划边界明确不转 book）；登记 D-1066-BOOK-GENERATOR，owner=book listing 线。
 
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 8 | from: work | to: work | status: executing | outcome: pass（T-07 关闭：773d01438+72b449829；proposal 30/30=文档 oracle、旁路全清+静态负控；13任务 5/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 72b449829 | next: work（T-08 余量 → T-09 全路径重扫 → T-10 27NC → T-11 并集）
+
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 9 | from: work | to: work | status: executing | outcome: pass（T-08 关闭 670f5aa7f；T-09 首片 d0c7fb1a1；13任务 6/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: d0c7fb1a1 | next: work（T-09 全路径重扫余量 → T-10 27NC → T-11 并集）
 
 ### 2026-11-17 B 期 work（round 9）：T-08 关闭（VM 库存/verifier 文档化 + 活跃门）+ T-09 首片

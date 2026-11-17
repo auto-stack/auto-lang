@@ -4774,7 +4774,7 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 现象：`scripts/test-governance/input_inventory.py::verify_inputs` 用 `case["source_path"]`（`.at`）与 `.expected.out/.result` sidecar 重算 oracle 再比对；文档权威后该重算对 10 个 doc-only 条目必然失配。当前**无任何调用者**（全仓 grep 仅定义，`fixed-tests.py` 只调 `discover_inputs`/`attach_inputs`），故不是活跃回读路径，不构成本轮红。
 - 归属：PLAN-1066 T-08 治理 v2（input_inventory owner）。
 - 关闭条件：改为按文档重算（或改为比对 inventory 工具输出的文档 hash 而非 sidecar 字节），并接回一个明确门；或正式退役该函数并在 README 记明理由。
-- 状态：open（不阻塞 T-06/T-08 身份切片；T-11 联合门前处置）。
+- 状态：**closed（2026-11-17 PLAN-1066 round 9，670f5aa7f）** —— `verify_inputs` 改为按文档重算（`_document_channel` 解码 vm-stdout/vm-result/final-newline 与 error 存在性），并接入 `scripts/fixed-tests.py::source_bindings` 成为每轮 wrapper 组都会跑的**活跃门**；`input_paths` 收敛为「文档=唯一 input edge」。实测 vm 950/0、vm corpus 1138/0、a2r 432/0、corpus 240/0、auto-test-case 151/0 全绿。
 
 ## D-1066-BOOK-GENERATOR — 外仓 book 列表的生成器仍在日常组注册（2026-11-17 PLAN-1066 T-07 work 登记）
 
