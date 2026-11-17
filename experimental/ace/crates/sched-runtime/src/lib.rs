@@ -256,6 +256,11 @@ struct Task {
     /// PLAN-1067 review R-1067-1: the drain joined this chain (one join per
     /// chain; the drain loop re-snapshots until every chain carries it).
     joined: i32,
+    /// PLAN-1067 review2 N-1067-1: the drain already delivered this chain its
+    /// stop signal. Set in the SAME cycle that joins it, so a chain created
+    /// while the drain is running is never joined while still parked (the old
+    /// `thread.is_null()` guard was never true for a live task).
+    stopped_marked: i32,
     queue: *mut Mail,
     thread: *mut c_void,
     lock: SrwLock,
@@ -1079,38 +1084,27 @@ pub extern "system" fn mn_sched_drain() -> i32 {
             let mut port_to_close: *mut Port = null_mut();
             reg_lock();
             let tasks = &*addr_of_mut!(TASKS);
-            // Stop every live task (new ones included) so its loop exits after
-            // the buffered deliveries; wake both of its waiters.
-            if task_slot < MAX_TASKS {
-                while task_slot < MAX_TASKS {
-                    let i = task_slot;
-                    task_slot += 1;
-                    let task = tasks[i];
-                    if task.is_null() {
-                        continue;
-                    }
-                    AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
-                    (*task).stopped = 1;
-                    ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
-                    wake_all(addr_of_mut!((*task).cv_not_empty));
-                    wake_all(addr_of_mut!((*task).cv_not_full));
+            // PLAN-1067 review2 N-1067-1: EVERY task record present in this
+            // cycle is stopped BEFORE it can be joined — including a task that
+            // a chain started while the drain was already running. The mark is
+            // per record, so each chain is stopped exactly once and no chain is
+            // ever joined while still parked in recv (that omission hung the PE
+            // until the host run budget killed it).
+            let mut sweep = 0usize;
+            while sweep < MAX_TASKS {
+                let task = tasks[sweep];
+                sweep += 1;
+                if task.is_null() || (*task).stopped_marked != 0 {
+                    continue;
                 }
-            } else {
-                // Already stopped + collected: only accept a NEW task that
-                // appeared after the first pass.
-                let mut i = 0usize;
-                while i < MAX_TASKS {
-                    let task = tasks[i];
-                    if !task.is_null() && (*task).running != 0 && (*task).thread.is_null() {
-                        AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
-                        (*task).stopped = 1;
-                        ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
-                        wake_all(addr_of_mut!((*task).cv_not_empty));
-                        wake_all(addr_of_mut!((*task).cv_not_full));
-                    }
-                    i += 1;
-                }
+                (*task).stopped_marked = 1;
+                AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
+                (*task).stopped = 1;
+                ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
+                wake_all(addr_of_mut!((*task).cv_not_empty));
+                wake_all(addr_of_mut!((*task).cv_not_full));
             }
+            let _ = task_slot;
             // Take ONE handle to join this cycle (task chains first).
             let mut i = 0usize;
             while i < MAX_TASKS {

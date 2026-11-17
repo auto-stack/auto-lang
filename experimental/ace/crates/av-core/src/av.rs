@@ -6422,6 +6422,7 @@ fn dispatch_with_host<V: ModuleView>(
                             queue: std::collections::VecDeque::new(),
                             stopped: false,
                             closed: false,
+                            recv_real: false,
                         });
                     }
                     st.sched_spawned.push(SchedSpawnReq {
@@ -6720,6 +6721,7 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                     if let Some((m, port)) = t.tasks[ti].queue.pop_front() {
                         st.sched_reply_port = port;
+                        t.tasks[ti].recv_real = true;
                         drop(t);
                         if let Err(out) = commit_slot_write(st, *dst as usize, m, limits) {
                             return Some(out);
@@ -6764,8 +6766,26 @@ fn dispatch_with_host<V: ModuleView>(
                             "sched.stopping outside a task driver function".into(),
                         ));
                     };
-                    let t = tables_arc.lock().expect("sched tables");
-                    let stopped = ti < t.tasks.len() && t.tasks[ti].stopped;
+                    // PLAN-1067 review2 N-1067-3: a stop request never
+                    // discards buffered deliveries. `stopping()` reports true
+                    // only when the mailbox is EMPTY; otherwise the driver
+                    // keeps receiving (the frozen "buffered messages deliver
+                    // first, the stop hook runs after the drain" rule that the
+                    // native and a2r lanes implement).
+                    let mut t = tables_arc.lock().expect("sched tables");
+                    // A just-delivered REAL message masks stopping for exactly
+                    // one check, then the closing handoff reports it.
+                    if ti < t.tasks.len() && t.tasks[ti].recv_real {
+                        t.tasks[ti].recv_real = false;
+                        drop(t);
+                        let res = Value::Bool(false);
+                        if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                            return Some(out);
+                        }
+                        continue;
+                    }
+                    let stopped =
+                        ti < t.tasks.len() && t.tasks[ti].stopped && t.tasks[ti].queue.is_empty();
                     drop(t);
                     let res = Value::Bool(stopped);
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
@@ -7612,6 +7632,10 @@ struct SchedTaskSlot {
     queue: std::collections::VecDeque<(Value, i32)>,
     stopped: bool,
     closed: bool,
+    /// PLAN-1067 review2 N-1067-3: a REAL delivery masks `stopping()` for
+    /// exactly one check (the a2r/native handoff order: the message
+    /// dispatches first, the closing handoff reports stopping next).
+    recv_real: bool,
 }
 
 /// One ask reply port.

@@ -30,13 +30,13 @@ panic/unwind 符号上冲突。
 | 能力 | 状态 | 实现要点 |
 |---|---|---|
 | `task` 声明/驱动 | ✓ | 共享 desugar 合成 `__task_<Name>(__init…) int`（start/stop 钩子＋`while true` 收/分派环）；本车道按 callee 表为每个 callee 生成 unit-local spawn thunk（`ac1067tk.<owner>.<unit>.<idx>`），解包实参后调 driver 自己的 unit 符号 |
-| `Task.spawn(name, cap, inits…)` | ✓ | 真实 OS 线程（`CreateThread`）＋有界 FIFO 邮箱（`SRWLOCK`+`CONDITION_VARIABLE`）；handle 为 1 基 i32；容量实参即邮箱上界（**≥1**，0 为具名语言错误，三端一致） |
+| `Task.spawn(name, cap, inits…)` | ✓ | 真实 OS 线程（`CreateThread`）＋有界 FIFO 邮箱（`SRWLOCK`+`CONDITION_VARIABLE`）；handle 为 1 基 i32；容量实参即邮箱上界（**≥1**，0 为具名语言错误，三端一致）；**仅可在程序入口 `main` 中调用**，driver/helper 内为具名前门拒绝（三端同规则） |
 | `send` | ✓ | FIFO 投递；邮箱满则**发送者阻塞**（背压），无忙等；对已 stop/closed 任务为具名语言错误 |
 | `ask` / `reply` / `await` | ✓ | 1 基单消费者回复端口；`reply` 仅在处理 ask 消息时合法；`await` 阻塞直到发布；端口单终态提交（迟到/重复 reply 丢弃，不复活） |
 | `go f(…)` | ✓ | 无邮箱、无 handle 的一次性线程；退出时 join |
 | `sleep(ms)` | ✓ | 真实 OS 睡眠分片（每 10ms 检查 drain/stop）；drain 期立即完成（AV 同规则） |
 | `stop` | ✓ | 置 stop 标志并唤醒；**缓冲消息仍先投递**，stop 钩子在邮箱耗尽后执行 |
-| 有序退出 | ✓ | 包装器在 entry 返回后调 `mn_sched_drain`：置 drain/stop→**循环重扫并 join**（drain 期间由 stop 钩子或缓冲消息处理合法启动的新链也会被 join，直到无未 join 链）→释放邮箱/端口/线程参数→审计；残值非零则**具名退出 72**（`sched.leak`），绝不冒成功 |
+| 有序退出 | ✓ | 包装器在 entry 返回后调 `mn_sched_drain`：**每一轮扫描先对本轮发现的所有任务记录置 stop（每记录一次），再 join 一个链**，循环直到无未 join 链（drain 期间由 stop 钩子/缓冲消息处理合法启动的 `go` 链也会被 join；`Task.spawn` 入口限定使"drain 期间新建 TASK"这一状态不可达）→释放邮箱/端口/线程参数→审计；残值非零则**具名退出 72**（`sched.leak`），绝不冒成功 |
 | 值类型跨交接 | ✓ i32/bool/owned `Str` | `SchedVal`＝{tag 0=i32, 1=bool, 2=owned text(ptr,len), spare}；owned text 在交接点**物化**（`ac_rt_own_clone_quiet` 走内嵌 owned-text 分配器），接收方 `ac_rt_own_free`/出口 sweep 释放 |
 | 语言错误通道 | ✓ | `mn_sched_fail(code)` 写冻结消息到 stderr 后 `ExitProcess(70)`（=native trap 类）；与 AV 的 `ExecOutcome::Error` 同文本、不同通道（沿 [m2-control-effects](../ace-migration/m2-control-effects.md) 的既有分类差异） |
 | console/1 `print` | ✓ | 调度单元的 `HostCall` 准入并链 console shim；owned-text runtime 的观察 trace 行由包装器在 entry 前关闭，stderr 与 AV 逐字节一致 |
@@ -48,7 +48,7 @@ panic/unwind 符号上冲突。
   `sched: task closed without replying`（native：stderr＋70；AV/A2R：同名错误），**不会自旋到 fuel 上限**。
 - **迟到结果**：reply 在端口已被消费后到达则丢弃并释放其物化缓冲；不复活旧实例。
 - **stop 与在途消息**：stop 不清空邮箱；驱动先消费缓冲消息，`stopping()` 仅在邮箱空时报告停止
-  （一次真实投递会遮蔽一次检查，沿 A2R 同序）。
+  （一次真实投递遮蔽一次检查；**AV 亦按此规则**：`send(1); ask(2); stop()` → `one\ntwo\n2`）。
 - **资源**：任务记录、邮箱、端口、线程参数、物化文本全部计入审计；drain 后非零即退出 72。
 
 ## 4. 依赖与 ABI 审计
@@ -69,7 +69,7 @@ panic/unwind 符号上冲突。
 
 | 证据 | 入口 | 观测 |
 |---|---|---|
-| 8 正例逐字节＋零残值 | `cargo test -p ace-native --test sched_m2_1067 scheduler_corpus_runs_native_byte_exact` | `got one\\n` / `mycounter: 15\\n` / `got two\\ngot one\\n` / `reply:\\n42\\n` / `go:\\n7\\n` / `1\\n2\\n3\\n` / `one\\nstopped\\n` / `main\\nlater\\n`；exit 0、stderr 空 |
+| 8 正例逐字节＋零残值 | `cargo test -p ace-native --test sched_m2_1067 scheduler_corpus_runs_native_byte_exact` | `got one\n` / `mycounter: 15\n` / `got two\ngot one\n` / `reply:\n42\n` / `go:\n7\n` / `1\n2\n3\n` / `one\nstopped\n` / `main\nlater\n`；exit 0、stderr 空 |
 | owned 值跨交接 | 同上 `scheduler_owned_text_state_crosses_spawn`、`scheduler_typed_reply_crosses_the_await` | `my\n`（owned Str 状态）、`true\n`（bool reply 跨 await） |
 | 终态/资源 | `scheduler_await_on_unreplied_ask_is_a_named_error`、`scheduler_unawaited_reply_is_released_at_drain`、`scheduler_exit_drain_releases_every_outstanding_owner` | trap 70＋具名消息、exit 0 零残值、<10s 收敛 |
 | 真实 OS 等待 | `scheduler_sleep_is_a_real_os_wait` | PE 墙钟 ≥35ms（no-op 睡眠会是个位数 ms） |

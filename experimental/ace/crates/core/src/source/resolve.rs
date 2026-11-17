@@ -14999,14 +14999,24 @@ impl<'a, 's> FnResolver<'a, 's> {
                 // scheduler-surface boundary. NOTE: this must not go through
                 // `task_of_driver` — that helper reports its own "only legal
                 // inside a driver" error for every ordinary caller.
-                let inside_driver = surface
-                    .tasks
-                    .iter()
-                    .any(|t| t.driver_fn == self.owner_name);
+                let inside_driver = surface.tasks.iter().any(|t| t.driver_fn == self.owner_name);
                 if inside_driver {
                     self.bind_err(
                         "source.sched-task",
                         "`Task.spawn` inside a task driver is not part of the scheduler surface",
+                        call_span,
+                    );
+                    return named_i32(call_span);
+                }
+                // PLAN-1067 review2 N-1067-9: the same boundary applies to any
+                // non-entry function (a plain helper reached from `main` or from
+                // a driver): the backend's callee table is built for the entry
+                // unit, so such a call surfaced as an unnamed lowering error.
+                // One named rule for every non-entry position.
+                if self.owner_name != "main" {
+                    self.bind_err(
+                        "source.sched-task",
+                        "`Task.spawn` is only legal in the program entry (`main`)",
                         call_span,
                     );
                     return named_i32(call_span);

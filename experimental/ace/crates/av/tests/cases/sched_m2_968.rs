@@ -334,3 +334,41 @@ fn main() {
         Err(e) => panic!("compile failed: {e} for source:\n{src}"),
     }
 }
+
+/// PLAN-1067 review2 N-1067-3 (parity repair): an explicit `stop()` never
+/// discards buffered deliveries. The queued ask must still be received and
+/// answered before the stop hook runs — the same outcome the native lane gives
+/// for this input (`one\ntwo\n2\n`).
+#[test]
+fn stop_keeps_buffered_deliveries() {
+    let src = r#"
+task Q {
+    on {
+        1 -> {
+            print("one")
+        }
+        2 -> {
+            print("two")
+            reply(2)
+        }
+    }
+}
+fn main() {
+    let q = Task.spawn("Q", 2)
+    q.send(1)
+    let p = q.ask(2)
+    q.stop()
+    let v = await p
+    print(v)
+}
+"#;
+    match run_sched(src) {
+        Ok((ExecOutcome::Success { .. }, stdout)) => {
+            assert_eq!(stdout, "one\ntwo\n2\n", "buffered deliveries dropped");
+        }
+        Ok((other, stdout)) => panic!(
+            "expected success with both deliveries, got {other:?} (stdout {stdout:?}) for source:\n{src}"
+        ),
+        Err(e) => panic!("compile failed: {e} for source:\n{src}"),
+    }
+}

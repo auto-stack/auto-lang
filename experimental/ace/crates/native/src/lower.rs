@@ -682,7 +682,7 @@ struct FnLowerer<'a, 'b> {
     /// PLAN-1067: the scheduler lane's callee table + runtime helper refs.
     sched_ctx: Option<&'a SchedCtx>,
     sched_refs: BTreeMap<&'static str, FuncRef>,
-    sched_callee_refs: BTreeMap<u32, Value>,
+    sched_callee_refs: BTreeMap<u32, FuncRef>,
     blocks: Vec<cranelift_codegen::ir::Block>,
 }
 
@@ -3822,9 +3822,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     /// initializer words and calls the driver's own unit symbol, then
     /// returns 0. The thunk is unit-local (unique owner/unit/callee symbol),
     /// so it never joins the unit's declared import set.
-    fn sched_thunk(&mut self, callee: u32, info: &SchedCallee) -> Result<Value, String> {
-        if let Some(addr) = self.sched_callee_refs.get(&callee) {
-            return Ok(*addr);
+    fn sched_thunk(&mut self, callee: u32, info: &SchedCallee) -> Result<FuncRef, String> {
+        // PLAN-1067 review2 N-1067-2: the cache holds the thunk FuncRef, not a
+        // `func_addr` Value. A callee reached from two call sites in DIFFERENT
+        // blocks must materialize its address in each block, otherwise the
+        // cached value loses SSA dominance (the verifier rejected exactly that
+        // when a stop hook inlined twice emitted two `go` sites).
+        if let Some(reference) = self.sched_callee_refs.get(&callee) {
+            return Ok(*reference);
         }
         let mut driver_sig = Signature::new(self.conv);
         for p in &info.params {
@@ -3900,9 +3905,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             .map_err(|e| format!("define scheduler thunk `{thunk_sym}`: {e}"))?;
         self.om.clear_context(&mut ctx);
         let thunk_ref = self.om.declare_func_in_func(thunk_id, self.fb.func);
-        let addr = self.fb.ins().func_addr(types::I64, thunk_ref);
-        self.sched_callee_refs.insert(callee, addr);
-        Ok(addr)
+        self.sched_callee_refs.insert(callee, thunk_ref);
+        Ok(thunk_ref)
     }
 
     /// Marshal one spawn initializer list into a stack `SchedVal` array
@@ -3948,7 +3952,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 dst,
             } => {
                 let info = self.sched_callee(*callee)?;
-                let thunk = self.sched_thunk(*callee, &info)?;
+                let thunk_ref = self.sched_thunk(*callee, &info)?;
+                let thunk = self.fb.ins().func_addr(types::I64, thunk_ref);
                 let cap = self.fb.use_var(self.v_scalar(*capacity)?);
                 let (base, argc) = self.sched_args(args, &info)?;
                 let status = self.sched_call("mn_sched_spawn", &[cap, thunk, argc, base])?;
@@ -3957,7 +3962,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             }
             I::SchedGo { callee, args } => {
                 let info = self.sched_callee(*callee)?;
-                let thunk = self.sched_thunk(*callee, &info)?;
+                let thunk_ref = self.sched_thunk(*callee, &info)?;
+                let thunk = self.fb.ins().func_addr(types::I64, thunk_ref);
                 let (base, argc) = self.sched_args(args, &info)?;
                 let status = self.sched_call("mn_sched_go", &[thunk, argc, base])?;
                 self.sched_guard(status, false)

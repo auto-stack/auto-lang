@@ -670,8 +670,8 @@ fn scheduler_candidate_audit_rejects_a_mutant_dependency() {
 /// the registry lock, so publication and thread creation must happen under
 /// that same lock — otherwise the chain is created after the snapshot, never
 /// joined, leaks its argument blocks and reports a spurious residue (exit 72)
-/// while its output races `ExitProcess`. Twenty consecutive runs must all be
-/// byte-exact with exit 0.
+/// while its output races `ExitProcess`. Ten consecutive runs must all be
+/// byte-exact with exit 0 (and stay inside the per-case 10 s budget).
 #[test]
 fn scheduler_go_from_task_handler_survives_the_drain() {
     let src = r#"
@@ -688,7 +688,9 @@ fn main() {
     a.send(5)
 }
 "#;
-    for run_index in 0..20 {
+    // PLAN-1067 review2 N-1067-5: ten repetitions (the review minimum) keep
+    // this case inside the 10 s budget even in the parallel gate run.
+    for run_index in 0..10 {
         let observed = run_source(&format!("go-from-task-{run_index}"), src);
         assert_eq!(
             observed.exit,
@@ -810,5 +812,152 @@ fn main() {
         err.message.contains("inside a task driver"),
         "message must name the boundary: {}",
         err.message
+    );
+}
+
+/// N-1067-1 (review2, new regression): a chain that starts ANOTHER chain while
+/// the exit drain is already running must be joined AND stopped — the earlier
+/// drain joined such a chain without stopping it, so a TASK created there
+/// parked in `recv` and the PE hung until the host budget killed it
+/// (`mn.infra … Deadline`). `Task.spawn` is now entry-only (named front-end
+/// rule), which removes that state; this case pins the remaining legal shape
+/// (`go` starting `go` during the drain).
+#[test]
+fn scheduler_spawn_during_the_drain_terminates() {
+    // The chain started during the drain is a `go` chain: `Task.spawn` is
+    // entry-only on this surface (named front-end rule), so a TASK can no
+    // longer be created mid-drain at all — the state that used to park
+    // forever is unreachable. A `go` chain discovered late must still be
+    // stopped (sleeps complete immediately) and joined.
+    let src = r#"
+fn inner() {
+    print("late")
+}
+fn boot() {
+    sleep(200)
+    go inner()
+}
+fn main() {
+    go boot()
+}
+"#;
+    let (observed, elapsed) = run_timed("chain-during-drain", src);
+    assert_eq!(
+        observed.exit,
+        Some(0),
+        "a chain discovered during the drain must terminate cleanly: {observed:?}"
+    );
+    assert_eq!(
+        observed.stdout, "late\n",
+        "the late chain's output is missing"
+    );
+    assert_eq!(observed.stderr, "", "stderr noise");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "drain must not hang on a chain it discovered late: {elapsed:?}"
+    );
+}
+
+/// N-1067-2 (review2 major): a `go` issued from a task's STOP HOOK must build
+/// and run. The desugar inlines the stop body twice (pre-/post-receive), so the
+/// same callee is reached from two different blocks — the thunk address has to
+/// be materialized per site instead of reusing a cached value from the first
+/// block (that lost SSA dominance and made the whole driver unverifiable).
+#[test]
+fn scheduler_go_from_stop_hook_runs() {
+    let src = r#"
+task S {
+    fn stop() ! {
+        go tick()
+    }
+    on {
+        1 -> {
+            print("one")
+        }
+    }
+}
+fn tick() {
+    print("tick")
+}
+fn main() {
+    let h = Task.spawn("S", 16)
+    h.send(1)
+}
+"#;
+    let (observed, elapsed) = run_timed("go-from-stop-hook", src);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(
+        observed.stdout, "one\ntick\n",
+        "stop-hook chain output drift (message first, then the hook's chain)"
+    );
+    assert_eq!(observed.stderr, "", "stderr noise");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "the stop-hook chain must be joined, not hang: {elapsed:?}"
+    );
+}
+/// N-1067-9 (review2 minor, R-11 full closure): the same named boundary holds
+/// for a `Task.spawn` in a plain helper (not only directly in a driver), so it
+/// can never resurface as an unnamed backend callee-table error.
+#[test]
+fn scheduler_spawn_in_helper_is_a_named_frontend_rejection() {
+    let src = r#"
+task B {
+    on { n int -> {
+    } }
+}
+fn boot() {
+    let b = Task.spawn("B", 4)
+}
+fn main() {
+    boot()
+}
+"#;
+    let err = ace_native::sched::sched_compile(src, "d_main")
+        .expect_err("spawn in a helper must be rejected");
+    assert_eq!(err.code, "source.sched-task", "helper-spawn diagnostic");
+    assert!(
+        err.message.contains("only legal in the program entry"),
+        "message must name the entry boundary: {}",
+        err.message
+    );
+}
+
+/// N-1067-3 native leg (review2): an explicit `stop()` keeps buffered
+/// deliveries; the queued ask is still answered. Same source and byte-exact
+/// expectation as the AV case (`one\ntwo\n2\n`).
+#[test]
+fn scheduler_stop_keeps_buffered_deliveries() {
+    let src = r#"
+task Q {
+    on {
+        1 -> {
+            print("one")
+        }
+        2 -> {
+            print("two")
+            reply(2)
+        }
+    }
+}
+fn main() {
+    let q = Task.spawn("Q", 2)
+    q.send(1)
+    let p = q.ask(2)
+    q.stop()
+    let v = await p
+    print(v)
+}
+"#;
+    let (observed, elapsed) = run_timed("stop-with-queue", src);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(
+        observed.stdout, "one\ntwo\n2\n",
+        "buffered deliveries dropped"
+    );
+    assert_eq!(observed.stderr, "", "stderr noise");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "stop with a queued ask must terminate: {elapsed:?}"
     );
 }

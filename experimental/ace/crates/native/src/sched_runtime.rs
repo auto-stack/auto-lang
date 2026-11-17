@@ -167,6 +167,13 @@ pub fn prepare() -> Result<Prepared, MnError> {
         .join("target")
         .join(config::MN_TARGET)
         .join("runtime-release/ac_sched_runtime.lib");
+    // PLAN-1067 review2 N-1067-4: the lock lives next to the artifact cargo
+    // will build, so its directory may not exist yet on a cold target tree
+    // (`cargo clean`, fresh clone, CI). Create it before locking; the build
+    // itself runs after this point.
+    if let Some(parent) = library.parent() {
+        std::fs::create_dir_all(parent).map_err(io)?;
+    }
     let _lock = CrossProcessLock::acquire(&library)?;
     let runtime = root.join("crates/sched-runtime");
     let text = root.join("crates/text-runtime");
