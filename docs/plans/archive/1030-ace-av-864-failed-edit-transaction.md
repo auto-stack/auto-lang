@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 4
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resident-online-reload.md, docs/specs/auto-ac/source-collections-variants.md]
@@ -249,7 +249,7 @@ A=上源，独立结果6；B仅改get(1)，两次连续edit(B)都必须返回受
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（消费者重扫=仅三例；`cargo t ace-av` 1348/1348；SD-01/02 + 归属文档 C8 已在实施树备好待 merge 沉淀；G1002 分流不变）
 - [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。（2026-11-17 final pass @025298412；逐 AC/Case 读断言、`fps` 唯一写点核对、warning/format/打印健康检查、SD 目标 finalize、域外缺陷登记 D-1030-01；见 §9 复审收据）
 - [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
 
@@ -260,7 +260,7 @@ A=上源，独立结果6；B仅改get(1)，两次连续edit(B)都必须返回受
 | T-03 / work | [x] T-02 | 运行失败→失败重试→修复→hit序列、原三成功例与持久化恢复；核旧snapshot可执行、Arc/身份及成功/attempt计数分账。 AC-02/03 |【2026-11-17】红相 4 FAILED（修前）→绿；`cargo t ace-av` PASS 1348/1348；新例 0.03–0.26 s；见 §6/§9 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04 |【2026-11-17】final pass @025298412：逐 AC/Case/代码/Spec 核验；3 项发现（2 非阻塞 + 1 簿记已 finalize）；域外缺陷登记 D-1030-01；见 §9 |
 | T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06 |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -363,7 +363,9 @@ PLAN-1030:r3 | stage: merge | outcome: pass（交付完成） | completion_kind:
 | gate | 冻结并集门在交付代码身份上重跑：`cargo t ace-av` @8557cf8ad → `PASS: ace-av`，executed=1349 / ok=1349 / failed=0 / not_run=0 / native_unselected=0 / errors=0，wall 343.0 s（工具预构建 case-parent 79.9、av 53.5、abi 58.1、ac 34.8 等；执行 73.6 s；发现 27.7 s），`source_state=9a23e51f9b8fd279…`；4 个新例 0.0481 / 0.0653 / 0.1708 / 0.1906 s。8557cf8ad 与交付 3419493bf 的 `experimental/`+`docs/specs/` 树相同（上述哈希逐文件相等）→ 证据绑交付身份 |
 | smoke（main） | 落地后主检出 `cargo test -p ace-av --lib audit1030` → 3 passed / 0 failed，30.4 s（只跑 lib，避开主检出他人 WIP 的 conformance 用例文件）；主检出于本改动 known-good |
 | archived | `docs/plans/archive/1030-ace-av-864-failed-edit-transaction.md`，`status: archived`；链接按新父目录重写并逐条 `Test-Path` 通过（5 条 `../../../…`、2 条同目录 `1024-…`；1024 的 `quality-route-20261117` 锚点在 L3415）；文档已提交默认分支 |
-| cleaned | 见下方收据（本轮 cleanup 步骤完成后回填） |
+| cleaned | `git worktree remove D:/autostack/.wt/lang-1030/auto-lang` exit 0；`git branch -d plan-1030-dev`（was 3419493bf）；组目录 `D:/autostack/.wt/lang-1030` 空后删除；`git worktree list` / `git branch --list 'plan-1030*'` 均无残留；删除前刚跑 `wt-guard.ps1` = clean；`plan-artifacts/plan-1030/` 整目录删除（摘要先折入本文件，见下）；两份登记表刷新（`D:/autostack/auto-lang/.retention/policy.json`、`D:/autostack/plan-artifacts/.retention/policy.json`）；无具名问题持有 |
+
+**证据清单与删除（2026-11-17 merge 收尾）**：`plan-artifacts/plan-1030/` 共 14 文件 / 199,990 B，全部内容已按 §6/§9 摘要折入本文件，随后整目录删除（只有摘要存活，无未解决问题持有）。删除前 SHA256 前 16 位：`red-lib-audit1030.log` 21260146ab5befcd（5,256 B）、`red-integration-audit1030.log` e49302c896152fd1（14,612 B）、`green-lib-audit1030.log` a6c739035c84ff98（3,639 B）、`gate-ace-av.log` f585847f664bd23d、`gate-ace-av-rebased.log` a617ee1f4af9c3f9、`persist-keyconflict.log` 10f679b0e440210a（411 B）、`collections_864_session.fixed.rs` 2314a34bd2fbe861（17,145 B，与落地文件同内容）、`fmt-unrelated-backup/*`（7 文件，均已 `git restore --source=HEAD` 还原，无需保留）。
 
 **批次回归到期核对**：`docs/plans/.last-batch-regression.json` = `last_covered_plan_id 1064` / `2026-11-16T10:04:09Z` / `cargo t all`。本 Plan 1030 **未到期**：1030 < 1064，不满足“%5=0 且晚于 last_covered_plan_id 落地”；收据 31 h < 48 h。故不需 regress，记“not due”。
 
