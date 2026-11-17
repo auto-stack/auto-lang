@@ -47,6 +47,7 @@ use auto_lang_core::{
 mod debug;
 /// PLAN-982（B-CONFIG-I E6）：配置文档桥（AceExecutor::eval_config）。
 pub mod config_document;
+pub mod rust_transpile;
 pub mod project;
 pub mod session_bridge;
 
