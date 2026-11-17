@@ -4702,3 +4702,43 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 归属：PLAN-969 / infra-fixed 治理线。
 - 关闭条件：更新该断言（或把 `ace-facade` 从集合移除）并在主检出单实例重跑 `cargo t infra-fixed` 真实绿。
 - 状态：open（不阻塞 1066 树内工作；T-11 联合门/批量回归前须处置）。
+
+## D-971-B-01 — 测试发现契约的 helper 假阳性（2026-11-17 PLAN-971 B 复审 F-5 登记）
+
+- 现象：B 期冻结的发现契约=零参 `int` 声明（排除入口 `main`、跳过 `__init`），ACE 源面无 `#[test]` 注解。库模块里合法的零参 `int` helper（如 `fn version() int { return 3 }`）会被当作测试执行，返回非零即整轮失败；已有永久用例 `p971_tool_face.rs` §7 记录该行为，不是静默缺陷。
+- owner：语言侧发现面（ACE `#[test]` 属性面或发现收窄）；本工具包只按冻结契约消费。
+- 关闭条件：语言侧提供属性面或收窄契约并补正反控（helper 不被执行、真测试仍被发现），本包同步更新 §5 冻结记录与用例。
+- 状态：open（不阻塞 PLAN-971 当前切片；merge 与批量回归继续具名记录）。
+
+## D-971-B-02 — Notebook 无 console 通道（print 单元格具名拒绝）（2026-11-17 PLAN-971 B 复审 F-3 登记）
+
+- 现象：Playground notebook 会话走 970 `ace_session` 标量车道，无 console 通道：`print("hi")` 单元格得到具名 producer 诊断且 `stdout` 为空（`p971_notebook_console_boundary_is_named` 固定该行为）。旧 legacy REPL 的 stdout 捕获已随接管移除。
+- owner：语言侧 console/项目面（970 session 车道扩展）；本包不在消费者伪造 stdout。
+- 关闭条件：session 车道提供 console 捕获或明确的 stdout 契约，并补“print 单元格输出可见”的正控；本包同步记录。
+- 状态：open（不阻塞 V-04 隔离结论；属行为边界而非回退）。
+
+## D-971-B-03 — Playground 脚本式 run/debug 前门被语言面阻断（2026-11-17 PLAN-971 B 复审§10 登记）
+
+- 现象：包/项目道拒绝表达式语句（`check_ace_project("fn main() int { print(\"hi\")\n return 0 }")` → `stage:text, source.unsupported`），console 仅存在于独立单模块 `host-console` profile；而 Playground demo/前端是脚本式源（顶层 `let`/`print`、尾表达式、冒号导入）。legacy 路由（`code_runner`/`vm_runner`/`agent_debug`/`debugger`）仍在服务它们。
+- owner：语言侧（项目/包道的表达式语句＋console/脚本形态）；本包§5 点名义务是 notebook（已交）。
+- 关闭条件：语言面扩展落主后，按 WS 载荷/前端契约迁移四条前门并补真实用例；在此之前不记 PASS。
+- 状态：open（是否计入本包 B 完成条件见 PLAN-971 §10 待裁定）。
+
+## D-971-B-04 — debug/test 工具面目前只有 fixture 消费者（2026-11-17 PLAN-971 B 复审 AC-03 登记）
+
+- 现象：`start_ace_debug` 与 `run_ace_project_tests` 只在参考宿主与永久 fixture 中被消费；生产 UI（Playground debug 面板、测试面板）仍走 legacy。LSP 诊断与 Playground notebook 已是真实 ACE 消费者。
+- owner：PLAN-971 §10 裁定（A：把这些前门计入本包→需语言面计划；B：按§5 命名义务收口并另立后继）。
+- 关闭条件：裁定落定后按结论 Either 接入真实消费者并补端到端用例，或在本次修订中把 AC-03 消费者措辞收窄并迁移义务到具名后继。
+- 状态：open（**阻断 AC-03/T-03 收口**；T-03 保持未勾）。
+
+## D-971-B-05 — inlay hint 只断言“请求被接受”（2026-11-17 PLAN-971 B 复审 F-11 登记）
+
+- 现象：`lsp_protocol_test.rs` 的 inlayHint 用例断言 `resp.is_ok()`；signatureHelp 已收紧为内容断言（B11 修复），inlay 无内容断言。
+- owner：auto-lsp / PLAN-971 T-08 余量；关闭条件：对固定源给出可判别的 inlay 内容断言（或明确该源无 hints 并给出有 hints 的正控）。
+- 状态：open（不阻塞当前切片）。
+
+## D-971-B-06 — 编辑器宿主（auto-vscode）端到端未执行（2026-11-17 PLAN-971 B 复审§4 边界登记）
+
+- 现象：auto-vscode 无自动化 editor-host harness，本环境无 VS Code 运行器；仅完成只读接线审计（wrapper spawn/`documentSelector auto`/stdio transport）与服务器真二进制协议面核验。
+- owner：auto-vscode 仓；关闭条件：该仓提供可复跑的 editor-host 测试（启动真实扩展+auto-lsp，覆盖诊断/跳转/悬停各一次）。
+- 状态：open（外仓，不阻塞本包）。
