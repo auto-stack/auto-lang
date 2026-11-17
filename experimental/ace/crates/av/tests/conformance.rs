@@ -261,6 +261,8 @@ mod plan979_age_h0_cpu;
 mod plan980_state_face;
 #[path = "cases/plan981_age_package_av.rs"]
 mod plan981_age_package_av;
+#[path = "cases/plan981_gfx_seam_av.rs"]
+mod plan981_gfx_seam_av;
 #[path = "cases/plan981_event_b_av.rs"]
 mod plan981_event_b_av;
 #[path = "cases/platform_io_1039.rs"]

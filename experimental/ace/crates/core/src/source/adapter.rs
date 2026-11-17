@@ -116,8 +116,12 @@ pub fn compile_scheduler_source(
         Err(d) => return Err(vec![d]),
     };
     let (program, sched) = super::sched_desugar::desugar_program(&program)?;
-    let resolved =
-        super::resolve::resolve_with_sched(&program, capabilities, SourceProfile::Scheduler, &sched)?;
+    let resolved = super::resolve::resolve_with_sched(
+        &program,
+        capabilities,
+        SourceProfile::Scheduler,
+        &sched,
+    )?;
     if let Err(ds) = typecheck::typecheck_with(&resolved, SourceProfile::Scheduler) {
         return Err(ds);
     }
@@ -3421,6 +3425,18 @@ impl PlanCtx<'_> {
                 let mut eval: Vec<usize> = Vec::new();
                 for arg in args {
                     let mut i = self.plan_expr(plan, f, arg);
+                    // PLAN-981（IF-981-GFX-AV-SEAM）：record 实参（`frame2d.at`
+                    // 的 Image2D 端口）按与 plan_arg/CallGlobalSet 同一纪律以
+                    // 借用包装到达——verify 要求记录参数走 view；标量按值。
+                    if matches!(arg.vt, VT::Rec(_)) {
+                        let span = plan.exprs[i].span;
+                        plan.exprs.push(ENode {
+                            kind: EKind::BorrowView { base: i },
+                            vt: arg.vt,
+                            span,
+                        });
+                        i = plan.exprs.len() - 1;
+                    }
                     if arg.vt == VT::StrOwned {
                         plan.exprs.push(ENode {
                             kind: EKind::Text {
@@ -4237,6 +4253,27 @@ impl<'p> Emitter<'p> {
                 // 返回类型（端口按名义记录 id 发射，与 resolver 登记同一身份）。
                 let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = format!("\"t_rec_{}\"", op.result_port);
+                (ps.join(", "), rs)
+            } else if let Some(op) = super::age_resources::gfx_by_symbol(sym) {
+                // PLAN-981（IF-981-GFX-AV-SEAM）：AGE 图形服务的签名 = 参数表
+                //（标量 VT 或端口引用）+ 结果（端口名义记录或标量 VT）——与
+                // resolver 侧同一声明行，不另写一份。
+                let ps: Vec<String> = op
+                    .params
+                    .iter()
+                    .map(|gp| match gp {
+                        super::age_resources::AgeGfxParam::Scalar(vt) => self.ty_use_ref(*vt),
+                        super::age_resources::AgeGfxParam::Port(name) => {
+                            format!("\"t_rec_{}\"", name)
+                        }
+                    })
+                    .collect();
+                let rs = match op.result {
+                    super::age_resources::AgeGfxResult::Port(name) => {
+                        format!("\"t_rec_{}\"", name)
+                    }
+                    super::age_resources::AgeGfxResult::Scalar(vt) => self.ty_use_ref(vt),
+                };
                 (ps.join(", "), rs)
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
@@ -5431,9 +5468,10 @@ pub(crate) fn sched_intrinsic_signature(
     if let Some(rest2) = rest.strip_prefix("go_") {
         // PLAN-968: the symbol is go_<fn-index>_<name>; the sig carries
         // the callee's params after the name string argument.
-        let f_idx: usize = rest2.parse().ok().or_else(|| {
-            rest2.split('_').next().and_then(|n| n.parse().ok())
-        })?;
+        let f_idx: usize = rest2
+            .parse()
+            .ok()
+            .or_else(|| rest2.split('_').next().and_then(|n| n.parse().ok()))?;
         let f = program.fns.get(f_idx)?;
         let mut params = vec![VT::Str];
         params.extend(f.params.iter().copied());
