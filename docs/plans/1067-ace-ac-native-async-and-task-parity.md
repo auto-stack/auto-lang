@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1067
-status: executing
+status: execution_done
 feature_name: ACE M2-B AC原生Future异步与Task调度补齐
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 7
+current_step: 8
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -175,13 +175,38 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - [x] **T-05｜work｜AC-03**：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 2026-11-17 ✅（真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
 - [x] **T-06｜work｜AC-01/02**：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 2026-11-17 ✅（三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
 - [x] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。 — 2026-11-17 ✅（显式仓外输出根构建+真实进程运行+published PE 导入审计：仅 kernel32.dll、符号全在本车道 19 项声明内、变异体被具名拒绝；runtime 身份与库字节一致绑定）
-- [ ] **T-08｜work｜AC-01..04**：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。
+- [x] **T-08｜work｜AC-01..04**：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 2026-11-17 ✅（并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
 - [ ] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
 - [ ] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
 
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
+
+2026-11-17 stage: work | PLAN-1067 r1 round-6 | T-08 闭合 → work 完成（execution_done，交 review） | code `817eb1e58`（spec）/`005096495`（前一提交）
+
+**冻结影响组并集运行**（`cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-runtime case-ace-m2-scheduler-968`，`run-834j1fuh`）：
+
+| 组 | 结果 |
+|---|---|
+| ace-source / ace-lowering / ace-av / ace-native | **PASS** |
+| case-ace-m2-scheduler-968 | **PASS**（11/11 checks，AV 真实运行） |
+| ace-a2x | 并集内 1 红 `a2c_rt_cert::rt_certify_all_suite_cases`（`c-tool infra: CToolError("cl -? spawn: Deadline")`，60s 的 `cl` 工具 spawn 超时）→ **单跑 `cargo t ace-a2x` PASS**（`run-5849mkpr`），且同组在 T-06 之后已 PASS 过 ⇒ 并行负载下工具超时归因，非本 diff |
+| ace-runtime | 19 红，全部 `ace-text-conformance` 链接失败（缺 `__CxxFrameHandler3`/`_fltused`）→ **基线归因已实证**：把 `text-runtime/src/lib.rs` 临时退回基线 `f0db9bd0f` 版本后同一测试**仍然红**，恢复本版后 `contract_sidecar_is_written_and_self_consistent` 绿；且 [m2-control-effects](../specs/ace-migration/m2-control-effects.md) 已记该 19 例为 master 既有红集 |
+
+**AC 工作侧证据（work 所有项）**：
+| AC | 证据 |
+|---|---|
+| AC-01 | 968 原语料 8 正例在 AV/native 各自逐字节通过（`sched_m2_1067` `av_leg`＋native 行），3 反例按类具名；新增组合＝owned-Str 状态跨 spawn、bool reply 跨 await |
+| AC-02 | AC 真执行状态机/Task：线程+邮箱+端口+driver 机器码（`CreateThread` 在导入审计中）；typed 结果 i32/bool/owned-Str 四向物化与释放 |
+| AC-03 | closed-future 三端具名终止（不自旋）、迟到 reply 丢弃、stop 先投递缓冲、drain 零残值审计（残值→72）、真实 OS 等待墙钟 oracle |
+| AC-04 | 仓外候选真 PE 运行＋kernel32-only 导入审计（含 CRT 变异体负控）＋runtime 内容绑定身份；Linux 明确 NOT_RUN 交 1063 |
+| AC-REVIEW / AC-LAND | 未执行（review/merge 阶段 owner） |
+
+**work 完成度声明**：全部 work-owned 任务（T-01..T-08）已闭合；无 in-contract 未决项；具名差额 4 项均有 owner/输入/关闭条件（§10）：owned-text 消息/回复（1068/T-02）、`platform.*` 源级入口（1068/T-03）、进程外取消源（后续宿主计划）、Linux 腿（1063）；另记一处共享降层既有缺陷（owned-text 循环内临时，774/870）。
+**本会话测试时耗**：`sched_m2_1067` 15/15（单测 0.1–2.5s，首跑 5.95s 含 runtime 重建）；`ace-a2x-worker` sched 2/2（6.2s）；并集整跑 ≈ 各组见 `run-834j1fuh`；新增用例均在 ≤10s 门槛内，未新增重内存/performance 用例。
+**身份**：worktree `D:/autostack/.wt/lang-1067/auto-lang`（branch `plan-1067-dev`，base `f0db9bd0f`，code `e16f01b6e`→`c6b84240e`→`40f5c195b`→`005096495`→`817eb1e58`）。
+**next**：review（T-09，独立上下文；§5/§6/SD 增量与具名差额需逐行核，含新 spec `docs/specs/auto-ac/native-async-scheduler.md`）。
 
 2026-11-17 stage: work | PLAN-1067 r1 round-5 | T-07 闭合（仓外候选＋依赖审计；Linux NOT_RUN 交 1063） | code `005096495`
 
@@ -248,6 +273,8 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 3 | from: work | t
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 40f5c195b | next: work
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 005096495 | next: work
+
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 6 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 817eb1e58 | next: review
 
 ## 10. 待澄清事项
 
