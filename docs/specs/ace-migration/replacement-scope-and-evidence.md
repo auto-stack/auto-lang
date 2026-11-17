@@ -339,3 +339,20 @@ PLAN-976（共享 Checked-HIR TypeScript/JavaScript provider）work 全毕 → T
   `a2ts.closure-owned-capture` 两族源级永久负控缺位（代码路径复审核读+a2py 同形
   先例）；sched/depth 两族负控已补 `ts_named_rejections.rs`。台账相关行保持
   required/unknown 原状，不因 976 交付消失。
+
+## PLAN-983 增量：M2-A Web 切片 producer/consumer 挂接（SD-02 挂接，2026-11-17 phase fold）
+
+PLAN-983 M2-A 切片（T-01/B-PORT/B-PROOF 共 7 任务，phase review pass
+`bdc48e8`）落主；B 组 12 任务在途（worktree 保留）。已验
+producer/consumer（RG-A02）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| 中立受检 Web 宿主端口（`web_host_port`；公共面无 AutoVM） | auto-web `bdc48e8` | implemented-verified | 内部执行面仍 legacy 臂（B/AVSERVICE 换）；core trait 桥已文档化 |
+| AV 真服务腿（`tests/fixtures/ace-p983/av-service.at` + http_runtime 2 用例；console 前门+run_platform+file/net/mem grants） | auto-web `bdc48e8` | implemented-verified（RG-A02 AV 腿） | member-delivery/b API 面语义；counter.txt 经 file_open_w16（Win32 无 file_open_bytes）；ASCII 数据根；单 owner 串行 |
+| A2R 新道生成腿（`ace_a2r_lane`+api_gen 早门/覆写；`AUTO_WEB_A2R_ENGINE=ace` 显式） | auto-web `bdc48e8` | implemented-verified（RG-A02 生成腿） | 零参 int/str/bool 子集；store/db/伴生留旧道（B/GENERATED）；坏源保旧已验 |
+| ACE 发射侧生产依赖（ace-core/ace-a2x-core/ace-a2x-rust） | auto-lang `e85096628`（钉基，零改动） | implemented-verified | 解释器 ace-av 保持 dev-only |
+
+规范落点：[m2-web.md](m2-web.md)（A 切片接口+边界）。台账 Web 相关行
+不因 A 切片消失：全 Web API 面、AVSERVICE/GENERATED/CONSUMERS、四仓
+生产链与 T-05..07 仍 required（B 域）。
