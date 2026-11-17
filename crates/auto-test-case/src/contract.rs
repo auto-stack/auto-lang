@@ -479,6 +479,55 @@ pub struct ArtifactExpect {
     /// so diffs/staleness point at the document position).
     pub payload: ArtifactPayload,
     pub compare: Compare,
+    /// PLAN-1066 T-05: how the product is judged. `Bytes` is the original
+    /// full-content comparison; `Exists { contains: [] }` only requires the
+    /// path to exist, and `Exists { contains: [...] }` additionally requires
+    /// every substring to appear (case-sensitive, exact text, no trimming).
+    /// These finite assertions are mutually exclusive with a byte oracle and
+    /// are judged by the consumer that owns the product (a project compile),
+    /// never by the generic byte comparator.
+    pub match_mode: ArtifactMatch,
+}
+
+/// PLAN-1066 T-05: product assertion mode of one declared artifact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactMatch {
+    /// Full byte comparison against `payload`.
+    Bytes,
+    /// `exists: true` was declared; `contains` adds finite substring
+    /// assertions (all must appear). An empty list means existence only.
+    Exists { contains: Vec<String> },
+    /// `contains: [...]` without `exists` (existence is implied by reading the
+    /// product for the finite assertions; the original test had no explicit
+    /// exists assertion, so none is invented here).
+    Contains { contains: Vec<String> },
+}
+
+impl ArtifactMatch {
+    /// Is this the original full-content comparison?
+    pub fn is_bytes(&self) -> bool {
+        matches!(self, ArtifactMatch::Bytes)
+    }
+
+    /// The finite substring assertions (empty for byte/existence-only modes).
+    pub fn contains(&self) -> &[String] {
+        match self {
+            ArtifactMatch::Bytes => &[],
+            ArtifactMatch::Exists { contains } | ArtifactMatch::Contains { contains } => {
+                contains.as_slice()
+            }
+        }
+    }
+
+    /// Did the document declare an explicit `exists: true` assertion?
+    pub fn declares_exists(&self) -> bool {
+        matches!(self, ArtifactMatch::Exists { .. })
+    }
+
+    /// Any finite assertion form (exists and/or contains)?
+    pub fn is_finite(&self) -> bool {
+        !self.is_bytes()
+    }
 }
 
 /// Where an expected artifact's bytes come from.
@@ -3978,6 +4027,7 @@ fn decode_expect(
                 path: p,
                 payload: ArtifactPayload::File(file),
                 compare,
+                match_mode: ArtifactMatch::Bytes,
             });
         }
     }

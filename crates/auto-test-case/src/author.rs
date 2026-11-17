@@ -190,6 +190,7 @@ struct RustArtifact {
     open_line: usize,
     close_line: Option<usize>,
     compare: Compare,
+    match_mode: crate::contract::ArtifactMatch,
 }
 
 #[derive(Default)]
@@ -1070,6 +1071,7 @@ fn decode_one_case(
                                     close_line: direct.close_line,
                                 },
                                 compare: Compare::Bytes,
+                                match_mode: crate::contract::ArtifactMatch::Bytes,
                             });
                         }
                     } else {
@@ -1082,6 +1084,7 @@ fn decode_one_case(
                                     close_line: sub.close_line,
                                 },
                                 compare: sub.compare,
+                                match_mode: sub.match_mode,
                             });
                         }
                     }
@@ -1194,6 +1197,7 @@ fn decode_one_case(
                                 close_line: art.close_line,
                             },
                             compare: art.compare,
+                            match_mode: art.match_mode.clone(),
                         })
                         .collect();
                 }
@@ -1254,6 +1258,7 @@ fn decode_one_case(
                                 close_line: a.close_line,
                             },
                             compare: a.compare,
+                            match_mode: a.match_mode.clone(),
                         })
                         .collect();
                 }
@@ -1714,6 +1719,7 @@ fn decode_one_case(
                                 close_line: a.close_line,
                             },
                             compare: a.compare,
+                            match_mode: a.match_mode.clone(),
                         })
                         .collect();
                 }
@@ -2938,20 +2944,49 @@ fn decode_artifact_subsection(
     fences: &[&crate::document::DocumentFence],
     sink: &mut Vec<RustArtifact>,
 ) -> Result<(), AuthorError> {
-    if fences.len() != 1 {
-        return err(sh.line, format!("产物小节 {:?} 需要恰好一个围栏", sh.text));
-    }
-    let attrs = collect_leading_attrs(doc, lines, sh.line, &["final-newline", "compare"])?;
+    // PLAN-1066 T-05: an artifact is judged either by full bytes (`#### <path>`
+    // + one fence) or by finite `exists`/`contains` assertions (no fence). The
+    // two forms are mutually exclusive; unknown keys, empty/duplicate match
+    // sets and `exists: false` are located errors, never silent skips.
+    let attrs = collect_leading_attrs(
+        doc,
+        lines,
+        sh.line,
+        &["final-newline", "compare", "exists", "contains"],
+    )?;
     let mut final_newline = true;
     let mut compare = Compare::Bytes;
+    let mut exists: Option<usize> = None;
+    let mut contains: Option<(Vec<String>, usize)> = None;
     for a in &attrs {
         match a.key.as_str() {
             "final-newline" => final_newline = want_bool(a)?,
             "compare" => compare = want_compare(a)?,
+            "exists" => {
+                if !want_bool(a)? {
+                    return err(a.line, "exists 只接受 true（不存在的产物不可声明为期望）");
+                }
+                exists = Some(a.line);
+            }
+            "contains" => {
+                let value = want_list(a)?;
+                if value.is_empty() {
+                    return err(a.line, "contains 需要非空字符串数组（空匹配集不是断言）");
+                }
+                let mut seen = std::collections::BTreeSet::new();
+                for item in &value {
+                    if item.is_empty() {
+                        return err(a.line, "contains 不接受空字符串断言");
+                    }
+                    if !seen.insert(item.clone()) {
+                        return err(a.line, format!("重复的 contains 断言 {:?}", item));
+                    }
+                }
+                contains = Some((value, a.line));
+            }
             _ => unreachable!(),
         }
     }
-    let text = fence_text(doc, &fences[0], final_newline)?;
     let path = sh.text.trim().to_string();
     crate::admission::validate_virtual_path(&path).map_err(|e| AuthorError {
         line: sh.line,
@@ -2960,12 +2995,55 @@ fn decode_artifact_subsection(
     if sink.iter().any(|a| a.path == path) {
         return err(sh.line, format!("重复的产物路径 {:?}", path));
     }
+    let (bytes, open_line, close_line, match_mode) = if exists.is_some() || contains.is_some() {
+        if !fences.is_empty() {
+            return err(
+                sh.line,
+                "exists/contains 断言与全文围栏互斥（同一产物只能选一种判据）",
+            );
+        }
+        if attrs
+            .iter()
+            .any(|a| matches!(a.key.as_str(), "final-newline" | "compare"))
+        {
+            return err(
+                sh.line,
+                "final-newline/compare 只属于全文金样；exists/contains 断言不接受载荷选项",
+            );
+        }
+        let list = contains.as_ref().map(|(list, _)| list.clone()).unwrap_or_default();
+        let match_mode = if exists.is_some() {
+            crate::contract::ArtifactMatch::Exists { contains: list }
+        } else {
+            crate::contract::ArtifactMatch::Contains { contains: list }
+        };
+        (
+            Vec::new(),
+            contains.as_ref().map(|(_, line)| *line).or(exists).unwrap_or(sh.line),
+            None,
+            match_mode,
+        )
+    } else {
+        if fences.len() != 1 {
+            return err(
+                sh.line,
+                format!("产物小节 {:?} 需要恰好一个围栏（或 exists/contains 断言）", sh.text),
+            );
+        }
+        (
+            fence_text(doc, fences[0], final_newline)?.into_bytes(),
+            fences[0].open_line,
+            fences[0].close_line,
+            crate::contract::ArtifactMatch::Bytes,
+        )
+    };
     sink.push(RustArtifact {
         path,
-        bytes: text.into_bytes(),
-        open_line: fences[0].open_line,
-        close_line: fences[0].close_line,
+        bytes,
+        open_line,
+        close_line,
         compare,
+        match_mode,
     });
     Ok(())
 }
@@ -2988,24 +3066,47 @@ fn decode_h4_subsection(
     match parent_title {
         "Rust" => {
             // PLAN-1062 T-14: artifact subsections carry any payload
-            // language (rust/c/h/python/ts/…) — the bytes are the oracle.
-            if fences.len() != 1 {
-                return err(
-                    sh.line,
-                    format!("#### {:?} 需要恰好一个围栏", sh.text),
-                );
-            }
-            let attrs = collect_leading_attrs(doc, lines, sh.line, &["final-newline", "compare"])?;
+            // language (rust/c/h/python/ts/…). PLAN-1066 T-05: finite
+            // `exists`/`contains` assertions replace the byte oracle for
+            // project products and are mutually exclusive with a fence.
+            let attrs = collect_leading_attrs(
+                doc,
+                lines,
+                sh.line,
+                &["final-newline", "compare", "exists", "contains"],
+            )?;
             let mut final_newline = true;
             let mut compare = Compare::Bytes;
+            let mut exists = false;
+            let mut contains: Vec<String> = Vec::new();
             for a in &attrs {
                 match a.key.as_str() {
                     "final-newline" => final_newline = want_bool(a)?,
                     "compare" => compare = want_compare(a)?,
+                    "exists" => {
+                        if !want_bool(a)? {
+                            return err(a.line, "exists 只接受 true（不存在的产物不可声明为期望）");
+                        }
+                        exists = true;
+                    }
+                    "contains" => {
+                        contains = want_list(a)?;
+                        if contains.is_empty() {
+                            return err(a.line, "contains 需要非空字符串数组（空匹配集不是断言）");
+                        }
+                        let mut seen = std::collections::BTreeSet::new();
+                        for item in &contains {
+                            if item.is_empty() {
+                                return err(a.line, "contains 不接受空字符串断言");
+                            }
+                            if !seen.insert(item.clone()) {
+                                return err(a.line, format!("重复的 contains 断言 {:?}", item));
+                            }
+                        }
+                    }
                     _ => unreachable!(),
                 }
             }
-            let text = fence_text(doc, fences[0], final_newline)?;
             let path = sh.text.trim().to_string();
             crate::admission::validate_virtual_path(&path).map_err(|e| AuthorError {
                 line: sh.line,
@@ -3024,12 +3125,51 @@ fn decode_h4_subsection(
                     "### Rust 不能同时携带直接围栏和 #### 产物小节（多产物全部用四级标题）",
                 );
             }
+            if exists || !contains.is_empty() {
+                if !fences.is_empty() {
+                    return err(
+                        sh.line,
+                        "exists/contains 断言与全文围栏互斥（同一产物只能选一种判据）",
+                    );
+                }
+                if attrs
+                    .iter()
+                    .any(|a| matches!(a.key.as_str(), "final-newline" | "compare"))
+                {
+                    return err(
+                        sh.line,
+                        "final-newline/compare 只属于全文金样；exists/contains 断言不接受载荷选项",
+                    );
+                }
+                let match_mode = if exists {
+                    crate::contract::ArtifactMatch::Exists { contains }
+                } else {
+                    crate::contract::ArtifactMatch::Contains { contains }
+                };
+                section.subsections.push(RustArtifact {
+                    path,
+                    bytes: Vec::new(),
+                    open_line: sh.line,
+                    close_line: None,
+                    compare,
+                    match_mode,
+                });
+                return Ok(());
+            }
+            if fences.len() != 1 {
+                return err(
+                    sh.line,
+                    format!("#### {:?} 需要恰好一个围栏（或 exists/contains 断言）", sh.text),
+                );
+            }
+            let text = fence_text(doc, fences[0], final_newline)?;
             section.subsections.push(RustArtifact {
                 path,
                 bytes: text.into_bytes(),
                 open_line: fences[0].open_line,
                 close_line: fences[0].close_line,
                 compare,
+                match_mode: crate::contract::ArtifactMatch::Bytes,
             });
             Ok(())
         }
