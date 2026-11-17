@@ -244,12 +244,12 @@ LSP测试在auto-ui专属worktree按当地owner入口执行；语言仓仍留同
 
 | V行 | 本轮真实入口/用例 | 独立判据（实跑结果） | 未闭部分 |
 |---|---|---|---|
-| V-01 | `cargo test -p auto-lang-ace-host --test p971_debug_face`（1 例 0.40s） | 断点停在 `math::core::bump` 原源 span（切片含真实原文）、调用栈 2 帧（main→bump）、局部 `x=I32(2)`、单步推进指令计数、step-out 回调用者、continue 到真实值 3、span 断点命中 | 端到端墙判别仍由单测承担（冻结步预算，A 已记边界） |
+| V-01 | `cargo test -p auto-lang-ace-host --test p971_debug_face`（1 例，修复后 ~1.0s plain / 1.29s nextest） | 断点停在 `math::core::bump` 原源 span（切片落在 callee body 内，body-offset 断言）、调用栈 2 帧（main→bump）、局部 `x=I32(2)`、单步推进指令计数、**step-over（入口与 callee 内）**、step-out 回调用者、continue 到真实值 3、span 断点、**运行期 `set_breakpoints`**、**live `cancel` → Cancelled**、**死循环源 50ms → ResourceDenied(wall)** | 无 console 捕获（session 车道无 console，D-971-B-02）；端到端墙由确定式死循环源承担 |
 | V-02 | 同组 `p971_tool_face`（坏源→修复）＋ auto-ui `lsp_ace_diagnostics_971`（真 bin：坏源只报所属文件、修复清空） | 诊断落在原模块/原 span，修复后消失；跨模块/双坏模块各自落位 | LSP 仅发 ERROR（warning 无 ACE 等价面） |
 | V-03 | `p971_tool_face` 用例2 零发现腿 | `NoTestsDiscovered`＋exit 1，零发现绝不 PASS；发现=零参 int 声明（入口排除） | 无 `#[test]` 注解面（ACE 源面事实） |
-| V-04 | `cargo t auto-playground`（15 例，含 `p971_v04_two_user_notebook_sessions_are_isolated`） | 两用户会话 id 不同、A 变量在 B 不可解析、各自 carry 表、关闭 A 不影响 B | Playground 其余执行路由未迁 |
+| V-04 | `cargo t auto-playground`（16 例，含 `p971_v04_two_user_notebook_sessions_are_isolated` 与 console 边界例） | 两用户会话 id 不同、A 变量在 B 不可解析、各自 carry 表、关闭 A 不影响 B；print 单元格=具名 producer 诊断（D-971-B-02） | Playground 脚本式 run/debug 前门被语言面阻断（D-971-B-03） |
 | V-05 | `p971_debug_face` 断点/调用者帧 span＋`p971_tool_face` 诊断 span | 停点/诊断 span 均切中**原模块原文**（`app::main` 调用点 `bump(a)`、`math::core` 表达式），非旧 AST/生成文本 | 生成式 UI 目标的源回映归 UI 波次 |
-| V-08 | auto-ui `lsp_ace_diagnostics_971`（2 例：4.54s + 1.08s）＋`p971_debug_face` 热更腿 | 旧版本诊断不覆盖新版本（v3 坏/v4 好后仅 v4 空发布）；热更后停点 span 不复用旧值；跨包 goto 落原模块原声明位置（line0/char3） | LSP 无 test-run 请求面（测试失败/超时/零发现区分由 lang 工具面 `p971_tool_face` 取证） |
+| V-08 | auto-ui `lsp_ace_diagnostics_971`（2 例，修复后 6.74s 合计）＋`p971_debug_face` 热更腿 | 旧版本诊断不覆盖新版本（v3 坏/v4 好后仅 v4 空发布；**乱序 v2 不发布**）；**didClose 导入件后 importer 下次检查报未解析导入**；热更后停点 span 不复用旧值；真实包路径 goto（`pac.lib.util` + `lib/util.at`）落 line0/char3 | LSP 无 test-run 请求面（测试失败/超时/零发现区分由 lang 工具面 `p971_tool_face` 取证）；inlay 内容断言缺口 D-971-B-05 |
 
 ### 补充验证
 
@@ -322,10 +322,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
   [✅ 2026-11-17] 三批交付齐：多文件诊断换 ACE 检查面（V-08 版本见证/过期丢弃/乱序丢弃，auto-ui `3c9cfe30`）；测试发现迁 producer（lang `p971_tool_face` 零发现/通过/失败/超时区分）；调试源码映射（`p971_debug_face` 断点/栈/locals 原源 span + 热更不复用旧 span）。既存能力核验（auto-ui `9a352b8a`）：真二进制用例核 completion/hover/semanticTokens/goto(inlay/workspace 由既有 protocol 用例与 workspace/symbol 断言覆盖) 可用，跨包 goto 落原模块原声明位置；同时发现并修复 **F-971-B-01**（Windows 跨包 goto 目标 URI 构造非法 + 定义位置取自不可用 fragment span → 修复为平台正确 URI 转换与源文推导位置）。证据：`cargo test -p auto-lsp` 26 例全绿（2 例真 bin ACE fixture）；编辑器客户端按§4 只读边界审计 auto-vscode 接线一致，其宿主内 E2E 无 harness/环境未跑（具名归编辑器仓，不记 PASS）。
 
 - [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
-  [◐ 2026-11-17] V行映射与实跑见§6「B期验证映射」。职责组 `cargo t ace-facade auto-playground ace-source auto-test-case ace-av integration`（lang worktree @ `586362bb7`，514.7s）：ace-facade 32 PASS / auto-playground 15 PASS / ace-source 597 PASS / auto-test-case 151 PASS / ace-av 1247/1248（唯一红 `plan966_ct_product::p966_ct_generated_declarations_change_end_results`；**单独复跑 ace-av = PASS 1248，44.5s，gate_passed=true** → 负载 flake，非本轮触面；ace-av workspace 本轮无改动）/ integration 3354/3355（唯一红 `auto-lang tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped`，连续第 3 个组跑同例，2.1–2.2s；单向复跑 3/3 绿；4f123a50e 宽限历史＋PLAN-868 §T-07 预存红族判定＋本批零 `crates/auto-lang` 触面 → 基线并行负载 flake，不判本批，如实记录不充 PASS）。UI `cargo test -p auto-lsp` 26 例全绿（含 2 例真 bin ACE fixture）。**未闭**：T-03 脚本前门按§10 待裁定；跨包 goto 已由 T-08 用例取证。 
+  [◐ 2026-11-17] V行映射与实跑见§6「B期验证映射」。职责组 `cargo t ace-facade auto-playground ace-source auto-test-case ace-av integration`（lang worktree @ `586362bb7`，514.7s）：ace-facade 32 PASS / auto-playground 15 PASS / ace-source 597 PASS / auto-test-case 151 PASS / ace-av 1247/1248（唯一红 `plan966_ct_product::p966_ct_generated_declarations_change_end_results`；**单独复跑 ace-av = PASS 1248，44.5s，gate_passed=true** → 负载 flake，非本轮触面；ace-av workspace 本轮无改动）/ integration 3354/3355（唯一红 `auto-lang tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped`，连续第 3 个组跑同例，2.1–2.2s；单向复跑 3/3 绿；4f123a50e 宽限历史＋PLAN-868 §T-07 预存红族判定＋本批零 `crates/auto-lang` 触面 → 基线并行负载 flake，不判本批，如实记录不充 PASS）。UI `cargo test -p auto-lsp` 26 例全绿（含 2 例真 bin ACE fixture）；修复后复跑：ace-host 32 绿、playground 16 绿、core 5 绿、ace-facade 32 绿（第二轮复审独立重跑一致）。**未闭**：T-03 脚本前门按§10 待裁定；跨包 goto 已由 T-08 用例取证。 
 
 - [ ] **T-05｜M2-B｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
-  [◐ 2026-11-17] 独立复审（独立子代理上下文，绑定 lang `586362bb7` / ui `9a352b8a`，重跑 fixture/组门：ace-host 4 例、core ace_entry 5、playground 15、ace-facade 32、auto-lsp 26）verdict=**needs_fix**：0 代码级 blocker，11 findings（F-1..F-11）+ AC-03 的 §10 待裁定；已修 B1/B2/B3/B4/B5/B6(部分)/B7（lang `2d781fe02`）与 B6/B8/B10/B11（ui `22532614`），余项 F-9/F-11 inlay 与属语言面/外仓者入 D-971-B-01..06。**待第二轮复审**确认修复并裁定 AC-03 后方可勾。
+  [◐ 2026-11-17] 独立复审第一轮（绑定 lang `586362bb7`/ui `9a352b8a`）verdict=**needs_fix**（0 代码级 blocker，11 findings + AC-03 §10 待裁定）；B1–B11 已修（lang `2d781fe02`、ui `22532614`）。第二轮独立复审（绑定 lang `2d781fe02`/ui `22532614`）verdict=**needs_fix（仅 B6 残项）**：B1/B2/B3/B4/B5/B7/B8/B9/B10/B11 fixed，`project.rs`/`notebook/mod.rs` 仍有计划新增的 fmt 污点且收据计数写错；已修（lang `3753aeee6`，全触碰文件 `rustfmt --check` 空，ace-host 32 绿/playground 16 绿/core 5 绿）。**仍不能勾**：复审明确 T-05 需 B6 关闭＋§10 裁定；AC-03 未达（debug/test 工具面只有 fixture 消费者）→ T-03 未勾。
 
 - [ ] **T-06｜M2-B｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
@@ -345,9 +345,13 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: review | review_scope: phase（B 批，T-05 第二轮） | reviewer_identity: 独立子代理上下文（第二轮，只读 + 跑测试） | plan_id: PLAN-971 | plan_revision: r7 | outcome: **needs_fix（仅 B6 残项）** | reviewed_commit: lang `2d781fe02` / ui `22532614` | 重跑: ace-host lib+tests **32 绿**（2 lib + 30 tests，debug fixture 1.01s/nextest 1.29s）、core `ace_entry` 5 绿、playground 16 绿、`cargo t ace-facade` 32 绿（gate_passed=true，21.9s）、`ace-av-core` render 单测 1 绿、`auto-lsp` 26 绿（ACE fixture 6.74s） | 判定: B1/B2/B3/B4/B5/B7/B8/B9/B10/B11 fixed；**B6 部分**（`project.rs:169` 与 `notebook/mod.rs` 计划新增 hunk 仍非 fmt-clean，且 §9 收据把 32 写成 30、§6 V-01/V-08 时间与腿未更新）；AC-02 达标（具名边界）、AC-03 **未满足**（debug/test 工具面仍只有 fixture 消费者，T-03 不勾）、AC-06 具名边界、AC-PHASE 通过 | next: work（B6 残项/收据更正→第三轮定向确认；§10 裁定后方可勾 T-03/T-05）
+
+stage: work | PLAN-971 | r7 | round: 3（B6 残项修复） | outcome: pass | commit: lang `3753aeee6` | 记录: `project.rs` 与 `notebook/mod.rs` rustfmt 清零（后者的 10 处既有污点随同文件归一，避免半格式化文件）；`rustfmt --check` 对全部触碰文件为空；顺手收紧：删除 debug fixture 的恒真断言（body-offset 断言已承载 oracle）、notebook console 边界要求诊断携带 producer code（`[<code>]`）、`AceDebugSession::cancel` 文档写明“有停止按钮的宿主必须实现”。复跑: ace-host 32 绿（debug 0.99s）、playground 16 绿（1.02s）、core 5 绿。 | next: review（第三轮定向确认 B6）→ §10 裁定 → T-03/T-05
+
 stage: review | review_scope: phase（B 批，T-05 第一轮） | reviewer_identity: 独立子代理上下文（与本会话分离，只读 + 跑测试） | plan_id: PLAN-971 | plan_revision: r7 | outcome: **needs_fix** | reviewed_commit: lang `586362bb7` / ui `9a352b8a` | base: lang `2f1eed27f` / ui `c1561d94` | 重跑: ace-host `p971_project_proof`+`p971_tool_face`+`p971_debug_face` 4 绿、core `ace_entry` 5 绿、`auto-playground` 15 绿、`cargo t ace-facade` 32 绿、`auto-lsp` 26 绿；A 收据/985 M2A-08 收据/两树 clean 均已核 | findings: F-1 非 Windows 编译被 Playground 无条件引用 ACE 宿主破坏；F-2 测试车道可“零结果真空 PASS”；F-3 notebook stdout/console 静默丢失；F-4 StepOver/cancel/wall 无证据；F-5 发现契约 helper 假阳性未具名；F-6 新代码 fmt 未清；F-7 debug 值截断可切多字节字符 panic；F-8 乱序 didChange/didClose 未验；F-9 V-05 内层 span 断言近真空；F-10 “跨包”goto 实为同目录跨文件；F-11 signature/inlay 只断言请求被接受 | AC 判定: AC-01 部分（B 面待 Spec 沉淀）/AC-02 具名边界/AC-03 **未满足**（debug 与 test 工具面只有 fixture 消费者；LSP 诊断与 notebook 已真实接线）/AC-06 具名边界/AC-A-PROOF 通过/AC-PHASE 通过 | next: work（B1–B11 修复→第二轮复审）
 
-stage: work | PLAN-971 | r7 | round: 3（修复轮） | outcome: pass（第一轮复审 B1–B11 修复） | commit: lang `2d781fe02` / ui `22532614` | 记录: 见§5 项 10；修复后复跑：ace-host lib+tests 30 绿（fixture 0.58s/0.29s/1.00s/0.71s）、core ace_entry 5 绿、av-core 边界单测 1 绿、playground 16 绿（新增 console 边界例）、auto-lsp 26 绿（ACE fixture 6.63s，signature 内容断言通过）。未闭：AC-03/§10 待裁定；F-9 已修（内层 span 落在 callee body）、inlay 内容缺口入 D-971-B-05；fmt 仅触碰文件（av-core 既有污点不动） | next: review（第二轮独立复审，绑定修复提交）
+stage: work | PLAN-971 | r7 | round: 3（修复轮） | outcome: pass（第一轮复审 B1–B11 修复） | commit: lang `2d781fe02` / ui `22532614` | 记录: 见§5 项 10；修复后复跑：ace-host lib+tests **32 绿**（2 lib + 30 tests；fixture 0.58s/0.29s/1.00s/0.71s）、core ace_entry 5 绿、av-core 边界单测 1 绿、playground 16 绿（新增 console 边界例）、auto-lsp 26 绿（ACE fixture 6.63s，signature 内容断言通过）。未闭：AC-03/§10 待裁定；F-9 已修（内层 span 落在 callee body）、inlay 内容缺口入 D-971-B-05；fmt 仅触碰文件（av-core 既有污点不动） | next: review（第二轮独立复审，绑定修复提交）
 
 stage: goal | plan_id: PLAN-971 | plan_revision: r7 | round: 3 | from: work | to: work | status: executing | outcome: pass（T-02 运行期断点补充＋T-04 收门证据；T-03 待§10 裁定） | worktree: D:/autostack/.wt/lang-971/auto-lang @ plan-971-dev（`586362bb7`，clean）/ D:/autostack/.wt/lang-971/auto-ui @ plan-971-dev（`9a352b8a`，clean） | 记录: (1) `AceDebugSession::set_breakpoints` 运行期断点集替换＋参考宿主实现；永久用例新腿（空断点启动→入口停点后装 callee 断点→Continue 命中）`p971_debug_face.rs` 0.54s 绿。(2) **语言面阻断实测**：`check_ace_project("fn main() int { print(\"hi\")\n return 0 }")` → `stage:text, source.unsupported`（表达式语句不在包面）；console 仅单模块 host-console profile；Playground demo 为脚本式源 → 脚本 run/debug 前门接管需语言面扩展，§5 B 边界与§10 待裁定记录。临时探针已删（不留证据于仓内）。(3) T-04 收门组跑（`586362bb7`，514.7s）：ace-facade 32 PASS / auto-playground 15 PASS / ace-source 597 PASS / auto-test-case 151 PASS / ace-av 1247/1248（唯一红 `plan966_ct_product::p966_ct_generated_declarations_change_end_results`，与本轮零触面——ace-av 独立 workspace 不依赖本轮改动文件；复跑判定见后续）/ integration 3354/3355（唯一红 `plan707_spike_cancel_gap_active_job_future_not_stopped`，连续第 3 次同例，已按§§ 预存红族判基线）/ UI `cargo test -p auto-lsp` 26 绿（4.66s+）。 | next: work（ace-av 复跑归因→T-03 §10 裁定→T-05 独立复审）
 
@@ -462,6 +466,8 @@ Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于�
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
+
+
 
 
 
