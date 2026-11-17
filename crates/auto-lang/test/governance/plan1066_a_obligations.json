@@ -21450,7 +21450,7 @@
   },
   "p_compile": {
     "gate_test": "a2r_rustc_real_compile_gate",
-    "gate_ignored": false,
+    "gate_ignored": true,
     "ledger_rel": "crates/auto-lang/test/a2r/compile_gate_known_broken.txt",
     "ledger_sha256": "a50fa5c85280b9a25279982f94f50494d9b242d7769df84956836e60c58cbecb",
     "ledger_entries": 36,

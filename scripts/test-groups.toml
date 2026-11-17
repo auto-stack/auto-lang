@@ -86,6 +86,17 @@ domain = "legacy"
 all = false
 
 [[group]]
+name = "a2r-compile"
+title = "PLAN-1066 T-06 显式 250 项真实 rustc 编译门（文档源；默认与日常组均不选择）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^tests::a2r_tests::a2r_rustc_real_compile_gate$/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
 name = "a2r"
 title = "Rust转译及语料"
 runner = "nextest"

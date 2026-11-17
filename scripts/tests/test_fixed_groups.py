@@ -1007,6 +1007,44 @@ class IncrementalGovernance(unittest.TestCase):
         self.assertEqual(payload['caches'][0]['files'], 1)
 
 
+class ExplicitCompileGate(unittest.TestCase):
+    """PLAN-1066 T-06/NC-15: the 250-input rustc gate is an explicit replay.
+
+    The gate must be `#[ignore]`d (no daily rustc spawn) and reachable only
+    through the explicit `a2r-compile` group, which is `all=false`, carries no
+    tools, and is absent from the daily and `all` selections.
+    """
+
+    def setUp(self):
+        import tomllib
+        self.document = tomllib.loads((ROOT / 'scripts/test-groups.toml').read_text(encoding='utf-8'))
+        self.groups = {g['name']: g for g in self.document['group']}
+        self.source = (ROOT / 'crates/auto-lang/src/tests/a2r_tests.rs').read_text(encoding='utf-8')
+
+    def test_gate_is_ignored_with_a_named_reason(self):
+        marker = 'fn a2r_rustc_real_compile_gate()'
+        index = self.source.index(marker)
+        attributes = self.source[:index].splitlines()[-4:]
+        ignore = [line for line in attributes if line.strip().startswith('#[ignore')]
+        self.assertTrue(ignore, 'the 250-input rustc gate must stay #[ignore]d')
+        self.assertIn('a2r-compile', ignore[-1], 'the ignore reason must name the explicit group')
+
+    def test_compile_group_is_explicit_and_separate_from_daily(self):
+        group = self.groups.get('a2r-compile')
+        self.assertIsNotNone(group, 'a2r-compile group must be registered')
+        self.assertFalse(group['all'])
+        self.assertEqual(group['domain'], 'legacy')
+        self.assertEqual(group['tools'], [])
+        self.assertEqual(group['expression'],
+                         'test(/^tests::a2r_tests::a2r_rustc_real_compile_gate$/)')
+        sets = self.document.get('sets', {})
+        for name in ('daily', 'all'):
+            self.assertNotIn('a2r-compile', sets.get(name, []),
+                             'a2r-compile must not join %s' % name)
+        self.assertFalse(self.groups['a2r-compile'].get('respect_default_filter'))
+        self.assertTrue(self.groups['a2r'].get('all') is False)
+
+
 class ActiveDocumentCaseEntries(unittest.TestCase):
     """PLAN-1066 T-09/NC-09: active suite entries are document author files.
 

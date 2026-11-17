@@ -54,6 +54,46 @@ fn test_a2r(case: &str) -> AutoResult<()> {
     test_a2r_with_base("a2r", case)
 }
 
+/// PLAN-1066 T-06: write one document's inline `.rs` product into a scope and
+/// return its path. The frozen `*.expected.rs` sidecars are never read: the
+/// guard compiles exactly what the document declares.
+fn materialize_doc_product(
+    case_dir: &std::path::Path,
+    scope: &std::path::Path,
+    file_name: &str,
+) -> std::path::PathBuf {
+    let stem = auto_lang_core::legacy_doc_for_trans::case_stem(case_dir)
+        .unwrap_or_else(|| panic!("{}: no case stem", case_dir.display()));
+    let doc = crate::tests::legacy_doc::load_case(case_dir, &stem)
+        .unwrap_or_else(|e| panic!("{}: {e}", case_dir.display()));
+    let bytes = doc
+        .artifact(".expected.rs")
+        .or_else(|| doc.artifact(".rs"))
+        .unwrap_or_else(|| panic!("{}: document declares no .rs product", case_dir.display()));
+    std::fs::create_dir_all(scope).unwrap_or_else(|e| panic!("{}: {e}", scope.display()));
+    let target = scope.join(file_name);
+    std::fs::write(&target, bytes).unwrap_or_else(|e| panic!("{}: {e}", target.display()));
+    target
+}
+
+/// PLAN-1066 T-06: a per-invocation scope under the plan's scratch home, so
+/// concurrent worktrees never share `.rs`/`.rmeta`/`.exe` files (the retired
+/// `auto_a2r_599_*` fixed temp dirs did).
+fn manual_guard_scope(prefix: &str) -> std::path::PathBuf {
+    let base = default_compile_scope();
+    let scope = base.join(format!("{prefix}-{}-{}", std::process::id(), unique_nonce()));
+    let _ = std::fs::remove_dir_all(&scope);
+    std::fs::create_dir_all(&scope).unwrap_or_else(|e| panic!("{}: {e}", scope.display()));
+    scope
+}
+
+fn unique_nonce() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
 /// Plan 427 (DIV-A2R-STRPARAM-1): the text-compare goldens above cannot catch
 /// compile-level regressions — the str-param borrow breakage produced
 /// plausible-looking Rust that failed E0308, and hid for days (a2r golden was
@@ -63,11 +103,16 @@ fn test_a2r(case: &str) -> AutoResult<()> {
 /// shells out to rustc; run it on demand or in release checklists:
 /// `cargo test -p auto-lang --lib --features test-trans a2r_compile_smoke -- --ignored`
 #[test]
-#[ignore = "shells out to rustc; on-demand compile-level guard (Plan 427)"]
+#[ignore = "shells out to rustc; on-demand compile-level guard (Plan 427, PLAN-1066 T-06 document product)"]
 fn a2r_compile_smoke_str_param_borrow() {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let rs = d.join("test/a2r/04_strings/008_str_param_borrow/str_param_borrow.expected.rs");
-    let out = std::env::temp_dir().join("auto_a2r_compile_smoke_008.rmeta");
+    let scope = manual_guard_scope("a2r-m01");
+    let rs = materialize_doc_product(
+        &d.join("test/a2r/04_strings/008_str_param_borrow"),
+        &scope,
+        "str_param_borrow.rs",
+    );
+    let out = scope.join("a2r_compile_smoke_008.rmeta");
     let status = std::process::Command::new("rustc")
         .arg("--edition=2021")
         .arg("--crate-name=a2r_compile_smoke_008")
@@ -100,9 +145,7 @@ fn a2r_compile_smoke_str_param_borrow() {
 #[ignore = "shells out to rustc; on-demand compile-level guard (Plan 599)"]
 fn a2r_foreign_shape_compile_run() {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r/25_foreign_types");
-    let tmp = std::env::temp_dir().join("auto_a2r_599_gate");
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).unwrap();
+    let tmp = manual_guard_scope("a2r-m02");
     let rustc = |args: &[&str]| {
         let status = std::process::Command::new("rustc")
             .args(args)
@@ -125,11 +168,11 @@ fn a2r_foreign_shape_compile_run() {
         "-o",
         "libfake_term.rlib",
     ]);
-    std::fs::copy(
-        d.join("001_foreign_generic_field/foreign_generic_field.expected.rs"),
-        tmp.join("case001.rs"),
-    )
-    .unwrap();
+    materialize_doc_product(
+        &d.join("001_foreign_generic_field"),
+        &tmp,
+        "case001.rs",
+    );
     rustc(&[
         "--edition=2021",
         "-A",
@@ -176,11 +219,7 @@ fn a2r_foreign_shape_compile_run() {
         ("003_trait_object", "trait_object", "trait_object_ok"),
     ] {
         let fname = format!("{stem}_case.rs");
-        std::fs::copy(
-            d.join(case).join(format!("{stem}.expected.rs")),
-            tmp.join(&fname),
-        )
-        .unwrap();
+        materialize_doc_product(&d.join(case), &tmp, &fname);
         let exe = format!("{stem}_case.exe");
         rustc(&[
             "--edition=2021",
@@ -201,11 +240,7 @@ fn a2r_foreign_shape_compile_run() {
     }
 
     // 004 bare thread: pure std, compile product as-is
-    std::fs::copy(
-        d.join("004_bare_thread/bare_thread.expected.rs"),
-        tmp.join("case004.rs"),
-    )
-    .unwrap();
+    materialize_doc_product(&d.join("004_bare_thread"), &tmp, "case004.rs");
     rustc(&[
         "--edition=2021",
         "-A",
@@ -234,9 +269,7 @@ fn a2r_foreign_shape_compile_run() {
 fn a2r_capstone_term_subset_parity() {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test/a2r/25_foreign_types/005_term_session_subset");
-    let tmp = std::env::temp_dir().join("auto_a2r_599_capstone");
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).unwrap();
+    let tmp = manual_guard_scope("a2r-m03");
     let run = |program: &str, args: &[&str]| {
         let out = std::process::Command::new(program)
             .args(args)
@@ -267,11 +300,7 @@ fn a2r_capstone_term_subset_parity() {
         ],
     );
     // product + oracle against the same rlib
-    std::fs::copy(
-        d.join("term_session_subset.expected.rs"),
-        tmp.join("product.rs"),
-    )
-    .unwrap();
+    materialize_doc_product(&d, &tmp, "product.rs");
     std::fs::copy(d.join("oracle.rs"), tmp.join("oracle.rs")).unwrap();
     run(
         "rustc",
@@ -922,100 +951,182 @@ pub(crate) fn run_project_case(case_dir: &std::path::Path) -> Result<(), String>
     }
 }
 
-#[test]
-fn a2r_rustc_real_compile_gate() {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let dir = d.join("test/a2r");
-    let cases = crate::test_runner::discover_a2r_tests(&dir, "a2r");
-    assert!(
-        cases.len() > 50,
-        "a2r corpus suspiciously small ({} cases) — discovery broke?",
-        cases.len()
-    );
+// ---------------------------------------------------------------------------
+// PLAN-1066 T-06: the 250-input real-compile gate, prepared and verified
+// separately, sourced from the migration documents.
+//
+// prepare = transpile each document's Auto source with the original transpiler
+//           into a private scope, run real `rustc --emit=metadata` per item and
+//           write a source-bound receipt (toolchain, ledger, per-item source and
+//           product hashes, raw exit/stderr evidence, classification).
+// verify  = re-read that receipt and re-derive every classification from the
+//           stored RAW evidence and the CURRENT documents/ledger/toolchain.
+//           No compilation happens here; a missing or stale receipt is a
+//           preparation error, never a pass.
+// The ledger (test/a2r/compile_gate_known_broken.txt) is a controlled support
+// asset: new breakage fails, an entry that starts compiling is reported
+// obsolete, and external-dependency-only stderr (E0432/E0433/E0463) stays a skip.
+// ---------------------------------------------------------------------------
 
-    // Known-broken ledger: legacy compile debt from the text-golden era
-    // (006), explicit and auditable, per the 007/008 absent-dependency skip
-    // convention. New breakage (not listed) fails the gate; listed cases that
-    // start compiling again are reported obsolete so the ledger shrinks.
-    let ledger_path = dir.join("compile_gate_known_broken.txt");
-    let mut known_broken: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for line in read_to_string(&ledger_path).unwrap_or_default().lines() {
-        let entry = line.split('#').next().unwrap_or("").trim();
-        if !entry.is_empty() {
-            known_broken.insert(entry.to_string());
+const COMPILE_RECEIPT_SCHEMA: &str = "plan1066-a2r-compile-receipt/1";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CompileClass {
+    Compiled,
+    ExternalDepSkip,
+    KnownBroken,
+    ObsoleteLedger,
+    UnexpectedFailure,
+}
+
+impl CompileClass {
+    fn as_str(&self) -> &'static str {
+        match self {
+            CompileClass::Compiled => "compiled",
+            CompileClass::ExternalDepSkip => "external-dep-skip",
+            CompileClass::KnownBroken => "known-broken",
+            CompileClass::ObsoleteLedger => "obsolete-ledger",
+            CompileClass::UnexpectedFailure => "unexpected-failure",
         }
     }
 
-    let failures: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-    let passed = std::sync::atomic::AtomicUsize::new(0);
-    let ledger_passed: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-    let skipped: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-    let known_broken_hits: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "compiled" => CompileClass::Compiled,
+            "external-dep-skip" => CompileClass::ExternalDepSkip,
+            "known-broken" => CompileClass::KnownBroken,
+            "obsolete-ledger" => CompileClass::ObsoleteLedger,
+            "unexpected-failure" => CompileClass::UnexpectedFailure,
+            _ => return None,
+        })
+    }
+}
 
-    // Each invocation owns its output namespace; independent worktrees may
-    // typecheck the same corpus concurrently without sharing .rs/.rmeta files.
-    let products = tempfile::Builder::new()
-        .prefix("auto-a2r-gate-")
-        .tempdir()
-        .expect("create private real-compile output directory");
+/// One document-sourced corpus item as the compile gate sees it.
+struct CompileCase {
+    name: String,
+    source_sha256: String,
+    source: String,
+    source_dir: PathBuf,
+}
 
+fn compile_toolchain_identity() -> String {
+    use auto_test_case::sha256::{hex, sha256};
+    match std::process::Command::new("rustc").arg("-vV").output() {
+        Ok(out) if out.status.success() => hex(&sha256(&out.stdout)),
+        _ => "unavailable".to_string(),
+    }
+}
+
+/// The corpus as the documents declare it (PLAN-1066 T-03[B]: never the frozen
+/// `.at` sidecars). A document that fails to decode is a hard error here.
+fn compile_corpus() -> Result<Vec<CompileCase>, String> {
+    use auto_test_case::sha256::{hex, sha256};
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r");
+    let mut out = Vec::new();
+    for case in crate::test_runner::discover_a2r_tests(&dir, "a2r") {
+        let stem = auto_lang_core::legacy_doc_for_trans::case_stem(&case.dir)
+            .ok_or_else(|| format!("{}: no case stem", case.name))?;
+        let doc = crate::tests::legacy_doc::load_case(&case.dir, &stem)
+            .map_err(|e| format!("{}: {e}", case.name))?;
+        let source = doc.source_text().to_string();
+        out.push(CompileCase {
+            name: case.name.clone(),
+            source_sha256: hex(&sha256(source.as_bytes())),
+            source,
+            source_dir: case.dir.clone(),
+        });
+    }
+    Ok(out)
+}
+
+fn compile_ledger() -> std::collections::BTreeSet<String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r/compile_gate_known_broken.txt");
+    let mut out = std::collections::BTreeSet::new();
+    for line in read_to_string(&path).unwrap_or_default().lines() {
+        let entry = line.split('#').next().unwrap_or("").trim();
+        if !entry.is_empty() {
+            out.insert(entry.to_string());
+        }
+    }
+    out
+}
+
+fn compile_ledger_sha256() -> String {
+    use auto_test_case::sha256::{hex, sha256};
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r/compile_gate_known_broken.txt");
+    match std::fs::read(&path) {
+        Ok(bytes) => hex(&sha256(&bytes)),
+        Err(_) => "missing".to_string(),
+    }
+}
+
+/// Classification from RAW evidence: the process exit and its stderr text.
+fn classify_compile(exit_ok: bool, stderr: &str, in_ledger: bool) -> CompileClass {
+    if exit_ok {
+        return if in_ledger {
+            CompileClass::ObsoleteLedger
+        } else {
+            CompileClass::Compiled
+        };
+    }
+    if stderr_only_external_dep_errors(stderr) {
+        CompileClass::ExternalDepSkip
+    } else if in_ledger {
+        CompileClass::KnownBroken
+    } else {
+        CompileClass::UnexpectedFailure
+    }
+}
+
+/// Explicit prepare: transpile every document source and compile it for real.
+/// Writes nothing outside `scope` and returns the receipt document.
+fn prepare_compile_receipt(scope: &std::path::Path) -> Result<serde_json::Value, String> {
+    use auto_test_case::sha256::{hex, sha256};
+    let cases = compile_corpus()?;
+    if cases.len() < 50 {
+        return Err(format!(
+            "a2r corpus suspiciously small ({} cases) — discovery broke",
+            cases.len()
+        ));
+    }
+    let ledger = compile_ledger();
+    std::fs::create_dir_all(scope).map_err(|e| format!("scope {}: {e}", scope.display()))?;
     let workers = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
         .min(8);
-    let chunk_size = cases.len().div_ceil(workers);
-
-    std::thread::scope(|scope| {
-        for chunk in cases.chunks(chunk_size) {
-            let product_dir = products.path();
-            let failures = &failures;
-            let skipped = &skipped;
-            let passed = &passed;
-            let ledger_passed = &ledger_passed;
-            let known_broken_hits = &known_broken_hits;
-            let known_broken = &known_broken;
-            // Deep transpiler recursion (see test_a2r_deep) needs the same
-            // oversized stack the rest of the a2r suite uses.
+    let chunk = cases.len().div_ceil(workers);
+    let rows = std::sync::Mutex::new(Vec::new());
+    std::thread::scope(|threads| {
+        for part in cases.chunks(chunk) {
+            let rows = &rows;
+            let ledger = &ledger;
             let _ = std::thread::Builder::new()
                 .stack_size(16 * 1024 * 1024)
-                .spawn_scoped(scope, move || {
-                    for case in chunk {
-                        let src = match read_to_string(&case.source_file) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                failures.lock().unwrap().push(format!(
-                                    "{}: failed to read {}: {e}",
-                                    case.name,
-                                    case.source_file.display()
-                                ));
-                                continue;
-                            }
-                        };
-                        // Plan 610 ⑥: relative use.c JSON manifests resolve
-                        // against the case dir (same as test_a2r_with_base).
-                        let mut rcode = match crate::trans::rust::transpile_rust_with_source_dir(
-                            case.source_file
-                                .parent()
-                                .unwrap_or(std::path::Path::new(".")),
+                .spawn_scoped(threads, move || {
+                    for case in part {
+                        let mut row = serde_json::json!({
+                            "name": case.name,
+                            "source_sha256": case.source_sha256,
+                        });
+                        let product = match crate::trans::rust::transpile_rust_with_source_dir(
+                            &case.source_dir,
                             &case.name,
-                            &src,
+                            &case.source,
                         ) {
-                            Ok(r) => r,
-                            Err(e) => {
-                                failures
-                                    .lock()
-                                    .unwrap()
-                                    .push(format!("{}: transpile failed: {e}", case.name));
-                                continue;
-                            }
+                            Err(e) => Err(format!("transpile failed: {e}")),
+                            Ok(mut code) => match code.done() {
+                                Ok(bytes) => Ok(bytes.to_vec()),
+                                Err(e) => Err(format!("transpile finish failed: {e}")),
+                            },
                         };
-                        let rs = match rcode.done() {
-                            Ok(b) => b,
+                        let product = match product {
+                            Ok(bytes) => bytes,
                             Err(e) => {
-                                failures
-                                    .lock()
-                                    .unwrap()
-                                    .push(format!("{}: transpile finish failed: {e}", case.name));
+                                row["classification"] = serde_json::json!("unexpected-failure");
+                                row["transpile_error"] = serde_json::json!(e);
+                                rows.lock().unwrap().push(row);
                                 continue;
                             }
                         };
@@ -1024,21 +1135,16 @@ fn a2r_rustc_real_compile_gate() {
                             .chars()
                             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
                             .collect();
-                        let rs_path = product_dir.join(format!("a2r_gate_{safe}.rs"));
-                        if std::fs::write(&rs_path, &rs).is_err() {
-                            failures.lock().unwrap().push(format!(
-                                "{}: failed to write product to {}",
-                                case.name,
-                                rs_path.display()
-                            ));
+                        let rs_path = scope.join(format!("a2r_gate_{safe}.rs"));
+                        let rmeta = scope.join(format!("a2r_gate_{safe}.rmeta"));
+                        if std::fs::write(&rs_path, &product).is_err() {
+                            row["classification"] = serde_json::json!("unexpected-failure");
+                            row["write_error"] = serde_json::json!(rs_path.display().to_string());
+                            rows.lock().unwrap().push(row);
                             continue;
                         }
-                        let rmeta = product_dir.join(format!("a2r_gate_{safe}.rmeta"));
-                        let crate_name: String = format!("a2r_gate_{safe}")
-                            .chars()
-                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                            .collect();
-                        let out = std::process::Command::new("rustc")
+                        let crate_name = format!("a2r_gate_{safe}");
+                        let output = std::process::Command::new("rustc")
                             .arg("--edition=2021")
                             .arg(format!("--crate-name={crate_name}"))
                             .arg("--crate-type=lib")
@@ -1049,85 +1155,357 @@ fn a2r_rustc_real_compile_gate() {
                             .arg(&rmeta)
                             .arg(&rs_path)
                             .output();
-                        match out {
+                        match output {
                             Err(e) => {
-                                failures.lock().unwrap().push(format!(
-                                    "{}: failed to spawn rustc (is a Rust \
-                                     toolchain on PATH?): {e}",
-                                    case.name
-                                ));
+                                row["classification"] = serde_json::json!("unexpected-failure");
+                                row["spawn_error"] = serde_json::json!(e.to_string());
                             }
-                            Ok(o) if o.status.success() => {
-                                passed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                if known_broken.contains(&case.name) {
-                                    ledger_passed.lock().unwrap().push(case.name.clone());
-                                }
-                            }
-                            Ok(o) => {
-                                let stderr = String::from_utf8_lossy(&o.stderr).to_string();
-                                if stderr_only_external_dep_errors(&stderr) {
-                                    skipped.lock().unwrap().push(case.name.clone());
-                                } else if known_broken.contains(&case.name) {
-                                    known_broken_hits.lock().unwrap().push(case.name.clone());
-                                } else {
-                                    let tail: Vec<&str> = stderr.lines().rev().take(30).collect();
-                                    failures.lock().unwrap().push(format!(
-                                        "{}: rustc typecheck failed\n{}",
-                                        case.name,
-                                        tail.join("\n")
-                                    ));
-                                }
+                            Ok(out) => {
+                                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                                let class = classify_compile(
+                                    out.status.success(),
+                                    &stderr,
+                                    ledger.contains(&case.name),
+                                );
+                                row["product_sha256"] = serde_json::json!(hex(&sha256(&product)));
+                                row["rustc_exit"] = serde_json::json!(out.status.code());
+                                row["stderr_sha256"] = serde_json::json!(hex(&sha256(stderr.as_bytes())));
+                                row["stderr_head"] = serde_json::json!(
+                                    stderr.lines().take(40).collect::<Vec<_>>().join("\n")
+                                );
+                                row["classification"] = serde_json::json!(class.as_str());
                             }
                         }
+                        rows.lock().unwrap().push(row);
                     }
                 });
         }
     });
+    let mut rows = rows.into_inner().unwrap();
+    rows.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    Ok(serde_json::json!({
+        "schema": COMPILE_RECEIPT_SCHEMA,
+        "toolchain": compile_toolchain_identity(),
+        "ledger_sha256": compile_ledger_sha256(),
+        "corpus": rows.iter().map(|row| serde_json::json!({
+            "name": row["name"], "source_sha256": row["source_sha256"],
+        })).collect::<Vec<_>>(),
+        "rows": rows,
+    }))
+}
 
-    let fails = failures.into_inner().unwrap();
-    let skips = skipped.into_inner().unwrap();
-    let ledger_hits = known_broken_hits.into_inner().unwrap();
-    let ledger_now_green = ledger_passed.into_inner().unwrap();
-    let ok = passed.load(std::sync::atomic::Ordering::Relaxed);
-    let mut message = String::new();
-    if !ledger_now_green.is_empty() {
-        message.push_str(&format!(
-            "obsolete ledger entries (case now compiles — remove the line \
-             from test/a2r/compile_gate_known_broken.txt):\n  {}\n\n",
-            ledger_now_green.join("\n  ")
+/// Re-derive one receipt row's classification from its RAW evidence. A receipt
+/// cannot launder a failure into a pass: a non-zero exit is never "compiled",
+/// an unreadable/missing exit is an unexpected failure, and the mixed
+/// external-dependency case (dependency error + another error) is not a skip.
+fn recompute_row_class(
+    row: &serde_json::Value,
+    name: &str,
+    ledger: &std::collections::BTreeSet<String>,
+) -> CompileClass {
+    match row.get("rustc_exit") {
+        Some(exit) => {
+            let exit_ok = exit.as_i64() == Some(0);
+            let stderr = row.get("stderr_head").and_then(|v| v.as_str()).unwrap_or("");
+            classify_compile(exit_ok, stderr, ledger.contains(name))
+        }
+        None => CompileClass::UnexpectedFailure,
+    }
+}
+
+/// Verify a receipt against the CURRENT documents, ledger and toolchain, and
+/// re-derive every classification from its stored raw evidence.
+fn verify_compile_receipt(receipt: &serde_json::Value) -> Result<String, String> {
+    if receipt.get("schema").and_then(|v| v.as_str()) != Some(COMPILE_RECEIPT_SCHEMA) {
+        return Err("unsupported compile receipt schema".into());
+    }
+    if receipt.get("toolchain").and_then(|v| v.as_str()) != Some(compile_toolchain_identity().as_str()) {
+        return Err("compile receipt toolchain identity is stale (reprepare)".into());
+    }
+    if receipt.get("ledger_sha256").and_then(|v| v.as_str()) != Some(compile_ledger_sha256().as_str()) {
+        return Err("compile receipt ledger identity is stale (reprepare)".into());
+    }
+    let cases = compile_corpus()?;
+    let ledger = compile_ledger();
+    let corpus = receipt
+        .get("corpus")
+        .and_then(|v| v.as_array())
+        .ok_or("compile receipt has no corpus")?;
+    if corpus.len() != cases.len() {
+        return Err(format!(
+            "compile receipt corpus size {} != current {}",
+            corpus.len(),
+            cases.len()
         ));
     }
-    message.push_str(&format!(
-        "rustc 实编门: {} compiled, {} skipped (external deps), {} \
-         known-broken (ledger), {} unexpected failures",
-        ok,
-        skips.len(),
-        ledger_hits.len(),
-        fails.len()
-    ));
-    if !skips.is_empty() {
-        message.push_str(&format!(
-            "\n\nskipped (external deps):\n  {}",
-            skips.join("\n  ")
+    let rows = receipt
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .ok_or("compile receipt has no rows")?;
+    if rows.len() != cases.len() {
+        return Err(format!(
+            "compile receipt rows {} != corpus {}",
+            rows.len(),
+            cases.len()
         ));
     }
-    if !fails.is_empty() {
-        message.push_str(&format!(
-            "
+    let mut counts = std::collections::BTreeMap::new();
+    let mut problems = Vec::new();
+    for (case, row) in cases.iter().zip(rows.iter()) {
+        let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        if name != case.name {
+            problems.push(format!("receipt row order/name drift at {}", case.name));
+            continue;
+        }
+        if row.get("source_sha256").and_then(|v| v.as_str()) != Some(case.source_sha256.as_str()) {
+            problems.push(format!("{}: receipt source identity is stale", case.name));
+            continue;
+        }
+        let declared = row
+            .get("classification")
+            .and_then(|v| v.as_str())
+            .and_then(CompileClass::parse);
+        let Some(declared) = declared else {
+            problems.push(format!("{}: receipt classification unreadable", case.name));
+            continue;
+        };
+        // Re-derive from raw evidence; a receipt cannot launder a failure.
+        let recomputed = recompute_row_class(row, &case.name, &ledger);
+        if recomputed != declared {
+            problems.push(format!(
+                "{}: receipt says {} but raw evidence re-derives {}",
+                case.name,
+                declared.as_str(),
+                recomputed.as_str()
+            ));
+            continue;
+        }
+        if matches!(declared, CompileClass::Compiled | CompileClass::ObsoleteLedger) {
+            let hash = row.get("product_sha256").and_then(|v| v.as_str()).unwrap_or("");
+            if hash.is_empty() {
+                problems.push(format!("{}: compiled row has no product hash", case.name));
+            }
+        }
+        *counts.entry(declared.as_str()).or_insert(0usize) += 1;
+    }
+    // The ledger must be fully accounted for: every entry either hit a real
+    // failure (known-broken) or compiled again (obsolete). A vanished entry is
+    // an error, not a silent shrink.
+    for entry in &ledger {
+        let row = rows
+            .iter()
+            .find(|row| row.get("name").and_then(|v| v.as_str()) == Some(entry.as_str()));
+        match row.and_then(|row| row.get("classification").and_then(|v| v.as_str())) {
+            Some("known-broken") | Some("obsolete-ledger") => {}
+            other => problems.push(format!(
+                "ledger entry {entry} is not accounted for (receipt: {other:?})"
+            )),
+        }
+    }
+    if !problems.is_empty() {
+        return Err(format!(
+            "compile receipt rejected ({}):\n  {}",
+            problems.len(),
+            problems.join("\n  ")
+        ));
+    }
+    Ok(format!(
+        "rustc 实编门（文档源，receipt 验证）: {} compiled, {} skipped (external deps), \
+         {} known-broken (ledger), {} obsolete ledger, {} unexpected failures",
+        counts.get("compiled").copied().unwrap_or(0),
+        counts.get("external-dep-skip").copied().unwrap_or(0),
+        counts.get("known-broken").copied().unwrap_or(0),
+        counts.get("obsolete-ledger").copied().unwrap_or(0),
+        counts.get("unexpected-failure").copied().unwrap_or(0),
+    ))
+}
 
-unexpected failures:
-  {}",
-            fails.join(
-                "
-  "
+/// Default receipt scope: the plan-artifacts scratch home of this plan, found
+/// by climbing from the crate until a sibling `plan-artifacts` directory
+/// exists (the checkout itself never hosts plan evidence).
+fn default_compile_scope() -> PathBuf {
+    let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    while let Some(parent) = dir.parent() {
+        let candidate = parent.join("plan-artifacts").join("plan-1066").join("a2r-compile");
+        if parent.join("plan-artifacts").is_dir() {
+            return candidate;
+        }
+        dir = parent.to_path_buf();
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/plan1066-a2r-compile")
+}
+
+#[test]
+#[ignore = "explicit PLAN-1066 T-06 250-input real-compile gate: spawns rustc per document item; run via `cargo t a2r-compile --ignored --test-name tests::a2r_tests::a2r_rustc_real_compile_gate`"]
+fn a2r_rustc_real_compile_gate() {
+    let scope = std::env::var_os("AUTO_TEST_1066_COMPILE_OUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_compile_scope);
+    let receipt = prepare_compile_receipt(&scope).unwrap_or_else(|e| panic!("prepare: {e}"));
+    let summary = verify_compile_receipt(&receipt).unwrap_or_else(|e| panic!("{e}"));
+    let receipt_path = scope.join("compile-receipt.json");
+    std::fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt).unwrap())
+        .unwrap_or_else(|e| panic!("{}: {e}", receipt_path.display()));
+    eprintln!("{summary}\nreceipt: {}", receipt_path.display());
+    if summary.contains("0 unexpected failures") && !summary.contains("1 obsolete") {
+        return;
+    }
+    let unexpected = receipt["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| {
+            matches!(
+                row["classification"].as_str(),
+                Some("unexpected-failure") | Some("obsolete-ledger")
             )
-        ));
-    }
-    assert!(
-        fails.is_empty() && ledger_now_green.is_empty(),
-        "{}",
-        message
+        })
+        .map(|row| format!("  {}: {}", row["name"], row["classification"]))
+        .collect::<Vec<_>>();
+    panic!("{summary}\n{}", unexpected.join("\n"));
+}
+
+/// Verify-only entry: re-reads an existing receipt (no compilation). A missing
+/// or stale receipt is a preparation error, never a pass.
+#[test]
+#[ignore = "explicit PLAN-1066 T-06 verify-only entry: requires a prepared AUTO_TEST_1066_COMPILE_RECEIPT"]
+fn a2r_compile_receipt_verify() {
+    let path = std::env::var_os("AUTO_TEST_1066_COMPILE_RECEIPT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_compile_scope().join("compile-receipt.json"));
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+        panic!(
+            "compile receipt preparation missing: {} ({e}) — run the explicit prepare \
+             (`cargo t a2r-compile --ignored --test-name tests::a2r_tests::a2r_rustc_real_compile_gate`)",
+            path.display()
+        )
+    });
+    let receipt: serde_json::Value = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|e| panic!("{}: unreadable receipt: {e}", path.display()));
+    let summary = verify_compile_receipt(&receipt).unwrap_or_else(|e| panic!("{e}"));
+    eprintln!("{summary}\nreceipt: {}", path.display());
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-1066 T-06 controls (fast, no rustc spawn):
+// NC-13 receipt tampering is rejected by name, NC-14 classification comes from
+// the raw process evidence (mixed external-dependency errors never skip, a
+// ledger item that compiles again is obsolete), NC-27 the four retained
+// fixtures keep their frozen identity and the M03 product is not the oracle.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn plan1066_compile_gate_classification_and_receipt_controls() {
+    use auto_test_case::sha256::{hex, sha256};
+    let ledger: std::collections::BTreeSet<String> =
+        ["a2r/01_basics/001_hello".to_string()].into_iter().collect();
+
+    // NC-14: classification follows the raw evidence only.
+    let skip_stderr = "error[E0432]: unresolved import `foo`";
+    assert_eq!(
+        classify_compile(false, skip_stderr, false),
+        CompileClass::ExternalDepSkip
     );
+    assert_eq!(
+        classify_compile(false, "error[E0433]: failed to resolve\nnot found", false),
+        CompileClass::ExternalDepSkip
+    );
+    let mixed = "error[E0432]: unresolved import `foo`\nerror[E0308]: mismatched types";
+    assert_eq!(
+        classify_compile(false, mixed, false),
+        CompileClass::UnexpectedFailure,
+        "dependency error + another error must not be skipped"
+    );
+    assert_eq!(
+        classify_compile(true, "", false),
+        CompileClass::Compiled
+    );
+    assert_eq!(
+        classify_compile(false, "error[E0308]: mismatched types", true),
+        CompileClass::KnownBroken
+    );
+    assert_eq!(
+        classify_compile(true, "", true),
+        CompileClass::ObsoleteLedger,
+        "a ledger entry that compiles again is obsolete, never a silent pass"
+    );
+
+    // NC-13: a fake PASS row cannot be verified, and a missing exit is a failure.
+    let fake_pass = serde_json::json!({"name": "a2r/01_basics/001_hello", "rustc_exit": 1,
+        "stderr_head": "error[E0308]: mismatched types", "classification": "compiled"});
+    assert_eq!(
+        recompute_row_class(&fake_pass, "a2r/01_basics/001_hello", &ledger),
+        CompileClass::KnownBroken
+    );
+    let no_exit = serde_json::json!({"name": "x", "classification": "compiled"});
+    assert_eq!(
+        recompute_row_class(&no_exit, "x", &ledger),
+        CompileClass::UnexpectedFailure
+    );
+
+    // A receipt whose schema/toolchain/ledger identity is altered is rejected
+    // before any row is trusted.
+    let mut tampered = serde_json::json!({
+        "schema": COMPILE_RECEIPT_SCHEMA,
+        "toolchain": "stale",
+        "ledger_sha256": compile_ledger_sha256(),
+        "corpus": [],
+        "rows": [],
+    });
+    let error = verify_compile_receipt(&tampered).expect_err("stale toolchain must be rejected");
+    assert!(error.contains("toolchain"), "{error}");
+    tampered["toolchain"] = serde_json::json!(compile_toolchain_identity());
+    tampered["ledger_sha256"] = serde_json::json!("stale");
+    let error = verify_compile_receipt(&tampered).expect_err("stale ledger must be rejected");
+    assert!(error.contains("ledger"), "{error}");
+    tampered["schema"] = serde_json::json!("other/1");
+    let error = verify_compile_receipt(&tampered).expect_err("unknown schema must be rejected");
+    assert!(error.contains("schema"), "{error}");
+
+    // NC-27: the four retained fixtures keep their frozen identity (hash from
+    // the plan's §5.3 table), and the M03 product is never the oracle.
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r/25_foreign_types");
+    for (relative, frozen) in [
+        ("001_foreign_generic_field/stub_fake_term.rs", "0f94efcb3b2eff0a32cc5a531768c483bcbf60f0f98675d9c450fe425d414845"),
+        ("002_foreign_trait_impl/stub_foreign_shape.rs", "1fc7864d774c4bbaabb8ecfa1efb929dd19c45187b2cbf930172693504ddffdc"),
+        ("005_term_session_subset/stub_fake_core.rs", "7eef28a346d14f507df7b7960ccf0fca865944985aeb1bc2b5f982f113c6ac62"),
+        ("005_term_session_subset/oracle.rs", "4353b51f6a9a75c1b591c53abf573f4c8298e1b44c4f9968a0f23f1c9a4c569a"),
+    ] {
+        let bytes = std::fs::read(d.join(relative)).unwrap_or_else(|e| panic!("{relative}: {e}"));
+        assert_eq!(hex(&sha256(&bytes)), frozen, "{relative} fixture drift");
+    }
+    let m03_doc = crate::tests::legacy_doc::load_case(
+        &d.join("005_term_session_subset"),
+        "term_session_subset",
+    )
+    .expect("doc");
+    let product = m03_doc
+        .artifact(".expected.rs")
+        .or_else(|| m03_doc.artifact(".rs"))
+        .expect("M03 doc product")
+        .to_vec();
+    let oracle = std::fs::read(d.join("005_term_session_subset/oracle.rs")).expect("oracle");
+    assert_ne!(product, oracle, "M03 must not use the product as its own oracle");
+
+    // Every M guard's document product equals the frozen sidecar it replaced
+    // (payload identity proof for the six products the plan names).
+    for (relative, stem) in [
+        ("04_strings/008_str_param_borrow", "str_param_borrow"),
+        ("25_foreign_types/001_foreign_generic_field", "foreign_generic_field"),
+        ("25_foreign_types/002_foreign_trait_impl", "foreign_trait_impl"),
+        ("25_foreign_types/003_trait_object", "trait_object"),
+        ("25_foreign_types/004_bare_thread", "bare_thread"),
+        ("25_foreign_types/005_term_session_subset", "term_session_subset"),
+    ] {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/a2r").join(relative);
+        let doc = crate::tests::legacy_doc::load_case(&dir, stem).expect("doc");
+        let payload = doc
+            .artifact(".expected.rs")
+            .or_else(|| doc.artifact(".rs"))
+            .expect("doc product");
+        let sidecar = std::fs::read(dir.join(format!("{stem}.expected.rs"))).expect("sidecar");
+        assert_eq!(payload, sidecar.as_slice(), "{stem}: document product differs from sidecar");
+    }
 }
 
 // === 01_basics ===
