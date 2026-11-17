@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1067
-status: executing
+status: execution_done
 feature_name: ACE M2-B AC原生Future异步与Task调度补齐
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 4
+current_step: 8
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -66,7 +66,7 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 
 **阶段门与授权**：985/T-A05已落主、M2A-08成立（[m2-certification.md](../specs/ace-migration/m2-certification.md) §门级行，收据 `95c7fbad8`/`0db949754`，B批解锁）；本轮goal即本包执行授权，无需再询。基线 `f0db9bd0f`；唯一树 `D:/autostack/.wt/lang-1067/auto-lang`、分支 `plan-1067-dev`；材料 `D:/autostack/plan-artifacts/plan-1067/`（主检出中他人docs WIP未触碰）。
 
-**冻结的调度面（沿968 D1–D6，不改语义）**：11条`SCHED_*` MIR（0x41–0x4B）、scheduler源profile（closures超集）、每task一个driver `__task_<Name>(__init…) int`（start/stop钩子＋`while true`收/分派环）、handle/future为i32、mailbox容量=spawn实参、ask端口1基单消费者、退出有序drain（置stop→缓冲消息先投递→stop钩子→join→全释放；drain期sleep立即完成）。语料=`crates/auto-lang/test/cases/ace-m2/scheduler/`（8正例+3反例），AV oracle组`case-ace-m2-scheduler-968`。
+**冻结的调度面（沿968 D1–D6；本轮仅在共享前门收紧三条实现一致性规则——`Task.spawn` 仅入口、mailbox `cap>=1`、`stopping()` 需邮箱耗尽——三者都是 968 已写明的"bounded mailbox / 具名错误 / 缓冲先投递"合同的落实，不扩张语言能力）**：11条`SCHED_*` MIR（0x41–0x4B）、scheduler源profile（closures超集）、每task一个driver `__task_<Name>(__init…) int`（start/stop钩子＋`while true`收/分派环）、handle/future为i32、mailbox容量=spawn实参、ask端口1基单消费者、退出有序drain（置stop→缓冲消息先投递→stop钩子→join→全释放；drain期sleep立即完成）。语料=`crates/auto-lang/test/cases/ace-m2/scheduler/`（8正例+3反例），AV oracle组`case-ace-m2-scheduler-968`。
 
 **native车道方案（T-01择定，T-02已实证）**：
 - 新no_std kernel32 runtime crate `experimental/ace/crates/sched-runtime`（ABI `mn.sched.runtime/1`）：task=真实OS线程（`CreateThread`），mailbox=`SRWLOCK`+`CONDITION_VARIABLE`阻塞（满则park发送者=背压；无忙等、不占唯一执行器）；ask/reply端口单终态提交（迟到reply丢弃）；TLS当前task；`mn_sched_drain`置stop→join→逐块释放并以`LIVE_ALLOCS`残值审计（非0=具名`72 sched.leak`退出，绝不冒成功）；语言错误`mn_sched_fail`写冻结消息到stderr后`ExitProcess(70)`（=native Trap类）。
@@ -136,7 +136,7 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-ASYNC | modify | docs/specs/ace-migration/m2-scheduler.md | native named rejection→经真实验证的AC调度/语义及原错误资源合同 | M2最终三端一致 | AC-01/02/03 |
+| SD-ASYNC | modify | docs/specs/ace-migration/m2-scheduler.md（合入时改 **:10-11、:19**；另 **:17** AV 调度用例 12→17、并补记三端共享的"仅入口 spawn / cap≥1 / stop 保留缓冲投递"规则） | native named rejection→经真实验证的AC调度/语义及原错误资源合同 | M2最终三端一致 | AC-01/02/03 |
 | SD-NATIVE | add | docs/specs/auto-ac/native-async-scheduler.md（新） | 无AC状态机→已验帧/完成/取消/资源/OS/依赖闭包 | 可部署native | AC-02/03/04 |
 
 ## 6. 测试设计
@@ -169,13 +169,13 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 全部0/10，原型/用例均待实施；当前不启动工作树或产品。
 
 - [x] **T-01｜work｜AC-01**：核985/A阶段门和原源码/规范/组，冻结~T/Task/Iter与每个旧新义务/预算、SCHED/native/platform接面、Linux移交。 — 2026-11-17 ✅（见§5 T-01冻结：M2A-08门、11 SCHED面、native线程runtime方案、单staticlib约束、组/平台名单）
-- [ ] **T-02｜work｜AC-02/03**[re3 重开 T-1067-1]：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 2026-11-17 ✅（8/8正例逐字节真PE＋owned Str 状态跨 spawn＋bool reply 跨 await＋未 await 回复 drain 释放＋具名错误；`sched_m2_1067` 8 tests。取消/迟到终态按原任务归 T-05，不属本行谓词）
+- [x] **T-02｜work｜AC-02/03**[T-1067-1 已修]：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 2026-11-17 ✅（8/8正例逐字节真PE＋owned Str 状态跨 spawn＋bool reply 跨 await＋未 await 回复 drain 释放＋具名错误；`sched_m2_1067` 8 tests。取消/迟到终态按原任务归 T-05，不属本行谓词）
 - [x] **T-03｜work｜AC-02**：沿共享类型/IR补AC异步帧、await/go及泛型/Option/Result跨挂起值和所有权，落V-02正反例；依T-02。 — 2026-11-17 ✅（值面tag/物化/释放/drain审计＋bool typed reply；owned-text 消息/回复为具名差额，见§5 T-03 表）
 - [x] **T-04｜work｜AC-02/03**[N-1067-1/2/3 已修]：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-1/3 不成立，重开（历史证据保留：真PE逐字节：message_handler/mailbox_fifo FIFO、ask_reply 42、stop_hook 先投递后 stop、backpressure cap=1 三消息顺序不漏；源码为 968 原语料未改）
-- [ ] **T-05｜work｜AC-03**[re3 重开 T-1067-1]：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-1/2 不成立，重开（历史证据保留：真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
-- [ ] **T-06｜work｜AC-01/02**[re3 重开 T-1067-1]：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-4 不成立，重开（历史证据保留：三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
+- [x] **T-05｜work｜AC-03**[T-1067-1 已修]：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-1/2 不成立，重开（历史证据保留：真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
+- [x] **T-06｜work｜AC-01/02**[T-1067-1 已修]：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-4 不成立，重开（历史证据保留：三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
 - [x] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。 — 2026-11-17 ✅（显式仓外输出根构建+真实进程运行+published PE 导入审计：仅 kernel32.dll、符号全在本车道 19 项声明内、变异体被具名拒绝；runtime 身份与库字节一致绑定）
-- [ ] **T-08｜work｜AC-01..04**[re3 重开 T-1067-2/3/4/5]：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-5/6/7/9/10 不成立，重开（历史证据保留：并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
+- [x] **T-08｜work｜AC-01..04**[T-1067-2/3/4/5 已修]：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-5/6/7/9/10 不成立，重开（历史证据保留：并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
 - [ ] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
 - [ ] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
 
@@ -183,6 +183,18 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 
 ## 9. 复审记录
 
+2026-11-17 stage: work | PLAN-1067 r1 round-12 | review3 findings T-1067-1..5 修复完成 → 回 execution_done，交第 4 次复审（第 3 个 repair cycle 已用；若再 needs_fix 按上限停止并交用户裁定） | code ``104cde943``（config）/``f0814b271``（tests）/``eeff4d60e``（sigs）
+
+| finding | 修复 | 重放/证据 |
+|---|---|---|
+| T-1067-1（go 标量返回 callee 构建失败） | `SchedCallee` 增 `sig`（callee 自己 unit 的完整签名）与 `result_text`；thunk 用**同一签名** `declare_function`（结果照旧丢弃）；owned-text 结果在 thunk 内 `ac_rt_own_free` 释放，避免丢弃即泄漏 | 新用例 `scheduler_go_to_scalar_returning_callee_builds_and_runs`（同单元直调+`go` → `2\n`；递归 `go chain` → `2\n`）与 `scheduler_go_discarding_an_owned_text_result_does_not_leak`（exit 0＝零残值）全绿；`sched_m2_1067` 28/28 |
+| T-1067-2（门内 >10s） | ① race 用例**建一次跑十次**（`run_repeated`，重复不再重编译）；② 8 例语料拆成 4 个双例 case；③ `.config/nextest-full.toml` 新增 `sched-native = {max-threads = 1}` 组，仅按名字（`test(/^scheduler_/) or test(/^av_leg::av_lane/)`）串行本二进制用例 | 三次 `cargo t ace-native`：**28 个调度用例逐例最大 1.53 / 1.58 / 1.86s**，gate 62–64s（修复前同条件 10–14s）；输入/断言/10s 规则未变 |
+| T-1067-3（rustfmt） | `text-runtime`、`sched_desugar` 及其余触面统一 rustfmt | `rustfmt --check` 11 个触面 .rs **exit 0** |
+| T-1067-4（spec §6 未记 entry-only） | spec §6 增「入口限定」与「邮箱容量 ≥1」两条具名边界 | spec §6 行 81–85 |
+| T-1067-5（SD-ASYNC 待改行不全） | 规范增量表补 `m2-scheduler.md:17`（AV 用例 12→17）与三条共享实现一致性规则（仅入口 spawn / cap≥1 / stop 保留缓冲投递）；§5「不改语义」改为"仅收紧三条 968 已写明合同的实现一致性规则" | plan §5 行 69、§5 规范增量表 |
+
+**运行**：`sched_m2_1067` **28/28**（隔离 6.6–9.6s）；`cargo t ace-native` PASS ×3（run-2s8a9db6/j_6by294/qha683i3 为修复前，串行化后 3 次新 run 全 PASS）；`cargo t ace-source ace-lowering ace-native case-ace-m2-scheduler-968` **PASS**（串行化后复跑，case 组 11/11）。
+**过程记录（诚实）**：一次 `.config/nextest-full.toml` 编辑因 .NET 相对路径落到**主检出**，已 `git checkout --` 还原（主检出该文件 clean）后在 worktree 绝对路径重做并提交；后续所有 .NET 文件写入一律绝对路径。
 2026-11-17 stage: review | review_scope: final（第三次复审） | reviewer_identity: reviewer-1067c（独立委派上下文，无实现署名；自建 probe + 门内 nextest 三次 + 代码/spec 逐行重建） | plan_id: PLAN-1067 | plan_revision: 1 | **outcome: needs_fix（第三次 failed final review，已用 2 个 repair cycle）** | worktree_path: D:/autostack/.wt/lang-1067/auto-lang | branch: plan-1067-dev | reviewed_commit: `4d6e81a2c26bc3938e63cfb4284bbd5bd1d8c29c` | base_commit: `f0db9bd0f746f115f9ec16124b798939e96e5860` | acceptance_results: AC-01 partial；AC-02 partial；**AC-03 pass**；**AC-04 pass**；AC-REVIEW fail（本记录） | next: work（第三次 bounded repair，见下"裁定"）
 
 **已关闭**：N-1067-1（drain 每记录先 stop 再 join；mid-drain spawn 变具名拒绝；互递归链 0.33s 具名 Resource 不死锁）、N-1067-2（stop/start 钩子同一 callee 双块 → `tick\ntick` 绿）、N-1067-3（AV+native `one\ntwo\n2`、stop 钩子 `go` 与缓冲消息 `one\ntwo\ntick`）、N-1067-4（冷 target 实验：rename 目录 → PASS 且重建、恢复 78 文件/72,566,604 B/SHA256 一致）、N-1067-6、N-1067-8。部分：N-1067-7（15 个触面 .rs 中 13 绿，2 红：text-runtime 分支新增空行、sched_desugar 既有长签名）、N-1067-9（行为已闭，但 §6 未记 entry-only，规则在 §2:33）。
@@ -439,3 +451,5 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 9 | from: review |
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 10 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 4d6e81a2c | next: review
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 11 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 4d6e81a2c | next: work
+
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 12 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: review
