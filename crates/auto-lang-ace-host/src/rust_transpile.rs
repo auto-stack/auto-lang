@@ -107,7 +107,32 @@ pub fn transpile_with_profile(
     let program = ace_a2x_rust::lower_program(&view, entry)
         .map_err(|reject| AceRustError::new("ace.rust/lower", format!("{reject:?}")))?;
     let input_hash = format!("{:016x}", fnv1a(source.as_bytes()));
-    let fileset = ace_a2x_rust::assemble_file_set(&view, &program, &input_hash, entry);
+    // collections 家族有**自己的**运行时前导（`A2xStr` 等）：用它的装配器，
+    // 否则产物缺少文本运行时、冷构建必失败（本轮实测：E0425 A2xStr）。
+    let fileset = match profile {
+        TranspileProfile::Collections => {
+            // 该装配器还要求 full source sha256 与规范化执行配置；两者都进
+            // manifest/证书身份，不能省。
+            let source_sha256 = sha256_placeholder_hex(source.as_bytes());
+            // 规范化执行配置：本驱动只跑"无故障/无预算/无事件/无取消"的默认
+            // 形态（与冷构建门一致）；预算/取消的接线属后续切片。
+            let config =
+                ace_a2x_rust::canonical_execution_config("transpile", u64::MAX, None, false, false);
+            let set = ace_a2x_rust::assemble_collections_file_set(
+                &view,
+                &program,
+                &input_hash,
+                &source_sha256,
+                &config,
+                entry,
+            );
+            ace_a2x_rust::FileSet {
+                files: set.files,
+                manifest: set.manifest,
+            }
+        }
+        _ => ace_a2x_rust::assemble_file_set(&view, &program, &input_hash, entry),
+    };
     Ok(AceRustFileSet {
         files: fileset
             .files
@@ -117,6 +142,26 @@ pub fn transpile_with_profile(
         manifest: fileset.manifest,
         entry: program.entry,
     })
+}
+
+/// 占位：本驱动不引 sha2 依赖；collections 装配器只把它当身份字段填入
+/// manifest（内容哈希的正式实现属后续切片，登记为差额）。
+fn sha256_placeholder_hex(bytes: &[u8]) -> String {
+    let out = sha256_placeholder(bytes);
+    out.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn sha256_placeholder(bytes: &[u8]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    let a = fnv1a(bytes).to_le_bytes();
+    let b = fnv1a(&bytes.iter().map(|v| v.wrapping_add(1)).collect::<Vec<u8>>()).to_le_bytes();
+    out[..8].copy_from_slice(&a);
+    out[8..16].copy_from_slice(&b);
+    let c = fnv1a(&bytes.iter().rev().copied().collect::<Vec<u8>>()).to_le_bytes();
+    let d = fnv1a(&[bytes.len() as u8]).to_le_bytes();
+    out[16..24].copy_from_slice(&c);
+    out[24..32].copy_from_slice(&d);
+    out
 }
 
 fn fnv1a(bytes: &[u8]) -> u64 {
