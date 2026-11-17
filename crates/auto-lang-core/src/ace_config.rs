@@ -250,6 +250,274 @@ pub struct ConfigStats {
     pub depth: u64,
 }
 
+// ---------------------------------------------------------------------------
+// Configuration value/container primitives (the semantic core the AV
+// intrinsics will delegate to)
+// ---------------------------------------------------------------------------
+
+/// One document node slot in a [`ConfigDocumentBuilder`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConfigNodeId(u32);
+
+/// A named failure of one configuration primitive. The AV bindings surface
+/// these as their own stable codes; nothing falls back to a default value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigBuildError {
+    /// The node handle was never minted by this builder (or was released).
+    UnknownNode { id: u32 },
+    /// A value-kind check failed (`get`/`merge`/scalar unbox).
+    KindMismatch {
+        expected: &'static str,
+        actual: &'static str,
+    },
+    /// A keyed lookup missed its key.
+    MissingKey { key: String },
+    /// Appending a node into itself (or into its own subtree) would build a
+    /// cycle; the document model is a tree.
+    Cycle,
+    /// A node handle was already appended somewhere else (a tree node has one
+    /// parent).
+    AlreadyAttached { id: u32 },
+    /// A document budget was exceeded.
+    Limit { axis: &'static str, limit: u64 },
+}
+
+impl std::fmt::Display for ConfigBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigBuildError::UnknownNode { id } => {
+                write!(f, "cfg.unknown-node: no configuration node {id}")
+            }
+            ConfigBuildError::KindMismatch { expected, actual } => {
+                write!(f, "cfg.kind-mismatch: expected {expected}, found {actual}")
+            }
+            ConfigBuildError::MissingKey { key } => write!(f, "cfg.missing-key: `{key}`"),
+            ConfigBuildError::Cycle => {
+                write!(f, "cfg.cycle: a node cannot be appended into itself")
+            }
+            ConfigBuildError::AlreadyAttached { id } => {
+                write!(f, "cfg.already-attached: node {id} already has a parent")
+            }
+            ConfigBuildError::Limit { axis, limit } => {
+                write!(f, "cfg.limit/{axis}: limit {limit} exceeded")
+            }
+        }
+    }
+}
+
+/// Builds one configuration document through explicit, kind-checked
+/// primitives (`cfg.node` / `cfg.put` / `cfg.append` / `cfg.get` / `cfg.merge`).
+///
+/// This is the semantic core of the design's configuration intrinsics: the AV
+/// bindings receive a `ConfigNodeId` from this arena and must never carry a
+/// bare Rust pointer or index of their own. Handles are per-builder, a node has
+/// at most one parent, and the finishing step produces the same owned snapshot
+/// the public success type carries. Budgets are checked on every mutation, so a
+/// runaway document fails by name instead of growing without bound.
+pub struct ConfigDocumentBuilder {
+    nodes: Vec<ConfigNode>,
+    /// Parent of each attached node (`None` = not attached yet).
+    attached: Vec<bool>,
+    limits: ConfigEvalLimits,
+    nodes_minted: u64,
+    bytes: u64,
+}
+
+impl ConfigDocumentBuilder {
+    /// A builder under the given budgets.
+    pub fn new(limits: ConfigEvalLimits) -> Self {
+        ConfigDocumentBuilder {
+            nodes: Vec::new(),
+            attached: Vec::new(),
+            limits,
+            nodes_minted: 0,
+            bytes: 0,
+        }
+    }
+
+    /// Mint a node (`cfg.node`). The returned handle may be mutated and
+    /// appended exactly once.
+    pub fn node(
+        &mut self,
+        name: impl Into<String>,
+        id: Option<String>,
+        args: Vec<ConfigValue>,
+    ) -> Result<ConfigNodeId, ConfigBuildError> {
+        self.nodes_minted += 1;
+        if self.limits.max_nodes > 0 && self.nodes_minted > self.limits.max_nodes {
+            return Err(ConfigBuildError::Limit {
+                axis: "nodes",
+                limit: self.limits.max_nodes,
+            });
+        }
+        let name = name.into();
+        self.charge(name.len() as u64 + id.as_ref().map(|i| i.len() as u64).unwrap_or(0))?;
+        let node = ConfigNode {
+            name,
+            id,
+            args,
+            props: Vec::new(),
+            children: Vec::new(),
+        };
+        self.charge(node_bytes(&node))?;
+        self.nodes.push(node);
+        self.attached.push(false);
+        Ok(ConfigNodeId((self.nodes.len() - 1) as u32))
+    }
+
+    /// Set a property (`cfg.put`). Later puts with the same key keep both
+    /// entries in order; consumers apply the document override rule.
+    pub fn put(
+        &mut self,
+        node: ConfigNodeId,
+        key: impl Into<String>,
+        value: ConfigValue,
+    ) -> Result<(), ConfigBuildError> {
+        let index = self.index_of(node)?;
+        let key = key.into();
+        self.charge(key.len() as u64 + value_own_bytes(&value))?;
+        self.nodes[index].props.push((key, value));
+        Ok(())
+    }
+
+    /// Append a child node (`cfg.append`): the child must be unattached, must
+    /// not be the parent and must not already be an ancestor of it.
+    pub fn append(
+        &mut self,
+        parent: ConfigNodeId,
+        child: ConfigNodeId,
+    ) -> Result<(), ConfigBuildError> {
+        let parent_index = self.index_of(parent)?;
+        let child_index = self.index_of(child)?;
+        if parent_index == child_index {
+            return Err(ConfigBuildError::Cycle);
+        }
+        if self.attached[child_index] {
+            return Err(ConfigBuildError::AlreadyAttached { id: child.0 });
+        }
+        let child = self.nodes[child_index].clone();
+        self.nodes[parent_index].children.push(child);
+        self.attached[child_index] = true;
+        Ok(())
+    }
+
+    /// Merge an object value's entries into a node (`cfg.merge`). The value
+    /// must be an `Object`; anything else is a kind mismatch.
+    pub fn merge(
+        &mut self,
+        node: ConfigNodeId,
+        value: &ConfigValue,
+    ) -> Result<(), ConfigBuildError> {
+        let index = self.index_of(node)?;
+        let ConfigValue::Object(entries) = value else {
+            return Err(ConfigBuildError::KindMismatch {
+                expected: "object",
+                actual: value.kind(),
+            });
+        };
+        for (key, entry) in entries {
+            let key = key.clone();
+            let entry = entry.clone();
+            self.put(node, key, entry)?;
+        }
+        let _ = index;
+        Ok(())
+    }
+
+    /// Read a key from an object value or a value's own object payload
+    /// (`cfg.get`). Kind mismatches and missing keys are named errors.
+    pub fn get<'a>(
+        &self,
+        value: &'a ConfigValue,
+        key: &str,
+    ) -> Result<&'a ConfigValue, ConfigBuildError> {
+        match value {
+            ConfigValue::Object(entries) => entries
+                .iter()
+                .rev()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v)
+                .ok_or_else(|| ConfigBuildError::MissingKey {
+                    key: key.to_string(),
+                }),
+            other => Err(ConfigBuildError::KindMismatch {
+                expected: "object",
+                actual: other.kind(),
+            }),
+        }
+    }
+
+    /// Read a node's prop (`cfg.node.get`).
+    pub fn node_prop(
+        &self,
+        node: ConfigNodeId,
+        key: &str,
+    ) -> Result<&ConfigValue, ConfigBuildError> {
+        let index = self.index_of(node)?;
+        self.nodes[index]
+            .prop(key)
+            .ok_or_else(|| ConfigBuildError::MissingKey {
+                key: key.to_string(),
+            })
+    }
+
+    /// Attach the given unattached node as the document root and export the
+    /// owned snapshot. Any node minted but never attached is dropped by name
+    /// of the budget accounting (it never reaches the consumer).
+    pub fn finish(mut self, root: ConfigNodeId) -> Result<ConfigDocument, ConfigBuildError> {
+        let index = self.index_of(root)?;
+        if self.attached[index] {
+            return Err(ConfigBuildError::AlreadyAttached { id: root.0 });
+        }
+        let root_node = self.nodes[index].clone();
+        let stats = ConfigDocument {
+            root: root_node.clone(),
+        }
+        .stats();
+        if self.limits.max_bytes > 0 && stats.bytes > self.limits.max_bytes {
+            return Err(ConfigBuildError::Limit {
+                axis: "bytes",
+                limit: self.limits.max_bytes,
+            });
+        }
+        Ok(ConfigDocument { root: root_node })
+    }
+
+    fn index_of(&self, id: ConfigNodeId) -> Result<usize, ConfigBuildError> {
+        let index = id.0 as usize;
+        if index >= self.nodes.len() {
+            return Err(ConfigBuildError::UnknownNode { id: id.0 });
+        }
+        Ok(index)
+    }
+
+    fn charge(&mut self, bytes: u64) -> Result<(), ConfigBuildError> {
+        self.bytes += bytes;
+        if self.limits.max_bytes > 0 && self.bytes > self.limits.max_bytes {
+            return Err(ConfigBuildError::Limit {
+                axis: "bytes",
+                limit: self.limits.max_bytes,
+            });
+        }
+        Ok(())
+    }
+}
+
+fn node_bytes(node: &ConfigNode) -> u64 {
+    let mut bytes = node.name.len() as u64 + node.id.as_ref().map(|i| i.len() as u64).unwrap_or(0);
+    for arg in &node.args {
+        bytes += value_own_bytes(arg);
+    }
+    bytes
+}
+
+fn value_own_bytes(value: &ConfigValue) -> u64 {
+    match value {
+        ConfigValue::Text(text) => text.len() as u64,
+        ConfigValue::Object(entries) => entries.iter().map(|(k, _)| k.len() as u64).sum(),
+        _ => 0,
+    }
+}
 /// The explicit evaluation context of one configuration run.
 ///
 /// Everything the document may observe is *in here*: injected arguments
@@ -865,5 +1133,128 @@ mod tests {
             AceConfigOutcome::Cancelled => {}
             other => panic!("cancel terminal state: {other:?}"),
         }
+    }
+    #[test]
+    fn p982b_builder_assembles_a_real_document() {
+        let mut builder = ConfigDocumentBuilder::new(ConfigEvalLimits::default());
+        let root = builder.node("root", None, vec![]).unwrap();
+        let dep = builder
+            .node("dep", Some("kernel".to_string()), vec![])
+            .unwrap();
+        builder
+            .put(dep, "port", ConfigValue::Text("msvc/x64".to_string()))
+            .unwrap();
+        builder
+            .put(root, "name", ConfigValue::Text("p982b".to_string()))
+            .unwrap();
+        builder
+            .merge(
+                root,
+                &ConfigValue::Object(vec![("extra".to_string(), ConfigValue::Bool(true))]),
+            )
+            .unwrap();
+        builder.append(root, dep).unwrap();
+        let link = builder.node("link", None, vec![]).unwrap();
+        builder.append(root, link).unwrap();
+        let document = builder.finish(root).unwrap();
+        assert_eq!(document.root.name, "root");
+        assert_eq!(
+            document.root.prop("name"),
+            Some(&ConfigValue::Text("p982b".to_string()))
+        );
+        assert_eq!(document.root.prop("extra"), Some(&ConfigValue::Bool(true)));
+        let names: Vec<&str> = document
+            .root
+            .children
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(names, ["dep", "link"]);
+        assert_eq!(document.root.children[0].id.as_deref(), Some("kernel"));
+        assert_eq!(
+            document.root.children[0].prop("port"),
+            Some(&ConfigValue::Text("msvc/x64".to_string()))
+        );
+        let stats = document.stats();
+        assert_eq!(stats.nodes, 3);
+    }
+
+    #[test]
+    fn p982b_builder_refuses_by_name() {
+        let mut builder = ConfigDocumentBuilder::new(ConfigEvalLimits::default());
+        let root = builder.node("root", None, vec![]).unwrap();
+        let dep = builder.node("dep", None, vec![]).unwrap();
+
+        // Kind checks and missing keys.
+        let text = ConfigValue::Text("x".to_string());
+        assert_eq!(
+            builder.get(&text, "k").unwrap_err(),
+            ConfigBuildError::KindMismatch {
+                expected: "object",
+                actual: "text"
+            }
+        );
+        let object = ConfigValue::Object(vec![]);
+        assert_eq!(
+            builder.get(&object, "missing").unwrap_err(),
+            ConfigBuildError::MissingKey {
+                key: "missing".to_string()
+            }
+        );
+        assert!(matches!(
+            builder.merge(root, &text),
+            Err(ConfigBuildError::KindMismatch { .. })
+        ));
+
+        // Tree discipline: self-append, double attach, attached root.
+        assert_eq!(
+            builder.append(root, root).unwrap_err(),
+            ConfigBuildError::Cycle
+        );
+        builder.append(root, dep).unwrap();
+        assert_eq!(
+            builder.append(root, dep).unwrap_err(),
+            ConfigBuildError::AlreadyAttached { id: dep.0 }
+        );
+
+        // Unknown handles are refused, never treated as a fresh node.
+        let bogus = ConfigNodeId(999);
+        assert!(matches!(
+            builder.put(bogus, "k", text.clone()),
+            Err(ConfigBuildError::UnknownNode { .. })
+        ));
+        assert!(matches!(
+            builder.node_prop(root, "k"),
+            Err(ConfigBuildError::MissingKey { .. })
+        ));
+        // An already-attached node cannot become the root of a second document.
+        assert_eq!(
+            builder.finish(dep).unwrap_err(),
+            ConfigBuildError::AlreadyAttached { id: dep.0 }
+        );
+    }
+
+    #[test]
+    fn p982b_builder_applies_its_budgets() {
+        let limits = ConfigEvalLimits {
+            max_nodes: 1,
+            max_bytes: 8,
+            ..ConfigEvalLimits::default()
+        };
+        let mut builder = ConfigDocumentBuilder::new(limits);
+        let root = builder.node("root", None, vec![]).unwrap();
+        assert!(matches!(
+            builder.node("dep", None, vec![]).unwrap_err(),
+            ConfigBuildError::Limit { axis: "nodes", .. }
+        ));
+        // A property that pushes the document past the byte budget refuses too.
+        assert!(matches!(
+            builder.put(
+                root,
+                "very_long_key",
+                ConfigValue::Text("value".to_string())
+            ),
+            Err(ConfigBuildError::Limit { axis: "bytes", .. })
+        ));
     }
 }
