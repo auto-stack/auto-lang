@@ -107,12 +107,67 @@ fn executable_hash(name: &str) -> Result<String, MnError> {
     )))
 }
 
+/// PLAN-1067 review R-1067-10 (infra finding): the runtime preparation must
+/// also be serialized ACROSS processes. `cargo nextest` runs every test in its
+/// own process, so the in-process mutex alone let two test processes hash /
+/// rebuild / remove the same staticlib simultaneously, which surfaces as
+/// `os error 5` (access denied) on Windows. The lock file is created with
+/// `create_new` and retried; a stale lock (older than 10 minutes) is stolen so
+/// a crashed run cannot wedge the build forever.
+struct CrossProcessLock {
+    path: PathBuf,
+}
+
+impl CrossProcessLock {
+    fn acquire(library: &Path) -> Result<Self, MnError> {
+        let path = library.with_extension("prep-lock");
+        let started = std::time::Instant::now();
+        loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => return Ok(CrossProcessLock { path }),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age > std::time::Duration::from_secs(600));
+                    if stale {
+                        let _ = std::fs::remove_file(&path);
+                        continue;
+                    }
+                    if started.elapsed() > std::time::Duration::from_secs(600) {
+                        return Err(io("timed out waiting for the scheduler-runtime prep lock"));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                Err(e) => return Err(io(format!("prep lock: {e}"))),
+            }
+        }
+    }
+}
+
+impl Drop for CrossProcessLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
 /// Prepare (build if needed) the scheduler runtime static library with a
 /// content-bound identity. Serial within the process.
 pub fn prepare() -> Result<Prepared, MnError> {
     static SERIAL: Mutex<()> = Mutex::new(());
     let _guard = SERIAL.lock().map_err(|_| io("runtime lock poisoned"))?;
     let root = workspace()?;
+    // The lock protects the published staticlib; take it BEFORE any hashing or
+    // rebuild so concurrent processes cannot observe a half-written artifact.
+    let library = root
+        .join("target")
+        .join(config::MN_TARGET)
+        .join("runtime-release/ac_sched_runtime.lib");
+    let _lock = CrossProcessLock::acquire(&library)?;
     let runtime = root.join("crates/sched-runtime");
     let text = root.join("crates/text-runtime");
     let mut files = vec![
@@ -170,7 +225,8 @@ pub fn prepare() -> Result<Prepared, MnError> {
         let value = std::env::var(key).unwrap_or_default();
         h.update(&(value.len() as u64).to_le_bytes());
         h.update(value.as_bytes());
-        if matches!(key, "RUSTC" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER") && !value.is_empty() {
+        if matches!(key, "RUSTC" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER") && !value.is_empty()
+        {
             h.update(executable_hash(&value)?.as_bytes());
         }
     }
@@ -198,10 +254,6 @@ pub fn prepare() -> Result<Prepared, MnError> {
         h.update(&bytes);
     }
     let build_key = h.finalize().to_hex().to_string();
-    let library = root
-        .join("target")
-        .join(config::MN_TARGET)
-        .join("runtime-release/ac_sched_runtime.lib");
     let stamp = library.with_extension("identity.json");
     let old: Option<Identity> = std::fs::read(&stamp)
         .ok()

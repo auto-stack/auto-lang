@@ -105,12 +105,7 @@ extern "system" {
     fn TlsGetValue(index: u32) -> *mut c_void;
     fn AcquireSRWLockExclusive(lock: *mut SrwLock);
     fn ReleaseSRWLockExclusive(lock: *mut SrwLock);
-    fn SleepConditionVariableSRW(
-        cv: *mut CondVar,
-        lock: *mut SrwLock,
-        ms: u32,
-        flags: u32,
-    ) -> i32;
+    fn SleepConditionVariableSRW(cv: *mut CondVar, lock: *mut SrwLock, ms: u32, flags: u32) -> i32;
     fn WakeConditionVariable(cv: *mut CondVar);
     fn WakeAllConditionVariable(cv: *mut CondVar);
     fn ExitProcess(code: u32) -> !;
@@ -196,7 +191,6 @@ unsafe fn release_value(value: SchedVal) {
     }
 }
 
-
 /// Frozen status codes (negative = named failure the lane turns into a
 /// language error / trap; never a silent success).
 pub const E_HANDLE: i32 = -1;
@@ -219,7 +213,7 @@ fn fail_message(code: i32) -> &'static [u8] {
     match code {
         E_HANDLE => b"sched: unknown task handle\n",
         E_CLOSED => b"sched: send on a closed task\n",
-        E_CAPACITY => b"sched: task mailbox capacity must be a non-negative int\n",
+        E_CAPACITY => b"sched: task mailbox capacity must be at least 1\n",
         E_RESOURCE => b"sched: scheduler resource limit exceeded\n",
         E_REPLY => b"sched: reply is only legal while handling an ask message\n",
         E_AWAIT_CONSUMED => b"sched: await on an already-consumed future\n",
@@ -259,6 +253,9 @@ struct Task {
     recv_real: i32,
     /// The reply port of the message most recently received by this driver.
     reply_port: i32,
+    /// PLAN-1067 review R-1067-1: the drain joined this chain (one join per
+    /// chain; the drain loop re-snapshots until every chain carries it).
+    joined: i32,
     queue: *mut Mail,
     thread: *mut c_void,
     lock: SrwLock,
@@ -268,8 +265,11 @@ struct Task {
 
 #[repr(C)]
 struct Port {
-    /// 0 pending, 1 published, 2 consumed.
+    /// 0 pending, 1 published, 2 consumed, 3 closed-without-reply.
     state: u32,
+    /// The drain already retired this never-published future (keeps the
+    /// re-snapshot loop monotone).
+    closed_marked: i32,
     val: SchedVal,
     lock: SrwLock,
     cv: CondVar,
@@ -289,6 +289,8 @@ static mut TASK_COUNT: u32 = 0;
 static mut PORTS: [*mut Port; MAX_PORTS] = [null_mut(); MAX_PORTS];
 static mut PORT_COUNT: u32 = 0;
 static mut GO_HANDLES: [*mut c_void; MAX_GO] = [null_mut(); MAX_GO];
+/// PLAN-1067 review R-1067-1: which `go` slots the drain already joined.
+static mut GO_JOINED: [bool; MAX_GO] = [false; MAX_GO];
 static mut GO_COUNT: u32 = 0;
 /// Heap blocks currently owned by the runtime (tasks, queues, ports, thread
 /// args, arg copies). Zero after an orderly drain; anything else is a leak.
@@ -424,7 +426,10 @@ unsafe fn materialize_args(argc: i32, args: *const SchedVal) -> Option<*mut Sche
 /// Start one task chain: register the mailbox + handle, then run the driver
 /// on a real OS thread. `handle` is 1-based (0 is the "no handle" sentinel).
 unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal) -> i32 {
-    if capacity < 0 {
+    // PLAN-1067 review R-1067-3: capacity 0 used to park every sender
+    // forever (the `0 < 0` comparison can never free space). One mailbox slot
+    // is the minimum the frozen "bounded mailbox" contract can offer.
+    if capacity < 1 {
         return E_CAPACITY;
     }
     if argc < 0 || (argc > 0 && args.is_null()) {
@@ -481,10 +486,12 @@ unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal
         release_args(argc, copied);
         return E_RESOURCE;
     }
+    // PLAN-1067 review R-1067-1: the task record AND its thread handle are
+    // published while the registry lock is still held. `mn_sched_drain`
+    // snapshots the same table under that lock, so a chain can never be
+    // registered-but-unjoined (which used to leak the handle and report a
+    // spurious drain residue / exit 72).
     tasks[slot] = task;
-    TASK_COUNT += 1;
-    reg_unlock();
-
     let mut thread_id: u32 = 0;
     let handle = CreateThread(
         null_mut(),
@@ -495,9 +502,7 @@ unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal
         &mut thread_id,
     );
     if handle.is_null() {
-        reg_lock();
-        (&mut *addr_of_mut!(TASKS))[slot] = null_mut();
-        TASK_COUNT -= 1;
+        tasks[slot] = null_mut();
         reg_unlock();
         free(ctx as *mut u8);
         free(task as *mut u8);
@@ -506,6 +511,8 @@ unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal
         return E_RESOURCE;
     }
     (*task).thread = handle;
+    TASK_COUNT += 1;
+    reg_unlock();
     (slot as i32) + 1
 }
 
@@ -528,6 +535,11 @@ unsafe fn start_go(thunk: i64, argc: i32, args: *const SchedVal) -> i32 {
     (*ctx).thunk = thunk;
     (*ctx).args = copied;
     (*ctx).argc = argc;
+    // PLAN-1067 review R-1067-1: same single-lock publication as `start_task`.
+    // A late `go` (issued by a task handler just as the program exits) is
+    // either registered before the drain snapshots the table — and therefore
+    // joined — or refused with the named draining error. It can never be
+    // created outside the drain's view.
     reg_lock();
     let gos = &mut *addr_of_mut!(GO_HANDLES);
     let mut slot = usize::MAX;
@@ -537,21 +549,28 @@ unsafe fn start_go(thunk: i64, argc: i32, args: *const SchedVal) -> i32 {
             break;
         }
     }
-    reg_unlock();
     if slot == usize::MAX {
+        reg_unlock();
         free(ctx as *mut u8);
         release_args(argc, copied);
         return E_RESOURCE;
     }
     let mut thread_id: u32 = 0;
-    let handle = CreateThread(null_mut(), 0, thread_main, ctx as *mut c_void, 0, &mut thread_id);
+    let handle = CreateThread(
+        null_mut(),
+        0,
+        thread_main,
+        ctx as *mut c_void,
+        0,
+        &mut thread_id,
+    );
     if handle.is_null() {
+        reg_unlock();
         free(ctx as *mut u8);
         release_args(argc, copied);
         return E_RESOURCE;
     }
-    reg_lock();
-    (&mut *addr_of_mut!(GO_HANDLES))[slot] = handle;
+    gos[slot] = handle;
     GO_COUNT += 1;
     reg_unlock();
     0
@@ -1031,135 +1050,177 @@ pub extern "system" fn mn_sched_sleep(ms: i32) -> i32 {
 #[no_mangle]
 pub extern "system" fn mn_sched_drain() -> i32 {
     unsafe {
-        reg_lock();
+        // PLAN-1067 review R-1067-1: the drain must not SNAPSHOT the chain
+        // tables and hope nothing appears later. A stop hook, or a handler
+        // whose buffered message is still being delivered, may legally start
+        // another `go`/task chain while the drain is running (the frozen
+        // semantics: buffered messages deliver first, the stop hooks then
+        // run). The drain therefore stops and joins in a loop, re-snapshotting
+        // under the registry lock each cycle until no unjoined chain remains.
+        // Registration and thread creation happen under that same lock, so a
+        // chain can never be created outside this loop's view.
         DRAINING.store(1, Ordering::SeqCst);
-        // Snapshot tables live on the runtime HEAP, not the stack: a
-        // >4 KiB frame would pull the CRT `__chkstk` prologue the
-        // freestanding kernel32-only PE cannot resolve.
-        let tasks = alloc(MAX_TASKS * core::mem::size_of::<*mut Task>()) as *mut *mut Task;
-        let gos = alloc(MAX_GO * core::mem::size_of::<*mut c_void>()) as *mut *mut c_void;
-        let ports = alloc(MAX_PORTS * core::mem::size_of::<*mut Port>()) as *mut *mut Port;
-        let mut ntasks = 0usize;
-        let mut ngos = 0usize;
-        let mut nports = 0usize;
-        if !tasks.is_null() {
-            let table = &*addr_of_mut!(TASKS);
-            for i in 0..MAX_TASKS {
-                if !table[i].is_null() {
-                    *tasks.add(ntasks) = table[i];
-                    ntasks += 1;
+
+        let mut go_slot = 0usize;
+        let mut task_slot = 0usize;
+        let mut cycles: u32 = 0;
+        let mut unjoined_residue: i32 = 0;
+        loop {
+            cycles += 1;
+            if cycles > 100_000 {
+                // A program that keeps starting chains forever cannot be
+                // closed; report it instead of spinning (the wrapper turns a
+                // non-zero residue into the named leak exit).
+                unjoined_residue = 1;
+                break;
+            }
+            let mut handle: *mut c_void = null_mut();
+            let mut task_record: *mut Task = null_mut();
+            let mut port_to_close: *mut Port = null_mut();
+            reg_lock();
+            let tasks = &*addr_of_mut!(TASKS);
+            // Stop every live task (new ones included) so its loop exits after
+            // the buffered deliveries; wake both of its waiters.
+            if task_slot < MAX_TASKS {
+                while task_slot < MAX_TASKS {
+                    let i = task_slot;
+                    task_slot += 1;
+                    let task = tasks[i];
+                    if task.is_null() {
+                        continue;
+                    }
+                    AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
+                    (*task).stopped = 1;
+                    ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
+                    wake_all(addr_of_mut!((*task).cv_not_empty));
+                    wake_all(addr_of_mut!((*task).cv_not_full));
+                }
+            } else {
+                // Already stopped + collected: only accept a NEW task that
+                // appeared after the first pass.
+                let mut i = 0usize;
+                while i < MAX_TASKS {
+                    let task = tasks[i];
+                    if !task.is_null() && (*task).running != 0 && (*task).thread.is_null() {
+                        AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
+                        (*task).stopped = 1;
+                        ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
+                        wake_all(addr_of_mut!((*task).cv_not_empty));
+                        wake_all(addr_of_mut!((*task).cv_not_full));
+                    }
+                    i += 1;
                 }
             }
-        }
-        if !gos.is_null() {
-            let table = &*addr_of_mut!(GO_HANDLES);
-            for i in 0..MAX_GO {
-                if !table[i].is_null() {
-                    *gos.add(ngos) = table[i];
-                    ngos += 1;
+            // Take ONE handle to join this cycle (task chains first).
+            let mut i = 0usize;
+            while i < MAX_TASKS {
+                let task = tasks[i];
+                if !task.is_null() && (*task).joined == 0 {
+                    (*task).joined = 1;
+                    handle = (*task).thread;
+                    task_record = task;
+                    break;
+                }
+                i += 1;
+            }
+            if handle.is_null() {
+                let gos = &mut *addr_of_mut!(GO_HANDLES);
+                while go_slot < MAX_GO {
+                    let slot = go_slot;
+                    go_slot += 1;
+                    let g = gos[slot];
+                    if !g.is_null() && !((&*addr_of_mut!(GO_JOINED))[slot]) {
+                        (&mut *addr_of_mut!(GO_JOINED))[slot] = true;
+                        handle = g;
+                        break;
+                    }
                 }
             }
-        }
-        if !ports.is_null() {
-            let table = &*addr_of_mut!(PORTS);
-            for i in 0..MAX_PORTS {
-                if !table[i].is_null() {
-                    *ports.add(nports) = table[i];
-                    nports += 1;
+            if handle.is_null() {
+                // Also retire any still-pending future so a waiter cannot park.
+                let ports = &*addr_of_mut!(PORTS);
+                let mut p = 0usize;
+                while p < MAX_PORTS {
+                    let port = ports[p];
+                    if !port.is_null() && (*port).state == 0 && (*port).closed_marked == 0 {
+                        (*port).closed_marked = 1;
+                        port_to_close = port;
+                        break;
+                    }
+                    p += 1;
                 }
             }
-        }
-        reg_unlock();
+            reg_unlock();
 
-        // 1) Stop every task, waking both mailboxes' waiters. Buffered
-        //    messages stay queued: recv delivers them before reporting the
-        //    closing handoff.
-        for i in 0..ntasks {
-            let task = *tasks.add(i);
-            AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
-            (*task).stopped = 1;
-            ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
-            wake_all(addr_of_mut!((*task).cv_not_empty));
-            wake_all(addr_of_mut!((*task).cv_not_full));
-        }
-        for i in 0..nports {
-            let port = *ports.add(i);
-            AcquireSRWLockExclusive(addr_of_mut!((*port).lock));
-            if (*port).state == 0 {
-                // Never published: the waiter must see the named
-                // closed-without-reply outcome, never a hang.
-                (*port).state = 3;
+            if !port_to_close.is_null() {
+                AcquireSRWLockExclusive(addr_of_mut!((*port_to_close).lock));
+                if (*port_to_close).state == 0 {
+                    (*port_to_close).state = 3;
+                }
+                ReleaseSRWLockExclusive(addr_of_mut!((*port_to_close).lock));
+                wake_all(addr_of_mut!((*port_to_close).cv));
+                continue;
             }
-            ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
-            wake_all(addr_of_mut!((*port).cv));
+            if handle.is_null() {
+                let _ = task_record;
+                break;
+            }
+            WaitForSingleObject(handle, INFINITE);
+            CloseHandle(handle);
+            if !task_record.is_null() {
+                (*task_record).thread = null_mut();
+            }
         }
 
-        // 2) Join every chain, then release the OS handles.
-        for i in 0..ntasks {
-            let task = *tasks.add(i);
-            WaitForSingleObject((*task).thread, INFINITE);
-            CloseHandle((*task).thread);
-        }
-        for i in 0..ngos {
-            WaitForSingleObject(*gos.add(i), INFINITE);
-            CloseHandle(*gos.add(i));
-        }
-
-        // 3) Release whatever the orderly stop left undelivered: queued
-        //    messages a driver never consumed (only reachable when a driver
-        //    died early) and published-but-never-awaited replies. Owned text
-        //    in those slots is freed through the owned-text allocator so the
-        //    zero-residue audit below covers it.
-        for i in 0..ntasks {
-            let task = *tasks.add(i);
+        // Release whatever the orderly stop left undelivered (messages whose
+        // driver already left, published-but-never-awaited replies) and the
+        // registry records themselves.
+        reg_lock();
+        let tasks = &*addr_of_mut!(TASKS);
+        let ports = &*addr_of_mut!(PORTS);
+        for i in 0..MAX_TASKS {
+            let task = tasks[i];
+            if task.is_null() {
+                continue;
+            }
             while (*task).len > 0 {
                 let mail = pop_mail(task);
                 release_value(mail.val);
             }
             free((*task).queue as *mut u8);
             free(task as *mut u8);
+            (&mut *addr_of_mut!(TASKS))[i] = null_mut();
         }
-        for i in 0..nports {
-            let port = *ports.add(i);
-            // Every chain is joined: no concurrent accessor remains.
+        for i in 0..MAX_PORTS {
+            let port = ports[i];
+            if port.is_null() {
+                continue;
+            }
             if (*port).state == 1 {
                 release_value((*port).val);
             }
             free(port as *mut u8);
-        }
-        reg_lock();
-        for i in 0..MAX_TASKS {
-            (&mut *addr_of_mut!(TASKS))[i] = null_mut();
-        }
-        for i in 0..MAX_PORTS {
             (&mut *addr_of_mut!(PORTS))[i] = null_mut();
         }
         for i in 0..MAX_GO {
             (&mut *addr_of_mut!(GO_HANDLES))[i] = null_mut();
+            (&mut *addr_of_mut!(GO_JOINED))[i] = false;
         }
         TASK_COUNT = 0;
         PORT_COUNT = 0;
         GO_COUNT = 0;
         reg_unlock();
 
-        // The drain's snapshot tables are released too: the audit counts
-        // every block this runtime owned.
-        free(tasks as *mut u8);
-        free(gos as *mut u8);
-        free(ports as *mut u8);
-
-        // 4) Audit: every block this runtime owned is released, and the
-        //    embedded owned-text allocator balances too (every materialized
-        //    buffer freed exactly once). A residue is reported (never
-        //    swallowed) by the lane wrapper as the named leak exit.
+        // Audit: every block this runtime owned is released, and the embedded
+        // owned-text allocator balances too. A residue is reported (never
+        // swallowed) by the lane wrapper as the named leak exit.
         let mut residue = LIVE_ALLOCS.load(Ordering::SeqCst);
         if ac_text_runtime::ac_rt_owned_audit() != 0 {
             residue += 1;
         }
-        residue
+        residue + unjoined_residue
     }
 }
-
 /// The language-error transport: write the frozen message to stderr and
 /// exit with the native trap code. The lane's lowering calls this exactly
 /// where AV reports `ExecOutcome::Error`.

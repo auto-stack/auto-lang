@@ -96,7 +96,12 @@ pub fn a2x_sched_spawn(
     inits: Vec<SchedValue>,
     driver: fn(Vec<SchedValue>),
 ) -> i32 {
-    let cap = if cap < 1 { 1 } else { cap as usize };
+    // PLAN-1067 review R-1067-3: no silent clamp — a 0-slot mailbox is
+    // refused by name, exactly like the AV and native lanes.
+    if cap < 1 {
+        a2x_sched_fail("sched: task mailbox capacity must be at least 1");
+    }
+    let cap = cap as usize;
     let (tx, rx) = std::sync::mpsc::sync_channel::<Envelope>(cap);
     let stopped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stopped2 = stopped.clone();
@@ -181,16 +186,18 @@ pub fn a2x_sched_reply(value: SchedValue) -> i32 {
 }
 
 pub fn a2x_sched_await(port: i32) -> SchedValue {
+    // PLAN-1067 review R-1067-4: an out-of-range or already-consumed future is
+    // the SAME named outcome as the other two lanes — never a silent zero.
     let rrx = {
         let mut reg = registry().lock().unwrap();
         let idx = (port - 1).max(0) as usize;
         if idx >= reg.awaiters.len() {
-            return SchedValue::I(0);
+            a2x_sched_fail("sched: await on an unknown future");
         }
         reg.awaiters[idx].take()
     };
     let Some(rrx) = rrx else {
-        return SchedValue::I(0);
+        a2x_sched_fail("sched: await on an already-consumed future");
     };
     match rrx.recv() {
         Ok(v) => v,

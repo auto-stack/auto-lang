@@ -359,7 +359,10 @@ fn main() {
         "named outcome missing: {:?}",
         observed.stderr
     );
-    assert_eq!(observed.stdout, "", "no value must be printed: {observed:?}");
+    assert_eq!(
+        observed.stdout, "",
+        "no value must be printed: {observed:?}"
+    );
     assert!(
         elapsed < std::time::Duration::from_secs(5),
         "the waiter parked instead of terminating: {elapsed:?}"
@@ -441,8 +444,8 @@ mod av_leg {
     use ace_av_core::verify_mir;
 
     fn run(src: &str) -> Result<(ExecOutcome, String), String> {
-        let compiled = ace_core::source::compile_scheduler_source(src, "probe.at", &[])
-            .map_err(|ds| {
+        let compiled =
+            ace_core::source::compile_scheduler_source(src, "probe.at", &[]).map_err(|ds| {
                 ds.first()
                     .map(|d| format!("{}/{}", format!("{:?}", d.stage).to_lowercase(), d.code))
                     .unwrap_or_default()
@@ -535,9 +538,7 @@ fn scheduler_candidate_runs_out_of_repo_kernel32_only() {
     let candidate = {
         let preferred = std::env::var_os("AUTO_LANG_PLAN_ARTIFACTS")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-1067")
-            })
+            .unwrap_or_else(|| std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-1067"))
             .join("candidate-t07");
         match std::fs::create_dir_all(&preferred) {
             Ok(()) => preferred,
@@ -550,7 +551,11 @@ fn scheduler_candidate_runs_out_of_repo_kernel32_only() {
     };
     // A candidate root is a scratch area: drop earlier runs' products so the
     // directory never grows without bound across reruns.
-    for entry in std::fs::read_dir(&candidate).into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir(&candidate)
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let path = entry.path();
         if path.is_file() {
             let _ = std::fs::remove_file(path);
@@ -618,10 +623,7 @@ fn scheduler_candidate_runs_out_of_repo_kernel32_only() {
         );
     }
     assert!(
-        report
-            .symbols
-            .iter()
-            .any(|(_, s)| s == "CreateThread"),
+        report.symbols.iter().any(|(_, s)| s == "CreateThread"),
         "expected the task-chain thread entry point, got {:?}",
         report.symbols
     );
@@ -661,5 +663,152 @@ fn scheduler_candidate_audit_rejects_a_mutant_dependency() {
         err.code().contains("pe.audit.forbidden-dll"),
         "expected the named forbidden-dll rejection, got {}: {err}",
         err.code()
+    );
+}
+/// R-1067-1 (review blocker): a `go` chain started from INSIDE a task handler
+/// races the program's exit drain. The drain snapshots the chain table under
+/// the registry lock, so publication and thread creation must happen under
+/// that same lock — otherwise the chain is created after the snapshot, never
+/// joined, leaks its argument blocks and reports a spurious residue (exit 72)
+/// while its output races `ExitProcess`. Twenty consecutive runs must all be
+/// byte-exact with exit 0.
+#[test]
+fn scheduler_go_from_task_handler_survives_the_drain() {
+    let src = r#"
+task A {
+    on { n int -> {
+        go helper(n)
+    } }
+}
+fn helper(n int) {
+    print(n)
+}
+fn main() {
+    let a = Task.spawn("A", 4)
+    a.send(5)
+}
+"#;
+    for run_index in 0..20 {
+        let observed = run_source(&format!("go-from-task-{run_index}"), src);
+        assert_eq!(
+            observed.exit,
+            Some(0),
+            "run {run_index}: drain residue or failure: {observed:?}"
+        );
+        assert_eq!(
+            observed.stdout, "5\n",
+            "run {run_index}: output lost or duplicated"
+        );
+        assert_eq!(observed.stderr, "", "run {run_index}: stderr noise");
+    }
+}
+
+/// R-1067-2 (review major): a DUPLICATE reply must not resurrect a consumed
+/// future. The first reply wins; the second is dropped; the second `await`
+/// reports the named already-consumed outcome (the AV lane asserted the same
+/// outcome after its publish-only-from-Pending repair).
+#[test]
+fn scheduler_duplicate_reply_never_resurrects_the_future() {
+    let src = r#"
+task L {
+    on {
+        n int -> {
+            reply(1)
+            reply(2)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("L", 4)
+    let p = h.ask(9)
+    let a = await p
+    print(a)
+    sleep(60)
+    let b = await p
+    print(b)
+}
+"#;
+    let observed = run_source("dup-reply", src);
+    assert_eq!(
+        observed.exit,
+        Some(70),
+        "expected the named trap: {observed:?}"
+    );
+    assert_eq!(
+        observed.stdout, "1\n",
+        "the second reply must not be delivered"
+    );
+    assert!(
+        observed
+            .stderr
+            .contains("await on an already-consumed future"),
+        "named outcome missing: {:?}",
+        observed.stderr
+    );
+}
+
+/// R-1067-3 (review major): mailbox capacity 0 is refused by name on every
+/// lane (it used to park every sender forever: a native hang, an AV deadlock
+/// resource, an A2R silent clamp to 1).
+#[test]
+fn scheduler_zero_capacity_is_a_named_error() {
+    let src = r#"
+task Z {
+    on { n int -> {
+        print(n)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Z", 0)
+    h.send(1)
+    print(99)
+}
+"#;
+    let (observed, elapsed) = run_timed("zero-capacity", src);
+    assert_eq!(
+        observed.exit,
+        Some(70),
+        "expected the named trap: {observed:?}"
+    );
+    assert_eq!(observed.stdout, "", "no value may be produced");
+    assert!(
+        observed
+            .stderr
+            .contains("task mailbox capacity must be at least 1"),
+        "named outcome missing: {:?}",
+        observed.stderr
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "capacity 0 must fail fast, not hang: {elapsed:?}"
+    );
+}
+
+/// R-1067-11 (review minor): spawning a task from inside a task driver is a
+/// named FRONT-END boundary, not a backend callee-table error.
+#[test]
+fn scheduler_nested_spawn_is_a_named_frontend_rejection() {
+    let src = r#"
+task A {
+    on { n int -> {
+        let b = Task.spawn("B", 4)
+    } }
+}
+task B {
+    on { n int -> {
+    } }
+}
+fn main() {
+    let a = Task.spawn("A", 4)
+    a.send(1)
+}
+"#;
+    let err =
+        ace_native::sched::sched_compile(src, "d_main").expect_err("nested spawn must be rejected");
+    assert_eq!(err.code, "source.sched-task", "nested-spawn diagnostic");
+    assert!(
+        err.message.contains("inside a task driver"),
+        "message must name the boundary: {}",
+        err.message
     );
 }

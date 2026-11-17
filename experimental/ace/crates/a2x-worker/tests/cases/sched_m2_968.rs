@@ -11,8 +11,7 @@ fn run_a2x_sched_rust(name: &str, src: &str) -> String {
     // per-case store: the corpus declares the same synthesized driver names
     // (`__task_Echo`) with different bodies across cases — the fragment
     // store keys by decl identity, so each case owns its namespace.
-    let store =
-        std::env::temp_dir().join(format!("a2x-968-r-store-{name}-{}", std::process::id()));
+    let store = std::env::temp_dir().join(format!("a2x-968-r-store-{name}-{}", std::process::id()));
     let dir = std::env::temp_dir().join(format!("a2x-968-r-out-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -47,7 +46,10 @@ fn run_a2x_sched_rust(name: &str, src: &str) -> String {
         "rustc failed for {name}:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let run = std::process::Command::new(&exe).current_dir(&dir).output().expect("run exe");
+    let run = std::process::Command::new(&exe)
+        .current_dir(&dir)
+        .output()
+        .expect("run exe");
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&store);
     String::from_utf8_lossy(&run.stdout).to_string()
@@ -137,7 +139,10 @@ fn sched_1067_a2r_timer_and_closed_task() {
     );
     let (exit, stdout, stderr) = run_a2x_sched_rust_probe("virtual_timer", timer);
     assert_eq!(exit, Some(0), "virtual_timer exit drift: {stderr:?}");
-    assert_eq!(stdout, "main\nlater\nvalue:0\n", "virtual_timer stdout drift");
+    assert_eq!(
+        stdout, "main\nlater\nvalue:0\n",
+        "virtual_timer stdout drift"
+    );
     assert_eq!(stderr, "", "virtual_timer stderr noise");
 
     // 2) Closed-task delivery: the named language error, never a silent
@@ -206,4 +211,63 @@ fn tools_available() -> bool {
         .arg("--version")
         .output()
         .is_ok_and(|o| o.status.success())
+}
+
+/// PLAN-1067 review R-1067-3/R-1067-4 (parity repair): capacity 0 and a
+/// consumed future are NAMED outcomes on the a2r lane too — never a silent
+/// clamp to 1 (capacity) and never a silent zero value (await).
+#[test]
+fn sched_1067_a2r_capacity_and_consumed_future_are_named() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let zero_cap = r#"
+task Z {
+    on { n int -> {
+        print(n)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Z", 0)
+    h.send(1)
+    print(99)
+}
+"#;
+    let (exit, stdout, stderr) = run_a2x_sched_rust_probe("a2r-zero-cap", zero_cap);
+    assert_eq!(
+        exit,
+        Some(70),
+        "capacity 0 must be refused by name: {stderr:?}"
+    );
+    assert_eq!(stdout, "", "no value may be produced");
+    assert_eq!(
+        stderr, "sched: task mailbox capacity must be at least 1\n",
+        "named capacity message"
+    );
+
+    let double_await = r#"
+task L {
+    on {
+        n int -> {
+            reply(1)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("L", 4)
+    let p = h.ask(9)
+    let a = await p
+    print(a)
+    let b = await p
+    print(b)
+}
+"#;
+    let (exit, stdout, stderr) = run_a2x_sched_rust_probe("a2r-double-await", double_await);
+    assert_eq!(exit, Some(70), "consumed future must be named: {stderr:?}");
+    assert_eq!(stdout, "1\n", "the second await must not yield a value");
+    assert_eq!(
+        stderr, "sched: await on an already-consumed future\n",
+        "named already-consumed message"
+    );
 }

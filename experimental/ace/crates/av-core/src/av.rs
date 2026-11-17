@@ -3448,7 +3448,8 @@ fn dispatch_with_host<V: ModuleView>(
                         Some(crate::foreign_exec::ForeignCallable::ViewOutBytesToI32(_)) => {
                             if args.len() != 2 {
                                 return Some(ExecOutcome::Infra(
-                                    "foreign.arity: out-bytes view call requires (path, buf_id)".into(),
+                                    "foreign.arity: out-bytes view call requires (path, buf_id)"
+                                        .into(),
                                 ));
                             }
                             let view = match foreign_view(&frame.slots[args[0] as usize]) {
@@ -6388,11 +6389,15 @@ fn dispatch_with_host<V: ModuleView>(
                         ));
                     };
                     let caller = st.frames.last().expect("frame present");
+                    // PLAN-1067 review R-1067-3: one slot is the minimum a
+                    // bounded mailbox can offer — capacity 0 used to park every
+                    // sender forever (the same rule the native and a2r lanes
+                    // now enforce, one named outcome for one input).
                     let cap = match caller.slots[*capacity as usize] {
-                        Value::I32(c) if c >= 0 => c as usize,
+                        Value::I32(c) if c >= 1 => c as usize,
                         _ => {
                             return Some(ExecOutcome::Error {
-                                message: "task mailbox capacity must be a non-negative int".into(),
+                                message: "task mailbox capacity must be at least 1".into(),
                                 span: None,
                             })
                         }
@@ -6576,8 +6581,15 @@ fn dispatch_with_host<V: ModuleView>(
                         Err(out) => return Some(out),
                     };
                     let mut t = tables_arc.lock().expect("sched tables");
+                    // PLAN-1067 review R-1067-2: publish ONLY from Pending. A
+                    // late/duplicate reply must not overwrite a consumed port
+                    // (that resurrected the future: a second `await` returned
+                    // the second value instead of the named already-consumed
+                    // error the native and a2r lanes report).
                     if port > 0 && (port as usize) <= t.ports.len() {
-                        t.ports[port as usize - 1] = SchedPortState::Published(reply_v);
+                        if matches!(t.ports[port as usize - 1], SchedPortState::Pending) {
+                            t.ports[port as usize - 1] = SchedPortState::Published(reply_v);
+                        }
                     }
                 }
                 MirInstr::SchedStop { handle } => {

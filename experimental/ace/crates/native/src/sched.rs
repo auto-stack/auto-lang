@@ -107,19 +107,19 @@ pub fn sched_compile(src: &str, entry: &str) -> Result<MirModule, SchedDiag> {
             d.map(|x| x.message.clone()).unwrap_or_default(),
         )
     })?;
-    let module = ace_lowering::lower_checked_closures(&compiled.checked, entry, 0).map_err(|e| {
-        diag(
-            "lower",
-            "lower",
-            match e {
-                ace_lowering::AdapterError::Unsupported { message, .. }
-                | ace_lowering::AdapterError::Invalid { message, .. }
-                | ace_lowering::AdapterError::Resource { message, .. } => message,
-            },
-        )
-    })?;
-    ace_av_core::verify_mir(&module)
-        .map_err(|e| diag("verify", "mir", format!("mir: {e:?}")))?;
+    let module =
+        ace_lowering::lower_checked_closures(&compiled.checked, entry, 0).map_err(|e| {
+            diag(
+                "lower",
+                "lower",
+                match e {
+                    ace_lowering::AdapterError::Unsupported { message, .. }
+                    | ace_lowering::AdapterError::Invalid { message, .. }
+                    | ace_lowering::AdapterError::Resource { message, .. } => message,
+                },
+            )
+        })?;
+    ace_av_core::verify_mir(&module).map_err(|e| diag("verify", "mir", format!("mir: {e:?}")))?;
     Ok(module)
 }
 
@@ -265,9 +265,10 @@ pub fn emit_sched_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
             live,
             zero,
         );
-        let leak_code = fb
-            .ins()
-            .iconst(cranelift_codegen::ir::types::I32, SCHED_LEAK_EXIT_CODE as i64);
+        let leak_code = fb.ins().iconst(
+            cranelift_codegen::ir::types::I32,
+            SCHED_LEAK_EXIT_CODE as i64,
+        );
         let exit_code = fb.ins().select(leaked, leak_code, result);
         fb.ins().call(exit_ref, &[exit_code]);
         fb.ins().return_(&[]);
@@ -300,12 +301,8 @@ pub fn sched_native_build(
         ));
     }
     let entry_symbol = symbols::function_symbol(&module.owner, entry);
-    let callees = sched_callees(module).map_err(|d| {
-        MnError::Unsupported(
-            "sched.value",
-            format!("{}: {}", d.code, d.message),
-        )
-    })?;
+    let callees = sched_callees(module)
+        .map_err(|d| MnError::Unsupported("sched.value", format!("{}: {}", d.code, d.message)))?;
     let units = ace_av::cache::split_units(module)
         .map_err(|e| MnError::Backend(format!("scheduler split: {e}")))?;
     let mut objects = Vec::with_capacity(units.len() + 2);
@@ -342,13 +339,10 @@ pub fn sched_native_build(
 /// Compile → build → run ONE scheduler program on the native lane. The run
 /// is a contained real PE execution with byte-exact stream capture; the
 /// observed values are returned, never PASS/FAIL.
-pub fn sched_native_run(
-    src: &str,
-    entry: &str,
-    workdir: &Path,
-) -> Result<SchedNativeRun, MnError> {
-    let module = sched_compile(src, entry)
-        .map_err(|d| MnError::Unsupported("sched.frontend", format!("{}: {}", d.code, d.message)))?;
+pub fn sched_native_run(src: &str, entry: &str, workdir: &Path) -> Result<SchedNativeRun, MnError> {
+    let module = sched_compile(src, entry).map_err(|d| {
+        MnError::Unsupported("sched.frontend", format!("{}: {}", d.code, d.message))
+    })?;
     let linked = sched_native_build(&module, entry, workdir)?;
     let run = link_driver::run_pe(
         &linked.exe_path,

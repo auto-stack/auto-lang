@@ -270,3 +270,67 @@ fn main() {
         Err(e) => panic!("compile failed: {e} for source:\n{src}"),
     }
 }
+/// PLAN-1067 review R-1067-2 (parity repair): a DUPLICATE reply must not
+/// resurrect a consumed future. The first reply wins, the second is dropped,
+/// and the second `await` reports the named already-consumed error — the same
+/// outcome the native and a2r lanes report for this input.
+#[test]
+fn late_reply_does_not_resurrect_the_future() {
+    let src = r#"
+task L {
+    on {
+        n int -> {
+            reply(1)
+            reply(2)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("L", 4)
+    let p = h.ask(9)
+    let a = await p
+    print(a)
+    sleep(60)
+    let b = await p
+    print(b)
+}
+"#;
+    match run_sched(src) {
+        Ok((ExecOutcome::Error { message, .. }, stdout)) => {
+            assert_eq!(message, "await on an already-consumed future");
+            assert_eq!(stdout, "1\n", "the second reply must not be delivered");
+        }
+        Ok((other, stdout)) => panic!(
+            "expected the named already-consumed error, got {other:?} (stdout {stdout:?}) for source:\n{src}"
+        ),
+        Err(e) => panic!("compile failed: {e} for source:\n{src}"),
+    }
+}
+
+/// PLAN-1067 review R-1067-3 (parity repair): mailbox capacity 0 is refused by
+/// name (it used to deadlock the deterministic scheduler on a resource guard).
+#[test]
+fn zero_capacity_is_a_named_language_error() {
+    let src = r#"
+task Z {
+    on { n int -> {
+        print(n)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Z", 0)
+    h.send(1)
+    print(99)
+}
+"#;
+    match run_sched(src) {
+        Ok((ExecOutcome::Error { message, .. }, stdout)) => {
+            assert_eq!(message, "task mailbox capacity must be at least 1");
+            assert_eq!(stdout, "", "no value may be produced");
+        }
+        Ok((other, stdout)) => panic!(
+            "expected the named capacity error, got {other:?} (stdout {stdout:?}) for source:\n{src}"
+        ),
+        Err(e) => panic!("compile failed: {e} for source:\n{src}"),
+    }
+}

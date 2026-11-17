@@ -6,8 +6,11 @@ description = "PLAN-1067 M2-B native task scheduler runtime: real OS threads, bo
 publish = false
 
 # Staticlib linked into every native scheduler PE. no_std on purpose: the PE
-# keeps its kernel32-only import set (no CRT). The no_std #[panic_handler]
-# exits the process, so no unwinding can cross the ABI.
+# keeps its kernel32-only import set (no CRT). This crate defines no
+# #[panic_handler] of its own: the embedded owned-text runtime owns the single
+# one and it SPINS (documented upstream — the shims never panic by
+# construction), so a runaway panic is contained by the executor's run budget
+# instead of unwinding across the ABI.
 
 [lib]
 crate-type = ["staticlib"]

@@ -3765,9 +3765,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             }
         };
         let tagv = self.fb.ins().iconst(types::I64, tag);
-        self.fb
-            .ins()
-            .store(MemFlags::trusted(), tagv, base, offset);
+        self.fb.ins().store(MemFlags::trusted(), tagv, base, offset);
         self.fb
             .ins()
             .store(MemFlags::trusted(), payload, base, offset + 8);
@@ -3780,10 +3778,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     fn sched_load_val(&mut self, base: Value, offset: i32, dst: u32) -> Result<(), String> {
         match self.unit.types.get(self.slot_ty(dst) as usize) {
             Some(MirType::I32) | Some(MirType::Char) | Some(MirType::Bool) => {
-                let wide =
-                    self.fb
-                        .ins()
-                        .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                let wide = self
+                    .fb
+                    .ins()
+                    .load(types::I64, MemFlags::trusted(), base, offset + 8);
                 let value = self.fb.ins().ireduce(types::I32, wide);
                 self.def_scalar(dst, value)
             }
@@ -3792,10 +3790,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 // enclosing sweep frees it at the driver's exit); a slot that
                 // already held a value frees it first, exactly like MOVE.
                 let old = self.use_ptr(dst)?;
-                let ptr =
-                    self.fb
-                        .ins()
-                        .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                let ptr = self
+                    .fb
+                    .ins()
+                    .load(types::I64, MemFlags::trusted(), base, offset + 8);
                 let wide_len =
                     self.fb
                         .ins()
@@ -3811,13 +3809,12 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     }
 
     fn sched_callee(&self, index: u32) -> Result<SchedCallee, String> {
-        let ctx = self
-            .sched_ctx
-            .ok_or_else(|| "native.sched-context: scheduler emission without a callee table".to_string())?;
-        ctx.callees
-            .get(index as usize)
-            .cloned()
-            .ok_or_else(|| format!("native.sched-callee: callee index {index} is outside the lane table"))
+        let ctx = self.sched_ctx.ok_or_else(|| {
+            "native.sched-context: scheduler emission without a callee table".to_string()
+        })?;
+        ctx.callees.get(index as usize).cloned().ok_or_else(|| {
+            format!("native.sched-callee: callee index {index} is outside the lane table")
+        })
     }
 
     /// Emit (once per callee) the unit-local spawn thunk: a uniform
@@ -3875,20 +3872,17 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             let mut argv = Vec::with_capacity(info.params.len());
             for (i, kind) in info.params.iter().enumerate() {
                 let offset = (i * 24) as i32;
-                let wide =
-                    tfb.ins()
-                        .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                let wide = tfb
+                    .ins()
+                    .load(types::I64, MemFlags::trusted(), base, offset + 8);
                 match kind {
                     SchedArgKind::I32 | SchedArgKind::Bool => {
                         argv.push(tfb.ins().ireduce(types::I32, wide));
                     }
                     SchedArgKind::Str => {
-                        let wide_len = tfb.ins().load(
-                            types::I64,
-                            MemFlags::trusted(),
-                            base,
-                            offset + 16,
-                        );
+                        let wide_len =
+                            tfb.ins()
+                                .load(types::I64, MemFlags::trusted(), base, offset + 16);
                         let len = tfb.ins().ireduce(types::I32, wide_len);
                         argv.push(wide);
                         argv.push(len);
@@ -3913,11 +3907,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
 
     /// Marshal one spawn initializer list into a stack `SchedVal` array
     /// (arity must match the callee's own parameter list).
-    fn sched_args(
-        &mut self,
-        args: &[u32],
-        info: &SchedCallee,
-    ) -> Result<(Value, Value), String> {
+    fn sched_args(&mut self, args: &[u32], info: &SchedCallee) -> Result<(Value, Value), String> {
         if args.len() != info.params.len() {
             return Err(format!(
                 "native.sched-arity: {} spawn initializers for a {}-parameter callee",

@@ -376,7 +376,8 @@ pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
     Ok(())
 }
 
-fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {    // PLAN-961: the closures profile (the numeric source surface's MIR
+fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
+    // PLAN-961: the closures profile (the numeric source surface's MIR
     // family) joins the admitted set — its numeric emission rides the
     // same object lane.
     let admitted = unit.profile == AV_PROFILE

@@ -14991,6 +14991,26 @@ impl<'a, 's> FnResolver<'a, 's> {
         };
         match name {
             "__sched_spawn" => {
+                // PLAN-1067 review R-1067-11: spawning a task from inside a
+                // task driver leaves the scheduler surface (the driver's own
+                // callee table is fixed when the program is desugared, so such
+                // a call reached the backend as an unnamed lowering error).
+                // Name it here, at the front door, like every other
+                // scheduler-surface boundary. NOTE: this must not go through
+                // `task_of_driver` — that helper reports its own "only legal
+                // inside a driver" error for every ordinary caller.
+                let inside_driver = surface
+                    .tasks
+                    .iter()
+                    .any(|t| t.driver_fn == self.owner_name);
+                if inside_driver {
+                    self.bind_err(
+                        "source.sched-task",
+                        "`Task.spawn` inside a task driver is not part of the scheduler surface",
+                        call_span,
+                    );
+                    return named_i32(call_span);
+                }
                 if args.len() < 2 {
                     arity_err(
                         self,
