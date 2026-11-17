@@ -236,6 +236,55 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
             .unwrap_or_else(|| panic!("engine `{bad}` must be refused"));
         assert_eq!(refused.code, "ace.engine/unknown");
     }
+
+    // ---- 6b. Hot edit: a stop never reports the OLD span (V-08) --------
+    // Shift every callee span by prefixing a helper declaration, then debug a
+    // FRESH session: the stop must slice the NEW module text, and the span
+    // must be different from the pre-edit one.
+    let edited_math = format!("pub fn unused() int {{ return 0 }}\n{MATH_CORE}");
+    let edited_modules = [
+        spec("math", "core", &edited_math),
+        spec("app", "main", APP_MAIN),
+    ];
+    let edited_breakpoints = [AceBreakpoint {
+        module: "math::core".to_string(),
+        symbol: bump.symbol.clone(),
+        span: None,
+    }];
+    let edited_request =
+        AceDebugRequest::simple(&edited_modules, "app::main", &caps, &edited_breakpoints);
+    let mut edited = start_ace_debug(AceEngineChoice::AceAV, &edited_request)
+        .unwrap_or_else(|e| panic!("edited session must start: {e:?}"));
+    let edited_hit = edited.resume(AceDebugCommand::Continue);
+    assert_eq!(
+        edited_hit.stop,
+        AceDebugStop::Breakpoint { index: 0 },
+        "{}",
+        describe(&edited_hit)
+    );
+    let edited_span = edited_hit.frames[1]
+        .span
+        .expect("the edited stop carries a span");
+    let edited_text = edited_math
+        .get(edited_span.start as usize..edited_span.end as usize)
+        .unwrap_or_else(|| {
+            panic!(
+                "edited span {edited_span:?} outside the EDITED math::core: {}",
+                describe(&edited_hit)
+            )
+        });
+    assert!(
+        !edited_text.is_empty(),
+        "the edited stop must slice the NEW original source"
+    );
+    assert_ne!(
+        (edited_span.start, edited_span.end),
+        (inner_span.start, inner_span.end),
+        "a hot edit must not keep reporting the OLD span (V-08)"
+    );
+    edited.close();
+    assert_no_scratch_residue();
+
     // A bad module source is a named start failure carrying the ORIGINAL
     // module diagnostic (never a silent empty session).
     let bad_modules = [

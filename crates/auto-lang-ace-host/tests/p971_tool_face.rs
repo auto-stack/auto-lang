@@ -258,7 +258,53 @@ fn p971_discovery_gate_and_discovered_test_lane() {
     }
     assert_eq!(diag.exit_code, 1);
 
-    // ---- 5. Engine discipline on the discovered-test face --------------
+    // ---- 4. A timing-out discovered test is distinguished from a pass ----
+    // The test spins forever; the request wall budget is 50ms, so the test
+    // generation must be stopped by the budget (a named resource failure on
+    // that test), never reported as passed.
+    let spin = "fn main() int { return 0 }\nfn check_spin() int { for 1 < 2 { }\n return 0 }";
+    let modules = [spec("app", "main", spin)];
+    let mut req = AceTestRunRequest::simple(&modules, "app::main", &caps);
+    req.wall = Some(std::time::Duration::from_millis(50));
+    let timeout = run_ace_project_tests(AceEngineChoice::AceAV, &req);
+    assert!(
+        !matches!(&timeout.outcome, AceTestRunOutcome::Passed),
+        "a timing-out test must never pass, got {:?}",
+        timeout.outcome
+    );
+    assert_eq!(timeout.exit_code, 1);
+    // The spinning test itself is reported as a FAILED test whose cause names
+    // the resource budget; the request-level wall denial (the entry run has
+    // no budget left) is the distinguished terminal state.
+    assert_eq!(timeout.tests.len(), 1, "the test lane ran: {:?}", timeout.tests);
+    assert!(!timeout.tests[0].passed);
+    assert_eq!(timeout.tests[0].name, "check_spin");
+    assert!(
+        timeout.tests[0].message.to_lowercase().contains("resource")
+            || timeout.tests[0].message.to_lowercase().contains("wall"),
+        "the failing test names the budget cause: {}",
+        timeout.tests[0].message
+    );
+    assert!(
+        matches!(
+            &timeout.outcome,
+            AceTestRunOutcome::ResourceDenied { .. } | AceTestRunOutcome::Failed { .. }
+        ),
+        "a timing-out test is a named failure, never a pass: {:?}",
+        timeout.outcome
+    );
+
+    // ---- 5. Engine and project discipline ------------------------------
+    let bad_project = "fn main() int { return nosuch }";
+    let modules = [spec("app", "main", bad_project)];
+    let req = AceTestRunRequest::simple(&modules, "app::main", &caps);
+    let diag = run_ace_project_tests(AceEngineChoice::AceAV, &req);
+    assert!(matches!(
+        &diag.outcome,
+        AceTestRunOutcome::Diagnostic(d) if d.module == "app::main"
+    ));
+
+    // ---- 6. Engine discipline on the discovered-test face --------------
     for bad_engine in ["autovm", "vm", "evaluator", ""] {
         let refused = run_ace_project_tests_named(bad_engine, &req);
         assert!(
