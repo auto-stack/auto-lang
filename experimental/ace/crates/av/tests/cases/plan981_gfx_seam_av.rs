@@ -62,6 +62,48 @@ fn p981_gfx_seam_av_image_identity_lane_refused() {
     );
 }
 
+/// ValueCtor（frame2d.at）：AV 观察车道**可 lowering/准入**（Aggregate 发射
+/// + mir_verify import 身份——丢弃 admission 或破坏发射都会红）；record 实参
+/// 以借用视图到达、Aggregate 需 owned 槽——该视图→拥有构造缝具名拒并登记
+/// 为 D-981-GLOBAL-CLONE-GAP 的扩展范围（scalar-only 构造器今天可执行）。
+/// review-D ②。
+#[test]
+fn p981_gfx_seam_av_value_ctor_lowering_admitted() {
+    const SRC: &str = "node M {
+    model {
+        count int = 0
+    }
+    view {
+        text \"m\" {}
+    }
+}
+
+pub fn frame_w(img Image2D) i32 {
+    let f Frame2D = frame2d.at(img, 1, 2, 32, 32)
+    return f.w
+}
+";
+    let compiled = compile_age_package_with_scenario(
+        &[input(SRC)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect("the value-ctor package compiles");
+    // record 实参（Image2D）命中视图→拥有缝：具名拒（fail-closed），引用
+    // 登记债——不是静默执行/伪值。
+    let err = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect_err("the record-view ctor arg hits the registered view-to-owned gap");
+    assert!(
+        err.contains("lower.age-gfx-view-arg") && err.contains("D-981-GLOBAL-CLONE-GAP"),
+        "named pending boundary: {err}"
+    );
+}
+
 /// 对照：不含 gfx 宿主服务的同构包照常观察（车道拒不误伤普通面）。
 #[test]
 fn p981_gfx_seam_av_plain_package_unaffected() {

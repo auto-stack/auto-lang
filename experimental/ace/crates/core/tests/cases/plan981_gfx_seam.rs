@@ -127,7 +127,7 @@ pub fn bad() i32 {
 }
 ";
     match compile(arity) {
-        Ok(_) => panic!("a 2-argument spawn must be rejected"),
+        Ok(_) => panic!("a 3-argument render2d.frame must be rejected"),
         Err(ds) => assert_eq!(ds[0].code, "source.age.gfx-arity", "{ds:?}"),
     }
 
@@ -135,6 +135,9 @@ pub fn bad() i32 {
     let unknown = "node R {\n    view {\n        text \"r\" {}\n    }\n}\n\npub fn bad() i32 {\n    return query2d.nosuch()\n}\n";
     match compile(unknown) {
         Ok(_) => panic!("an unknown gfx service must be rejected"),
-        Err(ds) => assert!(!ds.is_empty(), "named rejection, not silent: {ds:?}"),
+        Err(ds) => assert!(
+            ds.iter().any(|d| d.message.contains("query2d")),
+            "the unknown service is named (receiver resolution): {ds:?}"
+        ),
     }
 }
