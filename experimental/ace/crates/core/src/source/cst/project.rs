@@ -8383,6 +8383,15 @@ impl<'a> Engine<'a> {
             }
             // PLAN-962（L-16）：数组/List 字面量原子 `[e, ...]`（元素同步
             // 投影；空表由 resolve 具名拒）。
+            // PLAN-982（CONFIG）：配置文档的空列表 `[]` ⇒ 空 `ArrayLit`。独立规则
+            // 让共享的 `array-lit`（aggregates/scheduler）保持"至少一个元素"。
+            if ck == self.cx.k.cfg_empty_array_lit.unwrap_or(u32::MAX) {
+                self.vals.push(Val::E(Expr {
+                    span: self.cx.span_of(c),
+                    kind: ExprKind::ArrayLit(Vec::new()),
+                }));
+                return;
+            }
             if ck == self.cx.k.array_lit.unwrap_or(u32::MAX) {
                 let mut elems: Vec<Expr> = Vec::new();
                 let mut span = self.cx.span_of(c);

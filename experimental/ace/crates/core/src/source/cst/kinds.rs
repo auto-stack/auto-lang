@@ -124,6 +124,8 @@ pub struct SourceKinds {
     pub for_range_stmt: Option<u32>,
     pub range_iter: Option<u32>,
     pub array_lit: Option<u32>,
+    /// PLAN-982（CONFIG）：配置文档面的空列表 `[]`（独立规则，不动 `array-lit`）。
+    pub cfg_empty_array_lit: Option<u32>,
     pub array_elems: Option<u32>,
     pub index_assign_stmt: Option<u32>,
     pub tuple_ty: Option<u32>,
@@ -481,6 +483,7 @@ impl SourceKinds {
             for_range_stmt: rk_opt(p, "for-range-stmt"),
             range_iter: rk_opt(p, "range-iter"),
             array_lit: rk_opt(p, "array-lit"),
+            cfg_empty_array_lit: rk_opt(p, "cfg-empty-array-lit"),
             array_elems: rk_opt(p, "array-elems"),
             object_lit: rk_opt(p, "object-lit"),
             object_fields: rk_opt(p, "object-fields"),

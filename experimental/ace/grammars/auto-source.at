@@ -2301,6 +2301,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates, scheduler]) { grid-atom() {} }
+            alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
             alt(profiles: [aggregates, scheduler, config-document]) { array-lit() {} }
             alt(profiles: [aggregates, scheduler]) { is-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
@@ -2335,6 +2336,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates, scheduler]) { grid-atom() {} }
+            alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
             alt(profiles: [aggregates, scheduler, config-document]) { array-lit() {} }
             // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——无其他
             // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
@@ -2415,7 +2417,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             array-elems(field: "elems")
             rbracket() {}
         }
-        array-elems(profiles: [aggregates, scheduler, config-document]) {
+        // PLAN-982（CONFIG）：配置文档面的**空列表** `[]`（独立规则：共享的
+        // `array-lit` 仍要求至少一个元素，其它面的语义不变）。
+        cfg-empty-array-lit(profiles: [config-document]) {
+            lbracket() {}
+            rbracket() {}
+        }        array-elems(profiles: [aggregates, scheduler, config-document]) {
             expr(field: "head")
             many { array-elem-tail() {} }
         }
