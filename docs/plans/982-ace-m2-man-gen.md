@@ -123,6 +123,20 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要求为每个目标再实现求值器，不冒AC guest运行期支持，不等UI三波/AAC全自举或1067异步。已有A默认legacy配置只保A收据/显式旧选择，B候选实际配置必须新AV；986再做默认切换，987核旧链不可达。旧静态ProjectModel分类仍用同一事实，不作为动态失败时的退路。
 
+### 切片现状总表（2026-11-18，r8 增补；以树与 §9 收据为准）
+
+| 切片 | 状态 | 关键证据（落主提交） |
+|---|---|---|
+| A 切片（route C 门面） | **已交付并 fold** | `e4b2c06b4`；§9 A 阶段收据 |
+| B-CONFIG-I（配置引擎） | **已交付并 fold** | lang `0b6d3198d`、man `39bc016`；§9 round 12–17 |
+| B-CONFIG-V（九行 V-CFG） | **已交付并 fold** | §9 round 16（九行同 HEAD 实跑），round 46 语料级复核 |
+| B-CONFIG-R（独立复审 ×4） | **pass** | §9 round 12/14/15/16（含 needs_fix 修复与更正） |
+| 982/CONFIG 对象字段访问 | **部分交付并 fold** | `k["f"]`／链式 `k["a"]["b"]`／对象值保形；点形态 `k.x` 具名未支持（`4cabe9468`） |
+| 982/EXEC | **第一步已交付并 fold**；其余具名 | run 家族在候选腿下具名拒绝、零写、无 fallback（`da07c6b`）；stdin/项目 run/req/debug/test 待做 |
+| 982/RUST | **多面已交付并 fold**；多文件/点面具名 | `AUTO_ACE_RUST` 选择+回执、宿主驱动、`--merge` 独立可构建、scalar/records/collections 冷构建 `value:5/7/42`、scheduler 具名拒绝、差异清单（`da07c6b`） |
+| 982/TEMPLATE、C、WEBTARGET、PY、REVERSE、EXPORT、DEVSDK | **未开始** | §5 各切片合同 |
+
+**下一批可交付队列（按依赖与可交付性）**：①EXEC stdin（需 `console.stdin` 能力键 + provider + 文本返回面 + CLI 分派，四件联动）；②RUST 项目多文件写盘（`FileSet` → 工程树）；③点形态 `k.x`（需前端适配层为 config-document 生成 `ObjectGet`，影响面需单独评审）；④TEMPLATE 切片。
 ### B-CONFIG-I 引擎侧执行台账（2026-11-17，供下一次施工照做）
 
 SDK 半边已交（合同／显式 ACE 路径＋精确投影／`ConfigDocumentBuilder` 语义核心／身份参数通道，见 §9 r1–r6 收据）。引擎侧按序做，每步独立跑绿再下一步；任何一步不成立即 needs_replan，不许只绿 CST 冒充。
