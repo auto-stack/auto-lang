@@ -176,10 +176,12 @@ fn p981_proof_a_g08_derived_3d_source_keeps_its_baseline_values() {
         cpu(2, "position"),
         AgeSceneValue::Floats(vec![4.0, 1.0, -4.0])
     );
+    assert_eq!(cpu(2, "scale"), AgeSceneValue::Floats(vec![0.5, 1.0, 0.5]));
     assert_eq!(
         cpu(3, "position"),
         AgeSceneValue::Floats(vec![-4.0, 1.0, 4.0])
     );
+    assert_eq!(cpu(3, "scale"), AgeSceneValue::Floats(vec![0.5, 1.0, 0.5]));
 }
 
 /// PROOF-V[A]（组合）：一个包内 UI/2D/3D 三个节点各持其出口，选择按请求返回；
