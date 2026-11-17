@@ -34,15 +34,29 @@ fn p982_config_super_put_moves_an_object_field_into_the_document() {
         let obj = dispatch(OBJ_SYM, &[])?;
         dispatch(PUT_TEXT, &[Value::I32(obj), text("heap"), text("big")])?;
         // 把 obj 的 `heap` 搬进 root 的同名属性。
-        dispatch(SUPER, &[Value::I32(root), Value::I32(obj), text("heap")])?;
+        dispatch(
+            SUPER,
+            &[
+                Value::I32(root),
+                Value::I32(obj),
+                text("heap"),
+                text("heap_copy"),
+            ],
+        )?;
         // 缺键：具名错误。
-        let err = dispatch(SUPER, &[Value::I32(root), Value::I32(obj), text("nope")])
-            .expect_err("missing key must be named");
+        let err = dispatch(
+            SUPER,
+            &[Value::I32(root), Value::I32(obj), text("nope"), text("x")],
+        )
+        .expect_err("missing key must be named");
         let message = format!("{err:?}");
         assert!(message.contains("no field"), "{message}");
         // 非对象源：具名错误。
-        let err = dispatch(SUPER, &[Value::I32(root), Value::I32(root), text("heap")])
-            .expect_err("non-object source must be named");
+        let err = dispatch(
+            SUPER,
+            &[Value::I32(root), Value::I32(root), text("heap"), text("x")],
+        )
+        .expect_err("non-object source must be named");
         assert!(format!("{err:?}").contains("object source"), "{err:?}");
         dispatch(FINISH, &[])?;
         Ok(())
@@ -53,7 +67,7 @@ fn p982_config_super_put_moves_an_object_field_into_the_document() {
     let heap = root
         .props
         .iter()
-        .find(|(k, _)| k == "heap")
+        .find(|(k, _)| k == "heap_copy")
         .map(|(_, v)| v.clone())
         .expect("the moved field is a root property");
     assert_eq!(

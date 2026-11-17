@@ -335,9 +335,22 @@ shadowed: label
         other => panic!("an object field must be carried into the document, got {other:?}"),
     }
 
-    // 已登记差额（下一档）：**i32 字段**的搬运目前不落地（实测 root 上拿不到 `p`），
-    // 文本字段则正常——说明对象字段的存储面对不同值种类不一致，需要单独查。
-    // 这条用例只钉住"缺失字段是具名诊断"，不冒充 i32 已支持。
+    // 搬运**保留值种类**且落在**pair 的键**上（不是源字段名）：早先的实现把
+    // 目标键硬写成源字段名，只有"同名"时才对——被 i32 用例抓到后修正。
+    match run("var k = { port: 8080 }\np: k[\"port\"]\n", &empty_context()).outcome {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(
+                i64_of(prop(&document, "p")),
+                8080,
+                "dst key is the pair key"
+            );
+            assert!(
+                prop(&document, "port").is_none(),
+                "the source name is not leaked"
+            );
+        }
+        other => panic!("an i32 field must be carried under the pair key, got {other:?}"),
+    }
 
     // 缺字段：具名诊断（不是空值、不是 panic）。
     match run("var k = { port: 1 }\np: k[\"nope\"]\n", &empty_context()).outcome {

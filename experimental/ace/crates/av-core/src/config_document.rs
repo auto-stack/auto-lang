@@ -124,7 +124,14 @@ impl ConfigSpec {
             ConfigSpec::Put(PutTarget::List, k) => vec![MirType::I32, k.mir()],
             ConfigSpec::Put(_, k) => vec![MirType::I32, MirType::StrView, k.mir()],
             ConfigSpec::Append => vec![MirType::I32, MirType::I32],
-            ConfigSpec::SuperPut => vec![MirType::I32, MirType::I32, MirType::StrView],
+            ConfigSpec::SuperPut => {
+                vec![
+                    MirType::I32,
+                    MirType::I32,
+                    MirType::StrView,
+                    MirType::StrView,
+                ]
+            }
         }
     }
 
@@ -861,17 +868,19 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                 // 目标节点（任何值种类；缺键具名报错；根级仍受 seeded 覆盖规则）。
                 let dst = i32_arg(&args[0])? as u32;
                 let src = i32_arg(&args[1])? as u32;
-                let key = text_arg(&args[2])?;
-                session.charge_bytes(key.len())?;
+                let src_key = text_arg(&args[2])?;
+                let dst_key = text_arg(&args[3])?;
+                session.charge_bytes(src_key.len())?;
+                session.charge_bytes(dst_key.len())?;
                 let value_handle = {
                     let handle = match session.get(src)? {
                         Entry::Obj(d) => *d
                             .fields
                             .iter()
-                            .find(|(k, _)| *k == key)
+                            .find(|(k, _)| *k == src_key)
                             .map(|(_, h)| h)
                             .ok_or_else(|| {
-                                HostError::Io(format!("config: object has no field `{key}`"))
+                                HostError::Io(format!("config: object has no field `{src_key}`"))
                             })?,
                         _ => {
                             return Err(HostError::Io(
@@ -882,13 +891,13 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                     handle
                 };
                 session.charge_value()?;
-                if Some(dst) == session.root && session.seeded.contains(&key) {
+                if Some(dst) == session.root && session.seeded.contains(&dst_key) {
                     return Ok(0);
                 }
                 match session.get_mut(dst)? {
                     Entry::Node(d) => {
                         // 克隆 = 新条目（共享句柄会让两个文档位置别名）。
-                        d.props.push((key, value_handle));
+                        d.props.push((dst_key, value_handle));
                         Ok(0)
                     }
                     _ => Err(HostError::Io(

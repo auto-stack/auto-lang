@@ -245,7 +245,7 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
     ConfigSourceOp {
         callee: "cfg_super_put",
         symbol: "auto.config.document.super-put.v1",
-        params: &[VT::I32, VT::I32, VT::Str],
+        params: &[VT::I32, VT::I32, VT::Str, VT::Str],
         result: VT::I32,
     },
     ConfigSourceOp {

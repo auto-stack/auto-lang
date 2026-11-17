@@ -610,7 +610,12 @@ fn emit_line(
                             out,
                             ctx,
                             "cfg_super_put",
-                            vec![var_expr(cur, p.span), obj, str_lit(&field, e.span)],
+                            vec![
+                                var_expr(cur, p.span),
+                                obj,
+                                str_lit(&field, e.span),
+                                str_lit(&p.key.name, p.span),
+                            ],
                             p.span,
                         )?;
                         return Ok(());
