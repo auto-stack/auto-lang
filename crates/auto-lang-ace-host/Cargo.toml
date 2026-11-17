@@ -26,6 +26,8 @@ ace-lowering = { path = "../../experimental/ace/crates/lowering" }
 # FileSet；产品经本桥消费，不直接依赖 ACE 目标 crate。
 ace-a2x-core = { path = "../../experimental/ace/crates/a2x-core" }
 ace-a2x-rust = { path = "../../experimental/ace/crates/a2x-rust" }
+# PLAN-982（982/PY）：A2Py 的宿主驱动面。
+ace-a2x-python = { path = "../../experimental/ace/crates/a2x-python" }
 
 [dependencies.base64]
 version = "0.22"
