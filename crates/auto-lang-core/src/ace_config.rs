@@ -581,7 +581,9 @@ impl ConfigContext {
 pub struct ConfigEvalLimits {
     /// Maximum executed AV steps.
     pub steps: u64,
-    /// Maximum nodes in the exported document.
+    /// Maximum **value nodes** in the document (the host session budget; the
+    /// exported node count is re-checked against the same knob — two different
+    /// quantities on one number is a known adaptation, recorded in the plan).
     pub max_nodes: u64,
     /// Maximum retained document bytes.
     pub max_bytes: u64,
@@ -862,7 +864,10 @@ impl std::fmt::Display for ConfigProjectionError {
 
 /// Depth guard of the consumer projection (iterative accounting has no such
 /// limit; this one exists so the recursive auto_val shape cannot overflow).
-pub const MAX_PROJECTION_DEPTH: usize = 512;
+/// 投影深度守卫：与 av-core 的 owned 导出守卫（2048）一致；超出即具名
+/// `config.projection/too-deep`（不是吞值）。设计 §5 的"不增加固定嵌套深度
+/// 阈值"要落到**迭代式**投影，本切片仍是有界递归（已登记差额）。
+pub const MAX_PROJECTION_DEPTH: usize = 2048;
 
 impl ConfigDocument {
     /// Project the owned snapshot onto the legacy `auto_val` shape for existing

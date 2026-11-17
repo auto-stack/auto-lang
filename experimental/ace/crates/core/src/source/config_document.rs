@@ -449,6 +449,8 @@ struct EmitCtx {
     declared: std::collections::BTreeSet<String>,
     /// 绑定到**字面数组**的文档 `var`（`for` 的字面展开用；运行期列表不在其中）。
     list_literals: std::collections::BTreeMap<String, Vec<Expr>>,
+    /// 宿主注入的键：文档里同名 pair 的默认值**不发射**（被注入值覆盖）。
+    injected_keys: std::collections::BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -559,6 +561,12 @@ fn emit_line(
         }
         ConfigLine::For(f) => emit_for(f, cur, out, ctx),
         ConfigLine::Pair(p) => {
+            // 设计 §4.3：宿主注入的键**赢**，其文档默认值不执行（否则一个
+            // 本会被覆盖的默认 RHS 仍可能失败/计费）。注入名在物化侧已知，
+            // 因此这里直接不发射该 pair。
+            if ctx.injected_keys.contains(&p.key.name) {
+                return Ok(());
+            }
             let key = str_lit(&p.key.name, p.key.span);
             match &p.value {
                 ConfigPairValue::Node(n) => {
@@ -921,6 +929,7 @@ fn emit_injected(
     }
     let mut seen = std::collections::BTreeSet::new();
     for (name, value) in injected {
+        ctx.injected_keys.insert(name.clone());
         if !is_document_ident(name) {
             return Err(vec![document_diag(
                 "source.config-document/inject-name",

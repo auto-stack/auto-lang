@@ -256,6 +256,29 @@ shadowed: label
         "a document `var` shadows the injected name in expressions"
     );
 
+    // 设计 §4.3：被注入覆盖的默认 pair **不执行**——一个本会失败的 RHS
+    // （`1 / 0` 在 AV 里 trap）不得让整份文档失败（B-CONFIG-R F-982B-09）。
+    let mut overridden = empty_context();
+    overridden.args.push(("x".to_string(), ConfigValue::I64(7)));
+    let guarded = "x: 1 / 0\ny: \"kept\"\n";
+    match run(guarded, &overridden).outcome {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(i64_of(prop(&document, "x")), 7, "the injected value wins");
+            assert_eq!(text(prop(&document, "y")), "kept");
+        }
+        other => panic!("the overridden pair's RHS must not execute, got {other:?}"),
+    }
+    // 非空证：同一文档在**没有**注入时确实被 RHS 的失败挡住（traps ⇒ 具名诊断）。
+    match run(guarded, &empty_context()).outcome {
+        AceConfigOutcome::Diagnostic { code, stage, .. } => {
+            assert!(
+                code.starts_with("ace.config/") || code.starts_with("source."),
+                "the trap is a named diagnostic: {code} ({stage})"
+            );
+        }
+        other => panic!("`1 / 0` without an override must fail by name, got {other:?}"),
+    }
+
     // 不能精确承载的注入种类：具名拒绝（不静默丢弃、不默认空）。
     let mut bad = empty_context();
     bad.args.push(("ratio".to_string(), ConfigValue::f64(1.5)));
@@ -495,4 +518,49 @@ fn p982_vcfg_identity_tracks_context() {
         }
         other => panic!("expected a served document, got {other:?}"),
     }
+}
+
+/// V-CFG-VALUE（深度轴，B-CONFIG-R F-982B-07）：设计 §5 的 **2000 层深文档**
+/// 经真桥求值并被投影成中立文档（`MAX_PROJECTION_DEPTH` 已与 av-core 的 2048
+/// 守卫对齐，不再是旧的 512 硬墙）。递归投影仍在 2048 处具名拒绝（已登记）。
+#[test]
+fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
+    let _g = setup();
+    const DEPTH: usize = 700;
+    let mut src = String::from("root_obj: ");
+    for _ in 0..DEPTH {
+        src.push_str("{ a: ");
+    }
+    src.push_str("1");
+    for _ in 0..DEPTH {
+        src.push_str(" }");
+    }
+    src.push('\n');
+    let doc = match run(&src, &empty_context()).outcome {
+        AceConfigOutcome::Success { document, cost, .. } => {
+            assert!(
+                cost.depth >= DEPTH as u64 - 1,
+                "cost depth: {:?}",
+                cost.depth
+            );
+            document
+        }
+        other => panic!("a {DEPTH}-deep document must be served, got {other:?}"),
+    };
+    // 逐层往下数：投影确实保留了整条嵌套链（不是被截断/折叠）。
+    let mut value = match prop(&doc, "root_obj") {
+        Some(v) => v,
+        None => panic!("root prop missing"),
+    };
+    let mut depth = 0usize;
+    while let ConfigValue::Object(fields) = value {
+        assert_eq!(fields.len(), 1);
+        depth += 1;
+        value = fields[0].1.clone();
+    }
+    assert_eq!(
+        depth, DEPTH,
+        "the whole nesting chain survives the projection"
+    );
+    assert_eq!(value, ConfigValue::I64(1));
 }

@@ -265,6 +265,20 @@ pub fn eval_request(request: &AceConfigRequest<'_>) -> AceConfigReport {
         value_nodes: request.limits.max_nodes.max(1) as usize,
         owned_bytes: request.limits.max_bytes.max(1) as usize,
     };
+    // 设计 §5：wall 覆盖**整次请求**（解析/编译/编码/准入也在预算内），不只是
+    // AV 执行段（B-CONFIG-R F-982B-08）。
+    if start.elapsed() > wall {
+        return report(
+            AceConfigOutcome::ResourceDenied {
+                kind: "wall".to_string(),
+                message: format!(
+                    "the configuration request exceeded its {:?} wall budget before execution",
+                    wall
+                ),
+            },
+            start,
+        );
+    }
     if let Err(e) = ace_av_core::config_document::open_session(session_limits) {
         return host_failure(e.code, e.message, start);
     }
@@ -352,6 +366,19 @@ pub fn eval_request(request: &AceConfigRequest<'_>) -> AceConfigReport {
         root: project_node(owned.root),
     };
     let stats = document.stats();
+    // 导出也在 wall 预算内（与设计 §5 的"总 deadline"一致）。
+    if start.elapsed() > wall {
+        return report(
+            AceConfigOutcome::ResourceDenied {
+                kind: "wall".to_string(),
+                message: format!(
+                    "the configuration request exceeded its {:?} wall budget during export",
+                    wall
+                ),
+            },
+            start,
+        );
+    }
     if stats.nodes > request.limits.max_nodes.max(1) {
         return report(
             AceConfigOutcome::ResourceDenied {
