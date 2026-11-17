@@ -616,6 +616,11 @@ fn lower_checked_collection_family(
                 // family def path as imports; console spellings become
                 // host imports (task-handler stdout). Everything else
                 // keeps the historical rejection.
+                // PLAN-1026: the two py reconstruction intrinsics — the
+                // call sites emit their MIR directly; no CalleeRef.
+                if symbol == "__py_f64_bits" || symbol == "__py_staged_text" {
+                    continue;
+                }
                 if symbol.starts_with("__sched_") {
                     let sig =
                         owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
@@ -630,10 +635,16 @@ fn lower_checked_collection_family(
                     });
                     def_map.insert(di as u32, CalleeRef::Import(idx));
                 } else if symbol.starts_with("auto.console.")
-                    && module.defs.iter().any(|d| {
+                    && (module.defs.iter().any(|d| {
                         matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
                             if s.starts_with("__sched_"))
                     })
+                        // PLAN-1026: the py training lane — console print
+                        // intrinsics in a foreign-carrying closures module
+                        // (the py-bridge adapter ops + print).
+                        || module.defs.iter().any(|d| {
+                            matches!(&d.kind, hir::DefKind::Foreign { .. })
+                        }))
                 {
                     let sig =
                         owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
@@ -3070,6 +3081,11 @@ fn owned_type_idx_of(
                     || m.defs.iter().any(|d| {
                         matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("__sched_"))
+                    })
+                    // PLAN-1026: the py lane — console print intrinsics
+                    // (Unit results) in a foreign-carrying module.
+                    || m.defs.iter().any(|d| {
+                        matches!(&d.kind, hir::DefKind::Foreign { .. })
                     }) =>
             {
                 Ok(out.intern_type(MirType::Unit))
@@ -3406,6 +3422,8 @@ struct FnLower<'a, 'budget> {
     blocks: Vec<MirBlock>,
     /// Current open MIR block cursor.
     cur: BlockId,
+    /// PLAN-1026: per-function constant-slot cache for the py emitters.
+    py_const_cache: Option<std::collections::BTreeMap<(TypeIdx, String), SlotId>>,
     /// Whether the current segment already emitted its terminator.
     terminated: bool,
     /// (header, exit) MIR blocks per HIR LoopId.
@@ -3594,6 +3612,473 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             term: Terminator::Jump { target: u32::MAX },
         });
         Ok((self.blocks.len() - 1) as BlockId)
+    }
+
+    // ---- PLAN-1026: the py reconstruction intrinsics' MIR ----------------
+
+    /// Owned str slot → its view (the concat operand form).
+    fn py_view(&mut self, owned: SlotId, sp: Option<SpanInfo>) -> Result<SlotId, AdapterError> {
+        let view_ty = self.out.intern_type(MirType::StrView);
+        let view = self.temp_ty(view_ty)?;
+        self.emit(MirInstr::View { dst: view, src: owned }, sp)?;
+        Ok(view)
+    }
+
+    fn py_k(&mut self, t: TypeIdx, c: MirConst, sp: Option<SpanInfo>) -> Result<SlotId, AdapterError> {
+        // per-function constant-slot cache (the emitters repeat the same
+        // small constants at every site; reuse keeps the ownership
+        // analysis bound inside the frozen budget)
+        use std::collections::BTreeMap;
+        let key = (t, format!("{c:?}"));
+        if let Some(hit) = self.py_const_cache.as_ref().and_then(|m| m.get(&key)) {
+            return Ok(*hit);
+        }
+        let dst = self.temp_ty(t)?;
+        let k = self.scalar_const(c)?;
+        self.emit(MirInstr::Const { dst, value: k }, sp)?;
+        self.py_const_cache.get_or_insert_with(BTreeMap::new).insert(key, dst);
+        Ok(dst)
+    }
+
+    fn py_bin(
+        &mut self,
+        op: BinOp,
+        t: TypeIdx,
+        lhs: SlotId,
+        rhs: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<SlotId, AdapterError> {
+        let dst = self.temp_ty(t)?;
+        self.emit(MirInstr::Bin { op, dst, lhs, rhs }, sp)?;
+        Ok(dst)
+    }
+
+    /// `__py_f64_bits(hi, lo)` — the exact f64 from the pair (the T-01
+    /// frozen algorithm: normals only, the provider rejects the rest).
+    /// Emitted inline: sign-mask arithmetic in i64, one multiply loop and
+    /// one divide loop for the exponent, a final sign branch.
+    #[allow(clippy::too_many_lines)]
+    fn emit_py_f64_bits(
+        &mut self,
+        hi: SlotId,
+        lo: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<SlotId, AdapterError> {
+        use hir::BuiltinType as BT;
+        let t32 = self.t_i32;
+        let tb = self.t_bool;
+        let t64 = self.out.intern_type(MirType::I64);
+        let tf = self.out.intern_type(MirType::F64);
+        let num = |op: NumOp, ty: NumTy| BinOp::Num { op, ty };
+        // sm = hi >> 31 (arithmetic: -1 when the sign bit is set)
+        let c31 = self.py_k(t32, MirConst::I32(31), sp)?;
+        let sm = self.py_bin(num(NumOp::Shr, NumTy::I32), t32, hi, c31, sp)?;
+        let sm64 = self.temp_ty(t64)?;
+        self.emit(MirInstr::Conv { dst: sm64, src: sm }, sp)?;
+        let k31 = self.py_k(t64, MirConst::I64(1 << 31), sp)?;
+        let mask = self.py_bin(num(NumOp::And, NumTy::I64), t64, sm64, k31, sp)?;
+        // h = conv(hi) + mask ; l = conv(lo) + mask (sign-fix the pair)
+        let h0 = self.temp_ty(t64)?;
+        self.emit(MirInstr::Conv { dst: h0, src: hi }, sp)?;
+        let h = self.py_bin(num(NumOp::Add, NumTy::I64), t64, h0, mask, sp)?;
+        let l0 = self.temp_ty(t64)?;
+        self.emit(MirInstr::Conv { dst: l0, src: lo }, sp)?;
+        let l = self.py_bin(num(NumOp::Add, NumTy::I64), t64, l0, mask, sp)?;
+        // e = (h >> 20) % 2048 ; mant = (h % 1048576) * 2^32 + l
+        let c20 = self.py_k(t64, MirConst::I64(20), sp)?;
+        let sh = self.py_bin(num(NumOp::Shr, NumTy::I64), t64, h, c20, sp)?;
+        let c2048 = self.py_k(t64, MirConst::I64(2048), sp)?;
+        let e = self.py_bin(num(NumOp::Rem, NumTy::I64), t64, sh, c2048, sp)?;
+        let c1m = self.py_k(t64, MirConst::I64(1 << 20), sp)?;
+        let hm = self.py_bin(num(NumOp::Rem, NumTy::I64), t64, h, c1m, sp)?;
+        let k32 = self.py_k(t64, MirConst::I64(1 << 32), sp)?;
+        let mh = self.py_bin(num(NumOp::Mul, NumTy::I64), t64, hm, k32, sp)?;
+        let mant = self.py_bin(num(NumOp::Add, NumTy::I64), t64, mh, l, sp)?;
+        // sig = (2^52 + mant) as f64
+        let k52 = self.py_k(t64, MirConst::I64(1 << 52), sp)?;
+        let sm2 = self.py_bin(num(NumOp::Add, NumTy::I64), t64, k52, mant, sp)?;
+        let sig = self.temp_ty(tf)?;
+        self.emit(MirInstr::Conv { dst: sig, src: sm2 }, sp)?;
+        // up = e - 1075
+        let c1075 = self.py_k(t64, MirConst::I64(1075), sp)?;
+        let up = self.py_bin(num(NumOp::Sub, NumTy::I64), t64, e, c1075, sp)?;
+        // p = 1.0 ; t = 2.0
+        let p = self.py_k(tf, MirConst::F64Bits(1.0f64.to_bits()), sp)?;
+        let t2 = self.py_k(tf, MirConst::F64Bits(2.0f64.to_bits()), sp)?;
+        // loop A: for q in 0..up { p = p * t } (i64 counters)
+        let z64 = self.py_k(t64, MirConst::I64(0), sp)?;
+        let pa = self.temp_ty(t64)?;
+        self.emit(MirInstr::Copy { dst: pa, src: z64 }, sp)?;
+        let hdr = self.new_block()?;
+        let body = self.new_block()?;
+        let exit = self.new_block()?;
+        self.set_term(Terminator::Jump { target: hdr });
+        self.cur = hdr;
+        self.terminated = false;
+        let ca = self.temp_ty(tb)?;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Lt, NumTy::I64),
+                dst: ca,
+                lhs: pa,
+                rhs: up,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Branch {
+            cond: ca,
+            then: body,
+            else_: exit,
+        });
+        self.cur = body;
+        self.terminated = false;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Mul, NumTy::F64),
+                dst: p,
+                lhs: p,
+                rhs: t2,
+            },
+            sp,
+        )?;
+        let c1_64 = self.py_k(t64, MirConst::I64(1), sp)?;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Add, NumTy::I64),
+                dst: pa,
+                lhs: pa,
+                rhs: c1_64,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Jump { target: hdr });
+        self.cur = exit;
+        self.terminated = false;
+        // loop B: a = 0 - up ; for q in 0..a { p = p / t }
+        let a = self.py_bin(num(NumOp::Sub, NumTy::I64), t64, z64, up, sp)?;
+        let pb = self.temp_ty(t64)?;
+        self.emit(MirInstr::Copy { dst: pb, src: z64 }, sp)?;
+        let hdr2 = self.new_block()?;
+        let body2 = self.new_block()?;
+        let exit2 = self.new_block()?;
+        self.set_term(Terminator::Jump { target: hdr2 });
+        self.cur = hdr2;
+        self.terminated = false;
+        let cb = self.temp_ty(tb)?;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Lt, NumTy::I64),
+                dst: cb,
+                lhs: pb,
+                rhs: a,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Branch {
+            cond: cb,
+            then: body2,
+            else_: exit2,
+        });
+        self.cur = body2;
+        self.terminated = false;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Div, NumTy::F64),
+                dst: p,
+                lhs: p,
+                rhs: t2,
+            },
+            sp,
+        )?;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Add, NumTy::I64),
+                dst: pb,
+                lhs: pb,
+                rhs: c1_64,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Jump { target: hdr2 });
+        self.cur = exit2;
+        self.terminated = false;
+        // v = sig * p ; negate when hi < 0
+        let v0 = self.py_bin(num(NumOp::Mul, NumTy::F64), tf, sig, p, sp)?;
+        let z32 = self.py_k(t32, MirConst::I32(0), sp)?;
+        let neg = self.temp_ty(tb)?;
+        self.emit(
+            MirInstr::Bin {
+                op: BinOp::LtI32,
+                dst: neg,
+                lhs: hi,
+                rhs: z32,
+            },
+            sp,
+        )?;
+        let dst = self.temp_ty(tf)?;
+        let thenb = self.new_block()?;
+        let elseb = self.new_block()?;
+        let merge = self.new_block()?;
+        self.set_term(Terminator::Branch {
+            cond: neg,
+            then: thenb,
+            else_: elseb,
+        });
+        self.cur = thenb;
+        self.terminated = false;
+        let zf = self.py_k(tf, MirConst::F64Bits(0.0f64.to_bits()), sp)?;
+        self.emit(
+            MirInstr::Bin {
+                op: num(NumOp::Sub, NumTy::F64),
+                dst,
+                lhs: zf,
+                rhs: v0,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Jump { target: merge });
+        self.cur = elseb;
+        self.terminated = false;
+        self.emit(MirInstr::Copy { dst, src: v0 }, sp)?;
+        self.set_term(Terminator::Jump { target: merge });
+        self.cur = merge;
+        self.terminated = false;
+        Ok(dst)
+    }
+
+    /// `__py_staged_text(len)` — the word-wise readback loop: an owned Str
+    /// assembled from `py_str_word` calls (frame built per iteration with
+    /// `__py_dlen` — a module fn the front door injected).
+    fn emit_py_staged_text(
+        &mut self,
+        len: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<SlotId, AdapterError> {
+        use hir::BuiltinType as BT;
+        let t32 = self.t_i32;
+        let tb = self.t_bool;
+        let tstr = self.out.intern_type(MirType::Str);
+        let tview = self.out.intern_type(MirType::StrView);
+        let tch = self.out.intern_type(MirType::Char);
+        // the callee fn indexes: __py_dlen and py_str_word
+        let dlen_fn = self
+            .fn_index_of("__py_dlen")
+            .ok_or_else(|| AdapterError::inv("py.intrinsic", "the __py_dlen helper fn is missing".into()))?;
+        let word_decl = self
+            .hir_module
+            .defs
+            .iter()
+            .find_map(|d| match &d.kind {
+                hir::DefKind::Foreign { declaration, .. } if d.id_text == "py_str_word" || d.id_text.ends_with("py_str_word") => {
+                    Some(declaration.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                AdapterError::inv("py.intrinsic", "the py_str_word op is missing".into())
+            })?;
+        // s = "" (owned)
+        let dst = self.temp_ty(tstr)?;
+        let cempty = self.out.intern_const(MirConst::Str(Vec::new().into_boxed_slice()));
+        self.emit(MirInstr::Const { dst, value: cempty }, sp)?;
+        // i = 0
+        let z = self.py_k(t32, MirConst::I32(0), sp)?;
+        let i = self.temp_ty(t32)?;
+        self.emit(MirInstr::Copy { dst: i, src: z }, sp)?;
+        let c4 = self.py_k(t32, MirConst::I32(4), sp)?;
+        let hdr = self.new_block()?;
+        let body = self.new_block()?;
+        let exit = self.new_block()?;
+        self.set_term(Terminator::Jump { target: hdr });
+        self.cur = hdr;
+        self.terminated = false;
+        // cond: i * 4 < len
+        let i4 = self.py_bin(BinOp::MulI32, t32, i, c4, sp)?;
+        let c = self.temp_ty(tb)?;
+        self.emit(
+            MirInstr::Bin {
+                op: BinOp::LtI32,
+                dst: c,
+                lhs: i4,
+                rhs: len,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Branch {
+            cond: c,
+            then: body,
+            else_: exit,
+        });
+        self.cur = body;
+        self.terminated = false;
+        // frame = concat(lit, display(dlen(i)), lit, display(i), lit).to(str view)
+        let lit1 = self.temp_ty(tview)?;
+        let c1 = self
+            .out
+            .intern_const(MirConst::Str(b"p967.frame/1\nr n 0\n\np 1\ni ".to_vec().into_boxed_slice()));
+        self.emit(MirInstr::Const { dst: lit1, value: c1 }, sp)?;
+        let dl = self.temp_ty(t32)?;
+        self.emit(
+            MirInstr::Call {
+                callee: CalleeRef::Func(dlen_fn),
+                dst: dl,
+                args: vec![i],
+            },
+            sp,
+        )?;
+        let dl_s = self.temp_ty(tstr)?;
+        self.emit(MirInstr::TextDisplay { dst: dl_s, src: dl }, sp)?;
+        let p2 = self.temp_ty(tstr)?;
+        let dl_v = self.py_view(dl_s, sp)?;
+        self.emit(MirInstr::StrConcat { dst: p2, lhs: lit1, rhs: dl_v }, sp)?;
+        let i_s = self.temp_ty(tstr)?;
+        self.emit(MirInstr::TextDisplay { dst: i_s, src: i }, sp)?;
+        let p3 = self.temp_ty(tstr)?;
+        let p2_v = self.py_view(p2, sp)?;
+        let i_v = self.py_view(i_s, sp)?;
+        self.emit(MirInstr::StrConcat { dst: p3, lhs: p2_v, rhs: i_v }, sp)?;
+        let lit2 = self.temp_ty(tstr)?;
+        let c2 = self
+            .out
+            .intern_const(MirConst::Str(b"\nk 0\n".to_vec().into_boxed_slice()));
+        self.emit(MirInstr::Const { dst: lit2, value: c2 }, sp)?;
+        let frame = self.temp_ty(tstr)?;
+        let p3_v = self.py_view(p3, sp)?;
+        let lit2_v = self.py_view(lit2, sp)?;
+        self.emit(MirInstr::StrConcat { dst: frame, lhs: p3_v, rhs: lit2_v }, sp)?;
+        // w = py_str_word(frame)
+        let w = self.temp_ty(t32)?;
+        self.emit(
+            MirInstr::ForeignCall {
+                declaration: Box::new(word_decl),
+                dst: w,
+                args: vec![frame],
+                callbacks: Vec::new(),
+            },
+            sp,
+        )?;
+        // normalize w (two conditional adds when negative)
+        let kmax = self.py_k(t32, MirConst::I32(2147483647), sp)?;
+        let negc = self.temp_ty(tb)?;
+        self.emit(
+            MirInstr::Bin {
+                op: BinOp::LtI32,
+                dst: negc,
+                lhs: w,
+                rhs: z,
+            },
+            sp,
+        )?;
+        let addb = self.new_block()?;
+        let skipb = self.new_block()?;
+        let norm = self.new_block()?;
+        self.set_term(Terminator::Branch {
+            cond: negc,
+            then: addb,
+            else_: norm,
+        });
+        self.cur = addb;
+        self.terminated = false;
+        self.emit(
+            MirInstr::Bin {
+                op: BinOp::AddI32,
+                dst: w,
+                lhs: w,
+                rhs: kmax,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Jump { target: skipb });
+        self.cur = skipb;
+        self.terminated = false;
+        // the +1 tail of the i32::MIN fixup rides the SAME add block
+        // (branchless): both adds execute together.
+        let one = self.py_k(t32, MirConst::I32(1), sp)?;
+        self.emit(
+            MirInstr::Bin {
+                op: BinOp::AddI32,
+                dst: w,
+                lhs: w,
+                rhs: one,
+            },
+            sp,
+        )?;
+        let norm2 = self.new_block()?;
+        self.set_term(Terminator::Jump { target: norm2 });
+        self.cur = norm;
+        self.terminated = false;
+        self.set_term(Terminator::Jump { target: norm2 });
+        self.cur = norm2;
+        self.terminated = false;
+        // per byte k in 0..4: b = (w / d) % 256 ; if b != 0 append char(b)
+        let mut d = self.py_k(t32, MirConst::I32(1), sp)?;
+        for k in 0..4i32 {
+            if k > 0 {
+                d = self.py_k(t32, MirConst::I32(10i32.pow(k as u32)), sp)?;
+            }
+            let wq = self.py_bin(BinOp::DivI32, t32, w, d, sp)?;
+            let c256 = self.py_k(t32, MirConst::I32(256), sp)?;
+            let b = self.py_bin(BinOp::RemI32, t32, wq, c256, sp)?;
+            let bnz = self.temp_ty(tb)?;
+            self.emit(
+                MirInstr::Bin {
+                    op: BinOp::NeI32,
+                    dst: bnz,
+                    lhs: b,
+                    rhs: z,
+                },
+                sp,
+            )?;
+            let appb = self.new_block()?;
+            let contb = self.new_block()?;
+            self.set_term(Terminator::Branch {
+                cond: bnz,
+                then: appb,
+                else_: contb,
+            });
+            self.cur = appb;
+            self.terminated = false;
+            let ch = self.temp_ty(tch)?;
+            self.emit(MirInstr::CharFromCodepoint { dst: ch, code: b }, sp)?;
+            let cs = self.temp_ty(tstr)?;
+            self.emit(MirInstr::StrFromChar { dst: cs, ch }, sp)?;
+            let dst_v = self.py_view(dst, sp)?;
+        let cs_v = self.py_view(cs, sp)?;
+        self.emit(MirInstr::StrConcat { dst, lhs: dst_v, rhs: cs_v }, sp)?;
+            self.set_term(Terminator::Jump { target: contb });
+            self.cur = contb;
+            self.terminated = false;
+        }
+        // i = i + 1 ; loop
+        self.emit(
+            MirInstr::Bin {
+                op: BinOp::AddI32,
+                dst: i,
+                lhs: i,
+                rhs: one,
+            },
+            sp,
+        )?;
+        self.set_term(Terminator::Jump { target: hdr });
+        self.cur = exit;
+        self.terminated = false;
+        Ok(dst)
+    }
+
+
+    /// The lowered fn index of a module fn by id_text (helpers + the py
+    /// bridge's foreign ops are named functions in def order).
+    fn fn_index_of(&self, name: &str) -> Option<u32> {
+        self.hir_module
+            .defs
+            .iter()
+            .position(|d| d.id_text == name || d.id_text.ends_with(name))
+            .and_then(|di| self.def_map.get(&(di as u32)).cloned())
+            .and_then(|c| match c {
+                CalleeRef::Func(i) => Some(i),
+                _ => None,
+            })
+            .map(|i| i as u32)
     }
 
     fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
@@ -4242,6 +4727,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         || sched_module
                         || platform_callee
                         || config_callee
+                        // PLAN-1026: the py lane — console/py intrinsics in
+                        // a foreign-carrying closures module.
+                        || self
+                            .hir_module
+                            .defs
+                            .iter()
+                            .any(|d| matches!(&d.kind, hir::DefKind::Foreign { .. }))
                     {
                         // PLAN-968: only host-table spellings take the
                         // host-import path; __sched_ intrinsics keep the
@@ -4249,6 +4741,26 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         if let hir::DefKind::Intrinsic { symbol, .. } =
                             &self.hir_module.defs[callee.0 as usize].kind
                         {
+                            // PLAN-1026: the py reconstruction intrinsics —
+                            // the MIR is emitted right here.
+                            if symbol == "__py_f64_bits" {
+                                if arg_slots.len() != 2 {
+                                    return Err(AdapterError::inv(
+                                        "py.intrinsic",
+                                        "__py_f64_bits needs (hi, lo)".into(),
+                                    ));
+                                }
+                                return self.emit_py_f64_bits(arg_slots[0], arg_slots[1], sp);
+                            }
+                            if symbol == "__py_staged_text" {
+                                if arg_slots.len() != 1 {
+                                    return Err(AdapterError::inv(
+                                        "py.intrinsic",
+                                        "__py_staged_text needs (len)".into(),
+                                    ));
+                                }
+                                return self.emit_py_staged_text(arg_slots[0], sp);
+                            }
                             if !(symbol.starts_with("auto.console.")
                                 || symbol.starts_with("auto.platform.")
                                 || ace_av_core::config_document::is_config_symbol(symbol))
@@ -6547,6 +7059,7 @@ fn lower_function_with_emission(
         gfx_credits: 0,
         blocks: vec![],
         cur: 0,
+        py_const_cache: None,
         terminated: false,
         loop_targets,
         func_index: def_index,

@@ -3582,6 +3582,11 @@ impl Verifier {
                 matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                     if symbol.starts_with("__sched_"))
             });
+            // PLAN-1026: the py training lane — console print intrinsics
+            // in a foreign-carrying closures module (the py-bridge ops).
+            let py_lane_module = m.defs.iter().any(|d| {
+                matches!(&d.kind, hir::DefKind::Foreign { .. })
+            });
             for d in &m.defs {
                 // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
                 // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；
@@ -3591,7 +3596,7 @@ impl Verifier {
                 let platform_in_packages =
                     self.domain == HirDomain::TextRecord || self.domain == HirDomain::Closures;
                 if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
-                    if (symbol.starts_with("auto.console.") && !sched_module)
+                    if (symbol.starts_with("auto.console.") && !sched_module && !py_lane_module)
                         || (symbol.starts_with("auto.platform.") && !platform_in_packages))
                 {
                     self.error(
@@ -8249,6 +8254,9 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
                 crate::source::resolve::VT::Bool => ValueType::Bool,
                 crate::source::resolve::VT::Str => ValueType::Str,
                 crate::source::resolve::VT::Char => ValueType::Char,
+                // PLAN-1026 (G-2): the general float console lanes.
+                crate::source::resolve::VT::F32 => ValueType::F32,
+                crate::source::resolve::VT::F64 => ValueType::F64,
                 _ => unreachable!(),
             };
             let (expected_params, expected_result, cap): (Vec<ValueType>, ValueType, &'static str) =

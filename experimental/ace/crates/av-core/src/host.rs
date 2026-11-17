@@ -101,9 +101,19 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
         .iter()
         .all(|h| h.symbol.starts_with("auto.platform."))
         && !module.host_imports.is_empty();
+    // PLAN-1026: the py training lane — console print imports on the
+    // closures family in a module that also carries foreign calls.
+    let py_lane_module = module.host_imports.iter().all(|h| {
+        h.symbol.starts_with("auto.console.")
+    }) && !module.host_imports.is_empty()
+        && module
+            .funcs
+            .iter()
+            .any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))));
     if !module.is_host_console_profile()
         && !sched_module
         && !platform_module
+        && !py_lane_module
         && !module.host_imports.is_empty()
     {
         return Err(err(

@@ -596,6 +596,13 @@ pub enum FStrPart {
     Expr(ResolvedExpr),
 }
 
+/// PLAN-1026: one piece of a runtime py frame (static text or an i32
+/// display — decimal renderings for token/value/length fields).
+pub enum PyFramePart {
+    Txt(String),
+    Disp(ResolvedExpr),
+}
+
 impl FStrPart {
     pub fn vt(&self) -> VT {
         match self {
@@ -1909,6 +1916,50 @@ pub fn validate_foreign_context(
                 )]);
             }
             use_rs_seen = Some(u.span);
+        }
+    }
+    // PLAN-1026: the use.py frontdoor — the admitted environment must be
+    // the py adapter itself (provider id `py`, the frozen front-door
+    // identity); members bind as script locals, so duplicates and name
+    // conflicts with source declarations are named rejections.
+    let mut py_members: std::collections::BTreeMap<&str, Span> = std::collections::BTreeMap::new();
+    for item in &program.items {
+        if let ast::Item::UsePy(u) = item {
+            if foreign.manifest().provider != "py" {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.use-py.provider",
+                    format!(
+                        "`use.py` requires the admitted py adapter (provider `py`), not `{}`",
+                        foreign.manifest().provider
+                    ),
+                    u.span,
+                )]);
+            }
+            for m in &u.members {
+                if let Some(first) = py_members.get(m.name.as_str()) {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Bind,
+                        "source.use-py.duplicate",
+                        format!("duplicate py member import `{}`", m.name),
+                        first.join(m.span),
+                    )]);
+                }
+                if let Some((_, span, _)) =
+                    names.iter().find(|(n, _, _)| *n == m.name.as_str())
+                {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Bind,
+                        "source.use-py.conflict",
+                        format!(
+                            "py member `{}` conflicts with a source declaration",
+                            m.name
+                        ),
+                        *span,
+                    )]);
+                }
+                py_members.insert(m.name.as_str(), m.span);
+            }
         }
     }
     validate_foreign_declarations(&names, foreign, capabilities)
@@ -4174,6 +4225,9 @@ pub(crate) fn resolve_lambda_in_context(
             used_intrinsics: BTreeSet::new(),
             closure_defs: &mut nested_defs,
             moved_locals: BTreeSet::new(),
+            py_locals: BTreeSet::new(),
+            py_context: env.sigs.contains_key("py_import"),
+            py_lit_locals: BTreeMap::new(),
             borrowed_closure_locals: BTreeSet::new(),
             records: &env.program.records,
             rec_index: &env.rec_index,
@@ -5402,6 +5456,17 @@ struct FnResolver<'a, 's> {
     /// a `FnSig.index` addresses a SOURCE function (foreign declarations
     /// index above it); callback-by-name targets are source fns only.
     source_fn_count: usize,
+    /// PLAN-1026: py-bridge token locals (hoisted `use.py` member imports
+    /// and Python-op results bound by `let`/`var`) — sanctioned uses
+    /// lower through the frozen py op set; anything else consuming the
+    /// i32 token is a named `source.py-domain` rejection (R-04).
+    py_locals: BTreeSet<LocalRef>,
+    /// PLAN-1026: this program entered through the use.py front door (the
+    /// py lane admits the console print intrinsics under Aggregates).
+    py_context: bool,
+    /// PLAN-1026: float locals whose initializer is an exact typed literal
+    /// (folded into the frozen `F:` frame encoding at the call site).
+    py_lit_locals: BTreeMap<LocalRef, (VT, u64)>,
     stmt_sinks: Vec<Vec<RStmt>>,
     ctrl_frames: Vec<CtrlFrame>,
     ctrl_state: Option<AggCtrlLocals>,
@@ -5591,6 +5656,9 @@ fn resolve_fn_reuse<'a, 's>(
         used_intrinsics: BTreeSet::new(),
         closure_defs,
         moved_locals: BTreeSet::new(),
+        py_locals: BTreeSet::new(),
+        py_context: supply.map(|s| s.foreign().map(|f| f.manifest().provider == "py").unwrap_or(false)).unwrap_or(false),
+        py_lit_locals: BTreeMap::new(),
         borrowed_closure_locals: BTreeSet::new(),
         records,
         rec_index,
@@ -5831,6 +5899,352 @@ impl<'a, 's> FnResolver<'a, 's> {
                     rule
                 }
             },
+        }
+    }
+
+    // ---- PLAN-1026: the Python op sugar ----------------------------------
+
+    /// The foreign declaration name a `CallFn` index addresses (None for
+    /// source fns / out-of-range).
+    fn py_foreign_name(&self, fn_index: usize) -> Option<&str> {
+        if fn_index < self.source_fn_count {
+            return None;
+        }
+        let i = fn_index - self.source_fn_count;
+        self.supply
+            .and_then(|s| s.foreign())
+            .and_then(|f| f.source_declarations_ref().get(i))
+            .map(|d| d.name.as_str())
+    }
+
+    /// A py OBJECT value: a read of a marked local or an inline result of
+    /// an object-producing Python op.
+    fn py_is_object(&self, e: &ResolvedExpr) -> bool {
+        match &e.kind {
+            RExprKind::ReadLocal(l) => self.py_locals.contains(l),
+            RExprKind::CallFn { fn_index, .. } => matches!(
+                self.py_foreign_name(*fn_index),
+                Some("py_import" | "py_call" | "py_getattr" | "py_getitem" | "py_binop")
+            ),
+            _ => false,
+        }
+    }
+
+    /// Call a foreign py op (or a helper fn) by name with ONE positional
+    /// argument, typed by the callee's declared result.
+    fn py_op_call(&mut self, op: &str, span: Span, value: ResolvedExpr) -> ResolvedExpr {
+        let fn_index = self.sigs.get(op).map(|sig| sig.index).unwrap_or(usize::MAX);
+        let result = self.sigs.get(op).map(|sig| sig.result).unwrap_or(VT::I32);
+        ResolvedExpr {
+            span,
+            vt: self.node_ty(span, result),
+            kind: RExprKind::CallFn {
+                fn_index,
+                args: vec![ResolvedArg {
+                    value,
+                    name: None,
+                    moved: false,
+                    span,
+                }],
+            },
+        }
+    }
+
+    /// `__py_dlen(expr)` — the decimal digit count (the frame's value
+    /// length field).
+    fn py_dlen(&mut self, span: Span, value: ResolvedExpr) -> ResolvedExpr {
+        self.py_op_call("__py_dlen", span, value)
+    }
+
+    /// The runtime frame: an FStr of static text parts + I32 displays,
+    /// then `.to(str)` (the view param form).
+    fn py_frame(&mut self, span: Span, parts: Vec<PyFramePart>) -> ResolvedExpr {
+        let mut fparts: Vec<FStrPart> = Vec::with_capacity(parts.len() * 2);
+        for p in parts {
+            match p {
+                PyFramePart::Txt(t) => fparts.push(FStrPart::Text(ResolvedExpr {
+                    span,
+                    vt: VT::Str,
+                    kind: RExprKind::StrLit(t),
+                })),
+                PyFramePart::Disp(e) => fparts.push(FStrPart::Expr(ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::TextDisplay {
+                        operand: Box::new(e),
+                    },
+                })),
+            }
+        }
+        let fstr = ResolvedExpr {
+            span,
+            vt: VT::StrOwned,
+            kind: RExprKind::FStr { parts: fparts },
+        };
+        ResolvedExpr {
+            span,
+            vt: VT::Str,
+            kind: RExprKind::Method {
+                recv: Box::new(fstr),
+                method: BuiltinMethod::To,
+                to: Some(VT::Str),
+                args: Vec::new(),
+            },
+        }
+    }
+
+    /// The wire encoding of one frame VALUE appended to `parts`.
+    fn py_frame_val(&mut self, parts: &mut Vec<PyFramePart>, v: &ResolvedExpr) {
+        match &v.kind {
+            // exact int literal — static "i <len>\n<payload>\n"
+            RExprKind::IntLit(n) => {
+                let d = n.to_string();
+                parts.push(PyFramePart::Txt(format!("i {}\n{d}\n", d.len())));
+            }
+            // exact bool literal
+            RExprKind::BoolLit(b) => {
+                let d = if *b { "1" } else { "0" };
+                parts.push(PyFramePart::Txt(format!("b {d}\n{d}\n")));
+            }
+            // exact text literal — raw payload with its byte length
+            RExprKind::StrLit(t) => {
+                parts.push(PyFramePart::Txt(format!("t {}\n{t}\n", t.len())));
+            }
+            // PLAN-1026: an exact float literal — the frozen `F:<decimal>`
+            // text encoding (compile-time; the provider parses it back to
+            // an exact Python float; dynamic float args stay v1-rejected).
+            RExprKind::TypedLit { vt: VT::F64, bits } => {
+                let d = f64::from_bits(*bits).to_string();
+                parts.push(PyFramePart::Txt(format!("t {}
+F:{d}
+", d.len() + 2)));
+            }
+            RExprKind::TypedLit { vt: VT::F32, bits } => {
+                let d = (f32::from_bits(*bits as u32) as f64).to_string();
+                parts.push(PyFramePart::Txt(format!("t {}
+F:{d}
+", d.len() + 2)));
+            }
+            // PLAN-1026: a float local bound to an exact literal — the
+            // frozen `F:` compile-time encoding (the ONLY dynamic-float
+            // form v1 admits).
+            RExprKind::ReadLocal(l)
+                if matches!(v.vt, VT::F64 | VT::F32)
+                    && self.py_lit_locals.contains_key(l) =>
+            {
+                let (vt, bits) = self.py_lit_locals[l];
+                let d = if vt == VT::F64 {
+                    f64::from_bits(bits).to_string()
+                } else {
+                    (f32::from_bits(bits as u32) as f64).to_string()
+                };
+                let payload = format!("F:{d}");
+                parts.push(PyFramePart::Txt(format!("t {}
+{}
+", payload.len(), payload)));
+            }
+            // a py object — dynamic "o <dlen>\n<token>\n"
+            _ if self.py_is_object(v) => {
+                let span = v.span;
+                parts.push(PyFramePart::Txt("o ".to_string()));
+                parts.push(PyFramePart::Disp(self.py_dlen(span, v.clone())));
+                parts.push(PyFramePart::Txt("\n".to_string()));
+                parts.push(PyFramePart::Disp(v.clone()));
+                parts.push(PyFramePart::Txt("\n".to_string()));
+            }
+            // any other i32 dynamic value — dynamic "i <dlen>\n<value>\n"
+            _ if v.vt == VT::I32 => {
+                let span = v.span;
+                parts.push(PyFramePart::Txt("i ".to_string()));
+                parts.push(PyFramePart::Disp(self.py_dlen(span, v.clone())));
+                parts.push(PyFramePart::Txt("\n".to_string()));
+                parts.push(PyFramePart::Disp(v.clone()));
+                parts.push(PyFramePart::Txt("\n".to_string()));
+            }
+            // v1 boundary: dynamic floats/text/other types do not cross
+            _ => {
+                self.bind_err(
+                    "source.py-domain",
+                    "this value kind cannot cross into a Python call (v1: int/bool/text literals and Python objects)",
+                    v.span,
+                );
+                parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
+            }
+        }
+    }
+
+    /// The py_call sugar: receiver + optional member label + source-order
+    /// args + named kwargs, one frame, one foreign call.
+    fn py_call_sugar(
+        &mut self,
+        recv: &ResolvedExpr,
+        member: &str,
+        args: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        let mut parts: Vec<PyFramePart> = Vec::new();
+        parts.push(PyFramePart::Txt("p967.frame/1\nr ".to_string()));
+        if self.py_is_object(recv) {
+            parts.push(PyFramePart::Txt("o ".to_string()));
+            let rspan = recv.span;
+            parts.push(PyFramePart::Disp(self.py_dlen(rspan, recv.clone())));
+            parts.push(PyFramePart::Txt("\n".to_string()));
+            parts.push(PyFramePart::Disp(recv.clone()));
+            parts.push(PyFramePart::Txt("\n".to_string()));
+        } else {
+            self.bind_err(
+                "source.py-domain",
+                "the call receiver must be a Python object",
+                recv.span,
+            );
+            parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
+        }
+        let pos = args.iter().filter(|a| a.name.is_none()).count();
+        parts.push(PyFramePart::Txt(format!(
+            "p {}\n",
+            pos + usize::from(!member.is_empty())
+        )));
+        if !member.is_empty() {
+            parts.push(PyFramePart::Txt(format!("t {}\n{member}\n", member.len())));
+        }
+        for a in &args {
+            if a.name.is_none() {
+                self.py_frame_val(&mut parts, &a.value);
+            }
+        }
+        let kw = args.iter().filter(|a| a.name.is_some()).count();
+        parts.push(PyFramePart::Txt(format!("k {kw}\n")));
+        for a in &args {
+            if let Some(n) = &a.name {
+                // kwarg: namelen LF + name ABUTTING the value's header
+                parts.push(PyFramePart::Txt(format!("{}\n{}", n.name.len(), n.name)));
+                self.py_frame_val(&mut parts, &a.value);
+            }
+        }
+        let frame = self.py_frame(span, parts);
+        self.py_op_call("py_call", span, frame)
+    }
+
+    /// The `.to(...)` extraction sugar on a py object.
+    fn py_to_sugar(&mut self, recv: &ResolvedExpr, target: VT, span: Span) -> ResolvedExpr {
+        match target {
+            VT::F64 | VT::F32 => {
+                let frame = self.py_recv_frame(recv, span);
+                let hi = self.py_op_call("py_to_f64", span, frame);
+                let lo_frame = self.py_frame(
+                    span,
+                    vec![PyFramePart::Txt("p967.frame/1\nr n 0\n\np 0\nk 0\n".to_string())],
+                );
+                let lo = self.py_op_call("py_f64_lo", span, lo_frame);
+                self.used_intrinsics.insert("__py_f64_bits");
+                let v = ResolvedExpr {
+                    span,
+                    vt: self.node_ty(span, VT::F64),
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: "__py_f64_bits",
+                        args: vec![hi, lo],
+                    },
+                };
+                if target == VT::F32 {
+                    ResolvedExpr {
+                        span,
+                        vt: self.node_ty(span, VT::F32),
+                        kind: RExprKind::Method {
+                            recv: Box::new(v),
+                            method: BuiltinMethod::NumTo,
+                            to: Some(VT::F32),
+                            args: Vec::new(),
+                        },
+                    }
+                } else {
+                    v
+                }
+            }
+            VT::I32 => {
+                let frame = self.py_recv_frame(recv, span);
+                self.py_op_call("py_to_i32", span, frame)
+            }
+            VT::Str | VT::StrOwned => {
+                let len = self.py_stage_len(recv, span);
+                self.used_intrinsics.insert("__py_staged_text");
+                ResolvedExpr {
+                    span,
+                    vt: self.node_ty(span, VT::StrOwned),
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: "__py_staged_text",
+                        args: vec![len],
+                    },
+                }
+            }
+            other => {
+                self.bind_err(
+                    "source.py-domain",
+                    format!(
+                        "`.to({})` is not a supported Python extraction (v1: float, double, int, str)",
+                        other.as_str()
+                    ),
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::Unit,
+                    kind: RExprKind::Unit,
+                }
+            }
+        }
+    }
+
+    /// The receiver frame prefix + this object's token (shared by the
+    /// extraction ops).
+    fn py_recv_frame(&mut self, recv: &ResolvedExpr, span: Span) -> ResolvedExpr {
+        let mut parts: Vec<PyFramePart> = Vec::new();
+        parts.push(PyFramePart::Txt("p967.frame/1\nr ".to_string()));
+        if self.py_is_object(recv) {
+            parts.push(PyFramePart::Txt("o ".to_string()));
+            let rspan = recv.span;
+            parts.push(PyFramePart::Disp(self.py_dlen(rspan, recv.clone())));
+            parts.push(PyFramePart::Txt("\n".to_string()));
+            parts.push(PyFramePart::Disp(recv.clone()));
+            parts.push(PyFramePart::Txt("\np 0\nk 0\n".to_string()));
+        } else {
+            self.bind_err(
+                "source.py-domain",
+                "the operation receiver must be a Python object",
+                recv.span,
+            );
+            parts.push(PyFramePart::Txt("n 0\n\np 0\nk 0\n".to_string()));
+        }
+        self.py_frame(span, parts)
+    }
+
+    /// py_stage_str on an object — returns the staged length (i32).
+    fn py_stage_len(&mut self, recv: &ResolvedExpr, span: Span) -> ResolvedExpr {
+        let frame = self.py_recv_frame(recv, span);
+        self.py_op_call("py_stage_str", span, frame)
+    }
+
+    /// A helper-fn call with N positional args and a known result VT.
+    fn py_op_call2(
+        &mut self,
+        name: &str,
+        span: Span,
+        values: Vec<ResolvedExpr>,
+        result: VT,
+    ) -> ResolvedExpr {
+        let fn_index = self.sigs.get(name).map(|sig| sig.index).unwrap_or(usize::MAX);
+        let args = values
+            .into_iter()
+            .map(|value| ResolvedArg {
+                value,
+                name: None,
+                moved: false,
+                span,
+            })
+            .collect();
+        ResolvedExpr {
+            span,
+            vt: self.node_ty(span, result),
+            kind: RExprKind::CallFn { fn_index, args },
         }
     }
 
@@ -10324,6 +10738,19 @@ impl<'a, 's> FnResolver<'a, 's> {
                         );
                     }
                     let lref = LocalRef(self.locals.len());
+                    // PLAN-1026: a binding whose initializer is a Python
+                    // OBJECT (hoisted member import or an object-returning
+                    // op) carries the py-op domain discipline.
+                    if self.py_is_object(&value) {
+                        self.py_locals.insert(lref);
+                    }
+                        // PLAN-1026: an exact float literal binding folds into
+                        // the frozen `F:` frame encoding at py call sites.
+                        if let RExprKind::TypedLit { vt: vt @ (VT::F64 | VT::F32), bits } =
+                            &value.kind
+                        {
+                            self.py_lit_locals.insert(lref, (*vt, *bits));
+                        }
                     if matches!(
                         &value.kind,
                         RExprKind::CreateClosure { captures, .. }
@@ -11547,6 +11974,23 @@ impl<'a, 's> FnResolver<'a, 's> {
             ExprKind::Index { base, index } => {
                 let recv = self.expr_iterative(base);
                 let idx = self.expr_iterative(index);
+                // PLAN-1026: integer indexing on a Python object —
+                // py_getitem(receiver, index); the result is a Python
+                // object.
+                if self.py_is_object(&recv) {
+                    let mut parts: Vec<PyFramePart> =
+                        vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
+                    parts.push(PyFramePart::Txt("o ".to_string()));
+                    let rspan = recv.span;
+                    parts.push(PyFramePart::Disp(self.py_dlen(rspan, recv.clone())));
+                    parts.push(PyFramePart::Txt("\n".to_string()));
+                    parts.push(PyFramePart::Disp(recv.clone()));
+                    parts.push(PyFramePart::Txt("\np 1\n".to_string()));
+                    self.py_frame_val(&mut parts, &idx);
+                    parts.push(PyFramePart::Txt("k 0\n".to_string()));
+                    let frame = self.py_frame(e.span, parts);
+                    return self.py_op_call("py_getitem", e.span, frame);
+                }
                 match recv.vt {
                     VT::List(li) => {
                         if idx.vt != VT::I32 {
@@ -13506,6 +13950,26 @@ impl<'a, 's> FnResolver<'a, 's> {
                     dest,
                 } => {
                     let base = std::mem::replace(&mut out[bslot], dummy_resolved());
+                    // PLAN-1026: attribute read on a Python object —
+                    // py_getattr(receiver, name); the result is a Python
+                    // object (never an early field projection).
+                    if self.py_is_object(&base) {
+                        let mut parts: Vec<PyFramePart> =
+                            vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
+                        parts.push(PyFramePart::Txt("o ".to_string()));
+                        let rspan = base.span;
+                        parts.push(PyFramePart::Disp(self.py_dlen(rspan, base.clone())));
+                        parts.push(PyFramePart::Txt("\n".to_string()));
+                        parts.push(PyFramePart::Disp(base.clone()));
+                        parts.push(PyFramePart::Txt(format!(
+                            "\np 1\nt {}\n{}\nk 0\n",
+                            name.name.len(),
+                            name.name
+                        )));
+                        let frame = self.py_frame(name.span, parts);
+                        out[dest] = self.py_op_call("py_getattr", name.span, frame);
+                        continue;
+                    }
                     let VT::Rec(ri) = base.vt else {
                         self.bind_err(
                             "source.type-mismatch",
@@ -13879,7 +14343,13 @@ impl<'a, 's> FnResolver<'a, 's> {
                             span: spans[index],
                         });
                     }
-                    out[dest] = self.resolve_closure_call(callee, args, node_span);
+                    // PLAN-1026: a call through a Python object value —
+                    // the direct py_call form (receiver = the callable).
+                    if self.py_is_object(&callee) {
+                        out[dest] = self.py_call_sugar(&callee, "", args, node_span);
+                    } else {
+                        out[dest] = self.resolve_closure_call(callee, args, node_span);
+                    }
                 }
                 Task::MethodOut {
                     name,
@@ -13943,6 +14413,63 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // admitted operator pair is `==`/`!=` over two Nil
                     // operands (constant-folded: nil==nil is true). Any
                     // other operator on Nil is a named reject.
+                    // PLAN-1026: a Python object operand routes the
+                    // arithmetic through py_binop (the frozen v1 op set);
+                    // a py object on the RIGHT only is a named v1 reject.
+                    if self.py_is_object(&l) {
+                        let opname = match op {
+                            BinOp::Add => Some("add"),
+                            BinOp::Sub => Some("sub"),
+                            BinOp::Mul => Some("mul"),
+                            BinOp::Div => Some("truediv"),
+                            _ => None,
+                        };
+                        match opname {
+                            Some(opname) => {
+                                let mut parts: Vec<PyFramePart> =
+                                    vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
+                                parts.push(PyFramePart::Txt("o ".to_string()));
+                                let rspan = l.span;
+                                parts.push(PyFramePart::Disp(self.py_dlen(rspan, l.clone())));
+                                parts.push(PyFramePart::Txt("\n".to_string()));
+                                parts.push(PyFramePart::Disp(l.clone()));
+                                parts.push(PyFramePart::Txt("\np 1\n".to_string()));
+                                self.py_frame_val(&mut parts, &r);
+                                parts.push(PyFramePart::Txt(format!(
+                                    "k 1\n2\nop t {}\n{opname}\n",
+                                    opname.len()
+                                )));
+                                let frame = self.py_frame(span, parts);
+                                out[dest] = self.py_op_call("py_binop", span, frame);
+                                continue;
+                            }
+                            None => {
+                                self.bind_err(
+                                    "source.py-domain",
+                                    "this operator on a Python object is outside the v1 op set (add/sub/mul/truediv)",
+                                    span,
+                                );
+                                out[dest] = ResolvedExpr {
+                                    span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                                };
+                                continue;
+                            }
+                        }
+                    } else if self.py_is_object(&r) {
+                        self.bind_err(
+                            "source.py-domain",
+                            "a Python object is only admitted on the LEFT of an operator (v1)",
+                            span,
+                        );
+                        out[dest] = ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                        };
+                        continue;
+                    }
                     if l.vt == VT::Nil || r.vt == VT::Nil {
                         let nil_eq = l.vt == VT::Nil && r.vt == VT::Nil;
                         if nil_eq {
@@ -14138,6 +14665,23 @@ impl<'a, 's> FnResolver<'a, 's> {
         to_word: Option<TypeWord>,
         span: Span,
     ) -> ResolvedExpr {
+        // PLAN-1026: every method-position operation on a Python object
+        // routes through the frozen op set — `.to(T)` is the explicit
+        // scalar/text extraction; any other name is a member call.
+        if self.py_is_object(&recv) {
+            if name.name == "to" || name.name == "as" {
+                let target = to_word.map(super::resolve::vt_of_word).unwrap_or(VT::I32);
+                return self.py_to_sugar(&recv, target, span);
+            }
+            if to_word.is_some() {
+                self.bind_err(
+                    "source.py-domain",
+                    "a type-word argument is only legal on `.to(...)` over a Python object",
+                    span,
+                );
+            }
+            return self.py_call_sugar(&recv, &name.name, args, span);
+        }
         // bare `.move`: ownership marker, only legal on a named local and
         // only as a direct call argument (the call arms unwrap it)
         if name.name == "move" && to_word.is_none() {
@@ -14610,6 +15154,19 @@ impl<'a, 's> FnResolver<'a, 's> {
         mut rargs: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
+        // PLAN-1026: a DIRECT Python call — the callee resolves to a
+        // hoisted use.py member local (or any marked py local): the
+        // receiver IS the callable object (no member label).
+        if let Some(l) = self.lookup(&callee.name) {
+            if self.py_locals.contains(&l) {
+                let recv = ResolvedExpr {
+                    span: callee.span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(l),
+                };
+                return self.py_call_sugar(&recv, "", rargs, call_span);
+            }
+        }
         // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（用户同名 fn 优先）。
         if callee.name == "take"
             && !self.sigs.contains_key("take")
@@ -14862,7 +15419,10 @@ impl<'a, 's> FnResolver<'a, 's> {
         if (self.profile == SourceProfile::HostConsole
             // PLAN-968: the scheduler face admits the same console calls
             // (task handlers observe through stdout).
-            || self.profile == SourceProfile::Scheduler)
+            || self.profile == SourceProfile::Scheduler
+            // PLAN-1026: the py training lane (a use.py program under
+            // Aggregates) admits the same console calls for its body.
+            || (self.profile == SourceProfile::Aggregates && self.py_context))
             && matches!(callee.name.as_str(), "print" | "eprint" | "say")
         {
             if rargs.len() != 1 || rargs.iter().any(|a| a.name.is_some()) {
@@ -14877,7 +15437,23 @@ impl<'a, 's> FnResolver<'a, 's> {
                     kind: RExprKind::Unit,
                 };
             }
-            let arg = rargs.remove(0).value;
+            let mut arg = rargs.remove(0).value;
+            // PLAN-1026: a Python object prints through the adapter's
+            // display channel (stage + word-wise readback → Str), never
+            // the raw i32 token.
+            if self.py_is_object(&arg) {
+                let span = arg.span;
+                let len = self.py_stage_len(&arg, span);
+                self.used_intrinsics.insert("__py_staged_text");
+                arg = ResolvedExpr {
+                    span,
+                    vt: self.node_ty(span, VT::StrOwned),
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: "__py_staged_text",
+                        args: vec![len],
+                    },
+                };
+            }
             let Some(symbol) = super::console::symbol(&callee.name, arg.vt) else {
                 self.bind_err(
                     "source.console-argument",

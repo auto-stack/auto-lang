@@ -182,10 +182,13 @@ pub fn compile_aggregates_source_with_foreign(
     capabilities: &[String],
     foreign: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
-    let program = match super::parse_program_with(src, SourceProfile::Aggregates) {
+    let mut program = match super::parse_program_with(src, SourceProfile::Aggregates) {
         Ok(p) => p,
         Err(d) => return Err(vec![d]),
     };
+    // PLAN-1026: the use.py front door (helper injection + hoisted member
+    // imports) — a no-op without use.py items.
+    super::py::front_door(&mut program);
     let parts = compile_program_observed_with(
         &program,
         src,
@@ -4376,6 +4379,15 @@ impl<'p> Emitter<'p> {
                     super::age_resources::AgeGfxResult::Scalar(vt) => self.ty_use_ref(vt),
                 };
                 (ps.join(", "), rs)
+            } else if *sym == "__py_f64_bits" {
+                // PLAN-1026: (int, int) -> double reconstruction.
+                (
+                    format!("{}, {}", self.ty_use_ref(VT::I32), self.ty_use_ref(VT::I32)),
+                    self.ty_use_ref(VT::F64),
+                )
+            } else if *sym == "__py_staged_text" {
+                // PLAN-1026: (int) -> Str word readback.
+                (self.ty_use_ref(VT::I32), self.ty_use_ref(VT::StrOwned))
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = match res {

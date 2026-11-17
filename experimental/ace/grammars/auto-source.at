@@ -322,12 +322,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-modules]) { use-item() {} }
             // PLAN-967（F0）：`use.rs <provider>` —— 公共 Rust 导入前门
             //（text-record 面首个 F0 切片；`rs` 拼写与 provider 匹配在投影/解析期校验）。
-            alt(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) { use-rs-item() {} }
-            alt(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) { use-c-item() {} }
             // PLAN-1026：`use.py <module.path>: <members>` —— Python 成员导入
             //前门（aggregates py 训练面；lang 叶必须恰为 py，点路径与成员
             //清单在投影/解析期校验）。
             alt(profiles: [aggregates]) { use-py-item() {} }
+            alt(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) { use-rs-item() {} }
+            alt(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates]) { use-c-item() {} }
             // PLAN-980：`use themes.themes: Auto, Solarized` 模块成员导入
             //（002-counter 等传统工程的主题包导入形；仅 age-component 面）。
             alt(profiles: [age-component, age-package]) { age-use-module-item() {} }
