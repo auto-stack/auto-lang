@@ -1,10 +1,10 @@
 # ace-migration: m2-web — Web 服务嵌入与实际后端迁移（PLAN-983）
 
-> Status: **M2-A 切片已交付**（phase fold 2026-11-17；auto-web `bdc48e8`，
-> 基 `0adebc0`；T-01/B-PORT-I/V/R + B-PROOF-I/V/R 共 7 任务闭合）。
-> B 组（AVSERVICE/GENERATED/CONSUMERS/T-05..07 共 12 任务）未交付——
-> 见"边界"。来源：[PLAN-983](../../plans/983-ace-m2-web.md) r7 §5/§8/§9
-> （phase work/review/merge 收据）；依赖 967/968/969/974/975/978 均已归档。
+> Status: **M2-A 切片 + M2-B 双批（AVSERVICE/GENERATED）已交付**
+> （A phase fold auto-web `bdc48e8`；B phase fold `fd115ce`，2026-11-17；
+> 13/19 任务闭合）。CONSUMERS 与 T-05..07 未交付——见"边界"。来源：
+> [PLAN-983](../../plans/983-ace-m2-web.md) §5/§8/§9（各 phase
+> work/review/merge 收据）；依赖 967/968/969/974/975/978 均已归档。
 
 ## A 切片已验接口
 
@@ -52,15 +52,58 @@
 - **依赖身份**：生产=ace-core/ace-a2x-core/ace-a2x-rust（发射侧）；
   ace-av/ace-av-core 仅 dev（AV 腿 runner）。
 
-## 边界（具名开放，B 域）
+
+## B 批已验接口（phase fold 2026-11-17，auto-web `fd115ce`）
+
+### B-AVSERVICE：AV 真服务执行臂（文件通道形态）
+
+- **transport 原样 + 引擎枚举**：`http_server::ServiceEngine{Legacy(Rc<AutoVM>),
+  Av(Box<AvServiceEngine>)}`——Legacy 段驱动/park/resume 全量保留（legacy
+  installed-host 用例零变化）；Av 臂同步完成**永不 park**（parked 机制自然
+  旁路）。公共入口 `http_server::serve_av(engine, addr, cfg, shutdown_rx)`；
+  路由按引擎来源（legacy=进程全局 codegen 表；Av=服务自身 `#[api]` 声明，
+  构造时抽取、编译前机械剥属性行）。
+- **AvServiceEngine**（`av_service` 模块；owner 线程驻留，!Send 与
+  `Rc<AutoVM>` 同律）：每请求 staged 原始 HTTP 请求文件 →
+  `ConsoleProgram::run_platform`（grants `platform.file`+`platform.mem`）→
+  响应文件读回 → `ApiReply::Full`。文件通道=现值 AV 接口边界的冻结设计
+  （无「具名函数+参数+平台IO」联合公开入口：入口参数仅标量无 Str、每调用
+  mint 新 ledger 强制关文件句柄、session/snapshot !Send——侦察核
+  av-core/av.rs、resident.rs、session.rs）。
+- **具名边界（501/专有面，不静默回退）**：已注册中间件链、上传路由
+  （语言侧凭据消费通道缺位）；限流=legacy 专有（VM launch settings 面）；
+  认证/权限/stream/SSE/`~T` future 未执行（R 条款记录）。AV 程序 main
+  返回非 0 → 500 具名诊断。
+- 永久 fixture `tests/fixtures/ace-p983/av-runtime-service.at`（member-
+  delivery/b API 面 + counter.txt 持久化）；生产依赖新增 ace-av/ace-av-core
+  （自 dev-dep 转[[dependencies]]——引擎为生产执行面）。
+- `TransportConfig::from_env` 转 pub（嵌入方配置构造；值面不变）。
+
+### B-GENERATED：ACE A2R 生成道参数扩面
+
+- lane 子集扩至 **int/str 视图/bool 参数（值传）**与同族返回
+  （`AceA2rParam`；a2x `l{idx}_` 局部名还原源参数名）；owned/mut str 参数、
+  record/list/浮点具名拒；`str+literal concat` 产 owned `Str` 与 `str` 返回
+  不匹配=verify 具名拒（恒等体为子集内形态）。
+- `generate_ace_api_rs` 参数提取器：GET/DELETE=Query struct、POST/PUT=
+  Json body（与 legacy 委派形态同源）；实参编组 int `as i32`/str `as_str`/
+  bool。保旧面：route 注册（端点驱动）/store（ACE 道仍具名拒 db.at/伴生，
+  默认道不变由 member_delivery+cold_generated 证）/schema（types.rs+
+  generation.json 字段不变）/diagnostics+失败保旧（早门零写入+receipt park+
+  write_if_changed）。
+- V 计时：新生成例 `ace_lane_param_endpoints...` 6.45s（复跑波动至 9.66s；
+  冷 cargo 启动+盘压；>10s 离群已记录，B/CONSUMERS 考虑预构建阶段）。
+
+## 边界（具名开放，CONSUMERS/后续域）
 
 - core trait `listen_blocking` 签名仍由 core legacy trait 固定（桥接已
-  文档化）；`http_server.rs` 内部 `Rc<AutoVM>` 执行面未动——均归
-  B/AVSERVICE 换执行面。
-- A2R 道零参子集；store/db/伴生模块、参数编组、带参 handler 未交付
-  （B/GENERATED 扩面）。
-- AV 腿 ASCII 数据根约束（非 ASCII 路径 UTF-16 staging 未支持；B/AVSERVICE
-  或 973 域）。
+  文档化）；legacy `Rc<AutoVM>` 段驱动面保留为默认引擎（Av 臂为并行选项，
+  默认链不切换）。
+- A2R 道：store/db/伴生模块（sqlite 无 a2x 道）、owned/mut str 参数、
+  record/list/浮点、str concat owned 促升——后续扩面具名拒。
+- AV 执行臂：认证/权限/中间件/上传/下载/stream/SSE/`~T`（语言侧通道缺位，
+  501 具名）；ASCII scratch/数据根约束。
+- CONSUMERS 批与 T-05..07 未交付（B 剩余 6 任务）。
 - 既有红（非本切片引入）：auto-web
   `api_gen::tests::test_handler_body_r2_matrix_compile_oracle` 基线
   `0adebc0` 原样红。

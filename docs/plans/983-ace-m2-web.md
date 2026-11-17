@@ -5,8 +5,8 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
-plan_revision: 7
-current_step: 7
+plan_revision: 8
+current_step: 11
 total_steps: 19
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -83,6 +83,12 @@ touched_goals: [GOAL-002]
 Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2R/其他required后端义务不能随Godot一起撤掉。规范中旧“全部在用A2X目标”的历史范围由本次用户裁定覆盖，未来实际交付时落对应SD；当前Spec已验事实不伪造。受修改的旧revision范围/矩阵证明仅保历史，未来独立review须绑定当前revision与真正实现提交。
 
 ## 5. 详细设计
+
+### CONFIG-ACE-B交接（2026-11-17）
+
+[982/B-CONFIG](982-ace-m2-man-gen.md)现统一生产配置文档Schema/AV/owned SDK与Man接口，见[设计](../design/ace-config-document-evaluation.md)。本包原19任务/已交PORT和PROOF A面保持。AVSERVICE/GENERATED按原端口先行；CONSUMERS用到配置的工程须收IF-982-CONFIG-ACE＋982/EXEC＋980/WEB对应正式接口，不把同SDK的legacy配置owner冒新引擎。
+
+CONSUMERS I/V/R负责每个真实配置入口/dep参数/env/锁、坏配置零写/修复下一读和实际服务结果；配置算法由982生产，本包只接真实Web/Man/UI/Down consumer，不重复parser/求值器。982 CONFIG不等本包或980/WEB完成才交能力；本包CONSUMERS也不因只缺某产品接口阻已就绪服务批。全部required最终齐才原T-05/06/07独立收口。
 
 ### M2-TARGET-SCOPE-20261116：本包当前边界
 
@@ -237,6 +243,7 @@ struct WebHostPort { signatures: SignatureCatalog, owner_thread: ThreadOwner, gr
 ### 规范增量
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
+| SD-CFG-HANDOFF | modify（拟，原owner） | `docs/specs/ace-migration/m2-web.md` | 原候选接收→实际配置新AV来源/宿主与guest边界、错误恢复/原平台，真实交付后才写已支持 | 982生产一次，本包只核实际消费者/安装退役阶段；A收据保留 | AC-CFG-HANDOFF、原AC与最终review |
 | SD-01 | add | `docs/specs/ace-migration/m2-web.md` | 分批沉淀实际支持/来源/拒绝及未闭行 | 不把计划当现状 | AC-01..06及所有AC-B-* |
 | SD-02 | modify | `docs/specs/ace-migration/replacement-scope-and-evidence.md` | 959行关联本批新producer/consumer与收据 | 替换追踪 | AC-03/05/06 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-web.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE/AC-A-PROOF |
@@ -246,6 +253,10 @@ struct WebHostPort { signatures: SignatureCatalog, owner_thread: ThreadOwner, gr
 外仓知识由owner落其模块Specs：UI ui/runtime/build、AGE auto-graphics、Man cli/modules、Web architecture/http-contracts/testing；语言侧只保通用接口和迁移指针，不复制第二份领域规范。
 
 ## 6. 测试设计
+
+### V-CFG-HANDOFF（本轮新增接收控制，未执行）
+
+沿[配置设计九行Case](../design/ace-config-document-evaluation.md#6-验证合同与旧用例映射)，在本包所用真实consumer/原测试入口验合法动态值及坏源/错SDK-context/零旧求值/失败保旧/修复下一次read；把route C legacy config冒ACE、只核same_sdk、缺source或仅用静态投影则拒绝。原V全部保留，不新造runner。实际未用配置的域不增加虚假依赖；原平台/ignore/输入规模保持。
 
 ### 阶段适用验证（新增合同、未执行）
 
@@ -286,6 +297,8 @@ struct WebHostPort { signatures: SignatureCatalog, owner_thread: ThreadOwner, gr
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
 ## 7. 验收标准
+
+- [ ] **AC-CFG-HANDOFF / work**：§5本包实际配置consumer/阶段的正式来源和V-CFG-HANDOFF闭合，区分宿主AV与目标业务、原A与完整B；不以未交接口/上游状态或peer-equal代真实consumer与独立oracle。原工作任务负责，原final独立复审核验。
 
 | ID | owner_stage | 标准 | 验证 |
 |---|---|---|---|
@@ -335,23 +348,27 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
-- [ ] **B-AVSERVICE-I｜M2-B｜owner_stage: work｜AC-B-AVSERVICE/AC-02/03/06**：动态路由、参数、认证/权限/中间件、上传/下载/stream与DB接ACE，保transport现有实现。 在§5改面接永久fixture，先冻结前置接口/命令。
+- [x] **B-AVSERVICE-I｜M2-B｜owner_stage: work｜AC-B-AVSERVICE/AC-02/03/06**：动态路由、参数、认证/权限/中间件、上传/下载/stream与DB接ACE，保transport现有实现。 在§5改面接永久fixture，先冻结前置接口/命令。
+  [✅ 2026-11-17 @76c8001（auto-web plan-983-dev）] 新增 `av_service` 模块：`AvServiceEngine`（console 前门编译驻留 + Win32PlatformIo 与 `Rc<AutoVM>` 同律驻 owner 线程 + `#[api]` 路由抽取（剥属性行后交前门）+ 文件通道：每请求 staged 原始 HTTP 请求文件→`run_platform`（grants platform.file/mem；与 AV 平台账"每调用强制关句柄"纪律天然兼容）→响应文件读回）。http_server 增 `ServiceEngine` 枚举（Legacy 段驱动全量保留 / Av 同步完成永不 park——parked 机制自然旁路）与 `serve_av` 公共入口；server_dispatch 增引擎级派发 + AV 臂（CORS/404 与 legacy 逐字同形；**具名 501 边界**：已注册中间件链/上传路由——语言侧凭据消费通道缺位；限流=legacy 专有 VM launch settings 面）。**冻结设计依据**：AV 公开面无「具名函数+参数+平台IO」联合入口（入口参数仅标量无 Str、每调用 mint 新 ledger 强制关文件、session/snapshot !Send）——侦察报告已核 av-core av.rs/av.rs resident/session。永久 fixture `tests/fixtures/ace-p983/av-runtime-service.at`（member-delivery/b API 面 + counter.txt 持久化 + #[api] 声明）+ http_runtime 新用例。认证/中间件/上传/stream/SSE/`~T` 面：具名未执行（R 条款），非 NA。
 
-- [ ] **B-AVSERVICE-V｜M2-B｜owner_stage: work｜AC-B-AVSERVICE**：运行V-B-AVSERVICE及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+- [x] **B-AVSERVICE-V｜M2-B｜owner_stage: work｜AC-B-AVSERVICE**：运行V-B-AVSERVICE及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+  [✅ 2026-11-17 @76c8001] V-B-AVSERVICE 实测：`nextest -p auto-web --test http_runtime` = **6/6 绿**（7.22s；含 legacy installed-host 双例证 transport/legacy 臂零变化 + A 腿两例仍绿）。新用例 `av_service_engine_serves_axum_transport_over_real_tcp`（0.407s ≤10s 门）oracle 全实测：真 TCP 经既有 axum transport + AV 引擎执行；写 DB 再读（add7→get7→add3→10→double20→+100=120）；并发到达经 owner 串行不串上下文；断连（半请求+关）不触业务态；404 与 legacy 预处理同形（空体+请求 id 头）；隔离 DB 文件测试直读（counter.txt="120"）；外部 stop→排水→端口重绑+service 完结。lib 186/187（1 红=具名既有红）。lang `cargo t http`：lang 仓零改动，按 V 行"仅语言相关改动"条款免跑（记录）。
 
 - [ ] **B-AVSERVICE-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
 
-- [ ] **B-GENERATED-I｜M2-B｜owner_stage: work｜AC-B-GENERATED/AC-02/03/06**：新HIR A2R生成服务/共享载体，保route/store/schema/diagnostics与失败保旧；本批可与AVSERVICE在端口稳定后独立。 在§5改面接永久fixture，先冻结前置接口/命令。
+- [x] **B-GENERATED-I｜M2-B｜owner_stage: work｜AC-B-GENERATED/AC-02/03/06**：新HIR A2R生成服务/共享载体，保route/store/schema/diagnostics与失败保旧；本批可与AVSERVICE在端口稳定后独立。 在§5改面接永久fixture，先冻结前置接口/命令。
+  [✅ 2026-11-17 @6808511] lane 子集扩面：`int`/`str` 视图/`bool` **参数**（值传；a2x `l{idx}_` 局部名还原源参数名）与同族返回；owned/mut str 参数、record/list/浮点具名拒（后续扩面；`str+literal concat 产 owned Str 与 str 返回不匹配`=verify 具名拒已实证，恒等体为子集内形态）。api_gen：端点门放宽至参数类型 {int,str,bool}；`generate_ace_api_rs` 发射参数提取器（GET/DELETE=Query struct、POST/PUT=Json body，与 legacy 委派形态同源）+ 实参编组（int `as i32`/str `as_str`/bool）。保旧面：route（路由注册沿用端点驱动）、store/db（ACE 道仍具名拒 db.at/伴生——默认道 store 支持不变，member_delivery 由 V 证）、schema（types.rs/generation.json 字段不变）、diagnostics/失败保旧（早门零写入+receipt park+write_if_changed 原样；坏源负例改 scale(float) 具名拒+旧 workspace manifest 字节不变）。fixture 扩 echo/whisper/pick 参数端点。
 
-- [ ] **B-GENERATED-V｜M2-B｜owner_stage: work｜AC-B-GENERATED**：运行V-B-GENERATED及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+- [x] **B-GENERATED-V｜M2-B｜owner_stage: work｜AC-B-GENERATED**：运行V-B-GENERATED及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+  [✅ 2026-11-17 @6808511] V-B-GENERATED 实测：`nextest -p auto-web --test http_generation` = **3/3 绿**（73.5s）。新例 `ace_lane_param_endpoints_execute_over_real_tcp`（6.45s ≤10s 门）：生成→参数 glue 断言（fn_echo(body["delta"]..)）→--offline 冷编译（真实 cargo 子进程终态）→真 TCP：echo(41)→82、whisper("p983")→"p983"（str 参数编组）、pick(true)→true（bool）→202 shutdown join+端口释放；原例（6.21s）保持含坏源负例（scale(float) 具名拒+保旧）。既有 `cold_generated`（legacy 道，60.7s）与 lane 单测 4/4 绿=默认道不变。lang 组（组树零改动非回归证据）：`cargo t auto-generation-core` PASS + `cargo t web-delivery-controls` PASS（冷建 3m16s，组树 @d43e7970+master 前移）。
 
 - [ ] **B-GENERATED-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
 
-- [ ] **B-CONSUMERS-I｜M2-B｜owner_stage: work｜AC-B-CONSUMERS/AC-02/03/06**：jade-garden与既有Web生产调用逐行接新SDK；每owner代码独立交付，消费相同source/tool版本，保旧四仓义务。 在§5改面接永久fixture，先冻结前置接口/命令。
+- [ ] **B-CONSUMERS-I｜M2-B｜owner_stage: work｜AC-B-CONSUMERS/AC-02/03/06**：jade-garden与既有Web生产调用逐行接新SDK；每owner代码独立交付，消费相同source/tool版本，保旧四仓义务。 在§5改面接永久fixture，先冻结前置接口/命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
-- [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+- [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
-- [ ] **B-CONSUMERS-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- [ ] **B-CONSUMERS-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final，核遗漏/延期/组合、warning/fmt/debug及Spec增量，缺必需批收据不得pass。
 
@@ -370,7 +387,18 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-PORT-I/B-PORT-V/B-AVSERVICE-I/B-AVSERVICE-V/B-GENERATED-I/B-GENERATED-V/B-PROOF-I/B-PROOF-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
+
 ## 9. 复审记录
+
+2026-11-17 stage: merge | PLAN-983 r7 | outcome: **pass（phase fold：M2-B 双批 AVSERVICE+GENERATED 合入；整包不归档，CONSUMERS/T-05..07 在途）** | delivery_commit: auto-web master `fd115ce`（=reviewed commit；rebase 无漂移；ff-only 无 merge commit，tip 已核相等；主检出 README WIP 属他 session 保留）| canonical: m2-web.md 增"B 批已验接口"节+Status/边界更新；replacement-scope-and-evidence.md 增 B 批增量挂接——随本 docs 提交落 auto-lang master | checkpoints: prepared=双批 phase review pass fd115ce；landed=auto-web master tip==fd115ce（wt-guard clean）；canonical_verified=本提交；**archived/cleaned=不适用**（CONSUMERS 在途；worktree/分支/组保留；plan-artifacts scope 保留）| 供他计划消费登记：消费面=AVSERVICE（`http_server::serve_av`+`AvServiceEngine`+`ServiceEngine` 枚举+av-runtime-service.at fixture 形态）与 GENERATED（`AUTO_WEB_A2R_ENGINE=ace` 参数子集+Query/Json 提取器 glue）；source/接口/边界以 m2-web.md B 节+本仓 SHA 为准 | merge 会话测试：复用 worktree 同 SHA 门禁证据（fd115ce：http_runtime 6/6、http_generation 3/3、lang 两组 PASS）；主检出身份相同未重跑；本 merge 会话无新增用例 | next: CONSUMERS 批（前置：983/AVSERVICE+983/GENERATED 已落、982/EXEC、980/WEB 归档面沿 §5 阶段表核）
+
+2026-11-17 stage: review | review_scope: phase（M2-B 双批：B-AVSERVICE-R/B-GENERATED-R；整包仍 executing，CONSUMERS/T-05..07 未动）| reviewer_identity: 实现会话内复核（局限声明；结论自工件重建：双批 diff、门禁复跑、断言核读）| plan_id: PLAN-983 | plan_revision: r7（r8 为他 session 规划交接，与本实施收据并存）| outcome: **pass（phase，双批）** | worktree_path: D:/autostack/.wt/lang-983/auto-web | branch: plan-983-dev | reviewed_commit: fd115ce（=6808511 B-GENERATED + 76c8001 B-AVSERVICE + 复核修复；基 bdc48e8=A 落地点）| base_commit: bdc48e8 | dependency_revisions: auto-lang 组树零改动（lang 组门禁作非回归证据跑于组树）；前置 983/PORT（A 切片 master）+ L975/L978 ARCHIVED | acceptance_results: AC-B-AVSERVICE pass（V 6/6 + 复核复跑 av_service 0.915s；oracle 断言逐条核读：DB 写读/并发经 owner 串行不串/断连不触态/404 同形/独立 DB 直读/shutdown 端口释放；**具名边界**：中间件链/上传路由=501（语言侧凭据通道缺位）、限流=legacy 专有、上传失败清理面随 501 无 AV 面；认证/权限/stream/SSE/~T 未执行=R 条款记录非 NA）；AC-B-GENERATED pass（V 3/3 + 复跑；参数编组 int/str/bool 独立 expected、坏源 scale(float) 具名拒+保旧、真实 cargo 子进程终态断言；store 保旧=cold_generated legacy 例绿；str concat owned-Str 边界具名）| findings: F-R2（已修）av_service 未用绑定 warning→fd115ce→0 warning+用例绿；观察：①两新生成例计时波动 6.21–11.8s/6.45–9.66s（冷 cargo 启动+并发盘压；稳态≈6s；>10s 离群已记录，B/CONSUMERS 考虑预构建阶段）②ace-av/ace-av-core 转 auto-web 正式依赖=构建图扩大（AVSERVICE 引擎为生产面）③AV 臂 ASCII scratch/数据根约束沿 A 腿 | evidence: 复核会话实测——av_service 0.915s、ace_lane 双例复跑（22.4s 含冷重建波动；首测 6.21/6.45s 见 V 行）；批内文件 0 warning、0 调试打印；diff 复核=seam 仅加引擎枚举臂，legacy 路径未动 | 测试计时表（复核会话）：3 例 22.4s；准备=0（复用热构建）| pending_closeout_gates（merge-owned）：①双批 fold 合入 auto-web master ②m2-web.md 增 B 段 + SD-02 挂接 ③树保留待 CONSUMERS | next: merge（phase fold 双批）
+
+### 2026-11-17 CONFIG-ACE-B规划交接（r8；非实施验收）
+
+stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授权补承接/设计/接口/验收及排程；未work/建树/运行测试/探针/构建/合入/归档/派agent。GAP-982-CONFIG-ACE由982原B-CONFIG两仓端到端承接，能力本身保持未实现；本包按§5–8现任务生产或接收，不新增Plan/任务，不改已验A收据。下一步须未来实施指令，982先B-CONFIG-I全链前探/接口与原输入冻结，再V→独立R→正式phase交接；其他owner按所用正式来源接。
+
+取材和静态核验：7计划123原任务ID/顺序/勾选与状态/进度保留，语义revision各增1；仅982补已交967/979直接基础依赖。9个配置判别Case/4个能力AC、typed接口/值语义/预算/生命周期/原用例映射与Spec候选已列；24节点30边阶段图无环，新增本地链接可达，18份源码/Spec/归档/计数器身份不变，目标文档git diff --check通过。旧无owner快照/route C/执行回执作历史保留，不把规划PASS当真实能力或独立产品review。M2A-08 r29/95c7fbad8冻结不变。
 
 2026-11-17 维护：用户指令清理构建中间产物（等 985/A、B 组 parked）。`.wt/lang-983/auto-web/target`（20GB，末次写入 09:06=本切片最后测试；他 session 09:48 `cargo t ace-*` 与本树无交集已核）删除；plan-artifacts/plan-983 内 2 个调试日志删除（scope 目录保留在途）。组余 526MB 纯检出。两树 git 状态不变（auto-web @bdc48e8=master、auto-lang @d43e7970f）。**B 开工注意：冷重建 target（约一次全量 debug 编译）。**
 
@@ -405,6 +433,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
 
 ## 10. 待澄清事项
+
+**2026-11-17 用户指令（B 期开工授权）**：用户明确指示先行实施 B-AVSERVICE 与 B-GENERATED 两批并合入主分支供其他计划使用——本指令解除此前"等 985/A 完成再继续 B 组"的等待（CONSUMERS 与 T-05..07 仍按原门保留）。B 前置实测：983/PORT 已随 A 切片落 auto-web master `bdc48e8`；L975/L978 ARCHIVED ✓。
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 

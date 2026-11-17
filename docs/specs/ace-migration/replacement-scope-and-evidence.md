@@ -353,6 +353,14 @@ producer/consumer（RG-A02）：
 | A2R 新道生成腿（`ace_a2r_lane`+api_gen 早门/覆写；`AUTO_WEB_A2R_ENGINE=ace` 显式） | auto-web `bdc48e8` | implemented-verified（RG-A02 生成腿） | 零参 int/str/bool 子集；store/db/伴生留旧道（B/GENERATED）；坏源保旧已验 |
 | ACE 发射侧生产依赖（ace-core/ace-a2x-core/ace-a2x-rust） | auto-lang `e85096628`（钉基，零改动） | implemented-verified | 解释器 ace-av 保持 dev-only |
 
+**B 批增量（2026-11-17 phase fold `fd115ce`）**：AVSERVICE=AV 真服务执行臂
+（ServiceEngine 枚举+serve_av+文件通道 AvServiceEngine；transport 原样；
+中间件/上传/限流等具名边界见 m2-web.md）；GENERATED=A2R 生成道参数扩面
+（int/str/bool 值传+Query/Json 提取器；store/schema/diagnostics/失败保旧
+原样）。V 证据：http_runtime 6/6、http_generation 3/3（新例 ≤10s 稳态）、
+lang 组 auto-generation-core/web-delivery-controls PASS（零 lang 改动非回
+归证据）。CONSUMERS/T-05..07 仍 required。
+
 规范落点：[m2-web.md](m2-web.md)（A 切片接口+边界）。台账 Web 相关行
 不因 A 切片消失：全 Web API 面、AVSERVICE/GENERATED/CONSUMERS、四仓
 生产链与 T-05..07 仍 required（B 域）。
