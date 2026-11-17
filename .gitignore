@@ -185,6 +185,9 @@ test_temp.txt
 # 被 *.json 母规则静默吞掉致 master 执行链断——同 F-793-R1-01 缺陷类，自
 # 736064ce7^ 内容恢复并加豁免防复发）
 !scripts/test-governance/legacy-wrapper-contract.json
+# PLAN-1066/A：A 分母冻结契约（plan1066_a_slice 分母完整性检查从盘读取；
+# 被 *.json 母规则吞掉则 fresh 检出 NC-A1/A 分母门必红——同 F-793-R1-01 类）
+!crates/auto-lang/test/governance/plan1066_a_obligations.json
 # PLAN-908：M1 适用登记与来源清单（verify-ace-m1-852 contract/acceptance 与
 # infra-ace-m1 治理测试消费的长期测试合同数据；R1 F-908-R1-01：*.json 母规则
 # 吞掉两件致交付提交缺失、fresh 检出 contract 必红——同 F-793-R1-01 缺陷类）

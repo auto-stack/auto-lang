@@ -1242,5 +1242,6 @@ pub use ace_entry::*;
 pub use ace_session::*;
 mod entry;
 pub use entry::*;
+pub mod diag_scope; // PLAN-1066 A-NOWRITE: scoped diagnostics for entry runners
 mod flags;
 pub use flags::*;

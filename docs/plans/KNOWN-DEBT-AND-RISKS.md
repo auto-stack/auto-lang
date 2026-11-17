@@ -13,7 +13,27 @@
 - 关闭条件：由 1062/1066 owner 决定「文档语料是否携带 executed 状态」或「审计谓词是否排除 document 变体」，并在其正式提交中重跑 ace-semantics 全组；PLAN-1037 不代修、不充 PASS。
 - 状态：open（不阻塞 PLAN-1037 交付；merge 与批量回归继续具名记录，不判绿）。
 
-#### D-981-EVENT-A-REMAINDER（2026-11-16，残留部分具名）
+#### D-981-PROOF-AV-SCENE — 混合 UI+2D/3D 的 AV 观察格（2026-11-17，B-AV owner）
+
+- **现象（已具名复现）**：同一包内同时有 UI 文本叶与 2D/3D 场景行时，`observe_age_package` 在
+  `av.owned/1` 的 F32 处具名拒（`lower.type-use`）；纯场景包可观察为空状态，纯 UI 包可观察
+  状态/文本。证据：`plan981_age_package_av.rs::p981_proof_a_av_scene_package_and_mixed_profile`。
+- **归属/关闭条件**：AV 的 2D/3D/混合观察格归 B-AV（980/981 W1 域）；关闭 = 混合包在 AV 下给出
+  与场景事实一致的观察（不静默、不假绿）。**A 面口径（R70-1/R71-1 更正）**：A 只在**前门描述面**
+  给出 2D/3D 呈现事实（行/位置/缩放/可见性 CPU 值），**未在 AV 下观察** 2D/3D；场景节点带 model
+  时 AV **具名拒**（`no text leaves … named rejection`，不静默空行）。证据：
+  `plan981_age_package_av.rs::{p981_proof_a_av_scene_package_and_mixed_profile,p981_proof_a_av_scene_model_is_named_rejected}`；
+  待 985 确认该 A 子面边界。
+#### D-981-EVENT-A-REMAINDER（2026-11-16，残留部分具名；2026-11-17 A/B 归属确认）
+
+- **A-required 子集（已交，985 三键）**：具名/匿名 unit 消息、变体/原 span 保真、跨块重复变体拒、
+  第二个具名集合拒、未知消息 handler 拒、handler 参数名/span 保留、参数派发**具名拒**、payload
+  声明合法但无值派发**具名拒**、#6i 语法身份重基线（语义差记录）。证据：`plan981_event_a.rs`、
+  `s2_age_routing.rs`（dispatch 零效果）、review-66/68 pass、绑定 `24b4ba4a7`/`771be6a9`。
+- **B 子集（B-W1，未交）**：载荷/参数的**执行**语义（声明→typed 参数→唯一 verify→dispatch）、
+  逐项 arity/type/重复 binder/未绑定名诊断（A 以"参数一律不可执行"fail-closed 兜住，985/T-A03
+  记录替代口径）、AV 队列/宿主调度/世代/所有权、980 B-AV/B-WEB 消费。
+
 
 - **已交（A 子面）**：`IF-981-EVENT-A`（auto-lang `01c90e269` / auto-ui `4e3ab1f7`+`90fdc84c`）——
   具名/匿名 unit 消息、变体/原 span、重复变体拒、参数名保留、带参 handler 与 payload 投递的
@@ -49,7 +69,7 @@
 
 1030历史864外层及1038结构研究B，若实际A消费864则先提升；1066两个缺result/九空H/正常路径零作者写入/真实选择证据属A，原T-12[A]/T-13[A]正式交片。D-1062-CLOSURE其余S/N/P/C载体/v2/proposal/250编译完整迁移在B按原任务关闭，旧根/条件/1170角色/独立oracle不减，原D-1062债表继续有效，不因后移写PASS。所有新负控/adapter/矩阵分类与正式A收据待原owner实施/复核/合入；本轮无实现或产品验证。
 
-### D-981-EXIT-CONTRACT — SOURCE 期"单出口"契约被 r13 AGE-L03 撤销（2026-11-16，落主 `1738c2a1c`；**owner 改判 981/LANGUAGE**：按当前落主 SHA 重核多出口契约并补永久用例）
+### D-981-EXIT-CONTRACT — SOURCE 期"单出口"契约被 r13 AGE-L03 撤销（2026-11-16，落主 `1738c2a1c`；**2026-11-17 核验关闭**：旧 979"恰一出口" oracle 失效，新契约=多直属出口+纯函数选择，永久用例 `plan981_v_harness`（view+view-portrait 并存/方形回退）与 `plan981_proof_a`（View+View2d+View3d 三出口选择）已落主）
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
 |---|---|---|
@@ -87,7 +107,7 @@
 
 ### D-1024-AUDIT — ACE静态审计发现承接（2026-11-13，后继风险未修）
 
-来源：[1024当前逐项分配](1024-ace-m2-code-quality-and-refactoring-audit.md)，r2、源码81d8fc03f10f4a7d179b0bc3a917602406ed7b91；只读审计复审通过不等于产品修复/运行通过。以下35项各有主owner/具名关闭case；confirmed只确认所述静态机制，candidate/收益unknown及正向实践单列。F12不计缺陷，F14静态映射部分已闭，F20保原正式验收与分档。各承接Plan按case取得真实反例/邻例、修复及独立review后更新，登记不批准延期或豁免。
+来源：[1024当前逐项分配](archive/1024-ace-m2-code-quality-and-refactoring-audit.md)，r2、源码81d8fc03f10f4a7d179b0bc3a917602406ed7b91；只读审计复审通过不等于产品修复/运行通过。以下35项各有主owner/具名关闭case；confirmed只确认所述静态机制，candidate/收益unknown及正向实践单列。F12不计缺陷，F14静态映射部分已闭，F20保原正式验收与分档。各承接Plan按case取得真实反例/邻例、修复及独立review后更新，登记不批准延期或豁免。
 
 | 发现 | 优先级 | 证据分类/边界 | 主owner Plan | 关闭case | 当前状态 |
 |---|---|---|---|---|---|

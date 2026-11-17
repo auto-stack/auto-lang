@@ -15,9 +15,9 @@ mod plan790_clipboard_media_provider;
 mod a2r_c_abi_gates;
 mod a2r_std_signature_parity;
 mod a2r_tests;
+mod a2ts_tests;
 #[path = "tests/legacy_doc.rs"]
 pub(crate) mod legacy_doc;
-mod a2ts_tests;
 // Plan 577: a2ts directed compile-level probes (.at → tsc --noEmit)
 mod a2ts_directed_probes;
 mod atom_tests;
@@ -65,8 +65,8 @@ mod test_generic_simple;
 mod test_let_generic;
 mod use_semantics_tests;
 mod vm_functions_tests;
-                              // vm_tests and autovm_tests merged - Plan 118
-                              // autovm_tests removed - tests consolidated into vm_tests
+// vm_tests and autovm_tests merged - Plan 118
+// autovm_tests removed - tests consolidated into vm_tests
 mod actor_state_tests;
 mod actor_tests; // Plan 327 Phase 1: Task/Msg actor handler execution
 mod autodown_tests;
@@ -90,33 +90,35 @@ mod vm_file_tests;
 // aavm 族在 crate::tests,三树共用)。
 // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
-// Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
+               // Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
 mod aavm2_corpus_runner;
 // // Plan 568: 原无门(日常档在跑),随 aavm 系入独立档
 mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
-// // Plan 568: AAVM/AA2R 独立档
+              // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m2; // Plan 432 S2: M2 parser AST dump 一致性闸门
-// // Plan 568: AAVM/AA2R 独立档
+              // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m3; // Plan 432 S3: M3 typeinfo .type 一致性闸门
-// // Plan 568: AAVM/AA2R 独立档
+              // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m4; // Plan 432 S4: M4 codegen 字节码结构一致性闸门
-// // Plan 568: AAVM/AA2R 独立档
+              // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m5; // Plan 432 S5: M3 主里程碑 —— 全管线行为一致性闸门
-// // Plan 568: AAVM/AA2R 独立档
+              // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
-// // Plan 568: AAVM/AA2R 独立档
+                     // // Plan 568: AAVM/AA2R 独立档
 mod aavm2_t3; // Plan 532: t3 里程碑档——嵌套塔解释栈零漂移最终验收(大版本升级专用)
-// // Plan 568: AAVM/AA2R 独立档
+              // // Plan 568: AAVM/AA2R 独立档
 mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验收锚
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in test/parity/
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
+mod diag_scope; // PLAN-1066 A-NOWRITE: scoped diagnostics, never author-tree writes
+mod plan1066_a_slice; // PLAN-1066/A: denominator freeze + NC-A1..4 + evidence receipts
 pub use auto_lang_core::heavy_gate;
 mod plan569_py_dispatch_tests;
-                                     // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
-                                     // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
-                                     // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
-                                     // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
-                                     // ============================================================
+// PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
+// 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
+// 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
+// test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
+// ============================================================
 
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities
@@ -156,13 +158,13 @@ mod generic_list_data_tests;
 mod listdata_heap_object_tests;
 // Plan 077 Phase 4: Unified object registry tests
 #[cfg(test)]
-mod unified_registry_tests;
-#[cfg(test)]
 mod plan320_tests;
 #[cfg(test)]
 mod plan341_tests;
 #[cfg(test)]
 mod plan349_tests;
+#[cfg(test)]
+mod unified_registry_tests;
 // Plan 446 批二: http natives 可用性回归（E1 res.status 哨兵 / E2 builder 链后续调用）。
 #[cfg(test)]
 mod plan446_batch2_tests;

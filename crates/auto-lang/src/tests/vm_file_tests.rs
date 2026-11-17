@@ -23,6 +23,116 @@ pub(crate) struct VmTestData {
     pub(crate) is_script: bool,
 }
 
+/// PLAN-1066 T-03[A]: the VM migration doc's oracle channels. Shared by the
+/// cache loader and the mirror/probe path so every consumer judges exactly
+/// the same decoded fields.
+pub(crate) struct VmDocOracle {
+    pub(crate) stdout: Option<String>,
+    pub(crate) result: Option<String>,
+    pub(crate) error: bool,
+}
+
+/// Decode the `vm-stdout` / `vm-result` / `vm-error` checks out of a legacy
+/// VM migration document (the single authority since PLAN-1062 T-14).
+pub(crate) fn vm_doc_oracle(entry: &crate::tests::legacy_doc::LegacyDoc) -> VmDocOracle {
+    let checks = &entry.case.spec.checks;
+    VmDocOracle {
+        stdout: checks
+            .iter()
+            .find(|c| c.id == "vm-stdout")
+            .and_then(|c| c.expect.result.as_ref().map(|r| r.text.clone())),
+        result: checks
+            .iter()
+            .find(|c| c.id == "vm-result")
+            .and_then(|c| c.expect.result.as_ref().map(|r| r.text.clone())),
+        error: checks.iter().any(|c| c.id == "vm-error"),
+    }
+}
+
+/// PLAN-1066 T-03[A]: load one VM migration document from `dir` and execute
+/// it ONCE, collecting stdout and the return value from that same run. A
+/// dual-channel case (stdout + result, e.g. `004_if_with_bool`) is judged on
+/// both channels from a single execution — two runs posing as one, or only
+/// the stdout channel, cannot certify the case.
+pub(crate) fn run_vm_doc_once(
+    dir: &std::path::Path,
+    is_script: bool,
+) -> AutoResult<(VmDocOracle, String, String)> {
+    let dir_name = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .ok_or_else(|| crate::error::AutoError::Msg("case dir has no name".into()))?;
+    let (_, stem) = dir_name
+        .split_once('_')
+        .ok_or_else(|| crate::error::AutoError::Msg(format!("bad case dir {dir_name}")))?;
+    let entry = crate::tests::legacy_doc::load_case(dir, stem)
+        .map_err(|e| crate::error::AutoError::Msg(e))?;
+    let oracle = vm_doc_oracle(&entry);
+    let source = entry.source_text().to_string();
+    let source = if is_script {
+        crate::trans::auto_s2s::lower_source(&source)?
+    } else {
+        source
+    };
+    if oracle.error {
+        match crate::run(&source) {
+            Err(_) => Ok((oracle, String::new(), String::new())),
+            Ok(v) => Err(crate::error::AutoError::Msg(format!(
+                "expected error but got: {v:?}"
+            ))),
+        }
+    } else {
+        let (result, stdout) = crate::run_with_capture(&source)?;
+        Ok((oracle, stdout, result))
+    }
+}
+
+/// Which VM oracle channel a mismatch belongs to (PLAN-1066 NC-A2: a
+/// wrong-only-result mutation must be attributable to the result axis).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum VmChannelAxis {
+    Stdout,
+    Result,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VmChannelMismatch {
+    pub(crate) axis: VmChannelAxis,
+    pub(crate) expected: String,
+    pub(crate) actual: String,
+}
+
+/// Compare both channels of one execution against the doc oracle. Present
+/// channels are compared byte-exactly; the returned list names every failing
+/// axis (empty = pass). Channel PRESENCE itself is an obligation-key fact and
+/// is pinned by the PLAN-1066/A denominator freeze, not guessed here.
+pub(crate) fn diff_vm_channels(
+    oracle: &VmDocOracle,
+    stdout: &str,
+    result: &str,
+) -> Vec<VmChannelMismatch> {
+    let mut out = Vec::new();
+    if let Some(expected) = &oracle.stdout {
+        if stdout != expected {
+            out.push(VmChannelMismatch {
+                axis: VmChannelAxis::Stdout,
+                expected: expected.clone(),
+                actual: stdout.to_string(),
+            });
+        }
+    }
+    if let Some(expected) = &oracle.result {
+        if result != expected {
+            out.push(VmChannelMismatch {
+                axis: VmChannelAxis::Result,
+                expected: expected.clone(),
+                actual: result.to_string(),
+            });
+        }
+    }
+    out
+}
+
 /// Global cache for VM file test data. Loaded once per test process.
 static VM_TEST_CACHE: OnceLock<HashMap<String, VmTestData>> = OnceLock::new();
 
@@ -76,40 +186,18 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                         continue;
                     }
                     let is_script = !at_path.is_file() && as_path.is_file();
-                    let entry = crate::tests::legacy_doc::load_case(
-                        &case_entry.path(),
-                        name,
-                    )
-                    .unwrap_or_else(|e| panic!("vm entry {case}: {e}"));
+                    let entry = crate::tests::legacy_doc::load_case(&case_entry.path(), name)
+                        .unwrap_or_else(|e| panic!("vm entry {case}: {e}"));
                     let source = entry.source_text().to_string();
-                    let expected_out = entry
-                        .case
-                        .spec
-                        .checks
-                        .iter()
-                        .find(|c| c.id == "vm-stdout")
-                        .and_then(|c| c.expect.result.as_ref().map(|r| r.text.clone()));
-                    let expected_result = entry
-                        .case
-                        .spec
-                        .checks
-                        .iter()
-                        .find(|c| c.id == "vm-result")
-                        .and_then(|c| c.expect.result.as_ref().map(|r| r.text.clone()));
-                    let expected_error = entry
-                        .case
-                        .spec
-                        .checks
-                        .iter()
-                        .any(|c| c.id == "vm-error");
+                    let oracle = vm_doc_oracle(&entry);
 
                     cache.insert(
                         case,
                         VmTestData {
                             source,
-                            expected_out,
-                            expected_result,
-                            expected_error,
+                            expected_out: oracle.stdout,
+                            expected_result: oracle.result,
+                            expected_error: oracle.error,
                             is_script,
                         },
                     );
@@ -125,6 +213,27 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
 pub(crate) fn get_cached_test(case: &str) -> Option<&VmTestData> {
     let cache = VM_TEST_CACHE.get_or_init(load_vm_test_cache);
     cache.get(case)
+}
+
+/// PLAN-1066 A-DEN: read-only snapshot of the ACTUAL wrapper cache (key →
+/// (is_script, has stdout oracle, has result oracle, has error oracle)),
+/// through the same loader the tests use — no second discovery engine.
+pub(crate) fn vm_cache_snapshot() -> std::collections::BTreeMap<String, (bool, bool, bool, bool)> {
+    let cache = VM_TEST_CACHE.get_or_init(load_vm_test_cache);
+    cache
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                (
+                    v.is_script,
+                    v.expected_out.is_some(),
+                    v.expected_result.is_some(),
+                    v.expected_error,
+                ),
+            )
+        })
+        .collect()
 }
 
 /// Read-only inventory of this wrapper's ACTUAL cache, including `.as` inputs.
@@ -251,33 +360,49 @@ fn test_vm_impl(case: &str) -> AutoResult<()> {
         return Ok(());
     }
 
-    // Execute with stdout capture
+    // Execute with stdout capture. PLAN-1066 T-03[A]: stdout and result are
+    // collected from the SAME run and judged per axis.
     let (result, stdout) = run_with_capture(&source)?;
-
-    // Check .expected.out — stdout output
-    if let Some(ref expected_out) = data.expected_out {
-        if stdout != *expected_out {
-            let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let oracle = VmDocOracle {
+        stdout: data.expected_out.clone(),
+        result: data.expected_result.clone(),
+        error: false,
+    };
+    let mismatches = diff_vm_channels(&oracle, &stdout, &result);
+    if !mismatches.is_empty() {
+        // PLAN-1066 A-NOWRITE: diagnostics go to the explicit scope (or are
+        // dropped); the author tree stays byte-identical.
+        for m in &mismatches {
+            let ext = match m.axis {
+                VmChannelAxis::Stdout => "wrong.out",
+                VmChannelAxis::Result => "wrong.result",
+            };
             let dir_name = case.rsplit('/').next().unwrap_or(case);
-            let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
-            let name = parts[1..].join("_");
-            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.out", case, name));
-            std::fs::write(&wrong_path, &stdout)?;
+            let name = dir_name.split_once('_').map(|(_, s)| s).unwrap_or(dir_name);
+            let payload = match m.axis {
+                VmChannelAxis::Stdout => stdout.as_bytes(),
+                VmChannelAxis::Result => result.as_bytes(),
+            };
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/vm/{case}/{name}.{ext}"),
+                payload,
+            )?;
         }
-        assert_eq!(stdout, *expected_out);
-    }
-
-    // Check .expected.result — return value
-    if let Some(ref expected_res) = data.expected_result {
-        if result != *expected_res {
-            let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let dir_name = case.rsplit('/').next().unwrap_or(case);
-            let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
-            let name = parts[1..].join("_");
-            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.result", case, name));
-            std::fs::write(&wrong_path, &result)?;
-        }
-        assert_eq!(result, *expected_res);
+        panic!(
+            "VM case {case} channel mismatch: {:?}",
+            mismatches
+                .iter()
+                .map(|m| (
+                    if m.axis == VmChannelAxis::Stdout {
+                        "stdout"
+                    } else {
+                        "result"
+                    },
+                    &m.expected,
+                    &m.actual
+                ))
+                .collect::<Vec<_>>()
+        );
     }
 
     Ok(())

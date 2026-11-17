@@ -309,6 +309,130 @@ fn p981_evt_a_unit_counter_trace_and_named_mirror() {
         )
         .expect("compiles");
         let observed = ace_av::age_package::observe_age_package(&compiled, 1).expect("observes");
-        assert_eq!(observed.components[0].instance_states, vec![vec![want as i32]]);
+        assert_eq!(
+            observed.components[0].instance_states,
+            vec![vec![want as i32]]
+        );
     }
+}
+
+/// B-PROOF-V[A]（AV 腿）：UI 事件节点的 2:1 定向事件与文本观察。
+///
+/// 具名边界：2D/3D 场景包的 AV 观察会在 `av.owned/1` 的 F32 类型处具名拒
+/// （`lower.type-use`），场景呈现事实由前门用例冻结（`plan981_proof_a`），
+/// AV 的 2D/3D 观察格归 B-AV（`D-981-PROOF-AV-SCENE`）。
+#[test]
+fn p981_proof_a_av_leg_two_instances_two_to_one() {
+    const UI: &str = "node Ui {\n    model { count int = 0 }\n    on Inc { count = count + 1 }\n    view {\n        text \"ui\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".into(),
+            },
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Inc".into(),
+            },
+        ],
+    };
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", UI)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+    )
+    .expect("the UI event node compiles");
+    let observed =
+        ace_av::age_package::observe_age_package(&compiled, 2).expect("AV observes both");
+    assert_eq!(
+        observed.components[0].instance_states,
+        vec![vec![2], vec![1]]
+    );
+    assert_eq!(
+        observed.components[0].instance_texts,
+        vec![vec!["ui".to_string()], vec!["ui".to_string()]]
+    );
+}
+
+/// B-PROOF-V[A]（AV 边界，具名）：2D 场景包本身可观察为空状态；而**同包 UI+2D 混合**
+/// 会在 `av.owned/1` 的 F32 处具名拒（`lower.type-use`）——不静默给假状态。
+/// 场景呈现事实由前门用例冻结（`plan981_proof_a`），该混合观察格归 B-AV
+/// （`D-981-PROOF-AV-SCENE`）。
+#[test]
+fn p981_proof_a_av_scene_package_and_mixed_profile() {
+    let g01: &str = include_str!("../../../core/tests/fixtures_g01/main.at");
+    let res: &str = include_str!("../../../core/tests/fixtures_g01/resources.at");
+    let shapes: &str = include_str!("../../../core/tests/fixtures_g01/shapes.at");
+    let compiled = compile_age_package_with_scenario(
+        &[
+            input("main", g01),
+            input("resources", res),
+            input("shapes", shapes),
+        ],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect("the 2D package compiles at the front door");
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect("a scene-only package observes with empty state");
+    assert_eq!(observed.components[0].name, "Main");
+    assert!(observed.components[0]
+        .instance_states
+        .iter()
+        .all(|s| s.is_empty()));
+
+    // 混合 UI+2D 观察：当前 AV owned profile 具名拒 F32（不是假绿）。
+    const MIX: &str = "node Mix {\n    view {\n        text \"ui\" {}\n    }\n    view-2d {\n        shape2d bar {\n            kind: quad\n            position: (0.0, 0.0)\n            size: (10.0, 4.0)\n        }\n    }\n}\n";
+    let mixed = compile_age_package_with_scenario(
+        &[input("main", MIX)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect("the mixed package compiles at the front door");
+    let err = ace_av::age_package::observe_age_package(&mixed, 1)
+        .expect_err("the AV owned profile must name-reject F32 in a mixed package");
+    assert!(
+        err.contains("lower.type-use") && err.contains("F32"),
+        "named: {err}"
+    );
+}
+
+/// R70-1：场景节点带 model 时 AV **具名拒**（不静默给空状态行）。
+#[test]
+fn p981_proof_a_av_scene_model_is_named_rejected() {
+    const SRC: &str = "node Scene {\n    model { count int = 0 }\n    view-2d {\n        shape2d bar {\n            kind: quad\n            position: (0.0, 0.0)\n            size: (10.0, 4.0)\n        }\n    }\n}\n";
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", SRC)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect("the scene node with a model compiles at the front door");
+    let err = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect_err("a model field without a text leaf must be named-rejected");
+    assert!(
+        err.contains("no text leaves") && err.contains("named rejection"),
+        "the rejection explains why: {err}"
+    );
 }

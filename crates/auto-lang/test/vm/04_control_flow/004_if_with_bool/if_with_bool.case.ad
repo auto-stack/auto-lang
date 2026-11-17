@@ -23,3 +23,11 @@ check-id: "vm-stdout"
 ```text
 I won!
 ```
+
+### VM result
+check-id: "vm-result"
+final-newline: false
+
+```text
+succ
+```

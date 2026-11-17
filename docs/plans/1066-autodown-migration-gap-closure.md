@@ -1836,6 +1836,55 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 1 | from: new | to: work | status: drafting→executing | outcome: pass（授权登记，无代码写入） | worktree: 待建 D:/autostack/.wt/lang-1066/auto-lang | commit: master 634b7d5c9（计划文件未入库，本轮随簿记提交） | next: work（T-01[A]）
 
+### 2026-11-17 work：A 切片实施记录（T-01/02/03/07/08/09/10/11 的 A 子面）
+
+stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（A 子面完，13 任务整项不勾） | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | base: fa8e3ccdb | code commits: dec529355 + 289e71b37 | dependency_revisions: 无跨仓 | 材料scope: D:/autostack/plan-artifacts/plan-1066/（probes/：冻结fixture副本、A receipt、vm+corpus门结果） | next_responsible_role: review（T-12[A] 独立 phase 复核）
+
+**T-01[A]（A-DEN 冻结基线）**：新模块 `crates/auto-lang/src/tests/plan1066_a_slice.rs` + 冻结契约 `crates/auto-lang/test/governance/plan1066_a_obligations.json`（657KB，schema plan1066-a-obligations/1，*.json 母规则白名单豁免）。同源派生 `derive_actual()`：N 五根走 `test_runner::discover_*`（产品发现器）、vm_cache 走 `load_vm_test_cache`（506 键）、B108 走 syn 解析 cookbook_vm_tests.rs、S11 走 scheduler.case.ad test-case 块、P 19 断言走两旧 Rust 测试体有序扫描（mini-lexer：注释剥离+字面量槽）、C30/33 走 conformance_tests.rs 解析、E78=五根全 case.ad 扫描减 N 集、P250域=a2r 行、ledger 36 条、M3 guard #[ignore] 保持。**对账计划表（probes 脚本）**：N 1050/1050 行 0 缺 0 多、源 hash16 0 错；doc hash16 仅 N0028/N0030 两处预期差（A 补通道）；S11 11/11 全 SHA 吻合；C33+E78 111 份 doc 全 SHA 吻合；两旧 result oracle 盘上未动（SHA=05cc1c…/4a44dc…）；角色总数 1170（vm out295+result189+error14 / a2r rs250 / a2c c118+h109+h-empty9 / a2ts ts85 / cookbook rs101）精确等于计划分母。B108=108 绑定（77 active/30 ignore/1 cfg_attr(windows)）；6 多源目录=附录 B 全同（channel/fs/rt/postgres/sqlite/scraping，同源 read_dir 实选均 001_* 且有 doc，无 doc 候选记录未升级）。逐键 A/B/平台/ignore/actual 来源落在 fixture `segments`（A+B、windows、old-file fence 冻结选择、doc-only 发现=B）。
+
+**T-02[A]（正确性子面决策）**：①A 冻结基线=当前 old-file fence 选择集+doc 载荷身份；doc-only 资格=T-02/03[B]。②E78 边界按 doc 集合冻结，NC-A1 跨 family 键防吞并。③身份保持：FileTestCase.name=category/case、A2rTestCase.name=suite/category/case（discover 原样）；compile gate 全名参数=B。④空H=h-empty 显式零字节角色（compare_frozen 逐角色拒绝缺席化）。⑤vm 双通道=单次运行双轴判定（run_vm_doc_once/diff_vm_channels）。⑥scope 输出=AUTO_TEST_DIAG_SCOPE 显式根，默认丢弃。⑦public structs 零字段变更（新 API 均 pub(crate)）。
+
+**T-03[A]（A-ORACLE）**：N0028/N0030 doc 各补 `check-id: "vm-result"`+`final-newline: false`（succ/10，无尾LF；多 check 节为 author 格式既有能力，此为首例双通道 VM doc）。VM doc 消费者：cache loader 复用 `vm_doc_oracle`；`run_vm_doc_once` 单次执行双通道采集；`diff_vm_channels` 逐轴判定+轴归属。旧入口身份绑定：`build_dual_channel_receipt` 内 `run_vm_file_test`（旧 discover+旧 oracle 文件）对两例均绿——恢复的 doc 通道等值原 oracle 字节。receipt（scope/probes/plan1066_a_receipt.json）：2 doc-face check（stdout+result 双观察）+2 legacy-entry child（exit 0），engine 身份=legacy-autovm（金通道原引擎；ACE producer 不在本 receipt 声明，985 adapter dispatch 归 985）。
+
+**T-07[A]（A-NOWRITE）**：core 新 `diag_scope::write_scoped`（默认丢弃/显式 scope 镜像 `<scope>/plan-1066-diag/<rel>`；scope 非存在目录=硬错）；tests/diag_scope.rs 复用+行为测试（corpus 组日常跑）。切 scope 的 A 执行路径写入点：vm_file_tests wrong.out/wrong.result、conformance wrong.out+generate_expected 候选、cookbook wrong.out+GENERATE_EXPECTED 候选、entry.rs VM 两轴 wrong 写入。`conformance_bootstrap` 退出普通注册（#[ignore] 精确理由；33 验证原样，corpus 组选择-1 生成器）。B 保留（未迁，具名）：entry.rs a2c/a2ts/a2r 四写入点、a2r/a2c/a2ts 包装 wrong 写入、aavm_runner/ffi_dual/plan724/727/book_listing/tscn 写入点、完整 proposal 与 v2 治理。
+
+**T-08[A]/T-09[A]（证据身份/实际运行）**：ARReceipt/verify_receipt（schema plan1066-a-receipt/1）拒签轴=过期源 hash/旧 sidecar 冒 doc-face/父 PASS 掩盖失败子/缺工具/NOT_RUN/缺观察通道；`plan1066_a_tools`（ignored 显式工具）可再冻结/出 receipt。实际消费者执行：N0028/N0030 cache wrapper（--ignored 具名）0.28/0.35s 绿；邻例 hello(arithmetic)/let_asn_error 0.27-0.29s 绿；旧入口身份 2 child exit0；分母门 integrity 1218ms 全键对账。
+
+**T-10[A]（NC-A1..4）**：A1=五类 fixture 变异（删N末项/跨族并键/9空H缺席/删P断言/删S11+C验证）各具名红+诚实图绿；A2=镜像只错 result（sucC/11）单轴红+原值单次双通道绿+删节通道守恒红（vs 冻结 doc_checks）；A3=conformance 错 oracle 镜像红+cookbook GENERATE_EXPECTED 镜像候选只落 scope+作者树（conformance/cookbook/vm 三根 tree_hash）前后零变化；A4=真 receipt 过+六类篡改各具名拒。计时：integrity 1218ms/nc-a1 1225ms/nc-a2 150ms/nc-a3 ~500ms/nc-a4 ~200ms，全部≤10s。
+
+**T-11[A]（影响组/健康）**：冻结提交 289e71b37 上 `cargo t vm corpus` PASS（选择 1137=auto-lang 587+core 550，执行 1137，排除 467，wall 31.1s；驱动 input_bindings/child_validation 全过）。首跑红一次：NC-A3 cookbook 镜像 trace 污染治理流（"legacy wrapper input escapes repository"）→ run_cookbook_case 增 emit_trace=false 修复（289e71b37），合成输入不入 trace。零新编译告警（预存 vm_file_tests.rs:1676 双 #[ignore] 告警与 mem-profile mod 缺失为 master 存量，非本切片）。rustfmt 已过（本切片文件）；全仓 cargo fmt 因 master 存量 cfg 门 mem_profile 缺文件不可用，未动他人文件。auto-test-case/infra-fixed 组未触及（crate 零改动）；a2r/a2c/a2ts 组行为面未变（仅 entry.rs VM 写入点改，其 impl 代码路径未动），按真实触面未选，review 可核。
+
+**B 余量（原义务不减）**：T-04/05/06 整项、T-03[B] N/caches/cookbook 全量 doc-only 切换、T-07[B] proposal CLI+全部旁路退出、T-08[B] v2 治理、T-09[B] 全路径重扫、T-10[B] 27NC、T-11[B] 完整并集、T-13[B] 完整归档清树。worktree/分支保留给 B。
+
+blockers: 无。goal round 2 receipt 见 §9 末。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 2 | from: work | to: review | status: executing | outcome: pass（A 子面 work 完：dec529355+289e71b37，cargo t vm corpus PASS 1137/1137，NC-A1..4 全绿） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 289e71b37 | next: review（T-12[A]）
+
+### 2026-11-17 T-12[A] 独立 phase 复核：pass（F-1066A-R1/R2 已修闭）stage: review | review_scope: phase（A 切片） | reviewer: 独立上下文代理（与实施会话分离；同树只读重建） | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | reviewed_commit: 289e71b37（初判）→ 2e606d28f（修复确认，终判冻结点） | base_commit: fa8e3ccdb | dependency_revisions: 无跨仓 | spec_inputs: 本 Plan §5 A-EXIT/§6.3/§7/§8；canonical Specs 未动（SD-01..05/SD-A-PHASE 沉淀归 T-13[B]） | acceptance_results: A-DEN pass / A-ORACLE pass / A-NOWRITE pass / A-EVIDENCE pass（R1 修复后） / NC-A1..4 pass / B 义务保持 pass（13 任务框未勾、树/分支保留、旧 oracle 未动） | findings: F-1066A-R1（低，verify_receipt 空选择漏拒）→ 2e606d28f 修复+NC-A4(g) 实证；F-1066A-R2（低，segments 未对账）→ 2e606d28f 修复+NC-A1(f) 实证；F-1066A-R3（信息，tests.rs rustfmt 重排惰性）不处置 | evidence: 复核代理独立重析 fixture（python 逐段再哈希 24 项全对）、全 diff 逐文件核对（14 文件无越界）、P mini-lexer 逐行对照两旧测试体（19 断言 1:1 零误报）、NC-A2 变异精度核查、receipt 重哈希、基线告警溯源（2 条告警均在 fa8e3ccdb 存在=零新增）；计时 integrity 1088ms/nc-a1 1097ms/nc-a2 188ms/nc-a3 365ms/nc-a4 186ms（≤10s 全过） | 修复后门：cargo t vm corpus @2e606d28f PASS（run-0o5gxy7_，executed 1137/excluded 467，wall 182.1s；excluded 名单可见 conformance_bootstrap 以 ignore 理由退场=生成器-1、33 验证不减的账面证据；结果归档 plan-artifacts/plan-1066/probes/vm_corpus_gate_2e606d28f.json） | next: T-13[A] phase fold（保树予 B）；Plan 状态保持 executing（phase pass 不授 reviewed/归档）
+
+### 2026-11-17 T-13[A] A 片段正式 fold：IF-1066-A-CORRECTNESS 交付（保树予 B）
+
+stage: merge | review_scope: phase | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（A 片段交付；B 余量在途） | worktree: D:/autostack/.wt/lang-1066/auto-lang（保留） | branch: plan-1066-dev（保留）
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | 复核冻结点 2e606d28f（phase pass，R1/R2 闭）；wt-guard clean（无 reparse point）；无 canonical Spec delta（本 Plan 规范增量节明示 SD-01..05/SD-A-PHASE 实施后由 B 的 review/merge 沉淀，A 片段零 spec 改动=合同内 no-impact） |
+| landed | rebase plan-1066-dev → master（docs-only 基线 34cbfbd6b + 旁会话 b73a3fc70，无冲突）；`git range-diff master..2e606d28f master..HEAD` 三提交全 `=`（dec529355=a18ab5a88、289e71b37=ed33c0a3e、2e606d28f=7c131286d=delivery commit）；`git diff 2e606d28f HEAD -- crates/ scripts/` 空（代码/配置/输入零漂移→门证据复用合法）；`git merge --ff-only` 落地，master tip=7c131286d，线性历史无 merge commit |
+| canonical_verified | A 片段无 canonical spec 改动（上述批准的 no-impact）；B 的 SD-01..05/SD-A-PHASE 沉淀义务保留在 §5 规范增量表，T-13[B] 完整 merge 时落地 |
+| archived | 不适用（Plan 保 executing；A 片段不假归档，13 任务整项待 B 完整范围） |
+| cleaned | 不适用（worktree/分支/plan-artifacts scope 全部保留予 B；REGISTRY 更新 in-flight(B)） |
+
+**IF-1066-A-CORRECTNESS 交付内容（985/A 可消费的正确性切片，真实来源=master 7c131286d）**：
+1. 冻结分母契约 `crates/auto-lang/test/governance/plan1066_a_obligations.json`（schema plan1066-a-obligations/1）+ 常驻逐键门 `tests::plan1066_a_slice::plan1066_a_denominator_integrity`（corpus 组日常；篡改/缺项/并键/空H缺席/segments 改动必红）。
+2. N0028/N0030 双通道 oracle 恢复（vm-result succ/10 无尾LF）+ 单次运行双轴判定消费者（run_vm_doc_once/diff_vm_channels）+ 旧入口身份绑定绿（receipt children）。
+3. A 执行路径零作者树写入（diag_scope：默认丢弃/AUTO_TEST_DIAG_SCOPE 镜像）；conformance_bootstrap 退普通注册（33 验证不减，gate excluded 名单可证）。
+4. 证据 receipt 合同（schema plan1066-a-receipt/1）+ verify_receipt 拒签轴（过期 hash/旧文件冒 doc-face/父PASS掩盖/缺工具/NOT_RUN/缺通道/空选择）+ NC-A1..4 常驻负控。
+5. 边界：engine 身份=legacy-autovm（金通道原引擎，具名对照；不冒 ACE 通过——985 adapter dispatch 归 985）；doc-only 发现/全量载体迁移/proposal/v2 治理/250 编译=保 B，原义务与 27NC 不减。
+
+**落地检查**：master 主检出 `cargo test -p auto-lang --lib plan1066` 5 passed/1.28s（主检出代码面 clean）；goal round 4 收据见下。批次回归不触发（未达 cleaned；1066 非 5 倍数，due 检查归 B 的完整 T-13 或独立 regress 档）。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 4 | from: merge | to: done(A) | status: executing（B 在途） | outcome: pass（IF-1066-A-CORRECTNESS 已交付 master 7c131286d；worktree/branch/scope 保留予 B） | next: user（B 实施另行授权启动）
+
 ## 10. 待澄清事项
 
 四类补漏范围/原oracle/副作用边界已明确，无需用户先决定日常与显式编译的常规实现细节。T-02有界确定共享资格表达、public structs兼容与唯一proposal入口（不得保旧fallback）；真实不可行性在本Plan具名修约，不拆后继/不缩水。1061环境与外仓owner不阻Windows迁移，NOT_RUN不冒通过。原语义/编译债务保持独立，不用两侧同FAIL充功能绿。
