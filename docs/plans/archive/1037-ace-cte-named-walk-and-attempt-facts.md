@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 5
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-cte/project.md]
@@ -19,11 +19,11 @@ affects: [ACE]
 
 ## 0. 变更摘要
 
-2026-11-17路线状态联络：本包仍drafting r3、0/6，尚无登记的实施树；本次只更新状态与排程，不推进Task/AC。当前位置为**第1：A必闭正确性，下一实施包**；总表见[1024当前路线状态](1024-ace-m2-code-quality-and-refactoring-audit.md#quality-route-20261117)。9个同路线包已交付归档，不再照2026-11-13旧队列重复开工；实施合同/Case/独立oracle保持。
+2026-11-17路线状态联络：本包仍drafting r3、0/6，尚无登记的实施树；本次只更新状态与排程，不推进Task/AC。当前位置为**第1：A必闭正确性，下一实施包**；总表见[1024当前路线状态](../1024-ace-m2-code-quality-and-refactoring-audit.md#quality-route-20261117)。9个同路线包已交付归档，不再照2026-11-13旧队列重复开工；实施合同/Case/独立oracle保持。
 
 2026-11-13 r2当前：用户要求对1028以外计划逐份核是否足够定制。本包补真实输入、状态/故障设置、独立关闭断言、测试落点、任务改面和Spec具体增量；原发现/AC/Case/T-ID及6任务、drafting 0/6保留。只做规划与静态源码核对，不修改实现/测试/配置，不接管1028实施，也不宣称动态反例或产品通过。
 
-承接[1024](1024-ace-m2-code-quality-and-refactoring-audit.md)的F26/F32，优先级**P1（F26为P2）**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。真实动态影响由T-01反例界定，不把静态风险冒实际失败。
+承接[1024](../1024-ace-m2-code-quality-and-refactoring-audit.md)的F26/F32，优先级**P1（F26为P2）**。本轮仅立规划合同，drafting、0/6；未建树、未写实现/探针/fixture、未构建或运行ACE。用户当前仅授权复审与规划，不授权本包代码实施。真实动态影响由T-01反例界定，不把静态风险冒实际失败。
 
 2026-11-16 r3阶段裁定：F26/F32全部A-required，先关闭原CT-01/02与对应独立oracle再供985/A；Named CT完整发现/替换/回灌与真实av_reached事实关系到A完整CTE和证据分类。原6任务/0完成/既定设计与历史保留，仅规划。
 
@@ -51,15 +51,15 @@ Rust、现固定组/原TestCase及Markdown。仅语言仓。唯一树 D:/autosta
 
 | 已核源路径 | 字节SHA256 | 状态 |
 |---|---|---|
-| [experimental/ace/crates/source-cte/src/schedule.rs](../../experimental/ace/crates/source-cte/src/schedule.rs) | 529fce63a24f580cd748e4eeb5754e075b27f07c5dd651890b92ee8e85df59c7 | 静态取材，非运行证据 |
-| [experimental/ace/crates/source-cte/src/product.rs](../../experimental/ace/crates/source-cte/src/product.rs) | 86846f6a3dca37530b4dd5e255cf99edb95abf556c523df22f0f3fd3254afbce | 静态取材，非运行证据 |
-| [experimental/ace/crates/source-cte/src/service.rs](../../experimental/ace/crates/source-cte/src/service.rs) | 9b6eb85d126b6f4794e5017b697345ed89e38a01b2f319413958a9986ccbefe8 | 静态取材，非运行证据 |
-| [experimental/ace/crates/source-cte/src/executor.rs](../../experimental/ace/crates/source-cte/src/executor.rs) | a970487d747940caf9bcae9c0e98b94cff131da58cd7dbacecc4ced8a3855355 | 静态取材，非运行证据 |
+| [experimental/ace/crates/source-cte/src/schedule.rs](../../../experimental/ace/crates/source-cte/src/schedule.rs) | 529fce63a24f580cd748e4eeb5754e075b27f07c5dd651890b92ee8e85df59c7 | 静态取材，非运行证据 |
+| [experimental/ace/crates/source-cte/src/product.rs](../../../experimental/ace/crates/source-cte/src/product.rs) | 86846f6a3dca37530b4dd5e255cf99edb95abf556c523df22f0f3fd3254afbce | 静态取材，非运行证据 |
+| [experimental/ace/crates/source-cte/src/service.rs](../../../experimental/ace/crates/source-cte/src/service.rs) | 9b6eb85d126b6f4794e5017b697345ed89e38a01b2f319413958a9986ccbefe8 | 静态取材，非运行证据 |
+| [experimental/ace/crates/source-cte/src/executor.rs](../../../experimental/ace/crates/source-cte/src/executor.rs) | a970487d747940caf9bcae9c0e98b94cff131da58cd7dbacecc4ced8a3855355 | 静态取材，非运行证据 |
 
 | Spec来源 | SHA256 | 适用边界 |
 |---|---|---|
-| [docs/specs/auto-cte/source-query-integration.md](../../docs/specs/auto-cte/source-query-integration.md) | a605853533d7f70a0f9ccce5d825d1cf461741910e434800d65323bbd312c6ae | 当前规则保持；开工重读核漂移 |
-| [docs/specs/auto-cte/project.md](../../docs/specs/auto-cte/project.md) | 3e9220a203e65b08cd0192f32546609b65757e7ebb10a35b22462571e768fd0a | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-cte/source-query-integration.md](../../../docs/specs/auto-cte/source-query-integration.md) | a605853533d7f70a0f9ccce5d825d1cf461741910e434800d65323bbd312c6ae | 当前规则保持；开工重读核漂移 |
+| [docs/specs/auto-cte/project.md](../../../docs/specs/auto-cte/project.md) | 3e9220a203e65b08cd0192f32546609b65757e7ebb10a35b22462571e768fd0a | 当前规则保持；开工重读核漂移 |
 
 源码/Spec是实际规则依据。1024 M/S/D/L/A/N/U为保留账，不代Rust reader/nextest发现；同文件在途修改串行单写，正式合入来源重核，不用他Plan WIP当已交付依赖。
 
@@ -159,9 +159,9 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 
 | 原Case ID | 拟新增永久测试名（当前不存在） | 既有源码/目标落点 | 使其可运行的owner |
 |---|---|---|---|
-| CT-01 | audit1037_ct_01 | [experimental/ace/crates/source-cte/src/tests.rs](../../experimental/ace/crates/source-cte/src/tests.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
-| CT-02 | audit1037_ct_02 | [experimental/ace/crates/source-cte/src/tests.rs](../../experimental/ace/crates/source-cte/src/tests.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
-| CT-01b（review F-1037-R1 追加） | audit1037_ct_01b | [experimental/ace/crates/source-cte/src/tests.rs](../../experimental/ace/crates/source-cte/src/tests.rs) | T-02 修复键编码后新增；独立探针 plan-artifacts/plan-1037/probe 复现同一形状 |
+| CT-01 | audit1037_ct_01 | [experimental/ace/crates/source-cte/src/tests.rs](../../../experimental/ace/crates/source-cte/src/tests.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
+| CT-02 | audit1037_ct_02 | [experimental/ace/crates/source-cte/src/tests.rs](../../../experimental/ace/crates/source-cte/src/tests.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
+| CT-01b（review F-1037-R1 追加） | audit1037_ct_01b | [experimental/ace/crates/source-cte/src/tests.rs](../../../experimental/ace/crates/source-cte/src/tests.rs) | T-02 修复键编码后新增；独立探针 plan-artifacts/plan-1037/probe 复现同一形状 |
 
 一个Case可需多个同族函数，以上名字是最小锚，不代全部状态。优先扩已有test根/私有cfg(test)模块；若新建test文件，须在其真实conformance根或Cargo target接线，不能只创建文件然后把rg属性数当发现。T-03必须在实际固定组结果中核各锚点被发现/执行；平台/工具条件排除具名列出，不计PASS。
 
@@ -174,7 +174,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（2026-11-17：冻结并集 ace-comptime/ace-av/ace-native/ace-a2x 全绿，ace-semantics 1 具名既有红不判本包红、不充 PASS；SD-01/02 在工作树就位待 merge 沉淀；1002 无硬前置。）
 - [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。（2026-11-17 二审 @df2e7bf81：R1 发现已闭（永久例+受控变异+独立探针 5/5 复放），AC-01..04 全 pass；残留仅 D-1037-01 具名既有红与 merge-owned 收尾门，见§9。）
 - [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。（2026-11-17：ff-only 落地 b8ab04897（range-diff 全 `=`，计划自有内容 0 差异）；两份 CT Spec 逐 blob 核同；归档 docs/plans/archive/；交付门见§9 merge 收据。）
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。（2026-11-17 cleaned：guard clean、树/分支/组目录删除、plan-artifacts 3553 文件全删、登记表刷新、归档链接逐条解析；无具名 hold，仅有非本包债 D-1037-01/02。）
 
 ## 8. 执行步骤
 
@@ -185,7 +185,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 | T-03 / work | [x] T-02 | 沿真实产品回灌/AV值与service两入口失效→重试→发布→hit验证，覆盖前置拒绝/到达后错误/计数；不提前实现966完整宏。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：`audit1037_ct_02` 0.45s 绿（publish Err→av_reached=true、execute+1、freeze_publishes+0、rejections+1、ok 边界日志一条同键、无页、重执行、修复发布→hit、forbid_av 前门 false）；并集 4 组全绿 + ace-semantics 具名既有红，见§9。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：一审 needs_fix（F-1037-R1）→ repair df2e7bf81 → 二审 pass；独立探针 5/5 复放、定向 3 例 0.034–0.052s、冻结并集沿用 run-jpwwg_0o（同 HEAD、树 clean、依赖/配置未变）。 |
 | T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：rebase 267cc6282→交付 b8ab04897（`git range-diff` 两条 `=`）、`git merge --ff-only` 后 master tip=分支 tip、Spec blob 逐份相同、归档并提交。 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-06 / merge | [x] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：输出根仅「树/暂存/主检出落点」三处；树与暂存已删；guard 两次 clean；归档链接 9/9 解析。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
 
@@ -350,6 +350,17 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 - **deployment observation**：交付仅 `experimental/ace` 源与两份 CT Spec，无生产/发布产物需重建或重启；无 stale artifact 需登记。
 
 2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:5 | from:merge | to:cleanup | status:archived | outcome:pass | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:b8ab048975 | next:cleanup
+
+**PLAN-1037:r3 cleaned（2026-11-17）| completion_kind: delivered | 6/6**
+
+- **guard**（第 2 次，删除前）：`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-1037/auto-lang` → `clean`（exit 0）。
+- **worktree/branch**：`git worktree remove` 53.5s，目录与注册同时消失；`git branch -d plan-1037-dev`（was `b8ab04897`）；组目录 `D:/autostack/.wt/lang-1037`（空）删除；`git worktree list --porcelain` 已无 `lang-1037`。构建中间产物（worktree `target/` 含 `experimental/ace/target`）随树删除，**未回收**。
+- **plan-artifacts**：整目录删除 `D:/autostack/plan-artifacts/plan-1037/` —— 3553 文件 / 2,383,533,540 B（≈2273 MiB；其中 `probe-target` 2,383,403,120 B 为构建中间产物）；证据已按「摘要+本地路径+哈希」折叠在 §9（`t01-first-red` `6ec202ee…`、`t02-first-green` `07f29c55…`、`t02b-prefix-red`、`t03-union` `6bd113f6…`、`t03b-union-repair` `455a…`、`merge-gate-union` `55db74af…`、`merge-gate-ace-av-replay` `330fd0d0…`、`r1/r2/r3-probe` 与 probe `src/main.rs` `f4821ec9…`）。**无具名 hold**。
+- **登记表**：repo 本地 `.retention/policy.json` 刷新（本 scope → `deleted-at-merge`、`archived 6/6 (delivery b8ab04897)`），JSON 可解析（18 scopes）。全局 `D:/autostack/plan-artifacts/.retention/policy.json` 仍不可解析（PLAN-1036 已登记的他人损坏）→ **fail-closed 未改写**；本 scope 删除以磁盘事实为准（目录不存在）。
+- **归档状态核验**：`docs/plans/archive/1037-ace-cte-named-walk-and-attempt-facts.md` 存在且 `status: archived`、6/6、任务/AC 勾选与收据一致；原 `docs/plans/1037-…` 不存在；**9 条相对链接按新父目录修正**（7 条 `../../`→`../../../`、2 条兄弟计划 `1024-…`→`../1024-…`）并逐条 `Test-Path` 解析通过；导航/历史指向本文件而非同号旧文件。
+- **输出路径对账（T-06 全量）**：本计划命令实际使用的根仅三处 —— ① 树 `D:/autostack/.wt/lang-1037/auto-lang`（已删，含其 target）；② 暂存 `D:/autostack/plan-artifacts/plan-1037/`（已删）；③ 主检出 `docs/plans/archive/` + `docs/specs/auto-cte/` 落点（已提交）。抽查 `D:/`、`D:/autostack`、`D:/autostack/plan-artifacts`、`D:/autostack/.wt` 均无 `plan-1037*`/`lang-1037*`/`autostack-build` 残留（命中的 `D:/autostack/.demo-build` 为他包既存目录，未触碰）；主检出内 `*1037*` 命中仅为本次归档文件与历史时间戳（`…103747…`）误匹配。他人 docs/design 等 WIP 保持原状。
+- **最终计数**：T-01..T-06 全勾、AC-01..AC-06 全勾、`current_step: 6`、`status: archived`。
+- **非本包遗留债（具名，不闭合本包）**：D-1037-01（`sema_boundary_case_files_executed_status_honest`，PLAN-1062 语料 × 944 审计谓词）、D-1037-02（`kv_zip_1064` 负例 2s wall 余量过窄）。
 
 ## 10. 待澄清事项
 

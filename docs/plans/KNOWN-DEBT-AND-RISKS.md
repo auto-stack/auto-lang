@@ -1,3 +1,10 @@
+## D-1037-02 — `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av` 的 2s wall 余量过窄（2026-11-17 PLAN-1037 merge 登记，非本包代码）
+
+- 现象：合并门 `cargo t ace-av`（交付身份 `b8ab04897`）该例 10.96s 失败于 `Resource { kind: ExecutionWall, message: "platform call exceeded wall budget" }`（`run_av_i32` 用默认 `MAX_AV_WALL`=2s）；隔离重放 3/3 绿（AV exec 2.512/2.557/2.541s）、整组重放 1341/1341 绿，同内容在 PLAN-1037 review 轮亦两次整组绿。
+- 结论：环境/并发归因（组内 max_parallel=20，机器上另有他 agent 构建），**非本包回归**；不判代码红、不充「无红 PASS」。
+- owner：ace-av / `kv_zip_1064` 线（PLAN-1064 后继或 ace-av owner）。
+- 关闭条件：给该负例稳定判据——为其显式设定足够 `wall`（保留原样本/规模/断言），或对该负例串行/独立预算；并在两次独立整组运行中稳定绿后关闭。
+- 状态：open（不阻塞 PLAN-1037；批量回归继续具名记录）。
 ## D-1037-01 — `sema_boundary_case_files_executed_status_honest` 既有红（2026-11-17 PLAN-1037 复审登记，非本包）
 
 - 现象：`cargo t ace-semantics` 295 例中 1 红（0.029s）：`ace-semantics-store::conformance sema_boundary_audit::sema_boundary_case_files_executed_status_honest` 要求 `crates/auto-lang/test/cases/ac-semantics/*.ad`（suite 除外）均带 `status: executed`；PLAN-1062 在 `c8ed52191`（`aeeecc8f3` 恢复）引入的 5 个 `*.document.case.ad`（cache-roundtrip / callee-sig-change / infer-bindings / parse-error / turnaround）不带该状态。
