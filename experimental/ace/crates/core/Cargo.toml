@@ -3,7 +3,7 @@ autotests = false
 name = "ace-core"
 version = "0.1.0"
 edition = "2021"
-description = "PLAN-741 AC closed-loop prototype: Atom HIR text -> verified HIR -> Windows x64 native AOT"
+description = "PLAN-741 AC frontend/verification/link facilities: Atom HIR text -> verified HIR -> object/link/receipt (the native build face lives in ac-mn)"
 publish = false
 
 [dependencies]

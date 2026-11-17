@@ -2,11 +2,16 @@
 //! PLAN-745 (source core-i32 profile) and PLAN-767 (scalar-i32 profile).
 //!
 //! Pipeline: Atom text → spanned syntax tree → core-descriptor binder →
-//! unchecked typed HIR → semantic verifier → checked HIR → native lowering
-//! (Cranelift) → COFF object → platform link → Windows PE.
+//! unchecked typed HIR → semantic verifier → checked HIR → COFF object /
+//! platform link / receipt (frontend, verification and link facilities).
+//! Native lowering no longer lives here: PLAN-871 retired the old
+//! HIR→Cranelift path, and building runs through `auto-mir-lower` + `ac-mn`
+//! (docs/specs/auto-ac/native-backend-and-retirement.md §1).
 //!
-//! This crate is a standalone prototype workspace: it must not depend on any
-//! auto-lang / auto-atom / auto-val product crates.
+//! Dependency direction: this crate does not depend on the product runtime,
+//! UI or host crates. The shared syntax leaves (`ace-syntax-runtime`,
+//! `ace-syntax-grammar`) are allowed; they in turn use the neutral
+//! `auto-atom`/`auto-val` data crates.
 
 pub mod atom_text;
 pub mod collections_facts;

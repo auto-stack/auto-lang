@@ -521,3 +521,116 @@ fn typed_container_signatures_and_places_native_abi_boundary() {
     // whitelist (collections_place_tier).
     ace_native::collections_lower::emit_unit_coff(&place).unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1069 / archived 1038 D04 ARITH-01..04: the i32 checked lane on a real
+// PE (the extraction must keep values and trap codes -30/-31 exactly).
+// ---------------------------------------------------------------------------
+
+fn arith_module(op: BinOp, lhs: i32, rhs: i32) -> MirModule {
+    use MirInstr::*;
+    let owner = OwnerScope {
+        schema: ace_av_core::contract::MIR_COLLECTIONS_SCHEMA.into(),
+        module: "arith1069".into(),
+    };
+    let mut m = MirModule::new_collections(owner.clone());
+    m.types = vec![
+        MirType::I32,
+        MirType::Fn(FnSig {
+            params: vec![],
+            result: 0,
+        }),
+    ];
+    m.consts = vec![MirConst::I32(lhs), MirConst::I32(rhs)];
+    let slots = (0..3)
+        .map(|_| MirSlot {
+            ty: 0,
+            kind: SlotKind::Temp,
+            name: None,
+        })
+        .collect();
+    m.funcs.push(MirFunction {
+        owner,
+        name: "main".into(),
+        sig: 1,
+        slots,
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+        env: None,
+        blocks: vec![MirBlock {
+            instrs: vec![
+                Const { dst: 0, value: 0 },
+                Const { dst: 1, value: 1 },
+                Bin {
+                    op,
+                    dst: 2,
+                    lhs: 0,
+                    rhs: 1,
+                },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+    });
+    m
+}
+
+fn arith_trap_code(stderr: &[u8]) -> Option<i64> {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .find_map(|line| line.strip_prefix("MN-COLL-TRAP code=")?.parse::<i64>().ok())
+}
+
+#[test]
+fn i32_checked_arithmetic_keeps_values_and_trap_codes() {
+    let normal = common::collections::run_module(
+        &arith_module(BinOp::DivI32, 84, 2),
+        "arith-1069-div",
+        None,
+    );
+    assert_eq!(
+        normal.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&normal.stderr)
+    );
+
+    let div_zero = common::collections::run_module(
+        &arith_module(BinOp::DivI32, 10, 0),
+        "arith-1069-div0",
+        None,
+    );
+    assert_eq!(
+        div_zero.exit_code,
+        Some(70),
+        "{}",
+        String::from_utf8_lossy(&div_zero.stderr)
+    );
+    assert_eq!(arith_trap_code(&div_zero.stderr), Some(31));
+
+    let min_rem = common::collections::run_module(
+        &arith_module(BinOp::RemI32, i32::MIN, -1),
+        "arith-1069-minrem",
+        None,
+    );
+    assert_eq!(
+        min_rem.exit_code,
+        Some(70),
+        "{}",
+        String::from_utf8_lossy(&min_rem.stderr)
+    );
+    assert_eq!(arith_trap_code(&min_rem.stderr), Some(30));
+
+    let overflow = common::collections::run_module(
+        &arith_module(BinOp::AddI32, i32::MAX, 1),
+        "arith-1069-overflow",
+        None,
+    );
+    assert_eq!(
+        overflow.exit_code,
+        Some(70),
+        "{}",
+        String::from_utf8_lossy(&overflow.stderr)
+    );
+    assert_eq!(arith_trap_code(&overflow.stderr), Some(30));
+}

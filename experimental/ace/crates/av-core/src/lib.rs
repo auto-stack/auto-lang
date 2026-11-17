@@ -13,8 +13,10 @@
 //!   recursion never rides the host stack), fuel, frames, wall, slot-byte and
 //!   cancellation budgets.
 //!
-//! This crate has zero external dependencies; the HIR adapter, cache and
-//! native cross-check live in `auto-av-probe`.
+//! Normal dependencies are `ace-foreign-contract` (shared declaration data)
+//! and `serde_json`; there is no auto-lang/UI/man/Cranelift dependency. The
+//! HIR adapter, cache and native cross-check live in `ace-av` (formerly
+//! `auto-av-probe`).
 
 pub mod abc;
 pub mod abc_verify;

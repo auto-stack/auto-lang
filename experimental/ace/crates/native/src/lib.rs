@@ -1,13 +1,13 @@
-//! ac-mn — PLAN-818 MIR-native backend probe.
+//! ac-mn — the MIR-native backend (PLAN-818; the sole native lowering path
+//! since PLAN-871 retired the old HIR→Cranelift/`native.rs` reference).
 //!
-//! Consumes the PLAN-798 delivered surface read-only (Checked HIR front
-//! door, HIR→MIR adapter, `verify_mir`, per-function unit split/cache
-//! helpers), the PLAN-783 ManagedStore, and the landed ac-core link
-//! facilities. Owns the NEW `CheckedMir → CLIF → per-function COFF →
-//! multi-object PE` path, its A09'/A10' unit cache and the parity loop
-//! against AV / the old HIR-native reference / independent goldens.
-//! Nothing here feeds product paths; the private test ABI is NOT the
-//! public AutoABI of PLAN-797.
+//! Consumes the shared front door read-only (Checked HIR, HIR→MIR adapter,
+//! `verify_mir`, per-function unit split/cache helpers), the ManagedStore and
+//! the ac-core link facilities. Owns `CheckedMir → CLIF → per-function COFF →
+//! multi-object PE`, its A09'/A10' unit cache and the parity/golden loops.
+//! `ac-native` (this crate's build face, Spec §1) is consumed by the case
+//! worker, m2-build, abi, comptime and av. The private typed profile ABI is
+//! NOT the public AutoABI of PLAN-797.
 
 pub mod backend;
 pub mod cache;
@@ -37,6 +37,7 @@ pub mod link_driver;
 pub mod linux_exec;
 pub mod linux_support;
 pub mod lower;
+mod lower_arith;
 pub mod mn_target;
 pub mod observe;
 pub mod owned_source_incremental;

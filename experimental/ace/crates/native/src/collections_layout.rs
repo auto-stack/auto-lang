@@ -15,6 +15,7 @@ pub fn codegen_build() -> &'static str {
         h.update(CODEGEN.as_bytes());
         for bytes in [
             include_bytes!("collections_lower.rs").as_slice(),
+            include_bytes!("lower_arith.rs").as_slice(),
             include_bytes!("collections_layout.rs").as_slice(),
             include_bytes!("fingerprint.rs").as_slice(),
             include_bytes!("emit.rs").as_slice(),

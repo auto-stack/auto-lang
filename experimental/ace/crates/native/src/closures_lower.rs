@@ -952,55 +952,13 @@ impl Lower<'_, '_> {
         Ok(())
     }
     fn binary(&mut self, op: BinOp, dst: u32, lhs: u32, rhs: u32) {
+        // PLAN-1069: the i32 lane is emitted by the family-shared
+        // `lower_arith` owner (byte-identical emission). Typed numeric ops
+        // still never reach this family.
         let a = self.scalar(lhs);
         let b = self.scalar(rhs);
-        let condition = match op {
-            BinOp::LtI32 => Some(IntCC::SignedLessThan),
-            BinOp::LeI32 => Some(IntCC::SignedLessThanOrEqual),
-            BinOp::GtI32 => Some(IntCC::SignedGreaterThan),
-            BinOp::GeI32 => Some(IntCC::SignedGreaterThanOrEqual),
-            BinOp::EqI32 => Some(IntCC::Equal),
-            BinOp::NeI32 => Some(IntCC::NotEqual),
-            _ => None,
-        };
-        let value = if let Some(c) = condition {
-            let b = self.fb.ins().icmp(c, a, b);
-            self.fb.ins().uextend(types::I32, b)
-        } else {
-            if matches!(op, BinOp::DivI32 | BinOp::RemI32) {
-                let nz = self.fb.ins().icmp_imm(IntCC::NotEqual, b, 0);
-                let e = self.i32(-31);
-                self.guard(nz, e);
-                let min = self.fb.ins().icmp_imm(IntCC::Equal, a, i32::MIN as i64);
-                let neg = self.fb.ins().icmp_imm(IntCC::Equal, b, -1);
-                let overflow = self.fb.ins().band(min, neg);
-                let good = self.fb.ins().icmp_imm(IntCC::Equal, overflow, 0);
-                let e = self.i32(-30);
-                self.guard(good, e);
-            }
-            let a = self.fb.ins().sextend(types::I64, a);
-            let b = self.fb.ins().sextend(types::I64, b);
-            let value = match op {
-                BinOp::AddI32 => self.fb.ins().iadd(a, b),
-                BinOp::SubI32 => self.fb.ins().isub(a, b),
-                BinOp::MulI32 => self.fb.ins().imul(a, b),
-                BinOp::DivI32 => self.fb.ins().sdiv(a, b),
-                BinOp::RemI32 => self.fb.ins().srem(a, b),
-                _ => unreachable!(),
-            };
-            let low =
-                self.fb
-                    .ins()
-                    .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i32::MIN as i64);
-            let high = self
-                .fb
-                .ins()
-                .icmp_imm(IntCC::SignedLessThanOrEqual, value, i32::MAX as i64);
-            let good = self.fb.ins().band(low, high);
-            let e = self.i32(-30);
-            self.guard(good, e);
-            self.fb.ins().ireduce(types::I32, value)
-        };
+        let value = crate::lower_arith::emit_i32_binary(&mut self.fb, self.trap, op, a, b)
+            .unwrap_or_else(|| unreachable!("non-i32 binary op reached the closures emitter"));
         self.scalar_to(dst, value);
     }
 }
