@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-977
-status: reviewed
+status: archived
 feature_name: 其余A2X目标与独立转换工具接管
 author: [Codex]
 created_at: 2026-11-06
@@ -18,11 +18,13 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+2026-11-17 **merge/归档（T-06）**：独立 final pass（plan r11 @`3b1f227c7`）后，T-06 canonical prep→rebase（4 commits 改写、range-diff 全等）→**master 落主 `5060c9caa`（ff-only，0 merge commit）**；canonical spec `m2-other-targets.md`（sha16 `82ee06dea1e0248c`）与 `replacement-scope-and-evidence.md` §PLAN-977 落主，985 账本 B-03/B-08/B-09 全 `landed`；交付门（rebased tip）cover 3/3、certify 2/2、s2s 11、ledger 8/8，主检出 landing checks 同绿。Plan 归档为 `docs/plans/archive/977-ace-m2-other-targets.md`（status archived）；T-07 收尾（worktree/分支/scope/retention）随后记录。**本 Plan 终态：10 任务中 A/B 可执行面 8 项闭合；GD/SCENE 六项由用户 2026-11-16 后置（§9 历史），REVERSE 与收口全部交付。**
+
 2026-11-17 work当前：状态 executing **6/10**（任务计数；AC-COVERAGE/AC-LINUX-PHASE 已在修复轮闭合）。B 阶段门已开（M2A-08 正式成立，985 A 批 phase fold delivery `95c7fbad8`；本树 resync 后为该提交的祖先链成员）。**B-REVERSE-I/V 已交**（`f2606fa91`：r2a 受检入口+s2s ACE 规范方言/行级 source map+ACE 真跑证据），**独立复审 needs_fix 的 F1–F8 已修复**（`6c41f9ff8`：六路径 `cover-977` 语料+3 门控制〔wrong-oracle/emit-as-run/…〕、A2R/A2C certify 真编译运行、AV/C+AV/Rust provider 腿、Linux 7 行移交审计、F3–F8 计数/边界/文档修正、SD-COVERAGE/SD-02 落 spec）。固定组 commit-bound 复跑：`s2s` PASS11、`ace-facade` PASS36、`auto-lang-core` 1653/1654（1 基线红）、`ace-adapters` 94/95（1 基线红）、覆盖门 3/3、certify 2/2、provider 腿 2/2、pyready_04 1/1；既有 ad-hoc case 组 0/3、0/20 为 golden 漂移基线红（非本批）。**2026-11-17 复审判 needs_fix（F13）**：六路径执行面经独立复现（含 goldens 重发射逐字节相等），但两个 `manifest.json` golden 被 `.gitignore` 忽略未入库→干净检出无法跑覆盖门（AC-COVERAGE 勾回）；另 F14–F19 小修。**同日修复轮 `3b1f227c7`**：manifest goldens 入库（blob 实核）、emit-only 判据收敛为 8 字段×三车道共用+逐字段单测、certify 时延订正与冷/暖分布记录、证据与标签订正、certify 腿加 Windows 守卫；commit-bound 门 `s2s` PASS11、`auto-lang-core` 1655/1656（1 基线红）、`ace-adapters` 94/95（1 基线红）、覆盖门 3/3、certify 2/2、`ace-facade` 36（六次 source_state 全同 `30867da2f4906aaf`）。**2026-11-17 T-05 独立 final pass @`3b1f227c7`**：F13–F19 闭合、无回归、AC 全 pass（AC-05 merge-owned）；B-REVERSE-R/T-05 已勾，status→**reviewed 8/10**；T-06 需订正 spec 数字/时延分布（F21/F22）并原子落主。合同（范围/AC/依赖/总任务数）未变，plan_revision 保持 r11。
 
 2026-11-16 r11当前接续：状态仍executing 4/10。已完成T-01及PY的I/V/R，正式交付56aadead4；剩余六项为B-REVERSE-I/V/R、T-05/06/07，全部保原M2-B归属，须先有M2A-08。删除Godot只解除目标/环境义务，不解除此阶段门，不代表可立即归档或清树。本轮只核对规划，不实施/运行/恢复目标。
 
-2026-11-16 r10（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包A只保PY，B保REVERSE及原收口；GD/SCENE六个未实施任务与对应AC/V从当前合同移至§9范围历史，不再等待Godot。总数16→10，已完成4项保持；比例变化来自用户范围调整，不是新完成。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
+2026-11-16 r10（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包A只保PY，B保REVERSE及原收口；GD/SCENE六个未实施任务与对应AC/V从当前合同移至§9范围历史，不再等待Godot。总数16→10，已完成4项保持；比例变化来自用户范围调整，不是新完成。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
 2026-11-15 r8当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
 
@@ -39,7 +41,7 @@ touched_goals: [GOAL-002]
 
 本M2交Python受检provider；Godot/GDScript/TSCN按用户后置，保留原用例及历史定义。r2a独立逆向工具及s2s/emit按真实owner保留或迁中立模块，不能因trans目录删除而丢公开能力。
 
-设计与路线：[Design55](../design/55-ace-m2-complete-language-and-product-replacement.md)、[M2执行路线](../design/strategy/ace-m2-delivery-roadmap.md)。本包是拟议执行合同，非已实现声明。
+设计与路线：[Design55](../../design/55-ace-m2-complete-language-and-product-replacement.md)、[M2执行路线](../../design/strategy/ace-m2-delivery-roadmap.md)。本包是拟议执行合同，非已实现声明。
 
 ## 1. 目标
 
@@ -92,15 +94,15 @@ touched_goals: [GOAL-002]
 
 用户要求细化其余ACE M2计划，复用已有研究/合同，仍只规划；本轮不创建实施树/集成分支、不执行T-01探针或产品/正式性能测试、不提交/合入/tag/发布、不改canonical Specs或legacy索引。945–948原M1-TAG及各A/B正式来源门均不因本次文档静态取材放行；既有实施证据/暂停/等待由原owner维护。
 
-取材语言主线读取基面 `f9fb3854beb3886338156cfa61d16f7f84893cc9`（不是所有外仓同SHA；各源hash如下，开工重核正式来源）；本轮焦点：Python/逆向工具；以下Godot材料仅保历史取材，不再进入当前任务。已读当前规范入口：[docs/specs/ace-migration/replacement-scope-and-evidence.md](../specs/ace-migration/replacement-scope-and-evidence.md)。下列是已核路径/结构的规划取材，不宣称逐符号全审或运行通过；旧函数同名/目录存在/历史组绿都不等于新ACE支持。
+取材语言主线读取基面 `f9fb3854beb3886338156cfa61d16f7f84893cc9`（不是所有外仓同SHA；各源hash如下，开工重核正式来源）；本轮焦点：Python/逆向工具；以下Godot材料仅保历史取材，不再进入当前任务。已读当前规范入口：[docs/specs/ace-migration/replacement-scope-and-evidence.md](../../specs/ace-migration/replacement-scope-and-evidence.md)。下列是已核路径/结构的规划取材，不宣称逐符号全审或运行通过；旧函数同名/目录存在/历史组绿都不等于新ACE支持。
 
-- [crates/auto-lang-core/src/trans/python.rs](../../crates/auto-lang-core/src/trans/python.rs)：PY旧目标行为；读取SHA256前16 `696d82cf3f26647b`
+- [crates/auto-lang-core/src/trans/python.rs](../../../crates/auto-lang-core/src/trans/python.rs)：PY旧目标行为；读取SHA256前16 `696d82cf3f26647b`
 
-- [crates/auto-lang-core/src/trans/gdscript.rs](../../crates/auto-lang-core/src/trans/gdscript.rs)：GD类/信号/节点语义；读取SHA256前16 `24e922d887d8a2f0`
+- [crates/auto-lang-core/src/trans/gdscript.rs](../../../crates/auto-lang-core/src/trans/gdscript.rs)：GD类/信号/节点语义；读取SHA256前16 `24e922d887d8a2f0`
 
-- [crates/auto-lang-core/src/trans/tscn.rs](../../crates/auto-lang-core/src/trans/tscn.rs)：场景资源边/属性；读取SHA256前16 `c23f2c48735e72ef`
+- [crates/auto-lang-core/src/trans/tscn.rs](../../../crates/auto-lang-core/src/trans/tscn.rs)：场景资源边/属性；读取SHA256前16 `c23f2c48735e72ef`
 
-- [crates/auto-lang-core/src/trans/r2a.rs](../../crates/auto-lang-core/src/trans/r2a.rs)：逆向输入/不支持诊断；读取SHA256前16 `6e447b013afea867`
+- [crates/auto-lang-core/src/trans/r2a.rs](../../../crates/auto-lang-core/src/trans/r2a.rs)：逆向输入/不支持诊断；读取SHA256前16 `6e447b013afea867`
 
 ### 2026-11-16 用户目标范围修订与取材
 
@@ -120,7 +122,7 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 ### M2阶段执行合同（当前优先）
 
-依据[Design55两阶段合同](../design/55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)；本包=跨M2-A/B。A的PY按原最小语言接口；REVERSE及其全部公开入口接管属B，不能由982/PROOF反等。
+依据[Design55两阶段合同](../../design/55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)；本包=跨M2-A/B。A的PY按原最小语言接口；REVERSE及其全部公开入口接管属B，不能由982/PROOF反等。
 
 | 阶段 | 当前任务归属（保原ID/义务） |
 |---|---|
@@ -175,7 +177,7 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r6当前）
 
-**具体输入与期望。** 原件[crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at](../../crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at)（下列节选L1–L11；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
+**具体输入与期望。** 原件[crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at](../../../crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at)（下列节选L1–L11；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
 
 ```auto
 #[with(T)]
@@ -202,10 +204,10 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 
 | 实际代码owner | 本包具体职责与改面 |
 |---|---|
-| [crates/auto-lang-core/src/trans/python.rs](../../crates/auto-lang-core/src/trans/python.rs) | PY旧目标行为 |
-| [crates/auto-lang-core/src/trans/gdscript.rs](../../crates/auto-lang-core/src/trans/gdscript.rs) | 历史取材：GD类/信号/节点语义；用户后置，非本版改面 |
-| [crates/auto-lang-core/src/trans/tscn.rs](../../crates/auto-lang-core/src/trans/tscn.rs) | 历史取材：场景资源边/属性；用户后置，非本版改面 |
-| [crates/auto-lang-core/src/trans/r2a.rs](../../crates/auto-lang-core/src/trans/r2a.rs) | 逆向输入/不支持诊断 |
+| [crates/auto-lang-core/src/trans/python.rs](../../../crates/auto-lang-core/src/trans/python.rs) | PY旧目标行为 |
+| [crates/auto-lang-core/src/trans/gdscript.rs](../../../crates/auto-lang-core/src/trans/gdscript.rs) | 历史取材：GD类/信号/节点语义；用户后置，非本版改面 |
+| [crates/auto-lang-core/src/trans/tscn.rs](../../../crates/auto-lang-core/src/trans/tscn.rs) | 历史取材：场景资源边/属性；用户后置，非本版改面 |
+| [crates/auto-lang-core/src/trans/r2a.rs](../../../crates/auto-lang-core/src/trans/r2a.rs) | 逆向输入/不支持诊断 |
 
 **状态、错误与资源。** Python坏模块/依赖及逆向无法表达形具名拒；本版Python/逆向工具缺席是缺证，不默填PASS/NA；Godot按用户后置，不成为缺工具阻塞。 当前PY/REVERSE两批各自I/V/R保留，原GD/SCENE留§9范围历史；A的正向provider与B逆向工具分期，路径/资源/runtime身份不混，close回收子进程。 沿原数值宽度/长度字符串/平台适用性/受管预算，不从Rust/C默认行为猜Auto语义，不以timeout/缺工具冒语言反例。
 
@@ -213,10 +215,10 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 
 | 原源码/测试/研究来源 | 保留的公开义务与新ACE验证 | 原期望/证据形态与读取身份 | 新ACE检查映射与原owner任务 |
 |---|---|---|---|
-| [crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at](../../crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at) | 泛型公开值42/hello，Python模板全文另保 | `generic_func.expected.py`；SHA256前16 `dec913dbcc21f70f` | 拟ace.m2.p977.source01：run-python；负控/资源见V-DETAIL-02/03；原任务 B-PY-I/B-PY-V |
-| [crates/auto-lang/test/a2gd/08_generics/001_generic_func/generic_func.at](../../crates/auto-lang/test/a2gd/08_generics/001_generic_func/generic_func.at) | GD入口/泛型值 | `generic_func.expected.gd`；SHA256前16 `2ae6e2f18564556d` | `user-deferred/not-required (M2-TARGET-SCOPE-20261116)`：原GD/SCENE目标腿保留原源/金样及§9任务，非本版执行；同源普通Auto语义若属于其他required后端，沿其原owner保留 |
-| [crates/auto-lang/test/a2gd/tscn/godot_demos/instancing/001_ball/ball.at](../../crates/auto-lang/test/a2gd/tscn/godot_demos/instancing/001_ball/ball.at) | scene Ball的材质bounce0.4/碰撞radius30/资源边，TSCN金样还须真实场景加载 | `ball.expected.tscn`；SHA256前16 `5f91e2d262cb475e` | `user-deferred/not-required (M2-TARGET-SCOPE-20261116)`：原GD/SCENE目标腿保留原源/金样及§9任务，非本版执行；同源普通Auto语义若属于其他required后端，沿其原owner保留 |
-| [crates/auto-lang/test/r2a/08_generics/003_generic_fn.rs](../../crates/auto-lang/test/r2a/08_generics/003_generic_fn.rs) | 真实反向泛型输入，不改旧golden | Rust断言来源，具体test/check由原测试模块核；SHA256前16 `eb068ed1adac2846` | 拟ace.m2.p977.source04：reverse-reference；负控/资源见V-DETAIL-02/03；原任务 B-REVERSE-I/B-REVERSE-V |
+| [crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at](../../../crates/auto-lang/test/a2p/08_generics/001_generic_func/generic_func.at) | 泛型公开值42/hello，Python模板全文另保 | `generic_func.expected.py`；SHA256前16 `dec913dbcc21f70f` | 拟ace.m2.p977.source01：run-python；负控/资源见V-DETAIL-02/03；原任务 B-PY-I/B-PY-V |
+| [crates/auto-lang/test/a2gd/08_generics/001_generic_func/generic_func.at](../../../crates/auto-lang/test/a2gd/08_generics/001_generic_func/generic_func.at) | GD入口/泛型值 | `generic_func.expected.gd`；SHA256前16 `2ae6e2f18564556d` | `user-deferred/not-required (M2-TARGET-SCOPE-20261116)`：原GD/SCENE目标腿保留原源/金样及§9任务，非本版执行；同源普通Auto语义若属于其他required后端，沿其原owner保留 |
+| [crates/auto-lang/test/a2gd/tscn/godot_demos/instancing/001_ball/ball.at](../../../crates/auto-lang/test/a2gd/tscn/godot_demos/instancing/001_ball/ball.at) | scene Ball的材质bounce0.4/碰撞radius30/资源边，TSCN金样还须真实场景加载 | `ball.expected.tscn`；SHA256前16 `5f91e2d262cb475e` | `user-deferred/not-required (M2-TARGET-SCOPE-20261116)`：原GD/SCENE目标腿保留原源/金样及§9任务，非本版执行；同源普通Auto语义若属于其他required后端，沿其原owner保留 |
+| [crates/auto-lang/test/r2a/08_generics/003_generic_fn.rs](../../../crates/auto-lang/test/r2a/08_generics/003_generic_fn.rs) | 真实反向泛型输入，不改旧golden | Rust断言来源，具体test/check由原测试模块核；SHA256前16 `eb068ed1adac2846` | 拟ace.m2.p977.source04：reverse-reference；负控/资源见V-DETAIL-02/03；原任务 B-REVERSE-I/B-REVERSE-V |
 
 上表拟ID为可追踪规划键，尚未注册/执行；已有同义case/check优先复用并绑定，不重复累计；原支持域外的新语义先具名裁定。直接复用旧源码/公开行为断言与有效独立expected；旧VM opcode/对象布局、旧A2R生成全文金样保留给旧实现，不照搬为新后端唯一语义oracle。错误期望、空expected、仅parse/emit、句柄/内部显示编码分别登记；已知旧bug与规范冲突具名裁定，不能静默改expected或将全旧行为当新规范。表中hash为本轮读取快照（同轮修订的Plan按最终revision再核），不是永久固定接口；表为已核代表/已有研究入口，不是覆盖上限；沿原完整分母逐条映射，不以几份例子关闭本包全部原义务。
 
@@ -228,7 +230,7 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 
 ### 后端与AV来源覆盖（2026-11-13当前）
 
-以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+以[覆盖设计](../../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
 
 PY批次消费1042正式最小producer/运行helper后扩完整Python语言与原旧语料；同一Python目标支持新公共标准库，不复制旧AST emitter。只需某能力的后继先消费已交PY切片，不等待GD/SCENE/REVERSE整包。其他批次原依赖/义务保留。
 
@@ -253,7 +255,7 @@ PY批次消费1042正式最小producer/运行helper后扩完整Python语言与�
 
 ### Linux延期与默认自有实现（2026-11-15当前优先）
 
-本包适用范围：**Python等目标消费的公共标准库Linux腿**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+本包适用范围：**Python等目标消费的公共标准库Linux腿**。[覆盖设计](../../design/stdlib/backend-provider-coverage.md)和[平台设计](../../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](../1063-ace-stdlib-linux-deferred-validation.md)专项验证。
 
 本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
 
@@ -499,6 +501,8 @@ stage: review（T-05 final，第 3 轮） | review_scope: final | reviewer_ident
   next: **merge**（T-06：F21/F22 spec 订正→刷新 B-03 pin→ledger 重跑→原子落 spec+ledger+goldens→B-08/B-09 翻 landed→master 复跑覆盖门/certify 记录实测时延；T-07：证据折 Plan、retention 刷新、wt-guard clean、清树/删 scope）
 
 stage: goal | plan_id: PLAN-977 | plan_revision: r11 | round: 6 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-977/auto-lang | commit: 3b1f227c7 | next: merge（T-06 落主 + T-07 收尾；F21/F22 为 merge 内订正）
+
+stage: merge（T-06 落主） | plan_id: PLAN-977 | plan_revision: r11 | outcome: pass（T-06） | checkpoints: **prepared**=reviewed `3b1f227c7` + T-06 canonical prep `9895bab18`（spec F21 `1655/1656` + F22 certify warm/cold 分布；985 账本 B-08/B-09 → `landed`，pin=`82ee06dea1e0248c`）；**rebase**=4 commits rewritten `f2606fa91→39a71d494`、`6c41f9ff8→814c44b38`、`3b1f227c7→31301cb30`、`9895bab18→5060c9caa`，`git range-diff f0db9bd0f..9895bab18 34c5f81ed..5060c9caa` **全等（=）**、无冲突，新范围只多出 master 自带 `e36c32513`；**landed**=master@`5060c9caa`（`--ff-only`，0 merge commit；落地前 `rev-list HEAD..master=0`）；**canonical_verified**=`docs/specs/ace-migration/m2-other-targets.md` sha16 `82ee06dea1e0248c`（六路径覆盖 + Linux 移交审计 + F21/F22）+ `docs/specs/ace-migration/replacement-scope-and-evidence.md` §PLAN-977（SD-02 producer 挂接）+ 985 账本 B-03/B-08/B-09 全 `landed` 同 pin；**delivery gates（rebased tip `5060c9caa`，driver state `1e3640daa7e89721` 三次全同）**：cover 门 PASS 3/3（3.06/3.08/3.11s）、certify PASS 2/2（0.899/2.368s）、`s2s` PASS 11、ledger 8/8；**landing_checks（主检出；shared checkout 含他会话无关 docs WIP 与一处他会话 ACE 测试文件 WIP，本批路径不受影响）**：ledger 8/8（0.07s）、cover 门 PASS 3/3（2.80/2.80/2.97s；group 430s=冷工具准备）、certify PASS 2/2（0.739/2.68s；group 39.6s）——warm 全 ≤10s；**archived**=`docs/plans/archive/977-ace-m2-other-targets.md`（status archived，链接按 archive 深度重写并全部实测存在）；**cleaned**=待 T-07 收尾（worktree/wt-guard/分支/plan-artifacts/retention）
 
 
 
