@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1067
-status: execution_done
+status: executing
 feature_name: ACE M2-B AC原生Future异步与Task调度补齐
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 8
+current_step: 4
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -169,13 +169,13 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 全部0/10，原型/用例均待实施；当前不启动工作树或产品。
 
 - [x] **T-01｜work｜AC-01**：核985/A阶段门和原源码/规范/组，冻结~T/Task/Iter与每个旧新义务/预算、SCHED/native/platform接面、Linux移交。 — 2026-11-17 ✅（见§5 T-01冻结：M2A-08门、11 SCHED面、native线程runtime方案、单staticlib约束、组/平台名单）
-- [x] **T-02｜work｜AC-02/03**：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 2026-11-17 ✅（8/8正例逐字节真PE＋owned Str 状态跨 spawn＋bool reply 跨 await＋未 await 回复 drain 释放＋具名错误；`sched_m2_1067` 8 tests。取消/迟到终态按原任务归 T-05，不属本行谓词）
+- [ ] **T-02｜work｜AC-02/03**[re3 重开 T-1067-1]：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 2026-11-17 ✅（8/8正例逐字节真PE＋owned Str 状态跨 spawn＋bool reply 跨 await＋未 await 回复 drain 释放＋具名错误；`sched_m2_1067` 8 tests。取消/迟到终态按原任务归 T-05，不属本行谓词）
 - [x] **T-03｜work｜AC-02**：沿共享类型/IR补AC异步帧、await/go及泛型/Option/Result跨挂起值和所有权，落V-02正反例；依T-02。 — 2026-11-17 ✅（值面tag/物化/释放/drain审计＋bool typed reply；owned-text 消息/回复为具名差额，见§5 T-03 表）
 - [x] **T-04｜work｜AC-02/03**[N-1067-1/2/3 已修]：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-1/3 不成立，重开（历史证据保留：真PE逐字节：message_handler/mailbox_fifo FIFO、ask_reply 42、stop_hook 先投递后 stop、backpressure cap=1 三消息顺序不漏；源码为 968 原语料未改）
-- [x] **T-05｜work｜AC-03**[N-1067-1/2/3 已修]：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-1/2 不成立，重开（历史证据保留：真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
-- [x] **T-06｜work｜AC-01/02**[N-1067-2/3 已修]：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-4 不成立，重开（历史证据保留：三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
+- [ ] **T-05｜work｜AC-03**[re3 重开 T-1067-1]：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-1/2 不成立，重开（历史证据保留：真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
+- [ ] **T-06｜work｜AC-01/02**[re3 重开 T-1067-1]：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-4 不成立，重开（历史证据保留：三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
 - [x] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。 — 2026-11-17 ✅（显式仓外输出根构建+真实进程运行+published PE 导入审计：仅 kernel32.dll、符号全在本车道 19 项声明内、变异体被具名拒绝；runtime 身份与库字节一致绑定）
-- [x] **T-08｜work｜AC-01..04**[N-1067-4/5/6/7/8/9 已修]：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-5/6/7/9/10 不成立，重开（历史证据保留：并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
+- [ ] **T-08｜work｜AC-01..04**[re3 重开 T-1067-2/3/4/5]：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-5/6/7/9/10 不成立，重开（历史证据保留：并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
 - [ ] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
 - [ ] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
 
@@ -183,6 +183,27 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 
 ## 9. 复审记录
 
+2026-11-17 stage: review | review_scope: final（第三次复审） | reviewer_identity: reviewer-1067c（独立委派上下文，无实现署名；自建 probe + 门内 nextest 三次 + 代码/spec 逐行重建） | plan_id: PLAN-1067 | plan_revision: 1 | **outcome: needs_fix（第三次 failed final review，已用 2 个 repair cycle）** | worktree_path: D:/autostack/.wt/lang-1067/auto-lang | branch: plan-1067-dev | reviewed_commit: `4d6e81a2c26bc3938e63cfb4284bbd5bd1d8c29c` | base_commit: `f0db9bd0f746f115f9ec16124b798939e96e5860` | acceptance_results: AC-01 partial；AC-02 partial；**AC-03 pass**；**AC-04 pass**；AC-REVIEW fail（本记录） | next: work（第三次 bounded repair，见下"裁定"）
+
+**已关闭**：N-1067-1（drain 每记录先 stop 再 join；mid-drain spawn 变具名拒绝；互递归链 0.33s 具名 Resource 不死锁）、N-1067-2（stop/start 钩子同一 callee 双块 → `tick\ntick` 绿）、N-1067-3（AV+native `one\ntwo\n2`、stop 钩子 `go` 与缓冲消息 `one\ntwo\ntick`）、N-1067-4（冷 target 实验：rename 目录 → PASS 且重建、恢复 78 文件/72,566,604 B/SHA256 一致）、N-1067-6、N-1067-8。部分：N-1067-7（15 个触面 .rs 中 13 绿，2 红：text-runtime 分支新增空行、sched_desugar 既有长签名）、N-1067-9（行为已闭，但 §6 未记 entry-only，规则在 §2:33）。
+**组证据（门内）**：`cargo t ace-native` PASS ×2（run-zuqvxwf1 322 tests 67.0s；run-3y4iwc_a 322 61.9s）；`cargo t ace-source ace-lowering ace-native case-ace-m2-scheduler-968` PASS（run-7_atn94k，case 11/11）；`cargo t ace-av` **FAIL 3 红**（run-zsxaqejv：`kv_zip`/`bstr_1064` ExecutionWall、`stdlib_assembly_1043` `cl` Deadline；三条单跑均绿 2.56/16.20/2.35s，均非调度面）；`cargo t ace-a2x` **FAIL 1 红**（run-jihpdrn7：`worker_ct_958` `cl` Deadline，单跑绿 53.87s；A2R sched 3/3）。
+
+### 新 findings
+
+| ID | 级别 | 规则 | 输入/命令 | 期望 vs 观测 |
+|---|---|---|---|---|
+| T-1067-1 | **major（in-contract）** | AC-01/02 同源三端等价；合法前门输入不得以内部 `mn.backend.lowering` 失败 | `fn worker(n int) int { n + 1 }` + `print(worker(1))` + `go worker(2)`（同单元既直接调用又 go） | 应 exit 0 / `2\n`（AV `Success(0)` `2\n`）；native 构建失败：thunk 声明 `returns: []` 与既有 `returns:[I32]` 签名冲突；递归形式同样失败；**仅 go、无同单元直调**则正常 |
+| T-1067-2 | major（test-cost） | 单用例门内 ≤10s | `cargo t ace-native`（20 并行） | 10 跑用例门内 **10.155 / 9.948 / 7.944s**；隔离 4.13s；上一轮 5.45s 不可复现 |
+| T-1067-3 | minor | AGENTS §3 健康检查 | `rustfmt --check` 15 个触面 .rs | 13 绿 2 红（text-runtime:637-638 分支新增空行；sched_desugar:114 既有） |
+| T-1067-4 | minor | 收据/规范精确 | — | entry-only 规则在 §2:33，§6 未记（round-10 收据称已记） |
+| T-1067-5 | minor | 规范增量完整 | — | SD-ASYNC 待改行未列 `m2-scheduler.md:17`（AV 用例 12→17）与 entry-only 语义收窄；plan §5「沿968 D1–D6，不改语义」已过时 |
+
+### 本轮裁定（第三次 bounded repair，仍在 work 技能允许的 3 个循环内）
+
+1. **T-1067-1 走"支持"而非"受限"**：AV/A2R 已支持标量返回的 `go` 目标，thunk 代码注释亦声明"结果被丢弃"，故这是 **native 侧缺陷修复**，不是语义扩张、不需要用户改合同。实现：把 callee 的返回形状纳入 `SchedCallee`（thunk 的 `declare_function` 使用与真实 callee 一致的签名，调用结果照旧丢弃）；owned-Str 返回按同一签名规则处理，若不可行则具名拒绝并在 spec 记录。
+2. **T-1067-2**：10 跑 → 5 跑（仍覆盖"多次独立 PE 运行"的意图），并以 ≥3 次 `cargo t ace-native` 门内取证 ≤10s 且留余量。
+3. **T-1067-3/4/5**：fmt 两个文件；spec §6 补 entry-only 规则；plan SD-ASYNC 编辑行补 `:17` 与 entry-only；刷新 §5「不改语义」表述。
+4. **若第四次复审仍 needs_fix**：按 work 技能上限停止继续修复，保留诊断并交用户裁定（不再第 4 次 repair）。
 2026-11-17 stage: work | PLAN-1067 r1 round-10 | review2 findings 修复完成 → 回 execution_done，交第 3 次（也是最后一次允许的）复审 | code ``4d6e81a2c``
 
 | 新 finding | 修复 | 重放证据（隔离 / 门内） |
@@ -414,3 +435,5 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 8 | from: work | t
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 9 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 12f11b641 | next: work
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 10 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 4d6e81a2c | next: review
+
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 11 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 4d6e81a2c | next: work
