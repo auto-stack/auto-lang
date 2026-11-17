@@ -75,10 +75,14 @@
 - **运行期列表 `for`**：仅**字面数组**（`for d in (["a","b"])` 或绑定字面数组的 `var`）会
   展开；元素来自注入/计算的列表仍是 `source.config-document/pending`（需 list len/at 原语）。
 - **值面**：i32/bool/char/text/对象/列表/节点；无 `f64`/`u64`（`u64>i64::MAX` 守卫不可达）、
-  无空列表字面量 `[]`（`array-lit` 属共享面，改动会漂移 aggregates profile）。
+  无空列表字面量 `[]`（`array-lit` 属共享面，改动会漂移 aggregates profile）。**现状已钉住**：
+  `tags: []` 目前是 `stage:"text", code:"source.syntax"`（"skipped unexpected token"，span 指向 `[`），
+  永久用例 `p982_config_empty_list`；非空 `[1, 2]` 可用（投影 `List([I64(1), I64(2)])`）。
 - **注入**：bool/i32/char/text 可注入并在文档中按名可见；对象/数组注入是
   `ace.config/inject-unsupported`，超 i32 是 `ace.config/inject-range`。
-- **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：未支持。
+- **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：未支持。**现状已钉住**：
+  `${obj.x}` 在 **bind 期**失败为 `stage:"bind", code:"source.undefined"`（"no local named `obj` in scope"），
+  永久用例 `p982_config_dot_form`；实现时该用例会自动转为"必须取到字段值"的正例。
 - **保留字作 pair key**（如 `tag:`）仍被当保留 token 拒绝。
 - **投影深度**：2048 处具名 `config.projection/too-deep`（递归实现；设计允许的"无固定阈值"
   需迭代式投影，未做）。实测 ≤1976 层可服务（1980+ 由冻结的 16 MiB 校验预算具名拒绝）；永久用例：1000 层整链 + 2000 层不崩。
