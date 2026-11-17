@@ -1860,6 +1860,10 @@ blockers: 无。goal round 2 receipt 见 §9 末。
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 2 | from: work | to: review | status: executing | outcome: pass（A 子面 work 完：dec529355+289e71b37，cargo t vm corpus PASS 1137/1137，NC-A1..4 全绿） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 289e71b37 | next: review（T-12[A]）
 
+### 2026-11-17 T-12[A] 独立 phase 复核：pass（F-1066A-R1/R2 已修闭）
+
+stage: review | review_scope: phase（A 切片） | reviewer: 独立上下文代理（与实施会话分离；同树只读重建） | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | reviewed_commit: 289e71b37（初判）→ 2e606d28f（修复确认，终判冻结点） | base_commit: fa8e3ccdb | dependency_revisions: 无跨仓 | spec_inputs: 本 Plan §5 A-EXIT/§6.3/§7/§8；canonical Specs 未动（SD-01..05/SD-A-PHASE 沉淀归 T-13[B]） | acceptance_results: A-DEN pass / A-ORACLE pass / A-NOWRITE pass / A-EVIDENCE pass（R1 修复后） / NC-A1..4 pass / B 义务保持 pass（13 任务框未勾、树/分支保留、旧 oracle 未动） | findings: F-1066A-R1（低，verify_receipt 空选择漏拒）→ 2e606d28f 修复+NC-A4(g) 实证；F-1066A-R2（低，segments 未对账）→ 2e606d28f 修复+NC-A1(f) 实证；F-1066A-R3（信息，tests.rs rustfmt 重排惰性）不处置 | evidence: 复核代理独立重析 fixture（python 逐段再哈希 24 项全对）、全 diff 逐文件核对（14 文件无越界）、P mini-lexer 逐行对照两旧测试体（19 断言 1:1 零误报）、NC-A2 变异精度核查、receipt 重哈希、基线告警溯源（2 条告警均在 fa8e3ccdb 存在=零新增）；计时 integrity 1088ms/nc-a1 1097ms/nc-a2 188ms/nc-a3 365ms/nc-a4 186ms（≤10s 全过） | 修复后门：cargo t vm corpus @2e606d28f PASS（run-0o5gxy7_，executed 1137/excluded 467，wall 182.1s；excluded 名单可见 conformance_bootstrap 以 ignore 理由退场=生成器-1、33 验证不减的账面证据；结果归档 plan-artifacts/plan-1066/probes/vm_corpus_gate_2e606d28f.json） | next: T-13[A] phase fold（保树予 B）；Plan 状态保持 executing（phase pass 不授 reviewed/归档）
+
 ## 10. 待澄清事项
 
 四类补漏范围/原oracle/副作用边界已明确，无需用户先决定日常与显式编译的常规实现细节。T-02有界确定共享资格表达、public structs兼容与唯一proposal入口（不得保旧fallback）；真实不可行性在本Plan具名修约，不拆后继/不缩水。1061环境与外仓owner不阻Windows迁移，NOT_RUN不冒通过。原语义/编译债务保持独立，不用两侧同FAIL充功能绿。
