@@ -3,11 +3,11 @@
 //! 覆盖 985/EVENT-SPLIT-20261116 要求的三个 A 键在 981 侧的最小可交面：
 //! - **UI-EVT-MSG**：`msg Msg { … }` 具名段与匿名 `msg { … }` 并存，变体名/原 span/具名段
 //!   保真，重复变体仍具名拒；
-//! - **UI-EVT-BIND**：handler 参数名/span 被**读取保留**；参数**行为**在 A 未实现，因此带参
-//!   handler 在 admit 前具名拒（`source.age.event-params-unsupported`），零状态/UI 效果——
-//!   不静默丢参后跑常量体；
-//! - **UI-EVT-PAYLOAD**：声明侧允许（`Add(str)`），但执行侧未实现；拒绝由 AGE 前门在
-//!   dispatch 前给出（编译期拒绝，宿主透出该诊断；见 auto-ui 侧 `s2` 用例）。
+//! - **UI-EVT-BIND**：handler 参数名/span 被**读取保留**；B-W1（IF-981-PARAMS-B）起
+//!   形参数与载荷槽在**声明级**核对一致（unit 变体 + 带参 handler 是域错误）；
+//! - **UI-EVT-PAYLOAD**：声明侧允许（`Add(str)`）；B-W1（IF-981-EVENT-PAYLOAD-B）起
+//!   `Send` 恒等价空载荷——向载荷变体的空 Send 是 arity 域错误，带值派发走真实执行
+//!   （见 `plan981_event_b`）。
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::compile_age_package;
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
@@ -59,40 +59,27 @@ fn p981_event_a_named_unit_messages_are_projected() {
     assert_eq!(d.components[0].messages.len(), 1);
 }
 
-/// UI-EVT-BIND：参数名/span 被保留并可从描述面读到；**派发**时具名拒（零效果）。
+/// UI-EVT-BIND（A 语义 → B-W1 升级，IF-981-PARAMS-B）：形参数必须与载荷槽
+/// 数一致——unit 变体 + 带参 handler 现在是**声明级**域错误（未派发也拒），
+/// 取代 A 期“解析保留、派发时具名拒”。合法形参声明（槽=形参数）仍可读回。
 #[test]
 fn p981_event_a_param_handler_is_named_rejected() {
+    // unit 变体 `Add` + 单参 handler `.Add(t)` → 声明级 arity 域错误。
     let src = "node M {\n    msg Msg {\n        Add\n    }\n    on {\n        .Add(t) -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
-    let want = src.find("(t)").expect("fixture has the param") + 1;
-    // 解析与描述成功：参数事实可读（不是静默丢弃）。
-    let d = compile(src).expect("a parameterised handler parses and is described");
+    match compile(src) {
+        Ok(_) => panic!("a unit variant with a parameterised handler must be rejected"),
+        Err(ds) => {
+            assert_eq!(ds[0].code, "source.age.component-event", "{ds:?}");
+            assert!(ds[0].message.contains("payload slot"), "{ds:?}");
+        }
+    }
+    // 对照：载荷槽与形参数一致时，参数事实照旧可读（A 的保真面不回退）。
+    let ok = "node M {\n    msg Msg {\n        Add(int)\n    }\n    on {\n        .Add(t) -> {\n            .count = count + t\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let d = compile(ok).expect("a payload variant with a matching handler parses");
     assert_eq!(
         d.components[0].handler_params,
         vec![("Add".to_string(), vec!["t".to_string()])]
     );
-    // 派发时具名拒，span 指参数名。
-    use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
-    let scenario = ComponentScenario {
-        instances: 1,
-        ops: vec![ScenarioOp::Send {
-            instance: 0,
-            msg: "Add".into(),
-        }],
-    };
-    let r = ace_core::source::age_package::compile_age_package_with_scenario(
-        &[input(src)],
-        "app::main",
-        LegacyWidgetAlias::Reject,
-        &[PACKAGES_CAPABILITY.to_string()],
-        &scenario,
-    );
-    match r {
-        Ok(_) => panic!("dispatching a parameterised handler must be rejected"),
-        Err(ds) => {
-            assert_eq!(ds[0].code, "source.age.event-params-unsupported", "{ds:?}");
-            assert_eq!(ds[0].span.start, want);
-        }
-    }
 }
 
 /// R65-1/R65-4：跨 `msg` 块的重复变体、第二个具名集合都具名拒。
@@ -120,16 +107,16 @@ fn p981_event_a_unknown_handler_message_is_rejected() {
     }
 }
 
-/// R65-2/R66-2：同名 unit+payload 变体已被 R65-1 的跨块重复拒拦下；这里冻结
-/// **不同名** unit/payload 的派发语义，并把 payload 谓词标为纵深防御
-/// （R66-1 起只对“真的处理该消息”的节点生效）。
+/// R65-2/R66-2：同名 unit+payload 变体已被 R65-1 的跨块重复拒拦下；B-W1 起
+/// 向载荷变体投递**空载荷 Send** 是 arity 域错误（`Send` 恒等价空载荷，不再
+/// 是 A 期的具名 unsupported——真实载荷执行见 plan981_event_b）。
 #[test]
 fn p981_event_a_unit_first_payload_second_dispatch_is_rejected() {
     use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
     let src = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Add(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     // 该源本身因跨块重复变体被拒（R65-1）；构造一个只声明一次、跨块不重复的
-    // 对照组：unit `Add` 与 payload `Set`，两处都能走到 payload 守卫。
-    let ok = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Set(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n        .Set -> {\n            .count = count + 2\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    // 对照组：unit `Add` 与 payload `Set`（形参数对齐载荷槽）。
+    let ok = "node M {\n    msg {\n        Add\n    }\n    msg Msg {\n        Set(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n        .Set(s) -> {\n            .count = count + 2\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     assert!(
         compile(src).is_err(),
         "cross-block duplicates already rejected"
@@ -151,8 +138,15 @@ fn p981_event_a_unit_first_payload_second_dispatch_is_rejected() {
         &scenario,
     );
     match r {
-        Ok(_) => panic!("dispatching the payload variant must be rejected"),
-        Err(ds) => assert_eq!(ds[0].code, "source.age.event-payload-unsupported", "{ds:?}"),
+        Ok(_) => panic!("an empty-payload Send to a payload variant must be rejected"),
+        Err(ds) => {
+            assert_eq!(ds[0].code, "source.age.component-event", "{ds:?}");
+            assert!(
+                ds[0].message.contains("payload slot"),
+                "the rejection names the arity: {}",
+                ds[0].message
+            );
+        }
     }
 }
 
@@ -212,11 +206,13 @@ fn p981_event_a_message_controls_hold() {
     let plain = "node M {\n    model {\n        Add int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     compile(plain).expect("ordinary identifiers keep working next to message names");
 }
-/// UI-EVT-PAYLOAD：向有载荷的消息投递（无值）必须具名拒，零效果；unit 消息照常。
+/// UI-EVT-PAYLOAD（A 语义 → B-W1 升级）：向有载荷的消息投递**无值 Send** 是
+/// arity 域错误（零效果，`Send` = 空载荷）；unit 消息照常。真实带值派发见
+/// `plan981_event_b`（IF-981-EVENT-PAYLOAD-B）。
 #[test]
 fn p981_event_a_payload_dispatch_is_named_rejected() {
     use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
-    let src = "node M {\n    msg Msg {\n        Add(str)\n    }\n    on {\n        .Add -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
+    let src = "node M {\n    msg Msg {\n        Add(str)\n    }\n    on {\n        .Add(s) -> {\n            .count = count + 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     let scenario = ComponentScenario {
         instances: 1,
         ops: vec![ScenarioOp::Send {
@@ -234,10 +230,10 @@ fn p981_event_a_payload_dispatch_is_named_rejected() {
     match r {
         Ok(_) => panic!("a payload dispatch without its value must be rejected"),
         Err(ds) => {
-            assert_eq!(ds[0].code, "source.age.event-payload-unsupported", "{ds:?}");
+            assert_eq!(ds[0].code, "source.age.component-event", "{ds:?}");
             assert!(
-                ds[0].message.contains("payload"),
-                "the rejection names the payload: {}",
+                ds[0].message.contains("payload slot"),
+                "the rejection names the arity: {}",
                 ds[0].message
             );
         }

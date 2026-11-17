@@ -554,7 +554,11 @@ pub fn compile_age_component(
                     )
                 })
                 .collect(),
-            field_inits: n.fields.iter().map(|f| (f.name.clone(), f.init.clone())).collect(),
+            field_inits: n
+                .fields
+                .iter()
+                .map(|f| (f.name.clone(), f.init.clone()))
+                .collect(),
             instance_texts: Vec::new(),
             instance_states: Vec::new(),
             view: ComponentViewOut {
@@ -636,7 +640,8 @@ pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
                     out.push(callee.name.clone());
                 }
                 for a in args {
-                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a {
+                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a
+                    {
                         walk(x, out);
                     }
                 }
@@ -647,7 +652,8 @@ pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
                     out.push(name.name.clone());
                 }
                 for a in args {
-                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a {
+                    if let crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) = a
+                    {
                         walk(x, out);
                     }
                 }
@@ -742,8 +748,42 @@ pub struct ComponentScenario {
 /// 场景操作：把消息发给指定实例，或推进该实例一次（`Life.Tick` 的切片建模）。
 #[derive(Clone, Debug)]
 pub enum ScenarioOp {
-    Send { instance: usize, msg: String },
-    Tick { instance: usize },
+    Send {
+        instance: usize,
+        msg: String,
+    },
+    /// PLAN-981（IF-981-EVENT-PAYLOAD-B，B-W1）：带载荷的定向派发
+    /// （`.Add(3)`）。`args` 是**未受信候选表达式**——与实参源同走唯一
+    /// verify（不信任字符串类型表）；在声明作用域求值**一次**、按位置绑定
+    /// 到卫生局部名后供 handler 体使用。既有 [`ScenarioOp::Send`] 保持
+    /// **等价空载荷**：向声明了载荷槽的变体 `Send` 是 arity 域错误
+    /// （`source.age.component-event`），不再是 A 期的具名 unsupported。
+    SendArgs {
+        instance: usize,
+        msg: String,
+        args: Vec<Expr>,
+    },
+    Tick {
+        instance: usize,
+    },
+}
+
+impl ScenarioOp {
+    /// 宿主值抬升（IF-981-EVENT-PAYLOAD-B）：运行时 typed 值 → 字面量候选
+    /// 表达式。字面量仍走同一条唯一 verify；span 锚定消息变体声明（宿主值
+    /// 没有作者 span，不用 0 充当）。
+    pub fn send_args_from_values(
+        instance: usize,
+        msg: impl Into<String>,
+        args: &[InitialValue],
+        anchor: Span,
+    ) -> ScenarioOp {
+        ScenarioOp::SendArgs {
+            instance,
+            msg: msg.into(),
+            args: args.iter().map(|v| initial_literal(v, anchor)).collect(),
+        }
+    }
 }
 
 /// 每实例的初始字段值（props 种子）——消费者配置，不是源语言的一部分。
@@ -1033,7 +1073,21 @@ fn compile_component_scenario_full(
         }
         seen_msgs.push(h.msg.clone());
     }
+    // PLAN-981（IF-981-PARAMS-B）：handler 形参 ↔ 载荷槽数的**声明级**核对
+    //（未派发也核对）+ 重复形参具名拒。
+    check_handler_bindings(node)?;
+    // 未派发 handler 的声明语义 verify：每个 handler 铸一个隐藏检查函数
+    //（形参 = 真函数参数，载荷类型来自声明拼写）。
+    let mut handler_check_items: Vec<Item> = Vec::new();
+    for hi in 0..node.handlers.len() {
+        match handler_check_fn(node, 0, hi, "__age_hv_") {
+            Some(Ok(item)) => handler_check_items.push(item),
+            Some(Err(ds)) => return Err(ds),
+            None => {}
+        }
+    }
     let mut items = items;
+    items.extend(handler_check_items);
     // PLAN-980 STATE：初值（props 种子）先验后用——形状/类型/重复在发射前具名拒。
     let initial_maps = validate_initials(initials, node, scenario.instances)?;
     // 每个 (实例, 字段) 一个状态函数：该实例的 init（可被初值覆盖）+ 定向 ops，返回该字段。
@@ -1267,22 +1321,324 @@ fn compile_component_scenario_full(
 }
 
 impl ScenarioOp {
-    fn instance(&self) -> usize {
+    pub(crate) fn instance(&self) -> usize {
         match self {
-            ScenarioOp::Send { instance, .. } | ScenarioOp::Tick { instance } => *instance,
+            ScenarioOp::Send { instance, .. }
+            | ScenarioOp::SendArgs { instance, .. }
+            | ScenarioOp::Tick { instance } => *instance,
         }
     }
-    fn msg(&self) -> &str {
+    pub(crate) fn msg(&self) -> &str {
         match self {
-            ScenarioOp::Send { msg, .. } => msg.as_str(),
+            ScenarioOp::Send { msg, .. } | ScenarioOp::SendArgs { msg, .. } => msg.as_str(),
             // `Life.Tick` 在本切片建模为保留消息 `Tick`（运行身份归 981）。
             ScenarioOp::Tick { .. } => "Tick",
         }
     }
 }
 
+/// PLAN-981（IF-981-EVENT-PAYLOAD-B）：载荷类型拼写 → 共享内建类型。
+/// `int/i32/bool/str` 可承载；其余（`float`/`f32`/任意 ident——本切片值域
+/// 没有浮点车道）在**派发时**具名拒（`source.age.component-unsupported`，
+/// 指向原声明），声明本身保持合法（fail-closed，不静默丢值执行）。
+pub(crate) fn payload_type(spelling: &str) -> Option<TypeWord> {
+    match spelling {
+        "int" | "i32" => Some(TypeWord::I32),
+        "bool" => Some(TypeWord::Bool),
+        "str" | "Str" => Some(TypeWord::StrOwned),
+        _ => None,
+    }
+}
+
+/// 一条定向事件对该 node 声明的核对（IF-981-EVENT-PAYLOAD-B）：
+/// arity 与载荷类型域。返回 `(declared_arity, payload_tys)`；unsupported
+/// 拼写以 `source.age.component-unsupported` 具名拒（效果前拒）。
+pub(crate) fn check_event_dispatch(
+    node: &ComponentNode,
+    op: &ScenarioOp,
+) -> Result<(usize, Vec<TypeWord>), Vec<Diagnostic>> {
+    let args_len = match op {
+        ScenarioOp::Send { .. } => 0usize,
+        ScenarioOp::SendArgs { args, .. } => args.len(),
+        ScenarioOp::Tick { .. } => return Ok((0, Vec::new())),
+    };
+    let variant = node.messages.iter().find(|v| v.name == op.msg());
+    let declared = variant.map(|v| v.payload.len()).unwrap_or(0);
+    if declared != args_len {
+        let span = variant.map(|v| v.span).unwrap_or(node.span);
+        return Err(vec![text_diag(
+            "source.age.component-event",
+            format!(
+                "message `{}` declares {} payload slot(s); the directed event carries {} \
+                 value(s) — a payload event must not run with dropped, padded or swapped values",
+                op.msg(),
+                declared,
+                args_len
+            ),
+            span,
+        )]);
+    }
+    let mut tys = Vec::new();
+    if let Some(v) = variant {
+        for spelling in &v.payload {
+            match payload_type(spelling) {
+                Some(t) => tys.push(t),
+                None => {
+                    return Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        format!(
+                            "message `{}` declares payload type `{spelling}`, which this slice \
+                             cannot hold yet (supported: int/i32/bool/str); the dispatch is \
+                             rejected instead of running the handler without its value",
+                            v.name
+                        ),
+                        v.span,
+                    )]);
+                }
+            }
+        }
+    }
+    Ok((declared, tys))
+}
+
+/// PLAN-981（IF-981-PARAMS-B）：handler 形参与消息载荷的**声明级**绑定核对。
+/// 逐 handler：形参数必须等于变体载荷槽数（未声明变体按 0），重复形参具名拒。
+/// 未派发也核对（"未调用 handler 亦按原声明语义 verify"）。
+pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Diagnostic>> {
+    for h in &node.handlers {
+        let declared = node
+            .messages
+            .iter()
+            .find(|v| v.name == h.msg)
+            .map(|v| v.payload.len())
+            .unwrap_or(0);
+        if h.params.len() != declared {
+            // span 指到“多出来的那个形参”；形参不足时落在 handler 自身。
+            let span = h
+                .params
+                .get(declared)
+                .map(|(_, s)| *s)
+                .or(h.params.last().map(|(_, s)| *s))
+                .unwrap_or(h.span);
+            return Err(vec![text_diag(
+                "source.age.component-event",
+                format!(
+                    "handler `{}` binds {} parameter(s) but the message declares {} payload \
+                     slot(s); handlers and payloads must agree position by position",
+                    h.msg,
+                    h.params.len(),
+                    declared
+                ),
+                span,
+            )]);
+        }
+        let mut seen: Vec<&str> = Vec::new();
+        for (name, span) in &h.params {
+            if seen.contains(&name.as_str()) {
+                return Err(vec![text_diag(
+                    "source.age.component-event",
+                    format!(
+                        "handler `{}` binds parameter `{name}` twice; each payload slot needs \
+                         its own binder",
+                        h.msg
+                    ),
+                    *span,
+                )]);
+            }
+            seen.push(name);
+        }
+        // 赋值目标必须是本 node 的 model 字段——**未派发**也核对（R59-3 同一
+        // 规则；此前只在实际派发 replay 时才查，未调用 handler 的坏赋值静默）。
+        for assign in &h.assigns {
+            if !node.fields.iter().any(|f| f.name == assign.field) {
+                return Err(vec![text_diag(
+                    "source.age.component-event",
+                    format!(
+                        "`on {}` assigns undeclared model field `{}`",
+                        h.msg, assign.field
+                    ),
+                    assign.span,
+                )]);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// PLAN-981（IF-981-PARAMS-B）：把一个 handler 体铸成**隐藏检查函数**——
+/// 形参成为真函数参数（类型来自载荷声明拼写经共享类型表），model 字段按
+/// 实例 0 声明初始化，赋值体逐条重放。这样**未派发**的 handler 也按原声明
+/// 语义进唯一 verify（未绑定名/类型/作用域全由共享检查判定），不造默认值
+/// 或常量场景。返回 `None` 表示该 handler 无需/无法发射（无字段可观察，或
+/// 载荷拼写本切片不可承载——后者派发车道已具名拒）。
+pub(crate) fn handler_check_fn(
+    node: &ComponentNode,
+    node_index: usize,
+    handler_index: usize,
+    prefix: &str,
+) -> Option<Result<Item, Vec<Diagnostic>>> {
+    let h = &node.handlers[handler_index];
+    let first_field = node.fields.first()?;
+    let variant = node.messages.iter().find(|v| v.name == h.msg);
+    let payload = variant.map(|v| v.payload.as_slice()).unwrap_or(&[]);
+    // 形参类型必须可承载；不可承载的载荷车道由派发守卫具名拒，这里不造假类型。
+    let mut params = Vec::new();
+    for (i, ((_name, span), spelling)) in h.params.iter().zip(payload.iter()).enumerate() {
+        match payload_type(spelling) {
+            Some(ty) => {
+                // owned str 载荷按 `move` 形参铸造——handler 体把值写进 owned 字段，
+                // 只读视图形参会在检查时报 ownership（与真实派发路径的 owned let
+                // 局部同语义）；int/bool 是拷贝值，Default 即可。
+                let mode = if matches!(ty, TypeWord::StrOwned) {
+                    crate::source::ast::ParamMode::Move
+                } else {
+                    crate::source::ast::ParamMode::Default
+                };
+                params.push(crate::source::ast::Param {
+                    name: Ident {
+                        name: format!("{prefix}{node_index}_{handler_index}_{i}"),
+                        span: *span,
+                    },
+                    ty: TypeAnn {
+                        kind: TypeRef::Builtin(ty),
+                        span: *span,
+                    },
+                    mode,
+                    default: None,
+                    span: *span,
+                })
+            }
+            None => return None,
+        }
+    }
+    let mut stmts = Vec::new();
+    // 实例 0 的字段初始化（声明语义；不用宿主初值覆盖——那是消费侧配置）。
+    let inst = 0usize;
+    for f in &node.fields {
+        let ty = match field_type(f) {
+            Some(t) => t,
+            None => {
+                return Some(Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    format!(
+                        "`model` field `{}` has type `{}`, which this slice cannot hold yet \
+                         (supported: int/i32/bool/str)",
+                        f.name, f.ty
+                    ),
+                    f.ty_span,
+                )]))
+            }
+        };
+        let init = match rename_expr(&f.init, FieldBinding::Local(inst), &node.fields) {
+            Ok(v) => v,
+            Err(ds) => return Some(Err(ds)),
+        };
+        stmts.push(Stmt::Let {
+            kw: f.span,
+            name: Ident {
+                name: local_name(inst, &f.name),
+                span: f.span,
+            },
+            ann: Some(TypeAnn {
+                kind: TypeRef::Builtin(ty),
+                span: f.ty_span,
+            }),
+            mutable: true,
+            value: init,
+            span: f.span,
+        });
+    }
+    // 赋值体：形参名 → 函数参数名（裸名遮蔽 model；`.field` 恒指字段）。
+    let param_locals: Vec<(String, String, Span)> = h
+        .params
+        .iter()
+        .enumerate()
+        .map(|(i, (name, span))| {
+            (
+                name.clone(),
+                format!("{prefix}{node_index}_{handler_index}_{i}"),
+                *span,
+            )
+        })
+        .collect();
+    for assign in &h.assigns {
+        let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
+            // check_handler_bindings 已拒；这里是同判定的发射侧防御。
+            return Some(Err(vec![text_diag(
+                "source.age.component-event",
+                format!(
+                    "`on {}` assigns undeclared model field `{}`",
+                    h.msg, assign.field
+                ),
+                assign.span,
+            )]));
+        };
+        let renamed = match rename_expr_with_params(
+            &assign.rhs,
+            FieldBinding::Local(inst),
+            &node.fields,
+            &param_locals,
+        ) {
+            Ok(v) => v,
+            Err(ds) => return Some(Err(ds)),
+        };
+        stmts.push(Stmt::Assign {
+            target: crate::source::ast::AssignTarget {
+                base: Ident {
+                    name: local_name(inst, &field.name),
+                    span: assign.span,
+                },
+                path: Vec::new(),
+            },
+            value: wrap_owned_transfer(renamed, field, &param_locals),
+            span: assign.span,
+        });
+    }
+    stmts.push(Stmt::Return {
+        value: Expr {
+            span: first_field.span,
+            kind: ExprKind::Var(Ident {
+                name: local_name(inst, &first_field.name),
+                span: first_field.span,
+            }),
+        },
+        span: first_field.span,
+    });
+    let ret_ty = match field_type(first_field) {
+        Some(t) => t,
+        None => return None,
+    };
+    Some(Ok(Item::Fn(FnItem {
+        name: Ident {
+            name: format!("{prefix}{node_index}_{handler_index}"),
+            span: h.span,
+        },
+        type_params: Vec::new(),
+        params,
+        ret: TypeAnn {
+            kind: TypeRef::Builtin(ret_ty),
+            span: first_field.ty_span,
+        },
+        body: Block {
+            stmts,
+            span: h.span,
+        },
+        span: h.span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+    })))
+}
+
 pub(crate) fn local_name(instance: usize, field: &str) -> String {
     format!("__age_s_{instance}_{field}")
+}
+
+/// PLAN-981（IF-981-PARAMS-B）：一次派发的载荷实参卫生局部名。`(实例,
+/// 场景序, 位置)` 全局定位——同实例不同事件、不同 node 的状态函数各自
+/// 独立发射，互不串局部。
+pub(crate) fn arg_local_name(instance: usize, seq: usize, pos: usize) -> String {
+    format!("__age_a_{instance}_{seq}_{pos}")
 }
 
 /// 表达式重命名：model 字段标识符 → 实例局部变量（只支持下述形状，其余具名拒）。
@@ -1291,6 +1647,19 @@ pub(crate) fn rename_expr(
     binding: FieldBinding,
     fields: &[ComponentField],
 ) -> Result<Expr, Vec<Diagnostic>> {
+    rename_expr_with_params(expr, binding, fields, &[])
+}
+
+/// PLAN-981（IF-981-PARAMS-B）：带 handler 形参遮蔽的重命名。`param_locals`
+/// 是（形参名 → 卫生局部名）表——**裸标识符**先查形参（param 与 model 字段
+/// 同拼写时 param 胜出），`.field` 语法（`self` 基座）仍恒指实例 model，
+/// 不被形参遮蔽。形参表为空即等价 [`rename_expr`]。
+pub(crate) fn rename_expr_with_params(
+    expr: &Expr,
+    binding: FieldBinding,
+    fields: &[ComponentField],
+    param_locals: &[(String, String, Span)],
+) -> Result<Expr, Vec<Diagnostic>> {
     Ok(match &expr.kind {
         ExprKind::IntLit(_)
         | ExprKind::BoolLit(_)
@@ -1298,7 +1667,8 @@ pub(crate) fn rename_expr(
         | ExprKind::CharLit(_)
         | ExprKind::NilLit => expr.clone(),
         // PLAN-980：widget DSL 的  引用（投影为 Field{base: Var("self")}）
-        // = model 字段引用——与裸 Var 同一重命名通道。
+        // = model 字段引用——与裸 Var 同一重命名通道；PLAN-981 PARAMS-B：
+        // `.field` **不**走形参遮蔽（形参只遮蔽裸标识符）。
         ExprKind::Field { base, name } if matches!(base.kind, ExprKind::Var(ref v) if v.name == "self") => {
             match fields.iter().find(|f| f.name == name.name) {
                 Some(f) => match binding {
@@ -1338,47 +1708,66 @@ pub(crate) fn rename_expr(
             span: expr.span,
             kind: ExprKind::Unary {
                 op: *op,
-                operand: Box::new(rename_expr(operand, binding, fields)?),
+                operand: Box::new(rename_expr_with_params(
+                    operand,
+                    binding,
+                    fields,
+                    param_locals,
+                )?),
             },
         },
-        ExprKind::Var(id) => match fields.iter().find(|f| f.name == id.name) {
-            Some(f) => match binding {
-                FieldBinding::Local(inst) => Expr {
+        // PLAN-981（IF-981-PARAMS-B）：裸标识符——形参先于 model 字段
+        //（param 与字段同拼写时 param 胜出；未命中两者的保持原样交共享
+        // verify 报未绑定名，本层不猜）。
+        ExprKind::Var(id) => {
+            if let Some((_, local, _)) = param_locals.iter().find(|(p, _, _)| *p == id.name) {
+                return Ok(Expr {
                     span: expr.span,
                     kind: ExprKind::Var(Ident {
-                        name: local_name(inst, &f.name),
+                        name: local.clone(),
                         span: id.span,
                     }),
-                },
-                FieldBinding::StateFn(inst) => Expr {
-                    span: expr.span,
-                    kind: ExprKind::Call {
-                        callee: Ident {
-                            name: state_fn_name(inst, &f.name),
+                });
+            }
+            match fields.iter().find(|f| f.name == id.name) {
+                Some(f) => match binding {
+                    FieldBinding::Local(inst) => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Var(Ident {
+                            name: local_name(inst, &f.name),
                             span: id.span,
+                        }),
+                    },
+                    FieldBinding::StateFn(inst) => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: state_fn_name(inst, &f.name),
+                                span: id.span,
+                            },
+                            args: Vec::new(),
                         },
-                        args: Vec::new(),
+                    },
+                    FieldBinding::StateFnAt { node, inst } => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: state_fn_name_at(node, inst, &f.name),
+                                span: id.span,
+                            },
+                            args: Vec::new(),
+                        },
                     },
                 },
-                FieldBinding::StateFnAt { node, inst } => Expr {
-                    span: expr.span,
-                    kind: ExprKind::Call {
-                        callee: Ident {
-                            name: state_fn_name_at(node, inst, &f.name),
-                            span: id.span,
-                        },
-                        args: Vec::new(),
-                    },
-                },
-            },
-            None => expr.clone(),
-        },
+                None => expr.clone(),
+            }
+        }
         ExprKind::Binary { op, lhs, rhs } => Expr {
             span: expr.span,
             kind: ExprKind::Binary {
                 op: *op,
-                lhs: Box::new(rename_expr(lhs, binding, fields)?),
-                rhs: Box::new(rename_expr(rhs, binding, fields)?),
+                lhs: Box::new(rename_expr_with_params(lhs, binding, fields, param_locals)?),
+                rhs: Box::new(rename_expr_with_params(rhs, binding, fields, param_locals)?),
             },
         },
         ExprKind::Call { callee, args } => Expr {
@@ -1387,18 +1776,23 @@ pub(crate) fn rename_expr(
                 callee: callee.clone(),
                 args: args
                     .iter()
-                    .map(|a| rename_arg(a, binding, fields))
+                    .map(|a| rename_arg(a, binding, fields, param_locals))
                     .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
             },
         },
         ExprKind::Method { recv, name, args } => Expr {
             span: expr.span,
             kind: ExprKind::Method {
-                recv: Box::new(rename_expr(recv, binding, fields)?),
+                recv: Box::new(rename_expr_with_params(
+                    recv,
+                    binding,
+                    fields,
+                    param_locals,
+                )?),
                 name: name.clone(),
                 args: args
                     .iter()
-                    .map(|a| rename_arg(a, binding, fields))
+                    .map(|a| rename_arg(a, binding, fields, param_locals))
                     .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
             },
         },
@@ -1415,18 +1809,50 @@ fn rename_arg(
     arg: &crate::source::ast::Arg,
     binding: FieldBinding,
     fields: &[ComponentField],
+    param_locals: &[(String, String, Span)],
 ) -> Result<crate::source::ast::Arg, Vec<Diagnostic>> {
     use crate::source::ast::Arg;
     Ok(match arg {
-        Arg::Pos(e) => Arg::Pos(rename_expr(e, binding, fields)?),
-        Arg::MovePos(e) => Arg::MovePos(rename_expr(e, binding, fields)?),
+        Arg::Pos(e) => Arg::Pos(rename_expr_with_params(e, binding, fields, param_locals)?),
+        Arg::MovePos(e) => Arg::MovePos(rename_expr_with_params(e, binding, fields, param_locals)?),
         Arg::Named { name, value, span } => Arg::Named {
             name: name.clone(),
-            value: rename_expr(value, binding, fields)?,
+            value: rename_expr_with_params(value, binding, fields, param_locals)?,
             span: *span,
         },
     })
 }
+/// PLAN-981（IF-981-PARAMS-B）：owned-str 载荷局部直接赋给 owned 字段是**隐式
+/// 转移**（`verify.ownership-required`）——把这类裸参数读包成 `.clone()`（拷贝
+/// 一份新值）。求值次数不变（局部已由 `let` 求值一次；clone 是拷贝不是重求值），
+/// 标量载荷不受影响（拷贝语义，无需包）。
+fn wrap_owned_transfer(
+    value: Expr,
+    field: &ComponentField,
+    param_locals: &[(String, String, Span)],
+) -> Expr {
+    if field_type(field) == Some(TypeWord::StrOwned) {
+        if let ExprKind::Var(ref v) = value.kind {
+            if param_locals.iter().any(|(_, local, _)| *local == v.name) {
+                let name_span = v.span;
+                let span = value.span;
+                return Expr {
+                    span,
+                    kind: ExprKind::Method {
+                        recv: Box::new(value),
+                        name: Ident {
+                            name: "clone".to_string(),
+                            span: name_span,
+                        },
+                        args: Vec::new(),
+                    },
+                };
+            }
+        }
+    }
+    value
+}
+
 /// 场景：单个实例的局部状态 + 定向 ops（驱动、状态函数与文本函数共用形状）。
 /// PLAN-980 STATE：`overrides` 命中的字段以初值字面量替换源内 init（源不变）。
 pub(crate) fn instance_stmts(
@@ -1470,7 +1896,7 @@ pub(crate) fn instance_stmts(
             span: f.span,
         });
     }
-    for op in &scenario.ops {
+    for (seq, op) in scenario.ops.iter().enumerate() {
         if op.instance() != inst {
             continue;
         }
@@ -1485,6 +1911,57 @@ pub(crate) fn instance_stmts(
                 node.span,
             )]
         })?;
+        // PLAN-981（IF-981-EVENT-PAYLOAD-B）：arity/载荷类型域在**效果前**拒。
+        // `Send` 恒为空载荷——向声明了载荷槽的变体 `Send` 是 arity 域错误，
+        // 不能丢参后跑常量体（A 期的具名 unsupported 由此被真实语义取代）。
+        let (_, payload_tys) = check_event_dispatch(node, op)?;
+        // PLAN-981（IF-981-PARAMS-B）：实参在声明作用域求值**一次**（一个
+        // `let`），按位置绑定到卫生局部名；handler 体里对该形参的引用改名到
+        // 同一局部。载荷槽类型来自声明拼写（共享类型表），let 的类型注解让
+        // 唯一 verify 在原 span 报错 type/未绑定名。
+        let args: &[Expr] = match op {
+            ScenarioOp::SendArgs { args, .. } => args,
+            ScenarioOp::Send { .. } | ScenarioOp::Tick { .. } => &[],
+        };
+        let anchor = node
+            .messages
+            .iter()
+            .find(|v| v.name == msg)
+            .map(|v| v.span)
+            .unwrap_or(handler.span);
+        let mut param_locals: Vec<(String, String, Span)> = Vec::new();
+        for (pos, ((param, p_span), ty)) in
+            handler.params.iter().zip(payload_tys.iter()).enumerate()
+        {
+            let local = arg_local_name(inst, seq, pos);
+            let Some(arg) = args.get(pos) else {
+                // check_event_dispatch 已保证 arity 一致；这是不可达的纵深防御。
+                return Err(vec![text_diag(
+                    "source.age.component-event",
+                    format!(
+                        "message `{msg}` dispatch is missing payload value #{pos} for \
+                         parameter `{param}`"
+                    ),
+                    anchor,
+                )]);
+            };
+            let bound = rename_expr(arg, FieldBinding::Local(inst), &node.fields)?;
+            stmts.push(Stmt::Let {
+                kw: anchor,
+                name: Ident {
+                    name: local.clone(),
+                    span: *p_span,
+                },
+                ann: Some(TypeAnn {
+                    kind: TypeRef::Builtin(*ty),
+                    span: anchor,
+                }),
+                mutable: false,
+                value: bound,
+                span: anchor,
+            });
+            param_locals.push((param.clone(), local, *p_span));
+        }
         for assign in &handler.assigns {
             let field = node
                 .fields
@@ -1508,7 +1985,16 @@ pub(crate) fn instance_stmts(
                     },
                     path: Vec::new(),
                 },
-                value: rename_expr(&assign.rhs, FieldBinding::Local(inst), &node.fields)?,
+                value: wrap_owned_transfer(
+                    rename_expr_with_params(
+                        &assign.rhs,
+                        FieldBinding::Local(inst),
+                        &node.fields,
+                        &param_locals,
+                    )?,
+                    field,
+                    &param_locals,
+                ),
                 span: assign.span,
             });
         }
@@ -1536,11 +2022,18 @@ pub(crate) enum FieldBinding {
     Local(usize),
     StateFn(usize),
     /// R64-4：包内第 `node` 个组件的实例 `inst` 状态函数。
-    StateFnAt { node: usize, inst: usize },
+    StateFnAt {
+        node: usize,
+        inst: usize,
+    },
 }
-/// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动）——用户顶层名不得占用。
-const COMPONENT_RESERVED_NAMES: [&str; 3] =
-    [AGE_COMPONENT_HIDDEN_PREFIX, "__age_state_", "__age_drive"];
+/// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动 / 载荷实参局部）——用户顶层名不得占用。
+const COMPONENT_RESERVED_NAMES: [&str; 4] = [
+    AGE_COMPONENT_HIDDEN_PREFIX,
+    "__age_state_",
+    "__age_drive",
+    "__age_a_",
+];
 
 /// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6/N6）。
 fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
