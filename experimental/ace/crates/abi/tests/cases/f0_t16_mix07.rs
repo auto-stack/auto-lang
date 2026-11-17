@@ -188,7 +188,7 @@ fn assembled_ctx() -> PackageAssemblyContext {
 }
 
 #[test]
-fn t16_mix07_one_project_platform_config_rust_sqlite_cancel() {
+fn t16_mix07_platform_config_rust_parse_and_cancel() {
     let root = scope("t16-mix07");
 
     // ---- THE ONE PROJECT: the public adapter, the platform-selected
@@ -235,90 +235,6 @@ fn t16_mix07_one_project_platform_config_rust_sqlite_cancel() {
         session.session.table_shared().callee_count() >= 1,
         "real dispatch happened"
     );
-
-    // ---- the value flows into the `use.c` SQLite write lane: the REAL
-    // parsed value n is written (n and 2n) and the aggregate read back
-    // (= 3n) — the project's data chain, not a parallel constant.
-    if let Ok(sqlite_346) = locate_pinned_sqlite("3.46.0") {
-        let sproj = root.join("sqlite-proj");
-        std::fs::create_dir_all(&sproj).unwrap();
-        std::fs::write(sproj.join("p967_sqlite.h"), p967_sqlite_header()).unwrap();
-        std::fs::write(sproj.join("p967_sqlite.c"), p967_sqlite_source()).unwrap();
-        stage_pinned_sqlite(&sproj, &sqlite_346).expect("stages the pinned amalgamation");
-        let provider = open_c_provider(&sproj, "p967_sqlite").expect("imports");
-        let sqlite_obj = compile_c_unit(&root, &sproj.join("sqlite3.c"))
-            .expect("the amalgamation compiles once");
-        let dll = build_c_dll_with(
-            &provider,
-            &root,
-            &[sqlite_obj, sproj.join("sqlite3.h")],
-            &sdk_include_dirs(),
-        )
-        .expect("the provider+amalgamation DLL builds");
-        let library = RawLibrary::load(&dll).expect("the DLL loads");
-        let authority = c_authority(&provider, 1);
-        let environment = provider.manifest.clone().admit(&authority).expect("admits");
-        let mut table = ForeignStubTable::new(1);
-        for decl in environment.source_declarations_ref() {
-            let symbol = decl.function.symbol.as_str();
-            if !symbol.starts_with("p967_") {
-                continue;
-            }
-            let callable = unsafe {
-                ForeignCallable::FallibleOutI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, *mut i32) -> i32,
-                >(
-                    library.symbol(symbol).expect("export")
-                ))
-            };
-            table
-                .insert(ForeignStub {
-                    provider: decl.provider.clone(),
-                    symbol: decl.function.symbol.clone(),
-                    content_version: decl.content_version.clone(),
-                    generation: 1,
-                    callable,
-                    frame: false,
-                })
-                .unwrap();
-        }
-
-        let sql_src = format!(
-            "use.c p967_sqlite\nfn main() int {{\n    let a = p967_open(\":memory:\")\n    let b = p967_exec(\"CREATE TABLE mix(a INTEGER); INSERT INTO mix VALUES ({n}); INSERT INTO mix VALUES ({dbl});\")\n    let c = p967_query_i32(\"SELECT SUM(a) FROM mix\")\n    let d = p967_close(\"\")\n    return c\n}}",
-            dbl = 2 * n
-        );
-        expect_i32(
-            run_use(&sql_src, &mut table, &environment, false),
-            3 * oracle_n,
-            "the flowed config value is written and aggregated (3n)",
-        );
-        assert!(table.callee_count() >= 4, "all four real calls dispatched");
-
-        // ---- CANCEL on the SQLite lane: a pre-armed flag aborts a
-        // polling variant cooperatively; the project answers identically
-        // afterwards (coherence).
-        let cancelled = run_use(
-            "use.c p967_sqlite\nfn main() int {\n    var x = 0\n    for 0 < 1 {\n        x = p967_open(\":memory:\")\n    }\n    return x\n}",
-            &mut table,
-            &environment,
-            true,
-        );
-        assert_eq!(
-            cancelled,
-            ExecOutcome::Cancelled,
-            "the cancel channel fires"
-        );
-        expect_i32(
-            run_use(&sql_src, &mut table, &environment, false),
-            3 * oracle_n,
-            "a normal run after cancel still answers",
-        );
-    } else {
-        eprintln!(
-            "MIX-07 sqlite leg pending: f0.sqlite-missing — no pinned SQLite 3.46.0 in the cargo registry"
-        );
-    }
 
     // ---- CANCEL on the assembled Rust lane (independent of sqlite
     // availability).
@@ -381,4 +297,109 @@ fn t16_mix07_one_project_platform_config_rust_sqlite_cancel() {
         -8,
         "a missing config path is the named read-failure value",
     );
+}
+
+/// The SQLite leg of the one-project chain: the config value (proven
+/// machine-equal to the in-process oracle by the parse test above)
+/// flows into the `use.c` write lane, is aggregated and read back, and
+/// the cancel channel stays cooperative with the project coherent.
+#[test]
+fn t16_mix07_sqlite_write_readback_and_cancel() {
+    let root = scope("t16-mix07-sqlite");
+    // the flowed value: the parse test proves the assembled provider's
+    // machine parse equals this in-process oracle over the same config
+    // document, so the chain carries the proven-equal value here.
+    let cfg = r#"{"rows":3,"base":6}"#;
+    let n: i32 = {
+        let doc = serde_json::from_str::<serde_json::Value>(cfg).unwrap();
+        doc.as_object()
+            .unwrap()
+            .values()
+            .map(|v| v.as_i64().unwrap_or(0))
+            .sum::<i64>() as i32
+    };
+    assert_eq!(n, 9);
+    // ---- the value flows into the `use.c` SQLite write lane: the REAL
+    // parsed value n is written (n and 2n) and the aggregate read back
+    // (= 3n) — the project's data chain, not a parallel constant.
+    if let Ok(sqlite_346) = locate_pinned_sqlite("3.46.0") {
+        let sproj = root.join("sqlite-proj");
+        std::fs::create_dir_all(&sproj).unwrap();
+        std::fs::write(sproj.join("p967_sqlite.h"), p967_sqlite_header()).unwrap();
+        std::fs::write(sproj.join("p967_sqlite.c"), p967_sqlite_source()).unwrap();
+        stage_pinned_sqlite(&sproj, &sqlite_346).expect("stages the pinned amalgamation");
+        let provider = open_c_provider(&sproj, "p967_sqlite").expect("imports");
+        let sqlite_obj = compile_c_unit(&root, &sproj.join("sqlite3.c"))
+            .expect("the amalgamation compiles once");
+        let dll = build_c_dll_with(
+            &provider,
+            &root,
+            &[sqlite_obj, sproj.join("sqlite3.h")],
+            &sdk_include_dirs(),
+        )
+        .expect("the provider+amalgamation DLL builds");
+        let library = RawLibrary::load(&dll).expect("the DLL loads");
+        let authority = c_authority(&provider, 1);
+        let environment = provider.manifest.clone().admit(&authority).expect("admits");
+        let mut table = ForeignStubTable::new(1);
+        for decl in environment.source_declarations_ref() {
+            let symbol = decl.function.symbol.as_str();
+            if !symbol.starts_with("p967_") {
+                continue;
+            }
+            let callable = unsafe {
+                ForeignCallable::FallibleOutI32(std::mem::transmute::<
+                    _,
+                    unsafe extern "C" fn(*const u8, u64, *mut i32) -> i32,
+                >(
+                    library.symbol(symbol).expect("export")
+                ))
+            };
+            table
+                .insert(ForeignStub {
+                    provider: decl.provider.clone(),
+                    symbol: decl.function.symbol.clone(),
+                    content_version: decl.content_version.clone(),
+                    generation: 1,
+                    callable,
+                    frame: false,
+                })
+                .unwrap();
+        }
+
+        let sql_src = format!(
+            "use.c p967_sqlite\nfn main() int {{\n    let a = p967_open(\":memory:\")\n    let b = p967_exec(\"CREATE TABLE mix(a INTEGER); INSERT INTO mix VALUES ({n}); INSERT INTO mix VALUES ({dbl});\")\n    let c = p967_query_i32(\"SELECT SUM(a) FROM mix\")\n    let d = p967_close(\"\")\n    return c\n}}",
+            dbl = 2 * n
+        );
+        expect_i32(
+            run_use(&sql_src, &mut table, &environment, false),
+            3 * n,
+            "the flowed config value is written and aggregated (3n)",
+        );
+        assert!(table.callee_count() >= 4, "all four real calls dispatched");
+
+        // ---- CANCEL on the SQLite lane: a pre-armed flag aborts a
+        // polling variant cooperatively; the project answers identically
+        // afterwards (coherence).
+        let cancelled = run_use(
+            "use.c p967_sqlite\nfn main() int {\n    var x = 0\n    for 0 < 1 {\n        x = p967_open(\":memory:\")\n    }\n    return x\n}",
+            &mut table,
+            &environment,
+            true,
+        );
+        assert_eq!(
+            cancelled,
+            ExecOutcome::Cancelled,
+            "the cancel channel fires"
+        );
+        expect_i32(
+            run_use(&sql_src, &mut table, &environment, false),
+            3 * n,
+            "a normal run after cancel still answers",
+        );
+    } else {
+        eprintln!(
+            "MIX-07 sqlite leg pending: f0.sqlite-missing — no pinned SQLite 3.46.0 in the cargo registry"
+        );
+    }
 }

@@ -42,12 +42,20 @@ pub const HEADER: &str =
     "row_id\tfamily\tobligation\tsuccessor\tphase\tdisposition\tevidence_state\tevidence_ref";
 
 pub const PHASES: [&str; 3] = ["A", "B", "AB"];
-pub const DISPOSITIONS: [&str; 4] = [
+pub const DISPOSITIONS: [&str; 5] = [
     "inherited",
     "named-replacement",
     "internal-retire",
     "product-B",
+    // M2-TARGET-SCOPE-20261116 (user ruling): a user-deferred row is
+    // never PASS/NA and only the named Godot target rows may carry it.
+    "user-deferred",
 ];
+/// The only rows the M2-TARGET-SCOPE-20261116 user ruling moved out of
+/// M2 (Godot script/scene targets). Any other row claiming
+/// `user-deferred` is RED — deferring a required row needs a recorded
+/// user ruling, not an editor's choice.
+pub const ALLOWED_USER_DEFERRED: [&str; 2] = ["B-04", "B-06"];
 pub const EVIDENCE_STATES: [&str; 3] = ["landed", "inflight", "pending"];
 
 /// Receipt roots: a `landed` evidence citation must live under one of
@@ -215,6 +223,22 @@ pub fn validate_ledger(text: &str, workspace_root: &Path) -> Result<LedgerReport
                 row.row_id,
                 row.disposition
             ));
+        }
+        if row.disposition == "user-deferred" {
+            if !ALLOWED_USER_DEFERRED.contains(&row.row_id.as_str()) {
+                return Err(format!(
+                    "line {}: row `{}` user-deferred without a recorded user ruling (M2-TARGET-SCOPE allowlist)",
+                    index + 2,
+                    row.row_id
+                ));
+            }
+            if row.evidence_state != "pending" {
+                return Err(format!(
+                    "line {}: row `{}` user-deferred must stay pending (a deferred target is never PASS/NA)",
+                    index + 2,
+                    row.row_id
+                ));
+            }
         }
         if !EVIDENCE_STATES.contains(&row.evidence_state.as_str()) {
             return Err(format!(
@@ -421,6 +445,36 @@ mod tests {
         assert_ne!(&no_owner, &text);
         let err = validate_ledger(&no_owner, &root()).expect_err("unowned row must be RED");
         assert!(err.contains("successor owner"), "{err}");
+    }
+
+    /// V-TARGET-SCOPE ledger leg: deferring a REQUIRED row without a
+    /// recorded user ruling is RED, and a user-deferred row never
+    /// claims PASS.
+    #[test]
+    fn p985_target_scope_deferred_rows_are_red() {
+        let text = real_text();
+        // B-05 is the production-TS required row (landed): flipping it
+        // to user-deferred defers a required row with no ruling.
+        let Some(b05) = text.lines().find(|l| l.starts_with("B-05	")) else {
+            panic!("B-05 exists in the real matrix");
+        };
+        let deferred = b05.replacen("	inherited	", "	user-deferred	", 1);
+        assert_ne!(&deferred, b05);
+        let mutated = text.replace(b05, &deferred);
+        let err =
+            validate_ledger(&mutated, &root()).expect_err("deferring a required row must be RED");
+        assert!(err.contains("without a recorded user ruling"), "{err}");
+
+        // B-04 is a ruled user-deferred row: claiming evidence is RED.
+        let Some(b04) = text.lines().find(|l| l.starts_with("B-04	")) else {
+            panic!("B-04 exists in the real matrix");
+        };
+        let inflated = b04.replacen("	pending	", "	inflight	", 1);
+        assert_ne!(&inflated, b04);
+        let mutated = text.replace(b04, &inflated);
+        let err = validate_ledger(&mutated, &root())
+            .expect_err("a user-deferred row claiming evidence must be RED");
+        assert!(err.contains("never PASS/NA"), "{err}");
     }
 
     /// Pending-honesty control: a pending row citing a receipt is RED

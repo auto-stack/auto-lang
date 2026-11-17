@@ -43,7 +43,7 @@ L-41	L	全局store let/var/const/shared/CVar	960	A	inherited	landed	docs/specs/a
 L-42	L	泛型type/const参数/turbofish	963	A	inherited	landed	docs/specs/ace-migration/m2-generics.md:91e902aa5bfabb0f
 L-43	L	TaskDef/on=>事件	968	A	inherited	landed	docs/specs/ace-migration/m2-scheduler.md:869aaf24495d5557
 L-44	L	Node语句/表达式+OnEvents/SceneDecl	979/977/980	A	inherited	landed	docs/specs/ace-migration/m2-schema.md:19ebf62a55d30623
-L-45	L	NavCall路由调用	980	A	inherited	pending	
+L-45	L	NavCall路由调用	980	B	inherited	pending	
 L-46	L	spread/set字面量/when-match/global(无此形守卫)	959	A	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 L-47	L	调用语义:动态调用/方法分派/管道	963	A	named-replacement	landed	docs/specs/ace-migration/m2-generics.md:91e902aa5bfabb0f
 L-48	L	索引/place赋值/复合赋值	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
@@ -67,12 +67,12 @@ S-16	S	net/http/sse/url域	948/974/983	A	inherited	landed	docs/specs/ace-migrati
 S-17	S	sqlite域	975	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-data.md:bf67060663c5f12b
 S-18	S	redis域	975	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-data.md:bf67060663c5f12b
 S-19	S	task/async/sched(timer)域	947/968/973/974	A	inherited	landed	docs/specs/ace-migration/m2-scheduler.md:869aaf24495d5557
-S-20	S	media(image)域	980/OS064	A	inherited	pending	
-S-21	S	terminal域	984/OS064	A	inherited	pending	
+S-20	S	media(image)域	980/OS064	B	inherited	pending	
+S-21	S	terminal域	984/OS064	B	inherited	pending	
 S-22	S	clipboard/dialog/dnd/i18n/frame宿主面	967/980	A	inherited	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 S-23	S	ui.at/widget/aura域	979/980	A	inherited	landed	docs/specs/ace-migration/m2-schema.md:19ebf62a55d30623
 S-24	S	test.at/test_mod域	971	A	inherited	landed	docs/specs/ace-migration/m2-tools.md:c69d0afd1aa1fdf3
-S-25	S	c面(stdio.c/stdlib.c装配)	982/987	A	named-replacement	pending	
+S-25	S	c面(stdio.c/stdlib.c装配)	982/987	B	named-replacement	pending	
 FFI-M2-01	FFI	公共use.c/use.rs绑定前门	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 FFI-M2-02	FFI	C importer(预处理/布局/callback)	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 FFI-M2-03	FFI	Rust API元数据→C兼容shim	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
@@ -102,11 +102,11 @@ A-10	AENTRY	pub use vm整包直连	967/980/983	AB	named-replacement	landed	docs/
 A-11	AENTRY	AutoInterpreter	982	B	product-B	pending	
 A-12	AENTRY	a2r_std中立保留	959	B	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 B-01	BENTRY	A2R Rust目标	969/980/982/983	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
-B-02	BENTRY	A2C C目标	982	AB	inherited	pending	
+B-02	BENTRY	A2C C目标	982	AB	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
 B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:83af83e29cd299f4
-B-04	BENTRY	A2GD Godot目标	977	AB	inherited	pending	
+B-04	BENTRY	A2GD Godot目标	977	AB	user-deferred	pending	
 B-05	BENTRY	A2TS TypeScript目标	976	AB	inherited	landed	docs/specs/ace-migration/m2-typescript.md:914bbadae9af3f85
-B-06	BENTRY	SCENE目标	977	AB	inherited	pending	
+B-06	BENTRY	SCENE目标	977	AB	user-deferred	pending	
 B-07	BENTRY	其余相邻目标	977	AB	inherited	pending	
 B-08	BENTRY	r2a反向	977	AB	inherited	pending	
 B-09	BENTRY	s2s同构	977	AB	inherited	pending	
