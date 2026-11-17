@@ -2027,12 +2027,15 @@ pub(crate) enum FieldBinding {
         inst: usize,
     },
 }
-/// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动 / 载荷实参局部）——用户顶层名不得占用。
-const COMPONENT_RESERVED_NAMES: [&str; 4] = [
+/// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动 / 载荷实参局部 / handler
+/// 检查函数）——用户顶层名不得占用（review-B1：`__age_hv_` 补入，具名拒
+/// 而不是落到重复符号的通用诊断）。
+const COMPONENT_RESERVED_NAMES: [&str; 5] = [
     AGE_COMPONENT_HIDDEN_PREFIX,
     "__age_state_",
     "__age_drive",
     "__age_a_",
+    "__age_hv_",
 ];
 
 /// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6/N6）。

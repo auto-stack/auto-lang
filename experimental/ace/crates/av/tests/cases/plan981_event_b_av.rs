@@ -323,6 +323,57 @@ fn p981_evt_b_bind_multi_payload_positional_binding() {
     assert_eq!(widths2, vec![9]);
 }
 
+/// V-EVT-B-PAYLOAD（review-B1）：bool 载荷的正例（cap_event_arg_bool_and_float_literals
+/// 的 bool 半边——float 半边是具名拒车道，见 core 侧 plan981_event_b）。
+/// `.Toggle(on) -> { .flag = on }` 两实例分别 true/false，经状态通道取回。
+#[test]
+fn p981_evt_b_bool_payload_binds_positively() {
+    const SRC: &str = "node T {\n\
+    msg Msg { Toggle(bool) }\n\
+    on {\n\
+        .Toggle(on) -> {\n\
+            .flag = on\n\
+        }\n\
+    }\n\
+    model {\n\
+        flag bool = false\n\
+    }\n\
+    view {\n\
+        text \"t\" {}\n\
+    }\n\
+}\n";
+    let a = anchor(SRC, "Toggle(bool)");
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::send_args_from_values(0, "Toggle", &[InitialValue::Bool(true)], a),
+            ScenarioOp::send_args_from_values(1, "Toggle", &[InitialValue::Bool(false)], a),
+        ],
+    };
+    let compiled = ace_av::age_component::compile_component_scenario_states(
+        SRC,
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &scenario,
+        &ace_core::source::age_component::ComponentInitials {
+            per_instance: vec![Vec::new(), Vec::new()],
+        },
+    )
+    .expect("the bool payload scenario compiles");
+    let observed = ace_av::age_component::observe_component_states(&compiled)
+        .expect("AV returns the bool states");
+    let flags: Vec<bool> = observed
+        .per_instance
+        .iter()
+        .map(|row| match &row[0].1 {
+            ace_av::age_component::ComponentFieldValue::Bool(b) => *b,
+            other => panic!("flag is not bool: {other:?}"),
+        })
+        .collect();
+    assert_eq!(flags, vec![true, false], "each instance keeps its own bool");
+}
+
 /// V-EVT-B-BIND：param 与 model **同拼写**——裸 `count` 是形参、`.count` 恒指
 /// 实例字段（负控：删除 binder 映射把裸名当 model 读，本例终值必须从 5 变 0）。
 #[test]
