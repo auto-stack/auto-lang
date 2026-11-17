@@ -52,38 +52,72 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
     if !test_root.is_dir() {
         return Err("legacy test input root missing".into());
     }
+    // PLAN-1066 T-08 (NC-19/NC-26): a migration entry's inventory identity is
+    // its DOCUMENT — the author source and the oracle carrier — not the frozen
+    // `.at`/`.as`/`.expected.*` sidecars. No sidecar path or hash is read here:
+    // a removed document shows up as `present:false` with its path instead of
+    // falling back to a sidecar, and a polluted sidecar cannot change identity.
+    fn document_entry(
+        case_dir: &Path,
+        stem: &str,
+        family: &str,
+        id: &str,
+    ) -> Result<serde_json::Value, String> {
+        let doc_path = crate::legacy_doc_for_trans::doc_path(case_dir, stem);
+        let document = file(&doc_path)?;
+        let mut checks: Vec<String> = Vec::new();
+        let mut source_path = format!("{stem}.at");
+        match crate::legacy_doc_for_trans::load_case(case_dir, stem) {
+            Ok(doc) => {
+                source_path = doc.source_path().to_string();
+                checks = doc.check_ids().into_iter().map(|c| c.to_string()).collect();
+            }
+            Err(_) => {}
+        }
+        let oracles: Vec<serde_json::Value> = checks
+            .iter()
+            .map(|check| {
+                serde_json::json!({
+                    "channel": check,
+                    "path": doc_path,
+                    "present": document["present"],
+                    "sha256": document["sha256"],
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "family": family,
+            "id": id,
+            "source": document,
+            "source_path": source_path,
+            "document_checks": checks,
+            "oracles": oracles,
+        }))
+    }
     let mut rows = Vec::new();
     for case in test_runner::discover_vm_tests(&test_root.join("vm")) {
-        let oracles = [case.expected_out, case.expected_result, case.expected_error]
-            .into_iter()
-            .flatten()
-            .map(|p| file(&p))
-            .collect::<Result<Vec<_>, _>>()?;
-        rows.push(
-            serde_json::json!({"family":"vm","id":case.name,"source":file(&case.source_file)?,
-            "bootstrap":case.is_bootstrap,"oracles":oracles}),
-        );
+        let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+            .ok_or_else(|| format!("{}: no case stem", case.name))?;
+        let mut row = document_entry(&case.dir, &stem, "vm", &case.name)?;
+        row["bootstrap"] = serde_json::json!(case.is_bootstrap);
+        rows.push(row);
     }
     for (dir, name) in [("a2r", "a2r"), ("cookbook", "cookbook")] {
         for case in test_runner::discover_a2r_tests(&test_root.join(dir), name) {
-            rows.push(
-                serde_json::json!({"family":name,"id":case.name,"source":file(&case.source_file)?,
-                "oracles":[file(&case.expected_file)?]}),
-            );
+            let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+                .ok_or_else(|| format!("{}: no case stem", case.name))?;
+            rows.push(document_entry(&case.dir, &stem, name, &case.name)?);
         }
     }
     for case in test_runner::discover_a2c_tests(&test_root.join("a2c")) {
-        let mut oracles = vec![file(&case.expected_c)?, file(&case.expected_h)?];
-        if let Some(path) = case.expected_error {
-            oracles.push(file(&path)?);
-        }
-        rows.push(serde_json::json!({"family":"a2c","id":case.name,"source":file(&case.source_file)?,"oracles":oracles}));
+        let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+            .ok_or_else(|| format!("{}: no case stem", case.name))?;
+        rows.push(document_entry(&case.dir, &stem, "a2c", &case.name)?);
     }
     for case in test_runner::discover_a2ts_tests(&test_root.join("a2ts")) {
-        rows.push(
-            serde_json::json!({"family":"a2ts","id":case.name,"source":file(&case.source_file)?,
-            "oracles":[file(&case.expected_file)?]}),
-        );
+        let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+            .ok_or_else(|| format!("{}: no case stem", case.name))?;
+        rows.push(document_entry(&case.dir, &stem, "a2ts", &case.name)?);
     }
     rows.sort_by_key(|r| {
         (

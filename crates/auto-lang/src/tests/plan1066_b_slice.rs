@@ -749,3 +749,62 @@ fn plan1066_b_project_documents_own_their_projects() {
         );
     }
 }
+
+/// NC-19: the legacy inventory reports the DOCUMENT as the entry identity.
+/// A doc-only mirror still lists the entry (no sidecar fallback), polluting the
+/// frozen sidecars does not change the identity, and a removed document shows
+/// up as `present: false` with its document path instead of silently falling
+/// back to a sidecar or dropping the entry.
+#[test]
+fn plan1066_b_inventory_identity_is_the_document() {
+    let temp = tempfile::tempdir().expect("temp root");
+    // The inventory walks the wrapper SOURCE declarations beside the corpus, so
+    // the mirror keeps the crate layout (`<root>/test/...` + `<root>/src/tests`).
+    let crate_root = temp.path().join("crates/auto-lang");
+    let root = crate_root.join("test");
+    let src_tests = crate_root.join("src/tests");
+    std::fs::create_dir_all(&src_tests).expect("mirror src/tests");
+    for entry in std::fs::read_dir(repo().join("src/tests")).expect("real src/tests").flatten() {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("rs") {
+            std::fs::copy(entry.path(), src_tests.join(entry.file_name())).expect("copy module");
+        }
+    }
+    let dir = {
+        let from = repo().join("test/a2r/01_basics/001_hello");
+        let to = root.join("a2r/01_basics/001_hello");
+        copy_dir_all(&from, &to);
+        to
+    };
+
+    // doc-only mirror: the entry is inventoried by its document
+    remove_frozen_sidecars(&dir);
+    let inventory = auto_lang_core::test_cases::inventory::legacy_inventory(&root)
+        .expect("doc-only inventory");
+    let rows = inventory["cases"].as_array().expect("cases");
+    assert_eq!(rows.len(), 1, "doc-only mirror must still list its entry");
+    let source = rows[0]["source"]["path"].as_str().expect("source path");
+    assert!(source.ends_with("hello.case.ad"), "inventory identity must be the document: {source}");
+    assert_eq!(rows[0]["source"]["present"], serde_json::json!(true));
+    assert_eq!(rows[0]["source_path"], serde_json::json!("hello.at"));
+    assert_eq!(rows[0]["document_checks"], serde_json::json!(["rust"]));
+
+    // polluted sidecars do not change the identity (no sidecar read at all)
+    std::fs::write(dir.join("hello.at"), "fn main() { print(\"polluted\") }\n").unwrap();
+    std::fs::write(dir.join("hello.expected.rs"), "polluted golden\n").unwrap();
+    let polluted = auto_lang_core::test_cases::inventory::legacy_inventory(&root)
+        .expect("polluted inventory");
+    assert_eq!(
+        polluted["cases"][0]["source"], rows[0]["source"],
+        "sidecar pollution must not change the document identity"
+    );
+
+    // removed document: the entry stays visible and names the missing document
+    std::fs::remove_file(dir.join("hello.case.ad")).unwrap();
+    let missing = auto_lang_core::test_cases::inventory::legacy_inventory(&root)
+        .expect("inventory with a removed document");
+    let rows = missing["cases"].as_array().expect("cases");
+    assert_eq!(rows.len(), 1, "a removed document must not shrink the inventory");
+    let source = rows[0]["source"]["path"].as_str().expect("source path");
+    assert!(source.ends_with("hello.case.ad"), "{source}");
+    assert_eq!(rows[0]["source"]["present"], serde_json::json!(false));
+}
