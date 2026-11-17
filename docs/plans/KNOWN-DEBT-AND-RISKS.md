@@ -28,7 +28,9 @@
 - 关闭条件：由 1062/1066 owner 决定「文档语料是否携带 executed 状态」或「审计谓词是否排除 document 变体」，并在其正式提交中重跑 ace-semantics 全组；PLAN-1037 不代修、不充 PASS。
 - 状态：open（不阻塞 PLAN-1037 交付；merge 与批量回归继续具名记录，不判绿）。
 
-#### D-981-PROOF-AV-SCENE — 混合 UI+2D/3D 的 AV 观察格（2026-11-17，B-AV owner）
+#### D-981-PROOF-AV-SCENE — 混合 UI+2D/3D 的 AV 观察格（2026-11-17 具名；**2026-11-18 关闭（B-W1 AV 余量批）**）
+
+- **关闭证据**：auto-lang `62d34e3df`/`637faa210`——owned 车道 f32 映射 + AGE 端口构造器 Aggregate + 资源全局真实执行 + `observe_age_package` 场景真值（g01 原几何、混合包一次观察状态/文本/场景 f32；`plan981_age_package_av.rs::p981_proof_a_av_scene_package_and_mixed_profile` 精确 oracle）；review-C pass。
 
 - **现象（已具名复现）**：同一包内同时有 UI 文本叶与 2D/3D 场景行时，`observe_age_package` 在
   `av.owned/1` 的 F32 处具名拒（`lower.type-use`）；纯场景包可观察为空状态，纯 UI 包可观察
@@ -39,6 +41,12 @@
   时 AV **具名拒**（`no text leaves … named rejection`，不静默空行）。证据：
   `plan981_age_package_av.rs::{p981_proof_a_av_scene_package_and_mixed_profile,p981_proof_a_av_scene_model_is_named_rejected}`；
   待 985 确认该 A 子面边界。
+#### D-981-GLOBAL-CLONE-GAP — GlobalSet 借用写入的 Clone 分支发射不可验证 MIR（2026-11-18，review-C ①登记，medium/latent）
+
+- **现象**：owned lowering 的 `GlobalSet` 调用点在 `arg_ty != cell_ty`（现实形状：record 参数槽经 BorrowView 保留基槽型）时发射 `Clone{dst: Record, src: RecordView}`，mir_verify 以 `mir.clone-type`（精确枚举等价）与 copyable-clone 双规则拒绝——该分支在当前覆盖下**不可达**（AGE 资源写路径的实参槽即 owned record，走直写），一旦到达则具名失败（fail-closed，非静默错值）。
+- **边界**：record 全局（尤其含 Str 字段的非 copyable record）无用户源级用例——`tint/material` 是引用事实不是值函数。
+- **owner/关闭条件**：语言侧 owned 车道后继（B-W1/W3 触碰全局写时）——按需实现"视图→拥有"的合法拷贝指令（Copy/Clone 按可复制性分流或显式深拷贝 op），补一条 record-全局用户源正反例后关闭；未修期间该分支保持 fail-closed。
+
 #### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 
 - **A-required 子集（已交，985 三键）**：具名/匿名 unit 消息、变体/原 span 保真、跨块重复变体拒、
@@ -73,7 +81,7 @@
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
 |---|---|---|
-| ① 宿主 `exits()/request_layout()` 只读首组件，双组件 2:1 事件链不可表达；② 两个 node 同名 model 字段在包级撞 `__age_state_0_<field>`（`source.module-duplicate-declaration`），普通两个 Counter 无法同包 | 981 review-64 R64-3/R64-4；`plan981_*` 双组件用例缺宿主面 | ① 组件选择器/逐组件观察与布局 API 已交（auto-ui `3604f2f2`）；**剩余**：AV 场景 op 是实例级，组件级 2:1 调度需 ACE 场景扩展 + 永久双组件 2:1 用例；② **已关闭**（auto-lang `e36b7ffcd`）：状态函数按节点消歧（node 0 保持 `__age_state_0_count`，其余 `__age_state_n<node>_<inst>_<field>`），包前门/描述读回/AV 观察共用 helper；A2R 单节点合同复跑未变 |
+| ①（**2026-11-18 关闭**：组件选择器已交 auto-ui `3604f2f2`；`ForNode` 场景扩展 + 宿主 `send_to_component`/`send_args_to_component` + 永久双组件 2:1 用例 s2/AV——lang `62d34e3df`、ui `1775f96d`，review-C pass）宿主 `exits()/request_layout()` 只读首组件，双组件 2:1 事件链不可表达；② 两个 node 同名 model 字段在包级撞 `__age_state_0_<field>`（`source.module-duplicate-declaration`），普通两个 Counter 无法同包 | 981 review-64 R64-3/R64-4；`plan981_*` 双组件用例缺宿主面 | ① 组件选择器/逐组件观察与布局 API 已交（auto-ui `3604f2f2`）；**剩余**：AV 场景 op 是实例级，组件级 2:1 调度需 ACE 场景扩展 + 永久双组件 2:1 用例；② **已关闭**（auto-lang `e36b7ffcd`）：状态函数按节点消歧（node 0 保持 `__age_state_0_count`，其余 `__age_state_n<node>_<inst>_<field>`），包前门/描述读回/AV 观察共用 helper；A2R 单节点合同复跑未变 |
 ### D-981-MODULE-GLOBAL-A2R — 模块级 const/var 的 A2R 目标合法化（2026-11-16，落主 `1738c2a1c`，具名缺口）
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |

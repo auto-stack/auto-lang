@@ -962,6 +962,21 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: handoff（B-W1 AV 余量交接：场景 f32 观察车道 + 组件级 2:1 调度 + AGE 异步宿主面，交 980 B-AV 汇入 UI-W1-AV）| PLAN-981 | outcome: pass（B-W1 AV 余量批；M2A-08 已签发后正式在序——985 `0db949754`/delivery `95c7fbad8`，T-A05 ✅）
+
+**绑定 revision**：auto-lang master `62d34e3df`（代码 `c76c245fc`）＋复审修补 `637faa210`；auto-ui master `d75fba34`＋`1775f96d`（overlay 钉 `62d34e3df`→`637faa210`，1414 文件，`prepare_sdk --verify-only` PASS）。顺手修复（L0 `fix-av-configdocument`，已合入并清树）：982 合入漏的 `SourceProfile::ConfigDocument` 匹配臂（ace-av conformance 在 master 编译红）＋根 Cargo.lock 陈旧（config 文档 sha2 依赖，`--locked` 工具构建红）。
+
+**交付面（producer→consumer：981 LANGUAGE/SESSION → 980 B-AV → UI-W1-AV）**
+- **`D-981-PROOF-AV-SCENE` 关闭**：av.owned/1 lowering 映射 PLAN-961 数值具名类型表条目（对齐 mir_verify 既有"owned 吸收 data 面"契约）；AGE 端口构造器（material2d.color/mesh2d.quad/mesh2d.circle）准入并 lower 成端口 record Aggregate（字段按 AGE_PORT_FIELDS、arity 双侧核对；model3d.glb 保持具名拒——文件内容身份）；资源全局在 owned 车道真实执行（cell 拥有 record、借用写入按槽型对齐直写）；mir_verify 准入 module.global/age.* import 身份与 age2d/age3d.resource 能力（owned 限定）；**1064 redis 平台车道边界原样保留**（catch-all lower.intrinsic 拒绝恢复）。观察面：`AgeSceneValueFn` 登记进描述 + `observe_age_package` 逐属性取真值——g01 纯场景包返回**原几何真值**（红圆 -20/10/30、蓝 quad 0,0/30×30、绿圆 25/-15/24、黄 quad -45/-25/12×12 hidden），混合 UI+2D 包**一次观察**同时给状态/文本/场景 f32；参数化行具名跳过（Parametric，不猜实参）。
+- **`D-981-SESSION-MULTI ①` 余量关闭**：`ScenarioOp::ForNode { node, op }` 组件级定向（未包裹 op 保"全组件重放"旧语义、对照断言兜住；未知组件具名拒 `component-scenario`；单 node 组件面对越界限定具名拒；`ForNode{Tick}` 按目标组件生命周期拼写归一）。宿主面：`AgeSession.send_to_component`/`send_args_to_component` + 驱动 wrapper；**永久双组件 2:1 用例**（s2：A=2/B=1、组件级带载荷 +5、未包裹对照 3/7）。
+- **R64-10 异步面关闭**：`AgeSession.spawn_async/await_async/async_balance`（票钉 `(pid, body_generation)`；任务源先在 ACE scheduler 真实执行到静止；丢弃原因按精确度 session→stale-generation→stopped；停止会话拒 spawn）；**多轮 Run/Stop 后票账与 Run/Stop 双净归零**（spawned==settled、pending 0、runs==stops，丢弃票零调度）。
+
+**独立复审（review-C，独立 subagent 自跑复现）**：verdict **pass**。逐项核关闭条件、车道完整性（f32 映射仅 owned 面、能力门 owned 限定）、Aggregate arity 双侧、全局 cell 拥有语义、ForNode 兼容对照、异步账本判别力（漏 await 必红）；无假值/无 debug 残留/格式干净。**发现处置**：①medium——GlobalSet Clone-on-mismatch 分支会发射 mir_verify 拒绝的 MIR（`mir.clone-type`/copyable-clone），当前覆盖下不可达（fail-closed）、登记为 `D-981-GLOBAL-CLONE-GAP`；②low——四条新诊断串长空格，已修（`637faa210`）；③info——982 ConfigDocument 臂已在本次顺手修复关闭；④info 边界——record 全局（含 Str 字段）无用户源用例、异步丢弃路径"任务真实执行"为代码级核（收据具名）。
+
+**门禁实测**：lang worktree core+av+lowering+a2x-worker（perf:: 排除）全绿（全并行档 1064/975/946/958 系统类测试偶红、隔离复放全绿=环境归因）；master 固定组 `cargo t ace-source ace-syntax ace-av` **全 PASS**（ConfigDocument 臂+lock 修复后）；plan981 event/proof/for-node/dual-component 套件全绿。auto-ui：s2_age_routing **21/21**（含双组件 2:1 + 异步净归零）、driver lib 49/49、session s1/s3/s4 17/17、plan041 10/10、ace_ts_provider 14/14、ace_node_desktop 7/7（串行）。
+
+**未闭（不冒充）**：`D-981-GLOBAL-CLONE-GAP`（新登记）；V-EVT-B-ORIGIN 与 TS 参数环境归 980 B-WEB；W1 其余（CONTENT/FUSION AV 域格、PROOF 完整 AV 格的 3D/参数化行、`UI-W1-AV` 汇总收据——等 980 B-AV-R 汇入）；981 整包仍 executing、不归档。
+
 2026-11-17 stage: handoff（B-W1 事件三件正式交接：IF-981-EVENT-PAYLOAD-B + IF-981-MSG-B + IF-981-PARAMS-B，交 980 B-AV/B-WEB）| PLAN-981 | outcome: pass（B-W1 事件批，用户 /goal 直接授权开工，不等 M2A-08 排程）
 
 **绑定 revision（语言面已落主；auto-ui 在 plan-981-dev 待 fold）**
