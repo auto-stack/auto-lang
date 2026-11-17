@@ -53,21 +53,38 @@ fn run(case: &str) -> Observed {
     }
 }
 
+/// Build ONCE and then run the produced PE N times. The drain race this file
+/// guards lives in the RUNTIME, not in the compiler, so repetitions must not
+/// pay for compilation again — that made the old 20-run case take >10 s inside
+/// the parallel gate (PLAN-1067 review3 T-1067-2).
+fn run_repeated(case: &str, src: &str, runs: usize) -> Vec<Observed> {
+    let module = ace_native::sched::sched_compile(src, "d_main")
+        .unwrap_or_else(|d| panic!("{case}: front end rejected: {} {}", d.code, d.message));
+    let linked = ace_native::sched::sched_native_build(&module, "d_main", &workdir(case))
+        .unwrap_or_else(|e| panic!("{case}: build failed: {e}"));
+    (0..runs)
+        .map(|_| {
+            let run = ace_native::link_driver::run_pe(
+                &linked.exe_path,
+                ace_native::config::RUN_BUDGET,
+                ace_core::link::CaptureCaps {
+                    stdout_max: ace_native::config::STREAM_CAP,
+                    stderr_max: ace_native::config::STREAM_CAP,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{case}: run failed: {e}"));
+            Observed {
+                exit: run.exit_code,
+                stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+            }
+        })
+        .collect()
+}
 /// The eight positive corpus cases: real native execution, byte-exact
 /// stdout, exit 0 (which also proves the zero-residue drain audit), no
 /// stderr noise. Expectations are the documented contract values.
-#[test]
-fn scheduler_corpus_runs_native_byte_exact() {
-    let cases = [
-        ("message_handler", "got one\n"),
-        ("spawn_with_state", "mycounter: 15\n"),
-        ("mailbox_fifo", "got two\ngot one\n"),
-        ("ask_reply", "reply:\n42\n"),
-        ("go_join", "go:\n7\n"),
-        ("backpressure", "1\n2\n3\n"),
-        ("stop_hook", "one\nstopped\n"),
-        ("virtual_timer", "main\nlater\n"),
-    ];
+fn assert_corpus(cases: &[(&str, &str)]) {
     for (case, expected) in cases {
         let observed = run(case);
         assert_eq!(
@@ -76,9 +93,42 @@ fn scheduler_corpus_runs_native_byte_exact() {
             "{case}: non-zero exit (72 = drain residue/leak): {observed:?}",
             observed = observed.exit
         );
-        assert_eq!(observed.stdout, expected, "{case}: stdout drift");
+        assert_eq!(observed.stdout, *expected, "{case}: stdout drift");
         assert_eq!(observed.stderr, "", "{case}: unexpected stderr");
     }
+}
+
+/// The frozen corpus, in four two-case gate cases. Each corpus case is an
+/// independent PE build (~1.5-2 s), so a two-case case stays far inside the
+/// 10 s per-case rule even with the gate running 20 tests in parallel
+/// (review3 T-1067-2); every case still asserts its documented bytes.
+#[test]
+fn scheduler_corpus_runs_native_byte_exact_1() {
+    assert_corpus(&[
+        ("message_handler", "got one\n"),
+        ("spawn_with_state", "mycounter: 15\n"),
+    ]);
+}
+
+#[test]
+fn scheduler_corpus_runs_native_byte_exact_2() {
+    assert_corpus(&[
+        ("mailbox_fifo", "got two\ngot one\n"),
+        ("ask_reply", "reply:\n42\n"),
+    ]);
+}
+
+#[test]
+fn scheduler_corpus_runs_native_byte_exact_3() {
+    assert_corpus(&[("go_join", "go:\n7\n"), ("backpressure", "1\n2\n3\n")]);
+}
+
+#[test]
+fn scheduler_corpus_runs_native_byte_exact_4() {
+    assert_corpus(&[
+        ("stop_hook", "one\nstopped\n"),
+        ("virtual_timer", "main\nlater\n"),
+    ]);
 }
 
 /// A stop request never discards a buffered delivery: the stop hook runs
@@ -688,22 +738,21 @@ fn main() {
     a.send(5)
 }
 "#;
-    // PLAN-1067 review3 T-1067-2: five repetitions keep this case comfortably
-    // inside the 10 s in-gate budget (ten measured up to 10.155 s under the
-    // 20-way parallel gate). Five independent PE runs still cover the drain
-    // race the case exists for.
-    for run_index in 0..5 {
-        let observed = run_source(&format!("go-from-task-{run_index}"), src);
+    // One build, ten independent process runs: the race is in the runtime, so
+    // repetitions cost only a process start each (PLAN-1067 review3 T-1067-2
+    // removed the redundant rebuilds that pushed this case past 10 s).
+    let observed = run_repeated("go-from-task", src, 10);
+    for (run_index, run) in observed.iter().enumerate() {
         assert_eq!(
-            observed.exit,
+            run.exit,
             Some(0),
-            "run {run_index}: drain residue or failure: {observed:?}"
+            "run {run_index}: drain residue or failure: {run:?}"
         );
         assert_eq!(
-            observed.stdout, "5\n",
+            run.stdout, "5\n",
             "run {run_index}: output lost or duplicated"
         );
-        assert_eq!(observed.stderr, "", "run {run_index}: stderr noise");
+        assert_eq!(run.stderr, "", "run {run_index}: stderr noise");
     }
 }
 
