@@ -13609,7 +13609,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 );
                             }
                             let mut args = Vec::with_capacity(rargs.len());
-                            for (i, mut arg) in rargs.into_iter().enumerate() {
+                            for (i, arg) in rargs.into_iter().enumerate() {
                                 let want = op
                                     .params
                                     .get(i)

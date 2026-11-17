@@ -4328,7 +4328,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 if symbol == "age.model3d.glb.v1" {
                                     return Err(AdapterError::uns(
                                         "lower.intrinsic",
-                                        "model3d.glb carries file-content identity and is outside the av.owned/1 observation lane".to_string(),
+ "model3d.glb carries file-content identity and is outside the av.owned/1 observation lane".to_string(),
                                     ));
                                 }
                                 let sig = self.out.imports[imp as usize].sig;
@@ -4405,6 +4405,34 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                                 ),
                                             ));
                                         }
+                                        // record 实参经借用视图到达（verify 纪律），
+                                        // 而 Aggregate 需 owned 槽——视图→拥有构造
+                                        // 缝即 D-981-GLOBAL-CLONE-GAP（登记债）：
+                                        // 命中时具名拒（fail-closed），标量实参照常
+                                        // 执行（material2d 同形先例）。
+                                        for (si, slot) in arg_slots.iter().enumerate() {
+                                            let slot_ty = self.slot_ty_all(*slot);
+                                            let want_ty = self
+                                                .out
+                                                .types
+                                                .get(result_ty as usize)
+                                                .and_then(|t| match t {
+                                                    MirType::Record(r) => r.fields.get(si),
+                                                    _ => None,
+                                                })
+                                                .map(|f| f.ty);
+                                            if let Some(want) = want_ty {
+                                                if slot_ty != want {
+                                                    return Err(AdapterError::uns(
+                                                        "lower.age-gfx-view-arg",
+                                                        format!(
+                                                            "gfx constructor `{}` argument #{si}                                                              arrives as a borrow view; owned                                                              construction from a view is the                                                              registered gap                                                              D-981-GLOBAL-CLONE-GAP (scalar-only                                                              constructors execute today)",
+                                                            symbol
+                                                        ),
+                                                    ));
+                                                }
+                                            }
+                                        }
                                         let dst = self.temp_ty(result_ty)?;
                                         self.emit(
                                             MirInstr::Aggregate {
@@ -4418,9 +4446,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     }
                                     lane => {
                                         return Err(AdapterError::uns(
-                                            "lower.age-gfx-lane",
+ "lower.age-gfx-lane",
                                             format!(
-                                                "AGE graphics service `{}` is a {} service:                                                  it executes on the graphics host lane                                                  (UI058 neutral units via the PLAN-938 host                                                  authority), not in the AV observation lane",
+ "AGE graphics service `{}` is a {} service: it executes on the graphics host lane (UI058 neutral units via the PLAN-938 host authority), not in the AV observation lane",
                                                 symbol,
                                                 match lane {
                                                     ace_core::source::age_resources::AgeGfxLane::HostAlgorithm => "host-algorithm",
