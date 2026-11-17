@@ -103,7 +103,7 @@ A-11	AENTRY	AutoInterpreter	982	B	product-B	pending
 A-12	AENTRY	a2r_std中立保留	959	B	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 B-01	BENTRY	A2R Rust目标	969/980/982/983	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
 B-02	BENTRY	A2C C目标	982	AB	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
-B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:d82f89fe0a27bb91
+B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:756a4b3947a75a0a
 B-04	BENTRY	A2GD Godot目标	977	AB	user-deferred	pending	
 B-05	BENTRY	A2TS TypeScript目标	976	AB	inherited	landed	docs/specs/ace-migration/m2-typescript.md:914bbadae9af3f85
 B-06	BENTRY	SCENE目标	977	AB	user-deferred	pending	

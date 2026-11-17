@@ -53,6 +53,155 @@ pub const A2X_TEST_STDERR_CAP_ENV: &str = "A2X_TEST_STDERR_CAP";
 /// IPC-03 env 覆盖测试的串行锁（进程内）。
 pub static TEST_POLICY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// PLAN-977 AC-COVERAGE（V-COVERAGE 负控）：**EMISSION 检查不得携带运行
+/// 观测期望**——emit 不能冒充 run。
+///
+/// 返回第一个越界字段的稳定名（`exit`/`stdout`/`stderr`/`av-channel`/
+/// `trace`/`result`/`perf`/`probe-steps`）；`None` = 合法（只声明产物）。
+/// 三个 A2X 父 adapter 的 emit 车道共用同一判据，避免各写一份而漏字段：
+/// 修复前 a2r/a2c 只挡 4 个字段、a2py emit 车道完全没挡，`result`/`trace`/
+/// `perf`/`probe` 会被静默忽略并仍判 PASS。
+pub fn emit_only_violation(oracle: &auto_test_case::ir::ResolvedOracle) -> Option<&'static str> {
+    if oracle.exit.is_some() {
+        return Some("exit");
+    }
+    if oracle.stdout.is_some() {
+        return Some("stdout");
+    }
+    if oracle.stderr.is_some() {
+        return Some("stderr");
+    }
+    if oracle.av_channel.is_some() {
+        return Some("av-channel");
+    }
+    if oracle.trace.is_some() {
+        return Some("trace");
+    }
+    if oracle.result.is_some() {
+        return Some("result");
+    }
+    if oracle.perf.is_some() {
+        return Some("perf");
+    }
+    if oracle.probe.is_some() {
+        return Some("probe-steps");
+    }
+    None
+}
+
+#[cfg(test)]
+mod emit_only_tests {
+    //! PLAN-977 AC-COVERAGE: the emit-only predicate must name EVERY
+    //! run-observation field, so no emit lane can silently ignore one and
+    //! still pass (the defect F14 found: `result`/`trace`/`perf`/probe
+    //! were unguarded, and the A2PY emit recipes had no guard at all).
+    use super::emit_only_violation;
+    use auto_test_case::contract::{Compare, Completion, PerfExpect, ResultExpect, StreamExpect};
+    use auto_test_case::ir::ResolvedOracle;
+
+    fn clean() -> ResolvedOracle {
+        ResolvedOracle {
+            completion: Completion::Success,
+            result: None,
+            stdout: None,
+            stderr: None,
+            artifacts: Vec::new(),
+            exit: None,
+            perf: None,
+            probe: None,
+            av_channel: None,
+            trace: None,
+            oracle_sha256: String::new(),
+        }
+    }
+
+    fn stream() -> StreamExpect {
+        StreamExpect {
+            text: "value:14\n".into(),
+            compare: Compare::Bytes,
+        }
+    }
+
+    #[test]
+    fn artifact_only_oracle_is_legal() {
+        assert_eq!(emit_only_violation(&clean()), None);
+    }
+
+    #[test]
+    fn every_run_observation_field_is_named() {
+        let cases: Vec<(&str, ResolvedOracle)> = vec![
+            (
+                "exit",
+                ResolvedOracle {
+                    exit: Some(14),
+                    ..clean()
+                },
+            ),
+            (
+                "stdout",
+                ResolvedOracle {
+                    stdout: Some(stream()),
+                    ..clean()
+                },
+            ),
+            (
+                "stderr",
+                ResolvedOracle {
+                    stderr: Some(stream()),
+                    ..clean()
+                },
+            ),
+            (
+                "av-channel",
+                ResolvedOracle {
+                    av_channel: Some("value".into()),
+                    ..clean()
+                },
+            ),
+            (
+                "trace",
+                ResolvedOracle {
+                    trace: Some(stream()),
+                    ..clean()
+                },
+            ),
+            (
+                "result",
+                ResolvedOracle {
+                    result: Some(ResultExpect {
+                        format: "legacy-display".into(),
+                        text: "14".into(),
+                    }),
+                    ..clean()
+                },
+            ),
+            (
+                "perf",
+                ResolvedOracle {
+                    perf: Some(PerfExpect {
+                        total_ms_max: Some(10),
+                    }),
+                    ..clean()
+                },
+            ),
+            (
+                "probe-steps",
+                ResolvedOracle {
+                    probe: Some(Vec::new()),
+                    ..clean()
+                },
+            ),
+        ];
+        for (expected, oracle) in cases {
+            assert_eq!(
+                emit_only_violation(&oracle),
+                Some(expected),
+                "field `{expected}` must be named as a run observation"
+            );
+        }
+    }
+}
+
 /// 一次交换的策略（emit 默认 [`A2XExchangePolicy::daily_emit`]；run-py
 /// 用 [`A2XExchangePolicy::run_py`] 的 20MiB 整响应 cap）。
 #[derive(Clone, Copy, Debug)]

@@ -344,6 +344,24 @@ pub fn run_check(
 
     match &oracle.completion {
         Completion::Success => {
+            // PLAN-977 AC-COVERAGE negative control (V-COVERAGE): the A2PY
+            // EMISSION recipes (scalar/record-text/collections) declare
+            // artifact expectations only — run-observation expectations are
+            // a named refusal (emit cannot masquerade as run). The run
+            // recipe (`hir-stdlib-run-v1`) legitimately observes exit/stdout/
+            // stderr/trace below.
+            if recipe != A2PY_STDLIB_RUN_RECIPE {
+                if let Some(field) = super::a2x_exchange::emit_only_violation(oracle) {
+                    return Ok(Verdict {
+                        status: Status::Error,
+                        detail: Some(format!(
+                            "{recipe} emit checks declare artifact expectations only \
+                             (got a `{field}` run observation; emit cannot masquerade as run)"
+                        )),
+                        ..Verdict::pass()
+                    });
+                }
+            }
             let mut mismatches = Vec::new();
             let mut refs = Vec::new();
             if recipe == A2PY_STDLIB_RUN_RECIPE {

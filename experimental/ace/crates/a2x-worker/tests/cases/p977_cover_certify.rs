@@ -2,6 +2,12 @@
 //! cover-977 public source (`fn main() int { return 2 + 3 * 4 }`, expected
 //! value 14, hand-computed).
 //!
+//! Platform: this file is Windows-only (`#![cfg(windows)]`) — it spawns the
+//! release worker whose `certify`/`certify-c` legs drive the MSVC `cl` and
+//! the Windows rustc target. On Linux the legs are `NOT_RUN` and owned by
+//! PLAN-1063 (the Linux bridge / toolchain lane), never PASS or NA; the
+//! missing tests are a named platform boundary, not a silent pass.
+//!
 //! The daily case legs for these recipes are *emission* locks (worker
 //! identity + byte goldens). This file is the explicit CERTIFY axis for the
 //! same source: the worker emits, then REALLY compiles and runs (a) the
@@ -13,6 +19,8 @@
 //!
 //! Run: `cargo t ace-a2x --test-name p977_cover_certify` (the group's
 //! preparation builds the release worker these tests spawn).
+
+#![cfg(windows)]
 
 use std::path::PathBuf;
 use std::process::Command;

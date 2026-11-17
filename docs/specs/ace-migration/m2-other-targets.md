@@ -73,18 +73,20 @@ producer 身份、独立可判 observation（值/字节）与具名负控，不�
 | AV/native | AV executor，`ac-av/core-run-v1` | exit = 14 | **run** | `cover-977` 检查 `av-native`；`cargo t ace-host --test-name ace_m2_p977_cover` |
 | AC | AC native 后端，`ac/mir-native-scalar-v1` | exit = 14 | **run** | `ac-native`（同上） |
 | A2PY | `ace-a2x-python`，`ac-a2py/hir-stdlib-run-v1` | stdout `value:14\n`（hex `76616c75653a31340a`） | **run**（真 OS Python） | `a2py-run`（同上） |
-| A2R | `ace-a2x-rust`，`ac-a2r/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`0c2257b0…`），worker/recipe 身份回显 | **emit lock** | `a2r-emit`；**certify 轴**=真 rustc：`p977_cover_a2r_certify_real_rustc`（actual+手写 reference 双跑，stdout hex 相符，0.65s） |
-| A2C | `ace-a2x-c`，`ac-a2c/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`28559f86…`），worker/recipe 身份回显 | **emit lock** | `a2c-emit`；**certify 轴**=真 MSVC cl：`p977_cover_a2c_certify_real_cl`（1.88s） |
-| AV/C | C provider（`use.c`，真 DLL 机器码） | provider 操作值（独立手算） | **run** | `ace-abi`：`av_runs_the_c_provider_through_a_real_dll`（0.55s） |
-| AV/Rust | Rust provider（`use.rs`） | UTF-8 字节长 9（`"A中😀\0"`） | **run** | `ace-abi`：`f0_av_calls_real_rust_provider_end_to_end`（0.22s） |
+| A2R | `ace-a2x-rust`，`ac-a2r/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`0c2257b0…`），worker/recipe 身份回显 | **emit lock** | `a2r-emit`；**certify 轴**=真 rustc：`p977_cover_a2r_certify_real_rustc`（actual+手写 reference 双跑，stdout hex 相符，0.78s） |
+| A2C | `ace-a2x-c`，`ac-a2c/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`28559f86…`），worker/recipe 身份回显 | **emit lock** | `a2c-emit`；**certify 轴**=真 MSVC cl：`p977_cover_a2c_certify_real_cl`（2.06s） |
+| AV/C | C provider（`use.c`，真 DLL 机器码） | provider 操作值（独立手算） | **run**（provider 前门源，非同一纯源） | `ace-abi`：`av_runs_the_c_provider_through_a_real_dll`（0.55s） |
+| AV/Rust | Rust provider（`use.rs`） | UTF-8 字节长 9（`"A中😀\0"`） | **run**（provider 前门源，非同一纯源） | `ace-abi`：`f0_av_calls_real_rust_provider_end_to_end`（0.22s） |
 | 原 A2C（legacy） | 旧 C 目标语料（134 例，`#[ignore]` 历史档） | 冻结 goldens（分母不减） | **不计覆盖 PASS**：`cargo t a2c` 选 0（全 `#[ignore]`）；显式 `--ignored` 实跑 117/134，17 例既有红（源与本批未触面一致） | 归属=legacy 退役线（987）；required 的 C 路径由 ACE A2C（emit+certify）承担 |
 
 **负控（每条都可判）**：
 - wrong-oracle RED：exit 14→15 → `av-native` 红并命名 exit 轴，sibling `ac-native` 保持绿
   （`ace_m2_p977_cover_wrong_oracle_is_red`）。
-- **emit 冒 run 拒绝**：给 a2r emit 腿加 exit 期望 → 具名拒绝（`a2r/a2c emit checks
-  declare artifact expectations only …`）；此前 adapter 会静默忽略该期望，本轮补守卫
-  （`ace_m2_p977_cover_emit_cannot_masquerade_as_run`）。
+- **emit 冒 run 拒绝**：给 emit 腿加运行观测期望 → 具名拒绝。判据收敛为三个 A2X emit 车道共用
+  的 `emit_only_violation`（覆盖 `exit/stdout/stderr/av-channel/trace/result/perf/probe-steps`
+  全部运行观测字段），A2R、A2C 与 A2PY 的 emit recipes 都走同一守卫（A2PY 的
+  `hir-stdlib-run-v1` 是 run 车道，不受限）；此前 a2r/a2c 只挡 4 个字段、a2py emit 车道完全
+  没挡——控制实测暴露后修复，并有逐字段单测（`test_cases::a2x_exchange::emit_only_tests`）。
 - 缺 Python/helper、旧 PythonTrans/AutoVM 回退、expected 注入 = 1042
   `pyready_04_admission_negative_controls`（本批复跑）。
 - 错 provider 撤销/销毁 + 引擎回退 = `auto-lang-ace-host` e0（`ace.provider/revoked`、
@@ -116,10 +118,13 @@ Windows/emit-only/交叉编译冒充 Linux 绿。下表逐项给出实现面、�
 
 **Windows required 门（本批实跑，见计划 §8/§9 收据）**：`cargo t s2s`、`cargo t
 auto-lang-core`（1653/1654，1 基线红具名非本批触面）、`cargo t ace-facade`、
-`cargo t ace-adapters`、`cargo t ace-host --test-name ace_m2_p977_cover`（覆盖门 3/3）、
-`cargo t ace-a2x --test-name p977_cover_certify`（A2R/A2C 真编译运行 2/2）、
+`cargo t ace-adapters`（94/95，1 基线红 `source_parent_oracle_failure_rejudges…`，
+985 r29 已记 master 同红）、`cargo t ace-host --test-name ace_m2_p977_cover`（覆盖门
+3/3）、`cargo t ace-a2x --test-name p977_cover_certify`（A2R/A2C 真编译运行 2/2）、
 `cargo t ace-a2x --test-name pyready_04`（准入负控）、`cargo t ace-abi --test-name
 av_runs_the_c_provider_through_a_real_dll`、`cargo t ace-abi --test-name
-f0_av_calls_real_rust_provider_end_to_end`、`cargo t case-a2c-hir-scalar-921`、
-`cargo t case-a2r-hir-collections-904`、`cargo t a2c`（选 0=legacy 全 ignore，另记
-`--ignored` 117/134 既有红）。以上 Windows 结果不得外推为 Linux 已验证。
+f0_av_calls_real_rust_provider_end_to_end`。**基线红（非 required 门、非本批触面）**：
+`cargo t a2c` 选 0（legacy 全 `#[ignore]`）；两个既有 ad-hoc case 组
+`case-a2c-hir-scalar-921`（0/3）与 `case-a2r-hir-collections-904`（0/20）= golden 与
+当前生成器的尾部字节漂移（生成器最后改动 Plan 1036，本批未触），归批量回归 triage，
+不计 PASS、不冒 required 门。以上 Windows 结果不得外推为 Linux 已验证。
