@@ -532,9 +532,22 @@ pub fn desugar_config_templates(src: &str) -> Result<String, String> {
             let Some(close) = close else {
                 return Err("unterminated `${…}` template segment".to_string());
             };
-            out.push('"');
-            out.push_str(&src[i..=close]);
-            out.push('"');
+            // 位置决定语义（legacy 口径）：`key: ${x}` 是**取值位的插值**；
+            // 节点头 `name ${x} {}` 是字面占位（legacy 实测不插值）。
+            let mut back = i;
+            while back > 0 && matches!(bytes[back - 1], b' ' | b'\t') {
+                back -= 1;
+            }
+            let value_position = back > 0 && bytes[back - 1] == b':';
+            if value_position {
+                out.push_str("__fstr(");
+                out.push_str(&src[i + 2..close]);
+                out.push(')');
+            } else {
+                out.push('"');
+                out.push_str(&src[i..=close]);
+                out.push('"');
+            }
             i = close + 1;
             continue;
         }

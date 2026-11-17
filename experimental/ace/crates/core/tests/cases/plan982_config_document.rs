@@ -529,9 +529,15 @@ fn p982_config_template_desugar_shapes() {
         .expect("string template desugars");
     assert_eq!(out, "name: __fstr(name)\n");
 
+    // 节点头的裸占位按 legacy 留字面（不插值）。
     let out = ace_core::source::fstr::desugar_config_templates("lib ${name} {}\n")
         .expect("head placeholder desugars");
     assert_eq!(out, "lib \"${name}\" {}\n");
+
+    // 取值位的裸占位按 legacy **插值**（`render: ${x}` 是表达式）。
+    let out = ace_core::source::fstr::desugar_config_templates("render: ${mode}\n")
+        .expect("value placeholder desugars");
+    assert_eq!(out, "render: __fstr(mode)\n");
 
     let out = ace_core::source::fstr::desugar_config_templates(
         "# note ${not_a_template}\nname: \"ok\"\n",

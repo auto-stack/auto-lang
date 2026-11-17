@@ -285,6 +285,17 @@ pub fn install_ace_executor(executor: Arc<dyn AceExecutor>) -> Result<(), String
     }
 }
 
+/// Whether an ACE executor is currently installed (the host installed the
+/// bridge). Environment-dependent engine selection uses this — never a
+/// semantic fallback: an installed executor that FAILS still reports the
+/// failure.
+pub fn ace_executor_installed() -> bool {
+    match ACE_EXECUTOR.read() {
+        Ok(slot) => slot.is_some(),
+        Err(_) => false,
+    }
+}
+
 /// Release the installed executor (host close). Returns whether an
 /// executor was installed. After this, explicit ACE requests report
 /// `ace.host/executor-unregistered` — they never fall back.
