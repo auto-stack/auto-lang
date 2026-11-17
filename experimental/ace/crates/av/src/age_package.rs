@@ -47,6 +47,16 @@ pub fn observe_age_package(
     let mut components = Vec::new();
     for (component_index, c) in compiled.description.components.iter().enumerate() {
         if c.texts.is_empty() {
+            // R70-1：有 model 字段却无文本叶的组件，AV 在本切片里**看不到**它的状态
+            // （场景节点），静默给空行会让消费者把"没观察"当成"状态为 0"。具名拒。
+            if !c.fields.is_empty() {
+                return Err(format!(
+                    "component `{}` declares model fields but has no text leaves; the AV \
+                     observation cannot surface its state in this slice (named rejection, \
+                     not a silent empty row)",
+                    c.name
+                ));
+            }
             components.push(ObservedAgeComponent {
                 name: c.name.clone(),
                 module: c.module.clone(),
@@ -57,11 +67,7 @@ pub fn observe_age_package(
             continue;
         }
         // 叶按实例分组：编译期为每个 (实例, 叶) 各生成一份求值函数。
-        let per_instance = if instances == 0 {
-            1
-        } else {
-            instances
-        };
+        let per_instance = if instances == 0 { 1 } else { instances };
         if instances > 0 && c.texts.len() % per_instance != 0 {
             return Err(format!(
                 "component `{}` has {} value functions which is not a multiple of {} instances",
@@ -86,9 +92,8 @@ pub fn observe_age_package(
         for inst in 0..per_instance {
             for f in &int_fields {
                 // R64-4：与包前门同一套多 node 消歧命名。
-                let name = ace_core::source::age_component::state_fn_name_at(
-                    component_index, inst, f,
-                );
+                let name =
+                    ace_core::source::age_component::state_fn_name_at(component_index, inst, f);
                 let symbol = resolve_symbol(compiled, &c.name, &name)?;
                 instance_states[inst].push(execute_i32(&compiled.checked, &symbol)?);
             }
@@ -115,12 +120,10 @@ fn resolve_symbol(
         .ok_or_else(|| format!("no HIR symbol for source name `{source_name}`"))
 }
 
-fn execute_i32(
-    checked: &ace_core::verify::CheckedModule,
-    symbol: &str,
-) -> Result<i32, String> {
+fn execute_i32(checked: &ace_core::verify::CheckedModule, symbol: &str) -> Result<i32, String> {
     let def_id = format!("d_{symbol}");
-    let mir = lower_checked_owned(checked, &def_id, 0x981).map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
+    let mir = lower_checked_owned(checked, &def_id, 0x981)
+        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
     mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
     let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
     let flat = wire.to_flat();
@@ -137,11 +140,9 @@ fn execute_i32(
     }
 }
 
-fn execute_text(
-    checked: &ace_core::verify::CheckedModule,
-    def_id: &str,
-) -> Result<String, String> {
-    let mir = lower_checked_owned(checked, def_id, 0x981).map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
+fn execute_text(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Result<String, String> {
+    let mir = lower_checked_owned(checked, def_id, 0x981)
+        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
     mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
     let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
     let flat = wire.to_flat();

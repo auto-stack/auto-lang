@@ -1,0 +1,26 @@
+// PLAN-981 B-PROOF-[A] 3D 夹具：由 age-examples g08/3d 原源**派生**（只保留 A 面支持的
+// cylinder3d 行）。来源：`age-examples ea0fc59` 的
+// `examples/g08-runtime-cameras/3d/src/main.at`（SHA256 前 16 `c7e1c2c0a6a3e1b8`）与
+// 其 `scene.agscene`（`autographics.scene/2`，objects 2..5 的 translation/scale）。
+// 删去 camera3d / character3d / `use character`（B 波格）与 `solid`（A 面 attr 集合外）；
+// 位置/缩放的期望值取自原 scene.agscene，不由本实现推导。
+node Scene3d {
+    view-3d {
+        cylinder3d ground {
+            position: (0.0, -0.5, 0.0)
+            scale: (10.0, 0.5, 12.0)
+        }
+        cylinder3d wall {
+            position: (6.0, 1.5, 0.0)
+            scale: (0.1, 1.5, 12.0)
+        }
+        cylinder3d east {
+            position: (4.0, 1.0, -4.0)
+            scale: (0.5, 1.0, 0.5)
+        }
+        cylinder3d west {
+            position: (-4.0, 1.0, 4.0)
+            scale: (0.5, 1.0, 0.5)
+        }
+    }
+}
