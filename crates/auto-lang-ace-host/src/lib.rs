@@ -49,6 +49,7 @@ mod debug;
 pub mod config_document;
 pub mod python_transpile;
 pub mod rust_transpile;
+pub mod script_transpile;
 pub mod project;
 pub mod session_bridge;
 

@@ -28,6 +28,8 @@ ace-a2x-core = { path = "../../experimental/ace/crates/a2x-core" }
 ace-a2x-rust = { path = "../../experimental/ace/crates/a2x-rust" }
 # PLAN-982（982/PY）：A2Py 的宿主驱动面。
 ace-a2x-python = { path = "../../experimental/ace/crates/a2x-python" }
+# PLAN-982（982/WEBTARGET）：A2TS/A2JS 的宿主驱动面。
+ace-a2x-ts = { path = "../../experimental/ace/crates/a2x-ts" }
 
 [dependencies.base64]
 version = "0.22"
