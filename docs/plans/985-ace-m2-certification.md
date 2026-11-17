@@ -1271,6 +1271,10 @@ stage: merge | review_scope: phase（A批fold，非整包归档） | plan_id: PL
 
 stage: goal | plan_id: PLAN-985 | plan_revision: r29 | round: 3 | from: merge | to: done | status: executing（跨A/B，B批续行） | outcome: pass（A批全链交付：work r29→review phase pass→fold落主95c7fbad8，M2A-08成立） | worktree: D:/autostack/.wt/lang-985/auto-lang（保留） | commit: 95c7fbad8 | next: done（/goal 完成计划985/A后续工作 目标达成；B批属后续会话/授权）
 
+### 2026-11-17 B期等待期间中间产物清理记录（用户指令；沿981/984先例）
+
+M2A-08落主后、B批开工前（B前置=多计划B批完成，等待期长），用户指令清理worktree构建缓存：删除 `target/`（6.2G）＋`experimental/ace/target/`（11G）＝**释放约17.2G**；worktree降至约532M，git状态clean，分支/树/矩阵/收据/plan-artifacts(17K，在途scope保护)全部保留。构建中间产物按2026-10-31裁定为可删缓存不回收暂存；B批会话冷重建（预期首次cargo构建时间变长，按环境归因记录）。
+
 2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
 
 2026-11-16 stage:new / r20：用户明确最终三端一致、AC后移B与AAC实证。新增1067/1068后继与SD/AC/V-PARITY-STAGED；原任务ID/勾选/4进度保留，新规则尚未执行。新增1068为最终B依赖，A不反等它；本轮无代码/测试/阶段签章。
