@@ -5,7 +5,7 @@ feature_name: AutoDown迁移补漏与1062收口纠正
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
-plan_revision: 3
+plan_revision: 4
 current_step: 9
 total_steps: 13
 depends_on: [PLAN-1062]
@@ -130,7 +130,7 @@ A已迁75组的完整源/oracle身份不可因本包无故漂移；scheduler rec
 
 | family | 当前输入项 | 原文件oracle观测数（非assert宏数） |
 |---|---:|---|
-| vm | 496 | .error=14, .out=295, .result=189 |
+| vm | 506 | .error=14, .out=295, .result=189 + B 期登记 10 个 doc-only 项（其中 `017_sub_semantics` 的 stdout 角色由 R2 修复补入） |
 | a2r | 250 | .rs=250 |
 | a2c | 118 | .c=118, .h=109 |
 | a2ts | 85 | .ts=85 |
@@ -367,7 +367,7 @@ got one
 
 ### 附录N：全部1050目录输入 → 现有doc与原oracle
 
-N0001～N1050为当前实际目录选择的稳定快照行号；family/id为规范义务键。doc是唯一目标作者，原source由同目录原stem.at（VM必要时.as）定位；hash前16位仅快速定位，固定基面Git对象和T-01完整SHA-256为正式依据。原oracle文件名只列角色，不许可当前读取。编译250就是其中family=a2r全部行。选择资格/缺doc拒绝/补元属性属于T-02，不以文件恰好在盘代接线完成。
+N0001～N1050为 A 期冻结快照行号；**B 期增量 10 项**（vm `08_strings/017_sub_semantics`、`10_types/033_array_len_user_type`、`17_cffi/{001,002,003}`、`18_ffi/{047,055}`、`99_bootstrap/{066,067,068}`，逐项 doc/source 由 `plan1066_a_obligations.json` 的 `n_rows` 记 1060 行承载）已登记进冻结分母，故当前分母为 **1060 行/1171 角色**；family/id为规范义务键。doc是唯一目标作者，原source由同目录原stem.at（VM必要时.as）定位；hash前16位仅快速定位，固定基面Git对象和T-01完整SHA-256为正式依据。原oracle文件名只列角色，不许可当前读取。编译250就是其中family=a2r全部行。选择资格/缺doc拒绝/补元属性属于T-02，不以文件恰好在盘代接线完成。
 
 | 行 | family/id | 目标既有doc（repo相对） | 原oracle文件角色 | 原source hash16 | doc hash16 |
 |---|---|---|---|---|---|
@@ -1771,13 +1771,13 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 
 | 状态 | AC | owner_stage | 可观察关闭条件 | 证据 |
 |---|---|---|---|---|
-| [ ] | AC-01 | work | S11、N1050/1161现存+9空H=1170角色、P两工程/19断言+编译250、C30/33、E78、cache506/B108及当前新增消费者逐键完整；不混分母 | V-01/11，附录，NC-01/21/23 |
+| [ ] | AC-01 | work | S11、**N1060**（1050 冻结项 + B 期登记的 10 个 doc-only VM 项）/**1171 角色**（1161 现存文件 oracle + 9 空 H + 新增 1 个 `017_sub_semantics` stdout 角色）、P两工程/19断言+编译250、C30/33、**E78=70**（68 存量边界 + 2 份 project 文档）、cache506/B108及当前新增消费者逐键完整；不混分母 | V-01/11，附录，NC-01/21/23 |
 | [ ] | AC-02 | work | 四方法五根及相邻cache/cookbook选择模式均读doc，两原result补齐、C空H保；源/资格/原身份/module参数/路径/比较器/条件守恒，缺doc硬错，doc-only/污染通过 | V-02/03/11，NC-02～07/21/22/24 |
 | [ ] | AC-03 | work | S11按原实际值与完整v2无损，正常suite全doc，其他已迁身份保持 | V-04，NC-08/09 |
 | [ ] | AC-04 | work | 两工程5源/19期望均在doc并真实消费；原项目转译器、受管完整闭包、合法路径/目录语义守恒 | V-05，NC-10～12 |
 | [ ] | AC-05 | work | 全编译250与ledger分类、M三个手动guard/6份doc产物和独立参考判决真实保留；日常无隐式编译，显式准备/精确ignored验证缺证不绿 | V-06，NC-07/13～15/26/27 |
 | [ ] | AC-06 | work | 30生成仅显式proposal安全scope，33独立验证保；普通bootstrap及旧生成旁路退出，成功/失败/GENERATE_EXPECTED下均零作者新增/覆写，不以生成充PASS | V-07/11，NC-12/16～18/25 |
-| [ ] | AC-07 | work | 当前全入口重发现零活跃旧载荷/资格回读，E78不误启用；正常inventory/trace全部v2读doc、显式历史v1不作fallback；历史/外仓/support具名，1062更正与现状一致 | V-08/11，NC-01/04/09/19/23/24/26 |
+| [ ] | AC-07 | work | 五根（vm/a2r/a2c/a2ts/cookbook）全入口重发现零**未具名**的活跃旧载荷/资格回读（常驻分类审计：文件级 allowlist + ±2 行读窗口；相邻 a2gd/a2j/tscn 与 ffi_dep/AAVM/外仓 book 逐族具名，不宣称集合永不增长），E78不误启用；正常inventory/trace全部v2读doc、显式历史v1不作fallback；历史/外仓/support具名，1062更正与现状一致 | V-08/11，NC-01/04/09/19/23/24/26 |
 | [ ] | AC-08 | work | 每新增case≤10秒、完整普通模块预算/模块及新例内容时长实报、debug前置/资源等待有效、无release/WSL | V-09，NC-15/20 |
 | [ ] | AC-09 | review | 独立逐AC/原子actual/所有NC与合法邻例及SD，冻结代码/工具/输入；无遗漏/隐藏旧入口/未授权延期 | V-10 |
 | [ ] | AC-10 | merge | 复核冻结影响门/必要due、SD落地，保历史更正与新交付边界；归档/全输出路径对账与guard清树/scope | T-13 |
@@ -1927,6 +1927,8 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: partial（T-03[B
 
 **T-08 首片**：`execution_trace::cookbook_doc_identity` 单一派生函数同时服务运行期 trace 与源码静态 inventory（`inventory_wrappers.rs`），以 `document:{path}` 形态让两侧治理 normalize 都落到仓库相对路径；`legacy-wrapper-contract.json` 108 条 cookbook 关联行整体改绑文档（sidecar 身份退役，非 cookbook 行零改动）。**分母增量登记**：文档权威暴露出 10 个旧 sidecar 选例静默跳过的 VM 项（`08_strings/017_sub_semantics` 的 oracle 用整目录名命名；`10_types/033_array_len_user_type`、`17_cffi/{001,002,003}`、`18_ffi/{047,055}`、`99_bootstrap/{066,067,068}` 只有文档内 oracle）——A 冻结分母 1050→1060、E78 78→68，其余集合（cache506/8 脚本、cookbook108/6 多源、S11、P、C）逐字节不变；A 族计数与 provenance 文本同步更新，A-DEN/NC-A1..A4 全绿。
 
+**R2 更正（2026-11-17 复审）**：上文称这 10 项只有文档内 oracle 并不准确——`08_strings/017_sub_semantics` 另有一份 13 字节冻结 `017_sub_semantics.expected.result`（按整目录名命名，原选例规则未拾取），其内容正是五条 `print` 的 stdout；已把这 13 字节作为该文档的 `vm-stdout` oracle（`el\nell\nel\n\no\n`），该例从 smoke 升为真实输出判定，角色总数因此 1170→1171，冻结分母仍 1060。其余 9 项确为文档内 oracle。
+
 **门与负控**：`cargo t vm corpus` **PASS**（1137 executed、0 errors、child_validation valid、77 条 legacy child 关联、wall 56.1s；本轮经历三次治理红并逐一定位修复：①A 分母漂移→增量登记；②cookbook `legacy_children` 漂移→单派生函数；③`legacy-wrapper-contract` 关联丢失→108 行改绑。其间发现治理工具陈旧二进制问题，见债务）。新增 `tests/plan1066_b_slice.rs` 4 控（0.83s）：四族 doc-only 镜像仍发现并执行；**删文档保留 sidecar**→集合不缩、运行报 `migration document … .case.ad` 硬错；污染旧 `.at`/`.expected.out` 判定不变、改文档源即红（stdout 轴）；双通道例只错 `vm-result` 只在该轴红。`cargo t plan1066-s-doc-controls` 仍 PASS。
 
 **本族既有红/债务（不代修、不充 PASS）**：①a2ts 85 例金样早于当前 emit（`console.log`→`globalThis.console.log`），整族显式重放统一 `transpiler output mismatch` 且全 `#[ignore]`——记 D-1066-A2TS-GOLDEN（改写期望需用户许可）；②治理 input inventory 以 `source_state:"unknown"` 收据复用陈旧 auto-case（实测造成假红，删收据重建后 PASS）——记 D-1066-STALE-TOOL-RECEIPT；③`infra-fixed` 的 ace-facade 基面红记 D-1066-INFRA-FIXED-ACE-FACADE。另见 `KNOWN-DEBT` 既有 D-1037-01（ac-semantics 文档语料缺 `status: executed` 谓词，owner 记 1062/1066）——下一轮按 1066 owner 处置。
@@ -2072,9 +2074,55 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-11 整�
 
 **健康面**：①格式——以 base `7c131286d` 为基线逐文件 `rustfmt --check`：11 个 base-clean 文件被本轮改脏，已全部格式化，**newly-unformatted = 0**；7 个 base 即非 clean 的文件（a2r/a2c/a2ts/tests.rs/legacy_doc/author.rs/inventory.rs）保持原状，未借机大改他人代码。②告警——`cargo check -p auto-lang --lib --tests` 在 plan1066/entry/test_runner/legacy_doc 上零新增 warning。③调试残留——新增行无 `dbg!/todo!/unimplemented!/FIXME`；`eprintln!` 仅出现在 4 个显式工具（payload proof/family actuals/compile prepare/proposal）作进度汇报。
 
+**R3 更正（2026-11-17 复审）**：上文称零新增 warning 在冻结提交时并不成立——复审实测 4 条本轮引入的告警（`conformance_tests.rs` 未用 import、`plan1066_b_slice.rs` 未用 `root`、`legacy_doc.rs` 死 `has_check`、`plan1066_a_slice.rs` 死 `parse_project_assertions`）。四条已在同轮修复（`cargo check -p auto-lang --lib --tests` 无匹配告警），此更正保留原陈述以便复核对照。
+
 **跨计划更正（具名）**：`test_ace_set_is_explicit_and_separate_from_daily` 自 PLAN-969 `278b91204` 起与 toml（4 成员，含 `ace-facade`）不一致、基面即红；本轮同步断言为登记集合，`infra-fixed` 72/72 转绿。属事实同步，不放宽该测试"显式且不进 daily"的意图；记录供 T-12 复核与 969 线知悉。
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 12 | from: work | to: work | status: executing | outcome: pass（T-11 关闭：冻结并集 1810 executed/0 红、155.2s；健康面收口；13任务 9/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 6682a6d0a | next: review（T-12 独立 final review：AC-01..09 + 27 NC + SD）
+
+### 2026-11-17 T-12[B] 独立 final review：needs_fix（AC-01/07 记录面与健康面须收口，功能面复核通过）
+
+stage: review | review_scope: final | reviewer: 独立上下文代理（review-1066；与实施会话分离，工作树内只读重建，未看实施者中间产物） | plan_id: PLAN-1066 | plan_revision: r3 | outcome: **needs_fix** | worktree: D:/autostack/.wt/lang-1066/auto-lang（分支 plan-1066-dev，工作树 clean） | reviewed_commit: 6682a6d0a | base_commit: 7c131286d | dependency_revisions: 无跨仓 | spec_inputs: 本 Plan §5/§6/§7/§8；canonical docs/specs/auto-test-case/{document-migration-closure,architecture,document-cases,governance-and-inventory,module-selection}.md 当前 HEAD 文本（未改）
+
+**acceptance_results（逐 AC；命令为我本轮实跑，均 @6682a6d0a）**
+| AC | 判定 | 证据（命令 + 观测数字） |
+|---|---|---|
+| AC-01 | **partial** | 键集/分母**已交付但与本 Plan 文本不一致**：fixture `plan1066_a_obligations.json` n_rows **1060**（vm506/a2r250/a2c118/a2ts85/cookbook101）、e78 **70**；文件系统核 `*.case.ad` 五根共 **1130** = 1060+70，交集/未分类/幻影均 0（自写 denominator_check.py）。但 §7 AC-01/§5.2/附录N 仍写 1050/VM496/1170 角色/E78 78，附录N 只有 1050 行；实际角色总数 **1180**（1170 + 10 个 vm-smoke）。A 已交付切片（master 7c131286d = IF-1066-A-CORRECTNESS）的冻结分母在本轮 B 被改（n_rows 1050→1060、e78 78→70、p_compile.gate_ignored false→true），无 plan_revision 递增/无 AC 文本修订 → R1 |
+| AC-02 | pass | 我自建外部探针（plan-artifacts/plan-1066/review-1066/mirror-probe，OS temp 镜像）：四族 doc-only（删全部 `.at/.as/.expected.*`）判定与仓库逐字相同（vm/a2r/a2c PASS，a2ts 同一条 `transpiler output mismatch`）；污染 sidecar 不变；改 doc oracle → 具名轴红（vm `stdout mismatch`／a2r `transpiler output mismatch`／a2c `C header mismatch`）；删 doc 保 sidecar → `migration document: …hello.case.ad missing/unreadable (sidecar fallback is forbidden)`；N0028/N0030 doc 实含 `vm-result` 且 `final-newline:false`，字节与冻结 `succ`(73 75 63 63)/`10`(31 30) 相同；载荷独立比对 1060/1060 源、663/663 artifact、556/556 check oracle 与冻结 sidecar 逐字节相同（0 差异） |
+| AC-03 | pass | 我用真 auto-case 双跑镜像（自写 s11_equivalence.py）：旧 fence `scheduler.case.ad` 与 `scheduler.document.case.ad` 各 11/11 PASS，case/check/status/detail 全同，identity.source/oracle 22/22 相同，时长 381–771ms；`scheduler.suite.ad` 只 include 文档；NC-08 五轴/NC-09 扫描常驻（见下） |
+| AC-04 | pass | 两份 project 文档 19 条有限断言（16+3；`exists:true`/`contains` 展开后逐条）；`test_14_modules_005_multi_file` 1.896s、`test_16_interop_021_path_dep` 1.978s PASS；NC-10a/b/c、NC-11、NC-12 常驻实测（doc-only 镜像可建、缺闭包硬失败、改 db 正文命中 `db.rs: struct Connection`、错/多断言具名、`../`/绝对/重复解码期拒绝） |
+| AC-05 | pass | 我实跑显式门 `AUTO_TEST_1066_COMPILE_OUT=…/review-1066/a2r-compile cargo test -p auto-lang --lib a2r_rustc_real_compile_gate -- --ignored` → **159 compiled / 55 external-dep-skip / 36 known-broken / 0 obsolete / 0 unexpected = 250 行**，15.70s，收据落我的 scope，工作树 `git status` 仍空；M01/M02/M03 ignored 重放 0.05/0.89/0.46s 均 PASS；日常 `cargo t a2r` 的 excluded 名单实名含 `a2r_rustc_real_compile_gate`（无日常 rustc） |
+| AC-06 | pass | 显式 proposal 我实跑 30 written / 0 failed（我自己的 scope），仓内 `git status` 零变化；union 门 excluded 实名含 `conformance_proposal` 与 `conformance_bootstrap`；33 项 conformance 验证仍在 corpus 选择内；NC-16/17/18/25 常驻 + NC-A3 动态（改 conformance doc fence → 真 consumer panic；GENERATE_EXPECTED 候选只落 scope；三根作者树 hash 前后相同） |
+| AC-07 | **partial** | doc 权威在发现/执行/库存三处独立复核通过（探针四族 + doc-only `legacy_inventory` rows=1 source=…hello.case.ad）；`document_case_active_scan.py` 实跑 76 组/183 文件 document 183/fence 0/unknown 0；但“零活跃旧载荷”的审计声称强于实现：审计 needle 只含五族后缀，`trans/gdscript.rs:1848-1850`、`trans/javascript.rs:755-757`、`trans/tscn.rs:542-550` 仍是活跃 `a2gd`/`a2js` 组的 `../auto-lang/...expected.gd|js|tscn` 回读，未被审计命中且本 Plan 未具名为边界 → R4 |
+| AC-08 | pass | 新增/改动例全部 ≪10s：最慢 `plan1066_a_denominator_integrity` 4.164s、NC-A1 4.130s、NC-A4 2.448s、NC-A3 2.162s、NC-A2 2.037s；两 project 测试 1.896/1.978s；python 控 6 测整组 7.5s（均摊 ≤1.5s）；scheduler 11 例 266–771ms；1 次并集 debug 调度，无 release/WSL |
+| AC-09 | fail（owner=review） | 本复核即其内容；在 R1–R4 关闭前不给 pass；R5 需 T-13 按真实结果落地 |
+
+**findings（须在 work 收口；均带证据与关闭条件）**
+| id | 严重度 | 事实 | 关闭条件 |
+|---|---|---|---|
+| F-1066B-R1 | medium | 分母/文本漂移：A 冻结契约在 B 被改（fixture n_rows 1050→1060、e78 78→70、`p_compile.gate_ignored` False→True、p_projects.assertions 重派生），无 revision 递增；§7 AC-01 仍 1050/1170、§5.2 仍 VM496/E78 78、附录N 仍 1050 行（实测 1060/70、角色 1180） | 递增 plan_revision 并在 AC-01/§5.2/附录N/E 写入增量（10 个 doc-only VM + 2 份 project 文档）与 1180 角色；或恢复 1050 目录选择。T-13 只能用 1060/70/1180 数值落 Spec |
+| F-1066B-R2 | medium | §5.2「cache 另 506 项中 10 个无 oracle/旧发现排除项**不能因有 doc 被擅自升级为目录验证**」被反做：这 10 项已入目录分母（1050→1060）并作为 `vm-smoke` 执行；其中 `test/vm/08_strings/017_sub_semantics` 仍存 13 字节 `017_sub_semantics.expected.result`（hex `65 6c 0a 65 6c 6c 0a 65 6c 0a 0a 6f 0a`）而 doc 未承载、无任何判据，T-03 收据却把这 10 项统一描述为「只有文档内 oracle」 | 要么按原 oracle 补 `vm-result` 并判红/判绿，要么具名登记为排除项（写进 §5.2 与债），并改正收据描述 |
+| F-1066B-R3 | medium-low | T-11 健康面收据称「plan1066/entry/test_runner/legacy_doc 零新增 warning」，实测 `cargo check -p auto-lang --lib --tests` 有 **4 条本轮引入**的告警：`conformance_tests.rs:18` 未用导入、`plan1066_b_slice.rs:482` 未用变量 `root`、`legacy_doc.rs:96` 死方法 `has_check`、`plan1066_a_slice.rs:778` 死函数 `parse_project_assertions`（T-05 改为读文档后失调用）。AGENTS §3 健康门为零告警 | 清除或具名 allow 并说明理由，重跑 check，改 §9/T-11 记录 |
+| F-1066B-R4 | low-medium | `plan1066_b_remaining_sidecar_readers_are_named` 的 needle 只覆盖五族后缀（`.expected.out/result/error/rs/c/h/ts`、`input.at`、`expected_output.txt`），±2 行窗口 + **文件级** allowlist；实际活跃 `a2gd`/`a2js` 组经 `../auto-lang/test/a2gd|a2j|tscn` 读旧 expected 未被命中且 Plan 未具名；AC-07「当前全入口零活跃旧载荷」因此过宽 | 在 Plan/债项具名这些族为边界（或扩审计 needle/路径构造并改行级 allowlist），并把 AC-07 措辞限定到五根+本包触面 |
+| F-1066B-R5 | low-medium | SD-01..05 未落地：主检出仅存 4 份**未提交**的 1066 规划期 Spec 改动，且现已自相矛盾（`docs/specs/auto-test-case/document-migration-closure.md:19`「76组中75组…scheduler 仍旧围栏」、`module-selection.md:20`「1066…仍仅规划」）。若原样提交即落假知识 | T-13 必须改写并提交这 5 份：document-migration-closure（76 组/183 文件全 document、1060/70/1180、scheduler 已切）、architecture（共享 doc 视图/发现/四 shim/受管物化/显式 prepare）、document-cases（scheduler recipe、project exists/contains 有限断言、源闭包/consumer 资格）、governance-and-inventory（doc 身份 inventory/trace、v2/历史 v1、verify_inputs 活跃门）、module-selection（显式 `a2r-compile` 与 `plan1066-s-doc-controls` 两组登记、ace 4 成员）；并核对 supersedes 5 文件/空 new_spec_components |
+| F-1066B-R6 | info | `PLAN1066_CONTROL_OWNERS` 测试部分只验证表自身（27 唯一/无缺）；`plan1066_b_family_artifact_vocabulary_is_not_crossed`（NC-07 owner）只对现网文档做不变量断言、无跨族注入；NC-15/17/27 属配置/常量断言（与各自合同相符）。逐条核 NC-01..27 **未发现空转/纯常量冒充**：其余 24 项均有真实变异或真实数据不变量 + 合法邻例 | 可选：给 NC-07 增加一条跨族注入负例；非阻塞 |
+
+**NC-01..NC-27 逐条核对（映射常量 + 代码 + 实跑）**：27 项均有真实控制；常驻 21 项在 `cargo test -p auto-lang --lib plan1066` 全绿（21 passed/3 ignored/2.23s）；外进程 4 项：`case plan1066-s-doc-controls` 6/0、`infra-fixed` NC-09 2 测 + NC-15 2 测（本轮并集 72/72 绿）、scheduler 11/11。NC-08 五轴各自具名红且不泄漏邻例；NC-12/23/24 用镜像/键集变异；NC-13/14/26/27 用收据/原始 exit-stderr 重判与 fixture 冻结 SHA。
+
+**边界诚实性核对**：a2ts 85/85 红（我实跑 85 items/85 failed，全 `transpiler output mismatch`；trans/typescript emit 本轮未改 + doc artifact 与冻结 `.expected.ts` 逐字节同 → 既有漂移，非本 Plan 引入）；a2c 8 红（118 项，逐条具名消息与收据一致）；a2r 351 项 1 红 `a2r/16_interop/024_nested_async_await`；shim CWD 挂起：我首次误把整族在进程内跑同样 >10min 挂住（旁证该边界），单例/镜像路径正常；外仓 book `generate_book_expected`（union 中 6.028s 实跑）仍在日常组写 book 仓=已登记 D-1066-BOOK-GENERATOR；PLAN-969 ace-facade 更正为事实同步（基面 toml 已 4 成员、断言 3 成员，`git show 7c131286d` 证基面即红）。
+
+**worktree/build discipline**：`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-1066/auto-lang` → clean（无 reparse point）；分支 plan-1066-dev HEAD=6682a6d0a、工作树 clean；主检出 `crates/ scripts/ Cargo.toml .cargo` 无本 Plan WIP（仅 4 份 docs/specs 规划期改动见 R5）。rustfmt 逐文件：25 个改动 .rs 中仍非 clean 的 7 个在 base 即非 clean（entry.rs/tests.rs/a2c/a2r/a2ts/legacy_doc/author.rs），newly-unformatted=0（与收据一致；收据把 inventory.rs 列为 base-dirty，实际已格式化）。
+
+**计时**：本会话并集 `cargo t corpus a2r vm auto-test-case infra-fixed plan1066-s-doc-controls case-ace-m2-scheduler-968` @6682a6d0a = **6/6 PASS，executed 1810（1570/151/72/6/11），excluded 495，wall 170.5s**（比收据 155.2s 慢，同机他计划 cargo/ace-semantics 并发）；准备/编译均该次调用内（case-parent 0.99s、av reuse）。新增/改动例无 >10s。
+
+**next**：T-12 不给 pass → 回 work 关闭 R1–R4（R5 归 T-13 merge 落地，R6 可选）；Plan 保持 executing/9-13，T-12/T-13 框不勾；工作树/分支/scope 保留。不得以 checked/收据替代上述实测。
+
+### 2026-11-17 合同修订 r3 → r4（复审 F-1066B-R1/R2 关闭）
+
+`plan_revision` 由 3 升为 **4**：B 期把冻结分母从 1050 改为 **1060**（T-03 登记的 10 个 doc-only VM 项）、
+E78 由 78 改为 **70**（T-05 两份 project 文档进入边界）、并在 R2 修复中把 `017_sub_semantics` 的
+13 字节冻结 stdout 角色补进文档（角色总数 **1171**）。这是合同数字的实质变更（非簿记），故按规范升版并
+逐处更正 AC-01/§5.2/附录N；原 1050 行快照与全部原 oracle/条件不减。
 
 ## 10. 待澄清事项
 
