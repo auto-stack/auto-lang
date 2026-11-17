@@ -475,6 +475,23 @@ fn emit_body(
     Ok(())
 }
 
+/// `Index { base: Var(x), index: StrLit(k) }` 且 `x` 是**对象**局部 ⇒
+/// `(x, k)`。其它形态返回 `None`（走普通值物化）。
+fn object_index_read(e: &Expr, ctx: &EmitCtx) -> Option<(String, String)> {
+    let super::ast::ExprKind::Index { base, index } = &e.kind else {
+        return None;
+    };
+    let super::ast::ExprKind::Var(id) = &base.kind else {
+        return None;
+    };
+    if ctx.locals.get(&id.name) != Some(&LocalClass::Obj) {
+        return None;
+    }
+    let super::ast::ExprKind::StrLit(text) = &index.kind else {
+        return None;
+    };
+    Some((id.name.clone(), text.clone()))
+}
 fn emit_line(
     line: &ConfigLine,
     cur: &str,
@@ -585,6 +602,19 @@ fn emit_line(
                     )?;
                 }
                 ConfigPairValue::Expr(e) => {
+                    // PLAN-982：`heap: k["heap"]` —— 对象字段**搬运**进文档，
+                    // 不经过 Str 返回面（`cfg_super_put(dst, src_obj, key)`）。
+                    if let Some((obj_local, field)) = object_index_read(e, ctx) {
+                        let obj = var_expr(&obj_local, e.span);
+                        let _ = emit_call(
+                            out,
+                            ctx,
+                            "cfg_super_put",
+                            vec![var_expr(cur, p.span), obj, str_lit(&field, e.span)],
+                            p.span,
+                        )?;
+                        return Ok(());
+                    }
                     let (value, class) = emit_value(e, out, ctx)?;
                     write_value(out, ctx, cur, "cfg_put", key, value, class, p.span)?;
                 }

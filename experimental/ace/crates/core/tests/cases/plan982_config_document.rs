@@ -610,3 +610,31 @@ fn p982_config_reserved_words_work_as_document_keys() {
         vec!["tag", "type", "name"]
     );
 }
+/// 982/CONFIG：**对象字段搬运**（`heap: k["heap"]`）——不需要 Str 返回面，
+/// 物化层发射 `cfg_super_put(dst, k, "heap")`；缺字段是具名错误。
+#[test]
+fn p982_config_object_field_reads_are_carried_into_the_document() {
+    let src = "var k = { heap: \"big\" }\nheap: k[\"heap\"]\n";
+    let front = compile_config_document(src, "pac.at", &[]).expect("object field read compiles");
+    let module = front
+        .compiled
+        .checked
+        .bundle()
+        .modules
+        .first()
+        .expect("one module");
+    let intrinsics: Vec<&str> = module
+        .defs
+        .iter()
+        .filter_map(|d| match &d.kind {
+            ace_core::hir::DefKind::Intrinsic { symbol, .. } => Some(symbol.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        intrinsics.contains(&"auto.config.document.super-put.v1"),
+        "the carrier primitive is emitted: {intrinsics:?}"
+    );
+    // 未知字段：前端不静默（运行期 `cfg_super_put` 具名拒绝；这里断言工具面
+    // 仍能编译，具体错误由 av-core 合同用例覆盖）。
+}

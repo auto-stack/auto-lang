@@ -322,6 +322,19 @@ shadowed: label
         other => panic!("`1 / 0` without an override must fail by name, got {other:?}"),
     }
 
+    // 对象字段**搬运**（`heap: k["heap"]`）：值进文档，脚本不经过 Str 返回面。
+    match run(
+        "var k = { heap: \"big\" }\nheap: k[\"heap\"]\n",
+        &empty_context(),
+    )
+    .outcome
+    {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(text(prop(&document, "heap")), "big");
+        }
+        other => panic!("an object field must be carried into the document, got {other:?}"),
+    }
+
     // 不能精确承载的注入种类：具名拒绝（不静默丢弃、不默认空）。
     let mut bad = empty_context();
     bad.args.push(("ratio".to_string(), ConfigValue::f64(1.5)));
