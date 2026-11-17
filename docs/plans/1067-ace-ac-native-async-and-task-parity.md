@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1067
-status: execution_done
+status: reviewed
 feature_name: ACE M2-B AC原生Future异步与Task调度补齐
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 8
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -176,13 +176,26 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - [x] **T-06｜work｜AC-01/02**[T-1067-1 已修]：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-4 不成立，重开（历史证据保留：三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
 - [x] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。 — 2026-11-17 ✅（显式仓外输出根构建+真实进程运行+published PE 导入审计：仅 kernel32.dll、符号全在本车道 19 项声明内、变异体被具名拒绝；runtime 身份与库字节一致绑定）
 - [x] **T-08｜work｜AC-01..04**[T-1067-2/3/4/5 已修]：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-5/6/7/9/10 不成立，重开（历史证据保留：并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
-- [ ] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
+- [x] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
 - [ ] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
 
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
 
+2026-11-17 stage: review | review_scope: final（第四次复审） | reviewer_identity: reviewer-1067d（独立委派上下文，无实现署名；自建双车道探针 + 门内 nextest 三次 + 全触面 rustfmt + 代码/spec 逐行重建） | plan_id: PLAN-1067 | plan_revision: 1 | **outcome: pass** | worktree_path: D:/autostack/.wt/lang-1067/auto-lang | branch: plan-1067-dev | reviewed_commit: `104cde943089ddc03b42170a916e0038e0494c6e` | base_commit: `f0db9bd0f746f115f9ec16124b798939e96e5860` | spec_inputs: docs/specs/auto-ac/native-async-scheduler.md@104cde943（sha256 `350F5E0E72F084F00C7F1887E7B7B3C8629A975DCD050928E2A9B5241EFEB74A`）、docs/specs/ace-migration/m2-scheduler.md（live 未改，SD-ASYNC pending） | acceptance_results: **AC-01 pass；AC-02 pass；AC-03 pass；AC-04 pass；AC-REVIEW pass（本记录）** | pending_closeout_gates: merge 侧 SD-ASYNC 改 `m2-scheduler.md:10-11/:17(12→17)/:19`＋三条共享规则；U-1067-1 frontmatter 元数据对账；Linux NOT_RUN→1063；`platform.*`→1068/T-03；owned-text 消息/回复→1068/T-02 | findings: T-1067-1..5 全闭；U-1067-1 minor（非阻断，merge-owned） | next: merge（T-10）
+
+**关门证据（第四次复审实测）**
+- **门内（`cargo t ace-native` ×3）**：`run-99q0p9cx` PASS 68.8s / 327 tests / 28 调度用例，逐例最大 **2.006s**；`run-fy_2tcjk` PASS 73.3s，max 1.870s；`run-s38035fx` PASS 69.4s，max 1.390s；`max_parallel_observed=20` 且调度用例**重叠对=0**；无调度用例 >10s。
+- **test-group 有效性**：`nextest list -E 'test(/^scheduler_/)'`=26、`-E 'test(/^av_leg::av_lane/)'`=2，合计 28＝调度用例数（`.config/nextest-full.toml:26-27,67-69`）。
+- **隔离**：`cargo nextest run -p ace-native --test sched_m2_1067 --test-threads 1` → 28/28 PASS 13.9s，逐例最大 0.953s。
+- **固定组（顺序）**：`cargo t ace-source ace-lowering ace-native case-ace-m2-scheduler-968` PASS `run-qu4kcxq9`（gate 102.1s；825/5/327 tests；case 组 checks 11/11）；`cargo t ace-av` PASS `run-x7ccje0o`（89.1s，1349 tests，0 红）；`cargo t ace-a2x` PASS `run-a5xsihgp`（151.1s，310 tests，0 红）。既有 flake 类本轮未复现。
+- **fmt**：`git diff --name-only f0db9bd0f..HEAD` 的 15 个 `.rs` 全部 `rustfmt --check` exit 0。
+- **双车道独立探针**（`plan-artifacts/plan-1067/review4`，临时目标用后删除、`git status` 空）：scalar 直调 `0/"2\n"`=AV；递归 `0/"2\n"`=AV；owned-Str 丢弃 `0/"done\n"`=AV；空 owned Str（`let` 与 `f""`）`0` 且 stderr 空（无 72/无双重释放）；`Str` 直调+go `"s=1\n"`；bool `"true\n"`；`f64`/`str` 两车道同拒（sched profile 无此类型）；0/1 参数 go 绿；3 参数 Str go 两车道同拒；spawn+state init `"8\n"`=AV；`Str` 状态 init `"s: 8\n"`=AV；main 内 spawn `"got one\n"`；helper spawn 具名同拒；同块/两分支两 `go` 均绿；stop 钩子 go+缓冲+ask `"one\ntwo\n2\ntick\n"`=AV。
+- **AC-04**：仓外候选 PE 24,064 B（sha256 `A4778A05…`）仅 `KERNEL32`，含 `CreateThread`/`WaitForSingleObject`/`SleepConditionVariableSRW`/`ExitProcess`/`HeapAlloc`，无 CRT/`printf`/`malloc`；变异 DLL 负控被拒。
+- **成本表（隔离 / 门内三次）**：corpus_1 0.744 / 1.822·0.776·0.877；corpus_2 0.842 / 0.765·0.731·0.936；corpus_3 0.745 / 0.791·0.797·1.172；corpus_4 0.628 / 0.786·0.887·0.765；go_from_task_handler(10 跑) 0.924 / 1.150·0.760·1.054；go_to_scalar 0.726 / 0.771·0.849·0.746；go_discarding_owned_text 0.474 / 0.492·0.459·0.441。
+
+**复审给出的 merge 侧待办**：U-1067-1（frontmatter `supersedes_spec_components` 多列 `m2-control-effects.md`，该文件未被任何 delta 修改——合入时删除或补实）；O-3/O-5 为可选措辞（spec §5 证据命令已因拆分更名、§2 `go` 行可补"结果丢弃/owned text 释放"一句）。
 2026-11-17 stage: work | PLAN-1067 r1 round-12 | review3 findings T-1067-1..5 修复完成 → 回 execution_done，交第 4 次复审（第 3 个 repair cycle 已用；若再 needs_fix 按上限停止并交用户裁定） | code ``104cde943``（config）/``f0814b271``（tests）/``eeff4d60e``（sigs）
 
 | finding | 修复 | 重放/证据 |
@@ -453,3 +466,5 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 10 | from: work | 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 11 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 4d6e81a2c | next: work
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 12 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: review
+
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 13 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: merge
