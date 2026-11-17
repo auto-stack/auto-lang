@@ -924,6 +924,21 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: housekeeping（981 worktree 构建缓存/大证据目录清理）| PLAN-981 | outcome: done
+
+- **背景**：985/A 完成前，981 只做到 A 面并等待；两棵 worktree 的构建缓存已占 ~40 GB。
+- **删除**（均为可再生缓存/证据副本，非仓库内容）：
+  - `.wt/lang-981/auto-lang/target`（3.1 GB）、`experimental/ace/target`（16.8 GB）、
+    `experimental/ace/crates/av/target`、`scripts/full-regression-driver/target`；
+  - `.wt/lang-981/auto-ui/experimental/autographics-auto-driver/target`（15.6 GB）、
+    `experimental/age-ace-session/target`（4.5 GB）；
+  - `plan-artifacts/plan-981/{review65,review66,review67,review68,review-63,sdk-pin-*}`（探针 target/
+    SDK 抽取副本，证据已折叠进 §9）。
+  - 合计释放 **≈55.4 GB**；D: 可用空间回到 **270.2 GB**。
+- **保留**：两仓源码/测试、`.sdk-source`（35.7 MB，两层 SDK 物化结果，可复现）、plan-artifacts 中
+  小脚本与收据（17.6 MB）。两棵 worktree `git status` 均 0 修改，`wt-guard` clean。
+- **恢复方式**：需要再跑测试时，在对应 worktree 直接 `cargo test`/`cargo t ace-source ace-syntax`
+  会重建 target；SDK 需要重物化时跑 `python tools/refresh_overlay.py D:/autostack/auto-lang`。
 2026-11-17 stage: done（tier-1 A 面终验：固定组干净 PASS）| PLAN-981 | outcome: pass（tier-1 A 面）
 
 - **固定组（终验）**：`cargo t ace-source ace-syntax` → **gate_passed=true**（run-ip6ed8jk，353.3s）；
