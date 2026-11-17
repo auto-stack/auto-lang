@@ -4,20 +4,20 @@ L-02	L	float/double字面量	961	A	named-replacement	landed	docs/specs/ace-migra
 L-03	L	byte/char/CStr字面量	961	A	named-replacement	landed	docs/specs/ace-migration/m2-numbers.md:8f10b476c76d8ac4
 L-04	L	i128/f32后缀(无此形守卫)	959	A	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 L-05	L	位运算/移位/符号扩展	961	A	inherited	landed	docs/specs/ace-migration/m2-numbers.md:8f10b476c76d8ac4
-L-06	L	.view/.mut/.move	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-07	L	Hold	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-08	L	Box/Arc(v)	962/964	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-09	L	Take(Move别名)	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-10	L	type声明/字段/方法/mut写回	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-11	L	enum三形态	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-12	L	union	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-13	L	tag	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-14	L	grid	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-15	L	tuple+TupleDestruct	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-16	L	array/List/map字面量(set无此形守卫)	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-17	L	Option/Result构造与模式	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-18	L	is语句/表达式+模式	962/965	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
-L-19	L	range .. / ..=	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
+L-06	L	.view/.mut/.move	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-07	L	Hold	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-08	L	Box/Arc(v)	962/964	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-09	L	Take(Move别名)	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-10	L	type声明/字段/方法/mut写回	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-11	L	enum三形态	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-12	L	union	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-13	L	tag	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-14	L	grid	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-15	L	tuple+TupleDestruct	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-16	L	array/List/map字面量(set无此形守卫)	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-17	L	Option/Result构造与模式	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-18	L	is语句/表达式+模式	962/965	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
+L-19	L	range .. / ..=	962	A	inherited	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
 L-20	L	object动态成员/反射	964	A	named-replacement	landed	docs/specs/ace-migration/m2-dynamic.md:1dc5651a821d1af9
 L-21	L	nil/null/??	964/965	A	inherited	landed	docs/specs/ace-migration/m2-dynamic.md:1dc5651a821d1af9
 L-22	L	closure x=>e	964	A	named-replacement	landed	docs/specs/ace-migration/m2-dynamic.md:1dc5651a821d1af9
@@ -42,11 +42,11 @@ L-40	L	ext/impl	963	A	inherited	landed	docs/specs/ace-migration/m2-generics.md:9
 L-41	L	全局store let/var/const/shared/CVar	960	A	inherited	landed	docs/specs/ace-migration/m2-modules.md:be25b0c69f2f8cc0
 L-42	L	泛型type/const参数/turbofish	963	A	inherited	landed	docs/specs/ace-migration/m2-generics.md:91e902aa5bfabb0f
 L-43	L	TaskDef/on=>事件	968	A	inherited	landed	docs/specs/ace-migration/m2-scheduler.md:869aaf24495d5557
-L-44	L	Node语句/表达式+OnEvents/SceneDecl	979/977/980	A	inherited	landed	docs/specs/ace-migration/m2-schema.md:5797e15925b07e14
+L-44	L	Node语句/表达式+OnEvents/SceneDecl	979/977/980	A	inherited	landed	docs/specs/ace-migration/m2-schema.md:19ebf62a55d30623
 L-45	L	NavCall路由调用	980	A	inherited	pending	
 L-46	L	spread/set字面量/when-match/global(无此形守卫)	959	A	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 L-47	L	调用语义:动态调用/方法分派/管道	963	A	named-replacement	landed	docs/specs/ace-migration/m2-generics.md:91e902aa5bfabb0f
-L-48	L	索引/place赋值/复合赋值	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:60c9fc5d70b3c867
+L-48	L	索引/place赋值/复合赋值	962	A	named-replacement	landed	docs/specs/ace-migration/m2-aggregates.md:3ab46b8b004859d7
 L-49	L	cast as / 转换 to	961	A	inherited	landed	docs/specs/ace-migration/m2-numbers.md:8f10b476c76d8ac4
 S-01	S	math/int域	945/972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
 S-02	S	text/str/char/fmt域	945/972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
@@ -54,58 +54,58 @@ S-03	S	bytes域	972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.m
 S-04	S	collections域	946/972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
 S-05	S	parse/format/encoding域	972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
 S-06	S	hash域	972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
-S-07	S	json域	948/975	A	inherited	pending	
-S-08	S	fs/path/file域	947/973	A	inherited	inflight	
-S-09	S	env域	973	A	inherited	inflight	
-S-10	S	process域	973	A	inherited	inflight	
-S-11	S	time/datetime/duration域	973	A	inherited	inflight	
-S-12	S	rand/random域	973	A	inherited	inflight	
-S-13	S	zip域	973	A	inherited	inflight	
-S-14	S	console/io/log域	947/973	A	inherited	inflight	
-S-15	S	storage域	973	A	inherited	inflight	
-S-16	S	net/http/sse/url域	948/974/983	A	inherited	pending	
-S-17	S	sqlite域	975	A	inherited	pending	
-S-18	S	redis域	975	A	inherited	pending	
+S-07	S	json域	948/975	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-data.md:bf67060663c5f12b
+S-08	S	fs/path/file域	947/973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-09	S	env域	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-10	S	process域	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-11	S	time/datetime/duration域	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-12	S	rand/random域	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-13	S	zip域	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-14	S	console/io/log域	947/973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-15	S	storage域	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+S-16	S	net/http/sse/url域	948/974/983	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-network.md:a8338b81e6b5f0ee
+S-17	S	sqlite域	975	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-data.md:bf67060663c5f12b
+S-18	S	redis域	975	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-data.md:bf67060663c5f12b
 S-19	S	task/async/sched(timer)域	947/968/973/974	A	inherited	landed	docs/specs/ace-migration/m2-scheduler.md:869aaf24495d5557
 S-20	S	media(image)域	980/OS064	A	inherited	pending	
 S-21	S	terminal域	984/OS064	A	inherited	pending	
-S-22	S	clipboard/dialog/dnd/i18n/frame宿主面	967/980	A	inherited	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-S-23	S	ui.at/widget/aura域	979/980	A	inherited	landed	docs/specs/ace-migration/m2-schema.md:5797e15925b07e14
+S-22	S	clipboard/dialog/dnd/i18n/frame宿主面	967/980	A	inherited	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+S-23	S	ui.at/widget/aura域	979/980	A	inherited	landed	docs/specs/ace-migration/m2-schema.md:19ebf62a55d30623
 S-24	S	test.at/test_mod域	971	A	inherited	landed	docs/specs/ace-migration/m2-tools.md:c69d0afd1aa1fdf3
 S-25	S	c面(stdio.c/stdlib.c装配)	982/987	A	named-replacement	pending	
-FFI-M2-01	FFI	公共use.c/use.rs绑定前门	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-02	FFI	C importer(预处理/布局/callback)	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-03	FFI	Rust API元数据→C兼容shim	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-04	FFI	四端消费同一签名/资源/效果并实调	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-05	FFI	双向import/export/allocator/销毁/重入	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-06	FFI	异步注册/完成/取消端口	967/968	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-07	FFI	可分发binding/shim/provider闭包与缓存	967/978	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
-FFI-M2-08	FFI	用户级真实库工程与独立ABI oracle	967/985-987	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
+FFI-M2-01	FFI	公共use.c/use.rs绑定前门	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-02	FFI	C importer(预处理/布局/callback)	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-03	FFI	Rust API元数据→C兼容shim	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-04	FFI	四端消费同一签名/资源/效果并实调	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-05	FFI	双向import/export/allocator/销毁/重入	967	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-06	FFI	异步注册/完成/取消端口	967/968	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-07	FFI	可分发binding/shim/provider闭包与缓存	967/978	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
+FFI-M2-08	FFI	用户级真实库工程与独立ABI oracle	967/985-987	A	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 LIB-M2-01	LIB	公共API/稳定操作ID/core-alloc-host-domain分层	947/972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
-LIB-M2-02	LIB	组织/装配/加载owner及版本	947/978	A	inherited	inflight	
+LIB-M2-02	LIB	组织/装配/加载owner及版本	947/978	A	inherited	landed	docs/specs/ace-migration/m2-build.md:a475b5304674f3d0
 LIB-M2-03	LIB	#if/#is目标平台选择进依赖图	947/966/973/1043	A	named-replacement	landed	docs/specs/ace-migration/m2-metaprogramming.md:50dfe45b6a3ec799
 LIB-M2-04	LIB	基础/集合/文本算法四端一致	945/946/972	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
-LIB-M2-05	LIB	文件/系统/宿主库统一语义平台ABI	973	A	inherited	inflight	
-LIB-M2-06	LIB	兼容分母/安装/增量/恢复/退役含新库	948/978/985-987	A	inherited	inflight	
-LIB-M2-07	LIB	默认自有实现(无隐式libc委托)	947/972/973/978/985	A	inherited	pending	
-LIB-M2-08	LIB	字符串/ABI边界(长度/编码/owner)	967/972/973/985	A	inherited	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
+LIB-M2-05	LIB	文件/系统/宿主库统一语义平台ABI	973	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+LIB-M2-06	LIB	兼容分母/安装/增量/恢复/退役含新库	948/978/985-987	A	inherited	landed	docs/specs/ace-migration/m2-build.md:a475b5304674f3d0
+LIB-M2-07	LIB	默认自有实现(无隐式libc委托)	947/972/973/978/985	A	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
+LIB-M2-08	LIB	字符串/ABI边界(长度/编码/owner)	967/972/973/985	A	inherited	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 A-01	AENTRY	执行/config求值族入口	969/982	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
 A-02	AENTRY	脚本执行入口	969	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
 A-03	AENTRY	求值入口	969	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
 A-04	AENTRY	调试族入口	971	AB	inherited	landed	docs/specs/ace-migration/m2-tools.md:c69d0afd1aa1fdf3
-A-05	AENTRY	转译族入口	976/977/982	AB	inherited	pending	
+A-05	AENTRY	转译族入口	976/977/982	AB	inherited	landed	docs/specs/ace-migration/m2-typescript.md:914bbadae9af3f85
 A-06	AENTRY	REPL/daemon/MCP入口	970	AB	inherited	landed	docs/specs/ace-migration/m2-sessions.md:1e3b1376a56aa8d2
 A-07	AENTRY	#[test]/shim入口	971	AB	inherited	landed	docs/specs/ace-migration/m2-tools.md:c69d0afd1aa1fdf3
 A-08	AENTRY	仓内二进制(playground/auto-case)	969/971/987	AB	inherited	landed	docs/specs/ace-migration/m2-tools.md:c69d0afd1aa1fdf3
 A-09	AENTRY	引擎选择分派	969/987	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
-A-10	AENTRY	pub use vm整包直连	967/980/983	AB	named-replacement	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
+A-10	AENTRY	pub use vm整包直连	967/980/983	AB	named-replacement	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 A-11	AENTRY	AutoInterpreter	982	B	product-B	pending	
 A-12	AENTRY	a2r_std中立保留	959	B	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 B-01	BENTRY	A2R Rust目标	969/980/982/983	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
 B-02	BENTRY	A2C C目标	982	AB	inherited	pending	
-B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	pending	
+B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:83af83e29cd299f4
 B-04	BENTRY	A2GD Godot目标	977	AB	inherited	pending	
-B-05	BENTRY	A2TS TypeScript目标	976	AB	inherited	pending	
+B-05	BENTRY	A2TS TypeScript目标	976	AB	inherited	landed	docs/specs/ace-migration/m2-typescript.md:914bbadae9af3f85
 B-06	BENTRY	SCENE目标	977	AB	inherited	pending	
 B-07	BENTRY	其余相邻目标	977	AB	inherited	pending	
 B-08	BENTRY	r2a反向	977	AB	inherited	pending	
@@ -118,7 +118,7 @@ C-03	C	tauri	980/TAURI	B	product-B	pending
 C-04	C	rust静态	980/RUST	B	product-B	pending	
 C-05	C	jet/ark	980/JET/ARK	B	product-B	pending	
 C-06	C	vscode模式	971/986	AB	product-B	landed	docs/specs/ace-migration/m2-tools.md:c69d0afd1aa1fdf3
-C-07	C	VM内部直连面	967/980	AB	product-B	landed	docs/specs/ace-migration/m2-host.md:2ebd7199dd63939f
+C-07	C	VM内部直连面	967/980	AB	product-B	landed	docs/specs/ace-migration/m2-host.md:f7dfc2fb46c418be
 C-08	C	冻结SDK	981/987	B	product-B	pending	
 C-09	C	aura	980/DIALECT	B	product-B	pending	
 C-10	C	auto-ui测试	985/980	B	product-B	pending	
