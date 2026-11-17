@@ -25,7 +25,14 @@ fn conformance_dir() -> PathBuf {
 /// Run a single conformance test case.
 /// Returns Ok if AutoVM output matches expected_output.txt.
 fn run_conformance_test(case: &str) -> AutoResult<()> {
-    let dir = conformance_dir().join(case);
+    run_conformance_case(&conformance_dir(), case)
+}
+
+/// PLAN-1066: root-parametrized conformance core. Normal wrappers run it on
+/// the repo corpus; the A-slice probes run the SAME mechanism (doc payload,
+/// trim comparison, scoped diagnostics) against a scope mirror.
+pub(crate) fn run_conformance_case(root: &std::path::Path, case: &str) -> AutoResult<()> {
+    let dir = root.join(case);
     // PLAN-1062 T-14: payload comes from the migration document (input
     // inline; expected output as the result oracle). The frozen sidecars
     // are history — never a fallback.
@@ -47,9 +54,12 @@ fn run_conformance_test(case: &str) -> AutoResult<()> {
     let expected_trimmed = expected.trim();
 
     if vm_output != expected_trimmed {
-        // Write .wrong.out for debugging
-        let wrong_path = dir.join(".wrong.out");
-        std::fs::write(&wrong_path, &stdout)?;
+        // PLAN-1066 A-NOWRITE: the mismatch diagnostic goes to the explicit
+        // scope (or is dropped) — the corpus dir stays byte-identical.
+        crate::tests::diag_scope::write_scoped(
+            &format!("test/a2r/conformance/{case}/.wrong.out"),
+            stdout.as_bytes(),
+        )?;
     }
 
     assert_eq!(
@@ -63,6 +73,11 @@ fn run_conformance_test(case: &str) -> AutoResult<()> {
 
 /// Generate expected_output.txt from AutoVM execution.
 /// Used once to bootstrap test cases, then expected_output.txt is committed.
+///
+/// PLAN-1066 A-NOWRITE (T-07[A]): the candidate lands ONLY in the explicit
+/// diagnostic scope — a normal run can never regenerate or overwrite the
+/// author-tree oracle. The explicit conformance-proposal flow (T-07[B])
+/// owns any author-side generation.
 #[allow(dead_code)]
 fn generate_expected(case: &str) -> AutoResult<String> {
     let dir = conformance_dir().join(case);
@@ -70,16 +85,26 @@ fn generate_expected(case: &str) -> AutoResult<String> {
         .map_err(|e| crate::error::AutoError::Msg(e.to_string()))?;
     let (_, stdout) = run_autovm_capture(&src)?;
     let output = stdout.trim().to_string();
-    std::fs::write(dir.join("expected_output.txt"), format!("{}\n", output))?;
+    crate::tests::diag_scope::write_scoped(
+        &format!("test/a2r/conformance/{case}/expected_output.txt"),
+        format!("{}\n", output).as_bytes(),
+    )?;
     Ok(output)
 }
 
 // === Conformance Test Cases ===
 
-/// Bootstrap: generate expected_output.txt files from AutoVM execution.
-/// Run once with `cargo test -p auto-lang -- conformance_bootstrap --nocapture`,
-/// then commit the generated files.
+/// Bootstrap: (historically) regenerate expected_output.txt files from AutoVM
+/// execution.
+///
+/// PLAN-1066 T-07[A] (A-NOWRITE): a generator is an AUTHOR action, not a
+/// verification — it no longer runs on the normal path (`cargo t corpus`).
+/// The 33 independent conformance verifications below are unchanged and
+/// remain the normal gate; explicit candidate generation moves to the
+/// conformance-proposal flow owned by T-07[B]. The 30-case closed set stays
+/// frozen (PLAN-1066/A denominator fixture).
 #[test]
+#[ignore = "PLAN-1066 A-NOWRITE: author-side generator; explicit conformance-proposal (T-07[B]) owns oracle writes"]
 fn conformance_bootstrap() {
     let cases = [
         "001_int_add",

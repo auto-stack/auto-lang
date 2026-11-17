@@ -10,7 +10,19 @@ use std::path::PathBuf;
 
 fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let case_dir = d.join("test/cookbook").join(category).join(name);
+    run_cookbook_case(&d.join("test/cookbook"), category, name)
+}
+
+/// PLAN-1066: root-parametrized cookbook case core. The normal wrappers run
+/// it against the repo corpus; PLAN-1066/A probes run the SAME mechanism
+/// against a scope mirror (NC-A3) — selection, doc decode, CWD semantics,
+/// and oracle judgment are identical, only the root differs.
+pub(crate) fn run_cookbook_case(
+    cookbook_root: &std::path::Path,
+    category: &str,
+    name: &str,
+) -> AutoResult<()> {
+    let case_dir = cookbook_root.join(category).join(name);
 
     // Find the .at file in the case directory (maxdepth 1, like batch script)
     let at_file = fs::read_dir(&case_dir)
@@ -60,16 +72,30 @@ fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
 
     std::env::set_current_dir(&original_cwd)?;
 
-    let out_path = case_dir.join("expected.out");
     let generate = std::env::var("GENERATE_EXPECTED").is_ok();
 
     if generate && expected_opt.is_none() {
-        fs::write(&out_path, &stdout)?;
-        eprintln!("GENERATED {}", out_path.display());
+        // PLAN-1066 A-NOWRITE: the generated candidate is diagnostic output.
+        // It lands ONLY in the explicit scope — never as an author-tree
+        // expected.out (the explicit proposal flow, T-07[B], owns candidates).
+        let target = crate::tests::diag_scope::write_scoped(
+            &format!("test/cookbook/{category}/{name}/expected.out"),
+            stdout.as_bytes(),
+        )?;
+        match target {
+            Some(p) => eprintln!("GENERATED (scope) {}", p.display()),
+            None => eprintln!(
+                "GENERATE_EXPECTED set but no AUTO_TEST_DIAG_SCOPE; \
+                 candidate for {category}/{name} dropped (author tree untouched)"
+            ),
+        }
     } else if let Some(expected) = expected_opt.clone() {
         if stdout != expected {
-            let wrong_path = case_dir.join("wrong.out");
-            fs::write(&wrong_path, &stdout)?;
+            // PLAN-1066 A-NOWRITE: mismatch diagnostics are scoped/dropped.
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/cookbook/{category}/{name}/wrong.out"),
+                stdout.as_bytes(),
+            )?;
         }
         assert_eq!(
             stdout, expected,

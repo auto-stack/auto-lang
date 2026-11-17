@@ -1056,8 +1056,17 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
             }
         };
         if stdout != expected {
-            let wrong_path = expected_path.with_extension("wrong.out");
-            let _ = std::fs::write(&wrong_path, &stdout);
+            // PLAN-1066 A-NOWRITE: mismatch diagnostics are scoped/dropped —
+            // never a `.wrong.out` sibling in the author tree.
+            let label = format!(
+                "test/vm/{}/{}",
+                case.name,
+                expected_path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().replace(".expected", ""))
+                    .unwrap_or_default()
+            );
+            let _ = crate::diag_scope::write_scoped(&label, stdout.as_bytes());
             return test_runner::FileTestReport {
                 name: case_name,
                 outcome: test_runner::TestOutcome::Failed("stdout mismatch".into()),
@@ -1084,8 +1093,16 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
             }
         };
         if result != expected {
-            let wrong_path = expected_path.with_extension("wrong.result");
-            let _ = std::fs::write(&wrong_path, &result);
+            // PLAN-1066 A-NOWRITE: scoped/dropped, same as the stdout axis.
+            let label = format!(
+                "test/vm/{}/{}",
+                case.name,
+                expected_path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().replace(".expected", ""))
+                    .unwrap_or_default()
+            );
+            let _ = crate::diag_scope::write_scoped(&label, result.as_bytes());
             return test_runner::FileTestReport {
                 name: case_name,
                 outcome: test_runner::TestOutcome::Failed("result mismatch".into()),
