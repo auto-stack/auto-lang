@@ -15,9 +15,9 @@ use ace_lowering::lower_checked_owned;
 // PLAN-980 STATE：消费者（UI 桥）经本模块取组件面的配置/结果类型，不必直接
 // 依赖 ace-core。再导出为纯加法，既有路径不受影响。
 pub use ace_core::source::age_component::{
-    compile_component_scenario_states, compile_component_scenario_with_initials,
-    project_component_candidates, ComponentCompilation, ComponentInitials, ComponentScenario,
-    InitialValue, ScenarioOp,
+    compile_component_scenario_states, compile_component_scenario_states_at,
+    compile_component_scenario_with_initials, project_component_candidates, ComponentCompilation,
+    ComponentInitials, ComponentScenario, InitialValue, ScenarioOp,
 };
 pub use ace_core::source::age_h0::LegacyWidgetAlias;
 

@@ -612,3 +612,11 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **census 具名修订 #5**：(75,8,1,27)→**(75,8,4,24)**——[4]（modifier 键）、[18]/[59]（$event 绑定，含括号属性形）spliced；absent-3。
 - **剩余缺席族**（taxonomy 更新）：③双 widget（IF-981-MODULE）、④控制流/let/调用体（语言面体模型扩展）、⑤空体、⑥引号事件键/handler（引号键族——本批未收，方言层合同）、②float 域、⑦伪源。①的括号属性/修饰符/$event 子族已闭。
 - **永久用例**：lang `plan980_web_grammar_6m.rs`（四形编译）；UI `p980_web_event_arg_forms`（三形端到端 lane 拼接）。
+
+### §13.15 ③ node 选择器（切片 #6n，2026-11-18）
+
+- **语言面**：`compile_component_scenario_states_at(src, …, node_index)`——多 node/widget 同文件源按声明序**选一编译**（越界具名拒）；None 形态保持单 node 形状门。命名仍单 node 形（`__age_state_0_<field>`——非选中 node 不进本编译）；**无组合/跨引用语义**——完整多 node 组合=IF-981-MODULE 域边界保持。
+- **UI 面**：lane `compile_at`/`lane_handler_bodies_spec_at`；`generate_sfc_with_lane` 逐 widget 生成并**聚合** bodies/absent（单 widget 源行为不变）。
+- **census 具名修订 #6**：(75,8,4,24)→**(75,8,4,26)**——[65][66] 第二 widget（空体）经选择器入分母；两源第一 widget（载荷声明+参数 handler）**仍缺**：widget 头参数表（`widget N(props)`）不在年龄面语法+④调用体/`;`分隔——[65]/[66] 全解锁的下一层（w1 独立编译已证选择器机制正确）。
+- **永久用例**：UI `p980_web_multi_widget_node_selector`（逐节点发射/一体化聚合/越界负控）。
+- **剩余边界（④/⑥ 终局陈述）**：④控制流/let/调用体=**外部名面**（`fs.read_dir`/`listusers`/`complete`——back.api 导入+FFI/方法/动态值；无外部名的纯结构扩展零语料收益）——需 use-import/foreign-contract（967/973 谱系）设计决策后才有安全承载，不做未验证旁路；⑥引号键族实查**零拼接收益**（全为空体/PARAMS-B 受阻源）。widget 头参数表+`;`分隔=④ 子项随该决策一并评估。

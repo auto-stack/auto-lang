@@ -866,6 +866,7 @@ pub fn compile_component_scenario_observing(
         None,
         true,
         false,
+        None,
     )
 }
 
@@ -891,6 +892,7 @@ pub fn compile_component_scenario_with_initials(
         Some(initials),
         true,
         true,
+        None,
     )
 }
 
@@ -919,6 +921,34 @@ pub fn compile_component_scenario_states(
         Some(initials),
         false,
         true,
+        None,
+    )
+}
+
+/// PLAN-980 WEB 切片#6n：**node 选择器**形态——多 node/widget 同文件源按
+/// 声明序选第 `node_index` 个编译（真语料 vue_capabilities 双 widget 形
+/// [65]/[66]；完整多 node 组合语义=IF-981-MODULE 域，本入口只做"选一编译"
+/// ——非选中 node 不进本编译，命名仍单 node 形，无组合/跨引用语义）。
+pub fn compile_component_scenario_states_at(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &ComponentScenario,
+    initials: &ComponentInitials,
+    node_index: usize,
+) -> Result<ComponentCompilation, Vec<Diagnostic>> {
+    compile_component_scenario_full(
+        src,
+        module_path,
+        alias,
+        capabilities,
+        scenario,
+        None,
+        Some(initials),
+        false,
+        true,
+        Some(node_index),
     )
 }
 
@@ -932,6 +962,7 @@ fn compile_component_scenario_full(
     initials: Option<&ComponentInitials>,
     emit_view_texts: bool,
     allow_driverless: bool,
+    node_index: Option<usize>,
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
     let src = &desugar_widget_src(src)?;
@@ -946,7 +977,9 @@ fn compile_component_scenario_full(
             )]);
         }
     }
-    if candidates.len() != 1 {
+    // PLAN-980 WEB #6n：node 选择器——Some(i) 选第 i 个（越界具名拒），
+    // None 保持单 node 形状门。
+    if node_index.is_none() && candidates.len() != 1 {
         let span = candidates
             .first()
             .map(|n| n.span)
@@ -960,7 +993,22 @@ fn compile_component_scenario_full(
             span,
         )]);
     }
-    let node = &candidates[0];
+    let node = match node_index {
+        Some(i) => candidates.get(i).ok_or_else(|| {
+            vec![text_diag(
+                "source.age.component-shape",
+                format!(
+                    "node index {i} is out of range; the source declares {} node(s)",
+                    candidates.len()
+                ),
+                candidates
+                    .first()
+                    .map(|n| n.span)
+                    .unwrap_or(Span { start: 0, end: 0 }),
+            )]
+        })?,
+        None => &candidates[0],
+    };
     // 隐藏名前缀与用户顶层名冲突：两个前门共用同一策略（先于场景自检）。
     // F11：程序项只解析一次（隐藏名检查与脱糖共用）。
     let items = parse_program_items(src)?;
