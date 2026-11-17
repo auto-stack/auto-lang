@@ -509,7 +509,7 @@ fn plan1066_b_e78_boundary_is_a_key_set_not_a_count() {
     let union = n_docs.len() + e78.len();
     assert_eq!(union, all_docs.len(), "unclassified documents: {all_docs:?}");
     assert_eq!(n_docs.len(), 1060, "N denominator");
-    assert_eq!(e78.len(), 68, "E78 boundary denominator");
+    assert_eq!(e78.len(), 70, "E78 boundary denominator (68 other consumers + 2 P project documents)");
 
     // mutation: misclassify ONE boundary document as an N entry -> named reject
     let moved = e78.iter().next().expect("boundary document").clone();
@@ -643,4 +643,109 @@ fn plan1066_b_bootstrap_rule_and_body_come_from_the_original_mechanism() {
         !passed(&report),
         "a bootstrap document edit must be judged, not ignored ({marker})"
     );
+}
+
+/// NC-10/11/12: the two project documents are the only author source of their
+/// projects — a missing closure entry fails, the document body drives the
+/// product (a body edit turns the finite assertion red), a wrong/over-asking
+/// assertion is judged by name, and escaping/duplicate virtual paths are
+/// rejected before anything is materialized.
+#[test]
+fn plan1066_b_project_documents_own_their_projects() {
+    let temp = tempfile::tempdir().expect("temp root");
+    let root = temp.path();
+    let source = repo().join("test/a2r/14_modules/005_multi_file");
+
+    let mirror = |name: &str| -> std::path::PathBuf {
+        let dst = root.join(name).join("005_multi_file");
+        copy_dir_all(&source, &dst);
+        // Drop every frozen sidecar: only the document may carry payloads.
+        for entry in walk(&dst) {
+            let name = entry.file_name().unwrap().to_string_lossy().to_string();
+            if name.ends_with(".at") || name.ends_with(".expected.rs") {
+                std::fs::remove_file(&entry).expect("remove sidecar");
+            }
+        }
+        dst
+    };
+
+    // NC-10a: the documented closure is complete and the mirror still builds.
+    let clean = mirror("clean");
+    crate::tests::a2r_tests::run_project_case(&clean)
+        .unwrap_or_else(|e| panic!("doc-only project mirror must build: {e}"));
+
+    // NC-10b: a MISSING closure entry is a hard failure (main.at uses db).
+    let missing = mirror("missing");
+    let doc_path = missing.join("main.project.case.ad");
+    let doc = std::fs::read_to_string(&doc_path).expect("doc");
+    let start = doc.find("#### db.at").expect("db.at section");
+    let end = doc.find("#### api/mod.at").expect("next section");
+    let trimmed = format!("{}{}", &doc[..start], &doc[end..]);
+    std::fs::write(&doc_path, trimmed).expect("write");
+    let err = crate::tests::a2r_tests::run_project_case(&missing)
+        .expect_err("missing module closure must fail the original transpiler");
+    assert!(!err.is_empty(), "missing closure error must be located");
+
+    // NC-10c: the document body drives the product; a body edit is judged.
+    let body = mirror("body");
+    let doc_path = body.join("main.project.case.ad");
+    let doc = std::fs::read_to_string(&doc_path).expect("doc");
+    let mutated = doc.replace("struct Connection", "struct Connection_X");
+    assert_ne!(doc, mutated, "control must edit the db.at body");
+    std::fs::write(&doc_path, mutated).expect("write");
+    let err = crate::tests::a2r_tests::run_project_case(&body)
+        .expect_err("document body edit must be judged by the finite assertion");
+    assert!(err.contains("db.rs") && err.contains("struct Connection"), "{err}");
+
+    // NC-11: an over-asking assertion fails by name, never silently.
+    let wrong = mirror("wrong");
+    let doc_path = wrong.join("main.project.case.ad");
+    let doc = std::fs::read_to_string(&doc_path).expect("doc");
+    let mutated = doc.replace("\"fn connect()\"", "\"fn connect_nowhere()\"");
+    assert_ne!(doc, mutated);
+    std::fs::write(&doc_path, mutated).expect("write");
+    let err = crate::tests::a2r_tests::run_project_case(&wrong)
+        .expect_err("wrong contains assertion must fail");
+    assert!(err.contains("fn connect_nowhere()"), "{err}");
+
+    let absent = mirror("absent");
+    let doc_path = absent.join("main.project.case.ad");
+    let doc = std::fs::read_to_string(&doc_path).expect("doc");
+    let mutated = doc.replace(
+        "#### Cargo.toml\nexists: true",
+        "#### not-produced.txt\nexists: true\n\n#### Cargo.toml\nexists: true",
+    );
+    assert_ne!(doc, mutated);
+    std::fs::write(&doc_path, mutated).expect("write");
+    let err = crate::tests::a2r_tests::run_project_case(&absent)
+        .expect_err("declared-but-absent product must fail");
+    assert!(err.contains("not-produced.txt"), "{err}");
+
+    // NC-12: escaping / duplicate virtual paths are rejected at decode time,
+    // before any materialization. The author tree must stay untouched.
+    for (label, heading) in [
+        ("escape", "#### ../escape.at"),
+        ("absolute", "#### /abs/escape.at"),
+        ("duplicate", "#### db.at"),
+    ] {
+        let bad = mirror(&format!("path-{label}"));
+        let doc_path = bad.join("main.project.case.ad");
+        let doc = std::fs::read_to_string(&doc_path).expect("doc");
+        // Inject INSIDE the `### Auto` section (before the first additional
+        // module file) so the illegal path is a SOURCE path, not a product.
+        let anchor = "#### db.at";
+        let injected = doc.replacen(
+            anchor,
+            &format!("{heading}\n\n```auto\nfn x() {{}}\n```\n\n{anchor}"),
+            1,
+        );
+        assert_ne!(doc, injected);
+        std::fs::write(&doc_path, injected).expect("write");
+        let err = crate::tests::a2r_tests::run_project_case(&bad)
+            .expect_err("illegal virtual path must be rejected");
+        assert!(
+            err.contains("path") || err.contains("路径") || err.contains("重复"),
+            "{label}: unexpected error {err}"
+        );
+    }
 }

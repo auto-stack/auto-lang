@@ -22,13 +22,20 @@ pub struct LegacyDoc {
 
 /// Read `<dir>/<stem>.case.ad` and return its single decoded case.
 pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
-    let doc_path = dir.join(format!("{stem}.case.ad"));
-    let bytes = std::fs::read(&doc_path)
+    load_document(&dir.join(format!("{stem}.case.ad")))
+}
+
+/// PLAN-1066 T-05: read an explicitly named author document (e.g.
+/// `main.project.case.ad`) and return its single decoded case.
+pub fn load_document(doc_path: &Path) -> Result<LegacyDoc, String> {
+    let bytes = std::fs::read(doc_path)
         .map_err(|e| format!("legacy doc {} missing/unreadable: {e} (migration doc required; sidecar fallback is forbidden)", doc_path.display()))?;
     let text = std::str::from_utf8(&bytes).map_err(|e| format!("{}: {e}", doc_path.display()))?;
     let doc = CaseDocument::parse(text.as_bytes()).map_err(|e| format!("{}: {e}", doc_path.display()))?;
-    let rel = format!("{}/{}.case.ad",
-        dir.file_name().map(|d| d.to_string_lossy().to_string()).unwrap_or_default(), stem);
+    let rel = doc_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     let mut cases = decode_document(&doc, &rel, &Limits::defaults())
         .map_err(|e| format!("{}: {}", doc_path.display(), e.message))?;
     if cases.len() != 1 {

@@ -807,6 +807,121 @@ fn stderr_only_external_dep_errors(stderr: &str) -> bool {
     has_dep_error && !has_other_error
 }
 
+/// PLAN-1066 T-05: directory of one migrated project case.
+fn project_case_dir(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/a2r")
+        .join(relative)
+}
+
+/// The project document's declared product assertions, one entry per product.
+struct ProjectProduct {
+    path: String,
+    exists: bool,
+    contains: Vec<String>,
+}
+
+/// Materialize a project document into a managed directory and run the ORIGINAL
+/// project transpiler over it, then judge every declared product separately.
+///
+/// The frozen `main.at`/`db.at`/`api/*.at` sidecars are never read: the entry
+/// and its module files come from the decoded document. Materialization keeps
+/// the entry name, the relative module paths and the project directory basename
+/// (the Cargo package name is derived from it), refuses absolute/`..`/duplicate
+/// paths before writing, and cleans up by dropping the temporary directory.
+pub(crate) fn run_project_case(case_dir: &std::path::Path) -> Result<(), String> {
+    use crate::trans::rust::transpile_rust_project;
+
+    let doc = crate::tests::legacy_doc::load_document(&case_dir.join("main.project.case.ad"))?;
+    let check = doc
+        .case
+        .spec
+        .checks
+        .iter()
+        .find(|check| check.id == "project")
+        .ok_or_else(|| "project document has no `project` check".to_string())?;
+    let mut products = Vec::new();
+    for artifact in &check.expect.artifacts {
+        auto_test_case::admission::validate_virtual_path(&artifact.path)
+            .map_err(|e| format!("product path {:?}: {e}", artifact.path))?;
+        products.push(ProjectProduct {
+            path: artifact.path.clone(),
+            exists: artifact.match_mode.declares_exists(),
+            contains: artifact.match_mode.contains().to_vec(),
+        });
+    }
+    if products.is_empty() {
+        return Err("project document declares no product assertions".into());
+    }
+
+    let project = case_dir
+        .file_name()
+        .ok_or_else(|| "project case dir has no name".to_string())?
+        .to_string_lossy()
+        .to_string();
+    let temp = tempfile::Builder::new()
+        .prefix("plan1066-project-")
+        .tempdir()
+        .map_err(|e| format!("project tempdir: {e}"))?;
+    let root = temp.path().join(&project);
+    std::fs::create_dir_all(&root).map_err(|e| format!("project dir: {e}"))?;
+
+    let entry = doc.source_path().to_string();
+    auto_test_case::admission::validate_virtual_path(&entry)
+        .map_err(|e| format!("entry path {entry:?}: {e}"))?;
+    let mut written = std::collections::BTreeSet::new();
+    let mut write = |virtual_path: &str, payload: &[u8]| -> Result<(), String> {
+        auto_test_case::admission::validate_virtual_path(virtual_path)
+            .map_err(|e| format!("source path {virtual_path:?}: {e}"))?;
+        if !written.insert(virtual_path.to_string()) {
+            return Err(format!("duplicate virtual source {virtual_path:?}"));
+        }
+        let target = root.join(virtual_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{virtual_path}: {e}"))?;
+        }
+        std::fs::write(&target, payload).map_err(|e| format!("{virtual_path}: {e}"))
+    };
+    write(&entry, doc.source_text().as_bytes())?;
+    for file in &doc.case.spec.files {
+        let auto_test_case::contract::PayloadSpec::Text(text) = &file.payload else {
+            return Err(format!("project file {:?} is not inline text", file.path));
+        };
+        write(&file.path, text.as_bytes())?;
+    }
+
+    let entry_abs = root.join(&entry);
+    let mut result = transpile_rust_project(entry_abs.to_str().expect("utf-8 project entry"))
+        .map_err(|e| format!("transpile_rust_project: {e}"))?;
+
+    let mut failures = Vec::new();
+    for product in &products {
+        match result.remove(&product.path) {
+            None => failures.push(format!(
+                "{}: missing product ({})",
+                product.path,
+                if product.exists { "declared exists" } else { "declared contains" }
+            )),
+            Some((bytes, ..)) => {
+                let text = String::from_utf8_lossy(&bytes).to_string();
+                for needle in &product.contains {
+                    if !text.contains(needle.as_str()) {
+                        failures.push(format!(
+                            "{}: missing contains {:?}",
+                            product.path, needle
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
 #[test]
 fn a2r_rustc_real_compile_gate() {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1695,78 +1810,8 @@ fn test_14_modules_004_wildcard_import() {
 // Special: multi_file uses transpile_rust_project with its own assertions
 #[test]
 fn test_14_modules_005_multi_file() {
-    use crate::trans::rust::transpile_rust_project;
-
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let entry = d.join("test/a2r/14_modules/005_multi_file/main.at");
-
-    let result = transpile_rust_project(entry.to_str().unwrap()).unwrap();
-
-    // Check that all 4 files were generated
-    assert!(result.contains_key("main.rs"), "Missing main.rs");
-    assert!(result.contains_key("db.rs"), "Missing db.rs");
-    assert!(result.contains_key("api/mod.rs"), "Missing api/mod.rs");
-    assert!(
-        result.contains_key("api/handlers.rs"),
-        "Missing api/handlers.rs"
-    );
-
-    // Validate main.rs
-    let main_rs = String::from_utf8_lossy(&result["main.rs"].0);
-    assert!(main_rs.contains("mod db;"), "main.rs should have 'mod db;'");
-    assert!(
-        main_rs.contains("mod api;"),
-        "main.rs should have 'mod api;'"
-    );
-    assert!(
-        main_rs.contains("fn main()"),
-        "main.rs should have fn main()"
-    );
-
-    // Validate api/mod.rs
-    let api_mod = String::from_utf8_lossy(&result["api/mod.rs"].0);
-    assert!(
-        api_mod.contains("pub mod handlers;"),
-        "api/mod.rs should have 'pub mod handlers;'"
-    );
-
-    // Validate db.rs
-    let db_rs = String::from_utf8_lossy(&result["db.rs"].0);
-    assert!(
-        db_rs.contains("struct Connection"),
-        "db.rs should have struct Connection"
-    );
-    assert!(
-        db_rs.contains("fn connect()"),
-        "db.rs should have fn connect()"
-    );
-
-    // Validate api/handlers.rs
-    let handlers_rs = String::from_utf8_lossy(&result["api/handlers.rs"].0);
-    assert!(
-        handlers_rs.contains("use crate::db::*;"),
-        "api/handlers.rs should have 'use crate::db::*;'"
-    );
-    assert!(
-        handlers_rs.contains("fn handle_request"),
-        "api/handlers.rs should have fn handle_request"
-    );
-
-    // Validate Cargo.toml
-    assert!(result.contains_key("Cargo.toml"), "Missing Cargo.toml");
-    let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"].0);
-    assert!(
-        cargo_toml.contains("[package]"),
-        "Cargo.toml should have [package]"
-    );
-    assert!(
-        cargo_toml.contains("name = \"app-005_multi_file\""),
-        "Cargo.toml should have project name"
-    );
-    assert!(
-        cargo_toml.contains("edition = \"2021\""),
-        "Cargo.toml should have edition = 2021"
-    );
+    run_project_case(&project_case_dir("14_modules/005_multi_file"))
+        .unwrap_or_else(|e| panic!("005_multi_file: {e}"));
 }
 
 #[test]
@@ -1867,32 +1912,8 @@ fn test_16_interop_023_unit_none_return() {
 // Uses transpile_rust_project (multi-file entry) to exercise Cargo.toml gen.
 #[test]
 fn test_16_interop_021_path_dep() {
-    use crate::trans::rust::transpile_rust_project;
-
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let entry = d.join("test/a2r/16_interop/021_path_dep/main.at");
-    let result = transpile_rust_project(entry.to_str().unwrap()).unwrap();
-
-    let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"].0);
-
-    // path dep → `auto_cosmic_dbus = { path = "..." }`
-    assert!(
-        cargo_toml.contains("auto_cosmic_dbus = { path = "),
-        "path dep should render as `{{ path = .. }}`, got:\n{}",
-        cargo_toml
-    );
-    // version+features dep → `serde = { version = "1", features = ["derive"] }`
-    assert!(
-        cargo_toml.contains("serde = { version = \"1\", features = [\"derive\"] }"),
-        "version+features dep should render structured, got:\n{}",
-        cargo_toml
-    );
-    // bare dep → `log = "*"`
-    assert!(
-        cargo_toml.contains("log = \"*\""),
-        "bare dep should render as wildcard, got:\n{}",
-        cargo_toml
-    );
+    run_project_case(&project_case_dir("16_interop/021_path_dep"))
+        .unwrap_or_else(|e| panic!("021_path_dep: {e}"));
 }
 
 // === 18_rust_std ===

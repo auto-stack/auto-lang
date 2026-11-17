@@ -21319,65 +21319,65 @@
       {
         "id": "test_14_modules_005_multi_file#2",
         "test": "test_14_modules_005_multi_file",
-        "product": "db.rs",
-        "kind": "exists",
-        "literal": null
-      },
-      {
-        "id": "test_14_modules_005_multi_file#3",
-        "test": "test_14_modules_005_multi_file",
-        "product": "api/mod.rs",
-        "kind": "exists",
-        "literal": null
-      },
-      {
-        "id": "test_14_modules_005_multi_file#4",
-        "test": "test_14_modules_005_multi_file",
-        "product": "api/handlers.rs",
-        "kind": "exists",
-        "literal": null
-      },
-      {
-        "id": "test_14_modules_005_multi_file#5",
-        "test": "test_14_modules_005_multi_file",
         "product": "main.rs",
         "kind": "contains",
         "literal": "mod db;"
       },
       {
-        "id": "test_14_modules_005_multi_file#6",
+        "id": "test_14_modules_005_multi_file#3",
         "test": "test_14_modules_005_multi_file",
         "product": "main.rs",
         "kind": "contains",
         "literal": "mod api;"
       },
       {
-        "id": "test_14_modules_005_multi_file#7",
+        "id": "test_14_modules_005_multi_file#4",
         "test": "test_14_modules_005_multi_file",
         "product": "main.rs",
         "kind": "contains",
         "literal": "fn main()"
       },
       {
-        "id": "test_14_modules_005_multi_file#8",
+        "id": "test_14_modules_005_multi_file#5",
         "test": "test_14_modules_005_multi_file",
-        "product": "api/mod.rs",
-        "kind": "contains",
-        "literal": "pub mod handlers;"
+        "product": "db.rs",
+        "kind": "exists",
+        "literal": null
       },
       {
-        "id": "test_14_modules_005_multi_file#9",
+        "id": "test_14_modules_005_multi_file#6",
         "test": "test_14_modules_005_multi_file",
         "product": "db.rs",
         "kind": "contains",
         "literal": "struct Connection"
       },
       {
-        "id": "test_14_modules_005_multi_file#10",
+        "id": "test_14_modules_005_multi_file#7",
         "test": "test_14_modules_005_multi_file",
         "product": "db.rs",
         "kind": "contains",
         "literal": "fn connect()"
+      },
+      {
+        "id": "test_14_modules_005_multi_file#8",
+        "test": "test_14_modules_005_multi_file",
+        "product": "api/mod.rs",
+        "kind": "exists",
+        "literal": null
+      },
+      {
+        "id": "test_14_modules_005_multi_file#9",
+        "test": "test_14_modules_005_multi_file",
+        "product": "api/mod.rs",
+        "kind": "contains",
+        "literal": "pub mod handlers;"
+      },
+      {
+        "id": "test_14_modules_005_multi_file#10",
+        "test": "test_14_modules_005_multi_file",
+        "product": "api/handlers.rs",
+        "kind": "exists",
+        "literal": null
       },
       {
         "id": "test_14_modules_005_multi_file#11",
@@ -21422,21 +21422,21 @@
         "literal": "edition = \"2021\""
       },
       {
-        "id": "test_16_interop_021_path_dep#1",
+        "id": "test_16_interop_021_path_dep#17",
         "test": "test_16_interop_021_path_dep",
         "product": "Cargo.toml",
         "kind": "contains",
         "literal": "auto_cosmic_dbus = { path = "
       },
       {
-        "id": "test_16_interop_021_path_dep#2",
+        "id": "test_16_interop_021_path_dep#18",
         "test": "test_16_interop_021_path_dep",
         "product": "Cargo.toml",
         "kind": "contains",
         "literal": "serde = { version = \"1\", features = [\"derive\"] }"
       },
       {
-        "id": "test_16_interop_021_path_dep#3",
+        "id": "test_16_interop_021_path_dep#19",
         "test": "test_16_interop_021_path_dep",
         "product": "Cargo.toml",
         "kind": "contains",
@@ -21660,6 +21660,14 @@
     {
       "path": "crates/auto-lang/test/a2c/200_auto_cffi_math/auto_cffi_math.case.ad",
       "sha256": "c9224e7bee19b1513d02e60a95ccba998e2cbf90b7055e6d8fa43f207c32993f"
+    },
+    {
+      "path": "crates/auto-lang/test/a2r/14_modules/005_multi_file/main.project.case.ad",
+      "sha256": "fe8bb9ce4707e45084f0f122a7d82bf2f3d9363edbaf79feaada197bac1f9a34"
+    },
+    {
+      "path": "crates/auto-lang/test/a2r/16_interop/021_path_dep/main.project.case.ad",
+      "sha256": "b5fc5dcb151860b6305c00016d3d3a9ea3e7186c821545bf6e5477dc101a5b2b"
     },
     {
       "path": "crates/auto-lang/test/a2r/19_ownership/007_self_ref/self_ref.case.ad",

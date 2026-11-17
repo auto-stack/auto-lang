@@ -1,0 +1,42 @@
+# PLAN-1066 T-05 project case: a2r/16_interop/021_path_dep
+
+The project's Auto sources are inlined below (entry plus the
+additional module files); the original Rust project test id and
+its 19 finite expectations are preserved and judged by the project
+consumer, which materializes these files into a managed directory
+and calls the original `transpile_rust_project`. The frozen
+`*.expected.rs` sidecars stay as history only: they were never
+byte-judged by the original test and are not promoted to oracles.
+
+## Case: project-021-path-dep
+id: "legacy.a2r.project.16_interop.021_path_dep"
+tags: ["a2r", "project", "plan-1066"]
+links: ["PLAN-364", "PLAN-610", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+
+```auto
+// Plan 364 W7: local path dependencies in generated Cargo.toml.
+// `dep foo(path: "...")` should render as `foo = { path = "..." }` in
+// Cargo.toml, and `dep bar(version: "1", features: ["a"])` as a structured
+// version+features spec. Bare `dep baz` still works as wildcard.
+
+dep auto_cosmic_dbus(path: "../../crates/auto-cosmic-dbus")
+dep serde(version: "1", features: ["derive"])
+dep log
+
+use.rs serde
+use.rs log
+
+fn main() {
+    log.info("hello")
+}
+```
+
+### Rust
+check-id: "project"
+
+#### Cargo.toml
+contains: ["auto_cosmic_dbus = { path = ", "serde = { version = \"1\", features = [\"derive\"] }", "log = \"*\""]

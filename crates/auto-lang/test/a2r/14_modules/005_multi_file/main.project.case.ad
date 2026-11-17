@@ -1,0 +1,78 @@
+# PLAN-1066 T-05 project case: a2r/14_modules/005_multi_file
+
+The project's Auto sources are inlined below (entry plus the
+additional module files); the original Rust project test id and
+its 19 finite expectations are preserved and judged by the project
+consumer, which materializes these files into a managed directory
+and calls the original `transpile_rust_project`. The frozen
+`*.expected.rs` sidecars stay as history only: they were never
+byte-judged by the original test and are not promoted to oracles.
+
+## Case: project-005-multi-file
+id: "legacy.a2r.project.14_modules.005_multi_file"
+tags: ["a2r", "project", "plan-1066"]
+links: ["PLAN-364", "PLAN-610", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+
+```auto
+use db
+use api
+
+fn main() {
+    let conn = db.connect()
+    api.handle_request(conn)
+}
+```
+
+#### db.at
+
+```auto
+type Connection {
+    url str
+}
+
+fn connect() Connection {
+    Connection(url: "localhost")
+}
+```
+
+#### api/mod.at
+
+```auto
+pub use api.handlers: handle_request
+```
+
+#### api/handlers.at
+
+```auto
+use super.db
+
+fn handle_request(conn Connection) {
+}
+```
+
+### Rust
+check-id: "project"
+
+#### main.rs
+exists: true
+contains: ["mod db;", "mod api;", "fn main()"]
+
+#### db.rs
+exists: true
+contains: ["struct Connection", "fn connect()"]
+
+#### api/mod.rs
+exists: true
+contains: ["pub mod handlers;"]
+
+#### api/handlers.rs
+exists: true
+contains: ["use crate::db::*;", "fn handle_request"]
+
+#### Cargo.toml
+exists: true
+contains: ["[package]", "name = \"app-005_multi_file\"", "edition = \"2021\""]

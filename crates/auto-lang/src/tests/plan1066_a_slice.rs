@@ -718,16 +718,47 @@ fn derive_p_projects() -> Result<PProjects, String> {
         });
     }
 
-    let (clean, literals) = strip_rust(include_str!("a2r_tests.rs"));
-    let m005 = fn_body_clean(&clean, "test_14_modules_005_multi_file")
-        .ok_or("legacy test test_14_modules_005_multi_file missing")?;
-    let p021 = fn_body_clean(&clean, "test_16_interop_021_path_dep")
-        .ok_or("legacy test test_16_interop_021_path_dep missing")?;
-    let assertions = [
-        parse_project_assertions("test_14_modules_005_multi_file", m005, &literals)?,
-        parse_project_assertions("test_16_interop_021_path_dep", p021, &literals)?,
-    ]
-    .concat();
+    // PLAN-1066 T-05: the 19 assertions now live in the two project
+    // documents (the Rust test bodies became doc consumers), so the frozen
+    // denominator is derived from the documents in declaration order:
+    // per product, `exists` first and then every `contains` in order.
+    let mut assertions = Vec::new();
+    for (test, relative) in [
+        ("test_14_modules_005_multi_file", "14_modules/005_multi_file"),
+        ("test_16_interop_021_path_dep", "16_interop/021_path_dep"),
+    ] {
+        let doc = crate::tests::legacy_doc::load_document(
+            &root_join(&format!("{base}/{relative}/main.project.case.ad")),
+        )?;
+        let check = doc
+            .case
+            .spec
+            .checks
+            .iter()
+            .find(|check| check.id == "project")
+            .ok_or_else(|| format!("{test}: project document has no project check"))?;
+        for artifact in &check.expect.artifacts {
+            let declared_exists = artifact.match_mode.declares_exists();
+            if declared_exists {
+                assertions.push(PAssertion {
+                    id: format!("{test}#{}", assertions.len() + 1),
+                    test: test.to_string(),
+                    product: artifact.path.clone(),
+                    kind: "exists".into(),
+                    literal: None,
+                });
+            }
+            for needle in artifact.match_mode.contains() {
+                assertions.push(PAssertion {
+                    id: format!("{test}#{}", assertions.len() + 1),
+                    test: test.to_string(),
+                    product: artifact.path.clone(),
+                    kind: "contains".into(),
+                    literal: Some(needle.clone()),
+                });
+            }
+        }
+    }
 
     Ok(PProjects {
         sources,
