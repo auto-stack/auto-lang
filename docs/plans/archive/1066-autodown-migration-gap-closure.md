@@ -2206,6 +2206,13 @@ worktree 于本轮后移除、分支删除、组目录（若空）删除；`plan
 - **未闭债务**（归档不使其消失）：a2ts 85/a2r 1/a2c 8 金样漂移（改期望需用户许可）、VM shim CWD 挂起、外仓 book 生成器；均已在 `KNOWN-DEBT-AND-RISKS.md` 具名。
 - **交付身份**：delivery `f5d20173e`（master ff）；reviewed `8c2c16e75`；base `7c131286d`；plan_revision r4；13/13。
 
+### 2026-11-17 rebase 等价与 reviewed→delivered 映射（补记）
+
+`git range-diff 7c131286d..8c2c16e75 e0db92bdf..f5d20173e` 输出 **19/19 旧提交 `=`（补丁完全相同）**，
+第 20 项是复审通过后才产生的 SD-01..05 文档沉淀提交（docs-only 后继，按 merge 规范允许作为
+delivery_commit，且其内容不含代码改动）。因此 reviewed 身份 `8c2c16e75` 的内容在 master 上以
+新哈希存在（`e1f9f4968`），交付身份 `f5d20173e` 是其文档后继；复审对 R1..R7 的结论不因 rebase 失效。
+
 ## 10. 待澄清事项
 
 四类补漏范围/原oracle/副作用边界已明确，无需用户先决定日常与显式编译的常规实现细节。T-02有界确定共享资格表达、public structs兼容与唯一proposal入口（不得保旧fallback）；真实不可行性在本Plan具名修约，不拆后继/不缩水。1061环境与外仓owner不阻Windows迁移，NOT_RUN不冒通过。原语义/编译债务保持独立，不用两侧同FAIL充功能绿。
