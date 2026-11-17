@@ -4254,25 +4254,7 @@ impl<'a> Engine<'a> {
             let Some(key_rule) = self.cx.field_child(c, "key") else {
                 continue;
             };
-            let key_leaf = self
-                .cx
-                .children(key_rule)
-                .into_iter()
-                .find(|&n| self.cx.tree.node(n).flags & FLAG_TRIVIA == 0)
-                .unwrap_or(key_rule);
-            let key = if self.cx.tree.kind(key_leaf) == self.cx.k.tok_str_lit {
-                let raw = self.cx.spelling(key_leaf);
-                let inner = raw
-                    .strip_prefix('"')
-                    .and_then(|s| s.strip_suffix('"'))
-                    .unwrap_or(raw.as_str());
-                Ident {
-                    name: lex::decode_str_value(inner.as_bytes()),
-                    span: self.cx.span_of(key_leaf),
-                }
-            } else {
-                ident_of(&mut self.cx, key_leaf)
-            };
+            let key = self.cfg_key_ident(key_rule);
             let Some(value_node) = self.cx.field_child(c, "value") else {
                 continue;
             };
@@ -4305,11 +4287,48 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// 文档键的 Ident：`cfg-doc-key` 是派发规则，先下潜到**第一个叶子**，
+    /// 再按叶子种类解码（字符串键去引号并解码转义；其余按拼写）。
+    fn cfg_key_ident(&mut self, field: u32) -> Ident {
+        let mut node = field;
+        loop {
+            if self.cx.tree.node(node).flags & FLAG_TRIVIA != 0 {
+                let raw = self.cx.spelling(node);
+                return Ident {
+                    name: raw,
+                    span: self.cx.span_of(node),
+                };
+            }
+            let kids: Vec<u32> = self
+                .cx
+                .children(node)
+                .into_iter()
+                .filter(|&n| self.cx.tree.node(n).flags & FLAG_TRIVIA == 0)
+                .collect();
+            if kids.len() != 1 {
+                break;
+            }
+            node = kids[0];
+        }
+        if self.cx.tree.kind(node) == self.cx.k.tok_str_lit {
+            let raw = self.cx.spelling(node);
+            let inner = raw
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(raw.as_str());
+            Ident {
+                name: lex::decode_str_value(inner.as_bytes()),
+                span: self.cx.span_of(node),
+            }
+        } else {
+            ident_of(&mut self.cx, node)
+        }
+    }
     /// `key: value`（值可为表达式或带体节点值）。
     fn run_cfg_pair(&mut self, node: u32) -> crate::source::config_document::ConfigPair {
         use crate::source::config_document::{ConfigPair, ConfigPairValue};
-        let key_leaf = self.cx.field_child(node, "key").expect("cfg pair key leaf");
-        let key = ident_of(&mut self.cx, key_leaf);
+        let key_field = self.cx.field_child(node, "key").expect("cfg pair key leaf");
+        let key = self.cfg_key_ident(key_field);
         let value_node = self
             .cx
             .field_child(node, "value")

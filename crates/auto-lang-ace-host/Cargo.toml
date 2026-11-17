@@ -22,6 +22,10 @@ ace-abi = { path = "../../experimental/ace/crates/abi" }
 ace-foreign-contract = { path = "../../experimental/ace/crates/foreign-contract" }
 ace-source-query = { path = "../../experimental/ace/crates/source-query" }
 ace-lowering = { path = "../../experimental/ace/crates/lowering" }
+# PLAN-982 982/RUST：（无缓存）A2R 目标提供者的驱动面——Checked → view → lower →
+# FileSet；产品经本桥消费，不直接依赖 ACE 目标 crate。
+ace-a2x-core = { path = "../../experimental/ace/crates/a2x-core" }
+ace-a2x-rust = { path = "../../experimental/ace/crates/a2x-rust" }
 
 [dependencies.base64]
 version = "0.22"

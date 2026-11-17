@@ -585,3 +585,28 @@ fn p982_config_empty_document_is_an_empty_root() {
         .iter()
         .any(|c| c.starts_with("source.config-document/empty@")));
 }
+/// 982/CONFIG：**保留字也能作文档键**（真实 pac.at：`tag: "kept"`、
+/// `type: "x"`）。键位置是文档语义，不是语句关键字（下一批 I 的语料缺口）。
+#[test]
+fn p982_config_reserved_words_work_as_document_keys() {
+    let keys_of = |src: &str| -> Vec<String> {
+        let syntax = parse_config_document(src).expect("reserved keys parse");
+        syntax
+            .lines
+            .iter()
+            .map(|line| match line {
+                ConfigLine::Pair(p) => p.key.name.clone(),
+                other => panic!("expected a pair line, got {other:?}"),
+            })
+            .collect()
+    };
+    assert_eq!(
+        keys_of("tag: \"kept\"\ntype: \"kind\"\nname: \"n\"\n"),
+        vec!["tag", "type", "name"]
+    );
+    // JSON 形（字符串键）仍解码为无引号键，且保留字键同样可用。
+    assert_eq!(
+        keys_of("{\n  \"tag\": \"kept\",\n  type: \"kind\",\n  \"name\": \"n\",\n}\n"),
+        vec!["tag", "type", "name"]
+    );
+}

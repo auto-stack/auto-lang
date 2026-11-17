@@ -1009,11 +1009,13 @@ fn coll_variant_helpers(
                 n = v.name,
                 a = arm
             )),
-            Some(Ty::Record(_)) | Some(Ty::Variant(_)) | Some(Ty::List(_)) => out.push_str(&format!(
-                " {n}::{a}(p) => p.a2x_elem_str_bytes(),",
-                n = v.name,
-                a = arm
-            )),
+            Some(Ty::Record(_)) | Some(Ty::Variant(_)) | Some(Ty::List(_)) => {
+                out.push_str(&format!(
+                    " {n}::{a}(p) => p.a2x_elem_str_bytes(),",
+                    n = v.name,
+                    a = arm
+                ))
+            }
             Some(_) => out.push_str(&format!(" {n}::{a}(_) => 0,", n = v.name, a = arm)),
             None => out.push_str(&format!(" {n}::{a} => 0,", n = v.name, a = arm)),
         }

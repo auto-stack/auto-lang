@@ -46,6 +46,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-a2x-rust"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-core",
+ "ace-core",
+ "ace-foreign-contract",
+]
+
+[[package]]
 name = "ace-a2x-store"
 version = "0.1.0"
 dependencies = [
@@ -743,6 +752,8 @@ dependencies = [
 name = "auto-lang-ace-host"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-core",
+ "ace-a2x-rust",
  "ace-abi",
  "ace-av",
  "ace-av-core",
