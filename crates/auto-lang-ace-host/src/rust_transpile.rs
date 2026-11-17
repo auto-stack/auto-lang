@@ -163,7 +163,7 @@ pub fn transpile_with_profile(
 ///
 /// round-28 该位置是**占位**（fnv1a 派生），会污染 manifest/证书身份；本轮换成
 /// 真实摘要，并用 NIST 向量在测试里钉住。
-fn source_sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn source_sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(bytes);
     digest.iter().map(|b| format!("{b:02x}")).collect()
