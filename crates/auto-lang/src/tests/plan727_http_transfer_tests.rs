@@ -31,7 +31,10 @@ fn transpile_case(case_dir: &str) -> Vec<u8> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let full = d.join(case_dir);
     let name = case_name(case_dir);
-    let src = read_to_string(full.join(format!("{name}.at"))).expect("case .at");
+    // PLAN-1066 T-09: payload from the migration document, never the sidecar.
+    let doc = crate::tests::legacy_doc::load_case(&full, &name)
+        .unwrap_or_else(|e| panic!("{case_dir}: {e}"));
+    let src = doc.source_text().to_string();
     let mut rcode = transpile_rust_with_source_dir(&full, &name, &src).expect("transpile");
     rcode.done().expect("finalize").clone()
 }
@@ -39,8 +42,12 @@ fn transpile_case(case_dir: &str) -> Vec<u8> {
 fn assert_golden(case_dir: &str) {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let name = case_name(case_dir);
-    let expected =
-        read_to_string(d.join(case_dir).join(format!("{name}.expected.rs"))).unwrap_or_default();
+    let expected_doc = crate::tests::legacy_doc::load_case(&d.join(case_dir), &name)
+        .unwrap_or_else(|e| panic!("{case_dir}: {e}"));
+    let expected = expected_doc
+        .artifact(".rs")
+        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+        .unwrap_or_default();
     let rs = transpile_case(case_dir);
     if rs != expected.as_bytes() {
         // PLAN-1066 T-07[B]/NC-25: the dump is a scoped diagnostic, never a

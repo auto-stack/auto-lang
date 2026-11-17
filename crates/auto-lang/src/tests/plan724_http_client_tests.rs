@@ -16,7 +16,11 @@ const ASYNC_CASE_DIR: &str = "test/a2r/30_plan724/002_http_client_async";
 
 fn transpile_case(case_dir: &str, name: &str) -> AutoResult<String> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src = read_to_string(d.join(case_dir).join(format!("{name}.at")))?;
+    // PLAN-1066 T-09: the payload is the migration document (these four cases
+    // are N entries); the frozen `.at` sidecar is history.
+    let doc = crate::tests::legacy_doc::load_case(&d.join(case_dir), name)
+        .unwrap_or_else(|e| panic!("{case_dir}: {e}"));
+    let src = doc.source_text().to_string();
     let mut rcode = transpile_rust_with_source_dir(&d.join(case_dir), name, &src)?;
     let code = rcode.done()?;
     Ok(String::from_utf8_lossy(code).into_owned())
@@ -24,12 +28,12 @@ fn transpile_case(case_dir: &str, name: &str) -> AutoResult<String> {
 
 fn assert_golden(case_dir: &str, name: &str) {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let exp_path = d.join(case_dir).join(format!("{name}.expected.rs"));
-    let expected = if exp_path.is_file() {
-        read_to_string(&exp_path).unwrap()
-    } else {
-        String::new()
-    };
+    let expected_doc = crate::tests::legacy_doc::load_case(&d.join(case_dir), name)
+        .unwrap_or_else(|e| panic!("{case_dir}: {e}"));
+    let expected = expected_doc
+        .artifact(".rs")
+        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+        .unwrap_or_default();
     let actual = transpile_case(case_dir, name).expect("transpile ok");
     if actual != expected {
         // PLAN-1066 T-07[B]/NC-25: the dump is a scoped diagnostic, never a

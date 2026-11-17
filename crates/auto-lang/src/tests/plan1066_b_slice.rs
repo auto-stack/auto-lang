@@ -881,3 +881,115 @@ fn plan1066_b_no_author_tree_writes_in_corpus_wrappers() {
         offenders.join("\n  ")
     );
 }
+
+/// T-09 classified sidecar-read audit.
+///
+/// The migration closed the ACTIVE sidecar readers (T-03[B] entry/discovery,
+/// T-07 bypasses, T-08 inventories, T-09 HTTP wrappers). What remains is named
+/// here with its reason, so the set cannot silently grow: a sidecar read in any
+/// file outside this list fails by file name, which forces the increment into a
+/// Plan instead of a quiet regression to retired payloads. An injected reader
+/// (negative control) must be detected.
+#[test]
+fn plan1066_b_remaining_sidecar_readers_are_named() {
+    // file suffix -> why this sidecar read is allowed
+    const ALLOWED: &[(&str, &str)] = &[
+        (
+            "auto-lang-core/src/test_cases/inventory_helpers.rs",
+            "migration-comparison static inventory (old-side baseline consumed by document_case_migration.py)",
+        ),
+        (
+            "auto-lang/src/tests/a2r_tests.rs",
+            "NC-27 control: proves the document product equals the frozen sidecar",
+        ),
+        (
+            "auto-lang/src/tests/aavm_runner_tests.rs",
+            "AAVM experiment corpus (test/vm/aavm2, no migration documents; manual replay only per the AAVM ruling)",
+        ),
+        (
+            "auto-lang/src/tests/book_listing_tests.rs",
+            "external book repository listings (D-1066-BOOK-GENERATOR, out of this plan's scope)",
+        ),
+        (
+            "auto-lang/src/tests/ffi_dep_parity_tests.rs",
+            "adjacent legacy family (test/ffi_dep) outside the five N roots; not migrated by PLAN-1062",
+        ),
+        (
+            "auto-lang/src/tests/test_cases_tests.rs",
+            "synthetic fixtures for the sidecar-payload contract itself",
+        ),
+        (
+            "a2r-actor-tests/tests/actor_parity.rs",
+            "external consumer of a2r/22_actors goldens (named in the plan's P/M scope)",
+        ),
+    ];
+    let sidecar = [
+        ".expected.out\"", ".expected.result\"", ".expected.rs\"", ".expected.c\"",
+        ".expected.h\"", ".expected.ts\"", ".expected.error\"", "expected_output.txt\"",
+        "input.at\"",
+    ];
+    let read_call = ["read_to_string", "fs::read(", "file_identity", "File::open"];
+    let manifest = repo();
+    let repo_root = manifest.parent().expect("workspace").parent().expect("workspace").to_path_buf();
+    let mut offenders = Vec::new();
+    let mut seen = Vec::new();
+    let mut stack = vec![repo_root.join("crates")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let lines: Vec<&str> = text.lines().collect();
+            for (index, line) in lines.iter().enumerate() {
+                if !sidecar.iter().any(|needle| line.contains(needle)) {
+                    continue;
+                }
+                let start = index.saturating_sub(2);
+                let end = (index + 3).min(lines.len());
+                let window = lines[start..end].join(" ");
+                if !read_call.iter().any(|needle| window.contains(needle)) {
+                    continue;
+                }
+                let relative = path
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let Some((_, reason)) = ALLOWED
+                    .iter()
+                    .find(|(suffix, _)| relative.ends_with(suffix))
+                else {
+                    offenders.push(format!("{}:{}: {}", relative, index + 1, line.trim()));
+                    continue;
+                };
+                seen.push((relative, *reason, index + 1));
+            }
+        }
+    }
+    // the audit must actually be looking at the tree (not an empty walk)
+    assert!(
+        seen.len() >= 10,
+        "sidecar-read audit saw only {} allowed sites — the walk broke",
+        seen.len()
+    );
+    // negative control: an injected reader in an unlisted file is detected
+    let injected = "fn x() {\n    let s = std::fs::read_to_string(dir.join(format!(\"{}.expected.out\", name)))\n;\n}\n";
+    let injected_hit = injected
+        .lines()
+        .any(|line| sidecar.iter().any(|needle| line.contains(needle)));
+    assert!(injected_hit, "the audit patterns must match a real sidecar read");
+    assert!(
+        !ALLOWED.iter().any(|(suffix, _)| "crates/auto-lang/src/tests/new_wrapper.rs".ends_with(suffix)),
+        "an unlisted module must not be allowed"
+    );
+    assert!(
+        offenders.is_empty(),
+        "unnamed sidecar readers (bring them into the Plan):\n  {}",
+        offenders.join("\n  ")
+    );
+}
