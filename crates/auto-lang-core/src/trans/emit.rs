@@ -16,6 +16,23 @@ use crate::ast::{
     Arg, Args, Body, Call, Code, Expr, Fn, For, If, Iter, Stmt, Store, StoreKind, Try, Use, UseKind,
 };
 use crate::error::{AutoError, AutoResult};
+use crate::trans::SourceMapEntry;
+
+/// PLAN-977 B-REVERSE-I: 发射方言。
+///
+/// - [`EmitDialect::Legacy`]：历史产物面（fn 返回类型写 `-> T`），
+///   [`emit_code`] 逐字节不变——旧 CLI/脚本管线继续消费。
+/// - [`EmitDialect::AceCanonical`]：ACE 执行器（M2 唯一执行器）source
+///   frontend 接受的规范形——返回类型是裸 type word（无 `->`，见
+///   `experimental/ace/grammars/auto-source.at` 的 `ret-ty`）。
+///
+/// 两种方言只在 fn 返回类型这一处不同：选项型交给调用方决定目标消费者，
+/// 默认路径（[`emit_code`]）不变。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitDialect {
+    Legacy,
+    AceCanonical,
+}
 
 /// 发射整棵 Code（顶层语句逐条）。
 pub fn emit_code(code: &Code) -> AutoResult<String> {
@@ -25,6 +42,138 @@ pub fn emit_code(code: &Code) -> AutoResult<String> {
         out.push('\n');
     }
     Ok(out)
+}
+
+/// PLAN-977 B-REVERSE-I: 发射 + 行级 source map。
+///
+/// 映射粒度 = **顶层语句起点行**（与 A2C/A2R/A2PY 的 `Sink::set_source_line`
+/// 记录同一口径）：`Code::source_lines` 与顶层 `stmts` 平行时，每个产物行
+/// 记一条 `SourceMapEntry { source_line, output_line }`（均 1-based）。
+/// 两者不平行（AST 由其它生产者构造、无源行）时返回空表——**不猜测**。
+///
+/// 产物文本：`Legacy` 与 [`emit_code`] 逐字节相同；`AceCanonical` 仅把
+/// fn 签名的 `-> T` 归一为 `T`（字符串/字符字面量与行注释内不动）。
+pub fn emit_code_with_map(
+    code: &Code,
+    dialect: EmitDialect,
+) -> AutoResult<(String, Vec<SourceMapEntry>)> {
+    let mut out = String::new();
+    let mut map = Vec::new();
+    let mut output_line = 1usize;
+    // 源行表只在解析器产出的 Code 上与顶层语句平行；不平行 = 无源（空表）。
+    let parallel = code.source_lines.len() == code.stmts.len();
+    for (idx, stmt) in code.stmts.iter().enumerate() {
+        let start = out.len();
+        emit_stmt(stmt, 0, &mut out)?;
+        out.push('\n');
+        let added = out[start..].matches('\n').count();
+        if parallel {
+            let source_line = code.source_lines[idx];
+            for _ in 0..added {
+                map.push(SourceMapEntry {
+                    source_line,
+                    output_line,
+                    source_file: None,
+                });
+                output_line += 1;
+            }
+        } else {
+            output_line += added;
+        }
+    }
+    let text = match dialect {
+        EmitDialect::Legacy => out,
+        EmitDialect::AceCanonical => canonicalize_fn_returns(&out),
+    };
+    Ok((text, map))
+}
+
+/// 产物行号（1-based）→ 原源行号（1-based）。
+///
+/// 精确命中优先；行表缺该行时回退到最近的前一条（仍然反映该行所属的
+/// 顶层语句），表为空/行号在表前返回 `None`。
+pub fn source_line_for_output(map: &[SourceMapEntry], output_line: usize) -> Option<usize> {
+    let mut previous = None;
+    for entry in map {
+        if entry.output_line == output_line {
+            return Some(entry.source_line);
+        }
+        if entry.output_line > output_line {
+            break;
+        }
+        previous = Some(entry.source_line);
+    }
+    previous
+}
+
+/// ACE 规范形：把 fn 签名的历史 `") -> "` 归一为 `") "`。
+///
+/// 只改签名位（`emit_fn` 是唯一写 `) -> ` 的位置）；字符串/字符字面量、
+/// 行注释内的同形文本逐字保留。`->` 其余合法用法（`is` 臂、AGE
+/// handler）不由本发射器产出，故无歧义。
+fn canonicalize_fn_returns(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_str = false;
+    let mut in_char = false;
+    let mut in_line_comment = false;
+    let mut escaped = false;
+    let mut iter = text.char_indices().peekable();
+    while let Some((idx, ch)) = iter.next() {
+        if in_line_comment {
+            out.push(ch);
+            if ch == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+        if in_str {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        if in_char {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '\'' {
+                in_char = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_str = true;
+            out.push(ch);
+            continue;
+        }
+        if ch == '\'' {
+            in_char = true;
+            out.push(ch);
+            continue;
+        }
+        if ch == '/' && iter.peek().map(|(_, c)| *c) == Some('/') {
+            in_line_comment = true;
+            out.push(ch);
+            continue;
+        }
+        if ch == ')' && text[idx..].starts_with(") -> ") {
+            out.push_str(") ");
+            // 已消费 ')'，跳过 " -> " 四个字符（空格 - > 空格）。
+            for _ in 0..4 {
+                iter.next();
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn indent(n: usize, out: &mut String) {
