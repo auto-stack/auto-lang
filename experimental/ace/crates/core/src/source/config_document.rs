@@ -636,9 +636,28 @@ fn emit_line(
                             }
                         }
                     }
-                    // PLAN-982（CONFIG）：对象字面量属性**同时登记为局部**（同名
-                    // 句柄别名）——这样 `k["f"]` / `k.f` 的搬运路径
-                    // （`emit_object_handle` 要求 `ctx.locals[name] == Obj`）可达。
+                    // PLAN-982（CONFIG）：点形式 `k.f` 与 `k["f"]` 在**配置文档里
+                    // 同义**（这里没有结构体，字段一定是对象字段）——直接走按名
+                    // 搬运，避免落下普通 `Field` 表达式被记录类型检查拒掉。
+                    if let super::ast::ExprKind::Field { base, name } = &e.kind {
+                        if let Some(obj) = emit_object_handle(base, out, ctx) {
+                            let _ = emit_call(
+                                out,
+                                ctx,
+                                "cfg_super_put",
+                                vec![
+                                    var_expr(cur, p.span),
+                                    obj,
+                                    str_lit(&name.name, name.span),
+                                    str_lit(&p.key.name, p.span),
+                                ],
+                                p.span,
+                            )?;
+                            return Ok(());
+                        }
+                    } // PLAN-982（CONFIG）：对象字面量属性**同时登记为局部**（同名
+                      // 句柄别名）——这样 `k["f"]` / `k.f` 的搬运路径
+                      // （`emit_object_handle` 要求 `ctx.locals[name] == Obj`）可达。
                     let object_literal = matches!(e.kind, super::ast::ExprKind::ObjectLit { .. });
                     let (value, class) = emit_value(e, out, ctx)?;
                     if object_literal && class == LocalClass::Obj {
