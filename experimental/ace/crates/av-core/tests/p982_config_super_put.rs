@@ -84,3 +84,39 @@ fn p982_config_super_put_moves_an_object_field_into_the_document() {
         ace_av_core::config_document::OwnedValue::Text("big".into())
     );
 }
+/// 注入（seeded）与搬运的交互：**注入值赢**，搬运不得覆盖根级同名属性。
+#[test]
+fn p982_config_super_put_does_not_override_a_seeded_root_property() {
+    cfg::open_session(cfg::DocumentLimits::default()).expect("session");
+    // 先把根属性 `x` 播种为注入值（`seed_root_prop` 是宿主注入的入口）。
+    cfg::seed_root_prop(
+        "x",
+        &ace_av_core::config_document::OwnedValue::Text("injected".into()),
+    )
+    .expect("seed");
+    let result = (|| -> Result<(), ace_av_core::host::HostError> {
+        let root = dispatch(ROOT_SYM, &[])?;
+        let obj = dispatch(OBJ_SYM, &[])?;
+        dispatch(PUT_TEXT, &[Value::I32(obj), text("x"), text("from-doc")])?;
+        dispatch(
+            SUPER,
+            &[Value::I32(root), Value::I32(obj), text("x"), text("x")],
+        )?;
+        dispatch(FINISH, &[])?;
+        Ok(())
+    })();
+    assert!(result.is_ok(), "{result:?}");
+    let doc = cfg::close_session().expect("close");
+    let x = doc
+        .root
+        .props
+        .iter()
+        .find(|(k, _)| k == "x")
+        .map(|(_, v)| v.clone())
+        .expect("x is present");
+    assert_eq!(
+        x,
+        ace_av_core::config_document::OwnedValue::Text("injected".into()),
+        "the seeded (injected) value must win over the document's carried field"
+    );
+}
