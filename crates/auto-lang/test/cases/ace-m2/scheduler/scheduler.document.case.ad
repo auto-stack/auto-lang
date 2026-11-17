@@ -1,0 +1,410 @@
+# PLAN-1066 T-04 — p968 M2-A scheduler corpus in AutoDown document form
+
+The only active author file of the group: 11 cases in document form.
+`scheduler.case.ad` stays on disk as frozen history and is no longer
+included. Every case keeps its original id, the `av-scheduler` check id
+and the frozen expectations byte-exactly.
+
+## Case: message-handler
+id: "ace.m2.p968.message-handler"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(1)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+got one
+```
+
+#### stderr
+
+```text
+```
+
+## Case: spawn-with-state
+id: "ace.m2.p968.spawn-with-state"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+// Plan 390 §5 Phase B (M1): Task.spawn with initialization parameters.
+// `Task.spawn("Name", cap, v1, v2)` forwards v1/v2 as positional initializers
+// for the task's state fields (declaration order), overriding the defaults.
+
+task Counter {
+    count = 0
+    label = "default"
+    on { n int -> {
+        count = count + n
+        print(f"{label}: {count}")
+    } }
+}
+
+fn main() {
+    // Spawn with init args: count=10, label="mycounter"
+    let h = Task.spawn("Counter", 16, 10, "mycounter")
+    h.send(5)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+mycounter: 15
+```
+
+#### stderr
+
+```text
+```
+
+## Case: mailbox-fifo
+id: "ace.m2.p968.mailbox-fifo"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task Echo {
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(2)
+    h.send(1)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+got two
+got one
+```
+
+#### stderr
+
+```text
+```
+
+## Case: ask-reply
+id: "ace.m2.p968.ask-reply"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task Q {
+    on {
+        n int -> {
+            reply(n + 1)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Q", 16)
+    let v = await h.ask(41)
+    print("reply:")
+    print(v)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+reply:
+42
+```
+
+#### stderr
+
+```text
+```
+
+## Case: go-join
+id: "ace.m2.p968.go-join"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+fn worker(n int) {
+    print("go:")
+    print(n)
+}
+fn main() {
+    go worker(7)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+go:
+7
+```
+
+#### stderr
+
+```text
+```
+
+## Case: backpressure
+id: "ace.m2.p968.backpressure"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task B {
+    on {
+        n int -> {
+            sleep(50)
+            print(n)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("B", 1)
+    h.send(1)
+    h.send(2)
+    h.send(3)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+1
+2
+3
+```
+
+#### stderr
+
+```text
+```
+
+## Case: stop-hook
+id: "ace.m2.p968.stop-hook"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task S {
+    fn stop() ! {
+        print("stopped")
+    }
+    on {
+        1 -> {
+            print("one")
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("S", 16)
+    h.send(1)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+one
+stopped
+```
+
+#### stderr
+
+```text
+```
+
+## Case: virtual-timer
+id: "ace.m2.p968.virtual-timer"
+tags: ["ace-m2", "scheduler", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+    go sleeper()
+    print("main")
+}
+fn sleeper() {
+    sleep(100)
+    print("later")
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+exit: 0
+
+#### stdout
+
+```text
+main
+later
+```
+
+#### stderr
+
+```text
+```
+
+## Case: neg-unknown-task
+id: "ace.m2.p968.neg-unknown-task"
+tags: ["ace-m2", "scheduler", "negative", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+    let h = Task.spawn("Nope", 16)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+stage: "resolve"
+code: "source.sched-task"
+
+## Case: neg-malformed-task
+id: "ace.m2.p968.neg-malformed-task"
+tags: ["ace-m2", "scheduler", "negative", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task T {
+    on {
+        1 ->
+    }
+}
+fn main() {
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+stage: "parse"
+code: "source.unsupported"
+
+## Case: neg-send-after-stop
+id: "ace.m2.p968.neg-send-after-stop"
+tags: ["ace-m2", "scheduler", "negative", "plan-968"]
+links: ["PLAN-968", "PLAN-1066"]
+
+### Auto
+path: "main.at"
+
+```auto
+task C {
+    fn stop() ! {
+    }
+    on {
+        1 -> {
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("C", 16)
+    h.stop()
+    h.send(1)
+}
+```
+
+### Probe av-scheduler
+recipe: "ac-av/scheduler-source-run-v1"
+entry: "d_main"
+stage: "run"
+code: "lang.error"
+message-contains: "send on a closed task"

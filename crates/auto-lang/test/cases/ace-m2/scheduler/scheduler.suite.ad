@@ -1,5 +1,10 @@
+# PLAN-968 T-02/T-03 — permanent M2-A task actor & event scheduler corpus.
+# PLAN-1066 T-04: the active author file is scheduler.document.case.ad (11
+# cases in AutoDown document form, same ids / `av-scheduler` check / byte
+# expectations). scheduler.case.ad stays on disk as frozen history for the
+# migration comparison and is deliberately NOT included here.
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m2-scheduler-968", include: [
-  "scheduler.case.ad",
+  "scheduler.document.case.ad",
 ] }
 ```
