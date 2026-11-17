@@ -440,6 +440,93 @@ pub fn f0_tframe_provider_source() -> &'static str {
     include_str!("../rustside/f0_tframe.rs")
 }
 
+// ---- PLAN-1026 T-03: the CPython adapter (py/1, profile py-bridge.v1) ----
+
+/// The annotated py-bridge provider source (the pinned pyo3 dependency
+/// rides the `dep` line into the B-01 source build closure).
+pub fn py_bridge_provider_source() -> &'static str {
+    include_str!("../rustside/py_bridge.rs")
+}
+
+/// The T-01-frozen interpreter home (overridable; the only supported
+/// CPython for v1 is the 3.14 x64 GIL build installed there).
+pub fn py_home() -> String {
+    std::env::var("AUTO_PYTHON_HOME").unwrap_or_else(|_| "C:/Python314".to_string())
+}
+
+/// Ensure `python314.dll` is resolvable when the provider cdylib is
+/// loaded (LoadLibraryW searches PATH; the Python home is prepended
+/// idempotently before any provider load).
+pub fn ensure_python_dll_path() {
+    let home = py_home();
+    let path = std::env::var("PATH").unwrap_or_default();
+    let present = path.split(';').any(|p| {
+        p.trim_end_matches('\\')
+            .eq_ignore_ascii_case(home.trim_end_matches('/'))
+    });
+    if !present {
+        std::env::set_var("PATH", format!("{home};{path}"));
+    }
+}
+
+/// The prepared py-bridge build: a persistent build root under the OS
+/// temp dir shared across test processes (the first run on a machine
+/// compiles the pinned pyo3 closure once; later runs are cargo no-ops),
+/// guarded by a lock file so concurrent runners cannot race the unit.
+pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
+    static BUILD: std::sync::OnceLock<Result<RustProviderBuild, String>> =
+        std::sync::OnceLock::new();
+    BUILD
+        .get_or_init(|| {
+            let root = std::env::temp_dir().join("p1026-py-bridge-unit");
+            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+            let lock = root.join(".build-lock");
+            let stale_after = std::time::Duration::from_secs(600);
+            let deadline = std::time::Instant::now() + stale_after;
+            loop {
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&lock)
+                {
+                    Ok(_) => break,
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        let stale = lock
+                            .metadata()
+                            .ok()
+                            .and_then(|m| m.modified().ok())
+                            .map(|t| t.elapsed().unwrap_or_default() > stale_after)
+                            .unwrap_or(false);
+                        if stale {
+                            let _ = std::fs::remove_file(&lock);
+                            continue;
+                        }
+                        if std::time::Instant::now() > deadline {
+                            return Err(
+                                "py-bridge build lock timeout (another builder stuck?)".into()
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                    Err(e) => return Err(e.to_string()),
+                }
+            }
+            let built = build_cargo_provider(&root, py_bridge_provider_source());
+            let _ = std::fs::remove_file(&lock);
+            built
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
+}
+
+/// Open the py-bridge provider as a foreign session at `generation`
+/// (interpreter DLL resolution first, then the shared prepared build).
+pub fn open_py_bridge_session(generation: u64) -> Result<F0Session, String> {
+    ensure_python_dll_path();
+    let build = py_bridge_shared_build()?;
+    open_session_from_build(build, generation)
+}
+
 /// `// auto-ffi dep <name> <spec>` lines are the clean project's whole
 /// dependency configuration: the importer ignores them (they are not fn
 /// metadata) and the cargo build unit consumes them verbatim.
@@ -1239,7 +1326,9 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
             .filter(|p| matches!(p, auto_bindgen::rust_import::RustParam::I32))
             .count();
         let callable = match f.form {
-            auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && has_out_bytes && scalars == 0 => unsafe {
+            auto_bindgen::rust_import::RustFnForm::PureI32
+                if view_first && has_out_bytes && scalars == 0 =>
+            unsafe {
                 ace_av_core::foreign_exec::ForeignCallable::ViewOutBytesToI32(
                     std::mem::transmute::<
                         _,
@@ -1248,9 +1337,10 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
                 )
             },
             auto_bindgen::rust_import::RustFnForm::PureI32 if only_out_bytes => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::OutBytesToI32(
-                    std::mem::transmute::<_, unsafe extern "C" fn(*mut u8, u64) -> i32>(sym),
-                )
+                ace_av_core::foreign_exec::ForeignCallable::OutBytesToI32(std::mem::transmute::<
+                    _,
+                    unsafe extern "C" fn(*mut u8, u64) -> i32,
+                >(sym))
             },
             auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 2 => unsafe {
                 ace_av_core::foreign_exec::ForeignCallable::ViewI32I32ToI32(std::mem::transmute::<
