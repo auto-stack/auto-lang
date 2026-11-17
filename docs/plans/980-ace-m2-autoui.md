@@ -1328,6 +1328,18 @@ next_responsible_role: review（#6l 批级复核）→ merge（phase fold #9）�
 
 next_responsible_role: user（B-WEB-I/V/R 勾选前置=缺席 taxonomy ①（$event/括号属性/引号键语法缺口——跨 981 冻结 grammar 的语言面收敛裁定）、③（双 widget=IF-981-MODULE 域）、④（控制流/let/调用体模型扩展）的归属与开工决策；②float 域=981 不支撑、⑤空体/⑦伪源=语义无可拼接、chart×5=官方包线）。980 侧无已解锁未交付项。
 
+2026-11-18 stage: work（WEB 批切片 #6m：年龄面语法收敛 I——用户续作指令授权 980 域内语言面收敛）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——③双widget/④体模型/⑥引号键族仍开）| worktree: lang-980 @ plan-980-dev | code_commit: lang（grammar+project+冻结值+规范 §13.14+永久用例）、ui **8111e551**（$event 归一化+census #5+永久 case）。
+
+**交付。** ①语法：`age-event-key/mod`（事件键修饰符链，双 AGE 面）、`age-event-binding/args`（事件绑定调用形 `.Msg(args)`，仅 age-component；实参=宿主通道，投影丢弃）、`age-element-props-block`（元素括号属性行）——**多步 opt 不被组合器支持**（实测），括号/体块段归子规则。②`$event` 承载=UI 侧同长归一化（`$event`→`nevent`，span 零位移）——evt-dollar 全局 token 首版实测扰动**全部 15 profile** grammar-id 已撤回，终版仅 age-component/age-package 两值具名重基线（981 grammar_scope 测试内注明前值，其余 13 profile 逐字节不变实测对照）。③census #5：(75,8,1,27)→**(75,8,4,24)**。
+
+**验证（冻结提交实测）。** UI ace_ts_provider **21/21**（CPU 5.7s；排窗浏览器档 16.5s 实跑含）；vue 门 77/82（chart×5 具名预存不变）；lang `cargo t ace-source ace-av` **双 PASS**（run-mc_iq43w，含冻结测试重基线后绿+新 6m 用例）。永久用例：lang `plan980_web_grammar_6m`（四形）、UI `p980_web_event_arg_forms`（三形端到端）。新 case 均 <0.3s。
+
+2026-11-18 stage: review（#6m 批级复核）| review_scope: phase | reviewer: 同会话独立复核（工件重构）| outcome: **pass（批增量）** | reviewed_commit: lang 冻结提交 / ui 8111e551。①冻结核对：双树 clean、探针零残留、fmt clean。②跨计划冻结纪律：grammar-id 变更=**两值**且具名重基线（981 测试内注明 PLAN-980 #6m 与前值）——语义核准=本批 980 语法收敛合同（用户续作指令）；13 profile 逐字节不变有实测对照（探针转储）。③门禁：上列全绿复用输入同一性。④机理：$event 归一化同长零位移（span 合同保持）；事件绑定实参投影丢弃=宿主通道具名边界（规范 §13.14）。
+
+2026-11-18 stage: merge（phase fold #10，WEB #6m 批增量正式落主；整包 executing 12/32 保持，唯一树保留）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（批增量交付）| delivery_commit: auto-ui master **8111e551**、auto-lang master **f16cb8ac2**（rebase 后全等落主；落地后核对双仓 tip=delivery commit ✓）| canonical: docs/specs/ace-migration/m2-autoui.md §13.14 | 落主方式：wt-guard 双树 clean + `git merge --ff-only`。
+
+next_responsible_role: work（WEB 剩余=③双 widget 源（IF-981-MODULE 域 node 选择器）与 ④控制流/let/调用体模型（语言面体模型扩展）——多年面；⑥引号键/handler 族未收。裁定续作指令覆盖 980 域内收敛，下一切片按 ④→③ 顺序评估）。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
