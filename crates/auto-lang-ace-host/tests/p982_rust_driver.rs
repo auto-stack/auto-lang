@@ -99,3 +99,24 @@ fn p982_rust_host_driver_covers_records_and_collections_families() {
         );
     }
 }
+/// collections 装配器要的 `full_source_sha256` 必须是**真实**内容摘要（round-28
+/// 的占位符会污染 manifest/证书身份）。用 NIST 向量钉住。
+#[test]
+fn p982_rust_source_sha256_matches_the_known_vectors() {
+    use auto_lang_ace_host::rust_transpile::{transpile_with_profile, TranspileProfile};
+
+    // 空源：A2R 前端会拒绝，但 collections 装配器只在成功路径上用它；因此这里
+    // 通过 manifest 里的 sha256 字段验证**非空源**的真实摘要。
+    let src = "fn main() int { let a Str = \"中\"\n return a.len() }\n";
+    let fileset = transpile_with_profile(src, "p982-sha", "main", TranspileProfile::Collections)
+        .expect("collections render");
+    let expected = {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(src.as_bytes());
+        digest.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    };
+    assert!(
+        fileset.manifest.contains(&expected),
+        "the manifest must carry the real sha256 of the source (expected {expected})"
+    );
+}

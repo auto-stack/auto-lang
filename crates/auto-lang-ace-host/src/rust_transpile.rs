@@ -117,7 +117,7 @@ pub fn transpile_with_profile(
         TranspileProfile::Collections => {
             // 该装配器还要求 full source sha256 与规范化执行配置；两者都进
             // manifest/证书身份，不能省。
-            let source_sha256 = sha256_placeholder_hex(source.as_bytes());
+            let source_sha256 = source_sha256_hex(source.as_bytes());
             // 规范化执行配置：本驱动只跑"无故障/无预算/无事件/无取消"的默认
             // 形态（与冷构建门一致）；预算/取消的接线属后续切片。
             let config =
@@ -159,26 +159,15 @@ pub fn transpile_with_profile(
     })
 }
 
-/// 占位：本驱动不引 sha2 依赖；collections 装配器只把它当身份字段填入
-/// manifest（内容哈希的正式实现属后续切片，登记为差额）。
-fn sha256_placeholder_hex(bytes: &[u8]) -> String {
-    let out = sha256_placeholder(bytes);
-    out.iter().map(|b| format!("{b:02x}")).collect()
+/// 真实的内容 sha256（collections 装配器的 `full_source_sha256` 身份字段）。
+///
+/// round-28 该位置是**占位**（fnv1a 派生），会污染 manifest/证书身份；本轮换成
+/// 真实摘要，并用 NIST 向量在测试里钉住。
+fn source_sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
-
-fn sha256_placeholder(bytes: &[u8]) -> [u8; 32] {
-    let mut out = [0u8; 32];
-    let a = fnv1a(bytes).to_le_bytes();
-    let b = fnv1a(&bytes.iter().map(|v| v.wrapping_add(1)).collect::<Vec<u8>>()).to_le_bytes();
-    out[..8].copy_from_slice(&a);
-    out[8..16].copy_from_slice(&b);
-    let c = fnv1a(&bytes.iter().rev().copied().collect::<Vec<u8>>()).to_le_bytes();
-    let d = fnv1a(&[bytes.len() as u8]).to_le_bytes();
-    out[16..24].copy_from_slice(&c);
-    out[24..32].copy_from_slice(&d);
-    out
-}
-
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {

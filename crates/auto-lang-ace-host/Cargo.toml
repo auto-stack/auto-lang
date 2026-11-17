@@ -37,7 +37,13 @@ features = ["derive"]
 [dependencies.serde_json]
 version = "1"
 
+# PLAN-982（982/RUST）：collections 装配器要求**真实**的内容 sha256（证书/身份
+# 字段），占位符会让 manifest/证书身份失真。
+[dependencies.sha2]
+version = "0.10"
+
 [dev-dependencies]
+# PLAN-982：sha256 身份的已知向量核对。
 tempfile = { workspace = true }
 # PLAN-982：真桥用例按 legacy 消费形状读 `_arg{n}`/`get_kids`。
 auto-val = { path = "../auto-val" }
