@@ -114,6 +114,8 @@ mod plan981_members_slot;
 mod plan981_event_a;
 #[path = "cases/plan981_ma_sources.rs"]
 mod plan981_ma_sources;
+#[path = "cases/plan981_proof_a.rs"]
+mod plan981_proof_a;
 #[path = "cases/plan981_v_harness.rs"]
 mod plan981_v_harness;
 #[path = "cases/plan981_lifecycle.rs"]
