@@ -279,6 +279,8 @@ pub struct DocumentCost {
     pub nodes: usize,
     pub values: usize,
     pub owned_bytes: usize,
+    /// Configuration primitive dispatches executed (real count, not an estimate).
+    pub callees: u64,
 }
 
 enum Entry {
@@ -324,6 +326,7 @@ struct Session {
     nodes: usize,
     values: usize,
     owned_bytes: usize,
+    callees: u64,
     texts: Vec<String>,
 }
 
@@ -512,6 +515,7 @@ pub fn open_session(limits: DocumentLimits) -> Result<(), AdmissionError> {
             nodes: 0,
             values: 0,
             owned_bytes: 0,
+            callees: 0,
             texts: Vec::new(),
         });
         Ok(())
@@ -561,6 +565,7 @@ pub fn close_session() -> Result<OwnedDocument, AdmissionError> {
                 nodes: session.nodes,
                 values: session.values,
                 owned_bytes: session.owned_bytes,
+                callees: session.callees,
             },
         })
     })
@@ -589,6 +594,7 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
         let Some(session) = guard.as_mut() else {
             return Err(HostError::Io("config: no open session".into()));
         };
+        session.callees += 1;
         if session.finished && !matches!(spec, ConfigSpec::Finish) {
             return Err(HostError::Io(format!(
                 "config: session already finished ({ERR_FINISHED})"

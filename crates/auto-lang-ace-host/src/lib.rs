@@ -45,6 +45,8 @@ use auto_lang_core::{
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
 mod debug;
+/// PLAN-982（B-CONFIG-I E6）：配置文档桥（AceExecutor::eval_config）。
+pub mod config_document;
 pub mod project;
 pub mod session_bridge;
 
@@ -218,6 +220,17 @@ fn lookup_provider(name: &str) -> Option<Arc<ProviderEntry>> {
 // ---------------------------------------------------------------------------
 
 impl AceExecutor for HostExecutor {
+    /// PLAN-982（B-CONFIG-I E6）：配置文档走 ACE 宿主车道
+    /// （compile→lower→verify→ABC→session→execute→export）。没有桥时 SDK 侧
+    /// 的默认实现返回 ce.config/executor-unsupported——这里必须真的服务，
+    /// 且失败不回退旧配置引擎。
+    fn eval_config(
+        &self,
+        request: &auto_lang_core::ace_config::AceConfigRequest<'_>,
+    ) -> auto_lang_core::ace_config::AceConfigReport {
+        config_document::eval_request(request)
+    }
+
     fn execute(&self, request: &AceRequest<'_>) -> AceRunReport {
         // T-08 compat discipline: argv/stdin are EXPLICIT request inputs
         // the AV lane cannot serve yet — named refusals before any lane

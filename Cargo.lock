@@ -751,6 +751,7 @@ dependencies = [
  "ace-lowering",
  "ace-source-query",
  "auto-lang-core",
+ "auto-val",
  "base64 0.22.1",
  "serde",
  "serde_json",
