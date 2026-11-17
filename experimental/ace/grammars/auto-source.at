@@ -1797,7 +1797,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         cfg-node-tail(profiles: [config-document]) {
             alt { cfg-node-args(field: "args") {} }
+            // 节点头里的模板实参：`lib ${name} {}` 经模板 desugar 后是
+            // `lib __fstr("", name) {}` —— 名字后跟一个调用实参。
+            alt { cfg-node-call(field: "call") {} }
             alt { cfg-node-id(field: "id") {} }
+        }
+        cfg-node-call(profiles: [config-document]) {
+            ident(field: "word")
+            lparen(same-line: true) {}
+            opt { args(field: "args") {} }
+            rparen() {}
         }
         cfg-node-id(profiles: [config-document]) {
             alt { ident(field: "id") {} }

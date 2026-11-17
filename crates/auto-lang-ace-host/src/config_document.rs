@@ -38,53 +38,61 @@ const MAX_FRAMES: usize = 4096;
 ///
 /// 只接受宿主车道能精确承载的种类：bool / i32 范围内的整数 / char / text。
 /// 浮点、null、对象、数组与超范围整数都是**具名拒绝**（不静默丢弃、不截断）。
+/// 一个上下文值 → 文档车道能精确承载的注入值（其它种类具名拒绝）。
+fn config_value_to_inject(
+    name: &str,
+    value: &auto_lang_core::ace_config::ConfigValue,
+) -> Result<ace_core::source::InjectValue, (String, String)> {
+    use ace_core::source::InjectValue;
+    use auto_lang_core::ace_config::ConfigValue;
+    Ok(match value {
+        ConfigValue::Bool(b) => InjectValue::Bool(*b),
+        ConfigValue::Char(c) => InjectValue::Char(*c),
+        ConfigValue::Text(t) => InjectValue::Text(t.clone()),
+        ConfigValue::I64(n) => match i32::try_from(*n) {
+            Ok(v) => InjectValue::I32(v),
+            Err(_) => {
+                return Err((
+                    "ace.config/inject-range".to_string(),
+                    format!(
+                        "context argument `{name}` = {n} is outside the document's i32 value \
+                             range; the configuration lane refuses instead of truncating"
+                    ),
+                ))
+            }
+        },
+        ConfigValue::U64(n) => match i32::try_from(*n) {
+            Ok(v) => InjectValue::I32(v),
+            Err(_) => {
+                return Err((
+                    "ace.config/inject-range".to_string(),
+                    format!(
+                        "context argument `{name}` = {n} is outside the document's i32 value \
+                             range; the configuration lane refuses instead of truncating"
+                    ),
+                ))
+            }
+        },
+        other => {
+            return Err((
+                "ace.config/inject-unsupported".to_string(),
+                format!(
+                    "context argument `{name}` has kind `{}`, which the document value lane \
+                     cannot carry yet (bool/i32/char/text only)",
+                    other.kind()
+                ),
+            ))
+        }
+    })
+}
+
 fn inject_from_context(
     context: &auto_lang_core::ace_config::ConfigContext,
 ) -> Result<Vec<(String, ace_core::source::InjectValue)>, (String, String)> {
     use ace_core::source::InjectValue;
-    use auto_lang_core::ace_config::ConfigValue;
     let mut out: Vec<(String, InjectValue)> = Vec::with_capacity(context.args.len() + 2);
     for (name, value) in &context.args {
-        let injected = match value {
-            ConfigValue::Bool(b) => InjectValue::Bool(*b),
-            ConfigValue::Char(c) => InjectValue::Char(*c),
-            ConfigValue::Text(t) => InjectValue::Text(t.clone()),
-            ConfigValue::I64(n) => match i32::try_from(*n) {
-                Ok(v) => InjectValue::I32(v),
-                Err(_) => {
-                    return Err((
-                        "ace.config/inject-range".to_string(),
-                        format!(
-                            "context argument `{name}` = {n} is outside the document's i32 value \
-                             range; the configuration lane refuses instead of truncating"
-                        ),
-                    ))
-                }
-            },
-            ConfigValue::U64(n) => match i32::try_from(*n) {
-                Ok(v) => InjectValue::I32(v),
-                Err(_) => {
-                    return Err((
-                        "ace.config/inject-range".to_string(),
-                        format!(
-                            "context argument `{name}` = {n} is outside the document's i32 value \
-                             range; the configuration lane refuses instead of truncating"
-                        ),
-                    ))
-                }
-            },
-            other => {
-                return Err((
-                    "ace.config/inject-unsupported".to_string(),
-                    format!(
-                        "context argument `{name}` has kind `{}`, which the document value lane \
-                         cannot carry yet (bool/i32/char/text only)",
-                        other.kind()
-                    ),
-                ))
-            }
-        };
-        out.push((name.clone(), injected));
+        out.push((name.clone(), config_value_to_inject(name, value)?));
     }
     // legacy：`on`/`off` 是内建布尔；请求显式给了同名值则以请求为准。
     for (builtin, value) in [("on", true), ("off", false)] {
@@ -259,6 +267,31 @@ pub fn eval_request(request: &AceConfigRequest<'_>) -> AceConfigReport {
     };
     if let Err(e) = ace_av_core::config_document::open_session(session_limits) {
         return host_failure(e.code, e.message, start);
+    }
+    // legacy 语义：注入的 args 先播成**根属性**（宿主值赢，文档同名键不覆盖），
+    // 这样 `name: "${name}"` 之类的文档在宿主注入下得到注入值。
+    for (name, value) in request.context.args.iter().filter_map(|(name, value)| {
+        // on/off 内建只做可见变量，不进根属性（legacy 也不把内建写成 prop）。
+        config_value_to_inject(name, value).ok().map(|v| (name, v))
+    }) {
+        let owned = match &value {
+            ace_core::source::InjectValue::I32(n) => {
+                ace_av_core::config_document::OwnedValue::I32(*n)
+            }
+            ace_core::source::InjectValue::Bool(b) => {
+                ace_av_core::config_document::OwnedValue::Bool(*b)
+            }
+            ace_core::source::InjectValue::Char(c) => {
+                ace_av_core::config_document::OwnedValue::Char(*c)
+            }
+            ace_core::source::InjectValue::Text(t) => {
+                ace_av_core::config_document::OwnedValue::Text(t.clone())
+            }
+        };
+        if let Err(e) = ace_av_core::config_document::seed_root_prop(name, &owned) {
+            ace_av_core::config_document::abandon_session();
+            return host_failure("ace.config/seed", format!("{e:?}"), start);
+        }
     }
     let local_cancel = AtomicBool::new(false);
     let cancel_ref: &CancelFlag = match request.cancel {

@@ -52,9 +52,11 @@ fn p982_pac_corpus_ace_coverage() {
             .strip_prefix(&root)
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| path.display().to_string());
+        // 严格口径：**不注入**上下文，ACE 与 legacy 的投影必须逐字相等。
+        // （模板仓文档的 `${name}` 在无注入时 ACE 具名拒、legacy 留字面文本，
+        //  这是已知且故意的分歧，另计在 `templates` 计数里。）
         let ace =
             AutoConfig::from_code_with_engine(src.as_str(), &Obj::new(), ConfigEngineChoice::AceAv);
-        // 夹具目录里的"故意坏配置"不算缺口：legacy 也拒它们。
         let legacy = AutoConfig::from_code_with_engine(
             src.as_str(),
             &Obj::new(),

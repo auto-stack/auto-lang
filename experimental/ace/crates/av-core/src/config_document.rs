@@ -328,6 +328,10 @@ struct Session {
     owned_bytes: usize,
     callees: u64,
     texts: Vec<String>,
+    /// 宿主注入的根 prop（legacy 语义：args 先播为根属性）。
+    seeded: std::collections::BTreeSet<String>,
+    /// 播种值在 root 建立前先备好（句柄与 root 无关）。
+    pending_seed: Vec<(String, u32)>,
 }
 
 impl Session {
@@ -517,11 +521,110 @@ pub fn open_session(limits: DocumentLimits) -> Result<(), AdmissionError> {
             owned_bytes: 0,
             callees: 0,
             texts: Vec::new(),
+            seeded: std::collections::BTreeSet::new(),
+            pending_seed: Vec::new(),
         });
         Ok(())
     })
 }
 
+/// 宿主注入一个根属性（legacy 语义：请求 args 先播成根 prop，且**文档里同名
+/// `key: value` 不覆盖它**——宿主注入的值赢）。必须在 `open_session` 之后、
+/// 执行之前调用；root 尚未建立时先备好，`cfg_root()` 一建立就挂上。
+pub fn seed_root_prop(key: &str, value: &OwnedValue) -> Result<(), HostError> {
+    SESSION.with(|slot| {
+        let mut guard = slot.borrow_mut();
+        let Some(session) = guard.as_mut() else {
+            return Err(HostError::Io("config: no open session".into()));
+        };
+        if session.finished {
+            return Err(HostError::Io(format!(
+                "config: session already finished ({ERR_FINISHED})"
+            )));
+        }
+        let handle = seed_value(session, value)?;
+        session.seeded.insert(key.to_string());
+        session.pending_seed.push((key.to_string(), handle));
+        Ok(())
+    })
+}
+
+/// 把 owned 值建成会话条目（递归；预算照计）。
+fn seed_value(session: &mut Session, value: &OwnedValue) -> Result<u32, HostError> {
+    match value {
+        OwnedValue::I32(n) => {
+            session.charge_value()?;
+            session.charge_bytes(4)?;
+            Ok(session.handle(Entry::Value(StoredValue::I32(*n))))
+        }
+        OwnedValue::Bool(b) => {
+            session.charge_value()?;
+            Ok(session.handle(Entry::Value(StoredValue::Bool(*b))))
+        }
+        OwnedValue::Char(c) => {
+            session.charge_value()?;
+            Ok(session.handle(Entry::Value(StoredValue::Char(*c))))
+        }
+        OwnedValue::Text(t) => {
+            session.charge_value()?;
+            session.charge_bytes(t.len())?;
+            let idx = session.text(t.as_bytes())?;
+            Ok(session.handle(Entry::Value(StoredValue::Text(idx))))
+        }
+        OwnedValue::Obj(fields) => {
+            session.charge_value()?;
+            let mut built: Vec<(String, u32)> = Vec::with_capacity(fields.len());
+            for (k, v) in fields {
+                let h = seed_value(session, v)?;
+                built.push((k.clone(), h));
+            }
+            let mut obj = ObjData { fields: Vec::new() };
+            for (k, v) in built {
+                obj_set(&mut obj, k, v);
+            }
+            Ok(session.handle(Entry::Obj(Box::new(obj))))
+        }
+        OwnedValue::List(items) => {
+            session.charge_value()?;
+            let mut built = Vec::with_capacity(items.len());
+            for v in items {
+                built.push(seed_value(session, v)?);
+            }
+            Ok(session.handle(Entry::List(Box::new(ListData { items: built }))))
+        }
+        OwnedValue::Node(n) => build_seed_node(session, n),
+    }
+}
+
+fn build_seed_node(session: &mut Session, node: &OwnedNode) -> Result<u32, HostError> {
+    session.nodes += 1;
+    session.charge_bytes(node.name.len())?;
+    let mut props: Vec<(String, u32)> = Vec::with_capacity(node.props.len());
+    for (k, v) in &node.props {
+        let h = seed_value(session, v)?;
+        props.push((k.clone(), h));
+    }
+    let mut args = Vec::with_capacity(node.args.len());
+    for a in &node.args {
+        args.push(seed_value(session, a)?);
+    }
+    let mut children = Vec::with_capacity(node.children.len());
+    for c in &node.children {
+        children.push(build_seed_node(session, c)?);
+    }
+    let id = node.id.as_ref().map(|i| match i {
+        OwnedId::Name(n) => OwnedId::Name(n.clone()),
+        OwnedId::Text(t) => OwnedId::Text(t.clone()),
+    });
+    Ok(session.handle(Entry::Node(Box::new(NodeData {
+        name: node.name.clone(),
+        id,
+        args,
+        props,
+        children,
+        attached: true,
+    }))))
+}
 /// 该线程是否有打开的配置会话。
 pub fn session_is_open() -> bool {
     SESSION.with(|slot| slot.borrow().is_some())
@@ -615,6 +718,11 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                     attached: true,
                 })));
                 session.root = Some(h);
+                // 注入的根属性在此挂上（legacy：args 先播，文档同名键不覆盖）。
+                let mut seeds = std::mem::take(&mut session.pending_seed);
+                for (key, value) in seeds.drain(..) {
+                    set_prop(session, h, key, value)?;
+                }
                 Ok(h as i32)
             }
             ConfigSpec::Node => {
@@ -710,6 +818,10 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                         let value = store_value(session, kind, &args[2])?;
                         match target {
                             PutTarget::Node => {
+                                // 宿主注入赢：root 上被 args 播过的键不被文档覆盖。
+                                if Some(handle) == session.root && session.seeded.contains(&key) {
+                                    return Ok(0);
+                                }
                                 match session.get(handle)? {
                                     Entry::Node(_) => set_prop(session, handle, key, value)?,
                                     _ => {

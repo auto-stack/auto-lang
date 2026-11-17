@@ -4423,8 +4423,16 @@ impl<'a> Engine<'a> {
         if let Some(tail) = self.cx.field_child(node, "tail") {
             let id_kind = self.cfg_kind("cfg-node-id");
             let args_kind = self.cfg_kind("cfg-node-args");
+            let call_kind = self.cfg_kind("cfg-node-call");
             for c in self.cx.children(tail) {
                 let kind = self.cx.tree.kind(c);
+                if Some(kind) == call_kind {
+                    // 节点头模板实参：`name __fstr("", expr)` → 普通位置实参。
+                    if let Some(expr) = self.run_cfg_head_call(c) {
+                        args.push(crate::source::config_document::ConfigArg::Pos(expr));
+                    }
+                    continue;
+                }
                 if Some(kind) == id_kind {
                     if let Some(leaf) = self.cx.field_child(c, "id") {
                         let span = self.cx.span_of(leaf);
@@ -4434,10 +4442,16 @@ impl<'a> Engine<'a> {
                                 .strip_prefix('"')
                                 .and_then(|s| s.strip_suffix('"'))
                                 .unwrap_or(raw.as_str());
-                            id = Some(ConfigNodeId::Text {
-                                text: lex::decode_str_value(inner.as_bytes()),
-                                span,
-                            });
+                            let text = lex::decode_str_value(inner.as_bytes());
+                            // legacy 口径：节点头里的 `${…}` 是**字面**占位（不插值），
+                            // 且同时落成身份与一个位置实参（`_arg0`）。
+                            if text.starts_with("${") && text.ends_with('}') {
+                                args.push(crate::source::config_document::ConfigArg::Pos(Expr {
+                                    span,
+                                    kind: super::super::ast::ExprKind::StrLit(text.clone()),
+                                }));
+                            }
+                            id = Some(ConfigNodeId::Text { text, span });
                         } else {
                             id = Some(ConfigNodeId::Bare(Ident {
                                 name: self.cx.spelling(leaf),
@@ -4464,6 +4478,35 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// 节点头模板实参：`__fstr("", expr)` 形调用 → 位置实参表达式。
+    fn run_cfg_head_call(&mut self, node: u32) -> Option<crate::source::ast::Expr> {
+        use crate::source::ast::{Arg, Expr, ExprKind};
+        let word = self.cx.field_child(node, "word")?;
+        let name = self.cx.spelling(word);
+        let mut call_args: Vec<Arg> = Vec::new();
+        for arg in self.run_cfg_args(node) {
+            match arg {
+                crate::source::config_document::ConfigArg::Pos(e) => call_args.push(Arg::Pos(e)),
+                crate::source::config_document::ConfigArg::Named { name, value } => {
+                    call_args.push(Arg::Named {
+                        span: name.span.join(value.span),
+                        name,
+                        value,
+                    })
+                }
+            }
+        }
+        Some(Expr {
+            span: self.cx.span_of(node),
+            kind: ExprKind::Call {
+                callee: Ident {
+                    name,
+                    span: self.cx.span_of(word),
+                },
+                args: call_args,
+            },
+        })
+    }
     /// 节点参数表：位置/具名实参按源顺序（`args` 规则 = 首 `arg` + `arg-tail` 链）。
     fn run_cfg_args(&mut self, node: u32) -> Vec<crate::source::config_document::ConfigArg> {
         use crate::source::config_document::ConfigArg;

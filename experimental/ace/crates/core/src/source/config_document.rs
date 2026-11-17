@@ -270,6 +270,23 @@ pub fn compile_config_document_with_injection(
     capabilities: &[String],
     injected: &[(String, InjectValue)],
 ) -> Result<ConfigDocumentFront, Vec<Diagnostic>> {
+    // V-CFG-TEMPLATE：普通字符串里的 `${expr}` 与节点头的裸 `${expr}` 先按
+    // f-string 同一生成物重写成 `__fstr(...)`（legacy config 也在这里插值）。
+    // 重写后的文本是本次编译的**源**（诊断/末尾 span 以它为准）。
+    let src_text = match super::fstr::desugar_config_templates(src) {
+        Ok(s) => s,
+        Err(message) => {
+            return Err(vec![document_diag(
+                "source.fstr-syntax",
+                message,
+                Span {
+                    start: 0,
+                    end: src.len(),
+                },
+            )])
+        }
+    };
+    let src: &str = &src_text;
     let syntax = parse_config_document(src)?;
     let doc_span = Span {
         start: 0,

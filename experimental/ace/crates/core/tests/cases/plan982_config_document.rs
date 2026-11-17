@@ -518,3 +518,24 @@ fn p982_config_document_accepts_hash_comments_json_and_block_objects() {
         other => panic!("expected a pair line, got {other:?}"),
     }
 }
+
+/// V-CFG-TEMPLATE：模板 desugar 的两处语义。
+/// - 字符串里的 `${expr}` 变成 `__fstr(...)`（真插值）；
+/// - 节点头里的裸 `${expr}` 变成本文本字符串字面量（legacy 在节点头**不插值**，
+///   实测 id/`_arg0` 都是字面 `${name}`）。
+#[test]
+fn p982_config_template_desugar_shapes() {
+    let out = ace_core::source::fstr::desugar_config_templates("name: \"${name}\"\n")
+        .expect("string template desugars");
+    assert_eq!(out, "name: __fstr(name)\n");
+
+    let out = ace_core::source::fstr::desugar_config_templates("lib ${name} {}\n")
+        .expect("head placeholder desugars");
+    assert_eq!(out, "lib \"${name}\" {}\n");
+
+    let out = ace_core::source::fstr::desugar_config_templates(
+        "# note ${not_a_template}\nname: \"ok\"\n",
+    )
+    .expect("comments are not interpolated");
+    assert_eq!(out, "# note ${not_a_template}\nname: \"ok\"\n");
+}

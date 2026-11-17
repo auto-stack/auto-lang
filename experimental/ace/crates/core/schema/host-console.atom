@@ -5,7 +5,7 @@
 descriptor(schema: "auto.hir.host-console.draft", revision: 1u32, profile: "host-console-draft") {
 
     enums {
-        enum ExprKind { cases: [unit, read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, text_from_char] }
+        enum ExprKind { cases: [unit, read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, text_from_char, text_display, fstr] }
         enum TypeKind { cases: [i32, bool, str, Str, char, function] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
@@ -90,6 +90,7 @@ descriptor(schema: "auto.hir.host-console.draft", revision: 1u32, profile: "host
                 callee: DefRef
                 eval_args: ExprRefList
                 bindings: BindingList
+                parts: ExprRefList
             }
         }
 
@@ -239,7 +240,14 @@ descriptor(schema: "auto.hir.host-console.draft", revision: 1u32, profile: "host
             require: [type, operand]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings]
         }
-        branch(key: "expr.unit") { require: [type]; forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings] }
+        branch(key: "expr.text_display") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings]
+        }
+        branch(key: "expr.fstr") {
+            require: [type, parts]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings]
+        }        branch(key: "expr.unit") { require: [type]; forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings] }
         branch(key: "eval") { require: [value] }
         branch(key: "let") { require: [local, value] }
         branch(key: "return") { require: [value] }
