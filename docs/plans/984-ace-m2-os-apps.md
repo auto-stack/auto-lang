@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
 plan_revision: 10
-current_step: 3
+current_step: 4
 total_steps: 25
 depends_on: [PLAN-959, PLAN-969, PLAN-970, PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-977, PLAN-978, PLAN-980, PLAN-981, PLAN-982, PLAN-983, auto-os/PLAN-064]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -396,7 +396,8 @@ struct ConsumerCoverage { entry: EntryIdentity, source: SourceId, engine_path: P
 - [x] **B-EMBED-V｜M2-A｜owner_stage: work｜AC-B-EMBED**：执行V-B-EMBED完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
   [✅ 2026-11-17] 冻结命令全执行（scope 收据 v-groups{,-2,-3,-4}.log/consumer-*.log/sdk-legs-v.log）：lang 组并集= integration 3352/3355（2红=master基线既有：cb_web_mime 主检出复放红 30.1s、plan814 declared_path_deps 主检出复放红；plan707_spike_cancel_gap 轮间浮现/隔离复放3/3绿=负载环境归因；首轮 plan702 红=组内缺 auto-ui 兄弟检出所致跨仓扫描路径空——补 `.wt/lang-984/auto-ui` 兄弟后复跑绿）+ **ace-av PASS** + ace-host(=ace-conformance 固定组) 155/11/16——11红全为已登记基线债（D-1001-R2×4/D-932-2/1060-R4/R5族，零本切片触面）+ **ace-facade（真实受影响组，含 p984_embed 4新例）PASS 43.1s**。仓外 consumer 5/5 腿 PASS（boot/run-project 4904/sessions 隔离+关闭/deny 具名拒/closed 资源）；SDK 腿 9/9 PASS（3s）。新用例 4 例实测 0.032–0.201s（≤10s 门）。机器占用如实：门期他会话 auto-web 定向测试并行（3–19 进程波动），ace-host 组内红与之无关（基线债身份独立成立）。
 
-- [ ] **B-EMBED-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
+- [x] **B-EMBED-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
+  [✅ 2026-11-17] phase 复审 pass（局限=实施会话内复审，从提交工件重建）：reviewed f35c318b1；复审者独立重跑 p984_embed 4/4、自造异 payload 复现 m2build.selection.pin 拒绝+完体SDK 49 控制、新文件零警告、fmt clean、恰2新文件；AC-B-EMBED/AC-01/AC-PHASE A切片逐项 pass；2条具名澄清（组名ace-host实为conformance组/supersedes 乃整Plan终态声明）非缺陷；收据见§9 phase review 行。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
