@@ -17,7 +17,14 @@ default-filter = "not test(aavm2_t3_tower_milestone)"
 period = "900s"
 terminate-after = 2
 
+# PLAN-1067 review3 T-1067-2: the native scheduler gate cases each compile,
+# link and run REAL PEs. Under the full pool (20 parallel tests) their per-case
+# wall time swung from ~0.2-3 s to >10 s purely from sibling contention, which
+# violates the per-case 10 s budget even though every assertion passed.
+# Serializing this binary only (not the whole pool) keeps the cases cheap and
+# deterministic; nothing about their inputs or assertions changes.
 [test-groups]
+sched-native = { max-threads = 1 }
 fixed-http = { max-threads = 1 }
 mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }
@@ -56,6 +63,10 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(ffi_dual)"
 test-group = "ffi-dual"
+
+[[profile.default.overrides]]
+filter = "test(/^scheduler_/) or test(/^av_leg::av_lane/)"
+test-group = "sched-native"
 
 # PLAN-896: preserve HTTP family serial access across fixed groups.
 [[profile.default.overrides]]
