@@ -172,3 +172,42 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     }
     hash
 }
+/// 把三件套折成**单个 .rs 文件**（`--merge` 面）。
+///
+/// 形态是"模块内联"：`mod a2x_runtime { … }` + `mod generated { … }` + 入口
+/// `fn main`。`generated` 里的 `use crate::a2x_runtime::*;` 因此仍解析到兄弟模块，
+/// 不需要改写生成文本（绝不改生成器的输出）。
+pub fn merge_fileset(fileset: &AceRustFileSet) -> Result<String, AceRustError> {
+    let get = |name: &str| {
+        fileset
+            .files
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| f.text.clone())
+            .ok_or_else(|| AceRustError::new("ace.rust/merge", format!("missing {name}")))
+    };
+    let wrapper = get("main.rs")?;
+    let runtime = get("a2x_runtime.rs")?;
+    let generated = get("generated.rs")?;
+
+    // 只过滤 wrapper 里的模块声明与 `use`：生成文本本身一字不改。
+    let mut merged = String::new();
+    merged.push_str("// AUTO-GENERATED (merged single file) — DO NOT EDIT.\n\n");
+    merged.push_str("mod a2x_runtime {\n");
+    merged.push_str(&runtime);
+    merged.push_str("\n}\n\nmod generated {\n");
+    merged.push_str(&generated);
+    merged.push_str("\n}\n\n");
+    for line in wrapper.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("mod a2x_runtime;")
+            || trimmed.starts_with("mod generated;")
+            || trimmed.starts_with("// AUTO-GENERATED")
+        {
+            continue;
+        }
+        merged.push_str(line);
+        merged.push('\n');
+    }
+    Ok(merged)
+}
