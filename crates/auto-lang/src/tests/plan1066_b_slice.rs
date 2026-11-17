@@ -808,3 +808,76 @@ fn plan1066_b_inventory_identity_is_the_document() {
     assert!(source.ends_with("hello.case.ad"), "{source}");
     assert_eq!(rows[0]["source"]["present"], serde_json::json!(false));
 }
+
+/// NC-25: no ordinary corpus wrapper writes into the author tree.
+///
+/// Dynamic proof exists where a mirror is possible (NC-A3 for conformance /
+/// cookbook / vm; NC-10 for the projects). This static guard covers the rest:
+/// in the family wrapper modules, a `fs::write(`/`File::create(` that targets a
+/// `test/`-prefixed author path is a bypass and is rejected by file and line.
+/// Scoped diagnostics (`diag_scope::write_scoped`) and the explicit
+/// proposal/compile scopes are the only legal writers.
+fn author_tree_write_offenders(label: &str, text: &str) -> Vec<String> {
+    let mut offenders = Vec::new();
+    let count = text.lines().count();
+    for (index, line) in text.lines().enumerate() {
+        let writes = line.contains("fs::write(")
+            || line.contains("File::create(")
+            || line.contains("OpenOptions::new()");
+        if !writes {
+            continue;
+        }
+        if line.contains("write_scoped") || line.trim_start().starts_with("//") {
+            continue;
+        }
+        let start = index.saturating_sub(3);
+        let end = (index + 2).min(count);
+        let window = text
+            .lines()
+            .skip(start)
+            .take(end - start)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if window.contains("\"test/") && !window.contains("write_scoped") {
+            offenders.push(format!("{label}:{}: {}", index + 1, line.trim()));
+        }
+    }
+    offenders
+}
+
+#[test]
+fn plan1066_b_no_author_tree_writes_in_corpus_wrappers() {
+    let wrappers = [
+        "a2r_tests.rs",
+        "a2c_tests.rs",
+        "a2ts_tests.rs",
+        "aavm_runner_tests.rs",
+        "ffi_dual_tests.rs",
+        "vm_file_tests.rs",
+        "cookbook_vm_tests.rs",
+        "conformance_tests.rs",
+        "plan724_http_client_tests.rs",
+        "plan727_http_transfer_tests.rs",
+    ];
+    let mut offenders = Vec::new();
+    for wrapper in wrappers {
+        // The module sources are compiled from `src/tests`, so read them from
+        // disk to keep the scan honest about ALL of them (not just included).
+        let path = repo().join("src/tests").join(wrapper);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        offenders.extend(author_tree_write_offenders(wrapper, &text));
+    }
+    // The guard must be able to fail: an injected bypass is detected.
+    let injected = "fn x() {\n    let p = d.join(\"test/vm/x/y.wrong.out\");\n    std::fs::write(&p, b\"x\").unwrap();\n}\n";
+    assert_eq!(
+        author_tree_write_offenders("injected.rs", injected).len(),
+        1,
+        "the static guard must detect an injected author-tree write"
+    );
+    assert!(
+        offenders.is_empty(),
+        "author-tree writes in corpus wrappers (use diag_scope::write_scoped):\n  {}",
+        offenders.join("\n  ")
+    );
+}

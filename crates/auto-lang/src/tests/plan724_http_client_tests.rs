@@ -32,12 +32,15 @@ fn assert_golden(case_dir: &str, name: &str) {
     };
     let actual = transpile_case(case_dir, name).expect("transpile ok");
     if actual != expected {
-        let wrong = d.join(case_dir).join(format!("{name}.wrong.rs"));
-        std::fs::write(&wrong, &actual).unwrap();
-        panic!(
-            "golden mismatch for {case_dir}; product written to {}",
-            wrong.display()
-        );
+        // PLAN-1066 T-07[B]/NC-25: the dump is a scoped diagnostic, never a
+        // sibling file in the author tree.
+        let _ = d;
+        crate::tests::diag_scope::write_scoped(
+            &format!("{case_dir}/{name}.wrong.rs"),
+            actual.as_bytes(),
+        )
+        .unwrap();
+        panic!("golden mismatch for {case_dir}");
     }
 }
 

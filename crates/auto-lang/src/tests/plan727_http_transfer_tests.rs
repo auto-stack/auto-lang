@@ -43,12 +43,15 @@ fn assert_golden(case_dir: &str) {
         read_to_string(d.join(case_dir).join(format!("{name}.expected.rs"))).unwrap_or_default();
     let rs = transpile_case(case_dir);
     if rs != expected.as_bytes() {
-        let wrong = d.join(case_dir).join(format!("{name}.wrong.rs"));
-        std::fs::write(&wrong, &rs).expect("write wrong.rs");
-        panic!(
-            "golden mismatch for {case_dir}; actual written to {}",
-            wrong.display()
-        );
+        // PLAN-1066 T-07[B]/NC-25: the dump is a scoped diagnostic, never a
+        // sibling file in the author tree.
+        let _ = d;
+        crate::tests::diag_scope::write_scoped(
+            &format!("{case_dir}/{name}.wrong.rs"),
+            &rs,
+        )
+        .expect("scoped diagnostic");
+        panic!("golden mismatch for {case_dir}");
     }
 }
 
