@@ -831,6 +831,12 @@ mod tests {
 
 /// Try to extract structured diagnostics from a raw error string.
 /// Falls back to a single diagnostic with the full message if no line info is found.
+///
+/// PLAN-971 B: the notebook's ACE path reports structured producer
+/// diagnostics directly, so this legacy error-string parser is no longer
+/// called by the product path; it is kept (with its unit tests) only as the
+/// historical parsing helper so a future text-diagnostic adapter can reuse it.
+#[allow(dead_code)]
 fn extract_diagnostics(err: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
