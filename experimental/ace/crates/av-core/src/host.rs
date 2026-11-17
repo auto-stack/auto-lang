@@ -152,7 +152,7 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
             config_count += 1;
             if config_count > crate::config_document::MAX_CONFIG_IMPORTS {
                 return Err(err(
-                    "host.duplicate",
+                    "host.limit",
                     "at most twenty-four configuration primitives can be declared",
                 ));
             }

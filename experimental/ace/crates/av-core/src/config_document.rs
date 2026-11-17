@@ -380,7 +380,11 @@ impl Session {
     }
 
     fn text_of(&self, id: u32) -> String {
-        self.texts.get(id as usize).cloned().unwrap_or_default()
+        self
+            .texts
+            .get(id as usize)
+            .cloned()
+            .expect("config: text handle out of range (internal invariant)")
     }
 
     /// 值的 owned 形态（带深度守卫；收尾后导出用）。

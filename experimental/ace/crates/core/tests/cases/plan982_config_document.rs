@@ -569,3 +569,19 @@ fn p982_config_for_unrolls_literal_lists() {
         "a runtime-list for must be a named pending: {err:?}"
     );
 }
+
+/// 设计 §4.1：**空文档 = 空 root 文档**（求值入口），不是"求值失败"。
+/// 原始前门仍对"没有文档行"给具名 `source.config-document/empty`（事实描述）。
+#[test]
+fn p982_config_empty_document_is_an_empty_root() {
+    let front = compile_config_document("   \n", "pac.at", &[]).expect("empty input evaluates");
+    assert_eq!(front.statements, 2, "root + finish only");
+    // 纯注释文档同样得到空 root（与 legacy 一致）。
+    let front = compile_config_document("# only a comment\n", "pac.at", &[]).expect("comment-only");
+    assert_eq!(front.statements, 2);
+    // 原始前门的具名事实不变。
+    let codes = diag_codes("   \n");
+    assert!(codes
+        .iter()
+        .any(|c| c.starts_with("source.config-document/empty@")));
+}

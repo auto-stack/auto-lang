@@ -443,6 +443,49 @@ fn p982_vcfg_identity_tracks_context() {
     );
     assert!(id0.served_by_ace_av());
 
+    // 值轴（B-CONFIG-R F-982B-01）：同一个键、不同**值**必须换身份，且经真桥
+    // 求值的业务结果也不同——身份不是 `ConfigIdentity::of` 的自测。
+    let mut win32 = empty_context();
+    win32
+        .args
+        .push(("port".to_string(), ConfigValue::Text("win32".to_string())));
+    let mut linux = empty_context();
+    linux
+        .args
+        .push(("port".to_string(), ConfigValue::Text("linux".to_string())));
+    let branch_src = "if port == \"win32\" { x: 1 } else { x: 2 }\n";
+    let request = AceConfigRequest {
+        source: branch_src,
+        virtual_path: "<vcfg>",
+        context: &win32,
+        limits: ConfigEvalLimits::default(),
+        cancel: None,
+    };
+    let win_id = ConfigIdentity::of(&request, "av");
+    let win_doc = match eval_config_with_ace(&request).outcome {
+        AceConfigOutcome::Success { document, .. } => document,
+        other => panic!("expected served document, got {other:?}"),
+    };
+    let request = AceConfigRequest {
+        source: branch_src,
+        virtual_path: "<vcfg>",
+        context: &linux,
+        limits: ConfigEvalLimits::default(),
+        cancel: None,
+    };
+    let linux_id = ConfigIdentity::of(&request, "av");
+    let linux_doc = match eval_config_with_ace(&request).outcome {
+        AceConfigOutcome::Success { document, .. } => document,
+        other => panic!("expected served document, got {other:?}"),
+    };
+    assert_ne!(
+        win_id.context_digest, linux_id.context_digest,
+        "one key with two different values must not share a context digest"
+    );
+    assert_eq!(win_id.source_hash, linux_id.source_hash);
+    assert_eq!(i64_of(prop(&win_doc, "x")), 1);
+    assert_eq!(i64_of(prop(&linux_doc, "x")), 2);
+
     // 身份轴不替代真实求值：同一文档仍被真实服务一次（有代价事实）。
     match run(src, &base).outcome {
         AceConfigOutcome::Success { cost, identity, .. } => {

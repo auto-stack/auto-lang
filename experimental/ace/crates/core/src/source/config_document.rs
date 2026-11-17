@@ -226,9 +226,71 @@ pub fn config_profile_refusal(profile: SourceProfile, src_len: usize) -> Option<
 // E2：文档解析（共享 CST 前门 + cfg-* 投影）
 // ---------------------------------------------------------------------------
 
+/// 文档是否**没有任何内容**（只有空白/`//` 行注释/`#` 行注释）：设计 §4.1 的
+/// "空文档 = 空 root"。字符串里的 `#`/`//` 不算注释（按字节扫描、跳过字符串）。
+fn is_effectively_empty(src: &str) -> bool {
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    let mut in_str = false;
+    let mut in_char = false;
+    let mut escaped = false;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if in_str {
+            if escaped {
+                escaped = false;
+            } else if c == b'\\' {
+                escaped = true;
+            } else if c == b'"' {
+                in_str = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_char {
+            if escaped {
+                escaped = false;
+            } else if c == b'\\' {
+                escaped = true;
+            } else if c == b'\'' {
+                in_char = false;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b' ' | b'\t' | b'\r' | b'\n' => {
+                i += 1;
+            }
+            b'"' => {
+                in_str = true;
+                i += 1;
+            }
+            b'\'' => {
+                in_char = true;
+                i += 1;
+            }
+            b'#' => {
+                // `#` 行注释（config 面 trivia）；跳到行尾。
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
+}
 /// 解析一份配置文档为未受信候选（结构 + 原 span + 共享表达式）。
 ///
-/// 空文档不是成功求值（设计 §4.1）；坏邻例由投影层给原 span 的 `source.*`。
+/// 原始前门对**空输入**给具名 `source.config-document/empty`（它描述的是"没有
+/// 文档行"这一事实）；而**求值入口** [`compile_config_document`] 按设计 §4.1 把空
+/// 输入当作"空 root 文档"成功返回。坏邻例由投影层给原 span 的 `source.*`。
 pub fn parse_config_document(src: &str) -> Result<ConfigDocumentSyntax, Vec<Diagnostic>> {
     if src.trim().is_empty() {
         return Err(vec![document_diag(
@@ -287,7 +349,17 @@ pub fn compile_config_document_with_injection(
         }
     };
     let src: &str = &src_text;
-    let syntax = parse_config_document(src)?;
+    // 设计 §4.1：**空文档返回空 root**（不是"求值失败"）。只有真正含内容却
+    // 无法成行的文档才是 `source.config-document/structure` 的拒绝面。
+    let syntax = if is_effectively_empty(src) {
+        ConfigDocumentSyntax {
+            lines: Vec::new(),
+            grammar_id: CONFIG_DOCUMENT_SOURCE_PROFILE.to_string(),
+            input_hash: String::new(),
+        }
+    } else {
+        parse_config_document(src)?
+    };
     let doc_span = Span {
         start: 0,
         end: src.len(),
@@ -885,35 +957,6 @@ fn emit_injected(
 }
 
 /// 文档里所有 `var` 名（递归含嵌套体）。保留给需要枚举声明面的调用方。
-#[allow(dead_code)]
-fn collect_var_names(lines: &[ConfigLine], out: &mut std::collections::BTreeSet<String>) {
-    for line in lines {
-        match line {
-            ConfigLine::Var(v) => {
-                out.insert(v.name.name.clone());
-            }
-            ConfigLine::If(i) => {
-                collect_var_names(&i.then.lines, out);
-                if let Some(e) = &i.els {
-                    collect_var_names(&e.lines, out);
-                }
-            }
-            ConfigLine::For(f) => collect_var_names(&f.body.lines, out),
-            ConfigLine::Node(n) => {
-                if let Some(b) = &n.body {
-                    collect_var_names(&b.lines, out);
-                }
-            }
-            ConfigLine::Pair(p) => {
-                if let ConfigPairValue::Node(n) = &p.value {
-                    if let Some(b) = &n.body {
-                        collect_var_names(&b.lines, out);
-                    }
-                }
-            }
-        }
-    }
-}
 
 fn is_document_ident(name: &str) -> bool {
     let mut chars = name.chars();

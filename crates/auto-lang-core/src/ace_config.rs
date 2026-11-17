@@ -552,6 +552,9 @@ impl ConfigContext {
         for (key, value) in &self.args {
             hash = fnv_bytes(hash, key.as_bytes());
             hash = fnv_bytes(hash, value.kind().as_bytes());
+            // 身份必须区分**值**（不只是种类/键集）：`port=win32` 与
+            // `port=linux` 是不同输入，不能共享 digest（B-CONFIG-R F-982B-01）。
+            hash = hash_config_value(hash, value);
             hash = fnv_bytes(hash, &[0x1f]);
         }
         for (key, value) in &self.env {
@@ -970,6 +973,69 @@ fn fnv_bytes(mut hash: u64, bytes: &[u8]) -> u64 {
     hash
 }
 
+/// 把一个配置值的**字节内容**混进身份摘要（结构化、无歧义：标量定宽、文本带
+/// 长度、容器递归带条目数与分隔符）。
+fn hash_config_value(mut hash: u64, value: &ConfigValue) -> u64 {
+    match value {
+        ConfigValue::Null => fnv_bytes(hash, b"null"),
+        ConfigValue::Bool(b) => fnv_bytes(hash, &[*b as u8]),
+        ConfigValue::I64(n) => fnv_bytes(hash, &n.to_le_bytes()),
+        ConfigValue::U64(n) => fnv_bytes(hash, &n.to_le_bytes()),
+        ConfigValue::F64(bits) => fnv_bytes(hash, &bits.to_le_bytes()),
+        ConfigValue::Char(c) => fnv_bytes(hash, &(*c as u32).to_le_bytes()),
+        ConfigValue::Text(t) => {
+            hash = fnv_bytes(hash, &(t.len() as u64).to_le_bytes());
+            fnv_bytes(hash, t.as_bytes())
+        }
+        ConfigValue::List(items) => {
+            hash = fnv_bytes(hash, &(items.len() as u64).to_le_bytes());
+            for item in items {
+                hash = hash_config_value(hash, item);
+            }
+            hash
+        }
+        ConfigValue::Object(fields) => {
+            hash = fnv_bytes(hash, &(fields.len() as u64).to_le_bytes());
+            for (key, item) in fields {
+                hash = fnv_bytes(hash, &(key.len() as u64).to_le_bytes());
+                hash = fnv_bytes(hash, key.as_bytes());
+                hash = hash_config_value(hash, item);
+            }
+            hash
+        }
+        ConfigValue::Node(node) => {
+            hash = fnv_bytes(hash, &(node.name.len() as u64).to_le_bytes());
+            hash = fnv_bytes(hash, node.name.as_bytes());
+            hash = fnv_bytes(
+                hash,
+                &node
+                    .id
+                    .as_ref()
+                    .map(|i| i.len() as u64)
+                    .unwrap_or(0)
+                    .to_le_bytes(),
+            );
+            if let Some(id) = &node.id {
+                hash = fnv_bytes(hash, id.as_bytes());
+            }
+            hash = fnv_bytes(hash, &(node.args.len() as u64).to_le_bytes());
+            for arg in &node.args {
+                hash = hash_config_value(hash, arg);
+            }
+            hash = fnv_bytes(hash, &(node.props.len() as u64).to_le_bytes());
+            for (key, item) in &node.props {
+                hash = fnv_bytes(hash, &(key.len() as u64).to_le_bytes());
+                hash = fnv_bytes(hash, key.as_bytes());
+                hash = hash_config_value(hash, item);
+            }
+            hash = fnv_bytes(hash, &(node.children.len() as u64).to_le_bytes());
+            for child in &node.children {
+                hash = hash_config_value(hash, &ConfigValue::Node(Box::new(child.clone())));
+            }
+            hash
+        }
+    }
+}
 /// FNV-1a over exact bytes (source/context identity; never a security hash).
 pub fn fnv1a(bytes: &[u8]) -> u64 {
     fnv_bytes(FNV_OFFSET, bytes)

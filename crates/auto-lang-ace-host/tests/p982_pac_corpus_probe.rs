@@ -94,4 +94,16 @@ fn p982_pac_corpus_ace_coverage() {
         eprintln!("DIFF {file}: {d}");
     }
     assert!(!files.is_empty(), "corpus must not be empty");
+    // 探针也要能红（B-CONFIG-R F-982B-06）：语料里 140 份以上必须与 legacy 逐字
+    // 相等；任何一份出现结构分歧即失败（不只是打印数字）。
+    assert!(
+        diff.is_empty(),
+        "{} corpus documents disagree with the legacy engine; first: {:?}",
+        diff.len(),
+        diff.first()
+    );
+    assert!(
+        ok >= 140,
+        "the managed corpus must stay at 140+ structurally equal documents, got {ok}"
+    );
 }
