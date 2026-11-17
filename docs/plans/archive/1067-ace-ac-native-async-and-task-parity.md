@@ -483,4 +483,6 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 11 | from: review 
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 12 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: review
 
-stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 13 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: merge
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 13 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: merge
+
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 14 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 20b79ed91 | next: done
