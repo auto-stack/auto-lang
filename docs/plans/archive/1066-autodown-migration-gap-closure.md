@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 4
-current_step: 11
+current_step: 13
 total_steps: 13
 depends_on: [PLAN-1062]
 supersedes_spec_components: [docs/specs/auto-test-case/document-migration-closure.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/module-selection.md]
