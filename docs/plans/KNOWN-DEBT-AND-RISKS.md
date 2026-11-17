@@ -4729,7 +4729,7 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 现象：`start_ace_debug` 与 `run_ace_project_tests` 只在参考宿主与永久 fixture 中被消费；生产 UI（Playground debug 面板、测试面板）仍走 legacy。LSP 诊断与 Playground notebook 已是真实 ACE 消费者。
 - owner：PLAN-971 §10 裁定（A：把这些前门计入本包→需语言面计划；B：按§5 命名义务收口并另立后继）。
 - 关闭条件：裁定落定后按结论 Either 接入真实消费者并补端到端用例，或在本次修订中把 AC-03 消费者措辞收窄并迁移义务到具名后继。
-- 状态：open（**阻断 AC-03/T-03 收口**；T-03 保持未勾）。
+- 状态：**closed as AC-03 gate（2026-11-17 用户裁定 B 口径 + 计划 r8 收窄）**；义务已迁具名后继（D-971-B-03 语言面 / 后继 consumer 计划），不再阻断 PLAN-971 收口。
 
 ## D-971-B-05 — inlay hint 只断言“请求被接受”（2026-11-17 PLAN-971 B 复审 F-11 登记）
 
@@ -4758,3 +4758,4 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 归属：a2r/a2c 语料 owner（金样或 emit 二选一，改写期望须用户显式许可）。
 - 关闭条件：具名处置每一条（修 emit 或授权重生成金样），并在显式重放中该族全绿；不得仅因被忽略而冒充 PASS。
 - 状态：open。
+
