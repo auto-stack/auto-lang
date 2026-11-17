@@ -872,63 +872,34 @@ pub(crate) fn project_packages_front(
                 &snap,
                 SourceProfile::AgePackage,
             )?;
-            // PLAN-981（IF-981-EVENT-A）：payload 的**执行**未实现——向声明了载荷的
-            // 消息投递一个没有载荷的 Send 必须具名拒绝（零效果），不能当 unit 消息
-            // 静默跑常量体。
+            // PLAN-981（IF-981-EVENT-A → B-W1 升级，EVENT-SPLIT）：载荷/带参事件的
+            // **执行**已落地（IF-981-EVENT-PAYLOAD-B / IF-981-PARAMS-B）——A 期的
+            // `event-payload-unsupported` / `event-params-unsupported` 派发守卫由此
+            // 被真实语义取代：`Send` = 空载荷（向载荷变体 Send 是 arity 域错误），
+            // `SendArgs` 的实参经唯一 verify、一次求值、按位绑定。这里仍按 R66-1
+            // 只对**真的处理该消息**的 node 判定（无 model 的 node 不进
+            // `instance_stmts`，此守卫兜住它们的 arity/unsupported 域拒）。
             for op in &scenario.ops {
-                if let crate::source::age_component::ScenarioOp::Send { msg, .. } = op {
+                if matches!(
+                    op,
+                    crate::source::age_component::ScenarioOp::Send { .. }
+                        | crate::source::age_component::ScenarioOp::SendArgs { .. }
+                ) {
                     for node in &nodes {
-                        // R66-1：只有**本 node 真的处理该消息**时才用它的变体判 payload；
-                        // 否则同包里另一个组件的同名 payload 变体会误伤合法 unit 派发。
-                        if !node.handlers.iter().any(|h| h.msg == *msg) {
+                        if !node.handlers.iter().any(|h| h.msg == op.msg()) {
                             continue;
                         }
-                        // R65-2：**任一**同名变体带 payload 就拒（首个 unit 变体不能
-                        // 掩盖后面的有载荷变体；R65-1 后它是纵深防御）。
-                        if let Some(v) = node
-                            .messages
-                            .iter()
-                            .find(|v| &v.name == msg && !v.payload.is_empty())
-                        {
-                            let detail = format!(
-                                "message `{msg}` declares a payload ({}); payload event \
-                                 execution is not supported in this slice, so the dispatch \
-                                 is rejected instead of running the handler without its value",
-                                v.payload.join(", ")
-                            );
-                            let span = v.span;
-                            return Err(vec![crate::source::age_h0::text_diag(
-                                "source.age.event-payload-unsupported",
-                                detail,
-                                span,
-                            )]);
-                        }
-                        // R65-8：带参 handler 的派发在 dispatch 前具名拒（零效果）。
-                        if let Some(h) = node
-                            .handlers
-                            .iter()
-                            .find(|h| h.msg == *msg && !h.params.is_empty())
-                        {
-                            let (param, span) = h.params[0].clone();
-                            let detail = format!(
-                                "handler `{}` declares parameter `{param}`, but parameterised \
-                                 event execution is not implemented in this slice; the dispatch \
-                                 is rejected instead of running the handler without its value",
-                                h.msg
-                            );
-                            return Err(vec![crate::source::age_h0::text_diag(
-                                "source.age.event-params-unsupported",
-                                detail,
-                                span,
-                            )]);
-                        }
+                        crate::source::age_component::check_event_dispatch(node, op)?;
                     }
                 }
             }
             for node in nodes {
-        // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
-        let node_index = age_components.len();
+                // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
+                let node_index = age_components.len();
                 let mut text_fns = Vec::new();
+                // PLAN-981 B-W1（IF-981-PARAMS-B）：未派发 handler 的声明语义
+                // 检查函数（check_value 闭包独占 items 期间先收集，最后统一入列）。
+                let mut handler_check_items: Vec<crate::source::ast::Item> = Vec::new();
                 // PLAN-981：把场景里的 `Tick` 归一到本 node 实际声明的生命周期
                 // 消息拼写（`Life.Tick` 优先），再交给共享脱糖/检查。
                 let node_scenario =
@@ -944,13 +915,15 @@ pub(crate) fn project_packages_front(
                 };
                 for inst in 0..state_instances {
                     for f in &node.fields {
-                        let mut stmts =
-                            match crate::source::age_component::instance_stmts(
-                                inst, &node, &node_scenario, &std::collections::HashMap::new(),
-                            ) {
-                                Ok(s) => s,
-                                Err(ds) => return Err(ds),
-                            };
+                        let mut stmts = match crate::source::age_component::instance_stmts(
+                            inst,
+                            &node,
+                            &node_scenario,
+                            &std::collections::HashMap::new(),
+                        ) {
+                            Ok(s) => s,
+                            Err(ds) => return Err(ds),
+                        };
                         stmts.push(crate::source::ast::Stmt::Return {
                             value: crate::source::ast::Expr {
                                 span: f.span,
@@ -965,39 +938,36 @@ pub(crate) fn project_packages_front(
                             },
                             span: f.span,
                         });
-                        items.push(crate::source::ast::Item::Fn(
-                            crate::source::ast::FnItem {
-                                name: crate::source::ast::Ident {
-                                    name: crate::source::age_component::state_fn_name_at(
-                                        node_index,
-                                        inst, &f.name,
-                                    ),
-                                    span: f.span,
-                                },
-                                type_params: Vec::new(),
-                                params: Vec::new(),
-                                ret: crate::source::ast::TypeAnn {
-                                    // 状态函数返回**字段自己的类型**（int/i32/bool）——
-                                    // 原先硬编码 i32，于是 `flag bool = true` 被共享
-                                    // 检查判成 `expected i32, found bool`（轮 48 R47-3）。
-                                    // 不支持的类型已由上面的 `instance_stmts` 具名拒绝。
-                                    kind: crate::source::ast::TypeRef::Builtin(
-                                        crate::source::age_component::field_type(f).expect(
-                                            "instance_stmts rejected unsupported model field types",
-                                        ),
-                                    ),
-                                    span: f.ty_span,
-                                },
-                                body: crate::source::ast::Block {
-                                    stmts,
-                                    span: node.span,
-                                },
-                                span: node.span,
-                                receiver: crate::source::ast::Receiver::Free,
-                                owner: None,
-                                script: false,
+                        items.push(crate::source::ast::Item::Fn(crate::source::ast::FnItem {
+                            name: crate::source::ast::Ident {
+                                name: crate::source::age_component::state_fn_name_at(
+                                    node_index, inst, &f.name,
+                                ),
+                                span: f.span,
                             },
-                        ));
+                            type_params: Vec::new(),
+                            params: Vec::new(),
+                            ret: crate::source::ast::TypeAnn {
+                                // 状态函数返回**字段自己的类型**（int/i32/bool）——
+                                // 原先硬编码 i32，于是 `flag bool = true` 被共享
+                                // 检查判成 `expected i32, found bool`（轮 48 R47-3）。
+                                // 不支持的类型已由上面的 `instance_stmts` 具名拒绝。
+                                kind: crate::source::ast::TypeRef::Builtin(
+                                    crate::source::age_component::field_type(f).expect(
+                                        "instance_stmts rejected unsupported model field types",
+                                    ),
+                                ),
+                                span: f.ty_span,
+                            },
+                            body: crate::source::ast::Block {
+                                stmts,
+                                span: node.span,
+                            },
+                            span: node.span,
+                            receiver: crate::source::ast::Receiver::Free,
+                            owner: None,
+                            script: false,
+                        }));
                     }
                 }
                 // 文本叶：每个实例一份求值函数（字段引用 → 该实例状态函数调用）。
@@ -1024,11 +994,7 @@ pub(crate) fn project_packages_front(
                             Err(ds) => return Err(ds),
                         };
                         items.push(crate::source::ast::Item::Fn(
-                            crate::source::age_package::hidden_fn(
-                                &name,
-                                &bound,
-                                leaf.expr.span,
-                            ),
+                            crate::source::age_package::hidden_fn(&name, &bound, leaf.expr.span),
                         ));
                         text_fns.push((name, leaf.span));
                     }
@@ -1061,11 +1027,7 @@ pub(crate) fn project_packages_front(
                         );
                         value_fns += 1;
                         items.push(crate::source::ast::Item::Fn(
-                            crate::source::age_package::hidden_value_fn(
-                                &name,
-                                &bound,
-                                expr.span,
-                            ),
+                            crate::source::age_package::hidden_value_fn(&name, &bound, expr.span),
                         ));
                         Ok(())
                     };
@@ -1098,7 +1060,8 @@ pub(crate) fn project_packages_front(
                         if let Some(v) = &m.value {
                             check_value(v)?;
                         }
-                    }                    // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
+                    }
+                    // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
                     // 同样进唯一 verify——`class: nosuch_ident` 不能静默通过。
                     // PLAN-981（B-LANGUAGE-V，980/A 真实源）：`onclick: .Msg` 这类
                     // **事件绑定**是事实，不是值表达式——`.Msg` 不是 `self` 字段引用，
@@ -1174,12 +1137,11 @@ pub(crate) fn project_packages_front(
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
                     // R65-3：widget 形 handler 必须指向本 node 声明的消息。
-                    // R65-8：带参 handler 允许解析/描述（参数事实可读），派发时再具名拒
-                    // （见上方 Send 守卫）——解析成功 ≠ 可执行。
+                    // PLAN-981 B-W1（IF-981-PARAMS-B）：带参 handler 与载荷槽的
+                    // 绑定在**声明级**核对（形参数 = 载荷槽数、重复形参拒），
+                    // 未派发也核对——取代 A 期“派发时具名拒”的 R65-8 守卫。
                     for h in &node.handlers {
-                        if h.from_widget
-                            && !node.messages.iter().any(|m| m.name == h.msg)
-                        {
+                        if h.from_widget && !node.messages.iter().any(|m| m.name == h.msg) {
                             return Err(vec![crate::source::age_h0::text_diag(
                                 "source.age.msg-unknown",
                                 format!(
@@ -1189,6 +1151,23 @@ pub(crate) fn project_packages_front(
                                 ),
                                 h.span,
                             )]);
+                        }
+                    }
+                    crate::source::age_component::check_handler_bindings(&node)?;
+                    // PLAN-981 B-W1（IF-981-PARAMS-B）：每个 handler 铸一个隐藏
+                    // 检查函数（形参 = 真函数参数，载荷类型来自声明拼写）——
+                    // **未派发**的 handler 也按原声明语义进唯一 verify。名字在
+                    // 包隐藏前缀下取**独立子族**（`hv_`），不与文本/值函数撞名。
+                    for hi in 0..node.handlers.len() {
+                        match crate::source::age_component::handler_check_fn(
+                            &node,
+                            node_index,
+                            hi,
+                            "__age_p_hidden_hv_",
+                        ) {
+                            Some(Ok(item)) => handler_check_items.push(item),
+                            Some(Err(ds)) => return Err(ds),
+                            None => {}
                         }
                     }
                     // R61-2：`watch` 的每个源必须是本 node 的 model 字段。
@@ -1225,9 +1204,10 @@ pub(crate) fn project_packages_front(
                             check_value(rhs)?;
                         }
                     }
-                }                // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
-                // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
-                // 不另建求值器，也不把手写数值当常量。
+                    items.extend(handler_check_items);
+                } // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                  // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
+                  // 不另建求值器，也不把手写数值当常量。
                 for (si, scene) in node.view.scene_components.iter().enumerate() {
                     // PLAN-981：属性名在**一行内必须唯一**。此前重复键被静默接受，
                     // 后值覆盖前值、零诊断——写两遍 `kind:` 的作者得不到任何反馈。
@@ -1265,7 +1245,11 @@ pub(crate) fn project_packages_front(
                         // 3D 叶种类必须属于冻结集合（`cylinder3d`/`model3d`/`group3d`）；
                         // 2D 场景只允许 `shape2d`（以及 `Disc` 这类组件实例名）。
                         if scene.kind != "shape2d"
-                            && !scene.kind.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                            && !scene
+                                .kind
+                                .chars()
+                                .next()
+                                .is_some_and(|c| c.is_ascii_uppercase())
                             && !crate::source::age_resources::is_3d_element(&scene.kind)
                         {
                             return Err(vec![crate::source::age_h0::text_diag(
@@ -1285,10 +1269,7 @@ pub(crate) fn project_packages_front(
                         ) {
                             return Err(vec![crate::source::age_h0::text_diag(
                                 "source.age.scene-attr",
-                                format!(
-                                    "`{}` does not apply to `{}`",
-                                    attr.key, scene.kind
-                                ),
+                                format!("`{}` does not apply to `{}`", attr.key, scene.kind),
                                 attr.span,
                             )]);
                         }
@@ -1385,10 +1366,8 @@ pub(crate) fn project_packages_front(
                                     attr.span,
                                     &node.params,
                                 ) {
-                                    Some(fs) => items.extend(
-                                        fs.into_iter()
-                                            .map(crate::source::ast::Item::Fn),
-                                    ),
+                                    Some(fs) => items
+                                        .extend(fs.into_iter().map(crate::source::ast::Item::Fn)),
                                     None => {
                                         return Err(vec![crate::source::age_h0::text_diag(
                                             "source.age.scene-value",

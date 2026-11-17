@@ -235,22 +235,22 @@ mod v10_layers_972;
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;
 
+#[path = "cases/aggregates_typed_1035.rs"]
+mod aggregates_typed_1035;
 #[path = "cases/b1_slice_975.rs"]
 mod b1_slice_975;
+#[path = "cases/bstr_1064.rs"]
+mod bstr_1064;
 #[path = "cases/json_975.rs"]
 mod json_975;
+#[path = "cases/kv_zip_1064.rs"]
+mod kv_zip_1064;
 #[path = "cases/module_packages_960.rs"]
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
 #[path = "cases/module_v_1064.rs"]
 mod module_v_1064;
-#[path = "cases/bstr_1064.rs"]
-mod bstr_1064;
-#[path = "cases/kv_zip_1064.rs"]
-mod kv_zip_1064;
-#[path = "cases/sys_d01_d06_1064.rs"]
-mod sys_d01_d06_1064;
 #[path = "cases/net_974.rs"]
 mod net_974;
 #[path = "cases/plan979_age_component_cpu.rs"]
@@ -261,6 +261,8 @@ mod plan979_age_h0_cpu;
 mod plan980_state_face;
 #[path = "cases/plan981_age_package_av.rs"]
 mod plan981_age_package_av;
+#[path = "cases/plan981_event_b_av.rs"]
+mod plan981_event_b_av;
 #[path = "cases/platform_io_1039.rs"]
 mod platform_io_1039;
 #[path = "cases/redis_975.rs"]
@@ -269,5 +271,5 @@ mod redis_975;
 mod sq_source_facts_934;
 #[path = "cases/stdlib_contract_975.rs"]
 mod stdlib_contract_975;
-#[path = "cases/aggregates_typed_1035.rs"]
-mod aggregates_typed_1035;
+#[path = "cases/sys_d01_d06_1064.rs"]
+mod sys_d01_d06_1064;
