@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1037
-status: executing
+status: execution_done
 feature_name: ACE CT命名实参遍历与发布失败观察事实
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 2
+current_step: 3
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-cte/project.md]
@@ -161,6 +161,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 |---|---|---|---|
 | CT-01 | audit1037_ct_01 | [experimental/ace/crates/source-cte/src/tests.rs](../../experimental/ace/crates/source-cte/src/tests.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
 | CT-02 | audit1037_ct_02 | [experimental/ace/crates/source-cte/src/tests.rs](../../experimental/ace/crates/source-cte/src/tests.rs) | T-01固定设置，T-02新增函数/接线，T-03核真实发现/执行 |
+| CT-01b（review F-1037-R1 追加） | audit1037_ct_01b | [experimental/ace/crates/source-cte/src/tests.rs](../../experimental/ace/crates/source-cte/src/tests.rs) | T-02 修复键编码后新增；独立探针 plan-artifacts/plan-1037/probe 复现同一形状 |
 
 一个Case可需多个同族函数，以上名字是最小锚，不代全部状态。优先扩已有test根/私有cfg(test)模块；若新建test文件，须在其真实conformance根或Cargo target接线，不能只创建文件然后把rg属性数当发现。T-03必须在实际固定组结果中核各锚点被发现/执行；平台/工具条件排除具名列出，不计PASS。
 
@@ -169,7 +170,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 ## 7. 验收标准
 
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，所有§6反例及邻例可在实际入口运行，重大未决先定，不私改expected。（2026-11-17：caps=ac.source.cte.scalar/v1 与 compile_scalar_ct/serve_program/CtService 两入口冻结；两例在真实入口首红→绿，见§9 work 收据。）
-- [ ] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。（2026-11-17 work 证据在案；同轮 review 复开：**F-1037-R1** 命名实参的值/标签未入执行键，两站点共享冻结页给出错误值 33≠34、重标签给 5≠−5——CT-01 关闭谓词「Named/Pos/MovePos 同源 CT 独立值」未满足，见§9 review 收据与 r1-probe.log。）
+- [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。（2026-11-17 两轮：首轮遍历修复落 tests.rs；review 复开 **F-1037-R1**（Named 值/标签未入执行键→33≠34、5≠−5）后本轮修复：`expr_canonical` 编码命名的标签+值，`audit1037_ct_01b` 三族断言（同标签异值/跨编译重标签/位置对照 + 相同需求仍复用）在受控落回旧编码时红、修复后绿；独立探针 5/5 绿。见§9 work-repair 与 review 收据。）
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（2026-11-17：冻结并集 ace-comptime/ace-av/ace-native/ace-a2x 全绿，ace-semantics 1 具名既有红不判本包红、不充 PASS；SD-01/02 在工作树就位待 merge 沉淀；1002 无硬前置。）
 - [ ] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
@@ -180,7 +181,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 | task / owner_stage | 依赖 / 状态 | 操作、交付与验证 / AC |
 |---|---|---|
 | T-01 / work | [x] 1024交接、实施授权及当前源 | 固定cap/公开入口、完整Named源、参数同族与FailPublishSink（probe/publish/读取）并明确真实日志/counters差分。 AC-01  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：caps/入口于 e85096628 冻结；首红 CT-01=`source.cte.bind "1 expression node(s) have no type fact"`（命名实参未遍历，F26）、CT-02=`av_reached=false`（F32）。 |
-| T-02 / work | [ ] T-01决定与可区分输入 | 补相同Arg.value子树面及call/expr publish错误事实，保持真实AV单执行、依赖/root budget和权限；新增CT-01/02永久例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。 **证据（首轮）**：`arg_value`/`arg_value_mut`/`substitute_arg` 统一发现/闭包/meta/替换/查点，product 回灌同名子树；`audit1037_ct_01` 0.41s 绿（Named=Pos=3、嵌套 2/3、meta 42、倒序异型 7、去 cap 受控拒）。 **review 复开（F-1037-R1）**：执行键 `expr_canonical` 丢弃 Named 标签与值 → 命名实参需求间误命中；须补键编码+双站点/跨编译永久例后重交审。 |
+| T-02 / work | [x] T-01决定与可区分输入 | 补相同Arg.value子树面及call/expr publish错误事实，保持真实AV单执行、依赖/root budget和权限；新增CT-01/02永久例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。 **证据（首轮）**：`arg_value`/`arg_value_mut`/`substitute_arg` 统一发现/闭包/meta/替换/查点，product 回灌同名子树；`audit1037_ct_01` 绿。 **review 复开 F-1037-R1 → 本轮修复（df2e7bf81）**：`expr_canonical` Named 编码「标签+值」（Pos/MovePos 保持共享编码：移动只标所有权、CT 值相同）；新增 `audit1037_ct_01b`（同标签异值 34/双站点，跨编译重标签 5 与 −5，位置对照，相同命名需求仍 execute=1/hit=1）；受控落回旧编码时该例红（execute=1≠2），修复后 0.034s 绿；独立探针 5/5。 |
 | T-03 / work | [x] T-02 | 沿真实产品回灌/AV值与service两入口失效→重试→发布→hit验证，覆盖前置拒绝/到达后错误/计数；不提前实现966完整宏。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：`audit1037_ct_02` 0.45s 绿（publish Err→av_reached=true、execute+1、freeze_publishes+0、rejections+1、ok 边界日志一条同键、无页、重执行、修复发布→hit、forbid_av 前门 false）；并集 4 组全绿 + ace-semantics 具名既有红，见§9。 |
 | T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
@@ -269,6 +270,30 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 | 复用证据 | work 阶段冻结并集（e6973193c：ace-comptime 135、ace-av 1341、ace-native 299、ace-a2x 308 全绿）在实现/依赖/配置未变下仍有效；repair 后须重跑受影响组 | 不重复执行 |
 
 2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:2 | from:review | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:e6973193c21498a03035d50731da482d8a3c067d | next:work
+
+2026-11-17 stage:work（repair F-1037-R1） | plan_id:PLAN-1037 | plan_revision:3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-1037/auto-lang | branch:plan-1037-dev | base_commit:e85096628 | repair_commit:df2e7bf81（父 e6973193c）| dependency_revisions:同树（无外部在途依赖）| task_ids:T-02 | findings_closed:F-1037-R1 | evidence:r1-probe.log（修前红）/r2-probe.log（修后全绿）/t02b-prefix-red.log（受控落回旧编码）/t02b-repair-green.log + 冻结并集 run-jpwwg_0o | blockers:none | next_responsible_role:review
+
+**修复内容（最小、同族）**
+
+- `identity.rs::expr_canonical` 的 `ExprKind::Call` 分支：`Arg::Named` 由单个 `b'?'` 改为 `named:<label>=<value-canonical>`；Pos/MovePos 维持共享编码（`.move` 只标所有权转移，CT 结果相同——不是新的键轴）。
+- 语义后果：命名实参需求按「标签+值」独立成键（旧页为共享/错页，重键是安全方向）；相同的命名需求仍复用同一页（不牺牲 dedup）。
+- 同族编码器复核：`source-query/src/walk.rs` 的 body-version walk 已编码 `named`+label+value（闭包版本轴本就命名敏感）；其余非标量面形状在 `expr_canonical` 落 `other:{:?}`（含 span，保守 miss，不误命中）。
+- Spec：SD-01 §5 句改为「命名的标签与值都是需求身份的一部分；相同命名需求仍共享页」，与实现一致。
+
+**验证（冻结提交 df2e7bf81）**
+
+| 范围 | 结果 | 计时 |
+|---|---|---|
+| 定向 3 例 `-E "test(audit1037)"` | 3/3 PASS（ct_01 0.051s / ct_01b 0.034s / ct_02 0.030s） | 1.95s 增量构建 + 0.052s 运行 |
+| 受控变异：把 Named 编码落回 `_ => b'?'` 跑 `audit1037_ct_01b` | 红：`each named value is really executed` left=1 right=2（键碰撞复现） | 0.029s |
+| 独立探针（仓外 probe，5 case） | 5/5 PASS（exit 0）：命名值独立 34、重标签 5/−5、位置对照 34、`id(x: #{1+2})`=3、F32 事实链全绿 | warm 2.93s |
+| 冻结并集 `cargo t ace-comptime ace-semantics ace-av ace-native ace-a2x` | ace-comptime **136/136**（含 3 个 audit1037 例）；ace-av 1341/1341；ace-native 299/299；ace-a2x 308/308；ace-semantics 294/295（**D-1037-01 既有红**，非本包） | 并集 324.05s |
+
+**新增/变更用例计时**：`audit1037_ct_01b` 0.034–0.050s（≤10s 门通过）；`audit1037_ct_01` 0.051–0.079s；`audit1037_ct_02` 0.030–0.034s。无超限用例。
+
+**覆盖边界**：本修复覆盖「`#{ }` 内直接调用带命名实参」这一标量可达形状的键独立性；命名实参在**已服务站点替换/回灌**（首轮修复）与**执行键**（本轮）两侧均已闭合。`walk_meta` 的选择器提取保持位置式（与 resolve `meta_query` 的 arity/位置要求一致，命名选择器在上游即受控拒）；`direct_call_args` 对命名实参返回 None → 走表达式入口（真实 AV + 表达式键），值正确，属具名边界，不改。
+
+2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:3 | from:work | to:review | status:execution_done | outcome:pass | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:df2e7bf816 | next:review
 
 ## 10. 待澄清事项
 
