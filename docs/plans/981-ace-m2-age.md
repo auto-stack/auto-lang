@@ -962,6 +962,22 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: handoff（IF-981-GFX-AV-SEAM 交付：UI058 AV 接面签名/受检投影/车道分类，交 UI058 T-02/T-03 消费）| PLAN-981 | outcome: pass（接面批；M2A-08 后正式在序）
+
+**绑定 revision**：auto-lang master `ddbda0228`（gfx seam 主体）＋review-D 修补 `ed8b16e01`。**实现见该两提交**；差额表见前一条记录（六覆盖项逐列）。
+
+**交付面（981 职责内；算法/载入/喂值不进 core）**
+- **服务登记**：`AGE_GFX_SERVICE_OPS` 17 op——query2d.segment/sweep（Cast2D/Sweep2D typed 结果端口，字段=021 getter 面分量展开）、input.space/x/y/pressed、tick.dt、row.place/shift/show/world/local、render2d.spawn/despawn/frame、image2d.png（内容身份端口=022 语义）、frame2d.at（纯值构造）；能力键 age2d.query/input/scene/sprite。
+- **受检投影**：resolver `RecvClass::AgeGfx`（命名空间分类、逐位类型核对含端口引用、typed 结果、gfx-arity/gfx-type/gfx-port 具名拒）；端口字段可引端口（Frame2D.image: Image2D）；adapter 同一声明行发射 intrinsic 签名；record 实参走借用视图纪律。
+- **AV 车道分类**：ValueCtor→端口 record Aggregate（同 material2d 执行面；**record 实参命中视图→拥有缝时 `lower.age-gfx-view-arg` 具名拒并引用 D-981-GLOBAL-CLONE-GAP（范围已扩展）**，scalar-only 构造器今天可执行）；HostAlgorithm/HostIdentity→AV 观察车道调用点 `lower.age-gfx-lane` 具名拒（fail-closed 零效果，算法归 UI058 宿主车道/PLAN-938 host authority）；mir_verify 只额外准入 age.frame2d.at.v1 import 身份。
+- **UI058 T-02 联冻项（具名边界，不冒已决）**：f32 注解位不在 age-package 基础文法（grammar 未动，冻结身份 7/7）；f32 二元运算不在 text-record atom 面（BinOp 无 f32 cases）；`render2d.spawn` 与保留词 `spawn` 冲突（文法接收或改名二选一）；getter 轴参数拼写（point/normal 分量字段 vs 021 axis 参数形）；预算/信用计量映射（原 32 credits/callback 语义，与 UI058 联冻）。
+
+**独立复审（review-D）**：初判 needs_fix（2 medium）——①新 unused-mut 警告、②ValueCtor 零 AV 覆盖；均已修（`ed8b16e01`：mut 移除、value-ctor AV 准入测试——实现中发现 record 实参视图缝并按 fail-closed 处置为具名边界 + 债务扩围）＋③消息空格/④弱断言一并修。复审确认干净面：注册表与 021/022 spec 逐项一致（SHA16 核对）、fail-closed 全链、grammar 零改动、BorrowView 包裹不伤既有族（resource 参数全标量）、diff 卫生。
+
+**门禁实测**：core+av+lowering 2071-2072 全绿（perf:: 排除；1064 sys/d0d6 墙钟抖动隔离绿=环境归因）；gfx seam 7/7（核心 3：typed 正例 + arity/type/wrong-kind/未知服务具名；AV 4：host-algorithm/host-identity 车道拒零效果 + value-ctor 准入/具名缝 + 普通包不受扰）；master 固定组 ace-source/ace-syntax **PASS**、ace-av **PASS**（982 会话再次刷新根 Cargo.lock 后）；grammar 7/7。
+
+**交 UI058 消费（精确版本/已验范围）**：消费 `ddbda0228`+`ed8b16e01` 的 `AGE_GFX_SERVICE_OPS`/`RecvClass::AgeGfx`/车道分类——T-02 直接以本表联冻拼写/预算/边界（四个具名联冻项见上），T-03 起图形宿主车道按 PLAN-938 host authority 消费同一受检产物（intrinsics + 能力键）；宿主算法（v3/v4/行状态/帧写/PNG 载入/输入喂值）与 `UI-W1-AV` 汇总仍归 UI058/980 原任务。**不冒充**：不替 UI058 最低图形组合/GPU/交互/冷包验收；不签 UI058 或 981 整包完成；W1 其余（CONTENT/FUSION AV 域格）不在本批。
+
 2026-11-18 stage: work（UI058 AV 接面差额表，IF-981-GFX-AV-SEAM 第一步；用户指令：981 既有 LANGUAGE/SESSION 任务内核对交付，不重复立项、不等整包）| PLAN-981 | outcome: partial（差额表提交；实现随后）
 
 **取材**：UI058 plan r4 §5 当前阶段合同 + V-S01..08（`auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md`，drafting 0/10）；`node2d-queries.md`（021 候选，SHA16 `0d930490f45d9a12`）；`node2d-sprites-and-frame-animation.md`（022 候选，`f997bae66305eef0`）；981 已交 SOURCE（IF-981-MODULE/REF/FIELDS/ORIGINAL）、MIN-A-AGE（PROOF A）、EVENT-B 三件（`f4158e499`/`7b127afc8`）、AV 余量（`62d34e3df`：场景 f32 观察/ForNode/异步面）；980 已交桌面宿主（`IF-980-NODE-DESKTOP-A`：`ui_poll_event` 打包事件→`AceStateEngine.dispatch`→`ui_apply_{int,bool,str}` FFI、close/reopen/late 世代纪律）。
