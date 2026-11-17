@@ -9,18 +9,22 @@
 //! 宿主进程级安装一次（`OnceLock`）：guard 常驻进程生命周期，测试进程与
 //! 产品进程同一路径，重复调用不重复安装。
 
-use std::sync::OnceLock;
-
-use auto_lang_core::{ace_session_op, AceSessionLimits, AceSessionOp, AceSessionOutcome, AceSessionReport};
-
-static SESSION_HOST: OnceLock<bool> = OnceLock::new();
+use auto_lang_core::{ace_session_op, AceSessionOp, AceSessionOutcome, AceSessionReport};
 
 /// 安装（或确认已安装）ACE 会话宿主。返回是否可用；失败时调用方必须把
 /// 会话操作当作具名失败呈现，绝不再落到旧 REPL。
+///
+/// F-971-B-04（复审 B1）：ACE 桥 crate 仅 Windows 有实现。非 Windows 上这里
+/// 不引用其符号（否则是编译期断链），而是返回 false——notebook 会话于是走
+/// 既有具名 `ace.session/host-unregistered` 失败路径，与 LSP 侧的
+/// `cfg(not(windows))` 处理一致。
+#[cfg(windows)]
 pub fn ensure_session_host() -> bool {
+    static SESSION_HOST: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *SESSION_HOST.get_or_init(|| {
-        match auto_lang_ace_host::session_bridge::install_session_host(AceSessionLimits::default())
-        {
+        match auto_lang_ace_host::session_bridge::install_session_host(
+            auto_lang_core::AceSessionLimits::default(),
+        ) {
             Ok(guard) => {
                 // 进程生命周期持有：guard 一旦 drop 会关闭所有会话（会话
                 // 属主线程停止），Playground 需要宿主与进程同寿。
@@ -30,6 +34,12 @@ pub fn ensure_session_host() -> bool {
             Err(_) => false,
         }
     })
+}
+
+/// 非 Windows：ACE 会话宿主不可用（具名失败路径由调用方呈现）。
+#[cfg(not(windows))]
+pub fn ensure_session_host() -> bool {
+    false
 }
 
 /// 一个 notebook 会话句柄（ACE session id + 宿主可用性）。

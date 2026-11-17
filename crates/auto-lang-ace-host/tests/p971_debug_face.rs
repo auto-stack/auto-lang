@@ -23,19 +23,21 @@
 
 #![cfg(windows)]
 
+use std::time::Duration;
+
 use auto_lang_ace_host::install;
 use auto_lang_core::{
     check_ace_project, packages_capabilities, start_ace_debug, start_ace_debug_named,
     AceBreakpoint, AceCheckOutcome, AceCheckRequest, AceDebugCommand, AceDebugRequest,
-    AceDebugSnapshot, AceDebugStop, AceEngineChoice, AceModuleSpec,
-    AceProjectOutcome, AceValue,
+    AceDebugSnapshot, AceDebugStop, AceEngineChoice, AceModuleSpec, AceProjectOutcome, AceValue,
 };
 
 /// math::core — the callee whose body we break in.
 const MATH_CORE: &str = "pub fn bump(x int) int { let y = x + 1\n return y }";
 
 /// app::main — the entry that calls the callee.
-const APP_MAIN: &str = "use math.core.bump\nfn main() int { let a = 2\n let b = bump(a)\n return b }";
+const APP_MAIN: &str =
+    "use math.core.bump\nfn main() int { let a = 2\n let b = bump(a)\n return b }";
 
 fn spec<'a>(package: &'a str, id: &'a str, source: &'a str) -> AceModuleSpec<'a> {
     AceModuleSpec {
@@ -151,6 +153,18 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
     let inner_text = MATH_CORE
         .get(inner_span.start as usize..inner_span.end as usize)
         .unwrap_or_else(|| panic!("span {inner_span:?} outside math::core: {}", describe(&hit)));
+    // V-05 (review F-9): the stop must be inside the CALLEE BODY, not at the
+    // file header or another module — the module-offset mapping is what the
+    // span base rebasing can get wrong.
+    let body_start = MATH_CORE.find("let y").expect("callee body marker");
+    assert!(
+        (inner_span.start as usize) >= body_start,
+        "the stop span {inner_span:?} must lie inside the callee body (>= byte {body_start})"
+    );
+    assert!(
+        MATH_CORE.contains("x + 1"),
+        "the fixture's callee body is the expected expression"
+    );
     println!("inner stop text: {inner_text:?}");
     assert!(
         !inner_text.is_empty(),
@@ -182,13 +196,23 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
     // ---- 3. Step-out: back to the caller frame ------------------------
     let out = session.resume(AceDebugCommand::StepOut);
     assert_eq!(out.stop, AceDebugStop::StepOut, "{}", describe(&out));
-    assert_eq!(out.frames.len(), 1, "back in the caller: {}", describe(&out));
+    assert_eq!(
+        out.frames.len(),
+        1,
+        "back in the caller: {}",
+        describe(&out)
+    );
     assert_eq!(out.frames[0].function, "main");
     assert_eq!(out.frames[0].module, "app::main");
 
     // ---- 4. Continue to the end: the real value -----------------------
     let finished = session.resume(AceDebugCommand::Continue);
-    assert_eq!(finished.stop, AceDebugStop::Finished, "{}", describe(&finished));
+    assert_eq!(
+        finished.stop,
+        AceDebugStop::Finished,
+        "{}",
+        describe(&finished)
+    );
     match finished.outcome.as_ref() {
         Some(AceProjectOutcome::Success {
             value: AceValue::I32(3),
@@ -247,6 +271,90 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
     );
     assert_eq!(hit.frames.len(), 2);
     assert_eq!(hit.frames[1].function, "bump");
+    session.close();
+    assert_no_scratch_residue();
+
+    // ---- 5c. The remaining commands and budget stops (review F-4) ------
+    // StepOver at the entry stop: executes one instruction and stays in the
+    // caller frame with a distinct source position.
+    let mut session = start_ace_debug(AceEngineChoice::AceAV, &request)
+        .unwrap_or_else(|e| panic!("step-over session must start: {e:?}"));
+    let over = session.resume(AceDebugCommand::StepOver);
+    assert_eq!(over.stop, AceDebugStop::StepOver, "{}", describe(&over));
+    assert_eq!(
+        over.frames.len(),
+        1,
+        "still in the caller: {}",
+        describe(&over)
+    );
+    // StepOver again from the callee breakpoint: still two live frames.
+    session.set_breakpoints(&[AceBreakpoint {
+        module: "math::core".to_string(),
+        symbol: bump.symbol.clone(),
+        span: None,
+    }]);
+    let hit = session.resume(AceDebugCommand::Continue);
+    assert_eq!(hit.stop, AceDebugStop::Breakpoint { index: 0 });
+    let over_in_callee = session.resume(AceDebugCommand::StepOver);
+    assert_eq!(
+        over_in_callee.stop,
+        AceDebugStop::StepOver,
+        "{}",
+        describe(&over_in_callee)
+    );
+    assert_eq!(
+        over_in_callee.frames.len(),
+        2,
+        "step-over does not leave the callee: {}",
+        describe(&over_in_callee)
+    );
+    session.close();
+    assert_no_scratch_residue();
+
+    // Cancel: the live session's cancel handle stops the chain with the named
+    // Cancelled outcome (never a silent continue). The start request's flag
+    // is only the initial state, so the session exposes a live handle.
+    let mut session = start_ace_debug(AceEngineChoice::AceAV, &request)
+        .unwrap_or_else(|e| panic!("cancellable session must start: {e:?}"));
+    assert_eq!(session.snapshot().stop, AceDebugStop::Entry);
+    session.cancel();
+    let cancelled = session.resume(AceDebugCommand::Continue);
+    assert_eq!(
+        cancelled.stop,
+        AceDebugStop::Finished,
+        "{}",
+        describe(&cancelled)
+    );
+    assert!(
+        matches!(cancelled.outcome, Some(AceProjectOutcome::Cancelled)),
+        "cancel must end with the named Cancelled outcome: {}",
+        describe(&cancelled)
+    );
+    session.close();
+    assert_no_scratch_residue();
+
+    // Wall: a spinning program under a small session budget must end with a
+    // named resource denial (never an unbounded step loop). The spin makes
+    // the budget deterministic (a fast straight-line program could finish
+    // before any deadline check).
+    let spin = "fn main() int { for 1 < 2 { }\n return 0 }";
+    let spin_modules = [spec("app", "main", spin)];
+    let no_bp: [AceBreakpoint; 0] = [];
+    let mut wall_request = AceDebugRequest::simple(&spin_modules, "app::main", &caps, &no_bp);
+    wall_request.wall = Some(Duration::from_millis(50));
+    let mut session = start_ace_debug(AceEngineChoice::AceAV, &wall_request)
+        .unwrap_or_else(|e| panic!("wall-bounded session must start: {e:?}"));
+    let walled = session.resume(AceDebugCommand::Continue);
+    assert_eq!(walled.stop, AceDebugStop::Finished, "{}", describe(&walled));
+    match walled.outcome.as_ref() {
+        Some(AceProjectOutcome::ResourceDenied { kind, .. }) => {
+            assert!(
+                kind.to_lowercase().contains("wall"),
+                "the denial names the wall axis: {kind}"
+            );
+        }
+        other => panic!("a spinning debugged program must hit the wall, got {other:?}"),
+    }
     session.close();
     assert_no_scratch_residue();
 
@@ -332,4 +440,3 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
         "the debug fixture must stay under the 10s case gate, took {elapsed:?}"
     );
 }
-

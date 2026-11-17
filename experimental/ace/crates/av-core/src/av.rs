@@ -925,14 +925,46 @@ pub struct DebugSnapshot {
 }
 
 /// Bound the rendered local text so a huge aggregate cannot balloon the
-/// debug view; the truncation is explicit (never a silent empty value).
+/// debug view; the truncation is explicit (never a silent empty value) and
+/// happens on a CHARACTER boundary (F-971-B-03: slicing at a fixed byte
+/// offset could split a multi-byte char and panic).
 fn render_debug_value(value: &Value) -> String {
     const LIMIT: usize = 96;
     let text = format!("{value:?}");
     if text.len() <= LIMIT {
         text
     } else {
-        format!("{}…", &text[..LIMIT])
+        format!("{}…", truncate_at_char_boundary(&text, LIMIT))
+    }
+}
+
+/// The longest prefix of `text` that is at most `limit` bytes and ends on a
+/// char boundary.
+fn truncate_at_char_boundary(text: &str, limit: usize) -> &str {
+    let mut end = limit.min(text.len());
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+#[cfg(test)]
+mod p971_debug_render_tests {
+    use super::truncate_at_char_boundary;
+
+    /// F-971-B-03: a cut inside a multi-byte character must back off to the
+    /// previous boundary instead of panicking on a non-char-boundary slice.
+    #[test]
+    fn p971_debug_value_truncation_respects_char_boundaries() {
+        let text = "abc中def"; // '中' occupies bytes 3..6
+        assert_eq!(truncate_at_char_boundary(text, 4), "abc");
+        assert_eq!(truncate_at_char_boundary(text, 6), "abc中");
+        assert_eq!(truncate_at_char_boundary(text, 5), "abc");
+        assert_eq!(truncate_at_char_boundary(text, 0), "");
+        let long = "中".repeat(200);
+        let cut = truncate_at_char_boundary(&long, 96);
+        assert!(cut.len() <= 96 && cut.is_char_boundary(cut.len()));
+        assert_eq!(cut.chars().count(), 32);
     }
 }
 
@@ -1009,7 +1041,9 @@ impl PausedRun {
                         .map(|(_, span)| *span);
                     let mut locals = Vec::new();
                     for (i, slot) in f.slots.iter().enumerate() {
-                        let Some(value) = fr.slots.get(i) else { continue };
+                        let Some(value) = fr.slots.get(i) else {
+                            continue;
+                        };
                         locals.push(DebugLocal {
                             slot: i as u32,
                             name: slot.name.clone(),

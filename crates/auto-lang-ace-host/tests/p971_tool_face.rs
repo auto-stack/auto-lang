@@ -276,7 +276,12 @@ fn p971_discovery_gate_and_discovered_test_lane() {
     // The spinning test itself is reported as a FAILED test whose cause names
     // the resource budget; the request-level wall denial (the entry run has
     // no budget left) is the distinguished terminal state.
-    assert_eq!(timeout.tests.len(), 1, "the test lane ran: {:?}", timeout.tests);
+    assert_eq!(
+        timeout.tests.len(),
+        1,
+        "the test lane ran: {:?}",
+        timeout.tests
+    );
     assert!(!timeout.tests[0].passed);
     assert_eq!(timeout.tests[0].name, "check_spin");
     assert!(
@@ -314,6 +319,33 @@ fn p971_discovery_gate_and_discovered_test_lane() {
         );
         assert_eq!(refused.exit_code, 1);
     }
+
+    // ---- 7. Discovery-contract consequence (review F-5, named) ---------
+    // The frozen contract is a zero-parameter `int` DECLARATION (entry
+    // `main` excluded), not the legacy `#[test]` attribute. A legitimate
+    // zero-arg helper in a library module is therefore discovered too: the
+    // lane executes it, its non-zero return fails the run. This leg records
+    // the false-positive consequence instead of leaving it implicit; the
+    // owner for narrowing discovery / restoring an attribute surface is the
+    // language side (plan §5 B boundaries / KNOWN-DEBT).
+    let helper = "fn main() int { return 0 }\nfn version() int { return 3 }";
+    let modules = [spec("app", "main", helper)];
+    let req = AceTestRunRequest::simple(&modules, "app::main", &caps);
+    let helper_run = run_ace_project_tests(AceEngineChoice::AceAV, &req);
+    assert_eq!(
+        helper_run.discovered.len(),
+        1,
+        "a zero-arg int helper is discovered under the frozen contract: {:?}",
+        helper_run.discovered
+    );
+    assert_eq!(helper_run.discovered[0].name, "version");
+    assert_eq!(helper_run.discovered[0].params, 0);
+    assert!(
+        !matches!(&helper_run.outcome, AceTestRunOutcome::Passed),
+        "the helper's non-zero return is not a pass: {:?}",
+        helper_run.outcome
+    );
+    assert_eq!(helper_run.exit_code, 1);
 
     let elapsed = started.elapsed();
     assert!(

@@ -692,9 +692,18 @@ pub enum AceCheckOutcome {
     /// original module identity and span), not just the primary one.
     Diagnostics(Vec<AceDiagnostic>),
     Cancelled,
-    ResourceDenied { kind: String, message: String },
-    Denied { code: String, message: String },
-    HostFailure { code: String, message: String },
+    ResourceDenied {
+        kind: String,
+        message: String,
+    },
+    Denied {
+        code: String,
+        message: String,
+    },
+    HostFailure {
+        code: String,
+        message: String,
+    },
 }
 
 /// Evidence companion of one compile-only project check.
@@ -747,10 +756,7 @@ impl AceCheckReport {
 /// Run one compile-only project check synchronously through the installed
 /// project executor. Nothing is executed; no executor / unknown engine /
 /// unsupported check face is a NAMED terminal state.
-pub fn check_ace_project(
-    choice: AceEngineChoice,
-    request: &AceCheckRequest<'_>,
-) -> AceCheckReport {
+pub fn check_ace_project(choice: AceEngineChoice, request: &AceCheckRequest<'_>) -> AceCheckReport {
     let started = std::time::Instant::now();
     let executor = match ACE_PROJECT_EXECUTOR.read() {
         Ok(slot) => slot.clone(),
@@ -823,17 +829,30 @@ pub enum AceTestRunOutcome {
     Passed,
     /// At least one discovered test failed, or the entry run did not
     /// succeed. `message` names the first failure.
-    Failed { message: String },
+    Failed {
+        message: String,
+    },
     /// The producer discovered ZERO test candidates: a test claim without a
     /// test is a NAMED failure, never a pass (V-03).
-    NoTestsDiscovered { message: String },
+    NoTestsDiscovered {
+        message: String,
+    },
     /// The project did not compile; diagnostic carries the original module
     /// identity and module-relative span.
     Diagnostic(AceDiagnostic),
-    Denied { code: String, message: String },
-    ResourceDenied { kind: String, message: String },
+    Denied {
+        code: String,
+        message: String,
+    },
+    ResourceDenied {
+        kind: String,
+        message: String,
+    },
     Cancelled,
-    HostFailure { code: String, message: String },
+    HostFailure {
+        code: String,
+        message: String,
+    },
 }
 
 /// Evidence companion of one discovered-test run.
@@ -865,10 +884,12 @@ impl AceTestRunReport {
                 },
             },
             AceCheckOutcome::Cancelled => AceTestRunOutcome::Cancelled,
-            AceCheckOutcome::ResourceDenied { kind, message } => AceTestRunOutcome::ResourceDenied {
-                kind: kind.clone(),
-                message: message.clone(),
-            },
+            AceCheckOutcome::ResourceDenied { kind, message } => {
+                AceTestRunOutcome::ResourceDenied {
+                    kind: kind.clone(),
+                    message: message.clone(),
+                }
+            }
             AceCheckOutcome::Denied { code, message } => AceTestRunOutcome::Denied {
                 code: code.clone(),
                 message: message.clone(),
@@ -939,7 +960,28 @@ pub fn run_ace_project_tests(
     let project = run_ace_project(choice, &project_request);
     let outcome = match &project.outcome {
         AceProjectOutcome::Success { .. } => {
-            if project.tests.iter().all(|t| t.passed) {
+            // F-971-B-02 (review B2): a `Success` with no test results is NOT
+            // a passing test lane. Every discovered name must come back
+            // exactly once; a host that drops or renames results is a named
+            // contract failure, never a vacuous `all()` pass.
+            let mut covered = vec![false; names.len()];
+            for test in &project.tests {
+                if let Some(slot) = names.iter().position(|name| *name == test.name) {
+                    covered[slot] = true;
+                }
+            }
+            let complete = project.tests.len() == names.len() && covered.iter().all(|c| *c);
+            if !complete {
+                AceTestRunOutcome::HostFailure {
+                    code: "ace.test/results-mismatch".to_string(),
+                    message: format!(
+                        "the discovered test lane returned {} result(s) for {} discovered test(s); \
+                         a test claim without a matching result is never a pass",
+                        project.tests.len(),
+                        names.len()
+                    ),
+                }
+            } else if project.tests.iter().all(|t| t.passed) {
                 AceTestRunOutcome::Passed
             } else {
                 AceTestRunOutcome::Failed {
@@ -995,7 +1037,10 @@ pub fn run_ace_project_tests(
 }
 
 /// Name-driven form of [`run_ace_project_tests`].
-pub fn run_ace_project_tests_named(engine: &str, request: &AceTestRunRequest<'_>) -> AceTestRunReport {
+pub fn run_ace_project_tests_named(
+    engine: &str,
+    request: &AceTestRunRequest<'_>,
+) -> AceTestRunReport {
     let choice = match parse_ace_engine(engine) {
         Ok(choice) => choice,
         Err(message) => {
@@ -1125,6 +1170,12 @@ pub trait AceDebugSession {
     /// session at the entry stop and sets breakpoints from there, so the set
     /// is mutable across stops; the default keeps the start set.
     fn set_breakpoints(&mut self, _breakpoints: &[AceBreakpoint]) {}
+
+    /// Request cancellation of this session's chain (the debug UI's stop
+    /// button). The next resume observes it and ends with the named
+    /// `Cancelled` outcome; the start request's flag is only the initial
+    /// state, so a live session needs this handle.
+    fn cancel(&mut self) {}
 }
 
 /// A debug start request: the project modules, the entry, the breakpoints
@@ -1191,8 +1242,9 @@ pub fn start_ace_debug(
     let Some(executor) = executor else {
         return Err(AceDebugStartError {
             code: "ace.host/project-executor-unregistered".to_string(),
-            message: "no ACE project executor installed; the host must install one (auto-lang-ace-host)"
-                .to_string(),
+            message:
+                "no ACE project executor installed; the host must install one (auto-lang-ace-host)"
+                    .to_string(),
             diagnostic: None,
         });
     };
@@ -1450,6 +1502,10 @@ mod tests {
 
         struct CheckProbe {
             tests: Vec<AceDeclaration>,
+            /// F-971-B-02: when true the probe drops every test result while
+            /// still reporting a successful project run (the vacuous-pass
+            /// hole the gate must refuse).
+            drop_results: bool,
         }
         impl AceProjectExecutor for CheckProbe {
             fn execute_project(&self, request: &AceProjectRequest<'_>) -> AceProjectReport {
@@ -1459,16 +1515,20 @@ mod tests {
                         value: AceValue::I32(0),
                         steps: 0,
                     },
-                    tests: request
-                        .tests
-                        .iter()
-                        .map(|name| AceTestOutcome {
-                            name: (*name).to_string(),
-                            module: "app::main".to_string(),
-                            passed: true,
-                            message: String::new(),
-                        })
-                        .collect(),
+                    tests: if self.drop_results {
+                        Vec::new()
+                    } else {
+                        request
+                            .tests
+                            .iter()
+                            .map(|name| AceTestOutcome {
+                                name: (*name).to_string(),
+                                module: "app::main".to_string(),
+                                passed: true,
+                                message: String::new(),
+                            })
+                            .collect()
+                    },
                     exit_code: 0,
                     diag_count: 0,
                     wall_ms: 0.0,
@@ -1486,7 +1546,11 @@ mod tests {
         }
         // Zero discovered test candidates: a test claim without a test is a
         // NAMED failure (V-03) — never `Passed`, never exit 0.
-        assert!(install_ace_project_executor(Arc::new(CheckProbe { tests: vec![] })).is_ok());
+        assert!(install_ace_project_executor(Arc::new(CheckProbe {
+            tests: vec![],
+            drop_results: false
+        }))
+        .is_ok());
         let run = run_ace_project_tests(AceEngineChoice::AceAV, &test_req);
         assert!(
             matches!(&run.outcome, AceTestRunOutcome::NoTestsDiscovered { .. }),
@@ -1506,7 +1570,8 @@ mod tests {
             span: Some(AceSpan { start: 0, end: 12 }),
         };
         assert!(install_ace_project_executor(Arc::new(CheckProbe {
-            tests: vec![discovered]
+            tests: vec![discovered.clone()],
+            drop_results: false
         }))
         .is_ok());
         let run = run_ace_project_tests(AceEngineChoice::AceAV, &test_req);
@@ -1514,6 +1579,22 @@ mod tests {
         assert_eq!(run.exit_code, 0);
         assert_eq!(run.discovered.len(), 1);
         assert_eq!(run.tests[0].name, "check_one");
+        assert!(shutdown_ace_project_executor());
+        // F-971-B-02: a host that reports a successful run but returns NO test
+        // results must not pass vacuously — the discovery gate alone is not
+        // enough; the executed result set must cover every discovered name.
+        assert!(install_ace_project_executor(Arc::new(CheckProbe {
+            tests: vec![discovered],
+            drop_results: true
+        }))
+        .is_ok());
+        let run = run_ace_project_tests(AceEngineChoice::AceAV, &test_req);
+        assert!(
+            matches!(&run.outcome, AceTestRunOutcome::HostFailure { code, .. } if code == "ace.test/results-mismatch"),
+            "dropped test results must be a named contract failure, got {:?}",
+            run.outcome
+        );
+        assert_eq!(run.exit_code, 1, "a missing result never exits zero");
         assert!(shutdown_ace_project_executor());
     }
 }

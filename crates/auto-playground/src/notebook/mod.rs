@@ -571,6 +571,31 @@ mod tests {
         assert!(vars.iter().any(|v| v.name == "add" && v.kind == "function"), "expected function 'add', got: {:?}", vars);
     }
 
+    /// PLAN-971 B (review F-3): the notebook's ACE session lane has no console
+    /// channel, so a `print` cell is a NAMED producer rejection — never a
+    /// silent success with empty stdout. The behavior change is recorded in
+    /// the plan's B boundaries; this case pins it.
+    #[tokio::test]
+    async fn p971_notebook_console_boundary_is_named() {
+        let actor = NotebookActor::new();
+        let sid = actor.create_session().await;
+        let out = actor
+            .execute(sid, "c1".to_string(), "print(\"hi\")".to_string(), None)
+            .await;
+        assert!(
+            out.stdout.is_empty(),
+            "the ACE session lane carries no console channel"
+        );
+        assert!(
+            !out.stderr.is_empty(),
+            "a console cell must not be silently accepted: {out:?}"
+        );
+        assert!(
+            !out.diagnostics.is_empty(),
+            "the boundary is reported as a producer diagnostic: {out:?}"
+        );
+    }
+
     #[test]
     fn test_build_execution_queue_dirty_upstream() {
         let mut session = NotebookSession::new();

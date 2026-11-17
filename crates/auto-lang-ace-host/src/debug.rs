@@ -195,7 +195,9 @@ struct ProjectDebugSession {
 
 impl ProjectDebugSession {
     fn current_position(&self) -> Option<DebugPosition> {
-        self.state.as_ref().and_then(|paused| paused.debug_position())
+        self.state
+            .as_ref()
+            .and_then(|paused| paused.debug_position())
     }
 
     /// Translate an executor position to the producer's source identity:
@@ -203,9 +205,7 @@ impl ProjectDebugSession {
     fn translate(&self, position: &DebugPosition) -> (String, String) {
         let bare = bare_symbol(&position.function);
         match self.origins.get(bare) {
-            Some((pkg, module, original)) => {
-                (format!("{pkg}::{module}"), original.clone())
-            }
+            Some((pkg, module, original)) => (format!("{pkg}::{module}"), original.clone()),
             None => (position.module.clone(), bare.to_string()),
         }
     }
@@ -450,5 +450,11 @@ impl AceDebugSession for ProjectDebugSession {
 
     fn set_breakpoints(&mut self, breakpoints: &[AceBreakpoint]) {
         self.breakpoints = breakpoints.to_vec();
+    }
+
+    fn cancel(&mut self) {
+        // The session owns its chain's flag; the start request's flag is only
+        // the initial state (a live UI needs a handle after the start call).
+        self.cancel.store(true, Ordering::SeqCst);
     }
 }
