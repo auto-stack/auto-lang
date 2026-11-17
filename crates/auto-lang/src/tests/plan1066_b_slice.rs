@@ -1366,3 +1366,54 @@ fn plan1066_b_control_report_discipline() {
     // ... and with an honest parent verdict it is only the child row that reads red
     assert!(validate_control_report(false, &failing_child).is_err());
 }
+
+/// F-1066B-R7: a document-only VM entry has no stem-named sidecar oracle, so a
+/// deleted document must NOT silently remove it from discovery. The entry stays
+/// visible and its execution names the missing document. Neighbour: a frozen
+/// sidecar-selected entry behaves the same way (NC-03), and the doc-only
+/// inventory row stays visible with `present:false` (NC-19).
+#[test]
+fn plan1066_b_doc_only_entry_survives_a_deleted_document() {
+    let temp = tempfile::tempdir().expect("temp root");
+    let root = temp.path();
+    // `08_strings/017_sub_semantics` is one of the ten registered doc-only VM
+    // entries: its oracle lives only in the document, so no `.expected.*`
+    // sidecar exists to fall back on.
+    let dir = mirror_case(root, "vm", "08_strings", "017_sub_semantics");
+    let stem = stem_of(&dir);
+    // Keep the frozen sidecars: the control is "the document is gone while the
+    // old files are still on disk", which is exactly the silent-shrink risk.
+    assert!(
+        !dir.join(format!("{stem}.expected.out")).is_file()
+            && !dir.join(format!("{stem}.expected.result")).is_file(),
+        "fixture must have no stem-named oracle for this control to mean anything"
+    );
+    assert!(
+        dir.join(format!("{stem}.at")).is_file(),
+        "frozen source must remain"
+    );
+
+    // baseline: the document is present and the entry runs
+    let cases = auto_lang_core::test_runner::discover_vm_tests(&root.join("vm"));
+    assert_eq!(cases.len(), 1, "doc-only entry must be discovered");
+    assert!(passed(&auto_lang_core::run_vm_file_test(&cases[0])));
+
+    // delete the document: the entry must stay visible, not vanish
+    std::fs::remove_file(dir.join(format!("{stem}.case.ad"))).expect("remove document");
+    let cases = auto_lang_core::test_runner::discover_vm_tests(&root.join("vm"));
+    assert_eq!(
+        cases.len(),
+        1,
+        "a deleted document must not silently drop a registered doc-only entry"
+    );
+    let report = auto_lang_core::run_vm_file_test(&cases[0]);
+    assert!(
+        !passed(&report),
+        "legacy sidecars must not stand in for the document"
+    );
+    let message = failure(&report);
+    assert!(
+        message.contains("migration document") && message.contains(".case.ad"),
+        "the failure must name the missing document: {message}"
+    );
+}

@@ -377,7 +377,30 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
                         // corpus silently losing an obligation.
                         Ok(None) => match legacy_vm_selection(&case_path, &stem) {
                             Some(entry) => entry,
-                            None => continue,
+                            // F-1066B-R7: a document-only entry has NO
+                            // stem-named oracle to fall back on (the ten
+                            // registered ones carry their oracle inside the
+                            // document), so a deleted document would otherwise
+                            // drop the obligation silently. A stem-named source
+                            // with neither document nor frozen oracle is still
+                            // an entry: surface it and let execution name the
+                            // missing document. (Only the VM family has such
+                            // registered entries; a2r/a2c doc-less directories
+                            // were never selected and must not become selected.)
+                            None => {
+                                let at = case_path.join(format!("{stem}.at"));
+                                let as_ = case_path.join(format!("{stem}.as"));
+                                if at.is_file() || as_.is_file() {
+                                    (
+                                        if at.is_file() { at } else { as_ },
+                                        Some(case_path.join(format!("{stem}.expected.out"))),
+                                        None,
+                                        None,
+                                    )
+                                } else {
+                                    continue;
+                                }
+                            }
                         },
                         // Unreadable document: the entry stays selected; its
                         // execution reports the document error by path.
