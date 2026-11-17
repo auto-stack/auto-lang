@@ -10,17 +10,22 @@ use std::path::PathBuf;
 
 fn test_cookbook(category: &str, name: &str) -> AutoResult<()> {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    run_cookbook_case(&d.join("test/cookbook"), category, name)
+    run_cookbook_case(&d.join("test/cookbook"), category, name, true)
 }
 
 /// PLAN-1066: root-parametrized cookbook case core. The normal wrappers run
 /// it against the repo corpus; PLAN-1066/A probes run the SAME mechanism
 /// against a scope mirror (NC-A3) — selection, doc decode, CWD semantics,
-/// and oracle judgment are identical, only the root differs.
+/// and oracle judgment are identical, only the root differs. `emit_trace`
+/// is false for mirror runs: a synthetic mirror is not a module input
+/// invocation, and its temp paths must never enter the governance trace
+/// stream (the fixed-group driver validates every traced input stays inside
+/// the repository).
 pub(crate) fn run_cookbook_case(
     cookbook_root: &std::path::Path,
     category: &str,
     name: &str,
+    emit_trace: bool,
 ) -> AutoResult<()> {
     let case_dir = cookbook_root.join(category).join(name);
 
@@ -48,13 +53,17 @@ pub(crate) fn run_cookbook_case(
         .map_err(|e| std::io::Error::other(e))?;
     let src = entry.source_text().to_string();
     let expected_opt = entry.result_text().map(|t| t.to_string());
-    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
-        serde_json::json!({
-        "family":"legacy-cookbook-vm","id":format!("{category}/{name}"),
-        "source":crate::test_cases::execution_trace::file_identity(&at_file.path()),
-        "oracle":crate::test_cases::execution_trace::file_identity(&case_dir.join("expected.out")),
-        "comparison":if case_dir.join("expected.out").is_file(){"original stdout golden"}else{"original no-crash smoke"}})
-    });
+    let trace = if emit_trace {
+        crate::test_cases::execution_trace::Invocation::start(|| {
+            serde_json::json!({
+            "family":"legacy-cookbook-vm","id":format!("{category}/{name}"),
+            "source":crate::test_cases::execution_trace::file_identity(&at_file.path()),
+            "oracle":crate::test_cases::execution_trace::file_identity(&case_dir.join("expected.out")),
+            "comparison":if case_dir.join("expected.out").is_file(){"original stdout golden"}else{"original no-crash smoke"}})
+        })
+    } else {
+        None
+    };
 
     let original_cwd = std::env::current_dir()?;
     std::env::set_current_dir(&case_dir).map_err(|e| {

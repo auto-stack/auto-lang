@@ -1848,6 +1848,7 @@ fn plan1066_nc_a3_no_author_tree_writes() {
                 cb_mirror.path(),
                 "algorithms",
                 "001_sort_int",
+                false, // mirror run: no governance trace for synthetic input
             )
             .expect("smoke run (no oracle) succeeds");
         },
