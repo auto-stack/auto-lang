@@ -142,6 +142,71 @@ dep("kernel") {
         other => panic!("a tiny byte budget must be a named resource denial, got {other:?}"),
     }
 
+    // ---- 4b. context 注入：args 在文档里按名可见，on/off 内建 --------------
+    let inject_src = "var local_port = \"linux\"\nif port == \"win32\" { x: 1 } else { x: 2 }\ntoggle: on\nchosen: local_port\n";
+    let context = auto_lang_core::ace_config::ConfigContext {
+        args: vec![
+            ("port".to_string(), ConfigValue::Text("win32".to_string())),
+            ("feature".to_string(), ConfigValue::Bool(true)),
+        ],
+        ..Default::default()
+    };
+    let injected_request = AceConfigRequest {
+        source: inject_src,
+        virtual_path: "<config>",
+        context: &context,
+        limits: Default::default(),
+        cancel: None,
+    };
+    let injected_report = eval_config_with_ace(&injected_request);
+    let injected_doc = match &injected_report.outcome {
+        AceConfigOutcome::Success { document, .. } => document,
+        other => panic!("injected context must be visible to the document, got {other:?}"),
+    };
+    assert_eq!(
+        injected_doc.root.prop("x"),
+        Some(&ConfigValue::I64(1)),
+        "`port == \"win32\"` must take the then-branch with the injected value"
+    );
+    assert_eq!(
+        injected_doc.root.prop("toggle"),
+        Some(&ConfigValue::Bool(true)),
+        "`on` is a built-in injected boolean"
+    );
+    assert_eq!(
+        injected_doc.root.prop("chosen"),
+        Some(&ConfigValue::Text("linux".to_string())),
+        "the document's own `var` shadows the injected name"
+    );
+    // SDK 门：同一注入经 `AutoConfig` 的显式 ACE 路径。
+    let mut sdk_args = Obj::new();
+    sdk_args.set("port", auto_val::Value::str("win32"));
+    let sdk_config = AutoConfig::from_code_with_engine(
+        "if port == \"win32\" { x: 1 } else { x: 2 }\n",
+        &sdk_args,
+        ConfigEngineChoice::AceAv,
+    )
+    .expect("the SDK passes the context through");
+    assert_eq!(sdk_config.root.get_prop("x").to_astr().as_str(), "1");
+    // 不能精确承载的注入种类：具名拒绝（不静默丢弃、不截断）。
+    let bad_context = auto_lang_core::ace_config::ConfigContext {
+        args: vec![("ratio".to_string(), ConfigValue::f64(1.5))],
+        ..Default::default()
+    };
+    let bad_request = AceConfigRequest {
+        source: "name: \"x\"\n",
+        virtual_path: "<config>",
+        context: &bad_context,
+        limits: Default::default(),
+        cancel: None,
+    };
+    match eval_config_with_ace(&bad_request).outcome {
+        AceConfigOutcome::Denied { code, .. } => {
+            assert_eq!(code, "ace.config/inject-unsupported");
+        }
+        other => panic!("an unsupported injected kind must be a named denial, got {other:?}"),
+    }
+
     // ---- 5. 无桥：具名拒（不是回退，也不是静默成功） ------------------------
     let _ = auto_lang_core::shutdown_ace_executor();
     let unregistered = eval_config_with_ace(&AceConfigRequest::simple("name: \"x\"\n"));

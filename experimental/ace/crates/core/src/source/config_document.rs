@@ -248,27 +248,27 @@ pub fn parse_config_document(src: &str) -> Result<ConfigDocumentSyntax, Vec<Diag
 // E3：文档行 → 单顺序入口（cfg 原语调用） + 共享编译链
 // ---------------------------------------------------------------------------
 
-/// 配置文档前门：文档候选 → 唯一顺序入口物化（`cfg_*` 受检原语调用）→ 共享
-/// resolve/typecheck/emit/bind → host-console 域唯一 verify（配置文档在宿主侧
-/// 求值，与 console 同一条 host 车道）。
-///
-/// 物化规则（设计 §4 的"每份文档从 root 容器开始，语句按源顺序"）：
-/// - 入口第一条语句建 root 句柄（`cfg_root()`）；
-/// - pair 行 = 对**当前节点**（顶层是 root，节点体是其自身）的 `cfg_put*`；
-///   pair 的值若是带体节点，则先建该节点再 `cfg_put_node`；
-/// - 节点行 = 建节点（`cfg_node(name)`）→ id（两形）→ 位置/具名实参 → 体 →
-///   `cfg_append(当前节点, 新节点)`；
-/// - `var`/`if` 行按普通语句物化；`var` 的对象/数组字面量先物化为容器句柄，
-///   之后同名引用按**静态种类表**（不是运行期猜）选容器重载；
-/// - 收尾 `cfg_finish()`；入口尾值是物化常量（文档结果来自构建器导出，不是
-///   返回值）。
-///
-/// 每个原语调用落成一条 `let __cfg_s<N> = <call>`（共享入口合同不允许语句中间
-/// 出现裸表达式语句；隐藏名带 `__cfg_` 前缀，用户同名先具名拒绝）。
+/// 配置文档前门（无注入）：等价于 [`compile_config_document_with_injection`]
+/// 的空注入形式。
 pub fn compile_config_document(
     src: &str,
     module_path: &str,
     capabilities: &[String],
+) -> Result<ConfigDocumentFront, Vec<Diagnostic>> {
+    compile_config_document_with_injection(src, module_path, capabilities, &[])
+}
+
+/// 与 [`compile_config_document`] 相同，但带**显式注入的上下文值**（legacy
+/// 语义：请求 args 在文档里按名可见；`on`/`off` 内建由桥补齐）。
+///
+/// 注入点语义：注入名先绑成不可变局部，文档行按源顺序在其后执行；文档自己用
+/// `var` 声明的同名局部**遮蔽**注入值（注入不覆盖用户声明）；非法名/重复名
+/// 直接具名拒绝，而不是假装注入成功。
+pub fn compile_config_document_with_injection(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    injected: &[(String, InjectValue)],
 ) -> Result<ConfigDocumentFront, Vec<Diagnostic>> {
     let syntax = parse_config_document(src)?;
     let doc_span = Span {
@@ -279,6 +279,8 @@ pub fn compile_config_document(
     let mut stmts: Vec<Stmt> = Vec::new();
     // 1) root 句柄（一份文档一个 root，顺序语义的起点）。
     let root = emit_call(&mut stmts, &mut ctx, "cfg_root", Vec::new(), doc_span)?;
+    // 1b) 注入的上下文变量（用户 `var` 同名者不注入：文档声明遮蔽注入值）。
+    emit_injected(&syntax.lines, injected, &mut stmts, doc_span)?;
     // 2) 文档行（用户 `var` 名与隐藏前缀冲突 = 具名拒绝）。
     let body = ConfigBody {
         lines: syntax.lines.clone(),
@@ -693,6 +695,123 @@ fn str_lit(text: &str, span: Span) -> Expr {
     }
 }
 
+// ---------------------------------------------------------------------------
+// E7（context 注入）：注入值面与小工具
+// ---------------------------------------------------------------------------
+
+/// 上下文注入值（legacy 语义：请求 args 在文档里**按名可见**）。
+///
+/// 只收宿主车道当前能精确承载的标量/文本；对象/数组/浮点/空值的注入由桥具名
+/// 拒绝（见 `auto-lang-ace-host::config_document`），不静默降级。
+#[derive(Clone, Debug, PartialEq)]
+pub enum InjectValue {
+    I32(i32),
+    Bool(bool),
+    Char(char),
+    Text(String),
+}
+
+impl InjectValue {
+    fn to_expr(&self, span: Span) -> Expr {
+        Expr {
+            span,
+            kind: match self {
+                InjectValue::I32(n) => super::ast::ExprKind::IntLit(*n),
+                InjectValue::Bool(b) => super::ast::ExprKind::BoolLit(*b),
+                InjectValue::Char(c) => super::ast::ExprKind::CharLit(*c as u32),
+                InjectValue::Text(t) => super::ast::ExprKind::StrLit(t.clone()),
+            },
+        }
+    }
+}
+
+fn emit_injected(
+    lines: &[ConfigLine],
+    injected: &[(String, InjectValue)],
+    out: &mut Vec<Stmt>,
+    span: Span,
+) -> Result<(), Vec<Diagnostic>> {
+    if injected.is_empty() {
+        return Ok(());
+    }
+    let mut declared = std::collections::BTreeSet::new();
+    collect_var_names(lines, &mut declared);
+    let mut seen = std::collections::BTreeSet::new();
+    for (name, value) in injected {
+        if declared.contains(name) {
+            // 文档自己的声明优先（legacy 里同名局部同样遮蔽注入的全局）。
+            continue;
+        }
+        if !is_document_ident(name) {
+            return Err(vec![document_diag(
+                "source.config-document/inject-name",
+                format!(
+                    "injected context name `{name}` is not a legal document identifier; \
+                     context values are visible by name in the document"
+                ),
+                span,
+            )]);
+        }
+        if !seen.insert(name.clone()) {
+            return Err(vec![document_diag(
+                "source.config-document/inject-duplicate",
+                format!("injected context name `{name}` is supplied more than once"),
+                span,
+            )]);
+        }
+        out.push(Stmt::Let {
+            kw: span,
+            name: Ident {
+                name: name.clone(),
+                span,
+            },
+            ann: None,
+            mutable: false,
+            value: value.to_expr(span),
+            span,
+        });
+    }
+    Ok(())
+}
+
+/// 文档里所有 `var` 名（递归含嵌套体），用于"注入不覆盖用户声明"。
+fn collect_var_names(lines: &[ConfigLine], out: &mut std::collections::BTreeSet<String>) {
+    for line in lines {
+        match line {
+            ConfigLine::Var(v) => {
+                out.insert(v.name.name.clone());
+            }
+            ConfigLine::If(i) => {
+                collect_var_names(&i.then.lines, out);
+                if let Some(e) = &i.els {
+                    collect_var_names(&e.lines, out);
+                }
+            }
+            ConfigLine::For(f) => collect_var_names(&f.body.lines, out),
+            ConfigLine::Node(n) => {
+                if let Some(b) = &n.body {
+                    collect_var_names(&b.lines, out);
+                }
+            }
+            ConfigLine::Pair(p) => {
+                if let ConfigPairValue::Node(n) = &p.value {
+                    if let Some(b) = &n.body {
+                        collect_var_names(&b.lines, out);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn is_document_ident(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 fn document_diag(code: &str, message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::new(Stage::Text, code, message, span)
 }

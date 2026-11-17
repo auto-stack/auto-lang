@@ -34,6 +34,66 @@ const DEFAULT_WALL: Duration = Duration::from_secs(5);
 /// 单次配置文档的 AV 帧上限（配置文档只有单入口 + 内联表达式调用）。
 const MAX_FRAMES: usize = 4096;
 
+/// 把请求上下文里的 args 转成注入值（legacy 语义 + 内建 `on`/`off`）。
+///
+/// 只接受宿主车道能精确承载的种类：bool / i32 范围内的整数 / char / text。
+/// 浮点、null、对象、数组与超范围整数都是**具名拒绝**（不静默丢弃、不截断）。
+fn inject_from_context(
+    context: &auto_lang_core::ace_config::ConfigContext,
+) -> Result<Vec<(String, ace_core::source::InjectValue)>, (String, String)> {
+    use ace_core::source::InjectValue;
+    use auto_lang_core::ace_config::ConfigValue;
+    let mut out: Vec<(String, InjectValue)> = Vec::with_capacity(context.args.len() + 2);
+    for (name, value) in &context.args {
+        let injected = match value {
+            ConfigValue::Bool(b) => InjectValue::Bool(*b),
+            ConfigValue::Char(c) => InjectValue::Char(*c),
+            ConfigValue::Text(t) => InjectValue::Text(t.clone()),
+            ConfigValue::I64(n) => match i32::try_from(*n) {
+                Ok(v) => InjectValue::I32(v),
+                Err(_) => {
+                    return Err((
+                        "ace.config/inject-range".to_string(),
+                        format!(
+                            "context argument `{name}` = {n} is outside the document's i32 value \
+                             range; the configuration lane refuses instead of truncating"
+                        ),
+                    ))
+                }
+            },
+            ConfigValue::U64(n) => match i32::try_from(*n) {
+                Ok(v) => InjectValue::I32(v),
+                Err(_) => {
+                    return Err((
+                        "ace.config/inject-range".to_string(),
+                        format!(
+                            "context argument `{name}` = {n} is outside the document's i32 value \
+                             range; the configuration lane refuses instead of truncating"
+                        ),
+                    ))
+                }
+            },
+            other => {
+                return Err((
+                    "ace.config/inject-unsupported".to_string(),
+                    format!(
+                        "context argument `{name}` has kind `{}`, which the document value lane \
+                         cannot carry yet (bool/i32/char/text only)",
+                        other.kind()
+                    ),
+                ))
+            }
+        };
+        out.push((name.clone(), injected));
+    }
+    // legacy：`on`/`off` 是内建布尔；请求显式给了同名值则以请求为准。
+    for (builtin, value) in [("on", true), ("off", false)] {
+        if !out.iter().any(|(name, _)| name == builtin) {
+            out.push((builtin.to_string(), InjectValue::Bool(value)));
+        }
+    }
+    Ok(out)
+}
 fn now_ms(start: Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
@@ -95,11 +155,18 @@ pub fn eval_request(request: &AceConfigRequest<'_>) -> AceConfigReport {
     {
         grants.push(ace_av_core::config_document::CAPABILITY.to_string());
     }
-    // 2) 源前门：文档行 → 单顺序入口的受检 `cfg.*` 调用。
-    let front = match ace_core::source::compile_config_document(
+    // 2) 上下文注入：legacy 语义——请求 args 在文档里按名可见，`on`/`off`
+    //    是内建（请求已给则请求优先）。不能精确承载的值类型具名拒绝。
+    let injected = match inject_from_context(request.context) {
+        Ok(list) => list,
+        Err((code, message)) => return denied(&code, message, start),
+    };
+    // 3) 源前门：文档行 → 单顺序入口的受检 `cfg.*` 调用。
+    let front = match ace_core::source::compile_config_document_with_injection(
         request.source,
         request.virtual_path,
         &grants,
+        &injected,
     ) {
         Ok(f) => f,
         Err(diags) => {
