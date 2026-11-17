@@ -246,3 +246,401 @@ fn plan1066_b_dual_channel_result_is_judged_on_the_result_axis() {
         failure(&report)
     );
 }
+
+/// PLAN-1066 T-03[B]/V-02: per-item actuals of one family through the same
+/// entry the `Test.run_*_dir` shims call. `AUTO_TEST_1066_FAMILY` selects the
+/// family; `AUTO_TEST_1066_ACTUALS_OUT` receives one JSON line per item, so a
+/// specialty batch can diff old/new payloads per item instead of trusting a
+/// bundle verdict. The VM family is replayed through its own daily wrapper
+/// instead (its runtime hangs on CWD-sensitive cases, recorded as debt).
+#[test]
+#[ignore = "explicit PLAN-1066 V-02 tool: AUTO_TEST_1066_FAMILY=<a2r|a2c|a2ts> AUTO_TEST_1066_ACTUALS_OUT=<file>"]
+fn plan1066_b_family_actuals() {
+    let family = std::env::var("AUTO_TEST_1066_FAMILY").expect("AUTO_TEST_1066_FAMILY");
+    let out = std::env::var("AUTO_TEST_1066_ACTUALS_OUT").expect("AUTO_TEST_1066_ACTUALS_OUT");
+    let test_root = repo().join("test");
+    let mut rows: Vec<(String, String)> = Vec::new();
+    match family.as_str() {
+        "a2r" => {
+            for (dir, suite) in [("a2r", "a2r"), ("cookbook", "a2r")] {
+                for case in auto_lang_core::test_runner::discover_a2r_tests(&test_root.join(dir), suite) {
+                    let report = auto_lang_core::run_a2r_file_test(&case);
+                    rows.push((case.name.clone(), format!("{:?}", report.outcome)));
+                }
+            }
+        }
+        "a2c" => {
+            for case in auto_lang_core::test_runner::discover_a2c_tests(&test_root.join("a2c")) {
+                let report = auto_lang_core::run_a2c_file_test(&case);
+                rows.push((case.name.clone(), format!("{:?}", report.outcome)));
+            }
+        }
+        "a2ts" => {
+            for case in auto_lang_core::test_runner::discover_a2ts_tests(&test_root.join("a2ts")) {
+                let report = auto_lang_core::run_a2ts_file_test(&case);
+                rows.push((case.name.clone(), format!("{:?}", report.outcome)));
+            }
+        }
+        other => panic!("unknown family {other}"),
+    }
+    let mut lines = String::new();
+    for (id, outcome) in &rows {
+        lines.push_str(&serde_json::json!({"family": family, "id": id, "outcome": outcome}).to_string());
+        lines.push('\n');
+    }
+    std::fs::write(&out, lines).expect("write actuals");
+    let failed = rows.iter().filter(|(_, outcome)| !outcome.starts_with("Passed")).count();
+    eprintln!("FAMILY {family}: items={} failed={failed}", rows.len());
+    for (id, outcome) in rows.iter().filter(|(_, outcome)| !outcome.starts_with("Passed")).take(8) {
+        eprintln!("  FAILED {id}: {outcome}");
+    }
+}
+
+/// PLAN-1066 T-03[B]: authoritative payload proof. For every discovered entry
+/// the DECODER's source bytes and inline artifact bytes are hashed and emitted,
+/// so a scope script can compare them with the frozen sidecars instead of
+/// re-implementing the document grammar.
+#[test]
+#[ignore = "explicit PLAN-1066 payload proof tool: AUTO_TEST_1066_PAYLOAD_OUT=<file>"]
+fn plan1066_b_payload_proof() {
+    use auto_test_case::sha256::{hex, sha256};
+    let out = std::env::var("AUTO_TEST_1066_PAYLOAD_OUT").expect("AUTO_TEST_1066_PAYLOAD_OUT");
+    let test_root = repo().join("test");
+    let mut entries: Vec<(String, std::path::PathBuf)> = Vec::new();
+    for case in auto_lang_core::test_runner::discover_vm_tests(&test_root.join("vm")) {
+        entries.push((format!("vm/{}", case.name), case.dir));
+    }
+    for (dir, suite) in [("a2r", "a2r"), ("cookbook", "a2r")] {
+        for case in auto_lang_core::test_runner::discover_a2r_tests(&test_root.join(dir), suite) {
+            entries.push((format!("{suite}/{}", case.name), case.dir));
+        }
+    }
+    for case in auto_lang_core::test_runner::discover_a2c_tests(&test_root.join("a2c")) {
+        entries.push((format!("a2c/{}", case.name), case.dir));
+    }
+    for case in auto_lang_core::test_runner::discover_a2ts_tests(&test_root.join("a2ts")) {
+        entries.push((format!("a2ts/{}", case.name), case.dir));
+    }
+    let mut lines = String::new();
+    for (id, dir) in &entries {
+        let doc = crate::tests::legacy_doc::load_case(dir, &stem_of(dir))
+            .unwrap_or_else(|e| panic!("{id}: {e}"));
+        let artifacts: Vec<serde_json::Value> = doc
+            .case
+            .spec
+            .checks
+            .iter()
+            .flat_map(|check| check.expect.artifacts.iter())
+            .filter_map(|artifact| match &artifact.payload {
+                auto_test_case::contract::ArtifactPayload::Inline { bytes, .. } => {
+                    Some(serde_json::json!({"path": artifact.path,
+                        "sha256": hex(&sha256(bytes)), "len": bytes.len()}))
+                }
+                _ => None,
+            })
+            .collect();
+        let checks: Vec<serde_json::Value> = doc
+            .case
+            .spec
+            .checks
+            .iter()
+            .map(|check| serde_json::json!({
+                "id": check.id,
+                "result_sha256": check.expect.result.as_ref()
+                    .map(|result| hex(&sha256(result.text.as_bytes()))),
+                "result_len": check.expect.result.as_ref().map(|result| result.text.len()),
+            }))
+            .collect();
+        lines.push_str(
+            &serde_json::json!({
+                "id": id,
+                "dir": dir.strip_prefix(repo()).unwrap_or(dir).to_string_lossy(),
+                "source_sha256": hex(&sha256(doc.source_text().as_bytes())),
+                "source_len": doc.source_text().len(),
+                "source_path": doc.source_path(),
+                "artifacts": artifacts,
+                "checks": checks,
+            })
+            .to_string(),
+        );
+        lines.push('\n');
+    }
+    std::fs::write(&out, lines).expect("write payload proof");
+    eprintln!("PAYLOAD entries={}", entries.len());
+}
+
+/// NC-22/NC-07: the a2c header axis is judged for what the document declares.
+/// A declared header is compared byte-exactly in the SAME transpile as the C
+/// source (`C source mismatch` / `C header mismatch` are separate axes), and a
+/// case whose document declares no header keeps the frozen zero-byte role
+/// instead of silently skipping the axis.
+#[test]
+fn plan1066_b_c_header_axis_declared_vs_zero_byte_role() {
+    let temp = tempfile::tempdir().expect("temp root");
+    let root = temp.path();
+
+    // A declared header is an independent axis of the same emit.
+    let dir = mirror_case(root, "a2c", "01_basics", "001_hello");
+    let doc_path = dir.join("hello.case.ad");
+    let doc = std::fs::read_to_string(&doc_path).expect("read document");
+    let mutated = doc.replace("#pragma once", "#pragma once\n/*wrong header*/");
+    assert_ne!(doc, mutated, "control must change the header payload");
+    std::fs::write(&doc_path, mutated).expect("write document");
+    let cases = auto_lang_core::test_runner::discover_a2c_tests(&root.join("a2c"));
+    let report = auto_lang_core::run_a2c_file_test(&cases[0]);
+    assert_eq!(failure(&report), "C header mismatch", "header axis must be named");
+
+    // A document without a header artifact keeps the zero-byte role: the frozen
+    // sidecar is zero bytes too, so the case must still pass through the real
+    // emit (an "absence = skip" shortcut would let a non-empty header pass).
+    let temp2 = tempfile::tempdir().expect("temp root");
+    let root2 = temp2.path();
+    let dir2 = mirror_case(root2, "a2c", "10_collections", "003_array_declaration");
+    let stem = stem_of(&dir2);
+    assert!(
+        !dir2.join(format!("{stem}.expected.h")).is_file(),
+        "fixture must be one of the nine zero-byte header roles"
+    );
+    let cases2 = auto_lang_core::test_runner::discover_a2c_tests(&root2.join("a2c"));
+    let report2 = auto_lang_core::run_a2c_file_test(&cases2[0]);
+    assert!(passed(&report2), "zero-byte header role must still pass: {}", failure(&report2));
+}
+
+/// NC-07: every family consumes its own artifact vocabulary — a C document
+/// never declares a `.ts`/`.rs` golden, an a2ts document never a `.c`, and a
+/// cookbook document's VM oracle is `cookbook-stdout` (the Rust artifact is a
+/// separate consumer, never the VM comparison).
+#[test]
+fn plan1066_b_family_artifact_vocabulary_is_not_crossed() {
+    let temp = tempfile::tempdir().expect("temp root");
+    let root = temp.path();
+    let mut offenders = Vec::new();
+    let mut counts = std::collections::BTreeMap::new();
+
+    for case in auto_lang_core::test_runner::discover_a2c_tests(&repo().join("test/a2c")) {
+        let doc = crate::tests::legacy_doc::load_case(&case.dir, &stem_of(&case.dir)).expect("doc");
+        for name in doc.case.spec.checks.iter().flat_map(|c| c.expect.artifacts.iter()) {
+            *counts.entry("a2c".to_string()).or_insert(0) += 1;
+            if !(name.path.ends_with(".c") || name.path.ends_with(".h")) {
+                offenders.push(format!("a2c case {} declares {}", case.name, name.path));
+            }
+        }
+    }
+    for case in auto_lang_core::test_runner::discover_a2ts_tests(&repo().join("test/a2ts")) {
+        let doc = crate::tests::legacy_doc::load_case(&case.dir, &stem_of(&case.dir)).expect("doc");
+        for name in doc.case.spec.checks.iter().flat_map(|c| c.expect.artifacts.iter()) {
+            *counts.entry("a2ts".to_string()).or_insert(0) += 1;
+            if !name.path.ends_with(".ts") {
+                offenders.push(format!("a2ts case {} declares {}", case.name, name.path));
+            }
+        }
+    }
+    for case in auto_lang_core::test_runner::discover_a2r_tests(&repo().join("test/a2r"), "a2r") {
+        let doc = crate::tests::legacy_doc::load_case(&case.dir, &stem_of(&case.dir)).expect("doc");
+        for name in doc.case.spec.checks.iter().flat_map(|c| c.expect.artifacts.iter()) {
+            *counts.entry("a2r".to_string()).or_insert(0) += 1;
+            if !name.path.ends_with(".rs") {
+                offenders.push(format!("a2r case {} declares {}", case.name, name.path));
+            }
+        }
+    }
+    for case in auto_lang_core::test_runner::discover_a2r_tests(&repo().join("test/cookbook"), "a2r") {
+        let doc = crate::tests::legacy_doc::load_case(&case.dir, &stem_of(&case.dir)).expect("doc");
+        let vm_oracles: Vec<&str> = doc
+            .case
+            .spec
+            .checks
+            .iter()
+            .filter(|check| check.expect.result.is_some())
+            .map(|check| check.id.as_str())
+            .collect();
+        // A smoke entry (no stdout golden) is legal; an entry WITH a VM oracle
+        // must name the cookbook VM face, never the Rust emit artifact.
+        if !vm_oracles.is_empty() && !vm_oracles.contains(&"cookbook-stdout") {
+            offenders.push(format!(
+                "cookbook case {} judges the wrong face: {vm_oracles:?}",
+                case.name
+            ));
+        }
+    }
+    assert!(counts["a2c"] > 100 && counts["a2ts"] > 80 && counts["a2r"] > 200);
+    assert!(offenders.is_empty(), "crossed artifact vocabularies: {offenders:?}");
+    let _ = temp;
+}
+
+/// NC-23: the E78 boundary is a SET/KEY fact, not a count. Every document under
+/// the five roots belongs to exactly one of {N entry, other-consumer boundary},
+/// and moving one boundary document into N is rejected by name — deleting or
+/// adding an entry cannot be hidden behind "1050 again".
+#[test]
+fn plan1066_b_e78_boundary_is_a_key_set_not_a_count() {
+    let fixture_path = repo().join("test/governance/plan1066_a_obligations.json");
+    let fixture: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&fixture_path).expect("fixture")).expect("json");
+    let mut n_docs = std::collections::BTreeSet::new();
+    for row in fixture["n_rows"].as_array().expect("rows") {
+        n_docs.insert(row["doc_rel"].as_str().expect("doc_rel").to_string());
+    }
+    let mut e78 = std::collections::BTreeSet::new();
+    for row in fixture["e78"].as_array().expect("e78") {
+        e78.insert(row["path"].as_str().expect("path").to_string());
+    }
+    let overlap: Vec<_> = n_docs.intersection(&e78).cloned().collect();
+    assert!(overlap.is_empty(), "N and the E78 boundary share documents: {overlap:?}");
+
+    // every document under the five roots is classified exactly once
+    let mut all_docs = std::collections::BTreeSet::new();
+    for family in ["vm", "a2r", "a2c", "a2ts", "cookbook"] {
+        for entry in walk(&repo().join("test").join(family)) {
+            if entry.extension().and_then(|e| e.to_str()) != Some("ad") {
+                continue;
+            }
+            if !entry.file_name().unwrap().to_string_lossy().ends_with(".case.ad") {
+                continue;
+            }
+            let rel = entry
+                .strip_prefix(repo().parent().unwrap().parent().unwrap())
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            all_docs.insert(rel);
+        }
+    }
+    let union = n_docs.len() + e78.len();
+    assert_eq!(union, all_docs.len(), "unclassified documents: {all_docs:?}");
+    assert_eq!(n_docs.len(), 1060, "N denominator");
+    assert_eq!(e78.len(), 68, "E78 boundary denominator");
+
+    // mutation: misclassify ONE boundary document as an N entry -> named reject
+    let moved = e78.iter().next().expect("boundary document").clone();
+    let mut mutated = n_docs.clone();
+    mutated.insert(moved.clone());
+    let overlap_after: Vec<_> = mutated.intersection(&e78).cloned().collect();
+    assert_eq!(overlap_after, vec![moved.clone()], "duplicate classification must be named");
+}
+
+fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// NC-24: a document-only `.as` entry keeps its script mode when the frozen
+/// `.as` sidecar is deleted and a decoy `.at` appears, and the cookbook
+/// multi-source directories resolve to their frozen `001_*` document instead of
+/// whichever `.at` sorting would pick.
+#[test]
+fn plan1066_b_script_mode_and_cookbook_selection_come_from_the_document() {
+    let temp = tempfile::tempdir().expect("temp root");
+    let root = temp.path();
+    let dir = mirror_case(root, "vm", "18_ffi", "016_json_is_null");
+    let stem = stem_of(&dir);
+    let script = dir.join(format!("{stem}.as"));
+    assert!(script.is_file(), "fixture must be a frozen .as entry");
+    std::fs::remove_file(&script).expect("remove .as sidecar");
+    std::fs::write(dir.join(format!("{stem}.at")), "fn main() { print(\"decoy\") }\n")
+        .expect("write decoy .at");
+
+    let cases = auto_lang_core::test_runner::discover_vm_tests(&root.join("vm"));
+    assert_eq!(cases.len(), 1, "doc-only .as entry must still be discovered");
+    assert!(
+        cases[0].source_file.to_string_lossy().ends_with(".as"),
+        "virtual source keeps the document's script extension: {:?}",
+        cases[0].source_file
+    );
+    let doc = crate::tests::legacy_doc::load_case(&dir, &stem).expect("doc");
+    assert!(doc.source_is_script(), "script mode comes from the document");
+    let (oracle, stdout, result) =
+        crate::tests::vm_file_tests::run_vm_doc_once(&dir, doc.source_is_script()).expect("run");
+    let mirror_mismatches = crate::tests::vm_file_tests::diff_vm_channels(&oracle, &stdout, &result);
+    // The frozen judge for this entry is pre-existing knowledge
+    // (`Json.is_null` now reports `true` where the golden says `1`), so the
+    // control proves ROUTING equality rather than inventing a pass: the mirror
+    // judges exactly what the repository judges, and the decoy `.at` is never
+    // executed (its `print("decoy")` never appears on stdout).
+    let repo_doc = repo().join("test/vm/18_ffi/016_json_is_null");
+    let (repo_oracle, repo_stdout, repo_result) =
+        crate::tests::vm_file_tests::run_vm_doc_once(&repo_doc, true).expect("repo run");
+    let repo_mismatches =
+        crate::tests::vm_file_tests::diff_vm_channels(&repo_oracle, &repo_stdout, &repo_result);
+    assert_eq!(
+        mirror_mismatches, repo_mismatches,
+        "doc-only script routing differs from the repository judgment"
+    );
+    assert_eq!(stdout, repo_stdout, "decoy .at must not change the executed script output");
+    assert!(!stdout.contains("decoy"), "the decoy .at source was executed");
+
+    // cookbook multi-source dirs: the frozen 001_* document is the candidate
+    for (category, name, expected) in [
+        ("asynchronous", "channel", "001_bounded.case.ad"),
+        ("asynchronous", "fs", "001_create.case.ad"),
+        ("asynchronous", "rt", "001_tokio_macro.case.ad"),
+        ("database", "postgres", "001_create_tables.case.ad"),
+        ("database", "sqlite", "001_init.case.ad"),
+        ("web", "scraping", "001_extract_links.case.ad"),
+    ] {
+        let case_dir = repo().join("test/cookbook").join(category).join(name);
+        let identity = auto_lang_core::test_cases::execution_trace::cookbook_doc_identity(
+            &case_dir, category, name,
+        );
+        let document = identity["document"]["path"].as_str().expect("document path");
+        assert!(
+            document.ends_with(expected),
+            "{category}/{name} selected {document}, expected {expected}"
+        );
+    }
+}
+
+/// NC-06: the bootstrap rule stays the original one (the `99_bootstrap`
+/// category prepends the auto library) and the document body — not the frozen
+/// `.at` — is what gets prepended to. A wrong/old body therefore cannot pass.
+#[test]
+fn plan1066_b_bootstrap_rule_and_body_come_from_the_original_mechanism() {
+    let cases = auto_lang_core::test_runner::discover_vm_tests(&repo().join("test/vm"));
+    let mut bootstrap = Vec::new();
+    for case in &cases {
+        let expected = case.name.starts_with("99_bootstrap/");
+        assert_eq!(case.is_bootstrap, expected, "bootstrap flag drift for {}", case.name);
+        if expected {
+            bootstrap.push(case.name.clone());
+        }
+    }
+    assert!(!bootstrap.is_empty(), "no bootstrap entries discovered");
+
+    let run = |name: &str| {
+        let case = cases.iter().find(|c| c.name == name).expect("case");
+        auto_lang_core::run_vm_file_test(case)
+    };
+    let first = &bootstrap[0];
+    let report = run(first);
+    assert!(passed(&report), "bootstrap entry {first} must pass: {}", failure(&report));
+
+    // The document body is the prepended payload: editing it is judged.
+    let temp = tempfile::tempdir().expect("temp root");
+    let (category, case_name) = first.split_once('/').expect("category/case");
+    let dir = mirror_case(temp.path(), "vm", category, case_name);
+    let stem = stem_of(&dir);
+    let doc_path = dir.join(format!("{stem}.case.ad"));
+    let doc = std::fs::read_to_string(&doc_path).expect("doc");
+    let marker = "\"\"\"";
+    let mutated = doc.replace("fn main()", "fn main_BROKEN()");
+    assert_ne!(doc, mutated, "control must edit the document body");
+    std::fs::write(&doc_path, mutated).expect("write");
+    let mirrored = auto_lang_core::test_runner::discover_vm_tests(&temp.path().join("vm"));
+    let report = auto_lang_core::run_vm_file_test(&mirrored[0]);
+    assert!(
+        !passed(&report),
+        "a bootstrap document edit must be judged, not ignored ({marker})"
+    );
+}
