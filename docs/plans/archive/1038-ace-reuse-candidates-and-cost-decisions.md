@@ -392,6 +392,8 @@ AC 复核表：AC-01 pass（19 项身份/漂移可复核、无 expected 改动�
 
 **共享索引竞态记录（2026-11-17）**：主检出为多会话共享，本 Plan 归档改动被两个并发提交带入他人的提交对象：`64a01a60b`（PLAN-1067 的 review 提交）携带本 Plan 的 reviewed 快照（376 行、status: reviewed）；`657ddeb39`（PLAN-1066 的 T-10 收据提交）携带本 Plan 的最终 archived 快照（400 行）与 `KNOWN-DEBT-AND-RISKS.md` 六行导航更新。两提交消息均未声明 PLAN-1038；内容完整保留、未改写历史。PLAN-1066 侧已在 `58e074ceb` 记录该竞态与归属（“657ddeb39 carried another session's staged KNOWN-DEBT update; content preserved, attribution named”），PLAN-1067 侧在 `a0d3b5b3e` 记录了并发暂存说明。本 Plan 据此把 `64a01a60b`+`657ddeb39` 记为实际入库提交，并由 1038 自身收据提交补齐归属与绑定（`git log --grep PLAN-1038`）；后续同仓提交使用 `git commit -o <path>` 限定路径以降低同类竞态。
 
+`stage: goal | plan_id: PLAN-1038 | plan_revision: r3 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: none | commit: 3d6705873（本 Plan 自身收据提交；受控文件仅本归档 Plan） | delivery_commits: 64a01a60b + 657ddeb39（共享索引竞态入库，见上） | next: done`
+
 
 ## 10. 待澄清事项
 
