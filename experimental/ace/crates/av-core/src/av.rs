@@ -460,14 +460,31 @@ fn execute_module_impl_with_host(
     observed: Option<crate::lifecycle::LifecycleLog>,
 ) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
+    // PLAN-982：配置文档原语走宿主车道但既不需要 console provider，也不是
+    // 平台 provider——它们要求一个**显式打开的配置会话**。
     let needs_console = m
         .host_imports
         .iter()
-        .any(|h| !crate::platform_io::is_platform_symbol(&h.symbol));
+        .any(|h| {
+            !crate::platform_io::is_platform_symbol(&h.symbol)
+                && !crate::config_document::is_config_symbol(&h.symbol)
+        });
     let needs_platform = m
         .host_imports
         .iter()
         .any(|h| crate::platform_io::is_platform_symbol(&h.symbol));
+    let needs_config = m
+        .host_imports
+        .iter()
+        .any(|h| crate::config_document::is_config_symbol(&h.symbol));
+    if needs_config && !crate::config_document::session_is_open() {
+        return (
+            ExecOutcome::Infra(
+                "host.unauthorized: explicit configuration document session required".into(),
+            ),
+            ExecTrace::default(),
+        );
+    }
     if needs_console && host.is_none() {
         return (
             ExecOutcome::Infra(
@@ -3141,14 +3158,23 @@ fn dispatch_with_host<V: ModuleView>(
             "host.reentry: guest execution from a host call is forbidden".into(),
         ));
     }
-    let needs_console = v
-        .host_imports()
-        .iter()
-        .any(|h| !crate::platform_io::is_platform_symbol(&h.symbol));
+    let needs_console = v.host_imports().iter().any(|h| {
+        !crate::platform_io::is_platform_symbol(&h.symbol)
+            && !crate::config_document::is_config_symbol(&h.symbol)
+    });
     let needs_platform = v
         .host_imports()
         .iter()
         .any(|h| crate::platform_io::is_platform_symbol(&h.symbol));
+    let needs_config = v
+        .host_imports()
+        .iter()
+        .any(|h| crate::config_document::is_config_symbol(&h.symbol));
+    if needs_config && !crate::config_document::session_is_open() {
+        return Some(ExecOutcome::Infra(
+            "host.unauthorized: explicit configuration document session required".into(),
+        ));
+    }
     if needs_console && host.is_none() {
         return Some(ExecOutcome::Infra(
             "host.unauthorized: no console provider".into(),
@@ -6872,6 +6898,51 @@ fn dispatch_with_host<V: ModuleView>(
                             "host.reference: missing platform declaration".into(),
                         ));
                     };
+                    // PLAN-982（B-CONFIG-I）：配置文档原语复用同一 PlatformCall
+                    // 指令，但执行的是**宿主侧配置会话**（不是 OS provider）——
+                    // 必须在平台 op 表查询之前分流，否则会落到 unknown-symbol。
+                    if crate::config_document::is_config_symbol(&h.symbol) {
+                        if st.frames.len() >= limits.max_frames {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::Frames,
+                                message: "configuration call exceeds call depth".into(),
+                            });
+                        }
+                        if CancelCheck::poll(cancel) {
+                            return Some(ExecOutcome::Cancelled);
+                        }
+                        let arg_vals: Vec<Value> = {
+                            let fr = st.frames.last().expect("frame");
+                            args.iter().map(|s| fr.slots[*s as usize].clone()).collect()
+                        };
+                        match crate::config_document::dispatch(&h.symbol, &arg_vals, cancel) {
+                            Ok(code) => {
+                                let fr = st.frames.last_mut().expect("frame");
+                                fr.slots[*dst as usize] = Value::I32(code);
+                            }
+                            Err(crate::host::HostError::Cancelled) => {
+                                return Some(ExecOutcome::Cancelled);
+                            }
+                            Err(crate::host::HostError::Resource) => {
+                                return Some(ExecOutcome::Resource {
+                                    kind: ResourceKind::ConsoleOutput,
+                                    message:
+                                        "configuration document primitive exceeded its budget"
+                                            .into(),
+                                });
+                            }
+                            Err(crate::host::HostError::Io(message)) => {
+                                return Some(ExecOutcome::Infra(format!("config.io: {message}")));
+                            }
+                        }
+                        if started.elapsed() > limits.wall {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::ExecutionWall,
+                                message: "configuration call exceeded wall budget".into(),
+                            });
+                        }
+                        continue;
+                    }
                     let Some(spec) = crate::platform_io::lookup_symbol(&h.symbol) else {
                         return Some(ExecOutcome::Infra("host.unknown-symbol".into()));
                     };

@@ -73,4 +73,7 @@ pub mod frame_allocation;
 pub mod host;
 /// Checked platform I/O and OS memory region primitives (PLAN-1039).
 pub mod platform_io;
+/// PLAN-982: configuration document container/value primitives
+/// (`config.document/1`) — host-side evaluation under an explicit session.
+pub mod config_document;
 

@@ -1379,7 +1379,18 @@ pub fn lower_checked_owned(
 ) -> Result<MirModule, AdapterError> {
     // This public shared entry also admits console HIR. Keep its source-entry
     // policy here so callers cannot bypass it via the owned/text front door.
-    if checked.domain() == hir::HirDomain::HostConsole && entry_name != "d_main" {
+    // PLAN-982：配置文档的入口是物化的 `__cfg_document`（不是 main）——该面
+    // 只允许它自己的入口名；console 面仍只允许 main。
+    let has_config_intrinsics = checked.bundle().modules.iter().any(|m| {
+        m.defs.iter().any(|d| {
+            matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
+                if ace_av_core::config_document::is_config_symbol(symbol))
+        })
+    });
+    if checked.domain() == hir::HirDomain::HostConsole
+        && entry_name != "d_main"
+        && !(has_config_intrinsics && entry_name == format!("d_{}", "__cfg_document"))
+    {
         return Err(AdapterError::inv(
             "lower.entry",
             "console source entry is main; selecting another function is not allowed".into(),
@@ -1448,6 +1459,10 @@ pub fn lower_checked_owned(
                 let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                 let h = if ace_av_core::platform_io::is_platform_symbol(symbol) {
                     ace_av_core::platform_io::declaration(symbol, sig)
+                } else if ace_av_core::config_document::is_config_symbol(symbol) {
+                    // PLAN-982（B-CONFIG-I）：配置文档原语声明（类别/签名/预算
+                    // 由 av-core 目录给出；调用点仍是 PlatformCall）。
+                    ace_av_core::config_document::declaration(symbol, sig)
                 } else {
                     ace_av_core::host::declaration(symbol, sig)
                 }
@@ -4160,7 +4175,18 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("auto.platform.")
                     );
-                    if self.out.is_host_console_profile() || sched_module || platform_callee {
+                    // PLAN-982（B-CONFIG-I）：配置文档原语与平台操作走同一条
+                    // host-import→PlatformCall 接缝。
+                    let config_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if ace_av_core::config_document::is_config_symbol(symbol)
+                    );
+                    if self.out.is_host_console_profile()
+                        || sched_module
+                        || platform_callee
+                        || config_callee
+                    {
                         // PLAN-968: only host-table spellings take the
                         // host-import path; __sched_ intrinsics keep the
                         // generic call path (rewritten to SCHED ops below).
@@ -4168,7 +4194,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             &self.hir_module.defs[callee.0 as usize].kind
                         {
                             if !(symbol.starts_with("auto.console.")
-                                || symbol.starts_with("auto.platform."))
+                                || symbol.starts_with("auto.platform.")
+                                || ace_av_core::config_document::is_config_symbol(symbol))
                             {
                                 // fall through to the generic call path
                             } else {
@@ -4183,7 +4210,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                             "host declaration missing".into(),
                                         )
                                     })? as u32;
-                                if ace_av_core::platform_io::is_platform_symbol(symbol) {
+                                if ace_av_core::platform_io::is_platform_symbol(symbol)
+                                    || ace_av_core::config_document::is_config_symbol(symbol)
+                                {
                                     let dst = self.temp_ty(self.t_i32)?;
                                     self.emit(
                                         MirInstr::PlatformCall {

@@ -255,9 +255,11 @@ impl SourceProfile {
             // package/text-record one; its domain rows are verified inside the
             // same shared domain, never a second checker.
             SourceProfile::AgePackage => crate::hir::HirDomain::TextRecord,
-            // PLAN-982：配置文档的普通表达式面 = text-record 域；文档语义只经
+            // PLAN-982：配置文档在宿主侧求值（与 console 同一条 host 车道）——
+            // 描述符/验证/降落/ABC 家族全部走 host-console 域，配置原语借用既有
+            // 的 host-import + PlatformCall 接缝；文档语义只经
             // [`config_document::compile_config_document`]，不新开第二检查器。
-            SourceProfile::ConfigDocument => crate::hir::HirDomain::TextRecord,
+            SourceProfile::ConfigDocument => crate::hir::HirDomain::HostConsole,
         }
     }
 

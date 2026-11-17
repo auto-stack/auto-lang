@@ -5504,14 +5504,16 @@ fn intrinsic_id_suffix(sym: &str) -> String {
         || sym.starts_with("auto.platform.")
         // PLAN-982（B-CONFIG-I）：配置文档原语符号形如
         // `auto.config.document.put.str.v1`——只取末段会让所有重载塌成 `v1`
-        // （同模块两处不同重载 = 重复 id），故与 console/platform 同纪律用全名。
+        // （同模块两处不同重载 = 重复 id），故与 console/platform 同纪律用全名；
+        // 名字里的 `-`（`arg-named`/`obj-put`/`list-push`）也要归一成 `_`，
+        // 否则 Atom 词法把 `-named` 当负号（实测红）。
         || sym.starts_with("auto.config.")
         // PLAN-981：AGE 资源服务的符号形如 `age.material2d.color.v1`——只取末段
         // 会让 `color`/`quad`/`circle` 全塌成 `v1`，同一模块两处调用即重复 id。
         // 服务符号用全名（与 console/platform 同纪律）。
         || sym.starts_with("age.")
     {
-        sym.replace('.', "_")
+        sym.replace('.', "_").replace('-', "_")
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()
     }

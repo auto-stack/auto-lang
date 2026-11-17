@@ -249,7 +249,8 @@ pub fn parse_config_document(src: &str) -> Result<ConfigDocumentSyntax, Vec<Diag
 // ---------------------------------------------------------------------------
 
 /// 配置文档前门：文档候选 → 唯一顺序入口物化（`cfg_*` 受检原语调用）→ 共享
-/// resolve/typecheck/emit/bind → `text-record` 域唯一 verify。
+/// resolve/typecheck/emit/bind → host-console 域唯一 verify（配置文档在宿主侧
+/// 求值，与 console 同一条 host 车道）。
 ///
 /// 物化规则（设计 §4 的"每份文档从 root 容器开始，语句按源顺序"）：
 /// - 入口第一条语句建 root 句柄（`cfg_root()`）；
@@ -257,7 +258,8 @@ pub fn parse_config_document(src: &str) -> Result<ConfigDocumentSyntax, Vec<Diag
 ///   pair 的值若是带体节点，则先建该节点再 `cfg_put_node`；
 /// - 节点行 = 建节点（`cfg_node(name)`）→ id（两形）→ 位置/具名实参 → 体 →
 ///   `cfg_append(当前节点, 新节点)`；
-/// - `var`/`if` 行按普通语句物化（分支体仍物化到**同一个**当前节点）；
+/// - `var`/`if` 行按普通语句物化；`var` 的对象/数组字面量先物化为容器句柄，
+///   之后同名引用按**静态种类表**（不是运行期猜）选容器重载；
 /// - 收尾 `cfg_finish()`；入口尾值是物化常量（文档结果来自构建器导出，不是
 ///   返回值）。
 ///
@@ -273,18 +275,18 @@ pub fn compile_config_document(
         start: 0,
         end: src.len(),
     };
-    let mut next: usize = 0;
+    let mut ctx = EmitCtx::default();
     let mut stmts: Vec<Stmt> = Vec::new();
     // 1) root 句柄（一份文档一个 root，顺序语义的起点）。
-    let root = emit_call(&mut stmts, &mut next, "cfg_root", Vec::new(), doc_span)?;
+    let root = emit_call(&mut stmts, &mut ctx, "cfg_root", Vec::new(), doc_span)?;
     // 2) 文档行（用户 `var` 名与隐藏前缀冲突 = 具名拒绝）。
     let body = ConfigBody {
         lines: syntax.lines.clone(),
         span: doc_span,
     };
-    emit_body(&body, &root, &mut stmts, &mut next)?;
+    emit_body(&body, &root, &mut stmts, &mut ctx)?;
     // 3) 收尾：交出构建器状态（导出/限额核在 E5/E6）。
-    let _ = emit_call(&mut stmts, &mut next, "cfg_finish", Vec::new(), doc_span)?;
+    let _ = emit_call(&mut stmts, &mut ctx, "cfg_finish", Vec::new(), doc_span)?;
     let statements = stmts.len();
     // 共享脚本入口合同要求 i32 尾值；文档的值**不是**这个返回值，故物化常量
     // `0`（零宽 span = 文档末尾，不执行用户代码、不能遮蔽用户行）。
@@ -329,7 +331,7 @@ pub fn compile_config_document(
         capabilities,
         SourceProfile::ConfigDocument,
     )?;
-    let checked: CheckedModule = crate::verify::verify_text_record(parts.bundle)?;
+    let checked: CheckedModule = crate::verify::verify_host_console(parts.bundle)?;
     Ok(ConfigDocumentFront {
         compiled: CompiledSource {
             profile: CONFIG_DOCUMENT_SOURCE_PROFILE,
@@ -343,22 +345,32 @@ pub fn compile_config_document(
     })
 }
 
-/// 物化后的值种类（决定用哪个原语写进容器；节点/对象/列表句柄与 i32 值同型，
-/// 所以种类必须由**源结构**决定，绝不靠运行期猜）。
-enum DocValue {
-    Expr(Expr),
-    Obj(String),
-    List(String),
+/// 物化上下文：隐藏名序号 + `var` 局部的**静态种类**表。
+///
+/// 节点/对象/列表句柄在源面与 i32 值同型，所以"这个变量装的是哪种容器"必须由
+/// 物化侧按源结构记账（`var x = { … }` → 对象）；这不是运行期类型猜测，而是
+/// 文档字面量语法的确定事实。
+#[derive(Default)]
+struct EmitCtx {
+    next: usize,
+    locals: std::collections::BTreeMap<String, LocalClass>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LocalClass {
+    Scalar,
+    Obj,
+    List,
 }
 
 fn emit_body(
     body: &ConfigBody,
     cur: &str,
     out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
 ) -> Result<(), Vec<Diagnostic>> {
     for line in &body.lines {
-        emit_line(line, cur, out, next)?;
+        emit_line(line, cur, out, ctx)?;
     }
     Ok(())
 }
@@ -367,7 +379,7 @@ fn emit_line(
     line: &ConfigLine,
     cur: &str,
     out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
 ) -> Result<(), Vec<Diagnostic>> {
     match line {
         ConfigLine::Var(v) => {
@@ -382,23 +394,27 @@ fn emit_line(
                     v.name.span,
                 )]);
             }
+            let (value, class) = emit_value(&v.value, out, ctx)?;
             out.push(Stmt::Let {
                 kw: v.kw_span,
                 name: v.name.clone(),
                 ann: None,
                 mutable: true,
-                value: v.value.clone(),
+                value,
                 span: v.span,
             });
+            if class != LocalClass::Scalar {
+                ctx.locals.insert(v.name.name.clone(), class);
+            }
             Ok(())
         }
         ConfigLine::If(i) => {
             let mut then = Vec::new();
-            emit_body(&i.then, cur, &mut then, next)?;
+            emit_body(&i.then, cur, &mut then, ctx)?;
             let els = match &i.els {
                 Some(e) => {
                     let mut stmts = Vec::new();
-                    emit_body(e, cur, &mut stmts, next)?;
+                    emit_body(e, cur, &mut stmts, ctx)?;
                     Some(Block {
                         stmts,
                         span: e.span,
@@ -424,32 +440,30 @@ fn emit_line(
             f.span,
         )]),
         ConfigLine::Pair(p) => {
-            // 值先物化（节点值/对象/列表会先产出自己的句柄语句），再写入当前节点。
             let key = str_lit(&p.key.name, p.key.span);
             match &p.value {
                 ConfigPairValue::Node(n) => {
-                    let child = build_node(n, out, next)?;
-                    let put = emit_call(
+                    let child = build_node(n, out, ctx)?;
+                    let _ = emit_call(
                         out,
-                        next,
+                        ctx,
                         "cfg_put_node",
                         vec![var_expr(cur, p.span), key, var_expr(&child, p.span)],
                         p.span,
                     )?;
-                    let _ = put;
                 }
                 ConfigPairValue::Expr(e) => {
-                    let value = emit_value(e, out, next)?;
-                    put_value(out, next, cur, key, value, p.span)?;
+                    let (value, class) = emit_value(e, out, ctx)?;
+                    write_value(out, ctx, cur, "cfg_put", key, value, class, p.span)?;
                 }
             }
             Ok(())
         }
         ConfigLine::Node(n) => {
-            let child = build_node(n, out, next)?;
+            let child = build_node(n, out, ctx)?;
             let _ = emit_call(
                 out,
-                next,
+                ctx,
                 "cfg_append",
                 vec![var_expr(cur, n.span), var_expr(&child, n.span)],
                 n.span,
@@ -463,11 +477,11 @@ fn emit_line(
 fn build_node(
     node: &ConfigNode,
     out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
 ) -> Result<String, Vec<Diagnostic>> {
     let handle = emit_call(
         out,
-        next,
+        ctx,
         "cfg_node",
         vec![str_lit(&node.name, node.name_span)],
         node.span,
@@ -477,7 +491,7 @@ fn build_node(
             ConfigNodeId::Bare(ident) => {
                 let _ = emit_call(
                     out,
-                    next,
+                    ctx,
                     "cfg_id_name",
                     vec![
                         var_expr(&handle, ident.span),
@@ -489,7 +503,7 @@ fn build_node(
             ConfigNodeId::Text { text, span } => {
                 let _ = emit_call(
                     out,
-                    next,
+                    ctx,
                     "cfg_id_text",
                     vec![var_expr(&handle, *span), str_lit(text, *span)],
                     *span,
@@ -500,164 +514,144 @@ fn build_node(
     for arg in &node.args {
         match arg {
             ConfigArg::Pos(e) => {
-                let value = emit_value(e, out, next)?;
-                arg_value(out, next, &handle, value, e.span)?;
+                let (value, class) = emit_value(e, out, ctx)?;
+                let callee = container_callee("cfg_arg", class);
+                let _ = emit_call(
+                    out,
+                    ctx,
+                    &callee,
+                    vec![var_expr(&handle, e.span), value],
+                    e.span,
+                )?;
             }
             ConfigArg::Named { name, value } => {
-                let value = emit_value(value, out, next)?;
-                named_arg_value(out, next, &handle, name, value, name.span)?;
+                let v = emit_value(value, out, ctx)?;
+                named_arg_value(out, ctx, &handle, name, v, name.span)?;
             }
         }
     }
     if let Some(body) = &node.body {
-        emit_body(body, &handle, out, next)?;
+        emit_body(body, &handle, out, ctx)?;
     }
     Ok(handle)
 }
 
-/// 物化一个值表达式：对象/列表字面量先产出容器句柄语句，返回 [`DocValue`]；
-/// 其它表达式原样返回（标量/文本/变量由 resolve 的重载选择）。
+/// 物化一个值表达式：对象/数组字面量先产出容器句柄语句；其它表达式原样返回
+/// （标量/文本由 resolve 的重载选择），并带回**静态种类**。
 fn emit_value(
     expr: &Expr,
     out: &mut Vec<Stmt>,
-    next: &mut usize,
-) -> Result<DocValue, Vec<Diagnostic>> {
+    ctx: &mut EmitCtx,
+) -> Result<(Expr, LocalClass), Vec<Diagnostic>> {
     match &expr.kind {
         super::ast::ExprKind::ObjectLit { fields } => {
-            let obj = emit_call(out, next, "cfg_obj_new", Vec::new(), expr.span)?;
+            let obj = emit_call(out, ctx, "cfg_obj_new", Vec::new(), expr.span)?;
             for f in fields {
-                let value = emit_value(&f.value, out, next)?;
-                let key = str_lit(&f.key, f.span);
-                put_container_value(out, next, &obj, "cfg_obj_put", key, value, f.span)?;
+                let v = emit_value(&f.value, out, ctx)?;
+                write_value(
+                    out,
+                    ctx,
+                    &obj,
+                    "cfg_obj_put",
+                    str_lit(&f.key, f.span),
+                    v.0,
+                    v.1,
+                    f.span,
+                )?;
             }
-            Ok(DocValue::Obj(obj))
+            Ok((var_expr(&obj, expr.span), LocalClass::Obj))
         }
         super::ast::ExprKind::ArrayLit(elems) => {
-            let list = emit_call(out, next, "cfg_list_new", Vec::new(), expr.span)?;
+            let list = emit_call(out, ctx, "cfg_list_new", Vec::new(), expr.span)?;
             for e in elems {
-                let value = emit_value(e, out, next)?;
-                push_list_value(out, next, &list, value, e.span)?;
+                let v = emit_value(e, out, ctx)?;
+                push_list_value(out, ctx, &list, v.0, v.1, e.span)?;
             }
-            Ok(DocValue::List(list))
+            Ok((var_expr(&list, expr.span), LocalClass::List))
         }
-        _ => Ok(DocValue::Expr(expr.clone())),
+        super::ast::ExprKind::Var(id) => {
+            let class = ctx
+                .locals
+                .get(&id.name)
+                .copied()
+                .unwrap_or(LocalClass::Scalar);
+            Ok((expr.clone(), class))
+        }
+        _ => Ok((expr.clone(), LocalClass::Scalar)),
     }
 }
 
-fn put_value(
+fn write_value(
     out: &mut Vec<Stmt>,
-    next: &mut usize,
-    target: &str,
-    key: Expr,
-    value: DocValue,
-    span: Span,
-) -> Result<(), Vec<Diagnostic>> {
-    put_container_value(out, next, target, "cfg_put", key, value, span).map(|_| ())
-}
-
-/// 把值写进容器：标量走 `base`（按 VT 重载），节点/对象/列表走各自的显式
-/// callee（句柄与 i32 同型，种类只能由源结构区分）。
-fn put_container_value(
-    out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
     target: &str,
     base: &str,
     key: Expr,
-    value: DocValue,
+    value: Expr,
+    class: LocalClass,
     span: Span,
 ) -> Result<String, Vec<Diagnostic>> {
-    let (callee, value_expr) = match value {
-        DocValue::Expr(e) => (base.to_string(), e),
-        DocValue::Obj(h) => (format!("{base}_obj"), var_expr(&h, span)),
-        DocValue::List(h) => (format!("{base}_list"), var_expr(&h, span)),
-    };
+    let callee = container_callee(base, class);
     emit_call(
         out,
-        next,
+        ctx,
         &callee,
-        vec![var_expr(target, span), key, value_expr],
+        vec![var_expr(target, span), key, value],
         span,
     )
 }
 
 fn push_list_value(
     out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
     list: &str,
-    value: DocValue,
+    value: Expr,
+    class: LocalClass,
     span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
-    let (callee, value_expr) = match value {
-        DocValue::Expr(e) => ("cfg_list_push".to_string(), e),
-        DocValue::Obj(h) => ("cfg_list_push_obj".to_string(), var_expr(&h, span)),
-        DocValue::List(h) => ("cfg_list_push_list".to_string(), var_expr(&h, span)),
-    };
-    let _ = emit_call(
-        out,
-        next,
-        &callee,
-        vec![var_expr(list, span), value_expr],
-        span,
-    )?;
-    Ok(())
-}
-
-fn arg_value(
-    out: &mut Vec<Stmt>,
-    next: &mut usize,
-    node: &str,
-    value: DocValue,
-    span: Span,
-) -> Result<(), Vec<Diagnostic>> {
-    let (callee, value_expr) = match value {
-        DocValue::Expr(e) => ("cfg_arg".to_string(), e),
-        DocValue::Obj(h) => ("cfg_arg_obj".to_string(), var_expr(&h, span)),
-        DocValue::List(h) => ("cfg_arg_list".to_string(), var_expr(&h, span)),
-    };
-    let _ = emit_call(
-        out,
-        next,
-        &callee,
-        vec![var_expr(node, span), value_expr],
-        span,
-    )?;
+    let callee = container_callee("cfg_list_push", class);
+    let _ = emit_call(out, ctx, &callee, vec![var_expr(list, span), value], span)?;
     Ok(())
 }
 
 fn named_arg_value(
     out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
     node: &str,
     name: &Ident,
-    value: DocValue,
+    value: (Expr, LocalClass),
     span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
-    let key = str_lit(&name.name, name.span);
-    let (callee, value_expr) = match value {
-        DocValue::Expr(e) => ("cfg_arg_named".to_string(), e),
-        DocValue::Obj(h) => ("cfg_arg_named_obj".to_string(), var_expr(&h, span)),
-        DocValue::List(h) => ("cfg_arg_named_list".to_string(), var_expr(&h, span)),
-    };
+    let (v, class) = value;
+    let callee = container_callee("cfg_arg_named", class);
     let _ = emit_call(
         out,
-        next,
+        ctx,
         &callee,
-        vec![var_expr(node, span), key, value_expr],
+        vec![var_expr(node, span), str_lit(&name.name, name.span), v],
         span,
     )?;
     Ok(())
 }
 
+fn container_callee(base: &str, class: LocalClass) -> String {
+    match class {
+        LocalClass::Scalar => base.to_string(),
+        LocalClass::Obj => format!("{base}_obj"),
+        LocalClass::List => format!("{base}_list"),
+    }
+}
+
 /// 一条 `let __cfg_s<N> = <callee>(args...)`；返回隐藏局部名。
 fn emit_call(
     out: &mut Vec<Stmt>,
-    next: &mut usize,
+    ctx: &mut EmitCtx,
     callee: &str,
     args: Vec<Expr>,
     span: Span,
 ) -> Result<String, Vec<Diagnostic>> {
-    let name = format!("{CONFIG_DOCUMENT_HIDDEN_PREFIX}s{next}");
-    *next += 1;
+    let name = format!("{CONFIG_DOCUMENT_HIDDEN_PREFIX}s{}", ctx.next);
+    ctx.next += 1;
     let value = Expr {
         span,
         kind: super::ast::ExprKind::Call {

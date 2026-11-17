@@ -9,7 +9,7 @@
 //! 不是靠静态类型假装。
 //!
 //! 覆盖范围（E3 当前切片）：根、节点（含 id 两形/位置与具名实参）、标量值
-//! （i32/bool/str/char/f64）、节点值、对象与列表字面量的容器装载、追加、收尾。
+//! （i32/bool/str/char）、节点值、对象与列表字面量的容器装载、追加、收尾。
 //! 未覆盖（具名差额，后续增量）：`cfg.get` 读取、运行期 `for`（需要
 //! `cfg.list.len/at` 计数原语）、合并语义（`cfg.merge`）。
 
@@ -35,7 +35,6 @@ const P_H_STR_I32: &[VT] = &[VT::I32, VT::Str, VT::I32];
 const P_H_STR_BOOL: &[VT] = &[VT::I32, VT::Str, VT::Bool];
 const P_H_STR_STR: &[VT] = &[VT::I32, VT::Str, VT::Str];
 const P_H_STR_CHAR: &[VT] = &[VT::I32, VT::Str, VT::Char];
-const P_H_STR_F64: &[VT] = &[VT::I32, VT::Str, VT::F64];
 const P_H_I32: &[VT] = &[VT::I32, VT::I32];
 const P_H_BOOL: &[VT] = &[VT::I32, VT::Bool];
 
@@ -105,12 +104,6 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         params: &[VT::I32, VT::Char],
         result: VT::I32,
     },
-    ConfigSourceOp {
-        callee: "cfg_arg",
-        symbol: "auto.config.document.arg.f64.v1",
-        params: &[VT::I32, VT::F64],
-        result: VT::I32,
-    },
     // ---- 具名实参（`dir(id: d)`）----
     ConfigSourceOp {
         callee: "cfg_arg_named",
@@ -136,12 +129,6 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         params: P_H_STR_CHAR,
         result: VT::I32,
     },
-    ConfigSourceOp {
-        callee: "cfg_arg_named",
-        symbol: "auto.config.document.arg-named.f64.v1",
-        params: P_H_STR_F64,
-        result: VT::I32,
-    },
     // ---- 属性写入（根/节点；标量按 VT 重载，节点值走独立 callee）----
     ConfigSourceOp {
         callee: "cfg_put",
@@ -165,12 +152,6 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         callee: "cfg_put",
         symbol: "auto.config.document.put.char.v1",
         params: P_H_STR_CHAR,
-        result: VT::I32,
-    },
-    ConfigSourceOp {
-        callee: "cfg_put",
-        symbol: "auto.config.document.put.f64.v1",
-        params: P_H_STR_F64,
         result: VT::I32,
     },
     ConfigSourceOp {
@@ -205,12 +186,6 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         result: VT::I32,
     },
     ConfigSourceOp {
-        callee: "cfg_obj_put",
-        symbol: "auto.config.document.obj-put.f64.v1",
-        params: P_H_STR_F64,
-        result: VT::I32,
-    },
-    ConfigSourceOp {
         callee: "cfg_obj_put_node",
         symbol: "auto.config.document.obj-put.node.v1",
         params: P_H_STR_I32,
@@ -239,12 +214,6 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         callee: "cfg_list_push",
         symbol: "auto.config.document.list-push.char.v1",
         params: &[VT::I32, VT::Char],
-        result: VT::I32,
-    },
-    ConfigSourceOp {
-        callee: "cfg_list_push",
-        symbol: "auto.config.document.list-push.f64.v1",
-        params: &[VT::I32, VT::F64],
         result: VT::I32,
     },
     ConfigSourceOp {

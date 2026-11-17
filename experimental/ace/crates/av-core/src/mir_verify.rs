@@ -844,6 +844,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         c.as_str(),
                         crate::host::STDOUT | crate::host::STDERR
                     ))
+                // PLAN-982（B-CONFIG-I）：配置文档原语的能力键是已知准入项
+                // （声明必须真的带同类别 host import；运行期会话另核）。
+                || (c == crate::config_document::CAPABILITY
+                    && self
+                        .module
+                        .host_imports
+                        .iter()
+                        .any(|h| crate::config_document::is_config_symbol(&h.symbol)))
                 || (self.module.is_host_console_profile()
                     && matches!(
                         c.as_str(),
@@ -2707,10 +2715,12 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     .host_imports
                     .get(*host as usize)
                     .ok_or_else(|| err("host.reference", "platform index out of range".into()))?;
-                if !crate::platform_io::is_platform_symbol(&h.symbol) {
+                if !crate::platform_io::is_platform_symbol(&h.symbol)
+                    && !crate::config_document::is_config_symbol(&h.symbol)
+                {
                     return Err(err(
                         "host.category",
-                        "PlatformCall must target a platform operation".into(),
+                        "PlatformCall must target a platform or configuration operation".into(),
                     ));
                 }
                 let sig = self
