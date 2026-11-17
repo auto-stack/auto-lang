@@ -1,15 +1,15 @@
 ---
 plan_id: PLAN-1067
-status: reviewed
+status: archived
 feature_name: ACE M2-B AC原生Future异步与Task调度补齐
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
-supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
+supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md]
 new_spec_components: [docs/specs/auto-ac/native-async-scheduler.md]
 touched_goals: [GOAL-002]
 affects: [ace, auto-ac, stdlib]
@@ -41,7 +41,7 @@ affects: [ace, auto-ac, stdlib]
 
 ## 4. 需求分析与背景调查
 
-授权为当前目标/阶段边界的设计和计划修订，未要求立即启动实现或新会话，无新增预算。起草读取HEAD `2961a2aa24cb8f6158e638786cb0972b812dd589`；来源为[总览](../specs/overview.md)、[Design55](../design/55-ace-m2-complete-language-and-product-replacement.md)、[AAC设计](../design/59-aac-native-bootstrap-and-compiler-subject.md)、[调度现状](../specs/ace-migration/m2-scheduler.md)及985。归档965/966/968与真实代码只证明其原支持范围，不代三端全能力。
+授权为当前目标/阶段边界的设计和计划修订，未要求立即启动实现或新会话，无新增预算。起草读取HEAD `2961a2aa24cb8f6158e638786cb0972b812dd589`；来源为[总览](../../specs/overview.md)、[Design55](../../design/55-ace-m2-complete-language-and-product-replacement.md)、[AAC设计](../../design/59-aac-native-bootstrap-and-compiler-subject.md)、[调度现状](../../specs/ace-migration/m2-scheduler.md)及985。归档965/966/968与真实代码只证明其原支持范围，不代三端全能力。
 
 已实读：`experimental/ace/crates/native/src/lower.rs`含`native.sched-unsupported`以及platform.net拒绝；`av-core/src/abc.rs`有SCHED_SPAWN/AWAIT等；`core/src/source/sched_desugar.rs`、`av/src/scheduler_run.rs`/`sched_worker.rs`、`a2x-rust/src/sched_rt.txt`与两侧`sched_m2_968.rs`为原实现/判据来源。968现规范明确AV/A2R支持、native/A2C拒绝；这是补齐起点，不改写为已支持。
 
@@ -64,7 +64,7 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 
 ### T-01 决策冻结（2026-11-17，work，r1）
 
-**阶段门与授权**：985/T-A05已落主、M2A-08成立（[m2-certification.md](../specs/ace-migration/m2-certification.md) §门级行，收据 `95c7fbad8`/`0db949754`，B批解锁）；本轮goal即本包执行授权，无需再询。基线 `f0db9bd0f`；唯一树 `D:/autostack/.wt/lang-1067/auto-lang`、分支 `plan-1067-dev`；材料 `D:/autostack/plan-artifacts/plan-1067/`（主检出中他人docs WIP未触碰）。
+**阶段门与授权**：985/T-A05已落主、M2A-08成立（[m2-certification.md](../../specs/ace-migration/m2-certification.md) §门级行，收据 `95c7fbad8`/`0db949754`，B批解锁）；本轮goal即本包执行授权，无需再询。基线 `f0db9bd0f`；唯一树 `D:/autostack/.wt/lang-1067/auto-lang`、分支 `plan-1067-dev`；材料 `D:/autostack/plan-artifacts/plan-1067/`（主检出中他人docs WIP未触碰）。
 
 **冻结的调度面（沿968 D1–D6；本轮仅在共享前门收紧三条实现一致性规则——`Task.spawn` 仅入口、mailbox `cap>=1`、`stopping()` 需邮箱耗尽——三者都是 968 已写明的"bounded mailbox / 具名错误 / 缓冲先投递"合同的落实，不扩张语言能力）**：11条`SCHED_*` MIR（0x41–0x4B）、scheduler源profile（closures超集）、每task一个driver `__task_<Name>(__init…) int`（start/stop钩子＋`while true`收/分派环）、handle/future为i32、mailbox容量=spawn实参、ask端口1基单消费者、退出有序drain（置stop→缓冲消息先投递→stop钩子→join→全释放；drain期sleep立即完成）。语料=`crates/auto-lang/test/cases/ace-m2/scheduler/`（8正例+3反例），AV oracle组`case-ace-m2-scheduler-968`。
 
@@ -177,12 +177,27 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - [x] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。 — 2026-11-17 ✅（显式仓外输出根构建+真实进程运行+published PE 导入审计：仅 kernel32.dll、符号全在本车道 19 项声明内、变异体被具名拒绝；runtime 身份与库字节一致绑定）
 - [x] **T-08｜work｜AC-01..04**[T-1067-2/3/4/5 已修]：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。 — 曾于 2026-11-17 记 ✅，review 判 R-1067-5/6/7/9/10 不成立，重开（历史证据保留：并集 5 组 PASS＋case 组 11/11；ace-a2x 单跑 PASS（并集内 cl spawn deadline 归因）；ace-runtime 19 红经基线版本实证为既有；AC-01..04 证据表见 §9 round-6）
 - [x] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
-- [ ] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
+- [x] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
 
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
 
+2026-11-17 stage: merge | PLAN-1067:r1 | **outcome: pass** | delivery_commit: `b28399cc9`（rebased tip；reviewed `104cde943`）| archive: `docs/plans/archive/1067-ace-ac-native-async-and-task-parity.md` | completion_kind: delivered
+
+**checkpoints（实际证据）**
+| checkpoint | 证据 |
+|---|---|
+| `prepared` | reviewed `104cde943` + r1 final pass（reviewer-1067d）；SD-NATIVE 已在分支；SD-ASYNC 在 worktree 落地（`m2-scheduler.md:9-13,22,24-25`：native 不再具名拒绝、17 cases、A2R 三种收据、三条共享实现一致性规则）；frontmatter `supersedes_spec_components` 按 U-1067-1 去掉 `m2-control-effects.md`（merge-owned 元数据对账） |
+| `landed` | worktree rebase onto `master@65befa560`：12 提交全部 patch-identical（`git range-diff f0db9bd0f..a379f121b master..HEAD` **12/12 `=`**），old→new 映射：`88999db74→b85351850`、`e16f01b6e→13e43280c`、`c6b84240e→ea4bae2bd`、`40f5c195b→19b2d7b6d`、`005096495→7f0bb3e16`、`817eb1e58→436a6ac43`、`12f11b641→cbe24afab`、`4d6e81a2c→01f4ffcff`、`eeff4d60e→058b2608d`、`f0814b271→cd0a8dd1a`、`104cde943→a90f5c7c4`、`a379f121b→b28399cc9`；主检出 `git merge --ff-only plan-1067-dev` 成功（无 merge commit），master tip == `b28399cc9` |
+| `canonical_verified` | landed `docs/specs/auto-ac/native-async-scheduler.md` sha256 `350F5E0E72F084F00C7F1887E7B7B3C8629A975DCD050928E2A9B5241EFEB74A`；`docs/specs/ace-migration/m2-scheduler.md` sha256 `5BDD5AEA28011CB474E01AC974748202280B92C4112D543648F2DA1BBEA72DE3`（SD-ASYNC 已合入，无 legacy ledger 写入） |
+| `landed` 门（隔离取证） | **主检出当前不可用以跑门禁**：另一会话（PLAN-982 config-document）在共享主检出留了**未提交代码 WIP**（`crates/core/src/source/mod.rs` 引 `SourceProfile::ConfigDocument` 但枚举未加），`ace-core` 编译失败 → `cargo t ace-native …` 失败为 `tool preparation failed: av`。按规则**未触碰其 WIP**；改在 merged commit 的**干净 worktree**（`D:/autostack/.wt/verify-1067/auto-lang`，detached `b28399cc9`，tree clean）跑同一门禁：**`cargo t ace-native case-ace-m2-scheduler-968` PASS**（run-bc_ool_i，ace-native 全绿、case 组 11/11） |
+| `archived` | 本文件由 `docs/plans/` `git mv` 至 `docs/plans/archive/`，`status: archived`；任务 10/10、金额/ID/链接按最终状态回读 |
+
+**landing 后主检出的两个 stray（已处理并留证）**：主检出曾残留本会话早期误写的 `experimental/.../sched_m2_968.rs`（旧探针版本，已被分支最终版替代）与**空文件** `docs/specs/auto-ac/native-async-scheduler.md`；两者均先备份到 `plan-artifacts/plan-1067/stray-main/` 再移除，ff-only merge 得以完成。该 stray spec 与主检出未提交的 config-document WIP 无关联。
+
+**landing 不是部署**：本包只改 `experimental/ace`（独立 workspace）与 `docs/specs`；`auto` CLI 二进制不涉及，无需重建/重启；记录为"无产物刷新需求"。
+**批量回归 due check**：`docs/plans/.last-batch-regression.json` = last_covered 1064 / 2026-11-16T10:04Z；本包 id 1067（%5≠0）且间隔 ≈25h <48h ⇒ **不触发** `cargo t all` 批次门。
 2026-11-17 stage: review | review_scope: final（第四次复审） | reviewer_identity: reviewer-1067d（独立委派上下文，无实现署名；自建双车道探针 + 门内 nextest 三次 + 全触面 rustfmt + 代码/spec 逐行重建） | plan_id: PLAN-1067 | plan_revision: 1 | **outcome: pass** | worktree_path: D:/autostack/.wt/lang-1067/auto-lang | branch: plan-1067-dev | reviewed_commit: `104cde943089ddc03b42170a916e0038e0494c6e` | base_commit: `f0db9bd0f746f115f9ec16124b798939e96e5860` | spec_inputs: docs/specs/auto-ac/native-async-scheduler.md@104cde943（sha256 `350F5E0E72F084F00C7F1887E7B7B3C8629A975DCD050928E2A9B5241EFEB74A`）、docs/specs/ace-migration/m2-scheduler.md（live 未改，SD-ASYNC pending） | acceptance_results: **AC-01 pass；AC-02 pass；AC-03 pass；AC-04 pass；AC-REVIEW pass（本记录）** | pending_closeout_gates: merge 侧 SD-ASYNC 改 `m2-scheduler.md:10-11/:17(12→17)/:19`＋三条共享规则；U-1067-1 frontmatter 元数据对账；Linux NOT_RUN→1063；`platform.*`→1068/T-03；owned-text 消息/回复→1068/T-02 | findings: T-1067-1..5 全闭；U-1067-1 minor（非阻断，merge-owned） | next: merge（T-10）
 
 **关门证据（第四次复审实测）**
@@ -327,7 +342,7 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 
 **AC-04 独立复算**：published candidate `plan-artifacts/plan-1067/candidate-t07/mn8-out-35672.exe`（24 064 B）仅 `KERNEL32.dll`；`CreateThread`/`WaitForSingleObject`/`SleepConditionVariableSRW`/`ExitProcess`/`HeapAlloc` 在列；无 `printf`/`malloc`/`msvcrt`/`ucrtbase`；runtime 身份与会话内 `file_hash` 相等；`SCHED_KERNEL32_IMPORTS` 实为 **18** 项（spec 写 19）。
 
-**红集归因复核**：a2x flake 类可再现但非实现者点名的那条；ace-runtime 19 链接红与 [m2-control-effects](../specs/ace-migration/m2-control-effects.md) 记录的 master 既有红集一致（复审未重跑该组）。
+**红集归因复核**：a2x flake 类可再现但非实现者点名的那条；ace-runtime 19 链接红与 [m2-control-effects](../../specs/ace-migration/m2-control-effects.md) 记录的 master 既有红集一致（复审未重跑该组）。
 
 **复审自述局限**：A2R 的 consumed/out-of-range future 仅代码检视（未新增 A2R 驱动测试）；ace-runtime 基线未重跑；blocker 为概率性（10/12、3/12）但代码窗口已确认；ace-a2x 单跑不可作为稳定全绿证据；未做 Linux 探针（按合同 NOT_RUN）。
 
@@ -355,7 +370,7 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 | ace-source / ace-lowering / ace-av / ace-native | **PASS** |
 | case-ace-m2-scheduler-968 | **PASS**（11/11 checks，AV 真实运行） |
 | ace-a2x | 并集内 1 红 `a2c_rt_cert::rt_certify_all_suite_cases`（`c-tool infra: CToolError("cl -? spawn: Deadline")`，60s 的 `cl` 工具 spawn 超时）→ **单跑 `cargo t ace-a2x` PASS**（`run-5849mkpr`），且同组在 T-06 之后已 PASS 过 ⇒ 并行负载下工具超时归因，非本 diff |
-| ace-runtime | 19 红，全部 `ace-text-conformance` 链接失败（缺 `__CxxFrameHandler3`/`_fltused`）→ **基线归因已实证**：把 `text-runtime/src/lib.rs` 临时退回基线 `f0db9bd0f` 版本后同一测试**仍然红**，恢复本版后 `contract_sidecar_is_written_and_self_consistent` 绿；且 [m2-control-effects](../specs/ace-migration/m2-control-effects.md) 已记该 19 例为 master 既有红集 |
+| ace-runtime | 19 红，全部 `ace-text-conformance` 链接失败（缺 `__CxxFrameHandler3`/`_fltused`）→ **基线归因已实证**：把 `text-runtime/src/lib.rs` 临时退回基线 `f0db9bd0f` 版本后同一测试**仍然红**，恢复本版后 `contract_sidecar_is_written_and_self_consistent` 绿；且 [m2-control-effects](../../specs/ace-migration/m2-control-effects.md) 已记该 19 例为 master 既有红集 |
 
 **AC 工作侧证据（work 所有项）**：
 | AC | 证据 |
@@ -416,7 +431,7 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 
 2026-11-17 stage: work | PLAN-1067 r1 | T-01 完成 + T-02 垂直切片实证 | worktree `D:/autostack/.wt/lang-1067/auto-lang`（branch `plan-1067-dev`，base `f0db9bd0f`，code `88999db74`）| task_ids: T-01[x]、T-02(进行中)
 
-- 门/身份：985 M2A-08 成立（[m2-certification.md](../specs/ace-migration/m2-certification.md)），本 goal 即执行授权；基线时主检出仅他人 docs WIP（未触碰）。
+- 门/身份：985 M2A-08 成立（[m2-certification.md](../../specs/ace-migration/m2-certification.md)），本 goal 即执行授权；基线时主检出仅他人 docs WIP（未触碰）。
 - 实现：新增 `experimental/ace/crates/sched-runtime`（no_std kernel32, ABI `mn.sched.runtime/1`）与 `native/src/sched.rs`＋`sched_runtime.rs`，`lower.rs` 增 `LowerMode::Sched`/SCHED 发射/spawn thunk，`emit.rs` 增调度准入与 `emit_sched_unit_coff`；单 Rust staticlib 约束下内嵌 text runtime；wrapper 带 drain 且残值→退出 72。
 - 观测（真 PE，非 AV 解释）：`message_handler`=`got one\n`、`mailbox_fifo`=`got two\ngot one\n`、`ask_reply`=`reply:\n42\n`、`go_join`=`go:\n7\n`、`backpressure`=`1\n2\n3\n`、`stop_hook`=`one\nstopped\n`、`virtual_timer`=`main\nlater\n`，全部 exit 0/空 stderr；`neg_send_after_stop` exit 70 + `sched: send on a closed task`；`neg_unknown_task`/`neg_malformed_task` 分别为前门 `bind/source.sched-task`、`text/source.unsupported`。
 - 运行：`cargo test -p ace-native --test sched_m2_1067` 4/4 PASS（2.4s，单 case ≤3.1s）；`cargo t ace-native` PASS 303 tests（53.7s，19 skipped；一次并行跑 `closures_incremental::tests::audit1027_utf_02` 瞬时红，单独重放与整组重跑均绿=并行争用归因，非本 diff）；AV oracle `cargo t case-ace-m2-scheduler-968` 基线 PASS。
@@ -467,4 +482,4 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 11 | from: review 
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 12 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: review
 
-stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 13 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: merge
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 13 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 104cde943 | next: merge
