@@ -370,12 +370,12 @@ AC 复核表：AC-01 pass（19 项身份/漂移可复核、无 expected 改动�
 
 ### T-05/T-06 合并、归档与清理（merge，2026-11-17）
 
-`stage: merge | plan_id: PLAN-1038 | plan_revision: r3 | outcome: pass | completion_kind: delivered | review: final pass @ r3（§9 T-04） | delivery_commit: 本归档提交（SHA 由收据提交 2 绑定，见下方 merge-receipt 行） | canonical: SD-00 无规范增量（approved no-impact） | archive: docs/plans/archive/1038-ace-reuse-candidates-and-cost-decisions.md（status: archived） | cleanup: 无实施树/分支、无 plan-artifacts scope、registry 无持有 | next: done`
+`stage: merge | plan_id: PLAN-1038 | plan_revision: r3 | outcome: pass | completion_kind: delivered | review: final pass @ r3（§9 T-04） | delivery_commit: 64a01a60b（reviewed 快照入库）+ 657ddeb39（archived 快照与 KNOWN-DEBT 导航入库）——共享索引竞态见下 | canonical: SD-00 无规范增量（approved no-impact） | archive: docs/plans/archive/1038-ace-reuse-candidates-and-cost-decisions.md（status: archived） | cleanup: 无实施树/分支、无 plan-artifacts scope、registry 无持有 | next: done`
 
 | checkpoint | evidence |
 |---|---|
 | prepared | reviewed r3 + final pass；T-01 19项身份；本包无代码变更；SD-00 无影响；归档目标 `docs/plans/archive/1038-…md` |
-| landed | docs-only 交付直接在 master（无 dev 分支/树、无 merge commit）；本提交只含 Plan 归档与 `KNOWN-DEBT-AND-RISKS.md` 六行导航更新，他会话 WIP 未纳入；`git log -1 --stat` 可验 |
+| landed | docs-only 交付直接在 master（无 dev 分支/树、无 merge commit）；**实际入库由共享索引竞态带到他计划提交**：`64a01a60b`（PLAN-1067）携带 reviewed 376 行快照、`657ddeb39`（PLAN-1066）携带 archived 400 行快照与 `KNOWN-DEBT-AND-RISKS.md` 六行导航；内容未丢、历史未重写（详见下方“共享索引竞态记录”） |
 | canonical_verified | 交付提交内 `docs/specs/` 零改动（`git show --stat` 核）；approved no-impact：六项决定仅研究，go 项的实施/文档更正及其规范增量归各自后继有界 Plan（D04 合同 §9 T-03） |
 | archived | `docs/plans/archive/1038-…md` 已入库且 `status: archived`；6 处 `KNOWN-DEBT-AND-RISKS.md` 导航指向归档路径（`1038`→`archive/1038`）；归档位置 15 个本地链接全部可解析 |
 | cleaned | `git worktree list` 无 1038 树、无 `plan-1038-dev` 分支；`D:/autostack/plan-artifacts/plan-1038` 不存在（本包从未创建 scope）；registry 无 1038 scope/持有；wt-guard 无树可扫（无树可删） |
@@ -389,6 +389,8 @@ AC 复核表：AC-01 pass（19 项身份/漂移可复核、无 expected 改动�
 - **他会话 WIP**：主检出 `a2x-worker/tests/cases/sched_m2_968.rs` 与 docs/plans 等未提交改动保留原状，未纳入本交付。
 
 归档后状态：任务 6/6、AC-01..06 全部关闭；D04 首个有界切片合同、D13 单一私有边界、D15 文档更正分别由后继有界 Plan 承接，D07/D09/D11 保持 retain/no-go 并带重开前置。
+
+**共享索引竞态记录（2026-11-17）**：主检出为多会话共享，本 Plan 归档改动被两个并发提交带入他人的提交对象：`64a01a60b`（PLAN-1067 的 review 提交）携带本 Plan 的 reviewed 快照（376 行、status: reviewed）；`657ddeb39`（PLAN-1066 的 T-10 收据提交）携带本 Plan 的最终 archived 快照（400 行）与 `KNOWN-DEBT-AND-RISKS.md` 六行导航更新。两提交消息均未声明 PLAN-1038；内容完整保留、未改写历史。PLAN-1066 侧已在 `58e074ceb` 记录该竞态与归属（“657ddeb39 carried another session's staged KNOWN-DEBT update; content preserved, attribution named”），PLAN-1067 侧在 `a0d3b5b3e` 记录了并发暂存说明。本 Plan 据此把 `64a01a60b`+`657ddeb39` 记为实际入库提交，并由 1038 自身收据提交补齐归属与绑定（`git log --grep PLAN-1038`）；后续同仓提交使用 `git commit -o <path>` 限定路径以降低同类竞态。
 
 
 ## 10. 待澄清事项
