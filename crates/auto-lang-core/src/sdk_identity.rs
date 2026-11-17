@@ -21,6 +21,13 @@
 //! share a single SDK. This module is pure data (no evaluation, no IO, no
 //! ACE dependency) — it only names the identity axes.
 //!
+//! Naming note: this "SDK identity" is about **product legs sharing one SDK
+//! build**. It is a different axis from the assembly-manifest "SDK identity"
+//! (the build-input/source closure asserted in
+//! `stdlib_assembly::manifest::plan814_build_input_boundary`) — that one names
+//! which sources go into an assembly, this one names which legs a product
+//! exercised.
+//!
 //! **Not in this module**: capability evidence. The configuration *engine*
 //! migration to ACE is a named, unowned capability gap (`GAP-982-CONFIG-ACE`,
 //! PLAN-982 §5/§10) that stays with the M2-B slice; this identity makes the
