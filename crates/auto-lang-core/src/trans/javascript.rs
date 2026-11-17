@@ -758,10 +758,14 @@ mod tests {
 
         let js_string = String::from_utf8_lossy(&js_code);
         if js_string != expected {
-            let wrong_path = format!("../auto-lang/test/a2j/{}/{}.wrong.js", case, name);
-            let wrong_path = d.join(wrong_path);
-            std::fs::write(&wrong_path, js_code)?;
-            panic!("Output differs from expected. Check {}.wrong.js", name);
+            // PLAN-1066 T-09/NC-25: scoped diagnostic, never an author-tree
+            // sibling (the `..` path also escaped this crate).
+            let _ = &d;
+            crate::diag_scope::write_scoped(
+                &format!("test/a2j/{case}/{name}.wrong.js"),
+                js_code,
+            )?;
+            panic!("Output differs from expected (diagnostic went to the scope)");
         }
 
         Ok(())

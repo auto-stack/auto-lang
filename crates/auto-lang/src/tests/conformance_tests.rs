@@ -71,8 +71,9 @@ pub(crate) fn run_conformance_case(root: &std::path::Path, case: &str) -> AutoRe
     Ok(())
 }
 
-/// Generate expected_output.txt from AutoVM execution.
-/// Used once to bootstrap test cases, then expected_output.txt is committed.
+/// RETIRED author helper (PLAN-1066 T-09): the explicit `conformance_proposal`
+/// entry is the only generation path. Kept for the frozen reference role and
+/// reads the migration document, never the retired `input.at` sidecar.
 ///
 /// PLAN-1066 A-NOWRITE (T-07[A]): the candidate lands ONLY in the explicit
 /// diagnostic scope — a normal run can never regenerate or overwrite the
@@ -81,8 +82,13 @@ pub(crate) fn run_conformance_case(root: &std::path::Path, case: &str) -> AutoRe
 #[allow(dead_code)]
 fn generate_expected(case: &str) -> AutoResult<String> {
     let dir = conformance_dir().join(case);
-    let src = read_to_string(dir.join("input.at"))
-        .map_err(|e| crate::error::AutoError::Msg(e.to_string()))?;
+    // PLAN-1066 T-09: even this retired author helper reads the migration
+    // document (the frozen `input.at` sidecar is history; no active path may
+    // depend on it).
+    let src = crate::tests::legacy_doc::load_case(&dir, "input")
+        .map_err(crate::error::AutoError::Msg)?
+        .source_text()
+        .to_string();
     let (_, stdout) = run_autovm_capture(&src)?;
     let output = stdout.trim().to_string();
     crate::tests::diag_scope::write_scoped(

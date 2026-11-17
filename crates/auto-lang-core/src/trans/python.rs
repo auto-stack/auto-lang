@@ -2705,9 +2705,13 @@ mod tests {
             })?;
 
         if py_code != expected.as_bytes() {
-            let gen_path = format!("../auto-lang/test/a2p/{}/{}.wrong.py", case, name);
-            let gen_path = d.join(gen_path);
-            std::fs::write(&gen_path, py_code)?;
+            // PLAN-1066 T-09/NC-25: scoped diagnostic, never an author-tree
+            // sibling (the `..` path also escaped this crate).
+            let _ = &d;
+            crate::diag_scope::write_scoped(
+                &format!("test/a2p/{case}/{name}.wrong.py"),
+                py_code,
+            )?;
         }
 
         assert_eq!(String::from_utf8_lossy(py_code), expected);
