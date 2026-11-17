@@ -80,8 +80,11 @@ fn test_aavm(case: &str) -> AutoResult<()> {
             let dir_name = case.rsplit('/').next().unwrap_or(case);
             let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
             let name = parts[1..].join("_");
-            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.out", case, name));
-            std::fs::write(&wrong_path, &stdout)?;
+            // PLAN-1066 T-07[B]/NC-25: scoped diagnostic, never author-tree.
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/vm/{case}/{name}.wrong.out"),
+                stdout.as_bytes(),
+            )?;
         }
         assert_eq!(stdout, *expected_out);
     }
@@ -94,8 +97,11 @@ fn test_aavm(case: &str) -> AutoResult<()> {
             let dir_name = case.rsplit('/').next().unwrap_or(case);
             let parts: Vec<&str> = dir_name.splitn(2, '_').collect();
             let name = parts[1..].join("_");
-            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.result", case, name));
-            std::fs::write(&wrong_path, &result)?;
+            // PLAN-1066 T-07[B]/NC-25: scoped diagnostic, never author-tree.
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/vm/{case}/{name}.wrong.result"),
+                result.as_bytes(),
+            )?;
         }
         assert_eq!(result, *expected_res);
     }

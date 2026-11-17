@@ -132,9 +132,6 @@ fn test_a2c(case: &str) -> AutoResult<()> {
 }
 
 fn test_a2c_impl(case: &str) -> AutoResult<()> {
-    use std::fs::read_to_string;
-    use std::fs::File;
-    use std::io::Write;
     use std::path::PathBuf;
 
     // Parse test case name: "01_basics/001_hello" -> "hello"
@@ -191,22 +188,22 @@ fn test_a2c_impl(case: &str) -> AutoResult<()> {
         let src = ccode.done()?;
 
         if src != expected_src.as_bytes() {
-            // output generated code to a gen file
-            let gen_path = format!("test/a2c/{}/{}.wrong.c", case, name);
-            let gen_path = d.join(gen_path);
-            let mut file = File::create(gen_path.as_path())?;
-            file.write_all(src)?;
+            // PLAN-1066 T-07[B]/NC-25: scoped diagnostic, never a sibling file.
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/a2c/{case}/{name}.wrong.c"),
+                src,
+            )?;
         }
 
         assert_eq!(String::from_utf8_lossy(src), expected_src);
 
         let header = ccode.header;
         if header != expected_header.as_bytes() {
-            // output generated code to a gen file
-            let gen_path = format!("test/a2c/{}/{}.wrong.h", case, name);
-            let gen_path = d.join(gen_path);
-            let mut file = File::create(gen_path.as_path())?;
-            file.write_all(&header)?;
+            // PLAN-1066 T-07[B]/NC-25: scoped diagnostic, never a sibling file.
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/a2c/{case}/{name}.wrong.h"),
+                &header,
+            )?;
         }
         assert_eq!(String::from_utf8_lossy(&header), expected_header);
         Ok(())

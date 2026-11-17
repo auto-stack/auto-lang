@@ -40,9 +40,11 @@ fn test_a2r_with_base_impl(base: &str, case: &str) -> AutoResult<()> {
     let rs_code = rcode.done()?;
 
     if rs_code != expected.as_slice() {
-        let gen_path = format!("test/{base}/{case}/{}.wrong.rs", name);
-        let gen_path = d.join(gen_path);
-        std::fs::write(&gen_path, rs_code)?;
+        // PLAN-1066 T-07[B]/NC-25: mismatch dumps are scoped diagnostics — a
+        // normal (even failing) wrapper run never creates a file in the author
+        // tree. The explicit proposal flow owns author-side generation.
+        let label = format!("test/{base}/{case}/{name}.wrong.rs");
+        crate::tests::diag_scope::write_scoped(&label, rs_code)?;
     }
 
     assert_eq!(String::from_utf8_lossy(rs_code), String::from_utf8_lossy(&expected));

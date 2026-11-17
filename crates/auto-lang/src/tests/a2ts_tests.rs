@@ -3,7 +3,6 @@ use crate::{
     parser::Parser,
     trans::{typescript::TypeScriptTrans, Sink, Trans},
 };
-use std::fs;
 use std::path::PathBuf;
 
 fn test_a2ts(case: &str) -> AutoResult<()> {
@@ -46,10 +45,13 @@ fn test_a2ts_impl(case: &str) -> AutoResult<()> {
 
     let ts_string = String::from_utf8_lossy(&ts_code);
     if ts_string != expected {
-        let wrong_path = format!("test/a2ts/{}/{}.wrong.ts", case, name);
-        let wrong_path = d.join(wrong_path);
-        fs::write(&wrong_path, ts_code)?;
-        panic!("Output differs from expected. Check {}.wrong.ts", name);
+        // PLAN-1066 T-07[B]/NC-25: scoped diagnostic; the author tree stays
+        // byte-identical even on a failing case.
+        crate::tests::diag_scope::write_scoped(
+            &format!("test/a2ts/{case}/{name}.wrong.ts"),
+            &ts_code,
+        )?;
+        panic!("Output differs from expected (diagnostic went to the scope)", );
     }
 
     Ok(())

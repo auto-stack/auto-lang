@@ -32,8 +32,11 @@ fn test_ffi_dual(case: &str) -> AutoResult<()> {
     let trimmed = stdout.trim();
     let expected_trimmed = expected.trim();
     if trimmed != expected_trimmed {
-        let wrong_path = d.join(format!("test/ffi_dual/{}/.wrong.out", case));
-        std::fs::write(&wrong_path, &stdout)?;
+        // PLAN-1066 T-07[B]/NC-25: scoped diagnostic, never author-tree.
+        crate::tests::diag_scope::write_scoped(
+            &format!("test/ffi_dual/{case}/.wrong.out"),
+            stdout.as_bytes(),
+        )?;
     }
     assert_eq!(trimmed, expected_trimmed, "VM output mismatch for {}", case);
     Ok(())

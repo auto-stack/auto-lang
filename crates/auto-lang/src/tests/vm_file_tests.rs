@@ -2113,8 +2113,11 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
         let expected = read_to_string(&rust_ast_path)?;
         let actual = ast.to_string();
         if actual != expected {
-            let wrong_path = d.join(format!("test/vm/{}/{}.wrong.rust_ast", case, name));
-            std::fs::write(&wrong_path, &actual)?;
+            // PLAN-1066 T-07[B]/NC-25: scoped diagnostic, never author-tree.
+            crate::tests::diag_scope::write_scoped(
+                &format!("test/vm/{case}/{name}.wrong.rust_ast"),
+                actual.as_bytes(),
+            )?;
         }
         assert_eq!(actual, expected);
     }
