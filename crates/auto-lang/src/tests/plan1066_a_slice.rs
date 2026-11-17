@@ -976,8 +976,8 @@ pub(crate) fn derive_actual() -> Result<Frozen, String> {
             stage: "A+B".into(),
             platform: "windows".into(),
             ignore: false,
-            actual_source: "doc wrapper tests::vm_file_tests::test_vm (payload since PLAN-1062 T-14); legacy entry entry::run_vm_file_test kept for frozen-identity runs until B".into(),
-            discovery: "test_runner::discover_vm_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])".into(),
+            actual_source: "doc wrapper tests::vm_file_tests::test_vm (payload since PLAN-1062 T-14) and entry::run_vm_file_test both read the document (PLAN-1066 T-03[B]); frozen sidecars are never read".into(),
+            discovery: "test_runner::discover_vm_tests: `<stem>.case.ad` is the selection authority (PLAN-1066 T-03[B]); sidecars only keep a removed document visible as a loud failure".into(),
         },
     );
     for fam in ["a2r", "cookbook"] {
@@ -987,8 +987,8 @@ pub(crate) fn derive_actual() -> Result<Frozen, String> {
                 stage: "A+B".into(),
                 platform: "windows".into(),
                 ignore: false,
-                actual_source: "doc wrapper tests::a2r_tests::test_a2r_with_base; legacy entry entry::run_a2r_file_test via sys_env shim until B".into(),
-                discovery: "test_runner::discover_a2r_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])".into(),
+                actual_source: "doc wrapper tests::a2r_tests::test_a2r_with_base and entry::run_a2r_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read".into(),
+                discovery: "test_runner::discover_a2r_tests: `<stem>.case.ad` selects the entry and its `.rs` artifact is the oracle (PLAN-1066 T-03[B])".into(),
             },
         );
     }
@@ -998,8 +998,8 @@ pub(crate) fn derive_actual() -> Result<Frozen, String> {
             stage: "A+B".into(),
             platform: "windows".into(),
             ignore: false,
-            actual_source: "doc wrapper tests::a2c_tests (per-case, #[ignore]d); legacy entry entry::run_a2c_file_test until B".into(),
-            discovery: "test_runner::discover_a2c_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])".into(),
+            actual_source: "doc wrapper tests::a2c_tests (per-case, #[ignore]d) and entry::run_a2c_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read".into(),
+            discovery: "test_runner::discover_a2c_tests: `<stem>.case.ad` selects the entry and its `.c`/`.h` artifacts are the oracle (PLAN-1066 T-03[B])".into(),
         },
     );
     segments.insert(
@@ -1008,8 +1008,8 @@ pub(crate) fn derive_actual() -> Result<Frozen, String> {
             stage: "A+B".into(),
             platform: "windows".into(),
             ignore: false,
-            actual_source: "doc wrapper tests::a2ts_tests; legacy entry entry::run_a2ts_file_test until B".into(),
-            discovery: "test_runner::discover_a2ts_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])".into(),
+            actual_source: "doc wrapper tests::a2ts_tests and entry::run_a2ts_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read".into(),
+            discovery: "test_runner::discover_a2ts_tests: `<stem>.case.ad` selects the entry and its `.ts` artifact is the oracle (PLAN-1066 T-03[B])".into(),
         },
     );
 
@@ -1547,9 +1547,16 @@ fn plan1066_a_denominator_integrity() {
         errs.join("\n")
     );
     // Frozen denominator floors (anti-shrink; the per-key diff above is the
-    // real gate, counts are the floor).
+    // real gate, counts are the floor). PLAN-1066 T-03[B] raised vm 496 → 506:
+    // document-authority discovery selects ten VM entries the old sidecar
+    // selection silently skipped (08_strings/017_sub_semantics had its oracle
+    // named by the full directory name; 10_types/033_array_len_user_type,
+    // 17_cffi/{001,002,003}, 18_ffi/{047,055} and 99_bootstrap/{066,067,068}
+    // carry their oracle only in the document). They were already executed by
+    // the doc-reading VM cache wrapper (506 keys, unchanged); the increment
+    // registers them in the discovery denominator instead of leaving a hole.
     for (family, want) in [
-        ("vm", 496),
+        ("vm", 506),
         ("a2r", 250),
         ("a2c", 118),
         ("a2ts", 85),

@@ -10998,10 +10998,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/004_rand",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/004_rand/rand.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/004_rand/rand.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/004_rand/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/004_rand/rand.case.ad"
           }
         }
       ]
@@ -11014,10 +11014,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/005_rand_choose",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/005_rand_choose/rand_choose.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/005_rand_choose/rand_choose.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/005_rand_choose/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/005_rand_choose/rand_choose.case.ad"
           }
         }
       ]
@@ -11030,10 +11030,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/006_rand_custom",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/006_rand_custom/rand_custom.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/006_rand_custom/rand_custom.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/006_rand_custom/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/006_rand_custom/rand_custom.case.ad"
           }
         }
       ]
@@ -11046,10 +11046,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/010_rand_custom",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/010_rand_custom/rand_custom.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/010_rand_custom/rand_custom.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/010_rand_custom/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/010_rand_custom/rand_custom.case.ad"
           }
         }
       ]
@@ -11062,10 +11062,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/007_rand_dist",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/007_rand_dist/rand_dist.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/007_rand_dist/rand_dist.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/007_rand_dist/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/007_rand_dist/rand_dist.case.ad"
           }
         }
       ]
@@ -11078,10 +11078,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/011_rand_dist",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/011_rand_dist/rand_dist.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/011_rand_dist/rand_dist.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/011_rand_dist/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/011_rand_dist/rand_dist.case.ad"
           }
         }
       ]
@@ -11094,10 +11094,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/008_rand_passwd",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/008_rand_passwd/rand_passwd.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/008_rand_passwd/rand_passwd.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/008_rand_passwd/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/008_rand_passwd/rand_passwd.case.ad"
           }
         }
       ]
@@ -11110,10 +11110,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/009_rand_range",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/009_rand_range/rand_range.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/009_rand_range/rand_range.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/009_rand_range/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/009_rand_range/rand_range.case.ad"
           }
         }
       ]
@@ -11126,10 +11126,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/002_sort_float",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/002_sort_float/sort_float.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/002_sort_float/sort_float.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/002_sort_float/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/002_sort_float/sort_float.case.ad"
           }
         }
       ]
@@ -11142,10 +11142,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/001_sort_int",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/001_sort_int/sort_int.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/001_sort_int/sort_int.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/001_sort_int/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/001_sort_int/sort_int.case.ad"
           }
         }
       ]
@@ -11158,10 +11158,10 @@
           "family": "legacy-cookbook-vm",
           "id": "algorithms/003_sort_struct",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/003_sort_struct/sort_struct.at"
+            "path": "crates/auto-lang/test/cookbook/algorithms/003_sort_struct/sort_struct.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/algorithms/003_sort_struct/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/algorithms/003_sort_struct/sort_struct.case.ad"
           }
         }
       ]
@@ -11174,10 +11174,10 @@
           "family": "legacy-cookbook-vm",
           "id": "asynchronous/channel",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/channel/001_bounded.at"
+            "path": "crates/auto-lang/test/cookbook/asynchronous/channel/001_bounded.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/channel/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/asynchronous/channel/001_bounded.case.ad"
           }
         }
       ]
@@ -11190,10 +11190,10 @@
           "family": "legacy-cookbook-vm",
           "id": "asynchronous/fs",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/fs/001_create.at"
+            "path": "crates/auto-lang/test/cookbook/asynchronous/fs/001_create.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/fs/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/asynchronous/fs/001_create.case.ad"
           }
         }
       ]
@@ -11206,10 +11206,10 @@
           "family": "legacy-cookbook-vm",
           "id": "asynchronous/ftc",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/ftc/001_ctrl_c.at"
+            "path": "crates/auto-lang/test/cookbook/asynchronous/ftc/001_ctrl_c.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/ftc/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/asynchronous/ftc/001_ctrl_c.case.ad"
           }
         }
       ]
@@ -11222,10 +11222,10 @@
           "family": "legacy-cookbook-vm",
           "id": "asynchronous/rt",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/rt/001_tokio_macro.at"
+            "path": "crates/auto-lang/test/cookbook/asynchronous/rt/001_tokio_macro.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/asynchronous/rt/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/asynchronous/rt/001_tokio_macro.case.ad"
           }
         }
       ]
@@ -11238,10 +11238,10 @@
           "family": "legacy-cookbook-vm",
           "id": "cli/002_ansi_term",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/cli/002_ansi_term/ansi_term.at"
+            "path": "crates/auto-lang/test/cookbook/cli/002_ansi_term/ansi_term.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/cli/002_ansi_term/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/cli/002_ansi_term/ansi_term.case.ad"
           }
         }
       ]
@@ -11254,10 +11254,10 @@
           "family": "legacy-cookbook-vm",
           "id": "cli/001_clap_basic",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/cli/001_clap_basic/clap_basic.at"
+            "path": "crates/auto-lang/test/cookbook/cli/001_clap_basic/clap_basic.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/cli/001_clap_basic/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/cli/001_clap_basic/clap_basic.case.ad"
           }
         }
       ]
@@ -11270,10 +11270,10 @@
           "family": "legacy-cookbook-vm",
           "id": "compression/001_tar_compress",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/compression/001_tar_compress/tar_compress.at"
+            "path": "crates/auto-lang/test/cookbook/compression/001_tar_compress/tar_compress.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/compression/001_tar_compress/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/compression/001_tar_compress/tar_compress.case.ad"
           }
         }
       ]
@@ -11286,10 +11286,10 @@
           "family": "legacy-cookbook-vm",
           "id": "compression/002_tar_decompress",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/compression/002_tar_decompress/tar_decompress.at"
+            "path": "crates/auto-lang/test/cookbook/compression/002_tar_decompress/tar_decompress.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/compression/002_tar_decompress/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/compression/002_tar_decompress/tar_decompress.case.ad"
           }
         }
       ]
@@ -11302,10 +11302,10 @@
           "family": "legacy-cookbook-vm",
           "id": "compression/003_tar_strip_prefix",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/compression/003_tar_strip_prefix/tar_strip_prefix.at"
+            "path": "crates/auto-lang/test/cookbook/compression/003_tar_strip_prefix/tar_strip_prefix.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/compression/003_tar_strip_prefix/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/compression/003_tar_strip_prefix/tar_strip_prefix.case.ad"
           }
         }
       ]
@@ -11318,10 +11318,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/007_crossbeam_complex",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/007_crossbeam_complex/crossbeam_complex.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/007_crossbeam_complex/crossbeam_complex.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/007_crossbeam_complex/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/007_crossbeam_complex/crossbeam_complex.case.ad"
           }
         }
       ]
@@ -11334,10 +11334,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/008_crossbeam_spawn",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/008_crossbeam_spawn/crossbeam_spawn.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/008_crossbeam_spawn/crossbeam_spawn.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/008_crossbeam_spawn/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/008_crossbeam_spawn/crossbeam_spawn.case.ad"
           }
         }
       ]
@@ -11350,10 +11350,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/004_crossbeam_spsc",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/004_crossbeam_spsc/crossbeam_spsc.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/004_crossbeam_spsc/crossbeam_spsc.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/004_crossbeam_spsc/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/004_crossbeam_spsc/crossbeam_spsc.case.ad"
           }
         }
       ]
@@ -11366,10 +11366,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/009_global_mut_state",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/009_global_mut_state/global_mut_state.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/009_global_mut_state/global_mut_state.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/009_global_mut_state/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/009_global_mut_state/global_mut_state.case.ad"
           }
         }
       ]
@@ -11382,10 +11382,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/001_rayon_any_all",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/001_rayon_any_all/rayon_any_all.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/001_rayon_any_all/rayon_any_all.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/001_rayon_any_all/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/001_rayon_any_all/rayon_any_all.case.ad"
           }
         }
       ]
@@ -11398,10 +11398,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/005_rayon_iter_mut",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/005_rayon_iter_mut/rayon_iter_mut.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/005_rayon_iter_mut/rayon_iter_mut.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/005_rayon_iter_mut/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/005_rayon_iter_mut/rayon_iter_mut.case.ad"
           }
         }
       ]
@@ -11414,10 +11414,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/002_rayon_map_reduce",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/002_rayon_map_reduce/rayon_map_reduce.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/002_rayon_map_reduce/rayon_map_reduce.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/002_rayon_map_reduce/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/002_rayon_map_reduce/rayon_map_reduce.case.ad"
           }
         }
       ]
@@ -11430,10 +11430,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/006_rayon_parallel_search",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/006_rayon_parallel_search/rayon_parallel_search.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/006_rayon_parallel_search/rayon_parallel_search.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/006_rayon_parallel_search/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/006_rayon_parallel_search/rayon_parallel_search.case.ad"
           }
         }
       ]
@@ -11446,10 +11446,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/003_rayon_parallel_sort",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/003_rayon_parallel_sort/rayon_parallel_sort.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/003_rayon_parallel_sort/rayon_parallel_sort.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/003_rayon_parallel_sort/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/003_rayon_parallel_sort/rayon_parallel_sort.case.ad"
           }
         }
       ]
@@ -11462,10 +11462,10 @@
           "family": "legacy-cookbook-vm",
           "id": "concurrency/010_threadpool_walk",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/010_threadpool_walk/threadpool_walk.at"
+            "path": "crates/auto-lang/test/cookbook/concurrency/010_threadpool_walk/threadpool_walk.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/concurrency/010_threadpool_walk/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/concurrency/010_threadpool_walk/threadpool_walk.case.ad"
           }
         }
       ]
@@ -11478,10 +11478,10 @@
           "family": "legacy-cookbook-vm",
           "id": "cryptography/003_hmac",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/cryptography/003_hmac/hmac.at"
+            "path": "crates/auto-lang/test/cookbook/cryptography/003_hmac/hmac.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/cryptography/003_hmac/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/cryptography/003_hmac/hmac.case.ad"
           }
         }
       ]
@@ -11494,10 +11494,10 @@
           "family": "legacy-cookbook-vm",
           "id": "cryptography/002_pbkdf2",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/cryptography/002_pbkdf2/pbkdf2.at"
+            "path": "crates/auto-lang/test/cookbook/cryptography/002_pbkdf2/pbkdf2.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/cryptography/002_pbkdf2/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/cryptography/002_pbkdf2/pbkdf2.case.ad"
           }
         }
       ]
@@ -11510,10 +11510,10 @@
           "family": "legacy-cookbook-vm",
           "id": "cryptography/001_sha_digest",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/cryptography/001_sha_digest/sha_digest.at"
+            "path": "crates/auto-lang/test/cookbook/cryptography/001_sha_digest/sha_digest.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/cryptography/001_sha_digest/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/cryptography/001_sha_digest/sha_digest.case.ad"
           }
         }
       ]
@@ -11526,10 +11526,10 @@
           "family": "legacy-cookbook-vm",
           "id": "database/postgres",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/database/postgres/001_create_tables.at"
+            "path": "crates/auto-lang/test/cookbook/database/postgres/001_create_tables.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/database/postgres/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/database/postgres/001_create_tables.case.ad"
           }
         }
       ]
@@ -11542,10 +11542,10 @@
           "family": "legacy-cookbook-vm",
           "id": "database/sqlite",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/database/sqlite/001_init.at"
+            "path": "crates/auto-lang/test/cookbook/database/sqlite/001_init.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/database/sqlite/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/database/sqlite/001_init.case.ad"
           }
         }
       ]
@@ -11558,10 +11558,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/002_checked",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/002_checked/checked.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/002_checked/checked.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/002_checked/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/002_checked/checked.case.ad"
           }
         }
       ]
@@ -11574,10 +11574,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/004_current",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/004_current/current.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/004_current/current.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/004_current/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/004_current/current.case.ad"
           }
         }
       ]
@@ -11590,10 +11590,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/001_elapsed_time",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/001_elapsed_time/elapsed_time.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/001_elapsed_time/elapsed_time.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/001_elapsed_time/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/001_elapsed_time/elapsed_time.case.ad"
           }
         }
       ]
@@ -11606,10 +11606,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/005_format",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/005_format/format.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/005_format/format.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/005_format/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/005_format/format.case.ad"
           }
         }
       ]
@@ -11622,10 +11622,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/006_parse_string",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/006_parse_string/parse_string.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/006_parse_string/parse_string.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/006_parse_string/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/006_parse_string/parse_string.case.ad"
           }
         }
       ]
@@ -11638,10 +11638,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/007_timestamp",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/007_timestamp/timestamp.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/007_timestamp/timestamp.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/007_timestamp/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/007_timestamp/timestamp.case.ad"
           }
         }
       ]
@@ -11654,10 +11654,10 @@
           "family": "legacy-cookbook-vm",
           "id": "datetime/003_timezone",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/datetime/003_timezone/timezone.at"
+            "path": "crates/auto-lang/test/cookbook/datetime/003_timezone/timezone.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/datetime/003_timezone/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/datetime/003_timezone/timezone.case.ad"
           }
         }
       ]
@@ -11670,10 +11670,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/004_log_custom",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/004_log_custom/log_custom.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/004_log_custom/log_custom.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/004_log_custom/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/004_log_custom/log_custom.case.ad"
           }
         }
       ]
@@ -11686,10 +11686,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/009_log_custom_location",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/009_log_custom_location/log_custom_location.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/009_log_custom_location/log_custom_location.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/009_log_custom_location/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/009_log_custom_location/log_custom_location.case.ad"
           }
         }
       ]
@@ -11702,10 +11702,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/001_log_debug",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/001_log_debug/log_debug.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/001_log_debug/log_debug.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/001_log_debug/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/001_log_debug/log_debug.case.ad"
           }
         }
       ]
@@ -11718,10 +11718,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/006_log_env",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/006_log_env/log_env.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/006_log_env/log_env.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/006_log_env/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/006_log_env/log_env.case.ad"
           }
         }
       ]
@@ -11734,10 +11734,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/002_log_error",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/002_log_error/log_error.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/002_log_error/log_error.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/002_log_error/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/002_log_error/log_error.case.ad"
           }
         }
       ]
@@ -11750,10 +11750,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/007_log_mod",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/007_log_mod/log_mod.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/007_log_mod/log_mod.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/007_log_mod/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/007_log_mod/log_mod.case.ad"
           }
         }
       ]
@@ -11766,10 +11766,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/003_log_stdout",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/003_log_stdout/log_stdout.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/003_log_stdout/log_stdout.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/003_log_stdout/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/003_log_stdout/log_stdout.case.ad"
           }
         }
       ]
@@ -11782,10 +11782,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/005_log_syslog",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/005_log_syslog/log_syslog.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/005_log_syslog/log_syslog.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/005_log_syslog/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/005_log_syslog/log_syslog.case.ad"
           }
         }
       ]
@@ -11798,10 +11798,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/008_log_timestamp",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/008_log_timestamp/log_timestamp.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/008_log_timestamp/log_timestamp.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/008_log_timestamp/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/008_log_timestamp/log_timestamp.case.ad"
           }
         }
       ]
@@ -11814,10 +11814,10 @@
           "family": "legacy-cookbook-vm",
           "id": "devtools/010_tracing_console",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/devtools/010_tracing_console/tracing_console.at"
+            "path": "crates/auto-lang/test/cookbook/devtools/010_tracing_console/tracing_console.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/devtools/010_tracing_console/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/devtools/010_tracing_console/tracing_console.case.ad"
           }
         }
       ]
@@ -11830,10 +11830,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/004_base64",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/004_base64/base64.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/004_base64/base64.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/004_base64/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/004_base64/base64.case.ad"
           }
         }
       ]
@@ -11846,10 +11846,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/007_csv_delimiter",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/007_csv_delimiter/csv_delimiter.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/007_csv_delimiter/csv_delimiter.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/007_csv_delimiter/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/007_csv_delimiter/csv_delimiter.case.ad"
           }
         }
       ]
@@ -11862,10 +11862,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/008_csv_filter",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/008_csv_filter/csv_filter.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/008_csv_filter/csv_filter.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/008_csv_filter/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/008_csv_filter/csv_filter.case.ad"
           }
         }
       ]
@@ -11878,10 +11878,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/009_csv_invalid",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/009_csv_invalid/csv_invalid.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/009_csv_invalid/csv_invalid.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/009_csv_invalid/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/009_csv_invalid/csv_invalid.case.ad"
           }
         }
       ]
@@ -11894,10 +11894,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/003_csv_read",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/003_csv_read/csv_read.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/003_csv_read/csv_read.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/003_csv_read/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/003_csv_read/csv_read.case.ad"
           }
         }
       ]
@@ -11910,10 +11910,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/010_csv_serde_serialize",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/010_csv_serde_serialize/csv_serde_serialize.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/010_csv_serde_serialize/csv_serde_serialize.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/010_csv_serde_serialize/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/010_csv_serde_serialize/csv_serde_serialize.case.ad"
           }
         }
       ]
@@ -11926,10 +11926,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/011_csv_serialize",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/011_csv_serialize/csv_serialize.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/011_csv_serialize/csv_serialize.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/011_csv_serialize/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/011_csv_serialize/csv_serialize.case.ad"
           }
         }
       ]
@@ -11942,10 +11942,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/012_csv_transform",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/012_csv_transform/csv_transform.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/012_csv_transform/csv_transform.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/012_csv_transform/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/012_csv_transform/csv_transform.case.ad"
           }
         }
       ]
@@ -11958,10 +11958,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/006_endian_byte",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/006_endian_byte/endian_byte.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/006_endian_byte/endian_byte.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/006_endian_byte/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/006_endian_byte/endian_byte.case.ad"
           }
         }
       ]
@@ -11974,10 +11974,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/005_hex",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/005_hex/hex.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/005_hex/hex.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/005_hex/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/005_hex/hex.case.ad"
           }
         }
       ]
@@ -11990,10 +11990,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/001_json",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/001_json/json.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/001_json/json.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/001_json/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/001_json/json.case.ad"
           }
         }
       ]
@@ -12006,10 +12006,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/013_percent_encode",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/013_percent_encode/percent_encode.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/013_percent_encode/percent_encode.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/013_percent_encode/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/013_percent_encode/percent_encode.case.ad"
           }
         }
       ]
@@ -12022,10 +12022,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/002_toml",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/002_toml/toml.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/002_toml/toml.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/002_toml/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/002_toml/toml.case.ad"
           }
         }
       ]
@@ -12038,10 +12038,10 @@
           "family": "legacy-cookbook-vm",
           "id": "encoding/014_url_encode",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/encoding/014_url_encode/url_encode.at"
+            "path": "crates/auto-lang/test/cookbook/encoding/014_url_encode/url_encode.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/encoding/014_url_encode/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/encoding/014_url_encode/url_encode.case.ad"
           }
         }
       ]
@@ -12054,10 +12054,10 @@
           "family": "legacy-cookbook-vm",
           "id": "errors/002_anyhow",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/errors/002_anyhow/anyhow.at"
+            "path": "crates/auto-lang/test/cookbook/errors/002_anyhow/anyhow.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/errors/002_anyhow/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/errors/002_anyhow/anyhow.case.ad"
           }
         }
       ]
@@ -12070,10 +12070,10 @@
           "family": "legacy-cookbook-vm",
           "id": "errors/003_backtrace",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/errors/003_backtrace/backtrace.at"
+            "path": "crates/auto-lang/test/cookbook/errors/003_backtrace/backtrace.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/errors/003_backtrace/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/errors/003_backtrace/backtrace.case.ad"
           }
         }
       ]
@@ -12086,10 +12086,10 @@
           "family": "legacy-cookbook-vm",
           "id": "errors/001_boxed_error",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/errors/001_boxed_error/boxed_error.at"
+            "path": "crates/auto-lang/test/cookbook/errors/001_boxed_error/boxed_error.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/errors/001_boxed_error/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/errors/001_boxed_error/boxed_error.case.ad"
           }
         }
       ]
@@ -12102,10 +12102,10 @@
           "family": "legacy-cookbook-vm",
           "id": "errors/004_retain",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/errors/004_retain/retain.at"
+            "path": "crates/auto-lang/test/cookbook/errors/004_retain/retain.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/errors/004_retain/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/errors/004_retain/retain.case.ad"
           }
         }
       ]
@@ -12118,10 +12118,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/005_duplicate_name",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/005_duplicate_name/duplicate_name.at"
+            "path": "crates/auto-lang/test/cookbook/file/005_duplicate_name/duplicate_name.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/005_duplicate_name/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/005_duplicate_name/duplicate_name.case.ad"
           }
         }
       ]
@@ -12134,10 +12134,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/006_find_file",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/006_find_file/find_file.at"
+            "path": "crates/auto-lang/test/cookbook/file/006_find_file/find_file.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/006_find_file/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/006_find_file/find_file.case.ad"
           }
         }
       ]
@@ -12150,10 +12150,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/002_find_files",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/002_find_files/find_files.at"
+            "path": "crates/auto-lang/test/cookbook/file/002_find_files/find_files.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/002_find_files/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/002_find_files/find_files.case.ad"
           }
         }
       ]
@@ -12166,10 +12166,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/007_ignore_case",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/007_ignore_case/ignore_case.at"
+            "path": "crates/auto-lang/test/cookbook/file/007_ignore_case/ignore_case.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/007_ignore_case/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/007_ignore_case/ignore_case.case.ad"
           }
         }
       ]
@@ -12182,10 +12182,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/008_loops",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/008_loops/loops.at"
+            "path": "crates/auto-lang/test/cookbook/file/008_loops/loops.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/008_loops/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/008_loops/loops.case.ad"
           }
         }
       ]
@@ -12198,10 +12198,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/004_modified",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/004_modified/modified.at"
+            "path": "crates/auto-lang/test/cookbook/file/004_modified/modified.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/004_modified/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/004_modified/modified.case.ad"
           }
         }
       ]
@@ -12214,10 +12214,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/009_png",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/009_png/png.at"
+            "path": "crates/auto-lang/test/cookbook/file/009_png/png.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/009_png/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/009_png/png.case.ad"
           }
         }
       ]
@@ -12230,10 +12230,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/001_read_lines",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/001_read_lines/read_lines.at"
+            "path": "crates/auto-lang/test/cookbook/file/001_read_lines/read_lines.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/001_read_lines/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/001_read_lines/read_lines.case.ad"
           }
         }
       ]
@@ -12246,10 +12246,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/014_read_lines_temp",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/014_read_lines_temp/read_lines_temp.at"
+            "path": "crates/auto-lang/test/cookbook/file/014_read_lines_temp/read_lines_temp.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/014_read_lines_temp/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/014_read_lines_temp/read_lines_temp.case.ad"
           }
         }
       ]
@@ -12262,10 +12262,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/010_recursive",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/010_recursive/recursive.at"
+            "path": "crates/auto-lang/test/cookbook/file/010_recursive/recursive.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/010_recursive/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/010_recursive/recursive.case.ad"
           }
         }
       ]
@@ -12278,10 +12278,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/003_recursive_size",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/003_recursive_size/recursive_size.at"
+            "path": "crates/auto-lang/test/cookbook/file/003_recursive_size/recursive_size.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/003_recursive_size/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/003_recursive_size/recursive_size.case.ad"
           }
         }
       ]
@@ -12294,10 +12294,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/013_same_file",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/013_same_file/same_file.at"
+            "path": "crates/auto-lang/test/cookbook/file/013_same_file/same_file.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/013_same_file/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/013_same_file/same_file.case.ad"
           }
         }
       ]
@@ -12310,10 +12310,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/011_sizes",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/011_sizes/sizes.at"
+            "path": "crates/auto-lang/test/cookbook/file/011_sizes/sizes.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/011_sizes/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/011_sizes/sizes.case.ad"
           }
         }
       ]
@@ -12326,10 +12326,10 @@
           "family": "legacy-cookbook-vm",
           "id": "file/012_skip_dot",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/file/012_skip_dot/skip_dot.at"
+            "path": "crates/auto-lang/test/cookbook/file/012_skip_dot/skip_dot.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/file/012_skip_dot/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/file/012_skip_dot/skip_dot.case.ad"
           }
         }
       ]
@@ -12342,10 +12342,10 @@
           "family": "legacy-cookbook-vm",
           "id": "hardware/001_cpu_count",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/hardware/001_cpu_count/cpu_count.at"
+            "path": "crates/auto-lang/test/cookbook/hardware/001_cpu_count/cpu_count.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/hardware/001_cpu_count/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/hardware/001_cpu_count/cpu_count.case.ad"
           }
         }
       ]
@@ -12358,10 +12358,10 @@
           "family": "legacy-cookbook-vm",
           "id": "mem/001_lazy_cell",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/mem/001_lazy_cell/lazy_cell.at"
+            "path": "crates/auto-lang/test/cookbook/mem/001_lazy_cell/lazy_cell.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/mem/001_lazy_cell/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/mem/001_lazy_cell/lazy_cell.case.ad"
           }
         }
       ]
@@ -12374,10 +12374,10 @@
           "family": "legacy-cookbook-vm",
           "id": "os/001_env_variable",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/os/001_env_variable/env_variable.at"
+            "path": "crates/auto-lang/test/cookbook/os/001_env_variable/env_variable.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/os/001_env_variable/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/os/001_env_variable/env_variable.case.ad"
           }
         }
       ]
@@ -12390,10 +12390,10 @@
           "family": "legacy-cookbook-vm",
           "id": "os/003_error_file",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/os/003_error_file/error_file.at"
+            "path": "crates/auto-lang/test/cookbook/os/003_error_file/error_file.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/os/003_error_file/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/os/003_error_file/error_file.case.ad"
           }
         }
       ]
@@ -12406,10 +12406,10 @@
           "family": "legacy-cookbook-vm",
           "id": "os/004_piped",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/os/004_piped/piped.at"
+            "path": "crates/auto-lang/test/cookbook/os/004_piped/piped.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/os/004_piped/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/os/004_piped/piped.case.ad"
           }
         }
       ]
@@ -12422,10 +12422,10 @@
           "family": "legacy-cookbook-vm",
           "id": "os/002_process_continuous",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/os/002_process_continuous/process_continuous.at"
+            "path": "crates/auto-lang/test/cookbook/os/002_process_continuous/process_continuous.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/os/002_process_continuous/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/os/002_process_continuous/process_continuous.case.ad"
           }
         }
       ]
@@ -12438,10 +12438,10 @@
           "family": "legacy-cookbook-vm",
           "id": "os/005_process_output",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/os/005_process_output/process_output.at"
+            "path": "crates/auto-lang/test/cookbook/os/005_process_output/process_output.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/os/005_process_output/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/os/005_process_output/process_output.case.ad"
           }
         }
       ]
@@ -12454,10 +12454,10 @@
           "family": "legacy-cookbook-vm",
           "id": "os/006_send_input",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/os/006_send_input/send_input.at"
+            "path": "crates/auto-lang/test/cookbook/os/006_send_input/send_input.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/os/006_send_input/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/os/006_send_input/send_input.case.ad"
           }
         }
       ]
@@ -12470,10 +12470,10 @@
           "family": "legacy-cookbook-vm",
           "id": "safety/001_heapless",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/safety/001_heapless/heapless.at"
+            "path": "crates/auto-lang/test/cookbook/safety/001_heapless/heapless.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/safety/001_heapless/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/safety/001_heapless/heapless.case.ad"
           }
         }
       ]
@@ -12486,10 +12486,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/005_filter_log",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/005_filter_log/filter_log.at"
+            "path": "crates/auto-lang/test/cookbook/text/005_filter_log/filter_log.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/005_filter_log/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/005_filter_log/filter_log.case.ad"
           }
         }
       ]
@@ -12502,10 +12502,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/007_from_str",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/007_from_str/from_str.at"
+            "path": "crates/auto-lang/test/cookbook/text/007_from_str/from_str.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/007_from_str/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/007_from_str/from_str.case.ad"
           }
         }
       ]
@@ -12518,10 +12518,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/004_graphemes",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/004_graphemes/graphemes.at"
+            "path": "crates/auto-lang/test/cookbook/text/004_graphemes/graphemes.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/004_graphemes/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/004_graphemes/graphemes.case.ad"
           }
         }
       ]
@@ -12534,10 +12534,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/006_phone",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/006_phone/phone.at"
+            "path": "crates/auto-lang/test/cookbook/text/006_phone/phone.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/006_phone/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/006_phone/phone.case.ad"
           }
         }
       ]
@@ -12550,10 +12550,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/002_regex_email",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/002_regex_email/regex_email.at"
+            "path": "crates/auto-lang/test/cookbook/text/002_regex_email/regex_email.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/002_regex_email/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/002_regex_email/regex_email.case.ad"
           }
         }
       ]
@@ -12566,10 +12566,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/003_regex_hashtags",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/003_regex_hashtags/regex_hashtags.at"
+            "path": "crates/auto-lang/test/cookbook/text/003_regex_hashtags/regex_hashtags.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/003_regex_hashtags/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/003_regex_hashtags/regex_hashtags.case.ad"
           }
         }
       ]
@@ -12582,10 +12582,10 @@
           "family": "legacy-cookbook-vm",
           "id": "text/001_regex_replace",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/text/001_regex_replace/regex_replace.at"
+            "path": "crates/auto-lang/test/cookbook/text/001_regex_replace/regex_replace.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/text/001_regex_replace/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/text/001_regex_replace/regex_replace.case.ad"
           }
         }
       ]
@@ -12598,10 +12598,10 @@
           "family": "legacy-cookbook-vm",
           "id": "versioning/004_semver_command",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/versioning/004_semver_command/semver_command.at"
+            "path": "crates/auto-lang/test/cookbook/versioning/004_semver_command/semver_command.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/versioning/004_semver_command/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/versioning/004_semver_command/semver_command.case.ad"
           }
         }
       ]
@@ -12614,10 +12614,10 @@
           "family": "legacy-cookbook-vm",
           "id": "versioning/005_semver_complex",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/versioning/005_semver_complex/semver_complex.at"
+            "path": "crates/auto-lang/test/cookbook/versioning/005_semver_complex/semver_complex.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/versioning/005_semver_complex/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/versioning/005_semver_complex/semver_complex.case.ad"
           }
         }
       ]
@@ -12630,10 +12630,10 @@
           "family": "legacy-cookbook-vm",
           "id": "versioning/002_semver_increment",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/versioning/002_semver_increment/semver_increment.at"
+            "path": "crates/auto-lang/test/cookbook/versioning/002_semver_increment/semver_increment.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/versioning/002_semver_increment/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/versioning/002_semver_increment/semver_increment.case.ad"
           }
         }
       ]
@@ -12646,10 +12646,10 @@
           "family": "legacy-cookbook-vm",
           "id": "versioning/003_semver_latest",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/versioning/003_semver_latest/semver_latest.at"
+            "path": "crates/auto-lang/test/cookbook/versioning/003_semver_latest/semver_latest.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/versioning/003_semver_latest/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/versioning/003_semver_latest/semver_latest.case.ad"
           }
         }
       ]
@@ -12662,10 +12662,10 @@
           "family": "legacy-cookbook-vm",
           "id": "versioning/001_semver_parse",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/versioning/001_semver_parse/semver_parse.at"
+            "path": "crates/auto-lang/test/cookbook/versioning/001_semver_parse/semver_parse.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/versioning/001_semver_parse/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/versioning/001_semver_parse/semver_parse.case.ad"
           }
         }
       ]
@@ -12678,10 +12678,10 @@
           "family": "legacy-cookbook-vm",
           "id": "versioning/006_semver_prerelease",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/versioning/006_semver_prerelease/semver_prerelease.at"
+            "path": "crates/auto-lang/test/cookbook/versioning/006_semver_prerelease/semver_prerelease.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/versioning/006_semver_prerelease/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/versioning/006_semver_prerelease/semver_prerelease.case.ad"
           }
         }
       ]
@@ -12694,10 +12694,10 @@
           "family": "legacy-cookbook-vm",
           "id": "web/mime",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/web/mime/001_request.at"
+            "path": "crates/auto-lang/test/cookbook/web/mime/001_request.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/web/mime/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/web/mime/001_request.case.ad"
           }
         }
       ]
@@ -12710,10 +12710,10 @@
           "family": "legacy-cookbook-vm",
           "id": "web/scraping",
           "source": {
-            "path": "crates/auto-lang/test/cookbook/web/scraping/001_extract_links.at"
+            "path": "crates/auto-lang/test/cookbook/web/scraping/001_extract_links.case.ad"
           },
-          "oracle": {
-            "path": "crates/auto-lang/test/cookbook/web/scraping/expected.out"
+          "document": {
+            "path": "crates/auto-lang/test/cookbook/web/scraping/001_extract_links.case.ad"
           }
         }
       ]

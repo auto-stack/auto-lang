@@ -5,36 +5,36 @@
       "stage": "A+B",
       "platform": "windows",
       "ignore": false,
-      "actual_source": "doc wrapper tests::a2c_tests (per-case, #[ignore]d); legacy entry entry::run_a2c_file_test until B",
-      "discovery": "test_runner::discover_a2c_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])"
+      "actual_source": "doc wrapper tests::a2c_tests (per-case, #[ignore]d) and entry::run_a2c_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read",
+      "discovery": "test_runner::discover_a2c_tests: `<stem>.case.ad` selects the entry and its `.c`/`.h` artifacts are the oracle (PLAN-1066 T-03[B])"
     },
     "a2r": {
       "stage": "A+B",
       "platform": "windows",
       "ignore": false,
-      "actual_source": "doc wrapper tests::a2r_tests::test_a2r_with_base; legacy entry entry::run_a2r_file_test via sys_env shim until B",
-      "discovery": "test_runner::discover_a2r_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])"
+      "actual_source": "doc wrapper tests::a2r_tests::test_a2r_with_base and entry::run_a2r_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read",
+      "discovery": "test_runner::discover_a2r_tests: `<stem>.case.ad` selects the entry and its `.rs` artifact is the oracle (PLAN-1066 T-03[B])"
     },
     "a2ts": {
       "stage": "A+B",
       "platform": "windows",
       "ignore": false,
-      "actual_source": "doc wrapper tests::a2ts_tests; legacy entry entry::run_a2ts_file_test until B",
-      "discovery": "test_runner::discover_a2ts_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])"
+      "actual_source": "doc wrapper tests::a2ts_tests and entry::run_a2ts_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read",
+      "discovery": "test_runner::discover_a2ts_tests: `<stem>.case.ad` selects the entry and its `.ts` artifact is the oracle (PLAN-1066 T-03[B])"
     },
     "cookbook": {
       "stage": "A+B",
       "platform": "windows",
       "ignore": false,
-      "actual_source": "doc wrapper tests::a2r_tests::test_a2r_with_base; legacy entry entry::run_a2r_file_test via sys_env shim until B",
-      "discovery": "test_runner::discover_a2r_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])"
+      "actual_source": "doc wrapper tests::a2r_tests::test_a2r_with_base and entry::run_a2r_file_test read the document (PLAN-1066 T-03[B]); frozen sidecars are never read",
+      "discovery": "test_runner::discover_a2r_tests: `<stem>.case.ad` selects the entry and its `.rs` artifact is the oracle (PLAN-1066 T-03[B])"
     },
     "vm": {
       "stage": "A+B",
       "platform": "windows",
       "ignore": false,
-      "actual_source": "doc wrapper tests::vm_file_tests::test_vm (payload since PLAN-1062 T-14); legacy entry entry::run_vm_file_test kept for frozen-identity runs until B",
-      "discovery": "test_runner::discover_vm_tests (old-file fence, frozen selection; doc-only discovery is T-02/03[B])"
+      "actual_source": "doc wrapper tests::vm_file_tests::test_vm (payload since PLAN-1062 T-14) and entry::run_vm_file_test both read the document (PLAN-1066 T-03[B]); frozen sidecars are never read",
+      "discovery": "test_runner::discover_vm_tests: `<stem>.case.ad` is the selection authority (PLAN-1066 T-03[B]); sidecars only keep a removed document visible as a loud failure"
     }
   },
   "n_rows": [
@@ -10915,6 +10915,19 @@
     },
     {
       "family": "vm",
+      "id": "08_strings/017_sub_semantics",
+      "doc_rel": "crates/auto-lang/test/vm/08_strings/017_sub_semantics/sub_semantics.case.ad",
+      "doc_sha256": "be9632c087914a67debca2c983b94a3ecec4065af93c3e55e891476b7eb36b7d",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "56fd6a70f80ed392c6101f48b133922ba9b321ccb2eee0fda389d284f365d695"
+    },
+    {
+      "family": "vm",
       "id": "08_strings/018_loop_concat_churn",
       "doc_rel": "crates/auto-lang/test/vm/08_strings/018_loop_concat_churn/loop_concat_churn.case.ad",
       "doc_sha256": "5b14869a83472747ad00cf66f596d67d96d0faf771d7d6917295e1cd7e139374",
@@ -11452,6 +11465,19 @@
       ],
       "source_kind": "at",
       "source_sha256": "c080671a8b62c57a10fb3f04f2f0041f123579d01c48113a25727a80bfb4967f"
+    },
+    {
+      "family": "vm",
+      "id": "10_types/033_array_len_user_type",
+      "doc_rel": "crates/auto-lang/test/vm/10_types/033_array_len_user_type/array_len_user_type.case.ad",
+      "doc_sha256": "65dac91f9a629f1ff9f2935b4a05b0a4bf60c722b35b45f9049d043fb3400198",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "dc6777d07076465e9558db37aa0b5883d6fdfd83af565a3bfeabe520df5005c6"
     },
     {
       "family": "vm",
@@ -13030,6 +13056,45 @@
     },
     {
       "family": "vm",
+      "id": "17_cffi/001_strlen",
+      "doc_rel": "crates/auto-lang/test/vm/17_cffi/001_strlen/strlen.case.ad",
+      "doc_sha256": "8fed14f1168cb2b815939f001408d6d637ebc9d9297bc6766b68667d19fa10c6",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "4af83cfa91c6ba9c4bceda6770be28013b6a900cf0733f240c2b68777b7407ee"
+    },
+    {
+      "family": "vm",
+      "id": "17_cffi/002_math",
+      "doc_rel": "crates/auto-lang/test/vm/17_cffi/002_math/math.case.ad",
+      "doc_sha256": "216d2ca4468dc916d58a0fcfd6762a632620934ff6f110dd84fdf3fe33b9a46a",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "f2c60b42154f00507fd49d3447b0731d5389d530ab3f0631dbff17c5a076b1c3"
+    },
+    {
+      "family": "vm",
+      "id": "17_cffi/003_string",
+      "doc_rel": "crates/auto-lang/test/vm/17_cffi/003_string/string.case.ad",
+      "doc_sha256": "6e0f93d3bc7a4c8b01b05e5c733e2cdd56e7cfb48f44a39fbbb85e4b007c6f16",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "050757db72651624fb5e8e161348fed5289ed0c8fdec95716054c412dd2fc374"
+    },
+    {
+      "family": "vm",
       "id": "17_modules/001_use_fn",
       "doc_rel": "crates/auto-lang/test/vm/17_modules/001_use_fn/use_fn.case.ad",
       "doc_sha256": "0c36dd8a372f446e27de0862ffc94c69f1fc0b863250cb1c2bb3183608770242",
@@ -13675,6 +13740,19 @@
     },
     {
       "family": "vm",
+      "id": "18_ffi/047_time_now",
+      "doc_rel": "crates/auto-lang/test/vm/18_ffi/047_time_now/time_now.case.ad",
+      "doc_sha256": "6542df75885fa8db5752576455dbb81adbff11251c6f05df967708bab6e82243",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "902211b51b332b2f7ded7f1a5a700cd0b952ed069528cb56b4a2b67794ea2713"
+    },
+    {
+      "family": "vm",
       "id": "18_ffi/048_url_encode_decode",
       "doc_rel": "crates/auto-lang/test/vm/18_ffi/048_url_encode_decode/url_encode_decode.case.ad",
       "doc_sha256": "73ea1336b3f9ac5066c7195b95e1da862a196ffca66878ba7ead5c445f7b270a",
@@ -13777,6 +13855,19 @@
       ],
       "source_kind": "at",
       "source_sha256": "86c2b772722fe9e31cbcebd17460d334a40b2a6f3b723fe11c910e25e2a5c43d"
+    },
+    {
+      "family": "vm",
+      "id": "18_ffi/055_process_args",
+      "doc_rel": "crates/auto-lang/test/vm/18_ffi/055_process_args/process_args.case.ad",
+      "doc_sha256": "12a743a75480b2e3e1fa6ad81a33714dbbef71857bd6d350e20aa7528ccfec6c",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "23b17a76c7668aa30133385daf0c2a36f31fd654cee4c71a45e68374a4b9eb30"
     },
     {
       "family": "vm",
@@ -15667,6 +15758,45 @@
       ],
       "source_kind": "at",
       "source_sha256": "435c330b2a59cc1c2658f5fb10fee7e79277a7523f3d9b0ad71c8c9a8df94136"
+    },
+    {
+      "family": "vm",
+      "id": "99_bootstrap/066_bytecode_list",
+      "doc_rel": "crates/auto-lang/test/vm/99_bootstrap/066_bytecode_list/bytecode_list.case.ad",
+      "doc_sha256": "50966acb8c09c30a2f0e9b5b3573bf56e09f1e2039c979bb496b06ae24733e82",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "2fc13b7c497e6c646ee438abd6fc4c91d028d9434d0b7c50588cc6a8dadf7e11"
+    },
+    {
+      "family": "vm",
+      "id": "99_bootstrap/067_bytecode_map",
+      "doc_rel": "crates/auto-lang/test/vm/99_bootstrap/067_bytecode_map/bytecode_map.case.ad",
+      "doc_sha256": "586545f3f4c51aca71ed8e0748378e3aacc0470a130c0ec5570507f0c5903ae5",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "f76c73bce000e4801b36f1b0ed8f40e613c6af535af1ed60227f4e25fad9e9a8"
+    },
+    {
+      "family": "vm",
+      "id": "99_bootstrap/068_bytecode_list_fn",
+      "doc_rel": "crates/auto-lang/test/vm/99_bootstrap/068_bytecode_list_fn/bytecode_list_fn.case.ad",
+      "doc_sha256": "545da1974338b6e98b32f98462fd816455451f94aab78843db01f6966c4dde3e",
+      "doc_checks": [
+        "vm-smoke"
+      ],
+      "doc_artifacts": [],
+      "roles": [],
+      "source_kind": "at",
+      "source_sha256": "4f82f13250a8580d6ac94f8ae5261ae80386fce2547aa08cdc726792fb535a86"
     },
     {
       "family": "vm",
@@ -21794,46 +21924,6 @@
     {
       "path": "crates/auto-lang/test/cookbook/web/url/005_origin/origin.case.ad",
       "sha256": "38e1ca4a918e758052c6525db625e6619d154641b36649d48de8b74ddea80ef6"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/08_strings/017_sub_semantics/sub_semantics.case.ad",
-      "sha256": "be9632c087914a67debca2c983b94a3ecec4065af93c3e55e891476b7eb36b7d"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/10_types/033_array_len_user_type/array_len_user_type.case.ad",
-      "sha256": "65dac91f9a629f1ff9f2935b4a05b0a4bf60c722b35b45f9049d043fb3400198"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/17_cffi/001_strlen/strlen.case.ad",
-      "sha256": "8fed14f1168cb2b815939f001408d6d637ebc9d9297bc6766b68667d19fa10c6"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/17_cffi/002_math/math.case.ad",
-      "sha256": "216d2ca4468dc916d58a0fcfd6762a632620934ff6f110dd84fdf3fe33b9a46a"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/17_cffi/003_string/string.case.ad",
-      "sha256": "6e0f93d3bc7a4c8b01b05e5c733e2cdd56e7cfb48f44a39fbbb85e4b007c6f16"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/18_ffi/047_time_now/time_now.case.ad",
-      "sha256": "6542df75885fa8db5752576455dbb81adbff11251c6f05df967708bab6e82243"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/18_ffi/055_process_args/process_args.case.ad",
-      "sha256": "12a743a75480b2e3e1fa6ad81a33714dbbef71857bd6d350e20aa7528ccfec6c"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/99_bootstrap/066_bytecode_list/bytecode_list.case.ad",
-      "sha256": "50966acb8c09c30a2f0e9b5b3573bf56e09f1e2039c979bb496b06ae24733e82"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/99_bootstrap/067_bytecode_map/bytecode_map.case.ad",
-      "sha256": "586545f3f4c51aca71ed8e0748378e3aacc0470a130c0ec5570507f0c5903ae5"
-    },
-    {
-      "path": "crates/auto-lang/test/vm/99_bootstrap/068_bytecode_list_fn/bytecode_list_fn.case.ad",
-      "sha256": "545da1974338b6e98b32f98462fd816455451f94aab78843db01f6966c4dde3e"
     }
   ]
 }
