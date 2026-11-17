@@ -462,13 +462,10 @@ fn execute_module_impl_with_host(
     let m = module.module();
     // PLAN-982：配置文档原语走宿主车道但既不需要 console provider，也不是
     // 平台 provider——它们要求一个**显式打开的配置会话**。
-    let needs_console = m
-        .host_imports
-        .iter()
-        .any(|h| {
-            !crate::platform_io::is_platform_symbol(&h.symbol)
-                && !crate::config_document::is_config_symbol(&h.symbol)
-        });
+    let needs_console = m.host_imports.iter().any(|h| {
+        !crate::platform_io::is_platform_symbol(&h.symbol)
+            && !crate::config_document::is_config_symbol(&h.symbol)
+    });
     let needs_platform = m
         .host_imports
         .iter()
@@ -3474,7 +3471,8 @@ fn dispatch_with_host<V: ModuleView>(
                         Some(crate::foreign_exec::ForeignCallable::ViewOutBytesToI32(_)) => {
                             if args.len() != 2 {
                                 return Some(ExecOutcome::Infra(
-                                    "foreign.arity: out-bytes view call requires (path, buf_id)".into(),
+                                    "foreign.arity: out-bytes view call requires (path, buf_id)"
+                                        .into(),
                                 ));
                             }
                             let view = match foreign_view(&frame.slots[args[0] as usize]) {
@@ -6929,9 +6927,8 @@ fn dispatch_with_host<V: ModuleView>(
                                 // `ConsoleOutput`（B-CONFIG-R F-982B-12）。
                                 return Some(ExecOutcome::Resource {
                                     kind: ResourceKind::DynTypeNodes,
-                                    message:
-                                        "configuration document primitive exceeded its budget"
-                                            .into(),
+                                    message: "configuration document primitive exceeded its budget"
+                                        .into(),
                                 });
                             }
                             Err(crate::host::HostError::Io(message)) => {

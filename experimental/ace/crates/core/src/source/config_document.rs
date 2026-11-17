@@ -535,18 +535,14 @@ fn emit_line(
             let mut then = Vec::new();
             ctx.declared = outer_declared.clone();
             ctx.locals = outer_locals.clone();
-            ctx.depth += 1;
             let then_result = emit_body(&i.then, cur, &mut then, ctx);
-            ctx.depth -= 1;
             then_result?;
             let els = match &i.els {
                 Some(e) => {
                     ctx.declared = outer_declared.clone();
                     ctx.locals = outer_locals.clone();
                     let mut stmts = Vec::new();
-                    ctx.depth += 1;
                     let else_result = emit_body(e, cur, &mut stmts, ctx);
-                    ctx.depth -= 1;
                     else_result?;
                     Some(Block {
                         stmts,
@@ -925,9 +921,7 @@ fn emit_for(
         ctx.declared = saved_declared.clone();
         ctx.locals = saved_locals.clone();
         ctx.declared.insert(f.var.name.clone());
-        ctx.depth += 1;
         let body_result = emit_body(&f.body, cur, out, ctx);
-        ctx.depth -= 1;
         body_result?;
     }
     ctx.declared = saved_declared;

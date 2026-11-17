@@ -288,6 +288,19 @@ shadowed: label
         other => panic!("the nested same-name key must survive, got {other:?}"),
     }
 
+    // 根级**分支体**里写的同名 pair 也属于"根默认值"：被覆盖时 RHS 同样不执行
+    // （B-CONFIG-R F-982B-27）。
+    let mut branch = empty_context();
+    branch.args.push(("x".to_string(), ConfigValue::I64(9)));
+    match run("if true { x: 1 / 0 }\n", &branch).outcome {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(i64_of(prop(&document, "x")), 9);
+        }
+        other => {
+            panic!("a root-level branch default must not execute when overridden, got {other:?}")
+        }
+    }
+
     // 非空证：同一文档在**没有**注入时确实被 RHS 的失败挡住（traps ⇒ 具名诊断）。
     match run(guarded, &empty_context()).outcome {
         AceConfigOutcome::Diagnostic { code, stage, .. } => {
@@ -546,37 +559,61 @@ fn p982_vcfg_identity_tracks_context() {
 #[test]
 fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
     let _g = setup();
-    const DEPTH: usize = 2000;
-    let mut src = String::from("root_obj: ");
-    for _ in 0..DEPTH {
-        src.push_str("{ a: ");
-    }
-    src.push_str("1");
-    for _ in 0..DEPTH {
-        src.push_str(" }");
-    }
-    src.push('\n');
-    let doc = match run(&src, &empty_context()).outcome {
+    // 双档（B-CONFIG-R F-982B-26）：1000 层**必须被服务且整链投影**（远高于旧的
+    // 512 硬墙、低于 MIR 校验的内存预算）；2000 层只要求"不崩"（服务或具名
+    // `VerifyMemory` 预算拒绝）。探针实测：≤1976 层可服务，1980+ 被冻结的
+    // 16 MiB 校验预算具名拒绝。
+    const SERVED: usize = 1000;
+    const DEEP: usize = 2000;
+    let served_src = nested_document(SERVED);
+    let doc = match run(&served_src, &empty_context()).outcome {
         AceConfigOutcome::Success { document, cost, .. } => {
             assert!(
-                cost.depth >= DEPTH as u64 - 1,
+                cost.depth >= SERVED as u64 - 1,
                 "cost depth: {:?}",
                 cost.depth
             );
             document
         }
-        // 2000 层也允许**具名预算拒绝**（MIR 校验的 VerifyMemory 预算）：要求是
-        // "不崩、不静默截断"，不是"必须服务"。
+        other => panic!("a {SERVED}-deep document must be served, got {other:?}"),
+    };
+    assert_eq!(
+        counted_depth(&doc),
+        SERVED,
+        "the whole {SERVED}-level chain survives the projection"
+    );
+
+    let deep_src = nested_document(DEEP);
+    match run(&deep_src, &empty_context()).outcome {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(counted_depth(&document), DEEP);
+        }
         AceConfigOutcome::Diagnostic { stage, code, .. } => {
             assert_eq!(stage, "verify");
             assert_eq!(code, "ace.config/verify");
             eprintln!("2000-deep document refused by a named verify budget (no crash)");
-            return;
         }
-        other => panic!("a {DEPTH}-deep document must not crash, got {other:?}"),
-    };
-    // 逐层往下数：投影确实保留了整条嵌套链（不是被截断/折叠）。
-    let mut value = match prop(&doc, "root_obj") {
+        other => panic!("a {DEEP}-deep document must not crash, got {other:?}"),
+    }
+}
+
+/// `{ a: { a: … 1 … } }` 形文档（depth 层嵌套对象）。
+fn nested_document(depth: usize) -> String {
+    let mut src = String::from("root_obj: ");
+    for _ in 0..depth {
+        src.push_str("{ a: ");
+    }
+    src.push('1');
+    for _ in 0..depth {
+        src.push_str(" }");
+    }
+    src.push('\n');
+    src
+}
+
+/// 数投影后 root_obj 的嵌套对象层数（末层是整数 1）。
+fn counted_depth(doc: &ConfigDocument) -> usize {
+    let mut value = match prop(doc, "root_obj") {
         Some(v) => v,
         None => panic!("root prop missing"),
     };
@@ -586,9 +623,6 @@ fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
         depth += 1;
         value = fields[0].1.clone();
     }
-    assert_eq!(
-        depth, DEPTH,
-        "the whole nesting chain survives the projection"
-    );
     assert_eq!(value, ConfigValue::I64(1));
+    depth
 }
