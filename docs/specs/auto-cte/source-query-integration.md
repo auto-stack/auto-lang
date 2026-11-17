@@ -88,9 +88,11 @@ Argument values are traversed uniformly (PLAN-1037, F26): `Pos`,
 `MovePos` and `Named` arguments carry the same value subtree, so
 discovery, the callee closure, meta selectors, substitution, site lookup
 and product backfill reach a `#{ ... }` in ANY argument position under
-the same source order, capability and key rules — a named-argument
-demand keys by its expression like its positional twin, and the label
-never changes the frozen value. A hash that no lane served remains a
+the same source order, capability and key rules. A named argument's
+LABEL and VALUE are part of its demand identity: pages frozen for
+`f(x: 3)` never answer `f(x: 4)` or `f(y: 3)`-style relabellings, while
+two identical named demands still share one frozen page (F-1037-R1). A
+hash that no lane served remains a
 named rejection (`source.cte.unserved` at the typecheck walk, or the
 capability/`source.cte.bind` refusal without the CT capability); it is
 never silently compiled.

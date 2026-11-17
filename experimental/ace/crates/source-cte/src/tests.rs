@@ -1902,6 +1902,177 @@ fn main() int {
     );
 }
 
+/// CT-01b (F-1037-R1): a named-argument demand's EXECUTION KEY carries both
+/// the argument label and its value, so two demands that differ only in
+/// named-argument content are independent — neither may answer from the
+/// other's frozen page. The control keeps the legitimate reuse: two IDENTICAL
+/// named demands still share one page.
+#[test]
+fn audit1037_ct_01b_named_argument_value_and_label_are_keyed() {
+    let started = std::time::Instant::now();
+    let caps = ct_caps();
+
+    // 1) Same label, different values, two sites of one program: 34.
+    const SAME_LABEL: &str = "\
+fn id(x int) int {
+    return x
+}
+fn main() int {
+    let a = #{ id(x: 3) }
+    let b = #{ id(x: 4) }
+    return a * 10 + b
+}
+";
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p = compile_scalar_ct(&mut svc, SAME_LABEL, "m.at", &caps, "pkg", "mod")
+        .expect("two same-label named demands compile");
+    assert_eq!(p.served.values.len(), 2, "both sites are served");
+    assert_eq!(
+        svc.counters().ct_execute,
+        2,
+        "each named value is really executed"
+    );
+    assert_eq!(
+        svc.counters().ct_hits,
+        0,
+        "no page sharing between different named values"
+    );
+    let log = svc.exec_log();
+    assert_eq!(log.len(), 2);
+    assert_ne!(
+        log[0].key_hash, log[1].key_hash,
+        "the two named demands own distinct execution keys"
+    );
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        71,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(
+        v,
+        ace_av_core::contract::Value::I32(34),
+        "each named demand reaches the AV end with its own value"
+    );
+
+    // 2) The label axis: the same two values bound to swapped parameters are
+    //    different demands (5 and -5), including across two compiles on ONE
+    //    service (where the second used to hit the first's page).
+    const SUB_AB: &str = "\
+fn sub(a int, b int) int {
+    return a-b
+}
+fn main() int {
+    return #{ sub(a: 9, b: 4) }
+}
+";
+    const SUB_BA: &str = "\
+fn sub(a int, b int) int {
+    return a-b
+}
+fn main() int {
+    return #{ sub(b: 9, a: 4) }
+}
+";
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p1 = compile_scalar_ct(&mut svc, SUB_AB, "m.at", &caps, "pkg", "mod")
+        .expect("sub(a: 9, b: 4) compiles");
+    let (v1, _) = crate::executor::run_entry_on_av(
+        &p1.checked,
+        "d_main",
+        72,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v1, ace_av_core::contract::Value::I32(5));
+    let p2 = compile_scalar_ct(&mut svc, SUB_BA, "m.at", &caps, "pkg", "mod")
+        .expect("sub(b: 9, a: 4) compiles");
+    let (v2, _) = crate::executor::run_entry_on_av(
+        &p2.checked,
+        "d_main",
+        73,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(
+        v2,
+        ace_av_core::contract::Value::I32(-5),
+        "the re-labelled demand must not reuse the first page"
+    );
+    assert_eq!(svc.counters().ct_execute, 2, "both labels executed");
+    assert_eq!(svc.counters().ct_hits, 0, "no cross-label hit");
+
+    // 3) Control: the positional twin keeps its own keys (as before).
+    const TWO_POS: &str = "\
+fn id(x int) int {
+    return x
+}
+fn main() int {
+    let a = #{ id(3) }
+    let b = #{ id(4) }
+    return a * 10 + b
+}
+";
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p = compile_scalar_ct(&mut svc, TWO_POS, "m.at", &caps, "pkg", "mod")
+        .expect("positional twin compiles");
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        74,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v, ace_av_core::contract::Value::I32(34));
+    assert_eq!(svc.counters().ct_execute, 2);
+
+    // 4) The control that keeps reuse alive: two IDENTICAL named demands
+    //    still share one frozen page (33 = 3*10+3, execute=1, hits=1).
+    const DUP_NAMED: &str = "\
+fn id(x int) int {
+    return x
+}
+fn main() int {
+    let a = #{ id(x: 3) }
+    let b = #{ id(x: 3) }
+    return a * 10 + b
+}
+";
+    let mut svc = CtService::new(MemoryEnvelopeSink::new());
+    let p = compile_scalar_ct(&mut svc, DUP_NAMED, "m.at", &caps, "pkg", "mod")
+        .expect("identical named demands compile");
+    let (v, _) = crate::executor::run_entry_on_av(
+        &p.checked,
+        "d_main",
+        75,
+        &ace_av_core::ExecLimits::default(),
+        &ace_av_core::CancelFlag::new(false),
+    )
+    .expect("AV end");
+    assert_eq!(v, ace_av_core::contract::Value::I32(33));
+    assert_eq!(
+        svc.counters().ct_execute,
+        1,
+        "an identical named demand still executes once"
+    );
+    assert_eq!(
+        svc.counters().ct_hits,
+        1,
+        "and the second one is a real page hit"
+    );
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "new case stays within 10s, took {:?}",
+        started.elapsed()
+    );
+}
+
 /// The injected publish failure: probe delegates to a REAL in-memory store
 /// (so "no readable page" is a real observation), publish records the key and
 /// returns the existing `EnvelopeError::Decode` carrier while armed.
