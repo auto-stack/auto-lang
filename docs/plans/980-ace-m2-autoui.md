@@ -1340,6 +1340,14 @@ next_responsible_role: user（B-WEB-I/V/R 勾选前置=缺席 taxonomy ①（$ev
 
 next_responsible_role: work（WEB 剩余=③双 widget 源（IF-981-MODULE 域 node 选择器）与 ④控制流/let/调用体模型（语言面体模型扩展）——多年面；⑥引号键/handler 族未收。裁定续作指令覆盖 980 域内收敛，下一切片按 ④→③ 顺序评估）。
 
+2026-11-18 stage: work+review+merge（WEB 批切片 #6n：③ node 选择器；批级复核工件重构；phase fold #11）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——④外部名面/widget 头参数表为剩余）| delivery_commit: auto-lang master / auto-ui master（本收据提交后 ff 落主）。
+
+**交付。** 语言面 `compile_component_scenario_states_at`（声明序选一编译，越界具名拒）；lane `compile_at`/`_spec_at`；`generate_sfc_with_lane` 多 widget 逐节点生成**聚合**。census #6：(75,8,4,24)→**(75,8,4,26)**。**④/⑥ 终局陈述（诊断驱动）**：④真阻塞=**外部名面**（fs.read_dir/listusers/complete 等 back.api/FFI/方法调用——纯结构扩展零语料收益）→需 use-import/foreign-contract（967/973 谱系）设计决策；⑥实查零拼接收益（全空体/PARAMS-B 受阻）；[65]/[66] 第一 widget 另缺 widget 头参数表+`;`（④子项）。
+
+**验证（冻结提交实测）。** UI ace_ts_provider **22/22**（CPU 2.9s；排窗浏览器档 24.4s）；lang `cargo t ace-source ace-av`：ace-source **PASS 851**；ace-av 1369 例 1 红=sys973 wall-budget 族（隔离串行重放绿=环境归因，台账记）。永久 case `p980_web_multi_widget_node_selector`（逐节点发射/聚合/越界负控）。探针零残留、fmt clean、双树 clean 于提交。wt-guard 双树 clean + `git merge --ff-only` 落主（无 merge commit）。
+
+next_responsible_role: user（**④外部名面设计决策**：widget 面的 use-import/foreign-contract 承载（967/973 谱系）——此为 B-WEB 全量 spliced 与 B-WEB-I/V/R 勾选的最后语言面前置；⑥零收益已闭格。980 侧无已解锁未交付项）。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
