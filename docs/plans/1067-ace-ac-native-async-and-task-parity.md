@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -174,7 +174,7 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - [x] **T-04｜work｜AC-02/03**：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。 — 2026-11-17 ✅（真PE逐字节：message_handler/mailbox_fifo FIFO、ask_reply 42、stop_hook 先投递后 stop、backpressure cap=1 三消息顺序不漏；源码为 968 原语料未改）
 - [x] **T-05｜work｜AC-03**：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 2026-11-17 ✅（真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
 - [x] **T-06｜work｜AC-01/02**：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 2026-11-17 ✅（三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
-- [ ] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。
+- [x] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。 — 2026-11-17 ✅（显式仓外输出根构建+真实进程运行+published PE 导入审计：仅 kernel32.dll、符号全在本车道 19 项声明内、变异体被具名拒绝；runtime 身份与库字节一致绑定）
 - [ ] **T-08｜work｜AC-01..04**：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。
 - [ ] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
 - [ ] **T-10｜merge｜AC-LAND**：review pass后按变化补门，Spec/源码正式合回、收据交1068/985-B，折叠证据、清scope/树/分支并核实际路径。
@@ -182,6 +182,16 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
+
+2026-11-17 stage: work | PLAN-1067 r1 round-5 | T-07 闭合（仓外候选＋依赖审计；Linux NOT_RUN 交 1063） | code `005096495`
+
+- **仓外候选**：`scheduler_candidate_runs_out_of_repo_kernel32_only` 把调度 PE 构到显式仓外根（`plan-artifacts/plan-1067/candidate-t07`，可用 `AUTO_LANG_PLAN_ARTIFACTS` 迁移，无该根时退回 target tmp 仍跑同一审计），以普通进程在该目录启动（无 cargo、无工作区 cwd），观测 `mycounter: 15\n`、exit 0、stderr 空。
+- **依赖审计（published bytes）**：新增 `SCHED_KERNEL32_IMPORTS`（19 项：CreateThread/WaitForSingleObject/CloseHandle/Tls*/SRW*+CondVar/Sleep/GetProcessHeap/HeapAlloc/HeapFree/GetStdHandle/WriteFile/ExitProcess）与 `audit_sched_pe_imports`；共享 `platform_io::audit_pe_imports` 重构为按车道传 allowlist（原冻结表不变）。断言：DLL 集合 = {kernel32.dll}、无 ordinal、每个符号都在声明表内且观察到 `CreateThread`；镜像中不出现 `msvcrt.dll`/`ucrtbase.dll`/`vcruntime*`/`api-ms-win-crt*`/`kernelbase.dll`/`bcrypt.dll`。
+- **负控**：把镜像导入 DLL 名改写成 `MSVCRT.dll`（同槽位）→ 审计必须给 `pe.audit.forbidden-dll`；断言 `err.code()` 命中，证明"仅 kernel32"是可失败的检查而非口号。
+- **支撑库身份**：重算 `sched_runtime::prepare()` 的 content hash 并与库字节对照相等（abi `mn.sched.runtime/1`），未被审计的 runtime 无法悄悄链入。
+- **Linux：NOT_RUN（不升 verified）**——本车道只为冻结 Windows triple 降 COFF/kernel32，无 Linux 分支可测；实现与完整用例按 §1/§10 由 1063 承接，Windows 证据不外推。
+- 运行：`sched_m2_1067` **15/15 PASS**（5.95s 首跑含重建，单测 0.1–2.5s）；**`cargo t ace-native case-ace-m2-scheduler-968 ace-av` 三组全 PASS**（platform_io 审计重构无回归）。
+- 阻塞：无。
 
 2026-11-17 stage: work | PLAN-1067 r1 round-4 | T-06 闭合（三端各对独立 oracle ＋ A2R 背离修复） | code `40f5c195b`
 
@@ -237,6 +247,8 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 3 | from: work | t
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 40f5c195b | next: work
 
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 005096495 | next: work
+
 ## 10. 待澄清事项
 
 原生调度的帧/等待策略及资源上限由T-01/02依据现合同先证；本次不预定私有Rust ABI、任意线程数或无穷规模。超出原语义的并发模型/平台扩面不得借本计划引入。
@@ -248,6 +260,7 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 4 | from: work | t
 | owned-text 消息/回复 | `h.send("hello")`、`reply("v42")` 由共享前端具名拒绝 `source.sched-argument`（内建签名要 owned `Str`，表面只产 borrowed view） | 1068/T-02（共享前端）：在 scheduler 参数投影处插入 `text_to_owned`；关闭时须改 `scheduler_owned_text_message_and_reply_stay_named_rejections` 边界钉并补 native+AV 正例 |
 | `platform.*` / 真 OS timer | 本车道准入具名拒绝（`native.sched-platform`）；`sleep` 已走真实 OS 等待 | 本包 T-05 |
 | 外部取消源 | T-05 已闭内部终止语义：未发布 future 三端具名终止、stop 后不复活、drain 期 sleep/await 立即返回；但**无进程外取消源**（如宿主取消句柄/超时中断一个在跑任务） | 本包 T-07（仓外候选/宿主接面）或后续宿主计划；关闭条件＝真实宿主取消入口 + 迟到结果不复活反例 |
-| owned-text 循环内临时 | 循环体第二次迭代重建文本临时不逐次释放（退出 sweep 只释放最后一次写） | 共享 owned-text native 降层（774/870）；关闭条件＝逐次释放/槽复用纪律＋≥2 迭代 text ledger 归零反控（本包已用 exit-72 审计捕获） |
+| Linux 调度腿 | 本车道只为冻结 Windows triple 降 COFF/kernel32；无 Linux 分支与用例 | 1063（Linux 延期验证）：写 Linux 实现（pthread/OS 等待或等价的受检原语）＋原完整用例后再验；**不得用 Windows 证据升 Linux verified**，当前一律 NOT_RUN |
+| owned-text 循环内临时 | 循环体第二次迭代重建文本临时不逐次释放（退出 sweep 只释放最后一次写）；本车道 drain 审计以 exit 72 捕获 | 共享 owned-text native 降层（774/870）；关闭条件＝逐次释放/槽复用纪律＋≥2 迭代后 text ledger 归零反控 |
 
 日常等价实现选择由T-01/02有界调查决定，不为已授权方向重复申请确认。未提供平台环境保持NOT_RUN；计划结构检查不能代实际运行证据。
