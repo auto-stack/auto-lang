@@ -10917,12 +10917,14 @@
       "family": "vm",
       "id": "08_strings/017_sub_semantics",
       "doc_rel": "crates/auto-lang/test/vm/08_strings/017_sub_semantics/sub_semantics.case.ad",
-      "doc_sha256": "be9632c087914a67debca2c983b94a3ecec4065af93c3e55e891476b7eb36b7d",
+      "doc_sha256": "d574a7e4b19c7b0a9424871e07efecac01eaf70a8f8b7e99f6fdd5087d68e6d3",
       "doc_checks": [
-        "vm-smoke"
+        "vm-stdout"
       ],
       "doc_artifacts": [],
-      "roles": [],
+      "roles": [
+        "out"
+      ],
       "source_kind": "at",
       "source_sha256": "56fd6a70f80ed392c6101f48b133922ba9b321ccb2eee0fda389d284f365d695"
     },
@@ -17812,7 +17814,7 @@
     },
     "08_strings/017_sub_semantics": {
       "is_script": false,
-      "stdout": false,
+      "stdout": true,
       "result": false,
       "error": false
     },

@@ -478,8 +478,6 @@ fn plan1066_b_c_header_axis_declared_vs_zero_byte_role() {
 /// separate consumer, never the VM comparison).
 #[test]
 fn plan1066_b_family_artifact_vocabulary_is_not_crossed() {
-    let temp = tempfile::tempdir().expect("temp root");
-    let root = temp.path();
     let mut offenders = Vec::new();
     let mut counts = std::collections::BTreeMap::new();
 
@@ -554,7 +552,6 @@ fn plan1066_b_family_artifact_vocabulary_is_not_crossed() {
         offenders.is_empty(),
         "crossed artifact vocabularies: {offenders:?}"
     );
-    let _ = temp;
 }
 
 /// NC-23: the E78 boundary is a SET/KEY fact, not a count. Every document under
@@ -1035,12 +1032,16 @@ fn plan1066_b_no_author_tree_writes_in_corpus_wrappers() {
 
 /// T-09 classified sidecar-read audit.
 ///
-/// The migration closed the ACTIVE sidecar readers (T-03[B] entry/discovery,
-/// T-07 bypasses, T-08 inventories, T-09 HTTP wrappers). What remains is named
-/// here with its reason, so the set cannot silently grow: a sidecar read in any
-/// file outside this list fails by file name, which forces the increment into a
-/// Plan instead of a quiet regression to retired payloads. An injected reader
-/// (negative control) must be detected.
+/// The migration closed the ACTIVE sidecar readers of the five N roots
+/// (T-03[B] entry/discovery, T-07 bypasses, T-08 inventories, T-09 HTTP
+/// wrappers). What remains — the migration-comparison baseline, a doc↔sidecar
+/// parity control, the AAVM experiment, the external book repo, the adjacent
+/// `ffi_dep`/`a2gd`/`a2j`/`tscn` corpora and the `a2r-actor-tests` consumer — is
+/// named here with its reason. The audit is a **file-level allowlist with a
+/// ±2-line read window**: a sidecar read in an unlisted file fails, and a new
+/// needle family must be added deliberately. It does not prove that a named
+/// file's readers are all frozen-history code, hence AC-07 is stated as "no
+/// unnamed active reader in the five N roots", not "the set can never grow".
 #[test]
 fn plan1066_b_remaining_sidecar_readers_are_named() {
     // file suffix -> why this sidecar read is allowed
@@ -1073,6 +1074,18 @@ fn plan1066_b_remaining_sidecar_readers_are_named() {
             "a2r-actor-tests/tests/actor_parity.rs",
             "external consumer of a2r/22_actors goldens (named in the plan's P/M scope)",
         ),
+        (
+            "auto-lang-core/src/trans/gdscript.rs",
+            "adjacent a2gd family corpus (outside the five N roots; not migrated by PLAN-1062) — named boundary",
+        ),
+        (
+            "auto-lang-core/src/trans/javascript.rs",
+            "adjacent a2j family corpus (outside the five N roots; not migrated by PLAN-1062) — named boundary",
+        ),
+        (
+            "auto-lang-core/src/trans/tscn.rs",
+            "adjacent a2gd/tscn family corpus (outside the five N roots; not migrated by PLAN-1062) — named boundary",
+        ),
     ];
     let sidecar = [
         ".expected.out\"",
@@ -1082,6 +1095,11 @@ fn plan1066_b_remaining_sidecar_readers_are_named() {
         ".expected.h\"",
         ".expected.ts\"",
         ".expected.error\"",
+        // F-1066B-R4: the adjacent transpiler corpora (not the five N roots)
+        // read their own goldens; their readers must be named too.
+        ".expected.gd\"",
+        ".expected.js\"",
+        ".expected.tscn\"",
         "expected_output.txt\"",
         "input.at\"",
     ];
@@ -1123,6 +1141,7 @@ fn plan1066_b_remaining_sidecar_readers_are_named() {
                 if !read_call.iter().any(|needle| window.contains(needle)) {
                     continue;
                 }
+
                 let relative = path.to_string_lossy().replace('\\', "/");
                 let Some((_, reason)) = ALLOWED
                     .iter()
@@ -1141,6 +1160,27 @@ fn plan1066_b_remaining_sidecar_readers_are_named() {
         "sidecar-read audit saw only {} allowed sites — the walk broke",
         seen.len()
     );
+    // F-1066B-R4: the adjacent transpiler corpora are NOT in the five N roots,
+    // so a path constructed far from its read call can slip past the window
+    // scan. They are checked explicitly: each must still read its own golden
+    // and each must be named in the allowlist above.
+    for (required, golden) in [
+        ("auto-lang-core/src/trans/gdscript.rs", ".expected.gd"),
+        ("auto-lang-core/src/trans/javascript.rs", ".expected.js"),
+        ("auto-lang-core/src/trans/tscn.rs", ".expected.tscn"),
+    ] {
+        let path = repo_root.join("crates").join(required);
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        assert!(
+            text.contains(golden) && text.contains("read_to_string"),
+            "{required} no longer reads {golden}: update the named boundary"
+        );
+        assert!(
+            ALLOWED.iter().any(|(suffix, _)| required.ends_with(suffix)),
+            "{required} reads a sidecar but is not named in the allowlist"
+        );
+    }
     // negative control: an injected reader in an unlisted file is detected
     let injected = "fn x() {\n    let s = std::fs::read_to_string(dir.join(format!(\"{}.expected.out\", name)))\n;\n}\n";
     let injected_hit = injected

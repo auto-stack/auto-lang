@@ -15,7 +15,6 @@
 
 use crate::error::AutoResult;
 use crate::run_autovm_capture;
-use std::fs::read_to_string;
 use std::path::PathBuf;
 
 fn conformance_dir() -> PathBuf {

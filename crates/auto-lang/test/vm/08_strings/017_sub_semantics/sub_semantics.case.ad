@@ -18,4 +18,15 @@ print("hello".substr(4, 99))
 ```
 
 ### VM result
-check-id: "vm-smoke"
+check-id: "vm-stdout"
+
+From the frozen `017_sub_semantics.expected.result` bytes (five printed lines;
+the file name says `.result` but the payload is the stdout channel).
+
+```text
+el
+ell
+el
+
+o
+```

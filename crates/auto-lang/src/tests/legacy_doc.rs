@@ -31,7 +31,8 @@ pub fn load_document(doc_path: &Path) -> Result<LegacyDoc, String> {
     let bytes = std::fs::read(doc_path)
         .map_err(|e| format!("legacy doc {} missing/unreadable: {e} (migration doc required; sidecar fallback is forbidden)", doc_path.display()))?;
     let text = std::str::from_utf8(&bytes).map_err(|e| format!("{}: {e}", doc_path.display()))?;
-    let doc = CaseDocument::parse(text.as_bytes()).map_err(|e| format!("{}: {e}", doc_path.display()))?;
+    let doc =
+        CaseDocument::parse(text.as_bytes()).map_err(|e| format!("{}: {e}", doc_path.display()))?;
     let rel = doc_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -45,7 +46,9 @@ pub fn load_document(doc_path: &Path) -> Result<LegacyDoc, String> {
             cases.len()
         ));
     }
-    Ok(LegacyDoc { case: cases.remove(0) })
+    Ok(LegacyDoc {
+        case: cases.remove(0),
+    })
 }
 
 impl LegacyDoc {
@@ -78,7 +81,11 @@ impl LegacyDoc {
 
     /// First text-channel expectation (VM result stream).
     pub fn result_text(&self) -> Option<&str> {
-        self.case.spec.checks.first().and_then(|c| c.expect.result.as_ref().map(|r| r.text.as_str()))
+        self.case
+            .spec
+            .checks
+            .first()
+            .and_then(|c| c.expect.result.as_ref().map(|r| r.text.as_str()))
     }
 
     /// PLAN-1066 T-03[B]: one named check's result text, when declared.
@@ -90,11 +97,6 @@ impl LegacyDoc {
             .find(|c| c.id == check_id)
             .and_then(|c| c.expect.result.as_ref())
             .map(|r| r.text.as_str())
-    }
-
-    /// Does the document declare a check with this id?
-    pub fn has_check(&self, check_id: &str) -> bool {
-        self.case.spec.checks.iter().any(|c| c.id == check_id)
     }
 
     /// The document's declared virtual source path (`sort_int.at`).

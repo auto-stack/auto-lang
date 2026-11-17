@@ -773,63 +773,6 @@ fn derive_p_projects() -> Result<PProjects, String> {
     })
 }
 
-/// Ordered scan over the CLEAN body: `contains_key("§N§")` → exists,
-/// `result["§N§"]` sets the current product, `.contains("§N§")` → contains.
-fn parse_project_assertions(
-    test: &str,
-    body: &str,
-    literals: &[String],
-) -> Result<Vec<PAssertion>, String> {
-    let mut out = Vec::new();
-    let mut current_product = String::new();
-    let chars: Vec<char> = body.chars().collect();
-    let starts_with = |i: usize, pat: &str| -> bool {
-        chars[i..].starts_with(&pat.chars().collect::<Vec<_>>()[..])
-    };
-    let mut i = 0usize;
-    while i < chars.len() {
-        if starts_with(i, "contains_key(") {
-            i += "contains_key(".len();
-            if let Some((lit, next)) = marker_at(&chars, i, literals) {
-                out.push(PAssertion {
-                    id: format!("{test}#{}", out.len() + 1),
-                    test: test.to_string(),
-                    product: lit.clone(),
-                    kind: "exists".into(),
-                    literal: None,
-                });
-                current_product = lit;
-                i = next;
-                continue;
-            }
-        } else if starts_with(i, "result[") {
-            i += "result[".len();
-            if let Some((lit, next)) = marker_at(&chars, i, literals) {
-                current_product = lit;
-                i = next;
-                continue;
-            }
-        } else if starts_with(i, ".contains(") {
-            i += ".contains(".len();
-            if let Some((lit, next)) = marker_at(&chars, i, literals) {
-                if !current_product.is_empty() {
-                    out.push(PAssertion {
-                        id: format!("{test}#{}", out.len() + 1),
-                        test: test.to_string(),
-                        product: current_product.clone(),
-                        kind: "contains".into(),
-                        literal: Some(lit),
-                    });
-                }
-                i = next;
-                continue;
-            }
-        }
-        i += 1;
-    }
-    Ok(out)
-}
-
 /// P compile domain: the un-ignored 250-input rustc gate, its known-broken
 /// ledger, the three ignored M guards and their six golden products.
 fn derive_p_compile() -> Result<PCompile, String> {
