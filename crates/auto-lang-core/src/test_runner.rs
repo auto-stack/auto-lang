@@ -267,12 +267,12 @@ fn legacy_vm_selection(
     } else {
         return None;
     };
-    let expected_out = Some(case_path.join(format!("{stem}.expected.out")))
-        .filter(|p: &PathBuf| p.is_file());
-    let expected_result = Some(case_path.join(format!("{stem}.expected.result")))
-        .filter(|p: &PathBuf| p.is_file());
-    let expected_error = Some(case_path.join(format!("{stem}.expected.error")))
-        .filter(|p: &PathBuf| p.is_file());
+    let expected_out =
+        Some(case_path.join(format!("{stem}.expected.out"))).filter(|p: &PathBuf| p.is_file());
+    let expected_result =
+        Some(case_path.join(format!("{stem}.expected.result"))).filter(|p: &PathBuf| p.is_file());
+    let expected_error =
+        Some(case_path.join(format!("{stem}.expected.error"))).filter(|p: &PathBuf| p.is_file());
     if expected_out.is_none() && expected_result.is_none() && expected_error.is_none() {
         return None;
     }
@@ -359,8 +359,7 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
                     // PLAN-1066 T-03[B]: the document decides selection and
                     // the oracle channels; a doc-only tree still discovers.
                     let facts = entry_doc_facts(&case_path, &stem, "vm");
-                    let (source_file, expected_out, expected_result, expected_error) = match facts
-                    {
+                    let (source_file, expected_out, expected_result, expected_error) = match facts {
                         Ok(Some(facts)) => (
                             case_path.join(&facts.source_path),
                             facts
@@ -462,16 +461,12 @@ pub fn discover_a2r_tests(test_dir: &Path, suite_name: &str) -> Vec<A2rTestCase>
                     let (source_file, expected_file) =
                         match entry_doc_facts(&case_path, &stem, "a2r") {
                             Ok(Some(facts)) => {
-                                let artifact = facts
-                                    .artifacts
-                                    .iter()
-                                    .find(|p| p.ends_with(".rs"))
-                                    .cloned();
+                                let artifact =
+                                    facts.artifacts.iter().find(|p| p.ends_with(".rs")).cloned();
                                 match artifact {
-                                    Some(path) => (
-                                        case_path.join(&facts.source_path),
-                                        case_path.join(path),
-                                    ),
+                                    Some(path) => {
+                                        (case_path.join(&facts.source_path), case_path.join(path))
+                                    }
                                     None => match legacy_a2r_selection(&case_path, &stem) {
                                         Some(entry) => entry,
                                         None => continue,
@@ -576,9 +571,9 @@ pub fn discover_a2c_tests(test_dir: &Path) -> Vec<A2cTestCase> {
                                             .unwrap_or_else(|| {
                                                 case_path.join(format!("{stem}.expected.h"))
                                             }),
-                                        facts
-                                            .has_check("a2c-error")
-                                            .then(|| case_path.join(format!("{stem}.expected.error.log"))),
+                                        facts.has_check("a2c-error").then(|| {
+                                            case_path.join(format!("{stem}.expected.error.log"))
+                                        }),
                                     ),
                                     None => match legacy_a2c_selection(&case_path, &stem) {
                                         Some(entry) => entry,
@@ -668,16 +663,12 @@ pub fn discover_a2ts_tests(test_dir: &Path) -> Vec<A2tsTestCase> {
                     let (source_file, expected_file) =
                         match entry_doc_facts(&case_path, &stem, "a2ts") {
                             Ok(Some(facts)) => {
-                                let artifact = facts
-                                    .artifacts
-                                    .iter()
-                                    .find(|p| p.ends_with(".ts"))
-                                    .cloned();
+                                let artifact =
+                                    facts.artifacts.iter().find(|p| p.ends_with(".ts")).cloned();
                                 match artifact {
-                                    Some(path) => (
-                                        case_path.join(&facts.source_path),
-                                        case_path.join(path),
-                                    ),
+                                    Some(path) => {
+                                        (case_path.join(&facts.source_path), case_path.join(path))
+                                    }
                                     None => match legacy_a2ts_selection(&case_path, &stem) {
                                         Some(entry) => entry,
                                         None => continue,

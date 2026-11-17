@@ -724,12 +724,15 @@ fn derive_p_projects() -> Result<PProjects, String> {
     // per product, `exists` first and then every `contains` in order.
     let mut assertions = Vec::new();
     for (test, relative) in [
-        ("test_14_modules_005_multi_file", "14_modules/005_multi_file"),
+        (
+            "test_14_modules_005_multi_file",
+            "14_modules/005_multi_file",
+        ),
         ("test_16_interop_021_path_dep", "16_interop/021_path_dep"),
     ] {
-        let doc = crate::tests::legacy_doc::load_document(
-            &root_join(&format!("{base}/{relative}/main.project.case.ad")),
-        )?;
+        let doc = crate::tests::legacy_doc::load_document(&root_join(&format!(
+            "{base}/{relative}/main.project.case.ad"
+        )))?;
         let check = doc
             .case
             .spec

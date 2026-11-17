@@ -93,9 +93,7 @@ impl<'ast> Visit<'ast> for Calls<'_> {
                     ));
                     return;
                 }
-                super::super::execution_trace::cookbook_doc_identity(
-                    &directory, &args[0], &args[1],
-                )
+                super::super::execution_trace::cookbook_doc_identity(&directory, &args[0], &args[1])
             } else if name == "test_a2r_expect_error" && args.len() == 2 {
                 super::super::execution_trace::legacy_error_identity(
                     self.manifest.to_str().unwrap(),

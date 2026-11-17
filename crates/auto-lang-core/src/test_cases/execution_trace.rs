@@ -289,11 +289,18 @@ pub fn cookbook_doc_identity(
         .collect();
     documents.sort();
     let doc_path = documents.first().cloned().unwrap_or_else(|| {
-        case_dir.join(format!("{}.case.ad", name.rsplit('_').next().unwrap_or(name)))
+        case_dir.join(format!(
+            "{}.case.ad",
+            name.rsplit('_').next().unwrap_or(name)
+        ))
     });
     let stem = doc_path
         .file_name()
-        .map(|file| file.to_string_lossy().trim_end_matches(".case.ad").to_string())
+        .map(|file| {
+            file.to_string_lossy()
+                .trim_end_matches(".case.ad")
+                .to_string()
+        })
         .unwrap_or_default();
     let declares_oracle = crate::legacy_doc_for_trans::load_case(case_dir, &stem)
         .ok()

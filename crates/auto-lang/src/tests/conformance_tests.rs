@@ -191,7 +191,10 @@ fn admit_proposal_scope(requested: &str) -> Result<std::path::PathBuf, String> {
     }
     if absolute.exists() {
         if !absolute.is_dir() {
-            return Err(format!("proposal scope {} is not a directory", absolute.display()));
+            return Err(format!(
+                "proposal scope {} is not a directory",
+                absolute.display()
+            ));
         }
         let empty = std::fs::read_dir(&absolute)
             .map_err(|e| format!("scope: {e}"))?
@@ -281,7 +284,11 @@ fn plan1066_conformance_proposal_admission_controls() {
     // the closed set is exactly 30 unique cases and does not admit a
     // verification-only case
     let unique: std::collections::BTreeSet<&str> = PROPOSAL_CLOSED_SET.into_iter().collect();
-    assert_eq!(unique.len(), PROPOSAL_CLOSED_SET.len(), "duplicate closed-set entry");
+    assert_eq!(
+        unique.len(),
+        PROPOSAL_CLOSED_SET.len(),
+        "duplicate closed-set entry"
+    );
     assert_eq!(PROPOSAL_CLOSED_SET.len(), 30, "closed set lost entries");
     assert!(
         !PROPOSAL_CLOSED_SET.contains(&"040_while_basic"),
@@ -312,7 +319,10 @@ fn plan1066_conformance_proposal_admission_controls() {
         .collect();
     assert_eq!(
         frozen,
-        PROPOSAL_CLOSED_SET.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        PROPOSAL_CLOSED_SET
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
         "proposal closed set drifted from the frozen denominator"
     );
 
@@ -320,7 +330,9 @@ fn plan1066_conformance_proposal_admission_controls() {
     // its writes go through the diagnostic scope only.
     let source = include_str!("conformance_tests.rs");
     // rfind: this control itself contains the literal search key.
-    let bootstrap_at = source.rfind("fn conformance_bootstrap()").expect("bootstrap");
+    let bootstrap_at = source
+        .rfind("fn conformance_bootstrap()")
+        .expect("bootstrap");
     let attributes = source[..bootstrap_at]
         .lines()
         .rev()
@@ -334,7 +346,9 @@ fn plan1066_conformance_proposal_admission_controls() {
         ignore_line.contains("proposal"),
         "the ignore reason must name the explicit proposal flow: {ignore_line}"
     );
-    let generate_at = source.find("fn generate_expected(").expect("generate_expected");
+    let generate_at = source
+        .find("fn generate_expected(")
+        .expect("generate_expected");
     let generate_body = &source[generate_at..generate_at + 1200];
     assert!(
         generate_body.contains("write_scoped"),

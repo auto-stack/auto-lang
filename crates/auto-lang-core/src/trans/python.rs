@@ -2708,10 +2708,7 @@ mod tests {
             // PLAN-1066 T-09/NC-25: scoped diagnostic, never an author-tree
             // sibling (the `..` path also escaped this crate).
             let _ = &d;
-            crate::diag_scope::write_scoped(
-                &format!("test/a2p/{case}/{name}.wrong.py"),
-                py_code,
-            )?;
+            crate::diag_scope::write_scoped(&format!("test/a2p/{case}/{name}.wrong.py"), py_code)?;
         }
 
         assert_eq!(String::from_utf8_lossy(py_code), expected);

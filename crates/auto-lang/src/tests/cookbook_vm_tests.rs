@@ -87,9 +87,7 @@ pub(crate) fn run_cookbook_case(
         .map(|t| t.to_string());
     let trace = if emit_trace {
         crate::test_cases::execution_trace::Invocation::start(|| {
-            crate::test_cases::execution_trace::cookbook_doc_identity(
-                &case_dir, category, name,
-            )
+            crate::test_cases::execution_trace::cookbook_doc_identity(&case_dir, category, name)
         })
     } else {
         None

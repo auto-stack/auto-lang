@@ -53,11 +53,8 @@ fn assert_golden(case_dir: &str) {
         // PLAN-1066 T-07[B]/NC-25: the dump is a scoped diagnostic, never a
         // sibling file in the author tree.
         let _ = d;
-        crate::tests::diag_scope::write_scoped(
-            &format!("{case_dir}/{name}.wrong.rs"),
-            &rs,
-        )
-        .expect("scoped diagnostic");
+        crate::tests::diag_scope::write_scoped(&format!("{case_dir}/{name}.wrong.rs"), &rs)
+            .expect("scoped diagnostic");
         panic!("golden mismatch for {case_dir}");
     }
 }

@@ -278,7 +278,14 @@ class FixedGroups(unittest.TestCase):
 
     def test_ace_set_is_explicit_and_separate_from_daily(self):
         selected = fixed.select(['ace'], self.value, self.groups)
-        self.assertEqual([g['name'] for g in selected], ['ace-workspace', 'ace-adapters', 'ace-batch'])
+        # PLAN-1066 T-11 cross-plan correction: PLAN-969 (278b91204) added
+        # `ace-facade` to the explicit `ace` set but not to this assertion, so
+        # infra-fixed has been red on master since then. The set's intent is
+        # unchanged (explicit ACE members, never part of the daily set).
+        self.assertEqual(
+            [g['name'] for g in selected],
+            ['ace-workspace', 'ace-adapters', 'ace-batch', 'ace-facade'],
+        )
         self.assertEqual(selected[0]['workspace'], 'experimental/ace')
         batch = fixed.invocations([selected[2]])[0]
         argv = fixed.nextest_args(batch)

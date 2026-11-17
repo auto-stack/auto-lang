@@ -761,10 +761,7 @@ mod tests {
             // PLAN-1066 T-09/NC-25: scoped diagnostic, never an author-tree
             // sibling (the `..` path also escaped this crate).
             let _ = &d;
-            crate::diag_scope::write_scoped(
-                &format!("test/a2j/{case}/{name}.wrong.js"),
-                js_code,
-            )?;
+            crate::diag_scope::write_scoped(&format!("test/a2j/{case}/{name}.wrong.js"), js_code)?;
             panic!("Output differs from expected (diagnostic went to the scope)");
         }
 

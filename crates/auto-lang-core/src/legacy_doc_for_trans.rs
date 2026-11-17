@@ -83,7 +83,12 @@ impl LegacyDoc {
 
     /// Every check id declared by the document, in document order.
     pub fn check_ids(&self) -> Vec<&str> {
-        self.case.spec.checks.iter().map(|c| c.id.as_str()).collect()
+        self.case
+            .spec
+            .checks
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect()
     }
 
     pub fn has_check(&self, id: &str) -> bool {
@@ -140,7 +145,11 @@ impl DocFacts {
             source_path: doc.source_path().to_string(),
             is_script: doc.source_is_script(),
             checks: doc.check_ids().into_iter().map(|s| s.to_string()).collect(),
-            artifacts: doc.artifact_paths().into_iter().map(|s| s.to_string()).collect(),
+            artifacts: doc
+                .artifact_paths()
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 
