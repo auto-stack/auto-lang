@@ -55,17 +55,33 @@ fn p982_pac_corpus_ace_coverage() {
         // 严格口径：**不注入**上下文，ACE 与 legacy 的投影必须逐字相等。
         // （模板仓文档的 `${name}` 在无注入时 ACE 具名拒、legacy 留字面文本，
         //  这是已知且故意的分歧，另计在 `templates` 计数里。）
+        // PLAN-982（round 113）：**模板族按产品口径注入 `name`**（产品的
+        // `Templates::copy` 就以 `name` 注入求值）。路径分隔符在 Windows 上是
+        // `\`，必须归一化后再判断——round 112 就是漏了这一步而误判"注入无效"。
+        let normalized = rel.replace('\\', "/");
+        let injected = {
+            let mut args = Obj::new();
+            if normalized.contains("templates/") {
+                args.set("name", auto_val::Value::from("probe"));
+            }
+            args
+        };
         let ace =
-            AutoConfig::from_code_with_engine(src.as_str(), &Obj::new(), ConfigEngineChoice::AceAv);
+            AutoConfig::from_code_with_engine(src.as_str(), &injected, ConfigEngineChoice::AceAv);
         let legacy = AutoConfig::from_code_with_engine(
             src.as_str(),
-            &Obj::new(),
+            &injected,
             ConfigEngineChoice::LegacyVm,
         );
         match (ace, legacy) {
             (Ok(_), Err(_)) => skipped_bad += 1,
             (Ok(ace_cfg), Ok(legacy_cfg)) => {
                 ok += 1;
+                // 模板族是**带注入**求值的：legacy 保留 `${name}` 字面、ACE 做替换，
+                // 这是**已知且故意**的分歧，不计入严格 diff（round 111/113）。
+                if normalized.contains("templates/") {
+                    continue;
+                }
                 if ace_cfg.root != legacy_cfg.root {
                     diff.push((
                         rel.clone(),
