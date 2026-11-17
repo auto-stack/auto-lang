@@ -4775,3 +4775,10 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 归属：PLAN-1066 T-08 治理 v2（input_inventory owner）。
 - 关闭条件：改为按文档重算（或改为比对 inventory 工具输出的文档 hash 而非 sidecar 字节），并接回一个明确门；或正式退役该函数并在 README 记明理由。
 - 状态：open（不阻塞 T-06/T-08 身份切片；T-11 联合门前处置）。
+
+## D-1066-BOOK-GENERATOR — 外仓 book 列表的生成器仍在日常组注册（2026-11-17 PLAN-1066 T-07 work 登记）
+
+- 现象：`crates/auto-lang/src/tests/book_listing_tests.rs::generate_book_expected` 未加 `#[ignore]`，每次 `cargo t corpus` 都会重写外仓 `../../../book/rust/listings/**/main.expected.rs`（同文件另有 `main.wrong.rs` 落该外仓）。
+- 归属：book listing 线（外仓 book 的作者产物）。PLAN-1066 边界明确「外仓 book/UI/Man/auto-term 不因本计划全转文档」，故本计划不改该生成器语义；其"日常验证不应有作者写入副作用"的义务由该 owner 承接。
+- 关闭条件：生成器降为显式作者入口（`#[ignore]`/独立命令）且日常组零写入；或证明 book 仓侧接受该日常覆写并有对应守卫。
+- 状态：open（不阻塞 1066；批量回归继续具名记录）。
