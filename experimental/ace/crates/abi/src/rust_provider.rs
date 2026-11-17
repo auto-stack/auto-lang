@@ -892,7 +892,15 @@ pub fn open_assembled_rs_provider_session(
             layer.kind.label()
         ));
     }
-    let build = build_source(&root.join("asm-build"), &layer.source)?;
+    // PLAN-985 MIX-07: an assembled provider may carry REAL pinned
+    // dependencies (its own `dep` annotations) — route dep-carrying
+    // sources through the real-dependency cargo builder; dep-free ones
+    // keep the plain rustc path.
+    let build = if provider_deps(&layer.source).is_empty() {
+        build_source(&root.join("asm-build"), &layer.source)?
+    } else {
+        build_cargo_provider(&root.join("asm-build"), &layer.source)?
+    };
     let session = open_session_from_build(&build, generation)?;
     Ok((session, input.source.clone()))
 }

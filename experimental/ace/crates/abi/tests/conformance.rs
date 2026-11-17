@@ -53,3 +53,6 @@ mod wide_bridge;
 mod plan980_f0_cache;
 #[path = "cases/out_frame_1064.rs"]
 mod out_frame_1064;
+
+#[path = "cases/f0_t16_mix07.rs"]
+mod f0_t16_mix07;
