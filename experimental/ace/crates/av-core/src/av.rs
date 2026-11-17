@@ -881,12 +881,156 @@ pub struct PausedRun {
     at_call_boundary: bool,
 }
 
+/// PLAN-971 B (T-02): one frame's source-level debug position — the
+/// function symbol, the owning module identity and the ORIGINAL-source span
+/// of the instruction the frame is paused before.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DebugPosition {
+    pub function: String,
+    pub module: String,
+    pub span: Option<SpanInfo>,
+    /// True when the frame is paused before the function's FIRST instruction
+    /// (a function-entry breakpoint matches exactly here, not on every
+    /// instruction of the body).
+    pub at_function_entry: bool,
+}
+
+/// PLAN-971 B (T-02): one local slot of a paused frame (the value is the
+/// executor's own rendering — a handle/aggregate is named, never silently
+/// coerced). `name` is the MIR slot name when the executing generation
+/// carries one; the ABC wire does not serialize slot names, so a host that
+/// needs source-level names supplies them from its lowering facts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DebugLocal {
+    pub slot: u32,
+    pub name: Option<String>,
+    pub value: String,
+}
+
+/// PLAN-971 B (T-02): one frame of the paused call stack, outermost first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DebugFrame {
+    pub function: String,
+    pub module: String,
+    pub span: Option<SpanInfo>,
+    pub locals: Vec<DebugLocal>,
+}
+
+/// PLAN-971 B (T-02): the debug view of one paused chain — its call stack
+/// and the cumulative step count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DebugSnapshot {
+    pub frames: Vec<DebugFrame>,
+    pub steps: u64,
+}
+
+/// Bound the rendered local text so a huge aggregate cannot balloon the
+/// debug view; the truncation is explicit (never a silent empty value).
+fn render_debug_value(value: &Value) -> String {
+    const LIMIT: usize = 96;
+    let text = format!("{value:?}");
+    if text.len() <= LIMIT {
+        text
+    } else {
+        format!("{}…", &text[..LIMIT])
+    }
+}
+
 impl PausedRun {
     /// Cumulative guest instruction steps executed so far across all
     /// segments of this chain (B2-C04 observability: a zero-budget
     /// resume must not move it).
     pub fn step_count(&self) -> u64 {
         self.state.steps
+    }
+
+    /// PLAN-971 B (T-02): the source-level position of the instruction the
+    /// chain is paused BEFORE (innermost frame) — the producer's own
+    /// per-instruction span table of the ORIGINAL module source, never a
+    /// legacy AST position. `None` means the paused frame has no span entry
+    /// (a synthesized or span-less instruction).
+    pub fn debug_position(&self) -> Option<DebugPosition> {
+        let fr = self.state.frames.last()?;
+        let code = self.prog.code().get(fr.func as usize)?;
+        let m = code.unit().module();
+        let f = m.funcs.first()?;
+        let flat = f.block_base(fr.block) + fr.ip as u32;
+        let span = f
+            .spans
+            .iter()
+            .rev()
+            .find(|(instr, _)| *instr <= flat)
+            .map(|(_, span)| *span);
+        Some(DebugPosition {
+            function: f.name.clone(),
+            module: m.owner.module.clone(),
+            span,
+            at_function_entry: fr.ip == 0 && fr.block == f.entry,
+        })
+    }
+
+    /// The number of live guest frames (1 = outermost only). Cheap accessor
+    /// for debugger step-over/step-out depth tracking.
+    pub fn frame_depth(&self) -> usize {
+        self.state.frames.len()
+    }
+
+    /// PLAN-971 B (T-02): the full debug view of the paused chain — the
+    /// call stack (outermost first, matching a source-level "call stack")
+    /// and each frame's current original-source span and named locals.
+    /// Reads the admitted code objects' span/slot tables and the live frame
+    /// slots; nothing is re-executed and no legacy engine is consulted.
+    pub fn debug_snapshot(&self) -> DebugSnapshot {
+        let mut frames = Vec::with_capacity(self.state.frames.len());
+        for fr in &self.state.frames {
+            let Some(code) = self.prog.code().get(fr.func as usize) else {
+                frames.push(DebugFrame {
+                    function: format!("<missing code #{}>", fr.func),
+                    module: String::new(),
+                    span: None,
+                    locals: Vec::new(),
+                });
+                continue;
+            };
+            let m = code.unit().module();
+            let f = m.funcs.first();
+            let function = f
+                .map(|f| f.name.clone())
+                .unwrap_or_else(|| code.name().to_string());
+            let module = m.owner.module.clone();
+            let (span, locals) = match f {
+                Some(f) => {
+                    let flat = f.block_base(fr.block) + fr.ip as u32;
+                    let span = f
+                        .spans
+                        .iter()
+                        .rev()
+                        .find(|(instr, _)| *instr <= flat)
+                        .map(|(_, span)| *span);
+                    let mut locals = Vec::new();
+                    for (i, slot) in f.slots.iter().enumerate() {
+                        let Some(value) = fr.slots.get(i) else { continue };
+                        locals.push(DebugLocal {
+                            slot: i as u32,
+                            name: slot.name.clone(),
+                            value: render_debug_value(value),
+                        });
+                    }
+                    (span, locals)
+                }
+                None => (None, Vec::new()),
+            };
+            frames.push(DebugFrame {
+                function,
+                module,
+                span,
+                locals,
+            });
+        }
+        DebugSnapshot {
+            frames,
+            steps: self.state.steps,
+        }
     }
 
     /// Whether this pause is a PLAN-866 call-boundary safety point (true
@@ -960,6 +1104,61 @@ pub fn execute_program_steps(
         Ok(limits) => limits,
         Err(out) => return SteppedOutcome::Finished(out, st.trace),
     };
+    match dispatch(
+        &prog.unit_view(),
+        &dispatch_limits,
+        cancel,
+        &[],
+        &mut st,
+        Some(max_steps),
+        false,
+    ) {
+        Some(out) => {
+            if !st.frames.is_empty() {
+                cleanup_owned_frames(&mut st);
+            }
+            finish_trace(&mut st, &dispatch_limits);
+            SteppedOutcome::Finished(out, st.trace)
+        }
+        None => SteppedOutcome::Paused(PausedRun {
+            prog: prog.clone(),
+            limits: *limits,
+            state: st,
+            at_call_boundary: false,
+        }),
+    }
+}
+
+/// PLAN-971 B (T-02): like [`execute_program_steps`], but the snapshot's
+/// module initializers run to completion FIRST (once per generation, the
+/// same discipline as [`execute_program`]); the pause budget applies to the
+/// entry chain only, so a debug session starts at the entry's first
+/// instruction over initialized module cells. A failing initializer
+/// finishes the run immediately (no paused chain to debug).
+pub fn execute_program_steps_after_init(
+    prog: &std::sync::Arc<crate::program_snapshot::ProgramSnapshot>,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    max_steps: u64,
+) -> SteppedOutcome {
+    let mut st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
+    st.trace.arena = Some(st.arena.clone());
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
+    st.trace.loaded_index_builds = prog.loaded_program().builds();
+    st.trace.loaded_index_reuses = prog.loaded_program().reuses();
+    st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
+    let dispatch_limits = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
+        Ok(limits) => limits,
+        Err(out) => return SteppedOutcome::Finished(out, st.trace),
+    };
+    if let Some(out) = run_module_inits(prog, &dispatch_limits, cancel, &mut st, true) {
+        finish_trace(&mut st, &dispatch_limits);
+        return SteppedOutcome::Finished(out, st.trace);
+    }
     match dispatch(
         &prog.unit_view(),
         &dispatch_limits,

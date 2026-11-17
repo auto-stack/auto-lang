@@ -17,6 +17,12 @@ pub struct PackageAvTarget {
     pub current: Arc<ace_av_core::program_snapshot::ProgramSnapshot>,
     pub lowered: u64,
     pub source: String,
+    /// PLAN-971 B (T-02): the LOWERED MIR's per-function slot names, keyed
+    /// by the admitted function name. The ABC wire does not serialize slot
+    /// names, so a source-level debugger (locals) reads them from the same
+    /// lowering generation that produced the code — never by re-lowering a
+    /// different revision.
+    pub slot_names: std::collections::BTreeMap<String, Vec<Option<String>>>,
 }
 
 impl PackageAvTarget {
@@ -56,6 +62,16 @@ impl PackageAvTarget {
         }
         .map_err(|e| format!("{e:?}"))?;
         let globals = mir.globals.clone();
+        let slot_names: std::collections::BTreeMap<String, Vec<Option<String>>> = mir
+            .funcs
+            .iter()
+            .map(|f| {
+                (
+                    f.name.clone(),
+                    f.slots.iter().map(|s| s.name.clone()).collect(),
+                )
+            })
+            .collect();
         let store = ManagedStore::open(path).map_err(|e| e.to_string())?;
         let mut codes = Vec::new();
         for unit in split_units(&mir)? {
@@ -81,6 +97,7 @@ impl PackageAvTarget {
             current: Arc::new(current),
             lowered,
             source: bound.input_hash.clone(),
+            slot_names,
         })
     }
 

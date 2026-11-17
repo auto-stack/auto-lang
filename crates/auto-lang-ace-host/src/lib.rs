@@ -44,6 +44,7 @@ use auto_lang_core::{
 
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
+mod debug;
 pub mod project;
 pub mod session_bridge;
 

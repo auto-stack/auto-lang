@@ -515,6 +515,22 @@ pub trait AceProjectExecutor: Send + Sync {
             "the installed project executor does not implement the compile-only check face",
         )
     }
+
+    /// PLAN-971 B: start a source-level debug session. The default is a
+    /// NAMED refusal (an executor without the debug face), never a silent
+    /// non-debug run.
+    fn start_debug(
+        &self,
+        _request: &AceDebugRequest<'_>,
+    ) -> Result<Box<dyn AceDebugSession>, AceDebugStartError> {
+        Err(AceDebugStartError {
+            code: "ace.debug/unsupported".to_string(),
+            message:
+                "the installed project executor does not implement the source-level debug face"
+                    .to_string(),
+            diagnostic: None,
+        })
+    }
 }
 
 static ACE_PROJECT_EXECUTOR: RwLock<Option<Arc<dyn AceProjectExecutor>>> = RwLock::new(None);
@@ -997,6 +1013,202 @@ pub fn run_ace_project_tests_named(engine: &str, request: &AceTestRunRequest<'_>
         }
     };
     run_ace_project_tests(choice, request)
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-971 B (T-02): the source-level DEBUG face.
+//
+// One debug session = one compiled project generation plus a PAUSED AV chain.
+// The session's stops are the producer's own per-instruction source spans of
+// the ORIGINAL module source (never a legacy AST position), and its stack /
+// locals are the live AV frames of that same chain. Commands are the classic
+// four: continue (to the next breakpoint), step (one instruction), step-over
+// (to the next source position at the caller's depth) and step-out (to the
+// caller frame). Closing a session reclaims its scratch artifacts.
+// ---------------------------------------------------------------------------
+
+/// One source-level breakpoint: a function (by the bound SYMBOL the check
+/// face reports) optionally narrowed to a source span inside that module.
+/// `span: None` breaks at the function's first instruction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceBreakpoint {
+    /// Owning module identity (`pkg::mod`).
+    pub module: String,
+    /// The bound declaration symbol (from [`AceDeclaration::symbol`]).
+    pub symbol: String,
+    /// Module-relative span; `None` = the function's entry instruction.
+    pub span: Option<AceSpan>,
+}
+
+/// One debug command (the classic four).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AceDebugCommand {
+    /// Run to the next breakpoint (or the end of the run).
+    Continue,
+    /// Execute exactly one instruction.
+    Step,
+    /// Run to the next source position at the caller's frame depth.
+    StepOver,
+    /// Run until the current frame returns (caller depth).
+    StepOut,
+}
+
+/// Why a debug session is stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AceDebugStop {
+    /// Stopped at the entry's first instruction (session start).
+    Entry,
+    /// Stopped on a breakpoint (index into the start request's list).
+    Breakpoint { index: usize },
+    /// Stopped after a single instruction step.
+    Step,
+    /// Stopped after a step-over.
+    StepOver,
+    /// Stopped after a step-out.
+    StepOut,
+    /// The run ended (the outcome is on the snapshot).
+    Finished,
+}
+
+/// One named local of a stopped frame (the value is the executor's own
+/// rendering; handles/aggregates are named, never coerced).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceDebugLocal {
+    pub slot: u32,
+    pub name: String,
+    pub value: String,
+}
+
+/// One frame of a stopped call stack, OUTERMOST first. `function` is the
+/// source-level declaration name and `module` its owning module identity;
+/// `span` is the ORIGINAL source span of the instruction the frame is
+/// stopped before.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceDebugFrame {
+    pub module: String,
+    pub function: String,
+    pub span: Option<AceSpan>,
+    pub locals: Vec<AceDebugLocal>,
+}
+
+/// The full state of one stop.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AceDebugSnapshot {
+    pub stop: AceDebugStop,
+    /// Call stack, outermost first (empty once the run finished).
+    pub frames: Vec<AceDebugFrame>,
+    /// Cumulative executed instructions of this chain.
+    pub steps: u64,
+    /// `Some` iff `stop == Finished`: the terminal run outcome.
+    pub outcome: Option<AceProjectOutcome>,
+    /// Human-readable note (a named stop reason or failure detail).
+    pub message: String,
+}
+
+/// A live debug session over one compiled project generation. The session
+/// owns a paused executor chain (contiguous values), so it is bound to the
+/// thread that created it.
+pub trait AceDebugSession {
+    /// The current stop (the start stop before any resume).
+    fn snapshot(&self) -> AceDebugSnapshot;
+
+    /// Resume from the current stop with `command`; returns the next stop.
+    /// Once the run finished, further resumes return the same finished
+    /// snapshot (idempotent).
+    fn resume(&mut self, command: AceDebugCommand) -> AceDebugSnapshot;
+
+    /// Release the session: drop the paused chain, the compiled generation
+    /// and the per-session scratch store. Idempotent.
+    fn close(&mut self);
+}
+
+/// A debug start request: the project modules, the entry, the breakpoints
+/// and the per-session budgets.
+pub struct AceDebugRequest<'a> {
+    pub modules: &'a [AceModuleSpec<'a>],
+    pub entry_module: &'a str,
+    pub entry_def_id: &'a str,
+    pub capabilities: &'a [String],
+    pub breakpoints: &'a [AceBreakpoint],
+    /// Wall budget of the WHOLE session (a stop that would exceed it
+    /// finishes the session with a named resource outcome).
+    pub wall: Option<Duration>,
+    pub cancel: Option<&'a AtomicBool>,
+}
+
+impl<'a> AceDebugRequest<'a> {
+    pub fn simple(
+        modules: &'a [AceModuleSpec<'a>],
+        entry_module: &'a str,
+        capabilities: &'a [String],
+        breakpoints: &'a [AceBreakpoint],
+    ) -> Self {
+        AceDebugRequest {
+            modules,
+            entry_module,
+            entry_def_id: "d_main",
+            capabilities,
+            breakpoints,
+            wall: None,
+            cancel: None,
+        }
+    }
+}
+
+/// A named debug start failure (unregistered/unsupported host, a project
+/// that does not compile, or an entry that cannot be paused).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AceDebugStartError {
+    pub code: String,
+    pub message: String,
+    /// Present when the project itself was rejected (original module
+    /// identity + span).
+    pub diagnostic: Option<AceDiagnostic>,
+}
+
+/// Start one debug session through the installed project executor. No
+/// executor / unknown engine / unsupported debug face is a NAMED start
+/// failure; the legacy AutoVM is never dispatched.
+pub fn start_ace_debug(
+    choice: AceEngineChoice,
+    request: &AceDebugRequest<'_>,
+) -> Result<Box<dyn AceDebugSession>, AceDebugStartError> {
+    let executor = match ACE_PROJECT_EXECUTOR.read() {
+        Ok(slot) => slot.clone(),
+        Err(_) => {
+            return Err(AceDebugStartError {
+                code: "ace.host/project-executor-lock-poisoned".to_string(),
+                message: "project executor lock poisoned".to_string(),
+                diagnostic: None,
+            })
+        }
+    };
+    let Some(executor) = executor else {
+        return Err(AceDebugStartError {
+            code: "ace.host/project-executor-unregistered".to_string(),
+            message: "no ACE project executor installed; the host must install one (auto-lang-ace-host)"
+                .to_string(),
+            diagnostic: None,
+        });
+    };
+    let _ = choice;
+    executor.start_debug(request)
+}
+
+/// Name-driven form of [`start_ace_debug`]: an unknown name — including
+/// every legacy engine name — is a named refusal with zero dispatch.
+pub fn start_ace_debug_named(
+    engine: &str,
+    request: &AceDebugRequest<'_>,
+) -> Result<Box<dyn AceDebugSession>, AceDebugStartError> {
+    match parse_ace_engine(engine) {
+        Ok(choice) => start_ace_debug(choice, request),
+        Err(message) => Err(AceDebugStartError {
+            code: "ace.engine/unknown".to_string(),
+            message,
+            diagnostic: None,
+        }),
+    }
 }
 
 #[cfg(test)]

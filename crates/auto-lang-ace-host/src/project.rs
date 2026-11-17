@@ -58,6 +58,13 @@ impl AceProjectExecutor for ProjectHost {
     fn check_project(&self, request: &AceCheckRequest<'_>) -> AceCheckReport {
         check_project(request)
     }
+
+    fn start_debug(
+        &self,
+        request: &auto_lang_core::AceDebugRequest<'_>,
+    ) -> Result<Box<dyn auto_lang_core::AceDebugSession>, auto_lang_core::AceDebugStartError> {
+        crate::debug::start(request)
+    }
 }
 
 /// PLAN-971 B (T-02/T-08): compile-only project check over the same 960
@@ -438,6 +445,14 @@ fn run_entry(
         }
     };
     match execute_generation(&target, deadline, cancel) {
+        out => outcome_from_exec(out),
+    }
+}
+
+/// Map a terminal AV outcome to the neutral project contract (also used by
+/// the debug face's finished stop, so both faces report the same shape).
+pub(crate) fn outcome_from_exec(out: ExecOutcome) -> AceProjectOutcome {
+    match out {
         ExecOutcome::Success { value, steps } => AceProjectOutcome::Success {
             value: map_value(value),
             steps,
@@ -493,7 +508,7 @@ fn execute_generation(
 /// Per-generation limits: the frozen probe budgets with the wall capped
 /// to the request's REMAINING budget (never the 2s default once the
 /// host asked for less).
-fn generation_limits(deadline: Instant) -> ExecLimits {
+pub(crate) fn generation_limits(deadline: Instant) -> ExecLimits {
     let mut limits = ExecLimits::default();
     limits.wall = deadline.saturating_duration_since(Instant::now());
     limits
@@ -501,12 +516,12 @@ fn generation_limits(deadline: Instant) -> ExecLimits {
 
 /// Per-run scratch store root: a fresh temp directory created for one
 /// generation and removed when the guard drops (stop → reclaim).
-struct ScratchStore {
-    path: PathBuf,
+pub(crate) struct ScratchStore {
+    pub(crate) path: PathBuf,
 }
 
 impl ScratchStore {
-    fn new() -> Result<Self, String> {
+    pub(crate) fn new() -> Result<Self, String> {
         static NONCE: AtomicU64 = AtomicU64::new(0);
         let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
         let path =
