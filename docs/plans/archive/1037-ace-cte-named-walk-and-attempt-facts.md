@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1037
-status: reviewed
+status: archived
 feature_name: ACE CT命名实参遍历与发布失败观察事实
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 4
+current_step: 5
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-cte/project.md]
@@ -173,7 +173,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 - [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。（2026-11-17 两轮：首轮遍历修复落 tests.rs；review 复开 **F-1037-R1**（Named 值/标签未入执行键→33≠34、5≠−5）后本轮修复：`expr_canonical` 编码命名的标签+值，`audit1037_ct_01b` 三族断言（同标签异值/跨编译重标签/位置对照 + 相同需求仍复用）在受控落回旧编码时红、修复后绿；独立探针 5/5 绿。见§9 work-repair 与 review 收据。）
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（2026-11-17：冻结并集 ace-comptime/ace-av/ace-native/ace-a2x 全绿，ace-semantics 1 具名既有红不判本包红、不充 PASS；SD-01/02 在工作树就位待 merge 沉淀；1002 无硬前置。）
 - [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。（2026-11-17 二审 @df2e7bf81：R1 发现已闭（永久例+受控变异+独立探针 5/5 复放），AC-01..04 全 pass；残留仅 D-1037-01 具名既有红与 merge-owned 收尾门，见§9。）
-- [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
+- [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。（2026-11-17：ff-only 落地 b8ab04897（range-diff 全 `=`，计划自有内容 0 差异）；两份 CT Spec 逐 blob 核同；归档 docs/plans/archive/；交付门见§9 merge 收据。）
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
@@ -184,7 +184,7 @@ CT-02实现测试FailPublishSink：probe正常委托MemoryEnvelopeSink或返回N
 | T-02 / work | [x] T-01决定与可区分输入 | 补相同Arg.value子树面及call/expr publish错误事实，保持真实AV单执行、依赖/root budget和权限；新增CT-01/02永久例。 AC-02  A-EXIT-20261116：本行按A-required原Case闭合。 **证据（首轮）**：`arg_value`/`arg_value_mut`/`substitute_arg` 统一发现/闭包/meta/替换/查点，product 回灌同名子树；`audit1037_ct_01` 绿。 **review 复开 F-1037-R1 → 本轮修复（df2e7bf81）**：`expr_canonical` Named 编码「标签+值」（Pos/MovePos 保持共享编码：移动只标所有权、CT 值相同）；新增 `audit1037_ct_01b`（同标签异值 34/双站点，跨编译重标签 5 与 −5，位置对照，相同命名需求仍 execute=1/hit=1）；受控落回旧编码时该例红（execute=1≠2），修复后 0.034s 绿；独立探针 5/5。 |
 | T-03 / work | [x] T-02 | 沿真实产品回灌/AV值与service两入口失效→重试→发布→hit验证，覆盖前置拒绝/到达后错误/计数；不提前实现966完整宏。 AC-02/03  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：`audit1037_ct_02` 0.45s 绿（publish Err→av_reached=true、execute+1、freeze_publishes+0、rejections+1、ok 边界日志一条同键、无页、重执行、修复发布→hit、forbid_av 前门 false）；并集 4 组全绿 + ace-semantics 具名既有红，见§9。 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：一审 needs_fix（F-1037-R1）→ repair df2e7bf81 → 二审 pass；独立探针 5/5 复放、定向 3 例 0.034–0.052s、冻结并集沿用 run-jpwwg_0o（同 HEAD、树 clean、依赖/配置未变）。 |
-| T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
+| T-05 / merge | [x] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05  A-EXIT-20261116：本行按A-required原Case闭合。 **证据**：rebase 267cc6282→交付 b8ab04897（`git range-diff` 两条 `=`）、`git merge --ff-only` 后 master tip=分支 tip、Spec blob 逐份相同、归档并提交。 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06  A-EXIT-20261116：本行按A-required原Case闭合；当前分类不是完成证据。 |
 
 同文件串行；跨计划调度见1024分配表。草案stage:new pass不授权开T-01构建/探针。
@@ -329,6 +329,27 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 新增用例计时：`audit1037_ct_01b` 0.034s、`audit1037_ct_01` 0.052s、`audit1037_ct_02` 0.030s（均 ≤10s）；无超限、无 release 路径、无隐式日构建。
 
 2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:4 | from:review | to:merge | status:reviewed | outcome:pass | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:df2e7bf816 | next:merge
+
+**PLAN-1037:r3 merge consolidation（2026-11-17）| outcome: pass（cleanup 项见 §9 末条）| delivery_commit: b8ab048975adb16a8c46db20487238bfbbf02693**
+
+- **prepared**：reviewed r3 pass @`df2e7bf81`（二审簿记 `267cc6282`）；canonical delta＝`docs/specs/auto-cte/source-query-integration.md`（SD-01/§3 F32 事实）与 `docs/specs/auto-cte/project.md`（SD-02）；worktree `D:/autostack/.wt/lang-1037/auto-lang`、分支 `plan-1037-dev`；`wt-guard.ps1` 第 1 次 clean。
+- **landed**：分支 rebase 到 master（`267cc6282`；期间他人落地 982 SDK 与 984 ace-host 代码提交）→ `e6973193c → 28fd0da2e`、`df2e7bf81 → b8ab04897`；`git range-diff e85096628..df2e7bf81 master..b8ab04897` 两条均 `=`；计划自有路径（`experimental/ace` + `docs/specs/auto-cte`）旧↔新 `git diff` **0 行**；主检出 `git merge --ff-only plan-1037-dev` 后 master tip＝分支 tip＝`b8ab04897`（无 merge 提交）。他包新提交只触 `crates/auto-lang-core`（SDK identity）与 `crates/auto-lang-ace-host`（EMBED fixture），不在 `experimental/ace` workspace 及其固定组内，故并集基线未变。
+- **canonical_verified**：落地提交内 blob 与 reviewed 提交逐份相同——`source-query-integration.md` `03532610b51597f4cf9c2778d6e4c971a9e45d10`、`project.md` `ecada616f92294b16aa7cbf48cf459655a1b0423`；SD-01/SD-02 均在案；`new_spec_components` 空、`touched_goals` 空；未写任何 ledger/index/specs.json。
+- **archived**：`docs/plans/archive/1037-ace-cte-named-walk-and-attempt-facts.md`，`status: archived`，`completion_kind: delivered`，任务 5/6（T-06 收尾待本条后段）。
+- **merge-owned gate（在交付身份 `b8ab04897` 上执行；不与 review 证据混记）**：
+
+| 范围 | 结果 | 计时 |
+|---|---|---|
+| `cargo t ace-comptime ace-semantics ace-av ace-native ace-a2x`（run-hqoxpog7） | ace-comptime 136/136、ace-native 299/299、ace-a2x 308/308；ace-semantics 294/295（**D-1037-01** 既有红）；ace-av 1340/1341（唯一红见下，环境归因） | 359.12s |
+| `cargo t ace-av` 整组重放（run-l17ewac0） | **1341/1341 PASS** | 64.66s |
+| 单例重放 `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av` ×3 | 3/3 PASS（AV exec 2.512/2.557/2.541s） | 49.48s（含增量构建）/3.28s/3.25s |
+| 复用（review 轮） | 独立探针 5/5、定向 3 例 0.030–0.052s（同身份内容：0 差异） | 已记 |
+
+  环境归因：该红为 `Resource { kind: ExecutionWall, message: "platform call exceeded wall budget" }`——`run_av_i32` 用默认 `MAX_AV_WALL`（2s），组内 20 并发下 AV 段超墙；隔离与整组重放均绿，且同内容在 review 轮两次整组绿。**不判代码红、不充无红 PASS**；登记 **D-1037-02**（wall 余量过窄的测试稳健性，owner ace-av/kv_zip_1064 线）。
+- **batch regression due check**：未到期——`.last-batch-regression.json` 的 `last_covered_plan_id=1064`、`timestamp=2026-11-16T10:04Z`（<48h），且 1037 % 5 ≠ 0。
+- **deployment observation**：交付仅 `experimental/ace` 源与两份 CT Spec，无生产/发布产物需重建或重启；无 stale artifact 需登记。
+
+2026-11-17 stage:goal | plan_id:PLAN-1037 | plan_revision:r3 | round:5 | from:merge | to:cleanup | status:archived | outcome:pass | worktree:D:/autostack/.wt/lang-1037/auto-lang | commit:b8ab048975 | next:cleanup
 
 ## 10. 待澄清事项
 
