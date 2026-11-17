@@ -553,6 +553,10 @@ fn verify_profile(
         // this test adapter exhaustive by calling its landed verifier.
         SourceProfile::Closures => verify::verify_closures(b),
         SourceProfile::HostConsole => verify::verify_host_console(b),
+        // PLAN-982（顺手修复，L0 fix-av-configdocument）：配置文档面的 HIR 域
+        // 是 HostConsole（source/mod.rs 域映射）——982 合入漏了本测试适配器的
+        // 这一臂，ace-av conformance 在 master 上编译红。路由到同域 verifier。
+        SourceProfile::ConfigDocument => verify::verify_host_console(b),
         SourceProfile::Scalar => verify::verify_scalar(b),
         SourceProfile::Text => verify::verify_text(b),
         SourceProfile::Record => verify::verify_record(b),
