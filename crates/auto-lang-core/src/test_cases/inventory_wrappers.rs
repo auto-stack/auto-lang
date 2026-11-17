@@ -118,11 +118,13 @@ impl<'ast> Visit<'ast> for Calls<'_> {
                         &[".expected.rs"],
                     ),
                 };
-                super::super::execution_trace::legacy_files(
+                // PLAN-1066 T-08: one document identity for every legacy
+                // family (the suffix list retired with the sidecars).
+                let _ = suffixes;
+                super::super::execution_trace::legacy_document_identity(
                     self.manifest.to_str().unwrap(),
                     base,
                     &args[0],
-                    suffixes,
                 )
             } else {
                 self.unresolved

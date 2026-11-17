@@ -9,11 +9,10 @@ use std::path::PathBuf;
 fn test_a2ts(case: &str) -> AutoResult<()> {
         crate::test_cases::execution_trace::observe(
             || {
-                crate::test_cases::execution_trace::legacy_files(
+                crate::test_cases::execution_trace::legacy_document_identity(
                     env!("CARGO_MANIFEST_DIR"),
                     "a2ts",
                     case,
-                    &[".expected.ts"],
                 )
             },
             || test_a2ts_impl(case),

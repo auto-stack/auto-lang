@@ -7,11 +7,10 @@ use std::path::PathBuf;
 fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
     crate::test_cases::execution_trace::observe(
         || {
-            crate::test_cases::execution_trace::legacy_files(
+            crate::test_cases::execution_trace::legacy_document_identity(
                 env!("CARGO_MANIFEST_DIR"),
                 base,
                 case,
-                &[".expected.rs"],
             )
         },
         || test_a2r_with_base_impl(base, case),

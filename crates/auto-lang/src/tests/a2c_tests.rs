@@ -121,11 +121,10 @@ int add(int x, int y);
 fn test_a2c(case: &str) -> AutoResult<()> {
         crate::test_cases::execution_trace::observe(
             || {
-                crate::test_cases::execution_trace::legacy_files(
+                crate::test_cases::execution_trace::legacy_document_identity(
                     env!("CARGO_MANIFEST_DIR"),
                     "a2c",
                     case,
-                    &[".expected.c", ".expected.h", ".expected.error.log"],
                 )
             },
             || test_a2c_impl(case),

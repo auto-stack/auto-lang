@@ -228,12 +228,15 @@ pub fn observe<T, E>(
     result
 }
 
-pub fn legacy_files(
-    manifest: &str,
-    base: &str,
-    case: &str,
-    oracle_suffixes: &[&str],
-) -> serde_json::Value {
+/// PLAN-1066 T-08: the legacy wrapper's external-input identity names the
+/// entry's MIGRATION DOCUMENT, not the frozen `.at`/`.expected.*` sidecars.
+///
+/// The document is both the author source and the oracle carrier (PLAN-1066
+/// T-03[B]), so one identity covers both axes. The runtime wrapper and the
+/// source-derived inventory guard call this ONE function, so a daily run's
+/// recorded identity and the static binding cannot drift apart by
+/// construction, and no consumer reads a retired sidecar to derive identity.
+pub fn legacy_document_identity(manifest: &str, base: &str, case: &str) -> serde_json::Value {
     let stem = case
         .rsplit('/')
         .next()
@@ -245,14 +248,17 @@ pub fn legacy_files(
         .join("test")
         .join(base)
         .join(case);
+    let document = directory.join(format!("{stem}.case.ad"));
     serde_json::json!({"family":format!("legacy-golden-{base}"),"id":case,
-        "source":file_identity(&directory.join(format!("{stem}.at"))),
-        "oracles":oracle_suffixes.iter().map(|suffix|file_identity(&directory.join(format!("{stem}{suffix}")))).collect::<Vec<_>>()})
+        "source":file_identity(&document),
+        // A path-keyed object so both governance normalizers treat it as a
+        // repository path (a bare string would freeze an absolute path).
+        "document":{"path":document}})
 }
 
 pub fn legacy_error_identity(manifest: &str, case: &str, expected: &str) -> serde_json::Value {
     use auto_test_case::sha256::{hex, sha256};
-    let mut value = legacy_files(manifest, "a2r", case, &[]);
+    let mut value = legacy_document_identity(manifest, "a2r", case);
     value["family"] = serde_json::json!("legacy-a2r-error");
     value["expected_error_substring_sha256"] = serde_json::json!(hex(&sha256(expected.as_bytes())));
     value
