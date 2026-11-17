@@ -422,3 +422,89 @@ fn tick() {
         "exit drain did not converge: {elapsed:?}"
     );
 }
+/// V-01 (triad, AV leg): the SAME corpus sources run on the AV lane in this
+/// process (shared front end → closures lowering → verify → ABC admit → the
+/// deterministic cooperative scheduler). Each lane is checked against the
+/// DOCUMENTED per-case expectation independently — the lanes are never
+/// compared against each other as the oracle (they share a front end, so
+/// agreement alone would hide a shared defect).
+///
+/// The A2R leg lives in its own lane's harness
+/// (`ace-a2x-worker` `sched_m2_968::sched_968_a2r_rust_emit` +
+/// `sched_1067_a2r_timer_and_closed_task`), which emits Rust, compiles it with
+/// rustc and runs it — never reusing this lane's objects.
+mod av_leg {
+    use ace_av::console_host::ConsoleCapture;
+    use ace_av_core::abc::encode_abc;
+    use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits};
+    use ace_av_core::contract::ExecOutcome;
+    use ace_av_core::verify_mir;
+
+    fn run(src: &str) -> Result<(ExecOutcome, String), String> {
+        let compiled = ace_core::source::compile_scheduler_source(src, "probe.at", &[])
+            .map_err(|ds| {
+                ds.first()
+                    .map(|d| format!("{}/{}", format!("{:?}", d.stage).to_lowercase(), d.code))
+                    .unwrap_or_default()
+            })?;
+        let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0)
+            .map_err(|e| format!("lower: {e:?}"))?;
+        verify_mir(&mir).map_err(|e| format!("verify: {e:?}"))?;
+        let abc = encode_abc(&mir).map_err(|e| format!("encode: {e:?}"))?;
+        let flat = abc.to_flat();
+        let loaded = ace_av_core::abc_verify::verify_abc_bytes(&flat, &mir.owner)
+            .map_err(|e| e.to_string())?;
+        let mut host = ConsoleCapture::default();
+        let (out, _trace) = execute_sched(
+            &loaded,
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            &mut host,
+        );
+        Ok((out, String::from_utf8_lossy(&host.stdout).to_string()))
+    }
+
+    #[test]
+    fn av_lane_matches_the_documented_corpus_expectations() {
+        for (case, expected) in [
+            ("message_handler", "got one\n"),
+            ("spawn_with_state", "mycounter: 15\n"),
+            ("mailbox_fifo", "got two\ngot one\n"),
+            ("ask_reply", "reply:\n42\n"),
+            ("go_join", "go:\n7\n"),
+            ("backpressure", "1\n2\n3\n"),
+            ("stop_hook", "one\nstopped\n"),
+            ("virtual_timer", "main\nlater\n"),
+        ] {
+            let src = super::corpus(case);
+            let (out, stdout) = run(&src).unwrap_or_else(|e| panic!("{case}: AV rejected: {e}"));
+            assert_eq!(stdout, expected, "{case}: AV stdout drift");
+            match out {
+                ExecOutcome::Success { value, .. } => match value {
+                    ace_av_core::contract::Value::I32(v) => assert_eq!(v, 0, "{case}: AV exit"),
+                    other => panic!("{case}: non-i32 AV exit {other:?}"),
+                },
+                other => panic!("{case}: expected AV success, got {other:?}"),
+            }
+        }
+    }
+
+    /// The three negative corpus legs, AV classification: two are front-end
+    /// rejections (shared by every lane) and one is a runtime language error.
+    #[test]
+    fn av_lane_rejections_match_the_documented_expectations() {
+        let err = run(&super::corpus("neg_unknown_task")).expect_err("must be rejected");
+        assert_eq!(err, "bind/source.sched-task", "unknown-task diagnostic");
+        let err = run(&super::corpus("neg_malformed_task")).expect_err("must be rejected");
+        assert_eq!(err, "text/source.unsupported", "malformed-task diagnostic");
+
+        let (out, stdout) = run(&super::corpus("neg_send_after_stop")).expect("compiles");
+        match out {
+            ExecOutcome::Error { message, .. } => {
+                assert_eq!(message, "send on a closed task");
+                assert_eq!(stdout, "", "no value may be produced");
+            }
+            other => panic!("expected the named language error, got {other:?}"),
+        }
+    }
+}

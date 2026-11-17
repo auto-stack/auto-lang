@@ -110,12 +110,27 @@ pub fn a2x_sched_spawn(
     reg.tasks.len() as i32
 }
 
+/// PLAN-1067 T-06: a delivery to a stopped/closed (or unknown) task is the
+/// SAME named language error the AV and native lanes report — never the
+/// silent success this lane used to return (three-end divergence found by
+/// the plan's triad check). The channel is this lane's frozen error
+/// transport: the message on stderr, then exit 70.
+pub fn a2x_sched_fail(message: &str) -> ! {
+    eprintln!("{}", message);
+    std::process::exit(70);
+}
+
 pub fn a2x_sched_send(handle: i32, msg: SchedValue) -> i32 {
     let reg = registry().lock().unwrap();
-    if let Some(entry) = reg.tasks.get((handle - 1).max(0) as usize) {
-        if let Some(tx) = &entry.tx {
-            let r = tx.send(Envelope { msg, port: 0, reply: None });
-            let _ = r;
+    let Some(entry) = reg.tasks.get((handle - 1).max(0) as usize) else {
+        a2x_sched_fail("sched: unknown task handle");
+    };
+    if entry.stopped.load(std::sync::atomic::Ordering::SeqCst) || entry.tx.is_none() {
+        a2x_sched_fail("sched: send on a closed task");
+    }
+    if let Some(tx) = &entry.tx {
+        if tx.send(Envelope { msg, port: 0, reply: None }).is_err() {
+            a2x_sched_fail("sched: send on a closed task");
         }
     }
     0
@@ -124,22 +139,44 @@ pub fn a2x_sched_send(handle: i32, msg: SchedValue) -> i32 {
 pub fn a2x_sched_ask(handle: i32, msg: SchedValue) -> i32 {
     let (rtx, rrx) = std::sync::mpsc::channel::<SchedValue>();
     let mut reg = registry().lock().unwrap();
+    let closed = match reg.tasks.get((handle - 1).max(0) as usize) {
+        Some(entry) => {
+            entry.stopped.load(std::sync::atomic::Ordering::SeqCst) || entry.tx.is_none()
+        }
+        None => a2x_sched_fail("sched: unknown task handle"),
+    };
+    if closed {
+        a2x_sched_fail("sched: ask on a closed task");
+    }
     let port = reg.awaiters.len() as i32 + 1;
     reg.awaiters.push(Some(rrx));
-    if let Some(entry) = reg.tasks.get((handle - 1).max(0) as usize) {
-        if let Some(tx) = &entry.tx {
-            let _ = tx.send(Envelope { msg, port, reply: Some(rtx) });
-        }
+    let delivered = match reg.tasks.get((handle - 1).max(0) as usize) {
+        Some(entry) => match &entry.tx {
+            Some(tx) => tx.send(Envelope { msg, port, reply: Some(rtx) }).is_ok(),
+            None => false,
+        },
+        None => false,
+    };
+    if !delivered {
+        a2x_sched_fail("sched: ask on a closed task");
     }
     port
 }
 
 pub fn a2x_sched_reply(value: SchedValue) -> i32 {
-    TASK_REPLY.with(|c| {
-        if let Some(tx) = &*c.borrow() {
-            let _ = tx.send(value);
-        }
+    let has_port = TASK_REPLY.with(|c| c.borrow().is_some());
+    if !has_port {
+        a2x_sched_fail("sched: reply is only legal while handling an ask message");
+    }
+    let delivered = TASK_REPLY.with(|c| match &*c.borrow() {
+        Some(tx) => tx.send(value).is_ok(),
+        None => false,
     });
+    if !delivered {
+        // The awaiting end is gone: the reply is a LATE result and must not
+        // resurrect the future (single terminal commit).
+        return 0;
+    }
     0
 }
 
@@ -157,7 +194,9 @@ pub fn a2x_sched_await(port: i32) -> SchedValue {
     };
     match rrx.recv() {
         Ok(v) => v,
-        Err(_) => SchedValue::I(0),
+        // The producer closed without publishing: the SAME named outcome the
+        // AV and native lanes report, never a silent zero value.
+        Err(_) => a2x_sched_fail("sched: task closed without replying"),
     }
 }
 
