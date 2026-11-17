@@ -877,13 +877,19 @@ fn project_node(node: &ConfigNode, depth: usize) -> Result<auto_val::Node, Confi
         return Err(ConfigProjectionError::TooDeep { depth });
     }
     let mut out = auto_val::Node::new(node.name.as_str());
+    // D-982-CFG-IDENTITY: positional arguments (identity first) live in the
+    // unified args/props slot under `_arg{n}`, which is exactly the shape the
+    // legacy configuration evaluator produced (`dep kernel { _arg0: ... }`).
+    // `Node.id` stays empty: the identity is one argument, not a second name.
     if let Some(id) = &node.id {
-        out.add_arg(auto_val::Arg::Pos(auto_val::Value::Str(
-            auto_val::AutoStr::from(id.as_str()),
-        )));
+        out.add_arg_unified(
+            "_arg0",
+            auto_val::Value::Str(auto_val::AutoStr::from(id.as_str())),
+        );
     }
-    for arg in &node.args {
-        out.add_arg(auto_val::Arg::Pos(project_value(arg, depth + 1)?));
+    for (index, arg) in node.args.iter().enumerate() {
+        let key = format!("_arg{}", index + 1);
+        out.add_arg_unified(key, project_value(arg, depth + 1)?);
     }
     for (key, value) in &node.props {
         out.set_prop(key.as_str(), project_value(value, depth + 1)?);
@@ -1256,5 +1262,32 @@ mod tests {
             ),
             Err(ConfigBuildError::Limit { axis: "bytes", .. })
         ));
+    }
+    #[test]
+    fn p982b_node_identity_is_the_first_positional_argument() {
+        // D-982-CFG-IDENTITY decision (2026-11-17): the legacy configuration
+        // shape carries a node's identity as its FIRST POSITIONAL ARGUMENT
+        // (`dep kernel { _arg0: ... }`), and `auto_val::Node.id` stays empty.
+        // The projection reproduces that shape exactly instead of inventing a
+        // second identity channel.
+        let mut builder = ConfigDocumentBuilder::new(ConfigEvalLimits::default());
+        let root = builder.node("root", None, vec![]).unwrap();
+        let dep = builder
+            .node("dep", Some("kernel".to_string()), vec![])
+            .unwrap();
+        builder.append(root, dep).unwrap();
+        let node = builder.finish(root).unwrap().to_auto_val_node().unwrap();
+        let mut checked = false;
+        for (_k, kid) in node.kids_iter() {
+            if let auto_val::Kid::Node(child) = kid {
+                checked = true;
+                assert_eq!(child.name.as_str(), "dep");
+                assert_eq!(child.id.as_str(), "", "the separate id field stays empty");
+                // `add_arg(Arg::Pos(..))` lands in the unified args/props slot
+                // as `_arg0`, exactly the shape the legacy evaluator produced.
+                assert_eq!(child.get_prop("_arg0").to_astr().as_str(), "kernel");
+            }
+        }
+        assert!(checked, "the projected document keeps its node child");
     }
 }
