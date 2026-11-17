@@ -6924,8 +6924,11 @@ fn dispatch_with_host<V: ModuleView>(
                                 return Some(ExecOutcome::Cancelled);
                             }
                             Err(crate::host::HostError::Resource) => {
+                                // 配置文档的预算（值节点/字节）不是 console 预算：
+                                // 用 `DynTypeNodes`（同为"值树节点预算"族）而不是
+                                // `ConsoleOutput`（B-CONFIG-R F-982B-12）。
                                 return Some(ExecOutcome::Resource {
-                                    kind: ResourceKind::ConsoleOutput,
+                                    kind: ResourceKind::DynTypeNodes,
                                     message:
                                         "configuration document primitive exceeded its budget"
                                             .into(),
