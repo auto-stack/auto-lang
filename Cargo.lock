@@ -884,6 +884,7 @@ dependencies = [
 name = "auto-playground"
 version = "0.1.0"
 dependencies = [
+ "auto-lang-ace-host",
  "auto-lang-core",
  "axum",
  "dirs 6.0.0",
