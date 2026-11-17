@@ -1058,7 +1058,13 @@ fn compile_component_scenario_full(
             )])
         }
     };
-    if node.view.texts.is_empty() {
+    if node.view.texts.is_empty() && emit_view_texts {
+        // PLAN-980 WEB（真语料全量双轨）：text 叶形状门只约束**文本观测车
+        // 道**（`__age_c_text` 发射依赖至少一个文本叶）。states-only 车道
+        //（`emit_view_texts=false`：状态函数/检查函数/值函数，无文本叶发
+        // 射）不依赖文本叶——无 `text` 叶的真实工程视图（button/input-only
+        // 形，vue_capabilities 主导形态）在 states-only 下可编译。完整文本
+        // 观察车道保持原门不变。
         return Err(vec![text_diag(
             "source.age.component-shape",
             "the component slice requires at least one `text` leaf in `view`",

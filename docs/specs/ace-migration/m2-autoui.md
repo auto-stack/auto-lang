@@ -591,3 +591,15 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
   流/局部 var 归 #6d 结构分析；真语料全量 spliced 切换仍是 WEB 批剩余义
   务（B-WEB-I/V/R 勾选前置）。981 冻结 hash 已由其 owner 重基线（grammar
   零改动，#6i 语义差注明）——r41 两红已闭，非 980 面。
+
+### §13.13 V-B-WEB 处置：text-leaf 门放宽 + state 别名 + 多赋值发射 + census taxonomy（切片 #6l，2026-11-18）
+
+- **text-leaf 形状门只约束文本观测车道**（lang `age_component.rs`：`emit_view_texts=true` 才要求 view 含 `text` 叶）——states-only 车道（状态/检查/值函数，无文本叶发射）不依赖文本叶；button/input-only 真实工程视图（vue_capabilities 主导形态）经 states-only 可编译可拼接。完整文本观察车道保持原门。
+- **方言 `state` 槽位别名=model**（auto-ui `declarations.rs`/`grammar/widget.rs`）：与 lane/ACE 侧 #6g 同一别名在方言层落定。此前 `state {}` 落 widget 体 fallback 臂被误解析为**视图元素**，真 `view {}` 随之伪报 "duplicate view"——vue_capabilities parse 族 3 预存红（cap_unused_handler/cap_null_init/cap_event_arg，898-N5 时代已知债）的根因。`model`+`state` 并存仍按重复拒绝。ACE 语法零改动（UI 侧归一化承载不变——无 grammar-id 扰动）。
+- **多赋值逐语句发射**（lane `stmt_fragments_in`）：按 Assign RHS 表达式 span⊆handler 区间选取、语句序=源序、`emit_stmt_fragment` 逐句发射。HIR Stmt 无 span（按 value 表达式 span 过滤——字段 init/return 的 span 在区间外天然排除）。**语法层只收平铺 `.field (=|+=|-=) expr`**（`age-view-stmt`）——控制流/let/调用在语法层被拒，**不可能被静默展平**（错误语义防线）。片段临时名按片段改号（`t3`→`t{k}_3`）防多片段同域 `const t0` 撞声明（片段文本里裸 `t<digits>` 只可能是发射器临时名——其余名字族走 `l<i>_*`/`p<i>_*`/宿主映射名）。
+- **976 片段接口缺口（#6l 实测）**：owned 局地的赋值/返回语句片段引用函数域簿记变量 `a2x_ret_owned_skip`，其 `let` 声明只在整函数发射路径——片段文本裸引用。宿主边界统一补声明（引用才补）。同族：`a2x_str_free` 等簿记 helper 由宿主按需内联（JS-string 宿主归约=no-op）。
+- **`widget_emit_set` 名册精化**（vue/mod.rs）：prop 派生 Pascal emit 只有 handler 体**实际调用**（`on_x(...)`/`props.on_x(...)`）才入名册——声明而未调用的 prop 让父侧名册谎报（`@Delete` 永不发射，真名=消息变体 `DeleteBlock`；cap_444_callback_channel 直通断言红）。
+- **census 具名修订 #4**：(72,11,0,23)→**(75, 8, 1, 27)**——state 别名解锁 parse 族 3 源（err-3）；[15]（无 text 叶源）spliced（+1）；新 parse 通源 handler 入缺席分母（absent+4）。
+- **缺席分母 taxonomy（七族具名，逐族归属）**：①`$event` 视图实参/元素括号属性行（`input (placeholder: …)`）等**年龄面语法缺口**族——语言面收敛决策（跨 981 冻结语法，非 UI 适配器可闭）；②float/f64 模型字段与 float 载荷——981 明确不支撑域（fail-closed）；③双 widget 同文件源——组件面单 node 形状（IF-981-MODULE 域）；④控制流/let/var/调用 handler 体——组件面只收平铺赋值（语法层拒，需语言面体模型扩展决策）；⑤空体 handler（无可发射语句——语义 no-op）；⑥引号事件键/handler（`."save"` 形——语法缺口族①）；⑦store/HTML 片段伪源（提取伪影，非 widget 源）。
+- **vue 门（V-B-WEB 具名命令）**：72/82→**77/82**——余 chart×5=PLAN-643 契约分歧陈旧断言（chart 元件已降 name-only（tier=package_origin），官方组件包持真契约；测试仍断言内建 vue mapping——归属 chart/官方包线处置，不单方弱化）。vmodel_fold 断言刷新至 Plan 008/DEBTS #6 单参取文本的后来设计。
+- **边界（诚实）**：语料全量 spliced（1→全覆盖）剩余=七族 taxonomy——①④⑥为年龄面语法/体模型收敛（多年面、跨 981 冻结 grammar-id，需语言面 owner 决策）；②为 981 不支撑域；③为 IF-981-MODULE；⑤⑦语义上无可拼接。B-WEB-I/V/R 勾选前置于上述族的归属处置。
