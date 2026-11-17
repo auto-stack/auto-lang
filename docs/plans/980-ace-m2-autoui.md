@@ -1308,6 +1308,26 @@ next: merge（phase fold #8：ui 4b1304fc+0f3a2ffa+f256276f 链 + lang 0b34c9776
 
 next_responsible_role: work（WEB 批剩余=真语料全量 spliced 切换（vue/script.rs 生成道：watch/setup/expose/ext_imports/style）——多会话量级；B-WEB-I/V/R 勾选前置。TAURI 随 WEB；波次门 B-AV←⑤、B-RUST←⑦ 不变）。
 
+2026-11-18 stage: work（WEB 批切片 #6l：V-B-WEB 处置——语料诊断×修复×taxonomy）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——七族缺席 taxonomy 归属处置为勾选前置）| worktree: lang-980 @ plan-980-dev | code_commit: ui **05bdf5b5**、lang **待复核提交**（text-leaf 放宽+规范 §13.13）。
+
+**逐源诊断（83 源，census 同提取）。** 阻塞全景（具名）：text-leaf 门（states-only 误受约束）、方言 `state{}` 无臂（误落视图元素臂→伪 duplicate view=vue 门 parse 族 3 预存红根因，898-N5 时代已知债）、`$event`/元素括号属性行/引号键=年龄面语法缺口、float 域、双 widget 源、控制流/let/调用体、空体、store/HTML 伪源。
+
+**交付。** ①lang text-leaf 门只约束文本观测车道；②方言 state 别名=model（model+state 并存仍拒）；③lane `stmt_fragments_in` 多赋值逐语句顺序发射（临时名按片段改号；976 片段接口缺口=宿主补 `a2x_ret_owned_skip` 声明）；④`widget_emit_set` 名册精化（prop 派生 emit 仅实际调用才入——444 直通红修复）；⑤vmodel 断言刷新至 Plan 008 单参取文本后来设计；⑥p980_fields 预存 span 断裂修复（dialect lib 105/105 恢复）。
+
+**验证（冻结提交实测）。** ace_ts_provider **20/20**（CPU 6.5s 含 node 腿；排窗浏览器档含 param 档 helper 补齐全绿）；vue 门 **77/82**（chart×5=PLAN-643 分歧具名预存，归属 chart/官方包线）；dialect lib 105/105；census 具名修订 #4：(72,11,0,23)→**(75,8,1,27)**+七族 taxonomy。新 case `p980_web_textless_state_alias_multi_assign`（text-leaf+state 别名+多赋值 42/0/42 node 判别）。lang `cargo t ace-source`=**PASS**（run-ch578xkg，冻结提交实测）。
+
+**边界（诚实）。** 语料全量 spliced 剩余=taxonomy 七族：①`$event`/括号属性/引号键语法缺口（跨 981 冻结 grammar 的语言面收敛决策）、②float 域（981 不支撑）、③双 widget（IF-981-MODULE）、④控制流/let/调用体模型（语言面扩展决策）、⑤空体（no-op）、⑥引号 handler（同①）、⑦store/HTML 伪源（提取伪影）。**B-WEB-I/V/R 勾选前置=①③④的语言面归属裁定**（用户/981 域），②⑤⑦语义无可拼接。
+
+next_responsible_role: review（#6l 批级复核）→ merge（phase fold #9）。
+
+2026-11-18 stage: review（#6l 批级复核）| review_scope: phase | reviewer: 同会话独立复核（限制：非独立上下文；工件重构——冻结树核对/门禁重放/机械审计）| outcome: **pass（批增量）** | reviewed_commit: ui 05bdf5b5（rebase→**7e329df9**） / lang 45ecbae87（rebase→**3c2b2a867**）。
+
+**复核内容与结果。** ①冻结核对：双树 clean 于复审提交；探针零残留（grep zz_=0）；无调试输出。②门禁重放：ace_ts_provider **20/20**（含排窗浏览器档——str 输入事件/多载荷/bool/lambda 四腿）；vue 门 **77/82**（chart×5 具名预存）；dialect lib 105/105；ace-source PASS。③V-B-WEB 映射：census 修订 #4 数字=实测（75,8,1,27）；taxonomy 七族逐族有诊断证据（[59]=元素括号形语法缺口、[57]=f64 域、[65]/[66]=双 widget、[70]-[72]=控制流/FFI 体、[5]/[8]/[61]=空体、[25]/[29]=伪源）；vue 门 3 parse 红根因=state 无臂（修复后绿）、444=名册谎报（修复后绿）、vmodel=断言陈旧（刷新至 Plan 008 后来设计）。④机理安全：多赋值发射的控制流防线=语法层拒（age-view-stmt 只收平铺赋值——不可能静默展平，复核确认无展平路径）；临时名改号/簿记变量声明的 node 判别在永久 case（丢句/撞名即红）。⑤诚实边界：chart×5 不得单方弱化（归属官方包线）；taxonomy ①③④为语言面决策（跨 981 冻结 grammar/IF-981-MODULE/体模型），980 不冒闭。
+
+2026-11-18 stage: merge（phase fold #9，WEB #6l 批增量正式落主；整包 executing 12/32 保持，唯一树保留）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（批增量交付）| delivery_commit: auto-ui master **7e329df9**（05bdf5b5 rebase onto 981 overlay-pin 落主后 master）、auto-lang master **3c2b2a867**（45ecbae87 rebase）| canonical: docs/specs/ace-migration/m2-autoui.md §13.13（master 上新节）| 落主方式：wt-guard 双树 clean + `git merge --ff-only`（无 merge commit；rebase 均无冲突=补丁全等）。**落地后核对**：双仓 tip=delivery commit ✓；rebase 基面（ui=981 overlay pin 数据提交、lang=docs-only）不触本批代码面——20/20/77/82/105/105/ace-source PASS 证据按输入同一性复用。
+
+next_responsible_role: user（B-WEB-I/V/R 勾选前置=缺席 taxonomy ①（$event/括号属性/引号键语法缺口——跨 981 冻结 grammar 的语言面收敛裁定）、③（双 widget=IF-981-MODULE 域）、④（控制流/let/调用体模型扩展）的归属与开工决策；②float 域=981 不支撑、⑤空体/⑦伪源=语义无可拼接、chart×5=官方包线）。980 侧无已解锁未交付项。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
