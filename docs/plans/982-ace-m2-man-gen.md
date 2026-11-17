@@ -5,18 +5,20 @@ feature_name: AutoMan配置任务模板与生成器迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
-plan_revision: 7
+plan_revision: 8
 current_step: 1
 total_steps: 37
-depends_on: [PLAN-960, PLAN-964, PLAN-966, PLAN-969, PLAN-970, PLAN-971, PLAN-973, PLAN-976, PLAN-977, PLAN-978]
-supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
-new_spec_components: [docs/specs/ace-migration/m2-man-gen.md]
+depends_on: [PLAN-960, PLAN-964, PLAN-966, PLAN-969, PLAN-970, PLAN-971, PLAN-973, PLAN-976, PLAN-977, PLAN-978, PLAN-967, PLAN-979]
+supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/ace-migration/m2-facade.md]
+new_spec_components: [docs/specs/ace-migration/m2-man-gen.md, docs/specs/ace-migration/config-document-evaluation.md]
 touched_goals: [GOAL-002]
 ---
 
 # [PLAN-982] AutoMan配置任务模板与生成器迁移
 
 ## 0. 变更摘要
+
+2026-11-17 r8规划：GAP-982-CONFIG-ACE明确由本包现B-CONFIG-I/V/R端到端承接auto-lang＋auto-man，详§5/6/7和共同设计；原37任务/进度/A route C与M2A-08证据保持。本轮不实施、不建树、不改已验Spec，不再等待无owner的上游配置能力。
 
 2026-11-16 r7（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
@@ -51,6 +53,23 @@ touched_goals: [GOAL-002]
 现有Rust ACE workspace、Auto公共源、共享语法/查询/工件系统及真实目标工具链。跨仓使用同组兄弟worktree与显式SDK身份，不创建junction/symlink。
 
 ## 4. 需求分析与背景调查
+
+### CONFIG取材身份（2026-11-17，只读）
+
+基面auto-lang `b12170da7c64441c829082b29e5d6753c22c2fe0`、auto-man `11fe79c9001dc3b96bbfd50069893387f07f07ee`。
+
+| 实际文件 | SHA256前16 |
+|---|---|
+| `D:/autostack/auto-lang/crates/auto-lang-core/src/config.rs` | `89a5f60f4a03855b` |
+| `D:/autostack/auto-lang/crates/auto-lang-core/src/entry.rs` | `93aa81b3bb6f84a0` |
+| `D:/autostack/auto-lang/experimental/ace/crates/core/src/source/domain.rs` | `9143908712396847` |
+| `D:/autostack/auto-lang/crates/auto-lang-core/src/vm/config_eval_tests.rs` | `1ef82d75a4b34cb4` |
+| `D:/autostack/auto-man/crates/auto-man-runtime/src/project_model_adapter.rs` | `c5f766e1634cad20` |
+
+已读Spec：m2-facade、m2-man-gen、M2A正式认证现值；复用364/375配置回归、780项目模型和Man002配置类型资料。新设计补`SourceProfile::ConfigDocument`等拟符号/新模块，不声称现在存在；可视为未来B-CONFIG-I内创建的具体改面，不需要另一个未指派Plan。
+
+
+本轮授权：用户明确要求为982/B配置文档求值指派既有承接、补设计/接口/验收并更新顺序；允许修订两仓能力规划，仍不启动实施或新建Plan。取材现代码/Spec/旧研究及r7真实探针，新增语言侧scope属于本次显式规划，不暗借A授权执行。
 
 本次授权只含设计、路线与相关Plan修订，未含源码/测试实现、生成fixture/SDK、构建、产品运行或merge。阶段依据为用户本轮正式决定；取材当前959冻结分母、TestCase/固定组/ACE源码重放规范及现存owner入口，旧overview的物理路径/别名不覆盖当前Cargo。
 
@@ -88,18 +107,35 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 ## 5. 详细设计
 
+### CONFIG-ACE-B-20261117：唯一承接与当前执行入口（r8，优先于r7未指派快照）
+
+用户本轮要求核实承接并补齐设计/接口/验收、消除等待；仍只规划、不实施。本包**B-CONFIG-I/V/R统一承接GAP-982-CONFIG-ACE**，明确扩展同组auto-lang与auto-man改面；设计见[配置文档求值](../design/ace-config-document-evaluation.md)。不新立Plan、不重开969/979，不把缺口甩给未交的1068或980/981。旧r7“语言改面超scope／owner未指派”是A冻结历史，本轮已作正式规划修订；route C已验A与M2A-08 r29/95c7fbad8不改。
+
+| 原任务/owner_stage | 本轮新增具体责任与最小前置 | 关闭/交接 |
+|---|---|---|
+| B-CONFIG-I / work | M2A-08＋已归档共享基础；在现唯一两仓树未来复核原输入/capability/context/预算。语言侧新增config-document Schema/CST全程序投影→共享verify/MIR/AV→中立owned文档；host注册沿969，AutoConfig显式ACE路径；Man消费接线/真实配置二阶段值流 | 配置原分母、数据/诊断/权限/资源/身份及完整真实consumer均有永久正反例。不要只交一个静态pac或route C旧求值；不等971/B即可先交本CONFIG能力 |
+| B-CONFIG-V / work | I建成的接口、原Config回归、780矩阵及真实Man配置消费者 | 完整V-CFG-SYNTAX/FLOW/CONTEXT/VALUE/FAIL/LIMIT/IDENTITY/PRODUCT通过；B实际config.engine=av、legacy_config_dispatch=0，每项独立oracle，原平台/ignore条件保留 |
+| B-CONFIG-R / review | I/V实现冻结，同一权威树独立上下文 | 从原source/context→CST→实际AV→owned Node→Pac/锁读取逐项复核，具名GAP实现及所有Case/SD无遗漏；A历史证据不替B |
+| 原T-06 CONFIG子面 / merge | B-CONFIG-R pass后可先正式phase fold | 交IF-982-CONFIG-ACE精确repo/SHA/Schema/SDK/ABI/原输入/运行/反控/平台；保树续本包余批，不提前勾完整T-06/归档 |
+| 原EXEC/TEMPLATE/各target/EXPORT/DEVSDK与T-05..07 | CONFIG正式来源；工具命令消费971/B，REVERSE消费977/B，其余沿原最小表 | 逐批真实集成→全包独立final→完整合入/归档/清理。下游983/984/985 B消费CONFIG，不反向卡CONFIG交付 |
+
+**接口与语义决策已定，非只读调研占位：** 新`AceConfigRequest/Report`与owned `ConfigDocument/ConfigValue`，同一executor注册上增加配置方法；`AceValue`标量保持。config-domain须投影一个顺序入口，现compile_domain表达式-only限制由本任务在共享owner增量，不逐字段独立执行。采用受检配置值/累积原语＋AV业务求值，不把旧Parser/ConfigCodegen/VM或Rust AST求值器塞新链。AutoConfig→auto-val Node只是结果适配；新候选路径失败零旧求值/静态fallback。源码/原断言、具体API/节点类型/预算/缓存/平台与数据所有权详见设计§2–6。
+
+CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要求为每个目标再实现求值器，不冒AC guest运行期支持，不等UI三波/AAC全自举或1067异步。已有A默认legacy配置只保A收据/显式旧选择，B候选实际配置必须新AV；986再做默认切换，987核旧链不可达。旧静态ProjectModel分类仍用同一事实，不作为动态失败时的退路。
+
 ### M2-TARGET-SCOPE-20261116：本包当前边界
 
 本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
 ### M2阶段执行合同（当前优先）
 
-依据[Design55两阶段合同](../design/55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)；本包=跨M2-A/B。A=CONFIG/PROOF；CONFIG只等960/964/969/973，PROOF补970/978；不等971整包、977/REVERSE或所有目标CLI。其他原批次全部B，消费M2A-08及原最小前置。
+依据[Design55两阶段合同](../design/55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)；本包跨M2-A/B。A route C已正式交；当前CONFIG完整引擎迁移归本包B-CONFIG两仓任务，不等其它产品整包；完整EXEC及其它B批按各自已交接口消费。CONFIG先核M2A-08及已交960/964/969/973/979共享基础，不重开它们。
 
 | 阶段 | 当前任务归属（保原ID/义务） |
 |---|---|
 | M2-A准备 | T-01 |
-| M2-A | B-PROOF-I, B-PROOF-V, B-PROOF-R, B-CONFIG-I, B-CONFIG-V, B-CONFIG-R |
+| M2-A已交子面 | B-PROOF-I/V/R及B-CONFIG-I/V/R的route C部分；CONFIG引擎仍B |
+| M2-B CONFIG | 原B-CONFIG-I/V/R完整义务（两仓scope），正式IF交接后接其它B批 |
 | M2-B | B-EXEC-I, B-EXEC-V, B-EXEC-R, B-TEMPLATE-I, B-TEMPLATE-V, B-TEMPLATE-R, B-RUST-I, B-RUST-V, B-RUST-R, B-C-I, B-C-V, B-C-R, B-WEBTARGET-I, B-WEBTARGET-V, B-WEBTARGET-R, B-PY-I, B-PY-V, B-PY-R, B-REVERSE-I, B-REVERSE-V, B-REVERSE-R, B-EXPORT-I, B-EXPORT-V, B-EXPORT-R, B-DEVSDK-I, B-DEVSDK-V, B-DEVSDK-R, T-05, T-06, T-07 |
 
 本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。frontmatter仍是整Plan最终依赖并集，局部A按本节/各批最小接口前置启动，不把985全Plan或B消费者整包置为A前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
@@ -190,7 +226,7 @@ R关闭：独立核真实输入→新producer→consumer及正反例/来源/资�
 各批I的有界决定门：用该批最小真实正例、同类型非法近邻、一次失败后恢复跑最长producer→consumer链；仅对未决策略比较适用实现再冻结接口，不拿日历/语法深度缩范围。资源由session持候选、generation持已发布产物、在途pin持旧代，last-owner释放；错误/取消/late不得覆盖CURRENT。继承原预算/平台条件，新增资源单位/上限/超限分类在本批I冻结并有边界反例，改变承诺先修合同。
 
 
-### A期PROOF批次（新增、未实施）
+### A期PROOF原合同（route C已交；历史范围不替完整B）
 
 最小前置：L982/CONFIG, L969, L970, L978。实际改面：`D:/autostack/auto-man/crates/auto/src/cmd_run.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/automan.rs`（均核存在）；永久ACE fixture由B-PROOF-I在原owner建立，临时材料仍归本Plan的plan-artifacts scope，不新增第二runner/语义实现。
 
@@ -198,7 +234,7 @@ I：从原CLI/runtime fixture冻结多模块pac、args/env及最小脚本，接�
 V：双配置/作用域隔离，真实值/stdout/exit正确；坏配置不写state/lock，缺ACE身份拒绝无fallback；取消子任务回收。
 R：独立核普通源→新producer→真实consumer、原expected/资源/退出及source/SDK身份；本批只关闭RG-A义务，不冒全部产品迁移。
 
-### T-01 冻结记录（2026-11-17，r7 执行轮；work 收据见 §9）
+### T-01冻结记录（2026-11-17，r7历史；未指派归属已由本节r8取代，原A证据保留）
 
 **授权**：本 goal（"完成计划982/A"）按 `/auto-plan-goal` 授予 work → review → 有界修复 → merge 全链；A 切片仍只按 §5 阶段表执行，不冒 B。
 
@@ -339,6 +375,7 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
+| SD-CFG-ACE | add/modify（拟） | `docs/specs/ace-migration/config-document-evaluation.md`（新）；`m2-man-gen.md`、`m2-facade.md`（现有） | 无配置profile/owned结果、route C旧求值→本982已验共同前门/真实AV/纯数据接口与实际Man能力/失败/预算/身份；原A不重写 | 本轮明确跨仓scope、补真正能力，不用状态冒实现 | AC-CFG-SEM/OWN/SAFE/PRODUCT、AC-B-CONFIG、原AC-01..06 |
 | SD-01 | add | docs/specs/ace-migration/m2-man-gen.md | 有限切片→实际已验支持/拒绝/来源 | 不把计划当现状 | AC-01..06、全部AC-B-* |
 | SD-02 | modify | docs/specs/ace-migration/replacement-scope-and-evidence.md | 959行关联新producer/consumer及差额 | 替换闭合 | AC-03/05/06 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-man-gen.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE/AC-A-PROOF |
@@ -349,6 +386,14 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 外仓领域知识由真实owner落当地Specs；语言侧只保通用接口/迁移指针，不重复领域规则。
 
 ## 6. 测试设计
+
+### V-CFG完整验证合同（本轮拟议，原V/AC全部保留）
+
+B-CONFIG-I建立语言桥`tests/p982_config_document.rs`、ACE原source测试里的config面和Man `tests/plan982_ace_config_b.rs`（拟新路径）后，V按[设计§6](../design/ace-config-document-evaluation.md#6-验证合同与旧用例映射)的九个V-CFG-*逐行实跑。它们分别约束SYNTAX/FLOW/CONTEXT/VALUE/FAIL/LIMIT/IDENTITY/PRODUCT/RETIRE，原旧AutoVM用例与780输入映射已列，不能以parser绿、新旧相等或same_sdk替独立业务值/真实AV。
+
+最低区分值：port win32/linux→x1/2、runtime数组→dir(a),dir(b)顺序、root注入覆盖且nested at不被误写、kernel.heap模板、Node-valued Pair、on/off/完整object/bool注入、精确大整数/Unicode/NUL。坏源/类型/权限/超预算/取消/错owner/旧generation/错context缓存→具名非零、工程/state/lock无写且旧接受值可读；修复后下一次真实CLI read/run恢复。禁旧求值/删AV dispatch/删实际config映射为敏感反控，不能只grep无VM字符串。
+
+实际命令组：`cargo t ace-source ace-syntax ace-av ace-facade ace-abi ace-foreign-contract`按真实触面与consumer冻结并集；Man沿原`cargo tc`、lock_contract、plan816/plan805与新B target。新API不存在时不虚称命令已执行；不盲跑ace-perf/全仓all，Linux在专用环境保原条件。R独立核全部Case和原完整CONFIG分母；RETIRE最终安装/不可达部分由986/987接，982须先闭其候选生产路径及原全部产品义务。
 
 ### 阶段适用验证（新增合同、未执行）
 
@@ -402,6 +447,13 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 ## 7. 验收标准
 
+| ID | owner_stage | 完成谓词/实际验证 |
+|---|---|---|
+| AC-CFG-SEM | work | V-CFG-SYNTAX/FLOW/CONTEXT：原配置控制流/根与嵌套/参数覆盖/Node值/完整动态输入经真实AV，原独立expected守恒；I/V生产、R核 |
+| AC-CFG-OWN | work | V-CFG-VALUE/LIMIT：owned文档精确类型、参数/孩子顺序/资源/预算/取消与最后owner释放正确，迭代深宽输入无panic；I/V生产、R核 |
+| AC-CFG-SAFE | work | V-CFG-FAIL/IDENTITY：坏源具名原span、零副作用/零fallback、缓存身份/冷恢复/修复下一读完整；I/V生产、R核 |
+| AC-CFG-PRODUCT | work | V-CFG-PRODUCT及RETIRE的982候选部分、真实Pac/二阶段上下文与执行、CONFIG正式来源可消费；后继安装/退役仍986/987，不提前把未来结果勾绿 |
+
 | ID | owner_stage | 可观察标准 | 验证 |
 |---|---|---|---|
 | AC-01 | work | 分母/批次/前置/原模式/命令/资源完整 | T-01及各I |
@@ -431,11 +483,11 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 - [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 [✅ 2026-11-17：冻结记录落 §5"T-01 冻结记录"——六前置 archived 交付核验、两仓改面/owner 重核、ACE 接口实测（`av-worker request` 对真实 pac.at＝`frontend:source.syntax` 拒；legacy 面正常求值）、具名缺口 `GAP-982-CONFIG-ACE`、A 输入/预期/入口/材料/树/A-B 边界冻结；零源码/测试改动，A 实现待 §10 Q-982-1 裁定]
 
-- [ ] **B-CONFIG-I｜M2-A｜owner_stage: work｜AC-B-CONFIG/AC-02/03/06**：pac/am/index/state与参数/环境双阶段求值接ACE；路径锁身份与可求值静态子集不混用。 按§5真实改面补永久fixture并固定§6命令。 [A切片✅2026-11-17：候选腿已消费 SDK 配置 owner 并记录逐值证据（`ace_candidate.rs`）；引擎迁移＝本批 B 差额]
+- [ ] **B-CONFIG-I｜M2-A已交子面／M2-B完整｜owner_stage: work｜AC-B-CONFIG/AC-02/03/06**：pac/am/index/state与参数/环境双阶段求值接ACE；路径锁身份与可求值静态子集不混用。 按§5真实改面补永久fixture并固定§6命令。 [A切片✅2026-11-17：候选腿已消费 SDK 配置 owner 并记录逐值证据（`ace_candidate.rs`）；引擎迁移＝本批 B 差额] CONFIG-ACE-B：同时实施语言侧共同profile/Program投影/AV文档原语、owned公开SDK/桥及Man真实消费，按§5设计先证全链；原T-01不重勾。
 
-- [ ] **B-CONFIG-V｜M2-A｜owner_stage: work｜AC-B-CONFIG**：运行V-B-CONFIG完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 [A切片✅2026-11-17：真实 pac 值/stdout/exit/隔离/坏配置零写五例实跑（见 §9 review/merge 收据）]
+- [ ] **B-CONFIG-V｜M2-A已交子面／M2-B完整｜owner_stage: work｜AC-B-CONFIG**：运行V-B-CONFIG完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。 [A切片✅2026-11-17：真实 pac 值/stdout/exit/隔离/坏配置零写五例实跑（见 §9 review/merge 收据）] CONFIG-ACE-B：新增V-CFG九行与四AC完整运行，原完整CONFIG用例/预算/平台不减，候选legacy_config_dispatch=0。
 
-- [ ] **B-CONFIG-R｜M2-A｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。 [A切片✅2026-11-17：独立复审 r1 NEEDS_FIX→r2/r3 PASS（1 MAJOR 已闭）]
+- [ ] **B-CONFIG-R｜M2-A已交子面／M2-B完整｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。 [A切片✅2026-11-17：独立复审 r1 NEEDS_FIX→r2/r3 PASS（1 MAJOR 已闭）] CONFIG-ACE-B：独立核两仓新producer与真实consumer，pass后原T-06可先CONFIG phase fold交IF-982-CONFIG-ACE；整任务含A/B皆齐才勾。
 
 - [ ] **B-PROOF-I｜M2-A｜owner_stage: work｜AC-A-PROOF**：从原CLI/runtime fixture冻结多模块pac、args/env及最小脚本，接显式ACE candidate入口，证明配置与实际命令消费同一SDK；不等待整个EXEC/TEMPLATE/各target迁移。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。 [A切片✅2026-11-17：永久 fixture＋显式候选入口接通（feature `ace-candidate`＋env）]
 
@@ -449,63 +501,63 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
-- [ ] **B-EXEC-I｜M2-B｜owner_stage: work｜AC-B-EXEC/AC-02/03/06**：逐CLI dispatch接ACE run/session/tool协议，保stdin/捕获/退出/超时；不等待模板或全部目标生成。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-EXEC-I｜M2-B｜owner_stage: work｜AC-B-EXEC/AC-02/03/06**：逐CLI dispatch接ACE run/session/tool协议，保stdin/捕获/退出/超时；不等待模板或全部目标生成。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-EXEC-V｜M2-B｜owner_stage: work｜AC-B-EXEC**：运行V-B-EXEC完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-EXEC-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-TEMPLATE-I｜M2-B｜owner_stage: work｜AC-B-TEMPLATE/AC-02/03/06**：模板求值与多文件输出用ACE/中立生成核心，去旧AutoInterpreter；模板输入、文件冲突/失败事务保持。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-TEMPLATE-I｜M2-B｜owner_stage: work｜AC-B-TEMPLATE/AC-02/03/06**：模板求值与多文件输出用ACE/中立生成核心，去旧AutoInterpreter；模板输入、文件冲突/失败事务保持。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-TEMPLATE-V｜M2-B｜owner_stage: work｜AC-B-TEMPLATE**：运行V-B-TEMPLATE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-TEMPLATE-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-RUST-I｜M2-B｜owner_stage: work｜AC-B-RUST/AC-02/03/06**：原多模块工程使用新A2R，保CLI stdout/文件/成功信封和错误JSON/exit。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-RUST-I｜M2-B｜owner_stage: work｜AC-B-RUST/AC-02/03/06**：原多模块工程使用新A2R，保CLI stdout/文件/成功信封和错误JSON/exit。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-RUST-V｜M2-B｜owner_stage: work｜AC-B-RUST**：运行V-B-RUST完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-RUST-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-C-I｜M2-B｜owner_stage: work｜AC-B-C/AC-02/03/06**：新A2C接trans C/a2c-stdlib与目标配置，保ABI/链接/错误契约。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-C-I｜M2-B｜owner_stage: work｜AC-B-C/AC-02/03/06**：新A2C接trans C/a2c-stdlib与目标配置，保ABI/链接/错误契约。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-C-V｜M2-B｜owner_stage: work｜AC-B-C**：运行V-B-C完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-C-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-WEBTARGET-I｜M2-B｜owner_stage: work｜AC-B-WEBTARGET/AC-02/03/06**：真实CLI调用新TS/JS provider，保模块/依赖/source map。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-WEBTARGET-I｜M2-B｜owner_stage: work｜AC-B-WEBTARGET/AC-02/03/06**：真实CLI调用新TS/JS provider，保模块/依赖/source map。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-WEBTARGET-V｜M2-B｜owner_stage: work｜AC-B-WEBTARGET**：运行V-B-WEBTARGET完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-WEBTARGET-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-PY-I｜M2-B｜owner_stage: work｜AC-B-PY/AC-02/03/06**：CLI接977/PY及工程配置/解释器发现。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-PY-I｜M2-B｜owner_stage: work｜AC-B-PY/AC-02/03/06**：CLI接977/PY及工程配置/解释器发现。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-PY-V｜M2-B｜owner_stage: work｜AC-B-PY**：运行V-B-PY完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-PY-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-REVERSE-I｜M2-B｜owner_stage: work｜AC-B-REVERSE/AC-02/03/06**：保r2a与s2s/emit已有公开命令，消费其独立工具接口。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-REVERSE-I｜M2-B｜owner_stage: work｜AC-B-REVERSE/AC-02/03/06**：保r2a与s2s/emit已有公开命令，消费其独立工具接口。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-REVERSE-V｜M2-B｜owner_stage: work｜AC-B-REVERSE**：运行V-B-REVERSE完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-REVERSE-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-EXPORT-I｜M2-B｜owner_stage: work｜AC-B-EXPORT/AC-02/03/06**：逐CMake/IAR/GHS等现用export目标写配置和库闭包，逐子格实际工具链身份。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-EXPORT-I｜M2-B｜owner_stage: work｜AC-B-EXPORT/AC-02/03/06**：逐CMake/IAR/GHS等现用export目标写配置和库闭包，逐子格实际工具链身份。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-EXPORT-V｜M2-B｜owner_stage: work｜AC-B-EXPORT**：运行V-B-EXPORT完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-EXPORT-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-DEVSDK-I｜M2-B｜owner_stage: work｜AC-B-DEVSDK/AC-02/03/06**：watch和工具发现切候选ACE SDK；记录host/tool/runtime/stdlib闭包及重定位，稳定Auto编辑无Rust重编；不提前正式发布。 按§5真实改面补永久fixture并固定§6命令。
+- [ ] **B-DEVSDK-I｜M2-B｜owner_stage: work｜AC-B-DEVSDK/AC-02/03/06**：watch和工具发现切候选ACE SDK；记录host/tool/runtime/stdlib闭包及重定位，稳定Auto编辑无Rust重编；不提前正式发布。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-DEVSDK-V｜M2-B｜owner_stage: work｜AC-B-DEVSDK**：运行V-B-DEVSDK完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
 - [ ] **B-DEVSDK-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final核全部批收据/组合/遗漏/延期/workaround、warning/fmt/debug和Spec；缺必需结果不得pass。
+- [ ] **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final核全部批收据/组合/遗漏/延期/workaround、warning/fmt/debug和Spec；缺必需结果不得pass。 CONFIG-ACE-B：全包final另核新配置九Case/四AC、route C历史不冒B、所用平台与原所有产品分母。
 
-- [ ] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner次序合入/落规范，核真实来源/consumer同版，全部齐后归档。
+- [ ] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner次序合入/落规范，核真实来源/consumer同版，全部齐后归档。 CONFIG-ACE-B：可先经CONFIG独立R交正式phase收据供下游，保唯一两仓树/resync；全包review未齐不勾整任务/归档。
 
 - [ ] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan、输出逐目录对账/清scope/登记，guard clean后清树。
 
@@ -522,7 +574,19 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 
+
+
+
+
+
+
 ## 9. 复审记录
+
+### 2026-11-17 CONFIG-ACE-B规划交接（r8；非实施验收）
+
+stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授权补承接/设计/接口/验收及排程；未work/建树/运行测试/探针/构建/合入/归档/派agent。GAP-982-CONFIG-ACE由982原B-CONFIG两仓端到端承接，能力本身保持未实现；本包按§5–8现任务生产或接收，不新增Plan/任务，不改已验A收据。下一步须未来实施指令，982先B-CONFIG-I全链前探/接口与原输入冻结，再V→独立R→正式phase交接；其他owner按所用正式来源接。
+
+取材和静态核验：7计划123原任务ID/顺序/勾选与状态/进度保留，语义revision各增1；仅982补已交967/979直接基础依赖。9个配置判别Case/4个能力AC、typed接口/值语义/预算/生命周期/原用例映射与Spec候选已列；24节点30边阶段图无环，新增本地链接可达，18份源码/Spec/归档/计数器身份不变，目标文档git diff --check通过。旧无owner快照/route C/执行回执作历史保留，不把规划PASS当真实能力或独立产品review。M2A-08 r29/95c7fbad8冻结不变。
 
 ### 本轮用户授权后置的原Godot条目（历史，不计当前M2任务/AC/V）
 
@@ -577,7 +641,12 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 2026-11-17 stage: goal | plan_id: PLAN-982 | plan_revision: r7 | round: 4 | from: merge | to: done | status: executing（整包 B 未开）| outcome: pass（A 切片 delivered＋landed＋verified＋spec deposited；树保留）| worktree: D:/autostack/.wt/lang-982/auto-lang | commit: e4b2c06b4(auto-lang)/11fe79c(auto-man) | next: user（A 目标达成；B 另行授权）
 
 2026-11-17 goal-close（objective「完成计划982/A」）：A 切片全链闭合判定＝delivered（`e4b2c06b4`/`11fe79c` ff-only 落两仓 master）＋canonical spec 在案（`docs/specs/ace-migration/m2-man-gen.md`）＋独立复审 r1→r3 终态 **PASS(mergeable)**（1 MAJOR＋9 MINOR/10 NOTE 全部关闭或具名接受）＋落主复核（core/full 两形态 5/5、身份 4 green、默认关特性绿）＋树/分支/组按合同**保留**供 B。**不**把整包 37 任务置完成、**不**归档本 Plan（B 未开，按 route C 裁定）。仍未闭（属 B/能力 owner）：`GAP-982-CONFIG-ACE` 配置引擎迁移、EXEC/TEMPLATE/RUST/C/WEBTARGET/PY/REVERSE/EXPORT/DEVSDK、安装/升级/退役、SD-02/959 行产品级闭合、周期批量回归门。
+2026-11-17 stage: work / **B-entry 核验＋B-CONFIG-I 增量1（中立接口层）**（objective「继续完成计划982」，round 1）| 门: 985 **M2A-08＝`95c7fbad8`**（985 §9 merge 收据「M2A-08成立」，规范 `docs/specs/ace-migration/m2-certification.md` 在案）→ 本包 B 门已开；CONFIG 最小前置 960/964/969/973＋979 全 archived；r8 合同（§5 CONFIG-ACE-B）与设计 `docs/design/ace-config-document-evaluation.md` 为本轮实施合同（该设计与 r8 修订此前为另一规划会话的未提交工作树内容，随本轮收据一并入库，逐字保留、未改写）| 实施 `37c7bf783`（auto-lang 唯一树，4 文件 +1052）：①`crates/auto-lang-core/src/ace_config.rs` 中立配置合同（owned `ConfigValue`/`ConfigNode`/`ConfigDocument`，精确 i64/u64/IEEE位 f64/char/含NUL文本、有序 Object、有序可重复 Node（args/props/children）；显式 `ConfigContext`（args/env快照/source root/module bundle/schema/grants）与 `ConfigEvalLimits`；分态 `AceConfigOutcome`（Success{document,identity,cost}/Diagnostic/Denied/ResourceDenied/Cancelled/HostFailure）；可归因 `ConfigIdentity`（engine/profile/domain/value schema/schema id/source hash/context digest/SDK version）与真实 `ConfigCost`；`ConfigEngineChoice{LegacyVm,AceAv}` 与 `parse_config_engine`）；②`ace_entry.rs` 在**同一** `AceExecutor` 增配置默认方法（默认＝具名 `ace.config/executor-unsupported`，不落旧引擎）＋`eval_config_with_ace` 单注册表纪律（未注册/锁损坏/不支持均具名，零 legacy dispatch）；③`lib.rs` 注册 | 验证（本树实跑）：`cargo test -p auto-lang-core --lib ace_config`＝**5/5 PASS**；`cargo test -p auto-lang-core --test ace_config_registry`＝**1/1 PASS**（独立测试进程，覆盖未注册→具名失败、默认不支持→具名拒绝且消息声明不走 legacy、支持→文档/身份/代价原样返回且精确值/顺序/重复节点保持、拒绝传播、取消标志真实被读、关闭后回到未注册）；`--lib sdk_identity`＝4/4 未回退；`cargo build -p auto-lang-core` 新增文件零告警；`rustfmt --check` 干净 | 未做（具名下增量，B-CONFIG-I 未完）：ACE 侧 `config-document` profile/grammar、Program 单入口候选与精确 source map、`cfg.*` 受检值/容器原语（node/put/append/merge/get＋scalar box/unbox）、AV 执行与迭代式 owned 导出、`auto-lang-ace-host` 配置桥（compile→verify→execute→export→teardown）、Man 侧 `ConfigEngineChoice` 接入 `AutoConfig` 与二阶段 context/dep 消费、V-CFG 九 Case（SYNTAX/FLOW/CONTEXT/VALUE/FAIL/LIMIT/IDENTITY/PRODUCT）与 780 矩阵回归 | 判读：**接口层已交、能力未实现**（与设计 §8 的 GAP 状态一致）；设计 §3 仍是拟议，最低负载（根注入＋对象/模板＋运行期 for＋两个 Node 孩子）全链未成立前不得勾 B-CONFIG-I/V，也不得归档 | next: B-CONFIG-I 增量2（ACE config-document 前端：profile/grammar/Program 单入口）
+
+2026-11-17 stage: goal | plan_id: PLAN-982 | plan_revision: r8 | round: 1 | from: work | to: work | status: executing | outcome: pass（B 门核验＋B-CONFIG-I 增量1 接口层落地，5+1 用例绿；能力未实现，树保留）| worktree: D:/autostack/.wt/lang-982/auto-lang | commit: 37c7bf783 | next: B-CONFIG-I 增量2（ACE config-document 前端）
 ## 10. 待澄清事项
+
+**B已定归属（2026-11-17）**：本包B-CONFIG两仓端到端实现，见§5 CONFIG-ACE-B和设计；本轮用户已要求补齐此合同，无“owner未指派”决策等待。原Q-982-1是已裁定的A route C历史，不是B开工的三选一。T-01所选局部实现机制不新增公共语义；遇真实反证按needs_replan保原oracle。
 
 ### Q-982-1（2026-11-17，A 实现路由）——**已裁定：route C**（2026-11-17，用户）
 
