@@ -396,6 +396,7 @@ AC 复核表：AC-01 pass（19 项身份/漂移可复核、无 expected 改动�
 
 
 `stage: followup | plan_id: PLAN-1038 | from: 1038 T-02 决定 | to: delivered | scope: D04 + D15 | outcome: pass | plan: docs/plans/archive/1069-ace-1038-d04-i32-arith-and-d15-comments.md（r1，7/7，review pass，ff 落 master） | commits: 72a095aa6（D04 共享 i32 发射 + 8 反例 + D15 5 处）+ 391934620（R-1069-04 注释 follow-up） | evidence: 72a095aa6 的 `cargo t ace-native` 329 executed PASS、COFF 前后逐字节相同、两个变异负控按预期红、codegen 身份 old→new 已记 | next: D13（单列后继包，未实施）`
+`stage: followup | plan_id: PLAN-1038 | scope: D13 | outcome: pass | plan: docs/plans/archive/1070-ace-1038-d13-mir-verify-init-module.md（r1，5/5，review pass，ff 落 master） | commit: ff1433659 | evidence: `cargo t ace-av` 1360 executed PASS（source_state e6fd8ec1…）；函数集合 66 无丢失/新增、被移动体逐字相同、公共 API/凭证/预算不变；F-01 的 9 处 Spec 路径指针登记为 D-1070-01 | next: 1038 三项 go 全部交付`
 ## 10. 待澄清事项
 
 1002试点不阻只读研究；涉及作者/执行接线的实际重构须1002接口稳定。1017同路径成本基线先冻结；本包不擅跑ace-perf或修改实现。 T-01使真实反例/资源或IO故障可运行，未取得前不声称动态后果已证。等价实现不需重复审批；新支持/预算/公共合同变化先最小决定，不能用隐式门限或延期替原义务。不等待“新测试框架全部完成”。
@@ -403,4 +404,5 @@ AC 复核表：AC-01 pass（19 项身份/漂移可复核、无 expected 改动�
 本轮T-01入口已具体化，当前不需要用户再次确认等价内部实现。未取得真实动态反例的部分仍由本节与§6指定入口/邻例核证，不把预期当已观察结果。
 
 2026-11-17 work 后：六项决定已出且无阻塞问题（§9 T-02）。D04/D13/D15 的实施/文档更正**不在本包**执行，须由各自有界后继 Plan 承接（D04 合同已冻结于 §9 T-03）；D07/D09/D11 的重开前置已具名，未满足前保持 retain/no-go。本包没有待用户裁决事项；未运行任何 ACE/性能门，故不存在“已观察动态后果”的声明。
+
 

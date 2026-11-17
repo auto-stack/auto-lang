@@ -6,6 +6,13 @@
 
 本次仅关闭“无人承接”的规划缺口，**不把能力债项标closed**；985 B滚动接收，986/987保安装/退役义务。M2A-08及A route C历史不变。本轮不实施/运行/派agent。
 
+## D-1070-01 — 9 处 canonical Spec 仍以 `mir_verify.rs` 文件路径指向已目录化模块（2026-11-17 PLAN-1070 复审登记，文档后续）
+
+- 现象：PLAN-1070 把 `av-core/src/mir_verify.rs` 改为目录模块（`mir_verify/mod.rs` + 私有 `mir_verify/init.rs`），但 9 处 Spec 的来源路径仍写 `mir_verify.rs`：`docs/specs/auto-mir/project.md:7`、`core-i32.md:3`、`dynamic-cast-profile.md:3`、`closure-capture-profile.md:3`、`function-incremental.md:4`、`collection-place-profile.md:3`、`docs/specs/ace-migration/m2-control-effects.md:5`、`m2-numbers.md:6`、`m2-stdlib-network.md:15`。
+- 结论：只影响“来源指针”准确性；规则/预算/拒绝码/凭证/公共 API 全部不变，故 PLAN-1070 的 SD-00（无规范增量）成立，且不在该 merge 中改动 canonical 文本。
+- owner：auto-mir / ace-migration Spec 维护者（下一次触及这些文档的 Plan）。
+- 关闭条件：把上述 9 处路径改为目录模块形式（`mir_verify/` 或 `mir_verify/{mod,init}.rs`），语法与相邻条目一致，Spec 内容其余不动；登记后复审路径可解析。
+- 状态：open（不阻塞 PLAN-1070；批量回归/后续文档计划具名携带）。
 ## D-1037-02 — `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av` 的 2s wall 余量过窄（2026-11-17 PLAN-1037 merge 登记，非本包代码）
 
 - 现象：合并门 `cargo t ace-av`（交付身份 `b8ab04897`）该例 10.96s 失败于 `Resource { kind: ExecutionWall, message: "platform call exceeded wall budget" }`（`run_av_i32` 用默认 `MAX_AV_WALL`=2s）；隔离重放 3/3 绿（AV exec 2.512/2.557/2.541s）、整组重放 1341/1341 绿，同内容在 PLAN-1037 review 轮亦两次整组绿。
@@ -133,7 +140,7 @@
 | F10 | P2 | reader有界且差异确认；协议后果待核 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-02 | 技术未知/修复未闭 |
 | F11 | P2 | 同源不等同合同；共享候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 研究已决 no-go@1038（保留双 no_std runtime；重开前置：符号/预算/trace/取消等价表） |
 | F12 | 保留约束 | 正向复用基础；非缺陷 | [978](978-ace-m2-build.md) | AUDIT-12 | 非缺陷，长期保留约束 |
-| F13 | P2 | 维护热点；拆分候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 研究已决 go@1038（仅一个私有边界：mir_verify init family；其余五热点不改，实施待后继 Plan） |
+| F13 | P2 | 维护热点；拆分候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) → [1070](archive/1070-ace-1038-d13-mir-verify-init-module.md) | REUSE-03 | **已修@1070**（单一边界：`mir_verify/` 目录模块 + 私有 `init.rs`；公共 API/凭证/预算/拒绝码不变；`cargo t ace-av` 1360 绿） |
 | F14 | P2 | 静态保留账已闭；迁移/运行覆盖待认证 | [985](985-ace-m2-certification.md) | AUDIT-14 | 静态映射已闭；迁移/认证后继 |
 | F15 | P3 | 陈旧注释；非依赖违规 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) → [1069](archive/1069-ace-1038-d04-i32-arith-and-d15-comments.md) | REUSE-03 | **已修@1069**（core/av-core/native 头注释与 core Cargo description 共 5 处；无依赖/身份变更） |
 | F16 | P1 | 内部计数先预留；真实allocator后果未测 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-01 | 技术未知/修复未闭 |
@@ -4792,4 +4799,5 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 归属：book listing 线（外仓 book 的作者产物）。PLAN-1066 边界明确「外仓 book/UI/Man/auto-term 不因本计划全转文档」，故本计划不改该生成器语义；其"日常验证不应有作者写入副作用"的义务由该 owner 承接。
 - 关闭条件：生成器降为显式作者入口（`#[ignore]`/独立命令）且日常组零写入；或证明 book 仓侧接受该日常覆写并有对应守卫。
 - 状态：open（不阻塞 1066；批量回归继续具名记录）。
+
 
