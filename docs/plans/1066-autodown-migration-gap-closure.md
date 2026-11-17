@@ -2058,6 +2058,8 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-10 整�
 
 **门**：`cargo t corpus` 240/0、`cargo t plan1066-s-doc-controls` 6/0、`cargo test -p auto-lang --lib plan1066` 21 passed/3 ignored（1.68s）。
 
+**提交卫生记录**：本轮 commit 657ddeb39 意外把**另一会话**在共享主检出中已 stage 的 `docs/plans/KNOWN-DEBT-AND-RISKS.md`（1038 归档后的 F04/F07/F09/F11/F13/F15 研究决定更新）一并提交。内容为合法文档工作、未改动其语义，未回滚（避免破坏他会话在途工作）；此处具名记录归属，供 T-12 复审/T-13 merge 识别。后续提交前一律先看 `git status --porcelain` 的暂存区，避免再次夹带。
+
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 11 | from: work | to: work | status: executing | outcome: pass（T-10 关闭：27 控齐备 + NC-20 纪律 + 实测台账；13任务 8/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: e434b74a4 | next: work（T-11 冻结代码后完整影响组并集与计时汇总）
 
 ## 10. 待澄清事项
