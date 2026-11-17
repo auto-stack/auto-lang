@@ -245,6 +245,82 @@ fn extract_test_stem(dir_name: &str) -> String {
     parts.get(1).unwrap_or(&dir_name).to_string()
 }
 
+/// PLAN-1066 T-03[B]: the migration document is the ONLY author source of a
+/// corpus entry. Selection comes from `<stem>.case.ad` presence; the virtual
+/// source path and the oracle channels come from the decoded document.
+///
+/// The frozen `.at`/`.as`/`.expected.*` files are history. They are consulted
+/// only by the `legacy_*_selection` helpers below, and only to keep a REMOVED
+/// (or unreadable) document visible as a loud per-case failure: an obligation
+/// must never shrink into a silently smaller corpus, and a sidecar must never
+/// stand in for the document.
+fn legacy_vm_selection(
+    case_path: &Path,
+    stem: &str,
+) -> Option<(PathBuf, Option<PathBuf>, Option<PathBuf>, Option<PathBuf>)> {
+    let at = case_path.join(format!("{stem}.at"));
+    let as_ = case_path.join(format!("{stem}.as"));
+    let source = if at.is_file() {
+        at
+    } else if as_.is_file() {
+        as_
+    } else {
+        return None;
+    };
+    let expected_out = Some(case_path.join(format!("{stem}.expected.out")))
+        .filter(|p: &PathBuf| p.is_file());
+    let expected_result = Some(case_path.join(format!("{stem}.expected.result")))
+        .filter(|p: &PathBuf| p.is_file());
+    let expected_error = Some(case_path.join(format!("{stem}.expected.error")))
+        .filter(|p: &PathBuf| p.is_file());
+    if expected_out.is_none() && expected_result.is_none() && expected_error.is_none() {
+        return None;
+    }
+    Some((source, expected_out, expected_result, expected_error))
+}
+
+fn legacy_a2r_selection(case_path: &Path, stem: &str) -> Option<(PathBuf, PathBuf)> {
+    let source = case_path.join(format!("{stem}.at"));
+    let expected = case_path.join(format!("{stem}.expected.rs"));
+    (source.is_file() && expected.is_file()).then_some((source, expected))
+}
+
+fn legacy_a2c_selection(
+    case_path: &Path,
+    stem: &str,
+) -> Option<(PathBuf, PathBuf, PathBuf, Option<PathBuf>)> {
+    let source = case_path.join(format!("{stem}.at"));
+    if !source.is_file() {
+        return None;
+    }
+    let expected_c = case_path.join(format!("{stem}.expected.c"));
+    let expected_h = case_path.join(format!("{stem}.expected.h"));
+    let expected_error = Some(case_path.join(format!("{stem}.expected.error.log")))
+        .filter(|p: &PathBuf| p.is_file());
+    (expected_c.is_file() || expected_error.is_some()).then_some((
+        source,
+        expected_c,
+        expected_h,
+        expected_error,
+    ))
+}
+
+fn legacy_a2ts_selection(case_path: &Path, stem: &str) -> Option<(PathBuf, PathBuf)> {
+    let source = case_path.join(format!("{stem}.at"));
+    let expected = case_path.join(format!("{stem}.expected.ts"));
+    (source.is_file() && expected.is_file()).then_some((source, expected))
+}
+
+/// Decode one entry's document facts; `Ok(None)` = no document at all.
+fn entry_doc_facts(
+    case_path: &Path,
+    stem: &str,
+    family: &str,
+) -> Result<Option<crate::legacy_doc_for_trans::DocFacts>, String> {
+    crate::legacy_doc_for_trans::doc_facts(case_path, stem)
+        .map_err(|e| format!("{family} entry {}: {e}", case_path.display()))
+}
+
 /// Discover all VM file-based test cases under `test/vm/`.
 /// Walks category/nnn_name/ directories, finds .at + .expected.* pairs.
 pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
@@ -280,53 +356,42 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
                     let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
                     let stem = extract_test_stem(&case_dir_name);
 
-                    // Look for source file（Plan 560 T14：.at 优先，
-                    // .as 回退——null 语义语料按用户裁定迁 .as）
-                    let source_file = case_path.join(format!("{}.at", stem));
-                    let source_file = if source_file.is_file() {
-                        source_file
-                    } else {
-                        let alt = case_path.join(format!("{}.as", stem));
-                        if alt.is_file() {
-                            alt
-                        } else {
-                            continue;
-                        }
-                    };
-
-                    // Look for expected files
-                    let expected_out = {
-                        let p = case_path.join(format!("{}.expected.out", stem));
-                        if p.is_file() {
-                            Some(p)
-                        } else {
-                            None
-                        }
-                    };
-                    let expected_result = {
-                        let p = case_path.join(format!("{}.expected.result", stem));
-                        if p.is_file() {
-                            Some(p)
-                        } else {
-                            None
-                        }
-                    };
-                    let expected_error = {
-                        let p = case_path.join(format!("{}.expected.error", stem));
-                        if p.is_file() {
-                            Some(p)
-                        } else {
-                            None
-                        }
-                    };
-
-                    // Must have at least one expected file
-                    if expected_out.is_none()
-                        && expected_result.is_none()
-                        && expected_error.is_none()
+                    // PLAN-1066 T-03[B]: the document decides selection and
+                    // the oracle channels; a doc-only tree still discovers.
+                    let facts = entry_doc_facts(&case_path, &stem, "vm");
+                    let (source_file, expected_out, expected_result, expected_error) = match facts
                     {
-                        continue;
-                    }
+                        Ok(Some(facts)) => (
+                            case_path.join(&facts.source_path),
+                            facts
+                                .has_check("vm-stdout")
+                                .then(|| case_path.join(format!("{stem}.expected.out"))),
+                            facts
+                                .has_check("vm-result")
+                                .then(|| case_path.join(format!("{stem}.expected.result"))),
+                            facts
+                                .has_check("vm-error")
+                                .then(|| case_path.join(format!("{stem}.expected.error"))),
+                        ),
+                        // No document: keep a frozen-selected entry visible so
+                        // the run fails on the missing document instead of the
+                        // corpus silently losing an obligation.
+                        Ok(None) => match legacy_vm_selection(&case_path, &stem) {
+                            Some(entry) => entry,
+                            None => continue,
+                        },
+                        // Unreadable document: the entry stays selected; its
+                        // execution reports the document error by path.
+                        Err(_) => match legacy_vm_selection(&case_path, &stem) {
+                            Some(entry) => entry,
+                            None => (
+                                case_path.join(format!("{stem}.at")),
+                                Some(case_path.join(format!("{stem}.expected.out"))),
+                                None,
+                                None,
+                            ),
+                        },
+                    };
 
                     let name = format!("{}/{}", cat_name, case_dir_name);
 
@@ -393,15 +458,38 @@ pub fn discover_a2r_tests(test_dir: &Path, suite_name: &str) -> Vec<A2rTestCase>
                     let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
                     let stem = extract_test_stem(&case_dir_name);
 
-                    let source_file = case_path.join(format!("{}.at", stem));
-                    if !source_file.is_file() {
-                        continue;
-                    }
-
-                    let expected_file = case_path.join(format!("{}.expected.rs", stem));
-                    if !expected_file.is_file() {
-                        continue;
-                    }
+                    // PLAN-1066 T-03[B]: the document is the author source.
+                    let (source_file, expected_file) =
+                        match entry_doc_facts(&case_path, &stem, "a2r") {
+                            Ok(Some(facts)) => {
+                                let artifact = facts
+                                    .artifacts
+                                    .iter()
+                                    .find(|p| p.ends_with(".rs"))
+                                    .cloned();
+                                match artifact {
+                                    Some(path) => (
+                                        case_path.join(&facts.source_path),
+                                        case_path.join(path),
+                                    ),
+                                    None => match legacy_a2r_selection(&case_path, &stem) {
+                                        Some(entry) => entry,
+                                        None => continue,
+                                    },
+                                }
+                            }
+                            Ok(None) => match legacy_a2r_selection(&case_path, &stem) {
+                                Some(entry) => entry,
+                                None => continue,
+                            },
+                            Err(_) => match legacy_a2r_selection(&case_path, &stem) {
+                                Some(entry) => entry,
+                                None => (
+                                    case_path.join(format!("{stem}.at")),
+                                    case_path.join(format!("{stem}.expected.rs")),
+                                ),
+                            },
+                        };
 
                     let cat_name = cat_entry.file_name().to_string_lossy().to_string();
                     let name = format!("{}/{}/{}", suite_name, cat_name, case_dir_name);
@@ -469,26 +557,49 @@ pub fn discover_a2c_tests(test_dir: &Path) -> Vec<A2cTestCase> {
                     let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
                     let stem = extract_test_stem(&case_dir_name);
 
-                    let source_file = case_path.join(format!("{}.at", stem));
-                    if !source_file.is_file() {
-                        continue;
-                    }
-
-                    let expected_c = case_path.join(format!("{}.expected.c", stem));
-                    let expected_h = case_path.join(format!("{}.expected.h", stem));
-                    let expected_error = {
-                        let p = case_path.join(format!("{}.expected.error.log", stem));
-                        if p.is_file() {
-                            Some(p)
-                        } else {
-                            None
-                        }
-                    };
-
-                    // Must have at least .expected.c or .expected.error.log
-                    if !expected_c.is_file() && expected_error.is_none() {
-                        continue;
-                    }
+                    // PLAN-1066 T-03[B]: the document is the author source;
+                    // a documented case without a C artifact is not an a2c
+                    // emit obligation.
+                    let (source_file, expected_c, expected_h, expected_error) =
+                        match entry_doc_facts(&case_path, &stem, "a2c") {
+                            Ok(Some(facts)) => {
+                                let c = facts.artifacts.iter().find(|p| p.ends_with(".c")).cloned();
+                                match c {
+                                    Some(path) => (
+                                        case_path.join(&facts.source_path),
+                                        case_path.join(path),
+                                        facts
+                                            .artifacts
+                                            .iter()
+                                            .find(|p| p.ends_with(".h"))
+                                            .map(|p| case_path.join(p))
+                                            .unwrap_or_else(|| {
+                                                case_path.join(format!("{stem}.expected.h"))
+                                            }),
+                                        facts
+                                            .has_check("a2c-error")
+                                            .then(|| case_path.join(format!("{stem}.expected.error.log"))),
+                                    ),
+                                    None => match legacy_a2c_selection(&case_path, &stem) {
+                                        Some(entry) => entry,
+                                        None => continue,
+                                    },
+                                }
+                            }
+                            Ok(None) => match legacy_a2c_selection(&case_path, &stem) {
+                                Some(entry) => entry,
+                                None => continue,
+                            },
+                            Err(_) => match legacy_a2c_selection(&case_path, &stem) {
+                                Some(entry) => entry,
+                                None => (
+                                    case_path.join(format!("{stem}.at")),
+                                    case_path.join(format!("{stem}.expected.c")),
+                                    case_path.join(format!("{stem}.expected.h")),
+                                    None,
+                                ),
+                            },
+                        };
 
                     let name = format!("{}/{}", cat_name, case_dir_name);
 
@@ -553,15 +664,38 @@ pub fn discover_a2ts_tests(test_dir: &Path) -> Vec<A2tsTestCase> {
                     let case_dir_name = case_entry.file_name().to_string_lossy().to_string();
                     let stem = extract_test_stem(&case_dir_name);
 
-                    let source_file = case_path.join(format!("{}.at", stem));
-                    if !source_file.is_file() {
-                        continue;
-                    }
-
-                    let expected_file = case_path.join(format!("{}.expected.ts", stem));
-                    if !expected_file.is_file() {
-                        continue;
-                    }
+                    // PLAN-1066 T-03[B]: the document is the author source.
+                    let (source_file, expected_file) =
+                        match entry_doc_facts(&case_path, &stem, "a2ts") {
+                            Ok(Some(facts)) => {
+                                let artifact = facts
+                                    .artifacts
+                                    .iter()
+                                    .find(|p| p.ends_with(".ts"))
+                                    .cloned();
+                                match artifact {
+                                    Some(path) => (
+                                        case_path.join(&facts.source_path),
+                                        case_path.join(path),
+                                    ),
+                                    None => match legacy_a2ts_selection(&case_path, &stem) {
+                                        Some(entry) => entry,
+                                        None => continue,
+                                    },
+                                }
+                            }
+                            Ok(None) => match legacy_a2ts_selection(&case_path, &stem) {
+                                Some(entry) => entry,
+                                None => continue,
+                            },
+                            Err(_) => match legacy_a2ts_selection(&case_path, &stem) {
+                                Some(entry) => entry,
+                                None => (
+                                    case_path.join(format!("{stem}.at")),
+                                    case_path.join(format!("{stem}.expected.ts")),
+                                ),
+                            },
+                        };
 
                     let name = format!("{}/{}", cat_name, case_dir_name);
 

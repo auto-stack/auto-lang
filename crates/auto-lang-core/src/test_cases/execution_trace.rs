@@ -258,6 +258,61 @@ pub fn legacy_error_identity(manifest: &str, case: &str, expected: &str) -> serd
     value
 }
 
+/// PLAN-1066 T-03[B]/T-08: the cookbook VM wrapper's external-input identity.
+///
+/// The entry's migration document is both the author source and the oracle
+/// carrier, so the identity names the document (its hash) and whether the
+/// document declares a `cookbook-stdout` (or first-check) result. The runtime
+/// wrapper and the source-derived inventory guard call this ONE function, so a
+/// daily run's recorded identity and the static binding cannot drift apart by
+/// construction; the frozen `.at`/`expected.out` sidecars are not consulted.
+pub fn cookbook_doc_identity(
+    case_dir: &std::path::Path,
+    category: &str,
+    name: &str,
+) -> serde_json::Value {
+    let mut documents: Vec<std::path::PathBuf> = std::fs::read_dir(case_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|file| file.to_string_lossy().ends_with(".case.ad"))
+        })
+        .collect();
+    documents.sort();
+    let doc_path = documents.first().cloned().unwrap_or_else(|| {
+        case_dir.join(format!("{}.case.ad", name.rsplit('_').next().unwrap_or(name)))
+    });
+    let stem = doc_path
+        .file_name()
+        .map(|file| file.to_string_lossy().trim_end_matches(".case.ad").to_string())
+        .unwrap_or_default();
+    let declares_oracle = crate::legacy_doc_for_trans::load_case(case_dir, &stem)
+        .ok()
+        .map(|entry| {
+            entry.result_text("cookbook-stdout").is_some()
+                || entry
+                    .case
+                    .spec
+                    .checks
+                    .first()
+                    .is_some_and(|check| check.expect.result.is_some())
+        })
+        .unwrap_or(false);
+    serde_json::json!({
+        "family":"legacy-cookbook-vm",
+        "id":format!("{category}/{name}"),
+        "source":file_identity(&doc_path),
+        // A path-keyed object so both governance normalizers treat it as a
+        // repository path (a bare string would freeze an absolute path into
+        // the committed association contract).
+        "document":{"path":doc_path},
+        "comparison":if declares_oracle {"document cookbook-stdout oracle"} else {"document no-oracle smoke"},
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

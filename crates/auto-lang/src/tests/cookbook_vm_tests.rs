@@ -29,37 +29,67 @@ pub(crate) fn run_cookbook_case(
 ) -> AutoResult<()> {
     let case_dir = cookbook_root.join(category).join(name);
 
-    // Find the .at file in the case directory (maxdepth 1, like batch script)
-    let at_file = fs::read_dir(&case_dir)
+    // PLAN-1066 T-03[B]: the entry's migration document selects the source and
+    // carries the oracle. Frozen `.at`/`expected.out` sidecars are history: a
+    // directory without a document is a hard error (never "no .at found" and
+    // never a sidecar fallback), and more than one document is ambiguous —
+    // the six multi-source cookbook directories were frozen to their `001_*`
+    // entry at PLAN-1066 T-01 and each carries exactly one document.
+    let mut documents: Vec<PathBuf> = fs::read_dir(&case_dir)
         .map_err(|e| {
             std::io::Error::new(e.kind(), format!("Cannot read dir {:?}: {}", case_dir, e))
         })?
         .filter_map(|e| e.ok())
-        .find(|e| e.path().extension().map_or(false, |ext| ext == "at"))
-        .ok_or_else(|| {
-            std::io::Error::new(
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map_or(false, |n| n.to_string_lossy().ends_with(".case.ad"))
+        })
+        .collect();
+    documents.sort();
+    let doc_path = match documents.len() {
+        1 => documents.remove(0),
+        0 => {
+            return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("No .at file found in {}/{}", category, name),
+                format!(
+                    "No migration document (*.case.ad) in {}/{} \
+                     (sidecar fallback is forbidden)",
+                    category, name
+                ),
             )
-        })?;
-    // PLAN-1062 T-14: the payload comes from the migration document
-    // (stem = the discovered .at stem); expected.out rides the doc.
-    let stem = at_file
-        .path()
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
+            .into());
+        }
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Ambiguous entry {}/{}: {} migration documents ({:?})",
+                    category,
+                    name,
+                    documents.len(),
+                    documents
+                ),
+            )
+            .into());
+        }
+    };
+    let stem = doc_path
+        .file_name()
+        .map(|n| n.to_string_lossy().trim_end_matches(".case.ad").to_string())
         .unwrap_or_default();
     let entry = crate::tests::legacy_doc::load_case(&case_dir, &stem)
         .map_err(|e| std::io::Error::other(e))?;
     let src = entry.source_text().to_string();
-    let expected_opt = entry.result_text().map(|t| t.to_string());
+    let expected_opt = entry
+        .result_text_for("cookbook-stdout")
+        .or_else(|| entry.result_text())
+        .map(|t| t.to_string());
     let trace = if emit_trace {
         crate::test_cases::execution_trace::Invocation::start(|| {
-            serde_json::json!({
-            "family":"legacy-cookbook-vm","id":format!("{category}/{name}"),
-            "source":crate::test_cases::execution_trace::file_identity(&at_file.path()),
-            "oracle":crate::test_cases::execution_trace::file_identity(&case_dir.join("expected.out")),
-            "comparison":if case_dir.join("expected.out").is_file(){"original stdout golden"}else{"original no-crash smoke"}})
+            crate::test_cases::execution_trace::cookbook_doc_identity(
+                &case_dir, category, name,
+            )
         })
     } else {
         None

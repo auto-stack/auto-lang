@@ -112,6 +112,7 @@ mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 mod diag_scope; // PLAN-1066 A-NOWRITE: scoped diagnostics, never author-tree writes
 mod plan1066_a_slice; // PLAN-1066/A: denominator freeze + NC-A1..4 + evidence receipts
+mod plan1066_b_slice; // PLAN-1066 T-03[B]: N-family document authority + NC-02..06/21 controls
 pub use auto_lang_core::heavy_gate;
 mod plan569_py_dispatch_tests;
 // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。

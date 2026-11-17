@@ -924,19 +924,21 @@ pub fn store_name_snake(name: &str) -> String {
 // ---- T-02 终批根项（runners/FFI init/错误定位/remap/结果提取）----
 /// Plan 262: Run a single VM file-based test case.
 /// Returns a `FileTestReport` with pass/fail outcome.
+///
+/// PLAN-1066 T-03[B]: the case's migration document (`<stem>.case.ad`) is the
+/// only author source — source text and both oracle channels are read from the
+/// decoded document, and the trace records the DOCUMENT identity. The frozen
+/// `.at`/`.as`/`.expected.*` sidecars are never read here; a missing or
+/// unreadable document is a hard per-case failure (never a sidecar fallback).
 pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTestReport {
+    let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+        .unwrap_or_else(|| case.name.clone());
+    let doc_path = crate::legacy_doc_for_trans::doc_path(&case.dir, &stem);
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
-        let oracles = [
-            case.expected_out.as_deref(),
-            case.expected_result.as_deref(),
-            case.expected_error.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
         serde_json::json!({"family":"legacy-vm","id":case.name,
-            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
-            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+            "source":crate::test_cases::execution_trace::file_identity(&doc_path),
+            "document":doc_path,
+            "oracles":["vm-stdout","vm-result","vm-error"]})
     });
     let report = run_vm_file_test_impl(case);
     if let Some(trace) = trace {
@@ -951,19 +953,22 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
 
     let start = Instant::now();
     let case_name = case.name.clone();
-
-    // Read source file
-    let src = match std::fs::read_to_string(&case.source_file) {
-        Ok(s) => s,
+    let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+        .unwrap_or_else(|| case.name.clone());
+    let doc = match crate::legacy_doc_for_trans::load_case(&case.dir, &stem) {
+        Ok(doc) => doc,
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!("migration document: {e}")),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
         }
     };
+
+    // The document is the author source (PLAN-1066 T-03[B]).
+    let src = doc.source_text().to_string();
 
     // Prepend auto/lib for bootstrap tests
     let src = if case.is_bootstrap {
@@ -999,7 +1004,7 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
     };
 
     // Error expectation test
-    if case.expected_error.is_some() {
+    if doc.has_check("vm-error") {
         let result = run(&src);
         let duration_ms = start.elapsed().as_millis();
         return match result {
@@ -1039,33 +1044,12 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
 
     let duration_ms = start.elapsed().as_millis();
 
-    // Check stdout against .expected.out
-    if let Some(ref expected_path) = case.expected_out {
-        let expected = match std::fs::read_to_string(expected_path) {
-            Ok(e) => e,
-            Err(e) => {
-                return test_runner::FileTestReport {
-                    name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!(
-                        "failed to read expected.out: {}",
-                        e
-                    )),
-                    duration_ms,
-                    stdout: stdout.clone(),
-                };
-            }
-        };
+    // Check the stdout channel against the document's `vm-stdout` check.
+    if let Some(expected) = doc.result_text("vm-stdout") {
         if stdout != expected {
             // PLAN-1066 A-NOWRITE: mismatch diagnostics are scoped/dropped —
             // never a `.wrong.out` sibling in the author tree.
-            let label = format!(
-                "test/vm/{}/{}",
-                case.name,
-                expected_path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().replace(".expected", ""))
-                    .unwrap_or_default()
-            );
+            let label = format!("test/vm/{}/{}.expected.out", case.name, stem);
             let _ = crate::diag_scope::write_scoped(&label, stdout.as_bytes());
             return test_runner::FileTestReport {
                 name: case_name,
@@ -1076,32 +1060,11 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
         }
     }
 
-    // Check return value against .expected.result
-    if let Some(ref expected_path) = case.expected_result {
-        let expected = match std::fs::read_to_string(expected_path) {
-            Ok(e) => e,
-            Err(e) => {
-                return test_runner::FileTestReport {
-                    name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!(
-                        "failed to read expected.result: {}",
-                        e
-                    )),
-                    duration_ms,
-                    stdout: stdout.clone(),
-                };
-            }
-        };
+    // Check the return-value channel against the document's `vm-result` check.
+    if let Some(expected) = doc.result_text("vm-result") {
         if result != expected {
             // PLAN-1066 A-NOWRITE: scoped/dropped, same as the stdout axis.
-            let label = format!(
-                "test/vm/{}/{}",
-                case.name,
-                expected_path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().replace(".expected", ""))
-                    .unwrap_or_default()
-            );
+            let label = format!("test/vm/{}/{}.expected.result", case.name, stem);
             let _ = crate::diag_scope::write_scoped(&label, result.as_bytes());
             return test_runner::FileTestReport {
                 name: case_name,
@@ -1123,11 +1086,14 @@ fn run_vm_file_test_impl(case: &test_runner::FileTestCase) -> test_runner::FileT
 /// Plan 263 Phase 3: Run a single a2ts transpiler file-based test case.
 /// Reads .at source, transpiles to TypeScript, compares against .expected.ts.
 pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::FileTestReport {
+    let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+        .unwrap_or_else(|| case.name.clone());
+    let doc_path = crate::legacy_doc_for_trans::doc_path(&case.dir, &stem);
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
-        let oracles = vec![case.expected_file.as_path()];
         serde_json::json!({"family":"legacy-a2ts","id":case.name,
-            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
-            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+            "source":crate::test_cases::execution_trace::file_identity(&doc_path),
+            "document":doc_path,
+            "oracles":["a2ts-emit"]})
     });
     let report = run_a2ts_file_test_impl(case);
     if let Some(trace) = trace {
@@ -1137,25 +1103,51 @@ pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::File
     report
 }
 
+/// PLAN-1066 T-03[B]: load one corpus entry's migration document. The
+/// document is the only author source of the N families; a missing or
+/// unreadable document is a hard error, never a sidecar fallback.
+fn load_family_doc(
+    dir: &std::path::Path,
+    stem_fallback: &str,
+) -> Result<(String, crate::legacy_doc_for_trans::LegacyDoc), String> {
+    let stem = crate::legacy_doc_for_trans::case_stem(dir)
+        .unwrap_or_else(|| stem_fallback.to_string());
+    let doc = crate::legacy_doc_for_trans::load_case(dir, &stem)?;
+    Ok((stem, doc))
+}
+
 fn run_a2ts_file_test_impl(case: &test_runner::A2tsTestCase) -> test_runner::FileTestReport {
     use std::time::Instant;
 
     let start = Instant::now();
     let case_name = case.name.clone();
-
-    let stem = case
+    let fallback = case
         .source_file
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("test");
-
-    // Read source
-    let src = match std::fs::read_to_string(&case.source_file) {
-        Ok(s) => s,
+        .unwrap_or("test")
+        .to_string();
+    let (stem, doc) = match load_family_doc(&case.dir, &fallback) {
+        Ok(pair) => pair,
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!("migration document: {e}")),
+                duration_ms: start.elapsed().as_millis(),
+                stdout: String::new(),
+            };
+        }
+    };
+    let stem = stem.as_str();
+    let src = doc.source_text().to_string();
+    let expected = match doc.artifact(".ts") {
+        Some(bytes) => bytes.to_vec(),
+        None => {
+            return test_runner::FileTestReport {
+                name: case_name,
+                outcome: test_runner::TestOutcome::Failed(
+                    "migration document declares no .ts artifact".into(),
+                ),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
@@ -1204,27 +1196,14 @@ fn run_a2ts_file_test_impl(case: &test_runner::A2tsTestCase) -> test_runner::Fil
         }
     };
 
-    // Read expected
-    let expected = match std::fs::read(&case.expected_file) {
-        Ok(b) => b,
-        Err(e) => {
-            return test_runner::FileTestReport {
-                name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!(
-                    "failed to read expected.ts: {}",
-                    e
-                )),
-                duration_ms: start.elapsed().as_millis(),
-                stdout: String::new(),
-            };
-        }
-    };
-
+    // The expected bytes came from the document (above).
     let duration_ms = start.elapsed().as_millis();
 
     if ts_code != expected {
-        let wrong_path = case.expected_file.with_extension("wrong.ts");
-        let _ = std::fs::write(&wrong_path, &ts_code);
+        // PLAN-1066 T-07[B]/A-NOWRITE: diagnostics are scoped/dropped — a
+        // `.wrong.ts` sibling in the author tree is never written.
+        let label = format!("test/a2ts/{}/{}", case.name, format!("{stem}.wrong.ts"));
+        let _ = crate::diag_scope::write_scoped(&label, &ts_code);
         test_runner::FileTestReport {
             name: case_name,
             outcome: test_runner::TestOutcome::Failed("transpiler output mismatch".into()),
@@ -1244,18 +1223,14 @@ fn run_a2ts_file_test_impl(case: &test_runner::A2tsTestCase) -> test_runner::Fil
 /// Plan 263 Phase 3: Run a single a2c transpiler file-based test case.
 /// Reads .at source, transpiles to C, compares against .expected.c and .expected.h.
 pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTestReport {
+    let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
+        .unwrap_or_else(|| case.name.clone());
+    let doc_path = crate::legacy_doc_for_trans::doc_path(&case.dir, &stem);
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
-        let oracles = [
-            Some(case.expected_c.as_path()),
-            Some(case.expected_h.as_path()),
-            case.expected_error.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
         serde_json::json!({"family":"legacy-a2c","id":case.name,
-            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
-            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+            "source":crate::test_cases::execution_trace::file_identity(&doc_path),
+            "document":doc_path,
+            "oracles":["a2c-emit"]})
     });
     let report = run_a2c_file_test_impl(case);
     if let Some(trace) = trace {
@@ -1271,27 +1246,28 @@ fn run_a2c_file_test_impl(case: &test_runner::A2cTestCase) -> test_runner::FileT
     let start = Instant::now();
     let case_name = case.name.clone();
 
-    let stem = case
+    let fallback = case
         .source_file
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("test");
-
-    // Read source
-    let src = match std::fs::read_to_string(&case.source_file) {
-        Ok(s) => s,
+        .unwrap_or("test")
+        .to_string();
+    let (stem, doc) = match load_family_doc(&case.dir, &fallback) {
+        Ok(pair) => pair,
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!("migration document: {e}")),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
         }
     };
+    let stem = stem.as_str();
+    let src = doc.source_text().to_string();
 
     // Check if this is an error test
-    if case.expected_error.is_some() {
+    if doc.has_check("a2c-error") {
         let result = crate::trans::c::transpile_c(stem, &src);
         let duration_ms = start.elapsed().as_millis();
         return match result {
@@ -1343,11 +1319,13 @@ fn run_a2c_file_test_impl(case: &test_runner::A2cTestCase) -> test_runner::FileT
 
     let duration_ms = start.elapsed().as_millis();
 
-    // Compare .c output
-    let expected_c = std::fs::read(&case.expected_c).unwrap_or_default();
+    // Compare .c output (document inline artifact; absent = zero bytes,
+    // which is the frozen empty-header/empty-source role).
+    let expected_c = doc.artifact(".c").map(|b| b.to_vec()).unwrap_or_default();
     if actual_src != expected_c {
-        let wrong_path = case.expected_c.with_extension("wrong.c");
-        let _ = std::fs::write(&wrong_path, &actual_src);
+        // PLAN-1066 T-07[B]/A-NOWRITE: scoped/dropped, never `.wrong.c`.
+        let label = format!("test/a2c/{}/{}.wrong.c", case.name, stem);
+        let _ = crate::diag_scope::write_scoped(&label, &actual_src);
         return test_runner::FileTestReport {
             name: case_name,
             outcome: test_runner::TestOutcome::Failed("C source mismatch".into()),
@@ -1357,10 +1335,11 @@ fn run_a2c_file_test_impl(case: &test_runner::A2cTestCase) -> test_runner::FileT
     }
 
     // Compare .h output
-    let expected_h = std::fs::read(&case.expected_h).unwrap_or_default();
+    let expected_h = doc.artifact(".h").map(|b| b.to_vec()).unwrap_or_default();
     if actual_header != expected_h {
-        let wrong_path = case.expected_h.with_extension("wrong.h");
-        let _ = std::fs::write(&wrong_path, &actual_header);
+        // PLAN-1066 T-07[B]/A-NOWRITE: scoped/dropped, never `.wrong.h`.
+        let label = format!("test/a2c/{}/{}.wrong.h", case.name, stem);
+        let _ = crate::diag_scope::write_scoped(&label, &actual_header);
         return test_runner::FileTestReport {
             name: case_name,
             outcome: test_runner::TestOutcome::Failed("C header mismatch".into()),
@@ -1381,10 +1360,15 @@ fn run_a2c_file_test_impl(case: &test_runner::A2cTestCase) -> test_runner::FileT
 /// Reads .at source, transpiles to Rust, compares against .expected.rs.
 pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTestReport {
     let trace = crate::test_cases::execution_trace::Invocation::start(|| {
-        let oracles = vec![case.expected_file.as_path()];
+        let doc_path = crate::legacy_doc_for_trans::doc_path(
+            &case.dir,
+            &crate::legacy_doc_for_trans::case_stem(&case.dir)
+                .unwrap_or_else(|| case.name.clone()),
+        );
         serde_json::json!({"family":"legacy-a2r","id":case.name,
-            "source":crate::test_cases::execution_trace::file_identity(&case.source_file),
-            "oracles":oracles.into_iter().map(crate::test_cases::execution_trace::file_identity).collect::<Vec<_>>()})
+            "source":crate::test_cases::execution_trace::file_identity(&doc_path),
+            "document":doc_path,
+            "oracles":["rust"]})
     });
     let report = run_a2r_file_test_impl(case);
     if let Some(trace) = trace {
@@ -1399,33 +1383,30 @@ fn run_a2r_file_test_impl(case: &test_runner::A2rTestCase) -> test_runner::FileT
 
     let start = Instant::now();
     let case_name = case.name.clone();
-
-    // Extract stem from source file name for transpile_rust
-    let stem = case
+    let fallback = case
         .source_file
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("test");
-
-    // Read source
-    let src = match std::fs::read_to_string(&case.source_file) {
-        Ok(s) => s,
+        .unwrap_or("test")
+        .to_string();
+    let (stem, doc) = match load_family_doc(&case.dir, &fallback) {
+        Ok(pair) => pair,
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("failed to read source: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!("migration document: {e}")),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
         }
     };
+    let stem = stem.as_str();
+    let src = doc.source_text().to_string();
 
     // Transpile
     // Plan 610 ⑥: relative use.c JSON manifests resolve against the case dir.
     let actual = match crate::trans::rust::transpile_rust_with_source_dir(
-        case.source_file
-            .parent()
-            .unwrap_or(std::path::Path::new(".")),
+        case.dir.as_path(),
         stem,
         &src,
     ) {
@@ -1453,16 +1434,14 @@ fn run_a2r_file_test_impl(case: &test_runner::A2rTestCase) -> test_runner::FileT
         }
     };
 
-    // Read expected
-    let expected = match std::fs::read(&case.expected_file) {
-        Ok(b) => b,
-        Err(e) => {
+    let expected = match doc.artifact(".rs") {
+        Some(bytes) => bytes.to_vec(),
+        None => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!(
-                    "failed to read expected.rs: {}",
-                    e
-                )),
+                outcome: test_runner::TestOutcome::Failed(
+                    "migration document declares no .rs artifact".into(),
+                ),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
@@ -1472,8 +1451,9 @@ fn run_a2r_file_test_impl(case: &test_runner::A2rTestCase) -> test_runner::FileT
     let duration_ms = start.elapsed().as_millis();
 
     if actual != expected {
-        let wrong_path = case.expected_file.with_extension("wrong.rs");
-        let _ = std::fs::write(&wrong_path, &actual);
+        // PLAN-1066 T-07[B]/A-NOWRITE: scoped/dropped, never `.wrong.rs`.
+        let label = format!("test/a2r/{}/{}.wrong.rs", case.name, stem);
+        let _ = crate::diag_scope::write_scoped(&label, &actual);
         test_runner::FileTestReport {
             name: case_name,
             outcome: test_runner::TestOutcome::Failed("transpiler output mismatch".into()),

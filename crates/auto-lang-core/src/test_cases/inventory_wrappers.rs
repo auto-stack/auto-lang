@@ -74,25 +74,28 @@ impl<'ast> Visit<'ast> for Calls<'_> {
                     .join("test/cookbook")
                     .join(&args[0])
                     .join(&args[1]);
-                let sources: Vec<_> = std::fs::read_dir(&directory)
+                // PLAN-1066 T-03[B]/T-08: the document is the entry's author
+                // source and oracle carrier. The runtime wrapper records the
+                // SAME derivation, so this static guard cannot drift from it.
+                let has_document = std::fs::read_dir(&directory)
                     .into_iter()
                     .flatten()
                     .flatten()
-                    .map(|entry| entry.path())
-                    .filter(|p| p.extension().is_some_and(|e| e == "at"))
-                    .collect();
-                if sources.is_empty() {
+                    .any(|entry| {
+                        entry
+                            .path()
+                            .file_name()
+                            .is_some_and(|f| f.to_string_lossy().ends_with(".case.ad"))
+                    });
+                if !has_document {
                     self.unresolved.push(format!(
-                        "{name}: original cookbook directory has no .at input"
+                        "{name}: original cookbook directory has no migration document"
                     ));
                     return;
                 }
-                // Preserve the existing helper's first-read_dir-entry policy.
-                // The actual original receipt must still match this exact file.
-                json!({"family":"legacy-cookbook-vm","id":format!("{}/{}",args[0],args[1]),
-                    "source":super::super::execution_trace::file_identity(&sources[0]),
-                    "oracle":super::super::execution_trace::file_identity(&directory.join("expected.out")),
-                    "comparison":if directory.join("expected.out").is_file(){"original stdout golden"}else{"original no-crash smoke"}})
+                super::super::execution_trace::cookbook_doc_identity(
+                    &directory, &args[0], &args[1],
+                )
             } else if name == "test_a2r_expect_error" && args.len() == 2 {
                 super::super::execution_trace::legacy_error_identity(
                     self.manifest.to_str().unwrap(),

@@ -174,18 +174,26 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                     let name = parts[1];
                     let case = format!("{}/{}", category, case_dir_name);
 
-                    // PLAN-1062 T-14/NC-20: the entry's payload comes from
-                    // its migration document; .at/.as/.expected.* sidecars
-                    // are frozen history (never a fallback). An entry is
-                    // present when either its frozen source or its migration
-                    // document exists — a doc-only tree still discovers.
+                    // PLAN-1062 T-14/PLAN-1066 T-03[B]: the entry's payload and
+                    // its selection authority is its migration document.
+                    // `.at`/`.as`/`.expected.*` sidecars are frozen history:
+                    // they are read only to keep a REMOVED document a loud
+                    // failure instead of a silently smaller cache, and the
+                    // `.as` script mode comes from the document's declared
+                    // source path (never from which sidecar happens to exist).
                     let at_path = case_entry.path().join(format!("{}.at", name));
                     let as_path = case_entry.path().join(format!("{}.as", name));
                     let doc_path = case_entry.path().join(format!("{}.case.ad", name));
                     if !at_path.is_file() && !as_path.is_file() && !doc_path.is_file() {
                         continue;
                     }
-                    let is_script = !at_path.is_file() && as_path.is_file();
+                    if !doc_path.is_file() {
+                        panic!(
+                            "vm entry {case}: migration document {} missing \
+                             (sidecar fallback is forbidden)",
+                            doc_path.display()
+                        );
+                    }
                     let entry = crate::tests::legacy_doc::load_case(&case_entry.path(), name)
                         .unwrap_or_else(|e| panic!("vm entry {case}: {e}"));
                     let source = entry.source_text().to_string();
@@ -198,7 +206,7 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                             expected_out: oracle.stdout,
                             expected_result: oracle.result,
                             expected_error: oracle.error,
-                            is_script,
+                            is_script: entry.source_is_script(),
                         },
                     );
                 }

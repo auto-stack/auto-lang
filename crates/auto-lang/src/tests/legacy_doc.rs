@@ -73,4 +73,30 @@ impl LegacyDoc {
     pub fn result_text(&self) -> Option<&str> {
         self.case.spec.checks.first().and_then(|c| c.expect.result.as_ref().map(|r| r.text.as_str()))
     }
+
+    /// PLAN-1066 T-03[B]: one named check's result text, when declared.
+    pub fn result_text_for(&self, check_id: &str) -> Option<&str> {
+        self.case
+            .spec
+            .checks
+            .iter()
+            .find(|c| c.id == check_id)
+            .and_then(|c| c.expect.result.as_ref())
+            .map(|r| r.text.as_str())
+    }
+
+    /// Does the document declare a check with this id?
+    pub fn has_check(&self, check_id: &str) -> bool {
+        self.case.spec.checks.iter().any(|c| c.id == check_id)
+    }
+
+    /// The document's declared virtual source path (`sort_int.at`).
+    pub fn source_is_script(&self) -> bool {
+        self.case
+            .spec
+            .source
+            .path
+            .to_ascii_lowercase()
+            .ends_with(".as")
+    }
 }
