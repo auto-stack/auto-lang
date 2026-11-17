@@ -993,3 +993,164 @@ fn plan1066_b_remaining_sidecar_readers_are_named() {
         offenders.join("\n  ")
     );
 }
+
+/// One named negative control's reported row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Plan1066Control {
+    nc: &'static str,
+    owner: &'static str,
+    verdict: &'static str,
+    /// Measured atomic duration; `None` means "no timing recorded", which is a
+    /// reporting error, never an implicit pass.
+    ms: Option<u128>,
+}
+
+const CONTROL_LIMIT_MS: u128 = 10_000;
+
+/// NC-20: reject a control report that cannot be trusted as evidence.
+///
+/// * a named control missing, duplicated, or outside `NC-01..NC-27`;
+/// * a control without a measured duration, or at/over the 10 s budget;
+/// * a `NOT_RUN` verdict (not executed is not passed);
+/// * a parent row claiming PASS while any child row failed/NOT_RUNs, and a
+///   non-zero process exit standing in for a per-control verdict.
+fn validate_control_report(parent_ok: bool, rows: &[Plan1066Control]) -> Result<(), String> {
+    let mut problems = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    // Completeness: the report must carry exactly the 27 named controls.
+    let expected: std::collections::BTreeSet<&str> =
+        PLAN1066_CONTROL_OWNERS.iter().map(|(nc, _)| *nc).collect();
+    let reported: std::collections::BTreeSet<&str> = rows.iter().map(|row| row.nc).collect();
+    for missing in expected.difference(&reported) {
+        problems.push(format!("{missing}: control missing from the report"));
+    }
+    for extra in reported.difference(&expected) {
+        problems.push(format!("{extra}: control outside the frozen NC set"));
+    }
+    for row in rows {
+        if !seen.insert(row.nc) {
+            problems.push(format!("{}: duplicate control row", row.nc));
+        }
+        if !row.nc.starts_with("NC-") {
+            problems.push(format!("{}: not a NC-* control id", row.nc));
+        }
+        match row.ms {
+            None => problems.push(format!("{}: no measured duration", row.nc)),
+            Some(ms) if ms >= CONTROL_LIMIT_MS => problems.push(format!(
+                "{}: {} ms at/over the {CONTROL_LIMIT_MS} ms budget",
+                row.nc, ms
+            )),
+            Some(_) => {}
+        }
+        if row.verdict == "NOT_RUN" {
+            problems.push(format!("{}: NOT_RUN is not a verdict", row.nc));
+        } else if row.verdict != "PASS" {
+            problems.push(format!("{}: verdict {} (expected PASS)", row.nc, row.verdict));
+        }
+        if row.owner.is_empty() {
+            problems.push(format!("{}: no owning control", row.nc));
+        }
+    }
+    if parent_ok && !problems.is_empty() {
+        problems.push("parent PASS cannot mask a failing/NOT_RUN/unmeasured child".into());
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
+/// Every NC-01..NC-27 must have a real owning control; this table is the
+/// contract a review reads, and the test proves it stays complete.
+const PLAN1066_CONTROL_OWNERS: &[(&str, &str)] = &[
+    ("NC-01", "plan1066_nc_a1_denominator_tamper_rejected + plan1066_b_e78_boundary_is_a_key_set_not_a_count"),
+    ("NC-02", "plan1066_b_doc_only_mirrors_discover_and_execute_per_family"),
+    ("NC-03", "plan1066_b_removed_document_keeps_the_entry_and_fails_loudly"),
+    ("NC-04", "plan1066_b_polluted_sidecars_are_history_but_document_edits_are_judged"),
+    ("NC-05", "plan1066_nc_a2_dual_channel_oracle + plan1066_b_dual_channel_result_is_judged_on_the_result_axis"),
+    ("NC-06", "plan1066_b_bootstrap_rule_and_body_come_from_the_original_mechanism"),
+    ("NC-07", "plan1066_b_family_artifact_vocabulary_is_not_crossed"),
+    ("NC-08", "case plan1066-s-doc-controls (five single-axis mutations)"),
+    ("NC-09", "test_fixed_groups.ActiveDocumentCaseEntries (active-entry scan controls)"),
+    ("NC-10", "plan1066_b_project_documents_own_their_projects (closure + body edit)"),
+    ("NC-11", "plan1066_b_project_documents_own_their_projects (wrong/absent assertion)"),
+    ("NC-12", "plan1066_b_project_documents_own_their_projects (escaping/duplicate paths)"),
+    ("NC-13", "plan1066_compile_gate_classification_and_receipt_controls (receipt tampering)"),
+    ("NC-14", "plan1066_compile_gate_classification_and_receipt_controls (mixed errors/ledger)"),
+    ("NC-15", "ExplicitCompileGate (ignored gate + explicit group separation)"),
+    ("NC-16", "plan1066_conformance_proposal_admission_controls (scope admission)"),
+    ("NC-17", "plan1066_conformance_proposal_admission_controls (closed set = denominator)"),
+    ("NC-18", "plan1066_conformance_proposal_admission_controls (retired generators stay retired)"),
+    ("NC-19", "plan1066_b_inventory_identity_is_the_document"),
+    ("NC-20", "plan1066_b_control_report_discipline (this validator)"),
+    ("NC-21", "plan1066_b_dual_channel_result_is_judged_on_the_result_axis (native entry)"),
+    ("NC-22", "plan1066_b_c_header_axis_declared_vs_zero_byte_role"),
+    ("NC-23", "plan1066_b_e78_boundary_is_a_key_set_not_a_count"),
+    ("NC-24", "plan1066_b_script_mode_and_cookbook_selection_come_from_the_document"),
+    ("NC-25", "plan1066_b_no_author_tree_writes_in_corpus_wrappers + plan1066_nc_a3_no_author_tree_writes"),
+    ("NC-26", "plan1066_nc_a4_receipt_verification + plan1066_b_inventory_identity_is_the_document"),
+    ("NC-27", "plan1066_compile_gate_classification_and_receipt_controls (fixtures/parity/M03 oracle)"),
+];
+
+#[test]
+fn plan1066_b_control_report_discipline() {
+    // the table itself is complete and unique
+    let mut ids = std::collections::BTreeSet::new();
+    for (nc, owner) in PLAN1066_CONTROL_OWNERS {
+        assert!(ids.insert(*nc), "duplicate control id {nc}");
+        assert!(!owner.is_empty(), "{nc}: no owner");
+    }
+    assert_eq!(ids.len(), 27, "all 27 named controls must be mapped");
+    for index in 1..=27 {
+        let id = format!("NC-{index:02}");
+        assert!(ids.contains(id.as_str()), "{id} has no owning control");
+    }
+
+    // a legitimate report passes
+    let good: Vec<Plan1066Control> = PLAN1066_CONTROL_OWNERS
+        .iter()
+        .enumerate()
+        .map(|(index, (nc, owner))| Plan1066Control {
+            nc,
+            owner,
+            verdict: "PASS",
+            ms: Some(50 + index as u128 * 10),
+        })
+        .collect();
+    assert!(validate_control_report(true, &good).is_ok());
+
+    // each reporting defect is rejected by name
+    let mut over_budget = good.clone();
+    over_budget[0].ms = Some(CONTROL_LIMIT_MS); // 10.000 s is already over
+    let error = validate_control_report(true, &over_budget).expect_err("over budget");
+    assert!(error.contains("budget"), "{error}");
+
+    let mut untimed = good.clone();
+    untimed[1].ms = None;
+    let error = validate_control_report(true, &untimed).expect_err("missing timing");
+    assert!(error.contains("no measured duration"), "{error}");
+
+    let mut not_run = good.clone();
+    not_run[2].verdict = "NOT_RUN";
+    let error = validate_control_report(true, &not_run).expect_err("NOT_RUN");
+    assert!(error.contains("NOT_RUN is not a verdict"), "{error}");
+
+    let mut duplicated = good.clone();
+    duplicated.push(good[0].clone());
+    let error = validate_control_report(true, &duplicated).expect_err("duplicate");
+    assert!(error.contains("duplicate control row"), "{error}");
+
+    let mut missing = good.clone();
+    missing.remove(10);
+    let error = validate_control_report(true, &missing).expect_err("missing control");
+    assert!(error.contains("control missing from the report"), "{error}");
+
+    // a parent pass cannot mask a failing child
+    let mut failing_child = good.clone();
+    failing_child[5].verdict = "FAIL";
+    let error = validate_control_report(true, &failing_child).expect_err("masked child");
+    assert!(error.contains("parent PASS cannot mask"), "{error}");
+    // ... and with an honest parent verdict it is only the child row that reads red
+    assert!(validate_control_report(false, &failing_child).is_err());
+}
