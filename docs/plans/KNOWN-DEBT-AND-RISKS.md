@@ -1,3 +1,11 @@
+## D-1037-01 — `sema_boundary_case_files_executed_status_honest` 既有红（2026-11-17 PLAN-1037 复审登记，非本包）
+
+- 现象：`cargo t ace-semantics` 295 例中 1 红（0.029s）：`ace-semantics-store::conformance sema_boundary_audit::sema_boundary_case_files_executed_status_honest` 要求 `crates/auto-lang/test/cases/ac-semantics/*.ad`（suite 除外）均带 `status: executed`；PLAN-1062 在 `c8ed52191`（`aeeecc8f3` 恢复）引入的 5 个 `*.document.case.ad`（cache-roundtrip / callee-sig-change / infer-bindings / parse-error / turnaround）不带该状态。
+- 归属：PLAN-1062 / PLAN-1066（AutoDown 文档语料）与 944 系审计谓词的交互；非 ACE CT 面，非 PLAN-1037 diff。
+- 证据：基面 `e85096628` 的 `git ls-tree` 已含这些 `.document.case.ad`；PLAN-1037 交付 diff（`e85096628..e6973193c`）仅 7 文件、不含该目录或该 crate；该组在 PLAN-1037 冻结并集内为 294/295。
+- 关闭条件：由 1062/1066 owner 决定「文档语料是否携带 executed 状态」或「审计谓词是否排除 document 变体」，并在其正式提交中重跑 ace-semantics 全组；PLAN-1037 不代修、不充 PASS。
+- 状态：open（不阻塞 PLAN-1037 交付；merge 与批量回归继续具名记录，不判绿）。
+
 #### D-981-EVENT-A-REMAINDER（2026-11-16，残留部分具名）
 
 - **已交（A 子面）**：`IF-981-EVENT-A`（auto-lang `01c90e269` / auto-ui `4e3ab1f7`+`90fdc84c`）——
