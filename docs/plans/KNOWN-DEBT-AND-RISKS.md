@@ -4703,7 +4703,15 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 现象：断言 `ace` 集合为三组，实际 toml 已含第四个 `ace-facade`（PLAN-969 提交 `278b91204` 加入集合但未更新断言）；基面 `7c131286d` 的测试文本与同提交 toml 已互相矛盾，故非 1066 引入。
 - 归属：PLAN-969 / infra-fixed 治理线。
 - 关闭条件：更新该断言（或把 `ace-facade` 从集合移除）并在主检出单实例重跑 `cargo t infra-fixed` 真实绿。
-- 状态：open（不阻塞 1066 树内工作；T-11 联合门/批量回归前须处置）。
+- 状态：**closed（2026-11-17 PLAN-1066 T-13 收口，代码提交 6682a6d0a）** —— 断言已与登记的 4 成员集合（`ace-workspace`/`ace-adapters`/`ace-batch`/`ace-facade`）同步；主检出 `cargo t infra-fixed` 72/72 真实绿。属事实同步，未放宽该测试“显式且不进 daily”的意图；PLAN-969 线知悉即可。
+
+## D-1066-NC07-VOCAB — NC-07 只断言当前族词汇、未注入跨族缺陷（2026-11-17 PLAN-1066 终审 R6 记录，info→low）
+
+- 现象：`plan1066_b_family_artifact_vocabulary_is_not_crossed` 以真实语料断言各族 artifact 词汇互不串用（cookbook 的 VM 判据不走 Rust artifact、C 的 `.c/.h` 与 TS 的 `.ts` 各归其族），但**没有构造一个“跨族串用”的文档**来证明该判据会红；其余 26 个负控均有注入或真实数据不变量。
+- 归属：本计划的控制线（已归档）；后续任何重开/续作时补一个注入控制：在镜像里给 cookbook 文档挂 Rust artifact 或给 a2c 文档挂 `.ts` artifact，要求判据具名拒绝。
+- 关闭条件：该注入控制落地并常驻。
+- 状态：open（低；不阻塞归档，归档计划 §9 已记录复审的非阻塞判定）。
+- 影响：不削弱当前 26 个注入控与真实语料不变量；仅词汇判据的“能被证伪”证据缺一条。
 
 ## D-971-B-01 — 测试发现契约的 helper 假阳性（2026-11-17 PLAN-971 B 复审 F-5 登记）
 

@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1066
-status: reviewed
+status: archived
 feature_name: AutoDown迁移补漏与1062收口纠正
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 4
-current_step: 10
+current_step: 11
 total_steps: 13
 depends_on: [PLAN-1062]
 supersedes_spec_components: [docs/specs/auto-test-case/document-migration-closure.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/module-selection.md]
@@ -1810,7 +1810,7 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 | [x] | T-10/work | A：NC-A1..4可运行；B：全部原功能与27NC可运行 | V-01～08/V-11与V-09单例计时部分、NC-01～27逐项真实失败+合法邻例/准确子项，补原子wrapper缺证反控/恢复复验，非零exit不代命中；最终完整组/并集计时归后置T-11，不反向等待它；AC-01～08  本轮阶段：A四负控；B全部原27NC与完整验证；片段完成不勾整项。  **[✅ 2026-11-17]** 27 个具名负控齐全且逐项接线（`PLAN1066_CONTROL_OWNERS` 常量即合同，测试断言 27 项唯一无缺）：NC-01=A-DEN/NC-23、02=doc-only 四族镜像、03=删文档硬错、04=污染 sidecar 无关、05=A-NC-A2+native 双通道、06=bootstrap/脚本、07=族 artifact 词汇、08=scheduler 组五轴、09=活跃入口扫描、10/11/12=工程闭包/断言/路径、13/14/26/27=编译收据（伪造 compiled/混错/陈旧/ledger/fixture/M03 oracle）、15=显式组治理、16/17/18=proposal（admission/闭集=bootstrap 分母/退役生成器）、19=库存文档身份、20=控制报告纪律（本轮新增）、21=native entry result 轴、22=空H vs header 轴、24=`.as` 诱饵+多源、25=静态零写入+注入负控。**NC-20 新增**：`validate_control_report` 要求报告恰好 27 行、每行自带 verdict 与实测 ms 且 <10s，拒 NOT_RUN/重复/缺行/超预算，并拒「父 PASS 掩盖失败子」；合法控制 + 六种缺陷各具名拒绝（0.11s）。**实测台账**（nextest libtest-json，21 个在进程内控制）：最大 1909.3ms（A-DEN）、NC-20 自身 114.1ms、其余 27.6–1497ms，全部 ≪10s；外进程控制另有实测：`case plan1066-s-doc-controls` 6 测 5.14s（单测 ≤1.5s）、`infra-fixed` 的 NC-09 2 测 0.068s / NC-15 2 测 0.013s。非零父 exit 不代命中、缺计时/NOT_RUN 不冒绿已由 NC-20 守护；最终完整并集计时归 T-11。门：corpus 240/0、scheduler 控 6/0、plan1066 21 passed/3 ignored |
 | [x] | T-11/work | A：T-09[A]/T-10[A]；B：T-09/10完整面 | 冻结代码/工具/配置后资源检查与完整影响组/必要consumer并集，复用有效phase证据；模块/新例/排除/红/等待/准备计时汇总，零新warning/格式/调试残留；AC-08  本轮阶段：A片段影响/健康；B最终完整并集；片段完成不勾整项。  **[✅ 2026-11-17]** 冻结提交 `6682a6d0a`（source_state `da5c9599dcf61a08`、config `0bc07b11a19a2ad2`）上跑**一次并集**：`cargo t corpus a2r vm auto-test-case infra-fixed plan1066-s-doc-controls case-ace-m2-scheduler-968` → gate PASS，5 个 invocation 全部 PASS，executed **1810**（corpus+a2r+vm 1570 / auto-test-case 151 / infra-fixed 72 / 控制组 6 / scheduler 11），wall **155.2s**（准备/发现/执行/清理均含在 drive 计时内）。覆盖真实触面：core(`test_runner`/`entry`/`legacy_doc_for_trans`/`test_cases`)+auto-lang 十个 corpus wrapper+auto-test-case 解码器+治理脚本 4 个+固定组登记 1 个。健康面：`rustfmt --check` 与 base `7c131286d` 逐文件对照，**11 个原本 clean 的文件被本轮改动弄脏 → 已格式化，现 0 个 newly-unformatted**；`a2r_tests/a2c_tests/a2ts_tests/tests.rs/legacy_doc/author.rs/inventory.rs` 在 base 即非 rustfmt-clean（属存量），本轮未扩大其未格式化面。调试残留：新增行无 `dbg!/todo!/unimplemented!/FIXME`；仅显式工具用 `eprintln!` 汇报（payload/actuals/compile prepare/proposal），普通路径无输出副作用。**跨计划更正（具名，供复审核）**：`scripts/tests/test_fixed_groups.py::test_ace_set_is_explicit_and_separate_from_daily` 自 PLAN-969 `278b91204` 起期望 3 组而 toml 已含 `ace-facade`（基面即红）——本轮把断言同步为登记的 4 成员集合，infra-fixed 因此转绿；这是事实同步、未放宽该测试意图。集成/消费者覆盖与计时汇总见 §6.3 与各轮收据，最终并集不含 Linux/WSL 腿（按 2026-11-14 裁定归专用环境）。 |
 | [x] | T-12/review | A：T-01/02/03/07/08/09/10/11的A面；B：T-01～11全部 | 同树独立重建AC-01～09、逐义务/actual/全部NC、Spec delta/遗漏/延期/workaround；新增例超10/缺计时needs_fix；记录身份/限制与冻结门交接；AC-09  本轮阶段：A独立phase复核；完整final在B；片段完成不勾整项。  **[✅ 2026-11-17 独立复审 pass]** 复审由与实施会话分离的独立上下文代理执行（同树只读重建），两轮：r3→`needs_fix`（F-1066B-R1..R6），修复后 r4→**pass**。复审自测证据（不复用实施侧并集）：`cargo test -p auto-lang --lib plan1066` 22 passed/3 ignored、`cargo t vm corpus` PASS 1138/0、显式 250 门 159/55/36/0/0（15.7s）、30 候选 proposal 30/0、独立 temp-mirror 探针（doc-only/污染/错 oracle/删文档具名）、S11 新旧 11/11 双跑身份 22/22、payload 1060/663/556 自查、自写 R7 探针（doc-only 删文档 discovered=1+具名；sidecar 选中项同；doc-less+source+无 oracle 目录 vm0/a2r2/a2c6 未被promote，发现数仍 1060）、A-DEN/NC 全绿、`wt-guard` clean。R7 真修复（VM-only 保留可见+具名缺文档）、R1 文本按 1060/70/1171 更正、R2 补 13 字节 stdout 角色、R3 清 4 告警、R4 收紧 AC-07 口径并补相邻族具名。遗留非阻塞 nit（§5.2 行 153 标签）已同步修正。R5（SD-01..05 沉淀）按分工归 T-13。 |
-| [ ] | T-13/merge | A：T-12[A] phase pass；B：T-12完整final pass | 核冻结联合门/必要due，SD-01～05落地、保1062更正并据真实结果关闭债项；归档本Plan，摘要入Plan后对账全部输出并清scope/guard后清树/分支和登记；AC-10  本轮阶段：A片段正式fold保树；B完整交付/归档清树；片段完成不勾整项。 |
+| [x] | T-13/merge | A：T-12[A] phase pass；B：T-12完整final pass | 核冻结联合门/必要due，SD-01～05落地、保1062更正并据真实结果关闭债项；归档本Plan，摘要入Plan后对账全部输出并清scope/guard后清树/分支和登记；AC-10  本轮阶段：A片段正式fold保树；B完整交付/归档清树；片段完成不勾整项。  **[✅ 2026-11-17]** 交付 master **`f5d20173e`**（fast-forward，无 merge commit；worktree tip 同哈希；rebase 到 `e0db92bdf` 后的 20 个提交全部重放成功）。**SD 沉淀**：SD-01..05 五份规范在交付提交内（`docs/specs/auto-test-case/{document-migration-closure,document-cases,architecture,governance-and-inventory,module-selection}.md`），内容=1060/1171/70、76 组/183 include、scheduler recipe、project `exists`/`contains`、文档身份（trace/inventory/association + verify_inputs 活跃门）、显式 `a2r-compile`/`plan1066-s-doc-controls` 与 4 成员 ace set；相对链接自查仅 1 条指向本归档路径（归档后成立）。**落地检查**：主检出 `cargo test -p auto-lang --lib plan1066` **22 passed/3 ignored**（1.94s，干净门）；`cargo t vm` 行 PASS（executed 950/errors 0），`gate_passed=false` 系共享主检出于本轮 193s 内被**他会话**写入（write-during-test 守卫，主检出另有 55 项他会话 WIP，本计划仅 stash 了 4 份被取代的 spec WIP），非本交付红。**清理**：`wt-guard` clean；worktree/branch/plan-artifacts scope 的移除与保留登记见清理收据（下条）。1062 保留 archived/20 of 20 与原收据，不倒填历史。 |
 
 ## 9. 复审记录
 
@@ -2176,6 +2176,35 @@ stage: review | plan_id: PLAN-1066 | plan_revision: r4 | review_scope: final | r
 **第二轮（r4 / 8c2c16e75）：`pass`**，R1 残留（附录/§5.2/§5 快照标签）与 **R7** 均关闭。R7 是真修复而非文档化：`discover_vm_tests` 的 `Ok(None)` 分支在「无文档且无 stem 命名 oracle」时仍保留 VM 条目（仅 VM 分支；实测 doc-less+source 目录 vm0/a2r2/a2c6，a2r/a2c 不被 promote，发现数仍 1060），新增常驻控 `plan1066_b_doc_only_entry_survives_a_deleted_document`（0.04s）证明「删文档 → discovered=1 + 具名 `migration document … .case.ad`」。
 
 **复审自测门（独立）**：`plan1066` 22 passed/3 ignored；`vm corpus` PASS 1138/0；显式 250 门 159/55/36/0/0；proposal 30/0；payload 1060/663/556 自查全等；S11 新旧 11/11 身份 22/22；`wt-guard` clean；两个改动 `.rs` rustfmt-clean；无新增告警。
+
+stage: merge | plan_id: PLAN-1066 | plan_revision: r4 | reviewed_commit: 8c2c16e75 | delivery_commit: f5d20173e | landed_on: master（fast-forward） | outcome: pass
+
+### 2026-11-17 T-13 合并与收口（round 14）
+
+**交付**：worktree `plan-1066-dev` rebase 到主检出 `e0db92bdf` → 20 个提交全部重放（无冲突）→ `git merge --ff-only`
+落主检出 `f5d20173e`（无 merge commit）。主检出 `git diff master HEAD` 恰为本计划 43 个触面文件。
+
+**主检出 WIP 处置（具名）**：主检出原有 4 份 A 期 spec WIP（`architecture/document-cases/document-migration-closure/module-selection`），
+其内容已被本计划的 SD 沉淀取代且部分已失真（“1066 r3 drafting 0/13”）。处理：①整份复制到
+`plan-artifacts/plan-1066/spec-wip-backup/*.main-wip.md` 备份；②`git stash`（`stash@{0}`，消息点名本计划与本备份）后 ff 落地；
+③其余他会话 WIP（docs/design、experimental/ace 等 51 项）原样保留，未触碰。
+
+**SD 沉淀（AC-10 前半）**：五份规范随交付提交落地，内容与实测一致（详见 T-13 行）；不写 legacy `specs.json`，
+索引由应用派生。`docs/plans/archive/1066-autodown-migration-gap-closure.md` 成为归档路径（spec 内相对链接归档后成立）。
+
+**落地检查**：`cargo test -p auto-lang --lib plan1066` 22/22（1.94s）；`cargo t vm` 行 PASS 950/0，但 `gate_passed=false` 因共享
+主检出于运行期间被他会话写入（write-during-test 守卫；主检出当时有 55 项他会话 WIP）——属环境归因，不判本计划红，且不改写为 PASS。
+
+**清理（AC-10 后半）**：`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-1066/auto-lang` → clean；
+worktree 于本轮后移除、分支删除、组目录（若空）删除；`plan-artifacts/plan-1066/` 折叠摘要后整目录删除；`.retention/policy.json` 刷新。
+
+### 2026-11-17 清理与证据折叠收据（T-13 后半）
+
+- **worktree/branch**：`wt-guard` clean → `git worktree remove D:/autostack/.wt/lang-1066/auto-lang` → `git branch -d plan-1066-dev`（was f5d20173e）→ 组目录 `D:/autostack/.wt/lang-1066` 已空并删除；`git worktree list` 无 1066 残留。
+- **plan-artifacts 折叠**：`D:/autostack/plan-artifacts/plan-1066/` 内的探针脚本/日志/收据摘要已并入本文 §7/§9（命令、退出码、关键数字）；该目录整体删除。唯一留存物是**主检出 4 份被取代的 A 期 spec WIP**，其内容已用 `git stash`（`stash@{0}`，消息“PLAN-1066 pre-merge: A-era spec WIP superseded by the T-13 deposit”）保存在仓内——不随目录删除丢失；本文记录该 stash 身份作为恢复入口。
+- **登记表**：`.retention/policy.json` 已刷新（删除 plan-1066 scope 记录；本计划无具名 hold）。
+- **未闭债务**（归档不使其消失）：a2ts 85/a2r 1/a2c 8 金样漂移（改期望需用户许可）、VM shim CWD 挂起、外仓 book 生成器；均已在 `KNOWN-DEBT-AND-RISKS.md` 具名。
+- **交付身份**：delivery `f5d20173e`（master ff）；reviewed `8c2c16e75`；base `7c131286d`；plan_revision r4；13/13。
 
 ## 10. 待澄清事项
 
