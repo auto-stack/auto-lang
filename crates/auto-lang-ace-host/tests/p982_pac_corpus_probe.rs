@@ -44,6 +44,7 @@ fn p982_pac_corpus_ace_coverage() {
     let mut fail: Vec<(String, String)> = Vec::new();
     let mut diff: Vec<(String, String)> = Vec::new();
     let mut skipped_bad = 0usize;
+    let mut ace_only: Vec<(String, String)> = Vec::new();
     for path in &files {
         let Ok(src) = std::fs::read_to_string(path) else {
             continue;
@@ -74,7 +75,10 @@ fn p982_pac_corpus_ace_coverage() {
             ConfigEngineChoice::LegacyVm,
         );
         match (ace, legacy) {
-            (Ok(_), Err(_)) => skipped_bad += 1,
+            (Ok(_), Err(e)) => {
+                skipped_bad += 1;
+                ace_only.push((rel.clone(), format!("{e}")));
+            }
             (Ok(ace_cfg), Ok(legacy_cfg)) => {
                 ok += 1;
                 // 模板族是**带注入**求值的：legacy 保留 `${name}` 字面、ACE 做替换，
@@ -105,6 +109,9 @@ fn p982_pac_corpus_ace_coverage() {
     );
     for (file, err) in fail.iter().take(40) {
         eprintln!("FAIL {file}: {err}");
+    }
+    for (file, err) in ace_only.iter().take(10) {
+        eprintln!("ACE-ONLY {file}: legacy rejects with {err}");
     }
     for (file, d) in diff.iter().take(6) {
         eprintln!("DIFF {file}: {d}");
