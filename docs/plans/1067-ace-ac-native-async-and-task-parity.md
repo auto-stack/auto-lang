@@ -198,6 +198,8 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 | T-1067-4 | minor | 收据/规范精确 | — | entry-only 规则在 §2:33，§6 未记（round-10 收据称已记） |
 | T-1067-5 | minor | 规范增量完整 | — | SD-ASYNC 待改行未列 `m2-scheduler.md:17`（AV 用例 12→17）与 entry-only 语义收窄；plan §5「沿968 D1–D6，不改语义」已过时 |
 
+**提交卫生说明**：commit `64a01a60b` 因共享主检出的并发 git add 一并带入了另一会话已暂存的 `docs/plans/archive/1038-ace-reuse-candidates-and-cost-decisions.md`（内容即该会话暂存的版本，未改写、无内容损失）。未做 history rewrite 以避免与并发会话的 HEAD 竞争；后续本计划提交只 git add 本计划文件。
+
 ### 本轮裁定（第三次 bounded repair，仍在 work 技能允许的 3 个循环内）
 
 1. **T-1067-1 走"支持"而非"受限"**：AV/A2R 已支持标量返回的 `go` 目标，thunk 代码注释亦声明"结果被丢弃"，故这是 **native 侧缺陷修复**，不是语义扩张、不需要用户改合同。实现：把 callee 的返回形状纳入 `SchedCallee`（thunk 的 `declare_function` 使用与真实 callee 一致的签名，调用结果照旧丢弃）；owned-Str 返回按同一签名规则处理，若不可行则具名拒绝并在 spec 记录。
