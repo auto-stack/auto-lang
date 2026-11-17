@@ -166,6 +166,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::Scheduler => "scheduler",
         // PLAN-979：AGE 领域面 slug（Schema 数据键，非产品名）。
         SourceProfile::AgeH0 => "age-h0",
+        // PLAN-982（B-CONFIG-I）：配置文档面 slug（grammar 裁剪名；不与产品名混用）。
+        SourceProfile::ConfigDocument => "config-document",
     }
 }
 
@@ -188,6 +190,8 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         "age-h0" => SourceProfile::AgeH0,
         // PLAN-981: AGE package slug round-trip.
         "age-package" => SourceProfile::AgePackage,
+        // PLAN-982（B-CONFIG-I）：配置文档面 slug 反向映射。
+        "config-document" => SourceProfile::ConfigDocument,
         _ => return None,
     })
 }
@@ -211,7 +215,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 15]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 16]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -2335,6 +2339,9 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::AgePackage => 14,
         // PLAN-968：调度器面槽位。
         SourceProfile::Scheduler => 13,
+        // PLAN-982（B-CONFIG-I）：配置文档面槽位（既有 15 个 profile 的裁剪
+        // 字节与 GrammarId 不受本槽影响）。
+        SourceProfile::ConfigDocument => 15,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。

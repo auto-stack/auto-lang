@@ -70,6 +70,8 @@ mod plan979_component_profile;
 mod plan979_domain_package;
 #[path = "cases/plan981_age_package.rs"]
 mod plan981_age_package;
+#[path = "cases/plan982_config_document.rs"]
+mod plan982_config_document;
 #[path = "cases/plan981_age_package_modules.rs"]
 mod plan981_age_package_modules;
 #[path = "cases/plan981_age_ref.rs"]

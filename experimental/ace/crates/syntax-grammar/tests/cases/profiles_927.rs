@@ -20,6 +20,10 @@ const DECLARED: &[&str] = &[
     // text-record 之前。
     "text-record-instances",
     "text-record",
+    // PLAN-982（B-CONFIG-I，E1）：配置文档面（text-record 全表面 ∪ 顶层脚本
+    // 语句序列；声明序紧随 text-record——新增名字只进原本放行 text-record 的
+    // 门控列表，既有 profile 的裁剪字节不变）。
+    "config-document",
     // PLAN-979（T-H0-I）：AGE 最小 Node 领域面（text-record 全表面 + 领域节点
     // 声明，声明序紧随 text-record）。
     "age-h0",

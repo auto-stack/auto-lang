@@ -402,6 +402,8 @@ pub fn profile_admits_fstr(profile: SourceProfile) -> bool {
             | SourceProfile::Numeric
             | SourceProfile::Aggregates
             | SourceProfile::Scheduler
+            // PLAN-982（B-CONFIG-I）：配置文档模板插值走同一 f-string 变换。
+            | SourceProfile::ConfigDocument
     )
 }
 
