@@ -898,7 +898,7 @@ pub(crate) fn project_packages_front(
                                 return Err(vec![crate::source::age_h0::text_diag(
                                     "source.age.component-scenario",
                                     format!(
-                                        "the scenario targets node {want} but the package                                          declares {} component(s)",
+                                        "the scenario targets node {want} but the package declares {} component(s)",
                                         nodes.len()
                                     ),
                                     nodes

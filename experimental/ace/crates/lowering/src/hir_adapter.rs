@@ -4327,7 +4327,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 if symbol == "age.model3d.glb.v1" {
                                     return Err(AdapterError::uns(
                                         "lower.intrinsic",
-                                        "model3d.glb carries file-content identity and is                                          outside the av.owned/1 observation lane".to_string(),
+                                        "model3d.glb carries file-content identity and is outside the av.owned/1 observation lane".to_string(),
                                     ));
                                 }
                                 let sig = self.out.imports[imp as usize].sig;
@@ -4347,7 +4347,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     return Err(AdapterError::inv(
                                         "age-port.arity",
                                         format!(
-                                            "port constructor `{}` takes {want} field(s);                                              call carries {}",
+                                            "port constructor `{}` takes {want} field(s); the call carries {}",
                                             symbol,
                                             arg_slots.len()
                                         ),

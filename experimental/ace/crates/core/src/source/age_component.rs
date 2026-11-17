@@ -1073,7 +1073,7 @@ fn compile_component_scenario_full(
                 return Err(vec![text_diag(
                     "source.age.component-scenario",
                     format!(
-                        "the component face holds exactly one node; the op targets node                          {want}, which does not exist here",
+                        "the component face holds exactly one node; the op targets node {want}, which does not exist here",
                     ),
                     node.span,
                 )]);
