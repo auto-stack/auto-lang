@@ -70,6 +70,7 @@
   零 legacy 派发；显式 legacy 可见可计数、未知取值不降级）。
 - `cargo tc`（auto-man 固定组，7 包 lib）＝258 passed / 4 skipped（交付时）。
 
+**语料口径（round 113/114）**：真实语料 301 份（含 `.wt` 镜像），探针对**模板族按产品口径注入 `name`**后：**296 与 legacy 逐字一致、2 份 ACE 接受而 legacy 拒绝（`clib` 模板的两份拷贝，legacy 报 "aborting due to 1 previous error"）、3 份是故意坏样本**（`bad-config`/`bad-eval`/`bad-runtime`）。探针会打印 `ACE-ONLY` 行，便于复核这份更强的能力面。
 ## 4. 具名边界（不冒充支持）
 
 - **运行期列表 `for`**：仅**字面数组**（`for d in (["a","b"])` 或绑定字面数组的 `var`）会
