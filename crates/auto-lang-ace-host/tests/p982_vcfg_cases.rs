@@ -364,6 +364,19 @@ shadowed: label
         other => panic!("object-valued carry must succeed, got {other:?}"),
     }
 
+    // 链式读：`x: k["a"]["b"]` ⇒ 文档 `x == 1`（中间步取对象句柄）。
+    match run(
+        "var k = { a: { b: 1 } }\nx: k[\"a\"][\"b\"]\n",
+        &empty_context(),
+    )
+    .outcome
+    {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(i64_of(prop(&document, "x")), 1);
+        }
+        other => panic!("a chained object read must serve the leaf value, got {other:?}"),
+    }
+
     // 缺字段：具名诊断（不是空值、不是 panic）。
     match run("var k = { port: 1 }\np: k[\"nope\"]\n", &empty_context()).outcome {
         AceConfigOutcome::Diagnostic { code, .. } => {

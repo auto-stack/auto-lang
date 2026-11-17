@@ -476,21 +476,33 @@ fn emit_body(
 }
 
 /// `Index { base: Var(x), index: StrLit(k) }` 且 `x` 是**对象**局部 ⇒
-/// `(x, k)`。其它形态返回 `None`（走普通值物化）。
-fn object_index_read(e: &Expr, ctx: &EmitCtx) -> Option<(String, String)> {
-    let super::ast::ExprKind::Index { base, index } = &e.kind else {
-        return None;
-    };
-    let super::ast::ExprKind::Var(id) = &base.kind else {
-        return None;
-    };
-    if ctx.locals.get(&id.name) != Some(&LocalClass::Obj) {
-        return None;
+/// 把"对象读取链"发射成**对象句柄表达式**：
+/// - `Var(x)`（`x` 是对象局部）⇒ `var(x)`；
+/// - `Index{base, index: StrLit(f)}` ⇒ `cfg_obj_get_obj(<base handle>, f)`
+///   （i32-only：句柄在手，不需要 Str 返回面）。
+/// 其它形态返回 `None`（走普通值物化）。
+fn emit_object_handle(e: &Expr, out: &mut Vec<Stmt>, ctx: &mut EmitCtx) -> Option<Expr> {
+    match &e.kind {
+        super::ast::ExprKind::Var(id) if ctx.locals.get(&id.name) == Some(&LocalClass::Obj) => {
+            Some(var_expr(&id.name, e.span))
+        }
+        super::ast::ExprKind::Index { base, index } => {
+            let super::ast::ExprKind::StrLit(field) = &index.kind else {
+                return None;
+            };
+            let base_handle = emit_object_handle(base, out, ctx)?;
+            let handle = emit_call(
+                out,
+                ctx,
+                "cfg_obj_get_obj",
+                vec![base_handle, str_lit(field, index.span)],
+                e.span,
+            )
+            .ok()?;
+            Some(var_expr(&handle, e.span))
+        }
+        _ => None,
     }
-    let super::ast::ExprKind::StrLit(text) = &index.kind else {
-        return None;
-    };
-    Some((id.name.clone(), text.clone()))
 }
 fn emit_line(
     line: &ConfigLine,
@@ -602,25 +614,27 @@ fn emit_line(
                     )?;
                 }
                 ConfigPairValue::Expr(e) => {
-                    // PLAN-982：`heap: k["heap"]` —— 对象字段**搬运**进文档，
-                    // 不经过 Str 返回面（`cfg_super_put(dst, src_obj, key)`）。
-                    if let Some((obj_local, field)) = object_index_read(e, ctx) {
-                        // 链式读：中间步用 `cfg_obj_get_obj` 取对象句柄（i32-only），
-                        // 末端 `cfg_super_put` 把字段搬到 pair 键上。
-                        let obj = var_expr(&obj_local, e.span);
-                        let _ = emit_call(
-                            out,
-                            ctx,
-                            "cfg_super_put",
-                            vec![
-                                var_expr(cur, p.span),
-                                obj,
-                                str_lit(&field, e.span),
-                                str_lit(&p.key.name, p.span),
-                            ],
-                            p.span,
-                        )?;
-                        return Ok(());
+                    // PLAN-982：`heap: k["heap"]`／链式 `k["a"]["b"]` —— 对象字段
+                    // **搬运**进文档，不经过 Str 返回面：中间步 `cfg_obj_get_obj`
+                    // 取对象句柄，末端 `cfg_super_put(dst, obj, field, pair_key)`。
+                    if let super::ast::ExprKind::Index { base, index } = &e.kind {
+                        if let super::ast::ExprKind::StrLit(field) = &index.kind {
+                            if let Some(obj) = emit_object_handle(base, out, ctx) {
+                                let _ = emit_call(
+                                    out,
+                                    ctx,
+                                    "cfg_super_put",
+                                    vec![
+                                        var_expr(cur, p.span),
+                                        obj,
+                                        str_lit(field, index.span),
+                                        str_lit(&p.key.name, p.span),
+                                    ],
+                                    p.span,
+                                )?;
+                                return Ok(());
+                            }
+                        }
                     }
                     let (value, class) = emit_value(e, out, ctx)?;
                     write_value(out, ctx, cur, "cfg_put", key, value, class, p.span)?;

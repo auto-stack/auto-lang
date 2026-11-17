@@ -890,12 +890,19 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                         ))
                     }
                 };
-                match session.get(handle)? {
-                    Entry::Obj(_) => Ok(handle as i32),
-                    _ => Err(HostError::Io(format!(
-                        "config: field `{key}` is not an object"
-                    ))),
-                }
+                // 字段可能存成**对象句柄条目**，也可能存成持有对象句柄的
+                // `Entry::Value(StoredValue::Obj(h))`（`cfg_obj_put` 的值形态）。
+                // 两种都接受，其它种类具名拒绝。
+                let obj_handle = match session.get(handle)? {
+                    Entry::Obj(_) => handle as i32,
+                    Entry::Value(StoredValue::Obj(h)) => *h as i32,
+                    _ => {
+                        return Err(HostError::Io(format!(
+                            "config: field `{key}` is not an object"
+                        )))
+                    }
+                };
+                Ok(obj_handle)
             }
             ConfigSpec::SuperPut => {
                 // `cfg_super_put(dst, src_obj, key)`：把源对象的字段**克隆**进
