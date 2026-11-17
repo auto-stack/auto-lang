@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 2
+current_step: 3
 total_steps: 13
 depends_on: [PLAN-1062]
 supersedes_spec_components: [docs/specs/auto-test-case/document-migration-closure.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/module-selection.md]
@@ -1796,7 +1796,7 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 | [ ] | T-02/work | A：T-01[A]；B：T-01完整冻结 | 冻结共享doc视图、五根资格/E78/缓存与cookbook绑定、public structs兼容/原身份module参数、source-dir/path与actual；落实§5.2 v2及§5.3精确ignored编译接线/唯一proposal共享接口；S/P能力审计和各族小例，不闭门不做依赖项；AC-02/04/05/06  本轮阶段：A正确性子面；完整迁移接口B；片段完成不勾整项。 |
 | [x] | T-03/work | A：T-02[A]；B：T-02[B]所用接口 | test_runner+entry四族+sys_env/runners切doc；补N0028/N0030原result、九项空H判据；VM缓存is_script/载荷、cookbook108选择与诊断输出切doc/scope，原名字/module/失败数/排序/条件保；运行局部NC-02～07/21～24。此任务关运行接线，治理v2和最终V-11由T-08/09/10完成，不提前认领全局门；AC-02  **[✅ 2026-11-17]** 四族发现/执行均以 `<stem>.case.ad` 为唯一作者源（72d7c2bd3）；VM cache `is_script` 由文档路径判定、cookbook108 选唯一文档且 oracle=`cookbook-stdout`、`.wrong.*` 全部转 `diag_scope`；载荷等价证明 1060 源 + 663 artifact + 556 check oracle 与冻结 sidecar 逐字节相同（4 个 `a2r/22_actors/*.expected.out` 属 a2r-actor-tests 外消费者，非 N oracle）；逐例 actual：a2r 351 项 1 红、a2c 118 项 8 红、a2ts 85 项 85 红（§D-1066-IGNORED-CORPUS-DRIFT / A2TS-GOLDEN，均被 `#[ignore]` 掩盖的既有漂移，同输入同 oracle 旧路径同样红）；NC-02..07/21/22/23/24 常驻控 9+2 测 1.16s（镜像 doc-only、删文档硬错、sidecar 污染无关、双通道 result 轴、bootstrap 规则/正文、空H 角色 vs header 轴、族 artifact 词汇不串、E78 键集边界、`.as` 诱饵/cookbook 001_* 选择）；`cargo t vm corpus` PASS 1137/0、child_validation valid；runner 全量重放遇 CWD 敏感挂起→§D-1066-SHIM-CWD-HANG（以镜像/路由等价 + wrapper 全量绿取证，不冒 shim 全量 PASS）|
 | [x] | T-04/work | B：T-02[B]（不作A前置） | scheduler recipe author准入/双流诊断规则、11源/expect内联；v2/actual/控制后切suite唯一include，保持ID和75组旧身份；NC-08/09；AC-03  **[✅ 2026-11-17]** 载体 `scheduler.document.case.ad`（11例，源/期望逐字节由冻结件生成）+ suite 唯一include切换（aba42ca3a）；真门 `cargo t case-ace-m2-scheduler-968` 11/11 PASS、旧fence镜像↔新doc逐行等价（id/check/status/detail+source/oracle内容哈希11/11同，仅suite/case_file/contract结构轴按已记录口径漂移）；NC-08 常驻（`plan1066-s-doc-controls` 组，case-parent+av 显式工具，6控5.1s，单轴具名红+clean镜像11/11绿）、NC-09 常驻（`scripts/test-governance/document_case_active_scan.py` + `infra-fixed` 2测，真树76组/183文件全document、0 fence/0 unknown，陈旧fence/新增旧组/投毒各具名定位）；另记 master 既有红：`infra-fixed::test_ace_set_is_explicit_and_separate_from_daily`（PLAN-969 278b91204 加 `ace-facade` 未更新断言，基面 7c131286d 即红，非本任务）|
-| [ ] | T-05/work | B：T-02[B]（不作A前置） | 两份main.project.case.ad内联5源，19期望有限exists/contains+源闭包/受管物化；两旧Rust test转doc消费者，不依赖旧工程文件；NC-10～12；AC-04  本轮阶段：B-FORMAT；片段完成不勾整项。 |
+| [x] | T-05/work | B：T-02[B]（不作A前置） | 两份main.project.case.ad内联5源，19期望有限exists/contains+源闭包/受管物化；两旧Rust test转doc消费者，不依赖旧工程文件；NC-10～12；AC-04  **[✅ 2026-11-17]** 作者格式新增产物断言 `exists: true` / `contains: [...]`（与全文围栏互斥；未知键/空集/重复项/`exists: false` 具名拒；Exists 与 Contains 分型，避免凭空多出 exists 断言）（477bc1fed）；两份 `main.project.case.ad`（5 源按 §5.3 冻结哈希校验后逐字节内联，entry 走直接围栏、模块文件走 `#### <path>`；19 条 P01..P16/D01..D03 逐条声明）；两旧 Rust test 改为 doc 消费者（6c543e44f）：受管物化到 `<temp>/<工程basename>` 后调用原 `transpile_rust_project`，逐条断言单独判决并具名失败；绝对/`..`/重复路径写前拒绝；冻结 `*.expected.rs` 只作历史、从不读取。NC-10a/b/c（doc-only 镜像可建、缺闭包硬失败、改文档正文即命中 `db.rs: struct Connection`）、NC-11（错 contains 具名、声明但未产物具名）、NC-12（`../`/绝对/重复源路径解码期拒绝）常驻 1 测 2.11s。A 的 P 分母改读项目文档：19 断言集合逐键不变、E78 68→70（两份 project 文档入边界，不进 N）、n_rows 1060 不变。门：`cargo t a2r` PASS 432/0（139s）、`cargo t vm corpus` PASS 1137/0（79.9s）、`cargo t auto-test-case` PASS 151/0、plan1066 15 passed/3 ignored |
 | [ ] | T-06/work | B：T-02/03/08所用正式子面；不作T-09[A]前置 | 原250编译子项doc源+M三个手动guard/6份doc Rust产物；显式准备真实rustc/stub+source-bound收据/产物、原始exit/stderr重判及M真实guest/参考判据；全部scope独占输出，a2r-compile/M精确ignored重放、旧身份/ledger/ignore保；NC-13～15/26/27；AC-05  本轮阶段：B-COMPILE；片段完成不勾整项。 |
 | [ ] | T-07/work | A：T-01/02的写入边界；B：T-02[B]完整proposal接口 | 普通bootstrap退出注册/旧读写；显式conformance-proposal读30 doc、scope候选与错误；33验证及trim保；conformance wrong/cookbook GENERATE_EXPECTED旁路不得写作者根；NC-16～18/25；AC-06  本轮阶段：A-NOWRITE；完整proposal/全旁路迁移B；片段完成不勾整项。 |
 | [ ] | T-08/work | A：T-03[A]与实际A证据；B：T-03[B] | §5.2当前v2/历史v1分派、VM helper/CLI、input_inventory/wrapper_bindings/source_bindings/trace身份和报告切doc，旧floor/association标签不作旧IO；重读actual及通用原子记录验真，常规B/cache/cookbook回归。先于T-06供治理，编译分类真实门归T-06；NC-19/26的schema部分；AC-02/07  本轮阶段：A实际证据身份；全v2治理B；片段完成不勾整项。 |
@@ -1948,6 +1948,22 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-03 整�
 **门**：`cargo t vm corpus` **PASS**（executed 1137、0 errors、child_validation valid、wall 50.2s）。
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 4 | from: work | to: work | status: executing | outcome: pass（T-03 关闭：载荷 1060/663/556 全等 + 9 负控 + 逐例 actual；13任务 2/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 9bd255fbc | next: work（T-05 P 两工程 doc 化 → T-06 250 编译 doc 源）
+
+### 2026-11-17 B 期 work（round 5）：T-05 关闭——两份工程文档 + 有限产物断言
+
+stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-05 整项关闭，13任务 3/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | code_commits: 477bc1fed（作者格式）+ 6c543e44f（工程文档/消费者/控） | dependency_revisions: 无跨仓 | task_ids: T-05 | next_responsible_role: work（T-06）
+
+**作者格式扩展（477bc1fed）**：产物小节新增有限断言 `exists: true` 与 `contains: [...]`——与全文围栏**互斥**（同产物只能一种判据）、`final-newline/compare` 在有限模式下拒绝、未知键/空数组/空串/重复项/`exists: false` 全部具名定位拒绝；`ArtifactMatch::{Bytes, Exists{contains}, Contains{contains}}` 分型（Exists=显式声明、Contains=仅 contains，避免为 021 凭空生成第 4 条 exists 断言）；旧 decode 接受/拒绝与 v2 投影未变（`cargo t auto-test-case` 151/0 绿）。
+
+**两份工程文档（6c543e44f）**：`a2r/14_modules/005_multi_file/main.project.case.ad`（id `legacy.a2r.project.14_modules.005_multi_file`，entry `main.at` 直接围栏 + `db.at`/`api/mod.at`/`api/handlers.at` 三个 `####` 附加源，16 条 P01..P16）与 `a2r/16_interop/021_path_dep/main.project.case.ad`（D01..D03，Cargo.toml 仅 contains）。5 份源在写文档前逐份校验 §5.3 冻结 SHA-256，再按冻结字节内联（final-newline 随源）。旧 `*.expected.rs` 保持历史、**从未被读取**。
+
+**消费者**：`a2r_tests::run_project_case`（pub(crate)）——加载文档 → 逐路径 `validate_virtual_path`（绝对/`..`/重复/反斜杠写前拒绝）→ 物化到 `<temp>/<工程 basename>`（保留 entry 名、相对模块路径与工程目录名，Cargo 包名因此不变）→ 调原 `transpile_rust_project` → 对每个产物单独判 exists/contains 并具名失败；两个原 test 名保留、改为调用它（0.87s / 0.78s）。
+
+**负控（常驻 1 测 2.11s）**：NC-10a doc-only 镜像可建；NC-10b 删 `db.at` 闭包即硬失败；NC-10c 改文档 `db.at` 正文 → `db.rs: struct Connection` 命中；NC-11 错 contains 具名（`fn connect_nowhere()`）、声明但未产物具名（`not-produced.txt: missing product`）；NC-12 `../`/绝对/重复源路径解码期拒绝且作者树零写入。
+
+**分母与门**：A 的 P 派生改读两份文档（19 断言按 test/product/kind/literal 逐键不变；`sources`/`old_tests` 不变），E78 68→70（两份 project 文档入边界、不进 N），n_rows 1060 不变；A-DEN/NC-A1 全绿 1.6s。`cargo t a2r` **PASS** 432 executed/0 errors（wall 139s，含原 250 编译门）；`cargo t vm corpus` **PASS** 1137/0（79.9s，child_validation valid）；`cargo t auto-test-case` PASS 151/0（19.4s）；`cargo test -p auto-lang --lib plan1066` 15 passed/3 ignored（1.64s）。无新债务（工程文档按设计留在 E78 边界；a2ts/a2c 漂移债延续）。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-05 关闭：477bc1fed+6c543e44f；a2r 432/0、vm corpus 1137/0、auto-test-case 151/0；13任务 3/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 6c543e44f | next: work（T-06 250 编译门 doc 源 + M3 手动 guard + a2r-compile 显式组）
 
 ## 10. 待澄清事项
 
