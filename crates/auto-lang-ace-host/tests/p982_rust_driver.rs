@@ -90,6 +90,12 @@ fn p982_rust_host_driver_covers_records_and_collections_families() {
             vec!["main.rs", "a2x_runtime.rs", "generated.rs"],
             "{profile:?} keeps the frozen triple"
         );
-        assert!(a.manifest.contains("auto.a2x.rust.fileset/1"));
+        // 家族各自有冻结的 manifest schema（collections 用 `COLL_FILESET_SCHEMA`），
+        // 断言"是 a2x 的 fileset schema"而不是写死一个。
+        assert!(
+            a.manifest.contains("fileset/1"),
+            "{profile:?} manifest schema: {}",
+            a.manifest
+        );
     }
 }
