@@ -508,3 +508,158 @@ mod av_leg {
         }
     }
 }
+/// V-04/V-05 (T-07): the REAL candidate path — build the scheduler PE into an
+/// EXPLICIT out-of-repo output root, run it from there as an ordinary process
+/// (no cargo, no workspace cwd), and audit what it actually depends on:
+///
+/// * exactly one DLL (kernel32.dll) and only the scheduler lane's declared
+///   entry points — no CRT (`msvcrt`/`ucrtbase`/`vcruntime`), no
+///   `api-ms-win-crt-*`, no stray Win32 surface, no ordinal imports;
+/// * the support staticlib the PE embeds is the CONTENT-BOUND runtime
+///   (identity hash equals the library's current bytes), so an unattested
+///   runtime cannot be silently linked;
+/// * the run itself is byte-exact and exits through the drain audit.
+///
+/// Linux: this lane lowers COFF for the frozen Windows triple only — there is
+/// no Linux branch to test here, and Windows evidence never upgrades the Linux
+/// rows (implementation + full cases are handed to PLAN-1063, recorded as
+/// NOT_RUN in the plan/spec, never as verified).
+#[test]
+fn scheduler_candidate_runs_out_of_repo_kernel32_only() {
+    let src = corpus("spawn_with_state");
+    let module = ace_native::sched::sched_compile(&src, "d_main").expect("front end");
+    // The explicit out-of-repo output root is the plan's sanctioned scratch
+    // home; `AUTO_LANG_PLAN_ARTIFACTS` may relocate it, and a machine without
+    // that root still exercises the SAME audit from the target tmp dir (the
+    // audit, not the directory, is what this test is about).
+    let candidate = {
+        let preferred = std::env::var_os("AUTO_LANG_PLAN_ARTIFACTS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-1067")
+            })
+            .join("candidate-t07");
+        match std::fs::create_dir_all(&preferred) {
+            Ok(()) => preferred,
+            Err(_) => {
+                let fallback = Path::new(env!("CARGO_TARGET_TMPDIR")).join("candidate-t07");
+                std::fs::create_dir_all(&fallback).expect("candidate dir");
+                fallback
+            }
+        }
+    };
+    // A candidate root is a scratch area: drop earlier runs' products so the
+    // directory never grows without bound across reruns.
+    for entry in std::fs::read_dir(&candidate).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    let linked = ace_native::sched::sched_native_build(&module, "d_main", &candidate)
+        .expect("build scheduler candidate");
+    assert!(
+        linked.exe_path.starts_with(&candidate),
+        "the candidate must live in the explicit output root, got {:?}",
+        linked.exe_path
+    );
+
+    // ---- the run: an ordinary process, started in the candidate directory
+    let run = std::process::Command::new(&linked.exe_path)
+        .current_dir(&candidate)
+        .output()
+        .expect("run the candidate PE");
+    assert_eq!(run.status.code(), Some(0), "candidate exit drift");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "mycounter: 15\n",
+        "candidate stdout drift"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stderr),
+        "",
+        "candidate stderr noise"
+    );
+
+    // ---- the dependency audit on the published bytes
+    let bytes = std::fs::read(&linked.exe_path).expect("read candidate PE");
+    assert_eq!(&bytes[..2], b"MZ", "not a PE image");
+    let report = ace_native::sched::audit_sched_pe_imports(&bytes).expect("import audit");
+    // Windows import names are case-insensitive (`KERNEL32.dll` in the image).
+    let mut dlls: Vec<String> = report.dlls.iter().map(|d| d.to_lowercase()).collect();
+    dlls.sort();
+    dlls.dedup();
+    assert_eq!(
+        dlls,
+        vec!["kernel32.dll".to_string()],
+        "the scheduler PE must depend on kernel32.dll only"
+    );
+    let lower = String::from_utf8_lossy(&bytes).to_lowercase();
+    for forbidden in [
+        "msvcrt.dll",
+        "ucrtbase.dll",
+        "vcruntime",
+        "api-ms-win-crt",
+        "kernelbase.dll",
+        "bcrypt.dll",
+    ] {
+        assert!(
+            !lower.contains(forbidden),
+            "forbidden dependency `{forbidden}` appears in the candidate image"
+        );
+    }
+    // Every observed import is one of the lane's declared entry points.
+    for (dll, sym) in &report.symbols {
+        assert_eq!(dll.to_lowercase(), "kernel32.dll");
+        assert!(
+            ace_native::sched::SCHED_KERNEL32_IMPORTS.contains(&sym.as_str()),
+            "undeclared import `{sym}` reached the candidate"
+        );
+    }
+    assert!(
+        report
+            .symbols
+            .iter()
+            .any(|(_, s)| s == "CreateThread"),
+        "expected the task-chain thread entry point, got {:?}",
+        report.symbols
+    );
+
+    // ---- the embedded runtime is the content-bound one
+    let prepared = ace_native::sched_runtime::prepare().expect("runtime identity");
+    let library_hash = ace_native::sched_runtime::file_hash(&prepared.library).expect("hash");
+    assert_eq!(
+        prepared.identity.content_hash, library_hash,
+        "the linked runtime library does not match its build-bound identity"
+    );
+    assert_eq!(prepared.identity.abi, "mn.sched.runtime/1");
+}
+/// V-05 (T-07 negative control): the audit must FAIL on a mutant, otherwise
+/// "kernel32-only" is a slogan, not a check. This rewrites the image's import
+/// DLL name to a CRT DLL of the same slot and expects the named rejection —
+/// the rest of the PE stays structurally valid, so only the audit can catch it.
+#[test]
+fn scheduler_candidate_audit_rejects_a_mutant_dependency() {
+    let src = corpus("message_handler");
+    let module = ace_native::sched::sched_compile(&src, "d_main").expect("front end");
+    let dir = workdir("audit-mutant");
+    let linked =
+        ace_native::sched::sched_native_build(&module, "d_main", &dir).expect("build candidate");
+    let mut bytes = std::fs::read(&linked.exe_path).expect("read candidate PE");
+    let needle = b"KERNEL32.dll";
+    let at = bytes
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("import DLL name present");
+    // Same slot, different DLL: a CRT dependency the lane must never have.
+    bytes[at..at + needle.len()].copy_from_slice(b"MSVCRT.dll\0\0");
+
+    let err = ace_native::sched::audit_sched_pe_imports(&bytes)
+        .expect_err("a CRT dependency must be rejected");
+    assert!(
+        err.code().contains("pe.audit.forbidden-dll"),
+        "expected the named forbidden-dll rejection, got {}: {err}",
+        err.code()
+    );
+}

@@ -32,6 +32,47 @@ use std::path::Path;
 /// The named exit a non-zero drain residue reports (never a success code).
 pub const SCHED_LEAK_EXIT_CODE: i32 = 72;
 
+/// PLAN-1067 T-07: the ONLY Win32 entry points the scheduler lane may link.
+/// Every one of them is a documented kernel32 contract the runtime's own
+/// bookkeeping needs (thread per task chain, blocking mailbox waits, the
+/// private heap the runtime audits, and the contained exit). Anything else —
+/// in particular CRT/`Rust std` file or console IO, `VirtualAlloc` families
+/// or the platform-io residue — is a named audit failure.
+pub const SCHED_KERNEL32_IMPORTS: &[&str] = &[
+    // console/1 shim (shared with the console lane)
+    "GetStdHandle",
+    "WriteFile",
+    // task chains
+    "CreateThread",
+    "WaitForSingleObject",
+    "CloseHandle",
+    "TlsAlloc",
+    "TlsSetValue",
+    "TlsGetValue",
+    // mailbox / port primitives
+    "AcquireSRWLockExclusive",
+    "ReleaseSRWLockExclusive",
+    "SleepConditionVariableSRW",
+    "WakeConditionVariable",
+    "WakeAllConditionVariable",
+    "Sleep",
+    // the runtime's audited private heap
+    "GetProcessHeap",
+    "HeapAlloc",
+    "HeapFree",
+    // contained exit
+    "ExitProcess",
+];
+
+/// PLAN-1067 T-07: audit a linked scheduler PE — exactly `kernel32.dll`, no
+/// ordinals, and every import inside [`SCHED_KERNEL32_IMPORTS`]. Never masks a
+/// forbidden symbol: the caller gets a named error.
+pub fn audit_sched_pe_imports(
+    pe_bytes: &[u8],
+) -> Result<crate::platform_io::PeImportReport, MnError> {
+    crate::platform_io::audit_pe_imports_with(pe_bytes, SCHED_KERNEL32_IMPORTS, &[], "scheduler")
+}
+
 /// Stage/code pair of the shared scheduler front door.
 #[derive(Debug)]
 pub struct SchedDiag {

@@ -1796,6 +1796,25 @@ pub struct PeImportReport {
 /// stay forbidden — and any unapproved / CRT-delegated import symbol
 /// (`malloc`, `free`, `puts`, `printf`, etc.).
 pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
+    audit_pe_imports_with(
+        pe_bytes,
+        ALLOWED_KERNEL32_IMPORTS,
+        ALLOWED_BCRYPT_IMPORTS,
+        "native platform-io",
+    )
+}
+
+/// PLAN-1067 T-07: the same audit over a LANE-SPECIFIC allowlist, so a lane
+/// that legitimately needs a different OS surface (the task-scheduler
+/// runtime's threads, locks and TLS) can be audited without loosening the
+/// frozen platform-io contract above. Everything else is unchanged: exactly
+/// one DLL, no ordinals, no symbol outside the supplied list.
+pub fn audit_pe_imports_with(
+    pe_bytes: &[u8],
+    kernel32: &[&str],
+    extra_dll_symbols: &[&str],
+    lane: &str,
+) -> Result<PeImportReport, MnError> {
     use cranelift_object::object::pe::{ImageNtHeaders64, IMAGE_DIRECTORY_ENTRY_IMPORT};
     use cranelift_object::object::read::pe::{ImageThunkData, PeFile64};
     use cranelift_object::object::LittleEndian as LE;
@@ -1828,14 +1847,14 @@ pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
             .map_err(|e| MnError::Infra(format!("pe.audit.dll-name: {e}")))?;
         let dll = String::from_utf8_lossy(raw_dll).into_owned();
         let allowed_syms: &[&str] = if dll.eq_ignore_ascii_case("kernel32.dll") {
-            ALLOWED_KERNEL32_IMPORTS
+            kernel32
         } else if dll.eq_ignore_ascii_case("bcrypt.dll") {
-            ALLOWED_BCRYPT_IMPORTS
+            extra_dll_symbols
         } else {
             return Err(MnError::Unsupported(
                 "pe.audit.forbidden-dll",
                 format!(
-                    "unexpected DLL `{dll}` in native platform-io executable (expected kernel32.dll/bcrypt.dll only)"
+                    "unexpected DLL `{dll}` in the {lane} executable (expected kernel32.dll only)"
                 ),
             ));
         };
@@ -1857,7 +1876,7 @@ pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
             if thunk.is_ordinal() {
                 return Err(MnError::Unsupported(
                     "pe.audit.ordinal-import",
-                    format!("ordinal import from `{dll}` is forbidden in platform-io audit"),
+                    format!("ordinal import from `{dll}` is forbidden in the {lane} audit"),
                 ));
             }
             let (_, name_bytes) = table
@@ -1867,7 +1886,7 @@ pub fn audit_pe_imports(pe_bytes: &[u8]) -> Result<PeImportReport, MnError> {
             if !allowed_syms.contains(&sym.as_str()) {
                 return Err(MnError::Unsupported(
                     "pe.audit.forbidden-symbol",
-                    format!("unexpected Win32 import `{sym}` from `{dll}`"),
+                    format!("unexpected Win32 import `{sym}` from `{dll}` in the {lane} lane"),
                 ));
             }
             symbols.push((dll.clone(), sym));
