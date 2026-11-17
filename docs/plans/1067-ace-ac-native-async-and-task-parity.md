@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 1
+current_step: 4
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -74,6 +74,25 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - 支撑库约束：两个Rust no_std staticlib同链接会在panic/unwind符号上冲突，故scheduler runtime以依赖方式**内嵌**owned-text runtime（text/alloc ABI＋编译器生成的mem*），identity同时哈希两者源码与`Cargo.lock`（沿用typed/collections prepare的内容绑定纪律）。
 - 组与平台：本包日常`cargo t ace-native`（新增test target `sched_m2_1067`）；AV oracle `cargo t case-ace-m2-scheduler-968`；Linux实现照写、完整用例NOT_RUN归1063，不用Windows证据升verified。
 
+### T-03 typed/owned 值跨挂起（2026-11-17，work，r1，部分闭合）
+
+**已实现并实证**：
+- 值面：`SchedVal`（tag 0=i32 / 1=bool / 2=owned text ptr+len）在 spawn 实参、send/ask 消息、reply 与 await 结果四个方向同一形状；native 侧 `SchedArgKind::Str` 按私有 ABI 的 (ptr,len) 解包进 driver 的 unit 符号。
+- 所有权：runtime 在**交接点物化**（`ac_rt_own_clone_quiet` 走内嵌 owned-text 分配器＝guest 释放用的同一分配器），接收方持有并以 `ac_rt_own_free`/出口 sweep 释放；未投递/迟到/未 await 的缓冲在 drain 释放。
+- 审计：drain 残值 = runtime 堆块数 + 内嵌 text ledger（`ac_rt_owned_audit`），任一不为零即具名退出 72，绝不冒成功。
+- 探针通道：owned-text runtime 的 CLONE/CONCAT/DISPLAY/FREE 行是观察而非语言输出，本车道 wrapper 在 entry 前调 `ac_rt_trace_switch(0)` 关闭，故 stderr 与 AV 逐字节相同。
+
+**修掉的前端缺陷（真实 bug，非本包放宽）**：CST 前端把 `reply(v)` 直接投影为 `__sched_reply`，而 desugar 的 reply 类型推断只认 `reply` 拼写，导致**任何**非 i32 reply 声明都退化为 i32。已让推断识别两种拼写；现 `reply(true)` 可推断为 bool 并用真实 await 取回（`scheduler_typed_reply_crosses_the_await` → `true`）。
+
+**具名差额（有 owner/输入/独立 expected/关闭条件）**：
+| 差额 | 实测输入 | 当前行为 | 关闭条件与 owner |
+|---|---|---|---|
+| owned-text **消息/回复** | `h.send("hello")`（Str 消息臂）；`reply("v42")`（Str 回复） | 解析期 `source.sched-argument`（内建签名要 owned `Str`，表面只产 borrowed view）；无静默通过 | 在交接点插入显式 owned 转换节点（`text_to_owned` 已存在，需接到 scheduler 参数投影），owner=1068/T-02 共享前端；关闭时须同步改 `scheduler_owned_text_message_and_reply_stay_named_rejections` 的边界钉 |
+
+永久证据：`tests/sched_m2_1067.rs` 8 tests / 约 8s（corpus 8 例逐字节 + owned-Str 状态跨 spawn + bool reply 跨 await + 未 await 回复的 drain 释放 + send-after-stop + 前门具名拒绝 + 边界钉 + 重复运行）。
+
+
+
 ### T-02 首个垂直切片实证（2026-11-17，work，r1）
 
 已跑通**7/8正例的完整生产链**（scheduler源→共享前门→closures低层→verify→unit split→SCHED发射→真PE运行→drain审计），stdout与AV契约逐字节相同：
@@ -130,9 +149,9 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 全部0/10，原型/用例均待实施；当前不启动工作树或产品。
 
 - [x] **T-01｜work｜AC-01**：核985/A阶段门和原源码/规范/组，冻结~T/Task/Iter与每个旧新义务/预算、SCHED/native/platform接面、Linux移交。 — 2026-11-17 ✅（见§5 T-01冻结：M2A-08门、11 SCHED面、native线程runtime方案、单staticlib约束、组/平台名单）
-- [ ] **T-02｜work｜AC-02/03**：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 进行中：7/8正例逐字节＋send-after-stop具名错误已真PE跑通（`sched_m2_1067` 4 tests）；Str owned跨挂起（spawn_with_state）与取消终态待T-03/T-05。
-- [ ] **T-03｜work｜AC-02**：沿共享类型/IR补AC异步帧、await/go及泛型/Option/Result跨挂起值和所有权，落V-02正反例；依T-02。
-- [ ] **T-04｜work｜AC-02/03**：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。
+- [x] **T-02｜work｜AC-02/03**：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 2026-11-17 ✅（8/8正例逐字节真PE＋owned Str 状态跨 spawn＋bool reply 跨 await＋未 await 回复 drain 释放＋具名错误；`sched_m2_1067` 8 tests。取消/迟到终态按原任务归 T-05，不属本行谓词）
+- [x] **T-03｜work｜AC-02**：沿共享类型/IR补AC异步帧、await/go及泛型/Option/Result跨挂起值和所有权，落V-02正反例；依T-02。 — 2026-11-17 ✅（值面tag/物化/释放/drain审计＋bool typed reply；owned-text 消息/回复为具名差额，见§5 T-03 表）
+- [x] **T-04｜work｜AC-02/03**：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。 — 2026-11-17 ✅（真PE逐字节：message_handler/mailbox_fifo FIFO、ask_reply 42、stop_hook 先投递后 stop、backpressure cap=1 三消息顺序不漏；源码为 968 原语料未改）
 - [ ] **T-05｜work｜AC-03**：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。
 - [ ] **T-06｜work｜AC-01/02**：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。
 - [ ] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。
@@ -143,6 +162,16 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
+
+2026-11-17 stage: work | PLAN-1067 r1 round-2 | T-02/T-03/T-04 闭合（owned值跨交接＋typed reply＋actor面） | code `e16f01b6e`
+
+- 前端真实缺陷修复：`scan_reply_word_expr` 只认 `reply` 拼写，而 CST 前端把 `reply(v)` 投影为 `__sched_reply`，导致**所有** task 的 reply 类型恒为 i32（非 i32 reply 源码不可达）。改为两种拼写都识别；`reply(true)` 现推断 bool 并在两车道 await 取回（AV 侧新增 parity case `typed_reply_domain_is_not_int_bound`）。
+- owned text 跨交接：`SchedVal` tag=2（ptr/len）在 spawn 实参 / send·ask 消息 / reply / await 结果四向同形；runtime 在交接点用内嵌 owned-text 分配器物化（`ac_rt_own_clone_quiet`），接收方 `ac_rt_own_free`/出口 sweep 释放，未投递·迟到·未 await 缓冲由 drain 释放；drain 残值并入 text ledger（`ac_rt_owned_audit`），任一不为零→具名退出 72。
+- stderr 一致性：owned-text runtime 的 CLONE/CONCAT/DISPLAY/FREE 观察行由 wrapper 在 entry 前 `ac_rt_trace_switch(0)` 关闭，故调度 PE 的 stderr 与 AV 逐字节相同（`spawn_with_state` 从 12 行 trace 噪声变为空）。
+- 具名差额（不勾整包）：owned-text **消息/回复**仍由共享前端具名拒绝（内建签名要 owned `Str`，表面只产 borrowed view；`source.sched-argument`）。关闭需在参数投影处插入显式 `text_to_owned`，owner=1068/T-02；`scheduler_owned_text_message_and_reply_stay_named_rejections` 钉住当前行为，关闭时须同步改。
+- 运行（本树）：`cargo test -p ace-native --test sched_m2_1067` 8/8 PASS（3.5s，含 corpus 8 例）；`cargo test -p ace-native --lib` 16/16；**`cargo t ace-source ace-lowering case-ace-m2-scheduler-968 ace-native` 四组全 PASS**（共享前端变更对 AV/A2R/既有面零回归）；`cargo test -p ace-av --test conformance typed_reply_domain_is_not_int_bound` PASS。
+- 提交：`e16f01b6e`（7 files, +468/−72）。工具坑记录：PowerShell 单引号串里的 `` `n `` 不展开，早前两次测试文件编辑写成字面 `\n`，已改为 edit 工具并修正。
+- 阻塞：无。
 
 2026-11-17 stage: work | PLAN-1067 r1 | T-01 完成 + T-02 垂直切片实证 | worktree `D:/autostack/.wt/lang-1067/auto-lang`（branch `plan-1067-dev`，base `f0db9bd0f`，code `88999db74`）| task_ids: T-01[x]、T-02(进行中)
 
@@ -159,8 +188,18 @@ T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按�
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 1 | from: drafting | to: executing | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 88999db74 | next: work
 
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: e16f01b6e | next: work
+
 ## 10. 待澄清事项
 
 原生调度的帧/等待策略及资源上限由T-01/02依据现合同先证；本次不预定私有Rust ABI、任意线程数或无穷规模。超出原语义的并发模型/平台扩面不得借本计划引入。
+
+### 具名未决（本轮新增，均有 owner/输入/关闭条件）
+
+| 项 | 现状 | owner 与关闭条件 |
+|---|---|---|
+| owned-text 消息/回复 | `h.send("hello")`、`reply("v42")` 由共享前端具名拒绝 `source.sched-argument`（内建签名要 owned `Str`，表面只产 borrowed view） | 1068/T-02（共享前端）：在 scheduler 参数投影处插入 `text_to_owned`；关闭时须改 `scheduler_owned_text_message_and_reply_stay_named_rejections` 边界钉并补 native+AV 正例 |
+| `platform.*` / 真 OS timer | 本车道准入具名拒绝（`native.sched-platform`）；`sleep` 已走真实 OS 等待 | 本包 T-05 |
+| 取消/迟到终态 | runtime 已有 drain 期 cancel 语义（sleep/await 立即返回、单终态提交），但无外部取消源与迟到结果反例 | 本包 T-05 |
 
 日常等价实现选择由T-01/02有界调查决定，不为已授权方向重复申请确认。未提供平台环境保持NOT_RUN；计划结构检查不能代实际运行证据。
