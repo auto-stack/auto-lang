@@ -375,6 +375,8 @@ struct EmitCtx {
     locals: std::collections::BTreeMap<String, LocalClass>,
     /// 已声明过的文档局部（`var` 重声明 = 赋值，不是二次 `let`）。
     declared: std::collections::BTreeSet<String>,
+    /// 绑定到**字面数组**的文档 `var`（`for` 的字面展开用；运行期列表不在其中）。
+    list_literals: std::collections::BTreeMap<String, Vec<Expr>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -416,6 +418,10 @@ fn emit_line(
                 )]);
             }
             let (value, class) = emit_value(&v.value, out, ctx)?;
+            // 记忆字面数组绑定：`for d in <var>` 因此可以按源顺序展开。
+            if let super::ast::ExprKind::ArrayLit(items) = &v.value.kind {
+                ctx.list_literals.insert(v.name.name.clone(), items.clone());
+            }
             // legacy 口径：`var x` 在同一块内**可重声明**，后者生效
             // （V-CFG-FLOW 的 `test_config_var_redeclared_takes_latest`）。
             // 物化侧把重声明落成一次赋值，避免 `let` 重复绑定被 resolve 拒。
@@ -479,12 +485,7 @@ fn emit_line(
             });
             Ok(())
         }
-        ConfigLine::For(f) => Err(vec![document_diag(
-            "source.config-document/pending",
-            "a `for` document line needs the list-count primitives (`cfg.list.len/at`), \
-             which land with the next increment; it is not silently dropped",
-            f.span,
-        )]),
+        ConfigLine::For(f) => emit_for(f, cur, out, ctx),
         ConfigLine::Pair(p) => {
             let key = str_lit(&p.key.name, p.key.span);
             match &p.value {
@@ -774,6 +775,69 @@ impl InjectValue {
     }
 }
 
+/// `for <var> in <list> { … }`：
+///
+/// **字面列表展开**（legacy `test_config_for_unrolls_literal_array` 语义）——迭代源
+/// 是字面数组（`for d in ["a","b"]`）或绑定到字面数组的文档 `var` 时，物化侧按源
+/// 顺序展开体，逐项把循环变量绑成该元素值；**运行期列表**（元素来自注入/计算）
+/// 仍需列表计数/取值原语，这里具名 `pending`（不静默丢弃、不假装迭代）。
+///
+/// 每个元素都用**同一个**可变局部（首项 `let`，其后赋值），因此体内不要重复
+/// `var` 同名局部（块作用域限制，已记录）。
+fn emit_for(
+    f: &ConfigFor,
+    cur: &str,
+    out: &mut Vec<Stmt>,
+    ctx: &mut EmitCtx,
+) -> Result<(), Vec<Diagnostic>> {
+    let elements: Option<Vec<Expr>> = match &f.iter.kind {
+        super::ast::ExprKind::ArrayLit(items) => Some(items.clone()),
+        super::ast::ExprKind::Var(id) => ctx.list_literals.get(&id.name).cloned(),
+        _ => None,
+    };
+    let Some(elements) = elements else {
+        return Err(vec![document_diag(
+            "source.config-document/pending",
+            "a `for` over a runtime list needs the list-count/element primitives \
+             (`cfg.list.len/at`), which are not implemented yet; only literal lists \
+             (`for d in [\"a\", \"b\"]` or a `var` bound to one) unroll today",
+            f.span,
+        )]);
+    };
+    let saved_declared = ctx.declared.clone();
+    let saved_locals = ctx.locals.clone();
+    for (index, element) in elements.into_iter().enumerate() {
+        let (value, _class) = emit_value(&element, out, ctx)?;
+        if index == 0 {
+            out.push(Stmt::Let {
+                kw: f.span,
+                name: f.var.clone(),
+                ann: None,
+                mutable: true,
+                value,
+                span: f.span,
+            });
+            ctx.declared.insert(f.var.name.clone());
+        } else {
+            out.push(Stmt::Assign {
+                target: super::ast::AssignTarget {
+                    base: f.var.clone(),
+                    path: Vec::new(),
+                },
+                value,
+                span: f.span,
+            });
+        }
+        // 体内声明不跨迭代泄漏（每次迭代从展开前的声明面开始）。
+        ctx.declared = saved_declared.clone();
+        ctx.locals = saved_locals.clone();
+        ctx.declared.insert(f.var.name.clone());
+        emit_body(&f.body, cur, out, ctx)?;
+    }
+    ctx.declared = saved_declared;
+    ctx.locals = saved_locals;
+    Ok(())
+}
 fn emit_injected(
     injected: &[(String, InjectValue)],
     out: &mut Vec<Stmt>,

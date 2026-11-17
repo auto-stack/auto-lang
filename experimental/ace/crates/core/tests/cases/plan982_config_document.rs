@@ -545,3 +545,27 @@ fn p982_config_template_desugar_shapes() {
     .expect("comments are not interpolated");
     assert_eq!(out, "# note ${not_a_template}\nname: \"ok\"\n");
 }
+
+/// E8/V-CFG-FLOW：`for` 的字面数组在**物化侧展开**（legacy
+/// `test_config_for_unrolls_literal_array` 语义），运行期列表仍是具名 pending。
+#[test]
+fn p982_config_for_unrolls_literal_lists() {
+    let src = "var names = [\"a\", \"b\"]\nfor d in ([\"x\", \"y\"]) { label: d }\nfor n in names { label: n }\n";
+    let front = compile_config_document(src, "pac.at", &[]).expect("literal for loops compile");
+    // root + var + 4 个 put（两次展开各 2 行）+ finish。
+    assert!(
+        front.statements >= 8,
+        "the literal loops must unroll into real statements, got {}",
+        front.statements
+    );
+
+    // 运行期列表：物化阶段具名 pending（不是静默空跑）。
+    let dynamic = "var base = [\"a\"]\nvar m = base\nfor d in m { label: d }\n";
+    let err = compile_config_document(dynamic, "pac.at", &[])
+        .expect_err("a runtime-list for must not silently drop");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.config-document/pending"),
+        "a runtime-list for must be a named pending: {err:?}"
+    );
+}

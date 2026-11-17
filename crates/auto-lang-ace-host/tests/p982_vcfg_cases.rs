@@ -174,6 +174,32 @@ lib("a") {
     assert_eq!(text(Some(prop_of(dir, "id"))), "n1");
     assert_eq!(text(Some(prop_of(dir, "at"))), "p1");
 
+    // `for` 的字面展开（legacy `test_config_for_unrolls_literal_array` 语义）：
+    // 字面数组按源顺序展开，循环变量逐项绑定。动态列表仍是具名 pending。
+    let unrolled = r#"lib("x") {
+    for d in (["a", "b"]) { dir(id: d) { at: d } }
+}
+"#;
+    let doc = match run(unrolled, &empty_context()).outcome {
+        AceConfigOutcome::Success { document, .. } => document,
+        other => panic!("a literal `for` must unroll and run, got {other:?}"),
+    };
+    let lib = &doc.root.children[0];
+    assert_eq!(lib.children.len(), 2, "both iterations produced their node");
+    for (i, want) in ["a", "b"].iter().enumerate() {
+        let dir = &lib.children[i];
+        assert_eq!(text(Some(prop_of(dir, "id"))), *want);
+        assert_eq!(text(Some(prop_of(dir, "at"))), *want);
+    }
+    // 运行期列表（这里经一个非字面绑定）⇒ 具名 pending，不静默空跑。
+    let dynamic = "var base = [\"a\"]\nvar m = base\nfor d in m { x: d }\n";
+    match run(dynamic, &empty_context()).outcome {
+        AceConfigOutcome::Diagnostic { code, .. } => {
+            assert_eq!(code, "source.config-document/pending")
+        }
+        other => panic!("a runtime-list `for` must be a named pending, got {other:?}"),
+    }
+
     // 另一分支真的改变结果（非空证）：同一文档、port 换成 linux ⇒ x=2。
     let mut linux = empty_context();
     linux

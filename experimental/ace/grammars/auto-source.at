@@ -1853,6 +1853,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 收裸名或括号表达式；更宽的表达式需要时用括号显式写。
         cfg-iter(profiles: [config-document]) {
             alt { ident(field: "word") {} }
+            // 字面数组迭代源：`for d in ["a", "b"] { … }`（legacy 的字面展开形）。
+            alt { array-lit(field: "elems") {} }
             alt { lparen(same-line: true) {} expr(field: "inner") rparen() {} }
         }
         cfg-body(profiles: [config-document], expect: "a `{ … }` document body") {
