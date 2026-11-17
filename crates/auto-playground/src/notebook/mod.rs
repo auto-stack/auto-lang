@@ -151,7 +151,8 @@ impl NotebookSession {
             }
 
             // Update snapshot and cell output
-            self.cell_snapshots.insert(exec_id.clone(), exec_source.clone());
+            self.cell_snapshots
+                .insert(exec_id.clone(), exec_source.clone());
             if let Some(cell) = self.cells.iter_mut().find(|c| c.cell_id == exec_id) {
                 cell.output = Some(output);
                 cell.source = exec_source;
@@ -374,7 +375,9 @@ fn user_function_names(source: &str) -> Vec<String> {
 // ============================================================================
 
 enum NotebookCommand {
-    CreateSession { respond: oneshot::Sender<String> },
+    CreateSession {
+        respond: oneshot::Sender<String>,
+    },
     Execute {
         sid: String,
         cell_id: String,
@@ -390,7 +393,9 @@ enum NotebookCommand {
         sid: String,
         respond: oneshot::Sender<Vec<VariableInfo>>,
     },
-    Destroy { sid: String },
+    Destroy {
+        sid: String,
+    },
 }
 
 /// Thread-safe handle to the notebook actor
@@ -495,7 +500,9 @@ impl NotebookActor {
 
     pub async fn variables(&self, sid: String) -> Vec<VariableInfo> {
         let (tx, rx) = oneshot::channel();
-        let _ = self.tx.send(NotebookCommand::Variables { sid, respond: tx });
+        let _ = self
+            .tx
+            .send(NotebookCommand::Variables { sid, respond: tx });
         rx.await.unwrap_or_default()
     }
 
@@ -550,9 +557,15 @@ mod tests {
         let sid = actor.create_session().await;
 
         // Pure expression should return result via format_last_result
-        let output = actor.execute(sid.clone(), "c1".to_string(), "42".to_string(), None).await;
+        let output = actor
+            .execute(sid.clone(), "c1".to_string(), "42".to_string(), None)
+            .await;
         assert!(output.stderr.is_empty(), "stderr: {}", output.stderr);
-        assert_eq!(output.result, "42", "expected result 42, got: {}", output.result);
+        assert_eq!(
+            output.result, "42",
+            "expected result 42, got: {}",
+            output.result
+        );
     }
 
     #[tokio::test]
@@ -564,11 +577,22 @@ mod tests {
         // 的函数体是语句块（`return a + b`）；旧 VM 接受的尾表达式函数体
         // （`{ a + b }`）不在 ACE 面内，会被具名诊断拒绝（语言面边界归 ACE
         // 前门，不在本消费者伪造）。断言（定义后 inspector 可见）保持不变。
-        let out = actor.execute(sid.clone(), "c1".to_string(), "fn add(a int, b int) int { return a + b }".to_string(), None).await;
+        let out = actor
+            .execute(
+                sid.clone(),
+                "c1".to_string(),
+                "fn add(a int, b int) int { return a + b }".to_string(),
+                None,
+            )
+            .await;
         assert!(out.stderr.is_empty(), "stderr: {}", out.stderr);
 
         let vars = actor.variables(sid).await;
-        assert!(vars.iter().any(|v| v.name == "add" && v.kind == "function"), "expected function 'add', got: {:?}", vars);
+        assert!(
+            vars.iter().any(|v| v.name == "add" && v.kind == "function"),
+            "expected function 'add', got: {:?}",
+            vars
+        );
     }
 
     /// PLAN-971 B (review F-3): the notebook's ACE session lane has no console
@@ -594,17 +618,43 @@ mod tests {
             !out.diagnostics.is_empty(),
             "the boundary is reported as a producer diagnostic: {out:?}"
         );
+        // The rejection keeps a PRODUCER code (the message is rendered
+        // `[<code>] <message>`), not an engine-agnostic string.
+        assert!(
+            out.diagnostics.iter().any(|d| {
+                d.message.starts_with('[')
+                    && (d.message.contains("source.")
+                        || d.message.contains("session.")
+                        || d.message.contains("ace."))
+            }),
+            "the diagnostic must carry a producer code: {:?}",
+            out.diagnostics
+        );
     }
 
     #[test]
     fn test_build_execution_queue_dirty_upstream() {
         let mut session = NotebookSession::new();
         session.cells = vec![
-            Cell { cell_id: "c1".to_string(), source: "v1".to_string(), output: None, depends_on: vec![] },
-            Cell { cell_id: "c2".to_string(), source: "v2".to_string(), output: None, depends_on: vec!["c1".to_string()] },
+            Cell {
+                cell_id: "c1".to_string(),
+                source: "v1".to_string(),
+                output: None,
+                depends_on: vec![],
+            },
+            Cell {
+                cell_id: "c2".to_string(),
+                source: "v2".to_string(),
+                output: None,
+                depends_on: vec!["c1".to_string()],
+            },
         ];
-        session.cell_snapshots.insert("c1".to_string(), "v1".to_string());
-        session.cell_snapshots.insert("c2".to_string(), "v2".to_string());
+        session
+            .cell_snapshots
+            .insert("c1".to_string(), "v1".to_string());
+        session
+            .cell_snapshots
+            .insert("c2".to_string(), "v2".to_string());
 
         // Modify c1 source
         session.cells[0].source = "v1_new".to_string();
@@ -620,11 +670,25 @@ mod tests {
     fn test_build_execution_queue_no_dirty() {
         let mut session = NotebookSession::new();
         session.cells = vec![
-            Cell { cell_id: "c1".to_string(), source: "v1".to_string(), output: None, depends_on: vec![] },
-            Cell { cell_id: "c2".to_string(), source: "v2".to_string(), output: None, depends_on: vec![] },
+            Cell {
+                cell_id: "c1".to_string(),
+                source: "v1".to_string(),
+                output: None,
+                depends_on: vec![],
+            },
+            Cell {
+                cell_id: "c2".to_string(),
+                source: "v2".to_string(),
+                output: None,
+                depends_on: vec![],
+            },
         ];
-        session.cell_snapshots.insert("c1".to_string(), "v1".to_string());
-        session.cell_snapshots.insert("c2".to_string(), "v2".to_string());
+        session
+            .cell_snapshots
+            .insert("c1".to_string(), "v1".to_string());
+        session
+            .cell_snapshots
+            .insert("c2".to_string(), "v2".to_string());
 
         // Nothing modified — only target should be in queue
         let queue = session.build_execution_queue("c2", "v2");
@@ -636,13 +700,34 @@ mod tests {
     fn test_build_execution_queue_cascade_dirty() {
         let mut session = NotebookSession::new();
         session.cells = vec![
-            Cell { cell_id: "c1".to_string(), source: "v1".to_string(), output: None, depends_on: vec![] },
-            Cell { cell_id: "c2".to_string(), source: "v2".to_string(), output: None, depends_on: vec!["c1".to_string()] },
-            Cell { cell_id: "c3".to_string(), source: "v3".to_string(), output: None, depends_on: vec!["c2".to_string()] },
+            Cell {
+                cell_id: "c1".to_string(),
+                source: "v1".to_string(),
+                output: None,
+                depends_on: vec![],
+            },
+            Cell {
+                cell_id: "c2".to_string(),
+                source: "v2".to_string(),
+                output: None,
+                depends_on: vec!["c1".to_string()],
+            },
+            Cell {
+                cell_id: "c3".to_string(),
+                source: "v3".to_string(),
+                output: None,
+                depends_on: vec!["c2".to_string()],
+            },
         ];
-        session.cell_snapshots.insert("c1".to_string(), "v1".to_string());
-        session.cell_snapshots.insert("c2".to_string(), "v2".to_string());
-        session.cell_snapshots.insert("c3".to_string(), "v3".to_string());
+        session
+            .cell_snapshots
+            .insert("c1".to_string(), "v1".to_string());
+        session
+            .cell_snapshots
+            .insert("c2".to_string(), "v2".to_string());
+        session
+            .cell_snapshots
+            .insert("c3".to_string(), "v3".to_string());
 
         // Modify c1 — should cascade dirty to c2 and c3
         session.cells[0].source = "v1_new".to_string();
@@ -679,12 +764,20 @@ mod tests {
         let actor = NotebookActor::new();
         let alice = actor.create_session().await;
         let bob = actor.create_session().await;
-        assert!(!alice.is_empty() && !bob.is_empty(), "sessions must be created");
+        assert!(
+            !alice.is_empty() && !bob.is_empty(),
+            "sessions must be created"
+        );
         assert_ne!(alice, bob, "each user gets a distinct session id");
 
         // Alice defines x; Bob's identical expression must NOT see it.
         let out = actor
-            .execute(alice.clone(), "c1".to_string(), "var x = 41".to_string(), None)
+            .execute(
+                alice.clone(),
+                "c1".to_string(),
+                "var x = 41".to_string(),
+                None,
+            )
             .await;
         assert!(out.stderr.is_empty(), "alice: {}", out.stderr);
         let bob_sees = actor
@@ -776,6 +869,3 @@ fn extract_diagnostics(err: &str) -> Vec<Diagnostic> {
 
     diagnostics
 }
-
-
-

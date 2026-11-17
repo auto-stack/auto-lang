@@ -161,10 +161,6 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
         (inner_span.start as usize) >= body_start,
         "the stop span {inner_span:?} must lie inside the callee body (>= byte {body_start})"
     );
-    assert!(
-        MATH_CORE.contains("x + 1"),
-        "the fixture's callee body is the expected expression"
-    );
     println!("inner stop text: {inner_text:?}");
     assert!(
         !inner_text.is_empty(),

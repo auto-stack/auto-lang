@@ -1174,7 +1174,9 @@ pub trait AceDebugSession {
     /// Request cancellation of this session's chain (the debug UI's stop
     /// button). The next resume observes it and ends with the named
     /// `Cancelled` outcome; the start request's flag is only the initial
-    /// state, so a live session needs this handle.
+    /// state, so a live session needs this handle. The default keeps the
+    /// chain running: a host that wants a live stop MUST implement it (the
+    /// reference host does), it is not an optional nicety.
     fn cancel(&mut self) {}
 }
 

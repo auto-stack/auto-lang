@@ -169,7 +169,9 @@ fn declarations(product: &PackageProduct) -> Vec<AceDeclaration> {
             span,
         });
     }
-    out.sort_by(|a, b| (a.module.as_str(), a.name.as_str()).cmp(&(b.module.as_str(), b.name.as_str())));
+    out.sort_by(|a, b| {
+        (a.module.as_str(), a.name.as_str()).cmp(&(b.module.as_str(), b.name.as_str()))
+    });
     out
 }
 
