@@ -236,3 +236,37 @@ fn main() {
 "#;
     ok(src, "true\n", Some(0));
 }
+/// PLAN-1067 T-05 (parity): an ask future whose actor stops WITHOUT replying
+/// is a CLOSED future. The waiter terminates with the named language error —
+/// never a fuel-guard exhaustion (the pre-T-05 behaviour) and never a hang.
+/// The native lane reports the same message on its error channel.
+#[test]
+fn await_on_unreplied_ask_is_a_named_language_error() {
+    let src = r#"
+task Mute {
+    fn stop() ! {
+    }
+    on {
+        n int -> {
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Mute", 4)
+    let p = h.ask(1)
+    h.stop()
+    let v = await p
+    print(v)
+}
+"#;
+    match run_sched(src) {
+        Ok((ExecOutcome::Error { message, .. }, stdout)) => {
+            assert_eq!(message, "task closed without replying");
+            assert_eq!(stdout, "", "no value must be printed");
+        }
+        Ok((other, stdout)) => panic!(
+            "expected the named language error, got {other:?} (stdout {stdout:?}) for source:\n{src}"
+        ),
+        Err(e) => panic!("compile failed: {e} for source:\n{src}"),
+    }
+}

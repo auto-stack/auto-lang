@@ -6673,6 +6673,12 @@ fn dispatch_with_host<V: ModuleView>(
                                 span: None,
                             });
                         }
+                        SchedPortState::Closed => {
+                            return Some(ExecOutcome::Error {
+                                message: "task closed without replying".into(),
+                                span: None,
+                            });
+                        }
                         SchedPortState::Pending => {
                             // restore and park: re-executes on publication.
                             t.ports[pv as usize - 1] = SchedPortState::Pending;
@@ -7603,6 +7609,10 @@ enum SchedPortState {
     Published(Value),
     /// Consumed by its single await.
     Taken,
+    /// PLAN-1067 T-05: the producing task closed WITHOUT publishing. The
+    /// awaiting chain ends with the named language error instead of parking
+    /// until the fuel budget runs out (the pre-T-05 behaviour).
+    Closed,
 }
 
 /// The shared scheduler tables.
@@ -7814,6 +7824,38 @@ pub fn execute_sched(
                             slot.closed = true;
                             slot.stopped = true;
                         }
+                        // PLAN-1067 T-05: an ask the driver latched but never
+                        // answered is a CLOSED future — the waiter reports the
+                        // named error instead of spinning to the fuel guard.
+                        let port = ch.st.sched_reply_port;
+                        if port > 0 {
+                            if let Some(state) = t.ports.get_mut(port as usize - 1) {
+                                if matches!(state, SchedPortState::Pending) {
+                                    *state = SchedPortState::Closed;
+                                }
+                            }
+                        }
+                        // Ask messages the finished driver never received can
+                        // never be answered either — their futures close too
+                        // (otherwise the waiter parks forever).
+                        let queued: Vec<i32> = t
+                            .tasks
+                            .get(ti)
+                            .map(|slot| {
+                                slot.queue
+                                    .iter()
+                                    .map(|(_, port)| *port)
+                                    .filter(|port| *port > 0)
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        for port in queued {
+                            if let Some(state) = t.ports.get_mut(port as usize - 1) {
+                                if matches!(state, SchedPortState::Pending) {
+                                    *state = SchedPortState::Closed;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -7887,6 +7929,15 @@ pub fn execute_sched(
                             t.draining = true;
                             for slot in t.tasks.iter_mut() {
                                 slot.stopped = true;
+                            }
+                            // PLAN-1067 T-05: a future nobody can publish any
+                            // more is CLOSED, so its waiter terminates with the
+                            // named language error during the drain instead of
+                            // spinning on the multiplex guard.
+                            for state in t.ports.iter_mut() {
+                                if matches!(state, SchedPortState::Pending) {
+                                    *state = SchedPortState::Closed;
+                                }
                             }
                             drop(t);
                             for ch in chains.iter_mut() {

@@ -209,6 +209,9 @@ pub const E_AWAIT_CONSUMED: i32 = -6;
 pub const E_DRAIN: i32 = -7;
 pub const E_VALUE: i32 = -8;
 pub const E_TASK_ONLY: i32 = -9;
+/// PLAN-1067 T-05: the driver closed without publishing the reply its
+/// ask future is waiting for — a named terminal outcome, never a hang.
+pub const E_REPLY_CLOSED: i32 = -10;
 
 /// The named message of one failure code (byte-identical in the test
 /// corpus assertions; `E_CLOSED` keeps the AV wording).
@@ -223,6 +226,7 @@ fn fail_message(code: i32) -> &'static [u8] {
         E_DRAIN => b"sched: await cannot complete during the orderly drain\n",
         E_VALUE => b"sched: unsupported scheduler message value\n",
         E_TASK_ONLY => b"sched: scheduler operation outside a task driver\n",
+        E_REPLY_CLOSED => b"sched: task closed without replying\n",
         _ => b"sched: scheduler runtime failure\n",
     }
 }
@@ -573,7 +577,18 @@ extern "system" fn thread_main(ctx: *mut c_void) -> u32 {
         let _ = thunk(arg.args);
         if !arg.task.is_null() {
             let task = arg.task;
+            close_latched_reply(task);
+            // Ask messages this driver never received can never be answered
+            // either: their futures close now (otherwise the waiter parks
+            // forever), and the materialized values are released here.
             AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
+            while (*task).len > 0 {
+                let mail = pop_mail(task);
+                release_value(mail.val);
+                if mail.port > 0 {
+                    close_port_without_reply(mail.port);
+                }
+            }
             (*task).closed = 1;
             (*task).stopped = 1;
             (*task).running = 0;
@@ -614,6 +629,39 @@ unsafe fn alloc_port() -> i32 {
     (slot as i32) + 1
 }
 
+/// PLAN-1067 T-05: a driver finishing without answering the ask it latched
+/// closes that future (terminal state 3). The waiter then reports the named
+/// `E_REPLY_CLOSED` error instead of parking until the process drains.
+/// Close one future that can no longer be published (the producing driver is
+/// gone). Terminal state 3 makes the waiter report the named error.
+unsafe fn close_port_without_reply(port_id: i32) {
+    let port = port_of(port_id);
+    if port.is_null() {
+        return;
+    }
+    AcquireSRWLockExclusive(addr_of_mut!((*port).lock));
+    if (*port).state == 0 {
+        (*port).state = 3;
+    }
+    ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
+    wake_all(addr_of_mut!((*port).cv));
+}
+unsafe fn close_latched_reply(task: *mut Task) {
+    let port_id = (*task).reply_port;
+    if port_id <= 0 {
+        return;
+    }
+    let port = port_of(port_id);
+    if port.is_null() {
+        return;
+    }
+    AcquireSRWLockExclusive(addr_of_mut!((*port).lock));
+    if (*port).state == 0 {
+        (*port).state = 3;
+    }
+    ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
+    wake_all(addr_of_mut!((*port).cv));
+}
 unsafe fn release_port(id: i32) {
     let port = port_of(id);
     if port.is_null() {
@@ -826,6 +874,12 @@ pub extern "system" fn mn_sched_await(port_id: i32, out: *mut SchedVal) -> i32 {
                     ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
                     return E_AWAIT_CONSUMED;
                 }
+                // The producer closed without publishing: terminate the
+                // wait with a named error instead of parking forever.
+                3 => {
+                    ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
+                    return E_REPLY_CLOSED;
+                }
                 _ => {
                     if DRAINING.load(Ordering::SeqCst) != 0 {
                         ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
@@ -1032,7 +1086,9 @@ pub extern "system" fn mn_sched_drain() -> i32 {
             let port = *ports.add(i);
             AcquireSRWLockExclusive(addr_of_mut!((*port).lock));
             if (*port).state == 0 {
-                (*port).state = 2;
+                // Never published: the waiter must see the named
+                // closed-without-reply outcome, never a hang.
+                (*port).state = 3;
             }
             ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
             wake_all(addr_of_mut!((*port).cv));

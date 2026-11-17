@@ -264,3 +264,161 @@ fn main() {
         .expect_err("owned-text reply must stay rejected");
     assert_eq!(err.code, "source.sched-argument", "reply rejection code");
 }
+/// Build (untimed) and then run (timed) one source, so a wall-clock oracle
+/// measures ONLY the PE run — never compilation, linking or runtime
+/// preparation.
+fn run_timed(case: &str, src: &str) -> (Observed, std::time::Duration) {
+    let module = ace_native::sched::sched_compile(src, "d_main")
+        .unwrap_or_else(|d| panic!("{case}: front end rejected: {} {}", d.code, d.message));
+    let linked = ace_native::sched::sched_native_build(&module, "d_main", &workdir(case))
+        .unwrap_or_else(|e| panic!("{case}: build failed: {e}"));
+    let started = std::time::Instant::now();
+    let run = ace_native::link_driver::run_pe(
+        &linked.exe_path,
+        ace_native::config::RUN_BUDGET,
+        ace_core::link::CaptureCaps {
+            stdout_max: ace_native::config::STREAM_CAP,
+            stderr_max: ace_native::config::STREAM_CAP,
+        },
+    )
+    .unwrap_or_else(|e| panic!("{case}: run failed: {e}"));
+    let elapsed = started.elapsed();
+    (
+        Observed {
+            exit: run.exit_code,
+            stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+        },
+        elapsed,
+    )
+}
+
+/// V-04 (real OS wait, distinguishing oracle): a task that sleeps 40 ms
+/// before replying must make the PE actually WAIT. A busy-loop-free no-op
+/// sleep (the failure mode a virtual clock would produce on this lane)
+/// finishes in single-digit milliseconds; the oracle is the measured process
+/// wall time, not just the printed bytes.
+#[test]
+fn scheduler_sleep_is_a_real_os_wait() {
+    let src = r#"
+task Slow {
+    on {
+        n int -> {
+            sleep(40)
+            reply(n + 1)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Slow", 4)
+    let v = await h.ask(41)
+    print(v)
+}
+"#;
+    let (observed, elapsed) = run_timed("real-wait", src);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(observed.stdout, "42\n", "sleep/reply drift");
+    assert_eq!(observed.stderr, "", "trace/noise on stderr");
+    assert!(
+        elapsed >= std::time::Duration::from_millis(35),
+        "sleep did not actually wait: run took only {elapsed:?}"
+    );
+}
+
+/// V-03 (cancellation, no hang): an ask whose actor stops WITHOUT replying
+/// terminates the waiter with a named error. The failure mode guarded here
+/// is a permanent park (the process would then hit the run budget instead of
+/// reporting a language-level outcome).
+#[test]
+fn scheduler_await_on_unreplied_ask_is_a_named_error() {
+    let src = r#"
+task Mute {
+    fn stop() ! {
+    }
+    on {
+        n int -> {
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Mute", 4)
+    let p = h.ask(1)
+    h.stop()
+    let v = await p
+    print(v)
+}
+"#;
+    let (observed, elapsed) = run_timed("await-unreplied", src);
+    assert_eq!(
+        observed.exit,
+        Some(70),
+        "expected the named language-error trap, got {observed:?}"
+    );
+    assert!(
+        observed.stderr.contains("closed without replying"),
+        "named outcome missing: {:?}",
+        observed.stderr
+    );
+    assert_eq!(observed.stdout, "", "no value must be printed: {observed:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "the waiter parked instead of terminating: {elapsed:?}"
+    );
+}
+
+/// V-03/V-04 (exit cleanup, composite): several live tasks, a buffered
+/// message nobody consumed, an unawaited reply and a timer all outstanding
+/// when `main` returns. The orderly drain must join every thread, release
+/// every buffer/port and report a zero residue (exit 0 — never 72 — and no
+/// hang).
+#[test]
+fn scheduler_exit_drain_releases_every_outstanding_owner() {
+    let src = r#"
+task A {
+    on { n int -> {
+        print(n)
+    } }
+}
+task B {
+    fn stop() ! {
+        print("b-stopped")
+    }
+    on { n int -> {
+        reply(n * 2)
+    } }
+}
+fn main() {
+    let a = Task.spawn("A", 1)
+    let b = Task.spawn("B", 4)
+    let p = b.ask(21)
+    a.send(1)
+    a.send(2)
+    go tick()
+    print("main")
+}
+fn tick() {
+    sleep(5)
+    print("tick")
+}
+"#;
+    // NOTE: this source deliberately prints scalars, not f-strings. An owned
+    // text temporary re-created on a SECOND loop iteration is not yet
+    // released per iteration by the shared owned-text lowering (recorded in
+    // the Plan as a named debt); using one here would make this test measure
+    // that unrelated gap instead of the lane's exit cleanup.
+    let (observed, elapsed) = run_timed("exit-drain", src);
+    assert_eq!(
+        observed.exit,
+        Some(0),
+        "drain residue or failure at exit: {observed:?}"
+    );
+    assert_eq!(observed.stderr, "", "trace/noise on stderr");
+    assert!(
+        observed.stdout.contains("main\n"),
+        "main output missing: {observed:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "exit drain did not converge: {elapsed:?}"
+    );
+}
