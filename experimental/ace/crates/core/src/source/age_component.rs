@@ -1088,6 +1088,43 @@ fn compile_component_scenario_full(
     }
     let mut items = items;
     items.extend(handler_check_items);
+    // PLAN-980 WEB（V-EVT-B-ORIGIN，与 981 LANGUAGE 联合）：view 内联
+    // lambda 铸值函数 `__age_vl_<seq>`——真实 body/origin（赋值 RHS 原源
+    // span）+ 无参环境（lambda 无形参；`.field` 同检查函数语义=实例局
+    // 部）。WEB lane 以 span 相交发现并发射（SFC 合成 `__evt_*` handler
+    // 体）；单赋值形已验面，多语句体沿 handler 家族边界。
+    let mut view_lambda_items: Vec<Item> = Vec::new();
+    {
+        fn collect_lambdas<'a>(
+            items: &'a [ComponentViewItem],
+            out: &mut Vec<&'a [ComponentAssign]>,
+        ) {
+            for it in items {
+                match it {
+                    ComponentViewItem::Text(_) => {}
+                    ComponentViewItem::Element(e) => collect_lambdas(&e.items, out),
+                    ComponentViewItem::Entry(en) => {
+                        if let ComponentEntryValue::Lambda(asgs) = &en.value {
+                            out.push(asgs);
+                        }
+                    }
+                }
+            }
+        }
+        let mut lambdas: Vec<&[ComponentAssign]> = Vec::new();
+        collect_lambdas(&node.view.tree, &mut lambdas);
+        for (_, items) in &node.view.named_trees {
+            collect_lambdas(items, &mut lambdas);
+        }
+        for (seq, asgs) in lambdas.iter().enumerate() {
+            match lambda_value_fn(node, seq, asgs, "__age_vl_") {
+                Some(Ok(item)) => view_lambda_items.push(item),
+                Some(Err(ds)) => return Err(ds),
+                None => {}
+            }
+        }
+    }
+    items.extend(view_lambda_items);
     // PLAN-980 STATE：初值（props 种子）先验后用——形状/类型/重复在发射前具名拒。
     let initial_maps = validate_initials(initials, node, scenario.instances)?;
     // 每个 (实例, 字段) 一个状态函数：该实例的 init（可被初值覆盖）+ 定向 ops，返回该字段。
@@ -1634,6 +1671,115 @@ pub(crate) fn local_name(instance: usize, field: &str) -> String {
     format!("__age_s_{instance}_{field}")
 }
 
+/// PLAN-980 WEB（V-EVT-B-ORIGIN）：view 内联 lambda 的**值函数**铸造——
+/// 与 [`handler_check_fn`] 同族结构（字段 init let + 赋值体 + return 首字
+/// 段），但**无形参**（lambda 无参数；`.field` → 实例局部，无遮蔽表）。
+/// 赋值 RHS 保留**原源 span**（WEB lane 按区间相交发现并发射）。载荷/
+/// 类型不可承载时与检查函数同判（None=不铸，fail-closed）。
+pub(crate) fn lambda_value_fn(
+    node: &ComponentNode,
+    seq: usize,
+    assigns: &[ComponentAssign],
+    prefix: &str,
+) -> Option<Result<Item, Vec<Diagnostic>>> {
+    let first_field = node.fields.first()?;
+    let mut stmts = Vec::new();
+    let inst = 0usize;
+    for f in &node.fields {
+        let ty = match field_type(f) {
+            Some(t) => t,
+            None => {
+                return Some(Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    format!(
+                        "`model` field `{}` has type `{}`, which this slice cannot hold yet \
+                         (supported: int/i32/bool/str)",
+                        f.name, f.ty
+                    ),
+                    f.ty_span,
+                )]))
+            }
+        };
+        let init = match rename_expr(&f.init, FieldBinding::Local(inst), &node.fields) {
+            Ok(v) => v,
+            Err(ds) => return Some(Err(ds)),
+        };
+        stmts.push(Stmt::Let {
+            kw: f.span,
+            name: Ident {
+                name: local_name(inst, &f.name),
+                span: f.span,
+            },
+            ann: Some(TypeAnn {
+                kind: TypeRef::Builtin(ty),
+                span: f.ty_span,
+            }),
+            mutable: true,
+            value: init,
+            span: f.span,
+        });
+    }
+    for assign in assigns {
+        let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
+            return Some(Err(vec![text_diag(
+                "source.age.component-event",
+                format!(
+                    "view inline lambda assigns undeclared model field `{}`",
+                    assign.field
+                ),
+                assign.span,
+            )]));
+        };
+        let renamed = match rename_expr(&assign.rhs, FieldBinding::Local(inst), &node.fields) {
+            Ok(v) => v,
+            Err(ds) => return Some(Err(ds)),
+        };
+        stmts.push(Stmt::Assign {
+            target: crate::source::ast::AssignTarget {
+                base: Ident {
+                    name: local_name(inst, &field.name),
+                    span: assign.span,
+                },
+                path: Vec::new(),
+            },
+            value: renamed,
+            span: assign.span,
+        });
+    }
+    stmts.push(Stmt::Return {
+        value: Expr {
+            span: first_field.span,
+            kind: ExprKind::Var(Ident {
+                name: local_name(inst, &first_field.name),
+                span: first_field.span,
+            }),
+        },
+        span: first_field.span,
+    });
+    let ret_ty = field_type(first_field)?;
+    let fn_span = assigns.first().map(|a| a.span).unwrap_or(first_field.span);
+    Some(Ok(Item::Fn(FnItem {
+        name: Ident {
+            name: format!("{prefix}{seq}"),
+            span: fn_span,
+        },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn {
+            kind: TypeRef::Builtin(ret_ty),
+            span: first_field.ty_span,
+        },
+        body: Block {
+            stmts,
+            span: fn_span,
+        },
+        span: fn_span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+    })))
+}
+
 /// PLAN-981（IF-981-PARAMS-B）：一次派发的载荷实参卫生局部名。`(实例,
 /// 场景序, 位置)` 全局定位——同实例不同事件、不同 node 的状态函数各自
 /// 独立发射，互不串局部。
@@ -2028,14 +2174,16 @@ pub(crate) enum FieldBinding {
     },
 }
 /// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动 / 载荷实参局部 / handler
-/// 检查函数）——用户顶层名不得占用（review-B1：`__age_hv_` 补入，具名拒
-/// 而不是落到重复符号的通用诊断）。
-const COMPONENT_RESERVED_NAMES: [&str; 5] = [
+/// 检查函数 / view 内联 lambda 值函数）——用户顶层名不得占用（review-B1：
+/// `__age_hv_` 补入，具名拒而不是落到重复符号的通用诊断；#6k：`__age_vl_`
+/// 同族补入）。
+const COMPONENT_RESERVED_NAMES: [&str; 6] = [
     AGE_COMPONENT_HIDDEN_PREFIX,
     "__age_state_",
     "__age_drive",
     "__age_a_",
     "__age_hv_",
+    "__age_vl_",
 ];
 
 /// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6/N6）。

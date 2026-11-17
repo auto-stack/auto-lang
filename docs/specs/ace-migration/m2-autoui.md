@@ -548,3 +548,46 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 非 module 环境限制）。ace_ts_provider 14/14。**WEB 批 UI 侧全部项已交**
 （机制链 + 双轨仪表 + 浏览器档）；真语料 spliced 切换待语言侧前置×3
 （§13.10）。
+
+### §13.12 参数环境 + 内联 lambda origin：981 B-W1 消费（切片 #6j/#6k，2026-11-17）
+
+981 B-W1（IF-981-EVENT-PAYLOAD-B/MSG-B/PARAMS-B 落主）后，WEB lane 消费
+三接口恢复并扩展带参/内联 lambda 覆盖：
+
+- **param handler=声明级检查函数道**（#6j）：`Send` 对载荷变体是 arity 域
+  错误（981 语义）→ ops 只含 unit handler；带参 handler 的发射源=组件面
+  为每个 handler 铸的 `__age_hv_<n>_<h>_<pos>` 检查函数（形参=真 handler
+  形参，载荷类型来自声明拼写）。lane 以 span 相交发现（`check_fn_covering`），
+  发射后 `___age_hv_` 发射名按位映射到 SFC 函数签名形参名（`p<i>___age_hv_
+  <n>_<h>_<pos>` → `params[pos]`）。无代表值、无假数值：str 载荷 owned
+  转移=`a2x_str_clone`（单次求值拷贝，PARAMS-B 语义）；多载荷
+  `(int,int)`=双参参与求值（`a2x_add(dx, dy)`）；bool 直读；float 等不可
+  承载载荷不铸检查函数=具名缺席（fail-closed，981 派发守卫同族），旧道承
+  载。无参数环境（unit spec 求导载荷变体）=编译期具名拒（arity 域错误，
+  零效果）——不再像 981 前拼接常量体（"spliced=1 不等价动态载荷支持"的
+  判别由 `p980_web_param_environment` 分列承担：typed/fragment/splice/
+  node + 双负控）。
+- **view 内联 lambda=值函数道**（#6k，V-EVT-B-ORIGIN 与 981 LANGUAGE 联
+  合）：语言侧（`age_component.rs` 组件面）为 view 树（含命名 view）的
+  每条 `Lambda(assigns)` 铸 `__age_vl_<seq>` 值函数（DFS 序；字段 init
+  let + 赋值体（`.field`→实例局部，无参环境）+ return 首字段；赋值 RHS
+  **原源 span** 保留；`__age_vl_` 入保留名表）。UI 侧：脱糖源 `=> {` 区
+  间清单（`lambda_body_regions`，`desugared_lane_source` 公共坐标出口与
+  lane 同基准）↔ 带体 `__evt_*` 铸造 handler（方言 mint 计数序；空体=
+  bare-input sync/空 lambda 不配对）——计数失配全体缺席（fail-closed，
+  不猜测配对）。SFC 合成 `__evt_*` 函数体经 lane 拼接（真实 body/origin：
+  原 span→值函数→发射→SFC 一一可追）；负控：拼接体不得是旧 TS fallback
+  形（`n.value += 1`——lane 形=`a2x_add` helper）。002 真源端到端 9/9
+  （6 on-block + 3 view lambda 全 lane 派生）。
+- **浏览器档**：`test_lane_browser_params.mjs`（真实 input 事件实读参/
+  多载荷点击/bool 点击）与 `test_lane_browser_lambda.mjs`（真实点击
+  5→6）——playwright 无头 chromium，排窗 `AUTO_UI_ACE_WEB_E2E=1`。
+- **census 具名修订**：v2 表 #2（param-handler 0→1 恢复拼接 + param-read/
+  float-payload 行）与 #3（inline-lambda-only 0+absent→1）。全量普查聚合
+  (83 源 ok=72/err=11/spliced=0/absent=23) **未变**——真语料阻塞形非
+  param/lambda（其主导形=无 on 块结构源/多语句体/store/computed 族，#6d/
+  #6g 具名边界保持）。
+- **边界（诚实）**：单赋值 handler 家族（002 族）为已验面；多语句体/控制
+  流/局部 var 归 #6d 结构分析；真语料全量 spliced 切换仍是 WEB 批剩余义
+  务（B-WEB-I/V/R 勾选前置）。981 冻结 hash 已由其 owner 重基线（grammar
+  零改动，#6i 语义差注明）——r41 两红已闭，非 980 面。
