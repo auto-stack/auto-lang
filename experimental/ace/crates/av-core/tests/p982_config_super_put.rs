@@ -19,6 +19,7 @@ const ROOT_SYM: &str = "auto.config.document.root.v1";
 const OBJ_SYM: &str = "auto.config.document.obj-new.v1";
 const PUT_TEXT: &str = "auto.config.document.obj-put.str.v1";
 const SUPER: &str = "auto.config.document.super-put.v1";
+const GET_OBJ: &str = "auto.config.document.obj-get-obj.v1";
 const FINISH: &str = "auto.config.document.finish.v1";
 
 fn dispatch(sym: &str, args: &[Value]) -> Result<i32, ace_av_core::host::HostError> {
@@ -43,6 +44,14 @@ fn p982_config_super_put_moves_an_object_field_into_the_document() {
                 text("heap_copy"),
             ],
         )?;
+        // 链式读的中间步：对象字段 ⇒ 返回对象句柄；非对象字段 ⇒ 具名错误。
+        let inner = dispatch(GET_OBJ, &[Value::I32(obj), text("heap")])
+            .expect_err("`heap` is text, not an object");
+        assert!(format!("{inner:?}").contains("not an object"), "{inner:?}");
+        let nested = dispatch(OBJ_SYM, &[])?;
+        dispatch(PUT_TEXT, &[Value::I32(obj), text("mem"), text("x")])?;
+        let _ = nested;
+
         // 缺键：具名错误。
         let err = dispatch(
             SUPER,

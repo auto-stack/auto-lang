@@ -605,6 +605,8 @@ fn emit_line(
                     // PLAN-982：`heap: k["heap"]` —— 对象字段**搬运**进文档，
                     // 不经过 Str 返回面（`cfg_super_put(dst, src_obj, key)`）。
                     if let Some((obj_local, field)) = object_index_read(e, ctx) {
+                        // 链式读：中间步用 `cfg_obj_get_obj` 取对象句柄（i32-only），
+                        // 末端 `cfg_super_put` 把字段搬到 pair 键上。
                         let obj = var_expr(&obj_local, e.span);
                         let _ = emit_call(
                             out,

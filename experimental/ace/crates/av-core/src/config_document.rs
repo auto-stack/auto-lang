@@ -106,6 +106,9 @@ pub enum ConfigSpec {
     /// `dst_node`（任何值种类）。物化侧用它实现"对象字段进文档"而不需要
     /// Str 返回面（`heap: kernel.heap`）。
     SuperPut,
+    /// `obj-get-obj(obj, key)`：读对象的**对象值字段**并返回它的句柄（链式读
+    /// `k["a"]["b"]` 的中间步；非对象字段具名拒绝）。
+    ObjGetObj,
     /// 收尾 `finish()`。
     Finish,
 }
@@ -132,6 +135,7 @@ impl ConfigSpec {
                     MirType::StrView,
                 ]
             }
+            ConfigSpec::ObjGetObj => vec![MirType::I32, MirType::StrView],
         }
     }
 
@@ -150,6 +154,9 @@ pub fn spec_of(sym: &str) -> Option<ConfigSpec> {
     let rest = sym.strip_prefix("auto.config.document.")?;
     let rest = rest.strip_suffix(".v1")?;
     // 形如 `<op>`／`<op>.<kind>`；`obj-put`/`list-push`/`arg-named` 是连字符名字。
+    if rest == "obj-get-obj" {
+        return Some(ConfigSpec::ObjGetObj);
+    }
     if rest == "super-put" {
         return Some(ConfigSpec::SuperPut);
     }
@@ -861,6 +868,33 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                             },
                         }
                     }
+                }
+            }
+            ConfigSpec::ObjGetObj => {
+                // 链式读的中间步：返回字段的**对象句柄**（非对象字段具名拒绝）。
+                let src = i32_arg(&args[0])? as u32;
+                let key = text_arg(&args[1])?;
+                session.charge_bytes(key.len())?;
+                let handle = match session.get(src)? {
+                    Entry::Obj(d) => *d
+                        .fields
+                        .iter()
+                        .find(|(k, _)| *k == key)
+                        .map(|(_, h)| h)
+                        .ok_or_else(|| {
+                            HostError::Io(format!("config: object has no field `{key}`"))
+                        })?,
+                    _ => {
+                        return Err(HostError::Io(
+                            "config: obj-get-obj requires an object source".into(),
+                        ))
+                    }
+                };
+                match session.get(handle)? {
+                    Entry::Obj(_) => Ok(handle as i32),
+                    _ => Err(HostError::Io(format!(
+                        "config: field `{key}` is not an object"
+                    ))),
                 }
             }
             ConfigSpec::SuperPut => {
