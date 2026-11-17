@@ -43,3 +43,26 @@ fn p982_config_node_position_keeps_the_placeholder_literal() {
         "value positions do interpolate"
     );
 }
+/// 直接看 `desugar_config_templates` 的重写结果——**节点位是"故意"保留字面的**：
+/// 函数文档与分支注释都写明"legacy config 在节点头不插值（实测 `lib ${name} {}`
+/// 的 id/`_arg0` 都是字面 `${name}`）"，所以这里把裸 `${…}` 重写成**同文本字符串
+/// 字面量**（head 变成普通字符串身份），再由投影层补 `_arg0`。
+///
+/// 也就是说：节点位不插值是**刻意的 legacy 对齐**，不是遗漏；要做"按位插值"必须先
+/// 决策是否接受与 legacy 的分歧（`clib` 模板就是分歧样本）。
+#[test]
+fn p982_config_desugar_rewrites_the_node_position() {
+    let src = "name: \"probe\"\nlib ${name} {}\n";
+    let rewritten = ace_core::source::fstr::desugar_config_templates(src)
+        .expect("the desugar accepts the document");
+    eprintln!("p982: desugared = {rewritten:?}");
+    // 现状：节点位被重写成**字面字符串**（`__fstr` 只用于取值位）。
+    assert!(
+        rewritten.contains("\"${name}\""),
+        "the node position is rewritten as a literal string today: {rewritten}"
+    );
+    assert!(
+        !rewritten.contains("__fstr"),
+        "no __fstr call is emitted for the node position today: {rewritten}"
+    );
+}
