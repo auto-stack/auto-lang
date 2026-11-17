@@ -34,6 +34,7 @@ fn workdir(case: &str) -> PathBuf {
     dir
 }
 
+#[derive(Debug)]
 struct Observed {
     exit: Option<i32>,
     stdout: String,
@@ -52,13 +53,14 @@ fn run(case: &str) -> Observed {
     }
 }
 
-/// The seven positive corpus cases: real native execution, byte-exact
+/// The eight positive corpus cases: real native execution, byte-exact
 /// stdout, exit 0 (which also proves the zero-residue drain audit), no
 /// stderr noise. Expectations are the documented contract values.
 #[test]
 fn scheduler_corpus_runs_native_byte_exact() {
     let cases = [
         ("message_handler", "got one\n"),
+        ("spawn_with_state", "mycounter: 15\n"),
         ("mailbox_fifo", "got two\ngot one\n"),
         ("ask_reply", "reply:\n42\n"),
         ("go_join", "go:\n7\n"),
@@ -109,7 +111,8 @@ fn scheduler_frontend_rejections_are_named() {
     let err = ace_native::sched::sched_compile(&source, "d_main")
         .expect_err("unknown task must be rejected");
     assert_eq!(err.code, "source.sched-task", "unknown-task diagnostic");
-    // The shared front door reports the desugar/bind stage for this code.\n    assert_eq!(err.stage, "bind", "unknown-task stage");
+    // The shared front door reports the desugar/bind stage for this code.
+    assert_eq!(err.stage, "bind", "unknown-task stage");
 
     let source = corpus("neg_malformed_task");
     let err = ace_native::sched::sched_compile(&source, "d_main")
@@ -129,4 +132,135 @@ fn scheduler_runs_are_repeatable() {
     assert_eq!(first.exit, Some(0));
     assert_eq!(first.stdout, second.stdout);
     assert_eq!(first.stderr, second.stderr);
+}
+
+/// Run one inline scheduler program (PLAN-1067 V-02 rows): the same lane,
+/// with the source supplied by the test instead of the frozen corpus.
+fn run_source(case: &str, src: &str) -> Observed {
+    match ace_native::sched::sched_native_run(src, "d_main", &workdir(case)) {
+        Ok(run) => Observed {
+            exit: run.exit_code,
+            stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+        },
+        Err(e) => panic!("{case}: scheduler lane rejected: {e}"),
+    }
+}
+
+/// V-02 (owned value across the spawn boundary): a task state field
+/// declared/initialized as owned text crosses `Task.spawn` — the runtime
+/// materializes the initializer into a fresh owned buffer, the driver keeps
+/// it as its state, prints it, and the receiver's exit sweep frees it.
+#[test]
+fn scheduler_owned_text_state_crosses_spawn() {
+    let src = r#"
+task Counter {
+    label = "default"
+    on { n int -> {
+        print(label)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Counter", 4, "my")
+    h.send(1)
+}
+"#;
+    let observed = run_source("owned-text-state", src);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(observed.stdout, "my\n", "owned-state drift");
+    assert_eq!(observed.stderr, "", "trace/noise on stderr");
+}
+
+/// V-02 (typed result across the suspension point): the reply domain is not
+/// hard-wired to i32 — a `bool` reply is inferred, carried through the port,
+/// and awaited as a bool by the caller.
+#[test]
+fn scheduler_typed_reply_crosses_the_await() {
+    let src = r#"
+task Q {
+    on {
+        n int -> {
+            reply(true)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Q", 4)
+    let v = await h.ask(1)
+    print(v)
+}
+"#;
+    let observed = run_source("typed-reply", src);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(observed.stdout, "true\n", "bool reply drift");
+    assert_eq!(observed.stderr, "", "trace/noise on stderr");
+}
+
+/// V-03 (resource leg): an ask whose future is never awaited leaves a
+/// published reply behind; the orderly drain releases it, so the
+/// zero-residue audit still passes (exit 0, never 72).
+#[test]
+fn scheduler_unawaited_reply_is_released_at_drain() {
+    let src = r#"
+task Silent {
+    on {
+        n int -> {
+            reply(n + 1)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Silent", 4)
+    let port = h.ask(7)
+    print("main")
+}
+"#;
+    let observed = run_source("unawaited-reply", src);
+    assert_eq!(observed.exit, Some(0), "{observed:?}");
+    assert_eq!(observed.stdout, "main\n", "main output drift");
+    assert_eq!(observed.stderr, "", "trace/noise on stderr");
+}
+
+/// PINNED BOUNDARY (PLAN-1067 §10 named gap): an owned-text MESSAGE or
+/// REPLY is still rejected by the shared front end, because the scheduler
+/// intrinsic signatures demand owned `Str` while the surface only produces
+/// borrowed views (`verify.type-mismatch`), and the resolver keeps its
+/// documented `source.sched-argument` rejection. This test pins the exact
+/// current behaviour so closing the gap must update it deliberately.
+#[test]
+fn scheduler_owned_text_message_and_reply_stay_named_rejections() {
+    let message = r#"
+task Greeter {
+    on {
+        who Str -> {
+            print(who)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Greeter", 4)
+    h.send("hello")
+}
+"#;
+    let err = ace_native::sched::sched_compile(message, "d_main")
+        .expect_err("owned-text message must stay rejected");
+    assert_eq!(err.code, "source.sched-argument", "message rejection code");
+
+    let reply = r#"
+task Echo {
+    on {
+        n int -> {
+            reply("v42")
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Echo", 4)
+    let v = await h.ask(1)
+    print(v)
+}
+"#;
+    let err = ace_native::sched::sched_compile(reply, "d_main")
+        .expect_err("owned-text reply must stay rejected");
+    assert_eq!(err.code, "source.sched-argument", "reply rejection code");
 }

@@ -241,7 +241,14 @@ fn scan_reply_word_stmt(s: &Stmt, out: &mut Option<(TypeWord, Span)>) {
 
 fn scan_reply_word_expr(e: &Expr, out: &mut Option<(TypeWord, Span)>) {
     match &e.kind {
-        ExprKind::Call { callee, args } if callee.name == "reply" && args.len() == 1 => {
+        // The live CST front end projects `reply(v)` straight to the
+        // `__sched_reply` intrinsic (cst/project.rs), so the scan must see
+        // BOTH spellings — otherwise every task's reply type silently
+        // defaulted to i32 and non-int replies were unreachable from source.
+        ExprKind::Call { callee, args }
+            if (callee.name == "reply" || callee.name == "__sched_reply")
+                && args.len() == 1 =>
+        {
             if let Arg::Pos(v) = &args[0] {
                 if let Some(w) = literal_word(
                     v,

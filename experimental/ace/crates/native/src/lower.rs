@@ -116,6 +116,10 @@ impl LowerMode {
 pub enum SchedArgKind {
     I32,
     Bool,
+    /// Owned text: crosses the handoff as a (ptr, len) pair and is
+    /// materialized into a fresh owned buffer by the runtime (the receiver
+    /// owns and frees it).
+    Str,
 }
 
 /// One scheduler callee (a desugared `__task_<Name>` driver or a plain
@@ -3714,9 +3718,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         match self.unit.types.get(self.slot_ty(slot) as usize) {
             Some(MirType::I32) | Some(MirType::Char) => Ok(SchedArgKind::I32),
             Some(MirType::Bool) => Ok(SchedArgKind::Bool),
-            Some(MirType::Str) | Some(MirType::StrView) => Err(
-                "native.sched-value: owned text across the scheduler handoff is not in the mn scheduler lane's first cut (PLAN-1067 T-03)".into(),
-            ),
+            Some(MirType::Str) | Some(MirType::StrView) => Ok(SchedArgKind::Str),
             other => Err(format!(
                 "native.sched-value: slot type {other:?} cannot cross the scheduler handoff"
             )),
@@ -3742,20 +3744,33 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         slot: u32,
         kind: SchedArgKind,
     ) -> Result<(), String> {
-        let value = self.fb.use_var(self.v_scalar(slot)?);
-        let wide = self.fb.ins().sextend(types::I64, value);
-        let tag = match kind {
-            SchedArgKind::I32 => 0i64,
-            SchedArgKind::Bool => 1i64,
+        let (tag, payload, spare) = match kind {
+            SchedArgKind::I32 => {
+                let value = self.fb.use_var(self.v_scalar(slot)?);
+                let wide = self.fb.ins().sextend(types::I64, value);
+                (0i64, wide, self.fb.ins().iconst(types::I64, 0))
+            }
+            SchedArgKind::Bool => {
+                let value = self.fb.use_var(self.v_scalar(slot)?);
+                let wide = self.fb.ins().sextend(types::I64, value);
+                (1i64, wide, self.fb.ins().iconst(types::I64, 0))
+            }
+            SchedArgKind::Str => {
+                // Borrow the (ptr, len) pair: the runtime MATERIALIZES a copy
+                // in the owned-text allocator, so the sender keeps ownership.
+                let ptr = self.use_ptr(slot)?;
+                let len = self.use_len(slot)?;
+                let wide_len = self.fb.ins().sextend(types::I64, len);
+                (2i64, ptr, wide_len)
+            }
         };
         let tagv = self.fb.ins().iconst(types::I64, tag);
-        let spare = self.fb.ins().iconst(types::I64, 0);
         self.fb
             .ins()
             .store(MemFlags::trusted(), tagv, base, offset);
         self.fb
             .ins()
-            .store(MemFlags::trusted(), wide, base, offset + 8);
+            .store(MemFlags::trusted(), payload, base, offset + 8);
         self.fb
             .ins()
             .store(MemFlags::trusted(), spare, base, offset + 16);
@@ -3771,6 +3786,23 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         .load(types::I64, MemFlags::trusted(), base, offset + 8);
                 let value = self.fb.ins().ireduce(types::I32, wide);
                 self.def_scalar(dst, value)
+            }
+            Some(MirType::Str) => {
+                // The received owned buffer becomes the slot's value (the
+                // enclosing sweep frees it at the driver's exit); a slot that
+                // already held a value frees it first, exactly like MOVE.
+                let old = self.use_ptr(dst)?;
+                let ptr =
+                    self.fb
+                        .ins()
+                        .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                let wide_len =
+                    self.fb
+                        .ins()
+                        .load(types::I64, MemFlags::trusted(), base, offset + 16);
+                let len = self.fb.ins().ireduce(types::I32, wide_len);
+                self.rt_free(old);
+                self.def_pair(dst, ptr, len)
             }
             other => Err(format!(
                 "native.sched-value: slot type {other:?} cannot cross the scheduler handoff"
@@ -3802,6 +3834,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             match p {
                 SchedArgKind::I32 | SchedArgKind::Bool => {
                     driver_sig.params.push(AbiParam::new(types::I32))
+                }
+                SchedArgKind::Str => {
+                    // The private ABI crosses owned text as (ptr, len).
+                    driver_sig.params.push(AbiParam::new(types::I64));
+                    driver_sig.params.push(AbiParam::new(types::I32));
                 }
             }
         }
@@ -3844,6 +3881,17 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 match kind {
                     SchedArgKind::I32 | SchedArgKind::Bool => {
                         argv.push(tfb.ins().ireduce(types::I32, wide));
+                    }
+                    SchedArgKind::Str => {
+                        let wide_len = tfb.ins().load(
+                            types::I64,
+                            MemFlags::trusted(),
+                            base,
+                            offset + 16,
+                        );
+                        let len = tfb.ins().ireduce(types::I32, wide_len);
+                        argv.push(wide);
+                        argv.push(len);
                     }
                 }
             }

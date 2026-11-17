@@ -211,3 +211,28 @@ fn sched_968_neg_reply_in_send_mode() {
         "reply is only legal",
     );
 }
+
+/// PLAN-1067 (T-03): the reply domain is not hard-wired to i32. The CST
+/// front end projects `reply(v)` straight to `__sched_reply`, so the
+/// desugar's reply-type inference must recognize that spelling — without it
+/// every task declared an i32 reply and non-int replies were unreachable.
+/// A `bool` reply must now carry through the ask port and await as a bool on
+/// the AV lane too (the fix is shared front-end, not native-only).
+#[test]
+fn typed_reply_domain_is_not_int_bound() {
+    let src = r#"
+task Q {
+    on {
+        n int -> {
+            reply(true)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Q", 4)
+    let v = await h.ask(1)
+    print(v)
+}
+"#;
+    ok(src, "true\n", Some(0));
+}

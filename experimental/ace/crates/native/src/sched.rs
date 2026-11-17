@@ -97,15 +97,10 @@ pub fn sched_callees(module: &MirModule) -> Result<lower::SchedCtx, SchedDiag> {
                         params.push(lower::SchedArgKind::I32)
                     }
                     Some(MirType::Bool) => params.push(lower::SchedArgKind::Bool),
+                    // PLAN-1067 T-03: owned text crosses the spawn thunk as
+                    // an owned (ptr, len) pair materialized by the runtime.
                     Some(MirType::Str) | Some(MirType::StrView) => {
-                        return Err(SchedDiag {
-                            stage: "lower".into(),
-                            code: "native.sched-value".into(),
-                            message: format!(
-                                "owned text spawn initializer on `{}` is not in the scheduler lane's first cut (PLAN-1067 T-03)",
-                                f.name
-                            ),
-                        })
+                        params.push(lower::SchedArgKind::Str)
                     }
                     other => {
                         return Err(SchedDiag {
@@ -170,6 +165,17 @@ pub fn emit_sched_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
     let entry_id = om
         .declare_function(entry_symbol, Linkage::Import, &entry_sig)
         .map_err(|e| MnError::Backend(format!("declare entry {entry_symbol}: {e}")))?;
+    // PLAN-1067 T-03: the probe trace channel of the embedded owned-text
+    // runtime is observation, not language output — switch it off before the
+    // entry runs so this lane's stderr stays byte-identical to AV's.
+    let trace_sig = Signature {
+        call_conv: conv,
+        params: vec![AbiParam::new(cranelift_codegen::ir::types::I32)],
+        returns: vec![],
+    };
+    let trace_id = om
+        .declare_function("ac_rt_trace_switch", Linkage::Import, &trace_sig)
+        .map_err(|e| MnError::Backend(format!("declare ac_rt_trace_switch: {e}")))?;
     let drain_sig = Signature {
         call_conv: conv,
         params: vec![],
@@ -205,6 +211,9 @@ pub fn emit_sched_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
         let entry_ref = om.declare_func_in_func(entry_id, fb.func);
         let drain_ref = om.declare_func_in_func(drain_id, fb.func);
         let exit_ref = om.declare_func_in_func(exit_id, fb.func);
+        let trace_ref = om.declare_func_in_func(trace_id, fb.func);
+        let off = fb.ins().iconst(cranelift_codegen::ir::types::I32, 0);
+        fb.ins().call(trace_ref, &[off]);
         let call = fb.ins().call(entry_ref, &[]);
         let result = fb.inst_results(call)[0];
         let drain = fb.ins().call(drain_ref, &[]);

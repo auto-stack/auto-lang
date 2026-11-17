@@ -121,9 +121,10 @@ extern "system" {
 // ---------------------------------------------------------------------------
 
 /// One scheduler value. `tag`: 0 = i32, 1 = bool, 2 = owned text (ptr/len in
-/// `a`/`b`; the native lane materializes the bytes into a runtime-owned
-/// buffer at the handoff). The three-word shape keeps the ABI open for the
-/// typed/payload surface without a second entry set.
+/// `a`/`b`; the native lane materializes the bytes into an owned-text-runtime
+/// buffer at the handoff, so the RECEIVER frees it with `ac_rt_own_free`).
+/// The three-word shape keeps the ABI open for the typed/payload surface
+/// without a second entry set.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct SchedVal {
@@ -137,6 +138,64 @@ impl SchedVal {
         SchedVal { tag: 0, a: 0, b: 0 }
     }
 }
+
+// ---------------------------------------------------------------------------
+// value materialization (PLAN-1067 T-03)
+// ---------------------------------------------------------------------------
+
+/// The scheduler handoff follows the frozen AV/A2R rule: text crossing a
+/// task boundary materializes into an OWNED buffer (copy semantics — the
+/// sender keeps its own value). Materializing goes through the embedded
+/// owned-text runtime's allocator, which is exactly the allocator the guest
+/// frees with (`ac_rt_own_free`); scalars pass through untouched.
+unsafe fn materialize(val: *const SchedVal) -> Option<SchedVal> {
+    let value = core::ptr::read_volatile(val);
+    match value.tag {
+        0 | 1 => Some(value),
+        2 => {
+            if value.b < 0 || (value.b > 0 && value.a == 0) {
+                return None;
+            }
+            let mut out_len: i32 = 0;
+            let ptr = ac_text_runtime::ac_rt_own_clone_quiet(
+                value.a as *const u8,
+                value.b as i32,
+                &mut out_len,
+            );
+            if ptr.is_null() && out_len != 0 {
+                // Allocation/cancel failure: the negative status is already
+                // in `out_len`; the lane reports the named resource error.
+                return None;
+            }
+            Some(SchedVal {
+                tag: 2,
+                a: ptr as i64,
+                b: out_len as i64,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Release every materialized initializer plus its array block (failure
+/// paths only — on success the driver owns the values and frees them).
+unsafe fn release_args(argc: i32, copied: *mut SchedVal) {
+    if copied.is_null() {
+        return;
+    }
+    for i in 0..argc.max(0) as usize {
+        release_value(core::ptr::read_volatile(copied.add(i)));
+    }
+    free(copied as *mut u8);
+}
+/// Release one materialized value that never reached a consumer (failed
+/// enqueue, dropped late reply, undelivered drain residue).
+unsafe fn release_value(value: SchedVal) {
+    if value.tag == 2 && value.a != 0 {
+        ac_text_runtime::ac_rt_own_free(value.a as *mut u8);
+    }
+}
+
 
 /// Frozen status codes (negative = named failure the lane turns into a
 /// language error / trap; never a silent success).
@@ -328,6 +387,36 @@ unsafe fn wake_one(cv: *mut CondVar) {
     WakeConditionVariable(cv);
 }
 
+/// Copy + materialize one initializer list into a runtime-owned `SchedVal`
+/// array (owned text is copied into the owned-text allocator). `None` is the
+/// named value/resource rejection; every partially materialized value is
+/// released before returning.
+unsafe fn materialize_args(argc: i32, args: *const SchedVal) -> Option<*mut SchedVal> {
+    if argc < 0 || (argc > 0 && args.is_null()) {
+        return None;
+    }
+    let bytes = (argc as usize) * core::mem::size_of::<SchedVal>();
+    if bytes == 0 {
+        return Some(null_mut());
+    }
+    let copied = alloc(bytes) as *mut SchedVal;
+    if copied.is_null() {
+        return None;
+    }
+    for i in 0..argc as usize {
+        match materialize(args.add(i)) {
+            Some(value) => core::ptr::write_volatile(copied.add(i), value),
+            None => {
+                for j in 0..i {
+                    release_value(core::ptr::read_volatile(copied.add(j)));
+                }
+                free(copied as *mut u8);
+                return None;
+            }
+        }
+    }
+    Some(copied)
+}
 /// Start one task chain: register the mailbox + handle, then run the driver
 /// on a real OS thread. `handle` is 1-based (0 is the "no handle" sentinel).
 unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal) -> i32 {
@@ -340,18 +429,9 @@ unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal
     if thunk == 0 {
         return E_RESOURCE;
     }
-    let arg_bytes = (argc as usize) * core::mem::size_of::<SchedVal>();
-    let copied = if arg_bytes == 0 {
-        null_mut()
-    } else {
-        let p = alloc(arg_bytes) as *mut SchedVal;
-        if p.is_null() {
-            return E_RESOURCE;
-        }
-        for i in 0..argc as usize {
-            core::ptr::write_volatile(p.add(i), core::ptr::read_volatile(args.add(i)));
-        }
-        p
+    let copied = match materialize_args(argc, args) {
+        Some(copied) => copied,
+        None => return E_VALUE,
     };
     let mail_bytes = (capacity as usize) * core::mem::size_of::<Mail>();
     let queue = alloc(mail_bytes) as *mut Mail;
@@ -394,7 +474,7 @@ unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal
         free(ctx as *mut u8);
         free(task as *mut u8);
         free(queue as *mut u8);
-        free(copied as *mut u8);
+        release_args(argc, copied);
         return E_RESOURCE;
     }
     tasks[slot] = task;
@@ -418,7 +498,7 @@ unsafe fn start_task(capacity: i32, thunk: i64, argc: i32, args: *const SchedVal
         free(ctx as *mut u8);
         free(task as *mut u8);
         free(queue as *mut u8);
-        free(copied as *mut u8);
+        release_args(argc, copied);
         return E_RESOURCE;
     }
     (*task).thread = handle;
@@ -431,18 +511,9 @@ unsafe fn start_go(thunk: i64, argc: i32, args: *const SchedVal) -> i32 {
     if argc < 0 || (argc > 0 && args.is_null()) || thunk == 0 {
         return E_VALUE;
     }
-    let arg_bytes = (argc as usize) * core::mem::size_of::<SchedVal>();
-    let copied = if arg_bytes == 0 {
-        null_mut()
-    } else {
-        let p = alloc(arg_bytes) as *mut SchedVal;
-        if p.is_null() {
-            return E_RESOURCE;
-        }
-        for i in 0..argc as usize {
-            core::ptr::write_volatile(p.add(i), core::ptr::read_volatile(args.add(i)));
-        }
-        p
+    let copied = match materialize_args(argc, args) {
+        Some(copied) => copied,
+        None => return E_VALUE,
     };
     let ctx = alloc(core::mem::size_of::<ThreadArg>()) as *mut ThreadArg;
     if ctx.is_null() {
@@ -465,14 +536,14 @@ unsafe fn start_go(thunk: i64, argc: i32, args: *const SchedVal) -> i32 {
     reg_unlock();
     if slot == usize::MAX {
         free(ctx as *mut u8);
-        free(copied as *mut u8);
+        release_args(argc, copied);
         return E_RESOURCE;
     }
     let mut thread_id: u32 = 0;
     let handle = CreateThread(null_mut(), 0, thread_main, ctx as *mut c_void, 0, &mut thread_id);
     if handle.is_null() {
         free(ctx as *mut u8);
-        free(copied as *mut u8);
+        release_args(argc, copied);
         return E_RESOURCE;
     }
     reg_lock();
@@ -603,22 +674,23 @@ pub extern "system" fn mn_sched_send(handle: i32, val: *const SchedVal) -> i32 {
         if val.is_null() {
             return E_VALUE;
         }
-        let tag = (*val).tag;
-        if tag != 0 && tag != 1 {
-            return E_VALUE;
-        }
         let task = task_of(handle);
         if task.is_null() {
             return E_HANDLE;
         }
+        let materialized = match materialize(val) {
+            Some(value) => value,
+            None => return E_VALUE,
+        };
         let mail = Mail {
-            val: core::ptr::read_volatile(val),
+            val: materialized,
             port: 0,
         };
         AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
         loop {
             if (*task).closed != 0 || (*task).stopped != 0 {
                 ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
+                release_value(materialized);
                 return E_CLOSED;
             }
             if (*task).len < (*task).cap {
@@ -645,20 +717,21 @@ pub extern "system" fn mn_sched_ask(handle: i32, val: *const SchedVal) -> i32 {
         if val.is_null() {
             return E_VALUE;
         }
-        let tag = (*val).tag;
-        if tag != 0 && tag != 1 {
-            return E_VALUE;
-        }
         let task = task_of(handle);
         if task.is_null() {
             return E_HANDLE;
         }
+        let materialized = match materialize(val) {
+            Some(value) => value,
+            None => return E_VALUE,
+        };
         let port = alloc_port();
         if port < 0 {
+            release_value(materialized);
             return port;
         }
         let mail = Mail {
-            val: core::ptr::read_volatile(val),
+            val: materialized,
             port,
         };
         AcquireSRWLockExclusive(addr_of_mut!((*task).lock));
@@ -666,6 +739,7 @@ pub extern "system" fn mn_sched_ask(handle: i32, val: *const SchedVal) -> i32 {
             if (*task).closed != 0 || (*task).stopped != 0 {
                 ReleaseSRWLockExclusive(addr_of_mut!((*task).lock));
                 release_port(port);
+                release_value(materialized);
                 return E_CLOSED;
             }
             if (*task).len < (*task).cap {
@@ -693,10 +767,6 @@ pub extern "system" fn mn_sched_reply(val: *const SchedVal) -> i32 {
         if val.is_null() {
             return E_VALUE;
         }
-        let tag = (*val).tag;
-        if tag != 0 && tag != 1 {
-            return E_VALUE;
-        }
         let task = current_task();
         if task.is_null() {
             return E_REPLY;
@@ -709,12 +779,23 @@ pub extern "system" fn mn_sched_reply(val: *const SchedVal) -> i32 {
         if port.is_null() {
             return E_REPLY;
         }
+        let materialized = match materialize(val) {
+            Some(value) => value,
+            None => return E_VALUE,
+        };
+        let mut published = false;
         AcquireSRWLockExclusive(addr_of_mut!((*port).lock));
         if (*port).state == 0 {
-            (*port).val = core::ptr::read_volatile(val);
+            (*port).val = materialized;
             (*port).state = 1;
+            published = true;
         }
         ReleaseSRWLockExclusive(addr_of_mut!((*port).lock));
+        if !published {
+            // Single terminal commit: a late/duplicate reply is dropped (and
+            // its materialized buffer released), never resurrecting the port.
+            release_value(materialized);
+        }
         wake_all(addr_of_mut!((*port).cv));
         0
     }
@@ -968,14 +1049,27 @@ pub extern "system" fn mn_sched_drain() -> i32 {
             CloseHandle(*gos.add(i));
         }
 
-        // 3) Release the registry (mailboxes, ports, task records).
+        // 3) Release whatever the orderly stop left undelivered: queued
+        //    messages a driver never consumed (only reachable when a driver
+        //    died early) and published-but-never-awaited replies. Owned text
+        //    in those slots is freed through the owned-text allocator so the
+        //    zero-residue audit below covers it.
         for i in 0..ntasks {
             let task = *tasks.add(i);
+            while (*task).len > 0 {
+                let mail = pop_mail(task);
+                release_value(mail.val);
+            }
             free((*task).queue as *mut u8);
             free(task as *mut u8);
         }
         for i in 0..nports {
-            free(*ports.add(i) as *mut u8);
+            let port = *ports.add(i);
+            // Every chain is joined: no concurrent accessor remains.
+            if (*port).state == 1 {
+                release_value((*port).val);
+            }
+            free(port as *mut u8);
         }
         reg_lock();
         for i in 0..MAX_TASKS {
@@ -998,9 +1092,15 @@ pub extern "system" fn mn_sched_drain() -> i32 {
         free(gos as *mut u8);
         free(ports as *mut u8);
 
-        // 4) Audit: every block this runtime owned is released. A residue
-        //    is reported (never swallowed) by the lane wrapper.
-        LIVE_ALLOCS.load(Ordering::SeqCst)
+        // 4) Audit: every block this runtime owned is released, and the
+        //    embedded owned-text allocator balances too (every materialized
+        //    buffer freed exactly once). A residue is reported (never
+        //    swallowed) by the lane wrapper as the named leak exit.
+        let mut residue = LIVE_ALLOCS.load(Ordering::SeqCst);
+        if ac_text_runtime::ac_rt_owned_audit() != 0 {
+            residue += 1;
+        }
+        residue
     }
 }
 

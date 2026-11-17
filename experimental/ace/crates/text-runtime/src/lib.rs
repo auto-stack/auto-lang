@@ -19,6 +19,13 @@
 #![no_builtins]
 
 use core::ptr::{addr_of_mut, read_volatile, write_volatile};
+use core::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+/// PLAN-1067: the probe trace channel (CLONE/CONCAT/DISPLAY/FREE/RT-FAIL
+/// lines) is an OBSERVATION aid, not language output. It stays on (this
+/// runtime's own lanes depend on it) and the scheduler lane's startup
+/// wrapper switches it off so that lane's stderr is byte-identical to AV's.
+static TRACE_ON: AtomicBool = AtomicBool::new(true);
 
 // ---------------------------------------------------------------------------
 // kernel32 surface (the only OS dependency, same as ac-core test-support)
@@ -454,6 +461,9 @@ impl Line {
         }
     }
     fn emit(&self) {
+        if !TRACE_ON.load(AtomicOrdering::SeqCst) {
+            return;
+        }
         let Line(buf, len) = self;
         unsafe {
             let handle = GetStdHandle(STD_ERROR_HANDLE);
@@ -587,6 +597,44 @@ pub extern "system" fn ac_rt_own_make(seed: i32, len: i32, out_len: *mut i32) ->
 pub extern "system" fn ac_rt_own_free(ptr: *mut u8) {
     owned_free(ptr);
 }
+
+/// PLAN-1067: `ac_rt_own_clone` WITHOUT the probe trace channel. The native
+/// scheduler handoff materializes text into this same owned allocator, but a
+/// scheduler PE's stderr must stay byte-identical to the AV lane's (no
+/// CLONE/RT-FAIL lines), so this entry omits the trace and only reports the
+/// status through the frozen out channel. Allocation, ownership and status
+/// codes are otherwise exactly `ac_rt_own_clone`'s: the receiver frees the
+/// buffer with `ac_rt_own_free`.
+#[no_mangle]
+pub extern "system" fn ac_rt_own_clone_quiet(
+    src: *const u8,
+    len: i32,
+    out_len: *mut i32,
+) -> *mut u8 {
+    if len < 0 {
+        unsafe { write_volatile(out_len, ERR_LEN_NEGATIVE) };
+        return core::ptr::null_mut();
+    }
+    match try_alloc(len as u32) {
+        Ok((p, _id)) if p.is_null() => {
+            unsafe { write_volatile(out_len, 0) };
+            core::ptr::null_mut()
+        }
+        Ok((p, _id)) => {
+            if !unsafe { copy_poll(p, src, len as usize) } {
+                unsafe { write_volatile(out_len, ERR_CANCELLED) };
+                return core::ptr::null_mut();
+            }
+            unsafe { write_volatile(out_len, len) };
+            p
+        }
+        Err(code) => {
+            unsafe { write_volatile(out_len, code) };
+            core::ptr::null_mut()
+        }
+    }
+}
+
 
 #[no_mangle]
 pub extern "system" fn ac_rt_own_clone(src: *const u8, len: i32, out_len: *mut i32) -> *mut u8 {
@@ -1188,6 +1236,31 @@ pub extern "system" fn ac_rt_summary() {
 #[no_mangle]
 pub extern "system" fn ac_rt_check_invariant() -> i32 {
     emit_summary();
+    let c = c();
+    if c.allocs == c.frees && c.live == 0 && c.live_bytes == 0 && c.invalid_frees == 0 {
+        0
+    } else {
+        1
+    }
+}
+
+/// PLAN-1067: switch the probe trace channel on/off. Default on; the native
+/// scheduler lane's startup wrapper calls it with 0 before the entry runs, so
+/// CONCAT/DISPLAY/FREE/CLONE/RT-FAIL observation lines never reach a
+/// scheduler PE's stderr (AV emits none). Language-visible status codes and
+/// ownership semantics are unchanged.
+#[no_mangle]
+pub extern "system" fn ac_rt_trace_switch(on: i32) {
+    TRACE_ON.store(on != 0, AtomicOrdering::SeqCst);
+}
+
+/// PLAN-1067: the QUIET form of [`ac_rt_check_invariant`] — the same
+/// accounting predicate (every allocation freed exactly once, no live bytes,
+/// no invalid frees) without the stderr summary. The native scheduler drain
+/// folds it into its zero-residue audit, so an owned-text leak fails the
+/// scheduler PE's exit instead of hiding behind a successful run.
+#[no_mangle]
+pub extern "system" fn ac_rt_owned_audit() -> i32 {
     let c = c();
     if c.allocs == c.frees && c.live == 0 && c.live_bytes == 0 && c.invalid_frees == 0 {
         0
