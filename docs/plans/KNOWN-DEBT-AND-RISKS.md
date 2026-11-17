@@ -124,7 +124,7 @@
 | F01 | P1 | 算法保真缺口；真实PE后果未测 | [1027](1027-ace-native-utf8-edit-fidelity.md) | UTF-01/02 | 技术未知/修复未闭 |
 | F02 | P1 | 同类嵌套/unwind恢复缺口 | [1028](1028-ace-scoped-observation-restoration.md) | OBS-01/02 | 技术未知/修复未闭 |
 | F03 | P2 | 文案耦合确认；替代方案候选 | [969](969-ace-m2-facade.md) | AUDIT-03 | **已修@969**（结构化SurfaceFact选路，消息文本零参与；native 3 E2E+消息无关单测，2026-11-15） |
-| F04 | P2 | 52行机制重复；复用候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-01 | 研究已决 go@1038（首片合同冻结；实施待后继有界 Plan；i32 陷阱 oracle 缺口已具名） |
+| F04 | P2 | 52行机制重复；复用候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) → [1069](archive/1069-ace-1038-d04-i32-arith-and-d15-comments.md) | REUSE-01 | **已修@1069**（i32 机制单一 owner `native/src/lower_arith.rs`；8 个真实 PE 反例覆盖 Div/Rem/Add/Mul；COFF 前后逐字节相同；`cargo t ace-native` 329 绿） |
 | F05 | P2 | 职责分散；不可整套删除 | [970](970-ace-m2-sessions.md) | AUDIT-05 | 技术未知/修复未闭 |
 | F06 | P1 | 条件性重试缺口；仅历史测试consumer | [1030](1030-ace-av-864-failed-edit-transaction.md) | AVTX-01/02 | 技术未知/修复未闭 |
 | F07 | P2 | 转换事实；收益未知 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 研究已决 retain@1038（收益 unknown；重开前置：1017 同源归因+授信面证明+G1002） |
@@ -135,7 +135,7 @@
 | F12 | 保留约束 | 正向复用基础；非缺陷 | [978](978-ace-m2-build.md) | AUDIT-12 | 非缺陷，长期保留约束 |
 | F13 | P2 | 维护热点；拆分候选 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 研究已决 go@1038（仅一个私有边界：mir_verify init family；其余五热点不改，实施待后继 Plan） |
 | F14 | P2 | 静态保留账已闭；迁移/运行覆盖待认证 | [985](985-ace-m2-certification.md) | AUDIT-14 | 静态映射已闭；迁移/认证后继 |
-| F15 | P3 | 陈旧注释；非依赖违规 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 研究已决 go@1038（5 处纯文档更正；不改依赖/身份，待后继 Plan） |
+| F15 | P3 | 陈旧注释；非依赖违规 | [1038](archive/1038-ace-reuse-candidates-and-cost-decisions.md) → [1069](archive/1069-ace-1038-d04-i32-arith-and-d15-comments.md) | REUSE-03 | **已修@1069**（core/av-core/native 头注释与 core Cargo description 共 5 处；无依赖/身份变更） |
 | F16 | P1 | 内部计数先预留；真实allocator后果未测 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-01 | 技术未知/修复未闭 |
 | F17 | P2 | 零租约索引增长；非整树泄漏 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-05 | 技术未知/修复未闭 |
 | F18 | P1 | 源与SHA两读；未证明父侧误PASS | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-01 | 技术未知/修复未闭 |
@@ -4792,3 +4792,4 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 归属：book listing 线（外仓 book 的作者产物）。PLAN-1066 边界明确「外仓 book/UI/Man/auto-term 不因本计划全转文档」，故本计划不改该生成器语义；其"日常验证不应有作者写入副作用"的义务由该 owner 承接。
 - 关闭条件：生成器降为显式作者入口（`#[ignore]`/独立命令）且日常组零写入；或证明 book 仓侧接受该日常覆写并有对应守卫。
 - 状态：open（不阻塞 1066；批量回归继续具名记录）。
+
