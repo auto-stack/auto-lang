@@ -42,13 +42,13 @@
 | 面 | 接口/事实 | 来源 |
 |---|---|---|
 | 显式选择（执行腿） | `AUTO_ACE_CANDIDATE=1\|true\|yes`；默认完全走既有路径 | `ace_candidate::selected()` |
-| 显式选择（配置腿） | `AUTO_CONFIG_ENGINE=av\|legacy`（见 §1）；`ace_executor_installed()` 是可观测的环境事实 | `config_engine`, `ace_entry` |
+| 显式选择（配置腿） | `AUTO_CONFIG_ENGINE=av\|ace / legacy\|vm`（见 §1）；`ace_executor_installed()` 是可观测的环境事实 | `config_engine`, `ace_entry` |
 | 构建闸门 | Cargo 特性 `ace-candidate`（**不进** `default`/`core`）；桥依赖 `auto-lang-ace-host` 只在 `cfg(windows)` 声明 | `crates/auto/Cargo.toml` |
 | SDK 合同 | `AceExecutor::eval_config`（默认实现＝具名 `ace.config/executor-unsupported`）、`eval_config_with_ace`、`AutoConfig::from_{code,file}_with_engine(.., AceAv\|LegacyVm)` | `auto_lang_core::{ace_entry, ace_config, config}` |
 | 中立模型 | `ConfigDocument`/`ConfigNode`/`ConfigValue`（含 `Node`）、`ConfigIdentity`（source hash + **结构化 context 值**摘要 + engine）、`ConfigCost`（steps/nodes/bytes/depth/`callee_count`） | `ace_config` |
 | 具名终态 | `Diagnostic{stage,code,message,span}`、`Denied{code}`（`ace.config/inject-unsupported|inject-range`）、`ResourceDenied{kind}`（`nodes`/`bytes`/`wall`/…）、`Cancelled`、`HostFailure{code}`（`ace.host/executor-unregistered`/`ace.config/*`） | 桥 |
-| 回执（测试钩子） | `AUTO_ACE_PROOF_RECEIPT=<path>` JSON：`schema`、`sdk`、`same_sdk`、`config{owner,path,present,values,deps,targets,engine,legacy_dispatch}`、`execution{…}`、`script`、失败时 `refusal{code,message}` | `ace_candidate::write_receipt` |
-| 平台 | 桥 Windows-only；其他目标执行腿/配置腿都具名拒绝，不回落 | `ace_candidate`, `auto-lang-ace-host` |
+| 回执（测试钩子） | `AUTO_ACE_PROOF_RECEIPT=<path>` JSON：成功回执带 `schema`、`sdk`、`same_sdk`、`config{owner,path,present,values,deps,targets,engine,legacy_dispatch}`、`execution{…}`、`script`；**拒绝回执**是 `config{owner,present,error}` + `refusal{code,message}`（没有 values/deps/targets/engine） | `ace_candidate::write_receipt` |
+| 平台 | 桥 Windows-only；执行腿在非 Windows **具名拒绝**（`ace.host/unsupported-platform`）；配置腿在非 Windows 默认落 legacy（可观测），只有**显式** `AUTO_CONFIG_ENGINE=av` 才具名拒绝（`ace.host/executor-unregistered`） | `ace_candidate`, `config_engine` |
 
 ## 3. 永久验证面
 
@@ -57,7 +57,7 @@
   三形 dep/嵌套/坏邻例/单入口物化/`#`/JSON/块对象/模板 desugar/`for` 展开/空 root（11 例）。
 - `experimental/ace/crates/lowering/tests/cases/plan982_config_document_e2e.rs` — 文档→单入口
   MIR→ABC 准入→宿主会话执行→owned 快照（4 例）。
-- `crates/auto-lang-ace-host/tests/p982_config_engine.rs` — 真桥五段（成功/诊断/预算/无桥）。
+- `crates/auto-lang-ace-host/tests/p982_config_engine.rs` — 真桥**六段**（成功 / SDK 消费面 / 诊断 / 值预算 / context 注入 / 无桥），含 `ConfigContext.args` 注入与根属性播种。
 - `crates/auto-lang-ace-host/tests/p982_vcfg_cases.rs` — V-CFG 语言侧：SYNTAX/FLOW/CONTEXT/
   VALUE/FAIL/LIMIT/IDENTITY + 2000 层深度（8 例）。
 - `crates/auto-lang-ace-host/tests/p982_pac_corpus_probe.rs` — 真实 pac 语料与 legacy 逐字
