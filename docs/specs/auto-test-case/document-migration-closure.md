@@ -5,7 +5,7 @@
 > 结论其后被证伪；2026-11-16 更正为“部分交付、四类残留交 PLAN-1066”，PLAN-1066 的 A 切片
 > 先行交付正确性（IF-1066-A-CORRECTNESS，master `7c131286d`），B 切片完成剩余载体迁移后
 > 于 2026-11-17 收口（交付提交与复审收据见归档计划
-> [1066-autodown-migration-gap-closure](../plans/archive/1066-autodown-migration-gap-closure.md)）。
+> [1066-autodown-migration-gap-closure](../../plans/archive/1066-autodown-migration-gap-closure.md)）。
 > 保留原文件的“1062 冻结集合”表述（75 组/176 份/1174 位置）作为历史事实；当前口径以下文为准。
 
 ## 当前口径（B 收口后的实测事实）
