@@ -1,15 +1,15 @@
 ---
 plan_id: PLAN-1030
-status: execution_done
+status: reviewed
 feature_name: ACE 864历史源码会话失败重试一致性
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-17
 plan_revision: 3
-current_step: 3
+current_step: 4
 total_steps: 6
 depends_on: [PLAN-1024]
-supersedes_spec_components: [docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resident-online-reload.md]
+supersedes_spec_components: [docs/specs/auto-av/collections-variants.md, docs/specs/auto-av/resident-online-reload.md, docs/specs/auto-ac/source-collections-variants.md]
 new_spec_components: []
 touched_goals: []
 affects: [ACE]
@@ -165,8 +165,8 @@ A由985 T-A03核此调用/recipe闭包与真正A session（MIN-A、970）失败�
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | AC |
 |---|---|---|---|---|---|
-| SD-01 | modify（拟议） | docs/specs/auto-av/collections-variants.md | 现规则/支持域保持；补充以下修复后的明确合同：外层源码指纹与内层接受态必须同一成功边界切换；执行失败后的相同坏请求不能carry旧成功。 | 对应本Plan具体Case及真实consumer；不是候选已实现声明 | AC-02/03/04 |
-| SD-02 | modify（拟议） | docs/specs/auto-av/resident-online-reload.md | 现规则/支持域保持；补充以下修复后的明确合同：明确历史source wrapper支持域与回归入口，不把修复写成M2全会话/拓扑删除支持。 | 对应本Plan具体Case及真实consumer；不是候选已实现声明 | AC-02/03/04 |
+| SD-01 | modify（已备/待沉淀） | docs/specs/auto-av/collections-variants.md | 现规则/支持域保持；补充以下修复后的明确合同：外层源码指纹与内层接受态必须同一成功边界切换；执行失败后的相同坏请求不能carry旧成功。 | 对应本Plan具体Case及真实consumer；不是候选已实现声明 | AC-02/03/04 |
+| SD-02 | modify（已备/待沉淀） | docs/specs/auto-av/resident-online-reload.md（同一规则在归属文档 docs/specs/auto-ac/source-collections-variants.md §C8 落一行；review F-1030-R2-03） | 现规则/支持域保持；补充以下修复后的明确合同：明确历史source wrapper支持域与回归入口，不把修复写成M2全会话/拓扑删除支持。 | 对应本Plan具体Case及真实consumer；不是候选已实现声明 | AC-02/03/04 |
 
 本轮不改canonical Specs。frontmatter是拟议影响，review按实际交付收敛；touched_goals空，工程质量不擅扩产品目标。
 
@@ -247,7 +247,7 @@ A=上源，独立结果6；B仅改get(1)，两次连续edit(B)都必须返回受
 - [x] AC-01 / work：T-01冻结真实源、支持/资源边界与前置，所有§6反例及邻例可在实际入口运行，重大未决先定，不私改expected。（2026-11-17：三钉源无漂移、Spec 1处漂移已重读；B 固定在 `revision did not execute / ListIndex`；观测面=私有 cfg(test)；持久化故障=现 store 错误返回。见 §5「T-01 实施期决定与反例」）
 - [x] AC-02 / work：r2具体输入/每项状态断言及§6实际测试落点均落实；§6每行独立oracle已取得；缺口修复或有充分反证，修前/修后及同族边界证据齐，原义务不减。（4 个永久锚点全部落地并红→绿；AVTX-02 持久化恢复腿按 §5 修约移至冷准入，附 `persist-keyconflict.log` 反证；原三例未改）
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。（消费者重扫=仅三例；`cargo t ace-av` 1348/1348；SD-01/02 + 归属文档 C8 已在实施树备好待 merge 沉淀；G1002 分流不变）
-- [ ] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
+- [x] AC-04 / review：逐项核r2独立预期、后续使用闭环与具名决定，不能仅信组绿；逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。（2026-11-17 final pass @025298412；逐 AC/Case 读断言、`fps` 唯一写点核对、warning/format/打印健康检查、SD 目标 finalize、域外缺陷登记 D-1030-01；见 §9 复审收据）
 - [ ] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
 - [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
@@ -258,7 +258,7 @@ A=上源，独立结果6；B仅改get(1)，两次连续edit(B)都必须返回受
 | T-01 / work | [x] 1024交接、未来实施授权及当前源 | 使A/B/C在实际compile_units→apply_revision路径可区分，固定B到执行的证据、snapshot与fps断言及持久化故障注入点。 AC-01 |【2026-11-17】钉源/消费者重核、B=执行期 `ListIndex`、观测面与 store 故障入口已定（§5） |
 | T-02 / work | [x] T-01决定与可区分输入 | 外层candidate fps在inner成功后接受，覆盖edit与warmup；补AVTX-01/02私有及原集成测试，不改内层正确的build-aside。 AC-02 |【2026-11-17】warmup/edit 改候选副本+成功后换入；新增 1 集成 + 3 私有永久测试；`collections_session.rs` 零改动；提交 `3ce8628b8` |
 | T-03 / work | [x] T-02 | 运行失败→失败重试→修复→hit序列、原三成功例与持久化恢复；核旧snapshot可执行、Arc/身份及成功/attempt计数分账。 AC-02/03 |【2026-11-17】红相 4 FAILED（修前）→绿；`cargo t ace-av` PASS 1348/1348；新例 0.03–0.26 s；见 §6/§9 |
-| T-04 / review | [ ] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04 |
+| T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；失败回同树work不缩scope；AC-04 |【2026-11-17】final pass @025298412：逐 AC/Case/代码/Spec 核验；3 项发现（2 非阻塞 + 1 簿记已 finalize）；域外缺陷登记 D-1030-01；见 §9 |
 | T-05 / merge | [ ] T-04 pass | 核冻结并集且复用同身份证据，正式合入、规范/归档；正确性不留merge；AC-05 |
 | T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06 |
 
@@ -322,6 +322,36 @@ r2所读源Git=c2760324da25795594ab0cc01b581e3a306d2375；r1已存在的源码�
 保留给后续 owner：T-04 独立复审、T-05 合入+规范沉淀、T-06 输出对账/清树；`cargo t all` 周期批量不属本 Plan。
 
 `stage: goal | plan_id: PLAN-1030 | plan_revision: r3 | round: 1 | from: drafting | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1030/auto-lang | commit: 3ce8628b8 | next: review`
+
+stage: review | review_scope: final | reviewer_identity/limitations: 实施同一会话（lead）内复审——§6 角色记明「无指定模型/另起 agent 授权」，故不另起上下文；判定一律由 artifacts（`git diff`、测试源码断言、`results.json`、红相日志）重建，不采信实施叙述。独立探针/变异构建未做（review 不写实现），判别力由代码路径 + 已冻结红相日志共同支持 | plan_id: PLAN-1030 | plan_revision: r3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1030/auto-lang | branch: plan-1030-dev | reviewed_commit: 025298412（实现 3ce8628b8；`git diff 3ce8628b8..025298412 -- experimental/` 为空 → 门禁证据仍绑同一代码） | base_commit: 5b5940d4f | dependency_revisions: 无跨仓依赖 | spec_inputs: `auto-av/collections-variants.md`（钉 5801fc0d→现 1a835a09，PLAN-1035 增量已重读且规则相容）、`auto-av/resident-online-reload.md`（53f21686 未变）、`auto-ac/source-collections-variants.md`（现文本 + §C8 追加） | acceptance_results: AC-01 pass、AC-02 pass、AC-03 pass（映射见下）；AC-04 由本条收据承担、AC-05/06 留 merge | pending_closeout_gates: T-05 正式合入+规范沉淀、T-06 输出对账/清树；`cargo t all` 周期批量属主检出单实例、不在本 Plan | findings: F-1030-R2-01（非阻塞·域外缺陷，已登记 D-1030-01）、F-1030-R2-02（非阻塞·引述括注省略）、F-1030-R2-03（簿记，本轮已 finalize frontmatter） | evidence: 见下 | next: merge
+
+**复审核验（逐 AC / Case / 代码 / Spec）**
+
+| AC | 判定 | 方法/证据 | 覆盖身份 |
+|---|---|---|---|
+| AC-01 | pass | 树内 `git show`/哈希重核三份钉源=§4 表；`git diff` 确认无新增 `pub` 面（只加注释、`candidate` 局部与 `#[cfg(test)] mod`）；B 的失败串 `revision did not execute: Trap { kind: ListIndex, … }` 与 SEM-02 唯一索引陷阱码一致 | 025298412 |
+| AC-02 | pass | 4 个永久锚点逐条读断言：集成 `audit1030_avtx_01` 断言 B 首拒/重试再拒（`starts_with("revision did not execute")`+`ListIndex`）、C=A `changed0/carried2`+值 6+rev2+`rebuilt_units 0`、后续 body 编辑 `1/1`+rev3+`production.verified 1`；私有 `avtx_02` 断言 `fps`/`snapshot().revision()`/`Arc` 指针同一/编辑计数不变/冷失败 `fps.is_empty()`；`avtx_02_warmup` 断言被拒 warmup 保 A 后 helper 编辑值 **7**（修前 6）；`avtx_02_persist` 两条腿（冷故障恢复 `store_writes=2`；已接受基座迟到故障 attempt `admitted=1/store_writes=0` 且重试再拒）。红相冻结：`(revision:2, value:Some(6), rebuilt_units:0, production 全0)` | 3ce8628b8 = 025298412 |
+| AC-03 | pass | 消费者重扫仅三例（`av_collections_session.rs`）+ `lib.rs` 导出；原三例 `git diff` 为纯追加（0 删除）；`cargo t ace-av` PASS 1348/1348（门禁表达式 `all() and not performance::`，组配置另排 `tests::aavm2_t3::test_aavm2_t3_tower_milestone`），`not_run=0/native_unselected=0/errors=0`；SD 已备；未触 document/IR/adapter（G1002 分流不变） | 025298412 |
+
+**未闭/延后/绕行扫描**：`fps` 仅两处写点（`warmup` 第 96 行、`edit` 第 133 行），两句都在 `apply_revision` 成功之后——无第三条写入路径；无 `TODO/FIXME/HACK`；无 debug 打印；改动文件 `rustfmt --check`=0；`cargo build -p ace-av --lib` 的 5 条 warning 全部落在未改动模块（`decode_abc`/`env_layout`/`mix_u64`/`shell_lo|hi`/`err` 常量），本 Plan 未新增 warning。函数删除/拓扑删除按 §2 明确不在范围；Debug 指纹替换按 §5 具名决定保留（不动身份轴）。
+
+**发现**
+- **F-1030-R2-01（非阻塞，域外既有缺陷，已登记 `docs/plans/KNOWN-DEBT-AND-RISKS.md` D-1030-01）**：store 的 A22 查询键不含 body 身份（`EnvelopeIdentity.body_fp` 只在信封），任何重提交已持久化单元的修订都被 `key conflict ... (uncertainty reported, not overwritten)` 拒绝，故 `CollectionsSourceSession` 的持久化实质只对冷准入可用。复核：`avtx_02_persist` (B) 腿在故障清除后仍报同一冲突（实施期日志 `persist-keyconflict.log`）。非本 Plan 机制、非本 Plan 引入；修它需改公共身份/查询键 + 具名设计，交 owner 另立。**不因此降级本 Plan 的 AC-02**：§5 已记具名修约（等价局部机制 + 可重放反证 + 合法邻例），原 6 项状态义务未减。
+- **F-1030-R2-02（非阻塞，编辑项）**：`resident-online-reload.md` 追加段引述「候选编译/验证失败、安装失败 → …」省略了原文括注（`（prepare 拒）`/`（link/迟到/外来拒）`）；规则含义与原文一致，判为可接受的概述而非误引，未改（review 不写实现/规范）。
+- **F-1030-R2-03（簿记，本轮已修）**：规范增量新增了归属文档 `docs/specs/auto-ac/source-collections-variants.md` 的同规则落点，`supersedes_spec_components` 原仅列两份 auto-av 文档；本轮按“用精确 `docs/specs/...` 路径 finalize”补入该路径，SD 表仍为 SD-01/SD-02（C8 那次追加属 SD-02 同规则落点，不新增独立 SD）。
+- 观察（无动作）：work/goal 两条收据行带反引号包装，内容已核；按 §9 append-only 不回写，新收据起用纯文本行。
+
+**复审侧耗时（同一代码身份，门禁结果复用不重跑）**
+
+| 本次实际运行 scope | 结果与计数 | 准备/构建 | 发现 | 执行 | 清理 | 总墙钟 |
+|---|---|---|---|---|---|---|
+| `cargo test -p ace-av --lib audit1030`（增量，sccache 命中） | 3 passed / 0 failed | 未编译（无变更） | — | 0.11 s | — | 0.46 s |
+| `cargo test -p ace-av --test conformance --features ace-av/test-case-batch av_collections_session::` | 4 passed / 0 failed（含原三例） | 未编译 | — | 0.04 s | — | 1.64 s |
+| 复用：`cargo t ace-av` @3ce8628b8（代码与 reviewed_commit 相同） | PASS 1348/1348 | 975.7 s（工具预构建） | 36.6 s | 60.7 s | — | 774.6 s |
+
+新增用例（4 个，门禁内实测，来源 `results.json`）：`audit1030_avtx_01` 0.0775 s、`audit1030_avtx_02` 0.0473 s、`audit1030_avtx_02_warmup` 0.0342 s、`audit1030_avtx_02_persist` 0.2579 s——全部 ≤10 s，判定 pass；日常用例体内无 Cargo/rustc/编译子进程（持久化用例只做文件写入/删除），准备阶段由 `cargo t` 显式预构建。
+
+`stage: goal | plan_id: PLAN-1030 | plan_revision: r3 | round: 2 | from: execution_done | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1030/auto-lang | commit: 025298412 | next: merge`
 
 ## 10. 待澄清事项
 

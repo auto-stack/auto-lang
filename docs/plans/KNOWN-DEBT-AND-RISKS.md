@@ -4759,3 +4759,12 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 关闭条件：具名处置每一条（修 emit 或授权重生成金样），并在显式重放中该族全绿；不得仅因被忽略而冒充 PASS。
 - 状态：open。
 
+
+## D-1030-01 — CollectionsSourceSession 的 store 查询键不含 body 身份，持久化只对冷准入可用（2026-11-17 PLAN-1030 复审登记，非本包）
+
+- 现象（已具名复现）：给该会话挂 Option<&Path> store 后，任何**重提交已持久化单元**的修订（含仅改 body、或新增一个未用函数导致 d_main 重提交）都在 produce_unit 的 persist 段被拒：
+  persist d_main: key conflict on A22/A22[entry=d_main,owner-module=m_src,producer=plan822/av-collections,profile=av.collections/1,source-snapshot=0000000000000000,unit-binding=d_main]: existing artef360f797… vs attempted art2f94460… (uncertainty reported, not overwritten)；清掉注入故障后同一 BODY_EDIT 仍报同一冲突，证明与故障无关。
+- 归因：CollectionsUpdateSession::produce_unit 的 QueryKey（layer/producer/owner-module/entry/profile/source-snapshot/unit-binding）不含 body/内容身份——ody_fp 只进 EnvelopeIdentity（信封），不进键；source_snapshot 在该 profile 恒 0，故同名单元换 body 必撞键。既有缺陷，非 PLAN-1030 引入（本包只改外层 fps 换入时机）。
+- 归属：ace-av / collections_session（822 会话）+ store 身份线；修它需改公共身份/查询键，属具名设计与合同修约（不许在别的修复里顺带改）。
+- 关闭条件：给出 body 身份进键（或等价的内容寻址）的具名设计并落地，使“已持久化单元换 body”能正常 put 且旧件按既有 GC/历史语义退役；用一条真实增量编辑 + 两个不同 body 的 store 断言取证（不得只删冲突检查或只放宽为覆盖写）。
+- 状态：open（不阻塞 PLAN-1030：该 Plan 用冷准入取“清故障后同源成功”腿，并以可重放反证 + 合法邻例修约，原 6 项状态义务未减）。
