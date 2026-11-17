@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -173,7 +173,7 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - [x] **T-03｜work｜AC-02**：沿共享类型/IR补AC异步帧、await/go及泛型/Option/Result跨挂起值和所有权，落V-02正反例；依T-02。 — 2026-11-17 ✅（值面tag/物化/释放/drain审计＋bool typed reply；owned-text 消息/回复为具名差额，见§5 T-03 表）
 - [x] **T-04｜work｜AC-02/03**：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。 — 2026-11-17 ✅（真PE逐字节：message_handler/mailbox_fifo FIFO、ask_reply 42、stop_hook 先投递后 stop、backpressure cap=1 三消息顺序不漏；源码为 968 原语料未改）
 - [x] **T-05｜work｜AC-03**：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 2026-11-17 ✅（真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
-- [ ] **T-06｜work｜AC-01/02**：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。
+- [x] **T-06｜work｜AC-01/02**：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。 — 2026-11-17 ✅（三端各对独立 expected：AV ingress 8正例＋3反例分类、native 8正例＋3反例、A2R emit+rustc+run 8正例(timer 已补)＋closed-task 反例；并修掉 A2R 静默成功的三端背离）
 - [ ] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。
 - [ ] **T-08｜work｜AC-01..04**：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。
 - [ ] **T-09｜review｜AC-REVIEW**：同树独立复核真实native调用/差额/所有权/错误/源级组合，缺陷回同树有界修复。
@@ -182,6 +182,17 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
+
+2026-11-17 stage: work | PLAN-1067 r1 round-4 | T-06 闭合（三端各对独立 oracle ＋ A2R 背离修复） | code `40f5c195b`
+
+- 三端独立 expected（**不用互相比较当代替 oracle**）：
+  - **AV**（`sched_m2_1067.rs` `av_leg`，真实 AU 车道同进程跑）：8 正例逐字节＋exit 0；3 反例按类：`bind/source.sched-task`、`text/source.unsupported`、运行期 `Error{send on a closed task}`。
+  - **native**：同 8 正例逐字节＋零残值 drain 审计；反例＝trap 70＋stderr 具名消息。
+  - **A2R**（`ace-a2x-worker`，emit Rust→rustc -O→run，绝不复用本车道产物）：原 7 例＋本轮补 `virtual_timer`（`main\nlater\nvalue:0\n`）；反例 `neg_send_after_stop` 断言 `exit 70`＋`sched: send on a closed task\n`。
+- **发现并修复三端背离（A2R 侧）**：`a2x_sched_send`/`ask` 对已 stop 任务返回静默成功、`await` 对永不发布的 future 返回零值。现统一为具名语义：`send/ask on a closed task`、`reply is only legal while handling an ask message`、`task closed without replying`（stderr＋exit 70，与 native 同通道；AV 沿用 `ExecOutcome::Error` 同文本），迟到 reply 仍丢弃（单终态提交）。
+- 运行：`sched_m2_1067` **13/13 PASS**（11.1s 含首跑 runtime 重建；单测 0.1–2.5s）；`ace-a2x-worker` sched 用例 2/2（6.2s）；**`cargo t ace-a2x ace-native case-ace-m2-scheduler-968` 三组全 PASS**。
+- 遗留（转入 T-07/T-08）：宿主/进程外取消源、仓外候选与 OS 依赖审计；A2R 反例目前只覆盖闭任务投递，`reply outside ask`/`await 未发布` 的 A2R 反例留给 T-08 全矩阵。
+- 阻塞：无。
 
 2026-11-17 stage: work | PLAN-1067 r1 round-3 | T-05 闭合（OS 等待/取消终态/退出清理） | code `c6b84240e`
 
@@ -223,6 +234,8 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 1 | from: drafting
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: e16f01b6e | next: work
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: c6b84240e | next: work
+
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: 40f5c195b | next: work
 
 ## 10. 待澄清事项
 
