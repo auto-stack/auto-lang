@@ -1,3 +1,11 @@
+## GAP-982-CONFIG-ACE — B已明确承接，能力尚未实现（2026-11-17）
+
+| 事实/原义务 | 唯一owner与具体任务 | 关闭条件/执行边界 |
+|---|---|---|
+| 982 route C已交A仍用SDK指定legacy配置owner；ACE当前无配置文档profile/运行入口/owned文档公开面，不能据969归档推断已迁移。 | [982/B-CONFIG-I/V/R](982-ace-m2-man-gen.md)两仓端到端：语法/全程序投影/AV文档值与累积原语、SDK/Host、Man真实消费；原T-06可先CONFIG phase fold。不新立Plan，不重开969/979，不等待完整1068。 | [设计九Case/四AC](../design/ace-config-document-evaluation.md)及原完整CONFIG分母真实通过→独立R→正式IF-982-CONFIG-ACE，后继consumer闭环；982全包原产品任务/final齐才归档。无fallback、失败不写state/lock、修复下一读/冷身份/精确类型与资源均须实际验证。 |
+
+本次仅关闭“无人承接”的规划缺口，**不把能力债项标closed**；985 B滚动接收，986/987保安装/退役义务。M2A-08及A route C历史不变。本轮不实施/运行/派agent。
+
 ## D-1037-02 — `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av` 的 2s wall 余量过窄（2026-11-17 PLAN-1037 merge 登记，非本包代码）
 
 - 现象：合并门 `cargo t ace-av`（交付身份 `b8ab04897`）该例 10.96s 失败于 `Resource { kind: ExecutionWall, message: "platform call exceeded wall budget" }`（`run_av_i32` 用默认 `MAX_AV_WALL`=2s）；隔离重放 3/3 绿（AV exec 2.512/2.557/2.541s）、整组重放 1341/1341 绿，同内容在 PLAN-1037 review 轮亦两次整组绿。
@@ -4674,3 +4682,23 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | merge 收尾刷新登记表时无法解析：`plans[34].holds[1]`（~L314/315）之后缺 `]`/`}` 直接接入下一对象，尾部同类断裂重复出现。按「不覆盖他人记录」原则本包**未改写**该文件，把 plan-1036 的待插入条目原文留在归档计划§9。 | `ConvertFrom-Json` 报 `After parsing a value an unexpected character was encountered: {. Path 'plans[34].holds[1]', line 314`；mtime 2026-11-17 01:08（他人会话合并 1029/981 期间） | owner=下一次 merge 或批量回归 triage；关闭条件=文件可解析，且 plan-1036 条目按归档计划所载文本插入 |
 
 **PLAN-1036 交付记录**：F28/F29/F35 交付 `3b734996b` 落主（ff-only，reviewed `a628ad594` rebase→`68924c748`，`git range-diff` 两条 `=`）；5 份 canonical spec 沉淀（SD-01a/01b/02/03a/03b：source-collections-variants、collection-place-profile、checked-resource-facts、a2c/a2r collections-hir-backend）；6 个永久用例（audit1036_loop_01/02/03/03_c/03_owned_cleanup/03_c_owned_cleanup，均 ≤5.8s）；重放基线并集 ace-source 821 / ace-lowering 5 / ace-av 1341 / ace-a2x 308 / ace-native 299 全 PASS，`ace-a2c-abi` 8/9（唯一红=runtime pin 预存红，本文件 4588 行条目，非本计划引入）；归档 `docs/plans/archive/1036-ace-loop-latch-and-cooperative-poll.md`。**附带实现缺陷修复**：Rust `a2x_coll_list_free` 非幂等（回边 poll 错误路径重列 → 二次释放 → 0xC0000374 堆损坏），已修为 take + `cap==0` 真 no-op——该缺陷由本计划的 poll 错误路径 oracle 发现，属冻结规则「释放幂等」的原实现违背。
+## D-1066-A2TS-GOLDEN — a2ts 85 例金样与当前 emit 漂移（2026-11-17 PLAN-1066 T-03[B] work 登记，非本包引入）
+
+- 现象：`01_basics/001_hello` 起的整族 a2ts 例，transpiler 现产出 `globalThis.console.log(...)`，冻结 `.expected.ts`/文档内联金样仍是 `console.log(...)`；经 `entry::run_a2ts_file_test` 与 a2ts 包装（`tests/a2ts_tests.rs`，全 `#[ignore]`）逐例比较均为 `transpiler output mismatch`（扫描前 40 例全红）。文档内联载荷与冻结 sidecar 逐字节相同（`probes/compare_artifacts.py`），故**非迁移引入**、亦非文档解码差异。
+- 归属：a2ts/TypeScript emit 线（`print` lowering 的 `console` → `globalThis.console` 变更，与 831/900 边界重构同期）；本族日常被 `#[ignore]` 掩盖。
+- 关闭条件：由 a2ts owner 决定「重生成 85 份金样」或「emit 恢复与冻结金样一致」，并在显式重放中全族真实绿（禁止改期望冒充迁移 PASS —— 依仓库测试期望规则需用户显式许可）。
+- 状态：open（PLAN-1066 T-03[B] 只证明 doc-only 镜像不改变该判定，不冒 a2ts PASS）。
+
+## D-1066-STALE-TOOL-RECEIPT — 治理 input inventory 可用「unknown」身份复用陈旧 tool（2026-11-17 PLAN-1066 T-03[B] work 登记）
+
+- 现象：`scripts/test-governance/input_inventory.py::discover_inputs` 调用 `prepare(..., source_state=None)`，tool 收据身份写成 `source_state: "unknown"`；任何一次同身份调用都会命中该收据并复用 `target/debug/auto-case.exe`，即使 `inventory_wrappers.rs` 已改动（实测：15:45 构建的二进制在 15:58 的 `cargo t vm corpus` 中被用于 legacy inventory，造成 `legacy_children` 假红；删除收据并重建后同门 PASS）。
+- 归属：PLAN-1066 T-08[B] 治理 v2（source-bound 准备/收据），非用例本体。
+- 关闭条件：inventory 路径的准备同样携带真实 `source_state`（或收据身份禁止 "unknown" 复用），并加一条具名负控：改 wrapper 源后不重建必须被拒。
+- 状态：open（本轮以删除收据+重建绕过，已记入 §9）。
+
+## D-1066-INFRA-FIXED-ACE-FACADE — `infra-fixed::test_ace_set_is_explicit_and_separate_from_daily` 基面既有红（2026-11-17 PLAN-1066 round 2 登记）
+
+- 现象：断言 `ace` 集合为三组，实际 toml 已含第四个 `ace-facade`（PLAN-969 提交 `278b91204` 加入集合但未更新断言）；基面 `7c131286d` 的测试文本与同提交 toml 已互相矛盾，故非 1066 引入。
+- 归属：PLAN-969 / infra-fixed 治理线。
+- 关闭条件：更新该断言（或把 `ace-facade` 从集合移除）并在主检出单实例重跑 `cargo t infra-fixed` 真实绿。
+- 状态：open（不阻塞 1066 树内工作；T-11 联合门/批量回归前须处置）。

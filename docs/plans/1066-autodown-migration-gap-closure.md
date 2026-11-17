@@ -1919,6 +1919,20 @@ stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: pass（T-04 整�
 
 stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 2 | from: work | to: work | status: executing | outcome: pass（T-04 关闭：载体 aba42ca3a + 常驻 NC-08/09 1aea0ef5e；13任务 1/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 1aea0ef5e | next: work（T-03[B] N 四族 doc-only 发现/执行切换）
 
+### 2026-11-17 B 期 work（round 3）：T-03[B] N 四族文档权威切换交付（T-08 首片同轮）
+
+stage: work | plan_id: PLAN-1066 | plan_revision: r3 | outcome: partial（T-03[B] 主体+NC-02..06/21 交付；T-03 整项不勾，余 NC-07/22/23/24 与 shim 1050 重放） | worktree: D:/autostack/.wt/lang-1066/auto-lang | branch: plan-1066-dev | base: 7c131286d | code_commits: 72d7c2bd3（N 族切换）+ 250b93e49（T-08 首片/分母增量） | dependency_revisions: 无跨仓 | task_ids: T-03（B 面）、T-08（首片） | next_responsible_role: work
+
+**T-03[B] 交付**：迁移文档成为 N 四族唯一作者源——`test_runner::discover_{vm,a2r,a2c,a2ts}` 按 `<stem>.case.ad` 选例（doc-only 树照常发现；文档缺失但冻结 sidecar 仍在时**保留该项**并让执行报 `migration document: …`，绝不静默缩集/回退）；虚拟源路径与 oracle 通道（vm-stdout/vm-result/vm-error、`.rs`/`.c`/`.h`/`.ts` artifact、a2c 空 H 零字节角色）全部取自文档；`entry::run_*_file_test_impl` 改读文档源/内联 oracle，a2r/a2c/a2ts 的 `.wrong.*` 改写为 `diag_scope` 作用域输出（作者树零写入）；四族 trace 身份改记文档（`document`），VM cache `is_script` 由文档声明路径 `.as` 判定（不再看哪个 sidecar 存在）、缺文档=具名 panic；cookbook 选择改为「目录内唯一 `*.case.ad`」（多文档=歧义拒绝、无文档=硬错），oracle 用 `cookbook-stdout`。
+
+**T-08 首片**：`execution_trace::cookbook_doc_identity` 单一派生函数同时服务运行期 trace 与源码静态 inventory（`inventory_wrappers.rs`），以 `document:{path}` 形态让两侧治理 normalize 都落到仓库相对路径；`legacy-wrapper-contract.json` 108 条 cookbook 关联行整体改绑文档（sidecar 身份退役，非 cookbook 行零改动）。**分母增量登记**：文档权威暴露出 10 个旧 sidecar 选例静默跳过的 VM 项（`08_strings/017_sub_semantics` 的 oracle 用整目录名命名；`10_types/033_array_len_user_type`、`17_cffi/{001,002,003}`、`18_ffi/{047,055}`、`99_bootstrap/{066,067,068}` 只有文档内 oracle）——A 冻结分母 1050→1060、E78 78→68，其余集合（cache506/8 脚本、cookbook108/6 多源、S11、P、C）逐字节不变；A 族计数与 provenance 文本同步更新，A-DEN/NC-A1..A4 全绿。
+
+**门与负控**：`cargo t vm corpus` **PASS**（1137 executed、0 errors、child_validation valid、77 条 legacy child 关联、wall 56.1s；本轮经历三次治理红并逐一定位修复：①A 分母漂移→增量登记；②cookbook `legacy_children` 漂移→单派生函数；③`legacy-wrapper-contract` 关联丢失→108 行改绑。其间发现治理工具陈旧二进制问题，见债务）。新增 `tests/plan1066_b_slice.rs` 4 控（0.83s）：四族 doc-only 镜像仍发现并执行；**删文档保留 sidecar**→集合不缩、运行报 `migration document … .case.ad` 硬错；污染旧 `.at`/`.expected.out` 判定不变、改文档源即红（stdout 轴）；双通道例只错 `vm-result` 只在该轴红。`cargo t plan1066-s-doc-controls` 仍 PASS。
+
+**本族既有红/债务（不代修、不充 PASS）**：①a2ts 85 例金样早于当前 emit（`console.log`→`globalThis.console.log`），整族显式重放统一 `transpiler output mismatch` 且全 `#[ignore]`——记 D-1066-A2TS-GOLDEN（改写期望需用户许可）；②治理 input inventory 以 `source_state:"unknown"` 收据复用陈旧 auto-case（实测造成假红，删收据重建后 PASS）——记 D-1066-STALE-TOOL-RECEIPT；③`infra-fixed` 的 ace-facade 基面红记 D-1066-INFRA-FIXED-ACE-FACADE。另见 `KNOWN-DEBT` 既有 D-1037-01（ac-semantics 文档语料缺 `status: executed` 谓词，owner 记 1062/1066）——下一轮按 1066 owner 处置。
+
+stage: goal | plan_id: PLAN-1066 | plan_revision: r3 | round: 3 | from: work | to: work | status: executing | outcome: partial（T-03[B] 主体 72d7c2bd3 + T-08 首片 250b93e49；vm corpus 门 PASS 1137/0；13任务仍 1/13） | worktree: D:/autostack/.wt/lang-1066/auto-lang | commit: 250b93e49 | next: work（NC-07/22/23/24 + 四 shim 1050 重放 → 再 T-05/T-06）
+
 ## 10. 待澄清事项
 
 四类补漏范围/原oracle/副作用边界已明确，无需用户先决定日常与显式编译的常规实现细节。T-02有界确定共享资格表达、public structs兼容与唯一proposal入口（不得保旧fallback）；真实不可行性在本Plan具名修约，不拆后继/不缩水。1061环境与外仓owner不阻Windows迁移，NOT_RUN不冒通过。原语义/编译债务保持独立，不用两侧同FAIL充功能绿。
