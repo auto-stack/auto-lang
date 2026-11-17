@@ -68,6 +68,8 @@
 ——**未改函数生产工作=0 由计数器实证**。body 编辑精确重降该函数；record 字段接口编辑使全部构造方精确失效。
 restart 经全门重准入（decode+verify，不信任字节）。单元类型闭包含内嵌类型操作数
 （Aggregate.record_ty / ListNew.list_ty / VariantPack.variant_ty / Dyn*）。
+失败边界（PLAN-1030，2026-11-17）：候选指纹与内层接受版本同界切换——被拒修订保留旧
+指纹/revision/代码对象 `Arc`，同一失败源再次提交必须再次被拒，不得判为 carry 命中。
 
 ## 诊断码（新增，合同 C10）
 

@@ -67,3 +67,18 @@ LIST_NEW/PUSH/INSERT/REMOVE/GET/SET/LEN/CAP、LIST_FIELD_GET/LIST_FIELD_SET、VA
   源码域克隆仍拒。
 - 证据锚：`audit1035_res_01_typed_clone_of_list_only_record_is_deep`、
   `audit1035_res_01_str_plus_list_and_scalar_record`、`audit1035_res_03_*`（`ace-av`）。
+
+## PLAN-1030 增量：源码会话的指纹/接受事务边界（2026-11-17）
+
+- 外层源码会话（`CollectionsSourceSession`，本 profile 的 C8 源码封装）的每函数内容
+  指纹表是内层接受版本的事务外延：`warmup`/`edit` 只在
+  `CollectionsUpdateSession::apply_revision` **接受**后整体换入候选指纹；被拒修订
+  （前端准入、verify/encode/admit、link、执行 trap、资源、持久化任一失败）保留旧
+  指纹表、旧 revision 与旧代码对象 `Arc`。
+- 同一失败源的再次提交必须**再次被拒**（重试不是 carry 命中）；不得用旧版本代码对象在
+  新 revision 号下产出旧值。
+- 支持域、指令面、carry 与 production-counters 归零规则、body/接口编辑的精确失效逐条
+  不变；本规则不新增 opcode/身份/ABI。
+- 证据锚（`ace-av`）：`audit1030_avtx_01`（conformance 集成面：A→B 执行失败→重试
+  B 再失败→C=A 纯 carry→真实编辑）、`audit1030_avtx_02` / `_warmup` / `_persist`
+  （lib 私有 `cfg(test)` 面：fps、内层 revision、`Arc` 身份、持久化故障）。
