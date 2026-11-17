@@ -76,3 +76,20 @@ fn p982_script_driver_renders_a_runnable_program() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+/// TS（强类型）通道：只验证**渲染 + 确定性**；本机无 `tsc`，执行面**不声称**。
+#[test]
+fn p982_script_driver_renders_typescript_deterministically() {
+    let fileset =
+        auto_lang_ace_host::script_transpile::transpile_typescript_source(SRC, "p982-ts", "main")
+            .expect("the TypeScript provider renders");
+    assert!(!fileset.files.is_empty(), "the TS file set is not empty");
+    assert!(
+        fileset.files.iter().any(|f| f.name.ends_with(".ts")),
+        "the TS file set carries a `.ts` file: {:?}",
+        fileset.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
+    let again =
+        auto_lang_ace_host::script_transpile::transpile_typescript_source(SRC, "p982-ts", "main")
+            .expect("render twice");
+    assert_eq!(fileset, again, "the TypeScript channel is deterministic");
+}

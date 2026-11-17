@@ -123,3 +123,83 @@ pub fn transpile_scalar_source(
         source_sha256,
     })
 }
+/// 把一段真实 Auto 源码渲染成 **TypeScript** file set（`Family::Scalar`）。
+///
+/// 与 [`transpile_scalar_source`] 同一管线，只换 provider（强类型通道）。
+/// **注意**：TS 产物需要 `tsc` 才能执行，本机没有该工具，因此这条通道只验证
+/// "渲染 + 确定性"，**不声称可运行**。
+pub fn transpile_typescript_source(
+    source: &str,
+    module: &str,
+    entry: &str,
+) -> Result<AceScriptFileSet, AceScriptError> {
+    let compiled =
+        ace_core::source::compile_scalar_source(source, module, &[]).map_err(|diags| {
+            AceScriptError::new(
+                "ace.ts/compile",
+                format!(
+                    "frontend refused the source: {}",
+                    diags
+                        .iter()
+                        .map(|d| format!("{:?}/{}", d.stage, d.code))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            )
+        })?;
+    let view = SemanticView::from_checked(&compiled.checked)
+        .map_err(|reject| AceScriptError::new("ace.ts/view", format!("{reject:?}")))?;
+
+    let provider = ace_a2x_ts::TypeScriptTargetProvider;
+    let family = Family::Scalar;
+    let runtime = provider
+        .runtime_source(&view, family)
+        .map_err(|reject| AceScriptError::new("ace.ts/produce", format!("{reject:?}")))?;
+    let functions: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
+    let texts = provider
+        .produce_fragments(&view, &functions, family)
+        .map_err(|reject| AceScriptError::new("ace.ts/produce", format!("{reject:?}")))?;
+    let mut fingerprints = Vec::with_capacity(functions.len());
+    for function in &functions {
+        let fp = ace_a2x_core::semantic_fingerprint(&view, function)
+            .map_err(|reject| AceScriptError::new("ace.ts/produce", format!("{reject:?}")))?;
+        fingerprints.push(fp);
+    }
+    let fragments: Vec<FragmentText<'_>> = functions
+        .iter()
+        .zip(texts.iter())
+        .zip(fingerprints.iter())
+        .map(|((function, text), fp)| FragmentText {
+            def_index: function.def_index,
+            source_name: function.source_name,
+            sem_fp: fp.as_str(),
+            text: text.as_str(),
+        })
+        .collect();
+    let prelude_seed = provider
+        .capture_prelude_seed(&view, family)
+        .map_err(|reject| AceScriptError::new("ace.ts/produce", format!("{reject:?}")))?;
+    let source_sha256 = crate::rust_transpile::source_sha256_hex(source.as_bytes());
+    let fileset = provider
+        .assemble_fileset(FilesetRequest {
+            entry,
+            input_hash: &compiled.input_hash,
+            family,
+            fragments: &fragments,
+            view: Some(&view),
+            runtime: &runtime,
+            prelude_seed: prelude_seed.as_deref(),
+            origins: None,
+            source_sha256: Some(&source_sha256),
+        })
+        .map_err(|reject| AceScriptError::new("ace.ts/assemble", format!("{reject:?}")))?;
+    Ok(AceScriptFileSet {
+        files: fileset
+            .files
+            .into_iter()
+            .map(|(name, text)| AceScriptFile { name, text })
+            .collect(),
+        manifest: fileset.manifest,
+        source_sha256,
+    })
+}
