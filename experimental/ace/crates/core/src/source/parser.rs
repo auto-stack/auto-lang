@@ -139,10 +139,7 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Aggregates
         // PLAN-968: the scheduler face runs through the same unified CST
         // chain (aggregates superset trim + task rules).
-        | SourceProfile::Scheduler
-        // PLAN-982（B-CONFIG-I）：配置文档面走同一统一 CST 链（text-record
-        // 表面 ∪ 顶层脚本语句序列；文档专属语法由 E2 在本 profile 增量）。
-        | SourceProfile::ConfigDocument => {
+        | SourceProfile::Scheduler => {
             // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
             // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
             let parsed_src = if super::fstr::profile_admits_fstr(profile) {
@@ -187,6 +184,12 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage => Err(
             super::age_h0::domain_profile_refusal(profile, src.len())
                 .expect("AGE domain profile refusal"),
+        ),
+        // PLAN-982（B-CONFIG-I）：配置文档行只经文档前门消费；通用解析入口
+        // 具名拒绝，绝不返回一个把文档行静默丢掉的 Program。
+        SourceProfile::ConfigDocument => Err(
+            super::config_document::config_profile_refusal(profile, src.len())
+                .expect("config-document profile refusal"),
         ),
     }
 }

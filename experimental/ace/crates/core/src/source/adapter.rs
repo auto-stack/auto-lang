@@ -530,6 +530,23 @@ pub fn compile_program_parts(
     if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
         return Err(vec![d]);
     }
+    // PLAN-982：配置文档行同理只经 `source::config_document` 前门物化。
+    if let Some(d) = crate::source::config_document::config_profile_refusal(profile, src.len()) {
+        return Err(vec![d]);
+    }
+    compile_program_observed(program, src, module_path, capabilities, profile, None)
+}
+
+/// PLAN-982（B-CONFIG-I）：配置文档前门的物化程序入口——同一共享
+/// `compile_program_observed`，但**不**走通用 profile 拒绝：那条拒绝是给通用
+/// 调用者的（文档行必须由 config-document 前门先物化成普通顺序入口程序）。
+pub(crate) fn compile_materialized_program_parts(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
     compile_program_observed(program, src, module_path, capabilities, profile, None)
 }
 
@@ -1048,8 +1065,7 @@ fn compile_program_observed(
     capabilities: &[String],
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
-) -> Result<SourceParts, Vec<Diagnostic>> {
-    let resolved = match super::resolve_with(program, capabilities, profile) {
+) -> Result<SourceParts, Vec<Diagnostic>> {    let resolved = match super::resolve_with(program, capabilities, profile) {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Resolve, &[]);

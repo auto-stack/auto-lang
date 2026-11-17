@@ -4075,6 +4075,408 @@ pub(crate) fn project_component_nodes(
     Ok(out)
 }
 
+/// PLAN-982（B-CONFIG-I E2）：配置文档候选投影（文档行 + 原 span + 共享表达式）。
+///
+/// 只在 config-document 裁剪面（`cfg-document-item` 规则存在）时有内容；结构与
+/// span 全部来自 CST（`cfg-*` 规则），不做字符串扫描；行的值表达式仍是共享
+/// 表达式投影（`project_expr_sync`），不新建表达式求值器。
+pub(crate) fn project_config_document(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+    grammar_id: String,
+    input_hash: String,
+) -> Result<crate::source::config_document::ConfigDocumentSyntax, Vec<Diagnostic>> {
+    use crate::source::config_document::ConfigDocumentSyntax;
+    let item_kind = match config_rule_kind(p, "cfg-document-item") {
+        Some(kind) => kind,
+        None => {
+            return Ok(ConfigDocumentSyntax {
+                lines: Vec::new(),
+                grammar_id,
+                input_hash,
+            })
+        }
+    };
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, false);
+    let mut lines = Vec::new();
+    for d in &tree.decls {
+        let node = if tree.kind(d.node) == k.item {
+            tree.children(d.node)
+                .into_iter()
+                .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                .unwrap_or(d.node)
+        } else {
+            d.node
+        };
+        if tree.kind(node) != item_kind {
+            continue;
+        }
+        lines.extend(eng.run_cfg_document_item(node));
+    }
+    // 文档行是严格面：任何 CST 错误都具名拒绝（保原 span），空结果更不能
+    // 当成"空文档成功"——否则坏邻例会被静默吞成零行。
+    if let Some(d) = tree.diags.first() {
+        return Err(vec![Diagnostic::new(
+            Stage::Text,
+            "source.syntax",
+            d.message.clone(),
+            Span {
+                start: d.start as usize,
+                end: d.end as usize,
+            },
+        )]);
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
+    if lines.is_empty() {
+        return Err(vec![Diagnostic::new(
+            Stage::Text,
+            "source.config-document/structure",
+            "the document produced no document line (expected `key: value`, a node, or a var/if/for line)",
+            Span {
+                start: 0,
+                end: snap.len() as usize,
+            },
+        )]);
+    }
+    Ok(ConfigDocumentSyntax {
+        lines,
+        grammar_id,
+        input_hash,
+    })
+}
+
+/// 规则名 → CST 规则 kind（配置文档规则没有 `SourceKinds` 具名字段）。
+fn config_rule_kind(p: &GrammarProgram, name: &str) -> Option<u32> {
+    p.rules
+        .iter()
+        .position(|r| r.name == name)
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+}
+
+/// PLAN-982（B-CONFIG-I E2）：配置文档行投影（挂在共享 `Engine` 上——表达式
+/// 仍走共享 `project_expr_sync`）。
+impl<'a> Engine<'a> {
+    fn cfg_kind(&self, name: &str) -> Option<u32> {
+        config_rule_kind(self.cx.p, name)
+    }
+
+    /// 顶层文档项：`cfg-document-item` 的子行按源顺序。
+    fn run_cfg_document_item(&mut self, node: u32) -> Vec<crate::source::config_document::ConfigLine> {
+        let line_kind = match self.cfg_kind("cfg-line") {
+            Some(k) => k,
+            None => return Vec::new(),
+        };
+        let mut out = Vec::new();
+        for c in self.cx.children(node) {
+            if self.cx.tree.kind(c) == line_kind {
+                if let Some(line) = self.run_cfg_line(c) {
+                    out.push(line);
+                }
+            }
+        }
+        out
+    }
+
+    /// 一行文档：`cfg-line` 的派发子节点决定形态。
+    fn run_cfg_line(
+        &mut self,
+        node: u32,
+    ) -> Option<crate::source::config_document::ConfigLine> {
+        use crate::source::config_document::ConfigLine;
+        let pair_k = self.cfg_kind("cfg-pair");
+        let node_k = self.cfg_kind("cfg-node");
+        let var_k = self.cfg_kind("cfg-var");
+        let if_k = self.cfg_kind("cfg-if");
+        let for_k = self.cfg_kind("cfg-for");
+        for c in self.cx.children(node) {
+            let kind = self.cx.tree.kind(c);
+            if Some(kind) == pair_k {
+                return Some(ConfigLine::Pair(self.run_cfg_pair(c)));
+            }
+            if Some(kind) == node_k {
+                return Some(ConfigLine::Node(self.run_cfg_node(c)));
+            }
+            if Some(kind) == var_k {
+                return Some(ConfigLine::Var(self.run_cfg_var(c)));
+            }
+            if Some(kind) == if_k {
+                return Some(ConfigLine::If(self.run_cfg_if(c)));
+            }
+            if Some(kind) == for_k {
+                return Some(ConfigLine::For(self.run_cfg_for(c)));
+            }
+        }
+        None
+    }
+
+    /// 文档体（节点/if/for 的 `{ … }`）：子行按源顺序。
+    fn run_cfg_body(&mut self, node: u32) -> crate::source::config_document::ConfigBody {
+        use crate::source::config_document::{ConfigBody, ConfigLine};
+        let line_kind = self.cfg_kind("cfg-line");
+        let mut lines: Vec<ConfigLine> = Vec::new();
+        for c in self.cx.children(node) {
+            if Some(self.cx.tree.kind(c)) == line_kind {
+                if let Some(line) = self.run_cfg_line(c) {
+                    lines.push(line);
+                }
+            }
+        }
+        ConfigBody {
+            lines,
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// `key: value`（值可为表达式或带体节点值）。
+    fn run_cfg_pair(&mut self, node: u32) -> crate::source::config_document::ConfigPair {
+        use crate::source::config_document::{ConfigPair, ConfigPairValue};
+        let key_leaf = self
+            .cx
+            .field_child(node, "key")
+            .expect("cfg pair key leaf");
+        let key = ident_of(&mut self.cx, key_leaf);
+        let value_node = self
+            .cx
+            .field_child(node, "value")
+            .expect("cfg pair value node");
+        // `cfg-pair-value` 是派发规则：其子节点是 `cfg-node` 或表达式派发节点。
+        let inner = self
+            .cx
+            .children(value_node)
+            .into_iter()
+            .find(|&c| self.cx.tree.child_count(c) > 0)
+            .unwrap_or(value_node);
+        let node_kind = self.cfg_kind("cfg-node");
+        let value_node_kind = self.cfg_kind("cfg-value-node");
+        let kind = self.cx.tree.kind(inner);
+        let value = if Some(kind) == node_kind || Some(kind) == value_node_kind {
+            ConfigPairValue::Node(self.run_cfg_node(inner))
+        } else {
+            ConfigPairValue::Expr(self.project_expr_sync(inner))
+        };
+        ConfigPair {
+            key,
+            value,
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// 节点语句：头拼写 + 可选 id/参数 + 可选体。
+    fn run_cfg_node(&mut self, node: u32) -> crate::source::config_document::ConfigNode {
+        use crate::source::config_document::{ConfigNode, ConfigNodeId};
+        let head = self.cx.field_child(node, "head").expect("cfg node head");
+        let word = self
+            .cx
+            .field_child(head, "word")
+            .expect("cfg node head spelling");
+        let name = self.cx.spelling(word);
+        let name_span = self.cx.span_of(word);
+        let mut id = None;
+        let mut args = Vec::new();
+        if let Some(tail) = self.cx.field_child(node, "tail") {
+            let id_kind = self.cfg_kind("cfg-node-id");
+            let args_kind = self.cfg_kind("cfg-node-args");
+            for c in self.cx.children(tail) {
+                let kind = self.cx.tree.kind(c);
+                if Some(kind) == id_kind {
+                    if let Some(leaf) = self.cx.field_child(c, "id") {
+                        let span = self.cx.span_of(leaf);
+                        if self.cx.tree.kind(leaf) == self.cx.k.tok_str_lit {
+                            let raw = self.cx.spelling(leaf);
+                            let inner = raw
+                                .strip_prefix('"')
+                                .and_then(|s| s.strip_suffix('"'))
+                                .unwrap_or(raw.as_str());
+                            id = Some(ConfigNodeId::Text {
+                                text: lex::decode_str_value(inner.as_bytes()),
+                                span,
+                            });
+                        } else {
+                            id = Some(ConfigNodeId::Bare(Ident {
+                                name: self.cx.spelling(leaf),
+                                span,
+                            }));
+                        }
+                    }
+                } else if Some(kind) == args_kind {
+                    args = self.run_cfg_args(c);
+                }
+            }
+        }
+        let body = self.cx.field_child(node, "body").map(|b| self.run_cfg_body(b));
+        ConfigNode {
+            name,
+            name_span,
+            id,
+            args,
+            body,
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// 节点参数表：位置/具名实参按源顺序（`args` 规则 = 首 `arg` + `arg-tail` 链）。
+    fn run_cfg_args(&mut self, node: u32) -> Vec<crate::source::config_document::ConfigArg> {
+        use crate::source::config_document::ConfigArg;
+        let mut out = Vec::new();
+        let args_n = match self.cx.field_child(node, "args") {
+            Some(a) => a,
+            None => return out,
+        };
+        let arg_kind = match self.cfg_kind("arg") {
+            Some(k) => k,
+            None => return out,
+        };
+        let arg_nodes = if self.cx.children(args_n).is_empty() {
+            Vec::new()
+        } else {
+            collect_seq(&self.cx, args_n, arg_kind, "arg-tail")
+        };
+        let named_kind = self.cfg_kind("named-arg");
+        for arg in arg_nodes {
+            let inner = self
+                .cx
+                .children(arg)
+                .into_iter()
+                .find(|&c| self.cx.tree.child_count(c) > 0 || Some(self.cx.tree.kind(c)) == named_kind);
+            let Some(inner) = inner else { continue };
+            if Some(self.cx.tree.kind(inner)) == named_kind {
+                let label = self.cx.field_child(inner, "label");
+                let value = self.cx.field_child(inner, "value");
+                if let (Some(label), Some(value)) = (label, value) {
+                    let name = ident_of(&mut self.cx, label);
+                    out.push(ConfigArg::Named {
+                        name,
+                        value: self.project_expr_sync(value),
+                    });
+                }
+            } else {
+                out.push(ConfigArg::Pos(self.project_expr_sync(inner)));
+            }
+        }
+        out
+    }
+
+    /// `var <name> = <expr>`（类型注解属 E3 值面，当前具名拒绝）。
+    fn run_cfg_var(&mut self, node: u32) -> crate::source::config_document::ConfigVar {
+        use crate::source::config_document::ConfigVar;
+        let kw = self.cx.field_child(node, "kw").expect("cfg var kw");
+        let name_leaf = self.cx.field_child(node, "name").expect("cfg var name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        if let Some(ann) = self.cx.field_child(node, "ann") {
+            let span = self.cx.span_of(ann);
+            self.cx.reject(span, || {
+                Diagnostic::new(
+                    Stage::Text,
+                    "source.config-document/annotation",
+                    "typed document locals (`var x: T = …`) are not part of the current \
+                     document slice; drop the annotation",
+                    span,
+                )
+            });
+        }
+        let value_n = self.cx.field_child(node, "value").expect("cfg var value");
+        ConfigVar {
+            kw_span: self.cx.span_of(kw),
+            name,
+            value: self.project_expr_sync(value_n),
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// `if <cond> { … } [else { … }]`。
+    fn run_cfg_if(&mut self, node: u32) -> crate::source::config_document::ConfigIf {
+        use crate::source::config_document::ConfigIf;
+        let cond_n = self.cx.field_child(node, "cond").expect("cfg if cond");
+        let cond = self.project_expr_sync(cond_n);
+        let then_n = self.cx.field_child(node, "then").expect("cfg if then");
+        let then = self.run_cfg_body(then_n);
+        let else_kind = self.cfg_kind("cfg-else");
+        let body_kind = self.cfg_kind("cfg-body");
+        let mut els = None;
+        for c in self.cx.children(node) {
+            if Some(self.cx.tree.kind(c)) != else_kind {
+                continue;
+            }
+            if let Some(b) = self
+                .cx
+                .children(c)
+                .into_iter()
+                .find(|&g| Some(self.cx.tree.kind(g)) == body_kind)
+            {
+                els = Some(self.run_cfg_body(b));
+            }
+        }
+        ConfigIf {
+            cond,
+            then,
+            els,
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// `for <name> in <expr> { … }`。
+    fn run_cfg_for(&mut self, node: u32) -> crate::source::config_document::ConfigFor {
+        use crate::source::config_document::ConfigFor;
+        let var_leaf = self.cx.field_child(node, "var").expect("cfg for var");
+        let var = ident_of(&mut self.cx, var_leaf);
+        let iter_n = self.cx.field_child(node, "iter").expect("cfg for iter");
+        // `cfg-iter` 两形：裸名（文档最常见的列表局部）或括号表达式。
+        let iter = {
+            let inner = self
+                .cx
+                .children(iter_n)
+                .into_iter()
+                .find(|&c| {
+                    self.cx.tree.child_count(c) > 0 || self.cx.tree.kind(c) == self.cx.k.tok_ident
+                });
+            match inner {
+                Some(c) if self.cx.tree.kind(c) == self.cx.k.tok_ident => Expr {
+                    span: self.cx.span_of(c),
+                    kind: ExprKind::Var(Ident {
+                        name: self.cx.spelling(c),
+                        span: self.cx.span_of(c),
+                    }),
+                },
+                Some(c) => {
+                    if let Some(expr_n) = self.cx.field_child(c, "inner") {
+                        self.project_expr_sync(expr_n)
+                    } else {
+                        self.project_expr_sync(c)
+                    }
+                }
+                None => {
+                    let span = self.cx.span_of(iter_n);
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.config-document/for-iter",
+                            "expected the iterated value after `in`",
+                            span,
+                        )
+                    });
+                    Expr {
+                        span,
+                        kind: ExprKind::IntLit(0),
+                    }
+                }
+            }
+        };
+        let body_n = self.cx.field_child(node, "body").expect("cfg for body");
+        let body = self.run_cfg_body(body_n);
+        ConfigFor {
+            var,
+            iter,
+            body,
+            span: self.cx.span_of(node),
+        }
+    }
+}
+
 impl<'a> Engine<'a> {
     fn new(
         p: &'a GrammarProgram,

@@ -2405,6 +2405,11 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
             return FrontOutcome::Diag(vec![d]);
         }
     }
+    // PLAN-982（B-CONFIG-I）：配置文档行只经其文档前门消费（通用投影无法表示
+    // 文档行——具名拒绝，而不是静默丢弃）。
+    if let Some(d) = crate::source::config_document::config_profile_refusal(profile, src.len()) {
+        return FrontOutcome::Diag(vec![d]);
+    }
     match kind {
         FrontKind::WholeModule => parse_whole_module(src, profile, budget),
         FrontKind::FreeFnFragment { range } => {
@@ -2536,6 +2541,65 @@ pub(crate) fn parse_domain_whole_module(
         SourceProfile::AgeH0 | SourceProfile::AgeComponent
     ));
     parse_whole_module(src, profile, budget)
+}
+
+/// PLAN-982（B-CONFIG-I E2）：配置文档前门（crate 内部；公共 [`parse_front`]
+/// 对 config-document profile 具名拒绝）。与其它前门共用同一 scanner/快照/预算
+/// 管线；差别只在投影：`cfg-*` 规则 → 文档候选（不是通用 Program）。
+pub(crate) fn parse_config_document_front(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::config_document::ConfigDocumentSyntax, Vec<Diagnostic>> {
+    let profile = SourceProfile::ConfigDocument;
+    let cached = match profile_grammar(profile) {
+        Ok(c) => c,
+        Err(e) => return Err(infra_err(e)),
+    };
+    crate::source::parser::note_tokenize(crate::atom_text::Span {
+        start: 0,
+        end: src.len(),
+    });
+    crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    let store = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let ctx_text = SnapshotTokenText { snap: &snap };
+    let ParseOutput {
+        tree,
+        tokens: _,
+        lex_diags: _,
+        grafted_decls: _,
+    } = match parse_snapshot_with_ctx(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+        Some(&ctx_text),
+    ) {
+        Ok(o) => o,
+        Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
+            return Err(vec![Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.resource",
+                format!("resource exhausted: {what} (limit {limit})"),
+                crate::atom_text::Span {
+                    start: 0,
+                    end: src.len(),
+                },
+            )])
+        }
+        Err(e) => return Err(infra_err(format!("parse: {e}"))),
+    };
+    let grammar_id = format!("{}", cached.program.identity.grammar_id.0);
+    let input_hash = format!("{:016x}", super::units::content_sha(src.as_bytes()));
+    project::project_config_document(
+        &cached.program,
+        &cached.kinds,
+        &tree,
+        &snap,
+        profile,
+        grammar_id,
+        input_hash,
+    )
 }
 
 fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) -> FrontOutcome {

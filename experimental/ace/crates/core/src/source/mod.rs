@@ -60,9 +60,11 @@ pub use adapter::{
     SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
-/// PLAN-982（B-CONFIG-I）：配置文档前门（单一顺序入口）。
+/// PLAN-982（B-CONFIG-I）：配置文档前门（文档行 → 单顺序入口）。
 pub use config_document::{
-    compile_config_document, config_document_entry, ConfigDocumentFront, CONFIG_DOCUMENT_DOMAIN,
+    compile_config_document, config_profile_refusal, parse_config_document, ConfigArg,
+    ConfigBody, ConfigDocumentFront, ConfigDocumentSyntax, ConfigFor, ConfigIf, ConfigLine,
+    ConfigNode, ConfigNodeId, ConfigPair, ConfigPairValue, ConfigVar, CONFIG_DOCUMENT_DOMAIN,
     CONFIG_DOCUMENT_ENTRY_NAME, CONFIG_DOCUMENT_HIDDEN_PREFIX, CONFIG_DOCUMENT_VALUE_SCHEMA,
 };
 // PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——

@@ -345,8 +345,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, scheduler]) { union-item() {} }
             // PLAN-968: `task <Name> { ... }` actor declaration.
             alt(profiles: [scheduler]) { task-item() {} }
-            // PLAN-982（B-CONFIG-I）：配置文档面以**一个**顺序入口承载顶层语句序列。
-            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, scheduler, config-document]) { script-item() {} }
+            // PLAN-982（B-CONFIG-I）：配置文档面以**一个**顺序入口承载顶层文档行序列。
+            alt(profiles: [config-document]) { cfg-document-item() {} }
+            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, scheduler]) { script-item() {} }
         }
         // ---- AGE 领域节点（PLAN-979 T-H0-I）----
         // H0 冻结输入：`node <Name> { view { text <text-expr> {} } }`。节点名是
@@ -1696,9 +1697,114 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // ---- 脚本形态（entry-unit：顶层语句序列到 EOF；首语句必需——
         // 空/仅分隔符文件由投影按旧合同区分"expected fn"与 Ok(empty)；
         // 声明先行的 entry-order 检查在投影保真）----
-        script-item(profiles: [entry-unit, host-console, closures, numeric, aggregates, scheduler, config-document]) {
+        script-item(profiles: [entry-unit, host-console, closures, numeric, aggregates, scheduler]) {
             stmt() {}
             list-nl { stmt() {} }
+        }
+        // ---- 配置文档行（PLAN-982 B-CONFIG-I E2）----
+        //
+        // 配置文档**不是**脚本：顶层是按源顺序的**文档行**，行的四种形态是
+        //   - pair：`key: value`（值可以是表达式或节点值 `k: file("x") { … }`）；
+        //   - node：`name`／`name "id"`／`name(args)`／`name id`，可带 `{ … }` 体；
+        //   - 文档控制行：`var`／`if`／`for`（体中仍是文档行）。
+        // 结构与 span 由 CST 承载（`cfg-*` 规则），投影层把行还原成文档候选；
+        // **不做字符串扫描**。该面只由 config-document 前门消费。
+        cfg-document-item(profiles: [config-document], expect: "a configuration document line") {
+            cfg-line() {}
+            list-nl { cfg-line() {} }
+        }
+        cfg-line(profiles: [config-document], expect: "a document line (`key: value`, a node, or a var/if/for line)") {
+            alt { cfg-pair() {} }
+            alt { cfg-node() {} }
+            alt { cfg-var() {} }
+            alt { cfg-if() {} }
+            alt { cfg-for() {} }
+        }
+        // `key: value`／`key: node(…) { … }`（节点值**必须**带体：无体的
+        // `k: f(…)` 是普通调用表达式，交给 expr 备选）。
+        cfg-pair(profiles: [config-document], expect: "a `key: value` document pair") {
+            ident(field: "key")
+            colon(same-line: true)
+            cfg-pair-value(field: "value")
+        }
+        cfg-pair-value(profiles: [config-document]) {
+            // 带体节点值优先（`icf: file("linker/x.icf") { … }`）：它必须**带体**，
+            // 否则无体的 `kernel: kernel_config` 会被吃成节点；节点备选失败
+            // （没有体）时回退到表达式备选。
+            alt { cfg-value-node() {} }
+            alt { expr() {} }
+        }
+        cfg-value-node(profiles: [config-document], expect: "a node value with a body (`name(args) { … }`)") {
+            cfg-node-head(field: "head")
+            opt { cfg-node-tail(field: "tail") {} }
+            cfg-node-body(field: "body")
+        }
+        cfg-node(profiles: [config-document], expect: "a document node (`name`, `name \"id\"`, `name(args)` or `name id`, optionally followed by `{ … }`)") {
+            cfg-node-head(field: "head")
+            opt { cfg-node-tail(field: "tail") {} }
+            opt { cfg-node-body(field: "body") {} }
+        }
+        // 节点头：普通名与三个在 manifest 位被当节点名的保留字（旧 Config
+        // 口径：`dep`/`pac`/`link` 在配置文件里是节点名，不是语言声明）。
+        cfg-node-head(profiles: [config-document]) {
+            alt { ident(field: "word") {} }
+            alt { r-dep(field: "word") {} }
+            alt { r-pac(field: "word") {} }
+            alt { r-link(field: "word") {} }
+        }
+        cfg-node-tail(profiles: [config-document]) {
+            alt { cfg-node-args(field: "args") {} }
+            alt { cfg-node-id(field: "id") {} }
+        }
+        cfg-node-id(profiles: [config-document]) {
+            alt { ident(field: "id") {} }
+            alt { str-lit(field: "id") {} }
+        }
+        cfg-node-args(profiles: [config-document], expect: "a parenthesized argument list") {
+            lparen(same-line: true) {}
+            opt { args(field: "args") {} }
+            rparen() {}
+        }
+        cfg-node-body(profiles: [config-document], expect: "a `{ … }` document node body") {
+            lbrace(same-line: true) {}
+            list-nl { cfg-line() {} }
+            rbrace() {}
+        }
+        cfg-var(profiles: [config-document], expect: "a `var <name> = <expr>` document line") {
+            var(field: "kw")
+            ident(field: "name")
+            opt { ann-ty(field: "ann") {} }
+            assign() {}
+            expr(field: "value")
+        }
+        cfg-if(profiles: [config-document], expect: "an `if <cond> { … } [else { … }]` document line") {
+            if(field: "kw")
+            if-cond(field: "cond")
+            cfg-body(field: "then")
+            cfg-else(repeat: "opt")
+        }
+        cfg-else(profiles: [config-document]) {
+            else() {}
+            cfg-body() {}
+        }
+        cfg-for(profiles: [config-document], expect: "a `for <name> in <expr> { … }` document line") {
+            for(field: "kw")
+            ident(field: "var")
+            in(field: "in-kw")
+            cfg-iter(field: "iter")
+            cfg-body(field: "body")
+        }
+        // 迭代量：文档行里是普通值表达式，但**不能**把随后的 `{` 吃成 record
+        // 构造（`for d in modules {` 里的 `modules {` 不是 ctor）。故迭代位只
+        // 收裸名或括号表达式；更宽的表达式需要时用括号显式写。
+        cfg-iter(profiles: [config-document]) {
+            alt { ident(field: "word") {} }
+            alt { lparen(same-line: true) {} expr(field: "inner") rparen() {} }
+        }
+        cfg-body(profiles: [config-document], expect: "a `{ … }` document body") {
+            lbrace(same-line: true) {}
+            list-nl { cfg-line() {} }
+            rbrace() {}
         }
         // ---- 语句 ----
         block { lbrace() {} list-nl { stmt() {} } rbrace() {} }
@@ -2080,7 +2186,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates, scheduler]) { grid-atom() {} }
-            alt(profiles: [aggregates, scheduler]) { array-lit() {} }
+            alt(profiles: [aggregates, scheduler, config-document]) { array-lit() {} }
             alt(profiles: [aggregates, scheduler]) { is-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt { condition-ctor() {} }
@@ -2114,12 +2220,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates, scheduler]) { grid-atom() {} }
-            alt(profiles: [aggregates, scheduler]) { array-lit() {} }
+            alt(profiles: [aggregates, scheduler, config-document]) { array-lit() {} }
             // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——无其他
             // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
-            alt(profiles: [aggregates, closures, scheduler]) { object-lit() {} }
+            alt(profiles: [aggregates, closures, scheduler, config-document]) { object-lit() {} }
             // PLAN-964（L-21）：nil 字面量（r-nil/r-null，PLAN-053 统一）。
-            alt(profiles: [aggregates, closures, scheduler]) { nil-lit() {} }
+            alt(profiles: [aggregates, closures, scheduler, config-document]) { nil-lit() {} }
             alt(profiles: [aggregates, scheduler]) { is-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [record, record-instances, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package]) { typed-ctor-expr() {} }
@@ -2189,16 +2295,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-962（L-16）：`[e1, e2, ...]`——非空元素表（空字面量无元素类型，
         // 由 resolve 具名拒）。语句位脱糖 List<T>.new()+push 链（见 resolve）。
-        array-lit(profiles: [aggregates, scheduler]) {
+        array-lit(profiles: [aggregates, scheduler, config-document]) {
             lbracket() {}
             array-elems(field: "elems")
             rbracket() {}
         }
-        array-elems(profiles: [aggregates, scheduler]) {
+        array-elems(profiles: [aggregates, scheduler, config-document]) {
             expr(field: "head")
             many { array-elem-tail() {} }
         }
-        array-elem-tail(profiles: [aggregates, scheduler]) {
+        array-elem-tail(profiles: [aggregates, scheduler, config-document]) {
             comma() {}
             expr() {}
         }
@@ -2212,32 +2318,32 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`。键为 ident
         // 或字符串字面量（首 token 互异，规则级 alt 可分派）；值同型冻结
         // 于 resolve。空字面量 `{}` 由 obj-fields(repeat: "opt") 承载。
-        object-lit(profiles: [aggregates, closures, scheduler]) {
+        object-lit(profiles: [aggregates, closures, scheduler, config-document]) {
             lbrace() {}
             opt { object-fields(field: "fields") {} }
             rbrace() {}
         }
-        object-fields(profiles: [aggregates, closures, scheduler]) {
+        object-fields(profiles: [aggregates, closures, scheduler, config-document]) {
             object-field() {}
             many { object-field-tail() {} }
         }
-        object-field-tail(profiles: [aggregates, closures, scheduler]) {
+        object-field-tail(profiles: [aggregates, closures, scheduler, config-document]) {
             comma() {}
             object-field() {}
         }
-        object-field(profiles: [aggregates, closures, scheduler]) {
+        object-field(profiles: [aggregates, closures, scheduler, config-document]) {
             object-key(field: "key") {}
             colon() {}
             expr(field: "value")
         }
         // PLAN-964：对象字面量键两形（ident 名或字符串字面量）——首 token
         // 互异，独立子规则承载（规则级不允许 alt 与非 alt 子节点混排）。
-        object-key(profiles: [aggregates, closures, scheduler]) {
+        object-key(profiles: [aggregates, closures, scheduler, config-document]) {
             alt { ident(field: "key") }
             alt { str-lit(field: "key") }
         }
         // PLAN-964（L-21）：nil 字面量（nil/null 统一，PLAN-053）。
-        nil-lit(profiles: [aggregates, closures, scheduler]) {
+        nil-lit(profiles: [aggregates, closures, scheduler, config-document]) {
             alt { r-nil(same-line: true, field: "kw") }
             alt { r-null(same-line: true, field: "kw") }
         }

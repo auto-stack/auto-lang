@@ -1,36 +1,44 @@
-//! PLAN-982（B-CONFIG-I，E1）：**配置文档 source 前门的单顺序入口**。
+//! PLAN-982（B-CONFIG-I，E1/E2）：**配置文档 source 前门**。
 //!
-//! 本用例只证明 E1 台账的那一条：新 profile 身份/名字映射存在，配置文档经
-//! `compile_config_document` 物化为**一个**顺序入口的 `CompiledSource`，且
-//! 既有 profile 的裁剪身份不变（后者由 `plan981_grammar_scope` 的冻结表承担）。
+//! 本文件证明两件事，且只证明这两件：
+//! - **E1**：profile 身份/名字映射存在；语句形态的文档行物化为**一个**顺序入口
+//!   的 `CompiledSource`（入口在共享 Checked HIR 里真实存在；既有 14 个 profile
+//!   的裁剪身份由 `plan981_grammar_scope` 的冻结表承担）。
+//! - **E2**：真实 `pac.at` 三形 `dep` 头（`dep bps{}`／`dep "stylekit"{}`／
+//!   `dep("kernel"){}`）＋顶层 prop＋嵌套体＋`if`/`for`＋对象/数组值**从 CST
+//!   投影为文档候选**（不是字符串扫描，span 保原源）；坏邻例给原 span 的
+//!   `source.*` 诊断；通用入口对该 profile 具名拒绝。
 //!
-//! 它**不**证明配置文档能力已实现：顶层 `key: value`、`dep`/节点三形与
-//! `cfg.*` 原语是 E2/E4 的增量；本文件对"非文档形状"只证明具名拒绝（不是
-//! 静默丢弃）。
+//! 它**不**证明配置文档值语义已实现：`key: value`/节点行的执行与 owned 导出是
+//! E3/E4/E5（`compile_config_document` 现在对它们返回具名 `pending`）。
 
+use ace_core::source::ast::ExprKind;
 use ace_core::source::config_document::{
-    compile_config_document, config_document_entry, CONFIG_DOCUMENT_DOMAIN,
-    CONFIG_DOCUMENT_ENTRY_NAME, CONFIG_DOCUMENT_HIDDEN_PREFIX, CONFIG_DOCUMENT_VALUE_SCHEMA,
+    compile_config_document, parse_config_document, ConfigLine, ConfigNodeId, ConfigPairValue,
 };
 use ace_core::source::cst::{profile_from_slug, profile_grammar, profile_slug};
-use ace_core::source::{parse_program_with, SourceProfile, CONFIG_DOCUMENT_SOURCE_PROFILE};
+use ace_core::source::{
+    parse_program_with, SourceProfile, CONFIG_DOCUMENT_DOMAIN, CONFIG_DOCUMENT_ENTRY_NAME,
+    CONFIG_DOCUMENT_SOURCE_PROFILE, CONFIG_DOCUMENT_VALUE_SCHEMA,
+};
 
-fn compile(src: &str) -> Result<ace_core::source::ConfigDocumentFront, Vec<String>> {
-    compile_config_document(src, "pac.at", &[]).map_err(|ds| {
-        ds.into_iter()
-            .map(|d| format!("{}: {}", d.code, d.message))
-            .collect()
-    })
+fn diag_codes(src: &str) -> Vec<String> {
+    match parse_config_document(src) {
+        Ok(_) => Vec::new(),
+        Err(ds) => ds
+            .into_iter()
+            .map(|d| format!("{}@{}..{}", d.code, d.span.start, d.span.end))
+            .collect(),
+    }
 }
 
 /// profile 身份：稳定版本串 ↔ 枚举 ↔ grammar slug 三向一致，且与 text-record
-/// 的 grammar 身份隔离（新名字不寄生在旧裁剪上）。
+/// 的 grammar 身份隔离；通用解析入口具名拒绝该 profile。
 #[test]
 fn p982_config_document_profile_identity() {
     assert_eq!(
         SourceProfile::of(CONFIG_DOCUMENT_SOURCE_PROFILE),
-        Some(SourceProfile::ConfigDocument),
-        "the declared profile string must map back to the enum variant"
+        Some(SourceProfile::ConfigDocument)
     );
     assert_eq!(
         SourceProfile::ConfigDocument.as_str(),
@@ -44,12 +52,9 @@ fn p982_config_document_profile_identity() {
         profile_from_slug("config-document"),
         Some(SourceProfile::ConfigDocument)
     );
-    // 稳定协议名（设计 §3.2）。
     assert_eq!(CONFIG_DOCUMENT_DOMAIN, "ace.config.document/v1");
     assert_eq!(CONFIG_DOCUMENT_VALUE_SCHEMA, "auto.config.value/1");
     assert!(CONFIG_DOCUMENT_SOURCE_PROFILE.starts_with("auto.source."));
-    assert!(CONFIG_DOCUMENT_HIDDEN_PREFIX.starts_with("__cfg_"));
-    // 新裁剪可编译，且与 text-record 的 GrammarId 不同（身份隔离）。
     let cd = profile_grammar(SourceProfile::ConfigDocument).expect("config-document grammar");
     let tr = profile_grammar(SourceProfile::TextRecord).expect("text-record grammar");
     assert_ne!(
@@ -57,87 +62,308 @@ fn p982_config_document_profile_identity() {
         format!("{}", tr.program().identity.grammar_id.0),
         "a new profile trim must not share the text-record GrammarId"
     );
+    // 通用入口拒绝：文档行不会被普通投影静默丢弃。
+    let err = parse_program_with("name: \"x\"\n", SourceProfile::ConfigDocument)
+        .expect_err("generic parse must refuse the config-document profile");
+    assert_eq!(err.code, "source.config-document/front-door");
 }
 
-/// 文档语句序列物化为**一个**顺序入口：入口名稳定、语句保持源顺序、共享
-/// verify 通过、profile 身份写进 `CompiledSource`。
+/// E2 主证：PLAN-780 的真实三形 dep 输入（`static-dep-forms.pac.at` 同形）被投影
+/// 成文档候选——节点名/头 span/id 三形/体属性/顶层 prop 全部保真。
+#[test]
+fn p982_config_document_parses_the_three_dep_forms() {
+    let src = r#"// PLAN-780 V-02 fixture: all three dep name forms.
+name: "fixture-deps"
+dep bps {
+    path: "../../packages/blueprints"
+}
+dep "stylekit" {
+    path: "../stylekit"
+}
+dep("kernel") {
+    port: "msvc/x64"
+}
+"#;
+    let doc = parse_config_document(src).expect("real three-form document parses");
+    assert_eq!(doc.lines.len(), 4, "one top-level pair + three dep nodes");
+    assert_eq!(doc.total_lines(), 7, "nested body pairs are counted too");
+    assert!(!doc.grammar_id.is_empty());
+    assert!(!doc.input_hash.is_empty());
+
+    // 顶层 prop。`name` 的值是真实字符串字面量（解码后的值，不是词面扫描）。
+    let ConfigLine::Pair(name) = &doc.lines[0] else {
+        panic!(
+            "first line must be the top-level prop, got {:?}",
+            doc.lines[0]
+        );
+    };
+    assert_eq!(name.key.name, "name");
+    assert_eq!(&src[name.key.span.start..name.key.span.end], "name");
+    match &name.value {
+        ConfigPairValue::Expr(e) => {
+            assert!(matches!(&e.kind, ExprKind::StrLit(s) if s == "fixture-deps"))
+        }
+        other => panic!("`name` value must be an expression, got {other:?}"),
+    }
+
+    // 三形 dep：裸名 id / 字符串 id / 调用实参。
+    let nodes: Vec<_> = doc
+        .lines
+        .iter()
+        .filter_map(|l| match l {
+            ConfigLine::Node(n) => Some(n),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(nodes.len(), 3);
+
+    assert_eq!(nodes[0].name, "dep");
+    assert_eq!(
+        &src[nodes[0].name_span.start..nodes[0].name_span.end],
+        "dep"
+    );
+    match &nodes[0].id {
+        Some(ConfigNodeId::Bare(id)) => {
+            assert_eq!(id.name, "bps");
+            assert_eq!(&src[id.span.start..id.span.end], "bps");
+        }
+        other => panic!("`dep bps` must carry a bare-name id, got {other:?}"),
+    }
+    let body0 = nodes[0].body.as_ref().expect("`dep bps` body");
+    assert_eq!(body0.lines.len(), 1);
+    let ConfigLine::Pair(path) = &body0.lines[0] else {
+        panic!("body line must be a pair");
+    };
+    assert_eq!(path.key.name, "path");
+
+    assert_eq!(nodes[1].name, "dep");
+    match &nodes[1].id {
+        Some(ConfigNodeId::Text { text, span }) => {
+            assert_eq!(text, "stylekit");
+            assert_eq!(&src[span.start..span.end], "\"stylekit\"");
+        }
+        other => panic!("`dep \"stylekit\"` must carry a string id, got {other:?}"),
+    }
+
+    assert_eq!(nodes[2].name, "dep");
+    assert!(
+        nodes[2].id.is_none(),
+        "`dep(\"kernel\")` id comes from args"
+    );
+    assert_eq!(nodes[2].args.len(), 1);
+    assert_eq!(
+        &src[nodes[2].args[0].span().start..nodes[2].args[0].span().end],
+        "\"kernel\""
+    );
+    let body2 = nodes[2].body.as_ref().expect("`dep(\"kernel\")` body");
+    assert_eq!(body2.lines.len(), 1);
+}
+
+/// E2 结构面：嵌套节点、对象/数组值、`if`/`for` 文档行、具名实参。
+#[test]
+fn p982_config_document_parses_nested_bodies_and_control_lines() {
+    let src = r#"var kernel_config = { mode: "lockstep", mpu: true }
+kernel: kernel_config
+if port == "win32" { x: 1 } else { x: 2 }
+modules: ["a", "b"]
+icf: file("linker/x.icf") { target: "chip" }
+lib("x") {
+    for d in modules { dir(id: d) { at: d } }
+}
+"#;
+    let doc = parse_config_document(src).expect("design §4 sample parses");
+    assert_eq!(doc.lines.len(), 6);
+
+    // `var` 行：局部绑定 + 对象字面量值（有序字段）。
+    let ConfigLine::Var(v) = &doc.lines[0] else {
+        panic!("first line must be a var line");
+    };
+    assert_eq!(v.name.name, "kernel_config");
+    let ExprKind::ObjectLit { fields } = &v.value.kind else {
+        panic!("object literal value expected, got {:?}", v.value.kind);
+    };
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].key, "mode");
+    assert!(matches!(&fields[0].value.kind, ExprKind::StrLit(s) if s == "lockstep"));
+    assert_eq!(fields[1].key, "mpu");
+    assert!(matches!(&fields[1].value.kind, ExprKind::BoolLit(true)));
+
+    // `kernel: kernel_config`——pair 的值是普通表达式（不是节点）。
+    let ConfigLine::Pair(kernel) = &doc.lines[1] else {
+        panic!("second line must be the `kernel:` pair");
+    };
+    assert!(matches!(
+        &kernel.value,
+        ConfigPairValue::Expr(e) if matches!(&e.kind, ExprKind::Var(id) if id.name == "kernel_config")
+    ));
+
+    // `if`/`else` 的体是**文档行**（分支里是 pair，不是语句）。
+    let ConfigLine::If(ifline) = &doc.lines[2] else {
+        panic!("third line must be an if line");
+    };
+    assert_eq!(ifline.then.lines.len(), 1);
+    assert!(matches!(ifline.then.lines[0], ConfigLine::Pair(_)));
+    let els = ifline.els.as_ref().expect("else branch");
+    assert_eq!(els.lines.len(), 1);
+    assert!(matches!(els.lines[0], ConfigLine::Pair(_)));
+
+    // 数组值。
+    let ConfigLine::Pair(modules) = &doc.lines[3] else {
+        panic!("fourth line must be the `modules:` pair");
+    };
+    match &modules.value {
+        ConfigPairValue::Expr(e) => match &e.kind {
+            ExprKind::ArrayLit(elems) => {
+                assert_eq!(elems.len(), 2);
+                assert!(matches!(&elems[0].kind, ExprKind::StrLit(s) if s == "a"));
+                assert!(matches!(&elems[1].kind, ExprKind::StrLit(s) if s == "b"));
+            }
+            other => panic!("array literal expected, got {other:?}"),
+        },
+        other => panic!("`modules` value must be an expression, got {other:?}"),
+    }
+
+    // 节点值 pair：`icf: file("linker/x.icf") { target: "chip" }`——值是带体节点，
+    // 不是普通调用表达式，也不是被丢弃的属性。
+    let ConfigLine::Pair(icf) = &doc.lines[4] else {
+        panic!("fifth line must be the `icf:` pair");
+    };
+    assert_eq!(icf.key.name, "icf");
+    let ConfigPairValue::Node(icf_node) = &icf.value else {
+        panic!("`icf:` value must be a node, got {:?}", icf.value);
+    };
+    assert_eq!(icf_node.name, "file");
+    assert_eq!(icf_node.args.len(), 1);
+    let icf_body = icf_node.body.as_ref().expect("icf node body");
+    assert_eq!(icf_body.lines.len(), 1);
+    assert!(matches!(&icf_body.lines[0], ConfigLine::Pair(_)));
+
+    // 顶层节点 `lib("x") { for d in modules { dir(id: d) { at: d } } }`。
+    let ConfigLine::Node(lib) = &doc.lines[5] else {
+        panic!("fifth line must be the `lib` node");
+    };
+    assert_eq!(lib.name, "lib");
+    assert_eq!(lib.args.len(), 1);
+    assert_eq!(
+        &src[lib.args[0].span().start..lib.args[0].span().end],
+        "\"x\""
+    );
+    let lib_body = lib.body.as_ref().expect("lib body");
+    let ConfigLine::For(forline) = &lib_body.lines[0] else {
+        panic!("lib body must start with the for line");
+    };
+    assert_eq!(forline.var.name, "d");
+    assert!(matches!(&forline.iter.kind, ExprKind::Var(id) if id.name == "modules"));
+    assert_eq!(forline.body.lines.len(), 1);
+    let ConfigLine::Node(dir) = &forline.body.lines[0] else {
+        panic!("for body must hold the `dir(...)` node");
+    };
+    assert_eq!(dir.name, "dir");
+    assert_eq!(dir.args.len(), 1);
+    let ace_core::source::ConfigArg::Named { name, value } = &dir.args[0] else {
+        panic!("`dir(id: d)` must carry a named argument");
+    };
+    assert_eq!(name.name, "id");
+    assert!(matches!(&value.kind, ExprKind::Var(id) if id.name == "d"));
+    let dir_body = dir.body.as_ref().expect("dir body");
+    assert_eq!(dir_body.lines.len(), 1);
+}
+
+/// E2 负控：坏邻例给**原 span** 的 `source.*` 诊断（不是静默吞掉，也不是
+/// 无位置的通用失败）；空文档具名拒绝。
+#[test]
+fn p982_config_document_bad_neighbours_keep_original_spans() {
+    // 有冒号无值：`name:` 不是合法 pair——首个错误落在原行且是 `source.*`。
+    let codes = diag_codes("name:\n");
+    assert!(!codes.is_empty(), "a value-less prop must be rejected");
+    assert!(
+        codes.iter().all(|c| c.starts_with("source.")),
+        "diagnostics must be source.*: {codes:?}"
+    );
+
+    // 缺值：`path:` 后没有表达式——错误必须落在原源内（有具名 span，不是 0 宽
+    // 的通用失败）。
+    let src = "dep bps {\n    path:\n}\n";
+    let codes = diag_codes(src);
+    assert!(!codes.is_empty(), "a value-less pair must be rejected");
+    let spans_are_original = codes.iter().all(|c| {
+        let at = c.split('@').nth(1).unwrap_or("");
+        let start: usize = at.split("..").next().unwrap_or("0").parse().unwrap_or(0);
+        let end: usize = at.split("..").nth(1).unwrap_or("0").parse().unwrap_or(0);
+        start < end && end <= src.len()
+    });
+    assert!(
+        spans_are_original,
+        "diagnostics must carry real spans inside the source: {codes:?}"
+    );
+
+    // 类型注解的文档局部：具名拒绝（不是静默丢注解）。
+    let codes = diag_codes("var x int = 1\n");
+    assert!(
+        codes
+            .iter()
+            .any(|c| c.starts_with("source.config-document/annotation@")),
+        "typed document locals must be named-rejected: {codes:?}"
+    );
+
+    // 空文档不是成功求值。
+    let codes = diag_codes("   \n");
+    assert_eq!(codes.len(), 1);
+    assert!(codes[0].starts_with("source.config-document/empty@"));
+}
+
+/// E1 物化：语句形态的文档行 → 一个顺序入口；入口在共享 Checked HIR 里真实
+/// 存在，且文档语句 span 保持原源；pair/节点行在 E2 阶段具名 pending（不冒充）。
 #[test]
 fn p982_config_document_materializes_one_sequential_entry() {
-    let src = r#"
-var port = "win32"
-if port == "win32" { var x = 1 } else { var x = 2 }
-"#;
-    let compiled = compile(src).expect("statement-sequence document compiles");
-    assert_eq!(compiled.entry, CONFIG_DOCUMENT_ENTRY_NAME);
-    assert_eq!(compiled.compiled.profile, CONFIG_DOCUMENT_SOURCE_PROFILE);
-    assert!(!compiled.compiled.input_hash.is_empty());
-    assert!(!compiled.grammar_id.is_empty());
-    // 顶层两条语句 → 一个顺序入口（不是两个隐藏函数）。
-    assert_eq!(compiled.statements, 2, "both document statements live in the one entry");
+    let src = "var port = \"win32\"\nif port == \"win32\" { var x = 1 } else { var x = 2 }\n";
+    let front = compile_config_document(src, "pac.at", &[]).expect("statement document compiles");
+    assert_eq!(front.entry, CONFIG_DOCUMENT_ENTRY_NAME);
+    assert_eq!(front.compiled.profile, CONFIG_DOCUMENT_SOURCE_PROFILE);
+    assert_eq!(front.statements, 2, "two document lines → one entry body");
 
-    // 入口在 Checked HIR 里确实存在（共享 verify 的产物，不是仅 CST 绿）。
-    let module = compiled
+    let module = front
         .compiled
         .checked
         .bundle()
         .modules
         .first()
         .expect("one module");
-    let found = module.defs.iter().any(|d| {
-        matches!(
-            &d.kind,
-            ace_core::hir::DefKind::Function { name, .. } if name == &format!("sf_{CONFIG_DOCUMENT_ENTRY_NAME}")
-        )
-    });
+    let symbol = format!("sf_{CONFIG_DOCUMENT_ENTRY_NAME}");
+    let checked_entry = module.defs.iter().find(
+        |d| matches!(&d.kind, ace_core::hir::DefKind::Function { name, .. } if name == &symbol),
+    );
     assert!(
-        found,
+        checked_entry.is_some(),
         "the sequential entry must be a real checked function in the shared HIR"
     );
 
-    // 精确 source map：语句 span 仍落在原源（不是重写后的坐标）。
-    let program = parse_program_with(src, SourceProfile::ConfigDocument).expect("parse");
-    let entry = config_document_entry(&program).expect("one entry");
-    assert_eq!(entry.body.stmts.len(), 2);
-    for stmt_span in statement_spans(entry) {
-        assert!(
-            stmt_span.start < src.len() && stmt_span.end <= src.len() && stmt_span.start < stmt_span.end,
-            "statement span {stmt_span:?} must stay inside the original source"
-        );
-    }
-    // 第一条语句的 span 起点 = `var` 关键字（源码顺序未被改写）。
-    let first = statement_spans(entry)[0];
-    assert_eq!(&src[first.start..first.start + 3], "var");
+    // 精确 source map：物化的两条语句仍指向原源起点。
+    let doc = parse_config_document(src).expect("parse");
+    assert!(matches!(doc.lines[0], ConfigLine::Var(_)));
+    assert!(matches!(doc.lines[1], ConfigLine::If(_)));
+    assert_eq!(
+        &src[doc.lines[0].span().start..doc.lines[0].span().start + 3],
+        "var"
+    );
+
+    // 值形态（pair/节点）当前只到候选：执行必须具名 pending，不得静默成功。
+    let bad = "name: \"x\"\n";
+    let err = compile_config_document(bad, "pac.at", &[])
+        .expect_err("value rows cannot execute before E3/E4");
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].code, "source.config-document/pending");
+    assert!(
+        bad[err[0].span.start..err[0].span.end].contains("name"),
+        "the pending diagnostic must keep the offending row's span: {:?}",
+        err[0].span
+    );
 }
 
-fn statement_spans(entry: &ace_core::source::ast::FnItem) -> Vec<ace_core::atom_text::Span> {
-    use ace_core::source::ast::Stmt;
-    entry
-        .body
-        .stmts
-        .iter()
-        .map(|s| match s {
-            Stmt::Let { span, .. } => *span,
-            Stmt::Assign { span, .. } => *span,
-            Stmt::Return { span, .. } => *span,
-            Stmt::If { span, .. } => *span,
-            other => panic!("unexpected statement in the test document: {other:?}"),
-        })
-        .collect()
-}
-
-/// 非文档形状具名拒绝：声明项、多入口、空文档都不得静默成功。
+/// 语句形态的编译入口里只允许文档行的语句种类（负控：`return` 不是文档行）。
 #[test]
-fn p982_config_document_rejects_non_document_shapes() {
-    // 声明项（模块形态）不是文档。
-    let errs = compile("fn helper() int { 1 }\nvar x = 1\n").expect_err("fn declarations are rejected");
-    assert!(
-        errs.iter().any(|e| e.starts_with("source.config-document/declaration")),
-        "expected a named declaration rejection, got {errs:?}"
-    );
-    // 空文档不是成功求值。
-    let errs = compile("").expect_err("an empty document is not a successful evaluation");
-    assert!(
-        errs.iter().any(|e| e.starts_with("source.config-document/empty")),
-        "expected the named empty-document rejection, got {errs:?}"
-    );
+fn p982_config_document_rejects_non_document_statements() {
+    let codes = diag_codes("return 1\n");
+    assert!(!codes.is_empty(), "`return` is not a document line");
+    assert!(codes.iter().all(|c| c.starts_with("source.")));
 }
