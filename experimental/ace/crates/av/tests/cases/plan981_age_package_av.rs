@@ -367,9 +367,9 @@ fn p981_proof_a_av_leg_two_instances_two_to_one() {
 /// （`D-981-PROOF-AV-SCENE`）。
 #[test]
 fn p981_proof_a_av_scene_package_and_mixed_profile() {
-    let g01: &str = include_str!("../../../core/tests/fixtures_proof/g01_main.at");
-    let res: &str = include_str!("../../../core/tests/fixtures_proof/g01_resources.at");
-    let shapes: &str = include_str!("../../../core/tests/fixtures_proof/g01_shapes.at");
+    let g01: &str = include_str!("../../../core/tests/fixtures_g01/main.at");
+    let res: &str = include_str!("../../../core/tests/fixtures_g01/resources.at");
+    let shapes: &str = include_str!("../../../core/tests/fixtures_g01/shapes.at");
     let compiled = compile_age_package_with_scenario(
         &[
             input("main", g01),
@@ -411,5 +411,28 @@ fn p981_proof_a_av_scene_package_and_mixed_profile() {
     assert!(
         err.contains("lower.type-use") && err.contains("F32"),
         "named: {err}"
+    );
+}
+
+/// R70-1：场景节点带 model 时 AV **具名拒**（不静默给空状态行）。
+#[test]
+fn p981_proof_a_av_scene_model_is_named_rejected() {
+    const SRC: &str = "node Scene {\n    model { count int = 0 }\n    view-2d {\n        shape2d bar {\n            kind: quad\n            position: (0.0, 0.0)\n            size: (10.0, 4.0)\n        }\n    }\n}\n";
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", SRC)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect("the scene node with a model compiles at the front door");
+    let err = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect_err("a model field without a text leaf must be named-rejected");
+    assert!(
+        err.contains("no text leaves") && err.contains("named rejection"),
+        "the rejection explains why: {err}"
     );
 }
