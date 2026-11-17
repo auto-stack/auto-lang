@@ -123,6 +123,20 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要求为每个目标再实现求值器，不冒AC guest运行期支持，不等UI三波/AAC全自举或1067异步。已有A默认legacy配置只保A收据/显式旧选择，B候选实际配置必须新AV；986再做默认切换，987核旧链不可达。旧静态ProjectModel分类仍用同一事实，不作为动态失败时的退路。
 
+### B-CONFIG-I 引擎侧执行台账（2026-11-17，供下一次施工照做）
+
+SDK 半边已交（合同／显式 ACE 路径＋精确投影／`ConfigDocumentBuilder` 语义核心／身份参数通道，见 §9 r1–r6 收据）。引擎侧按序做，每步独立跑绿再下一步；任何一步不成立即 needs_replan，不许只绿 CST 冒充。
+
+| 步 | 改动面 | 完成判据 |
+|---|---|---|
+| E1 前端入口 | 新建 `experimental/ace/crates/core/src/source/config_document.rs`；`source/mod.rs` 加 `auto.source.config-document.v1`／`SourceProfile::ConfigDocument`／名字映射／`compile_config_document` | 返回含**单个顺序入口**的 `CompiledSource`；既有 11 profile 裁剪字节不变（跑 ace-source/ace-semantics） |
+| E2 grammar 裁剪 | `grammars/auto-source.at` 增 profile 名与文档形态：顶层 `key: value`、`dep bps{}`／`dep "stylekit"{}`／`dep("kernel"){}` 三形、模板插值、`if`/`for` 语句 | 三形 dep＋顶层 prop 投影为 CST 节点（非字符串扫描）；坏邻例给原 span 的 `source.*` 诊断 |
+| E3 Program 单入口 | 复用 `compile_program_parts`，文档物化为一个合成入口函数体＋精确 source map | `lower_checked_owned` 可取该入口且 `verify_mir` 通过；"逐字段无状态函数"路线必须走不通 |
+| E4 cfg.* 绑定 | `av-core` 增配置族 intrinsic（`cfg.node/put/append/merge/get`＋kind 检查 box/unbox），语义**委托**已冻结的 `ConfigDocumentBuilder`；预算走现资源账 | 最低负载（根注入＋对象/模板＋运行期 for＋两 Node 孩子）跑到 owned 快照；坏句柄/kind/环/预算各自具名拒；`callee_count` 反映真实 dispatch |
+| E5 owned 导出 | 迭代式导出（无递归风险），保顺序/重复节点/精确数值/含 NUL 文本 | 2000 层深文档不崩；u64>i64::MAX 仍具名拒 |
+| E6 host 桥 | 新建 `crates/auto-lang-ace-host/src/config_document.rs`：compile→verify→execute→export→teardown，实现 `AceExecutor::eval_config` | `--test ace_config_engine` 换真桥仍绿；无桥仍 `ace.config/executor-unsupported` |
+| E7 Man 消费 | pac 读取切 `from_file_with_engine(.., AceAv)`＋二阶段 context/dep；legacy 仅显式 | `cargo tc`＋780 矩阵回归；B 实际 `config.engine=av`、`legacy_config_dispatch=0`；坏配置零写；同名包隔离 |
+| E8 V-CFG 九 Case | SYNTAX/FLOW/CONTEXT/VALUE/FAIL/LIMIT/IDENTITY/PRODUCT 永久用例＋独立 oracle | 每 Case 可独立红；删行/错 producer 必被发现；之后才 B-CONFIG-R |
 ### M2-TARGET-SCOPE-20261116：本包当前边界
 
 本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
