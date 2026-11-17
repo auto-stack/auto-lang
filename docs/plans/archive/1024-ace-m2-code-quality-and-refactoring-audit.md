@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1024
-status: reviewed
+status: archived
 feature_name: ACE M2 已实现代码质量、架构与复用审计
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-17
 plan_revision: 2
-current_step: 4
+current_step: 5
 total_steps: 5
 depends_on: []
 supersedes_spec_components: []
@@ -20,6 +20,8 @@ affects: [ACE, auto-test-case]
 ## 0. 变更摘要
 
 2026-11-17当前路线簿记：1027–1038已有9包交付归档，仅1030/1037/1038未开工；当前建议1037→1030→1038，1038只读研究可提前，1024 T-05独立收尾。逐包revision/正式提交/旧进度例外见§5最新路线表；本轮不修改审计结论、原任务/发现分母或实现，不签985/A。
+
+2026-11-17 T-05合入归档（/goal 完成计划1024，auto-plan-merge）：r2审计文档落主 f046f4ae4，T-05/AC-05关闭（5/5），SD-00无规范增量（r2 final review认可），内链按归档位置重写并全量解析通过；无实施树/无plan-artifacts scope可清。本归档交付的是审计来源与归属，不批准任何后继重构代码，F01–35仍由各承接Plan关闭。
 
 2026-11-12 r2：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -123,11 +125,11 @@ affects: [ACE, auto-test-case]
 
 取材语言主线读取基面 `f9fb3854beb3886338156cfa61d16f7f84893cc9`（不是所有外仓同SHA；各源hash如下，开工重核正式来源）；本包焦点：已实现ACE架构/重复/状态与测试接缝只读审计。当前知识以当地Specs/本Plan所引现行合同为准。下列是已核路径/结构的规划取材，不宣称逐符号全审或运行通过；旧函数同名/目录存在/历史组绿都不等于新ACE支持。
 
-- [experimental/ace/crates/native/src/closures_incremental.rs](../../experimental/ace/crates/native/src/closures_incremental.rs)：F01 UTF-8编辑/原实现；读取SHA256前16 `dd5a2747a9ca4a01`
+- [experimental/ace/crates/native/src/closures_incremental.rs](../../../experimental/ace/crates/native/src/closures_incremental.rs)：F01 UTF-8编辑/原实现；读取SHA256前16 `dd5a2747a9ca4a01`
 
-- [experimental/ace/crates/av/src/closures_fn_session.rs](../../experimental/ace/crates/av/src/closures_fn_session.rs)：既有边界算法复用比较；读取SHA256前16 `c325ca50dd9059fd`
+- [experimental/ace/crates/av/src/closures_fn_session.rs](../../../experimental/ace/crates/av/src/closures_fn_session.rs)：既有边界算法复用比较；读取SHA256前16 `c325ca50dd9059fd`
 
-- [experimental/ace/crates/core/src/lib.rs](../../experimental/ace/crates/core/src/lib.rs)：嵌套/panic观察作用域候选；读取SHA256前16 `906442f4d5f2ab0f`
+- [experimental/ace/crates/core/src/lib.rs](../../../experimental/ace/crates/core/src/lib.rs)：嵌套/panic观察作用域候选；读取SHA256前16 `906442f4d5f2ab0f`
 
 ## 5. 详细设计
 
@@ -3367,41 +3369,41 @@ G1002=1002 T-03四例七checks及负控真实通过，T-04独立复审且接口�
 
 | 发现 | 优先级 | 复审保留分类/边界 | 唯一主计划 | 承接任务/AC | 具名关闭case（拟实施） | 与1002关系 | 当前状态 |
 |---|---|---|---|---|---|---|---|
-| F01 | P1 | 算法保真缺口；真实PE后果未测 | [1027](archive/1027-ace-native-utf8-edit-fidelity.md) | T-02/03→T-04；AC-02/03/04 | UTF-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F02 | P1 | 同类嵌套/unwind恢复缺口 | [1028](archive/1028-ace-scoped-observation-restoration.md) | T-02/03→T-04；AC-02/03/04 | OBS-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F01 | P1 | 算法保真缺口；真实PE后果未测 | [1027](1027-ace-native-utf8-edit-fidelity.md) | T-02/03→T-04；AC-02/03/04 | UTF-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F02 | P1 | 同类嵌套/unwind恢复缺口 | [1028](1028-ace-scoped-observation-restoration.md) | T-02/03→T-04；AC-02/03/04 | OBS-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
 | F03 | P2 | 文案耦合确认；替代方案候选 | [969](969-ace-m2-facade.md) | T-01..04→T-05；AC-AUDIT | AUDIT-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F04 | P2 | 52行机制重复；复用候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-01 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
+| F04 | P2 | 52行机制重复；复用候选 | [1038](../1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-01 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
 | F05 | P2 | 职责分散；不可整套删除 | [970](970-ace-m2-sessions.md) | T-01..04→T-05；AC-AUDIT | AUDIT-05 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F06 | P1 | 条件性重试缺口；仅历史测试consumer | [1030](1030-ace-av-864-failed-edit-transaction.md) | T-02/03→T-04；AC-02/03/04 | AVTX-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F07 | P2 | 转换事实；收益未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-02 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
+| F06 | P1 | 条件性重试缺口；仅历史测试consumer | [1030](../1030-ace-av-864-failed-edit-transaction.md) | T-02/03→T-04；AC-02/03/04 | AVTX-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F07 | P2 | 转换事实；收益未知 | [1038](../1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-02 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
 | F08 | P2 | profile权威差额；无成功fallback证据 | [969](969-ace-m2-facade.md) | T-01..04→T-05；AC-AUDIT | AUDIT-08 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F09 | P2 | 依赖/宿主混合事实；成本未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-02 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
-| F10 | P2 | reader有界且差异确认；协议后果待核 | [1034](archive/1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F11 | P2 | 同源不等同合同；共享候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-02 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
+| F09 | P2 | 依赖/宿主混合事实；成本未知 | [1038](../1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-02 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
+| F10 | P2 | reader有界且差异确认；协议后果待核 | [1034](1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F11 | P2 | 同源不等同合同；共享候选 | [1038](../1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-02 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
 | F12 | 保留约束 | 正向复用基础；非缺陷 | [978](978-ace-m2-build.md) | T-01..04→T-05；AC-AUDIT | AUDIT-12 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 保留实践，不计修复数 |
-| F13 | P2 | 维护热点；拆分候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-03 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
-| F14 | P2 | 静态保留账已闭；迁移/运行覆盖待认证 | [985](985-ace-m2-certification.md) | T-A01/A02/A03→T-A04；AC-AUDIT | AUDIT-14 | 旧账/职责先做；新格式批迁才等G1002，不能反向堵1002四例 | 已承接，未修复/未运行 |
-| F15 | P3 | 陈旧注释；非依赖违规 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-03 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
-| F16 | P1 | 内部计数先预留；真实allocator后果未测 | [1029](archive/1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F17 | P2 | 零租约索引增长；非整树泄漏 | [1029](archive/1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-05 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F18 | P1 | 源与SHA两读；未证明父侧误PASS | [1034](archive/1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F19 | P2 | 预读无cap事实；合法上限需决定 | [1034](archive/1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F20 | P2 | 固定选择差额；不否定M1原验收 | [985](985-ace-m2-certification.md) | T-A01/A02/A03→T-A04；AC-AUDIT | AUDIT-20 | 旧账/职责先做；新格式批迁才等G1002，不能反向堵1002四例 | 已承接，未修复/未运行 |
-| F21 | P1 | Pratt引用未验；panic未运行 | [1029](archive/1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F22 | P1 | commit缺负依赖；错误target未执行 | [1031](archive/1031-ace-query-negative-dependency-commit.md) | T-02/03→T-04；AC-02/03/04 | NEG-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F23 | P2 | size/tag/EOF缺口；上层仍可能拒 | [1029](archive/1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F24 | P1 | typed接受态部分改写；未运行 | [1032](archive/1032-ace-native-typed-batch-atomicity.md) | T-02/03→T-04；AC-02/03/04 | NTX-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F25 | P1 | resident/SHA/anchor缺单一接受点 | [1033](archive/1033-ace-a2x-late-publication-atomicity.md) | T-02/03→T-04；AC-02/03/04 | AXTX-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F13 | P2 | 维护热点；拆分候选 | [1038](../1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-03 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
+| F14 | P2 | 静态保留账已闭；迁移/运行覆盖待认证 | [985](../985-ace-m2-certification.md) | T-A01/A02/A03→T-A04；AC-AUDIT | AUDIT-14 | 旧账/职责先做；新格式批迁才等G1002，不能反向堵1002四例 | 已承接，未修复/未运行 |
+| F15 | P3 | 陈旧注释；非依赖违规 | [1038](../1038-ace-reuse-candidates-and-cost-decisions.md) | T-02/03→T-04；AC-02/03/04 | REUSE-03 | 研究不依赖；后继涉及作者/执行接线的重构等G1002 | 已承接，未修复/未运行 |
+| F16 | P1 | 内部计数先预留；真实allocator后果未测 | [1029](1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F17 | P2 | 零租约索引增长；非整树泄漏 | [1029](1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-05 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F18 | P1 | 源与SHA两读；未证明父侧误PASS | [1034](1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F19 | P2 | 预读无cap事实；合法上限需决定 | [1034](1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F20 | P2 | 固定选择差额；不否定M1原验收 | [985](../985-ace-m2-certification.md) | T-A01/A02/A03→T-A04；AC-AUDIT | AUDIT-20 | 旧账/职责先做；新格式批迁才等G1002，不能反向堵1002四例 | 已承接，未修复/未运行 |
+| F21 | P1 | Pratt引用未验；panic未运行 | [1029](1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F22 | P1 | commit缺负依赖；错误target未执行 | [1031](1031-ace-query-negative-dependency-commit.md) | T-02/03→T-04；AC-02/03/04 | NEG-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F23 | P2 | size/tag/EOF缺口；上层仍可能拒 | [1029](1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F24 | P1 | typed接受态部分改写；未运行 | [1032](1032-ace-native-typed-batch-atomicity.md) | T-02/03→T-04；AC-02/03/04 | NTX-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F25 | P1 | resident/SHA/anchor缺单一接受点 | [1033](1033-ace-a2x-late-publication-atomicity.md) | T-02/03→T-04；AC-02/03/04 | AXTX-01/02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
 | F26 | P2 | AV到达字段错误；非语言假PASS | [1037](1037-ace-cte-named-walk-and-attempt-facts.md) | T-02/03→T-04；AC-02/03/04 | CT-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F27 | P1 | 局部父等待无界；进程树后果未测 | [1034](archive/1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F28 | P1 | continue绕隐式推进；有限模型区分 | [1036](archive/1036-ace-loop-latch-and-cooperative-poll.md) | T-02/03→T-04；AC-02/03/04 | LOOP-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F29 | P1 | 闭区间MAX后多加一；未运行 | [1036](archive/1036-ace-loop-latch-and-cooperative-poll.md) | T-02/03→T-04；AC-02/03/04 | LOOP-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F30 | P2 | 正常例冒故障标题；真实fault未测 | [1035](archive/1035-ace-aggregate-resource-classification.md) | T-02/03→T-04；AC-02/03/04 | RES-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F31 | P1 | paged条目/跨度准入缺口 | [1029](archive/1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-04 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F27 | P1 | 局部父等待无界；进程树后果未测 | [1034](1034-ace-worker-source-and-parent-bounds.md) | T-02/03→T-04；AC-02/03/04 | IPC-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F28 | P1 | continue绕隐式推进；有限模型区分 | [1036](1036-ace-loop-latch-and-cooperative-poll.md) | T-02/03→T-04；AC-02/03/04 | LOOP-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F29 | P1 | 闭区间MAX后多加一；未运行 | [1036](1036-ace-loop-latch-and-cooperative-poll.md) | T-02/03→T-04；AC-02/03/04 | LOOP-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F30 | P2 | 正常例冒故障标题；真实fault未测 | [1035](1035-ace-aggregate-resource-classification.md) | T-02/03→T-04；AC-02/03/04 | RES-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F31 | P1 | paged条目/跨度准入缺口 | [1029](1029-ace-restored-input-and-lease-bounds.md) | T-02/03→T-04；AC-02/03/04 | ADM-04 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
 | F32 | P1 | Named CT子树遗漏；真入口未运行 | [1037](1037-ace-cte-named-walk-and-attempt-facts.md) | T-02/03→T-04；AC-02/03/04 | CT-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F33 | P1 | Named字段融合有panic分支；未运行 | [1035](archive/1035-ace-aggregate-resource-classification.md) | T-02/03→T-04；AC-02/03/04 | RES-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F34 | P1 | 资源分类差额；不强求各表示owned相同 | [1035](archive/1035-ace-aggregate-resource-classification.md) | T-02/03→T-04；AC-02/03/04 | RES-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
-| F35 | P1 | continue绕回边poll；运行影响待量化 | [1036](archive/1036-ace-loop-latch-and-cooperative-poll.md) | T-02/03→T-04；AC-02/03/04 | LOOP-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F33 | P1 | Named字段融合有panic分支；未运行 | [1035](1035-ace-aggregate-resource-classification.md) | T-02/03→T-04；AC-02/03/04 | RES-02 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F34 | P1 | 资源分类差额；不强求各表示owned相同 | [1035](1035-ace-aggregate-resource-classification.md) | T-02/03→T-04；AC-02/03/04 | RES-01 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
+| F35 | P1 | continue绕回边poll；运行影响待量化 | [1036](1036-ace-loop-latch-and-cooperative-poll.md) | T-02/03→T-04；AC-02/03/04 | LOOP-03 | 核心/原入口不依赖；新格式或document/adapter重构才等G1002 | 已承接，未修复/未运行 |
 
 **2026-11-13分配时次序和冲突（历史）。** 第一批优先1027/1028、1029的F16/21/31、1031–1037高风险项；它们不存在互为整包语义前置，选择同文件不重叠者推进。1029与1031及在途963共用source-query，1035/1036及963/965共用core/resolve/lowering，1033/1034/1037与966及A2X在途共用路径，必须单写/串行重核基线，不混合WIP。1030历史外层单独验证后修。第二批处理1029的P2项、1034协议/上限决定、已有M2结构职责与985治理；1038先交六项go/no-go/保留决定，不能直接实施大重构。
 
@@ -3418,18 +3420,18 @@ G1002=1002 T-03四例七checks及负控真实通过，T-04独立复审且接口�
 
 | 计划 / 职责 | 当前状态 / revision | 正式主线交付或下一动作 | 阶段与当前顺序 |
 |---|---|---|---|
-| [1027 native UTF-8编辑保真](archive/1027-ace-native-utf8-edit-fidelity.md) | 已交付归档，6/6；r3 | 交付a425e9adf，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1028 计量窗口嵌套/unwind](archive/1028-ace-scoped-observation-restoration.md) | 已交付归档，6/6；r1 | 交付7880f2a42，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1029 恢复输入准入与租约](archive/1029-ace-restored-input-and-lease-bounds.md) | 已交付归档，6/6；r6 | 交付1ea540a19，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1030 864历史会话失败重试](1030-ace-av-864-failed-edit-transaction.md) | drafting，0/6；未开工；r3 | 后续T-01核历史consumer是否仍适用；保失败后旧接受态、同批重试原oracle | B后续；第2（P1历史入口，不降成已关闭） |
-| [1031 QueryHost负依赖提交](archive/1031-ace-query-negative-dependency-commit.md) | 已交付归档，6/6；r3 | 交付4e6d28522，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1032 typed native批编辑原子性](archive/1032-ace-native-typed-batch-atomicity.md) | 已交付归档，6/6；r3 | 交付45fcd50f4，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1033 A2X暖编辑/晚发布事务](archive/1033-ace-a2x-late-publication-atomicity.md) | 已交付归档，6/6；r3 | 交付305bbd0c1，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1034 worker快照、限额与父子终态](archive/1034-ace-worker-source-and-parent-bounds.md) | 已交付归档；末merge收据完成（头部仍3/6）；r5 | 交付140c1a626，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1035 聚合资源分类与故障回归](archive/1035-ace-aggregate-resource-classification.md) | 已交付归档，6/6；r5 | 交付d2847bf4c，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
-| [1036 continue推进、终点与poll](archive/1036-ace-loop-latch-and-cooperative-poll.md) | 已交付归档，6/6；r4 | 交付3b734996b，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1027 native UTF-8编辑保真](1027-ace-native-utf8-edit-fidelity.md) | 已交付归档，6/6；r3 | 交付a425e9adf，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1028 计量窗口嵌套/unwind](1028-ace-scoped-observation-restoration.md) | 已交付归档，6/6；r1 | 交付7880f2a42，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1029 恢复输入准入与租约](1029-ace-restored-input-and-lease-bounds.md) | 已交付归档，6/6；r6 | 交付1ea540a19，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1030 864历史会话失败重试](../1030-ace-av-864-failed-edit-transaction.md) | drafting，0/6；未开工；r3 | 后续T-01核历史consumer是否仍适用；保失败后旧接受态、同批重试原oracle | B后续；第2（P1历史入口，不降成已关闭） |
+| [1031 QueryHost负依赖提交](1031-ace-query-negative-dependency-commit.md) | 已交付归档，6/6；r3 | 交付4e6d28522，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1032 typed native批编辑原子性](1032-ace-native-typed-batch-atomicity.md) | 已交付归档，6/6；r3 | 交付45fcd50f4，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1033 A2X暖编辑/晚发布事务](1033-ace-a2x-late-publication-atomicity.md) | 已交付归档，6/6；r3 | 交付305bbd0c1，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1034 worker快照、限额与父子终态](1034-ace-worker-source-and-parent-bounds.md) | 已交付归档；末merge收据完成（头部仍3/6）；r5 | 交付140c1a626，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1035 聚合资源分类与故障回归](1035-ace-aggregate-resource-classification.md) | 已交付归档，6/6；r5 | 交付d2847bf4c，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
+| [1036 continue推进、终点与poll](1036-ace-loop-latch-and-cooperative-poll.md) | 已交付归档，6/6；r4 | 交付3b734996b，已核为主线祖先 | 既有已交来源，不再占新开工队列 |
 | [1037 CT命名实参与发布失败事实](1037-ace-cte-named-walk-and-attempt-facts.md) | drafting，0/6；未开工；r3 | 下一包：T-01重核CT-01/02真实入口、源漂移与故障事实；已有等效修复须反证/回归关闭，不能重复改实现 | A必闭正确性；第1（F26虽P2亦属A） |
-| [1038 复用候选、成本与模块边界研究](1038-ace-reuse-candidates-and-cost-decisions.md) | drafting，0/6；未开工；r3 | 后续T-01冻结六项研究输入，交go/no-go/保留决定和有界后继合同 | B有界研究；第3（P2/F15 P3）；只读可提前 |
+| [1038 复用候选、成本与模块边界研究](../1038-ace-reuse-candidates-and-cost-decisions.md) | drafting，0/6；未开工；r3 | 后续T-01冻结六项研究输入，交go/no-go/保留决定和有界后继合同 | B有界研究；第3（P2/F15 P3）；只读可提前 |
 
 交付判定取末次review/merge/cleanup收据，并以git merge-base --is-ancestor逐一核九个交付提交；相关语言worktree均不在当前登记中。1034 frontmatter的3/6为归档簿记滞后，末merge/清理收据及当前主线140c1a626证明已交，不误报仍在执行；本轮不回写归档文件。1031保留外部retention登记表具名未决，1033/1034保留各自已归因的预存红/环境项；归档不等于全套件/全平台在今日基线重新全绿。
 
@@ -3446,7 +3448,7 @@ G1002=1002 T-03四例七checks及负控真实通过，T-04独立复审且接口�
 
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r2当前）
 
-**具体输入与期望。** 原件[crates/auto-lang/test/cases/ace-m1/src/B01.at](../../crates/auto-lang/test/cases/ace-m1/src/B01.at)（下列节选L1–L1；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
+**具体输入与期望。** 原件[crates/auto-lang/test/cases/ace-m1/src/B01.at](../../../crates/auto-lang/test/cases/ace-m1/src/B01.at)（下列节选L1–L1；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
 
 ```auto
 fn main() int { return 2 + 3 * 4 }
@@ -3471,9 +3473,9 @@ struct AuditFinding { rule: RuleRef, source: SourceIdentity, path: ProducerConsu
 
 | 实际代码owner | 本包具体职责与改面 |
 |---|---|
-| [experimental/ace/crates/native/src/closures_incremental.rs](../../experimental/ace/crates/native/src/closures_incremental.rs) | F01 UTF-8编辑/原实现 |
-| [experimental/ace/crates/av/src/closures_fn_session.rs](../../experimental/ace/crates/av/src/closures_fn_session.rs) | 既有边界算法复用比较 |
-| [experimental/ace/crates/core/src/lib.rs](../../experimental/ace/crates/core/src/lib.rs) | 嵌套/panic观察作用域候选 |
+| [experimental/ace/crates/native/src/closures_incremental.rs](../../../experimental/ace/crates/native/src/closures_incremental.rs) | F01 UTF-8编辑/原实现 |
+| [experimental/ace/crates/av/src/closures_fn_session.rs](../../../experimental/ace/crates/av/src/closures_fn_session.rs) | 既有边界算法复用比较 |
+| [experimental/ace/crates/core/src/lib.rs](../../../experimental/ace/crates/core/src/lib.rs) | 嵌套/panic观察作用域候选 |
 
 **状态、错误与资源。** 仅大文件行数/相似字符串/旧注释/自报PASS不直接定缺陷；只按旧range退UTF-8边界但replacement仍断字须展示错误重建，合法ASCII/原样源作邻例。 保当前F01–20、MC01–36的已有发现/未核面和原风险分类；不在此修代码/加测试/改变M1出口，未测Rust/PE仍标未测，不把候选当已批准重构。 沿原数值宽度/长度字符串/平台适用性/受管预算，不从Rust/C默认行为猜Auto语义，不以timeout/缺工具冒语言反例。
 
@@ -3481,8 +3483,8 @@ struct AuditFinding { rule: RuleRef, source: SourceIdentity, path: ProducerConsu
 
 | 原源码/测试/研究来源 | 保留的公开义务与新ACE验证 | 原期望/证据形态与读取身份 | 新ACE检查映射与原owner任务 |
 |---|---|---|---|
-| [experimental/ace/crates/core/tests/cases/source_instances_935.rs](../../experimental/ace/crates/core/tests/cases/source_instances_935.rs) | 现职责/实例不变量与测试接缝 | Rust断言来源，具体test/check由原测试模块核；SHA256前16 `0b559ecd6575bd90` | 沿F/MC原审计ID核来源/反例：V-DETAIL-01..04；不注册运行case；原任务 T-01/T-02/T-03 |
-| [crates/auto-lang/src/tests/trait_vm_tests.rs](../../crates/auto-lang/src/tests/trait_vm_tests.rs) | 公开语义与内部实现不同，旧VM不是审计全局oracle | Rust断言来源：test_spec_default_method_inherited_and_overridden, test_abstract_spec_method_still_enforced, test_bounded_generic_fn_dispatches_on_runtime_type；SHA256前16 `a1f3924261667a1c` | 沿F/MC原审计ID核来源/反例：V-DETAIL-01..04；不注册运行case；原任务 T-01/T-02/T-03 |
+| [experimental/ace/crates/core/tests/cases/source_instances_935.rs](../../../experimental/ace/crates/core/tests/cases/source_instances_935.rs) | 现职责/实例不变量与测试接缝 | Rust断言来源，具体test/check由原测试模块核；SHA256前16 `0b559ecd6575bd90` | 沿F/MC原审计ID核来源/反例：V-DETAIL-01..04；不注册运行case；原任务 T-01/T-02/T-03 |
+| [crates/auto-lang/src/tests/trait_vm_tests.rs](../../../crates/auto-lang/src/tests/trait_vm_tests.rs) | 公开语义与内部实现不同，旧VM不是审计全局oracle | Rust断言来源：test_spec_default_method_inherited_and_overridden, test_abstract_spec_method_still_enforced, test_bounded_generic_fn_dispatches_on_runtime_type；SHA256前16 `a1f3924261667a1c` | 沿F/MC原审计ID核来源/反例：V-DETAIL-01..04；不注册运行case；原任务 T-01/T-02/T-03 |
 | [docs/plans/1002-autodown-document-cases.md](1002-autodown-document-cases.md) | 格式试点只四例七checks，不据此声称全迁 | 旧合同/研究/协议来源；不当实际运行PASS；SHA256前16 `504e82209cd0e423` | 沿F/MC原审计ID核来源/反例：V-DETAIL-01..04；不注册运行case；原任务 T-01/T-02/T-03 |
 | [docs/plans/1017-ace-perf-m2-cost-and-workload-optimization.md](1017-ace-perf-m2-cost-and-workload-optimization.md) | 性能归实测，审计只交定位/候选 | 旧合同/研究/协议来源；不当实际运行PASS；SHA256前16 `858881bc8a02af4e` | 沿F/MC原审计ID核来源/反例：V-DETAIL-01..04；不注册运行case；原任务 T-01/T-02/T-03 |
 
@@ -3599,7 +3601,7 @@ struct AuditFinding { rule: RuleRef, source: SourceIdentity, path: ProducerConsu
 - [x] AC-02 / work：逐项复核F01–15及新增项，标confirmed/candidate/rejected/unknown，提供反例/误报排除；保拒绝理由，unknown不计PASS。
 - [x] AC-03 / work：形成按依赖排序的有界重构切片、消费者/测试守恒表，明确1002/985/1017接口、Spec影响、在途冲突，不擅减义务。
 - [x] AC-04 / review：独立核源码/高风险反例/遗漏延后绕行/来源漂移；确认债务追加KNOWN-DEBT，不覆盖其他WIP；假设不冒确认缺陷。
-- [ ] AC-05 / merge：经review归档分析结论，落路线导航、核所有输出路径并清理材料；未review不称完成。
+- [x] AC-05 / merge：经review归档分析结论，落路线导航、核所有输出路径并清理材料；未review不称完成。（2026-11-17 T-05执行：r2 final pass后落主f046f4ae4并归档；输出路径对账=无worktree/无plan-artifacts scope/无散落目录，收据见§9）
 
 首轮已执行：取号成功；跟踪Rust源清点、Cargo正常path依赖提取、20行归一块比较、关键入口人工核查；Python仅内存逐句重放F01得reconstructed='�' != 'ê'。这是算法反例，不是Rust集成测试。未改生产/测试源码/canonical Specs；未编译或运行产品/性能。首轮证据直接折入本Plan，没有附件。
 
@@ -3648,7 +3650,7 @@ AC-01..03重新核对通过：成员/源、HIR17/42/9及资源域、M1116/S71/D1
 | T-02 / work | [x] R6只读闭合；HIR17/42/9资源/授信及跨consumer补齐，F34/35归类 | core/syntax/query/lowering/av-core/av/native逐组生产者→消费者；F01–09/13及F21–24/28–29/31–35有证据/裁定/建议；动态反例明确后继、未运行；AC-01/02 |
 | T-03 / work | [x] R6只读闭合；逐原case/check/recipe账及有界后继S01–13完成 | artifacts/CTE/ABI/A2X/runtime/worker/语言父侧、全部MC与原511/668/legacy/architecture/当前1116checks守恒，1002/985/1017/Spec及在途边界明确；AC-01..03 |
 | T-04 / review | [x] 第七轮按原件重建复审通过；同执行上下文限制明示 | 独立按真实代码/反例复核覆盖、拒绝项、未核项和漂移，按auto-plan-review写§9及债务，核SD-00；AC-04 |
-| T-05 / merge | T-04通过 | 分析折入本Plan、路线导航、归档archive；有树/材料先路径对账与guard清理，归档不等于批准重构代码；AC-05 |
+| T-05 / merge | [x] 2026-11-17完成：落主f046f4ae4+归档本提交，收据见§9 | 分析折入本Plan、路线导航、归档archive；有树/材料先路径对账与guard清理，归档不等于批准重构代码；AC-05 |
 
 当前T-04复审已完成，下一门为T-05合入/规范沉淀/归档；本次用户仅要求复审与分配，未执行T-05。实际代码修复依§5逐项主计划承接，仍未获本轮实施授权。后继开工先核本轮冻结源之后漂移，代码/探针/测试均在各自唯一专属树，不在主检出顺手修改。
 
@@ -3736,7 +3738,7 @@ r2规划时交接（历史）：原任务ID/阶段/进度保持；T-01须在依�
 
 2026-11-13 分配后目标文档终检：35项主承接/关闭case唯一且均可回到计划正文，已有计划6项/新计划29项；1027–1038共12个唯一编号、72个未执行任务，均drafting 0/6。新文件0–10章节/AC/任务/源与Spec路径及本地链接核对通过；969/970/978/985原任务ID/顺序/全部原AC与0进度保留，1002仍r7四例七检查/0 of 4。受影响计划依赖递归177节点无缺失/环，兼读历史930实际存放的archived路径作取材，不新增该旧目录或重开归档计划；12份新计划均无1002整包硬依赖。目标git diff --check及新文件空白检查通过；81d8fc03→当前HEAD审计源范围diff=0、相关源码无WIP。上述检查命令exit0，只证明规划结构/来源，不是产品测试。并发其他会话的964/967/947/1017及Python规划文档保留，未纳入本次写入。
 
-2026-11-16 stage:planning-handoff / 1024审计后继阶段归属簿记：原r2只读审计/reviewed 4-of-5、35发现/原历史记录及T-05未执行事实保持。用户本轮在[985 r23 A-FREEZE](985-ace-m2-certification.md)重冻A/B分母：F01/02复用1027/28已交来源；1029、1031–1037为A正确性；1030历史入口、1038研究B；1066正确性A片段与格式迁移B分开。此指针不是重新作审计、修复或merge，也不把原发现表中审计时“未修”倒填成已修。1024 T-05可交审计来源而不等待全部修复；A最后只收已审正式快照及各实际修复/反证来源。
+2026-11-16 stage:planning-handoff / 1024审计后继阶段归属簿记：原r2只读审计/reviewed 4-of-5、35发现/原历史记录及T-05未执行事实保持。用户本轮在[985 r23 A-FREEZE](../985-ace-m2-certification.md)重冻A/B分母：F01/02复用1027/28已交来源；1029、1031–1037为A正确性；1030历史入口、1038研究B；1066正确性A片段与格式迁移B分开。此指针不是重新作审计、修复或merge，也不把原发现表中审计时“未修”倒填成已修。1024 T-05可交审计来源而不等待全部修复；A最后只收已审正式快照及各实际修复/反证来源。
 
 本轮阶段归属簿记静态核对：985 r23的162父义务与35发现映射完整，13份Plan原92任务/状态/完成数保持，来源/阶段图无环。仅更新此交接指针与规划记录；不重开原审计review、不新增实现/产品结果，原T-05尚未执行。
 
@@ -3745,6 +3747,19 @@ r2规划时交接（历史）：原任务ID/阶段/进度保持；T-01须在依�
 
 
 2026-11-17本轮状态同步静态核对通过：九个交付提交祖先、17份来源Plan（本轮四份计划变更前冻结；其余13份保持字节不变）、12包状态9已交/3未开工、原35项发现分配、三草案18任务/18AC/原Case、章节/围栏/新增链接与quality-route锚点一致。只修改五份计划/路线文档；未改归档/实现、未运行ACE或构建/性能；此检查不是新产品验收。
+
+
+### 2026-11-17 T-05 merge 收据（PLAN-1024:r2，/goal auto-plan-merge）
+
+- prepared：复核基线=r2 final review pass（2026-11-13 §9第七轮，绑定审计源81d8fc03/文档SHA256 fa81b05a…，AC-04 pass、AC-05 pending merge-owned）；其后增量仅为2026-11-16 planning-handoff与2026-11-17 planning-status-sync两笔§9簿记+§0/§5路线表（各轮自证不修改审计结论/分母/实现），属文档性后代，实现/依赖无变化（本包无实现），按merge技能文档性后代规则准予直接交付；依赖空。
+- landed：delivery_commit=f046f4ae45a1a50ae97b83898625cdd9a211a873（docs(plan) 落主，+3004/−22，master tip=delivery commit）。本包为只读审计、全程无实施worktree/分支（r2 review收据已核worktree list无1024树），无ff合并对象，文档直接落默认分支。
+- canonical_verified：批准的no-impact结论——supersedes/new/touched均空，SD-00原行SHA256=b4878840…无规范行为增量（r2 final review核证）；审计知识的持久载体=本归档Plan+§5逐项分配到1027–1038各承接Plan，无需docs/specs/写入。9份spec_inputs仅为审计输入（r2收据有SHA表），非本包delta。
+- archived：git mv至docs/plans/archive/1024-ace-m2-code-quality-and-refactoring-audit.md，status=archived、current_step=5/5，AC-05/T-05勾闭；内链按归档位置重写（仓库根 ../../→../../../、活动计划→../、归档同侪去archive/前缀，含1002/1017实为已归档的纠正），全部25个相对链接从新父目录解析exit0；外部锚点#quality-route-20261117随文件保留。
+- cleaned：无实施树（worktree list核对，从未存在，无需wt-guard）；plan-artifacts/plan-1024/从未创建（磁盘核对无该scope），登记表无1024条目→无可删/可刷新；散落输出对账：D:/autostack顶层与plan-artifacts无1024命名物，D:/无autostack-build，各轮均内存处理（§3/§6声明相符）。
+- 批量回归due检查：收据2026-11-16T10:04Z、last_covered=1064；其后合入仅1037/982/983/984/1066簿记，无id%5==0，收据龄<48h → 不到期，未触发cargo t all。
+- 着陆检查/陈旧产物观察：本交付为纯文档，不影响任何生产面产物（后端二进制/web bundle），无需重建/重启（不在授权范围）。
+- 共享导航簿记：KNOWN-DEBT/ace-route-plan-map/ace-m2-delivery-roadmap/1030/1038中指向本文件的链接路径已在工作树机械修正（1037归档同款archive/前缀），保留为其owner会话未提交WIP一并落主；归档计划内 ../1024- 旧式链接按仓内既有惯例保留（archive/973→../1064先例）。
+- stage: goal | plan_id: PLAN-1024 | plan_revision: r2 | round: 1 | from: review | to: merge | status: archived | outcome: pass | worktree: 无（只读审计，主检出文档交付） | commit: f046f4ae4+本归档提交 | next: done
 
 ## 10. 待澄清事项
 
