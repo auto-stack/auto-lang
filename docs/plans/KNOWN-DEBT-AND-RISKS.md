@@ -39,23 +39,24 @@
   时 AV **具名拒**（`no text leaves … named rejection`，不静默空行）。证据：
   `plan981_age_package_av.rs::{p981_proof_a_av_scene_package_and_mixed_profile,p981_proof_a_av_scene_model_is_named_rejected}`；
   待 985 确认该 A 子面边界。
-#### D-981-EVENT-A-REMAINDER（2026-11-16，残留部分具名；2026-11-17 A/B 归属确认）
+#### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 
 - **A-required 子集（已交，985 三键）**：具名/匿名 unit 消息、变体/原 span 保真、跨块重复变体拒、
   第二个具名集合拒、未知消息 handler 拒、handler 参数名/span 保留、参数派发**具名拒**、payload
   声明合法但无值派发**具名拒**、#6i 语法身份重基线（语义差记录）。证据：`plan981_event_a.rs`、
   `s2_age_routing.rs`（dispatch 零效果）、review-66/68 pass、绑定 `24b4ba4a7`/`771be6a9`。
-- **B 子集（B-W1，未交）**：载荷/参数的**执行**语义（声明→typed 参数→唯一 verify→dispatch）、
-  逐项 arity/type/重复 binder/未绑定名诊断（A 以"参数一律不可执行"fail-closed 兜住，985/T-A03
-  记录替代口径）、AV 队列/宿主调度/世代/所有权、980 B-AV/B-WEB 消费。
+- **B 子集（B-W1，2026-11-17 已交）**：载荷/参数的**执行**语义（声明→typed 参数→唯一 verify→
+  dispatch）、逐项 arity/type/重复 binder/未绑定名诊断、AV 队列/宿主调度/世代/所有权——
+  `IF-981-EVENT-PAYLOAD-B`/`IF-981-MSG-B`/`IF-981-PARAMS-B` 交付（auto-lang master `f4158e499`
+  +`7b127afc8`、auto-ui `d5e92deb`；review-B pass；A 期"参数一律不可执行"的 fail-closed 兜底
+  被真实语义取代）。**关闭**。980 B-AV/B-WEB 消费与 V-EVT-B-ORIGIN 归 980 原任务，不再是本债。
 
 
 - **已交（A 子面）**：`IF-981-EVENT-A`（auto-lang `01c90e269` / auto-ui `4e3ab1f7`+`90fdc84c`）——
   具名/匿名 unit 消息、变体/原 span、重复变体拒、参数名保留、带参 handler 与 payload 投递的
   **具名拒 + 零效果**、grammar 身份按 980 #6i 重新基线。
-- **仍开（B 侧，不属 A）**：参数/载荷的**执行**语义（声明→typed 参数→唯一 verify→dispatch）、
-  AV 队列/宿主调度/世代/所有权、980 B-AV/B-WEB 的真实消费。owner：B-LANGUAGE/B-SESSION [B-W1]、
-  980 B-AV/B-WEB；关闭条件：B 批实际事件载荷执行 + 独立 oracle。
+- **仍开（B 侧，不属 A）**：~~参数/载荷的**执行**语义（声明→typed 参数→唯一 verify→dispatch）、
+  AV 队列/宿主调度/世代/所有权、980 B-AV/B-WEB 的真实消费~~——**已由 B-W1 关闭**（见上）。
 - **不冒充**：A 交接不代表 MIN-A-AGE 全 UI/2D/3D 验收通过，也不代替 985 T-A03/T-A04 的独立复审。
 - **下次触碰**：`age_identity()` 首值是逻辑计数器，代码注释里的 "PID" 措辞待统一（review-67 R67-7 / review-68 R68-4，info）。
 ## D-980-981-EVENT-PHASE — 三消息缺口与整包等待拆分（2026-11-16，仅规划，未关闭）

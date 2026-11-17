@@ -962,6 +962,25 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-17 stage: handoff（B-W1 事件三件正式交接：IF-981-EVENT-PAYLOAD-B + IF-981-MSG-B + IF-981-PARAMS-B，交 980 B-AV/B-WEB）| PLAN-981 | outcome: pass（B-W1 事件批，用户 /goal 直接授权开工，不等 M2A-08 排程）
+
+**绑定 revision（语言面已落主；auto-ui 在 plan-981-dev 待 fold）**
+- auto-lang master `f4158e499`（代码 `3519c2b56`）＋复审修补 `7b127afc8`（`beefe8a2c`）。
+- auto-ui `d5e92deb`（plan-981-dev）：bridge/session/driver 三面 + s2/plan041/census 测试；overlay 钉 `f4158e499`（B1/B2 修补后重钉被 982 并行 WIP 未跟踪文件 fail-closed 拒绝；修补只触语言侧测试与保留名表，驱动消费面无差异，待 982 落主后可重钉）。
+
+**三件交付面（producer→consumer：981 LANGUAGE/SESSION → 980 B-AV/B-WEB）**
+- **IF-981-EVENT-PAYLOAD-B**：`ScenarioOp::SendArgs { instance, msg, args }`（`Send` 恒等价空载荷——向载荷变体空 Send 是 `source.age.component-event` arity 域错误）；`send_args_from_values` 宿主值抬升；载荷类型拼写经共享类型表（int/i32/bool/str 可承载；float/f32/ident 在派发时 `source.age.component-unsupported` 指向变体声明，fail-closed 零效果）；实参唯一 verify、`let` 一次求值、按位绑卫生局部 `__age_a_<inst>_<seq>_<pos>`；错 type 由唯一 verify 在 arg anchor 报 `source.type-mismatch`，错 arity/unsupported 在变体 span 报，全部效果前拒。SESSION：`AceStateEngine::dispatch_with_args`（槽队列**拥有** `AceStateValue` 拷贝，失败回滚、世代/所有权/晚到丢弃纪律不变）＋`AgeSession::send_args[_to]`/驱动 `age_send_args[_to]`（R64-1 原子调度、stopped 具名拒、restart 归初值）。
+- **IF-981-MSG-B**：具名/匿名集合、多载荷 `(str, int)` 保拼写/声明序/原 span（span 断言指作者字节）；重名变体/未知变体引用/第二具名集合具名拒 + 同入口修复恢复（`msg-duplicate`/`msg-unknown`/`msg-set-duplicate` 沿 R65 族）。
+- **IF-981-PARAMS-B**：handler 形参数 ↔ 载荷槽数**声明级**一致（未派发也核对，`component-event`）；重复 binder 拒（span 指第二形参）；裸形参名遮蔽同拼写 model 字段、`.field` 恒指实例 model；未绑定名由唯一 verify 在作者 span 拒；未派发 handler 铸隐藏检查函数 `__age_hv_…`（形参 = 真函数参数 + 声明初值，**不造默认值/常量场景**）进唯一 verify；owned-str 裸转移经 `.clone()`（单次求值后拷贝，非重求值）。
+
+**独立 oracle（V-EVT-B 三行实跑）**：两实例 (i0,+3),(i1,+5),(i0,+4) → **[7,5]**（轨迹前缀 [3,0]/[3,5]、置零/换目标/换序负控由精确值兜住）；求值一次（状态依赖实参 + 双读取体，7≠10 判别）；`.QueryInput(v)` 两组字符串含中文 str 落各自实例（状态通道 `ComponentFieldValue::Str`）；bool 正例 true/false；多载荷 `(str, int)` 双通道对齐；param 同拼写遮蔽（5≠0 判别）；混合 unit+载荷队列 4/11。
+
+**门禁实测**：plan981 全套 219/219（event 面 25 例：A 更新 3 + B 新 8 核心 + 7 AV + B1 bool）；ace-core 833/833；ace-core+ace-av（perf:: 按 PLAN-1016 排除）2057/2057（kv_zip_1064/sys_d01_d06_1064 仅全并行档红、隔离重放绿=环境归因；link:: 同前）；a2x-worker p981 5/5（真实 rustc 腿）；grammar 7/7（**零 grammar 改动**，冻结身份不变）；固定组 `cargo t ace-source ace-syntax ace-av` 全 PASS。auto-ui：s2_age_routing 19/19（vendored overlay）、driver lib 49/49、session s1/s3/s4 17/17、plan041 10/10（含新 typed 派发/回滚/世代例）、ace_ts_provider 14/14、ace_node_desktop 7/7（串行；并行 LNK1181=链接器临时文件竞争，环境归因）、`prepare_sdk --verify-only` PASS。**预存红（干净树 stash 验证，非本批触面）**：`cap_chart_snake_kebab_dual_acceptance`、`p980_hello_window_exe_bad_source_exits_named`、driver `authoring_feasibility` 编译缺 `hud_overlay`——归各自 owner plan。
+
+**独立复审（review-B，独立 subagent 自跑复现）**：verdict **pass**。逐行核 §5 三键/§6 三 V 行与设计表不变量；无假值（hv 检查函数用真初值+真形参；`.clone()` 为单次求值后拷贝）、span 诚实（arity/unsupported 指变体、类型错指实参锚）、跨实例/跨 node 局部名不可串（fn 级隔离 + `state_fn_name_at` 消歧）、桥回滚只在成功观察后写状态、测试全为精确独立 oracle 非代理信号、census 修订具名有据（空 Send 语义升级 + TS 参数环境归 980 B-WEB）。2 low 已修（B1 bool 正例、B2 `__age_hv_` 保留名具名拒），修补后全套复跑绿。具名边界（不冒缺陷）：①多字段 driver 每字段状态函数各重放一次实参求值（各 fn 从初值独立重放，无可观察重复应用；判别测试为单字段）；②未派发的 unsupported 载荷 handler 体不进 hv 检查（其派发本就 fail-closed 拒）。
+
+**未闭（不冒充）**：`D-981-EVENT-A-REMAINDER` **本批关闭**（载荷/参数执行、逐项 arity/type/dup/未绑定诊断、AV 队列/调度/世代——R69-2 替代口径的逐项诊断已由真实语义取代）；V-EVT-B-ORIGIN（inline-lambda/原 span→SFC 链 + 浏览器 DOM）与 TS provider 参数环境（census param-handler 拼接降级旧道）归 980 B-WEB 消费；W1 其余（CONTENT/FUSION AV 域格、PROOF 完整 AV 格、`UI-W1-AV` 汇总）不在本批；981 整包仍 executing、不归档。
+
 2026-11-17 stage: housekeeping（981 worktree 构建缓存/大证据目录清理）| PLAN-981 | outcome: done
 
 - **背景**：985/A 完成前，981 只做到 A 面并等待；两棵 worktree 的构建缓存已占 ~40 GB。
