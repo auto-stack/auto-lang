@@ -4,7 +4,7 @@ status: executing
 feature_name: 调试LSP测试与Playground接管
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-16
+updated_at: 2026-11-17
 plan_revision: 7
 current_step: 5
 total_steps: 11
@@ -445,3 +445,4 @@ Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于�
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
+
