@@ -27,6 +27,9 @@ mod dependency_scan;
 pub mod legacy_doc_for_trans;
 pub mod mode;
 pub mod os_paths;
+// PLAN-982 A slice: the single SDK identity shared by the config leg and the
+// execution leg (product receipts bind both to one package+version).
+pub mod sdk_identity;
 pub mod use_scanner;
 
 pub mod ast;
