@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1066
-status: executing
+status: reviewed
 feature_name: AutoDown迁移补漏与1062收口纠正
 author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 4
-current_step: 9
+current_step: 10
 total_steps: 13
 depends_on: [PLAN-1062]
 supersedes_spec_components: [docs/specs/auto-test-case/document-migration-closure.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/governance-and-inventory.md, docs/specs/auto-test-case/module-selection.md]
@@ -150,7 +150,7 @@ VM有同时判stdout/result的项，C可同时判C/H，故1161文件oracle引用
 
 原身份需分消费者保持：VM/C/TS的FileTestCase.name为category/case；a2r/cookbook目录入口的A2rTestCase.name为suite_name/category/case（suite_name分别a2r/cookbook）。原native Rust/TS/C转译module参数取虚拟源stem，而a2r_rustc_real_compile_gate原来传完整case.name（如a2r/01_basics/001_hello）；二者不能为了共用视图强行归一。旧path字段可保为虚拟标签，禁止再被当成当前可读取的作者文件；结果命名、ledger键和trace均核原身份。
 
-**B 期实测 70 个非 N 文档**为 a2r 36（含附录 C 的 33 个 conformance + 3 项目/T 文档）/cookbook 32/a2c 2；详附录 E（附 A 快照差：A 期 78 = 上述 70 + 已被 B 登记的 10 个 doc-only VM 文档 − 2 份 B 新增 project 文档）。它们可能属于另一包装、smoke或更深目录，不能一概叫“未注册”或停用，但不能因新版遍历所有.case.ad而加入原N1050。P的两份未来project文档也不能误入单源目录执行。反过来，N新增合法doc不得因没有旧.at而丢失：资格由本次冻结的消费者合同和文档声明确定，不能永远只准旧1050名单。
+**B 期实测 70 个非 N 文档**为 a2r 36（33 个 conformance + 2 份 project 文档 + `19_ownership/007_self_ref`）/cookbook 32/a2c 2；详附录 E（附 A 快照差：A 期 78 = 上述 70 + 已被 B 登记的 10 个 doc-only VM 文档 − 2 份 B 新增 project 文档）。它们可能属于另一包装、smoke或更深目录，不能一概叫“未注册”或停用，但不能因新版遍历所有.case.ad而加入原N1050。P的两份未来project文档也不能误入单源目录执行。反过来，N新增合法doc不得因没有旧.at而丢失：资格由本次冻结的消费者合同和文档声明确定，不能永远只准旧1050名单。
 
 1. 四个discover函数以doc为唯一正常载荷/资格来源，可用dir+stem的惯例；不能继续要求原.at/.as/.expected.*存在，也不能缺doc时静默跳过原已登记义务。保1050旧入选项；**B 期已把 10 个 doc-only VM 项登记进目录验证分母（1060）**——它们此前只被 VM cache 消费、旧发现规则排除；VM cache 仍另计 506 项（与目录项有重叠，不相加冒唯一用例数）。显式空目录保持原no tests错误；已登记doc缺失须具名报缺，不冒合法空集或更少用例。**（B 期 R7 强化）** VM 族的 doc-only 项没有 stem 命名的 sidecar oracle，其文档被删时 discovery 仍保留该项并让执行报 `migration document … .case.ad missing`（a2r/a2c 的 doc-less 目录从不入选，不因该规则变成新增项）；
 2. 优先从doc checks/虚拟source/注册family映射推导原发现资格；原smoke、空字符串、缺席与同目录不同消费者不能混淆。确有歧义时补有限、显式legacy-consumers元属性及author合同，T-02先以全部1050+额外10项证明无损，不新建与文档内容竞争的case作者索引。治理冻结清单仅用于独立守恒和缺失检测，不代载荷。
@@ -1809,7 +1809,7 @@ N现有FileTestReport/父打印不足以独立重读所有actual时，由T-03/08
 | [x] | T-09/work | A：T-01/02/03/07/08的A子面；B：T-03～08原完整面 | 当前全组/五根/四shim/cache506/B108/E78/工程/编译/所有生成旁路重发现和读写审计；doc-only/污染镜像、增量纳本Plan，源码/期望/资格/新增wrong均核，不泛豁免source-dir；AC-01/07  本轮阶段：A实际检查与原分母账；全路径doc-only重扫B；片段完成不勾整项。  **[✅ 2026-11-17]** 全路径重扫与读写审计：①活跃入口扫描（`document_case_active_scan.py`，76 组/183 include 文件全 document、0 fence）；②五根集合与 E78 边界=键集非计数（NC-23：N 1060 + E78 70 恰好覆盖五根全部文档，挪一个边界文档必须具名重复）；③四 shim 路由等价（NC-24）与 runner 入口真实调用（shim 全量重放 CWD 挂起记 D-1066-SHIM-CWD-HANG）；④cache506/8 脚本、B108/6 多源、S11/P/C 在 A 冻结与 T-03/T-05 增量后逐键一致；⑤工程/编译/生成旁路：T-05/T-06/T-07 已闭，本轮再关 plan724/plan727 四个 N 条目的 sidecar 读取（改读文档，8/8 + 11/11 绿）；⑥常驻 `plan1066_b_remaining_sidecar_readers_are_named`：扫描全 crates 的 sidecar 读点，**逐个具名理由**（migration 静态库存、NC-27 对拍控、AAVM 实验、外仓 book、五根外 ffi_dep、sidecar 合同合成 fixture、a2r-actor-tests 外消费者），出现未列出者按文件/行拒绝，并带注入负控；⑦增量纳本 Plan：T-03 的 10 个 doc-only VM 项与 T-05 的两份 project 文档（E78 68→70）均已登记。门：corpus 240/0、a2r 432/0、vm corpus 1138/0、plan1066 20 passed/3 ignored |
 | [x] | T-10/work | A：NC-A1..4可运行；B：全部原功能与27NC可运行 | V-01～08/V-11与V-09单例计时部分、NC-01～27逐项真实失败+合法邻例/准确子项，补原子wrapper缺证反控/恢复复验，非零exit不代命中；最终完整组/并集计时归后置T-11，不反向等待它；AC-01～08  本轮阶段：A四负控；B全部原27NC与完整验证；片段完成不勾整项。  **[✅ 2026-11-17]** 27 个具名负控齐全且逐项接线（`PLAN1066_CONTROL_OWNERS` 常量即合同，测试断言 27 项唯一无缺）：NC-01=A-DEN/NC-23、02=doc-only 四族镜像、03=删文档硬错、04=污染 sidecar 无关、05=A-NC-A2+native 双通道、06=bootstrap/脚本、07=族 artifact 词汇、08=scheduler 组五轴、09=活跃入口扫描、10/11/12=工程闭包/断言/路径、13/14/26/27=编译收据（伪造 compiled/混错/陈旧/ledger/fixture/M03 oracle）、15=显式组治理、16/17/18=proposal（admission/闭集=bootstrap 分母/退役生成器）、19=库存文档身份、20=控制报告纪律（本轮新增）、21=native entry result 轴、22=空H vs header 轴、24=`.as` 诱饵+多源、25=静态零写入+注入负控。**NC-20 新增**：`validate_control_report` 要求报告恰好 27 行、每行自带 verdict 与实测 ms 且 <10s，拒 NOT_RUN/重复/缺行/超预算，并拒「父 PASS 掩盖失败子」；合法控制 + 六种缺陷各具名拒绝（0.11s）。**实测台账**（nextest libtest-json，21 个在进程内控制）：最大 1909.3ms（A-DEN）、NC-20 自身 114.1ms、其余 27.6–1497ms，全部 ≪10s；外进程控制另有实测：`case plan1066-s-doc-controls` 6 测 5.14s（单测 ≤1.5s）、`infra-fixed` 的 NC-09 2 测 0.068s / NC-15 2 测 0.013s。非零父 exit 不代命中、缺计时/NOT_RUN 不冒绿已由 NC-20 守护；最终完整并集计时归 T-11。门：corpus 240/0、scheduler 控 6/0、plan1066 21 passed/3 ignored |
 | [x] | T-11/work | A：T-09[A]/T-10[A]；B：T-09/10完整面 | 冻结代码/工具/配置后资源检查与完整影响组/必要consumer并集，复用有效phase证据；模块/新例/排除/红/等待/准备计时汇总，零新warning/格式/调试残留；AC-08  本轮阶段：A片段影响/健康；B最终完整并集；片段完成不勾整项。  **[✅ 2026-11-17]** 冻结提交 `6682a6d0a`（source_state `da5c9599dcf61a08`、config `0bc07b11a19a2ad2`）上跑**一次并集**：`cargo t corpus a2r vm auto-test-case infra-fixed plan1066-s-doc-controls case-ace-m2-scheduler-968` → gate PASS，5 个 invocation 全部 PASS，executed **1810**（corpus+a2r+vm 1570 / auto-test-case 151 / infra-fixed 72 / 控制组 6 / scheduler 11），wall **155.2s**（准备/发现/执行/清理均含在 drive 计时内）。覆盖真实触面：core(`test_runner`/`entry`/`legacy_doc_for_trans`/`test_cases`)+auto-lang 十个 corpus wrapper+auto-test-case 解码器+治理脚本 4 个+固定组登记 1 个。健康面：`rustfmt --check` 与 base `7c131286d` 逐文件对照，**11 个原本 clean 的文件被本轮改动弄脏 → 已格式化，现 0 个 newly-unformatted**；`a2r_tests/a2c_tests/a2ts_tests/tests.rs/legacy_doc/author.rs/inventory.rs` 在 base 即非 rustfmt-clean（属存量），本轮未扩大其未格式化面。调试残留：新增行无 `dbg!/todo!/unimplemented!/FIXME`；仅显式工具用 `eprintln!` 汇报（payload/actuals/compile prepare/proposal），普通路径无输出副作用。**跨计划更正（具名，供复审核）**：`scripts/tests/test_fixed_groups.py::test_ace_set_is_explicit_and_separate_from_daily` 自 PLAN-969 `278b91204` 起期望 3 组而 toml 已含 `ace-facade`（基面即红）——本轮把断言同步为登记的 4 成员集合，infra-fixed 因此转绿；这是事实同步、未放宽该测试意图。集成/消费者覆盖与计时汇总见 §6.3 与各轮收据，最终并集不含 Linux/WSL 腿（按 2026-11-14 裁定归专用环境）。 |
-| [ ] | T-12/review | A：T-01/02/03/07/08/09/10/11的A面；B：T-01～11全部 | 同树独立重建AC-01～09、逐义务/actual/全部NC、Spec delta/遗漏/延期/workaround；新增例超10/缺计时needs_fix；记录身份/限制与冻结门交接；AC-09  本轮阶段：A独立phase复核；完整final在B；片段完成不勾整项。 |
+| [x] | T-12/review | A：T-01/02/03/07/08/09/10/11的A面；B：T-01～11全部 | 同树独立重建AC-01～09、逐义务/actual/全部NC、Spec delta/遗漏/延期/workaround；新增例超10/缺计时needs_fix；记录身份/限制与冻结门交接；AC-09  本轮阶段：A独立phase复核；完整final在B；片段完成不勾整项。  **[✅ 2026-11-17 独立复审 pass]** 复审由与实施会话分离的独立上下文代理执行（同树只读重建），两轮：r3→`needs_fix`（F-1066B-R1..R6），修复后 r4→**pass**。复审自测证据（不复用实施侧并集）：`cargo test -p auto-lang --lib plan1066` 22 passed/3 ignored、`cargo t vm corpus` PASS 1138/0、显式 250 门 159/55/36/0/0（15.7s）、30 候选 proposal 30/0、独立 temp-mirror 探针（doc-only/污染/错 oracle/删文档具名）、S11 新旧 11/11 双跑身份 22/22、payload 1060/663/556 自查、自写 R7 探针（doc-only 删文档 discovered=1+具名；sidecar 选中项同；doc-less+source+无 oracle 目录 vm0/a2r2/a2c6 未被promote，发现数仍 1060）、A-DEN/NC 全绿、`wt-guard` clean。R7 真修复（VM-only 保留可见+具名缺文档）、R1 文本按 1060/70/1171 更正、R2 补 13 字节 stdout 角色、R3 清 4 告警、R4 收紧 AC-07 口径并补相邻族具名。遗留非阻塞 nit（§5.2 行 153 标签）已同步修正。R5（SD-01..05 沉淀）按分工归 T-13。 |
 | [ ] | T-13/merge | A：T-12[A] phase pass；B：T-12完整final pass | 核冻结联合门/必要due，SD-01～05落地、保1062更正并据真实结果关闭债项；归档本Plan，摘要入Plan后对账全部输出并清scope/guard后清树/分支和登记；AC-10  本轮阶段：A片段正式fold保树；B完整交付/归档清树；片段完成不勾整项。 |
 
 ## 9. 复审记录
@@ -2145,6 +2145,37 @@ stage: review | review_scope: final（repair re-review） | plan_id: PLAN-1066 |
 **本轮门（我实跑 @d6e9e4e1f）**：`cargo t vm corpus` PASS（executed 1138 / excluded 468 / wall 38.8s / gate 49.7s，source_state `885a11c0…`；excluded 仍含 conformance_bootstrap/proposal）；`cargo test -p auto-lang --lib plan1066` 21 passed/3 ignored（4.08s，同机 15 个 cargo/rustc 并发）；显式 250 门重跑 **159 compiled/55 skip/36 known-broken/0 obsolete/0 unexpected = 250**（17.92s，收据落我 scope）；`test_08_strings_017_sub_semantics` 0.32s PASS；`wt-guard` clean；工作树 clean @d6e9e4e1f。Proposal/33 验证输入未变，复用上轮证据（30 written/0 failed）。
 
 **next**：work 做两处低风险收口 →（a）附录E 与 §5.2 第 153/155 行按 1060/70 与「已登记 10 项」重写（或明示为历史快照）；（b）R7 二选一：为无 sidecar 的登记项保留具名失败，或在 §5.2/NC-03 明示这 10 项由 A-DEN 兜底。随后 T-12 即可 pass；T-13 仍按 R5 落地 SD。Plan 保持 executing/9-13，status 与任务框未动。
+
+### 2026-11-17 T-12[B] 第二轮 repair 复审（r4 / 8c2c16e75）：R1 残留与 R7 关闭 → **pass**
+
+stage: review | review_scope: final（repair re-review 2） | plan_id: PLAN-1066 | plan_revision: r4 | outcome: **pass** | worktree: D:/autostack/.wt/lang-1066/auto-lang（clean @8c2c16e75） | branch: plan-1066-dev | reviewed_commit: 8c2c16e75 | base_commit: 7c131286d | reviewer: 独立上下文代理（review-1066，实施会话分离）
+
+| finding | 结论 | 本轮独立证据 |
+|---|---|---|
+| F-1066B-R1 残留 | **closed** | §5 A-EXIT 98/102 已标「A 期快照（r3）：1050/1161+9=1170；B 期 1060/1171，见 r4）」；§5.2 第 153 行实测组成 a2r 36/cookbook 32/a2c 2（fixture 复核：33 conformance + 2 project + 1 `19_ownership/007_self_ref`；78 = 70 + 10 − 2 成立）；第 155 行已记「10 个 doc-only VM 项登记进目录分母 1060、cache 506 与目录项重叠不相加」，并附 R7 强化；附录 E 已改标「B 期分母 70」并声明 78 行表为冻结 A 快照、当前集合以 fixture `e78` 为准（A-DEN 常驻核）。**小瑕疵（非阻塞）**：第 153 行括注「3 项目/T 文档」实际是 2 份 project + 1 份 `007_self_ref`（有 .at/doc、无 `.rs` artifact 的孤儿文档），计数正确、标签粗略 |
+| F-1066B-R7 | **closed** | 代码：`discover_vm_tests` 的 `Ok(None)` 分支在无 stem 命名 oracle 时，若存在 stem 命名 `.at`/`.as` 则保留该项（VM 专属，a2r/a2c 不参与）。我的探针（temp 镜像、保留冻结 sidecar、只删 doc）：`08_strings/017_sub_semantics` → **discovered=1** 且报 `migration document … sub_semantics.case.ad missing/unreadable (sidecar fallback is forbidden)`；对照 sidecar 选例 `01_basics/001_hello` → discovered=1 同样具名。独立扫描：source-only 且无 doc/无 oracle 的目录 **vm 0 / a2r 2 / a2c 6**，故新分支不把 a2r/a2c 拉进分母；产品发现实测仍 **1060**（vm506/a2r250/a2c118/a2ts85/cookbook101）。新常驻控 `plan1066_b_doc_only_entry_survives_a_deleted_document` 存在且 0.04s 通过 |
+
+**本轮门（我实跑 @8c2c16e75）**：`cargo test -p auto-lang --lib plan1066` **22 passed / 3 ignored**（2.27s，含新 R7 控）；`cargo t vm corpus` **PASS**（executed 1138 / excluded 468 / wall 31.7s / gate 36.7s，source_state `fd5f17e6…`；excluded 仍含 conformance_bootstrap/proposal）；payload proof 1060 逐族不变；两处改动 .rs 均 rustfmt-clean；`cargo check -p auto-lang --lib --tests` 无 plan1066/test_runner/legacy_doc 诊断；`wt-guard` clean；工作树 clean。**未重跑（输入未变、复用上轮有效证据）**：显式 250 门 159/55/36/0/0=250 @d6e9e4e1f、proposal 30/0、A-DEN/conformance 不受本次 diff 影响；实施者自报的并集 1810/173.5s 不作我的证据。
+
+**next**：T-13 merge 收口——R5：按真实结果落 SD-01..05（document-migration-closure / architecture / document-cases / governance-and-inventory / module-selection，含 76 组/183 文件、1060/70/1171、scheduler recipe、project exists/contains、doc 身份 inventory/trace、`a2r-compile`/`plan1066-s-doc-controls` 与 ace 4 成员），并完成归档/清树/scope 对账与 guard。Plan 状态与任务框本轮未动（executing / r4 / 9-13，T-12/T-13 仍未勾；`reviewed` 翻档由 owner 按 T-12/T-13 簿记执行）。
+
+stage: review | plan_id: PLAN-1066 | plan_revision: r4 | review_scope: final | reviewed_commit: 8c2c16e75 | base_commit: 7c131286d | outcome: pass（两轮：r3 needs_fix F-1066B-R1..R6 → 修复 → r4 pass） | next: merge（T-13）
+
+### 2026-11-17 T-12 最终独立复审与修复（rounds 13–14）
+
+**复审主体**：与实施会话分离的独立上下文代理（同树只读重建，不复用实施侧收据；自行重建 temp-mirror 探针、自行重跑受影响门）。
+
+**第一轮（r3 / 6682a6d0a）：`needs_fix`**，六条发现：
+- F-R1 分母陈旧：AC-01/§5.2/附录仍 1050/1170/VM496/E78 78，冻结档已 1060/70 → 已升 `plan_revision: r4` 并逐处更正（含附录 E 重题 70 与 A 快照差 78=70+10−2）。
+- F-R2 孤儿 oracle：`08_strings/017_sub_semantics` 的 13 字节冻结 stdout 未被文档承载、该例仅 smoke → 已作为 `vm-stdout` 判据（角色 1170→1171；T-03 收据追加更正）。
+- F-R3 告警虚报：本轮引入 4 条 warning → 已全部移除，T-11 收据追加更正。
+- F-R4 AC-07 口径过宽：审计为文件级 allowlist + ±2 行窗口，相邻 a2gd/a2j/tscn 未具名 → 已具名 + 定向覆盖断言，AC-07 收紧为「五根零未具名活跃回读」。
+- F-R5 SD-01..05 未落地（归 T-13）。
+- F-R6 无空洞负控（NC-07 未注入跨族词汇缺陷，非阻塞记录）。
+
+**第二轮（r4 / 8c2c16e75）：`pass`**，R1 残留（附录/§5.2/§5 快照标签）与 **R7** 均关闭。R7 是真修复而非文档化：`discover_vm_tests` 的 `Ok(None)` 分支在「无文档且无 stem 命名 oracle」时仍保留 VM 条目（仅 VM 分支；实测 doc-less+source 目录 vm0/a2r2/a2c6，a2r/a2c 不被 promote，发现数仍 1060），新增常驻控 `plan1066_b_doc_only_entry_survives_a_deleted_document`（0.04s）证明「删文档 → discovered=1 + 具名 `migration document … .case.ad`」。
+
+**复审自测门（独立）**：`plan1066` 22 passed/3 ignored；`vm corpus` PASS 1138/0；显式 250 门 159/55/36/0/0；proposal 30/0；payload 1060/663/556 自查全等；S11 新旧 11/11 身份 22/22；`wt-guard` clean；两个改动 `.rs` rustfmt-clean；无新增告警。
 
 ## 10. 待澄清事项
 
