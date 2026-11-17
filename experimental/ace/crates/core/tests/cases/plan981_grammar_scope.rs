@@ -104,9 +104,14 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // 的值是 `b244ee1614428379afb61a756e84adfd8c947fc8584e92d7a0f04bc7bf7222e0`。
         // 保留变后值 + 在此注明，是为了让后来者看得到"这个面确实变过"，
         // 而不是被一个看似中性的数字掩盖。
+        // PLAN-980 WEB #6m（2026-11-18 具名重基线）：widget 工程面语法收
+        // 敛——事件键修饰符链（age-event-key，双 AGE 面）+ age-component 侧
+        // 事件绑定调用形（age-event-binding）与元素括号属性行
+        // （age-element-props-block）。前值 96ecc437…（#6i 语义差重基线后）
+        // 随本批漂移；其余 13 profile 逐字节不变（下表仍与冻结值相等）。
         (
             SourceProfile::AgeComponent,
-            "96ecc4372a53665e4eb3819a51ad28c634bbdb0341e3e06ee388b95a7cf33708",
+            "1fb56340d58904d8919d7eaf1aec0a7fe2c32ee3e66ec3c65101fa96708a3c8b",
         ),
         (
             SourceProfile::AgeH0,
@@ -167,8 +172,10 @@ fn p981_age_package_grammar_identity_is_stable_across_lookups() {
 /// 值随批次推进更新，但必须与 §6.7 的记录逐字一致，且不得在无声中漂移。
 #[test]
 fn p981_age_package_grammar_id_is_frozen() {
+    // PLAN-980 WEB #6m（2026-11-18 具名重基线）：共享 age-event-key 规则
+    // 族（事件键修饰符）进 age-package 面——前值 14561796… 随本批漂移。
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "145617968fcc6d0602b1f5bcc62eaaf164ae1fdb062b09a9c79ec86eb26f5199"
+        "874a32e1d8f8c66e444b2005914b3d3928282a84844e8cd09b19ca422eed87d7"
     );
 }

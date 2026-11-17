@@ -1,5 +1,7 @@
 #[path = "cases/abc_semantics_tier.rs"]
 mod abc_semantics_tier;
+#[path = "cases/plan980_web_grammar_6m.rs"]
+mod plan980_web_grammar_6m;
 #[path = "cases/sched_m2_968.rs"]
 mod sched_m2_968;
 

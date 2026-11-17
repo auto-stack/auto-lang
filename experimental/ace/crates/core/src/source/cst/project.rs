@@ -5533,11 +5533,26 @@ impl<'a> Engine<'a> {
                     span: self.cx.span_of(item),
                 }));
             } else if Some(kind) == entry_kind {
-                let key = self
-                    .cx
-                    .field_child(item, "key")
-                    .expect("view entry key ident");
-                let key_name = self.cx.spelling(key);
+                // PLAN-980 WEB #6m：事件键=age-event-key（ident 基名+点修饰
+                // 链，`onclick.self`）——拼写=基名+`.`+修饰符（is_event 按
+                // 前缀判不受影响）。
+                let key_node = self.cx.field_child(item, "key").expect("view entry key");
+                let mut key_name = self.cx.spelling(self.unwrap_child(key_node));
+                for m in self.cx.children(key_node) {
+                    if self.cx.tree.kind(m) != self.cx.tree.kind(self.unwrap_child(key_node)) {
+                        // 修饰符 ident 叶（dot 叶按非 ident 排除）。
+                        if self
+                            .cx
+                            .spelling(m)
+                            .chars()
+                            .next()
+                            .is_some_and(|c| c.is_alphabetic() || c == '_')
+                        {
+                            key_name.push('.');
+                            key_name.push_str(&self.cx.spelling(m));
+                        }
+                    }
+                }
                 let value_node = self
                     .cx
                     .field_child(item, "value")
@@ -5545,6 +5560,7 @@ impl<'a> Engine<'a> {
                 let inner = self.unwrap_child(value_node);
                 let inner_kind = self.cx.tree.kind(inner);
                 let lambda_kind = self.rule_kind_of("age-inline-lambda");
+                let event_binding_kind = self.rule_kind_of("age-event-binding");
                 let value = if Some(inner_kind) == lambda_kind {
                     let mut assigns = Vec::new();
                     let stmt_kind = self.rule_kind_of("age-view-stmt");
@@ -5554,6 +5570,33 @@ impl<'a> Engine<'a> {
                         }
                     }
                     ComponentEntryValue::Lambda(assigns)
+                } else if Some(inner_kind) == event_binding_kind {
+                    // PLAN-980 WEB #6m：事件绑定调用形 `.Msg($event, …)`——
+                    // 投影为**裸 `.Msg` 字段引用**（既有 event_binding_msg 识
+                    // 别/跳过通道）；实参是宿主（DOM 事件）通道，本面不验证
+                    // 不求值（模板发射由方言侧方言 AST 承担，此投影无消费
+                    // 方——丢弃无损失，具名边界）。
+                    let msg = self
+                        .cx
+                        .field_child(inner, "msg")
+                        .expect("event binding msg ident");
+                    let msg_span = self.cx.span_of(msg);
+                    ComponentEntryValue::Expr(Expr {
+                        span: msg_span,
+                        kind: ExprKind::Field {
+                            base: Box::new(Expr {
+                                span: msg_span,
+                                kind: ExprKind::Var(Ident {
+                                    name: "self".to_string(),
+                                    span: msg_span,
+                                }),
+                            }),
+                            name: Ident {
+                                name: self.cx.spelling(msg),
+                                span: msg_span,
+                            },
+                        },
+                    })
                 } else {
                     ComponentEntryValue::Expr(self.project_expr_sync(inner))
                 };

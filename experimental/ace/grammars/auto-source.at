@@ -844,15 +844,46 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             pratt(of: "wide-ops", field: "text")
         }
         age-view-entry(profiles: [age-component, age-package]) {
-            ident(field: "key")
+            age-event-key(field: "key")
             colon() {}
             age-entry-value(field: "value") {}
             // 同行多属性以逗号并排（002 形：onclick: .X, style: "…"）。
             opt { comma() {} }
         }
+        // PLAN-980 WEB #6m：事件键——ident 基名 + 可选点修饰符链
+        //（`onclick.self`）；引号自定义键归方言层（本面不收）。
+        age-event-key(profiles: [age-component, age-package]) {
+            ident(field: "base")
+            many { age-event-key-mod() {} }
+        }
+        age-event-key-mod(profiles: [age-component, age-package]) {
+            dot() {}
+            ident(field: "modifier")
+        }
         age-entry-value(profiles: [age-component, age-package]) {
             alt { age-inline-lambda() {} }
+            // PLAN-980 WEB #6m：事件绑定调用形 `.Msg(args, …)`——实参是
+            // 宿主通道（DOM 事件/字面量），不走受检表达式 verify（投影层
+            // 按事件绑定识别；`$event` 由 UI 侧同长归一化承载）。仅
+            // age-component（widget 工程面）。
+            alt(profiles: [age-component]) { age-event-binding() {} }
             alt { pratt(of: "wide-ops") {} }
+        }
+        age-event-binding(profiles: [age-component]) {
+            dot() {}
+            ident(field: "msg")
+            opt { age-event-binding-args(field: "args") {} }
+        }
+        age-event-binding-args(profiles: [age-component]) {
+            lparen(same-line: true) {}
+            list { age-event-arg() {} }
+            rparen() {}
+        }
+        age-event-arg(profiles: [age-component]) {
+            // `$event` 宿主占位由 UI 侧同长归一化（`$event`→`nevent`，与
+            // state→model 同法）承担——本面实参=普通 pratt 表达式（归一化
+            // 后的 ident 字面量；投影层丢弃实参=宿主通道，不求值）。
+            pratt(of: "wide-ops") {}
         }
         age-inline-lambda(profiles: [age-component, age-package]) {
             lparen() {} rparen() {} fat-arrow() {}
@@ -864,6 +895,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-element-labeled-block() {} }
             alt { age-element-block() {} }
             alt { age-element-labeled() {} }
+            alt(profiles: [age-component]) { age-element-props-block() {} }
         }
         age-element-labeled-block(profiles: [age-component, age-package]) {
             ident(field: "tag")
@@ -875,6 +907,23 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-element-block(profiles: [age-component, age-package]) {
             ident(field: "tag")
             lbrace(same-line: true, cut: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        // PLAN-980 WEB #6m：括号属性行元素 `input (placeholder: "s") { … }`
+        //——真语料主导形态（vue_capabilities）：标签后属性括号对，再可
+        // 选体块。属性=同一 age-view-entry 形。
+        age-element-props-block(profiles: [age-component]) {
+            ident(field: "tag")
+            lparen(same-line: true, cut: true) {}
+            list-nl { age-view-entry() {} }
+            rparen() {}
+            opt { age-element-props-body() {} }
+        }
+        // PLAN-980 WEB #6m：括号属性元素的可选体块（多步 opt 归子规则——
+        // 多步 opt 在这些规则位不被组合器支持，具名重构）。
+        age-element-props-body(profiles: [age-component]) {
+            lbrace(same-line: true) {}
             many { age-view-item() {} }
             rbrace() {}
         }

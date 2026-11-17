@@ -603,3 +603,12 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **缺席分母 taxonomy（七族具名，逐族归属）**：①`$event` 视图实参/元素括号属性行（`input (placeholder: …)`）等**年龄面语法缺口**族——语言面收敛决策（跨 981 冻结语法，非 UI 适配器可闭）；②float/f64 模型字段与 float 载荷——981 明确不支撑域（fail-closed）；③双 widget 同文件源——组件面单 node 形状（IF-981-MODULE 域）；④控制流/let/var/调用 handler 体——组件面只收平铺赋值（语法层拒，需语言面体模型扩展决策）；⑤空体 handler（无可发射语句——语义 no-op）；⑥引号事件键/handler（`."save"` 形——语法缺口族①）；⑦store/HTML 片段伪源（提取伪影，非 widget 源）。
 - **vue 门（V-B-WEB 具名命令）**：72/82→**77/82**——余 chart×5=PLAN-643 契约分歧陈旧断言（chart 元件已降 name-only（tier=package_origin），官方组件包持真契约；测试仍断言内建 vue mapping——归属 chart/官方包线处置，不单方弱化）。vmodel_fold 断言刷新至 Plan 008/DEBTS #6 单参取文本的后来设计。
 - **边界（诚实）**：语料全量 spliced（1→全覆盖）剩余=七族 taxonomy——①④⑥为年龄面语法/体模型收敛（多年面、跨 981 冻结 grammar-id，需语言面 owner 决策）；②为 981 不支撑域；③为 IF-981-MODULE；⑤⑦语义上无可拼接。B-WEB-I/V/R 勾选前置于上述族的归属处置。
+
+### §13.14 年龄面语法收敛 I：事件绑定调用形/事件键修饰符/元素括号属性（切片 #6m，2026-11-18）
+
+- **语法**（`auto-source.at`）：`age-event-key`（ident 基名+`age-event-key-mod` 尾规则链，`onclick.self`——双 AGE 面）；`age-event-binding`（`.Msg(args)` 调用形+`age-event-binding-args`/`age-event-arg`——仅 age-component；**多步 opt 不被组合器支持**，括号段/体块段归子规则）；`age-element-props-block`（`input (placeholder: "s") { … }` 括号属性行+可选体块——仅 age-component）。
+- **`$event` 承载**：UI 侧**同长归一化**（`$event`→`nevent`，6↔6 字节 span 零位移，沿 state→model 同法；lane 编译链与公共坐标出口双接线）——不引入全局 token（首版 evt-dollar token 实测扰动**全部 15 个 profile** 的 grammar-id，撤回）；归一化后按普通 ident 进 pratt 实参。**投影丢弃实参**（宿主/DOM 事件通道，本面不求值不验证——模板发射由方言 AST 承担，此投影无消费方）。
+- **grammar-id 具名重基线**（981 `plan981_grammar_scope` 内注明，975 先例法）：仅 `age-component`（1fb56340…，前值 96ecc437…）与 `age-package`（874a32e1…，前值 14561796…——共享 age-event-key 规则族）两值漂移；**其余 13 profile 逐字节不变**（实测对照冻结值）。
+- **census 具名修订 #5**：(75,8,1,27)→**(75,8,4,24)**——[4]（modifier 键）、[18]/[59]（$event 绑定，含括号属性形）spliced；absent-3。
+- **剩余缺席族**（taxonomy 更新）：③双 widget（IF-981-MODULE）、④控制流/let/调用体（语言面体模型扩展）、⑤空体、⑥引号事件键/handler（引号键族——本批未收，方言层合同）、②float 域、⑦伪源。①的括号属性/修饰符/$event 子族已闭。
+- **永久用例**：lang `plan980_web_grammar_6m.rs`（四形编译）；UI `p980_web_event_arg_forms`（三形端到端 lane 拼接）。
