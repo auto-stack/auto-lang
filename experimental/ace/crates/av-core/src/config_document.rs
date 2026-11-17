@@ -102,6 +102,13 @@ pub enum ConfigSpec {
     Put(PutTarget, ValKind),
     /// 子节点追加 `append(parent, child)`。
     Append,
+    /// `super-put(dst_node, src_obj, key)`：把 `src_obj` 的同名字段**原样搬进**
+    /// `dst_node`（任何值种类）。物化侧用它实现"对象字段进文档"而不需要
+    /// Str 返回面（`heap: kernel.heap`）。
+    SuperPut,
+    /// `obj-get-obj(obj, key)`：读对象的**对象值字段**并返回它的句柄（链式读
+    /// `k["a"]["b"]` 的中间步；非对象字段具名拒绝）。
+    ObjGetObj,
     /// 收尾 `finish()`。
     Finish,
 }
@@ -120,6 +127,15 @@ impl ConfigSpec {
             ConfigSpec::Put(PutTarget::List, k) => vec![MirType::I32, k.mir()],
             ConfigSpec::Put(_, k) => vec![MirType::I32, MirType::StrView, k.mir()],
             ConfigSpec::Append => vec![MirType::I32, MirType::I32],
+            ConfigSpec::SuperPut => {
+                vec![
+                    MirType::I32,
+                    MirType::I32,
+                    MirType::StrView,
+                    MirType::StrView,
+                ]
+            }
+            ConfigSpec::ObjGetObj => vec![MirType::I32, MirType::StrView],
         }
     }
 
@@ -138,6 +154,12 @@ pub fn spec_of(sym: &str) -> Option<ConfigSpec> {
     let rest = sym.strip_prefix("auto.config.document.")?;
     let rest = rest.strip_suffix(".v1")?;
     // 形如 `<op>`／`<op>.<kind>`；`obj-put`/`list-push`/`arg-named` 是连字符名字。
+    if rest == "obj-get-obj" {
+        return Some(ConfigSpec::ObjGetObj);
+    }
+    if rest == "super-put" {
+        return Some(ConfigSpec::SuperPut);
+    }
     if let Some(rest) = rest.strip_prefix("obj-put.") {
         return Some(ConfigSpec::Put(PutTarget::Obj, ValKind::of_word(rest)?));
     }
@@ -846,6 +868,82 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                             },
                         }
                     }
+                }
+            }
+            ConfigSpec::ObjGetObj => {
+                // 链式读的中间步：返回字段的**对象句柄**（非对象字段具名拒绝）。
+                let src = i32_arg(&args[0])? as u32;
+                let key = text_arg(&args[1])?;
+                session.charge_bytes(key.len())?;
+                let handle = match session.get(src)? {
+                    Entry::Obj(d) => *d
+                        .fields
+                        .iter()
+                        .find(|(k, _)| *k == key)
+                        .map(|(_, h)| h)
+                        .ok_or_else(|| {
+                            HostError::Io(format!("config: object has no field `{key}`"))
+                        })?,
+                    _ => {
+                        return Err(HostError::Io(
+                            "config: obj-get-obj requires an object source".into(),
+                        ))
+                    }
+                };
+                // 字段可能存成**对象句柄条目**，也可能存成持有对象句柄的
+                // `Entry::Value(StoredValue::Obj(h))`（`cfg_obj_put` 的值形态）。
+                // 两种都接受，其它种类具名拒绝。
+                let obj_handle = match session.get(handle)? {
+                    Entry::Obj(_) => handle as i32,
+                    Entry::Value(StoredValue::Obj(h)) => *h as i32,
+                    _ => {
+                        return Err(HostError::Io(format!(
+                            "config: field `{key}` is not an object"
+                        )))
+                    }
+                };
+                Ok(obj_handle)
+            }
+            ConfigSpec::SuperPut => {
+                // `cfg_super_put(dst, src_obj, key)`：把源对象的字段**克隆**进
+                // 目标节点（任何值种类；缺键具名报错；根级仍受 seeded 覆盖规则）。
+                let dst = i32_arg(&args[0])? as u32;
+                let src = i32_arg(&args[1])? as u32;
+                let src_key = text_arg(&args[2])?;
+                let dst_key = text_arg(&args[3])?;
+                session.charge_bytes(src_key.len())?;
+                session.charge_bytes(dst_key.len())?;
+                let value_handle = {
+                    let handle = match session.get(src)? {
+                        Entry::Obj(d) => *d
+                            .fields
+                            .iter()
+                            .find(|(k, _)| *k == src_key)
+                            .map(|(_, h)| h)
+                            .ok_or_else(|| {
+                                HostError::Io(format!("config: object has no field `{src_key}`"))
+                            })?,
+                        _ => {
+                            return Err(HostError::Io(
+                                "config: super-put requires an object source".into(),
+                            ))
+                        }
+                    };
+                    handle
+                };
+                session.charge_value()?;
+                if Some(dst) == session.root && session.seeded.contains(&dst_key) {
+                    return Ok(0);
+                }
+                match session.get_mut(dst)? {
+                    Entry::Node(d) => {
+                        // 克隆 = 新条目（共享句柄会让两个文档位置别名）。
+                        d.props.push((dst_key, value_handle));
+                        Ok(0)
+                    }
+                    _ => Err(HostError::Io(
+                        "config: super-put requires a node destination".into(),
+                    )),
                 }
             }
             ConfigSpec::Append => {

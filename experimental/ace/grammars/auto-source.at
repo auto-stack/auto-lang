@@ -2190,7 +2190,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document]) { dot(same-line: true) ident(field: "member") }
             // PLAN-964（L-16/L-20）：索引后缀 `base[key]`——对象动态键读
             // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。
-            alt(profiles: [aggregates, closures, scheduler]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
+            // PLAN-982：配置文档也要能读对象字段 `k["heap"]`（物化层把它发射成
+            // `cfg_super_put`，不需要 Str 返回面）。
+            alt(profiles: [aggregates, closures, scheduler, config-document]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
             // PLAN-965 (M2-A): `.?(fallback)` and `.?` error/option propagation steps.
             alt(profiles: [aggregates, scheduler]) { dotquestion(same-line: true) lparen(same-line: true) expr(field: "fallback") rparen() {} }
             alt(profiles: [aggregates, scheduler]) { dotquestion(same-line: true) }

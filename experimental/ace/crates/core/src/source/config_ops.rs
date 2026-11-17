@@ -243,6 +243,18 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
     },
     // ---- 子节点追加与收尾 ----
     ConfigSourceOp {
+        callee: "cfg_obj_get_obj",
+        symbol: "auto.config.document.obj-get-obj.v1",
+        params: &[VT::I32, VT::Str],
+        result: VT::I32,
+    },
+    ConfigSourceOp {
+        callee: "cfg_super_put",
+        symbol: "auto.config.document.super-put.v1",
+        params: &[VT::I32, VT::I32, VT::Str, VT::Str],
+        result: VT::I32,
+    },
+    ConfigSourceOp {
         callee: "cfg_append",
         symbol: "auto.config.document.append.v1",
         params: P_H_I32,

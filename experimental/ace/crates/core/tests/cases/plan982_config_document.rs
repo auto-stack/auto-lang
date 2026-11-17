@@ -610,3 +610,59 @@ fn p982_config_reserved_words_work_as_document_keys() {
         vec!["tag", "type", "name"]
     );
 }
+/// 982/CONFIG：**对象字段搬运**（`heap: k["heap"]`）——不需要 Str 返回面，
+/// 物化层发射 `cfg_super_put(dst, k, "heap")`；缺字段是具名错误。
+#[test]
+fn p982_config_object_field_reads_are_carried_into_the_document() {
+    let src = "var k = { heap: \"big\" }\nheap: k[\"heap\"]\n";
+    let front = compile_config_document(src, "pac.at", &[]).expect("object field read compiles");
+    let module = front
+        .compiled
+        .checked
+        .bundle()
+        .modules
+        .first()
+        .expect("one module");
+    let intrinsics: Vec<&str> = module
+        .defs
+        .iter()
+        .filter_map(|d| match &d.kind {
+            ace_core::hir::DefKind::Intrinsic { symbol, .. } => Some(symbol.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        intrinsics.contains(&"auto.config.document.super-put.v1"),
+        "the carrier primitive is emitted: {intrinsics:?}"
+    );
+    // 未知字段：前端不静默（运行期 `cfg_super_put` 具名拒绝；这里断言工具面
+    // 仍能编译，具体错误由 av-core 合同用例覆盖）。
+}
+/// 链式对象读：`x: k["a"]["b"]` —— 中间步 `obj-get-obj` 取句柄、末端 `super-put`
+/// 搬到 pair 键上（i32-only，不经过 Str 返回面）。
+#[test]
+fn p982_config_chained_object_reads_emit_both_primitives() {
+    let src = "var k = { a: { b: 1 } }\nx: k[\"a\"][\"b\"]\n";
+    let front = compile_config_document(src, "pac.at", &[]).expect("chained read compiles");
+    let module = front
+        .compiled
+        .checked
+        .bundle()
+        .modules
+        .first()
+        .expect("one module");
+    let intrinsics: Vec<&str> = module
+        .defs
+        .iter()
+        .filter_map(|d| match &d.kind {
+            ace_core::hir::DefKind::Intrinsic { symbol, .. } => Some(symbol.as_str()),
+            _ => None,
+        })
+        .collect();
+    for want in [
+        "auto.config.document.obj-get-obj.v1",
+        "auto.config.document.super-put.v1",
+    ] {
+        assert!(intrinsics.contains(&want), "missing {want}: {intrinsics:?}");
+    }
+}

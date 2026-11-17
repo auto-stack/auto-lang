@@ -322,6 +322,81 @@ shadowed: label
         other => panic!("`1 / 0` without an override must fail by name, got {other:?}"),
     }
 
+    // 对象字段**搬运**（`heap: k["heap"]`）：值进文档，脚本不经过 Str 返回面。
+    match run(
+        "var k = { heap: \"big\" }\nheap: k[\"heap\"]\n",
+        &empty_context(),
+    )
+    .outcome
+    {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(text(prop(&document, "heap")), "big");
+        }
+        other => panic!("an object field must be carried into the document, got {other:?}"),
+    }
+
+    // 搬运**保留值种类**且落在**pair 的键**上（不是源字段名）：早先的实现把
+    // 目标键硬写成源字段名，只有"同名"时才对——被 i32 用例抓到后修正。
+    match run("var k = { port: 8080 }\np: k[\"port\"]\n", &empty_context()).outcome {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(
+                i64_of(prop(&document, "p")),
+                8080,
+                "dst key is the pair key"
+            );
+            assert!(
+                prop(&document, "port").is_none(),
+                "the source name is not leaked"
+            );
+        }
+        other => panic!("an i32 field must be carried under the pair key, got {other:?}"),
+    }
+
+    // 对象值字段的搬运：字段本身是对象时，搬进去的仍是**对象**（不是被拍平/丢弃）。
+    match run("var k = { a: { b: 1 } }\nx: k[\"a\"]\n", &empty_context()).outcome {
+        AceConfigOutcome::Success { document, .. } => match prop(&document, "x") {
+            Some(ConfigValue::Object(fields)) => {
+                assert_eq!(fields.len(), 1, "the nested object keeps its field");
+                assert_eq!(fields[0].0, "b");
+            }
+            other => panic!("an object-valued field must stay an object, got {other:?}"),
+        },
+        other => panic!("object-valued carry must succeed, got {other:?}"),
+    }
+
+    // 链式读：`x: k["a"]["b"]` ⇒ 文档 `x == 1`（中间步取对象句柄）。
+    match run(
+        "var k = { a: { b: 1 } }\nx: k[\"a\"][\"b\"]\n",
+        &empty_context(),
+    )
+    .outcome
+    {
+        AceConfigOutcome::Success { document, .. } => {
+            assert_eq!(i64_of(prop(&document, "x")), 1);
+        }
+        other => panic!("a chained object read must serve the leaf value, got {other:?}"),
+    }
+
+    // 缺字段：具名诊断（不是空值、不是 panic）。
+    match run("var k = { port: 1 }\np: k[\"nope\"]\n", &empty_context()).outcome {
+        AceConfigOutcome::Diagnostic { code, .. } => {
+            assert!(
+                code.starts_with("ace.config/") || code.starts_with("ace.diagnostic/"),
+                "the missing field is named: {code}"
+            );
+        }
+        // 宿主车道把这条错误报成 `HostFailure`（`ace.config/infra` + 具名 message），
+        // 与 `Diagnostic` 同为具名终态；不允许"空值/panic/静默"。
+        AceConfigOutcome::HostFailure { code, message } => {
+            assert!(code.starts_with("ace.config/"), "named code: {code}");
+            assert!(
+                message.contains("no field"),
+                "the message names the missing field: {message}"
+            );
+        }
+        other => panic!("a missing object field must be a named terminal, got {other:?}"),
+    }
+
     // 不能精确承载的注入种类：具名拒绝（不静默丢弃、不默认空）。
     let mut bad = empty_context();
     bad.args.push(("ratio".to_string(), ConfigValue::f64(1.5)));

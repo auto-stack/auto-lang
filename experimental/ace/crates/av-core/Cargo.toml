@@ -19,6 +19,11 @@ path = "tests/conformance.rs"
 name = "foreign_resources"
 path = "tests/foreign_resources.rs"
 
+# PLAN-982：配置对象字段搬运原语（`super-put`）的会话级合同。
+[[test]]
+name = "p982_config_super_put"
+path = "tests/p982_config_super_put.rs"
+
 # PLAN-1040: the Linux AV runner — a static musl binary executing the
 # shared checked console ABC on the real Linux platform backend.
 [[bin]]
