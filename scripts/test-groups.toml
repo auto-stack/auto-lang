@@ -779,6 +779,18 @@ suite = "crates/auto-lang/test/cases/ace-m2/scheduler/scheduler.suite.ad"
 all = false
 
 [[group]]
+name = "plan1066-s-doc-controls"
+title = "PLAN-1066 T-04/NC-08 scheduler 文档载体单轴负控（显式ACE工具 case-parent+av，真 auto-case 消费）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "av"]
+domain = "ace"
+file = "scripts/tests/test_plan1066_case_doc_controls.py"
+all = false
+
+[[group]]
 name = "case-ace-m2-control-effects-965"
 title = "TestCase case-ace-m2-control-effects-965（PLAN-965 T-08 完整控制流/错误传播/生成器 AV 真实运行与正反控）"
 runner = "case"

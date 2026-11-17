@@ -1007,5 +1007,67 @@ class IncrementalGovernance(unittest.TestCase):
         self.assertEqual(payload['caches'][0]['files'], 1)
 
 
+class ActiveDocumentCaseEntries(unittest.TestCase):
+    """PLAN-1066 T-09/NC-09: active suite entries are document author files.
+
+    A legacy `test-case` fence may stay on disk as frozen history, but an
+    INCLUDED fence file is an unmigrated active entry; a file that is neither
+    form is a poisoned include. The scan locates group / suite / case. Each
+    control mutates a throwaway tree, never the repository.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / 'scripts/test-governance'))
+        import document_case_active_scan
+        self.scan = document_case_active_scan
+
+    def mirror(self, label, case_text, include):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        (root / 'scripts').mkdir(parents=True)
+        (root / 'cases/mirror').mkdir(parents=True)
+        (root / 'cases/mirror/a.at').write_text('fn main() {}\n', encoding='utf-8')
+        (root / 'cases/mirror/case.case.ad').write_text(case_text, encoding='utf-8', newline='\n')
+        (root / 'cases/mirror/suite.ad').write_text(
+            '```test-suite\nsuite { schema: "autolang.suite/2", id: "mirror", include: [\n'
+            '  "%s",\n] }\n```\n' % include, encoding='utf-8', newline='\n')
+        (root / 'scripts/test-groups.toml').write_text(
+            '[[group]]\nname = "case-%s"\nrunner = "case"\ndomain = "ace"\n'
+            'suite = "cases/mirror/suite.ad"\nall = false\n' % label,
+            encoding='utf-8', newline='\n')
+        return root
+
+    def test_every_included_case_file_is_a_document(self):
+        result = self.scan.scan(ROOT)
+        self.assertEqual(result['formats']['fence'], 0, self.scan.report(result))
+        self.assertEqual(result['formats']['unknown'], 0, self.scan.report(result))
+        self.assertEqual(result['offenders'], [], self.scan.report(result))
+        self.assertEqual(result['missing'], [], self.scan.report(result))
+        # The scan really walked the fixed groups (not an empty/unread config).
+        self.assertGreaterEqual(result['groups'], 76)
+        self.assertGreaterEqual(result['files'], 183)
+
+    def test_scan_accepts_document_entries_and_rejects_legacy_or_poisoned(self):
+        document = ('## Case: control-doc\nid: "control.doc"\n### Auto\npath: "main.at"\n'
+                    '```auto\nfn main() {}\n```\n')
+        fence = ('```test-case\ncase { schema: "autolang.case/2", id: "control.old", '
+                 'source: { file: "a.at", syntax: "auto", path: "main.at" } }\n```\n')
+        clean = self.scan.scan(self.mirror('clean', document, 'case.case.ad'))
+        self.assertEqual(clean['offenders'], [])
+        self.assertEqual(clean['formats'], {'document': 1, 'fence': 0, 'unknown': 0})
+        stale = self.scan.scan(self.mirror('stale', fence, 'case.case.ad'))
+        self.assertEqual(len(stale['offenders']), 1, self.scan.report(stale))
+        self.assertEqual(stale['offenders'][0]['format'], 'fence')
+        self.assertEqual(stale['offenders'][0]['group'], 'case-stale')
+        self.assertEqual(stale['offenders'][0]['suite'], 'cases/mirror/suite.ad')
+        self.assertEqual(stale['offenders'][0]['case'], 'cases/mirror/case.case.ad')
+        poisoned = self.scan.scan(self.mirror('poisoned', '# empty\n', 'case.case.ad'))
+        self.assertEqual([row['format'] for row in poisoned['offenders']], ['unknown'])
+        missing = self.scan.scan(self.mirror('missing', document, 'absent.case.ad'))
+        self.assertEqual(missing['offenders'], [])
+        self.assertEqual([row['reason'] for row in missing['missing']], ['include missing'])
+
+
 if __name__ == '__main__':
     unittest.main()
