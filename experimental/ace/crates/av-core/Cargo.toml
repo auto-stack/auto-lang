@@ -24,6 +24,11 @@ path = "tests/foreign_resources.rs"
 name = "p982_config_super_put"
 path = "tests/p982_config_super_put.rs"
 
+# PLAN-982（EXEC）：`console.stdin` 的默认拒绝合同。
+[[test]]
+name = "p982_console_stdin_contract"
+path = "tests/p982_console_stdin_contract.rs"
+
 # PLAN-1040: the Linux AV runner — a static musl binary executing the
 # shared checked console ABC on the real Linux platform backend.
 [[bin]]

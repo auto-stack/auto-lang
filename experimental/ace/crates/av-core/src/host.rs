@@ -234,6 +234,16 @@ pub trait ConsoleHost {
     fn retained_bytes(&self) -> usize;
     fn write(&mut self, stream: Stream, bytes: &[u8], cancel: &CancelFlag)
         -> Result<(), HostError>;
+
+    /// 读一行标准输入（PLAN-982 EXEC：`console.stdin` 的宿主面）。
+    ///
+    /// 默认实现**具名拒绝**：没有输入面的宿主不会假装读到空行，也不会把
+    /// `ACE` 的"无 stdin"变成静默的空字符串。提供者按需覆盖。
+    fn read_line(&mut self, _cancel: &CancelFlag) -> Result<Vec<u8>, HostError> {
+        Err(HostError::Io(
+            "console.stdin/unsupported: this host has no stdin provider".into(),
+        ))
+    }
 }
 
 // This is an execution-scope guard, not a provider registry or a portable grant.
