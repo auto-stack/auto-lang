@@ -43,7 +43,17 @@ const P_STR: &[VT] = &[VT::Str];
 ///
 /// 这四个是共鸣名的**端口**类型：它们不是用户 record，也不是 Core 内建，
 /// 而是 AGE 领域声明的 typed 端口。resolver 按本表把它们当作名义类型登记。
-pub const AGE_PORT_TYPES: &[&str] = &["Material2D", "Mesh2D", "Model3D"];
+pub const AGE_PORT_TYPES: &[&str] = &[
+    "Material2D",
+    "Mesh2D",
+    "Model3D",
+    // PLAN-981（IF-981-GFX-AV-SEAM）：UI058 查询结果/精灵资源端口（声明序
+    // 保证被引端口先注册——Frame2D.image 引 Image2D）。
+    "Cast2D",
+    "Sweep2D",
+    "Image2D",
+    "Frame2D",
+];
 
 /// 每个端口携带的字段（与构造器实参一一对应；f32 分量）。
 ///
@@ -59,6 +69,55 @@ pub const AGE_PORT_FIELDS: &[(&str, &[(&str, &str)])] = &[
     // 规范 `model3d.glb("path.glb")` 的身份 = 完整原始字节 SHA256 + byte_length。
     // 用 `Str` 承载哈希（十六进制）与 `i32` 承载长度，避免把身份伪造为数值。
     ("Model3D", &[("sha256", "Str"), ("byte_length", "i32")]),
+    // PLAN-981 B-W1（IF-981-GFX-AV-SEAM，UI058 AV 接面）：查询结果与精灵
+    // 资源的 typed 承载。Cast2D/Sweep2D 按 021 getter 面（axis 参数的
+    // point/normal 在值面展开为分量字段——最终拼写由 UI058 T-02 联冻）；
+    // Image2D 身份=内容 SHA256+byte_length+IHDR（022 语义）；Frame2D 引用
+    // Image2D 端口 + rect。
+    (
+        "Cast2D",
+        &[
+            ("hit", "bool"),
+            ("node", "i32"),
+            ("t", "f32"),
+            ("point_x", "f32"),
+            ("point_y", "f32"),
+            ("normal_x", "f32"),
+            ("normal_y", "f32"),
+        ],
+    ),
+    (
+        "Sweep2D",
+        &[
+            ("hit", "bool"),
+            ("node", "i32"),
+            ("t", "f32"),
+            ("origin_x", "f32"),
+            ("origin_y", "f32"),
+            ("normal_x", "f32"),
+            ("normal_y", "f32"),
+            ("start_overlap", "bool"),
+        ],
+    ),
+    (
+        "Image2D",
+        &[
+            ("sha256", "Str"),
+            ("byte_length", "i32"),
+            ("width", "i32"),
+            ("height", "i32"),
+        ],
+    ),
+    (
+        "Frame2D",
+        &[
+            ("image", "Image2D"),
+            ("x", "i32"),
+            ("y", "i32"),
+            ("w", "i32"),
+            ("h", "i32"),
+        ],
+    ),
 ];
 
 pub const AGE_RESOURCE_OPS: &[AgeResourceOp] = &[
@@ -96,6 +155,229 @@ pub const AGE_RESOURCE_OPS: &[AgeResourceOp] = &[
 /// 按源里的限定写法查声明。
 pub fn lookup(callee: &str) -> Option<&'static AgeResourceOp> {
     AGE_RESOURCE_OPS.iter().find(|op| op.callee == callee)
+}
+
+/// PLAN-981 B-W1（IF-981-GFX-AV-SEAM，UI058 AV 接面）：AGE 图形**服务**的
+/// 执行车道分类——算法/身份归图形宿主（UI058 中立单元，PLAN-938 host
+/// authority 车道消费同一受检产物），语言侧只交签名/受检投影/接线合同。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgeGfxLane {
+    /// 纯值构造（`frame2d.at`）：AV 观察车道 lower 成端口 record Aggregate，
+    /// 可独立执行/观察。
+    ValueCtor,
+    /// 宿主算法（query2d/input/tick/row/render2d）：AV 观察车道在调用点
+    /// 具名拒（fail-closed，零效果）；由图形宿主车道执行。
+    HostAlgorithm,
+    /// 宿主身份（`image2d.png`：文件内容身份由宿主计算注入；语言侧不做 IO）
+    /// ——AV 观察车道具名拒（同 `model3d.glb` 先例）。
+    HostIdentity,
+}
+
+/// gfx 服务的结果形态。
+#[derive(Clone, Copy, Debug)]
+pub enum AgeGfxResult {
+    Port(&'static str),
+    Scalar(VT),
+}
+
+/// gfx 服务的形参形态（标量或端口引用——`frame2d.at` 的 Image2D 实参）。
+#[derive(Clone, Copy, Debug)]
+pub enum AgeGfxParam {
+    Scalar(VT),
+    Port(&'static str),
+}
+
+/// 一条 AGE 图形服务声明（UI058 所需六覆盖项的服务签名面；语义/预算映射
+/// 由 UI058 T-02 与 981 联冻，本表是**受检投影**的唯一事实源）。
+#[derive(Clone, Copy, Debug)]
+pub struct AgeGfxServiceOp {
+    /// 源里的限定写法（`query2d.segment`）。
+    pub callee: &'static str,
+    /// 受检产物里的稳定符号（跨后端身份）。
+    pub symbol: &'static str,
+    pub params: &'static [AgeGfxParam],
+    pub result: AgeGfxResult,
+    pub capability: &'static str,
+    pub lane: AgeGfxLane,
+}
+
+pub const CAP_AGE2D_QUERY: &str = "age2d.query";
+pub const CAP_AGE2D_INPUT: &str = "age2d.input";
+pub const CAP_AGE2D_SCENE: &str = "age2d.scene";
+pub const CAP_AGE2D_SPRITE: &str = "age2d.sprite";
+
+const GP_I32: AgeGfxParam = AgeGfxParam::Scalar(VT::I32);
+const GP_BOOL: AgeGfxParam = AgeGfxParam::Scalar(VT::Bool);
+const GP_F32: AgeGfxParam = AgeGfxParam::Scalar(VT::F32);
+const GP_STR: AgeGfxParam = AgeGfxParam::Scalar(VT::Str);
+const GP_IMG: AgeGfxParam = AgeGfxParam::Port("Image2D");
+const R_I32: AgeGfxResult = AgeGfxResult::Scalar(VT::I32);
+const R_F32: AgeGfxResult = AgeGfxResult::Scalar(VT::F32);
+const R_BOOL: AgeGfxResult = AgeGfxResult::Scalar(VT::Bool);
+
+/// UI058 六覆盖项的服务签名（差额表 #1/#2/#3/#4/#6 的 981 侧接面）。
+pub const AGE_GFX_SERVICE_OPS: &[AgeGfxServiceOp] = &[
+    // #1 查询（算法=021 v3/v4 中立单元，宿主车道执行）
+    AgeGfxServiceOp {
+        callee: "query2d.segment",
+        symbol: "age.query2d.segment.v1",
+        params: &[GP_I32, GP_BOOL, GP_F32, GP_F32, GP_F32, GP_F32],
+        result: AgeGfxResult::Port("Cast2D"),
+        capability: CAP_AGE2D_QUERY,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "query2d.sweep",
+        symbol: "age.query2d.sweep.v1",
+        params: &[GP_I32, GP_BOOL, GP_F32, GP_F32],
+        result: AgeGfxResult::Port("Sweep2D"),
+        capability: CAP_AGE2D_QUERY,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    // #3 输入/时钟（宿主逐 Tick 喂值；轴归一/pressed 语义由 UI058 冻结）
+    AgeGfxServiceOp {
+        callee: "input.space",
+        symbol: "age.input.space.v1",
+        params: &[],
+        result: R_I32,
+        capability: CAP_AGE2D_INPUT,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "input.x",
+        symbol: "age.input.x.v1",
+        params: &[],
+        result: R_F32,
+        capability: CAP_AGE2D_INPUT,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "input.y",
+        symbol: "age.input.y.v1",
+        params: &[],
+        result: R_F32,
+        capability: CAP_AGE2D_INPUT,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "input.pressed",
+        symbol: "age.input.pressed.v1",
+        params: &[GP_I32],
+        result: R_BOOL,
+        capability: CAP_AGE2D_INPUT,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "tick.dt",
+        symbol: "age.tick.dt.v1",
+        params: &[],
+        result: R_F32,
+        capability: CAP_AGE2D_INPUT,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    // #2 行位置/移动（行状态=图形宿主 SoA；character 行位置写拒为宿主语义）
+    AgeGfxServiceOp {
+        callee: "row.place",
+        symbol: "age.row.place.v1",
+        params: &[GP_I32, GP_F32, GP_F32],
+        result: R_I32,
+        capability: CAP_AGE2D_SCENE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "row.shift",
+        symbol: "age.row.shift.v1",
+        params: &[GP_I32, GP_F32, GP_F32],
+        result: R_I32,
+        capability: CAP_AGE2D_SCENE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "row.show",
+        symbol: "age.row.show.v1",
+        params: &[GP_I32, GP_BOOL],
+        result: R_I32,
+        capability: CAP_AGE2D_SCENE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "row.world",
+        symbol: "age.row.world.v1",
+        params: &[GP_I32, GP_I32],
+        result: R_F32,
+        capability: CAP_AGE2D_SCENE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "row.local",
+        symbol: "age.row.local.v1",
+        params: &[GP_I32, GP_I32],
+        result: R_F32,
+        capability: CAP_AGE2D_SCENE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    // #4 精灵端口（022 render2d 语义：代次 token、旧代写拒）
+    AgeGfxServiceOp {
+        callee: "render2d.spawn",
+        symbol: "age.render2d.spawn.v1",
+        params: &[GP_STR, GP_F32, GP_F32],
+        result: R_I32,
+        capability: CAP_AGE2D_SPRITE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "render2d.despawn",
+        symbol: "age.render2d.despawn.v1",
+        params: &[GP_I32],
+        result: R_I32,
+        capability: CAP_AGE2D_SPRITE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    AgeGfxServiceOp {
+        callee: "render2d.frame",
+        symbol: "age.render2d.frame.v1",
+        params: &[GP_I32, GP_STR, GP_I32, GP_I32],
+        result: R_I32,
+        capability: CAP_AGE2D_SPRITE,
+        lane: AgeGfxLane::HostAlgorithm,
+    },
+    // #4 资源：图像身份（宿主计算注入）与帧表（纯值构造，AV 可执行）
+    AgeGfxServiceOp {
+        callee: "image2d.png",
+        symbol: "age.image2d.png.v1",
+        params: &[GP_STR],
+        result: AgeGfxResult::Port("Image2D"),
+        capability: CAP_AGE2D_SPRITE,
+        lane: AgeGfxLane::HostIdentity,
+    },
+    AgeGfxServiceOp {
+        callee: "frame2d.at",
+        symbol: "age.frame2d.at.v1",
+        params: &[GP_IMG, GP_I32, GP_I32, GP_I32, GP_I32],
+        result: AgeGfxResult::Port("Frame2D"),
+        capability: CAP_AGE2D_SPRITE,
+        lane: AgeGfxLane::ValueCtor,
+    },
+];
+
+impl AgeGfxServiceOp {
+    /// 端口结果的端口名（Scalar 结果为 None）。
+    pub fn result_port_name(&self) -> Option<&'static str> {
+        match self.result {
+            AgeGfxResult::Port(name) => Some(name),
+            AgeGfxResult::Scalar(_) => None,
+        }
+    }
+}
+
+/// 按限定写法查 gfx 服务。
+pub fn gfx_lookup(callee: &str) -> Option<&'static AgeGfxServiceOp> {
+    AGE_GFX_SERVICE_OPS.iter().find(|op| op.callee == callee)
+}
+
+/// 按稳定符号查 gfx 服务。
+pub fn gfx_by_symbol(symbol: &str) -> Option<&'static AgeGfxServiceOp> {
+    AGE_GFX_SERVICE_OPS.iter().find(|op| op.symbol == symbol)
 }
 
 /// 按稳定符号查声明（发射器/消费者用）。
@@ -137,8 +419,9 @@ pub fn attr_value_kind(key: &str) -> Option<AttrValueKind> {
         // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**。
         "material" | "tint" | "model" | "mesh" => Some(AttrValueKind::ResourceRef),
         // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）。
-        "position" | "size" | "x" | "y" | "diameter" | "visible" | "yaw" | "pitch"
-        | "scale" => Some(AttrValueKind::Value),
+        "position" | "size" | "x" | "y" | "diameter" | "visible" | "yaw" | "pitch" | "scale" => {
+            Some(AttrValueKind::Value)
+        }
         _ => None,
     }
 }

@@ -2035,9 +2035,15 @@ fn resolve_detailed(
                                     "bool" => VT::Bool,
                                     "Str" => VT::StrOwned,
                                     "str" => VT::Str,
-                                    other => panic!(
-                                        "AGE port field `{n}` declares unsupported type `{other}`"
-                                    ),
+                                    // PLAN-981（IF-981-GFX-AV-SEAM）：端口引用字段
+                                    //（Frame2D.image: Image2D）——被引端口先注册
+                                    // （AGE_PORT_TYPES 声明序保证），按名义记录 id。
+                                    other => match rec_index.get(other) {
+                                        Some(&ri) => VT::Rec(ri),
+                                        None => panic!(
+                                            "AGE port field `{n}` declares unsupported type `{other}`"
+                                        ),
+                                    },
                                 },
                                 span: Span { start: 0, end: 0 },
                             })
@@ -5240,6 +5246,9 @@ enum RecvClass {
     /// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务命名空间接收者
     /// （`material2d.color(...)`）。携带声明表里那一条 op。
     AgeService(&'static super::age_resources::AgeResourceOp),
+    /// PLAN-981（IF-981-GFX-AV-SEAM）：AGE 图形服务（`query2d.segment` 等）——
+    /// 同 AgeService：接收者是命名空间，按 gfx 声明表分类。
+    AgeGfx(&'static super::age_resources::AgeGfxServiceOp),
     /// PLAN-864: `<list<Str>-local>.get(i).len()` — a whole-Str element
     /// view consumed by len (contract C4).
     ElemViewLen {
@@ -13134,6 +13143,18 @@ impl<'a, 's> FnResolver<'a, 's> {
                                         .expect("checked above"),
                                 )
                             } else if self.lookup(&id.name).is_none()
+                                && crate::source::age_resources::gfx_lookup(&format!(
+                                    "{}.{}",
+                                    id.name, name.name
+                                ))
+                                .is_some()
+                            {
+                                let dotted = format!("{}.{}", id.name, name.name);
+                                RecvClass::AgeGfx(
+                                    crate::source::age_resources::gfx_lookup(&dotted)
+                                        .expect("checked above"),
+                                )
+                            } else if self.lookup(&id.name).is_none()
                                 && self.rec_index.contains_key(&id.name)
                             {
                                 RecvClass::Static(self.rec_index[&id.name])
@@ -13563,6 +13584,94 @@ impl<'a, 's> FnResolver<'a, 's> {
                             out[dest] = ResolvedExpr {
                                 span: node_span,
                                 vt: port,
+                                kind: RExprKind::CallIntrinsic {
+                                    symbol: op.symbol,
+                                    args,
+                                },
+                            };
+                        }
+                        // PLAN-981（IF-981-GFX-AV-SEAM，UI058 AV 接面）：AGE 图形
+                        // 服务调用——参数按 gfx 声明表逐位校验（标量 VT 或端口
+                        // 引用），结果按 Port/Scalar 定型；执行车道由 lowering
+                        // 按声明分类（ValueCtor=Aggregate 可执行；HostAlgorithm/
+                        // HostIdentity 在 AV 观察车道具名拒，图形宿主车道消费）。
+                        RecvClass::AgeGfx(op) => {
+                            if rargs.len() != op.params.len() {
+                                self.bind_err(
+                                    "source.age.gfx-arity",
+                                    format!(
+                                        "`{}` takes {} argument(s), got {}",
+                                        op.callee,
+                                        op.params.len(),
+                                        rargs.len()
+                                    ),
+                                    node_span,
+                                );
+                            }
+                            let mut args = Vec::with_capacity(rargs.len());
+                            for (i, mut arg) in rargs.into_iter().enumerate() {
+                                let want = op
+                                    .params
+                                    .get(i)
+                                    .map(|gp| match gp {
+                                        crate::source::age_resources::AgeGfxParam::Scalar(vt) => {
+                                            *vt
+                                        }
+                                        crate::source::age_resources::AgeGfxParam::Port(name) => {
+                                            match self.rec_index.get(*name) {
+                                                Some(&ri) => VT::Rec(ri),
+                                                None => {
+                                                    self.bind_err(
+                                                        "source.age.gfx-port",
+                                                        format!(
+                                                            "AGE port type `{name}` is not \
+                                                             registered for this document"
+                                                        ),
+                                                        node_span,
+                                                    );
+                                                    VT::I32
+                                                }
+                                            }
+                                        }
+                                    })
+                                    .unwrap_or(VT::I32);
+                                if arg.value.vt != want {
+                                    self.bind_err(
+                                        "source.age.gfx-type",
+                                        format!(
+                                            "`{}` argument #{i} expects `{}`, got `{}`",
+                                            op.callee,
+                                            want.as_str(),
+                                            arg.value.vt.as_str()
+                                        ),
+                                        arg.value.span,
+                                    );
+                                }
+                                args.push(arg.value);
+                            }
+                            let vt = match op.result {
+                                crate::source::age_resources::AgeGfxResult::Port(name) => {
+                                    match self.rec_index.get(name) {
+                                        Some(&i) => VT::Rec(i),
+                                        None => {
+                                            self.bind_err(
+                                                "source.age.gfx-port",
+                                                format!(
+                                                    "AGE port type `{name}` is not registered \
+                                                     for this document"
+                                                ),
+                                                node_span,
+                                            );
+                                            VT::I32
+                                        }
+                                    }
+                                }
+                                crate::source::age_resources::AgeGfxResult::Scalar(vt) => vt,
+                            };
+                            self.used_intrinsics.insert(op.symbol);
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt,
                                 kind: RExprKind::CallIntrinsic {
                                     symbol: op.symbol,
                                     args,

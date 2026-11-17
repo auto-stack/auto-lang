@@ -1504,8 +1504,9 @@ pub fn lower_checked_owned(
             // 按声明准入为 import，调用点 lower 成 Aggregate；`model3d.glb`
             // 的身份是文件内容哈希（IO），不在此车道（保持具名拒）。
             hir::DefKind::Intrinsic { symbol, effect, ty }
-                if ace_core::source::age_resources::by_symbol(symbol).is_some()
-                    && symbol != "age.model3d.glb.v1" =>
+                if (ace_core::source::age_resources::by_symbol(symbol).is_some()
+                    && symbol != "age.model3d.glb.v1")
+                    || ace_core::source::age_resources::gfx_by_symbol(symbol).is_some() =>
             {
                 let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                 def_map.insert(di as u32, CalleeRef::Import(out.imports.len() as u32));
@@ -4363,6 +4364,72 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     sp,
                                 )?;
                                 return Ok(dst);
+                            }
+                            // PLAN-981（IF-981-GFX-AV-SEAM，UI058 AV 接面）：AGE
+                            // 图形服务按声明表的车道分类派发——
+                            // - ValueCtor（frame2d.at）：纯值构造 → 端口 record
+                            //   Aggregate（与 material2d 同一执行面，AV 可独立
+                            //   执行/观察）；
+                            // - HostAlgorithm / HostIdentity：AV 观察车道在调用
+                            //   点**具名拒**（fail-closed、零效果）——查询/输入/
+                            //   行写/精灵算法与文件身份归图形宿主（UI058 中立
+                            //   单元经 PLAN-938 host-authority 车道消费同一受检
+                            //   产物），语言侧不复制图形引擎、不伪造值。
+                            if let Some(gop) =
+                                ace_core::source::age_resources::gfx_by_symbol(&symbol)
+                            {
+                                match gop.lane {
+                                    ace_core::source::age_resources::AgeGfxLane::ValueCtor => {
+                                        let sig = self.out.imports[imp as usize].sig;
+                                        let result_ty =
+                                            self.out.sig_of(sig).map(|f| f.result).ok_or_else(
+                                                || {
+                                                    AdapterError::inv(
+                                                        "age-gfx.signature",
+                                                        "gfx constructor signature".into(),
+                                                    )
+                                                },
+                                            )?;
+                                        let want = ace_core::source::age_resources::AGE_PORT_FIELDS
+                                            .iter()
+                                            .find(|(n, _)| Some(*n) == gop.result_port_name())
+                                            .map(|(_, fs)| fs.len())
+                                            .unwrap_or(0);
+                                        if arg_slots.len() != want {
+                                            return Err(AdapterError::inv(
+                                                "age-gfx.arity",
+                                                format!(
+                                                    "gfx constructor `{}` takes {want} field(s); the call carries {}",
+                                                    symbol,
+                                                    arg_slots.len()
+                                                ),
+                                            ));
+                                        }
+                                        let dst = self.temp_ty(result_ty)?;
+                                        self.emit(
+                                            MirInstr::Aggregate {
+                                                dst,
+                                                record_ty: result_ty,
+                                                operands: arg_slots.clone(),
+                                            },
+                                            sp,
+                                        )?;
+                                        return Ok(dst);
+                                    }
+                                    lane => {
+                                        return Err(AdapterError::uns(
+                                            "lower.age-gfx-lane",
+                                            format!(
+                                                "AGE graphics service `{}` is a {} service:                                                  it executes on the graphics host lane                                                  (UI058 neutral units via the PLAN-938 host                                                  authority), not in the AV observation lane",
+                                                symbol,
+                                                match lane {
+                                                    ace_core::source::age_resources::AgeGfxLane::HostAlgorithm => "host-algorithm",
+                                                    _ => "host-identity",
+                                                }
+                                            ),
+                                        ));
+                                    }
+                                }
                             }
                             // PLAN-960: module global cell read/write.
                             if let Some(gname) = symbol.strip_prefix("module.global.get:") {

@@ -810,6 +810,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             "age.material2d.color.v1"
                                 | "age.mesh2d.quad.v1"
                                 | "age.mesh2d.circle.v1"
+                                // PLAN-981（IF-981-GFX-AV-SEAM）：纯值构造器
+                                //（其余 gfx 符号在调用点车道具名拒，不会成为
+                                // 存活 import）。
+                                | "age.frame2d.at.v1"
                         )
                 }
             };

@@ -94,6 +94,8 @@ mod plan981_cpu_surface;
 mod plan981_design_slot;
 #[path = "cases/plan981_event_a.rs"]
 mod plan981_event_a;
+#[path = "cases/plan981_gfx_seam.rs"]
+mod plan981_gfx_seam;
 #[path = "cases/plan981_event_b.rs"]
 mod plan981_event_b;
 #[path = "cases/plan981_grammar_scope.rs"]
