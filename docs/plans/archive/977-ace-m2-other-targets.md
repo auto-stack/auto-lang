@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
 plan_revision: 11
-current_step: 8
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-959, PLAN-960, PLAN-962, PLAN-964, PLAN-965, PLAN-968, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -384,9 +384,11 @@ AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC�
 - [x] **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final，核遗漏/延期/组合、warning/fmt/debug及Spec增量，缺必需批收据不得pass。
   [✅ 2026-11-17 T-05 独立 final pass @`3b1f227c7`（reviewer-977b，同树只读；plan r11）] 全包独立 final 三轮收敛：A 批 PY 证据按身份复用、B 批 REVERSE 与六路径覆盖实跑/发射/负控经独立复现；AC-01/02/03/06、AC-B-PY、AC-B-REVERSE、AC-PHASE、AC-TARGET-SCOPE、AC-COVERAGE、AC-LINUX-PHASE 全 pass（AC-05 merge-owned pending）；健康=改动的 5 个 Rust 文件 rustfmt 全绿、新代码零新警告、无调试打印；Spec 增量（SD-01/SD-02/SD-PHASE/SD-DETAIL/SD-COVERAGE/SD-LINUX-PHASE/SD-TARGET-SCOPE）核过；两处基线红（plan814、`source_parent_oracle_failure…`）保持未 PASS 标签。**T-06 必须**：spec `1653/1654`→`1655/1656` + certify 冷/暖分布、刷新 B-03 pin 后重跑 ledger、原子落 spec+ledger+tracked goldens、B-08/B-09 翻 landed、master 上复跑覆盖门/certify 并记录实测时延（warm >10s = 新红）。
 
-- [ ] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
+- [x] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
+  [✅ 2026-11-17 delivery `5060c9caa`（ff-only；rebase range-diff 全等；canonical spec sha16 `82ee06dea1e0248c` + SD-02 + 985 账本 B-03/B-08/B-09 landed；master 门禁与主检出 landing checks 见 §9 T-06 收据）]
 
-- [ ] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
+- [x] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
+  [✅ 2026-11-17 收尾完成：wt-guard clean→worktree/分支/组目录删除；scope 45 文件 4,577,170 字节删除、证据折 §9；retention 条目 `deleted-at-merge`；路径对账无散落（§9 T-07 收据）]
 
 B收口：所有B work、原全产品/组合及A证据适用性齐→原全包独立review→正式合入/Spec/归档→输出对账/清理；各批R与全包final分别执行，不能只数批次替原AC。
 
