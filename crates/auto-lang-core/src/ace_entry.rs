@@ -1120,6 +1120,11 @@ pub trait AceDebugSession {
     /// Release the session: drop the paused chain, the compiled generation
     /// and the per-session scratch store. Idempotent.
     fn close(&mut self);
+
+    /// Replace the session's breakpoint set. A debug UI typically starts the
+    /// session at the entry stop and sets breakpoints from there, so the set
+    /// is mutable across stops; the default keeps the start set.
+    fn set_breakpoints(&mut self, _breakpoints: &[AceBreakpoint]) {}
 }
 
 /// A debug start request: the project modules, the entry, the breakpoints

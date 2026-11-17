@@ -447,4 +447,8 @@ impl AceDebugSession for ProjectDebugSession {
             self.message = "session closed".to_string();
         }
     }
+
+    fn set_breakpoints(&mut self, breakpoints: &[AceBreakpoint]) {
+        self.breakpoints = breakpoints.to_vec();
+    }
 }

@@ -225,6 +225,31 @@ fn p971_debug_face_breaks_steps_and_reports_original_source() {
     session.close();
     assert_no_scratch_residue();
 
+    // ---- 5b. Breakpoints set AFTER the start stop (a debug UI's flow) ---
+    // Start with no breakpoints, then install the callee-entry breakpoint
+    // while stopped at the entry: the next continue must honour it.
+    let no_breakpoints: [AceBreakpoint; 0] = [];
+    let request = AceDebugRequest::simple(&modules, "app::main", &caps, &no_breakpoints);
+    let mut session = start_ace_debug(AceEngineChoice::AceAV, &request)
+        .unwrap_or_else(|e| panic!("no-breakpoint session must start: {e:?}"));
+    assert_eq!(session.snapshot().stop, AceDebugStop::Entry);
+    session.set_breakpoints(&[AceBreakpoint {
+        module: "math::core".to_string(),
+        symbol: bump.symbol.clone(),
+        span: None,
+    }]);
+    let hit = session.resume(AceDebugCommand::Continue);
+    assert_eq!(
+        hit.stop,
+        AceDebugStop::Breakpoint { index: 0 },
+        "a breakpoint installed after the start stop must be honoured: {}",
+        describe(&hit)
+    );
+    assert_eq!(hit.frames.len(), 2);
+    assert_eq!(hit.frames[1].function, "bump");
+    session.close();
+    assert_no_scratch_residue();
+
     // ---- 6. Engine and project discipline -----------------------------
     let refused = start_ace_debug_named("autovm", &request)
         .err()
