@@ -335,6 +335,30 @@ shadowed: label
         other => panic!("an object field must be carried into the document, got {other:?}"),
     }
 
+    // 已登记差额（下一档）：**i32 字段**的搬运目前不落地（实测 root 上拿不到 `p`），
+    // 文本字段则正常——说明对象字段的存储面对不同值种类不一致，需要单独查。
+    // 这条用例只钉住"缺失字段是具名诊断"，不冒充 i32 已支持。
+
+    // 缺字段：具名诊断（不是空值、不是 panic）。
+    match run("var k = { port: 1 }\np: k[\"nope\"]\n", &empty_context()).outcome {
+        AceConfigOutcome::Diagnostic { code, .. } => {
+            assert!(
+                code.starts_with("ace.config/") || code.starts_with("ace.diagnostic/"),
+                "the missing field is named: {code}"
+            );
+        }
+        // 宿主车道把这条错误报成 `HostFailure`（`ace.config/infra` + 具名 message），
+        // 与 `Diagnostic` 同为具名终态；不允许"空值/panic/静默"。
+        AceConfigOutcome::HostFailure { code, message } => {
+            assert!(code.starts_with("ace.config/"), "named code: {code}");
+            assert!(
+                message.contains("no field"),
+                "the message names the missing field: {message}"
+            );
+        }
+        other => panic!("a missing object field must be a named terminal, got {other:?}"),
+    }
+
     // 不能精确承载的注入种类：具名拒绝（不静默丢弃、不默认空）。
     let mut bad = empty_context();
     bad.args.push(("ratio".to_string(), ConfigValue::f64(1.5)));
