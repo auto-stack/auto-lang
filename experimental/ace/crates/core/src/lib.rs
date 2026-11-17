@@ -10,8 +10,8 @@
 //!
 //! Dependency direction: this crate does not depend on the product runtime,
 //! UI or host crates. The shared syntax leaves (`ace-syntax-runtime`,
-//! `ace-syntax-grammar`) are allowed; they in turn use the neutral
-//! `auto-atom`/`auto-val` data crates.
+//! `ace-syntax-grammar`) are allowed; the grammar leaf in turn uses the
+//! neutral `auto-atom`/`auto-val` data crates.
 
 pub mod atom_text;
 pub mod collections_facts;
