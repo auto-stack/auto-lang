@@ -103,13 +103,13 @@ A-11	AENTRY	AutoInterpreter	982	B	product-B	pending
 A-12	AENTRY	a2r_std中立保留	959	B	inherited	landed	docs/specs/ace-migration/m2-denominator.md:d39f8420ce380022
 B-01	BENTRY	A2R Rust目标	969/980/982/983	AB	inherited	landed	docs/specs/ace-migration/m2-facade.md:9d1403f96a7795c7
 B-02	BENTRY	A2C C目标	982	AB	inherited	landed	docs/specs/ace-migration/m2-stdlib-io.md:423ef4a8975c8a51
-B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:756a4b3947a75a0a
+B-03	BENTRY	A2PY Python目标	977/1042	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:82ee06dea1e0248c
 B-04	BENTRY	A2GD Godot目标	977	AB	user-deferred	pending	
 B-05	BENTRY	A2TS TypeScript目标	976	AB	inherited	landed	docs/specs/ace-migration/m2-typescript.md:914bbadae9af3f85
 B-06	BENTRY	SCENE目标	977	AB	user-deferred	pending	
 B-07	BENTRY	其余相邻目标	977	AB	inherited	pending	
-B-08	BENTRY	r2a反向	977	AB	inherited	inflight	
-B-09	BENTRY	s2s同构	977	AB	inherited	inflight	
+B-08	BENTRY	r2a反向	977	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:82ee06dea1e0248c
+B-09	BENTRY	s2s同构	977	AB	inherited	landed	docs/specs/ace-migration/m2-other-targets.md:82ee06dea1e0248c
 B-10	BENTRY	escape未接线(退役候选)	987	B	internal-retire	pending	
 B-11	BENTRY	相邻发射器	972-975/987	AB	inherited	landed	docs/specs/ace-migration/m2-stdlib-core.md:bd818de84d182fec
 C-01	C	auto-ui vm/Iced	980/NATIVE	B	product-B	pending	

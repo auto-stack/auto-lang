@@ -73,8 +73,8 @@ producer 身份、独立可判 observation（值/字节）与具名负控，不�
 | AV/native | AV executor，`ac-av/core-run-v1` | exit = 14 | **run** | `cover-977` 检查 `av-native`；`cargo t ace-host --test-name ace_m2_p977_cover` |
 | AC | AC native 后端，`ac/mir-native-scalar-v1` | exit = 14 | **run** | `ac-native`（同上） |
 | A2PY | `ace-a2x-python`，`ac-a2py/hir-stdlib-run-v1` | stdout `value:14\n`（hex `76616c75653a31340a`） | **run**（真 OS Python） | `a2py-run`（同上） |
-| A2R | `ace-a2x-rust`，`ac-a2r/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`0c2257b0…`），worker/recipe 身份回显 | **emit lock** | `a2r-emit`；**certify 轴**=真 rustc：`p977_cover_a2r_certify_real_rustc`（actual+手写 reference 双跑，stdout hex 相符，0.78s） |
-| A2C | `ace-a2x-c`，`ac-a2c/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`28559f86…`），worker/recipe 身份回显 | **emit lock** | `a2c-emit`；**certify 轴**=真 MSVC cl：`p977_cover_a2c_certify_real_cl`（2.06s） |
+| A2R | `ace-a2x-rust`，`ac-a2r/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`0c2257b0…`），worker/recipe 身份回显 | **emit lock** | `a2r-emit`；**certify 轴**=真 rustc：`p977_cover_a2r_certify_real_rustc`（actual+手写 reference 双跑，stdout hex 相符，0.78s warm） |
+| A2C | `ace-a2x-c`，`ac-a2c/hir-scalar-emit-v1` | 4 文件字节 + manifest sha（`28559f86…`），worker/recipe 身份回显 | **emit lock** | `a2c-emit`；**certify 轴**=真 MSVC cl：`p977_cover_a2c_certify_real_cl`（2.06s warm） |
 | AV/C | C provider（`use.c`，真 DLL 机器码） | provider 操作值（独立手算） | **run**（provider 前门源，非同一纯源） | `ace-abi`：`av_runs_the_c_provider_through_a_real_dll`（0.55s） |
 | AV/Rust | Rust provider（`use.rs`） | UTF-8 字节长 9（`"A中😀\0"`） | **run**（provider 前门源，非同一纯源） | `ace-abi`：`f0_av_calls_real_rust_provider_end_to_end`（0.22s） |
 | 原 A2C（legacy） | 旧 C 目标语料（134 例，`#[ignore]` 历史档） | 冻结 goldens（分母不减） | **不计覆盖 PASS**：`cargo t a2c` 选 0（全 `#[ignore]`）；显式 `--ignored` 实跑 117/134，17 例既有红（源与本批未触面一致） | 归属=legacy 退役线（987）；required 的 C 路径由 ACE A2C（emit+certify）承担 |
@@ -99,6 +99,12 @@ producer 身份、独立可判 observation（值/字节）与具名负控，不�
 （真 rustc/cl + 手写 reference）证明，日常车道只声明发射锁；Linux 全腿
 `NOT_RUN → 1063`（见下节）。
 
+**certify 时延分布（同一提交，实测）**：冻结轮 warm 0.78s / 2.06s；整树重建后
+**首跑冷 3.57s / 10.83s**（cl/rustc 冷页缓存 + 同机他会话负载；>10s 已调查并在计划
+§9 披露，该用例位于显式 `ace-a2x` 组、非日常组）；复审 warm 0.82s / 3.54s；
+随后同提交复跑 0.90/2.71、0.63/2.45、0.71/1.88s。稳态 <4s；**merge 门若 warm 仍
+>10s 记新红、不豁免**。
+
 ## 977 Linux 移交审计（V-LINUX-PHASE / AC-LINUX-PHASE）
 
 口径（PLAN-977 r8 + 1063）：本批在 Windows 上写代码并跑全部 Windows required 门；
@@ -117,7 +123,7 @@ Windows/emit-only/交叉编译冒充 Linux 绿。下表逐项给出实现面、�
 | 原 A2C 语料（legacy C 目标） | `crates/auto-lang/src/tests/a2c_tests.rs`（134 例，全部 `#[ignore]`；本批未改） | 冻结 goldens；显式 `--ignored` 实跑 Windows 117/134（17 既有红，与本批无关） | `deferred-required / NOT_RUN`（legacy 档；非 required 覆盖路径） | 1063：Linux 上同档重放；required C 路径由 ACE A2C 承担 |
 
 **Windows required 门（本批实跑，见计划 §8/§9 收据）**：`cargo t s2s`、`cargo t
-auto-lang-core`（1653/1654，1 基线红具名非本批触面）、`cargo t ace-facade`、
+auto-lang-core`（1655/1656，1 基线红具名非本批触面）、`cargo t ace-facade`、
 `cargo t ace-adapters`（94/95，1 基线红 `source_parent_oracle_failure_rejudges…`，
 985 r29 已记 master 同红）、`cargo t ace-host --test-name ace_m2_p977_cover`（覆盖门
 3/3）、`cargo t ace-a2x --test-name p977_cover_certify`（A2R/A2C 真编译运行 2/2）、
