@@ -61,3 +61,35 @@ fn p982_rust_host_driver_names_its_refusals() {
     let err = transpile_scalar_source(SRC, "p982-rust", "no_such_fn").expect_err("entry");
     assert_eq!(err.code, "ace.rust/lower", "{err}");
 }
+/// 家族覆盖（B-CONFIG 之后的 RUST 差额）：records 与 collections 走各自的受检
+/// 前门，仍产出同形 FileSet（三件套 + schema manifest），并保持确定性。
+#[test]
+fn p982_rust_host_driver_covers_records_and_collections_families() {
+    use auto_lang_ace_host::rust_transpile::{transpile_with_profile, TranspileProfile};
+
+    let cases = [
+        (
+            TranspileProfile::Records,
+            "type point { x int; y int }\n\nfn main() int {\n    return 7\n}\n",
+            "fn_main",
+        ),
+        (
+            TranspileProfile::Collections,
+            "fn main() int { let a Str = \"中\"\n let b = a.clone()\n return a.len() * 40 + b.len() * 2 }\n",
+            "fn_main",
+        ),
+    ];
+    for (profile, source, entry) in cases {
+        let a = transpile_with_profile(source, "p982-family", "main", profile)
+            .unwrap_or_else(|e| panic!("{profile:?} must render: {e}"));
+        let b = transpile_with_profile(source, "p982-family", "main", profile).unwrap();
+        assert_eq!(a, b, "{profile:?} rendering must be deterministic");
+        assert_eq!(a.entry, entry, "{profile:?} lowered entry");
+        assert_eq!(
+            a.files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            vec!["main.rs", "a2x_runtime.rs", "generated.rs"],
+            "{profile:?} keeps the frozen triple"
+        );
+        assert!(a.manifest.contains("auto.a2x.rust.fileset/1"));
+    }
+}

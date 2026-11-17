@@ -63,20 +63,45 @@ pub fn transpile_scalar_source(
     module: &str,
     entry: &str,
 ) -> Result<AceRustFileSet, AceRustError> {
-    let compiled =
-        ace_core::source::compile_scalar_source(source, module, &[]).map_err(|diags| {
-            AceRustError::new(
-                "ace.rust/compile",
-                format!(
-                    "frontend refused the source: {}",
-                    diags
-                        .iter()
-                        .map(|d| format!("{:?}/{}", d.stage, d.code))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            )
-        })?;
+    transpile_with_profile(source, module, entry, TranspileProfile::Scalar)
+}
+
+/// 受检前门的 profile（决定用哪个 `compile_*_source`）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TranspileProfile {
+    Scalar,
+    Collections,
+    Records,
+}
+
+/// 同 [`transpile_scalar_source`]，但显式选择受检 profile（collections/records
+/// 家族走各自前门；错误码与确定性合同相同）。
+pub fn transpile_with_profile(
+    source: &str,
+    module: &str,
+    entry: &str,
+    profile: TranspileProfile,
+) -> Result<AceRustFileSet, AceRustError> {
+    let compiled_result = match profile {
+        TranspileProfile::Scalar => ace_core::source::compile_scalar_source(source, module, &[]),
+        TranspileProfile::Collections => {
+            ace_core::source::compile_collections_source(source, module, &[])
+        }
+        TranspileProfile::Records => ace_core::source::compile_record_source(source, module, &[]),
+    };
+    let compiled = compiled_result.map_err(|diags| {
+        AceRustError::new(
+            "ace.rust/compile",
+            format!(
+                "frontend refused the source: {}",
+                diags
+                    .iter()
+                    .map(|d| format!("{:?}/{}", d.stage, d.code))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        )
+    })?;
     let view = SemanticView::from_checked(&compiled.checked)
         .map_err(|reject| AceRustError::new("ace.rust/view", format!("{reject:?}")))?;
     let program = ace_a2x_rust::lower_program(&view, entry)
