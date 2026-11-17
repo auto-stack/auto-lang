@@ -148,6 +148,23 @@ impl SyntaxArtifactStore {
         Ok(art)
     }
 
+    /// 装载入口的公共解码（PLAN-1029 ADM-01）：两个 store 装载入口走同一
+    /// 结构化 FromWire 路径——InvalidProgram 映射 Admissions（受控 miss/
+    /// 重算语义不变），预算/allocator 拒绝保持 AdapterError::Rt(
+    /// ResourceExhausted)，不冒充坏 chunk。
+    fn decode_grammar_payload(payload: &[u8]) -> Result<GrammarProgram, AdapterError> {
+        match ace_syntax_runtime::program_codec::decode_program(
+            payload,
+            ace_syntax_runtime::program_codec::LoadBudget::FromWire,
+        ) {
+            Ok(p) => Ok(p),
+            Err(ace_syntax_runtime::program::RtError::InvalidProgram(m)) => Err(
+                AdapterError::Admissions(format!("grammar chunk undecodable: {m}")),
+            ),
+            Err(other) => Err(AdapterError::Rt(other)),
+        }
+    }
+
     /// 装载语法程序：canonical → decode → **身份重验**（name+内容+版本 hash
     /// 与 key 的 grammar-id 不符 = 受控 miss/错误，不返回可执行程序）。
     pub fn get_grammar(
@@ -157,8 +174,7 @@ impl SyntaxArtifactStore {
         let Some(loaded) = self.store.get_artifact("A01", &grammar_key(p_for_key))? else {
             return Ok(None);
         };
-        let prog = ace_syntax_runtime::program_codec::decode_canonical(&loaded.payload)
-            .map_err(|e| AdapterError::Admissions(format!("grammar chunk undecodable: {e}")))?;
+        let prog = Self::decode_grammar_payload(&loaded.payload)?;
         if prog.grammar_id() != p_for_key.grammar_id() {
             return Err(AdapterError::Admissions(
                 "grammar identity mismatch: chunk content hash != key grammar-id".into(),
@@ -185,8 +201,7 @@ impl SyntaxArtifactStore {
         let Some(loaded) = self.store.get_artifact("A01", &key)? else {
             return Ok(None);
         };
-        let prog = ace_syntax_runtime::program_codec::decode_canonical(&loaded.payload)
-            .map_err(|e| AdapterError::Admissions(format!("grammar chunk undecodable: {e}")))?;
+        let prog = Self::decode_grammar_payload(&loaded.payload)?;
         if prog.grammar_id().as_str() != grammar_id {
             return Err(AdapterError::Admissions(
                 "grammar identity mismatch: chunk content hash != requested grammar-id".into(),
@@ -1308,12 +1323,12 @@ impl<'s> CstView<'s> {
 
     fn decl_entry(&self, i: usize) -> Result<DeclEntry, AdapterError> {
         if !self.manifest.decls.is_empty() {
-            return self
-                .manifest
-                .decls
-                .get(i)
-                .cloned()
-                .ok_or_else(|| AdapterError::Admissions(format!("decl index {i} out of range")));
+            let d =
+                self.manifest.decls.get(i).cloned().ok_or_else(|| {
+                    AdapterError::Admissions(format!("decl index {i} out of range"))
+                })?;
+            self.admit_decl_entry(&d)?;
+            return Ok(d);
         }
         // 目录分页：定位条目所在索引页并按需取。
         let bi = i / DECL_INDEX_PAGE;
@@ -1336,10 +1351,51 @@ impl<'s> CstView<'s> {
         }
         let page: DeclIndexPage = serde_json::from_slice(payload)
             .map_err(|e| AdapterError::Admissions(format!("bad decl index page: {e}")))?;
-        page.decls
+        let d = page
+            .decls
             .get(i % DECL_INDEX_PAGE)
             .cloned()
-            .ok_or_else(|| AdapterError::Admissions(format!("decl {i} missing from index page")))
+            .ok_or_else(|| AdapterError::Admissions(format!("decl {i} missing from index page")))?;
+        // PLAN-1029（ADM-04）：分页条目取出后、消费前复用 inline 目录相同
+        // 验证（页存在/节点页归属/node_lo/origin ≤ total_len）——此前分页
+        // 路径不经验证直达 decl_range/decl_subtree 的跨度算术。
+        self.admit_decl_entry(&d)?;
+        Ok(d)
+    }
+
+    /// 目录条目准入（inline 与 paged 同一标准；越界在跨度算术前拒绝）。
+    fn admit_decl_entry(&self, d: &DeclEntry) -> Result<(), AdapterError> {
+        let Some(pe) = self.manifest.pages.get(d.page as usize) else {
+            return Err(AdapterError::Admissions(format!(
+                "decl ref page {} out of range ({} pages)",
+                d.page,
+                self.manifest.pages.len()
+            )));
+        };
+        // 下界先判后算（d.node < first_node 时无符号相减会溢出）。
+        if d.node < pe.first_node || (d.node - pe.first_node) as u64 >= pe.node_count as u64 {
+            return Err(AdapterError::Admissions(format!(
+                "decl node {} outside page {} range [{},{})",
+                d.node,
+                d.page,
+                pe.first_node,
+                pe.first_node as u64 + pe.node_count as u64
+            )));
+        }
+        if d.node_lo > d.node {
+            return Err(AdapterError::Admissions(format!(
+                "decl node_lo {} > node {}",
+                d.node_lo, d.node
+            )));
+        }
+        if d.origin > self.total_len() {
+            return Err(AdapterError::Admissions(format!(
+                "decl origin {} beyond source total_len {}",
+                d.origin,
+                self.total_len()
+            )));
+        }
+        Ok(())
     }
     pub fn debug_page_chunk(&self, idx: usize) -> Option<String> {
         self.manifest.pages.get(idx).map(|p| p.chunk.clone())
@@ -1377,8 +1433,17 @@ impl<'s> CstView<'s> {
             .ok_or_else(|| {
                 AdapterError::Admissions(format!("decl node {local} missing from page {}", d.page))
             })?;
-        let lo = d.origin + nd.start as u64;
-        let hi = lo + nd.len as u64;
+        // PLAN-1029（ADM-04）：origin+start+len 全部 checked——坏目录不得
+        // 溢出 panic（debug）或 wrap 成“合法”跨度（release）。
+        let lo = d.origin.checked_add(nd.start as u64).ok_or_else(|| {
+            AdapterError::Admissions(format!(
+                "decl span origin {} + start {} overflows",
+                d.origin, nd.start
+            ))
+        })?;
+        let hi = lo.checked_add(nd.len as u64).ok_or_else(|| {
+            AdapterError::Admissions(format!("decl span lo {lo} + len {} overflows", nd.len))
+        })?;
         // 读取 admission（F787-R3-05）：绝对 span 不得越出源长度。
         if hi > self.total_len() {
             return Err(AdapterError::Admissions(format!(
@@ -1448,9 +1513,19 @@ impl<'s> CstView<'s> {
                     nd.decl
                 )));
             }
-            // (b) 绝对跨度界（先判后算）。
-            let ps = d.origin + nd.start as u64;
-            let pe_end = ps + nd.len as u64;
+            // (b) 绝对跨度界（先判后算；PLAN-1029 ADM-04：加法一律 checked）。
+            let ps = d.origin.checked_add(nd.start as u64).ok_or_else(|| {
+                AdapterError::Admissions(format!(
+                    "node {n} span origin {} + start {} overflows",
+                    d.origin, nd.start
+                ))
+            })?;
+            let pe_end = ps.checked_add(nd.len as u64).ok_or_else(|| {
+                AdapterError::Admissions(format!(
+                    "node {n} span lo {ps} + len {} overflows",
+                    nd.len
+                ))
+            })?;
             if pe_end > total {
                 return Err(AdapterError::Admissions(format!(
                     "node {n} span [{ps},{pe_end}) beyond source total_len {total}"
@@ -1494,10 +1569,21 @@ impl<'s> CstView<'s> {
                         p0.nodes.len()
                     )));
                 }
-                // (c) 父子约束（trivia 语义 span 左溢出合法——见 doc）。
+                // (c) 父子约束（trivia 语义 span 左溢出合法——见 doc；
+                //      PLAN-1029 ADM-04：加法一律 checked）。
                 let cnd = p0.nodes[cl];
-                let cs = d.origin + cnd.start as u64;
-                let ce = cs + cnd.len as u64;
+                let cs = d.origin.checked_add(cnd.start as u64).ok_or_else(|| {
+                    AdapterError::Admissions(format!(
+                        "child {cl} span origin {} + start {} overflows",
+                        d.origin, cnd.start
+                    ))
+                })?;
+                let ce = cs.checked_add(cnd.len as u64).ok_or_else(|| {
+                    AdapterError::Admissions(format!(
+                        "child {cl} span lo {cs} + len {} overflows",
+                        cnd.len
+                    ))
+                })?;
                 if cnd.flags & FLAG_TRIVIA != 0 {
                     if ce > pe_end {
                         return Err(AdapterError::Admissions(format!(

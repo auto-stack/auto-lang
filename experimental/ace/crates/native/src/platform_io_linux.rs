@@ -172,8 +172,10 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
     let sys = SyscallIds::declare(&mut om)?;
 
     let find_slot_sig = sig(&[types::I32, types::I32], Some(types::I64));
+    // PLAN-1065: 5th param `extra` (std-stream id) keeps the shared
+    // alloc_slot body identical across the Win64 and Linux shims.
     let alloc_slot_sig = sig(
-        &[types::I32, types::I64, types::I64, types::I64],
+        &[types::I32, types::I64, types::I64, types::I64, types::I32],
         Some(types::I32),
     );
     let write_slice_sig = sig(
@@ -350,7 +352,7 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
             let k = fb.ins().iconst(types::I32, KIND_STREAM);
             let os_fd = fb.ins().iconst(types::I64, fd);
             let z64 = fb.ins().iconst(types::I64, 0);
-            let ac = fb.ins().call(alloc, &[k, os_fd, z64, z64]);
+            let ac = fb.ins().call(alloc, &[k, os_fd, z64, z64, z32]);
             let h = fb.inst_results(ac)[0];
             fb.ins().return_(&[h]);
         })?;
@@ -548,7 +550,7 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
             fb.switch_to_block(ok_os);
             let alloc = om.declare_func_in_func(loc.alloc_slot, fb.func);
             let k = fb.ins().iconst(types::I32, KIND_MEM);
-            let ac = fb.ins().call(alloc, &[k, ptr, logical, aligned]);
+            let ac = fb.ins().call(alloc, &[k, ptr, logical, aligned, z32]);
             let h = fb.inst_results(ac)[0];
             fb.ins().store(flags, next_live, base, H_LIVE_MAPPED);
             fb.ins().store(flags, z32, base, H_LAST_OS_ERROR);
@@ -1061,6 +1063,13 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
             let raw = fb.ins().ireduce(types::I32, ret);
             fb.ins().return_(&[raw]);
         })?;
+    }
+
+    // PLAN-973: the sys973 op set ships as named-unsupported stubs here
+    // too (Linux ELF); REAL bodies land with the 1063-validated Linux
+    // file increment — a stub is an honest named rejection.
+    for kind in crate::platform_io::SYS973_KINDS {
+        crate::platform_io::emit_sys973_stub(&mut om, *kind, CONV)?;
     }
 
     let product = om.finish();

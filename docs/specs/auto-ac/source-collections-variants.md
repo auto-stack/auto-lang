@@ -45,6 +45,12 @@
 - `for x in <List 局部>`：len **循环前读一次**；Copy 元素每轮物化拷贝绑定，owned 元素为投影上下文
   （无物化/move/clone）；循环体内对被迭代列表的结构修改（push/insert/remove/clear）编译拒
   `source.iterate-mutate`（v1 List 函数局部 ⇒ 词法闭包完备；set/字段写非结构性，允许）；break/continue 合法。
+- **计数循环的推进与终点（PLAN-1036）**：`for x in <List 局部>` 与 `for i in a .. b` / `a ..= b` 的隐藏推进是
+  **本循环的 latch**——`continue` 先执行本循环推进再重测条件（不得重复当前元素）；嵌套的非计数 `loop` /
+  `for <cond>` 的 `continue` 只走内层目标，不推进外层计数循环；`break` / `return` 不推进（离开循环不合成额外一步）。
+  `for i in a ..= b` 的**末成员即终点**：最后一项执行完即结束，不在 i32 上界合成 `hi + 1`（该加一是实现细节，
+  不属用户算术，故边界迭代不得因它 overflow）；半开区间按 `i < hi` 步进恒不越界。区间端点仍是字面量域
+  （非字面量端点保持现语法的具名拒绝 `source.syntax`，本规则不扩支持域）。
 
 ## SEM-02 与错误边界（合同 C5，冻结）
 

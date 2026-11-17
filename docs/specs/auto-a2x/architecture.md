@@ -122,3 +122,19 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
 - `ace-a2x-python` 实现共享 `TargetProvider`（`AXPY1` Scalar / `AXPY2` RecordText / `AXPY3` Collections），消费 `a2x-core::SemanticView` 与标准操作端口目录（`ports.rs`）产出 `a2x_py_runtime.py`、`generated.py`、`a2x_main.py`、`source_map.json` 与 `manifest.json`。
 - `boundaries` 静态约束扩列 `ace-a2x-python` 为独立目标 crate（仅依赖 `ace-a2x-core` 与 `ace-core`；`a2x-store` 不依赖任何目标 crate）。
 - Worker（`daily-emit-py` / `run-py`）与 `ac_a2py_hir` 通过内容哈希与 `python_identity` 严格区分零生成 spawn-zero emit 与真实 OS Python 执行；细节契约与边界见 [python-stdlib-readiness](python-stdlib-readiness.md)。
+
+## PLAN-979 增量：领域受检投影与 A2R 共源接面（verified，2026-11-16）
+
+- 已验链路：领域前门（`compile_age_h0` / `compile_component_scenario(_observing)` /
+  `compile_age_package`）→ 唯一 text-record verify → `CheckedModule` →
+  `SemanticView::from_checked` → `lower_program(entry)` →
+  `assemble_record_text_file_set` → **真实 rustc** → 运行取值。AV 与 A2R 共用同一
+  `CheckedModule`，不重新解析源、不维护第二套领域语义。
+- 已验值（绑定 `e352e462b`）：H0 文本叶（`Hello`/`你好`/改字符串变值）；组件场景
+  514/259/516（plain/helper/N-tick）；`p981_age_package` 两实例工程 **6**（改 helper **16**）。
+  A2R 入口契约：`fn main()` 零参、返回 `i32`。
+- 边界（不得据此声明完整能力）：A2R 只观察实例 0 的值（实例 1 以状态符号存在性断言）；
+  typed view 渲染文本只在 AV 侧观察；g01 的 `age.material2d.color.v1` 不在 compute 面
+  （g01 不进 A2R）；模块级 `const`/`var` 触 `module.global.*` 拒绝（RUST 批）；
+  AGE-L03 五 view 仅实现 3 个。
+- 领域事实/边界详见 [ace-migration/m2-schema.md](../ace-migration/m2-schema.md)。

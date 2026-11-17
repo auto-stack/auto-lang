@@ -448,6 +448,15 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                     .unwrap_or_else(|| format!("v{v}"));
                 format!("var_{vname}")
             }
+            Ty::List(sub) => {
+                let tag = self
+                    .view
+                    .list_elem(sub)
+                    .ok()
+                    .map(|et| self.list_elem_tag(et))
+                    .unwrap_or_else(|| "i32".into());
+                format!("list_{tag}")
+            }
             _ => "i32".into(),
         }
     }
@@ -959,6 +968,14 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 self.emit_line(&format!("{t} = a2x_char_from_codepoint({o})"));
                 Ok(t)
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let o = self.lower_expr(*operand)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_str_from_char({o})"));
+                Ok(t)
+            }
             hir::ExprKind::TextConcat { lhs, rhs } => {
                 let l = self.lower_expr(*lhs)?;
                 let r = self.lower_expr(*rhs)?;
@@ -1037,7 +1054,19 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             }
             hir::ExprKind::BorrowView { base } => self.lower_expr(*base),
             hir::ExprKind::BorrowMut { local } => Ok(self.local_name(local.0)?.to_string()),
-            hir::ExprKind::Move { inner } => self.lower_expr(*inner),
+            hir::ExprKind::Move { inner } => {
+                let inner_e = self.lower_expr(*inner)?;
+                if let hir::ExprKind::ReadLocal { local } = &self.facts.body.exprs[inner.0 as usize].kind {
+                    if self.owned_locals.contains_key(&local.0) {
+                        let lname = self.local_name(local.0)?.to_string();
+                        let t = self.fresh_temp();
+                        self.emit_line(&format!("{t} = {inner_e}"));
+                        self.emit_line(&format!("{lname} = None"));
+                        return Ok(t);
+                    }
+                }
+                Ok(inner_e)
+            }
             hir::ExprKind::ListNew { .. } => {
                 let t = self.fresh_temp();
                 self.emit_line(&format!("{t} = a2x_list_new()"));
@@ -1354,6 +1383,7 @@ fn platform_port_id(symbol: &str) -> Result<String, A2xReject> {
     let port = match op {
         "io.stdout" => "io.stdout",
         "io.stderr" => "io.stderr",
+        "io.stdin" => "io.stdin",
         "io.console_kind" => "io.console_kind",
         "io.write_some" => "io.write_some",
         "io.write_some_slice" => "io.write_some_slice",
@@ -1361,7 +1391,58 @@ fn platform_port_id(symbol: &str) -> Result<String, A2xReject> {
         "io.last_error" => "io.last_error",
         "mem.alloc" => "mem.alloc",
         "mem.write_u8" => "mem.write_u8",
+        "mem.read_u8" => "mem.read_u8",
         "mem.free" => "mem.free",
+        // PLAN-973 system-resource families (python target runtime)
+        "file.open_w16" => "file.open_w16",
+        "file.open_bytes" => "file.open_bytes",
+        "file.read_some" => "file.read_some",
+        "file.write_some" => "file.write_some",
+        "file.seek" => "file.seek",
+        "file.tell" => "file.tell",
+        "file.hi" => "file.hi",
+        "file.size" => "file.size",
+        "file.mtime_ms" => "file.mtime_ms",
+        "file.flush" => "file.flush",
+        "file.close" => "file.close",
+        "file.path_attrs_w16" => "file.path_attrs_w16",
+        "file.path_attrs_bytes" => "file.path_attrs_bytes",
+        "file.delete_w16" => "file.delete_w16",
+        "file.delete_bytes" => "file.delete_bytes",
+        "file.dir_create_w16" => "file.dir_create_w16",
+        "file.dir_create_bytes" => "file.dir_create_bytes",
+        "file.dir_delete_w16" => "file.dir_delete_w16",
+        "file.dir_delete_bytes" => "file.dir_delete_bytes",
+        "file.replace_w16" => "file.replace_w16",
+        "file.replace_bytes" => "file.replace_bytes",
+        "file.canonical_w16" => "file.canonical_w16",
+        "file.canonical_bytes" => "file.canonical_bytes",
+        "file.dir_open_w16" => "file.dir_open_w16",
+        "file.dir_next_w16" => "file.dir_next_w16",
+        "file.dir_close" => "file.dir_close",
+        "file.dir_open_bytes" => "file.dir_open_bytes",
+        "file.dir_fill_bytes" => "file.dir_fill_bytes",
+        "env.get_w16" => "env.get_w16",
+        "env.set_w16" => "env.set_w16",
+        "env.remove_w16" => "env.remove_w16",
+        "env.get_bytes" => "env.get_bytes",
+        "clock.unix_ms" => "clock.unix_ms",
+        "clock.mono_ms" => "clock.mono_ms",
+        "clock.hi" => "clock.hi",
+        "clock.sleep_ms" => "clock.sleep_ms",
+        "entropy.rand_fill" => "entropy.rand_fill",
+        "process.spawn_w16" => "process.spawn_w16",
+        "process.spawn_bytes" => "process.spawn_bytes",
+        "process.pipe_read" => "process.pipe_read",
+        "process.wait" => "process.wait",
+        "process.release" => "process.release",
+        "process.exit" => "process.exit",
+        "process.cmdline_w16" => "process.cmdline_w16",
+        "process.cmdline_fill_bytes" => "process.cmdline_fill_bytes",
+        "process.cwd_w16" => "process.cwd_w16",
+        "process.cwd_bytes" => "process.cwd_bytes",
+        "process.chdir_w16" => "process.chdir_w16",
+        "process.chdir_bytes" => "process.chdir_bytes",
         other => {
             return Err(A2xReject::unsupported_expr(format!(
                 "platform operation `{other}` has no python port"

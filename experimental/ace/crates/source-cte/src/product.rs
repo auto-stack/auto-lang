@@ -246,19 +246,23 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
             | ExprKind::Method { args, .. }
             | ExprKind::MethodCall { args, .. } => {
                 for a in args.iter_mut() {
-                    match a {
-                        Arg::Pos(x) | Arg::MovePos(x) => repl(x, served),
-                        _ => {}
-                    }
+                    // Pos/MovePos/Named carry the same Arg.value subtree —
+                    // the backfill must reach every one of them (F26).
+                    let value = match a {
+                        Arg::Pos(x) | Arg::MovePos(x) => x,
+                        Arg::Named { value, .. } => value,
+                    };
+                    repl(value, served);
                 }
             }
             ExprKind::CallValue { callee, args } => {
                 repl(callee, served);
                 for a in args.iter_mut() {
-                    match a {
-                        Arg::Pos(x) | Arg::MovePos(x) => repl(x, served),
-                        _ => {}
-                    }
+                    let value = match a {
+                        Arg::Pos(x) | Arg::MovePos(x) => x,
+                        Arg::Named { value, .. } => value,
+                    };
+                    repl(value, served);
                 }
             }
             ExprKind::Binary { lhs, rhs, .. } => {

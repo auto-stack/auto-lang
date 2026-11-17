@@ -263,8 +263,19 @@ pub fn expr_canonical(e: &Expr, out: &mut Vec<u8>) {
             out.push(b'(');
             for a in args {
                 match a {
+                    // Pos and MovePos carry the same executed value (the
+                    // move marks ownership transfer, not a different CT
+                    // result), so they share this encoding.
                     Arg::Pos(x) | Arg::MovePos(x) => expr_canonical(x, out),
-                    _ => out.push(b'?'),
+                    // F-1037-R1 (PLAN-1037): a named argument's LABEL and
+                    // VALUE are part of the demand's identity — a page
+                    // frozen for `f(x: 3)` must never answer `f(x: 4)`.
+                    Arg::Named { name, value, .. } => {
+                        out.extend_from_slice(b"named:");
+                        out.extend_from_slice(name.name.as_bytes());
+                        out.push(b'=');
+                        expr_canonical(value, out);
+                    }
                 }
                 out.push(b',');
             }

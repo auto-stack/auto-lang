@@ -980,3 +980,184 @@ int main(void) {
     return fail ? 1 : 0;
 }
 "#;
+
+// ---- PLAN-1036 (AUDIT-1024 F35): the C continue back-edge poll ---------
+//
+// The same finding on the C emitter: the poll sat at the END of the
+// `for (;;) { ... }` body, so a `continue` jumped to the loop header and
+// skipped both the 1-WU charge and the cancellation check. The C runtime
+// carries NO dedicated poll marker — `a2x_coll_poll` IS `charge(1)` — so
+// the witness uses a loop with no constructors, no string promotion and no
+// allocation: every `coll:charge:1` line in the ledger is a poll (the call
+// frame is the separate 4-WU line).
+
+/// The frozen LOOP-03 source (see the Rust leg): n = 1..4, break at 4,
+/// conditional continue otherwise; value oracle 40.
+const LOOP_03_SRC: &str = "fn main() int {\n    var n = 0\n    var t = 0\n    loop {\n        n = n + 1\n        if n == 4 { break }\n        if n < 4 { continue }\n        t = t + 1\n    }\n    return n * 10 + t\n}";
+
+/// Count the 1-WU charge lines (polls) and the call-frame charge lines of a
+/// run's event ledger.
+fn charge_lines(stderr: &str) -> (usize, usize) {
+    let mut one = 0usize;
+    let mut four = 0usize;
+    for line in stderr.lines() {
+        if line.trim() == "coll:charge:1" {
+            one += 1;
+        } else if line.trim() == "coll:charge:4" {
+            four += 1;
+        }
+    }
+    (one, four)
+}
+
+/// F35 / LOOP-03 (C leg): exactly one poll charge per real back edge (three
+/// continue back edges, none for the `break` exit), and the budget/cancel
+/// knobs observe those points on the C channel too.
+#[test]
+fn audit1036_loop_03_c_continue_backedge_polls() {
+    let mut s = open_session("audit1036_loop_03_c");
+    // clean: value + exactly 3 poll charges + the 4-WU call frame
+    let (out, err) = run_c_chain(
+        &mut s,
+        "LOOP03-clean",
+        LOOP_03_SRC,
+        &[("A2X_RT_EVENTS", "1")],
+    );
+    assert_value("LOOP03-clean", &out, 40);
+    let (polls, calls) = charge_lines(&err);
+    assert_eq!(
+        polls, 3,
+        "each continue back edge must charge one WU; stderr:\n{err}"
+    );
+    assert_eq!(calls, 1, "exactly one call-frame charge; stderr:\n{err}");
+    // no allocation happens in this loop — the ledger stays empty
+    let (allocs, alloc_bytes, frees, free_bytes) = ledger(&err);
+    assert_eq!((allocs, alloc_bytes, frees, free_bytes), (0, 0, 0, 0));
+
+    // fall-through shape: continue once + one fall-through = 2 polls
+    let fallthrough = "fn main() int {\n    var n = 0\n    loop {\n        n = n + 1\n        if n == 3 { break }\n        if n == 1 { continue }\n    }\n    return n\n}";
+    let (out, err) = run_c_chain(
+        &mut s,
+        "LOOP03-fallthrough",
+        fallthrough,
+        &[("A2X_RT_EVENTS", "1")],
+    );
+    assert_value("LOOP03-fallthrough", &out, 3);
+    let (polls, _) = charge_lines(&err);
+    assert_eq!(polls, 2, "continue (1) + fall-through (1); stderr:\n{err}");
+
+    // budget boundary: Wbase = 4 (call) + 3 (polls) = 7 completes; one WU
+    // short traps at the third poll (the pre-fix path had no poll charge).
+    let (out, _err) = run_c_chain(
+        &mut s,
+        "LOOP03-budget-exact",
+        LOOP_03_SRC,
+        &[("A2X_RT_BUDGET", "7")],
+    );
+    assert_value("LOOP03-budget-exact", &out, 40);
+    let (out, _err) = run_c_chain(
+        &mut s,
+        "LOOP03-budget-short",
+        LOOP_03_SRC,
+        &[("A2X_RT_BUDGET", "6")],
+    );
+    assert_trap("LOOP03-budget-short", &out, "Budget");
+
+    // cancellation reaches the guest loop at its FIRST poll
+    let (out, _err) = run_c_chain(
+        &mut s,
+        "LOOP03-cancel",
+        LOOP_03_SRC,
+        &[("A2X_RT_CANCEL", "1")],
+    );
+    assert_trap("LOOP03-cancel", &out, "Cancelled");
+}
+
+/// The same two shapes the Rust leg freezes (F-R1-03): one owned
+/// per-iteration List plus one List survivor, `continue`-driven and
+/// fall-through back edges.
+fn owned_loop_src_c(shape: &str) -> String {
+    let drive = if shape == "continue" {
+        "if total == 8 { continue }\n        if total == 16 { break }"
+    } else {
+        "n = n + 1\n        if n == 2 { break }"
+    };
+    format!(
+        "fn main() int {{\n    var keep = List<int>.new()\n    keep.push(7)\n    var total int = 0\n    var n int = 0\n    loop {{\n        var tmp = List<int>.new()\n        tmp.push(1)\n        total = total + tmp.get(0) + keep.get(0)\n        {drive}\n    }}\n    return total + keep.len()\n}}"
+    )
+}
+
+/// Total work units the C runtime charged (`coll:charge:<n>` lines; the C
+/// poll IS the 1-WU charge).
+fn c_charge_total(stderr: &str) -> i64 {
+    stderr
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("coll:charge:"))
+        .filter_map(|u| u.parse::<i64>().ok())
+        .sum()
+}
+
+/// F-R1-03 (C leg): the poll error path's cleanup schedule on the C
+/// channel — value, cancel and budget paths each release every buffer
+/// exactly once (the C release is already idempotent; this freezes it).
+#[test]
+fn audit1036_loop_03_c_owned_cleanup() {
+    let mut s = open_session("audit1036_loop_03_c_owned");
+    for shape in ["continue", "fallthrough"] {
+        let src = owned_loop_src_c(shape);
+
+        let (out, err) = run_c_chain(
+            &mut s,
+            &format!("LOOP03C-{shape}-clean"),
+            &src,
+            &[("A2X_RT_EVENTS", "1")],
+        );
+        assert_value(&format!("LOOP03C-{shape}-clean"), &out, 17);
+        let (a, ab, f, fb) = ledger(&err);
+        assert!(a >= 2, "{shape}: expected several allocations, got {a}");
+        assert_eq!((a, ab), (f, fb), "{shape}: clean ledger must close\n{err}");
+
+        let (out, err) = run_c_chain(
+            &mut s,
+            &format!("LOOP03C-{shape}-cancel"),
+            &src,
+            &[("A2X_RT_CANCEL", "1"), ("A2X_RT_EVENTS", "1")],
+        );
+        assert_trap(&format!("LOOP03C-{shape}-cancel"), &out, "Cancelled");
+        let (a, ab, f, fb) = ledger(&err);
+        assert_eq!(
+            (a, ab),
+            (f, fb),
+            "{shape}: cancel ledger must close exactly once per buffer\n{err}"
+        );
+
+        let (_out, clean_err) = run_c_chain(
+            &mut s,
+            &format!("LOOP03C-{shape}-wbase"),
+            &src,
+            &[("A2X_RT_EVENTS", "1")],
+        );
+        let wbase = c_charge_total(&clean_err);
+        assert!(wbase > 0, "{shape}: charge ledger must name work units");
+        let (out, _err) = run_c_chain(
+            &mut s,
+            &format!("LOOP03C-{shape}-budget-exact"),
+            &src,
+            &[("A2X_RT_BUDGET", &wbase.to_string())],
+        );
+        assert_value(&format!("LOOP03C-{shape}-budget-exact"), &out, 17);
+        let (out, err) = run_c_chain(
+            &mut s,
+            &format!("LOOP03C-{shape}-budget-short"),
+            &src,
+            &[("A2X_RT_BUDGET", &(wbase - 1).to_string())],
+        );
+        assert_trap(&format!("LOOP03C-{shape}-budget-short"), &out, "Budget");
+        let (a, ab, f, fb) = ledger(&err);
+        assert_eq!(
+            (a, ab),
+            (f, fb),
+            "{shape}: budget trap ledger must close\n{err}"
+        );
+    }
+}

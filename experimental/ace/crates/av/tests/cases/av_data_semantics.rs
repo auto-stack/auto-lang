@@ -976,7 +976,8 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     // PLAN-965: + LANG_FAIL (0x40, aggregates-only language-error terminator;
     // outside the instruction space so the 0x3D..0x3F `m2-dynamic` rows stay
     // unambiguous) = 57.
-    assert_eq!(all_mnemonics.len(), 57);
+    // PLAN-975 B1: + STR_FROM_CHAR (0x4C, char -> owned Str) = 58.
+    assert_eq!(all_mnemonics.len(), 58);
     assert!(all_mnemonics.contains(&"CONV"));
     assert!(all_mnemonics.contains(&"HOST_CALL"));
     assert!(all_mnemonics.contains(&"FOREIGN_CALL"));

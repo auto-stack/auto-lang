@@ -1045,6 +1045,8 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
             | hir::ExprKind::TextToBorrowed { .. }
             | hir::ExprKind::CharToCodepoint { .. }
             | hir::ExprKind::CharFromCodepoint { .. }
+            // PLAN-975 B1: char materialization joins the text surface.
+            | hir::ExprKind::TextFromChar { .. }
     );
     let record_kinds = matches!(
         k,
@@ -1560,6 +1562,7 @@ fn kind_name(k: &hir::ExprKind) -> &'static str {
         hir::ExprKind::TextToBorrowed { .. } => "TextToBorrowed",
         hir::ExprKind::CharToCodepoint { .. } => "CharToCodepoint",
         hir::ExprKind::CharFromCodepoint { .. } => "CharFromCodepoint",
+        hir::ExprKind::TextFromChar { .. } => "TextFromChar",
         hir::ExprKind::RecordCtor { .. } => "RecordCtor",
         hir::ExprKind::FieldGet { .. } => "FieldGet",
         hir::ExprKind::BorrowView { .. } => "BorrowView",

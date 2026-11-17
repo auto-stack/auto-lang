@@ -38,7 +38,7 @@ fn c_ty(ty: &SeedCollTy) -> String {
 fn owns(ty: &SeedCollTy) -> bool {
     match ty {
         SeedCollTy::I32 | SeedCollTy::Bool => false,
-        SeedCollTy::StrOwned => true,
+        SeedCollTy::StrOwned | SeedCollTy::List(_) => true,
         SeedCollTy::Record(_) | SeedCollTy::Variant(_) => true,
     }
 }
@@ -50,6 +50,7 @@ fn deep_free_call(ty: &SeedCollTy) -> String {
         SeedCollTy::StrOwned => "a2x_str_free".into(),
         SeedCollTy::Record(n) => format!("a2x_coll_free_rec_{}", sanitize(n)),
         SeedCollTy::Variant(n) => format!("a2x_coll_free_var_{}", sanitize(n)),
+        SeedCollTy::List(e) => format!("a2x_coll_list_{}_free", e.elem_tag()),
         SeedCollTy::I32 | SeedCollTy::Bool => String::new(),
     }
 }
@@ -60,6 +61,7 @@ fn deep_clone_call(ty: &SeedCollTy) -> String {
         SeedCollTy::StrOwned => "a2x_str_clone".into(),
         SeedCollTy::Record(n) => format!("a2x_coll_clone_rec_{}", sanitize(n)),
         SeedCollTy::Variant(n) => format!("a2x_coll_clone_var_{}", sanitize(n)),
+        SeedCollTy::List(e) => format!("a2x_coll_list_{}_clone", e.elem_tag()),
         SeedCollTy::I32 | SeedCollTy::Bool => String::new(),
     }
 }
@@ -79,11 +81,19 @@ fn validate(seed: &SeedColl) -> Result<(), String> {
             return Err(format!("duplicate variant name `{}` in the seed", v.name));
         }
     }
-    let known = |ty: &SeedCollTy| match ty {
-        SeedCollTy::Record(n) => rec_names.contains(&sanitize(n)),
-        SeedCollTy::Variant(n) => var_names.contains(&sanitize(n)),
-        _ => true,
-    };
+    fn known_ty(
+        ty: &SeedCollTy,
+        rec_names: &std::collections::BTreeSet<String>,
+        var_names: &std::collections::BTreeSet<String>,
+    ) -> bool {
+        match ty {
+            SeedCollTy::Record(n) => rec_names.contains(&sanitize(n)),
+            SeedCollTy::Variant(n) => var_names.contains(&sanitize(n)),
+            SeedCollTy::List(e) => known_ty(e, rec_names, var_names),
+            SeedCollTy::I32 | SeedCollTy::Bool | SeedCollTy::StrOwned => true,
+        }
+    }
+    let known = |ty: &SeedCollTy| known_ty(ty, &rec_names, &var_names);
     for r in &seed.records {
         for (_, ty) in &r.fields {
             if !known(ty) {
@@ -127,36 +137,51 @@ pub fn coll_type_table_block(seed: &SeedColl) -> Result<String, String> {
     validate(seed)?;
     let order = topo_order(seed)?;
     let mut out = String::new();
-    // 1) struct definitions in DEPENDENCY-FIRST order (a variant may
-    //    reference a variant declared later in the source — N889 nested
-    //    shapes; stable: seed order breaks ties, cycles are rejected)
+    // 1) Forward typedefs for records/variants, then list struct definitions
+    //    (lists hold pointers so forward decls suffice, allowing records and
+    //    variants to contain a2x_list_<tag> values by value).
     for key in &order {
         match key {
             TableKey::Record(r) => {
-                out.push_str("typedef struct {\n");
-                for (name, ty) in &r.fields {
-                    out.push_str(&format!("    {} f_{};\n", c_ty(ty), sanitize(name)));
-                }
-                out.push_str(&format!("}} {};\n\n", c_record_name(&r.name)));
+                let cr = c_record_name(&r.name);
+                out.push_str(&format!("typedef struct {cr} {cr};\n"));
             }
             TableKey::Variant(v) => {
-                out.push_str("typedef struct {\n    int32_t disc;\n    union {\n");
-                for (arm, payload) in &v.arms {
-                    if let Some(p) = payload {
-                        out.push_str(&format!("        {} p_{};\n", c_ty(p), sanitize(arm)));
-                    }
-                }
-                out.push_str(&format!("    }} as;\n}} {};\n\n", c_variant_name(&v.name)));
+                let cv = c_variant_name(&v.name);
+                out.push_str(&format!("typedef struct {cv} {cv};\n"));
             }
         }
     }
-    // lists come after every element struct (they only need the pointer)
     for e in &seed.lists {
         out.push_str(&format!(
             "typedef struct {{ {}* data; size_t len; size_t cap; }} a2x_list_{};\n\n",
             c_ty(e),
             e.elem_tag()
         ));
+    }
+    // Struct definitions in DEPENDENCY-FIRST order
+    for key in &order {
+        match key {
+            TableKey::Record(r) => {
+                out.push_str(&format!("struct {} {{\n", c_record_name(&r.name)));
+                for (name, ty) in &r.fields {
+                    out.push_str(&format!("    {} f_{};\n", c_ty(ty), sanitize(name)));
+                }
+                out.push_str("};\n\n");
+            }
+            TableKey::Variant(v) => {
+                out.push_str(&format!(
+                    "struct {} {{\n    int32_t disc;\n    union {{\n",
+                    c_variant_name(&v.name)
+                ));
+                for (arm, payload) in &v.arms {
+                    if let Some(p) = payload {
+                        out.push_str(&format!("        {} p_{};\n", c_ty(p), sanitize(arm)));
+                    }
+                }
+                out.push_str("    } as;\n};\n\n");
+            }
+        }
     }
     // PLAN-972 (T-03): list RESULT wrappers (filter/map-style signatures
     // return lists through the trap-carrying channel).
@@ -224,6 +249,7 @@ pub fn coll_type_table_block(seed: &SeedColl) -> Result<String, String> {
              a2x_trap_code a2x_coll_list_{tag}_remove(a2x_list_{tag}* l, int32_t index, {et}* out);\n\
              void a2x_coll_list_{tag}_clear(a2x_list_{tag}* l);\n\
              void a2x_coll_list_{tag}_free(a2x_list_{tag}* l);\n\
+             a2x_trap_code a2x_coll_list_{tag}_clone(const a2x_list_{tag}* src, a2x_list_{tag}* out);\n\
              void a2x_coll_elem_{tag}_free({et}* v);\n\
              a2x_trap_code a2x_coll_elem_{tag}_clone(const {et}* src, {et}* out);\n\n\
              a2x_res_list_{tag} a2x_list_{tag}_value(a2x_list_{tag} v);\n\
@@ -309,7 +335,7 @@ fn emit_record_helpers(out: &mut String, r: &crate::seed_coll::SeedCollRecord) {
                         n = n
                     ));
                 }
-                SeedCollTy::Record(_) | SeedCollTy::Variant(_) => {
+                SeedCollTy::Record(_) | SeedCollTy::Variant(_) | SeedCollTy::List(_) => {
                     out.push_str(&format!(
                         "\x20   {{ a2x_trap_code t = {c}(&src->f_{f}, &acc.f_{f});\n\
                          \x20       if (t != A2X_TRAP_NONE) {{ a2x_coll_free_rec_{n}(&acc); return t; }} }}\n",
@@ -402,7 +428,7 @@ fn emit_variant_helpers(out: &mut String, v: &crate::seed_coll::SeedCollVariant)
                         n = n
                     ));
                 }
-                SeedCollTy::Record(_) | SeedCollTy::Variant(_) => {
+                SeedCollTy::Record(_) | SeedCollTy::Variant(_) | SeedCollTy::List(_) => {
                     out.push_str(&format!(
                         "\x20   if (src->disc == {k}) {{\n\
                          \x20       t = {c}(&src->as.p_{a}, &acc.as.p_{a});\n\
@@ -484,7 +510,7 @@ fn emit_list_helpers(out: &mut String, e: &SeedCollTy) {
                 et = et
             ));
         }
-        SeedCollTy::Record(_) | SeedCollTy::Variant(_) => {
+        SeedCollTy::Record(_) | SeedCollTy::Variant(_) | SeedCollTy::List(_) => {
             out.push_str(&format!(
                 "void a2x_coll_elem_{tag}_free({et}* v) {{ {f}(v); }}\n\
                  a2x_trap_code a2x_coll_elem_{tag}_clone(const {et}* src, {et}* out) {{\n\
@@ -646,6 +672,20 @@ fn emit_list_helpers(out: &mut String, e: &SeedCollTy) {
          \x20       a2x_coll_backing_release(l->cap * {esz});\n\
          \x20       l->data = NULL; l->cap = 0;\n\
          \x20   }}\n\
+         }}\n\n\
+         a2x_trap_code a2x_coll_list_{tag}_clone(const a2x_list_{tag}* src, a2x_list_{tag}* out) {{\n\
+         \x20   a2x_list_{tag} acc;\n\
+         \x20   a2x_trap_code t = a2x_coll_list_{tag}_new(&acc);\n\
+         \x20   if (t != A2X_TRAP_NONE) {{ return t; }}\n\
+         \x20   for (size_t i = 0; i < src->len; i++) {{\n\
+         \x20       {et} item;\n\
+         \x20       t = a2x_coll_elem_{tag}_clone(&src->data[i], &item);\n\
+         \x20       if (t != A2X_TRAP_NONE) {{ a2x_coll_list_{tag}_free(&acc); return t; }}\n\
+         \x20       t = a2x_coll_list_{tag}_push(&acc, item);\n\
+         \x20       if (t != A2X_TRAP_NONE) {{ a2x_coll_list_{tag}_free(&acc); return t; }}\n\
+         \x20   }}\n\
+         \x20   *out = acc;\n\
+         \x20   return A2X_TRAP_NONE;\n\
          }}\n\n",
         tag = tag,
         et = et,

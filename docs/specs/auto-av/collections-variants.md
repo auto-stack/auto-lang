@@ -54,3 +54,16 @@ LIST_NEW/PUSH/INSERT/REMOVE/GET/SET/LEN/CAP、LIST_FIELD_GET/LIST_FIELD_SET、VA
   [resource-fault-and-generation-conformance.md](resource-fault-and-generation-conformance.md)。
 - 边界不变：源码不铸造 Place（`source.view-escape`/`source.iterate-mutate` 仍静态拒绝），
   本 profile 仍不承诺通用失效句柄校验。
+
+## PLAN-1035 增量：分类消费不改变本 profile（2026-11-16）
+
+- 资源 record 闭包判据外扩（F34）只改**分类派生**：本 profile 的指令面、move/field/
+  clone/clear 语义与 borrow 边界逐条不变——不把所有 record 当资源（纯标量 record 仍
+  copyable），不开放 `List.clone`/聚合 record builtin clone，不新增 opcode/ABI。
+- 嵌套 List 的链式整元素 view（`xs.get(i).get(j)`）仍是已交付读面；“owned 元素必须
+  投影”的门只覆盖 record 元素。
+- MIR `CLONE` 对 List-only record 由“copyable → 拒绝”变为 owned 可准入（**typed 内部
+  通道**）：深克隆为克隆方重建内层 buffer（实测 2 allocs/2 frees，改克隆不影响原件）；
+  源码域克隆仍拒。
+- 证据锚：`audit1035_res_01_typed_clone_of_list_only_record_is_deep`、
+  `audit1035_res_01_str_plus_list_and_scalar_record`、`audit1035_res_03_*`（`ace-av`）。

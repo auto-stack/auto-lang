@@ -255,3 +255,104 @@ final pass（reviewed 295e93f7c）。A-06/D-07 的会话/daemon/MCP 切片以显
 授权/兼容具名拒绝，异根无开发缓存运行）。新增已验证 producer 未关闭的缺口：F0
 foreign 执行链复用 967 既有面（978 侧为具名边界）、Linux 腿 deferred/1063、正式安装
 升级归 986/987。规范落点 [m2-build.md](m2-build.md)。本节为工作稿，独立 review 定稿。
+
+## PLAN-973 A 切片：系统文件进程时间与资源库（SD-02 挂接）
+
+973 A 交付：`stdlib/ace/sys/` 10 模块系统库（File/path/env/process/time/rand/console 面）
+经 1043 装配+50 冻结平台操作四表（source/av-core/AC shim/a2x 端口）——Windows 默认
+provider kernel32/bcrypt 直调零 libc/Rust std 委托、统一资源账本（文件/目录/进程/
+socket/listener、lo+hi、预算沿 1039 冻结值、cleanup 恰好一次）、诚实拒绝分态。
+六路径覆盖（AV/native+AV×C+AV×Rust 外库+A2R 真 rustc+A2PY 真 Python+AC stub 负控）
+与宿主 facade 全绿（归档收据含命令/计时）。分母挂接：18_ffi/19_rust_std 系统操作
+producer 就位；新增已验证 producer 未关闭的缺口：byte→Str 面（read_text/dir_names/
+env get 族/zip/storage 等）→1064、AC 50 操作真身→1065（用户裁定 b）、Linux 实跑
+→1063、967 读出参帧。规范落点 [m2-stdlib-io.md](m2-stdlib-io.md)。B 阶段消费者
+替换（985）以本包 A 收据为开工门之一。
+
+## PLAN-979 增量：Schema 领域接面与 AGE 投影（SD-02 挂接，2026-11-16）
+
+按本文件 SD-01 分类口径登记本包已验 producer（不复制子计划分母；状态=实现可核对，产品门另计）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| `ace_core::source::age_h0::compile_age_h0` + `ace_av::age_h0::observe_age_h0` | auto-lang `e352e462b` | implemented-verified（H0 切片） | node/view/text + 普通函数文本；完整 AGE 语法不在本项 |
+| `ace_core::source::domain::compile_domain`（包/typed 投影/身份/注册表/`mapping_complete`） | auto-lang `e352e462b` | implemented-verified（通用接面） | role 粒度；字段粒度见 `field_manifest` |
+| `ace_core::source::field_manifest` + owner 分母（UI 115 行 / AGE 12 行） | auto-lang `e352e462b`；auto-ui `f864f33b` | implemented-verified（清单/覆盖机制） | 分母数据与产品字段归 owner；L04/AG-A 范围外 |
+| `compile_age_package`（多模块 AGE 包前门）+ `observe_age_package` | auto-lang `e352e462b`（981/SOURCE） | implemented-verified（CPU 腿） | A2R 实例 1 未取值；g01 不进 A2R；模块级 const/var 拒绝 |
+| 传统 AutoUI 字段分母（`ui.widget-decl/v1`） | auto-ui `f864f33b`（980） | implemented-verified（字段面） | 全模式/窗口由 980/PARITY 等继续 |
+
+未闭/范围外（保持显式，不填“支持/无差额”）：
+
+- AGE-L04 选择/条件（981/LANGUAGE + 966）、AG-A01..09（980 + 981/LANGUAGE）、AGE-L03 的
+  `view-portrait`/`view-widget`（981/LANGUAGE）；
+- GUI/FFI/宿主与两游戏（981/SESSION/RUST/LANGUAGE/PROOF）、完整产品分母（985）、980 其余批次；
+- auto-ui 仓 `ace-migration-feasibility.md` 的领域侧增量归 UI owner（本仓不可沉淀）。
+
+规范落点：[m2-schema.md](m2-schema.md)；证据与边界见 PLAN-979 §9。
+
+## PLAN-975 增量：M2-A 数据标准库与跨端业务（SD-02 挂接，2026-11-16）
+
+PLAN-975（M2-A 数据标准库：`json` / `sqlite` / `redis`）全部 work 任务经 round-1 `needs_fix`（`F-01..F-06`）→ 修复 → round-2 `final pass` 归档：
+
+- **三模块与原语**：`char.to(Str)` 物化原语（六路径 AV/`MnDriver`/AV-C/A2R/A2PY/AC）；纯 Auto `stdlib/ace/std/json.at`（encode/decode 族、数组点路径、`i32::MIN`、UTF-16 代理对、控制字符与非法转义拒绝）五端（AV/`MnDriver`/A2R/A2C/A2PY）同得 `42`（含修复 `a2x-c/src/lower_rt.rs` 内容视图参数转发）；纯 Auto RESP2 `stdlib/ace/std/redis.at`（严格 UTF-8 逐字节校验 + `badutf8`/`overlong`/`surr`→`""`）；canonical `pub fn` `stdlib/ace/std/sqlite.at` 单源服务 `text-record`（`TextRecord` `pub fn` 准入）与 `packages-modules`（`:memory:` CRUD + `BEGIN`/`ROLLBACK` + SQL 失败 `ROLLBACK` = `9`）。
+- **结构感知与模块边界**：`spec JsonDecodable` + `<T has JsonDecodable> decode<T>` + `966` `ct_field_count`/`ct_has_field` + `app::service` `pub type Service` 跨模块解码；`V-LOAD-MODULE` 私有 helper `source.module-private`、`pub`-stripped RED、`std::json` `ace.stdlib-reserved`、`PackageStore::restore` 与私有体变更 hash 移动全验。
+- **具名边界与外部承接**：动态 `JsonValue` AST / 泛型 `encode[T]` / 任意字段遍历反射（M2-B / `966`）；`encoding/csv.at` 未迁移占位；SQLite 文件持久化（`973`/`1064`）；`packages` `p967_*` provider 执行装配（`1043`）；schema 迁移（`986`）；Linux 实跑 `L-01..L-05`（`1063`, `deferred-required / NOT_RUN`）。规范落点：[m2-stdlib-data.md](m2-stdlib-data.md)。
+
+## PLAN-980 增量：传统 AutoUI 全模式 ACE 接入 producer 挂接（SD-02 挂接，2026-11-16，r11）
+
+五批落主（DIALECT/STATE/HELLO/RUST-AXR0/NATIVE，r11 口径 15/29；JET/ARK 归
+M3 裁定）。已验 producer（状态=实现可核对，产品门另计）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| 组件面场景族（`compile_component_scenario*`：initials/states-only/免驱动）+ `observe_component_states(_and_texts)` | auto-lang `1d2f01238` | implemented-verified（STATE/NATIVE CPU+真窗） | 免驱动仅 980 入口；打包车道口径不变；观测字段限 int（driverless 除外） |
+| `AceStateEngine`（实例世代/异步完成世代纪律=MIX-03 无 HTTP） | auto-ui `ae1c53ad` | implemented-verified | 多单元接线待 IF-981-MODULE 消费；HTTP 实腿 983 |
+| HELLO 首窗链（H0→AV→F0×E0→run_app 真窗；分派时重观察防漂移） | auto-ui `e529dde6` / lang `1991021a5` | implemented-verified | PACK 完整打包闭包 pending；单 text 族 |
+| F0 构建新鲜度缓存 + ace-host Exit 臂修复 | lang `1991021a5` | implemented-verified | 缓存只认输入身份 |
+| AXR0 双腿（组件 A2R `value:2`；F0×A2R 链接 `value:9`）+ 交付闭包修复链（strip_dev_deps/feature 门/foreign-contract vendor） | auto-ui `e2aadd45` | implemented-verified（driver 43/43） | 多文件 emitter 替换待 981 面；A2R 文本出岛 pending（902 冻结协议） |
+| ACE 原生 run 通道（`AUTO_UI_ENGINE=ace`；001 真源 Accept 别名/属性树/状态写主题翻转/关闭重开） | auto-ui `34bb4326` + lang `1d2f01238` | implemented-verified | 交互档=既有手工/环境门控；路由运行语义未交付；opt-in 默认链不切换 |
+| 分母/命令冻结（T-01） | 本文件 + m2-autoui §10 | implemented-verified | WEB/TAURI/PARITY 行待各自 I 冻结 |
+
+未闭/范围外（保持显式）：WEB 批适配器切换（976 producer 已归档 660fe72b5，
+切换归 980/WEB）、TAURI、PARITY 模式网格、T-05..07 终门；JET/ARK=M3 裁定；
+KNOWN-DEBT 各具名边界（f-string 文本叶 AV 车道/emit 归 981/默认链 987/交互
+档归属等）。规范落点：[m2-autoui.md](m2-autoui.md) §6–§10。
+
+## PLAN-976 增量：M2-A 脚本目标（TS/JS）producer 挂接（SD-02 挂接，2026-11-16）
+
+PLAN-976（共享 Checked-HIR TypeScript/JavaScript provider）work 全毕 → T-05 final pass
+（`9da498211`）→ 归档：
+
+- **已验证 producer**：[m2-typescript.md](m2-typescript.md)——新 crate `ace-a2x-ts`
+  双目标 `TargetProvider`（backend `auto-a2x-typescript`/`auto-a2x-javascript`，层
+  `AXTS1..3`/`AXJS1..3`，fileset schema `ace.a2ts-hir.*.fileset/1`，producer
+  `ace-a2x-ts/modules/1`）；i64/u64=bigint、UTF-8 字节文本、checked 算术 trap、
+  计划驱动 owned-Str 清理（复合值 JS GC=具名目标差异）；UI 中立 fragment 接口
+  `emit_stmt_fragment`/`emit_expr_fragment`；worker `daily-emit-ts`/`run-ts` 真实
+  node 通道；多模块 packages lane（`PackageA2xTarget`）与 source map 原 span、
+  tsc `--strict` 类型腿（缺 tsc=具名 infra skip）。全部真实 dispatch 无旧
+  `TypeScriptTrans`/`JavaScriptTrans` fallback（boundaries 白名单/扫描面已纳入）。
+- **范围裁定沿 2026-11-16 r6**：Godot 后置；独立全语言通用 a2ts/a2js CLI 非自动
+  门；生产闭包（Vue/Ark/Web/982/983/984 的模块、runtime helper、工具链）为 required，
+  产品适配器切换归 980，旧 emitter 退役归 987。
+- **具名未闭（KNOWN-DEBT D-976）**：`a2ts.foreign-unsupported`/
+  `a2ts.closure-owned-capture` 两族源级永久负控缺位（代码路径复审核读+a2py 同形
+  先例）；sched/depth 两族负控已补 `ts_named_rejections.rs`。台账相关行保持
+  required/unknown 原状，不因 976 交付消失。
+
+## PLAN-983 增量：M2-A Web 切片 producer/consumer 挂接（SD-02 挂接，2026-11-17 phase fold）
+
+PLAN-983 M2-A 切片（T-01/B-PORT/B-PROOF 共 7 任务，phase review pass
+`bdc48e8`）落主；B 组 12 任务在途（worktree 保留）。已验
+producer/consumer（RG-A02）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| 中立受检 Web 宿主端口（`web_host_port`；公共面无 AutoVM） | auto-web `bdc48e8` | implemented-verified | 内部执行面仍 legacy 臂（B/AVSERVICE 换）；core trait 桥已文档化 |
+| AV 真服务腿（`tests/fixtures/ace-p983/av-service.at` + http_runtime 2 用例；console 前门+run_platform+file/net/mem grants） | auto-web `bdc48e8` | implemented-verified（RG-A02 AV 腿） | member-delivery/b API 面语义；counter.txt 经 file_open_w16（Win32 无 file_open_bytes）；ASCII 数据根；单 owner 串行 |
+| A2R 新道生成腿（`ace_a2r_lane`+api_gen 早门/覆写；`AUTO_WEB_A2R_ENGINE=ace` 显式） | auto-web `bdc48e8` | implemented-verified（RG-A02 生成腿） | 零参 int/str/bool 子集；store/db/伴生留旧道（B/GENERATED）；坏源保旧已验 |
+| ACE 发射侧生产依赖（ace-core/ace-a2x-core/ace-a2x-rust） | auto-lang `e85096628`（钉基，零改动） | implemented-verified | 解释器 ace-av 保持 dev-only |
+
+规范落点：[m2-web.md](m2-web.md)（A 切片接口+边界）。台账 Web 相关行
+不因 A 切片消失：全 Web API 面、AVSERVICE/GENERATED/CONSUMERS、四仓
+生产链与 T-05..07 仍 required（B 域）。

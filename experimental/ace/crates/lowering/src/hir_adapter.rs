@@ -230,6 +230,26 @@ pub fn lower_checked(
                     // modules (task-handler stdout).
                     if symbol.starts_with("__sched_") {
                         // accepted below via the shared import path
+                    } else if symbol.starts_with("auto.platform.") {
+                        // PLAN-973: system-library platform primitives on
+                        // the packages-aggregates lane — the frozen op
+                        // table owns signature/capability; call sites
+                        // lower to PlatformCall.
+                        let h = ace_av_core::platform_io::declaration(
+                            symbol,
+                            owned_fn_sig_for_def(
+                                module,
+                                di as u32,
+                                *ty,
+                                &mut out,
+                                &BTreeMap::new(),
+                            )?,
+                        )
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                        out.host_imports.push(h);
+                        // The call sites find the platform import by
+                        // symbol; the def itself needs no CalleeRef.
+                        continue;
                     } else if symbol.starts_with("auto.console.")
                         && module.defs.iter().any(|d| {
                             matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
@@ -597,13 +617,8 @@ fn lower_checked_collection_family(
                 // host imports (task-handler stdout). Everything else
                 // keeps the historical rejection.
                 if symbol.starts_with("__sched_") {
-                    let sig = owned_fn_sig_for_def(
-                        module,
-                        di as u32,
-                        *ty,
-                        &mut out,
-                        &BTreeMap::new(),
-                    )?;
+                    let sig =
+                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                     let idx = out.intern_import(MirImport {
                         symbol: symbol.clone(),
                         effect: match effect {
@@ -620,18 +635,26 @@ fn lower_checked_collection_family(
                             if s.starts_with("__sched_"))
                     })
                 {
-                    let sig = owned_fn_sig_for_def(
-                        module,
-                        di as u32,
-                        *ty,
-                        &mut out,
-                        &BTreeMap::new(),
-                    )?;
+                    let sig =
+                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                     let h = ace_av_core::host::declaration(symbol, sig)
                         .map_err(|e| AdapterError::inv(e.code, e.message))?;
                     out.host_imports.push(h);
                     // The console call sites find the host import by
                     // symbol; no CalleeRef entry is needed.
+                } else if symbol.starts_with("auto.platform.") {
+                    // PLAN-973: system-library platform primitives on the
+                    // packages-aggregates lane — the frozen op table owns
+                    // the signature/capability contract; call sites lower
+                    // to PlatformCall via the host-import-by-symbol path.
+                    let h = ace_av_core::platform_io::declaration(
+                        symbol,
+                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?,
+                    )
+                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                    out.host_imports.push(h);
+                    // The call sites find the platform import by symbol;
+                    // no CalleeRef entry is needed.
                 } else {
                     return Err(AdapterError::uns(
                         "lower.intrinsic",
@@ -2615,9 +2638,12 @@ fn list_get_root(body: &hir::Body, eid: hir::ExprId) -> Option<hir::ExprKind> {
     }
 }
 
-/// PLAN-864: transitive Str-reachability over the HIR type table (the
-/// source-level twin of `ownership::record_reaches_str`).
-fn hir_record_reaches_str(m: &hir::Module, root: hir::TypeId) -> bool {
+/// PLAN-864 / PLAN-1035 (F34): resource reachability over the HIR type table
+/// (the lowering-side twin of `ownership::record_reaches_resource`). Leaves:
+/// owned `Str` (with borrowed `str` kept conservative), `List`, `Variant`,
+/// closure/function environment and object cell; records recurse through
+/// their fields.
+fn hir_record_reaches_resource(m: &hir::Module, root: hir::TypeId) -> bool {
     let mut stack = vec![root.0];
     let mut seen = std::collections::BTreeSet::new();
     while let Some(i) = stack.pop() {
@@ -2625,7 +2651,13 @@ fn hir_record_reaches_str(m: &hir::Module, root: hir::TypeId) -> bool {
             continue;
         }
         match m.types.get(i as usize).map(|t| &t.kind) {
-            Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => return true,
+            Some(hir::TypeKind::StrOwned)
+            | Some(hir::TypeKind::Str)
+            | Some(hir::TypeKind::List { .. })
+            | Some(hir::TypeKind::Variant { .. })
+            | Some(hir::TypeKind::Closure(_))
+            | Some(hir::TypeKind::Function(_))
+            | Some(hir::TypeKind::Object { .. }) => return true,
             Some(hir::TypeKind::Record(shape)) => {
                 for f in &shape.fields {
                     match f.ty {
@@ -3396,8 +3428,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         self.out.is_collections_profile() || self.out.is_closures_profile()
     }
 
-    /// PLAN-864: HIR-level owned classification for a List element type
-    /// (mirrors verify's rule): Str / record-reaching-Str / Variant.
+    /// PLAN-864 / PLAN-1035 (F34): HIR-level owned classification for a List
+    /// element type (mirrors verify's shared rule): any resource leaf, or a
+    /// record reaching one, or a nested list/closure/object cell.
     fn hir_elem_owned(&self, list_expr: hir::ExprId) -> Result<bool, AdapterError> {
         let ty = self.expr_ty_hir(list_expr)?;
         let Some(hir::TypeUse::Ref(tid)) = Some(ty) else {
@@ -3413,8 +3446,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::TypeUse::Builtin(_) => false,
             hir::TypeUse::Ref(e) => {
                 match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind) {
-                    Some(hir::TypeKind::Variant { .. }) => true,
-                    Some(hir::TypeKind::Record(_)) => hir_record_reaches_str(self.hir_module, *e),
+                    Some(hir::TypeKind::Variant { .. })
+                    | Some(hir::TypeKind::Closure(_))
+                    | Some(hir::TypeKind::Function(_))
+                    | Some(hir::TypeKind::Object { .. }) => true,
+                    // PLAN-1035 (F34): a record owns when its field closure
+                    // reaches a resource leaf (the Str-only walk missed
+                    // List/Variant/closure carriers — a List-only record
+                    // element was treated as a copyable value).
+                    Some(hir::TypeKind::Record(_)) => {
+                        hir_record_reaches_resource(self.hir_module, *e)
+                    }
                     // PLAN-962: a nested List element owns its arena buffer.
                     Some(hir::TypeKind::List { .. }) => true,
                     _ => false,
@@ -4113,7 +4155,12 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("__sched_"))
                     });
-                    if self.out.is_host_console_profile() || sched_module {
+                    let platform_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("auto.platform.")
+                    );
+                    if self.out.is_host_console_profile() || sched_module || platform_callee {
                         // PLAN-968: only host-table spellings take the
                         // host-import path; __sched_ intrinsics keep the
                         // generic call path (rewritten to SCHED ops below).
@@ -4125,44 +4172,44 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             {
                                 // fall through to the generic call path
                             } else {
-                            let host = self
-                                .out
-                                .host_imports
-                                .iter()
-                                .position(|h| &h.symbol == symbol)
-                                .ok_or_else(|| {
-                                    AdapterError::inv(
-                                        "host.reference",
-                                        "host declaration missing".into(),
-                                    )
-                                })? as u32;
-                            if ace_av_core::platform_io::is_platform_symbol(symbol) {
-                                let dst = self.temp_ty(self.t_i32)?;
+                                let host = self
+                                    .out
+                                    .host_imports
+                                    .iter()
+                                    .position(|h| &h.symbol == symbol)
+                                    .ok_or_else(|| {
+                                        AdapterError::inv(
+                                            "host.reference",
+                                            "host declaration missing".into(),
+                                        )
+                                    })? as u32;
+                                if ace_av_core::platform_io::is_platform_symbol(symbol) {
+                                    let dst = self.temp_ty(self.t_i32)?;
+                                    self.emit(
+                                        MirInstr::PlatformCall {
+                                            dst,
+                                            host,
+                                            args: arg_slots.clone(),
+                                        },
+                                        sp,
+                                    )?;
+                                    return Ok(dst);
+                                }
+                                if arg_slots.len() != 1 {
+                                    return Err(AdapterError::inv(
+                                        "host.signature",
+                                        "console call needs one argument".into(),
+                                    ));
+                                }
                                 self.emit(
-                                    MirInstr::PlatformCall {
-                                        dst,
+                                    MirInstr::HostCall {
                                         host,
-                                        args: arg_slots.clone(),
+                                        arg: arg_slots[0],
                                     },
                                     sp,
                                 )?;
-                                return Ok(dst);
-                            }
-                            if arg_slots.len() != 1 {
-                                return Err(AdapterError::inv(
-                                    "host.signature",
-                                    "console call needs one argument".into(),
-                                ));
-                            }
-                            self.emit(
-                                MirInstr::HostCall {
-                                    host,
-                                    arg: arg_slots[0],
-                                },
-                                sp,
-                            )?;
-                            // No runtime Unit local/dst: HIR has already forbidden value consumers.
-                            return Ok(u32::MAX);
+                                // No runtime Unit local/dst: HIR has already forbidden value consumers.
+                                return Ok(u32::MAX);
                             }
                         }
                     }
@@ -4551,7 +4598,12 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 &sym,
                                 dst,
                                 &actuals,
-                                &self.out.funcs.iter().map(|f| f.name.clone()).collect::<Vec<String>>(),
+                                &self
+                                    .out
+                                    .funcs
+                                    .iter()
+                                    .map(|f| f.name.clone())
+                                    .collect::<Vec<String>>(),
                             )?;
                             let no_result = sched_op_has_no_result(&instr);
                             self.emit(instr, sp)?;
@@ -4886,6 +4938,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
+                Ok(dst)
+            }
+            hir::ExprKind::TextFromChar { operand } if self.owned => {
+                // PLAN-975 B1: char -> fresh owned 1-scalar Str.
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrFromChar { dst, ch: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextToBorrowed { operand } if self.owned => {
@@ -5472,6 +5531,14 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 }
                 Ok(dst)
             }
+            hir::ExprKind::TextFromChar { operand } if self.collections() => {
+                // PLAN-975 B1: char -> fresh owned 1-scalar Str (same MIR
+                // instruction as the owned profile's lane).
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrFromChar { dst, ch: v }, sp)?;
+                Ok(dst)
+            }
             hir::ExprKind::TextLenBytes { operand } if self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty)?;
@@ -5919,6 +5986,7 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         TextClone { .. } => "text-clone",
         ClosureClone { .. } => "closure-clone",
         TextToOwned { .. } => "text-to-owned",
+        TextFromChar { .. } => "text-from-char",
         TextToBorrowed { .. } => "text-to-borrowed",
         CharToCodepoint { .. } => "char-to-codepoint",
         CharFromCodepoint { .. } => "char-from-codepoint",
@@ -6761,7 +6829,6 @@ pub fn lower_checked_console(
     lower_checked_owned(checked, entry_name, source_snapshot)
 }
 
-
 /// PLAN-968: whether a sched operation produces no result value (the
 /// call seam zero-fills its temp for these).
 fn sched_op_has_no_result(i: &ace_av_core::mir::MirInstr) -> bool {
@@ -6838,9 +6905,7 @@ fn sched_instr_of(
         });
     }
     Ok(match rest {
-        "stop" => MirInstr::SchedStop {
-            handle: actuals[0],
-        },
+        "stop" => MirInstr::SchedStop { handle: actuals[0] },
         "sleep" => MirInstr::SchedSleep { ms: actuals[0] },
         _ if rest.starts_with("send_") => MirInstr::SchedSend {
             handle: actuals[0],
@@ -6851,9 +6916,7 @@ fn sched_instr_of(
             msg: actuals[1],
             dst,
         },
-        _ if rest.starts_with("reply_") => MirInstr::SchedReply {
-            value: actuals[0],
-        },
+        _ if rest.starts_with("reply_") => MirInstr::SchedReply { value: actuals[0] },
         _ if rest.starts_with("await_") => MirInstr::SchedAwait {
             future: actuals[0],
             dst,

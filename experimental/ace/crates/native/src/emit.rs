@@ -265,6 +265,17 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
                             ),
                         ));
                     };
+                    // PLAN-974: platform.net/1 — named rejection (outside
+                    // the native lane's original support domain).
+                    if spec.category == ace_av_core::platform_io::CATEGORY_NET {
+                        return Err(MnError::Unsupported(
+                            "native.net-unsupported",
+                            format!(
+                                "platform.net `{}` is outside the native support domain",
+                                h.symbol
+                            ),
+                        ));
+                    }
                     if let Err(err) = ace_av_core::platform_io::validate_import(unit, h, spec) {
                         return Err(MnError::Unsupported(
                             "host-console",

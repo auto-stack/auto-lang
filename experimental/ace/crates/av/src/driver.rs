@@ -113,6 +113,7 @@ impl RequestOutcome {
             Some(ExecOutcome::Cancelled) => "cancelled",
             Some(ExecOutcome::Error { .. }) => "error",
             Some(ExecOutcome::Infra(_)) => "infra",
+            Some(ExecOutcome::Exit { .. }) => "exit",
             None => "none",
         }
     }

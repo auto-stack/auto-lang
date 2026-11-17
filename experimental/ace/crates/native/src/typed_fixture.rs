@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 
 pub const FIXTURE_SCHEMA: &str = "mn-typed-fixture/1";
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FixtureDoc {
     pub schema: String,
@@ -30,14 +30,14 @@ pub struct FixtureDoc {
     pub entry: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RecordDecl {
     pub name: String,
     pub fields: Vec<(String, String)>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct UnitDecl {
     pub name: String,
@@ -52,7 +52,7 @@ pub struct UnitDecl {
     pub ret: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BlockDecl {
     #[serde(default)]
@@ -60,7 +60,7 @@ pub struct BlockDecl {
     pub term: TermDecl,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum InstrDecl {
@@ -114,7 +114,7 @@ pub enum InstrDecl {
     },
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum TermDecl {

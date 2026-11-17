@@ -24,8 +24,9 @@
 descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-i32-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move] }
-        enum TypeKind { cases: [i32, bool, str, Str, char, function, record] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, text_from_char, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move, text_display, fstr] }
+        // PLAN-981: `f32` joins the type cases (AGE resource/coordinate values).
+        enum TypeKind { cases: [i32, bool, str, Str, char, f32, function, record] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
         enum LogicOp { cases: [and, or] }
@@ -135,6 +136,7 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
                 ctor_bindings: CtorBindingList
                 base: ExprRef
                 path: FieldRefList
+                parts: ExprRefList
             }
         }
 
@@ -160,6 +162,8 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
         branch(key: "type.str") { forbid: [params, result, fields] }
         branch(key: "type.Str") { forbid: [params, result, fields] }
         branch(key: "type.char") { forbid: [params, result, fields] }
+        // PLAN-981: an f32 entry carries no shape (like i32/bool).
+        branch(key: "type.f32") { forbid: [params, result, fields] }
         branch(key: "type.function") { require: [params, result]; forbid: [fields] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result] }
         branch(key: "function") {
@@ -291,11 +295,28 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
             require: [type, operand]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
         }
+        // PLAN-980（B-DIALECT-I 完整批，additive cases）：AGE 组件面消费的
+        // widget f-string 文本叶经 `__fstr` 解析为 TextConcat 链，其中非文本
+        // 插值段为 TextDisplay；未解析残形为 FStr(parts)。binder/verify 的
+        // 处理与 aggregates/closures 面同源（共享实现），此处仅放开本描述符
+        // 的枚举/分支门。既有文档不受影响（未用新 case 即不触发）。
+        branch(key: "expr.text_display") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, key, parts, list, disc, payload]
+        }
+        branch(key: "expr.fstr") {
+            require: [type, parts]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, key, list, disc, payload]
+        }
         branch(key: "expr.char_to_codepoint") {
             require: [type, operand]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
         }
         branch(key: "expr.char_from_codepoint") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_from_char") {
             require: [type, operand]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
         }

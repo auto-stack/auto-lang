@@ -145,8 +145,14 @@ pub struct TreeLease<'s> {
 impl<'s> Drop for TreeLease<'s> {
     fn drop(&mut self) {
         let mut s = self.session.inner.borrow_mut();
+        // PLAN-1029（ADM-05）：最后一份租约释放（计数 1→0）**立即删除**
+        // 零计数键；仍为正的键保留——索引收敛，不随历史轮数线性增长。
+        // Drop 只清租约索引；旧树 entry 仍由下次 publish 按原规则淘汰。
         if let Some(c) = s.lease_counts.get_mut(&self.tree) {
             *c = c.saturating_sub(1);
+            if *c == 0 {
+                s.lease_counts.remove(&self.tree);
+            }
         }
     }
 }
@@ -217,5 +223,77 @@ mod tests {
             matches!(s.resolve(h), Err(RtError::BadHandle(_))),
             "after release, old tree evicted on next publish"
         );
+    }
+
+    /// PLAN-1029 ADM-05：1000 轮 publish/lease/drop——每轮观察无零计数键、
+    /// 索引不随轮数线性增长；双 lease：drop 一份仍保计数与旧树可读，
+    /// 最后一份 1→0 **立即删键**；全释放后再 publish 淘汰旧无租约树。
+    #[test]
+    fn audit1029_adm_05_last_lease_drop_removes_zero_key_immediately() {
+        let s = TreeSession::new();
+        let mut last_id = 0;
+        for round in 0..1000 {
+            let id = s.publish(entry());
+            last_id = id;
+            let l1 = s.lease(id).unwrap();
+            let l2 = s.lease(id).unwrap();
+            {
+                let inner = s.inner.borrow();
+                assert_eq!(
+                    inner.lease_counts.get(&id),
+                    Some(&2),
+                    "round {round}: two live leases counted"
+                );
+            }
+            drop(l1);
+            {
+                let inner = s.inner.borrow();
+                assert_eq!(
+                    inner.lease_counts.get(&id),
+                    Some(&1),
+                    "round {round}: one lease keeps the key positive"
+                );
+                assert!(
+                    inner.lease_counts.values().all(|&c| c > 0),
+                    "round {round}: no zero-count lease keys may linger"
+                );
+            }
+            // 活租约下树仍可读（该树即当前树）。
+            assert!(
+                s.resolve(NodeHandle { tree: id, node: 0 }).is_ok(),
+                "round {round}: live lease keeps the tree readable"
+            );
+            drop(l2);
+            assert!(
+                s.inner.borrow().lease_counts.get(&id).is_none(),
+                "round {round}: last drop must remove the zero-count key immediately"
+            );
+            {
+                let inner = s.inner.borrow();
+                assert!(
+                    inner.lease_counts.len() <= 1,
+                    "round {round}: lease index must not grow with history"
+                );
+                assert!(
+                    inner.entries.len() <= 2,
+                    "round {round}: entries bounded (current + at most leased)"
+                );
+            }
+        }
+        // 多代控制：lease 旧树→发布新代→旧树仍可读→全释放→publish 淘汰。
+        let old = s.publish(entry());
+        let lease = s.lease(old).unwrap();
+        let _new = s.publish(entry());
+        assert!(
+            s.resolve(NodeHandle { tree: old, node: 0 }).is_ok(),
+            "leased old generation stays readable across publishes"
+        );
+        drop(lease);
+        let _ = s.publish(entry());
+        assert!(
+            s.inner.borrow().entries.get(&old).is_none(),
+            "unleased old tree must be evicted by the next publish"
+        );
+        assert_ne!(last_id, 0);
     }
 }

@@ -18,6 +18,10 @@
 pub mod adapter;
 pub mod age_component;
 pub mod age_h0;
+/// PLAN-981（IF-981-MODULE）：AGE 多模块包前门。
+pub mod age_package;
+/// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务的源侧 typed 声明。
+pub mod age_resources;
 pub mod ast;
 pub(crate) mod closure_capture;
 pub mod closures_context;
@@ -26,6 +30,9 @@ pub mod console;
 pub mod cst;
 pub mod decl_env;
 pub mod domain;
+// PLAN-980（IF-980-FIELDS）：字段级投影完整性清单的通用机制（接既有
+// mapping_complete/component_coverage 的字段粒度层）。
+pub mod field_manifest;
 pub mod fstr;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;
@@ -133,6 +140,12 @@ pub const SCHEDULER_SOURCE_PROFILE: &str = "auto.source.scheduler.draft";
 /// 同源不同裁剪：H0 合同不变，组件语义只在本面出现。
 pub const AGE_COMPONENT_SOURCE_PROFILE: &str = "auto.source.age-component.draft";
 
+/// PLAN-981（SOURCE 批，T-01）：AGE **多模块包面** —— 包模块图（`pub fn` /
+/// `use <mod>.<item>` / 模块级 const、var / 多段路径）与 AGE 组件的**同一次**
+/// 解析面。只在 [`AgePackage`](SourceProfile::AgePackage) 上启用；H0 与组件
+/// 面的裁剪字节不变（`age-package` 只是多出来的一个未启用名字）。
+pub const AGE_PACKAGE_SOURCE_PROFILE: &str = "auto.source.age-package.draft";
+
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -159,6 +172,11 @@ pub enum SourceProfile {
     /// PLAN-979 T-03: the AGE component profile (`node { model … on … view … }`).
     /// Same source grammar, different trim; generic entries refuse it.
     AgeComponent,
+    /// PLAN-981: the AGE package profile (the package module graph ∪ the AGE
+    /// component face, parsed once). Only
+    /// [`age_package::compile_age_package`](crate::source::age_package) consumes
+    /// it; every generic entry refuses it.
+    AgePackage,
 }
 
 impl SourceProfile {
@@ -178,6 +196,7 @@ impl SourceProfile {
             SourceProfile::Scheduler => SCHEDULER_SOURCE_PROFILE,
             SourceProfile::AgeH0 => AGE_H0_SOURCE_PROFILE,
             SourceProfile::AgeComponent => AGE_COMPONENT_SOURCE_PROFILE,
+            SourceProfile::AgePackage => AGE_PACKAGE_SOURCE_PROFILE,
         }
     }
 
@@ -209,6 +228,10 @@ impl SourceProfile {
             // second checker.
             SourceProfile::AgeH0 => crate::hir::HirDomain::TextRecord,
             SourceProfile::AgeComponent => crate::hir::HirDomain::TextRecord,
+            // PLAN-981: the AGE package face's ordinary surface is the
+            // package/text-record one; its domain rows are verified inside the
+            // same shared domain, never a second checker.
+            SourceProfile::AgePackage => crate::hir::HirDomain::TextRecord,
         }
     }
 
@@ -232,6 +255,7 @@ impl SourceProfile {
                 // PLAN-979: the AGE domain face keeps the text-record surface.
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
+                | SourceProfile::AgePackage
         )
     }
 
@@ -303,6 +327,7 @@ impl SourceProfile {
                 | SourceProfile::HostConsole
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
+                | SourceProfile::AgePackage
         )
     }
 
@@ -320,6 +345,7 @@ impl SourceProfile {
                 | SourceProfile::Scheduler
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
+                | SourceProfile::AgePackage
         )
     }
 
@@ -356,6 +382,7 @@ impl SourceProfile {
                 // PLAN-979: the AGE domain face is a text-record superset.
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
+                | SourceProfile::AgePackage
         )
     }
 
@@ -374,6 +401,7 @@ impl SourceProfile {
             AGGREGATES_SOURCE_PROFILE => Some(SourceProfile::Aggregates),
             AGE_H0_SOURCE_PROFILE => Some(SourceProfile::AgeH0),
             AGE_COMPONENT_SOURCE_PROFILE => Some(SourceProfile::AgeComponent),
+            AGE_PACKAGE_SOURCE_PROFILE => Some(SourceProfile::AgePackage),
             _ => None,
         }
     }

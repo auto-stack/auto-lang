@@ -809,6 +809,13 @@ pub enum ExprKind {
     CharFromCodepoint {
         operand: ExprId,
     },
+    /// `c.to(Str)` — char materialized as a fresh owned 1-scalar Str
+    /// (PLAN-975 B1, the decode/parse substring-materialization core
+    /// decision). Result Str (owned); invalid scalars are a runtime
+    /// rejection (`text.invalid-scalar`), like `char.from_codepoint`.
+    TextFromChar {
+        operand: ExprId,
+    },
     /// Record construction (PLAN-771): every field initialized exactly
     /// once. `eval_args` is the source-order evaluation list (side effects
     /// run left-to-right as written, never re-sorted by field order);

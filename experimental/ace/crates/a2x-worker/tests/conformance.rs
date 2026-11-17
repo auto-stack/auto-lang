@@ -24,6 +24,8 @@ mod a2c_scalar_semantics;
 mod a2r_owned_temporaries_931;
 #[path = "cases/a2x_decl_env_929.rs"]
 mod a2x_decl_env_929;
+#[path = "cases/audit1033_axtx.rs"]
+mod audit1033_axtx;
 #[path = "cases/sched_m2_968.rs"]
 mod sched_m2_968;
 
@@ -43,6 +45,8 @@ mod cert_execution_941;
 mod cert_json_951;
 #[path = "cases/cert_rt_902.rs"]
 mod cert_rt_902;
+#[path = "cases/char_to_str_975.rs"]
+mod char_to_str_975;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
 #[path = "cases/coll_manifest_oracle_933.rs"]
@@ -75,6 +79,10 @@ mod numeric_semantics;
 mod plan979_age_a2r;
 #[path = "cases/plan979_component_a2r.rs"]
 mod plan979_component_a2r;
+#[path = "cases/plan981_age_package_a2r.rs"]
+mod plan981_age_package_a2r;
+#[path = "cases/plan981_rust_public.rs"]
+mod plan981_rust_public;
 #[path = "cases/query_release_941.rs"]
 mod query_release_941;
 #[path = "cases/record_text_902.rs"]
@@ -101,9 +109,13 @@ mod store_coll_904;
 mod store_coll_933;
 #[path = "cases/store_rt_902.rs"]
 mod store_rt_902;
+#[path = "cases/tsready_976.rs"]
+mod tsready_976;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
 
+#[path = "cases/p977_py_public_surface.rs"]
+mod p977_py_public_surface;
 #[path = "cases/pyready_1042.rs"]
 mod pyready_1042;
 #[path = "cases/record_field_writes_941.rs"]

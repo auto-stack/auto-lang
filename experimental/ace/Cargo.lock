@@ -71,6 +71,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-a2x-ts"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-core",
+ "ace-core",
+ "ace-foreign-contract",
+]
+
+[[package]]
 name = "ace-a2x-worker"
 version = "0.1.0"
 dependencies = [
@@ -79,6 +88,7 @@ dependencies = [
  "ace-a2x-python",
  "ace-a2x-rust",
  "ace-a2x-store",
+ "ace-a2x-ts",
  "ace-abi",
  "ace-artifacts",
  "ace-core",
@@ -86,6 +96,7 @@ dependencies = [
  "ace-source-query",
  "auto-tool-execution",
  "serde_json",
+ "sha2",
  "windows-sys 0.59.0",
 ]
 
@@ -793,6 +804,7 @@ dependencies = [
  "auto-terminal-core",
  "auto-test-case",
  "auto-text-core",
+ "auto-tool-execution",
  "auto-val",
  "auto-web-contract",
  "base64 0.22.1",

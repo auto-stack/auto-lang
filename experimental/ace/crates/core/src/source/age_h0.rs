@@ -164,15 +164,21 @@ pub struct AgeH0Compilation {
 /// 领域 profile 的通用入口拒绝（PLAN-979 F2）：领域声明不得被共享管线
 /// 静默丢弃——通用解析/编译入口一律具名拒绝，只经本模块入口消费。
 pub fn domain_profile_refusal(profile: SourceProfile, src_len: usize) -> Option<Diagnostic> {
-    // 领域 profile（H0 与 T-03 组件面）都只能经各自领域前门消费。
-    if !matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
+    // 领域 profile（H0、组件面与 PLAN-981 的 AGE 包面）都只能经各自领域
+    // 前门消费。
+    if !matches!(
+        profile,
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent | SourceProfile::AgePackage
+    ) {
         return None;
     }
     Some(text_diag(
         "source.domain-frontend",
         "the AGE domain profile is consumed only by the AGE domain front door \
-         (ace_core::source::age_h0::compile_age_h0); generic parsing/compilation cannot \
-         represent domain declarations",
+         (ace_core::source::age_h0::compile_age_h0 for H0, \
+         ace_core::source::age_component::compile_age_component for the component \
+         face, ace_core::source::age_package::compile_age_package for the package \
+         face); generic parsing/compilation cannot represent domain declarations",
         Span {
             start: 0,
             end: src_len,

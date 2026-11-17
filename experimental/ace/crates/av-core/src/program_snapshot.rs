@@ -704,6 +704,19 @@ pub struct UnitView<'a> {
 }
 
 impl crate::av::ModuleView for UnitView<'_> {
+    /// PLAN-973: host imports resolve against the OWNING unit's module
+    /// (indices are unit-local on the split-unit link path).
+    fn host_import_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirHostImport> {
+        self.snap
+            .code
+            .get(func as usize)?
+            .unit()
+            .module()
+            .host_imports
+            .get(idx as usize)
+            .cloned()
+    }
+
     /// PLAN-946 (T-02): the linked-program answer for the collections
     /// family — List/Variant params share their cell across unit calls
     /// (see `ProgramSnapshot::collections_family`). Both flavors answer

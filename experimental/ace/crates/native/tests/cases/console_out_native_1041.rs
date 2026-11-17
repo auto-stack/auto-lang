@@ -128,23 +128,38 @@ fn out01_ac_windows_pe_import_closure_includes_console_api() {
     let pe_bytes = std::fs::read(&built.exe_path).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     let report = ace_native::platform_io::audit_pe_imports(&pe_bytes).expect("audit");
-    let mut symbols: Vec<&str> = report.symbols.iter().map(|(_, s)| s.as_str()).collect();
-    symbols.sort_unstable();
-    assert_eq!(
-        symbols,
-        vec![
-            "ExitProcess",
-            "GetConsoleMode",
-            "GetLastError",
-            "GetStdHandle",
-            "GetSystemInfo",
-            "VirtualAlloc",
-            "VirtualFree",
-            "WriteConsoleW",
-            "WriteFile",
-        ],
-        "the closed kernel32 import set (no CRT/libc sneaks in)"
-    );
+    // PLAN-1065: the platform shim now carries the sys973 real bodies, so
+    // the closed import set is the frozen kernel32 allow-list plus the
+    // bcrypt CSPRNG entry — still zero CRT/libc, and the console-lane
+    // symbols this program actually uses must all be present.
+    use ace_native::platform_io::{ALLOWED_BCRYPT_IMPORTS, ALLOWED_KERNEL32_IMPORTS};
+    for (dll, sym) in &report.symbols {
+        let allowed = if dll.eq_ignore_ascii_case("kernel32.dll") {
+            ALLOWED_KERNEL32_IMPORTS
+        } else {
+            ALLOWED_BCRYPT_IMPORTS
+        };
+        assert!(
+            allowed.contains(&sym.as_str()),
+            "unexpected import {sym} from {dll} (no CRT/libc sneaks in)"
+        );
+    }
+    for needed in [
+        "ExitProcess",
+        "GetConsoleMode",
+        "GetLastError",
+        "GetStdHandle",
+        "GetSystemInfo",
+        "VirtualAlloc",
+        "VirtualFree",
+        "WriteConsoleW",
+        "WriteFile",
+    ] {
+        assert!(
+            report.symbols.iter().any(|(_, s)| s == needed),
+            "console-lane import {needed} missing"
+        );
+    }
 }
 
 // ---- OUT-02: the REAL Windows text console ---------------------------------

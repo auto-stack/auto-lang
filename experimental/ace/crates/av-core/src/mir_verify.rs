@@ -854,7 +854,34 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_WRITE
                             | crate::platform_io::CAP_MEM
                             | crate::platform_io::CAP_PROBE
-                    ));
+                            // PLAN-974: the platform.net/1 caps (the
+                            // host-console platform profile carries the
+                            // same admission discipline as io/mem).
+                            | crate::platform_io::CAP_NET_CONNECT
+                            | crate::platform_io::CAP_NET_WRITE
+                            | crate::platform_io::CAP_NET_READ
+                            | crate::platform_io::CAP_NET_CLOSE
+                            | crate::platform_io::CAP_NET_LISTEN
+                    ))
+            // PLAN-973: the system-resource capability spellings are
+            // KNOWN admissions (units may carry them transitively from
+            // package binding without owning a platform import) — the
+            // run-time grant ledger stays the authority.
+            || {
+                matches!(
+                    c.as_str(),
+                    crate::platform_io::CAP_STDIN
+                        | crate::platform_io::CAP_FILE
+                        | crate::platform_io::CAP_PATH
+                        | crate::platform_io::CAP_ENV
+                        | crate::platform_io::CAP_CLOCK
+                        | crate::platform_io::CAP_ENTROPY
+                        | crate::platform_io::CAP_PROC
+                        // sys-library units stage through io/mem primitives
+                        | crate::platform_io::CAP_WRITE
+                        | crate::platform_io::CAP_MEM
+                )
+            };
             if !known {
                 return Err(MirVerifyError::uns(
                     "mir.capability-unknown",
@@ -2660,7 +2687,16 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             MirInstr::PlatformCall { dst, host, args } => {
-                if !self.module.is_host_console_profile() {
+                // PLAN-973: packages-lane system-library modules lower
+                // platform ops on the closures family (the frozen op table
+                // is the signature/capability authority).
+                let sys_platform_module = self
+                    .module
+                    .host_imports
+                    .iter()
+                    .all(|h| h.symbol.starts_with("auto.platform."))
+                    && !self.module.host_imports.is_empty();
+                if !self.module.is_host_console_profile() && !sys_platform_module {
                     return Err(err(
                         "host.profile",
                         "platform call requires host-console profile".into(),
@@ -4021,6 +4057,28 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
+            MirInstr::StrFromChar { dst, ch } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "from-char dst")?;
+                let ct = slot_ty_of(f, *ch, sp, "from-char char")?;
+                if !matches!(self.module.types.get(ct as usize), Some(MirType::Char)) {
+                    return Err(err(
+                        "mir.type-op",
+                        "from_char operand must be char".to_string(),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("from_char dst type {} is not Str", dt),
+                    ));
+                }
+            }
             MirInstr::StrCmp { dst, lhs, rhs, .. } => {
                 if !self.is_owned && !self.collections_surface() {
                     return Err(err(
@@ -4608,6 +4666,7 @@ impl MirInstr {
             | MirInstr::StrSlice { dst, .. }
             | MirInstr::StrConcat { dst, .. }
             | MirInstr::StrToOwned { dst, .. }
+            | MirInstr::StrFromChar { dst, .. }
             | MirInstr::StrCmp { dst, .. }
             | MirInstr::CharToCodepoint { dst, .. }
             | MirInstr::CharFromCodepoint { dst, .. } => Some(*dst),
@@ -4718,7 +4777,8 @@ impl MirInstr {
                 vec![*handle]
             }
             MirInstr::SchedAwait { future, .. } => vec![*future],
-            MirInstr::SchedRecv { .. } | MirInstr::SchedPort { .. }
+            MirInstr::SchedRecv { .. }
+            | MirInstr::SchedPort { .. }
             | MirInstr::SchedStopping { .. } => vec![],
             MirInstr::PlatformCall { args, .. } => args.clone(),
             MirInstr::GlobalGet { .. } => vec![],
@@ -4743,6 +4803,7 @@ impl MirInstr {
             | MirInstr::StrLenBytes { view, .. }
             | MirInstr::StrToOwned { view, .. }
             | MirInstr::CharToCodepoint { ch: view, .. } => vec![*view],
+            MirInstr::StrFromChar { ch, .. } => vec![*ch],
             MirInstr::StrCharAt { view, index, .. } => vec![*view, *index],
             MirInstr::StrSlice {
                 view, start, end, ..

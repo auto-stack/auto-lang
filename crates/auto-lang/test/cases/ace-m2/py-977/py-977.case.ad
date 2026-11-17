@@ -1,0 +1,142 @@
+# PLAN-977 B-PY-V — the py-977 tracked corpus: the legacy a2p public
+# obligations through the `ac-a2py/hir-stdlib-run-v1` CASE line (the
+# `ac_a2py_hir` adapter -> prebuilt a2x-worker `run-py` -> REAL OS
+# Python 3.14, parent-side judged; the worker never sees expectations).
+#
+# Observation axes (V: 返回/输出/短路/异常/资源): value returns
+# (value/generic), stdout observation face, short-circuit trace marks on
+# stderr, trap faces (overflow/div-zero), and the record-text explicit
+# lifecycle lane (value-level here; the zero-leak trace proof lives in
+# the 1042 pyready suite and the p977 crate-level probe). Routing facts
+# frozen by B-PY-I; the List/packages leg rides the crate-level suite
+# (the case line is single-file). Independent hand oracles throughout.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.value"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/value.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "scalar", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "value:14\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.generic"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/generic.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "scalar", entry: "main", caps: ["ac.source.instances.scalar/v1"] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "value:42\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.shortcircuit"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/shortcircuit.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "scalar", entry: "main", caps: ["hir.test.trace.v1"] }, steps: [{ op: "run" }] },
+      expect: { completion: "success",
+        stdout: { text: "value:7\n", compare: "bytes" },
+        stderr: { text: "mark_b\nmark_a\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.overflow"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/overflow.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "scalar", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "trap:Overflow\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.divzero"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/divzero.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "scalar", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "trap:DivByZero\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.str-record"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/str_record.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "text-record", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "value:10\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.enum-is"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/enum_is.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "collections", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "value:141\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.p977.py.methods"
+  tags: ["ace-m2", "py-977", "plan-977"]
+  links: ["PLAN-977"]
+  source: { file: "src/methods.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "py-run", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2py/hir-stdlib-run-v1", a2x_hir: { profile: "text-record", entry: "main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", stdout: { text: "value:43\n", compare: "bytes" } } }
+  ]
+}
+```

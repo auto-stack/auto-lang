@@ -93,7 +93,8 @@ pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
         | hir::ExprKind::ClosureClone { .. }
         | hir::ExprKind::TextToOwned { .. }
         | hir::ExprKind::CharToCodepoint { .. }
-        | hir::ExprKind::CharFromCodepoint { .. } => true,
+        | hir::ExprKind::CharFromCodepoint { .. }
+        | hir::ExprKind::TextFromChar { .. } => true,
         hir::ExprKind::StrLit { .. } => type_use_is_owned(&e.ty, m),
         hir::ExprKind::Binary {
             op: hir::BinOp::Eq | hir::BinOp::Ne,
@@ -453,7 +454,8 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
             }
             hir::ExprKind::TextClone { operand }
             | hir::ExprKind::ClosureClone { operand }
-            | hir::ExprKind::TextToOwned { operand } => {
+            | hir::ExprKind::TextToOwned { operand }
+            | hir::ExprKind::TextFromChar { operand } => {
                 scan.has_owned_producing = true;
                 stack.push((*operand, mode));
             }

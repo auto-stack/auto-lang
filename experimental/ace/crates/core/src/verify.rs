@@ -1969,7 +1969,7 @@ fn check_foreign_declarations(
                     sig.params.len() == res.params.len()
                         && result_ok
                         && sig.params.iter().zip(&res.params).all(|(p, k)| match k {
-                            ResKind::I32 | ResKind::Handle { .. } => {
+                            ResKind::I32 | ResKind::Handle { .. } | ResKind::OutBytes => {
                                 lane(p) == Some(ace_foreign_contract::LaneKind::I32)
                             }
                             ResKind::Bool => lane(p) == Some(ace_foreign_contract::LaneKind::Bool),
@@ -3004,25 +3004,6 @@ impl Verifier {
     /// - variant dispatch/project roots are whole-local reads;
     /// - `eval` statement values carry the unit type.
     fn check_collections_rules(&mut self, m: &hir::Module, selected: Option<BodyId>) {
-        fn owned_elem(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
-            let hir::TypeUse::Ref(tid) = list_ty else {
-                return false;
-            };
-            let Some(hir::TypeKind::List { elem }) = m.types.get(tid.0 as usize).map(|t| &t.kind)
-            else {
-                return false;
-            };
-            match elem {
-                hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
-                hir::TypeUse::Builtin(_) => false,
-                hir::TypeUse::Ref(e) => {
-                    matches!(
-                        m.types.get(e.0 as usize).map(|t| &t.kind),
-                        Some(hir::TypeKind::Variant { .. })
-                    ) || v.type_reaches_str(m, *e)
-                }
-            }
-        }
         for (index, body) in m.bodies.iter().enumerate() {
             if selected.is_some_and(|id| id.0 as usize != index) {
                 continue;
@@ -3047,7 +3028,7 @@ impl Verifier {
             for (ei, e) in body.exprs.iter().enumerate() {
                 match &e.kind {
                     hir::ExprKind::ListGet { list, .. } => {
-                        if owned_elem(m, &body.exprs[list.0 as usize].ty, self)
+                        if Self::list_elem_owned(m, &body.exprs[list.0 as usize].ty, self)
                             && !projected.contains(&(ei as u32))
                             && !len_consumed.contains(&(ei as u32))
                         {
@@ -3076,13 +3057,13 @@ impl Verifier {
                             }
                         }
                         if let Some(list_ty) = root_list_ty {
-                            if owned_elem(m, &list_ty, self) {
+                            if Self::list_elem_owned(m, &list_ty, self) {
                                 // terminal field type through the record table
                                 let term =
                                     Self::field_terminal(m, &body.exprs[cur as usize].ty, path);
                                 let owned_term = match term {
                                     Some(hir::TypeUse::Builtin(hir::BuiltinType::StrOwned)) => true,
-                                    Some(hir::TypeUse::Ref(t)) => self.type_reaches_str(m, t),
+                                    Some(hir::TypeUse::Ref(t)) => self.type_reaches_resource(m, t),
                                     _ => false,
                                 };
                                 if owned_term && !len_consumed.contains(&(ei as u32)) {
@@ -3185,7 +3166,8 @@ impl Verifier {
                 | E::TextToOwned { operand }
                 | E::TextToBorrowed { operand }
                 | E::CharToCodepoint { operand }
-                | E::CharFromCodepoint { operand } => vec![*operand],
+                | E::CharFromCodepoint { operand }
+                | E::TextFromChar { operand } => vec![*operand],
                 E::Call { eval_args, .. } | E::RecordCtor { eval_args, .. } => eval_args.clone(),
                 E::CallClosure { callee, eval_args } => std::iter::once(*callee)
                     .chain(eval_args.iter().copied())
@@ -3420,8 +3402,19 @@ impl Verifier {
         }
     }
 
-    /// PLAN-864: whether a List type's element is owned (Str / record
-    /// reaching Str / variant).
+    /// PLAN-864 / PLAN-1035 (F34): whether a List type's element is owned —
+    /// the ONE shared element-ownership rule for this core verifier. Both
+    /// former twins (`owned_elem` and this fn) were Str-only walks; they must
+    /// not drift again.
+    ///
+    /// The frozen 962/822 surface keeps two deliberate boundaries:
+    /// * a VARIANT element is owned (its payload project is a transfer);
+    /// * a bare `List`/`Function`/`Closure`/`Object` element is NOT classified
+    ///   owned HERE: chained whole-element reads over nested lists/closures
+    ///   (`xs.get(i).get(j)`) are the delivered view surface, not value
+    ///   materializations (the lowering owns that path).
+    /// What this gate adds (the F34 hole) is the RECORD closure: a record
+    /// element owns when its fields reach any resource leaf.
     fn list_elem_owned(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
         let hir::TypeUse::Ref(tid) = list_ty else {
             return false;
@@ -3437,13 +3430,28 @@ impl Verifier {
                 matches!(
                     m.types.get(e.0 as usize).map(|t| &t.kind),
                     Some(hir::TypeKind::Variant { .. })
-                ) || v.type_reaches_str(m, *e)
+                ) || v.type_reaches_resource(m, *e)
             }
         }
     }
 
-    /// PLAN-864: transitive Str-reachability over the module type table.
-    fn type_reaches_str(&self, m: &hir::Module, t: hir::TypeId) -> bool {
+    /// PLAN-864 / PLAN-1035 (F34): whether this VALUE type owns resources at
+    /// the collections gate. `str`/`Str` keep the historic conservative
+    /// classification; a record owns when its transitive field closure
+    /// reaches a resource leaf (owned Str, `List` buffer, `Variant` payload,
+    /// closure/function environment or object cell). A direct `List`/closure
+    /// type is deliberately NOT a value-materializing owner here (see
+    /// [`Self::list_elem_owned`]).
+    fn type_reaches_resource(&self, m: &hir::Module, t: hir::TypeId) -> bool {
+        match m.types.get(t.0 as usize).map(|x| &x.kind) {
+            Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => true,
+            Some(hir::TypeKind::Record(_)) => self.record_reaches_resource(m, t),
+            _ => false,
+        }
+    }
+
+    /// The record half of the F34 closure: walk fields until a resource leaf.
+    fn record_reaches_resource(&self, m: &hir::Module, t: hir::TypeId) -> bool {
         let mut stack = vec![t.0];
         let mut seen = BTreeSet::new();
         while let Some(i) = stack.pop() {
@@ -3451,7 +3459,13 @@ impl Verifier {
                 continue;
             }
             match m.types.get(i as usize).map(|x| &x.kind) {
-                Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => return true,
+                Some(hir::TypeKind::StrOwned)
+                | Some(hir::TypeKind::Str)
+                | Some(hir::TypeKind::List { .. })
+                | Some(hir::TypeKind::Variant { .. })
+                | Some(hir::TypeKind::Closure(_))
+                | Some(hir::TypeKind::Function(_))
+                | Some(hir::TypeKind::Object { .. }) => return true,
                 Some(hir::TypeKind::Record(shape)) => {
                     for f in &shape.fields {
                         match f.ty {
@@ -3506,7 +3520,10 @@ impl Verifier {
                 // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
                 // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；
                 // console 拼写（auto.console.*）仍只在 host-console 画像。
-                let platform_in_packages = self.domain == HirDomain::TextRecord;
+                // PLAN-973: 装配 aggregates 面（std 系统库集 sysplat_win/lnx
+                // 的平台原语包装）同样准入；能力/授权仍由运行准入层核。
+                let platform_in_packages =
+                    self.domain == HirDomain::TextRecord || self.domain == HirDomain::Closures;
                 if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                     if (symbol.starts_with("auto.console.") && !sched_module)
                         || (symbol.starts_with("auto.platform.") && !platform_in_packages))
@@ -4542,7 +4559,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { .. }
                 | hir::ExprKind::TextToBorrowed { .. }
                 | hir::ExprKind::CharToCodepoint { .. }
-                | hir::ExprKind::CharFromCodepoint { .. } => {}
+                | hir::ExprKind::CharFromCodepoint { .. }
+                | hir::ExprKind::TextFromChar { .. } => {}
             }
             if is_call {
                 direct_call_arg.extend(children);
@@ -4934,7 +4952,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
-                | hir::ExprKind::CharFromCodepoint { operand } => {
+                | hir::ExprKind::CharFromCodepoint { operand }
+                | hir::ExprKind::TextFromChar { operand } => {
                     if (operand.0 as usize) >= n_exprs {
                         bad("expression", operand.0, n_exprs, e.span);
                     }
@@ -5692,7 +5711,8 @@ impl Verifier {
                         | hir::ExprKind::TextToOwned { operand }
                         | hir::ExprKind::TextToBorrowed { operand }
                         | hir::ExprKind::CharToCodepoint { operand }
-                        | hir::ExprKind::CharFromCodepoint { operand } => {
+                        | hir::ExprKind::CharFromCodepoint { operand }
+                        | hir::ExprKind::TextFromChar { operand } => {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*operand));
                         }
@@ -6691,6 +6711,37 @@ impl Verifier {
                             }
                             ValueType::Str
                         }
+                        hir::ExprKind::TextFromChar { operand } => {
+                            // PLAN-975 B1: char -> fresh owned 1-scalar Str.
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if ot != ValueType::Char {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char materialization operand must be char (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::StrOwned {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char materialization must produce Str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::StrOwned
+                        }
                         hir::ExprKind::CharToCodepoint { operand } => {
                             let ot = operand_type(
                                 tm,
@@ -7172,7 +7223,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
-                | hir::ExprKind::CharFromCodepoint { operand } => {
+                | hir::ExprKind::CharFromCodepoint { operand }
+                | hir::ExprKind::TextFromChar { operand } => {
                     targets.push(operand.0);
                 }
                 hir::ExprKind::TextCharAt { operand, index } => {
@@ -7975,7 +8027,8 @@ impl Verifier {
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
                 | hir::ExprKind::CharToCodepoint { operand }
-                | hir::ExprKind::CharFromCodepoint { operand } => {
+                | hir::ExprKind::CharFromCodepoint { operand }
+                | hir::ExprKind::TextFromChar { operand } => {
                     stack.push(*operand);
                 }
                 hir::ExprKind::TextCharAt { operand, index } => {

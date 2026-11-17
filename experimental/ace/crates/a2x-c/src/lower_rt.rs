@@ -752,6 +752,12 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     arguments.push(format!("(const uint8_t *)({value}).data"));
                     arguments.push(format!("(uint64_t)({value}).len"));
                 }
+                ResKind::OutBytes => {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-binding",
+                        "checked out-bytes borrow belongs to the AV host frame",
+                    ));
+                }
                 ResKind::Rec { rec, role, .. } => {
                     let Ty::Record(ri) = vty else {
                         return Err(A2xReject::new(
@@ -1339,14 +1345,11 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     let view_owned =
                         matches!(mode, hir::ParamMode::View | hir::ParamMode::MutBorrow)
                             && matches!(pty, Ty::StrOwned);
-                    let v = if view_owned {
-                        self.lower_view_value(arg).map(|(v, _)| v)?
+                    let (v, aty) = if view_owned {
+                        self.lower_view_value(arg)?
                     } else {
-                        self.lower_pure(arg).map(|(v, _)| v)?
+                        self.lower_pure(arg)?
                     };
-                    let aty = self
-                        .view
-                        .resolve_use_ty(self.facts.body.exprs[arg.0 as usize].ty)?;
                     slots.push((v, aty));
                 }
                 let mut placed: Vec<Option<(String, Ty)>> = vec![None; n];
@@ -1513,6 +1516,19 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     &[v],
                     Ty::Char,
                     "a2x_char_result",
+                )
+            }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let mark = self.pending_frees.len();
+                let (v, _) = self.lower_pure(*operand)?;
+                self.one_arg_result(
+                    mark,
+                    "a2x_str_from_char",
+                    &[v],
+                    Ty::StrOwned,
+                    "a2x_stro_result",
                 )
             }
             // ---- record operations ----

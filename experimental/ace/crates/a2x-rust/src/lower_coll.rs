@@ -102,6 +102,13 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
     marks.sort_unstable();
     let records = crate::lower::lower_records(view)?;
     let variants = lower_coll_variants(view);
+    // PLAN-973: list element table for the printer's A2xList<E> payloads.
+    let mut list_elems = std::collections::BTreeMap::new();
+    for v in view.variants() {
+        for a in &v.arms {
+            collect_list_elems(view, a.payload, &mut list_elems);
+        }
+    }
     Ok(RustProgram {
         functions,
         entry: String::new(),
@@ -111,6 +118,7 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
         borrowed: false,
         variants,
         coll: true,
+        list_elems,
     })
 }
 
@@ -131,6 +139,7 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         f,
         facts,
         locals: Vec::new(),
+        loop_stack: Vec::new(),
     };
     // param names follow the HIR local table (l<LocalId>_<name>) so body
     // references and the signature agree on one naming
@@ -202,6 +211,9 @@ struct CollLower<'a, 'v> {
     f: &'v FnFacts<'a>,
     facts: &'v CollectionsBodyFacts,
     locals: Vec<hir::LocalDef>,
+    /// PLAN-1036 (AUDIT-1024 F35): the enclosing loops' (id, body block) —
+    /// a `continue` must pay the same back-edge poll as the fall-through.
+    loop_stack: Vec<(hir::LoopId, hir::BlockId)>,
 }
 
 impl<'a, 'v> CollLower<'a, 'v> {
@@ -266,6 +278,51 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 };
                 format!("a2x_coll_free_{}", name)
             }
+        }
+    }
+
+    /// PLAN-1036 (AUDIT-1024 F35): the cooperative back-edge statement for
+    /// the loop whose body block is `lb` — 1 WU + the cancel check, with the
+    /// per-iteration deaths AND the loop survivors on its error path (the
+    /// frees are idempotent, so the overlap with the fall-through schedule
+    /// stays safe). Emitted once per real back edge: at the body's
+    /// fall-through and at every `continue` into this loop.
+    fn back_edge_poll(&self, lb: hir::BlockId) -> RStmt {
+        let mut poll_frees = self
+            .facts
+            .exit_frees
+            .get(&(lb.0, None))
+            .map(|f| {
+                f.iter()
+                    .filter_map(|r| match r {
+                        FreeRef::Local(l) => {
+                            let ty = self.local_ty(hir::LocalId(*l)).ok()?;
+                            let k = self.owned_kind_of_ty(ty)?;
+                            Some((self.local_name_of(hir::LocalId(*l)), self.free_call(k)))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
+            for l in surv {
+                if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
+                    if let Some(k) = self.owned_kind_of_ty(ty) {
+                        poll_frees.push((self.local_name_of(hir::LocalId(*l)), self.free_call(k)));
+                    }
+                }
+            }
+        }
+        RStmt::EvalExpr {
+            expr: RExpr::Wrap {
+                inner: Box::new(RExpr::CollCall {
+                    func: "a2x_coll_poll".into(),
+                    turbo: None,
+                    args: Vec::new(),
+                }),
+                frees: poll_frees,
+            },
         }
     }
 
@@ -500,8 +557,14 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         els: e,
                     });
                 }
-                hir::Stmt::Loop { body: lb, .. } => {
-                    let mut body_stmts = self.block(*lb)?;
+                hir::Stmt::Loop { id, body: lb } => {
+                    // PLAN-1036 (F35): lower the body with this loop on the
+                    // stack so every `continue` into it carries the same
+                    // back-edge poll.
+                    self.loop_stack.push((*id, *lb));
+                    let lowered_body = self.block(*lb);
+                    self.loop_stack.pop();
+                    let mut body_stmts = lowered_body?;
                     // back-edge: per-iteration scoped frees (recorded at the
                     // body block's fall-through), then the cooperative poll
                     // whose error path frees the survivors too
@@ -509,48 +572,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         body_stmts.extend(self.free_stmts(frees));
                     }
                     if !ace_a2x_core::semantic_view::block_always_terminates(self.f.body, *lb) {
-                        let mut poll_frees = self
-                            .facts
-                            .exit_frees
-                            .get(&(lb.0, None))
-                            .map(|f| {
-                                f.iter()
-                                    .filter_map(|r| match r {
-                                        FreeRef::Local(l) => {
-                                            let ty = self.local_ty(hir::LocalId(*l)).ok()?;
-                                            let k = self.owned_kind_of_ty(ty)?;
-                                            Some((
-                                                self.local_name_of(hir::LocalId(*l)),
-                                                self.free_call(k),
-                                            ))
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                            .unwrap_or_default();
-                        if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
-                            for l in surv {
-                                if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
-                                    if let Some(k) = self.owned_kind_of_ty(ty) {
-                                        poll_frees.push((
-                                            self.local_name_of(hir::LocalId(*l)),
-                                            self.free_call(k),
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                        body_stmts.push(RStmt::EvalExpr {
-                            expr: RExpr::Wrap {
-                                inner: Box::new(RExpr::CollCall {
-                                    func: "a2x_coll_poll".into(),
-                                    turbo: None,
-                                    args: Vec::new(),
-                                }),
-                                frees: poll_frees,
-                            },
-                        });
+                        body_stmts.push(self.back_edge_poll(*lb));
                     }
                     out.push(RStmt::Loop { body: body_stmts });
                 }
@@ -560,9 +582,23 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     }
                     out.push(RStmt::Break);
                 }
-                hir::Stmt::Continue { .. } => {
+                hir::Stmt::Continue { target } => {
                     if let Some(frees) = self.facts.exit_frees.get(&(block.0, Some(si))) {
                         out.extend(self.free_stmts(frees));
+                    }
+                    // PLAN-1036 (F35): every `continue` IS a back edge — it
+                    // pays the same 1-WU poll and cancel check the
+                    // fall-through back edge pays, and its error path frees
+                    // the same survivors.
+                    let poll = self
+                        .loop_stack
+                        .iter()
+                        .rev()
+                        .find(|(id, _)| id == target)
+                        .map(|(_, lb)| (*lb, self.back_edge_poll(*lb)))
+                        .map(|(_, poll)| poll);
+                    if let Some(poll) = poll {
+                        out.push(poll);
                     }
                     out.push(RStmt::Continue);
                 }
@@ -752,6 +788,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 let o = self.expr(operand, out)?;
                 self.checked_temp_ty("a2x_char_from_codepoint", vec![o], id, out, Ty::Char)
             }
+            // PLAN-975 B1: `c.to(Str)` — char materialized as a fresh
+            // owned 1-scalar Str (the shared decode/parse primitive).
+            hir::ExprKind::TextFromChar { operand } => {
+                let o = self.expr(operand, out)?;
+                self.checked_temp_ty("a2x_str_from_char", vec![o], id, out, Ty::StrOwned)
+            }
             // PLAN-972 (T-03): the scalar-indexed text expression surface
             // (the shared runtime helpers; slices stay borrowed views).
             hir::ExprKind::TextLenBytes { operand } => {
@@ -799,6 +841,18 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 })
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+                let lt = self
+                    .view
+                    .resolve_use_ty(self.f.body.exprs[lhs.0 as usize].ty)?;
+                if matches!(op, hir::BinOp::Eq | hir::BinOp::Ne) && lt.is_text() {
+                    let l = self.operand_str_view(lhs, out)?;
+                    let r = self.operand_str_view(rhs, out)?;
+                    return Ok(RExpr::StrCmp {
+                        eq: matches!(op, hir::BinOp::Eq),
+                        lhs: Box::new(l),
+                        rhs: Box::new(r),
+                    });
+                }
                 let l = self.expr(lhs, out)?;
                 let r = self.expr(rhs, out)?;
                 match op {
@@ -1053,7 +1107,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 vec![args[0].clone(), wrap(args[1].clone(), &sig_params[1])],
             )
         } else if rest.starts_with("reply_") {
-            plain("a2x_sched_reply", vec![wrap(args[0].clone(), &sig_params[0])])
+            plain(
+                "a2x_sched_reply",
+                vec![wrap(args[0].clone(), &sig_params[0])],
+            )
         } else if rest.starts_with("await_") {
             unwrap(plain("a2x_sched_await", vec![args[0].clone()]), &ty)
         } else if rest.starts_with("recv_") {
@@ -1178,8 +1235,41 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     rust_fn_name(t.source_name)
                 } else if let Some(x) = self.view.external_by_def(target) {
                     rust_fn_name(&x.source_name)
+                } else if let Some(sym) = self.view.platform_symbol(target) {
+                    // PLAN-973: system-library platform intrinsics map to
+                    // the plain target-runtime stubs (a2x_<callee>) and are
+                    // re-wrapped as infallible results in this failable
+                    // lane; the shared op table owns the callee spelling
+                    // and the Str-parameter positions.
+                    let op = ace_core::source::platform_io::PLATFORM_SOURCE_OPS
+                        .iter()
+                        .find(|o| o.symbol == sym)
+                        .ok_or_else(|| {
+                            A2xReject::unsupported_expr(format!(
+                                "platform symbol {sym} is not in the op table"
+                            ))
+                        })?;
+                    let mut args = Vec::new();
+                    for (i, a) in eval_args.iter().enumerate() {
+                        let is_str =
+                            matches!(op.params.get(i), Some(ace_core::source::resolve::VT::Str));
+                        let v = if is_str {
+                            self.operand_str_view(*a, out)?
+                        } else {
+                            self.expr(*a, out)?
+                        };
+                        args.push(v);
+                    }
+                    let call = RExpr::PlainCall {
+                        func: format!("a2x_{}", op.callee),
+                        args,
+                    };
+                    let ty = self.view.resolve_use_ty(e.ty)?;
+                    return self.coll_temp_plain(id, rust_ty_str(self.view, ty), call, out);
                 } else {
-                    return Err(A2xReject::unsupported_expr("call target not admitted"));
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "call target not admitted (def #{target})"
+                    )));
                 };
                 // PLAN-946: View-mode List parameters borrow exclusively at
                 // the call (`&mut x`) — the caller keeps its list (callee
@@ -1305,6 +1395,20 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     out,
                 )
             }
+            hir::ExprKind::TextFromChar { operand } => {
+                // PLAN-975 B1: the scheduler chain can materialize a
+                // dynamic codepoint the same way (fresh owned 1-scalar).
+                let o = self.expr(operand, out)?;
+                self.coll_temp(
+                    id,
+                    "A2xStr".into(),
+                    RExpr::StrFn {
+                        func: "a2x_str_from_char".into(),
+                        args: vec![o],
+                    },
+                    out,
+                )
+            }
             hir::ExprKind::RecordCtor {
                 record,
                 eval_args,
@@ -1400,11 +1504,15 @@ impl<'a, 'v> CollLower<'a, 'v> {
             }
             hir::ExprKind::ListLen { list } => {
                 let l = self.place_ref(list, false)?;
-                Ok(RExpr::CollCall {
+                // PLAN-973: pin through a temp — an exit sweep between the
+                // lowering and the return would otherwise free the list
+                // BEFORE this inline call renders (len()==0 bug).
+                let call = RExpr::CollCall {
                     func: "a2x_coll_list_len".into(),
                     turbo: None,
                     args: vec![l],
-                })
+                };
+                self.coll_temp_plain(id, "i32".into(), call, out)
             }
             hir::ExprKind::ListPush { list, value } => {
                 let l = self.place_ref(list, true)?;
@@ -1811,5 +1919,24 @@ fn unwrap_helper(t: &Ty) -> &'static str {
         Ty::Bool => "a2x_un_b",
         Ty::Str | Ty::StrOwned => "a2x_un_s",
         _ => "a2x_un_i",
+    }
+}
+
+/// PLAN-973: collect list type-index -> element type over a payload tree
+/// (variant payloads today; signatures can join the same table).
+pub fn collect_list_elems(
+    view: &SemanticView<'_>,
+    ty: Option<Ty>,
+    out: &mut std::collections::BTreeMap<u32, Ty>,
+) {
+    let Some(t) = ty else { return };
+    match t {
+        Ty::List(id) => {
+            if let Ok(e) = view.list_elem(id) {
+                out.insert(id, e);
+                collect_list_elems(view, Some(e), out);
+            }
+        }
+        _ => {}
     }
 }

@@ -74,6 +74,11 @@ mint_var+unify；算法换面必须换键）。
 
 ## 资源锚
 
-页 ≤512KiB（IN935P/v1）；发现预算沿求解器 1M steps/5s（预算态是资源
-拒绝 `source.instances-resource`，不是语言拒绝）；语义受管 16MiB 不因
-实例加份；多读者共享实例（读者数不放大求解次数）。
+- 实例页 = IN935P/**v4**（PLAN-963：类型码 0 I32/1 Bool/2 Text/3
+  Record(name) + args/consts 两个计数位，各 ≤64）；旧 v1..v3 按既有
+  「版本不符即 MISS」失效重产，不重释旧字节。PLAN-1029 准入：512KiB
+  锚在 **decoder 入口**先执行（超尺寸含旧版本页优先 TooLarge，不冒
+  BadVersion 恒优先）；demands 读完必须恰在页尾（+1 尾字节属坏页）。
+- 发现预算沿求解器 1M steps/5s（预算态是资源拒绝
+  `source.instances-resource`，不是语言拒绝）；语义受管 16MiB 不因
+  实例加份；多读者共享实例（读者数不放大求解次数）。

@@ -341,6 +341,7 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         } => format!("strslice {dst} {view} {start} {end}"),
         MirInstr::StrConcat { dst, lhs, rhs } => format!("strconcat {dst} {lhs} {rhs}"),
         MirInstr::StrToOwned { dst, view } => format!("toowned {dst} {view}"),
+        MirInstr::StrFromChar { dst, ch } => format!("fromchar {dst} {ch}"),
         MirInstr::StrCmp { eq, dst, lhs, rhs } => format!("strcmp {eq} {dst} {lhs} {rhs}"),
         MirInstr::CharToCodepoint { dst, ch } => format!("char2cp {dst} {ch}"),
         MirInstr::CharFromCodepoint { dst, code } => format!("cp2char {dst} {code}"),

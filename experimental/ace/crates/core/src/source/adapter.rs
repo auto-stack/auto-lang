@@ -3391,7 +3391,22 @@ impl PlanCtx<'_> {
                 plan.exprs.len() - 1
             }
             RExprKind::CallGlobalSet { global, value } => {
-                let v = self.plan_expr(plan, f, value);
+                let mut v = self.plan_expr(plan, f, value);
+                // PLAN-981：模块常量写回的合成 setter 把一个 **record** 值当参数
+                // 传递，而 verify 要求记录实参以借用包装到达（`plan_arg` 只对已解析
+                // fn 做这件事，setter 是合成的 intrinsic，不走那条路）。AGE 的
+                // `let x = material2d.color(...)` 因此报 "record param requires a
+                // borrow"。这里补上与 plan_arg 同一纪律的 view 包装：记录值走借用，
+                // 标量仍按值（标量没有借用语义）。
+                if matches!(value.vt, VT::Rec(_)) {
+                    let span = plan.exprs[v].span;
+                    plan.exprs.push(ENode {
+                        kind: EKind::BorrowView { base: v },
+                        vt: value.vt,
+                        span,
+                    });
+                    v = plan.exprs.len() - 1;
+                }
                 self.global_first_use
                     .entry(format!("module.global.set:{global}"))
                     .or_insert((true, value.vt, e.span));
@@ -3821,6 +3836,8 @@ impl<'p> Emitter<'p> {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
                 .or_else(|| super::platform_io::signature(sym).map(|(_, _, cap)| cap))
+                // PLAN-981：AGE 资源服务自带能力键。
+                .or_else(|| super::age_resources::by_symbol(sym).map(|op| op.capability))
                 .unwrap_or(TRACE_CAPABILITY);
             if !requires.contains(&cap) {
                 requires.push(cap);
@@ -3869,6 +3886,8 @@ impl<'p> Emitter<'p> {
         nl!(12);
         // PLAN-961: the numeric profile declares its builtin type entries
         // (the ty_name refs resolve here; unused rows ride like t_i32).
+        // PLAN-981（IF-981-ORIGINAL）：AGE 作者面同样需要 f32（`material2d.color`
+        // 的分量、`position: (0.0, 0.0)`），故与 numeric 面共用这张类型表。
         if self.profile.is_numeric() {
             for (name, kind) in [
                 ("t_i8", "i8"),
@@ -3883,6 +3902,12 @@ impl<'p> Emitter<'p> {
                 spans.types.push(program_span);
                 nl!(12);
             }
+        } else if self.profile == SourceProfile::AgePackage {
+            // PLAN-981：AGE 作者面只用 f32（资源分量/坐标），故只补这一行；
+            // 其余数字 case 不进本面（text-record 描述符不认它们）。
+            frag!("type t_f32 f32 {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
         }
         if self.profile.is_text() {
             frag!("type t_str str {}", program_span);
@@ -4207,6 +4232,12 @@ impl<'p> Emitter<'p> {
             } else if let Some((params, res, _)) = super::platform_io::signature(sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 (ps.join(", "), self.ty_use_ref(res))
+            } else if let Some(op) = super::age_resources::by_symbol(sym) {
+                // PLAN-981（IF-981-ORIGINAL）：AGE 资源服务的签名 = 参数表 + 端口
+                // 返回类型（端口按名义记录 id 发射，与 resolver 登记同一身份）。
+                let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                let rs = format!("\"t_rec_{}\"", op.result_port);
+                (ps.join(", "), rs)
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = match res {
@@ -4457,7 +4488,11 @@ impl<'p> Emitter<'p> {
                             match l.mode {
                                 super::ast::ParamMode::Mut => "mut",
                                 super::ast::ParamMode::Move
-                                    if self.profile == super::SourceProfile::TextRecord =>
+                                    if matches!(
+                                        self.profile,
+                                        super::SourceProfile::TextRecord
+                                            | super::SourceProfile::AgePackage
+                                    ) =>
                                 {
                                     "move"
                                 }
@@ -4758,10 +4793,22 @@ impl<'p> Emitter<'p> {
                                 ),
                                 BM::To => {
                                     if matches!(to, Some(super::resolve::VT::StrOwned)) {
-                                        format!(
-                                            "expr e{} text_to_owned {{ type: {}; operand: {} }}",
-                                            ei, ty, recv_s
-                                        )
+                                        // PLAN-975 B1: a Char receiver
+                                        // materializes a fresh owned
+                                        // 1-scalar Str — never a borrow.
+                                        if plan.exprs[*recv].vt
+                                            == super::resolve::VT::Char
+                                        {
+                                            format!(
+                                                "expr e{} text_from_char {{ type: {}; operand: {} }}",
+                                                ei, ty, recv_s
+                                            )
+                                        } else {
+                                            format!(
+                                                "expr e{} text_to_owned {{ type: {}; operand: {} }}",
+                                                ei, ty, recv_s
+                                            )
+                                        }
                                     } else {
                                         format!(
                                             "expr e{} text_to_borrowed {{ type: {}; operand: {} }}",
@@ -5430,7 +5477,13 @@ fn global_type_id(sym: &str) -> String {
     format!("t_{}", global_id_suffix(sym))
 }
 fn intrinsic_id_suffix(sym: &str) -> String {
-    if sym.starts_with("auto.console.") || sym.starts_with("auto.platform.") {
+    if sym.starts_with("auto.console.")
+        || sym.starts_with("auto.platform.")
+        // PLAN-981：AGE 资源服务的符号形如 `age.material2d.color.v1`——只取末段
+        // 会让 `color`/`quad`/`circle` 全塌成 `v1`，同一模块两处调用即重复 id。
+        // 服务符号用全名（与 console/platform 同纪律）。
+        || sym.starts_with("age.")
+    {
         sym.replace('.', "_")
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()

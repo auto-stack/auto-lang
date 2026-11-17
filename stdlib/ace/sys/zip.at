@@ -1,0 +1,1288 @@
+// ACE system library — pure-Auto ZIP container (PLAN-1064 D-08 / T-04).
+//
+// Supported formats:
+//   - Methods: Stored (0) and Deflated (8; RFC 1951 BTYPE 00 / 01 / 10).
+//   - Integrity: EOCD + Central Directory + Local File Header bounds + IEEE CRC-32.
+//   - Hard streaming decompression cap (`max_bytes`): never trusts header sizes;
+//     exact `max_bytes` succeeds, `max_bytes + 1` aborts cleanly (-2 / "").
+//   - Rejects encrypted entries, ZIP64 / multi-disk, unsupported compression
+//     methods (BZip2/LZMA/Zstd/etc.), invalid UTF-8 entry/text payloads, CRC
+//     mismatch, and bad headers without touching `dest_path` on failure.
+//   - Writes only to explicit `dest_path` (never materializes `entry_name`).
+
+use std.file.exists
+use std.file.is_dir
+use std.file.size
+use std.file.read_bytes
+use std.file.write_bytes
+use std.file.delete
+use std.file.replace_atomic
+use std.bytes.decode_utf8
+use std.syscommon.min_i
+
+fn ZIP_MAX_ARCHIVE_BYTES() int {
+    return 16777216
+}
+
+fn ZIP_MAX_CD_ENTRIES() int {
+    return 4096
+}
+
+fn read_u16_le(raw List<int>, pos int) int {
+    return raw.get(pos) + raw.get(pos + 1) * 256
+}
+
+fn read_u32_i64(raw List<int>, pos int) i64 {
+    let b0 = raw.get(pos).to(i64)
+    let b1 = raw.get(pos + 1).to(i64)
+    let b2 = raw.get(pos + 2).to(i64)
+    let b3 = raw.get(pos + 3).to(i64)
+    return b0 + b1 * 256i64 + b2 * 65536i64 + b3 * 16777216i64
+}
+
+fn str_to_ascii_bytes(s Str, ci int, n int, out List<int>) int {
+    if (ci >= n) {
+        return 0
+    }
+    let cp = s.char_at(ci).to_codepoint()
+    if (cp < 128) {
+        out.push(cp)
+    } else {
+        // Entry names may contain UTF-8; encode scalars >127 cleanly
+        if (cp < 2048) {
+            out.push(192 + cp / 64)
+            out.push(128 + cp % 64)
+        } else {
+            if (cp < 65536) {
+                out.push(224 + cp / 4096)
+                out.push(128 + (cp / 64) % 64)
+                out.push(128 + cp % 64)
+            } else {
+                out.push(240 + cp / 262144)
+                out.push(128 + (cp / 4096) % 64)
+                out.push(128 + (cp / 64) % 64)
+                out.push(128 + cp % 64)
+            }
+        }
+    }
+    return str_to_ascii_bytes(s, ci + 1, n, out)
+}
+
+fn bytes_eq_at(raw List<int>, pos int, pat List<int>, k int, len int) bool {
+    if (k >= len) {
+        return true
+    }
+    if (raw.get(pos + k) != pat.get(k)) {
+        return false
+    }
+    return bytes_eq_at(raw, pos, pat, k + 1, len)
+}
+
+fn copy_range(src List<int>, lo int, hi int, out List<int>) int {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return 0
+    }
+    if (seg <= 64) {
+        return copy_range_leaf(src, lo, hi, out)
+    }
+    let mid = lo + seg / 2
+    let d1 = copy_range(src, lo, mid, out)
+    return copy_range(src, mid, hi, out)
+}
+
+fn copy_range_leaf(src List<int>, pos int, hi int, out List<int>) int {
+    if (pos + 8 <= hi) {
+        out.push(src.get(pos))
+        out.push(src.get(pos + 1))
+        out.push(src.get(pos + 2))
+        out.push(src.get(pos + 3))
+        out.push(src.get(pos + 4))
+        out.push(src.get(pos + 5))
+        out.push(src.get(pos + 6))
+        out.push(src.get(pos + 7))
+        return copy_range_leaf(src, pos + 8, hi, out)
+    }
+    if (pos >= hi) {
+        return 0
+    }
+    out.push(src.get(pos))
+    return copy_range_leaf(src, pos + 1, hi, out)
+}
+
+fn decode_utf8_range(raw List<int>, lo int, hi int) ?Str {
+    var sub = List<int>.new()
+    let d1 = copy_range(raw, lo, hi, sub)
+    return decode_utf8(sub.move)
+}
+
+fn push_zeros(out List<int>, n int) int {
+    if (n <= 0) {
+        return 0
+    }
+    if (n <= 8) {
+        out.push(0)
+        if (n >= 2) { out.push(0) }
+        if (n >= 3) { out.push(0) }
+        if (n >= 4) { out.push(0) }
+        if (n >= 5) { out.push(0) }
+        if (n >= 6) { out.push(0) }
+        if (n >= 7) { out.push(0) }
+        if (n >= 8) { out.push(0) }
+        return 0
+    }
+    let h = n / 2
+    let d1 = push_zeros(out, h)
+    return push_zeros(out, n - h)
+}
+
+fn make_ticks64() List<int> {
+    var t = List<int>.new()
+    var i = 0
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0); t.push(0)
+    return t
+}
+
+// ---- IEEE CRC-32 via 4-bit nibble XOR + 16-entry nibble table (16x4 shifts) -
+
+fn build_xor4_table(xt List<int>) int {
+    var a = 0
+    var ticks = List<int>.new()
+    let d1 = push_zeros(ticks, 16)
+    for ta in ticks {
+        var b = 0
+        for tb in ticks {
+            let x0 = (a % 2 != b % 2)
+            let x1 = ((a / 2) % 2 != (b / 2) % 2)
+            let x2 = ((a / 4) % 2 != (b / 4) % 2)
+            let x3 = ((a / 8) % 2 != (b / 8) % 2)
+            var v = 0
+            if (x0) { v = v + 1 }
+            if (x1) { v = v + 2 }
+            if (x2) { v = v + 4 }
+            if (x3) { v = v + 8 }
+            xt.push(v)
+            b = b + 1
+        }
+        a = a + 1
+    }
+    return 0
+}
+
+fn build_crc_tables16(xt List<int>, th List<int>, tl List<int>) int {
+    var i = 0
+    var ticks16 = List<int>.new()
+    let d16 = push_zeros(ticks16, 16)
+    for t0 in ticks16 {
+        var hi = 0
+        var lo = i
+        var t4 = List<int>.new()
+        t4.push(0); t4.push(0); t4.push(0); t4.push(0)
+        for ts in t4 {
+            let odd = lo % 2
+            lo = (lo / 2) + (hi % 2) * 32768
+            hi = hi / 2
+            if (odd == 1) {
+                let h0 = xt.get((hi % 16) * 16 + 8)
+                let h1 = xt.get(((hi / 16) % 16) * 16 + 11)
+                let h2 = xt.get(((hi / 256) % 16) * 16 + 13)
+                let h3 = xt.get((hi / 4096) * 16 + 14)
+                hi = ((h3 * 16 + h2) * 16 + h1) * 16 + h0
+                let l0 = xt.get((lo % 16) * 16 + 0)
+                let l1 = xt.get(((lo / 16) % 16) * 16 + 2)
+                let l2 = xt.get(((lo / 256) % 16) * 16 + 3)
+                let l3 = xt.get((lo / 4096) * 16 + 8)
+                lo = ((l3 * 16 + l2) * 16 + l1) * 16 + l0
+            }
+        }
+        th.push(hi)
+        tl.push(lo)
+        i = i + 1
+    }
+    return 0
+}
+
+// Process up to 64 bytes per call inside one `for` loop with zero helper calls (AV-step minimal).
+fn crc_update_range(data List<int>, lo int, hi int, xt List<int>, th List<int>, tl List<int>, st List<int>, ticks64 List<int>) int {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return 0
+    }
+    if (seg <= 64) {
+        var pos = lo
+        var c_hi = st.get(0)
+        var c_lo = st.get(1)
+        for tx in ticks64 {
+            if (pos < hi) {
+                let byte_val = data.get(pos)
+                let idx0 = xt.get((c_lo % 16) * 16 + (byte_val % 16))
+                let s0_lo = (c_lo / 16) + (c_hi % 16) * 4096
+                let s0_hi = c_hi / 16
+                let t0_lo = tl.get(idx0)
+                let t0_hi = th.get(idx0)
+                c_lo = ((xt.get((s0_lo / 4096) * 16 + (t0_lo / 4096)) * 16 + xt.get(((s0_lo / 256) % 16) * 16 + ((t0_lo / 256) % 16))) * 16 + xt.get(((s0_lo / 16) % 16) * 16 + ((t0_lo / 16) % 16))) * 16 + xt.get((s0_lo % 16) * 16 + (t0_lo % 16))
+                c_hi = ((xt.get((s0_hi / 4096) * 16 + (t0_hi / 4096)) * 16 + xt.get(((s0_hi / 256) % 16) * 16 + ((t0_hi / 256) % 16))) * 16 + xt.get(((s0_hi / 16) % 16) * 16 + ((t0_hi / 16) % 16))) * 16 + xt.get((s0_hi % 16) * 16 + (t0_hi % 16))
+
+                let idx1 = xt.get((c_lo % 16) * 16 + (byte_val / 16))
+                let s1_lo = (c_lo / 16) + (c_hi % 16) * 4096
+                let s1_hi = c_hi / 16
+                let t1_lo = tl.get(idx1)
+                let t1_hi = th.get(idx1)
+                c_lo = ((xt.get((s1_lo / 4096) * 16 + (t1_lo / 4096)) * 16 + xt.get(((s1_lo / 256) % 16) * 16 + ((t1_lo / 256) % 16))) * 16 + xt.get(((s1_lo / 16) % 16) * 16 + ((t1_lo / 16) % 16))) * 16 + xt.get((s1_lo % 16) * 16 + (t1_lo % 16))
+                c_hi = ((xt.get((s1_hi / 4096) * 16 + (t1_hi / 4096)) * 16 + xt.get(((s1_hi / 256) % 16) * 16 + ((t1_hi / 256) % 16))) * 16 + xt.get(((s1_hi / 16) % 16) * 16 + ((t1_hi / 16) % 16))) * 16 + xt.get((s1_hi % 16) * 16 + (t1_hi % 16))
+                pos = pos + 1
+            }
+        }
+        st.set(0, c_hi)
+        st.set(1, c_lo)
+        return 0
+    }
+    let mid = lo + seg / 2
+    let d1 = crc_update_range(data, lo, mid, xt, th, tl, st, ticks64)
+    return crc_update_range(data, mid, hi, xt, th, tl, st, ticks64)
+}
+
+fn verify_crc32(data List<int>, want_hi int, want_lo int) bool {
+    var xt = List<int>.new()
+    let d1 = build_xor4_table(xt)
+    var th = List<int>.new()
+    var tl = List<int>.new()
+    let d2 = build_crc_tables16(xt, th, tl)
+    var st = List<int>.new()
+    st.push(65535)
+    st.push(65535)
+    var ticks64 = make_ticks64()
+    let d3 = crc_update_range(data, 0, data.len(), xt, th, tl, st, ticks64)
+    let got_hi = 65535 - st.get(0)
+    let got_lo = 65535 - st.get(1)
+    return got_hi == want_hi && got_lo == want_lo
+}
+
+// ---- EOCD + Central Directory parsing --------------------------------------
+
+fn find_eocd(raw List<int>, n int) int {
+    var min_pos = n - 22 - 65535
+    if (min_pos < 0) {
+        min_pos = 0
+    }
+    var pos = n - 22
+    var t32 = List<int>.new()
+    let d1 = push_zeros(t32, 32)
+    var t64 = make_ticks64()
+    for tx0 in t32 {
+        if (pos >= min_pos) {
+            for tx1 in t64 {
+                if (pos >= min_pos) {
+                    if (raw.get(pos) == 80 && raw.get(pos + 1) == 75 && raw.get(pos + 2) == 5 && raw.get(pos + 3) == 6) {
+                        let comment_len = raw.get(pos + 20) + raw.get(pos + 21) * 256
+                        if (pos + 22 + comment_len == n) {
+                            return pos
+                        }
+                    }
+                    pos = pos - 1
+                }
+            }
+        }
+    }
+    return -1
+}
+
+// Returns `[cd_off, cd_size, cd_entries]` into `hdr`, or `-1` on invalid / ZIP64 / multi-disk.
+fn parse_eocd(raw List<int>, hdr List<int>) int {
+    let n = raw.len()
+    if (n < 22) {
+        return -1
+    }
+    let eocd = find_eocd(raw, n)
+    if (eocd < 0) {
+        return -1
+    }
+    // Reject ZIP64 end-of-central-directory locator right before EOCD
+    if (eocd >= 20) {
+        if (raw.get(eocd - 20) == 80 && raw.get(eocd - 19) == 75 && raw.get(eocd - 18) == 6 && raw.get(eocd - 17) == 7) {
+            return -1
+        }
+    }
+    let disk_no = raw.get(eocd + 4) + raw.get(eocd + 5) * 256
+    let cd_disk = raw.get(eocd + 6) + raw.get(eocd + 7) * 256
+    let disk_entries = raw.get(eocd + 8) + raw.get(eocd + 9) * 256
+    let total_entries = raw.get(eocd + 10) + raw.get(eocd + 11) * 256
+    let cd_size64 = raw.get(eocd + 12).to(i64) + raw.get(eocd + 13).to(i64) * 256i64 + raw.get(eocd + 14).to(i64) * 65536i64 + raw.get(eocd + 15).to(i64) * 16777216i64
+    let cd_off64 = raw.get(eocd + 16).to(i64) + raw.get(eocd + 17).to(i64) * 256i64 + raw.get(eocd + 18).to(i64) * 65536i64 + raw.get(eocd + 19).to(i64) * 16777216i64
+    if (disk_no != 0 || cd_disk != 0 || disk_entries != total_entries) {
+        return -1
+    }
+    if (total_entries == 65535 || cd_size64 == 4294967295i64 || cd_off64 == 4294967295i64) {
+        return -1
+    }
+    if (total_entries > ZIP_MAX_CD_ENTRIES()) {
+        return -1
+    }
+    let eocd64 = eocd.to(i64)
+    if (cd_off64 < 0i64 || cd_size64 < 0i64 || cd_off64 + cd_size64 > eocd64) {
+        return -1
+    }
+    hdr.push(cd_off64.to(int))
+    hdr.push(cd_size64.to(int))
+    hdr.push(total_entries)
+    return 0
+}
+
+// Per-entry flat stride = 9 ints in `entries`:
+// [fn_off, fn_len, size, comp_size, method, flags, crc_lo, crc_hi, lfh_off]
+fn parse_cd_one(raw List<int>, pos int, cd_end int, entries List<int>) int {
+    if (pos + 46 > cd_end) {
+        return -1
+    }
+    if (raw.get(pos) != 80 || raw.get(pos + 1) != 75 || raw.get(pos + 2) != 1 || raw.get(pos + 3) != 2) {
+        return -1
+    }
+    let flags = raw.get(pos + 8) + raw.get(pos + 9) * 256
+    let method = raw.get(pos + 10) + raw.get(pos + 11) * 256
+    let crc_lo = raw.get(pos + 16) + raw.get(pos + 17) * 256
+    let crc_hi = raw.get(pos + 18) + raw.get(pos + 19) * 256
+    let comp_size64 = raw.get(pos + 20).to(i64) + raw.get(pos + 21).to(i64) * 256i64 + raw.get(pos + 22).to(i64) * 65536i64 + raw.get(pos + 23).to(i64) * 16777216i64
+    let uncomp_size64 = raw.get(pos + 24).to(i64) + raw.get(pos + 25).to(i64) * 256i64 + raw.get(pos + 26).to(i64) * 65536i64 + raw.get(pos + 27).to(i64) * 16777216i64
+    let fn_len = raw.get(pos + 28) + raw.get(pos + 29) * 256
+    let extra_len = raw.get(pos + 30) + raw.get(pos + 31) * 256
+    let comment_len = raw.get(pos + 32) + raw.get(pos + 33) * 256
+    let lfh_off64 = raw.get(pos + 42).to(i64) + raw.get(pos + 43).to(i64) * 256i64 + raw.get(pos + 44).to(i64) * 65536i64 + raw.get(pos + 45).to(i64) * 16777216i64
+    if (comp_size64 == 4294967295i64 || uncomp_size64 == 4294967295i64 || lfh_off64 == 4294967295i64) {
+        return -1
+    }
+    if (comp_size64 > ZIP_MAX_ARCHIVE_BYTES().to(i64) || lfh_off64 > ZIP_MAX_ARCHIVE_BYTES().to(i64)) {
+        return -1
+    }
+    let next_pos = pos + 46 + fn_len + extra_len + comment_len
+    if (next_pos > cd_end) {
+        return -1
+    }
+    // Push size capped at i32 max safely when listing (<= 4GiB - 2)
+    var show_size = -1
+    if (uncomp_size64 <= 2147483647i64) {
+        show_size = uncomp_size64.to(int)
+    }
+    entries.push(pos + 46)
+    entries.push(fn_len)
+    entries.push(show_size)
+    entries.push(comp_size64.to(int))
+    entries.push(method)
+    entries.push(flags)
+    entries.push(crc_lo)
+    entries.push(crc_hi)
+    entries.push(lfh_off64.to(int))
+    return next_pos
+}
+
+fn parse_cd_batch(raw List<int>, cd_off int, cd_size int, count int, entries List<int>) int {
+    let cd_end = cd_off + cd_size
+    var pos = cd_off
+    var rem = count
+    var ticks = make_ticks64()
+    for t0 in ticks {
+        if (rem > 0) {
+            for t1 in ticks {
+                if (rem > 0) {
+                    if (pos < 0) {
+                        return -1
+                    }
+                    pos = parse_cd_one(raw, pos, cd_end, entries)
+                    rem = rem - 1
+                }
+            }
+        }
+    }
+    if (rem != 0 || pos != cd_end) {
+        return -1
+    }
+    return 0
+}
+
+// ---- RFC 1951 Inflate (BTYPE 0 / 1 / 2) ------------------------------------
+
+fn pow2_val(k int) int {
+    if (k == 0) { return 1 }
+    if (k == 1) { return 2 }
+    if (k == 2) { return 4 }
+    if (k == 3) { return 8 }
+    if (k == 4) { return 16 }
+    if (k == 5) { return 32 }
+    if (k == 6) { return 64 }
+    if (k == 7) { return 128 }
+    if (k == 8) { return 256 }
+    if (k == 9) { return 512 }
+    if (k == 10) { return 1024 }
+    if (k == 11) { return 2048 }
+    if (k == 12) { return 4096 }
+    if (k == 13) { return 8192 }
+    if (k == 14) { return 16384 }
+    if (k == 15) { return 32768 }
+    return 65536
+}
+
+// bs = [pos, bitbuf, bitcnt]
+fn read_bits(comp List<int>, n int, bs List<int>, need int) int {
+    if (need == 0) {
+        return 0
+    }
+    var pos = bs.get(0)
+    var buf = bs.get(1)
+    var cnt = bs.get(2)
+    if (cnt < need) {
+        if (pos >= n) { return -1 }
+        buf = buf + comp.get(pos) * pow2_val(cnt)
+        pos = pos + 1
+        cnt = cnt + 8
+    }
+    if (cnt < need) {
+        if (pos >= n) { return -1 }
+        buf = buf + comp.get(pos) * pow2_val(cnt)
+        pos = pos + 1
+        cnt = cnt + 8
+    }
+    if (cnt < need) {
+        return -1
+    }
+    let p = pow2_val(need)
+    let val = buf % p
+    bs.set(0, pos)
+    bs.set(1, buf / p)
+    bs.set(2, cnt - need)
+    return val
+}
+
+fn align_byte(bs List<int>) int {
+    var pos = bs.get(0)
+    var buf = bs.get(1)
+    var cnt = bs.get(2)
+    let rem = cnt % 8
+    if (rem > 0) {
+        let p = pow2_val(rem)
+        buf = buf / p
+        cnt = cnt - rem
+    }
+    let back = cnt / 8
+    bs.set(0, pos - back)
+    bs.set(1, 0)
+    bs.set(2, 0)
+    return 0
+}
+
+// Huff layout: ht[0..15] = bl_count, ht[16..31] = first_code, ht[32..47] = offsets, ht[48..] = syms
+fn build_huff(lengths List<int>, num_syms int, ht List<int>) int {
+    let d1 = push_zeros(ht, 48 + num_syms)
+    var si = 0
+    for len in lengths {
+        if (si < num_syms) {
+            if (len < 0 || len > 15) {
+                return -1
+            }
+            if (len > 0) {
+                ht.set(len, ht.get(len) + 1)
+            }
+            si = si + 1
+        }
+    }
+    // Check Kraft completeness/oversubscription & compute canonical first_code + offsets
+    var left = 1
+    var code = 0
+    var off = 0
+    var b = 1
+    var next_off = List<int>.new()
+    let d2 = push_zeros(next_off, 16)
+    var t15 = List<int>.new()
+    let d3 = push_zeros(t15, 15)
+    for tb in t15 {
+        let c_b = ht.get(b)
+        left = left * 2 - c_b
+        if (left < 0) {
+            return -1
+        }
+        code = (code + ht.get(b - 1)) * 2
+        ht.set(16 + b, code)
+        ht.set(32 + b, off)
+        next_off.set(b, off)
+        off = off + c_b
+        b = b + 1
+    }
+    var sym = 0
+    for len in lengths {
+        if (sym < num_syms && len > 0) {
+            let slot = next_off.get(len)
+            ht.set(48 + slot, sym)
+            next_off.set(len, slot + 1)
+        }
+        sym = sym + 1
+    }
+    return 0
+}
+
+fn decode_huff_sym(comp List<int>, n int, bs List<int>, ht List<int>, t15 List<int>) int {
+    var pos = bs.get(0)
+    var buf = bs.get(1)
+    var cnt = bs.get(2)
+    var code = 0
+    var len = 1
+    for tb in t15 {
+        if (cnt < 1) {
+            if (pos >= n) { return -1 }
+            buf = buf + comp.get(pos)
+            pos = pos + 1
+            cnt = 8
+        }
+        let bit = buf % 2
+        buf = buf / 2
+        cnt = cnt - 1
+        code = code * 2 + bit
+        let c_l = ht.get(len)
+        if (c_l > 0) {
+            let fc = ht.get(16 + len)
+            if (code >= fc && code - fc < c_l) {
+                bs.set(0, pos)
+                bs.set(1, buf)
+                bs.set(2, cnt)
+                return ht.get(48 + ht.get(32 + len) + (code - fc))
+            }
+        }
+        len = len + 1
+    }
+    return -1
+}
+
+fn make_fixed_lit_huff(ht List<int>) int {
+    var lens = List<int>.new()
+    var i = 0
+    var t72 = List<int>.new()
+    let d1 = push_zeros(t72, 72)
+    for tx in t72 {
+        // 4 entries per tick -> 288 total
+        lens.push(8)
+        lens.push(8)
+        lens.push(8)
+        lens.push(8)
+        i = i + 4
+    }
+    // Override 144..255 -> 9, 256..279 -> 7 (280..287 already 8)
+    var k = 144
+    var t112 = List<int>.new()
+    let d2 = push_zeros(t112, 112)
+    for tx2 in t112 {
+        lens.set(k, 9)
+        k = k + 1
+    }
+    var k2 = 256
+    var t24 = List<int>.new()
+    let d3 = push_zeros(t24, 24)
+    for tx3 in t24 {
+        lens.set(k2, 7)
+        k2 = k2 + 1
+    }
+    return build_huff(lens, 288, ht)
+}
+
+fn make_fixed_dist_huff(ht List<int>) int {
+    var lens = List<int>.new()
+    var t32 = List<int>.new()
+    let d1 = push_zeros(t32, 32)
+    for tx in t32 {
+        lens.push(5)
+    }
+    return build_huff(lens, 32, ht)
+}
+
+fn cl_order_at(i int) int {
+    if (i == 0) { return 16 }
+    if (i == 1) { return 17 }
+    if (i == 2) { return 18 }
+    if (i == 3) { return 0 }
+    if (i == 4) { return 8 }
+    if (i == 5) { return 7 }
+    if (i == 6) { return 9 }
+    if (i == 7) { return 6 }
+    if (i == 8) { return 10 }
+    if (i == 9) { return 5 }
+    if (i == 10) { return 11 }
+    if (i == 11) { return 4 }
+    if (i == 12) { return 12 }
+    if (i == 13) { return 3 }
+    if (i == 14) { return 13 }
+    if (i == 15) { return 2 }
+    if (i == 16) { return 14 }
+    if (i == 17) { return 1 }
+    return 15
+}
+
+fn len_base_at(idx int) int {
+    if (idx == 0) { return 3 }
+    if (idx == 1) { return 4 }
+    if (idx == 2) { return 5 }
+    if (idx == 3) { return 6 }
+    if (idx == 4) { return 7 }
+    if (idx == 5) { return 8 }
+    if (idx == 6) { return 9 }
+    if (idx == 7) { return 10 }
+    if (idx == 8) { return 11 }
+    if (idx == 9) { return 13 }
+    if (idx == 10) { return 15 }
+    if (idx == 11) { return 17 }
+    if (idx == 12) { return 19 }
+    if (idx == 13) { return 23 }
+    if (idx == 14) { return 27 }
+    if (idx == 15) { return 31 }
+    if (idx == 16) { return 35 }
+    if (idx == 17) { return 43 }
+    if (idx == 18) { return 51 }
+    if (idx == 19) { return 59 }
+    if (idx == 20) { return 67 }
+    if (idx == 21) { return 83 }
+    if (idx == 22) { return 99 }
+    if (idx == 23) { return 115 }
+    if (idx == 24) { return 131 }
+    if (idx == 25) { return 163 }
+    if (idx == 26) { return 195 }
+    if (idx == 27) { return 227 }
+    return 258
+}
+
+fn len_extra_at(idx int) int {
+    if (idx <= 7 || idx == 28) { return 0 }
+    if (idx <= 11) { return 1 }
+    if (idx <= 15) { return 2 }
+    if (idx <= 19) { return 3 }
+    if (idx <= 23) { return 4 }
+    return 5
+}
+
+fn dist_base_at(idx int) int {
+    if (idx == 0) { return 1 }
+    if (idx == 1) { return 2 }
+    if (idx == 2) { return 3 }
+    if (idx == 3) { return 4 }
+    if (idx == 4) { return 5 }
+    if (idx == 5) { return 7 }
+    if (idx == 6) { return 9 }
+    if (idx == 7) { return 13 }
+    if (idx == 8) { return 17 }
+    if (idx == 9) { return 25 }
+    if (idx == 10) { return 33 }
+    if (idx == 11) { return 49 }
+    if (idx == 12) { return 65 }
+    if (idx == 13) { return 97 }
+    if (idx == 14) { return 129 }
+    if (idx == 15) { return 193 }
+    if (idx == 16) { return 257 }
+    if (idx == 17) { return 385 }
+    if (idx == 18) { return 513 }
+    if (idx == 19) { return 769 }
+    if (idx == 20) { return 1025 }
+    if (idx == 21) { return 1537 }
+    if (idx == 22) { return 2049 }
+    if (idx == 23) { return 3073 }
+    if (idx == 24) { return 4097 }
+    if (idx == 25) { return 6145 }
+    if (idx == 26) { return 8193 }
+    if (idx == 27) { return 12289 }
+    if (idx == 28) { return 16385 }
+    return 24577
+}
+
+fn dist_extra_at(idx int) int {
+    if (idx <= 3) { return 0 }
+    return (idx - 2) / 2
+}
+
+fn build_dynamic_huffs(comp List<int>, n int, bs List<int>, lit_ht List<int>, dist_ht List<int>) int {
+    let b_hlit = read_bits(comp, n, bs, 5)
+    let b_hdist = read_bits(comp, n, bs, 5)
+    let b_hclen = read_bits(comp, n, bs, 4)
+    if (b_hlit < 0 || b_hdist < 0 || b_hclen < 0) {
+        return -1
+    }
+    let hlit = b_hlit + 257
+    let hdist = b_hdist + 1
+    let hclen = b_hclen + 4
+    if (hlit > 286 || hdist > 32) {
+        return -1
+    }
+    var cl_lens = List<int>.new()
+    let d1 = push_zeros(cl_lens, 19)
+    var i = 0
+    var t19 = List<int>.new()
+    let d2 = push_zeros(t19, 19)
+    for tx in t19 {
+        if (i < hclen) {
+            let v = read_bits(comp, n, bs, 3)
+            if (v < 0) {
+                return -1
+            }
+            cl_lens.set(cl_order_at(i), v)
+        }
+        i = i + 1
+    }
+    var cl_ht = List<int>.new()
+    if (build_huff(cl_lens, 19, cl_ht) != 0) {
+        return -1
+    }
+    let total = hlit + hdist
+    var all_lens = List<int>.new()
+    var prev = 0
+    var has_prev = false
+    var t15 = List<int>.new()
+    let d15 = push_zeros(t15, 15)
+    var t64 = make_ticks64()
+    for tx1 in t64 {
+        if (all_lens.len() < total) {
+            for tx2 in t64 {
+                if (all_lens.len() < total) {
+                    let sym = decode_huff_sym(comp, n, bs, cl_ht, t15)
+                    if (sym < 0) {
+                        return -1
+                    }
+                    if (sym < 16) {
+                        all_lens.push(sym)
+                        prev = sym
+                        has_prev = true
+                    } else {
+                        var rep = 0
+                        var fill = 0
+                        if (sym == 16) {
+                            if (!has_prev) {
+                                return -1
+                            }
+                            let ex = read_bits(comp, n, bs, 2)
+                            if (ex < 0) {
+                                return -1
+                            }
+                            rep = 3 + ex
+                            fill = prev
+                        } else {
+                            if (sym == 17) {
+                                let ex = read_bits(comp, n, bs, 3)
+                                if (ex < 0) {
+                                    return -1
+                                }
+                                rep = 3 + ex
+                                fill = 0
+                            } else {
+                                let ex = read_bits(comp, n, bs, 7)
+                                if (ex < 0) {
+                                    return -1
+                                }
+                                rep = 11 + ex
+                                fill = 0
+                            }
+                        }
+                        if (all_lens.len() + rep > total) {
+                            return -1
+                        }
+                        var rticks = List<int>.new()
+                        let dr = push_zeros(rticks, rep)
+                        for tr in rticks {
+                            all_lens.push(fill)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (all_lens.len() != total) {
+        return -1
+    }
+    // RFC 1951: EOB symbol 256 must have non-zero bit length
+    if (all_lens.get(256) == 0) {
+        return -1
+    }
+    var lit_lens = List<int>.new()
+    let dl1 = copy_range(all_lens, 0, hlit, lit_lens)
+    if (build_huff(lit_lens, hlit, lit_ht) != 0) {
+        return -1
+    }
+    var dist_lens = List<int>.new()
+    let dl2 = copy_range(all_lens, hlit, total, dist_lens)
+    return build_huff(dist_lens, hdist, dist_ht)
+}
+
+fn inflate_huff_batch64(comp List<int>, n int, bs List<int>, lit_ht List<int>, dist_ht List<int>, max_bytes int, out List<int>, ticks List<int>, t15 List<int>) int {
+    // Returns: 0 = more symbols in block, 1 = EOB reached, -1 = corrupt, -2 = over max_bytes
+    for tx in ticks {
+        var pos = bs.get(0)
+        var buf = bs.get(1)
+        var cnt = bs.get(2)
+        var code = 0
+        var hlen = 1
+        var sym = -1
+        for tb in t15 {
+            if (sym < 0) {
+                if (cnt < 1) {
+                    if (pos >= n) { return -1 }
+                    buf = buf + comp.get(pos)
+                    pos = pos + 1
+                    cnt = 8
+                }
+                let bit = buf % 2
+                buf = buf / 2
+                cnt = cnt - 1
+                code = code * 2 + bit
+                let c_l = lit_ht.get(hlen)
+                if (c_l > 0) {
+                    let fc = lit_ht.get(16 + hlen)
+                    if (code >= fc && code - fc < c_l) {
+                        bs.set(0, pos)
+                        bs.set(1, buf)
+                        bs.set(2, cnt)
+                        sym = lit_ht.get(48 + lit_ht.get(32 + hlen) + (code - fc))
+                    }
+                }
+                hlen = hlen + 1
+            }
+        }
+        if (sym < 0) {
+            return -1
+        }
+        if (sym < 256) {
+            if (out.len() >= max_bytes) {
+                return -2
+            }
+            out.push(sym)
+        } else {
+            if (sym == 256) {
+                return 1
+            }
+            if (sym > 285) {
+                return -1
+            }
+            let lidx = sym - 257
+            let lex = len_extra_at(lidx)
+            var extra_len = 0
+            if (lex > 0) {
+                extra_len = read_bits(comp, n, bs, lex)
+                if (extra_len < 0) {
+                    return -1
+                }
+            }
+            let match_len = len_base_at(lidx) + extra_len
+            let dsym = decode_huff_sym(comp, n, bs, dist_ht, t15)
+            if (dsym < 0 || dsym >= 30) {
+                return -1
+            }
+            let dex = dist_extra_at(dsym)
+            var extra_dist = 0
+            if (dex > 0) {
+                extra_dist = read_bits(comp, n, bs, dex)
+                if (extra_dist < 0) {
+                    return -1
+                }
+            }
+            let dist = dist_base_at(dsym) + extra_dist
+            if (dist <= 0 || dist > out.len()) {
+                return -1
+            }
+            if (out.len() + match_len > max_bytes) {
+                return -2
+            }
+            var cp = out.len() - dist
+            var m = 0
+            // Unroll 8 bytes per tick loop to copy RLE/overlapping backrefs fast without calling helpers
+            for tt in ticks {
+                if (m + 4 <= match_len) {
+                    out.push(out.get(cp))
+                    out.push(out.get(cp + 1))
+                    out.push(out.get(cp + 2))
+                    out.push(out.get(cp + 3))
+                    cp = cp + 4
+                    m = m + 4
+                } else {
+                    if (m < match_len) {
+                        out.push(out.get(cp))
+                        cp = cp + 1
+                        m = m + 1
+                    }
+                }
+            }
+            if (m < match_len) {
+                var rticks = List<int>.new()
+                let dr = push_zeros(rticks, match_len - m)
+                for tr in rticks {
+                    out.push(out.get(cp))
+                    cp = cp + 1
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn inflate_huff_loop(comp List<int>, n int, bs List<int>, lit_ht List<int>, dist_ht List<int>, max_bytes int, out List<int>, ticks List<int>, t15 List<int>) int {
+    let st = inflate_huff_batch64(comp, n, bs, lit_ht, dist_ht, max_bytes, out, ticks, t15)
+    if (st == 0) {
+        return inflate_huff_loop(comp, n, bs, lit_ht, dist_ht, max_bytes, out, ticks, t15)
+    }
+    if (st == 1) {
+        return 0
+    }
+    return st
+}
+
+fn inflate_all_blocks(comp List<int>, n int, bs List<int>, max_bytes int, out List<int>, ticks List<int>) int {
+    let bfinal = read_bits(comp, n, bs, 1)
+    let btype = read_bits(comp, n, bs, 2)
+    if (bfinal < 0 || btype < 0 || btype == 3) {
+        return -1
+    }
+    var bst = 0
+    if (btype == 0) {
+        let da = align_byte(bs)
+        let pos = bs.get(0)
+        if (pos + 4 > n) {
+            return -1
+        }
+        let blen = read_u16_le(comp, pos)
+        let nlen = read_u16_le(comp, pos + 2)
+        if (blen + nlen != 65535) {
+            return -1
+        }
+        if (pos + 4 + blen > n) {
+            return -1
+        }
+        if (out.len() + blen > max_bytes) {
+            return -2
+        }
+        let dc = copy_range(comp, pos + 4, pos + 4 + blen, out)
+        bs.set(0, pos + 4 + blen)
+    } else {
+        var lit_ht = List<int>.new()
+        var dist_ht = List<int>.new()
+        if (btype == 1) {
+            let d1 = make_fixed_lit_huff(lit_ht)
+            let d2 = make_fixed_dist_huff(dist_ht)
+            if (d1 != 0 || d2 != 0) {
+                return -1
+            }
+        } else {
+            let d3 = build_dynamic_huffs(comp, n, bs, lit_ht, dist_ht)
+            if (d3 != 0) {
+                return -1
+            }
+        }
+        var t15 = List<int>.new()
+        let d15 = push_zeros(t15, 15)
+        bst = inflate_huff_loop(comp, n, bs, lit_ht, dist_ht, max_bytes, out, ticks, t15)
+    }
+    if (bst != 0) {
+        return bst
+    }
+    if (bfinal == 1) {
+        return 0
+    }
+    return inflate_all_blocks(comp, n, bs, max_bytes, out, ticks)
+}
+
+fn inflate_deflate(comp List<int>, max_bytes int, out List<int>) int {
+    var bs = List<int>.new()
+    bs.push(0)
+    bs.push(0)
+    bs.push(0)
+    var ticks = make_ticks64()
+    return inflate_all_blocks(comp, comp.len(), bs, max_bytes, out, ticks)
+}
+
+// ---- Local File Header + Entry Extraction ----------------------------------
+
+// Returns 0 on success (payload in `out`), -1 general error, -2 over max_bytes.
+fn extract_cd_entry_bytes(raw List<int>, cd_off int, entries List<int>, idx int, max_bytes int, out List<int>) int {
+    let base = idx * 9
+    let comp_size = entries.get(base + 3)
+    let method = entries.get(base + 4)
+    let flags = entries.get(base + 5)
+    let crc_lo = entries.get(base + 6)
+    let crc_hi = entries.get(base + 7)
+    let lfh_off = entries.get(base + 8)
+    // Reject encrypted entries (GP flag bit 0 == 1)
+    if (flags % 2 == 1) {
+        return -1
+    }
+    if (method != 0 && method != 8) {
+        return -1
+    }
+    if (lfh_off < 0 || lfh_off + 30 > cd_off) {
+        return -1
+    }
+    if (raw.get(lfh_off) != 80 || raw.get(lfh_off + 1) != 75 || raw.get(lfh_off + 2) != 3 || raw.get(lfh_off + 3) != 4) {
+        return -1
+    }
+    let lfh_flags = raw.get(lfh_off + 6) + raw.get(lfh_off + 7) * 256
+    let lfh_method = raw.get(lfh_off + 8) + raw.get(lfh_off + 9) * 256
+    let lfh_fn_len = raw.get(lfh_off + 26) + raw.get(lfh_off + 27) * 256
+    let lfh_extra_len = raw.get(lfh_off + 28) + raw.get(lfh_off + 29) * 256
+    if (lfh_flags % 2 == 1 || lfh_method != method) {
+        return -1
+    }
+    let data_start = lfh_off + 30 + lfh_fn_len + lfh_extra_len
+    if (data_start < 0 || comp_size < 0 || data_start + comp_size > cd_off) {
+        return -1
+    }
+    if (method == 0) {
+        if (comp_size > max_bytes) {
+            return -2
+        }
+        let dc = copy_range(raw, data_start, data_start + comp_size, out)
+    } else {
+        var comp = List<int>.new()
+        let dc2 = copy_range(raw, data_start, data_start + comp_size, comp)
+        let ist = inflate_deflate(comp, max_bytes, out)
+        if (ist != 0) {
+            return ist
+        }
+    }
+    if (!verify_crc32(out, crc_hi, crc_lo)) {
+        return -1
+    }
+    return 0
+}
+
+fn find_cd_entry_idx(raw List<int>, entries List<int>, count int, name_bytes List<int>) int {
+    var i = 0
+    var ticks = make_ticks64()
+    for t0 in ticks {
+        if (i < count) {
+            for t1 in ticks {
+                if (i < count) {
+                    let base = i * 9
+                    let fn_off = entries.get(base)
+                    let fn_len = entries.get(base + 1)
+                    if (fn_len == name_bytes.len() && bytes_eq_at(raw, fn_off, name_bytes, 0, fn_len)) {
+                        return i
+                    }
+                    i = i + 1
+                }
+            }
+        }
+    }
+    return -1
+}
+
+// ---- JSON formatting -------------------------------------------------------
+
+fn hex_char(v int) Str {
+    return "0123456789abcdef".slice(v, v + 1).clone()
+}
+
+fn json_escape_range(s Str, lo int, hi int) Str {
+    let seg = hi - lo
+    if (seg <= 0) {
+        return ""
+    }
+    if (seg == 1) {
+        let c = s.char_at(lo)
+        let cp = c.to_codepoint()
+        if (cp == 34) { return "\\\"" }
+        if (cp == 92) { return "\\\\" }
+        if (cp == 10) { return "\\n" }
+        if (cp == 13) { return "\\r" }
+        if (cp == 9) { return "\\t" }
+        if (cp < 32) {
+            return "\\u00" + hex_char(cp / 16) + hex_char(cp % 16)
+        }
+        return c.to(Str)
+    }
+    let mid = lo + seg / 2
+    return json_escape_range(s.clone(), lo, mid) + json_escape_range(s, mid, hi)
+}
+
+fn int_to_dec(n int) Str {
+    if (n < 0) {
+        return "-" + int_to_dec(-n)
+    }
+    if (n < 10) {
+        return "0123456789".slice(n, n + 1).clone()
+    }
+    return int_to_dec(n / 10) + "0123456789".slice(n % 10, (n % 10) + 1).clone()
+}
+
+fn method_name(m int) Str {
+    if (m == 0) { return "Stored" }
+    if (m == 8) { return "Deflated" }
+    if (m == 12) { return "Bzip2" }
+    if (m == 14) { return "Lzma" }
+    if (m == 93) { return "Zstd" }
+    return "Unsupported(" + int_to_dec(m) + ")"
+}
+
+fn read_checked_zip(path Str) ?List<int> {
+    if (!exists(path.clone()) || is_dir(path.clone())) {
+        return None
+    }
+    let sz = size(path.clone())
+    if (sz < 22i64 || sz > ZIP_MAX_ARCHIVE_BYTES().to(i64)) {
+        return None
+    }
+    return read_bytes(path)
+}
+
+fn format_list_json_raw(raw List<int>) Str {
+    var hdr = List<int>.new()
+    if (parse_eocd(raw, hdr) != 0) {
+        return ""
+    }
+    let cd_off = hdr.get(0)
+    let cd_size = hdr.get(1)
+    let count = hdr.get(2)
+    var entries = List<int>.new()
+    if (parse_cd_batch(raw, cd_off, cd_size, count, entries) != 0) {
+        return ""
+    }
+    var acc = "["
+    var i = 0
+    var ticks = make_ticks64()
+    for t0 in ticks {
+        if (i < count) {
+            for t1 in ticks {
+                if (i < count) {
+                    let base = i * 9
+                    let fn_off = entries.get(base)
+                    let fn_len = entries.get(base + 1)
+                    let usz = entries.get(base + 2)
+                    let csz = entries.get(base + 3)
+                    let meth = entries.get(base + 4)
+                    if (usz < 0) {
+                        return ""
+                    }
+                    let dname = decode_utf8_range(raw, fn_off, fn_off + fn_len)
+                    var n_str = ""
+                    var name_ok = false
+                    is dname {
+                        Some(ns) -> {
+                            let nlen = ns.len()
+                            n_str = json_escape_range(ns, 0, nlen)
+                            name_ok = true
+                        }
+                        None -> {}
+                    }
+                    if (!name_ok) {
+                        return ""
+                    }
+                    if (i > 0) {
+                        acc = acc + ","
+                    }
+                    acc = acc + "{\"name\":\"" + n_str + "\",\"size\":" + int_to_dec(usz) + ",\"comp_size\":" + int_to_dec(csz) + ",\"method\":\"" + method_name(meth) + "\"}"
+                    i = i + 1
+                }
+            }
+        }
+    }
+    return acc + "]"
+}
+
+fn read_text_raw(raw List<int>, entry_name Str, max_bytes int) Str {
+    var hdr = List<int>.new()
+    if (parse_eocd(raw, hdr) != 0) {
+        return ""
+    }
+    let cd_off = hdr.get(0)
+    let cd_size = hdr.get(1)
+    let count = hdr.get(2)
+    var entries = List<int>.new()
+    if (parse_cd_batch(raw, cd_off, cd_size, count, entries) != 0) {
+        return ""
+    }
+    var nbytes = List<int>.new()
+    let en_len = entry_name.len()
+    let dn = str_to_ascii_bytes(entry_name, 0, en_len, nbytes)
+    let idx = find_cd_entry_idx(raw, entries, count, nbytes)
+    if (idx < 0) {
+        return ""
+    }
+    var out = List<int>.new()
+    if (extract_cd_entry_bytes(raw, cd_off, entries, idx, max_bytes, out) != 0) {
+        return ""
+    }
+    let decoded = decode_utf8(out.move)
+    is decoded {
+        Some(s) -> { return s.move }
+        None -> {}
+    }
+    return ""
+}
+
+fn extract_entry_raw(raw List<int>, entry_name Str, dest_path Str, max_bytes int) int {
+    var hdr = List<int>.new()
+    if (parse_eocd(raw, hdr) != 0) {
+        return -1
+    }
+    let cd_off = hdr.get(0)
+    let cd_size = hdr.get(1)
+    let count = hdr.get(2)
+    var entries = List<int>.new()
+    if (parse_cd_batch(raw, cd_off, cd_size, count, entries) != 0) {
+        return -1
+    }
+    var nbytes = List<int>.new()
+    let en_len = entry_name.len()
+    let dn = str_to_ascii_bytes(entry_name, 0, en_len, nbytes)
+    let idx = find_cd_entry_idx(raw, entries, count, nbytes)
+    if (idx < 0) {
+        return -1
+    }
+    var out = List<int>.new()
+    let st = extract_cd_entry_bytes(raw, cd_off, entries, idx, max_bytes, out)
+    if (st != 0) {
+        return st
+    }
+    if (is_dir(dest_path.clone())) {
+        return -1
+    }
+    let tmp = dest_path + ".acezip.tmp"
+    let w = write_bytes(tmp.clone(), out)
+    if (w != 0) {
+        let d1 = delete(tmp.clone())
+        return -1
+    }
+    let r = replace_atomic(tmp.clone(), dest_path)
+    if (r != 0) {
+        let d2 = delete(tmp)
+        return -1
+    }
+    return 0
+}
+
+// ---- Public ZIP API --------------------------------------------------------
+
+pub fn list_json(zip_path Str) Str {
+    let opt = read_checked_zip(zip_path)
+    is opt {
+        Some(raw) -> { return format_list_json_raw(raw) }
+        None -> {}
+    }
+    return ""
+}
+
+pub fn read_text(zip_path Str, entry_name Str, max_bytes int) Str {
+    if (max_bytes <= 0) {
+        return ""
+    }
+    let opt = read_checked_zip(zip_path)
+    is opt {
+        Some(raw) -> { return read_text_raw(raw, entry_name, max_bytes) }
+        None -> {}
+    }
+    return ""
+}
+
+pub fn extract_entry(zip_path Str, entry_name Str, dest_path Str, max_bytes int) int {
+    if (max_bytes <= 0) {
+        return -1
+    }
+    let opt = read_checked_zip(zip_path)
+    is opt {
+        Some(raw) -> { return extract_entry_raw(raw, entry_name, dest_path, max_bytes) }
+        None -> {}
+    }
+    return -1
+}

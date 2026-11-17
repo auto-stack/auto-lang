@@ -93,6 +93,28 @@ pub fn compile_module(
     verify_abc_bytes(&wire.to_flat(), &owner).map_err(|e| format!("abc admit: {e}"))
 }
 
+/// PLAN-1035 (F30): the aggregates-profile twin of [`compile_module`] — the
+/// same gate chain, but through the real aggregates front door
+/// (`compile_aggregates_source` + the closures-family lowering entry the
+/// aggregates full chain uses). This is a TEST-PRIVATE face: it adds no
+/// `SourceFrontend` variant, no worker recipe and no new public frontend
+/// enumeration, so the frozen 915 recipe/loads are untouched.
+pub fn compile_aggregates_module(src: &str, entry: &str) -> Result<LoadedModule, String> {
+    let compiled =
+        ace_core::source::compile_aggregates_source(src, "r915.at", &[]).map_err(|ds| {
+            ds.iter()
+                .map(|d| d.render("r915.at", src))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })?;
+    let mir = ace_lowering::lower_checked_closures(&compiled.checked, entry, 0)
+        .map_err(|e| format!("lower: {e:?}"))?;
+    let owner = mir.owner.clone();
+    verify_mir(&mir).map_err(|e| format!("verify_mir: {e:?}"))?;
+    let wire = encode_abc(&mir).map_err(|e| format!("encode: {e:?}"))?;
+    verify_abc_bytes(&wire.to_flat(), &owner).map_err(|e| format!("abc admit: {e}"))
+}
+
 fn i32_of(out: &ExecOutcome) -> Result<i32, String> {
     match out {
         ExecOutcome::Success {
@@ -115,7 +137,115 @@ pub fn source_fault_sweep(
     entry: &str,
     frontend: SourceFrontend,
 ) -> Result<serde_json::Value, String> {
-    let loaded = compile_module(src, entry, frontend)?;
+    fault_sweep_with(src, entry, &|s, e| compile_module(s, e, frontend))
+}
+
+/// PLAN-1035 (F30): the same per-attempt fault sweep over the aggregates
+/// front door (new aggregate shapes: List-only records, Str+List records,
+/// Box/nested carriers and element replacement). The load is a NEW aggregate
+/// program; it does not extend or re-freeze the 915 corpus counts.
+pub fn aggregates_fault_sweep(src: &str, entry: &str) -> Result<serde_json::Value, String> {
+    fault_sweep_with(src, entry, &compile_aggregates_module)
+}
+
+/// PLAN-1035 (F30): the COMMIT-SEAM observation for an aggregate
+/// replacement, on an observed execution (the PLAN-919 lifecycle channel the
+/// executor already owns). `fault = Some(n)` arms the value seam at ordinal
+/// `n`; `None` is the clean control. The returned facts are read from the
+/// REAL destination/ledger (no simulated commit, no synthetic module):
+///
+/// * `replaced` — owners destroyed by a newer value landing in the slot.
+///   A faulted run must report ZERO: the write never committed, so the old
+///   destination value was never destroyed. (The clean control must report at
+///   least one, or the replacement is not actually exercised.)
+/// * `swept` — owners released by the abort cleanup; the semi-constructed
+///   value and the old destination leave exactly once there.
+/// * `free_ids_unique` / `frees == successful` — no double free, no leak.
+pub fn aggregates_commit_fault_probe(
+    src: &str,
+    entry: &str,
+    fault: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    use ace_av_core::av::execute_observed;
+    use ace_av_core::lifecycle::{Act, DisownVia};
+
+    let loaded = compile_aggregates_module(src, entry)?;
+    let mut limits = ExecLimits::default();
+    limits.fault_after_allocs = fault;
+    let (out, trace) = execute_observed(&loaded, &limits, &CancelFlag::new(false));
+    let events = trace.lifecycle.events();
+    let disowns = |via: DisownVia| {
+        events
+            .iter()
+            .filter(|e| e.act == Act::Disown && e.via_disowned == Some(via))
+            .count()
+    };
+    let replaced = disowns(DisownVia::Replaced);
+    let swept = disowns(DisownVia::Swept);
+    let moved_out = disowns(DisownVia::MovedOut);
+    let orphan = disowns(DisownVia::Orphan);
+    let owns = events.iter().filter(|e| e.act == Act::Own).count();
+    let replaced_ids: Vec<u64> = events
+        .iter()
+        .filter(|e| e.act == Act::Disown && e.via_disowned == Some(DisownVia::Replaced))
+        .map(|e| e.id)
+        .collect();
+    let free_ids: Vec<u64> = events
+        .iter()
+        .filter(|e| e.act == Act::Free)
+        .map(|e| e.id)
+        .collect();
+    let mut sorted = free_ids.clone();
+    sorted.sort_unstable();
+    let free_count = sorted.len();
+    sorted.dedup();
+    let free_ids_unique = sorted.len() == free_count;
+    let (arena_live, arena_allocs, arena_frees) = match trace.arena.as_ref() {
+        Some(a) => (a.live(), a.successful_allocs(), a.free_events().len()),
+        None => (0, 0, 0),
+    };
+    let (outcome, message, value) = match &out {
+        ExecOutcome::Success { value, .. } => (
+            "success".to_string(),
+            None,
+            match value {
+                Value::I32(v) => Some(*v),
+                _ => None,
+            },
+        ),
+        ExecOutcome::Infra(m) => ("infra".to_string(), Some(m.clone()), None),
+        other => (format!("{other:?}"), None, None),
+    };
+    Ok(serde_json::json!({
+        "fault": fault,
+        "outcome": outcome,
+        "message": message,
+        "value": value,
+        "events": events.len(),
+        "owns": owns,
+        "replaced": replaced,
+        "swept": swept,
+        "moved_out": moved_out,
+        "orphan": orphan,
+        "frees": free_count,
+        "free_ids": free_ids,
+        "replaced_ids": replaced_ids,
+        "free_ids_unique": free_ids_unique,
+        "arena_live": arena_live,
+        "arena_allocs": arena_allocs,
+        "arena_frees": arena_frees,
+        "lifecycle_overflowed": trace.lifecycle.overflowed(),
+    }))
+}
+
+/// The shared sweep body: `compile` is the real front door under test (the
+/// 915 collections/closures faces, or the PLAN-1035 aggregates twin).
+fn fault_sweep_with(
+    src: &str,
+    entry: &str,
+    compile: &dyn Fn(&str, &str) -> Result<LoadedModule, String>,
+) -> Result<serde_json::Value, String> {
+    let loaded = compile(src, entry)?;
     let cancel = CancelFlag::new(false);
 
     // No-fault control: the frozen result and the clean ledger.
@@ -136,6 +266,14 @@ pub fn source_fault_sweep(
             "the no-fault control leaked {clean_live} live owned buffers"
         ));
     }
+    // PLAN-1035: every successful buffer is released exactly once (a
+    // duplicate free id is a double-free, a missing id a leak).
+    let mut free_ids: Vec<u64> = clean_arena.free_events().iter().map(|f| f.id).collect();
+    free_ids.sort_unstable();
+    let dedup_before = free_ids.len();
+    free_ids.dedup();
+    let clean_free_ids_unique = free_ids.len() == dedup_before;
+    let clean_ledger_closes = clean_free_ids_unique && clean_frees == arena_success;
 
     // Discovery of the value-allocation ordinal: arm the seam one past any
     // possible count; the executor reports how many attempts it really made.
@@ -159,13 +297,18 @@ pub fn source_fault_sweep(
             ExecOutcome::Infra(m) => (m.contains("fault-injected"), Some(m.clone())),
             _ => (false, None),
         };
+        let mut ids: Vec<u64> = ledger.free_events().iter().map(|f| f.id).collect();
+        let frees = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
         arena_points.push(serde_json::json!({
             "attempt": attempt,
             "faulted": faulted,
             "live": live,
             "attempts": ledger.attempts(),
             "successful": ledger.successful_allocs(),
-            "frees": ledger.free_events().len(),
+            "frees": frees,
+            "free_ids_unique": ids.len() == frees,
             "message": message,
         }));
     }
@@ -224,7 +367,7 @@ pub fn source_fault_sweep(
 
     // Recovery is a FULL re-verification, never a cached run result: the
     // source is recompiled through the whole gate chain and re-executed.
-    let recompiled = compile_module(src, entry, frontend)?;
+    let recompiled = compile(src, entry)?;
     let (recompiled_out, recompiled_trace) = execute_with_arena(
         &recompiled,
         &ExecLimits::default(),
@@ -238,6 +381,7 @@ pub fn source_fault_sweep(
         "arena_attempts": arena_attempts,
         "arena_successful": arena_success,
         "arena_frees": clean_frees,
+        "clean_ledger_closes": clean_ledger_closes,
         "value_attempts": value_attempts,
         "arena_points": arena_points,
         "value_points": value_points,

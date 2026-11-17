@@ -63,9 +63,10 @@ pub enum MirType {
     /// Two records of equal width but different owner/name never compare
     /// equal — `MirType`'s derived `PartialEq` IS the frozen type-equivalence
     /// rule applied at every consumption point. In the owned profile a
-    /// record whose transitive field closure reaches `Str` is a RESOURCE
-    /// record (derived, never input-claimed); copyability follows the same
-    /// derivation (Design44 §4.2).
+    /// record whose transitive field closure reaches a RESOURCE LEAF (owned
+    /// `Str`, List buffer, Variant payload or closure environment — PLAN-1035
+    /// F34) is a RESOURCE record (derived, never input-claimed); copyability
+    /// follows the same derivation (Design44 §4.2).
     Record(RecordTypeRef),
     /// Read-only borrow of a record value (PLAN-821 R1-F08, 782 ABI-D
     /// `*const` borrowed record params): the frozen language surface's
@@ -419,27 +420,52 @@ pub enum MirInstr {
     },
     /// Deliver one message to a task mailbox (parks the sender on a full
     /// mailbox — bounded backpressure).
-    SchedSend { handle: u32, msg: u32 },
+    SchedSend {
+        handle: u32,
+        msg: u32,
+    },
     /// Deliver one message and create a reply port (the future id).
-    SchedAsk { handle: u32, msg: u32, dst: u32 },
+    SchedAsk {
+        handle: u32,
+        msg: u32,
+        dst: u32,
+    },
     /// Publish the reply for the current message's ask port.
-    SchedReply { value: u32 },
+    SchedReply {
+        value: u32,
+    },
     /// Request an orderly stop of a task (stop hook, then close).
-    SchedStop { handle: u32 },
+    SchedStop {
+        handle: u32,
+    },
     /// Park the chain until the virtual clock advances `ms` milliseconds.
-    SchedSleep { ms: u32 },
+    SchedSleep {
+        ms: u32,
+    },
     /// Park the chain until the ask future is published; `dst` receives
     /// the reply value.
-    SchedAwait { future: u32, dst: u32 },
+    SchedAwait {
+        future: u32,
+        dst: u32,
+    },
     /// Fire-and-forget spawn of a plain function chain.
-    SchedGo { callee: u32, args: Vec<u32> },
+    SchedGo {
+        callee: u32,
+        args: Vec<u32>,
+    },
     /// Receive the next message of the current task (parks on an empty
     /// mailbox); `dst` receives the message value.
-    SchedRecv { dst: u32 },
+    SchedRecv {
+        dst: u32,
+    },
     /// The reply port of the most recently received message (0 = send mode).
-    SchedPort { dst: u32 },
+    SchedPort {
+        dst: u32,
+    },
     /// Whether the current task received its stop signal.
-    SchedStopping { dst: u32 },
+    SchedStopping {
+        dst: u32,
+    },
     /// PLAN-863: a host-table reference, separate from guest Call/Import.
     HostCall {
         host: u32,
@@ -606,6 +632,14 @@ pub enum MirInstr {
     StrToOwned {
         dst: SlotId,
         view: SlotId,
+    },
+    /// `c.to(Str)` — char materialized as a fresh OWNED 1-scalar Str
+    /// buffer (PLAN-975 B1, the decode/parse substring-materialization
+    /// core decision). A `Value::Char` operand always encodes; invalid
+    /// scalars were rejected where the char was built.
+    StrFromChar {
+        dst: SlotId,
+        ch: SlotId,
     },
     /// View equality/inequality (782 eq/ne): byte-wise comparison of the
     /// two views' ranges (result Bool).

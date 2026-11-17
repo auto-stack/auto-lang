@@ -1,0 +1,7 @@
+fn yes() bool { return mark_a() == 1 }
+fn no() bool { return mark_b() == 999 }
+fn main() int {
+    if no() && yes() { return 1 }
+    if yes() || no() { return 7 }
+    return 0
+}

@@ -1,11 +1,15 @@
-# ace-migration: m2-schema — Schema 领域语言包与 AGE 节点投影（H0 + 组件面已验切片）
+# ace-migration: m2-schema — Schema 领域语言包与 AGE 节点投影（M2-A 已验交付）
 
-> Status: **H0 早期切片已验**（PLAN-979 T-H0-I/V/R，2026-11-15；独立复审三轮、终审 pass @
-> `71472d975`，rebase 后交付提交见计划 §9）。完整 AGE Node 语法/语义、属性与字段、
-> model/msg/on、传统 AutoUI 全模式、GUI/FFI/宿主与 A2R 腿、完整分母映射（PLAN-979
-> T-01..T-08 与 980/981）**未交付**——本文件不把它们标为已支持。
-> 来源：[PLAN-979](../../plans/979-ace-m2-schema.md) §5 H0 合同 + T-H0-I 冻结决定、
-> §9 三轮复审收据（F1–F12）；Design55/ACE M2 路线。本文件只写**已验行为与接口**。
+> Status: **M2-A 通用接面已验**（PLAN-979，2026-11-16；T-05 复审 pass，绑定代码 `e352e462b`；规范沉淀与复审记录见计划 §9）。
+> 已交付：H0 早期切片（AGE node/view/text + 普通函数文本）、组件面（typed 候选/场景脱糖/AV+A2R
+> 真跑）、通用领域包与 typed 投影接面、字段级投影完整性机制（`field_manifest`），以及
+> IF-980-FIELDS / IF-981-MODULE|REF|FIELDS|ORIGINAL 五个正式交接的落主回验（981 `e352e462b`、
+> 980 `3de0bea0b`；字段子面 `46f4ac0ec`）。
+> **不在本文件声明**：完整 AGE 语言/五 view 产品化（981/LANGUAGE）、传统 AutoUI 全模式与窗口
+> （980/PARITY 等）、GUI/FFI/宿主与两游戏产品腿、AGE-L04/AG-A 完整分母（§9 范围外登记）、
+> 跨仓 auto-ui 规范（owner 待沉淀）。
+> 来源：[PLAN-979](../../plans/archive/979-ace-m2-schema.md) §5 H0 合同 + T-H0-I 冻结决定、§9 三轮
+> H0 复审收据（F1–F12）与 M2-A 交付收据；Design55/ACE M2 路线。本文件只写**已验行为与接口**。
 
 ## 1. 领域激活与身份
 
@@ -65,8 +69,8 @@ node Hello {            // 一个 node 声明；node 名是普通 ident（单声
   （同值/同型）；AGE 面 `use.rs`/`use.c` 与 text-record 同面（导入语义仍归 F0 共享层）。
 - 不引入第二套解析/类型检查/求值：领域回调只产未受信候选（结构 + 原 span + 表达式），
   信任来自唯一 verify；值来自共享后端。
-- 未验/未声明：GUI、FFI 宿主、产品运行、A2R 腿、完整 Node/属性/字段/`model`/`msg`/`on`、
-  传统 AutoUI 全模式、完整分母映射。
+- 本包自建的 H0/组件切片不含：GUI、FFI 宿主、产品运行与窗口；完整 AGE 语言/五 view、传统
+  AutoUI 全模式与完整产品分母的归属见 §9（981/980/LANGUAGE owner）。
 
 ## 5. 证据
 
@@ -110,4 +114,49 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 ### 6.5 本切片边界（pending，不得据此声明支持）
 
-场景面单 node 定义（静态面可描述同模块多个 node）、单模块（多模块 Node 工程需 960 模块图前门与领域面组合）、`int`/`bool` 模型字段（`str`/其他类型未接线）、观测字段须为 `int`、跨实例状态引用（越权访问）尚未建模（V-10；实例越界与未声明事件**已**具名拒，见 §6.4）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。
+场景面单 node 定义（静态面可描述同模块多个 node）、本切片单模块（多模块 Node 工程由 981 `compile_age_package` 包前门交付，见 §9）、`int`/`bool` 模型字段（`str`/其他类型未接线）、观测字段须为 `int`、跨实例状态引用（越权访问）尚未建模（V-10；实例越界与未声明事件**已**具名拒，见 §6.4）、传统 UI 字段级覆盖与产品清单归 980、完整 AGE 产品运行归 981。
+
+## 7. 领域包与 typed 投影接面（T-02，已交付）
+
+`ace_core::source::domain`：通用领域包接口；AGE/组件是首批注册包，不另建第二套解析/检查/发射器。
+
+| API | 已验事实 |
+|---|---|
+| `DomainPackage { id, version, profile, hidden_prefix, compat, project }` | 包身份 + 未受信投影回调；测试包 `test.pair/v1` 证明 owner 可经公开 API 注册并被同一驱动消费 |
+| `DomainCandidate { structure, behaviors, requirements }` | 未受信结构/行为引用/资源需求；越界/重复绑定/空角色/过深 → `source.domain-candidate`，不静默丢 |
+| `DomainCompilation { id, version, grammar_id, compat, description, checked, input_hash, atom_text }` | 共享驱动 `compile_domain`：领域前门→包投影→兼容闸→隐藏名冲突→行为脱糖（普通 `Str` 函数）→**唯一** text-record verify→从 Checked HIR 读回 |
+| `DomainIdentity { id, version, grammar_id, input_hash, compat }` + `same_evidence` | 包版本/切换、源变化、兼容配置变化均判失效（缓存可作键）；同输入稳定 |
+| `DomainRegistry` / `DomainPackageConflict` | 同 id 同版本同 profile 幂等；冲突具名拒且**旧注册保留**（旧程序可继续编译） |
+| `mapping_complete(description, required_roles)` | role 粒度覆盖：删必需 `view` 行 → `Err(["view"])`，合法近邻 `Ok` |
+
+非领域 profile 由驱动具名拒 `source.domain-package`；通用解析/编译入口对领域 profile 拒
+`source.domain-frontend`。领域回调只产候选，信任只来自共享 verify。
+
+## 8. 字段级投影完整性（`field_manifest`，与 980/981 共用）
+
+`ace_core::source::field_manifest` 在 role 粒度之上提供**字段/构造 ID 粒度**的版本化清单与覆盖判据（本文件写机制；分母数据归 owner）：
+
+- `FieldManifest { domain, version, rows }` + `RequiredFieldRow { id, origin, source_span, parent_role, type_rule, applicability, projection_path, check_id, consumer_owner }`；
+- `field_coverage(presented, manifest)` → `required/present/missing/unknown`：必需行缺席与投影侧未知构造都具名可判（不静默丢）；合法近邻/可选行缺席不影响；
+- `validate_field_manifest`：ID 唯一/语义字段非空/条件理由非空/span 有序——不可执行的表直接拒；
+- `component_field_ids(candidates, vocab)`：组件候选→字段出现集（ID 词汇表由清单 owner 注入，Core 不含产品语义）。
+
+已落主分母（不在本文件复制）：UI `ui.widget-decl/v1` **115 行**（980，见 [m2-autoui](m2-autoui.md)）；AGE `AGE_CONSTRUCTS` **12 行** + `AGE_CONSTRUCTS_OUT_OF_SCOPE`（981，见 §9）。删除必需映射/删除清单行的反控在 owner 永久 case 中各自可辨。
+
+## 9. age-package 交接回验与最终边界（2026-11-16，落主 `e352e462b`）
+
+979 对 981/SOURCE 四个交接键在落主树独立回验（命令与逐行判定见计划 §9）：
+
+- **IF-981-MODULE**：两文件 AGE 工程经同一包前门；AV 两实例 2:1 事件 + 各 4 Tick → **6/5**，helper 0→10 → **16/15**，typed view 文本随之变；A2R 同一 `CheckedModule` 经**真实 rustc** → **6**（改 helper → **16**）；模块换序身份不变、模块环具名拒、每模块符号保留。
+- **IF-981-REF**：同模块免导入；跨模块须从声明模块导入（含 `pub use` 链）；`ref-undeclared` / `ref-invisible` / `ref-not-a-node` / `ref-ambiguous` 具名互斥，span 落原模块；修复后同入口恢复。
+- **IF-981-FIELDS**：`AGE_CONSTRUCTS` **12 行** = node/model/model.init/on/on.lifecycle/view/view-2d/view-3d/view.text/view.node-ref/view.scene/view.scene.resource，分母冻结 + 逐行删反控；`AgeViewExit` 按**后缀字节**判定，未知后缀拒 `source.age.view-suffix`；`AGE_CONSTRUCTS_OUT_OF_SCOPE` = `AGE-L04`（981/LANGUAGE+966）与 `AG-A01..09`（980 与 981/LANGUAGE 并集）。
+- **IF-981-ORIGINAL**：g01 三文件原源闭包（hash 与 age-examples 原件一致）→ typed 投影 + `row.cpu` 值：红圆 (-20,10,d30) / 蓝 quad (0,0,30×30) / 绿圆 (25,-15,d24) / 黄 quad (-45,-25,12×12, `visible:false`)，声明序、颜色 alpha、坏 kind 原 token span、改资源值变、恢复。
+
+**边界（不得据此声明完整 AGE/产品支持）**：
+
+- A2R 腿观察的是实例 0 的值（6/16）；实例 1 仅以状态符号存在性断言；typed view 渲染文本只在 AV 侧观察；
+- g01 不进 A2R（`age.material2d.color.v1` 不在 compute 面）；含模块级 `const`/`var` 的包图被 `module.global.*` 拒绝（RUST 批）；
+- AGE-L04（选择/条件）与 AG-A01..09 不在 age-package 分母；AGE-L03 的五 view 中 `view-portrait` / `view-widget` 未实现（981/LANGUAGE owner）；
+- 传统 AutoUI 全模式/窗口（980/PARITY 等）、GUI/FFI/宿主与两游戏（981/SESSION/RUST/LANGUAGE）、完整产品分母（985）仍未交付；4 个 widget 槽位（style/setup/actions/widget 级 `use{}`）在 980 面为具名拒绝（D-980 债务）。
+
+**证据**：计划 §9 T-03/T-08/T-04/T-05 收据；永久 case：core `plan981_*` 147 / `plan979_*` 57 / `plan980_*` 13，av `p981` 3 / `p979` 26，a2x-worker `p981` 2 / `p979` 7；T-04 六组并集 5/6 PASS（唯一红为 PLAN-1062 语料的既有基线红，具名排除、不充 PASS）。

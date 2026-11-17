@@ -87,7 +87,11 @@ PLAN-944 的显式模块装配可为每个真实 owner 提供声明 context（�
 
 1. `prepare`：按完整键查/解事实，不安装、不发布、不建 target。
 2. target-ready：需要可执行目标的调用方附加 ready 句柄。
-3. `commit` 重验：取消标志 → base revision（迟到不装）→ 当前源完整键 → 全部正依赖版本。
+3. `commit` 重验：取消标志 → base revision（迟到不装）→ 当前源完整键 → 全部正依赖版本
+   → fn 负候选集（PLAN-1031：候选读集含缺失 fn 名时，整个 fn 候选集指纹在提交点须仍
+   等值——与会话缓存命中同一粗粒度规则；无关新增函数名同样失效，不做更细粒度）。任何
+   重验失败在 `sink.put` 前拒绝、不发布不换 current/target；既有函数 body-only 编辑不改
+   候选集/签名，候选保持可提交。
 4. 一次切换 source/语义 root/target 的**单一 current 记录**；任何失败保旧。
 - 提交点前依赖变更必须失效/重试；提交点后丢 ack 按原请求身份幂等恢复，不称回滚。
 - single-flight 按完整键：一次计算共享；waiter 取消不污染他人；同键异 payload 拒。

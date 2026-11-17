@@ -50,6 +50,15 @@ the snapshot lane keeps its 828 frontend probe-side per the plan.
   reached the AV (trap/resource/cancel included); hits never execute;
   meta queries are `meta_query`, never AV. The execute-boundary log
   correlates every attempt with its execution key.
+* A publication failure AFTER a successful real execution is a
+  POST-execution failure (PLAN-1037, F32): the demand fails with
+  `cte.freeze/publish` and `av_reached` stays TRUE — `ct_execute` already
+  counted the attempt and the execute-boundary log carries its `ok`
+  entry, while `ct_freeze_publishes` does not grow and no page is
+  written. The next request therefore re-executes (never a phantom hit),
+  and only a repaired publication plus a later hit completes the reuse
+  loop. A refusal BEFORE the AV (front door, admission, `forbid_av` cold
+  miss) keeps `av_reached=false`.
 
 ## 4. Keys, freeze and reuse
 
@@ -75,6 +84,18 @@ identity and are rejected with the named chain; plain recursion is not
 a cycle. Explicit hashes are demands wherever they appear (nested in a
 hash expression or in any CT-closure callee body) — an un-taken runtime
 trap inside a single hash stays latent (the AV's control flow decides).
+Argument values are traversed uniformly (PLAN-1037, F26): `Pos`,
+`MovePos` and `Named` arguments carry the same value subtree, so
+discovery, the callee closure, meta selectors, substitution, site lookup
+and product backfill reach a `#{ ... }` in ANY argument position under
+the same source order, capability and key rules. A named argument's
+LABEL and VALUE are part of its demand identity: pages frozen for
+`f(x: 3)` never answer `f(x: 4)` or `f(y: 3)`-style relabellings, while
+two identical named demands still share one frozen page (F-1037-R1). A
+hash that no lane served remains a
+named rejection (`source.cte.unserved` at the typecheck walk, or the
+capability/`source.cte.bind` refusal without the CT capability); it is
+never silently compiled.
 
 ## 6. Actual A2X worker entry (PLAN-958)
 

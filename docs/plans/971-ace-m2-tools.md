@@ -292,6 +292,61 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+stage: goal | PLAN-971 | r6 | round: 25 | from: work(975) | to: work(975) | status: executing | outcome: pass(975 T-02 sqlite :memory:腿) | 记录: 967钉版provider以:memory:开启（零973依赖），独立oracle复核SUM=9，双负控（bb8d56e07 5.6s）；Auto API面=console foreign缝具名后续 | next: 975 redis RESP腿→T-03..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 24 | from: work(975) | to: work(975) | status: executing | outcome: pass(975 T-01冻结+T-02 JSON encode族) | 记录: 975开工——T-01三域选型冻结（JSON自有codec/967 FFI sqlite/RESP over 974 net）+973分账；T-02首增量 std.json encode族交付（bc19182d9，14 oracle 0.09s） | next: 975 sqlite :memory:/redis腿→T-03..07；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 23 | from: work(974) | to: work(依赖链) | status: executing | outcome: pass(**974整包归档——M2A-03标准库门获正式来源**) | 记录: PLAN-974 整包A交付完成：T-05复审pass(0阻塞)→T-06落主681efa26b+spec m2-stdlib-network sha16 a8338b81e6b5f0ee+归档7534f4eef→T-07清理(worktree/分支/plan-artifacts全删,guard clean)。M2A依赖链：**973/977PY/978/974已闭**；剩973(在途)/979(在途)/981(在途)/975/976/980(部分在途980已见)/982/983/984/OS064/977GD+SCENE | next: 无主包975/976/982/983/984继续或等在途落主→985 T-A03..A05→M2A-08→971 M2-B
+
+stage: goal | PLAN-971 | r6 | round: 22 | from: work(974) | to: review(974/T-05) | status: executing | outcome: pass(974/T-04全V行) | 记录: T-04冻结并集执行——ace-av 1257+ace-native 280+ace-source 597 全PASS（2134例）；V-01..05逐行状态+具名pending（长流背压/上传文件973/TLS-provider道）；974→5/8 | next: 974/T-05独立复审→T-06/07归档（整包A交付喁M2A-03）；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 21 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 WebSocket帧层) | 记录: net_tcp_write_region raw面+真RFC-6455客户端往返（101/掩码帧/无掩码回显），net974 9/9绿（206fdf901） | next: 974 TLS/proxy provider道→T-04..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 20 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 HTTP方法族) | 记录: std.net全方法族（put/patch/delete/head加入），net974 8/8绿（5925768e9） | next: 974 WebSocket→TLS/proxy→T-04..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 19 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08 URL族) | 记录: std.url落地（encode族+join_path，net974 7/7绿 c397befd2）；decode/query族=子串物化核心决定具名pending | next: 974 HTTP扩面→WebSocket→TLS/proxy→T-04..07；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 18 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-08分母核) | 记录: T-08协议分母核交付（13族逐项：已交7核心=TCP双向/HTTP client+server核心/SSE解析/redirect/timeout，证据net974 6/6；具名pending=URL族11符号/TLS/proxy/WebSocket/HTTP全方法面/多跳redirect/可配置timeout/upload-download973腿；分母零删行+关闭序冻结） | next: 974实现腿（URL族→HTTP扩面→WebSocket→TLS/proxy）→T-04..07；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 17 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-03缝裁定+std.net包装) | 记录: 装配缝裁定=(c)PLAN-1041内联约定；stdlib/ace/std/net.at落地+内联包装测试真回环6010012；net974 6/6绿（bd173aff0）；packages面接线具名后续 | next: 974/T-08协议分母核→T-04..07整包A交付；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 16 | from: work(974) | to: user | status: executing | outcome: pass(974 T-03装配缝探针) | 记录: T-03首个有界决定已定案输入——console道单源为设计事实，多模块std.net包装须先裁定装配缝（console前门接纳packages产物 vs 新宿主车道复用execute_platform）；974已交面稳定（net974 5/5绿） | next: 974/T-03缝决定→包装→T-08→T-04..07；或在途包落主后985 T-A03；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 15 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量4) | 记录: SSE流式解析+redirect跟随+拒绝负控交付（cf1b29c9e）；net974 5/5绿（SSE 20002/redirect 30200→20000/refused -8） | next: 974 std.net包装→T-03/T-08→T-04..07 或按裁定；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 14 | from: work(974) | to: work(974) | status: executing | outcome: pass(974回环谜题关闭) | 记录: 具名开放发现已关闭（d090a48bb）：根因=补丁脚本转义损坏客户端实发29字节LF（非内核）+非阻塞复原+paced read三修；net974 4/4绿（server腿0.56s稳定） | next: 974/SSE/redirect/timeout 或按裁定；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 13 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量3)+named-open-finding | 记录: platform.net/1 server面落地（23d47952f：listen/accept/local_port+paced accept）；978已由他会话归档（M2A链推进）；server腿E2E具名挂起（回环29/31部分投递谜题，#[ignore]带因非静默） | next: 974谜题关闭/SSE/redirect 或按裁定；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 12 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02增量2) | 记录: Auto侧HTTP协议API面交付（54e09069e）：旧a2p http_client_sync义务经platform.net/1真TCP承载，GET/builder/post三腿独立oracle精确命中（6010012），net974三测全绿 | next: 974/T-02余量（SSE/server/redirect/timeout）或按裁定；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 11 | from: work(974) | to: work(974) | status: executing | outcome: pass(974/T-02 OS薄适配增量) | 记录: 974/T-02 首增量交付（c226a7215，+754行）：platform.net/1 全栈（av-core四op/caps/预算/台账+Win32 std::net后端+mir_verify准入+core源表+native具名拒）；net_974双测绿（真实TCP HTTP往返 oracle 20043 + 六负控含准入拒零dispatch）；回归48/48 | next: 974/T-02续（http API面/SSE/server腿）或按裁定；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 10 | from: work(依赖链) | to: work(974 A批) | status: executing | outcome: pass(974/T-01冻结) | 记录: 按既定裁定模式开工974：T-01 A期冻结交付（974→r9 executing 1/8；S1选型=扩展platform_io增platform.net/1；973依赖分账=核心TCP/HTTP/SSE腿不前置、File/Stream/upload文件腿具名阻塞；worktree .wt/lang-974/auto-lang已建） | next: 974/T-02（platform.net/1薄适配+最小真实HTTP往返）；GD/SCENE待Godot；971/B 等 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 9 | from: work(977 A批) | to: work(依赖链) | status: executing | outcome: pass(977/PY批A切片落主) | 记录: 977 B-PY-V(9fc1d2a34→4b9c367ba)+B-PY-R+phase fold 完成：**master=56aadead4**，spec m2-other-targets sha16 83af83e29cd299f4；相位门 ace-a2x 247+a2py 105 全PASS；977→4/16(T-01/B-PY-I/V/R)；**985/A 的 COVERAGE Python腿(A2PY路径)已获正式来源** | next: 无主包剩余974/975/976/980/982/983/984（M2A-03标准库门建议974/975；M2A-05 RG-A建议982/983）或在途包落主后985 T-A03；GD/SCENE待Godot；971/B 等 M2A-08
+
+
+stage: goal | PLAN-971 | r6 | round: 8 | from: work(977 A批) | to: work(977 A批) | status: executing | outcome: pass(977/B-PY-I) | 记录: 977/B-PY-I 已交付（977 worktree 727f45616，977→2/16）：旧a2p公开面9/9家族真实Python 3.14.2车道全绿（1.56s），路由事实冻结（instances-cap/cold_aggregates/is表达式），零车道缺口 | next: 977/B-PY-V（全语料case扫描+负控）→ B-PY-R；GD/SCENE待Godot；971/B 等 M2A-08（977/PY批R后phase fold即补COVERAGE Python腿）
+
+stage: goal | PLAN-971 | r6 | round: 7 | from: user(选项A裁定) | to: work(977 A批) | status: executing | outcome: pass(977/T-01) | 记录: 用户裁定选项A→977 A批开工：T-01 A期冻结已交付（前置全归档核实/python.rs漂移重锚定/1042消费面登记/环境冻结Python3.14.2在机·Godot缺席→PY批先行·GD+SCENE不半途开工/命令平台冻结；977→r9 executing 1/16，worktree .wt/lang-977/auto-lang 已建） | next: work——977/B-PY-I（消费1042扩Python provider完整映射+保旧公开格+adapter+永久fixture），其后 B-PY-V/R；GD/SCENE 待Godot环境；REVERSE属B。971/B 仍待 M2A-08（977/PY落主后补齐COVERAGE Python腿之一）
+
+stage: goal | PLAN-971 | r6 | round: 6 | from: work(985链) | to: user | status: executing | outcome: pass(985/T-09已交来源部分)+blocked(985 A批到边界) | 记录: 985/T-09 已交来源部分交付（f0全集33/33实测、FFI行逐行绑定、986/987 pending项；985→4/14）。**985 A批当前可执行边界已到**：T-A03..A05 阻塞于 973-984/OS064 各包A批（973/978/979/981 他会在途；974/975/976/977/980/982/983/984 无主）；T-08[A] 阻塞于 RG 正式输入+File(973) | next: user——选项A：指定无主包A批开工（建议977，阻塞COVERAGE Python腿；次选974/975喂M2A-03）；选项B：等在途包（973/978/979/981）落主后985继续T-A03；971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 5 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A02) | 记录: 985/T-A02 已交付（985 worktree d6342f534，985→3/14）：m2-cover两配方语料+冻结父表真值+四准入族具名红控绑定+V-A-COVER命令冻结 | next: 985/T-09/T-08[A]（已交来源部分）或用户裁定转无主包A批；971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 4 | from: work(985链) | to: work(985链) | status: executing | outcome: pass(985/T-A01) | 记录: 985/T-A01 义务矩阵+V-A-MAP红控已交付（985 worktree 0dff19cd4，簿记 247c345e6，985→executing 2/14）：162行 `autolang.ab-obligations/1` 矩阵（959冻结行+FFI/LIB增补+早期切片去重）+ 7例真实红控（缺行/重复/错source/非收据路径/词表无owner/pending虚报,0.03s绿,`cargo test -p auto-lang-core --lib obligation_ledger`） | next: 985/T-A02（下一就绪）或按用户改道无主包A批；971/B 仍待 M2A-08
+
+stage: goal | PLAN-971 | r6 | round: 3 | from: user(续行指令) | to: work(985链) | status: executing | outcome: blocked(外部依赖扩大) | 记录: 2026-11-16 续行指令"推进985 A批至T-A05/V-A-LAND后回971 B"已执行第一步——985/T-01 A期冻结完成并提交（df9a75568，985 r16 executing 1/14，worktree .wt/lang-985/auto-lang 已建）；985 冻结结论：**M2A-08 需 973-984/OS064 各包A批正式落主**，其中 973/979/981 在途属其他会话、978 reviewed收口中——本会话不可替代；无主可开工的包：974/975/976/977/980/982/983/984；985 下一就绪任务=T-A01 义务矩阵 | next: user/work——后续轮次按续行指令继续（985 T-A01 或无主包A批），971/B 仍待 M2A-08
+
 stage: goal | PLAN-971 | r6 | round: 2 | from: merge | to: user | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-971/auto-lang（保留） | commit: 2f1eed27f (lang) / c1561d94 (auto-ui) | next: user——M2-B 阻塞于 M2A-08（985 A批未闭），A切片已正式合入可消费；同目标恢复B期即可
 
 stage: merge | phase fold (A期PROOF切片；plan 保持 executing，同树保留至B——不归档/不清理/plan-artifacts 在途保留) | PLAN-971 | r6 | outcome: pass (phase) | prepared: 审查基线=phase re-pass e1a600ebe/2f70bbf7 + 相位门绿（ace-facade 28例18.0s、UI全包）；spec增量=新增 `docs/specs/ace-migration/m2-tools.md`（A切片28行已验接口与边界） | landed: 两仓均 rebase 后 `--ff-only`（lang master 增量仅978 docs提交、ui master 增量仅085 docs提交，零代码触面，证据基线有效；rebase后冒烟 fixture 0.50s/CLI 0.18s 绿）；**lang delivery `2f1eed27f`**（range-diff 全等：a2faad900→a1b78d9b4、e1a600ebe→82d659bba、fb838e3da→2f1eed27f）、**auto-ui delivery `c1561d94`**（a6065a59→b156de4e、2f70bbf7→c1561d94）；master tip=delivery ✓ 两仓 | canonical_verified: `docs/specs/ace-migration/m2-tools.md` @2f1eed27f，sha256前16 `c69d0afd1aa1fdf3`（5100字节）；无 legacy ledger 写；specs.json 未触碰 | archived: N/A（phase——B期未完不归档） | cleaned: N/A（phase——worktree/分支保留：`.wt/lang-971/{auto-lang,auto-ui}` 均与各自 master tip 同步；detached 依赖兄弟 auto-web/auto-down 保留至B；plan-artifacts/plan-971 在途保留含规范草案源稿） | 部署观察: 本切片纯库API+测试，无发行二进制/打包产物受影响；批量回归不因相位落地触发（971%5=1，归档时另核） | next: M2-B 全部任务阻塞于 M2A-08（985 A批未闭），goal 以具名阻塞停止

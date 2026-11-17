@@ -1,0 +1,14 @@
+// PLAN-008 g01 Node content: one reusable circle component. The same
+// definition is instantiated twice in the base entry (red/green differ only
+// by position/size/material params) — the multi-instance proof. Pure view:
+// shape2d leaf only; model/msg/on are rejected for this component form.
+node Disc(x: float, y: float, diameter: float, tint: Material2D) {
+    view-2d {
+        shape2d disc {
+            kind: circle
+            position: (x, y)
+            size: (diameter, diameter)
+            material: tint
+        }
+    }
+}

@@ -48,7 +48,26 @@ fn split_fstring_dialect(
 ) -> Result<(Vec<Part>, usize), String> {
     let bytes = src.as_bytes();
     debug_assert!(bytes[i] == b'f');
-    let mut j = i + 2; // past `f"`
+    split_quoted_dialect(src, i + 2, b'"', bare_braces, i)
+}
+
+/// PLAN-980（B-DIALECT-I）：widget 方言反引号 f-string 的分割（`` `text ${expr}` `
+/// ——auto-ui 传统工程形）。`start` 指向开引号后首字节；`origin` 仅为长度合计。
+fn split_widget_fstring(src: &str, start: usize) -> Result<(Vec<Part>, usize), String> {
+    let bytes = src.as_bytes();
+    debug_assert!(bytes[start - 1] == b'`');
+    split_quoted_dialect(src, start, b'`', false, start - 1)
+}
+
+fn split_quoted_dialect(
+    src: &str,
+    start: usize,
+    quote: u8,
+    bare_braces: bool,
+    origin: usize,
+) -> Result<(Vec<Part>, usize), String> {
+    let bytes = src.as_bytes();
+    let mut j = start;
     let mut parts: Vec<Part> = Vec::new();
     let mut text = String::new();
     let mut closed = false;
@@ -128,7 +147,7 @@ fn split_fstring_dialect(
                 text.push('$');
                 j += 1;
             }
-            b'"' => {
+            c if c == quote => {
                 if !text.is_empty() {
                     parts.push(Part::Text(std::mem::take(&mut text)));
                 }
@@ -137,9 +156,7 @@ fn split_fstring_dialect(
                 break;
             }
             // PLAN-968: the scheduler face's legacy `{ident}` form.
-            b'{' if bare_braces
-                && bytes.get(j + 1).is_some_and(|n| is_ident_start(*n)) =>
-            {
+            b'{' if bare_braces && bytes.get(j + 1).is_some_and(|n| is_ident_start(*n)) => {
                 let mut k = j + 1;
                 while k < bytes.len() && is_ident_char(bytes[k]) {
                     k += 1;
@@ -169,7 +186,7 @@ fn split_fstring_dialect(
         // An empty f-string `f""` still yields one empty literal part.
         parts.push(Part::Text(String::new()));
     }
-    Ok((parts, j - i))
+    Ok((parts, j - origin))
 }
 
 /// Desugar every `f"..."` in `src`. A parse-stage error string on a
@@ -183,6 +200,112 @@ pub fn desugar_fstrings_sched(src: &str) -> Result<String, String> {
 
 pub fn desugar_fstrings(src: &str) -> Result<String, String> {
     desugar_fstrings_dialect(src, false)
+}
+
+/// PLAN-980（B-DIALECT-I）：widget 工程源的反引号 f-string desugar。逐字节扫描：
+/// 跳过行注释/普通字符串/字符字面量/`f"` 形，把每个 `` `...` `` 重写为
+/// `__fstr(...)`（与 `f"..."` 同一生成物）。与 PLAN-964 同边界：f-string 内部
+/// span 可能移位（诊断仍指认构造）；外部字节保持。
+pub fn desugar_fstrings_widget(src: &str) -> Result<String, String> {
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'/' && bytes.get(i + 1) == Some(&b'/') {
+            let end = src[i..]
+                .find('\n')
+                .map(|p| i + p + 1)
+                .unwrap_or(bytes.len());
+            out.push_str(&src[i..end]);
+            i = end;
+            continue;
+        }
+        if c == b'"' {
+            let mut j = i + 1;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' => {
+                        j += 1;
+                        if j < bytes.len() {
+                            j += src[j..].chars().next().unwrap().len_utf8();
+                        }
+                    }
+                    b'"' => {
+                        j += 1;
+                        break;
+                    }
+                    _ => j += 1,
+                }
+            }
+            let j = j.min(bytes.len());
+            out.push_str(&src[i..j]);
+            i = j;
+            continue;
+        }
+        if c == b'\'' {
+            let mut j = i + 1;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' => {
+                        j += 1;
+                        if j < bytes.len() {
+                            j += src[j..].chars().next().unwrap().len_utf8();
+                        }
+                    }
+                    b'\'' => {
+                        j += 1;
+                        break;
+                    }
+                    _ => j += 1,
+                }
+            }
+            let j = j.min(bytes.len());
+            out.push_str(&src[i..j]);
+            i = j;
+            continue;
+        }
+        if c == b'`' {
+            let (parts, _len) = match split_widget_fstring(src, i + 1) {
+                Ok(x) => x,
+                Err(e) => return Err(e),
+            };
+            out.push_str("__fstr(");
+            let mut first = true;
+            for p in parts {
+                if !first {
+                    out.push_str(", ");
+                }
+                first = false;
+                match p {
+                    Part::Text(t) => {
+                        out.push('"');
+                        for ch in t.chars() {
+                            if ch == '"' || ch == '\\' {
+                                out.push('\\');
+                            }
+                            out.push(ch);
+                        }
+                        out.push('"');
+                    }
+                    Part::Ident(name) => out.push_str(&name),
+                    Part::Expr(e) => out.push_str(&e),
+                }
+            }
+            out.push(')');
+            // advance past the closing backtick
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'`' {
+                j += 1;
+            }
+            i = (j + 1).min(bytes.len());
+            continue;
+        }
+        let ch = src[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    Ok(out)
 }
 
 fn desugar_fstrings_dialect(src: &str, bare_braces: bool) -> Result<String, String> {

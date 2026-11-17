@@ -61,7 +61,8 @@ impl PackageAvTarget {
         for unit in split_units(&mir)? {
             let mint = package_span(bound, &unit.funcs[0].name)?;
             let (_record, code) =
-                persist_unit_with_context(&store, &unit, mint, &bound.capabilities, 0, "")?;
+                persist_unit_with_context(&store, &unit, mint, &bound.capabilities, 0, "")
+                    .map_err(|e| format!("unit {}: {e:?}", unit.funcs[0].name))?;
             codes.push(code);
         }
         let lowered = codes.len() as u64;
@@ -96,6 +97,32 @@ impl PackageAvTarget {
             ace_av_core::contract::ExecOutcome::Success { value, .. } => Ok(value),
             other => Err(format!("{other:?}")),
         }
+    }
+
+    /// PLAN-973: execute the entry under the platform discipline — per-run
+    /// grants, a fresh resource ledger and an explicit backend (the
+    /// console lane's `run_platform` over the packages snapshot path).
+    pub fn run_platform_value(
+        &self,
+        grants: &[String],
+        backend: &mut dyn ace_av_core::platform_io::PlatformIoBackend,
+    ) -> Result<
+        (
+            ace_av_core::contract::ExecOutcome,
+            ace_av_core::PlatformSessionSummary,
+        ),
+        String,
+    > {
+        let (out, _trace, summary) = ace_av_core::execute_program_platform(
+            &self.current,
+            &ace_av_core::ExecLimits::default(),
+            &ace_av_core::CancelFlag::default(),
+            grants,
+            None,
+            backend,
+        )
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+        Ok((out, summary))
     }
 
     /// The current generation's global cell values (observation only; never

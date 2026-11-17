@@ -141,3 +141,68 @@ packages-aggregates-ct 装配线为本包已验消费面：`stdlib_assembled_fil
 `ace.stdlib-reserved` 拒）。纯 Auto 模块无来源候选；默认算法不以 C/Rust
 实现层代签（AC-AUTO-STD）。执行端五路真跑（AV/mn/cl/rustc/Python）同值；
 f64 发射面与源级纪律详见 [m2-stdlib-core](../../ace-migration/m2-stdlib-core.md)。
+
+## sys 装配集增量（PLAN-973 交付，2026-11-16）
+
+`stdlib_sys_files()` 冻结 sys 10 模块（file/path/env/process/time/rand/storage/
+syscommon/sysplat_win/sysplat_lnx，include_str! 仓内源）；`is_frozen_std_sys_module()`
+守保留名，`assemble_stdlib_sys_inputs` 为唯一消费入口，binding 双点身份
+（binding.rs 两处）防漂移。`#in sys is current` 按目标选平台模块（966 `#if/#is`；
+Windows/Linux 装配绑定已验，Linux 运行归 1063）。sys 模块走 Aggregates/Closures
+车道门（resolve/verify/lowering/abc/host/mir_verify 具 PLAN-973 注记）；旧 sentinel
+公开合同逐面保留。byte→Str 摘除面（read_text 族/zip/storage）以模块头具名注记
+移交 1064，不在装配面伪装可绑。资源/预算/capability 语义见
+[m2-stdlib-io.md](../../ace-migration/m2-stdlib-io.md)。
+
+## 共同模块装配与可见性投影（PLAN-1064 MODULE 切片，2026-11-16）
+
+承接标准库作者源（`pub fn`＋私有 helper、循环条件体）在 `packages-modules`
+平面的统一投影、模块域导入与受检装配交接（`IF-1064-MODULE`；完整 PLAN-1064
+其余 `byte→Str`/KV/ZIP/输出帧切片仍在途，详见 [PLAN-1064](../../../plans/1064-ace-stdlib-byte-str-deferred-surfaces.md)）：
+
+- **条件语法缝闭合（`auto-source.at`）**：`packages-modules` 原在 `if-cond`
+  与 `for-cond-stmt` 使用贪婪 `expr`，导致 `x < ident {` 将块左括号误提交为
+  `ctor-expr` 并在恢复路径报 `fn` 不属于该 profile。现将 `condition-expr`
+  （及 `condition-unary`/`condition-postfix`/`condition-ctor`/`condition-atom`/
+  `condition-ops`）扩至 `packages-modules`（并保留与 `age-package` 的并集），
+  使含循环条件的真实标准库作者源无需删改语法即可按包模块解析；`grammar_id`
+  变更按设计触发包缓存重建。
+- **模块域导入与可见性执法**：
+  - `frontdoor.rs::project_packages_front` 接受单段导入 `use <mod>`（声明
+    模块依赖边，成员保持 `<mod>.<item>` 限定访问），对整模块重导出
+    `pub use <mod>` 以 `source.module-path` 具名拒绝。
+  - `binding.rs` 为单段导入建立 `BoundImport { is_module: true }` 与依赖边
+    （自导入报 `source.module-path`，缺失模块报 `source.module-missing`）；
+    直接把模块命名空间当函数调用（`demo()`）报 `source.module-symbol`；
+    限定调用 `demo.answer()` 沿 `module_prefix`/`cross_call` 查 `exports`
+    集合，跨模块调用私有函数（如 `demo.helper(41)`）或删 `pub` 镜面报
+    `source.module-private` 并保留调用点 span；同模块 `pub` 函数可正常调用
+    私有 helper，私有声明进入 `declarations` 而不进入 `exports`。
+- **真实作者源、恢复失效与具名边界**：
+  - `stdlib/ace/std/json.at`（19 导出 + 8 私有 helper）与
+    `stdlib/ace/std/redis.at` 逐字节原源通过 `compile_package_product` 达
+    checked HIR；`json.at` 跨模块消费已在 AV 实跑执行（`user.name`＝
+    `"Michi"`、`services.0.port` 数组路径→42）；`redis.at` 跨模块绑定已达
+    checked HIR，其 `av.owned/1` 首刀降级在 `lower.intrinsic` 具名拒绝
+    （redis 网络实跑留在 platform lane，不伪装 owned 执行）。
+  - 保留 `std` 包身份冻结（`ace.stdlib-reserved`）与重名模块拒绝
+    （`source.module-identity`）；`PackageStore::prepare`/`restore` 绑定
+    `input_hash` 与摘要校验——恢复产物保持同身份并可执行（42），修改私有
+    helper 正文即移动 `input_hash` 使陈旧 readers 失效，篡改摘要拒绝恢复。
+  - **具名边界**：`packages` 外来 `p967_*` provider 装配执行仍属 1043 线余量；
+    `stdlib/ace/std/sqlite.at` 本身的 canonical `pub fn` 迁移、双 lane 单源服务与
+    `V-LOAD-MODULE` 完整数据业务闭包已由 PLAN-975 闭合（见下节）。
+- **证据入口**：`ace-source-query::module_1064`（6 例）与
+  `ace-av::conformance module_v_1064::`（7 例）；职责组 `ace-source`、
+  `ace-syntax`（及共享消费面）。
+
+## M2-A 数据模块单源服务、TextRecord `pub fn` 与内容视图转发（PLAN-975，2026-11-16）
+
+- **`sqlite.at` 双 lane 同源与 `TextRecord` `pub fn` 准入**：`experimental/ace/grammars/auto-source.at` 将 `r-pub` / `public-fn` 扩至 `text-record` profile（`plan981_grammar_scope` 中仅 `SourceProfile::TextRecord` 的 `grammar_id` 更新为 post-change 值 `fb3d3883...`，其余 13 个 profile 逐字节不变），使 canonical `pub fn` 拼写的 `stdlib/ace/std/sqlite.at` 单源免改同时服务 `text-record` foreign lane（`db975` 2 例）与 `packages-modules` 边界（`db975_sqlite_at_packages_module_face` 5 精确 `pub` 导出、`pub`-stripped 镜面 `source.module-private` RED）。
+- **数据模块 `V-LOAD-MODULE` 与五端内容视图转发**：`stdlib_contract_975::json975_v_load_module_closure` 闭合 `json.at`/`redis.at` 跨模块业务、`json_cp` `source.module-private`、`pub`-stripped RED、`std::json` `ace.stdlib-reserved` 与 `PackageStore::restore`；`a2x-c/src/lower_rt.rs` 调用实参槽不再用 HIR 原始 `Ty::StrOwned` 覆盖 `lower_view_value`/`lower_pure` 返回的 `ContentView`（`Ty::Str`）类型，修复 A2C 跨函数转发 `Str` 视图参数触发 `C4133` 类型不兼容的实虫。
+
+## byte→Str 共享解码、`?List<int>` 与延后系统模块装配（PLAN-1064 SD-BSTR-02，2026-11-17）
+
+- **纯 Auto `byte→Str` 与编解码共同声明（`std.bytes` / `std.syscommon`）**：复用 `975/B1` `char.from_codepoint` + `char.to(Str)` 树状平衡拼接（`tree_concat`，避免 $O(n^2)$ 串联）在 `std.bytes` 交付 `decode_utf8`/`decode_hex`/`decode_base64`/`decode_hex_str`/`decode_base64_str`（空输入 `Some([])`/`Some("")`，严格 RFC 3629 UTF-8 与 RFC 4648 Base64，嵌入 NUL 保真，非法字节/奇长度/错 padding 返 `None`），`std.syscommon` 交付迭代式 `read_region_bytes`/`decode_utf8_region`/`json_escape`/`parse_win32_cmdline`/`ticks16`/`ticks64`；五端（`AV`/`mn(AC)`/`A2C`/`A2R`/`A2Py`）通过 `bstr_1064_v_codec_five_ends` 同值实跑。
+- **`Option<List<int>>` / `?List<int>` 跨端合法化（`D-09`）**：`std.file.read_bytes(path Str) ?List<int>`（`Some([])`、`Some([0, 255])`、`None`）经 `resolve.rs` 补齐 `rblock_always_returns` 嵌套 `is` 返回spine 与 `List` 变体尾填、`a2x-{rust,c,python}`/`collections-runtime` 补齐 `Option<List<_>>` 析构与克隆，并在 `AV`/`A2R`/`A2Py` 与 C collections 通道闭合。
+- **`sys` 完整公开面与装配一致性（`D-01..D-08`）**：`stdlib/ace/sys/{file,path,env,process,storage,zip,syscommon,sysplat_win,sysplat_lnx}` 纳入冻结 `stdlib_sys_files()` 装配集；`stdlib_list_946_grammar_face` 同步反映 `packages-modules` 自 `T-MODULE-D` 闭合 `if a > t {` `condition-expr` 间隙、`packages-aggregates-ct` 仍需括号的共同语法边界。

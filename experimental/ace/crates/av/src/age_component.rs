@@ -9,10 +9,17 @@ use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::{abc_verify, mir_verify};
 use ace_core::source::age_component::{
     compile_age_component, compile_component_scenario, compile_component_scenario_observing,
-    ComponentCompilation, ComponentScenario,
 };
-use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_lowering::lower_checked_owned;
+
+// PLAN-980 STATE：消费者（UI 桥）经本模块取组件面的配置/结果类型，不必直接
+// 依赖 ace-core。再导出为纯加法，既有路径不受影响。
+pub use ace_core::source::age_component::{
+    compile_component_scenario_states, compile_component_scenario_with_initials,
+    project_component_candidates, ComponentCompilation, ComponentInitials, ComponentScenario,
+    InitialValue, ScenarioOp,
+};
+pub use ace_core::source::age_h0::LegacyWidgetAlias;
 
 /// 一次组件场景的真实观察结果。
 #[derive(Debug)]
@@ -93,6 +100,114 @@ pub fn observe_compiled(compiled: &ComponentCompilation) -> Result<ObservedCompo
     })
 }
 
+/// 单个 (实例, 字段) 的真值（按源类型映射；PLAN-980 STATE）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentFieldValue {
+    Int(i32),
+    Bool(bool),
+    Str(String),
+}
+
+/// 每实例、每字段的真值观察结果（实例序、字段声明序）。
+#[derive(Clone, Debug)]
+pub struct ObservedStates {
+    pub per_instance: Vec<Vec<(String, ComponentFieldValue)>>,
+}
+
+/// 逐字段状态观察：执行每个 `__age_state_<i>_<field>` def，按源类型映射真值。
+///
+/// 与 `observe_compiled` 的整型打包编码互补：驱动编码适合场景级 oracle；本
+/// API 是 UI 桥的 `read_state` 通道（int/bool/str 全域）。
+pub fn observe_component_states(compiled: &ComponentCompilation) -> Result<ObservedStates, String> {
+    let mut per_instance = Vec::new();
+    for node in &compiled.description.nodes {
+        for per in &node.instance_states {
+            let mut row = Vec::new();
+            for s in per {
+                let value = match s.ty.as_str() {
+                    "int" | "i32" => match execute_value(&compiled.checked, &s.def_id)? {
+                        Value::I32(v) => ComponentFieldValue::Int(v),
+                        other => {
+                            return Err(format!(
+                                "state `{}` did not produce an i32: {other:?}",
+                                s.fn_name
+                            ))
+                        }
+                    },
+                    "bool" => match execute_value(&compiled.checked, &s.def_id)? {
+                        Value::Bool(b) => ComponentFieldValue::Bool(b),
+                        other => {
+                            return Err(format!(
+                                "state `{}` did not produce a bool: {other:?}",
+                                s.fn_name
+                            ))
+                        }
+                    },
+                    "str" | "Str" => match execute_value(&compiled.checked, &s.def_id)? {
+                        Value::Str(h) => String::from_utf8(h.bytes().to_vec())
+                            .map(ComponentFieldValue::Str)
+                            .map_err(|e| format!("state text not UTF-8: {e}"))?,
+                        other => {
+                            return Err(format!(
+                                "state `{}` did not produce a Str: {other:?}",
+                                s.fn_name
+                            ))
+                        }
+                    },
+                    other => {
+                        return Err(format!(
+                            "state `{}` carries unsupported type `{other}`",
+                            s.fn_name
+                        ))
+                    }
+                };
+                row.push((s.field.clone(), value));
+            }
+            per_instance.push(row);
+        }
+    }
+    Ok(ObservedStates { per_instance })
+}
+
+/// 逐字段状态 + 文本叶双观察（PLAN-980 NATIVE：免驱动源的完整观察面——
+/// states 按 int/bool/str 全域、texts 按实例取共享 Str 真值）。
+pub fn observe_component_states_and_texts(
+    compiled: &ComponentCompilation,
+) -> Result<(ObservedStates, Vec<Vec<String>>), String> {
+    let states = observe_component_states(compiled)?;
+    let mut texts: Vec<Vec<String>> = Vec::new();
+    for node in &compiled.description.nodes {
+        for per in &node.instance_texts {
+            let mut row = Vec::new();
+            for t in per {
+                row.push(execute_text(&compiled.checked, &t.def_id)?);
+            }
+            texts.push(row);
+        }
+    }
+    Ok((states, texts))
+}
+
+/// 场景级便捷入口：**states-only** 编译（带初值）→ 逐字段状态观察
+/// （PLAN-980 STATE 的 UI 桥热路径）。
+///
+/// states-only 不发射文本叶求值函数——f-string 叶（`TextDisplay`）在
+/// av.owned/1 车道不可 lowering，状态通道不依赖文本叶，故此类源仍可观察
+/// 状态。完整文本观察走 `observe_compiled`（f-string 源在那条车道保持拒绝）。
+pub fn observe_component_scenario_states(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    scenario: &ComponentScenario,
+    initials: &ComponentInitials,
+) -> Result<ObservedStates, String> {
+    let caps = ["ac.runtime.text.v1".to_string()];
+    let compiled =
+        compile_component_scenario_states(src, module_path, alias, &caps, scenario, initials)
+            .map_err(|ds| format_diags(&ds))?;
+    observe_component_states(&compiled)
+}
+
 fn format_diags(ds: &[ace_core::atom_text::Diagnostic]) -> String {
     ds.iter()
         .map(|d| format!("{}: {}", d.code, d.message))
@@ -101,22 +216,8 @@ fn format_diags(ds: &[ace_core::atom_text::Diagnostic]) -> String {
 }
 
 fn execute_i32(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Result<i32, String> {
-    let mir = lower_checked_owned(checked, def_id, 0x979)
-        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
-    mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
-    let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
-    let flat = wire.to_flat();
-    let decoded = decode_abc(&flat).map_err(|e| format!("decode `{def_id}`: {e:?}"))?;
-    let loaded = abc_verify::verify_abc(decoded, &mir.owner)
-        .map_err(|e| format!("admit `{def_id}`: {e:?}"))?;
-    let limits = ExecLimits::default();
-    let cancel = CancelFlag::new(false);
-    let (outcome, _trace) = execute(&loaded, &limits, &cancel);
-    match outcome {
-        ExecOutcome::Success {
-            value: Value::I32(v),
-            ..
-        } => Ok(v),
+    match execute_value(checked, def_id)? {
+        Value::I32(v) => Ok(v),
         other => Err(format!(
             "component driver did not produce an i32: {other:?}"
         )),
@@ -124,6 +225,17 @@ fn execute_i32(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Resul
 }
 
 fn execute_text(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Result<String, String> {
+    match execute_value(checked, def_id)? {
+        Value::Str(h) => {
+            String::from_utf8(h.bytes().to_vec()).map_err(|e| format!("text not UTF-8: {e}"))
+        }
+        other => Err(format!("text evaluation did not produce a Str: {other:?}")),
+    }
+}
+
+/// 共享链执行单个 def：lower → MIR verify → ABC admit → AV（PLAN-980 STATE
+/// 起为状态函数/驱动/文本共用的通用执行器）。
+fn execute_value(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Result<Value, String> {
     let mir = lower_checked_owned(checked, def_id, 0x979)
         .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
     mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
@@ -136,10 +248,9 @@ fn execute_text(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Resu
     let cancel = CancelFlag::new(false);
     let (outcome, _trace) = execute(&loaded, &limits, &cancel);
     match outcome {
-        ExecOutcome::Success {
-            value: Value::Str(h),
-            ..
-        } => String::from_utf8(h.bytes().to_vec()).map_err(|e| format!("text not UTF-8: {e}")),
-        other => Err(format!("text evaluation did not produce a Str: {other:?}")),
+        ExecOutcome::Success { value, .. } => Ok(value),
+        other => Err(format!(
+            "execution of `{def_id}` did not succeed: {other:?}"
+        )),
     }
 }

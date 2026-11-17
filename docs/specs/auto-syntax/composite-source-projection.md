@@ -67,3 +67,21 @@ lambda 复用既有 Rc 体。**语法复用≠语义复用**：目录对上层�
 零编辑/重排/删除、大源有界）；文件化
 `case-ace-source-composite-928`（复合面 parse+无损重建、profile 门负控、
 值腿、同文 λ 异 owner 独立语义 oracle U1=1112）；固定组 `ace-source`。
+
+## PLAN-1035 增量：聚合资源分类与 Pos/Named 投影准入（2026-11-16）
+
+- 已准入聚合（`av.aggregates/1`）的资源分类由**类型图派生**，不由输入声明：record 的
+  资源闭包按“字段可达资源叶”判定（owned Str / List 缓冲 / Variant 载荷 / 运行时
+  closure 环境 / object cell；tuple 递归），source resolve、core verify（元素门与
+  terminal 门共享同一判据）、lowering HIR walk、av-core ownership 与 layout `is_copy`
+  四层一致；owner（S 语义 move）、物理 drop（D）与借用根（R）分开消费，不合并成单一
+  owned 布尔。
+- 冻结面保持：裸 List/Closure/Object 元素的链式 view 读**不是** owned 元素物化
+  （`xs.get(i).get(j)` 仍合法）；“whole owned element 必须投影”的门只覆盖 record 元素。
+- **Pos/Named 索引等价**：普通 `get` 对单参 Named（名字不校验，按值取 index）的准入
+  即融合投影的准入；label 不进入 HIR，`xs.get(index:0).f` 与 `xs.get(0).f` 的 HIR
+  形状逐表达式相同（index 恰有一个求值点），不存在用户可触发的 `unreachable!`。
+- 证据锚：`ace-av` 的 `audit1035_res_01_*`/`audit1035_res_02_*`（含 typed 深克隆与
+  native admit/emit）、`ace-core` 的 `aggregates_resource_1035`（HIR 门 + Named≡Pos
+  结构），PLAN-1035 T-03 六组结果（`ace-source`/`ace-lowering`/`ace-av`/`ace-native`/
+  `ace-a2x`/`ace-a2c-abi`）。

@@ -54,9 +54,10 @@ pub struct CtExecOutcome {
 }
 
 /// Why an execution failed. `av_reached` distinguishes the attempt
-/// accounting: a failure AFTER the AV was reached (trap/resource/cancel)
-/// is still a REAL ct_execute attempt (the §5.8 rule); a failure before
-/// it (frontend/lowering/admission) is not.
+/// accounting: a failure AFTER the AV was reached (trap/resource/cancel,
+/// and a publication failure after a successful execution) is still a
+/// REAL ct_execute attempt (the §5.8 rule); a failure before it
+/// (frontend/lowering/admission) is not.
 #[derive(Clone, Debug)]
 pub struct CtExecError {
     pub code: String,
@@ -262,6 +263,12 @@ pub fn run_entry_on_av_observed(
         ExecOutcome::Infra(m) => Err(CtExecError::at_av(
             "cte.infra/exec",
             format!("AV infra failure: {m}"),
+        )),
+        // PLAN-973: CTE entries never own a process; an exit request in a
+        // compile-time entry is a checked failure, not a host exit.
+        ExecOutcome::Exit { code } => Err(CtExecError::at_av(
+            "cte.exit",
+            format!("compiletime entry requested process exit: {code}"),
         )),
     }
 }

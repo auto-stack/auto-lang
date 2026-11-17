@@ -116,3 +116,17 @@ body-edit P90=427/490/176ms≤2000ms，fresh 单列（828 先例）。
   未改函数生产 0 门）/语义编辑（生产恰 1）/历史回访（store hit、生产 0）/
   restart 重装配字节一致。恢复→首编辑 SYN 腿归 PLAN-929（D-931-1 pending），
   本通道不冒充。
+
+## 父侧有界交换与 worker 资源 policy（PLAN-1034）
+
+- 日常 emit 只 spawn 预构建 worker（spawn-zero 不变）；父请求统一经 owned
+  `ExecutionSpec.stdin_data` 全量写入并关闭 stdin（argv 入口保留兼容且同限额）。
+- 父交换走 `auto-tool-execution::run_bounded`（opt-in，非既有 run 合同）：exec 70s（含 stdin
+  发送/等待/双流收集，成功含收尾收集必须全部在内）；终止触发后共享单一 cleanup 3s（两轮
+  kill/reap、三线程真停共用同一剩余量）；stdout 响应元数据 4MiB、stderr 1MiB，cap+1 观测即
+  终止 owned 树并 Status::Error，绝无截断文本成功；清理失败以具名残留记录，不谎报收敛。
+- 同步父阶段（凭证读取、staging、manifest/产物/golden 读取比较）单列计时，不受 70s 硬截止；
+  产物准入：manifest 4MiB、单文件 64MiB、单 check 总量 128MiB（checked 累加、cap+1 有界读取）。
+- golden 仍父判：worker 永不接收 expected；`A2X_TEST_FAULT` 等 TEST-ONLY 故障缝仅测试 setup
+  提供，生产路径永不设置。
+

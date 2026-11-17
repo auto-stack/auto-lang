@@ -1,0 +1,513 @@
+// ACE system-library shared helpers (PLAN-973 T-02): OS-neutral pure-Auto
+// utilities over the frozen platform ops and the 972 std set — UTF-8 byte
+// encoding/decoding between Str and OS regions, decimal formatting,
+// ordering/escaping and the buffer-walk engine.
+//
+// Lane discipline (frozen): the packages-aggregates face has NO
+// while/conditional-for loops (`for` is for-in only; 945/946/972 ruling)
+// and the AV frame stack is capped at MAX_AV_FRAMES = 1024. Every counted
+// byte/scalar walk is therefore a THREE-LEVEL chunked recursion:
+// INNER ≤ 768 steps, MID × ~40, OUTER × ~40 — depth ≤ 768 + 40 + 40 = 848
+// frames while covering the full 1 MiB per-run platform byte budget
+// (40 × 40 × 768 = 1_228_800 bytes). No bit ops (div/mod arithmetic only);
+// NUL is an ordinary byte.
+
+use std.bytes.decode_utf8
+
+pub fn INNER() int {
+    return 768
+}
+
+pub fn MID() int {
+    return 40
+}
+
+pub fn min_i(a int, b int) int {
+    if (a < b) {
+        return a
+    }
+    return b
+}
+
+pub fn max_i(a int, b int) int {
+    if (a > b) {
+        return a
+    }
+    return b
+}
+
+// Advance at most n scalars from i (clamped to the string length).
+pub fn advance_if(s Str, i int, n int) int {
+    if (i + n < s.len()) {
+        return i + n
+    }
+    return s.len()
+}
+
+// ---- UTF-8 code tables --------------------------------------------------------
+
+pub fn utf8_len(p int) int {
+    if (p < 128) {
+        return 1
+    }
+    if (p < 2048) {
+        return 2
+    }
+    if (p < 65536) {
+        return 3
+    }
+    return 4
+}
+
+pub fn byte_of(p int, k int) int {
+    if (p < 128) {
+        return p
+    }
+    if (p < 2048) {
+        if (k == 0) {
+            return 192 + p / 64
+        }
+        return 128 + p % 64
+    }
+    if (p < 65536) {
+        if (k == 0) {
+            return 224 + p / 4096
+        }
+        if (k == 1) {
+            return 128 + (p / 64) % 64
+        }
+        return 128 + p % 64
+    }
+    if (k == 0) {
+        return 240 + p / 262144
+    }
+    if (k == 1) {
+        return 128 + (p / 4096) % 64
+    }
+    if (k == 2) {
+        return 128 + (p / 64) % 64
+    }
+    return 128 + p % 64
+}
+
+// ---- Str -> region bytes (three-level chunked, tail-move discipline) --
+//
+// The 972 ownership discipline: a Str param is READ via methods and
+// tail-moved EXACTLY ONCE into the next helper; no non-tail passes.
+
+pub fn encode_into(s Str, region int, off int) int {
+    return enc_outer(s, region, off, 0)
+}
+
+fn enc_outer(s Str, region int, pos int, ci int) int {
+    if (ci >= s.len()) {
+        return 0
+    }
+    let stopb = min_i(s.len(), ci + MID() * INNER())
+    return enc_mid(s, region, pos, ci, stopb)
+}
+
+fn enc_mid(s Str, region int, pos int, ci int, ostop int) int {
+    if (ci >= ostop) {
+        return enc_outer(s, region, pos, ostop)
+    }
+    return enc_inner(s, region, pos, ci, ostop, min_i(ostop, ci + INNER()))
+}
+
+// Each scalar's <=4 encoding bytes are UNROLLED (no counted loops).
+fn enc_inner(s Str, region int, pos int, ci int, ostop int, istop int) int {
+    if (ci >= istop) {
+        return enc_mid(s, region, pos, istop, ostop)
+    }
+    let p = s.char_at(ci).to_codepoint()
+    let w0 = mem_write_u8(region, pos, byte_of(p, 0))
+    if (w0 != 0) {
+        return w0
+    }
+    var pos1 = pos + 1
+    if (p >= 128) {
+        let w1 = mem_write_u8(region, pos1, byte_of(p, 1))
+        if (w1 != 0) {
+            return w1
+        }
+        pos1 = pos1 + 1
+        if (p >= 2048) {
+            let w2 = mem_write_u8(region, pos1, byte_of(p, 2))
+            if (w2 != 0) {
+                return w2
+            }
+            pos1 = pos1 + 1
+            if (p >= 65536) {
+                let w3 = mem_write_u8(region, pos1, byte_of(p, 3))
+                if (w3 != 0) {
+                    return w3
+                }
+                pos1 = pos1 + 1
+            }
+        }
+    }
+    return enc_inner(s, region, pos1, ci + 1, ostop, istop)
+}
+
+// ---- 64-bit lo/hi composition (no bit ops) ----------------------------------------
+
+pub fn combine64(hi int, lo int) i64 {
+    var lo64 = lo.to(i64)
+    if (lo64 < 0i64) {
+        lo64 = lo64 + 4294967296i64
+    }
+    return hi.to(i64) * 4294967296i64 + lo64
+}
+
+// Decimal string of an i64 (digit chars via table slices — no char
+// construction on this face).
+pub fn from_i64(v i64) Str {
+    if (v < 0i64) {
+        return "-" + from_i64(0i64 - v)
+    }
+    if (v == 0i64) {
+        return "0"
+    }
+    return from_i64_walk(v, "")
+}
+
+fn from_i64_walk(rest i64, acc Str) Str {
+    if (rest == 0i64) {
+        return acc.clone()
+    }
+    let digit = (rest % 10i64).to(i32)
+    return from_i64_walk(rest / 10i64, DIGITS().slice(digit, digit + 1) + acc)
+}
+
+fn DIGITS() Str {
+    return "0123456789"
+}
+
+// (str_eq/str_lt removed — two-Str walks cannot ride the single
+// tail-move discipline; comparisons land with the lane increment.)
+
+pub fn escape(s Str) Str {
+    return esc_outer(s, 0, "")
+}
+
+fn esc_outer(s Str, i int, acc Str) Str {
+    if (i >= s.len()) {
+        return acc.clone()
+    }
+    let stopb = min_i(s.len(), i + MID() * INNER())
+    return esc_mid(s, i, stopb, acc)
+}
+
+fn esc_mid(s Str, i int, ostop int, acc Str) Str {
+    if (i >= ostop) {
+        return esc_outer(s, ostop, acc)
+    }
+    return esc_inner(s, i, min_i(ostop, i + INNER()), ostop, acc)
+}
+
+fn esc_inner(s Str, i int, istop int, ostop int, acc Str) Str {
+    if (i >= istop) {
+        return esc_mid(s, istop, ostop, acc)
+    }
+    let p = s.char_at(i).to_codepoint()
+    if (p == 92) {
+        return esc_inner(s, i + 1, istop, ostop, acc + "\\")
+    }
+    if (p == 10) {
+        return esc_inner(s, i + 1, istop, ostop, acc + "\\n")
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    return esc_inner(s, i + 1, istop, ostop, acc + piece)
+}
+
+pub fn unescape(s Str) Str {
+    return unesc_outer(s, 0, "")
+}
+
+fn unesc_outer(s Str, i int, acc Str) Str {
+    if (i >= s.len()) {
+        return acc.clone()
+    }
+    let stopb = min_i(s.len(), i + MID() * INNER())
+    return unesc_mid(s, i, stopb, acc)
+}
+
+fn unesc_mid(s Str, i int, ostop int, acc Str) Str {
+    if (i >= ostop) {
+        return unesc_outer(s, ostop, acc)
+    }
+    return unesc_inner(s, i, min_i(ostop, i + INNER()), ostop, acc)
+}
+
+fn unesc_inner(s Str, i int, istop int, ostop int, acc Str) Str {
+    if (i >= istop) {
+        return unesc_mid(s, istop, ostop, acc)
+    }
+    let p = s.char_at(i).to_codepoint()
+    if (p == 92 && i + 1 < s.len()) {
+        let q = s.char_at(i + 1).to_codepoint()
+        if (q == 110) {
+            return unesc_inner(s, i + 2, istop, ostop, acc + "\\n")
+        }
+        if (q == 92) {
+            return unesc_inner(s, i + 2, istop, ostop, acc + "\\")
+        }
+        let piece1 Str = s.slice(i, i + 1).clone()
+        let piece2 Str = s.slice(i + 1, i + 2).clone()
+        return unesc_inner(s, i + 2, istop, ostop, acc + piece1 + piece2)
+    }
+    let piece Str = s.slice(i, i + 1).clone()
+    return unesc_inner(s, i + 1, istop, ostop, acc + piece)
+}
+
+// Total UTF-8 byte length of s (chunked scalar walk, tail-move).
+pub fn str_bytes_len(s Str) int {
+    return len_outer(s, 0, 0)
+}
+
+fn len_outer(s Str, ci int, acc int) int {
+    if (ci >= s.len()) {
+        return acc
+    }
+    let stopb = min_i(s.len(), ci + MID() * INNER())
+    return len_mid(s, ci, stopb, acc)
+}
+
+fn len_mid(s Str, ci int, ostop int, acc int) int {
+    if (ci >= ostop) {
+        return len_outer(s, ostop, acc)
+    }
+    return len_inner(s, ci, min_i(ostop, ci + INNER()), ostop, acc)
+}
+
+fn len_inner(s Str, ci int, istop int, ostop int, acc int) int {
+    if (ci >= istop) {
+        return len_mid(s, istop, ostop, acc)
+    }
+    let add = utf8_len(s.char_at(ci).to_codepoint())
+    return len_inner(s, ci + 1, istop, ostop, acc + add)
+}
+
+// PLAN-1064 T-02: host-region byte reader + strict UTF-8 decoder.
+// Returns 0 on success, -1 on invalid region / negative bounds / out-of-range read.
+pub fn read_region_bytes(region int, offset int, length int, out List<int>) int {
+    if (region <= 0) { return -1 }
+    if (offset < 0) { return -1 }
+    if (length < 0) { return -1 }
+    if (length == 0) { return 0 }
+    let stop = offset + length
+    let t64 = ticks64()
+    var i = offset
+    for a in t64 {
+        if (i >= stop) { break }
+        for b in t64 {
+            if (i + 8 <= stop) {
+                let b0 = mem_read_u8(region, i)
+                let b1 = mem_read_u8(region, i + 1)
+                let b2 = mem_read_u8(region, i + 2)
+                let b3 = mem_read_u8(region, i + 3)
+                let b4 = mem_read_u8(region, i + 4)
+                let b5 = mem_read_u8(region, i + 5)
+                let b6 = mem_read_u8(region, i + 6)
+                let b7 = mem_read_u8(region, i + 7)
+                if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0 || b4 < 0 || b5 < 0 || b6 < 0 || b7 < 0) { return -1 }
+                out.push(b0); out.push(b1); out.push(b2); out.push(b3)
+                out.push(b4); out.push(b5); out.push(b6); out.push(b7)
+                i = i + 8
+            } else {
+                if (i >= stop) { break }
+                let ch = mem_read_u8(region, i)
+                if (ch < 0) { return -1 }
+                out.push(ch)
+                i = i + 1
+            }
+        }
+    }
+    if (i < stop) { return read_region_bytes(region, i, stop - i, out) }
+    return 0
+}
+
+pub fn decode_utf8_region(region int, offset int, length int) ?Str {
+    var xs = List<int>.new()
+    if (read_region_bytes(region, offset, length, xs) != 0) { return None }
+    return decode_utf8(xs)
+}
+
+pub fn ticks16() List<int> {
+    var b = List<int>.new()
+    b.push(0); b.push(0); b.push(0); b.push(0)
+    b.push(0); b.push(0); b.push(0); b.push(0)
+    b.push(0); b.push(0); b.push(0); b.push(0)
+    b.push(0); b.push(0); b.push(0); b.push(0)
+    return b
+}
+
+pub fn ticks64() List<int> {
+    var out = List<int>.new()
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0); out.push(0)
+    return out
+}
+
+fn hex_nibble(n int) Str {
+    let h = "0123456789abcdef"
+    return h.slice(n, n + 1).clone()
+}
+
+pub fn json_escape(s Str) Str {
+    return json_escape_chunk(s, 0, "")
+}
+
+fn json_escape_chunk(s Str, start int, acc Str) Str {
+    let n = s.len()
+    if (start >= n) {
+        return acc.clone()
+    }
+    let t16 = ticks16()
+    let t64 = ticks64()
+    var i = start
+    var run_start = start
+    var stop = start + 1024
+    if (stop > n) { stop = n }
+    var out = acc.clone()
+    for outer in t16 {
+        if (i >= stop) { break }
+        for inner in t64 {
+            if (i >= stop) { break }
+            let cp = s.char_at(i).to_codepoint()
+            if (cp == 34 || cp == 92 || cp < 32) {
+                if (i > run_start) {
+                    out = out + s.slice(run_start, i).clone()
+                }
+                if (cp == 34) { out = out + "\\\"" }
+                else {
+                    if (cp == 92) { out = out + "\\\\" }
+                    else {
+                        if (cp == 8) { out = out + "\\b" }
+                        else {
+                            if (cp == 12) { out = out + "\\f" }
+                            else {
+                                if (cp == 10) { out = out + "\\n" }
+                                else {
+                                    if (cp == 13) { out = out + "\\r" }
+                                    else {
+                                        if (cp == 9) { out = out + "\\t" }
+                                        else {
+                                            out = out + "\\u00" + hex_nibble((cp / 16) % 16) + hex_nibble(cp % 16)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                run_start = i + 1
+            }
+            i = i + 1
+        }
+    }
+    if (i > run_start) {
+        out = out + s.slice(run_start, i).clone()
+    }
+    if (i >= n) {
+        return out
+    }
+    return json_escape_chunk(s, i, out)
+}
+
+fn repeat_bs(n int) Str {
+    if (n <= 0) { return "" }
+    if (n == 1) { return "\\" }
+    return "\\" + repeat_bs(n - 1)
+}
+
+// Parse a Win32 CommandLineToArgvW-style string into individual owned Str arguments,
+// preserving quoted spaces, empty quoted args `""`, escaped `\"`, and Unicode.
+pub fn parse_win32_cmdline(cmd Str) List<Str> {
+    var out = List<Str>.new()
+    let n = cmd.len()
+    if (n == 0) { return out }
+    let t16 = ticks16()
+    let t64 = ticks64()
+    var i = 0
+    var mode = 0
+    var in_q = false
+    var bs = 0
+    var arg = ""
+    for a in t16 {
+        if (i >= n && mode == 0) { break }
+        for b in t64 {
+            if (i >= n && mode == 0) { break }
+            for c in t64 {
+                if (i >= n) {
+                    if (mode == 1) {
+                        if (bs > 0) { arg = arg + repeat_bs(bs) }
+                        out.push(arg.move)
+                        arg = ""
+                        mode = 0
+                    }
+                    break
+                }
+                let cp = cmd.char_at(i).to_codepoint()
+                if (mode == 0) {
+                    if (cp == 32 || cp == 9) {
+                        i = i + 1
+                    } else {
+                        mode = 1
+                        in_q = false
+                        bs = 0
+                        arg = ""
+                    }
+                } else {
+                    if (cp == 92) {
+                        bs = bs + 1
+                        i = i + 1
+                    } else {
+                        if (cp == 34) {
+                            if (bs > 0) { arg = arg + repeat_bs(bs / 2) }
+                            if (bs % 2 == 1) {
+                                arg = arg + "\""
+                                bs = 0
+                                i = i + 1
+                            } else {
+                                bs = 0
+                                if (in_q && i + 1 < n && cmd.char_at(i + 1).to_codepoint() == 34) {
+                                    arg = arg + "\""
+                                    i = i + 2
+                                } else {
+                                    if (in_q) { in_q = false } else { in_q = true }
+                                    i = i + 1
+                                }
+                            }
+                        } else {
+                            if (bs > 0) {
+                                arg = arg + repeat_bs(bs)
+                                bs = 0
+                            }
+                            if (in_q == false && (cp == 32 || cp == 9)) {
+                                out.push(arg.move)
+                                arg = ""
+                                mode = 0
+                                i = i + 1
+                            } else {
+                                arg = arg + cmd.slice(i, i + 1).clone()
+                                i = i + 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (mode == 1) {
+        if (bs > 0) { arg = arg + repeat_bs(bs) }
+        out.push(arg.move)
+    }
+    return out
+}

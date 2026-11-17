@@ -1475,3 +1475,94 @@ fn ace_m2_p985_cover_wrong_oracle_is_red() {
         "plain-run stays green under the localized mutation"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-977 B-PY-V — the py-977 tracked corpus through the CASE line:
+// `ac-a2py/hir-stdlib-run-v1` checks (adapter -> prebuilt a2x-worker
+// run-py -> REAL OS Python 3.14, parent-side judged). The five V axes:
+// value returns, stdout observation, short-circuit trace marks (stderr),
+// trap faces (overflow / div-zero) and the record-text lane value face.
+// The wrong-oracle RED control below proves parent-side judging on this
+// registration; bad-input admission negatives (emit impersonating run,
+// legacy PythonTrans, AutoVM fallback, expected injection, missing
+// Python) are owned by `ac_av_probe_decode_negatives`-style 1042
+// admission controls (see ac_a2py_hir.rs admission rules + pyready_04).
+// ---------------------------------------------------------------------------
+
+/// The py-977 corpus runs END TO END green through the case line with
+/// real Python execution.
+#[test]
+fn ace_m2_p977_py_case_line_green() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("py-977");
+    let report = run_suite(
+        &cases_dir.join("ace-m2/py-977/py-977.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("py-977 suite runs");
+    let failing: Vec<String> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} = {:?} | {:?} | mismatches: {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(
+        failing.is_empty(),
+        "py-977 case line has non-PASS checks:\n{}",
+        failing.join("\n")
+    );
+    assert_eq!(report.results.len(), 8, "eight corpus checks");
+}
+
+/// Wrong-oracle RED control on the py-977 registration: mutating the
+/// frozen stdout oracle (value:14 -> value:15) must turn the gate RED
+/// naming the stdout axis — parent-side judging, never a worker verdict.
+#[test]
+fn ace_m2_p977_py_wrong_oracle_is_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
+    let root = temp_root("py-977-neg");
+    let corpus = root.join("corpus");
+    copy_tree(&cases_dir.join("ace-m2/py-977"), &corpus);
+    let doc = corpus.join("py-977.case.ad");
+    let text = std::fs::read_to_string(&doc).unwrap();
+    // the corpus document carries the oracle with a LITERAL backslash-n
+    // escape (`value:14\n` in the .case.ad text) — match those two bytes
+    let mutated = text.replacen("value:14\\n", "value:15\\n", 1);
+    assert_ne!(&mutated, &text, "mutation must hit the value oracle");
+    std::fs::write(&doc, mutated).unwrap();
+    let report = run_suite(
+        &corpus.join("py-977.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated py-977 suite still runs");
+    let value = report
+        .results
+        .iter()
+        .find(|r| r.case_id == "ace.m2.p977.py.value" && r.check_id == "py-run")
+        .expect("value check present");
+    assert_eq!(value.status, Status::Fail, "wrong stdout must be RED");
+    assert!(
+        value.mismatches.iter().any(|m| m.observation == "stdout"),
+        "the failure must name the stdout axis: {:?}",
+        value.mismatches
+    );
+    // Localized: a sibling trap case stays green.
+    assert!(
+        report
+            .results
+            .iter()
+            .any(|r| r.case_id == "ace.m2.p977.py.overflow"
+                && r.check_id == "py-run"
+                && r.status == Status::Pass),
+        "overflow trap stays green under the localized mutation"
+    );
+}

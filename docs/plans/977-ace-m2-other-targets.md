@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-977
-status: drafting
+status: executing
 feature_name: 其余A2X目标与独立转换工具接管
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 6
-current_step: 0
+updated_at: 2026-11-16
+plan_revision: 9
+current_step: 4
 total_steps: 16
-depends_on: [PLAN-959, PLAN-960, PLAN-962, PLAN-964, PLAN-965, PLAN-968]
+depends_on: [PLAN-959, PLAN-960, PLAN-962, PLAN-964, PLAN-965, PLAN-968, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-other-targets.md]
 touched_goals: [GOAL-002]
@@ -17,6 +17,10 @@ touched_goals: [GOAL-002]
 # [PLAN-977] 其余A2X目标与独立转换工具接管
 
 ## 0. 变更摘要
+
+2026-11-15 r8当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
+
+2026-11-13 r7当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
 
 2026-11-12 r6：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -64,6 +68,20 @@ touched_goals: [GOAL-002]
 
 外仓路径仅只读调研；跨仓实施前T-01须读取当地AGENTS并由owner确认同组实施路径与实际门禁。工具真实实现归属须按当前模块Spec与源码核定；LSP已由971确认在auto-ui，不能从语言仓残留固定组名推断package归属。
 
+### T-01 A期冻结记录（2026-11-16，r9执行）
+
+**授权**：用户裁定解锁路径选项A（2026-11-16 goal 续行）——开工本包 A 批（PY/GD/SCENE）；REVERSE 及收口任务属 B（M2A-08 后）。worktree：`D:/autostack/.wt/lang-977/auto-lang`（分支 `plan-977-dev`，基面 master@b66405d6d）；材料 `plan-artifacts/plan-977/` 已登记；无 junction/symlink。
+
+**前置核实**：977/PY 最小前置 L1042/L960/L962/L964/L965/L968 **全部已归档** ✓（PY 批就绪）；GD 前置同（除1042）✓；SCENE 依 977/GD。
+
+**来源重核（r6快照对照）**：`gdscript.rs`=`24e922d887d8a2f0`✓、`tscn.rs`=`c23f2c48735e72ef`✓、`r2a.rs`=`6e447b013afea867`✓；**`python.rs` 漂移**（r6 `696d82cf3f26647b` → 现值 `b6fff84a26408a59`，3258行）——r6 后某合入改动，T-01 重锚定现值，B-PY-I 以当前内容为准逐符号核公开面。具体输入锚重核：`a2p/08_generics/001_generic_func/generic_func.at`=`dec913dbcc21f70f`✓（expected.py 现值 `c4cc3b2cdbe55e99`）、`a2gd/.../generic_func.expected.gd`=`7ae77300c27f2fc6`、`ball.expected.tscn`=`9b7e88cb507172c9`、`r2a/08_generics/003_generic_fn.rs`=`eb068ed1adac2846`✓。
+
+**1042 消费面（已交）**：`experimental/ace/crates/a2x-python`（provider/lower/print/runtime/cert/ports/foreign_bridge/seed）——Checked-HIR→确定性 Python3 模块（generated.py+a2x_main.py+版本化 runtime+source_map+manifest）、多模块包含 std.math/std.text、独立身份（auto-a2x-python/AXPY1..3/ac-a2py/*，永不别名到旧 PythonTrans/AutoVM）、checked i32 截断除法、字节级 UTF-8、显式 free/close 生命周期、stdlib port 目录按操作ID绑定。PY 批增量=完整目标/运行时映射+模块与 source map 扩面+保旧 Python 公开支持格（`trans/python.rs` 现值面）+实际目标 adapter——具体接口冻结归 B-PY-I 有界决定门。
+
+**环境冻结**：**Python 3.14.2 在机** ✓（PY 批 V 腿可真实执行）；**Godot 不在机**——GD/SCENE 批 V 腿（真实 Godot headless 执行/场景装载）= 缺工具=缺证，保持未执行/阻塞不 NA。**A 批执行顺序冻结：PY 批先行端到端（I/V/R）；GD/SCENE 不半途开工**（I 可静态准备但 V/R 无工具不可闭——待 Godot 环境或具名阻塞登记，不产生"实现完待验"的半批）。
+
+**命令冻结（现值）**：旧面确认组 `cargo t a2py`（legacy trans::python 测试，组已核存在）；ACE 侧 a2x-python 测试入口与 PY 批新 adapter/fixture 的真实命令由 B-PY-I 按实际触面登记并接固定组。平台=Windows x64（Linux 腿按 r8 裁定归 1063）。
+
 ### 2026-11-12 本轮规划取材与授权
 
 用户要求细化其余ACE M2计划，复用已有研究/合同，仍只规划；本轮不创建实施树/集成分支、不执行T-01探针或产品/正式性能测试、不提交/合入/tag/发布、不改canonical Specs或legacy索引。945–948原M1-TAG及各A/B正式来源门均不因本次文档静态取材放行；既有实施证据/暂停/等待由原owner维护。
@@ -105,14 +123,14 @@ frontmatter是整包最终依赖并集，各批按下表最小接口前置启动
 
 | 批次 | 交付结果 | 最小前置 | owner |
 |---|---|---|---|
-| 977/PY | Python provider | L960/L962/L964/L965/L968 | auto-lang |
+| 977/PY | Python provider（消费1042，不复制最小producer） | L1042/L960/L962/L964/L965/L968 | auto-lang |
 | 977/GD | GDScript脚本目标 | L960/L962/L964/L965/L968 | auto-lang |
 | 977/SCENE | Godot/TSCN场景与资源 | 977/GD | auto-lang |
 | 977/REVERSE | r2a与s2s独立工具 | L959/L960 | auto-lang |
 
 ### 977/PY：Python provider
 改面（均核存在）：`crates/auto-lang-core/src/trans/python.rs`；`experimental/ace/crates/a2x-core`；`crates/auto-lang-core/src/test_cases`。
-I实现：实现Checked HIR→Python目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。
+I实现：消费1042的Checked HIR→Python producer/helper后扩完整目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。
 V验收：原Python语料的返回/输出/短路/异常/资源各对独立oracle；跨模块生成工程在Python执行，坏输入不替换旧输出。
 R关闭：独立核真实输入→新producer→consumer、正反例/来源/资源/退出。新adapter/fixture由I建立并接入既有target；缺工具/接口/平台保未执行或阻塞，不改NA。接口变化使受影响旧证据失效。
 
@@ -189,6 +207,14 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 
 本节由原`T-01`冻结来源/未决，`B-PY-I`、`B-PY-V`、`B-GD-I`、`B-GD-V`、`B-SCENE-I`、`B-SCENE-V`、`B-REVERSE-I`、`B-REVERSE-V`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+PY批次消费1042正式最小producer/运行helper后扩完整Python语言与原旧语料；同一Python目标支持新公共标准库，不复制旧AST emitter。只需某能力的后继先消费已交PY切片，不等待GD/SCENE/REVERSE整包。其他批次原依赖/义务保留。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；本包PY批次补齐完整Python语义并交正式切片，标准库后继不反等本包GD/SCENE/REVERSE整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
 ### 规范增量
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
@@ -198,6 +224,28 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-other-targets.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
 
 外仓知识由owner落其模块Specs：UI ui/runtime/build、AGE auto-graphics、Man cli/modules、Web architecture/http-contracts/testing；语言侧只保通用接口和迁移指针，不复制第二份领域规范。
+
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/ace-migration/m2-other-targets.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**Python等目标消费的公共标准库Linux腿**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+本条只作用于标准库Linux适用行，不取消GD/SCENE/REVERSE及非Linux原合同；Python解释器运行时依赖单列，不代AV/native自有实现。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-other-targets.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
 
 ## 6. 测试设计
 
@@ -232,6 +280,22 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 验证 |
@@ -248,19 +312,27 @@ struct TargetEvidence { target: TargetId, source: SourceId, runtime: ToolIdentit
 | AC-B-REVERSE | work | r2a与s2s独立工具：已支持Rust→Auto用例保行为；不支持形态具名拒绝；s2s重写源可在ACE执行且source map正确，无旧执行/发射反依赖。 | B-REVERSE-V/R |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、各批V/I与原最终work验证；原独立review复核 |
 
+- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+
+- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+
 ## 8. 执行步骤
 
 当前共16任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。
+- [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16] 冻结记录见§5"T-01 A期冻结记录"：前置全归档核实；来源重核（python.rs漂移重锚定 b6fff84a26408a59）；1042消费面登记；环境冻结（Python 3.14.2在机/Godot缺席→PY先行、GD/SCENE不半途开工）；命令与平台冻结；worktree .wt/lang-977/auto-lang 已建。B批（REVERSE+收口）只登记：前置M2A-08未闭。
 
-- [ ] **B-PY-I｜M2-A｜owner_stage: work｜AC-B-PY/AC-02/03/06**：实现Checked HIR→Python目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。 在§5改面接永久fixture，先冻结前置接口/命令。
+- [x] **B-PY-I｜M2-A｜owner_stage: work｜AC-B-PY/AC-02/03/06**：消费1042正式producer/helper后扩Checked HIR→Python完整目标/运行时映射、模块与source map；保原Python公开支持格；接实际目标adapter，旧emitter仅作历史输入。 在§5改面接永久fixture，先冻结前置接口/命令。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16, worktree commit 727f45616] **9/9 旧公开面家族在真实 Python 车道全绿**（永久探针套件 `a2x-worker/tests/cases/p977_py_public_surface.rs`，1.56s≤10s门）：if/for(条件for=Scalar)、func(Scalar)、**generics**(`fn id<T>`=Scalar+`ac.source.instances.scalar/v1` 935脱糖——caps-blind trim与packages binder拒`<`为具名路由事实非语言缺口)、methods(`static fn`/隐式self `.field`=TextRecord)、enum(变体模式=Aggregates)、str/struct(TextRecord)、**List/array**(PLAN-946 aggregates packages线 `PackageA2xTarget::cold_aggregates`+`use std.list.sum`)、option/result/is表达式+`??`(Aggregates)。oracle=真实 OS Python 3.14.2 执行的 `value:<n>` 独立手算值；旧print逐行形态→新观察面映射如实记录。**零车道缺口**：每构造皆有已准入路由。1042消费确认（provider全家族AXPY1/2/3+lower三层+ports）；实际目标adapter=1042既有 `ac_a2py_hir`（4 recipes），全语料case文档扫描归B-PY-V。
 
-- [ ] **B-PY-V｜M2-A｜owner_stage: work｜AC-B-PY**：运行V-B-PY及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+- [x] **B-PY-V｜M2-A｜owner_stage: work｜AC-B-PY**：运行V-B-PY及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
+  [✅ 2026-11-16, worktree commit 9fc1d2a34] 跟踪语料 `ace-m2/py-977`（8检查）经 **case线** `ac-a2py/hir-stdlib-run-v1`（ac_a2py_hir适配器→预构建a2x-worker run-py→真实Python 3.14.2，父侧独立裁判）：观察五轴=返回（value14/generic42）/输出（stdout面）/短路（value:7+stderr确定性marks序mark_b,mark_a）/异常（trap:Overflow/trap:DivByZero）/资源（record-text值面，零泄漏trace证在1042 pyready_02）。门：`ace_m2_p977_py_case_line_green`（1.79s）+`ace_m2_p977_py_wrong_oracle_is_red`（stdout轴RED局部化1.95s）。坏输入负控=本注册wrong-oracle RED+1042 `pyready_04_admission_negative_controls`（实测绿）。预构建纪律：`target/release/a2x-worker.exe` 显式预构建（2m56s，缺=具名Error非PASS，测试内不编译）。
 
-- [ ] **B-PY-R｜M2-A｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- [x] **B-PY-R｜M2-A｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+  [✅ 2026-11-16] 批内独立复审（局限：实施会话内，从提交工件重建）：基线 727f45616(I)+9fc1d2a34(V)+e49c99efa(spec)；**相位门** `cargo t ace-a2x a2py`=247+105例全PASS（7m0.6s，含新crate套件、case双门、1042全套、certification；a2py旧面不变绿）；健康=新代码零警告、fmt过、无调试打印。发现0阻塞项；边界如实记录（spec边界节）：旧99例字节金样属旧实现不动，新面=家族代表+路由台账承接（逐例扩充机械映射）；case线单文件（List腿crate级）；Linux归1063。PY批A切片可phase fold；GD/SCENE批待Godot（缺证不NA不半途开工）；REVERSE属B。
 
 - [ ] **B-GD-I｜M2-A｜owner_stage: work｜AC-B-GD/AC-02/03/06**：实现新GDScript provider及运行时适配；分离脚本语义和场景树生成，不等待TSCN批次。 在§5改面接永久fixture，先冻结前置接口/命令。
 
@@ -304,6 +376,20 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-PY-I/B-PY-V/B-GD-I/B-GD-V/B-SCENE-I/B-SCENE-V/B-REVERSE-I/B-REVERSE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+stage: merge | phase fold (977/PY批；plan 保持 executing，同树保留至GD/SCENE/REVERSE) | PLAN-977 | r9 | outcome: pass (phase) | prepared: B-PY-R pass @e49c99efa + 相位门 ace-a2x 247+a2py 105 全PASS | landed: rebase后 --ff-only，**delivery `56aadead4`**（range-diff全等：727f45616→b286af57c、9fc1d2a34→4b9c367ba、e49c99efa→56aadead4）；master tip=delivery ✓；rebase后冒烟 p977+pyready_04 绿 | canonical_verified: `docs/specs/ace-migration/m2-other-targets.md` sha16 `83af83e29cd299f4`（PY批已验接口+边界）；无legacy ledger写 | archived: N/A（phase——GD/SCENE待Godot、REVERSE属B） | cleaned: N/A（worktree保留） | 部署观察: 纯测试+文档，无发行产物受影响 | next: 985/A可消费977/PY切片（COVERAGE Python腿A2PY路径已喂）；GD/SCENE待Godot环境；REVERSE待M2A-08
+
+stage: review | phase (B-PY-R, 977/PY批) | reviewer: 实施会话内复审（局限随收据） | PLAN-977 | r9 | outcome: pass (phase) | reviewed_commit: e49c99efa（含727f45616/9fc1d2a34） | 相位门: `cargo t ace-a2x a2py`=PASS 247+105例 7m0.6s | findings: 0阻塞；边界（代表例vs逐例/case线单文件/预构建/Linux归1063）已入spec边界节与B-PY-V[✅]行 | next: phase fold 合入977/PY A切片（plan保持executing——GD/SCENE待Godot、REVERSE属B）
+
+stage: work | PLAN-977 | r9 | 2026-11-16 | outcome: pass (B-PY-I) | worktree: D:/autostack/.wt/lang-977/auto-lang @ plan-977-dev | code_commit: 727f45616 | task_ids: B-PY-I | evidence: §8 B-PY-I[✅]行；新用例 p977_legacy_public_surface_runs_green_on_python 1.56s ≤10s门（10轮探针迭代，含3个具名路由事实发现：instances-cap脱糖/cold_aggregates线/is-表达式形态） | next_responsible_role: work（B-PY-V：经 ac_a2py_hir case线全语料扫描+返回/输出/短路/异常/资源独立oracle+坏输入负控）
+
+stage: work | PLAN-977 | r9 | 2026-11-16 | outcome: pass (T-01) | worktree: D:/autostack/.wt/lang-977/auto-lang @ plan-977-dev（基面 master@b66405d6d，纯冻结核验无代码提交） | task_ids: T-01 | evidence: §5"T-01 A期冻结记录" | authorization: 用户裁定选项A（goal续行2026-11-16） | blockers: GD/SCENE批V腿缺Godot（缺证不NA）；B-REVERSE+T-05/06/07前置M2A-08 | next_responsible_role: work（B-PY-I：消费1042扩Python provider，有界决定门冻结接口，建永久fixture——PY批I/V/R为A批下一单元）
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r8：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
 
 2026-11-12 stage:new / PLAN-977 r6：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原16任务/全部AC与V/依赖/阶段/预算和drafting 0/16；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
