@@ -452,3 +452,59 @@ fn p981_evt_b_payload_and_unit_events_interleave_on_one_queue() {
         "i0 = 2 + 1 (Inc) + 1; i1 = 10 + 1 (Inc)"
     );
 }
+
+/// PLAN-981 B-W1（D-981-SESSION-MULTI ①余量）：**双组件 2:1** 的 AV 真值——
+/// 同一场景 `ForNode{0}×2 + ForNode{1}×1`，组件 A 计 2、组件 B 计 1
+/// （独立算术 oracle；未包裹 op 的旧"全组件重放"语义由对照断言兜住）。
+#[test]
+fn p981_evt_b_dual_component_two_to_one_events() {
+    use ace_core::source::age_component::ScenarioOp;
+    const SRC: &str = "node A {\n    msg {\n        Inc\n    }\n    on {\n        .Inc -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"a\" {}\n    }\n}\nnode B {\n    msg {\n        Inc\n    }\n    on {\n        .Inc -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"b\" {}\n    }\n}\n";
+    let for_node = |n: usize| ScenarioOp::ForNode {
+        node: n,
+        op: Box::new(ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".into(),
+        }),
+    };
+    // 2:1 跨组件。
+    let o = observe(SRC, vec![for_node(0), for_node(0), for_node(1)], 1);
+    assert_eq!(o.components.len(), 2);
+    assert_eq!(
+        o.components[0].instance_states,
+        vec![vec![2]],
+        "component A receives its two events"
+    );
+    assert_eq!(
+        o.components[1].instance_states,
+        vec![vec![1]],
+        "component B receives exactly one"
+    );
+    // 对照：未包裹 op 重放到两个组件（旧语义不回退）。
+    let o2 = observe(
+        SRC,
+        vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".into(),
+        }],
+        1,
+    );
+    assert_eq!(o2.components[0].instance_states, vec![vec![1]]);
+    assert_eq!(o2.components[1].instance_states, vec![vec![1]]);
+    // 组件级带载荷：B 定向 +5（typed 队列与组件限定正交）。
+    let o3 = observe(
+        "node A {\n    msg Msg { Add(int) }\n    on {\n        .Add(d) -> {\n            .count += d\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"a\" {}\n    }\n}\nnode B {\n    msg Msg { Add(int) }\n    on {\n        .Add(d) -> {\n            .count += d\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"b\" {}\n    }\n}\n",
+        vec![ScenarioOp::ForNode {
+            node: 1,
+            op: Box::new(ScenarioOp::send_args_from_values(
+                0,
+                "Add",
+                &[InitialValue::Int(5)],
+                ace_core::atom_text::Span { start: 0, end: 0 },
+            )),
+        }],
+        1,
+    );
+    assert_eq!(o3.components[0].instance_states, vec![vec![0]]);
+    assert_eq!(o3.components[1].instance_states, vec![vec![5]]);
+}

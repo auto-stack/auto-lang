@@ -884,16 +884,39 @@ pub(crate) fn project_packages_front(
             // 只对**真的处理该消息**的 node 判定（无 model 的 node 不进
             // `instance_stmts`，此守卫兜住它们的 arity/unsupported 域拒）。
             for op in &scenario.ops {
+                let inner = op.inner();
                 if matches!(
-                    op,
+                    inner,
                     crate::source::age_component::ScenarioOp::Send { .. }
                         | crate::source::age_component::ScenarioOp::SendArgs { .. }
                 ) {
-                    for node in &nodes {
-                        if !node.handlers.iter().any(|h| h.msg == op.msg()) {
+                    // PLAN-981 B-W1（组件级调度）：`ForNode` 只核目标组件；限定
+                    // 到不存在的组件是具名域错误（不静默丢弃）。
+                    let scoped: Vec<usize> = match op.node_scope() {
+                        Some(want) => {
+                            if want >= nodes.len() {
+                                return Err(vec![crate::source::age_h0::text_diag(
+                                    "source.age.component-scenario",
+                                    format!(
+                                        "the scenario targets node {want} but the package                                          declares {} component(s)",
+                                        nodes.len()
+                                    ),
+                                    nodes
+                                        .first()
+                                        .map(|n| n.span)
+                                        .unwrap_or(crate::atom_text::Span { start: 0, end: 0 }),
+                                )]);
+                            }
+                            vec![want]
+                        }
+                        None => (0..nodes.len()).collect(),
+                    };
+                    for ni in scoped {
+                        let node = &nodes[ni];
+                        if !node.handlers.iter().any(|h| h.msg == inner.msg()) {
                             continue;
                         }
-                        crate::source::age_component::check_event_dispatch(node, op)?;
+                        crate::source::age_component::check_event_dispatch(node, inner)?;
                     }
                 }
             }
@@ -901,6 +924,9 @@ pub(crate) fn project_packages_front(
                 // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
                 let node_index = age_components.len();
                 let mut text_fns = Vec::new();
+                // PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的登记事实
+                //（AV 观察通道的入口；与发射的 `{prefix}scene_*` 函数同序）。
+                let mut scene_fns: Vec<crate::source::age_package::AgeSceneValueFn> = Vec::new();
                 // PLAN-981 B-W1（IF-981-PARAMS-B）：未派发 handler 的声明语义
                 // 检查函数（check_value 闭包独占 items 期间先收集，最后统一入列）。
                 let mut handler_check_items: Vec<crate::source::ast::Item> = Vec::new();
@@ -921,6 +947,7 @@ pub(crate) fn project_packages_front(
                     for f in &node.fields {
                         let mut stmts = match crate::source::age_component::instance_stmts(
                             inst,
+                            node_index,
                             &node,
                             &node_scenario,
                             &std::collections::HashMap::new(),
@@ -1370,8 +1397,28 @@ pub(crate) fn project_packages_front(
                                     attr.span,
                                     &node.params,
                                 ) {
-                                    Some(fs) => items
-                                        .extend(fs.into_iter().map(crate::source::ast::Item::Fn)),
+                                    Some(fs) => {
+                                        // PLAN-981 B-W1：按发射序登记 (row, attr,
+                                        // 分量, 函数名, 形参数)——元组属性逐分量。
+                                        let is_tuple = matches!(
+                                            &attr.value.kind,
+                                            crate::source::ast::ExprKind::TupleLit(_)
+                                        );
+                                        for (ci, f) in fs.iter().enumerate() {
+                                            scene_fns.push(
+                                                crate::source::age_package::AgeSceneValueFn {
+                                                    row: scene.name.clone(),
+                                                    attr: attr.key.clone(),
+                                                    component: is_tuple.then_some(ci),
+                                                    fn_name: f.name.name.clone(),
+                                                    params: f.params.len(),
+                                                },
+                                            );
+                                        }
+                                        items.extend(
+                                            fs.into_iter().map(crate::source::ast::Item::Fn),
+                                        )
+                                    }
                                     None => {
                                         return Err(vec![crate::source::age_h0::text_diag(
                                             "source.age.scene-value",
@@ -1388,7 +1435,7 @@ pub(crate) fn project_packages_front(
                         }
                     }
                 }
-                age_components.push((node, text_fns));
+                age_components.push((node, text_fns, scene_fns));
             }
         }
         // PLAN-1043（T-03）：#in 结构投影器（共享同一声明子树投影引擎）。

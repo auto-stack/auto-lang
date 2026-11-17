@@ -179,7 +179,6 @@ pub fn age_node_symbol(package: &str, name: &str) -> String {
     format!("n{}_{}_{}", package.len(), sym_part(package), name)
 }
 
-
 fn split_key(key: &str) -> (&str, &str) {
     key.split_once("::").unwrap_or((key, ""))
 }
@@ -338,6 +337,8 @@ pub struct PackagedAgeComponent {
     pub node: crate::source::age_component::ComponentNode,
     /// 文本叶的 (隐藏函数源名, 原模块内 span)，与 `node.view.texts` 同序。
     pub text_fns: Vec<(String, Span)>,
+    /// PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的登记事实（按发射序）。
+    pub scene_fns: Vec<crate::source::age_package::AgeSceneValueFn>,
 }
 
 fn bind_packages_face(
@@ -447,11 +448,12 @@ fn bind_packages_face_with(
         })?;
         // PLAN-981：本模块的 AGE 候选（未受信）+ 其隐藏函数源名，收进产物。
         if let Some(out) = age_out.as_deref_mut() {
-            for (node, text_fns) in &syntax.age_components {
+            for (node, text_fns, scene_fns) in &syntax.age_components {
                 out.push(PackagedAgeComponent {
                     module: key.clone(),
                     node: node.clone(),
                     text_fns: text_fns.clone(),
+                    scene_fns: scene_fns.clone(),
                 });
             }
         }
@@ -529,7 +531,16 @@ pub fn bind_package_syntax_assembled(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), Faces::Plain)
+    bind_package_syntax_inner(
+        inputs,
+        entry,
+        caps,
+        budget,
+        units,
+        impls,
+        Some(ctx),
+        Faces::Plain,
+    )
 }
 
 /// 一个模块的已解析实现层（kind + 源 + 语法）。
@@ -886,7 +897,7 @@ fn bind_package_syntax_inner(
             if unit
                 .age_components
                 .iter()
-                .any(|(n, _)| n.name.name == cursor.1)
+                .any(|(n, _, _)| n.name.name == cursor.1)
             {
                 return Ok(Target::Node(age_node_symbol(&cursor.0, &cursor.1)));
             }
@@ -3706,7 +3717,16 @@ pub fn bind_package_syntax_assembled_aggregates(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), Faces::AggregatesCt)
+    bind_package_syntax_inner(
+        inputs,
+        entry,
+        caps,
+        budget,
+        units,
+        impls,
+        Some(ctx),
+        Faces::AggregatesCt,
+    )
 }
 
 /// 编译期标量值（与 source-cte `CtValue` 同域：i32/bool）。

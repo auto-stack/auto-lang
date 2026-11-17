@@ -386,15 +386,69 @@ fn p981_proof_a_av_scene_package_and_mixed_profile() {
     )
     .expect("the 2D package compiles at the front door");
     let observed = ace_av::age_package::observe_age_package(&compiled, 1)
-        .expect("a scene-only package observes with empty state");
+        .expect("a scene-only package observes its scene values in AV");
     assert_eq!(observed.components[0].name, "Main");
     assert!(observed.components[0]
         .instance_states
         .iter()
         .all(|s| s.is_empty()));
+    // PLAN-981 B-W1（IF-981-PROOF-AV）：纯场景包不再只是空行——场景值函数在
+    // AV 下给出真值，对齐 g01 原几何（dbb4b75 基线：红圆(-20,10)d30、蓝
+    // quad(0,0)30×30、绿圆(25,-15)d24、黄quad(-45,-25)12×12 hidden）。
+    use ace_av::age_package::SceneObserved;
+    let val = |row: &str, attr: &str, comp: Option<usize>| {
+        observed.components[0]
+            .scene_values
+            .iter()
+            .find(|v| v.row == row && v.attr == attr && v.component == comp)
+            .map(|v| v.value.clone())
+            .unwrap_or_else(|| panic!("missing scene value {row}.{attr}{comp:?}"))
+    };
+    assert_eq!(val("red_disc", "x", None), SceneObserved::F32(-20.0));
+    assert_eq!(val("red_disc", "y", None), SceneObserved::F32(10.0));
+    assert_eq!(val("red_disc", "diameter", None), SceneObserved::F32(30.0));
+    assert_eq!(
+        val("blue_quad", "position", Some(0)),
+        SceneObserved::F32(0.0)
+    );
+    assert_eq!(
+        val("blue_quad", "position", Some(1)),
+        SceneObserved::F32(0.0)
+    );
+    assert_eq!(val("blue_quad", "size", Some(0)), SceneObserved::F32(30.0));
+    assert_eq!(val("blue_quad", "size", Some(1)), SceneObserved::F32(30.0));
+    assert_eq!(val("green_disc", "x", None), SceneObserved::F32(25.0));
+    assert_eq!(val("green_disc", "y", None), SceneObserved::F32(-15.0));
+    assert_eq!(
+        val("green_disc", "diameter", None),
+        SceneObserved::F32(24.0)
+    );
+    assert_eq!(
+        val("yellow_quad", "position", Some(0)),
+        SceneObserved::F32(-45.0)
+    );
+    assert_eq!(
+        val("yellow_quad", "position", Some(1)),
+        SceneObserved::F32(-25.0)
+    );
+    assert_eq!(
+        val("yellow_quad", "size", Some(0)),
+        SceneObserved::F32(12.0)
+    );
+    assert_eq!(
+        val("yellow_quad", "size", Some(1)),
+        SceneObserved::F32(12.0)
+    );
+    assert_eq!(
+        val("yellow_quad", "visible", None),
+        SceneObserved::Bool(false)
+    );
 
-    // 混合 UI+2D 观察：当前 AV owned profile 具名拒 F32（不是假绿）。
-    const MIX: &str = "node Mix {\n    view {\n        text \"ui\" {}\n    }\n    view-2d {\n        shape2d bar {\n            kind: quad\n            position: (0.0, 0.0)\n            size: (10.0, 4.0)\n        }\n    }\n}\n";
+    // 混合 UI+2D 观察（D-981-PROOF-AV-SCENE 关闭）：同一包里 UI 文本/事件
+    // 状态与 2D 场景值**同一次观察**都给真值——owned 车道已映射 f32，不再
+    // 整模块具名拒。
+    const MIX: &str = "node Mix {\n    model {\n        count int = 0\n    }\n    msg Msg { Bump(int) }\n    on {\n        .Bump(delta) -> {\n            .count += delta\n        }\n    }\n    view {\n        text \"ui\" {}\n    }\n    view-2d {\n        shape2d bar {\n            kind: quad\n            position: (3.5, 0.0)\n            size: (10.0, 4.0)\n        }\n    }\n}\n";
+    use ace_core::source::age_component::InitialValue;
     let mixed = compile_age_package_with_scenario(
         &[input("main", MIX)],
         "app::main",
@@ -402,16 +456,33 @@ fn p981_proof_a_av_scene_package_and_mixed_profile() {
         &[PACKAGES_CAPABILITY.to_string()],
         &ComponentScenario {
             instances: 1,
-            ops: Vec::new(),
+            ops: vec![
+                ace_core::source::age_component::ScenarioOp::send_args_from_values(
+                    0,
+                    "Bump",
+                    &[InitialValue::Int(7)],
+                    ace_core::atom_text::Span { start: 0, end: 0 },
+                ),
+            ],
         },
     )
     .expect("the mixed package compiles at the front door");
-    let err = ace_av::age_package::observe_age_package(&mixed, 1)
-        .expect_err("the AV owned profile must name-reject F32 in a mixed package");
-    assert!(
-        err.contains("lower.type-use") && err.contains("F32"),
-        "named: {err}"
-    );
+    let o = ace_av::age_package::observe_age_package(&mixed, 1)
+        .expect("mixed UI+2D observes both channels in one pass");
+    assert_eq!(o.components[0].instance_states, vec![vec![7]]);
+    assert_eq!(o.components[0].instance_texts, vec![vec!["ui".to_string()]]);
+    let mval = |attr: &str, comp: Option<usize>| {
+        o.components[0]
+            .scene_values
+            .iter()
+            .find(|v| v.attr == attr && v.component == comp)
+            .map(|v| v.value.clone())
+            .unwrap_or_else(|| panic!("missing mixed scene value {attr}{comp:?}"))
+    };
+    assert_eq!(mval("position", Some(0)), SceneObserved::F32(3.5));
+    assert_eq!(mval("position", Some(1)), SceneObserved::F32(0.0));
+    assert_eq!(mval("size", Some(0)), SceneObserved::F32(10.0));
+    assert_eq!(mval("size", Some(1)), SceneObserved::F32(4.0));
 }
 
 /// R70-1：场景节点带 model 时 AV **具名拒**（不静默给空状态行）。

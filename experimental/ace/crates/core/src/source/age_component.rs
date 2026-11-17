@@ -766,9 +766,31 @@ pub enum ScenarioOp {
     Tick {
         instance: usize,
     },
+    /// PLAN-981 B-W1（D-981-SESSION-MULTI ①余量）：**组件级**定向——把内层
+    /// op 限定到包内第 `node` 个组件（0 基，组件声明序）。内层 `instance` 仍
+    /// 是该组件自己的实例下标；未包裹的 op 沿用"对每个组件重放"的旧语义
+    /// （向后兼容）。两组件 2:1 事件由此可在**一个**场景里表达。
+    ForNode {
+        node: usize,
+        op: Box<ScenarioOp>,
+    },
 }
 
 impl ScenarioOp {
+    /// 该 op 的**组件限定**（`ForNode` 才有；其余 = 对所有组件重放）。
+    pub fn node_scope(&self) -> Option<usize> {
+        match self {
+            ScenarioOp::ForNode { node, .. } => Some(*node),
+            _ => None,
+        }
+    }
+    /// 剥掉 `ForNode` 包装后的内层 op（未包裹 = 自身）。
+    pub fn inner(&self) -> &ScenarioOp {
+        match self {
+            ScenarioOp::ForNode { op, .. } => op.inner(),
+            _ => self,
+        }
+    }
     /// 宿主值抬升（IF-981-EVENT-PAYLOAD-B）：运行时 typed 值 → 字面量候选
     /// 表达式。字面量仍走同一条唯一 verify；span 锚定消息变体声明（宿主值
     /// 没有作者 span，不用 0 充当）。
@@ -1043,8 +1065,20 @@ fn compile_component_scenario_full(
             node.view.span,
         )]);
     }
-    // 场景自检：越界实例必须在发射前具名拒绝（不静默跳过）。
+    // 场景自检：越界实例必须在发射前具名拒绝（不静默跳过）。组件面只有
+    // 一个 node——`ForNode` 限定到其它组件在这里就是越界（具名拒）。
     for op in &scenario.ops {
+        if let Some(want) = op.node_scope() {
+            if want != 0 {
+                return Err(vec![text_diag(
+                    "source.age.component-scenario",
+                    format!(
+                        "the component face holds exactly one node; the op targets node                          {want}, which does not exist here",
+                    ),
+                    node.span,
+                )]);
+            }
+        }
         if op.instance() >= scenario.instances {
             return Err(vec![text_diag(
                 "source.age.component-scenario",
@@ -1130,7 +1164,7 @@ fn compile_component_scenario_full(
     // 每个 (实例, 字段) 一个状态函数：该实例的 init（可被初值覆盖）+ 定向 ops，返回该字段。
     for inst in 0..scenario.instances {
         for f in &node.fields {
-            let mut stmts = instance_stmts(inst, node, scenario, &initial_maps[inst])?;
+            let mut stmts = instance_stmts(inst, 0, node, scenario, &initial_maps[inst])?;
             stmts.push(Stmt::Return {
                 value: Expr {
                     span: f.span,
@@ -1363,6 +1397,7 @@ impl ScenarioOp {
             ScenarioOp::Send { instance, .. }
             | ScenarioOp::SendArgs { instance, .. }
             | ScenarioOp::Tick { instance } => *instance,
+            ScenarioOp::ForNode { op, .. } => op.instance(),
         }
     }
     pub(crate) fn msg(&self) -> &str {
@@ -1370,6 +1405,7 @@ impl ScenarioOp {
             ScenarioOp::Send { msg, .. } | ScenarioOp::SendArgs { msg, .. } => msg.as_str(),
             // `Life.Tick` 在本切片建模为保留消息 `Tick`（运行身份归 981）。
             ScenarioOp::Tick { .. } => "Tick",
+            ScenarioOp::ForNode { op, .. } => op.msg(),
         }
     }
 }
@@ -1398,6 +1434,8 @@ pub(crate) fn check_event_dispatch(
         ScenarioOp::Send { .. } => 0usize,
         ScenarioOp::SendArgs { args, .. } => args.len(),
         ScenarioOp::Tick { .. } => return Ok((0, Vec::new())),
+        // 组件限定在调用侧（frontdoor/instance_stmts）已剥壳；内层已核。
+        ScenarioOp::ForNode { .. } => return Ok((0, Vec::new())),
     };
     let variant = node.messages.iter().find(|v| v.name == op.msg());
     let declared = variant.map(|v| v.payload.len()).unwrap_or(0);
@@ -2003,6 +2041,7 @@ fn wrap_owned_transfer(
 /// PLAN-980 STATE：`overrides` 命中的字段以初值字面量替换源内 init（源不变）。
 pub(crate) fn instance_stmts(
     inst: usize,
+    node_index: usize,
     node: &ComponentNode,
     scenario: &ComponentScenario,
     overrides: &std::collections::HashMap<String, InitialValue>,
@@ -2043,6 +2082,14 @@ pub(crate) fn instance_stmts(
         });
     }
     for (seq, op) in scenario.ops.iter().enumerate() {
+        // PLAN-981 B-W1（组件级调度）：`ForNode` 限定只在本 node 上重放；
+        // 未包裹的 op 沿用对每个组件重放的旧语义。派发/绑定判定用内层 op。
+        if let Some(want) = op.node_scope() {
+            if want != node_index {
+                continue;
+            }
+        }
+        let op = op.inner();
         if op.instance() != inst {
             continue;
         }
@@ -2067,7 +2114,7 @@ pub(crate) fn instance_stmts(
         // 唯一 verify 在原 span 报错 type/未绑定名。
         let args: &[Expr] = match op {
             ScenarioOp::SendArgs { args, .. } => args,
-            ScenarioOp::Send { .. } | ScenarioOp::Tick { .. } => &[],
+            ScenarioOp::Send { .. } | ScenarioOp::Tick { .. } | ScenarioOp::ForNode { .. } => &[],
         };
         let anchor = node
             .messages

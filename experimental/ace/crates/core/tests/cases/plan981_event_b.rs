@@ -375,3 +375,41 @@ fn p981_evt_b_bind_shadowing_unbound_and_unused_handlers() {
         }
     }
 }
+
+/// PLAN-981 B-W1（D-981-SESSION-MULTI ①余量）：**组件级**定向（`ForNode`）——
+/// 同一场景只推进目标组件；限定到不存在的组件具名拒；未包裹 op 对双组件
+/// 重放的旧语义不变（对照组）。
+#[test]
+fn p981_evt_b_for_node_scopes_ops_to_one_component() {
+    use ace_core::source::age_component::ScenarioOp;
+    let src = "node A {\n    msg {\n        Inc\n    }\n    on {\n        .Inc -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"a\" {}\n    }\n}\nnode B {\n    msg {\n        Inc\n    }\n    on {\n        .Inc -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"b\" {}\n    }\n}\n";
+    let for_node = |n: usize| ScenarioOp::ForNode {
+        node: n,
+        op: Box::new(ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".into(),
+        }),
+    };
+    // A×2、B×1（2:1 跨组件）：只动目标组件。
+    let out = dispatch(src, vec![for_node(0), for_node(0), for_node(1)], 1)
+        .expect("the component-scoped 2:1 scenario compiles");
+    let _ = out;
+    // 限定到不存在的组件：具名拒（不静默丢弃）。
+    match dispatch(src, vec![for_node(2)], 1) {
+        Ok(_) => panic!("an op scoped to a missing node must be rejected"),
+        Err(ds) => {
+            assert_eq!(ds[0].code, "source.age.component-scenario", "{ds:?}");
+            assert!(ds[0].message.contains("node 2"), "{ds:?}");
+        }
+    }
+    // 对照：未包裹的 op 对两个组件都重放（旧语义）。
+    dispatch(
+        src,
+        vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Inc".into(),
+        }],
+        1,
+    )
+    .expect("unscoped ops keep replaying on every component");
+}
