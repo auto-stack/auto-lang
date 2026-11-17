@@ -17,10 +17,10 @@
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
 - `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
 - `cargo t aavm --ignored [--test-name <名字>]`：明确手动重放已忽略实验；原平台/T3条件保持。
-- `runner = "case"` 的固定组以 `suite` 字段指向该语料**当前活跃作者文件**。PLAN-1062 起
-  全部 75 个固定 case 组与全部本仓注册 file-corpus（含 B 层逐条目文档与 ffi_dual）均为
-  文档式；原职责、tier/skip/平台/ignore 条件与证据复用口径不变，575 ignored/6 未注册
-  原态保持；活跃语料为
+- `runner = "case"` 的固定组以 `suite` 字段指向该语料**当前活跃作者文件**。PLAN-1066 B 收口后
+  **76 个固定组的活跃 include 全为文档式**（183 个 include 文件 = document 183 / 旧围栏 0，
+  含 968 调度器 11 项）；四族原生目录发现 1060 项/1171 角色，全部以 `<stem>.case.ad` 为唯一作者源。
+  原职责、tier/skip/平台/ignore 条件与证据复用口径不变，575 ignored/6 未注册原态保持；活跃语料为
   AutoDown 文档式 suite 时组名可沿用调用方历史名（如 `case-ace-m1-base` 现读
   `ace-document-base.suite.ad`，`case-ace-m1-console-863`/`case-ace-m1-immutable-avm-920`
   分别读 `ace-document-console`/`ace-document-immutable`）。被取代的旧 suite 保留为
@@ -34,6 +34,20 @@
 计划按修改明确完整职责组和必要集成/消费组，review核理由。parser局部改动不同于共享AST/语义/IR
 变更；后者须显式补下游验证，但Cargo包依赖不自动触发所有消费者单测。不再有tm --changes自动闭包。
 未知范围具名解释扩大，不能静默全编experimental，也不能省去已知真实消费者。
+
+- **显式编译门（PLAN-1066 T-06）**：全语料 250 项真实 `rustc` 编译是**显式专项**，固定组
+  `a2r-compile`（`all=false`、`tools=[]`、`domain=legacy`、expression 精确
+  `tests::a2r_tests::a2r_rustc_real_compile_gate`）。默认/日常组/`all` 均不选择它，测试本身
+  `#[ignore]`；重放命令为
+  `cargo t a2r-compile --ignored --test-name tests::a2r_tests::a2r_rustc_real_compile_gate`。
+  准备（文档源→原转译器→rustc `--emit=metadata`→source-bound 收据）与验证（只读收据、按原始
+  exit/stderr 重算分类、ledger 逐条归账）分开；缺/陈旧收据=准备缺失，不得 lazy build。
+  三个手动 M guard 仍逐名 ignored 重放，编译文档 `.rs` 产物并在每次调用独占 scope 内运行。
+- **文档载体单轴负控（PLAN-1066 T-04）**：显式组 `plan1066-s-doc-controls`
+  （`all=false`、`tools=["case-parent","av"]`、`domain=ace`）跑 968 调度器文档载体的五个单轴变异
+  （stdout tail-LF/stderr/exit/stage-code/message），clean 镜像必须 11/11 绿。
+- **ACE 显式集合**：`ace` set 当前 4 成员（`ace-workspace`/`ace-adapters`/`ace-batch`/`ace-facade`），
+  与日常集分离的断言已与注册表同步（PLAN-1066 T-11 跨计划更正）。
 
 ## 真实结果与条件
 

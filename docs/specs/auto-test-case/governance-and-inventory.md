@@ -86,6 +86,24 @@ producer与公开收据consumer共用原baseline/retirement/migration/floor，�
   旧成本跨树/配置漂移标STALE不得复用。不新增执行目录、不改触发/频率/预算。
 
 
+## 输入/身份视图以文档为准（PLAN-1066 T-03[B]/T-08 收口）
+
+- `auto-case legacy-inventory` 的每个条目以**迁移文档**为身份：`source`/`oracles` 都指向
+  `<stem>.case.ad`（`present`/`sha256` 为文档字节），并给出 `source_path`（文档声明的虚拟路径）与
+  `document_checks`（文档声明的检查通道）；`.at`/`.as`/`.expected.*` 仅冻结历史，缺失文档显示
+  `present:false` 而非缩集或回退。
+- wrapper 身份单一派生：`execution_trace::legacy_document_identity`（a2r/a2c/a2ts/cookbook）与
+  `cookbook_doc_identity` 同调于运行期 trace 与源码静态 inventory（`inventory_wrappers`），故两侧
+  结构上不可漂移；`legacy-wrapper-contract.json` 的 legacy-trace 关联行改签文档路径。
+- VM cache 库存两轴：`document_sha256`（治理身份）与 `source_sha256`（被执行的源文本，运行时绑定
+  轴）并存，不得混用；`input_paths` 收敛为「文档=唯一 input edge」。
+- `input_inventory.verify_inputs` 是**活跃门**（`scripts/fixed-tests.py::source_bindings` 每轮校验）：
+  按文档重算 `vm-stdout`/`vm-result`（含 `final-newline`）与 error 存在性，并对 `vm_cache_ids`/
+  `legacy_ids` 宇宙做守恒核对；陈旧/伪造收据、缺工具、NOT_RUN 不签。
+- 回读审计：常驻分类审计（文件级 allowlist + ±2 行读窗口）列出五根之外的具名边界（migration 静态
+  旧侧、NC-27 对拍控、AAVM、外仓 book、`ffi_dep`、sidecar 合同合成 fixture、`a2r-actor-tests`、
+  相邻 `a2gd`/`a2j`/`tscn`），新增未具名读者按文件拒绝。
+
 ## 迁移冻结清单与无损投影（PLAN-1062）
 
 - `auto-case migration-inventory --schema-version 2`：`autolang.case-migration/2` 无损投影

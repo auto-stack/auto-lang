@@ -474,18 +474,28 @@ CT机制的父侧证据可消费原服务公开的计数与执行边界日志：
   先重采复核，不以已删文件 hash 冒当前验证。
 
 
-## 文档式全量输入视图（PLAN-1062）
+## 文档式全量输入视图（PLAN-1062 → PLAN-1066 B 收口）
 
-- 全部活跃 suite 的作者输入为文档式 `<stem>.document.case.ad`；CaseSpec/CheckSpec 与旧围栏
-  消费者共用同一源/oracle 视图与执行链。旧围栏文件仅保冻结历史/显式回放，不再是活跃入口。
-- B 层（VM cache、原 TestRunner、a2r/a2c/a2ts/cookbook/python/conformance/ffi_dual 包装）
-  以最小适配直读对应文档载荷再调原 backend：源与金样字节内联于文档，`.wrong.*` 调试写与
-  逐族比较语义（bytes/trim/error-presence/no-crash）原样保留；缺文档=硬错误，禁止
-  sidecar 回退。多文件/source-dir（use.c 等）依赖保持目录语义，不因文档化改变解析。
+- 当前活跃作者输入统一为文档式 `<stem>.case.ad`（固定 case 组由 suite 显式 include，四族原生
+  目录由发现函数按文档存在性选择）；`CaseSpec/CheckSpec` 与旧围栏消费者共用同一源/oracle
+  视图与执行链，旧围栏文件仅保冻结历史/显式回放。
+- 四族发现/执行以**文档为唯一作者源**（PLAN-1066 T-03[B]）：`test_runner::discover_{vm,a2r,
+  a2c,a2ts}` 按 `<stem>.case.ad` 选例并只读取文档声明的虚拟源路径、检查通道与内联 artifact；
+  `entry::run_*_file_test` 同源读取。缺失/不可读文档是**具名硬错误**（`migration document …`），
+  绝不回退 sidecar。冻结 sidecar 仍存在时不再参与选择；`VM cache` 的 `.as` 脚本模式由文档声明的
+  源路径判定。
+- 身份与治理同源：wrapper trace、`legacy-inventory` 行、`legacy-wrapper-contract` 关联、VM cache
+  库存与 `verify_inputs` 一律以文档为身份（文档 hash 为治理身份，运行时源文本 hash 为绑定轴，
+  两轴分明）；v2 为默认投影，历史 v1 仅显式查询。
+- 多文件工程：两份 `main.project.case.ad` 内联 5 份 Auto 源，产物判据为有限 `exists`/`contains`
+  断言（与全文 bytes 金样互斥）；消费者把文档物化到受管目录（保留 entry 名/相对路径/工程
+  basename）后调用原 `transpile_rust_project`，逐条断言独立判决。
+- 显式边界：250 输入真实编译门改为 `prepare`（文档源→原转译器→真 rustc `--emit=metadata`）+
+  `verify`（只读收据、按原始 exit/stderr 重算分类）两段式，由显式组 `a2r-compile` 承接，默认
+  入口不 spawn rustc；三个手动 M guard 编译文档 `.rs` 产物并在每次调用独占 scope 中运行。
 - 完整投影：`migration-inventory --schema-version 2`（`autolang.case-migration/2`）对
   options/steps/typed/observations 全结构化（零 Debug 字符串/零 is_some 布尔），/1 保兼容。
 - actual 来源：report 产物摘要逐通道（av/avm/mn-typed/mn-steps/a2r/a2x/ac/syntax）hash
-  绑定，离线 verify 重读文件、核 hash 与来源，不信缓存状态。
 
 ## worker IPC 读取与输入限额单位（PLAN-1034）
 

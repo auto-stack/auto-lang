@@ -1,13 +1,9 @@
 # 文档式用例（AutoDown Document Cases）
 
-> 状态：全量交付（PLAN-1062 收尾迁移：全部 75 个固定 case 组的活跃作者文件为文档式，
-> 176 份旧围栏 case 全部迁移为 `<stem>.document.case.ad`，1062 个唯一 (文件,case,check)
-> 检查对与 95 个既有文档位合计 1174 个位置全部 document 格式，旧围栏行=0；B 层 1227+
-> 逐条目文档 vm/a2r/cookbook/a2c/a2ts/a2p/conformance/ffi_dual 由原消费者直读）。
-> 此前批次（PLAN-1002 试点、PLAN-1057/1059 两批 44 例/88 检查）已并入该总量。
+> 状态：**delivered（PLAN-1066 B 收口，2026-11-17）**。76 个固定 case 组的活跃 include 全为文档式(183 个 include 文件 = document 183 / 旧围栏 0)；四族原生目录发现 1060 项/1171 判决角色，四族执行、VM cache、cookbook 选择与 inventory/trace 身份全部以文档为唯一作者源。1062 的冻结集合（75 组/176 份/1174 位置）保留为历史事实。此前批次（PLAN-1002 试点、PLAN-1057/1059 两批 44 例/88 检查）已并入该总量。
 > 完整目标格式见 [docs/design/testing/autodown-document-cases.md](../../design/testing/autodown-document-cases.md)。
 > 解码器即合同：`crates/auto-test-case/src/author.rs`（逐标题/属性拒绝集以它为准）。
-> 迁移收尾口径（阶段门、expected-red 元 oracle、A↔B 映射与历史/外仓边界）见
+> 收口口径（阶段门、expected-red 元 oracle、A↔B 映射与历史/外仓边界）见
 > [document-migration-closure](document-migration-closure.md)。
 
 ## 入口与分派
@@ -33,9 +29,9 @@
 | `Probe <check-id>` | probe/run；已接通 recipe 见下；`recipe`/`entry`/`caps`/`exit`，console 另可 `channel` 或成对 `stage`+`code` |
 | `Notes` | 自由说明（不参与执行） |
 
-- 四级标题：`Rust` 下=产物相对路径（载荷选项 `final-newline`/`compare`）；
+- 四级标题：`Rust` 下=产物相对路径（载荷选项 `final-newline`/`compare`；**PLAN-1066 T-05**：产物小节也接受有限断言 `exists: true` 与 `contains: [...]`，两者与全文围栏互斥、`final-newline/compare` 在有限模式下拒绝，未知键/空数组/空串/重复项/`exists: false` 全部定位拒绝；`Exists`（显式 exists）与 `Contains`（仅 contains）分型，不凭空补 exists 断言。多文件工程用 `### Auto` 直接围栏作 entry + `#### <虚拟路径>` 附加源，产物以有限断言判据）；
   console Probe 下=`stdout`/`stderr`（各一个 `text` 围栏，空围栏=零字节）。
-- 已接通探针 recipe：`ac-av/core-run-v1`、`ac-av/console-run-v1`、
+- 已接通探针 recipe：`ac-av/core-run-v1`、`ac-av/console-run-v1`、`ac-av/scheduler-source-run-v1`（PLAN-1066 T-04 起为文档式：`entry: d_main`、成功例 `exit` + 双流，负例 `stage`+`code`，S11 保 `message-contains`）、
   `ac/mir-native-scalar-v1`（默认各一步 run）。console 要求 `entry=d_main` 与
   stdout/stderr 双流显式断言（失败例亦不得省略）；成功例可带 `exit` 与可选
   `channel`（`value`/`unit`），失败例以成对 `stage`+`code` 表达
