@@ -449,8 +449,11 @@ struct EmitCtx {
     declared: std::collections::BTreeSet<String>,
     /// 绑定到**字面数组**的文档 `var`（`for` 的字面展开用；运行期列表不在其中）。
     list_literals: std::collections::BTreeMap<String, Vec<Expr>>,
-    /// 宿主注入的键：文档里同名 pair 的默认值**不发射**（被注入值覆盖）。
+    /// 宿主注入的键：**根级**同名 pair 的默认值不发射（被注入值覆盖）；嵌套体
+    /// 里的同名键是节点自己的属性，必须保留。
     injected_keys: std::collections::BTreeSet<String>,
+    /// 当前文档嵌套深度（根级 = 0）：注入覆盖只作用于根级。
+    depth: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -532,13 +535,19 @@ fn emit_line(
             let mut then = Vec::new();
             ctx.declared = outer_declared.clone();
             ctx.locals = outer_locals.clone();
-            emit_body(&i.then, cur, &mut then, ctx)?;
+            ctx.depth += 1;
+            let then_result = emit_body(&i.then, cur, &mut then, ctx);
+            ctx.depth -= 1;
+            then_result?;
             let els = match &i.els {
                 Some(e) => {
                     ctx.declared = outer_declared.clone();
                     ctx.locals = outer_locals.clone();
                     let mut stmts = Vec::new();
-                    emit_body(e, cur, &mut stmts, ctx)?;
+                    ctx.depth += 1;
+                    let else_result = emit_body(e, cur, &mut stmts, ctx);
+                    ctx.depth -= 1;
+                    else_result?;
                     Some(Block {
                         stmts,
                         span: e.span,
@@ -564,7 +573,7 @@ fn emit_line(
             // 设计 §4.3：宿主注入的键**赢**，其文档默认值不执行（否则一个
             // 本会被覆盖的默认 RHS 仍可能失败/计费）。注入名在物化侧已知，
             // 因此这里直接不发射该 pair。
-            if ctx.injected_keys.contains(&p.key.name) {
+            if ctx.depth == 0 && ctx.injected_keys.contains(&p.key.name) {
                 return Ok(());
             }
             let key = str_lit(&p.key.name, p.key.span);
@@ -658,10 +667,14 @@ fn build_node(
         }
     }
     if let Some(body) = &node.body {
-        // 节点体同样是独立块作用域（体内 `var` 不与外层互撞、不泄漏）。
+        // 节点体同样是独立块作用域（体内 `var` 不与外层互撞、不泄漏），深度 +1
+        // （根级注入覆盖不作用于节点自己的同名属性）。
         let outer_declared = ctx.declared.clone();
         let outer_locals = ctx.locals.clone();
-        emit_body(body, &handle, out, ctx)?;
+        ctx.depth += 1;
+        let body_result = emit_body(body, &handle, out, ctx);
+        ctx.depth -= 1;
+        body_result?;
         ctx.declared = outer_declared;
         ctx.locals = outer_locals;
     }
@@ -912,7 +925,10 @@ fn emit_for(
         ctx.declared = saved_declared.clone();
         ctx.locals = saved_locals.clone();
         ctx.declared.insert(f.var.name.clone());
-        emit_body(&f.body, cur, out, ctx)?;
+        ctx.depth += 1;
+        let body_result = emit_body(&f.body, cur, out, ctx);
+        ctx.depth -= 1;
+        body_result?;
     }
     ctx.declared = saved_declared;
     ctx.locals = saved_locals;

@@ -380,8 +380,7 @@ impl Session {
     }
 
     fn text_of(&self, id: u32) -> String {
-        self
-            .texts
+        self.texts
             .get(id as usize)
             .cloned()
             .expect("config: text handle out of range (internal invariant)")

@@ -80,7 +80,7 @@ fn p982_pac_corpus_ace_coverage() {
         }
     }
     eprintln!(
-        "pac corpus: {} ok ({} disagree with legacy), {} failed, {} skipped (legacy rejects them too), {} total",
+        "pac corpus: {} ok ({} disagree with legacy), {} failed, {} ace-only (legacy rejects them), {} total",
         ok,
         diff.len(),
         fail.len(),

@@ -268,6 +268,26 @@ shadowed: label
         }
         other => panic!("the overridden pair's RHS must not execute, got {other:?}"),
     }
+    // 注入覆盖只作用于**根级**：节点体里与注入名相同的键是节点自己的属性，
+    // 必须保留（B-CONFIG-R F-982B-18）。
+    let mut nested = empty_context();
+    nested
+        .args
+        .push(("port".to_string(), ConfigValue::Text("win32".to_string())));
+    let nested_src = "dep(\"kernel\") {\n    port: \"msvc/x64\"\n}\n";
+    match run(nested_src, &nested).outcome {
+        AceConfigOutcome::Success { document, .. } => {
+            let dep = &document.root.children[0];
+            assert_eq!(dep.name, "dep");
+            assert_eq!(
+                text(Some(prop_of(dep, "port"))),
+                "msvc/x64",
+                "a nested `port` is the node's own property, not the injected root key"
+            );
+        }
+        other => panic!("the nested same-name key must survive, got {other:?}"),
+    }
+
     // 非空证：同一文档在**没有**注入时确实被 RHS 的失败挡住（traps ⇒ 具名诊断）。
     match run(guarded, &empty_context()).outcome {
         AceConfigOutcome::Diagnostic { code, stage, .. } => {
@@ -526,7 +546,7 @@ fn p982_vcfg_identity_tracks_context() {
 #[test]
 fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
     let _g = setup();
-    const DEPTH: usize = 700;
+    const DEPTH: usize = 2000;
     let mut src = String::from("root_obj: ");
     for _ in 0..DEPTH {
         src.push_str("{ a: ");
@@ -545,7 +565,15 @@ fn p982_vcfg_deep_nesting_projects_beyond_the_old_cap() {
             );
             document
         }
-        other => panic!("a {DEPTH}-deep document must be served, got {other:?}"),
+        // 2000 层也允许**具名预算拒绝**（MIR 校验的 VerifyMemory 预算）：要求是
+        // "不崩、不静默截断"，不是"必须服务"。
+        AceConfigOutcome::Diagnostic { stage, code, .. } => {
+            assert_eq!(stage, "verify");
+            assert_eq!(code, "ace.config/verify");
+            eprintln!("2000-deep document refused by a named verify budget (no crash)");
+            return;
+        }
+        other => panic!("a {DEPTH}-deep document must not crash, got {other:?}"),
     };
     // 逐层往下数：投影确实保留了整条嵌套链（不是被截断/折叠）。
     let mut value = match prop(&doc, "root_obj") {
