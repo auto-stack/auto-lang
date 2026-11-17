@@ -1,6 +1,7 @@
-use auto_lang_core::autovm_persistent::AutovmReplSession;
+use auto_lang_core::AceSessionOutcome;
+
+use crate::ace_runtime::AceNotebookSession;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 
@@ -53,10 +54,14 @@ pub struct VariableInfo {
     pub kind: String,
 }
 
-/// Internal notebook session (lives in the actor thread)
+/// Internal notebook session (lives in the actor thread). Session state is
+/// an ACE session (PLAN-970 neutral contract): each notebook session owns
+/// its own accumulated program / variable carry table / generations, so two
+/// users' notebooks are structurally isolated and closing one releases its
+/// pinned generations without touching the other.
 struct NotebookSession {
     id: String,
-    vm: AutovmReplSession,
+    session: AceNotebookSession,
     cells: Vec<Cell>,
     cell_snapshots: HashMap<String, String>,
     #[allow(dead_code)] // session metadata, reserved for diagnostics/reporting
@@ -68,7 +73,7 @@ impl NotebookSession {
     fn new() -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            vm: AutovmReplSession::new(),
+            session: AceNotebookSession::create(),
             cells: Vec::new(),
             cell_snapshots: HashMap::new(),
             created_at: Instant::now(),
@@ -163,31 +168,53 @@ impl NotebookSession {
     }
 
     fn run_single_cell(&mut self, _cell_id: &str, source: &str) -> CellOutput {
-        let capture = Arc::new(std::sync::RwLock::new(String::new()));
-        self.vm.vm.output_buffer = Some(capture.clone());
-
-        let result = self.vm.run(source);
-
-        let stdout = capture.read().unwrap().clone();
-        self.vm.vm.output_buffer = None;
-
-        match result {
-            Ok(_) => CellOutput {
-                stdout,
+        // PLAN-971 B/T-03: the cell executes on the ACE session (the real
+        // producer-backed session lane), never on the legacy AutoVM REPL.
+        let report = self
+            .session
+            .eval(source, std::time::Duration::from_secs(10));
+        let time_ms = report.wall_ms as u64;
+        match &report.outcome {
+            AceSessionOutcome::Ok => CellOutput {
+                stdout: String::new(),
                 stderr: String::new(),
-                result: self.vm.format_last_result().unwrap_or_default(),
-                time_ms: 0,
+                result: report.value.display().unwrap_or_default(),
+                time_ms,
                 diagnostics: Vec::new(),
             },
-            Err(e) => {
-                let err_str = e.to_string();
-                let diagnostics = extract_diagnostics(&err_str);
+            AceSessionOutcome::Diagnostic { code, diagnostics } => {
+                let stderr = diagnostics
+                    .iter()
+                    .map(|d| format!("{}: {}: {}", code, d.code, d.message))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 CellOutput {
-                    stdout,
-                    stderr: err_str,
+                    stdout: String::new(),
+                    stderr,
                     result: String::new(),
-                    time_ms: 0,
-                    diagnostics,
+                    time_ms,
+                    diagnostics: diagnostics
+                        .iter()
+                        .map(|d| Diagnostic {
+                            severity: "error".to_string(),
+                            message: format!("[{}] {}", d.code, d.message),
+                            line: None,
+                        })
+                        .collect(),
+                }
+            }
+            other => {
+                let message = named_failure(other);
+                CellOutput {
+                    stdout: String::new(),
+                    stderr: message.clone(),
+                    result: String::new(),
+                    time_ms,
+                    diagnostics: vec![Diagnostic {
+                        severity: "error".to_string(),
+                        message,
+                        line: None,
+                    }],
                 }
             }
         }
@@ -264,20 +291,82 @@ impl NotebookSession {
 
     fn variables(&self) -> Vec<VariableInfo> {
         let mut vars = Vec::new();
-        for name in self.vm.locals() {
-            vars.push(VariableInfo {
-                name,
-                kind: "local".to_string(),
-            });
+        // The carry table comes from the ACE session (its real variable
+        // facts); definitions are read from the session's accumulated
+        // program text, preserving the legacy inspector's two kinds.
+        let report = self.session.vars();
+        if matches!(report.outcome, AceSessionOutcome::Ok) {
+            for var in report.vars {
+                vars.push(VariableInfo {
+                    name: var.name,
+                    kind: "local".to_string(),
+                });
+            }
         }
-        for name in self.vm.functions() {
-            vars.push(VariableInfo {
-                name,
-                kind: "function".to_string(),
-            });
+        let snapshot = self.session.snapshot();
+        if matches!(snapshot.outcome, AceSessionOutcome::Ok) {
+            if let Some(source) = snapshot.snapshot.as_deref() {
+                for name in user_function_names(source) {
+                    vars.push(VariableInfo {
+                        name,
+                        kind: "function".to_string(),
+                    });
+                }
+            }
         }
         vars
     }
+}
+
+impl Drop for NotebookSession {
+    fn drop(&mut self) {
+        // Releasing a notebook session releases its ACE session (pinned
+        // generations die here); the other sessions are untouched.
+        self.session.close();
+    }
+}
+
+/// A named failure of a session op (never a silent success).
+fn named_failure(outcome: &AceSessionOutcome) -> String {
+    match outcome {
+        AceSessionOutcome::Denied { code, message } => format!("{code}: {message}"),
+        AceSessionOutcome::ResourceDenied { kind, message } => {
+            format!("session resource denied ({kind}): {message}")
+        }
+        AceSessionOutcome::Cancelled => "session evaluation cancelled".to_string(),
+        AceSessionOutcome::HostFailure { code, message } => format!("{code}: {message}"),
+        AceSessionOutcome::Diagnostic { code, .. } => format!("{code}: evaluation rejected"),
+        AceSessionOutcome::Ok => String::new(),
+    }
+}
+
+/// The user-defined function names of a session's accumulated program text
+/// (the reserved canonical-program names and the entry are not user items).
+fn user_function_names(source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in source.lines() {
+        let mut rest = line.trim_start();
+        if let Some(after_pub) = rest.strip_prefix("pub ") {
+            rest = after_pub.trim_start();
+        }
+        let Some(after_fn) = rest.strip_prefix("fn ") else {
+            continue;
+        };
+        let name: String = after_fn
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty()
+            || name == "main"
+            || name.starts_with("__repl")
+            || name == "__tail_anchor"
+            || names.iter().any(|n: &String| *n == name)
+        {
+            continue;
+        }
+        names.push(name);
+    }
+    names
 }
 
 // ============================================================================
@@ -471,8 +560,11 @@ mod tests {
         let actor = NotebookActor::new();
         let sid = actor.create_session().await;
 
-        // Define a function
-        let out = actor.execute(sid.clone(), "c1".to_string(), "fn add(a int, b int) int { a + b }".to_string(), None).await;
+        // PLAN-971 B（T-03）：Notebook 执行已切到 ACE session host。ACE 源码面
+        // 的函数体是语句块（`return a + b`）；旧 VM 接受的尾表达式函数体
+        // （`{ a + b }`）不在 ACE 面内，会被具名诊断拒绝（语言面边界归 ACE
+        // 前门，不在本消费者伪造）。断言（定义后 inspector 可见）保持不变。
+        let out = actor.execute(sid.clone(), "c1".to_string(), "fn add(a int, b int) int { return a + b }".to_string(), None).await;
         assert!(out.stderr.is_empty(), "stderr: {}", out.stderr);
 
         let vars = actor.variables(sid).await;
@@ -554,6 +646,69 @@ mod tests {
         let vars = actor.variables(sid).await;
         assert!(vars.is_empty());
     }
+
+    /// PLAN-971 B V-04：两个用户的 notebook 会话隔离——A 的变量/B 的定义
+    /// 互不可见，各自求值只观察自己的状态；关闭 A 不影响 B。
+    #[tokio::test]
+    async fn p971_v04_two_user_notebook_sessions_are_isolated() {
+        let actor = NotebookActor::new();
+        let alice = actor.create_session().await;
+        let bob = actor.create_session().await;
+        assert!(!alice.is_empty() && !bob.is_empty(), "sessions must be created");
+        assert_ne!(alice, bob, "each user gets a distinct session id");
+
+        // Alice defines x; Bob's identical expression must NOT see it.
+        let out = actor
+            .execute(alice.clone(), "c1".to_string(), "var x = 41".to_string(), None)
+            .await;
+        assert!(out.stderr.is_empty(), "alice: {}", out.stderr);
+        let bob_sees = actor
+            .execute(bob.clone(), "c1".to_string(), "x + 1".to_string(), None)
+            .await;
+        assert!(
+            !bob_sees.stderr.is_empty(),
+            "Bob must not resolve Alice's variable; got result {:?}",
+            bob_sees.result
+        );
+        assert!(
+            bob_sees.result.is_empty(),
+            "an isolated session cannot produce Alice's value"
+        );
+
+        // Each session observes its own value.
+        let alice_val = actor
+            .execute(alice.clone(), "c2".to_string(), "x + 1".to_string(), None)
+            .await;
+        assert!(alice_val.stderr.is_empty(), "alice: {}", alice_val.stderr);
+        assert_eq!(alice_val.result, "42", "alice observes her own carry table");
+
+        // Bob builds his own independent state.
+        let _ = actor
+            .execute(bob.clone(), "c2".to_string(), "var y = 7".to_string(), None)
+            .await;
+        let bob_val = actor
+            .execute(bob.clone(), "c3".to_string(), "y + 1".to_string(), None)
+            .await;
+        assert_eq!(bob_val.result, "8", "bob observes his own carry table");
+
+        // Inspector surfaces are per session.
+        let alice_vars = actor.variables(alice.clone()).await;
+        let bob_vars = actor.variables(bob.clone()).await;
+        assert!(alice_vars.iter().any(|v| v.name == "x"));
+        assert!(!alice_vars.iter().any(|v| v.name == "y"));
+        assert!(bob_vars.iter().any(|v| v.name == "y"));
+        assert!(!bob_vars.iter().any(|v| v.name == "x"));
+
+        // Closing Alice does not disturb Bob.
+        actor.destroy(alice.clone());
+        assert!(actor.variables(alice).await.is_empty());
+        let bob_after = actor
+            .execute(bob.clone(), "c4".to_string(), "y + 2".to_string(), None)
+            .await;
+        assert_eq!(bob_after.result, "9", "bob survives alice's close");
+        let bob_after_vars = actor.variables(bob).await;
+        assert!(bob_after_vars.iter().any(|v| v.name == "y"));
+    }
 }
 
 /// Try to extract structured diagnostics from a raw error string.
@@ -596,3 +751,6 @@ fn extract_diagnostics(err: &str) -> Vec<Diagnostic> {
 
     diagnostics
 }
+
+
+

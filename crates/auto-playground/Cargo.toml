@@ -8,6 +8,9 @@ description = "Auto Playground web API server"
 # PLAN-814 T-06：非 UI 消费者切 SDK（run 族/test_code 族/VM 面全 Core；
 # test_code 家族随本批下沉 SDK）。
 auto-lang-core = { path = "../auto-lang-core" }
+# PLAN-971 B（T-03/V-04）：Notebook 会话接管——会话状态在 ACE session host
+# （970 中立的 ace_session 合同）上，两用户会话结构性隔离，无旧 VM 回退。
+auto-lang-ace-host = { path = "../auto-lang-ace-host" }
 axum = { version = "0.8", features = ["json", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }

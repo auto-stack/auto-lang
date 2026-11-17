@@ -1,4 +1,5 @@
 mod agent_debug;
+mod ace_runtime;
 mod code_runner;
 mod debugger;
 mod error;
@@ -40,6 +41,14 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter("auto_playground=debug,tower_http=debug")
         .init();
+
+    // PLAN-971 B（T-03/V-04）：Notebook 会话由 ACE session host 承载（进程
+    // 级安装一次）。宿主缺席时会话操作返回具名失败，绝不回退旧 REPL。
+    if !ace_runtime::ensure_session_host() {
+        tracing::error!(
+            "ACE session host unavailable: notebook sessions will report a named host failure"
+        );
+    }
 
     let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend");
     let dist_dir = frontend_dir.join("dist");
