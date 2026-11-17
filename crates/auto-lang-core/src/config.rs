@@ -1,3 +1,7 @@
+use crate::ace_config::{
+    AceConfigOutcome, AceConfigRequest, ConfigContext, ConfigEngineChoice, ConfigValue,
+};
+use crate::eval_config_with_ace;
 use crate::eval_config_with_vm;
 use crate::AutoResult;
 use auto_val::Obj;
@@ -109,6 +113,84 @@ impl AutoConfig {
         }
     }
 
+    /// Parse a configuration document with an **explicit** engine choice.
+    ///
+    /// `LegacyVm` is exactly [`AutoConfig::from_code`] (unchanged behaviour).
+    /// `AceAv` evaluates through the installed ACE executor and never falls
+    /// back to the legacy engine: every non-success terminal state is a named
+    /// error.
+    pub fn from_code_with_engine(
+        code: impl Into<String>,
+        args: &Obj,
+        engine: ConfigEngineChoice,
+    ) -> AutoResult<Self> {
+        let code = code.into();
+        match engine {
+            ConfigEngineChoice::LegacyVm => Self::from_code(code, args),
+            ConfigEngineChoice::AceAv => Self::from_code_ace(code, args, "<config>"),
+        }
+    }
+
+    /// Read and parse a configuration file with an explicit engine choice.
+    pub fn from_file_with_engine(
+        path: &Path,
+        args: &Obj,
+        engine: ConfigEngineChoice,
+    ) -> AutoResult<Self> {
+        match engine {
+            ConfigEngineChoice::LegacyVm => Self::from_file(path, args),
+            ConfigEngineChoice::AceAv => {
+                let code = std::fs::read_to_string(path).map_err(|e| {
+                    format!("Failed to read config file {}: {}", path.display(), e)
+                })?;
+                Self::from_code_ace(code, args, &path.display().to_string())
+            }
+        }
+    }
+
+    /// The ACE configuration path: explicit request → owned document → the
+    /// legacy consumer shape. No legacy evaluation exists on this path.
+    fn from_code_ace(code: String, args: &Obj, virtual_path: &str) -> AutoResult<Self> {
+        let context = config_context_from_args(args)?;
+        let request = AceConfigRequest {
+            source: code.as_str(),
+            virtual_path,
+            context: &context,
+            limits: crate::ace_config::ConfigEvalLimits::default(),
+            cancel: None,
+        };
+        let report = eval_config_with_ace(&request);
+        match report.outcome {
+            AceConfigOutcome::Success { document, .. } => {
+                let root = document.to_auto_val_node().map_err(|e| {
+                    crate::error::AutoError::Msg(format!("configuration projection failed: {e}"))
+                })?;
+                Ok(Self {
+                    code,
+                    root,
+                    args: args.clone(),
+                })
+            }
+            AceConfigOutcome::Diagnostic {
+                stage, code, message, ..
+            } => Err(crate::error::AutoError::Msg(format!(
+                "ace.diagnostic/{stage}/{code}: {message}"
+            ))),
+            AceConfigOutcome::Denied { code, message } => Err(crate::error::AutoError::Msg(
+                format!("{code}: {message}"),
+            )),
+            AceConfigOutcome::ResourceDenied { kind, message } => Err(
+                crate::error::AutoError::Msg(format!("ace.resource/{kind}: {message}")),
+            ),
+            AceConfigOutcome::Cancelled => Err(crate::error::AutoError::Msg(
+                "ace.config/cancelled: the configuration evaluation observed cancellation"
+                    .to_string(),
+            )),
+            AceConfigOutcome::HostFailure { code, message } => Err(crate::error::AutoError::Msg(
+                format!("{code}: {message}"),
+            )),
+        }
+    }
     pub fn name(&self) -> AutoStr {
         self.root.get_prop("name").to_astr()
     }
@@ -394,6 +476,65 @@ pub fn api_contract_fn_names_for_front(front_at: &Path) -> Vec<String> {
     Vec::new()
 }
 
+/// Build the explicit configuration context from the injected arguments.
+///
+/// The arguments are the configuration context (`port`, `kernel`, …), not
+/// script argv; the environment snapshot, source root, module bundle, schema
+/// and grants stay explicitly empty until a caller supplies them.
+fn config_context_from_args(args: &Obj) -> AutoResult<ConfigContext> {
+    let mut context = ConfigContext::empty();
+    for (key, value) in args.iter() {
+        let name = key
+            .name()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| format!("{key:?}"));
+        context.args.push((name, config_value_from_auto_val(value)?));
+    }
+    Ok(context)
+}
+
+/// Tag an `auto_val` argument into the owned configuration value model.
+/// Variants with no exact configuration representation are refused by name.
+fn config_value_from_auto_val(value: &Value) -> AutoResult<ConfigValue> {
+    Ok(match value {
+        Value::Nil => ConfigValue::Null,
+        Value::Bool(v) => ConfigValue::Bool(*v),
+        Value::Byte(v) => ConfigValue::U64(*v as u64),
+        Value::U8(v) => ConfigValue::U64(*v as u64),
+        Value::I8(v) => ConfigValue::I64(*v as i64),
+        Value::Int(v) => ConfigValue::I64(*v as i64),
+        Value::Uint(v) => ConfigValue::U64(*v as u64),
+        Value::USize(v) => ConfigValue::U64(*v as u64),
+        Value::I64(v) => ConfigValue::I64(*v),
+        Value::Float(v) | Value::Double(v) => ConfigValue::f64(*v),
+        Value::Char(c) => ConfigValue::Char(*c),
+        Value::Str(s) => ConfigValue::Text(s.as_str().to_string()),
+        Value::String(s) => ConfigValue::Text(s.as_str().to_string()),
+        Value::Array(items) | Value::Block(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                out.push(config_value_from_auto_val(item)?);
+            }
+            ConfigValue::List(out)
+        }
+        Value::Obj(obj) => {
+            let mut entries = Vec::with_capacity(obj.len());
+            for (key, item) in obj.iter() {
+                let name = key
+                    .name()
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| format!("{key:?}"));
+                entries.push((name, config_value_from_auto_val(item)?));
+            }
+            ConfigValue::Object(entries)
+        }
+        other => {
+            return Err(crate::error::AutoError::Msg(format!(
+                "config.context/unsupported-argument: {other:?} has no configuration value tag"
+            )))
+        }
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;

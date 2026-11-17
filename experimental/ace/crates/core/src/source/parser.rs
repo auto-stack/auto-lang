@@ -185,6 +185,12 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
             super::age_h0::domain_profile_refusal(profile, src.len())
                 .expect("AGE domain profile refusal"),
         ),
+        // PLAN-982（B-CONFIG-I）：配置文档行只经文档前门消费；通用解析入口
+        // 具名拒绝，绝不返回一个把文档行静默丢掉的 Program。
+        SourceProfile::ConfigDocument => Err(
+            super::config_document::config_profile_refusal(profile, src.len())
+                .expect("config-document profile refusal"),
+        ),
     }
 }
 

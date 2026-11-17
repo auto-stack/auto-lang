@@ -8196,6 +8196,19 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
                         _ => ValueType::Unit,
                     };
                     (params.iter().copied().map(vt_map).collect(), res_vt, cap)
+                } else if let Some(op) = crate::source::config_ops::by_symbol(symbol) {
+                    // PLAN-982（B-CONFIG-I）：配置文档原语在宿主侧执行——签名/能力
+                    // 来自同一目录（与 resolve 选择的重载同一行），结果是 i32
+                    // （句柄或状态码）。
+                    let res_vt = match op.result {
+                        crate::source::resolve::VT::I32 => ValueType::I32,
+                        _ => ValueType::Unit,
+                    };
+                    (
+                        op.params.iter().copied().map(vt_map).collect(),
+                        res_vt,
+                        crate::source::config_ops::CONFIG_CAPABILITY,
+                    )
                 } else {
                     diags.push(Diagnostic::new(
                         Stage::Verify,

@@ -35,3 +35,5 @@ version = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# PLAN-982：真桥用例按 legacy 消费形状读 `_arg{n}`/`get_kids`。
+auto-val = { path = "../auto-val" }

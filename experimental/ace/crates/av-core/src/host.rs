@@ -128,6 +128,7 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
     let mut seen = std::collections::BTreeSet::new();
     let mut console_count = 0usize;
     let mut platform_count = 0usize;
+    let mut config_count = 0usize;
     for h in &module.host_imports {
         if !seen.insert(&h.symbol) {
             return Err(err("host.duplicate", "duplicate host declaration"));
@@ -143,6 +144,29 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
             let spec = crate::platform_io::lookup_symbol(&h.symbol)
                 .ok_or_else(|| err("host.unknown-symbol", "unknown platform operation symbol"))?;
             crate::platform_io::validate_import(module, h, spec)?;
+            continue;
+        }
+        // PLAN-982：配置文档原语是宿主车道上的第二条声明类别（类别/签名/
+        // 预算/能力逐项核；准入 key 是 `config.document/1`）。
+        if crate::config_document::is_config_symbol(&h.symbol) {
+            config_count += 1;
+            if config_count > crate::config_document::MAX_CONFIG_IMPORTS {
+                return Err(err(
+                    "host.limit",
+                    "at most twenty-four configuration primitives can be declared",
+                ));
+            }
+            crate::config_document::validate_import(module, h)?;
+            if !module
+                .capabilities
+                .iter()
+                .any(|c| c == crate::config_document::CAPABILITY)
+            {
+                return Err(err(
+                    "host.unauthorized",
+                    "configuration capability requirement is missing",
+                ));
+            }
             continue;
         }
         console_count += 1;

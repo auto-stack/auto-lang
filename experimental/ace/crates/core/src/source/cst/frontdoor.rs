@@ -166,6 +166,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::Scheduler => "scheduler",
         // PLAN-979：AGE 领域面 slug（Schema 数据键，非产品名）。
         SourceProfile::AgeH0 => "age-h0",
+        // PLAN-982（B-CONFIG-I）：配置文档面 slug（grammar 裁剪名；不与产品名混用）。
+        SourceProfile::ConfigDocument => "config-document",
     }
 }
 
@@ -188,6 +190,8 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         "age-h0" => SourceProfile::AgeH0,
         // PLAN-981: AGE package slug round-trip.
         "age-package" => SourceProfile::AgePackage,
+        // PLAN-982（B-CONFIG-I）：配置文档面 slug 反向映射。
+        "config-document" => SourceProfile::ConfigDocument,
         _ => return None,
     })
 }
@@ -211,7 +215,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 15]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 16]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -2314,6 +2318,9 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::AgePackage => 14,
         // PLAN-968：调度器面槽位。
         SourceProfile::Scheduler => 13,
+        // PLAN-982（B-CONFIG-I）：配置文档面槽位（既有 15 个 profile 的裁剪
+        // 字节与 GrammarId 不受本槽影响）。
+        SourceProfile::ConfigDocument => 15,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。
@@ -2376,6 +2383,11 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }
+    }
+    // PLAN-982（B-CONFIG-I）：配置文档行只经其文档前门消费（通用投影无法表示
+    // 文档行——具名拒绝，而不是静默丢弃）。
+    if let Some(d) = crate::source::config_document::config_profile_refusal(profile, src.len()) {
+        return FrontOutcome::Diag(vec![d]);
     }
     match kind {
         FrontKind::WholeModule => parse_whole_module(src, profile, budget),
@@ -2508,6 +2520,65 @@ pub(crate) fn parse_domain_whole_module(
         SourceProfile::AgeH0 | SourceProfile::AgeComponent
     ));
     parse_whole_module(src, profile, budget)
+}
+
+/// PLAN-982（B-CONFIG-I E2）：配置文档前门（crate 内部；公共 [`parse_front`]
+/// 对 config-document profile 具名拒绝）。与其它前门共用同一 scanner/快照/预算
+/// 管线；差别只在投影：`cfg-*` 规则 → 文档候选（不是通用 Program）。
+pub(crate) fn parse_config_document_front(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::config_document::ConfigDocumentSyntax, Vec<Diagnostic>> {
+    let profile = SourceProfile::ConfigDocument;
+    let cached = match profile_grammar(profile) {
+        Ok(c) => c,
+        Err(e) => return Err(infra_err(e)),
+    };
+    crate::source::parser::note_tokenize(crate::atom_text::Span {
+        start: 0,
+        end: src.len(),
+    });
+    crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    let store = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let ctx_text = SnapshotTokenText { snap: &snap };
+    let ParseOutput {
+        tree,
+        tokens: _,
+        lex_diags: _,
+        grafted_decls: _,
+    } = match parse_snapshot_with_ctx(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+        Some(&ctx_text),
+    ) {
+        Ok(o) => o,
+        Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
+            return Err(vec![Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.resource",
+                format!("resource exhausted: {what} (limit {limit})"),
+                crate::atom_text::Span {
+                    start: 0,
+                    end: src.len(),
+                },
+            )])
+        }
+        Err(e) => return Err(infra_err(format!("parse: {e}"))),
+    };
+    let grammar_id = format!("{}", cached.program.identity.grammar_id.0);
+    let input_hash = format!("{:016x}", super::units::content_sha(src.as_bytes()));
+    project::project_config_document(
+        &cached.program,
+        &cached.kinds,
+        &tree,
+        &snap,
+        profile,
+        grammar_id,
+        input_hash,
+    )
 }
 
 fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) -> FrontOutcome {

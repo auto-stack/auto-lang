@@ -530,6 +530,23 @@ pub fn compile_program_parts(
     if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
         return Err(vec![d]);
     }
+    // PLAN-982：配置文档行同理只经 `source::config_document` 前门物化。
+    if let Some(d) = crate::source::config_document::config_profile_refusal(profile, src.len()) {
+        return Err(vec![d]);
+    }
+    compile_program_observed(program, src, module_path, capabilities, profile, None)
+}
+
+/// PLAN-982（B-CONFIG-I）：配置文档前门的物化程序入口——同一共享
+/// `compile_program_observed`，但**不**走通用 profile 拒绝：那条拒绝是给通用
+/// 调用者的（文档行必须由 config-document 前门先物化成普通顺序入口程序）。
+pub(crate) fn compile_materialized_program_parts(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
     compile_program_observed(program, src, module_path, capabilities, profile, None)
 }
 
@@ -1048,8 +1065,7 @@ fn compile_program_observed(
     capabilities: &[String],
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
-) -> Result<SourceParts, Vec<Diagnostic>> {
-    let resolved = match super::resolve_with(program, capabilities, profile) {
+) -> Result<SourceParts, Vec<Diagnostic>> {    let resolved = match super::resolve_with(program, capabilities, profile) {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Resolve, &[]);
@@ -3836,6 +3852,8 @@ impl<'p> Emitter<'p> {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
                 .or_else(|| super::platform_io::signature(sym).map(|(_, _, cap)| cap))
+                // PLAN-982：配置文档原语自带 `config.document/1` 能力键。
+                .or_else(|| super::config_ops::capability_of(sym))
                 // PLAN-981：AGE 资源服务自带能力键。
                 .or_else(|| super::age_resources::by_symbol(sym).map(|op| op.capability))
                 .unwrap_or(TRACE_CAPABILITY);
@@ -4238,6 +4256,11 @@ impl<'p> Emitter<'p> {
                 let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = format!("\"t_rec_{}\"", op.result_port);
                 (ps.join(", "), rs)
+            } else if let Some(op) = super::config_ops::by_symbol(sym) {
+                // PLAN-982（B-CONFIG-I）：配置文档原语的签名 = 目录里的精确参数
+                // VT + 结果 VT（与 resolve 侧选择的重载是同一行，不另写一份）。
+                let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                (ps.join(", "), self.ty_use_ref(op.result))
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = match res {
@@ -5479,12 +5502,18 @@ fn global_type_id(sym: &str) -> String {
 fn intrinsic_id_suffix(sym: &str) -> String {
     if sym.starts_with("auto.console.")
         || sym.starts_with("auto.platform.")
+        // PLAN-982（B-CONFIG-I）：配置文档原语符号形如
+        // `auto.config.document.put.str.v1`——只取末段会让所有重载塌成 `v1`
+        // （同模块两处不同重载 = 重复 id），故与 console/platform 同纪律用全名；
+        // 名字里的 `-`（`arg-named`/`obj-put`/`list-push`）也要归一成 `_`，
+        // 否则 Atom 词法把 `-named` 当负号（实测红）。
+        || sym.starts_with("auto.config.")
         // PLAN-981：AGE 资源服务的符号形如 `age.material2d.color.v1`——只取末段
         // 会让 `color`/`quad`/`circle` 全塌成 `v1`，同一模块两处调用即重复 id。
         // 服务符号用全名（与 console/platform 同纪律）。
         || sym.starts_with("age.")
     {
-        sym.replace('.', "_")
+        sym.replace('.', "_").replace('-', "_")
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()
     }

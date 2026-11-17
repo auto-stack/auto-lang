@@ -246,6 +246,18 @@ impl AceRunReport {
 /// thread (synchronous, no thread spawning, no background waits).
 pub trait AceExecutor: Send + Sync {
     fn execute(&self, request: &AceRequest<'_>) -> AceRunReport;
+
+    /// PLAN-982 B-CONFIG: the configuration-document face, served by the SAME
+    /// installed executor — never a second global registry. An executor that
+    /// cannot serve configuration returns
+    /// [`AceConfigReport::unsupported`] (a NAMED refusal); the caller must not
+    /// retry on the legacy configuration engine.
+    fn eval_config(
+        &self,
+        _request: &crate::ace_config::AceConfigRequest<'_>,
+    ) -> crate::ace_config::AceConfigReport {
+        crate::ace_config::AceConfigReport::unsupported()
+    }
 }
 
 static ACE_EXECUTOR: RwLock<Option<Arc<dyn AceExecutor>>> = RwLock::new(None);
@@ -270,6 +282,17 @@ pub fn install_ace_executor(executor: Arc<dyn AceExecutor>) -> Result<(), String
             *slot = Some(executor);
             Ok(())
         }
+    }
+}
+
+/// Whether an ACE executor is currently installed (the host installed the
+/// bridge). Environment-dependent engine selection uses this — never a
+/// semantic fallback: an installed executor that FAILS still reports the
+/// failure.
+pub fn ace_executor_installed() -> bool {
+    match ACE_EXECUTOR.read() {
+        Ok(slot) => slot.is_some(),
+        Err(_) => false,
     }
 }
 
@@ -310,6 +333,38 @@ pub fn run_ace(choice: AceEngineChoice, request: &AceRequest<'_>) -> AceRunRepor
     report
 }
 
+/// Evaluate one project configuration document through the installed ACE
+/// executor.
+///
+/// Same discipline as [`run_ace`]: no executor / poisoned registry / any
+/// executor failure is a NAMED terminal state, and the legacy configuration
+/// engine (`eval_config_with_vm`) is never dispatched from here — not as a
+/// retry, not as a fallback.
+pub fn eval_config_with_ace(
+    request: &crate::ace_config::AceConfigRequest<'_>,
+) -> crate::ace_config::AceConfigReport {
+    use crate::ace_config::{AceConfigReport, CONFIG_ENGINE_ID};
+    let started = std::time::Instant::now();
+    let executor = match ACE_EXECUTOR.read() {
+        Ok(slot) => slot.clone(),
+        Err(_) => {
+            return AceConfigReport::host_failure(
+                "ace.host/executor-lock-poisoned",
+                "executor lock poisoned",
+            )
+        }
+    };
+    let Some(executor) = executor else {
+        return AceConfigReport::host_failure(
+            "ace.host/executor-unregistered",
+            "no ACE executor installed; the host must install one (auto-lang-ace-host)",
+        );
+    };
+    let mut report = executor.eval_config(request);
+    report.wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let _ = CONFIG_ENGINE_ID;
+    report
+}
 /// Name-driven form of [`run_ace`] for hosts that take the engine as
 /// text (CLI/UI config): an unknown name — including every legacy engine
 /// name — is a named refusal with zero dispatch.

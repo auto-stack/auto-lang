@@ -26,6 +26,11 @@ pub mod ast;
 pub(crate) mod closure_capture;
 pub mod closures_context;
 pub mod closures_fn;
+/// PLAN-982（B-CONFIG-I）：配置文档面 —— 顶层文档语句序列物化为**一个**顺序
+/// 入口的 source 前门（`auto.source.config-document.v1`）。
+pub mod config_document;
+/// PLAN-982（B-CONFIG-I）：配置文档源级原语目录（`config.document/1`）。
+pub mod config_ops;
 pub mod console;
 pub mod cst;
 pub mod decl_env;
@@ -57,6 +62,14 @@ pub use adapter::{
     SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
+/// PLAN-982（B-CONFIG-I）：配置文档前门（文档行 → 单顺序入口）。
+pub use config_document::{
+    compile_config_document, compile_config_document_with_injection, config_profile_refusal,
+    parse_config_document, ConfigArg, ConfigBody, ConfigDocumentFront, ConfigDocumentSyntax,
+    ConfigFor, ConfigIf, ConfigLine, ConfigNode, ConfigNodeId, ConfigPair, ConfigPairValue,
+    ConfigVar, InjectValue, CONFIG_DOCUMENT_DOMAIN, CONFIG_DOCUMENT_ENTRY_NAME,
+    CONFIG_DOCUMENT_HIDDEN_PREFIX, CONFIG_DOCUMENT_VALUE_SCHEMA,
+};
 // PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——
 // 仅测试/`legacy-syntax-oracle` feature 可见（编译期不可达=退役门）。
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
@@ -98,6 +111,11 @@ pub const RECORD_SOURCE_PROFILE: &str = "auto.source.record.draft";
 /// fields, aggregate explicit `.move`/`.clone()`, field reads/replacement,
 /// plus the whole scalar/text operator and method surface.
 pub const TEXT_RECORD_SOURCE_PROFILE: &str = "auto.source.text-record.draft";
+/// PLAN-982（B-CONFIG-I）：配置文档 profile —— 文档语义面。E1 裁剪 = text-record
+/// 全表面 ∪ 顶层脚本语句序列（语句按源顺序进入**一个**顺序入口）；配置文档
+/// 专属语法（顶层 `key: value`、`dep`/节点三形）由 E2 在本面增量。消费者只有
+/// [`config_document::compile_config_document`]。
+pub const CONFIG_DOCUMENT_SOURCE_PROFILE: &str = "auto.source.config-document.v1";
 /// The entry-unit source profile (PLAN-862, R2-E/SEM-05): the scalar
 /// operator surface plus the ENTRY surface — `fn main() int`,
 /// `fn main() void` (Unit result), a single-file top-level statement
@@ -177,6 +195,11 @@ pub enum SourceProfile {
     /// [`age_package::compile_age_package`](crate::source::age_package) consumes
     /// it; every generic entry refuses it.
     AgePackage,
+    /// PLAN-982: the configuration-document profile (E1 trim = the
+    /// text-record surface ∪ the top-level script statement sequence, which
+    /// the projection materializes as ONE sequential entry function). Only
+    /// [`config_document::compile_config_document`] consumes it.
+    ConfigDocument,
 }
 
 impl SourceProfile {
@@ -197,6 +220,7 @@ impl SourceProfile {
             SourceProfile::AgeH0 => AGE_H0_SOURCE_PROFILE,
             SourceProfile::AgeComponent => AGE_COMPONENT_SOURCE_PROFILE,
             SourceProfile::AgePackage => AGE_PACKAGE_SOURCE_PROFILE,
+            SourceProfile::ConfigDocument => CONFIG_DOCUMENT_SOURCE_PROFILE,
         }
     }
 
@@ -232,6 +256,11 @@ impl SourceProfile {
             // package/text-record one; its domain rows are verified inside the
             // same shared domain, never a second checker.
             SourceProfile::AgePackage => crate::hir::HirDomain::TextRecord,
+            // PLAN-982：配置文档在宿主侧求值（与 console 同一条 host 车道）——
+            // 描述符/验证/降落/ABC 家族全部走 host-console 域，配置原语借用既有
+            // 的 host-import + PlatformCall 接缝；文档语义只经
+            // [`config_document::compile_config_document`]，不新开第二检查器。
+            SourceProfile::ConfigDocument => crate::hir::HirDomain::HostConsole,
         }
     }
 
@@ -256,6 +285,9 @@ impl SourceProfile {
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
                 | SourceProfile::AgePackage
+                // PLAN-982: the configuration-document face keeps the
+                // text-record operator surface.
+                | SourceProfile::ConfigDocument
         )
     }
 
@@ -328,6 +360,8 @@ impl SourceProfile {
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
                 | SourceProfile::AgePackage
+                // PLAN-982: configuration documents are text/object values.
+                | SourceProfile::ConfigDocument
         )
     }
 
@@ -346,6 +380,8 @@ impl SourceProfile {
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
                 | SourceProfile::AgePackage
+                // PLAN-982: configuration documents construct objects.
+                | SourceProfile::ConfigDocument
         )
     }
 
@@ -355,7 +391,13 @@ impl SourceProfile {
     pub fn is_entry_unit(&self) -> bool {
         matches!(
             self,
-            SourceProfile::EntryUnit | SourceProfile::Closures | SourceProfile::HostConsole
+            SourceProfile::EntryUnit
+                | SourceProfile::Closures
+                | SourceProfile::HostConsole
+                // PLAN-982：配置文档是**一个**顺序入口（文档语句序列），入口
+                // 形状沿用脚本入口合同；文档的值不走返回值（见
+                // `config_document::compile_config_document`）。
+                | SourceProfile::ConfigDocument
         )
     }
 
@@ -383,6 +425,9 @@ impl SourceProfile {
                 | SourceProfile::AgeH0
                 | SourceProfile::AgeComponent
                 | SourceProfile::AgePackage
+                // PLAN-982: the configuration-document face is a text-record
+                // superset.
+                | SourceProfile::ConfigDocument
         )
     }
 
@@ -402,6 +447,7 @@ impl SourceProfile {
             AGE_H0_SOURCE_PROFILE => Some(SourceProfile::AgeH0),
             AGE_COMPONENT_SOURCE_PROFILE => Some(SourceProfile::AgeComponent),
             AGE_PACKAGE_SOURCE_PROFILE => Some(SourceProfile::AgePackage),
+            CONFIG_DOCUMENT_SOURCE_PROFILE => Some(SourceProfile::ConfigDocument),
             _ => None,
         }
     }

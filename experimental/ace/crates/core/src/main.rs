@@ -261,6 +261,27 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
                 )],
             ));
         }
+        // PLAN-982（B-CONFIG-I）：配置文档面只经其 source 前门消费（文档语句
+        // 序列物化为单一顺序入口；本二进制不代其伪造产品执行）。
+        SourceProfile::ConfigDocument => {
+            return match ace_core::source::compile_config_document(
+                &src,
+                &module_path,
+                &args.capabilities,
+            ) {
+                Ok(c) => Ok(format!(
+                    "OK source profile={}, domain={}, entry={}, statements={}, input-hash={}, grammar={}, capabilities required: {:?}",
+                    ace_core::source::CONFIG_DOCUMENT_SOURCE_PROFILE,
+                    ace_core::source::CONFIG_DOCUMENT_DOMAIN,
+                    c.entry,
+                    c.statements,
+                    c.compiled.input_hash,
+                    c.grammar_id,
+                    c.compiled.checked.required_capabilities()
+                )),
+                Err(diags) => Err((EXIT_PIPELINE, diags)),
+            };
+        }
         SourceProfile::AgeH0 => {
             return match ace_core::source::age_h0::compile_age_h0(
                 &src,

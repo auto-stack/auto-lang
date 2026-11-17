@@ -388,6 +388,175 @@ fn desugar_fstrings_dialect(src: &str, bare_braces: bool) -> Result<String, Stri
     Ok(out)
 }
 
+/// PLAN-982（B-CONFIG-I，V-CFG-TEMPLATE）：配置文档的模板插值 desugar。
+///
+/// 真实 `pac.at` 的写法是**普通字符串**里的 `${expr}`（legacy config 同样插值），
+/// 以及节点头里的裸 `${expr}`（`lib ${name} {}`）。本函数把它们重写成与
+/// `f"..."` **同一生成物** `__fstr(...)`：
+/// - 字符串里的 `${…}` → `__fstr("前缀", expr, "后缀")`（前缀/后缀是原样文本）；
+/// - 字符串外的裸 `${…}` → `__fstr("", expr)`（节点头因此成为"节点名 + 一个
+///   文本实参"，与 legacy 的 `_arg0` 形状一致）。
+///
+/// 边界与既有 f-string 同一纪律：`${…}` 内不嵌套花括号、不含字符串字面量；
+/// `\$` 是字面美元。行注释（`//`、config 面的 `#`）、块注释与字符字面量按原样
+/// 复制（不误插值）。重写会移动 span（构造级诊断仍指认构造）。
+pub fn desugar_config_templates(src: &str) -> Result<String, String> {
+    fn part_text(out: &mut String, t: &str) {
+        out.push('"');
+        out.push_str(t);
+        out.push('"');
+    }
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        // 行注释（`//` 与 config 面的 `#`）原样复制。
+        if (c == b'/' && bytes.get(i + 1) == Some(&b'/')) || c == b'#' {
+            let end = src[i..]
+                .find('\n')
+                .map(|p| i + p + 1)
+                .unwrap_or(bytes.len());
+            out.push_str(&src[i..end]);
+            i = end;
+            continue;
+        }
+        // 块注释原样复制。
+        if c == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            let end = src[i..]
+                .find("*/")
+                .map(|p| i + p + 2)
+                .unwrap_or(bytes.len());
+            out.push_str(&src[i..end]);
+            i = end;
+            continue;
+        }
+        // 字符字面量原样复制。
+        if c == b'\'' {
+            let mut j = i + 1;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' => {
+                        j += 1;
+                        if j < bytes.len() {
+                            j += src[j..].chars().next().unwrap().len_utf8();
+                        }
+                    }
+                    b'\'' => {
+                        j += 1;
+                        break;
+                    }
+                    _ => j += 1,
+                }
+            }
+            out.push_str(&src[i..j]);
+            i = j;
+            continue;
+        }
+        // 普通字符串：含未转义 `${` 时变成 `__fstr(...)`。
+        if c == b'"' {
+            let mut j = i + 1;
+            let mut has_tpl = false;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' => {
+                        j += 1;
+                        if j < bytes.len() {
+                            j += src[j..].chars().next().unwrap().len_utf8();
+                        }
+                    }
+                    b'$' => {
+                        if bytes.get(j + 1) == Some(&b'{') {
+                            has_tpl = true;
+                        }
+                        j += 1;
+                    }
+                    b'"' => {
+                        j += 1;
+                        break;
+                    }
+                    _ => j += 1,
+                }
+            }
+            if !has_tpl {
+                out.push_str(&src[i..j]);
+                i = j;
+                continue;
+            }
+            let (parts, len) = split_quoted_dialect(src, i + 1, b'"', false, i)?;
+            out.push_str("__fstr(");
+            let mut first = true;
+            for p in parts {
+                if !first {
+                    out.push_str(", ");
+                }
+                first = false;
+                match p {
+                    Part::Text(t) => part_text(&mut out, &t),
+                    Part::Ident(name) => out.push_str(&name),
+                    Part::Expr(e) => out.push_str(&e),
+                }
+            }
+            if first {
+                out.push_str("\"\"");
+            }
+            out.push(')');
+            i += len;
+            continue;
+        }
+        // 字符串外的裸 `${expr}`：节点头里的模板占位。legacy config 在**节点头**
+        // 不插值（实测 `lib ${name} {}` 的 id/`_arg0` 都是字面 `${name}`），所以
+        // 这里重写成同文本的字符串字面量——head 变成普通字符串身份，投影层再按
+        // `${…}` 形补一个 `_arg0` 实参（与 legacy 逐字一致）。
+        if c == b'$' && bytes.get(i + 1) == Some(&b'{') {
+            let mut depth = 0usize;
+            let mut j = i + 1;
+            let mut close = None;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = Some(j);
+                            break;
+                        }
+                    }
+                    b'"' | b'\'' => {
+                        return Err("`${…}` segments may not contain string literals".to_string())
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            let Some(close) = close else {
+                return Err("unterminated `${…}` template segment".to_string());
+            };
+            // 位置决定语义（legacy 口径）：`key: ${x}` 是**取值位的插值**；
+            // 节点头 `name ${x} {}` 是字面占位（legacy 实测不插值）。
+            let mut back = i;
+            while back > 0 && matches!(bytes[back - 1], b' ' | b'\t') {
+                back -= 1;
+            }
+            let value_position = back > 0 && bytes[back - 1] == b':';
+            if value_position {
+                out.push_str("__fstr(");
+                out.push_str(&src[i + 2..close]);
+                out.push(')');
+            } else {
+                out.push('"');
+                out.push_str(&src[i..=close]);
+                out.push('"');
+            }
+            i = close + 1;
+            continue;
+        }
+        let ch = src[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    Ok(out)
+}
 /// The profiles whose surfaces admit FStr (the textual family plus the
 /// aggregates/closures collections surface — the FStr case corpus runs on
 /// the aggregates compile entry).
@@ -402,6 +571,8 @@ pub fn profile_admits_fstr(profile: SourceProfile) -> bool {
             | SourceProfile::Numeric
             | SourceProfile::Aggregates
             | SourceProfile::Scheduler
+            // PLAN-982（B-CONFIG-I）：配置文档模板插值走同一 f-string 变换。
+            | SourceProfile::ConfigDocument
     )
 }
 

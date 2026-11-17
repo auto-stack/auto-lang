@@ -14728,6 +14728,64 @@ impl<'a, 's> FnResolver<'a, 's> {
                 },
             };
         }
+        // PLAN-982（B-CONFIG-I E3）：配置文档原语（`config.document/1`）只在
+        // config-document 面绑定；标量重载按**实参 VT**选择（节点/对象/列表
+        // 句柄与 i32 同型，种类由物化侧的显式 callee 决定）。未知/不匹配都
+        // 具名拒绝，不静默退回普通函数解析。
+        if self.profile == SourceProfile::ConfigDocument
+            && super::config_ops::is_callee(&callee.name)
+        {
+            if rargs.iter().any(|a| a.name.is_some()) {
+                self.bind_err(
+                    "source.config-argument",
+                    format!(
+                        "configuration primitive `{}` takes positional arguments only",
+                        callee.name
+                    ),
+                    call_span,
+                );
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::I32,
+                    kind: RExprKind::Unit,
+                };
+            }
+            let vts: Vec<VT> = rargs.iter().map(|a| a.value.vt).collect();
+            return match super::config_ops::lookup_callee(&callee.name, &vts) {
+                Some(op) => {
+                    let args = rargs.into_iter().map(|a| a.value).collect();
+                    self.used_intrinsics.insert(op.symbol);
+                    ResolvedExpr {
+                        span: call_span,
+                        vt: op.result,
+                        kind: RExprKind::CallIntrinsic {
+                            symbol: op.symbol,
+                            args,
+                        },
+                    }
+                }
+                None => {
+                    let got = vts
+                        .iter()
+                        .map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.bind_err(
+                        "source.config-argument",
+                        format!(
+                            "configuration primitive `{}` has no overload for ({got})",
+                            callee.name
+                        ),
+                        call_span,
+                    );
+                    ResolvedExpr {
+                        span: call_span,
+                        vt: VT::I32,
+                        kind: RExprKind::Unit,
+                    }
+                }
+            };
+        }
         if self.profile == SourceProfile::HostConsole
             // PLAN-1041: 包装配面（TextRecord 经 bind_packages/resolve_with）同样
             // 准入平台保留名——公共 stdlib 源（如 io 输出循环）单源服务
