@@ -75,9 +75,9 @@
 - **运行期列表 `for`**：仅**字面数组**（`for d in (["a","b"])` 或绑定字面数组的 `var`）会
   展开；元素来自注入/计算的列表仍是 `source.config-document/pending`（需 list len/at 原语）。
 - **值面**：i32/bool/char/text/对象/列表/节点；无 `f64`/`u64`（`u64>i64::MAX` 守卫不可达）、
-  无空列表字面量 `[]`（`array-lit` 属共享面，改动会漂移 aggregates profile）。**现状已钉住**：
-  `tags: []` 目前是 `stage:"text", code:"source.syntax"`（"skipped unexpected token"，span 指向 `[`），
-  永久用例 `p982_config_empty_list`；非空 `[1, 2]` 可用（投影 `List([I64(1), I64(2)])`）。
+  **空列表字面量 `[]` 已支持（config-document 专用规则 `cfg-empty-array-lit`）**：投影为空列表；
+  共享的 `array-lit` 仍要求至少一个元素（aggregates/scheduler 语义不变）。永久用例
+  `p982_config_empty_list`（正例）与 `List([I64(1), I64(2)])`（非空）共同钉住值面。
 - **注入**：bool/i32/char/text 可注入并在文档中按名可见；对象/数组注入是
   `ace.config/inject-unsupported`，超 i32 是 `ace.config/inject-range`。
 - **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：未支持。**现状已钉住**：
