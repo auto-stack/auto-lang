@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-17
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-970, PLAN-972, PLAN-973, PLAN-978, PLAN-1065]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md]
@@ -112,6 +112,26 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 
 永久证据：`experimental/ace/crates/native/tests/sched_m2_1067.rs`（4 tests，2.4s：逐字节正例＋零残值drain审计、send-after-stop具名错误、前门具名拒绝、重复运行独立）。**未闭**：`spawn_with_state`（Str初始化）按T-03补，取消/迟到终态与`platform.*`计时按T-05补；`Future<Result<owned>>`整链在T-03完成后才算T-02的完整谓词，故本轮T-02保持未勾。
 
+### T-05 OS 等待/取消/退出清理（2026-11-17，work，r1）
+
+**实现**：
+- 真实 OS 等待：`sleep(ms)` 在独立线程内以 OS 睡眠分片执行（每 10ms 检查 drain/stop），不忙等、不占唯一执行器；drain 期 sleep 立即返回（AV 同规则）。
+- 未发布 future 的终止语义（**三端一致**）：生产者 driver 结束时，它已 latch 但未回的 ask 端口、以及仍排在它邮箱里（再也无人接收）的 ask 消息端口，一律置为终态 `Closed`；drain 时所有仍 Pending 的端口同样置 `Closed`。等待方得到具名语言错误而非自旋到 fuel 上限。
+  - native：`E_REPLY_CLOSED` → stderr `sched: task closed without replying` + trap 70；
+  - AV：`ExecOutcome::Error { message: "task closed without replying" }`（PLAN-1067 前该输入是 `Resource{InstrSteps, scheduler multiplex exceeded the fuel budget}`，即 AV 侧真实缺陷）。
+- 退出清理：drain 逐块释放（task 邮箱/端口/线程参数/快照表）＋ text ledger 审计；未投递消息与已发布未消费回复内的 owned 值一并释放。
+
+**观测**（真 PE / 真 AV）：
+| 用例 | native | AV |
+|---|---|---|
+| 唤醒后 40ms 再回（`scheduler_sleep_is_a_real_os_wait`） | exit 0、`42\n`、PE 墙钟 ≥35ms（no-op sleep 会是个位数 ms） | — |
+| ask 后立刻 stop、未回复（`scheduler_await_on_unreplied_ask_is_a_named_error` / `await_on_unreplied_ask_is_a_named_language_error`） | exit 70 + 具名消息、无输出、<1s 返回（不自旋） | 具名 Error、stdout 空 |
+| 复合退出（2 活 task＋未消费缓冲＋未 await 回复＋go timer，`scheduler_exit_drain_releases_every_outstanding_owner`） | exit 0（零残值，绝不 72）、stderr 空、收敛 <10s | — |
+
+**本轮审计发现的既有缺陷（不属本车道，记名）**：owned-text 临时值在**循环体第二次迭代**重建时未逐次释放（退出 sweep 只释放最后一次写）。输入：task 臂内 `print(f"a=${n}")` 收两条消息 → native lane drain 审计报残值 1（exit 72）；同一源改 `print(n)` 则 exit 0。单次迭代（`spawn_with_state`）正常。owner＝共享 owned-text native 降层（PLAN-774/870 的 sweep 面）；关闭条件＝循环内文本临时逐次释放或槽复用纪律，并加"≥2 次迭代后 text ledger 归零"反控。本包复合退出用例改用标量打印以免测他域缺陷。
+
+
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
@@ -152,7 +172,7 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 - [x] **T-02｜work｜AC-02/03**：在原native/runtime有限先证typed Future<Result<owned>>完整生产→挂起→完成/取消链，冻结一个可实现方案；不拿手填MIR代普通源。 — 2026-11-17 ✅（8/8正例逐字节真PE＋owned Str 状态跨 spawn＋bool reply 跨 await＋未 await 回复 drain 释放＋具名错误；`sched_m2_1067` 8 tests。取消/迟到终态按原任务归 T-05，不属本行谓词）
 - [x] **T-03｜work｜AC-02**：沿共享类型/IR补AC异步帧、await/go及泛型/Option/Result跨挂起值和所有权，落V-02正反例；依T-02。 — 2026-11-17 ✅（值面tag/物化/释放/drain审计＋bool typed reply；owned-text 消息/回复为具名差额，见§5 T-03 表）
 - [x] **T-04｜work｜AC-02/03**：原SCHED_*补AC Task/actor/mailbox/send/ask/reply/stop真执行及FIFO/背压，保旧源码；依T-02/03。 — 2026-11-17 ✅（真PE逐字节：message_handler/mailbox_fifo FIFO、ask_reply 42、stop_hook 先投递后 stop、backpressure cap=1 三消息顺序不漏；源码为 968 原语料未改）
-- [ ] **T-05｜work｜AC-03**：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。
+- [x] **T-05｜work｜AC-03**：接OS等待/timer/967完成端口、取消/late/异常/退出清理，补V-03/04并核真实资源；依T-03/04。 — 2026-11-17 ✅（真实OS等待墙钟oracle、未发布future在三端统一具名终止、复合退出零残值；platform.*源级入口具名交1068/T-03，见§10）
 - [ ] **T-06｜work｜AC-01/02**：同源AV/AC/A2R完整原调度语料与新Future组合各对独立oracle，保非法近邻/原条件；依T-03..05。
 - [ ] **T-07｜work｜AC-04**：978式仓外候选真PE运行和OS/库依赖审计，Linux代码/原完整case归1063；依T-03..06。
 - [ ] **T-08｜work｜AC-01..04**：跑冻结影响组/必要consumer，核V-01..05、原规模/未验项与准确收据，交1068；依全部work。
@@ -162,6 +182,18 @@ T-02有界先证一条Future<Result<owned>>调用→AC状态机→受检OS完成
 T-01先冻结依赖与未决；T-02在依赖实现前先证全链，T-03..07按各自已交接缝执行；T-08汇总全部work，T-09独立review→T-10 merge串行。发现超出独立评审规模的新增实现域时，必须在本包正式修订中逐原行迁交具名后继并取得实际交付，不能仅写“以后修”后勾整包完成。
 
 ## 9. 复审记录
+
+2026-11-17 stage: work | PLAN-1067 r1 round-3 | T-05 闭合（OS 等待/取消终态/退出清理） | code `c6b84240e`
+
+- 真实等待：`sleep` 以 OS 睡眠分片执行（10ms 片，drain/stop 可中止），墙钟 oracle `scheduler_sleep_is_a_real_os_wait` 要求 PE 运行 ≥35ms（no-op 睡眠会是个位数 ms）。
+- **三端一致的 closed-future 终止**：生产者 driver 结束时关闭其已 latch 未回的 ask 端口**及**仍在其邮箱里再无人接收的 ask 端口；drain 期所有 Pending 端口同样关闭。
+  - native：`E_REPLY_CLOSED` → stderr `sched: task closed without replying` + trap 70，<1s 返回。
+  - AV：`ExecOutcome::Error{message:"task closed without replying"}`。**修复前**该输入是 `Resource{InstrSteps, scheduler multiplex exceeded the fuel budget}`（自旋耗尽 fuel）——本轮实测确认并修正，属 AV 侧真实缺陷。
+- 退出清理：复合用例（2 活 task＋未消费缓冲＋未 await 回复＋go timer）exit 0 零残值、stderr 空、收敛 <10s。
+- **发现并记账的既有限层缺陷**：owned-text 临时值在循环体第二次迭代重建时不逐次释放（`print(f"a=${n}")` 收两条 → 残值 1/exit 72；改 `print(n)` → exit 0；单迭代正常）。owner＝共享 owned-text native 降层（774/870 sweep 面），关闭条件＝逐次释放或槽复用纪律＋≥2 迭代后 text ledger 归零反控。本包复合用例改用标量以免测他域缺陷。
+- 运行：`sched_m2_1067` **11/11 PASS**（单测 0.6–2.5s，均 <10s）；**`cargo t ace-av case-ace-m2-scheduler-968 ace-native` 三组全 PASS**（AV core 改动无回归）；AV 侧新增 `typed_reply_domain_is_not_int_bound`、`await_on_unreplied_ask_is_a_named_language_error` 两永久用例。
+- 具名交后继：`platform.*`（clock/timer）源级入口仍在调度车道具名拒绝（`native.sched-platform`）——源级 `std.time.*` 模块入口属库/FFI 接面，owner＝1068/T-03；本包不新增未验证表面。
+- 阻塞：无。
 
 2026-11-17 stage: work | PLAN-1067 r1 round-2 | T-02/T-03/T-04 闭合（owned值跨交接＋typed reply＋actor面） | code `e16f01b6e`
 
@@ -190,6 +222,8 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 1 | from: drafting
 
 stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: e16f01b6e | next: work
 
+stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1067/auto-lang | commit: c6b84240e | next: work
+
 ## 10. 待澄清事项
 
 原生调度的帧/等待策略及资源上限由T-01/02依据现合同先证；本次不预定私有Rust ABI、任意线程数或无穷规模。超出原语义的并发模型/平台扩面不得借本计划引入。
@@ -200,6 +234,7 @@ stage: goal | plan_id: PLAN-1067 | plan_revision: r1 | round: 2 | from: work | t
 |---|---|---|
 | owned-text 消息/回复 | `h.send("hello")`、`reply("v42")` 由共享前端具名拒绝 `source.sched-argument`（内建签名要 owned `Str`，表面只产 borrowed view） | 1068/T-02（共享前端）：在 scheduler 参数投影处插入 `text_to_owned`；关闭时须改 `scheduler_owned_text_message_and_reply_stay_named_rejections` 边界钉并补 native+AV 正例 |
 | `platform.*` / 真 OS timer | 本车道准入具名拒绝（`native.sched-platform`）；`sleep` 已走真实 OS 等待 | 本包 T-05 |
-| 取消/迟到终态 | runtime 已有 drain 期 cancel 语义（sleep/await 立即返回、单终态提交），但无外部取消源与迟到结果反例 | 本包 T-05 |
+| 外部取消源 | T-05 已闭内部终止语义：未发布 future 三端具名终止、stop 后不复活、drain 期 sleep/await 立即返回；但**无进程外取消源**（如宿主取消句柄/超时中断一个在跑任务） | 本包 T-07（仓外候选/宿主接面）或后续宿主计划；关闭条件＝真实宿主取消入口 + 迟到结果不复活反例 |
+| owned-text 循环内临时 | 循环体第二次迭代重建文本临时不逐次释放（退出 sweep 只释放最后一次写） | 共享 owned-text native 降层（774/870）；关闭条件＝逐次释放/槽复用纪律＋≥2 迭代 text ledger 归零反控（本包已用 exit-72 审计捕获） |
 
 日常等价实现选择由T-01/02有界调查决定，不为已授权方向重复申请确认。未提供平台环境保持NOT_RUN；计划结构检查不能代实际运行证据。
