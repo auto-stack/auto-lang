@@ -636,7 +636,26 @@ fn emit_line(
                             }
                         }
                     }
+                    // PLAN-982（CONFIG）：对象字面量属性**同时登记为局部**（同名
+                    // 句柄别名）——这样 `k["f"]` / `k.f` 的搬运路径
+                    // （`emit_object_handle` 要求 `ctx.locals[name] == Obj`）可达。
+                    let object_literal = matches!(e.kind, super::ast::ExprKind::ObjectLit { .. });
                     let (value, class) = emit_value(e, out, ctx)?;
+                    if object_literal && class == LocalClass::Obj {
+                        let alias = p.key.name.clone();
+                        if !ctx.declared.contains(&alias) {
+                            out.push(Stmt::Let {
+                                kw: p.key.span,
+                                name: p.key.clone(),
+                                ann: None,
+                                mutable: false,
+                                value: value.clone(),
+                                span: p.span,
+                            });
+                            ctx.declared.insert(alias.clone());
+                            ctx.locals.insert(alias, LocalClass::Obj);
+                        }
+                    }
                     write_value(out, ctx, cur, "cfg_put", key, value, class, p.span)?;
                 }
             }

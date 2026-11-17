@@ -18,11 +18,13 @@ fn heap_of(source: &str) -> Result<Option<ConfigValue>, String> {
     let report = eval_config_with_ace(&request);
     match &report.outcome {
         AceConfigOutcome::Success { document, .. } => {
-            let app = document
-                .root
-                .children
-                .iter()
-                .find(|c| c.id.as_deref() == Some("app"));
+            // `app("main")` 是**调用形**：id 为 None、实参里是 "main"；两种形态都认。
+            let app = document.root.children.iter().find(|c| {
+                c.id.as_deref() == Some("app")
+                    || c.args
+                        .iter()
+                        .any(|a| matches!(a, ConfigValue::Text(t) if t == "main"))
+            });
             Ok(app.and_then(|c| c.prop("heap")).cloned())
         }
         other => Err(format!("{other:?}")),
@@ -57,11 +59,13 @@ fn p982_config_field_move_by_name_is_pinned() {
         "}\n"
     );
 
-    let ok_index = probe("move by index `kernel[\"heap\"]`", indexed);
-    let ok_dot = probe("move by dot `kernel.heap`", dotted);
-    // 实测（round 107）：**两种拼写今天都不可达**——根对象属性没有进入物化器的
-    // 局部表，`kernel` 原样留成 `Var`，到 bind 报 `source.undefined`。
-    // 即：`super-put` 只在**会话原语层**有证据（round 45 的 av-core 用例），
-    // **用户文档面取不到它**。此处按现状钉住；实现"属性进局部表"后，本断言
-    // 应翻转为 `ok_index || ok_dot`。
+    // round 109：对象属性已登记为局部 ⇒ **索引形态的搬运打通**
+    // （`kernel["heap"]` 把字段搬进 `app`，值 1024）。点形态仍是记录语义问题
+    // （`source.type-mismatch`：field access requires a record-typed value），
+    // 属另一条线（记录/字段类型），不是本用例的目标。
+    assert!(
+        probe("move by index `kernel[\"heap\"]`", indexed),
+        "the indexed by-name move must work now that properties are locals"
+    );
+    let _ = probe("move by dot `kernel.heap` (still refused)", dotted);
 }
