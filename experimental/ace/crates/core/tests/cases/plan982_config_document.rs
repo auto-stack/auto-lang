@@ -312,15 +312,21 @@ fn p982_config_document_bad_neighbours_keep_original_spans() {
     assert!(codes[0].starts_with("source.config-document/empty@"));
 }
 
-/// E1 物化：语句形态的文档行 → 一个顺序入口；入口在共享 Checked HIR 里真实
-/// 存在，且文档语句 span 保持原源；pair/节点行在 E2 阶段具名 pending（不冒充）。
+/// E3 物化：文档行 → **一个**顺序入口，值行变成 `cfg_*` 受检原语调用；入口与
+/// 原语声明都在共享 Checked HIR 里真实存在，能力键 `config.document/1` 进
+/// `requires`。运行期求值（E4）尚未接线——这里只证明前端+检查链成立，不冒充
+/// 可执行。
 #[test]
 fn p982_config_document_materializes_one_sequential_entry() {
     let src = "var port = \"win32\"\nif port == \"win32\" { var x = 1 } else { var x = 2 }\n";
     let front = compile_config_document(src, "pac.at", &[]).expect("statement document compiles");
     assert_eq!(front.entry, CONFIG_DOCUMENT_ENTRY_NAME);
     assert_eq!(front.compiled.profile, CONFIG_DOCUMENT_SOURCE_PROFILE);
-    assert_eq!(front.statements, 2, "two document lines → one entry body");
+    // root + var + if + finish。
+    assert_eq!(
+        front.statements, 4,
+        "root/var/if/finish live in one entry body"
+    );
 
     let module = front
         .compiled
@@ -330,15 +336,40 @@ fn p982_config_document_materializes_one_sequential_entry() {
         .first()
         .expect("one module");
     let symbol = format!("sf_{CONFIG_DOCUMENT_ENTRY_NAME}");
-    let checked_entry = module.defs.iter().find(
-        |d| matches!(&d.kind, ace_core::hir::DefKind::Function { name, .. } if name == &symbol),
-    );
     assert!(
-        checked_entry.is_some(),
+        module.defs.iter().any(
+            |d| matches!(&d.kind, ace_core::hir::DefKind::Function { name, .. } if name == &symbol)
+        ),
         "the sequential entry must be a real checked function in the shared HIR"
     );
+    let intrinsic_symbols: Vec<&str> = module
+        .defs
+        .iter()
+        .filter_map(|d| match &d.kind {
+            ace_core::hir::DefKind::Intrinsic { symbol, .. } => Some(symbol.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        intrinsic_symbols.contains(&"auto.config.document.root.v1"),
+        "the document root primitive must be a checked intrinsic: {intrinsic_symbols:?}"
+    );
+    assert!(
+        intrinsic_symbols.contains(&"auto.config.document.finish.v1"),
+        "the document finish primitive must be a checked intrinsic: {intrinsic_symbols:?}"
+    );
+    assert!(
+        front
+            .compiled
+            .checked
+            .required_capabilities()
+            .iter()
+            .any(|c| c == "config.document/1"),
+        "the document capability must be required: {:?}",
+        front.compiled.checked.required_capabilities()
+    );
 
-    // 精确 source map：物化的两条语句仍指向原源起点。
+    // 精确 source map：文档行的 span 仍指向原源起点。
     let doc = parse_config_document(src).expect("parse");
     assert!(matches!(doc.lines[0], ConfigLine::Var(_)));
     assert!(matches!(doc.lines[1], ConfigLine::If(_)));
@@ -346,20 +377,79 @@ fn p982_config_document_materializes_one_sequential_entry() {
         &src[doc.lines[0].span().start..doc.lines[0].span().start + 3],
         "var"
     );
-
-    // 值形态（pair/节点）当前只到候选：执行必须具名 pending，不得静默成功。
-    let bad = "name: \"x\"\n";
-    let err = compile_config_document(bad, "pac.at", &[])
-        .expect_err("value rows cannot execute before E3/E4");
-    assert_eq!(err.len(), 1);
-    assert_eq!(err[0].code, "source.config-document/pending");
-    assert!(
-        bad[err[0].span.start..err[0].span.end].contains("name"),
-        "the pending diagnostic must keep the offending row's span: {:?}",
-        err[0].span
-    );
 }
 
+/// E3 值面：真实三形 dep 文档编译成**一个**入口里的 `cfg_*` 调用序列（节点/
+/// id/实参/属性/追加/收尾），能力键进 `requires`；隐藏局部名冲突具名拒绝；
+/// 运行期 `for` 行仍具名 pending（下一增量）。
+#[test]
+fn p982_config_document_value_rows_become_cfg_calls() {
+    let src = r#"name: "fixture-deps"
+dep bps {
+    path: "../../packages/blueprints"
+}
+dep "stylekit" {
+    path: "../stylekit"
+}
+dep("kernel") {
+    port: "msvc/x64"
+}
+"#;
+    let front = compile_config_document(src, "pac.at", &[]).expect("value rows compile");
+    let module = front
+        .compiled
+        .checked
+        .bundle()
+        .modules
+        .first()
+        .expect("one module");
+    let intrinsics: Vec<&str> = module
+        .defs
+        .iter()
+        .filter_map(|d| match &d.kind {
+            ace_core::hir::DefKind::Intrinsic { symbol, .. } => Some(symbol.as_str()),
+            _ => None,
+        })
+        .collect();
+    for want in [
+        "auto.config.document.root.v1",
+        "auto.config.document.node.v1",
+        "auto.config.document.id.name.v1",
+        "auto.config.document.id.text.v1",
+        "auto.config.document.arg.str.v1",
+        "auto.config.document.put.str.v1",
+        "auto.config.document.append.v1",
+        "auto.config.document.finish.v1",
+    ] {
+        assert!(
+            intrinsics.contains(&want),
+            "expected checked intrinsic `{want}`; got {intrinsics:?}"
+        );
+    }
+    assert!(front
+        .compiled
+        .checked
+        .required_capabilities()
+        .iter()
+        .any(|c| c == "config.document/1"));
+    // 一个入口：整份文档只有这一个 checked 函数体（不是逐字段隐藏函数）。
+    let fns = module
+        .defs
+        .iter()
+        .filter(|d| matches!(&d.kind, ace_core::hir::DefKind::Function { .. }))
+        .count();
+    assert_eq!(fns, 1, "the whole document must materialize into ONE entry");
+
+    // 隐藏前缀冲突：用户局部不得抢占编译器生成的 `__cfg_` 名字空间。
+    let err = compile_config_document("var __cfg_x = 1\n", "pac.at", &[])
+        .expect_err("hidden-prefix locals are rejected");
+    assert_eq!(err[0].code, "source.config-document/hidden-name");
+
+    // 运行期 `for` 行仍具名 pending（需要 list-count 原语）。
+    let err = compile_config_document("for d in modules { x: 1 }\n", "pac.at", &[])
+        .expect_err("`for` rows are the next increment");
+    assert_eq!(err[0].code, "source.config-document/pending");
+}
 /// 语句形态的编译入口里只允许文档行的语句种类（负控：`return` 不是文档行）。
 #[test]
 fn p982_config_document_rejects_non_document_statements() {

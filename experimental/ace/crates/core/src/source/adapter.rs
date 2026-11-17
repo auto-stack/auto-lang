@@ -3852,6 +3852,8 @@ impl<'p> Emitter<'p> {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
                 .or_else(|| super::platform_io::signature(sym).map(|(_, _, cap)| cap))
+                // PLAN-982：配置文档原语自带 `config.document/1` 能力键。
+                .or_else(|| super::config_ops::capability_of(sym))
                 // PLAN-981：AGE 资源服务自带能力键。
                 .or_else(|| super::age_resources::by_symbol(sym).map(|op| op.capability))
                 .unwrap_or(TRACE_CAPABILITY);
@@ -4254,6 +4256,11 @@ impl<'p> Emitter<'p> {
                 let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = format!("\"t_rec_{}\"", op.result_port);
                 (ps.join(", "), rs)
+            } else if let Some(op) = super::config_ops::by_symbol(sym) {
+                // PLAN-982（B-CONFIG-I）：配置文档原语的签名 = 目录里的精确参数
+                // VT + 结果 VT（与 resolve 侧选择的重载是同一行，不另写一份）。
+                let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                (ps.join(", "), self.ty_use_ref(op.result))
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = match res {
@@ -5495,6 +5502,10 @@ fn global_type_id(sym: &str) -> String {
 fn intrinsic_id_suffix(sym: &str) -> String {
     if sym.starts_with("auto.console.")
         || sym.starts_with("auto.platform.")
+        // PLAN-982（B-CONFIG-I）：配置文档原语符号形如
+        // `auto.config.document.put.str.v1`——只取末段会让所有重载塌成 `v1`
+        // （同模块两处不同重载 = 重复 id），故与 console/platform 同纪律用全名。
+        || sym.starts_with("auto.config.")
         // PLAN-981：AGE 资源服务的符号形如 `age.material2d.color.v1`——只取末段
         // 会让 `color`/`quad`/`circle` 全塌成 `v1`，同一模块两处调用即重复 id。
         // 服务符号用全名（与 console/platform 同纪律）。

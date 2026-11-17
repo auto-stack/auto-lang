@@ -29,6 +29,8 @@ pub mod closures_fn;
 /// PLAN-982（B-CONFIG-I）：配置文档面 —— 顶层文档语句序列物化为**一个**顺序
 /// 入口的 source 前门（`auto.source.config-document.v1`）。
 pub mod config_document;
+/// PLAN-982（B-CONFIG-I）：配置文档源级原语目录（`config.document/1`）。
+pub mod config_ops;
 pub mod console;
 pub mod cst;
 pub mod decl_env;
