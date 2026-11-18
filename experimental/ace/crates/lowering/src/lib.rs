@@ -42,6 +42,7 @@ pub use hir_adapter::*;
 /// training lane) may now admit `auto.console.*` imports that previously
 /// fell to the `lower.intrinsic` rejection; the `__py_f64_bits` /
 /// `__py_staged_text` reconstruction intrinsics lower at their call sites
-/// (no `CalleeRef`), and `F32`/`F64` intern in this domain for the general
-/// console float lanes.
+/// (no `CalleeRef`). (F32/F64 interning in this domain predates this
+/// change — it landed with the AGE numeric type-table work — so the new
+/// float console lanes reuse it rather than adding it.)
 pub const MIR_LOWERING_VERSION: &str = "5";

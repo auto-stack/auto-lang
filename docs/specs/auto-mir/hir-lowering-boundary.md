@@ -58,8 +58,8 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
   另有两处准入面：collection 家族的 Unit 结果类型判定（`owned_type_idx_of`）与
   FnLower 调用接缝（该处拒绝码是 `lower.callee`，判据同为"任意 foreign-def 模块"）；
   新增 `__py_f64_bits`/`__py_staged_text` 重建 intrinsic 在调用点直接发射 MIR（无
-  `CalleeRef`，故不再走 `lower.intrinsic`）；该域引入 F32/F64 interning 供通用 float
-  console lane。AV/CTE/MN 三消费者镜像同步为 "5"）。此前 `"4"`（PLAN-894：文本域准入扩面——文本 eq/ne 按操作数真实 MIR 类型路由
+  `CalleeRef`，故不再走 `lower.intrinsic`）；通用 float console lane 复用该域**既有的**
+  F32/F64 interning（该 interning 由更早的 AGE 数值类型表工作引入，不是本版新增）。AV/CTE/MN 三消费者镜像同步为 "5"）。此前 `"4"`（PLAN-894：文本域准入扩面——文本 eq/ne 按操作数真实 MIR 类型路由
   `StrCmp`（owned 操作数先 View；BIN 保持纯标量）与 `TextConcat` 操作数 view
   化；owned-Str 局部完整根替换沿既有 owned 局部 Assign Move 映射；AV/CTE/MN
   三消费者镜像同步为 "4"）。此前 `"3"`（PLAN-863：HostConsole 源码域、独立
