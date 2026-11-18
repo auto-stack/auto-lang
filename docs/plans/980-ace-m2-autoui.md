@@ -626,13 +626,14 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
   - `style N = other`（ident 复制）→ `const N str = other`（绑定期按常量读；缺名沿用现有具名拒）；
   - `style N(p: str = d, …) = "{p} …"` → `Item::Fn`（参数按声明序、类型 str；body=`{p}`→ACE f-string `$p` 的 str 表达式）；**默认值本刀不支持**（含默认值→具名拒 `source.age.style-defaults`）；
   - `pub style …` → 公共面 const/fn（复用 `public-item` 的可见性/重导出）；
+  - **stylekit 默认参数=本刀按具名拒绝验收**：stylekit 的 3 条参数化 recipe 带默认值（`pill(bg: str = …, …)`），本刀不接默认值——含默认值的声明以 `source.age.style-defaults` **具名拒**；验收口径=该拒绝（不是静默忽略、也不假装已支持）。因此 stylekit 在本刀**不解锁整例**，007/016/017/029/031p 的 stylekit 面留后续刀；
   - **调用点折叠**：`style X = f(arg: "lit")` 与 view 内 `style: f(arg: "lit")` 当且仅当实参全为字面量时在投影期折叠为 str 常量；非字面量实参→具名拒 `source.age.style-call`（不猜求值序）。命名实参按声明序对位（未知键/缺参具名拒）。
 - **文法**：新增 `style-item` 与 `public-body` 的 `style` 臂；profile 门 = `[age-component, age-package]`；`style` 保持普通标识符拼写（**不进 token 表**），仅在声明头/公共体按 spelling 识别（同 `age-node-head` 的 `name(spelling:)` 机制）；**普通标识符位置的 `style` 保持合法**（永久负控）。
 - **投影/AST**：新规则 → 上述 `Item::Const`/`Item::Fn`；不新增 AST/HIR 节点；名字进 const/fn 命名空间，重名走现有重复声明拒。
 - **身份与后端**：const/fn 的 mangle、可见性、AV/TS/A2R 发射**全部复用现路径**——本刀无后端改动。
 
 **三、文法身份影响（981 会签要点）**
-- 现冻结值：`age-component` = `f35cf5934cbadd2524c81de925af1d2c24187ba1d869a09ffc0e6e372b8128a7`；`age-package` = `6c1bb4778a800a865ef0ddb6166d1a8dbd358eecd73ce1ccf0e5445c1005d587`。
+- 现冻结值（**spawn/f32 落主后的基线**，2026-11-18 复核）：`age-component` = `19a1376eac5f32404b0a653e84d58206c74a954b1546be5aec4485a3fb9bbae5`；`age-package` = `0290d0ab2441b23399f6505512da4e3c9a9e907890d9584ba8a45ff2694136c8`（前值 f35cf593…/6c1bb477… 随 #6o 与 981 spawn 臂移动）。
 - 本刀**同时移动这两个值**（新规则 + public-body 臂）；其余 **13 profile 必须逐字节不变**（会签后由 980 提交 diff+逐 profile 转储，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 并注明前值/原因）。
 - `themes` 的 `pub theme` 仍是**独立未支持面**：style 不放行 theme，不得把两者混为一谈。
 
@@ -1598,8 +1599,15 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 2026-11-18 stage: revision（④-A 入口同步 + 形状准入补测 + 代码顺序落档；用户复核接受 981 修正）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **合同同步完成，代码未动** | ①同步：用户接受"多模块闭包整体走 `age-package`、作者保原 `use` 拼写"；§5 三方案 A 与 v0 条款改标历史、D-④-2 原行标"已被裁定结果取代"；S8 增用户最小验收三件（未引用 `themes` 不拉模块／被引用 helper 改结果／缺模块·缺符号·私有符号具名拒；引用驱动限 ④-A 符号导入、普通包面初始化语义不变）。②补测（包面真实形状）：`ace-node-counter`/`ace-hello-minimal`/001/legacy-on-block/canonical-msg-named **全 OK** ⇒ 形状墙不是 `widget`/`node` 或 `on` 块，而是匿名 payload msg（17/35）、顶层 style（20/35）、反引号（2/35）、package block（5/35）、`$`（026）。③代码顺序：**点分 `use` 投影 + 惰性绑定同批**（单加投影→34/35 例 eager 全红；单加惰性→无输入）→ 在已可解析真实例派生源接入真实 helper 验三判据 → AV 真窗 → 同源 SFC。④未完前置：整例真实源仍需 S0.5a 表面补齐（§10 R1/R2/R3 待裁）。| 未改 grammar/身份/产品代码；探针删净、harness 还原、worktree clean。
 
-## 10. 待澄清事项
+2026-11-18 stage: countersign+work（**F32 消费同窗 v1：980 `auto-ui-runtime` 侧回签 + 配对提交**；包桥 F32 不纳入）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **980 侧 ready（分支配对提交 `8a713b89`）；窗口待 981 先合、auto-ui 紧随** | 981 侧：`17fafb1d9`（`plan-981-f32-window`，未合）。
 
+**回签内容（逐项接受 981 窗口合同）**：①`AceStateValue::F32(f32)` 与 981 **同策略按位相等**（手写 `PartialEq`/`Eq`：NaN payload 可判别、`-0.0 ≠ 0.0`；`Eq` 保留）；②`From<&ComponentFieldValue>` 增 `F32`；`InitialValue::Float` 映射两处（`ace_state_bridge`/`ace_native`）；③`ace_ts_provider` 类型串 `f32`；④`ace_node_desktop` 呈现=**Rust `Display`**（宿主显示模型只有 str 车道→F32 以格式化串经 `ui_apply_str` 提交；值语义仍在引擎）；输入绑定对 F32 保持具名拒（本窗不接 f32 输入）；⑤**组件桥验收 3/3**（`tests/plan980_f32_component_window.rs`）：`Float(1.25)` 种子 → `.Step`(+0.25) → 读回 `1.5` **bit-exact**；`Int` 种子具名拒（不隐式提升）；窗口显示 `1.5`（无 `1.500000`、无逗号小数）；⑥**包桥 F32 不纳入本窗**（包桥只观察 int、无 props/initials——其 F32 另案）。
+
+**联合编译与窗口协议**：按协议以 **master + 981 f32 提交** 的 scratch 树联合编译（981 分支基点落后，直接 checkout 会红 root crates）；配对提交=`D:/autostack/.wt/lang-981-f32/auto-ui` 分支 **`f32win-ui` @ `8a713b89`**（未合）。窗口顺序=981 先合 `17fafb1d9` → auto-ui 紧随 `8a713b89` → 各自冻结门（981：`ace-source ace-av`；auto-ui：其固定组）；任一侧失败双方同窗回滚。
+
+**窗口阻塞（须先解；非本窗引入）**：lang **master tip `4d9895712` 的 `auto-lang-ace-host` 已红**——experimental ace_core 新增 `Item::UsePy` 后 `crates/auto-lang-ace-host/src/session_bridge.rs` 两处 match 未补臂（E0004）。本回签在 scratch 树打了 **2 行未提交补丁**（`UsePy` 臂）才通过联合编译；正式开窗前须由该改动 owner（982 谱系）补臂或确认 master 恢复绿，否则 auto-ui 无法构建（与本窗无关，但会挡住窗口）。
+
+## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。
