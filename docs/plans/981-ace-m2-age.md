@@ -962,6 +962,17 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: work（review-D 复验 needs_fix 修复：F-D1/F-D2 关闭）| PLAN-981 r18 | outcome: **pass（2/2 findings 关闭，gfx seam 批恢复干净基线）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `1b70c9e1f` | code_commit `27f919b87` | fold `83f2adee1`（master `--no-ff`，第二父即 `27f919b87`）
+
+**closure 行（finding → invariant → fix → 结果）**
+- **F-D1** → 新诊断串不得含意外长空格串（③同类）→ `hir_adapter.rs` view-arg 消息 5×62 空格串→单空格（行首 60 缩进保留）→ 折叠 master 后该行 10+ 空格串=仅行首缩进 1 处 ✓。
+- **F-D2** → diff 不得留缩进塌陷 → 3 行恢复对齐（`"model3d.glb…"`→40、`"lower.age-gfx-lane",`→44、lane 消息→48，均按上下文同级行对齐）→ master 按内容定位（4331/4429/4449/4451）逐一核 ✓。
+- **零语义证明**：diff 4+/4- 单文件；诊断码（`lower.intrinsic`/`lower.age-gfx-lane`/`lower.age-gfx-view-arg`）与测试断言子串（`D-981-GLOBAL-CLONE-GAP`）逐字未动。
+
+**门禁**：分支 `cargo check -p ace-lowering` 0.52s 零警告；nextest `plan981_gfx` **7/7 PASS**（0.041–0.046s/例）；折叠 master 后 `cargo check -p ace-lowering` 3.35s **ace-lowering 零警告**。折叠细节：与 master 侧 `e055315726`（980 WEB #6o）合并干净；branch↔master 该文件 76 行差额=982 `079b7410e` config 区域（master 独有，预期内）；981 修复 4 行两侧逐字一致（内容定位核对）。
+**环境观察（非本批，归属他计划）**：master `ace-core` lib 现有 2 条警告——`project.rs:4329` unused import `ConfigPairValue`（blame `499335856d`，982 config）与 `project.rs:5861` unused doc comment（blame `e055315726`，980 #6o）；均在本合并前已落主，分支态零警告，归各自会话收据核对。
+**下一步**：无待办——review-D 四项修复+F-D1/F-D2 全闭，gfx seam 批恢复 handoff 收据声明的干净面（diff 卫生现为真）。UI058 消费侧（T-02/T-03）零影响；981 整包保持 executing。
+
 2026-11-18 stage: review（IF-981-GFX-AV-SEAM **review-D 复验**；独立上下文=fresh session，非 gfx seam 实施会话；静态+运行时+变异自跑）| PLAN-981 r18 | review_scope: batch（gfx seam 修复复验）| outcome: **needs_fix（2 low，F-D1/F-D2；四项修复实质全部成立）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | reviewed_commit `1b70c9e1f`（master fold `ed8b16e01` 第二父即它，修复腿 diff 逐字节一致已核）| base `1c35bbee6`
 
 **四项修复复验（均实质成立）**
