@@ -5,7 +5,7 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-18
-plan_revision: 14
+plan_revision: 16
 current_step: 14
 total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
@@ -17,6 +17,10 @@ touched_goals: [GOAL-002]
 # [PLAN-983] Web服务嵌入与实际后端迁移
 
 ## 0. 变更摘要
+
+2026-11-18 r16（C1 首个可执行切片 + r15 回归固定）：①**配置单一来源落地**（auto-down `5b213b5`）：GET/POST 接 `JADE_GARDEN_CONFIG`（持久值优先、env 初始回退）；POST `/api/workspace/open` 在 AV 源内实现（400 不存在=legacy 同形且零副作用、wiki 创建、config 持久化、200 root/wiki_dir、非 ASCII 具名 400、无配置路径 500）。②**永久验收**（auto-man `36f6df6`/`f746c74`）：`POST→GET→重启→GET` 共享同一持久配置 **1/1 绿**（0.42s；env A 初始 → POST B → GET B → 重启 GET B）；r15 索引失败回归已写（非空 `jade-garden-index.json` 目录夹具，期望 500 `workspace.index-rebuild-failed:` + 旧工作区/配置/旧索引不变），当前 interim 源跑为**红**（POST 仍 200，无索引/原子提交）——`#[ignore]` 固定，`--ignored` 可复现，待 982 组合入口实现 C1 完整语义。③auto-web C0 用例随源更新（2 路由 + `platform.file.path`），`http_runtime` 8/8。**未做**：索引生成/原子提交/并发串行（r15 合同）、U0、四仓整体。
+
+2026-11-18 r15（C1 失败语义定稿）：目标工作区完成 wiki 准备与索引重建后，才原子替换配置并发布当前工作区。旧后端真 HTTP 已复现索引失败返回 500 但配置与 GET 已切换。§5 冻结永久回归的输入与判据，C1 实现和新版复跑待 982 组合入口。
 
 2026-11-18 r14（C0‑B 正式跑 + C1 基线冻结）：①**C0‑B 永久用例正式通过**——`01b-workspace-av-consumption.spec.ts`（含 `b830e07`）在 AutoDown 主检出的 Playwright/Vite 上（临时 overlay，不复制 node_modules、不在 worktree 建 symlink）对 **982 CLI 启动的 AV 后端**跑：`1 passed`（6.2s；首跑 11.5s），页面真实请求 `GET http://127.0.0.1:13100/api/workspace` → **200** + `{"root":"<fixture>","wiki_dir":"<fixture>\\wiki"}`，主视图断言（`#app` 挂载、主区提示、opener=0）全过；后端收据 `served=2 av_dispatches=2 legacy_dispatches=0 same_sdk=true`；退出码 0。②**C1 验收基线由现有 `open_workspace_impl` 实测冻结**（临时起 jade-garden 原后端）：不存在目录 ⇒ `400` + `{"error":"Directory does not exist: <原样路径>"}` 且**零副作用**；成功 ⇒ `200` + **canonical（`\\?\` 前缀、反斜杠）** 的 `root`/`wiki_dir`；副作用=`<root>/wiki` 创建（空 wiki ⇒ 索引 `pages: []`）、`<root>/jade-garden-index.json` 重写（pages/blocks 含 `*.ad`）、配置 `{"workspace_root":"<canonical>"}`；二次 open 幂等。基线含"配置先写、wiki/index 后建"的部分副作用顺序（index 失败可能 500 但配置已切换）——记为债务候选，交 982 实现组合入口时一并裁定。B‑CONSUMERS 仍未勾。
 
@@ -196,7 +200,15 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 - **成功**：`200`，body `{"root":"<canonical>","wiki_dir":"<canonical>\\wiki"}`——canonical 是 Windows `canonicalize()` 形态（**`\\?\` 前缀 + 反斜杠**，JSON 里 `\\\\?\\`），与 C0（env 原样路径、未 canonicalize）**不同**；按原样钉住。
 - **副作用**：`<root>/wiki` 不存在时创建（空 wiki ⇒ 索引 `"pages": []`）；`<root>/jade-garden-index.json` 重写（`pages[{path,title,frontmatter,mtime}]` + `blocks[...]`，覆盖 `wiki/**/*.ad`，实测含 `hello.ad`）；config 持久化 `{"workspace_root":"<canonical>"}`（现有实现写 exe 相邻 `jade-garden-config.json`；CLI/AV 宿主须显式 config 路径——建议 `JADE_GARDEN_CONFIG`，实现时冻结）。
 - 二次 open 同路径幂等（200/同 body/index 重写）；切换到另一路径 ⇒ 新路径成为当前工作区，旧目录内容不被修改。
-- **组合入口需求（982）**：一次调用同时要文本实参（root）+ 平台 I/O（exists/stat、`create_dir_all`、读写 config/index、遍历 wiki）+ JSON 出参；失败必须**具名**且尽量零副作用。**已知顺序缺口（债务候选）**：现有实现先 `save_config` 再建 wiki/重建索引，index 失败会 500 但配置已切换——982 实现时须裁定（保旧行为或先 I/O 后提交）；C1 基线先钉成功路径 + 400 + 幂等，部分失败面单独登记。
+- **组合入口需求（982）**：一次调用同时要文本实参（root）+ 平台 I/O（exists/stat、`create_dir_all`、读写 config/index、遍历 wiki）+ JSON 出参。旧实现先保存配置再准备 wiki 和索引，失败行为以以下 C1 合同修正。
+
+#### C1 工作区提交与失败验收
+
+- **提交顺序**。先验证并规范化目标路径，再以目标目录为参数准备 wiki、生成并写入目标索引。准备成功后，用同目录临时文件原子替换工作区配置，再发布相互匹配的当前根路径与索引。并发切换须串行提交，GET 在切换期间读到一套一致的状态。
+- **失败边界**。不存在的目标仍按 r14 返回 400 和原样路径，旧工作区、配置字节及旧索引不变，目标目录也不创建。目标索引重建失败时返回 500，JSON 的 `error` 字符串以 `workspace.index-rebuild-failed:` 开头，旧工作区、配置字节及旧索引保持有效。目标目录中已创建的 wiki 可以保留。配置替换失败时仍保留旧工作区与原配置，目标侧已完成的 wiki 与索引可以保留。
+- **永久回归**。沿 C0 的真实 CLI HTTP 入口启动 C1，使用隔离的持久配置，先打开旧工作区并采集 GET、配置字节及旧索引字节。在另一可写目标目录内预建名为 `jade-garden-index.json` 的**非空目录**并放入标记文件，保持目标 wiki 尚未创建。POST 该目标，断言 500 和具名诊断，随后 GET 与重启后 GET 均返回旧工作区，配置和旧索引字节一致，标记文件保持原样。记录目标 wiki 已创建的副作用。使用同一入口验证不存在路径的 400 零副作用，并用合法目标验证 POST 后及重启后 GET 均返回新路径。
+- **旧后端反例（2026-11-18，实测）**。隔离副本经本机真 HTTP，非空索引目录使旧实现返回 500（`Failed to build link index`，Windows OS error 5），配置字节和随后 GET 的根路径均变更，目标 wiki 已创建，标记文件保持原样。不存在路径返回 400，配置字节与 GET 均不变。此记录验证了故障夹具，新版永久回归待实现后运行。
+- **r16 现状（2026-11-18）**。永久回归已落在 `auto-man crates/auto/tests/plan983_c1_cli.rs`：①活跃用例 `c1_open_get_restart_share_one_persisted_workspace_config`（**1/1 绿**，0.42s）：env A 初始回退 → POST B（200、`B/wiki` 建、config 写 B）→ GET B → 重启 GET B（持久值优先）；②`c1_index_failure_keeps_the_old_workspace_and_config`（`#[ignore]`，`--ignored` 复现）：非空索引目录夹具下**当前 interim 源返回 200**（应 500 `workspace.index-rebuild-failed:`），证明 r15 的索引准备/原子提交尚未实现。GET/POST 已共享 `JADE_GARDEN_CONFIG`（持久值优先、env 初始回退）；具名边界：POST root 仅 ASCII、无 canonicalize（不做 `\\?\`）、无索引写入——C1 完整实现时按 r15 收口。
 
 **分期。** C0-A 后端线、C0 CLI 腿、C0-B 页面（正式 playwright）均已交。C1 基线已冻结（上段），**实现待 982 的组合入口**（文本 + 平台 I/O 同一次调用）；C1 之后为 U0 与四仓整体。
 
@@ -456,6 +468,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+2026-11-18 stage: work | PLAN-983 r16 | outcome: pass（**C1 首个可执行切片 + r15 永久回归固定**；C1 完整语义仍待 982）| 用户指令：把 C1 基线写成永久验收（同一 `POST→GET→重启→GET` 用例），GET/POST 接同一显式工作区配置，冻结 `JADE_GARDEN_CONFIG`（持久值优先、env 初始回退）。| commits: auto-down `5b213b5`（AV 源：config 优先级 + POST open）、auto-man `36f6df6`（永久验收 POST→GET→重启；grants 含 `platform.file.path`）/`f746c74`（r15 索引失败回归，ignored）、auto-web `13027c3`（C0 用例随源：2 路由 + path grant）。| evidence: ①`plan983_c1_cli` 活跃用例 **1/1 0.42s**：env A → POST B（200、`B/wiki` 建、config 写 B）→ GET B → 重启 GET B；②`plan983_c0_cli` **1/1 0.22s**；③auto-web `--test http_runtime` **8/8**（8.11s）；④r15 回归（`--ignored`）**红**：非空索引目录夹具 POST 返回 **200**（应 500 `workspace.index-rebuild-failed:`），证据=test panic 输出；已 `#[ignore]` 固定待 982 组合入口。| 合同（本切面）：`JADE_GARDEN_CONFIG` 持久值优先、`JADE_GARDEN_DEFAULT_WORKSPACE` 仅初始回退；POST 400 不存在（legacy 同形、零副作用）/非 ASCII 具名 400/无 config 路径 500；响应 root 原样（无 canonicalize，与 legacy `\\?\` 差异具名）；索引未生成（r15 待实现）。| 过程：AV 源两轮编译修复（`to` 为关键字、`Str` 参数搬移、误删函数复原）；man 提交曾带 rustfmt 噪声已 amend 清除。| 未做：r15 提交顺序/原子替换/索引生成/并发串行（982 组合入口）、U0、四仓整体。| next: 982 组合入口实现 C1 r15 语义 → 去 ignore 复跑；U0 待 980/982；B-CONSUMERS → T-05/06/07
+
 2026-11-18 stage: work | PLAN-983 r14 | outcome: pass（**C0‑B 正式跑 + C1 基线冻结**；B-CONSUMERS 仍未勾）| 用户指令：跑 `01b-workspace-av-consumption.spec.ts`（用含 `b830e07` 的源码、复用 AutoDown 主检出依赖/CI），拿页面真实请求/响应/主视图的正式收据；随后按 `open_workspace_impl` 写 C1 验收基线交 982。| C0‑B 运行形态：临时 overlay（`front/e2e-983` + `playwright.983.config.ts`，跑完即删）+ **982 CLI AV 后端**（`auto.exe --server av --api <workspace_service.at>`，`JADE_GARDEN_DEFAULT_WORKSPACE=<fixture>`）；未复制 node_modules、未在 worktree 建 symlink。| evidence（C0‑B）：Playwright **1 passed**（6.2s；首跑 11.5s）；页面真实请求 `GET http://127.0.0.1:13100/api/workspace` → **200**，body `{"root":"D:/autostack/auto-down/jade-garden/front/e2e/.runtime/workspace","wiki_dir":"…\\wiki"}`；主视图断言（`#app` 挂载/主区提示/opener=0）通过；后端收据 `served=2 av_dispatches=2 legacy_dispatches=0 same_sdk=true`；退出码 0；日志 `plan-artifacts/plan-983/c0b/playwright-01b.log`。| evidence（C1 基线，临时 exe 副本 + 隔离 config 实测）：不存在目录 ⇒ `400` + `{"error":"Directory does not exist: <原样路径>"}`，**零副作用**（目录未建、既有工作区不变）；成功 ⇒ `200` + `{"root":"\\\\?\\D:\\…\\ws","wiki_dir":"\\\\?\\D:\\…\\ws\\wiki"}`（canonical `\\?\` 形态）；`<root>/wiki` 创建（wiki 缺失时；空 wiki ⇒ 索引 `pages: []`）；`<root>/jade-garden-index.json` 重写（`pages[{path,title,frontmatter,mtime}]`+`blocks[...]`，实测含 `hello.ad`）；config `{"workspace_root":"<canonical>"}`；二次 open 幂等。| 债务候选：现有实现先 `save_config` 后建 wiki/index（index 失败 ⇒ 500 但配置已切换）——982 实现组合入口时裁定。| 未做：C1 实现（待 982 组合入口）、U0、四仓整体。| next: 982 组合入口 + C1 实现；U0 待 980/WEB + 982 `auto run`；B-CONSUMERS → T-05/06/07
 
 2026-11-18 stage: merge（phase fold：**982 `--stack web` 交接三件公开面**）| PLAN-983 r13 | outcome: pass | delivery_commit: **auto-web master `5c484d9`**（ff-only；含 `56b3ac5` 公开 grants、`228d775` receipt+control-plane shutdown、`5c484d9` 公开 config→transport 映射+单测）；canonical: **lang master `2513903df`**（`m2-web.md` 新增「C0 公开面（供 982 `--stack web`）」节）| 交接件（982 可直接消费）：a) `AvServiceEngine::new_with_grants(source: &str, scratch_root: &Path, grants: Vec<String>) -> Result<Self, String>`（默认 `new` 仍 file+mem）；b) `AvServiceEngine::receipt() -> Arc<AvServiceReceipt>`，`AvServiceReceipt::av_dispatches()/legacy_dispatches()`（路由 miss 不计；legacy 结构常量 0）；c) `TransportConfig::from_service_config(&HttpServiceConfig)` 与 `from_service_config_with_policy(Arc<HttpServiceConfig>)`（后者装配 `ServiceRuntime`）；ready=`http_server::bound_addr_snapshot() -> Option<String>`（serve 真实绑定，进程内单服务）。**集成注意**：`*_with_policy` 须 `ServiceRuntime::bind_shutdown(tx)`（否则 `/__auto/shutdown` 不停）；无 policy 用 `bind_control_plane_shutdown(tx)`。| evidence: `--test http_runtime` **8/8**（7.55s）；`--lib` **189 例 188 绿/1 红/1 skip**（红=基线既有 `api_gen::tests::test_handler_body_r2_matrix_compile_oracle`；新映射单测 `service_config_maps_into_transport_budget_and_policy` 1/1）；`cargo fmt --check` clean；man 的 `serve_av` 改用公开映射后 `plan983_c0_cli` **1/1**（0.15s，含 `bind_shutdown`）。| 过程：lang master 前移导致首次 ff 失败，规范提交 rebase 后 ff（无内容漂移）。| 未做：man `6e21bfa` 仍在 plan-983-dev（待 982 认领/合入；man master 已有 982 `--stack`，注意合并冲突面 cli_spec/cmd_service/http_service）；C0-B 永久跑/U0/四仓不变。| next: 982 `--stack web` 接线（消费 master `5c484d9`）；C0-B 永久跑；C1 交 982；U0 待 980/982
@@ -520,7 +534,7 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 
 ## 10. 待澄清事项
 
-**2026-11-18 C1 交接（982 组合入口）**：C1 基线已冻结（§5「C1 验收基线」）——`POST /api/workspace/open` 的 400/零副作用、成功后的 canonical `\\?\` 路径、`wiki` 创建、`jade-garden-index.json` 重写、config 持久化与幂等均已实测钉住；需要 982 在同一次调用里组合**文本实参 + 平台 I/O + JSON 出参**，并裁定"先写 config 后建 wiki/index"的部分副作用顺序（债务候选）。983 侧只出基线/oracle，不重复实现。
+**2026-11-18 C1 交接（982 组合入口）**。982 在同一次调用里提供**文本实参 + 平台 I/O + JSON 出参**，C1 按 §5「C1 工作区提交与失败验收」先准备目标 wiki 与索引、后提交配置和当前状态。983 承接真 CLI 回归，含索引失败保旧工作区与配置、成功后 GET 及重启持久化。完整 C1 仍待实现和联合验收。**r16（2026-11-18）**：983 侧已交首个可执行切片（配置优先级 + POST）与永久回归——活跃用例绿；r15 索引失败用例 `#[ignore]` 固定、当前实现跑为红（证据见 §9）。
 
 **2026-11-18 982/EXEC 优先项（首例 C0 依赖）——已交**：按用户裁定「尽快解锁 983 ⇒ 982 优先交首例实际需要的 EXEC 接口」，auto-man `6e21bfa` 已把 `auto service --server av` 接到 auto-web `serve_av`（`--api` 显式源、grants 可配、ready/收据/控制面关停），pre-C0 宿主保留为 `--server av-direct`；真 CLI 用例 `plan983_c0_cli` 绿。982 `--stack web` 所需的**三件公开面已落 auto-web master `5c484d9`**（`new_with_grants`/`receipt`/`TransportConfig::from_service_config[_with_policy]`；ready=`bound_addr_snapshot()`），规范见 `m2-web.md`「C0 公开面」（lang `2513903df`）；集成注意 `*_with_policy` 须 `bind_shutdown`。**剩余外部项**：auto-ui master 默认特性红（`ace_av`/`ace_core`/`ace_a2x_ts` 未门控，`c0035034`）挡住 `cargo test -p auto`（默认特性）与 `plan890_web_consumers` 默认档——归 980/981 F32 窗口配对，非本切片引入。C/EXPORT 按自身顺序并行。
 
@@ -532,3 +546,8 @@ Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于�
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 §5已冻结批次；T-01只补各批接口/命令参数及实测环境，不再负责从零拆大包。新增分母项须追加具名批次或正式后继并逐AC迁移，保持总闭合责任。
+
+
+
+
+
