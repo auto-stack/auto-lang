@@ -591,7 +591,7 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 - **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
 - **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
 
-**交付状态（2026-11-18，R1′）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 执行/观察面已交**（`ace_av::age_package::observe_age_package` 复用：派生真实例场景 2 实例 + `Inc` → 观察状态 `[4,2]`；helper 改 `+10` → `[20,10]`——helper 真进 AV 执行）。**S4 真窗已交**（`PackageStateEngine` + `BridgeEngine` + `load_package` + 窗口 exe `--package/--entry`；真窗 e2e 两次运行见证 `[4,2]`→`[20,10]`）。**S5 同源 SFC 未交**：lane `generate_sfc_with_lane` 仍为组件面单源，需包感知入口（handler 片段引用被调 helper 的发射名 + 把 helper 发射进 SFC 脚本）。**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片，不阻塞本片。
+**交付状态（2026-11-18，R1′）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 执行/观察面已交**（`ace_av::age_package::observe_age_package` 复用：派生真实例场景 2 实例 + `Inc` → 观察状态 `[4,2]`；helper 改 `+10` → `[20,10]`——helper 真进 AV 执行）。**S4 真窗已交**（`PackageStateEngine` + `BridgeEngine` + `load_package` + 窗口 exe `--package/--entry`；真窗 e2e 两次运行见证 `[4,2]`→`[20,10]`）。**S5 同源 SFC script 段已交**（`PackageFragmentLane`：包闭包+场景 checked → 976 片段发射；断言调用名=`a2x_fn_*` 映射名非裸 `step(`、同一映射名以**函数定义**落同一 script 段、改 helper 常量随动）。**完整 SFC 的 template/样式**仍归既有方言道（本片只覆盖 `<script>` 段）；**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片。
 
 **S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
 
@@ -1632,6 +1632,14 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 **验证。** 目标文件 3/3（CPU 2 + 真窗 e2e 1，真窗 38.3s 含两次 provider 预热）；回归 `ace_node_desktop` **11/11**、`ace_ts_provider` **24/24**；changed files fmt clean。
 
 **边界（诚实）。** SFC 未交（见下）；真窗键入/输入面仍走组件面 U01 切片（包桥仅 unit 消息）；真窗 e2e 两次进程各自预热 provider（38s），非产品缺陷，后续可复用 `--prep-only`/缓存。**P2 设计（下一片）**：在包 checked 模块上建"包片段 lane"（等价 `ComponentFragmentLane`，取自 `__age_p_hidden_hv_*` 值函数），用 `a2x-ts` 片段发射器产出 handler 体文本（被调 helper 映射到其发射名），并把 helper 函数体发射进 SFC `<script>`；同源断言=SFC 含 helper 函数定义 + 调用名=映射名（缺任一即红）。**P3** 表面补齐首刀 `style`（981 会签 + grammar ID 同步）。
+
+2026-11-18 stage: work+merge（④-A 首片 #2c：**包片段 lane + 同源 SFC script 段**；非 fold）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（S5 script 段见证 helper 发射与调用名映射；完整 SFC template 不在本片）** | delivery: auto-ui master **`404dc442`**（ff-only；分支已含 master，树与已测提交一致）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①`ui/ace_package_lane.rs`：`PackageFragmentLane`——以**包单元集合 + 入口**编译（实例 1 + 待定位 handler 的 msg 重放），持有 package checked + 脱糖源；`emit_expr_at_span(fn_suffix, span)` 在指定函数体内按**精确 span** 经 976 `a2x-ts` 片段发射；`emit_function_body(fn_suffix)` 发射整函数语句并回传**发射侧局部名**（参数名权威）；`find_span`/`function_names` 供定位。②永久用例 `tests/plan980_closure_sfc.rs`（2 例）：handler 体实际发射为 `const t0 = a2x_fn_p4_utilm5_steps_step(l0___age_s_0_count);`——**调用名=映射名**、无裸 `step(`；`fragment.helpers`=该映射名且可回溯到包视图函数；组装 script 段含 `function <映射名>(<发射参数名>)` 与同源常量（`2`；改 helper→`10`）。
+
+**验证。** 目标 2/2；回归 `plan980_closure_window` 3/3、`ace_node_desktop` 11/11、`ace_ts_provider` 24/24；changed files fmt clean（`mod.rs` 的 fmt 分歧为预存 `dynamic.rs`，未纳入）。
+
+**边界（诚实）。** 本片只交 **`<script>` 段**（handler 体 + 被引用 helper 定义），**完整 SFC 的 template/样式仍归既有方言道**；包片段 lane 只覆盖 976 fragment 域（float/复杂体等仍按该域既有拒绝）；helper 参数名取发射侧局部表（`p0_n` 形），不是源名。
 
 §5 S0.5 实测：age-package 面在真实源上缺**顶层 `style`（20/35）**、**payload msg（17/35）**、**反引号文本（2/35）**；001 是唯一可直接编译的真实例且无跨模块 helper。⇒ ④-A 的"真实示例打通"被**表面补齐**前置，导入/闭包工作是其后。
 
