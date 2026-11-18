@@ -1794,6 +1794,17 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **③quick_switcher use 块**：981 合同锁（"age-component 单文件 use 具名拒"）——**路由决策非切片**（解锁=④域合同或 981 改约）。**④④域合同**（U01..06 全分母+WEB 共同前置）：用户/976 后继决策，census/最小复现材料齐。**⑤native/desktop 条件渲染语义**：静态形渲染器对条件 UI 的 oracle 语义（双臂并集？运行时估值？）=设计决策——现状装载点具名拒（诚实），决策后实现。
 
+2026-11-19 stage: work+merge（**包版 SFC 条件渲染两边界收口（静态核对发现）+ 顺手修复预存 l1 映射缺陷**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（单元 4+真 Vue 分支切换 8 判据全绿）** | delivery: auto-ui master **`d856529a`**。
+
+**两边界（用户静态核对）。** ①条件经 `escape_attr`（含双引号比较表达式→`&quot;`——原裸插双引号属性即坏 HTML）；②有 else 时**保留前置 v-if 锚**（空 then 发空 `<template v-if>` 模板作锚——原跳过 then 即产孤立 v-else=Vue 编译错）；双空臂（无 else 且 then 空）整体跳过。
+
+**顺手修复（预存缺陷，双字段源实测暴露）。** `rewrite_lane_locals` 硬编码 `l0___age_s_0_` 前缀——**第二字段起（l1/l2…）漏改**：`a2x_add(l1___age_s_0_n, 1)` 裸名进产物=运行时 ReferenceError（#3 单字段计数器从未暴露）。泛化为任意局部索引+实例段（字段名=剥局部段与实例段后的尾段）。
+
+**验收。** ①crate 内单元 4：转义（`(mode === &quot;dark&quot;)`）/空 v-if 锚精确文本/双空跳过/**l1 泛化回归**（`l1/l2…` 与 `l0` 同改）；②`test_pkg_cond_mount.mjs` 真 Vue 编译+分支切换 **8 判据**：空分支收放×3（`flag!==true` 方向按真语义——空 then 在 cond 真时呈现、else 臂在假时呈现）、else-if 四态（n=0→many→one→two→many）、零 page error；③CPU 集成（空锚邻接+嵌套）与回归（package_sfc 6/6、U0 产品/jg watch/ace_ts_provider 全绿；主树复验 6/6）。
+
+**具名边界（诚实）。** 包面 **checker 条件值域**：str 字面量比较（`Str vs str` 严格性）与 props 读进 view 条件（`self` 投影未定义）两形到不了渲染层——含引号条件的转义判据因此由**单元级直测渲染机械**承载（手造 Expr）；集成翻转待该值域墙（另一刀或 checker 放宽）。
+
+## 10. 待澄清事项
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
