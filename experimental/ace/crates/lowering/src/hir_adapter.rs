@@ -1403,22 +1403,19 @@ pub fn lower_checked_owned(
     // This public shared entry also admits console HIR. Keep its source-entry
     // policy here so callers cannot bypass it via the owned/text front door.
     // PLAN-982：配置文档的入口是物化的 `__cfg_document`（不是 main）——该面
-    // 只允许它自己的入口名；console 面仍只允许 main。
+    // 只允许它自己的入口名；console 面见下：具名入口选择（982 组合入口）。
+    #[allow(dead_code)]
     let has_config_intrinsics = checked.bundle().modules.iter().any(|m| {
         m.defs.iter().any(|d| {
             matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                 if ace_av_core::config_document::is_config_symbol(symbol))
         })
     });
-    if checked.domain() == hir::HirDomain::HostConsole
-        && entry_name != "d_main"
-        && !(has_config_intrinsics && entry_name == format!("d_{}", "__cfg_document"))
-    {
-        return Err(AdapterError::inv(
-            "lower.entry",
-            "console source entry is main; selecting another function is not allowed".into(),
-        ));
-    }
+    // PLAN-982（983 组合入口，用户裁定 2026-11-18）：host-console 面放行**具名
+    // 入口选择**（`d_<fn>`）——服务引擎按 `#[api]` 路由把该路由的 handler 选为
+    // 入口（借 `str` 形参 ⇒ 文本实参通道）。入口**形状**合同不由本层把守：
+    // MIR 验证的 entry-sig（`ac.runtime.text.v1` + 全 `StrView` 形参）与 AV 根帧
+    // 准入共同持有；选一个不存在/形状不符的 fn ⇒ 下游具名拒绝。
     match checked.domain() {
         hir::HirDomain::TextRecord | hir::HirDomain::Text | hir::HirDomain::HostConsole => {}
         other => {
@@ -7695,13 +7692,9 @@ pub fn lower_checked_console(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    if entry_name != "d_main" {
-        return Err(AdapterError::inv(
-            "lower.entry",
-            "console source entry is main; selecting another function is not allowed".into(),
-        ));
-    }
-
+    // PLAN-982（983 组合入口）：console 面放行**具名入口选择**（`d_<fn>`）——
+    // 入口形状合同由 MIR 验证（entry-sig）与 AV 根帧准入持有：不存在/形状不符
+    // 的 fn ⇒ 下游具名拒绝，绝不在本层猜。
     if checked.domain() != hir::HirDomain::HostConsole {
         return Err(AdapterError::uns(
             "lower.domain",
