@@ -67,5 +67,10 @@ fn p982_config_field_move_by_name_is_pinned() {
         probe("move by index `kernel[\"heap\"]`", indexed),
         "the indexed by-name move must work now that properties are locals"
     );
-    let _ = probe("move by dot `kernel.heap` (still refused)", dotted);
+    // round 119（用户裁定 B）：**按名搬运是正式用法**——点形态与索引形态都必须
+    // 在文档里可用（round 110 让点形态走同一条 `cfg_super_put`）。
+    assert!(
+        probe("move by dot `kernel.heap`", dotted),
+        "the dot by-name move must work too (official usage)"
+    );
 }
