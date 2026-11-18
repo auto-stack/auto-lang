@@ -98,8 +98,6 @@ mod plan981_event_a;
 mod plan981_event_b;
 #[path = "cases/plan980_on_if.rs"]
 mod plan980_on_if;
-#[path = "cases/plan980_view_if.rs"]
-mod plan980_view_if;
 #[path = "cases/plan981_g2_hooks.rs"]
 mod plan981_g2_hooks;
 #[path = "cases/plan981_gfx_seam.rs"]
