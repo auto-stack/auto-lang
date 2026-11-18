@@ -83,15 +83,23 @@ fn p982_config_node_position_switch_turns_the_literal_into_a_named_rejection() {
         "the switch rewrites the node position into an __fstr call: {rewritten}"
     );
     let message = match &report.outcome {
-        AceConfigOutcome::Success { .. } => panic!(
-            "with the switch on the injected name is still not a local; if that changed, \
-             assert the interpolated value instead"
-        ),
+        AceConfigOutcome::Success { document, .. } => {
+            // round 124：标量属性登记为局部后，**节点位真的插值了**。
+            let node = document.root.children.first().expect("one node");
+            eprintln!("p982: switched node id={:?} args={:?}", node.id, node.args);
+            assert!(
+                node.args
+                    .iter()
+                    .any(|a| matches!(a, ConfigValue::Text(t) if t == "probe")),
+                "the node argument interpolates the property value: {:?}",
+                node.args
+            );
+            String::new()
+        }
         other => format!("{other:?}"),
     };
-    eprintln!("p982: switched outcome = {message}");
-    assert!(
-        message.contains("source.undefined") || message.contains("source."),
-        "the switched rejection is named: {message}"
-    );
+    if !message.is_empty() {
+        eprintln!("p982: switched outcome = {message}");
+        panic!("with the switch on the node position must interpolate, got {message}");
+    }
 }

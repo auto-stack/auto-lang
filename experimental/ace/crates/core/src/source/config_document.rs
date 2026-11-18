@@ -659,8 +659,24 @@ fn emit_line(
                       // 句柄别名）——这样 `k["f"]` / `k.f` 的搬运路径
                       // （`emit_object_handle` 要求 `ctx.locals[name] == Obj`）可达。
                     let object_literal = matches!(e.kind, super::ast::ExprKind::ObjectLit { .. });
+                    // PLAN-982：**标量字面量**属性也登记为局部（普通值别名），让
+                    // 文档属性在表达式/模板里可见（节点位 `${name}` 因此可解析）。
+                    let scalar_literal = matches!(
+                        e.kind,
+                        super::ast::ExprKind::StrLit(_)
+                            | super::ast::ExprKind::IntLit(_)
+                            | super::ast::ExprKind::BoolLit(_)
+                            | super::ast::ExprKind::CharLit(_)
+                    );
                     let (value, class) = emit_value(e, out, ctx)?;
-                    if object_literal && class == LocalClass::Obj {
+                    let alias_class = if object_literal && class == LocalClass::Obj {
+                        Some(LocalClass::Obj)
+                    } else if scalar_literal && class == LocalClass::Scalar && ctx.depth == 0 {
+                        Some(LocalClass::Scalar)
+                    } else {
+                        None
+                    };
+                    if let Some(alias_class) = alias_class {
                         let alias = p.key.name.clone();
                         if !ctx.declared.contains(&alias) {
                             out.push(Stmt::Let {
@@ -672,7 +688,7 @@ fn emit_line(
                                 span: p.span,
                             });
                             ctx.declared.insert(alias.clone());
-                            ctx.locals.insert(alias, LocalClass::Obj);
+                            ctx.locals.insert(alias, alias_class);
                         }
                     }
                     write_value(out, ctx, cur, "cfg_put", key, value, class, p.span)?;
