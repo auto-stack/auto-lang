@@ -921,6 +921,21 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**第四批第②项：A2C f32 常量 + 端口 record 宿主 ABI，真 cl 腿**；用户裁定验收口径=cl 跑通证明 A2C 的 C 宿主 ABI）| PLAN-981 r18 | outcome: **pass（第①项同日已交，本批四批目标齐）** | code_commit `a2f4e069e` | merge `ea7413d71`（叠 982 文档提交上）
+
+**交付**
+- **f32 常量腿**：C record-text 车道 `NumericConst` 臂——`a2x_f32_bits/a2x_f64_bits` 按位构造器（NaN payload/-0.0 逐位存活；`RT_NUMCONST_C` 运行时页，内容哈希入 fragment 键=按设计安全推进）；record 表 seed 增 `F32` 字段（AGE 端口 record Cast2D/Sweep2D；clone/free 走纯值拷贝默认臂）。
+- **端口 record 宿主 ABI（冻结）**：`a2x_gfx_<callee>(<标量实参>, <AGE_PORT_FIELDS 声明序具名 out 指针>)`——宿主只填值、**不接触 C record typedef**（与 AV `AgeGfxReturn::Record` 字段序契约同源）；返回值=宿主状态（0=成功，非 0=fault 码→生成侧折叠 typed `A2X_TRAP_RESOURCE` 零效果）；槽名带唯一计数（同函数多查询不重名）；原型页参数按位置命名（C 无同名参数）。owned-Str 端口字段（`Image2D.sha256`）的 out 约定**具名延后**（image2d.png 不进原型页/具名拒）。
+- **接线**：`prepare.rs` 承认 gfx 调用目标（语义身份 `gfx:<sym>`，packages 车道 fingerprint 面）；`AgePackageCompilation` 交出完整绑定图（`pub bound`）——A2X packages 目标消费 age 前门**同一**受检包（`CompiledSource` 全 pub 字段手工构造 Product，不重跑绑定）；`crun::compile_c_fileset_with_sources`（宿主 stub 进同一次 cl；冻结入口=空 extras 同一编译）。
+- **真 cl 腿（`plan981_gfx_a2c_cl.rs` 4 case，全部真 cl 编译+链接+运行）**：age 包源（sweep+segment、段内先读）→ `PackageA2xTarget::cold` → fileset+宿主 stub → cl → 运行——**宿主恰收一次 sweep、一次 segment**（stderr 逐派发计数），调用方**读对**记录字段（`value:1`）；**变异负控**（宿主 node 7→9）⇒ `value:0`（字段真来自宿主，非常量/打印端伪造）；**宿主 fault 负控**（status 13）⇒ typed trap 零效果。整组 1.9s（三腿 cl 全含），远低于 10s 门。
+- 现场处置（如实）：packages TextRecord 面无浮点字面量（实测 `source.unsupported` 具名拒）⇒ cl 腿走 **age 包前门**；C record-text 的 f32 **值通道**（float 局部/参数/返回）不在本批面——cl 源 f32 只在表达式位置（段内判别落 bool 局部）；同函数双查询槽重名与原型页参数同名两处由 cl 实测暴露并当场修。
+
+**门禁（冻结树 `a2f4e069e`）**：`cargo t ace-source`（882 PASS）/`ace-a2x`（326 PASS，含 4 个 cl 新例）；受影响 C 家族定向 90/90（a2c_rt/record_text/a2c_cert/boundaries/cert_rt_902/plan981）；合并树（`ea7413d71`）plan981 a2x 家族 14/14 + core plan981 239/239。emit 级 5 例更新为断言发射形状（out 槽/trap 折叠/原型页；旧"具名延后"断言随交付作废）。
+
+**边界（具名）**：①C record-text 的 f32 值通道（float 局部/参数/返回）未开——宿主面 f32 已在表达式/字段位齐；②image2d.png 的 owned-Str out 约定待联冻（宿主写 Str 的 C 通道）；③1068 宿主 harness 可按本 ABI 原型页并行准备（原型签名即合同）。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 2 | from: work | to: done | status: executing | outcome: pass（第四批两项目标齐：①UI058 交接 `e01ea266`；②A2C cl 腿 `a2f4e069e`/`ea7413d71`）| commit: a2f4e069e + auto-ui e01ea266 | next: 由用户裁定下一批（候选：image2d.png owned-Str out 约定、C f32 值通道、UI058 fault-13/33 判罚实证）
+
 ### 2026-11-18 stage: work（**第四批第①项：动态世代接口交 UI058**；用户裁定 981 提供会话事实、fault 13/33 判罚载荷归 UI058）| PLAN-981 r18 | outcome: **pass（交接合同已落 058 计划；第②项 A2C f32/record 真 cl 腿=执行就绪、待下一轮）**
 
 **① 已交付（auto-ui `e01ea266`）**：058 计划 T-04 结果块新增交接收据——`AgeGfxCall { tick, callback, query_epoch, credits_used, symbol }` 合同（`dispatch_with_ctx` 默认转发兼容旧 provider）、已实证事实（同 callback 第二查 epoch 1→2=旧 token 失效、跨 callback 归零+世代 +1、跨 Tick 边界、记账值逐派发到达）、消费配方（host 切 `dispatch_with_ctx`，连续帧/双实例用例接 ctx 断言三边界；fault 13/33 判罚载荷在宿主侧实现）、会话访问器 `query_epoch()/callback_seq()` 断言锚。981 侧证据=`plan981_gfx_hooks` ctx AV 真跑（上一批 `82aecc9ad`）。
