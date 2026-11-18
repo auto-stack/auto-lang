@@ -4,8 +4,8 @@ status: executing
 feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-18
-plan_revision: 18
+updated_at: 2026-11-19
+plan_revision: 19
 current_step: 3
 total_steps: 34
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, ag-examples/PLAN-024, ag-examples/PLAN-025, ag-examples/PLAN-028, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067, auto-ui/PLAN-072]
@@ -920,6 +920,30 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-SOURCE-I/B-SOURCE-V/B-SESSION-I/B-SESSION-V/B-RUST-I/B-RUST-V/B-LANGUAGE-I/B-LANGUAGE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+### 2026-11-19 stage: work（**view-if 刀：AGE `view` 条件节点的文法与投影**；用户排程「981 下一步先做 view if/else 的文法与投影」）| PLAN-981 r19 | outcome: **pass（两面文法+投影交付；条件渲染语义具名边界归消费车道；未合入窗口声明在案）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `7c91aef4c` | code_commit `34de6f919`
+
+**红相（基线复现墙）**：工作树 `7c91aef4c` 上两探针——裸 `if` 与 `if/else` 在组件面 view 内均 `source.age.slot` 拒（与 980 复探一致；980 早前"裸 if 过"的记录已被其复探修正，本批独立复证）。
+
+**文法**（`auto-source.at`，两面 age-component+age-package）：`age-view-item` 增 `age-view-if` 臂；`age-view-else`（alt 双臂：`age-view-else-block` 块形 / `age-view-else-if` 链形——组合器约束 alt 内不可混排非 alt 子步，首版 `else()` 与 alt 混排被 grammar 编译红实测打回后重构，`else` token 下放子规则）；else-if 链任意长（内层完整 if 自带 else）。
+
+**投影**（`ComponentViewItem::Cond`）：`cond`（作者源形表达式）+ `then_items`/`else_items` 子树（源序）+ 整节点 `span`（锚定作者 `if` 关键字）；else-if 链=else_items 里的**单个嵌套 Cond**（内层自带 span）。两个实测修正：①then 体收集须**排除尾随 `els` 子树**（恢复臂会把 else 分支误收进 then——else_if 用例首跑 then=3 的根因）；②`collect_view_items` 拆出按孩子列表的内核 `collect_view_item_children` 供过滤复用。**分支文本叶不进 `view.texts` 平铺序**（`text_fns`↔`texts` 下标配对不承载条件语义；叶事实留在树里）。
+
+**车道边界（fail-closed，具名）**：含条件节点的 view 在**文本观察/包装配车道**具名拒 `source.age.view-conditional`（锚定作者 if 语句）——`compile_age_component`（静态文本面）、`compile_component_scenario_full(emit_view_texts=true)`（场景观察面）、包前门（2b 闸，span 经 flat_to_module）。**states-only 编译车道不拒**（不遍历 view 项——与 980 WEB 复放面同口径，fp_editor 翻转走的车道，用例钉住）。条件渲染语义（分支选择/模板 v-if）归消费车道 owner（980：WEB/SFC+桌面 AV 三文件）。**verify 边界**：包门 `collect_item_exprs` 对 cond/分支 entry/label 递归进唯一 verify（值位置；布尔强制与分支文本叶 verify 随消费语义批落，具名）；states-only 车道现状本就不验证任何 view 表达式（车道合同），分支叶与顶层叶待遇一致，无新增静默面。
+
+**消费面走查（全深度递归，不因藏分支缺席）**：lambda 收集（WEB lane span 相交发现）、通道值位置具名拒走查、事件绑定收集、style 折叠（分支内 `style:` 照折；cond 非 style 位不折——980 style 会签 (c)3 口径）、命名 view 叶/项计数、字段普查（vocab 增 `view_conditional` 行，else-if 每层各计一行；auto-ui 清单行 ID 同步由 980 消费批定）。
+
+**grammar id 双值具名重基线**（`plan981_grammar_scope.rs` 注明前值与原因）：age-component `8292feae…`→`b0ae9d90…`；age-package `c0e635d2…`→`ecc64b8e…`；13 邻居（age-h0+12 非 AGE）逐字节不变——冻结表全表断言复跑绿（测试本身即证据）。980 按 style 会签条件③在本提交上复跑 `p981_grammar_scope` 并核 diff。
+
+**永久用例**（`plan981_view_if.rs` 9 例，整组 0.04s，远低于 10s 门）：裸 if 投影+span、if/else 双分支子树+叶 span+不进 texts、else-if 嵌套链（嵌套 span 锚内层 if）、元素体/命名 view 内嵌套、非条件近邻负控（既有面不扰动）、states-only 车道过、双文本观察车道具名拒（含 span 判据）、包车道具名拒且**非**解析墙（`source.age.slot` 不在——包面文法接受的判别证据）、普查行。
+
+**门禁**：`cargo t ace-source` **891/891 PASS**（wall 446.2s 含准备/冷编译；条件排除=performance 命名空间+里程碑换挡+1 例既有 ignore `link::tests::run_exe_60s_deadline_bounds_descendant_pipe_hold`，非本批新增）；fmt 后定向复跑受影响模块 41/41 绿；`cargo fmt -p ace-core --check` 全绿（顺带：rustfmt 随 conformance.rs 的 `#[path]` 子模块递归，把两个先前未格式化的 981 用例文件 `plan981_age_package_modules.rs`/`plan981_gfx_seam.rs` 一并格式化——纯 fmt、同计划触面，随批入库）。
+
+**未合入声明（窗口协议，f32 先例同款）**：`ComponentViewItem` 加第 4 变体 `Cond`——auto-ui master 三处**穷尽匹配无通配臂**（`ace_native.rs` walk_text_props、`ace_package_sfc.rs` render_items、`ace_node_desktop.rs` 形状走查；path 依赖 `../../../auto-lang` 直连主检出）会立即编译红。**本提交只在 `plan-981-dev`；980 消费臂（三文件加 Cond 臂：SFC 发 v-if / native·desktop 定语义或具名拒）落 auto-ui 提交 SHA 前，不得 fold 到 lang master**。窗口开启条件 = 980 消费提交 SHA + 其 auto-ui 门禁 + 980 在本提交上复跑 grammar_scope 绿。
+
+**留存（具名，未动）**：worktree 内 6 个 av 测试文件的 fmt 残留改动（`bstr_1064`/`kv_zip_1064`/`net_974`/`plan980_state_face`/`plan981_f32_surface`/`sys_d01_d06_1064`）为他会话遗留，未入本批提交、待其 owner 收口。plan-artifacts：`plan-981/view_if_final.rs`（正式用例的暂存副本，merge 收尾删）。
+
+stage: work | plan_id: PLAN-981 | plan_revision: r19 | from: work | to: work | status: executing | outcome: pass（本刀文法+投影齐；消费语义=980 行）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | base: 7c91aef4c | code_commit: 34de6f919 | next: review（981 grammar/identity 面）+ 980 消费批（窗口条件在案）
 
 ### 2026-11-18 stage: work（**第六批③：G-RESOURCE 组证据（会话腿）**；用户指定本轮只做该组）| PLAN-981 r18 | outcome: **pass（会话腿资源见证 + 判别性负控；含一条语义精确化与一条车道边界）** | branch `plan-981-dev`（本批回到 worktree 施工）
 
