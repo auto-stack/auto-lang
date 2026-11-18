@@ -283,3 +283,6 @@ mod sq_source_facts_934;
 mod stdlib_contract_975;
 #[path = "cases/sys_d01_d06_1064.rs"]
 mod sys_d01_d06_1064;
+
+#[path = "cases/plan980_closure_av.rs"]
+mod plan980_closure_av;
