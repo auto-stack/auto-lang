@@ -5,7 +5,7 @@ feature_name: M2两阶段验收与完整义务联合认证
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
-plan_revision: 29
+plan_revision: 30
 current_step: 6
 total_steps: 14
 depends_on: [PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-976, PLAN-977, PLAN-978, PLAN-984, PLAN-941, PLAN-1064, PLAN-1065, PLAN-1068]
@@ -170,6 +170,14 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 补读原冻结身份测试`experimental/ace/crates/core/tests/cases/plan981_grammar_scope.rs`，SHA256前16 `9bd4c795284c0da4`；属原SOURCE/LANGUAGE的防漂移用例，新增r41取材未运行或修改该文件。
 
 ## 5. 详细设计
+
+### B-CONFIG-20261117：配置缺口接收责任（A收据冻结不变）
+
+本revision只补B合同，已交M2A-08绑定r29/95c7fbad8与route C原接受面不重写、不重新签A。GAP-982-CONFIG-ACE唯一producer为[982现B-CONFIG-I/V/R](982-ace-m2-man-gen.md)，设计见[配置文档求值](../design/ace-config-document-evaluation.md)，覆盖auto-lang共享前门/AV/SDK和auto-man消费。不得继续以969已归档=配置已交，也不以“无owner”让整个B无限等待；新能力本轮尚未实现。
+
+T-02/03逐行接IF-982-CONFIG-ACE的正式repo/SHA、Schema/值协议/源-context/SDK/ABI、动态原例与独立值、零fallback/失败保旧/修复下一读/冷恢复/原平台；T-08[B]核配置数据确实流入真实CLI/服务/构建。T-04最终认证须982完整产品及983/984/OS等各真实consumer适用配置格闭合；配置主体不得由本包重写。配置宿主AV不是AC guest降级，原机器业务与产物判据仍单独验。
+
+本包不作为982 CONFIG生产前置；986安装/987退役消费本包已审落主候选，不反卡本包候选。新配置归B，不影响A-only基础与三UI波既有次序。
 
 ### EVENT-SPLIT-20261116：A/B交付与等待的当前权威
 
@@ -538,6 +546,7 @@ A-required接1043加载/#in正式来源及每库实际消费，拒旧944/947有�
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
+| SD-CFG-HANDOFF | modify（拟，原owner） | `docs/specs/ace-migration/m2-certification.md` | 原候选接收→实际配置新AV来源/宿主与guest边界、错误恢复/原平台，真实交付后才写已支持 | 982生产一次，本包只核实际消费者/安装退役阶段；A收据保留 | AC-CFG-HANDOFF、原AC与最终review |
 | SD-01 | add | `docs/specs/ace-migration/m2-certification.md`（拟新增；可在review归并真实模块Spec，必须保持可追溯） | 未交付/有限切片→本包实际已验证支持、接口、拒绝及资源边界 | 防计划代现状 | AC-01..03/AC-06 |
 | SD-02 | modify | `docs/specs/ace-migration/replacement-scope-and-evidence.md` | 仅口径→关联本包已验证新producer及未闭缺口；不改旧义务 | 替换追踪 | AC-03/05 |
 | SD-03 | modify | `docs/specs/auto-bindgen/project.md` | 当前有限能力→仅在本包实际验收后沉淀本次新增合同/来源/拒绝与资源边界；不改未交付为已实现 | Design56/本轮用户M2追加 | AC-07 |
@@ -949,6 +958,10 @@ A原required的实际语言/库/FFI/非GUIA2R仍要真实关闭；旧载体可�
 
 ## 6. 测试设计
 
+### V-CFG-HANDOFF（本轮新增接收控制，未执行）
+
+沿[配置设计九行Case](../design/ace-config-document-evaluation.md#6-验证合同与旧用例映射)，在本包所用真实consumer/原测试入口验合法动态值及坏源/错SDK-context/零旧求值/失败保旧/修复下一次read；把route C legacy config冒ACE、只核same_sdk、缺source或仅用静态投影则拒绝。原V全部保留，不新造runner。实际未用配置的域不增加虚假依赖；原平台/ignore/输入规模保持。
+
 ### EVENT-SPLIT认证验证（拟议，归原T-A03/A04及B原任务）
 
 | V / 任务 | 正反输入与关闭判据 |
@@ -1124,6 +1137,8 @@ A原required的实际语言/库/FFI/非GUIA2R仍要真实关闭；旧载体可�
 
 ## 7. 验收标准
 
+- [ ] **AC-CFG-HANDOFF / work**：§5本包实际配置consumer/阶段的正式来源和V-CFG-HANDOFF闭合，区分宿主AV与目标业务、原A与完整B；不以未交接口/上游状态或peer-equal代真实consumer与独立oracle。原工作任务负责，原final独立复审核验。
+
 | ID | owner_stage | 标准 | 核验 |
 |---|---|---|---|
 | AC-01 | work | 本包完整支持集、符号/入口/平台/依赖及资源合同冻结，所有unknown有owner且不能漏计 | T-01逐行映射Design55/分母与实际源码 |
@@ -1199,7 +1214,7 @@ A原required的实际语言/库/FFI/非GUIA2R仍要真实关闭；旧载体可�
 - [x] **T-09｜M2-A｜owner_stage: work｜AC-07/AC-NATIVE**：冻结并审计FFI-M2-01..08/LIB-M2-01..06及全部子行，运行四端真实外库/新库组合与缺行/手写binding/旧桥/缺工具对照，给986/987具名pending安装项。 验证V-09，A证据汇入T-A03；B最终work T-04复核身份适用性。 新增V-NATIVE：在M2-A义务/测试中并入LIB-M2-07/08，默认自有库和显式C/Rust FFI双腿分开验；追踪原实现/符号/调用/依赖与字符串正反例。现框架缺长度/资源/ABI观测时按T-A02有界核实并版本化扩展，不能由worker自报PASS或以四端相等替独立oracle。 PIO：落实§5平台合同与V-PLATFORM-IO/AC-PLATFORM-IO，原有义务全部保留。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
   [✅ 2026-11-16] 已交来源部分交付（详§5"T-09 已交来源审计记录"）：FFI-M2-01..08 全部绑定 967 具名 fixture 并**当前树实测 33/33 PASS 9.2s**（真外库 serde_json/SQLite 端到端+负控矩阵+六路径）；LIB-M2-01..08 逐行审计（已交证据/pending owner）；对照族（缺行/手写binding/旧桥/缺工具）逐项核对；986/987 具名pending安装/退役项已登记。V-09 的 A切片证据就绪汇入 T-A03；pending 腿（973/974/975/978/977 各腿）如实保留，T-A03 出口前由其 owner 闭合。
 
-- [ ] **T-08｜M2-A/B｜owner_stage: work｜AC-06**：分A/B执行原MIX-01..06与候选组合：A切片只等T-A02和能力/RG正式来源，进入T-A03；B切片在M2A-08后接T-02/03全产品进入T-04。保AC-06/V-08完整范围，B-pending明确交986/987，A完成不提前勾本任务。 B按W1 AV→W2 AC→W3 A2R分别接V-UI-WAVES并独立phase交接；各波未做后端不阻当前波，整项最终还等OS/其余required。 EVENT-SPLIT：A组合只取A接口；B分别接事件三件与AV/AC/A2R/WEB各自consumer，按波验不设三件之外的总门。
+- [ ] **T-08｜M2-A/B｜owner_stage: work｜AC-06**：分A/B执行原MIX-01..06与候选组合：A切片只等T-A02和能力/RG正式来源，进入T-A03；B切片在M2A-08后接T-02/03全产品进入T-04。保AC-06/V-08完整范围，B-pending明确交986/987，A完成不提前勾本任务。 B按W1 AV→W2 AC→W3 A2R分别接V-UI-WAVES并独立phase交接；各波未做后端不阻当前波，整项最终还等OS/其余required。 EVENT-SPLIT：A组合只取A接口；B分别接事件三件与AV/AC/A2R/WEB各自consumer，按波验不设三件之外的总门。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
   [A片段✅ 2026-11-17, 同上commits] A切片闭环：MIX-07组合两例＋MIX-01..06 A腿聚合账（§5 r29）；整项待B（T-08[B]在M2A-08后接T-02/03全产品进T-04），A完成不提前勾本任务。
 
 - [x] **T-A03｜M2-A｜owner_stage: work｜AC-A-EXIT/AC-NATIVE**：等A能力和RG收据正式就绪后，运行V-A-EXIT的实际完整职责/四端/新库/FFI/真实消费者及原正式门；新鲜检出重放、逐项计数/终态/独立oracle齐，A-required缺证阻出口。 新增V-NATIVE：在M2-A义务/测试中并入LIB-M2-07/08，默认自有库和显式C/Rust FFI双腿分开验；追踪原实现/符号/调用/依赖与字符串正反例。现框架缺长度/资源/ABI观测时按T-A02有界核实并版本化扩展，不能由worker自报PASS或以四端相等替独立oracle。 本轮纳入§5/6的1024承接合同与AC-AUDIT，必须保全部原义务。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 本轮新增先按§5当前范围覆盖合同迁移/重冻原矩阵与adapter、落实AC-TARGET-SCOPE/V-TARGET-SCOPE，再核出口；Godot不再required，旧162行与历史证据不删除，生产TS及其他required不误撤。 当前并入V-IO-HANDOFF：按1064 D行/1065 A行绑定原库/覆盖义务的正式来源，973有限面或stub不充完整库/AC OS正例；不等977/B或全包归档。 r19补V-MODULE-HANDOFF：按本表接975/B1及1064/MODULE独立来源、D09/FRAME与1065 W/N/L逐项结果；不把上游切片或973归档充完整数据/库。 r21须闭V-NODE-DESKTOP-A并收980正式入口/AC-B承接账；不等待AC桌面运行，但HELLO字节探针不代NATIVE/RG。 本轮先重冻最小A/全B分母与RG-A03/04/05迁交并闭V-MIN-A-EXIT；不等待完整UI/Widgets/图形A2R/OS产品，保其逐行B-owner与原oracle。 r23以A-FREEZE-20261116-r23为分母：逐原子项核8个审计A包、A约束/证据和1066正确性正式切片，完整B迁移/1030/1038不反置成A前提；本轮规划不是执行PASS。 EVENT-SPLIT：按r23原子分母接已交980 A、981 EVENT-A及全部MIN-A/原A必需；三缺口完整EVENT-B逐行留原owner/波次，不反等980/981全包。1032/1034正式已交，余A正确性/1064/1066与RG仍真实核。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
@@ -1217,11 +1232,11 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
-- [ ] **T-02｜M2-B｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 EVENT-SPLIT：B核IF-981-EVENT-PAYLOAD-B/MSG-B/PARAMS-B与实际完整consumer，不把#6i语法当语义已交。
+- [ ] **T-02｜M2-B｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 EVENT-SPLIT：B核IF-981-EVENT-PAYLOAD-B/MSG-B/PARAMS-B与实际完整consumer，不把#6i语法当语义已交。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
-- [ ] **T-03｜M2-B｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 按V-UI-OS-ORDER在三波后接OS产品，OS不等待本包最终签；阶段收据不等本包全归档。
+- [ ] **T-03｜M2-B｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 按V-UI-OS-ORDER在三波后接OS产品，OS不等待本包最终签；阶段收据不等本包全归档。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
-- [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 r21同时闭V-NODE-DESKTOP-B，收1068机器guest和981真实领域窗口/包，不以A2R或AV代AC。 最终收三波＋OS/其余产品的同版候选；986/987负责安装/退役，不反置成候选B交付前置。 r23收全部B-required产品/修复/格式迁移及旧消费者义务；1030按既有关闭条件、1066完整范围与正式来源核，1038研究不得冒新重构已交。 EVENT-SPLIT：最终AC-EVENT-PHASE完整闭合，原UI/语言/资源/模式/游戏义务保全。
+- [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 r21同时闭V-NODE-DESKTOP-B，收1068机器guest和981真实领域窗口/包，不以A2R或AV代AC。 最终收三波＋OS/其余产品的同版候选；986/987负责安装/退役，不反置成候选B交付前置。 r23收全部B-required产品/修复/格式迁移及旧消费者义务；1030按既有关闭条件、1066完整范围与正式来源核，1038研究不得冒新重构已交。 EVENT-SPLIT：最终AC-EVENT-PHASE完整闭合，原UI/语言/资源/模式/游戏义务保全。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **T-05｜M2-B｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -1243,7 +1258,14 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-A01/T-A02/T-A03/T-09/T-08/T-02/T-03/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
+
 ## 9. 复审记录
+
+### 2026-11-17 CONFIG-ACE-B规划交接（r30；非实施验收）
+
+stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授权补承接/设计/接口/验收及排程；未work/建树/运行测试/探针/构建/合入/归档/派agent。GAP-982-CONFIG-ACE由982原B-CONFIG两仓端到端承接，能力本身保持未实现；本包按§5–8现任务生产或接收，不新增Plan/任务，不改已验A收据。下一步须未来实施指令，982先B-CONFIG-I全链前探/接口与原输入冻结，再V→独立R→正式phase交接；其他owner按所用正式来源接。
+
+取材和静态核验：7计划123原任务ID/顺序/勾选与状态/进度保留，语义revision各增1；仅982补已交967/979直接基础依赖。9个配置判别Case/4个能力AC、typed接口/值语义/预算/生命周期/原用例映射与Spec候选已列；24节点30边阶段图无环，新增本地链接可达，18份源码/Spec/归档/计数器身份不变，目标文档git diff --check通过。旧无owner快照/route C/执行回执作历史保留，不把规划PASS当真实能力或独立产品review。M2A-08 r29/95c7fbad8冻结不变。
 
 ### AGE三路线规划对齐说明（2026-11-17；不改变本包revision/分母/进度）
 
@@ -1274,6 +1296,10 @@ stage: goal | plan_id: PLAN-985 | plan_revision: r29 | round: 3 | from: merge | 
 ### 2026-11-17 B期等待期间中间产物清理记录（用户指令；沿981/984先例）
 
 M2A-08落主后、B批开工前（B前置=多计划B批完成，等待期长），用户指令清理worktree构建缓存：删除 `target/`（6.2G）＋`experimental/ace/target/`（11G）＝**释放约17.2G**；worktree降至约532M，git状态clean，分支/树/矩阵/收据/plan-artifacts(17K，在途scope保护)全部保留。构建中间产物按2026-10-31裁定为可删缓存不回收暂存；B批会话冷重建（预期首次cargo构建时间变长，按环境归因记录）。
+
+### 2026-11-19 台账维护：B期spec沉淀后15条引用重钉（worktree commit 13b5b3e91）
+
+B期会话沉淀触发台账陈旧收据检测：`m2-scheduler.md`×4（L-29/L-31/L-43/S-19→`5bdd5aea28011cb4`，1067 SD-ASYNC）、`m2-schema.md`×2（L-44/S-23→`1ab3508b3edcd351`，981图形host port增量、核心章节未动）、`m2-tools.md`×9（S-24/A-04/A-07/A-08/C-06/D-05/D-07/F-07/F-10→`33b478d6d3907bb2`，取最终冻结提交字节，主检出工作区WIP不入钉）。逐行确认新版规范为超集沉淀、原义务支撑不变（serve/req/mcp等未交面按B边界具名）。复跑整组`p985_`：**8/8绿**（含缺行/重复/错source/pending虚报/词表/target-scope-deferred全部负控＋真实矩阵校验）。
 
 2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
 
