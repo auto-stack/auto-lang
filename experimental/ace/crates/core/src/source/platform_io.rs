@@ -576,6 +576,15 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         result: VT::I32,
         capability: CAP_PROC,
     },
+    /// PLAN-982 (Q-982-2 (a) step 1): the host-provided per-run argv line
+    /// (narrow argv-read grant — never carries the spawn family).
+    PlatformSourceOp {
+        callee: "proc_run_argv_w16",
+        symbol: "auto.platform.process.run_argv_w16.v1",
+        params: P_2I32,
+        result: VT::I32,
+        capability: "platform.process.argv",
+    },
     PlatformSourceOp {
         callee: "proc_cmdline_fill_bytes",
         symbol: "auto.platform.process.cmdline_fill_bytes.v1",

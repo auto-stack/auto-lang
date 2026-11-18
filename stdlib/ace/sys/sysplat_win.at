@@ -661,9 +661,29 @@ pub fn pf_current_dir() Str {
     return out
 }
 
+// PLAN-982（Q-982-2 裁定 (a) 第一步／B 修正）：宿主可为**本次执行**提供
+// 参数行（`[argv0, ...脚本参数]` 的 win32 引号形）。**仅当未设**（返回
+// -10＝ERR_UNSUPPORTED，独立可执行程序等 standalone 语境）回退到进程
+// 自身命令行；超限/OS 失败**不**当回退条件——两种参数源各归各入口，
+// 超限不得伪装成"未设"（用户裁定 B 第 2 条）。
 pub fn pf_args() List<Str> {
     let reg = buf_alloc(65540)
     if (reg < 0) { return List<Str>.new() }
+    let ra = proc_run_argv_w16(reg, 32768)
+    if (ra > 0) {
+        let deca = decode_w16_region(reg, 0, ra)
+        let dfa = buf_free(reg)
+        var outa = List<Str>.new()
+        is deca {
+            Some(s) -> { outa = parse_win32_cmdline(s) }
+            None -> {}
+        }
+        return outa
+    }
+    if (ra != -10) {
+        let df0 = buf_free(reg)
+        return List<Str>.new()
+    }
     let r = proc_cmdline_w16(reg, 32768)
     if (r <= 0) {
         let df1 = buf_free(reg)

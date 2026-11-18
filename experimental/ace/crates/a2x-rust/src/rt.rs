@@ -1562,6 +1562,14 @@ pub fn a2x_proc_exit(code: i32) -> i32 {
     std::process::exit(code)
 }
 
+/// PLAN-982 (Q-982-2 (a) step 1 / B): the per-run argv op in a STANDALONE
+/// binary — no host injected an argv line, so the named "unset" marker
+/// (-10 = ERR_UNSUPPORTED) makes the stdlib `pf_args` fall back to the
+/// process command line (the standalone semantics the ruling preserves).
+pub fn a2x_proc_run_argv_w16(_oregion: i32, _ocap: i32) -> i32 {
+    -10
+}
+
 pub fn a2x_proc_cmdline_w16(oregion: i32, ocap: i32) -> i32 {
     unsafe {
         let mut args: Vec<String> = std::env::args().collect();

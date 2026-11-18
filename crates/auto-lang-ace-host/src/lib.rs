@@ -522,6 +522,222 @@ fn lower_and_check_entry(
     Ok(mir)
 }
 
+/// PLAN-982 (Q-982-2 ruling (a), step 1): run ONE script through the
+/// SYS-STDLIB packages lane with host-provided argv — the explicit
+/// candidate entry for the argv real-CLI acceptance (the console-lane
+/// default switch is step 2, after the EXEC compatibility gate).
+///
+/// Contract (the user ruling's three clauses):
+/// * `request.args` becomes `[argv0, ...args]` (argv0 = the host process's
+///   own argv[0], the legacy `process.args()` contract); the line is
+///   per-execution (a fresh backend per call — consecutive and concurrent
+///   runs each read their own arguments);
+/// * the script source keeps the `fn main()` entry ABI and reads argv via
+///   the stdlib `process.args()` (`List<Str>` never enters the entry ABI);
+/// * grants are the lane's OWN minimal set — `platform.process.argv`
+///   (argv reading; the cmdline-read imports accept it) plus the stdlib
+///   machinery the args path itself needs (`platform.mem` regions,
+///   `platform.clock` for the parser's tick loops). The spawn family
+///   (`platform.process`) is NOT granted.
+#[cfg(windows)]
+pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
+    use ace_core::source::cst::FrontBudget;
+    use ace_core::source::packages::{
+        stdlib_sys_argv_process_source, AssemblyBackend, PackageAssemblyContext,
+        PackageModuleInput, ProviderChoice, TargetOs, STDLIB_PACKAGE, STDLIB_VERSION,
+    };
+    use ace_source_query::modules::packages::{
+        assemble_package_inputs, compile_assembled_aggregates_inputs,
+    };
+
+    // ① MINIMAL argv assembly (Q-982-2 ruling B): the script as `app::main` +
+    //    the narrow frozen `process` face (args only — no sysplat, no spawn)
+    //    + the two clean codecs its closure needs (`syscommon` for the
+    //    win32 cmdline parser, `bytes` for the utf8 tail). The final
+    //    product's import table is the grant authority (front door checks
+    //    declared imports item by item).
+    let app_files = vec![("main.at".to_string(), request.source.to_string())];
+    let mut ctx =
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    let mut inputs = match assemble_package_inputs(&app_files, "app::main", &mut ctx) {
+        Ok(inputs) => inputs,
+        Err(e) => return denied_report("ace.sys/assemble", format!("app assembly failed: {e}")),
+    };
+    let narrow = |id: &str, source: &str| PackageModuleInput {
+        package: STDLIB_PACKAGE.to_string(),
+        version: STDLIB_VERSION.to_string(),
+        id: id.to_string(),
+        source: source.to_string(),
+        provider: None,
+    };
+    let syscommon = ace_core::source::packages::stdlib_sys_files()
+        .into_iter()
+        .find(|(name, _)| name == "syscommon.at")
+        .map(|(_, content)| content);
+    let Some(syscommon) = syscommon else {
+        return denied_report("ace.sys/assemble", "the frozen syscommon source is missing");
+    };
+    let bytes = ace_core::source::packages::stdlib_assembled_files()
+        .into_iter()
+        .find(|(name, _)| name == "bytes.at")
+        .map(|(_, content)| content);
+    let Some(bytes) = bytes else {
+        return denied_report("ace.sys/assemble", "the frozen bytes source is missing");
+    };
+    inputs.push(narrow("process", stdlib_sys_argv_process_source()));
+    inputs.push(narrow("syscommon", &syscommon));
+    inputs.push(narrow("bytes", &bytes));
+    let product = match compile_assembled_aggregates_inputs(
+        &inputs,
+        "app::main",
+        FrontBudget::WORK_OWNED_64MIB,
+        &ctx,
+    ) {
+        Ok(product) => product,
+        Err(diags) => {
+            // 第一现场：首个生产者诊断（模块身份保留在 message 侧文本）。
+            return match diags.first() {
+                Some(d) => diag_report(
+                    "text",
+                    &d.diagnostic.code.clone(),
+                    format!("{}: {}", d.module, d.diagnostic.message),
+                    Some(AceSpan {
+                        start: d.diagnostic.span.start as u64,
+                        end: d.diagnostic.span.end as u64,
+                    }),
+                ),
+                None => denied_report(
+                    "ace.sys/empty-diagnostics",
+                    "the script was rejected without a diagnostic",
+                ),
+            };
+        }
+    };
+
+    // ② Per-run scratch + cold link (same discipline as the project door).
+    let scratch = match crate::project::ScratchStore::new() {
+        Ok(scratch) => scratch,
+        Err(e) => {
+            return report(
+                AceOutcome::HostFailure {
+                    code: "ace.sys/scratch-open".to_string(),
+                    message: format!("scratch store open failed: {e}"),
+                },
+                0,
+                None,
+                None,
+            )
+        }
+    };
+    let target = match ace_av::modules::packages::PackageAvTarget::cold_with_entry(
+        &scratch.path,
+        &product,
+        request.entry_def_id,
+    ) {
+        Ok(target) => target,
+        Err(e) => {
+            return report(
+                AceOutcome::HostFailure {
+                    code: "ace.sys/link".to_string(),
+                    message: format!("entry link failed: {e}"),
+                },
+                0,
+                None,
+                None,
+            )
+        }
+    };
+
+    // ③ The per-run argv line rides the backend (isolated per execution).
+    //    Over-limit is a NAMED pre-check refusal (the .at side reads with a
+    //    32768-unit cap; the ruling: over-limit must never masquerade as
+    //    "unset" or fall back to the host process command line).
+    let line = sys_argv_line(request.args);
+    if line.len() > 32768 {
+        return denied_report(
+            "ace.sys/argv-overlimit",
+            format!(
+                "the argv line for this execution is {} UTF-16 units (cap 32768); \
+                 refusing instead of truncating or falling back",
+                line.len()
+            ),
+        );
+    }
+    let mut backend = ace_av_core::platform_io::Win32PlatformIo::default();
+    backend.set_run_argv_w16(line);
+
+    // ④ Grants per the minimal closure's OWN import table (Q-982-2 ruling B):
+    //    `platform.mem` (the argv line's region reads) + the narrow
+    //    `platform.process.argv` (argv reading). The front door re-checks
+    //    every declared import item by item and names anything missed.
+    //    `platform.process` — the spawn family — is deliberately ABSENT.
+    let grants = vec![
+        "platform.mem".to_string(),
+        "platform.process.argv".to_string(),
+    ];
+    match target.run_platform_value(&grants, &mut backend) {
+        Ok((outcome, _summary)) => map_outcome(outcome, None, None),
+        Err(e) => denied_report("ace.sys/run", e),
+    }
+}
+
+/// 非 Windows：sys-stdlib 脚本车道缺席（Win32 平台后台不可用）⇒ 具名拒绝。
+#[cfg(not(windows))]
+pub fn run_sys_script(_request: &AceRequest<'_>) -> AceRunReport {
+    denied_report(
+        "ace.sys/lane-unavailable",
+        "the sys-stdlib script lane requires the Win32 platform backend; this target has none",
+    )
+}
+
+/// Build the per-run win32-quoted argv line `[argv0, ...args]` (UTF-16).
+fn sys_argv_line(args: &[&str]) -> Vec<u16> {
+    let mut line = String::new();
+    // argv0 沿用 legacy 契约：宿主进程自己的 argv[0]。
+    quote_win32_arg(&std::env::args().next().unwrap_or_default(), &mut line);
+    for arg in args {
+        line.push(' ');
+        quote_win32_arg(arg, &mut line);
+    }
+    line.encode_utf16().collect()
+}
+
+/// MSVCRT argument quoting — the exact inverse of the stdlib's
+/// `parse_win32_cmdline` (empty/space/tab/quote-bearing args are quoted;
+/// backslashes before a quote double up; a trailing run doubles too).
+fn quote_win32_arg(arg: &str, out: &mut String) {
+    let needs = arg.is_empty() || arg.chars().any(|c| c == ' ' || c == '\t' || c == '"');
+    if !needs {
+        out.push_str(arg);
+        return;
+    }
+    out.push('"');
+    let mut backslashes = 0usize;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                for _ in 0..(backslashes * 2 + 1) {
+                    out.push('\\');
+                }
+                backslashes = 0;
+                out.push('"');
+            }
+            other => {
+                for _ in 0..backslashes {
+                    out.push('\\');
+                }
+                backslashes = 0;
+                out.push(other);
+            }
+        }
+    }
+    for _ in 0..(backslashes * 2) {
+        out.push('\\');
+    }
+    out.push('"');
+}
+
 /// Shared ABC encode/decode/admission tail (pure lane admits without a
 /// stub table; the foreign lane admits through its loaded table).
 fn wire_admit(

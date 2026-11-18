@@ -921,6 +921,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         | crate::platform_io::CAP_CLOCK
                         | crate::platform_io::CAP_ENTROPY
                         | crate::platform_io::CAP_PROC
+                        // PLAN-982 (Q-982-2 (a) step 1): the narrow argv-read
+                        // grant (the per-run argv op; the cmdline-read imports
+                        // accept it at the run-time grant ledger).
+                        | crate::platform_io::CAP_PROC_ARGV
                         // sys-library units stage through io/mem primitives
                         | crate::platform_io::CAP_WRITE
                         | crate::platform_io::CAP_MEM

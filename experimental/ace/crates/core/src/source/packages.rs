@@ -461,8 +461,9 @@ pub use provider_sources::{
 mod stdlib;
 pub use stdlib::{
     is_frozen_std_assembled_module, is_frozen_std_module, is_frozen_std_sys_module,
-    stdlib_aggregates_inputs, stdlib_assembled_files, stdlib_inputs, stdlib_sys_files,
-    unwired_reason, STDLIB_PACKAGE, STDLIB_RESERVED, STDLIB_UNWIRED, STDLIB_VERSION,
+    stdlib_aggregates_inputs, stdlib_assembled_files, stdlib_inputs,
+    stdlib_sys_argv_process_source, stdlib_sys_files, unwired_reason, STDLIB_PACKAGE,
+    STDLIB_RESERVED, STDLIB_UNWIRED, STDLIB_VERSION,
 };
 
 #[cfg(test)]

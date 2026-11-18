@@ -52,6 +52,43 @@ pub const CAP_ENV: &str = "platform.env";
 pub const CAP_CLOCK: &str = "platform.clock";
 pub const CAP_ENTROPY: &str = "platform.entropy";
 pub const CAP_PROC: &str = "platform.process";
+/// PLAN-982 (Q-982-2 ruling (a), step 1): the narrow argv-read grant. It
+/// satisfies the per-run argv op AND the two cmdline-read imports (reading
+/// the process command line IS an argv read), without opening the spawn
+/// family that `platform.process` carries.
+pub const CAP_PROC_ARGV: &str = "platform.process.argv";
+
+/// PLAN-982 (Q-982-2 ruling (a) step 1 / B): does `grants` satisfy this
+/// import? The three argv-READ symbols (the two cmdline reads + the per-run
+/// argv line) accept EITHER key — the narrow `platform.process.argv` (argv
+/// reading without the spawn family) or the wide `platform.process` (which
+/// subsumes argv reading). Spawn & co. still need the exact wide key: the
+/// narrow grant NEVER satisfies them.
+pub fn capability_satisfied(
+    grants: &std::collections::BTreeSet<String>,
+    capability: &str,
+    symbol: &str,
+) -> bool {
+    if grants.contains(capability) {
+        return true;
+    }
+    let is_argv_read = matches!(
+        symbol,
+        "auto.platform.process.cmdline_w16.v1"
+            | "auto.platform.process.cmdline_fill_bytes.v1"
+            | "auto.platform.process.run_argv_w16.v1"
+    );
+    if !is_argv_read {
+        return false;
+    }
+    if capability == CAP_PROC {
+        grants.contains(CAP_PROC_ARGV)
+    } else if capability == CAP_PROC_ARGV {
+        grants.contains(CAP_PROC)
+    } else {
+        false
+    }
+}
 
 pub const MAX_PLATFORM_IMPORTS: usize = 16;
 pub const MAX_TOTAL_HOST_IMPORTS: usize = 24;
@@ -354,6 +391,12 @@ pub enum PlatformOpKind {
     /// Linux fill /proc/self/cmdline into a region → byte count
     /// (NUL-separated; the Auto layer parses).
     ProcCmdlineFillBytes,
+    /// PLAN-982 (Q-982-2 ruling (a), step 1): the PER-RUN argv line into a
+    /// region → unit count. The host sets `[argv0, ...script args]` as a
+    /// pre-quoted win32 command line before the execution; unset (standalone
+    /// binaries, backends without a host-provided list) errors and the Auto
+    /// layer falls back to `proc_cmdline_w16`.
+    ProcRunArgvW16,
     /// Windows current directory into a region → unit count.
     ProcCwdW16,
     /// Linux getcwd into a region → byte count.
@@ -1298,6 +1341,18 @@ pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
         max_call_bytes: MAX_PLATFORM_CALL_BYTES as u32,
     },
     PlatformOpSpec {
+        kind: PlatformOpKind::ProcRunArgvW16,
+        callee: "proc_run_argv_w16",
+        symbol: "auto.platform.process.run_argv_w16.v1",
+        category: CATEGORY_PROC,
+        capability: CAP_PROC_ARGV,
+        params: P_2I32,
+        param_dirs: D_2,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::None,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
         kind: PlatformOpKind::ProcCwdW16,
         callee: "proc_cwd_w16",
         symbol: "auto.platform.process.cwd_w16.v1",
@@ -1716,6 +1771,12 @@ pub trait PlatformIoBackend {
     fn proc_cmdline_w16(&mut self, _out: &mut [u16]) -> Result<usize, u32> {
         Err(PROBE_UNSUPPORTED)
     }
+    /// PLAN-982 (Q-982-2 (a) step 1): the host-provided per-run argv line
+    /// → unit count. Unset by default (standalone context — the Auto layer
+    /// falls back to the process command line).
+    fn proc_run_argv_w16(&mut self, _out: &mut [u16]) -> Result<usize, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
     /// Linux /proc/self/cmdline fill → byte count.
     fn proc_cmdline_fill_bytes(&mut self, _out: &mut [u8]) -> Result<usize, u32> {
         Err(PROBE_UNSUPPORTED)
@@ -2125,6 +2186,21 @@ pub struct Win32PlatformIo {
     pub net_sockets: std::cell::RefCell<Vec<Option<std::net::TcpStream>>>,
     /// PLAN-974 inc3: backend-owned listeners (id = index + 1).
     pub net_listeners: std::cell::RefCell<Vec<Option<std::net::TcpListener>>>,
+    /// PLAN-982 (Q-982-2 (a) step 1): the HOST-provided argv line for THIS
+    /// execution — `[argv0, ...script args]` as a pre-quoted win32 command
+    /// line. The backend is constructed per run, so consecutive and
+    /// concurrent executions each read their own arguments (`None` =
+    /// standalone context → the Auto layer falls back to the process
+    /// command line).
+    pub run_argv_w16: Option<Vec<u16>>,
+}
+
+impl Win32PlatformIo {
+    /// Set the per-run argv line (UTF-16, win32-quoted, no trailing NUL).
+    /// Call before handing the backend to the executor.
+    pub fn set_run_argv_w16(&mut self, line: Vec<u16>) {
+        self.run_argv_w16 = Some(line);
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -3191,6 +3267,22 @@ impl PlatformIoBackend for Win32PlatformIo {
             out[i] = unsafe { core::ptr::read(p.add(i)) };
         }
         Ok(len)
+    }
+
+    /// PLAN-982 (Q-982-2 (a) step 1): the host-provided per-run argv line.
+    /// Unset is a named "no run argv" (the Auto layer falls back to the
+    /// process command line — standalone semantics preserved).
+    #[cfg(windows)]
+    fn proc_run_argv_w16(&mut self, out: &mut [u16]) -> Result<usize, u32> {
+        self.dispatches.sys += 1;
+        let Some(line) = self.run_argv_w16.as_ref() else {
+            return Err(PROBE_UNSUPPORTED);
+        };
+        if line.len() > out.len() {
+            return Err(122);
+        }
+        out[..line.len()].copy_from_slice(line);
+        Ok(line.len())
     }
 
     #[cfg(windows)]
@@ -4904,6 +4996,8 @@ enum PathBytesOp {
 #[derive(Clone, Copy)]
 enum OutUnitOp {
     Cmdline,
+    /// PLAN-982 (Q-982-2 (a) step 1): the host-provided per-run argv line.
+    RunArgv,
     Cwd,
 }
 
@@ -5083,7 +5177,7 @@ impl PlatformResourceLedger {
     ) -> Result<i32, HostError> {
         let _scope = ProviderScope::enter()
             .ok_or_else(|| HostError::Io("host.reentry: reentrant platform host call".into()))?;
-        if !self.grants.contains(spec.capability) {
+        if !capability_satisfied(&self.grants, spec.capability, spec.symbol) {
             return Ok(ERR_UNAUTHORIZED);
         }
         if args.len() != spec.params.len() {
@@ -5390,6 +5484,12 @@ impl PlatformResourceLedger {
                 as_i32(&args[0])?,
                 as_i32(&args[1])?,
                 OutUnitOp::Cmdline,
+            ),
+            PlatformOpKind::ProcRunArgvW16 => self.op_out_units(
+                backend,
+                as_i32(&args[0])?,
+                as_i32(&args[1])?,
+                OutUnitOp::RunArgv,
             ),
             PlatformOpKind::ProcCmdlineFillBytes => self.op_out_bytes_fill(
                 backend,
@@ -7338,6 +7438,7 @@ impl PlatformResourceLedger {
         let mut scratch = vec![0u16; (out_cap as usize).clamp(1, 32_768)];
         let result = match op {
             OutUnitOp::Cmdline => backend.proc_cmdline_w16(&mut scratch).map(|v| v as u64),
+            OutUnitOp::RunArgv => backend.proc_run_argv_w16(&mut scratch).map(|v| v as u64),
             OutUnitOp::Cwd => backend.proc_cwd_w16(&mut scratch).map(|v| v as u64),
         };
         match result {

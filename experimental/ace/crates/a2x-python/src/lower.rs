@@ -1056,7 +1056,9 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             hir::ExprKind::BorrowMut { local } => Ok(self.local_name(local.0)?.to_string()),
             hir::ExprKind::Move { inner } => {
                 let inner_e = self.lower_expr(*inner)?;
-                if let hir::ExprKind::ReadLocal { local } = &self.facts.body.exprs[inner.0 as usize].kind {
+                if let hir::ExprKind::ReadLocal { local } =
+                    &self.facts.body.exprs[inner.0 as usize].kind
+                {
                     if self.owned_locals.contains_key(&local.0) {
                         let lname = self.local_name(local.0)?.to_string();
                         let t = self.fresh_temp();
@@ -1438,6 +1440,7 @@ fn platform_port_id(symbol: &str) -> Result<String, A2xReject> {
         "process.release" => "process.release",
         "process.exit" => "process.exit",
         "process.cmdline_w16" => "process.cmdline_w16",
+        "process.run_argv_w16" => "process.run_argv_w16",
         "process.cmdline_fill_bytes" => "process.cmdline_fill_bytes",
         "process.cwd_w16" => "process.cwd_w16",
         "process.cwd_bytes" => "process.cwd_bytes",

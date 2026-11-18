@@ -1,0 +1,108 @@
+// PLAN-982 (Q-982-2 裁定 B，第一步): the vetted ARGV provider — the NARROW
+// `std::process` face for the sys script lane (`AUTO_ACE_SCRIPT_SYS=1`).
+//
+// 与公共 `sys/process.at` 的分工（用户裁定「两种参数来源放在各自入口」）：
+// - 本窄面只读**本次执行注入的 argv**（`proc_run_argv_w16`，宿主在执行前
+//   设置 `[argv0, ...脚本参数]` 的 win32 引号行）；缺失/超限**不回退**宿主
+//   进程命令行（门侧前置检查使两者不可达，防御分支返回空表）。
+// - 独立可执行程序与通用 sys 线继续用公共 `process.at`（未设时回退自身
+//   命令行）。
+// 闭包纪律：不引入 sysplat（spawn 族所在）；解码/解析复用 `std.bytes` 与
+// `std.syscommon` 的冻结实现，UTF-16 解码按 sysplat_win 同款逐字改写
+// （区域读走平台 mem op）。
+use std.bytes.decode_utf8
+use std.syscommon.parse_win32_cmdline
+use std.syscommon.ticks16
+use std.syscommon.ticks64
+
+pub fn args() List<Str> {
+    let region = mem_alloc(65540)
+    if (region < 0) { return List<Str>.new() }
+    let n = proc_run_argv_w16(region, 32768)
+    if (n <= 0) {
+        // 门侧已前置拒绝超限；未设＝宿主装配缺陷。两种情况都不回退。
+        let df1 = mem_free(region)
+        return List<Str>.new()
+    }
+    var argv = List<Str>.new()
+    let dec = decode_run_argv(region, n)
+    let df2 = mem_free(region)
+    is dec {
+        Some(s) -> { argv = parse_win32_cmdline(s) }
+        None -> {}
+    }
+    return argv
+}
+
+// UTF-16 → Str（sysplat_win::decode_w16_region 的 off=0 逐字改写：同一
+// 平台 mem 读与代理对纪律；有界步进走 ticks 设备）。
+fn decode_run_argv(region int, n_units int) ?Str {
+    if (n_units <= 0) { return None }
+    var bytes = List<int>.new()
+    let t16 = ticks16()
+    let t64 = ticks64()
+    var i = 0
+    var bad = false
+    for a in t16 {
+        if (i >= n_units || bad) { break }
+        for b in t64 {
+            if (i >= n_units || bad) { break }
+            for c in t64 {
+                if (i >= n_units || bad) { break }
+                let pos = i * 2
+                let b0 = mem_read_u8(region, pos)
+                let b1 = mem_read_u8(region, pos + 1)
+                if (b0 < 0 || b1 < 0) {
+                    bad = true
+                    break
+                }
+                let u = b0 + b1 * 256
+                if (u < 128) {
+                    bytes.push(u)
+                    i = i + 1
+                } else {
+                    if (u < 2048) {
+                        bytes.push(192 + u / 64)
+                        bytes.push(128 + u % 64)
+                        i = i + 1
+                    } else {
+                        if (u >= 55296 && u <= 56319) {
+                            if (i + 1 >= n_units) {
+                                bad = true
+                                break
+                            }
+                            let c0 = mem_read_u8(region, pos + 2)
+                            let c1 = mem_read_u8(region, pos + 3)
+                            if (c0 < 0 || c1 < 0) {
+                                bad = true
+                                break
+                            }
+                            let lo = c0 + c1 * 256
+                            if (lo < 56320 || lo > 57343) {
+                                bad = true
+                                break
+                            }
+                            let cp = 65536 + (u - 55296) * 1024 + (lo - 56320)
+                            bytes.push(240 + cp / 262144)
+                            bytes.push(128 + (cp / 4096) % 64)
+                            bytes.push(128 + (cp / 64) % 64)
+                            bytes.push(128 + cp % 64)
+                            i = i + 2
+                        } else {
+                            if (u >= 56320 && u <= 57343) {
+                                bad = true
+                                break
+                            }
+                            bytes.push(224 + u / 4096)
+                            bytes.push(128 + (u / 64) % 64)
+                            bytes.push(128 + u % 64)
+                            i = i + 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (bad || i < n_units) { return None }
+    return decode_utf8(bytes)
+}
