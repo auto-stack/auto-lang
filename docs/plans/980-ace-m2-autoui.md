@@ -1716,6 +1716,16 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **交接 982（去 ignore 前置已备）。** 工具以 `--features ace-vue` 构建后 `auto run --render vue`（分派键原样）即走产品 lane 道；未建面由 `ace.vue-lane-unavailable` 具名拒守。**边界**：真 CLI `0→1→0`+ACE 覆盖=982 去 ignore 用例本体；dev-server/npm 腿未在本刀验证；多 widget app.at 在本键下会经 splice 锚未命中走具名拒（产品入口返回首 widget SFC——多 widget 形=下一刀，不冒充支持）。
 
+2026-11-18 stage: work+merge（**④-A #8：多 widget 接入产品链**（用户排程：982 跑 U0、980 同时做多 widget）；收口 #7 具名边界"多 widget=下一刀"）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（双道逐件接线+八段验收）** | delivery: auto-ui master **`70e9ec02`**（merge `cbe38068`）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①runtime `ace_vue_script.rs`：`generate_sfcs_with_lane_product(src, path, rt_href_root, rt_href_component)` → `LaneSfcProductMulti{widgets: Vec<WidgetLaneSfc{name, sfc, bodies, absent}>, runtime_mjs}`——**逐 widget 独立拼接自己的 lane 体**（node 选择器=声明序；此前循环内已逐件拼接但弃掉非首件）；rt 全文件共享一份，**import 按产物位参数化**（根=src/App.vue→`./a2x_rt.mjs`；组件=src/components/{W}.vue→`../a2x_rt.mjs`；零 helper 引用的件正确地不发射 import——NOT 形内联无引用）；单件出口 `generate_sfc_with_lane_product` 改为首件委托（行为不变——回归实证）。②工具双道：键门升级 `ace_vue_app_sfcs`（多件版；缺席具名拒**附 widget 名**：`Panel[.Set]` 形）；**增量 Phase-2** 逐件落盘（根=App.vue（随 changed_files）、其余=src/components/{W}.vue 直接写——与全量道同布局；`app.at (ace lane: App + N component widgets)` 可见行）；**全量道** widget 循环前一次性多件生成 + `pick_ace` 声明序对位（对位失败=`ace.vue-lane-mismatch` 具名拒，不静默回落）。
+
+**验收（`plan980_ace_vue_tool_wiring` 扩至八段，单函数顺序（env 键进程级））。** ①–⑤=#7 原五段（键关零变化/单件增量+全量/缺席拒/键关恢复）保持；⑥多件增量：根件含自己的 `a2x_add(count.value, 1)`+`./a2x_rt.mjs` 且**不含**第二件 handler；`src/components/Panel.vue` 含 `(!flag.value)`+`a2x_add(steps.value, 1)`+`../a2x_rt.mjs` 且不含根件 handler（**每 widget 的 handler 落在对应产物**判据）；⑦多件全量：root/app 项与 Panel 组件项均为产品件（组件项含组件位 href）；⑧多件缺席：具名拒携带 widget 名与 handler 名。1/1 绿（worktree 1.76s；主树 `70e9ec02` 复跑 1/1，207.9s 含冷编译）。
+
+**回归。** 委托重构行为保持：`ace_ts_provider` **24/24**、U0 产品 **2/2**、jg watch **2/2**（含排窗浏览器档）；默认 `cargo check -p auto-ui-tools` 0 error；#7 预存红清单不变（delivery 投影族 8+corpus 1，A/B 已具名）。
+
+**边界（诚实）。** ①逐件=**同文件多 widget**；跨文件组件（pages/、components/ 包、dep fronts）的产品 lane 道未接（仍 legacy——键只作用于 app.at 的 widget 集）；②多 widget 下的 store/子组件映射面（sub_widget maps）在产品件上不参与（lane 件由源直生——002/Panel 族形状已验；复杂互引形=真语料批次）；③dev-server/npm 腿仍归 982 真链。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
