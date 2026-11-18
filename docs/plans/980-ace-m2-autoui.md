@@ -18,7 +18,7 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-18 r18当前：PHASE-④-EXT **七项裁定落档**（D-④-1=A 先行、D-④-2=开放符号表导入+981 会签、D-④-3=首切片保留宽数值拒绝、D-④-4=foreign AV 后置、D-④-5=TS 拒粒度维持、D-④-6=host 表不建、D-④-7=小范围验包绑定/保留作者语法）；**981 会签修正实施路径**（`81b0a03b1`：不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入，grammar 零改动），**用户复核接受并选 R1′**（先闭包→派生真实例→AV/SFC；表面补齐并行）；**④-A 首片 #1 已交**（点分 `use` 投影 + 引用驱动导入，lang `0db44dfdf`，四判据绿，981 环用例按 A3 具名更新）；**形状准入补测**（包面：`ace-node-counter`/`ace-hello-minimal`/001/legacy-on-block/canonical-msg-named 全 OK；墙=匿名 payload msg 17/35、顶层 style 20/35、反引号 2/35、package block 5/35）。**U01 #14 已收口落主**（lang `95b0ccb49`/ui `91d549ea`；复核补真窗输入永久 case、修复预存 `#[test]` 丢失；门禁 lang 双 PASS+UI 11/11+24/24+真窗 e2e）。32 任务/12 完成口径、原 AC/V 与规范主体不变。
+2026-11-18 r18当前：PHASE-④-EXT **七项裁定落档**（D-④-1=A 先行、D-④-2=开放符号表导入+981 会签、D-④-3=首切片保留宽数值拒绝、D-④-4=foreign AV 后置、D-④-5=TS 拒粒度维持、D-④-6=host 表不建、D-④-7=小范围验包绑定/保留作者语法）；**981 会签修正实施路径**（`81b0a03b1`：不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入，grammar 零改动），**用户复核接受并选 R1′**（先闭包→派生真实例→AV/SFC；表面补齐并行）；**④-A 首片 #1/#2a/#2b/#2c 全交**（点分 `use` 投影+引用驱动导入 lang `0db44dfdf`；AV 观察 `[4,2]`→`[20,10]`；包感知桌面桥+真窗 ui `145c4f13`；包片段 lane+同源 SFC script 段 ui `404dc442`）；**P3 `style` 会签材料已备**（126 行实测；style≡str const/fn；两值 grammar-id 影响；待 981 回签后落文法）。**U01 #14 已收口落主**（lang `95b0ccb49`/ui `91d549ea`）。32 任务/12 完成口径、原 AC/V 与规范主体不变。
 
 2026-11-18 r17当前：新增 **PHASE-④-EXT** 设计阶段（§5/§6/§8/§10），产出 use-import/外部调用进受检体的**外部名域合同草案 v0** 供用户/976 后继拍板；32 任务/12 完成口径、B-AV/B-WEB 状态、原 AC/V 与规范主体均不变，本轮零代码/零建树/零运行/零合入。并具名订正 2026-11-18 分母冻结行的宽数值口径（003 `double`×2、011 `float` 去注释 7 处且全在 helper、031i `float`×3 字段漏列）与 35 例导入 census（34/35 含 use、17 例真实引用导入名）。
 
@@ -611,8 +611,43 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 **④-A 代码顺序（用户 2026-11-18 指令落档）。** ①**点分 `use` 投影 + 惰性绑定必须同批落**：今天 `age-use-module-item` 在包面无投影分支（零事实），单加投影会让 34/35 例变 eager 导入而全红；单加惰性绑定则无输入。②在已可解析的真实例（`ace-node-counter` 派生源）上接入真实 helper 模块，验三条最小判据（未引用 `themes` 不拉模块／被引用 helper 进闭包并改结果／缺模块·缺符号·私有符号具名拒）。③AV 真窗可观察结果。④同源 SFC 调用发射与名字映射。**未完前置**：S0.5a 表面补齐（style/payload msg/反引号）仍为"整例真实源"的前置，归属待 §10 R1/R2/R3 裁定；本顺序只保"派生真实例"可开工。
 
-## 6. 测试设计
+### P3 提案：`style` 声明面（981 会签材料，2026-11-18；**本轮不动文法**）
 
+**一、现场实测（35 例 + stylekit 包）**
+- 35 例中 **20 例**含顶层 `style`，共 **126 行**：125 行 `style NAME = "字面量"`、1 行 ident 复制（007 `style hint_sm = caption_text`）、1 行带参调用（007 `style stat_value = section_title(size: "text-sm")`）；**0 个参数化 style 声明、0 个 `pub style`**。
+- 依赖包 `examples/ui/stylekit/src/front/styles.at`：**7 条 `pub style`**——4 条无参字面量（card_base/hint_text/caption_text/icon_base/input_field 中的无参项）、**3 条参数化**（`pill(bg: str = …, fg: str = …, pad: str = …) = "{pad} {bg} …"` 形，body 含 `{param}` 插值、带默认值），另有 1 条非 pub `style internal_only`。
+- 今天 ACE 文法无 `style` 规则：包面在首条 style 行报 `source.syntax expected fn, found style`（20/20 同因）。
+- **移除 style 行后的下一阻断（实测两轮）**：包面 18/20 仍报 `expected fn, found widget`（**回滚位**，真实原因被掩盖）、2/20 报 `source.lex unknown character $`；组件面（诊断更精确）017 例：003/004 **可直接解析**；7 例卡 `use mod: syms`（组件面未开，但 ④-A 的包面已开）；5 例卡 model 字段形状（`unexpected token in a model field`）；7 例卡 view/model/node 槽位（含 `use { package }` 块与包裹元素）；2 例卡 `$`。
+  ⇒ **style 是"第一个"解析阻断，但不是充分条件**；下一刀必须按"每次放行后的下一阻断"重排（实测驱动，不按文件名/组号）。
+
+**二、提案（第一刀 P3.1：`style` 面）**
+- **语义（不引入新 HIR 域，`str` 常量/函数语法糖）**：
+  - `style N = "s"` → `Item::Const{name:N, ty:str, value:"s"}`；
+  - `style N = other`（ident 复制）→ `const N str = other`（绑定期按常量读；缺名沿用现有具名拒）；
+  - `style N(p: str = d, …) = "{p} …"` → `Item::Fn`（参数按声明序、类型 str；body=`{p}`→ACE f-string `$p` 的 str 表达式）；**默认值本刀不支持**（含默认值→具名拒 `source.age.style-defaults`）；
+  - `pub style …` → 公共面 const/fn（复用 `public-item` 的可见性/重导出）；
+  - **调用点折叠**：`style X = f(arg: "lit")` 与 view 内 `style: f(arg: "lit")` 当且仅当实参全为字面量时在投影期折叠为 str 常量；非字面量实参→具名拒 `source.age.style-call`（不猜求值序）。命名实参按声明序对位（未知键/缺参具名拒）。
+- **文法**：新增 `style-item` 与 `public-body` 的 `style` 臂；profile 门 = `[age-component, age-package]`；`style` 保持普通标识符拼写（**不进 token 表**），仅在声明头/公共体按 spelling 识别（同 `age-node-head` 的 `name(spelling:)` 机制）；**普通标识符位置的 `style` 保持合法**（永久负控）。
+- **投影/AST**：新规则 → 上述 `Item::Const`/`Item::Fn`；不新增 AST/HIR 节点；名字进 const/fn 命名空间，重名走现有重复声明拒。
+- **身份与后端**：const/fn 的 mangle、可见性、AV/TS/A2R 发射**全部复用现路径**——本刀无后端改动。
+
+**三、文法身份影响（981 会签要点）**
+- 现冻结值：`age-component` = `f35cf5934cbadd2524c81de925af1d2c24187ba1d869a09ffc0e6e372b8128a7`；`age-package` = `6c1bb4778a800a865ef0ddb6166d1a8dbd358eecd73ce1ccf0e5445c1005d587`。
+- 本刀**同时移动这两个值**（新规则 + public-body 臂）；其余 **13 profile 必须逐字节不变**（会签后由 980 提交 diff+逐 profile 转储，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 并注明前值/原因）。
+- `themes` 的 `pub theme` 仍是**独立未支持面**：style 不放行 theme，不得把两者混为一谈。
+
+**四、验证计划（会签后执行）**
+- 解析级：20 例 + stylekit 的 style 行全部按上述映射通过；永久用例=字面量 / ident 复制 / 参数化+`{p}` 插值 / `pub style` / 字面量实参折叠 / 非字面量实参具名拒 / 默认值具名拒 / 重名拒 / `style` 作普通变量名仍合法。
+- 顺序级：放行后对 20 例**重测下一阻断**（包面 + 组件面双读），产出"下一刀"排序（预计 payload msg / `use { package }` / model 字段形状 / `$`）；包面**回滚位诊断**（18/20 同报 `widget`）列为本刀附带修项候选（只改错误选择、不改语义；若触及 981 冻结的错误用例，先报后改）。
+- 门禁：`cargo t ace-source ace-av`；只签 style 面，**不宣称整例通过**。
+
+**五、请求 981 会签（回签后 980 才动文法）**
+1. 认可 `style ≡ str const/fn` 映射与 profile 门 `[age-component, age-package]`；
+2. 认可两值 grammar ID 同批重基线（981 同提交更新冻结期望，注明前值）；
+3. 确认 const/fn 命名空间与现有身份/可见性契约无冲突；
+4. 回签后落文法 + 投影 + 永久用例；本材料**未改任何文法/代码**。
+
+## 6. 测试设计
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
 
 按§5原任务冻结实际cap/owner/源/平台与各端oracle：原UI波基线齐且新cap pending可交对应UI-W1/2/3，但不能签cap/AGE全齐；cap合法来源可逐端交，删cap/错源/把AV冒AC或仅emit冒A2R必须红，恢复真实产物可通过。用于新增cap的typed接口须先有独立合法/错误/owner测试，消费方真实GPU/交互/资源/包另验；缺模型/Forge产品不影响基线。AC-AGE-CAP-HANDOFF由本表原owner及最终review核。
@@ -1640,6 +1675,8 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 **验证。** 目标 2/2；回归 `plan980_closure_window` 3/3、`ace_node_desktop` 11/11、`ace_ts_provider` 24/24；changed files fmt clean（`mod.rs` 的 fmt 分歧为预存 `dynamic.rs`，未纳入）。
 
 **边界（诚实）。** 本片只交 **`<script>` 段**（handler 体 + 被引用 helper 定义），**完整 SFC 的 template/样式仍归既有方言道**；包片段 lane 只覆盖 976 fragment 域（float/复杂体等仍按该域既有拒绝）；helper 参数名取发射侧局部表（`p0_n` 形），不是源名。
+
+2026-11-18 stage: design（P3 `style` 面**会签材料**；本轮不动文法/代码）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **待 981 会签** | 产出：§5「P3 提案」（style≡str const/fn 映射、profile 门 `[age-component, age-package]`、两值 grammar-id 影响、验证计划、四点会签请求）| 实测：35 例 style **126 行**（125 字面量/1 ident 复制/1 带参调用；**0 参数化声明、0 `pub style`**）；stylekit **7 条 `pub style`**（4 无参 + 3 参数化含默认值与 `{p}` 插值）；移除 style 后下一阻断=包面 18/20 回滚位 `widget`、2/20 `$`，组件面 003/004 直接解析、7 例 `use` 面、5 例 model 字段、7 例槽位、2 例 `$` ⇒ style 是第一阻断但**不充分**，下一刀按实测排序。| 证据：`plan-artifacts/plan-980/p3-style-proposal-20261118.txt` | 未改文法/代码；探针删净、worktree clean。
 
 §5 S0.5 实测：age-package 面在真实源上缺**顶层 `style`（20/35）**、**payload msg（17/35）**、**反引号文本（2/35）**；001 是唯一可直接编译的真实例且无跨模块 helper。⇒ ④-A 的"真实示例打通"被**表面补齐**前置，导入/闭包工作是其后。
 
