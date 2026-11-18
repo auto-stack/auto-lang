@@ -128,3 +128,143 @@ fn p1026_session_close_releases_binding_and_reopens() {
         .expect("sqrt(4) display parses");
     assert!((v - 2.0).abs() < 1e-6, "sqrt(4)=2.0 via the public session");
 }
+
+/// F-1 durable witnesses: the f64 bits-pair reconstruction is bit-exact
+/// for NEGATIVE values and for positive values whose LOW mantissa word has
+/// bit 31 set (the earlier shared-mask bug corrupted both classes —
+/// `-2.5` reconstructed as `-2.5000009536743164`).
+#[test]
+fn p1026_f64_reconstruction_bit_exact_negative_and_low_bit31() {
+    let mut session = PySession::open().expect("session opens");
+    // -2.5: sign bit set; mantissa 0x4000000000000 → hi = 0xC0400000
+    // (negative i32!) and lo = 0 — exercises BOTH the per-word zero-extend
+    // (hi) and the multiply-negate.
+    let run = session
+        .run("use.py math: sqrt
+fn neg() double { return 0.0d - 2.5d }
+fn main() int {
+var v = neg()
+var q = sqrt(4)
+print(v)
+return 0
+}")
+        .unwrap_or_else(|e| panic!("neg run: {e}"));
+    assert!(run.success_i32().is_some(), "{:?}", run.outcome);
+    let v: f64 = run
+        .stdout_text()
+        .lines()
+        .next()
+        .unwrap()
+        .parse()
+        .expect("negative display parses");
+    assert!(
+        (v - -2.5f64).abs() == 0.0,
+        "neg(-2.5) must reconstruct bit-exactly, got {v}"
+    );
+    // lo bit-31 class: a value whose low mantissa word has bit 31 set.
+    // 0.2370201051235199 (the reference first loss) has lo = 0xA2E8B2B0
+    // (negative i32) — the smoking-gun value from review F-1.
+    let run2 = session
+        .run("use.py math: sqrt
+fn f() double { return 0.2370201051235199d }
+fn main() int {
+var v = f()
+print(v.to(float))
+return 0
+}")
+        .unwrap_or_else(|e| panic!("lo-bit31 run: {e}"));
+    assert!(run2.success_i32().is_some(), "{:?}", run2.outcome);
+    let w: f32 = run2
+        .stdout_text()
+        .lines()
+        .next()
+        .unwrap()
+        .parse()
+        .expect("lo-bit31 display parses");
+    // the TRUE f32 print of the reference is 0.2370201 — the corrupted
+    // reconstruction printed 0.23701999
+    assert!(
+        (w - 0.2370201f32).abs() < 1e-7,
+        "lo-bit31 value must print 0.2370201, got {w}"
+    );
+}
+
+/// F-4 / V-09: Python object IDENTITY — in-place mutation through one AV
+/// reference is visible through an alias; the bridge holds ONE object
+/// (never a copy). V-10: dynamic state — getitem succeeds only after the
+/// mutation that created the element (the object's observable shape
+/// changed between calls).
+#[test]
+fn p1026_v09_v10_identity_mutation_and_dynamic_state() {
+    let mut session = PySession::open().expect("session opens");
+    // build a Python list, mutate via `l.append`, read via ALIAS `a` and
+    // via getitem — identity + dynamic state in one program
+    let run = session
+        .run("use.py builtins: list
+fn main() int {
+var l = list()
+var a = l
+l.append(41)
+var v = a[0]
+l.append(1)
+var w = a[1]
+var s = v + w
+return s.to(int)
+}")
+        .unwrap_or_else(|e| panic!("identity run: {e}"));
+    assert_eq!(
+        run.success_i32(),
+        Some(42),
+        "alias a sees both appends (identity; a[1] exists only AFTER the second append — dynamic state): {:?}",
+        run.outcome
+    );
+    // the pre-mutation getitem is the named IndexError (dynamic-state
+    // negative leg): reading a[0] on an EMPTY list must trap
+    let run2 = session
+        .run("use.py builtins: list
+fn main() int {
+var l = list()
+var v = l[0]
+return 1
+}")
+        .unwrap_or_else(|e| panic!("empty-getitem run: {e}"));
+    match run2.outcome {
+        ace_av_core::contract::ExecOutcome::Trap { .. } => {}
+        other => panic!("empty-list getitem must trap (IndexError), got {other:?}"),
+    }
+}
+
+/// F-2 witness: a SCALAR-ONLY infinite loop must hit the InstrSteps budget
+/// (the accidentally-deleted per-iteration step charge froze this for all
+/// profiles — restored with an explicit bound here).
+#[test]
+fn p1026_f02_scalar_infinite_loop_hits_step_budget() {
+    // plain (non-foreign) pipeline: a pure-scalar spin with NO calls —
+    // only the per-iteration step charge can bound it
+    let src = "fn main() int {
+var x = 0
+for x < 1 { x = x * 1 }
+return x
+}";
+    let compiled = ace_core::source::compile_aggregates_source(src, "spin.at", &[]).unwrap();
+    let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0).unwrap();
+    let encoded = ace_av_core::abc::encode_abc(&mir).unwrap().to_flat();
+    let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+    let loaded = ace_av_core::abc_verify::verify_abc_bytes(&encoded, &mir.owner).unwrap();
+    let out = ace_av_core::av::execute(
+        &loaded,
+        &ExecLimits {
+            max_steps: 50_000,
+            ..Default::default()
+        },
+        &ace_av_core::av::CancelFlag::new(false),
+    )
+    .0;
+    match out {
+        ace_av_core::contract::ExecOutcome::Resource {
+            kind: ace_av_core::contract::ResourceKind::InstrSteps,
+            ..
+        } => {}
+        other => panic!("scalar spin must hit InstrSteps, got {other:?}"),
+    }
+}

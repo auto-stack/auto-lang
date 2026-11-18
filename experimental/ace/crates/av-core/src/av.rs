@@ -3451,6 +3451,10 @@ fn dispatch_with_host<V: ModuleView>(
             }
         }
 
+        // PLAN-820 fuel: every interpreter iteration charges one step
+        // (restored by PLAN-1026 review F-2 — its accidental removal
+        // froze scalar step/wall/cancel accounting for ALL profiles).
+        st.steps += 1;
         if st.steps > limits.max_steps {
             return Some(ExecOutcome::Resource {
                 kind: ResourceKind::InstrSteps,

@@ -3668,20 +3668,32 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         let t64 = self.out.intern_type(MirType::I64);
         let tf = self.out.intern_type(MirType::F64);
         let num = |op: NumOp, ty: NumTy| BinOp::Num { op, ty };
-        // sm = hi >> 31 (arithmetic: -1 when the sign bit is set)
+        // per-word u32 ZERO-EXTEND: each i32 word is a raw 32-bit pattern
+        // (mantissa/exponent bits — NOT a signed quantity). conv alone
+        // sign-extends; ze(x) = conv(x) + ((conv(x>>31) & 1) << 32) adds
+        // 2^32 exactly when bit 31 was set, reinterpreting the pattern as
+        // its u32 value (F-1: the earlier shared hi-sign mask corrupted
+        // every word with bit 31 set).
         let c31 = self.py_k(t32, MirConst::I32(31), sp)?;
+        let one32 = self.py_k(t32, MirConst::I32(1), sp)?;
+        let c32_64 = self.py_k(t64, MirConst::I64(32), sp)?;
+        let one64 = self.py_k(t64, MirConst::I64(1), sp)?;
+        let k32 = self.py_k(t64, MirConst::I64(1 << 32), sp)?;
         let sm = self.py_bin(num(NumOp::Shr, NumTy::I32), t32, hi, c31, sp)?;
-        let sm64 = self.temp_ty(t64)?;
-        self.emit(MirInstr::Conv { dst: sm64, src: sm }, sp)?;
-        let k31 = self.py_k(t64, MirConst::I64(1 << 31), sp)?;
-        let mask = self.py_bin(num(NumOp::And, NumTy::I64), t64, sm64, k31, sp)?;
-        // h = conv(hi) + mask ; l = conv(lo) + mask (sign-fix the pair)
-        let h0 = self.temp_ty(t64)?;
-        self.emit(MirInstr::Conv { dst: h0, src: hi }, sp)?;
-        let h = self.py_bin(num(NumOp::Add, NumTy::I64), t64, h0, mask, sp)?;
-        let l0 = self.temp_ty(t64)?;
-        self.emit(MirInstr::Conv { dst: l0, src: lo }, sp)?;
-        let l = self.py_bin(num(NumOp::Add, NumTy::I64), t64, l0, mask, sp)?;
+        let ze32 = |me: &mut Self, x: SlotId| -> Result<SlotId, AdapterError> {
+            let sm = me.py_bin(num(NumOp::Shr, NumTy::I32), t32, x, c31, sp)?;
+            let sm64v = me.temp_ty(t64)?;
+            me.emit(MirInstr::Conv { dst: sm64v, src: sm }, sp)?;
+            let bit = me.py_bin(num(NumOp::And, NumTy::I64), t64, sm64v, one64, sp)?;
+            // (bit & 1) << 32 — one 32-bit shift, NOT two 31-bit shifts
+            // (the earlier 31+31 form produced 2^62: 128.23701 corruption)
+            let lift = me.py_bin(num(NumOp::Shl, NumTy::I64), t64, bit, c32_64, sp)?;
+            let x64 = me.temp_ty(t64)?;
+            me.emit(MirInstr::Conv { dst: x64, src: x }, sp)?;
+            me.py_bin(num(NumOp::Add, NumTy::I64), t64, x64, lift, sp)
+        };
+        let h = ze32(self, hi)?;
+        let l = ze32(self, lo)?;
         // e = (h >> 20) % 2048 ; mant = (h % 1048576) * 2^32 + l
         let c20 = self.py_k(t64, MirConst::I64(20), sp)?;
         let sh = self.py_bin(num(NumOp::Shr, NumTy::I64), t64, h, c20, sp)?;
@@ -3689,7 +3701,6 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         let e = self.py_bin(num(NumOp::Rem, NumTy::I64), t64, sh, c2048, sp)?;
         let c1m = self.py_k(t64, MirConst::I64(1 << 20), sp)?;
         let hm = self.py_bin(num(NumOp::Rem, NumTy::I64), t64, h, c1m, sp)?;
-        let k32 = self.py_k(t64, MirConst::I64(1 << 32), sp)?;
         let mh = self.py_bin(num(NumOp::Mul, NumTy::I64), t64, hm, k32, sp)?;
         let mant = self.py_bin(num(NumOp::Add, NumTy::I64), t64, mh, l, sp)?;
         // sig = (2^52 + mant) as f64
@@ -3782,16 +3793,19 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         self.set_term(Terminator::Jump { target: hdr });
         self.cur = exit;
         self.terminated = false;
-        // v = sig * p ; negate when hi < 0 — BRANCHLESS: sm is i32
-        // (-1 when the sign bit is set); v = v0 + 2*(v0 * conv(sm)) is
-        // exactly -v0 when sm = -1 and v0 when sm = 0 (IEEE-exact).
+        // v = sig * p ; negate when the f64 sign bit (hi bit 31) is set —
+        // BRANCHLESS multiply by exactly ±1.0 (F-1b: the earlier
+        // add-of-double negation overflowed to ±inf past 2^1023).
+        // mult = 1.0 - 2.0 * nfb where nfb = conv(sm & 1) is 0.0/1.0.
         let v0 = self.py_bin(num(NumOp::Mul, NumTy::F64), tf, sig, p, sp)?;
-        let smf = self.temp_ty(tf)?;
-        self.emit(MirInstr::Conv { dst: smf, src: sm }, sp)?;
+        let smb = self.py_bin(num(NumOp::And, NumTy::I32), t32, sm, one32, sp)?;
+        let nfb = self.temp_ty(tf)?;
+        self.emit(MirInstr::Conv { dst: nfb, src: smb }, sp)?;
         let two = self.py_k(tf, MirConst::F64Bits(2.0f64.to_bits()), sp)?;
-        let vt = self.py_bin(num(NumOp::Mul, NumTy::F64), tf, v0, smf, sp)?;
-        let vt2 = self.py_bin(num(NumOp::Mul, NumTy::F64), tf, vt, two, sp)?;
-        let dst = self.py_bin(num(NumOp::Add, NumTy::F64), tf, v0, vt2, sp)?;
+        let twon = self.py_bin(num(NumOp::Mul, NumTy::F64), tf, two, nfb, sp)?;
+        let onef = self.py_k(tf, MirConst::F64Bits(1.0f64.to_bits()), sp)?;
+        let mult = self.py_bin(num(NumOp::Sub, NumTy::F64), tf, onef, twon, sp)?;
+        let dst = self.py_bin(num(NumOp::Mul, NumTy::F64), tf, v0, mult, sp)?;
         Ok(dst)
     }
 
@@ -3974,7 +3988,6 @@ k 0
             sp,
         )?;
         self.emit(MirInstr::BorrowEnd { token: pm_v }, sp)?;
-        self.emit(MirInstr::BorrowEnd { token: p2_v }, sp)?;
         self.emit(MirInstr::BorrowEnd { token: i_v }, sp)?;
         let p3_v = self.py_view(p3, sp)?;
         let frame = self.temp_ty(tstr)?;

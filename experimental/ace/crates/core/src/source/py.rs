@@ -4,12 +4,11 @@
 //! compile entry calls it when the program carries `use.py` items). It
 //! injects, in source order:
 //!
-//! * the frozen runtime helpers (`__py_dlen`, `__py_f64`, `__py_text`)
-//!   — plain aggregates-surface functions using ONLY delivered language
-//!   capabilities (i64 arithmetic, `.to(i64/double)` conversions, the
-//!   counted `for x in a..b` range loop, str `+`, `char.from_codepoint`,
-//!   f-strings; the digit count is an if-chain — the fragile for-cond
-//!   commit heuristic is avoided throughout);
+//! * the frozen runtime helper (`__py_dlen` — a plain if-chain fn; the
+//!   frame wire only carries NON-NEGATIVE i32 patterns, so the negative
+//!   domain is unreachable by construction) — the f64/text reconstruction
+//!   lives in the lowering emitters (`__py_f64_bits`/`__py_staged_text`
+//!   intrinsics), NOT in user-surface helpers;
 //! * one hoisted `var <member> = py_import("<static frame>")` per
 //!   imported member, prepended to the script body (each import runs
 //!   exactly once at entry, in source order — R-01/V-03).
