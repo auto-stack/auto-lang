@@ -434,12 +434,17 @@ fn bind_packages_face_with(
                 zero,
             ));
         }
+        // PLAN-981（W1 跨模块实例身份）：本模块在**包级组件声明序**里的起始
+        // 下标 = 之前模块已收的候选数（多模块 node 序号不撞号）。
+        let node_base = age_out.as_deref().map(|o| o.len()).unwrap_or(0);
         // PLAN-981：AGE 面的解析要带消费者场景（实例数/定向事件），故按面
         // 直接调用而不是取函数指针（其它面的参数面保持不变）。
         let parsed = match face {
             Faces::Aggregates => parse_package_source_aggregates(&input.source, caps, budget),
             Faces::AggregatesCt => parse_package_source_aggregates_ct(&input.source, caps, budget),
-            Faces::Age => parse_package_source_age(&input.source, caps, budget, scenario),
+            Faces::Age => {
+                parse_package_source_age(&input.source, caps, budget, scenario, node_base)
+            }
             Faces::Plain => parse_package_source(&input.source, caps, budget),
         };
         let syntax = parsed.map_err(|mut ds| PackageDiagnostic {
@@ -459,6 +464,16 @@ fn bind_packages_face_with(
         }
         units.insert(key, syntax);
     }
+    // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景 `Send`/`SendArgs`
+    // 的**声明级**核对（arity/载荷域）在**包级**一次做——`ForNode{node}` 的
+    // 下标是包级组件声明序（`age_out` 的 push 次序 = 输入模块序 × 模块内声明
+    // 序）。逐模块做会误拒跨模块定向（UI058 T-05 实测：两模块各一个 node 时
+    // `ForNode{1}` 报 "package declares 1 component(s)"）。
+    if let Some(collected) = age_out.as_deref() {
+        if let Some(d) = check_scenario_dispatch_declarations(collected, scenario) {
+            return Err(d);
+        }
+    }
     if matches!(face, Faces::Aggregates) {
         bind_package_syntax_aggregates(inputs, entry, caps, budget, units)
     } else if matches!(face, Faces::Age) {
@@ -477,6 +492,70 @@ fn bind_packages_face_with(
     } else {
         bind_package_syntax(inputs, entry, caps, budget, units)
     }
+}
+
+/// PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景定向事件的**包级**
+/// 声明级核对。
+///
+/// `collected` = 包级组件声明序（跨模块）。规则（R66-1 语义保留）：
+/// - 只对**真的处理该消息**的 node 判定（无 model 的 node 不进
+///   `instance_stmts`，此守卫兜住它们的 arity/unsupported 域拒）；
+/// - `ForNode{node}` 越界 ⇒ `source.age.component-scenario` 具名拒，报**包内**
+///   组件数（不是某个模块的局部数字）；
+/// - 未包裹的 `Send`/`SendArgs` 沿用"对每个组件重放"的旧语义，逐个核。
+fn check_scenario_dispatch_declarations(
+    collected: &[PackagedAgeComponent],
+    scenario: &crate::source::age_component::ComponentScenario,
+) -> Option<PackageDiagnostic> {
+    use crate::source::age_component::ScenarioOp;
+    for op in &scenario.ops {
+        let inner = op.inner();
+        if !matches!(inner, ScenarioOp::Send { .. } | ScenarioOp::SendArgs { .. }) {
+            continue;
+        }
+        let scoped: Vec<usize> = match op.node_scope() {
+            Some(want) => {
+                if want >= collected.len() {
+                    let anchor = collected
+                        .first()
+                        .map(|c| c.node.span)
+                        .unwrap_or(Span { start: 0, end: 0 });
+                    let module = collected
+                        .first()
+                        .map(|c| c.module.clone())
+                        .unwrap_or_else(|| "?".to_string());
+                    return Some(PackageDiagnostic {
+                        module,
+                        diagnostic: crate::source::age_h0::text_diag(
+                            "source.age.component-scenario",
+                            format!(
+                                "the scenario targets node {want} but the package declares {} component(s)",
+                                collected.len()
+                            ),
+                            anchor,
+                        ),
+                    });
+                }
+                vec![want]
+            }
+            None => (0..collected.len()).collect(),
+        };
+        for ni in scoped {
+            let c = &collected[ni];
+            if !c.node.handlers.iter().any(|h| h.msg == inner.msg()) {
+                continue;
+            }
+            if let Err(ds) = crate::source::age_component::check_event_dispatch(&c.node, inner) {
+                if let Some(d) = ds.into_iter().next() {
+                    return Some(PackageDiagnostic {
+                        module: c.module.clone(),
+                        diagnostic: d,
+                    });
+                }
+            }
+        }
+    }
+    None
 }
 
 /// 冷/恢复共用的绑定：源/语法/能力身份先重验，再绑名字。

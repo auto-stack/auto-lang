@@ -269,6 +269,8 @@ mod plan980_state_face;
 mod plan981_age_package_av;
 #[path = "cases/plan981_event_b_av.rs"]
 mod plan981_event_b_av;
+#[path = "cases/plan981_cross_module_nodes.rs"]
+mod plan981_cross_module_nodes;
 #[path = "cases/plan981_f32_surface.rs"]
 mod plan981_f32_surface;
 #[path = "cases/plan981_gfx_hooks.rs"]

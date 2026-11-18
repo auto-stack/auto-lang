@@ -127,7 +127,7 @@ pub fn observe_age_package(
                 // R64-4：与包前门同一套多 node 消歧命名。
                 let name =
                     ace_core::source::age_component::state_fn_name_at(component_index, inst, f);
-                let symbol = resolve_symbol(compiled, &c.name, &name)?;
+                let symbol = resolve_symbol(compiled, &c.module, &name)?;
                 instance_states[inst].push(execute_i32(&compiled.checked, &symbol)?);
             }
         }
@@ -157,7 +157,7 @@ fn observe_scene_values(
         let value = if f.params > 0 {
             SceneObserved::Parametric
         } else {
-            let symbol = resolve_symbol(compiled, &c.name, &f.fn_name)?;
+            let symbol = resolve_symbol(compiled, &c.module, &f.fn_name)?;
             match execute_scene_scalar(&compiled.checked, &symbol)? {
                 Value::F32(v) => SceneObserved::F32(v),
                 Value::I32(v) => SceneObserved::I32(v),
@@ -202,14 +202,23 @@ fn execute_scene_scalar(
 }
 
 /// 源名 → 绑定器给出的 HIR 符号（`sf_<mangled>`）。
+///
+/// PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：**按组件所属模块**解析
+/// ——`symbols`（源名键）在多模块下是有损的（两个模块的同名脱糖函数只留得下
+/// 一条），此前实例状态函数因此只能"两 node 同模块"。改为先用
+/// `symbol_of_in(module, name)`，仅在同模块窗口取不到时回退到源名表（单模块
+/// 路径与旧行为逐字一致）。
 fn resolve_symbol(
     compiled: &AgePackageCompilation,
-    _component: &str,
+    module: &str,
     source_name: &str,
 ) -> Result<String, String> {
     compiled
-        .symbol_of(source_name)
-        .ok_or_else(|| format!("no HIR symbol for source name `{source_name}`"))
+        .symbol_of_in(module, source_name)
+        .or_else(|| compiled.symbol_of(source_name))
+        .ok_or_else(|| {
+            format!("no HIR symbol for source name `{source_name}` in module `{module}`")
+        })
 }
 
 fn execute_i32(checked: &ace_core::verify::CheckedModule, symbol: &str) -> Result<i32, String> {

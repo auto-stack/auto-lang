@@ -388,6 +388,7 @@ pub(crate) fn parse_packages_front(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
@@ -405,6 +406,7 @@ pub(crate) fn parse_packages_front_ct(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
@@ -423,16 +425,19 @@ pub(crate) fn parse_packages_front_aggregates(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
 /// PLAN-981（IF-981-MODULE）：`age-package` 前门（包模块图 ∪ AGE 组件）。
+/// `node_base` = 本模块在**包级组件声明序**里的起始下标（多模块身份）。
 pub(crate) fn parse_packages_front_age(
     src: &str,
     budget: FrontBudget,
     scenario: &crate::source::age_component::ComponentScenario,
+    node_base: usize,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Age, src, budget, scenario)
+    parse_packages_with(PackagesFace::Age, src, budget, scenario, node_base)
 }
 
 /// PLAN-972（T-02）：packages-aggregates-ct 前门（装配 aggregates 线；
@@ -450,6 +455,7 @@ pub(crate) fn parse_packages_front_aggregates_ct(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
@@ -504,6 +510,7 @@ fn parse_packages_with(
     src: &str,
     budget: FrontBudget,
     scenario: &crate::source::age_component::ComponentScenario,
+    node_base: usize,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
@@ -544,7 +551,14 @@ fn parse_packages_with(
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
     })?;
-    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), face, scenario)
+    project_packages_front(
+        src,
+        vec![parsed.tree],
+        Some(parsed.tokens),
+        face,
+        scenario,
+        node_base,
+    )
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -752,6 +766,10 @@ pub(crate) fn project_packages_front(
     tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
     face: PackagesFace,
     scenario: &crate::source::age_component::ComponentScenario,
+    // PLAN-981（W1 跨模块实例身份）：**包级**组件基址——本模块的 node 序号从
+    // 它开始编号（多模块时逐模块局部序号会让两模块的 node 0 撞号：发射的
+    // `__age_state_n<k>_…` 与读回/AV 的包级序号对不上，UI058 T-05 实测）。
+    node_base: usize,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
@@ -939,53 +957,16 @@ pub(crate) fn project_packages_front(
                 &snap,
                 SourceProfile::AgePackage,
             )?;
-            // PLAN-981（IF-981-EVENT-A → B-W1 升级，EVENT-SPLIT）：载荷/带参事件的
-            // **执行**已落地（IF-981-EVENT-PAYLOAD-B / IF-981-PARAMS-B）——A 期的
-            // `event-payload-unsupported` / `event-params-unsupported` 派发守卫由此
-            // 被真实语义取代：`Send` = 空载荷（向载荷变体 Send 是 arity 域错误），
-            // `SendArgs` 的实参经唯一 verify、一次求值、按位绑定。这里仍按 R66-1
-            // 只对**真的处理该消息**的 node 判定（无 model 的 node 不进
-            // `instance_stmts`，此守卫兜住它们的 arity/unsupported 域拒）。
-            for op in &scenario.ops {
-                let inner = op.inner();
-                if matches!(
-                    inner,
-                    crate::source::age_component::ScenarioOp::Send { .. }
-                        | crate::source::age_component::ScenarioOp::SendArgs { .. }
-                ) {
-                    // PLAN-981 B-W1（组件级调度）：`ForNode` 只核目标组件；限定
-                    // 到不存在的组件是具名域错误（不静默丢弃）。
-                    let scoped: Vec<usize> = match op.node_scope() {
-                        Some(want) => {
-                            if want >= nodes.len() {
-                                return Err(vec![crate::source::age_h0::text_diag(
-                                    "source.age.component-scenario",
-                                    format!(
-                                        "the scenario targets node {want} but the package declares {} component(s)",
-                                        nodes.len()
-                                    ),
-                                    nodes
-                                        .first()
-                                        .map(|n| n.span)
-                                        .unwrap_or(crate::atom_text::Span { start: 0, end: 0 }),
-                                )]);
-                            }
-                            vec![want]
-                        }
-                        None => (0..nodes.len()).collect(),
-                    };
-                    for ni in scoped {
-                        let node = &nodes[ni];
-                        if !node.handlers.iter().any(|h| h.msg == inner.msg()) {
-                            continue;
-                        }
-                        crate::source::age_component::check_event_dispatch(node, inner)?;
-                    }
-                }
-            }
+            // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景的
+            // `Send`/`SendArgs` **声明级**核对（arity/载荷域）移到包级一次核
+            // ——`ForNode{node}` 的下标是**包级组件声明序**，在逐模块循环里用
+            // 本模块的 nodes 索引会误拒跨模块定向（UI058 T-05 实测：两模块各
+            // 一个 node 时 `ForNode{1}` 报 "package declares 1 component(s)"）。
+            // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts`
+            // 按 `op.node_scope()` 过滤），故这里删掉局部预检不影响语义。
             for node in nodes {
                 // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
-                let node_index = age_components.len();
+                let node_index = node_base + age_components.len();
                 let mut text_fns = Vec::new();
                 // PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的登记事实
                 //（AV 观察通道的入口；与发射的 `{prefix}scene_*` 函数同序）。
@@ -2104,6 +2085,13 @@ pub(crate) fn project_packages_front(
             }
         });
     }
+    // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景 `Send`/`SendArgs`
+    // 的**声明级**核对（arity/载荷域）不在本函数做——本函数是**逐模块**的，
+    // 而 `ForNode{node}` 的下标是**包级组件声明序**（在逐模块用本模块 nodes
+    // 索引会误拒跨模块定向）。该核对移到绑定器的包级聚合点
+    // （`bind_packages_face_with`：`age_out` 收齐后一次核）。
+    // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts` 按
+    // `op.node_scope()` 过滤），故这里不再需要局部预检。
     Ok(PackageSyntax {
         program: crate::source::ast::Program { items },
         exports,

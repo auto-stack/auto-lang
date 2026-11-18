@@ -347,6 +347,7 @@ pub fn project_stored_package(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
@@ -384,6 +385,7 @@ pub fn project_stored_package_ct(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
@@ -421,6 +423,7 @@ pub fn project_stored_package_aggregates(
             instances: 0,
             ops: Vec::new(),
         },
+        0,
     )
 }
 
@@ -432,11 +435,12 @@ pub fn parse_package_source_age(
     capabilities: &[String],
     budget: FrontBudget,
     scenario: &super::age_component::ComponentScenario,
+    node_base: usize,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
     if let Err(ds) = require_packages_capabilities(capabilities) {
         return Err(ds);
     }
-    super::cst::parse_packages_front_age(src, budget, scenario)
+    super::cst::parse_packages_front_age(src, budget, scenario, node_base)
 }
 
 mod binding;
