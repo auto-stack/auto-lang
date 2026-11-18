@@ -962,6 +962,17 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: work（**语言侧 AV 残余批 #1–#5**：用户指令"按照这个顺序把1~5都做了"）| PLAN-981 r18 | outcome: **pass（#1–#4 交付+#5 更正收口；D-981-GLOBAL-CLONE-GAP 关闭）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `16d5f1114`（ff re-sync，383 提交）＋`a2894e35e`（再并 master `020cd3ec1` 根 lock 修复）| code_commits `106a0f6ac`/`900bbabd1`/`9af02eaef`/`78ffd6e28`
+
+**#1 D-981-GLOBAL-CLONE-GAP 关闭（`106a0f6ac`，登记债已标关闭）**：CLONE 成为唯一视图→拥有跨接指令——mir_verify 放行 `Clone{Record(r)←RecordView(r)}`（COPY 不能跨视图故标量 record 同形、深克隆退化为值拷贝；异名仍 clone-type）；gfx 构造器 record 实参与 GlobalSet 视图写入改发射 Clone 跨接。三层证据：mir 单测（资源/标量准入+异名拒）、执行级深拷贝独立性（原件 Str 长度存活，浅别名会红）、AGE 源级 frame2d.at 整包过 verify + `var g Mesh2D` 视图参数写入过 verify + 异名端口前门拒；**变异重放**：禁用跨接臂两用例精确红。边界如实：frame2d.at 运行时执行待 UI058 宿主注入 Image2D 身份（T-03）。
+**#2 精灵叶属性面（`900bbabd1`）**：`image:`/`frame:`（ResourceRef→Image2D/Frame2D 端口）+`flip:`（bool）入 shape2d 三表；模块 `let` 声明准入扩至静态资源车道 gfx 服务（image2d.png/frame2d.at；逐 Tick 动态 HostAlgorithm 保持具名拒）；引用事实沿 check_scene_resource_refs 同通道（resource_refs 面 Image2D/Frame2D 目标+原拼写）；2D-only 边界钉住（3D 叶上具名拒）。4 新用例。
+**#3 服务级信用计量（`9af02eaef`）**：冻结 021 原额费率表（segment 8/sweep 16/基价 1、预算 32/callback，**与 UI058 T-02 联冻**）+ gfx 派发点每函数静态调用点合计准入界——超界 `lower.age-gfx-credits` 具名拒（构造性零效果）；宿主动态逐调用计费+sticky 消费同表（费率表冻结值有正控用例）。边界如实：静态界是保守准入面，动态计费物理派发点在 UI058 宿主。
+**#4 query token 失效语义（`78ffd6e28`）**：同一 callback 内第二次 query2d.* 使先前 token 绑定失效（021 fault 13 语言侧缝）——源序走查+单调 generation（循环保守：循环内 query 使外层旧 token 失效），stale 读 `source.age.query-token-stale` 具名拒；新鲜读/重绑刷新合法。边界如实：age-package handler 体今日只收 `.field = expr`（age-view-stmt），查询在 handler 内不可表达，当前可表达面=pub fn；走查器遍历含 `__age_p_*` 隐藏 fn，文法扩展后自动覆盖 handler。
+**#5 更正（无新工作）**：R62-7 已于 11-16 修复关闭（`536f5b316`，watch 修饰形独立规则，用例 plan981_members_slot 仍绿）；R59-5 有裁定"投影侧不可修、owner=syntax-grammar、不在投影侧重复试修"（每 token 皆 error 叶的决定性证据，实验已回滚）——**本批开始时把这两项列为待办是过时信息，特此更正**；两项均非本批可动对象。
+**门禁（冻结并集，同步后基线）**：`cargo t ace-source ace-lowering ace-av` 全 **PASS**（并集墙钟 360.7s，含缓存回收后的工具重建）；plan981 全家 253/253（1.2–1.6s）；新用例单例 0.028–0.22s（全部 ≪10s 限）。变异重放 2 组（#1 跨接臂、#3 无）。
+**过程事件（如实）**：开工前 ff re-sync 分支至 master（吸收 mir_verify 目录重组织等 383 提交）；中段 ace-source 组因根 lock 缺 `ace-a2x-ts`（16d5f1114 时点 master 自身已知问题）红 → 再并 master `020cd3ec1`（其正式修复）后绿；磁盘空闲一度 <2GiB 触发运行器预检拒跑 → 回收本 worktree 可再生缓存（ace/root incremental + 三个非本批工具 target ≈12GB），回收后磁盘空闲恢复正常。**环境观察（非本批）**：`mn-linux-av-runner.rs` 9 条 unused-import 警告（Linux runner bin，master 既有）。
+**下一步**：批已完整落 branch 待 fold；981 整包仍 executing（剩余面按差额表：f32 model 字段等 T-02 联冻项、B-W3 的 MODULE-GLOBAL-A2R、V-B 验证面等 980 切片）。
+
 2026-11-18 stage: work（review-D 复验 needs_fix 修复：F-D1/F-D2 关闭）| PLAN-981 r18 | outcome: **pass（2/2 findings 关闭，gfx seam 批恢复干净基线）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `1b70c9e1f` | code_commit `27f919b87` | fold `83f2adee1`（master `--no-ff`，第二父即 `27f919b87`）
 
 **closure 行（finding → invariant → fix → 结果）**

@@ -41,12 +41,13 @@
   时 AV **具名拒**（`no text leaves … named rejection`，不静默空行）。证据：
   `plan981_age_package_av.rs::{p981_proof_a_av_scene_package_and_mixed_profile,p981_proof_a_av_scene_model_is_named_rejected}`；
   待 985 确认该 A 子面边界。
-#### D-981-GLOBAL-CLONE-GAP — GlobalSet 借用写入的 Clone 分支发射不可验证 MIR（2026-11-18，review-C ①登记，medium/latent）
+#### D-981-GLOBAL-CLONE-GAP — GlobalSet 借用写入的 Clone 分支发射不可验证 MIR（2026-11-18，review-C ①登记，medium/latent；**2026-11-18 关闭（语言侧 AV 残余批 #1）**）
 
 - **现象**：owned lowering 的 `GlobalSet` 调用点在 `arg_ty != cell_ty`（现实形状：record 参数槽经 BorrowView 保留基槽型）时发射 `Clone{dst: Record, src: RecordView}`，mir_verify 以 `mir.clone-type`（精确枚举等价）与 copyable-clone 双规则拒绝——该分支在当前覆盖下**不可达**（AGE 资源写路径的实参槽即 owned record，走直写），一旦到达则具名失败（fail-closed，非静默错值）。
 - **边界**：record 全局（尤其含 Str 字段的非 copyable record）无用户源级用例——`tint/material` 是引用事实不是值函数。
 - **owner/关闭条件**：语言侧 owned 车道后继（B-W1/W3 触碰全局写时）——按需实现"视图→拥有"的合法拷贝指令（Copy/Clone 按可复制性分流或显式深拷贝 op），补一条 record-全局用户源正反例后关闭；未修期间该分支保持 fail-closed。
 - **范围扩展（2026-11-18，IF-981-GFX-AV-SEAM review-D）**：同一缝覆盖 gfx 纯值构造器的 **record 实参**（`frame2d.at` 的 Image2D 经借用视图到达、Aggregate 需 owned 槽）——命中时 `lower.age-gfx-view-arg` 具名拒并引用本债（scalar-only 构造器今天可执行）；关闭条件同上（合法视图→拥有构造指令落地 + frame2d.at 端到端 AV 正例）。
+- **关闭记录（2026-11-18，语言侧 AV 残余批 #1，auto-lang `106a0f6ac`）**：CLONE 正式成为**唯一的视图→拥有跨接指令**——mir_verify 放行 `Clone{dst: Record(r), src: RecordView(r)}`（同名 nominal record；COPY 无法跨视图故标量 record 也经此形、深克隆退化为值拷贝），异名仍 `mir.clone-type`；gfx 构造器 record 实参与 GlobalSet 视图写入改为发射 Clone 跨接（不再具名拒）。证据三层：① mir 级单测（资源/标量 record 准入、异名拒）；② av-core 执行级深拷贝独立性（克隆改写自身 Str 字段后原件长度不变——浅别名会红）；③ AGE 源级 `frame2d.at(img,..)` 整包过 verify + `var g Mesh2D` 从视图参数写入过 verify（变异重放：禁用跨接臂两用例精确红）+ 异名端口前门具名拒。`frame2d.at` 的**运行时执行**仍待 UI058 宿主注入 Image2D 身份（image2d.png 保持 host-identity 车道拒）——该边界归 UI058 T-03，不是本债。
 
 #### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 
