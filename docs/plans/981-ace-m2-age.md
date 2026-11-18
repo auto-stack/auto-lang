@@ -921,6 +921,33 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**G2 hook-local `let`+`if/else` 与 G1 `shape2d.layer` 完整切片**；用户裁定 G2→G1→G5 顺序的第二批）| PLAN-981 r18 | outcome: **pass（文法+投影+脱糖+AV 真跑齐；一次重基线两处功能；G5 pin 随本收据）** | code_commit `dd02b47d1` | merge `6e456794d`（叠在 980 P3 style 面上，age-package id 再重基线 `c0e635d2…`）
+
+**G2 交付（`on` 体 hook-local `let` + `if/else`，age-package 作者面）**
+- 文法：`age-on-member` 体改 `age-on-stmt`（赋值臂两面共用；`age-on-let`/`age-on-if`/`age-on-else` **仅 age-package 臂**——980 WEB 复放面（age-component 裁剪）不含这两臂，`let`/`if` 在该面 `on` 体保持**语法拒**（fail-closed，不开"能解析、跑不了"的半面；`project_component_candidates` 实测拒，非"not wired"旧臂）。
+- 投影：新 `ComponentStmt::{Assign,Let,If}`（源序）进 `ComponentHandler.stmts`；`assigns` 保持兼容面但改为**全深度收平**（分支里的赋值不因藏在 if 里从 `handler_assigns` 消失）。描述面新增 `handler_stmts`（core 组件面 + age_package 包面两处）：**TS/WEB 复放车道（980）只复放赋值——消费方见 Let/If 必须具名拒，不得部分复放**（拒的执行点在消费车道；981 侧的保证=组件面文法不含这两臂）。
+- **rename 通用基座**：`rename_expr_with_params` 增①任意基座的 `Field` 读（`q.start_overlap`/`q.point_x`——基座递归同一通道，字段名交共享 verify 按名义 record 判）②`MethodCall` 臂（`query2d.sweep(…)` 命名空间服务调用——此前落 `_` 被当"未接线表达式形"拒，是本批实测到的真阻塞）。
+- 脱糖：`hook_stmts_lower`（场景重放 `instance_stmts` 与未派发 handler 检查函数 `handler_check_fn` **共用同一条**，无第二求值器）；hook-local 卫生局部 `__age_hl_<inst>_<seq>_<k>_<名>`（新保留前缀族，用户顶层名占用具名拒）；**分支快照**作用域（分支内绑定不外泄）；裸名先查局部（hook-local 遮蔽同拼写字段，同形参规则；`.field` 恒指字段）；声明级 `check_handler_bindings`/通道值走查扩展到**完整语句面**（分支里的赋值/条件/let 初值同样核）。
+- 查询 token 走查复验：脱糖后的隐藏函数体仍在 `check_query_token_staleness` 走查域内（`Stmt::Let/If` 臂既有），永久用例钉住"第二次 `query2d.*` 使先前 hook-local token 失效"（`source.age.query-token-stale`）。
+- **AV 真跑（`plan981_gfx_hooks.rs` 4/4）**：真实 AGE 源 `on Life.Tick { let q Sweep2D = query2d.sweep(…); if q.start_overlap { x = x + 1.0 } else { x = x - 1.0 } }` 场景重放——**provider 恰收一次 sweep 调用**（16 credits），overlap=false→else `F32(-1.0)`、overlap=true→then `F32(1.0)`（**两分支复用同一结果，不再查询**）；重放重跑重新求值（局部非跨回调记忆化）；分支内绑定不外泄（else 缺席时赋值不发生，x 保持 init）；G1 行描述同一包编译可读。
+
+**G1 交付（`shape2d.layer: render-only`，typed 行事实）**
+- 文法：`render-only` 为**单 token**（`r-render-only`，仅 age-package，按字节最长匹配——普通标识符 `render` 不受影响）；`age-attr` 双臂（`age-layer-attr` 冻结行专用臂先于 `age-attr-generic`；提交条件=精确字节序）。
+- 白名单：`attr_value_kind("layer")=Layer` 新类别 + `attr_applies_to` 2D-only；前门 `source.age.scene-layer`（非冻结值）与 `source.age.scene-attr`（3D/组件实例上的 `layer:`）具名拒。
+- **受检行描述 typed 字段**：`AgeSceneRow.layer: Option<AgeRowLayer>`（`RenderOnly` 唯一冻结值）——**同一份描述交 AV/AC/A2R**（AV 编译产物上可读，永久用例核对），`cpu` 面同步 `Symbol("render-only")`；**负控**：移除该属性 ⇒ `layer=None` 且 cpu 面消失 ⇒ 地面重新进碰撞候选（同一描述上"不碰撞"断言随之失效）。
+
+**一次重基线（两处功能同批）**：age-component `19a1376e…`→`8292feae…`（G2 `age-on-stmt` 包裹两面）；age-package 侧 980 P3 style 面先落主（`2d272979…`），本批叠在其后 ⇒ 合并树终值 `c0e635d2…`（冲突取并集、合并树实测重算）；**13 邻居（age-h0 + 12 非 AGE）逐字节不变**（冻结表逐行绿）。
+
+**门禁（冻结树 `dd02b47d1`，安静机器零环境红）**：`cargo t ace-source`（873 PASS）/`ace-syntax`（159 PASS）/`ace-av`（1407 PASS）/`ace-a2x`（317 PASS）四组全 PASS（整命令分两段：ace-av/ace-a2x 191.15s wall，results `run-dhcms4ak`；ace-source/ace-syntax results `run-5vruq5pv`）。ace-core conformance **792/792**（批前树）；**合并树**（`6e456794d`，叠 980 P3）ace-core conformance **801/801**、grammar scope + `plan981_g2` + `plan980_` + `plan979_` 96/96、av `plan981_` 40/40。980/981/982 家族 av、av-core `age_gfx`、a2r `plan981_age_package_a2r` 4/4 全绿。新 case 计时：core `plan981_g2_hooks` 9 case 整组 0.06s、av `plan981_gfx_hooks` 4 case 整组 0.04s——单 case 全部远低于 10s 门。
+
+**测试成本表（本批新增，实测）**：core 9 case（投影源序/组件面语法拒/token 失效/遮蔽编译/layer typed 事实/移除负控/值与元素拒/layer+hook 共存/场景入口）0.06s 整组；av 4 case（一次派发+双分支复用/回调失效/分支绑定/layer 到 AV 道）0.04s 整组。
+
+**边界与债务（如实）**：①`let q = query2d.sweep(…)` 的语义面=本裁定条款（求值一次/分支复用/回调失效）——**hook-local 上的字段重绑/嵌套 record 通道未开**（走共享 verify 具名拒，不猜）；②TS/WEB 复放车道（980）消费 `handler_stmts` 时须具名拒——本批已把事实交到描述面与文法面，980 侧消费点归其 owner；③既有 `ConfigPairValue` 未用 import 警告为 master 既有（982 config 面），非本批引入，未顺手改其触面；④av 全量首跑 1 红 `bstr_1064_v01_large_64k_a2r`（rustc 腿，D-1037-02 环境族），隔离单例重放 1.48s 绿——环境归因，不充无红 PASS；冻结树四组门禁复跑零红。
+
+**G5（随本批收据）**：UI058 `.sdk-source` overlay pin 刷新到本批落主 SHA `6e456794d`——`refresh_overlay.py`（auto-lang 主检出 HEAD 归档，1434 overlay 文件，`+2`=本批两个新永久用例）→`apply_overlay.py` 物化→`verify_overlay.py` PASS（base 681 + overlay 1434）→`prepare_sdk.py --verify-only` PASS；overlay.json 提交 auto-ui `65a6b2cf`，058 计划 pin 行收据 `f9ade844`（T-04 的 981 侧 G1/G2 前置解除声明在内）。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 1 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev（落主后 ff 至 master） | commit: dd02b47d1（code）/6e456794d（merge，叠 980 P3）/65a6b2cf+f9ade844（auto-ui G5） | next: 由用户裁定下一批（本 goal 目标 G2→G1→G5 已齐）
+
 ### 2026-11-18 stage: work（**端口 record ABI + G4 冻结**；用户五项裁定后的第一批）| PLAN-981 r18 | outcome: **pass（ABI 复用现有 MIR/Value，无新形态；G4 钉死；G2/G1 下一批）** | code_commit `5ee4d23c0`
 
 **用户裁定（2026-11-18）**：①端口结果=**一次宿主调用返回完整 typed record**（先验可否复用 `MirType::Record`/`Value::Record` 单结果槽，确有缺口再加受限 MIR/ABC）；②G1=`shape2d.layer`（render-only，经同一份受检行描述交 AV/AC/A2R；移除该属性地面重新进碰撞候选、独立轨迹断言失败）；③G2=开 **hook-local `let` 与 `if/else`**（`let q = query2d.sweep(...)` 本次执行路径求值一次、provider 只收一次 sweep、局部结果随回调失效）；④G3=**冻结 ordinal＝场景行声明序**（重排即语义变化、越界具名拒）；⑤G4=保留 `render2d.frame.v1(i32,str,i32,i32)`，第二参=**已声明、带帧表的图像资源名**（文件路径走 `image2d.png`，`Image2D` 供 `frame2d.at`）。
