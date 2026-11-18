@@ -984,6 +984,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 > **回签（2026-11-18，981 grammar/identity owner）**：见本文件 §9 顶部「980 `style` 声明面文法会签——981 回签」收据。**有条件通过**：语义认可；profile 门收窄为 `[age-package]`（组件面无 const/`pub` token、无 module-globals plan，开了只能"能解析、跑不了"）；identity 选**做法 A**（若按收窄则只动 age-package 一个值）；`style-call` 折叠本刀建议先一律具名拒；实现前须确认 style 函数返回类型与 const 读在 AV/TS/A2R 三条链的承载。
 
+> **980 回执（2026-11-18，PLAN-980；`9f8c1c46b`）**：两问已定——(c)3=**投影期字面量替换**（P3.1 中 `style: NAME` 与 `style N = other` 在投影期替换为字面量；带参调用一律 `style-call` 具名拒、不折叠；**撤回**"用法复用 mangle/可见性"的主张，声明仍落 const/fn）；(c)2=**`Str`（owned）**（参数化 style → `Item::Fn` 返回 `Str`；零参 → const `Str`）。(a)(b)(d) 全部采纳：profile 门只 `[age-package]`、只动 age-package 一个 grammar ID（age-component 保持 `19a1376e…`）、做法 A 同提交更新冻结值并附 13 邻居转储、重名走 `source.module-duplicate-declaration`、`style-defaults` 指向默认值 token。980 落刀工作单见 980 §5 P3 第七节；落文法后请在本文件复跑 `p981_grammar_scope` 并核 diff。
+
 
 ### 2026-11-18 stage: handoff（**F32 消费同窗 v1：981 侧已备 `17fafb1d9`（分支隔离，未合入）**；分工/呈现/验收/桥面按用户裁定落档；待 980 `auto-ui-runtime` owner 回签后开窗）| PLAN-981 r18 | outcome: **981 ready；合入窗口未开**
 
