@@ -118,6 +118,8 @@ mod plan981_model_handlers;
 mod plan981_msg_slot;
 #[path = "cases/plan981_multimodule_identity.rs"]
 mod plan981_multimodule_identity;
+#[path = "cases/plan981_on_if_component.rs"]
+mod plan981_on_if_component;
 #[path = "cases/plan981_original_g01.rs"]
 mod plan981_original_g01;
 #[path = "cases/plan981_param_ports.rs"]

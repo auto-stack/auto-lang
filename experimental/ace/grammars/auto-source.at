@@ -562,8 +562,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 开头，pratt 在下一个 `.` 处自然停下。
             // PLAN-980 WEB #6o：`;` 单行分隔（`.n = next; on_select(next)`
             // 真语料形）。多步 opt 不受支持——分号归子规则。
-            many { age-view-stmt() {} }
+            // PLAN-981（on-if 组件面刀）：handler 体从 age-view-stmt 换到
+            // 专用并集规则（赋值+调用+let/if——006-hero-section 真语料形
+            // `.SetTheme(t) -> { if t == "light" { … } }` 的墙）；watch/
+            // lifecycle 等 age-view-stmt 其它消费体**不动**。
+            many { age-on-widget-stmt() {} }
             rbrace() {}
+        }
+        // PLAN-981（on-if 组件面刀）：widget 形 handler 体语句 = 既有赋值/
+        // 调用两臂（age-view-stmt 的原臂，`;` 语义随子规则）+ hook-local
+        // `let`/`if`（与直接形 age-on-stmt 同两条规则）。投影进
+        // handler.stmts（Let/If 全深度），执行/校验走共享 hook_stmts_lower。
+        age-on-widget-stmt(profiles: [age-component, age-package], expect: "a handler statement (`<field> = <expr>` / a channel call / hook-local `let` / `if-else`)") {
+            alt { age-view-assign-stmt() {} }
+            alt(profiles: [age-component]) { age-view-call-stmt() {} }
+            alt { age-on-let() {} }
+            alt { age-on-if() {} }
         }
         age-on-handler-params(profiles: [age-component, age-package]) {
             lparen(same-line: true) {}
@@ -796,16 +810,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list-nl { age-on-stmt() {} }
             rbrace() {}
         }
-        // PLAN-981（G2，2026-11-18 用户裁定）：`on` 体语句。赋值沿旧形（两面
-        // 共用）；hook-local `let` / `if-else` 只在 age-package 作者面
-        // （UI058 T-04 的自然写法：一次 sweep + 分支复用同一结果）。age-component
-        // （980 WEB 复放面）的裁剪**不含**这两臂——`let`/`if` 在该面 `on` 体保持
-        // 语法拒（fail-closed，不开"能解析、跑不了"的半面）。两面 grammar id 随
-        // 本批与 G1 同批具名重基线（13 邻居逐字节不变）。
-        age-on-stmt(profiles: [age-component, age-package], expect: "an `on` handler statement (`<field> = <expr>`; the age-package face also allows hook-local `let` / `if`)") {
+        // PLAN-981（G2，2026-11-18 用户裁定；on-if 组件面刀 2026-11-19 修
+        // 订）：`on` 体语句。赋值沿旧形（两面共用）；hook-local `let` /
+        // `if-else` G2 时只在 age-package 作者面（当时组件面复放车道未定，
+        // fail-closed 不开"能解析、跑不了"的半面）。本刀（用户排程 ⑤）
+        // 两面同开：执行/校验链 G2 已建为共享（hook_stmts_lower 消费
+        // handler.stmts——无第二求值器）；**TS/WEB 复放车道（980）的
+        // Let/If 消费门未实装**（见计划收据的窗口声明——fold 前 980 须先
+        // 落，防平铺 handler_assigns 双支静默重放）。
+        age-on-stmt(profiles: [age-component, age-package], expect: "an `on` handler statement (`<field> = <expr>`; hook-local `let` / `if-else` allowed on both faces)") {
             alt { age-on-assign() {} }
-            alt(profiles: [age-package]) { age-on-let() {} }
-            alt(profiles: [age-package]) { age-on-if() {} }
+            alt { age-on-let() {} }
+            alt { age-on-if() {} }
         }
         age-on-assign(profiles: [age-component, age-package], expect: "an `on` handler assignment `<field> = <expr>`") {
             ident(field: "field") {}
@@ -816,7 +832,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // （`let q = query2d.sweep(…)`），结果随回调失效（021 token 语义由
         // 脱糖后的隐藏函数体承担）。可选类型注解（`let q Sweep2D = …`）；
         // 无注解由共享 resolver 按 gfx 服务声明表定型（Port 结果即名义 record）。
-        age-on-let(profiles: [age-package], expect: "a hook-local `let <name> = <expr>`") {
+        // 组件面开臂（on-if 组件面刀）：形参可见性/分支快照与包面同一条
+        // 检查/脱糖链（age-component 面的 ann-ty 无 f32 臂——沿用该面既有
+        // 类型面，不因开臂扩类型）。
+        age-on-let(profiles: [age-component, age-package], expect: "a hook-local `let <name> = <expr>`") {
             let(field: "kw") {}
             ident(field: "name") {}
             opt { ann-ty(field: "ann") {} }
@@ -825,19 +844,29 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-981（G2）：`on` 体分支。then/else 体仍是 age-on-stmt 面
         //（不向下开放 return/for 等普通语句面）。
-        age-on-if(profiles: [age-package], expect: "an `on` handler `if <cond> { … } [else { … }]`") {
+        age-on-if(profiles: [age-component, age-package], expect: "an `on` handler `if <cond> { … } [else { … }]`") {
             if(field: "kw") {}
             if-cond(field: "cond") {}
             lbrace(same-line: true) {}
-            list-nl { age-on-stmt() {} }
+            list-nl { age-on-branch-stmt() {} }
             rbrace() {}
             opt { age-on-else(field: "els") {} }
         }
-        age-on-else(profiles: [age-package]) {
+        age-on-else(profiles: [age-component, age-package]) {
             else() {}
             lbrace(same-line: true) {}
-            list-nl { age-on-stmt() {} }
+            list-nl { age-on-branch-stmt() {} }
             rbrace() {}
+        }
+        // PLAN-981（on-if 组件面刀）：**分支体**语句并集——直接形裸名赋值
+        //（`mode = 1`）与 widget 形点前缀赋值（`.mode = 1`，006 真语料形）
+        // 都接受，外加 hook-local let 与嵌套 if。分支归属哪种外层形式由作者
+        // 决定，两拼写不互斥（同一体内混用也解析——字段语义同一条检查链）。
+        age-on-branch-stmt(profiles: [age-component, age-package], expect: "a branch statement (`<field> = <expr>` / `.field = <expr>` / hook-local `let` / nested `if`)") {
+            alt { age-on-assign() {} }
+            alt { age-view-assign-stmt() {} }
+            alt { age-on-let() {} }
+            alt { age-on-if() {} }
         }
         // PLAN-981：`Life.Tick` 这类限定消息名的尾巴（仅 age-package 裁剪）。
         age-on-msg-tail(profiles: [age-package]) {

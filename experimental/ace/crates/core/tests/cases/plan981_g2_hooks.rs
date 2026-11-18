@@ -110,12 +110,13 @@ fn p981_hook_let_and_if_reach_the_description_stmts_in_source_order() {
     assert_eq!(m.handler_assigns[0].1.len(), 2);
 }
 
-/// age-component（980 WEB 复放面）的裁剪**不含** `age-on-let`/`age-on-if`——
-/// `let`/`if` 在该面 `on` 体保持语法拒（fail-closed，"能解析、跑不了"的半面
-/// 不开）；age-package 裁剪含两臂。语法拒在 `project_component_candidates`
-/// 的解析结果上实测（非静默接受）。
+/// **on-if 组件面刀（2026-11-19）修订**：两面**同开** `age-on-let`/
+/// `age-on-if`（G2 时组件面裁剪不含两臂的旧合同被本刀取代——006-hero-
+/// section 真语料 `.SetTheme(t) -> { if … }` 墙；执行/校验链 G2 已建为共
+/// 享）。两面裁剪都含两臂；同一 hook 源在组件面**解析+投影成功**（不再
+/// 语法拒）。TS/WEB 复放车道的 Let/If 消费门归 980（窗口声明在计划收据）。
 #[test]
-fn p981_hook_let_and_if_stay_syntax_refused_on_the_component_face() {
+fn p981_hook_let_and_if_open_on_both_faces() {
     let component = profile_grammar(SourceProfile::AgeComponent).expect("component trim");
     let names: Vec<&str> = component
         .program()
@@ -124,12 +125,12 @@ fn p981_hook_let_and_if_stay_syntax_refused_on_the_component_face() {
         .map(|r| r.name.as_str())
         .collect();
     assert!(
-        !names.contains(&"age-on-let"),
-        "age-component must not grow the hook-let arm"
+        names.contains(&"age-on-let"),
+        "the component face carries the hook-let arm (on-if knife)"
     );
     assert!(
-        !names.contains(&"age-on-if"),
-        "age-component must not grow the hook-if arm"
+        names.contains(&"age-on-if"),
+        "the component face carries the hook-if arm (on-if knife)"
     );
     let package = profile_grammar(SourceProfile::AgePackage).expect("package trim");
     let pnames: Vec<&str> = package
@@ -140,17 +141,48 @@ fn p981_hook_let_and_if_stay_syntax_refused_on_the_component_face() {
         .collect();
     assert!(pnames.contains(&"age-on-let"));
     assert!(pnames.contains(&"age-on-if"));
-    // 行为面：同一 hook 源在组件面是解析拒绝（不是投影成功后丢语句）。
-    let err = project_component_candidates(HOOKS).expect_err("component face refuses `let`");
+    // 行为面：组件面合法源（HOOKS 夹具带 f32 字段/gfx 服务——组件面既有
+    // 拒收面，与本臂无关）解析+投影成功（Let/If 进 stmts，源序）。
+    let src = "node W {
+    msg { Tick }
+    model { var mode int = 0 }
+    on Tick {
+        let step = 1
+        if mode == 0 { mode = mode + step } else { mode = 0 }
+    }
+    view { text \"t\" {} }
+}
+";
+    let nodes = project_component_candidates(src).expect("component face accepts `let`/`if`");
+    let stmts = &nodes[0].handlers[0].stmts;
     assert!(
-        err.iter()
-            .all(|d| d.code != "source.age.component-unsupported"
-                || !d.message.contains("not wired")),
-        "the refusal must be the grammar-level one, got: {:?}",
-        err.iter()
-            .map(|d| (d.code.as_str(), d.message.clone()))
-            .collect::<Vec<_>>()
+        stmts.iter().any(|s| matches!(
+            s,
+            ace_core::source::age_component::ComponentStmt::Let { .. }
+        )),
+        "hook-local let must project into stmts on the component face"
     );
+    assert!(
+        stmts
+            .iter()
+            .any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::If { .. })),
+        "hook if/else must project into stmts on the component face"
+    );
+    // 源序：let 先于 if。
+    let let_at = stmts
+        .iter()
+        .position(|s| {
+            matches!(
+                s,
+                ace_core::source::age_component::ComponentStmt::Let { .. }
+            )
+        })
+        .expect("let position");
+    let if_at = stmts
+        .iter()
+        .position(|s| matches!(s, ace_core::source::age_component::ComponentStmt::If { .. }))
+        .expect("if position");
+    assert!(let_at < if_at, "stmts keep source order (let before if)");
 }
 
 /// 查询 token 走查（021 fault 13 语言侧缝）覆盖新语句形：同一 callback 内第二次

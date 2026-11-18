@@ -279,6 +279,8 @@ mod plan981_gfx_hooks;
 mod plan981_gfx_host;
 #[path = "cases/plan981_gfx_seam_av.rs"]
 mod plan981_gfx_seam_av;
+#[path = "cases/plan981_on_if_av.rs"]
+mod plan981_on_if_av;
 #[path = "cases/plan981_resource_ledger.rs"]
 mod plan981_resource_ledger;
 #[path = "cases/plan981_view_if_av.rs"]

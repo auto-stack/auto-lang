@@ -5209,31 +5209,8 @@ impl<'a> Engine<'a> {
                     // 源序）——"写了哪些字段"不因藏在分支里而消失；**执行语义**
                     // （条件/顺序）以 `stmts` 为准，assign-only 消费者见 Let/If
                     // 必须具名拒（见 ComponentHandler.stmts 契约）。
-                    fn flat_assigns(
-                        stmts: &[crate::source::age_component::ComponentStmt],
-                        out: &mut Vec<crate::source::age_component::ComponentAssign>,
-                    ) {
-                        for st in stmts {
-                            match st {
-                                crate::source::age_component::ComponentStmt::Assign(a) => {
-                                    out.push(a.clone())
-                                }
-                                crate::source::age_component::ComponentStmt::If {
-                                    then,
-                                    els,
-                                    ..
-                                } => {
-                                    flat_assigns(then, out);
-                                    if let Some(e) = els {
-                                        flat_assigns(e, out);
-                                    }
-                                }
-                                crate::source::age_component::ComponentStmt::Let { .. } => {}
-                            }
-                        }
-                    }
                     let mut assigns = Vec::new();
-                    flat_assigns(&stmts, &mut assigns);
+                    Self::flat_handler_assigns(&stmts, &mut assigns);
                     handlers.push(ComponentHandler {
                         msg,
                         // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
@@ -5917,6 +5894,27 @@ impl<'a> Engine<'a> {
         })
     }
 
+    /// PLAN-981（G2 全深度收平；on-if 组件面刀提为两面共用）：语句面 →
+    /// 赋值兼容面（含 if/else 分支里的赋值，源序）。执行语义以 `stmts` 为
+    /// 准；assign-only 消费者见 Let/If 必须具名拒（stmts 契约）。
+    fn flat_handler_assigns(
+        stmts: &[crate::source::age_component::ComponentStmt],
+        out: &mut Vec<crate::source::age_component::ComponentAssign>,
+    ) {
+        for st in stmts {
+            match st {
+                crate::source::age_component::ComponentStmt::Assign(a) => out.push(a.clone()),
+                crate::source::age_component::ComponentStmt::If { then, els, .. } => {
+                    Self::flat_handler_assigns(then, out);
+                    if let Some(e) = els {
+                        Self::flat_handler_assigns(e, out);
+                    }
+                }
+                crate::source::age_component::ComponentStmt::Let { .. } => {}
+            }
+        }
+    }
+
     /// `.field (=|+=|-=) expr` 语句 → 赋值行（复合赋值脱糖为二元）。
     fn collect_view_stmt(&mut self, stmt: u32, assigns: &mut Vec<ComponentAssign>) {
         let field = self
@@ -6139,36 +6137,47 @@ impl<'a> Engine<'a> {
                 continue;
             }
             let msg = self.cx.field_child(c, "msg").expect("widget handler msg");
-            let mut assigns = Vec::new();
             let mut body_foreign = false;
             let mut channel_calls = Vec::new();
-            let stmt_kind = self.rule_kind_of("age-view-stmt");
+            // PLAN-981（on-if 组件面刀）：handler 体语句 = age-on-widget-stmt
+            // （赋值/调用 + hook-local let/if——006 真语料形）。
+            let stmt_kind = self.rule_kind_of("age-on-widget-stmt");
+            // 语句面按**源序**收集（G2 直接形同合同）：赋值双进平铺 assigns
+            // （兼容面，消费方见 Let/If 必须具名拒——窗口声明在计划收据）
+            // 与 stmts；let/if 只进 stmts。
+            let mut stmts = Vec::new();
             for stmt in self.cx.children(c) {
                 if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                    // PLAN-980 WEB #6o/#6p：语句=alt（赋值形/调用形）——解包后
-                    // 判形：age-view-assign-stmt（field/rhs/op 字段）走赋值模型；
-                    // 调用形：callee ∈ widget 头参数=通道调用行（宿主通道 prop，
-                    // 原源 span；实参仅位置形）；否则 body_foreign（④ 外部名面
-                    // 族，fail-closed——976 后继目标域决策）。
+                    // PLAN-980 WEB #6o/#6p：语句=alt——解包后判形：
+                    // age-view-assign-stmt（field/rhs/op 字段）走赋值模型；
+                    // 调用形：callee ∈ widget 头参数=通道调用行（宿主通道
+                    // prop，原源 span；实参仅位置形）；let/if 走 on 体共享
+                    // 投影；否则 body_foreign（④ 外部名面族，fail-closed
+                    // ——976 后继目标域决策）。
                     let inner = self.unwrap_child(stmt);
                     if self.cx.field_child(inner, "field").is_some() {
-                        self.collect_view_stmt(inner, &mut assigns);
+                        let mut one = Vec::new();
+                        self.collect_view_stmt(inner, &mut one);
+                        if let Some(a) = one.pop() {
+                            stmts.push(crate::source::age_component::ComponentStmt::Assign(a));
+                        }
                     } else if let Some(call_node) = self.cx.field_child(inner, "call") {
                         match self.project_channel_call(call_node, channel_names) {
                             Some(cc) => channel_calls.push(cc),
                             None => body_foreign = true,
                         }
+                    } else if let Some(st) = self.project_on_stmt_inner(inner) {
+                        stmts.push(st);
                     } else {
                         body_foreign = true;
                     }
                 }
             }
-            // PLAN-981（G2）：widget 形 handler 的语句面 = 赋值集（该形无
-            // hook-local let/if——域外语句走 body_foreign 旧合同，不进 stmts）。
-            let stmts = assigns
-                .iter()
-                .map(|a| crate::source::age_component::ComponentStmt::Assign(a.clone()))
-                .collect();
+            // 兼容面：赋值子集 = stmts **全深度**收平（与直接形同一条
+            // flat_handler_assigns——分支里的赋值不消失；执行语义以 stmts
+            // 为准）。
+            let mut assigns = Vec::new();
+            Self::flat_handler_assigns(&stmts, &mut assigns);
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
                 params: self.handler_params(c),
@@ -7117,41 +7126,70 @@ impl<'a> Engine<'a> {
                 .into_iter()
                 .find(|&c| self.cx.tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
                 .unwrap_or(n);
-            match self.rule_name_of(inner).as_str() {
-                "age-on-assign" => {
-                    let field_leaf = self
-                        .cx
-                        .field_child(inner, "field")
-                        .expect("on assign field name");
-                    let rhs_node = self.cx.field_child(inner, "rhs").expect("on assign rhs");
-                    out.push(ComponentStmt::Assign(ComponentAssign {
-                        field: self.cx.spelling(field_leaf),
-                        rhs: self.project_expr_sync(rhs_node),
-                        span: self.cx.span_of(inner),
-                    }));
-                }
-                "age-on-let" => {
-                    let name_leaf = self.cx.field_child(inner, "name").expect("on let name");
-                    let ann = self
-                        .cx
-                        .field_child(inner, "ann")
-                        .map(|a| self.classify_word(a, false));
-                    let value_node = self.cx.field_child(inner, "value").expect("on let value");
-                    out.push(ComponentStmt::Let {
-                        name: ident_of(&mut self.cx, name_leaf),
-                        ann,
-                        value: self.project_expr_sync(value_node),
-                        span: self.cx.span_of(inner),
-                    });
-                }
-                "age-on-if" => {
+            if let Some(st) = self.project_on_stmt_inner(inner) {
+                out.push(st);
+            }
+        }
+        out
+    }
+
+    /// PLAN-981（on-if 组件面刀）：一条内层 on 体语句（`age-on-assign` /
+    /// `age-on-let` / `age-on-if` 规则节点）→ `ComponentStmt`；未认识返回
+    /// None（直接形调用方不产 foreign——该形文法无第四臂；widget 形调用方
+    /// 另有调用语句臂与 foreign 合同）。
+    fn project_on_stmt_inner(
+        &mut self,
+        inner: u32,
+    ) -> Option<crate::source::age_component::ComponentStmt> {
+        use crate::source::age_component::{ComponentAssign, ComponentStmt};
+        match self.rule_name_of(inner).as_str() {
+            // PLAN-981（on-if 组件面刀）：widget 形点前缀赋值（分支体两拼写
+            // 之一）——复用 view 语句赋值模型（复合赋值脱糖同一条）。
+            "age-view-assign-stmt" => {
+                let mut tmp = Vec::new();
+                self.collect_view_stmt(inner, &mut tmp);
+                tmp.pop().map(ComponentStmt::Assign)
+            }
+            "age-on-assign" => {
+                let field_leaf = self
+                    .cx
+                    .field_child(inner, "field")
+                    .expect("on assign field name");
+                let rhs_node = self.cx.field_child(inner, "rhs").expect("on assign rhs");
+                Some(ComponentStmt::Assign(ComponentAssign {
+                    field: self.cx.spelling(field_leaf),
+                    rhs: self.project_expr_sync(rhs_node),
+                    span: self.cx.span_of(inner),
+                }))
+            }
+            "age-on-let" => {
+                let name_leaf = self.cx.field_child(inner, "name").expect("on let name");
+                let ann = self
+                    .cx
+                    .field_child(inner, "ann")
+                    .map(|a| self.classify_word(a, false));
+                let value_node = self.cx.field_child(inner, "value").expect("on let value");
+                Some(ComponentStmt::Let {
+                    name: ident_of(&mut self.cx, name_leaf),
+                    ann,
+                    value: self.project_expr_sync(value_node),
+                    span: self.cx.span_of(inner),
+                })
+            }
+            "age-on-if" => {
                     let cond_node = self.cx.field_child(inner, "cond").expect("on if cond");
                     let cond = self.project_expr_sync(cond_node);
+                    // PLAN-981（on-if 组件面刀）：分支体语句包装两面拼写
+                    //（age-on-stmt 裸名 / age-on-branch-stmt 并集——点前缀
+                    // 赋值经 helper 的 age-view-assign-stmt 臂）。
+                    let branch_kind = self.rule_kind_of("age-on-branch-stmt");
+                    let stmt_wrapper_kind = self.rule_kind_of("age-on-stmt");
+                    let is_branch = |k: u32| Some(k) == branch_kind || Some(k) == stmt_wrapper_kind;
                     let then_nodes: Vec<u32> = self
                         .cx
                         .children(inner)
                         .into_iter()
-                        .filter(|&c| self.rule_name_of(c) == "age-on-stmt")
+                        .filter(|&c| is_branch(self.cx.tree.kind(c)))
                         .collect();
                     let then = self.project_on_stmts(&then_nodes);
                     let els = self.cx.field_child(inner, "els").map(|e| {
@@ -7159,21 +7197,19 @@ impl<'a> Engine<'a> {
                             .cx
                             .children(e)
                             .into_iter()
-                            .filter(|&c| self.rule_name_of(c) == "age-on-stmt")
+                            .filter(|&c| is_branch(self.cx.tree.kind(c)))
                             .collect();
                         self.project_on_stmts(&else_nodes)
                     });
-                    out.push(ComponentStmt::If {
-                        cond,
-                        then,
-                        els,
-                        span: self.cx.span_of(inner),
-                    });
-                }
-                _ => {}
+                Some(ComponentStmt::If {
+                    cond,
+                    then,
+                    els,
+                    span: self.cx.span_of(inner),
+                })
             }
+            _ => None,
         }
-        out
     }
 
     /// PLAN-928（T-03）：PLAN-864 有限 enum 投影（臂声明序 = 判别序）。
