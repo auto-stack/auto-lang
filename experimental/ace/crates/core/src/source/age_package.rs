@@ -735,8 +735,32 @@ pub fn compile_age_package_with_scenario(
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     let input_hash = parts.input_hash.clone();
     let desugar_hash = crate::source::cst::content_sha(parts.atom_text.as_bytes());
-    let checked = crate::verify::verify_text_record(parts.bundle)
+    let mut checked = crate::verify::verify_text_record(parts.bundle)
         .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
+    // 4a-bis) PLAN-981（D-981-MODULE-GLOBAL-A2R）：把绑定器的模块全局事实钉进
+    //        CheckedModule——A2R 后端按表消费（符号/可变性/init 链），不从 HIR 猜。
+    {
+        let plan = crate::verify::ModuleGlobalsPlan {
+            init_order: product.bound.init_order.clone(),
+            init_fns: product
+                .bound
+                .module_init_order
+                .iter()
+                .filter_map(|k| product.bound.module_init_fns.get(k).cloned())
+                .collect(),
+            facts: product
+                .bound
+                .globals
+                .iter()
+                .map(|(sym, decl)| crate::verify::GlobalFact {
+                    symbol: sym.clone(),
+                    name: decl.name.clone(),
+                    mutable: decl.mutable,
+                })
+                .collect(),
+        };
+        checked.set_module_globals(plan);
+    }
 
     // 4b) PLAN-981（IF-981-REF）：解析 view 里的节点实例引用。可见性判据复用
     //     共享绑定器的 exports/imports 事实；失败即整包具名拒绝（带原模块 span）。

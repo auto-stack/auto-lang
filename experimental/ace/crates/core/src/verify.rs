@@ -44,6 +44,31 @@ use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::hir::{self, BodyId, ExprId, HirDomain, LocalId, LoopId};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// PLAN-981（D-981-MODULE-GLOBAL-A2R 关闭）：模块级 const/var 的**已验事实**。
+/// 事实来自共享绑定器（`BoundPackages.globals/module_init_fns/init_order`），
+/// 由 AGE 包前门在唯一 verify 后钉进 [`CheckedModule`]——后端（A2R Rust 的
+/// `static`/init 链）按表消费，不再从 HIR 猜测（符号名/函数形状皆不可靠）。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ModuleGlobalsPlan {
+    /// 值初始化总序（global 符号，跨模块 topo——与绑定器 `init_order` 同源）。
+    pub init_order: Vec<String>,
+    /// 每个含全局的模块的 init 函数符号（依赖序，main 前执行）。
+    pub init_fns: Vec<String>,
+    /// global 符号 ->（可变性, 显示名）。`mutable=false` 是 `const`，`true` 是 `var`。
+    pub facts: Vec<GlobalFact>,
+}
+
+/// 单个模块全局的声明事实。
+#[derive(Clone, Debug, PartialEq)]
+pub struct GlobalFact {
+    /// 限定符号（`module.global.get/set:<sym>` 的 `<sym>`）。
+    pub symbol: String,
+    /// 作者显示名（跨模块去歧义用）。
+    pub name: String,
+    /// `var`（可写）还是 `const`。
+    pub mutable: bool,
+}
+
 /// A module that has passed semantic verification. Constructed only by
 /// [`verify`]/[`verify_scalar`]/[`verify_text`]; the backend consumes
 /// nothing else.
@@ -70,6 +95,8 @@ pub struct CheckedModule {
     /// exclusive lanes, handle credentials in/out, callback targets);
     /// backends consume it and never re-derive these facts (§5.2).
     foreign_plan: Option<crate::foreign_resources::ForeignResourcePlan>,
+    /// PLAN-981：模块级 const/var 事实（仅 AGE 包前门设置；其余路径 None）。
+    module_globals: Option<ModuleGlobalsPlan>,
 }
 
 impl CheckedModule {
@@ -79,6 +106,16 @@ impl CheckedModule {
 
     pub fn into_bundle(self) -> hir::Bundle {
         self.bundle
+    }
+
+    /// PLAN-981：模块级 const/var 事实（无则 None——非包面路径）。
+    pub fn module_globals(&self) -> Option<&ModuleGlobalsPlan> {
+        self.module_globals.as_ref()
+    }
+
+    /// PLAN-981：AGE 包前门在唯一 verify 后钉入绑定器事实（一次性）。
+    pub fn set_module_globals(&mut self, plan: ModuleGlobalsPlan) {
+        self.module_globals = Some(plan);
     }
 
     /// The descriptor identity this module was verified under.
@@ -1812,6 +1849,7 @@ pub fn verify_foreign_scalar(
             runtime_text_needed: false,
             coll_plan: None,
             foreign_plan: None,
+            module_globals: None,
         })
     } else {
         Err(verifier.diags)
@@ -2123,6 +2161,7 @@ fn verify_text_domain(
             // PLAN-939 T-04: the plain text domain never carries foreign
             // declarations (its verifier entry rejects them).
             foreign_plan: None,
+            module_globals: None,
         })
     } else {
         Err(v.diags)
@@ -2257,6 +2296,7 @@ fn verify_text_record_impl(
             runtime_text_needed: needs_runtime,
             coll_plan: None,
             foreign_plan,
+            module_globals: None,
         })
     } else {
         Err(v.diags)
@@ -2346,6 +2386,7 @@ fn verify_collection_family(
             runtime_text_needed: false,
             coll_plan: Some(plan),
             foreign_plan: None,
+            module_globals: None,
         })
     } else {
         Err(v.diags)
@@ -2458,6 +2499,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
             runtime_text_needed: false,
             coll_plan: None,
             foreign_plan: None,
+            module_globals: None,
         })
     } else {
         Err(v.diags)

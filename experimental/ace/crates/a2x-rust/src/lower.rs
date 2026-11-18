@@ -158,6 +158,14 @@ pub enum RExpr {
     /// Unicode scalar literal (PLAN-902).
     CharLit(char),
     Local(String),
+    /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：读模块级 global 的 static
+    /// （`static mut` 读——按值拷贝，unsafe 块内）。
+    GlobalRead { name: String },
+    /// PLAN-981：写模块级 global 的 static 并产出 0（setter 合同：i32）。
+    GlobalWrite {
+        name: String,
+        value: Box<RExpr>,
+    },
     /// Checked arithmetic helper call (`a2x_add`/`a2x_sub`/`a2x_mul`/
     /// `a2x_neg`/`a2x_div`/`a2x_rem`) — fallible.
     Checked {
@@ -317,6 +325,8 @@ impl RExpr {
             RExpr::StrLit(_) => "str",
             RExpr::CharLit(_) => "char",
             RExpr::Local(_) => "local",
+            RExpr::GlobalRead { .. } => "global-read",
+            RExpr::GlobalWrite { .. } => "global-write",
             RExpr::Checked { func, .. } => func,
             RExpr::Cmp { .. } => "cmp",
             RExpr::Not(_) => "not",
@@ -401,10 +411,26 @@ pub struct RustFn {
 
 /// The whole lowered program (all module functions + entry name).
 #[derive(Clone, Debug)]
+/// PLAN-981：一条模块级 global 的 static 声明。
+pub struct RStatic {
+    /// 生成的 Rust static 名（`AGE_GLOBAL_<sym>`）。
+    pub name: String,
+    /// 目标中性类型。
+    pub ty: Ty,
+    /// 默认初值文本（init 链在 main 前写真实值）。
+    pub init: &'static str,
+}
+
+#[derive(Clone, Debug)]
 pub struct RustProgram {
     pub functions: Vec<RustFn>,
     /// Rust name of the entry function.
     pub entry: String,
+    /// PLAN-981：模块级 global 的 static 声明（const/var 同形 `static mut`，
+    /// const-性由语言层已保证；Rust 侧可变性是实现细节）。
+    pub statics: Vec<RStatic>,
+    /// PLAN-981：init 链（Rust 函数名，依赖序）——生成 main 在入口前执行。
+    pub init_fns: Vec<String>,
     /// Distinct trace symbols used (runtime emission input).
     pub marks: Vec<&'static str>,
     /// Nominal record declarations (PLAN-902; empty for scalar/core).
@@ -507,9 +533,40 @@ pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xRe
     let borrowed = functions
         .iter()
         .any(|f| f.params.iter().any(|p| borrows(p.ty, p.mode)) || borrows_result(f.result));
+    // PLAN-981（D-981-MODULE-GLOBAL-A2R）：模块级 global → static 声明。
+    // 本切片限定**计算面标量**（i32/bool/各宽数值）——初值取零值字面量，
+    // 真实初值由 init 链在 main 前写入；Str/record/容器型 global 具名拒
+    // （AGE 资源端口全局的 A2R 面另行联冻，不在本债）。
+    let mut statics = Vec::new();
+    for g in view.globals_model()? {
+        let init = match g.ty {
+            Ty::I32 | Ty::I8 | Ty::U8 | Ty::U32 | Ty::I64 | Ty::U64 => "0",
+            Ty::F32 | Ty::F64 => "0.0",
+            Ty::Bool => "false",
+            other => {
+                return Err(A2xReject::unsupported_expr(format!(
+                    "module global `{}` has type `{}` — only compute-surface scalar                      globals lower to Rust statics in this slice (owned/record globals                      are a named boundary)",
+                    g.name,
+                    other.as_str()
+                )));
+            }
+        };
+        statics.push(RStatic {
+            name: global_static_name(&g.symbol),
+            ty: g.ty,
+            init,
+        });
+    }
+    let init_fns = view
+        .global_init_fns()
+        .into_iter()
+        .map(|n| rust_fn_name(n))
+        .collect();
     Ok(RustProgram {
         functions,
         entry: String::new(),
+        statics,
+        init_fns,
         marks,
         records,
         clones,
@@ -518,6 +575,11 @@ pub fn lower_functions<'a>(view: &SemanticView<'a>) -> Result<RustProgram, A2xRe
         list_elems: std::collections::BTreeMap::new(),
         coll: false,
     })
+}
+
+/// PLAN-981：global 符号 → 生成的 Rust static 名。
+pub fn global_static_name(symbol: &str) -> String {
+    format!("AGE_GLOBAL_{symbol}")
 }
 
 /// Lower a whole module and select its entry by explicit source name.
@@ -1360,6 +1422,46 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 // the same observable semantics as the AV lane).
                 if let Some(sym) = self.view.sched_symbol(target_id) {
                     return self.lower_sched_call(sym, target_id, eval_args, out);
+                }
+                // PLAN-981（D-981-MODULE-GLOBAL-A2R）：module.global 访问器 →
+                // static 读/写（放行以 facts plan 在场为前提，见视图）。
+                if let Some((sym, is_set)) = self.view.global_accessor(target_id) {
+                    let name = global_static_name(sym);
+                    if is_set {
+                        let value = eval_args.first().copied().ok_or_else(|| {
+                            A2xReject::new(
+                                "a2x.internal",
+                                "module.global.set call without exactly one argument",
+                            )
+                        })?;
+                        let (v, _) = self.lower_expr(value, out)?;
+                        return Ok((
+                            RExpr::GlobalWrite {
+                                name,
+                                value: Box::new(v),
+                            },
+                            Ty::I32,
+                        ));
+                    }
+                    if !eval_args.is_empty() {
+                        return Err(A2xReject::new(
+                            "a2x.internal",
+                            "module.global.get call carries arguments",
+                        ));
+                    }
+                    let ty = self
+                        .view
+                        .globals_model()?
+                        .into_iter()
+                        .find(|g| g.symbol == sym)
+                        .map(|g| g.ty)
+                        .ok_or_else(|| {
+                            A2xReject::new(
+                                "a2x.internal",
+                                format!("module.global `{sym}` model missing"),
+                            )
+                        })?;
+                    return Ok((RExpr::GlobalRead { name }, ty));
                 }
                 // Internal function/method or fragment external.
                 let (rust_name, target_params, result_ty) =

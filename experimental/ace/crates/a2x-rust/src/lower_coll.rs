@@ -110,6 +110,8 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
         }
     }
     Ok(RustProgram {
+        statics: Vec::new(),
+        init_fns: Vec::new(),
         functions,
         entry: String::new(),
         marks,
