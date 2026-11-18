@@ -3972,7 +3972,26 @@ fn age_service_result_port(cx: &Cx, expr_n: u32) -> Option<&'static str> {
         return None;
     }
     let dotted = format!("{}.{}", leaves[0].1, leaves[2].1);
-    crate::source::age_resources::lookup(&dotted).map(|op| op.result_port)
+    if let Some(op) = crate::source::age_resources::lookup(&dotted) {
+        return Some(op.result_port);
+    }
+    // 精灵叶属性面（差额表 #4b）：gfx 服务里**静态资源车道**（ValueCtor 纯值
+    // 构造 / HostIdentity 宿主注入身份）的端口结果也可声明为模块资源——
+    // `image2d.png` → Image2D、`frame2d.at` → Frame2D。逐 Tick 动态
+    // （HostAlgorithm：query2d/input/tick/row/render2d）不是静态资源，不进
+    // 声明面——保持具名拒。
+    if let Some(gop) = crate::source::age_resources::gfx_lookup(&dotted) {
+        if matches!(
+            gop.lane,
+            crate::source::age_resources::AgeGfxLane::ValueCtor
+                | crate::source::age_resources::AgeGfxLane::HostIdentity
+        ) {
+            if let Some(port) = gop.result_port_name() {
+                return Some(port);
+            }
+        }
+    }
+    None
 }
 
 fn ident_of(cx: &mut Cx, leaf: u32) -> Ident {

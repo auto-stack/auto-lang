@@ -412,16 +412,28 @@ pub enum AttrValueKind {
 /// 一个属性名属于哪一类。`None` = 该属性名不在 AGE 的 2D 作者面内（具名拒绝）。
 ///
 /// 这份表就是 AGE 规范 §1 的 `shape2d` 属性集：`kind`/`position`/`size`/
-/// `material`/`visible`，加上组件实例的 `x`/`y`/`diameter`/`tint`。
+/// `material`/`visible`，加上组件实例的 `x`/`y`/`diameter`/`tint`，以及
+/// 精灵叶属性面（差额表 #4b，PLAN-981）：`image:`/`frame:` 是**具名资源引用**
+/// （Image2D / Frame2D），`flip:` 是 bool 值。
 pub fn attr_value_kind(key: &str) -> Option<AttrValueKind> {
     match key {
         "kind" => Some(AttrValueKind::GeometryKind),
-        // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**。
-        "material" | "tint" | "model" | "mesh" => Some(AttrValueKind::ResourceRef),
-        // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）。
-        "position" | "size" | "x" | "y" | "diameter" | "visible" | "yaw" | "pitch" | "scale" => {
-            Some(AttrValueKind::Value)
+        // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**；
+        // 精灵叶的 `image:`（Image2D）/`frame:`（Frame2D）同属一类。
+        "material" | "tint" | "model" | "mesh" | "image" | "frame" => {
+            Some(AttrValueKind::ResourceRef)
         }
+        // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）+ 精灵翻转标志。
+        "position"
+        | "size"
+        | "x"
+        | "y"
+        | "diameter"
+        | "visible"
+        | "yaw"
+        | "pitch"
+        | "scale"
+        | "flip" => Some(AttrValueKind::Value),
         _ => None,
     }
 }
@@ -453,8 +465,8 @@ pub fn attr_applies_to(element: &str, key: &str) -> bool {
         "kind" => is_2d_leaf,
         // 3D 专属
         "yaw" | "pitch" | "model" | "scale" => is_3d,
-        // 2D 专属
-        "size" | "material" | "mesh" => is_2d_leaf,
+        // 2D 专属（`image`/`frame`/`flip` 是 2D 精灵叶属性面，不进 3D）
+        "size" | "material" | "mesh" | "image" | "frame" | "flip" => is_2d_leaf,
         // 两类都可用
         "position" | "visible" | "tint" | "x" | "y" | "diameter" => true,
         _ => false,
@@ -476,18 +488,24 @@ pub fn attr_port(element: &str, key: &str) -> Option<&'static str> {
         // 2D 叶
         ("shape2d", "material") => Some("Material2D"),
         ("shape2d", "mesh") => Some("Mesh2D"),
+        // 2D 精灵叶（差额表 #4b）：`image:` 收 Image2D、`frame:` 收 Frame2D。
+        ("shape2d", "image") => Some("Image2D"),
+        ("shape2d", "frame") => Some("Frame2D"),
         // 3D 叶
         ("model3d", "model") => Some("Model3D"),
         _ => {
             // 组件实例（`Disc red_disc { tint: … }`）的元素名是**组件名**，无法在
             // 本表里逐一列举，所以按属性名兜底：`tint:` 无论出现在哪种元素上，
-            // 都必须绑 `Material2D`。
+            // 都必须绑 `Material2D`；精灵键同理（`image:`/`frame:` 绑定端口
+            // 与元素无关——组件参数 `img: Image2D` 可喂给精灵行）。
             //
             // 复审指出：此前本表只有 `("shape2d","material")` 等条目，**没有 `tint`**，
             // 于是 `node Disc(tint: int) { … tint: tint }` 仍能编译——而那正是
             // g01 组件实例实际使用的属性，B4 的不变量恰好漏掉了真实路径。
             match key {
                 "tint" => Some("Material2D"),
+                "image" => Some("Image2D"),
+                "frame" => Some("Frame2D"),
                 _ => None,
             }
         }
