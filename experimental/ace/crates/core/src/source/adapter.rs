@@ -1102,7 +1102,7 @@ fn compile_program_observed(
     module_path: &str,
     capabilities: &[String],
     profile: SourceProfile,
-    mut observer: Option<&mut dyn SourceObserver>,
+    observer: Option<&mut dyn SourceObserver>,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
     compile_program_observed_with(
         program,

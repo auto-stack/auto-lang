@@ -25,13 +25,22 @@
 - `prediction.shape` 显示 `torch.Size([4, 1])`；
 - `prediction[0].to(float)` ≈ `0.4728480279445648`。
 
-## 表面拼写适配（语义不变，记录于计划）
+## 表面偏差（语义保持，共五处；记录于计划 §5.3）
 
-- `lr: 0.1d` —— 961 冻结的浮点字面量后缀（等价 `0.1`）；
-- `for step < 60` —— aggregates 面的条件循环拼写（等价 `while step < 60`）。
+对照 §5.1 冻结正文，语料有五处**不含语义变化**的偏差：
+
+1. `lr: 0.1d` —— 961 冻结的浮点字面量后缀（等价 `0.1`）；
+2. `for step < 60` —— aggregates 面的条件循环拼写（等价 `while step < 60`）；
+3. `fn main() int` 包裹 + `return 0` —— 本前门的入口合同（§5.1 正文写 `fn main()`）；
+4. `var mparams = model.parameters()` —— 语义保持 hoist（v1 不支持"嵌套调用结果直接作位置实参"）；
+5. `var lr_v = 0.1d` —— 语义保持 hoist（v1 不支持"动态浮点关键字实参"）。
+
+第 4、5 条是 **v1 前端能力边界**（不是语义放宽）：`SGD(mparams, lr: lr_v)` 传入同一对象引用与同一 0.1 值，torch 侧行为与逐字正文一致。超界形态属具名未支持（明确拒绝/不支持），不静默降级；若后续放宽，须同时补 V-02/V-03 反例。
 
 ## 边界（v1 冻结）
 
 串行会话、单解释器、CPU；动态 float 实参不跨界（浮点字面量经编译期
 `F:` 编码折叠）；显示通道 ASCII ≤256B；非正规/非有限浮点值在 provider
-侧具名拒绝。详见 `docs/plans/1026-python-interop-standard-auto-syntax.md` §5.3。
+侧具名拒绝。console 准入在本切片放宽为"带 foreign 描述符的模块可准入
+console import"（纯标量模块仍需 host-console profile，规则见 SD-06）。
+详见 `docs/plans/1026-python-interop-standard-auto-syntax.md` §5.3。

@@ -12,10 +12,14 @@ use ace_av_core::av::ExecLimits;
 const CORPUS_COPY: &str =
     "../../../../crates/auto-lang/test/cases/ace-m2/python-1026/pytorch_train.as";
 
-/// The §5.1 program, VERBATIM except two surface spellings the aggregates
-/// grammar freezes differently (identical semantics; recorded in the plan):
-/// `lr: 0.1d` (961 float suffix) and `for step < 60` (the aggregates
-/// conditional-loop spelling). Kept in lockstep with the corpus copy.
+/// The §5.1 program with the FIVE recorded, semantics-preserving surface
+/// deviations (plan §5.3 + corpus README): two spellings the aggregates
+/// grammar freezes differently — `lr: 0.1d` (961 float suffix) and
+/// `for step < 60` (conditional-loop spelling) — the `fn main() int` entry
+/// wrapper with `return 0`, and the two v1-frontend hoists
+/// (`var mparams = model.parameters()`, `var lr_v = 0.1d`) that stand in for
+/// argument forms the v1 resolver does not accept directly. Kept in lockstep
+/// with the corpus copy.
 const ACCEPTANCE: &str = r#"use.py torch: manual_seed, arange, ones
 use.py torch.nn: Linear, MSELoss
 use.py torch.optim: SGD
@@ -249,7 +253,9 @@ return x
     let compiled = ace_core::source::compile_aggregates_source(src, "spin.at", &[]).unwrap();
     let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0).unwrap();
     let encoded = ace_av_core::abc::encode_abc(&mir).unwrap().to_flat();
-    let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+    // decode round-trip kept as a smoke check; the verifier below consumes
+    // the raw bytes, so the decoded form has no further reader here
+    let _decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
     let loaded = ace_av_core::abc_verify::verify_abc_bytes(&encoded, &mir.owner).unwrap();
     let out = ace_av_core::av::execute(
         &loaded,
@@ -267,4 +273,38 @@ return x
         } => {}
         other => panic!("scalar spin must hit InstrSteps, got {other:?}"),
     }
+}
+
+/// F-15 witness (review r2): the GENERAL Auto float console lanes are
+/// type-keyed, not Python-keyed. Every printed value here is a NATIVE Auto
+/// double (`2.0d`, `0.5d`, `0.0d - 2.5d`) — no `.to(...)`, no py member and
+/// no `__py_f64_bits` reconstruction is involved. The module does carry a
+/// `use.py` import because the py session's console admission requires a
+/// foreign-carrying module (the `host.profile` rule; a plain scalar module
+/// is refused: `host imports require the host-console profile`), and that
+/// admission clause is part of SD-06's delta. The formatting itself is the
+/// shared `fmt_console_f64` (Plan 403 parity: whole numbers without a
+/// decimal part, NaN/Infinity spellings, shortest round-trip otherwise) —
+/// the same lane the py programs reach through `.to(float)`.
+#[test]
+fn p1026_console_float_lane_formats_native_auto_doubles() {
+    let mut session = PySession::open().expect("session opens");
+    let run = session
+        .run(
+            "use.py math: sqrt
+fn main() int {
+print(2.0d)
+print(0.5d)
+var v = 0.0d - 2.5d
+print(v)
+return 0
+}",
+        )
+        .unwrap_or_else(|e| panic!("native-double run: {e}"));
+    assert!(run.success_i32().is_some(), "{:?}", run.outcome);
+    assert_eq!(
+        run.stdout_text(),
+        "2\n0.5\n-2.5\n",
+        "the general f64 console lane formats native Auto doubles (Plan 403 parity)"
+    );
 }
