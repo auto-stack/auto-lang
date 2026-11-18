@@ -43,6 +43,7 @@ use auto_lang_core::{
 };
 
 /// PLAN-982（B-CONFIG-I E6）：配置文档桥（AceExecutor::eval_config）。
+pub mod c_transpile;
 pub mod config_document;
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
