@@ -1256,6 +1256,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
         match self.module.types.get(ty as usize) {
             Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::I64) | Some(MirType::U64)
             | Some(MirType::F32) | Some(MirType::F64) | Some(MirType::Char) => true,
+            // PLAN-982（983 文本面）：**只**在模块声明了受检文本入口能力时，入口
+            // 形参才可以是借用 `StrView`（请求内借用；view 无 drop 权）。
+            Some(MirType::StrView) => self.module.has_text_entry_capability(),
             _ => false,
         }
     }
@@ -5349,9 +5352,7 @@ mod tests {
             slots: main_slots,
             blocks: vec![MirBlock {
                 instrs: main_instrs,
-                term: Terminator::Return {
-                    value: out_slot,
-                },
+                term: Terminator::Return { value: out_slot },
             }],
             entry: 0,
             source_snapshot: 0,

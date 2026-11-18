@@ -275,6 +275,60 @@ pub fn execute_entry(
     )
 }
 
+/// PLAN-982（983 文本面）：**受检文本入口**——宿主把请求文本作为**运行时数据**
+/// 交给入口的借用 `str` 形参。
+///
+/// 语义（用户裁定）：
+/// - 文本在**本次执行的 arena** 内分配，再用 `StrViewSrc::Share` 构造借用视图；
+///   视图**无 drop 权**，缓冲由最后一个引用（owning handle 或 view）释放；
+/// - 入口形参必须是 `StrView`，且模块必须声明 `ac.runtime.text.v1`
+///   （否则 `owned_entry_ok` / `entry_param_ok` 早已拒绝，通用
+///   `execute_entry` 的契约不变）；
+/// - **预算前置**：文本字节在进入执行前计入 `limits`，超预算 ⇒ 不进入 handler；
+/// - **arena 收支**：返回时核对 `arena.live()`，成功/失败都必须归零。
+///
+/// 每个 `texts` 元素对应一个入口实参；非法 UTF‑8 在**分配前**拒绝。
+pub fn execute_entry_text(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    texts: &[&[u8]],
+) -> (ExecOutcome, ExecTrace) {
+    let arena = crate::owned_text::StrArena::new();
+    let mut args: Vec<Value> = Vec::with_capacity(texts.len());
+    for bytes in texts {
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            return (
+                ExecOutcome::Infra("entry text argument is not valid UTF-8".into()),
+                ExecTrace::default(),
+            );
+        };
+        let handle = arena.alloc(bytes);
+        let scalars = text.chars().count() as u32;
+        args.push(Value::StrView(crate::contract::StrView {
+            src: crate::contract::StrViewSrc::Share(handle),
+            start: 0,
+            end: scalars,
+        }));
+    }
+    let (outcome, mut trace) = execute_module_impl(module, limits, cancel, &args, arena, true);
+    // 实参里持有 `StrViewSrc::Share(StrHandle)`（视图的**共享缓冲**引用）：
+    // 先释放实参，再核对 arena 收支——这样"归零"校验的是**执行本身**是否泄漏。
+    drop(args);
+    // 借用视图不逃逸：执行结束后 arena 必须**归零**（成功/失败同要求）。
+    if let Some(arena) = &trace.arena {
+        let live = arena.live();
+        if live != 0 {
+            return (
+                ExecOutcome::Infra(format!(
+                    "text arena imbalance after the entry: {live} live allocation(s)"
+                )),
+                trace,
+            );
+        }
+    }
+    (outcome, trace)
+}
 pub fn execute_entry_reference(
     module: &LoadedModule,
     limits: &ExecLimits,
@@ -1618,6 +1672,11 @@ pub(crate) trait ModuleView {
     /// Resolve a call site's callee to a function slot (None = an
     /// admission violation: unresolved import or foreign index space).
     fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
+    /// PLAN-982：模块是否声明了受检文本入口能力（`ac.runtime.text.v1`）。
+    /// 默认 `false`——只有显式声明该能力的模块才允许入口收借用 `str`。
+    fn has_text_entry_capability(&self) -> bool {
+        false
+    }
     /// Whether a type index denotes `StrView` (PLAN-821; drives the
     /// field-get borrow-view materialization).
     fn is_strview_type(&self, func: u32, ty: u32) -> bool;
@@ -1669,6 +1728,9 @@ impl ModuleView for MergedView<'_> {
     fn host_imports(&self) -> &[crate::mir::MirHostImport] {
         &self.0.host_imports
     }
+    fn has_text_entry_capability(&self) -> bool {
+        self.0.has_text_entry_capability()
+    }
     fn fn_at(&self, idx: u32) -> Option<&MirFunction> {
         self.0.funcs.get(idx as usize)
     }
@@ -1713,6 +1775,12 @@ impl ModuleView for MergedView<'_> {
 struct LoadedView<'a>(&'a MirModule, &'a crate::loaded_program::LoadedProgram<'a>);
 
 impl ModuleView for LoadedView<'_> {
+    fn has_text_entry_capability(&self) -> bool {
+        self.0
+            .capabilities
+            .iter()
+            .any(|c| c == "ac.runtime.text.v1")
+    }
     fn fn_at(&self, idx: u32) -> Option<&MirFunction> {
         self.0.funcs.get(idx as usize)
     }
@@ -3236,10 +3304,16 @@ fn dispatch_with_host<V: ModuleView>(
                 Some(ScalarShape::U32) => matches!(arg, Value::U32(_)),
                 // PLAN-821: char entry params admit char values (the
                 // owned entry contract, contract-decision §6).
-                None => matches!(
-                    (v.mir_type_of(entry_slot, slot_ty), arg),
-                    (Some(crate::mir::MirType::Char), Value::Char(_))
-                ),
+                None => match (v.mir_type_of(entry_slot, slot_ty), arg) {
+                    // PLAN-821: char entry params admit char values.
+                    (Some(crate::mir::MirType::Char), Value::Char(_)) => true,
+                    // PLAN-982（983 文本面）：**只**在模块声明受检文本入口能力时，
+                    // 借用 `StrView` 形参接受 `Value::StrView`（请求内借用）。
+                    (Some(crate::mir::MirType::StrView), Value::StrView(_)) => {
+                        v.has_text_entry_capability()
+                    }
+                    _ => false,
+                },
             };
             if !ok {
                 return Some(ExecOutcome::Infra(format!(
@@ -9277,13 +9351,19 @@ mod tests {
         });
         m.entry = mutate_idx + 1;
         let bytes = crate::abc::encode_abc(&m).expect("encode");
-        let l = crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owned_owner())
-            .expect("admit");
+        let l =
+            crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owned_owner()).expect("admit");
         let cancel = CancelFlag::new(false);
         let (out, _) = execute(&l, &ExecLimits::default(), &cancel);
         match out {
-            ExecOutcome::Success { value: Value::I32(n), .. } => {
-                assert_eq!(n, 4, "the original's Str length survives the clone's rewrite");
+            ExecOutcome::Success {
+                value: Value::I32(n),
+                ..
+            } => {
+                assert_eq!(
+                    n, 4,
+                    "the original's Str length survives the clone's rewrite"
+                );
             }
             other => panic!("deep-copy clone execution failed: {other:?}"),
         }
