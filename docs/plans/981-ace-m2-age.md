@@ -921,6 +921,20 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**第六批③：G-RESOURCE 组证据（会话腿）**；用户指定本轮只做该组）| PLAN-981 r18 | outcome: **pass（会话腿资源见证 + 判别性负控；含一条语义精确化与一条车道边界）** | branch `plan-981-dev`（本批回到 worktree 施工）
+
+**为什么这组不能靠 AGE 源做（本批实测的车道边界）**：平台保留名（`mem_alloc`/`mem_free`/`file_*`）只在 `HostConsole`/`TextRecord`/`Aggregates` 三面准入（`resolve.rs` 的 profile 门），**`age-package` 面拼写不出来**。所以"AGE 会话的资源归零"在 981 侧只能由**会话腿**（console/text 入口 + `PlatformResourceLedger`）见证；AGE 节点运行自己的资源面是宿主行/精灵（UI058 车道），不是平台账本——该边界不冒充为已覆盖。
+
+**交付**（`av/tests/cases/plan981_resource_ledger.rs` 2 例）：
+- **`p981_resource_ledger_reports_zero_after_explicit_release`**：`mem_alloc(16)`+`mem_free` ⇒ 运行成功、`leaked_regions_cleaned==0`、`live_mapped_at_exit==0`、文本 arena `live()==0`（与既有 `p982_text_platform_combo` 同口径，本批独立复证）。
+- **`p981_resource_ledger_witnesses_an_author_leak`（判别性负控）**：只分配不释放 ⇒ `leaked_regions_cleaned==1`、`live_mapped_at_exit>=16`（页面粒度实测 4096）、**运行仍成功**（泄漏不是 trap）、arena 不受影响。没有这条，一个恒零账本与真核收工具无法区分。
+
+**语义精确化（实测纠正，易误读）**：`execute_entry_text_platform` 的 summary 是 **`ledger.cleanup()` 之前**的快照（`av.rs`：先填 summary 再 cleanup）。所以 `leaked_regions_cleaned` 的含义是"**作者漏掉、即将由 teardown 释放**的区数"，不是"本次清理了几处"；`live_mapped_at_exit` 是快照时仍映射的字节。本批首版用例按"泄漏时 live 应仍为 0"写，被实测打红（4096）后当场改正——收据按改后事实记，**不宣称"物理释放已观测"**（summary 反读不到 cleanup 之后的状态）。
+
+**归属与交接**：G-RESOURCE 的**会话腿见证**由 981 侧提供（上两例，绑定本批提交）；**AGE 节点自身的资源面**（宿主行/精灵回收）仍归 UI058/1068 消费方。已同步 980 §9 交接表的该行。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 3 | from: work | to: work | status: executing | outcome: pass（G-RESOURCE 组 981 侧已交）| next: 980 `B-AV-R` 签发确认 / A2C frame 资源定向用例（待真实消费者）
+
 ### 2026-11-18 stage: work（**第六批②：W1 按组件组收 AV 格，交 980 B-AV-R**；用户裁定优先双实例/坏编辑/关开/资源归零）| PLAN-981 r18 | outcome: **partial（3 组 981 侧 PASS 并交 980；资源归零组 owner 在会话侧，pending）** | 绑定 `3047b3481`
 
 **分组与证据（V-AGE-WAVE 的 W1 AV 适用格，按用户四项优先序）**

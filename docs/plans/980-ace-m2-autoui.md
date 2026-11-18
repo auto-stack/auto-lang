@@ -938,7 +938,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 | **G-LIFECYCLE 关开** | `plan981_gfx_host`（`stop()`→`age-gfx.session-stopped`、provider 丢弃、新会话重注册）＋`plan981_gfx_hooks`（新 callback epoch 归零、跨 Tick 账本重置） | 可并入 B-AV-R |
 | **G-VIEW/FRAME/INPUT** | `plan980_*`/`plan979_*` AV 家族随本批复跑（合计 75/75 PASS，0.16s 运行段） | 可并入 B-AV-R |
 | **G-BADEDIT 坏编辑保旧** | 源侧：core `plan981_age_package_modules::recovers_on_the_same_entry`、`plan981_age_ref::recovers_after_the_import_is_added`、`plan981_event_b`（具名拒→修复同入口绿）；**会话语义（失败不动既有 ops）归 auto-ui R64-1** | 源侧可并入；会话侧请以 auto-ui 正式来源计 |
-| **G-RESOURCE 资源归零** | **981 无该责任行**（`leaked_regions_cleaned`/`live_mapped_at_exit` 在会话/AVHC 腿，如 `p982` 组合用例） | **不由 981 交**，须会话腿 owner 出据 |
+| **G-RESOURCE 资源归零** | **会话腿已由 981 提供**（`plan981_resource_ledger` 2 例）：显式释放 ⇒ `leaked_regions_cleaned==0`/`live_mapped_at_exit==0`/arena 0；**判别性负控**（只分配不释放）⇒ `1`/`>=16` 且运行仍成功。**车道边界**：平台保留名在 AGE 面不可达（仅 HostConsole/TextRecord/Aggregates），故 AGE 节点自身的资源面（宿主行/精灵回收）仍归 UI058/1068 | 会话腿格可并入；AGE 节点资源面不在此组 |
 
 **同时告知（与 W1 相关的既有交付）**：①跨模块实例身份已修（三处统一为**包级组件声明序**：绑定器级场景核对、`node_base` 线程化发射、AV `symbol_of_in` 解析）——UI058 可把 `Target`/`Player` 拆回两个真实模块；②UI058 缺口⑤的答复（typed 队列可直接复用、作者内自派发按 host authority 不新增）见 058 §T-05 答复条（auto-ui `8438e0bf`）。
 
