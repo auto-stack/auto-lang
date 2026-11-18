@@ -1376,9 +1376,9 @@ next_responsible_role: review（#6p 批级复核：AC-B-WEB 映射/反例重放/
 
 next_responsible_role: work（生成器道扩面：watch/setup/expose/ext_imports/style 族逐片切——建议以 jade-garden 39 文件为正式分母；④域合同=用户/976 后继决策输入，建议先出合同草案）。
 
-### 2026-11-18 B-AV 开工授权（用户裁定）+ U01..06 分母冻结（B-AV-I 首件）
+### 2026-11-18 B-AV 开工授权（用户确认）+ U01..06 分母冻结（B-AV-I 首件）
 
-**用户裁定（波次门修订）**：981 事件接口（PAYLOAD-B/MSG-B/PARAMS-B）已可用，**B-AV 即刻开工**、按组件组推进，与 WEB 补覆盖/复审并行——取代 r15 表 ⑤ 的"981/A 全链闭"等待（981 PROOF A 面仍为 981/MIN-A-AGE 义务，不再阻塞本批开工）。
+**开工门核验（用户 2026-11-18 状态更正，本会话对账确认）**：r15 表 ⑤ 链**全闭**——②981/A 已验收：MIN-A-AGE 整体交接收据 `e8d637bb9`（event A＋B-PROOF-I/V[A]，review-71 pass；985 r28 接收复跑 **PROOF A 4/4**、**p981 205/205**，r26 反馈①–⑤全闭，NavCall L-45 归 B/W1 起三波）；③985/A=M2A-08（`95c7fbad8`）；④981 EVENT-B 三件（`f4158e499`/`7b127afc8`/ui `ba92217b`）。**B-AV 按 r15 原门开工（非门修订）**：按组件组推进 B-AV-I/V/R，与 WEB 补覆盖/复审并行。UI-W1-AV 签发仍需：真实组件+窗口的 I/V/R 全分母 + 所需 981 B 阶段成果接齐。（本会话早前"②差 PROOF A 面"为陈旧 r26 口径，已由用户更正、对账落档。）
 
 **分母冻结（35 编号例全量实测，`src/front/app.at` sha256/16 + 行数）**：
 
