@@ -286,3 +286,5 @@ mod sys_d01_d06_1064;
 
 #[path = "cases/plan980_closure_av.rs"]
 mod plan980_closure_av;
+#[path = "cases/plan982_c_multi.rs"]
+mod plan982_c_multi;
