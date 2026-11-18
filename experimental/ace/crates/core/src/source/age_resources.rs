@@ -375,6 +375,24 @@ pub fn gfx_lookup(callee: &str) -> Option<&'static AgeGfxServiceOp> {
     AGE_GFX_SERVICE_OPS.iter().find(|op| op.callee == callee)
 }
 
+/// 服务级信用计量的**每回调预算**（差额表 #6a，021 原额保持：32
+/// credits/callback）。费率/映射与 UI058 T-02 **联冻**——本值是原语义
+/// 冻结，不单方面改额。
+pub const GFX_CALLBACK_CREDIT_BUDGET: u32 = 32;
+
+/// 一次 gfx 服务调用的信用费（021 原额：cast 8、sweep 16；getter 是端口
+/// 字段读、不构成服务调用；其余服务基价 1）。宿主车道（UI058）逐调用
+/// 动态计费 + 第 33 次 sticky 拒时消费**同一张表**；语言侧在 gfx 派发点
+/// 以每函数静态调用点合计做保守准入界（`lower.age-gfx-credits` 具名拒、
+/// 构造性零效果）。
+pub fn gfx_credit_cost(callee: &str) -> u32 {
+    match callee {
+        "query2d.segment" => 8,
+        "query2d.sweep" => 16,
+        _ => 1,
+    }
+}
+
 /// 按稳定符号查 gfx 服务。
 pub fn gfx_by_symbol(symbol: &str) -> Option<&'static AgeGfxServiceOp> {
     AGE_GFX_SERVICE_OPS.iter().find(|op| op.symbol == symbol)
@@ -412,16 +430,28 @@ pub enum AttrValueKind {
 /// 一个属性名属于哪一类。`None` = 该属性名不在 AGE 的 2D 作者面内（具名拒绝）。
 ///
 /// 这份表就是 AGE 规范 §1 的 `shape2d` 属性集：`kind`/`position`/`size`/
-/// `material`/`visible`，加上组件实例的 `x`/`y`/`diameter`/`tint`。
+/// `material`/`visible`，加上组件实例的 `x`/`y`/`diameter`/`tint`，以及
+/// 精灵叶属性面（差额表 #4b，PLAN-981）：`image:`/`frame:` 是**具名资源引用**
+/// （Image2D / Frame2D），`flip:` 是 bool 值。
 pub fn attr_value_kind(key: &str) -> Option<AttrValueKind> {
     match key {
         "kind" => Some(AttrValueKind::GeometryKind),
-        // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**。
-        "material" | "tint" | "model" | "mesh" => Some(AttrValueKind::ResourceRef),
-        // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）。
-        "position" | "size" | "x" | "y" | "diameter" | "visible" | "yaw" | "pitch" | "scale" => {
-            Some(AttrValueKind::Value)
+        // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**；
+        // 精灵叶的 `image:`（Image2D）/`frame:`（Frame2D）同属一类。
+        "material" | "tint" | "model" | "mesh" | "image" | "frame" => {
+            Some(AttrValueKind::ResourceRef)
         }
+        // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）+ 精灵翻转标志。
+        "position"
+        | "size"
+        | "x"
+        | "y"
+        | "diameter"
+        | "visible"
+        | "yaw"
+        | "pitch"
+        | "scale"
+        | "flip" => Some(AttrValueKind::Value),
         _ => None,
     }
 }
@@ -453,8 +483,8 @@ pub fn attr_applies_to(element: &str, key: &str) -> bool {
         "kind" => is_2d_leaf,
         // 3D 专属
         "yaw" | "pitch" | "model" | "scale" => is_3d,
-        // 2D 专属
-        "size" | "material" | "mesh" => is_2d_leaf,
+        // 2D 专属（`image`/`frame`/`flip` 是 2D 精灵叶属性面，不进 3D）
+        "size" | "material" | "mesh" | "image" | "frame" | "flip" => is_2d_leaf,
         // 两类都可用
         "position" | "visible" | "tint" | "x" | "y" | "diameter" => true,
         _ => false,
@@ -476,18 +506,24 @@ pub fn attr_port(element: &str, key: &str) -> Option<&'static str> {
         // 2D 叶
         ("shape2d", "material") => Some("Material2D"),
         ("shape2d", "mesh") => Some("Mesh2D"),
+        // 2D 精灵叶（差额表 #4b）：`image:` 收 Image2D、`frame:` 收 Frame2D。
+        ("shape2d", "image") => Some("Image2D"),
+        ("shape2d", "frame") => Some("Frame2D"),
         // 3D 叶
         ("model3d", "model") => Some("Model3D"),
         _ => {
             // 组件实例（`Disc red_disc { tint: … }`）的元素名是**组件名**，无法在
             // 本表里逐一列举，所以按属性名兜底：`tint:` 无论出现在哪种元素上，
-            // 都必须绑 `Material2D`。
+            // 都必须绑 `Material2D`；精灵键同理（`image:`/`frame:` 绑定端口
+            // 与元素无关——组件参数 `img: Image2D` 可喂给精灵行）。
             //
             // 复审指出：此前本表只有 `("shape2d","material")` 等条目，**没有 `tint`**，
             // 于是 `node Disc(tint: int) { … tint: tint }` 仍能编译——而那正是
             // g01 组件实例实际使用的属性，B4 的不变量恰好漏掉了真实路径。
             match key {
                 "tint" => Some("Material2D"),
+                "image" => Some("Image2D"),
+                "frame" => Some("Frame2D"),
                 _ => None,
             }
         }

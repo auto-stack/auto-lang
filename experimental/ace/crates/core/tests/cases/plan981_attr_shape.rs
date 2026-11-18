@@ -121,3 +121,96 @@ node M {\n    view-2d {\n        Disc inst {\n            tint: red\n        }\n
     )
     .expect("a component instance bound to a real resource is legal");
 }
+
+/// 精灵叶属性面（差额表 #4b，PLAN-981）：`image:`/`frame:` 是**具名资源引用**
+/// （Image2D / Frame2D 端口），`flip:` 是 bool 值——三键在 `shape2d` 精灵行上
+/// 合法，且 `image:`/`frame:` 落进**资源引用事实**面（消费者沿同一通道复核）。
+#[test]
+fn p981_sprite_leaf_attrs_bind_and_reference() {
+    let out = compile(
+        "let img = image2d.png(\"assets/x.png\")\n\
+let fr = frame2d.at(img, 0, 0, 16, 16)\n\
+node M {\n    view-2d {\n        shape2d s {\n            kind: quad\n            image: img\n            frame: fr\n            flip: true\n        }\n    }\n}\n",
+    )
+    .expect("the sprite leaf attribute face compiles");
+    let comp = out
+        .description
+        .components
+        .iter()
+        .find(|c| c.name == "M")
+        .expect("component M");
+    // 引用事实：image→Image2D 资源、frame→Frame2D 资源，原拼写保留。
+    let img_ref = comp
+        .resource_refs
+        .iter()
+        .find(|r| r.row == "s" && r.attr == "image")
+        .expect("the image: binding becomes a resource reference fact");
+    assert!(
+        matches!(
+            &img_ref.target,
+            ace_core::source::age_package::AgeResourceTarget::Resource { port, .. }
+                if port == "Image2D"
+        ),
+        "image: resolves to an Image2D resource: {:?}",
+        img_ref.target
+    );
+    let frame_ref = comp
+        .resource_refs
+        .iter()
+        .find(|r| r.row == "s" && r.attr == "frame")
+        .expect("the frame: binding becomes a resource reference fact");
+    assert!(
+        matches!(
+            &frame_ref.target,
+            ace_core::source::age_package::AgeResourceTarget::Resource { port, .. }
+                if port == "Frame2D"
+        ),
+        "frame: resolves to a Frame2D resource: {:?}",
+        frame_ref.target
+    );
+    assert_eq!(img_ref.spelling, "img");
+    assert_eq!(frame_ref.spelling, "fr");
+}
+
+/// `image:` 绑到 Material2D 资源 → 具名拒（端口不匹配，不静默换轨）。
+#[test]
+fn p981_sprite_image_attr_rejects_wrong_port() {
+    let ds = compile(
+        "let red = material2d.color(0.9, 0.3, 0.2, 0.5)\n\
+node M {\n    view-2d {\n        shape2d s {\n            kind: quad\n            image: red\n        }\n    }\n}\n",
+    )
+    .expect_err("image: must bind an Image2D, not a Material2D");
+    assert!(
+        ds.iter()
+            .any(|d| d.code == "source.age.scene-resource-type"
+                || d.code == "source.age.scene-resource"),
+        "named port rejection: {ds:?}"
+    );
+}
+
+/// `frame:` 绑 Image2D 资源 → 同样具名拒（Frame2D ≠ Image2D）。
+#[test]
+fn p981_sprite_frame_attr_rejects_wrong_port() {
+    let ds = compile(
+        "let img = image2d.png(\"assets/x.png\")\n\
+node M {\n    view-2d {\n        shape2d s {\n            kind: quad\n            frame: img\n        }\n    }\n}\n",
+    )
+    .expect_err("frame: must bind a Frame2D, not an Image2D");
+    assert!(
+        ds.iter()
+            .any(|d| d.code == "source.age.scene-resource-type"
+                || d.code == "source.age.scene-resource"),
+        "named port rejection: {ds:?}"
+    );
+}
+
+/// 精灵键不进 3D 叶：`image:` 写在 `cylinder3d` 上仍按"不适用"具名拒。
+#[test]
+fn p981_sprite_keys_do_not_leak_into_3d_leaves() {
+    let ds = compile(
+        "let img = image2d.png(\"assets/x.png\")\n\
+node M {\n    view-3d {\n        cylinder3d c {\n            position: (0.0, 0.0, 0.0)\n            image: img\n        }\n    }\n}\n",
+    )
+    .expect_err("sprite keys are 2D-only");
+    assert_eq!(ds[0].code, "source.age.scene-attr", "{ds:?}");
+}

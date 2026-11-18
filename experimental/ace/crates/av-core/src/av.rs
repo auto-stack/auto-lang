@@ -9123,6 +9123,171 @@ mod tests {
             vec![2, 1, 0]
         );
     }
+
+    /// D-981-GLOBAL-CLONE-GAP closure（PLAN-981）执行腿：视图→拥有 CLONE
+    /// 是**深拷贝**——被调方克隆借用 record 后改写自己那份的 Str 字段，
+    /// 调用方的原件 Str 长度不受影响（浅别名/共享会让长度变成克隆值）。
+    #[test]
+    fn av_clone_view_to_owned_deep_copies_resource_record() {
+        let owned_owner = || OwnerScope {
+            schema: crate::contract::MIR_OWNED_SCHEMA.to_string(),
+            module: "m".to_string(),
+        };
+        let mut m = MirModule::new(owned_owner());
+        m.profile = crate::contract::AV_OWNED_PROFILE.to_string();
+        let ti = m.intern_type(MirType::I32);
+        let tstr = m.intern_type(MirType::Str);
+        let tview = m.intern_type(MirType::StrView);
+        let rec_ref = RecordTypeRef {
+            owner_module: "m".to_string(),
+            name: "Img".to_string(),
+            fields: vec![MirFieldDef {
+                name: "s".to_string(),
+                ty: tstr,
+            }],
+        };
+        let rec_ti = m.intern_type(MirType::Record(rec_ref.clone()));
+        let view_ti = m.intern_type(MirType::RecordView(rec_ref));
+        // mutate(p: RecordView<Img>) -> i32: CLONE the view, then rewrite
+        // the CLONE's Str field to a 12-char buffer.
+        let takes_sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![view_ti],
+            result: ti,
+        }));
+        let c_zero = m.intern_const(MirConst::I32(0));
+        let c_zzz = m.intern_const(MirConst::Str(b"zzzzzzzzzzzz".to_vec().into()));
+        let c_abcd = m.intern_const(MirConst::Str(b"abcd".to_vec().into()));
+        m.funcs.push(MirFunction {
+            owner: owned_owner(),
+            name: "mutate".into(),
+            sig: takes_sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Param,
+                    ty: view_ti,
+                    name: Some("p".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: rec_ti,
+                    name: Some("clone".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: tstr,
+                    name: Some("zz".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: Some("r".into()),
+                },
+            ],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Clone { dst: 1, src: 0 },
+                    MirInstr::Const {
+                        dst: 2,
+                        value: c_zzz,
+                    },
+                    MirInstr::FieldSet {
+                        root: 1,
+                        path: vec![0],
+                        value: 2,
+                    },
+                    MirInstr::Const {
+                        dst: 3,
+                        value: c_zero,
+                    },
+                ],
+                term: Terminator::Return { value: 3 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        let mutate_idx = (m.funcs.len() - 1) as u32;
+        // main() -> i32: build an owned Img over a 4-char Str, pass it to
+        // mutate (view param), then read the ORIGINAL's Str length.
+        let main_sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        m.funcs.push(MirFunction {
+            owner: owned_owner(),
+            name: "main".into(),
+            sig: main_sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: tstr,
+                    name: Some("s".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: rec_ti,
+                    name: Some("rec".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: Some("out".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: tview,
+                    name: Some("back".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: Some("len".into()),
+                },
+            ],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Const {
+                        dst: 0,
+                        value: c_abcd,
+                    },
+                    MirInstr::Aggregate {
+                        dst: 1,
+                        record_ty: rec_ti,
+                        operands: vec![0],
+                    },
+                    MirInstr::Call {
+                        callee: CalleeRef::Func(mutate_idx),
+                        dst: 2,
+                        args: vec![1],
+                    },
+                    MirInstr::FieldGet {
+                        dst: 3,
+                        base: 1,
+                        path: vec![0],
+                    },
+                    MirInstr::StrLen { dst: 4, view: 3 },
+                ],
+                term: Terminator::Return { value: 4 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        m.entry = mutate_idx + 1;
+        let bytes = crate::abc::encode_abc(&m).expect("encode");
+        let l = crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owned_owner())
+            .expect("admit");
+        let cancel = CancelFlag::new(false);
+        let (out, _) = execute(&l, &ExecLimits::default(), &cancel);
+        match out {
+            ExecOutcome::Success { value: Value::I32(n), .. } => {
+                assert_eq!(n, 4, "the original's Str length survives the clone's rewrite");
+            }
+            other => panic!("deep-copy clone execution failed: {other:?}"),
+        }
+    }
 }
 
 fn console_output_limit(message: &str) -> ExecOutcome {
