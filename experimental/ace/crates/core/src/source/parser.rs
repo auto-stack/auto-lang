@@ -664,6 +664,8 @@ impl<'s> Parser<'s> {
                 Tok::Reserved(w) => format!("`{}`", w),
                 Tok::Punct(p) => format!("`{}`", p.as_str()),
                 Tok::Int(_) => "integer literal".to_string(),
+                Tok::Float(_) => "float literal".to_string(),
+                Tok::Wide(_) => "wide integer literal".to_string(),
                 Tok::StrLit(_) => "string literal".to_string(),
                 Tok::CharLit(_) => "char literal".to_string(),
                 Tok::Raw { kind, .. } => kind.describe().to_string(),
