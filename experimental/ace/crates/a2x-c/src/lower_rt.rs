@@ -1301,15 +1301,24 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                                 "gfx host op `{sym}` is not in the checked service table"
                             ))
                         })?;
-                    // 端口 record 结果先拒（不降参数——避免无关通道的拒绝
-                    // 掩盖本具名边界）。
-                    if let ace_core::source::age_resources::AgeGfxResult::Port(name) = op.result {
-                        return Err(A2xReject::unsupported_op(format!(
-                            "`{sym}` returns the port record `{name}`; the C record-return host \
-                             stub is the port-ABI C leg (named deferral — scalar host ops emit \
-                             a2x_gfx_* externs; no fabricated record)"
-                        )));
-                    }
+                    // 端口 record 结果：**具名 out 指针 ABI**（按 `AGE_PORT_FIELDS`
+                    // 声明序逐字段；宿主无需 C record typedef——与 AV 的字段序
+                    // 契约同源）。宿主状态 0=成功，非 0=fault 码（生成侧折叠为
+                    // typed `A2X_TRAP_RESOURCE`，零效果）。
+                    let port_fields: &[(&str, &str)] = match op.result {
+                        ace_core::source::age_resources::AgeGfxResult::Port(port) => {
+                            ace_core::source::age_resources::AGE_PORT_FIELDS
+                                .iter()
+                                .find(|(p, _)| *p == port)
+                                .map(|(_, fs)| fs)
+                                .ok_or_else(|| {
+                                    A2xReject::unsupported_expr(format!(
+                                        "gfx host op `{sym}` returns unknown port `{port}`"
+                                    ))
+                                })?
+                        }
+                        _ => &[],
+                    };
                     if eval_args.len() != op.params.len() {
                         return Err(A2xReject::new(
                             "a2x.internal",
@@ -1342,6 +1351,71 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                                 )));
                             }
                         }
+                    }
+                    // 端口 record 结果（标量结果沿下方原路径）。
+                    if let ace_core::source::age_resources::AgeGfxResult::Port(port) = op.result {
+                        let cr = c_record_name(port);
+                        // 字段 out 槽：声明序具名指针，**槽名带唯一计数**
+                        //（同一函数内两次查询不重名）。**标量字段**承载
+                        //（f32/i32/bool）；owned-Str 端口字段（Image2D.sha256）
+                        // 的 out 约定另行联冻，本臂遇之具名拒——不猜。
+                        let uid = self.temp_counter;
+                        self.temp_counter += 1;
+                        let slot = |fname: &str| format!("s_{}_{}", fname, uid);
+                        let mut field_slots: Vec<(&str, &str)> = Vec::new();
+                        for (fname, fty) in port_fields {
+                            let sname = slot(fname);
+                            let decl = match *fty {
+                                "f32" => format!("float {sname};"),
+                                "i32" => format!("int32_t {sname};"),
+                                "bool" => format!("bool {sname};"),
+                                other => {
+                                    return Err(A2xReject::unsupported_op(format!(
+                                        "`{sym}`'s port field `{fname}` has type `{other}`; \
+                                         the named out-slot ABI carries scalar fields only \
+                                         (owned-Str port fields are a separate frozen convention)"
+                                    )))
+                                }
+                            };
+                            self.out.push(decl);
+                            args.push(format!("&{sname}"));
+                            field_slots.push((fname, fty));
+                        }
+                        // 期望类型 = 调用槽的名义 record（HIR 类型表索引）。
+                        let rec_ty = match ty {
+                            Ty::Record(idx) => Ty::Record(idx),
+                            other => {
+                                return Err(A2xReject::new(
+                                    "a2x.internal",
+                                    format!(
+                                        "gfx port-record call `{sym}` sits in a `{}` slot; \
+                                         the nominal port record is required",
+                                        other.as_str()
+                                    ),
+                                ))
+                            }
+                        };
+                        let t = self.fresh_temp();
+                        let st = self.fresh_temp();
+                        let mut ok_fill = String::new();
+                        for (fname, fty) in &field_slots {
+                            let cfield = format!("f_{}", crate::lower::sanitize(fname));
+                            let sname = slot(fname);
+                            ok_fill.push_str(&format!("{t}.value.{cfield} = {sname};\n"));
+                            let _ = fty;
+                        }
+                        self.out.push(format!(
+                            "int32_t {st} = {func}({args});\n\
+                             a2x_res_{cr} {t};\n\
+                             if ({st} != 0) {{\n\
+                             \x20   {t} = a2x_fwd_{cr}(A2X_TRAP_RESOURCE);\n\
+                             }} else {{\n{ok_fill}\
+                             \x20   {t}.trap = A2X_TRAP_NONE;\n\
+                             }}\n",
+                            args = args.join(", ")
+                        ));
+                        self.check_trap(&t);
+                        return Ok((format!("{t}.value"), rec_ty));
                     }
                     let (ctype, rty) = match op.result {
                         ace_core::source::age_resources::AgeGfxResult::Scalar(
@@ -1608,6 +1682,15 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 )
             }
             // ---- record operations ----
+            // PLAN-981（A2C f32 常量腿，2026-11-18 用户裁定）：类型化数值常量
+            // ——按位构造器（`a2x_f32_bits(<bits>u)`；NaN payload/-0.0 逐位存活），
+            // 与 scalar 车道（lower.rs `numeric_const_c`）同一拼写；float 字面量
+            // 恒经此臂。helper 由运行时页承载（`RT_NUMCONST_C`）。
+            hir::ExprKind::NumericConst { ty: bty, bits } => {
+                let text = crate::lower::numeric_const_c(*bty, *bits)?;
+                let out_ty = crate::lower::builtin_ty_of(*bty)?;
+                Ok((text, out_ty))
+            }
             hir::ExprKind::RecordCtor {
                 record,
                 eval_args,

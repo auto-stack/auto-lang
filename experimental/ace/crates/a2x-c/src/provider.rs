@@ -292,6 +292,9 @@ fn seed_field_c_ty(ty: &seed::SeedFieldTy) -> String {
         seed::SeedFieldTy::I32 => "int32_t".into(),
         seed::SeedFieldTy::Bool => "bool".into(),
         seed::SeedFieldTy::Char => "uint32_t".into(),
+        // PLAN-981（A2C 宿主面）：AGE 端口 record 的 f32 字段——纯值拷贝
+        //（clone/free 走默认臂）。
+        seed::SeedFieldTy::F32 => "float".into(),
         seed::SeedFieldTy::Str | seed::SeedFieldTy::StrOwned => "a2x_str".into(),
         seed::SeedFieldTy::Record(n) => lower_rt::c_record_name(n),
     }

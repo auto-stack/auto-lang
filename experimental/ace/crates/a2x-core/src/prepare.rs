@@ -744,6 +744,10 @@ fn ser_expr(
                 // PLAN-1041: platform-operation intrinsic — the runtime
                 // stub identity is its stable symbol.
                 format!("platform:{sym}")
+            } else if let Some(sym) = view.gfx_symbol(target) {
+                // PLAN-981（A2C 宿主面）：AGE gfx 宿主 op——语义身份 = 稳定
+                // 服务符号（目标车道各自处置：A2C 发射 extern，A2R 具名拒）。
+                format!("gfx:{sym}")
             } else if let Some(sym) = view.sched_symbol(target) {
                 // PLAN-968: scheduler intrinsic — the runtime call
                 // identity is its stable per-task symbol.

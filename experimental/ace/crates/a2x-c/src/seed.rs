@@ -45,6 +45,9 @@ pub enum SeedFieldTy {
     Char,
     Str,
     StrOwned,
+    /// PLAN-981（A2C f32 常量/宿主面腿）：AGE 端口 record 的 f32 字段
+    ///（Cast2D/Sweep2D 等）——纯值拷贝语义（clone/free 走默认臂）。
+    F32,
     Record(String),
 }
 
@@ -56,6 +59,7 @@ impl SeedFieldTy {
             SeedFieldTy::Char => "char".into(),
             SeedFieldTy::Str => "str".into(),
             SeedFieldTy::StrOwned => "Str".into(),
+            SeedFieldTy::F32 => "f32".into(),
             SeedFieldTy::Record(n) => format!("R:{}", n),
         }
     }
@@ -68,6 +72,8 @@ fn seed_field_ty(view: &SemanticView<'_>, ty: Ty) -> Result<SeedFieldTy, A2xReje
         Ty::Char => Ok(SeedFieldTy::Char),
         Ty::Str => Ok(SeedFieldTy::Str),
         Ty::StrOwned => Ok(SeedFieldTy::StrOwned),
+        // PLAN-981（A2C 宿主面）：AGE 端口 record 的 f32 字段进表（纯值拷贝）。
+        Ty::F32 => Ok(SeedFieldTy::F32),
         Ty::Record(i) => {
             let rec = view
                 .record(i)
@@ -183,6 +189,7 @@ pub fn decode_seed(text: &str) -> Result<Vec<SeedRecord>, A2xReject> {
                 "char" => SeedFieldTy::Char,
                 "str" => SeedFieldTy::Str,
                 "Str" => SeedFieldTy::StrOwned,
+                "f32" => SeedFieldTy::F32,
                 other => {
                     let name = other.strip_prefix("R:").unwrap_or("");
                     if !valid_name(name) {
