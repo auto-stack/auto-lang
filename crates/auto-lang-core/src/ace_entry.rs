@@ -247,6 +247,19 @@ impl AceRunReport {
 pub trait AceExecutor: Send + Sync {
     fn execute(&self, request: &AceRequest<'_>) -> AceRunReport;
 
+    /// PLAN-982（983 文本面）：**受检文本入口**——把请求文本作为**运行时数据**
+    /// 交给入口的借用 `str` 形参。默认实现是**具名拒绝**（不是静默回退）：不支持
+    /// 文本的宿主不会假装支持。文本在本次执行的 arena 内分配、借用不逃逸；
+    /// `ac.runtime.text.v1` 只放行"入口收借用 `str`"这一件事，
+    /// [`AceExecutor::execute`] 与 [`AceRequest::args`] 的 argv 契约不变。
+    fn execute_text(&self, _request: &AceRequest<'_>, _texts: &[&[u8]]) -> AceRunReport {
+        AceRunReport::denied(
+            "av",
+            "ace.text/unsupported",
+            "the installed executor has no checked text entry; the request is refused rather than silently dropped",
+        )
+    }
+
     /// PLAN-982 B-CONFIG: the configuration-document face, served by the SAME
     /// installed executor — never a second global registry. An executor that
     /// cannot serve configuration returns
@@ -309,6 +322,37 @@ pub fn shutdown_ace_executor() -> bool {
 /// Run one explicit ACE request synchronously through the installed
 /// executor. No executor / unknown engine / any failure is a NAMED
 /// terminal state — the legacy AutoVM is never dispatched from here.
+/// PLAN-982（983 文本面）：**受检文本入口**的门口——与 [`run_ace`] 同一套
+/// 引擎选择/拒绝纪律，只是把 `texts` 作为**运行时文本数据**交给入口的借用
+/// `str` 形参。没有安装执行器 / 引擎不支持文本都是具名终态，绝不回退 legacy。
+pub fn run_ace_text(
+    choice: AceEngineChoice,
+    request: &AceRequest<'_>,
+    texts: &[&[u8]],
+) -> AceRunReport {
+    let started = std::time::Instant::now();
+    let executor = match ACE_EXECUTOR.read() {
+        Ok(slot) => slot.clone(),
+        Err(_) => {
+            return AceRunReport::host_failure(
+                choice.as_str(),
+                "ace.host/executor-lock-poisoned",
+                "executor lock poisoned",
+            )
+        }
+    };
+    let Some(executor) = executor else {
+        return AceRunReport::host_failure(
+            choice.as_str(),
+            "ace.host/executor-unregistered",
+            "no ACE executor installed; the host must install one (auto-lang-ace-host)",
+        );
+    };
+    let mut report = executor.execute_text(request, texts);
+    report.wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    report
+}
+
 pub fn run_ace(choice: AceEngineChoice, request: &AceRequest<'_>) -> AceRunReport {
     let started = std::time::Instant::now();
     let executor = match ACE_EXECUTOR.read() {
