@@ -23,6 +23,10 @@ const IDENTITY_SOURCE_CRATES: &[&str] = &[
     "auto-terminal-core",
     "auto-test-case",
     "auto-text-core",
+    // PLAN-983 r24（2026-11-19，用户指令）：PLAN-1034 `7db528b93` 把
+    // auto-tool-execution 加成直接路径依赖（非 optional ⇒ 进 SDK 编译闭包），
+    // 清单漏项=814 依赖覆盖断言红。补入恢复"直接 path 依赖全覆盖"守卫。
+    "auto-tool-execution",
     "auto-val",
     "auto-web-contract",
     "shim-metadata",
