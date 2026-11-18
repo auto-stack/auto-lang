@@ -62,7 +62,11 @@ fn plan707_spike_cancel_gap_active_job_future_not_stopped() {
     let _ = gate_tx.send(());
     // 宽限期：并行负载下 runtime worker 可能被饿数百 ms——取消生效后
     // aborted task 不再被 poll，marker 恒 false；宽限只覆盖调度延迟。
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // PLAN-983 r24（2026-11-19）：四仓门并行池下两次实测取消传播被饿过
+    // 2s（隔离复跑双绿、既往门跑绿）——加宽到 8s。oracle 不弱化：真取消
+    // 缺口在首个 post-gate poll 即置位（更长窗口只会更易抓到），真取消
+    // 则 marker 恒 false；代价=本用例 +6s（仍远低于 60s 警告线）。
+    std::thread::sleep(std::time::Duration::from_secs(8));
     assert!(
         !marker.load(std::sync::atomic::Ordering::SeqCst),
         "RED（705 缺口）：cancel 后 job future 仍在运行并被 gate 唤醒推进——\
