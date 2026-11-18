@@ -25,7 +25,7 @@
 use ace_core::hir;
 use ace_core::source::SourceParts;
 use ace_core::text_resources::TextResourcePlan;
-use ace_core::verify::{CheckedFunction, CheckedModule};
+use ace_core::verify::{CheckedFunction, CheckedModule, ModuleGlobalsPlan};
 use std::collections::BTreeSet;
 
 use crate::A2xReject;
@@ -210,6 +210,19 @@ pub struct VariantFacts {
 /// The read-only semantic view. Constructed only via
 /// [`SemanticView::from_checked`]; every admission failure is a named
 /// [`A2xReject`].
+/// PLAN-981（D-981-MODULE-GLOBAL-A2R）：一个模块全局的已验模型（代码生成用）。
+#[derive(Debug)]
+pub struct GlobalModel {
+    /// 限定符号（`module.global.get/set:<sym>` 的 `<sym>`）。
+    pub symbol: String,
+    /// 作者显示名。
+    pub name: String,
+    /// 值类型（目标中性）。
+    pub ty: Ty,
+    /// `var`（可写）还是 `const`。
+    pub mutable: bool,
+}
+
 #[derive(Debug)]
 pub struct SemanticView<'a> {
     module: &'a hir::Module,
@@ -257,6 +270,12 @@ pub struct SemanticView<'a> {
     /// map these to runtime stubs (ports on A2PY, runtime helpers on
     /// A2R/A2C); errors are deterministic negative i32 codes, never traps.
     platform_defs: Vec<(usize, String)>,
+    /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：module.global.get/set 的 def
+    /// （索引、global 符号、是否 set）。仅当 facts plan 在场（AGE 包前门）
+    /// 时参与放行；碎片视图恒为空。
+    global_defs: Vec<(usize, String, bool)>,
+    /// PLAN-981：绑定器钉进 CheckedModule 的全局事实（可变性/init 链）。
+    globals_plan: Option<&'a ModuleGlobalsPlan>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
     pub capabilities: Vec<String>,
 }
@@ -287,7 +306,25 @@ impl<'a> SemanticView<'a> {
         let functions = collect_functions(module, None)?;
         let records = collect_records(module)?;
         let variants = collect_variants(module)?;
-        let (trace_defs, platform_defs, sched_defs) = collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs, sched_defs, global_defs) =
+            collect_trace_defs(module, bundle)?;
+        // PLAN-981：全局访问器只在**事实在场**时放行（AGE 包前门钉的
+        // plan）——无 plan 的路径维持旧的 compute-surface 拒绝。
+        let globals_plan = checked.module_globals();
+        if globals_plan.is_none() && !global_defs.is_empty() {
+            return Err(A2xReject::unsupported_expr(format!(
+                "module.global accessors are present without the package globals plan                  (this path does not carry module const/var facts)"
+            )));
+        }
+        if let Some(plan) = globals_plan {
+            for (_, sym, _) in &global_defs {
+                if !plan.facts.iter().any(|f| &f.symbol == sym) {
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "module.global accessor `{sym}` has no binder fact (unknown global)"
+                    )));
+                }
+            }
+        }
         let view = SemanticView {
             module,
             domain,
@@ -305,6 +342,8 @@ impl<'a> SemanticView<'a> {
             trace_defs,
             sched_defs,
             platform_defs,
+            global_defs,
+            globals_plan,
             capabilities: bundle.requires.clone(),
         };
         view.walk_bodies()?;
@@ -385,7 +424,8 @@ impl<'a> SemanticView<'a> {
                 ),
             ));
         }
-        let (trace_defs, platform_defs, sched_defs) = collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs, sched_defs, global_defs) =
+            collect_trace_defs(module, bundle)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
         // index — a mismatched plan can never leak to another body).
@@ -419,6 +459,8 @@ impl<'a> SemanticView<'a> {
             trace_defs,
             sched_defs,
             platform_defs,
+            global_defs,
+            globals_plan: None,
             capabilities: bundle.requires.clone(),
         };
         view.walk_bodies()?;
@@ -598,6 +640,88 @@ impl<'a> SemanticView<'a> {
             .iter()
             .find(|(d, _)| *d == def_index)
             .map(|(_, s)| *s)
+    }
+
+    /// PLAN-981：`def_index` 是否是 module.global.get/set 访问器；是则返回
+    /// （global 符号, 是否 set）。
+    pub fn global_accessor(&self, def_index: usize) -> Option<(&str, bool)> {
+        self.global_defs
+            .iter()
+            .find(|(d, _, _)| *d == def_index)
+            .map(|(_, sym, is_set)| (sym.as_str(), *is_set))
+    }
+
+    /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：本视图的全局模型（Rust 代码生
+    /// 成消费）——每 global：限定符号、值类型（get 结果型；仅写未读时取 set
+    /// 形参型）、`var` 可变性、显示名。
+    pub fn globals_model(&self) -> Result<Vec<GlobalModel>, A2xReject> {
+        let mut out: Vec<GlobalModel> = Vec::new();
+        for (_, sym, is_set) in &self.global_defs {
+            if out.iter().any(|g| g.symbol == *sym) {
+                continue;
+            }
+            let ty = self.global_value_ty(sym, *is_set)?;
+            let mutable = self
+                .globals_plan
+                .and_then(|p| p.facts.iter().find(|f| &f.symbol == sym))
+                .map(|f| f.mutable);
+            let Some(mutable) = mutable else {
+                return Err(A2xReject::unsupported_expr(format!(
+                    "module.global accessor `{sym}` has no binder fact (unknown global)"
+                )));
+            };
+            let name = self
+                .globals_plan
+                .and_then(|p| p.facts.iter().find(|f| &f.symbol == sym))
+                .map(|f| f.name.clone())
+                .unwrap_or_else(|| sym.clone());
+            out.push(GlobalModel {
+                symbol: sym.clone(),
+                name,
+                ty,
+                mutable,
+            });
+        }
+        Ok(out)
+    }
+
+    /// PLAN-981：init 链（模块 init 函数符号，依赖序）——Rust 目标在入口前执行。
+    pub fn global_init_fns(&self) -> Vec<&str> {
+        self.globals_plan
+            .map(|p| p.init_fns.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default()
+    }
+
+    fn global_value_ty(&self, sym: &str, is_set: bool) -> Result<Ty, A2xReject> {
+        let entry = self
+            .global_defs
+            .iter()
+            .find(|(_, s, set)| s == sym && *set == is_set);
+        let Some((def_index, _, _)) = entry else {
+            return Err(A2xReject::new(
+                "a2x.internal",
+                format!("global `{sym}` accessor def missing"),
+            ));
+        };
+        let def = &self.module.defs[*def_index];
+        let ty = match &def.kind {
+            hir::DefKind::Intrinsic { ty, .. } => *ty,
+            _ => {
+                return Err(A2xReject::new(
+                    "a2x.internal",
+                    format!("global `{sym}` def is not an intrinsic"),
+                ))
+            }
+        };
+        let sig = fn_sig(self.module, ty)?;
+        if is_set {
+            let p = sig.params.first().copied().ok_or_else(|| {
+                A2xReject::new("a2x.internal", format!("global set `{sym}` sig has no param"))
+            })?;
+            resolve_ty(self.module, p)
+        } else {
+            resolve_ty(self.module, sig.result)
+        }
     }
 
     /// PLAN-968: the scheduler-surface intrinsic symbol for a def.
@@ -920,6 +1044,9 @@ impl<'a> SemanticView<'a> {
                     || self.trace_symbol(target).is_some()
                     || self.external_by_def(target).is_some()
                     || self.foreign_by_def(target).is_some()
+                    // PLAN-981: module.global accessors reach the targets'
+                    // static lowering (admitted only with the facts plan).
+                    || self.global_accessor(target).is_some()
                     // PLAN-1041: platform-operation intrinsics reach the
                     // target lowers' runtime stubs.
                     || self.platform_symbol(target).is_some()
@@ -1391,6 +1518,7 @@ fn collect_trace_defs(
         Vec<(usize, &'static str)>,
         Vec<(usize, String)>,
         Vec<(usize, String)>,
+        Vec<(usize, String, bool)>,
     ),
     A2xReject,
 > {
@@ -1398,8 +1526,20 @@ fn collect_trace_defs(
     let mut trace_defs = Vec::new();
     let mut platform_defs = Vec::new();
     let mut sched_defs = Vec::new();
+    // PLAN-981（D-981-MODULE-GLOBAL-A2R）：模块级 const/var 的访问器
+    // intrinsic——收集为全局模型（是否放行由 facts plan 在场性决定，见
+    // `SemanticView::new` 的 admission 检查）。
+    let mut global_defs: Vec<(usize, String, bool)> = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
         if let hir::DefKind::Intrinsic { symbol, .. } = &def.kind {
+            if let Some(rest) = symbol.strip_prefix("module.global.get:") {
+                global_defs.push((def_index, rest.to_string(), false));
+                continue;
+            }
+            if let Some(rest) = symbol.strip_prefix("module.global.set:") {
+                global_defs.push((def_index, rest.to_string(), true));
+                continue;
+            }
             if symbol.starts_with("auto.platform.") {
                 // PLAN-1041: platform-operation intrinsics — the target
                 // runtimes implement them (negative i32 error codes).
@@ -1431,7 +1571,7 @@ fn collect_trace_defs(
             trace_defs.push((def_index, sym));
         }
     }
-    Ok((trace_defs, platform_defs, sched_defs))
+    Ok((trace_defs, platform_defs, sched_defs, global_defs))
 }
 
 fn fn_sig(module: &hir::Module, ty: hir::TypeId) -> Result<&hir::FnSig, A2xReject> {

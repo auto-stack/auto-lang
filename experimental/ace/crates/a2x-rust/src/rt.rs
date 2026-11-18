@@ -75,6 +75,13 @@ pub fn assemble_record_text_file_set(
     wrapper.push_str("mod a2x_runtime;\nmod generated;\n\n");
     wrapper.push_str("use a2x_runtime::A2xResult;\n\n");
     wrapper.push_str("fn main() {\n");
+    // PLAN-981（D-981-MODULE-GLOBAL-A2R）：模块 init 链在入口前执行（依赖
+    // 序；init 失败按 trap 报告）——静态零值初值由这里写真实值。
+    for init in &program.init_fns {
+        wrapper.push_str(&format!(
+            "    if let Err(t) = generated::{init}() {{ println!(\"trap:{{}}\", t.name()); return; }}\n"
+        ));
+    }
     wrapper.push_str(&format!(
         "    let outcome: A2xResult<i32> = generated::{}();\n",
         program.entry

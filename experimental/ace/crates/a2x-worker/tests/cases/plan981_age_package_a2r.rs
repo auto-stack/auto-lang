@@ -4,9 +4,11 @@
 //! **同一**包前门产出的 `CheckedModule` → 新 A2R provider → 真实 `rustc` → 运行，
 //! 断言逐实例值与独立算术 oracle 一致；不是 emit-only，也不是拿 AV 结果冒充。
 //!
-//! 具名边界（本批如实记录，不假装已支持）：含**模块级 `const`/`var`** 的包图
-//! 会在 `SemanticView::from_checked` 处被 `module.global.*` intrinsic 拒绝——
-//! 该缺口属 RUST 批；本用例的输入不含模块级全局，故不触碰它。
+//! 具名边界（**已关闭**，D-981-MODULE-GLOBAL-A2R）：含模块级 `const`/`var`
+//! 的包图经 CheckedModule 的 module_globals plan（绑定器事实）合法化——
+//! A2R 生成 `static mut` + init 链（见本文件 globals 用例与
+//! plan981_rust_public 的翻正腿）；**计算面标量以外**的全局类型
+//! （Str/record/容器）仍是具名边界（资源端口全局的 A2R 面另行联冻）。
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{assemble_record_text_file_set, lower_program};
 use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
@@ -190,4 +192,91 @@ fn p981_age_package_a2r_follows_the_imported_helper_value() {
         value, 16,
         "instance 0 = 10 + 2 Inc + 4 Tick after the helper edit"
     );
+}
+
+/// D-981-MODULE-GLOBAL-A2R 关闭（PLAN-981 语言侧 AV 残余批）：含模块级
+/// `const`/`var` 的包图过 `SemanticView`（绑定器事实经 CheckedModule 的
+/// module_globals plan 钉入），A2R 生成 `static mut` + init 链（生成 main
+/// 在入口前执行），真实 rustc 编译运行读回值。
+///
+/// **oracle**：`var total = helper.seed()`（=40，跨模块 init——init 链没跑
+/// 就是 0）、两次 `bump()` 经 set/get 双路径（41+42）、`const K = 6` 经
+/// get——`a + b + K - 84 == 5`。任一环节（init 链/读/写）坏了值都会偏。
+#[test]
+fn p981_age_package_a2r_module_globals_run_on_real_rustc() {
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let helper = "pub fn seed() int { return 40 }\n";
+    let main_src = "use helper.seed\n\
+const K int = 6\n\
+var total int = seed()\n\
+node Counter {\n    model { count int = 0 }\n    on Inc { count = count + 1 }\n    view { text \"c\" {} }\n}\n\
+pub fn bump() int {\n    total = total + 1\n    return total\n}\n\
+fn main() int {\n    let a int = bump()\n    let b int = bump()\n    return a + b + K - 84\n}\n";
+    let compiled = compile_age_package_with_scenario(
+        &[input("helper", helper), input("main", main_src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .unwrap_or_else(|ds| {
+        panic!(
+            "front door rejected the globals package: {}",
+            ds.iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    });
+
+    let view = SemanticView::from_checked(&compiled.checked)
+        .unwrap_or_else(|r| panic!("view admission (module globals legal now): {r}"));
+    let program = lower_program(&view, "main")
+        .unwrap_or_else(|r| panic!("lowering with statics + init chain: {r}"));
+    let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, "main");
+
+    let dir = out_root().join("P981_AGE_PKG_GLOBALS/debug");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &fs.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    let exe = dir.join("a2x_rt_case.exe");
+    let compile_out = auto_tool_execution::run_command_capture(
+        {
+            let mut c = std::process::Command::new(rustc());
+            c.arg("--edition")
+                .arg("2021")
+                .arg("-o")
+                .arg(&exe)
+                .arg("main.rs")
+                .current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("spawn rustc");
+    assert!(
+        compile_out.kind == auto_tool_execution::ExitKind::Success,
+        "rustc failed: {}",
+        String::from_utf8_lossy(compile_out.stderr.as_ref().expect("stderr"))
+    );
+    let run = auto_tool_execution::run_command_capture(
+        {
+            let mut c = std::process::Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run exe");
+    assert_eq!(run.kind, auto_tool_execution::ExitKind::Success);
+    let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
+    // 41 + 42 + 6 - 84 = 5：init 链（40）、set/get 双路径、const 读全覆盖。
+    assert_value("globals", &out, 5);
 }

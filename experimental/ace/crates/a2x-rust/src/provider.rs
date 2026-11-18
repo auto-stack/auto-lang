@@ -270,8 +270,21 @@ impl TargetProvider for RustTargetProvider {
         } else {
             ""
         };
+        // PLAN-981（D-981-MODULE-GLOBAL-A2R）：模块 init 链在入口前执行
+        // （依赖序）——事实来自 SemanticView（CheckedModule 的 module_globals
+        // plan）；init 失败按 trap 同样报告。
+        let mut init_calls = String::new();
+        if let Some(v) = view {
+            for init in v.global_init_fns() {
+                init_calls.push_str(&format!(
+                    "    if let Err(t) = generated::{}() {{ println!(\"trap:{{}}\", t.name()); return; }}\n",
+                    rust_fn_name(init)
+                ));
+            }
+        }
         let wrapper = format!(
-            "// AUTO-GENERATED (PLAN-892 AX-A) \u{2014} DO NOT EDIT.\nmod a2x_runtime;\nmod generated;\n\nuse a2x_runtime::A2xResult;\n\nfn main() {{\n    let outcome: A2xResult<i32> = generated::{}();\n{}    match outcome {{\n        Ok(v) => println!(\"value:{{}}\", v),\n        Err(t) => println!(\"trap:{{}}\", t.name()),\n    }}\n}}\n",
+            "// AUTO-GENERATED (PLAN-892 AX-A) \u{2014} DO NOT EDIT.\nmod a2x_runtime;\nmod generated;\n\nuse a2x_runtime::A2xResult;\n\nfn main() {{\n{}    let outcome: A2xResult<i32> = generated::{}();\n{}    match outcome {{\n        Ok(v) => println!(\"value:{{}}\", v),\n        Err(t) => println!(\"trap:{{}}\", t.name()),\n    }}\n}}\n",
+            init_calls,
             entry_rust,
             sched_drain
         );

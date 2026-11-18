@@ -161,35 +161,30 @@ fn p981_rust_public_chain_runs_the_same_source() {
 /// 拒绝**且不写产物；把同一入口换成合法源后链恢复（不是一次性失败）。
 #[test]
 fn p981_rust_public_chain_rejects_unknown_target_and_recovers() {
-    let with_const = "const N int = 1\nnode Counter {\n    model { count int = 0 }\n    view { text \"t\" {}\n}\n}\nfn main() int { return N }\n";
-    let caps = [PACKAGES_CAPABILITY.to_string()];
-    let compiled = compile_age_package_with_scenario(
-        &[input("main", with_const)],
-        "app::main",
-        LegacyWidgetAlias::Reject,
-        &caps,
-        &ComponentScenario {
-            instances: 1,
-            ops: Vec::new(),
-        },
-    )
-    .expect("the front door accepts a module const");
-    let rejected = SemanticView::from_checked(&compiled.checked);
-    match rejected {
-        Ok(_) => panic!("module-level const must not be silently admitted yet (RUST batch gap)"),
-        Err(r) => {
-            // 拒绝发生在 fileset 生成之前：不得留下任何产物目录。
-            assert!(
-                !out_root().join("P981_RUST_CONST").exists(),
-                "a rejected source must not write artifacts"
-            );
-            let text = format!("{r}");
-            assert!(
-                text.contains("a2x"),
-                "rejection must be a named A2R code, got {text}"
-            );
-        }
-    }
+    // D-981-MODULE-GLOBAL-A2R 关闭（PLAN-981）：模块级 const/var 经
+    // CheckedModule 的 module_globals plan 合法化（static + init 链）——
+    // 本腿原为 V-R-FAIL 负控（"must not be silently admitted yet"），按
+    // 债务关闭条件翻正：同一公共链真跑，值经真实 rustc 读回。
+    let with_const = "const N int = 1
+node Counter {
+    model { count int = 0 }
+    on Life.Tick { count = count + 1 }
+    view { text \"t\" {} }
+}
+
+fn main() int { return N }
+";
+    let (out, dir) = run_public_chain("MODULE_CONST", with_const);
+    assert_eq!(
+        out.trim(),
+        "value:1",
+        "the module const reads through the public chain (globals legal now), got {out:?}"
+    );
+    let emitted = std::fs::read_to_string(dir.join("generated.rs")).expect("generated.rs");
+    assert!(
+        emitted.contains("static mut AGE_GLOBAL_"),
+        "the module const materializes as a Rust static"
+    );
     // 恢复：同一入口、合法源照常走完整链。
     let (out, dir) = run_public_chain("RECOVER", MAIN);
     assert_eq!(out.trim(), "value:5", "recovery run prints 5, got {out:?}");

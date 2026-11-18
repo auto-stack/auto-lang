@@ -96,6 +96,18 @@ impl<'p> PrintCtx<'p> {
 pub fn print_program(p: &RustProgram) -> String {
     let ctx = PrintCtx::new(p);
     let mut out = String::new();
+    // PLAN-981（D-981-MODULE-GLOBAL-A2R）：模块级 global 的 static 声明。
+    // const/var 同形 `static mut`（const-性由语言层保证；Rust 侧可变性是
+    // 实现细节），零值初值 + init 链在 main 前写真实值。
+    for st in &p.statics {
+        out.push_str(&format!(
+            "static mut {}: {} = {};
+",
+            st.name,
+            st.ty.as_str(),
+            st.init
+        ));
+    }
     for r in &p.records {
         out.push_str(&print_record(&ctx, r));
         out.push('\n');
@@ -497,6 +509,12 @@ fn render_expr(e: &RExpr) -> String {
             }
         }
         RExpr::BoolLit(b) => format!("{}", b),
+        // PLAN-981：static 读/写——unsafe 块内按值拷贝/直写（不取引用）。
+        RExpr::GlobalRead { name } => format!("unsafe {{ {name} }}"),
+        RExpr::GlobalWrite { name, value } => format!(
+            "{{ unsafe {{ {name} = {}; }} 0 }}",
+            render_val(value)
+        ),
         RExpr::StrLit(s) => format!("\"{}\"", escape_str_lit(s)),
         RExpr::CharLit(c) => escape_char_lit(*c),
         RExpr::Local(n) => n.clone(),
@@ -738,6 +756,8 @@ fn rt_prelude_into(
         i += 1;
     }
     let fake = RustProgram {
+        statics: Vec::new(),
+        init_fns: Vec::new(),
         list_elems: std::collections::BTreeMap::new(),
         functions: vec![],
         entry: String::new(),
@@ -1059,6 +1079,8 @@ pub fn print_coll_prelude_from(
     list_elems: &std::collections::BTreeMap<u32, Ty>,
 ) -> String {
     let fake = RustProgram {
+        statics: Vec::new(),
+        init_fns: Vec::new(),
         list_elems: list_elems.clone(),
         functions: vec![],
         entry: String::new(),
