@@ -5,7 +5,7 @@ feature_name: 现有AutoUI全模式ACE兼容接入
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-18
-plan_revision: 17
+plan_revision: 18
 current_step: 12
 total_steps: 32
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-980] 现有AutoUI全模式ACE兼容接入
 
 ## 0. 变更摘要
+
+2026-11-18 r18当前：PHASE-④-EXT **七项裁定落档**（D-④-1=A 先行、D-④-2=开放符号表导入+981 会签、D-④-3=首切片保留宽数值拒绝、D-④-4=foreign AV 后置、D-④-5=TS 拒粒度维持、D-④-6=host 表不建、D-④-7=小范围验包绑定/保留作者语法）；**981 会签修正实施路径**（`81b0a03b1`：不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入，grammar 零改动）；④-A 合同转 v2。**U01 #14 已收口落主**（lang `95b0ccb49`/ui `91d549ea`；复核补真窗输入永久 case、修复预存 `#[test]` 丢失；门禁 lang 双 PASS+UI 11/11+24/24+真窗 e2e）。32 任务/12 完成口径、原 AC/V 与规范主体不变。
 
 2026-11-18 r17当前：新增 **PHASE-④-EXT** 设计阶段（§5/§6/§8/§10），产出 use-import/外部调用进受检体的**外部名域合同草案 v0** 供用户/976 后继拍板；32 任务/12 完成口径、B-AV/B-WEB 状态、原 AC/V 与规范主体均不变，本轮零代码/零建树/零运行/零合入。并具名订正 2026-11-18 分母冻结行的宽数值口径（003 `double`×2、011 `float` 去注释 7 处且全在 helper、031i `float`×3 字段漏列）与 35 例导入 census（34/35 含 use、17 例真实引用导入名）。
 
@@ -573,6 +575,22 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 **非目标。** 不改语法/实现/规范主体；不勾任务、不改 12/32；不降低 AC；不新立项；本阶段不跑产品门禁（census 为静态读取）。
 
+**裁定落档与执行顺序（2026-11-18，用户）。** 七项全部裁定（原表见 §10；裁定值：A 先行 / 开放符号表导入+981 会签 / 宽数值首切片保留拒 / foreign AV 后置 / TS 拒粒度维持 / host 表不建 / 小范围验包绑定且保留作者语法）。执行顺序：①先收口 U01 #14（独立复审+按适用范围核验真窗输入+记录未实跑项→合入；合入后把可消费 UI/事件源、命令、oracle 按版本交 981）；②启动 ④-A 首切片（真实示例：原 `use`→共享绑定→跨模块 helper 调用→AV 窗口可观察结果；同源验 SFC 被调函数发射与名字映射，尽早证伪/证实承载矩阵两格"推论"）；③UI058 T-02 与 ④-A 并行（981 已交 `IF-981-GFX-AV-SEAM` 冻结 f32 注解/运算、`spawn` 拼写、getter 轴参数与预算映射，再由 UI058 T-03 接真实宿主；980 WEB 收口不排其前）。
+
+**④-A 首切片合同 v2（981 会签版，2026-11-18；取代 v1——v1 的"开 age-component 面"被 981 否决）。**
+
+- **S0 会签结论（981 r18，lang master `81b0a03b1`；981 §9 会签节）**：④-A 方向与"包绑定器唯一权威"**通过**；**不开 age-component 面**——多模块闭包整体走 `age-package` 面（两形已在、多模块已有永久用例）；`age-component` 保持单文件，其 `use` 行改具名拒（S7）。依据（静态）：绑定器对每 unit 断言单一 face 的 grammar-id（`binding.rs` L657-669）⇒ 混合面闭包今天不可表达；且 age-component 无 `pub fn`/`pub const` 规则、`themes` 模块的 `pub theme` ACE 不可解析。
+- **S1 入口/面**：整个 widget 工程按 `age-package` 面编译（`compile_age_package`，含 `LegacyWidgetAlias`/scenario/模块图）；不新增第二绑定器、不源拼接、不做"入口组件面+依赖包面"混合闭包。
+- **S2 作者形→绑定**：`use mod: a, b` ≡ `path=[mod, sym]`；`use pkg.mod: a, b` ≡ `[pkg, mod, sym]`（同命名空间/同可见性/同错误）；`use a.b`（2 段无符号表）是 item 导入，**不得**当"模块+符号"。
+- **S3 惰性（引用驱动）绑定——硬条件**：未被子引用的导入不解析、不建模块边、不要求目标模块在场；被引用必须解析，失败具名拒。依据：34/35 例含 `use`、17 例纯惰性，而 `themes` 模块 ACE 不可解析——eager 绑定会让 34 例全红；该差异**以 face 为界，不改 plain 包面**。
+- **S4 符号种类**：值面=`pub fn`/`pub const`（`style` 作 const 形）；类型导入只作注解；`node` 导入不进值面（进值位置须具名拒，不静默）；模块 store 恒拒（`source.module-private`）。
+- **S5 失败面**：沿用包绑定码表（`source.module-missing`/`-private`/`-reexport-private`/`-symbol`/`-path`/`-cycle`/`-stale`）；新码必须具名且 span 到名字（不许 @0）。
+- **S6 身份**：`ace.age.component/v1`/`ace.age.package/v1`/`ui.widget-decl/v1` **不变**；导入只进闭包身份（模块边/`input_hash`——改 helper 源必须变）。若实现最终仍改文法，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 且 13 邻居逐字不变。
+- **S7 fail-closed 补口（可独立小修，不必并入 ④-A）**：组件单文件入口对 `use` 行"解析后零事实"→改具名拒 `source.import.unsupported`（"单文件面不解析导入，请走 AGE 包入口"）。
+- **S8 门禁与永久 case**：lang `cargo t ace-source ace-av`；UI `ace_node_desktop`（含真窗）+ `ace_ts_provider` + vue 门 77/82（chart×5 具名预存）；永久 case=跨模块 helper 值、缺模块/缺符号/私有符号三负控、**惰性未引用不要求模块在场**、闭包身份漂移（改 helper 源 `input_hash` 变）、SFC 发射映射文本断言、AV 真窗可观察结果。
+- **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
+- **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
+
 ## 6. 测试设计
 
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
@@ -750,9 +768,9 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 ### 阶段 PHASE-④-EXT（2026-11-18 新增；非任务行，不改 32 任务/12 完成口径）
 
-- 依据与内容：§5 PHASE-④-EXT（外部名域合同草案 v0：名面 N1–N4、六轴、承载矩阵、三方案、条款 C1–C8）；owner_stage: design，不入 work/review/merge 勾选口径。
-- 现状：草案 v0 已落档，等拍板（§10 D-④-1..7）；本阶段不产代码、不建树、不运行、不 fold。
-- 退出：D-④-1..7 裁定 → ④-A 切成 B-AV/B-WEB 具名切片（原任务/AC 不变）；④-B/④-C 视裁定另行具名，不预先并入 32 任务。
+- 依据与内容：§5 PHASE-④-EXT（外部名域合同：名面 N1–N4、六轴、承载矩阵、三方案、条款 C1–C8）+ §5 裁定落档/执行顺序 + ④-A 首切片合同 v1；owner_stage: design→executing（裁定后）。
+- 现状（2026-11-18）：**七项裁定已落**；①U01 #14 **已收口落主**（lang `95b0ccb49`/ui `91d549ea`，phase fold #14，见 §9）；②④-A 首切片：981 已会签（合同 v2，`81b0a03b1`）——**已具备开工条件**（grammar 零改动、入口=age-package）；③UI058 T-02/981 联冻为并行线（不自本计划开工）。
+- 退出：④-A 首切片收据（含 AV 真窗与 SFC 映射两格由"推论"变"已验"）→ 逐示例扩展；原任务/AC 不变，切片仍走 §9 收据+phase fold。
 
 ### A最小与B各波唯一任务清单（阶段按行标签）
 
@@ -1490,6 +1508,14 @@ next_responsible_role: review（U01 首切片批级复核）→ merge（phase fo
 
 2026-11-18 stage: design（PHASE-④-EXT：外部名域合同草案 v0；仅设计/规划——零代码、零建树、零运行、零 fold）| plan_id: PLAN-980 | plan_revision: r17 | outcome: **draft（待拍板）** | 产出：§5 PHASE-④-EXT（N1–N4 名面/六轴/承载矩阵/三方案/条款 C1–C8/退出条件）、§6 V-DOMAIN-④、§8 阶段块、§10 D-④-1..7、本节 | 依据：35 例静态 census（34/35 含 use；137 符号；17 例真实引用；宽数值 2 例）、grammar profile 门实读、`age_component.rs`/`project.rs`/`ast.rs`/`fragment.rs`/`a2x-ts`/`m2-typescript.md`/`packages/binding.rs` 静态核对（package 面拒 `use.rs`）| 事实订正：003 `double`×2（非 f64）、011 `float` 去注释 7 处且 model 全 int/str/bool、031i `float`×3 字段漏列 | 未改动/未勾选任何原任务（12/32）；B-AV/B-WEB 状态、原 AC/V、语法/实现/规范主体不变 | next_responsible_role: user（D-④-1..7 裁定）→ 裁定后 ④-A 另立具名切片；U01 首切片的 review→merge（fold #14）不因本 phase 改变。
 
+2026-11-18 stage: new/revision（PHASE-④-EXT 裁定落档 + ④-A 会签落档）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **裁定已落（7/7）；④-A 合同 v2（981 会签版）** | 七项裁定见 §10 裁定结果表（A 先行/开放符号表导入/宽数值保留拒/foreign 后置/TS 粒度维持/host 表不建/小范围验包绑定）| 981 会签（lang master `81b0a03b1`）修正实施路径：**不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入；grammar 零改动**（详见 §5 ④-A v2 S0–S8）| 本轮只落规划，无代码/建树/运行 | next: ①#14 收口（下表）→②④-A 首切片（示例以可解析性实测选例）。
+
+2026-11-18 stage: review+merge（B-AV U01 首切片批级复核 + phase fold #14）| review_scope: phase | reviewer: 本会话独立复核（工件重构：diff 审计/门禁重放/预存缺陷扫描/authored 补证；限制：非独立上下文）| outcome: **pass（批增量交付；B-AV-I 保持未勾——全分母仍压 ④）** | reviewed_commit: lang **95b0ccb49**（rebase onto `81b0a03b1`）、ui **91d549ea** | delivery: auto-lang master **95b0ccb49** + auto-ui master **91d549ea**（双 ff-only，无 merge commit；wt-guard 双树 clean）。
+
+**复核内容与结果。** ①冻结核对：双树 clean；lang diff=2 文件 +31/−2（`project.rs` 投影修复 + `age_component.rs` mut 清理）；ui diff=3 文件 +540/−16（桥 224/测试 318/示例 14）。②门禁重放（冻结提交）：lang `cargo t ace-source ace-av` **双 PASS**（run-22yj5299；首跑 ace-av 3 红=`bstr_1064_v01_large_64k_a2r`/`sys973_t08_seek_permissions_mtime`/`sys973_v03_process_spawn_capture_timeout_exit`，**隔离串行重放 3/3 绿**=环境/工具链竞争族，台账归因）；UI `ace_node_desktop` **11/11**（1.59s 串行）、`ace_ts_provider` **24/24**（3.67s）、真窗 counter e2e **1/1**（2.18s，`AUTO_UI_ACE_NODE_E2E=1`）。③**真窗输入档（用户本轮要求，补证）**：新增永久 case `p980_u01_window_input_e2e`（env-gated）——真窗进程 + `type` 脚本→typed 队列→AV 重放→ui980 FFI apply→受控回显；i0 `你好 Auto`/42（`abc` 具名拒零效果）、i1 `乙侧`/−5；**1/1 绿 6.38s**。边界：OS 级键盘事件不可自动化，键入经桥注入（与真实键盘同一注入边界）；窗口面验证=真窗渲染 input 目标 + FFI 提交后的状态行（回显源）。④**authored 扫描（预存缺陷，已修）F-R2**：`p980_node_desktop_permission_revocation_refuses_before_dispatch` 自 B-NATIVE-R fold 起**丢失 `#[test]`**（与兄弟函数重复属性并存），永久撤权控制**静默未跑**；恢复后 10 唯一用例（含撤权）全绿。⑤机械审计：复核轮仅测试文件 +112、无产品代码改动；探针零残留、无调试打印（仅 env-gate 注记）、changed files fmt clean；主检出他会话 WIP（lang `docs/design/**`、ui `Cargo.lock`/docs）原样保留。⑥边界：B-AV-I 全分母仍压 ④-A（17 例被引用导入）；本折只交 U01 输入子面（CPU + 真窗键入通道）。
+
+**交接 981（按版本，reviewed_commit 绑定）**：①源/夹具：`ace-node-counter`（002 派生）、`ace_node_desktop` 测试内 `input_fixture`（U01 输入形）；②命令：`cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1`（CPU 11/11）；排窗=`AUTO_UI_ACE_NODE_E2E=1` + prep（exe `--prep-only`）；③oracle：`p980_u01_input_text_numeric_reject_and_two_instance_isolation`（四 oracle）、`p980_u01_window_input_e2e`（真窗）、`p980_node_desktop_permission_revocation_refuses_before_dispatch`（撤权）。981 仍缺=**typed UI/资源宿主面**与**980 合流 oracle**（本折只交输入子面；合流 oracle 待 ④-A/W1 全分母），已有证据先接、缺项继续跟踪。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
@@ -1515,3 +1541,17 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 | D-④-5 | `a2ts.foreign-unsupported` 粒度 | view 级整拒（现状）/收窄到被调用声明 | 保持，待 976 后继 | 976 后继 |
 | D-④-6 | N4 内建/宿主名表信任面 | 建/不建 | 后置；若建须能力行+审查+hash | 用户 |
 | D-④-7 | 组件面是否升为 package unit（`use { package: … }` 形态，5 例） | 是/否 | 随 ④-A 一并评估 | 用户/981 |
+
+### PHASE-④-EXT 裁定结果（2026-11-18，用户；取代上表"建议"列，决策表本身留档）
+
+| ID | 裁定 | 落档要点 |
+|---|---|---|
+| D-④-1 | **A（N2 闭包）先行** | 组件真实绑定可见 Auto 模块符号，复用 960/981 包绑定与校验；17 例只是**可能受益的模块引用范围**，完整示例通过数须实跑确认（不得引用 17 作完成度） |
+| D-④-2 | **开放 `use <mod>: syms`** | 981 会签 grammar 与 Schema 身份变更；以实际符号调用验证，覆盖缺模块/缺符号/私有符号三类负控。**981 回签（r18，`81b0a03b1`）修正实施路径**：不开 age-component 面——多模块闭包整体走 `age-package`（两形已在），age-component 保持单文件并把 `use` 改具名拒；硬条件=**惰性（引用驱动）绑定**（否则 34/35 例回归）；grammar 零改动。详见 §5 ④-A 合同 v2 的 S0–S8 |
+| D-④-3 | **首切片保留具名拒绝** | 003 `double`、031i `float` 交 981 独立定字段语义；982 已交配置宽标量可作参考，组件 model 仍需自己的验证 |
+| D-④-4 | **后置到 U04 真实调用** | 届时按具体签名/效应/权限定接口，不预建 ABI 格 |
+| D-④-5 | **维持现状** | ④-A 先验纯 Auto 模块的 SFC 生成；实际用例需收窄拒绝粒度时交 976 后继 |
+| D-④-6 | **首切片不建 host 表** | `back.api`/剪贴板按真实消费者确认宿主端口与权限，尤其区分本地模块调用与服务端调用 |
+| D-④-7 | **批准小范围验证，先保留作者语法** | 优先验现有组件入口能否复用包绑定；确需 package unit 再用实际示例定迁移范围；`use { package: … }` 五例继续单列 |
+
+执行顺序：①U01 #14 收口（复审+真窗输入+未实跑项记录→合入→按版本交 981 可消费源/命令/oracle）→②④-A 首切片（合同见 §5，待 981 会签）→③UI058 T-02/981 联冻并行（980 WEB 收口不排其前）。
