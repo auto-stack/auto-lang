@@ -454,6 +454,9 @@ struct EmitCtx {
     injected_keys: std::collections::BTreeSet<String>,
     /// 当前文档嵌套深度（根级 = 0）：注入覆盖只作用于根级。
     depth: usize,
+    /// 已经登记过"同名属性别名"的全文档去重集（跨节点体共享——节点体是**内联**
+    /// 到同一语句列表里的，没有独立块作用域，因此不能只用 `declared` 去重）。
+    aliased: std::collections::BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -671,14 +674,18 @@ fn emit_line(
                     let (value, class) = emit_value(e, out, ctx)?;
                     let alias_class = if object_literal && class == LocalClass::Obj {
                         Some(LocalClass::Obj)
-                    } else if scalar_literal && class == LocalClass::Scalar && ctx.depth == 0 {
+                    } else if scalar_literal && class == LocalClass::Scalar {
                         Some(LocalClass::Scalar)
                     } else {
                         None
                     };
                     if let Some(alias_class) = alias_class {
+                        // 节点体是**内联**进同一语句列表的，没有独立块作用域，因此
+                        // 用全文档的去重集 `aliased`（round 127：嵌套体也登记）。
                         let alias = p.key.name.clone();
-                        if !ctx.declared.contains(&alias) {
+                        // 注入名已由 `emit_injected` 发射过 `let`，不能再别名一次。
+                        if !ctx.injected_keys.contains(&alias) && ctx.aliased.insert(alias.clone())
+                        {
                             out.push(Stmt::Let {
                                 kw: p.key.span,
                                 name: p.key.clone(),
@@ -687,7 +694,9 @@ fn emit_line(
                                 value: value.clone(),
                                 span: p.span,
                             });
-                            ctx.declared.insert(alias.clone());
+                            if ctx.depth == 0 {
+                                ctx.declared.insert(alias.clone());
+                            }
                             ctx.locals.insert(alias, alias_class);
                         }
                     }
