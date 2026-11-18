@@ -104,7 +104,7 @@ T-H0-R（三轮独立复审 F1–F12 全部关闭，终审 pass）。核心数�
 
 - 静态面（无 `model`/`on` 的源）由 `compile_age_component` 描述并按需要取叶值；**任何** `model` 字段或 `on` 处理器在静态门都是 `component-unsupported`（`observe_component_texts` 因此只覆盖无模型源）；可解析但**没有 `node` 声明**的源在静态门被接受并返回空分组（空/不可解析源仍报 `source.syntax`）。
 - AV：`ace_av::age_component::observe_component(src, path, alias, scenario)` → `{encoded, instance_texts}`；`observe_component_observing(..., observed)` 指定观测字段；驱动与逐实例渲染函数各经共享 lower→MIR 校验→ABC→AV 执行取真值。逐字段**宽值出口** `execute_component_def(compiled, def_id)` 返回共享 `Value`——f32 状态即 `Value::F32`（2026-11-18 PLAN-981 f32 切片）；窄枚举 `ComponentFieldValue` 仍只承载 int/bool/str（其 F32 扩展须与 auto-ui 的 `AceStateValue`、TS 能力类型与文本呈现**同窗**改，否则跨仓穷尽匹配编译红——登记于 `D-981-AGE-F32-SURFACE`）。静态面另有 `observe_component_texts(src, path, alias)`：多节点逐个文本叶取共享 Str 真值（按节点分组的**值**证据）。
-- A2R：同一 `CheckedModule` 以 `__age_drive` 为 i32 入口 → Rust fileset → **真实 rustc** → 运行 → `value:<encoded>`。
+- A2R：同一 `CheckedModule` 以 `__age_drive` 为 i32 入口 → Rust fileset → **真实 rustc** → 运行 → `value:<encoded>`。**f32 面（2026-11-18）**：wrapper 的入口合同仍是 i32（`A2xResult<i32>` / `value:<i32>`），f32 状态经逐字段 def（`__age_state_<i>_<field>`）在生成程序内取值并用比较折叠成判别性整数；`SemanticView` 在 text-record 族放行 F32 常量与 typed `Num` 算子（只 f32），record-text 文件集与通用/collections 族一样携带 `RT_NUMERIC`（否则生成的 `a2x_lit_f32`/`a2x_div_f32` 在 rustc 期 not found）。证据：`a2x-worker/tests/cases/plan981_age_package_a2r.rs` 的 `x = x + vx*dt`（x=3.0、y=1.5 → 7）与 vx 变异控制（→ 0）。
 - 已验场景值（同源同场景）：plain 双实例 **514**（2+2·256）、helper 场景 **259**（3+1·256）、N-tick 矩阵 **516**（4+2·256）。**typed view 的渲染文本只在 AV 侧观察**；A2R 证明的是同源场景驱动 + helper/N-tick，不得表述为"typed view 在两后端渲染"。
 - **编码边界**：256^i 仅在各实例观测状态 < 256 时单射；instance 3 需 < 128 才不溢出 i32（溢出为 AV `Trap{IntOverflow}` 响亮失败，非静默别名）。
 
