@@ -92,7 +92,7 @@ mut 回写三路 + StrCmp/码点机器面 + 拒面/静态反控；PLAN-894 起 T
 ## PLAN-894：owned-Str 局部替换与 owned-source 函数级增量
 
 - T03/T05 真源经 mn PE 实测 23/42（StrCmp 视图比较、concat view 化、
-  §5.1 局部替换沿 Move 提交）；语义身份经 MIR_LOWERING_VERSION "4" 与
+  §5.1 局部替换沿 Move 提交）；语义身份经 MIR_LOWERING_VERSION "5"（PLAN-1026 升版；本行其余合同不变）与
   三 SDK 镜像同步。
 - `experimental/ace/crates/native/src/owned_source_incremental.rs`：owned 文本源的函数级
   增量会话——828 CheckedEnv/prepare_candidate_document 单体事务 +

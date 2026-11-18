@@ -21,5 +21,5 @@
 
 ## PLAN-938 增量（reviewed）
 
-- `FOREIGN_CALL`（0x36，traps：status/bool 可失败；AV 具名拒不执行）；AVFI v1/
+- `FOREIGN_CALL`（0x36，traps：status/bool 可失败；AV 具名拒不执行——**现行例外**：PLAN-1026 起 `Closures` 族承载 foreign 调用时由 AV 经 967 shim 执行，见 [hir-lowering-boundary](hir-lowering-boundary.md) 的 v5 条与 [auto-av/python-interop.md](../auto-av/python-interop.md)）；AVFI v1/
   profile 9 wire `auto.abc.foreign-scalar/1`；u8 参数宽度 255 上限前移到声明准入。

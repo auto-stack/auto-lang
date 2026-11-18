@@ -51,7 +51,15 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 
 - `auto_mir_lower::MIR_LOWERING_VERSION` = lowering **契约**版本：仅当
   lowering 语义变化（映射规则/准入域/错误分类）时升版；纯重构与消费侧搬移不升。
-  当前 `"4"`（PLAN-894：文本域准入扩面——文本 eq/ne 按操作数真实 MIR 类型路由
+  当前 `"5"`（PLAN-1026：**console host-import 准入域扩面**——collection 家族的
+  `auto.console.*` 导入闸由"模块内存在 `__sched_*` intrinsic"扩为"存在 `__sched_*`
+  intrinsic **或** 任意 `DefKind::Foreign`"，此前落 `lower.intrinsic` 的形态（带
+  foreign 的 closures 模块里的 console 打印）现被准入并映射 `MirHostImport`；同族
+  另有两处准入面：collection 家族的 Unit 结果类型判定（`owned_type_idx_of`）与
+  FnLower 调用接缝（该处拒绝码是 `lower.callee`，判据同为"任意 foreign-def 模块"）；
+  新增 `__py_f64_bits`/`__py_staged_text` 重建 intrinsic 在调用点直接发射 MIR（无
+  `CalleeRef`，故不再走 `lower.intrinsic`）；该域引入 F32/F64 interning 供通用 float
+  console lane。AV/CTE/MN 三消费者镜像同步为 "5"）。此前 `"4"`（PLAN-894：文本域准入扩面——文本 eq/ne 按操作数真实 MIR 类型路由
   `StrCmp`（owned 操作数先 View；BIN 保持纯标量）与 `TextConcat` 操作数 view
   化；owned-Str 局部完整根替换沿既有 owned 局部 Assign Move 映射；AV/CTE/MN
   三消费者镜像同步为 "4"）。此前 `"3"`（PLAN-863：HostConsole 源码域、独立
@@ -86,3 +94,20 @@ data/owned/mn 行落 sema fallback、cte 行缺 native.toolchain）是 PLAN-868 
 
 - Foreign 声明 boxed 于 MirInstr（inline ≤64B 门）；声明环境 `core-decl-env/2`
   （无 foreign 模块仍 `/1`，非别名）；恢复重锚 owner 后深验，不重投影。
+
+## PLAN-1026 增量（Python 互操作）
+
+- **唯一降级位置不变**：py 通道（`use.py` 成员的调用/属性/索引/运算/`.to(...)`/显示）
+  与其他源码一样经 `lower_checked_*` 进入本 crate；Python 外部值继续是 i32 token 的
+  `Value::External` 形态，帧文本由 FStr/StrConcat/TextDisplay 等**既有**节点构造，
+  不新增第二套 lowering、也不在 AV 本地复制。
+- **新增/唯一变化的 MIR 面**：`__py_f64_bits`/`__py_staged_text` 两个重建 intrinsic
+  在 `FnLower` 调用点**直接发射**内联 MIR（i64 位算 + 2 的幂缩放循环 / 逐字读回循环
+  + 字节拼接），不产生 `CalleeRef`；`F32`/`F64` 在该域 interning 以承载通用 float
+  console lane；console host-import 准入按上文 v5 扩面。
+- **消费者边界**：AV（RV 执行 + 967 shim）是唯一实现消费者；CTE/MN 镜像只同步版本
+  字面量，未扩 py 能力（native/CTE 的 Python 运行适配不在本切片）。`av-core` 不依赖
+  PyO3；适配器在 `ace-abi` 的 rustside 构建闭包内。
+- 机械一致性：`scripts/verify-mir-lowering-868.ps1` 的 identity 段除互核三镜像外，
+  还断言 ace crate 常量与镜像一致（单向漂移即失败）；"语义变了但没升版"仍须 review
+  逐行 diff 本 crate，非机械可判。

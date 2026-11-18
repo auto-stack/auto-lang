@@ -119,3 +119,20 @@ lambda body 暖编辑。来源 root 是 `A23-R` 私有层、root kind
 [ACE M1 语料](../auto-test-case/ace-m1-conformance.md) 的 `PLAN-913` 节。
 **非目标**：通用 source 缓存平台/全局层号重排/远端签名信任/Native 或 A2R 恢复/
 活 env 持久化。
+
+## PLAN-1026：Python 互操作（av.python/1，AV 切片）
+
+普通 Auto 源码以 `use.py <module>: <members>` 导入 Python 成员，经统一 Schema/CST →
+共享受检 HIR → 唯一 HIR→MIR lowering → AV foreign stub → 967 生成的 C 兼容 shim →
+**可选** Rust 适配器（pinned PyO3 → CPython）执行真实 Python 调用；应用作者不写
+`py_*` 桥，也没有手工 manifest/预处理步骤。公开产品入口是
+`ace_abi::py_session::PySession`；固定组 `cargo t ace-python`（10 例，含 §5.1 CPU
+PyTorch 训练闭环与独立原生 Python 参考对拍）。运行合同、17 op 帧操作、封送/错误类、
+生命周期与准入见 [python-interop](python-interop.md)；架构决策与 ABC 族门见
+[architecture](architecture.md)；python 通道的 console 面见
+[host-import-and-console](host-import-and-console.md)。
+
+**边界**：AV-only 切片（CPU、串行、单解释器、Windows x64 冻结环境、GIL 标准
+CPython）；普通无 `use.py` 程序不构建/不加载 CPython；新 A2PY 与其他后端的 Python
+运行适配未交付（具名拒绝，不静默回落旧引擎）；不实现 GPU/CUDA、跨线程/回调 Python、
+模型序列化、全部 Python 协议。本切片**不**代 967 四端签章，也不改 M2 退役分母。

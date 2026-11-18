@@ -389,3 +389,31 @@ T-06 落主后由 `inflight` 翻 `landed`。本节只挂接来源，不改 SD-01
 - **仍未迁移的具名路径**：Playground 脚本式 run/debug 前门（`code_runner`/`vm_runner`/`agent_debug`/`debugger` 路由，被语言面阻断——包/项目道拒绝表达式语句，console 仅单模块 profile）；LSP 的语义能力所用既有分析器（hover/goto/completion/inlay/signature/workspace，本轮按 T-08 只“核”不重写，跨包/跨文件 goto 已真 bin 核验并修复 Windows 目标 URI/位置缺陷）；编辑器宿主 `auto-vscode`（只读审计接线，E2E 未跑）。
 - **义务承接**：D-971-B-01（发现契约 helper 假阳性）、D-971-B-02（notebook 无 console）、D-971-B-03（脚本前门语言面）、D-971-B-04（debug/test UI 消费者）、D-971-B-05（inlay 内容断言）、D-971-B-06（编辑器宿主 E2E），均记录于 `docs/plans/KNOWN-DEBT-AND-RISKS.md`（owner+关闭条件）。
 - **范围裁定**：SD-TARGET-SCOPE 无改动——本批未新增/删除 Godot 代码，Godot 后置与生产 TS required 的既有裁定不受影响。
+
+## M2-A Python 互操作已验（PLAN-1026，2026-11-18）
+
+PLAN-1026 交付 AV 侧的 Python 互操作 A 切片：普通 Auto 源码 `use.py <module>: <members>`
+经统一 Schema/CST → 共享受检 HIR → 唯一 HIR→MIR lowering → AV foreign stub → 967 生成的
+C 兼容 shim → 可选 Rust 适配器（pinned PyO3 → CPython）执行真实 Python 调用；公开产品
+入口 `ace_abi::py_session::PySession`，固定组 `cargo t ace-python`（10 例，含 §5.1 CPU
+PyTorch 60 步训练闭环，与独立原生 Python 参考 first=`0.2370201051235199` /
+final=`0.1013089045882225` / pred0=`0.4728480279445648` / shape=`torch.Size([4, 1])` 对拍）。
+合同见 [auto-av/python-interop.md](../auto-av/python-interop.md)。
+
+**分母行状态（按本文件 SD-01 分类）**：
+
+- **AV Python 互操作（源码前门/对象操作/显式标量/显示/错误/生命周期）**：`implemented-verified`
+  ——同一来源身份下有已执行的独立 oracle（见上）；lowering 契约升 `"5"`（console
+  host-import 准入扩面，见 [hir-lowering-boundary](../auto-mir/hir-lowering-boundary.md)）。
+- **旧 Python 桥（`crates/auto-lang-core/src/py_ffi.rs` 与旧 torch 三套件）**：仅作
+  对照/独立参考来源，**不**是本切片的生产路径，也不因本切片改变其既有义务；VM 栈/
+  opcode/native 数字 ID 未迁移。
+- **A2PY（新 Python 转译目标）与 AC/A2R/A2C 的 Python 运行适配**：`capability-missing`
+  ——未实现，缺 provider 时具名拒绝（不静默回落旧引擎）；owner 为将来独立的 A2PY/
+  四端计划，本切片不预设其设计。
+- **967 四端义务与 M2 退役分母**：不因本 AV 切片改动；"AV 已验"不等于四端签章。
+
+**边界**：AV-only（CPU、串行单解释器、Windows x64 冻结环境、GIL 标准 CPython 3.14.x）；
+GPU/CUDA、跨线程/回调 Python、async 中 Python 抢占、模型序列化、全部 Python 协议均不在
+本切片。v1 前端边界：动态浮点关键字实参已证拒绝（`source.py-domain`），嵌套调用结果直接
+作位置实参未验证（既不主张支持也不主张拒绝）。

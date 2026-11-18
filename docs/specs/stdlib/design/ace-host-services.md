@@ -110,3 +110,18 @@ PLAN-966，本包不另造。
 | AV | implemented（Windows） | `av-core/src/platform_io.rs` + `Win32PlatformIo`；`ace-av::conformance platform_io_1039`（5 用例，含 `persist`/`restore` 授权重放与 `stdlib/ace/internal/platform_mem.at`） | — |
 | native (AC/mn) | implemented（Windows x64） | `native/src/platform_io.rs`（`mn-platform-shim` 纯 `KERNEL32.dll` + `audit_pe_imports`）；`ace-native::conformance platform_io_1039`（6 用例，含匿名管道 `ERROR_NO_DATA`=232、`VirtualFree` 失败保原 owner 与 PE 白名单负控） | Linux ELF 归 PLAN-1040 |
 | A2R / A2C | capability-missing | 未新增 Rust/C 公共 `platform.*` provider；公开 `Storage` API 与 `compatibility.toml` 未冻结/未改动 | PLAN-972/973 |
+
+## 8. 通用 float console lane 吸收注记（PLAN-1026，2026-11-18）
+
+PLAN-947 冻结的 `console/1` 合同（第 1 节）之上，PLAN-1026 补齐**通用**浮点输出：
+新增 `auto.console.print.{f64,f32}.v1` / `auto.console.eprint.{f64,f32}.v1`，
+格式化与 Plan 403 parity 一致——NaN→`NaN`、±∞→`Infinity`/`-Infinity`、整数值不带
+小数部分（`2.0` → `2`）、其余用最短往返表示；lane 由操作数类型选择，与产生该值的语言
+无关（不是 Python 专用旁路）。预算/授权/原子提交/重入禁用等第 1 节规则不变。
+
+同时记录实际准入现状：profile-8 之外的 console import 准入条件为"模块携带至少一条
+foreign 调用且 host-import 表全为 `auto.console.*`"（编译期对应条件为存在任意
+`foreign` 声明），不授予未声明 capability，也不改变 `console.say` 的
+`compatibility.toml` 分账。详细合同见
+[auto-av/host-import-and-console.md](../../auto-av/host-import-and-console.md)；
+证据为 `cargo t ace-python` 与 `cargo t ace-console` 的实际执行。
