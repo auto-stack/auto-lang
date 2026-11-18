@@ -4842,6 +4842,6 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 - 事实：legacy `auto <file> [args...]` → `process.args()` List 契约有真实消费者（`examples/a2rs/03_image_scraper.at`）；ACE 宿主具名拒 `ace.args/unsupported`（诚实零回退）；AV 入口合同不收 List 形参（`owned_entry_ok`）且无 argv native。
 - 影响：候选腿下带参脚本被具名拒（不丢参数不回退）；argv 属 B-EXEC 必需面但接通为生产者侧刀。
-- 归属：入口面裁定归 PLAN-982 §10 Q-982-2（用户/生产者裁定：list 形参车道 vs argv native）；CLI 侧接线随裁定即通（参数已送至拒绝点）。验收口径＝顺序/空串/Unicode。
-- 关闭条件：Q-982-2 裁定落定且 ACE 车道 argv 接通用例（顺序/空串/Unicode）绿。
-- 状态：open（不阻塞 B-EXEC 批交付——具名差额；阻塞 argv 面本身）。
+- 归属：入口面形状已裁定（Q-982-2＝方案②：`process.args()` 保留、宿主供参、三条执行口径见 PLAN-982 §10）；**round 192 前置核查追加**：脚本入口（console profile）无 `use`/无 List 面（实测探针），标准库入口只在 sys/packages 车道可达——**待车道子裁定**（(a) 脚本入口换 sys-stdlib 包车道〔982 建议〕 vs (b) console 面扩展），归 PLAN-982 §10 Q-982-2 后续段。
+- 关闭条件：车道子裁定落定＋ACE 车道 argv 接通真 CLI 对拍用例（legacy/ACE 逐项：无参/空串/空格/引号/Unicode/`--` 形；两次执行无串漏；无旧 VM 回退；`03_image_scraper.at` 兼容）绿。
+- 状态：open（不阻塞 B-EXEC 批交付——具名差额；阻塞 argv 面本身，等待车道子裁定）。
