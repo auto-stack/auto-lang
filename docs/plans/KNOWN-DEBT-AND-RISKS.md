@@ -4842,6 +4842,6 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 - 事实：legacy `auto <file> [args...]` → `process.args()` List 契约有真实消费者（`examples/a2rs/03_image_scraper.at`）；ACE 宿主具名拒 `ace.args/unsupported`（诚实零回退）；AV 入口合同不收 List 形参（`owned_entry_ok`）且无 argv native。
 - 影响：候选腿下带参脚本被具名拒（不丢参数不回退）；argv 属 B-EXEC 必需面但接通为生产者侧刀。
-- 归属：入口面形状已裁定（Q-982-2＝方案②：`process.args()` 保留、宿主供参、三条执行口径见 PLAN-982 §10）；**round 192 前置核查追加**：脚本入口（console profile）无 `use`/无 List 面（实测探针），标准库入口只在 sys/packages 车道可达——**待车道子裁定**（(a) 脚本入口换 sys-stdlib 包车道〔982 建议〕 vs (b) console 面扩展），归 PLAN-982 §10 Q-982-2 后续段。
-- 关闭条件：车道子裁定落定＋ACE 车道 argv 接通真 CLI 对拍用例（legacy/ACE 逐项：无参/空串/空格/引号/Unicode/`--` 形；两次执行无串漏；无旧 VM 回退；`03_image_scraper.at` 兼容）绿。
-- 状态：open（不阻塞 B-EXEC 批交付——具名差额；阻塞 argv 面本身，等待车道子裁定）。
+- 归属：入口面＝方案②、车道＝(a) 分两步、装配＝**裁定 B（最小 argv 装配）**（均见 PLAN-982 §10 Q-982-2 段）。**第一步已交付（2026-11-19，round 195）**：`AUTO_ACE_SCRIPT_SYS=1` 显式候选入口走 sys-stdlib 包车道——窄 `process` 冻结面（`stdlib/ace/sys-argv/process.at`，无 sysplat/spawn 拉取）＋syscommon/bytes 编解码；新 op `proc_run_argv_w16`（窄键 `platform.process.argv`；三个 argv 读符号双向接受两键，窄键永不满足 spawn）；stdlib `pf_args` 仅 -10 回退（超限不伪装未设）；门＝最小装配＋超限前置拒＋mem+argv 两授权；真 CLI 验收（无参 argv0/六形/两次隔离/零回退/spawn 不可名负控）＋1064 全 5/5 回归绿。
+- 关闭条件（剩余＝第二步）：EXEC 脚本契约兼容门（stdout/stderr、退出码、管道 stdin 与 argv 同用、`same_sdk`、wall/cancel 接入 `run_platform_value`）通过后**统一切 `auto <file.at>` 默认**到 sys 车道；`03_image_scraper.at` 整支迁移另算（其 http/file 模块集不在最小装配——第二步装配扩展或按需并集再收）。
+- 状态：narrowed（第一步闭；第二步＝默认切换＋兼容门，待排程；`read_line()` 按裁定单列）。
