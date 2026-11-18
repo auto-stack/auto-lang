@@ -442,6 +442,8 @@ fn project_value(value: ace_av_core::config_document::OwnedValue) -> ConfigValue
     use ace_av_core::config_document::OwnedValue as V;
     match value {
         V::I32(n) => ConfigValue::I64(n as i64),
+        V::F64(v) => ConfigValue::F64(v.to_bits()),
+        V::U64(v) => ConfigValue::U64(v),
         V::Bool(b) => ConfigValue::Bool(b),
         V::Char(c) => ConfigValue::Char(c),
         V::Text(t) => ConfigValue::Text(t),
