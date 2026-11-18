@@ -921,6 +921,75 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**端口 record ABI + G4 冻结**；用户五项裁定后的第一批）| PLAN-981 r18 | outcome: **pass（ABI 复用现有 MIR/Value，无新形态；G4 钉死；G2/G1 下一批）** | code_commit `5ee4d23c0`
+
+**用户裁定（2026-11-18）**：①端口结果=**一次宿主调用返回完整 typed record**（先验可否复用 `MirType::Record`/`Value::Record` 单结果槽，确有缺口再加受限 MIR/ABC）；②G1=`shape2d.layer`（render-only，经同一份受检行描述交 AV/AC/A2R；移除该属性地面重新进碰撞候选、独立轨迹断言失败）；③G2=开 **hook-local `let` 与 `if/else`**（`let q = query2d.sweep(...)` 本次执行路径求值一次、provider 只收一次 sweep、局部结果随回调失效）；④G3=**冻结 ordinal＝场景行声明序**（重排即语义变化、越界具名拒）；⑤G4=保留 `render2d.frame.v1(i32,str,i32,i32)`，第二参=**已声明、带帧表的图像资源名**（文件路径走 `image2d.png`，`Image2D` 供 `frame2d.at`）。
+
+**本批交付**
+- **record ABI 实证复用现有面**：`AgeGfxReturn::{Scalar,Record}`；provider 返回 `AGE_PORT_FIELDS` 声明序的字段序列；AV 在调用点按**调用槽的 nominal record** 逐字段复核（`age-gfx.result-shape`/`age-gfx.result-type`、零效果）后经 `Value::Record` + `commit_slot_write` 一次发布。**未新增 MIR/ABC 形态**（沿用 `MirInstr::Call` + record 槽；dst/sig 类型核对由既有 mir_verify 承担）。
+- lowering：端口 op（`segment`/`sweep`/`image2d.png`）不再 `lower.age-gfx-port-result`，与标量 op 同一条 import 调用；计费不变（8/16/1），**端口字段读 0 credit**。
+- 观察车道无 provider：新增 `execute_without_host` 负控——实际执行宿主 op 即 `age-gfx.host-unavailable`（不伪造）；seam 两例按此更新。
+- **G4 冻结**：`render2d.frame` 第二参按"资源名"钉死（provider 原样收到 `str`）；永久用例 `p981_gfx_host_frame_takes_a_resource_name_not_a_path`。
+- **G3 冻结（合同）**：T-04 以 **ordinal＝场景行声明序**为正式契约；重排即语义变化、越界由宿主具名拒（语言侧不猜行边界）；写入本收据与规范。
+
+**证据**：`plan981_gfx_host.rs` **7/7**——segment `point_x+point_y=3.0`（**8 credits**）、sweep `start_overlap=false`（**16**）、`image2d.png` `byte_length=16`（**1**），每条查询 provider **只收一次调用**、字段读免费；返回字段数/类型不符具名拒（零效果）；frame 资源名原样到达；标量派发/预算/生命周期续绿。980/981/982 家族 av **56/56**、core plan981 **230/230**、av-core `age_gfx` 1/1；`cargo t ace-source ace-av ace-a2x` 见下方门禁行。
+
+**未交（下一批，裁定已定、无未决）**
+- **G2（hook-local `let`+`if/else`）**：`age-on-*` 体文法 + 投影 AST + 脱糖（`instance_stmts`）+ 查询 token 走查复验 + 永久用例"provider 只收一次 sweep、分支复用同一结果"。
+- **G1（`shape2d.layer`）**：属性白名单 + 受检行描述 typed 字段 + AV/AC/A2R 同源 + "移除 layer 后地面重入碰撞候选、独立轨迹断言失败"的负控。
+- 两项都动 AGE 文法 → **同批一次 grammar-id 重基线**（涉及面；13 邻居逐 profile 转储）。
+- **G5**：随最终交付 SHA 刷 UI058 pin/overlay。
+
+**门禁**：`cargo t ace-source ace-av ace-a2x`（本提交上运行；整组结果折入后续收据）。**债务**：`D-981-GFX-PORT-ABI` 关闭。
+
+### 2026-11-18 stage: review（**980 `style` 声明面文法会签——981 grammar/identity owner 回签**）| PLAN-981 r18 | outcome: **有条件通过（修订 profile 门、调用折叠与身份做法）** | 引用 980 §5「P3 提案：`style` 声明面」（`980-ace-m2-autoui.md:614-649`）与实测材料 `plan-artifacts/plan-980/p3-style-proposal-20261118.txt`
+
+**核对基线（master 实读）**：冻结 identity = age-component `19a1376e…`、age-package `0290d0ab…`（`plan981_grammar_scope.rs:128/200`，与提案 §三一致）；`style` 不在 token 表、普通标识符位置合法；`r-pub` 的 profile 列表**不含 age-component**（`auto-source.at:213`），故组件面 `pub style` 今天连 `pub` 都拼不出。语料形状复核：007 的 `style stat_value = section_title(size: "text-sm")` 属实，stylekit 的 `pub style` 7 条中 3 条带默认值属实。
+
+**(a) 语义与 profile 门——语义认可，门修订为 `[age-package]`（P3.1）**
+- 认可 `style ≡ str const/fn 语法糖`、不引入新 HIR 域、`style` 不进 token 表（声明头用 `name(spelling:"style", token:"ident")`，同 `age-node-head` 机制）。
+- **`age-component` 本刀不开**，依据三条实读：①该 face 的文法**没有 `const-item`/`public-item`**（只给 packages-*/age-package，`auto-source.at:333-335`），style 生成的 `Item::Const` 只能绕过文法直进 resolve；②resolve 明确 **const/store 由 packages 绑定器消费**（init 函数/全局访问器），单模块路径收到原始 const 是 caller error（`resolve.rs:2346-2356`）；③`ModuleGlobalsPlan` 目前**只有 AGE 包前门**钉入（`set_module_globals` 唯一调用点 `age_package.rs:762`），组件面没有 plan ⇒ `module.global.get` 在 AV owned / A2R 语义视图会被拒——那正是"能解析、跑不了"的半支持，本会签不放行。
+- 语料侧无损失：20/35 的 style 都在工程入口模块，按 ④‑A 已裁定的包面闭包编译；001/002 的 `style:` 是**元素属性行**（非顶层声明），组件面不需要 style 声明。若 980 能用组件面端到端（AV+A2R）实测 const 路径，再单提一步开 age-component。
+- `pub style` 只在 age-package 生效（组件面无 `r-pub` token；语料 0 个组件面 `pub style`）；stylekit 的 7 条 `pub style` 是依赖包模块 → 包面，正好。
+- 参数化声明（**无默认值**）可接受，但请带永久用例（语料 0 例，属前瞻面）。
+
+**(b) grammar ID 重基线——选 A**
+- 选 **A**：980 在文法提交内同步更新 `plan981_grammar_scope.rs` 冻结值并注明前值，沿用 #6m/#6o 先例。条件：①只动受影响字面量（按 (a) 收窄则**只动 age-package 一个值**，age-component 保持 `19a1376e…`）；②13 邻居逐字节不变的逐 profile 转储随提交；③981 在该提交上复跑 `p981_grammar_scope` 并核 test diff（前值/原因注释写明本批）。若 980 坚持两值移动，须先满足 (a) 的组件面 const 端到端条件。
+
+**(c) const/fn 命名空间与身份——认可，附三条实现前置**
+1. **重名走现有拒**：包面 `source.module-duplicate-declaration`（同一绑定图）；style 投影后进同一绑定图，不得只报 mangle 冲突或新造码。
+2. **style 函数返回类型先冻结**：body 是 f-string/拼接（owned text）。建议 `Item::Fn` 返回 `Str`（owned），或按文本叶既有 `.clone()` 约定返回 `str`；两者对 verify/A2R/TS 发射不同，实现前定并写进永久用例。
+3. **下游车道核对（本会签主要风险点）**：style 引用出现在 `style:` 属性或其它 style 初始化里会成为 const 读（`module.global.get`）。P3.1 至少实测 **AV 观察 + TS/SFC 发射 + A2R** 三条链对该 const 读的承载；若 TS/SFC 语义视图不认 global 访问器，则要么补该面（另立 981 任务），要么改为**投影期把 style 名替换为字符串字面量**（语义等价，但届时不得再声称"mangle/可见性复用现路径"）。请在 P3 回执里明确选哪条。
+
+**(d) 诊断码——可接受，三点细化**
+- `source.age.style-defaults`（默认值未支持）与 `source.age.style-call`（调用未折叠/带参不支持）的命名与 `source.age.*` 归属**可接受**。
+- 细化：①`style-call` 消息区分 unknown-key / missing-arg / non-literal（同码不同臂）并带原 span；②默认值拒指向**默认值 token**（不是整条声明）；③重名不新造码（走现有 duplicate），未知形态不得回落到 `source.syntax`。
+- **修订建议（可选）**：P3.1 先把调用点一律 `style-call` 具名拒、暂不做投影期折叠——语料唯一带参调用（007 `section_title(size: "text-sm")`）的目标声明带默认值、按本刀本就拒；折叠需要跨模块常量求值，语料收益 0、风险（缓存身份/求值序）不为 0。等出现真实无默认值的 style 调用再开折叠。
+
+**结论**：按 (a) 收窄到 `[age-package]` + (b) A 执行，980 可开工文法/投影/永久用例；开工前请在 P3 节回执确认 (c)3 的下游承载选择与 (c)2 的返回类型。**本回签不改文法/代码，不动 980 计划文件。**
+
+> **回执核对（2026-11-18，980 `9f8c1c46b`）**：两问答复（投影期字面量替换 / `Str` 返回）与 (a)(b)(c)1/(d) 采纳与 981 回签一致，**无异议**；工作单（仅 age-package、单值重基线、九项永久用例）可执行。三点实现前确认（不改变会签结论）：
+> 1. **跨模块 style 的拒法**：`style hint_sm = caption_text`（007，引用 stylekit 导入）是语料唯一的跨模块 style 命中；P3.1 按"跨模块即 `style-call`"拒——请给 `style-call` 增加**第四臂**（cross-module；消息带源 style 名/导入来源、span 指名字），永久用例同时覆盖**同模块复制（折叠为字面量）**与**跨模块复制（具名拒）**。
+> 2. **替换需要前表或两遍**：逐模块投影时看不到其它模块的 style 表，跨模块判定必须在投影前先收集全部输入的 style 声明（或把替换移到绑定后）；请在实现里冻结位置并写明（替换值来自同一闭包源，随闭包源失效，身份自洽）。
+> 3. **非 style 位置的 style 名引用**：替换只覆盖 `style:` 属性与 style 初值；若把 style 名当普通常量用（f-string/实参），会落回 const 读——即你已撤回的 global 访问器面。建议 P3.1 明确二选一：**非 style 位置引用具名拒**（`style-call` 的 non-style-position 臂），或允许并承担 TS/SFC 的 global 读；写进永久用例。另：语料存在 `style: if .dark_mode { … }` 条件样式表达式（007 等），替换逻辑不得把 `if` 误判为 style 名（并入"普通标识符合法"负控）。
+
+### 2026-11-18 stage: work（**`IF-981-GFX-HOST-PORT` 第一片**；用户裁定"优先做宿主端口，交付 typed 派发、provider 注册与生命周期、每 Tick 预算，以及正常 AGE 源的 AV 实测"）| PLAN-981 r18 | outcome: **pass（13/16 宿主 op 交付；端口结果 3 op 具名 ABI 边界）** | code_commit `267cbc4b9` | merge `1b80d708f`
+
+**交付**
+- **typed 派发**：av-core 新增 `age_gfx`（`AgeGfxHost::dispatch(symbol, &[Value])`、`is_host_symbol`、返回值按调用槽 `MirType` 核对）；lowering 把**标量结果**的 13 个宿主 op（`input.{space,x,y,pressed}`、`tick.dt`、`row.{place,shift,show,world,local}`、`render2d.{spawn,despawn,frame}`）降成普通 import 调用；AV 在 callee 解析前按 symbol 分流到**本线程注册**的 provider。未注册 → `age-gfx.host-unavailable`；provider fault → `age-gfx.<code>`；结果类型不符 → `age-gfx.result-type`——三者都**零效果**（异常路径不写结果槽）。
+- **注册/生命周期**：`ace_av::age_gfx::AgeGfxSession`：一 Run 一次注册；`stop()` 后 `age-gfx.session-stopped` 且 provider 丢弃；新会话重新注册（无跨 Run 残留）。执行仍是同一条 lower→MIR verify→ABC admit→AV 链（不建旁路、不复制费率表）。
+- **每 Tick 预算**：费率与语言侧同源（`age_resources::gfx_credit_cost`：segment 8 / sweep 16 / 其余 1，预算 32）；**下一次扣费后累计 >32** 即 `age-gfx.credits`、零效果、**本 Tick sticky**（attempt 不回退；后续收费调用不触达 provider）；`begin_tick()` 重置。端口字段读不经过宿主（0 credit）。语言侧静态准入（每函数调用点合计）保留为保守准入。
+- **AV 准入的三处真闸**（此前被"一律拒"挡住、从没人走到）：①`mir_verify` 承认宿主 op 的 import 身份，并在模块真的带宿主 import 时承认 `age2d.*` 能力键；②`abc_verify::executable_closure` 不再把"宿主派发 import 调用"当作待链接的 guest 调用（其它 unresolved import 语义不变）；③不改 `AGE_GFX_SERVICE_OPS`/价目/文法，不新增第二张 host 表。
+- **边界（具名，下一片）**：`query2d.segment/sweep`（Cast2D/Sweep2D）与 `image2d.png`（Image2D）返回端口 record——**多字段宿主返回 ABI 未接**，lowering 具名拒 `lower.age-gfx-port-result`（不伪造 record、不拆成 N 次收费调用）；旧 seam 用例按新码更新。UI058 T-04 的查询/精灵派发仍被这条边界挡着（另有 T-04 预备实测 G1–G5 的语法/句柄缺口）。
+
+**证据（`plan981_gfx_host.rs` 4/4，真实 AGE 源）**
+- `step()`：`row.place(1, 1.25, 1.25 + 2*dt)` + 两次 `tick.dt()` → AV 真值 `F32(2.25)`；provider 收到 `[i32:1, f32:1.25, f32:2.25]`，`3 credits`（f32 运算与 gfx 同一 callback）。
+- `probe()`：`input.x()` + `render2d.spawn("sprite.png", …)` + `input.space()` → `I32(8)`；字符串参数按受检 `StrView` 原样到达。
+- 预算：递归 `charge(40)` → `age-gfx.credits`、**恰好 32 次**触达 provider、同 Tick 第二次直接拒（不触达）、`begin_tick` 后重新计满 32；生命周期：`stop()` 具名拒、新会话重跑成功。
+- 门禁（合并树）：`cargo t ace-source ace-av ace-a2x` = ace-source **PASS 864**、ace-a2x **PASS 317**、ace-av 1399/1400（红 `kv_zip_1064::v03…` = 已登记 `D-1037-02` 的 2s wall 余量；隔离单例重放 **2.52s 绿**）——环境归因，**不充无红 PASS**。`cargo check -p ace-av -p ace-lowering` 零错误；980/981/982 家族 av **53/53**、core plan981 **230/230**。
+
+**未做（具名）**：端口结果 ABI（登记 `D-981-GFX-PORT-ABI`；二选一：多字段宿主返回 vs handle + 0-credit getter）；宿主动态 token/世代（语言侧源序走查已交 `source.age.query-token-stale`，运行期不重复判）；A2C 宿主面；T-04 预备实测 G1–G5（shape2d 无 render-only 声明位、Tick 体 assignment-only、无 typed 行句柄、frame str 拼写、pin 旧）仍归 T-04/UI058 联冻。
+
 ### 2026-11-18 stage: handoff（**PLAN-980 → PLAN-981：`style` 声明面文法会签请求**；980 侧材料已备、**未动文法**）| 请求方 PLAN-980 r18 | outcome: **待 981 回签（或修订提案）**
 
 **来源**：980 §5「P3 提案：`style` 声明面」（`docs/plans/980-ace-m2-autoui.md`，P3 节；提交 `231aedf44`，后续 `6bbb0fd8a` 已把 grammar ID 更新到 spawn/f32 后的基线）。**请求**：981 作为 grammar/identity owner 回签，回签后 980 才落文法与投影。
@@ -938,6 +1007,10 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 4. 确认 `source.age.style-defaults` / `source.age.style-call` 两个新诊断码的归属与命名（981 若有命名规范冲突，回修订）。
 
 **回复方式**：在 981 本文件 §9 追加一条带日期的回签（或修订）收据，引用 980 P3 节与上述四点；若有修订，逐点说明。**本请求不要求 981 现在改任何代码/文法**；回签后由 980 落文法 + 投影 + 永久用例，并在同一提交附 981 冻结值更新（若按做法 A）。
+
+> **回签（2026-11-18，981 grammar/identity owner）**：见本文件 §9 顶部「980 `style` 声明面文法会签——981 回签」收据。**有条件通过**：语义认可；profile 门收窄为 `[age-package]`（组件面无 const/`pub` token、无 module-globals plan，开了只能"能解析、跑不了"）；identity 选**做法 A**（若按收窄则只动 age-package 一个值）；`style-call` 折叠本刀建议先一律具名拒；实现前须确认 style 函数返回类型与 const 读在 AV/TS/A2R 三条链的承载。
+
+> **980 回执（2026-11-18，PLAN-980；`9f8c1c46b`）**：两问已定——(c)3=**投影期字面量替换**（P3.1 中 `style: NAME` 与 `style N = other` 在投影期替换为字面量；带参调用一律 `style-call` 具名拒、不折叠；**撤回**"用法复用 mangle/可见性"的主张，声明仍落 const/fn）；(c)2=**`Str`（owned）**（参数化 style → `Item::Fn` 返回 `Str`；零参 → const `Str`）。(a)(b)(d) 全部采纳：profile 门只 `[age-package]`、只动 age-package 一个 grammar ID（age-component 保持 `19a1376e…`）、做法 A 同提交更新冻结值并附 13 邻居转储、重名走 `source.module-duplicate-declaration`、`style-defaults` 指向默认值 token。980 落刀工作单见 980 §5 P3 第七节；落文法后请在本文件复跑 `p981_grammar_scope` 并核 diff。
 
 
 ### 2026-11-18 stage: handoff（**F32 消费同窗 v1：981 侧已备 `17fafb1d9`（分支隔离，未合入）**；分工/呈现/验收/桥面按用户裁定落档；待 980 `auto-ui-runtime` owner 回签后开窗）| PLAN-981 r18 | outcome: **981 ready；合入窗口未开**
@@ -982,6 +1055,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 - **附带请求**：请以 `auto-ui` 树（`codex/plan-058-dev` @ `b071634c`）的 `experimental/autographics-auto-driver/fixtures/plan058/topdown-node/main.at` 做一次前门 parse/typecheck（可先用 master 前门），回报诊断/最小修正；该源是 T-04 的正式输入，若语法不合法请直接给可编译形态。
 
 **边界**：不改 981 原有 17 op/价目/文法；不要求 A2R/AC 同时接；UI058 不先建私有 runner/旧生成器旁路。UI058 侧记录见 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` §9/§10 D-06。
+
+> **状态（2026-11-18，第一片 `267cbc4b9`）**：请求 1/4/6 的**标量结果子面**已交——13 op typed 派发（input/tick/row/render2d）+ 每 Tick 信用预算（sticky、attempt 不回退、`begin_tick` 重置）+ Run 级注册/停止生命周期 + 真实 AGE 源 AV 用例（`plan981_gfx_host.rs` 4/4，含 `F32(2.25)` 与预算/生命周期反例）。**端口结果 3 op**（`query2d.segment/sweep`、`image2d.png`）仍具名拒 `lower.age-gfx-port-result`——多字段宿主返回 ABI 未接，登记 `D-981-GFX-PORT-ABI`。请求 2（端口/价目）不变；请求 3 的 token/世代仍由语言侧静态走查承担、运行期不重复判；请求 5（image2d 身份）随端口 ABI 一并交。G1–G5 见本文件下方 T-04 预备实测收据。
 
 
 ### 2026-11-18 stage: work（**981 `render2d.spawn` 文法小切片**；用户裁定"先交 spawn 文法小切片，保留原拼写并同步两个 AGE grammar ID"）| PLAN-981 r18 | outcome: **pass** | code_commit `0e6c03c3d` | merge `8f44bbf08`

@@ -65,6 +65,14 @@
 - **owner/关闭条件**：981（ace_av 侧）＋ auto-ui/UI058（或 980 包感知桥 owner，消费侧），**同一 merge window**；关闭 = 上述四处穷尽匹配同窗改完、两侧全绿、一条真实 f32 状态读+显示用例。
 - **状态**：open（不阻塞 spawn/f32 语言面；阻塞 UI058 用 **typed 读**消费 f32 状态与 F32 呈现。UI058 今天可用 `execute_component_def` 取 `Value::F32` 先证）。
 - **进展（2026-11-18，981 侧 ready）**：981 侧已备在**分支** `plan-981-f32-window` @ `17fafb1d9`（基 master `216a79385`，未合入）：`ComponentFieldValue::F32(f32)`（**按位相等**、保留 `Eq`）、`InitialValue::Float(f32)`（`TypedLit` 按位脱糖；Int 种子不隐式提升）、窄通道 `observe_component_states` 映射 f32；验收用例 6/6（1.25→1.5 源内初值与 props 种子两条路径 + Int 种子具名拒），980/981 家族 av 50/50、core 230/230。**窗口协议**：980 以 `AUTO_LANG_ROOT` 指向该 SHA 联合编译 → 双方同窗合入（981 先、auto-ui 紧随）→ `ace-source ace-av` + auto-ui 固定组 → 失败则双方同窗回滚。**980 回签前该分支不得 fold 到 master**（否则 auto-ui master 穷尽匹配红）。回签须写明所验的**组件桥**；包桥 F32（现只观察整数、无 props/initials）另案。呈现按 Rust `f32` `Display`（可往返、与地区无关），验收显示文本 `1.5`。
+- **用户裁定（2026-11-18）**：同意同窗方案与分工（981=`ComponentFieldValue`/`InitialValue`；980=`AceStateValue`/状态桥/TS 类型/呈现）；**由 980 的 `auto-ui-runtime` owner 回签**，UI058 提供真实业务验收用例；两侧先配对提交联合编译验收，再同一窗口合入。呈现拍板=Rust `f32` 默认 `Display`（可往返、与地区无关）。验收=真实 AGE 状态源从 `1.25` 初始化、一次更新到 `1.5`，逐项核种子/状态读回/界面显示。**尚未由两仓 owner 正式回签**；本债状态保持 open。
+
+#### D-981-GFX-PORT-ABI — 端口结果宿主 op 的多字段返回 ABI（2026-11-18 `IF-981-GFX-HOST-PORT` 第一片具名，medium；**2026-11-18 关闭（`5ee4d23c0`）**）
+
+- **现状**：宿主派发已交 13 个**标量结果** op（`input.*`/`tick.dt`/`row.*`/`render2d.*`，`267cbc4b9`）。返回端口的 3 个 op 仍 fail-closed：`query2d.segment`/`query2d.sweep`（Cast2D/Sweep2D）与 `image2d.png`（Image2D）在 lowering 具名拒 `lower.age-gfx-port-result`——MIR 一条指令只写一个结果槽，端口 record 需要多字段宿主返回。
+- **两个候选（择一，须与 UI058 联冻）**：①**多字段宿主返回**：新指令/形态（如 `HostCallRecord { dst_fields: Vec<SlotId> }`）把 provider 返回的字段逐槽写入，保持端口=record 的现有类型面；成本=MIR/ABC/verify/lowering 四处 + AV 运行时。②**handle + 0-credit getter**：查询返回不透明 i32 token，`.hit/.t/.point_x` 等字段读降成 0 credit 的宿主 getter（与 021 token 语义同源）；成本=端口表示从 record 改为 handle，影响既有 seam 用例与类型面。
+- **owner/关闭条件**：981（LANGUAGE/SESSION，与 UI058 联冻）；关闭 = 选定 ABI 落地，fake provider 下 `query2d.segment/sweep`、`image2d.png` 三条 AV 真跑用例（typed 字段值）+ 端口字段读 0 credit + 价目/预算不变；期间 3 op 保持具名拒（不伪造 record）。
+- **状态**：**closed（2026-11-18，`5ee4d23c0`）**——按用户裁定"一次宿主调用返回完整 typed record"，并**实证复用现有面**：`AgeGfxReturn::Record(fields)` 由 provider 按 `AGE_PORT_FIELDS` 声明序返回，AV 在调用点按调用槽的 nominal record 逐字段复核（`age-gfx.result-shape`/`age-gfx.result-type`、零效果）后经 `Value::Record` 一次发布；**未新增 MIR/ABC 形态**（沿用 `MirInstr::Call` + record 槽 + `commit_slot_write`）。证据：`plan981_gfx_host.rs` 7/7——segment `point_x+point_y=3.0`（8 credits）、sweep `start_overlap=false`（16）、`image2d.png` `byte_length=16`（1），每条查询 provider 只收一次调用、端口字段读 0 credit；形状/类型不符具名拒。`execute_without_host` 负控：无 provider 时实际执行即 `age-gfx.host-unavailable`（不伪造）。**未纳入本债**：G1（`shape2d.layer`）与 G2（hook-local `let`/`if`）仍待下一批（裁定已定）。
 
 #### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 
