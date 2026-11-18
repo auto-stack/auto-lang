@@ -967,7 +967,7 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 **边界（不冒充）**：本节是静态合同核对与既有永久用例的复用，**不是**新 PASS；未跑 Cargo/产品/GPU；④-A 的实现（投影 + 惰性绑定 + 入口接线 + AV/TS/A2R 三后端）仍属 980 切片；981 只签合同与冻结身份。若 980 选择 per-unit face 路线，本回签不涵盖该改造，须另立评审。
 
-### 2026-11-18 stage: handoff（UI058 T-02 接口联冻：981 侧签署；四项中三项即刻冻、f32 面登记为 981 前置）| PLAN-981 r18 | outcome: **partial（接口表 981 侧已签；待 UI058 回签 + f32 实现）**
+### 2026-11-18 stage: handoff（UI058 T-02 接口联冻：981 侧签署；四项中三项即刻冻、f32 面登记为 981 前置）| PLAN-981 r18 | outcome: **partial（接口表 981 侧已签；UI058 回签已并入本节；f32 实现进行中）**
 
 **绑定身份**：981 接面=IF-981-GFX-AV-SEAM（`ddbda0228`+`ed8b16e01`，已含于 master `a13a6e6a1`）；auto-ui master `f43ef59b`；UI058 计划 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` r4（drafting、0/10、T-02 未开）。UI058 无实施树（`git worktree list` 无 ui-058），本会话**未确认其内部进度**——本表按该计划 §5 T-02 合同与其"冻结 profile/typed 端口/预算映射/数值/共同发布"条款对齐。
 
