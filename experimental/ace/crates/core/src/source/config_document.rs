@@ -662,6 +662,12 @@ fn emit_line(
                       // 句柄别名）——这样 `k["f"]` / `k.f` 的搬运路径
                       // （`emit_object_handle` 要求 `ctx.locals[name] == Obj`）可达。
                     let object_literal = matches!(e.kind, super::ast::ExprKind::ObjectLit { .. });
+                    // PLAN-982：**属性上的字面数组**也要记进 `list_literals`（与
+                    // `var` 同口径）——否则 `for d in items` 会掉进运行期分支并因
+                    // `items` 不是局部而 bind 失败。
+                    if let super::ast::ExprKind::ArrayLit(items) = &e.kind {
+                        ctx.list_literals.insert(p.key.name.clone(), items.clone());
+                    }
                     // PLAN-982：**标量字面量**属性也登记为局部（普通值别名），让
                     // 文档属性在表达式/模板里可见（节点位 `${name}` 因此可解析）。
                     let scalar_literal = matches!(
@@ -999,13 +1005,72 @@ fn emit_for(
         _ => None,
     };
     let Some(elements) = elements else {
-        return Err(vec![document_diag(
-            "source.config-document/pending",
-            "a `for` over a runtime list needs the list-count/element primitives \
-             (`cfg.list.len/at`), which are not implemented yet; only literal lists \
-             (`for d in [\"a\", \"b\"]` or a `var` bound to one) unroll today",
+        // PLAN-982（③）：**运行期列表** —— 发射计数循环（`Stmt::ForIn` + i32 range），
+        // 元素通过 `cfg_list_len`/`cfg_list_at_i32` 读取（i32 通道；文本元素会在
+        // `list-at.i32` 处具名拒绝，见 av-core）。
+        let super::ast::ExprKind::Var(id) = &f.iter.kind else {
+            return Err(vec![document_diag(
+                "source.config-document/pending",
+                "a `for` over this expression needs a bound list variable; only a `var` handle \
+                 or a literal list can drive a `for` today",
+                f.span,
+            )]);
+        };
+        let handle = var_expr(&id.name, f.span);
+        let mut body_stmts: Vec<Stmt> = Vec::new();
+        let item = emit_call(
+            &mut body_stmts,
+            ctx,
+            "cfg_list_at_i32",
+            vec![handle.clone(), var_expr(&f.var.name, f.span)],
             f.span,
-        )]);
+        )?;
+        body_stmts.push(Stmt::Let {
+            kw: f.span,
+            name: Ident {
+                name: format!("{}el", f.var.name),
+                span: f.var.span,
+            },
+            ann: None,
+            mutable: false,
+            value: var_expr(&item, f.span),
+            span: f.span,
+        });
+        let saved_declared = ctx.declared.clone();
+        let saved_locals = ctx.locals.clone();
+        let bound = format!("{}el", f.var.name);
+        ctx.declared.insert(bound.clone());
+        let body_result = emit_body(&f.body, cur, &mut body_stmts, ctx);
+        ctx.declared = saved_declared;
+        ctx.locals = saved_locals;
+        body_result?;
+        let len = emit_call(
+            out,
+            ctx,
+            "cfg_list_len",
+            vec![handle],
+            f.span,
+        )?;
+        out.push(Stmt::ForIn {
+            var: f.var.clone(),
+            iter: Expr {
+                span: f.span,
+                kind: super::ast::ExprKind::Range {
+                    start: Box::new(Expr {
+                        span: f.span,
+                        kind: super::ast::ExprKind::IntLit(0),
+                    }),
+                    end: Box::new(var_expr(&len, f.span)),
+                    inclusive: false,
+                },
+            },
+            body: Block {
+                stmts: body_stmts,
+                span: f.span,
+            },
+            span: f.span,
+        });
+        return Ok(());
     };
     let saved_declared = ctx.declared.clone();
     let saved_locals = ctx.locals.clone();
