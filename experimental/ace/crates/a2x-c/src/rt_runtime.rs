@@ -36,14 +36,21 @@
 /// matches its admitted charge (retain/adopt accounting stays consistent
 /// through publication). The plain entry keeps a no-op admission.
 pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
-    record_text_runtime_source_with(marks, false)
+    record_text_runtime_source_with(marks, false, &[])
 }
 
 /// PLAN-1041: same frozen runtime, plus the platform-operation stubs
 /// (appended only when the module carries platform intrinsics).
-pub fn record_text_runtime_source_with(marks: &[&'static str], platform: bool) -> String {
+/// PLAN-981（A2C 宿主面）：`gfx_syms` 非空时追加 AGE gfx 宿主 op 的
+/// **extern 原型页**（`a2x_gfx_*`——实现/链接归 C 宿主，AC 车道 1068/T-04；
+/// 签名镜像 `AGE_GFX_SERVICE_OPS` 受检表，str 走内容视图）。
+pub fn record_text_runtime_source_with(
+    marks: &[&'static str],
+    platform: bool,
+    gfx_syms: &[&str],
+) -> String {
     crate::admitted_text::render_admitted(
-        |out| write_record_text_runtime(marks, platform, out),
+        |out| write_record_text_runtime(marks, platform, gfx_syms, out),
         |_| Ok(()),
     )
     .expect("no-op admission cannot fail and the renderer is stateless")
@@ -54,11 +61,15 @@ pub fn record_text_runtime_source_admitted(
     marks: &[&'static str],
     admit: impl FnOnce(usize) -> Result<(), String>,
 ) -> Result<String, String> {
-    crate::admitted_text::render_admitted(|out| write_record_text_runtime(marks, false, out), admit)
+    crate::admitted_text::render_admitted(
+        |out| write_record_text_runtime(marks, false, &[], out),
+        admit,
+    )
 }
 fn write_record_text_runtime(
     marks: &[&'static str],
     platform: bool,
+    gfx_syms: &[&str],
     out: &mut dyn std::fmt::Write,
 ) -> std::fmt::Result {
     out.write_str("// AUTO-GENERATED typed resource runtime (PLAN-925 CA-B) — DO NOT EDIT.\n")?;
@@ -69,6 +80,9 @@ fn write_record_text_runtime(
     out.write_str(RT_CORE)?;
     if platform {
         out.write_str(RT_PLATFORM_C)?;
+    }
+    if !gfx_syms.is_empty() {
+        write_gfx_host_declarations(gfx_syms, out)?;
     }
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
@@ -87,6 +101,80 @@ fn write_record_text_runtime(
         )?;
     }
     out.write_str("\n#endif /* A2X_C_RT_RUNTIME_H */\n")
+}
+
+/// PLAN-981（A2C 宿主面）：AGE gfx 宿主 op 的 **extern 原型页**——
+/// `a2x_gfx_<callee>`（点分改下划线）。生成代码只**调用**它们；实现/链接归
+/// C 宿主（AC 车道，1068/T-04）。签名镜像 `AGE_GFX_SERVICE_OPS` 受检表
+/// （i32/bool/float 标量；str 走 `a2x_str_view` 内容视图——与 PLAN-1041
+/// 平台 op 同一 C 文本通道）。**端口 record 结果的 3 op 不进本页**：它们的
+/// C 侧 record 返回 stub 属端口 ABI 的 C 腿（lowering 具名拒，不伪造 record）。
+fn write_gfx_host_declarations(
+    gfx_syms: &[&str],
+    out: &mut dyn std::fmt::Write,
+) -> std::fmt::Result {
+    out.write_str(
+        "\n/* ---- PLAN-981 A2C host face: AGE graphics host operations ----\n\
+         \x20* The C host (AC lane, 1068/T-04) implements these; generated code\n\
+         \x20* only CALLS them. Signatures mirror the checked AGE_GFX_SERVICE_OPS\n\
+         \x20* table; str passes as an a2x_str_view content view. */\n",
+    )?;
+    for sym in gfx_syms {
+        let Some(op) = ace_core::source::age_resources::gfx_by_symbol(sym) else {
+            // 视图收面即查表——不可达的纵深防御（不伪造原型）。
+            continue;
+        };
+        // 端口 record 结果的 3 op **不进原型页**（C record 返回 stub 属端口
+        // ABI 的 C 腿；lowering 具名拒，这里同样不替它伪造签名）。
+        if matches!(
+            op.result,
+            ace_core::source::age_resources::AgeGfxResult::Port(_)
+        ) {
+            continue;
+        }
+        let name = format!("a2x_gfx_{}", op.callee.replace('.', "_"));
+        let params: Vec<String> = op
+            .params
+            .iter()
+            .map(|p| match p {
+                ace_core::source::age_resources::AgeGfxParam::Scalar(
+                    ace_core::source::resolve::VT::I32,
+                ) => "int32_t a".to_string(),
+                ace_core::source::age_resources::AgeGfxParam::Scalar(
+                    ace_core::source::resolve::VT::Bool,
+                ) => "bool a".to_string(),
+                ace_core::source::age_resources::AgeGfxParam::Scalar(
+                    ace_core::source::resolve::VT::F32,
+                ) => "float a".to_string(),
+                ace_core::source::age_resources::AgeGfxParam::Scalar(
+                    ace_core::source::resolve::VT::Str,
+                ) => "a2x_str_view a".to_string(),
+                _ => "int32_t a".to_string(),
+            })
+            .collect();
+        let (ret, note) = match op.result {
+            ace_core::source::age_resources::AgeGfxResult::Scalar(
+                ace_core::source::resolve::VT::I32,
+            ) => ("int32_t", ""),
+            ace_core::source::age_resources::AgeGfxResult::Scalar(
+                ace_core::source::resolve::VT::F32,
+            ) => ("float", ""),
+            ace_core::source::age_resources::AgeGfxResult::Scalar(
+                ace_core::source::resolve::VT::Bool,
+            ) => ("bool", ""),
+            _ => (
+                "int32_t",
+                " /* unreachable: port results never reach this page */",
+            ),
+        };
+        let arg_list = if params.is_empty() {
+            "void".to_string()
+        } else {
+            params.join(", ")
+        };
+        writeln!(out, "extern {ret} {name}({arg_list});{note}")?;
+    }
+    Ok(())
 }
 
 /// Frozen runtime core (byte-stable for a crate version).

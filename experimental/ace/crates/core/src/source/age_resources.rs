@@ -398,6 +398,16 @@ pub fn gfx_by_symbol(symbol: &str) -> Option<&'static AgeGfxServiceOp> {
     AGE_GFX_SERVICE_OPS.iter().find(|op| op.symbol == symbol)
 }
 
+/// 是否为 AGE 图形服务的**宿主车道** symbol（HostAlgorithm/HostIdentity——
+/// 派发到宿主的 16 op；`frame2d.at` 是纯值构造，不在此列）。
+///
+/// 语言侧受检表的事实源：A2X 视图的 gfx 符号面（PLAN-981 A2C 宿主面）按
+/// 本谓词收符号。AV 宿主派发（av-core `is_host_symbol`）是独立 VM 里的
+/// **镜像谓词**（同集合；av-core 不依赖编译器 crate），两表变更须同步。
+pub fn is_gfx_host_symbol(symbol: &str) -> bool {
+    gfx_by_symbol(symbol).is_some_and(|op| op.lane != AgeGfxLane::ValueCtor)
+}
+
 /// 按稳定符号查声明（发射器/消费者用）。
 pub fn by_symbol(symbol: &str) -> Option<&'static AgeResourceOp> {
     AGE_RESOURCE_OPS.iter().find(|op| op.symbol == symbol)

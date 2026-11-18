@@ -6,11 +6,16 @@
 //! （`age-gfx.host-unavailable`），provider 返回的 `Value` 必须与调用槽的
 //! `MirType` 对得上（`age-gfx.result-type`）。
 //!
-//! **未覆盖（具名，下一片）**：返回端口 record 的 3 个 op（`query2d.segment`/
-//! `query2d.sweep`/`image2d.png`）需要多字段宿主返回 ABI（当前 MIR 一条指令
-//! 只写一个槽）；它们仍在 lowering 侧以 `lower.age-gfx-port-result` 具名拒。
+//! 端口 record 的 3 个 op（`query2d.segment/sweep`、`image2d.png`）已随端口
+//! ABI 交付：provider 一次调用返回**完整字段序列**（[`AgeGfxReturn::Record`]，
+//! `AGE_PORT_FIELDS` 声明序），派发层按调用槽 nominal record 逐字段核对后
+//! 组装 `Value::Record` 一次发布（字段读 0 credit）。
 //!
-//! 预算/生命周期（每 Tick 信用、sticky 第 33 次拒、Run 级注册与停止）在
+//! PLAN-981（宿主动态 token/世代）：[`AgeGfxHost::dispatch_with_ctx`] 携带
+//! 会话事实（tick/callback/query_epoch/credits）——宿主侧 token/句柄世代的
+//! 记账原料；默认转发 `dispatch`，既有 provider 不破。
+//!
+//! 预算/生命周期（每 Tick 信用、sticky 超额拒、Run 级注册与停止）在
 //! `ace_av` 的会话层（`AgeGfxSession`），这里只负责**派发**——费率表与语言侧
 //! 同源（`age_resources`），不在此重复。
 
@@ -53,6 +58,41 @@ pub enum AgeGfxReturn {
 /// （不写结果槽 → 对状态零效果）。
 pub trait AgeGfxHost {
     fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault>;
+
+    /// PLAN-981（宿主动态 token/世代，2026-11-18 用户裁定）：带**会话事实**的
+    /// 派发。默认转发 [`AgeGfxHost::dispatch`]——既有 provider（UI058
+    /// `NeutralGfxHost` 等）不破；宿主车道按需消费：
+    /// - `query_epoch`：本 callback（一次 `run_def`）内第几次 `query2d.*` 派发
+    ///   （1 基、单调）。**第二次查询 ⇒ epoch 前进 ⇒ 先前 token 失效**——语言侧
+    ///   源序走查（`source.age.query-token-stale`）的**宿主侧动态事实**：宿主可
+    ///   用它给自家 token 记账打真实 fault-13 载荷（021 语义；判罚点在宿主
+    ///   算法车道，本层只交事实、不重复判）。
+    /// - `tick`/`callback`/`credits_used`：世代与账本事实（宿主实现 spawn/
+    ///   despawn 代次 fault-33、每 Tick 预算对账用同一份事实，不建第二账）。
+    fn dispatch_with_ctx(
+        &mut self,
+        symbol: &str,
+        args: &[Value],
+        ctx: &AgeGfxCall<'_>,
+    ) -> Result<AgeGfxReturn, AgeGfxFault> {
+        let _ = ctx;
+        self.dispatch(symbol, args)
+    }
+}
+
+/// 一次宿主派发携带的会话事实（PLAN-981 宿主动态 token/世代）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AgeGfxCall<'a> {
+    /// 会话 Tick 序号（`begin_tick` 单调递增；未 begin 即 0）。
+    pub tick: u64,
+    /// callback 序号（每 `run_def` 一次，会话内单调；世代边界）。
+    pub callback: u64,
+    /// 本 callback 内第几次 `query2d.*`（1 基、单调；非查询 op 原样带当前值）。
+    pub query_epoch: u32,
+    /// 本 Tick 已累计信用（本次派发**记账后**的值，与 `credits_used()` 同口径）。
+    pub credits_used: u32,
+    /// 本次派发的 symbol（便于宿主单入口记账）。
+    pub symbol: &'a str,
 }
 
 /// 是否为 AGE 图形服务的**宿主派发** symbol（标量结果那 13 个）。
@@ -60,6 +100,11 @@ pub trait AgeGfxHost {
 /// 只认 `age.<group>.*.v1` 且 group ∈ query2d/input/tick/row/render2d/image2d；
 /// `frame2d.at`（纯值构造）、`material2d/mesh2d/model3d`（资源构造）不在此列
 /// ——它们在 lowering 里已经走 Aggregate/资源身份，不会以调用到达这里。
+///
+/// av-core 是独立 VM，不依赖编译器 crate——本谓词与语言侧受检表
+/// （`ace_core::source::age_resources::is_gfx_host_symbol`，HostAlgorithm/
+/// HostIdentity 16 op）镜像同一集合；两边任何一表变更须同步（a2x 车道按
+/// 受检表收符号面）。
 pub fn is_host_symbol(symbol: &str) -> bool {
     let Some(rest) = symbol.strip_prefix("age.") else {
         return false;

@@ -270,6 +270,12 @@ pub struct SemanticView<'a> {
     /// map these to runtime stubs (ports on A2PY, runtime helpers on
     /// A2R/A2C); errors are deterministic negative i32 codes, never traps.
     platform_defs: Vec<(usize, String)>,
+    /// PLAN-981（A2C 宿主面）：AGE gfx **宿主车道** op 的 def（def_index →
+    /// symbol，HostAlgorithm/HostIdentity 16 op——`age_resources` 受检表为
+    /// 唯一事实源）。符号面进视图后由**目标车道**各自处置：A2C 发射
+    /// `a2x_gfx_*` 宿主 extern；A2R 在自身 lowering 具名拒（AC/C 宿主车道
+    /// 才是消费方）。
+    gfx_defs: Vec<(usize, String)>,
     /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：module.global.get/set 的 def
     /// （索引、global 符号、是否 set）。仅当 facts plan 在场（AGE 包前门）
     /// 时参与放行；碎片视图恒为空。
@@ -306,7 +312,7 @@ impl<'a> SemanticView<'a> {
         let functions = collect_functions(module, None)?;
         let records = collect_records(module)?;
         let variants = collect_variants(module)?;
-        let (trace_defs, platform_defs, sched_defs, global_defs) =
+        let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs) =
             collect_trace_defs(module, bundle)?;
         // PLAN-981：全局访问器只在**事实在场**时放行（AGE 包前门钉的
         // plan）——无 plan 的路径维持旧的 compute-surface 拒绝。
@@ -342,6 +348,7 @@ impl<'a> SemanticView<'a> {
             trace_defs,
             sched_defs,
             platform_defs,
+            gfx_defs,
             global_defs,
             globals_plan,
             capabilities: bundle.requires.clone(),
@@ -424,7 +431,7 @@ impl<'a> SemanticView<'a> {
                 ),
             ));
         }
-        let (trace_defs, platform_defs, sched_defs, global_defs) =
+        let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs) =
             collect_trace_defs(module, bundle)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
@@ -459,6 +466,7 @@ impl<'a> SemanticView<'a> {
             trace_defs,
             sched_defs,
             platform_defs,
+            gfx_defs,
             global_defs,
             globals_plan: None,
             capabilities: bundle.requires.clone(),
@@ -716,7 +724,10 @@ impl<'a> SemanticView<'a> {
         let sig = fn_sig(self.module, ty)?;
         if is_set {
             let p = sig.params.first().copied().ok_or_else(|| {
-                A2xReject::new("a2x.internal", format!("global set `{sym}` sig has no param"))
+                A2xReject::new(
+                    "a2x.internal",
+                    format!("global set `{sym}` sig has no param"),
+                )
             })?;
             resolve_ty(self.module, p)
         } else {
@@ -742,15 +753,10 @@ impl<'a> SemanticView<'a> {
 
     /// PLAN-968: the resolved (param, result) types of a scheduler
     /// intrinsic's fn-type def (the import seam carries the exact shape).
-    pub fn sched_sig_types(
-        &self,
-        def_index: usize,
-    ) -> Option<Result<(Vec<Ty>, Ty), A2xReject>> {
+    pub fn sched_sig_types(&self, def_index: usize) -> Option<Result<(Vec<Ty>, Ty), A2xReject>> {
         let def = self.module.defs.get(def_index)?;
         if let hir::DefKind::Intrinsic { ty, .. } = &def.kind {
-            if let hir::TypeKind::Function(sig) =
-                &self.module.types.get(ty.0 as usize)?.kind
-            {
+            if let hir::TypeKind::Function(sig) = &self.module.types.get(ty.0 as usize)?.kind {
                 let mut params = Vec::with_capacity(sig.params.len());
                 for p in &sig.params {
                     match resolve_ty(self.module, *p) {
@@ -781,6 +787,30 @@ impl<'a> SemanticView<'a> {
             .iter()
             .find(|(d, _)| *d == def_index)
             .map(|(_, s)| s.as_str())
+    }
+
+    /// PLAN-981（A2C 宿主面）：模块是否携带 AGE gfx 宿主车道 op
+    ///（运行时声明页只在携带时追加）。
+    pub fn has_gfx_ops(&self) -> bool {
+        !self.gfx_defs.is_empty()
+    }
+
+    /// PLAN-981（A2C 宿主面）：该 intrinsic def 携带的 gfx 宿主 symbol
+    ///（按 `age_resources` 受检表收面）。
+    pub fn gfx_symbol(&self, def_index: usize) -> Option<&str> {
+        self.gfx_defs
+            .iter()
+            .find(|(d, _)| *d == def_index)
+            .map(|(_, s)| s.as_str())
+    }
+
+    /// PLAN-981（A2C 宿主面）：模块携带的**去重** gfx 宿主 symbol 集
+    ///（运行时声明页按它逐条发 extern 原型）。
+    pub fn gfx_symbols(&self) -> Vec<&str> {
+        let mut syms: Vec<&str> = self.gfx_defs.iter().map(|(_, s)| s.as_str()).collect();
+        syms.sort();
+        syms.dedup();
+        syms
     }
 
     /// The distinct authorized trace symbols present (helper-closure input).
@@ -922,22 +952,22 @@ impl<'a> SemanticView<'a> {
             // the scalar verifier for the compute nodes).
             // PLAN-904: the collections surface carries it too (its
             // verifier is the scalar verifier plus the collections rules).
-            hir::HirDomain::Text
-            | hir::HirDomain::Record
-            | hir::HirDomain::Collections => matches!(
-                op,
-                hir::BinOp::AddI32
-                    | hir::BinOp::SubI32
-                    | hir::BinOp::MulI32
-                    | hir::BinOp::DivI32
-                    | hir::BinOp::RemI32
-                    | hir::BinOp::LtI32
-                    | hir::BinOp::LeI32
-                    | hir::BinOp::GtI32
-                    | hir::BinOp::GeI32
-                    | hir::BinOp::Eq
-                    | hir::BinOp::Ne
-            ),
+            hir::HirDomain::Text | hir::HirDomain::Record | hir::HirDomain::Collections => {
+                matches!(
+                    op,
+                    hir::BinOp::AddI32
+                        | hir::BinOp::SubI32
+                        | hir::BinOp::MulI32
+                        | hir::BinOp::DivI32
+                        | hir::BinOp::RemI32
+                        | hir::BinOp::LtI32
+                        | hir::BinOp::LeI32
+                        | hir::BinOp::GtI32
+                        | hir::BinOp::GeI32
+                        | hir::BinOp::Eq
+                        | hir::BinOp::Ne
+                )
+            }
             // PLAN-981（D-981-AGE-F32-SURFACE，A2R 同源腿）：text-record 族
             // （AGE 包/组件面的实际域）同样携带 typed `Num` 面——但只放 **f32**
             // （AGE 的值面只有 f32；f64/宽整型仍不在本面，由前门先行拒绝）。
@@ -1085,6 +1115,9 @@ impl<'a> SemanticView<'a> {
                     // PLAN-1041: platform-operation intrinsics reach the
                     // target lowers' runtime stubs.
                     || self.platform_symbol(target).is_some()
+                    // PLAN-981（A2C 宿主面）：AGE gfx 宿主 op 到达目标车道
+                    //（A2C 发射 a2x_gfx_* extern；A2R 在自身 lowering 具名拒）。
+                    || self.gfx_symbol(target).is_some()
                     // PLAN-968: scheduler-surface intrinsics reach the
                     // targets' scheduler runtimes.
                     || self.sched_symbol(target).is_some()
@@ -1554,6 +1587,7 @@ fn collect_trace_defs(
         Vec<(usize, String)>,
         Vec<(usize, String)>,
         Vec<(usize, String, bool)>,
+        Vec<(usize, String)>,
     ),
     A2xReject,
 > {
@@ -1561,6 +1595,10 @@ fn collect_trace_defs(
     let mut trace_defs = Vec::new();
     let mut platform_defs = Vec::new();
     let mut sched_defs = Vec::new();
+    // PLAN-981（A2C 宿主面）：AGE gfx 宿主车道 op（HostAlgorithm/HostIdentity，
+    // `age_resources::is_gfx_host_symbol` 为唯一事实源）。符号面在此收进
+    // 视图；目标车道各自处置（A2C 发射宿主 extern，A2R 具名拒）。
+    let mut gfx_defs = Vec::new();
     // PLAN-981（D-981-MODULE-GLOBAL-A2R）：模块级 const/var 的访问器
     // intrinsic——收集为全局模型（是否放行由 facts plan 在场性决定，见
     // `SemanticView::new` 的 admission 检查）。
@@ -1579,6 +1617,11 @@ fn collect_trace_defs(
                 // PLAN-1041: platform-operation intrinsics — the target
                 // runtimes implement them (negative i32 error codes).
                 platform_defs.push((def_index, symbol.clone()));
+                continue;
+            }
+            // PLAN-981（A2C 宿主面）：AGE gfx 宿主车道 op——按受检表收符号面。
+            if ace_core::source::age_resources::is_gfx_host_symbol(symbol) {
+                gfx_defs.push((def_index, symbol.clone()));
                 continue;
             }
             // PLAN-968: the scheduler surface's intrinsics (task actor
@@ -1606,7 +1649,7 @@ fn collect_trace_defs(
             trace_defs.push((def_index, sym));
         }
     }
-    Ok((trace_defs, platform_defs, sched_defs, global_defs))
+    Ok((trace_defs, platform_defs, sched_defs, global_defs, gfx_defs))
 }
 
 fn fn_sig(module: &hir::Module, ty: hir::TypeId) -> Result<&hir::FnSig, A2xReject> {

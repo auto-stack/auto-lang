@@ -8,9 +8,13 @@
 //!    （`age-gfx.credits`）、零效果，且**本 Tick 后续收费调用保持拒绝**
 //!    （sticky；attempt 不回退）。`begin_tick()` 重置累计与 sticky。
 //! 3. **诚实边界**：返回端口 record 的 `query2d.segment/sweep`、`image2d.png`
-//!    仍由 lowering 具名拒（多字段宿主返回 ABI 是下一片）；端口字段读不经过
-//!    宿主（`0 credit`），token/世代语义由语言侧源序走查保证（`source.age.
-//!    query-token-stale`，运行期不重复判）。
+//!    已随端口 ABI 交付（一次调用返回完整字段序列；端口字段读不经过宿主、
+//!    `0 credit`）。**token/世代**：语言侧源序走查在先（`source.age.
+//!    query-token-stale`）；宿主侧**动态事实**由本层交付——每次 `run_def`
+//!    = 一个 callback 世代（序号单调、epoch 归零），`query2d.segment/sweep`
+//!    派发单调推进 query epoch，tick/callback/epoch/credits 经
+//!    `dispatch_with_ctx` 交宿主打真实 fault-13/33 载荷（**本层只交事实、
+//!    不重复判**——判罚点在宿主算法车道，归 UI058/PLAN-938）。
 //!
 //! provider 只拿到**受检调用**的 symbol 与 `Value` 实参（typed 签名由语言侧
 //! 先核、AV 再按调用槽 `MirType` 复核返回值），不做二次解析。
@@ -26,7 +30,7 @@ use ace_core::source::age_resources::{gfx_by_symbol, gfx_credit_cost, GFX_CALLBA
 use ace_core::verify::CheckedModule;
 use ace_lowering::lower_checked_owned;
 
-pub use ace_av_core::age_gfx::{AgeGfxFault, AgeGfxHost, AgeGfxReturn};
+pub use ace_av_core::age_gfx::{AgeGfxCall, AgeGfxFault, AgeGfxHost, AgeGfxReturn};
 
 /// 一次 Tick 的信用预算（与语言侧冻结值同一个常量来源，不另写一份数）。
 pub const TICK_CREDIT_BUDGET: u32 = GFX_CALLBACK_CREDIT_BUDGET;
@@ -51,6 +55,12 @@ pub struct AgeGfxSession {
     ledger: Rc<RefCell<Ledger>>,
     tick: u64,
     stopped: bool,
+    /// PLAN-981（宿主动态 token/世代）：callback 序号（每 `run_def` +1；
+    /// 世代边界——宿主侧 token/句柄按 callback 归零对账）。
+    callback_seq: u64,
+    /// 当前 callback 的 query epoch（每次 `run_def` 换新格；`query2d.segment/
+    /// sweep` 派发各 +1）。语言侧源序走查（fault 13）的宿主侧动态事实。
+    query_epoch: Rc<RefCell<u32>>,
 }
 
 impl AgeGfxSession {
@@ -61,6 +71,8 @@ impl AgeGfxSession {
             ledger: Rc::new(RefCell::new(Ledger::default())),
             tick: 0,
             stopped: false,
+            callback_seq: 0,
+            query_epoch: Rc::new(RefCell::new(0)),
         }
     }
 
@@ -84,6 +96,19 @@ impl AgeGfxSession {
 
     pub fn tick_index(&self) -> u64 {
         self.tick
+    }
+
+    /// PLAN-981（宿主动态 token/世代）：callback 序号（世代边界；每次
+    /// `run_def` 单调 +1，观察/验收用）。
+    pub fn callback_seq(&self) -> u64 {
+        self.callback_seq
+    }
+
+    /// PLAN-981（宿主动态 token/世代）：当前 callback 的 query epoch
+    /// （`query2d.segment/sweep` 各 +1；**每次 `run_def` 归零**——token 随
+    /// callback 失效，与语言侧"同 callback 第二查使先前 token 失效"同口径）。
+    pub fn query_epoch(&self) -> u32 {
+        *self.query_epoch.borrow()
     }
 
     /// 停止会话（Run 结束）：之后 `run_def` 一律具名拒，provider 被丢弃。
@@ -123,6 +148,18 @@ impl AgeGfxSession {
         let host = LedgerHost {
             provider: self.provider.clone(),
             ledger: self.ledger.clone(),
+            // PLAN-981（宿主动态 token/世代）：每次 run_def = 新 callback——
+            // epoch 换新格（归零）、callback 序号 +1；tick 取会话当前值
+            //（begin_tick 只在回调间调用，本 callback 内不变）。
+            tick: self.tick,
+            callback: {
+                self.callback_seq += 1;
+                self.callback_seq
+            },
+            query_epoch: {
+                self.query_epoch = Rc::new(RefCell::new(0));
+                self.query_epoch.clone()
+            },
         };
         // 注册到本线程（已成对 install/uninstall；嵌套 run 会被 AV 的 host
         // reentry 检查拦住）。
@@ -165,13 +202,28 @@ pub fn execute_without_host(checked: &CheckedModule, def_id: &str) -> Result<Val
 }
 
 /// 计费/预算 wrapper：先记账再转发；超预算即 sticky 拒、不触达 provider。
+/// PLAN-981（宿主动态 token/世代）：转发走 `dispatch_with_ctx`——
+/// `query2d.segment/sweep` 先推进本 callback 的 query epoch（第二次查询 ⇒
+/// epoch 前进 ⇒ 先前 token 失效的宿主侧动态事实），再把 tick/callback/
+/// epoch/credits 一并交宿主（宿主据此给自家 token/句柄记账打真实
+/// fault-13/33 载荷；**本层只交事实、不重复判**——语言侧源序走查在先）。
 struct LedgerHost {
     provider: Rc<RefCell<Option<Box<dyn AgeGfxHost>>>>,
     ledger: Rc<RefCell<Ledger>>,
+    tick: u64,
+    callback: u64,
+    query_epoch: Rc<RefCell<u32>>,
+}
+
+/// 是否为推进 query epoch 的宿主查询 op（与语言侧 `is_query2d_call` 同集：
+/// segment/sweep——021 fault 13 的 token 语义只挂这两条查询）。
+fn bumps_query_epoch(symbol: &str) -> bool {
+    symbol == "age.query2d.segment.v1" || symbol == "age.query2d.sweep.v1"
 }
 
 impl AgeGfxHost for LedgerHost {
     fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault> {
+        let credits_used;
         {
             let mut l = self.ledger.borrow_mut();
             if l.faulted {
@@ -197,7 +249,19 @@ impl AgeGfxHost for LedgerHost {
                 ));
             }
             l.credits = next;
+            credits_used = l.credits;
         }
+        // token/世代：查询 op 先推进 epoch（1 基；非查询 op 原样带当前值）。
+        if bumps_query_epoch(symbol) {
+            *self.query_epoch.borrow_mut() += 1;
+        }
+        let ctx = AgeGfxCall {
+            tick: self.tick,
+            callback: self.callback,
+            query_epoch: *self.query_epoch.borrow(),
+            credits_used,
+            symbol,
+        };
         let mut provider = self.provider.borrow_mut();
         let Some(host) = provider.as_mut() else {
             return Err(AgeGfxFault::new(
@@ -205,7 +269,7 @@ impl AgeGfxHost for LedgerHost {
                 "the graphics host provider was dropped",
             ));
         };
-        host.dispatch(symbol, args)
+        host.dispatch_with_ctx(symbol, args, &ctx)
     }
 }
 
@@ -231,6 +295,9 @@ mod tests {
         let mut host = LedgerHost {
             provider: session.provider.clone(),
             ledger: session.ledger.clone(),
+            tick: session.tick_index(),
+            callback: 1,
+            query_epoch: session.query_epoch.clone(),
         };
         // 32 次收费服务（每次 1 credit）恰好合法。
         for _ in 0..32 {
@@ -256,10 +323,43 @@ mod tests {
         let mut host = LedgerHost {
             provider: session.provider.clone(),
             ledger: session.ledger.clone(),
+            tick: session.tick_index(),
+            callback: 2,
+            query_epoch: session.query_epoch.clone(),
         };
         host.dispatch("age.input.space.v1", &[])
             .expect("fresh tick");
         assert_eq!(session.credits_used(), 1);
+    }
+
+    /// PLAN-981（宿主动态 token/世代）：query epoch 只随 `query2d.segment/
+    /// sweep` 单调推进（非查询 op 不动）；`run_def`（callback）边界归零、
+    /// callback 序号单调——宿主侧 token/句柄记账的世代事实。
+    #[test]
+    fn query_epoch_advances_per_query_and_resets_per_callback() {
+        let session = AgeGfxSession::new(Box::new(Echo));
+        assert_eq!(session.query_epoch(), 0);
+        assert_eq!(session.callback_seq(), 0);
+        let mut host = LedgerHost {
+            provider: session.provider.clone(),
+            ledger: session.ledger.clone(),
+            tick: 1,
+            callback: 1,
+            query_epoch: session.query_epoch.clone(),
+        };
+        // 非查询 op 不推进 epoch。
+        host.dispatch("age.input.space.v1", &[]).expect("scalar op");
+        assert_eq!(*session.query_epoch.borrow(), 0);
+        // 两条查询各推进一次（第二次 ⇒ 先前 token 失效的动态事实）。
+        host.dispatch("age.query2d.sweep.v1", &[])
+            .expect("first query");
+        assert_eq!(*session.query_epoch.borrow(), 1);
+        host.dispatch("age.query2d.segment.v1", &[])
+            .expect("second query");
+        assert_eq!(*session.query_epoch.borrow(), 2);
+        // 非查询 op 仍不动。
+        host.dispatch("age.tick.dt.v1", &[]).expect("scalar op");
+        assert_eq!(*session.query_epoch.borrow(), 2);
     }
 
     #[test]

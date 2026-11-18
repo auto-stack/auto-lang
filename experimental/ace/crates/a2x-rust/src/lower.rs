@@ -160,7 +160,9 @@ pub enum RExpr {
     Local(String),
     /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：读模块级 global 的 static
     /// （`static mut` 读——按值拷贝，unsafe 块内）。
-    GlobalRead { name: String },
+    GlobalRead {
+        name: String,
+    },
     /// PLAN-981：写模块级 global 的 static 并产出 0（setter 合同：i32）。
     GlobalWrite {
         name: String,
@@ -587,6 +589,19 @@ pub fn lower_program<'a>(
     view: &SemanticView<'a>,
     entry_name: &str,
 ) -> Result<RustProgram, A2xReject> {
+    // PLAN-981（A2C 宿主面）：AGE gfx 宿主 op 在 A2R 车道**具名拒**——符号面
+    // 已在视图收进（`is_gfx_host_symbol`），宿主车道归 AC/C（1068/T-04）与
+    // AV 会话；Rust 生成侧不伪造宿主实现。模块级**一次**判定（与逐调用点
+    // 同义：任一 gfx 宿主 op 即拒）——不放进热递归函数，深递归预算守卫的
+    // 栈余量不受影响。
+    if view.has_gfx_ops() {
+        return Err(A2xReject::unsupported_op(format!(
+            "this module carries AGE graphics host operations ({}); the host lane for A2R is \
+             not wired (the C/AC host surface consumes it — named boundary, no fabricated host \
+             implementation)",
+            view.gfx_symbols().join(", ")
+        )));
+    }
     let entry = view.entry(entry_name)?;
     let mut p = lower_functions(view)?;
     p.entry = rust_fn_name(entry.source_name);
