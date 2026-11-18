@@ -234,6 +234,11 @@ impl AceExecutor for HostExecutor {
                 "the AV execution lane has no argv surface; the text entry takes `texts` only",
             );
         }
+        // PLAN-982（EXEC · 脚本 stdin）：console 请求走 **console 车道的文本入口**
+        // （`fn main(input str)` + `print`），与 run_console 同一编译/授权纪律。
+        if request.console {
+            return self.run_console_text(request, texts);
+        }
         let mut caps: Vec<String> = request.capabilities.iter().map(|c| c.to_string()).collect();
         if !caps.iter().any(|c| c == "ac.runtime.text.v1") {
             caps.push("ac.runtime.text.v1".to_string());
@@ -579,6 +584,77 @@ impl HostExecutor {
     }
 
     // -- console lane (T-02: print/eprint under per-run grants) ----------
+
+    /// PLAN-982（EXEC · 脚本 stdin，2026-11-18）：**console 车道的文本入口**——
+    /// 管道 stdin 作为运行时文本交给 `fn main(input str)` 形脚本（982
+    /// round-182 通道）。编译/授权与 [`Self::run_console`] 同纪律；执行用
+    /// `execute_entry_text_platform`（console 捕获 + 平台后台；纯 console
+    /// 脚本无平台操作，grants 即 console 面）。
+    #[cfg(windows)]
+    fn run_console_text(&self, request: &AceRequest<'_>, texts: &[&[u8]]) -> AceRunReport {
+        let compiled = match ace_core::source::compile_host_console_source(
+            request.source,
+            "p969.at",
+            request.capabilities,
+        ) {
+            Ok(compiled) => compiled,
+            Err(diags) => return diag_list_report(&diags),
+        };
+        let mir = match ace_lowering::hir_adapter::lower_checked_owned(
+            &compiled.checked,
+            request.entry_def_id,
+            fnv1a64(request.source.as_bytes()),
+        ) {
+            Ok(mir) => mir,
+            Err(e) => return diag_report("lower", &e.code(), format!("{e:?}"), None),
+        };
+        if let Err(e) = ace_av_core::mir_verify::verify_mir(&mir) {
+            return diag_report("verify", "ace.mir/verify-failed", format!("{e:?}"), None);
+        }
+        let loaded = match wire_admit(&mir, None) {
+            Ok(loaded) => loaded,
+            Err(report) => return report,
+        };
+        let mut cap = ace_av::console_host::ConsoleCapture::default();
+        let fallback = CancelFlag::new(false);
+        let mut backend = ace_av_core::platform_io::Win32PlatformIo::default();
+        let result = ace_av_core::av::execute_entry_text_platform(
+            &loaded,
+            &limits_from(request),
+            cancel_flag(request, &fallback),
+            request.grants,
+            texts,
+            Some(&mut cap),
+            &mut backend,
+        );
+        let mut out = match result {
+            Ok((outcome, _trace, _summary)) => map_outcome(outcome, None, None),
+            Err(e) => report(
+                AceOutcome::Denied {
+                    code: e.code.to_string(),
+                    message: e.message.clone(),
+                },
+                0,
+                None,
+                None,
+            ),
+        };
+        out.console = Some(AceConsoleReport {
+            stdout: cap.stdout.clone(),
+            stderr: cap.stderr.clone(),
+            dispatches: cap.dispatches,
+        });
+        out
+    }
+
+    /// 非 Windows：console 文本入口缺席（Win32 平台后台不可用）⇒ 具名拒绝。
+    #[cfg(not(windows))]
+    fn run_console_text(&self, _request: &AceRequest<'_>, _texts: &[&[u8]]) -> AceRunReport {
+        denied_report(
+            "ace.text/console-unavailable",
+            "the console text entry requires the Win32 platform backend; this target has none",
+        )
+    }
 
     fn run_console(&self, request: &AceRequest<'_>) -> AceRunReport {
         let compiled = match ace_core::source::compile_host_console_source(
