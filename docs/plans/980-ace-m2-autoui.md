@@ -1646,6 +1646,16 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **边界（诚实）。** ①stylekit 的 3 条参数化 recipe 带默认值→**本刀具名拒**（007/016/017/029/031p 的 stylekit 面仍未解锁）；②参数插值未接（`style-interp`）；③带参调用不折叠（`style-call`）；④导入 style 引用不接（`style-call`）；⑤用法替换只走主 view 树（命名 view/其它出口未遍历——具名边界）。
 
+2026-11-18 stage: fix+merge（**默认构建 E0433 红：④-A 包感知桥/包片段 lane 缺 `ace-bridge` cfg 门**；980 自身回归，非 982/983/man）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（默认与 feature 构建双绿）** | delivery: auto-ui master **`d188d695`**（ff-only）| worktree lang-980 @ plan-980-dev。
+
+**缺陷与根因（用户实证 + 本会话复核）**：`auto-ui-runtime/Cargo.toml` 的 `ace-bridge` feature 把 `ace-av`/`ace-core`/`ace-a2x-ts` 等声明为 **optional**；`ui/mod.rs` 里 `ace_node_desktop` 由前置 `#[cfg]` 覆盖，但 #2b/#2c 新增的 `ace_package_bridge`、`ace_package_lane` **未加门** ⇒ 任何不激活 `ace-bridge` 的消费者（auto-ui 默认 `cargo check -p auto-ui-runtime`、man 的 `ace-candidate` 链）编译时这些 crate 不存在（E0433），round 176 首错 `ace_a2x_ts` unresolved 同族。
+
+**修复**：`ui/mod.rs` 给两模块补 `#[cfg(feature = "ace-bridge")]`（与 `ace_node_desktop`/`ace_state_bridge`/`ace_ts_provider` 同一门控面）；不改依赖声明、不改桥/lane 代码。
+
+**验证（合并后提交）**：`cargo check -p auto-ui-runtime`（默认 features）**0 error**；`--features ace-bridge` **0 error**；ACE 面回归 `plan980_closure_window` 3/3、`plan980_closure_sfc` 2/2、`ace_node_desktop` 11/11。
+
+**man `ace-candidate` 是否转发 `ace-bridge`——980 决定：不转发。** 理由：桥/lane 依赖 optional 的 UI provider 面（含 iced/`auto-lang-ace-host` 等），man 的 candidate 链只需要 candidate/emit 与时序；转发会把 UI 栈拉进 man 的默认图并放大其 feature 面。若未来 man 某条腿确实需要桥行为，按腿显式启用并具名理由（不在本包预先扩面）。982 可在本提交后复跑 man 链（`plan983_c0_cli` ＋ `plan982_av_http_service`）；本红此前对 C0 的配对 worktree 证据不构成阻塞。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
