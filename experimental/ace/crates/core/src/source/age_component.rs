@@ -196,6 +196,40 @@ pub enum ComponentViewItem {
     Text(AgeTextLeaf),
     Element(ComponentViewElement),
     Entry(ComponentViewEntry),
+    /// PLAN-980 view-if 刀：view 级条件项（`if <cond> { … } [else …]`——
+    /// else-if 链展开为 else_items 内的单一嵌套 Cond）。**结构承载**（条件
+    /// 表达式+双子树+span；文本叶随 collect 平铺进 texts 供绑定验证）——
+    /// 本投影不判真值；语义消费归各腿（渲染腿具名拒/模板腿 v-if）。
+    Cond(ComponentViewCond),
+}
+
+/// view 级条件项的结构面（PLAN-980 view-if 刀）。
+#[derive(Clone, Debug)]
+pub struct ComponentViewCond {
+    /// 条件表达式（原源 span）。
+    pub cond: Expr,
+    /// then 子树（view 项）。
+    pub then_items: Vec<ComponentViewItem>,
+    /// else 子树（else-if 链=单一嵌套 Cond 项）。
+    pub else_items: Vec<ComponentViewItem>,
+    pub span: Span,
+}
+
+/// PLAN-980 view-if 刀：view 树内是否含条件项（首个命中返 span）——渲染
+/// 腿装载点的具名拒判据（未定条件语义的腿 fail-closed，不静默跳叶/双计）。
+pub fn view_contains_cond(items: &[ComponentViewItem]) -> Option<Span> {
+    for it in items {
+        match it {
+            ComponentViewItem::Cond(c) => return Some(c.span),
+            ComponentViewItem::Element(e) => {
+                if let Some(sp) = view_contains_cond(&e.items) {
+                    return Some(sp);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// 组件元素：`tag [label] { items }`（tag 为普通标识符——上下文保持）。
@@ -1285,6 +1319,12 @@ fn compile_component_scenario_full(
                 match it {
                     ComponentViewItem::Text(_) => {}
                     ComponentViewItem::Element(e) => collect_lambdas(&e.items, out),
+                    // PLAN-980 view-if：条件子树照走（铸造序=源序——then 先于
+                    // else，与方言 DFS 一致）。
+                    ComponentViewItem::Cond(c) => {
+                        collect_lambdas(&c.then_items, out);
+                        collect_lambdas(&c.else_items, out);
+                    }
                     ComponentViewItem::Entry(en) => {
                         // #6p：foreign lambda（体含非赋值语句）不铸——缺席。
                         if let ComponentEntryValue::Lambda {
@@ -1843,6 +1883,12 @@ fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic
             match it {
                 ComponentViewItem::Text(_) => {}
                 ComponentViewItem::Element(e) => walk_items(&e.items, f)?,
+                // PLAN-980 view-if：结构遍历进双子树（条件表达式本身不属
+                // lambda RHS 验证面）。
+                ComponentViewItem::Cond(c) => {
+                    walk_items(&c.then_items, f)?;
+                    walk_items(&c.else_items, f)?;
+                }
                 ComponentViewItem::Entry(en) => {
                     if let ComponentEntryValue::Lambda { assigns, .. } = &en.value {
                         for a in assigns {

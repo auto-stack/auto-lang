@@ -1180,6 +1180,10 @@ fn read_back_components(
                             .map(|it| match it {
                                 ComponentViewItem::Text(_) => 1,
                                 ComponentViewItem::Element(e) => count_texts(&e.items),
+                                // PLAN-980 view-if：条件子树计入（结构面）。
+                                ComponentViewItem::Cond(c) => {
+                                    count_texts(&c.then_items) + count_texts(&c.else_items)
+                                }
                                 ComponentViewItem::Entry(_) => 0,
                             })
                             .sum()
@@ -1190,6 +1194,10 @@ fn read_back_components(
                             .map(|it| match it {
                                 ComponentViewItem::Text(_) => 1,
                                 ComponentViewItem::Element(e) => 1 + count_items(&e.items),
+                                // PLAN-980 view-if：条件项计 1+双子树（结构面）。
+                                ComponentViewItem::Cond(c) => {
+                                    1 + count_items(&c.then_items) + count_items(&c.else_items)
+                                }
                                 ComponentViewItem::Entry(_) => 1,
                             })
                             .sum()
@@ -1648,6 +1656,11 @@ fn collect_view_event_bindings(
             ComponentViewItem::Text(_) => {}
             ComponentViewItem::Element(e) => {
                 collect_view_event_bindings(&e.items, msgs, out);
+            }
+            // PLAN-980 view-if：事件绑定收集进条件双子树（结构面）。
+            ComponentViewItem::Cond(c) => {
+                collect_view_event_bindings(&c.then_items, msgs, out);
+                collect_view_event_bindings(&c.else_items, msgs, out);
             }
             ComponentViewItem::Entry(en) => {
                 if !en.is_event {

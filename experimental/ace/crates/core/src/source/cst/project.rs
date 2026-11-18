@@ -5680,6 +5680,10 @@ impl<'a> Engine<'a> {
         let text_props = self.rule_kind_of("age-text-props");
         let entry_kind = self.rule_kind_of("age-view-entry");
         let element_kind = self.rule_kind_of("age-view-element");
+        let cond_kind = self.rule_kind_of("age-view-if");
+        let cond_block_kind = self.rule_kind_of("age-view-if-then");
+        let cond_else_kind = self.rule_kind_of("age-view-else");
+        let _ = (cond_block_kind, cond_else_kind);
         let mut out = Vec::new();
         for raw in self.cx.children(list_node) {
             let raw_kind = self.cx.tree.kind(raw);
@@ -5687,7 +5691,8 @@ impl<'a> Engine<'a> {
                 || Some(raw_kind) == text_bare
                 || Some(raw_kind) == text_props
                 || Some(raw_kind) == entry_kind
-                || Some(raw_kind) == element_kind;
+                || Some(raw_kind) == element_kind
+                || Some(raw_kind) == cond_kind;
             // PLAN-980 B-AV U01（#6m 投影缺口根因）：先按自身 kind 匹配
             // ——props 段条目（age-view-entry）是具体规则、不是 age-view-item
             // 包装，unwrap 会错误下钻到其首个孩子（age-event-key）后整条
@@ -5839,6 +5844,10 @@ impl<'a> Engine<'a> {
                     items,
                     span: self.cx.span_of(item),
                 }));
+            } else if Some(kind) == cond_kind {
+                // PLAN-980 view-if 刀：view 级条件项（结构承载；文本叶随
+                // collect 平铺；else-if 链=else_items 内单一嵌套 Cond）。
+                out.push(self.project_view_if_cond(item, texts, text_role));
             } else if !raw_is_item
                 && self
                     .cx
@@ -5857,6 +5866,55 @@ impl<'a> Engine<'a> {
             }
         }
         out
+    }
+
+    /// PLAN-980 view-if 刀：`age-view-if` 节点 → `ComponentViewItem::Cond`
+    /// （结构承载；else-if 链展开为 else_items 内的单一嵌套 Cond）。
+    fn project_view_if_cond(
+        &mut self,
+        item: u32,
+        texts: &mut Vec<crate::source::age_h0::AgeTextLeaf>,
+        text_role: &str,
+    ) -> ComponentViewItem {
+        let cond_node = self.cx.field_child(item, "cond").expect("view-if cond");
+        let cond = self.project_expr_sync(cond_node);
+        let then_node = self
+            .cx
+            .field_child(item, "then")
+            .expect("view-if then body");
+        let then_items = self.collect_view_items(then_node, texts, text_role);
+        let mut else_items = Vec::new();
+        if let Some(else_node) = self.cx.field_child(item, "else") {
+            // age-view-else 的 alt 臂孩子=else-kw + 具体规则（kw 先于规则）——
+            // 按 kind 定位具体臂（unwrap 会落在 kw token 上）。
+            let if_kind = self.rule_kind_of("age-view-if");
+            let block_kind = self.rule_kind_of("age-view-if-then");
+            let mut arm = None;
+            for ch in self.cx.children(else_node) {
+                let k = self.cx.tree.kind(ch);
+                if Some(k) == if_kind || Some(k) == block_kind {
+                    arm = Some(ch);
+                    break;
+                }
+            }
+            match arm {
+                Some(ch) if Some(self.cx.tree.kind(ch)) == if_kind => {
+                    // else-if 链：单一嵌套条件项（递归）。
+                    else_items.push(self.project_view_if_cond(ch, texts, text_role));
+                }
+                Some(ch) => {
+                    // else 块（age-view-if-then 形）。
+                    else_items = self.collect_view_items(ch, texts, text_role);
+                }
+                None => {}
+            }
+        }
+        ComponentViewItem::Cond(crate::source::age_component::ComponentViewCond {
+            cond,
+            then_items,
+            else_items,
+            span: self.cx.span_of(item),
+        })
     }
 
     /// `.field (=|+=|-=) expr` 语句 → 赋值行（复合赋值脱糖为二元）。

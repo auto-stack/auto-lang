@@ -94,6 +94,8 @@ mod plan981_design_slot;
 mod plan981_event_a;
 #[path = "cases/plan981_event_b.rs"]
 mod plan981_event_b;
+#[path = "cases/plan980_view_if.rs"]
+mod plan980_view_if;
 #[path = "cases/plan981_g2_hooks.rs"]
 mod plan981_g2_hooks;
 #[path = "cases/plan981_gfx_seam.rs"]
