@@ -591,6 +591,21 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 - **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
 - **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
 
+**S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**
+方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
+
+| 实测 | 结论 |
+|---|---|
+| `001-helloworld` | **OK**（唯一可直接编译的真实例；无跨模块 helper） |
+| `002-counter` | ERR `source.lex` 反引号模板文本（`text \`Counter: ${.count}\``）——age-package 词法面缺反引号文本 |
+| `010/011` | ERR `source.syntax expected fn, found style`——**顶层 `style` 声明**在 age-package 面无规则 |
+| `013/019/020/021/023/025/038` | ERR 回滚位 `expected fn, found widget`；合成隔离证明=**`msg { X(T) }` payload 变体**不在包面 widget 体（`msg{A,B}` 单元可、`msg{A(str)}` 不可） |
+| `026-database` | ERR `source.lex` `$`（模板/`$` 文本面） |
+
+规模（35 例，去注释）：**顶层 `style` 20/35（126 行）**、**payload msg 17/35**、`use { package }` 5/35、反引号 2/35。合成矩阵：`model+view`、`msg` 单元、`design`、`use m.n: A,B + msg` 在包面 **OK**；`msg` payload、反引号文本 **FAIL**。
+
+**结论与重划（待用户/981 裁定，见 §10）**：981 会签 A1"整个 widget 工程按 age-package 面编译"在真实源上**尚不可行**——包面缺 age-component **已交**的三类 widget 体表面（顶层 `style`、payload msg、反引号文本；`use { package }` 已由 D-④-7 单列）。④-A 本旨（导入/闭包/跨模块 helper）在这些表面补齐前**无法在真实示例上被触达**。建议 ④-A 首切片顺序改为：**S0.5a 表面补齐**（style 声明 + 包面 payload msg/反引号，按用户裁定归属：980 域内收敛 vs 981 语言面）→ **S0.5b 惰性绑定**（A3）→ **S1 真实例闭包 + helper + AV/TS 承载**。不得以 001（无 helper）或合成 fixture 冒充 ④-A 打通。
+
 ## 6. 测试设计
 
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
@@ -769,7 +784,7 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 ### 阶段 PHASE-④-EXT（2026-11-18 新增；非任务行，不改 32 任务/12 完成口径）
 
 - 依据与内容：§5 PHASE-④-EXT（外部名域合同：名面 N1–N4、六轴、承载矩阵、三方案、条款 C1–C8）+ §5 裁定落档/执行顺序 + ④-A 首切片合同 v1；owner_stage: design→executing（裁定后）。
-- 现状（2026-11-18）：**七项裁定已落**；①U01 #14 **已收口落主**（lang `95b0ccb49`/ui `91d549ea`，phase fold #14，见 §9）；②④-A 首切片：981 已会签（合同 v2，`81b0a03b1`）——**已具备开工条件**（grammar 零改动、入口=age-package）；③UI058 T-02/981 联冻为并行线（不自本计划开工）。
+- 现状（2026-11-18）：**七项裁定已落**；①U01 #14 **已收口落主**（lang `95b0ccb49`/ui `91d549ea`，phase fold #14，见 §9）；②④-A 首切片：981 已会签（合同 v2，`81b0a03b1`），但本会话真实例实测发现**包面 widget 体表面缺失**（style 20/35、payload msg 17/35、反引号 2/35）⇒ 停在 **§10 R1/R2/R3 路由裁定**（建议 R1：S0.5a 表面补齐→S0.5b 惰性绑定→S1 真实例）；未裁定前不改 grammar/身份；③UI058 T-02/981 联冻为并行线（不自本计划开工）。
 - 退出：④-A 首切片收据（含 AV 真窗与 SFC 映射两格由"推论"变"已验"）→ 逐示例扩展；原任务/AC 不变，切片仍走 §9 收据+phase fold。
 
 ### A最小与B各波唯一任务清单（阶段按行标签）
@@ -1516,6 +1531,8 @@ next_responsible_role: review（U01 首切片批级复核）→ merge（phase fo
 
 **交接 981（按版本，reviewed_commit 绑定）**：①源/夹具：`ace-node-counter`（002 派生）、`ace_node_desktop` 测试内 `input_fixture`（U01 输入形）；②命令：`cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1`（CPU 11/11）；排窗=`AUTO_UI_ACE_NODE_E2E=1` + prep（exe `--prep-only`）；③oracle：`p980_u01_input_text_numeric_reject_and_two_instance_isolation`（四 oracle）、`p980_u01_window_input_e2e`（真窗）、`p980_node_desktop_permission_revocation_refuses_before_dispatch`（撤权）。981 仍缺=**typed UI/资源宿主面**与**980 合流 oracle**（本折只交输入子面；合流 oracle 待 ④-A/W1 全分母），已有证据先接、缺项继续跟踪。
 
+2026-11-18 stage: design-probe（④-A 首切片选例实测；仅临时探针，探针与 harness 注册已删净，零产品代码）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **blocked-on-routing（实测发现 ④-A 前置=包面 widget 体表面补齐）** | 证据：`plan-artifacts/plan-980/closure-surface-probe-20261118.txt`（原始输出+35 例规模）| 结论：age-package 面缺 顶层 `style`（20/35）、payload msg（17/35）、反引号文本（2/35）；001 唯一可编译且无 helper；`msg{A,B}`/`design`/`use m.n: A,B+msg` 在包面 OK。⇒ ④-A 顺序建议改为 S0.5a 表面补齐 → S0.5b 惰性绑定 → S1 真实例 helper+AV/TS。路由选项 §10 R1/R2/R3，未裁定前不改 grammar/身份、不以合成 fixture 冒充。| 清理核对：`zz_probe_980_closure.rs` 删除、`tests/conformance.rs` 还原；worktree clean。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
@@ -1555,3 +1572,15 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 | D-④-7 | **批准小范围验证，先保留作者语法** | 优先验现有组件入口能否复用包绑定；确需 package unit 再用实际示例定迁移范围；`use { package: … }` 五例继续单列 |
 
 执行顺序：①U01 #14 收口（复审+真窗输入+未实跑项记录→合入→按版本交 981 可消费源/命令/oracle）→②④-A 首切片（合同见 §5，待 981 会签）→③UI058 T-02/981 联冻并行（980 WEB 收口不排其前）。
+
+### ④-A 实测阻断与路由请求（2026-11-18，本会话实测；待用户/981 裁定）
+
+§5 S0.5 实测：age-package 面在真实源上缺**顶层 `style`（20/35）**、**payload msg（17/35）**、**反引号文本（2/35）**；001 是唯一可直接编译的真实例且无跨模块 helper。⇒ ④-A 的"真实示例打通"被**表面补齐**前置，导入/闭包工作是其后。
+
+| 选项 | 内容 | 代价/收益 |
+|---|---|---|
+| R1（建议） | **④-A 增补 S0.5a 表面补齐**：`style` 声明（→ const 形）+ 包面 payload msg + 反引号文本三件，按"980 域内收敛"处理 grammar（若改文法须 981 同提交重基线）；完成后按原 A1/A3 走真实例 | 中；直接解锁 17–20 例的可解析面，且是 B-AV 全分母共同前置（不只 ④-A） |
+| R2 | 表面补齐归 **981 语言面**，980 等其交付；④-A 期间只用 001/合成闭包证机制 | 980 侧最快出机制证据，但真实例仍不可达，且与"不得以合成 fixture 冒充"冲突 |
+| R3 | 换入口面：组件面接纳 package 闭包（per-unit face 改造，981 回签明确须另立评审） | 高；981 明确不涵盖 |
+
+未裁定前 980 侧不擅自改 grammar/身份；④-A 开工停在 S0.5 结论与合同，不以 001 或合成 fixture 冒充打通。
