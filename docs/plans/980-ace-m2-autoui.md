@@ -928,6 +928,22 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: handoff（**PLAN-981 → PLAN-980：W1 分组 AV 证据交接，供 `B-AV-R` 汇入 `UI-W1-AV`**）| 提供方 981 r18 | 绑定 `3047b3481` | outcome: **可供接收（3 组）；1 组不属 981**
+
+981 按组件组复跑了 W1 的 AV 适用格（`V-AGE-WAVE` 的 AV 子面），逐组证据与责任边界如下——**本交接只提供分组证据，不代 980 签发 `UI-W1-AV`**：
+
+| 组 | 981 证据（绑定 `3047b3481`） | 建议 |
+|---|---|---|
+| **G-INSTANCE 双实例 2:1** | `plan981_event_b_av`（两实例 `(i0,+3)(i1,+5)(i0,+4)`→[7,5]）＋`plan981_cross_module_nodes`（**两真实模块** `ForNode{0}×2+{1}×1`→2:1；模块序调换随动；越界报包内组件数） | 可并入 B-AV-R |
+| **G-LIFECYCLE 关开** | `plan981_gfx_host`（`stop()`→`age-gfx.session-stopped`、provider 丢弃、新会话重注册）＋`plan981_gfx_hooks`（新 callback epoch 归零、跨 Tick 账本重置） | 可并入 B-AV-R |
+| **G-VIEW/FRAME/INPUT** | `plan980_*`/`plan979_*` AV 家族随本批复跑（合计 75/75 PASS，0.16s 运行段） | 可并入 B-AV-R |
+| **G-BADEDIT 坏编辑保旧** | 源侧：core `plan981_age_package_modules::recovers_on_the_same_entry`、`plan981_age_ref::recovers_after_the_import_is_added`、`plan981_event_b`（具名拒→修复同入口绿）；**会话语义（失败不动既有 ops）归 auto-ui R64-1** | 源侧可并入；会话侧请以 auto-ui 正式来源计 |
+| **G-RESOURCE 资源归零** | **981 无该责任行**（`leaked_regions_cleaned`/`live_mapped_at_exit` 在会话/AVHC 腿，如 `p982` 组合用例） | **不由 981 交**，须会话腿 owner 出据 |
+
+**同时告知（与 W1 相关的既有交付）**：①跨模块实例身份已修（三处统一为**包级组件声明序**：绑定器级场景核对、`node_base` 线程化发射、AV `symbol_of_in` 解析）——UI058 可把 `Target`/`Player` 拆回两个真实模块；②UI058 缺口⑤的答复（typed 队列可直接复用、作者内自派发按 host authority 不新增）见 058 §T-05 答复条（auto-ui `8438e0bf`）。
+
+**未由本交接覆盖**：`UI-W1-AV` 汇总签发（980 `B-AV-R`）、G-RESOURCE 组、以及 W2/W3 波次；981 整包仍 `executing`。
+
 ### 2026-11-17 三路线修订的规划预检（不是实施验收）
 
 本轮仅文档：统一strategy/架构、四个引擎AV新合同与四个新版AutoForge合同；保本包原任务ID/进度/全部旧AC/V/SD，新增阶段义务见§5–7。静态核对8新Plan共74任务、9既有Plan共140原任务ID、阶段DAG 44节点/90依赖无环、新增本地链接均可达，16份取材源码/规范/已归档合同身份未改变；四仓文档diff格式检查通过。981并发实施会话的T-01勾选保留，不计本轮交付。下方历史记录原样保留。
