@@ -1764,6 +1764,14 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **③B-WEB-I/V/R 收口**：本轮未动（等 view-if 刀+④域材料）；U0 已由 982 round-188 联合验收双侧闭（上收据）——WEB 批与 U0 解耦明确。
 
+2026-11-18 stage: work（**B-AV-R 签发确认（用户指令）：接收 981 W1 分组 AV 交接并入账**）| plan_id: PLAN-980 | plan_revision: r18 | 交接绑定 `3047b3481`（已在 master）| 复放基线=**master `81221364d`**（981 轮更后；证据在更新树上复验更绿）。
+
+**接收（复放全绿）。** ①**G-INSTANCE 双实例 2:1**：`plan981_event_b_av`（两实例交错→[7,5]）+`plan981_cross_module_nodes`（**两真实模块** ForNode 2:1、包序随动、越界报包内组件数——含 981 跨模块身份修复的消费面）；②**G-LIFECYCLE 关开**：`plan981_gfx_host`（stop→session-stopped/丢弃/重注册）+`plan981_gfx_hooks`（epoch 归零/账本重置）；③**G-VIEW/FRAME/INPUT**：`plan979_*`+`plan980_*` AV 族（收据 75/75 @3047b3481；本复放按前缀**26+18=44/0 红**，另 `plan981_` 前缀**46/46** 含其新组——族超集全绿）；④**G-BADEDIT 源侧**：core `recovers_on_the_same_entry`/`recovers_after_the_import_is_added` 各 1/1 绿。复放命令与计数落 plan-artifacts（bavr-*.log）。
+
+**UI-W1-AV 签发剩余（具名，故 B-AV-R 行保持未勾）。** ①**G-RESOURCE 无出据**（`leaked_regions_cleaned`/`live_mapped_at_exit` 归会话/AVHC 腿 owner——981 明确不交）；②**U01..06 全分母**仍压 ④外部名域合同（35 例 census 冻结在案：34/35 含 use、宽数值 2 例）——分组绿≠分母闭；③**G-BADEDIT 会话侧**（失败不动既有 ops）待 auto-ui **R64-1** 正式来源。
+
+**同时入账（981 附带交付）。** 跨模块实例身份修复（包级组件声明序三处统一）——UI058 可把 Target/Player 拆回两真实模块；typed 队列可直接复用（作者内自派发按 host authority 不新增）。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
