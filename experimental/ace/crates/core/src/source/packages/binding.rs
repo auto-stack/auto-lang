@@ -938,6 +938,14 @@ fn bind_package_syntax_inner(
     for (key, unit) in &units {
         let mut binds = BTreeMap::new();
         for i in &unit.imports {
+            // PLAN-980 ④-A（A3，引用驱动/惰性导入）：AGE 包面上**未被引用**的
+            // 导入不解析、不建模块边、不要求目标模块在场（`use themes.themes:
+            // Auto` 这类只声明不用的行）；被引用的导入仍走 eager 解析并保留全部
+            // 具名拒绝（缺模块/私有/缺符号）。其它面恒 eager——`referenced` 为空
+            // 集时行为与过去一致。
+            if face == Faces::Age && !i.reexport && !unit.referenced.contains(i.bound_name()) {
+                continue;
+            }
             // PLAN-1064 T-MODULE-I r2: `use demo` — the module-scope
             // import. Declares the module edge (cycle detection, cold
             // identity); members stay qualified `demo.item` through the
@@ -4046,6 +4054,9 @@ fn assemble_unit(
         type_exports,
         const_exports,
         imports,
+        // PLAN-980 ④-A：装配路径沿用源前门产出的引用集（否则 AGE 面的惰性
+        // 导入判定在此被清空——实测 binds 全空、跨模块 helper 变 unknown）。
+        referenced: public.referenced.clone(),
         grammar_id: public.grammar_id.clone(),
         source_hash,
         pieces,

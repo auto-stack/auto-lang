@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **58**——39–44 为编译器语法、cache、ABI、语义与AC/AV及数据域章；45 为 AutoGraphics；46 为跨生态 CAP；47 为 AutoUI 应用架构；48 为 UI 领域模型与 lowering 终态；49 为 native 单源 MIR lowering；50 为 AutoWeb 服务框架与仓库边界；54–56 为标准库/ACE M2，57 为ROS2 SDK），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **59**——39–44 为编译器语法、cache、ABI、语义与AC/AV及数据域章；45 为 AutoGraphics；46 为跨生态 CAP；47 为 AutoUI 应用架构；48 为 UI 领域模型与 lowering 终态；49 为 native 单源 MIR lowering；50 为 AutoWeb 服务框架与仓库边界；54–56 为标准库/ACE M2，57 为ROS2 SDK，58 为Python标准语法互操作），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -233,6 +233,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [native-backend-strategy](strategy/native-backend-strategy.md) | Native 战略：当前 AC/ACC/Cranelift 分期 + 历史自主生态/开发形态/fork-rustc 论证 | 2026-10-04 文首对齐新路线；旧阶段顺序保留为历史 |
 | [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR）：AutoGraphics/创造入口；Godot参考/可选实验，旧静态缝合论证留档 | 📝 2026-10-16对齐后续讨论，阶段见autographics-forge-v06 |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
+| [58-python-standard-syntax-interop](58-python-standard-syntax-interop.md) | ACE Python互操作：967生成shim、PyO3适配、句柄/Meta及ABI兼容边界 | r4规划；PLAN-1026先交AV CPU PyTorch训练，新A2PY另行规划 |
 | [av-language-capability-matrix](strategy/av-language-capability-matrix.md) | 43项AV语言/内核/库/产品能力、当前计划后缺口、语义迁移差异与证据分母 | 2026-10-20正式目标矩阵；未实施，不等完整语言 |
 | [av-source-programs-and-avm-replacement-roadmap](strategy/av-source-programs-and-avm-replacement-roadmap.md) | 真实Auto程序G0–G8、23种子、入口/SKU迁移、默认/退役门及优先级；首个Plan827 | 2026-10-20路线/计划草案，未运行或切默认 |
 
