@@ -73,6 +73,28 @@
 **语料口径（round 113/114）**：真实语料 301 份（含 `.wt` 镜像），探针对**模板族按产品口径注入 `name`**后：**296 与 legacy 逐字一致、2 份 ACE 接受而 legacy 拒绝（`clib` 模板的两份拷贝）——**这是"更宽松"而非"更强"**：ACE 接受 `lib ${name} {}` 却不做**节点位插值**，生成物因此**读不回**（`plan982_ace_clib_template`：值位替换 / 节点位保留 `${name}` / 回读具名失败）
 **模板节点位插值（2026-11-18 用户裁定 ①B）**：默认**不插值**（`lib ${name} {}` 的 id/实参保留字面 `${name}`，与 legacy 逐字一致，`plan982_ace_clib_template` 第一例钉住）。设 `AUTO_ACE_TEMPLATE_NODE_INTERP=1|true|yes|ace` 后节点位改走 `__fstr(expr)`：根**标量属性**已登记为局部，因此 `name: "probe"` 后 `lib ${name} {}` **真的插值**，`clib` 模板在开关下生成 `lib clibproj {_arg0: "clibproj"}` 且**可读回**（同文件第二例）。**边界（round 127 起已解除一半）**：**嵌套体内的标量属性也已登记为局部**（用全文档去重集 `aliased`，因为节点体是内联进同一语句列表、没有独立块作用域）；注入名不重复别名（`emit_injected` 已发射 `let`），嵌套同名键仍各自保留（`p982_vcfg_context_injection_axes` 钉住）。
 **宽标量（`f64`/`u64`，2026-11-18 用户指示 ④ 交付）**：默认**不接受**浮点/宽整数字面量（`ratio: 1.5` ⇒ 具名 `source.unsupported`，与 legacy 表面一致）。设 `AUTO_ACE_NUMBER_SURFACE=1|true|yes|ace` 后：`ratio: 1.5` ⇒ `ConfigValue::F64(1.5f64.to_bits())`（**位精确**，`ConfigValue::F64` 存 bits），`big: 18446744073709551615` ⇒ `ConfigValue::U64(u64::MAX)`。实现口径：CST 投影器把"**恰好一个** affix-num 叶"的值升成 `ConfigPairValue::Scalar`；物化侧用 `cfg_put_f64_text`/`cfg_put_u64_text`（**十进制文本**传值，i32 返回通道不变，因而不需要给共享 AST 加 f64/u64 字面量）；节点与对象两种目标都支持（节点走 `set_prop` 并保留"注入赢 root seed 键"）。边界：只认 `整数.整数`（无指数/无符号）与装得进 u64 的十进制；`0x10`/`1i32`/`1.5.6` 仍被拒。用例：`p982_config_wide_scalars`（默认拒绝 / 门控接受 两例）。
+### AV 服务链（983 前置，2026-11-18 起）
+
+`auto service --server av` 是**真实 HTTP 服务**：Rust 负责 HTTP，**ACE AV 执行 handler**（用户裁定形状 A）。契约：
+
+**CLI / 环境**
+- `--server av`（别名 `ace`）= AV 轨；`vm`／`rust` 不受影响。
+- `AUTO_AV_ENTRY`（默认 `d_main`）固定入口；`AUTO_AV_ROUTES=derive` 改按 `(method, path)` 派生 def：
+  `GET /` ⇒ `d_main`，`GET /hello` ⇒ `d_hello`，`GET /a/b` ⇒ `d_a_b`，`POST /hello` ⇒ `d_hello_post`（非 GET 追加方法后缀）。
+- `AUTO_AV_WALL_MS` = 单请求墙钟预算；`AUTO_SERVICE_MAX_REQUESTS`（测试阀）＝服务满 N 个请求后自然关停。
+- 闸门：`AUTO_SERVICE_MAX_BODY`（默认 1 MiB ⇒ 413）、`AUTO_SERVICE_MAX_HEADER`（8 KiB ⇒ 431）、
+  `AUTO_SERVICE_MAX_REQUEST_LINE`（8 KiB ⇒ 414）、`AUTO_SERVICE_MAX_CONNECTIONS`（64 ⇒ 503）。
+
+**注入给程序的契约函数**（handler 直接调用；每次请求重新合成源码）
+- 长度面：`__av_request_path_len()`、`__av_request_method_len()`、`__av_request_query_len()`、`__av_request_body_len()`、`__av_request_target_len()`。
+- 查询面（单值/多值/解码）：`__av_query_<k>()`（首个值）、`__av_query_<k>_present()`、`__av_query_<k>_len()`、`__av_query_<k>_<i>()`；`%XX`／`+` 已解码，键经 `[A-Za-z0-9_]` 归一。
+- 体面（最小扫描，扁平对象里的整数）：`__av_body_<k>()`、`__av_body_<k>_present()`。
+
+**状态码映射**：成功 200（体＝返回值 + `path=` + `steps=`）；`ace.entry/missing`／`lower.entry` ⇒ **404**；路径存在但方法无 def ⇒ **405 + allow**（`AUTO_AV_ROUTES=derive`）；诊断／宿主失败 ⇒ 500（带具名 code）；`Cancelled` ⇒ 504 `ace.service/timeout`；预算回收 ⇒ 504 `ace.service/budget-exhausted`。
+
+**收据**（每次运行末尾一行，硬断言）：`✓ AV service receipt: served=N av_dispatches=M legacy_dispatches=L same_sdk=…`；`legacy_dispatches` 来自配置引擎的真实计数，`same_sdk=false` 时进程非零退出。**永远不回退 `vm` 轨**。
+
+**边界**：请求**原文**（字符串）不可用——实测 AV 源 profile **没有 `str` 类型**（`source.unsupported`），因此输入面是"命名数值 + 长度"；文本面需语言表面决策。当前是单进程、每连接一线程、`connection: close`／keep-alive 皆支持，未接 `auto_web` 服务器栈。
 ## 4. 具名边界（不冒充支持）
 
 - **运行期列表 `for`**：仅**字面数组**（`for d in (["a","b"])` 或绑定字面数组的 `var`）会
