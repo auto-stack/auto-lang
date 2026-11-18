@@ -94,7 +94,7 @@
 
 **收据**（每次运行末尾一行，硬断言）：`✓ AV service receipt: served=N av_dispatches=M legacy_dispatches=L same_sdk=…`；`legacy_dispatches` 来自配置引擎的真实计数，`same_sdk=false` 时进程非零退出。**永远不回退 `vm` 轨**。
 
-**边界**：请求**原文**（字符串）不可用——实测 AV 源 profile **没有 `str` 类型**（`source.unsupported`），因此输入面是"命名数值 + 长度"；文本面需语言表面决策。当前是单进程、每连接一线程、`connection: close`／keep-alive 皆支持，未接 `auto_web` 服务器栈。
+**文本入口（2026-11-18 用户裁定后落地）**：仅当**模块声明 `ac.runtime.text.v1`** 时，入口可以收**借用 `str`** 形参（`StrView`；owned `Str` 仍被 `mir.entry-sig` 拒绝）。服务侧 `AUTO_AV_TEXT=1` 时请求走受检文本入口，契约是 **`fn main(query str, body str)`**（`texts[0]`=查询串、`texts[1]`=UTF-8 体，逐请求数据、同一编译产物）；文本在本次执行的 arena 内分配，借用不逃逸，执行后 arena 必须归零；文本能力同时允许 `q.len_bytes()` 与 `q == "中文"`（按内容分流）。**边界**：`execute_entry`／`AceRequest.args` 的 argv 契约不变（通用入口仍拒文本实参）。当前是单进程、每连接一线程、`connection: close`／keep-alive 皆支持，未接 `auto_web` 服务器栈。
 ## 4. 具名边界（不冒充支持）
 
 - **运行期列表 `for`**：仅**字面数组**（`for d in (["a","b"])` 或绑定字面数组的 `var`）会
