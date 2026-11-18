@@ -815,6 +815,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                 // 存活 import）。
                                 | "age.frame2d.at.v1"
                         )
+                        // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形服务的宿主
+                        // 派发 op 以**存活 import 调用**到达 AV——调用点在 callee
+                        // 解析前按 symbol 分流到注册 provider（未注册即具名拒），
+                        // 所以这里必须承认它们是受检的 import 身份。
+                        || crate::age_gfx::is_host_symbol(&imp.symbol)
                 }
             };
             if !known {
@@ -874,6 +879,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         .host_imports
                         .iter()
                         .any(|h| crate::config_document::is_config_symbol(&h.symbol)))
+                // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形能力键在模块真的
+                // 携带图形宿主 import 时是已知准入项（provider 注册/预算仍由
+                // `ace_av::age_gfx` 会话另核）。
+                || (crate::age_gfx::is_gfx_capability(c)
+                    && self
+                        .module
+                        .imports
+                        .iter()
+                        .any(|i| crate::age_gfx::is_host_symbol(&i.symbol)))
                 || (self.module.is_host_console_profile()
                     && matches!(
                         c.as_str(),

@@ -5078,17 +5078,48 @@ k 0
                                         return Ok(dst);
                                     }
                                     lane => {
-                                        return Err(AdapterError::uns(
-                                            "lower.age-gfx-lane",
-                                            format!(
-                                                "AGE graphics service `{}` is a {} service: it executes on the graphics host lane (UI058 neutral units via the PLAN-938 host authority), not in the AV observation lane",
-                                                symbol,
-                                                match lane {
-                                                    ace_core::source::age_resources::AgeGfxLane::HostAlgorithm => "host-algorithm",
-                                                    _ => "host-identity",
-                                                }
-                                            ),
-                                        ));
+                                        // PLAN-981（IF-981-GFX-HOST-PORT）：宿主车道。
+                                        // **标量结果**的宿主 op 降成普通 import 调用——
+                                        // AV 在 callee 解析前按 symbol 分流到注册 provider
+                                        // （未注册具名拒）；**端口结果**（query2d.segment/
+                                        // sweep、image2d.png）需要多字段宿主返回 ABI，本片
+                                        // 仍具名拒（不伪造 record，也不拆成 N 次收费调用）。
+                                        let _ = lane;
+                                        let scalar_result =
+                                            matches!(
+                                            gop.result,
+                                            ace_core::source::age_resources::AgeGfxResult::Scalar(_)
+                                        );
+                                        if !scalar_result {
+                                            return Err(AdapterError::uns(
+                                                "lower.age-gfx-port-result",
+                                                format!(
+                                                    "AGE graphics service `{}` returns a typed port ({:?}); the multi-field host-return ABI is not wired yet (scalar-result host ops — input/tick/row/render2d — are supported). The port surface stays fail-closed rather than guessing a record",
+                                                    symbol,
+                                                    gop.result_port_name().unwrap_or("?")
+                                                ),
+                                            ));
+                                        }
+                                        let sig = self.out.imports[imp as usize].sig;
+                                        let result_ty =
+                                            self.out.sig_of(sig).map(|f| f.result).ok_or_else(
+                                                || {
+                                                    AdapterError::inv(
+                                                        "age-gfx.signature",
+                                                        "host op signature".into(),
+                                                    )
+                                                },
+                                            )?;
+                                        let dst = self.temp_ty(result_ty)?;
+                                        self.emit(
+                                            MirInstr::Call {
+                                                callee: CalleeRef::Import(imp),
+                                                dst,
+                                                args: arg_slots.clone(),
+                                            },
+                                            sp,
+                                        )?;
+                                        return Ok(dst);
                                     }
                                 }
                             }

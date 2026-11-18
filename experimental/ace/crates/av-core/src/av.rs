@@ -521,6 +521,27 @@ pub fn execute_platform(
     Ok((outcome, trace, summary))
 }
 
+/// PLAN-981（`IF-981-GFX-HOST-PORT`）：执行一个携带 AGE 图形服务调用的模块。
+///
+/// 宿主 op 分流到**本线程注册**的 provider（[`crate::age_gfx::install`] /
+/// [`crate::age_gfx::uninstall`]）；未注册 → `age-gfx.host-unavailable` 具名拒，
+/// provider fault → `age-gfx.<code>`（不写结果槽 = 零效果）。预算与生命周期在
+/// `ace_av::age_gfx::AgeGfxSession`（费率与语言侧同源），本入口只做派发。
+pub fn execute_with_age_gfx(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    execute_module_impl(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        false,
+    )
+}
+
 /// PLAN-915: fold the loop-state observation facts into the returned trace.
 /// `alloc_events` is the value-allocation ordinal (0 without a fault seam);
 /// the place facts exist only while `observe_places` is enabled, so a
@@ -1709,6 +1730,14 @@ pub(crate) trait ModuleView {
     /// Resolve a call site's callee to a function slot (None = an
     /// admission violation: unresolved import or foreign index space).
     fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
+    /// PLAN-981（IF-981-GFX-HOST-PORT）：a guest import's symbol. Host
+    /// dispatch reads it BEFORE callee resolution — AGE graphics calls never
+    /// resolve to a guest function; an unresolved graphics import is a host
+    /// dispatch (or a named refusal), not an admission violation. Views
+    /// without an import table (linked units) return `None`.
+    fn import_symbol(&self, _idx: u32) -> Option<&str> {
+        None
+    }
     /// PLAN-982：模块是否声明了受检文本入口能力（`ac.runtime.text.v1`）。
     /// 默认 `false`——只有显式声明该能力的模块才允许入口收借用 `str`。
     fn has_text_entry_capability(&self) -> bool {
@@ -1786,6 +1815,9 @@ impl ModuleView for MergedView<'_> {
             CalleeRef::Import(_) => None,
         }
     }
+    fn import_symbol(&self, idx: u32) -> Option<&str> {
+        self.0.imports.get(idx as usize).map(|i| i.symbol.as_str())
+    }
     fn is_strview_type(&self, _func: u32, ty: u32) -> bool {
         matches!(
             self.0.types.get(ty as usize),
@@ -1835,6 +1867,9 @@ impl ModuleView for LoadedView<'_> {
             CalleeRef::Func(idx) => self.0.funcs.get(*idx as usize).map(|_| *idx),
             CalleeRef::Import(_) => None,
         }
+    }
+    fn import_symbol(&self, idx: u32) -> Option<&str> {
+        self.0.imports.get(idx as usize).map(|i| i.symbol.as_str())
     }
     fn is_strview_type(&self, _func: u32, ty: u32) -> bool {
         matches!(self.0.types.get(ty as usize), Some(MirType::StrView))
@@ -3877,6 +3912,67 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                 }
                 MirInstr::Call { callee, dst, args } => {
+                    // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形服务的**宿主派发**。
+                    // 语言侧把 13 个标量结果 op（input/tick/row/render2d）降到普通
+                    // import 调用；这里在 callee 解析之前按 symbol 分流到注册
+                    // provider——未注册具名拒；provider fault 以 `age-gfx.<code>`
+                    // 终止本次运行（不写结果槽 → 零效果）；结果类型与调用槽
+                    // `MirType` 不符同样具名拒。
+                    if let CalleeRef::Import(idx) = callee {
+                        if let Some(sym) = v.import_symbol(*idx) {
+                            if crate::age_gfx::is_host_symbol(sym) {
+                                if st.frames.len() >= limits.max_frames {
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::Frames,
+                                        message: "age-gfx call exceeds call depth".into(),
+                                    });
+                                }
+                                if CancelCheck::poll(cancel) {
+                                    return Some(ExecOutcome::Cancelled);
+                                }
+                                let arg_vals: Vec<Value> = {
+                                    let fr = st.frames.last().expect("frame");
+                                    args.iter().map(|s| fr.slots[*s as usize].clone()).collect()
+                                };
+                                let Some(value) = crate::age_gfx::dispatch_current(sym, &arg_vals)
+                                else {
+                                    return Some(ExecOutcome::Infra(
+                                        "age-gfx.host-unavailable: no AGE graphics host provider \
+                                         is registered for this run"
+                                            .into(),
+                                    ));
+                                };
+                                let value = match value {
+                                    Ok(v) => v,
+                                    Err(f) => {
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "age-gfx.{}: {}",
+                                            f.code, f.message
+                                        )))
+                                    }
+                                };
+                                let want = v
+                                    .fn_at(func_idx)
+                                    .and_then(|f| f.slots.get(*dst as usize))
+                                    .and_then(|s| v.mir_type_of(func_idx, s.ty));
+                                if !crate::age_gfx::value_matches_type(&value, want) {
+                                    return Some(ExecOutcome::Infra(format!(
+                                        "age-gfx.result-type: provider returned {value:?} for \
+                                         `{sym}`; the call slot expects {want:?}"
+                                    )));
+                                }
+                                let fr = st.frames.last_mut().expect("frame");
+                                fr.slots[*dst as usize] = value;
+                                if started.elapsed() > limits.wall {
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::ExecutionWall,
+                                        message: "age-gfx call exceeded wall budget".into(),
+                                    });
+                                }
+                                continue;
+                            }
+                        }
+                    }
                     // v1 executable closures lower test-mark imports to
                     // TRACE instructions at closure assembly; an
                     // unresolved callee (import or foreign index space) is

@@ -76,5 +76,7 @@ pub mod frame_allocation;
 pub mod config_document;
 /// Typed native host import contract (PLAN-863).
 pub mod host;
+// PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形宿主派发接面。
+pub mod age_gfx;
 /// Checked platform I/O and OS memory region primitives (PLAN-1039).
 pub mod platform_io;
