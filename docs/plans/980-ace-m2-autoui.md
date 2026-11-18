@@ -1754,6 +1754,16 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 2026-11-18 stage: verify（**U0 联合验收收据**，982 代记）| plan_id: PLAN-980 × PLAN-982 | 对签对象：④-A #7/#8 交接面（`AUTO_UI_ACE_VUE` 工具读键＋产品出口＋多 widget）| **闭合**：982 round-188 以 **70e9ec02 配对工具**（auto-ui 主检出该 commit 树上 `cargo build -p auto-ui-tools --features ace-vue`，即当时盘上 exe）跑通**原样 002-counter 真 CLI 链**——真 CLI `auto run --render vue`（候选腿，`AUTO_UI_ACE_VUE=1` 发射可见）→ pnpm（锁文件校验 442ms）→ vite v5.4.21（ready 722ms）→ 真浏览器 `Counter: 0→+→1→-→0`（`+,+`→2、零 page error）；磁盘断言 lane `App.vue`（显式 `from "./a2x_rt.mjs"`＋`a2x_add(count.value, 1)`）＋官方 `a2x_rt.mjs`（AUTO-GENERATED 头，body sha256 `97065d43…`）| 证据：man **`4a7a28e`**（`plan982_u0_vue_run_cli` **3/3**，master 实跑 100.66s 含 bin 构建；`#[ignore]` 已除，`u0_vue_real_chain.mjs` rig 随库）＋lang **`8e94acfaf`**（982 §9 round-188 全文收据）| **解除的 980 具名等待**：#7 交接注记"dev-server/npm 腿未在本刀验证"——真链已验（pnpm+vite+浏览器全链）| 边界保持：983 U0 产品验收消费同一产物树/同一链；工具 feature 非默认（792 交付投影约束，缺失＝具名失败带构建指引）
 
+2026-11-18 stage: work（**开放项并行推进：#9 主树复放闭 + AutoNotes-ACE 墙复探与 view-if 刀材料完备**；与 U0 联合收据同窗并发落档）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **开放项 1 闭；开放项 2 材料升级（墙范围修正：bare if 同拒）；开放项 3 未动**。
+
+**①#9 主树复放（闭）**：他会话 lang 主检出半截 WIP 已收口（ace-core 主检出编译恢复 0 error）——auto-ui 主树三面复跑全绿：`plan980_ace_vue_tool_wiring`（十段，177.4s 含冷编译）、`plan980_010_form_short`（三段含排窗浏览器，50.0s）、`plan980_notes_fp_editor`（1.0s）。
+
+**②AutoNotes-ACE 墙复探（基线 master `600b7ee07`，worktree 双仓同步后实测）**：墙**未动**——fp_editor `.DraftEdit` 仍缺席、010 仍 0/6、view if-else 最小复现仍 `source.age.slot` 拒。**墙范围修正（重要）**：bare `if`（无 else）在 view 同拒——组件面 **view 级条件语句整族缺席**（`age-view-item` 无 if 臂；`age-if-expr` 仅表达式位）。影响面重估：quick_switcher 的 `if .open`、005/007/008/009 text-slot 族、fp_editor mode 分支——**一族墙覆盖四例语料**。
+
+**view-if 刀提案（下一刀，981 会签纪律——#6m/#6o 先例）**：①文法：`age-view-item` 增 `age-view-if` 臂（`if <expr> { many view-item } [else …]`，else-if 链）；②投影：`ComponentViewItem` 增条件变体（then/else 子树+span）；③**消费者爆炸面（已查）**：lang 6 文件（frontdoor/age_component/cst-project/age_package/field_manifest+测试）+ UI 3 文件（ace_native/ace_node_desktop/ace_package_sfc）——WEB lane 侧 states-only 不遍历 view 项（模板走方言管线 v-if）；桌面/AV 渲染腿须各自定条件语义或具名拒；④grammar-id 两值重基线+13 邻居冻结表（#6m 同款）；⑤010 另两墙（无类型列表字段/on 体 if-else 组件面）独立跟进。
+
+**③B-WEB-I/V/R 收口**：本轮未动（等 view-if 刀+④域材料）；U0 已由 982 round-188 联合验收双侧闭（上收据）——WEB 批与 U0 解耦明确。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
