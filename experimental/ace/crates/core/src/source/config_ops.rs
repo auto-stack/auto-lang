@@ -248,6 +248,19 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         params: &[VT::I32, VT::Str],
         result: VT::I32,
     },
+    // PLAN-982：运行期列表的长度/标量元素读取（`for` 的计数与元素面；i32 通道）。
+    ConfigSourceOp {
+        callee: "cfg_list_len",
+        symbol: "auto.config.document.list-len.v1",
+        params: &[VT::I32],
+        result: VT::I32,
+    },
+    ConfigSourceOp {
+        callee: "cfg_list_at_i32",
+        symbol: "auto.config.document.list-at.i32.v1",
+        params: &[VT::I32, VT::I32],
+        result: VT::I32,
+    },
     ConfigSourceOp {
         callee: "cfg_super_put",
         symbol: "auto.config.document.super-put.v1",

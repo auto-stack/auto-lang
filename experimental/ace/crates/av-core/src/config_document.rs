@@ -109,6 +109,11 @@ pub enum ConfigSpec {
     /// `obj-get-obj(obj, key)`：读对象的**对象值字段**并返回它的句柄（链式读
     /// `k["a"]["b"]` 的中间步；非对象字段具名拒绝）。
     ObjGetObj,
+    /// `list-len(list)`：运行期列表长度（i32 通道；`for` 的计数上界）。
+    ListLen,
+    /// `list-at.i32(list, index)`：读列表的**标量**元素（仅 i32/bool/char 这些
+    /// 能走 i32 返回通道的种类；文本元素具名拒绝——Str 返回面未开）。
+    ListAtI32,
     /// 收尾 `finish()`。
     Finish,
 }
@@ -136,6 +141,8 @@ impl ConfigSpec {
                 ]
             }
             ConfigSpec::ObjGetObj => vec![MirType::I32, MirType::StrView],
+            ConfigSpec::ListLen => vec![MirType::I32],
+            ConfigSpec::ListAtI32 => vec![MirType::I32, MirType::I32],
         }
     }
 
@@ -156,6 +163,12 @@ pub fn spec_of(sym: &str) -> Option<ConfigSpec> {
     // 形如 `<op>`／`<op>.<kind>`；`obj-put`/`list-push`/`arg-named` 是连字符名字。
     if rest == "obj-get-obj" {
         return Some(ConfigSpec::ObjGetObj);
+    }
+    if rest == "list-len" {
+        return Some(ConfigSpec::ListLen);
+    }
+    if rest == "list-at.i32" {
+        return Some(ConfigSpec::ListAtI32);
     }
     if rest == "super-put" {
         return Some(ConfigSpec::SuperPut);
@@ -971,6 +984,46 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                         Ok(0)
                     }
                     _ => Err(HostError::Io("config: append parent must be a node".into())),
+                }
+            }
+            ConfigSpec::ListLen => {
+                let handle = i32_arg(&args[0])? as u32;
+                let len = match session.get(handle)? {
+                    Entry::List(data) => data.items.len(),
+                    _ => {
+                        return Err(HostError::Io(
+                            "config: list-len requires a list handle".into(),
+                        ))
+                    }
+                };
+                Ok(len as i32)
+            }
+            ConfigSpec::ListAtI32 => {
+                let handle = i32_arg(&args[0])? as u32;
+                let index = i32_arg(&args[1])?;
+                let items = match session.get(handle)? {
+                    Entry::List(data) => data.items.clone(),
+                    _ => {
+                        return Err(HostError::Io(
+                            "config: list-at requires a list handle".into(),
+                        ))
+                    }
+                };
+                let Some(&item) = usize::try_from(index).ok().and_then(|i| items.get(i)) else {
+                    return Err(HostError::Io(format!(
+                        "config: list index {index} is out of bounds (len {})",
+                        items.len()
+                    )));
+                };
+                match session.get(item)? {
+                    Entry::Value(StoredValue::I32(v)) => Ok(*v),
+                    Entry::Value(StoredValue::Bool(b)) => Ok(i32::from(*b)),
+                    Entry::Value(StoredValue::Char(c)) => Ok(*c as i32),
+                    _ => Err(HostError::Io(
+                        "config: list-at.i32 cannot read a non-scalar element — text/object/\
+                         node/list elements need the Str or handle surface"
+                            .to_string(),
+                    )),
                 }
             }
             ConfigSpec::Finish => {
