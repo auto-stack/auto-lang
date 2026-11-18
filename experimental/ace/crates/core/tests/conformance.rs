@@ -174,3 +174,6 @@ mod source_units_928;
 mod source_units_928_t09;
 #[path = "cases/text_replacement.rs"]
 mod text_replacement;
+
+#[path = "cases/plan980_closure_dotted.rs"]
+mod plan980_closure_dotted;

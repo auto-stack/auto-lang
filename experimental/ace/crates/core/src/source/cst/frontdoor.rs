@@ -792,6 +792,9 @@ pub(crate) fn project_packages_front(
     let age_let_item = rule("age-let-item");
     let age_use_sym = rule("age-use-sym-item");
     let age_use_sym_tail = rule("age-use-sym-tail");
+    // PLAN-980 ④-A：`use <module>.<name>: a, b` 点分成员导入（包面此前零投影）。
+    let age_use_module = rule("age-use-module-item");
+    let age_use_import_tail = rule("age-use-import-tail");
     // PLAN-1043（T-03）/PLAN-966（T-02）：项位 CT 选择/需求规则 id（仅
     // packages-ct 裁剪存在；plain 面全 None → 分支不可达，行为不变）。
     let fn_require_p = rule("fn-require-p");
@@ -826,6 +829,8 @@ pub(crate) fn project_packages_front(
     let mut type_exports = std::collections::BTreeSet::new();
     let mut const_exports = std::collections::BTreeSet::new();
     let mut imports = Vec::new();
+    // PLAN-980 ④-A：导入项自身的 span（引用集要把导入拼写排除在外）。
+    let mut import_spans: Vec<(usize, usize)> = Vec::new();
     let mut requires = Vec::new();
     let mut ct_items = Vec::new();
     // PLAN-981：本模块的 AGE 领域候选（仅 age-package 面有内容）。
@@ -1551,6 +1556,64 @@ pub(crate) fn project_packages_front(
                         span,
                     });
                 }
+                import_spans.push({
+                    let (a, b) = tree.abs_range(node);
+                    (a as usize, b as usize)
+                });
+            }
+            // PLAN-980 ④-A：点分成员导入 `use <module>.<name>: a, b` —— 逐符号
+            // 落成 3 段路径 [module, name, sym]（与包面 `use pkg.mod: a, b` 同义）。
+            // 此前包面**没有任何投影分支**（解析后零事实）。
+            if Some(kind) == age_use_module {
+                if saw_decl {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede declarations".into(),
+                        node_span(tree, node),
+                    ));
+                }
+                let module = text(tree, field(tree, node, "module").expect("use module"));
+                let name = text(tree, field(tree, node, "name").expect("use member"));
+                let mut syms: Vec<(String, u64)> = Vec::new();
+                if let Some(head) = field(tree, node, "import") {
+                    let (a, _) = tree.abs_range(head);
+                    syms.push((text(tree, head), a));
+                }
+                for c in tree.children(node) {
+                    if Some(tree.kind(c)) != age_use_import_tail {
+                        continue;
+                    }
+                    if let Some(leaf) = field(tree, c, "import") {
+                        let (a, _) = tree.abs_range(leaf);
+                        syms.push((text(tree, leaf), a));
+                    }
+                }
+                for (sym, at) in syms {
+                    let span = Span {
+                        start: at as usize,
+                        end: at as usize + sym.len(),
+                    };
+                    if imports
+                        .iter()
+                        .any(|i: &PackageImport| i.bound_name() == sym)
+                    {
+                        return Err(err(
+                            "source.module-duplicate-import",
+                            format!("duplicate imported name `{sym}`"),
+                            span,
+                        ));
+                    }
+                    imports.push(PackageImport {
+                        path: vec![module.clone(), name.clone(), sym],
+                        alias: None,
+                        reexport: false,
+                        span,
+                    });
+                }
+                import_spans.push({
+                    let (a, b) = tree.abs_range(node);
+                    (a as usize, b as usize)
+                });
             }
             let use_node = if Some(kind) == use_item_p {
                 Some(node)
@@ -1619,6 +1682,7 @@ pub(crate) fn project_packages_front(
                     reexport,
                     span,
                 });
+                import_spans.push((span.start, span.end));
             } else if Some(kind) == public_item {
                 saw_decl = true;
                 let body = public_body(tree, node).expect("public body");
@@ -1705,12 +1769,41 @@ pub(crate) fn project_packages_front(
             }
         }
     }
+    // PLAN-980 ④-A：引用驱动（惰性）导入的**引用集**——本模块源里出现在导入项
+    // 之外的标识符拼写（注释/字符串/导入项自身不计）。AGE 面用它跳过未被引用的
+    // 导入（例如只声明不用的 `use themes.themes: Auto`），其它面保持 eager 语义。
+    let mut referenced: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for tree in &trees {
+        tree.for_each_leaf(|s, e, _k, is_error| {
+            if is_error {
+                return;
+            }
+            let (a, b) = (s as usize, e as usize);
+            if import_spans.iter().any(|(x, y)| a >= *x && b <= *y) {
+                return;
+            }
+            if let Ok(spelled) = snap.read_str(s, e) {
+                let ident = !spelled.is_empty()
+                    && spelled
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && spelled
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+                if ident {
+                    referenced.insert(spelled);
+                }
+            }
+        });
+    }
     Ok(PackageSyntax {
         program: crate::source::ast::Program { items },
         exports,
         type_exports,
         const_exports,
         imports,
+        referenced,
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
         source_hash: crate::runtime_contract::sha256_hex(src.as_bytes()),
         pieces: trees

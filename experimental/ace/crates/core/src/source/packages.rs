@@ -183,6 +183,10 @@ pub struct PackageSyntax {
     /// pub const 名（exports 的子集）。
     pub const_exports: BTreeSet<String>,
     pub imports: Vec<PackageImport>,
+    /// PLAN-980 ④-A：本模块源中**出现在导入项之外**的标识符拼写集合（注释/字符串/
+    /// 导入项自身不计）。AGE 面用它做引用驱动（惰性）导入：未被引用的导入不解析、
+    /// 不建模块边、不要求目标模块在场；其它面恒空并保持 eager 语义。
+    pub referenced: BTreeSet<String>,
     pub grammar_id: String,
     /// 存储准入的源绑定；不是地址或授权。
     pub source_hash: String,
