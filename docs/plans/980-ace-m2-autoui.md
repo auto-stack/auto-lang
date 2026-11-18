@@ -1726,6 +1726,16 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **边界（诚实）。** ①逐件=**同文件多 widget**；跨文件组件（pages/、components/ 包、dep fronts）的产品 lane 道未接（仍 legacy——键只作用于 app.at 的 widget 集）；②多 widget 下的 store/子组件映射面（sub_widget maps）在产品件上不参与（lane 件由源直生——002/Panel 族形状已验；复杂互引形=真语料批次）；③dev-server/npm 腿仍归 982 真链。
 
+2026-11-18 stage: work+merge（**④-A #9：跨文件组件走 ACE（components/ 通道双道）+ AutoNotes `FpNoteEditor` 输入链基线 + 原样 010 短回归**；用户排程第 1/2 项，选型更新=AutoNotes 为 980 首个产品消费者）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（通道接线+两例验收；两验收对象的 ACE 翻转具名阻塞于 981 域墙）** | delivery: auto-ui master **`01f85061`**（merge `951ca332`）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①键门泛化 `ace_vue_sfcs(path, content, href_first, href_rest)`（缺席拒附**文件名**+widget 名）+ `ace_vue_component_sfcs`（components 件 href 恒 `../a2x_rt.mjs`）。②**components/ 通道双道**：增量 Phase 1b 逐 widget 产品件落 `src/components/{W}.vue`（各件自己的 lane 体；官方 rt 落 src/ 与 app 通道共享；per-widget code——ACE 侧顺带修掉 legacy 同码多写怪癖）+ 全量道 components 分支按名对位（`ace.vue-lane-mismatch` 具名拒）。③验收 `plan980_ace_vue_tool_wiring` 扩至**十段**（⑨components 正控=fp_editor 派生 lane-ready 件双道产物判据；⑩components 缺席负控=拒附文件名+widget 名）1/1 绿。
+
+**AutoNotes FpNoteEditor 输入链基线**（`plan980_notes_fp_editor` + `test_notes_fp_editor.mjs`，排窗）：**只读消费原样链路现成产品产物**（auto-notes `gen/…/FpNoteEditor.vue`——真仓 gen 树，勿动他树；产物锚点钉 emit 契约）；宿主=methods 绑定（内联箭头 `$event` 包装会吞载荷——实测教训）；Button/lucide 具名 stub（被测链不经）。判据 4/4 绿：DraftEdit 载荷**逐字**（`你好 FP draft`）、随输入更新、SubmitText prop 往返（`seed-body`）、零 page error。**ACE 翻转具名阻塞**：原样 `fp_editor.at` 卡组件面 **view if-else**（`source.age.slot: expected text`——最小复现 `if cond { text "A" } else { text "B" }`，981 域 view 文法；裸 if 过、带 else 拒）；981 落面后 components/ 通道即翻转（rig 复用）。
+
+**原样 010 短回归**（`plan980_010_form_short` 单函数三段）：①键开=**具名拒实证**（0/6 全量缺席清单——`.Submit/.SetTheme/.SetAccent`+3 输入绑定；fail-closed 合同可观察行为）；②键关=legacy 产物含三 handler（主题切换产物面证据——宿主通道无页面内触发件）；③排窗浏览器三判据绿（回执隐藏→三字段输入绑定→Send→回执可见、零 page error；`@/components/ui/*` 通用 stub=Button/Input/Textarea 原生元素+v-model 透传）。**ACE 断言今日不可能**（用户口径据实修正）：010 卡两族 981 域墙——`var faqs = [...]` 无类型列表字段（文件级 lane 编译拒）+ `.SetTheme` if-else 体（控制流；G2 只落 age-package 面）。
+
+**纪律与边界（诚实）。** ①auto-ui 主树复放暂阻：lang 主检出有他会话**未提交半截 WIP**（ace-core `project_packages_front` 签名 6/5 不匹配——packages/frontdoor/binding/av 五文件；本刀 worktree 侧全套绿+落主内容=分支树，主树重放待该 WIP 收口）；②`ace_ts_provider` 23/24（1 红=node Temp 竞态族，隔离重放绿，台账在案）；③AutoNotes 全 app 的 ACE 化仍远（app.at 20 缺席、notes_widget 3 缺席、editor/sidebar 单文件解析卡 sibling 模块导入——跨文件模块解析属④域合同谱系）；④010 主题切换的浏览器内触发件不存在（宿主通道）——以产物面+键下拒清单为证。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
