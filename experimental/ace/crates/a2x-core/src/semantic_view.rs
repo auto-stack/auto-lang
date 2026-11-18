@@ -924,7 +924,6 @@ impl<'a> SemanticView<'a> {
             // verifier is the scalar verifier plus the collections rules).
             hir::HirDomain::Text
             | hir::HirDomain::Record
-            | hir::HirDomain::TextRecord
             | hir::HirDomain::Collections => matches!(
                 op,
                 hir::BinOp::AddI32
@@ -939,6 +938,32 @@ impl<'a> SemanticView<'a> {
                     | hir::BinOp::Eq
                     | hir::BinOp::Ne
             ),
+            // PLAN-981（D-981-AGE-F32-SURFACE，A2R 同源腿）：text-record 族
+            // （AGE 包/组件面的实际域）同样携带 typed `Num` 面——但只放 **f32**
+            // （AGE 的值面只有 f32；f64/宽整型仍不在本面，由前门先行拒绝）。
+            // 语义合法性（float 位算等）已由 HIR verifier 在前门判定。
+            hir::HirDomain::TextRecord => {
+                matches!(
+                    op,
+                    hir::BinOp::AddI32
+                        | hir::BinOp::SubI32
+                        | hir::BinOp::MulI32
+                        | hir::BinOp::DivI32
+                        | hir::BinOp::RemI32
+                        | hir::BinOp::LtI32
+                        | hir::BinOp::LeI32
+                        | hir::BinOp::GtI32
+                        | hir::BinOp::GeI32
+                        | hir::BinOp::Eq
+                        | hir::BinOp::Ne
+                ) || matches!(
+                    op,
+                    hir::BinOp::Num {
+                        ty: hir::BuiltinType::F32,
+                        ..
+                    }
+                )
+            }
             // PLAN-961: the closures domain carries the numeric surface
             // (the numeric source profile binds under it): the legacy i32
             // set plus every typed Num op — semantic legality (float bit
@@ -1012,6 +1037,16 @@ impl<'a> SemanticView<'a> {
             {
                 Ok(())
             }
+            // PLAN-981（D-981-AGE-F32-SURFACE，A2R 同源腿）：f32 字面量在
+            // text-record 族（AGE 包/组件面的实际 HIR 域）也进 compute surface。
+            // 此前该豁免只给 Closures（numeric profile），AGE 的 f32 模型初值/
+            // 运算右操作数到 A2R 被具名拒（AV 车道不经过本视图，故 AV 先绿）。
+            // 只放 F32 常量：`f64`/整型宽字面量仍不在本面；转换（Cast）不放——
+            // AGE 作者面本来拼写不出 `as`，生成的脱糖代码也不产 Cast。
+            hir::ExprKind::NumericConst {
+                ty: hir::BuiltinType::F32,
+                ..
+            } if self.text_record_family(self.domain).is_some() => Ok(()),
             hir::ExprKind::Binary { op, .. } => {
                 if self.op_admitted(*op) {
                     Ok(())
@@ -1686,6 +1721,8 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
 fn kind_name(k: &hir::ExprKind) -> &'static str {
     match k {
         hir::ExprKind::Unit => "Unit",
+        hir::ExprKind::NumericConst { .. } => "NumericConst",
+        hir::ExprKind::Cast { .. } => "Cast",
         hir::ExprKind::CallbackRef { .. } => "CallbackRef",
         hir::ExprKind::CallClosure { .. } => "CallClosure",
         hir::ExprKind::CreateClosure { .. } => "CreateClosure",

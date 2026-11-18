@@ -9,6 +9,11 @@
 //! A2R 生成 `static mut` + init 链（见本文件 globals 用例与
 //! plan981_rust_public 的翻正腿）；**计算面标量以外**的全局类型
 //! （Str/record/容器）仍是具名边界（资源端口全局的 A2R 面另行联冻）。
+//!
+//! D-981-AGE-F32-SURFACE（2026-11-18，AV 切片后的 A2R 同源腿）：f32 模型字段 /
+//! 同型四则 / 比较在**同一** CheckedModule → A2R → 真实 rustc 上取真值。入口
+//! 仍是 wrapper 冻结的 i32 合同（stdout `value:<i32>`），f32 值在入口内用比较
+//! 折叠成判别性整数（7 = x≈3.0 且 y=1.5；0 = 变异控制），**不是**打印端伪造。
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{assemble_record_text_file_set, lower_program};
 use ace_core::source::age_component::{ComponentScenario, ScenarioOp};
@@ -279,4 +284,100 @@ fn main() int {\n    let a int = bump()\n    let b int = bump()\n    return a + 
     let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
     // 41 + 42 + 6 - 84 = 5：init 链（40）、set/get 双路径、const 读全覆盖。
     assert_value("globals", &out, 5);
+}
+
+/// 单模块 AGE 源的 A2R 腿（f32 用）：同一 `CheckedModule` → `SemanticView` →
+/// Rust provider → fileset → 真实 rustc → 运行；返回 wrapper stdout。
+fn run_age_source_a2r(name: &str, main_src: &str, scenario: &ComponentScenario) -> String {
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let compiled = compile_age_package_with_scenario(
+        &[input("main", main_src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        scenario,
+    )
+    .unwrap_or_else(|ds| {
+        panic!(
+            "AGE front door rejected {name}: {}",
+            ds.iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    });
+    let view = SemanticView::from_checked(&compiled.checked)
+        .unwrap_or_else(|r| panic!("view admission for {name}: {r}"));
+    let program =
+        lower_program(&view, "main").unwrap_or_else(|r| panic!("lowering for {name}: {r}"));
+    let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, "main");
+
+    let dir = out_root().join(format!("P981_AGE_F32_{name}")).join("debug");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &fs.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
+
+    let exe = dir.join("a2x_rt_case.exe");
+    let compile_out = auto_tool_execution::run_command_capture(
+        {
+            let mut c = std::process::Command::new(rustc());
+            c.arg("--edition")
+                .arg("2021")
+                .arg("-o")
+                .arg(&exe)
+                .arg("main.rs")
+                .current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("spawn rustc");
+    assert!(
+        compile_out.kind == auto_tool_execution::ExitKind::Success,
+        "rustc failed for {name}: {}",
+        String::from_utf8_lossy(compile_out.stderr.as_ref().expect("stderr"))
+    );
+
+    let run = auto_tool_execution::run_command_capture(
+        {
+            let mut c = std::process::Command::new(&exe);
+            c.current_dir(&dir);
+            c
+        },
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run exe");
+    assert_eq!(
+        run.kind,
+        auto_tool_execution::ExitKind::Success,
+        "wrapper exit for {name}"
+    );
+    String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string()
+}
+
+/// f32 模型字段 + Tick 积分 + 除法在 **A2R 同源腿**上的真值：
+/// 两次 Tick 后 `x = (0 + 3.0*0.5)*2 = 3.0`、`y = x/2.0 = 1.5`（都可精确表示），
+/// 入口用 `x > 2.5` 与 `y == 1.5` 两个 f32 比较折叠成 7。变异控制：同一源只把
+/// `vx` 改成 1.0 → `x=1.0/y=0.5` → 入口返回 0（证明不是常量折叠/打印端伪造）。
+#[test]
+fn p981_age_package_a2r_f32_state_and_arithmetic_run_on_real_rustc() {
+    let src = "node Mover {\n    model {\n        x f32 = 0.0\n        vx f32 = 3.0\n        dt f32 = 0.5\n        y f32 = 0.0\n    }\n    on Tick {\n        x = x + vx * dt\n        y = x / 2.0\n    }\n    view {\n        text \"m\" {}\n    }\n}\nfn main() int {\n    let x f32 = __age_state_0_x()\n    let y f32 = __age_state_0_y()\n    if x > 2.5 {\n        if y == 1.5 {\n            return 7\n        }\n    }\n    return 0\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![
+            ScenarioOp::Tick { instance: 0 },
+            ScenarioOp::Tick { instance: 0 },
+        ],
+    };
+    let out = run_age_source_a2r("F32_INTEGRATION", src, &scenario);
+    assert_value("f32-integration", &out, 7);
+
+    let alt = src.replace("vx f32 = 3.0", "vx f32 = 1.0");
+    let out0 = run_age_source_a2r("F32_ALT", &alt, &scenario);
+    assert_value("f32-alt", &out0, 0);
 }

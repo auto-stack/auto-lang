@@ -163,6 +163,12 @@ pub fn record_text_runtime_source_with(marks: &[&'static str], platform: bool) -
     s.push_str("// pre-allocation budget checks and default-off fault/observation hooks.\n");
     s.push_str("#![allow(dead_code)]\n\n");
     s.push_str(RT_CORE);
+    // PLAN-981（D-981-AGE-F32-SURFACE，A2R 同源腿）：数值运行库（typed 字面量/
+    // 四则/转换/比较 helper）随 record-text 族文件集一起发射。此前只有通用
+    // `assemble_file_set` 与 collections 族带它，AGE 的 f32 生成代码引用
+    // `a2x_lit_f32`/`a2x_div_f32` 会在 rustc 阶段 not found——AV 车道不经过本
+    // 运行库，故 AV 先绿、A2R 才暴露。
+    s.push_str(RT_NUMERIC);
     if platform {
         s.push_str(
             "
