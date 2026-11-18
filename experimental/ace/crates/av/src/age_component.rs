@@ -249,6 +249,10 @@ pub fn observe_component_states(compiled: &ComponentCompilation) -> Result<Obser
 pub fn observe_component_states_and_texts(
     compiled: &ComponentCompilation,
 ) -> Result<(ObservedStates, Vec<Vec<String>>), String> {
+    // PLAN-981（view-if 第二片复审 F-1）：texts 半边与其它观察入口同律——
+    // 平铺 instance_texts 不承载条件可见性，见条件事实具名拒（锚作者最前
+    // `if`）；states 半边不消费平铺文本，不受影响。
+    view_cond_observation_gate(&compiled.description)?;
     let states = observe_component_states(compiled)?;
     let mut texts: Vec<Vec<String>> = Vec::new();
     for node in &compiled.description.nodes {

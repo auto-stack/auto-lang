@@ -12,7 +12,10 @@
 //! （锚定事实来自描述面 `cond_spans`，core 侧 `plan981_view_if` 钉同一偏移）。
 //! states-only/SFC 车道不经观察面，不受影响（core 侧用例钉）。
 
-use ace_av::age_component::{observe_component, observe_component_texts};
+use ace_av::age_component::{
+    compile_component_scenario_states, compile_component_scenario_with_initials, observe_component,
+    observe_component_states_and_texts, observe_component_texts,
+};
 use ace_av::age_package::observe_age_package;
 use ace_core::source::age_component::ComponentScenario;
 use ace_core::source::age_h0::LegacyWidgetAlias;
@@ -90,6 +93,33 @@ fn p981_observe_age_package_rejects_conditional_named() {
     );
 }
 
+/// NATIVE 双观察面（复审 F-1 补口）：texts 半边同律具名拒——states-only 编译
+/// 通过（SFC/桌面邻接车道不动），双观察入口拒且锚作者 `if`。
+#[test]
+fn p981_observe_states_and_texts_rejects_conditional_named() {
+    use ace_core::source::age_component::ComponentInitials;
+    let compiled = compile_component_scenario_states(
+        SRC,
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+        &ComponentInitials {
+            per_instance: vec![Vec::new()],
+        },
+    )
+    .expect("states-only compile passes; only the dual observation fails closed");
+    let err = observe_component_states_and_texts(&compiled)
+        .expect_err("dual observation texts half must fail closed on conditionals");
+    assert!(
+        err.contains("source.age.view-conditional") && err.contains(&format!("@{}..", if_at())),
+        "named code + author-if anchor, got: {err}"
+    );
+}
+
 /// 负控：无条件的普通 view——三个观察入口照常工作（门不误拒）。
 #[test]
 fn p981_observation_entries_pass_plain_views() {
@@ -112,6 +142,30 @@ fn p981_observation_entries_pass_plain_views() {
         },
     )
     .expect("plain scenario observation unaffected");
+    // NATIVE 双观察面（states+texts）同样不误拒。texts 半边需要发射文本叶
+    // 函数的编译道（initials 道，emit_view_texts=true）；states-only 道按合同
+    // 给空行，不在此断言。
+    {
+        use ace_core::source::age_component::ComponentInitials;
+        let compiled = compile_component_scenario_with_initials(
+            plain,
+            "app::main",
+            LegacyWidgetAlias::Reject,
+            &[PACKAGES_CAPABILITY.to_string()],
+            &ComponentScenario {
+                instances: 1,
+                ops: Vec::new(),
+            },
+            None,
+            &ComponentInitials {
+                per_instance: vec![Vec::new()],
+            },
+        )
+        .expect("plain initials compile (emits text leaves)");
+        let (_, texts) = observe_component_states_and_texts(&compiled)
+            .expect("plain dual observation unaffected");
+        assert_eq!(texts, vec![vec!["plain".to_string()]]);
+    }
     let compiled = compile_age_package(
         &[PackageModuleInput {
             package: "app".into(),
