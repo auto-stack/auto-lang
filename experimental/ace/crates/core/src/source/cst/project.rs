@@ -4365,6 +4365,25 @@ impl<'a> Engine<'a> {
         } else if Some(kind) == block_kind {
             // 块形对象值 → 普通对象字面量表达式（物化侧已有对象值路径）。
             ConfigPairValue::Expr(self.run_cfg_object_block(inner))
+        } else if crate::source::config_document::wide_scalar_surface_is_open() {
+            // PLAN-982（④ S2-D）：门控打开时，**恰好一个 affix-num 叶**的值升成宽
+            // 标量（`ConfigPairValue::Scalar`），由 `cfg_put_f64_text`/`u64_text` 写进
+            // 文档；默认（门控关）仍走下方通用表达式投影 ⇒ `source.unsupported`。
+            let (start, end) = self.cx.tree.abs_range(inner);
+            let leaf = self.cx.leaf_after(start);
+            match leaf {
+                Some((_g, text, span))
+                    if span.start == start as usize
+                        && span.end == end as usize
+                        && crate::source::config_document::parse_wide_scalar(&text).is_some() =>
+                {
+                    ConfigPairValue::Scalar(
+                        crate::source::config_document::parse_wide_scalar(&text)
+                            .expect("checked above"),
+                    )
+                }
+                _ => ConfigPairValue::Expr(self.project_expr_sync(inner)),
+            }
         } else {
             ConfigPairValue::Expr(self.project_expr_sync(inner))
         }
