@@ -71,7 +71,7 @@
 - `cargo tc`（auto-man 固定组，7 包 lib）＝258 passed / 4 skipped（交付时）。
 
 **语料口径（round 113/114）**：真实语料 301 份（含 `.wt` 镜像），探针对**模板族按产品口径注入 `name`**后：**296 与 legacy 逐字一致、2 份 ACE 接受而 legacy 拒绝（`clib` 模板的两份拷贝）——**这是"更宽松"而非"更强"**：ACE 接受 `lib ${name} {}` 却不做**节点位插值**，生成物因此**读不回**（`plan982_ace_clib_template`：值位替换 / 节点位保留 `${name}` / 回读具名失败）
-**模板节点位插值（2026-11-18 用户裁定 ①B）**：默认**不插值**（`lib ${name} {}` 的 id/实参保留字面 `${name}`，与 legacy 逐字一致，`plan982_ace_clib_template` 第一例钉住）。设 `AUTO_ACE_TEMPLATE_NODE_INTERP=1|true|yes|ace` 后节点位改走 `__fstr(expr)`：根**标量属性**已登记为局部，因此 `name: "probe"` 后 `lib ${name} {}` **真的插值**，`clib` 模板在开关下生成 `lib clibproj {_arg0: "clibproj"}` 且**可读回**（同文件第二例）。**边界**：只有**根**属性被登记为局部，**嵌套体内**的同名属性仍不可见（未做，避免与块作用域重声明冲突）。
+**模板节点位插值（2026-11-18 用户裁定 ①B）**：默认**不插值**（`lib ${name} {}` 的 id/实参保留字面 `${name}`，与 legacy 逐字一致，`plan982_ace_clib_template` 第一例钉住）。设 `AUTO_ACE_TEMPLATE_NODE_INTERP=1|true|yes|ace` 后节点位改走 `__fstr(expr)`：根**标量属性**已登记为局部，因此 `name: "probe"` 后 `lib ${name} {}` **真的插值**，`clib` 模板在开关下生成 `lib clibproj {_arg0: "clibproj"}` 且**可读回**（同文件第二例）。**边界（round 127 起已解除一半）**：**嵌套体内的标量属性也已登记为局部**（用全文档去重集 `aliased`，因为节点体是内联进同一语句列表、没有独立块作用域）；注入名不重复别名（`emit_injected` 已发射 `let`），嵌套同名键仍各自保留（`p982_vcfg_context_injection_axes` 钉住）。
 ## 4. 具名边界（不冒充支持）
 
 - **运行期列表 `for`**：仅**字面数组**（`for d in (["a","b"])` 或绑定字面数组的 `var`）会
