@@ -424,3 +424,9 @@ stage: merge | plan_id: PLAN-1026 | plan_revision: r3 | **outcome: pass（delive
    语料 README 的"记录于 plan-artifacts/plan-1026/ref/train_ref_out.json"这处**出处指引**在收尾后由本段承担（该路径按政策已删除）；README 自身列出的首/末 loss、pred0 与 shape 值保持不变且正确，故不构成功能缺陷，作为**文档出处迁移**记录在案。
 - **登记表**：`D:/autostack/plan-artifacts/.retention/policy.json` 追加 `auto-lang/PLAN-1026` 条目（deleted-at-merge、无 holds、scope 删除量、delivery/archived 身份）。
 - **主检出状态**：本计划自身路径无残留 WIP（plan/design/specs 全部已入库）；主检出上仍存在的其它改动属并发会话 WIP，未触碰。
+
+### 11.2 收尾门与交接（2026-11-18）
+
+- **周期批量回归（due）**：`docs/plans/.last-batch-regression.json` 的 `last_covered_plan_id=1064`（2026-11-16T10:04Z）。此后落主且 **plan 号 %5==0** 的条目为 `auto-lang/PLAN-1070`（2026-11-17 `ff1433659`）→ **批量门到期**。按 merge 契约**交接**给 `auto-plan-regress`：单实例、主检出、命令 `cargo t all`（Linux/WSL 用例按 2026-11-14 裁定排除），产出写回 `.last-batch-regression.json`。本计划不代替该门、不声明其绿。
+- **产物新鲜度（landing ≠ deployment）**：本切片只在 ACE 实验 workspace 与测试/规格面落地，无生产发布二进制或 web bundle 需要重建；`auto` 调试二进制由主检出的日常 `cargo build -p auto` 承担（本计划未改其代码路径）。无陈旧生产产物需要登记。
+- **文档出处迁移**：语料 README 的 oracle 出处行改由 §11.1 承担（见上）；`verify-mir-lowering-868` 的 `-Scope identity` 不可运行限制记于 §11（owner：868 guard 维护线，关闭条件：守护脚本改用现行 feature 形态后整跑）。
