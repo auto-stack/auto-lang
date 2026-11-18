@@ -1183,6 +1183,13 @@ pub(crate) fn project_packages_front(
                                     }
                                     collect_item_exprs(&e.items, msgs, out);
                                 }
+                                // PLAN-980 view-if：条件表达式入绑定验证 +
+                                // 双子树照走。
+                                ComponentViewItem::Cond(c) => {
+                                    out.push(&c.cond);
+                                    collect_item_exprs(&c.then_items, msgs, out);
+                                    collect_item_exprs(&c.else_items, msgs, out);
+                                }
                                 ComponentViewItem::Entry(en) => {
                                     if event_binding_msg(en, msgs).is_some() {
                                         continue;
@@ -2954,6 +2961,11 @@ fn replace_style_in_items(
     use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
     for it in items.iter_mut() {
         match it {
+            // PLAN-980 view-if：style 字面量替换进条件双子树。
+            ComponentViewItem::Cond(c) => {
+                replace_style_in_items(&mut c.then_items, lits, imports)?;
+                replace_style_in_items(&mut c.else_items, lits, imports)?;
+            }
             ComponentViewItem::Element(el) => replace_style_in_items(&mut el.items, lits, imports)?,
             ComponentViewItem::Entry(en) => {
                 if let ComponentEntryValue::Expr(e) = &mut en.value {

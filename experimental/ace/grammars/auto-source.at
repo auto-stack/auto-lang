@@ -954,6 +954,28 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-text-props() {} }
             alt { age-text-bare() {} }
             alt { age-view-element() {} }
+            // PLAN-980 view-if 刀：view 级条件语句（`if <expr> { … } [else …]`，
+            // else-if 经 age-view-else 链式递归）——两 AGE 面同开（投影=结构
+            // 承载，语义消费归各腿）。
+            alt { age-view-if() {} }
+        }
+        // view 级条件项。cond=pratt 表达式（lbrace 停）；then/else 体走
+        // age-view-if-then 子规则（field 定位——避免 else 臂被 collect 的
+        // 包装下钻误并入 then）。
+        age-view-if(profiles: [age-component, age-package], expect: "a view-level conditional `if <expr> { … } [else …]`") {
+            if(field: "kw")
+            pratt(of: "wide-ops", field: "cond")
+            age-view-if-then(field: "then")
+            opt { age-view-else(field: "else") {} }
+        }
+        age-view-if-then(profiles: [age-component, age-package]) {
+            lbrace(same-line: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-view-else(profiles: [age-component, age-package]) {
+            alt { else(field: "kw") age-view-if(field: "chain") }
+            alt { else(field: "kw") age-view-if-then(field: "items") }
         }
         // `text <label> { props }`——带属性体的文本（001 形；空括号形走
         // age-text-item，裸标签形走 age-text-bare）。

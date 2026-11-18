@@ -367,6 +367,12 @@ fn walk_view_tree(
                 });
                 walk_view_tree(&e.items, vocab, out);
             }
+            // PLAN-980 view-if：字段级出现进双子树（条件表达式本身暂不
+            // 计字段出现——manifest 无 view_cond 槽，具名边界）。
+            ComponentViewItem::Cond(c) => {
+                walk_view_tree(&c.then_items, vocab, out);
+                walk_view_tree(&c.else_items, vocab, out);
+            }
             ComponentViewItem::Entry(v) => {
                 if v.is_event {
                     out.push(FieldPresented {
