@@ -5,7 +5,7 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-18
-plan_revision: 10
+plan_revision: 11
 current_step: 14
 total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
@@ -18,7 +18,9 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-18 r10（当前范围增补）：①关闭 **B-GENERATED-R**——委派独立复核（`gen-reviewer`，与实现会话不同 agent）从 2026-11-17 `fd115ce` 旧双批收据出发，核对 `fd115ce → 3f8de15` 增量：生成道文件/依赖 crate 空 diff、生成服务 `main` 直接 `axum::serve` 不构造 `ServiceEngine`，故不触生成服务验收结论；AC-B-GENERATED 四项逐条 pass，复用同 SHA `http_generation` 3/3 并做两次定向复验（lane 单测 4/4 0.122s、参数例 9.702s、生成+坏源例 6.793s）。②**冻结 983/CONSUMERS 首例 C0**：jade-garden `GET /api/workspace`（无文本参数、两字段 JSON），固定字节级预期/失败面/资源清理与接口清单（983/AVSERVICE 已交付；982/EXEC `--server av` 需改走 auto-web `serve_av`；980/WEB 与 983/GENERATED 本首例不用）。本轮只做复核收据与首例定义，未写消费者代码、未运行新栈请求；B-CONSUMERS 仍未勾。
+2026-11-18 r11（范围增补：C0-A 落地 + U0 备例）：①**C0-A 已交**——消费者仓新增可执行 AV 业务源 `auto-down/jade-garden/back/auto/av/workspace_service.at`（`211b6d5`；`api.at` 的 `get_workspace()` 契约桩旁标注指向），auto-web 增 `AvServiceEngine::new_with_grants`（显式 `platform.file/mem/env`）并加真实 TCP 直连验收用例（`56b3ac5`）：`--test http_runtime` 8/8（新例 0.215s），字节级 200 JSON、null 形态、404 派发前拒绝、重复稳定、shutdown 端口重绑。②**纠正 C0 合同错误**：`wiki_dir` 按 Windows `PathBuf::join` 为 `<W>\wiki`（JSON `\\`），原 `<W>/wiki` 已修。③**U0 备例**（980/WEB UI 腿）：002-counter 浏览器 `Counter: 0→1`，oracle 先例=`p980_web_lane_browser_mount`（未运行）。982 CLI 接线后同一 AV 源再由 `auto service` 真 CLI 复验；C0-B 前端页与 U0 运行仍待。
+
+2026-11-18 r10（范围增补）：①关闭 **B-GENERATED-R**——委派独立复核（`gen-reviewer`，与实现会话不同 agent）从 2026-11-17 `fd115ce` 旧双批收据出发，核对 `fd115ce → 3f8de15` 增量：生成道文件/依赖 crate 空 diff、生成服务 `main` 直接 `axum::serve` 不构造 `ServiceEngine`，故不触生成服务验收结论；AC-B-GENERATED 四项逐条 pass，复用同 SHA `http_generation` 3/3 并做两次定向复验（lane 单测 4/4 0.122s、参数例 9.702s、生成+坏源例 6.793s）。②**冻结 983/CONSUMERS 首例 C0**：jade-garden `GET /api/workspace`（无文本参数、两字段 JSON），固定字节级预期/失败面/资源清理与接口清单（983/AVSERVICE 已交付；982/EXEC `--server av` 需改走 auto-web `serve_av`；980/WEB 与 983/GENERATED 本首例不用）。本轮只做复核收据与首例定义，未写消费者代码、未运行新栈请求；B-CONSUMERS 仍未勾。
 
 2026-11-18 r9（范围增补）：依用户指令「先接 `auto_web` 生产栈，由 983 主导；完整 JSON 等第一个真实消费者明确需要哪些字段后再做」，新增具名切片 **B-AVSERVICE-TEXT**：把 982 已验的受检文本入口（`fn main(query str, body str) int`）接到 auto_web 既有 TCP 生产栈——**同一份已编译 handler**收查询串 + UTF‑8 体，请求不重编译、不经文件；等字节长度 `中文`/`日文` 按内容分流，收据 `av_dispatches>0 / legacy_dispatches=0 / compile_count=1`，现有服务回归保持。**未做**：文本参数与平台 I/O 的同一次调用（未触发；触发时交 982 共享入口补齐）、完整 JSON/请求头（等首个真实消费者字段）。原19任务/AC/进度保留，总数 20、12 完成；本次只实施+验证这一切片并落规范增量，review 仍归 B-AVSERVICE-R/T-05。
 
@@ -158,7 +160,7 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 **选择与理由。** 从 jade-garden（auto-down）现有生产调用取一条真实请求作首例：`GET /api/workspace`。它是应用启动/桌面 daemon 的既有调用（[front/src/lib/api.ts](../../../auto-down/jade-garden/front/src/lib/api.ts) `getWorkspace()`；e2e [01-workspace.spec.ts](../../../auto-down/jade-garden/front/e2e/01-workspace.spec.ts) 与 [global-setup.ts](../../../auto-down/jade-garden/front/e2e/global-setup.ts) 已对真实后端断言），**无查询串/请求体文本**（不触发 982 的「文本参数＋平台 I/O」组合缺口），响应只有两个可空字符串字段（root/wiki_dir）——正是「首个用例只读少量字段就先交那部分」的最小 JSON 面。
 
 **真实请求与预期（字节级）。** 后端固定端口 `18181`（e2e `BACKEND_PORT`），fixture 工作区 `front/e2e/.runtime/workspace`（正斜杠形态 `WORKSPACE_ROOT`）。请求行 `GET /api/workspace HTTP/1.1`、`Host: 127.0.0.1:18181`、`Connection: close`、空体。
-- 配置了工作区（`JADE_GARDEN_DEFAULT_WORKSPACE=<W>`）⇒ `200`、`content-type: application/json`、体逐字节 = `{"root":"<W>","wiki_dir":"<W>/wiki"}`（字段序 root→wiki_dir；反斜杠按 JSON 转义为 `\\`；路径取 `to_string_lossy` 语义）。
+- 配置了工作区（`JADE_GARDEN_DEFAULT_WORKSPACE=<W>`）⇒ `200`、`content-type: application/json`、体逐字节 = `{"root":"<W>","wiki_dir":"<W>\\wiki"}`——**wiki_dir 用 Windows `MAIN_SEPARATOR`**：`PathBuf::from("<W>").join("wiki")` 实测为 `<W>\wiki`（`<W>` 以 `/` 或 `\` 结尾时才直接拼 `<W>wiki>`），JSON 中写作 `\\`；字段序 root→wiki_dir（serde_json struct 序），路径取 `to_string_lossy` 语义。
 - 未配置（env 缺省且无配置文档）⇒ `200` + `{"root":null,"wiki_dir":null}`（与 01-workspace.spec.ts 的拦截 oracle 同形）。
 - 工作区目录不存在 ⇒ 仍返回该路径与 `<W>/wiki`（原 `get_workspace_impl` 不校验存在性；校验只在 POST /open）。
 
@@ -170,17 +172,21 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 
 | 接口 | 状态 | 本首例用途 |
 |---|---|---|
-| 983/AVSERVICE：`auto_web::serve_av` + `AvServiceEngine`（文件通道；grants `platform.file`/`platform.mem`；`#[api]` 路由、404/501、shutdown） | **已交付**（auto-web `3f8de15`，m2-web.md B 节） | 承载 `/api/workspace` 的 AV 程序与真实 TCP/配置/生命周期 |
+| 983/AVSERVICE：`auto_web::serve_av` + `AvServiceEngine`（文件通道；`#[api]` 路由、404/501、shutdown；2026-11-18 增 `new_with_grants` 显式 grants） | **已交付**（auto-web `3f8de15`；直连切片 `56b3ac5`，m2-web.md B 节） | 承载 `/api/workspace` 的 AV 程序与真实 TCP/配置/生命周期 |
 | 982/EXEC：`auto service --server av`（`resolve_back_api`、真实 TCP、ready 行、receipt） | **部分交付**（982 rounds 149–166；man master `1d26b50`）：现为 man 自带最小 TCP 宿主（文本入口/int 返回，无 auto-web transport/配置/grants） | 需改走 auto-web `serve_av` 并暴露 grant/scratch/入口（见下方 982 请求） |
 | 982/CONFIG：服务配置 `--http-config-inline`（listen/profile/drain） | **已交付**（982/EXEC 面）；配置文档引擎本请求**不用**（jade-garden 后端无 pac.at；本轮配置入口=env+服务配置） | listen/profile/drain/退出；坏配置具名失败、旧工作区零写 |
 | 980/WEB：Vue/TS 表达式后端 | **本首例不用**：jade-garden 前端由 a2ts 生成 + 手写 fetch，不经 auto-ui Vue 表达式面；其未闭项不阻塞 C0，四仓整体验收的 UI 腿须另立 case | — |
 | 983/GENERATED：A2R 生成服务 | **本首例不用**：生成道无平台 I/O/配置读取；生成服务腿由既有 `http_generation` 用例与后续 case 覆盖 | — |
 
-**分期。** C0-A（本轮定义、下一步 I）：后端线（请求/预期/失败/清理如上）。C0-B：前端页（`getWorkspace()` 经浏览器/桌面形态消费同一响应；jade-garden 前端产物构建面另核）。C1（下一例，将触发 982 组合缺口）：`POST /api/workspace/open`——文本根路径 + 目录创建/索引重建（平台 I/O）+ JSON 入/出，需 982 在同一次调用里组合文本参数与平台 I/O。
+**C0-A 实现与直连验收（2026-11-18 已交）。** 可执行业务源=auto-down `jade-garden/back/auto/av/workspace_service.at`（提交 `211b6d5`；`api.at` 的 `get_workspace()` 契约桩旁已标注指向）：读 `JADE_GARDEN_DEFAULT_WORKSPACE`（`env_get_w16` UTF-16LE）→ UTF-8/JSON 转义（`"`、`\`、控制字符 < 0x20）→ 写响应文件；`wiki_dir` 按 Windows join 语义拼 `\wiki`；只读、每请求关句柄。宿主直连=`AvServiceEngine::new_with_grants`（`platform.file/mem/env`；默认 `new` 授权面不变，提交 `56b3ac5`）。真实 TCP 用例 `http_runtime.rs::c0_workspace_p983::jade_workspace_route_serves_exact_json_from_the_consumer_av_source`（0.215s）：200 字节级 JSON（含 `\\wiki`）、重复请求稳定、未配置 ⇒ `{"root":null,"wiki_dir":null}`、`/api/nope` ⇒ 404 空体（派发前）、shutdown 端口重绑。用例**直接读消费者仓源**（`AUTO_DOWN_ROOT` 或相对 `../../../auto-down`，缺失具名失败），不复制；`--test http_runtime` 8/8 绿（7.92s）。**982 CLI 接线到位后**同一源再由 `auto service` 真 CLI 复验（未做）。
 
-**给 982 的优先请求（EXEC 接口）。** ①`auto service --server av` 的宿主换成 auto-web `serve_av`（同 transport/config/shutdown/ready/receipt；`AUTO_AV_*` 保留为引擎选项）；②API 源路径可显式指定（默认发现 `src/back/api.at` 不变；jade-garden 用 `back/auto/api.at`），无 API 仍具名拒绝、不回退 vm；③暴露 AV 引擎的 grant/scratch（`platform.file`/`platform.mem`）与程序入口；④`--http-config-inline`/配置语义同 `serve_vm`，坏配置零写、失败具名。C/EXPORT 等按自身顺序并行。
+**分期。** C0-A 后端线已交（上段）。C0-B：前端页（`getWorkspace()` 经浏览器/桌面形态消费同一响应；jade-garden 前端产物构建面另核）待验。C1（下一例，将触发 982 组合缺口）：`POST /api/workspace/open`——文本根路径 + 目录创建/索引重建（平台 I/O）+ JSON 入/出，需 982 在同一次调用里组合文本参数与平台 I/O。
 
-**不声称。** 本轮只冻结首例与接口清单；未写 jade-garden 适配、未运行新栈请求、未改四仓整体验收分母。四仓整体（980/WEB、982/EXEC、实际用到的配置接口）仍按 §6 V-B-CONSUMERS 待所用接口齐备后一次收口。
+**U0（UI 腿，980/WEB 消费；2026-11-18 备例）。** 真实交互例=`auto-ui/examples/ui/002-counter`（[app.at](../../../auto-ui/examples/ui/002-counter/src/front/app.at)，初始 `Counter: 0`）：浏览器加载生成的 Vue 页面，点 `+` ⇒ `Counter: 1`，`-`/`Reset` ⇒ `Counter: 0`；DOM 文本逐字断言、无控制台错误。oracle 先例=auto-ui-runtime 浏览器挂载档 `p980_web_lane_browser_mount`（真 002 源 `.Inc` lane 体，41→42；`examples/ui/ace-web-lane/tests/test_lane_browser.mjs`，排窗 `AUTO_UI_ACE_WEB_E2E=1`）。接口：980/WEB——`ui_gen/vue` SFC/表达式与 lane handler 体（切片 #1–#6p 已交；**B-WEB-I/V/R 未勾**，余=真语料全量 spliced 切换 watch/setup/expose/ext_imports/style）；982/EXEC——产品形态需 `auto run`（Vue）真 CLI，候选腿当前对 run 家族具名拒绝、ACE 服务化未交（与 C0 同一 982 交接）；配置=`pac.at`（002 有）+ 应用窗口配置，实际字段随 CLI 腿冻结；983/AVSERVICE/GENERATED 不参与。失败/清理：坏源保旧产物、构建诊断具名；浏览器/服务子进程回收、端口释放、生成 tree 不手改。**现状**：只备例，未运行浏览器档；four-repo 的 UI 腿等 980/WEB 批勾选与 982 `auto run` 接口。
+
+**给 982 的优先请求（EXEC 接口）。** ①`auto service --server av` 的宿主换成 auto-web `serve_av`（同 transport/config/shutdown/ready/receipt；`AUTO_AV_*` 保留为引擎选项）；②API 源路径可显式指定（默认发现 `src/back/api.at` 不变；jade-garden 用 `back/auto/api.at`），无 API 仍具名拒绝、不回退 vm；③暴露 AV 引擎的 grant/scratch（`platform.file`/`platform.mem`，jade-garden 首例还需 `platform.env`）与程序入口；④`--http-config-inline`/配置语义同 `serve_vm`，坏配置零写、失败具名。C/EXPORT 等按自身顺序并行。
+
+**不声称。** C0-A 只证「同一 AV 业务源 + 直连宿主」的字节级语义；982 CLI 腿、C0-B 前端页、U0 运行与四仓整体验收（980/WEB、982/EXEC、实际用到的配置接口）均未完成，按 §6 V-B-CONSUMERS 待所用接口齐备后收口。
 
 各批I的有界决定门：用该批最小真实正例、同类型非法近邻、一次失败后恢复跑最长producer→consumer链；仅对未决策略比较适用实现再冻结接口，不拿日历/语法深度缩范围。资源由session持候选、generation持已发布产物、在途pin持旧代，last-owner释放；错误/取消/late不得覆盖CURRENT。继承原预算/平台条件，新增资源单位/上限/超限分类在本批I冻结并有边界反例，改变承诺先修合同。
 
@@ -403,7 +409,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
   [✅ 2026-11-18 phase review pass @3f8de15（委派独立复核 `gen-reviewer`）] 从 2026-11-17 `fd115ce` 旧双批收据出发：`fd115ce→3f8de15` 八文件增量不含 `ace_a2r_lane.rs`/`api_gen.rs`/`http_generation.rs`/`auto-generation-core`，生成服务 `main` 直接 `axum::serve`（`api_gen.rs:5310`）不构造 `ServiceEngine` ⇒ 不触生成验收结论；AC-B-GENERATED 四项逐条 pass（冷编真 TCP/独立 expected/坏源保旧/子进程终态无自报）。证据：复用同 SHA `http_generation` 3/3（118.56s）＋定向复验 lane 单测 4/4（0.122s）、参数例 9.702s、生成+坏源例 6.793s；F-G1（低，非 AC 缺陷）首跑 19.46/22.53s>10s 系冷建+并发盘压，稳态 ≤10s，owner=B/CONSUMERS 预构建（r7 已名）。见 §9 复核收据。
 
 - [ ] **B-CONSUMERS-I｜M2-B｜owner_stage: work｜AC-B-CONSUMERS/AC-02/03/06**：jade-garden与既有Web生产调用逐行接新SDK；每owner代码独立交付，消费相同source/tool版本，保旧四仓义务。 在§5改面接永久fixture，先冻结前置接口/命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
-  [C0 首例冻结 2026-11-18] 见 §5「983/CONSUMERS 首例冻结」：jade-garden `GET /api/workspace`（无文本参数、两字段 JSON），字节级预期/失败面/资源清理/接口清单已定；首例需要 982/EXEC 把 `auto service --server av` 改走 auto-web `serve_av`（API 路径可指定、grant/scratch 暴露、配置/lifecycle 同 `serve_vm`）。本轮**未**写消费者代码/未运行新栈请求；实现完成并验证后才勾选本任务。
+  [C0-A 已交 2026-11-18 @211b6d5（auto-down）/ @56b3ac5（auto-web）] 见 §5「C0 首例冻结」：可执行 AV 业务源 `jade-garden/back/auto/av/workspace_service.at`（env→UTF-8/JSON→响应；Windows join `\wiki`；只读）+ `api.at` 指针；auto-web `AvServiceEngine::new_with_grants` 显式 grants；真实 TCP 直连用例（源读消费者仓、不复制）——`--test http_runtime` 8/8（7.92s；新例 0.215s），字节级 200 JSON / null 形态 / 404 派发前 / 重复稳定 / shutdown 端口重绑。**仍未勾**：982 CLI 腿（待接线）、C0-B 前端页、U0（980/WEB UI 腿）运行与四仓整体验收。
 
 - [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
@@ -428,6 +434,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-18 stage: work | PLAN-983 r11 | outcome: pass（**C0-A 切片：AV 业务源 + 直连验收**；B-CONSUMERS 仍未勾）| 用户指令：现在就做 C0-A 的 AV 业务源和直连验收；`api.at` 的 `get_workspace()` 契约桩需可执行实现；982 接线后再跑真 CLI + C0-B；另备一例消费 980/WEB。| worktrees: auto-down `D:/autostack/.wt/lang-983/auto-down`（`211b6d5`）、auto-web `D:/autostack/.wt/lang-983/auto-web`（`56b3ac5`）；auto-man 组树已建（`60321f9`，未改）待 CLI 腿 | 交付：①`jade-garden/back/auto/av/workspace_service.at`——读 `JADE_GARDEN_DEFAULT_WORKSPACE`（`env_get_w16`）→ UTF-8/JSON 转义 → 响应；`wiki_dir` 按 Windows join 拼 `\wiki`；只读、每请求关句柄；`api.at` 契约桩旁标注指向。②auto-web `AvServiceEngine::new_with_grants`（显式 `platform.file/mem/env`；默认 `new` 不变）。③真实 TCP 直连用例（auto-web `http_runtime.rs::c0_workspace_p983`；源读消费者仓，`AUTO_DOWN_ROOT` 或相对 `../../../auto-down`，缺失具名失败）。| evidence: `--test http_runtime` **8/8 绿 7.92s**（新例 0.215s）；字节级 200 JSON（含 `\\wiki`）、重复稳定、未配置 ⇒ `{"root":null,"wiki_dir":null}`、`/api/nope` ⇒ 404 空体（派发前）、shutdown 端口重绑；`cargo fmt --check` clean；回执行 `✓ C0-A workspace receipt: exact JSON ...; null form; 404 pre-dispatch`。| 合同纠正：C0 的 `wiki_dir` 预期由 `<W>/wiki` 更正为 `<W>\wiki`（Rust `PathBuf::join` Windows 实测；JSON `\\`）——原文本错误已修（r11 同次）。| U0 备例：002-counter 浏览器 `Counter: 0→1`（含 `-`/`Reset` 回 0），oracle 先例 `p980_web_lane_browser_mount`（41→42，`test_lane_browser.mjs`）；**未运行**，前置=980/WEB 批勾选 + 982 `auto run` 接口。| 未做：982 CLI 腿、C0-B 前端页、U0 运行、四仓整体验收分母不变。| next: 982 `auto service --server av` 走 auto-web `serve_av` → 同源 CLI 复验；C0-B；U0 待前置
 
 2026-11-18 stage: review | review_scope: phase（B-GENERATED-R；整包仍 executing，CONSUMERS/T-05..07 未动）| reviewer_identity: 委派独立复核（gen-reviewer；与实现会话不同 agent、同机；旧收据延续+同 SHA 复用已声明）| plan_id: PLAN-983 | plan_revision: r9 | outcome: pass | worktree_path: D:/autostack/.wt/lang-983/auto-web | branch: plan-983-dev | reviewed_commit: 3f8de15（auto-web，=master tip；复核前后 clean）| base_commit: fd115ce | dependency_revisions: lang 组树 1af135c31（auto-generation-core/auto-lang-core/ace-{core,a2x-core,a2x-rust,av,av-core,lowering} 对 850a49bf8 空 diff；套件跑于 850a49bf8，代码等同）| spec_inputs: docs/specs/ace-migration/m2-web.md（B-GENERATED 节、文本入口节）| delta_impact: fd115ce→3f8de15 八文件 +547/−1，无 ace_a2r_lane.rs/api_gen.rs/http_generation.rs/auto-generation-core/lane 依赖 crate；生成服务 main 走 axum::serve（api_gen.rs:5310），不构造 ServiceEngine，故不影响本批验收 | acceptance_results: AC-B-GENERATED pass——①未手改生成物冷编真 TCP（双模块在场+api.rs 委派；cargo build --offline 子进程 success；spawn exe 真 TCP 200/202/端口重绑）②独立 expected 890/"p983-ace-a2r-service"/2147483647/82/"p983"/true ③坏源 scale(float) 具名拒含端点名+member manifest 字节不变 ④真实 cargo 子进程终态与产物退出码断言，无自报布尔 | findings: F-G1（低，非 AC 缺陷）新 ACE 例首跑 19.46/22.53s>10s（冷 cargo+新 ace-lowering 首建+并发盘压），稳态复验 6.793/9.702s≤10s；owner=B/CONSUMERS 预构建（r7 已记）；无 in-contract 缺陷；探针误用 `-E test(/.../)` 选 0 例已剔除（非产品）| evidence: lane 单测 4/4 0.122s；参数例 PASS 9.702s；生成+坏源例 PASS 6.793s；复用 3f8de15 套件 3/3 118.562s（19.464/22.529/76.562）、lib 188 例 187 绿 63.662s（唯一红=基线既有且文件不在 diff）| pending_closeout_gates（merge-owned）: B-GENERATED 已随 fd115ce phase fold 落主、文本切片 3f8de15 已落主；T-06/T-07 待 CONSUMERS | next: work/merge 按 owner（本批无修复项；F-G1 归 B/CONSUMERS 预构建）
 
