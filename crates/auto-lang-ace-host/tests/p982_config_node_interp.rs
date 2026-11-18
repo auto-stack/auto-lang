@@ -1,30 +1,37 @@
-//! PLAN-982（982/TEMPLATE）：**节点位插值缺失** —— 事实钉住。
+//! PLAN-982（982/TEMPLATE）：**节点位插值的现状与开关**。
 //!
-//! round 115 观测到：`lib ${name} {}` 在 ACE 下被接受，但生成物里节点位保留
-//! `${name}` 字面、且生成物读不回。本用例直接看**投影出的文档**（不是渲染文本），
-//! 结论是：节点位的 **id 与实参都保留 `${name}` 字面**（`Text("${name}")`），
-//! 即**节点位完全不插值**；值位（`name: "${name}"`）才走 `__fstr` 求值路径。
-//!
-//! 这是模板契约"按位插值"的缺口：实现后本用例应翻转为断言 `id`/`args` 里是
-//! 注入值（"probe"）。
+//! 结论三层（都由本文件的用例钉住）：
+//! 1. **默认**：节点位的裸 `${…}` 被重写成**同文本字符串字面量**，文档被接受但
+//!    id/实参保留 `${name}`（刻意的 legacy 对齐，见 `fstr.rs` 分支注释）；
+//! 2. **desugar 层**：可以直接看到那条重写（默认产出 `"${name}"`、无 `__fstr`）；
+//! 3. **开关**（`AUTO_ACE_TEMPLATE_NODE_INTERP=1`，用户裁定 ①B）：节点位改写成
+//!    `__fstr(expr)`，但注入名在这条表达式路径上**还不是局部**，因此当前结果是
+//!    **具名 bind 失败**（`source.undefined: no local named 'name'`）——开关不改
+//!    默认行为，只是把"字面占位"换成"具名拒绝"。
+
+use std::sync::Mutex;
 
 use auto_lang_core::ace_config::{AceConfigOutcome, AceConfigRequest, ConfigValue};
 use auto_lang_core::eval_config_with_ace;
 
+/// 用例共享**进程级**环境变量（节点位插值开关），必须串行。
+static LOCK: Mutex<()> = Mutex::new(());
+
+const SOURCE: &str = "name: \"probe\"\nlib ${name} {}\n";
+
 #[test]
 fn p982_config_node_position_keeps_the_placeholder_literal() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _ = auto_lang_ace_host::install();
-    let request = AceConfigRequest::simple("name: \"probe\"\nlib ${name} {}\n");
+    std::env::remove_var(ace_core::source::fstr::CONFIG_NODE_INTERP_ENV);
+
+    let request = AceConfigRequest::simple(SOURCE);
     let report = eval_config_with_ace(&request);
     let document = match &report.outcome {
         AceConfigOutcome::Success { document, .. } => document,
         other => panic!("the document is accepted (that is the leniency): {other:?}"),
     };
-    let node = document
-        .root
-        .children
-        .first()
-        .expect("the document has one node");
+    let node = document.root.children.first().expect("one node");
     assert_eq!(
         node.id.as_deref(),
         Some("${name}"),
@@ -35,34 +42,56 @@ fn p982_config_node_position_keeps_the_placeholder_literal() {
         vec![ConfigValue::Text("${name}".into())],
         "the node argument keeps the placeholder literal"
     );
-
-    // 对照：**值位**插值是成立的（同一文档里的 `name: "probe"` 就是注入值本身）。
     assert_eq!(
         document.root.prop("name"),
         Some(&ConfigValue::Text("probe".into())),
         "value positions do interpolate"
     );
 }
-/// 直接看 `desugar_config_templates` 的重写结果——**节点位是"故意"保留字面的**：
-/// 函数文档与分支注释都写明"legacy config 在节点头不插值（实测 `lib ${name} {}`
-/// 的 id/`_arg0` 都是字面 `${name}`）"，所以这里把裸 `${…}` 重写成**同文本字符串
-/// 字面量**（head 变成普通字符串身份），再由投影层补 `_arg0`。
-///
-/// 也就是说：节点位不插值是**刻意的 legacy 对齐**，不是遗漏；要做"按位插值"必须先
-/// 决策是否接受与 legacy 的分歧（`clib` 模板就是分歧样本）。
+
 #[test]
-fn p982_config_desugar_rewrites_the_node_position() {
-    let src = "name: \"probe\"\nlib ${name} {}\n";
-    let rewritten = ace_core::source::fstr::desugar_config_templates(src)
+fn p982_config_desugar_rewrites_the_node_position_as_a_literal() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::remove_var(ace_core::source::fstr::CONFIG_NODE_INTERP_ENV);
+    let rewritten = ace_core::source::fstr::desugar_config_templates(SOURCE)
         .expect("the desugar accepts the document");
-    eprintln!("p982: desugared = {rewritten:?}");
-    // 现状：节点位被重写成**字面字符串**（`__fstr` 只用于取值位）。
     assert!(
         rewritten.contains("\"${name}\""),
-        "the node position is rewritten as a literal string today: {rewritten}"
+        "the node position is rewritten as a literal string by default: {rewritten}"
     );
     assert!(
         !rewritten.contains("__fstr"),
-        "no __fstr call is emitted for the node position today: {rewritten}"
+        "no __fstr call is emitted for the node position by default: {rewritten}"
+    );
+}
+
+#[test]
+fn p982_config_node_position_switch_turns_the_literal_into_a_named_rejection() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = auto_lang_ace_host::install();
+
+    // 开关开：desugar 产出 `__fstr(name)`；编译在 bind 期具名拒绝。
+    std::env::set_var(ace_core::source::fstr::CONFIG_NODE_INTERP_ENV, "1");
+    let rewritten = ace_core::source::fstr::desugar_config_templates(SOURCE)
+        .expect("the desugar still accepts the document");
+    let request = AceConfigRequest::simple(SOURCE);
+    let report = eval_config_with_ace(&request);
+    std::env::remove_var(ace_core::source::fstr::CONFIG_NODE_INTERP_ENV);
+
+    assert!(
+        rewritten.contains("__fstr("),
+        "the switch rewrites the node position into an __fstr call: {rewritten}"
+    );
+    let message = match &report.outcome {
+        AceConfigOutcome::Success { .. } => panic!(
+            "with the switch on the injected name is still not a local; if that changed, \
+             assert the interpolated value instead"
+        ),
+        other => format!("{other:?}"),
+    };
+    eprintln!("p982: switched outcome = {message}");
+    assert!(
+        message.contains("source.undefined") || message.contains("source."),
+        "the switched rejection is named: {message}"
     );
 }
