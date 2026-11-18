@@ -2955,7 +2955,21 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
                 let dt = slot_ty_of(f, *dst, sp, "clone dst")?;
                 let st = slot_ty_of(f, *src, sp, "clone src")?;
-                if !self.ty_equiv(dt, st) {
+                // D-981-GLOBAL-CLONE-GAP closure: CLONE is also the unique
+                // view→owned crossing — a `RecordView(r)` source deep-clones
+                // (for a scalar record: value-copies) into a fresh owned
+                // `Record(r)` of the SAME nominal record. COPY cannot cross a
+                // view (`mir.copy-type`), so this form carries resource and
+                // scalar records alike; every other mismatch stays
+                // `mir.clone-type`.
+                let view_to_owned = match (
+                    self.module.types.get(dt as usize),
+                    self.module.types.get(st as usize),
+                ) {
+                    (Some(MirType::Record(want)), Some(MirType::RecordView(got))) => want == got,
+                    _ => false,
+                };
+                if !view_to_owned && !self.ty_equiv(dt, st) {
                     return Err(err(
                         "mir.clone-type",
                         format!("clone from type {} into type {}", st, dt),
@@ -2964,12 +2978,18 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // Clone is the EXPLICIT deep copy of owned data;
                 // cloning a copyable is a plain COPY. PLAN-823: a
                 // Closure is deep-cloneable too (the env's fields
-                // deep-clone under a fresh store handle).
+                // deep-clone under a fresh store handle). The view→owned
+                // form is exempt: the crossing is only expressible via
+                // CLONE, and for a scalar record the deep clone degenerates
+                // to a value copy.
                 let is_closure_ty = matches!(
                     self.module.types.get(st as usize),
                     Some(MirType::Closure(_))
                 );
-                if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
+                if !view_to_owned
+                    && !is_closure_ty
+                    && !crate::ownership::type_is_owned(self.module, st)
+                {
                     return Err(err(
                         "mir.ownership-required",
                         format!("CLONE of copyable type {} (use COPY)", st),
@@ -5195,5 +5215,184 @@ mod tests {
         m.entry = fi;
         let checked = verify_mir(&m).expect("verified");
         assert!(checked.stats().analysis_bytes > 0);
+    }
+
+    /// D-981-GLOBAL-CLONE-GAP closure（PLAN-981）：CLONE 是唯一的
+    /// 视图→拥有跨接指令——`RecordView(r)` 源深拷贝进同名 `Record(r)`
+    /// 的 owned 槽。含资源叶子（Str）与非资源（纯标量）record 都合法；
+    /// 非同名 record 仍是 `mir.clone-type`。本组只验证 verify 面；
+    /// 执行/深拷贝独立性在 av.rs 的执行测试里。
+    fn owned_module_with_view_clone(
+        view_name: &str,
+        rec_name: &str,
+        fields: &[(&str, MirType)],
+    ) -> MirModule {
+        let mod_owner = || OwnerScope {
+            schema: crate::contract::MIR_OWNED_SCHEMA.to_string(),
+            module: "m".to_string(),
+        };
+        let mut m = MirModule::new(mod_owner());
+        m.profile = crate::contract::AV_OWNED_PROFILE.to_string();
+        let ti = m.intern_type(MirType::I32);
+        let tstr = m.intern_type(MirType::Str);
+        let field_defs: Vec<MirFieldDef> = fields
+            .iter()
+            .map(|(fname, ft)| MirFieldDef {
+                name: fname.to_string(),
+                ty: m.intern_type(ft.clone()),
+            })
+            .collect();
+        let ref_of = |name: &str| crate::mir::RecordTypeRef {
+            owner_module: "m".to_string(),
+            name: name.to_string(),
+            fields: field_defs.clone(),
+        };
+        let view_ti = m.intern_type(MirType::RecordView(ref_of(view_name)));
+        let rec_ti = m.intern_type(MirType::Record(ref_of(rec_name)));
+        let takes_sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![view_ti],
+            result: ti,
+        }));
+        // Non-entry helper: a borrowed `p RecordView(r)` param, CLONED into a
+        // fresh owned `Record(r)` local (the view→owned crossing under test).
+        let takes = MirFunction {
+            owner: mod_owner(),
+            name: "takes".to_string(),
+            sig: takes_sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Param,
+                    ty: view_ti,
+                    name: Some("p".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: rec_ti,
+                    name: Some("owned".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: Some("r".into()),
+                },
+            ],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Clone { dst: 1, src: 0 },
+                    MirInstr::Const {
+                        dst: 2,
+                        value: m.intern_const(MirConst::I32(0)),
+                    },
+                ],
+                term: Terminator::Return { value: 2 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        };
+        m.funcs.push(takes);
+        let takes_idx = (m.funcs.len() - 1) as u32;
+        // Entry builds an OWNED record (Aggregate over owned operands) and
+        // passes it to the view param — the legal call-site form for a
+        // RecordView param (owned args satisfy borrowed params). One Const
+        // per declared field keeps the operand list field-shape-agnostic.
+        let mut main_instrs = Vec::new();
+        let mut main_slots = Vec::new();
+        let mut operands = Vec::new();
+        for (fi, fd) in field_defs.iter().enumerate() {
+            let (slot_ty, konst) = match m.types.get(fd.ty as usize) {
+                Some(MirType::Str) => (tstr, MirConst::Str(b"abc".to_vec().into())),
+                _ => (ti, MirConst::I32(3 + fi as i64 as i32)),
+            };
+            main_slots.push(MirSlot {
+                kind: SlotKind::Local,
+                ty: slot_ty,
+                name: Some(format!("f{fi}")),
+            });
+            main_instrs.push(MirInstr::Const {
+                dst: fi as u32,
+                value: m.intern_const(konst),
+            });
+            operands.push(fi as u32);
+        }
+        main_slots.push(MirSlot {
+            kind: SlotKind::Local,
+            ty: rec_ti,
+            name: Some("rec".into()),
+        });
+        let rec_slot = main_slots.len() as u32 - 1;
+        main_slots.push(MirSlot {
+            kind: SlotKind::Local,
+            ty: ti,
+            name: Some("out".into()),
+        });
+        let out_slot = main_slots.len() as u32 - 1;
+        main_instrs.push(MirInstr::Aggregate {
+            dst: rec_slot,
+            record_ty: rec_ti,
+            operands,
+        });
+        main_instrs.push(MirInstr::Call {
+            callee: crate::mir::CalleeRef::Func(takes_idx),
+            dst: out_slot,
+            args: vec![rec_slot],
+        });
+        let main_sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let main = MirFunction {
+            owner: mod_owner(),
+            name: "main".to_string(),
+            sig: main_sig,
+            slots: main_slots,
+            blocks: vec![MirBlock {
+                instrs: main_instrs,
+                term: Terminator::Return {
+                    value: out_slot,
+                },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        };
+        m.funcs.push(main);
+        m.entry = takes_idx + 1;
+        m
+    }
+
+    #[test]
+    fn mir_clone_view_to_owned_resource_record_admitted() {
+        // Str-carrying record (resource leaf) — the deep-clone form.
+        let m = owned_module_with_view_clone(
+            "Img",
+            "Img",
+            &[("sha", MirType::Str), ("w", MirType::I32)],
+        );
+        let checked = verify_mir(&m).expect("view→owned CLONE of a resource record verifies");
+        assert_eq!(checked.module().funcs.len(), 2);
+    }
+
+    #[test]
+    fn mir_clone_view_to_owned_scalar_record_admitted() {
+        // Pure-scalar record: COPY cannot cross a view, so CLONE carries the
+        // value copy — legal (the deep clone degenerates).
+        let m = owned_module_with_view_clone(
+            "Quad",
+            "Quad",
+            &[("w", MirType::I32), ("h", MirType::I32)],
+        );
+        verify_mir(&m).expect("view→owned CLONE of a scalar record verifies");
+    }
+
+    #[test]
+    fn mir_clone_view_to_owned_wrong_record_rejected() {
+        // A DIFFERENT nominal record as dst — still mir.clone-type.
+        let m = owned_module_with_view_clone("A", "B", &[("x", MirType::I32)]);
+        let err = verify_mir(&m).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("mir.clone-type"), "got {msg}");
     }
 }

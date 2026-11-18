@@ -4406,10 +4406,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                             ));
                                         }
                                         // record 实参经借用视图到达（verify 纪律），
-                                        // 而 Aggregate 需 owned 槽——视图→拥有构造
-                                        // 缝即 D-981-GLOBAL-CLONE-GAP（登记债）：
-                                        // 命中时具名拒（fail-closed），标量实参照常
-                                        // 执行（material2d 同形先例）。
+                                        // 而 Aggregate 需 owned 槽——D-981-GLOBAL-CLONE-GAP
+                                        // 关闭后，同名记录视图经显式 CLONE（唯一合法
+                                        // 视图→拥有跨接指令）深拷贝成 owned 临时槽再
+                                        // 进 Aggregate；标量实参照常直用（material2d
+                                        // 同形先例）。非同名记录的真错型仍具名拒
+                                        // （verify 纪律双保险）。
+                                        let mut owned_slots = Vec::with_capacity(arg_slots.len());
                                         for (si, slot) in arg_slots.iter().enumerate() {
                                             let slot_ty = self.slot_ty_all(*slot);
                                             let want_ty = self
@@ -4421,16 +4424,42 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                                     _ => None,
                                                 })
                                                 .map(|f| f.ty);
-                                            if let Some(want) = want_ty {
-                                                if slot_ty != want {
-                                                    return Err(AdapterError::uns(
-                                                        "lower.age-gfx-view-arg",
-                                                        format!(
-                                                            "gfx constructor `{}` argument #{si} arrives as a borrow view; owned construction from a view is the registered gap D-981-GLOBAL-CLONE-GAP (scalar-only constructors execute today)",
-                                                            symbol
-                                                        ),
-                                                    ));
-                                                }
+                                            let Some(want) = want_ty else {
+                                                owned_slots.push(*slot);
+                                                continue;
+                                            };
+                                            if slot_ty == want {
+                                                owned_slots.push(*slot);
+                                                continue;
+                                            }
+                                            let matching_view = match (
+                                                self.out.types.get(want as usize),
+                                                self.out.types.get(slot_ty as usize),
+                                            ) {
+                                                (
+                                                    Some(MirType::Record(want_r)),
+                                                    Some(MirType::RecordView(got_r)),
+                                                ) => want_r == got_r,
+                                                _ => false,
+                                            };
+                                            if matching_view {
+                                                let owned = self.temp_ty(want)?;
+                                                self.emit(
+                                                    MirInstr::Clone {
+                                                        dst: owned,
+                                                        src: *slot,
+                                                    },
+                                                    sp,
+                                                )?;
+                                                owned_slots.push(owned);
+                                            } else {
+                                                return Err(AdapterError::uns(
+                                                    "lower.age-gfx-view-arg",
+                                                    format!(
+                                                        "gfx constructor `{}` argument #{si} has type {}; the field wants the owned record (a same-record borrow view clones; every other shape is rejected)",
+                                                        symbol, slot_ty
+                                                    ),
+                                                ));
                                             }
                                         }
                                         let dst = self.temp_ty(result_ty)?;
@@ -4438,7 +4467,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                             MirInstr::Aggregate {
                                                 dst,
                                                 record_ty: result_ty,
-                                                operands: arg_slots.clone(),
+                                                operands: owned_slots,
                                             },
                                             sp,
                                         )?;

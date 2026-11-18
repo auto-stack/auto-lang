@@ -62,13 +62,14 @@ fn p981_gfx_seam_av_image_identity_lane_refused() {
     );
 }
 
-/// ValueCtor（frame2d.at）：AV 观察车道**可 lowering/准入**（Aggregate 发射
-/// + mir_verify import 身份——丢弃 admission 或破坏发射都会红）；record 实参
-/// 以借用视图到达、Aggregate 需 owned 槽——该视图→拥有构造缝具名拒并登记
-/// 为 D-981-GLOBAL-CLONE-GAP 的扩展范围（scalar-only 构造器今天可执行）。
-/// review-D ②。
+/// ValueCtor（frame2d.at）record 实参（Image2D 经借用视图到达）：D-981-GLOBAL-CLONE-GAP
+/// 关闭后，同名记录视图经**显式 CLONE**（唯一合法视图→拥有跨接指令）深拷贝成
+/// owned 槽再进 Aggregate——整个包通过 mir_verify（此前正是在这里具名拒）。
+/// 深拷贝独立性的执行级证据在 av-core 的 `av_clone_view_to_owned_deep_copies_resource_record`。
+/// 实际执行 frame_w 仍待 UI058 宿主注入 Image2D 身份（image2d.png 保持
+/// host-identity 车道拒），本用例钉住"构造器就绪、不再 fail-closed"。
 #[test]
-fn p981_gfx_seam_av_value_ctor_lowering_admitted() {
+fn p981_gfx_seam_av_value_ctor_record_arg_admitted_and_verified() {
     const SRC: &str = "node M {
     model {
         count int = 0
@@ -94,13 +95,78 @@ pub fn frame_w(img Image2D) i32 {
         },
     )
     .expect("the value-ctor package compiles");
-    // record 实参（Image2D）命中视图→拥有缝：具名拒（fail-closed），引用
-    // 登记债——不是静默执行/伪值。
-    let err = ace_av::age_package::observe_age_package(&compiled, 1)
-        .expect_err("the record-view ctor arg hits the registered view-to-owned gap");
+    // 视图实参经 CLONE 跨接：整包（含 frame_w）通过 mir_verify——
+    // 回退 Clone 发射（回到具名拒）或破坏 mir 的视图跨接规则都会红。
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect("the record-view ctor arg clones across and the module verifies");
+    assert_eq!(
+        observed.components[0].instance_states,
+        vec![vec![0]],
+        "no scenario ops ran; count stays at its initial 0 — the ctor merely verifies"
+    );
+}
+
+/// D-981-GLOBAL-CLONE-GAP 的 GlobalSet 腿：模块 `var`（record 端口）从
+/// **视图参数**写入——lowering 发射 Clone{Record, RecordView}，如今合法
+/// （此前 mir.clone-type 拒，即债务登记的"不可达分支"）。正例=整包过 verify；
+/// 反例=写入**异名** record 端口在前门具名拒（不静默降级）。
+#[test]
+fn p981_gfx_seam_av_record_global_write_from_view_param() {
+    const OK: &str = "node N {
+    view {
+        text \"t\" {}
+    }
+}
+
+var g Mesh2D = mesh2d.quad(1.0, 2.0)
+
+pub fn store(x Mesh2D) i32 {
+    g = x
+    return 0
+}
+";
+    let compiled = compile_age_package_with_scenario(
+        &[input(OK)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect("the record-global package compiles");
+    ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect("the view→owned CLONE on the global write verifies (D-981-GLOBAL-CLONE-GAP closed)");
+
+    // 反例：往 Mesh2D 全局写 Image2D——前门具名拒（类型不符），不静默。
+    const BAD: &str = "node N {
+    view {
+        text \"t\" {}
+    }
+}
+
+var g Mesh2D = mesh2d.quad(1.0, 2.0)
+
+pub fn store_bad(x Image2D) i32 {
+    g = x
+    return 0
+}
+";
+    let err = compile_age_package_with_scenario(
+        &[input(BAD)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .expect_err("a foreign record port must not enter the Mesh2D global");
     assert!(
-        err.contains("lower.age-gfx-view-arg") && err.contains("D-981-GLOBAL-CLONE-GAP"),
-        "named pending boundary: {err}"
+        !err.is_empty(),
+        "named rejection, not silent acceptance"
     );
 }
 
