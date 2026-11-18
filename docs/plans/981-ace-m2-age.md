@@ -5,7 +5,7 @@ feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
-plan_revision: 20
+plan_revision: 21
 current_step: 3
 total_steps: 34
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, ag-examples/PLAN-024, ag-examples/PLAN-025, ag-examples/PLAN-028, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067, auto-ui/PLAN-072]
@@ -920,6 +920,24 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-SOURCE-I/B-SOURCE-V/B-SESSION-I/B-SESSION-V/B-RUST-I/B-RUST-V/B-LANGUAGE-I/B-LANGUAGE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+### 2026-11-19 stage: work（**on-if 组件面刀：组件事件体 if/let 开面**；用户排程⑤「010/005 暴露的组件事件体 if 语言缺口」，OK 后开工）| PLAN-981 r21 | outcome: **pass（两面文法+投影+AV 分支真值齐；窗口未合入声明在案）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `b574c550a`（=view-if 刀落主 tip） | code_commit `c80d39553`
+
+**红相（基线复现墙）**：`b574c550a` 上两探针——widget 形（006-hero-section 真语料形 `.Set(v) -> { if … }`）与直接形 `on Msg { if … }` 在组件面均解析拒（G2 旧裁剪合同：`age-on-let`/`age-on-if` 仅 age-package 臂）。
+
+**文法**（三处，两面）：①`age-on-let`/`age-on-if`/`age-on-else` 与 `age-on-stmt` 双臂去 age-package 门（直接形两面同开——G2 旧合同被本刀取代，翻正用例在 `plan981_g2_hooks`）；②widget 形 handler 体从 `age-view-stmt` 换**专用并集规则** `age-on-widget-stmt`（赋值/调用[组件面]+let/if——watch/lifecycle 等 age-view-stmt 其它消费体**不动**，负控钉住）；③**分支体**新 `age-on-branch-stmt` 并集（裸名赋值/点前缀赋值/let/嵌套 if）——首跑红相实证：widget 风格分支体 `.field = …`（点前缀）不被直接形裸名 assign 接受，故分支体两拼写并集（外层形式由作者决定，字段语义同一条检查链）。
+
+**投影**：`project_on_stmt_inner` 共用 helper（直接形/widget 形/分支体三处共用，+点前缀赋值臂走 collect_view_stmt 同一复合赋值脱糖）；if 分支收集按包装规则双匹配（age-on-stmt/age-on-branch-stmt）；widget 形 `stmts` **源序**（let 先于 if 用例钉住）；`assigns` 平铺兼容面=**全深度收平**（`flat_handler_assigns` 两面共用——与 G2 直接形同合同：分支赋值不消失、执行语义以 stmts 为准）。执行/校验零新代码：G2 共享链（`hook_stmts_lower` 消费 stmts+形参）组件面首次真跑。
+
+**AV 真值**（`plan981_on_if_av` 3 例，0.03s）：双派发分支选择（Set(1)→then mode=1；再 Set(0)→**else 赢**末态 0——两支同放/条件失效必红）；裸 if 假跳真跑（假⇒状态保持、真⇒赋值发生）；hook-local let 驱动条件+体（三 Tick→4，第三次假条件保持）。**具名边界**：`str` 载荷与字面量 `==`（借用 str vs owned Str）是共享检查既有类型边界（实测红），与本刀正交、另归 owner——AV 用例载荷用 int，判别性质不变。
+
+**grammar id 双值具名重基线**：age-component `620a0f73…→ab4c2000…`、age-package `30834de6…→a8fe5d99…`；13 邻居逐字节不变（冻结表全表断言复跑绿）。G2 套件 9/9（含翻正）、view-if 两套件不受扰、event_b（SendArgs 族）9/9。
+
+**门禁（机器空闲核后）**：`cargo t ace-source ace-av`——**ace-source PASS 895/895**；**ace-av 1420/1424**：唯二代码红=已具名 host_console 预存对（owner 982 console）；另两红 `stdlib_sys_973::sys973_dirs_and_replace`/`sys973_t08_seek_permissions_mtime` **环境归因**（组跑 15s 超时 vs 同树隔离重放 2/2 绿@3.8s——文件系统时敏族并发负载，非代码红）；wall 468.6s。新用例计时：core 4 例+av 3 例全 0.03s 级。
+
+**未合入声明（窗口协议，view-if 同款）**：`handler_assigns` 平铺兼容面含**两支赋值**（G2 全深度设计，包面 AV 真值依赖）；auto-ui 两处平铺消费（`ace_package_sfc.rs` 脚本重放逐条 emit、`ace_ts_provider.rs` 计数）**无 Let/If 消费门**（grep 实证 handler_stmts 零消费）。**本提交只在 plan-981-dev；980 落 handler_stmts Let/If 消费门（具名拒或真复放）+其 auto-ui 提交 SHA 前，不得 fold 到 lang master**——否则 on-if 组件源经 components 通道会静默双支重放（错状态值）。窗口开启条件 = 980 消费提交 SHA + 其 auto-ui 门禁 + grammar_scope 在本提交复跑绿。010 的另一墙（`var faqs = [...]` 无类型列表字段）不在本刀。
+
+stage: work | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: work | status: executing | outcome: pass（on-if 刀语言面齐；消费门=980 窗口）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | base: b574c550a | code_commit: c80d39553 | next: review（on-if 刀；含窗口条件核验）
 
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
