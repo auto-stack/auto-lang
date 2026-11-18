@@ -921,6 +921,26 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**第六批②：W1 按组件组收 AV 格，交 980 B-AV-R**；用户裁定优先双实例/坏编辑/关开/资源归零）| PLAN-981 r18 | outcome: **partial（3 组 981 侧 PASS 并交 980；资源归零组 owner 在会话侧，pending）** | 绑定 `3047b3481`
+
+**分组与证据（V-AGE-WAVE 的 W1 AV 适用格，按用户四项优先序）**
+
+| 组 | 覆盖 | 981 侧证据（本批复跑） | 结论 |
+|---|---|---|---|
+| **G-INSTANCE 双实例 2:1** | 两实例/两组件定向事件隔离 | `plan981_event_b_av`（同 node 两实例 `(i0,+3)(i1,+5)(i0,+4)`→**[7,5]**，载荷绑定/求值一次）；`plan981_cross_module_nodes`（**两真实模块** `ForNode{0}×2+{1}×1`→2:1；模块序调换随动） | **PASS（AV 真值 + 独立算术 oracle）** |
+| **G-BADEDIT 坏编辑保旧** | 失败具名、同入口恢复、无半成品 | core `plan981_age_package_modules::recovers_on_the_same_entry`、`plan981_age_ref::recovers_after_the_import_is_added`、`plan981_event_b`（具名拒→修复同入口绿）；会话侧 `schedule` 原子重编（被拒请求不污染既有 ops，属 auto-ui R64-1） | **PASS（源侧/前门），会话"保旧"语义沿 auto-ui R64-1** |
+| **G-LIFECYCLE 关开** | stop 后具名拒、新 Run 重新注册、世代归零 | `plan981_gfx_host`（`stop()`→`age-gfx.session-stopped`、provider 丢弃、新会话重注册）；`plan981_gfx_hooks`（新 callback epoch 归零 + callback 递增、跨 Tick 账本重置） | **PASS（AV 会话事实）** |
+| **G-RESOURCE 资源归零** | 退出后 live/leaked 归零、arena 收支平衡 | 该面在**会话/AVHC**（`p982` 组合腿的 summary `leaked_regions_cleaned`/`live_mapped_at_exit`），981 侧无该责任行 | **PENDING（owner=auto-ui/980 会话腿）** |
+| G-VIEW/FRAME/INPUT（W1 余量语法格） | 五 view/Frame/输入/资源 | `plan980_*`/`plan979_*` AV 家族随本批复跑 | **PASS（AV）** |
+
+**本批复跑**：`cargo test -p ace-av --test conformance -- plan981_event_b_av plan981_cross_module plan981_gfx_host plan981_gfx_hooks plan981_gfx_seam_av plan980_ plan979_` = **75/75 PASS**（0.16s 运行段）。
+
+**交 980 的 B-AV-R（本批可接收项）**：G-INSTANCE / G-LIFECYCLE / G-VIEW-FRAME-INPUT 三组以 981 `3047b3481` 为绑定提交交 980 `B-AV-R` 汇入 `UI-W1-AV`；G-BADEDIT 的源侧子面同上，其"保旧"会话语义以 auto-ui R64-1 为正式来源（不由 981 冒充）。**G-RESOURCE 不从 981 交**——它没有 981 责任行，须由会话腿 owner 出据；本收据不把它算作已过。
+
+**未闭（下一轮）**：①G-RESOURCE 由会话腿出据后并入 W1 汇总；②`UI-W1-AV` 的最终汇总收据由 980 `B-AV-R` 签发（981 只供分组证据）。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 2 | from: work | to: work | status: executing | outcome: partial（②3/4 组 PASS 已交；G-RESOURCE owner 在会话侧）| commit: 3047b3481 | next: 由用户裁定（G-RESOURCE 汇总 / 980 B-AV-R 签发 / A2C frame 资源定向用例）
+
 ### 2026-11-18 stage: work（**第六批①：跨模块实例身份冲突闭环**；用户裁定优先解 UI058 暴露的跨模块 `ForNode` 失效）| PLAN-981 r18 | outcome: **pass（根因三处、全部 package-global 化；4 条永久用例）** | code_commit `3047b3481`
 
 **用户裁定**：先复现并关闭跨模块实例身份冲突（UI058 实测两模块各自 `node 0` 撞号、`ForNode` 定向失效，用例靠把两 node 放同模块跑通）；验两个目标状态保持 **2:1**、旧实例事件具名拒绝；随后核清「命中目标后作者逻辑向该实例派发事件」能否复用现有 typed 队列，缺的接口交 UI058。
