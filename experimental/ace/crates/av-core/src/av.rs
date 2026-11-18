@@ -483,6 +483,115 @@ pub fn execute_foreign(
     ))
 }
 
+/// PLAN-982（983 组合入口，用户裁定）：**受检文本入口 × 平台 I/O 的最小组合**——
+/// 同一份已编译的 handler 收**借用 `str` 实参**（`texts`，请求内借用），并在
+/// **同一次执行**里通过**显式授权**（`grants`，如 `platform.file`）使用平台
+/// 文件/目录。
+///
+/// 纪律与两个父入口完全一致：
+/// - 授权**前置**：缺授权 ⇒ [`crate::host::AdmissionError`]（`host.unauthorized`），
+///   **执行前**拒绝（与 `execute_platform` 同一扇门）；
+/// - 文本在本次执行的 arena 内分配，`StrViewSrc::Share` 构造借用视图；执行后
+///   先释放实参再核对 arena **归零**（与 `execute_entry_text` 同一账本）；
+/// - 平台资源由 session ledger 核收：退出后 `cleanup`，summary 报告
+///   `leaked_regions_cleaned`/`live_mapped_at_exit`（资源释放的外部见证）。
+pub fn execute_entry_text_platform(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    texts: &[&[u8]],
+    console: Option<&mut dyn crate::host::ConsoleHost>,
+    backend: &mut dyn crate::platform_io::PlatformIoBackend,
+) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
+    // 授权前置（缺授权在执行前拒绝）。先做**具名**前门（与
+    // `execute_program_platform` 同款：第一个缺失能力点名 `platform ... is
+    // required by ...`），再走共享的深度授权。
+    let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
+    for h in module.module().host_imports.iter() {
+        if !granted.contains(h.capability.as_str()) {
+            return Err(crate::host::AdmissionError {
+                code: "host.unauthorized",
+                message: format!(
+                    "platform capability `{}` is required by `{}` but not granted",
+                    h.capability, h.symbol
+                ),
+            });
+        }
+    }
+    crate::host::authorize(module.module(), grants)?;
+    let session_id = NEXT_PLATFORM_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut ledger = crate::platform_io::PlatformResourceLedger::new(session_id, grants);
+    let arena = crate::owned_text::StrArena::new();
+    let mut args: Vec<Value> = Vec::with_capacity(texts.len());
+    for bytes in texts {
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: 0,
+                written_total_bytes: 0,
+                leaked_regions_cleaned: 0,
+                live_mapped_at_exit: 0,
+            };
+            return Ok((
+                ExecOutcome::Infra("entry text argument is not valid UTF-8".into()),
+                ExecTrace::default(),
+                summary,
+            ));
+        };
+        let handle = arena.alloc(bytes);
+        let scalars = text.chars().count() as u32;
+        args.push(Value::StrView(crate::contract::StrView {
+            src: crate::contract::StrViewSrc::Share(handle),
+            start: 0,
+            end: scalars,
+        }));
+    }
+    let (outcome, mut trace) = execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &args,
+        arena,
+        true,
+        console,
+        Some((&mut ledger, backend)),
+        None,
+        None,
+    );
+    // 实参持有共享引用：先释放再核对 arena 收支。
+    drop(args);
+    if let Some(a) = &trace.arena {
+        let live = a.live();
+        if live != 0 {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: ledger.last_os_error,
+                written_total_bytes: ledger.written_total_bytes,
+                leaked_regions_cleaned: ledger.active_regions(),
+                live_mapped_at_exit: ledger.live_mapped_bytes,
+            };
+            ledger.cleanup(backend);
+            return Ok((
+                ExecOutcome::Infra(format!(
+                    "text arena imbalance after the entry: {live} live allocation(s)"
+                )),
+                trace,
+                summary,
+            ));
+        }
+    }
+    let summary = PlatformSessionSummary {
+        session_id,
+        last_os_error: ledger.last_os_error,
+        written_total_bytes: ledger.written_total_bytes,
+        leaked_regions_cleaned: ledger.active_regions(),
+        live_mapped_at_exit: ledger.live_mapped_bytes,
+    };
+    ledger.cleanup(backend);
+    Ok((outcome, trace, summary))
+}
+
 /// PLAN-1039: execute an AVHC module with per-run grants, fresh session resource ledger, and
 /// Win32 platform I/O / OS memory provider (plus optional ConsoleHost if console/1 ops are mixed).
 pub fn execute_platform(

@@ -1048,11 +1048,26 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // module, a kind/signature mismatch in EITHER direction and
                 // a non-zero-param entry are all controlled rejections —
                 // the signature is never used to GUESS the kind.
+                //
+                // PLAN-982（983 组合入口，用户裁定）：唯一例外——**host-console
+                // 文本入口**：模块声明 `ac.runtime.text.v1` 且形参**全部为
+                // `StrView`**（借用 `str`）时放行（`execute_entry_text_platform`
+                // 的文本实参通道）；entry-unit 的冻结合同不变。
                 if !entry_sig.params.is_empty() {
-                    return Err(MirVerifyError::inv(
-                        "mir.entry-sig",
-                        "the entry-unit profile's entry takes no parameters".to_string(),
-                    ));
+                    let text_entry = self.module.is_host_console_profile()
+                        && self.module.has_text_entry_capability()
+                        && entry_sig.params.iter().all(|p| {
+                            matches!(
+                                self.module.types.get(*p as usize),
+                                Some(crate::mir::MirType::StrView)
+                            )
+                        });
+                    if !text_entry {
+                        return Err(MirVerifyError::inv(
+                            "mir.entry-sig",
+                            "the entry-unit profile's entry takes no parameters".to_string(),
+                        ));
+                    }
                 }
                 let result_is_i32 =
                     self.module.type_shape(entry_sig.result) == Some(ScalarShape::I32);
