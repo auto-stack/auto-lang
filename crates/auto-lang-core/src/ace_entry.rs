@@ -899,6 +899,15 @@ pub struct AceTestRunRequest<'a> {
     /// Entry def id (`"d_main"` for the conventional entry).
     pub entry_def_id: &'a str,
     pub capabilities: &'a [String],
+    /// PLAN-982 (EXEC, round 189): the legacy `test --filter` contract — a
+    /// SUBSTRING over each discovered test's qualified name
+    /// (`module::name`). Selection happens BEFORE execution: an unselected
+    /// test never runs (the legacy runner executed then skipped reports;
+    /// the ACE lane does not execute what the filter excludes). A filter
+    /// that matches zero candidates runs nothing and is a PASS (the legacy
+    /// command's exit semantics), with `discovered` still carrying the full
+    /// producer facts. `None` keeps the unfiltered behavior unchanged.
+    pub filter: Option<&'a str>,
     pub wall: Option<Duration>,
     pub cancel: Option<&'a AtomicBool>,
 }
@@ -914,6 +923,7 @@ impl<'a> AceTestRunRequest<'a> {
             entry_module,
             entry_def_id: "d_main",
             capabilities,
+            filter: None,
             wall: None,
             cancel: None,
         }
@@ -1046,7 +1056,32 @@ pub fn run_ace_project_tests(
             wall_ms: started.elapsed().as_secs_f64() * 1000.0,
         };
     }
-    let names: Vec<&str> = discovered.iter().map(|d| d.name.as_str()).collect();
+    // PLAN-982 (EXEC, round 189): the filter selects the RUN set before any
+    // execution (legacy `--filter` matching: substring over the qualified
+    // `module::name`; an unselected test never runs). Zero matches under a
+    // filter run nothing and pass (the legacy exit semantics); `discovered`
+    // keeps the full producer facts so the caller can report the zero-match.
+    let names: Vec<&str> = match request.filter {
+        Some(filter) => {
+            let selected: Vec<&str> = discovered
+                .iter()
+                .filter(|d| format!("{}::{}", d.module, d.name).contains(filter))
+                .map(|d| d.name.as_str())
+                .collect();
+            if selected.is_empty() {
+                return AceTestRunReport {
+                    engine,
+                    outcome: AceTestRunOutcome::Passed,
+                    discovered,
+                    tests: Vec::new(),
+                    exit_code: 0,
+                    wall_ms: started.elapsed().as_secs_f64() * 1000.0,
+                };
+            }
+            selected
+        }
+        None => discovered.iter().map(|d| d.name.as_str()).collect(),
+    };
     let project_request = AceProjectRequest {
         modules: request.modules,
         entry_module: request.entry_module,
