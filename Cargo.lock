@@ -770,9 +770,11 @@ dependencies = [
 name = "auto-lang-ace-host"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-c",
  "ace-a2x-core",
  "ace-a2x-python",
  "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-a2x-ts",
  "ace-abi",
  "ace-av",

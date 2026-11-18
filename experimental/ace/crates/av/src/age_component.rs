@@ -113,12 +113,32 @@ pub fn observe_compiled(compiled: &ComponentCompilation) -> Result<ObservedCompo
 }
 
 /// 单个 (实例, 字段) 的真值（按源类型映射；PLAN-980 STATE）。
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// PLAN-981（`D-981-F32-CONSUMER-WINDOW`，2026-11-18，用户裁定同窗）：f32 状态
+/// 进入窄观察枚举。`F32` 的相等按**位**判定（`to_bits`）——`NaN` payload 可
+/// 判别、`-0.0 ≠ 0.0`，`Eq` 因之仍成立（消费端不必为 `f32` 去掉 `Eq`）。
+/// 呈现不在本枚举里做（消费端按 Rust `f32` 的 `Display`：可往返、与地区无关）。
+#[derive(Clone, Debug)]
 pub enum ComponentFieldValue {
     Int(i32),
     Bool(bool),
     Str(String),
+    F32(f32),
 }
+
+impl PartialEq for ComponentFieldValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Int(a), Self::Int(b)) => a == b,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Str(a), Self::Str(b)) => a == b,
+            (Self::F32(a), Self::F32(b)) => a.to_bits() == b.to_bits(),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ComponentFieldValue {}
 
 /// 每实例、每字段的真值观察结果（实例序、字段声明序）。
 #[derive(Clone, Debug)]
@@ -166,10 +186,21 @@ pub fn observe_component_states(compiled: &ComponentCompilation) -> Result<Obser
                             ))
                         }
                     },
+                    // PLAN-981（D-981-F32-CONSUMER-WINDOW）：f32 状态经窄枚举返回，
+                    // 与 `execute_component_def` 的宽值出口同一执行链（不是第二条）。
+                    "f32" | "float" => match execute_value(&compiled.checked, &s.def_id)? {
+                        Value::F32(v) => ComponentFieldValue::F32(v),
+                        other => {
+                            return Err(format!(
+                                "state `{}` did not produce an f32: {other:?}",
+                                s.fn_name
+                            ))
+                        }
+                    },
                     other => {
                         return Err(format!(
                             "state `{}` carries type `{other}`, which the narrow \
-                             ComponentFieldValue view does not carry (f32 等宽值走 \
+                             ComponentFieldValue view does not carry (走 \
                              `execute_component_def` 的共享 Value 出口)",
                             s.fn_name
                         ))
