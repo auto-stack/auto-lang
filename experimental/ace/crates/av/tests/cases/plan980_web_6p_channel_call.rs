@@ -147,10 +147,26 @@ fn p980_web_6p_foreign_body_flagged_not_failed() {
         .expect("Go facts");
     assert!(go.2, "foreign body flagged (body_foreign)");
     assert!(go.1.is_empty(), "no channel rows for a foreign callee");
+    // #6p 复核 F-R1（authored mutation 反例）：**检查函数不铸**必须在模块
+    // 内容上断言——body_foreign handler 的部分体（赋值段）不得进入受检模
+    // 块（部分体 verify 禁止，#6o 合同）。复核实证：仅靠 UI 侧 body_foreign
+    // 旗标短路无法区分"检查函数照铸"的错误实现（mutation 掩蔽）。
+    let m = &c.checked.bundle().modules[0];
+    let cast_check_fns: Vec<&str> = m
+        .defs
+        .iter()
+        .map(|d| d.name_for_diagnostic())
+        .filter(|n| n.contains("__age_hv_"))
+        .collect();
+    assert!(
+        cast_check_fns.is_empty(),
+        "body_foreign handler must not cast a check fn (partial-body verify forbidden): {cast_check_fns:?}"
+    );
 }
 
 /// ⑥ lambda 调用体：foreign lambda 不铸值函数（不再静默跳过调用语句后
-/// 部分拼接）——编译 OK（缺席由 lane 侧消费合同断言，见 UI 永久用例）。
+/// 部分拼接）——编译 OK + **模块内容断言**（`__age_vl_` 值函数缺席——
+/// F-R1 同族：铸造事实须在受检模块上可判别，不靠消费侧掩蔽）。
 /// 边界注记：lambda 体 `list-nl`（换行分隔）——单行多语句形（`.x = 1;
 /// on_go(.x)`）是文法层既定边界，本例用单语句形。
 #[test]
@@ -162,5 +178,15 @@ fn p980_web_6p_foreign_lambda_compiles_uncast() {
 }
 ";
     let c = compile(src, vec![]).expect("foreign lambda compiles (value fn not cast)");
-    let _ = c;
+    let m = &c.checked.bundle().modules[0];
+    let cast_value_fns: Vec<&str> = m
+        .defs
+        .iter()
+        .map(|d| d.name_for_diagnostic())
+        .filter(|n| n.contains("__age_vl_"))
+        .collect();
+    assert!(
+        cast_value_fns.is_empty(),
+        "foreign lambda must not cast a value fn (partial-body splice forbidden): {cast_value_fns:?}"
+    );
 }
