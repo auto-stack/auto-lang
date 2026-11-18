@@ -3422,8 +3422,6 @@ struct FnLower<'a, 'budget> {
     blocks: Vec<MirBlock>,
     /// Current open MIR block cursor.
     cur: BlockId,
-    /// PLAN-1026: per-function constant-slot cache for the py emitters.
-    py_const_cache: Option<std::collections::BTreeMap<(TypeIdx, String), SlotId>>,
     /// Whether the current segment already emitted its terminator.
     terminated: bool,
     /// (header, exit) MIR blocks per HIR LoopId.
@@ -3666,9 +3664,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         lo: SlotId,
         sp: Option<SpanInfo>,
     ) -> Result<SlotId, AdapterError> {
-        use hir::BuiltinType as BT;
         let t32 = self.t_i32;
-        let tb = self.t_bool;
         let t64 = self.out.intern_type(MirType::I64);
         let tf = self.out.intern_type(MirType::F64);
         let num = |op: NumOp, ty: NumTy| BinOp::Num { op, ty };
@@ -3703,7 +3699,6 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         self.emit(MirInstr::Conv { dst: sig, src: sm2 }, sp)?;
         // up = e - 1075
         let c1075 = self.py_k(t64, MirConst::I64(1075), sp)?;
-        let up = self.py_bin(num(NumOp::Sub, NumTy::I64), t64, e, c1075, sp)?;
         // p = 1.0 ; single |k| loop with a BRANCHLESS step factor:
         // step = t2*(1-nf) + 0.5*nf where nf = conv(sm) is 0.0/1.0 —
         // every step multiplies by exactly 2.0 or exactly 0.5 (IEEE
@@ -3821,7 +3816,6 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         let tview = self.out.intern_type(MirType::StrView);
         let tstr = self.out.intern_type(MirType::Str);
         let tch = self.out.intern_type(MirType::Char);
-        let num = |op: NumOp, ty: NumTy| BinOp::Num { op, ty };
         // the callee fn indexes: __py_dlen (module fn) and py_str_word (foreign)
         let dlen_fn = self.fn_index_of("__py_dlen").ok_or_else(|| {
             AdapterError::inv("py.intrinsic", "the __py_dlen helper fn is missing".into())
@@ -7102,7 +7096,6 @@ fn lower_function_with_emission(
         gfx_credits: 0,
         blocks: vec![],
         cur: 0,
-        py_const_cache: None,
         terminated: false,
         loop_targets,
         func_index: def_index,

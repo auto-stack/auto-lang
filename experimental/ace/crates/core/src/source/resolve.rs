@@ -6245,35 +6245,6 @@ F:{d}
         self.py_op_call("py_stage_str", span, frame)
     }
 
-    /// A helper-fn call with N positional args and a known result VT.
-    fn py_op_call2(
-        &mut self,
-        name: &str,
-        span: Span,
-        values: Vec<ResolvedExpr>,
-        result: VT,
-    ) -> ResolvedExpr {
-        let fn_index = self
-            .sigs
-            .get(name)
-            .map(|sig| sig.index)
-            .unwrap_or(usize::MAX);
-        let args = values
-            .into_iter()
-            .map(|value| ResolvedArg {
-                value,
-                name: None,
-                moved: false,
-                span,
-            })
-            .collect();
-        ResolvedExpr {
-            span,
-            vt: self.node_ty(span, result),
-            kind: RExprKind::CallFn { fn_index, args },
-        }
-    }
-
     fn lookup(&self, name: &str) -> Option<LocalRef> {
         for scope in self.scopes.iter().rev() {
             if let Some(l) = scope.names.get(name) {
