@@ -617,15 +617,21 @@ fn emit_line(
             }
             let key = str_lit(&p.key.name, p.key.span);
             match &p.value {
-                // PLAN-982（④ S2-B）：宽标量已有模型，写原语是 S2-C 的工作；在那之前
-                // 这里是**具名 pending**，不静默丢弃、也不退化成通用 unsupported。
-                ConfigPairValue::Scalar(_) => {
-                    return Err(vec![document_diag(
-                        "source.config-document/pending",
-                        "f64/u64 scalar values need the `cfg-put.f64`/`cfg-put.u64` primitives \
-                         (PLAN-982 ④ S2-C); the gated number surface already lexes them",
+                // PLAN-982（④ S2-C）：宽标量走**十进制文本**写原语（i32 返回通道不变，
+                // 也不需要对共享 AST 加 f64/u64 字面量）。
+                ConfigPairValue::Scalar(scalar) => {
+                    let (callee, text) = match scalar {
+                        ConfigScalar::F64(v) => ("cfg_put_f64_text", format!("{v:?}")),
+                        ConfigScalar::U64(v) => ("cfg_put_u64_text", v.to_string()),
+                    };
+                    let _ = emit_call(
+                        out,
+                        ctx,
+                        callee,
+                        vec![var_expr(cur, p.span), key, str_lit(&text, p.span)],
                         p.span,
-                    )]);
+                    );
+                    return Ok(());
                 }
                 ConfigPairValue::Node(n) => {
                     let child = build_node(n, out, ctx)?;

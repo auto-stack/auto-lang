@@ -261,6 +261,20 @@ pub const CONFIG_SOURCE_OPS: &[ConfigSourceOp] = &[
         params: &[VT::I32, VT::I32],
         result: VT::I32,
     },
+    // PLAN-982（④ S2-C）：宽标量的写入口（十进制文本传值，绕开"没有 f64 AST
+    // 字面量"这层；返回通道仍是 i32）。
+    ConfigSourceOp {
+        callee: "cfg_put_f64_text",
+        symbol: "auto.config.document.put-f64-text.v1",
+        params: &[VT::I32, VT::Str, VT::Str],
+        result: VT::I32,
+    },
+    ConfigSourceOp {
+        callee: "cfg_put_u64_text",
+        symbol: "auto.config.document.put-u64-text.v1",
+        params: &[VT::I32, VT::Str, VT::Str],
+        result: VT::I32,
+    },
     ConfigSourceOp {
         callee: "cfg_super_put",
         symbol: "auto.config.document.super-put.v1",

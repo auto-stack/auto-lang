@@ -114,6 +114,11 @@ pub enum ConfigSpec {
     /// `list-at.i32(list, index)`：读列表的**标量**元素（仅 i32/bool/char 这些
     /// 能走 i32 返回通道的种类；文本元素具名拒绝——Str 返回面未开）。
     ListAtI32,
+    /// `put-f64-text(obj, key, "1.5")`：宽标量写入口——**十进制文本**传值，i32 返回
+    /// 通道不变（f64 参数面因此不需要 AST/MIR 新字面量）。
+    PutF64Text,
+    /// `put-u64-text(obj, key, "18446744073709551615")`：同上，u64。
+    PutU64Text,
     /// 收尾 `finish()`。
     Finish,
 }
@@ -143,6 +148,8 @@ impl ConfigSpec {
             ConfigSpec::ObjGetObj => vec![MirType::I32, MirType::StrView],
             ConfigSpec::ListLen => vec![MirType::I32],
             ConfigSpec::ListAtI32 => vec![MirType::I32, MirType::I32],
+            ConfigSpec::PutF64Text => vec![MirType::I32, MirType::StrView, MirType::StrView],
+            ConfigSpec::PutU64Text => vec![MirType::I32, MirType::StrView, MirType::StrView],
         }
     }
 
@@ -169,6 +176,12 @@ pub fn spec_of(sym: &str) -> Option<ConfigSpec> {
     }
     if rest == "list-at.i32" {
         return Some(ConfigSpec::ListAtI32);
+    }
+    if rest == "put-f64-text" {
+        return Some(ConfigSpec::PutF64Text);
+    }
+    if rest == "put-u64-text" {
+        return Some(ConfigSpec::PutU64Text);
     }
     if rest == "super-put" {
         return Some(ConfigSpec::SuperPut);
@@ -283,6 +296,9 @@ pub enum OwnedId {
 #[derive(Clone, Debug, PartialEq)]
 pub enum OwnedValue {
     I32(i32),
+    /// PLAN-982（④）：宽标量。
+    F64(f64),
+    U64(u64),
     Bool(bool),
     Char(char),
     Text(String),
@@ -345,6 +361,9 @@ struct ListData {
 #[derive(Clone, Copy)]
 enum StoredValue {
     I32(i32),
+    /// PLAN-982（④）：宽标量（十进制文本入口解析后的值）。
+    F64(f64),
+    U64(u64),
     Bool(bool),
     Char(char),
     Text(u32),
@@ -429,6 +448,8 @@ impl Session {
         match self.get(handle)? {
             Entry::Value(v) => match v {
                 StoredValue::I32(n) => Ok(OwnedValue::I32(*n)),
+                StoredValue::F64(v) => Ok(OwnedValue::F64(*v)),
+                StoredValue::U64(v) => Ok(OwnedValue::U64(*v)),
                 StoredValue::Bool(b) => Ok(OwnedValue::Bool(*b)),
                 StoredValue::Char(c) => Ok(OwnedValue::Char(*c)),
                 StoredValue::Text(t) => Ok(OwnedValue::Text(self.text_of(*t))),
@@ -594,6 +615,16 @@ fn seed_value(session: &mut Session, value: &OwnedValue) -> Result<u32, HostErro
             session.charge_value()?;
             session.charge_bytes(4)?;
             Ok(session.handle(Entry::Value(StoredValue::I32(*n))))
+        }
+        OwnedValue::F64(v) => {
+            session.charge_value()?;
+            session.charge_bytes(8)?;
+            Ok(session.handle(Entry::Value(StoredValue::F64(*v))))
+        }
+        OwnedValue::U64(v) => {
+            session.charge_value()?;
+            session.charge_bytes(8)?;
+            Ok(session.handle(Entry::Value(StoredValue::U64(*v))))
         }
         OwnedValue::Bool(b) => {
             session.charge_value()?;
@@ -1023,6 +1054,54 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                         "config: list-at.i32 cannot read a non-scalar element — text/object/\
                          node/list elements need the Str or handle surface"
                             .to_string(),
+                    )),
+                }
+            }
+            ConfigSpec::PutF64Text => {
+                let dst = i32_arg(&args[0])? as u32;
+                let key = text_arg(&args[1])?;
+                let raw = text_arg(&args[2])?;
+                session.charge_bytes(key.len() + raw.len())?;
+                let value: f64 = raw.parse().map_err(|_| {
+                    HostError::Io(format!("config: `{raw}` is not a decimal f64 literal"))
+                })?;
+                if !value.is_finite() {
+                    return Err(HostError::Io(format!(
+                        "config: `{raw}` is not a finite f64 value"
+                    )));
+                }
+                let item = session.handle(Entry::Value(StoredValue::F64(value)));
+                match session.get_mut(dst)? {
+                    Entry::Obj(d) => {
+                        obj_set(d, key, item);
+                        Ok(0)
+                    }
+                    _ => Err(HostError::Io(
+                        "config: put-f64-text requires an object destination".into(),
+                    )),
+                }
+            }
+            ConfigSpec::PutU64Text => {
+                let dst = i32_arg(&args[0])? as u32;
+                let key = text_arg(&args[1])?;
+                let raw = text_arg(&args[2])?;
+                session.charge_bytes(key.len() + raw.len())?;
+                if raw.starts_with('-') {
+                    return Err(HostError::Io(format!(
+                        "config: `{raw}` is negative; u64 takes unsigned decimals only"
+                    )));
+                }
+                let value: u64 = raw
+                    .parse()
+                    .map_err(|_| HostError::Io(format!("config: `{raw}` does not fit u64")))?;
+                let item = session.handle(Entry::Value(StoredValue::U64(value)));
+                match session.get_mut(dst)? {
+                    Entry::Obj(d) => {
+                        obj_set(d, key, item);
+                        Ok(0)
+                    }
+                    _ => Err(HostError::Io(
+                        "config: put-u64-text requires an object destination".into(),
                     )),
                 }
             }
