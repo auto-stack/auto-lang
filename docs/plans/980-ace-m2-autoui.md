@@ -1376,6 +1376,29 @@ next_responsible_role: review（#6p 批级复核：AC-B-WEB 映射/反例重放/
 
 next_responsible_role: work（生成器道扩面：watch/setup/expose/ext_imports/style 族逐片切——建议以 jade-garden 39 文件为正式分母；④域合同=用户/976 后继决策输入，建议先出合同草案）。
 
+### 2026-11-18 B-AV 开工授权（用户裁定）+ U01..06 分母冻结（B-AV-I 首件）
+
+**用户裁定（波次门修订）**：981 事件接口（PAYLOAD-B/MSG-B/PARAMS-B）已可用，**B-AV 即刻开工**、按组件组推进，与 WEB 补覆盖/复审并行——取代 r15 表 ⑤ 的"981/A 全链闭"等待（981 PROOF A 面仍为 981/MIN-A-AGE 义务，不再阻塞本批开工）。
+
+**分母冻结（35 编号例全量实测，`src/front/app.at` sha256/16 + 行数）**：
+
+| 组 | 例（hash｜行） | 现有例级 oracle（旧道） | 冻结发现：域依赖 |
+|---|---|---|---|
+| U01 | 001 b2763be5178fa040｜35；002 04937c35325faa74｜79；003 2b50ef4456cb4409｜75；011 a0d687bd00b1db6c｜1526 | 001/002=ace_native_window（AV/桌面面 ✓）；003/010=example_theme_migration（主题面，旧道） | 003：**f64 字段+use-import+math.\***；011：**f64×14+use prog_util/themes+math.\*** |
+| U02 | 004 f8dd0e99ceea559c｜105；005 446da5dc1bb68b6a｜134；006 238715165c514ce1｜69；007 4b378554dc81de51｜488；008 8576cd8d6c31e2f5｜375；009 f2406796a4f0bddd｜277；010 15a632b4cda27cd2｜177 | 010=theme 面；余无例级 | **全部 use-import**（themes） |
+| U03 | 012 d131df41b5878b33｜700；013 dc7682c379fb6551｜132；015 70702d308c8957af｜125；016 1e2d42d8f827bcb4｜225；018 261e952afd2ae296｜112；022 a8ab50185e8bc602｜72 | 015=ui_snapshots（提取面）；余无 | **全部 use-import**；除 012 外含 ext-call（math/store/back） |
+| U04 | 014 88841a8bb0904cf6｜863；017 3ffa54a22c80f4a9｜124；023 9e45d757ffa41a13｜91；025 0f3a4305e11672ab｜202；026 d37e703351dedfeb｜1087；027 6306d7d624aba15d｜1599 | 无例级 | 服务/数据族（014/017 归 U04 冻结——原 U03 范围"012–018"与 U04 显式列冲突按功能裁定）；use-import+网络/DB/文件 |
+| U05 | 019 8e95ac35d2094b83｜160；020 d167cac22f8fd9a1｜203；024 b89e1aad4741b1a7｜249；029 69c5c86b33cf8bac｜805；030 fe9e687f303374af｜133；031i 7085e9e463cc3989｜368；031p d9873a662f7d91cd｜527 | 无例级 | 媒体/GPU 环境门+use-import |
+| U06 | 032 7896f812ec4f0466｜53；038 623ee1f92941e6a1｜139；041 183f9e058eb227be｜306；021 df21a89a1d8be9fc｜84；028 4eaec20d6f87c52b｜899 | 无例级 | 剩余归 U06（"剩余原例"条款）；async/复杂混合 |
+
+Widgets 画廊=auto-os 顶层 `widgets-gallery/`（PLAN-590 迁出；**OS064 域**——U01 行"Gallery button/label/input"跨仓归 OS064 owner，本批消费其正式接口）。特殊目录（ace-hello-minimal/ace-node-counter/ace-web-lane/stylekit/themes/remote-frame-e2e）为基建非分母例。
+
+**结构性发现（冻结主结论）**：**全 35 例的受检 AV 承载压在 ④外部名面域合同上**——`use themes.themes` 普遍存在（U02/U03 全量实测）、math/store/back 调用广泛、003/011 另需 f64 字段域（981 裁定不支撑；982 round-137 f64/u64 值类已落 AV 运行时——**组件面字段域与 AV 值域的接通=981/用户域决策**）。与 WEB 的 jade-garden 实测（0/91、`use back.api`）**同一堵墙**：④域合同（use-import/外部调用进受检体，976 后继目标域决策）是 B-AV 与 WEB 的**共同关键路径**，杠杆高于任一批单独推进。
+
+**U01 可执行面（无 ④ 前提）**：①011 的 pdigit 算法体（use prog_util 之外的字面算术子面）与 002 深化——U01 oracle 三件（原值/事件轨迹、中文/非法输入、两实例隔离）在已解析面上补永久例；②组件面 AV 对无导入简单形的承接普查。
+
+next_responsible_role: work（**优先序修订建议**：④域合同草案=最高杠杆（两批共同前置，建议先出 use-import/外部调用的目标域合同草案供拍板）；并行 U01 可执行面（001/002 oracle 深化）。WEB 生成器道续行不变）。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
