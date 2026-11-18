@@ -165,8 +165,15 @@ fn p981_gfx_a2c_runtime_page_declares_host_externs() {
         &port_page[port_page.len().saturating_sub(700)..]
     );
     assert!(
-        !port_page.contains("a2x_gfx_image2d_png"),
-        "owned-Str ports stay off the page until the out convention is frozen"
+        !port_page.contains("a2x_gfx_image2d_png(int32_t"),
+        "image2d declares its str view first, then the stro wrapper + dims (see below)"
+    );
+    assert!(
+        port_page.contains(
+            "extern int32_t a2x_gfx_image2d_png(a2x_str_view a0, a2x_stro_result* out_sha256, int32_t* out_byte_length, int32_t* out_width, int32_t* out_height);"
+        ),
+        "owned-Str port fields ride the stro wrapper out slot: {}",
+        &port_page[port_page.len().saturating_sub(700)..]
     );
     // 无 gfx op 的模块不追加该页。
     let plain = record_text_runtime_source_with(&[], false, &[]);

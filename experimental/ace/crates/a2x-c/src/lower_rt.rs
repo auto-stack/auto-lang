@@ -62,6 +62,9 @@ fn c_value_ty(view: &SemanticView<'_>, ty: Ty) -> Result<String, A2xReject> {
         Ty::I32 => Ok("int32_t".into()),
         Ty::Bool => Ok("bool".into()),
         Ty::Char => Ok("uint32_t".into()),
+        // PLAN-981（C f32 值通道）：float 局部/参数/返回——纯值拷贝
+        //（算子走既有 inline/`a2x_result_f32` helper 面）。
+        Ty::F32 => Ok("float".into()),
         Ty::Str => Ok("a2x_str_view".into()),
         Ty::StrOwned => Ok("a2x_str".into()),
         Ty::Record(i) => view
@@ -82,6 +85,9 @@ pub enum RetKind {
     Char,
     StrView,
     StrOwned,
+    /// PLAN-981（C f32 值通道）：f32 返回——`a2x_result_f32`（与算子
+    /// div/rem 的 wrapper 同一形状；运行时页承载 value/fwd/div/rem）。
+    F32,
     Record(String),
 }
 
@@ -93,6 +99,7 @@ impl RetKind {
             RetKind::Char => "a2x_char_result".into(),
             RetKind::StrView => "a2x_strv_result".into(),
             RetKind::StrOwned => "a2x_stro_result".into(),
+            RetKind::F32 => "a2x_result_f32".into(),
             RetKind::Record(n) => format!("a2x_res_{}", c_record_name(n)),
         }
     }
@@ -103,6 +110,7 @@ impl RetKind {
             RetKind::Char => "a2x_fwd_char".into(),
             RetKind::StrView => "a2x_fwd_strv".into(),
             RetKind::StrOwned => "a2x_fwd_stro".into(),
+            RetKind::F32 => "a2x_fwd_f32".into(),
             RetKind::Record(n) => format!("a2x_fwd_{}", c_record_name(n)),
         }
     }
@@ -114,6 +122,7 @@ fn ret_kind_of(view: &SemanticView<'_>, ty: Ty) -> Result<RetKind, A2xReject> {
         Ty::Char => Ok(RetKind::Char),
         Ty::Str => Ok(RetKind::StrView),
         Ty::StrOwned => Ok(RetKind::StrOwned),
+        Ty::F32 => Ok(RetKind::F32),
         Ty::Record(i) => view
             .record(i)
             .map(|r| RetKind::Record(r.name.clone()))
@@ -558,6 +567,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             (RetKind::Char, Ty::Char) => Ok(format!("a2x_char_value({})", expr)),
             (RetKind::StrView, Ty::Str) => Ok(format!("a2x_strv_value({})", expr)),
             (RetKind::StrOwned, Ty::StrOwned) => Ok(format!("a2x_stro_value({})", expr)),
+            (RetKind::F32, Ty::F32) => Ok(format!("a2x_f32_value({})", expr)),
             (RetKind::Record(n), Ty::Record(_)) => {
                 Ok(format!("a2x_{}_value({})", c_record_name(n), expr))
             }
@@ -1356,24 +1366,31 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     if let ace_core::source::age_resources::AgeGfxResult::Port(port) = op.result {
                         let cr = c_record_name(port);
                         // 字段 out 槽：声明序具名指针，**槽名带唯一计数**
-                        //（同一函数内两次查询不重名）。**标量字段**承载
-                        //（f32/i32/bool）；owned-Str 端口字段（Image2D.sha256）
-                        // 的 out 约定另行联冻，本臂遇之具名拒——不猜。
+                        //（同一函数内两次查询不重名）。标量字段（f32/i32/bool）
+                        // 直填；**owned-Str 端口字段**（Image2D.sha256）经
+                        // `a2x_stro_result` 包装——宿主用运行时 str helper 构造
+                        // owned 缓冲、调用侧核 wrapper trap 后**移动**进 record
+                        // 字段（record free 负责释放；022 内容身份语义）。
                         let uid = self.temp_counter;
                         self.temp_counter += 1;
                         let slot = |fname: &str| format!("s_{}_{}", fname, uid);
                         let mut field_slots: Vec<(&str, &str)> = Vec::new();
+                        let mut str_slots: Vec<&str> = Vec::new();
                         for (fname, fty) in port_fields {
                             let sname = slot(fname);
                             let decl = match *fty {
                                 "f32" => format!("float {sname};"),
                                 "i32" => format!("int32_t {sname};"),
                                 "bool" => format!("bool {sname};"),
+                                "Str" => {
+                                    str_slots.push(fname);
+                                    format!("a2x_stro_result {sname};")
+                                }
                                 other => {
                                     return Err(A2xReject::unsupported_op(format!(
                                         "`{sym}`'s port field `{fname}` has type `{other}`; \
-                                         the named out-slot ABI carries scalar fields only \
-                                         (owned-Str port fields are a separate frozen convention)"
+                                         the named out-slot ABI carries scalar and owned-Str \
+                                         fields only"
                                     )))
                                 }
                             };
@@ -1401,17 +1418,34 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         for (fname, fty) in &field_slots {
                             let cfield = format!("f_{}", crate::lower::sanitize(fname));
                             let sname = slot(fname);
-                            ok_fill.push_str(&format!("{t}.value.{cfield} = {sname};\n"));
-                            let _ = fty;
+                            if *fty == "Str" {
+                                // owned-Str：wrapper 的值**移动**进 record 字段
+                                //（record free 释放；宿主不再拥有）。
+                                ok_fill.push_str(&format!("{t}.value.{cfield} = {sname}.value;\n"));
+                            } else {
+                                ok_fill.push_str(&format!("{t}.value.{cfield} = {sname};\n"));
+                            }
+                        }
+                        // owned-Str wrapper 的 trap 在成功分支内逐字段核
+                        //（声明序）：任一 trap ⇒ 整个 record 折叠 fwd（record
+                        // 尚未提交任何字段——零效果）。
+                        let mut fill_body = format!("{ok_fill}    {t}.trap = A2X_TRAP_NONE;\n");
+                        for fname in str_slots.iter().rev() {
+                            let sname = slot(fname);
+                            fill_body = format!(
+                                "if ({sname}.trap != A2X_TRAP_NONE) {{\n\
+                                 \x20   {t} = a2x_fwd_{cr}({sname}.trap);\n\
+                                 }} else {{\n{fill_body}\
+                                 \x20   }}\n"
+                            );
                         }
                         self.out.push(format!(
                             "int32_t {st} = {func}({args});\n\
                              a2x_res_{cr} {t};\n\
                              if ({st} != 0) {{\n\
                              \x20   {t} = a2x_fwd_{cr}(A2X_TRAP_RESOURCE);\n\
-                             }} else {{\n{ok_fill}\
-                             \x20   {t}.trap = A2X_TRAP_NONE;\n\
-                             }}\n",
+                             }} else {{\n{fill_body}\
+                             \x20   }}\n",
                             args = args.join(", ")
                         ));
                         self.check_trap(&t);
