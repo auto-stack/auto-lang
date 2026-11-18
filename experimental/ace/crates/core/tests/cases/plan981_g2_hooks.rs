@@ -110,10 +110,11 @@ fn p981_hook_let_and_if_reach_the_description_stmts_in_source_order() {
     assert_eq!(m.handler_assigns[0].1.len(), 2);
 }
 
-/// age-component（980 WEB 复放面）的裁剪**不含** `age-on-let`/`age-on-if`——
-/// `let`/`if` 在该面 `on` 体保持语法拒（fail-closed，"能解析、跑不了"的半面
-/// 不开）；age-package 裁剪含两臂。语法拒在 `project_component_candidates`
-/// 的解析结果上实测（非静默接受）。
+/// age-component 面的 hook 语句臂（PLAN-980 on-if 刀修订，2026-11-19）：
+/// **`if` 臂已开**——G2 当时拒的是"能解析、跑不了"的半面；980 on-if 刀交付
+/// 全链（文法+结构化投影+检查函数降版+lane 语句片段发射——`010 SetTheme`
+/// 形真实派生），拒因消除。**`let` 臂仍拒**（组件面无 let 语义消费）。
+/// age-package 裁剪含两臂不变。语法事实在 profile 裁剪规则名上实测。
 #[test]
 fn p981_hook_let_and_if_stay_syntax_refused_on_the_component_face() {
     let component = profile_grammar(SourceProfile::AgeComponent).expect("component trim");
@@ -125,11 +126,11 @@ fn p981_hook_let_and_if_stay_syntax_refused_on_the_component_face() {
         .collect();
     assert!(
         !names.contains(&"age-on-let"),
-        "age-component must not grow the hook-let arm"
+        "age-component must not grow the hook-let arm (let has no component-face consumer)"
     );
     assert!(
-        !names.contains(&"age-on-if"),
-        "age-component must not grow the hook-if arm"
+        names.contains(&"age-on-if"),
+        "PLAN-980 on-if: the hook-if arm is open with the full derive chain"
     );
     let package = profile_grammar(SourceProfile::AgePackage).expect("package trim");
     let pnames: Vec<&str> = package

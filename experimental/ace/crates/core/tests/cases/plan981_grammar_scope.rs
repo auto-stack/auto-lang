@@ -129,7 +129,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         //     `age-on-let`/`age-on-if` 仅 age-package 臂）——两面都动；
         //   - G1：`layer: render-only` 冻结属性行（`age-attr` 双臂包装 +
         //     `r-render-only` 单 token，仅 age-package）。
-        //   前值：age-component f35cf593…→19a1376e…（spawn）→8292feae…（本批）→620a0f73…（980 view-if）；
+        //   前值：age-component f35cf593…→19a1376e…（spawn）→8292feae…（本批）→620a0f73…（980 view-if）→e3859aed…（980 on-if）；
         //   age-package 2d1e0547…→0290d0ab…（spawn）→5398368c…（本批）。
         //   其余 13 行（age-h0 + 12 非 AGE 邻居）本批逐字节不变——本表逐行冻结，
         //   任何邻居漂移都会在此红。
@@ -137,7 +137,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             SourceProfile::AgeComponent,
             // PLAN-980 view-if 刀重基线：age-view-item 增 age-view-if/then/
             // else 三规则（两 AGE 面同开）——8292feae…→620a0f73…。
-            "620a0f7312a292008524e35460aada5c38819385108d3de5f2da8ed111f733b8",
+            "e3859aed79703d3c41c3f7cce37f6ebf23bc285dce1e919e8f6fb3845fe9bc7d",
         ),
         (
             SourceProfile::AgeH0,
@@ -219,6 +219,6 @@ fn p981_age_package_grammar_id_is_frozen() {
     assert_eq!(
         id_of(SourceProfile::AgePackage),
         // PLAN-980 view-if 刀重基线：c0e635d2…→30834de6…（同批双值）。
-        "30834de64b76c5a352bdb63f675fade3acd9cccf40b68e70f804cc823a1cf9d0"
+        "7497650a04fd3777f9fb74f7043f26f858bafeef3652b4fa33c268923f2b10fe"
     );
 }

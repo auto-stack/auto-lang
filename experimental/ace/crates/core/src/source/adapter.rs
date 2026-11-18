@@ -189,7 +189,7 @@ pub fn compile_aggregates_source_with_foreign(
     // PLAN-1026: the use.py front door (helper injection + hoisted member
     // imports) — a no-op without use.py items.
     super::py::front_door(&mut program);
-    let parts = compile_program_observed_with(
+    let parts = compile_program_observed_with_age(
         &program,
         src,
         module_path,
@@ -197,6 +197,7 @@ pub fn compile_aggregates_source_with_foreign(
         SourceProfile::Aggregates,
         None,
         Some(foreign),
+        false,
     )?;
     let checked = crate::verify::verify_foreign_closures(parts.bundle, foreign)?;
     Ok(CompiledSource {
@@ -369,7 +370,7 @@ pub fn compile_closures_source_incremental(
                 }
             }
         }
-        super::typecheck::typecheck_with_skip(&resolved, &skip)?;
+        super::typecheck::typecheck_with_skip(&resolved, false, &skip)?;
         let mut em = Emitter::new(&resolved, src.len(), SourceProfile::Closures);
         em.plan_module();
         let atom_text = em.render(module_path);
@@ -509,7 +510,14 @@ pub fn compile_parts_with_observer(
     profile: SourceProfile,
     observer: &mut dyn SourceObserver,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    compile_parts_observed(src, module_path, capabilities, profile, Some(observer))
+    compile_parts_observed(
+        src,
+        module_path,
+        capabilities,
+        profile,
+        Some(observer),
+        false,
+    )
 }
 
 /// Compile up to (but not including) verification under the explicit
@@ -523,7 +531,18 @@ pub fn compile_parts_with(
     capabilities: &[String],
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    compile_parts_observed(src, module_path, capabilities, profile, None)
+    compile_parts_observed(src, module_path, capabilities, profile, None, false)
+}
+
+/// PLAN-980 on-if 刀：AGE 检查函数模块的编译变体——str/Str 相等性放行
+/// （typecheck 层；与 verify_text_record_age 成对；仅 age_component 两处调用）。
+pub fn compile_parts_with_age(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_parts_observed(src, module_path, capabilities, profile, None, true)
 }
 
 fn compile_parts_observed(
@@ -532,6 +551,7 @@ fn compile_parts_observed(
     capabilities: &[String],
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
+    age_eq: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
     let program = match super::parse_program_with(src, profile) {
         Ok(p) => {
@@ -547,7 +567,16 @@ fn compile_parts_observed(
             return Err(vec![d]);
         }
     };
-    compile_program_observed(&program, src, module_path, capabilities, profile, observer)
+    compile_program_observed_with_age(
+        &program,
+        src,
+        module_path,
+        capabilities,
+        profile,
+        observer,
+        None,
+        age_eq,
+    )
 }
 
 /// Compile an already-parsed program up to (but not including) verification
@@ -563,6 +592,29 @@ pub fn compile_program_parts(
     capabilities: &[String],
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_parts_opts(program, src, module_path, capabilities, profile, false)
+}
+
+/// PLAN-980 on-if 刀：AGE 检查函数模块的程序级编译变体——str/Str 相等性
+/// 放行（typecheck 层；与 verify_text_record_age 成对）。
+pub fn compile_program_parts_age(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_parts_opts(program, src, module_path, capabilities, profile, true)
+}
+
+fn compile_program_parts_opts(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    age_eq: bool,
+) -> Result<SourceParts, Vec<Diagnostic>> {
     // PLAN-979 F2：领域 profile 只经领域前门消费——这里显式拒绝，避免一个
     // 已投影程序把领域声明静默丢在共享管线之外。
     if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
@@ -572,7 +624,15 @@ pub fn compile_program_parts(
     if let Some(d) = crate::source::config_document::config_profile_refusal(profile, src.len()) {
         return Err(vec![d]);
     }
-    compile_program_observed(program, src, module_path, capabilities, profile, None)
+    compile_program_observed(
+        program,
+        src,
+        module_path,
+        capabilities,
+        profile,
+        None,
+        age_eq,
+    )
 }
 
 /// PLAN-982（B-CONFIG-I）：配置文档前门的物化程序入口——同一共享
@@ -585,7 +645,15 @@ pub(crate) fn compile_materialized_program_parts(
     capabilities: &[String],
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    compile_program_observed(program, src, module_path, capabilities, profile, None)
+    compile_program_observed(
+        program,
+        src,
+        module_path,
+        capabilities,
+        profile,
+        None,
+        false,
+    )
 }
 
 /// PLAN-828 D-01 observation: what a single-body emission actually
@@ -1103,8 +1171,9 @@ fn compile_program_observed(
     capabilities: &[String],
     profile: SourceProfile,
     observer: Option<&mut dyn SourceObserver>,
+    age_eq: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    compile_program_observed_with(
+    compile_program_observed_with_age(
         program,
         src,
         module_path,
@@ -1112,10 +1181,12 @@ fn compile_program_observed(
         profile,
         observer,
         None,
+        age_eq,
     )
 }
 
-fn compile_program_observed_with(
+#[allow(clippy::too_many_arguments)]
+fn compile_program_observed_with_age(
     program: &super::ast::Program,
     src: &str,
     module_path: &str,
@@ -1123,6 +1194,7 @@ fn compile_program_observed_with(
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
     foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    age_eq: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
     // PLAN-1026: the py-bridge training lane grafts the adapter's
     // declared frame ops into the AGGREGATES surface (the F0 text-record
@@ -1147,7 +1219,18 @@ fn compile_program_observed_with(
             return Err(ds);
         }
     };
-    let _ = match typecheck::typecheck_with(&resolved, profile) {
+    // PLAN-980 on-if 刀：AGE 变体的 str/Str 相等放行旗（其余面按 profile
+    // 派生——AgeComponent/AgePackage 面 widget 源本身也放行）。
+    let tc_age_eq = age_eq
+        || matches!(
+            profile,
+            SourceProfile::AgeComponent | SourceProfile::AgePackage
+        );
+    let _ = match typecheck::typecheck_with_skip(
+        &resolved,
+        tc_age_eq,
+        &std::collections::BTreeSet::new(),
+    ) {
         Ok(v) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Typecheck, &[]);

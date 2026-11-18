@@ -584,6 +584,30 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 首匹配），`.field = x` 不落入本臂。组合器约束：alt 内不可
             // 混排非 alt 子步——`;` 分隔归各子规则尾。
             alt(profiles: [age-component]) { age-view-call-stmt() {} }
+            // PLAN-980 on-if 刀：view-stmt 面 if 臂（widget on 体与 view 内联
+            // lambda 体共用本面——010 的 on 体 if 与 005 的 lambda 体 if 一并
+            // 开）。then/else 体=**本面方言**（age-view-stmt——带点赋值形；
+            // age-on-if 是 979 钩子形的无点方言，不通用）。
+            alt { age-view-if-stmt() {} }
+        }
+        // PLAN-980 on-if 刀：view-stmt 方言的体分支（镜像 age-on-if；体=
+        // many age-view-stmt——多语句/watch 形；else-if 链式递归）。
+        age-view-if-stmt(profiles: [age-component, age-package], expect: "an `if <expr> { … } [else …]` branch in a handler body") {
+            if(field: "kw")
+            if-cond(field: "cond")
+            lbrace(same-line: true) {}
+            many { age-view-stmt() {} }
+            rbrace() {}
+            opt { age-view-if-else(field: "els") {} }
+        }
+        age-view-if-else(profiles: [age-component, age-package]) {
+            alt { else(field: "kw") age-view-if-stmt(field: "chain") }
+            alt {
+                else(field: "kw")
+                lbrace(same-line: true) {}
+                many { age-view-stmt() {} }
+                rbrace() {}
+            }
         }
         age-view-assign-stmt(profiles: [age-component, age-package]) {
             dot() {}
@@ -806,6 +830,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-on-assign() {} }
             alt(profiles: [age-package]) { age-on-let() {} }
             alt(profiles: [age-package]) { age-on-if() {} }
+            // PLAN-980 on-if 刀：hook-local if 组件面开门（let 仍包面专属）。
+            alt(profiles: [age-component]) { age-on-if() {} }
         }
         age-on-assign(profiles: [age-component, age-package], expect: "an `on` handler assignment `<field> = <expr>`") {
             ident(field: "field") {}
@@ -825,7 +851,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-981（G2）：`on` 体分支。then/else 体仍是 age-on-stmt 面
         //（不向下开放 return/for 等普通语句面）。
-        age-on-if(profiles: [age-package], expect: "an `on` handler `if <cond> { … } [else { … }]`") {
+        age-on-if(profiles: [age-component, age-package], expect: "an `on` handler `if <cond> { … } [else { … }]`") {
             if(field: "kw") {}
             if-cond(field: "cond") {}
             lbrace(same-line: true) {}
@@ -833,7 +859,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
             opt { age-on-else(field: "els") {} }
         }
-        age-on-else(profiles: [age-package]) {
+        age-on-else(profiles: [age-component, age-package]) {
             else() {}
             lbrace(same-line: true) {}
             list-nl { age-on-stmt() {} }
