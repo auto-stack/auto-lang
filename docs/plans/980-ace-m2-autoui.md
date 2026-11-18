@@ -591,7 +591,7 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 - **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
 - **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
 
-**交付状态（2026-11-18，R1′ 第 1 步）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 真窗 / S5 同源 SFC 未交**（R1′ 第 2 步，下一片）。**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片，不阻塞本片。
+**交付状态（2026-11-18，R1′ 第 1 步）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 执行/观察面已交**（`ace_av::age_package::observe_age_package` 复用：派生真实例场景 2 实例 + `Inc` → 观察状态 `[4,2]`；helper 改 `+10` → `[20,10]`——helper 真进 AV 执行）。**S4 真窗 / S5 同源 SFC 未交**：UI 桥与 lane 均只吃组件面单源，需包感知入口（见 §9 收据 P1/P2）。**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片，不阻塞本片。
 
 **S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
 
@@ -1614,6 +1614,14 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 **验证。** 目标用例 4/4；`cargo t ace-source` **PASS**（含 981 包面全套 + core conformance 862 例）；changed files fmt clean；探针零残留。
 
 **边界（诚实）。** **S4 AV 真窗与 S5 同源 SFC 未交**（R1′ 第 2 步）；测试源明确标注"由真实例派生"，不宣称整例支持；包面 widget 表面（style/匿名 payload msg/反引号）仍未补（R1′ 并行分切片，需 981 会签文法与 grammar ID 同步）。
+
+2026-11-18 stage: work（④-A 首切片 #2a：AGE 包闭包的 **AV 执行面**；非 fold）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（AV 执行面已证；真窗/SFC 未交）** | 交付：`experimental/ace/crates/av/tests/cases/plan980_closure_av.rs`（永久用例 2 例）| worktree lang-980 @ plan-980-dev。
+
+**交付。** 复用既有 AV 消费端 `ace_av::age_package::observe_age_package`（AGE 包观察：逐实例文本 + int 状态，走 lower→MIR verify→ABC→AV）。派生真实例（与首片同源）+ 场景 2 实例 + `Send{0, Inc}`：①`step(0)`/`step(2)` → 观察状态 **[4, 2]**（helper 值进入 AV 真值）；②helper 改 `+10` → **[20, 10]**（AV 观察随 helper 源变化，非声明摆设）；③未引用 `themes` 模块缺席仍编译并执行成功。
+
+**边界（诚实）。** ①这是 AV **执行/观察**级证据，**不是真窗**：UI 桥（`NodeDesktopBridge`/`AceStateEngine`）只吃组件面单源；AGE 包需要新桥路径（view 形状取入口 unit 的 `ComponentNode` + 包场景引擎 + 窗口 exe 多 unit 输入；包面场景**无 initials 面**——props 种子需具名拒或补面）。②**SFC 未交**：`generate_sfc_with_lane` 亦为组件面单源，需包感知入口（handler 片段引用被调 helper 的**发射名** + 把 helper 发射进 SFC 脚本）。③表面补齐（style/匿名 payload msg/反引号）仍是"整例真实源"前置。
+
+**下一步（可执行顺序）**：**P1** 包场景引擎（`compile_age_package_with_scenario` + `observe_age_package` 驱动 dispatch/状态）+ `NodeDesktopBridge::load_package` + 窗口 exe `--package`（真窗状态随 helper 变）；**P2** 包感知 SFC 生成（同源断言：调用名=helper 发射名且函数在产物内）；**P3** 表面补齐首刀 `style`（981 会签 + grammar ID 同步）。
 
 §5 S0.5 实测：age-package 面在真实源上缺**顶层 `style`（20/35）**、**payload msg（17/35）**、**反引号文本（2/35）**；001 是唯一可直接编译的真实例且无跨模块 helper。⇒ ④-A 的"真实示例打通"被**表面补齐**前置，导入/闭包工作是其后。
 
