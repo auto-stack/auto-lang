@@ -921,6 +921,22 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**第五批：image2d.png owned-Str out 约定 + C record-text f32 值通道**；用户点名第四批两条具名边界）| PLAN-981 r18 | outcome: **pass（两腿均真 cl 实证）** | code_commit `5132ac1e0` | merge `cb459e16a`
+
+**①image2d.png owned-Str out 约定（022 内容身份，冻结）**
+- ABI：owned-Str 端口字段（`Image2D.sha256`）经运行时 **`a2x_stro_result*` 具名 out 槽**——宿主用运行时 str helper（`a2x_str_from_lit`）构造 owned 缓冲（stub `#include "a2x_c_rt_runtime.h"` 即得 helper——运行时头 static-inline 按 TU 设计本就为此）；调用侧核 wrapper trap，成功则**移动**进 record 字段（record free 释放；任一 wrapper trap ⇒ 整 record 折叠 typed fwd，**零效果**——未提交任何字段）。原型页同步列全（`a2x_str_view a0, a2x_stro_result* out_sha256, int32_t* out_byte_length, …`）。
+- **真 cl 腿**：宿主写 sha `"deadbeef"`（len 8）+ 16/64/32 ⇒ 调用方读 `img.sha256.len()` 与三维度判别 `value:1`；**wrapper trap 负控**：stub 塞 `a2x_fwd_stro(A2X_TRAP_RESOURCE)` ⇒ `trap:` 零效果。宿主恰收一次调用。
+
+**②C record-text f32 值通道**
+- `c_value_ty` F32→`float`（局部/参数/字段）；`RetKind::F32`→`a2x_result_f32`（value/fwd/div/rem helper 进运行时页——与 scalar 车道**同一拼写**；div-by-zero typed trap）；返回包装臂 `a2x_f32_value`。f32 算子 add/sub/mul/比较沿既有 inline 臂，`NumericConst` 沿 `a2x_f32_bits` 常量腿（上批已交）。
+- **真 cl 腿**：`fn step(dx f32) f32 { var v = dx * 2.0; v = v + 0.05; return v }` + `main` 读 f32 局部、调 f32 返回 helper ⇒ `value:1`——float **参数/var 局部/返回**全链经真实 cl。
+
+**门禁（冻结树 `5132ac1e0`）**：`cargo t ace-a2x` **328 PASS**（含 6 条真 cl 腿）；受影响 C 家族定向 92/92；合并树（`cb459e16a`）`plan981_gfx_a2c*` 11/11。新 case 计时：整组 2.1s（6 条 cl 腿全含），远低于 10s 门。零新增编译警告（既有 `has_config_intrinsics`/`ConfigPairValue` 等为 982/983 落主残留，未顺手改他触面）。
+
+**边界与后继（具名）**：①058 overlay pin 现指 `6e456794d`，本批（及第四批 `a2f4e069e`）在更新之后——1068/UI058 消费新 ABI 时按 G5 流程刷 pin；②`Frame2D.image`（端口引用字段）与 A2C 宿主面的组合仍未触（frame2d.at 是纯值构造不走宿主）；③f64/宽整型值通道不在面（age 作者面拼写不出）。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 1 | from: work | to: done | status: executing | outcome: pass（第五批两腿齐：image2d owned-Str out + C f32 值通道，均真 cl） | commit: 5132ac1e0 | next: 由用户裁定下一批
+
 ### 2026-11-18 stage: work（**第四批第②项：A2C f32 常量 + 端口 record 宿主 ABI，真 cl 腿**；用户裁定验收口径=cl 跑通证明 A2C 的 C 宿主 ABI）| PLAN-981 r18 | outcome: **pass（第①项同日已交，本批四批目标齐）** | code_commit `a2f4e069e` | merge `ea7413d71`（叠 982 文档提交上）
 
 **交付**
