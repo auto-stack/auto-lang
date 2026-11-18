@@ -3391,6 +3391,11 @@ struct FnLower<'a, 'budget> {
     owned: bool,
     ty_memo: BTreeMap<hir::TypeId, TypeIdx>,
     ty_visiting: std::collections::BTreeSet<hir::TypeId>,
+    /// 服务级信用计量（差额表 #6a）：本函数已计入的 gfx 调用点信用合计。
+    /// 每函数一个降低器实例——重置即"每回调"的静态近似。超过
+    /// [`GFX_CALLBACK_CREDIT_BUDGET`] 的调用点具名拒（零效果）；动态逐调用
+    /// 计费与 sticky 拒归宿主车道（UI058）消费同一费率表。
+    gfx_credits: u32,
     blocks: Vec<MirBlock>,
     /// Current open MIR block cursor.
     cur: BlockId,
@@ -4378,6 +4383,30 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             if let Some(gop) =
                                 ace_core::source::age_resources::gfx_by_symbol(&symbol)
                             {
+                                // 服务级信用计量（差额表 #6a）：调用点计入费率
+                                // （021 原额，费率表与 UI058 T-02 联冻）；每函数
+                                // 静态合计超 32 即具名拒——构造性零效果。动态
+                                // 逐调用计费 + sticky 拒归宿主车道消费同表。
+                                let cost =
+                                    ace_core::source::age_resources::gfx_credit_cost(gop.callee);
+                                self.gfx_credits = self.gfx_credits.saturating_add(cost);
+                                if self.gfx_credits
+                                    > ace_core::source::age_resources::GFX_CALLBACK_CREDIT_BUDGET
+                                {
+                                    return Err(AdapterError::uns(
+                                        "lower.age-gfx-credits",
+                                        format!(
+                                            "gfx service `{}` costs {cost} credits; this \
+                                             function's call sites now total {} against the \
+                                             frozen per-callback budget {} (rate table co-frozen \
+                                             with UI058 T-02; host-lane dynamic charging \
+                                             consumes the same table)",
+                                            gop.callee,
+                                            self.gfx_credits,
+                                            ace_core::source::age_resources::GFX_CALLBACK_CREDIT_BUDGET
+                                        ),
+                                    ));
+                                }
                                 match gop.lane {
                                     ace_core::source::age_resources::AgeGfxLane::ValueCtor => {
                                         let sig = self.out.imports[imp as usize].sig;
@@ -6508,6 +6537,7 @@ fn lower_function_with_emission(
         owned,
         ty_memo,
         ty_visiting,
+        gfx_credits: 0,
         blocks: vec![],
         cur: 0,
         terminated: false,

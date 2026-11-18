@@ -375,6 +375,24 @@ pub fn gfx_lookup(callee: &str) -> Option<&'static AgeGfxServiceOp> {
     AGE_GFX_SERVICE_OPS.iter().find(|op| op.callee == callee)
 }
 
+/// 服务级信用计量的**每回调预算**（差额表 #6a，021 原额保持：32
+/// credits/callback）。费率/映射与 UI058 T-02 **联冻**——本值是原语义
+/// 冻结，不单方面改额。
+pub const GFX_CALLBACK_CREDIT_BUDGET: u32 = 32;
+
+/// 一次 gfx 服务调用的信用费（021 原额：cast 8、sweep 16；getter 是端口
+/// 字段读、不构成服务调用；其余服务基价 1）。宿主车道（UI058）逐调用
+/// 动态计费 + 第 33 次 sticky 拒时消费**同一张表**；语言侧在 gfx 派发点
+/// 以每函数静态调用点合计做保守准入界（`lower.age-gfx-credits` 具名拒、
+/// 构造性零效果）。
+pub fn gfx_credit_cost(callee: &str) -> u32 {
+    match callee {
+        "query2d.segment" => 8,
+        "query2d.sweep" => 16,
+        _ => 1,
+    }
+}
+
 /// 按稳定符号查 gfx 服务。
 pub fn gfx_by_symbol(symbol: &str) -> Option<&'static AgeGfxServiceOp> {
     AGE_GFX_SERVICE_OPS.iter().find(|op| op.symbol == symbol)

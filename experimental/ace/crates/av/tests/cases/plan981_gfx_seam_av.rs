@@ -177,3 +177,51 @@ fn p981_gfx_seam_av_plain_package_unaffected() {
     let o = observe(SRC).expect("plain packages keep observing");
     assert_eq!(o.components[0].instance_states, vec![vec![1]]);
 }
+
+/// 服务级信用计量（差额表 #6a）：021 原额费率表（segment 8 / sweep 16 / 基价 1）
+/// 与每函数 32 credits/callback 预算——第 33 个调用点具名拒（构造性零效果），
+/// 32 个的边界照常通过。费率表与 UI058 T-02 联冻，宿主动态计费消费同表。
+#[test]
+fn p981_gfx_seam_av_service_credits_admission_bound() {
+    let mut lets = String::new();
+    for i in 0..33 {
+        lets.push_str(&format!(
+            "    let a{i} Frame2D = frame2d.at(img, {i}, 0, 4, 4)\n"
+        ));
+    }
+    let over = format!(
+        "node M {{\n    view {{\n        text \"m\" {{}}\n    }}\n}}\n\npub fn wide(img Image2D) i32 {{\n{lets}    return 0\n}}\n"
+    );
+    let err = observe(&over).expect_err("the 33rd service call site must name-refuse");
+    assert!(
+        err.contains("lower.age-gfx-credits") && err.contains("33"),
+        "named credit rejection: {err}"
+    );
+
+    // 边界：恰好 32 个调用点（32 credits）合法。
+    let mut lets32 = String::new();
+    for i in 0..32 {
+        lets32.push_str(&format!(
+            "    let a{i} Frame2D = frame2d.at(img, {i}, 0, 4, 4)\n"
+        ));
+    }
+    let ok = format!(
+        "node M {{\n    view {{\n        text \"m\" {{}}\n    }}\n}}\n\npub fn wide(img Image2D) i32 {{\n{lets32}    return 0\n}}\n"
+    );
+    observe(&ok).expect("exactly 32 credits still verifies");
+}
+
+/// 费率表冻结正控（021 原额）：segment 8 / sweep 16 / 基价 1、预算 32——
+/// 这是与 UI058 T-02 联冻的基础表，防静默漂移（宿主动态计费消费同表；
+/// 降低侧准入界见 admission_bound 用例）。
+#[test]
+fn p981_gfx_seam_av_credit_rate_table_is_frozen() {
+    use ace_core::source::age_resources::{
+        gfx_credit_cost, GFX_CALLBACK_CREDIT_BUDGET,
+    };
+    assert_eq!(gfx_credit_cost("query2d.segment"), 8);
+    assert_eq!(gfx_credit_cost("query2d.sweep"), 16);
+    assert_eq!(gfx_credit_cost("frame2d.at"), 1);
+    assert_eq!(gfx_credit_cost("image2d.png"), 1);
+    assert_eq!(GFX_CALLBACK_CREDIT_BUDGET, 32);
+}
