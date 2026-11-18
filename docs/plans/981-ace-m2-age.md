@@ -921,6 +921,32 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: review（**980 `style` 声明面文法会签——981 grammar/identity owner 回签**）| PLAN-981 r18 | outcome: **有条件通过（修订 profile 门、调用折叠与身份做法）** | 引用 980 §5「P3 提案：`style` 声明面」（`980-ace-m2-autoui.md:614-649`）与实测材料 `plan-artifacts/plan-980/p3-style-proposal-20261118.txt`
+
+**核对基线（master 实读）**：冻结 identity = age-component `19a1376e…`、age-package `0290d0ab…`（`plan981_grammar_scope.rs:128/200`，与提案 §三一致）；`style` 不在 token 表、普通标识符位置合法；`r-pub` 的 profile 列表**不含 age-component**（`auto-source.at:213`），故组件面 `pub style` 今天连 `pub` 都拼不出。语料形状复核：007 的 `style stat_value = section_title(size: "text-sm")` 属实，stylekit 的 `pub style` 7 条中 3 条带默认值属实。
+
+**(a) 语义与 profile 门——语义认可，门修订为 `[age-package]`（P3.1）**
+- 认可 `style ≡ str const/fn 语法糖`、不引入新 HIR 域、`style` 不进 token 表（声明头用 `name(spelling:"style", token:"ident")`，同 `age-node-head` 机制）。
+- **`age-component` 本刀不开**，依据三条实读：①该 face 的文法**没有 `const-item`/`public-item`**（只给 packages-*/age-package，`auto-source.at:333-335`），style 生成的 `Item::Const` 只能绕过文法直进 resolve；②resolve 明确 **const/store 由 packages 绑定器消费**（init 函数/全局访问器），单模块路径收到原始 const 是 caller error（`resolve.rs:2346-2356`）；③`ModuleGlobalsPlan` 目前**只有 AGE 包前门**钉入（`set_module_globals` 唯一调用点 `age_package.rs:762`），组件面没有 plan ⇒ `module.global.get` 在 AV owned / A2R 语义视图会被拒——那正是"能解析、跑不了"的半支持，本会签不放行。
+- 语料侧无损失：20/35 的 style 都在工程入口模块，按 ④‑A 已裁定的包面闭包编译；001/002 的 `style:` 是**元素属性行**（非顶层声明），组件面不需要 style 声明。若 980 能用组件面端到端（AV+A2R）实测 const 路径，再单提一步开 age-component。
+- `pub style` 只在 age-package 生效（组件面无 `r-pub` token；语料 0 个组件面 `pub style`）；stylekit 的 7 条 `pub style` 是依赖包模块 → 包面，正好。
+- 参数化声明（**无默认值**）可接受，但请带永久用例（语料 0 例，属前瞻面）。
+
+**(b) grammar ID 重基线——选 A**
+- 选 **A**：980 在文法提交内同步更新 `plan981_grammar_scope.rs` 冻结值并注明前值，沿用 #6m/#6o 先例。条件：①只动受影响字面量（按 (a) 收窄则**只动 age-package 一个值**，age-component 保持 `19a1376e…`）；②13 邻居逐字节不变的逐 profile 转储随提交；③981 在该提交上复跑 `p981_grammar_scope` 并核 test diff（前值/原因注释写明本批）。若 980 坚持两值移动，须先满足 (a) 的组件面 const 端到端条件。
+
+**(c) const/fn 命名空间与身份——认可，附三条实现前置**
+1. **重名走现有拒**：包面 `source.module-duplicate-declaration`（同一绑定图）；style 投影后进同一绑定图，不得只报 mangle 冲突或新造码。
+2. **style 函数返回类型先冻结**：body 是 f-string/拼接（owned text）。建议 `Item::Fn` 返回 `Str`（owned），或按文本叶既有 `.clone()` 约定返回 `str`；两者对 verify/A2R/TS 发射不同，实现前定并写进永久用例。
+3. **下游车道核对（本会签主要风险点）**：style 引用出现在 `style:` 属性或其它 style 初始化里会成为 const 读（`module.global.get`）。P3.1 至少实测 **AV 观察 + TS/SFC 发射 + A2R** 三条链对该 const 读的承载；若 TS/SFC 语义视图不认 global 访问器，则要么补该面（另立 981 任务），要么改为**投影期把 style 名替换为字符串字面量**（语义等价，但届时不得再声称"mangle/可见性复用现路径"）。请在 P3 回执里明确选哪条。
+
+**(d) 诊断码——可接受，三点细化**
+- `source.age.style-defaults`（默认值未支持）与 `source.age.style-call`（调用未折叠/带参不支持）的命名与 `source.age.*` 归属**可接受**。
+- 细化：①`style-call` 消息区分 unknown-key / missing-arg / non-literal（同码不同臂）并带原 span；②默认值拒指向**默认值 token**（不是整条声明）；③重名不新造码（走现有 duplicate），未知形态不得回落到 `source.syntax`。
+- **修订建议（可选）**：P3.1 先把调用点一律 `style-call` 具名拒、暂不做投影期折叠——语料唯一带参调用（007 `section_title(size: "text-sm")`）的目标声明带默认值、按本刀本就拒；折叠需要跨模块常量求值，语料收益 0、风险（缓存身份/求值序）不为 0。等出现真实无默认值的 style 调用再开折叠。
+
+**结论**：按 (a) 收窄到 `[age-package]` + (b) A 执行，980 可开工文法/投影/永久用例；开工前请在 P3 节回执确认 (c)3 的下游承载选择与 (c)2 的返回类型。**本回签不改文法/代码，不动 980 计划文件。**
+
 ### 2026-11-18 stage: work（**`IF-981-GFX-HOST-PORT` 第一片**；用户裁定"优先做宿主端口，交付 typed 派发、provider 注册与生命周期、每 Tick 预算，以及正常 AGE 源的 AV 实测"）| PLAN-981 r18 | outcome: **pass（13/16 宿主 op 交付；端口结果 3 op 具名 ABI 边界）** | code_commit `267cbc4b9` | merge `1b80d708f`
 
 **交付**
@@ -955,6 +981,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 4. 确认 `source.age.style-defaults` / `source.age.style-call` 两个新诊断码的归属与命名（981 若有命名规范冲突，回修订）。
 
 **回复方式**：在 981 本文件 §9 追加一条带日期的回签（或修订）收据，引用 980 P3 节与上述四点；若有修订，逐点说明。**本请求不要求 981 现在改任何代码/文法**；回签后由 980 落文法 + 投影 + 永久用例，并在同一提交附 981 冻结值更新（若按做法 A）。
+
+> **回签（2026-11-18，981 grammar/identity owner）**：见本文件 §9 顶部「980 `style` 声明面文法会签——981 回签」收据。**有条件通过**：语义认可；profile 门收窄为 `[age-package]`（组件面无 const/`pub` token、无 module-globals plan，开了只能"能解析、跑不了"）；identity 选**做法 A**（若按收窄则只动 age-package 一个值）；`style-call` 折叠本刀建议先一律具名拒；实现前须确认 style 函数返回类型与 const 读在 AV/TS/A2R 三条链的承载。
 
 
 ### 2026-11-18 stage: handoff（**F32 消费同窗 v1：981 侧已备 `17fafb1d9`（分支隔离，未合入）**；分工/呈现/验收/桥面按用户裁定落档；待 980 `auto-ui-runtime` owner 回签后开窗）| PLAN-981 r18 | outcome: **981 ready；合入窗口未开**
