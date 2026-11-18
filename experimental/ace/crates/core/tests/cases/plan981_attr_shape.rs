@@ -24,7 +24,9 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<
+fn compile(
+    src: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -59,7 +61,11 @@ fn p981_3d_attribute_on_a_2d_leaf_is_rejected() {
     )
     .expect_err("`yaw` does not apply to shape2d");
     assert_eq!(ds[0].code, "source.age.scene-attr", "{ds:?}");
-    assert!(ds[0].message.contains("does not apply"), "{}", ds[0].message);
+    assert!(
+        ds[0].message.contains("does not apply"),
+        "{}",
+        ds[0].message
+    );
 }
 
 /// 2D 专属属性写到 3D 叶上 → 具名拒绝。

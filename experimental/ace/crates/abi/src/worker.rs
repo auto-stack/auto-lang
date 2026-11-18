@@ -1146,8 +1146,7 @@ pub fn serve() -> i32 {
     // recipes share the worker lifecycle but never each other's decks.
     // PLAN-939: the resource certification recipe rides the same source
     // flow under its own deck/report identities (CertPolicy).
-    let resp = match if crate::worker_source::CertPolicy::of_recipe(&env.request.recipe).is_some()
-    {
+    let resp = match if crate::worker_source::CertPolicy::of_recipe(&env.request.recipe).is_some() {
         crate::worker_source::execute(&env.request)
     } else if cfg!(windows) && env.request.recipe == crate::rust_f0_worker::F0_RECIPE {
         crate::rust_f0_worker::execute(&env.request)

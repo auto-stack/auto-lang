@@ -152,10 +152,7 @@ fn p981_single_string_argument_is_the_symbol() {
         .expect("ship");
     assert_eq!(r.op, "age.model3d.glb.v1");
     assert_eq!(r.arity, 1);
-    assert_eq!(
-        r.args,
-        vec![AgeResourceArg::Str("assets/ship.glb".into())]
-    );
+    assert_eq!(r.args, vec![AgeResourceArg::Str("assets/ship.glb".into())]);
     assert_eq!(r.symbol.as_deref(), Some("assets/ship.glb"));
     assert!(r.components.is_empty());
 }
@@ -186,7 +183,10 @@ fn p981_scene_resource_reference_resolves_to_the_declaring_module() {
         .expect("material")
         .1
         .clone();
-    assert_eq!(cpu, ace_core::source::age_package::AgeSceneValue::Symbol("red".into()));
+    assert_eq!(
+        cpu,
+        ace_core::source::age_package::AgeSceneValue::Symbol("red".into())
+    );
     // 解析后的身份在 resource_refs 里——两个模块都有 `red`，这里必须指对。
     assert_eq!(m.resource_refs.len(), 1, "{:#?}", m.resource_refs);
     let r = &m.resource_refs[0];
@@ -262,7 +262,10 @@ fn p981_g01_resource_references_have_resolved_targets() {
     assert_eq!(main.resource_refs.len(), 4, "{:#?}", main.resource_refs);
     for r in &main.resource_refs {
         let AgeResourceTarget::Resource { module, port, .. } = &r.target else {
-            panic!("`{}` must resolve to a module resource: {:#?}", r.spelling, r.target);
+            panic!(
+                "`{}` must resolve to a module resource: {:#?}",
+                r.spelling, r.target
+            );
         };
         assert_eq!(module, "app::resources", "{}: wrong module", r.spelling);
         assert_eq!(port, "Material2D");

@@ -63,7 +63,10 @@ fn p981_package_model_accepts_int_and_bool() {
     let c = &out.description.components[0];
     assert_eq!(
         c.fields,
-        vec![("count".into(), "int".into()), ("flag".into(), "bool".into())]
+        vec![
+            ("count".into(), "int".into()),
+            ("flag".into(), "bool".into())
+        ]
     );
     assert!(c.initialized, "every field got a state function");
     assert_eq!(
@@ -158,7 +161,8 @@ fn p981_package_f32_annotation_positions_parse_and_type() {
 /// 旧的"str 在类型 token 具名拒"是当时实现的限制，不是契约。
 #[test]
 fn p981_model_str_field_is_supported_after_the_980_surface() {
-    let src = "node M {\n    model {\n        s str = \"x\"\n    }\n    view { text \"t\" {} }\n}\n";
+    let src =
+        "node M {\n    model {\n        s str = \"x\"\n    }\n    view { text \"t\" {} }\n}\n";
     let out = compile_pkg(src).expect("str model fields are supported by the merged surface");
     let c = &out.description.components[0];
     assert_eq!(c.fields, vec![("s".to_string(), "str".to_string())]);

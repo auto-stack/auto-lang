@@ -21,7 +21,9 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<
+fn compile(
+    src: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -69,7 +71,11 @@ fn p981_resource_services_compile_and_let_infers_the_port() {
         declared.contains(&("c", "Mesh2D")),
         "`c` must be inferred as Mesh2D: {declared:?}"
     );
-    assert_eq!(declared.len(), 3, "exactly the three bindings: {declared:?}");
+    assert_eq!(
+        declared.len(),
+        3,
+        "exactly the three bindings: {declared:?}"
+    );
 }
 
 /// 端口是**名义**类型：`Mesh2D` 不能赋给 `Material2D`。
@@ -99,9 +105,8 @@ fn p981_resource_service_rejects_wrong_argument_type() {
 /// 参数个数必须与声明一致。
 #[test]
 fn p981_resource_service_rejects_wrong_arity() {
-    let src = format!(
-        "{NODE}fn f() int {{\n    let a = material2d.color(0.9, 0.3)\n    return 1\n}}\n"
-    );
+    let src =
+        format!("{NODE}fn f() int {{\n    let a = material2d.color(0.9, 0.3)\n    return 1\n}}\n");
     let ds = compile(&src).expect_err("color takes four components");
     assert_eq!(ds[0].code, "source.age.resource-arity", "{ds:?}");
 }
@@ -109,9 +114,7 @@ fn p981_resource_service_rejects_wrong_arity() {
 /// 未声明的服务操作不被臆造（与"名字不存在"同口径）。
 #[test]
 fn p981_unknown_resource_service_is_not_invented() {
-    let src = format!(
-        "{NODE}fn f() int {{\n    let a = material2d.nope(0.9)\n    return 1\n}}\n"
-    );
+    let src = format!("{NODE}fn f() int {{\n    let a = material2d.nope(0.9)\n    return 1\n}}\n");
     let ds = compile(&src).expect_err("an undeclared service op is not invented");
     assert_eq!(ds[0].code, "source.undefined", "{ds:?}");
 }

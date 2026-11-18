@@ -71,11 +71,10 @@ pub use span_map::SpanSegments;
 pub mod foreign_exec;
 pub mod frame_allocation;
 
+/// PLAN-982: configuration document container/value primitives
+/// (`config.document/1`) — host-side evaluation under an explicit session.
+pub mod config_document;
 /// Typed native host import contract (PLAN-863).
 pub mod host;
 /// Checked platform I/O and OS memory region primitives (PLAN-1039).
 pub mod platform_io;
-/// PLAN-982: configuration document container/value primitives
-/// (`config.document/1`) — host-side evaluation under an explicit session.
-pub mod config_document;
-

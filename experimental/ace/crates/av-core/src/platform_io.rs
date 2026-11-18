@@ -2821,12 +2821,7 @@ impl PlatformIoBackend for Win32PlatformIo {
         let mut final_buf = vec![0u16; out.len() + 1];
         unsafe { win32::SetLastError(0) };
         let n = unsafe {
-            win32::GetFinalPathNameByHandleW(
-                h,
-                final_buf.as_mut_ptr(),
-                final_buf.len() as u32,
-                0,
-            )
+            win32::GetFinalPathNameByHandleW(h, final_buf.as_mut_ptr(), final_buf.len() as u32, 0)
         };
         let err = unsafe { win32::GetLastError() };
         unsafe { win32::CloseHandle(h) };

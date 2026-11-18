@@ -1945,16 +1945,11 @@ pub fn validate_foreign_context(
                         first.join(m.span),
                     )]);
                 }
-                if let Some((_, span, _)) =
-                    names.iter().find(|(n, _, _)| *n == m.name.as_str())
-                {
+                if let Some((_, span, _)) = names.iter().find(|(n, _, _)| *n == m.name.as_str()) {
                     return Err(vec![Diagnostic::new(
                         Stage::Bind,
                         "source.use-py.conflict",
-                        format!(
-                            "py member `{}` conflicts with a source declaration",
-                            m.name
-                        ),
+                        format!("py member `{}` conflicts with a source declaration", m.name),
                         *span,
                     )]);
                 }
@@ -5657,7 +5652,13 @@ fn resolve_fn_reuse<'a, 's>(
         closure_defs,
         moved_locals: BTreeSet::new(),
         py_locals: BTreeSet::new(),
-        py_context: supply.map(|s| s.foreign().map(|f| f.manifest().provider == "py").unwrap_or(false)).unwrap_or(false),
+        py_context: supply
+            .map(|s| {
+                s.foreign()
+                    .map(|f| f.manifest().provider == "py")
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false),
         py_lit_locals: BTreeMap::new(),
         borrowed_closure_locals: BTreeSet::new(),
         records,
@@ -6004,7 +6005,11 @@ impl<'a, 's> FnResolver<'a, 's> {
             // exact bool literal
             RExprKind::BoolLit(b) => {
                 let d = if *b { "1" } else { "0" };
-                parts.push(PyFramePart::Txt(format!("b {d}\n{d}\n")));
+                parts.push(PyFramePart::Txt(format!(
+                    "b 1
+{d}
+"
+                )));
             }
             // exact text literal — raw payload with its byte length
             RExprKind::StrLit(t) => {
@@ -6015,22 +6020,27 @@ impl<'a, 's> FnResolver<'a, 's> {
             // an exact Python float; dynamic float args stay v1-rejected).
             RExprKind::TypedLit { vt: VT::F64, bits } => {
                 let d = f64::from_bits(*bits).to_string();
-                parts.push(PyFramePart::Txt(format!("t {}
+                parts.push(PyFramePart::Txt(format!(
+                    "t {}
 F:{d}
-", d.len() + 2)));
+",
+                    d.len() + 2
+                )));
             }
             RExprKind::TypedLit { vt: VT::F32, bits } => {
                 let d = (f32::from_bits(*bits as u32) as f64).to_string();
-                parts.push(PyFramePart::Txt(format!("t {}
+                parts.push(PyFramePart::Txt(format!(
+                    "t {}
 F:{d}
-", d.len() + 2)));
+",
+                    d.len() + 2
+                )));
             }
             // PLAN-1026: a float local bound to an exact literal — the
             // frozen `F:` compile-time encoding (the ONLY dynamic-float
             // form v1 admits).
             RExprKind::ReadLocal(l)
-                if matches!(v.vt, VT::F64 | VT::F32)
-                    && self.py_lit_locals.contains_key(l) =>
+                if matches!(v.vt, VT::F64 | VT::F32) && self.py_lit_locals.contains_key(l) =>
             {
                 let (vt, bits) = self.py_lit_locals[l];
                 let d = if vt == VT::F64 {
@@ -6039,9 +6049,13 @@ F:{d}
                     (f32::from_bits(bits as u32) as f64).to_string()
                 };
                 let payload = format!("F:{d}");
-                parts.push(PyFramePart::Txt(format!("t {}
+                parts.push(PyFramePart::Txt(format!(
+                    "t {}
 {}
-", payload.len(), payload)));
+",
+                    payload.len(),
+                    payload
+                )));
             }
             // a py object — dynamic "o <dlen>\n<token>\n"
             _ if self.py_is_object(v) => {
@@ -6099,14 +6113,20 @@ F:{d}
             );
             parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
         }
+        // positionals[0] is ALWAYS the member label ("" for a direct call
+        // of the receiver itself — the provider's frozen ABI).
         let pos = args.iter().filter(|a| a.name.is_none()).count();
         parts.push(PyFramePart::Txt(format!(
-            "p {}\n",
-            pos + usize::from(!member.is_empty())
+            "p {}
+",
+            pos + 1
         )));
-        if !member.is_empty() {
-            parts.push(PyFramePart::Txt(format!("t {}\n{member}\n", member.len())));
-        }
+        parts.push(PyFramePart::Txt(format!(
+            "t {}
+{member}
+",
+            member.len()
+        )));
         for a in &args {
             if a.name.is_none() {
                 self.py_frame_val(&mut parts, &a.value);
@@ -6133,7 +6153,9 @@ F:{d}
                 let hi = self.py_op_call("py_to_f64", span, frame);
                 let lo_frame = self.py_frame(
                     span,
-                    vec![PyFramePart::Txt("p967.frame/1\nr n 0\n\np 0\nk 0\n".to_string())],
+                    vec![PyFramePart::Txt(
+                        "p967.frame/1\nr n 0\n\np 0\nk 0\n".to_string(),
+                    )],
                 );
                 let lo = self.py_op_call("py_f64_lo", span, lo_frame);
                 self.used_intrinsics.insert("__py_f64_bits");
@@ -6231,7 +6253,11 @@ F:{d}
         values: Vec<ResolvedExpr>,
         result: VT,
     ) -> ResolvedExpr {
-        let fn_index = self.sigs.get(name).map(|sig| sig.index).unwrap_or(usize::MAX);
+        let fn_index = self
+            .sigs
+            .get(name)
+            .map(|sig| sig.index)
+            .unwrap_or(usize::MAX);
         let args = values
             .into_iter()
             .map(|value| ResolvedArg {
@@ -10744,13 +10770,15 @@ F:{d}
                     if self.py_is_object(&value) {
                         self.py_locals.insert(lref);
                     }
-                        // PLAN-1026: an exact float literal binding folds into
-                        // the frozen `F:` frame encoding at py call sites.
-                        if let RExprKind::TypedLit { vt: vt @ (VT::F64 | VT::F32), bits } =
-                            &value.kind
-                        {
-                            self.py_lit_locals.insert(lref, (*vt, *bits));
-                        }
+                    // PLAN-1026: an exact float literal binding folds into
+                    // the frozen `F:` frame encoding at py call sites.
+                    if let RExprKind::TypedLit {
+                        vt: vt @ (VT::F64 | VT::F32),
+                        bits,
+                    } = &value.kind
+                    {
+                        self.py_lit_locals.insert(lref, (*vt, *bits));
+                    }
                     if matches!(
                         &value.kind,
                         RExprKind::CreateClosure { captures, .. }
@@ -14436,7 +14464,7 @@ F:{d}
                                 parts.push(PyFramePart::Txt("\np 1\n".to_string()));
                                 self.py_frame_val(&mut parts, &r);
                                 parts.push(PyFramePart::Txt(format!(
-                                    "k 1\n2\nop t {}\n{opname}\n",
+                                    "k 1\n2\nopt {}\n{opname}\n",
                                     opname.len()
                                 )));
                                 let frame = self.py_frame(span, parts);

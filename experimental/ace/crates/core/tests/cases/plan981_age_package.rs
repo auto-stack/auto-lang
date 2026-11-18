@@ -21,7 +21,12 @@ fn rule_names(p: SourceProfile) -> Vec<String> {
 fn grammar_id(p: SourceProfile) -> String {
     format!(
         "{}",
-        profile_grammar(p).expect("grammar").program().identity.grammar_id.0
+        profile_grammar(p)
+            .expect("grammar")
+            .program()
+            .identity
+            .grammar_id
+            .0
     )
 }
 

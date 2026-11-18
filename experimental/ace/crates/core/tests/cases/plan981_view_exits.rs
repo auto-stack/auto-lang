@@ -19,7 +19,9 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<
+fn compile(
+    src: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -70,7 +72,11 @@ fn p981_distinct_exits_coexist_and_are_all_recorded() {
         vec![AgeViewExit::View, AgeViewExit::ViewPortrait],
         "both declared exits are recorded in declaration order"
     );
-    assert_eq!(c.exit, AgeViewExit::View, "the first exit stays the primary fact");
+    assert_eq!(
+        c.exit,
+        AgeViewExit::View,
+        "the first exit stays the primary fact"
+    );
 }
 
 /// 单个出口仍然合法（收紧不能破坏正常源）。

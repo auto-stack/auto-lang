@@ -859,7 +859,7 @@ pub fn decl_env_restore_with_foreign(
         variants,
         function_types,
         objects: Vec::new(),
-    sched_tasks: Vec::new(),
+        sched_tasks: Vec::new(),
     };
     Ok(checked_env_from_parts_profile(
         program, rec_index, sigs, false, profile,

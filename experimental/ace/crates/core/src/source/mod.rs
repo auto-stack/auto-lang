@@ -39,13 +39,13 @@ pub mod domain;
 // mapping_complete/component_coverage 的字段粒度层）。
 pub mod field_manifest;
 pub mod fstr;
-pub mod py;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;
 pub mod modules;
 pub mod packages;
 pub mod parser;
 pub mod platform_io;
+pub mod py;
 pub mod resolve;
 pub mod sched_desugar;
 pub mod typecheck;

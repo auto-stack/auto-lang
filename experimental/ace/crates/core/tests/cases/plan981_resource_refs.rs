@@ -24,7 +24,10 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(resources: &str, main: &str) -> Result<
+fn compile(
+    resources: &str,
+    main: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -53,8 +56,8 @@ fn p981_method_call_is_not_a_resource_reference() {
 /// 裸函数调用不是资源引用。
 #[test]
 fn p981_bare_call_is_not_a_resource_reference() {
-    let ds = compile(RES, &with_material("nope()"))
-        .expect_err("a call is not a resource reference");
+    let ds =
+        compile(RES, &with_material("nope()")).expect_err("a call is not a resource reference");
     assert_eq!(ds[0].code, "source.age.scene-resource", "{ds:?}");
 }
 
@@ -112,8 +115,8 @@ fn p981_parentheses_do_not_change_resource_identity() {
     }
     // 坏引用加括号 → 仍然被拒（括号不绕过存在性检查）。
     for form in ["nope", "(nope)", "resources.nope", "(resources.nope)"] {
-        let ds = compile(RES, &with_material(form))
-            .expect_err(&format!("`{form}` must be rejected"));
+        let ds =
+            compile(RES, &with_material(form)).expect_err(&format!("`{form}` must be rejected"));
         assert_eq!(
             ds[0].code, "source.age.scene-resource-unknown",
             "`{form}` must fail the SAME way with or without parens: {ds:?}"
@@ -148,7 +151,8 @@ fn p981_resource_references_respect_imports() {
 
     // 无 `use`：两种写法都必须被拒，且诊断要区分"存在但不可见"。
     for attr in ["red", "assets.red"] {
-        let ds = run(&with("", attr)).expect_err(&format!("`{attr}` must not resolve without a use"));
+        let ds =
+            run(&with("", attr)).expect_err(&format!("`{attr}` must not resolve without a use"));
         assert_eq!(
             ds[0].code, "source.age.scene-resource-invisible",
             "`{attr}` without a use: {ds:?}"
@@ -186,11 +190,13 @@ fn p981_unknown_and_invisible_resources_are_distinguishable() {
         .expect_err("must be rejected")
     };
     assert_eq!(
-        run("nope")[0].code, "source.age.scene-resource-unknown",
+        run("nope")[0].code,
+        "source.age.scene-resource-unknown",
         "a name nobody declares is UNKNOWN"
     );
     assert_eq!(
-        run("red")[0].code, "source.age.scene-resource-invisible",
+        run("red")[0].code,
+        "source.age.scene-resource-invisible",
         "a declared-but-unimported name is INVISIBLE, not unknown"
     );
 }

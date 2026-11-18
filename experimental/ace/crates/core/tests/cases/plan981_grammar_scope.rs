@@ -77,7 +77,16 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         ),
         (
             SourceProfile::Aggregates,
-            "1fd2c921bc9f54047a1744e327a96f1b39172a2a877fc74032762140f3a72f90",
+            // PLAN-1026（2026-11-18）：aggregates 面的 py 训练通道语法扩是
+            // 本次身份变化的唯一原因（语义差如实记录）：
+            //   - 新增 `use-py-item`（`use.py <module.path>: <members>`）及
+            //     `use-py-mod-tail`/`use-py-member-tail` 两条 many 尾规则，
+            //     均标注 `profiles: [aggregates]`；
+            //   - `use-rs-item`/`use-c-item` 的声明位 alt 与规则本体准入
+            //     aggregates 面（py 通道的 ABI 对齐拼写）；
+            //   - 所以只有 aggregates profile 的 grammar id 必须移动；其余
+            //     邻居行的字节未变（本表逐行冻结，任何邻居漂移都会红）。
+            "539a8bedcbd0ab4588b20d5fe6bcbf83ee7b304b8fa1675d1a0ce5f993d43d9b",
         ),
         (
             SourceProfile::Scheduler,

@@ -3450,7 +3450,7 @@ fn dispatch_with_host<V: ModuleView>(
                 return None;
             }
         }
-        st.steps += 1;
+
         if st.steps > limits.max_steps {
             return Some(ExecOutcome::Resource {
                 kind: ResourceKind::InstrSteps,

@@ -103,13 +103,18 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
         && !module.host_imports.is_empty();
     // PLAN-1026: the py training lane — console print imports on the
     // closures family in a module that also carries foreign calls.
-    let py_lane_module = module.host_imports.iter().all(|h| {
-        h.symbol.starts_with("auto.console.")
-    }) && !module.host_imports.is_empty()
-        && module
-            .funcs
-            .iter()
-            .any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))));
+    let py_lane_module = module
+        .host_imports
+        .iter()
+        .all(|h| h.symbol.starts_with("auto.console."))
+        && !module.host_imports.is_empty()
+        && module.funcs.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.instrs
+                    .iter()
+                    .any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))
+            })
+        });
     if !module.is_host_console_profile()
         && !sched_module
         && !platform_module
@@ -216,7 +221,22 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
 }
 /// A loaded structural credential never preserves grants; check current authority for every run.
 pub fn authorize(module: &MirModule, grants: &[String]) -> Result<(), AdmissionError> {
-    if !module.is_host_console_profile() {
+    // PLAN-1026: the py training lane — console imports on the closures
+    // family in a foreign-carrying module (mir_verify's validate covers
+    // the structural side; grants still gate every import here).
+    let py_lane_console = module
+        .host_imports
+        .iter()
+        .all(|h| h.symbol.starts_with("auto.console."))
+        && !module.host_imports.is_empty()
+        && module.funcs.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.instrs
+                    .iter()
+                    .any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))
+            })
+        });
+    if !module.is_host_console_profile() && !py_lane_console {
         return Err(err(
             "host.profile",
             "console execution requires the host-console profile",

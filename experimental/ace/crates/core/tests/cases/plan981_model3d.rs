@@ -23,7 +23,9 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<
+fn compile(
+    src: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -38,10 +40,9 @@ fn compile(src: &str) -> Result<
 /// `model3d.glb("…")` 产出 `Model3D` 端口资源。
 #[test]
 fn p981_model3d_glb_constructor_yields_the_port() {
-    let out = compile(
-        "let ship = model3d.glb(\"ship.glb\")\nnode T {\n    view { text \"t\" {} }\n}\n",
-    )
-    .expect("the GLB constructor compiles");
+    let out =
+        compile("let ship = model3d.glb(\"ship.glb\")\nnode T {\n    view { text \"t\" {} }\n}\n")
+            .expect("the GLB constructor compiles");
     let r = out
         .description
         .resources

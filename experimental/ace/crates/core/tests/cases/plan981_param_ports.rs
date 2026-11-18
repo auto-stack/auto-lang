@@ -20,7 +20,9 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<
+fn compile(
+    src: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {

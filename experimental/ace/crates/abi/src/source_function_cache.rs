@@ -101,7 +101,10 @@ mod resource_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
+        let dir =
+            std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(
+                || std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"),
+            ))
             .join(format!("target-cache-copy-{}-{stamp}", std::process::id()));
         let resources = Resources::default();
         let mut cache =
@@ -469,13 +472,11 @@ impl FunctionCache {
         ));
         let before = session.stats().clone();
         let result = if resource_env {
-            session.checked_resource_fragment_observed(
-                view, f, caps, runtime, false, &self.work, work,
-            )
+            session
+                .checked_resource_fragment_observed(view, f, caps, runtime, false, &self.work, work)
         } else {
-            session.checked_scalar_fragment_observed(
-                view, f, caps, runtime, false, &self.work, work,
-            )
+            session
+                .checked_scalar_fragment_observed(view, f, caps, runtime, false, &self.work, work)
         };
         let after = session.stats();
         counts.c_attempts += after.lower - before.lower;

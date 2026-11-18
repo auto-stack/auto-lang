@@ -22,7 +22,9 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile(src: &str) -> Result<
+fn compile(
+    src: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -66,7 +68,10 @@ fn p981_view3d_cylinder_element_compiles() {
     .expect("3D view compiles");
     let t = &out.description.components[0];
     assert_eq!(t.scene.len(), 1);
-    assert_eq!(t.scene[0].kind, "cylinder3d", "the element name IS the kind");
+    assert_eq!(
+        t.scene[0].kind, "cylinder3d",
+        "the element name IS the kind"
+    );
     assert_eq!(t.scene[0].name, "tower");
     assert!(
         t.scene[0].attrs.iter().any(|(k, _)| k == "position"),

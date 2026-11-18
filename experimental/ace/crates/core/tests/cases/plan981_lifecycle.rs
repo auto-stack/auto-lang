@@ -12,7 +12,10 @@ fn p981_lifecycle_oracle_matches_the_frozen_numbers() {
         let b = lifecycle_budget(5, 3, exits).expect("a scheduled owner has exits");
         assert_eq!(b.starts, 1, "Start is once per logical owner");
         assert_eq!(b.ticks, 5, "Tick follows the schedule");
-        assert_eq!(b.frames, 3, "Frame follows the schedule, not the exit count");
+        assert_eq!(
+            b.frames, 3,
+            "Frame follows the schedule, not the exit count"
+        );
     }
 }
 

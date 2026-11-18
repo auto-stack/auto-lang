@@ -3584,9 +3584,10 @@ impl Verifier {
             });
             // PLAN-1026: the py training lane — console print intrinsics
             // in a foreign-carrying closures module (the py-bridge ops).
-            let py_lane_module = m.defs.iter().any(|d| {
-                matches!(&d.kind, hir::DefKind::Foreign { .. })
-            });
+            let py_lane_module = m
+                .defs
+                .iter()
+                .any(|d| matches!(&d.kind, hir::DefKind::Foreign { .. }));
             for d in &m.defs {
                 // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
                 // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；

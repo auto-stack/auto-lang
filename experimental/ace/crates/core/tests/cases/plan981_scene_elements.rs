@@ -23,7 +23,10 @@ fn input(id: &str, source: &str) -> PackageModuleInput {
     }
 }
 
-fn compile_with(dep: &str, main: &str) -> Result<
+fn compile_with(
+    dep: &str,
+    main: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -107,7 +110,9 @@ fn p981_unimported_node_is_not_a_scene_element() {
     .expect_err("an unimported node is not usable as a scene element");
     assert_eq!(ds[0].code, "source.age.scene-element", "{ds:?}");
     assert!(
-        ds[0].message.contains("not a node declared in or imported by"),
+        ds[0]
+            .message
+            .contains("not a node declared in or imported by"),
         "{}",
         ds[0].message
     );

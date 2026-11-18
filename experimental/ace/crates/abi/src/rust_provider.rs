@@ -511,9 +511,41 @@ pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
                     Err(e) => return Err(e.to_string()),
                 }
             }
-            let built = build_cargo_provider(&root, py_bridge_provider_source());
+            // Idempotent fast path: the provider source is FROZEN — once
+            // the cdylib exists, skip the rebuild (parallel test processes
+            // would otherwise rewrite a DLL another process has loaded,
+            // which Windows refuses and cargo fails).
+            let cdylib = root.join("cargo-unit/target/debug/provider_unit.dll");
+            let built = if cdylib.is_file() {
+                let manifest = auto_bindgen::rust_import::import(py_bridge_provider_source())
+                    .map_err(|e| format!("{}: {}", e.code, e.message))?;
+                let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+                let provider_digest =
+                    auto_bindgen::rust_import::provider_digest(py_bridge_provider_source());
+                let manual = auto_bindgen::rust_import::to_manual_manifest(
+                    &manifest,
+                    "f0-rust-provider/1",
+                    &provider_digest,
+                    &auto_bindgen::rust_import::shim_digest(&shim_source),
+                )?;
+                let (code, out, _err) = run_rustc(&["--version"], &root)?;
+                if code != 0 {
+                    return Err("py-bridge fast path: rustc --version failed".into());
+                }
+                RustProviderBuild {
+                    cdylib,
+                    staticlib: root.join("cargo-unit/target/debug/provider_unit.lib"),
+                    manifest,
+                    shim_source,
+                    manual,
+                    provider_digest,
+                    rustc_identity: out.trim().to_string(),
+                }
+            } else {
+                build_cargo_provider(&root, py_bridge_provider_source())?
+            };
             let _ = std::fs::remove_file(&lock);
-            built
+            Ok(built)
         })
         .as_ref()
         .map_err(|e| e.clone())

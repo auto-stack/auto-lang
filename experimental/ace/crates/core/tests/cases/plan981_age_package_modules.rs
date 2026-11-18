@@ -33,7 +33,10 @@ fn caps() -> Vec<String> {
     vec![PACKAGES_CAPABILITY.to_string()]
 }
 
-fn compile(helper: &str, main: &str) -> Result<
+fn compile(
+    helper: &str,
+    main: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -72,7 +75,12 @@ fn p981_age_package_two_file_project_compiles_through_one_verifier() {
     assert!(c.texts[0].def_id.starts_with('d'));
 
     // 模块图身份可读：两个模块都在，且 key 是共享绑定器的键格式。
-    let keys: Vec<&str> = out.description.modules.iter().map(|m| m.key.as_str()).collect();
+    let keys: Vec<&str> = out
+        .description
+        .modules
+        .iter()
+        .map(|m| m.key.as_str())
+        .collect();
     assert_eq!(keys, vec!["app::helper", "app::main"]);
 }
 
@@ -190,7 +198,7 @@ fn p981_age_package_legacy_widget_alias_is_gated() {
 /// 返回 `Ok`（零项目、零领域行）。测试绿，缺陷在。现在直接跑真实入口。
 #[test]
 fn p981_age_package_profile_is_refused_by_generic_entries() {
-    use ace_core::source::cst::{parse_front, FrontBudget, FrontKind, FrontRequest, FrontOutcome};
+    use ace_core::source::cst::{parse_front, FrontBudget, FrontKind, FrontOutcome, FrontRequest};
     let out = parse_front(FrontRequest {
         src: MAIN,
         profile: ace_core::source::SourceProfile::AgePackage,

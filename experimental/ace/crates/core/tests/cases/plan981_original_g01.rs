@@ -41,7 +41,6 @@ fn compile_g01() -> Result<
     )
 }
 
-
 /// 从行的**CPU 值面**取一个属性值——这是 979 消费的方式，不再自己解析 AST。
 ///
 /// 旧版这里有一套 `f32_of`/`pair_of`，把 `Expr` 的 AST 形状再判一次（是不是
@@ -72,11 +71,7 @@ fn f32_of(e: &Expr) -> Option<f32> {
     }
 }
 
-
-fn attr<'a>(
-    row: &'a ace_core::source::age_package::AgeSceneRow,
-    key: &str,
-) -> Option<&'a Expr> {
+fn attr<'a>(row: &'a ace_core::source::age_package::AgeSceneRow, key: &str) -> Option<&'a Expr> {
     row.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
@@ -161,7 +156,10 @@ fn p981_original_g01_geometry_matches_the_baseline() {
     // yellow quad: (-45, -25) 12x12, HIDDEN — visibility is a scene row fact,
     // not an `if` that destroys the object (per the AGE spec).
     let yellow = row("yellow_quad");
-    assert_eq!(cpu(yellow, "position").as_floats(), Some(&[-45.0, -25.0][..]));
+    assert_eq!(
+        cpu(yellow, "position").as_floats(),
+        Some(&[-45.0, -25.0][..])
+    );
     assert_eq!(cpu(yellow, "size").as_floats(), Some(&[12.0, 12.0][..]));
     assert_eq!(
         cpu(yellow, "visible").as_bool(),
@@ -192,7 +190,8 @@ fn p981_original_g01_rejects_a_bad_geometry_kind() {
     // 诊断必须落在**原文件**的出错 token 上（轮 48 R47-5 指出此前只断言了码）。
     let want = bad.find("triangle").expect("fixture has triangle");
     assert_eq!(
-        ds[0].span.start, want,
+        ds[0].span.start,
+        want,
         "the diagnostic must point at `triangle` in main.at; got {:?} which reads {:?}",
         ds[0].span,
         &bad[ds[0].span.start.min(bad.len())..ds[0].span.end.min(bad.len())]
@@ -205,7 +204,10 @@ fn p981_original_g01_rejects_a_bad_geometry_kind() {
 fn p981_original_g01_fixture_bytes_are_pinned() {
     use ace_core::source::cst::content_sha;
     assert_eq!(content_sha(MAIN.as_bytes()), 4_661_484_066_523_668_053);
-    assert_eq!(content_sha(RESOURCES.as_bytes()), 12_785_226_987_299_247_172);
+    assert_eq!(
+        content_sha(RESOURCES.as_bytes()),
+        12_785_226_987_299_247_172
+    );
     assert_eq!(content_sha(SHAPES.as_bytes()), 5_140_912_040_684_847_638);
 }
 
@@ -233,7 +235,11 @@ fn p981_original_g01_edit_changes_only_the_edited_value() {
             .iter()
             .find(|c| c.name == "Main")
             .expect("Main");
-        let red = main.scene.iter().find(|r| r.name == "red_disc").expect("red");
+        let red = main
+            .scene
+            .iter()
+            .find(|r| r.name == "red_disc")
+            .expect("red");
         f32_of(attr(red, "diameter").expect("diameter"))
     };
     assert_eq!(diameter(&before), Some(30.0));
@@ -471,7 +477,10 @@ fn p981_original_g01_fixtures_are_the_recorded_original_sources() {
     assert_eq!(RESOURCES.len(), 790, "resources.at byte length");
     assert_eq!(SHAPES.len(), 540, "shapes.at byte length");
     // 关键作者表面逐项在场（不是被"等价改写"过的版本）。
-    assert!(MAIN.contains("use shapes: Disc"), "symbol-table import kept");
+    assert!(
+        MAIN.contains("use shapes: Disc"),
+        "symbol-table import kept"
+    );
     assert!(RESOURCES.contains("material2d.color(0.9, 0.3, 0.2, 0.5)"));
     assert!(SHAPES.contains("node Disc(x: float, y: float, diameter: float, tint: Material2D)"));
     assert!(
@@ -521,7 +530,3 @@ fn p981_original_g01_every_referenced_resource_is_on_the_resource_surface() {
         );
     }
 }
-
-
-
-

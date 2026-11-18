@@ -78,8 +78,6 @@ mod plan980_field_manifest;
 mod plan981_age_fields;
 #[path = "cases/plan981_age_package.rs"]
 mod plan981_age_package;
-#[path = "cases/plan982_config_document.rs"]
-mod plan982_config_document;
 #[path = "cases/plan981_age_package_modules.rs"]
 mod plan981_age_package_modules;
 #[path = "cases/plan981_age_ref.rs"]
@@ -140,6 +138,8 @@ mod plan981_v_harness;
 mod plan981_view_exits;
 #[path = "cases/plan981_view_select.rs"]
 mod plan981_view_select;
+#[path = "cases/plan982_config_document.rs"]
+mod plan982_config_document;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]

@@ -605,7 +605,13 @@ fn emit_crec_sum_body(fb: &mut FunctionBuilder, r: Value) -> Value {
 /// The original wide fold `Σ cb(ctx, items[i])` — the callback is invoked
 /// THROUGH THE FUNCTION POINTER the caller supplied (strictly per-call;
 /// the pointer is never stored).
-fn emit_wide_fold_body(fb: &mut FunctionBuilder, cb: Value, ctx: Value, items: Value, n: Value) -> Value {
+fn emit_wide_fold_body(
+    fb: &mut FunctionBuilder,
+    cb: Value,
+    ctx: Value,
+    items: Value,
+    n: Value,
+) -> Value {
     let cb_sig = fb.import_signature(wide_cb_signature());
     let acc = fb.declare_var(types::I64);
     let i = fb.declare_var(types::I64);
@@ -703,7 +709,9 @@ pub fn emit_wide_callee() -> Result<Vec<u8>, String> {
         fb.ins().return_(&[r]);
     })?;
 
-    om.finish().emit().map_err(|e| format!("emit wide callee: {e}"))
+    om.finish()
+        .emit()
+        .map_err(|e| format!("emit wide callee: {e}"))
 }
 
 /// One in-PE WIDE check (the PE exits with the FAILED-check count).
@@ -866,7 +874,9 @@ pub fn emit_wide_caller(checks: &[WideCheck]) -> Result<Vec<u8>, String> {
                         fb.ins().stack_store(c, slot, (k * 8) as i32);
                     }
                     let ptr = fb.ins().stack_addr(types::I64, slot, 0);
-                    let ctxv = fb.ins().iconst(types::I64, crate::typed_decl::t939w::FOLD_CTX);
+                    let ctxv = fb
+                        .ins()
+                        .iconst(types::I64, crate::typed_decl::t939w::FOLD_CTX);
                     let nv = fb.ins().iconst(types::I64, *n as i64);
                     // the callback lane: THIS object's exported frozen
                     // callback travels as a function-pointer value.
@@ -912,7 +922,9 @@ pub fn emit_wide_caller(checks: &[WideCheck]) -> Result<Vec<u8>, String> {
     }
     om.define_function(entry_id, &mut ctx)
         .map_err(|e| format!("define {}: {e}", WIDE_ENTRY_SYMBOL))?;
-    om.finish().emit().map_err(|e| format!("emit wide caller: {e}"))
+    om.finish()
+        .emit()
+        .map_err(|e| format!("emit wide caller: {e}"))
 }
 
 /// The wide chain's native-caller PE entry symbol.

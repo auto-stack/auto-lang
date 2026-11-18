@@ -34,16 +34,21 @@ fn p981_every_widget_member_slot_is_projected() {
         ("bind", "bind {\n        \"title\" -> .Title\n    }"),
         ("route", "routes {\n        \"/a\" -> use home\n    }"),
         ("expose", "expose {\n        count\n    }"),
-        ("lifecycle", "lifecycle {\n        mounted => {\n            .count = count + 1\n        }\n    }"),
-        ("computed", "computed {\n        double => count + count\n    }"),
+        (
+            "lifecycle",
+            "lifecycle {\n        mounted => {\n            .count = count + 1\n        }\n    }",
+        ),
+        (
+            "computed",
+            "computed {\n        double => count + count\n    }",
+        ),
         ("watch", "watch { .count -> { .count = count + 1 } }"),
         ("timer", "timer {\n        Tick (every_ms: 1)\n    }"),
     ];
     for (role, slot) in cases {
         let src = body(slot);
-        let out = compile(&src).unwrap_or_else(|ds| {
-            panic!("slot `{role}` must be accepted by age-package: {ds:?}")
-        });
+        let out = compile(&src)
+            .unwrap_or_else(|ds| panic!("slot `{role}` must be accepted by age-package: {ds:?}"));
         let c = &out.description.components[0];
         let rows: Vec<&str> = c
             .members
@@ -54,10 +59,15 @@ fn p981_every_widget_member_slot_is_projected() {
         assert!(
             !rows.is_empty(),
             "slot `{role}` must leave a projected row, got {:?}",
-            c.members.iter().map(|m| m.role.as_str()).collect::<Vec<_>>()
+            c.members
+                .iter()
+                .map(|m| m.role.as_str())
+                .collect::<Vec<_>>()
         );
         assert!(
-            c.members.iter().any(|m| m.role == role && m.span.end > m.span.start),
+            c.members
+                .iter()
+                .any(|m| m.role == role && m.span.end > m.span.start),
             "slot `{role}` must keep its original span"
         );
     }
@@ -70,7 +80,11 @@ fn p981_member_slots_coexist_in_order() {
     let out = compile(src).expect("bind + computed + timer coexist");
     let c = &out.description.components[0];
     let roles: Vec<&str> = c.members.iter().map(|m| m.role.as_str()).collect();
-    assert_eq!(roles, vec!["bind", "computed", "timer"], "declaration order");
+    assert_eq!(
+        roles,
+        vec!["bind", "computed", "timer"],
+        "declaration order"
+    );
 }
 
 /// 槽位内部的坏语法仍在作者源具名拒绝，不静默丢槽位。
@@ -90,22 +104,29 @@ fn p981_expose_projects_every_name() {
         .filter(|m| m.role == "expose")
         .map(|m| m.name.as_str())
         .collect();
-    assert_eq!(names, vec!["alpha", "beta"], "every expose name becomes a row");
+    assert_eq!(
+        names,
+        vec!["alpha", "beta"],
+        "every expose name becomes a row"
+    );
 }
 
 /// R59-4：`watch` 行必须带源（名字 `.count` 的 `count`，声明文本 `.count`），
 /// 不能是空名字的空壳行。
 #[test]
 fn p981_watch_row_keeps_its_source() {
-    let out = compile(&body("watch { .count -> { .count = count + 1 } }"))
-        .expect("watch compiles");
+    let out = compile(&body("watch { .count -> { .count = count + 1 } }")).expect("watch compiles");
     let row = out.description.components[0]
         .members
         .iter()
         .find(|m| m.role == "watch")
         .expect("a watch row");
     assert_eq!(row.name, "count", "the watch source name is preserved");
-    assert_eq!(row.text.as_deref(), Some("count"), "the source name is preserved as declaration text");
+    assert_eq!(
+        row.text.as_deref(),
+        Some("count"),
+        "the source name is preserved as declaration text"
+    );
 }
 
 /// R59-3：成员值表达式进唯一 verify——未声明名字在**作者 span** 具名拒绝。
@@ -211,7 +232,10 @@ fn p981_watch_multiline_and_multisource_parse() {
     let multi = "node M {\n    model {\n        a int = 0\n        b int = 1\n    }\n    watch {\n        .a, .b -> {\n            .a = a + 1\n        }\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     let out = compile(multi).expect("a multi-source watch parses");
     assert!(
-        out.description.components[0].members.iter().any(|m| m.role == "watch"),
+        out.description.components[0]
+            .members
+            .iter()
+            .any(|m| m.role == "watch"),
         "the multi-source watch leaves a row"
     );
 }

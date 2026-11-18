@@ -38,7 +38,9 @@ fn caps() -> Vec<String> {
     vec![PACKAGES_CAPABILITY.to_string()]
 }
 
-fn compile(main: &str) -> Result<
+fn compile(
+    main: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -51,7 +53,10 @@ fn compile(main: &str) -> Result<
 }
 
 /// 依赖模块可变体的版本（`widgets` 键，便于构造扁平偏移布局）。
-fn compile_two(dep: &str, main: &str) -> Result<
+fn compile_two(
+    dep: &str,
+    main: &str,
+) -> Result<
     ace_core::source::age_package::AgePackageCompilation,
     Vec<ace_core::atom_text::Diagnostic>,
 > {
@@ -62,9 +67,6 @@ fn compile_two(dep: &str, main: &str) -> Result<
         &caps(),
     )
 }
-
-
-
 
 /// 同模块引用不需要导入（可见性只约束跨模块）。
 #[test]
@@ -161,7 +163,8 @@ fn p981_ref_diagnostics_carry_the_original_module_span() {
     // 任何把 span 算错一个偏移的改动都会立刻暴露。
     let want = main.find("Nowhere").expect("fixture contains Nowhere");
     assert_eq!(
-        ds[0].span.start, want,
+        ds[0].span.start,
+        want,
         "the diagnostic must point at the offending token; got {:?} which reads {:?}",
         ds[0].span,
         &main[ds[0].span.start.min(main.len())..ds[0].span.end.min(main.len())]
@@ -189,7 +192,8 @@ fn p981_ref_span_is_correct_for_a_deep_fault_in_a_non_entry_module() {
     let ds = compile_two(&zlib, main).expect_err("Nowhere is undeclared");
     let want = zlib.find("Nowhere").expect("fixture has Nowhere");
     assert_eq!(
-        ds[0].span.start, want,
+        ds[0].span.start,
+        want,
         "the diagnostic must point at `Nowhere` inside zlib (local {want}); \
          got {:?} which reads {:?}",
         ds[0].span,
@@ -237,7 +241,8 @@ fn p981_ref_cross_module_node_resolves_by_import() {
 /// 已声明但**没有导入** → `source.age.ref-invisible`（不是静默接受，也不是 undeclared）。
 #[test]
 fn p981_ref_unimported_node_is_invisible() {
-    let main = "node Screen {\n    view {\n        text \"hi\" {}\n        Secret m1 {}\n    }\n}\n";
+    let main =
+        "node Screen {\n    view {\n        text \"hi\" {}\n        Secret m1 {}\n    }\n}\n";
     let ds = compile(main).expect_err("an unimported node must not be referenceable");
     assert_eq!(ds[0].code, "source.age.ref-invisible", "{ds:?}");
     assert!(
@@ -259,7 +264,8 @@ fn p981_ref_unimported_node_is_invisible() {
 fn p981_ref_same_named_nodes_are_ambiguous() {
     let aa = "node Widget {\n    view { text \"a\" {} }\n}\n";
     let bb = "node Widget {\n    view { text \"b\" {} }\n}\n";
-    let main = "node Screen {\n    view {\n        text \"hi\" {}\n        Widget w1 {}\n    }\n}\n";
+    let main =
+        "node Screen {\n    view {\n        text \"hi\" {}\n        Widget w1 {}\n    }\n}\n";
     let ds = compile_age_package(
         &[input("aa", aa), input("bb", bb), input("main", main)],
         "app::main",
@@ -301,7 +307,8 @@ fn p981_ref_import_selects_between_same_named_nodes() {
 /// 失败后**同入口**修好导入即可恢复（REF 面自己的恢复例，R47-5）。
 #[test]
 fn p981_ref_recovers_after_the_import_is_added() {
-    let broken = "node Screen {\n    view {\n        text \"hi\" {}\n        Secret m1 {}\n    }\n}\n";
+    let broken =
+        "node Screen {\n    view {\n        text \"hi\" {}\n        Secret m1 {}\n    }\n}\n";
     let ds = compile(broken).expect_err("broken reference");
     assert_eq!(ds[0].code, "source.age.ref-invisible");
     let fixed = "use widgets.Secret\n\
@@ -324,8 +331,8 @@ fn p981_ref_recovers_after_the_import_is_added() {
 /// `pub node` 自身必须留下可见性事实（声明侧，不只是引用侧）。
 #[test]
 fn p981_ref_pub_node_records_its_visibility() {
-    let out = compile("node Screen {\n    view { text \"x\" {} }\n}\n")
-        .expect("plain fixture compiles");
+    let out =
+        compile("node Screen {\n    view { text \"x\" {} }\n}\n").expect("plain fixture compiles");
     let _ = out; // plain nodes stay private
     let src = "pub node Only {\n    view { text \"o\" {} }\n}\n";
     let out = compile_age_package(

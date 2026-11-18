@@ -79,8 +79,14 @@ fn p981_scene_requests_have_no_cross_domain_fallback() {
         AgeViewExit::View3d
     );
     let both = [AgeViewExit::View2d, AgeViewExit::View3d];
-    assert_eq!(select_exit(&both, AgeViewRequest::Scene2d).unwrap(), AgeViewExit::View2d);
-    assert_eq!(select_exit(&both, AgeViewRequest::Scene3d).unwrap(), AgeViewExit::View3d);
+    assert_eq!(
+        select_exit(&both, AgeViewRequest::Scene2d).unwrap(),
+        AgeViewExit::View2d
+    );
+    assert_eq!(
+        select_exit(&both, AgeViewRequest::Scene3d).unwrap(),
+        AgeViewExit::View3d
+    );
     // 只有 UI 出口时，2D/3D 请求都拒绝（不跨域）。
     for declared in [[AgeViewExit::View], [AgeViewExit::ViewPortrait]] {
         let err = select_exit(&declared, AgeViewRequest::Scene2d)

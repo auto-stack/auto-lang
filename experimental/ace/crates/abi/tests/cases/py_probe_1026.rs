@@ -505,7 +505,10 @@ fn run_lane(
     table: &mut ForeignStubTable,
 ) -> Result<(ExecOutcome, Vec<u8>), String> {
     let compiled = ace_core::source::compile_aggregates_source_with_foreign(
-        src, "pylane.at", &caps(), admitted,
+        src,
+        "pylane.at",
+        &caps(),
+        admitted,
     )
     .map_err(|ds| format!("compile: {ds:?}"))?;
     let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0)
@@ -523,6 +526,43 @@ fn run_lane(
     let (out, _) = ace_av_core::av::execute_console_foreign(
         &loaded,
         &ace_av_core::av::ExecLimits::default(),
+        &ace_av_core::av::CancelFlag::new(false),
+        &["console.stdout".to_string()],
+        &mut capture,
+        table,
+    )
+    .map_err(|e| format!("execute: {e:?}"))?;
+    Ok((out, capture.stdout))
+}
+
+fn run_lane_limited(
+    src: &str,
+    admitted: &ace_foreign_contract::manual::AdmittedForeign,
+    table: &mut ForeignStubTable,
+    limits: ace_av_core::av::ExecLimits,
+) -> Result<(ExecOutcome, Vec<u8>), String> {
+    let compiled = ace_core::source::compile_aggregates_source_with_foreign(
+        src,
+        "pylane.at",
+        &caps(),
+        admitted,
+    )
+    .map_err(|ds| format!("compile: {ds:?}"))?;
+    let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0)
+        .map_err(|e| format!("lower: {e:?}"))?;
+    ace_av_core::verify_mir(&mir).map_err(|e| format!("mir: {e:?}"))?;
+    let encoded = ace_av_core::abc::encode_abc(&mir).unwrap().to_flat();
+    let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+    let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &mir.owner, table)
+        .map_err(|e| format!("admit: {e:?}"))?;
+    let mut capture = ace_av::console_host::ConsoleCapture {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        dispatches: 0,
+    };
+    let (out, _) = ace_av_core::av::execute_console_foreign(
+        &loaded,
+        &limits,
         &ace_av_core::av::CancelFlag::new(false),
         &["console.stdout".to_string()],
         &mut capture,
@@ -582,28 +622,121 @@ fn p1026_probe_aggregates_parse_isolation() {
     }
 }
 
+const ACCEPTANCE_NOPRINT: &str = r#"use.py torch: manual_seed, arange, ones
+use.py torch.nn: Linear, MSELoss
+use.py torch.optim: SGD
+
+fn main() int {
+    manual_seed(0)
+    var x = arange(8).reshape(4, 2) / 2
+    var target = ones(4, 1)
+    var model = Linear(2, 1, bias: false)
+    var loss_fn = MSELoss()
+    var mparams = model.parameters()
+    var lr_v = 0.1d
+    var optimizer = SGD(mparams, lr: lr_v)
+    var step = 0
+    for step < 60 {
+        var prediction = model(x)
+        var loss = loss_fn(prediction, target)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        step = step + 1
+    }
+    var prediction = model(x)
+    print(prediction.shape)
+    print(prediction[0].to(float))
+    return 0
+}"#;
+
 /// The §5.1 acceptance program through the full py lane with the sugar.
 #[test]
 fn p1026_probe_acceptance_training() {
     let mut f0 = open_py_bridge_session(1).expect("session");
     let t0 = std::time::Instant::now();
-    let (out, stdout) = run_lane(ACCEPTANCE, &f0.admitted, f0.session.table())
+    // generous step/wall budgets for the 60-step training run (the f64
+    // reconstruction's pow2 loop is instruction-heavy by design)
+    let limits = ace_av_core::av::ExecLimits {
+        max_steps: 200_000_000,
+        wall: std::time::Duration::from_secs(120),
+        ..Default::default()
+    };
+    let (out, stdout) = run_lane_limited(ACCEPTANCE, &f0.admitted, f0.session.table(), limits)
         .unwrap_or_else(|e| panic!("lane: {e}"));
+    eprintln!("TRAIN outcome: {out:?} ({} ms)", t0.elapsed().as_millis());
+    let text0 = String::from_utf8_lossy(&stdout).to_string();
+    eprintln!("STDOUT lines before outcome: {}", text0.lines().count());
     eprintln!(
-        "TRAIN outcome: {out:?} ({} ms)",
-        t0.elapsed().as_millis()
+        "last 3: {:?}",
+        text0.lines().rev().take(3).collect::<Vec<_>>()
     );
     assert!(matches!(out, ExecOutcome::Success { .. }), "run: {out:?}");
-    let text = String::from_utf8_lossy(&stdout).to_string();
+    let text = text0;
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 62, "60 losses + shape + pred0: {text}");
     let first: f32 = lines[0].parse().expect("first loss f32");
     let last: f32 = lines[59].parse().expect("last loss f32");
-    eprintln!("first={first} last={last} shape={:?} pred0={}", lines[60], lines[61]);
-    assert!((first - 0.2370201051235199f32).abs() < 1e-6, "first loss {first}");
-    assert!((last - 0.1013089045882225f32).abs() < 1e-6, "last loss {last}");
+    eprintln!(
+        "first={first} last={last} shape={:?} pred0={}",
+        lines[60], lines[61]
+    );
+    assert!(
+        (first - 0.2370201051235199f32).abs() < 1e-6,
+        "first loss {first}"
+    );
+    assert!(
+        (last - 0.1013089045882225f32).abs() < 1e-6,
+        "last loss {last}"
+    );
     assert!(last < first, "training converges");
     assert_eq!(lines[60], "torch.Size([4, 1])", "shape display");
     let pred0: f32 = lines[61].parse().expect("pred0 f32");
-    assert!((pred0 - 0.4728480279445648f32).abs() < 1e-5, "pred0 {pred0}");
+    assert!(
+        (pred0 - 0.4728480279445648f32).abs() < 1e-5,
+        "pred0 {pred0}"
+    );
+}
+
+/// Bisect: the training loop WITHOUT the per-iteration float print.
+#[test]
+fn p1026_probe_acceptance_noprint() {
+    let mut f0 = open_py_bridge_session(1).expect("session");
+    let limits = ace_av_core::av::ExecLimits {
+        max_steps: 200_000_000,
+        wall: std::time::Duration::from_secs(120),
+        ..Default::default()
+    };
+    let (out, stdout) =
+        run_lane_limited(ACCEPTANCE_NOPRINT, &f0.admitted, f0.session.table(), limits)
+            .unwrap_or_else(|e| panic!("lane: {e}"));
+    let text = String::from_utf8_lossy(&stdout).to_string();
+    eprintln!("NOPRINT outcome: {out:?}; stdout: {text:?}");
+    assert!(matches!(out, ExecOutcome::Success { .. }), "run: {out:?}");
+}
+
+/// Isolation: a single indexed to(float) print (the second acceptance print).
+#[test]
+fn p1026_probe_index_tofloat() {
+    let mut f0 = open_py_bridge_session(1).expect("session");
+    let src = r#"use.py math: sqrt
+fn main() int {
+    var q = sqrt(4)
+    print(q.to(float))
+    return 0
+}"#;
+    let limits = ace_av_core::av::ExecLimits {
+        max_steps: 20_000_000,
+        wall: std::time::Duration::from_secs(30),
+        ..Default::default()
+    };
+    let t0 = std::time::Instant::now();
+    let (out, stdout) = run_lane_limited(src, &f0.admitted, f0.session.table(), limits)
+        .unwrap_or_else(|e| panic!("lane: {e}"));
+    eprintln!(
+        "TOFLOAT outcome: {out:?} ({} ms) stdout={:?}",
+        t0.elapsed().as_millis(),
+        String::from_utf8_lossy(&stdout)
+    );
+    assert!(matches!(out, ExecOutcome::Success { .. }), "run: {out:?}");
 }

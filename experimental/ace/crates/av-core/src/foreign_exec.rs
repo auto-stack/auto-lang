@@ -486,7 +486,10 @@ impl ForeignStubTable {
 
     pub fn close_out_buffer(&mut self, id: i32) -> Result<(), ForeignExecError> {
         let Some(frame) = self.out_buffers.get_mut(&id) else {
-            return Err(reject("foreign.out-missing", format!("unknown out buffer `{id}`")));
+            return Err(reject(
+                "foreign.out-missing",
+                format!("unknown out buffer `{id}`"),
+            ));
         };
         if frame.is_pinned() {
             return Err(reject(
@@ -499,7 +502,9 @@ impl ForeignStubTable {
     }
 
     pub fn callable_of(&self, declaration: &SourceDecl) -> Option<ForeignCallable> {
-        self.lookup(declaration).ok().map(|i| self.entries[i].callable)
+        self.lookup(declaration)
+            .ok()
+            .map(|i| self.entries[i].callable)
     }
 
     /// Bind the provider's exported panic flag (the loader resolves it).

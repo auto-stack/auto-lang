@@ -1407,9 +1407,7 @@ fn coff_references_ac_rt(coff: &[u8]) -> bool {
         return false;
     }
     let u16_at = |o: usize| u16::from_le_bytes([coff[o], coff[o + 1]]);
-    let u32_at = |o: usize| {
-        u32::from_le_bytes([coff[o], coff[o + 1], coff[o + 2], coff[o + 3]])
-    };
+    let u32_at = |o: usize| u32::from_le_bytes([coff[o], coff[o + 1], coff[o + 2], coff[o + 3]]);
     let ptr_sym = u32_at(8) as usize;
     let mut n_syms = u32_at(12) as usize;
     if ptr_sym == 0 || n_syms == 0 || ptr_sym.saturating_add(n_syms * 18) > coff.len() {

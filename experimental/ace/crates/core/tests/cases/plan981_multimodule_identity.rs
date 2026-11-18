@@ -14,9 +14,7 @@
 //! 修复：`symbols_by_module`（`(模块全键, 源名) → 符号`，权威面）与
 //! `AgeSceneRow.element`（已解析到声明模块的 node / 冻结叶）。
 use ace_core::source::age_h0::LegacyWidgetAlias;
-use ace_core::source::age_package::{
-    compile_age_package, AgePackageCompilation, AgeSceneElement,
-};
+use ace_core::source::age_package::{compile_age_package, AgePackageCompilation, AgeSceneElement};
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 const DISC: &str = "node Disc(x: float) {\n    view-2d {\n        shape2d disc {\n            kind: circle\n            position: (x, 0.0)\n        }\n    }\n}\n";
@@ -42,7 +40,10 @@ fn compile(
     )
 }
 
-fn component<'a>(out: &'a AgePackageCompilation, name: &str) -> &'a ace_core::source::age_package::AgePackageComponent {
+fn component<'a>(
+    out: &'a AgePackageCompilation,
+    name: &str,
+) -> &'a ace_core::source::age_package::AgePackageComponent {
     out.description
         .components
         .iter()
@@ -145,8 +146,14 @@ fn p981_frozen_scene_elements_keep_their_kind() {
         "node D {\n    view-2d {\n        shape2d q {\n            kind: quad\n            position: (0.0, 0.0)\n        }\n    }\n}\nnode T {\n    view-3d {\n        cylinder3d tower {\n            position: (1.0, 2.0, 3.0)\n        }\n    }\n}\n",
     )])
     .expect("compiles");
-    assert_eq!(component(&out, "D").scene[0].element, AgeSceneElement::Shape2d);
-    assert_eq!(component(&out, "T").scene[0].element, AgeSceneElement::Element3d);
+    assert_eq!(
+        component(&out, "D").scene[0].element,
+        AgeSceneElement::Shape2d
+    );
+    assert_eq!(
+        component(&out, "T").scene[0].element,
+        AgeSceneElement::Element3d
+    );
 }
 
 /// 从一个模块导入的**同名普通函数**不是场景元素——它没有 node 声明。
@@ -193,10 +200,7 @@ fn p981_reexported_node_resolves_through_the_chain() {
 #[test]
 fn p981_g01_scene_elements_are_resolved() {
     let out = compile(vec![
-        input(
-            "resources",
-            include_str!("../fixtures_g01/resources.at"),
-        ),
+        input("resources", include_str!("../fixtures_g01/resources.at")),
         input("shapes", include_str!("../fixtures_g01/shapes.at")),
         input("main", include_str!("../fixtures_g01/main.at")),
     ])

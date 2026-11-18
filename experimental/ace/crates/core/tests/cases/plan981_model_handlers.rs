@@ -34,9 +34,7 @@ fn compile(src: &str) -> ace_core::source::age_package::AgePackageCompilation {
 /// `model { count int = 3 }` 的初值必须在描述面上。
 #[test]
 fn p981_model_field_initializer_reaches_the_description() {
-    let out = compile(
-        "node M {\n    model { count int = 3 }\n    view { text \"t\" {} }\n}\n",
-    );
+    let out = compile("node M {\n    model { count int = 3 }\n    view { text \"t\" {} }\n}\n");
     let m = &out.description.components[0];
     assert_eq!(m.fields, vec![("count".into(), "int".into())]);
     let init = m
@@ -59,7 +57,10 @@ fn p981_handler_bodies_are_distinguishable() {
     );
     let m = &out.description.components[0];
     // 名字面仍然在（既有契约不破）。
-    assert_eq!(m.handler_msgs, vec!["Inc".to_string(), "Life.Tick".to_string()]);
+    assert_eq!(
+        m.handler_msgs,
+        vec!["Inc".to_string(), "Life.Tick".to_string()]
+    );
     // 行为面：每个 handler 一条赋值，右手不同。
     let adds: Vec<i32> = m
         .handler_assigns
@@ -93,9 +94,7 @@ fn p981_model_initializer_has_a_cpu_face() {
     use ace_core::source::age_package::AgeSceneValue;
 
     // 字面量初值 → 已解码。
-    let out = compile(
-        "node M {\n    model { n int = 42 }\n    view { text \"t\" {} }\n}\n",
-    );
+    let out = compile("node M {\n    model { n int = 42 }\n    view { text \"t\" {} }\n}\n");
     let m = &out.description.components[0];
     let v = m
         .field_init_cpu

@@ -3,11 +3,14 @@
 //! source import -> generated C shim -> AV execution, with zero manual manifests.
 #![cfg(windows)]
 
-use ace_abi::rust_provider::{build_c_dll, build_source, c_authority, open_c_provider, open_session_from_build, RawLibrary};
+use ace_abi::rust_provider::{
+    build_c_dll, build_source, c_authority, open_c_provider, open_session_from_build, RawLibrary,
+};
 use ace_av_core::av::{CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::foreign_exec::{
-    ForeignCallable, ForeignExecError, ForeignStub, ForeignStubTable, OutBufferFrame, OutBufferRights,
+    ForeignCallable, ForeignExecError, ForeignStub, ForeignStubTable, OutBufferFrame,
+    OutBufferRights,
 };
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -109,12 +112,14 @@ fn v_frame_rust_provider_read_into_and_guards() {
     let root = scope("rust");
     let data_path = root.join("sample.bin");
     let sample_bytes: Vec<u8> = vec![
-        b'A', 0xE4, 0xB8, 0xAD, 0x00, 0xFF, 0xF0, 0x9F, 0x98, 0x80, // A + 中 + NUL + 0xFF + 😀 (10 bytes)
+        b'A', 0xE4, 0xB8, 0xAD, 0x00, 0xFF, 0xF0, 0x9F, 0x98,
+        0x80, // A + 中 + NUL + 0xFF + 😀 (10 bytes)
     ];
     std::fs::write(&data_path, &sample_bytes).unwrap();
     let path_str = data_path.to_string_lossy().replace('\\', "/");
 
-    let build = build_source(&root, rust_reader_provider_source()).expect("rust out provider builds");
+    let build =
+        build_source(&root, rust_reader_provider_source()).expect("rust out provider builds");
     let mut f0 = open_session_from_build(&build, 1).expect("opens");
     let cancel = CancelFlag::new(false);
 
@@ -125,30 +130,65 @@ fn v_frame_rust_provider_read_into_and_guards() {
         1,
         OutBufferFrame::new("av", "guest", 1, backing, 4, 16, OutBufferRights::ReadWrite),
     );
-    let src = format!(
-        "use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}\", 1) }}"
-    );
+    let src = format!("use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}\", 1) }}");
     let out = run_av_source(&src, &f0.admitted, f0.session.table(), &cancel);
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(10), .. }), "got {out:?}");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(10),
+                ..
+            }
+        ),
+        "got {out:?}"
+    );
     {
         let frame = f0.session.table().out_buffer(1).unwrap();
         assert_eq!(frame.last_published, 10);
         assert!(!frame.is_pinned());
-        assert_eq!(&frame.backing[..4], &[0xEEu8; 4], "leading guard bytes corrupted");
-        assert_eq!(&frame.backing[4..14], &sample_bytes[..], "published NUL+UTF8+binary bytes mismatch");
-        assert_eq!(&frame.backing[14..24], &[0xDDu8; 10], "uncommitted tail + trailing guard corrupted");
+        assert_eq!(
+            &frame.backing[..4],
+            &[0xEEu8; 4],
+            "leading guard bytes corrupted"
+        );
+        assert_eq!(
+            &frame.backing[4..14],
+            &sample_bytes[..],
+            "published NUL+UTF8+binary bytes mismatch"
+        );
+        assert_eq!(
+            &frame.backing[14..24],
+            &[0xDDu8; 10],
+            "uncommitted tail + trailing guard corrupted"
+        );
     }
 
     // 2. Partial read (capacity=4) -> publishes only 4 bytes
     f0.session.table().register_out_buffer(
         2,
-        OutBufferFrame::new("av", "guest", 1, vec![0xCCu8; 8], 2, 4, OutBufferRights::ReadWrite),
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0xCCu8; 8],
+            2,
+            4,
+            OutBufferRights::ReadWrite,
+        ),
     );
-    let src2 = format!(
-        "use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}\", 2) }}"
-    );
+    let src2 =
+        format!("use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}\", 2) }}");
     let out2 = run_av_source(&src2, &f0.admitted, f0.session.table(), &cancel);
-    assert!(matches!(out2, ExecOutcome::Success { value: Value::I32(4), .. }), "got {out2:?}");
+    assert!(
+        matches!(
+            out2,
+            ExecOutcome::Success {
+                value: Value::I32(4),
+                ..
+            }
+        ),
+        "got {out2:?}"
+    );
     let f2 = f0.session.table().out_buffer(2).unwrap();
     assert_eq!(&f2.backing[..2], &[0xCC, 0xCC]);
     assert_eq!(&f2.backing[2..6], &sample_bytes[..4]);
@@ -157,31 +197,78 @@ fn v_frame_rust_provider_read_into_and_guards() {
     // 3. cap=0 legal empty borrow -> returns 0, writes 0 bytes
     f0.session.table().register_out_buffer(
         3,
-        OutBufferFrame::new("av", "guest", 1, vec![0xBBu8; 4], 1, 0, OutBufferRights::ReadWrite),
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0xBBu8; 4],
+            1,
+            0,
+            OutBufferRights::ReadWrite,
+        ),
     );
-    let src3 = format!(
-        "use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}\", 3) }}"
-    );
+    let src3 =
+        format!("use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}\", 3) }}");
     let out3 = run_av_source(&src3, &f0.admitted, f0.session.table(), &cancel);
-    assert!(matches!(out3, ExecOutcome::Success { value: Value::I32(0), .. }), "got {out3:?}");
-    assert_eq!(&f0.session.table().out_buffer(3).unwrap().backing, &[0xBBu8; 4]);
+    assert!(
+        matches!(
+            out3,
+            ExecOutcome::Success {
+                value: Value::I32(0),
+                ..
+            }
+        ),
+        "got {out3:?}"
+    );
+    assert_eq!(
+        &f0.session.table().out_buffer(3).unwrap().backing,
+        &[0xBBu8; 4]
+    );
 
     // 4. Negative status (missing file) -> returns -2, backing untouched
     f0.session.table().register_out_buffer(
         4,
-        OutBufferFrame::new("av", "guest", 1, vec![0xAAu8; 8], 0, 8, OutBufferRights::ReadWrite),
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0xAAu8; 8],
+            0,
+            8,
+            OutBufferRights::ReadWrite,
+        ),
     );
     let src4 = format!(
         "use.rs f0_outread\nfn main() int {{ return read_into(\"{path_str}.missing\", 4) }}"
     );
     let out4 = run_av_source(&src4, &f0.admitted, f0.session.table(), &cancel);
-    assert!(matches!(out4, ExecOutcome::Success { value: Value::I32(-2), .. }), "got {out4:?}");
-    assert_eq!(&f0.session.table().out_buffer(4).unwrap().backing, &[0xAAu8; 8]);
+    assert!(
+        matches!(
+            out4,
+            ExecOutcome::Success {
+                value: Value::I32(-2),
+                ..
+            }
+        ),
+        "got {out4:?}"
+    );
+    assert_eq!(
+        &f0.session.table().out_buffer(4).unwrap().backing,
+        &[0xAAu8; 8]
+    );
 
     // 5. Native returns n > cap -> host rejects `foreign.out-overflow`, backing untouched
     f0.session.table().register_out_buffer(
         5,
-        OutBufferFrame::new("av", "guest", 1, vec![0x77u8; 4], 0, 4, OutBufferRights::ReadWrite),
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0x77u8; 4],
+            0,
+            4,
+            OutBufferRights::ReadWrite,
+        ),
     );
     let out5 = run_av_source(
         "use.rs f0_outread\nfn main() int { return oob_claim(5) }",
@@ -193,7 +280,10 @@ fn v_frame_rust_provider_read_into_and_guards() {
         matches!(&out5, ExecOutcome::Infra(m) if m.contains("foreign.out-overflow")),
         "expected foreign.out-overflow, got {out5:?}"
     );
-    assert_eq!(&f0.session.table().out_buffer(5).unwrap().backing, &[0x77u8; 4]);
+    assert_eq!(
+        &f0.session.table().out_buffer(5).unwrap().backing,
+        &[0x77u8; 4]
+    );
 
     // 6. Native writes past end into guard bytes -> host rejects `foreign.out-guard`, backing untouched
     let out6 = run_av_source(
@@ -206,7 +296,10 @@ fn v_frame_rust_provider_read_into_and_guards() {
         matches!(&out6, ExecOutcome::Infra(m) if m.contains("foreign.out-guard")),
         "expected foreign.out-guard, got {out6:?}"
     );
-    assert_eq!(&f0.session.table().out_buffer(5).unwrap().backing, &[0x77u8; 4]);
+    assert_eq!(
+        &f0.session.table().out_buffer(5).unwrap().backing,
+        &[0x77u8; 4]
+    );
 
     assert!(t0.elapsed().as_millis() <= 10_000, "test exceeded 10s");
 }
@@ -261,7 +354,9 @@ int32_t c_read_into(const uint8_t* path, uint64_t path_len, uint8_t* dst, uint64
                 ForeignCallable::ViewOutBytesToI32(std::mem::transmute::<
                     _,
                     unsafe extern "C" fn(*const u8, u64, *mut u8, u64) -> i32,
-                >(library.symbol("c_read_into").expect("c_read_into export")))
+                >(
+                    library.symbol("c_read_into").expect("c_read_into export"),
+                ))
             };
             table
                 .insert(ForeignStub::new(
@@ -276,11 +371,33 @@ int32_t c_read_into(const uint8_t* path, uint64_t path_len, uint8_t* dst, uint64
     }
     table.register_out_buffer(
         10,
-        OutBufferFrame::new("av", "guest", 1, vec![0x55u8; 16], 2, 12, OutBufferRights::ReadWrite),
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0x55u8; 16],
+            2,
+            12,
+            OutBufferRights::ReadWrite,
+        ),
     );
     let cancel = CancelFlag::new(false);
-    let out = run_av_source("use.c f0_cout\nfn main() int { return c_read_into(\"sample.bin\", 10) }", &admitted, &mut table, &cancel);
-    assert!(matches!(out, ExecOutcome::Success { value: Value::I32(10), .. }), "got {out:?}");
+    let out = run_av_source(
+        "use.c f0_cout\nfn main() int { return c_read_into(\"sample.bin\", 10) }",
+        &admitted,
+        &mut table,
+        &cancel,
+    );
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(10),
+                ..
+            }
+        ),
+        "got {out:?}"
+    );
     let f = table.out_buffer(10).unwrap();
     assert_eq!(&f.backing[..2], &[0x55, 0x55]);
     assert_eq!(&f.backing[2..12], &sample[..]);
@@ -323,7 +440,13 @@ pub fn fill(dst: &mut [u8]) -> i32 { 0 }
     .expect("import OutBytes-only");
     let h_dig = ace_foreign_contract::blake3_hex(b"h");
     let p_dig = ace_foreign_contract::blake3_hex(b"p");
-    let manual = auto_bindgen::rust_import::to_manual_manifest(&manifest, "f0-rust-provider/1", &h_dig, &p_dig).unwrap();
+    let manual = auto_bindgen::rust_import::to_manual_manifest(
+        &manifest,
+        "f0-rust-provider/1",
+        &h_dig,
+        &p_dig,
+    )
+    .unwrap();
     let auth = ace_foreign_contract::manual::HostAuthority {
         review_id: manual.review_id.clone(),
         contract_digest: manual.contract_digest().unwrap(),
@@ -351,44 +474,143 @@ pub fn fill(dst: &mut [u8]) -> i32 { 0 }
         .unwrap();
 
     // Negative frame checks
-    table.register_out_buffer(1, OutBufferFrame::new("other", "guest", 1, vec![0; 4], 0, 4, OutBufferRights::ReadWrite));
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 1, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-owner"));
+    table.register_out_buffer(
+        1,
+        OutBufferFrame::new(
+            "other",
+            "guest",
+            1,
+            vec![0; 4],
+            0,
+            4,
+            OutBufferRights::ReadWrite,
+        ),
+    );
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 1, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-owner")
+    );
 
-    table.register_out_buffer(2, OutBufferFrame::new("av", "foreign", 1, vec![0; 4], 0, 4, OutBufferRights::ReadWrite));
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 2, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-origin"));
+    table.register_out_buffer(
+        2,
+        OutBufferFrame::new(
+            "av",
+            "foreign",
+            1,
+            vec![0; 4],
+            0,
+            4,
+            OutBufferRights::ReadWrite,
+        ),
+    );
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 2, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-origin")
+    );
 
-    table.register_out_buffer(3, OutBufferFrame::new("av", "guest", 1, vec![0; 4], 0, 4, OutBufferRights::ReadOnly));
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 3, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-readonly"));
+    table.register_out_buffer(
+        3,
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0; 4],
+            0,
+            4,
+            OutBufferRights::ReadOnly,
+        ),
+    );
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 3, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-readonly")
+    );
 
-    table.register_out_buffer(4, OutBufferFrame::new("av", "guest", 99, vec![0; 4], 0, 4, OutBufferRights::ReadWrite));
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 4, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-generation"));
+    table.register_out_buffer(
+        4,
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            99,
+            vec![0; 4],
+            0,
+            4,
+            OutBufferRights::ReadWrite,
+        ),
+    );
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 4, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-generation")
+    );
 
-    table.register_out_buffer(5, OutBufferFrame::new("av", "guest", 1, vec![0; 4], 2, 4, OutBufferRights::ReadWrite));
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 5, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-bounds"));
+    table.register_out_buffer(
+        5,
+        OutBufferFrame::new(
+            "av",
+            "guest",
+            1,
+            vec![0; 4],
+            2,
+            4,
+            OutBufferRights::ReadWrite,
+        ),
+    );
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 5, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-bounds")
+    );
 
-    let pinned_frame = OutBufferFrame::new("av", "guest", 1, vec![0; 4], 0, 4, OutBufferRights::ReadWrite);
+    let pinned_frame = OutBufferFrame::new(
+        "av",
+        "guest",
+        1,
+        vec![0; 4],
+        0,
+        4,
+        OutBufferRights::ReadWrite,
+    );
     pinned_frame.pin_flag.store(true, Ordering::SeqCst);
     table.register_out_buffer(6, pinned_frame);
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 6, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-aliased"));
-    assert!(matches!(table.close_out_buffer(6), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-pinned"));
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 6, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-aliased")
+    );
+    assert!(
+        matches!(table.close_out_buffer(6), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-pinned")
+    );
 
     // Mid-call CancelFlag test: frame stays pinned until native returns, then unpins cleanly
-    let live_frame = OutBufferFrame::new("av", "guest", 1, vec![0; 4], 0, 4, OutBufferRights::ReadWrite);
+    let live_frame = OutBufferFrame::new(
+        "av",
+        "guest",
+        1,
+        vec![0; 4],
+        0,
+        4,
+        OutBufferRights::ReadWrite,
+    );
     let pin_arc = live_frame.pin_flag.clone();
     table.register_out_buffer(7, live_frame);
     unsafe {
         SHARED_PIN = Some(pin_arc.clone());
         SHARED_CANCEL = Some(&cancel as *const CancelFlag);
     }
-    let res = table.dispatch_view_out_bytes(decl, &[], 7, &cancel).expect("in-flight returns");
+    let res = table
+        .dispatch_view_out_bytes(decl, &[], 7, &cancel)
+        .expect("in-flight returns");
     assert_eq!(res, ace_av_core::foreign_exec::ForeignDispatch::PureI32(2));
-    assert!(LIVE_PIN_SEEN.load(Ordering::SeqCst), "buffer must stay pinned while native executes");
-    assert!(!pin_arc.load(Ordering::SeqCst), "buffer must unpin after native returns");
+    assert!(
+        LIVE_PIN_SEEN.load(Ordering::SeqCst),
+        "buffer must stay pinned while native executes"
+    );
+    assert!(
+        !pin_arc.load(Ordering::SeqCst),
+        "buffer must unpin after native returns"
+    );
     assert_eq!(&table.out_buffer(7).unwrap().backing[..2], b"OK");
     // CancelFlag now blocks new call cleanly before native entry, and close succeeds after return
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 7, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.cancelled"));
-    table.close_out_buffer(7).expect("close succeeds once unpinned");
-    assert!(matches!(table.dispatch_view_out_bytes(decl, &[], 7, &CancelFlag::new(false)), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-closed"));
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 7, &cancel), Err(ForeignExecError::Reject(r)) if r.code == "foreign.cancelled")
+    );
+    table
+        .close_out_buffer(7)
+        .expect("close succeeds once unpinned");
+    assert!(
+        matches!(table.dispatch_view_out_bytes(decl, &[], 7, &CancelFlag::new(false)), Err(ForeignExecError::Reject(r)) if r.code == "foreign.out-closed")
+    );
 
     // 2. Arbitrary &mut and wrong target/ABI still rejected cleanly
     assert_eq!(
@@ -402,7 +624,11 @@ pub fn fill(dst: &mut [u8]) -> i32 { 0 }
     ).unwrap();
     assert!(auto_bindgen::rust_import::to_manual_manifest(&wrong_target, "r", "h", "p").is_err());
     assert!(
-        auto_bindgen::c_import::parse_provider_header("// auto-ffi-c provider c/1.0 target=x86_64-unknown-linux-gnu").unwrap_err().code
+        auto_bindgen::c_import::parse_provider_header(
+            "// auto-ffi-c provider c/1.0 target=x86_64-unknown-linux-gnu"
+        )
+        .unwrap_err()
+        .code
             == "c-import.target"
     );
 }

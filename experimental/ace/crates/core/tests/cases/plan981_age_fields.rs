@@ -106,16 +106,21 @@ fn caps() -> Vec<String> {
 }
 
 fn compile(src: &str) -> ace_core::source::age_package::AgePackageCompilation {
-    compile_age_package(&[input("main", src)], "app::main", LegacyWidgetAlias::Reject, &caps())
-        .unwrap_or_else(|ds| {
-            panic!(
-                "fixture rejected: {}",
-                ds.iter()
-                    .map(|d| format!("{}: {}", d.code, d.message))
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            )
-        })
+    compile_age_package(
+        &[input("main", src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &caps(),
+    )
+    .unwrap_or_else(|ds| {
+        panic!(
+            "fixture rejected: {}",
+            ds.iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    })
 }
 
 /// 真实源覆盖清单的**每一行**；完整清单核对必须绿。
@@ -203,7 +208,8 @@ fn p981_fields_every_projection_row_is_individually_guarded() {
                     "on" | "on.lifecycle" => c.handler_msgs.clear(),
                     "msg" => c.messages.clear(),
                     "design" => c.design.clear(),
-                    "named-view" | "bind" | "route" | "expose" | "lifecycle" | "computed" | "watch" | "timer" => {
+                    "named-view" | "bind" | "route" | "expose" | "lifecycle" | "computed"
+                    | "watch" | "timer" => {
                         c.members.retain(|m| m.role != drop);
                     }
                     // 出口事实：把该出口换成另一个，代表"投影不再产出这一行"。

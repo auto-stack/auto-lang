@@ -263,15 +263,13 @@ pub mod wide_hand_computed {
 /// S07 typed chain; id `t939w`).
 pub fn wide_decls() -> TypedDecls {
     use ace_foreign_contract::resource::{
-        ResKind, ResourceForm, ResourceSig, ResOut, RESOURCE_SIG_FORMAT,
+        ResKind, ResOut, ResourceForm, ResourceSig, RESOURCE_SIG_FORMAT,
     };
     use ace_foreign_contract::typed::rec_mix_fields;
     let sig = |params: Vec<ResKind>, noescape: bool| ResourceSig {
         format: RESOURCE_SIG_FORMAT.into(),
         params,
-        form: ResourceForm::Pure {
-            ret: ResOut::I64,
-        },
+        form: ResourceForm::Pure { ret: ResOut::I64 },
         atomic: false,
         noescape,
         typed_peer: true,
@@ -410,18 +408,9 @@ mod tests {
     #[test]
     fn wide_oracles_match_hand_computed_frozen_values() {
         use super::t939w as w;
-        assert_eq!(
-            oracle_wide_sum(&w::SUM_ITEMS, 8),
-            wide_hand_computed::SUM_8
-        );
-        assert_eq!(
-            oracle_wide_sum(&w::SUM_ITEMS, 3),
-            wide_hand_computed::SUM_3
-        );
-        assert_eq!(
-            oracle_wide_sum(&w::SUM_ITEMS, 1),
-            wide_hand_computed::SUM_1
-        );
+        assert_eq!(oracle_wide_sum(&w::SUM_ITEMS, 8), wide_hand_computed::SUM_8);
+        assert_eq!(oracle_wide_sum(&w::SUM_ITEMS, 3), wide_hand_computed::SUM_3);
+        assert_eq!(oracle_wide_sum(&w::SUM_ITEMS, 1), wide_hand_computed::SUM_1);
         assert_eq!(oracle_wide_sum(&w::SUM_ITEMS, 0), 0);
         assert_eq!(
             oracle_crec_sum(w::REC_FLAG, w::REC_COUNT, w::REC_TAG, w::REC_BIG),

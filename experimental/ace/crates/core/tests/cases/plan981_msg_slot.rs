@@ -54,7 +54,10 @@ fn p981_malformed_msg_payload_is_rejected_at_the_source() {
     let src = "node M {\n    msg {\n        Set(int\n    }\n    view {\n        text \"t\" {}\n    }\n}\n";
     let ds = compile(src).expect_err("an unclosed payload list is a parse error");
     assert_eq!(ds[0].code, "source.syntax", "{ds:?}");
-    assert!(ds[0].span.start < src.len(), "the span points into the source");
+    assert!(
+        ds[0].span.start < src.len(),
+        "the span points into the source"
+    );
 }
 
 /// 同一 node 的 `msg` 与 `model`/`on` 并存：槽位不再互相排斥。
