@@ -921,6 +921,23 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-19 stage: review（**view-if 刀两片独立复审**——r20 主线移植片 + F-1 修复；fresh 子代理两轮，verify-don't-trust）| PLAN-981 r20 | outcome: **pass（phase 级切片复审；F-1 修复后闭环；整包保持 executing）**
+
+**review_scope**: phase（view-if 刀：r19 被取代核对 + r20 第二片 + 修复）。**reviewer**: fresh 独立子代理（非实施会话上下文，自跑复现两轮：初审 → F-1 修复定向复验）；orchestrator 仅记录，verdict 由子代理实测重建。
+
+**baseline**: worktree `D:/autostack/.wt/lang-981/auto-lang` @ `plan-981-dev`；初审对象 `386d6c748`（base=主线 `dc7fa60fd`）→ 修复 `ac1ae182c`（parent 链核实，树净）。**正式 grammar id**：`620a0f73…`/`30834de6…`（grammar_scope 4/4 复跑绿；受审两提交零文法改动）。
+
+**初审（A–F 全实测为真）**：零文法/描述面事实（`cond_spans` 三构造点 grep 全命中+编译强制）/三观察门+锚定/states-only+绑定 bad-ok 对照/门禁与计时——core 5 例 0.04s、av 4 例 0.08s。**变异红相×2**：门体恒 Ok → 双用例红（panic 实录 `instance_texts: [["on","off"]]`——两支同现，正是门防的语义）；diag span 归零 → 三锚定断言红。**预存红**：host_console 对隔离重放 2/2 确定性红（与 980 收据具名一致，diff 零交集，owner 982 console）。**auto-ui 暴露面（只读穷尽）**：现行语料零行为变化（desktop observe 调用在装载点拒之后；package bridge `.ok()?` 一致降级；`observe_compiled` 无 auto-ui 调用点）。
+
+**findings**：
+- **F-1（medium，已闭）**：第四个消费平铺文本的观察入口 `observe_component_states_and_texts`（av:249，980 NATIVE 免驱动双观察面）未设门——r20 以类目穷尽口吻声称封闭面，漏此入口（texts 半边平铺消费 `instance_texts`）。无现行行为回归（消费者均受装载点拒前置保护/语料无 view-if），属收据不实+边界缺口。**修复 `ac1ae182c`**：入口加同律门（texts 半边拒/states 半边不受影响）+ 永久用例（states-only 编译过→双观察拒+锚偏移）+ 负控扩（initials 道 texts `[["plain"]]` 不误拒；states-only 道按合同空行不用于 texts 半边负控）。**复验**：改动无夹带、13/13 绿（view_if_av 5+state_face 8）、复审代理自做吞门变异→该用例红→还原树净复跑绿、fmt/无 ignore/计时合规。**封闭面终局（复审代理独立枚举）**：av crate 平铺文本消费点 = 4 门（静态 `:73`/场景暖路径 `:124`/包面 age_package 入口/NATIVE 双观察 `:255`，同一 gate 助手）+ `observe_age_h0` **文法不可达**（`age-view-if` 规则 profiles 仅 age-component/age-package，auto-source.at:965/971——H0 面收不到含条件 view 的描述）；`observe_component_states`（纯状态面）与 states-only/SFC 车道不设门（合同不变）。**无第五遗漏**。
+
+**acceptance（用户三件，均 pass）**：①states-only 可用（用例+复验）；②AV 文本观察具名拒（4 入口全闭+变异判别力）；③诊断锚定作者 `if`（`cond_spans[0]`→diag→消息偏移，core 逐偏移断言+变异红相）。主线平铺设计保持（绑定 bad/ok 对照）；r19→取代关系核对相符（`34de6f919` 不在主线、正式 id 以 `620a0f73/30834de6` 为准、stash 保护在案）。
+
+**pending（merge-owned，不阻切片收口）**：①冻结树 `ac1ae182c` 上受影响组复跑（ace-source+ace-av 组级——F-1 定向检查 13/13 已绿；组级全量归 merge 冻结门）；②知识沉淀：view-if 事实（cond_spans 描述面契约、4 观察入口 fail-closed 规则+撤门条件、正式 grammar id）折入 `docs/specs/ace-migration/m2-age.md`（frontmatter new_spec_components 已列）；③跨仓（auto-ui）门禁不属本片（暴露面零变化，只读核验在案）。
+
+stage: review | review_scope: phase（view-if 刀）| reviewer: fresh 子代理两轮（初审+定向复验），orchestrator 记录 | plan_id: PLAN-981 | plan_revision: r20 | outcome: pass（F-1 closed）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | reviewed_commit: ac1ae182c（初审 386d6c748）| base: dc7fa60fd | evidence: 变异红相×3（门体/锚定/吞门）、4+1 封闭面枚举、预存红隔离重放、auto-ui 穷尽 grep、13/13+13/13 复跑 | findings: F-1 closed | next: 用户排程（view-if 刀闭合；后续批按交接表）
+
 ### 2026-11-19 stage: work（**view-if 第二片：同步主线 + 34de6f919 缺口收口**；用户指令「以 620a0f73…/30834de6… 为正式 grammar ID，把 34de6f919 中仍缺的验收移植到主线实现」）| PLAN-981 r20 | outcome: **pass（描述面事实+观察入口具名拒交付；主线平铺/SFC/states-only 设计保持不动）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev`（重置到主线 `dc7fa60fd` 后续片） | base `dc7fa60fd` | code_commit `386d6c748`
 
 **同步与取代（如实）**：980 view-if 刀（`d69f29f91`，merge `f169cf17c`）先落主，grammar id 从 `8292feae…/c0e635d2…` 直接重基线为 **`620a0f73…`（age-component）/`30834de6…`（age-package）=正式值**；本包 r19 的 `34de6f919`（`b0ae9d90…/ecc64b8e…` 线）被其取代——分支已重置到主线（该提交经 reflog 可达、r19 收据留档；**本片起正式 id 以主线两值为准**）。重置前他会话在 worktree 的 6 个 av 测试 fmt 残留已 `git stash` 保护（stash 注明 owner: prior session）。
