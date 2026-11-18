@@ -49,6 +49,14 @@
 - **范围扩展（2026-11-18，IF-981-GFX-AV-SEAM review-D）**：同一缝覆盖 gfx 纯值构造器的 **record 实参**（`frame2d.at` 的 Image2D 经借用视图到达、Aggregate 需 owned 槽）——命中时 `lower.age-gfx-view-arg` 具名拒并引用本债（scalar-only 构造器今天可执行）；关闭条件同上（合法视图→拥有构造指令落地 + frame2d.at 端到端 AV 正例）。
 - **关闭记录（2026-11-18，语言侧 AV 残余批 #1，auto-lang `106a0f6ac`）**：CLONE 正式成为**唯一的视图→拥有跨接指令**——mir_verify 放行 `Clone{dst: Record(r), src: RecordView(r)}`（同名 nominal record；COPY 无法跨视图故标量 record 也经此形、深克隆退化为值拷贝），异名仍 `mir.clone-type`；gfx 构造器 record 实参与 GlobalSet 视图写入改为发射 Clone 跨接（不再具名拒）。证据三层：① mir 级单测（资源/标量 record 准入、异名拒）；② av-core 执行级深拷贝独立性（克隆改写自身 Str 字段后原件长度不变——浅别名会红）；③ AGE 源级 `frame2d.at(img,..)` 整包过 verify + `var g Mesh2D` 从视图参数写入过 verify（变异重放：禁用跨接臂两用例精确红）+ 异名端口前门具名拒。`frame2d.at` 的**运行时执行**仍待 UI058 宿主注入 Image2D 身份（image2d.png 保持 host-identity 车道拒）——该边界归 UI058 T-03，不是本债。
 
+#### D-981-AGE-F32-SURFACE — AGE 面的 f32 注解/运算面未交（2026-11-18，UI058 T-02 联冻时具名登记，medium）
+
+- **现象（三处，均不是"没测"而是"面不存在"）**：①`ann-ty`/`ret-ty` 无 float/f32 臂（`auto-source.at:1375-1376,1400-1401` 只在 numeric/aggregates/scheduler/packages-aggregates-ct），而 `f32` 在 age-package 是**关键字 token**（L155）⇒ `fn f(x f32)` / `-> f32` / `let x f32` 在 age-package 解析失败；②`model` 字段 f32 能过文法但**具名拒** `source.age.component-unsupported`（两个 AGE 面同码，`plan981_model_field_types.rs:116-123`）；③text-record **atom 面未登记 f32 二元运算/比较**（`plan981_gfx_seam.rs:7-10` 边界声明；typecheck 层已接受同型数值对，`typecheck.rs:489-532`）。
+- **已通的部分（不重复实现）**：f32 **值**面——浮点字面量、场景行 `AgeSceneValueFn` 真值、端口字段（`AGE_PORT_FIELDS`）、gfx 服务结果；AV owned 车道已映射 f32（`62d34e3df`）。
+- **影响**：UI058 最小俯视链的移动积分（`x = x + vx * dt`、位置/速度 f32 字段）无法用 Auto 表达；981 §9 的 T-02 联冻表因此把 f32 记为"拼写已冻、能力未交"的 981 前置。
+- **owner/关闭条件**：981 LANGUAGE＋RUST（B-W1/W3 触面）。关闭 = 三处同词 `f32` 落地（文法注解位 ＋ model 字段域 ＋ atom/lowering），AV 与 A2R 各一条真实执行用例（同型四则/比较、字段持有、改值可见），并同步重基线 age-package 的 grammar id（`plan981_grammar_scope.rs` 同提交更新，13 邻居逐字不变）。
+- **状态**：open（不阻塞 ④-A 与 980 首批切片；阻塞 UI058 T-02 的 f32 业务式与 T-04 整链真实移动积分）。
+
 #### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 
 - **A-required 子集（已交，985 三键）**：具名/匿名 unit 消息、变体/原 span 保真、跨块重复变体拒、

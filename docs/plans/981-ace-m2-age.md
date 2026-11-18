@@ -921,6 +921,83 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: design（会签 ④-A 共享文法与绑定合同；981 grammar/binding owner 回签 980 r18 D-④-2）| PLAN-981 r18 | outcome: **会签通过（④-A 目标与"包绑定器为唯一权威"）＋ D-④-2 修正：不开 age-component 面，多模块闭包走 age-package 面；组件面单文件的 `use` 零事实改具名拒** | 零代码/零建树/零运行/零合入
+
+**授权与范围**：用户本轮指定"981 会签 980 ④-A 共享文法，并与 UI058 对齐 T-02"。本节只做合同与证据核对（980 r18 §10 D-④-2 的 981 会签项），未改文法/AST/绑定器/Schema，未建树、未运行 Cargo/产品。基线：auto-lang master `a13a6e6a1`（本会话开工时读到 `f46560e00`，中途被 982 会话推进 4 个 docs 提交，不影响本节代码事实）。
+
+**一句话结论**：④-A 的方向（组件作者面接纳 Auto 模块名、以 960/981 包闭包绑定/verify 为唯一权威）**通过**；但"先在 age-component 开 `use <mod>: syms`"这条实施路径**不成立**——按现绑定器的单面身份合同，它为 ④-A 买不到任何东西，却要先欠一次冻结身份重基线。建议 ④-A 的入口面改为 **age-package**（两形已开、多模块权威已验），age-component 面保持单文件并把 `use` 行从"解析后零事实"改成具名拒。
+
+**证据（静态读取；逐条含路径）**
+
+1. **文法面**（`experimental/ace/grammars/auto-source.at`）
+   - `age-use-module-item`（`use m.n: a, b`）在 `age-component`+`age-package`（L329/L704）；`age-use-sym-item`（`use mod: a, b`）仅 `age-package`（L337/L1052）；包面 `use-item-p`（`use a.b`）不在 `age-component`（L338）。
+   - `age-component` 没有 `public-item`/`const-item`/`var-item`（L333-335）⇒ **不能解析 `pub fn`/`pub const`/`pub type`**；普通 `fn-item` 全域（L311）。
+   - 依赖模块的真实形状不可解析：`auto-ui/packages/themes/themes.at` 用 `pub theme Auto = { … }` + `extend(...)`，而 ACE 文法**没有 theme 规则**——依赖闭包里最普遍的那个模块（34/35 例都导入它）**今天连解析都不成立**。
+   - `age-node-c-item`（`node` 全体成员）两面都有（L309），`age-package` 是 widget 源的**成员规则超集**（L446-450 才多出 view-2d/3d/portrait/widget）。
+
+2. **投影面**（`core/src/source/cst/frontdoor.rs`）
+   - 包面前门把 `age-use-sym-item` 逐符号投影为 `PackageImport{path:[mod, sym]}`（L1511-1553），与 `use mod.a` 同义；重复名 `source.module-duplicate-import`、声明后导入 `source.module-import-order` 都在此处拒。
+   - `age-use-module-item` **没有任何投影分支**（前门只读 `age_use_sym` / `use_item_p` / `public_item` 三类）⇒ 34/35 例的 `use themes.themes: Auto` 在包面也是**零事实**（与 980 census 一致，不是新发现）。
+   - 组件前门（`age_component.rs:461/878/889/916/946/972`）全部是**单源入口**（`src: &str`），不存在"组件 + 依赖模块"的多输入签名。
+
+3. **绑定面**（`core/src/source/packages/binding.rs`）——已定型、可直接复用
+   - `public_target`（L832-932）：fn/type/const 走 `unit.exports`；**store 恒私有**（L904-910，`source.module-private`，"module store … is private"）；**AGE node 导出先于 `exported` 闸**（L894-903，作者面 `node Disc` + `use shapes: Disc` 无需 `pub`，走 `Target::Node`）。
+   - 失败码：缺模块 `source.module-missing`、私有 `source.module-private`/`source.module-reexport-private`、未知声明 `source.module-symbol`、自导入 `source.module-path`、环 `source.module-cycle`/`source.module-reexport-cycle`、身份不符 `source.module-stale`。
+   - 同源永久用例：`plan981_age_package_modules.rs`（两文件 helper 闭包 / 缺模块与私有俱具名 / 环 / 输入换序身份不变 / 改 helper 改 `input_hash`）。
+
+4. **身份约束（决定性的那条）**
+   - 绑定器对**每个 unit** 断言 `u.grammar_id == 单一 face 的 grammar_id`，否则 `source.module-stale`（L657-669）；`Faces` 只有 Plain/Aggregates/AggregatesCt/Age（L439-444），`Age` 对应 `age-package` 裁剪（L590-593）。
+   - ⇒ **混合面闭包今天不可表达**；而 `age-component` 解析不了 `pub fn` 依赖 ⇒ "入口 age-component + 依赖模块"这条路必须先改绑定器合同。
+   - 文法身份只编码**存活规则**（`program_codec.rs:9-93`；`profiles:` 门不进字节，`syntax-grammar/src/lib.rs:33-38`）⇒ 给某规则加一个 profile 只会移动**那一个** profile 的 GrammarId；`age-package` 与 13 邻居逐字节不变（同一机制已有 `plan981_grammar_scope.rs` 的 13 行冻结值作对照）。
+
+**合同条款（④-A，981 会签版；措辞即 980 切片的验收口径）**
+
+- **A1 入口面**：多模块 widget 工程整体按 `age-package` 面编译（`compile_age_package`，带 `LegacyWidgetAlias`/scenario/模块图）。不新增第二绑定器、不源拼接、不"入口组件面 + 依赖包面"的混合闭包。
+- **A2 作者形 → 绑定**：`use mod: a, b` ≡ `path=[mod, sym]`（同包 `mod` 文件）；`use pkg.mod: a, b` ≡ `path=[pkg, mod, sym]`（跨包）。两形**绑定同义**（同命名空间/同可见性/同错误），但**路径长度不同义**：`use a.b`（2 段、无符号表）在包面是 item 导入，不得被当成"模块 + 符号"。
+- **A3 引用驱动（惰性）绑定**：未被子引用的导入**不解析、不建模块边、不要求目标模块在场**；被引用的名字必须解析，失败具名拒。依据：34/35 例含 `use`，其中 17 例纯惰性（只 themes 名、值用 `"Auto"` 字面量），而 `themes` 模块的 `pub theme` ACE 不可解析——**eager 绑定会让这 34 例全部变红**。这是 ④-A 唯一与现包面 eager 语义的差异，必须以 face 为界，不得改变 plain 包面。
+- **A4 符号种类**：④-A 的值面=`pub fn` / `pub const`（`style` 作 const 形）；类型导入只作注解；`node` 导入不在 ④-A 值面（进入值位置须具名拒，不得静默）；模块 store 恒拒。
+- **A5 失败面**：沿用 A3 的码表；新码必须具名且 span 到名字（不许 @0）。
+- **A6 身份**：`ace.age.component/v1` / `ace.age.package/v1` / `ui.widget-decl/v1` **不变**；导入只进闭包身份（模块边/`input_hash`，改 helper 源必须变——`plan981_age_package_cross_module_helper_changes_the_checked_program` 已是同型正控）。若实现最终仍改文法，`age-component` 冻结值由 981 在**同一提交**重基线（`plan981_grammar_scope.rs:114`），13 邻居逐字不变。
+- **A7 不做/另案**：`use { package: … }`（5 例，任何面都无规则）、`use auto.*`（命名空间形无规则）、N3 foreign（`use.rs/c`）、N4 宿主名表——保持 ④-B/④-C/976 后继域。
+- **A8 fail-closed 补口（981 可独立做的小修）**：组件单文件入口今天对 `use` 行"解析后零事实"，应改具名拒（如 `source.import.unsupported`：单文件面不解析导入，请走 AGE 包入口）。这不是 ④-A 的必要条件，但 C8"不得把能解析当已绑定"要求在案。
+
+**给 980 的回签文本（可直接并入 980 §10 D-④-2 行）**
+
+> 981 会签（2026-11-18，master `a13a6e6a1`）：④-A 目标与"包绑定器唯一权威"通过；**D-④-2「开 age-component 面」建议改为不开**——多模块闭包走 `age-package` 面（两形已在、多模块已有永久用例），`age-component` 保持单文件并对其 `use` 行具名拒。若 980 坚持组件面入口，前置是绑定器 **per-unit face** 合同改造（今天 `binding.rs` L657-669 的单 face grammar-id 断言阻断；`age-component` 又解析不了 `pub fn` 依赖），须经 981 独立 review，成本/风险显著高于换面。④-A 的硬条件：A3 惰性绑定（否则 34/35 例回归）。
+
+**边界（不冒充）**：本节是静态合同核对与既有永久用例的复用，**不是**新 PASS；未跑 Cargo/产品/GPU；④-A 的实现（投影 + 惰性绑定 + 入口接线 + AV/TS/A2R 三后端）仍属 980 切片；981 只签合同与冻结身份。若 980 选择 per-unit face 路线，本回签不涵盖该改造，须另立评审。
+
+### 2026-11-18 stage: handoff（UI058 T-02 接口联冻：981 侧签署；四项中三项即刻冻、f32 面登记为 981 前置）| PLAN-981 r18 | outcome: **partial（接口表 981 侧已签；待 UI058 回签 + f32 实现）**
+
+**绑定身份**：981 接面=IF-981-GFX-AV-SEAM（`ddbda0228`+`ed8b16e01`，已含于 master `a13a6e6a1`）；auto-ui master `f43ef59b`；UI058 计划 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` r4（drafting、0/10、T-02 未开）。UI058 无实施树（`git worktree list` 无 ui-058），本会话**未确认其内部进度**——本表按该计划 §5 T-02 合同与其"冻结 profile/typed 端口/预算映射/数值/共同发布"条款对齐。
+
+**服务面（唯一事实源 `core/src/source/age_resources.rs:219-361`，17 op / 6 族 / 7 端口）**
+
+| 族 | 源拼写 → 结果 | 费 | 车道 |
+|---|---|---|---|
+| query | `query2d.segment(i32,bool,f32×4)→Cast2D`；`query2d.sweep(i32,bool,f32×2)→Sweep2D` | 8 / 16 | HostAlgorithm |
+| input | `input.space()→i32`；`input.x()/y()→f32`；`input.pressed(i32)→bool`；`tick.dt()→f32` | 1 | HostAlgorithm |
+| scene | `row.place/shift(i32,f32,f32)→i32`；`row.show(i32,bool)→i32`；`row.world/local(i32,i32)→f32` | 1 | HostAlgorithm |
+| sprite | `render2d.spawn(str,f32,f32)→i32`；`render2d.despawn(i32)→i32`；`render2d.frame(i32,str,i32,i32)→i32` | 1 | HostAlgorithm |
+| resource | `image2d.png(str)→Image2D`（身份=内容 SHA256+len+IHDR） | 1 | HostIdentity |
+| value | `frame2d.at(Image2D,i32×4)→Frame2D` | 1 | ValueCtor（AV 可执行） |
+
+端口（`AGE_PORT_FIELDS`）：Material2D/Mesh2D/Model3D/Cast2D/Sweep2D/Image2D/Frame2D。**AV 可观察面只有 `frame2d.at` + 端口字段读**；其余 16 op（15 HostAlgorithm + 1 HostIdentity）在 AV 观察车道是具名拒、归 UI058 宿主车道。
+
+**四项联冻（981 侧签署）**
+
+1. **f32 注解与运算 — 拼写冻结，能力未交**：`ann-ty`/`ret-ty` 的 float/f32 臂只在 numeric/aggregates/scheduler/packages-aggregates-ct（`auto-source.at:1375-1376,1400-1401`）；`f32` 在 age-package 是**关键字 token**（L155），而注解位无对应 alt ⇒ `fn f(x f32)`/`… -> f32`/`let x f32` 解析失败（静态文法推断，与 `age-model-ty` 缺 alt 时实测同机制；该面已补 token 但**字段类型仍具名拒**：`plan981_model_field_types.rs:116-123` 两面同码）。f32 **值**已通（字面量/场景行/端口字段/服务结果）。f32 同型四则与比较在 typecheck 已接受同型数值对（`typecheck.rs:489-532`），但 text-record **atom 面未登记 f32 运算**（`plan981_gfx_seam.rs:7-10` 边界声明）。⇒ 冻拼写 `f32`（不用 `float`/`f64`），三处注解位 + model 字段同词，运算=同型 `+ - * / %` 与 `< <= > >= == !=`（不做混型提升）；**UI058 在 981 交付该面前不得依赖 f32 业务式**（T-02 先证可用静态行值 + 宿主行写）。登记 `D-981-AGE-F32-SURFACE`。
+2. **`spawn` 拼写 — 保 021 拼写，改文法接收**：`r-spawn` 是全域保留 token（`auto-source.at:197` 无 profiles）⇒ `.spawn` 不能作成员名、`render2d.spawn` 不可解析（`plan981_gfx_seam.rs:96-98` 声明）。决定：**保 `render2d.spawn`**，仅在 AGE 两面的调用成员位接受 `spawn`（局部 alt、token 表零新增）；`age-component`/`age-package` 两个 grammar id 具名重基线（981 同提交更新冻结值）；`AGE_GFX_SERVICE_OPS` 的 callee/symbol **不变**。备选改名（零文法改动）不取：021 拼写/价目表改动面更大。
+3. **getter 轴参数 — 冻分量字段**：端口把 021 的 `point(axis)/normal(axis)` 展开成 `point_x/point_y/normal_x/normal_y`（sweep 另有 `origin_x/y`、`start_overlap`）（`age_resources.rs:77-101`）；字段读**不构成服务调用=0 credit**。映射：`point(0)≡point_x`、`point(1)≡point_y`、`normal(0/1)≡normal_x/y`、`origin(0/1)≡origin_x/y`、`start_overlap()≡start_overlap`。**不做**动态轴 `point(i)`（无服务面、无零成本语义）。
+4. **每回调预算 — 981 已冻，待 UI058 回签**：`GFX_CALLBACK_CREDIT_BUDGET=32`；`segment=8`、`sweep=16`、其余服务=1、端口字段读=0（`age_resources.rs:378-394`）；语言侧静态准入=**每函数调用点合计**≤32，超界 `lower.age-gfx-credits` 具名拒零效果（`hir_adapter.rs:4383-4409`；永久用例第 33 次拒 `plan981_gfx_seam_av.rs:182-211`）。语义冻：32 credits/**世界回调（Tick）**、第 33 次 **sticky** 拒且零效果、cast/sweep/getter 价目不动、静态界=**保守准入**（不作运行时计费）、宿主动态计费按同表、物理写 32 与 credits 分开计。
+
+**给 UI058 的 3 个回签请求（T-02 冻结时确认）**
+1. "32 credits/callback" 的解释域=**每 Tick / 每 world callback**（981 按此冻；若 UI058 是"每世界每帧"须显式改写，双方同改）。
+2. `render2d.spawn` 保拼写、文法接收（981 交付后调用点才可写；T-02 冻结期以符号 `age.render2d.spawn.v1` 为准）。
+3. f32 面未交前，T-02 先证**不以 f32 业务运算为前提**；若 UI058 判定必须，回 needs_replan 并把 f32 列为 981 前置（不得用 int 近似代替 f32 语义）。
+
+**边界**：未运行 Cargo/产品/GPU；未改 `AGE_GFX_SERVICE_OPS`/文法/Schema；未建 UI058 树、未代其勾选任何任务；T-03 起的宿主算法（v3/v4 查询、行状态、帧写、PNG 载入、输入喂值）仍归 UI058/PLAN-938 host authority。
+
 ### 2026-11-17 三路线修订的规划预检（不是实施验收）
 
 本轮仅文档：统一strategy/架构、四个引擎AV新合同与四个新版AutoForge合同；保本包原任务ID/进度/全部旧AC/V/SD，新增阶段义务见§5–7。静态核对8新Plan共74任务、9既有Plan共140原任务ID、阶段DAG 44节点/90依赖无环、新增本地链接均可达，16份取材源码/规范/已归档合同身份未改变；四仓文档diff格式检查通过。981并发实施会话的T-01勾选保留，不计本轮交付。下方历史记录原样保留。
