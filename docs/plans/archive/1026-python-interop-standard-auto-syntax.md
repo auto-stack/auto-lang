@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1026
-status: reviewed
+status: archived
 feature_name: ACE Python互操作与AV PyTorch训练闭环
 author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-18
 plan_revision: 3
-current_step: 5
+current_step: 7
 total_steps: 7
 depends_on: [PLAN-964, PLAN-965, PLAN-967, PLAN-947, PLAN-972]
 supersedes_spec_components:
@@ -274,7 +274,7 @@ V-09..11由T-03/04实现、T-05永久注册并汇总，非未来性能计划或�
 - [x] **AC-05 / work**（pass，含具名排除）：V-06/07架构隔离与缓存边界通过；`experimental/ace/**/Cargo.toml` 无 pyo3、共享 HIR/MIR/av-core 干净；`ace-python` 选中 9→10 例、排除 0；受影响组实测绿；`ace-av` 组**基线编译断**（E0004，ac-av 基线预存红，本计划未触该文件）具名列出，不声明绿；不依赖或 fallback 旧 AutoVM/AST A2X。
 - [x] **AC-06 / work**（pass）：公开例（`crates/auto-lang/test/cases/ace-m2/python-1026/pytorch_train.as`）、隔离环境/运行说明（同目录 README：CPython 3.14.2/PyO3 0.29.3/torch 2.14.0+cpu）、独立 Python 参考（`plan-artifacts/plan-1026/ref/train_ref_out.json`）、永久用例与显式固定组（`scripts/test-groups.toml:1205-1213`，实测执行）；列 964/967 接口来源；AV-only 与新 A2PY/其他后端未交边界明确。
 - [x] **AC-07 / review**（pass：四次 final 复审 r1..r4 逐一收敛，r5 纸面复审在 1b4352769 上 pass）：独立核AC-01..06/09、SD-01..**06**、接口交接、遗漏/延期/workaround/格式/warning，绑定当前正式revision+commit；merge门pending显式记录。
-- [ ] **AC-08 / merge**：冻结提交审定门通过，实际Spec沉淀/归档/guard后清理材料与唯一树/分支及输出路径对账完成；不得据AV切片宣布967四端或M2退役全量通过。
+- [x] **AC-08 / merge**：冻结提交审定门并集在落主 tip 实测（见 §11 表），9 个 canonical 源已沉淀并以 blob id 记录，归档 `docs/plans/archive/1026-python-interop-standard-auto-syntax.md`；guard（wt-guard clean）+ 材料 scope 折叠删除 + 唯一树/分支清理与输出路径对账在 §11 记录。**不**据 AV 切片宣布 967 四端或 M2 退役全量通过（§1/§11 具名）。
 
 - [x] **AC-09 / work**（partial-by-evidence-shape）：§5.4..6及V-09..11的真实FFI路径、帧寿命、单一handle权威、Tensor不深拷贝/别名可见（`p1026_v09_v10_*`：builtins list 双别名 append 可见 + 空 list 陷阱）、Meta 层级与动态更新均成立；IF-VAL/IF-CALL/IF-RES 正式接口证据齐全（967 通用面复用 + 本计划 ABI 级见证）；V-09 载荷字节腿与 stale-Meta 具名负例为具名后置，不以训练数值相等代替。
 
@@ -290,7 +290,7 @@ V-09..11由T-03/04实现、T-05永久注册并汇总，非未来性能计划或�
 | [x] T-04 | work | T-02/T-03；D-OUT公共输出、D-967运行授权/资源及D-965控制流 | `av/src/{query_entry,session}.rs`或当时实际产品owner接标准源码训练路径、可选provider、运行期准入/缓存恢复/close；`av-core`仅保中立操作执行 | V-05..11及训练烟测，ace-av/必要host/abi/artifacts/stdlib组；AC-01/04/05/09，不以typed fixture顶替 |
 | [x] T-05 | work | T-02..04 | 新例/README、新AV/Core集成target及`python-1026/`独立参考；沿既有TestCase与固定组新增显式ace-python，补D-*交接证据和未交后端表 | V-01..11真实执行，记录初/终loss、梯度/权重/预测/环境/资源与真实选中数；AC-01..06/09 |
 | [ ] T-06 | review | T-05 | 同一树停止实现写入，独立复核验收/接口/Spec delta、遗漏/绕过与健康，记录revision+commit | AC-07；pass仍列merge门pending，不修代码不合并 |
-| [ ] T-07 | merge | T-06 pass | 冻结门并集，SD-01..**06**沉淀与归档，材料摘要/登记和输出路径逐项对账，guard后清树/分支 | AC-08；不接管其他owner收口或新A2PY，周期全量按到期另行负责 |
+| [x] T-07 | merge | T-06 pass | 冻结门并集，SD-01..**06**沉淀与归档，材料摘要/登记和输出路径逐项对账，guard后清树/分支 | AC-08；不接管其他owner收口或新A2PY，周期全量按到期另行负责 |
 
 任务勾选与证据（2026-11-18，work stage，提交 7bea582e1/e8d95fb42/0d6d72229/1cffd63e8/8e26e3020/3069dab80，worktree D:/autostack/.wt/lang-1026/auto-lang@plan-1026-dev）：
 
@@ -399,3 +399,19 @@ stage: goal | plan_id: PLAN-1026 | plan_revision: r3 | round: 7 | from: work | t
 2026-11-18 stage: review | review_scope: final | reviewer_identity: 独立上下文只读复审代理（fresh session，未参与实现；同会话族工具链，按工件重建判定，无 model/session id 声明） | plan_id: PLAN-1026 | plan_revision: r3 | outcome: **pass**（F-25 真闭：README 第 4/5 条与正文字段、`ACCEPTANCE` doc 注释三处一致改为「嵌套调用位置实参＝未验证/未主张、动态浮点 kwarg＝已证拒绝 `source.py-domain`」，与 §5.3 F-22 逐字一致；全表面 grep 仅余 §9 历史段一处"不支持"旧措辞（F-29 NOTE，非规范面）；两文件 diff 机械证明为纯 prose/`///` 注释、语料 blob 前后同 hash、字节身份用例绿；console 准入句已收紧为实际谓词（非 profile-8 + ≥1 `MirInstr::ForeignCall` + 全 `auto.console.*`；编译期＝任意 `DefKind::Foreign`），不再含代码未强制的 Closures 族声明；**0 in-contract 阻断**） | worktree: D:/autostack/.wt/lang-1026/auto-lang | branch: plan-1026-dev | reviewed_commit: 1b4352769 | base_commit: c02c6dc8f | dependency_revisions: CPython 3.14.2 / PyO3 0.29.3 / torch 2.14.0+cpu / Windows x64 | acceptance_results: **AC-07 pass（本复审；merge 勾选）**；AC-01/05/06 pass、AC-02/03/04/09 partial-by-evidence-shape（功能证据复用 r2..r4）；AC-08 merge pending | findings: **F-25 CLOSED**；**F-29/F-30/F-31 MINOR（merge-owned，不阻断）**：plan 历史段 plan:358 旧"不支持"措辞、§8 旧"ace-av 全 PASS"断言、§8 T-07 仍写 "SD-01..05"（应 SD-01..06）——merge 必须按 SD-01..06 沉淀，且不得把旧断言折叠进 canonical；F-26/F-27/F-28/F-19/F-24 与 SD-01..06、guard identity/acceptance、冻结并集、归档清树逐项确认仍具名停放 | evidence（本会话实际执行）: `cargo t ace-python` **10/10 PASS**（run-gem8au94，gate_passed=true，prep 718.8ms / exec 3481.5ms，命令 wall 5.09s；V-01 2.723 / torch 1.637 / close 1.444 / F-1 1.242 / F-15 0.832 / prepared 0.422 / math 0.348 / V-09+10 0.189 / F-02 0.154 / corpus 0.014，全 ≤10s）；`cargo fmt -p ace-abi --check` exit 0；树 clean（前后各验一次） | occupancy: 20 逻辑核、load 13%、11.9GB free；并发 lang-980 abi-worker 与 lang-981 av-worker（各自独 target-dir）及两个 `cargo t ace-source…`，未与本树 target 竞争；热 target 计时按此归因 | pending_closeout_gates: 冻结并集 ace-abi(全)/ace-artifacts/ace-host/ace-stdlib/ace-semantics/ace-foreign-contract(全) + 周期 cargo t all（Linux/WSL 排除）+ ace-av 基线 E0004 具名预存红 + `verify-mir-lowering-868 -Scope identity/acceptance` + SD-01..06 沉淀（两处 "4"→"5"、SD-02 族门一句、F-24/F-26 交叉引用、F-27 SD-06 措辞收紧）+ F-19 计划入库 + F-28 边界入 merge 收据 + AC-08 归档/清树/材料折叠 | 报告: D:/autostack/plan-artifacts/plan-1026/review-r5/report.md | next: **merge**（T-07/AC-08）
 
 stage: goal | plan_id: PLAN-1026 | plan_revision: r3 | round: 8 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1026/auto-lang | commit: 1b4352769 | next: merge
+
+2026-11-18 stage: merge | plan_id: PLAN-1026 | plan_revision: r3 | outcome: **进行中（landed/archived/cleaned 三步待记）** | delivery_candidate: rebased tip `d97ec23f2`（base master@`b7850248a`） | reviewed_commit: `1b4352769` → rebased `6bdc13cbb`; specs delta `0edcf5773` → `5e27dfb80` | range-diff: 12 提交中 8 个逐字节相等；4 个（02/03/04/06）因 master 前进产生冲突解析，差异均为**格式/master 新字段**（`resolve_with_sched` 换行、`age_resources` 取 master 更宽属性表、`hir_adapter` 取 master 的 F32/F64/I64/U64/I8/U8/U32 域块、`gfx_credits: 0`），无语义损失 | 冲突解析: `adapter.rs` 同时保留 master 的 `age_resources::gfx_by_symbol` 臂与 py 两 intrinsic 臂；`hir_adapter.rs` 取 master 更宽 block（本计划 F32/F64 需求被其覆盖 → v5 文档按真实来源更正为"F32/F64 interning 先于本计划由 AGE 数值类型表工作引入"）；`age_resources.rs` 取 master 的 `image`/`frame`/`flip` 面 | 冻结门并集（rebased tip，`cargo t`）: `ace-artifacts` 43/43 PASS、`ace-stdlib` 2/2 PASS、`ace-foreign-contract` 56/56 PASS、`case-ac-av` 18/18 PASS、`case-ac-cte` 6/6 PASS、`case-ac-mn` 3/3 PASS、`ace-source` 863/864 PASS（1 条件排除）、`ace-python` 10/10（V-01 4.853s）、`ace-lowering` 9/9、`ace-console` 5/5；**红全部为 master 预存基线**（见下），非本计划回归 | 基线红（逐条对账 KNOWN-DEBT-AND-RISKS）: ①`ace-abi` **24 例 source_foreign 族**（`source_foreign::*` 23 + `source_resources$source_foreign::pointer_encoding…` 1）＝台账"ace-abi source_foreign 族 ~24 例"（master `8e0c4d1d6` 复现，owner=批量回归 triage）；②`ace-host`（ace-conformance）**13 例**（governance 1 + language_conformance 6 + semantics_protocol 1 + rust_lowering 2 + native_protocol 1 + source 1）＝台账"master 预存红：ace-host 13 例"（master `2cdb28fb3` 复现）；其中 `ace_m1_closures_source_suite_green` 即台账 `1060-R5 closures suite 绿断言失效`（P2，既有红）；③`ace-semantics` **1 例** `sema_boundary_case_files_executed_status_honest`（本计划 §6/§9 早已具名）；④`ace-av` 组基线编译断 E0004（`function_incremental_contract.rs:535`）不可运行，不声明绿 | 判读: 三组 FAIL 的执行数分别为 314/171/295，失败集合与台账 reds 一一对应，且 rebase 前同族红在 `c02c6dc8f` 已复现（r2/r3/r4 复审证据），故本并集对该基线"可复现红、无新增" | 下一步: `verify-mir-lowering-868 -Scope identity`（运行中）→ ff-only 落主 → 归档/清树/材料折叠
+
+## 11. 交付与归档收据（merge，2026-11-18）
+
+stage: merge | plan_id: PLAN-1026 | plan_revision: r3 | **outcome: pass（delivered）** | completion_kind: delivered | delivery_commit: **`181801922`**（master 快进落主，无 merge commit；`git merge --ff-only plan-1026-dev`，`merge-base --is-ancestor` 通过）
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | reviewed 基线 `1b4352769`（r5 final pass，AC-07 勾选）；specs 增量 `0edcf5773`；rebase R1 base `b7850248a`、R2 base `8f44bbf08`；13 提交；`git range-diff` 逐提交核对：8 个逐字节相等，4 个（T-02a/T-02b/§5.1/卫生轮）差异均为**格式 + master 新字段**，无语义损失；冲突解析三处：`adapter.rs` 同时保留 master `gfx_by_symbol` 臂与 py intrinsic 臂、`hir_adapter.rs` 取 master 更宽数值域块、`age_resources.rs` 取 master `image`/`frame`/`flip` 面、`plan981_model_field_types.rs` 取 master 已翻正的 f32 断言（弃分支内旧"拒 f32"版本） |
+| landed | master tip = delivery commit `181801922`；落主后 master 仅由其owner的 docs(plan) 收据提交前进（`f8905c494`…），本交付祖先关系不变 |
+| canonical_verified | 落主提交内 9 个 canonical 源（blob id）：`auto-av/python-interop.md` `c0020805bb9b`（新）、`auto-av/architecture.md` `0a1b6d50ba97`、`auto-av/project.md` `79f0fb78f45b`、`auto-av/host-import-and-console.md` `917669aa96ee`、`auto-mir/hir-lowering-boundary.md` `9d4fc7a99c67`、`auto-mir/native-data-owned-lowering.md` `8730269c31d7`、`auto-mir/core-i32.md` `aff20571b99a`（F-24 交叉引用）、`ace-migration/replacement-scope-and-evidence.md` `c8ce57de6458`、`stdlib/design/ace-host-services.md` `d847cb1dbcd6`；SD-01..06 全部落地，F-27 措辞已按实际谓词收紧（"非 profile-8"限定改为代码实际条件） |
+| 冻结门并集（落主 tip 实测） | `ace-source` 864/864 PASS、`ace-python` 10/10 PASS、`ace-lowering` 9/9、`ace-console` 5/5、`case-ac-av` 18/18、`case-ac-cte` 6/6、`case-ac-mn` 3/3（`run-l52d0vdo`，wall 493.9s）；并集另跑 `ace-artifacts` 43/43、`ace-stdlib` 2/2、`ace-foreign-contract` 56/56、`ace-abi` 314 执行（24 红=基线）、`ace-host` 171 执行（13 红=基线）、`ace-semantics` 295 执行（1 红=基线）——三组红集合与 KNOWN-DEBT 台账（ace-abi source_foreign 族 ~24、ace-host 13 例、ace-semantics sema_boundary、1060-R5 closures 断言）逐条对应，**无新增红**；`ace-av` 基线 E0004 不可运行，不声明绿 |
+| 已知限制（guard） | `verify-mir-lowering-868.ps1 -Scope identity` 在本基线**不可运行**：脚本仍需退役的 `test-cases` feature（PLAN-901 拍平），非本计划引入；本轮新增的"crate 常量 == 镜像"断言以正控 + 三负控（crate="4"/mirror="4"/常量缺失）离线验证，并由 `case-ac-av/cte/mn` 实跑佐证 |
+| archived | 本文件已 `git mv` 至 `docs/plans/archive/`，`status: archived`；T-01..T-06 完成、T-07 完成、AC-01..AC-09 全勾（AC-02/03/04/09 为 partial-by-evidence-shape，具名后置见 §6）；交付链路 964/967/965/947/972 归档依赖保持 |
+| cleaned | 见下方清理段（worktree/branch/组目录移除 + 材料 scope 折叠删除 + 登记表刷新） |
