@@ -921,6 +921,31 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**宿主动态 token/世代 + A2C 宿主面**；用户裁定 G2→G1→G5 后的顺位第三批）| PLAN-981 r18 | outcome: **pass（零文法改动；两片全交付）** | code_commit `82aecc9ad`（+`e1c65dc65` 锁修复）| merge `2cb5df262`
+
+**宿主动态 token/世代（AV 会话层）**
+- `AgeGfxHost::dispatch_with_ctx(symbol, args, ctx: AgeGfxCall)`——**默认转发**既有 `dispatch`（UI058 `NeutralGfxHost` 等既有 provider 不破）；会话事实 `AgeGfxCall { tick, callback, query_epoch, credits_used, symbol }`。
+- **callback = 世代边界**：`AgeGfxSession::run_def` 每次 +1、query epoch 换新格归零；`query2d.segment/sweep` 派发各推进 epoch（1 基单调，非查询 op 不动）——这是语言侧源序走查（`source.age.query-token-stale`，021 fault 13）的**宿主侧动态事实**：宿主拿 epoch 给自家 token/句柄记账打真实 fault-13/33 载荷；**本层只交事实、不重复判**（判罚点在宿主算法车道，PLAN-938/UI058）。
+- AV 真跑（`plan981_gfx_hooks` 新例）：真实 `run_def` 流中 ctx 逐派发到达——同 callback 两查询 epoch 1→2（第二次查询 ⇒ 先前 token 失效）、标量 op 不动、credits 记账后值、新 Tick/新 callback 边界（epoch 归零、tick/callback 前进）；会话访问器 `query_epoch()/callback_seq()` 验收用。
+
+**A2C 宿主面（PLAN-1041 platform-op 模式）**
+- 视图：`SemanticView` 按受检表收 `gfx_defs`（`age_resources::is_gfx_host_symbol`——HostAlgorithm/HostIdentity 16 op；`frame2d.at` 纯值构造不进）——**替换**此前的一刀切 `intrinsic … outside the compute surface`；调用走查臂同步放行。
+- **A2C 发射**：标量结果 op → `a2x_gfx_<callee>` **宿主 extern 调用**（结果类型按受检表 i32/bool/f32；str 实参走 `a2x_str_view` 内容视图——同 platform-op C 文本通道）；运行时头追加 **extern 原型页**（签名镜像 `AGE_GFX_SERVICE_OPS`；端口 record op 不进页）。实现/链接归 C 宿主（AC 车道 1068/T-04）。
+- **A2R 具名拒**：`lower_program` 入口模块级一次判定（携带符号清单）——Rust 生成侧不伪造宿主实现；**不放进热递归臂**（教训见下）。
+- **端口 record 3 op 具名延后**：C 侧 record 返回 stub 属端口 ABI 的 C 腿（lowering 具名拒 `port-ABI C leg`，参数不降）。
+- 永久用例 `plan981_gfx_a2c` 5（worker）：视图收面/发射文本/原型页/A2R 具名拒/端口具名延后。
+
+**门禁（冻结树 `82aecc9ad`，安静机器）**：`cargo t ace-source`（882 PASS）/`ace-av`（1409 PASS）/`ace-a2x`（322 PASS）三组全 PASS（results `run-ycgz8glo`）。合并树（`2cb5df262`，master 又前进 980 文档提交）复核：gfx_a2c+depth+a2r 10/10、av `plan981_` 42/42、core g2+grammar_scope 13/13。新 case 计时：av 5 case 整组 0.03s、worker 6 case 0.06s、会话层 2 单测——全远低于 10s 门。
+
+**现场事故与处置（如实记录）**：
+1. **深递归栈余量回归（已修）**：A2R 具名拒的第一版放在 `lower_expr_inner` 的 Call 臂，使 `scalar_semantics::depth_budget_named_rejection`（500 层深源、预算守卫先于原生栈触发）**栈溢出**——`git stash` 基面对照+单文件二分实证归因；改到 `lower_program` 入口后隔离/全组复跑绿。教训入码注释：热递归函数内的分支会挤爆守卫的栈余量，模块级一次判定同义更稳。
+2. **982 漏锁行（跨计划小修，单独提交 `e1c65dc65`）**：`f604726b3`（982 的包级 A2C host driver）改了 `auto-lang-ace-host` manifest 但 Cargo.lock 少 2 行 ⇒ 根工作区一切 `cargo build --locked`（含固定组 case-parent 工具准备）确定性红——首跑门禁 ace-source/ace-av 组级失败由此而来，非测试红；补齐两行后复跑全 PASS。归 982 侧漏提交，本仓修 forward 已注明。
+3. av 直接全量 `cargo test`（非 nextest）遇栈溢出环境族——既有深递归配置面，正式门禁走 `cargo t` 驱动。
+
+**边界（具名）**：①真实 `cl` 链接腿（宿主 main.c + stub 实现编译运行）归 AC 车道消费方（1068/T-04）——本批交付的是合同面（视图收面/发射/原型页/具名边界）；②C record-text 车道的 f32 常量通道（`NumericConst{F32}` 的 C 侧字面量）未开——用例刻意用 i32/bool/str 通道，该腿与端口 record C stub 一并属后续批；③token/世代的**判罚**（fault 13/33 载荷）在宿主算法车道（UI058），本批交齐事实与访问器。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 1 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev（落主后 ff 至 master `2cb5df262`） | commit: 82aecc9ad（code）+e1c65dc65（lock） | next: 由用户裁定下一批（本 goal 目标=token/世代+A2C 宿主面 已齐）
+
 ### 2026-11-18 stage: work（**G2 hook-local `let`+`if/else` 与 G1 `shape2d.layer` 完整切片**；用户裁定 G2→G1→G5 顺序的第二批）| PLAN-981 r18 | outcome: **pass（文法+投影+脱糖+AV 真跑齐；一次重基线两处功能；G5 pin 随本收据）** | code_commit `dd02b47d1` | merge `6e456794d`（叠在 980 P3 style 面上，age-package id 再重基线 `c0e635d2…`）
 
 **G2 交付（`on` 体 hook-local `let` + `if/else`，age-package 作者面）**
