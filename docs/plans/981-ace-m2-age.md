@@ -921,6 +921,25 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: handoff（**PLAN-980 → PLAN-981：`style` 声明面文法会签请求**；980 侧材料已备、**未动文法**）| 请求方 PLAN-980 r18 | outcome: **待 981 回签（或修订提案）**
+
+**来源**：980 §5「P3 提案：`style` 声明面」（`docs/plans/980-ace-m2-autoui.md`，P3 节；提交 `231aedf44`，后续 `6bbb0fd8a` 已把 grammar ID 更新到 spawn/f32 后的基线）。**请求**：981 作为 grammar/identity owner 回签，回签后 980 才落文法与投影。
+
+**提案摘要（详见 980 §5 P3 节，不在此重复全文）**
+- 语义：`style` 不引入新 HIR 域，是 **`str` 常量/函数语法糖**——`style N = "s"` → const；`style N = other` → const 引用；`style N(p: str = d) = "{p} …"` → 函数（`{p}` 转 ACE f-string）；`pub style` → 公共 const/fn；带参调用仅在**实参全为字面量**时投影期折叠，否则具名拒。**默认值本刀不支持**（具名拒），因此 stylekit 的 3 条参数化 recipe 本刀**不解锁**。
+- 文法：新增 `style-item` + `public-body` 的 `style` 臂；profile 门 `[age-component, age-package]`；`style` **不进 token 表**（只在声明头按 spelling 识别，普通标识符位置保持合法）。
+- 身份：**移动两个 grammar ID**——现基线（spawn/f32 后）`age-component`=`19a1376e…`、`age-package`=`0290d0ab…`；其余 13 profile 必须逐字节不变。
+- 实测：20/35 例含 style（126 行，125 字面量 + 1 复制 + 1 带参调用；0 参数化声明、0 `pub style`）；stylekit 7 条 pub（含 3 参数化/带默认值）；移除 style 后下一阻断异构（payload msg/`$`/model 字段/槽位）——style 是第一阻断但不充分。
+
+**请求 981 回签的四点**
+1. 认可 `style ≡ str const/fn` 映射与 profile 门；
+2. 认可两值 grammar ID 同批重基线，并**指定做法**：980 在文法提交内同步更新 `plan981_grammar_scope.rs` 冻结值（注明前值，沿用 #6m/#6o 先例）**或** 981 在自己的提交里更新（请明确择一）；
+3. 确认 const/fn 命名空间与现有身份/可见性契约无冲突；
+4. 确认 `source.age.style-defaults` / `source.age.style-call` 两个新诊断码的归属与命名（981 若有命名规范冲突，回修订）。
+
+**回复方式**：在 981 本文件 §9 追加一条带日期的回签（或修订）收据，引用 980 P3 节与上述四点；若有修订，逐点说明。**本请求不要求 981 现在改任何代码/文法**；回签后由 980 落文法 + 投影 + 永久用例，并在同一提交附 981 冻结值更新（若按做法 A）。
+
+
 ### 2026-11-18 stage: handoff（**F32 消费同窗 v1：981 侧已备 `17fafb1d9`（分支隔离，未合入）**；分工/呈现/验收/桥面按用户裁定落档；待 980 `auto-ui-runtime` owner 回签后开窗）| PLAN-981 r18 | outcome: **981 ready；合入窗口未开**
 
 **用户裁定（2026-11-18）**：同意同窗方案——981 负责 `ComponentFieldValue`/`InitialValue`，980 负责 `AceStateValue`/状态桥/TS 类型/呈现；两边先**配对提交联合编译验收**，再**同一窗口**合入；呈现按 Rust `f32` 默认 `Display`（可往返、与地区无关）；验收用真实 AGE 状态源 `1.25` 经一次更新到 `1.5`，逐项核对种子/状态读回/界面显示；回签须写明所验的桥（**本窗=组件桥**；包桥 F32 另案）。**该口径尚未由两仓 owner 正式回签。**
