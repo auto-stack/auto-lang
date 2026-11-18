@@ -954,6 +954,14 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 6. **永久用例**：同一最小 AGE 源（sweep/segment/row/input/render2d/tick.dt）在 registered fake provider 下 AV 真跑出 typed 结果；未注册/错签名/错 kind/超预算/越界具名拒；改源结果随动；f32 `x=x+vx*dt` 与 gfx 同 Tick 组合。给出实际命令/exit/结果/耗时。
 7. **交接**：交付 commit/SHA、provider 注册签名/ABI、支持域与拒绝码表，UI058 据此实现 provider（T-04）。
 
+**补充（T-04 预备实测 2026-11-18，`auto-ui` commit `b071634c`；`t04-prep.md`）**：
+- **G1（阻塞源侧声明）**：AGE `shape2d` 属性白名单（kind/position/size/visible/material/image/frame/flip）**无** render-only/非阻挡/碰撞层声明位，未知属性具名拒；T-03 的 `layer` 只在 UI058 driver 旧文档面。请在本端口交付中二选一并冻结：①`shape2d` 属性端口（如 `collision: false` 或 `layer: render-only`，进 `attr_port` 白名单并投影到宿主 typed 行描述）；②由受检场景/资产携带 per-row layer 事实（非 UI 私设）并给 typed 读取面。要求同一事实在 AV/AC/A2R 同源可用；否则 UI058 的正常 Node 源无法声明"可见不碰撞地面"。
+- **G2**：`on Life.Tick` 体是 assignment-only（`age-on-assign`），自然写法（一次 sweep + 分支 + 同 Tick 呈现）不可表达；请给 hook-local `let`/memoized 结果，或书面确认 `pub fn`+模块 `var` 为正式写法。
+- **G3**：行引用只有 i32 声明序 ordinal，无 `self.row`/typed 行句柄；请确认 T-04 可用 ordinal 冻结（重排即语义变化），或给 typed 句柄。
+- **G4**：`render2d.frame(i32,str,i32,i32)` 的 `str` 是资产路径还是 `Image2D` 名端口，请以永久用例钉死。
+- **G5**：UI058 的 `.sdk-source` pin 仍旧（无 seam/f32）；T-04 第 1 步刷新 pin，请随端口交付给准确 auto-lang commit/overlay 身份。
+- **附带请求**：请以 `auto-ui` 树（`codex/plan-058-dev` @ `b071634c`）的 `experimental/autographics-auto-driver/fixtures/plan058/topdown-node/main.at` 做一次前门 parse/typecheck（可先用 master 前门），回报诊断/最小修正；该源是 T-04 的正式输入，若语法不合法请直接给可编译形态。
+
 **边界**：不改 981 原有 17 op/价目/文法；不要求 A2R/AC 同时接；UI058 不先建私有 runner/旧生成器旁路。UI058 侧记录见 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` §9/§10 D-06。
 
 
