@@ -72,6 +72,21 @@ pub fn observe_age_package(
     compiled: &AgePackageCompilation,
     instances: usize,
 ) -> Result<ObservedAgePackage, String> {
+    // PLAN-981（view-if 第二片）：包观察按平铺文本行逐叶取值——含条件分支
+    // 时两支会被当作同时可见。包编译/绑定检查保持通过（平铺进 texts 是主线
+    // 设计）；观察入口见描述面 `cond_spans` 非空即具名拒（锚作者最前 `if`）。
+    if let Some(span) = compiled
+        .description
+        .components
+        .iter()
+        .find_map(|c| c.cond_spans.first().copied())
+    {
+        let d = ace_core::source::age_component::view_conditional_observation_diag(span);
+        return Err(format!(
+            "{} @{}..{}: {}",
+            d.code, d.span.start, d.span.end, d.message
+        ));
+    }
     let mut components = Vec::new();
     for (component_index, c) in compiled.description.components.iter().enumerate() {
         if c.texts.is_empty() {

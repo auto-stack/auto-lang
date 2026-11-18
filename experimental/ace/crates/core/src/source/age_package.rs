@@ -175,6 +175,10 @@ pub struct AgePackageComponent {
     /// 复刻绑定器的导入/可见性规则。
     pub resource_refs: Vec<AgeResolvedResourceRef>,
     pub texts: Vec<AgePackageText>,
+    /// PLAN-981（view-if 第二片）：view 内**全部**条件项的原源 span（树序，
+    /// 含 else-if 链每层；首个=作者最前 `if`）——包观察入口具名拒的判据与
+    /// 锚点（`texts` 平铺不承载条件可见性，两支不得当作同时可见）。
+    pub cond_spans: Vec<Span>,
     /// B-LANGUAGE-I（AGE-L03）：本 node 声明的全部直属出口（去重、按声明序）。
     pub exits: Vec<AgeViewExit>,
     /// R60-8：逐文本叶的出口归属（与 `texts` 同序）。
@@ -1250,6 +1254,9 @@ fn read_back_components(
                 })
                 .collect(),
             texts,
+            // PLAN-981（view-if 第二片）：条件项事实（树序 span）——包观察
+            // 入口的具名拒判据（平铺 texts 不承载分支可见性）。
+            cond_spans: p.node.view.all_cond_spans(),
             module: p.module.clone(),
         });
     }

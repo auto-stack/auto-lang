@@ -155,6 +155,20 @@ pub struct ComponentView {
     pub tree: Vec<ComponentViewItem>,
 }
 
+impl ComponentView {
+    /// PLAN-981（view-if 第二片）：主 view + 命名 view 内**全部**条件项的
+    /// span（树序）。平铺 `texts` 不区分分支可见性，消费平铺文本的观察
+    /// 入口以此事实 fail-closed；嵌套层数可判（else-if 链每层一个）。
+    pub fn all_cond_spans(&self) -> Vec<Span> {
+        let mut out = Vec::new();
+        collect_view_cond_spans(&self.tree, &mut out);
+        for (_, items) in &self.named_trees {
+            collect_view_cond_spans(items, &mut out);
+        }
+        out
+    }
+}
+
 /// PLAN-981（IF-981-REF）：一个节点实例引用（未受信候选）。
 #[derive(Clone, Debug)]
 pub struct ComponentNodeRef {
@@ -230,6 +244,41 @@ pub fn view_contains_cond(items: &[ComponentViewItem]) -> Option<Span> {
         }
     }
     None
+}
+
+/// PLAN-981（view-if 第二片）：view 树内**全部**条件项的 span（树序，含
+/// else-if 嵌套链的每一层与元素内嵌套）——描述面事实，供实际消费平铺文本
+/// 的观察入口做具名拒（首个=作者最前 `if`，诊断锚定点）。
+///
+/// 与 [`view_contains_cond`] 的分工：后者是渲染腿装载点的"有无"判据；本函数
+/// 是描述/观察面的完整事实（嵌套层数可判）。
+pub fn collect_view_cond_spans(items: &[ComponentViewItem], out: &mut Vec<Span>) {
+    for it in items {
+        match it {
+            ComponentViewItem::Cond(c) => {
+                out.push(c.span);
+                collect_view_cond_spans(&c.then_items, out);
+                collect_view_cond_spans(&c.else_items, out);
+            }
+            ComponentViewItem::Element(e) => collect_view_cond_spans(&e.items, out),
+            ComponentViewItem::Text(_) | ComponentViewItem::Entry(_) => {}
+        }
+    }
+}
+
+/// PLAN-981（view-if 第二片）：观察入口的具名拒诊断——主线把两支文本平铺进
+/// `view.texts`（绑定验证同覆盖，编译保持通过）；**实际消费平铺文本的观察
+/// 入口**（组件静态/场景观察、包观察）用它 fail-closed，避免两支被当作
+/// 同时可见。states-only/SFC 车道不消费观察面，不受影响。
+pub fn view_conditional_observation_diag(span: Span) -> Diagnostic {
+    text_diag(
+        "source.age.view-conditional",
+        "an `if`/`else` view item is parsed and projected (both branch leaves flatten into \
+         the leaf list for binding checks), but this observation entry does not carry \
+         conditional visibility semantics yet; observing the flat leaves would present \
+         both branches as simultaneously visible",
+        span,
+    )
 }
 
 /// 组件元素：`tag [label] { items }`（tag 为普通标识符——上下文保持）。
@@ -409,6 +458,11 @@ pub struct ComponentViewOut {
     pub role: String,
     pub span: Span,
     pub texts: Vec<ComponentText>,
+    /// PLAN-981（view-if 第二片）：view 内**全部**条件项的原源 span（树序，
+    /// 含 else-if 链每层与命名 view 内的条件）——观察入口具名拒的判据与
+    /// 锚点（首个=作者最前 `if`）。平铺 `texts` 不承载条件可见性，消费平铺
+    /// 文本的观察入口见此非空必须 fail-closed（诊断锚 `cond_spans[0]`）。
+    pub cond_spans: Vec<Span>,
     /// PLAN-981：已解析的实例引用（类型名已按绑定器符号解析）。
     pub node_refs: Vec<ComponentNodeRef>,
 }
@@ -686,6 +740,7 @@ pub fn compile_age_component(
                 role: n.view.role.clone(),
                 span: n.view.span,
                 texts,
+                cond_spans: n.view.all_cond_spans(),
                 node_refs: n.view.node_refs.clone(),
             },
             span: n.span,
@@ -1584,6 +1639,7 @@ fn compile_component_scenario_full(
                     role: node.view.role.clone(),
                     span: node.view.span,
                     texts: Vec::new(),
+                    cond_spans: node.view.all_cond_spans(),
                     node_refs: node.view.node_refs.clone(),
                 },
                 span: node.span,

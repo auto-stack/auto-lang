@@ -69,6 +69,11 @@ pub fn observe_component_texts(
     let caps = ["ac.runtime.text.v1".to_string()];
     let compiled =
         compile_age_component(src, module_path, alias, &caps).map_err(|ds| format_diags(&ds))?;
+    // PLAN-981（view-if 第二片）：静态观察按平铺叶逐个取值——含条件分支时
+    // 两支会被当作同时可见。编译/绑定检查保持通过（两支平铺进 texts 是主线
+    // 设计，绑定验证同覆盖）；观察入口见条件事实 fail-closed（诊断锚作者
+    // 最前 `if`）。
+    view_cond_observation_gate(&compiled.description)?;
     let mut per_node = Vec::new();
     for node in &compiled.description.nodes {
         let mut texts = Vec::new();
@@ -78,6 +83,27 @@ pub fn observe_component_texts(
         per_node.push(texts);
     }
     Ok(per_node)
+}
+
+/// PLAN-981（view-if 第二片）：实际消费平铺文本的观察入口共用的 fail-closed
+/// 门——描述面 `cond_spans` 非空即具名拒（`source.age.view-conditional`，
+/// 锚 `cond_spans[0]`=作者最前 `if`）。states-only/SFC 车道不消费观察面，
+/// 不经此门。
+fn view_cond_observation_gate(
+    description: &ace_core::source::age_component::ComponentDescription,
+) -> Result<(), String> {
+    if let Some(span) = description
+        .nodes
+        .iter()
+        .find_map(|n| n.view.cond_spans.first().copied())
+    {
+        let d = ace_core::source::age_component::view_conditional_observation_diag(span);
+        return Err(format!(
+            "{} @{}..{}: {}",
+            d.code, d.span.start, d.span.end, d.message
+        ));
+    }
+    Ok(())
 }
 
 /// PLAN-981（D-981-AGE-F32-SURFACE）：执行任意已编译 def 并返回共享 `Value`。
@@ -94,6 +120,10 @@ pub fn execute_component_def(
 
 /// 对已编译结果执行驱动与文本叶（可复用于暖路径）。
 pub fn observe_compiled(compiled: &ComponentCompilation) -> Result<ObservedComponent, String> {
+    // PLAN-981（view-if 第二片）：场景观察（observe_component/observing/
+    // with_initials 的共用暖路径）同静态观察——平铺 instance_texts 不承载
+    // 条件可见性，见条件事实 fail-closed（诊断锚作者最前 `if`）。
+    view_cond_observation_gate(&compiled.description)?;
     // 驱动 def id 由共享 adapter 唯一决定（`d___age_drive`）。
     let encoded = execute_i32(&compiled.checked, "d___age_drive")?;
     let mut instance_texts: Vec<Vec<String>> = Vec::new();

@@ -74,6 +74,8 @@ mod plan979_domain_package;
 mod plan980_dialect_full;
 #[path = "cases/plan980_field_manifest.rs"]
 mod plan980_field_manifest;
+#[path = "cases/plan980_view_if.rs"]
+mod plan980_view_if;
 #[path = "cases/plan981_age_fields.rs"]
 mod plan981_age_fields;
 #[path = "cases/plan981_age_package.rs"]
@@ -94,8 +96,6 @@ mod plan981_design_slot;
 mod plan981_event_a;
 #[path = "cases/plan981_event_b.rs"]
 mod plan981_event_b;
-#[path = "cases/plan980_view_if.rs"]
-mod plan980_view_if;
 #[path = "cases/plan981_g2_hooks.rs"]
 mod plan981_g2_hooks;
 #[path = "cases/plan981_gfx_seam.rs"]
@@ -140,6 +140,8 @@ mod plan981_three_views;
 mod plan981_v_harness;
 #[path = "cases/plan981_view_exits.rs"]
 mod plan981_view_exits;
+#[path = "cases/plan981_view_if.rs"]
+mod plan981_view_if;
 #[path = "cases/plan981_view_select.rs"]
 mod plan981_view_select;
 #[path = "cases/plan982_config_document.rs"]
