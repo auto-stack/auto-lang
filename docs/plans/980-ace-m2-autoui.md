@@ -1804,6 +1804,21 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **具名边界（诚实）。** 包面 **checker 条件值域**：str 字面量比较（`Str vs str` 严格性）与 props 读进 view 条件（`self` 投影未定义）两形到不了渲染层——含引号条件的转义判据因此由**单元级直测渲染机械**承载（手造 Expr）；集成翻转待该值域墙（另一刀或 checker 放宽）。
 
+2026-11-19 stage: work+merge（**on-if 刀：组件面 hook-local `if` 全链**（用户指令整刀；五环齐——a/b 实施于 980，c/d 复用 G2 共享层，e=lane 结构化收集）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（SetTheme 形全派生；text 族负控不破）** | delivery: lang master **`9468fdcf6`**（merge `110b877bc`+并集解冲突+`plan980_view_if` 注册去重）+ auto-ui master **`56725cd5`**。
+
+**五环。** ①文法：`age-view-stmt` 增 `age-view-if-stmt`/`age-view-if-else` **镜像规则**（体=view-stmt 方言——`age-on-if` 是 979 钩子形的无点方言不通用，实测踩坑）；②投影：widget 形 handler **结构化语句面**（序保持 If/Assign；assigns 保持深平铺兼容面；分支内调用形→body_foreign fail-closed）；③④降版/发射=G2 共享层直用（hook_stmts_lower→Stmt::If；a2x-ts If 发射）；⑤lane：`stmt_fragments_in` **根块结构化收集**（If 整语句发射——修复扁平块迭代把分支赋值裸喷成无条件序列的缺陷）。
+
+**Str==str 相等性放行（AGE 旗控）。** `t == "light"`（参数 owned vs 字面量借用）原被双层拒。放行以 **AGE 专用入口对**承载：typecheck `age_eq` 旗穿线（typecheck_with→skip→block→expr）+ verify `age_eq` 字段 + `compile_program_parts_age`/`verify_text_record_age` 变体（age_component/domain.rs 各调用点切换）；**text 族入口不变**——774 合同负控 `av_owned_mixed_eq_types_rejected` 实测仍拒。
+
+**G2 负控合同修订（981 台账同步项）。** `p981_hook_let_and_if_stay_syntax_refused_on_the_component_face`——G2 拒 if 臂的理由是"不开能解析跑不了的半面"；本刀交付全链后拒因消除，负控修订为：**if 臂开（全链在案）、let 臂仍拒**（组件面无 let 消费）。
+
+**重基线（第三次）**：age-component `620a0f73…`→**`e3859aed…`**、age-package `30834de6…`→**`7497650a…`**；13 邻居逐行保持。
+
+**验收与门禁。** core `plan980_on_if` **4**（结构化投影/else-if 链/分支内调用 foreign/Str==str 编译放行）+grammar_scope 4/4+G2 修订控 2/2；UI `p980_on_if_param_handler_if_body_derives_structured`（a2x_str_eq 条件+if 分支+宿主映射）；实测 **SetTheme 形 bodies=1/absent=[]**（010 语料形状）。冻结门：ace-av **1412/1414**（仅 host_console×2=预存 A/B 实证）；ace-source 首跑红=G2 负控（合同冲突预期内，已按新合同修订后绿）；ace_ts_provider **25/25**、census 稳定、UI 五套 13/13、主树复验全绿。
+
+**边界（诚实）。** ①**010 整例翻转仍压 faqs 无类型列表字段**（collections 域——SetTheme/SetAccent 形已就绪）；②**005 lambda-if**：文法臂已开（view-stmt 共用）但 lambda 投影仍 assigns-only+foreign——值函数铸造需结构化（下一小刀）；③分支内调用形=body_foreign（通道调用承载归 #6p 谱系后续）。
+
+## 10. 待澄清事项
 ## 10. 待澄清事项
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
