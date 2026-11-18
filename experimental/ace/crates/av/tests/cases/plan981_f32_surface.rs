@@ -10,12 +10,15 @@
 //! 不另建求值路径。
 //!
 //! 边界（本片不覆盖，具名）：①`float`/`f64` 双宽度字面量（`1.5d`）不参与本面；
-//! ②`ComponentFieldValue` 仍未含 F32（消费端同步改造，见 `observe_component_states`
-//! 的具名错误）；③f32 文本呈现（text 叶/f-string）仍按原子编码的 i32 面拒绝。
+//! ②f32 文本呈现（text 叶/f-string）仍按原子编码的 i32 面拒绝；③界面呈现/TS
+//! 类型归 auto-ui（`D-981-F32-CONSUMER-WINDOW` 的 980 侧），本文件只证 ACE 侧
+//! 状态读回：窄枚举 `ComponentFieldValue::F32`（**按位相等**）与 `InitialValue::Float`
+//! 种子。呈现格式由消费端按 Rust `f32` 的 `Display`（可往返、与地区无关）决定。
 
 use ace_av::age_component::{
-    compile_component_scenario_states, execute_component_def, ComponentCompilation,
-    ComponentInitials, ComponentScenario, LegacyWidgetAlias, ScenarioOp,
+    compile_component_scenario_states, execute_component_def, observe_component_scenario_states,
+    ComponentCompilation, ComponentFieldValue, ComponentInitials, ComponentScenario,
+    InitialValue, LegacyWidgetAlias, ScenarioOp,
 };
 use ace_av_core::contract::Value;
 
@@ -114,5 +117,65 @@ fn p981_f32_mixed_width_arithmetic_is_named_rejected() {
     assert!(
         err.contains("type-mismatch") || err.contains("same-type numeric"),
         "named mixed-width rejection: {err}"
+    );
+}
+
+/// `D-981-F32-CONSUMER-WINDOW` 的 ACE 侧验收：真实 AGE 状态源 `1.25` 经一次
+/// 更新变 `1.5`，逐项核对**种子**（props/`InitialValue::Float`）、**状态读回**
+/// （窄枚举 `ComponentFieldValue::F32`，按位相等）。
+///
+/// 源内默认初值 1.25（无种子）与 seeds 1.25 两条路径都必须给出同一个 1.5；
+/// 种子类型错（给 f32 字段塞 `Int`）仍具名拒（与语言面混宽纪律一致）。
+#[test]
+fn p981_f32_consumer_acceptance_seed_readback_and_update() {
+    const SEEDED: &str = "node Seeded {\n    model {\n        x f32 = 1.25\n    }\n    on Tick {\n        x = x + 0.25\n    }\n    view {\n        text \"s\" {}\n    }\n}\n";
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Tick { instance: 0 }],
+    };
+
+    // ① 源内初值：1.25 + 0.25 = 1.5，经窄枚举读回。
+    let source_seeded = observe_component_scenario_states(
+        SEEDED,
+        "seeded.at",
+        LegacyWidgetAlias::Reject,
+        &scenario,
+        &initials(1),
+    )
+    .expect("the source-seeded f32 state is observable");
+    assert_eq!(
+        source_seeded.per_instance[0][0].1,
+        ComponentFieldValue::F32(1.5)
+    );
+
+    // ② props 种子：`InitialValue::Float(1.25)` 覆盖源内初值，同样 1.5。
+    let with_seed = ComponentInitials {
+        per_instance: vec![vec![("x".to_string(), InitialValue::Float(1.25))]],
+    };
+    let seeded = observe_component_scenario_states(
+        SEEDED,
+        "seeded.at",
+        LegacyWidgetAlias::Reject,
+        &scenario,
+        &with_seed,
+    )
+    .expect("the Float-seeded f32 state is observable");
+    assert_eq!(seeded.per_instance[0][0].1, ComponentFieldValue::F32(1.5));
+
+    // ③ 种子类型错：f32 字段不接受 Int 种子（不隐式提升），且诊断指向字段。
+    let bad_seed = ComponentInitials {
+        per_instance: vec![vec![("x".to_string(), InitialValue::Int(1))]],
+    };
+    let err = observe_component_scenario_states(
+        SEEDED,
+        "seeded.at",
+        LegacyWidgetAlias::Reject,
+        &scenario,
+        &bad_seed,
+    )
+    .expect_err("an int seed must not be coerced into an f32 field");
+    assert!(
+        err.contains("component-unsupported") && err.contains("must be `f32`"),
+        "named seed-type rejection: {err}"
     );
 }

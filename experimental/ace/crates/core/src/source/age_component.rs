@@ -865,6 +865,9 @@ pub enum InitialValue {
     Int(i64),
     Bool(bool),
     Str(String),
+    /// PLAN-981（`D-981-F32-CONSUMER-WINDOW`）：f32 字段的 props/种子初值
+    ///（承载精度就是 f32 本身；`1.25` 这类二进制可精确表示的值原样进入）。
+    Float(f32),
 }
 
 /// 组件驱动的观察结果（编码值）。
@@ -2596,6 +2599,9 @@ fn validate_initials(
                 }
                 (InitialValue::Bool(_), Some(TypeWord::Bool)) => true,
                 (InitialValue::Str(_), Some(TypeWord::StrOwned)) => true,
+                // PLAN-981（D-981-F32-CONSUMER-WINDOW）：f32 字段的种子只接受
+                // Float（`Int` 不隐式转 f32——与语言面"混宽不提升"同一纪律）。
+                (InitialValue::Float(_), Some(TypeWord::Float)) => true,
                 _ => false,
             };
             if !ty_ok {
@@ -2628,6 +2634,11 @@ fn initial_literal(v: &InitialValue, span: Span) -> Expr {
         InitialValue::Int(i) => ExprKind::IntLit(*i as i32),
         InitialValue::Bool(b) => ExprKind::BoolLit(*b),
         InitialValue::Str(s) => ExprKind::StrLit(s.clone()),
+        // f32 种子按位进脱糖字面量，避免任何十进制往返。
+        InitialValue::Float(f) => ExprKind::TypedLit {
+            ty: TypeWord::Float,
+            bits: f.to_bits() as u64,
+        },
     };
     Expr { span, kind }
 }
