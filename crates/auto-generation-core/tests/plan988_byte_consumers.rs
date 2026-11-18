@@ -1,4 +1,15 @@
 //! Compile and execute unmodified production Rust, not a helper-only oracle.
+//!
+//! PLAN-983 r23（2026-11-19，用户指令「四仓门禁修复」）：原单测
+//! `plan988_source_bytes_compile_run_and_preserve_rejected_targets` 以一个
+//! 循环串行执行全部 50 场景（每场景一次真实 `rustc` 编译+运行），整机
+//! 105–131s，压过四仓门 `.config/nextest.toml` 的挂起保护上限（60s 警告/
+//! 120s 终止）——本文件按**语义族**拆成五个独立 `#[test]`（写路径/push
+//! 变异/替换与赋值/typed 上下文/json 值形态），场景表与执行体**逐字保留**
+//! （名/源/期望字节/VM 拒绝位/VM+生成 Rust 双腿+字节对照+非法输入保旧），
+//! 并保留 `PLAN988_BYTE_CASE` 子串过滤钩子做定向重放。完整性守卫测试保证
+//! 族并集==全部场景（新场景漏挂族会红）。
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -125,15 +136,8 @@ fn rustc_flags() -> Vec<String> {
     flags
 }
 
-#[test]
-fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
-    let temp = if let Some(parent) = std::env::var_os("PLAN988_TEST_OUT") {
-        fs::create_dir_all(&parent).unwrap();
-        tempfile::tempdir_in(parent).unwrap()
-    } else {
-        tempfile::tempdir().unwrap()
-    };
-    let flags = rustc_flags();
+/// 全部场景（原单测的场景构造逐字搬移：名/源/期望字节/VM 拒绝位）。
+fn byte_cases() -> Vec<(&'static str, String, Vec<u8>, bool)> {
     let bytes = [0, 127, 128, 255];
     let sentinel = [42, 128, 255];
     // (name, source body / whole program, expected bytes, VM must reject).
@@ -219,101 +223,261 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
             reject,
         ));
     }
-    let filter = std::env::var("PLAN988_BYTE_CASE").unwrap_or_default();
+    cases
+}
+
+/// 单场景执行体（原单测循环体逐字搬移：VM 断言 + 生成 Rust 真编译运行 +
+/// 双腿字节对照 + FIRST 保旧 + 非法输入 sentinel 保旧）。
+fn run_byte_case(
+    temp: &Path,
+    flags: &[String],
+    bytes: [u8; 4],
+    sentinel: [u8; 3],
+    name: &str,
+    source: &str,
+    expected: &[u8],
+    reject: bool,
+) {
+    let dir = temp.join(name);
+    fs::create_dir(&dir).unwrap();
+    let target = dir.join("bytes.bin");
+    let input = dir.join("seed.bin");
+    let first = dir.join("first.bin");
+    let check_first = source.contains("FIRST");
+    fs::write(&input, bytes).unwrap();
+    let source = source
+        .replace(
+            "FIRST",
+            &serde_json::to_string(&first.to_string_lossy().replace('\\', "/")).unwrap(),
+        )
+        .replace(
+            "PATH",
+            &serde_json::to_string(&target.to_string_lossy().replace('\\', "/")).unwrap(),
+        )
+        .replace(
+            "INPUT",
+            &serde_json::to_string(&input.to_string_lossy().replace('\\', "/")).unwrap(),
+        );
+    let source = if source.starts_with("fn ") {
+        source
+    } else {
+        format!("fn main() {{\n{source}\n}}")
+    };
+    fs::write(dir.join("input.at"), &source).unwrap();
+    fs::write(&target, sentinel).unwrap();
+    let vm = auto_lang_core::run_autovm_capture(&source);
+    assert_eq!(vm.is_err(), reject, "{name}: {vm:?}");
+    if let Ok(output) = vm {
+        assert_eq!(output.1.trim(), "0", "{name}: VM status");
+    }
+    assert_eq!(fs::read(&target).unwrap(), expected, "{name}: VM bytes");
+
+    if check_first {
+        assert_eq!(
+            fs::read(&first).unwrap(),
+            Vec::<u8>::new(),
+            "{name}: first VM write"
+        );
+        fs::remove_file(&first).unwrap();
+    }
+
+    let mut sink = auto_lang_core::trans::rust::transpile_rust(name, &source).unwrap();
+    let generated = String::from_utf8(sink.done().unwrap().clone()).unwrap();
+    let generated = auto_generation_core::shared_generation::qualify_a2r_std(generated);
+    let rust = dir.join("main.rs");
+    fs::write(&rust, generated).unwrap();
+    let executable = dir.join(if cfg!(windows) {
+        "consumer.exe"
+    } else {
+        "consumer"
+    });
+    let compilation = Command::new("rustc")
+        .arg(&rust)
+        .args(flags)
+        .arg("-o")
+        .arg(&executable)
+        .output()
+        .unwrap();
+    fs::write(dir.join("compile.log"), &compilation.stderr).unwrap();
     assert!(
-        cases.iter().any(|(name, _, _, _)| name.contains(&filter)),
-        "zero selected byte cases"
+        compilation.status.success(),
+        "{name}: {}",
+        String::from_utf8_lossy(&compilation.stderr)
     );
+    fs::write(&target, sentinel).unwrap();
+    let result = Command::new(&executable).output().unwrap();
+    assert!(
+        result.status.success(),
+        "{name}: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        if reject { "-1" } else { "0" },
+        "{name}: Rust status"
+    );
+    assert_eq!(fs::read(&target).unwrap(), expected, "{name}: Rust bytes");
+    if check_first {
+        assert_eq!(
+            fs::read(&first).unwrap(),
+            Vec::<u8>::new(),
+            "{name}: first Rust write"
+        );
+    }
+    eprintln!("PASS {name}: VM + generated Rust, status and bytes");
+}
+
+/// 语义族执行（PLAN-983 r23 拆分）：按精确名选场景；保留
+/// `PLAN988_BYTE_CASE` 子串过滤钩子做族内定向重放。
+fn run_family(family_names: &[&str]) {
+    let temp = if let Some(parent) = std::env::var_os("PLAN988_TEST_OUT") {
+        fs::create_dir_all(&parent).unwrap();
+        tempfile::tempdir_in(parent).unwrap()
+    } else {
+        tempfile::tempdir().unwrap()
+    };
+    let flags = rustc_flags();
+    let cases = byte_cases();
+    for wanted in family_names {
+        assert!(
+            cases.iter().any(|(name, _, _, _)| name == wanted),
+            "unknown byte case {wanted:?} (family list typo)"
+        );
+    }
+    let filter = std::env::var("PLAN988_BYTE_CASE").unwrap_or_default();
+    let mut selected = 0;
     for (name, source, expected, reject) in cases
         .into_iter()
-        .filter(|(name, _, _, _)| name.contains(&filter))
+        .filter(|(name, _, _, _)| family_names.contains(name) && name.contains(&filter))
     {
-        let dir = temp.path().join(name);
-        fs::create_dir(&dir).unwrap();
-        let target = dir.join("bytes.bin");
-        let input = dir.join("seed.bin");
-        let first = dir.join("first.bin");
-        let check_first = source.contains("FIRST");
-        fs::write(&input, bytes).unwrap();
-        let source = source
-            .replace(
-                "FIRST",
-                &serde_json::to_string(&first.to_string_lossy().replace('\\', "/")).unwrap(),
-            )
-            .replace(
-                "PATH",
-                &serde_json::to_string(&target.to_string_lossy().replace('\\', "/")).unwrap(),
-            )
-            .replace(
-                "INPUT",
-                &serde_json::to_string(&input.to_string_lossy().replace('\\', "/")).unwrap(),
-            );
-        let source = if source.starts_with("fn ") {
-            source
-        } else {
-            format!("fn main() {{\n{source}\n}}")
-        };
-        fs::write(dir.join("input.at"), &source).unwrap();
-        fs::write(&target, sentinel).unwrap();
-        let vm = auto_lang_core::run_autovm_capture(&source);
-        assert_eq!(vm.is_err(), reject, "{name}: {vm:?}");
-        if let Ok(output) = vm {
-            assert_eq!(output.1.trim(), "0", "{name}: VM status");
-        }
-        assert_eq!(fs::read(&target).unwrap(), expected, "{name}: VM bytes");
-
-        if check_first {
-            assert_eq!(
-                fs::read(&first).unwrap(),
-                Vec::<u8>::new(),
-                "{name}: first VM write"
-            );
-            fs::remove_file(&first).unwrap();
-        }
-
-        let mut sink = auto_lang_core::trans::rust::transpile_rust(name, &source).unwrap();
-        let generated = String::from_utf8(sink.done().unwrap().clone()).unwrap();
-        let generated = auto_generation_core::shared_generation::qualify_a2r_std(generated);
-        let rust = dir.join("main.rs");
-        fs::write(&rust, generated).unwrap();
-        let executable = dir.join(if cfg!(windows) {
-            "consumer.exe"
-        } else {
-            "consumer"
-        });
-        let compilation = Command::new("rustc")
-            .arg(&rust)
-            .args(&flags)
-            .arg("-o")
-            .arg(&executable)
-            .output()
-            .unwrap();
-        fs::write(dir.join("compile.log"), &compilation.stderr).unwrap();
-        assert!(
-            compilation.status.success(),
-            "{name}: {}",
-            String::from_utf8_lossy(&compilation.stderr)
+        run_byte_case(
+            temp.path(),
+            &flags,
+            [0, 127, 128, 255],
+            [42, 128, 255],
+            name,
+            &source,
+            &expected,
+            reject,
         );
-        fs::write(&target, sentinel).unwrap();
-        let result = Command::new(&executable).output().unwrap();
-        assert!(
-            result.status.success(),
-            "{name}: {}",
-            String::from_utf8_lossy(&result.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&result.stdout).trim(),
-            if reject { "-1" } else { "0" },
-            "{name}: Rust status"
-        );
-        assert_eq!(fs::read(&target).unwrap(), expected, "{name}: Rust bytes");
-        if check_first {
-            assert_eq!(
-                fs::read(&first).unwrap(),
-                Vec::<u8>::new(),
-                "{name}: first Rust write"
-            );
-        }
-        eprintln!("PASS {name}: VM + generated Rust, status and bytes");
+        selected += 1;
     }
+    assert!(selected > 0, "zero selected byte cases in this family");
+}
+
+const WRITE_PATHS: &[&str] = &[
+    "typed",
+    "empty_direct",
+    "empty_local",
+    "empty_branch",
+    "empty_return",
+    "parameter",
+    "empty_parameter",
+    "forwarded_parameter",
+    "read_control",
+    "json_inline",
+    "json_nested",
+    "json_bytes_field",
+    "typed_reused",
+    "empty_reused",
+    "json_reused",
+];
+
+const PUSH_MUTATION: &[&str] = &[
+    "push_after_write",
+    "push_before_write",
+    "push_branch_loop",
+    "push_alias",
+    "push_bad_value",
+    "push_typed_empty",
+    "push_nonempty",
+    "push_nested_local",
+    "push_parameter",
+    "push_condition",
+];
+
+const REPLACE_ASSIGNMENT: &[&str] = &[
+    "replace_array",
+    "replace_return",
+    "assignment_empty",
+    "assignment_empty_branch",
+    "assignment_empty_chain",
+    "assignment_empty_cycle",
+    "assignment_filled_alias",
+    "assignment_typed_empty",
+    "assignment_then_push",
+    "assignment_propagated_fill",
+];
+
+const TYPED_CONTEXT: &[&str] = &[
+    "typed_context_after",
+    "typed_context_before",
+    "typed_context_after_later",
+    "typed_context_before_later",
+    "typed_context_assignment",
+    "typed_context_alias",
+];
+
+const JSON_VALUES: &[&str] = &[
+    "json_list",
+    "json_empty",
+    "json_bool",
+    "json_float",
+    "json_string",
+    "json_nested_list",
+    "json_null",
+    "json_scalar",
+    "json_object",
+];
+
+/// 完整性守卫：族并集必须等于全部场景（新场景漏挂族=红；重复挂=红）。
+#[test]
+fn plan988_bytes_family_partition_is_complete() {
+    let families: &[&[&str]] = &[
+        WRITE_PATHS,
+        PUSH_MUTATION,
+        REPLACE_ASSIGNMENT,
+        TYPED_CONTEXT,
+        JSON_VALUES,
+    ];
+    let mut listed: Vec<&str> = families.iter().flat_map(|f| f.iter().copied()).collect();
+    let total = listed.len();
+    listed.sort_unstable();
+    listed.dedup();
+    assert_eq!(listed.len(), total, "a byte case is listed in two families");
+    let mut all: Vec<&str> = byte_cases()
+        .into_iter()
+        .map(|(name, _, _, _)| name)
+        .collect();
+    all.sort_unstable();
+    let mut listed_sorted = listed;
+    assert_eq!(
+        listed_sorted, all,
+        "every byte case must belong to exactly one semantic family"
+    );
+}
+
+#[test]
+fn plan988_bytes_write_paths() {
+    run_family(WRITE_PATHS);
+}
+
+#[test]
+fn plan988_bytes_push_mutation() {
+    run_family(PUSH_MUTATION);
+}
+
+#[test]
+fn plan988_bytes_replace_assignment() {
+    run_family(REPLACE_ASSIGNMENT);
+}
+
+#[test]
+fn plan988_bytes_typed_context() {
+    run_family(TYPED_CONTEXT);
+}
+
+#[test]
+fn plan988_bytes_json_values() {
+    run_family(JSON_VALUES);
 }
