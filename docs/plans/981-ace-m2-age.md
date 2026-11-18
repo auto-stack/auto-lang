@@ -921,6 +921,18 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**第四批第①项：动态世代接口交 UI058**；用户裁定 981 提供会话事实、fault 13/33 判罚载荷归 UI058）| PLAN-981 r18 | outcome: **pass（交接合同已落 058 计划；第②项 A2C f32/record 真 cl 腿=执行就绪、待下一轮）**
+
+**① 已交付（auto-ui `e01ea266`）**：058 计划 T-04 结果块新增交接收据——`AgeGfxCall { tick, callback, query_epoch, credits_used, symbol }` 合同（`dispatch_with_ctx` 默认转发兼容旧 provider）、已实证事实（同 callback 第二查 epoch 1→2=旧 token 失效、跨 callback 归零+世代 +1、跨 Tick 边界、记账值逐派发到达）、消费配方（host 切 `dispatch_with_ctx`，连续帧/双实例用例接 ctx 断言三边界；fault 13/33 判罚载荷在宿主侧实现）、会话访问器 `query_epoch()/callback_seq()` 断言锚。981 侧证据=`plan981_gfx_hooks` ctx AV 真跑（上一批 `82aecc9ad`）。
+
+**② A2C f32 常量 + 三 record 返回（真 cl 验收）——执行就绪设计（本轮钉入，下一轮直接施工）**：验收口径（用户裁定原文）：**cl 跑通证明的是 A2C 的 C 宿主 ABI**（区别于 emit 级合同）。已核入口与模板：
+- **f32 常量**：lower_rt 增 `NumericConst` 臂——模板 `a2x-c/src/lower.rs:350-371`（`a2x_f32_bits(<bits>u)` 原位构造器，NaN/-0.0 按位存活）；helper 需进 record-text 运行时页（RT_CORE 头内容哈希入 fragment 键——加行=按设计的安全身份推进，无陈旧碎片风险；scalar 运行时 `runtime.rs:454` 有同名实现可抄）。
+- **record 返回 ABI（拟冻结）**：`extern int32_t a2x_gfx_<callee>(<标量实参>, a2x_res_<Port>* out)`——宿主填 out、返回状态；发射模板=RecordClone 臂（`lower_rt.rs:1691-1710`：`a2x_res_<Name> t = …; t.value` + `check_trap`）；record C 结构/字段名发射（`c_record_name`/`field_names_of`）施工时核对。
+- **真 cl 腿链路（已核）**：age 包前门 → CheckedModule → **a2x-store packages 车道 `PackageA2xTarget::cold(path, project, owner, quota, CTargetProvider::v1(), &PackageProduct)`**（`a2x-store/src/modules/packages.rs:80`；`PackageProduct{compiled, bound}` 见 `source-query/src/modules/packages.rs:23`——age 侧构造/等价绑定是施工点）→ 产物 files 写盘 → **追加宿主 stub .c**（实现 `a2x_gfx_query2d_sweep` 等，记录字段计数器断言"恰收一次"）→ `ace_a2x_worker::crun::compile_c_fileset(&dir, &exe)`（`a2c_rt.rs:111` 同款；需核它编译目录内全部 .c）→ 运行 stdout 断言：宿主恰收一次 sweep、调用方读对记录字段（sweep 先行，随后 segment/image2d.png）。
+- **边界（如实）**：本轮未动代码——第②项的 f32 臂/record 发射若脱离真 cl 用例落地即为未验证改动，故整腿留待下一轮一并施工+验收；1068 宿主 harness 可并行准备。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 1 | from: work | to: work | status: executing | outcome: partial（①pass；②执行就绪待施工）| commit: auto-ui `e01ea266`（交接） | next: work（②真 cl 腿施工）
+
 ### 2026-11-18 stage: work（**宿主动态 token/世代 + A2C 宿主面**；用户裁定 G2→G1→G5 后的顺位第三批）| PLAN-981 r18 | outcome: **pass（零文法改动；两片全交付）** | code_commit `82aecc9ad`（+`e1c65dc65` 锁修复）| merge `2cb5df262`
 
 **宿主动态 token/世代（AV 会话层）**
