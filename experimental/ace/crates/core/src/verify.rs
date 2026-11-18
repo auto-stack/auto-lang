@@ -399,6 +399,8 @@ fn verify_function_impl(
         diags: Vec::new(),
         closures_ctx: closures.map(|c| c.view()),
         domain: bundle.domain,
+
+        age_eq: false,
     };
     // Context construction mirrors `check_module`: type bounds first, then
     // the text-kind isolation gate, the type map, and the signature table
@@ -692,6 +694,7 @@ fn verify_text_function_impl(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
+        age_eq: false,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
@@ -1836,6 +1839,7 @@ pub fn verify_foreign_scalar(
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     check_foreign_declarations(&bundle, environment)?;
     let mut verifier = Verifier {
+        age_eq: false,
         diags: Vec::new(),
         foreign_allowed: true,
         domain: HirDomain::Scalar,
@@ -2085,6 +2089,7 @@ fn verify_text_domain(
         )]);
     }
     let mut v = Verifier {
+        age_eq: false,
         foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
@@ -2187,7 +2192,13 @@ pub fn verify_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
 /// T-02; the full resource walk (ownership liveness, cleanup schedules)
 /// extends the PLAN-770 machinery in T-04.
 pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_text_record_impl(bundle, false, None)
+    verify_text_record_impl(bundle, false, None, false)
+}
+
+/// PLAN-980 on-if 刀：AGE 组件检查函数模块的 verify 入口——str/Str 相等性
+/// 放行（与 compile_parts_with_age 的 typecheck 放行成对；text 族入口不变）。
+pub fn verify_text_record_age(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_text_record_impl(bundle, false, None, true)
 }
 
 /// PLAN-939: the text-record domain WITH foreign declarations — resource
@@ -2201,13 +2212,14 @@ pub fn verify_foreign_text_record(
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     check_foreign_declarations(&bundle, environment)?;
-    verify_text_record_impl(bundle, true, None)
+    verify_text_record_impl(bundle, true, None, false)
 }
 
 fn verify_text_record_impl(
     bundle: hir::Bundle,
     foreign_allowed: bool,
     _reserved: Option<()>,
+    age_eq: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != HirDomain::TextRecord {
         return Err(vec![Diagnostic::new(
@@ -2222,6 +2234,7 @@ fn verify_text_record_impl(
         )]);
     }
     let mut v = Verifier {
+        age_eq,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
@@ -2380,6 +2393,7 @@ fn verify_collection_family_impl(
         )]);
     }
     let mut v = Verifier {
+        age_eq: false,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
@@ -2510,6 +2524,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
         )]);
     }
     let mut v = Verifier {
+        age_eq: false,
         foreign_allowed: false,
         diags: Vec::new(),
         closures_ctx: None,
@@ -2735,6 +2750,9 @@ struct TypeMemo {
 
 pub(crate) struct Verifier {
     foreign_allowed: bool,
+    /// PLAN-980 on-if 刀：AGE 检查函数模块的字符串相等性跨借用/owned
+    /// 放行旗（仅 verify_text_record_age 入口置位——text 族严格保持）。
+    age_eq: bool,
     diags: Vec<Diagnostic>,
     domain: HirDomain,
     /// PLAN-912 §5.2: the resident closures registry view for a SINGLE-
@@ -6095,15 +6113,26 @@ impl Verifier {
                                     ValueType::Bool
                                 }
                                 Eq | Ne => {
-                                    let same_pair = lt == rt
+                                    // PLAN-980 on-if 刀：字符串相等性跨借用/
+                                    // owned 合法（`t == "light"`——与
+                                    // typecheck 同放松；内容相等语义）。仅 AGE
+                                    // 入口置旗（text 族严格——774 合同负控在案）。
+                                    let str_cross = self.age_eq
                                         && matches!(
                                             (lt, rt),
-                                            (ValueType::I32, ValueType::I32)
-                                                | (ValueType::Bool, ValueType::Bool)
-                                                | (ValueType::Str, ValueType::Str)
-                                                | (ValueType::StrOwned, ValueType::StrOwned)
-                                                | (ValueType::Char, ValueType::Char)
+                                            (ValueType::Str, ValueType::StrOwned)
+                                                | (ValueType::StrOwned, ValueType::Str)
                                         );
+                                    let same_pair = str_cross
+                                        || (lt == rt
+                                            && matches!(
+                                                (lt, rt),
+                                                (ValueType::I32, ValueType::I32)
+                                                    | (ValueType::Bool, ValueType::Bool)
+                                                    | (ValueType::Str, ValueType::Str)
+                                                    | (ValueType::StrOwned, ValueType::StrOwned)
+                                                    | (ValueType::Char, ValueType::Char)
+                                            ));
                                     if !same_pair {
                                         // keep the old profiles' exact
                                         // wording (observable diagnostic
@@ -8304,6 +8333,7 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
             let sig_ok = match m.types.get(ty.0 as usize).map(|t| &t.kind) {
                 Some(hir::TypeKind::Function(sig)) => {
                     let v = Verifier {
+                        age_eq: false,
                         foreign_allowed: false,
                         diags: Vec::new(),
                         closures_ctx: None,

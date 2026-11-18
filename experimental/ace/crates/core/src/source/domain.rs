@@ -286,7 +286,7 @@ pub fn compile_domain(
     let desugared = Program { items };
 
     // 6) 唯一 verify：整模块（普通项 + 隐藏求值函数）走 text-record 域共享链。
-    let parts = match crate::source::adapter::compile_program_parts(
+    let parts = match crate::source::adapter::compile_program_parts_age(
         &desugared,
         src,
         module_path,
@@ -297,7 +297,7 @@ pub fn compile_domain(
         Err(ds) => return Err(relabel_behavior_diags(ds, &candidate)),
     };
     let input_hash = parts.input_hash.clone();
-    let checked = match crate::verify::verify_text_record(parts.bundle) {
+    let checked = match crate::verify::verify_text_record_age(parts.bundle) {
         Ok(c) => c,
         Err(ds) => return Err(relabel_behavior_diags(ds, &candidate)),
     };

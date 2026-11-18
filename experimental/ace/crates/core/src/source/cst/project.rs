@@ -5917,6 +5917,29 @@ impl<'a> Engine<'a> {
         })
     }
 
+    /// PLAN-980 on-if 刀：结构化语句 → 全深度赋值平铺（兼容面：assign-only
+    /// 消费者；含 if/else 分支内的赋值——分支语义以 `stmts` 为准）。
+    fn flatten_stmt_assigns(
+        stmt: &crate::source::age_component::ComponentStmt,
+        out: &mut Vec<ComponentAssign>,
+    ) {
+        use crate::source::age_component::ComponentStmt;
+        match stmt {
+            ComponentStmt::Assign(a) => out.push(a.clone()),
+            ComponentStmt::If { then, els, .. } => {
+                for s in then {
+                    Self::flatten_stmt_assigns(s, out);
+                }
+                if let Some(e) = els {
+                    for s in e {
+                        Self::flatten_stmt_assigns(s, out);
+                    }
+                }
+            }
+            ComponentStmt::Let { .. } => {}
+        }
+    }
+
     /// `.field (=|+=|-=) expr` 语句 → 赋值行（复合赋值脱糖为二元）。
     fn collect_view_stmt(&mut self, stmt: u32, assigns: &mut Vec<ComponentAssign>) {
         let field = self
@@ -6142,17 +6165,29 @@ impl<'a> Engine<'a> {
             let mut assigns = Vec::new();
             let mut body_foreign = false;
             let mut channel_calls = Vec::new();
+            // PLAN-980 on-if 刀：语句面结构化（序保持）——if 语句进
+            // `ComponentStmt::If`（then/else 递归）；赋值形照旧且同步进序。
+            let mut ordered: Vec<crate::source::age_component::ComponentStmt> = Vec::new();
             let stmt_kind = self.rule_kind_of("age-view-stmt");
+            let if_kind = self.rule_kind_of("age-view-if-stmt");
             for stmt in self.cx.children(c) {
                 if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                    // PLAN-980 WEB #6o/#6p：语句=alt（赋值形/调用形）——解包后
-                    // 判形：age-view-assign-stmt（field/rhs/op 字段）走赋值模型；
-                    // 调用形：callee ∈ widget 头参数=通道调用行（宿主通道 prop，
-                    // 原源 span；实参仅位置形）；否则 body_foreign（④ 外部名面
-                    // 族，fail-closed——976 后继目标域决策）。
+                    // PLAN-980 WEB #6o/#6p：语句=alt（赋值形/调用形/if 形）——
+                    // 解包后判形：assign-stmt（field/rhs/op 字段）走赋值模型；
+                    // 调用形：callee ∈ widget 头参数=通道调用行；if 形=结构化
+                    // 分支；否则 body_foreign（④ 外部名面族，fail-closed）。
                     let inner = self.unwrap_child(stmt);
-                    if self.cx.field_child(inner, "field").is_some() {
+                    if Some(self.cx.tree.kind(inner)) == if_kind {
+                        let if_stmt = self.project_view_if(inner, channel_names, &mut body_foreign);
+                        Self::flatten_stmt_assigns(&if_stmt, &mut assigns);
+                        ordered.push(if_stmt);
+                    } else if self.cx.field_child(inner, "field").is_some() {
                         self.collect_view_stmt(inner, &mut assigns);
+                        if let Some(a) = assigns.last() {
+                            ordered.push(crate::source::age_component::ComponentStmt::Assign(
+                                a.clone(),
+                            ));
+                        }
                     } else if let Some(call_node) = self.cx.field_child(inner, "call") {
                         match self.project_channel_call(call_node, channel_names) {
                             Some(cc) => channel_calls.push(cc),
@@ -6163,12 +6198,8 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
-            // PLAN-981（G2）：widget 形 handler 的语句面 = 赋值集（该形无
-            // hook-local let/if——域外语句走 body_foreign 旧合同，不进 stmts）。
-            let stmts = assigns
-                .iter()
-                .map(|a| crate::source::age_component::ComponentStmt::Assign(a.clone()))
-                .collect();
+            // G2 后语句面=结构化序（赋值+if）；assigns 保持全深度平铺兼容面。
+            let stmts = ordered;
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
                 params: self.handler_params(c),
@@ -7103,6 +7134,70 @@ impl<'a> Engine<'a> {
     /// age-package 裁剪存在；其它裁剪里这些节点不出现）。`if` 的 then/else
     /// 体递归走同一函数；类型注解按 `ann-ty` 词法分类（裸 ident → 名义
     /// record，如 `Sweep2D`；无注解交共享 resolver 推断）。
+    /// PLAN-980 on-if 刀：`age-view-if-stmt` 节点 → `ComponentStmt::If`
+    /// （view-stmt 方言体——带点赋值/嵌套 if/调用形；调用形置 foreign——
+    /// fail-closed 不做部分体）。assigns 深平铺由调用方经
+    /// `flatten_stmt_assigns` 完成。
+    fn project_view_if(
+        &mut self,
+        inner: u32,
+        channel_names: &[String],
+        foreign: &mut bool,
+    ) -> crate::source::age_component::ComponentStmt {
+        let cond_node = self.cx.field_child(inner, "cond").expect("view-if cond");
+        let cond = self.project_expr_sync(cond_node);
+        let then = self.project_view_stmt_children(inner, channel_names, foreign);
+        let els = self.cx.field_child(inner, "els").map(|e| {
+            if let Some(chain) = self.cx.field_child(e, "chain") {
+                // else-if 链：单一嵌套条件（递归）。
+                vec![self.project_view_if(chain, channel_names, foreign)]
+            } else {
+                self.project_view_stmt_children(e, channel_names, foreign)
+            }
+        });
+        crate::source::age_component::ComponentStmt::If {
+            cond,
+            then,
+            els,
+            span: self.cx.span_of(inner),
+        }
+    }
+
+    /// view-if 体（age-view-stmt 子节点，声明序）→ 结构化语句面（赋值 +
+    /// 嵌套 if；调用形置 foreign）。
+    fn project_view_stmt_children(
+        &mut self,
+        node: u32,
+        channel_names: &[String],
+        foreign: &mut bool,
+    ) -> Vec<crate::source::age_component::ComponentStmt> {
+        use crate::source::age_component::ComponentStmt;
+        let stmt_kind = self.rule_kind_of("age-view-stmt");
+        let if_kind = self.rule_kind_of("age-view-if-stmt");
+        let mut out: Vec<ComponentStmt> = Vec::new();
+        let mut sink: Vec<ComponentAssign> = Vec::new();
+        for ch in self.cx.children(node) {
+            if Some(self.cx.tree.kind(ch)) != stmt_kind {
+                continue;
+            }
+            let inner = self.unwrap_child(ch);
+            if Some(self.cx.tree.kind(inner)) == if_kind {
+                out.push(self.project_view_if(inner, channel_names, foreign));
+            } else if self.cx.field_child(inner, "field").is_some() {
+                sink.clear();
+                self.collect_view_stmt(inner, &mut sink);
+                if let Some(a) = sink.last() {
+                    out.push(ComponentStmt::Assign(a.clone()));
+                }
+            } else if self.cx.field_child(inner, "call").is_some() {
+                *foreign = true;
+            } else {
+                *foreign = true;
+            }
+        }
+        out
+    }
+
     fn project_on_stmts(
         &mut self,
         nodes: &[u32],
