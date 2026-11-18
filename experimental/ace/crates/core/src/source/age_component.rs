@@ -49,6 +49,12 @@ pub struct ComponentHandler {
     pub params: Vec<(String, Span)>,
     /// R65-3：是否来自 `on { .Msg -> … }`（widget 形）——该形必须指向已声明消息。
     pub from_widget: bool,
+    /// PLAN-980 WEB #6o：体含**非赋值语句**（调用/let/if——`on_select(next)`
+    /// 等外部名形）。a2ts 发射器按 976 域合同具名拒外部调用
+    ///（`a2ts.foreign-unsupported`）——此类 handler：检查函数不铸（不做
+    /// 部分体 verify）、场景派发具名拒（零效果，fail-closed）、lane 缺席
+    ///（旧道承载）。安全承载需 976 后继的目标域扩展决策（§13.16）。
+    pub body_foreign: bool,
     pub assigns: Vec<ComponentAssign>,
     pub span: Span,
 }
@@ -2158,6 +2164,18 @@ pub(crate) fn instance_stmts(
                 node.span,
             )]
         })?;
+        // PLAN-980 WEB #6o：外部名体（调用/let/if）具名拒——零效果 fail-
+        // closed（a2ts.foreign-unsupported 域合同；部分重放=错状态值，禁）。
+        if handler.body_foreign {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "handler `{}` carries a body outside the checked script domain                      (calls/lets/control flow); a directed event must not run a partial body",
+                    msg
+                ),
+                handler.span,
+            )]);
+        }
         // PLAN-981（IF-981-EVENT-PAYLOAD-B）：arity/载荷类型域在**效果前**拒。
         // `Send` 恒为空载荷——向声明了载荷槽的变体 `Send` 是 arity 域错误，
         // 不能丢参后跑常量体（A 期的具名 unsupported 由此被真实语义取代）。

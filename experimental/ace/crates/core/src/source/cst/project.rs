@@ -5087,6 +5087,7 @@ impl<'a> Engine<'a> {
                         // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
                         params: Vec::new(),
                         from_widget: false,
+                        body_foreign: false,
                         assigns,
                         span: self.cx.span_of(member),
                     });
@@ -5566,7 +5567,12 @@ impl<'a> Engine<'a> {
                     let stmt_kind = self.rule_kind_of("age-view-stmt");
                     for stmt in self.cx.children(inner) {
                         if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                            self.collect_view_stmt(stmt, &mut assigns);
+                            // #6o：语句=alt——解包赋值形（调用形在 lambda 体
+                            // 不合法，保守取 field 缺席跳过）。
+                            let s_inner = self.unwrap_child(stmt);
+                            if self.cx.field_child(s_inner, "field").is_some() {
+                                self.collect_view_stmt(s_inner, &mut assigns);
+                            }
                         }
                     }
                     ComponentEntryValue::Lambda(assigns)
@@ -5847,16 +5853,26 @@ impl<'a> Engine<'a> {
             }
             let msg = self.cx.field_child(c, "msg").expect("widget handler msg");
             let mut assigns = Vec::new();
+            let mut body_foreign = false;
             let stmt_kind = self.rule_kind_of("age-view-stmt");
             for stmt in self.cx.children(c) {
                 if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                    self.collect_view_stmt(stmt, &mut assigns);
+                    // PLAN-980 WEB #6o：语句=alt（赋值形/调用形）——解包后
+                    /// 判形：age-view-assign-stmt（field/rhs/op 字段）走赋值
+                    // 模型；pratt 调用形标记 body_foreign（部分体 verify 禁止）。
+                    let inner = self.unwrap_child(stmt);
+                    if self.cx.field_child(inner, "field").is_some() {
+                        self.collect_view_stmt(inner, &mut assigns);
+                    } else {
+                        body_foreign = true;
+                    }
                 }
             }
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
                 params: self.handler_params(c),
                 from_widget: true,
+                body_foreign,
                 assigns,
                 span: self.cx.span_of(c),
             });
@@ -5914,12 +5930,15 @@ impl<'a> Engine<'a> {
         ) {
             for c in eng.cx.children(node) {
                 if Some(eng.cx.tree.kind(c)) == stmt_kind {
+                    // #6o：语句=alt——解包赋值形后取字段（调用形无 field，
+                    // lifecycle/watch 体按方言合同不含调用——跳过）。
+                    let inner = eng.unwrap_child(c);
                     let field = eng
                         .cx
-                        .field_child(c, "field")
+                        .field_child(inner, "field")
                         .map(|f| eng.cx.spelling(f))
                         .unwrap_or_default();
-                    if let Some(rhs) = eng.cx.field_child(c, "rhs") {
+                    if let Some(rhs) = eng.cx.field_child(inner, "rhs") {
                         // R60-1：同 `value`——`rhs` 是完整表达式，不再 unwrap 成首原子。
                         let expr = eng.project_expr_sync(rhs);
                         out.push((field, expr));

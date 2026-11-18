@@ -389,32 +389,38 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-node-c-item(profiles: [age-component, age-package], expect: "a `node <Name> { model … on … view … }` declaration") {
             age-node-head(field: "head") {}
             ident(field: "name")
-            // PLAN-981（IF-981-ORIGINAL）：typed 参数列表（仅包面）。
-            opt(profiles: [age-package]) { age-node-params(field: "params") {} }
+            // PLAN-981（IF-981-ORIGINAL）：typed 参数列表（包面完整语义；
+            // PLAN-980 WEB #6o：age-component 侧**语法收全**——widget 头参
+            // 数表（`widget App(on_delete: msg)` 真语料形）可解析；组件面
+            // 按宿主通道 prop 处理（不进字段/handler 语义，投影 §13.16）。
+            opt(profiles: [age-package, age-component]) { age-node-params(field: "params") {} }
             lbrace(same-line: true)
             age-node-c-body(field: "body") {}
             rbrace() {}
         }
         // `( <name>: <type>, … )`——作者参数形，类型交给 AGE 既有类型面。
-        age-node-params(profiles: [age-package], expect: "a parameter list `(<name>: <type>, …)`") {
+        age-node-params(profiles: [age-package, age-component], expect: "a parameter list `(<name>: <type>, …)`") {
             lparen() {}
             age-node-param(field: "first") {}
             many { age-node-param-tail() {} }
             rparen() {}
         }
-        age-node-param-tail(profiles: [age-package]) {
+        age-node-param-tail(profiles: [age-package, age-component]) {
             comma() {}
             age-node-param() {}
         }
-        age-node-param(profiles: [age-package]) {
+        age-node-param(profiles: [age-package, age-component]) {
             ident(field: "name") {}
             colon() {}
             age-param-ty(field: "ty") {}
         }
         // 参数类型：内建类型词或名义类型名（`float`/`Material2D`）。
-        age-param-ty(profiles: [age-package]) {
-            alt { float-kw(field: "word") {} }
-            alt { f32-kw(field: "word") {} }
+        // PLAN-980 WEB #6o：float/f32 词仅包面保留字——age-component 侧
+        // 参数=宿主通道 prop（不参与字段/handler 类型语义），松散 ident
+        // 臂收全拼写（`msg`/`f64`/`float` 等 ident 词均按名承载）。
+        age-param-ty(profiles: [age-package, age-component]) {
+            alt(profiles: [age-package]) { float-kw(field: "word") {} }
+            alt(profiles: [age-package]) { f32-kw(field: "word") {} }
             alt { int-kw(field: "word") {} }
             alt { i32(field: "word") {} }
             alt { bool(field: "word") {} }
@@ -542,6 +548,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             lbrace(same-line: true, cut: true) {}
             // R61-1：watch 体允许单行与多语句（`many` 不强制换行）；语句以 `.`
             // 开头，pratt 在下一个 `.` 处自然停下。
+            // PLAN-980 WEB #6o：`;` 单行分隔（`.n = next; on_select(next)`
+            // 真语料形）。多步 opt 不受支持——分号归子规则。
             many { age-view-stmt() {} }
             rbrace() {}
         }
@@ -556,10 +564,28 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-980：widget DSL 语句子集——`.field (=|+=|=) <expr>`。
         age-view-stmt(profiles: [age-component, age-package]) {
+            alt { age-view-assign-stmt() {} }
+            // PLAN-980 WEB #6o：调用语句（`on_select(next)`——回调/外部
+            // 调用形；**语法收全**：携带进 handler 体模型标记
+            // body_foreign，检查函数不铸/派发具名拒（fail-closed——
+            // a2ts.foreign-unsupported 域合同，§13.16）。赋值形在前（PEG
+            // 首匹配），`.field = x` 不落入本臂。组合器约束：alt 内不可
+            // 混排非 alt 子步——`;` 分隔归各子规则尾。
+            alt(profiles: [age-component]) { age-view-call-stmt() {} }
+        }
+        age-view-assign-stmt(profiles: [age-component, age-package]) {
             dot() {}
             ident(field: "field")
             age-assign-op(field: "op") {}
             pratt(of: "wide-ops", field: "rhs")
+            opt { age-stmt-semi() {} }
+        }
+        age-view-call-stmt(profiles: [age-component]) {
+            pratt(of: "wide-ops", field: "call") {}
+            opt { age-stmt-semi() {} }
+        }
+        age-stmt-semi(profiles: [age-component, age-package]) {
+            semi() {}
         }
         age-assign-op(profiles: [age-component, age-package]) {
             alt { age-op-assign() {} }

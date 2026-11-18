@@ -107,11 +107,11 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // PLAN-980 WEB #6m（2026-11-18 具名重基线）：widget 工程面语法收
         // 敛——事件键修饰符链（age-event-key，双 AGE 面）+ age-component 侧
         // 事件绑定调用形（age-event-binding）与元素括号属性行
-        // （age-element-props-block）。前值 96ecc437…（#6i 语义差重基线后）
-        // 随本批漂移；其余 13 profile 逐字节不变（下表仍与冻结值相等）。
+        // （age-element-props-block）。前值 96ecc437…→1fb56340…（#6m）→f35cf593…
+        //（#6o：头参数表/`;`/调用语句语法收全）随批漂移；其余 13 profile 逐字节不变（下表仍与冻结值相等）。
         (
             SourceProfile::AgeComponent,
-            "1fb56340d58904d8919d7eaf1aec0a7fe2c32ee3e66ec3c65101fa96708a3c8b",
+            "f35cf5934cbadd2524c81de925af1d2c24187ba1d869a09ffc0e6e372b8128a7",
         ),
         (
             SourceProfile::AgeH0,
@@ -176,6 +176,6 @@ fn p981_age_package_grammar_id_is_frozen() {
     // 族（事件键修饰符）进 age-package 面——前值 14561796… 随本批漂移。
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "874a32e1d8f8c66e444b2005914b3d3928282a84844e8cd09b19ca422eed87d7"
+        "6c1bb4778a800a865ef0ddb6166d1a8dbd358eecd73ce1ccf0e5445c1005d587"
     );
 }
