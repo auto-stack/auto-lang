@@ -15437,7 +15437,10 @@ F:{d}
             || self.profile == SourceProfile::Scheduler
             // PLAN-1026: the py training lane (a use.py program under
             // Aggregates) admits the same console calls for its body.
-            || (self.profile == SourceProfile::Aggregates && self.py_context))
+            // PLAN-982 (Q-982-2 step 2): the sys script lane — plain
+            // Aggregates app faces gain the same console calls; the run's
+            // console host (capture or direct) is the door's choice.
+            || self.profile == SourceProfile::Aggregates)
             && matches!(callee.name.as_str(), "print" | "eprint" | "say")
         {
             if rargs.len() != 1 || rargs.iter().any(|a| a.name.is_some()) {

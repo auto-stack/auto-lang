@@ -3590,15 +3590,21 @@ impl Verifier {
                 .any(|d| matches!(&d.kind, hir::DefKind::Foreign { .. }));
             for d in &m.defs {
                 // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
-                // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；
-                // console 拼写（auto.console.*）仍只在 host-console 画像。
+                // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面。
                 // PLAN-973: 装配 aggregates 面（std 系统库集 sysplat_win/lnx
                 // 的平台原语包装）同样准入；能力/授权仍由运行准入层核。
-                let platform_in_packages =
+                // PLAN-982（Q-982-2 第二步）: console 拼写（auto.console.*）
+                // 在包装配面同样准入（sys 脚本车道的 print/eprint/say——
+                // 冻结 stdlib 模块不用 console 符号，此放宽只让先前报错的
+                // 调用前进到运行准入层）。
+                let packages_domain =
                     self.domain == HirDomain::TextRecord || self.domain == HirDomain::Closures;
                 if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
-                    if (symbol.starts_with("auto.console.") && !sched_module && !py_lane_module)
-                        || (symbol.starts_with("auto.platform.") && !platform_in_packages))
+                    if (symbol.starts_with("auto.console.")
+                        && !sched_module
+                        && !py_lane_module
+                        && !packages_domain)
+                        || (symbol.starts_with("auto.platform.") && !packages_domain))
                 {
                     self.error(
                         "host.profile",

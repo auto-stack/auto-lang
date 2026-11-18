@@ -925,6 +925,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // grant (the per-run argv op; the cmdline-read imports
                         // accept it at the run-time grant ledger).
                         | crate::platform_io::CAP_PROC_ARGV
+                        // PLAN-982 (Q-982-2 step 2): the sys script lane's
+                        // console print/eprint/say imports (stream grants
+                        // checked at the run-time ledger).
+                        | crate::host::STDOUT
+                        | crate::host::STDERR
                         // sys-library units stage through io/mem primitives
                         | crate::platform_io::CAP_WRITE
                         | crate::platform_io::CAP_MEM

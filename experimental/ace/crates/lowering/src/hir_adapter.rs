@@ -634,18 +634,14 @@ fn lower_checked_collection_family(
                         env: None,
                     });
                     def_map.insert(di as u32, CalleeRef::Import(idx));
-                } else if symbol.starts_with("auto.console.")
-                    && (module.defs.iter().any(|d| {
-                        matches!(&d.kind, hir::DefKind::Intrinsic { symbol: s, .. }
-                            if s.starts_with("__sched_"))
-                    })
-                        // PLAN-1026: the py training lane — console print
-                        // intrinsics in a foreign-carrying closures module
-                        // (the py-bridge adapter ops + print).
-                        || module.defs.iter().any(|d| {
-                            matches!(&d.kind, hir::DefKind::Foreign { .. })
-                        }))
-                {
+                } else if symbol.starts_with("auto.console.") {
+                    // PLAN-968/1026 historically admitted console print
+                    // intrinsics for the scheduler/py lanes only; PLAN-982
+                    // (Q-982-2 step 2) makes the collections-family admission
+                    // general — the sys script lane's plain aggregates app
+                    // faces carry print/eprint/say. The host-import
+                    // declaration carries the stream capability and run-time
+                    // admission stays the authority.
                     let sig =
                         owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                     let h = ace_av_core::host::declaration(symbol, sig)
@@ -3083,6 +3079,13 @@ fn owned_type_idx_of(
                     // (Unit results) in a foreign-carrying module.
                     || m.defs.iter().any(|d| {
                         matches!(&d.kind, hir::DefKind::Foreign { .. })
+                    })
+                    // PLAN-982 (Q-982-2 step 2): the sys script lane —
+                    // console print/eprint/say intrinsics (Unit results)
+                    // in plain aggregates app modules.
+                    || m.defs.iter().any(|d| {
+                        matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("auto.console."))
                     }) =>
             {
                 Ok(out.intern_type(MirType::Unit))
@@ -4776,10 +4779,19 @@ k 0
                         hir::DefKind::Intrinsic { symbol, .. }
                             if ace_av_core::config_document::is_config_symbol(symbol)
                     );
+                    // PLAN-982 (Q-982-2 step 2): the sys script lane — a
+                    // console print/eprint/say callee takes the same
+                    // host-import path in a plain aggregates app module.
+                    let console_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if symbol.starts_with("auto.console.")
+                    );
                     if self.out.is_host_console_profile()
                         || sched_module
                         || platform_callee
                         || config_callee
+                        || console_callee
                         // PLAN-1026: the py lane — console/py intrinsics in
                         // a foreign-carrying closures module.
                         || self
