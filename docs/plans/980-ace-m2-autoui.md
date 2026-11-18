@@ -1535,6 +1535,29 @@ next_responsible_role: review（U01 首切片批级复核）→ merge（phase fo
 
 **交接 981（按版本，reviewed_commit 绑定）**：①源/夹具：`ace-node-counter`（002 派生）、`ace_node_desktop` 测试内 `input_fixture`（U01 输入形）；②命令：`cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1`（CPU 11/11）；排窗=`AUTO_UI_ACE_NODE_E2E=1` + prep（exe `--prep-only`）；③oracle：`p980_u01_input_text_numeric_reject_and_two_instance_isolation`（四 oracle）、`p980_u01_window_input_e2e`（真窗）、`p980_node_desktop_permission_revocation_refuses_before_dispatch`（撤权）。981 仍缺=**typed UI/资源宿主面**与**980 合流 oracle**（本折只交输入子面；合流 oracle 待 ④-A/W1 全分母），已有证据先接、缺项继续跟踪。
 
+**#14 可独立复验最小集（UI 侧 + 真窗；判据=输出数字，不采信摘要）**
+
+```
+# 0) 准备（排窗档需要真窗 exe；CPU 档不需要）
+cargo build -p auto-ui-runtime --features ace-bridge --example ace_node_desktop_window
+./target/debug/examples/ace_node_desktop_window.exe --prep-only        # 退出码 0
+
+# 1) CPU 全套（reviewed ui 91d549ea）
+cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1
+#   期望：11 passed（含 permission 撤权、U01 输入四 oracle；两条 env-gated 窗口档未排时 ok）
+
+# 2) 真窗键入档（U01 输入）
+$env:AUTO_UI_ACE_NODE_E2E='1'
+cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1 p980_u01_window_input_e2e
+#   期望：1 passed，finished in ≈6.4s；证据 JSON 断言 i0 note=你好 Auto/count=42、abc 具名拒、i1 note=乙侧/count=-5
+
+# 3) 真窗计数档（回归对照）
+cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- --test-threads=1 p980_node_desktop_window_e2e_counter_full_script
+#   期望：1 passed，≈2.2s
+```
+
+语言侧对应 `cargo t ace-source ace-av`（reviewed lang `95b0ccb49`，双 PASS）。若某档数字不符，先核 `git rev-parse HEAD` 与上文 reviewed_commit 一致，再按跑法差异（串行/环境门）归因，不以父 exit 0 代替子项数字。
+
 2026-11-18 stage: design-probe（④-A 首切片选例实测；仅临时探针，探针与 harness 注册已删净，零产品代码）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **blocked-on-routing（实测发现 ④-A 前置=包面 widget 体表面补齐）** | 证据：`plan-artifacts/plan-980/closure-surface-probe-20261118.txt`（原始输出+35 例规模）| 结论：age-package 面缺 顶层 `style`（20/35）、payload msg（17/35）、反引号文本（2/35）；001 唯一可编译且无 helper；`msg{A,B}`/`design`/`use m.n: A,B+msg` 在包面 OK。⇒ ④-A 顺序建议改为 S0.5a 表面补齐 → S0.5b 惰性绑定 → S1 真实例 helper+AV/TS。路由选项 §10 R1/R2/R3，未裁定前不改 grammar/身份、不以合成 fixture 冒充。| 清理核对：`zz_probe_980_closure.rs` 删除、`tests/conformance.rs` 还原；worktree clean。
 
 2026-11-18 stage: revision（④-A 入口同步 + 形状准入补测 + 代码顺序落档；用户复核接受 981 修正）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **合同同步完成，代码未动** | ①同步：用户接受"多模块闭包整体走 `age-package`、作者保原 `use` 拼写"；§5 三方案 A 与 v0 条款改标历史、D-④-2 原行标"已被裁定结果取代"；S8 增用户最小验收三件（未引用 `themes` 不拉模块／被引用 helper 改结果／缺模块·缺符号·私有符号具名拒；引用驱动限 ④-A 符号导入、普通包面初始化语义不变）。②补测（包面真实形状）：`ace-node-counter`/`ace-hello-minimal`/001/legacy-on-block/canonical-msg-named **全 OK** ⇒ 形状墙不是 `widget`/`node` 或 `on` 块，而是匿名 payload msg（17/35）、顶层 style（20/35）、反引号（2/35）、package block（5/35）、`$`（026）。③代码顺序：**点分 `use` 投影 + 惰性绑定同批**（单加投影→34/35 例 eager 全红；单加惰性→无输入）→ 在已可解析真实例派生源接入真实 helper 验三判据 → AV 真窗 → 同源 SFC。④未完前置：整例真实源仍需 S0.5a 表面补齐（§10 R1/R2/R3 待裁）。| 未改 grammar/身份/产品代码；探针删净、harness 还原、worktree clean。
