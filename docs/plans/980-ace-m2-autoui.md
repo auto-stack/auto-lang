@@ -1704,6 +1704,18 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **具名发现（预存缺陷，非本刀引入）。** ①**旧道生成器 `oninput: .Msg($event)` 双重解包**：模板预取 `$event.target.value`+脚本体再 `e.target.value` ⇒ 每击键 TypeError（v-model 掩盖状态面）——**真实部署件同形**（jade-garden front/src/components/QuickSwitcher.vue:144 实证），rig 具名容忍+此处台账；修复归属=生成器 input 面刀（B-WEB 生成器道）。②node Temp host.mjs 竞态族再现 1 次（隔离重放绿，r16 台账同族）。③三 rig 路径归一修复（正斜杠目录参数下 `file.startsWith(dir)` 假阴性 404——cargo 传反斜杠临时目录时掩盖）。
 
+2026-11-18 stage: work+merge（**④-A #7：工具侧读键接线——982 round-184 合同收口（U0 真链最后一环的 980 侧）**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（双道接线+五判据验收）** | delivery: auto-ui master **`4dd2654c`**（merge `aa45ecf4`，纯加法 216+/2−）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①`auto-ui-tools` feature **`ace-vue`**（非默认——792 交付闭包不含 experimental/ace 树，投影面零扩；需 lane 的工具按 `--features ace-vue` 构建）。②键门 `vue.rs::ace_vue_app_sfc(app_at, content)`：`AUTO_UI_ACE_VUE=1` 时经产品入口 `generate_sfc_with_lane_product` 生成 app SFC；三具名拒码=`ace.vue-lane-unsupported`（absent 非空，附缺席清单——run 键下双轨收紧，不静默落 legacy）/`ace.vue-lane-error`（生成失败）/`ace.vue-lane-unavailable`（工具未按 feature 构建）；键未设=`Ok(None)`，legacy 道逐字不变。③**双道接线**：增量 `incremental_compile_changed` Phase-2（app.at Ok 臂换产物，官方 rt 直接写 `gen/front/vue/src/a2x_rt.mjs`）+ 全量 `from_workspace`（根 widget i==0 臂换产物；`VueProject.ace_vue_rt` 字段携带，`write_ace_vue_rt` 于两个 App.vue 写盘点落同目录 rt——SFC 内 `./a2x_rt.mjs` 相对 import 的解析位）。
+
+**验收。** `tests/plan980_ace_vue_tool_wiring.rs`（`required-features=["ace-vue"]`）五判据单函数顺序执行（env 键进程级不可并行切换）：①键关=002 legacy 道零变化（无 rt import/无 rt 文件）+增量有产出；②键开=增量道 App.vue=lane 产物（`a2x_add(count.value, 1)`+显式 import）+官方 rt 落盘（AUTO-GENERATED 头+a2x_add 导出）；③键开=全量道 `app_vue_code`=lane 产物、rt 随 Self、写盘幂等；④键开=F-1 形参遮蔽缺席源（`.Set(n)->{.n=n}`）**双道**具名拒（unsupported+缺席名）；⑤键关=同一缺席源恢复 legacy Ok。1/1 绿（worktree 1.04s；主树 `4dd2654c` 复跑 1/1，155.5s 含 feature 冷编译）；默认构建 `cargo check -p auto-ui-tools` 0 error。
+
+**纪律（诚实）。** 首版提交含 rustfmt 对 vue.rs **预存漂移**的整体重排（123 行无关删除）——已 reset 重做为纯加法；vue.rs 基线 fmt 漂移为预存（本刀不整文件 fmt，避免无关 churn）。
+
+**预存红具名（A/B stash 双向实证与本刀无关）**：tools lib 测试 delivery 投影族 **8 红**（`delivery_projection_strip_and_idempotent`/`p980_delivery_projection_strips_runtime_ace_bridge`（"producer 清单结构漂移，受管判红"）/bundle_end_to_end/gc×2/sidecar/redelivery/foreign_sibling/shell_pack/p060_receipt）+ display corpus **1 红**（"expected 149, got 123"）——带/不带本刀改动计数逐项一致；并行全量下另有 2 例抖动（plan609/plan842——过滤复跑双态绿）。归属=rust_ui/delivery 投影面与 display reader 面（具名待其 owner/下一刀核；本刀不冒充 tools 全套绿）。
+
+**交接 982（去 ignore 前置已备）。** 工具以 `--features ace-vue` 构建后 `auto run --render vue`（分派键原样）即走产品 lane 道；未建面由 `ace.vue-lane-unavailable` 具名拒守。**边界**：真 CLI `0→1→0`+ACE 覆盖=982 去 ignore 用例本体；dev-server/npm 腿未在本刀验证；多 widget app.at 在本键下会经 splice 锚未命中走具名拒（产品入口返回首 widget SFC——多 widget 形=下一刀，不冒充支持）。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
