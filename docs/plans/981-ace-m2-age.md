@@ -921,6 +921,24 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: handoff（UI058 T-04 阻塞请求：AGE GFX 宿主执行端口 `IF-981-GFX-HOST-PORT`）| PLAN-981 r18 | outcome: **request（未实施；归 981 SESSION/LANGUAGE 后续任务）**
+
+**来源/决定**：UI058 T-04 入口核对发现“正常 Node 源 AV 整链”当前无法执行；用户 2026-11-18 裁定路线 A=回 981 owner 补 SESSION/typed 宿主端口（UI058 不先建私有 runner/旁路）。T-03 已交（`auto-ui` commit `7165dbad`，PLAN-058 r7/3-10）；T-04 等待本请求的正式来源。
+
+**缺口证据（只读）**：`lowering/src/hir_adapter.rs:5082` 对 `AGE_GFX_SERVICE_OPS` 的 `AgeGfxLane::HostAlgorithm`（15 op）与 `HostIdentity`（`image2d.png`）在 AV 观察车道具名拒 `lower.age-gfx-lane`；服务表 17 op/6 族/7 端口与 32 credits 已签（`ddbda0228`+`ed8b16e01`）。`experimental/age-ace-session/src/age_session_core.rs`（driver/bridge 共用）只做 AGE package 编译/调度/观察，无 gfx 宿主派发；AV 可执行面仅 `frame2d.at`+端口字段读。UI058 T-03 的中立单元是 driver 旧 API profile `autographics.topdown2d/1`，未接 AGE typed 调用。
+
+**请求交付（981 侧）**：
+1. **AV/SESSION 宿主派发**：HostAlgorithm/HostIdentity 调用点不再一概 `lower.age-gfx-lane` 拒；lower 成受检宿主调用（或 SESSION 派发），保留 import 身份/能力准入/mir_verify 面；无 provider 注册时仍具名拒零效果。
+2. **typed 签名/端口**：严格取 `AGE_GFX_SERVICE_OPS` 与 `AGE_PORT_FIELDS`（Cast2D/Sweep2D/…），不新增第二套拼写/价目。
+3. **provider 注册/生命周期**：SESSION 面注册 provider（每 Run 一个，Stop/Restart 归零），token/失效/世代语义沿 021；`execute_component_def` 观察与宿主派发是同一受检产物。
+4. **预算**：宿主收费接口按 UI058 联冻口径（累计扣费；下一次扣费后累计>32 具名 fault 10、零效果、本 Tick 后续收费调用保持拒绝；按 Tick 重置；attempt 无回退；fault 终止 Run）；端口字段读 0 credit。
+5. **身份**：`image2d.png` 的 HostIdentity（内容 SHA256+len+IHDR）由 host 提供或明确归 host，AV 不伪造。
+6. **永久用例**：同一最小 AGE 源（sweep/segment/row/input/render2d/tick.dt）在 registered fake provider 下 AV 真跑出 typed 结果；未注册/错签名/错 kind/超预算/越界具名拒；改源结果随动；f32 `x=x+vx*dt` 与 gfx 同 Tick 组合。给出实际命令/exit/结果/耗时。
+7. **交接**：交付 commit/SHA、provider 注册签名/ABI、支持域与拒绝码表，UI058 据此实现 provider（T-04）。
+
+**边界**：不改 981 原有 17 op/价目/文法；不要求 A2R/AC 同时接；UI058 不先建私有 runner/旧生成器旁路。UI058 侧记录见 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` §9/§10 D-06。
+
+
 ### 2026-11-18 stage: work（**981 `render2d.spawn` 文法小切片**；用户裁定"先交 spawn 文法小切片，保留原拼写并同步两个 AGE grammar ID"）| PLAN-981 r18 | outcome: **pass** | code_commit `0e6c03c3d` | merge `8f44bbf08`
 
 **交付**：`postfix-step` 增 AGE 两面的 `spawn` 成员位专用臂（`dot r-spawn`，**token 表零新增、021 拼写不动**；scheduler 的 `Task.spawn` 原臂保持）。`age-component` id `f35cf593…`→`19a1376e…`、`age-package` `2d1e0547…`→`0290d0ab…`（`plan981_grammar_scope.rs` 同提交具名重基线；其余 12 邻居与 `age-h0` 逐字不变）。
