@@ -65,7 +65,7 @@ fn p981_gfx_seam_frame_table_types_and_named_errors() {
 /// 误具名拒——算法执行归图形宿主车道（av 侧车道拒测试）。
 #[test]
 fn p981_gfx_seam_query_and_input_typing() {
-    let ok = "node P {\n    msg {\n        Tick\n    }\n    on {\n        .Tick -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn probe(row i32) bool {\n    let q Cast2D = query2d.segment(row, true, 0.0, 0.0, 1.0, 0.0)\n    return q.hit\n}\n\npub fn held() bool {\n    return input.pressed(1)\n}\n\npub fn space() i32 {\n    return input.space()\n}\n";
+    let ok = "node P {\n    msg Msg {\n        Tick\n    }\n    on {\n        .Tick -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn probe(row i32) bool {\n    let q Cast2D = query2d.segment(row, true, 0.0, 0.0, 1.0, 0.0)\n    return q.hit\n}\n\npub fn held() bool {\n    return input.pressed(1)\n}\n\npub fn space() i32 {\n    return input.space()\n}\n";
     let d = compile(ok).expect("query/input service calls verify with typed results");
     let _ = d;
 
@@ -141,3 +141,44 @@ pub fn bad() i32 {
         ),
     }
 }
+
+/// query token 失效语义（差额表 #1b/#6b，021 fault 13 的语言侧缝）：同一
+/// callback 内第二次 query2d.* 使先前 token 绑定失效——此后读旧 token
+/// 具名拒；新鲜读（单查后即读）与重绑刷新照常合法。
+///
+/// **边界（如实）**：今日 age-package 文法的 handler 体只收 `.field = expr`
+/// 赋值（age-view-stmt），`let`/查询调用在 handler 内不可表达，故本缝当前
+/// 的可表达面是 pub fn；走查器遍历全部 Fn 体（含脱糖的 `__age_p_*` 隐藏
+/// fn），文法扩展后同一走查自动覆盖 handler。
+#[test]
+fn p981_query_token_second_query_invalidates_the_first() {
+    // 直线 stale：a 的 token 在 b 的查询后失效，读 a.hit 具名拒。
+    let stale = "node P {\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn two(r i32) bool {\n    let a Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n    let b Sweep2D = query2d.sweep(r, true, 1.0, 0.0)\n    return a.hit\n}\n";
+    let ds = compile(stale).expect_err("reading the first token after the second query is stale");
+    assert!(
+        ds.iter().any(|d| d.code == "source.age.query-token-stale"
+            && d.message.contains("fault 13")),
+        "named staleness rejection: {ds:?}"
+    );
+
+    // 新鲜读：单查后即读，合法（编译通过）。
+    let fresh = "node P {\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn one(r i32) bool {\n    let a Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n    return a.hit\n}\n";
+    compile(fresh).expect("a fresh token read compiles");
+
+    // 重绑刷新：a 重绑为第二次查询的结果后读，合法。
+    let rebound = "node P {\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn rb(r i32) bool {\n    var a Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n    a = query2d.segment(r, false, 0.0, 0.0, 1.0, 0.0)\n    return a.hit\n}\n";
+    compile(rebound).expect("rebinding refreshes the token generation");
+}
+
+/// 循环保守语义：循环体内的查询使外层旧 token 失效（二次迭代语义）——
+/// 循环后读外层 token 同样具名拒。
+#[test]
+fn p981_query_token_loop_query_invalidates_outer_token() {
+    let src = "node P {\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn lp(r i32) bool {\n    let a Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n    loop {\n        let b Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n        return b.hit\n    }\n    return a.hit\n}\n";
+    let ds = compile(src).expect_err("the loop's query invalidates the outer token");
+    assert!(
+        ds.iter().any(|d| d.code == "source.age.query-token-stale"),
+        "named staleness rejection: {ds:?}"
+    );
+}
+

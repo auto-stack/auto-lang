@@ -700,6 +700,11 @@ pub fn compile_age_package_with_scenario(
     if let Some(d) = hidden_name_conflict(&product.bound, &is_injected) {
         return Err(vec![d]);
     }
+    // 3a-bis) query token 失效语义（差额表 #1b/#6b，021 fault 13 的语言侧缝）：
+    //         同一 callback 内第二次 query2d.* 使先前 token 绑定失效。
+    if let Some(d) = check_query_token_staleness(&product.bound) {
+        return Err(vec![d]);
+    }
 
     // 3b) 场景元素种类 + 资源引用：元素必须解析到**真实的** node 声明（冻结叶
     //     除外），`material:`/`tint:` 必须指向**已声明的 AGE 端口**资源。
@@ -2602,3 +2607,273 @@ pub type AgePackageViewOut = ComponentViewOut;
 pub type AgePackageNode = ComponentNode;
 /// 同上（受检文本面的共享类型）。
 pub type AgePackageTextOut = ComponentText;
+
+/// 差额表 #1b/#6b（PLAN-981）：query token 失效语义的**语言侧缝**——同一
+/// callback（每个 fn，含脱糖后的隐藏 handler fn）内，第二次 `query2d.*` 调用
+/// 使**先前**的 query 结果绑定失效（021 fault 13 语义）；此后读旧 token
+/// 具名拒。静态近似：源序走查 + 单调 generation；分支/循环保守处理（循环
+/// 体内的 query 同样使外层旧 token 失效——二次迭代语义）。宿主车道的动态
+/// stale 判定（真实 fault 13 载荷）归 UI058 消费同一语义。
+fn check_query_token_staleness(bound: &super::packages::BoundPackages) -> Option<Diagnostic> {
+    for unit in bound.units.values() {
+        for item in &unit.program.items {
+            let Item::Fn(f) = item else { continue };
+            let mut w = QueryTokenWalk::default();
+            if let Some(d) = w.block(&f.body) {
+                return Some(d);
+            }
+        }
+    }
+    None
+}
+
+#[derive(Default)]
+struct QueryTokenWalk {
+    gen: u32,
+    tokens: std::collections::BTreeMap<String, u32>,
+}
+
+fn is_query2d_call(e: &Expr) -> bool {
+    matches!(&e.kind,
+        ExprKind::MethodCall { recv, name, .. }
+            if matches!(&recv.kind, ExprKind::Var(id) if id.name == "query2d")
+                && matches!(name.name.as_str(), "segment" | "sweep"))
+}
+
+impl QueryTokenWalk {
+    fn stale_read(&self, id: &Ident) -> Option<Diagnostic> {
+        if let Some(bound_gen) = self.tokens.get(&id.name) {
+            if *bound_gen < self.gen {
+                return Some(text_diag(
+                    "source.age.query-token-stale",
+                    format!(
+                        "`{}` holds a query token from before the latest query in this callback; \
+                         the second query invalidated it (021 fault 13 semantics) — re-query and \
+                         read within the same segment",
+                        id.name
+                    ),
+                    id.span,
+                ));
+            }
+        }
+        None
+    }
+
+    fn arg(&mut self, a: &super::ast::Arg) -> Option<Diagnostic> {
+        match a {
+            super::ast::Arg::Pos(e) | super::ast::Arg::MovePos(e) => self.expr(e),
+            super::ast::Arg::Named { value, .. } => self.expr(value),
+        }
+    }
+
+    fn expr(&mut self, e: &Expr) -> Option<Diagnostic> {
+        match &e.kind {
+            ExprKind::Var(id) => self.stale_read(id),
+            ExprKind::MethodCall { recv, name, args, .. } => {
+                for a in args {
+                    if let Some(d) = self.arg(a) {
+                        return Some(d);
+                    }
+                }
+                if let Some(d) = self.expr(recv) {
+                    return Some(d);
+                }
+                if is_query2d_call(e) {
+                    self.gen += 1;
+                }
+                None
+            }
+            ExprKind::Method { recv, args, .. } => {
+                for a in args {
+                    if let Some(d) = self.arg(a) {
+                        return Some(d);
+                    }
+                }
+                self.expr(recv)
+            }
+            ExprKind::Call { args, .. } | ExprKind::ConstCall { args, .. } => {
+                for a in args {
+                    if let Some(d) = self.arg(a) {
+                        return Some(d);
+                    }
+                }
+                None
+            }
+            ExprKind::CallValue { callee, args } => {
+                if let Some(d) = self.expr(callee) {
+                    return Some(d);
+                }
+                for a in args {
+                    if let Some(d) = self.arg(a) {
+                        return Some(d);
+                    }
+                }
+                None
+            }
+            ExprKind::Field { base, .. } => self.expr(base),
+            ExprKind::Index { base, index } => {
+                if let Some(d) = self.expr(base) {
+                    return Some(d);
+                }
+                self.expr(index)
+            }
+            ExprKind::Binary { lhs, rhs, .. } => {
+                if let Some(d) = self.expr(lhs) {
+                    return Some(d);
+                }
+                self.expr(rhs)
+            }
+            ExprKind::Unary { operand, .. } => self.expr(operand),
+            ExprKind::TupleLit(xs) | ExprKind::ArrayLit(xs) => {
+                for x in xs {
+                    if let Some(d) = self.expr(x) {
+                        return Some(d);
+                    }
+                }
+                None
+            }
+            ExprKind::TextDisplay(x)
+            | ExprKind::Await(x)
+            | ExprKind::Go(x)
+            | ExprKind::Propagate { inner: x }
+            | ExprKind::HashExpr { expr: x } => self.expr(x),
+            ExprKind::UnwrapOr { inner, fallback } => {
+                if let Some(d) = self.expr(inner) {
+                    return Some(d);
+                }
+                self.expr(fallback)
+            }
+            ExprKind::Range { start, end, .. } => {
+                if let Some(d) = self.expr(start) {
+                    return Some(d);
+                }
+                self.expr(end)
+            }
+            ExprKind::CtorNamed { fields, .. } => {
+                for f in fields {
+                    if let Some(d) = self.expr(&f.value) {
+                        return Some(d);
+                    }
+                }
+                None
+            }
+            ExprKind::ObjectLit { fields } => {
+                for f in fields {
+                    if let Some(d) = self.expr(&f.value) {
+                        return Some(d);
+                    }
+                }
+                None
+            }
+            ExprKind::GridLit { rows, .. } => {
+                for r in rows {
+                    for x in r {
+                        if let Some(d) = self.expr(x) {
+                            return Some(d);
+                        }
+                    }
+                }
+                None
+            }
+            ExprKind::IsExpr { scrutinee, .. } => self.expr(scrutinee),
+            ExprKind::Closure { body, .. } => match body.as_ref() {
+                super::ast::ClosureBody::Expr(e) => self.expr(e),
+                super::ast::ClosureBody::Block(b) => self.block(b),
+            },
+            // 叶子/类型形/借用形：无子表达式。
+            _ => None,
+        }
+    }
+
+    fn block(&mut self, b: &Block) -> Option<Diagnostic> {
+        for s in &b.stmts {
+            match s {
+                Stmt::Let { name, value, .. } => {
+                    if let Some(d) = self.expr(value) {
+                        return Some(d);
+                    }
+                    if is_query2d_call(value) {
+                        self.tokens.insert(name.name.clone(), self.gen);
+                    }
+                }
+                Stmt::LetDestruct { names, value, .. } => {
+                    if let Some(d) = self.expr(value) {
+                        return Some(d);
+                    }
+                    if is_query2d_call(value) {
+                        for n in names {
+                            self.tokens.insert(n.name.clone(), self.gen);
+                        }
+                    }
+                }
+                Stmt::Assign { target, value, .. } => {
+                    if let Some(d) = self.expr(value) {
+                        return Some(d);
+                    }
+                    // 重绑（含非 query 初值）刷新该名字的 generation——变量
+                    // 不再持有旧 token。
+                    self.tokens.insert(target.base.name.clone(), self.gen);
+                }
+                Stmt::IndexAssign(ia) => {
+                    if let Some(d) = self.expr(&ia.index) {
+                        return Some(d);
+                    }
+                    if let Some(d) = self.expr(&ia.value) {
+                        return Some(d);
+                    }
+                }
+                Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } => {
+                    if let Some(d) = self.expr(value) {
+                        return Some(d);
+                    }
+                }
+                Stmt::Hold { body, .. } => {
+                    if let Some(d) = self.block(body) {
+                        return Some(d);
+                    }
+                }
+                Stmt::If {
+                    cond, then, els, ..
+                } => {
+                    if let Some(d) = self.expr(cond) {
+                        return Some(d);
+                    }
+                    if let Some(d) = self.block(then) {
+                        return Some(d);
+                    }
+                    if let Some(e) = els {
+                        if let Some(d) = self.block(e) {
+                            return Some(d);
+                        }
+                    }
+                }
+                Stmt::While { cond, body, .. } => {
+                    if let Some(d) = self.expr(cond) {
+                        return Some(d);
+                    }
+                    if let Some(d) = self.block(body) {
+                        return Some(d);
+                    }
+                }
+                Stmt::Loop { body, .. } => {
+                    if let Some(d) = self.block(body) {
+                        return Some(d);
+                    }
+                }
+                Stmt::ForIn { iter, body, .. } => {
+                    if let Some(d) = self.expr(iter) {
+                        return Some(d);
+                    }
+                    if let Some(d) = self.block(body) {
+                        return Some(d);
+                    }
+                }
+                Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                // 匹配/尝试语句暂不在本缝内（直线/分支/循环主路径已闭；
+                // 见计划 §9 记录的近似边界）。
+                _ => {}
+            }
+        }
+        None
+    }
+}
