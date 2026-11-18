@@ -81,6 +81,12 @@
   `p982_config_empty_list`（正例）与 `List([I64(1), I64(2)])`（非空）共同钉住值面。
 - **注入**：bool/i32/char/text 可注入并在文档中按名可见；对象/数组注入是
   `ace.config/inject-unsupported`，超 i32 是 `ace.config/inject-range`。
+- **对象字段进文档的正式用法＝按名搬运（2026-11-18 用户裁定 B）**：`obj: { x: 1 }` 之后，
+  `picked: obj["x"]`、`picked: obj.x`、以及节点体的 `app("main") { heap: kernel["heap"] }` /
+  `heap: kernel.heap` **都可用**，目标是拿到**同值**（`p982_config_field_spelling`、
+  `p982_config_field_move` 为永久用例）。**读取为标量**（把 `obj["x"]` 直接当表达式值参与运算）
+  仍缺"标量读"原语（会话只回 i32 句柄），因此**按名搬运是正式用法、读取不是**。
+  注意 FStr 插值里的字段（`"${obj.x}"`）**仍被拒**（`source.type-mismatch`/`source.fstr-syntax`）。
 - **对象字段读取/`cfg.get`/`cfg.merge`/`${obj.field}` 模板**：**经实测修正**——`k["f"]` 只对**体内绑定的局部**成立，**根属性名直接索引会被 bind 期拒**（`source.undefined`，"no local named …"）；FStr 里带引号字符串是 `source.fstr-syntax`；FStr 点形式是 bind 期 `source.undefined`。全部钉在 `p982_config_field_spelling`。**原记录**：
   `${obj.x}` 在 **bind 期**失败为 `stage:"bind", code:"source.undefined"`（"no local named `obj` in scope"），
   永久用例 `p982_config_dot_form`；实现时该用例会自动转为"必须取到字段值"的正例。
