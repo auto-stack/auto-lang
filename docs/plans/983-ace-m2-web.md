@@ -5,7 +5,7 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-18
-plan_revision: 11
+plan_revision: 12
 current_step: 14
 total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-983] Web服务嵌入与实际后端迁移
 
 ## 0. 变更摘要
+
+2026-11-18 r12（C0 CLI + C0‑B 准备）：①**982/EXEC 的 C0 接线已交**（auto-man `6e21bfa`，分支 plan-983-dev）：`auto service --server av` 改为 **auto-web AV 服务宿主**（`serve_av`+`AvServiceEngine` 文件通道，`--api` 显式 AV 源），pre-C0 的 man 自带 TCP 宿主保留为显式 `--server av-direct`（17 例旧用例仍绿）；`ace-candidate` 编译红已解除（lang `ff55579c3`，`cargo check -p auto --no-default-features --features ace-candidate` 绿）。真 CLI 实测：`auto service --server av --api <jade-garden workspace_service.at>` → 真实 bind（port=0）→ `GET /api/workspace` 字节级 JSON → `/__auto/shutdown` 202 → 进程退出 0 → 端口重绑 → 收据 `av_dispatches=2 legacy_dispatches=0`（auto-man `crates/auto/tests/plan983_c0_cli.rs`，0.37s）。②**C0‑B 已备并直连验证**（auto-down `b830e07`）：e2e 增外部后端模式（`JADE_E2E_BACKEND_URL` 跳过 spawn/`open`），新增 `01b-workspace-av-consumption.spec.ts`；临时探针（plan-artifacts）用 982 CLI 启动 AV 后端 + Vite + Chromium 实测——页面发出真实 `/api/workspace` 请求、得 200/root、`#app` 挂载且 **opener 不出现**（未走拦截 stub），无 console error。③**外部红（非本切片）**：auto-ui master `c0035034` 默认特性下 `ace_av`/`ace_core`/`ace_a2x_ts` 未门控 → `cargo test -p auto`（默认特性）不可构建，`plan890_web_consumers` 默认档暂不可跑；归 980/981 F32 窗口配对。**未做**：C0‑B 永久 playwright 跑（worktree 无 node_modules；探针已证页面消费）、U0、四仓整体。B‑CONSUMERS 仍未勾。
 
 2026-11-18 r11（范围增补：C0-A 落地 + U0 备例）：①**C0-A 已交**——消费者仓新增可执行 AV 业务源 `auto-down/jade-garden/back/auto/av/workspace_service.at`（`211b6d5`；`api.at` 的 `get_workspace()` 契约桩旁标注指向），auto-web 增 `AvServiceEngine::new_with_grants`（显式 `platform.file/mem/env`）并加真实 TCP 直连验收用例（`56b3ac5`）：`--test http_runtime` 8/8（新例 0.215s），字节级 200 JSON、null 形态、404 派发前拒绝、重复稳定、shutdown 端口重绑。②**纠正 C0 合同错误**：`wiki_dir` 按 Windows `PathBuf::join` 为 `<W>\wiki`（JSON `\\`），原 `<W>/wiki` 已修。③**U0 备例**（980/WEB UI 腿）：002-counter 浏览器 `Counter: 0→1`，oracle 先例=`p980_web_lane_browser_mount`（未运行）。982 CLI 接线后同一 AV 源再由 `auto service` 真 CLI 复验；C0-B 前端页与 U0 运行仍待。
 
@@ -173,20 +175,24 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 | 接口 | 状态 | 本首例用途 |
 |---|---|---|
 | 983/AVSERVICE：`auto_web::serve_av` + `AvServiceEngine`（文件通道；`#[api]` 路由、404/501、shutdown；2026-11-18 增 `new_with_grants` 显式 grants） | **已交付**（auto-web `3f8de15`；直连切片 `56b3ac5`，m2-web.md B 节） | 承载 `/api/workspace` 的 AV 程序与真实 TCP/配置/生命周期 |
-| 982/EXEC：`auto service --server av`（`resolve_back_api`、真实 TCP、ready 行、receipt） | **部分交付**（982 rounds 149–166；man master `1d26b50`）：现为 man 自带最小 TCP 宿主（文本入口/int 返回，无 auto-web transport/配置/grants） | 需改走 auto-web `serve_av` 并暴露 grant/scratch/入口（见下方 982 请求） |
+| 982/EXEC：`auto service --server av`（**auto-web 宿主** + `--api` 显式 AV 源；`av-direct`=pre-C0 man 宿主保留） | **已交付**（auto-man `6e21bfa`，plan-983-dev；`ace-candidate` 编译红已解除=lang `ff55579c3`） | 真 CLI 启动同一 AV 源：真实 bind/就绪行/收据/控制面关停（`plan983_c0_cli`） |
 | 982/CONFIG：服务配置 `--http-config-inline`（listen/profile/drain） | **已交付**（982/EXEC 面）；配置文档引擎本请求**不用**（jade-garden 后端无 pac.at；本轮配置入口=env+服务配置） | listen/profile/drain/退出；坏配置具名失败、旧工作区零写 |
 | 980/WEB：Vue/TS 表达式后端 | **本首例不用**：jade-garden 前端由 a2ts 生成 + 手写 fetch，不经 auto-ui Vue 表达式面；其未闭项不阻塞 C0，四仓整体验收的 UI 腿须另立 case | — |
 | 983/GENERATED：A2R 生成服务 | **本首例不用**：生成道无平台 I/O/配置读取；生成服务腿由既有 `http_generation` 用例与后续 case 覆盖 | — |
 
 **C0-A 实现与直连验收（2026-11-18 已交）。** 可执行业务源=auto-down `jade-garden/back/auto/av/workspace_service.at`（提交 `211b6d5`；`api.at` 的 `get_workspace()` 契约桩旁已标注指向）：读 `JADE_GARDEN_DEFAULT_WORKSPACE`（`env_get_w16` UTF-16LE）→ UTF-8/JSON 转义（`"`、`\`、控制字符 < 0x20）→ 写响应文件；`wiki_dir` 按 Windows join 语义拼 `\wiki`；只读、每请求关句柄。宿主直连=`AvServiceEngine::new_with_grants`（`platform.file/mem/env`；默认 `new` 授权面不变，提交 `56b3ac5`）。真实 TCP 用例 `http_runtime.rs::c0_workspace_p983::jade_workspace_route_serves_exact_json_from_the_consumer_av_source`（0.215s）：200 字节级 JSON（含 `\\wiki`）、重复请求稳定、未配置 ⇒ `{"root":null,"wiki_dir":null}`、`/api/nope` ⇒ 404 空体（派发前）、shutdown 端口重绑。用例**直接读消费者仓源**（`AUTO_DOWN_ROOT` 或相对 `../../../auto-down`，缺失具名失败），不复制；`--test http_runtime` 8/8 绿（7.92s）。**982 CLI 接线到位后**同一源再由 `auto service` 真 CLI 复验（未做）。
 
-**分期。** C0-A 后端线已交（上段）。C0-B：前端页（`getWorkspace()` 经浏览器/桌面形态消费同一响应；jade-garden 前端产物构建面另核）待验。C1（下一例，将触发 982 组合缺口）：`POST /api/workspace/open`——文本根路径 + 目录创建/索引重建（平台 I/O）+ JSON 入/出，需 982 在同一次调用里组合文本参数与平台 I/O。
+**C0 CLI 复验（2026-11-18 已交，982/EXEC 接线）。** `auto service --server av --dir <project> --api <jade-garden workspace_service.at> --http-config-inline {"listen":{"port":0}}` 真 CLI：真实 bind（内核分配端口）、`AUTO_SERVICE_READY` 就绪行、`GET /api/workspace` 字节级 JSON（`root`/`wiki_dir` 与直连一致）、`POST /__auto/shutdown` ⇒ 202、进程退出 0、端口重绑、收据 `av_dispatches=2 legacy_dispatches=0 same_sdk=true`。实现：`--server av` = auto-web `serve_av` + `AvServiceEngine`（`--api` 显式源；`AUTO_AV_GRANTS` 默认 `platform.file,mem,env`）；pre-C0 的 man TCP 宿主保留为 `--server av-direct`（`plan982_av_http_service` 17/17 + `plan982_service_av_track` 2/2 仍绿）。用例 `auto-man crates/auto/tests/plan983_c0_cli.rs`（0.37s；`--no-default-features --features ace-candidate`）。`ace-candidate` 编译：`cargo check -p auto --no-default-features --features ace-candidate` 退出 0（UsePy 缺臂已由 lang `ff55579c3` 修复）。
+
+**C0-B（前端页）状态（2026-11-18）。** e2e 已备外部后端模式（`JADE_E2E_BACKEND_URL`：跳过 spawn 与 `/open`，只校验真实 `/api/workspace` 的 root；新增 `01b-workspace-av-consumption.spec.ts` 断言真实响应 + `#app` 主视图 + opener 不出现；managed 后端的两条旧用例在外部模式下具名 skip）。临时探针（plan-artifacts，不入库）用 982 CLI 启动 AV 后端 + Vite + Chromium 实测：页面发出真实 `/api/workspace` 请求、200/root、`#app` 挂载、opener 0、无 console error。**永久 playwright 跑未做**：auto-down 组树无 `node_modules`（避免在 worktree 内建 symlink）；待以已入库的 e2e 改动在具备依赖的检出/CI 复跑。
+
+**分期。** C0-A 后端线、C0 CLI 腿、C0-B 页面前端探针均已交。C1（下一例，将触发 982 组合缺口）：`POST /api/workspace/open`——文本根路径 + 目录创建/索引重建（平台 I/O）+ JSON 入/出，需 982 在同一次调用里组合文本参数与平台 I/O。
 
 **U0（UI 腿，980/WEB 消费；2026-11-18 备例）。** 真实交互例=`auto-ui/examples/ui/002-counter`（[app.at](../../../auto-ui/examples/ui/002-counter/src/front/app.at)，初始 `Counter: 0`）：浏览器加载生成的 Vue 页面，点 `+` ⇒ `Counter: 1`，`-`/`Reset` ⇒ `Counter: 0`；DOM 文本逐字断言、无控制台错误。oracle 先例=auto-ui-runtime 浏览器挂载档 `p980_web_lane_browser_mount`（真 002 源 `.Inc` lane 体，41→42；`examples/ui/ace-web-lane/tests/test_lane_browser.mjs`，排窗 `AUTO_UI_ACE_WEB_E2E=1`）。接口：980/WEB——`ui_gen/vue` SFC/表达式与 lane handler 体（切片 #1–#6p 已交；**B-WEB-I/V/R 未勾**，余=真语料全量 spliced 切换 watch/setup/expose/ext_imports/style）；982/EXEC——产品形态需 `auto run`（Vue）真 CLI，候选腿当前对 run 家族具名拒绝、ACE 服务化未交（与 C0 同一 982 交接）；配置=`pac.at`（002 有）+ 应用窗口配置，实际字段随 CLI 腿冻结；983/AVSERVICE/GENERATED 不参与。失败/清理：坏源保旧产物、构建诊断具名；浏览器/服务子进程回收、端口释放、生成 tree 不手改。**现状**：只备例，未运行浏览器档；four-repo 的 UI 腿等 980/WEB 批勾选与 982 `auto run` 接口。
 
 **给 982 的优先请求（EXEC 接口）。** ①`auto service --server av` 的宿主换成 auto-web `serve_av`（同 transport/config/shutdown/ready/receipt；`AUTO_AV_*` 保留为引擎选项）；②API 源路径可显式指定（默认发现 `src/back/api.at` 不变；jade-garden 用 `back/auto/api.at`），无 API 仍具名拒绝、不回退 vm；③暴露 AV 引擎的 grant/scratch（`platform.file`/`platform.mem`，jade-garden 首例还需 `platform.env`）与程序入口；④`--http-config-inline`/配置语义同 `serve_vm`，坏配置零写、失败具名。C/EXPORT 等按自身顺序并行。
 
-**不声称。** C0-A 只证「同一 AV 业务源 + 直连宿主」的字节级语义；982 CLI 腿、C0-B 前端页、U0 运行与四仓整体验收（980/WEB、982/EXEC、实际用到的配置接口）均未完成，按 §6 V-B-CONSUMERS 待所用接口齐备后收口。
+**不声称。** C0-A 证「同一 AV 业务源 + 直连宿主」的字节级语义；C0 CLI 腿证同一源经 982 真 CLI 的可观察行为；C0-B 目前是「e2e 已备 + 临时探针实测页面消费真实响应」——**永久 playwright 跑、U0 运行、四仓整体验收**均未完成。另：auto-ui master `c0035034` 默认特性红（`ace_av`/`ace_core`/`ace_a2x_ts` 未门控）使 `cargo test -p auto`（默认特性）不可构建，`plan890_web_consumers` 默认档暂不可跑——外部（980/981 F32 窗口配对），非本切片引入。
 
 各批I的有界决定门：用该批最小真实正例、同类型非法近邻、一次失败后恢复跑最长producer→consumer链；仅对未决策略比较适用实现再冻结接口，不拿日历/语法深度缩范围。资源由session持候选、generation持已发布产物、在途pin持旧代，last-owner释放；错误/取消/late不得覆盖CURRENT。继承原预算/平台条件，新增资源单位/上限/超限分类在本批I冻结并有边界反例，改变承诺先修合同。
 
@@ -409,7 +415,9 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
   [✅ 2026-11-18 phase review pass @3f8de15（委派独立复核 `gen-reviewer`）] 从 2026-11-17 `fd115ce` 旧双批收据出发：`fd115ce→3f8de15` 八文件增量不含 `ace_a2r_lane.rs`/`api_gen.rs`/`http_generation.rs`/`auto-generation-core`，生成服务 `main` 直接 `axum::serve`（`api_gen.rs:5310`）不构造 `ServiceEngine` ⇒ 不触生成验收结论；AC-B-GENERATED 四项逐条 pass（冷编真 TCP/独立 expected/坏源保旧/子进程终态无自报）。证据：复用同 SHA `http_generation` 3/3（118.56s）＋定向复验 lane 单测 4/4（0.122s）、参数例 9.702s、生成+坏源例 6.793s；F-G1（低，非 AC 缺陷）首跑 19.46/22.53s>10s 系冷建+并发盘压，稳态 ≤10s，owner=B/CONSUMERS 预构建（r7 已名）。见 §9 复核收据。
 
 - [ ] **B-CONSUMERS-I｜M2-B｜owner_stage: work｜AC-B-CONSUMERS/AC-02/03/06**：jade-garden与既有Web生产调用逐行接新SDK；每owner代码独立交付，消费相同source/tool版本，保旧四仓义务。 在§5改面接永久fixture，先冻结前置接口/命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
-  [C0-A 已交 2026-11-18 @211b6d5（auto-down）/ @56b3ac5（auto-web）] 见 §5「C0 首例冻结」：可执行 AV 业务源 `jade-garden/back/auto/av/workspace_service.at`（env→UTF-8/JSON→响应；Windows join `\wiki`；只读）+ `api.at` 指针；auto-web `AvServiceEngine::new_with_grants` 显式 grants；真实 TCP 直连用例（源读消费者仓、不复制）——`--test http_runtime` 8/8（7.92s；新例 0.215s），字节级 200 JSON / null 形态 / 404 派发前 / 重复稳定 / shutdown 端口重绑。**仍未勾**：982 CLI 腿（待接线）、C0-B 前端页、U0（980/WEB UI 腿）运行与四仓整体验收。
+  [C0-A 已交 2026-11-18 @211b6d5（auto-down）/ @56b3ac5（auto-web）] 见 §5「C0 首例冻结」：可执行 AV 业务源 `jade-garden/back/auto/av/workspace_service.at`（env→UTF-8/JSON→响应；Windows join `\wiki`；只读）+ `api.at` 指针；auto-web `AvServiceEngine::new_with_grants` 显式 grants；真实 TCP 直连用例（源读消费者仓、不复制）——`--test http_runtime` 8/8（7.92s；新例 0.215s），字节级 200 JSON / null 形态 / 404 派发前 / 重复稳定 / shutdown 端口重绑。
+  [C0 CLI 已交 2026-11-18 @auto-man 6e21bfa / auto-web 228d775] 982/EXEC：`auto service --server av` 改走 auto-web `serve_av`+`AvServiceEngine`，`--api` 显式源，pre-C0 宿主保留 `av-direct`；`bind_control_plane_shutdown`+收据（av/legacy 计数）。真 CLI 用例 `plan983_c0_cli`（0.37s）：bind/ready/字节 JSON/shutdown 202/退出 0/端口重绑/`av_dispatches=2 legacy_dispatches=0`；`av-direct` 旧用例 17/17+2/2 仍绿；`ace-candidate` 编译绿（lang ff55579c3）。
+  [C0-B 已备+探针 2026-11-18 @auto-down b830e07] e2e 外部后端模式（`JADE_E2E_BACKEND_URL`）+ `01b-workspace-av-consumption.spec.ts`；临时探针实测页面消费真实 `/api/workspace`（200/root、#app 挂载、opener 0、无 console error）。**仍未勾**：永久 playwright 跑（worktree 无 node_modules）、U0、四仓整体（默认特性 man 门被外部 auto-ui 红挡住）。
 
 - [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
@@ -434,6 +442,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-18 stage: work | PLAN-983 r12 | outcome: pass（**C0 CLI 腿 + C0‑B 准备/探针**；B-CONSUMERS 仍未勾）| 用户指令：982 优先修通 `ace-candidate` 并完成 `serve_av` 接线（真 CLI 验 JSON/AV 派发/关停/端口重绑）；983 并行准备 C0‑B（前端断言消费真实 AV 后端）；U0 等依赖齐备。| worktrees/commits: auto-web `.wt/lang-983/auto-web` `228d775`（服务收据 + `bind_control_plane_shutdown`）、auto-man `.wt/lang-983/auto-man` `6e21bfa`（`--api` 显式源；`--server av`=auto-web `serve_av`+`AvServiceEngine`；pre-C0 宿主保留 `av-direct`；`plan983_c0_cli`）、auto-down `.wt/lang-983/auto-down` `b830e07`（e2e 外部后端模式 + `01b-workspace-av-consumption.spec.ts`）；lang 组树 `ff55579c3`（UsePy 修复）、auto-ui 组树 `c0035034`（只读依赖）。| evidence: ①`cargo check -p auto --no-default-features --features ace-candidate` 退出 **0**（UsePy 缺臂红已由 lang `ff55579c3` 解除）；②`cargo test -p auto --no-default-features --features ace-candidate --test plan983_c0_cli` = **1/1**（0.15s；首跑 0.37s）：真实 bind（port=0→14977/6650 等）、`AUTO_SERVICE_READY`、`GET /api/workspace` 字节级 JSON、`POST /__auto/shutdown` 202、进程退出 0、端口重绑、收据 `av_dispatches=2 legacy_dispatches=0 same_sdk=true`；③`--test plan982_av_http_service --test plan982_service_av_track`（`av-direct` + ace-candidate）= **17/17 + 2/2**（旧 man 宿主行为保持）；④`cargo fmt --check`（auto/auto-man-runtime）绿；⑤C0‑B 临时探针（`D:/autostack/plan-artifacts/plan-983/c0b/run-c0b.mjs`）：982 CLI AV 后端（14977/10205）+ Vite（13101）+ Chromium → 页面真实 `/api/workspace` 200/root、`#app` 挂载、opener 0、console error 0 ⇒ `C0B_RECEIPT ok:true`。| 过程记录：man 提交曾因 `cargo fmt` 带入 10 个无关文件的格式噪声，已 `git checkout HEAD^` 复原并 amend（现 `6e21bfa` diff=8 文件 +404/−13，无噪声）。| 外部红（具名，非本切片）：auto-ui master `c0035034` 默认特性下 `ace_av`/`ace_core`/`ace_a2x_ts` 未门控 → `cargo test -p auto`（默认特性）不可构建、`plan890_web_consumers` 默认档暂不可跑；归 980/981 F32 窗口配对（UsePy 红本身已闭）。| 未做：C0‑B 永久 playwright 跑（组树无 node_modules，避免 worktree 内建 symlink；e2e 改动已入库待有依赖检出复跑）、U0 运行、四仓整体验收、`av-direct` 去留（待 982 裁定）。| next: C0‑B 永久跑 + U0 前置（980/WEB 勾选、982 `auto run` 接口）+ B-CONSUMERS → T-05/06/07
 
 2026-11-18 stage: work | PLAN-983 r11 | outcome: pass（**C0-A 切片：AV 业务源 + 直连验收**；B-CONSUMERS 仍未勾）| 用户指令：现在就做 C0-A 的 AV 业务源和直连验收；`api.at` 的 `get_workspace()` 契约桩需可执行实现；982 接线后再跑真 CLI + C0-B；另备一例消费 980/WEB。| worktrees: auto-down `D:/autostack/.wt/lang-983/auto-down`（`211b6d5`）、auto-web `D:/autostack/.wt/lang-983/auto-web`（`56b3ac5`）；auto-man 组树已建（`60321f9`，未改）待 CLI 腿 | 交付：①`jade-garden/back/auto/av/workspace_service.at`——读 `JADE_GARDEN_DEFAULT_WORKSPACE`（`env_get_w16`）→ UTF-8/JSON 转义 → 响应；`wiki_dir` 按 Windows join 拼 `\wiki`；只读、每请求关句柄；`api.at` 契约桩旁标注指向。②auto-web `AvServiceEngine::new_with_grants`（显式 `platform.file/mem/env`；默认 `new` 不变）。③真实 TCP 直连用例（auto-web `http_runtime.rs::c0_workspace_p983`；源读消费者仓，`AUTO_DOWN_ROOT` 或相对 `../../../auto-down`，缺失具名失败）。| evidence: `--test http_runtime` **8/8 绿 7.92s**（新例 0.215s）；字节级 200 JSON（含 `\\wiki`）、重复稳定、未配置 ⇒ `{"root":null,"wiki_dir":null}`、`/api/nope` ⇒ 404 空体（派发前）、shutdown 端口重绑；`cargo fmt --check` clean；回执行 `✓ C0-A workspace receipt: exact JSON ...; null form; 404 pre-dispatch`。| 合同纠正：C0 的 `wiki_dir` 预期由 `<W>/wiki` 更正为 `<W>\wiki`（Rust `PathBuf::join` Windows 实测；JSON `\\`）——原文本错误已修（r11 同次）。| U0 备例：002-counter 浏览器 `Counter: 0→1`（含 `-`/`Reset` 回 0），oracle 先例 `p980_web_lane_browser_mount`（41→42，`test_lane_browser.mjs`）；**未运行**，前置=980/WEB 批勾选 + 982 `auto run` 接口。| 未做：982 CLI 腿、C0-B 前端页、U0 运行、四仓整体验收分母不变。| next: 982 `auto service --server av` 走 auto-web `serve_av` → 同源 CLI 复验；C0-B；U0 待前置
 
@@ -493,7 +503,7 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 
 ## 10. 待澄清事项
 
-**2026-11-18 982/EXEC 优先项（首例 C0 依赖）**：按用户裁定「尽快解锁 983 ⇒ 982 优先交首例实际需要的 EXEC 接口」——`auto service --server av` 需改走 auto-web `serve_av`（transport/config/shutdown/ready/receipt 同 `serve_vm`），API 源路径可显式指定（默认 `src/back/api.at` 不变，jade-garden 用 `back/auto/api.at`），暴露 AV 引擎 grant/scratch（`platform.file`/`platform.mem`）与程序入口；坏配置零写、失败具名、不回退 vm。C/EXPORT 按自身顺序并行，不作本首例前置。详见 §5「首例冻结」。
+**2026-11-18 982/EXEC 优先项（首例 C0 依赖）——已交**：按用户裁定「尽快解锁 983 ⇒ 982 优先交首例实际需要的 EXEC 接口」，auto-man `6e21bfa` 已把 `auto service --server av` 接到 auto-web `serve_av`（`--api` 显式源、grants 可配、ready/收据/控制面关停），pre-C0 宿主保留为 `--server av-direct`；真 CLI 用例 `plan983_c0_cli` 绿。**剩余外部项**：auto-ui master 默认特性红（`ace_av`/`ace_core`/`ace_a2x_ts` 未门控，`c0035034`）挡住 `cargo test -p auto`（默认特性）与 `plan890_web_consumers` 默认档——归 980/981 F32 窗口配对，非本切片引入。C/EXPORT 按自身顺序并行。
 
 **2026-11-18 用户指令（983 先接 auto_web 生产栈）**：本轮已交文本入口切片 B-AVSERVICE-TEXT。两项未触发/未做，按用户口径保留为下一步条件：①「文本参数 + 平台 I/O 同一次调用」——983 首个消费者本轮只用文本；当真实消费者需要组合调用时，把**具体需求**交 982 验证并补齐（982 收据仅覆盖文本参数，组合调用需单独验证）。②完整 JSON（嵌套/浮点/请求头）——等 983 选定真实消费者、明确所需字段后再做，先交实际用到的少量字段。983/CONSUMERS 四仓整体验收仍按计划核对 980/WEB、982/EXEC 与实际用到的配置接口。
 
