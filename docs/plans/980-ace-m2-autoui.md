@@ -1772,6 +1772,20 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **同时入账（981 附带交付）。** 跨模块实例身份修复（包级组件声明序三处统一）——UI058 可把 Target/Player 拆回两真实模块；typed 队列可直接复用（作者内自派发按 host authority 不新增）。
 
+2026-11-19 stage: work+merge（**view-if 刀：组件/包面 view 级条件语句整族落地**（用户指令；981 会签纪律——id 重基线随刀，先例 #6m/P3）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（fp_editor 原样翻转达成）** | delivery: lang master **`f169cf17c`**（merge `d69f29f91`，166+/4−）+ auto-ui master **`ae41e304`**（`b6d54261` 修正版，109+/0−）。
+
+**文法+投影。** ①`age-view-item` 增 `age-view-if/if-then/else` 三规则（两 AGE 面同开；else-if 链=age-view-else 双 alt（各含 else-kw 序列——规避 mixed-children DSL 约束）；then/else 体走子规则 field 定位（防 collect 包装下钻误并））。②`ComponentViewItem::Cond(ComponentViewCond{cond, then_items, else_items, span})` 结构承载（不判真值）；文本叶随 collect 平铺进 texts（绑定验证同覆盖）；五处结构遍历进双子树（lambda 收集（铸造序=源序）/绑定验证/style 替换/字段 manifest/事件绑定收集）。③`view_contains_cond` 助手=渲染腿 fail-closed 判据。
+
+**消费者九文件处置。** lang 6：age_component（枚举+助手+两遍历臂）、cst/project（投影+递归助手——else 臂按 kind 定位具体臂）、cst/frontdoor（绑定验证含 cond 表达式+style 替换遍历）、age_package（计数/事件绑定两臂）、field_manifest（遍历臂）、conformance（注册）；UI 3：**ace_package_sfc=模板腿真语义**（`<template v-if/v-else>`，else-if=嵌套）、**ace_native+ace_node_desktop 双装载点具名拒**（`ace.native/desktop.view-cond-unsupported`——不静默展开/双计）。
+
+**重基线（981 台账同步项）。** grammar-id 两值：age-component `8292feae…`→**`620a0f73…`**、age-package `c0e635d2…`→**`30834de6…`**；13 邻居逐行冻结保持（grammar_scope 4/4 含全表断言）。
+
+**永久用例与验收。** core `plan980_view_if` **4**（四形形状/bare-else 与缺块负控/文本平铺/深嵌可判）；UI pkg-sfc v-if 渲染判据（**4/4**）+ wiring **⑨c：原样 AutoNotes fp_editor.at 经 components 通道产出 lane 组件件**（DraftEdit 体+`../a2x_rt.mjs`）。**语料翻转实测**：fp_editor `.DraftEdit` 全派生（缺席 []）、007 handler 面清（bodies=0/absent=[]）；010（无类型列表字段+on 体 if-else）、quick_switcher（use 块）、005（另墙）不变——各归其既名墙。
+
+**门禁（冻结门实测，worktree 树 `d69f29f91`）。** `cargo t ace-source ace-av`：**ace-source PASS**；ace-av **1411/1414**——3 红全具名：`kv_zip_1064`（ExecutionWall 族，**隔离重放绿**）+ `host_console` ×2（**A/B stash 双向实证预存**——982 console 谱系 owner；`entry_selection_cannot_bypass_main_policy` 与 `owned_front_door_enforces_console_entry_only` 在基线同红）。回归：UI U0 产品/notes fp/jg watch/U0 sfc **7/7**、ace_ts_provider 23/24（node Temp 竞态族隔离重放绿，台账）、**census 表稳定**（合成语料族无 view-if）；主树复验 view_if 4/4+grammar_scope 4/4+wiring 1/1（211.7s 含冷编译）。
+
+**边界（诚实）。** ①本刀=parse+投影+结构遍历+模板腿渲染；**native/desktop 渲染腿条件语义未实现**（装载点具名拒——后续刀）；②010 的 view `style: if..else` 表达式位（age-if-expr）早可用（002 design 先例），本刀不动；③Cond 的 cond 表达式入绑定验证但**不入字段 manifest 出现表**（无 view_cond 槽——具名边界）；④981 台账旧值 `b0ae9d90/ecc64b8e`（其 936 行）与 master 实况的 reconcile 归 981 下轮。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 

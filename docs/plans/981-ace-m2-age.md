@@ -935,6 +935,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 **grammar id 双值具名重基线**（`plan981_grammar_scope.rs` 注明前值与原因）：age-component `8292feae…`→`b0ae9d90…`；age-package `c0e635d2…`→`ecc64b8e…`；13 邻居（age-h0+12 非 AGE）逐字节不变——冻结表全表断言复跑绿（测试本身即证据）。980 按 style 会签条件③在本提交上复跑 `p981_grammar_scope` 并核 diff。
 
+> **980 view-if 刀重基线通知（2026-11-19，lang master `f169cf17c`）**：980 落地组件/包面 view 级条件语句（`age-view-if/if-then/else` 三规则两面同开）——grammar-id 再动：age-component `8292feae…`→`620a0f73…`、age-package `c0e635d2…`→`30834de6…`（13 邻居逐字节不变，`plan981_grammar_scope` 冻结表随刀更新并 4/4 绿）。981 台账 reconcile（含本表 `b0ae9d90/ecc64b8e` 前值链）归 981 下轮会签核对；#6m 先例流程（980 落地+981 复跑核 diff）——`p981_grammar_scope` 在合并树已由 980 复跑绿。
+
 **永久用例**（`plan981_view_if.rs` 9 例，整组 0.04s，远低于 10s 门）：裸 if 投影+span、if/else 双分支子树+叶 span+不进 texts、else-if 嵌套链（嵌套 span 锚内层 if）、元素体/命名 view 内嵌套、非条件近邻负控（既有面不扰动）、states-only 车道过、双文本观察车道具名拒（含 span 判据）、包车道具名拒且**非**解析墙（`source.age.slot` 不在——包面文法接受的判别证据）、普查行。
 
 **门禁**：`cargo t ace-source` **891/891 PASS**（wall 446.2s 含准备/冷编译；条件排除=performance 命名空间+里程碑换挡+1 例既有 ignore `link::tests::run_exe_60s_deadline_bounds_descendant_pipe_hold`，非本批新增）；fmt 后定向复跑受影响模块 41/41 绿；`cargo fmt -p ace-core --check` 全绿（顺带：rustfmt 随 conformance.rs 的 `#[path]` 子模块递归，把两个先前未格式化的 981 用例文件 `plan981_age_package_modules.rs`/`plan981_gfx_seam.rs` 一并格式化——纯 fmt、同计划触面，随批入库）。
