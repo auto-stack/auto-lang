@@ -921,6 +921,28 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**第六批①：跨模块实例身份冲突闭环**；用户裁定优先解 UI058 暴露的跨模块 `ForNode` 失效）| PLAN-981 r18 | outcome: **pass（根因三处、全部 package-global 化；4 条永久用例）** | code_commit `3047b3481`
+
+**用户裁定**：先复现并关闭跨模块实例身份冲突（UI058 实测两模块各自 `node 0` 撞号、`ForNode` 定向失效，用例靠把两 node 放同模块跑通）；验两个目标状态保持 **2:1**、旧实例事件具名拒绝；随后核清「命中目标后作者逻辑向该实例派发事件」能否复用现有 typed 队列，缺的接口交 UI058。
+
+**复现（先测后改）**：两个真实模块各声明一个 node（`main`=Target、`players`=Player），`ForNode{0}×2 + ForNode{1}×1` **编译即拒**——`source.age.component-scenario: the scenario targets node 1 but the package declares 1 component(s)`。与 UI058 实测一致。
+
+**根因（三处对 node 序号空间不一致，全部按包级组件声明序统一）**
+1. **场景声明级核对是逐模块的**：`Send/SendArgs` 的 arity/载荷核对在 `project_packages_front`（**每模块调用一次**）里用**本模块** `nodes` 去索引**包级** `ForNode{node}`，单 node 模块收到 `ForNode{1}` 必然越界。→ 移到绑定器包级聚合点（`bind_packages_face_with` 的 `age_out` 收齐后），新助手 `check_scenario_dispatch_declarations`：越界消息报**包内**组件数、未包裹 `Send` 仍逐组件重放、只对有该 handler 的 node 判 arity/载荷。
+2. **发射用模块局部序号、读回/AV 用包级序号**：`age_components.len()` 是模块局部的，于是第二个模块的 node 0 发射成 `__age_state_0_*`，而描述/AV 期望 `__age_state_n1_0_*`。→ 新增 `node_base` 参数（`parse_package_source_age`→`parse_packages_front_age`→`parse_packages_with`→`project_packages_front`），由绑定器按**之前模块已收候选数**传入，发射名从此是包级序号（单模块 base=0，逐字节不变）。
+3. **AV 观察用有损源名表**：`resolve_symbol` 走 `symbol_of`（源名键，多模块下同名只留一条）。→ 改 `symbol_of_in(module, name)`，仅取不到时回退旧表。
+
+**永久用例**（`av/tests/cases/plan981_cross_module_nodes.rs` 4）：①两真实模块 `ForNode{0}×2+{1}×1` ⇒ Target **2** / Player **1**（独立算术 oracle）；②**模块输入序调换** ⇒ 包级组件序随之调换、`ForNode{1}` 指到 Target（证明定向是包级声明序、不是模块内序）；③越界 `ForNode{2}` ⇒ 具名域错误且计数是**包的**"2 component(s)"；④跨模块未包裹 `Send` 仍重放到两个组件（旧语义不回退，定向失效不会悄悄只喂第一个）。
+
+**typed 队列复用结论（交 UI058 的答复，无需新接口）**：会话层**已经**提供 typed 定向派发——`send_to_component(node, instance, msg)` 与 `send_args_to_component(node, instance, msg, args)`（载荷经唯一 verify、按位绑定、`schedule` **原子重编**：被拒请求不污染既有 schedule；stopped/失效/越界/arity/type 具名拒）。即「命中目标 → 派发事件」在**宿主侧**用现有队列即可完成，组件参数现已是**包级**序号（本批修好的同一事实）。**确实缺失的只有"作者代码内自派发"**（17 个 gfx op 无 dispatch 端口）——那是新服务面的取舍，不阻塞 W1，且把它做成宿主端口会绕过 host authority；本批**不新增**该接口，理由与判罚分工同源（PLAN-938：判罚/算法在宿主侧）。
+**旧实例/旧世代具名拒绝**：越界/不存在组件由包级核对具名拒（用例③）；会话侧 stopped/重启/世代失效沿用既有 R64-10 语义（`send_to`/`send_args_to` 面向 `node`/`instance` 的越界同样走同一条包级核对）。
+
+**门禁（`3047b3481`）**：`cargo t ace-source` **882 PASS**（首次因工具准备期 rustc `STATUS_HEAP_CORRUPTION` 失败，重试 PASS——环境归因，非测试红）；`ace-a2x` **328 PASS**；`ace-av` **1412/1414**——唯一两条红为 `host_console::av_console_{entry_selection_cannot_bypass_main_policy,owned_front_door_enforces_console_entry_only}`，**把本批 5 个文件 stash 后在基面复现同样两条**（依赖 `test-case-batch` 特性的既有漂移，非本批引入），不充"无红 PASS"。core conformance **801/801**。新用例整组 0.04s（远低于 10s 门）。
+
+**⚠ 纪律偏差（如实记录并已补救）**：本批的编辑/构建/测试与提交**发生在主检出 `D:/autostack/auto-lang`（master）上**，违反"实现只在计划 worktree"的红线（原因：本批命令的 workdir 误用了主检出路径）。补救：`plan-981-dev` 已 ff 到 `3047b3481`（不与 master 分叉、无 WIP 残留），本批交付内容与验证绑定在该提交上；**后续批次一律回到 `D:/autostack/.wt/lang-981/auto-lang`**。未做 master 历史重写（并发会话在场，强推风险更高），偏差在此具名。
+
+stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 1 | from: work | to: work | status: executing | outcome: pass（①闭环；②W1 逐组 AV 格待下一轮）| commit: 3047b3481 | next: work（②W1 按组件组跑 V-AGE-WAVE AV 格 → 交 980 B-AV-R）
+
 ### 2026-11-18 stage: work（**第五批：image2d.png owned-Str out 约定 + C record-text f32 值通道**；用户点名第四批两条具名边界）| PLAN-981 r18 | outcome: **pass（两腿均真 cl 实证）** | code_commit `5132ac1e0` | merge `cb459e16a`
 
 **①image2d.png owned-Str out 约定（022 内容身份，冻结）**
