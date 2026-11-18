@@ -56,6 +56,7 @@
 - **影响**：UI058 最小俯视链的移动积分（`x = x + vx * dt`、位置/速度 f32 字段）无法用 Auto 表达；981 §9 的 T-02 联冻表因此把 f32 记为"拼写已冻、能力未交"的 981 前置。
 - **owner/关闭条件**：981 LANGUAGE＋RUST（B-W1/W3 触面）。关闭 = 三处同词 `f32` 落地（文法注解位 ＋ model 字段域 ＋ atom/lowering），AV 与 A2R 各一条真实执行用例（同型四则/比较、字段持有、改值可见），并同步重基线 age-package 的 grammar id（`plan981_grammar_scope.rs` 同提交更新，13 邻居逐字不变）。
 - **状态**：open（不阻塞 ④-A 与 980 首批切片；阻塞 UI058 T-02 的 f32 业务式与 T-04 整链真实移动积分）。
+- **进展（2026-11-18，AV 切片 `be8480cae`，合并树 `6deef24b6`）**：三处里两处已落地——①注解位（`ann-ty`/`ret-ty` age-package f32 臂，grammar id `6c1bb477…`→`2d1e0547…`）；②model 字段（`field_type` → `Float`，两面同码；`ExprKind::TypedLit` 透传是配套真阻塞修复）；③Atom 面补 11 个 f32 BinOp case + `neg_f32`（`x = -vx` 此前在绑定期 `bind.unknown-case`，复审发现后同批修）。AV 证据：`plan981_f32_surface.rs` 5/5（`x = x + vx*dt` 1.0→2.0、全算符表、混宽具名拒），core `plan981_model_field_types` 6/6，981 家族 core 229/AV 28。**仍开**：A2R 腿（用户 2026-11-18 明示"AV 证据可先交 UI058，完整关闭仍按原条件补 A2R 实测"）；`ComponentFieldValue`/auto-ui `AceStateValue`/TS 能力/文本呈现的 F32 跨仓同窗；文本叶呈现 f32；`f64`/`double`。另记录两个已知边界：text-record 描述符的 f32 词汇扩宽为四面共用（非 AGE 面拼写不出 f32，接受）；`uses_f32` 条件发行为启发式（若 f32 经 record/全局进入 text-record 面且行内无 f32 表达式会漏 `t_f32`，今天不可达）。
 
 #### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 
