@@ -1690,6 +1690,20 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **遗留。** f32 双 worktree（`lang-981-f32` 组）已全并入 master、待退役；包桥 F32 仍另案（本窗合同边界不变）。
 
+2026-11-18 stage: work+merge（**④-A #5：U0 产品出口——正式 Vue 生成链的 TS 与 `a2x_rt` 接线**；用户本轮主刀指令）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（002 产物从产品入口启动页面，零夹具注入）** | delivery: auto-ui master **`c035a458`**（merge `f93e94b9`）| worktree lang-980 @ plan-980-dev。
+
+**交付。** `ace_vue_script.rs::generate_sfc_with_lane_product(src, path) -> LaneSfcProduct{sfc, runtime_mjs, lane_bodies, absent}`（`ace-bridge` 门内）：生成器（非测试夹具）承担 U0 夹具两步——①SFC 显式发射 `import { … } from "./a2x_rt.mjs"`（名字=脚本 `a2x_*` 词法整词 ∩ 官方 rt 导出面（rt 源自扫不复制目录），首现序稳定；零引用时不发射）；②官方 `ace_a2x_ts::script_runtime_body` 原样随产物返回（落盘约定=同目录 `a2x_rt.mjs`）。`lang="ts"` 保持——TS 处理由既有 Vue 构建链承担（`auto run` 链=vite；验收 rig 用同族 esbuild 转换）。absent 仍旧道承载（双轨合同不变）。
+
+**验收（去注入）。** `tests/plan980_u0_002_product_sfc.rs` + `examples/ui/ace-web-lane/tests/test_002_product_mount.mjs`：SFC 与 rt 均**产品返回物原样落盘**，rig 零注入（不扫名/不写 import/不供 rt 内容；唯一改写=裸 `'vue'` 说明符 dev-server 式别名——vite alias 同职责）。①CPU 档：import 名集恰=五个被引官方名、rt 为官方产物（AUTO-GENERATED 头）、lane 证据保持（absent 空、a2x 形、`count.value ±= 1` fallback 不在位）。②挂载档（排窗）：页面从产品产物树启动——`Counter: 0`→`+`→**1**→`-`→**0**→`Reset`→**0**→`+,+`→2、零 page error。落主树复跑双档绿（1.82s 挂载）。
+
+**交接。** 982=CLI 启动（`auto run`（Vue）经产品入口/或 tools 链内调；本函数只管生成与运行时依赖）；983=U0 产品验收（同一份产物）。
+
+2026-11-18 stage: work+merge（**④-A #6：B-WEB 真实语料首刀——原样 Jade Garden `quick_switcher.at` 沿产品链 watch 行为验收 + 单文件生成道模块 fn 重挂 + 16 泛错最小复现材料（交 981）**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（watch 路径 9 判据绿；两具名发现）** | delivery: auto-ui master **`5d7725d9`**（merge `15262697`）| worktree lang-980 @ plan-980-dev | 语料=auto-down jade-garden `quick_switcher.at`（219 行，sha256 `8622184a…`，主检 出==组内 sibling；漂移以行数+锚点+生成级断言侦测，缺场具名跳过）。
+
+**交付。** ①`tests/plan980_bweb_jg_watch.rs` + `test_jg_watch_mount.mjs`：原样源经产品出口生成（0 lane/7 缺席——`use {` TS-ext 块命中组件面单文件 use 具名拒（981 合同），lane 覆盖如实记零、行为走旧道）→ 真浏览器 9 判据：open=false 浮层隐藏；`watch(open)`=query 清空+focusSwitcherInput 被调；过滤 'alph'→2 项；ArrowDown→高亮第 2 项；'alphabe'→1 项且 `watch(filtered)` 把 selected_index 归零（高亮回首项）；零预期外 page error。宿主侧 ext stub（组合式 store/热键回调/hotkey 记录）=rig 夹具（真实链路 `@/ext` 别名同职责）。②单文件生成道补**同文件模块 fn 重挂**（`same_file_module_fns` 复刻 vue.rs 链——裸 VueGenerator 丢文件顶层 fn，jade-garden 实测 `filter_files is not defined` 暴露；PLAN-075 同病同修）。③16 泛错最小复现（981 材料，plan-artifacts/min-repro-families.log + style-retest-*.log）：**structure 族**最小复现=`var n = 0`（缺类型）与 `var ns [int] = []`（列表）→ `source.age.structure`（010/012/014）；**slot 族**=`use { package }` 后接 model → `source.age.slot: expected model`（024）；**double 族**=最小例在包面产品入口给**精确具名拒**（`component-unsupported: …supported: int/i32/bool/str/f32`）但整例（003 等）塌缩为 widget 头泛错——**塌缩条件本身=发现**（回滚位掩盖真因，981 修复时须同时修诊断不塌缩）；text-slot 族（005/007/008/009）合成形不触发——真源 view 形状特异，随附全源诊断 span 交 981；use 族 7 例（011/015/016/017/018/027/030）=981 单文件 use 具名拒合同内，无需复现。④**4 例 `$` 词法单列入账**（029/031i/031p/041）：f-string `$` 不在包面词法（组件面先脱糖不受影响）——包面词法域决策归 981（P3 会签同谱系）。⑤census **具名修订 #9**：(75,8,7,23)→**(75,8,8,22)**——lang 基线（981 G1/G2+P3）前进致组件面 lane 派生面变化，**A/B stash 实证与本刀 ui 改动无关**；落主树（lang 更新基线）24/24 复核成立。
+
+**具名发现（预存缺陷，非本刀引入）。** ①**旧道生成器 `oninput: .Msg($event)` 双重解包**：模板预取 `$event.target.value`+脚本体再 `e.target.value` ⇒ 每击键 TypeError（v-model 掩盖状态面）——**真实部署件同形**（jade-garden front/src/components/QuickSwitcher.vue:144 实证），rig 具名容忍+此处台账；修复归属=生成器 input 面刀（B-WEB 生成器道）。②node Temp host.mjs 竞态族再现 1 次（隔离重放绿，r16 台账同族）。③三 rig 路径归一修复（正斜杠目录参数下 `file.startsWith(dir)` 假阴性 404——cargo 传反斜杠临时目录时掩盖）。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
