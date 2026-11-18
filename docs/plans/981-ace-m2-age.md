@@ -962,6 +962,17 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: work（建议 #2 **B-LANGUAGE 语法余量对账** + #3 **V 批预演核对**；纯簿记无代码）| PLAN-981 r18 | outcome: **对账完成——LANGUAGE 语法实现面已基本齐，剩余是等 980 的验证面**
+
+**#2 对账结论（B-LANGUAGE-I 义务 vs 当前文法/已交记录）**
+- **五 view**：全部在 age-package 文法（view/view-2d/view-3d/view-portrait/view-widget）——IF-981-FIELDS 复审时"view-portrait/view-widget 不存在"的记录已过时（后续批交付）。
+- **多呈现选择**：已交——D-981-EXIT-CONTRACT 关闭时落永久用例（`plan981_v_harness` view+view-portrait 并存/方形回退；`plan981_proof_a` View+View2d+View3d 三出口选择）。
+- **if**（fn 体）：condition-expr 在 age-package 面 ✓；**#if**（编译期）：packages-ct 面 ✓（AGE 作者面 CT 用法归该合同）。
+- **Start/Tick/Frame 生命周期**：差额表 #3c 已交（含 Pause/Step/Stop 语义）。
+- **新旧组件互操作**：980 #6i/#6m/#6o 切片在持续交付同一文法面（事件键修饰链/元素属性行/调用语句）；grammar-id 冻结身份重基线由 980 round41→本包 LANGUAGE[A] 的承接记录管辖。
+- **真实余量**＝V-L-* 完整验证与新旧组件组合矩阵（等 980 正式 UI/事件源，见 V_PENDING_INPUTS）——**验证面而非实现面**；此前把"选择/Frame"列为待实现是基于过时读数，特此更正。
+**#3 V 批预演核对**：`V_PENDING_INPUTS` 现 2 项（typed UI/资源宿主面＝R64-10 异步面；980 合流 oracle）——均 980-pending、非本包可动；harness（`plan981_v_harness.rs`）与命令/源/oracle 清单无漂移，"980 就绪即可开跑"状态保持。
+
 2026-11-18 stage: work（**D-981-MODULE-GLOBAL-A2R 关闭批**：用户指令"按照你的建议实施"→建议优先级 #1）| PLAN-981 r18 | outcome: **pass（债务关闭，路线①的 CheckedModule 层实现）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `183e3f653`（再 sync master 22 提交）| code_commit `694908d8c`
 
 **实现（路线①：事实进 CheckedModule，不动 HIR 文本格式）**
