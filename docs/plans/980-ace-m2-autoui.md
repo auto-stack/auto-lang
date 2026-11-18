@@ -1736,6 +1736,8 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **纪律与边界（诚实）。** ①auto-ui 主树复放暂阻：lang 主检出有他会话**未提交半截 WIP**（ace-core `project_packages_front` 签名 6/5 不匹配——packages/frontdoor/binding/av 五文件；本刀 worktree 侧全套绿+落主内容=分支树，主树重放待该 WIP 收口）；②`ace_ts_provider` 23/24（1 红=node Temp 竞态族，隔离重放绿，台账在案）；③AutoNotes 全 app 的 ACE 化仍远（app.at 20 缺席、notes_widget 3 缺席、editor/sidebar 单文件解析卡 sibling 模块导入——跨文件模块解析属④域合同谱系）；④010 主题切换的浏览器内触发件不存在（宿主通道）——以产物面+键下拒清单为证。
 
+2026-11-18 stage: verify（**U0 联合验收收据**，982 代记）| plan_id: PLAN-980 × PLAN-982 | 对签对象：④-A #7/#8 交接面（`AUTO_UI_ACE_VUE` 工具读键＋产品出口＋多 widget）| **闭合**：982 round-188 以 **70e9ec02 配对工具**（auto-ui 主检出该 commit 树上 `cargo build -p auto-ui-tools --features ace-vue`，即当时盘上 exe）跑通**原样 002-counter 真 CLI 链**——真 CLI `auto run --render vue`（候选腿，`AUTO_UI_ACE_VUE=1` 发射可见）→ pnpm（锁文件校验 442ms）→ vite v5.4.21（ready 722ms）→ 真浏览器 `Counter: 0→+→1→-→0`（`+,+`→2、零 page error）；磁盘断言 lane `App.vue`（显式 `from "./a2x_rt.mjs"`＋`a2x_add(count.value, 1)`）＋官方 `a2x_rt.mjs`（AUTO-GENERATED 头，body sha256 `97065d43…`）| 证据：man **`4a7a28e`**（`plan982_u0_vue_run_cli` **3/3**，master 实跑 100.66s 含 bin 构建；`#[ignore]` 已除，`u0_vue_real_chain.mjs` rig 随库）＋lang **`8e94acfaf`**（982 §9 round-188 全文收据）| **解除的 980 具名等待**：#7 交接注记"dev-server/npm 腿未在本刀验证"——真链已验（pnpm+vite+浏览器全链）| 边界保持：983 U0 产品验收消费同一产物树/同一链；工具 feature 非默认（792 交付投影约束，缺失＝具名失败带构建指引）
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
