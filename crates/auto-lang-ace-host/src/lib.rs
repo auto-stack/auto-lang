@@ -42,15 +42,15 @@ use auto_lang_core::{
     AceConsoleReport, AceExecutor, AceOutcome, AceRequest, AceRunReport, AceSpan, AceValue,
 };
 
+/// PLAN-982（B-CONFIG-I E6）：配置文档桥（AceExecutor::eval_config）。
+pub mod config_document;
 /// The engine identity this bridge serves (matches
 /// `auto_lang_core::AceEngineChoice::AceAV`).
 mod debug;
-/// PLAN-982（B-CONFIG-I E6）：配置文档桥（AceExecutor::eval_config）。
-pub mod config_document;
+pub mod project;
 pub mod python_transpile;
 pub mod rust_transpile;
 pub mod script_transpile;
-pub mod project;
 pub mod session_bridge;
 
 pub const ENGINE_ID: &str = "av";
@@ -223,6 +223,45 @@ fn lookup_provider(name: &str) -> Option<Arc<ProviderEntry>> {
 // ---------------------------------------------------------------------------
 
 impl AceExecutor for HostExecutor {
+    /// PLAN-982（983 文本面）：**受检文本入口**——Text profile 编译 → 受检
+    /// lowering → MIR/ABC 验证 → `execute_entry_text`（文本在本次执行的 arena 内
+    /// 分配，借用 `str` 不逃逸）。argv/stdin 的既有拒绝保持不变。
+    fn execute_text(&self, request: &AceRequest<'_>, texts: &[&[u8]]) -> AceRunReport {
+        if !request.args.is_empty() {
+            return denied_report(
+                "ace.args/unsupported",
+                "the AV execution lane has no argv surface; the text entry takes `texts` only",
+            );
+        }
+        let mut caps: Vec<String> = request.capabilities.iter().map(|c| c.to_string()).collect();
+        if !caps.iter().any(|c| c == "ac.runtime.text.v1") {
+            caps.push("ac.runtime.text.v1".to_string());
+        }
+        let product =
+            match ace_core::source::compile_text_source(request.source, "p982-text.at", &caps) {
+                Ok(product) => product,
+                Err(diags) => return diag_list_report(&diags),
+            };
+        let mir = match lower_and_check_entry(
+            &product.checked,
+            request.entry_def_id,
+            request.source,
+            true,
+        ) {
+            Ok(mir) => mir,
+            Err(report) => return report,
+        };
+        let loaded = match wire_admit(&mir, None) {
+            Ok(loaded) => loaded,
+            Err(report) => return report,
+        };
+        let limits = ace_av_core::av::ExecLimits::default();
+        let cancel = ace_av_core::av::CancelFlag::new(false);
+        let (outcome, _trace) =
+            ace_av_core::av::execute_entry_text(&loaded, &limits, &cancel, texts);
+        map_outcome(outcome, None, None)
+    }
+
     /// PLAN-982（B-CONFIG-I E6）：配置文档走 ACE 宿主车道
     /// （compile→lower→verify→ABC→session→execute→export）。没有桥时 SDK 侧
     /// 的默认实现返回 ce.config/executor-unsupported——这里必须真的服务，

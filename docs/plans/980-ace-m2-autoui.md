@@ -18,7 +18,7 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-18 r18当前：PHASE-④-EXT **七项裁定落档**（D-④-1=A 先行、D-④-2=开放符号表导入+981 会签、D-④-3=首切片保留宽数值拒绝、D-④-4=foreign AV 后置、D-④-5=TS 拒粒度维持、D-④-6=host 表不建、D-④-7=小范围验包绑定/保留作者语法）；**981 会签修正实施路径**（`81b0a03b1`：不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入，grammar 零改动），**用户 2026-11-18 复核接受该修正**，④-A 合同转 v2；**形状准入补测**（包面：`ace-node-counter`/`ace-hello-minimal`/001/legacy-on-block/canonical-msg-named 全 OK；墙=匿名 payload msg 17/35、顶层 style 20/35、反引号 2/35、package block 5/35），代码顺序=点分 `use` 投影+惰性绑定**同批**→派生真实例 helper 三判据→AV 真窗→SFC 同源。**U01 #14 已收口落主**（lang `95b0ccb49`/ui `91d549ea`；复核补真窗输入永久 case、修复预存 `#[test]` 丢失；门禁 lang 双 PASS+UI 11/11+24/24+真窗 e2e）。32 任务/12 完成口径、原 AC/V 与规范主体不变。
+2026-11-18 r18当前：PHASE-④-EXT **七项裁定落档**（D-④-1=A 先行、D-④-2=开放符号表导入+981 会签、D-④-3=首切片保留宽数值拒绝、D-④-4=foreign AV 后置、D-④-5=TS 拒粒度维持、D-④-6=host 表不建、D-④-7=小范围验包绑定/保留作者语法）；**981 会签修正实施路径**（`81b0a03b1`：不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入，grammar 零改动），**用户复核接受并选 R1′**（先闭包→派生真实例→AV/SFC；表面补齐并行）；**④-A 首片 #1 已交**（点分 `use` 投影 + 引用驱动导入，lang `0db44dfdf`，四判据绿，981 环用例按 A3 具名更新）；**形状准入补测**（包面：`ace-node-counter`/`ace-hello-minimal`/001/legacy-on-block/canonical-msg-named 全 OK；墙=匿名 payload msg 17/35、顶层 style 20/35、反引号 2/35、package block 5/35）。**U01 #14 已收口落主**（lang `95b0ccb49`/ui `91d549ea`；复核补真窗输入永久 case、修复预存 `#[test]` 丢失；门禁 lang 双 PASS+UI 11/11+24/24+真窗 e2e）。32 任务/12 完成口径、原 AC/V 与规范主体不变。
 
 2026-11-18 r17当前：新增 **PHASE-④-EXT** 设计阶段（§5/§6/§8/§10），产出 use-import/外部调用进受检体的**外部名域合同草案 v0** 供用户/976 后继拍板；32 任务/12 完成口径、B-AV/B-WEB 状态、原 AC/V 与规范主体均不变，本轮零代码/零建树/零运行/零合入。并具名订正 2026-11-18 分母冻结行的宽数值口径（003 `double`×2、011 `float` 去注释 7 处且全在 helper、031i `float`×3 字段漏列）与 35 例导入 census（34/35 含 use、17 例真实引用导入名）。
 
@@ -591,8 +591,9 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 - **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
 - **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
 
-**S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**
-方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
+**交付状态（2026-11-18，R1′ 第 1 步）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 真窗 / S5 同源 SFC 未交**（R1′ 第 2 步，下一片）。**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片，不阻塞本片。
+
+**S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
 
 | 实测 | 结论 |
 |---|---|
@@ -788,7 +789,7 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 ### 阶段 PHASE-④-EXT（2026-11-18 新增；非任务行，不改 32 任务/12 完成口径）
 
 - 依据与内容：§5 PHASE-④-EXT（外部名域合同：名面 N1–N4、六轴、承载矩阵、三方案、条款 C1–C8）+ §5 裁定落档/执行顺序 + ④-A 首切片合同 v1；owner_stage: design→executing（裁定后）。
-- 现状（2026-11-18）：**七项裁定已落**；①U01 #14 **已收口落主**（lang `95b0ccb49`/ui `91d549ea`，phase fold #14，见 §9）；②④-A 首切片：981 已会签（合同 v2，`81b0a03b1`），但本会话真实例实测发现**包面 widget 体表面缺失**（style 20/35、payload msg 17/35、反引号 2/35）⇒ 停在 **§10 R1/R2/R3 路由裁定**（建议 R1：S0.5a 表面补齐→S0.5b 惰性绑定→S1 真实例）；未裁定前不改 grammar/身份；③UI058 T-02/981 联冻为并行线（不自本计划开工）。
+- 现状（2026-11-18）：**七项裁定已落**；①U01 #14 **已收口落主**（lang `95b0ccb49`/ui `91d549ea`，phase fold #14，见 §9）；②④-A：981 已会签（合同 v2，`81b0a03b1`），用户选 **R1′**（先闭包、派生真实例、表面补齐并行）；**首片 #1 已交**（点分 `use` 投影 + 引用驱动导入，lang `0db44dfdf`，四判据绿）——**下一步=AV 真窗 + 同源 SFC**；③UI058 T-02/981 联冻与包面表面补齐为并行线。
 - 退出：④-A 首切片收据（含 AV 真窗与 SFC 映射两格由"推论"变"已验"）→ 逐示例扩展；原任务/AC 不变，切片仍走 §9 收据+phase fold。
 
 ### A最小与B各波唯一任务清单（阶段按行标签）
@@ -1602,7 +1603,17 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 
 执行顺序：①U01 #14 收口（复审+真窗输入+未实跑项记录→合入→按版本交 981 可消费源/命令/oracle）→②④-A 首切片（合同见 §5，待 981 会签）→③UI058 T-02/981 联冻并行（980 WEB 收口不排其前）。
 
-### ④-A 实测阻断与路由请求（2026-11-18，本会话实测；待用户/981 裁定）
+### ④-A 实测阻断与路由请求（2026-11-18，本会话实测；用户已选 **R1′**）
+
+**用户裁定（2026-11-18，R1′）**：先做导入闭包，用**派生真实例**打通 AV 与 SFC；包面兼容补齐**并行**分切片（style/匿名 payload msg/反引号，981 会签文法并同步 grammar ID，按首个未改写示例实际阻断排顺序）；982 并行做带 `str` 实参 AV 执行再接真实 HTTP。`#14` 已落主，输入子面收据可交 981 接收。
+
+2026-11-18 stage: work+merge（④-A 首切片 #1：点分 `use` 投影 + 引用驱动导入；非 fold）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（闭包机制已证；AV/SFC 承载未交=下一片）** | delivery: lang master **`0db44dfdf`**（ff-only，wt-guard clean）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①**点分 `use` 投影**（`cst/frontdoor.rs`）：`age-use-module-item`（`use <module>.<name>: a, b`）此前包面**零投影**，现逐符号落成 `PackageImport{path:[module,name,sym]}`（重复名/导入顺序沿用现有具名拒）。②**引用驱动（惰性）导入**（`source/packages/binding.rs` + 前门）：源前门按"导入项之外的标识符叶"生成 `referenced` 集（注释/字符串/导入行不计），**仅 AGE 面**跳过未被引用的导入（不解析/不建边/不要求模块在场）；`assemble_unit` 装配路径**透传**该集（实测不清空——否则 binds 全空、跨模块调用变 `unknown function`）。其它面保持 eager。③**派生真实例永久用例** `plan980_closure_dotted`：`ace-node-counter` 派生源 + 点分 `use util.steps: step` + 惰性 `use themes.themes: Auto, Solarized`（模块**缺席**）；四判据全绿=模块图 `["app::main","util::steps"]`（themes 不在）、改 helper 源改受检程序、缺模块=`source.module-missing`、缺符号=`source.module-symbol`、私有=`source.module-private`。④**981 环用例按 A3 具名更新**：`p981_module_cycle_is_named` 改为**被引用**导入互指（保"环具名拒"原性质）；原"未引用互指"场景转 980 正例 `p980_lazy_unreferenced_cyclic_imports_do_not_form_edges`（A3 直接推论，不静默弱化原断言）。
+
+**验证。** 目标用例 4/4；`cargo t ace-source` **PASS**（含 981 包面全套 + core conformance 862 例）；changed files fmt clean；探针零残留。
+
+**边界（诚实）。** **S4 AV 真窗与 S5 同源 SFC 未交**（R1′ 第 2 步）；测试源明确标注"由真实例派生"，不宣称整例支持；包面 widget 表面（style/匿名 payload msg/反引号）仍未补（R1′ 并行分切片，需 981 会签文法与 grammar ID 同步）。
 
 §5 S0.5 实测：age-package 面在真实源上缺**顶层 `style`（20/35）**、**payload msg（17/35）**、**反引号文本（2/35）**；001 是唯一可直接编译的真实例且无跨模块 helper。⇒ ④-A 的"真实示例打通"被**表面补齐**前置，导入/闭包工作是其后。
 
