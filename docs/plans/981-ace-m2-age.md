@@ -4,7 +4,7 @@ status: executing
 feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-17
+updated_at: 2026-11-18
 plan_revision: 18
 current_step: 3
 total_steps: 34
@@ -962,6 +962,24 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: review（IF-981-GFX-AV-SEAM **review-D 复验**；独立上下文=fresh session，非 gfx seam 实施会话；静态+运行时+变异自跑）| PLAN-981 r18 | review_scope: batch（gfx seam 修复复验）| outcome: **needs_fix（2 low，F-D1/F-D2；四项修复实质全部成立）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | reviewed_commit `1b70c9e1f`（master fold `ed8b16e01` 第二父即它，修复腿 diff 逐字节一致已核）| base `1c35bbee6`
+
+**四项修复复验（均实质成立）**
+- **① unused-mut**：`resolve.rs` `mut arg`→`arg`。touch 两源文件强制重编 ace-core+ace-lowering（`Checking`×2 → Finished 0.97s）**零警告零错误**。
+- **② ValueCtor AV 准入**：`p981_gfx_seam_av_value_ctor_lowering_admitted` 双向 oracle（前门编译 expect + observe expect_err+串内容断言）PASS 0.180s。**变异重放红**：`if slot_ty != want`→`if false && …` 后该测试精确失败，露出 `mir.aggregate-field-type` 底层兜底 ⇒ 视图缝为**双层 fail-closed**（命名拒 + mir_verify 兜底，永不静默错值），测试有判别力；变异已还原、树净。债务扩围实核：KNOWN-DEBT `D-981-GLOBAL-CLONE-GAP` 含"范围扩展（2026-11-18，IF-981-GFX-AV-SEAM review-D）"段 + 关闭条件（合法视图→拥有构造指令 + frame2d.at 端到端 AV 正例）✓。
+- **③ lane 消息空格**：`lower.age-gfx-lane` 消息内容已收敛单空格 ✓。**④ 弱断言**：arity panic 消息与真实输入一致（3 参 `render2d.frame`）；未知服务断言要求 `message.contains("query2d")` 具名 ✓（实读代码 + 绿跑双证）。
+- **门禁复跑**：nextest `-E 'test(plan981_gfx)'` **7/7 PASS**（AV 4 + 核心 3；单例 0.177/0.178/0.180/0.187/0.200/0.202/0.215s，全部 ≪10s 限）。编译准备 26.38s（test profile；与并发会话 `cargo t ace-source`、lang-980 release 构建共享 CPU，计时含竞争）。lib 零新警告；ace-av test 目标 42 条警告为既有 fixture 常量（本批未触碰，非回归）。
+- 未重验面（复用初审判证据，修复未触碰）：注册表 vs 021/022 spec SHA16 逐项一致、grammar 冻结身份 7/7、master 固定组 ace-source/ace-syntax/ace-av——修复 diff 仅 4 文件（resolve 1 行/hir_adapter/两测试文件），不动登记表与文法。
+
+**新 findings（修复提交 `1b70c9e1f` 自身引入）**
+- **F-D1（low，③同类缺陷再犯）**：`hir_adapter.rs:4400` 新增 `lower.age-gfx-view-arg` 诊断串**内部 5×62 连空格**（`#{si}`⇤62sp⇥`arrives as a borrow view; owned`⇤…）；本提交一边收敛旧 lane 消息同类长空格、一边在新消息重新引入，边界命中时用户直接看到。串内容 rustfmt 不检查，现有门禁不可见。
+- **F-D2（low，diff 卫生）**：同文件 3 行缩进塌成 1 空格（上下文应 ~40 列对齐）：`4302`（`"model3d.glb carries…"`——与原行**逐字同内容**，纯意外重写零语义）、`4420`（`"lower.age-gfx-lane",`）、`4422`（lane 消息行——内容修复正确、缩进丢失）。rustfmt 对超宽行 bail-out 不报告。
+- 扫描收口：两提交新增串内 10+ 空格仅 2 实例（seam 的 lane 消息=③已修；fix 的新消息=F-D1）；塌缩缩进仅 F-D2 的 3 行；测试 fixture（`\n` 转义内缩进）为合法用例源，不计。
+
+**对 handoff 收据的更正**：收据"复审确认干净面：…diff 卫生"一句被 F-D1/F-D2 证伪；其余干净面未被推翻。
+
+**next**：work 在同一树修 F-D1（5 处串内空格→单空格）+ F-D2（3 行恢复对齐缩进）——纯格式 ~5 行零语义变更；重跑 gfx 7/7 后补 fold 提交；UI058 消费侧（T-02/T-03）零影响（接口/语义不变）。981 整包保持 executing，本批复验不开/关任何任务勾选。
+
 2026-11-18 stage: handoff（IF-981-GFX-AV-SEAM 交付：UI058 AV 接面签名/受检投影/车道分类，交 UI058 T-02/T-03 消费）| PLAN-981 | outcome: pass（接面批；M2A-08 后正式在序）
 
 **绑定 revision**：auto-lang master `ddbda0228`（gfx seam 主体）＋review-D 修补 `ed8b16e01`。**实现见该两提交**；差额表见前一条记录（六覆盖项逐列）。
