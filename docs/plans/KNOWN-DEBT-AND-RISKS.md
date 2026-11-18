@@ -4837,3 +4837,11 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 状态：open（不阻塞 1066；批量回归继续具名记录）。
 
 
+
+### D-982-ARGV：ACE 车道 argv 接通阻塞于入口面裁定（PLAN-982 B-EXEC 移交，2026-11-19）
+
+- 事实：legacy `auto <file> [args...]` → `process.args()` List 契约有真实消费者（`examples/a2rs/03_image_scraper.at`）；ACE 宿主具名拒 `ace.args/unsupported`（诚实零回退）；AV 入口合同不收 List 形参（`owned_entry_ok`）且无 argv native。
+- 影响：候选腿下带参脚本被具名拒（不丢参数不回退）；argv 属 B-EXEC 必需面但接通为生产者侧刀。
+- 归属：入口面裁定归 PLAN-982 §10 Q-982-2（用户/生产者裁定：list 形参车道 vs argv native）；CLI 侧接线随裁定即通（参数已送至拒绝点）。验收口径＝顺序/空串/Unicode。
+- 关闭条件：Q-982-2 裁定落定且 ACE 车道 argv 接通用例（顺序/空串/Unicode）绿。
+- 状态：open（不阻塞 B-EXEC 批交付——具名差额；阻塞 argv 面本身）。
