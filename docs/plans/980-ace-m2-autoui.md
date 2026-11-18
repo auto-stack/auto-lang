@@ -1656,6 +1656,16 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **man `ace-candidate` 是否转发 `ace-bridge`——980 决定：不转发。** 理由：桥/lane 依赖 optional 的 UI provider 面（含 iced/`auto-lang-ace-host` 等），man 的 candidate 链只需要 candidate/emit 与时序；转发会把 UI 栈拉进 man 的默认图并放大其 feature 面。若未来 man 某条腿确实需要桥行为，按腿显式启用并具名理由（不在本包预先扩面）。982 可在本提交后复跑 man 链（`plan983_c0_cli` ＋ `plan982_av_http_service`）；本红此前对 C0 的配对 worktree 证据不构成阻塞。
 
+2026-11-18 stage: work+merge（④-A #3：**AGE `view` 树 → Vue SFC 生成 + 真实挂载**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（派生例 0→1→0 真挂载；002 首阻断具名记录）** | delivery: auto-ui master **`166acac0`**（ff-only）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①`ui/ace_package_sfc.rs::generate_package_sfc(units, entry)`（`ace-bridge` 门内）：模板由入口 unit 的组件面候选逐项渲染——`col/row→div`（flex class）、`button/text/input` 保拼写、`style:`→`class`、`onclick/oninput`→`@click/@input` 指向生成的事件函数、文本叶=字面量或 `{{ 表达式 }}`（模板侧 ref 自动解包、无 `.value`）；脚本=`import { ref } from 'vue'` + model `ref(初值)`（标量 CPU 值优先，其余经同一包片段 lane 发射）+ handler（lane 在状态函数内按原 span 发射 RHS，lane 局部名改写为 ref）+ 被调 helper 定义（lane `emit_function_body`，发射名即调用名）+ 最小 `a2x_rt`（add/sub/mul）+ `defineExpose({ __state })`（组件公开状态，供宿主/验收读取，不是测试钩子）。②真实挂载档 `tests/plan980_package_sfc.rs` + `examples/ui/ace-web-lane/tests/test_package_sfc_mount.mjs`：`@vue/compiler-sfc`（inlineTemplate）编译 → 本地 HTTP 供页面（file:// 下 ESM 跨源被拒）→ playwright 挂载真 Vue 3.5 → 点 `+` 得 1、`Reset` 得 0、再两次 `+` 得 2（经 `__state()` 读真实响应式状态）；页面零 page error。
+
+**验证。** 本文件 3/3（含 env-gated 挂载档 `AUTO_UI_ACE_WEB_E2E=1`）；默认 `cargo check -p auto-ui-runtime` 0 error（#2b 的 cfg 门保持）；回归 `ace_node_desktop` 11/11、`plan980_closure_window` 3/3。
+
+**002 首阻断（具名，按用户要求记录）**：未改写 `examples/ui/002-counter/src/front/app.at` 经**包闭包路径**生成 SFC 时首错=`source.lex: unknown character \`\``（反引号模板文本不在 age-package 词法面）。**诚实归因**：002 是**单文件**工程，组件面（`project_component_candidates`/lane）支持反引号；因此这是"生成器走包面"的路径限制，**未必是 002 的语言缺口**。下一刀应决定 U0 走哪条：**A** 加"单文件 SFC 路径"（组件面描述 + lane，绕开包面词法）；**B** 把反引号文本补进包面词法（981 会签、影响面更大）。在决定前不宣称 002 已支持。
+
+**边界（诚实）。** 模板只覆盖标量 model 与元素/文本叶；f-string/反引号文本、列表/存储/组件引用、`design/theme`、条件/循环、样式配方（style 面）不在本刀；`onclick/oninput` 以外的事件键按普通属性跳过（未具名拒——下一刀补）；`defineExpose` 暴露的是字段值快照（非双向绑定）。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
