@@ -34,10 +34,22 @@ fn plan707_spike_cancel_gap_active_job_future_not_stopped() {
 
     let req_id = crate::vm::ffi::stdlib::alloc_async_id();
     let marker = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // PLAN-983 r24：abort 的“已生效”可观测体——future 被 abort 丢弃时
+    // guard 置 dropped。先等取消生效再开 gate，消除 tokio abort 与并发
+    // 唤醒在重负载下的固有窄竞态（隔离 3 绿/门内 3 红与窗口无关）。
+    let dropped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    struct DropGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for DropGuard {
+        fn drop(&mut self) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
     let (entered_tx, entered_rx) = tokio::sync::oneshot::channel::<()>();
     let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
     let marker_for_job = marker.clone();
+    let dropped_for_job = dropped.clone();
     let job = async move {
+        let _guard = DropGuard(dropped_for_job);
         // 通知测试：wrapper 已获 active 许可、job 已开始执行（非排队态）。
         let _ = entered_tx.send(());
         // 等 gate：取消语义必须能打断这个 await。
@@ -58,15 +70,22 @@ fn plan707_spike_cancel_gap_active_job_future_not_stopped() {
     // 取消：引擎超时臂/scope 取消的幂等终结入口。
     crate::vm::ffi::stdlib::drop_async_result(req_id);
 
-    // 打开 gate：若 future 未被中止，它将继续推进并置位 marker。
+    // 等取消**已生效**（future 被 abort 丢弃；重负载下 abort 传播可被
+    // 饿——有界等待只容调度延迟，真取消缺失则超时红，检出力不降）。
+    let drop_deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(
+            std::time::Instant::now() < drop_deadline,
+            "RED（705 缺口）：cancel 后 20s 内 future 未被 abort 丢弃——本地网络 future 未实际停止"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    // 打开 gate：future 已被丢弃，任何 post-gate poll 都不可能发生。
     let _ = gate_tx.send(());
-    // 宽限期：并行负载下 runtime worker 可能被饿数百 ms——取消生效后
-    // aborted task 不再被 poll，marker 恒 false；宽限只覆盖调度延迟。
-    // PLAN-983 r24（2026-11-19）：四仓门并行池下两次实测取消传播被饿过
-    // 2s（隔离复跑双绿、既往门跑绿）——加宽到 8s。oracle 不弱化：真取消
-    // 缺口在首个 post-gate poll 即置位（更长窗口只会更易抓到），真取消
-    // 则 marker 恒 false；代价=本用例 +6s（仍远低于 60s 警告线）。
-    std::thread::sleep(std::time::Duration::from_secs(8));
+    // 宽限期：future 已确认被 abort 丢弃（上方 dropped 观测），marker
+    // 恒 false 是结构保证；短宽限仅覆盖观测与断言间的边角。
+    std::thread::sleep(std::time::Duration::from_secs(1));
     assert!(
         !marker.load(std::sync::atomic::Ordering::SeqCst),
         "RED（705 缺口）：cancel 后 job future 仍在运行并被 gate 唤醒推进——\
