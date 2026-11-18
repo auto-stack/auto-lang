@@ -78,6 +78,10 @@ fn write_record_text_runtime(
     out.write_str("#ifndef A2X_C_RT_RUNTIME_H\n#define A2X_C_RT_RUNTIME_H\n\n")?;
     out.write_str("#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n")?;
     out.write_str(RT_CORE)?;
+    // PLAN-981（A2C f32 常量腿）：类型化数值常量的按位构造器（NaN payload/
+    // -0.0 逐位存活；与 scalar 车道 runtime.rs 同一拼写）。运行时页内容哈希
+    // 入 fragment 键——按设计安全推进，无陈旧碎片复用。
+    out.write_str(RT_NUMCONST_C)?;
     if platform {
         out.write_str(RT_PLATFORM_C)?;
     }
@@ -124,58 +128,97 @@ fn write_gfx_host_declarations(
             // 视图收面即查表——不可达的纵深防御（不伪造原型）。
             continue;
         };
-        // 端口 record 结果的 3 op **不进原型页**（C record 返回 stub 属端口
-        // ABI 的 C 腿；lowering 具名拒，这里同样不替它伪造签名）。
-        if matches!(
-            op.result,
-            ace_core::source::age_resources::AgeGfxResult::Port(_)
-        ) {
-            continue;
-        }
         let name = format!("a2x_gfx_{}", op.callee.replace('.', "_"));
-        let params: Vec<String> = op
+        let mut params: Vec<String> = op
             .params
             .iter()
-            .map(|p| match p {
-                ace_core::source::age_resources::AgeGfxParam::Scalar(
-                    ace_core::source::resolve::VT::I32,
-                ) => "int32_t a".to_string(),
-                ace_core::source::age_resources::AgeGfxParam::Scalar(
-                    ace_core::source::resolve::VT::Bool,
-                ) => "bool a".to_string(),
-                ace_core::source::age_resources::AgeGfxParam::Scalar(
-                    ace_core::source::resolve::VT::F32,
-                ) => "float a".to_string(),
-                ace_core::source::age_resources::AgeGfxParam::Scalar(
-                    ace_core::source::resolve::VT::Str,
-                ) => "a2x_str_view a".to_string(),
-                _ => "int32_t a".to_string(),
+            .enumerate()
+            .map(|(i, p)| {
+                // 参数按位置命名（C 不允许同名参数重复）。
+                let an = format!("a{i}");
+                match p {
+                    ace_core::source::age_resources::AgeGfxParam::Scalar(
+                        ace_core::source::resolve::VT::I32,
+                    ) => format!("int32_t {an}"),
+                    ace_core::source::age_resources::AgeGfxParam::Scalar(
+                        ace_core::source::resolve::VT::Bool,
+                    ) => format!("bool {an}"),
+                    ace_core::source::age_resources::AgeGfxParam::Scalar(
+                        ace_core::source::resolve::VT::F32,
+                    ) => format!("float {an}"),
+                    ace_core::source::age_resources::AgeGfxParam::Scalar(
+                        ace_core::source::resolve::VT::Str,
+                    ) => format!("a2x_str_view {an}"),
+                    _ => format!("int32_t {an}"),
+                }
             })
             .collect();
-        let (ret, note) = match op.result {
+        // 端口 record 结果：**具名 out 指针**（`AGE_PORT_FIELDS` 声明序）——
+        // 宿主只填值、不接触 record typedef（与 AV 的字段序契约同源）；返回值
+        // = 宿主状态（0=成功，非 0=fault 码）。owned-Str 端口字段
+        // （Image2D.sha256）的 out 约定另行联冻——该 op 的原型页**不列**。
+        let (ret, skip) = match op.result {
             ace_core::source::age_resources::AgeGfxResult::Scalar(
                 ace_core::source::resolve::VT::I32,
-            ) => ("int32_t", ""),
+            ) => ("int32_t", false),
             ace_core::source::age_resources::AgeGfxResult::Scalar(
                 ace_core::source::resolve::VT::F32,
-            ) => ("float", ""),
+            ) => ("float", false),
             ace_core::source::age_resources::AgeGfxResult::Scalar(
                 ace_core::source::resolve::VT::Bool,
-            ) => ("bool", ""),
-            _ => (
-                "int32_t",
-                " /* unreachable: port results never reach this page */",
-            ),
+            ) => ("bool", false),
+            ace_core::source::age_resources::AgeGfxResult::Port(port) => {
+                let fields = ace_core::source::age_resources::AGE_PORT_FIELDS
+                    .iter()
+                    .find(|(p, _)| *p == port)
+                    .map(|(_, fs)| *fs)
+                    .unwrap_or(&[]);
+                let all_scalar = fields
+                    .iter()
+                    .all(|(_, t)| matches!(*t, "f32" | "i32" | "bool"));
+                if all_scalar {
+                    for (fname, fty) in fields {
+                        let cty = match *fty {
+                            "f32" => "float",
+                            "i32" => "int32_t",
+                            _ => "bool",
+                        };
+                        params.push(format!("{cty}* out_{fname}"));
+                    }
+                }
+                ("int32_t", !all_scalar)
+            }
+            _ => ("int32_t", false),
         };
+        if skip {
+            continue;
+        }
         let arg_list = if params.is_empty() {
             "void".to_string()
         } else {
             params.join(", ")
         };
-        writeln!(out, "extern {ret} {name}({arg_list});{note}")?;
+        writeln!(out, "extern {ret} {name}({arg_list});")?;
     }
     Ok(())
 }
+
+/// PLAN-981（A2C f32 常量腿）：类型化数值常量的按位构造器——`NumericConst`
+/// 在 record-text 车道的字面量拼写（float 字面量恒经 `a2x_f32_bits(<bits>u)`，
+/// 与 scalar 车道 `numeric_const_c` 同源；NaN payload/-0.0 逐位存活）。
+const RT_NUMCONST_C: &str = r#"
+/* ---- typed numeric constants (bit-exact payload; PLAN-981 A2C f32 lane) ---- */
+static inline float a2x_f32_bits(uint32_t bits) {
+    float out;
+    memcpy(&out, &bits, sizeof out);
+    return out;
+}
+static inline double a2x_f64_bits(uint64_t bits) {
+    double out;
+    memcpy(&out, &bits, sizeof out);
+    return out;
+}
+"#;
 
 /// Frozen runtime core (byte-stable for a crate version).
 const RT_CORE: &str = r#"typedef enum {

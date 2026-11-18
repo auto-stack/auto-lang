@@ -290,6 +290,43 @@ pub fn compile_c_fileset(dir: &Path, exe: &Path) -> Result<(), CToolError> {
     compile_c_fileset_observed(dir, exe).map(|_| ())
 }
 
+/// PLAN-981（A2C 宿主面真 cl 腿）：fileset 编译 + **额外宿主源**（如
+/// `host_stub.c`——宿主 extern 的链接侧实现，与 `main.c`/`generated.c`
+/// 一起进同一次 cl 调用）。冻结的 [`compile_c_fileset`] 是空 extras 的
+/// 同一编译。
+pub fn compile_c_fileset_with_sources(
+    dir: &Path,
+    exe: &Path,
+    extra_sources: &[&str],
+) -> Result<CapturedRun, CToolError> {
+    let tc = resolve_toolchain()?;
+    let mut argv: Vec<String> = C_FLAGS.iter().map(|s| s.to_string()).collect();
+    argv.push(format!("-Fe:{}", exe.display()));
+    argv.push("main.c".to_string());
+    argv.push("generated.c".to_string());
+    for s in extra_sources {
+        argv.push((*s).to_string());
+    }
+    let run = run_via_vcvars(&tc, &argv, dir, C_COMPILE_DEADLINE)?;
+    let out = String::from_utf8_lossy(&run.stdout).into_owned();
+    let err = String::from_utf8_lossy(&run.stderr).into_owned();
+    if run.exit_code != Some(0) {
+        return Err(CToolError(format!(
+            "cl exited {:?}:\n{}\n{}",
+            run.exit_code,
+            out.trim(),
+            err.trim()
+        )));
+    }
+    if !exe.is_file() {
+        return Err(CToolError(format!(
+            "cl reported success but exe missing: {}",
+            exe.display()
+        )));
+    }
+    Ok(run)
+}
+
 /// Same original fileset compile with its original captured process terminal.
 pub fn compile_c_fileset_observed(dir: &Path, exe: &Path) -> Result<CapturedRun, CToolError> {
     let tc = resolve_toolchain()?;

@@ -618,6 +618,11 @@ pub struct AgePackageCompilation {
     /// 脱糖后模块内容的身份（换领域行为即换它；源哈希不含脱糖）。
     pub desugar_hash: u64,
     pub atom_text: String,
+    /// PLAN-981（A2C 宿主面真 cl 腿）：本包的**完整绑定图**——A2X packages
+    /// 车道（`PackageA2xTarget`）经 `PackageProduct` 消费同一受检包；age 车道
+    /// 的调用方据此构造 Product（`CompiledSource` 全 pub 字段 + 本 bound），
+    /// 不重跑第二次绑定。
+    pub bound: super::packages::BoundPackages,
 }
 
 impl AgePackageCompilation {
@@ -828,6 +833,9 @@ pub fn compile_age_package_with_scenario(
         input_hash,
         desugar_hash,
         atom_text: parts.atom_text,
+        // PLAN-981（A2C 宿主面真 cl 腿）：绑定图随产物交出（A2X packages 车道
+        // 消费同一受检包，不重跑绑定）。
+        bound: product.bound,
     })
 }
 

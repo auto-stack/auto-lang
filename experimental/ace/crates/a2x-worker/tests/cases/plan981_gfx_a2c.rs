@@ -134,24 +134,40 @@ fn p981_gfx_a2c_runtime_page_declares_host_externs() {
         &page[page.len().saturating_sub(400)..]
     );
     assert!(
-        page.contains("extern bool a2x_gfx_input_pressed(int32_t a);"),
+        page.contains("extern bool a2x_gfx_input_pressed(int32_t a0);"),
         "bool result signature: {}",
         &page[page.len().saturating_sub(400)..]
     );
     assert!(
         page.contains(
-            "extern int32_t a2x_gfx_render2d_frame(int32_t a, a2x_str_view a, int32_t a, int32_t a);"
+            "extern int32_t a2x_gfx_render2d_frame(int32_t a0, a2x_str_view a1, int32_t a2, int32_t a3);"
         ),
         "frame signature mirrors the checked table (i32, str view, i32, i32): {}",
         &page[page.len().saturating_sub(600)..]
     );
     assert!(
-        page.contains("extern int32_t a2x_gfx_render2d_despawn(int32_t a);"),
+        page.contains("extern int32_t a2x_gfx_render2d_despawn(int32_t a0);"),
         "despawn signature mirrors the checked table: {}",
         &page[page.len().saturating_sub(400)..]
     );
-    // 端口 record 结果的 3 op **不进原型页**（C record 返回 stub 具名延后）。
-    assert!(!page.contains("a2x_gfx_query2d_"));
+    // 端口 record 结果的标量字段 op（sweep/segment）**进原型页**——具名 out
+    // 指针（AGE_PORT_FIELDS 声明序）；owned-Str 端口（image2d.png）不列。
+    let port_page = record_text_runtime_source_with(
+        &[],
+        false,
+        &["age.query2d.sweep.v1", "age.image2d.png.v1"],
+    );
+    assert!(
+        port_page.contains(
+            "extern int32_t a2x_gfx_query2d_sweep(int32_t a0, bool a1, float a2, float a3, bool* out_hit, int32_t* out_node, float* out_t, float* out_origin_x, float* out_origin_y, float* out_normal_x, float* out_normal_y, bool* out_start_overlap);"
+        ),
+        "scalar-field port ops declare named out slots: {}",
+        &port_page[port_page.len().saturating_sub(700)..]
+    );
+    assert!(
+        !port_page.contains("a2x_gfx_image2d_png"),
+        "owned-Str ports stay off the page until the out convention is frozen"
+    );
     // 无 gfx op 的模块不追加该页。
     let plain = record_text_runtime_source_with(&[], false, &[]);
     assert!(!plain.contains("PLAN-981 A2C host face"));
@@ -172,22 +188,43 @@ fn p981_gfx_a2r_lane_named_rejects_host_ops() {
     );
 }
 
-/// 端口 record op（query2d.sweep 等）在 C 车道**具名延后**：record 返回 stub 属
-/// 端口 ABI 的 C 腿（标量宿主面先行；不伪造 record）。
+/// 端口 record op（query2d.sweep/segment——标量字段端口）在 C 车道**发射**：
+/// 具名 out 指针调用 + res 组装 + 宿主状态→typed trap 折叠；owned-Str 端口
+/// （image2d.png 的 `Image2D.sha256`）仍具名延后（见 cl 文件的边界用例）。
 #[test]
-fn p981_gfx_a2c_port_record_ops_stay_named_deferred() {
+fn p981_gfx_a2c_port_record_ops_emit_named_out_slots() {
     let compiled = compile(PORT_SRC);
     let view = SemanticView::from_checked(&compiled.checked)
         .unwrap_or_else(|r| panic!("view admission: {r}"));
     let fns: Vec<_> = view.functions().iter().collect();
-    let err = lower_functions_rt(&view, &fns)
-        .expect_err("the C lane must named-defer port-record host ops");
-    let msg = format!("{err:?}");
+    let cfns =
+        lower_functions_rt(&view, &fns).unwrap_or_else(|r| panic!("C record-text lowering: {r}"));
+    let text: String = cfns.iter().map(print_fragment_rt).collect();
     assert!(
-        msg.contains("age.query2d.sweep.v1") && msg.contains("port-ABI C leg"),
-        "named C deferral: {msg}"
+        text.contains("a2x_gfx_query2d_sweep("),
+        "the port-record host call emits: {text}"
     );
-    // 原型页同样不替它伪造签名。
-    let page = record_text_runtime_source_with(&[], false, &view.gfx_symbols());
-    assert!(!page.contains("a2x_gfx_query2d_sweep"));
+    // AGE_PORT_FIELDS 声明序的具名 out 槽（带唯一计数——同函数多查询不重名）。
+    for slot in [
+        "&s_hit_",
+        "&s_node_",
+        "&s_t_",
+        "&s_origin_x_",
+        "&s_origin_y_",
+        "&s_normal_x_",
+        "&s_normal_y_",
+        "&s_start_overlap_",
+    ] {
+        assert!(text.contains(slot), "out slot {slot} present: {text}");
+    }
+    // 宿主状态 → typed trap 折叠（零效果）。
+    assert!(
+        text.contains("a2x_fwd_") && text.contains("A2X_TRAP_RESOURCE"),
+        "a nonzero host status folds into a typed trap: {text}"
+    );
+    // f32 常量腿：0.5/0.0 走按位构造器。
+    assert!(
+        text.contains("a2x_f32_bits("),
+        "float literals ride the bit-exact constructor: {text}"
+    );
 }
