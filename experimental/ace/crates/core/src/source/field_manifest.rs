@@ -373,7 +373,7 @@ fn walk_view_tree(
                         id: vocab.view_event_entry.clone(),
                         span: v.span,
                     });
-                    if matches!(v.value, ComponentEntryValue::Lambda(_)) {
+                    if matches!(v.value, ComponentEntryValue::Lambda { .. }) {
                         out.push(FieldPresented {
                             id: vocab.view_event_inline.clone(),
                             span: v.span,

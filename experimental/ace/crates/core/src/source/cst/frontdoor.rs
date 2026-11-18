@@ -1145,8 +1145,8 @@ pub(crate) fn project_packages_front(
                                     }
                                     match &en.value {
                                         ComponentEntryValue::Expr(x) => out.push(x),
-                                        ComponentEntryValue::Lambda(asgs) => {
-                                            for a in asgs {
+                                        ComponentEntryValue::Lambda { assigns, .. } => {
+                                            for a in assigns {
                                                 out.push(&a.rhs);
                                             }
                                         }

@@ -5100,6 +5100,8 @@ impl<'a> Engine<'a> {
                         params: Vec::new(),
                         from_widget: false,
                         body_foreign: false,
+                        // 979 形态无 widget 头参数——无通道面。
+                        channel_calls: Vec::new(),
                         assigns,
                         span: self.cx.span_of(member),
                     });
@@ -5376,7 +5378,12 @@ impl<'a> Engine<'a> {
                     self.collect_design_entries(member, &mut design);
                 }
                 "age-on-widget-member" => {
-                    self.collect_widget_handlers(member, &mut handlers);
+                    // PLAN-980 WEB #6p：通道判定需要头参数名（`on_select` ∈
+                    // `widget Counter(on_select: msg)` 头表）——头参数在成员
+                    // 循环前已投影，按名传入。
+                    let channel_names: Vec<String> =
+                        params.iter().map(|p| p.name.clone()).collect();
+                    self.collect_widget_handlers(member, &mut handlers, &channel_names);
                 }
                 "age-named-view-member" => {
                     let face = self
@@ -5576,18 +5583,23 @@ impl<'a> Engine<'a> {
                 let event_binding_kind = self.rule_kind_of("age-event-binding");
                 let value = if Some(inner_kind) == lambda_kind {
                     let mut assigns = Vec::new();
+                    let mut foreign = false;
                     let stmt_kind = self.rule_kind_of("age-view-stmt");
                     for stmt in self.cx.children(inner) {
                         if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                            // #6o：语句=alt——解包赋值形（调用形在 lambda 体
-                            // 不合法，保守取 field 缺席跳过）。
+                            // #6o/#6p：语句=alt——解包赋值形；非赋值语句（调
+                            // 用形等）标记 foreign——值函数不铸（fail-closed 缺
+                            // 席），不再静默跳过（部分体拼接丢句）。lambda 面
+                            // 的通道调用承载=后续切片。
                             let s_inner = self.unwrap_child(stmt);
                             if self.cx.field_child(s_inner, "field").is_some() {
                                 self.collect_view_stmt(s_inner, &mut assigns);
+                            } else {
+                                foreign = true;
                             }
                         }
                     }
-                    ComponentEntryValue::Lambda(assigns)
+                    ComponentEntryValue::Lambda { assigns, foreign }
                 } else if Some(inner_kind) == event_binding_kind {
                     // PLAN-980 WEB #6m：事件绑定调用形 `.Msg($event, …)`——
                     // 投影为**裸 `.Msg` 字段引用**（既有 event_binding_msg 识
@@ -5855,7 +5867,12 @@ impl<'a> Engine<'a> {
         out
     }
 
-    fn collect_widget_handlers(&mut self, member: u32, handlers: &mut Vec<ComponentHandler>) {
+    fn collect_widget_handlers(
+        &mut self,
+        member: u32,
+        handlers: &mut Vec<ComponentHandler>,
+        channel_names: &[String],
+    ) {
         let handler_kind = self
             .rule_kind_of("age-on-widget-handler")
             .expect("handler rule");
@@ -5866,15 +5883,23 @@ impl<'a> Engine<'a> {
             let msg = self.cx.field_child(c, "msg").expect("widget handler msg");
             let mut assigns = Vec::new();
             let mut body_foreign = false;
+            let mut channel_calls = Vec::new();
             let stmt_kind = self.rule_kind_of("age-view-stmt");
             for stmt in self.cx.children(c) {
                 if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                    // PLAN-980 WEB #6o：语句=alt（赋值形/调用形）——解包后
-                    /// 判形：age-view-assign-stmt（field/rhs/op 字段）走赋值
-                    // 模型；pratt 调用形标记 body_foreign（部分体 verify 禁止）。
+                    // PLAN-980 WEB #6o/#6p：语句=alt（赋值形/调用形）——解包后
+                    // 判形：age-view-assign-stmt（field/rhs/op 字段）走赋值模型；
+                    // 调用形：callee ∈ widget 头参数=通道调用行（宿主通道 prop，
+                    // 原源 span；实参仅位置形）；否则 body_foreign（④ 外部名面
+                    // 族，fail-closed——976 后继目标域决策）。
                     let inner = self.unwrap_child(stmt);
                     if self.cx.field_child(inner, "field").is_some() {
                         self.collect_view_stmt(inner, &mut assigns);
+                    } else if let Some(call_node) = self.cx.field_child(inner, "call") {
+                        match self.project_channel_call(call_node, channel_names) {
+                            Some(cc) => channel_calls.push(cc),
+                            None => body_foreign = true,
+                        }
                     } else {
                         body_foreign = true;
                     }
@@ -5885,10 +5910,45 @@ impl<'a> Engine<'a> {
                 params: self.handler_params(c),
                 from_widget: true,
                 body_foreign,
+                channel_calls,
                 assigns,
                 span: self.cx.span_of(c),
             });
         }
+    }
+
+    /// PLAN-980 WEB #6p：调用语句 → 通道调用行。callee 是 widget 头参数名
+    /// 且实参全为位置形时投影为行（args 原样、原源 span）；任何其它形状
+    /// （非头参数 callee/具名实参/非调用表达式）返回 None（调用方落
+    /// body_foreign——fail-closed，不静默降级）。
+    fn project_channel_call(
+        &mut self,
+        call_node: u32,
+        channel_names: &[String],
+    ) -> Option<crate::source::age_component::ComponentChannelCall> {
+        let expr = self.project_expr_sync(call_node);
+        let span = self.cx.span_of(call_node);
+        let crate::source::ast::ExprKind::Call { callee, args } = &expr.kind else {
+            return None;
+        };
+        if !channel_names.iter().any(|n| *n == callee.name) {
+            return None;
+        }
+        let mut values = Vec::new();
+        for a in args {
+            match a {
+                crate::source::ast::Arg::Pos(v) | crate::source::ast::Arg::MovePos(v) => {
+                    values.push(v.clone())
+                }
+                // 具名实参=通道面未承载形（fail-closed，不猜位置）。
+                crate::source::ast::Arg::Named { .. } => return None,
+            }
+        }
+        Some(crate::source::age_component::ComponentChannelCall {
+            channel: callee.name.clone(),
+            args: values,
+            span,
+        })
     }
 
     /// R61-2/R62-2：`watch { .a, .b -> … }` 的全部源（head + 每个 tail），

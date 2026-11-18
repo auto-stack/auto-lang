@@ -40,6 +40,20 @@ pub struct ComponentAssign {
     pub span: Span,
 }
 
+/// PLAN-980 WEB #6p（调用表达式形）：**通道调用**语句行——callee ∈ widget
+/// 头参数（宿主通道 prop，如 `widget Counter(on_select: msg)` 体里的
+/// `on_select(next)`）。通道=宿主通知（#6m 事件绑定实参同族——不进受检
+/// 值域）；实参经检查函数**死 let** 验证（名字/类型真核，原源 span 保留，
+/// lane 按精确 span 经 a2x-ts 发射）。
+#[derive(Clone, Debug)]
+pub struct ComponentChannelCall {
+    /// 通道名=头参数名（`on_select`）。
+    pub channel: String,
+    /// 位置实参（投影原样、原源 span；具名实参不收——fail-closed）。
+    pub args: Vec<Expr>,
+    pub span: Span,
+}
+
 /// 一个 `on <Msg>` 处理器。
 #[derive(Clone, Debug)]
 pub struct ComponentHandler {
@@ -49,12 +63,15 @@ pub struct ComponentHandler {
     pub params: Vec<(String, Span)>,
     /// R65-3：是否来自 `on { .Msg -> … }`（widget 形）——该形必须指向已声明消息。
     pub from_widget: bool,
-    /// PLAN-980 WEB #6o：体含**非赋值语句**（调用/let/if——`on_select(next)`
-    /// 等外部名形）。a2ts 发射器按 976 域合同具名拒外部调用
-    ///（`a2ts.foreign-unsupported`）——此类 handler：检查函数不铸（不做
-    /// 部分体 verify）、场景派发具名拒（零效果，fail-closed）、lane 缺席
-    ///（旧道承载）。安全承载需 976 后继的目标域扩展决策（§13.16）。
+    /// PLAN-980 WEB #6o（#6p 收窄）：体含**域外语句**（let/if、非头参数名
+    /// 调用——`fs.read_dir(…)` 等 ④ 外部名面族）。此类 handler：检查函数
+    /// 不铸（不做部分体 verify）、场景派发具名拒（零效果，fail-closed）、
+    /// lane 缺席（旧道承载）。头参数通道调用语句**不再是** body_foreign
+    /// （`channel_calls` 行承载）；外部调用进受检体=976 后继目标域决策
+    ///（§13.16）。
     pub body_foreign: bool,
+    /// PLAN-980 WEB #6p：通道调用行（源序）。
+    pub channel_calls: Vec<ComponentChannelCall>,
     pub assigns: Vec<ComponentAssign>,
     pub span: Span,
 }
@@ -169,8 +186,14 @@ pub struct ComponentViewEntry {
 #[derive(Clone, Debug)]
 pub enum ComponentEntryValue {
     Expr(Expr),
-    /// 内联 lambda `() => { .field (=|+=|-=) expr … }`——脱糖为赋值集。
-    Lambda(Vec<ComponentAssign>),
+    /// 内联 lambda `() => { .field (=|+=|-=) expr … }`——脱糖为赋值集；
+    /// `foreign`（PLAN-980 WEB #6p）：体含非赋值语句（调用形等）——值函数
+    /// **不铸造**（fail-closed 缺席；此前静默跳过非赋值语句=部分体拼接丢
+    /// 句，与 handler 面 #6o 合同同族闭合）。
+    Lambda {
+        assigns: Vec<ComponentAssign>,
+        foreign: bool,
+    },
 }
 
 /// PLAN-980：其余成员槽位（bind/route/expose/lifecycle/computed/watch/
@@ -279,6 +302,10 @@ pub struct ComponentNodeOut {
     ///
     /// 赋值右手是**原始表达式**；需要已解码值时看 `handler_assigns`。
     pub handler_assigns: Vec<(String, Vec<(String, Expr)>)>,
+    /// PLAN-980 WEB #6p：每 handler 的**通道调用行**与**域外体标记**
+    ///（msg → (rows, body_foreign)；实参投影原样、原源 span——lane 按
+    /// 精确 span 经 a2x-ts 发射，body_foreign → 缺席旧道）。
+    pub handler_channel_calls: Vec<(String, Vec<ComponentChannelCall>, bool)>,
     /// PLAN-981：模型字段的**初值表达式**（名字 → 初值）。
     ///
     /// `fields` 只有 `(name, ty)` 拼写；作者的 `count int = 3` 里的 `3` 原先不在
@@ -559,6 +586,13 @@ pub fn compile_age_component(
                             .collect(),
                     )
                 })
+                .collect(),
+            // PLAN-980 WEB #6p：通道调用行 + 域外体标记按 handler 透出
+            //（lane 判臂/缺席与 emit/props 发射用；实参=投影原样、原源 span）。
+            handler_channel_calls: n
+                .handlers
+                .iter()
+                .map(|h| (h.msg.clone(), h.channel_calls.clone(), h.body_foreign))
                 .collect(),
             field_inits: n
                 .fields
@@ -1170,6 +1204,10 @@ fn compile_component_scenario_full(
     // PLAN-981（IF-981-PARAMS-B）：handler 形参 ↔ 载荷槽数的**声明级**核对
     //（未派发也核对）+ 重复形参具名拒。
     check_handler_bindings(node)?;
+    // PLAN-980 WEB #6p：通道调用只承载为**语句**（宿主通知效应）；出现在
+    // 值位置（赋值 RHS / 通道实参内嵌套）=效应作值，域内具名拒（比共享
+    // verify 的泛化 `source.undefined` 更可诊断；fail-closed 不降级）。
+    validate_channel_value_use(node)?;
     // 未派发 handler 的声明语义 verify：每个 handler 铸一个隐藏检查函数
     //（形参 = 真函数参数，载荷类型来自声明拼写）。
     let mut handler_check_items: Vec<Item> = Vec::new();
@@ -1198,7 +1236,12 @@ fn compile_component_scenario_full(
                     ComponentViewItem::Text(_) => {}
                     ComponentViewItem::Element(e) => collect_lambdas(&e.items, out),
                     ComponentViewItem::Entry(en) => {
-                        if let ComponentEntryValue::Lambda(asgs) = &en.value {
+                        // #6p：foreign lambda（体含非赋值语句）不铸——缺席。
+                        if let ComponentEntryValue::Lambda {
+                            assigns: asgs,
+                            foreign: false,
+                        } = &en.value
+                        {
                             out.push(asgs);
                         }
                     }
@@ -1428,6 +1471,12 @@ fn compile_component_scenario_full(
                         )
                     })
                     .collect(),
+                // PLAN-980 WEB #6p：同上（场景编译出口）。
+                handler_channel_calls: node
+                    .handlers
+                    .iter()
+                    .map(|h| (h.msg.clone(), h.channel_calls.clone(), h.body_foreign))
+                    .collect(),
                 field_inits: node
                     .fields
                     .iter()
@@ -1606,6 +1655,106 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
 /// 语义进唯一 verify（未绑定名/类型/作用域全由共享检查判定），不造默认值
 /// 或常量场景。返回 `None` 表示该 handler 无需/无法发射（无字段可观察，或
 /// 载荷拼写本切片不可承载——后者派发车道已具名拒）。
+/// PLAN-980 WEB #6p：通道调用**值位置**走查——`expr` 含以头参数名为 callee
+/// 的调用即命中（赋值 RHS / 通道实参内嵌套同判）。只走 rename_expr 支持的
+/// 形状（其它形状在重命名/verify 阶段已有具名拒）。
+fn expr_uses_channel_value(expr: &Expr, channels: &[String]) -> bool {
+    match &expr.kind {
+        ExprKind::IntLit(_)
+        | ExprKind::BoolLit(_)
+        | ExprKind::StrLit(_)
+        | ExprKind::CharLit(_)
+        | ExprKind::NilLit => false,
+        ExprKind::Unary { operand, .. } => expr_uses_channel_value(operand, channels),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            expr_uses_channel_value(lhs, channels) || expr_uses_channel_value(rhs, channels)
+        }
+        ExprKind::Call { callee, args } => {
+            if channels.iter().any(|c| *c == callee.name) {
+                return true;
+            }
+            args.iter().any(|a| match a {
+                crate::source::ast::Arg::Pos(e)
+                | crate::source::ast::Arg::MovePos(e)
+                | crate::source::ast::Arg::Named { value: e, .. } => {
+                    expr_uses_channel_value(e, channels)
+                }
+            })
+        }
+        ExprKind::Method { recv, args, .. } => {
+            expr_uses_channel_value(recv, channels)
+                || args.iter().any(|a| match a {
+                    crate::source::ast::Arg::Pos(e)
+                    | crate::source::ast::Arg::MovePos(e)
+                    | crate::source::ast::Arg::Named { value: e, .. } => {
+                        expr_uses_channel_value(e, channels)
+                    }
+                })
+        }
+        _ => false,
+    }
+}
+
+/// 通道调用值位置具名拒：赋值 RHS（handler 与 view lambda）与通道实参
+/// 嵌套调用——语句位通道行（`channel_calls`）是唯一合法承载。
+fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic>> {
+    let channels: Vec<String> = node.params.iter().map(|p| p.name.clone()).collect();
+    if channels.is_empty() {
+        return Ok(());
+    }
+    let mut check = |rhs: &Expr, span: Span| -> Option<Vec<Diagnostic>> {
+        expr_uses_channel_value(rhs, &channels).then(|| {
+            vec![text_diag(
+                "source.age.component-unsupported",
+                "a host-channel call is an effect statement (`on_x(args);`), not a value \
+                 expression; assign a real value instead",
+                span,
+            )]
+        })
+    };
+    for h in &node.handlers {
+        for a in &h.assigns {
+            if let Some(ds) = check(&a.rhs, a.rhs.span) {
+                return Err(ds);
+            }
+        }
+        for cc in &h.channel_calls {
+            for arg in &cc.args {
+                if let Some(ds) = check(arg, arg.span) {
+                    return Err(ds);
+                }
+            }
+        }
+    }
+    fn walk_items(
+        items: &[ComponentViewItem],
+        f: &mut impl FnMut(&Expr) -> Option<Vec<Diagnostic>>,
+    ) -> Result<(), Vec<Diagnostic>> {
+        for it in items {
+            match it {
+                ComponentViewItem::Text(_) => {}
+                ComponentViewItem::Element(e) => walk_items(&e.items, f)?,
+                ComponentViewItem::Entry(en) => {
+                    if let ComponentEntryValue::Lambda { assigns, .. } = &en.value {
+                        for a in assigns {
+                            if let Some(ds) = f(&a.rhs) {
+                                return Err(ds);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    let mut f = |rhs: &Expr| check(rhs, rhs.span);
+    walk_items(&node.view.tree, &mut f)?;
+    for (_, items) in &node.view.named_trees {
+        walk_items(items, &mut f)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn handler_check_fn(
     node: &ComponentNode,
     node_index: usize,
@@ -1613,6 +1762,13 @@ pub(crate) fn handler_check_fn(
     prefix: &str,
 ) -> Option<Result<Item, Vec<Diagnostic>>> {
     let h = &node.handlers[handler_index];
+    // PLAN-980 WEB #6o 合同闭合（#6p 实装）：域外体（let/if/非头参数调用）
+    // **不铸检查函数**——部分体 verify 禁止；lane 缺席（旧道承载）。
+    // （#6o 落了 body_foreign 标记与场景派发拒，但检查函数铸造未守——
+    // 实测 [65] 形 `.n = next; <外部调用>` 部分体拼接、调用语句静默丢。）
+    if h.body_foreign {
+        return None;
+    }
     let first_field = node.fields.first()?;
     let variant = node.messages.iter().find(|v| v.name == h.msg);
     let payload = variant.map(|v| v.payload.as_slice()).unwrap_or(&[]);
@@ -1728,6 +1884,35 @@ pub(crate) fn handler_check_fn(
             value: wrap_owned_transfer(renamed, field, &param_locals),
             span: assign.span,
         });
+    }
+    // PLAN-980 WEB #6p：通道调用实参验证——**死 let**（无注解推断）承载：
+    // 实参经同一重命名通道（形参/字段可见性 + 类型/ownership 由共享 verify
+    // 真核），值弃用（通道本身=宿主通知，不进受检值域——#6m 实参=宿主
+    // 通道先例）；**原源 span 保留**（lane 按精确 span 经 a2x-ts 发射实参
+    // 文本）。未验证的实参拼写绝不直接拼接。
+    for (ci, cc) in h.channel_calls.iter().enumerate() {
+        for (ai, arg) in cc.args.iter().enumerate() {
+            let renamed = match rename_expr_with_params(
+                arg,
+                FieldBinding::Local(inst),
+                &node.fields,
+                &param_locals,
+            ) {
+                Ok(v) => v,
+                Err(ds) => return Some(Err(ds)),
+            };
+            stmts.push(Stmt::Let {
+                kw: cc.span,
+                name: Ident {
+                    name: format!("__age_cc_{ci}_{ai}"),
+                    span: cc.span,
+                },
+                ann: None,
+                mutable: false,
+                value: renamed,
+                span: cc.span,
+            });
+        }
     }
     stmts.push(Stmt::Return {
         value: Expr {
@@ -2172,6 +2357,26 @@ pub(crate) fn instance_stmts(
                 format!(
                     "handler `{}` carries a body outside the checked script domain                      (calls/lets/control flow); a directed event must not run a partial body",
                     msg
+                ),
+                handler.span,
+            )]);
+        }
+        // PLAN-980 WEB #6p：通道调用=宿主通知效应——场景重放车道无宿主，
+        // 零效果具名拒（fail-closed；WEB lane 在 ops 构建侧排除通道
+        // handler，此类体走检查函数道发射，不经此处）。
+        if !handler.channel_calls.is_empty() {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "handler `{}` carries a host-channel call ({}); the scenario replay lane has no \
+                     host, so a directed event must not drop the notification",
+                    msg,
+                    handler
+                        .channel_calls
+                        .iter()
+                        .map(|c| c.channel.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
                 handler.span,
             )]);
