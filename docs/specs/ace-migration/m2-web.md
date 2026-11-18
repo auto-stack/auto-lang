@@ -1,8 +1,9 @@
 # ace-migration: m2-web — Web 服务嵌入与实际后端迁移（PLAN-983）
 
-> Status: **M2-A 切片 + M2-B 双批（AVSERVICE/GENERATED）已交付**
+> Status: **M2-A 切片 + M2-B 双批（AVSERVICE/GENERATED）+ 文本入口切片已交付**
 > （A phase fold auto-web `bdc48e8`；B phase fold `fd115ce`，2026-11-17；
-> 13/19 任务闭合）。CONSUMERS 与 T-05..07 未交付——见"边界"。来源：
+> 2026-11-18 文本入口切片 auto-web `3f8de15`，见下文「B-AVSERVICE 文本入口」）。
+> CONSUMERS 与 B-GENERATED-R/T-05..07 未交付——见"边界"。来源：
 > [PLAN-983](../../plans/983-ace-m2-web.md) §5/§8/§9（各 phase
 > work/review/merge 收据）；依赖 967/968/969/974/975/978 均已归档。
 
@@ -94,6 +95,37 @@
 - V 计时：新生成例 `ace_lane_param_endpoints...` 6.45s（复跑波动至 9.66s；
   冷 cargo 启动+盘压；>10s 离群已记录，B/CONSUMERS 考虑预构建阶段）。
 
+### B-AVSERVICE 文本入口（2026-11-18 用户裁定切片，auto-web `3f8de15`）
+
+- **形态**：与文件通道臂并列的 `ServiceEngine::AvText` +
+  `http_server::serve_av_text(engine, addr, cfg, shutdown_rx)`；transport/
+  owner 线程纪律原样。文本臂**不持有 `Rc<AutoVM>`**（`ServiceEngine::legacy()`
+  为 `None`，无 legacy 派发路径）。
+- **编译一次**（`av_text_service::AvTextServiceEngine::new`）：Text profile
+  （`ac.runtime.text.v1`）→ `lower_checked_owned` → `verify_mir` → ABC
+  encode/decode → `verify_abc`；之后每请求只走
+  `ace_av_core::av::execute_entry_text`。收据 `compile_count` 恒 1，ABC
+  指纹固定（复用同一产物）。
+- **请求文本契约**：handler = `fn main(query str, body str) int`（982 受检
+  文本入口）。`query` = 原始请求目标 `?` 之后的部分（`%XX` 与 `+` 在宿主侧
+  解码后才交给 handler；传输层给的是百分号编码的 ASCII）；`body` = UTF‑8
+  请求体（可为空）。返回 `int` ⇒ 200 + 十进制文本；`Cancelled`/`Resource`
+  ⇒ 504；`Trap`/`Error`/`Infra`/`Exit` ⇒ 500 具名诊断。非法 UTF‑8 在 handler
+  执行前具名拒绝（`entry text argument is not valid UTF-8`）。
+- **路由**：引擎构造时显式声明 `HttpRoute`；未命中 404 与文件通道 AV 臂
+  逐字同形且**不派发**；中间件/上传 501 边界同形。
+- **已验**（真实 TCP，`--test http_runtime` 7/7 绿，7.48s；新例 0.60s）：
+  等字节长度 `中文`/`日文`（各 6 UTF‑8 字节）按内容分流——GET 查询 3/4、
+  POST 体 1/2、查询+体组合体优先 2；`/text?%FF` ⇒ 500 `not valid UTF-8`；
+  `/missing` ⇒ 404；收据
+  `av_dispatches=6 legacy_dispatches=0 compile_count=1 artifact_fingerprint=9db3cce95d63f38e entry=d_main`。
+  `--lib` 188 例 187 绿（唯一红=基线既有 `test_handler_body_r2_matrix_compile_oracle`，
+  非本切片引入）；`--test http_generation` 3/3 绿（176s，默认道不变）。
+- **未接（本切片边界）**：平台 I/O 与文本参数**同一次调用**仍缺共享入口
+  （983 首消费者本轮只用文本，未触发；需时交 982 验证补齐）；完整 JSON
+  （嵌套/浮点/字符串/请求头）按首个真实消费者字段推进，尚未实现；本切片
+  无中间件/上传/stream/SSE 面。
+
 ## 边界（具名开放，CONSUMERS/后续域）
 
 - core trait `listen_blocking` 签名仍由 core legacy trait 固定（桥接已
@@ -103,7 +135,8 @@
   record/list/浮点、str concat owned 促升——后续扩面具名拒。
 - AV 执行臂：认证/权限/中间件/上传/下载/stream/SSE/`~T`（语言侧通道缺位，
   501 具名）；ASCII scratch/数据根约束。
-- CONSUMERS 批与 T-05..07 未交付（B 剩余 6 任务）。
+- CONSUMERS 批、B-GENERATED-R 与 T-05..07 未交付（B-AVSERVICE-R 已随文本
+  入口切片复核，见计划 §9）。
 - 既有红（非本切片引入）：auto-web
   `api_gen::tests::test_handler_body_r2_matrix_compile_oracle` 基线
   `0adebc0` 原样红。
