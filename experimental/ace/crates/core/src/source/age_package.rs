@@ -142,6 +142,10 @@ pub struct AgePackageComponent {
     /// 在描述面完全丢失；979 核"2:1 事件、各 N 次 Tick 后两实例各自推进几次"必须
     /// 知道每个 handler 的行为。
     pub handler_assigns: Vec<(String, Vec<(String, Expr)>)>,
+    /// PLAN-981（G2）：每 handler 的**完整语句面**（msg → 源序语句）。
+    /// `handler_assigns` 只是其中赋值子集。TS/WEB 复放车道（980）只复放赋值——
+    /// 消费方见 Let/If 时必须具名拒（部分复放 = 错状态值，禁止）。
+    pub handler_stmts: Vec<(String, Vec<crate::source::age_component::ComponentStmt>)>,
     /// PLAN-981：`model` 字段的初值表达式（按声明序）。
     ///
     /// `fields` 只给 `(名字, 类型拼写)`；`count int = 3` 里的 `3` 原先不在描述面，
@@ -445,6 +449,20 @@ pub struct AgeSceneRow {
     /// 这里给出**已经解码好**的值，同时保留 `attrs` 里的原始表达式，两者并存：
     /// 消费者读值用本字段，需要作者拼写时回看 `attrs`。
     pub cpu: Vec<(String, AgeSceneValue)>,
+    /// PLAN-981（G1，2026-11-18 用户裁定）：`shape2d.layer` 的 **typed 行事实**。
+    /// `layer: render-only` = 该行可见但**不参与碰撞**（render-only）——宿主
+    /// 碰撞候选集按本字段排除该行；`None` = 无声明（照常进碰撞候选）。
+    /// 同一份受检行描述交 AV/AC/A2R（`cpu` 里同步有 `Symbol("render-only")`
+    /// 的可观察值）；移除该属性 ⇒ 本字段为 `None` ⇒ 地面重新进碰撞候选。
+    pub layer: Option<AgeRowLayer>,
+}
+
+/// PLAN-981（G1）：场景行的 layer 事实（typed，不 stringly）。
+/// 本批只有一个冻结值：`render-only`（可见不碰撞）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgeRowLayer {
+    /// `layer: render-only`——绘制该行，但不进碰撞候选集。
+    RenderOnly,
 }
 
 /// 一条场景行元素的**解析结果**（PLAN-981 轮 47）。
@@ -1027,6 +1045,14 @@ fn read_back_components(
                     )
                 })
                 .collect(),
+            // PLAN-981（G2）：完整语句面（msg → 源序）——AV/A2R 同一份受检描述；
+            // TS/WEB 复放车道（980）见 Let/If 必须具名拒，不得部分复放。
+            handler_stmts: p
+                .node
+                .handlers
+                .iter()
+                .map(|h| (h.msg.clone(), h.stmts.clone()))
+                .collect(),
             field_inits: p
                 .node
                 .fields
@@ -1074,6 +1100,17 @@ fn read_back_components(
                         .iter()
                         .map(|a| (a.key.clone(), scene_value_cpu(&a.value)))
                         .collect(),
+                    // PLAN-981（G1）：`layer: render-only` 的 typed 行事实——
+                    // 投影把它落成 Var("render-only")，前门已保证该拼写只在
+                    // shape2d 行上合法（其它元素/其它值具名拒）。
+                    layer: row.attrs.iter().find_map(|a| {
+                        (a.key == "layer"
+                            && matches!(
+                                &a.value.kind,
+                                super::ast::ExprKind::Var(v) if v.name == "render-only"
+                            ))
+                        .then_some(AgeRowLayer::RenderOnly)
+                    }),
                 })
                 .collect(),
             // PLAN-981 B-W1（IF-981-PROOF-AV）：值函数登记事实直接透传
@@ -2694,7 +2731,12 @@ impl QueryTokenWalk {
     fn expr(&mut self, e: &Expr) -> Option<Diagnostic> {
         match &e.kind {
             ExprKind::Var(id) => self.stale_read(id),
-            ExprKind::MethodCall { recv, name, args, .. } => {
+            ExprKind::MethodCall {
+                recv,
+                name: _,
+                args,
+                ..
+            } => {
                 for a in args {
                     if let Some(d) = self.arg(a) {
                         return Some(d);
