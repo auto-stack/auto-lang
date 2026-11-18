@@ -4328,7 +4328,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 if symbol == "age.model3d.glb.v1" {
                                     return Err(AdapterError::uns(
                                         "lower.intrinsic",
- "model3d.glb carries file-content identity and is outside the av.owned/1 observation lane".to_string(),
+                                        "model3d.glb carries file-content identity and is outside the av.owned/1 observation lane".to_string(),
                                     ));
                                 }
                                 let sig = self.out.imports[imp as usize].sig;
@@ -4426,7 +4426,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                                     return Err(AdapterError::uns(
                                                         "lower.age-gfx-view-arg",
                                                         format!(
-                                                            "gfx constructor `{}` argument #{si}                                                              arrives as a borrow view; owned                                                              construction from a view is the                                                              registered gap                                                              D-981-GLOBAL-CLONE-GAP (scalar-only                                                              constructors execute today)",
+                                                            "gfx constructor `{}` argument #{si} arrives as a borrow view; owned construction from a view is the registered gap D-981-GLOBAL-CLONE-GAP (scalar-only constructors execute today)",
                                                             symbol
                                                         ),
                                                     ));
@@ -4446,9 +4446,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     }
                                     lane => {
                                         return Err(AdapterError::uns(
- "lower.age-gfx-lane",
+                                            "lower.age-gfx-lane",
                                             format!(
- "AGE graphics service `{}` is a {} service: it executes on the graphics host lane (UI058 neutral units via the PLAN-938 host authority), not in the AV observation lane",
+                                                "AGE graphics service `{}` is a {} service: it executes on the graphics host lane (UI058 neutral units via the PLAN-938 host authority), not in the AV observation lane",
                                                 symbol,
                                                 match lane {
                                                     ace_core::source::age_resources::AgeGfxLane::HostAlgorithm => "host-algorithm",
