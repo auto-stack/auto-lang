@@ -591,7 +591,7 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 - **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
 - **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
 
-**交付状态（2026-11-18，R1′）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 执行/观察面已交**（`ace_av::age_package::observe_age_package` 复用：派生真实例场景 2 实例 + `Inc` → 观察状态 `[4,2]`；helper 改 `+10` → `[20,10]`——helper 真进 AV 执行）。**S4 真窗已交**（`PackageStateEngine` + `BridgeEngine` + `load_package` + 窗口 exe `--package/--entry`；真窗 e2e 两次运行见证 `[4,2]`→`[20,10]`）。**S5 同源 SFC script 段已交**（`PackageFragmentLane`：包闭包+场景 checked → 976 片段发射；断言调用名=`a2x_fn_*` 映射名非裸 `step(`、同一映射名以**函数定义**落同一 script 段、改 helper 常量随动）。**完整 SFC 的 template/样式**仍归既有方言道（本片只覆盖 `<script>` 段）；**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片。
+**交付状态（2026-11-18，R1′）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`）。**S4 AV 执行/观察面已交**（`observe_age_package`）。**S4 真窗已交**（`PackageStateEngine` + `load_package` + 窗口 exe `--package`）。**S5 同源 SFC script 段 + 浏览器执行档已交**（`PackageFragmentLane` 发射；playwright/chromium 中 base 点击 2→4、edited 10→20——同一份发射文本）。**完整 SFC template 未交（阻塞已实测）**：既有方言解析器（`UiDialect`）**不认 AGE `node`/匿名 msg 源**（实测 20 个错误），需"view 树→Vue 模板"生成器道或方言 AGE 支持——下一片。**S0.5a 表面补齐**按 R1′ 与 981 会签并行分切片。
 
 **S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
 
@@ -1606,6 +1606,14 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 **联合编译与窗口协议**：按协议以 **master + 981 f32 提交** 的 scratch 树联合编译（981 分支基点落后，直接 checkout 会红 root crates）；配对提交=`D:/autostack/.wt/lang-981-f32/auto-ui` 分支 **`f32win-ui` @ `8a713b89`**（未合）。窗口顺序=981 先合 `17fafb1d9` → auto-ui 紧随 `8a713b89` → 各自冻结门（981：`ace-source ace-av`；auto-ui：其固定组）；任一侧失败双方同窗回滚。
 
 **窗口阻塞（须先解；非本窗引入）**：lang **master tip `4d9895712` 的 `auto-lang-ace-host` 已红**——experimental ace_core 新增 `Item::UsePy` 后 `crates/auto-lang-ace-host/src/session_bridge.rs` 两处 match 未补臂（E0004）。本回签在 scratch 树打了 **2 行未提交补丁**（`UsePy` 臂）才通过联合编译；正式开窗前须由该改动 owner（982 谱系）补臂或确认 master 恢复绿，否则 auto-ui 无法构建（与本窗无关，但会挡住窗口）。
+
+2026-11-18 stage: work+merge（④-A 首片 #2d：**`<script>` 段浏览器执行档**；非 fold）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（脚本段浏览器证据已交；完整 SFC template 阻塞已实测）** | delivery: auto-ui master **`dbed5997`**（ff-only；rebase 后 `crates/auto-ui-runtime` 树与已测提交一致）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①`tests/plan980_closure_browser.rs` + `examples/ui/ace-web-lane/tests/test_pkg_script_browser.mjs`：把包片段 lane 发射的 **同一份** helper 定义与 handler 调用行放进真实页面（playwright/chromium，`AUTO_UI_ACE_WEB_E2E=1`），点击一次按钮断言 `#count`：base helper（+2）**2→4**、edited helper（+10）**10→20**——浏览器执行面与 CPU/AV 观察同源同值。②完整 SFC template 的阻塞已**实测**：既有方言解析器（`auto_ui_dialect::UiDialect`）不认 AGE `node`/匿名 msg 源（`generate_sfc_with_lane` 在派生源上返回 20 个 parse 错误，含 `UndefinedVariable{Inc}`/`Expected term, got View`）⇒ "完整 SFC"需 **view 树→Vue 模板**生成器道（或方言 AGE 支持），列为下一片；不以手写 template 冒充。
+
+**验证。** 浏览器档 1/1（3.3s，env-gated）；回归 `plan980_closure_sfc` 2/2、`plan980_closure_window` 3/3、`ace_node_desktop` **11/11**；changed files fmt clean。
+
+**边界（诚实）。** 浏览器档执行的是 **SFC `<script>` 段**（页面宿主与按钮为测试装置）；完整 SFC（template 由 AGE 视图生成）未交；包桥仍只观察 int 字段、无 props/initials。
 
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
