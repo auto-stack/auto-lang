@@ -4,10 +4,10 @@ status: executing
 feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-17
-plan_revision: 8
-current_step: 11
-total_steps: 19
+updated_at: 2026-11-18
+plan_revision: 9
+current_step: 12
+total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-web.md]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-983] Web服务嵌入与实际后端迁移
 
 ## 0. 变更摘要
+
+2026-11-18 r9（当前范围增补）：依用户本轮指令「先接 `auto_web` 生产栈，由 983 主导；完整 JSON 等第一个真实消费者明确需要哪些字段后再做」，新增具名切片 **B-AVSERVICE-TEXT**：把 982 已验的受检文本入口（`fn main(query str, body str) int`）接到 auto_web 既有 TCP 生产栈——**同一份已编译 handler**收查询串 + UTF‑8 体，请求不重编译、不经文件；等字节长度 `中文`/`日文` 按内容分流，收据 `av_dispatches>0 / legacy_dispatches=0 / compile_count=1`，现有服务回归保持。**未做**：文本参数与平台 I/O 的同一次调用（未触发；触发时交 982 共享入口补齐）、完整 JSON/请求头（等首个真实消费者字段）。原19任务/AC/进度保留，总数 20、12 完成；本次只实施+验证这一切片并落规范增量，review 仍归 B-AVSERVICE-R/T-05。
 
 2026-11-16 r7（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包仍完成现有Web服务/前后端实际消费者及RG证明；消费976/980所需TS/JS闭包，不将Godot或独立无消费的a2ts产品作为整包门，也不删Vue/Web现有业务。原19任务/进度保持。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
@@ -317,7 +319,7 @@ struct WebHostPort { signatures: SignatureCatalog, owner_thread: ThreadOwner, gr
 
 ## 8. 执行步骤
 
-当前共19任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共20任务（12 完成）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
@@ -354,7 +356,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 - [x] **B-AVSERVICE-V｜M2-B｜owner_stage: work｜AC-B-AVSERVICE**：运行V-B-AVSERVICE及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
   [✅ 2026-11-17 @76c8001] V-B-AVSERVICE 实测：`nextest -p auto-web --test http_runtime` = **6/6 绿**（7.22s；含 legacy installed-host 双例证 transport/legacy 臂零变化 + A 腿两例仍绿）。新用例 `av_service_engine_serves_axum_transport_over_real_tcp`（0.407s ≤10s 门）oracle 全实测：真 TCP 经既有 axum transport + AV 引擎执行；写 DB 再读（add7→get7→add3→10→double20→+100=120）；并发到达经 owner 串行不串上下文；断连（半请求+关）不触业务态；404 与 legacy 预处理同形（空体+请求 id 头）；隔离 DB 文件测试直读（counter.txt="120"）；外部 stop→排水→端口重绑+service 完结。lib 186/187（1 红=具名既有红）。lang `cargo t http`：lang 仓零改动，按 V 行"仅语言相关改动"条款免跑（记录）。
 
-- [ ] **B-AVSERVICE-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- [x] **B-AVSERVICE-TEXT｜M2-B（2026-11-18 用户裁定切片）｜owner_stage: work｜AC-B-AVSERVICE/AC-02/03/06**：把 982 的受检文本入口接到 **auto_web 生产栈**——同一份已编译 handler 直接收查询串 + UTF‑8 体（`fn main(query str, body str) int`），真实 TCP 路由；请求不重编译、不经文件；断言 `av_dispatches>0`、`legacy_dispatches=0`、产物指纹不变并跑现有服务回归。文本参数 + 平台 I/O 的组合调用与完整 JSON 不在本切片（见证据/§10）。
+  [✅ 2026-11-18 @3f8de15（auto-web plan-983-dev；lang 组树 ff `850a49bf8` 零代码改动，规范提交 `b016ff9d3`）] 交付：①新 `av_text_service` 模块——`AvTextServiceEngine::new` 启动时**编译一次**（Text profile + `ac.runtime.text.v1` → `lower_checked_owned` → `verify_mir` → ABC encode/decode → `verify_abc`；`compile_count` 恒 1、ABC 指纹固定），请求级只调 `ace_av_core::av::execute_entry_text(&[query, body])`（982 受检入口；文本在本次执行 arena 内借用，非法 UTF‑8 在执行前具名拒）；查询串取原始 target 的 `?` 之后并按 `%XX`/`+` 解码（传输层给的是百分号编码 ASCII），体为原始 UTF‑8 字节；`int` 返回 ⇒ 200 + 十进制文本，Cancelled/Resource ⇒ 504，Trap/Error/Infra/Exit ⇒ 500 具名；`AvTextReceipt` 暴露 compile/av/legacy 计数与产物指纹。②接线：`http_server::serve_av_text` + `ServiceEngine::AvText`（transport/owner 线程原样、`legacy()`=None、无 legacy 路径），`server_dispatch` 文本臂——中间件/上传 501 与未命中 404 与文件通道 AV 臂逐字同形，miss **不派发**。③永久 fixture `tests/fixtures/ace-p983/av-text-service.at` + `http_runtime.rs` 新用例 `av_text_entry_reuses_one_compiled_handler_and_branches_by_content`（真实 TCP）。**实测**：等字节长度 `中文`/`日文`（各 6 UTF‑8 字节）按内容分流——`GET /text?<中文>`→3、`?<日文>`→4、`POST /text` 体 中文→1/日文→2、查询+体组合体优先→2；`/text?%FF`→500 `not valid UTF-8`（执行前拒）；`/missing`→404；收据 `av_dispatches=6 legacy_dispatches=0 compile_count=1 artifact_fingerprint=9db3cce95d63f38e entry=d_main`（6 次=5 成功+1 入口内受检拒绝；请求间指纹不变=同一编译产物）。**回归**：`--test http_runtime` 7/7 绿（7.48s；新例 0.60s ≤10s 门）、`--lib` 188 例 187 绿/1 红（21.39s，红=基线既有 `api_gen::tests::test_handler_body_r2_matrix_compile_oracle`，非本切片引入）、`--test http_generation` 3/3 绿（176.43s，默认道不变）。**未做（具名）**：①文本参数 + 平台 I/O 同一次调用——983 首消费者本轮只用文本，未触发；触发时按用户指令交 982 共享入口验证补齐（982 收据仅覆盖文本参数）；②完整 JSON/嵌套/浮点/字符串/请求头——按首个真实消费者字段推进；③中间件/上传/stream/SSE/`~T` 仍具名 501。**规范**：`m2-web.md` 增「B-AVSERVICE 文本入口」节（lang 树 `b016ff9d3`，待 T-06 正式落地）。
+
+- [ ] **B-AVSERVICE-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。**复核面含 2026-11-18 文本入口切片 B-AVSERVICE-TEXT**（`av_text_service`/`serve_av_text`/fixture/真实 TCP 用例与收据断言）。
 
 - [x] **B-GENERATED-I｜M2-B｜owner_stage: work｜AC-B-GENERATED/AC-02/03/06**：新HIR A2R生成服务/共享载体，保route/store/schema/diagnostics与失败保旧；本批可与AVSERVICE在端口稳定后独立。 在§5改面接永久fixture，先冻结前置接口/命令。
   [✅ 2026-11-17 @6808511] lane 子集扩面：`int`/`str` 视图/`bool` **参数**（值传；a2x `l{idx}_` 局部名还原源参数名）与同族返回；owned/mut str 参数、record/list/浮点具名拒（后续扩面；`str+literal concat 产 owned Str 与 str 返回不匹配`=verify 具名拒已实证，恒等体为子集内形态）。api_gen：端点门放宽至参数类型 {int,str,bool}；`generate_ace_api_rs` 发射参数提取器（GET/DELETE=Query struct、POST/PUT=Json body，与 legacy 委派形态同源）+ 实参编组（int `as i32`/str `as_str`/bool）。保旧面：route（路由注册沿用端点驱动）、store/db（ACE 道仍具名拒 db.at/伴生——默认道 store 支持不变，member_delivery 由 V 证）、schema（types.rs/generation.json 字段不变）、diagnostics/失败保旧（早门零写入+receipt park+write_if_changed 原样；坏源负例改 scale(float) 具名拒+旧 workspace manifest 字节不变）。fixture 扩 echo/whisper/pick 参数端点。
@@ -389,6 +394,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-18 stage: work | PLAN-983 r9 | outcome: pass（**B-AVSERVICE-TEXT 切片 work handoff，非整包 execution_done**）| worktree_path: D:/autostack/.wt/lang-983/auto-web | branch: plan-983-dev | base_commit: auto-web fd115ce | code_commit: auto-web `3f8de15`；lang 组树 ff `850a49bf8`（零代码改动）+ 规范 `b016ff9d3` | task_ids: B-AVSERVICE-TEXT | evidence: 见 §8 任务证据行与 m2-web.md 文本入口节；命令/实测：`--test http_runtime` 7/7（7.48s）、新例 0.60s、`--lib` 188（187 绿/1 基线既有红/1 skip，21.39s）、`--test http_generation` 3/3（176.43s）；收据 `av_dispatches=6 legacy_dispatches=0 compile_count=1 fingerprint=9db3cce95d63f38e` | 用户指令执行口径：983 主导接生产栈（已交）；982 共享入口缺口本轮未触发（文本+平台 I/O 组合调用未出现，未派 982）；完整 JSON 等真实消费者字段（未做）| blockers: 无 | next_responsible_role: review（B-AVSERVICE-R 复核本切片）；982 交接按触发条件。
 
 2026-11-17 维护（B fold 后）：按用户磁盘偏好再次清理组内构建中间产物——auto-web/target（17GB）+ auto-lang/target（3.1GB）删除（他 session cargo nextest auto-ui 与本组无交集已核）；组余纯检出；两树 git 不变（auto-web @fd115ce=master、lang 树待 CONSUMERS 开工 resync master 22ff37dbb）。**CONSUMERS 开工注意：双树冷重建。**
 
@@ -435,6 +442,8 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
 
 ## 10. 待澄清事项
+
+**2026-11-18 用户指令（983 先接 auto_web 生产栈）**：本轮已交文本入口切片 B-AVSERVICE-TEXT。两项未触发/未做，按用户口径保留为下一步条件：①「文本参数 + 平台 I/O 同一次调用」——983 首个消费者本轮只用文本；当真实消费者需要组合调用时，把**具体需求**交 982 验证并补齐（982 收据仅覆盖文本参数，组合调用需单独验证）。②完整 JSON（嵌套/浮点/请求头）——等 983 选定真实消费者、明确所需字段后再做，先交实际用到的少量字段。983/CONSUMERS 四仓整体验收仍按计划核对 980/WEB、982/EXEC 与实际用到的配置接口。
 
 **2026-11-17 用户指令（B 期开工授权）**：用户明确指示先行实施 B-AVSERVICE 与 B-GENERATED 两批并合入主分支供其他计划使用——本指令解除此前"等 985/A 完成再继续 B 组"的等待（CONSUMERS 与 T-05..07 仍按原门保留）。B 前置实测：983/PORT 已随 A 切片落 auto-web master `bdc48e8`；L975/L978 ARCHIVED ✓。
 
