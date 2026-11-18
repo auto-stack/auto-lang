@@ -400,6 +400,18 @@ fn desugar_fstrings_dialect(src: &str, bare_braces: bool) -> Result<String, Stri
 /// 边界与既有 f-string 同一纪律：`${…}` 内不嵌套花括号、不含字符串字面量；
 /// `\$` 是字面美元。行注释（`//`、config 面的 `#`）、块注释与字符字面量按原样
 /// 复制（不误插值）。重写会移动 span（构造级诊断仍指认构造）。
+/// PLAN-982（用户裁定 ①B）：节点位插值的**显式开关**——默认关，保持与 legacy
+/// 逐字一致；`AUTO_ACE_TEMPLATE_NODE_INTERP=1|true|yes|ace` 时节点位的裸 `${…}`
+/// 也重写成 `__fstr(expr)`，使 `lib ${name} {}` 真正插值。
+pub const CONFIG_NODE_INTERP_ENV: &str = "AUTO_ACE_TEMPLATE_NODE_INTERP";
+
+fn node_interp_enabled() -> bool {
+    matches!(
+        std::env::var(CONFIG_NODE_INTERP_ENV).as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("ace")
+    )
+}
+
 pub fn desugar_config_templates(src: &str) -> Result<String, String> {
     fn part_text(out: &mut String, t: &str) {
         out.push('"');
@@ -540,6 +552,12 @@ pub fn desugar_config_templates(src: &str) -> Result<String, String> {
             }
             let value_position = back > 0 && bytes[back - 1] == b':';
             if value_position {
+                out.push_str("__fstr(");
+                out.push_str(&src[i + 2..close]);
+                out.push(')');
+            } else if node_interp_enabled() {
+                // PLAN-982（用户裁定 ①B）：开关打开时**节点位也插值**——与取值位
+                // 同一生成物 `__fstr(expr)`；默认走下方字面量分支（legacy 对齐）。
                 out.push_str("__fstr(");
                 out.push_str(&src[i + 2..close]);
                 out.push(')');
