@@ -195,8 +195,12 @@ fn p981_age_package_grammar_id_is_frozen() {
     // 拼写，不需要该臂（其 `pub fn` 本就不在面内）。
     // D-981-GFX-SPAWN-SPELLING（2026-11-18 二次重基线）：`spawn` 成员位臂
     // 进两面——前值 2d1e0547… → 本值；age-component 同批前值 f35cf593…。
+    // PLAN-980 P3（2026-11-18 三次重基线，981 回签 edfa4220c）：style 声明面
+    // （style-item/style-params/style-param + contextual style-head）只进
+    // age-package——前值 0290d0ab… → 本值；age-component 仍 19a1376e…（上表
+    // 逐行冻结）；12 个非 AGE 邻居逐字节不变。
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "0290d0ab2441b23399f6505512da4e3c9a9e907890d9584ba8a45ff2694136c8"
+        "2d272979e8932ec8ab34373fab10ddc7a6978de4ecfe40b1140e94251724d7b2"
     );
 }

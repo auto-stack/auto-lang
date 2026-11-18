@@ -56,6 +56,20 @@ pub(crate) fn project_program_deferring_templates(
     project_program_with_caps(p, k, tree, snap, profile, false, false, true, age_face)
 }
 
+/// PLAN-980 P3：把**单个**表达式 CST 节点投影为 AST 表达式（style 值等由包前门
+/// 独立取值的场景用；与整程序投影同一 Engine/同一语法，不建第二条表达式投影）。
+pub(crate) fn project_expr_node(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+    node: u32,
+) -> Expr {
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, true);
+    eng.project_expr_sync(node)
+}
+
 /// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
 /// 声明**的类型参数表时投影为 `TypeRef::TyVar`（instances 面的 fn 模板与
 /// PLAN-963 的泛型记录成员同一规则）；fn-tail 的 `<T>` 投影为
@@ -438,6 +452,8 @@ pub(crate) fn project_program_with_caps(
                     r.name == "age-node-item"
                         || r.name == "age-node-c-item"
                         || r.name == "age-pub-node-item"
+                        // PLAN-980 P3：style 声明由包前门单独投影（str const/fn 糖）。
+                        || r.name == "style-item"
                 })
                 .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
                 .is_some_and(|k2| kind == k2)

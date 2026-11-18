@@ -280,6 +280,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-widget-head) { spelling: "widget", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
         name(age-view-head) { spelling: "view", token: "r-view", role: "view", profiles: [age-h0, age-component, age-package] }
         name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component, age-package] }
+        // PLAN-980 P3（981 回签 (a)）：style 声明头——仅 age-package 面（组件面无语义 const/public 面）。
+        name(style-head) { spelling: "style", token: "ident", role: "style", profiles: [age-package] }
         name(age-model-head) { spelling: "model", token: "ident", role: "model", profiles: [age-component, age-package] }
         name(age-on-head) { spelling: "on", token: "ident", role: "on", profiles: [age-component, age-package] }
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位的槽位限定拼写
@@ -331,6 +333,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-980：`use themes.themes: Auto, Solarized` 模块成员导入
             //（002-counter 等传统工程的主题包导入形；仅 age-component 面）。
             alt(profiles: [age-component, age-package]) { age-use-module-item() {} }
+            // PLAN-980 P3（981 回签 (a)）：style <name> [(params)] = <text> 作者面（仅 age-package）。
+            alt(profiles: [age-package]) { style-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
@@ -713,6 +717,43 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-use-import-tail(profiles: [age-component, age-package]) {
             comma() {} ident(field: "import") {}
         }
+        // PLAN-980 P3（981 回签 (a)(c)(d)）：style 声明 = str const/fn 语法糖。
+        //   style NAME = "classes"                 → const NAME: Str
+        //   style NAME(p: str) = "classes"          → fn NAME(p: str) -> Str（插值本刀具名拒）
+        //   style NAME(p: str = "d") = "…"          → 默认值具名拒（source.age.style-defaults）
+        // 只开 age-package 面；style 不进 token 表（声明头按 spelling 识别）。
+        style-item(profiles: [age-package], expect: "a style <name> = <text> recipe declaration") {
+            name(of: "style-head", field: "kw") {}
+            ident(field: "name") {}
+            opt { style-params(field: "params") {} }
+            assign() {}
+            pratt(of: "wide-ops", field: "value") {}
+        }
+        style-params(profiles: [age-package]) {
+            lparen() {}
+            style-param(field: "first") {}
+            many { style-param-tail() {} }
+            rparen() {}
+        }
+        style-param-tail(profiles: [age-package]) {
+            comma() {}
+            style-param() {}
+        }
+        // 组合器约束：opt 只收**单步**规则（多步 opt 不被支持）——类型注解与
+        // 默认值各自包成一条子规则。
+        style-param(profiles: [age-package]) {
+            ident(field: "name") {}
+            opt { style-param-ty-ann(field: "ty_ann") {} }
+            opt { style-param-default() {} }
+        }
+        style-param-ty-ann(profiles: [age-package]) {
+            colon() {}
+            age-param-ty(field: "ty") {}
+        }
+        style-param-default(profiles: [age-package]) {
+            assign() {}
+            pratt(of: "wide-ops", field: "default") {}
+        }
         age-model-member(profiles: [age-component, age-package], expect: "a `model { <field> <type> = <init> }` block") {
             name(of: "age-model-head", field: "model") {}
             lbrace(same-line: true) {}
@@ -1052,6 +1093,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { type-item(field: "type") }
             alt { const-item(field: "const") }
             alt { use-tail-p(field: "use") }
+            // PLAN-980 P3：pub style（age-package 公共面；首 token style 与 fn/type/const/use 互异）。
+            alt(profiles: [age-package]) { style-item(field: "style") }
             // PLAN-1043（T-02）：公共必需实现声明（无块；首 token `spec` 与
             // fn/type/const/use 备选互异——public-body 首 token 纪律保持）。
             alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { fn-require-p(field: "require") }

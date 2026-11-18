@@ -177,3 +177,6 @@ mod text_replacement;
 
 #[path = "cases/plan980_closure_dotted.rs"]
 mod plan980_closure_dotted;
+
+#[path = "cases/plan980_style_surface.rs"]
+mod plan980_style_surface;
