@@ -781,7 +781,7 @@ fn av_closures_fn_912_accepted_state_export() {
     assert_eq!(f_warm.mir_identity, f_cold.mir_identity);
     assert_eq!(f_warm.logical, f_cold.logical);
     // Producer identity is the live contract set.
-    assert_eq!(warm_state.producer_mir_lowering_version, "4");
+    assert_eq!(warm_state.producer_mir_lowering_version, "5");
     assert_eq!(
         warm_state.producer_closures_schema,
         "auto.mir.av-closures/1"

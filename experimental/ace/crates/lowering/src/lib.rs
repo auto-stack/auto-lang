@@ -36,4 +36,12 @@ pub use hir_adapter::*;
 /// scalar-only) and `TextConcat` operands view-coerce; plus the owned-Str
 /// local full-root replacement (`var` targets, §5.1) rides the existing
 /// owned local-assign `Move` mapping.
-pub const MIR_LOWERING_VERSION: &str = "4";
+/// v5 (PLAN-1026): console host-import admission in the collection family
+/// widens from "sched intrinsics present" to "sched intrinsics present OR
+/// any foreign def present" — a foreign-carrying closures module (the py
+/// training lane) may now admit `auto.console.*` imports that previously
+/// fell to the `lower.intrinsic` rejection; the `__py_f64_bits` /
+/// `__py_staged_text` reconstruction intrinsics lower at their call sites
+/// (no `CalleeRef`), and `F32`/`F64` intern in this domain for the general
+/// console float lanes.
+pub const MIR_LOWERING_VERSION: &str = "5";

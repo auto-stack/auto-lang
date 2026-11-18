@@ -165,6 +165,20 @@ function Invoke-Identity {
     if (-not $m.Success) { Fail "ac_mn.rs carries no EXPECTED_MIR_LOWERING_VERSION" }
     $mirrorVer = $m.Groups[1].Value
 
+    # PLAN-1026 (review r3 F-20): agreeing mirrors are only half of the
+    # identity. Before this check the three auto-lang-core mirrors could
+    # agree with each other while the ACE lowering crate's own const stayed
+    # behind — the PLAN-1026 admission widening moved the crate's semantics
+    # without moving "4", and no gate noticed. Assert the crate const here.
+    $crateSrc = Get-Content (Join-Path $exp "ace/crates/lowering/src/lib.rs") -Raw
+    $cm = [regex]::Match($crateSrc, 'pub const MIR_LOWERING_VERSION: &str = "(\d+)"')
+    if (-not $cm.Success) { Fail "ace-lowering lib.rs carries no MIR_LOWERING_VERSION" }
+    if ($cm.Groups[1].Value -ne $mirrorVer) {
+        Fail ("ace-lowering MIR_LOWERING_VERSION " + $cm.Groups[1].Value + " != ac_* mirror " + $mirrorVer +
+            " — a lowering contract change must bump the crate const and the three ac_* mirrors together")
+    }
+    Write-Host "== identity: ace-lowering crate const agrees with the ac_* mirrors ($mirrorVer)"
+
     Write-Host "== identity: av rows carry mir-lowering=$mirrorVer"
     $avReport = Join-Path $dir "ac-av/report.json"
     $avText = Get-Content $avReport -Raw

@@ -3683,7 +3683,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         let ze32 = |me: &mut Self, x: SlotId| -> Result<SlotId, AdapterError> {
             let sm = me.py_bin(num(NumOp::Shr, NumTy::I32), t32, x, c31, sp)?;
             let sm64v = me.temp_ty(t64)?;
-            me.emit(MirInstr::Conv { dst: sm64v, src: sm }, sp)?;
+            me.emit(
+                MirInstr::Conv {
+                    dst: sm64v,
+                    src: sm,
+                },
+                sp,
+            )?;
             let bit = me.py_bin(num(NumOp::And, NumTy::I64), t64, sm64v, one64, sp)?;
             // (bit & 1) << 32 — one 32-bit shift, NOT two 31-bit shifts
             // (the earlier 31+31 form produced 2^62: 128.23701 corruption)
