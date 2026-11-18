@@ -129,13 +129,13 @@ int32_t a2x_gfx_query2d_segment(int32_t a, bool b, float ax, float ay, float bx,
 /// 手工构造 `PackageProduct`（`CompiledSource` 全 pub 字段 + 同一 bound，
 /// 不重跑绑定）→ `PackageA2xTarget::cold` + C provider → fileset →
 /// **+宿主 stub** → 真 cl → 运行 → (stdout, stderr)。
-fn run_cl_leg(tag: &str, host_stub: &str) -> (String, String) {
+fn run_cl_leg(tag: &str, src: &str, host_stub: &str) -> (String, String) {
     let age = compile_age_package(
         &[PackageModuleInput {
             package: "app".into(),
             version: "1.0.0".into(),
             id: "main".into(),
-            source: MAIN.into(),
+            source: src.into(),
             provider: None,
         }],
         "app::main",
@@ -198,7 +198,7 @@ fn run_cl_leg(tag: &str, host_stub: &str) -> (String, String) {
 /// ⇒ `value:1`。f32 常量腿同跑（0.4/0.6/1.9/2.1 字面量）。
 #[test]
 fn p981_gfx_a2c_cl_sweep_and_segment_run_through_the_real_host_abi() {
-    let (stdout, stderr) = run_cl_leg("ok", HOST_OK);
+    let (stdout, stderr) = run_cl_leg("ok", MAIN, HOST_OK);
     assert!(
         stdout.contains("value:1"),
         "the caller read the host-provided record fields: stdout={stdout:?} stderr={stderr:?}"
@@ -219,7 +219,7 @@ fn p981_gfx_a2c_cl_sweep_and_segment_run_through_the_real_host_abi() {
 /// 来自宿主 out 槽，不是常量折叠/打印端伪造。
 #[test]
 fn p981_gfx_a2c_cl_mutant_host_value_flips_the_result() {
-    let (stdout, stderr) = run_cl_leg("mutant", HOST_MUTANT);
+    let (stdout, stderr) = run_cl_leg("mutant", MAIN, HOST_MUTANT);
     assert!(
         stdout.contains("value:0"),
         "the mutated host record must flip the discriminant: stdout={stdout:?}"
@@ -231,7 +231,7 @@ fn p981_gfx_a2c_cl_mutant_host_value_flips_the_result() {
 /// `A2X_TRAP_RESOURCE`（零效果）——wrapper 打 `trap:`，不打 `value:`。
 #[test]
 fn p981_gfx_a2c_cl_host_fault_folds_into_a_typed_trap() {
-    let (stdout, stderr) = run_cl_leg("fault", HOST_FAULT);
+    let (stdout, stderr) = run_cl_leg("fault", MAIN, HOST_FAULT);
     assert!(
         stdout.contains("trap:"),
         "a host fault must fold into a typed trap: stdout={stdout:?}"
@@ -248,39 +248,92 @@ fn p981_gfx_a2c_cl_host_fault_folds_into_a_typed_trap() {
     assert_eq!(stderr.matches("host:segment").count(), 0);
 }
 
-/// **image2d.png 具名边界**：端口含 owned-Str 字段（`Image2D.sha256`）——
-/// 具名 out 槽 ABI 只承载标量字段；该 op 的 out 约定（宿主写 Str）另行
-/// 联冻，本批在 C 车道**具名拒**（不猜、不伪造原型）。
-#[test]
-fn p981_gfx_a2c_image2d_port_stays_named_deferred() {
-    use ace_a2x_c::lower_rt::{lower_functions_rt, print_fragment_rt};
-    use ace_a2x_core::SemanticView;
-    use ace_core::source::age_h0::LegacyWidgetAlias;
-    use ace_core::source::age_package::compile_age_package;
+/// **image2d.png owned-Str out 约定（真 cl）**：宿主经 `a2x_stro_result*`
+/// 写 owned 缓冲（stub 用运行时 `a2x_str_from_lit` 构造 sha），调用侧核
+/// wrapper trap 后**移动**进 record 字段——调用方读 byte_length/width/height
+/// 与 `sha256.len()` 判别 ⇒ `value:1`；宿主恰收一次调用。
+const IMG_MAIN: &str = "fn main() int {\n    let img Image2D = image2d.png(\"assets/x.png\")\n    let n = img.byte_length\n    let w = img.width\n    let h = img.height\n    let sl = img.sha256.len()\n    if n == 16 && w == 64 && h == 32 && sl == 8 {\n        return 1\n    }\n    return 0\n}\n";
 
-    let compiled = compile_age_package(
-        &[PackageModuleInput {
-            package: "app".into(),
-            version: "1.0.0".into(),
-            id: "main".into(),
-            source: "pub fn probe() int {\n    let img Image2D = image2d.png(\"assets/x.png\")\n    return img.byte_length\n}\n\nfn main() int {\n    return probe()\n}\n".into(),
-            provider: None,
-        }],
-        "app::main",
-        LegacyWidgetAlias::Reject,
-        &[PACKAGES_CAPABILITY.to_string()],
-    )
-    .expect("the age front door admits image2d.png");
-    let view = SemanticView::from_checked(&compiled.checked)
-        .unwrap_or_else(|r| panic!("view admission: {r}"));
-    let fns: Vec<_> = view.functions().iter().collect();
-    let err = lower_functions_rt(&view, &fns)
-        .expect_err("the C lane must named-defer the owned-Str port");
-    let msg = format!("{err:?}");
+const HOST_PNG: &str = r#"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include "a2x_c_rt_runtime.h"
+
+int32_t a2x_gfx_image2d_png(a2x_str_view a0,
+    a2x_stro_result* out_sha256, int32_t* out_byte_length,
+    int32_t* out_width, int32_t* out_height) {
+    (void)a0;
+    fprintf(stderr, "host:png\n");
+    a2x_str_view lit = { (const uint8_t*)"deadbeef", 8 };
+    *out_sha256 = a2x_str_from_lit(lit);
+    *out_byte_length = 16;
+    *out_width = 64;
+    *out_height = 32;
+    return 0;
+}
+"#;
+
+#[test]
+fn p981_gfx_a2c_cl_image2d_owned_str_out_reaches_the_caller() {
+    let (stdout, stderr) = run_cl_leg("png", IMG_MAIN, HOST_PNG);
     assert!(
-        msg.contains("owned-Str port fields are a separate frozen convention")
-            || msg.contains("Image2D"),
-        "named C deferral for image2d.png: {msg}"
+        stdout.contains("value:1"),
+        "the host-written owned-Str + dims reached the caller: stdout={stdout:?} stderr={stderr:?}"
     );
-    let _ = print_fragment_rt; // silence unused-import lint in cfg variants
+    assert_eq!(
+        stderr.matches("host:png").count(),
+        1,
+        "the host receives exactly ONE image2d.png call"
+    );
+}
+
+/// **宿主 Str wrapper trap 负控**：`a2x_str_from_lit` 分配失败不可注入，但
+/// wrapper trap 通道可注入——stub 直接给 `out_sha256` 塞 trap ⇒ 生成侧
+/// 折叠 typed trap、零效果（`trap:` 不打 `value:`），且**不再读其余字段**。
+const HOST_PNG_TRAP: &str = r#"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include "a2x_c_rt_runtime.h"
+
+int32_t a2x_gfx_image2d_png(a2x_str_view a0,
+    a2x_stro_result* out_sha256, int32_t* out_byte_length,
+    int32_t* out_width, int32_t* out_height) {
+    (void)a0;
+    (void)out_byte_length; (void)out_width; (void)out_height;
+    fprintf(stderr, "host:png\n");
+    *out_sha256 = a2x_fwd_stro(A2X_TRAP_RESOURCE);
+    return 0;
+}
+"#;
+
+#[test]
+fn p981_gfx_a2c_cl_image2d_str_wrapper_trap_folds_zero_effect() {
+    let (stdout, stderr) = run_cl_leg("pngtrap", IMG_MAIN, HOST_PNG_TRAP);
+    assert!(
+        stdout.contains("trap:"),
+        "a trapped owned-Str wrapper must fold into a typed trap: stdout={stdout:?}"
+    );
+    assert!(
+        !stdout.contains("value:1"),
+        "the trapped record has zero effect: stdout={stdout:?}"
+    );
+    assert_eq!(stderr.matches("host:png").count(), 1);
+}
+
+/// **C f32 值通道（真 cl）**：float **参数/局部（var）/返回**全链——
+/// `step(dx f32) f32` 两步积分，`main` 读 f32 局部 + 调 f32 返回的 helper
+/// ⇒ `value:1`；f32 常量走按位构造器。
+const F32_MAIN: &str = "fn step(dx f32) f32 {\n    var v = dx * 2.0\n    v = v + 0.05\n    return v\n}\n\nfn main() int {\n    let d f32 = 0.25\n    let r f32 = step(d)\n    if r > 0.54 && r < 0.56 {\n        return 1\n    }\n    return 0\n}\n";
+
+const HOST_NONE: &str = "/* no host ops called by the f32 value channel leg */\nint p981_f32_leg_host_placeholder = 0;\n";
+
+#[test]
+fn p981_gfx_a2c_cl_f32_value_channel_locals_params_returns() {
+    let (stdout, stderr) = run_cl_leg("f32", F32_MAIN, HOST_NONE);
+    assert!(
+        stdout.contains("value:1"),
+        "float locals/params/returns ran through real cl: stdout={stdout:?} stderr={stderr:?}"
+    );
 }

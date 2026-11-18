@@ -155,8 +155,9 @@ fn write_gfx_host_declarations(
             .collect();
         // 端口 record 结果：**具名 out 指针**（`AGE_PORT_FIELDS` 声明序）——
         // 宿主只填值、不接触 record typedef（与 AV 的字段序契约同源）；返回值
-        // = 宿主状态（0=成功，非 0=fault 码）。owned-Str 端口字段
-        // （Image2D.sha256）的 out 约定另行联冻——该 op 的原型页**不列**。
+        // = 宿主状态（0=成功，非 0=fault 码）。标量字段直填；**owned-Str 字段**
+        //（Image2D.sha256）经 `a2x_stro_result*`——宿主用运行时 str helper
+        // 构造 owned 缓冲（wrapper 带 trap；022 内容身份语义）。
         let (ret, skip) = match op.result {
             ace_core::source::age_resources::AgeGfxResult::Scalar(
                 ace_core::source::resolve::VT::I32,
@@ -173,20 +174,23 @@ fn write_gfx_host_declarations(
                     .find(|(p, _)| *p == port)
                     .map(|(_, fs)| *fs)
                     .unwrap_or(&[]);
-                let all_scalar = fields
+                let servable = fields
                     .iter()
-                    .all(|(_, t)| matches!(*t, "f32" | "i32" | "bool"));
-                if all_scalar {
+                    .all(|(_, t)| matches!(*t, "f32" | "i32" | "bool" | "Str"));
+                if servable {
                     for (fname, fty) in fields {
-                        let cty = match *fty {
-                            "f32" => "float",
-                            "i32" => "int32_t",
-                            _ => "bool",
+                        let pty = match *fty {
+                            "f32" => "float*",
+                            "i32" => "int32_t*",
+                            "bool" => "bool*",
+                            // owned-Str：wrapper 指针（宿主侧构造 + trap）。
+                            "Str" => "a2x_stro_result*",
+                            _ => "int32_t*",
                         };
-                        params.push(format!("{cty}* out_{fname}"));
+                        params.push(format!("{pty} out_{fname}"));
                     }
                 }
-                ("int32_t", !all_scalar)
+                ("int32_t", !servable)
             }
             _ => ("int32_t", false),
         };
@@ -203,9 +207,11 @@ fn write_gfx_host_declarations(
     Ok(())
 }
 
-/// PLAN-981（A2C f32 常量腿）：类型化数值常量的按位构造器——`NumericConst`
-/// 在 record-text 车道的字面量拼写（float 字面量恒经 `a2x_f32_bits(<bits>u)`，
-/// 与 scalar 车道 `numeric_const_c` 同源；NaN payload/-0.0 逐位存活）。
+/// PLAN-981（A2C f32 常量腿 + C f32 值通道）：类型化数值常量的按位构造器
+/// ——`NumericConst` 在 record-text 车道的字面量拼写（float 字面量恒经
+/// `a2x_f32_bits(<bits>u)`，与 scalar 车道 `numeric_const_c` 同源；NaN
+/// payload/-0.0 逐位存活）。**值通道**：`a2x_result_f32` 包装（返回/div/rem
+/// 的 helper 面，与 scalar 车道同一拼写）。
 const RT_NUMCONST_C: &str = r#"
 /* ---- typed numeric constants (bit-exact payload; PLAN-981 A2C f32 lane) ---- */
 static inline float a2x_f32_bits(uint32_t bits) {
@@ -217,6 +223,24 @@ static inline double a2x_f64_bits(uint64_t bits) {
     double out;
     memcpy(&out, &bits, sizeof out);
     return out;
+}
+/* ---- PLAN-981 C f32 value channel: result wrapper + div/rem helpers ----
+ * (same spellings as the scalar channel's numeric runtime). */
+#include <math.h>
+typedef struct { float value; a2x_trap_code trap; } a2x_result_f32;
+#define A2X_OK_F32(v) { (float)(v), A2X_TRAP_NONE }
+static inline a2x_result_f32 a2x_f32_value(float v) {
+    a2x_result_f32 r; r.value = v; r.trap = A2X_TRAP_NONE; return r;
+}
+static inline a2x_result_f32 a2x_fwd_f32(a2x_trap_code t) {
+    a2x_result_f32 r; r.value = 0.0f; r.trap = t; return r;
+}
+static inline a2x_result_f32 a2x_div_f32(float a, float b) {
+    if (b == 0.0f) { return (a2x_result_f32){ 0, A2X_TRAP_DIV_BY_ZERO }; }
+    return (a2x_result_f32)A2X_OK_F32(a / b);
+}
+static inline a2x_result_f32 a2x_rem_f32(float a, float b) {
+    return (a2x_result_f32)A2X_OK_F32(fmodf(a, b));
 }
 "#;
 
