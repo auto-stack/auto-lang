@@ -668,17 +668,41 @@ pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
 
     // ④ Grants per the minimal closure's OWN import table (Q-982-2 ruling B):
     //    `platform.mem` (the argv line's region reads) + the narrow
-    //    `platform.process.argv` (argv reading). The front door re-checks
-    //    every declared import item by item and names anything missed.
+    //    `platform.process.argv` (argv reading) + the console streams when
+    //    the script uses the console face. The front door re-checks every
+    //    declared import item by item and names anything missed.
     //    `platform.process` — the spawn family — is deliberately ABSENT.
-    let grants = vec![
+    let mut grants = vec![
         "platform.mem".to_string(),
         "platform.process.argv".to_string(),
     ];
-    match target.run_platform_value(&grants, &mut backend) {
-        Ok((outcome, _summary)) => map_outcome(outcome, None, None),
-        Err(e) => denied_report("ace.sys/run", e),
+    if request.console {
+        grants.push("console.stdout".to_string());
+        grants.push("console.stderr".to_string());
     }
+
+    // ⑤ PLAN-982 (Q-982-2 step 2): the product-entry budgets — the door
+    //    owns wall/cancel and the CONSOLE HOST (capture for the CLI face;
+    //    the re-emission discipline is the caller's).
+    let limits = limits_from(request);
+    let fallback = CancelFlag::new(false);
+    let cancel = cancel_flag(request, &fallback);
+    let mut cap = ace_av::console_host::ConsoleCapture::default();
+    let console: Option<&mut dyn ace_av_core::host::ConsoleHost> =
+        if request.console { Some(&mut cap) } else { None };
+    let run = target.run_platform_value_with(&limits, cancel, console, &grants, &mut backend);
+    let mut out = match run {
+        Ok((outcome, _summary)) => map_outcome(outcome, None, None),
+        Err(e) => return denied_report("ace.sys/run", e),
+    };
+    if request.console {
+        out.console = Some(AceConsoleReport {
+            stdout: cap.stdout.clone(),
+            stderr: cap.stderr.clone(),
+            dispatches: cap.dispatches,
+        });
+    }
+    out
 }
 
 /// 非 Windows：sys-stdlib 脚本车道缺席（Win32 平台后台不可用）⇒ 具名拒绝。
