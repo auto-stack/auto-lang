@@ -1356,7 +1356,7 @@ next_responsible_role: user（**④外部名面设计决策**：widget 面的 us
 
 next_responsible_role: work（调用**表达式形**（`on_select(next)` 作 RHS/pratt——wide-ops 无调用后缀）=表达式面扩展；随后 [65] 全解锁。④完整承载仍待 976 后继目标域决策）。
 
-2026-11-18 stage: work（WEB 批切片 #6p：调用表达式形·通道调用承载；#6o 合同闭合）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——④完整承载（外部调用进受检体=976 后继目标域决策）与真语料全量 spliced 的生成器道（vue/script.rs：watch/setup/expose/ext_imports/style 族）+vue_capabilities 10 预存红（master 预存归 triage）为批剩余）| worktree: lang-980 @ plan-980-dev | code_commit: lang **42927d6f7**、ui **c80a3720**+锁 chore **f43ef59b**。
+2026-11-18 stage: work（WEB 批切片 #6p：调用表达式形·通道调用承载；#6o 合同闭合）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——④完整承载（外部调用进受检体=976 后继目标域决策）与真语料全量 spliced 的生成器道（vue/script.rs：watch/setup/expose/ext_imports/style 族）+vue 门 chart×5 具名预存（PLAN-643 分歧，归属 chart/官方包线）为批剩余）| worktree: lang-980 @ plan-980-dev | code_commit: lang **42927d6f7**、ui **c80a3720**+锁 chore **f43ef59b**。
 
 **事实修正（探针证伪 #6o 前提，adapt 表记录）。** "wide-ops 无调用后缀"**不成立**：pratt 调用后缀一直在场（文法 `call` 块+引擎 WantOp 臂）——`.x = on_select(1)` 解析通过、**Bind** 阶段 `source.undefined` 拒；调用**语句**形 #6o `age-view-call-stmt` 已解析（[65] 全源语言面编译 OK）。#6o 后实况缺口（master 在场缺陷，探针实证）：①通道调用（callee=widget 头参数/宿主通道 prop）无承载——检查函数只铸赋值、**调用语句被静默丢弃**（[65] `.Bump` 拼接体只有 `n.value = next;`，`on_select(next)` 丢句）；②`handler_check_fn` 不守 `body_foreign`（#6o 收据声称"检查函数不铸"，实际照铸→部分体 verify+部分拼接）；③域外调用 handler 进 ops=整 lane 编译失败=**兄弟 handler 连带全体缺席**；④#6o 收据引用的规范 §13.16 从未落档。
 
@@ -1367,6 +1367,14 @@ next_responsible_role: work（调用**表达式形**（`on_select(next)` 作 RHS
 **边界（诚实）。** ④完整承载（`fs.read_dir`/`listusers` 等外部调用进受检体）=976 后继目标域决策（a2ts.foreign-unsupported 域合同变更，§13.15 终局陈述保持）；[72] RHS `listusers` 仍缺席（④族）；lambda 面通道调用承载=后续切片（本批只闭"不铸"防丢句）；watch/lifecycle 体调用语句按方言合同跳过（#6o 边界）；`on` 块/lambda 体**单行多语句**形（`a; b` 不换行）=`list-nl` 文法既定边界（探针实测）。主检出存他会话 WIP（Cargo.lock/docs/design/**，#6j 收据已surface）原样保留未纳入。
 
 next_responsible_role: review（#6p 批级复核：AC-B-WEB 映射/反例重放/边界核对）→ merge（phase fold #13）。
+
+2026-11-18 stage: review（#6p 批级复核）| review_scope: phase | reviewer: 同会话独立复核（限制：非独立上下文；结论由工件重构——authored mutation 反例、冻结树核对、门禁复放、机械审计，非采信执行者摘要）| plan_id: PLAN-980 | plan_revision: r16 | outcome: **pass（批增量；F-R1 复核修复后闭；B-WEB-I/V/R 保持未勾）** | reviewed_commit: lang 42927d6f7→复核修复 **25c53f77d**（rebase→3c7bf5688）/ ui c80a3720+f43ef59b。①冻结核对：双树 clean；ui 分支基=master tip 14050492 零漂移；lang 分支基 e05531572（master 仅 docs 前进）。②门禁复放：UI ace_ts_provider **24/24**（复核会话冻结提交实测 1.83s）；lang 双门禁（run-hy8xo3yp 双 PASS）按输入同一性复用——产品代码自该跑后零改动（F-R1 仅测试文件）。③**authored mutation 反例（判别力实证）**：M1=移除 handler_check_fn 的 body_foreign 门——首测**未红**（UI 侧旗标短路掩蔽）→ **F-R1 真缺陷**：语言侧"检查函数不铸"合同无持久反例且首版强化断言因 `sf_` 前缀空转（DIAG 实证 def 名=`sf___age_hv_*`）；修复=模块内容断言（`contains("__age_hv_")`/`__age_vl_`）+ 复验 M1 **红**（`sf___age_hv_0_0` 被抓）；M2=移除 lane ops 豁免——**红**（`sibling preserved: [".Go",".Stop"]`，既有断言即判别）。④终版门禁：ace-av 全组 1 红=mempeek/closures/audit1030 环境族（**隔离串行重放 8/8 绿**，#6j 同款台账归因）；conformance p980_web_6p **6/6**。⑤机械审计：探针零残留、调试打印零（eprintln DIAG 已随修复移除）、fmt clean（本批文件）、无 legacy 写入。⑥规范 §13.16 与 as-built 一致（含"无语法改动 grammar-id 零漂移"——ace-source 冻结测试绿实证）。新 case 计时：lang 6 例 0.03s、UI 六臂 0.24-0.34s（≤10s）。
+
+**findings**: F-R1（已修复闭环——25c53f77d：语言侧 fail-closed 合同的铸造事实必须在受检模块内容上可判别，不能依赖消费侧旗标掩蔽）；无阻断缺陷。边界核对：④外部调用域合同+生成器道（watch/setup/expose/ext_imports/style 真实语料）=批剩余（用户本轮确认）；jade-garden 实测 0/91 拼接已立证（离 983 真实分母的距离）。
+
+2026-11-18 stage: merge（phase fold #13，WEB #6p 批增量正式落主；整包 executing 12/32 保持，唯一树保留续 WEB 剩余/TAURI/PARITY，不归档/不清树）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（批增量交付）| delivery_commit: auto-lang master **3c7bf5688**（1974554c2 切片+3c7bf5688 复核修复；rebase onto 96750e6fa——master 因 982 docs 前进；`git range-diff` 全等 `=`+新增修复提交；ff-only 无 merge commit）、auto-ui master **f43ef59b**（c80a3720+f43ef59b，基=14050492 零漂移直接 ff）| canonical: docs/specs/ace-migration/m2-autoui.md §13.16（随 lang 落主）| 落主方式：wt-guard 双树 clean + `git merge --ff-only`；双主检出他会话 WIP（docs/design/**、Cargo.lock）原样保留——lang 侧脏锁与分支锁 blob 同一（c2e1a1ebf）stash-merge-drop 零损失；ui 侧脏锁为他会话 ace-host/auto-web 依赖刷新（982/983 谱系）按**并集**恢复工作树（不入本 fold）。落地后核对：双仓 tip=delivery ✓；24/24 与双门禁证据按输入同一性复用。**批剩余（用户 2026-11-18 确认）**：①④外部调用进受检代码的域合同（976 后继目标域决策——a2ts.foreign-unsupported 变更）；②Vue 生成器对 **watch/setup/expose/外部导入/样式** 等真实语料的覆盖（生成器道多切片）；③census 全量 spliced→B-WEB-R 终核→勾选 B-WEB-I/V/R。
+
+next_responsible_role: work（生成器道扩面：watch/setup/expose/ext_imports/style 族逐片切——建议以 jade-garden 39 文件为正式分母；④域合同=用户/976 后继决策输入，建议先出合同草案）。
 
 ## 10. 待澄清事项
 
