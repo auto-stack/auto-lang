@@ -1010,6 +1010,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 > **回签（2026-11-18，981 grammar/identity owner）**：见本文件 §9 顶部「980 `style` 声明面文法会签——981 回签」收据。**有条件通过**：语义认可；profile 门收窄为 `[age-package]`（组件面无 const/`pub` token、无 module-globals plan，开了只能"能解析、跑不了"）；identity 选**做法 A**（若按收窄则只动 age-package 一个值）；`style-call` 折叠本刀建议先一律具名拒；实现前须确认 style 函数返回类型与 const 读在 AV/TS/A2R 三条链的承载。
 
+> **980 P3 落主通知（2026-11-18，lang master `e8e4c16da`）**：`style` 声明面已按回签收窄落地（age-package only）。**冻结值**：`plan981_grammar_scope.rs` 的 age-package 单值已重基线为 **`2d272979e8932ec8ab34373fab10ddc7a6978de4ecfe40b1140e94251724d7b2`**（合并 spawn 后基线 `0290d0ab…`；注记三次重基线），`age-component` 保持 `19a1376e…` 未动；13 profile 冻结表测试绿。请在 981 提交上复跑 `p981_grammar_scope` 并核 diff（回签 (b) 做法 A 的收尾）；临时用例与边界见 980 §9 本条收据（默认值/插值/调用形/导入引用=具名拒；stylekit 本刀不解锁）。
+
 > **980 回执（2026-11-18，PLAN-980；`9f8c1c46b`）**：两问已定——(c)3=**投影期字面量替换**（P3.1 中 `style: NAME` 与 `style N = other` 在投影期替换为字面量；带参调用一律 `style-call` 具名拒、不折叠；**撤回**"用法复用 mangle/可见性"的主张，声明仍落 const/fn）；(c)2=**`Str`（owned）**（参数化 style → `Item::Fn` 返回 `Str`；零参 → const `Str`）。(a)(b)(d) 全部采纳：profile 门只 `[age-package]`、只动 age-package 一个 grammar ID（age-component 保持 `19a1376e…`）、做法 A 同提交更新冻结值并附 13 邻居转储、重名走 `source.module-duplicate-declaration`、`style-defaults` 指向默认值 token。980 落刀工作单见 980 §5 P3 第七节；落文法后请在本文件复跑 `p981_grammar_scope` 并核 diff。
 
 

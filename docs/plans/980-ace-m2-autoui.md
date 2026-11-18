@@ -1638,6 +1638,14 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **落刀工作单**（§5 P3 七节）：文法三件（`style-head`/`style-item`/`style-params`，仅 age-package）→ 投影（const/fn + defaults/call 具名拒 + 声明/导出/重名）→ 用法投影期字面量替换 → 永久用例九项 + 13-profile 转储 + age-package ID 重基线 → 门禁 `cargo t ace-source ace-av`；981 在 980 文法提交上复跑 `p981_grammar_scope` 核 diff。**本轮未改文法/代码。**
 
+2026-11-18 stage: work+merge（**P3 `style` 声明面落文法**：age-package only；981 回签 `edfa4220c` 收窄版）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（style 面已交；默认值/插值/调用形/导入引用=具名拒）** | delivery: lang master **`e8e4c16da`**（rebase 后 ff-only；合并 master 含 981 ABI/spawn 前进，披露冲突解决=冻结值按合并后文法重算）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①文法（`grammars/auto-source.at`，**仅 age-package**）：contextual `style-head`（不进 token 表）+ `style-item` + `style-params`/`style-param`/`style-param-ty-ann`/`style-param-default`（组合器约束：多步 opt 拆子规则）+ 项位 alt 与 `public-body` 的 style 臂。②投影（`cst/frontdoor.rs`）：零参字面量→`Item::Const{Str}`；`pub style`→公共面 exports；参数化（无默认/无插值）→`Item::Fn{ret:Str}`；**默认值→`source.age.style-defaults`**（span=默认值 token）；**参数插值→`source.age.style-interp`**；**调用形→`source.age.style-call`**（组件投影前的 CST 预扫 + 声明初值两处）；本地 ident 复制延后解析（允许前向；未命中→`style-call`）；**导入 style 引用→`style-call`**；用法 `style: NAME` 在投影期替换为字面量（981 (c)3，无 module-global 读）；重名走现有 `source.module-duplicate-declaration`；`style` 作普通标识符仍合法。③身份（做法 A）：`plan981_grammar_scope.rs` 的 **age-package 单值** 重基线（合并 spawn 后基线 `0290d0ab…` → **`2d272979…`**，注记三次重基线）；**age-component 保持 `19a1376e…`**；13 profile 逐行冻结表绿=邻居未变。④永久用例 `plan980_style_surface` **9 例**。
+
+**验证。** 目标 9/9；grammar 7/7；`cargo t ace-source ace-av` **双 PASS**（合并后提交上复跑）。
+
+**边界（诚实）。** ①stylekit 的 3 条参数化 recipe 带默认值→**本刀具名拒**（007/016/017/029/031p 的 stylekit 面仍未解锁）；②参数插值未接（`style-interp`）；③带参调用不折叠（`style-call`）；④导入 style 引用不接（`style-call`）；⑤用法替换只走主 view 树（命名 view/其它出口未遍历——具名边界）。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
