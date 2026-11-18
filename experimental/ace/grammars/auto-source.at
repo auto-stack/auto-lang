@@ -211,6 +211,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 也用 `pub fn` 拼写——单模块文件里 pub 是可见性 no-op，保持包面/内联
         // 单源同一拼写。
         r-pub(profiles: [scalar-modules, packages-modules, packages-ct, host-console, entry-unit, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, text-record, config-document]) { literal: "pub" }
+        // PLAN-981（G1）：`render-only` —— `shape2d` 的 `layer:` 冻结值（单个
+        // 保留字 token，按字节最长匹配；普通标识符 `render` 不受影响——只在
+        // 精确字节序 `render-only` 处命中）。仅 age-package 裁剪。
+        r-render-only(profiles: [age-package]) { literal: "render-only" }
         r-view { literal: "view" }
         r-with { literal: "with" }
         r-yield { literal: "yield" }
@@ -280,6 +284,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-widget-head) { spelling: "widget", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
         name(age-view-head) { spelling: "view", token: "r-view", role: "view", profiles: [age-h0, age-component, age-package] }
         name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component, age-package] }
+        // PLAN-980 P3（981 回签 (a)）：style 声明头——仅 age-package 面（组件面无语义 const/public 面）。
+        name(style-head) { spelling: "style", token: "ident", role: "style", profiles: [age-package] }
         name(age-model-head) { spelling: "model", token: "ident", role: "model", profiles: [age-component, age-package] }
         name(age-on-head) { spelling: "on", token: "ident", role: "on", profiles: [age-component, age-package] }
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位的槽位限定拼写
@@ -331,6 +337,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-980：`use themes.themes: Auto, Solarized` 模块成员导入
             //（002-counter 等传统工程的主题包导入形；仅 age-component 面）。
             alt(profiles: [age-component, age-package]) { age-use-module-item() {} }
+            // PLAN-980 P3（981 回签 (a)）：style <name> [(params)] = <text> 作者面（仅 age-package）。
+            alt(profiles: [age-package]) { style-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
@@ -713,6 +721,43 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-use-import-tail(profiles: [age-component, age-package]) {
             comma() {} ident(field: "import") {}
         }
+        // PLAN-980 P3（981 回签 (a)(c)(d)）：style 声明 = str const/fn 语法糖。
+        //   style NAME = "classes"                 → const NAME: Str
+        //   style NAME(p: str) = "classes"          → fn NAME(p: str) -> Str（插值本刀具名拒）
+        //   style NAME(p: str = "d") = "…"          → 默认值具名拒（source.age.style-defaults）
+        // 只开 age-package 面；style 不进 token 表（声明头按 spelling 识别）。
+        style-item(profiles: [age-package], expect: "a style <name> = <text> recipe declaration") {
+            name(of: "style-head", field: "kw") {}
+            ident(field: "name") {}
+            opt { style-params(field: "params") {} }
+            assign() {}
+            pratt(of: "wide-ops", field: "value") {}
+        }
+        style-params(profiles: [age-package]) {
+            lparen() {}
+            style-param(field: "first") {}
+            many { style-param-tail() {} }
+            rparen() {}
+        }
+        style-param-tail(profiles: [age-package]) {
+            comma() {}
+            style-param() {}
+        }
+        // 组合器约束：opt 只收**单步**规则（多步 opt 不被支持）——类型注解与
+        // 默认值各自包成一条子规则。
+        style-param(profiles: [age-package]) {
+            ident(field: "name") {}
+            opt { style-param-ty-ann(field: "ty_ann") {} }
+            opt { style-param-default() {} }
+        }
+        style-param-ty-ann(profiles: [age-package]) {
+            colon() {}
+            age-param-ty(field: "ty") {}
+        }
+        style-param-default(profiles: [age-package]) {
+            assign() {}
+            pratt(of: "wide-ops", field: "default") {}
+        }
         age-model-member(profiles: [age-component, age-package], expect: "a `model { <field> <type> = <init> }` block") {
             name(of: "age-model-head", field: "model") {}
             lbrace(same-line: true) {}
@@ -748,13 +793,51 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 单段消息名（980 的既有合同不被本批改写）。
             opt(profiles: [age-package]) { age-on-msg-tail(field: "msg_tail") {} }
             lbrace(same-line: true) {}
-            list-nl { age-on-assign() {} }
+            list-nl { age-on-stmt() {} }
             rbrace() {}
+        }
+        // PLAN-981（G2，2026-11-18 用户裁定）：`on` 体语句。赋值沿旧形（两面
+        // 共用）；hook-local `let` / `if-else` 只在 age-package 作者面
+        // （UI058 T-04 的自然写法：一次 sweep + 分支复用同一结果）。age-component
+        // （980 WEB 复放面）的裁剪**不含**这两臂——`let`/`if` 在该面 `on` 体保持
+        // 语法拒（fail-closed，不开"能解析、跑不了"的半面）。两面 grammar id 随
+        // 本批与 G1 同批具名重基线（13 邻居逐字节不变）。
+        age-on-stmt(profiles: [age-component, age-package], expect: "an `on` handler statement (`<field> = <expr>`; the age-package face also allows hook-local `let` / `if`)") {
+            alt { age-on-assign() {} }
+            alt(profiles: [age-package]) { age-on-let() {} }
+            alt(profiles: [age-package]) { age-on-if() {} }
         }
         age-on-assign(profiles: [age-component, age-package], expect: "an `on` handler assignment `<field> = <expr>`") {
             ident(field: "field") {}
             assign() {}
             pratt(of: "wide-ops", field: "rhs") {}
+        }
+        // PLAN-981（G2）：hook-local 绑定——本执行路径求值一次
+        // （`let q = query2d.sweep(…)`），结果随回调失效（021 token 语义由
+        // 脱糖后的隐藏函数体承担）。可选类型注解（`let q Sweep2D = …`）；
+        // 无注解由共享 resolver 按 gfx 服务声明表定型（Port 结果即名义 record）。
+        age-on-let(profiles: [age-package], expect: "a hook-local `let <name> = <expr>`") {
+            let(field: "kw") {}
+            ident(field: "name") {}
+            opt { ann-ty(field: "ann") {} }
+            assign() {}
+            pratt(of: "wide-ops", field: "value") {}
+        }
+        // PLAN-981（G2）：`on` 体分支。then/else 体仍是 age-on-stmt 面
+        //（不向下开放 return/for 等普通语句面）。
+        age-on-if(profiles: [age-package], expect: "an `on` handler `if <cond> { … } [else { … }]`") {
+            if(field: "kw") {}
+            if-cond(field: "cond") {}
+            lbrace(same-line: true) {}
+            list-nl { age-on-stmt() {} }
+            rbrace() {}
+            opt { age-on-else(field: "els") {} }
+        }
+        age-on-else(profiles: [age-package]) {
+            else() {}
+            lbrace(same-line: true) {}
+            list-nl { age-on-stmt() {} }
+            rbrace() {}
         }
         // PLAN-981：`Life.Tick` 这类限定消息名的尾巴（仅 age-package 裁剪）。
         age-on-msg-tail(profiles: [age-package]) {
@@ -825,10 +908,24 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
         }
         // 属性行：`<name>: <value>`。值是普通 Auto 表达式（数/元组/资源路径/bool）。
+        // PLAN-981（G1，2026-11-18 用户裁定）：`layer: render-only` 是**冻结符号行**
+        //——值是单个保留字 token `render-only`（render-only=可见不碰撞层，仅
+        // `shape2d`；移交除走显式拒）。专用臂先于通用行尝试：提交条件=精确字节
+        // 序 `layer: render-only`；其它值/其它元素由投影/前门具名拒，不静默当
+        // 普通值。age-package grammar id 随本批与 G2 同批重基线。
         age-attr(profiles: [age-package], expect: "an attribute line `<name>: <value>`") {
+            alt { age-layer-attr() {} }
+            alt { age-attr-generic() {} }
+        }
+        age-attr-generic(profiles: [age-package], expect: "an attribute line `<name>: <value>`") {
             ident(field: "key") {}
             colon(same-line: true) {}
             pratt(of: "wide-ops", field: "value") {}
+        }
+        age-layer-attr(profiles: [age-package], expect: "the frozen `layer: render-only` row") {
+            ident(field: "key") {}
+            colon(same-line: true) {}
+            r-render-only(field: "value") {}
         }
         // ---- 以下为原有 AGE view 规则 ----
         age-view-member(profiles: [age-component, age-package], expect: "the `view { … }` node view") {
@@ -1052,6 +1149,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { type-item(field: "type") }
             alt { const-item(field: "const") }
             alt { use-tail-p(field: "use") }
+            // PLAN-980 P3：pub style（age-package 公共面；首 token style 与 fn/type/const/use 互异）。
+            alt(profiles: [age-package]) { style-item(field: "style") }
             // PLAN-1043（T-02）：公共必需实现声明（无块；首 token `spec` 与
             // fn/type/const/use 备选互异——public-body 首 token 纪律保持）。
             alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { fn-require-p(field: "require") }

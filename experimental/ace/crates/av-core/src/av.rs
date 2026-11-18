@@ -483,6 +483,115 @@ pub fn execute_foreign(
     ))
 }
 
+/// PLAN-982（983 组合入口，用户裁定）：**受检文本入口 × 平台 I/O 的最小组合**——
+/// 同一份已编译的 handler 收**借用 `str` 实参**（`texts`，请求内借用），并在
+/// **同一次执行**里通过**显式授权**（`grants`，如 `platform.file`）使用平台
+/// 文件/目录。
+///
+/// 纪律与两个父入口完全一致：
+/// - 授权**前置**：缺授权 ⇒ [`crate::host::AdmissionError`]（`host.unauthorized`），
+///   **执行前**拒绝（与 `execute_platform` 同一扇门）；
+/// - 文本在本次执行的 arena 内分配，`StrViewSrc::Share` 构造借用视图；执行后
+///   先释放实参再核对 arena **归零**（与 `execute_entry_text` 同一账本）；
+/// - 平台资源由 session ledger 核收：退出后 `cleanup`，summary 报告
+///   `leaked_regions_cleaned`/`live_mapped_at_exit`（资源释放的外部见证）。
+pub fn execute_entry_text_platform(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    texts: &[&[u8]],
+    console: Option<&mut dyn crate::host::ConsoleHost>,
+    backend: &mut dyn crate::platform_io::PlatformIoBackend,
+) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
+    // 授权前置（缺授权在执行前拒绝）。先做**具名**前门（与
+    // `execute_program_platform` 同款：第一个缺失能力点名 `platform ... is
+    // required by ...`），再走共享的深度授权。
+    let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
+    for h in module.module().host_imports.iter() {
+        if !granted.contains(h.capability.as_str()) {
+            return Err(crate::host::AdmissionError {
+                code: "host.unauthorized",
+                message: format!(
+                    "platform capability `{}` is required by `{}` but not granted",
+                    h.capability, h.symbol
+                ),
+            });
+        }
+    }
+    crate::host::authorize(module.module(), grants)?;
+    let session_id = NEXT_PLATFORM_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut ledger = crate::platform_io::PlatformResourceLedger::new(session_id, grants);
+    let arena = crate::owned_text::StrArena::new();
+    let mut args: Vec<Value> = Vec::with_capacity(texts.len());
+    for bytes in texts {
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: 0,
+                written_total_bytes: 0,
+                leaked_regions_cleaned: 0,
+                live_mapped_at_exit: 0,
+            };
+            return Ok((
+                ExecOutcome::Infra("entry text argument is not valid UTF-8".into()),
+                ExecTrace::default(),
+                summary,
+            ));
+        };
+        let handle = arena.alloc(bytes);
+        let scalars = text.chars().count() as u32;
+        args.push(Value::StrView(crate::contract::StrView {
+            src: crate::contract::StrViewSrc::Share(handle),
+            start: 0,
+            end: scalars,
+        }));
+    }
+    let (outcome, mut trace) = execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &args,
+        arena,
+        true,
+        console,
+        Some((&mut ledger, backend)),
+        None,
+        None,
+    );
+    // 实参持有共享引用：先释放再核对 arena 收支。
+    drop(args);
+    if let Some(a) = &trace.arena {
+        let live = a.live();
+        if live != 0 {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: ledger.last_os_error,
+                written_total_bytes: ledger.written_total_bytes,
+                leaked_regions_cleaned: ledger.active_regions(),
+                live_mapped_at_exit: ledger.live_mapped_bytes,
+            };
+            ledger.cleanup(backend);
+            return Ok((
+                ExecOutcome::Infra(format!(
+                    "text arena imbalance after the entry: {live} live allocation(s)"
+                )),
+                trace,
+                summary,
+            ));
+        }
+    }
+    let summary = PlatformSessionSummary {
+        session_id,
+        last_os_error: ledger.last_os_error,
+        written_total_bytes: ledger.written_total_bytes,
+        leaked_regions_cleaned: ledger.active_regions(),
+        live_mapped_at_exit: ledger.live_mapped_bytes,
+    };
+    ledger.cleanup(backend);
+    Ok((outcome, trace, summary))
+}
+
 /// PLAN-1039: execute an AVHC module with per-run grants, fresh session resource ledger, and
 /// Win32 platform I/O / OS memory provider (plus optional ConsoleHost if console/1 ops are mixed).
 pub fn execute_platform(
@@ -519,6 +628,27 @@ pub fn execute_platform(
     };
     ledger.cleanup(backend);
     Ok((outcome, trace, summary))
+}
+
+/// PLAN-981（`IF-981-GFX-HOST-PORT`）：执行一个携带 AGE 图形服务调用的模块。
+///
+/// 宿主 op 分流到**本线程注册**的 provider（[`crate::age_gfx::install`] /
+/// [`crate::age_gfx::uninstall`]）；未注册 → `age-gfx.host-unavailable` 具名拒，
+/// provider fault → `age-gfx.<code>`（不写结果槽 = 零效果）。预算与生命周期在
+/// `ace_av::age_gfx::AgeGfxSession`（费率与语言侧同源），本入口只做派发。
+pub fn execute_with_age_gfx(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    execute_module_impl(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        false,
+    )
 }
 
 /// PLAN-915: fold the loop-state observation facts into the returned trace.
@@ -1709,6 +1839,14 @@ pub(crate) trait ModuleView {
     /// Resolve a call site's callee to a function slot (None = an
     /// admission violation: unresolved import or foreign index space).
     fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
+    /// PLAN-981（IF-981-GFX-HOST-PORT）：a guest import's symbol. Host
+    /// dispatch reads it BEFORE callee resolution — AGE graphics calls never
+    /// resolve to a guest function; an unresolved graphics import is a host
+    /// dispatch (or a named refusal), not an admission violation. Views
+    /// without an import table (linked units) return `None`.
+    fn import_symbol(&self, _idx: u32) -> Option<&str> {
+        None
+    }
     /// PLAN-982：模块是否声明了受检文本入口能力（`ac.runtime.text.v1`）。
     /// 默认 `false`——只有显式声明该能力的模块才允许入口收借用 `str`。
     fn has_text_entry_capability(&self) -> bool {
@@ -1786,6 +1924,9 @@ impl ModuleView for MergedView<'_> {
             CalleeRef::Import(_) => None,
         }
     }
+    fn import_symbol(&self, idx: u32) -> Option<&str> {
+        self.0.imports.get(idx as usize).map(|i| i.symbol.as_str())
+    }
     fn is_strview_type(&self, _func: u32, ty: u32) -> bool {
         matches!(
             self.0.types.get(ty as usize),
@@ -1835,6 +1976,9 @@ impl ModuleView for LoadedView<'_> {
             CalleeRef::Func(idx) => self.0.funcs.get(*idx as usize).map(|_| *idx),
             CalleeRef::Import(_) => None,
         }
+    }
+    fn import_symbol(&self, idx: u32) -> Option<&str> {
+        self.0.imports.get(idx as usize).map(|i| i.symbol.as_str())
     }
     fn is_strview_type(&self, _func: u32, ty: u32) -> bool {
         matches!(self.0.types.get(ty as usize), Some(MirType::StrView))
@@ -3877,6 +4021,126 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                 }
                 MirInstr::Call { callee, dst, args } => {
+                    // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形服务的**宿主派发**。
+                    // 语言侧把 13 个标量结果 op（input/tick/row/render2d）降到普通
+                    // import 调用；这里在 callee 解析之前按 symbol 分流到注册
+                    // provider——未注册具名拒；provider fault 以 `age-gfx.<code>`
+                    // 终止本次运行（不写结果槽 → 零效果）；结果类型与调用槽
+                    // `MirType` 不符同样具名拒。
+                    if let CalleeRef::Import(idx) = callee {
+                        if let Some(sym) = v.import_symbol(*idx) {
+                            if crate::age_gfx::is_host_symbol(sym) {
+                                if st.frames.len() >= limits.max_frames {
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::Frames,
+                                        message: "age-gfx call exceeds call depth".into(),
+                                    });
+                                }
+                                if CancelCheck::poll(cancel) {
+                                    return Some(ExecOutcome::Cancelled);
+                                }
+                                let arg_vals: Vec<Value> = {
+                                    let fr = st.frames.last().expect("frame");
+                                    args.iter().map(|s| fr.slots[*s as usize].clone()).collect()
+                                };
+                                let ret = match crate::age_gfx::dispatch_current(sym, &arg_vals) {
+                                    Some(Ok(r)) => r,
+                                    Some(Err(f)) => {
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "age-gfx.{}: {}",
+                                            f.code, f.message
+                                        )))
+                                    }
+                                    None => {
+                                        return Some(ExecOutcome::Infra(
+                                            "age-gfx.host-unavailable: no AGE graphics host \
+                                             provider is registered for this run"
+                                                .into(),
+                                        ))
+                                    }
+                                };
+                                let want_ty = v
+                                    .fn_at(func_idx)
+                                    .and_then(|f| f.slots.get(*dst as usize))
+                                    .map(|s| s.ty);
+                                // 一次宿主调用返回**完整 typed record**（用户裁定
+                                // 2026-11-18）：字段按 AGE_PORT_FIELDS 声明序，这里按
+                                // 调用槽的 nominal record 类型逐字段复核后组装一次发布
+                                // ——字段读 0 credit，不拆成 N 次收费调用。
+                                let value = match ret {
+                                    crate::age_gfx::AgeGfxReturn::Scalar(val) => {
+                                        let want =
+                                            want_ty.and_then(|ty| v.mir_type_of(func_idx, ty));
+                                        if !crate::age_gfx::value_matches_type(&val, want) {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "age-gfx.result-type: provider returned {val:?} for \
+                                                 `{sym}`; the call slot expects {want:?}"
+                                            )));
+                                        }
+                                        val
+                                    }
+                                    crate::age_gfx::AgeGfxReturn::Record(fields) => {
+                                        let Some(ty) = want_ty else {
+                                            return Some(ExecOutcome::Infra(
+                                                "age-gfx.result-type: record result without a call \
+                                                 slot type"
+                                                    .into(),
+                                            ));
+                                        };
+                                        let Some(crate::mir::MirType::Record(rt)) =
+                                            v.mir_type_of(func_idx, ty)
+                                        else {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "age-gfx.result-type: `{sym}` returns a record but \
+                                                 the call slot is not a record"
+                                            )));
+                                        };
+                                        if fields.len() != rt.fields.len() {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "age-gfx.result-shape: `{sym}` returned {} field(s); \
+                                                 `{}` has {}",
+                                                fields.len(),
+                                                rt.name,
+                                                rt.fields.len()
+                                            )));
+                                        }
+                                        for (i, (field, def)) in
+                                            fields.iter().zip(rt.fields.iter()).enumerate()
+                                        {
+                                            let want = v.mir_type_of(func_idx, def.ty);
+                                            if !crate::age_gfx::value_matches_type(field, want) {
+                                                return Some(ExecOutcome::Infra(format!(
+                                                    "age-gfx.result-type: `{sym}` field #{i} \
+                                                     ({}) is {field:?}; expected {want:?}",
+                                                    def.name
+                                                )));
+                                            }
+                                        }
+                                        Value::Record(std::rc::Rc::new(
+                                            crate::contract::RecordValue { ty, fields },
+                                        ))
+                                    }
+                                };
+                                if matches!(value, Value::Record(_)) {
+                                    if let Err(out) =
+                                        commit_slot_write(st, *dst as usize, value, limits)
+                                    {
+                                        return Some(out);
+                                    }
+                                } else {
+                                    let fr = st.frames.last_mut().expect("frame");
+                                    fr.slots[*dst as usize] = value;
+                                }
+                                if started.elapsed() > limits.wall {
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::ExecutionWall,
+                                        message: "age-gfx call exceeded wall budget".into(),
+                                    });
+                                }
+                                continue;
+                            }
+                        }
+                    }
                     // v1 executable closures lower test-mark imports to
                     // TRACE instructions at closure assembly; an
                     // unresolved callee (import or foreign index space) is

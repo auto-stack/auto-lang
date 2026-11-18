@@ -126,6 +126,27 @@
   （嵌套/浮点/字符串/请求头）按首个真实消费者字段推进，尚未实现；本切片
   无中间件/上传/stream/SSE 面。
 
+### C0 公开面（供 982 `--stack web`，2026-11-18，auto-web `5c484d9`）
+
+- `av_service::AvServiceEngine::new_with_grants(source, scratch_root, grants)`
+  ——显式 grants（能力键，如 `platform.file`/`platform.mem`/`platform.env`）；
+  默认 `new` 仍是 file+mem。
+- `av_service::AvServiceEngine::receipt() -> Arc<AvServiceReceipt>`——
+  `av_dispatches()`（真实派发数；路由 miss 在派发前拒绝、不计）/
+  `legacy_dispatches()`（文件通道臂结构常量 0）。收据句柄须在引擎被
+  `serve_av` 消费前克隆。
+- `http_transport::TransportConfig::from_service_config(&HttpServiceConfig)`
+  ——预算/超时/排水/连接上限的公开单一映射；
+  `from_service_config_with_policy(Arc<HttpServiceConfig>)` 额外装配
+  `ServiceRuntime`（CORS/可观察/限速/关停）。
+- **集成注意**：用 `*_with_policy` 时必须
+  `ServiceRuntime::bind_shutdown(tx)`，否则 `POST /__auto/shutdown` 的
+  `request_shutdown()` 返回 false（服务不会停）；无 policy 时用
+  `http_server::bind_control_plane_shutdown(tx)`。
+- **ready 地址**：`http_server::bound_addr_snapshot() -> Option<String>`
+  在真实 bind 后由 serve 路径写入（进程内单服务假设）；CLI 就绪行以此
+  回报（auto-man `--server av` 已消费）。
+
 ## 边界（具名开放，CONSUMERS/后续域）
 
 - core trait `listen_blocking` 签名仍由 core legacy trait 固定（桥接已

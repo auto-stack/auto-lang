@@ -92,10 +92,12 @@ mod plan981_cpu_surface;
 mod plan981_design_slot;
 #[path = "cases/plan981_event_a.rs"]
 mod plan981_event_a;
-#[path = "cases/plan981_gfx_seam.rs"]
-mod plan981_gfx_seam;
 #[path = "cases/plan981_event_b.rs"]
 mod plan981_event_b;
+#[path = "cases/plan981_g2_hooks.rs"]
+mod plan981_g2_hooks;
+#[path = "cases/plan981_gfx_seam.rs"]
+mod plan981_gfx_seam;
 #[path = "cases/plan981_grammar_scope.rs"]
 mod plan981_grammar_scope;
 #[path = "cases/plan981_lifecycle.rs"]
@@ -177,3 +179,6 @@ mod text_replacement;
 
 #[path = "cases/plan980_closure_dotted.rs"]
 mod plan980_closure_dotted;
+
+#[path = "cases/plan980_style_surface.rs"]
+mod plan980_style_surface;

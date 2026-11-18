@@ -8,8 +8,10 @@
 //! Nothing here feeds product paths.
 
 pub mod age_component;
-pub mod age_package;
+// PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形宿主会话（注册/生命周期/每 Tick 预算）。
+pub mod age_gfx;
 pub mod age_h0;
+pub mod age_package;
 pub mod bench;
 pub mod cache;
 pub mod closures_865_support;
@@ -28,7 +30,7 @@ pub mod data_driver;
 pub mod resource_events;
 pub mod sched_worker;
 pub mod scheduler_run; // PLAN-980 STATE：UI 异步宿主的 scheduler 一次性执行入口
-// PLAN-934 T-08: fact-driven scalar source entry (product seam).
+                       // PLAN-934 T-08: fact-driven scalar source entry (product seam).
 pub mod data_session;
 pub mod driver;
 pub mod dynamic_fixture;

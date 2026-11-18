@@ -795,6 +795,11 @@ pub(crate) fn project_packages_front(
     // PLAN-980 ④-A：`use <module>.<name>: a, b` 点分成员导入（包面此前零投影）。
     let age_use_module = rule("age-use-module-item");
     let age_use_import_tail = rule("age-use-import-tail");
+    // PLAN-980 P3：`style NAME [(params)] = <text>`（仅 age-package；str const/fn 糖）。
+    let style_item = rule("style-item");
+    let style_param = rule("style-param");
+    let style_param_ty_ann = rule("style-param-ty-ann");
+    let style_param_default = rule("style-param-default");
     // PLAN-1043（T-03）/PLAN-966（T-02）：项位 CT 选择/需求规则 id（仅
     // packages-ct 裁剪存在；plain 面全 None → 分支不可达，行为不变）。
     let fn_require_p = rule("fn-require-p");
@@ -831,6 +836,10 @@ pub(crate) fn project_packages_front(
     let mut imports = Vec::new();
     // PLAN-980 ④-A：导入项自身的 span（引用集要把导入拼写排除在外）。
     let mut import_spans: Vec<(usize, usize)> = Vec::new();
+    // PLAN-980 P3：style 字面量表（用法投影期替换用）与待解析的 ident 复制。
+    let mut style_lits: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    let mut style_copies: Vec<(String, String, Span, bool)> = Vec::new();
     let mut requires = Vec::new();
     let mut ct_items = Vec::new();
     // PLAN-981：本模块的 AGE 领域候选（仅 age-package 面有内容）。
@@ -874,6 +883,55 @@ pub(crate) fn project_packages_front(
         // 绑定器会像对待普通函数一样给它 mangle 符号/平移 span/走唯一 verify，
         // 领域层不另建求值路径。
         if matches!(face, PackagesFace::Age) {
+            // PLAN-980 P3（981 (d)）：`style: <name>(…)` 调用形在投影**之前**具名拒——
+            // 组件投影会把文本属性脱糖成隐藏值函数，事后无法区分"用户调用"与普通调用。
+            if let Some(sk) = style_item {
+                let mut style_names: std::collections::BTreeSet<String> =
+                    std::collections::BTreeSet::new();
+                let mut stack = vec![tree.root];
+                while let Some(n) = stack.pop() {
+                    if tree.kind(n) == sk {
+                        if let Some(nm) = field(tree, n, "name") {
+                            style_names.insert(text(tree, nm));
+                        }
+                    }
+                    for c in tree.children(n) {
+                        stack.push(c);
+                    }
+                }
+                if !style_names.is_empty() {
+                    let entry_kind = rule("age-view-entry");
+                    let mut stack = vec![tree.root];
+                    while let Some(n) = stack.pop() {
+                        if Some(tree.kind(n)) == entry_kind {
+                            if let Some(k) = field(tree, n, "key") {
+                                if text(tree, k) == "style" {
+                                    if let Some(v) = field(tree, n, "value") {
+                                        let spelled = text(tree, v);
+                                        if let Some(open) = spelled.find('(') {
+                                            let callee = spelled[..open].trim().to_string();
+                                            if style_names.iter().any(|x| *x == callee) {
+                                                return Err(err(
+                                                    "source.age.style-call",
+                                                    format!(
+                                                        "style call `{callee}(…)` is a named \
+                                                         pending surface in this slice \
+                                                         (parameterised style calls are not folded)"
+                                                    ),
+                                                    node_span(tree, v),
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        for c in tree.children(n) {
+                            stack.push(c);
+                        }
+                    }
+                }
+            }
             let nodes = project::project_component_nodes(
                 &cached.program,
                 &cached.kinds,
@@ -1365,6 +1423,40 @@ pub(crate) fn project_packages_front(
                                     )]);
                                 }
                             }
+                            AttrValueKind::Layer => {
+                                // PLAN-981（G1，2026-11-18 裁定）：`layer: render-only`
+                                // ——冻结符号行（专用文法臂已保证值是单 token；
+                                // 组件实例/3D 上的 `layer:` 也落本臂并按元素拒）。
+                                // 语义：该行可见但**不进碰撞候选集**（typed 事实进
+                                // `AgeSceneRow.layer`；`cpu` 面同步 Symbol）。
+                                if !is_2d_leaf {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-attr",
+                                        format!(
+                                            "`layer` is a `shape2d` (view-2d) attribute; it does \
+                                             not apply to `{}`",
+                                            scene.kind
+                                        ),
+                                        attr.span,
+                                    )]);
+                                }
+                                let spelled = match &attr.value.kind {
+                                    crate::source::ast::ExprKind::Var(id) => id.name.clone(),
+                                    _ => String::new(),
+                                };
+                                if spelled
+                                    != crate::source::age_resources::AGE_ROW_LAYER_RENDER_ONLY
+                                {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-layer",
+                                        format!(
+                                            "`layer` accepts one frozen symbol `render-only` \
+                                             (visible, not a collision candidate), got `{spelled}`"
+                                        ),
+                                        attr.value.span,
+                                    )]);
+                                }
+                            }
                             AttrValueKind::ResourceRef => {
                                 // 具名资源引用：值必须是**引用形状**（不是字面量/任意
                                 // 表达式）。名字是否存在、是否可见——本层**不能**担保
@@ -1466,6 +1558,177 @@ pub(crate) fn project_packages_front(
                 d.node
             };
             let kind = tree.kind(node);
+            // PLAN-980 P3（981 回签 (a)(c)(d)）：`style` 声明 = str const/fn 糖。
+            // 裸 `style-item` 与其 `pub` 包装都归这里；默认值/插值/跨名引用具名拒。
+            let style_node: Option<(u32, bool)> = if Some(kind) == style_item {
+                Some((node, false))
+            } else if Some(kind) == public_item {
+                public_body(tree, node)
+                    .and_then(|b| (Some(tree.kind(b)) == style_item).then_some((b, true)))
+            } else {
+                None
+            };
+            if let Some((st, is_pub)) = style_node {
+                saw_decl = true;
+                let name_leaf = field(tree, st, "name").expect("style name");
+                let name = text(tree, name_leaf);
+                let name_span = node_span(tree, name_leaf);
+                let item_span = node_span(tree, node);
+                let value_node = field(tree, st, "value").expect("style value");
+                let value_span = node_span(tree, value_node);
+                let value = project::project_expr_node(
+                    &cached.program,
+                    &cached.kinds,
+                    tree,
+                    &snap,
+                    proj_profile,
+                    value_node,
+                );
+                let mut params: Vec<crate::source::ast::Param> = Vec::new();
+                if let Some(pnode) = field(tree, st, "params") {
+                    let mut found: Vec<u32> = Vec::new();
+                    let mut stack = vec![pnode];
+                    while let Some(n) = stack.pop() {
+                        if Some(tree.kind(n)) == style_param {
+                            found.push(n);
+                        }
+                        for c in tree.children(n) {
+                            stack.push(c);
+                        }
+                    }
+                    found.sort_by_key(|&n| tree.abs_range(n).0);
+                    for sp in found {
+                        let pname = text(tree, field(tree, sp, "name").expect("style param name"));
+                        let pspan = node_span(tree, field(tree, sp, "name").expect("style param"));
+                        let default_node = tree
+                            .children(sp)
+                            .into_iter()
+                            .find(|&c| Some(tree.kind(c)) == style_param_default)
+                            .and_then(|d| field(tree, d, "default"));
+                        if let Some(def) = default_node {
+                            let dspan = node_span(tree, def);
+                            return Err(err(
+                                "source.age.style-defaults",
+                                format!(
+                                    "style recipe `{name}` declares a default value for parameter                                      `{pname}`; default parameters are a named pending surface in                                      this slice"
+                                ),
+                                dspan,
+                            ));
+                        }
+                        let ty_word = tree
+                            .children(sp)
+                            .into_iter()
+                            .find(|&c| Some(tree.kind(c)) == style_param_ty_ann)
+                            .and_then(|t| field(tree, t, "ty"))
+                            .and_then(|t| field(tree, t, "word"))
+                            .map(|w| text(tree, w));
+                        let ty = match ty_word.as_deref() {
+                            None | Some("str") => crate::source::ast::TypeWord::Str,
+                            Some(other) => {
+                                return Err(err(
+                                    "source.age.style-param",
+                                    format!(
+                                        "style parameter `{pname}` has type `{other}`; style                                          parameters are `str` in this slice"
+                                    ),
+                                    pspan,
+                                ))
+                            }
+                        };
+                        params.push(crate::source::ast::Param {
+                            name: crate::source::ast::Ident {
+                                name: pname,
+                                span: pspan,
+                            },
+                            ty: crate::source::ast::TypeAnn {
+                                kind: crate::source::ast::TypeRef::Builtin(ty),
+                                span: pspan,
+                            },
+                            mode: crate::source::ast::ParamMode::Default,
+                            default: None,
+                            span: pspan,
+                        });
+                    }
+                }
+                // 零参 ident 复制（引用另一条本地 style 字面量）——延后解析，允许前向。
+                if params.is_empty() {
+                    if let crate::source::ast::ExprKind::Var(target) = &value.kind {
+                        style_copies.push((name.clone(), target.name.clone(), value_span, is_pub));
+                        continue;
+                    }
+                    if let crate::source::ast::ExprKind::Call { callee, .. } = &value.kind {
+                        return Err(err(
+                            "source.age.style-call",
+                            format!(
+                                "style `{name} = {}(…)` is a named pending surface in this slice \
+                                 (parameterised style calls are not folded)",
+                                callee.name
+                            ),
+                            value_span,
+                        ));
+                    }
+                    if let crate::source::ast::ExprKind::StrLit(lit) = &value.kind {
+                        style_lits.insert(name.clone(), lit.clone());
+                    }
+                    items.push(crate::source::ast::Item::Const(
+                        crate::source::ast::ConstItem {
+                            name: crate::source::ast::Ident {
+                                name: name.clone(),
+                                span: name_span,
+                            },
+                            ty: crate::source::ast::TypeAnn {
+                                kind: crate::source::ast::TypeRef::Builtin(
+                                    crate::source::ast::TypeWord::StrOwned,
+                                ),
+                                span: name_span,
+                            },
+                            value,
+                            span: item_span,
+                        },
+                    ));
+                } else {
+                    if let crate::source::ast::ExprKind::StrLit(lit) = &value.kind {
+                        if lit.contains('{') {
+                            return Err(err(
+                                "source.age.style-interp",
+                                format!(
+                                    "style recipe `{name}` interpolates parameters (`{{…}}`);                                      parameter interpolation is a named pending surface in this slice"
+                                ),
+                                value_span,
+                            ));
+                        }
+                    }
+                    items.push(crate::source::ast::Item::Fn(crate::source::ast::FnItem {
+                        name: crate::source::ast::Ident {
+                            name: name.clone(),
+                            span: name_span,
+                        },
+                        type_params: Vec::new(),
+                        params,
+                        ret: crate::source::ast::TypeAnn {
+                            kind: crate::source::ast::TypeRef::Builtin(
+                                crate::source::ast::TypeWord::StrOwned,
+                            ),
+                            span: name_span,
+                        },
+                        body: crate::source::ast::Block {
+                            stmts: vec![crate::source::ast::Stmt::Return {
+                                value,
+                                span: value_span,
+                            }],
+                            span: value_span,
+                        },
+                        span: item_span,
+                        receiver: crate::source::ast::Receiver::Free,
+                        owner: None,
+                        script: false,
+                    }));
+                }
+                declarations.insert(name.clone(), item_span);
+                if is_pub {
+                    exports.insert(name);
+                }
+                continue;
+            }
             // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（`#in` 与
             // 独立 `#if/#is/#for`）——结构保持进 ct_items；含任何 use 的项属
             // 导入位（须在声明区前），只含声明的项视作声明项。
@@ -1767,6 +2030,50 @@ pub(crate) fn project_packages_front(
                 let name = text(tree, field(tree, node, "name").expect("type name"));
                 declarations.insert(name, node_span(tree, node));
             }
+        }
+    }
+    // PLAN-980 P3：零参 ident 复制（本地字面量）延后解析；跨模块/非字面量具名拒。
+    for (name, target, span, is_pub) in style_copies {
+        let Some(lit) = style_lits.get(&target).cloned() else {
+            return Err(err(
+                "source.age.style-call",
+                format!(
+                    "style `{name}` copies `{target}`, which is not a literal style declared in                      this module; imported/non-literal style references are a named pending                      surface in this slice"
+                ),
+                span,
+            ));
+        };
+        items.push(crate::source::ast::Item::Const(
+            crate::source::ast::ConstItem {
+                name: crate::source::ast::Ident {
+                    name: name.clone(),
+                    span,
+                },
+                ty: crate::source::ast::TypeAnn {
+                    kind: crate::source::ast::TypeRef::Builtin(
+                        crate::source::ast::TypeWord::StrOwned,
+                    ),
+                    span,
+                },
+                value: crate::source::ast::Expr {
+                    kind: crate::source::ast::ExprKind::StrLit(lit),
+                    span,
+                },
+                span,
+            },
+        ));
+        declarations.insert(name.clone(), span);
+        if is_pub {
+            exports.insert(name);
+        }
+    }
+    // PLAN-980 P3：用法投影期替换（`style: NAME` → 字面量；981 回签 (c)3）。
+    // 导入的 style 引用与带参调用一律 `style-call` 具名拒（不折叠、不留 global 读）。
+    let import_names: std::collections::BTreeSet<String> =
+        imports.iter().map(|i| i.bound_name().to_string()).collect();
+    for (node, _texts, _scene) in &mut age_components {
+        if let Err(d) = replace_style_in_items(&mut node.view.tree, &style_lits, &import_names) {
+            return Err(vec![d]);
         }
     }
     // PLAN-980 ④-A：引用驱动（惰性）导入的**引用集**——本模块源里出现在导入项
@@ -2646,6 +2953,59 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         }),
         Err(diags) => FrontOutcome::Diag(diags),
     }
+}
+
+/// PLAN-980 P3：把 view 条目里的本地 style 名替换为其字面量（投影期解析；
+/// 981 回签 (c)3——不引入 module-global 读，下游车道只见到普通字符串字面量）。
+/// 导入的 style 引用与带参调用 = `style-call` 具名拒（本刀不折叠）。
+fn replace_style_in_items(
+    items: &mut Vec<crate::source::age_component::ComponentViewItem>,
+    lits: &std::collections::BTreeMap<String, String>,
+    imports: &std::collections::BTreeSet<String>,
+) -> Result<(), crate::atom_text::Diagnostic> {
+    use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
+    for it in items.iter_mut() {
+        match it {
+            ComponentViewItem::Element(el) => replace_style_in_items(&mut el.items, lits, imports)?,
+            ComponentViewItem::Entry(en) => {
+                if let ComponentEntryValue::Expr(e) = &mut en.value {
+                    match &e.kind {
+                        crate::source::ast::ExprKind::Var(id) => {
+                            if let Some(lit) = lits.get(&id.name) {
+                                e.kind = crate::source::ast::ExprKind::StrLit(lit.clone());
+                            } else if imports.contains(&id.name) {
+                                return Err(crate::atom_text::Diagnostic::new(
+                                    crate::atom_text::Stage::Text,
+                                    "source.age.style-call",
+                                    format!(
+                                        "style reference `{}` resolves to an imported style;                                          imported style references are a named pending surface in                                          this slice",
+                                        id.name
+                                    ),
+                                    e.span,
+                                ));
+                            }
+                        }
+                        crate::source::ast::ExprKind::Call { callee, .. } => {
+                            if lits.contains_key(&callee.name) || imports.contains(&callee.name) {
+                                return Err(crate::atom_text::Diagnostic::new(
+                                    crate::atom_text::Stage::Text,
+                                    "source.age.style-call",
+                                    format!(
+                                        "style call `{}(…)` is a named pending surface in this                                          slice (parameterised style calls are not folded)",
+                                        callee.name
+                                    ),
+                                    e.span,
+                                ));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            ComponentViewItem::Text(_) => {}
+        }
+    }
+    Ok(())
 }
 
 /// PLAN-979：crate 内部领域入口（仅 AGE 领域前门使用）。公共 [`parse_front`]

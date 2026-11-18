@@ -279,18 +279,25 @@ pub fn verify_abc_bytes(
 /// re-verifiable UNIT is never an executable entry, and any `Call`
 /// targeting an import means the closure is unresolved (pending unit
 /// linkage or a host-side symbol).
+///
+/// PLAN-981（`IF-981-GFX-HOST-PORT`）：AGE 图形宿主派发的 op 以 import 调用
+/// 存活到 AV，但它们**不是**待链接的 guest 函数——调用点在 callee 解析前分流
+/// 到注册 provider（未注册即具名拒）。因此这类 import 调用不剥夺 executable
+/// 凭证；其它 unresolved import 调用语义不变。
 fn executable_closure(module: &MirModule) -> bool {
     !module.is_unit
         && !module.funcs.iter().any(|f| {
             f.blocks.iter().any(|b| {
-                b.instrs.iter().any(|i| {
-                    matches!(
-                        i,
-                        crate::mir::MirInstr::Call {
-                            callee: crate::mir::CalleeRef::Import(_),
-                            ..
-                        }
-                    )
+                b.instrs.iter().any(|i| match i {
+                    crate::mir::MirInstr::Call {
+                        callee: crate::mir::CalleeRef::Import(idx),
+                        ..
+                    } => module
+                        .imports
+                        .get(*idx as usize)
+                        .map(|imp| !crate::age_gfx::is_host_symbol(&imp.symbol))
+                        .unwrap_or(true),
+                    _ => false,
                 })
             })
         })

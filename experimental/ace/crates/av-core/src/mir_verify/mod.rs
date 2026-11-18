@@ -815,6 +815,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                 // 存活 import）。
                                 | "age.frame2d.at.v1"
                         )
+                        // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形服务的宿主
+                        // 派发 op 以**存活 import 调用**到达 AV——调用点在 callee
+                        // 解析前按 symbol 分流到注册 provider（未注册即具名拒），
+                        // 所以这里必须承认它们是受检的 import 身份。
+                        || crate::age_gfx::is_host_symbol(&imp.symbol)
                 }
             };
             if !known {
@@ -874,6 +879,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         .host_imports
                         .iter()
                         .any(|h| crate::config_document::is_config_symbol(&h.symbol)))
+                // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形能力键在模块真的
+                // 携带图形宿主 import 时是已知准入项（provider 注册/预算仍由
+                // `ace_av::age_gfx` 会话另核）。
+                || (crate::age_gfx::is_gfx_capability(c)
+                    && self
+                        .module
+                        .imports
+                        .iter()
+                        .any(|i| crate::age_gfx::is_host_symbol(&i.symbol)))
                 || (self.module.is_host_console_profile()
                     && matches!(
                         c.as_str(),
@@ -1034,11 +1048,26 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // module, a kind/signature mismatch in EITHER direction and
                 // a non-zero-param entry are all controlled rejections —
                 // the signature is never used to GUESS the kind.
+                //
+                // PLAN-982（983 组合入口，用户裁定）：唯一例外——**host-console
+                // 文本入口**：模块声明 `ac.runtime.text.v1` 且形参**全部为
+                // `StrView`**（借用 `str`）时放行（`execute_entry_text_platform`
+                // 的文本实参通道）；entry-unit 的冻结合同不变。
                 if !entry_sig.params.is_empty() {
-                    return Err(MirVerifyError::inv(
-                        "mir.entry-sig",
-                        "the entry-unit profile's entry takes no parameters".to_string(),
-                    ));
+                    let text_entry = self.module.is_host_console_profile()
+                        && self.module.has_text_entry_capability()
+                        && entry_sig.params.iter().all(|p| {
+                            matches!(
+                                self.module.types.get(*p as usize),
+                                Some(crate::mir::MirType::StrView)
+                            )
+                        });
+                    if !text_entry {
+                        return Err(MirVerifyError::inv(
+                            "mir.entry-sig",
+                            "the entry-unit profile's entry takes no parameters".to_string(),
+                        ));
+                    }
                 }
                 let result_is_i32 =
                     self.module.type_shape(entry_sig.result) == Some(ScalarShape::I32);

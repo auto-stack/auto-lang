@@ -56,6 +56,20 @@ pub(crate) fn project_program_deferring_templates(
     project_program_with_caps(p, k, tree, snap, profile, false, false, true, age_face)
 }
 
+/// PLAN-980 P3：把**单个**表达式 CST 节点投影为 AST 表达式（style 值等由包前门
+/// 独立取值的场景用；与整程序投影同一 Engine/同一语法，不建第二条表达式投影）。
+pub(crate) fn project_expr_node(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+    node: u32,
+) -> Expr {
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, true);
+    eng.project_expr_sync(node)
+}
+
 /// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
 /// 声明**的类型参数表时投影为 `TypeRef::TyVar`（instances 面的 fn 模板与
 /// PLAN-963 的泛型记录成员同一规则）；fn-tail 的 `<T>` 投影为
@@ -438,6 +452,8 @@ pub(crate) fn project_program_with_caps(
                     r.name == "age-node-item"
                         || r.name == "age-node-c-item"
                         || r.name == "age-pub-node-item"
+                        // PLAN-980 P3：style 声明由包前门单独投影（str const/fn 糖）。
+                        || r.name == "style-item"
                 })
                 .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
                 .is_some_and(|k2| kind == k2)
@@ -4995,8 +5011,7 @@ impl<'a> Engine<'a> {
         public: bool,
     ) -> crate::source::age_component::ComponentNode {
         use crate::source::age_component::{
-            ComponentAssign, ComponentField, ComponentHandler, ComponentMemberRow, ComponentNode,
-            ComponentView,
+            ComponentField, ComponentHandler, ComponentMemberRow, ComponentNode, ComponentView,
         };
         let head_node = self
             .cx
@@ -5180,29 +5195,45 @@ impl<'a> Engine<'a> {
                             msg.push_str(&self.cx.spelling(seg));
                         }
                     }
-                    let mut assigns = Vec::new();
-                    for assign in self.cx.children(member) {
-                        let assign_kind = self.cx.tree.kind(assign);
-                        let is_assign = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
-                            r.name == "age-on-assign"
-                                && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
-                                    == assign_kind
-                        });
-                        if !is_assign {
-                            continue;
+                    // PLAN-981（G2）：`on` 体按**源序**收完整语句面
+                    // （assign / hook-local let / if-else；后两者只在 age-package
+                    // 裁剪存在）。赋值子集同步填 `assigns`（旧消费者兼容）。
+                    let body_children: Vec<u32> = self
+                        .cx
+                        .children(member)
+                        .into_iter()
+                        .filter(|&c| self.rule_name_of(c) == "age-on-stmt")
+                        .collect();
+                    let stmts = self.project_on_stmts(&body_children);
+                    // 兼容面：赋值子集=**全深度**收平（含 if/else 分支里的赋值，
+                    // 源序）——"写了哪些字段"不因藏在分支里而消失；**执行语义**
+                    // （条件/顺序）以 `stmts` 为准，assign-only 消费者见 Let/If
+                    // 必须具名拒（见 ComponentHandler.stmts 契约）。
+                    fn flat_assigns(
+                        stmts: &[crate::source::age_component::ComponentStmt],
+                        out: &mut Vec<crate::source::age_component::ComponentAssign>,
+                    ) {
+                        for st in stmts {
+                            match st {
+                                crate::source::age_component::ComponentStmt::Assign(a) => {
+                                    out.push(a.clone())
+                                }
+                                crate::source::age_component::ComponentStmt::If {
+                                    then,
+                                    els,
+                                    ..
+                                } => {
+                                    flat_assigns(then, out);
+                                    if let Some(e) = els {
+                                        flat_assigns(e, out);
+                                    }
+                                }
+                                crate::source::age_component::ComponentStmt::Let { .. } => {}
+                            }
                         }
-                        let field_leaf = self
-                            .cx
-                            .field_child(assign, "field")
-                            .expect("on assign field name");
-                        let rhs_node = self.cx.field_child(assign, "rhs").expect("on assign rhs");
-                        let rhs = self.project_expr_sync(rhs_node);
-                        assigns.push(ComponentAssign {
-                            field: self.cx.spelling(field_leaf),
-                            rhs,
-                            span: self.cx.span_of(assign),
-                        });
                     }
+                    let mut assigns = Vec::new();
+                    flat_assigns(&stmts, &mut assigns);
                     handlers.push(ComponentHandler {
                         msg,
                         // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
@@ -5211,6 +5242,7 @@ impl<'a> Engine<'a> {
                         body_foreign: false,
                         // 979 形态无 widget 头参数——无通道面。
                         channel_calls: Vec::new(),
+                        stmts,
                         assigns,
                         span: self.cx.span_of(member),
                     });
@@ -5320,10 +5352,40 @@ impl<'a> Engine<'a> {
                             if !is_attr {
                                 continue;
                             }
-                            let key_leaf = self.cx.field_child(a, "key").expect("attr key");
+                            // PLAN-981（G1）：`age-attr` 现在是双臂包装——内层
+                            // 是 `age-layer-attr`（冻结 `layer: render-only` 行，
+                            // 值是单 token）或 `age-attr-generic`（普通值）。
+                            let inner = self
+                                .cx
+                                .children(a)
+                                .into_iter()
+                                .find(|&x| {
+                                    self.cx.tree.node(x).flags
+                                        & ace_syntax_runtime::cst::FLAG_TRIVIA
+                                        == 0
+                                })
+                                .unwrap_or(a);
+                            let inner_rule = self.rule_name_of(inner);
+                            let key_leaf = self.cx.field_child(inner, "key").expect("attr key");
                             let key = self.cx.spelling(key_leaf);
-                            let value_n = self.cx.field_child(a, "value").expect("attr value");
-                            let value = self.project_expr_sync(value_n);
+                            let value_n = self.cx.field_child(inner, "value").expect("attr value");
+                            let value = if inner_rule == "age-layer-attr" {
+                                // 冻结符号：值 token 的字节序已由文法钉死；
+                                // 投影成 Var("render-only")（原 span），前门按
+                                // AttrValueKind::Layer 校验并落 typed 行事实。
+                                let tok_span = self.cx.span_of(value_n);
+                                crate::source::ast::Expr {
+                                    span: tok_span,
+                                    kind: crate::source::ast::ExprKind::Var(
+                                        crate::source::ast::Ident {
+                                            name: "render-only".to_string(),
+                                            span: tok_span,
+                                        },
+                                    ),
+                                }
+                            } else {
+                                self.project_expr_sync(value_n)
+                            };
                             attrs.push(crate::source::age_component::ComponentSceneAttr {
                                 key,
                                 value,
@@ -6043,12 +6105,19 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
+            // PLAN-981（G2）：widget 形 handler 的语句面 = 赋值集（该形无
+            // hook-local let/if——域外语句走 body_foreign 旧合同，不进 stmts）。
+            let stmts = assigns
+                .iter()
+                .map(|a| crate::source::age_component::ComponentStmt::Assign(a.clone()))
+                .collect();
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
                 params: self.handler_params(c),
                 from_widget: true,
                 body_foreign,
                 channel_calls,
+                stmts,
                 assigns,
                 span: self.cx.span_of(c),
             });
@@ -6956,6 +7025,97 @@ impl<'a> Engine<'a> {
         }
         self.cx.reject(span, move || unsupported_ty(&word, span));
         int(TypeWord::Int)
+    }
+
+    /// 节点命中的规则名（无命中给空串——调用方按名分派）。
+    fn rule_name_of(&self, node: u32) -> String {
+        let kind = self.cx.tree.kind(node);
+        self.cx
+            .p
+            .rules
+            .iter()
+            .enumerate()
+            .find(|(i, _)| ace_syntax_runtime::program::RULE_KIND_BASE + *i as u32 == kind)
+            .map(|(_, r)| r.name.clone())
+            .unwrap_or_default()
+    }
+
+    /// PLAN-981（G2，2026-11-18 裁定）：`age-on-stmt` 节点序列 → **源序**的
+    /// `ComponentStmt` 面（赋值 / hook-local `let` / `if-else`——后两者只在
+    /// age-package 裁剪存在；其它裁剪里这些节点不出现）。`if` 的 then/else
+    /// 体递归走同一函数；类型注解按 `ann-ty` 词法分类（裸 ident → 名义
+    /// record，如 `Sweep2D`；无注解交共享 resolver 推断）。
+    fn project_on_stmts(
+        &mut self,
+        nodes: &[u32],
+    ) -> Vec<crate::source::age_component::ComponentStmt> {
+        use crate::source::age_component::{ComponentAssign, ComponentStmt};
+        let mut out = Vec::new();
+        for &n in nodes {
+            // 每个 `age-on-stmt` 恰有一个内层语句节点（assign/let/if）。
+            let inner = self
+                .cx
+                .children(n)
+                .into_iter()
+                .find(|&c| self.cx.tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+                .unwrap_or(n);
+            match self.rule_name_of(inner).as_str() {
+                "age-on-assign" => {
+                    let field_leaf = self
+                        .cx
+                        .field_child(inner, "field")
+                        .expect("on assign field name");
+                    let rhs_node = self.cx.field_child(inner, "rhs").expect("on assign rhs");
+                    out.push(ComponentStmt::Assign(ComponentAssign {
+                        field: self.cx.spelling(field_leaf),
+                        rhs: self.project_expr_sync(rhs_node),
+                        span: self.cx.span_of(inner),
+                    }));
+                }
+                "age-on-let" => {
+                    let name_leaf = self.cx.field_child(inner, "name").expect("on let name");
+                    let ann = self
+                        .cx
+                        .field_child(inner, "ann")
+                        .map(|a| self.classify_word(a, false));
+                    let value_node = self.cx.field_child(inner, "value").expect("on let value");
+                    out.push(ComponentStmt::Let {
+                        name: ident_of(&mut self.cx, name_leaf),
+                        ann,
+                        value: self.project_expr_sync(value_node),
+                        span: self.cx.span_of(inner),
+                    });
+                }
+                "age-on-if" => {
+                    let cond_node = self.cx.field_child(inner, "cond").expect("on if cond");
+                    let cond = self.project_expr_sync(cond_node);
+                    let then_nodes: Vec<u32> = self
+                        .cx
+                        .children(inner)
+                        .into_iter()
+                        .filter(|&c| self.rule_name_of(c) == "age-on-stmt")
+                        .collect();
+                    let then = self.project_on_stmts(&then_nodes);
+                    let els = self.cx.field_child(inner, "els").map(|e| {
+                        let else_nodes: Vec<u32> = self
+                            .cx
+                            .children(e)
+                            .into_iter()
+                            .filter(|&c| self.rule_name_of(c) == "age-on-stmt")
+                            .collect();
+                        self.project_on_stmts(&else_nodes)
+                    });
+                    out.push(ComponentStmt::If {
+                        cond,
+                        then,
+                        els,
+                        span: self.cx.span_of(inner),
+                    });
+                }
+                _ => {}
+            }
+        }
+        out
     }
 
     /// PLAN-928（T-03）：PLAN-864 有限 enum 投影（臂声明序 = 判别序）。

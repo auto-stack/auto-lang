@@ -5078,17 +5078,34 @@ k 0
                                         return Ok(dst);
                                     }
                                     lane => {
-                                        return Err(AdapterError::uns(
-                                            "lower.age-gfx-lane",
-                                            format!(
-                                                "AGE graphics service `{}` is a {} service: it executes on the graphics host lane (UI058 neutral units via the PLAN-938 host authority), not in the AV observation lane",
-                                                symbol,
-                                                match lane {
-                                                    ace_core::source::age_resources::AgeGfxLane::HostAlgorithm => "host-algorithm",
-                                                    _ => "host-identity",
-                                                }
-                                            ),
-                                        ));
+                                        // PLAN-981（IF-981-GFX-HOST-PORT）：宿主车道。
+                                        // 单次 import 调用分流到注册 provider（未注册具名
+                                        // 拒）；**端口结果**（query2d.segment/sweep、
+                                        // image2d.png）同样走这一条调用——宿主一次返回
+                                        // 完整 typed record（用户裁定 2026-11-18），由 AV
+                                        // 按调用槽的 nominal record 类型逐字段复核后一次
+                                        // 发布；字段读 0 credit，查询照原价收费。
+                                        let _ = lane;
+                                        let sig = self.out.imports[imp as usize].sig;
+                                        let result_ty =
+                                            self.out.sig_of(sig).map(|f| f.result).ok_or_else(
+                                                || {
+                                                    AdapterError::inv(
+                                                        "age-gfx.signature",
+                                                        "host op signature".into(),
+                                                    )
+                                                },
+                                            )?;
+                                        let dst = self.temp_ty(result_ty)?;
+                                        self.emit(
+                                            MirInstr::Call {
+                                                callee: CalleeRef::Import(imp),
+                                                dst,
+                                                args: arg_slots.clone(),
+                                            },
+                                            sp,
+                                        )?;
+                                        return Ok(dst);
                                     }
                                 }
                             }

@@ -591,7 +591,7 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 - **首个真实示例（以可解析性实测选例）**：被引 helper 须在 int/str/bool/record 域且闭包内**被引用**模块均可解析。候选重评：011（`prog_util` 纯 fn；但 app.at 自身含 f64 helper 与 `math.*`/`auto.clipboard`）、016（`calendar_util` 纯 fn；`stylekit` 被引用且其模块形状待核）；**不得**以合成 fixture 冒充真实示例，也不得把示例整例通过当切片完成。
 - **非目标（v2 明确）**：`use { package: … }`（5 例，任何面无规则）、`use auto.*`（命名空间形无规则）、N3 foreign、N4 host 表、宽数值——保持具名拒，归 ④-B/④-C/976 后继/981。
 
-**交付状态（2026-11-18，R1′）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`；永久用例 `plan980_closure_dotted` 四判据绿；981 环用例按 A3 具名更新）。**S4 AV 执行/观察面已交**（`ace_av::age_package::observe_age_package` 复用：派生真实例场景 2 实例 + `Inc` → 观察状态 `[4,2]`；helper 改 `+10` → `[20,10]`——helper 真进 AV 执行）。**S4 真窗已交**（`PackageStateEngine` + `BridgeEngine` + `load_package` + 窗口 exe `--package/--entry`；真窗 e2e 两次运行见证 `[4,2]`→`[20,10]`）。**S5 同源 SFC script 段已交**（`PackageFragmentLane`：包闭包+场景 checked → 976 片段发射；断言调用名=`a2x_fn_*` 映射名非裸 `step(`、同一映射名以**函数定义**落同一 script 段、改 helper 常量随动）。**完整 SFC 的 template/样式**仍归既有方言道（本片只覆盖 `<script>` 段）；**S0.5a 表面补齐**（style／匿名 payload msg／反引号）按 R1′ 与 981 会签并行分切片。
+**交付状态（2026-11-18，R1′）**：**S1 点分 `use` 投影 + S3 引用驱动（惰性）导入已交**（lang `0db44dfdf`）。**S4 AV 执行/观察面已交**（`observe_age_package`）。**S4 真窗已交**（`PackageStateEngine` + `load_package` + 窗口 exe `--package`）。**S5 同源 SFC script 段 + 浏览器执行档已交**（`PackageFragmentLane` 发射；playwright/chromium 中 base 点击 2→4、edited 10→20——同一份发射文本）。**完整 SFC template 未交（阻塞已实测）**：既有方言解析器（`UiDialect`）**不认 AGE `node`/匿名 msg 源**（实测 20 个错误），需"view 树→Vue 模板"生成器道或方言 AGE 支持——下一片。**S0.5a 表面补齐**按 R1′ 与 981 会签并行分切片。
 
 **S0.5 真实示例可解析性实测（2026-11-18，临时探针，已删；证据 `plan-artifacts/plan-980/closure-surface-probe-20261118.txt`）。**方法：`compile_age_package`（age-package 面，`LegacyWidgetAlias::Accept`）喂真实源+同包 module 全量；合成最小源隔离 widget 体能力。结果：
 
@@ -626,14 +626,15 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
   - `style N = other`（ident 复制）→ `const N str = other`（绑定期按常量读；缺名沿用现有具名拒）；
   - `style N(p: str = d, …) = "{p} …"` → `Item::Fn`（参数按声明序、类型 str；body=`{p}`→ACE f-string `$p` 的 str 表达式）；**默认值本刀不支持**（含默认值→具名拒 `source.age.style-defaults`）；
   - `pub style …` → 公共面 const/fn（复用 `public-item` 的可见性/重导出）；
+  - **stylekit 默认参数=本刀按具名拒绝验收**：stylekit 的 3 条参数化 recipe 带默认值（`pill(bg: str = …, …)`），本刀不接默认值——含默认值的声明以 `source.age.style-defaults` **具名拒**；验收口径=该拒绝（不是静默忽略、也不假装已支持）。因此 stylekit 在本刀**不解锁整例**，007/016/017/029/031p 的 stylekit 面留后续刀；
   - **调用点折叠**：`style X = f(arg: "lit")` 与 view 内 `style: f(arg: "lit")` 当且仅当实参全为字面量时在投影期折叠为 str 常量；非字面量实参→具名拒 `source.age.style-call`（不猜求值序）。命名实参按声明序对位（未知键/缺参具名拒）。
 - **文法**：新增 `style-item` 与 `public-body` 的 `style` 臂；profile 门 = `[age-component, age-package]`；`style` 保持普通标识符拼写（**不进 token 表**），仅在声明头/公共体按 spelling 识别（同 `age-node-head` 的 `name(spelling:)` 机制）；**普通标识符位置的 `style` 保持合法**（永久负控）。
 - **投影/AST**：新规则 → 上述 `Item::Const`/`Item::Fn`；不新增 AST/HIR 节点；名字进 const/fn 命名空间，重名走现有重复声明拒。
 - **身份与后端**：const/fn 的 mangle、可见性、AV/TS/A2R 发射**全部复用现路径**——本刀无后端改动。
 
 **三、文法身份影响（981 会签要点）**
-- 现冻结值：`age-component` = `f35cf5934cbadd2524c81de925af1d2c24187ba1d869a09ffc0e6e372b8128a7`；`age-package` = `6c1bb4778a800a865ef0ddb6166d1a8dbd358eecd73ce1ccf0e5445c1005d587`。
-- 本刀**同时移动这两个值**（新规则 + public-body 臂）；其余 **13 profile 必须逐字节不变**（会签后由 980 提交 diff+逐 profile 转储，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 并注明前值/原因）。
+- 现冻结值（**spawn/f32 落主后的基线**，2026-11-18 复核）：`age-component` = `19a1376eac5f32404b0a653e84d58206c74a954b1546be5aec4485a3fb9bbae5`；`age-package` = `0290d0ab2441b23399f6505512da4e3c9a9e907890d9584ba8a45ff2694136c8`（前值 f35cf593…/6c1bb477… 随 #6o 与 981 spawn 臂移动）。
+- 本刀**只移动 ge-package 一个值**（按 981 回签 (a) 收窄；ge-component 保持 19a1376e…）；其余 **13 profile 必须逐字节不变**（会签后由 980 提交 diff+逐 profile 转储，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 并注明前值/原因）。
 - `themes` 的 `pub theme` 仍是**独立未支持面**：style 不放行 theme，不得把两者混为一谈。
 
 **四、验证计划（会签后执行）**
@@ -643,9 +644,24 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 **五、请求 981 会签（回签后 980 才动文法）**
 1. 认可 `style ≡ str const/fn` 映射与 profile 门 `[age-component, age-package]`；
-2. 认可两值 grammar ID 同批重基线（981 同提交更新冻结期望，注明前值）；
+2. 认可 grammar ID 同批重基线（**收窄后仅 age-package 一值**；981 同提交更新冻结期望，注明前值）——已按回签 (b) 做法 A 采纳；
 3. 确认 const/fn 命名空间与现有身份/可见性契约无冲突；
 4. 回签后落文法 + 投影 + 永久用例；本材料**未改任何文法/代码**。
+
+**六、981 回签（2026-11-18，`edfa4220c`）与 980 回执（本版按修订收窄）**
+- **(a) 收窄通过**：profile 门**只 `[age-package]`**（`age-component` 不开）。依据=组件面无语义面 const/public 规则、resolve 的 const 由 packages 绑定器消费、`ModuleGlobalsPlan` 仅 AGE 包前门钉入——开组件面=能解析跑不了。**只移动 age-package 一个 grammar ID**；`age-component` 保持 `19a1376e…`。
+- **(b) 做法 A 采纳**：980 在文法提交内同步更新 `plan981_grammar_scope.rs`（注明前值，沿 #6m/#6o），13 邻居逐 profile 转储随提交；981 在该提交复跑 `p981_grammar_scope` 并核 diff。
+- **(c)1 采纳**：重名走现有 `source.module-duplicate-declaration`（同一绑定图），不另造码、不只报 mangle。
+- **(c)2 980 回执=`Str`（owned）**：参数化 style 生成 `Item::Fn` 返回 `Str`；零参 style=const `Str`。理由：body 是 f-string/拼接（owned text），与文本叶 `.clone()` 约定同源，避免 view 生命周期；A2R/TS 按 owned 串发射。
+- **(c)3 980 回执=投影期字面量替换**：P3.1 中 style 名字（`style: NAME`、`style N = other`）在投影期替换为其字面量；带参调用一律 `style-call` 具名拒（**不做**折叠——语料唯一带参调用的目标声明带默认值本刀本就拒；跨模块常量求值收益 0、缓存身份/求值序风险不为 0）。**明示撤回**：用法不再声称复用 mangle/可见性；声明仍落 const/fn（身份/重名/导出/`pub` 显示面）。
+- **(d) 采纳**：`style-defaults` 指向**默认值 token**；`style-call` 区分 unknown-key/missing-arg/non-literal（同码不同臂、原 span）；未知形态不得回落 `source.syntax`。
+
+**七、落刀工作单（980 自用；回执后执行）**
+1. 文法（`grammars/auto-source.at`，仅 age-package）：`name(style-head){spelling:"style",token:"ident",role:"style"}`；`style-item`（name + 可选 `style-params`/`style-param`（`: ty` 可选、`= default` 可解析）+ `=` + `pratt wide-ops` value）；项位 alt 与 `public-body` 各加 `style-item` 臂（public 体首 token `style` 与 fn/type/const/use 互异）。
+2. 投影（`cst/frontdoor.rs` 包面）：zero-param → `Item::Const{ty:Str}`；param → `Item::Fn{ret:Str}`；默认值存在→`source.age.style-defaults`（span=默认值 token）；登记 `declarations`/`exports`（`pub style`）；重名走共享绑定器。用法替换：组件投影的 `style:` 条目与 `style N = other` 的初值在投影期解析为字面量（同模块；跨模块命中即 `style-call`）。
+3. 永久用例：字面量 / `pub style` / ident 复制 / 参数化（无默认）/ 默认值拒 / 带参调用拒（unknown-key·missing-arg·non-literal 三臂）/ 重名拒 / `style` 作普通标识符仍合法 / 13-profile 逐字节不变 + age-package 新值。
+4. 身份：更新 `plan981_grammar_scope.rs` 的 age-package 值与注释（前值 `0290d0ab…` → 新值），age-component 行不动；随提交附 13 邻居转储。
+5. 门禁：`cargo t ace-source ace-av`；981 复跑冻结测试。
 
 ## 6. 测试设计
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
@@ -1598,8 +1614,59 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 2026-11-18 stage: revision（④-A 入口同步 + 形状准入补测 + 代码顺序落档；用户复核接受 981 修正）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **合同同步完成，代码未动** | ①同步：用户接受"多模块闭包整体走 `age-package`、作者保原 `use` 拼写"；§5 三方案 A 与 v0 条款改标历史、D-④-2 原行标"已被裁定结果取代"；S8 增用户最小验收三件（未引用 `themes` 不拉模块／被引用 helper 改结果／缺模块·缺符号·私有符号具名拒；引用驱动限 ④-A 符号导入、普通包面初始化语义不变）。②补测（包面真实形状）：`ace-node-counter`/`ace-hello-minimal`/001/legacy-on-block/canonical-msg-named **全 OK** ⇒ 形状墙不是 `widget`/`node` 或 `on` 块，而是匿名 payload msg（17/35）、顶层 style（20/35）、反引号（2/35）、package block（5/35）、`$`（026）。③代码顺序：**点分 `use` 投影 + 惰性绑定同批**（单加投影→34/35 例 eager 全红；单加惰性→无输入）→ 在已可解析真实例派生源接入真实 helper 验三判据 → AV 真窗 → 同源 SFC。④未完前置：整例真实源仍需 S0.5a 表面补齐（§10 R1/R2/R3 待裁）。| 未改 grammar/身份/产品代码；探针删净、harness 还原、worktree clean。
 
-## 10. 待澄清事项
+2026-11-18 stage: countersign+work（**F32 消费同窗 v1：980 `auto-ui-runtime` 侧回签 + 配对提交**；包桥 F32 不纳入）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **980 侧 ready（分支配对提交 `8a713b89`）；窗口待 981 先合、auto-ui 紧随** | 981 侧：`17fafb1d9`（`plan-981-f32-window`，未合）。
 
+**回签内容（逐项接受 981 窗口合同）**：①`AceStateValue::F32(f32)` 与 981 **同策略按位相等**（手写 `PartialEq`/`Eq`：NaN payload 可判别、`-0.0 ≠ 0.0`；`Eq` 保留）；②`From<&ComponentFieldValue>` 增 `F32`；`InitialValue::Float` 映射两处（`ace_state_bridge`/`ace_native`）；③`ace_ts_provider` 类型串 `f32`；④`ace_node_desktop` 呈现=**Rust `Display`**（宿主显示模型只有 str 车道→F32 以格式化串经 `ui_apply_str` 提交；值语义仍在引擎）；输入绑定对 F32 保持具名拒（本窗不接 f32 输入）；⑤**组件桥验收 3/3**（`tests/plan980_f32_component_window.rs`）：`Float(1.25)` 种子 → `.Step`(+0.25) → 读回 `1.5` **bit-exact**；`Int` 种子具名拒（不隐式提升）；窗口显示 `1.5`（无 `1.500000`、无逗号小数）；⑥**包桥 F32 不纳入本窗**（包桥只观察 int、无 props/initials——其 F32 另案）。
+
+**联合编译与窗口协议**：按协议以 **master + 981 f32 提交** 的 scratch 树联合编译（981 分支基点落后，直接 checkout 会红 root crates）；配对提交=`D:/autostack/.wt/lang-981-f32/auto-ui` 分支 **`f32win-ui` @ `8a713b89`**（未合）。窗口顺序=981 先合 `17fafb1d9` → auto-ui 紧随 `8a713b89` → 各自冻结门（981：`ace-source ace-av`；auto-ui：其固定组）；任一侧失败双方同窗回滚。
+
+**窗口阻塞（须先解；非本窗引入）**：lang **master tip `4d9895712` 的 `auto-lang-ace-host` 已红**——experimental ace_core 新增 `Item::UsePy` 后 `crates/auto-lang-ace-host/src/session_bridge.rs` 两处 match 未补臂（E0004）。本回签在 scratch 树打了 **2 行未提交补丁**（`UsePy` 臂）才通过联合编译；正式开窗前须由该改动 owner（982 谱系）补臂或确认 master 恢复绿，否则 auto-ui 无法构建（与本窗无关，但会挡住窗口）。
+
+2026-11-18 stage: work+merge（④-A 首片 #2d：**`<script>` 段浏览器执行档**；非 fold）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（脚本段浏览器证据已交；完整 SFC template 阻塞已实测）** | delivery: auto-ui master **`dbed5997`**（ff-only；rebase 后 `crates/auto-ui-runtime` 树与已测提交一致）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①`tests/plan980_closure_browser.rs` + `examples/ui/ace-web-lane/tests/test_pkg_script_browser.mjs`：把包片段 lane 发射的 **同一份** helper 定义与 handler 调用行放进真实页面（playwright/chromium，`AUTO_UI_ACE_WEB_E2E=1`），点击一次按钮断言 `#count`：base helper（+2）**2→4**、edited helper（+10）**10→20**——浏览器执行面与 CPU/AV 观察同源同值。②完整 SFC template 的阻塞已**实测**：既有方言解析器（`auto_ui_dialect::UiDialect`）不认 AGE `node`/匿名 msg 源（`generate_sfc_with_lane` 在派生源上返回 20 个 parse 错误，含 `UndefinedVariable{Inc}`/`Expected term, got View`）⇒ "完整 SFC"需 **view 树→Vue 模板**生成器道（或方言 AGE 支持），列为下一片；不以手写 template 冒充。
+
+**验证。** 浏览器档 1/1（3.3s，env-gated）；回归 `plan980_closure_sfc` 2/2、`plan980_closure_window` 3/3、`ace_node_desktop` **11/11**；changed files fmt clean。
+
+**边界（诚实）。** 浏览器档执行的是 **SFC `<script>` 段**（页面宿主与按钮为测试装置）；完整 SFC（template 由 AGE 视图生成）未交；包桥仍只观察 int 字段、无 props/initials。
+
+2026-11-18 stage: design-revision（**981 回签（有条件）+ 980 回执**；P3 收窄为 age-package-only；本轮不动文法）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **回执完成，落刀工作单就绪（§5 P3 七节）** | 981 回签：`edfa4220c`（981 §9 收据）。
+
+**981 修订（三处）**：(a) profile 门收窄为 `[age-package]`，`age-component` 不开（组件面无语义 const/public 规则、const 由 packages 绑定器消费、`ModuleGlobalsPlan` 仅 AGE 包前门钉入）；(b) 身份做法 A（980 同提交更新冻结值，只动 age-package，13 邻居转储）；(c) 重名走 `source.module-duplicate-declaration`、style 函数返回类型待定、下游车道（AV/TS/SFC/A2R）const 读风险要选路；(d) 诊断码细化 + 建议 P3.1 调用点一律 `style-call` 具名拒（不折叠）。
+
+**980 回执（两问）**：①(c)3 选 **投影期字面量替换**——P3.1 中 `style: NAME` 与 `style N = other` 在投影期替换为字面量；带参调用一律 `style-call` 具名拒；**明示撤回**"用法复用 mangle/可见性"的主张（声明仍落 const/fn）。理由：语料用法全是编译期 class 串，避免 TS/SFC/A2R 的 global 访问器缺口；跨模块常量折叠收益 0、身份/求值序风险不为 0。②(c)2 选 **`Str`（owned）**：参数化 style → `Item::Fn` 返回 `Str`；零参 → const `Str`（与文本叶 `.clone()` 约定同源，避免 view 生命周期）。
+
+**落刀工作单**（§5 P3 七节）：文法三件（`style-head`/`style-item`/`style-params`，仅 age-package）→ 投影（const/fn + defaults/call 具名拒 + 声明/导出/重名）→ 用法投影期字面量替换 → 永久用例九项 + 13-profile 转储 + age-package ID 重基线 → 门禁 `cargo t ace-source ace-av`；981 在 980 文法提交上复跑 `p981_grammar_scope` 核 diff。**本轮未改文法/代码。**
+
+2026-11-18 stage: work+merge（**P3 `style` 声明面落文法**：age-package only；981 回签 `edfa4220c` 收窄版）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（style 面已交；默认值/插值/调用形/导入引用=具名拒）** | delivery: lang master **`e8e4c16da`**（rebase 后 ff-only；合并 master 含 981 ABI/spawn 前进，披露冲突解决=冻结值按合并后文法重算）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①文法（`grammars/auto-source.at`，**仅 age-package**）：contextual `style-head`（不进 token 表）+ `style-item` + `style-params`/`style-param`/`style-param-ty-ann`/`style-param-default`（组合器约束：多步 opt 拆子规则）+ 项位 alt 与 `public-body` 的 style 臂。②投影（`cst/frontdoor.rs`）：零参字面量→`Item::Const{Str}`；`pub style`→公共面 exports；参数化（无默认/无插值）→`Item::Fn{ret:Str}`；**默认值→`source.age.style-defaults`**（span=默认值 token）；**参数插值→`source.age.style-interp`**；**调用形→`source.age.style-call`**（组件投影前的 CST 预扫 + 声明初值两处）；本地 ident 复制延后解析（允许前向；未命中→`style-call`）；**导入 style 引用→`style-call`**；用法 `style: NAME` 在投影期替换为字面量（981 (c)3，无 module-global 读）；重名走现有 `source.module-duplicate-declaration`；`style` 作普通标识符仍合法。③身份（做法 A）：`plan981_grammar_scope.rs` 的 **age-package 单值** 重基线（合并 spawn 后基线 `0290d0ab…` → **`2d272979…`**，注记三次重基线）；**age-component 保持 `19a1376e…`**；13 profile 逐行冻结表绿=邻居未变。④永久用例 `plan980_style_surface` **9 例**。
+
+**验证。** 目标 9/9；grammar 7/7；`cargo t ace-source ace-av` **双 PASS**（合并后提交上复跑）。
+
+**边界（诚实）。** ①stylekit 的 3 条参数化 recipe 带默认值→**本刀具名拒**（007/016/017/029/031p 的 stylekit 面仍未解锁）；②参数插值未接（`style-interp`）；③带参调用不折叠（`style-call`）；④导入 style 引用不接（`style-call`）；⑤用法替换只走主 view 树（命名 view/其它出口未遍历——具名边界）。
+
+2026-11-18 stage: fix+merge（**默认构建 E0433 红：④-A 包感知桥/包片段 lane 缺 `ace-bridge` cfg 门**；980 自身回归，非 982/983/man）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（默认与 feature 构建双绿）** | delivery: auto-ui master **`d188d695`**（ff-only）| worktree lang-980 @ plan-980-dev。
+
+**缺陷与根因（用户实证 + 本会话复核）**：`auto-ui-runtime/Cargo.toml` 的 `ace-bridge` feature 把 `ace-av`/`ace-core`/`ace-a2x-ts` 等声明为 **optional**；`ui/mod.rs` 里 `ace_node_desktop` 由前置 `#[cfg]` 覆盖，但 #2b/#2c 新增的 `ace_package_bridge`、`ace_package_lane` **未加门** ⇒ 任何不激活 `ace-bridge` 的消费者（auto-ui 默认 `cargo check -p auto-ui-runtime`、man 的 `ace-candidate` 链）编译时这些 crate 不存在（E0433），round 176 首错 `ace_a2x_ts` unresolved 同族。
+
+**修复**：`ui/mod.rs` 给两模块补 `#[cfg(feature = "ace-bridge")]`（与 `ace_node_desktop`/`ace_state_bridge`/`ace_ts_provider` 同一门控面）；不改依赖声明、不改桥/lane 代码。
+
+**验证（合并后提交）**：`cargo check -p auto-ui-runtime`（默认 features）**0 error**；`--features ace-bridge` **0 error**；ACE 面回归 `plan980_closure_window` 3/3、`plan980_closure_sfc` 2/2、`ace_node_desktop` 11/11。
+
+**man `ace-candidate` 是否转发 `ace-bridge`——980 决定：不转发。** 理由：桥/lane 依赖 optional 的 UI provider 面（含 iced/`auto-lang-ace-host` 等），man 的 candidate 链只需要 candidate/emit 与时序；转发会把 UI 栈拉进 man 的默认图并放大其 feature 面。若未来 man 某条腿确实需要桥行为，按腿显式启用并具名理由（不在本包预先扩面）。982 可在本提交后复跑 man 链（`plan983_c0_cli` ＋ `plan982_av_http_service`）；本红此前对 C0 的配对 worktree 证据不构成阻塞。
+
+2026-11-18 stage: work+merge（④-A #3：**AGE `view` 树 → Vue SFC 生成 + 真实挂载**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（派生例 0→1→0 真挂载；002 首阻断具名记录）** | delivery: auto-ui master **`166acac0`**（ff-only）| worktree lang-980 @ plan-980-dev。
+
+**交付。** ①`ui/ace_package_sfc.rs::generate_package_sfc(units, entry)`（`ace-bridge` 门内）：模板由入口 unit 的组件面候选逐项渲染——`col/row→div`（flex class）、`button/text/input` 保拼写、`style:`→`class`、`onclick/oninput`→`@click/@input` 指向生成的事件函数、文本叶=字面量或 `{{ 表达式 }}`（模板侧 ref 自动解包、无 `.value`）；脚本=`import { ref } from 'vue'` + model `ref(初值)`（标量 CPU 值优先，其余经同一包片段 lane 发射）+ handler（lane 在状态函数内按原 span 发射 RHS，lane 局部名改写为 ref）+ 被调 helper 定义（lane `emit_function_body`，发射名即调用名）+ 最小 `a2x_rt`（add/sub/mul）+ `defineExpose({ __state })`（组件公开状态，供宿主/验收读取，不是测试钩子）。②真实挂载档 `tests/plan980_package_sfc.rs` + `examples/ui/ace-web-lane/tests/test_package_sfc_mount.mjs`：`@vue/compiler-sfc`（inlineTemplate）编译 → 本地 HTTP 供页面（file:// 下 ESM 跨源被拒）→ playwright 挂载真 Vue 3.5 → 点 `+` 得 1、`Reset` 得 0、再两次 `+` 得 2（经 `__state()` 读真实响应式状态）；页面零 page error。
+
+**验证。** 本文件 3/3（含 env-gated 挂载档 `AUTO_UI_ACE_WEB_E2E=1`）；默认 `cargo check -p auto-ui-runtime` 0 error（#2b 的 cfg 门保持）；回归 `ace_node_desktop` 11/11、`plan980_closure_window` 3/3。
+
+**002 首阻断（具名，按用户要求记录）**：未改写 `examples/ui/002-counter/src/front/app.at` 经**包闭包路径**生成 SFC 时首错=`source.lex: unknown character \`\``（反引号模板文本不在 age-package 词法面）。**诚实归因**：002 是**单文件**工程，组件面（`project_component_candidates`/lane）支持反引号；因此这是"生成器走包面"的路径限制，**未必是 002 的语言缺口**。下一刀应决定 U0 走哪条：**A** 加"单文件 SFC 路径"（组件面描述 + lane，绕开包面词法）；**B** 把反引号文本补进包面词法（981 会签、影响面更大）。在决定前不宣称 002 已支持。
+
+**边界（诚实）。** 模板只覆盖标量 model 与元素/文本叶；f-string/反引号文本、列表/存储/组件引用、`design/theme`、条件/循环、样式配方（style 面）不在本刀；`onclick/oninput` 以外的事件键按普通属性跳过（未具名拒——下一刀补）；`defineExpose` 暴露的是字段值快照（非双向绑定）。
+
+## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 本次已明确缺口生产归属及无环交接，不再等待已归档960产生新交付。原I任务仍须冻结具体组合profile/API、诊断码与可见性语法/命令及资源边界；这是有界技术决定，不是新增立项或降低原验收。原已具名的公共语言/平台/产品策略未决继续保留，必要能力缺失必须绑定实际owner，不能以编号泛称取代可执行前置。

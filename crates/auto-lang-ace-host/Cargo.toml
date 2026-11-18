@@ -30,6 +30,9 @@ ace-a2x-rust = { path = "../../experimental/ace/crates/a2x-rust" }
 ace-a2x-python = { path = "../../experimental/ace/crates/a2x-python" }
 # PLAN-982（982/WEBTARGET）：A2TS/A2JS 的宿主驱动面。
 ace-a2x-ts = { path = "../../experimental/ace/crates/a2x-ts" }
+# PLAN-982（982/C）：包级 A2C 渲染器——ace-a2x-c 发射 + a2x-store 包会话。
+ace-a2x-c = { path = "../../experimental/ace/crates/a2x-c" }
+ace-a2x-store = { path = "../../experimental/ace/crates/a2x-store" }
 
 [dependencies.base64]
 version = "0.22"

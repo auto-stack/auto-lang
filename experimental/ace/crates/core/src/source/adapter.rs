@@ -1754,8 +1754,16 @@ impl PlanCtx<'_> {
         let has_move_str_param = f.locals.iter().any(|l| {
             l.is_param && l.mode == super::ast::ParamMode::Move && matches!(l.vt, VT::StrOwned)
         });
+        // PLAN-982（983 组合入口，用户裁定）：**借用 `str`** 形参同属文本运行时
+        // 义务——host-console 文本入口的实参是 arena 里的 `StrView`
+        // （`execute_entry_text_platform`），根帧准入按
+        // `ac.runtime.text.v1` 放行；无文本操作的函数体也必须携带该能力。
+        let has_view_str_param = f
+            .locals
+            .iter()
+            .any(|l| l.is_param && matches!(l.vt, VT::Str));
         let mut plan = FnPlan {
-            has_text_ops: has_move_str_param,
+            has_text_ops: has_move_str_param || has_view_str_param,
             exprs: Vec::new(),
             blocks: Vec::new(),
             places: Vec::new(),
