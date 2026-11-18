@@ -5,8 +5,8 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-18
-plan_revision: 9
-current_step: 13
+plan_revision: 10
+current_step: 14
 total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -18,7 +18,9 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-18 r9（当前范围增补）：依用户本轮指令「先接 `auto_web` 生产栈，由 983 主导；完整 JSON 等第一个真实消费者明确需要哪些字段后再做」，新增具名切片 **B-AVSERVICE-TEXT**：把 982 已验的受检文本入口（`fn main(query str, body str) int`）接到 auto_web 既有 TCP 生产栈——**同一份已编译 handler**收查询串 + UTF‑8 体，请求不重编译、不经文件；等字节长度 `中文`/`日文` 按内容分流，收据 `av_dispatches>0 / legacy_dispatches=0 / compile_count=1`，现有服务回归保持。**未做**：文本参数与平台 I/O 的同一次调用（未触发；触发时交 982 共享入口补齐）、完整 JSON/请求头（等首个真实消费者字段）。原19任务/AC/进度保留，总数 20、12 完成；本次只实施+验证这一切片并落规范增量，review 仍归 B-AVSERVICE-R/T-05。
+2026-11-18 r10（当前范围增补）：①关闭 **B-GENERATED-R**——委派独立复核（`gen-reviewer`，与实现会话不同 agent）从 2026-11-17 `fd115ce` 旧双批收据出发，核对 `fd115ce → 3f8de15` 增量：生成道文件/依赖 crate 空 diff、生成服务 `main` 直接 `axum::serve` 不构造 `ServiceEngine`，故不触生成服务验收结论；AC-B-GENERATED 四项逐条 pass，复用同 SHA `http_generation` 3/3 并做两次定向复验（lane 单测 4/4 0.122s、参数例 9.702s、生成+坏源例 6.793s）。②**冻结 983/CONSUMERS 首例 C0**：jade-garden `GET /api/workspace`（无文本参数、两字段 JSON），固定字节级预期/失败面/资源清理与接口清单（983/AVSERVICE 已交付；982/EXEC `--server av` 需改走 auto-web `serve_av`；980/WEB 与 983/GENERATED 本首例不用）。本轮只做复核收据与首例定义，未写消费者代码、未运行新栈请求；B-CONSUMERS 仍未勾。
+
+2026-11-18 r9（范围增补）：依用户指令「先接 `auto_web` 生产栈，由 983 主导；完整 JSON 等第一个真实消费者明确需要哪些字段后再做」，新增具名切片 **B-AVSERVICE-TEXT**：把 982 已验的受检文本入口（`fn main(query str, body str) int`）接到 auto_web 既有 TCP 生产栈——**同一份已编译 handler**收查询串 + UTF‑8 体，请求不重编译、不经文件；等字节长度 `中文`/`日文` 按内容分流，收据 `av_dispatches>0 / legacy_dispatches=0 / compile_count=1`，现有服务回归保持。**未做**：文本参数与平台 I/O 的同一次调用（未触发；触发时交 982 共享入口补齐）、完整 JSON/请求头（等首个真实消费者字段）。原19任务/AC/进度保留，总数 20、12 完成；本次只实施+验证这一切片并落规范增量，review 仍归 B-AVSERVICE-R/T-05。
 
 2026-11-16 r7（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包仍完成现有Web服务/前后端实际消费者及RG证明；消费976/980所需TS/JS闭包，不将Godot或独立无消费的a2ts产品作为整包门，也不删Vue/Web现有业务。原19任务/进度保持。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
@@ -150,6 +152,35 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 I实现：jade-garden与既有Web生产调用逐行接新SDK；每owner代码独立交付，消费相同source/tool版本，保旧四仓义务。
 V验收：原fixture、真实业务请求/资源/退出均匹配；错装载身份/旧绝对路径拒绝；测试环境外部服务缺失具名阻塞。
 R关闭：独立核真实输入→新producer→consumer、正反例/来源/资源/退出。新adapter/fixture由I建立并接入既有target；缺工具/接口/平台保未执行或阻塞，不改NA。接口变化使受影响旧证据失效。
+
+#### 983/CONSUMERS 首例冻结（2026-11-18，C0：jade-garden `GET /api/workspace`）
+
+**选择与理由。** 从 jade-garden（auto-down）现有生产调用取一条真实请求作首例：`GET /api/workspace`。它是应用启动/桌面 daemon 的既有调用（[front/src/lib/api.ts](../../../auto-down/jade-garden/front/src/lib/api.ts) `getWorkspace()`；e2e [01-workspace.spec.ts](../../../auto-down/jade-garden/front/e2e/01-workspace.spec.ts) 与 [global-setup.ts](../../../auto-down/jade-garden/front/e2e/global-setup.ts) 已对真实后端断言），**无查询串/请求体文本**（不触发 982 的「文本参数＋平台 I/O」组合缺口），响应只有两个可空字符串字段（root/wiki_dir）——正是「首个用例只读少量字段就先交那部分」的最小 JSON 面。
+
+**真实请求与预期（字节级）。** 后端固定端口 `18181`（e2e `BACKEND_PORT`），fixture 工作区 `front/e2e/.runtime/workspace`（正斜杠形态 `WORKSPACE_ROOT`）。请求行 `GET /api/workspace HTTP/1.1`、`Host: 127.0.0.1:18181`、`Connection: close`、空体。
+- 配置了工作区（`JADE_GARDEN_DEFAULT_WORKSPACE=<W>`）⇒ `200`、`content-type: application/json`、体逐字节 = `{"root":"<W>","wiki_dir":"<W>/wiki"}`（字段序 root→wiki_dir；反斜杠按 JSON 转义为 `\\`；路径取 `to_string_lossy` 语义）。
+- 未配置（env 缺省且无配置文档）⇒ `200` + `{"root":null,"wiki_dir":null}`（与 01-workspace.spec.ts 的拦截 oracle 同形）。
+- 工作区目录不存在 ⇒ 仍返回该路径与 `<W>/wiki`（原 `get_workspace_impl` 不校验存在性；校验只在 POST /open）。
+
+**失败面。** 未声明路由（如 `GET /api/nope`）⇒ `404` 空体（AV 服务臂与 legacy 预处理同形；不回落 `d_main`、不回退 VM）；畸形请求 ⇒ 传输层 400/断开且不派发；AV 执行诊断 ⇒ `500` 具名 `ace.service/*`，不得静默 200。
+
+**资源与清理。** 只读配置/env 与工作区路径：不写工作区、不建/改配置文件；每请求文件句柄关闭（AV 平台台账「每调用强制关句柄」）；连续 2+ 请求体字节相同且 `av_dispatches` 累加、`legacy_dispatches=0`；外部停止 ⇒ 排水、端口可重绑、进程退出 0。
+
+**接口清单（实际用到 / 明确不用）。**
+
+| 接口 | 状态 | 本首例用途 |
+|---|---|---|
+| 983/AVSERVICE：`auto_web::serve_av` + `AvServiceEngine`（文件通道；grants `platform.file`/`platform.mem`；`#[api]` 路由、404/501、shutdown） | **已交付**（auto-web `3f8de15`，m2-web.md B 节） | 承载 `/api/workspace` 的 AV 程序与真实 TCP/配置/生命周期 |
+| 982/EXEC：`auto service --server av`（`resolve_back_api`、真实 TCP、ready 行、receipt） | **部分交付**（982 rounds 149–166；man master `1d26b50`）：现为 man 自带最小 TCP 宿主（文本入口/int 返回，无 auto-web transport/配置/grants） | 需改走 auto-web `serve_av` 并暴露 grant/scratch/入口（见下方 982 请求） |
+| 982/CONFIG：服务配置 `--http-config-inline`（listen/profile/drain） | **已交付**（982/EXEC 面）；配置文档引擎本请求**不用**（jade-garden 后端无 pac.at；本轮配置入口=env+服务配置） | listen/profile/drain/退出；坏配置具名失败、旧工作区零写 |
+| 980/WEB：Vue/TS 表达式后端 | **本首例不用**：jade-garden 前端由 a2ts 生成 + 手写 fetch，不经 auto-ui Vue 表达式面；其未闭项不阻塞 C0，四仓整体验收的 UI 腿须另立 case | — |
+| 983/GENERATED：A2R 生成服务 | **本首例不用**：生成道无平台 I/O/配置读取；生成服务腿由既有 `http_generation` 用例与后续 case 覆盖 | — |
+
+**分期。** C0-A（本轮定义、下一步 I）：后端线（请求/预期/失败/清理如上）。C0-B：前端页（`getWorkspace()` 经浏览器/桌面形态消费同一响应；jade-garden 前端产物构建面另核）。C1（下一例，将触发 982 组合缺口）：`POST /api/workspace/open`——文本根路径 + 目录创建/索引重建（平台 I/O）+ JSON 入/出，需 982 在同一次调用里组合文本参数与平台 I/O。
+
+**给 982 的优先请求（EXEC 接口）。** ①`auto service --server av` 的宿主换成 auto-web `serve_av`（同 transport/config/shutdown/ready/receipt；`AUTO_AV_*` 保留为引擎选项）；②API 源路径可显式指定（默认发现 `src/back/api.at` 不变；jade-garden 用 `back/auto/api.at`），无 API 仍具名拒绝、不回退 vm；③暴露 AV 引擎的 grant/scratch（`platform.file`/`platform.mem`）与程序入口；④`--http-config-inline`/配置语义同 `serve_vm`，坏配置零写、失败具名。C/EXPORT 等按自身顺序并行。
+
+**不声称。** 本轮只冻结首例与接口清单；未写 jade-garden 适配、未运行新栈请求、未改四仓整体验收分母。四仓整体（980/WEB、982/EXEC、实际用到的配置接口）仍按 §6 V-B-CONSUMERS 待所用接口齐备后一次收口。
 
 各批I的有界决定门：用该批最小真实正例、同类型非法近邻、一次失败后恢复跑最长producer→consumer链；仅对未决策略比较适用实现再冻结接口，不拿日历/语法深度缩范围。资源由session持候选、generation持已发布产物、在途pin持旧代，last-owner释放；错误/取消/late不得覆盖CURRENT。继承原预算/平台条件，新增资源单位/上限/超限分类在本批I冻结并有边界反例，改变承诺先修合同。
 
@@ -319,7 +350,7 @@ struct WebHostPort { signatures: SignatureCatalog, owner_thread: ThreadOwner, gr
 
 ## 8. 执行步骤
 
-当前共20任务（13 完成）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前共20任务（14 完成）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
@@ -368,9 +399,11 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 - [x] **B-GENERATED-V｜M2-B｜owner_stage: work｜AC-B-GENERATED**：运行V-B-GENERATED及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
   [✅ 2026-11-17 @6808511] V-B-GENERATED 实测：`nextest -p auto-web --test http_generation` = **3/3 绿**（73.5s）。新例 `ace_lane_param_endpoints_execute_over_real_tcp`（6.45s ≤10s 门）：生成→参数 glue 断言（fn_echo(body["delta"]..)）→--offline 冷编译（真实 cargo 子进程终态）→真 TCP：echo(41)→82、whisper("p983")→"p983"（str 参数编组）、pick(true)→true（bool）→202 shutdown join+端口释放；原例（6.21s）保持含坏源负例（scale(float) 具名拒+保旧）。既有 `cold_generated`（legacy 道，60.7s）与 lane 单测 4/4 绿=默认道不变。lang 组（组树零改动非回归证据）：`cargo t auto-generation-core` PASS + `cargo t web-delivery-controls` PASS（冷建 3m16s，组树 @d43e7970+master 前移）。
 
-- [ ] **B-GENERATED-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- [x] **B-GENERATED-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+  [✅ 2026-11-18 phase review pass @3f8de15（委派独立复核 `gen-reviewer`）] 从 2026-11-17 `fd115ce` 旧双批收据出发：`fd115ce→3f8de15` 八文件增量不含 `ace_a2r_lane.rs`/`api_gen.rs`/`http_generation.rs`/`auto-generation-core`，生成服务 `main` 直接 `axum::serve`（`api_gen.rs:5310`）不构造 `ServiceEngine` ⇒ 不触生成验收结论；AC-B-GENERATED 四项逐条 pass（冷编真 TCP/独立 expected/坏源保旧/子进程终态无自报）。证据：复用同 SHA `http_generation` 3/3（118.56s）＋定向复验 lane 单测 4/4（0.122s）、参数例 9.702s、生成+坏源例 6.793s；F-G1（低，非 AC 缺陷）首跑 19.46/22.53s>10s 系冷建+并发盘压，稳态 ≤10s，owner=B/CONSUMERS 预构建（r7 已名）。见 §9 复核收据。
 
 - [ ] **B-CONSUMERS-I｜M2-B｜owner_stage: work｜AC-B-CONSUMERS/AC-02/03/06**：jade-garden与既有Web生产调用逐行接新SDK；每owner代码独立交付，消费相同source/tool版本，保旧四仓义务。 在§5改面接永久fixture，先冻结前置接口/命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
+  [C0 首例冻结 2026-11-18] 见 §5「983/CONSUMERS 首例冻结」：jade-garden `GET /api/workspace`（无文本参数、两字段 JSON），字节级预期/失败面/资源清理/接口清单已定；首例需要 982/EXEC 把 `auto service --server av` 改走 auto-web `serve_av`（API 路径可指定、grant/scratch 暴露、配置/lifecycle 同 `serve_vm`）。本轮**未**写消费者代码/未运行新栈请求；实现完成并验证后才勾选本任务。
 
 - [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
@@ -395,6 +428,10 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-18 stage: review | review_scope: phase（B-GENERATED-R；整包仍 executing，CONSUMERS/T-05..07 未动）| reviewer_identity: 委派独立复核（gen-reviewer；与实现会话不同 agent、同机；旧收据延续+同 SHA 复用已声明）| plan_id: PLAN-983 | plan_revision: r9 | outcome: pass | worktree_path: D:/autostack/.wt/lang-983/auto-web | branch: plan-983-dev | reviewed_commit: 3f8de15（auto-web，=master tip；复核前后 clean）| base_commit: fd115ce | dependency_revisions: lang 组树 1af135c31（auto-generation-core/auto-lang-core/ace-{core,a2x-core,a2x-rust,av,av-core,lowering} 对 850a49bf8 空 diff；套件跑于 850a49bf8，代码等同）| spec_inputs: docs/specs/ace-migration/m2-web.md（B-GENERATED 节、文本入口节）| delta_impact: fd115ce→3f8de15 八文件 +547/−1，无 ace_a2r_lane.rs/api_gen.rs/http_generation.rs/auto-generation-core/lane 依赖 crate；生成服务 main 走 axum::serve（api_gen.rs:5310），不构造 ServiceEngine，故不影响本批验收 | acceptance_results: AC-B-GENERATED pass——①未手改生成物冷编真 TCP（双模块在场+api.rs 委派；cargo build --offline 子进程 success；spawn exe 真 TCP 200/202/端口重绑）②独立 expected 890/"p983-ace-a2r-service"/2147483647/82/"p983"/true ③坏源 scale(float) 具名拒含端点名+member manifest 字节不变 ④真实 cargo 子进程终态与产物退出码断言，无自报布尔 | findings: F-G1（低，非 AC 缺陷）新 ACE 例首跑 19.46/22.53s>10s（冷 cargo+新 ace-lowering 首建+并发盘压），稳态复验 6.793/9.702s≤10s；owner=B/CONSUMERS 预构建（r7 已记）；无 in-contract 缺陷；探针误用 `-E test(/.../)` 选 0 例已剔除（非产品）| evidence: lane 单测 4/4 0.122s；参数例 PASS 9.702s；生成+坏源例 PASS 6.793s；复用 3f8de15 套件 3/3 118.562s（19.464/22.529/76.562）、lib 188 例 187 绿 63.662s（唯一红=基线既有且文件不在 diff）| pending_closeout_gates（merge-owned）: B-GENERATED 已随 fd115ce phase fold 落主、文本切片 3f8de15 已落主；T-06/T-07 待 CONSUMERS | next: work/merge 按 owner（本批无修复项；F-G1 归 B/CONSUMERS 预构建）
+
+2026-11-18 stage: plan（首例冻结，非实施）| PLAN-983 r10 | outcome: pass（合同冻结；B-CONSUMERS 仍未勾）| 用户指令：先收 B-GENERATED-R，同时为 B-CONSUMERS 选第一个真实业务用例；982 优先交首例实际需要的 EXEC 接口。本轮交付：①B-GENERATED-R 复核 pass（见上一条）；②§5「983/CONSUMERS 首例冻结」——C0 = jade-garden `GET /api/workspace`：无文本参数、两字段 JSON（root/wiki_dir），固定字节级预期（含 `null` 失败形态与 Windows JSON 转义）、404/500 失败面、只读+句柄/端口清理；接口清单=983/AVSERVICE 已交付、982/EXEC `--server av` 部分交付（需改走 auto-web `serve_av`、API 路径可指定、grant/scratch 暴露、配置/lifecycle 同 `serve_vm`）、982/CONFIG 服务配置已交付/配置文档引擎本请求不用、980/WEB 与 983/GENERATED 本首例明确不用。③分期：C0-A 后端线 → C0-B 前端页 → C1 `POST /api/workspace/open`（将触发文本+平台 I/O 组合，交 982）。**未做**：未写 jade-garden 适配/AV 程序、未运行新栈请求、未改四仓整体验收分母。| evidence: 事实取自 jade-garden `back/server/src/workspace.rs`/`state.rs`、`front/src/lib/api.ts`、`front/e2e/01-workspace.spec.ts`/`global-setup.ts`/`runtime.ts`（端口 18181、WORKSPACE_ROOT 正斜杠）、982 EXEC receipts（rounds 149–166）与 man `http_service.rs` 实测读取；接口状态以 auto-web `3f8de15`/man `1d26b50`/lang `1af135c31` 为据。| next: work（C0-A 实现随 982 EXEC 接口到位分段接；本 Plan 不动 982 代码）
 
 2026-11-18 stage: merge | PLAN-983 r9 | outcome: pass（**phase fold：AV 文本入口切片合入**；整包不归档，status 保持 executing）| delivery_commit: auto-web master `3f8de15`（=reviewed commit；ff-only，tip 相等已核；主检出 README WIP 属他 session 保留）| canonical: auto-lang master `1af135c31`（reviewed 规范 `b952cc9a4` rebase 至 `bf006d2e7` 后 ff；两提交=`043542b2e` 文本入口节 + `1af135c31` 状态/边界行修复；rebase 内容无漂移已核 tip 含该节）| checkpoints: prepared=review pass（下一行）；landed=两仓 ff-only tip 相等；canonical_verified=`m2-web.md` 文本入口节 + status/boundary 已在 master；**archived/cleaned=不适用**（CONSUMERS/T-05..07 在途；worktree/分支/lang-983 组保留）| **口径澄清**：用户称 T-06；按计划 T-06 为整包终态合入（前置含 CONSUMERS），本次只执行本切片的 phase fold 落主，**T-06/T-07 复选框保持未勾** | 消费登记：文本入口生产面=`http_server::serve_av_text`+`ServiceEngine::AvText`+`av_text_service::AvTextServiceEngine`（编译一次；`fn main(query str, body str) int`；收据 compile/av/legacy 计数+ABC 指纹）；source/接口/边界以 m2-web.md 文本入口节与 auto-web `3f8de15` 为准；982 文本参数契约（m2-man-gen.md）+ 本仓宿主接线=组合消费面 | merge 会话测试：复用 review 会话同 SHA 门禁（`3f8de15`：http_runtime 7/7 9.31s、lib 187/188 63.66s、http_generation 3/3 118.56s；准备=0 热构建）；本 merge 会话无新增用例 | next: B-CONSUMERS（前置 983/AVSERVICE+GENERATED 已落、982/EXEC、980/WEB）
 
@@ -447,6 +484,8 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
 
 ## 10. 待澄清事项
+
+**2026-11-18 982/EXEC 优先项（首例 C0 依赖）**：按用户裁定「尽快解锁 983 ⇒ 982 优先交首例实际需要的 EXEC 接口」——`auto service --server av` 需改走 auto-web `serve_av`（transport/config/shutdown/ready/receipt 同 `serve_vm`），API 源路径可显式指定（默认 `src/back/api.at` 不变，jade-garden 用 `back/auto/api.at`），暴露 AV 引擎 grant/scratch（`platform.file`/`platform.mem`）与程序入口；坏配置零写、失败具名、不回退 vm。C/EXPORT 按自身顺序并行，不作本首例前置。详见 §5「首例冻结」。
 
 **2026-11-18 用户指令（983 先接 auto_web 生产栈）**：本轮已交文本入口切片 B-AVSERVICE-TEXT。两项未触发/未做，按用户口径保留为下一步条件：①「文本参数 + 平台 I/O 同一次调用」——983 首个消费者本轮只用文本；当真实消费者需要组合调用时，把**具体需求**交 982 验证并补齐（982 收据仅覆盖文本参数，组合调用需单独验证）。②完整 JSON（嵌套/浮点/请求头）——等 983 选定真实消费者、明确所需字段后再做，先交实际用到的少量字段。983/CONSUMERS 四仓整体验收仍按计划核对 980/WEB、982/EXEC 与实际用到的配置接口。
 
