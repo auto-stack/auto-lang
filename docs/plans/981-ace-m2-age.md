@@ -1058,6 +1058,8 @@ stage: goal | plan_id: PLAN-981 | plan_revision: r18 | round: 1 | from: work | t
 **窗口协议（双方）**：①配对提交各在自己分支；②980 以 `AUTO_LANG_ROOT`（或同组 sibling）指向 `17fafb1d9` 联合编译+验收；③双方确认后**同一窗口**合入：981 先合（ace_av 单仓）→ auto-ui 必须紧随（否则 auto-ui master 的穷尽匹配红，这是窗口的预期代价，不得拖过窗口）→ 两侧各跑冻结门（981：`ace-source ace-av`；auto-ui：其固定组）→ 任一侧失败即**双方同窗回滚**，不留半状态。
 **未合入声明**：`17fafb1d9` 只在 `plan-981-f32-window` 分支；**980 回签前不得 fold 到 master**（否则 auto-ui master 立即编译红）。窗口开启条件 = 980 回签 + 其 auto-ui 提交 SHA + 双方门禁命令。
 
+**落主注记（2026-11-18 窗口收口，980 owner 会话执行）**：980 回签=`8a713b89`（f32win-ui）；981 G1/G2 落主后双 f32 分支对齐新基线（`40f1f03fe`/`6191915f` 零冲突；rebase 版 981 提交=`caba15b52`）；锁 chore `a73ef0549` 补 982 `c_transpile` 未随行的 Cargo.lock（master 级 `--locked` 红修复）。窗口顺序按协议执行：lang master **`d0ed5ef0e`**（先）→ auto-ui master **`0a04b086`**（紧随，穷尽匹配红窗口≈分钟级）。冻结门（f32 树实测）：ace-source **PASS**、ace-av 1405/1408（3 红全为台账既定外部腿族——2 并行竞争重放绿、`v02_d01_d06_a2r_cross_end` master 同红+主检出热绿=预存冷工件族，不判窗口）；落主树复核 `plan981_f32` **6/6**、组件桥 **3/3**。f32 worktree 待退役；包桥 F32 另案不变。
+
 **UI058 侧（用户同轮裁定）**：T-02 已在 r6 完成；`spawn` 文法与 f32 AV/A2R 已交付，UI058 可写真实 `render2d.spawn(...)` 与 f32 移动业务源，用 `execute_component_def` 核对 AV 数值；T-04 待 T-03 与所用正式接口齐备后跑正常 Node 整链（其 T-04 宿主端口请求见下一条收据）。
 
 ### 2026-11-18 stage: handoff（UI058 T-04 阻塞请求：AGE GFX 宿主执行端口 `IF-981-GFX-HOST-PORT`）| PLAN-981 r18 | outcome: **request（未实施；归 981 SESSION/LANGUAGE 后续任务）**

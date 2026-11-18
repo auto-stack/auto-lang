@@ -1666,6 +1666,30 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **边界（诚实）。** 模板只覆盖标量 model 与元素/文本叶；f-string/反引号文本、列表/存储/组件引用、`design/theme`、条件/循环、样式配方（style 面）不在本刀；`onclick/oninput` 以外的事件键按普通属性跳过（未具名拒——下一刀补）；`defineExpose` 暴露的是字段值快照（非双向绑定）。
 
+2026-11-18 stage: work+merge（**U0 预验收（④-A #4）：用户裁定 A 路径——未改写 002-counter 经单文件组件路径 SFC 真挂载**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（页面 0→1→0 + 全 lane a2x 证据）** | worktree lang-980 @ plan-980-dev | code_commit: ui **`b3c07aeb`** + 锁 chore **`f6210107`**（lang 侧零改动——纯验收面）| delivery: auto-ui master **`9b0e9683`**（merge；落主树复跑 2/2 含排窗挂载档全判据绿，2.86s）。
+
+**交付。** `tests/plan980_u0_002_sfc.rs` + `examples/ui/ace-web-lane/tests/test_002_sfc_mount.mjs`：**未改写** `examples/ui/002-counter/src/front/app.at`（反引号文本/顶层 `use themes.themes`/design 块原样）经**既有** `generate_sfc_with_lane`（编译器 SFC 管线 + `ComponentFragmentLane` 体拼接）产出完整 SFC → 真实挂载。挂载 rig 三步：`@vue/compiler-sfc`（inlineTemplate）编译 → esbuild 剥 TS 注记（单文件 SFC 为 `lang="ts"`——#3 包路径脚本是纯 JS 无此步）→ a2x_rt 注入（component 实际引用的 `a2x_*` 名 ∩ 官方 `script_runtime_body` 导出面，named import）→ 本地 HTTP（file:// 下 ESM 跨源被拒）→ playwright 真 Vue 点击。
+
+**验证（用户判据逐项）。** ①生成档（CPU 0.18s）：`absent` 空=**9/9 全 lane**（入口对缺席 handler 保编译器旧道体——仅凭 DOM 变动不证明 ACE 覆盖，故 lane 覆盖显式断言）；六个计数 handler（`.Inc/.Dec/.Reset` + `__evt_onclick_{1,2,3}`）拼接体逐行=lane 体（`a2x_add`/`a2x_sub` 形），旧 TS fallback（`+= 1`/`-= 1`）断言不在位；Reset 族拼接体恰=`count.value = 0;`。②挂载档（排窗 `AUTO_UI_ACE_WEB_E2E=1`，8.6–11.5s）：页面文本 `Counter: 0` → `+` 得 **1**（加）→ `-` 得 **0**（减）→ `+,+` 得 2 → `Reset` 得 **0**（重置）→ `+,+` 得 2；零 page error。③回归：`plan980_package_sfc` 3/3、`p980_web_lambda_origin`（002 生成级 9/9 面）双绿；本刀零产品代码改动（纯测试+rig），changed files fmt clean。
+
+**边界（诚实）。** ①单文件路径 SFC 脚本**不含 a2x_rt 定义**（包路径 #3 由生成器内联最小 rt）——宿主/挂载侧注入官方 rt（与 node 驱动同一合同，宿主接线非语言缺口）；②SFC 为 `lang="ts"`，浏览器执行需 TS→JS 转译（rig 用 esbuild 剥类型，语义零改写——真实产品链路的转译归属待 WEB 收口定）；③主题三键（UseAuto/UseSolarized/ToggleMode）生成级 lane 在位（bodies 含其 a2x_str_* 体）但挂载档未点击（U0 判据=计数三键）；④包面反引号仍拒（B 路径留给确需多模块的例，用户裁定）。
+
+2026-11-18 stage: probe（**style 20 例复测：对齐 P3+981 G1/G2 合并后新基线**；临时探针已删净，证据=plan-artifacts/plan-980/style-retest-20261118-{run1,run2,pkg-product}.log）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **数据更新（包面 style 20/20 已过——P3 生效，卡点后移且真因另在）** | 基线 lang **`010e26f08`**（=P3 `e8e4c16da` + 981 G1/G2 `6e456794d` + 982）。
+
+**复测矩阵（原始源双面 + 产品入口对照）。** ①**包面 parse 级**（`parse_package_source_age`）：20/20 的 style 行**全部通过**；首错后移——**16/20** `source.syntax: expected fn, found widget`、**4/20** `source.lex: unknown character $`（029/031i/031p/041——f-string `$` 不在包面词法）。②**包面产品入口对照**（`compile_age_package_with_scenario`+`LegacyWidgetAlias::Accept`，即 `generate_package_sfc` 同入口）：合成对照五例（bare/use/style/style+design 的 `widget` 头**全放行**、components=1）⇒ **"expected fn, found widget" 不是平坦 widget 墙，是 item 级回滚位**；最小 `double` 字段例给出**精确具名拒**（`source.age.component-unsupported: model field has type double…supported: int/i32/bool/str/f32`——D-④-3 宽数值拒绝按设计工作），而整例 003 仍塌缩为头部泛错——真因在例内（design if-else/f-string/`math.*` 按 census 候选，未逐例挖），与 S0.6"回滚位掩盖真因"结论一致并实证。③**组件面**（age-component，P3 按 981 回签收窄不动）：原始源 0/20 直解——9 卡 `expected fn, found style`（003/005/007/008/009/010/012/014/024）、7 卡 `source.unsupported: use is not part of this source profile`（011/015/016/017/018/027/030——与 981"单文件 use 具名拒"合同一致）、4 卡 `source.age.slot: expected node at the declared node slot`（029/031i/031p/041——`use { package }` 块形）。④剥离 style 变体（S0.6 口径）：**003 直解 OK（nodes=1）**与 S0.6 一致；其余下一阻断=text 槽位（005/007/008/009）、model 字段形状（010/012/014）、use 具名拒（7 例）、model/node 槽位（024/029/031i/031p/041）；包面剥离口径 16 widget+4 `$`（S0.6 旧基线为 18+2——基线差异非重测矛盾）。
+
+**结论。** P3 style 在包面已整体消除"style 首阻断"（16 例卡点=回滚位泛错、真因=例内宽数值/词法等既有具名墙；4 例=`$` 词法）；组件面维持 style 拒（981 收窄）——**WEB 单文件路径（lane 走组件面）对含顶层 style 的 20 例仍是第一阻断**；这 20 例的包面路线解锁取决于例内既有墙（宽数值/`$`/design 面）而非 style 本身。U0 预验收（002 无顶层 style）不受影响。
+
+2026-11-18 stage: merge（**F32 消费同窗收口：981×980 配对落主（新基线对齐后）**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **pass（窗口闭合；980 侧组件桥 3/3 落主树复绿）** | delivery: lang master **`d0ed5ef0e`**（merge `f32win-lang`＝981 侧 F32 `caba15b52`＋对齐合并 `40f1f03fe`＋锁 chore `a73ef0549`）＋ auto-ui master **`0a04b086`**（merge `f32win-ui`＝980 侧 `8a713b89`＋对齐合并 `6191915f`）。
+
+**对齐。** 981 G1/G2 落主后双 f32 分支各 merge 双仓 master（零冲突）；lang 侧 f32 worktree 中 `session_bridge.rs` 的 2 行未提交 UsePy 臂已丢弃（与 master `ff55579c3`/982 同内容重复——当时记录的窗口阻塞已由 982 在 master 解除）。
+
+**门禁（窗口冻结门，f32 树 `a73ef0549` 实测）。** lang `cargo t ace-source ace-av`：**ace-source PASS**；ace-av 1408 跑 **1405 绿/3 红**——红项全为台账既定 C 工具链/A2R 外部腿族：`kv_zip_1064`×2（ExecutionWall=并行竞争，机器有他会话 cargo 在场，**隔离串行重放 2/2 绿**）；`sys_d01_d06_1064::v02_d01_d06_a2r_cross_end`（a2r 跨端 spawn 空返回，隔离串行仍红，但 **master 基线同红、主检出（工件热）绿**＝预存冷工件环境族——F32 diff 不触该腿，不判窗口，台账记 owner=工件缓存机制）。**发现并修复 master 级缺陷**：982 `c_transpile` 落主未随行 Cargo.lock（任何 `cargo t --locked` 工具准备即红）——f32win-lang 锁 chore `a73ef0549` 补 2 行（982 后续 merge 已含更全刷新，合并无冲突；主检出同内容脏锁随之转干净）。
+
+**落主树复核。** lang `d0ed5ef0e`：`plan981_f32` 面 **6/6**（0.07s）；auto-ui `0a04b086`：`plan980_f32_component_window` **3/3**（0.27s；Float(1.25)→Step→1.5 bit-exact、Int 种子具名拒、显示 1.5）。
+
+**遗留。** f32 双 worktree（`lang-981-f32` 组）已全并入 master、待退役；包桥 F32 仍另案（本窗合同边界不变）。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
