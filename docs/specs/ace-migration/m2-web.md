@@ -1,10 +1,9 @@
 # ace-migration: m2-web — Web 服务嵌入与实际后端迁移（PLAN-983）
 
-> Status: **M2-A 切片 + M2-B 双批（AVSERVICE/GENERATED）已交付**
+> Status: **M2-A 切片 + M2-B 双批（AVSERVICE/GENERATED）+ 文本入口切片已交付**
 > （A phase fold auto-web `bdc48e8`；B phase fold `fd115ce`，2026-11-17；
-> 13/19 任务闭合）。2026-11-18 增补 **AV 文本入口生产栈切片**（auto-web
-> `3f8de15`，见下文「B-AVSERVICE 文本入口」）。CONSUMERS 与 T-05..07
-> 未交付——见"边界"。来源：
+> 2026-11-18 文本入口切片 auto-web `3f8de15`，见下文「B-AVSERVICE 文本入口」）。
+> CONSUMERS 与 B-GENERATED-R/T-05..07 未交付——见"边界"。来源：
 > [PLAN-983](../../plans/983-ace-m2-web.md) §5/§8/§9（各 phase
 > work/review/merge 收据）；依赖 967/968/969/974/975/978 均已归档。
 
@@ -136,7 +135,8 @@
   record/list/浮点、str concat owned 促升——后续扩面具名拒。
 - AV 执行臂：认证/权限/中间件/上传/下载/stream/SSE/`~T`（语言侧通道缺位，
   501 具名）；ASCII scratch/数据根约束。
-- CONSUMERS 批与 T-05..07 未交付（B 剩余 6 任务）。
+- CONSUMERS 批、B-GENERATED-R 与 T-05..07 未交付（B-AVSERVICE-R 已随文本
+  入口切片复核，见计划 §9）。
 - 既有红（非本切片引入）：auto-web
   `api_gen::tests::test_handler_body_r2_matrix_compile_oracle` 基线
   `0adebc0` 原样红。
