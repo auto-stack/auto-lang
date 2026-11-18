@@ -5549,7 +5549,21 @@ impl<'a> Engine<'a> {
         let element_kind = self.rule_kind_of("age-view-element");
         let mut out = Vec::new();
         for raw in self.cx.children(list_node) {
-            let item = self.unwrap_child(raw);
+            let raw_kind = self.cx.tree.kind(raw);
+            let raw_is_item = Some(raw_kind) == text_item
+                || Some(raw_kind) == text_bare
+                || Some(raw_kind) == text_props
+                || Some(raw_kind) == entry_kind
+                || Some(raw_kind) == element_kind;
+            // PLAN-980 B-AV U01（#6m 投影缺口根因）：先按自身 kind 匹配
+            // ——props 段条目（age-view-entry）是具体规则、不是 age-view-item
+            // 包装，unwrap 会错误下钻到其首个孩子（age-event-key）后整条
+            // 丢失；包装（age-view-item）才需要解一层。
+            let item = if raw_is_item {
+                raw
+            } else {
+                self.unwrap_child(raw)
+            };
             let kind = self.cx.tree.kind(item);
             if Some(kind) == text_item || Some(kind) == text_bare {
                 let comp = self
@@ -5692,6 +5706,21 @@ impl<'a> Engine<'a> {
                     items,
                     span: self.cx.span_of(item),
                 }));
+            } else if !raw_is_item
+                && self
+                    .cx
+                    .children(raw)
+                    .iter()
+                    .any(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+            {
+                // PLAN-980 B-AV U01（#6m 投影缺口闭合）：非 item 形的结构包装
+                // 子节点（`age-element-props-block` 的 list-nl 括号段/
+                // `age-element-props-body` 体块——unwrapper 落到 lbrace 叶）
+                // 此前被静默跳过——括号属性（value/oninput）与体条目全部丢
+                // 失。此处对包装 raw 递归下钻恢复（本函数只在 view 体/元素
+                // 体语境调用，包装层不含其它语义）。
+                let inner = self.collect_view_items(raw, texts, text_role);
+                out.extend(inner);
             }
         }
         out

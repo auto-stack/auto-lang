@@ -1702,7 +1702,7 @@ fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic
     if channels.is_empty() {
         return Ok(());
     }
-    let mut check = |rhs: &Expr, span: Span| -> Option<Vec<Diagnostic>> {
+    let check = |rhs: &Expr, span: Span| -> Option<Vec<Diagnostic>> {
         expr_uses_channel_value(rhs, &channels).then(|| {
             vec![text_diag(
                 "source.age.component-unsupported",
