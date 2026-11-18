@@ -1185,6 +1185,12 @@ impl MirModule {
     pub fn is_data_profile(&self) -> bool {
         self.profile == crate::contract::AV_DATA_PROFILE
     }
+    /// PLAN-982（983 文本面）：本模块是否声明了**受检文本入口**能力
+    /// （`ac.runtime.text.v1`）。这是"入口可以收借用 `str`"的唯一开关——通用
+    /// `execute_entry` 与 `AceRequest.args` 的契约不受影响。
+    pub fn has_text_entry_capability(&self) -> bool {
+        self.capabilities.iter().any(|c| c == "ac.runtime.text.v1")
+    }
 
     /// Whether this module declares the owned profile (PLAN-821). The
     /// owned profile SUBSUMES the data feature set (wide-scalar data ops

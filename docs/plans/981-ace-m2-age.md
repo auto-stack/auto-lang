@@ -967,7 +967,7 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 **边界（不冒充）**：本节是静态合同核对与既有永久用例的复用，**不是**新 PASS；未跑 Cargo/产品/GPU；④-A 的实现（投影 + 惰性绑定 + 入口接线 + AV/TS/A2R 三后端）仍属 980 切片；981 只签合同与冻结身份。若 980 选择 per-unit face 路线，本回签不涵盖该改造，须另立评审。
 
-### 2026-11-18 stage: handoff（UI058 T-02 接口联冻：981 侧签署；四项中三项即刻冻、f32 面登记为 981 前置）| PLAN-981 r18 | outcome: **partial（接口表 981 侧已签；待 UI058 回签 + f32 实现）**
+### 2026-11-18 stage: handoff（UI058 T-02 接口联冻：981 侧签署；四项中三项即刻冻、f32 面登记为 981 前置）| PLAN-981 r18 | outcome: **partial（接口表 981 侧已签；UI058 回签已并入本节；f32 实现进行中）**
 
 **绑定身份**：981 接面=IF-981-GFX-AV-SEAM（`ddbda0228`+`ed8b16e01`，已含于 master `a13a6e6a1`）；auto-ui master `f43ef59b`；UI058 计划 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` r4（drafting、0/10、T-02 未开）。UI058 无实施树（`git worktree list` 无 ui-058），本会话**未确认其内部进度**——本表按该计划 §5 T-02 合同与其"冻结 profile/typed 端口/预算映射/数值/共同发布"条款对齐。
 
@@ -995,6 +995,10 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 1. "32 credits/callback" 的解释域=**每 Tick / 每 world callback**（981 按此冻；若 UI058 是"每世界每帧"须显式改写，双方同改）。
 2. `render2d.spawn` 保拼写、文法接收（981 交付后调用点才可写；T-02 冻结期以符号 `age.render2d.spawn.v1` 为准）。
 3. f32 面未交前，T-02 先证**不以 f32 业务运算为前提**；若 UI058 判定必须，回 needs_replan 并把 f32 列为 981 前置（不得用 int 近似代替 f32 语义）。
+
+**UI058 回签（2026-11-18 已并入；PLAN-058 r5，auto-ui `91d549ea`）**：四项联冻接受——①预算域=每世界回调（Tick），统一口径「下一次扣费后累计超过 32 credits 即具名拒绝、零效果，且本 Tick 后续调用保持拒绝」（恰好32合法；两次 sweep 16+16 后下一次收费调用即拒；981 记录的「第33」按累计 credits 解释、不按调用序号）；②`render2d.spawn` 保拼写、待 981 文法接收，T-02 冻结期用符号 `age.render2d.spawn.v1`；③getter 用分量字段（`point_x/point_y`、`normal_x/y`、`origin_x/y`、`start_overlap`）、字段读 0 credit、不做动态轴；④f32 拼写/同型四则与比较仍为 981 前置，T-02 先证用已有静态 f32 行值＋宿主行写（场景行/`AgeSceneValueFn` 真值；宿主行身份/可见性/字段/Descriptor，旧链先例 `tests/node_queries_flow.rs:101-131`），不依赖 f32 业务式；真实 Auto 移动积分（`x = x + vx*dt`、位置/速度 f32 字段）等 `D-981-AGE-F32-SURFACE` 的 f32 AV 切片，不用 int 近似；UI058 T-02 判定必须依赖 f32 业务式时回 needs_replan 并列为 981 前置。UI058 未建树/未跑 Cargo/GPU，T-02 及以后未勾。回签原文与逐项答复见 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` §9（2026-11-18 stage: handoff）。
+
+**UI058 T-02 预算用例（2026-11-18 约定，先证时钉住）**：①两次 `sweep`（16+16）恰 32，边界值合法；②`sweep + segment = 24` 后，同一 Tick 内另一 Node 再 `sweep`（+16）应超额：具名拒、零效果；③紧接着仅收 1 credit 的调用也必须继续拒绝（sticky）；④下一 Tick 额度重置可再计费。该组同时检验全 Node 共享预算与超额后持续拒绝。
 
 **边界**：未运行 Cargo/产品/GPU；未改 `AGE_GFX_SERVICE_OPS`/文法/Schema；未建 UI058 树、未代其勾选任何任务；T-03 起的宿主算法（v3/v4 查询、行状态、帧写、PNG 载入、输入喂值）仍归 UI058/PLAN-938 host authority。
 
