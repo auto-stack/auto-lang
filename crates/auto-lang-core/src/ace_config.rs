@@ -891,11 +891,10 @@ fn project_node(node: &ConfigNode, depth: usize) -> Result<auto_val::Node, Confi
         node.name.as_str()
     };
     let mut out = auto_val::Node::new(name);
-    // D-982-CFG-IDENTITY: 身份与前序位置实参都落在统一 args/props 槽的
-    // `_arg{n}`（legacy 形状：`dep kernel { _arg0: "kernel" }`；`app("x")`
-    // 也是 `_arg0`）。有身份时位置实参从 `_arg1` 起，无身份时从 `_arg0` 起。
-    // 这些键是**普通 prop**（legacy 的 config 求值不把它们计入 `num_args`），
-    // 且身份同时镜像到 `Node.id`（legacy 对 `app("x")` 也是这样）。
+    // D-982-CFG-IDENTITY: 前序位置实参落在统一 args/props 槽的 `_arg{n}`
+    //（legacy 形状：`dep("kernel") { _arg0: "kernel" }`；`app("x")` 同）。
+    // 有身份时位置实参从 `_arg1` 起，无身份时从 `_arg0` 起。
+    // 这些键是**普通 prop**（legacy 的 config 求值不把它们计入 `num_args`）。
     // legacy 形状区分两种写法：**裸/字符串身份**（`dep bps {}`）只落在 `id`，
     // 不产生 `_arg0` 属性；**括号实参**（`dep("kernel")`、`app("x")`）落在
     // `_arg0…` 属性，且首个文本实参同时镜像到 `id`。
@@ -1356,30 +1355,48 @@ mod tests {
         ));
     }
     #[test]
-    fn p982b_node_identity_is_the_first_positional_argument() {
-        // D-982-CFG-IDENTITY decision (2026-11-17): the legacy configuration
-        // shape carries a node's identity as its FIRST POSITIONAL ARGUMENT
-        // (`dep kernel { _arg0: ... }`), and `auto_val::Node.id` stays empty.
-        // The projection reproduces that shape exactly instead of inventing a
-        // second identity channel.
+    fn p982b_node_identity_bare_vs_parenthesized() {
+        // D-982-CFG-IDENTITY（2026-11-17 裁定，形状随后续兼容提交 `6701094ff`
+        // 收窄；本测试曾钉旧版"身份只落 _arg0、`id` 恒空"——过时，按用户
+        // 指令改为同时验证两种写法，与 `project_node` 现行为对齐）：
+        // - 裸/字符串身份（`dep kernel {}`）：**只**落 `id`，不产生 `_arg0`；
+        // - 括号实参（`dep("kernel") {}`）：落 `_arg0`，且首个文本实参
+        //   **镜像**到 `id`（legacy 对 `app("x")` 同形）。
         let mut builder = ConfigDocumentBuilder::new(ConfigEvalLimits::default());
         let root = builder.node("root", None, vec![]).unwrap();
-        let dep = builder
+        let bare = builder
             .node("dep", Some("kernel".to_string()), vec![])
             .unwrap();
-        builder.append(root, dep).unwrap();
+        builder.append(root, bare).unwrap();
+        let paren = builder
+            .node("dep", None, vec![ConfigValue::Text("kernel".to_string())])
+            .unwrap();
+        builder.append(root, paren).unwrap();
         let node = builder.finish(root).unwrap().to_auto_val_node().unwrap();
-        let mut checked = false;
+        let mut bare_checked = false;
+        let mut paren_checked = false;
         for (_k, kid) in node.kids_iter() {
             if let auto_val::Kid::Node(child) = kid {
-                checked = true;
                 assert_eq!(child.name.as_str(), "dep");
-                assert_eq!(child.id.as_str(), "", "the separate id field stays empty");
-                // `add_arg(Arg::Pos(..))` lands in the unified args/props slot
-                // as `_arg0`, exactly the shape the legacy evaluator produced.
-                assert_eq!(child.get_prop("_arg0").to_astr().as_str(), "kernel");
+                // 两种写法的身份都出现在 `id`。
+                assert_eq!(child.id.as_str(), "kernel");
+                if matches!(child.get_prop("_arg0"), auto_val::Value::Nil) {
+                    // 形状一（`dep kernel {}`）：无 `_arg0` 属性。
+                    bare_checked = true;
+                } else {
+                    // 形状二（`dep("kernel") {}`）：`_arg0` 保留首个位置实参。
+                    assert_eq!(child.get_prop("_arg0").to_astr().as_str(), "kernel");
+                    paren_checked = true;
+                }
             }
         }
-        assert!(checked, "the projected document keeps its node child");
+        assert!(
+            bare_checked,
+            "`dep kernel {{}}` projects the id only (no _arg0)"
+        );
+        assert!(
+            paren_checked,
+            "`dep(\"kernel\") {{}}` projects both the id and _arg0"
+        );
     }
 }
