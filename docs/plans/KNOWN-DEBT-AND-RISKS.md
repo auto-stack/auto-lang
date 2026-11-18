@@ -49,14 +49,21 @@
 - **范围扩展（2026-11-18，IF-981-GFX-AV-SEAM review-D）**：同一缝覆盖 gfx 纯值构造器的 **record 实参**（`frame2d.at` 的 Image2D 经借用视图到达、Aggregate 需 owned 槽）——命中时 `lower.age-gfx-view-arg` 具名拒并引用本债（scalar-only 构造器今天可执行）；关闭条件同上（合法视图→拥有构造指令落地 + frame2d.at 端到端 AV 正例）。
 - **关闭记录（2026-11-18，语言侧 AV 残余批 #1，auto-lang `106a0f6ac`）**：CLONE 正式成为**唯一的视图→拥有跨接指令**——mir_verify 放行 `Clone{dst: Record(r), src: RecordView(r)}`（同名 nominal record；COPY 无法跨视图故标量 record 也经此形、深克隆退化为值拷贝），异名仍 `mir.clone-type`；gfx 构造器 record 实参与 GlobalSet 视图写入改为发射 Clone 跨接（不再具名拒）。证据三层：① mir 级单测（资源/标量 record 准入、异名拒）；② av-core 执行级深拷贝独立性（克隆改写自身 Str 字段后原件长度不变——浅别名会红）；③ AGE 源级 `frame2d.at(img,..)` 整包过 verify + `var g Mesh2D` 从视图参数写入过 verify（变异重放：禁用跨接臂两用例精确红）+ 异名端口前门具名拒。`frame2d.at` 的**运行时执行**仍待 UI058 宿主注入 Image2D 身份（image2d.png 保持 host-identity 车道拒）——该边界归 UI058 T-03，不是本债。
 
-#### D-981-AGE-F32-SURFACE — AGE 面的 f32 注解/运算面未交（2026-11-18，UI058 T-02 联冻时具名登记，medium）
+#### D-981-AGE-F32-SURFACE — AGE 面的 f32 注解/运算面未交（2026-11-18，UI058 T-02 联冻时具名登记，medium；**2026-11-18 关闭（AV 切片 `be8480cae` + A2R 同源腿 `a4950f0b5`）**）
 
 - **现象（三处，均不是"没测"而是"面不存在"）**：①`ann-ty`/`ret-ty` 无 float/f32 臂（`auto-source.at:1375-1376,1400-1401` 只在 numeric/aggregates/scheduler/packages-aggregates-ct），而 `f32` 在 age-package 是**关键字 token**（L155）⇒ `fn f(x f32)` / `-> f32` / `let x f32` 在 age-package 解析失败；②`model` 字段 f32 能过文法但**具名拒** `source.age.component-unsupported`（两个 AGE 面同码，`plan981_model_field_types.rs:116-123`）；③text-record **atom 面未登记 f32 二元运算/比较**（`plan981_gfx_seam.rs:7-10` 边界声明；typecheck 层已接受同型数值对，`typecheck.rs:489-532`）。
 - **已通的部分（不重复实现）**：f32 **值**面——浮点字面量、场景行 `AgeSceneValueFn` 真值、端口字段（`AGE_PORT_FIELDS`）、gfx 服务结果；AV owned 车道已映射 f32（`62d34e3df`）。
 - **影响**：UI058 最小俯视链的移动积分（`x = x + vx * dt`、位置/速度 f32 字段）无法用 Auto 表达；981 §9 的 T-02 联冻表因此把 f32 记为"拼写已冻、能力未交"的 981 前置。
 - **owner/关闭条件**：981 LANGUAGE＋RUST（B-W1/W3 触面）。关闭 = 三处同词 `f32` 落地（文法注解位 ＋ model 字段域 ＋ atom/lowering），AV 与 A2R 各一条真实执行用例（同型四则/比较、字段持有、改值可见），并同步重基线 age-package 的 grammar id（`plan981_grammar_scope.rs` 同提交更新，13 邻居逐字不变）。
-- **状态**：open（不阻塞 ④-A 与 980 首批切片；阻塞 UI058 T-02 的 f32 业务式与 T-04 整链真实移动积分）。
+- **状态**：**closed（2026-11-18）**——关闭条件逐项核对：①三处同词 `f32` 落地（`ann-ty`/`ret-ty` 注解位、`field_type` 字段域、`text-record.atom` 11 个 BinOp case + `neg_f32` 与 lowering）；②AV 真值（`plan981_f32_surface.rs` 5/5：`x=x+vx*dt` 1.0/2.0、全算符表、混宽具名拒）；③A2R 真跑（`plan981_age_package_a2r.rs` 真实 rustc：x=3.0/y=1.5→`value:7`，`vx` 变异→`value:0`）。**余项移出本债**：跨仓消费窗口/呈现登记为 `D-981-F32-CONSUMER-WINDOW`；文本叶呈现 f32 与 `f64`/`double` 仍不在本面（具名）。
 - **进展（2026-11-18，AV 切片 `be8480cae`，合并树 `6deef24b6`）**：三处里两处已落地——①注解位（`ann-ty`/`ret-ty` age-package f32 臂，grammar id `6c1bb477…`→`2d1e0547…`）；②model 字段（`field_type` → `Float`，两面同码；`ExprKind::TypedLit` 透传是配套真阻塞修复）；③Atom 面补 11 个 f32 BinOp case + `neg_f32`（`x = -vx` 此前在绑定期 `bind.unknown-case`，复审发现后同批修）。AV 证据：`plan981_f32_surface.rs` 5/5（`x = x + vx*dt` 1.0→2.0、全算符表、混宽具名拒），core `plan981_model_field_types` 6/6，981 家族 core 229/AV 28。**仍开**：A2R 腿（用户 2026-11-18 明示"AV 证据可先交 UI058，完整关闭仍按原条件补 A2R 实测"）；`ComponentFieldValue`/auto-ui `AceStateValue`/TS 能力/文本呈现的 F32 跨仓同窗；文本叶呈现 f32；`f64`/`double`。另记录两个已知边界：text-record 描述符的 f32 词汇扩宽为四面共用（非 AGE 面拼写不出 f32，接受）；`uses_f32` 条件发行为启发式（若 f32 经 record/全局进入 text-record 面且行内无 f32 表达式会漏 `t_f32`，今天不可达）。
+
+#### D-981-F32-CONSUMER-WINDOW — F32 状态读与呈现的跨仓同窗（2026-11-18 具名，medium）
+
+- **现状**：f32 状态在 ACE 侧已可执行（AV `execute_component_def` → `Value::F32`；A2R 同源腿 `a4950f0b5`），但**产品消费面**仍只有 int/bool/str：`ace_av::age_component::ComponentFieldValue` 无 F32（`observe_component_states` 对 f32 具名拒并指向宽值出口）；auto-ui `AceStateValue` 无 F32，且 `ace_state_bridge::From<&ComponentFieldValue>` 是**穷尽匹配**——任一侧先加变体都会让另一仓编译红，故必须同窗。
+- **同窗改动清单**：①ace_av：`ComponentFieldValue` 增 `F32(f32)`（建议 `PartialEq` 而非 `Eq`，NaN 按 IEEE；若必须 `Eq` 则改按位承载）、`InitialValue` 增 `Float(f32)` + `validate_initials` f32 分支、窄观察通道映射。②auto-ui：`AceStateValue::F32`、`ace_state_bridge` 的 `From`/initial 映射、`ace_native` 种子、`ace_ts_provider` 类型串 `"f32"`、`ace_node_desktop` 读状态/渲染/数值输入四处穷尽匹配。③呈现：f32 → 最短往返十进制（Rust `{}`），不做本地化；**文本叶呈现 f32 单列**（原子编码 i32 面）。④证据：ace_av 枚举/种子单测 + auto-ui 读-显示-种子用例 + 一条真实 AGE f32 状态源（UI058 T-02 先证路径）。
+- **owner/关闭条件**：981（ace_av 侧）＋ auto-ui/UI058（或 980 包感知桥 owner，消费侧），**同一 merge window**；关闭 = 上述四处穷尽匹配同窗改完、两侧全绿、一条真实 f32 状态读+显示用例。
+- **状态**：open（不阻塞 spawn/f32 语言面；阻塞 UI058 用 **typed 读**消费 f32 状态与 F32 呈现。UI058 今天可用 `execute_component_def` 取 `Value::F32` 先证）。
 
 #### D-981-EVENT-A-REMAINDER（2026-11-16 具名；2026-11-17 A/B 归属确认；**2026-11-17 关闭（B-W1 交付）**）
 

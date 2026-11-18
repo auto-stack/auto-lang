@@ -921,6 +921,31 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**981 `render2d.spawn` 文法小切片**；用户裁定"先交 spawn 文法小切片，保留原拼写并同步两个 AGE grammar ID"）| PLAN-981 r18 | outcome: **pass** | code_commit `0e6c03c3d` | merge `8f44bbf08`
+
+**交付**：`postfix-step` 增 AGE 两面的 `spawn` 成员位专用臂（`dot r-spawn`，**token 表零新增、021 拼写不动**；scheduler 的 `Task.spawn` 原臂保持）。`age-component` id `f35cf593…`→`19a1376e…`、`age-package` `2d1e0547…`→`0290d0ab…`（`plan981_grammar_scope.rs` 同提交具名重基线；其余 12 邻居与 `age-h0` 逐字不变）。
+**永久用例**（`plan981_gfx_seam.rs`）：正例 `render2d.spawn("assets/x.png", 4.0, 6.0)` 命中 `age.render2d.spawn.v1` 的 typed i32 结果；2 参调用仍 `source.age.gfx-arity` 具名拒——证明走的是**真实服务声明**，不是"任意方法"放行。
+**门禁**：`cargo t ace-source ace-syntax ace-av` = ace-source **PASS 864**、ace-syntax **PASS 159**、ace-av 1390/1391（红 `sys973_v03_process_spawn_capture_timeout_exit` = `ExecutionWall`，并发负载；隔离重放 13.1s 绿；同族 `D-1037-02` 已登记）。981 家族 core **230/230**、AV **29/29**。
+**边界**：只开成员位；非 AGE 面仍拼不出 `.spawn`；服务价目/符号表未动。**UI058 现在可以写真实 `render2d.spawn(...)` 业务源**。
+
+### 2026-11-18 stage: work（**981 f32 A2R 同源腿**；用户裁定"随后补 f32 A2R 同源实测"）| PLAN-981 r18 | outcome: **pass（`D-981-AGE-F32-SURFACE` 核心条件闭合）** | code_commit `a4950f0b5` | spec `8f6566d05`
+
+**A2R 独有的三道闸（AV 车道不经过，故 AV 先绿）**
+1. `SemanticView` 的 text-record 族把 `NumericConst` 与 typed `Num` 算子挡在 compute surface 外（该豁免此前只给 Closures/numeric 面）——f32 字面量/运算在**视图**层具名拒（`a2x.unsupported-expr` / `a2x.unsupported-op`）；
+2. record-text 文件集**不带** `RT_NUMERIC`（只有通用 `assemble_file_set` 与 collections 族带）——生成代码引用 `a2x_lit_f32`/`a2x_div_f32`，rustc 期 not found（58 处）；
+3. wrapper 入口合同仍是 `A2xResult<i32>` / `value:<i32>`（不新增 f32 入口合同）。
+
+**修法**：①`SemanticView::op_admitted` 把 text-record 拆出并放行 `BinOp::Num{ty:F32}`（**只 f32**；f64/宽整型仍拒，语义合法性仍由前门 HIR verifier 先行）；②同一处放行 `NumericConst{ty:F32}`（`kind_name` 补 NumericConst/Cast，便于以后诊断不再显示 `non-core-scalar`）；③`record_text_runtime_source_with` 追加 `RT_NUMERIC`（与通用/collections 族一致）；④入口用 f32 状态 + 比较折叠成判别性整数（**不**扩 wrapper 合同）。
+**证据**（真实 rustc，`plan981_age_package_a2r.rs` 新用例）：两次 Tick 后 `x=3.0`、`y=x/2.0=1.5`，入口 `x>2.5 && y==1.5` → `value:7`；**变异控制**同源只把 `vx` 3.0→1.0 → `x=1.0/y=0.5` → `value:0`（非常量折叠/打印端伪造）。同文件既有 3 例（双实例 6/5、改 helper 16、module globals 5）全绿。
+**门禁**：`cargo t ace-source ace-syntax ace-av ace-a2x` = ace-source **PASS 864**、ace-syntax **PASS 159**、ace-av 1390/1391（`sys973_v03` ExecutionWall，隔离绿）、ace-a2x 316/317（`aggregates_965_control_effects_c` = `CToolError("cl -? spawn: Deadline")`，隔离单例 4.4s 绿）——两条红均为工具链/机器负载族，**不充"无红 PASS"**。
+**债务**：`D-981-AGE-F32-SURFACE` **关闭**（三处面 + AV/A2R 各一条真跑齐）；跨仓消费窗口/呈现移出为 `D-981-F32-CONSUMER-WINDOW`（见下）。
+
+### 2026-11-18 stage: handoff（F32 消费端**同窗**合同：状态读 + 呈现；待 auto-ui/UI058 回签后单窗口落地）| PLAN-981 r18 | outcome: **proposal（未实施；登记为 `D-981-F32-CONSUMER-WINDOW`）**
+
+**为什么必须同窗**：`ComponentFieldValue` 是 auto-ui `AceStateValue` 的输入源，两者都靠**穷尽匹配**转换；任何单侧先加 F32 变体都会让另一仓编译红。因此 ace_av 的枚举扩展必须与 auto-ui 的四处匹配、TS 能力类型、呈现格式在**同一个合并窗口**完成。
+**改动清单**：①`ace_av::ComponentFieldValue` 增 `F32(f32)`（建议 `PartialEq` 而非 `Eq`，NaN 按 IEEE；若必须 `Eq` 则改按位承载）；`InitialValue` 增 `Float(f32)` + `validate_initials` f32 分支；窄观察通道映射到 F32。②auto-ui：`AceStateValue::F32`、`ace_state_bridge::From`/initial 映射、`ace_native` 种子、`ace_ts_provider` 类型串 `"f32"`、`ace_node_desktop` 读状态/渲染/数值输入四处。③呈现：f32 → 最短往返十进制（Rust `{}`），不本地化；**文本叶呈现 f32 单列**（原子编码 i32 面）。④证据：ace_av 枚举/种子单测 + auto-ui 读-显示-种子用例 + 一条真实 AGE f32 状态源（UI058 T-02 先证路径）。
+**不需要等它的事**：UI058 今天可用 `execute_component_def` 取 `Value::F32` 做先证；spawn 与 f32 语言面均已落主。**回签请求**：auto-ui/UI058（或 980 包感知桥 owner）确认窗口与呈现格式后，981 侧在同一窗口提 `ComponentFieldValue`/`InitialValue` 的改动与单测。
+
 ### 2026-11-18 stage: work（**981 f32 AV 切片**；用户裁定"优先排 f32 的 AV 切片，覆盖注解、model 字段和同型运算"）| PLAN-981 r18 | outcome: **pass（AV 面交付；`D-981-AGE-F32-SURFACE` 保持 open——A2R 腿与消费端枚举按原条件）** | branch `plan-981-dev` | base `b6ab516e6` | code_commit `be8480cae` | merge `6deef24b6`（并入 980④-A 首片 + 982/1026 前进后 ff 落主）
 
 **范围**：f32 注解位、model 字段、同型四则/比较/一元负号，AV 真值执行；**不动** `AGE_GFX_SERVICE_OPS`，不改 980④-A 的宽数值边界（那是 `D-④-3` 的"宽数值保持拒"——本切片是**语言面 f32**，不是组件宽数值字段准入），不扩 `ComponentFieldValue`。
@@ -1012,13 +1037,13 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 **四项联冻（981 侧签署）**
 
 1. **f32 注解与运算 — 拼写冻结，能力未交**：`ann-ty`/`ret-ty` 的 float/f32 臂只在 numeric/aggregates/scheduler/packages-aggregates-ct（`auto-source.at:1375-1376,1400-1401`）；`f32` 在 age-package 是**关键字 token**（L155），而注解位无对应 alt ⇒ `fn f(x f32)`/`… -> f32`/`let x f32` 解析失败（静态文法推断，与 `age-model-ty` 缺 alt 时实测同机制；该面已补 token 但**字段类型仍具名拒**：`plan981_model_field_types.rs:116-123` 两面同码）。f32 **值**已通（字面量/场景行/端口字段/服务结果）。f32 同型四则与比较在 typecheck 已接受同型数值对（`typecheck.rs:489-532`），但 text-record **atom 面未登记 f32 运算**（`plan981_gfx_seam.rs:7-10` 边界声明）。⇒ 冻拼写 `f32`（不用 `float`/`f64`），三处注解位 + model 字段同词，运算=同型 `+ - * / %` 与 `< <= > >= == !=`（不做混型提升）；**UI058 在 981 交付该面前不得依赖 f32 业务式**（T-02 先证可用静态行值 + 宿主行写）。登记 `D-981-AGE-F32-SURFACE`。**进展（2026-11-18）：AV 面已交 `be8480cae`——f32 字段/注解/同型四则·比较·一元负号经 AV 真值验证（`plan981_f32_surface.rs` 5/5）；A2R 腿与消费端枚举仍按本项条件补。**
-2. **`spawn` 拼写 — 保 021 拼写，改文法接收**：`r-spawn` 是全域保留 token（`auto-source.at:197` 无 profiles）⇒ `.spawn` 不能作成员名、`render2d.spawn` 不可解析（`plan981_gfx_seam.rs:96-98` 声明）。决定：**保 `render2d.spawn`**，仅在 AGE 两面的调用成员位接受 `spawn`（局部 alt、token 表零新增）；`age-component`/`age-package` 两个 grammar id 具名重基线（981 同提交更新冻结值）；`AGE_GFX_SERVICE_OPS` 的 callee/symbol **不变**。备选改名（零文法改动）不取：021 拼写/价目表改动面更大。
+2. **`spawn` 拼写 — 保 021 拼写，改文法接收**：`r-spawn` 是全域保留 token（`auto-source.at:197` 无 profiles）⇒ `.spawn` 不能作成员名、`render2d.spawn` 不可解析（`plan981_gfx_seam.rs:96-98` 声明）。决定：**保 `render2d.spawn`**，仅在 AGE 两面的调用成员位接受 `spawn`（局部 alt、token 表零新增）；`age-component`/`age-package` 两个 grammar id 具名重基线（981 同提交更新冻结值）；`AGE_GFX_SERVICE_OPS` 的 callee/symbol **不变**。备选改名（零文法改动）不取：021 拼写/价目表改动面更大。**（2026-11-18 已交 `0e6c03c3d`：两面成员位臂 + 两 id 重基线 `19a1376e…`/`0290d0ab…`；永久用例证服务绑定与元数拒。）**
 3. **getter 轴参数 — 冻分量字段**：端口把 021 的 `point(axis)/normal(axis)` 展开成 `point_x/point_y/normal_x/normal_y`（sweep 另有 `origin_x/y`、`start_overlap`）（`age_resources.rs:77-101`）；字段读**不构成服务调用=0 credit**。映射：`point(0)≡point_x`、`point(1)≡point_y`、`normal(0/1)≡normal_x/y`、`origin(0/1)≡origin_x/y`、`start_overlap()≡start_overlap`。**不做**动态轴 `point(i)`（无服务面、无零成本语义）。
 4. **每回调预算 — 981 已冻，UI058 已回签（见下）**：`GFX_CALLBACK_CREDIT_BUDGET=32`；`segment=8`、`sweep=16`、其余服务=1、端口字段读=0（`age_resources.rs:378-394`）；语言侧静态准入=**每函数调用点合计**≤32，超界 `lower.age-gfx-credits` 具名拒零效果（`hir_adapter.rs:4383-4409`；永久用例第 33 次拒 `plan981_gfx_seam_av.rs:182-211`）。语义冻：32 credits/**世界回调（Tick）**、cast/sweep/getter 价目不动、静态界=**保守准入**（不作运行时计费）、宿主动态计费按同表、物理写 32 与 credits 分开计。**统一口径（UI058 回签原文）**：**下一次扣费后累计超过 32 credits 即具名拒绝、零效果，且本 Tick 后续调用保持拒绝**——恰好 32 合法；两次 `sweep`（16+16）耗完 32 后，下一次收费调用即拒；旧表述"第 33 次"按**累计 credits** 解释、不按调用序号。
 
 **给 UI058 的 3 个回签请求（T-02 冻结时确认）**
 1. "32 credits/callback" 的解释域=**每 Tick / 每 world callback**（981 按此冻；若 UI058 是"每世界每帧"须显式改写，双方同改）。
-2. `render2d.spawn` 保拼写、文法接收（981 交付后调用点才可写；T-02 冻结期以符号 `age.render2d.spawn.v1` 为准）。
+2. `render2d.spawn` 保拼写、文法接收（**2026-11-18 已交 `0e6c03c3d`**：AGE 两面成员位可写、两 grammar id 已重基线；T-02 冻结期的符号 `age.render2d.spawn.v1` 不变，调用点现在可以落地）。
 3. f32 面未交前，T-02 先证**不以 f32 业务运算为前提**；若 UI058 判定必须，回 needs_replan 并把 f32 列为 981 前置（不得用 int 近似代替 f32 语义）。
 
 **UI058 回签（2026-11-18 已并入；PLAN-058 r5，auto-ui `91d549ea`）**：四项联冻接受——①预算域=每世界回调（Tick），统一口径「下一次扣费后累计超过 32 credits 即具名拒绝、零效果，且本 Tick 后续调用保持拒绝」（恰好32合法；两次 sweep 16+16 后下一次收费调用即拒；981 记录的「第33」按累计 credits 解释、不按调用序号）；②`render2d.spawn` 保拼写、待 981 文法接收，T-02 冻结期用符号 `age.render2d.spawn.v1`；③getter 用分量字段（`point_x/point_y`、`normal_x/y`、`origin_x/y`、`start_overlap`）、字段读 0 credit、不做动态轴；④f32 拼写/同型四则与比较仍为 981 前置，T-02 先证用已有静态 f32 行值＋宿主行写（场景行/`AgeSceneValueFn` 真值；宿主行身份/可见性/字段/Descriptor，旧链先例 `tests/node_queries_flow.rs:101-131`），不依赖 f32 业务式；真实 Auto 移动积分（`x = x + vx*dt`、位置/速度 f32 字段）等 `D-981-AGE-F32-SURFACE` 的 f32 AV 切片，不用 int 近似；UI058 T-02 判定必须依赖 f32 业务式时回 needs_replan 并列为 981 前置。UI058 未建树/未跑 Cargo/GPU，T-02 及以后未勾。回签原文与逐项答复见 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` §9（2026-11-18 stage: handoff）。
