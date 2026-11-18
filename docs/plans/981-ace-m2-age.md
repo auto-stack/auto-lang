@@ -921,6 +921,22 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
+
+**prepared**：复审 pass（reviewed_commit `ac1ae182c`）之上补 merge-owned 规范沉淀——`docs/specs/ace-migration/m2-age.md` **首个 phase 沉淀**（plan frontmatter 声明落点；两面文法臂+正式 grammar id `620a0f73…/`30834de6…`+age-h0 文法不可达根据、Cond 投影契约、两支平铺进 texts 绑定验证设计、`cond_spans` 描述事实、四观察入口 fail-closed+撤门条件、永久用例与变异判别力记录）——docs-only 后继（实现/依赖零改动，即 delivery 候选）`d91ac422d`。
+
+**冻结组门（delivery 树 `d91ac422d`，机器空闲核后单实例）**：`cargo t ace-source ace-av` → **ace-source PASS 891/891**；**ace-av 1419/1421**（含 F-1 新例；唯二红=已分诊预存对 host_console `entry_selection…`/`owned_front_door…`，owner 982 console 谱系、隔离重放确定性红、diff 零交集——按 980 落主先例具名携带，不充绿）；wall 584.9s 含准备。
+
+**landed**：master 前进至 `a8f1110a8`（982 argv 落主）→ `git rebase master` 零冲突；**range-diff 三提交全 `=`**（`386d6c748→126c80b0b`/`ac1ae182c→45ff3edb3`/`d91ac422d→b574c550a`——补丁等价的安全重写证明）；重基树定向复跑 core 13/13 + av 13/13（基面含 982 argv 改动后仍绿）；wt-guard clean → 主检出 `git merge --ff-only plan-981-dev` → **master tip = `b574c550a` = delivery commit**。主干冒烟：view_if+grammar_scope+980_view_if 13/13 绿。
+
+**canonical_verified**：`docs/specs/ace-migration/m2-age.md` 落主（blob `8119deeb0…`，tracked）；内容=复审通过的知识面（无超范围新要求）。
+
+**批回归到期检查（fix-test-tiering）**：`docs/plans/.last-batch-regression.json` = last_covered `1064` @2026-11-16 → **due**（980 落主触发 plan-id%5 规则；且 >48h 有合并）。**owner: [regress]**——主检出单实例 `cargo t all`，未在本 merge 内执行（独立门，红则走 fix-forward 计划、不解并）。
+
+**清理（phase 口径）**：worktree/分支保留（后续批共用）；plan-artifacts/plan-981 仍受 in-flight 保护，仅 opportunistically 删除本刀过时 scratch `view_if_final.rs`（r19 被取代设计的暂存副本，事实已折叠进计划收据）。stash@{0}（他会话 av fmt 残留）保持留置待其 owner。
+
+stage: merge | plan_id: PLAN-981 | plan_revision: r20 | outcome: pass（phase fold：landed+canonical_verified；archive/cleanup 不适用）| worktree: D:/autostack/.wt/lang-981/auto-lang（保留）| branch: plan-981-dev（保留）| delivery: b574c550a（master tip，ff-only）| spec: docs/specs/ace-migration/m2-age.md@8119deeb0 | gates: ace-source 891/891；ace-av 1419/1421（2 预存红具名）| pending: 批回归 due→regress（主检出单实例）| next: 用户排程（后续批；批回归门）
+
 ### 2026-11-19 stage: review（**view-if 刀两片独立复审**——r20 主线移植片 + F-1 修复；fresh 子代理两轮，verify-don't-trust）| PLAN-981 r20 | outcome: **pass（phase 级切片复审；F-1 修复后闭环；整包保持 executing）**
 
 **review_scope**: phase（view-if 刀：r19 被取代核对 + r20 第二片 + 修复）。**reviewer**: fresh 独立子代理（非实施会话上下文，自跑复现两轮：初审 → F-1 修复定向复验）；orchestrator 仅记录，verdict 由子代理实测重建。
