@@ -1623,6 +1623,8 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 
 **下一步（可执行顺序）**：**P1** 包场景引擎（`compile_age_package_with_scenario` + `observe_age_package` 驱动 dispatch/状态）+ `NodeDesktopBridge::load_package` + 窗口 exe `--package`（真窗状态随 helper 变）；**P2** 包感知 SFC 生成（同源断言：调用名=helper 发射名且函数在产物内）；**P3** 表面补齐首刀 `style`（981 会签 + grammar ID 同步）。
 
+**落主与验证（补记）。** lang master **`4b2d3203c`**（rebase 后 ff-only；期间 master 已含 981 f32 AV 切片代码，故在**合并后提交**复跑门禁）：`cargo t ace-source ace-av` **双 PASS**；目标用例 2/2。计划收据提交 `850a49bf8`。
+
 §5 S0.5 实测：age-package 面在真实源上缺**顶层 `style`（20/35）**、**payload msg（17/35）**、**反引号文本（2/35）**；001 是唯一可直接编译的真实例且无跨模块 helper。⇒ ④-A 的"真实示例打通"被**表面补齐**前置，导入/闭包工作是其后。
 
 | 选项 | 内容 | 代价/收益 |
