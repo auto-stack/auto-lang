@@ -921,6 +921,24 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: handoff（**F32 消费同窗 v1：981 侧已备 `17fafb1d9`（分支隔离，未合入）**；分工/呈现/验收/桥面按用户裁定落档；待 980 `auto-ui-runtime` owner 回签后开窗）| PLAN-981 r18 | outcome: **981 ready；合入窗口未开**
+
+**用户裁定（2026-11-18）**：同意同窗方案——981 负责 `ComponentFieldValue`/`InitialValue`，980 负责 `AceStateValue`/状态桥/TS 类型/呈现；两边先**配对提交联合编译验收**，再**同一窗口**合入；呈现按 Rust `f32` 默认 `Display`（可往返、与地区无关）；验收用真实 AGE 状态源 `1.25` 经一次更新到 `1.5`，逐项核对种子/状态读回/界面显示；回签须写明所验的桥（**本窗=组件桥**；包桥 F32 另案）。**该口径尚未由两仓 owner 正式回签。**
+
+**981 侧交付（分支 `plan-981-f32-window` @ `17fafb1d9`，基 master `216a79385`；`plan-981-dev` 与 master 未受影响）**
+- `ComponentFieldValue::F32(f32)`：**按位相等**（`to_bits`；NaN payload 可判别、`-0.0 ≠ 0.0`），`Eq` 因此保留——auto-ui 无需为 f32 去掉 `Eq`，两仓语义同源。
+- `InitialValue::Float(f32)`：props 种子；脱糖字面量走 `TypedLit{ty:Float, bits}`（按位，无十进制往返）；`validate_initials` 只接受 Float↔f32（`Int` 种子不隐式提升）。
+- 窄观察通道 `observe_component_states` 映射 `f32 → F32`（与 `execute_component_def` 同一条执行链，不造第二条）。
+- **验收用例**（`plan981_f32_surface.rs` **6/6**）：源内初值 1.25 + Tick(+0.25) → `F32(1.5)`；props 种子 `Float(1.25)` 同结果；`Int` 种子具名拒（`component-unsupported` + "must be `f32`"）。980/981 家族 av **50/50**、core **230/230**。
+- **不改**：`execute_component_def` 宽值出口保留；文本叶 f32 仍拒；`f64` 不在面。
+
+**980 侧待办（回签时逐项确认）**：①`AceStateValue::F32(f32)`（相等/`Eq` 策略按位对齐 981，避免两仓分叉）；②`ace_state_bridge::From<&ComponentFieldValue>` 与 initial 映射（`AceStateValue → InitialValue::Float`）；③`ace_native` 种子路径；④`ace_ts_provider` 类型串 `"f32"`；⑤`ace_node_desktop` 读状态/渲染（Rust `Display`）/数值输入四处穷尽匹配；⑥**组件桥**验收：种子 1.25 → Tick → 读回 1.5 → 界面文本 `1.5`（不是 `1.500000`、不用逗号小数）；⑦包桥 F32 用其自己的用例——现包桥只观察整数、无 props/initials，**不**纳入本窗回签。
+
+**窗口协议（双方）**：①配对提交各在自己分支；②980 以 `AUTO_LANG_ROOT`（或同组 sibling）指向 `17fafb1d9` 联合编译+验收；③双方确认后**同一窗口**合入：981 先合（ace_av 单仓）→ auto-ui 必须紧随（否则 auto-ui master 的穷尽匹配红，这是窗口的预期代价，不得拖过窗口）→ 两侧各跑冻结门（981：`ace-source ace-av`；auto-ui：其固定组）→ 任一侧失败即**双方同窗回滚**，不留半状态。
+**未合入声明**：`17fafb1d9` 只在 `plan-981-f32-window` 分支；**980 回签前不得 fold 到 master**（否则 auto-ui master 立即编译红）。窗口开启条件 = 980 回签 + 其 auto-ui 提交 SHA + 双方门禁命令。
+
+**UI058 侧（用户同轮裁定）**：T-02 已在 r6 完成；`spawn` 文法与 f32 AV/A2R 已交付，UI058 可写真实 `render2d.spawn(...)` 与 f32 移动业务源，用 `execute_component_def` 核对 AV 数值；T-04 待 T-03 与所用正式接口齐备后跑正常 Node 整链（其 T-04 宿主端口请求见下一条收据）。
+
 ### 2026-11-18 stage: handoff（UI058 T-04 阻塞请求：AGE GFX 宿主执行端口 `IF-981-GFX-HOST-PORT`）| PLAN-981 r18 | outcome: **request（未实施；归 981 SESSION/LANGUAGE 后续任务）**
 
 **来源/决定**：UI058 T-04 入口核对发现“正常 Node 源 AV 整链”当前无法执行；用户 2026-11-18 裁定路线 A=回 981 owner 补 SESSION/typed 宿主端口（UI058 不先建私有 runner/旁路）。T-03 已交（`auto-ui` commit `7165dbad`，PLAN-058 r7/3-10）；T-04 等待本请求的正式来源。
@@ -963,6 +981,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 **为什么必须同窗**：`ComponentFieldValue` 是 auto-ui `AceStateValue` 的输入源，两者都靠**穷尽匹配**转换；任何单侧先加 F32 变体都会让另一仓编译红。因此 ace_av 的枚举扩展必须与 auto-ui 的四处匹配、TS 能力类型、呈现格式在**同一个合并窗口**完成。
 **改动清单**：①`ace_av::ComponentFieldValue` 增 `F32(f32)`（建议 `PartialEq` 而非 `Eq`，NaN 按 IEEE；若必须 `Eq` 则改按位承载）；`InitialValue` 增 `Float(f32)` + `validate_initials` f32 分支；窄观察通道映射到 F32。②auto-ui：`AceStateValue::F32`、`ace_state_bridge::From`/initial 映射、`ace_native` 种子、`ace_ts_provider` 类型串 `"f32"`、`ace_node_desktop` 读状态/渲染/数值输入四处。③呈现：f32 → 最短往返十进制（Rust `{}`），不本地化；**文本叶呈现 f32 单列**（原子编码 i32 面）。④证据：ace_av 枚举/种子单测 + auto-ui 读-显示-种子用例 + 一条真实 AGE f32 状态源（UI058 T-02 先证路径）。
 **不需要等它的事**：UI058 今天可用 `execute_component_def` 取 `Value::F32` 做先证；spawn 与 f32 语言面均已落主。**回签请求**：auto-ui/UI058（或 980 包感知桥 owner）确认窗口与呈现格式后，981 侧在同一窗口提 `ComponentFieldValue`/`InitialValue` 的改动与单测。
+
+> **更新（2026-11-18）**：本 proposal 已由上方 **F32 消费同窗 v1** 取代——981 侧在分支 `plan-981-f32-window` @ `17fafb1d9` 备好（按位相等/`Eq` 保留、`Float` 种子、验收 1.25→1.5 三条），待 980 `auto-ui-runtime` owner 回签后开窗；呈现拍板为 Rust `f32` `Display`。
 
 ### 2026-11-18 stage: work（**981 f32 AV 切片**；用户裁定"优先排 f32 的 AV 切片，覆盖注解、model 字段和同型运算"）| PLAN-981 r18 | outcome: **pass（AV 面交付；`D-981-AGE-F32-SURFACE` 保持 open——A2R 腿与消费端枚举按原条件）** | branch `plan-981-dev` | base `b6ab516e6` | code_commit `be8480cae` | merge `6deef24b6`（并入 980④-A 首片 + 982/1026 前进后 ff 落主）
 
