@@ -1786,6 +1786,14 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **边界（诚实）。** ①本刀=parse+投影+结构遍历+模板腿渲染；**native/desktop 渲染腿条件语义未实现**（装载点具名拒——后续刀）；②010 的 view `style: if..else` 表达式位（age-if-expr）早可用（002 design 先例），本刀不动；③Cond 的 cond 表达式入绑定验证但**不入字段 manifest 出现表**（无 view_cond 槽——具名边界）；④981 台账旧值 `b0ae9d90/ecc64b8e`（其 936 行）与 master 实况的 reconcile 归 981 下轮。
 
+2026-11-19 stage: survey+experiment（**剩余开口逐项勘明（含一次门开实验）；无落地代码**）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **工单完备；两开口路由决策**。
+
+**①010 墙①（`var faqs = [...]` 无类型列表字段）→ 路由 collections/864 域决策。** 组件面 `field_type` 值域=int/bool/str/f32（age_component.rs:2918）；TypeKind **有** `List`（864 谱系）但组件场景 state 值域不承载列表——修法=场景 state 值域扩展（属 collections 谱系的所有权决策，非 980 单独切片）。010 的 handler 均不触 faqs（纯 view 数据）——"view-only 字段不进 state 槽"亦可作替代设计（同样域决策）。
+
+**②010 墙②+005 墙=同一刀：on-if 组件面完整链（全链勘明+实验证伪捷径）。** 005 精确根因=**lambda 体控制流**（`oninput: () => { if … }`——与 010 `.SetTheme` on 体 if 同族）。五环工单：**a**文法三门放宽（age-on-stmt 组件 alt+age-on-if+age-on-else——本会话实验开过、编译通过、已回退保 id 稳定）；**b**投影：widget 形 handler 现硬编码赋值集（project.rs ~6165，G2 注释明示）——改接共享 `project_on_stmts`（7106，If 臂 7156 在）；**c**降版 `hook_stmts_lower`→`Stmt::If`（2296）共享已备；**d**发射 a2x-ts `Stmt::If`（lower 412）+`emit_stmt_fragment`（pub）已备——包面消费先例=`PackageFragmentLane::emit_function_body`（ace_package_lane.rs 150）；**e**lane `lane_handler_bodies_spec` 加结构化支（检查函数语句发射+宿主映射过语句文本）。**实验结论：仅开文法门（a）→ 全部形状仍缺席**（投影平铺→铸造不铸）——五环缺一不可，无捷径。落成翻转：010 `.SetTheme/.SetAccent`（`.Submit` 平铺本可派）、005 lambda-if 族（`__age_vl_*` 值函数同治）；+id 第三次重基线+13 邻居表+永久用例。预估=view-if 同量级完整刀。
+
+**③quick_switcher use 块**：981 合同锁（"age-component 单文件 use 具名拒"）——**路由决策非切片**（解锁=④域合同或 981 改约）。**④④域合同**（U01..06 全分母+WEB 共同前置）：用户/976 后继决策，census/最小复现材料齐。**⑤native/desktop 条件渲染语义**：静态形渲染器对条件 UI 的 oracle 语义（双臂并集？运行时估值？）=设计决策——现状装载点具名拒（诚实），决策后实现。
+
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
