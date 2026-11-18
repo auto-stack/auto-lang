@@ -19,9 +19,12 @@
 //!   `result`, `cancel` and `close`.
 //! - Idempotency: request `id`s are remembered with their response (a
 //!   bounded FIFO of the last [`IDEMPOTENCY_CACHE`] replies); a
-//!   DUPLICATE id replays the stored response verbatim — a client
-//!   retrying after a reconnect never re-executes a side-effecting
-//!   commit (V-08).
+//!   DUPLICATE id carrying the SAME request line replays the stored
+//!   response verbatim — a client retrying after a reconnect never
+//!   re-executes a side-effecting commit (V-08). A reused id with a
+//!   DIFFERENT body is a fresh dispatch: the legacy wire client numbers
+//!   ids per connection from 1, so ids collide across connections by
+//!   design (PLAN-982 round 187).
 //! - A malformed/half line is a named in-band error and the loop
 //!   CONTINUES (the legacy stdio discipline); stdio EOF is a graceful
 //!   shutdown; a pipe connection's EOF drops that client only — the
@@ -54,8 +57,12 @@ pub fn pipe_addr(name: &str) -> String {
 
 /// The ACE session daemon (transport-agnostic core + transports).
 pub struct AceDaemon {
-    /// request id → serialized response (idempotent replay cache).
-    cache: HashMap<u64, String>,
+    /// request id → (request line, serialized response). A replay fires
+    /// only when the id AND the full request line match — a reused id
+    /// carrying a DIFFERENT request is a fresh dispatch (the legacy wire
+    /// client numbers ids per connection from 1, so the id alone cannot
+    /// identify a retry; PLAN-982 round 187).
+    cache: HashMap<u64, (String, String)>,
     cache_order: std::collections::VecDeque<u64>,
 }
 
@@ -73,14 +80,14 @@ impl AceDaemon {
         }
     }
 
-    fn remember(&mut self, id: u64, response: String) {
+    fn remember(&mut self, id: u64, request: &str, response: String) {
         if self.cache_order.len() >= IDEMPOTENCY_CACHE {
             if let Some(evict) = self.cache_order.pop_front() {
                 self.cache.remove(&evict);
             }
         }
         self.cache_order.push_back(id);
-        self.cache.insert(id, response);
+        self.cache.insert(id, (request.to_string(), response));
     }
 
     /// Handle one input LINE (without the trailing newline) and produce
@@ -115,17 +122,24 @@ impl AceDaemon {
         let has_id = req.get("id").map(|v| !v.is_null()).unwrap_or(false);
         let id = req.get("id").and_then(Value::as_u64).unwrap_or(0);
         if has_id {
-            // Idempotent replay: a duplicate request id answers with the
-            // stored response VERBATIM (no re-execution).
-            if let Some(cached) = self.cache.get(&id) {
-                return cached.clone();
+            // Idempotent replay: the SAME request line under the SAME id
+            // answers with the stored response VERBATIM (no re-execution —
+            // a reconnecting client's retry). A reused id with a DIFFERENT
+            // body is a fresh dispatch: the legacy wire client numbers ids
+            // per connection from 1, so ids collide across connections by
+            // design (PLAN-982 round 187 — replaying the create response
+            // to a same-id eval was a real interop bug).
+            if let Some((cached_request, cached)) = self.cache.get(&id) {
+                if cached_request == line {
+                    return cached.clone();
+                }
             }
         }
         let response = self.dispatch(id, &req);
         let serialized = serde_json::to_string(&response)
             .unwrap_or_else(|_| error_response(id, "response serialization failure"));
         if has_id {
-            self.remember(id, serialized.clone());
+            self.remember(id, line, serialized.clone());
         }
         serialized
     }
@@ -149,7 +163,27 @@ impl AceDaemon {
             "list" => {
                 // The legacy list triggers the expiry sweep.
                 ace_session_cleanup_expired();
-                return ok_response(id, None, None, None, Some(ace_session_list().join(",")));
+                // PLAN-982 (EXEC, round 187): the live ids ride `data` —
+                // the legacy `AutovmClient::list` / `auto req --list` read
+                // `data` only (parking them in `message` made the legacy
+                // face print "No sessions" forever). An empty list keeps
+                // `data: null` so the legacy print branch stays identical.
+                let live = ace_session_list();
+                let data = if live.is_empty() {
+                    Value::Null
+                } else {
+                    json!(live.join(","))
+                };
+                return json!({
+                    "id": id,
+                    "version": SESSION_PROTOCOL_VERSION,
+                    "status": "ok",
+                    "session": Value::Null,
+                    "value": Value::Null,
+                    "type": Value::Null,
+                    "message": Value::Null,
+                    "data": data,
+                });
             }
             _ => {
                 let Some(session) = session else {
@@ -515,6 +549,30 @@ mod tests {
         assert!(other.contains("pong"));
     }
 
+    /// PLAN-982 (EXEC, round 187): a REUSED id carrying a different
+    /// request body is a fresh dispatch, never a replay of the earlier
+    /// id's response. The legacy wire client (`auto req`) numbers ids per
+    /// connection from 1, so the create response for id=1 must NOT be
+    /// replayed to the id=1 eval of the next connection — the real
+    /// interop bug this round's CLI probe caught.
+    #[test]
+    fn p982_daemon_reused_id_with_new_body_dispatches_fresh() {
+        let mut d = AceDaemon::new();
+        // First request under id 1: ping (cached).
+        let ping = d.handle_line(r#"{"id":1,"method":"ping"}"#);
+        assert!(ping.contains("pong"), "{ping}");
+        // The SAME ping line under id 1 replays verbatim (V-08 retry).
+        let replay = d.handle_line(r#"{"id":1,"method":"ping"}"#);
+        assert_eq!(ping, replay, "an identical retry still replays verbatim");
+        // Same id 1, DIFFERENT body: must dispatch fresh (the stored pong
+        // would otherwise mask this response).
+        let other = d.handle_line(r#"{"id":1,"method":"version-missing","session":"ses_x"}"#);
+        assert!(
+            other.contains("Unknown method"),
+            "a reused id with a new body is a fresh dispatch: {other}"
+        );
+    }
+
     /// p970: unknown methods and missing sessions are named errors.
     #[test]
     fn p970_daemon_unknown_method_and_session() {
@@ -525,5 +583,60 @@ mod tests {
         assert!(out.contains("Unknown method"), "{out}");
         let out = d.handle_line(r#"{"id":2,"method":"eval","session":"ses_x","code":"1"}"#);
         assert!(out.contains("ace.session/host-unregistered"), "{out}");
+    }
+
+    /// PLAN-982 (EXEC, round 187): `list` carries the live ids in `data`
+    /// — the legacy wire client (`auto req --list`) reads `data` only.
+    /// A stub host stands in for the registry slot; the REAL bridge ride
+    /// is the man-side CLI case (`plan982_exec_req_cli`).
+    #[test]
+    fn p982_daemon_list_carries_sessions_in_data() {
+        use crate::ace_session::{
+            AceSessionHost, AceSessionOp, AceSessionOutcome, AceSessionReport, AceSessionValue,
+        };
+        use std::sync::Arc;
+
+        struct ListHost;
+        fn canned(session: &str) -> AceSessionReport {
+            AceSessionReport {
+                session: Some(session.to_string()),
+                outcome: AceSessionOutcome::Ok,
+                revision: 0,
+                value: AceSessionValue::None,
+                eval_id: None,
+                vars: Vec::new(),
+                snapshot: None,
+                rebuilt: false,
+                wall_ms: 0.0,
+            }
+        }
+        impl AceSessionHost for ListHost {
+            fn create(
+                &self,
+                _source: Option<&str>,
+                _wall: Option<std::time::Duration>,
+            ) -> AceSessionReport {
+                canned("ses_a")
+            }
+            fn op(&self, _session: &str, _op: AceSessionOp<'_>) -> AceSessionReport {
+                canned("ses_a")
+            }
+            fn list(&self) -> Vec<String> {
+                vec!["ses_a".to_string(), "ses_b".to_string()]
+            }
+            fn cleanup_expired(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+
+        let _guard = REGISTRY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        crate::ace_session::install_ace_session_host(Arc::new(ListHost)).expect("install");
+        let mut d = AceDaemon::new();
+        let out = d.handle_line(r#"{"id":3,"method":"list"}"#);
+        let resp: Value = serde_json::from_str(&out).expect("response json");
+        assert_eq!(resp["status"], "ok", "{out}");
+        assert_eq!(resp["data"], json!("ses_a,ses_b"), "{out}");
+        assert!(resp["message"].is_null(), "{out}");
+        crate::ace_session::shutdown_ace_session_host();
     }
 }
