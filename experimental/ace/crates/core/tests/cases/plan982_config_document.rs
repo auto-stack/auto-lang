@@ -559,14 +559,18 @@ fn p982_config_for_unrolls_literal_lists() {
         front.statements
     );
 
-    // 运行期列表：物化阶段具名 pending（不是静默空跑）。
-    let dynamic = "var base = [\"a\"]\nvar m = base\nfor d in m { label: d }\n";
-    let err = compile_config_document(dynamic, "pac.at", &[])
-        .expect_err("a runtime-list for must not silently drop");
+    // PLAN-982（③，2026-11-18 用户指示）：**运行期列表现在编译**——物化侧发射
+    // `Stmt::ForIn` + `Range(0, cfg_list_len)`，体内 `let <d> = cfg_list_at_i32(...)`。
+    // **元素种类**的限制移到求值期：文本元素由 `list-at.i32` 具名拒绝（无 Str
+    // 返回面），i32/bool/char 元素可真正迭代（`p982_config_for_runtime` 钉住）。
+    // 这条断言因此从"必须 pending"改为"必须编译出真实语句"。
+    let dynamic = "var base = [1, 2]\nvar m = base\nfor d in m { label: d }\n";
+    let front = compile_config_document(dynamic, "pac.at", &[])
+        .expect("a runtime-list for now compiles into a counted loop");
     assert!(
-        err.iter()
-            .any(|d| d.code == "source.config-document/pending"),
-        "a runtime-list for must be a named pending: {err:?}"
+        front.statements >= 6,
+        "the counted loop must emit real statements, got {}",
+        front.statements
     );
 }
 

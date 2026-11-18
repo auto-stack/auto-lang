@@ -662,6 +662,9 @@ fn emit_line(
                       // 句柄别名）——这样 `k["f"]` / `k.f` 的搬运路径
                       // （`emit_object_handle` 要求 `ctx.locals[name] == Obj`）可达。
                     let object_literal = matches!(e.kind, super::ast::ExprKind::ObjectLit { .. });
+                    // PLAN-982（③）：字面数组属性也登记为**列表局部**，这样
+                    // `var xs = nums` 能取到列表句柄（进而驱动运行期 `for`）。
+                    let list_literal = matches!(e.kind, super::ast::ExprKind::ArrayLit(_));
                     // PLAN-982：**属性上的字面数组**也要记进 `list_literals`（与
                     // `var` 同口径）——否则 `for d in items` 会掉进运行期分支并因
                     // `items` 不是局部而 bind 失败。
@@ -680,6 +683,8 @@ fn emit_line(
                     let (value, class) = emit_value(e, out, ctx)?;
                     let alias_class = if object_literal && class == LocalClass::Obj {
                         Some(LocalClass::Obj)
+                    } else if list_literal && class == LocalClass::List {
+                        Some(LocalClass::List)
                     } else if scalar_literal && class == LocalClass::Scalar {
                         Some(LocalClass::Scalar)
                     } else {
@@ -1016,21 +1021,31 @@ fn emit_for(
                 f.span,
             )]);
         };
+        // 只有**真的是列表局部**才走运行期循环；否则保持原来的具名 pending
+        // （不让"名字根本不存在的列表"退化成 bind 期 `source.undefined`）。
+        if ctx.locals.get(&id.name) != Some(&LocalClass::List) {
+            return Err(vec![document_diag(
+                "source.config-document/pending",
+                "a `for` over a runtime list needs a list-valued local (bind the list to a \
+                 `var` first); only literal lists and list locals drive a `for` today",
+                f.span,
+            )]);
+        }
         let handle = var_expr(&id.name, f.span);
+        // 循环变量用**隐藏下标**；体内再把用户写的名字绑到"该下标的元素"。
+        let index_name = format!("{}i{}", CONFIG_DOCUMENT_HIDDEN_PREFIX, ctx.next);
+        ctx.next += 1;
         let mut body_stmts: Vec<Stmt> = Vec::new();
         let item = emit_call(
             &mut body_stmts,
             ctx,
             "cfg_list_at_i32",
-            vec![handle.clone(), var_expr(&f.var.name, f.span)],
+            vec![handle.clone(), var_expr(&index_name, f.span)],
             f.span,
         )?;
         body_stmts.push(Stmt::Let {
             kw: f.span,
-            name: Ident {
-                name: format!("{}el", f.var.name),
-                span: f.var.span,
-            },
+            name: f.var.clone(),
             ann: None,
             mutable: false,
             value: var_expr(&item, f.span),
@@ -1038,21 +1053,17 @@ fn emit_for(
         });
         let saved_declared = ctx.declared.clone();
         let saved_locals = ctx.locals.clone();
-        let bound = format!("{}el", f.var.name);
-        ctx.declared.insert(bound.clone());
+        ctx.declared.insert(f.var.name.clone());
         let body_result = emit_body(&f.body, cur, &mut body_stmts, ctx);
         ctx.declared = saved_declared;
         ctx.locals = saved_locals;
         body_result?;
-        let len = emit_call(
-            out,
-            ctx,
-            "cfg_list_len",
-            vec![handle],
-            f.span,
-        )?;
+        let len = emit_call(out, ctx, "cfg_list_len", vec![handle], f.span)?;
         out.push(Stmt::ForIn {
-            var: f.var.clone(),
+            var: Ident {
+                name: index_name,
+                span: f.var.span,
+            },
             iter: Expr {
                 span: f.span,
                 kind: super::ast::ExprKind::Range {

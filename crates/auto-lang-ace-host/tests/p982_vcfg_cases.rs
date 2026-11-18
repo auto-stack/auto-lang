@@ -191,13 +191,21 @@ lib("a") {
         assert_eq!(text(Some(prop_of(dir, "id"))), *want);
         assert_eq!(text(Some(prop_of(dir, "at"))), *want);
     }
-    // 运行期列表（这里经一个非字面绑定）⇒ 具名 pending，不静默空跑。
+    // PLAN-982（③，2026-11-18 用户指示）：运行期列表**不再 pending**——物化侧
+    // 发射计数循环；文本元素因缺 Str 返回面在求值期**具名拒绝**（不再是"不支持的
+    // 语法"，而是"这个元素种类读不出来"）。i32 元素的运行期循环见
+    // `p982_config_for_runtime`。
     let dynamic = "var base = [\"a\"]\nvar m = base\nfor d in m { x: d }\n";
     match run(dynamic, &empty_context()).outcome {
-        AceConfigOutcome::Diagnostic { code, .. } => {
-            assert_eq!(code, "source.config-document/pending")
+        AceConfigOutcome::HostFailure { code, message } => {
+            assert!(
+                code.starts_with("ace.config/") && message.contains("non-scalar"),
+                "text elements are refused by name at evaluation: {code}: {message}"
+            )
         }
-        other => panic!("a runtime-list `for` must be a named pending, got {other:?}"),
+        other => {
+            panic!("a runtime-list `for` must run and refuse text elements by name, got {other:?}")
+        }
     }
 
     // 另一分支真的改变结果（非空证）：同一文档、port 换成 linux ⇒ x=2。
