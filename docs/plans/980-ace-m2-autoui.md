@@ -1356,6 +1356,18 @@ next_responsible_role: user（**④外部名面设计决策**：widget 面的 us
 
 next_responsible_role: work（调用**表达式形**（`on_select(next)` 作 RHS/pratt——wide-ops 无调用后缀）=表达式面扩展；随后 [65] 全解锁。④完整承载仍待 976 后继目标域决策）。
 
+2026-11-18 stage: work（WEB 批切片 #6p：调用表达式形·通道调用承载；#6o 合同闭合）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——④完整承载（外部调用进受检体=976 后继目标域决策）与真语料全量 spliced 的生成器道（vue/script.rs：watch/setup/expose/ext_imports/style 族）+vue_capabilities 10 预存红（master 预存归 triage）为批剩余）| worktree: lang-980 @ plan-980-dev | code_commit: lang **42927d6f7**、ui **c80a3720**+锁 chore **f43ef59b**。
+
+**事实修正（探针证伪 #6o 前提，adapt 表记录）。** "wide-ops 无调用后缀"**不成立**：pratt 调用后缀一直在场（文法 `call` 块+引擎 WantOp 臂）——`.x = on_select(1)` 解析通过、**Bind** 阶段 `source.undefined` 拒；调用**语句**形 #6o `age-view-call-stmt` 已解析（[65] 全源语言面编译 OK）。#6o 后实况缺口（master 在场缺陷，探针实证）：①通道调用（callee=widget 头参数/宿主通道 prop）无承载——检查函数只铸赋值、**调用语句被静默丢弃**（[65] `.Bump` 拼接体只有 `n.value = next;`，`on_select(next)` 丢句）；②`handler_check_fn` 不守 `body_foreign`（#6o 收据声称"检查函数不铸"，实际照铸→部分体 verify+部分拼接）；③域外调用 handler 进 ops=整 lane 编译失败=**兄弟 handler 连带全体缺席**；④#6o 收据引用的规范 §13.16 从未落档。
+
+**交付。** ①投影：调用语句 callee∈头参数→`ComponentChannelCall` 行（原源 span；具名实参 fail-closed）；②实参验证=检查函数**死 let**（无注解推断；`on_x(typo)` 红 `source.undefined`——真核非文本拼，未验证拼写绝不进拼接体）；③lane：赋值片段+通道行按**源 span 序 merge**，`emit('<Pascal>', args)` 契约事件形（Pascal∈msg 变体）/`props.on_x(args)` 回调 prop 形双发射（老道 PLAN-668 R-23/Plan 444 同约定——SFC defineEmits/defineProps 声明机制承载），实参按精确 span 经 a2x-ts 发射+宿主映射；④fail-closed 闭合：body_foreign 检查函数不铸、值位置（RHS/嵌套实参）通道=域内具名拒、ops 派发通道=零效果具名拒、foreign lambda 值函数不铸（防丢句）；⑤ops 豁免=兄弟保全（方言预扫描：含调用语句的 unit handler 不进 ops）；⑥描述出口 `handler_channel_calls`（行+body_foreign+n_assigns）。**无语法改动——grammar-id 零漂移**（ace-source 冻结测试绿实证）。census 具名修订 #8：聚合 (75,8,7,23) **不变**——[65] 计数在 #6o 已计入（部分拼接态），本切片修**内容正确性**（`.Bump` 体补全 `emit('Select', next);`）与兄弟保全语义；判别力移至 `p980_web_channel_call_lane` 六臂断言。
+
+**验证（冻结提交实测）。** lang `cargo t ace-source ace-av` **双 PASS**（run-hy8xo3yp；首跑=case-parent 锁陈旧工具准备失败，root Cargo.lock 刷新后绿——982/#6o 同因先例法，随批入库）；UI ace_ts_provider **24/24**（含新 case 0.34s）；vue 门 **77/82**（chart×5 具名预存不变）；dialect lib **105/105**。新 case 行为/耗时：lang `plan980_web_6p_channel_call` 6 例（行投影/值位置拒/ops 拒/死 let 判别力/域外标记/foreign lambda）合计 0.06s；UI `p980_web_channel_call_lane`（[65] 完整体/混合兄弟/域外兄弟保全/props 形/RHS 缺席/lambda 缺席）0.34s——均 ≤10s。探针零残留；本批 9 文件 fmt clean（仓内其余 fmt 分叉为预存，未纳入）。
+
+**边界（诚实）。** ④完整承载（`fs.read_dir`/`listusers` 等外部调用进受检体）=976 后继目标域决策（a2ts.foreign-unsupported 域合同变更，§13.15 终局陈述保持）；[72] RHS `listusers` 仍缺席（④族）；lambda 面通道调用承载=后续切片（本批只闭"不铸"防丢句）；watch/lifecycle 体调用语句按方言合同跳过（#6o 边界）；`on` 块/lambda 体**单行多语句**形（`a; b` 不换行）=`list-nl` 文法既定边界（探针实测）。主检出存他会话 WIP（Cargo.lock/docs/design/**，#6j 收据已surface）原样保留未纳入。
+
+next_responsible_role: review（#6p 批级复核：AC-B-WEB 映射/反例重放/边界核对）→ merge（phase fold #13）。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
