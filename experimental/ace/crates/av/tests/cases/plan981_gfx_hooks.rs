@@ -214,3 +214,140 @@ fn p981_layer_fact_reaches_the_av_lane_description() {
     );
     assert_eq!(m.handler_stmts[0].1.len(), 2);
 }
+
+/// PLAN-981（宿主动态 token/世代）：`dispatch_with_ctx` 在**真实 run_def** 里
+/// 交会话事实——同一 callback 内 query epoch 随查询单调推进（第二次查询 ⇒
+/// 先前 token 失效的动态事实）、非查询 op 不动；新 callback（第二次 run_def）
+/// epoch 归零、callback 序号前进；credits/tick 同步到达。默认转发臂由既有
+/// provider 兼容性覆盖（本用例的 provider 只实现 dispatch_with_ctx 之外的
+/// dispatch 仍可工作——见 FakeHost）。
+#[test]
+fn p981_host_dispatch_ctx_carries_query_epoch_and_generation_facts() {
+    /// 记录每次派发上下文的 provider。
+    struct CtxHost {
+        seen: CallLog,
+    }
+    impl AgeGfxHost for CtxHost {
+        fn dispatch(
+            &mut self,
+            _symbol: &str,
+            _args: &[Value],
+        ) -> Result<AgeGfxReturn, AgeGfxFault> {
+            unreachable!("the ledger forwards through dispatch_with_ctx")
+        }
+        fn dispatch_with_ctx(
+            &mut self,
+            symbol: &str,
+            _args: &[Value],
+            ctx: &ace_av::age_gfx::AgeGfxCall<'_>,
+        ) -> Result<AgeGfxReturn, AgeGfxFault> {
+            self.seen.borrow_mut().push((
+                symbol.to_string(),
+                vec![
+                    format!("tick:{}", ctx.tick),
+                    format!("cb:{}", ctx.callback),
+                    format!("epoch:{}", ctx.query_epoch),
+                    format!("credits:{}", ctx.credits_used),
+                ],
+            ));
+            match symbol {
+                "age.query2d.sweep.v1" => Ok(AgeGfxReturn::Record(vec![
+                    Value::Bool(true),
+                    Value::I32(1),
+                    Value::F32(0.5),
+                    Value::F32(0.25),
+                    Value::F32(4.0),
+                    Value::F32(5.0),
+                    Value::F32(0.0),
+                    Value::Bool(true),
+                ])),
+                "age.query2d.segment.v1" => Ok(AgeGfxReturn::Record(vec![
+                    Value::Bool(true),
+                    Value::I32(3),
+                    Value::F32(1.0),
+                    Value::F32(1.0),
+                    Value::F32(2.0),
+                    Value::F32(0.0),
+                    Value::F32(-1.0),
+                ])),
+                "age.tick.dt.v1" => Ok(AgeGfxReturn::Scalar(Value::F32(0.5))),
+                other => Err(AgeGfxFault::new(
+                    "unknown-op",
+                    format!("`{other}` is not implemented by this provider"),
+                )),
+            }
+        }
+    }
+
+    // 一个 callback：sweep（epoch 1，段内先读）→ segment（epoch 2，先前 token
+    // 失效——段内不再读 a）→ 标量 dt（epoch 保持 2）。每条 token 只在自己的
+    // 段内读（语言侧 fault-13 走查如此要求；宿主侧只看动态事实）。
+    let src = "pub fn probe() f32 {\n    let a Sweep2D = query2d.sweep(1, true, 0.5, 0.0)\n    let pa f32 = a.t\n    let b Cast2D = query2d.segment(1, true, 0.0, 0.0, 1.0, 0.0)\n    let pb f32 = b.t\n    let dt f32 = tick.dt()\n    return pa + pb + dt\n}\n";
+    let compiled = compile_module_fn(src);
+    let calls: CallLog = Rc::new(RefCell::new(Vec::new()));
+    let host = CtxHost {
+        seen: calls.clone(),
+    };
+    let mut s = AgeGfxSession::new(Box::new(host));
+    s.begin_tick();
+    let value = run(&mut s, &compiled, "probe").expect("ctx run executes");
+    assert_eq!(value, Value::F32(2.0), "0.5 + 0.5 + 1.0");
+    assert_eq!(s.query_epoch(), 2, "two queries advanced the epoch");
+    assert_eq!(s.callback_seq(), 1);
+    {
+        let log = calls.borrow();
+        assert_eq!(log.len(), 3);
+        assert_eq!(log[0].0, "age.query2d.sweep.v1");
+        assert_eq!(log[0].1[2], "epoch:1");
+        assert_eq!(log[1].0, "age.query2d.segment.v1");
+        assert_eq!(
+            log[1].1[2], "epoch:2",
+            "the second query advances the epoch — the host sees the stale-token fact"
+        );
+        assert_eq!(log[2].0, "age.tick.dt.v1");
+        assert_eq!(
+            log[2].1[2], "epoch:2",
+            "scalar ops do not advance the epoch"
+        );
+        assert_eq!(log[0].1[3], "credits:16");
+        assert_eq!(log[1].1[3], "credits:24");
+        assert_eq!(log[2].1[3], "credits:25");
+        assert!(log.iter().all(|e| e.1[0] == "tick:1" && e.1[1] == "cb:1"));
+    }
+
+    // 新 callback（新 Tick 预算归零；epoch 归零重进、callback=2、tick=2）。
+    s.begin_tick();
+    let value = run(&mut s, &compiled, "probe").expect("second callback executes");
+    assert_eq!(value, Value::F32(2.0));
+    assert_eq!(s.query_epoch(), 2, "epoch restarts per callback");
+    assert_eq!(s.callback_seq(), 2);
+    {
+        let log = calls.borrow();
+        assert_eq!(log.len(), 6);
+        assert_eq!(log[3].1[0], "tick:2");
+        assert_eq!(log[3].1[1], "cb:2");
+        assert_eq!(log[3].1[2], "epoch:1");
+        assert_eq!(log[4].1[2], "epoch:2");
+        // 新 Tick 的账本从零重计。
+        assert_eq!(log[3].1[3], "credits:16");
+    }
+}
+
+/// 编译一个模块 fn 源（无场景——宿主面直接走 pub fn，同 gfx_host 先例）。
+fn compile_module_fn(src: &str) -> ace_core::source::age_package::AgePackageCompilation {
+    ace_core::source::age_package::compile_age_package(
+        &[input(src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+    )
+    .unwrap_or_else(|ds| {
+        panic!(
+            "front door rejected the host-ctx source: {}",
+            ds.iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    })
+}

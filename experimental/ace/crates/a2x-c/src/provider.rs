@@ -108,11 +108,13 @@ impl TargetProvider for CTargetProvider {
         family: Family,
     ) -> Result<String, A2xReject> {
         let marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
+        let gfx_syms = view.gfx_symbols();
         match family {
             Family::Scalar => Ok(runtime::runtime_source(&marks)),
             Family::RecordText => Ok(rt_runtime::record_text_runtime_source_with(
                 &marks,
                 view.has_platform_ops(),
+                &gfx_syms,
             )),
             Family::Collections => Ok(coll_runtime::collections_runtime_source(&marks)),
         }

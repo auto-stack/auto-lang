@@ -81,6 +81,8 @@ mod plan979_age_a2r;
 mod plan979_component_a2r;
 #[path = "cases/plan981_age_package_a2r.rs"]
 mod plan981_age_package_a2r;
+#[path = "cases/plan981_gfx_a2c.rs"]
+mod plan981_gfx_a2c;
 #[path = "cases/plan981_rust_public.rs"]
 mod plan981_rust_public;
 #[path = "cases/query_release_941.rs"]

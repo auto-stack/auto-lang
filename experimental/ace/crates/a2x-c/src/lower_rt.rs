@@ -1288,6 +1288,82 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         .push(format!("int32_t {} = {}({});", t, func, args.join(", ")));
                     return Ok((t, Ty::I32));
                 }
+                // PLAN-981（A2C 宿主面）：AGE gfx 宿主 op → C 宿主 extern
+                // （`a2x_gfx_<callee>`，点分改下划线；宿主实现/链接归 C 宿主
+                // ——AC 车道 1068/T-04。声明页随运行时头追加，见
+                // `rt_runtime::write_gfx_host_declarations`）。标量结果 op 全量；
+                // 端口 record 3 op（segment/sweep/image2d.png）的 C 侧 record
+                // 返回 stub 属端口 ABI 的 C 腿，本刀具名拒（不伪造 record）。
+                if let Some(sym) = self.view.gfx_symbol(target_id) {
+                    let op =
+                        ace_core::source::age_resources::gfx_by_symbol(sym).ok_or_else(|| {
+                            A2xReject::unsupported_expr(format!(
+                                "gfx host op `{sym}` is not in the checked service table"
+                            ))
+                        })?;
+                    // 端口 record 结果先拒（不降参数——避免无关通道的拒绝
+                    // 掩盖本具名边界）。
+                    if let ace_core::source::age_resources::AgeGfxResult::Port(name) = op.result {
+                        return Err(A2xReject::unsupported_op(format!(
+                            "`{sym}` returns the port record `{name}`; the C record-return host \
+                             stub is the port-ABI C leg (named deferral — scalar host ops emit \
+                             a2x_gfx_* externs; no fabricated record)"
+                        )));
+                    }
+                    if eval_args.len() != op.params.len() {
+                        return Err(A2xReject::new(
+                            "a2x.internal",
+                            format!(
+                                "gfx host call `{sym}` carries {} arguments, the checked \
+                                 signature has {}",
+                                eval_args.len(),
+                                op.params.len()
+                            ),
+                        ));
+                    }
+                    let func = format!("a2x_gfx_{}", op.callee.replace('.', "_"));
+                    let mut args = Vec::with_capacity(eval_args.len());
+                    for (i, &a) in eval_args.iter().enumerate() {
+                        match op.params[i] {
+                            ace_core::source::age_resources::AgeGfxParam::Scalar(
+                                ace_core::source::resolve::VT::Str,
+                            ) => {
+                                let (v, aty) = self.lower_view_value(a)?;
+                                args.push(self.as_view_form(v, aty));
+                            }
+                            ace_core::source::age_resources::AgeGfxParam::Scalar(_) => {
+                                let (v, _) = self.lower_pure(a)?;
+                                args.push(v);
+                            }
+                            ace_core::source::age_resources::AgeGfxParam::Port(_) => {
+                                return Err(A2xReject::unsupported_expr(format!(
+                                    "gfx host call `{sym}` takes a port reference parameter; \
+                                     host-op port parameters are outside the C lane"
+                                )));
+                            }
+                        }
+                    }
+                    let (ctype, rty) = match op.result {
+                        ace_core::source::age_resources::AgeGfxResult::Scalar(
+                            ace_core::source::resolve::VT::I32,
+                        ) => ("int32_t", Ty::I32),
+                        ace_core::source::age_resources::AgeGfxResult::Scalar(
+                            ace_core::source::resolve::VT::F32,
+                        ) => ("float", Ty::F32),
+                        ace_core::source::age_resources::AgeGfxResult::Scalar(
+                            ace_core::source::resolve::VT::Bool,
+                        ) => ("bool", Ty::Bool),
+                        _ => {
+                            return Err(A2xReject::unsupported_op(format!(
+                                "gfx host op `{sym}` result kind is outside the C scalar channel"
+                            )))
+                        }
+                    };
+                    let t = self.fresh_temp();
+                    self.out
+                        .push(format!("{ctype} {t} = {func}({});", args.join(", ")));
+                    return Ok((t, rty));
+                }
                 // PLAN-939: a RESOURCE foreign call (text-record domain) —
                 // resource-sig admission plus the frozen lane conversions
                 // (V-01/V-04/V-15).
