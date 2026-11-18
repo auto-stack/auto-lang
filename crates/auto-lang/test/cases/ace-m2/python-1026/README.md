@@ -32,15 +32,18 @@
 1. `lr: 0.1d` —— 961 冻结的浮点字面量后缀（等价 `0.1`）；
 2. `for step < 60` —— aggregates 面的条件循环拼写（等价 `while step < 60`）；
 3. `fn main() int` 包裹 + `return 0` —— 本前门的入口合同（§5.1 正文写 `fn main()`）；
-4. `var mparams = model.parameters()` —— 语义保持 hoist（v1 不支持"嵌套调用结果直接作位置实参"）；
-5. `var lr_v = 0.1d` —— 语义保持 hoist（v1 不支持"动态浮点关键字实参"）。
+4. `var mparams = model.parameters()` —— 语义保持 hoist（"嵌套调用结果直接作位置实参"这一形态在 v1 **未验证**：既不主张支持，也不得宣称已拒绝）；
+5. `var lr_v = 0.1d` —— 语义保持 hoist（"动态浮点关键字实参"在 v1 **已证拒绝**，诊断码 `source.py-domain`）。
 
-第 4、5 条是 **v1 前端能力边界**（不是语义放宽）：`SGD(mparams, lr: lr_v)` 传入同一对象引用与同一 0.1 值，torch 侧行为与逐字正文一致。超界形态属具名未支持（明确拒绝/不支持），不静默降级；若后续放宽，须同时补 V-02/V-03 反例。
+第 4、5 条都是**语义保持**的显式提升（不是语义放宽）：`SGD(mparams, lr: lr_v)` 传入同一对象引用与同一 0.1 值，torch 侧行为与逐字正文一致。但两条的**边界性质不同**：第 5 条是已证拒绝（`source.py-domain`）；第 4 条只是**未验证**——`py_is_object` 显式接受内联 py-op 结果、`py_frame_val` 可封送这类值，所以它既不是"明确拒绝"，也不能当成已支持。要主张拒绝必须先补反例；将来若放宽第 4 条，须同时补 V-02/V-03 反例。
 
 ## 边界（v1 冻结）
 
 串行会话、单解释器、CPU；动态 float 实参不跨界（浮点字面量经编译期
 `F:` 编码折叠）；显示通道 ASCII ≤256B；非正规/非有限浮点值在 provider
-侧具名拒绝。console 准入在本切片放宽为"带 foreign 描述符的模块可准入
-console import"（纯标量模块仍需 host-console profile，规则见 SD-06）。
+侧具名拒绝。console 准入在本切片放宽为：**非 profile-8** 的模块若携带
+**至少一条 foreign 调用**、且 host-import 表全部为 `auto.console.*`，即可
+准入 console import（纯标量模块仍需 host-console profile；compile 期的
+对应条件是"模块内存在任意 foreign 声明"——只声明不调用的角落编译期准入、
+运行期以 `host.profile` 拒绝）。规则见 SD-06。
 详见 `docs/plans/1026-python-interop-standard-auto-syntax.md` §5.3。

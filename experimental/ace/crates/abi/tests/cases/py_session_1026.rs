@@ -17,9 +17,12 @@ const CORPUS_COPY: &str =
 /// grammar freezes differently — `lr: 0.1d` (961 float suffix) and
 /// `for step < 60` (conditional-loop spelling) — the `fn main() int` entry
 /// wrapper with `return 0`, and the two v1-frontend hoists
-/// (`var mparams = model.parameters()`, `var lr_v = 0.1d`) that stand in for
-/// argument forms the v1 resolver does not accept directly. Kept in lockstep
-/// with the corpus copy.
+/// (`var mparams = model.parameters()`, `var lr_v = 0.1d`). The two hoists
+/// do NOT share one boundary story: a dynamic float kwarg is refused by
+/// name (`source.py-domain`, proven), while the nested-call positional form
+/// is simply UNVERIFIED in v1 — it is neither claimed supported nor claimed
+/// rejected (see the corpus README; claiming a rejection needs a
+/// counterexample first). Kept in lockstep with the corpus copy.
 const ACCEPTANCE: &str = r#"use.py torch: manual_seed, arange, ones
 use.py torch.nn: Linear, MSELoss
 use.py torch.optim: SGD
