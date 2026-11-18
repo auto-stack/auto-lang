@@ -921,6 +921,27 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**端口 record ABI + G4 冻结**；用户五项裁定后的第一批）| PLAN-981 r18 | outcome: **pass（ABI 复用现有 MIR/Value，无新形态；G4 钉死；G2/G1 下一批）** | code_commit `5ee4d23c0`
+
+**用户裁定（2026-11-18）**：①端口结果=**一次宿主调用返回完整 typed record**（先验可否复用 `MirType::Record`/`Value::Record` 单结果槽，确有缺口再加受限 MIR/ABC）；②G1=`shape2d.layer`（render-only，经同一份受检行描述交 AV/AC/A2R；移除该属性地面重新进碰撞候选、独立轨迹断言失败）；③G2=开 **hook-local `let` 与 `if/else`**（`let q = query2d.sweep(...)` 本次执行路径求值一次、provider 只收一次 sweep、局部结果随回调失效）；④G3=**冻结 ordinal＝场景行声明序**（重排即语义变化、越界具名拒）；⑤G4=保留 `render2d.frame.v1(i32,str,i32,i32)`，第二参=**已声明、带帧表的图像资源名**（文件路径走 `image2d.png`，`Image2D` 供 `frame2d.at`）。
+
+**本批交付**
+- **record ABI 实证复用现有面**：`AgeGfxReturn::{Scalar,Record}`；provider 返回 `AGE_PORT_FIELDS` 声明序的字段序列；AV 在调用点按**调用槽的 nominal record** 逐字段复核（`age-gfx.result-shape`/`age-gfx.result-type`、零效果）后经 `Value::Record` + `commit_slot_write` 一次发布。**未新增 MIR/ABC 形态**（沿用 `MirInstr::Call` + record 槽；dst/sig 类型核对由既有 mir_verify 承担）。
+- lowering：端口 op（`segment`/`sweep`/`image2d.png`）不再 `lower.age-gfx-port-result`，与标量 op 同一条 import 调用；计费不变（8/16/1），**端口字段读 0 credit**。
+- 观察车道无 provider：新增 `execute_without_host` 负控——实际执行宿主 op 即 `age-gfx.host-unavailable`（不伪造）；seam 两例按此更新。
+- **G4 冻结**：`render2d.frame` 第二参按"资源名"钉死（provider 原样收到 `str`）；永久用例 `p981_gfx_host_frame_takes_a_resource_name_not_a_path`。
+- **G3 冻结（合同）**：T-04 以 **ordinal＝场景行声明序**为正式契约；重排即语义变化、越界由宿主具名拒（语言侧不猜行边界）；写入本收据与规范。
+
+**证据**：`plan981_gfx_host.rs` **7/7**——segment `point_x+point_y=3.0`（**8 credits**）、sweep `start_overlap=false`（**16**）、`image2d.png` `byte_length=16`（**1**），每条查询 provider **只收一次调用**、字段读免费；返回字段数/类型不符具名拒（零效果）；frame 资源名原样到达；标量派发/预算/生命周期续绿。980/981/982 家族 av **56/56**、core plan981 **230/230**、av-core `age_gfx` 1/1；`cargo t ace-source ace-av ace-a2x` 见下方门禁行。
+
+**未交（下一批，裁定已定、无未决）**
+- **G2（hook-local `let`+`if/else`）**：`age-on-*` 体文法 + 投影 AST + 脱糖（`instance_stmts`）+ 查询 token 走查复验 + 永久用例"provider 只收一次 sweep、分支复用同一结果"。
+- **G1（`shape2d.layer`）**：属性白名单 + 受检行描述 typed 字段 + AV/AC/A2R 同源 + "移除 layer 后地面重入碰撞候选、独立轨迹断言失败"的负控。
+- 两项都动 AGE 文法 → **同批一次 grammar-id 重基线**（涉及面；13 邻居逐 profile 转储）。
+- **G5**：随最终交付 SHA 刷 UI058 pin/overlay。
+
+**门禁**：`cargo t ace-source ace-av ace-a2x`（本提交上运行；整组结果折入后续收据）。**债务**：`D-981-GFX-PORT-ABI` 关闭。
+
 ### 2026-11-18 stage: review（**980 `style` 声明面文法会签——981 grammar/identity owner 回签**）| PLAN-981 r18 | outcome: **有条件通过（修订 profile 门、调用折叠与身份做法）** | 引用 980 §5「P3 提案：`style` 声明面」（`980-ace-m2-autoui.md:614-649`）与实测材料 `plan-artifacts/plan-980/p3-style-proposal-20261118.txt`
 
 **核对基线（master 实读）**：冻结 identity = age-component `19a1376e…`、age-package `0290d0ab…`（`plan981_grammar_scope.rs:128/200`，与提案 §三一致）；`style` 不在 token 表、普通标识符位置合法；`r-pub` 的 profile 列表**不含 age-component**（`auto-source.at:213`），故组件面 `pub style` 今天连 `pub` 都拼不出。语料形状复核：007 的 `style stat_value = section_title(size: "text-sm")` 属实，stylekit 的 `pub style` 7 条中 3 条带默认值属实。
