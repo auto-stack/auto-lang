@@ -147,6 +147,58 @@
   在真实 bind 后由 serve 路径写入（进程内单服务假设）；CLI 就绪行以此
   回报（auto-man `--server av` 已消费）。
 
+### C1 工作区提交与失败语义（消费者业务源契约，2026-11-18，auto-down `72b0970`）
+
+jade-garden `POST /api/workspace/open` 的可执行 AV 业务源
+（`back/auto/av/workspace_service.at`）实现并在真 CLI 验收的合同：
+
+- **配置单一来源**：`JADE_GARDEN_CONFIG`=显式配置文件路径，**持久值优先**
+  （文件含 `workspace_root` 时 GET/POST 都以它为准）；
+  `JADE_GARDEN_DEFAULT_WORKSPACE`=初始回退（**原样**返回，不 canonicalize）；
+  两者皆无 ⇒ GET 回 `{"root":null,"wiki_dir":null}`、POST 具名 500。
+- **POST 顺序**（失败语义按此序）：①目录存在性（`path_attrs_w16`；不存在
+  ⇒ 400 `{"error":"Directory does not exist: <原样路径>"}` 零副作用）→
+  ②规范化（`canonical_w16` ⇒ Windows canonical `\\?\` 形态，响应/配置/索引
+  全用它；**verbatim 路径不归一化 `/`**，源内拼接一律 `\`）→ ③`<root>\wiki`
+  准备（已存在接受）→ ④**目标索引重建**（递归枚举 `wiki/**/*.ad`、深度
+  >16 判失败防 junction 环；pages 行 `{path(相对,`\`分隔),title(stem),
+  frontmatter(头 4096B 内 `---` 块原文),mtime}`；`<root>\jade-garden-
+  index.json.tmp`+`file_replace_w16` 原子替换；失败 ⇒ 500 `error` 以
+  `workspace.index-rebuild-failed:` 开头，旧工作区/配置/旧索引不动）→
+  ⑤**配置原子提交**（`<config>.tmp`+`file_replace_w16`=MoveFileEx
+  REPLACE_EXISTING，只读目标被拒 ⇒ 500 `workspace.config-commit-failed:`
+  前缀，旧工作区/原配置保留）→ ⑥200 `{"root":<canonical>,"wiki_dir":
+  <canonical>\wiki}`。
+- **完整 Unicode 路径**：请求体 UTF-8 → 源内全量 UTF‑8↔UTF‑16 转换
+  （含代理对；`len`/`char_at` 是 Unicode 标量域（774），借用 `str` 需逐
+  标量重编 UTF-8 字节后才能做字节级解析）。
+- **并发合同**：引擎单 owner 循环顺序派发（`!Send`，dispatch 同步完成）
+  + tmp/MoveFileEx 原子替换 ⇒ 并发切换串行提交、任意时刻磁盘配置是一笔
+  完整提交（GET 永远读到一致状态）、重启=最后一次成功提交。验收：
+  `plan983_c1_cli` 六例（五例语义 + 并发一致性），收据见计划 §9 r21。
+- **具名边界**：pages.mtime 恒 0（AV 模块至多声明 **16 个平台操作** 的
+  verify 契约已满）；blocks/links/tags 恒 `[]`（链接图/块解析属后续端点
+  切片）；`dir_close` 不显式调（宿主 ledger 每运行强制关全部句柄）。
+
+### 文本路由消费形（982 引擎 `5e4322a` + 983 消费，2026-11-18）
+
+`AvServiceEngine` 的**按路由分道**（982 round 183 交付，983 C1 消费）：
+
+- **文本路由**：`#[api]` 的 fn 形参**恰为单个借用 `str`**（机械签名扫描
+  `text_route_param`）⇒ 该路由的**请求体**作为运行时文本实参交给
+  `execute_entry_text_platform`（授权前置具名 + 平台台账 + arena 归零）；
+  每文本路由一个驻留模块（console 前门按 `d_<fn>` 入口编译一次——入口
+  形状合同由 MIR entry-sig（`ac.runtime.text.v1`+全 `StrView`）与 AV 根帧
+  准入持有）。**不写请求暂存文件**；请求体须 UTF-8（否则具名失败）；
+  响应仍写 `{scratch}/p983-resp.txt` 由宿主读回（i32 返回值带不动响应
+  字节；`with_program_exit` 把非 0 退出码映射为 500 诊断）。
+- **文件通道（默认路由）**：0 参 fn ⇒ staged 整请求（`p983-req.txt`）+
+  `run_platform` 走 `d_main` 自路由（GET 等；旧引擎兼容回退同路径）。
+- **收据与区分性证据**：`AvServiceReceipt::combined_entry_dispatches()`
+  （983 r20+）只计文本路由派发——健康 POST 语义下 `combined ≥ 1`、
+  GET-only 运行 `combined == 0`；引擎级证据形=**POST 先行后、任何文件
+  通道派发前**断言 `p983-req.txt` 不存在（`av_dispatches` 同时计数）。
+
 ## 边界（具名开放，CONSUMERS/后续域）
 
 - core trait `listen_blocking` 签名仍由 core legacy trait 固定（桥接已
@@ -156,8 +208,9 @@
   record/list/浮点、str concat owned 促升——后续扩面具名拒。
 - AV 执行臂：认证/权限/中间件/上传/下载/stream/SSE/`~T`（语言侧通道缺位，
   501 具名）；ASCII scratch/数据根约束。
-- CONSUMERS 批、B-GENERATED-R 与 T-05..07 未交付（B-AVSERVICE-R 已随文本
-  入口切片复核，见计划 §9）。
+- CONSUMERS 批：C0（GET 三腿）与 C1（open 全语义 + 并发合同）已随
+  2026-11-18 phase fold 交付（含文本路由消费形）；**U0（UI 腿，等 980 WEB
+  正式交付与 982 Vue `auto run`）与四仓整体未交付**；B-GENERATED-R 已复核。
 - 既有红（非本切片引入）：auto-web
   `api_gen::tests::test_handler_body_r2_matrix_compile_oracle` 基线
   `0adebc0` 原样红。
