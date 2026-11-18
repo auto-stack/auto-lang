@@ -172,7 +172,7 @@ pub enum RawKind {
 /// `Tok::Wide`；其余（`0x10`、`1i32`、`1.5.6`）仍是 `Raw`。
 pub const NUMBER_SURFACE_ENV: &str = "AUTO_ACE_NUMBER_SURFACE";
 
-fn number_surface_enabled() -> bool {
+pub fn number_surface_enabled() -> bool {
     matches!(
         std::env::var(NUMBER_SURFACE_ENV).as_deref(),
         Ok("1") | Ok("true") | Ok("yes") | Ok("ace")

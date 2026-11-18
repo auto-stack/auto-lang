@@ -1071,13 +1071,21 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                     )));
                 }
                 let item = session.handle(Entry::Value(StoredValue::F64(value)));
+                if matches!(session.get(dst)?, Entry::Node(_)) {
+                    // 根/节点目标：与 `cfg_put` 同一语义（注入赢 root 的 seed 键）。
+                    if Some(dst) == session.root && session.seeded.contains(&key) {
+                        return Ok(0);
+                    }
+                    set_prop(session, dst, key, item)?;
+                    return Ok(0);
+                }
                 match session.get_mut(dst)? {
                     Entry::Obj(d) => {
                         obj_set(d, key, item);
                         Ok(0)
                     }
                     _ => Err(HostError::Io(
-                        "config: put-f64-text requires an object destination".into(),
+                        "config: put-f64-text requires an object or node destination".into(),
                     )),
                 }
             }
@@ -1095,13 +1103,20 @@ pub fn dispatch(symbol: &str, args: &[Value], cancel: &CancelFlag) -> Result<i32
                     .parse()
                     .map_err(|_| HostError::Io(format!("config: `{raw}` does not fit u64")))?;
                 let item = session.handle(Entry::Value(StoredValue::U64(value)));
+                if matches!(session.get(dst)?, Entry::Node(_)) {
+                    if Some(dst) == session.root && session.seeded.contains(&key) {
+                        return Ok(0);
+                    }
+                    set_prop(session, dst, key, item)?;
+                    return Ok(0);
+                }
                 match session.get_mut(dst)? {
                     Entry::Obj(d) => {
                         obj_set(d, key, item);
                         Ok(0)
                     }
                     _ => Err(HostError::Io(
-                        "config: put-u64-text requires an object destination".into(),
+                        "config: put-u64-text requires an object or node destination".into(),
                     )),
                 }
             }

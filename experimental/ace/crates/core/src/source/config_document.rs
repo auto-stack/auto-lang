@@ -323,6 +323,39 @@ pub fn parse_config_document(src: &str) -> Result<ConfigDocumentSyntax, Vec<Diag
 
 /// 配置文档前门（无注入）：等价于 [`compile_config_document_with_injection`]
 /// 的空注入形式。
+/// PLAN-982（④ S2-D）：把一段**独立的**十进制字面文本解析成宽标量。
+///
+/// 只认两种形状（与 `lexer::classify_affixed` 同一口径）：
+/// - `整数字.整数`（无符号、无指数） ⇒ `F64`；
+/// - 全十进制且超 i32、装得进 u64 ⇒ `U64`。
+pub fn parse_wide_scalar(text: &str) -> Option<ConfigScalar> {
+    if let Some((int_part, frac)) = text.split_once('.') {
+        let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        if digits(int_part) && digits(frac) {
+            return text.parse::<f64>().ok().map(ConfigScalar::F64);
+        }
+        return None;
+    }
+    if text.bytes().all(|b| b.is_ascii_digit())
+        && text.parse::<i32>().is_err()
+        && text.parse::<u64>().is_ok()
+    {
+        return text.parse::<u64>().ok().map(ConfigScalar::U64);
+    }
+    None
+}
+
+/// 与 [`parse_wide_scalar`] 相同的门控：只有 `AUTO_ACE_NUMBER_SURFACE` 打开时，
+/// 投影器才把 affix-num 叶升成宽标量（默认仍是 `source.unsupported`）。
+pub fn wide_scalar_surface_is_open() -> bool {
+    // 注意：`source::lexer` 只在 `test` / `legacy-syntax-oracle` 下编译；生产路径的
+    // 词法在 CST 层（`ace-syntax-*`），因此门控在这里**直接读环境**（同一变量名）。
+    matches!(
+        std::env::var("AUTO_ACE_NUMBER_SURFACE").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("ace")
+    )
+}
+
 pub fn compile_config_document(
     src: &str,
     module_path: &str,
