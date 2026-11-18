@@ -1399,6 +1399,22 @@ Widgets 画廊=auto-os 顶层 `widgets-gallery/`（PLAN-590 迁出；**OS064 域
 
 next_responsible_role: work（**优先序修订建议**：④域合同草案=最高杠杆（两批共同前置，建议先出 use-import/外部调用的目标域合同草案供拍板）；并行 U01 可执行面（001/002 oracle 深化）。WEB 生成器道续行不变）。
 
+### 2026-11-18 B-AV U01 首切片：文本输入组件的 AV 窗口面（work）
+
+**stage: work | plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（批增量；U01 输入面 CPU 档交付）| worktree: lang-980 @ plan-980-dev | code_commit: lang `bf95b9165`、ui `07df742c`。**
+
+**交付。** ①UI 桥：`InputSpec` 投影（`input (value: .field) { oninput: .Msg }` → 值绑定字段 + typed 消息，目标编号接 buttons 后）+ `ScriptStep::TypeText`（真实键入与脚本同一边界——pending 文本 FIFO 与 provider 事件队列 (instance,target) 一一配对）+ typed 派发 `dispatch_with_args`（str 原样/int 桥面解析）+ **非法数值输入具名拒零效果**（"abc"→int 绑定：DispatchRefused、状态不动、零 apply）+ close 清队（键入配对随 session 死）；②窗口面：`NodeDesktopMsg::Type` + `View::input` 受控单向回显（iced INPUT_TEXT 同口——键入→typed 队列→AV 重放→apply→回显）；③e2e 例程 `type` 动作（文本=余段，中文可用）；④U01 四 oracle 永久 case：**中文原值回显**（"你好 Auto" str 载荷经 typed 队列→AV 场景重放→apply str）、**数值输入**（"42"/-5）、**非法输入拒零效果**（apply 证据面断言：str 4 次=2 键入+2 初值、int 4 次、非法不增）、**两实例隔离**（i0/i1 各自键入互不串）+ 静态面负控（无 model 源带输入目标=装载拒）。
+
+**附带发现①（#6m 投影缺口，已闭）**：`input (value:.a){oninput:.SetA}` 的括号属性与体条目**自 #6m 起在 ACE 投影全丢**（`Element(input).items=[]`——消费全在方言侧故未暴露）。根因：`collect_view_items` 的 `unwrap_child` 假设单层 alt 包装——props 段条目（`age-view-entry` 具体规则，非 `age-view-item` 包装）被错误下钻到 `age-event-key` 后整条丢弃；体块（`age-element-props-body`）包装同理。修复（lang `bf95b9165`）：先按自身 kind 匹配、未匹配包装 raw 递归下钻。**零回归实证**：census 冻结聚合 (75,8,7,23) 不动（lane 按区间/函数发现，不受 view 树条目恢复影响）+ 979/981 冻结面全绿。
+
+**附带发现②（文法边界，具名不改）**：model 多字段**逗号同行**不被支持（`list-nl`=换行分隔——与 on 块成员同族；探针矩阵二分定位）。夹具按换行形；此为既定文法边界非本切片回归。
+
+**验证（冻结提交实测）。** lang `cargo t ace-source ace-av` **双 PASS**（run-spewnfcp）；UI ace_node_desktop **10/10**（串行 0.81–1.00s，冻结命令 `--test-threads=1`——并行跑=provider 单例竞态环境族，非判据）；ace_ts_provider **24/24**（1 红=node Temp host.mjs 竞态，隔离重放绿+全量重跑绿=环境归因台账）；vue 门 **77/82**（chart×5 具名预存）；ace_native_window **5/5**。新 case 计时：U01 主 case ~0.2s、静态负控 <0.1s（≤10s）。探针零残留；双仓 fmt clean（本批文件）。
+
+**边界（诚实）。** e2e 排窗输入档（真窗真实键入回显）未实跑——窗口面代码已接线（Type 消息+受控渲染），排窗档随 B-AV 后续切片或里程碑跑；011-pdigit 子面、Gallery（OS064）未动；④域合同（use-import/f64）仍是 003/011 全量与 U02–U06 的墙（§9 分母冻结）。
+
+next_responsible_role: review（U01 首切片批级复核）→ merge（phase fold #14）；后续切片=④域合同草案（最高杠杆）或 U01 余量（e2e 排窗档/011 子面）。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
