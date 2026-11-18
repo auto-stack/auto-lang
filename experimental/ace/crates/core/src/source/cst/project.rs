@@ -4408,6 +4408,18 @@ impl<'a> Engine<'a> {
                         span,
                     });
                 }
+                crate::source::config_document::ConfigPairValue::Scalar(_) => {
+                    // PLAN-982（④）：宽标量还没有对象字段的承载面（S2-C 之后再谈）。
+                    self.cx.reject(span, || {
+                        crate::atom_text::Diagnostic::new(
+                            crate::atom_text::Stage::Text,
+                            "source.config-document/pending",
+                            "f64/u64 scalar object fields need the `cfg-put.f64`/`cfg-put.u64` \
+                             primitives (PLAN-982 ④ S2-C)",
+                            span,
+                        )
+                    });
+                }
                 crate::source::config_document::ConfigPairValue::Node(_) => {
                     self.cx.reject(span, || {
                         crate::atom_text::Diagnostic::new(
