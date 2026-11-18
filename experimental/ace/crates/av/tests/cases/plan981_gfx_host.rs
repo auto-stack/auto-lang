@@ -18,8 +18,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ace_av::age_gfx::{AgeGfxFault, AgeGfxHost, AgeGfxSession};
-use ace_av_core::contract::Value;
+use ace_av::age_gfx::{AgeGfxFault, AgeGfxHost, AgeGfxReturn, AgeGfxSession};
+use ace_av_core::contract::{StrHandle, Value};
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::compile_age_package;
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
@@ -71,16 +71,45 @@ fn fmt(v: &Value) -> String {
 }
 
 impl AgeGfxHost for FakeHost {
-    fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<Value, AgeGfxFault> {
+    fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault> {
         self.calls
             .borrow_mut()
             .push((symbol.to_string(), args.iter().map(fmt).collect()));
         match symbol {
-            "age.tick.dt.v1" => Ok(Value::F32(self.dt)),
-            "age.input.space.v1" => Ok(Value::I32(1)),
-            "age.input.x.v1" => Ok(Value::F32(0.25)),
-            "age.row.place.v1" => Ok(Value::I32(1)),
-            "age.render2d.spawn.v1" => Ok(Value::I32(7)),
+            "age.tick.dt.v1" => Ok(AgeGfxReturn::Scalar(Value::F32(self.dt))),
+            "age.input.space.v1" => Ok(AgeGfxReturn::Scalar(Value::I32(1))),
+            "age.input.x.v1" => Ok(AgeGfxReturn::Scalar(Value::F32(0.25))),
+            "age.row.place.v1" => Ok(AgeGfxReturn::Scalar(Value::I32(1))),
+            "age.render2d.spawn.v1" => Ok(AgeGfxReturn::Scalar(Value::I32(7))),
+            // G4 冻结：`render2d.frame(i32, str, i32, i32)` 的第二参是**已声明、
+            // 带帧表的图像资源名**（不是文件路径）；provider 原样收到。
+            "age.render2d.frame.v1" => Ok(AgeGfxReturn::Scalar(Value::I32(2))),
+            // 端口 op：一次调用返回完整字段序列（AGE_PORT_FIELDS 声明序）。
+            "age.query2d.segment.v1" => Ok(AgeGfxReturn::Record(vec![
+                Value::Bool(true),
+                Value::I32(3),
+                Value::F32(0.5),
+                Value::F32(1.0),
+                Value::F32(2.0),
+                Value::F32(0.0),
+                Value::F32(-1.0),
+            ])),
+            "age.query2d.sweep.v1" => Ok(AgeGfxReturn::Record(vec![
+                Value::Bool(true),
+                Value::I32(5),
+                Value::F32(0.25),
+                Value::F32(4.0),
+                Value::F32(5.0),
+                Value::F32(0.0),
+                Value::F32(1.0),
+                Value::Bool(false),
+            ])),
+            "age.image2d.png.v1" => Ok(AgeGfxReturn::Record(vec![
+                Value::Str(StrHandle::detached(b"deadbeef".to_vec().into_boxed_slice())),
+                Value::I32(16),
+                Value::I32(64),
+                Value::I32(32),
+            ])),
             other => Err(AgeGfxFault::new(
                 "unknown-op",
                 format!("`{other}` is not implemented by this provider"),
@@ -226,6 +255,123 @@ fn p981_gfx_host_input_and_sprite_calls_dispatch() {
             "str".to_string(),
             "f32:0.25".to_string(),
             "f32:0".to_string()
+        ]
+    );
+}
+
+/// 端口 op：**一次**宿主调用返回完整 typed record；查询照原价收费（segment 8 /
+/// sweep 16 / image 1），端口字段读 0 credit，且 provider 只收到一次调用。
+#[test]
+fn p981_gfx_host_port_record_ops_publish_one_typed_record_per_call() {
+    const SEG: &str = "pub fn probe() f32 {\n    let q Cast2D = query2d.segment(1, true, 0.0, 0.0, 1.0, 0.0)\n    return q.point_x + q.point_y\n}\n";
+    let compiled = compile(SEG);
+    let (mut s, calls) = session(0.5);
+    s.begin_tick();
+    assert_eq!(
+        run(&mut s, &compiled, "probe").expect("segment record op executes"),
+        Value::F32(3.0),
+        "field reads come from the published record (1.0 + 2.0)"
+    );
+    assert_eq!(
+        s.credits_used(),
+        8,
+        "one segment call = 8 credits; field reads are free"
+    );
+    assert_eq!(
+        calls.borrow().len(),
+        1,
+        "exactly one host call for the query"
+    );
+
+    const SWEEP: &str = "pub fn sweep_p() bool {\n    let s Sweep2D = query2d.sweep(1, true, 1.0, 0.0)\n    return s.start_overlap\n}\n";
+    let compiled = compile(SWEEP);
+    let (mut s, calls) = session(0.5);
+    s.begin_tick();
+    assert_eq!(
+        run(&mut s, &compiled, "sweep_p").expect("sweep record op executes"),
+        Value::Bool(false)
+    );
+    assert_eq!(s.credits_used(), 16);
+    assert_eq!(calls.borrow().len(), 1);
+
+    const IMG: &str = "pub fn img_len() i32 {\n    let img Image2D = image2d.png(\"assets/x.png\")\n    return img.byte_length\n}\n";
+    let compiled = compile(IMG);
+    let (mut s, calls) = session(0.5);
+    s.begin_tick();
+    assert_eq!(
+        run(&mut s, &compiled, "img_len").expect("image2d record op executes"),
+        Value::I32(16)
+    );
+    assert_eq!(s.credits_used(), 1);
+    assert_eq!(calls.borrow().len(), 1);
+}
+
+/// 宿主返回的记录与冻结端口字段数/类型不符：具名拒、不写结果槽（零效果）。
+#[test]
+fn p981_gfx_host_port_record_shape_and_types_are_checked() {
+    struct ShortHost;
+    impl AgeGfxHost for ShortHost {
+        fn dispatch(&mut self, _s: &str, _a: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault> {
+            Ok(AgeGfxReturn::Record(vec![Value::I32(0)]))
+        }
+    }
+    let compiled = compile("pub fn probe() bool {\n    let q Cast2D = query2d.segment(1, true, 0.0, 0.0, 1.0, 0.0)\n    return q.hit\n}\n");
+    let mut s = AgeGfxSession::new(Box::new(ShortHost));
+    s.begin_tick();
+    let err = run(&mut s, &compiled, "probe").expect_err("a short record must be rejected");
+    assert!(
+        err.contains("age-gfx.result-shape") && err.contains("Cast2D"),
+        "{err}"
+    );
+
+    struct WrongTypeHost;
+    impl AgeGfxHost for WrongTypeHost {
+        fn dispatch(&mut self, _s: &str, _a: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault> {
+            // 7 个字段，但 hit 给成 i32（应为 bool）。
+            Ok(AgeGfxReturn::Record(vec![
+                Value::I32(1),
+                Value::I32(3),
+                Value::F32(0.5),
+                Value::F32(1.0),
+                Value::F32(2.0),
+                Value::F32(0.0),
+                Value::F32(-1.0),
+            ]))
+        }
+    }
+    let mut s = AgeGfxSession::new(Box::new(WrongTypeHost));
+    s.begin_tick();
+    let err = run(&mut s, &compiled, "probe").expect_err("wrong field type must be rejected");
+    assert!(
+        err.contains("age-gfx.result-type") && err.contains("hit"),
+        "{err}"
+    );
+}
+
+/// G4 冻结：`render2d.frame.v1(i32, str, i32, i32)` 的第二参=**图像资源名**
+/// （文件路径只走 `image2d.png`），provider 原样收到、收费 1 credit。
+#[test]
+fn p981_gfx_host_frame_takes_a_resource_name_not_a_path() {
+    const FRAME: &str =
+        "pub fn frame_p() i32 {\n    return render2d.frame(1, \"atlas_main\", 0, 1)\n}\n";
+    let compiled = compile(FRAME);
+    let (mut s, calls) = session(0.5);
+    s.begin_tick();
+    assert_eq!(
+        run(&mut s, &compiled, "frame_p").expect("frame executes"),
+        Value::I32(2)
+    );
+    assert_eq!(s.credits_used(), 1);
+    let log = calls.borrow();
+    assert_eq!(log.len(), 1);
+    assert_eq!(log[0].0, "age.render2d.frame.v1");
+    assert_eq!(
+        log[0].1,
+        vec![
+            "i32:1".to_string(),
+            "str".to_string(),
+            "i32:0".to_string(),
+            "i32:1".to_string()
         ]
     );
 }

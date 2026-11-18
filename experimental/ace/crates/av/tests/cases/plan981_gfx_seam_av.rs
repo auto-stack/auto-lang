@@ -37,29 +37,47 @@ fn observe(src: &str) -> Result<ace_av::age_package::ObservedAgePackage, String>
     ace_av::age_package::observe_age_package(&compiled, 1)
 }
 
-/// 端口结果 op（query2d.segment）：多字段宿主返回 ABI 未接——lowering 具名
-/// 拒 `lower.age-gfx-port-result`（fail-closed，不伪造 record）。
+/// 编译包并**执行指定 helper**（无宿主）：宿主 op 命中即具名拒。
+fn run_without_host(src: &str, name: &str) -> Result<ace_av_core::contract::Value, String> {
+    let compiled = compile_age_package_with_scenario(
+        &[input(src)],
+        "app::main",
+        LegacyWidgetAlias::Reject,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 1,
+            ops: Vec::new(),
+        },
+    )
+    .map_err(|ds| format!("{ds:?}"))?;
+    let symbol = compiled
+        .symbol_of(name)
+        .unwrap_or_else(|| panic!("no symbol for `{name}`"));
+    ace_av::age_gfx::execute_without_host(&compiled.checked, &format!("d_{symbol}"))
+}
+
+/// 端口结果 op（query2d.segment）现在走**一次宿主调用返回 typed record**；
+/// 观察车道没有注册 provider ⇒ 实际执行该 helper 时 `age-gfx.host-unavailable`
+/// （fail-closed，不伪造值）。带 provider 的真值在 `plan981_gfx_host.rs`。
 #[test]
 fn p981_gfx_seam_av_query_lane_refused() {
-    const SRC: &str = "node P {\n    msg {\n        Tick\n    }\n    on {\n        .Tick -> {\n            .count += 1\n        }\n    }\n    model {\n        count int = 0\n    }\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn probe(r i32) bool {\n    let q Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n    return q.hit\n}\n";
-    // The helper itself is never called by the scenario — the module still
-    // lowers whole-module: the intrinsic call in ANY fn hits the port gate.
-    let err = observe(SRC).expect_err("the port-result op must name-refuse at lowering");
+    const SRC: &str = "node P {\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn probe() bool {\n    let q Cast2D = query2d.segment(1, true, 0.0, 0.0, 1.0, 0.0)\n    return q.hit\n}\n";
+    let err = run_without_host(SRC, "probe").expect_err("no provider: the query must refuse");
     assert!(
-        err.contains("lower.age-gfx-port-result") && err.contains("age.query2d.segment.v1"),
-        "named port-result refusal: {err}"
+        err.contains("age-gfx.host-unavailable"),
+        "named host-unavailable refusal: {err}"
     );
 }
 
-/// HostIdentity（image2d.png）：返回 Image2D 端口——同样落在 port-result ABI 拒；
-/// 文件内容身份由宿主计算注入（不伪造）。
+/// HostIdentity（image2d.png）同理：一次宿主调用返回 Image2D 端口；无 provider
+/// 时实际执行即 `age-gfx.host-unavailable`（身份不伪造）。
 #[test]
 fn p981_gfx_seam_av_image_identity_lane_refused() {
     const SRC: &str = "node M {\n    view {\n        text \"m\" {}\n    }\n}\n\npub fn img_len() i32 {\n    let img Image2D = image2d.png(\"assets/x.png\")\n    return img.byte_length\n}\n";
-    let err = observe(SRC).expect_err("image2d.png returns a port: named refusal");
+    let err = run_without_host(SRC, "img_len").expect_err("no provider: image2d must refuse");
     assert!(
-        err.contains("lower.age-gfx-port-result") && err.contains("age.image2d.png.v1"),
-        "named port-result refusal: {err}"
+        err.contains("age-gfx.host-unavailable"),
+        "named host-unavailable refusal: {err}"
     );
 }
 

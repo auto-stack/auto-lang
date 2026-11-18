@@ -5079,27 +5079,13 @@ k 0
                                     }
                                     lane => {
                                         // PLAN-981（IF-981-GFX-HOST-PORT）：宿主车道。
-                                        // **标量结果**的宿主 op 降成普通 import 调用——
-                                        // AV 在 callee 解析前按 symbol 分流到注册 provider
-                                        // （未注册具名拒）；**端口结果**（query2d.segment/
-                                        // sweep、image2d.png）需要多字段宿主返回 ABI，本片
-                                        // 仍具名拒（不伪造 record，也不拆成 N 次收费调用）。
+                                        // 单次 import 调用分流到注册 provider（未注册具名
+                                        // 拒）；**端口结果**（query2d.segment/sweep、
+                                        // image2d.png）同样走这一条调用——宿主一次返回
+                                        // 完整 typed record（用户裁定 2026-11-18），由 AV
+                                        // 按调用槽的 nominal record 类型逐字段复核后一次
+                                        // 发布；字段读 0 credit，查询照原价收费。
                                         let _ = lane;
-                                        let scalar_result =
-                                            matches!(
-                                            gop.result,
-                                            ace_core::source::age_resources::AgeGfxResult::Scalar(_)
-                                        );
-                                        if !scalar_result {
-                                            return Err(AdapterError::uns(
-                                                "lower.age-gfx-port-result",
-                                                format!(
-                                                    "AGE graphics service `{}` returns a typed port ({:?}); the multi-field host-return ABI is not wired yet (scalar-result host ops — input/tick/row/render2d — are supported). The port surface stays fail-closed rather than guessing a record",
-                                                    symbol,
-                                                    gop.result_port_name().unwrap_or("?")
-                                                ),
-                                            ));
-                                        }
                                         let sig = self.out.imports[imp as usize].sig;
                                         let result_ty =
                                             self.out.sig_of(sig).map(|f| f.result).ok_or_else(

@@ -26,7 +26,7 @@ use ace_core::source::age_resources::{gfx_by_symbol, gfx_credit_cost, GFX_CALLBA
 use ace_core::verify::CheckedModule;
 use ace_lowering::lower_checked_owned;
 
-pub use ace_av_core::age_gfx::{AgeGfxFault, AgeGfxHost};
+pub use ace_av_core::age_gfx::{AgeGfxFault, AgeGfxHost, AgeGfxReturn};
 
 /// 一次 Tick 的信用预算（与语言侧冻结值同一个常量来源，不另写一份数）。
 pub const TICK_CREDIT_BUDGET: u32 = GFX_CALLBACK_CREDIT_BUDGET;
@@ -141,6 +141,29 @@ impl AgeGfxSession {
     }
 }
 
+/// 无宿主的受检执行：宿主 op 一旦被**实际执行**即 `age-gfx.host-unavailable`
+/// （零效果）。用于观察车道的 fail-closed 负控与“没有 provider 不伪造值”验收
+/// ——不是第二条语言路径，仍是同一条 lower→MIR verify→ABC admit→AV 链。
+pub fn execute_without_host(checked: &CheckedModule, def_id: &str) -> Result<Value, String> {
+    let mir = lower_checked_owned(checked, def_id, 0x981)
+        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
+    mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
+    let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
+    let flat = wire.to_flat();
+    let decoded = decode_abc(&flat).map_err(|e| format!("decode `{def_id}`: {e:?}"))?;
+    let loaded = abc_verify::verify_abc(decoded, &mir.owner)
+        .map_err(|e| format!("admit `{def_id}`: {e:?}"))?;
+    let (outcome, _trace) =
+        ace_av_core::av::execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    match outcome {
+        ExecOutcome::Success { value, .. } => Ok(value),
+        ExecOutcome::Infra(message) => Err(message),
+        other => Err(format!(
+            "execution of `{def_id}` did not succeed: {other:?}"
+        )),
+    }
+}
+
 /// 计费/预算 wrapper：先记账再转发；超预算即 sticky 拒、不触达 provider。
 struct LedgerHost {
     provider: Rc<RefCell<Option<Box<dyn AgeGfxHost>>>>,
@@ -148,7 +171,7 @@ struct LedgerHost {
 }
 
 impl AgeGfxHost for LedgerHost {
-    fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<Value, AgeGfxFault> {
+    fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault> {
         {
             let mut l = self.ledger.borrow_mut();
             if l.faulted {
@@ -193,10 +216,10 @@ mod tests {
     struct Echo;
 
     impl AgeGfxHost for Echo {
-        fn dispatch(&mut self, _symbol: &str, args: &[Value]) -> Result<Value, AgeGfxFault> {
+        fn dispatch(&mut self, _symbol: &str, args: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault> {
             match args.first() {
-                Some(Value::I32(_)) => Ok(Value::I32(1)),
-                _ => Ok(Value::Bool(false)),
+                Some(Value::I32(_)) => Ok(AgeGfxReturn::Scalar(Value::I32(1))),
+                _ => Ok(AgeGfxReturn::Scalar(Value::Bool(false))),
             }
         }
     }

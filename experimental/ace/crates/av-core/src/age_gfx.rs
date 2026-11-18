@@ -35,6 +35,16 @@ impl AgeGfxFault {
     }
 }
 
+/// 宿主派发的返回值：标量 op 直接给 `Value`；**端口 op**（查询/图像身份）一次
+/// 调用返回**完整字段序列**（按 `AGE_PORT_FIELDS` 声明序），由派发层按调用槽
+/// 的 nominal record 类型核对后组装成 `Value::Record` 一次发布（字段读 0 credit，
+/// 不拆成 N 次收费调用）。
+#[derive(Clone, Debug, PartialEq)]
+pub enum AgeGfxReturn {
+    Scalar(Value),
+    Record(Vec<Value>),
+}
+
 /// 图形宿主 provider：按受检 symbol 派发，参数/结果就是 AV 的 `Value`。
 ///
 /// provider 不接触编译器、不重解析源；它只实现算法（JUDGE：查询/行状态/精灵
@@ -42,7 +52,7 @@ impl AgeGfxFault {
 /// fault：AV 以 `ExecOutcome::Infra("age-gfx.<code>: <message>")` 终止本次运行
 /// （不写结果槽 → 对状态零效果）。
 pub trait AgeGfxHost {
-    fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<Value, AgeGfxFault>;
+    fn dispatch(&mut self, symbol: &str, args: &[Value]) -> Result<AgeGfxReturn, AgeGfxFault>;
 }
 
 /// 是否为 AGE 图形服务的**宿主派发** symbol（标量结果那 13 个）。
@@ -94,7 +104,10 @@ pub fn uninstall() -> Option<Box<dyn AgeGfxHost>> {
 }
 
 /// 派发给本线程注册的宿主：`None` = 未注册（调用点据此具名拒）。
-pub(crate) fn dispatch_current(symbol: &str, args: &[Value]) -> Option<Result<Value, AgeGfxFault>> {
+pub(crate) fn dispatch_current(
+    symbol: &str,
+    args: &[Value],
+) -> Option<Result<AgeGfxReturn, AgeGfxFault>> {
     REGISTERED.with(|r| {
         r.borrow_mut()
             .as_mut()

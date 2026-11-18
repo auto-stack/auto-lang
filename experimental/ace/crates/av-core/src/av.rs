@@ -3934,35 +3934,94 @@ fn dispatch_with_host<V: ModuleView>(
                                     let fr = st.frames.last().expect("frame");
                                     args.iter().map(|s| fr.slots[*s as usize].clone()).collect()
                                 };
-                                let Some(value) = crate::age_gfx::dispatch_current(sym, &arg_vals)
-                                else {
-                                    return Some(ExecOutcome::Infra(
-                                        "age-gfx.host-unavailable: no AGE graphics host provider \
-                                         is registered for this run"
-                                            .into(),
-                                    ));
-                                };
-                                let value = match value {
-                                    Ok(v) => v,
-                                    Err(f) => {
+                                let ret = match crate::age_gfx::dispatch_current(sym, &arg_vals) {
+                                    Some(Ok(r)) => r,
+                                    Some(Err(f)) => {
                                         return Some(ExecOutcome::Infra(format!(
                                             "age-gfx.{}: {}",
                                             f.code, f.message
                                         )))
                                     }
+                                    None => {
+                                        return Some(ExecOutcome::Infra(
+                                            "age-gfx.host-unavailable: no AGE graphics host \
+                                             provider is registered for this run"
+                                                .into(),
+                                        ))
+                                    }
                                 };
-                                let want = v
+                                let want_ty = v
                                     .fn_at(func_idx)
                                     .and_then(|f| f.slots.get(*dst as usize))
-                                    .and_then(|s| v.mir_type_of(func_idx, s.ty));
-                                if !crate::age_gfx::value_matches_type(&value, want) {
-                                    return Some(ExecOutcome::Infra(format!(
-                                        "age-gfx.result-type: provider returned {value:?} for \
-                                         `{sym}`; the call slot expects {want:?}"
-                                    )));
+                                    .map(|s| s.ty);
+                                // 一次宿主调用返回**完整 typed record**（用户裁定
+                                // 2026-11-18）：字段按 AGE_PORT_FIELDS 声明序，这里按
+                                // 调用槽的 nominal record 类型逐字段复核后组装一次发布
+                                // ——字段读 0 credit，不拆成 N 次收费调用。
+                                let value = match ret {
+                                    crate::age_gfx::AgeGfxReturn::Scalar(val) => {
+                                        let want =
+                                            want_ty.and_then(|ty| v.mir_type_of(func_idx, ty));
+                                        if !crate::age_gfx::value_matches_type(&val, want) {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "age-gfx.result-type: provider returned {val:?} for \
+                                                 `{sym}`; the call slot expects {want:?}"
+                                            )));
+                                        }
+                                        val
+                                    }
+                                    crate::age_gfx::AgeGfxReturn::Record(fields) => {
+                                        let Some(ty) = want_ty else {
+                                            return Some(ExecOutcome::Infra(
+                                                "age-gfx.result-type: record result without a call \
+                                                 slot type"
+                                                    .into(),
+                                            ));
+                                        };
+                                        let Some(crate::mir::MirType::Record(rt)) =
+                                            v.mir_type_of(func_idx, ty)
+                                        else {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "age-gfx.result-type: `{sym}` returns a record but \
+                                                 the call slot is not a record"
+                                            )));
+                                        };
+                                        if fields.len() != rt.fields.len() {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "age-gfx.result-shape: `{sym}` returned {} field(s); \
+                                                 `{}` has {}",
+                                                fields.len(),
+                                                rt.name,
+                                                rt.fields.len()
+                                            )));
+                                        }
+                                        for (i, (field, def)) in
+                                            fields.iter().zip(rt.fields.iter()).enumerate()
+                                        {
+                                            let want = v.mir_type_of(func_idx, def.ty);
+                                            if !crate::age_gfx::value_matches_type(field, want) {
+                                                return Some(ExecOutcome::Infra(format!(
+                                                    "age-gfx.result-type: `{sym}` field #{i} \
+                                                     ({}) is {field:?}; expected {want:?}",
+                                                    def.name
+                                                )));
+                                            }
+                                        }
+                                        Value::Record(std::rc::Rc::new(
+                                            crate::contract::RecordValue { ty, fields },
+                                        ))
+                                    }
+                                };
+                                if matches!(value, Value::Record(_)) {
+                                    if let Err(out) =
+                                        commit_slot_write(st, *dst as usize, value, limits)
+                                    {
+                                        return Some(out);
+                                    }
+                                } else {
+                                    let fr = st.frames.last_mut().expect("frame");
+                                    fr.slots[*dst as usize] = value;
                                 }
-                                let fr = st.frames.last_mut().expect("frame");
-                                fr.slots[*dst as usize] = value;
                                 if started.elapsed() > limits.wall {
                                     return Some(ExecOutcome::Resource {
                                         kind: ResourceKind::ExecutionWall,
