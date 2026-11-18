@@ -174,8 +174,13 @@ fn p981_age_package_grammar_identity_is_stable_across_lookups() {
 fn p981_age_package_grammar_id_is_frozen() {
     // PLAN-980 WEB #6m（2026-11-18 具名重基线）：共享 age-event-key 规则
     // 族（事件键修饰符）进 age-package 面——前值 14561796… 随本批漂移。
+    // PLAN-981（D-981-AGE-F32-SURFACE，2026-11-18 具名重基线）：`ann-ty` /
+    // `ret-ty` 增 f32 注解臂（fn 参数/返回/let 注解）——**只有** age-package
+    // 漂移（前值 6c1bb477…）；age-component 与 12 个非 AGE 邻居逐字节不变
+    //（上表逐行冻结，任何邻居漂移都会红）。age-component 侧的 f32 走 ident
+    // 拼写，不需要该臂（其 `pub fn` 本就不在面内）。
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "6c1bb4778a800a865ef0ddb6166d1a8dbd358eecd73ce1ccf0e5445c1005d587"
+        "2d1e0547d9dd989127639a0a6d63173810ff9c9ef637b194773d6e727919704c"
     );
 }

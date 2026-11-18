@@ -1362,6 +1362,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 按拼写+profile 分类与拒绝）；closures 面的 fn 型后备选（词备选在
         // `fn` token 上干净失败后回退到达）。
         ret-ty {
+            // PLAN-981（D-981-AGE-F32-SURFACE）：AGE 包面的 f32 **注解位**——此前
+            // `f32` 在该面是关键字 token，而本规则无对应 alt，故 `fn f(..) f32`
+            // 解析失败（model 字段位另由 `age-model-ty` 承载）。只开 `f32` 拼写：
+            // `float` 保持关键字但不在注解位（同词异名不引入第二宽度语义）。
+            alt(profiles: [age-package]) { f32-kw(field: "word") }
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -1387,6 +1392,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // 参数/字段/let 注解类型（入口 void 由 entry 面的拼写分类处理）
         ann-ty {
+            // PLAN-981（D-981-AGE-F32-SURFACE）：与 `ret-ty` 同一 f32 注解位
+            //（fn 参数 / `let` / `const` 注解）——两规则必须同词，否则返回位与
+            // 参数位会一边能写一边不能写。
+            alt(profiles: [age-package]) { f32-kw(field: "word") }
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }

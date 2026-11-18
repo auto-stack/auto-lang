@@ -1069,7 +1069,8 @@ fn compile_program_observed(
     capabilities: &[String],
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
-) -> Result<SourceParts, Vec<Diagnostic>> {    let resolved = match super::resolve_with(program, capabilities, profile) {
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let resolved = match super::resolve_with(program, capabilities, profile) {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Resolve, &[]);
@@ -3908,6 +3909,19 @@ impl<'p> Emitter<'p> {
         nl!(8);
 
         // -- types ----------------------------------------------------------
+        // PLAN-981（D-981-AGE-F32-SURFACE）：text-record 面按**实际使用**补
+        // `t_f32`（组件场景的 f32 状态与积分）。无 f32 的程序逐字节不变，既有
+        // Atom 文本/身份不受扰动；age-package 面另行无条件声明（资源分量）。
+        let uses_f32 = self.profile == super::SourceProfile::TextRecord
+            && (self
+                .plans
+                .iter()
+                .any(|p| p.exprs.iter().any(|e| e.vt == VT::F32))
+                || self.program.fns.iter().any(|f| {
+                    f.result == VT::F32
+                        || f.params.iter().any(|v| *v == VT::F32)
+                        || f.locals.iter().any(|l| l.vt == VT::F32)
+                }));
         frag!("types", program_span);
         t.push(' ');
         frag!("{", program_span);
@@ -3939,6 +3953,10 @@ impl<'p> Emitter<'p> {
         } else if self.profile == SourceProfile::AgePackage {
             // PLAN-981：AGE 作者面只用 f32（资源分量/坐标），故只补这一行；
             // 其余数字 case 不进本面（text-record 描述符不认它们）。
+            frag!("type t_f32 f32 {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+        } else if uses_f32 {
             frag!("type t_f32 f32 {}", program_span);
             spans.types.push(program_span);
             nl!(12);

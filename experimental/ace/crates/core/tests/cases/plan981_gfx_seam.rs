@@ -4,10 +4,12 @@
 //! （ValueCtor=AV 可执行；HostAlgorithm/HostIdentity=AV 观察车道具名拒、
 //! 图形宿主车道消费）见 av 侧测试。差额表与 owner 边界见计划 §9。
 //!
-//! **具名边界（UI058 T-02 联冻项）**：f32 **注解位**（top-level fn 参数/
-//! 返回/let 注解）不在 age-package 基础文法词表（grammar 冻结面）；f32
-//! **二元运算/比较**不在 text-record atom 面（BinOp 无 f32 cases）。值面
-//! （字面量/服务结果/端口字段读）已定型可流。
+//! **f32 面（2026-11-18，D-981-AGE-F32-SURFACE 关闭）**：注解位（fn 参数/
+//! 返回/`let`）已在 age-package 面开放（`ann-ty`/`ret-ty` 增 f32 臂）；f32
+//! 同型四则/比较已在 text-record Atom 描述符（`expr.binary:*_f32`）与 shared
+//! lowering 上登记；组件面经 f32 model 字段 + Tick 重放真实落值
+//! （`av/tests/cases/plan981_f32_surface.rs`）。仍在面外：文本叶呈现 f32
+//! （原子编码的 i32 面）、混宽隐式提升（保持具名拒）、`f64`/`double`。
 use ace_core::source::age_h0::LegacyWidgetAlias;
 use ace_core::source::age_package::compile_age_package;
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};

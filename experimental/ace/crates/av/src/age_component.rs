@@ -80,6 +80,18 @@ pub fn observe_component_texts(
     Ok(per_node)
 }
 
+/// PLAN-981（D-981-AGE-F32-SURFACE）：执行任意已编译 def 并返回共享 `Value`。
+///
+/// 这是状态观察的**宽值出口**：窄枚举 [`ComponentFieldValue`] 只承载
+/// int/bool/str（auto-ui 消费端按该枚举穷尽匹配；扩 F32 须与其 `AceStateValue`、
+/// TS 能力类型与文本呈现同窗改），f32 状态经本函数在 AV 面取值而不破坏消费端。
+pub fn execute_component_def(
+    compiled: &ComponentCompilation,
+    def_id: &str,
+) -> Result<Value, String> {
+    execute_value(&compiled.checked, def_id)
+}
+
 /// 对已编译结果执行驱动与文本叶（可复用于暖路径）。
 pub fn observe_compiled(compiled: &ComponentCompilation) -> Result<ObservedComponent, String> {
     // 驱动 def id 由共享 adapter 唯一决定（`d___age_drive`）。
@@ -156,7 +168,9 @@ pub fn observe_component_states(compiled: &ComponentCompilation) -> Result<Obser
                     },
                     other => {
                         return Err(format!(
-                            "state `{}` carries unsupported type `{other}`",
+                            "state `{}` carries type `{other}`, which the narrow \
+                             ComponentFieldValue view does not carry (f32 等宽值走 \
+                             `execute_component_def` 的共享 Value 出口)",
                             s.fn_name
                         ))
                     }

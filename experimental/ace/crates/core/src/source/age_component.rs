@@ -1084,7 +1084,7 @@ fn compile_component_scenario_full(
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
-                    "the component slice supports `int`/`i32`/`bool`/`str` model fields; field `{}` is `{}`",
+                    "the component slice supports `int`/`i32`/`bool`/`str`/`f32` model fields; field `{}` is `{}`",
                     f.name, f.ty
                 ),
                 f.ty_span,
@@ -2095,6 +2095,11 @@ pub(crate) fn rename_expr_with_params(
         | ExprKind::StrLit(_)
         | ExprKind::CharLit(_)
         | ExprKind::NilLit => expr.clone(),
+        // PLAN-981（D-981-AGE-F32-SURFACE）：类型化数值字面量（`0.5`/`1.5f32`/
+        // `1i64`——浮点字面量恒为此形）原样透传。此前落 `_` 分支被当作"未接线
+        // 表达式形"拒，于是 f32 模型初值与 f32 运算的右操作数都进不来；共享
+        // resolver 已按 `ty` 给出真实类型，本层不猜也不降级。
+        ExprKind::TypedLit { .. } => expr.clone(),
         // PLAN-980：widget DSL 的  引用（投影为 Field{base: Var("self")}）
         // = model 字段引用——与裸 Var 同一重命名通道；PLAN-981 PARAMS-B：
         // `.field` **不**走形参遮蔽（形参只遮蔽裸标识符）。
@@ -2301,7 +2306,7 @@ pub(crate) fn instance_stmts(
                 "source.age.component-unsupported",
                 format!(
                     "`model` field `{}` has type `{}`, which this slice cannot hold yet \
-                     (supported: int/i32/bool/str)",
+                     (supported: int/i32/bool/str/f32)",
                     f.name, f.ty
                 ),
                 f.ty_span,
@@ -2626,7 +2631,7 @@ fn initial_literal(v: &InitialValue, span: Span) -> Expr {
     Expr { span, kind }
 }
 
-/// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool）。
+/// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool/str/f32）。
 pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {
         "int" | "i32" => Some(TypeWord::I32),
@@ -2634,6 +2639,10 @@ pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
         // PLAN-980：传统 widget 工程的 str 状态字段（002 形）。状态函数按
         // Str 返回；驱动观测仍限 int 字段（打包编码不变）。
         "str" | "Str" => Some(TypeWord::StrOwned),
+        // PLAN-981（D-981-AGE-F32-SURFACE）：f32 状态字段（UI058 位置/速度）。
+        // 组件面 `f32` 是普通 ident、包面是关键字 token——两条投影路径都归到
+        // 同一 `Float`（f32）宽度，**不做**隐式提升/`float`→f64 分化。
+        "f32" | "float" => Some(TypeWord::Float),
         _ => None,
     }
 }
