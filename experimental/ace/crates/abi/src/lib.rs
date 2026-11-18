@@ -48,6 +48,7 @@ pub mod rust_f0_worker;
 /// shim -> one cdylib closure) and its in-process loader.
 #[cfg(windows)]
 pub mod rust_provider;
+pub mod py_session;
 pub mod semref;
 mod source_crt;
 pub mod source_foreign;

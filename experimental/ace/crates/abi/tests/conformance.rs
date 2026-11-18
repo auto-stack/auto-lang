@@ -47,8 +47,8 @@ mod out_frame_1064;
 mod plan980_f0_cache;
 #[path = "cases/py_bridge_1026.rs"]
 mod py_bridge_1026;
-#[path = "cases/py_probe_1026.rs"]
-mod py_probe_1026;
+#[path = "cases/py_session_1026.rs"]
+mod py_session_1026;
 #[path = "cases/rust_f0.rs"]
 mod rust_f0;
 #[path = "cases/scalar_bridge.rs"]

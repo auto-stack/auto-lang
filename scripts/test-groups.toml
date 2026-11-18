@@ -1197,6 +1197,21 @@ domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad"
 all = false
 
+# PLAN-1026 T-05: the explicit Python interop fixed group — the frozen
+# py lane (use.py sugar + py-bridge CPython adapter + the §5.1 training
+# acceptance). Explicit opt-in: interpreter/torch missing = named failure
+# (never a silent 0-selected); base groups never depend on pyo3.
+[[group]]
+name = "ace-python"
+title = "ACE Python互操作（PLAN-1026 py lane）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-abi", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml", "-E", "test(p1026)"]
+expression = "test(p1026)"
+tools = []
+domain = "ace"
+all = false
+
 [[group]]
 name = "ace-foreign-contract"
 title = "Cargo包 ace-foreign-contract（PLAN-937 CA-D1 中立接口事实/物理投影）"
