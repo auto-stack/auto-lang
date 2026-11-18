@@ -7212,7 +7212,12 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                 }
                 MirInstr::HostCall { host: index, arg } => {
-                    let Some(h) = v.host_imports().get(*index as usize) else {
+                    // PLAN-982 (Q-982-2 step 2): func-aware host-import
+                    // resolution — the split-unit link path keeps host
+                    // indices UNIT-LOCAL (same discipline PlatformCall got
+                    // in PLAN-973); the merged view ignores the func.
+                    let cur_func = st.frames.last().expect("frame present").func;
+                    let Some(h) = v.host_import_at(cur_func, *index) else {
                         return Some(ExecOutcome::Infra(
                             "host.reference: missing declaration".into(),
                         ));

@@ -2762,6 +2762,11 @@ impl<'a> Walker<'a> {
                         // PLAN-1041: 平台保留名（io_write_some_slice 等）在包体里
                         // 原样透传给 resolver（其按 profile/能力绑定为平台内在
                         // 调用）；绑定层不改写符号。
+                    } else if crate::source::console::is_reserved_name(&callee.name) {
+                        // PLAN-982（Q-982-2 第二步）: console 拼写（print/
+                        // eprint/say）在包体原样透传给 resolver（其按 profile
+                        // 绑定为 console 内在调用——同 PLAN-1041 平台保留名
+                        // 纪律）。
                     } else if self.aggregates
                         && matches!(callee.name.as_str(), "Some" | "None" | "Ok" | "Err")
                     {
