@@ -57,13 +57,18 @@ pub fn pipe_addr(name: &str) -> String {
 
 /// The ACE session daemon (transport-agnostic core + transports).
 pub struct AceDaemon {
-    /// request id → (request line, serialized response). A replay fires
-    /// only when the id AND the full request line match — a reused id
-    /// carrying a DIFFERENT request is a fresh dispatch (the legacy wire
-    /// client numbers ids per connection from 1, so the id alone cannot
-    /// identify a retry; PLAN-982 round 187).
-    cache: HashMap<u64, (String, String)>,
-    cache_order: std::collections::VecDeque<u64>,
+    /// (connection, request id) → (request line, serialized response).
+    /// The cache is scoped to ONE connection, and a replay fires only when
+    /// the id AND the full request line match (PLAN-982 round 187). Round
+    /// 190 added the connection scope: the legacy wire client opens a NEW
+    /// connection per CLI invocation, numbering ids from 1 with
+    /// byte-identical bodies — two `--new-session`s are indistinguishable
+    /// on the wire, so a cross-connection replay swallowed the second
+    /// request whole (the `--max-sessions` probe caught the second create
+    /// replaying the first's response verbatim). Within one connection an
+    /// identical retry still replays verbatim (V-08).
+    cache: HashMap<(u64, u64), (String, String)>,
+    cache_order: std::collections::VecDeque<(u64, u64)>,
 }
 
 impl Default for AceDaemon {
@@ -80,21 +85,30 @@ impl AceDaemon {
         }
     }
 
-    fn remember(&mut self, id: u64, request: &str, response: String) {
+    fn remember(&mut self, conn: u64, id: u64, request: &str, response: String) {
         if self.cache_order.len() >= IDEMPOTENCY_CACHE {
             if let Some(evict) = self.cache_order.pop_front() {
                 self.cache.remove(&evict);
             }
         }
-        self.cache_order.push_back(id);
-        self.cache.insert(id, (request.to_string(), response));
+        self.cache_order.push_back((conn, id));
+        self.cache
+            .insert((conn, id), (request.to_string(), response));
     }
 
     /// Handle one input LINE (without the trailing newline) and produce
     /// one output LINE. This is the whole protocol; the transports below
     /// only move bytes. Malformed input keeps the loop alive (in-band
-    /// error, legacy discipline).
+    /// error, legacy discipline). Connection 0 = the stdio transport's
+    /// single connection (and the direct-call tests).
     pub fn handle_line(&mut self, line: &str) -> String {
+        self.handle_line_on(0, line)
+    }
+
+    /// The connection-scoped core of [`AceDaemon::handle_line`]: `run_pipe`
+    /// stamps each accepted connection with a fresh generation so the
+    /// idempotency cache never replays across connections.
+    fn handle_line_on(&mut self, conn: u64, line: &str) -> String {
         let req: Value = match serde_json::from_str(line) {
             Ok(v) => v,
             Err(e) => {
@@ -122,14 +136,17 @@ impl AceDaemon {
         let has_id = req.get("id").map(|v| !v.is_null()).unwrap_or(false);
         let id = req.get("id").and_then(Value::as_u64).unwrap_or(0);
         if has_id {
-            // Idempotent replay: the SAME request line under the SAME id
-            // answers with the stored response VERBATIM (no re-execution —
-            // a reconnecting client's retry). A reused id with a DIFFERENT
-            // body is a fresh dispatch: the legacy wire client numbers ids
-            // per connection from 1, so ids collide across connections by
-            // design (PLAN-982 round 187 — replaying the create response
-            // to a same-id eval was a real interop bug).
-            if let Some((cached_request, cached)) = self.cache.get(&id) {
+            // Idempotent replay: the SAME request line under the SAME id ON
+            // THE SAME CONNECTION answers with the stored response VERBATIM
+            // (no re-execution — a retrying client's retry). A reused id
+            // with a DIFFERENT body, or the same body arriving on a NEW
+            // connection, is a fresh dispatch: the legacy wire client
+            // numbers ids per connection from 1 with byte-identical bodies,
+            // so cross-connection requests are indistinguishable from fresh
+            // ones by design (PLAN-982 round 187 caught the same-id
+            // different-body replay; round 190 caught the cross-connection
+            // identical-body replay swallowing a capped second create).
+            if let Some((cached_request, cached)) = self.cache.get(&(conn, id)) {
                 if cached_request == line {
                     return cached.clone();
                 }
@@ -139,7 +156,7 @@ impl AceDaemon {
         let serialized = serde_json::to_string(&response)
             .unwrap_or_else(|_| error_response(id, "response serialization failure"));
         if has_id {
-            self.remember(id, line, serialized.clone());
+            self.remember(conn, id, line, serialized.clone());
         }
         serialized
     }
@@ -288,14 +305,17 @@ impl AceDaemon {
     /// that client only — the daemon stays up for reconnects (the legacy
     /// pipe discipline). Two-thread shape (the legacy daemon's): a tokio
     /// thread owns accept/IO, the main thread handles requests
-    /// synchronously (no runtime nesting).
+    /// synchronously (no runtime nesting). Every accepted connection is
+    /// stamped with a fresh generation, which scopes the idempotency
+    /// replay cache to one connection (PLAN-982 round 190).
     pub fn run_pipe(self, pipe_name: &str) {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime for ACE session daemon");
         let pipe_path = pipe_addr(pipe_name);
         eprintln!("ACE session daemon: listening on {}", pipe_path);
 
         let (conn_tx, conn_rx) =
-            std::sync::mpsc::channel::<(String, std::sync::mpsc::Sender<String>)>();
+            std::sync::mpsc::channel::<(u64, String, std::sync::mpsc::Sender<String>)>();
+        let conn_counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let path = pipe_path.clone();
         let io_thread = std::thread::spawn(move || {
             rt.block_on(async move {
@@ -303,8 +323,17 @@ impl AceDaemon {
                 let _ = std::fs::remove_file(&path);
 
                 loop {
-                    let stream = accept_connection(&path).await;
-                    eprintln!("ACE session daemon: client connected");
+                    // A failed handshake (a client racing the listen window)
+                    // re-listens instead of killing the daemon — the
+                    // accept loop must survive the clients it rejects
+                    // (PLAN-982 round 190: an `.expect` here took the whole
+                    // daemon down on a lost handshake race).
+                    let stream = match accept_connection(&path).await {
+                        Some(stream) => stream,
+                        None => continue,
+                    };
+                    let conn = conn_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    eprintln!("ACE session daemon: client connected (#{conn})");
                     let (read, write) = tokio::io::split(stream);
                     let mut reader = tokio::io::BufReader::new(read);
                     let mut writer = tokio::io::BufWriter::new(write);
@@ -322,7 +351,7 @@ impl AceDaemon {
                             continue;
                         }
                         let (resp_tx, resp_rx) = std::sync::mpsc::channel::<String>();
-                        if conn_tx.send((trimmed.to_string(), resp_tx)).is_err() {
+                        if conn_tx.send((conn, trimmed.to_string(), resp_tx)).is_err() {
                             break;
                         }
                         if let Ok(json) = resp_rx.recv() {
@@ -340,39 +369,62 @@ impl AceDaemon {
                             break;
                         }
                     }
-                    eprintln!("ACE session daemon: client disconnected");
+                    eprintln!("ACE session daemon: client disconnected (#{conn})");
                 }
             })
         });
 
         let mut daemon = self;
-        while let Ok((line, resp_tx)) = conn_rx.recv() {
-            let response = daemon.handle_line(&line);
+        while let Ok((conn, line, resp_tx)) = conn_rx.recv() {
+            let response = daemon.handle_line_on(conn, &line);
             let _ = resp_tx.send(response);
         }
         let _ = io_thread.join();
     }
 }
 
+/// Accept one connection. `None` = a failed handshake (creation or the
+/// connect phase — e.g. a client lost racing the listen window): the
+/// accept loop re-listens; a rejected client must never kill the daemon
+/// (PLAN-982 round 190).
 #[cfg(windows)]
-async fn accept_connection(pipe_path: &str) -> tokio::net::windows::named_pipe::NamedPipeServer {
+async fn accept_connection(
+    pipe_path: &str,
+) -> Option<tokio::net::windows::named_pipe::NamedPipeServer> {
     use tokio::net::windows::named_pipe::ServerOptions;
-    let server = ServerOptions::new()
+    let server = match ServerOptions::new()
         .first_pipe_instance(false)
         .create(pipe_path)
-        .expect("Failed to create named pipe");
-    server.connect().await.expect("Pipe connect failed");
-    server
+    {
+        Ok(server) => server,
+        Err(e) => {
+            eprintln!("ACE session daemon: pipe create failed ({e}); re-listening");
+            return None;
+        }
+    };
+    match server.connect().await {
+        Ok(()) => Some(server),
+        Err(e) => {
+            eprintln!("ACE session daemon: connect handshake failed ({e}); re-listening");
+            None
+        }
+    }
 }
 
 #[cfg(unix)]
-async fn accept_connection(socket_path: &str) -> tokio::net::UnixStream {
+async fn accept_connection(socket_path: &str) -> Option<tokio::net::UnixStream> {
     use std::sync::OnceLock;
     use tokio::net::UnixListener;
     static LISTENER: OnceLock<UnixListener> = OnceLock::new();
     let listener = LISTENER
         .get_or_init(|| UnixListener::bind(socket_path).expect("Failed to bind Unix socket"));
-    listener.accept().await.expect("Accept failed").0
+    match listener.accept().await {
+        Ok((stream, _)) => Some(stream),
+        Err(e) => {
+            eprintln!("ACE session daemon: accept failed ({e}); re-listening");
+            None
+        }
+    }
 }
 
 fn ok_response(
@@ -571,6 +623,81 @@ mod tests {
             other.contains("Unknown method"),
             "a reused id with a new body is a fresh dispatch: {other}"
         );
+    }
+
+    /// PLAN-982 (EXEC, round 190): the replay cache is CONNECTION-scoped.
+    /// The legacy wire client opens a NEW connection per CLI invocation
+    /// with ids restarting at 1 and byte-identical bodies — the two creates
+    /// are indistinguishable on the wire, so a cross-connection replay
+    /// swallowed the second request whole (the `--max-sessions` probe
+    /// caught the second create replaying the first's response verbatim).
+    /// A counting stub host proves dispatch counts; the REAL cap ride is
+    /// the man-side CLI case (`p982_exec_serve_max_sessions_maps_to_the_host_cap`).
+    #[test]
+    fn p982_daemon_replay_is_connection_scoped() {
+        use crate::ace_session::{
+            AceSessionHost, AceSessionOp, AceSessionOutcome, AceSessionReport, AceSessionValue,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        struct CountingHost(AtomicUsize);
+        fn canned(n: usize) -> AceSessionReport {
+            AceSessionReport {
+                session: Some(format!("ses_{n:04}")),
+                outcome: AceSessionOutcome::Ok,
+                revision: 0,
+                value: AceSessionValue::None,
+                eval_id: None,
+                vars: Vec::new(),
+                snapshot: None,
+                rebuilt: false,
+                wall_ms: 0.0,
+            }
+        }
+        impl AceSessionHost for CountingHost {
+            fn create(
+                &self,
+                _source: Option<&str>,
+                _wall: Option<std::time::Duration>,
+            ) -> AceSessionReport {
+                canned(self.0.fetch_add(1, Ordering::SeqCst) + 1)
+            }
+            fn op(&self, _session: &str, _op: AceSessionOp<'_>) -> AceSessionReport {
+                canned(0)
+            }
+            fn list(&self) -> Vec<String> {
+                Vec::new()
+            }
+            fn cleanup_expired(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+
+        let _guard = REGISTRY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let host = Arc::new(CountingHost(AtomicUsize::new(0)));
+        crate::ace_session::install_ace_session_host(host.clone()).expect("install");
+        let mut d = AceDaemon::new();
+        let create = r#"{"id":1,"method":"new-session"}"#;
+
+        // Connection A: create #1 dispatches (count 1, ses_0001).
+        let a1 = d.handle_line_on(1, create);
+        assert!(a1.contains("ses_0001"), "{a1}");
+        // SAME line, SAME connection: retry replays verbatim (no dispatch).
+        let a2 = d.handle_line_on(1, create);
+        assert_eq!(a1, a2, "an identical same-connection retry replays");
+        assert_eq!(host.0.load(Ordering::SeqCst), 1, "no re-execution");
+
+        // The SAME line on a NEW connection (the legacy client's next
+        // invocation): must DISPATCH (count 2, ses_0002) — never replay A's
+        // response.
+        let b1 = d.handle_line_on(2, create);
+        assert!(
+            b1.contains("ses_0002"),
+            "a cross-connection identical request dispatches fresh: {b1}"
+        );
+        assert_eq!(host.0.load(Ordering::SeqCst), 2);
+        crate::ace_session::shutdown_ace_session_host();
     }
 
     /// p970: unknown methods and missing sessions are named errors.
