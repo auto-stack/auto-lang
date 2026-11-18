@@ -1777,7 +1777,14 @@ pub fn owned_entry_ok(mir: &MirModule) -> bool {
                 | Some(MirType::F32)
                 | Some(MirType::F64)
                 | Some(MirType::Char)
-        )
+                // PLAN-982：受检文本入口（`ac.runtime.text.v1`）允许借用 `StrView`
+                // 形参；其它模块保持原契约。
+                | Some(MirType::StrView)
+        ) && (mir.has_text_entry_capability()
+            || !sig
+                .params
+                .iter()
+                .any(|p| matches!(mir.types.get(*p as usize), Some(MirType::StrView))))
     }) && ok_ty(sig.result)
 }
 
