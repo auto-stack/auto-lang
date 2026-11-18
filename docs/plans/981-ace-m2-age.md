@@ -921,6 +921,23 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-18 stage: work（**`IF-981-GFX-HOST-PORT` 第一片**；用户裁定"优先做宿主端口，交付 typed 派发、provider 注册与生命周期、每 Tick 预算，以及正常 AGE 源的 AV 实测"）| PLAN-981 r18 | outcome: **pass（13/16 宿主 op 交付；端口结果 3 op 具名 ABI 边界）** | code_commit `267cbc4b9` | merge `1b80d708f`
+
+**交付**
+- **typed 派发**：av-core 新增 `age_gfx`（`AgeGfxHost::dispatch(symbol, &[Value])`、`is_host_symbol`、返回值按调用槽 `MirType` 核对）；lowering 把**标量结果**的 13 个宿主 op（`input.{space,x,y,pressed}`、`tick.dt`、`row.{place,shift,show,world,local}`、`render2d.{spawn,despawn,frame}`）降成普通 import 调用；AV 在 callee 解析前按 symbol 分流到**本线程注册**的 provider。未注册 → `age-gfx.host-unavailable`；provider fault → `age-gfx.<code>`；结果类型不符 → `age-gfx.result-type`——三者都**零效果**（异常路径不写结果槽）。
+- **注册/生命周期**：`ace_av::age_gfx::AgeGfxSession`：一 Run 一次注册；`stop()` 后 `age-gfx.session-stopped` 且 provider 丢弃；新会话重新注册（无跨 Run 残留）。执行仍是同一条 lower→MIR verify→ABC admit→AV 链（不建旁路、不复制费率表）。
+- **每 Tick 预算**：费率与语言侧同源（`age_resources::gfx_credit_cost`：segment 8 / sweep 16 / 其余 1，预算 32）；**下一次扣费后累计 >32** 即 `age-gfx.credits`、零效果、**本 Tick sticky**（attempt 不回退；后续收费调用不触达 provider）；`begin_tick()` 重置。端口字段读不经过宿主（0 credit）。语言侧静态准入（每函数调用点合计）保留为保守准入。
+- **AV 准入的三处真闸**（此前被"一律拒"挡住、从没人走到）：①`mir_verify` 承认宿主 op 的 import 身份，并在模块真的带宿主 import 时承认 `age2d.*` 能力键；②`abc_verify::executable_closure` 不再把"宿主派发 import 调用"当作待链接的 guest 调用（其它 unresolved import 语义不变）；③不改 `AGE_GFX_SERVICE_OPS`/价目/文法，不新增第二张 host 表。
+- **边界（具名，下一片）**：`query2d.segment/sweep`（Cast2D/Sweep2D）与 `image2d.png`（Image2D）返回端口 record——**多字段宿主返回 ABI 未接**，lowering 具名拒 `lower.age-gfx-port-result`（不伪造 record、不拆成 N 次收费调用）；旧 seam 用例按新码更新。UI058 T-04 的查询/精灵派发仍被这条边界挡着（另有 T-04 预备实测 G1–G5 的语法/句柄缺口）。
+
+**证据（`plan981_gfx_host.rs` 4/4，真实 AGE 源）**
+- `step()`：`row.place(1, 1.25, 1.25 + 2*dt)` + 两次 `tick.dt()` → AV 真值 `F32(2.25)`；provider 收到 `[i32:1, f32:1.25, f32:2.25]`，`3 credits`（f32 运算与 gfx 同一 callback）。
+- `probe()`：`input.x()` + `render2d.spawn("sprite.png", …)` + `input.space()` → `I32(8)`；字符串参数按受检 `StrView` 原样到达。
+- 预算：递归 `charge(40)` → `age-gfx.credits`、**恰好 32 次**触达 provider、同 Tick 第二次直接拒（不触达）、`begin_tick` 后重新计满 32；生命周期：`stop()` 具名拒、新会话重跑成功。
+- 门禁（合并树）：`cargo t ace-source ace-av ace-a2x` = ace-source **PASS 864**、ace-a2x **PASS 317**、ace-av 1399/1400（红 `kv_zip_1064::v03…` = 已登记 `D-1037-02` 的 2s wall 余量；隔离单例重放 **2.52s 绿**）——环境归因，**不充无红 PASS**。`cargo check -p ace-av -p ace-lowering` 零错误；980/981/982 家族 av **53/53**、core plan981 **230/230**。
+
+**未做（具名）**：端口结果 ABI（登记 `D-981-GFX-PORT-ABI`；二选一：多字段宿主返回 vs handle + 0-credit getter）；宿主动态 token/世代（语言侧源序走查已交 `source.age.query-token-stale`，运行期不重复判）；A2C 宿主面；T-04 预备实测 G1–G5（shape2d 无 render-only 声明位、Tick 体 assignment-only、无 typed 行句柄、frame str 拼写、pin 旧）仍归 T-04/UI058 联冻。
+
 ### 2026-11-18 stage: handoff（**PLAN-980 → PLAN-981：`style` 声明面文法会签请求**；980 侧材料已备、**未动文法**）| 请求方 PLAN-980 r18 | outcome: **待 981 回签（或修订提案）**
 
 **来源**：980 §5「P3 提案：`style` 声明面」（`docs/plans/980-ace-m2-autoui.md`，P3 节；提交 `231aedf44`，后续 `6bbb0fd8a` 已把 grammar ID 更新到 spawn/f32 后的基线）。**请求**：981 作为 grammar/identity owner 回签，回签后 980 才落文法与投影。
@@ -982,6 +999,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 - **附带请求**：请以 `auto-ui` 树（`codex/plan-058-dev` @ `b071634c`）的 `experimental/autographics-auto-driver/fixtures/plan058/topdown-node/main.at` 做一次前门 parse/typecheck（可先用 master 前门），回报诊断/最小修正；该源是 T-04 的正式输入，若语法不合法请直接给可编译形态。
 
 **边界**：不改 981 原有 17 op/价目/文法；不要求 A2R/AC 同时接；UI058 不先建私有 runner/旧生成器旁路。UI058 侧记录见 `auto-ui/docs/plans/058-age-topdown2d-queries-and-sprites.md` §9/§10 D-06。
+
+> **状态（2026-11-18，第一片 `267cbc4b9`）**：请求 1/4/6 的**标量结果子面**已交——13 op typed 派发（input/tick/row/render2d）+ 每 Tick 信用预算（sticky、attempt 不回退、`begin_tick` 重置）+ Run 级注册/停止生命周期 + 真实 AGE 源 AV 用例（`plan981_gfx_host.rs` 4/4，含 `F32(2.25)` 与预算/生命周期反例）。**端口结果 3 op**（`query2d.segment/sweep`、`image2d.png`）仍具名拒 `lower.age-gfx-port-result`——多字段宿主返回 ABI 未接，登记 `D-981-GFX-PORT-ABI`。请求 2（端口/价目）不变；请求 3 的 token/世代仍由语言侧静态走查承担、运行期不重复判；请求 5（image2d 身份）随端口 ABI 一并交。G1–G5 见本文件下方 T-04 预备实测收据。
 
 
 ### 2026-11-18 stage: work（**981 `render2d.spawn` 文法小切片**；用户裁定"先交 spawn 文法小切片，保留原拼写并同步两个 AGE grammar ID"）| PLAN-981 r18 | outcome: **pass** | code_commit `0e6c03c3d` | merge `8f44bbf08`
