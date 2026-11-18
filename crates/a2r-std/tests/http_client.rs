@@ -245,7 +245,10 @@ fn plan724_native_cancel_storm_returns_to_baseline() {
     }
     // close 后允许新一轮准入（许可归还）：abort 的任务由 runtime worker
     // 异步清理（许可在任务 drop 时归还），重试直到准入成功（有界）。
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    // PLAN-983 r24（2026-11-19）：四仓门并行池下 60 个 abort 任务的许可
+    // 归还被饿过 5s（隔离复跑绿）——窗口加宽到 20s。oracle 不弱化：真
+    // 泄漏永不归还（仍红）；正常清理提前退出，仅容调度饥饿。
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
     let s = loop {
         let probe = http::get_stream(&base);
         let queued = matches!(
@@ -258,7 +261,7 @@ fn plan724_native_cancel_storm_returns_to_baseline() {
         probe.close();
         assert!(
             std::time::Instant::now() < deadline,
-            "close 后 5s 内流许可未归还（取消未回基线）"
+            "close 后 20s 内流许可未归还（取消未回基线）"
         );
         std::thread::sleep(Duration::from_millis(50));
     };
