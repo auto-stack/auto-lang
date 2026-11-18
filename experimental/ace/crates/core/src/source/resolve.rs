@@ -2732,7 +2732,11 @@ fn resolve_detailed(
     // Pass 2 so a script's result type can be derived from its tail
     // statement's RESOLVED type.
     if surface.is_entry_unit() {
-        check_entry_matrix(&mut fns, &flat, &mut diags);
+        // PLAN-982（983 组合入口，用户裁定）：**host-console 面**的入口可以收
+        // **借用 `str`** 形参（`execute_entry_text_platform` 的文本实参通道）；
+        // EntryUnit/Closures/ConfigDocument 的冻结合同不变（argv 式多参仍拒）。
+        let text_entry_params = matches!(surface, SourceProfile::HostConsole);
+        check_entry_matrix(&mut fns, &flat, &mut diags, text_entry_params);
     } else if surface.is_aggregates() {
         normalize_aggregates_bodies(&mut fns, &flat, &agg_iter_reg, &mut sigs);
     }
@@ -2774,7 +2778,12 @@ fn resolve_detailed(
 /// The script's result type is WRITTEN BACK here (i32 tail → int entry, no
 /// tail → Unit entry); the downstream passes (typecheck/HIR/lowering) see
 /// the resolved result, never a placeholder.
-fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut Vec<Diagnostic>) {
+fn check_entry_matrix(
+    fns: &mut [ResolvedFn],
+    flat: &[&ast::FnItem],
+    diags: &mut Vec<Diagnostic>,
+    text_entry_params: bool,
+) {
     fn push(diags: &mut Vec<Diagnostic>, code: &str, msg: String, span: Span) {
         diags.push(Diagnostic::new(Stage::Bind, code, msg, span));
     }
@@ -2872,15 +2881,22 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
     for &mi in &mains {
         let f = &fns[mi];
         if !f.params.is_empty() {
-            push(
-                diags,
-                "source.entry-params",
-                format!(
-                    "the entry takes no parameters (found {}); argv-style entry arguments are not part of this profile",
-                    f.params.len()
-                ),
-                f.name_span,
-            );
+            // PLAN-982（983 组合入口）：host-console 面的入口可以收**全部为借用
+            // `str`** 的形参（文本实参通道，`execute_entry_text_platform`）；
+            // 其它任何参数形状保持冻结的 argv 拒绝。
+            let all_borrowed_str =
+                text_entry_params && f.params.iter().all(|vt| matches!(vt, VT::Str));
+            if !all_borrowed_str {
+                push(
+                    diags,
+                    "source.entry-params",
+                    format!(
+                        "the entry takes no parameters (found {}); argv-style entry arguments are not part of this profile",
+                        f.params.len()
+                    ),
+                    f.name_span,
+                );
+            }
         }
         match f.result {
             VT::I32 => {
