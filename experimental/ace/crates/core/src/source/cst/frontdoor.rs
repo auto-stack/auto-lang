@@ -1365,6 +1365,40 @@ pub(crate) fn project_packages_front(
                                     )]);
                                 }
                             }
+                            AttrValueKind::Layer => {
+                                // PLAN-981（G1，2026-11-18 裁定）：`layer: render-only`
+                                // ——冻结符号行（专用文法臂已保证值是单 token；
+                                // 组件实例/3D 上的 `layer:` 也落本臂并按元素拒）。
+                                // 语义：该行可见但**不进碰撞候选集**（typed 事实进
+                                // `AgeSceneRow.layer`；`cpu` 面同步 Symbol）。
+                                if !is_2d_leaf {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-attr",
+                                        format!(
+                                            "`layer` is a `shape2d` (view-2d) attribute; it does \
+                                             not apply to `{}`",
+                                            scene.kind
+                                        ),
+                                        attr.span,
+                                    )]);
+                                }
+                                let spelled = match &attr.value.kind {
+                                    crate::source::ast::ExprKind::Var(id) => id.name.clone(),
+                                    _ => String::new(),
+                                };
+                                if spelled
+                                    != crate::source::age_resources::AGE_ROW_LAYER_RENDER_ONLY
+                                {
+                                    return Err(vec![crate::source::age_h0::text_diag(
+                                        "source.age.scene-layer",
+                                        format!(
+                                            "`layer` accepts one frozen symbol `render-only` \
+                                             (visible, not a collision candidate), got `{spelled}`"
+                                        ),
+                                        attr.value.span,
+                                    )]);
+                                }
+                            }
                             AttrValueKind::ResourceRef => {
                                 // 具名资源引用：值必须是**引用形状**（不是字面量/任意
                                 // 表达式）。名字是否存在、是否可见——本层**不能**担保

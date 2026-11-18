@@ -40,6 +40,37 @@ pub struct ComponentAssign {
     pub span: Span,
 }
 
+/// PLAN-981（G2，2026-11-18 用户裁定）：`on` 体的**一条语句**（按源序）。
+///
+/// 赋值沿 [`ComponentAssign`] 旧形；hook-local `let` / `if-else` 只在
+/// age-package 作者面投影产出——age-component 裁剪不含这两条文法臂，
+/// `let`/`if` 在该面 `on` 体是语法拒（fail-closed，不开"能解析、跑不了"
+/// 的半面）。TS/WEB 复放车道（980）只复放赋值：见 [`ComponentNodeOut`]
+/// 的 `handler_stmts` 契约——消费方见 Let/If 时必须具名拒，不得部分复放。
+#[derive(Clone, Debug)]
+pub enum ComponentStmt {
+    Assign(ComponentAssign),
+    /// hook-local 绑定：`let q = query2d.sweep(…)`——本执行路径求值一次、
+    /// 结果随回调失效（021 token 语义由脱糖后的隐藏函数体承担）。
+    /// 裸名引用遮蔽同拼写的 model 字段（同形参规则；`.field` 恒指字段）。
+    Let {
+        name: Ident,
+        /// 可选类型注解（`let q Sweep2D = …`）；无注解由共享 resolver 按
+        /// gfx 服务声明表定型。
+        ann: Option<TypeAnn>,
+        value: Expr,
+        span: Span,
+    },
+    /// `if <cond> { … } else { … }`——分支各自拿当前作用域快照，分支内
+    /// 绑定不外泄。
+    If {
+        cond: Expr,
+        then: Vec<ComponentStmt>,
+        els: Option<Vec<ComponentStmt>>,
+        span: Span,
+    },
+}
+
 /// PLAN-980 WEB #6p（调用表达式形）：**通道调用**语句行——callee ∈ widget
 /// 头参数（宿主通道 prop，如 `widget Counter(on_select: msg)` 体里的
 /// `on_select(next)`）。通道=宿主通知（#6m 事件绑定实参同族——不进受检
@@ -72,6 +103,9 @@ pub struct ComponentHandler {
     pub body_foreign: bool,
     /// PLAN-980 WEB #6p：通道调用行（源序）。
     pub channel_calls: Vec<ComponentChannelCall>,
+    /// PLAN-981（G2）：`on` 体**完整语句面**（源序）。`assigns` 是其中的
+    /// 赋值子集（兼容旧消费者，两者由同一次投影填充、不单独维护）。
+    pub stmts: Vec<ComponentStmt>,
     pub assigns: Vec<ComponentAssign>,
     pub span: Span,
 }
@@ -306,6 +340,12 @@ pub struct ComponentNodeOut {
     ///（msg → (rows, body_foreign)；实参投影原样、原源 span——lane 按
     /// 精确 span 经 a2x-ts 发射，body_foreign → 缺席旧道）。
     pub handler_channel_calls: Vec<(String, Vec<ComponentChannelCall>, bool)>,
+    /// PLAN-981（G2）：每 handler 的**完整语句面**（msg → 源序语句）。
+    /// `handler_assigns` 只是其中赋值子集。TS/WEB 复放车道（980）只复放
+    /// 赋值——消费方见本表含 [`ComponentStmt::Let`]/[`ComponentStmt::If`]
+    /// 时必须具名拒（部分复放 = 错状态值，禁止）；本描述面给出事实，
+    /// 拒的执行点在消费车道（981 侧：age-component 面文法不含这两臂）。
+    pub handler_stmts: Vec<(String, Vec<ComponentStmt>)>,
     /// PLAN-981：模型字段的**初值表达式**（名字 → 初值）。
     ///
     /// `fields` 只有 `(name, ty)` 拼写；作者的 `count int = 3` 里的 `3` 原先不在
@@ -593,6 +633,13 @@ pub fn compile_age_component(
                 .handlers
                 .iter()
                 .map(|h| (h.msg.clone(), h.channel_calls.clone(), h.body_foreign))
+                .collect(),
+            // PLAN-981（G2）：完整语句面（msg → 源序）；assign-only 消费者
+            // 见 Let/If 时必须具名拒——见字段契约。
+            handler_stmts: n
+                .handlers
+                .iter()
+                .map(|h| (h.msg.clone(), h.stmts.clone()))
                 .collect(),
             field_inits: n
                 .fields
@@ -1477,6 +1524,12 @@ fn compile_component_scenario_full(
                     .iter()
                     .map(|h| (h.msg.clone(), h.channel_calls.clone(), h.body_foreign))
                     .collect(),
+                // PLAN-981（G2）：完整语句面（场景编译出口，同字段契约）。
+                handler_stmts: node
+                    .handlers
+                    .iter()
+                    .map(|h| (h.msg.clone(), h.stmts.clone()))
+                    .collect(),
                 field_inits: node
                     .fields
                     .iter()
@@ -1633,17 +1686,39 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
         }
         // 赋值目标必须是本 node 的 model 字段——**未派发**也核对（R59-3 同一
         // 规则；此前只在实际派发 replay 时才查，未调用 handler 的坏赋值静默）。
-        for assign in &h.assigns {
-            if !node.fields.iter().any(|f| f.name == assign.field) {
-                return Err(vec![text_diag(
-                    "source.age.component-event",
-                    format!(
-                        "`on {}` assigns undeclared model field `{}`",
-                        h.msg, assign.field
-                    ),
-                    assign.span,
-                )]);
+        // PLAN-981（G2）：核对走**完整语句面**（if/else 分支里的赋值同样核，
+        // 不因藏在分支里就静默）；hook-local `let` 的名字是局部绑定，不查字段。
+        let mut bad: Option<(String, Span)> = None;
+        fn collect_assign_targets(stmts: &[ComponentStmt], out: &mut Vec<(String, Span)>) {
+            for st in stmts {
+                match st {
+                    ComponentStmt::Assign(a) => {
+                        out.push((a.field.clone(), a.span));
+                    }
+                    ComponentStmt::If { then, els, .. } => {
+                        collect_assign_targets(then, out);
+                        if let Some(e) = els {
+                            collect_assign_targets(e, out);
+                        }
+                    }
+                    ComponentStmt::Let { .. } => {}
+                }
             }
+        }
+        let mut targets = Vec::new();
+        collect_assign_targets(&h.stmts, &mut targets);
+        for (field, span) in &targets {
+            if !node.fields.iter().any(|f| &f.name == field) {
+                bad = Some((field.clone(), *span));
+                break;
+            }
+        }
+        if let Some((field, span)) = bad {
+            return Err(vec![text_diag(
+                "source.age.component-event",
+                format!("`on {}` assigns undeclared model field `{}`", h.msg, field),
+                span,
+            )]);
         }
     }
     Ok(())
@@ -1713,10 +1788,41 @@ fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic
         })
     };
     for h in &node.handlers {
-        for a in &h.assigns {
-            if let Some(ds) = check(&a.rhs, a.rhs.span) {
-                return Err(ds);
+        // PLAN-981（G2）：值位置走查覆盖**完整语句面**（赋值 RHS / hook-local
+        // let 初值 / if 条件——分支里的同样拒，不静默漏）。
+        fn walk_stmt_exprs(
+            stmts: &[ComponentStmt],
+            f: &mut impl FnMut(&Expr) -> Option<Vec<Diagnostic>>,
+        ) -> Result<(), Vec<Diagnostic>> {
+            for st in stmts {
+                match st {
+                    ComponentStmt::Assign(a) => {
+                        if let Some(ds) = f(&a.rhs) {
+                            return Err(ds);
+                        }
+                    }
+                    ComponentStmt::Let { value, .. } => {
+                        if let Some(ds) = f(value) {
+                            return Err(ds);
+                        }
+                    }
+                    ComponentStmt::If {
+                        cond, then, els, ..
+                    } => {
+                        if let Some(ds) = f(cond) {
+                            return Err(ds);
+                        }
+                        walk_stmt_exprs(then, f)?;
+                        if let Some(e) = els {
+                            walk_stmt_exprs(e, f)?;
+                        }
+                    }
+                }
             }
+            Ok(())
+        }
+        if let Err(ds) = walk_stmt_exprs(&h.stmts, &mut |e: &Expr| check(e, e.span)) {
+            return Err(ds);
         }
         for cc in &h.channel_calls {
             for arg in &cc.args {
@@ -1852,38 +1958,20 @@ pub(crate) fn handler_check_fn(
             )
         })
         .collect();
-    for assign in &h.assigns {
-        let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
-            // check_handler_bindings 已拒；这里是同判定的发射侧防御。
-            return Some(Err(vec![text_diag(
-                "source.age.component-event",
-                format!(
-                    "`on {}` assigns undeclared model field `{}`",
-                    h.msg, assign.field
-                ),
-                assign.span,
-            )]));
-        };
-        let renamed = match rename_expr_with_params(
-            &assign.rhs,
-            FieldBinding::Local(inst),
-            &node.fields,
-            &param_locals,
-        ) {
-            Ok(v) => v,
-            Err(ds) => return Some(Err(ds)),
-        };
-        stmts.push(Stmt::Assign {
-            target: crate::source::ast::AssignTarget {
-                base: Ident {
-                    name: local_name(inst, &field.name),
-                    span: assign.span,
-                },
-                path: Vec::new(),
-            },
-            value: wrap_owned_transfer(renamed, field, &param_locals),
-            span: assign.span,
-        });
+    // PLAN-981（G2）：**完整语句面**进唯一 verify（赋值 + hook-local `let` +
+    // `if/else`）——检查函数不铸部分体（#6o 合同）；与场景重放
+    // （instance_stmts）共用同一条脱糖 `hook_stmts_lower`，无第二求值器。
+    // hook-local 局部名以 handler 序定位（同一检查函数内唯一）。
+    if let Err(ds) = hook_stmts_lower(
+        inst,
+        handler_index,
+        node,
+        &h.stmts,
+        &param_locals,
+        &mut stmts,
+        &mut 0,
+    ) {
+        return Some(Err(ds));
     }
     // PLAN-980 WEB #6p：通道调用实参验证——**死 let**（无注解推断）承载：
     // 实参经同一重命名通道（形参/字段可见性 + 类型/ownership 由共享 verify
@@ -2070,6 +2158,128 @@ pub(crate) fn arg_local_name(instance: usize, seq: usize, pos: usize) -> String 
     format!("__age_a_{instance}_{seq}_{pos}")
 }
 
+/// PLAN-981（G2）：hook-local 绑定的卫生局部名（`__age_hl_<inst>_<seq>_<k>_<名>`）。
+/// `k` = 该次重放内语句序（源序确定 ⇒ 名字确定 ⇒ desugar 身份稳定）。
+/// 同一 handler 形（形参/hook-local）共用 `(inst, seq)` 定位，互不串局部。
+pub(crate) fn hook_local_name(instance: usize, seq: usize, k: usize, name: &str) -> String {
+    format!("__age_hl_{instance}_{seq}_{k}_{name}")
+}
+
+/// PLAN-981（G2）：`on` 体语句 → 普通 AST 语句（重命名 + hook-local 卫生）。
+/// **重放与检查函数共用同一条脱糖**（无第二求值器）。
+///
+/// `scope` = 当前执行路径已绑定的名字表（形参 + 先前 hook-local）：
+/// 裸名先查本表（hook-local 遮蔽同拼写 model 字段，同形参规则）；
+/// `.field` 恒指实例字段，不被遮蔽。`if/else` 分支各拿**快照**——分支内
+/// 绑定不外泄（回调结束即失效，021 token 语义由隐藏函数体的作用域承担）。
+fn hook_stmts_lower(
+    inst: usize,
+    seq: usize,
+    node: &ComponentNode,
+    body: &[ComponentStmt],
+    scope_in: &[(String, String, Span)],
+    out: &mut Vec<Stmt>,
+    counter: &mut usize,
+) -> Result<(), Vec<Diagnostic>> {
+    let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
+    for st in body {
+        match st {
+            ComponentStmt::Assign(assign) => {
+                let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
+                    return Err(vec![text_diag(
+                        "source.age.component-event",
+                        format!(
+                            "`on` handler assigns undeclared model field `{}`",
+                            assign.field
+                        ),
+                        assign.span,
+                    )]);
+                };
+                out.push(Stmt::Assign {
+                    target: crate::source::ast::AssignTarget {
+                        base: Ident {
+                            name: local_name(inst, &field.name),
+                            span: assign.span,
+                        },
+                        path: Vec::new(),
+                    },
+                    value: wrap_owned_transfer(
+                        rename_expr_with_params(
+                            &assign.rhs,
+                            FieldBinding::Local(inst),
+                            &node.fields,
+                            &scope,
+                        )?,
+                        field,
+                        &scope,
+                    ),
+                    span: assign.span,
+                });
+            }
+            ComponentStmt::Let {
+                name,
+                ann,
+                value,
+                span,
+            } => {
+                let k = *counter;
+                *counter += 1;
+                let local = hook_local_name(inst, seq, k, &name.name);
+                let bound = rename_expr_with_params(
+                    value,
+                    FieldBinding::Local(inst),
+                    &node.fields,
+                    &scope,
+                )?;
+                out.push(Stmt::Let {
+                    kw: *span,
+                    name: Ident {
+                        name: local.clone(),
+                        span: name.span,
+                    },
+                    ann: ann.clone(),
+                    mutable: false,
+                    value: bound,
+                    span: *span,
+                });
+                scope.push((name.name.clone(), local, name.span));
+            }
+            ComponentStmt::If {
+                cond,
+                then,
+                els,
+                span,
+            } => {
+                let bound_cond =
+                    rename_expr_with_params(cond, FieldBinding::Local(inst), &node.fields, &scope)?;
+                let mut then_out = Vec::new();
+                hook_stmts_lower(inst, seq, node, then, &scope, &mut then_out, counter)?;
+                let els_out = match els {
+                    Some(els) => {
+                        let mut v = Vec::new();
+                        hook_stmts_lower(inst, seq, node, els, &scope, &mut v, counter)?;
+                        Some(Block {
+                            stmts: v,
+                            span: *span,
+                        })
+                    }
+                    None => None,
+                };
+                out.push(Stmt::If {
+                    cond: bound_cond,
+                    then: Block {
+                        stmts: then_out,
+                        span: *span,
+                    },
+                    els: els_out,
+                    span: *span,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 表达式重命名：model 字段标识符 → 实例局部变量（只支持下述形状，其余具名拒）。
 pub(crate) fn rename_expr(
     expr: &Expr,
@@ -2137,6 +2347,23 @@ pub(crate) fn rename_expr_with_params(
                 None => expr.clone(),
             }
         }
+        // PLAN-981（G2，2026-11-18 裁定）：**rename 通用基座**——任意基座的
+        // 字段读（`q.start_overlap` / `q.point_x`…）：基座递归走同一通道
+        //（hook-local/形参/model 字段各按其规则重命名），字段读形状原样保留；
+        // 字段存在性/名义 record 类型由共享 verify 裁定，本层不猜。此前该形状
+        // 落 `_` 分支被"未接线表达式形"拒，于是端口 record 的 getter 读不进来。
+        ExprKind::Field { base, name } => Expr {
+            span: expr.span,
+            kind: ExprKind::Field {
+                base: Box::new(rename_expr_with_params(
+                    base,
+                    binding,
+                    fields,
+                    param_locals,
+                )?),
+                name: name.clone(),
+            },
+        },
         // PLAN-980： 等一元形——操作数按同一通道重命名。
         ExprKind::Unary { op, operand } => Expr {
             span: expr.span,
@@ -2217,6 +2444,26 @@ pub(crate) fn rename_expr_with_params(
         ExprKind::Method { recv, name, args } => Expr {
             span: expr.span,
             kind: ExprKind::Method {
+                recv: Box::new(rename_expr_with_params(
+                    recv,
+                    binding,
+                    fields,
+                    param_locals,
+                )?),
+                name: name.clone(),
+                args: args
+                    .iter()
+                    .map(|a| rename_arg(a, binding, fields, param_locals))
+                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
+            },
+        },
+        // PLAN-981（G2）：命名空间接收者的服务调用（`query2d.sweep(…)`——
+        // 投影为 MethodCall）：接收者/实参按同一通道重命名，调用形状原样
+        // 交共享 resolver 定型（gfx 服务表 AgeGfx 车道）。此前落 `_` 分支被
+        // "未接线表达式形"拒，hook-local 一次求值的自然写法进不来。
+        ExprKind::MethodCall { recv, name, args } => Expr {
+            span: expr.span,
+            kind: ExprKind::MethodCall {
                 recv: Box::new(rename_expr_with_params(
                     recv,
                     binding,
@@ -2437,42 +2684,19 @@ pub(crate) fn instance_stmts(
             });
             param_locals.push((param.clone(), local, *p_span));
         }
-        for assign in &handler.assigns {
-            let field = node
-                .fields
-                .iter()
-                .find(|f| f.name == assign.field)
-                .ok_or_else(|| {
-                    vec![text_diag(
-                        "source.age.component-event",
-                        format!(
-                            "`on {}` assigns undeclared model field `{}`",
-                            handler.msg, assign.field
-                        ),
-                        assign.span,
-                    )]
-                })?;
-            stmts.push(Stmt::Assign {
-                target: crate::source::ast::AssignTarget {
-                    base: Ident {
-                        name: local_name(inst, &field.name),
-                        span: assign.span,
-                    },
-                    path: Vec::new(),
-                },
-                value: wrap_owned_transfer(
-                    rename_expr_with_params(
-                        &assign.rhs,
-                        FieldBinding::Local(inst),
-                        &node.fields,
-                        &param_locals,
-                    )?,
-                    field,
-                    &param_locals,
-                ),
-                span: assign.span,
-            });
-        }
+        // PLAN-981（G2）：**完整语句面**重放（赋值 + hook-local `let` + `if/else`）
+        // ——与检查函数（handler_check_fn）共用同一条脱糖，无第二求值器；
+        // 分支快照/遮蔽语义见 `hook_stmts_lower`。赋值目标字段存在性在
+        // 声明级（check_handler_bindings）已核，这里的同判定是发射侧防御。
+        hook_stmts_lower(
+            inst,
+            seq,
+            node,
+            &handler.stmts,
+            &param_locals,
+            &mut stmts,
+            &mut 0,
+        )?;
     }
     Ok(stmts)
 }
@@ -2505,14 +2729,15 @@ pub(crate) enum FieldBinding {
 /// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动 / 载荷实参局部 / handler
 /// 检查函数 / view 内联 lambda 值函数）——用户顶层名不得占用（review-B1：
 /// `__age_hv_` 补入，具名拒而不是落到重复符号的通用诊断；#6k：`__age_vl_`
-/// 同族补入）。
-const COMPONENT_RESERVED_NAMES: [&str; 6] = [
+/// 同族补入；PLAN-981 G2：`__age_hl_` hook-local 卫生局部同族补入）。
+const COMPONENT_RESERVED_NAMES: [&str; 7] = [
     AGE_COMPONENT_HIDDEN_PREFIX,
     "__age_state_",
     "__age_drive",
     "__age_a_",
     "__age_hv_",
     "__age_vl_",
+    "__age_hl_",
 ];
 
 /// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6/N6）。

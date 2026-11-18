@@ -123,9 +123,19 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // `render2d.spawn`；保留 token 走独立臂、token 表零新增）——**只有**
         // age-component/age-package 移动（前值 f35cf593… / 0290d0ab… 之前值
         // 2d1e0547…）；其余 12 个邻居逐字节不变（下表逐行冻结，任何漂移都会红）。
+        // PLAN-981（G1+G2，2026-11-18 用户裁定后同批二次具名重基线——一次重基线
+        // 覆盖两处功能，13 邻居逐字节不变）：
+        //   - G2：`age-on-member` 体改 `age-on-stmt`（赋值两面共用；hook-local
+        //     `age-on-let`/`age-on-if` 仅 age-package 臂）——两面都动；
+        //   - G1：`layer: render-only` 冻结属性行（`age-attr` 双臂包装 +
+        //     `r-render-only` 单 token，仅 age-package）。
+        //   前值：age-component f35cf593…→19a1376e…（spawn）→8292feae…（本批）；
+        //   age-package 2d1e0547…→0290d0ab…（spawn）→5398368c…（本批）。
+        //   其余 13 行（age-h0 + 12 非 AGE 邻居）本批逐字节不变——本表逐行冻结，
+        //   任何邻居漂移都会在此红。
         (
             SourceProfile::AgeComponent,
-            "19a1376eac5f32404b0a653e84d58206c74a954b1546be5aec4485a3fb9bbae5",
+            "8292feaeef2f51b59a0e6d0395e99ab3721e3915ed64fec900e694d8a8356d5d",
         ),
         (
             SourceProfile::AgeH0,
@@ -195,8 +205,12 @@ fn p981_age_package_grammar_id_is_frozen() {
     // 拼写，不需要该臂（其 `pub fn` 本就不在面内）。
     // D-981-GFX-SPAWN-SPELLING（2026-11-18 二次重基线）：`spawn` 成员位臂
     // 进两面——前值 2d1e0547… → 本值；age-component 同批前值 f35cf593…。
+    // PLAN-981（G1+G2 同批重基线，2026-11-18）：G2 `age-on-stmt` 双臂（两面）
+    // + G1 `layer: render-only` 冻结属性行（仅 age-package）——前值
+    // 0290d0ab… → 5398368c…；age-component 同批 19a1376e… → 8292feae…；
+    // 13 邻居（age-h0 + 12 非 AGE）逐字节不变（上表逐行冻结）。
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "0290d0ab2441b23399f6505512da4e3c9a9e907890d9584ba8a45ff2694136c8"
+        "5398368c83b5e54e09c4288c4319e4735bb2c9d699936c70c734aabc57be384b"
     );
 }

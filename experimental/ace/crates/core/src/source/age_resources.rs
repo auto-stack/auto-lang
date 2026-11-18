@@ -425,32 +425,34 @@ pub enum AttrValueKind {
     ResourceRef,
     /// 普通 Auto 值表达式（数/元组/bool）——由共享 verify 按值类型检查。
     Value,
+    /// PLAN-981（G1，2026-11-18 裁定）：`layer: render-only` 冻结符号行
+    /// ——可见不碰撞层，仅 `shape2d`。按冻结拼写校验（单值），进
+    /// `AgeSceneRow.layer` typed 事实；其它元素/其它值具名拒。
+    Layer,
 }
+
+/// PLAN-981（G1）：`layer:` 的唯一冻结值拼写。
+pub const AGE_ROW_LAYER_RENDER_ONLY: &str = "render-only";
 
 /// 一个属性名属于哪一类。`None` = 该属性名不在 AGE 的 2D 作者面内（具名拒绝）。
 ///
 /// 这份表就是 AGE 规范 §1 的 `shape2d` 属性集：`kind`/`position`/`size`/
 /// `material`/`visible`，加上组件实例的 `x`/`y`/`diameter`/`tint`，以及
 /// 精灵叶属性面（差额表 #4b，PLAN-981）：`image:`/`frame:` 是**具名资源引用**
-/// （Image2D / Frame2D），`flip:` 是 bool 值。
+/// （Image2D / Frame2D），`flip:` 是 bool 值；G1 增 `layer:`（冻结符号
+/// `render-only`，仅 `shape2d`）。
 pub fn attr_value_kind(key: &str) -> Option<AttrValueKind> {
     match key {
         "kind" => Some(AttrValueKind::GeometryKind),
+        // PLAN-981（G1）：render-only 层（可见不碰撞）。
+        "layer" => Some(AttrValueKind::Layer),
         // `model3d` 的 `model:` 与 2D 的 `mesh:` 都是**具名资源引用**；
         // 精灵叶的 `image:`（Image2D）/`frame:`（Frame2D）同属一类。
         "material" | "tint" | "model" | "mesh" | "image" | "frame" => {
             Some(AttrValueKind::ResourceRef)
         }
         // 2D 标量/元组值 + 3D 的静态角度（yaw/pitch）+ 精灵翻转标志。
-        "position"
-        | "size"
-        | "x"
-        | "y"
-        | "diameter"
-        | "visible"
-        | "yaw"
-        | "pitch"
-        | "scale"
+        "position" | "size" | "x" | "y" | "diameter" | "visible" | "yaw" | "pitch" | "scale"
         | "flip" => Some(AttrValueKind::Value),
         _ => None,
     }
@@ -483,8 +485,8 @@ pub fn attr_applies_to(element: &str, key: &str) -> bool {
         "kind" => is_2d_leaf,
         // 3D 专属
         "yaw" | "pitch" | "model" | "scale" => is_3d,
-        // 2D 专属（`image`/`frame`/`flip` 是 2D 精灵叶属性面，不进 3D）
-        "size" | "material" | "mesh" | "image" | "frame" | "flip" => is_2d_leaf,
+        // 2D 专属（`image`/`frame`/`flip`/`layer` 是 2D 作者面属性，不进 3D）
+        "size" | "material" | "mesh" | "image" | "frame" | "flip" | "layer" => is_2d_leaf,
         // 两类都可用
         "position" | "visible" | "tint" | "x" | "y" | "diameter" => true,
         _ => false,

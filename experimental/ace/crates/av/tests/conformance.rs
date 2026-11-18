@@ -271,6 +271,8 @@ mod plan981_age_package_av;
 mod plan981_event_b_av;
 #[path = "cases/plan981_f32_surface.rs"]
 mod plan981_f32_surface;
+#[path = "cases/plan981_gfx_hooks.rs"]
+mod plan981_gfx_hooks;
 #[path = "cases/plan981_gfx_host.rs"]
 mod plan981_gfx_host;
 #[path = "cases/plan981_gfx_seam_av.rs"]
