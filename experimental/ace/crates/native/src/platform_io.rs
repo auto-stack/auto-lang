@@ -178,6 +178,11 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         PlatformOpKind::ProcRelease => "mn_pio_proc_release",
         PlatformOpKind::ProcExit => "mn_pio_proc_exit",
         PlatformOpKind::ProcCmdlineW16 => "mn_pio_proc_cmdline_w16",
+        // PLAN-982 (Q-982-2 (a) step 1): the host-provided per-run argv op
+        // has NO native shim (it only exists in a hosted run); standalone
+        // binaries route to the cmdline fallback via the same symbol-shape
+        // stub returning "unsupported".
+        PlatformOpKind::ProcRunArgvW16 => "mn_pio_proc_run_argv_w16",
         PlatformOpKind::ProcCmdlineFillBytes => "mn_pio_proc_cmdline_fill_bytes",
         PlatformOpKind::ProcCwdW16 => "mn_pio_proc_cwd_w16",
         PlatformOpKind::ProcCwdBytes => "mn_pio_proc_cwd_bytes",

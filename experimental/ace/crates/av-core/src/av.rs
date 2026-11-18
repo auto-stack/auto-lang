@@ -1020,10 +1020,27 @@ pub fn execute_program_platform(
 ) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
     // front-door: every declared import's capability must be granted
     // (each code unit's host imports, via its verified unit module).
+    // PLAN-982 (Q-982-2 (a) step 1 / B): the three argv-READ imports (the
+    // two cmdline reads + the per-run argv line) accept EITHER key — the
+    // narrow `platform.process.argv` or the wide `platform.process` (which
+    // subsumes argv reading). Spawn & co. still need the exact wide key
+    // (the rule mirrors `platform_io::capability_satisfied`).
     let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
     for code in prog.code() {
         for h in code.unit().module().host_imports.iter() {
-            if !granted.contains(h.capability.as_str()) {
+            let is_argv_read = matches!(
+                h.symbol.as_str(),
+                "auto.platform.process.cmdline_w16.v1"
+                    | "auto.platform.process.cmdline_fill_bytes.v1"
+                    | "auto.platform.process.run_argv_w16.v1"
+            );
+            let satisfied = granted.contains(h.capability.as_str())
+                || (is_argv_read
+                    && ((h.capability.as_str() == crate::platform_io::CAP_PROC
+                        && granted.contains(crate::platform_io::CAP_PROC_ARGV))
+                        || (h.capability.as_str() == crate::platform_io::CAP_PROC_ARGV
+                            && granted.contains(crate::platform_io::CAP_PROC))));
+            if !satisfied {
                 return Err(crate::host::AdmissionError {
                     code: "host.unauthorized",
                     message: format!(

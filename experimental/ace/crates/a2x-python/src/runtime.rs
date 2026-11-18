@@ -646,6 +646,7 @@ PORT_SPECS = {
     "process.release": (1, ("View",), "int"),
     "process.exit": (1, ("View",), "int"),
     "process.cmdline_w16": (1, ("View", "View"), "int"),
+    "process.run_argv_w16": (1, ("View", "View"), "int"),
     "process.cmdline_fill_bytes": (1, ("View", "View", "View"), "int"),
     "process.cwd_w16": (1, ("View", "View"), "int"),
     "process.cwd_bytes": (1, ("View", "View"), "int"),
@@ -882,7 +883,7 @@ _SYS_CLOCK = {"clock.unix_ms", "clock.mono_ms", "clock.hi", "clock.sleep_ms"}
 _SYS_PROC = {
     "process.spawn_w16", "process.spawn_bytes", "process.pipe_read",
     "process.wait", "process.release", "process.exit",
-    "process.cmdline_w16", "process.cmdline_fill_bytes",
+    "process.cmdline_w16", "process.cmdline_fill_bytes", "process.run_argv_w16",
     "process.cwd_w16", "process.cwd_bytes", "process.chdir_w16",
     "process.chdir_bytes",
 }
@@ -1306,6 +1307,10 @@ def _sys_proc_op(op_id, args):
     if op_id == "process.exit":
         import sys as _sys
         _sys.exit(a2x_i32(args[0]))
+    if op_id == "process.run_argv_w16":
+        # PLAN-982 (Q-982-2 (a) step 1 / B): standalone marker — no host
+        # injected an argv line; the stdlib falls back to sys.argv.
+        return -10
     if op_id in ("process.cmdline_w16", "process.cwd_w16"):
         import sys as _sys
         if op_id == "process.cmdline_w16":

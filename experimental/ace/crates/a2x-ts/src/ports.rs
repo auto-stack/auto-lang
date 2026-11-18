@@ -1090,6 +1090,23 @@ pub fn default_stdlib_port_catalog(runtime_source: &str) -> StdlibPortCatalog {
                 "None",
             ),
             mk(
+                "process.run_argv_w16",
+                "std.platform",
+                "process_run_argv_w16",
+                vec![
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                ],
+                "int",
+                "None",
+            ),
+            mk(
                 "process.cmdline_w16",
                 "std.platform",
                 "process_cmdline_w16",

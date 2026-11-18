@@ -85,6 +85,12 @@ const SYS_PATH: &str = include_str!("../../../../../../../stdlib/ace/sys/path.at
 const SYS_FILE: &str = include_str!("../../../../../../../stdlib/ace/sys/file.at");
 const SYS_ENV: &str = include_str!("../../../../../../../stdlib/ace/sys/env.at");
 const SYS_PROCESS: &str = include_str!("../../../../../../../stdlib/ace/sys/process.at");
+/// PLAN-982 (Q-982-2 裁定 B，第一步): the vetted ARGV provider — the narrow
+/// `std::process` face (args only; no spawn family, no sysplat pull). Lives
+/// OUTSIDE the sys enumeration (`stdlib_sys_files`) so it never rides other
+/// sys assemblies; the sys-lane door picks it explicitly. Same frozen
+/// identity discipline: the accepted source is this repo file, byte-exact.
+const SYS_PROCESS_ARGV: &str = include_str!("../../../../../../../stdlib/ace/sys-argv/process.at");
 const SYS_TIME: &str = include_str!("../../../../../../../stdlib/ace/sys/time.at");
 const SYS_RAND: &str = include_str!("../../../../../../../stdlib/ace/sys/rand.at");
 const SYS_STORAGE: &str = include_str!("../../../../../../../stdlib/ace/sys/storage.at");
@@ -137,6 +143,9 @@ pub fn stdlib_sys_files() -> Vec<(String, String)> {
 }
 
 /// 系统库装配集的 `std` 身份保留（与 972 集同一防遮蔽纪律）。
+/// PLAN-982 (Q-982-2 裁定 B): `process` 有两个冻结仓内面——公共全集
+/// (`sys/process.at`) 与 argv 窄面（`sys-argv/process.at`，sys 脚本车道
+/// 显式选用）；两者都是仓库文件逐字节身份。
 pub fn is_frozen_std_sys_module(id: &str, version: &str, source: &str) -> bool {
     version == STDLIB_VERSION
         && (matches!(id, "syscommon" if source == SYS_SYSCOMMON)
@@ -145,11 +154,17 @@ pub fn is_frozen_std_sys_module(id: &str, version: &str, source: &str) -> bool {
             || matches!(id, "path" if source == SYS_PATH)
             || matches!(id, "file" if source == SYS_FILE)
             || matches!(id, "env" if source == SYS_ENV)
-            || matches!(id, "process" if source == SYS_PROCESS)
+            || matches!(id, "process" if source == SYS_PROCESS || source == SYS_PROCESS_ARGV)
             || matches!(id, "time" if source == SYS_TIME)
             || matches!(id, "rand" if source == SYS_RAND)
             || matches!(id, "storage" if source == SYS_STORAGE)
             || matches!(id, "zip" if source == SYS_ZIP))
+}
+
+/// PLAN-982 (Q-982-2 裁定 B): the narrow argv provider's frozen source (the
+/// sys-lane door assembles it under the `process` module id).
+pub fn stdlib_sys_argv_process_source() -> &'static str {
+    SYS_PROCESS_ARGV
 }
 
 /// PLAN-972（T-02）：装配线 `std` 身份保留。模块 id/版本/公共源（以及实现
