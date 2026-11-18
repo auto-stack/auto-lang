@@ -96,6 +96,10 @@ fn p1026_v01_acceptance_training_via_public_session() {
     // 60 finite losses, monotonically converging (final < first, < 1)
     let first: f32 = lines[0].parse().expect("first loss parses as f32");
     let last: f32 = lines[59].parse().expect("last loss parses as f32");
+    assert_eq!(
+        lines[0], "0.2370201",
+        "the first-loss line is pinned string-exactly (the corrupted          reconstructions 0.23701999/0.2370199859 must never return)"
+    );
     assert!((first - REF_FIRST_LOSS).abs() < 1e-6, "first loss {first}");
     assert!((last - REF_FINAL_LOSS).abs() < 1e-6, "final loss {last}");
     assert!(last < first && last < 1.0, "training converges");
@@ -129,63 +133,55 @@ fn p1026_session_close_releases_binding_and_reopens() {
     assert!((v - 2.0).abs() < 1e-6, "sqrt(4)=2.0 via the public session");
 }
 
-/// F-1 durable witnesses: the f64 bits-pair reconstruction is bit-exact
-/// for NEGATIVE values and for positive values whose LOW mantissa word has
-/// bit 31 set (the earlier shared-mask bug corrupted both classes —
-/// `-2.5` reconstructed as `-2.5000009536743164`).
+/// F-1 durable witnesses (REVIEW ROUND 2, F-11): the f64 bits-pair
+/// reconstruction is pinned through GENUINE Python crossings — the values
+/// come FROM Python (`use.py math: pi, e`, py_binop/py member objects), so
+/// `.to(float)`/`.to(double)` route through py_to_f64 → __py_f64_bits.
+/// e = 2.718281828459045 has lo32 = 0x8B145769 (bit 31 SET); pi - 6 is a
+/// NEGATIVE value (sign bit + negative hi word). Both asserted EXACTLY
+/// (== against Rust-computed constants — no tolerance).
 #[test]
 fn p1026_f64_reconstruction_bit_exact_negative_and_low_bit31() {
     let mut session = PySession::open().expect("session opens");
-    // -2.5: sign bit set; mantissa 0x4000000000000 → hi = 0xC0400000
-    // (negative i32!) and lo = 0 — exercises BOTH the per-word zero-extend
-    // (hi) and the multiply-negate.
     let run = session
-        .run("use.py math: sqrt
-fn neg() double { return 0.0d - 2.5d }
+        .run(
+            "use.py math: pi, e
 fn main() int {
-var v = neg()
-var q = sqrt(4)
-print(v)
+var d = pi - 6
+var g = e
+print(d.to(float))
+print(g.to(float))
+print(d.to(double))
 return 0
-}")
-        .unwrap_or_else(|e| panic!("neg run: {e}"));
+}",
+        )
+        .unwrap_or_else(|e| panic!("crossing run: {e}"));
     assert!(run.success_i32().is_some(), "{:?}", run.outcome);
-    let v: f64 = run
-        .stdout_text()
-        .lines()
-        .next()
-        .unwrap()
-        .parse()
-        .expect("negative display parses");
-    assert!(
-        (v - -2.5f64).abs() == 0.0,
-        "neg(-2.5) must reconstruct bit-exactly, got {v}"
+    let text = run.stdout_text();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 3, "three prints: {text:?}");
+    // negative crossing (pi - 6 < 0): the f32 print must be EXACTLY the
+    // f32 rounding of the true f64 — == not tolerance
+    let neg: f32 = lines[0].parse().expect("negative display parses");
+    let expect_neg = (std::f64::consts::PI - 6.0) as f32;
+    assert_eq!(
+        neg.to_bits(),
+        expect_neg.to_bits(),
+        "pi-6 must reconstruct bit-exactly through py_to_f64/__py_f64_bits"
     );
-    // lo bit-31 class: a value whose low mantissa word has bit 31 set.
-    // 0.2370201051235199 (the reference first loss) has lo = 0xA2E8B2B0
-    // (negative i32) — the smoking-gun value from review F-1.
-    let run2 = session
-        .run("use.py math: sqrt
-fn f() double { return 0.2370201051235199d }
-fn main() int {
-var v = f()
-print(v.to(float))
-return 0
-}")
-        .unwrap_or_else(|e| panic!("lo-bit31 run: {e}"));
-    assert!(run2.success_i32().is_some(), "{:?}", run2.outcome);
-    let w: f32 = run2
-        .stdout_text()
-        .lines()
-        .next()
-        .unwrap()
-        .parse()
-        .expect("lo-bit31 display parses");
-    // the TRUE f32 print of the reference is 0.2370201 — the corrupted
-    // reconstruction printed 0.23701999
-    assert!(
-        (w - 0.2370201f32).abs() < 1e-7,
-        "lo-bit31 value must print 0.2370201, got {w}"
+    // positive lo-bit31 crossing (e: lo32 = 0x8B145769, bit 31 set)
+    let epos: f32 = lines[1].parse().expect("e display parses");
+    assert_eq!(
+        epos.to_bits(),
+        (std::f64::consts::E as f32).to_bits(),
+        "e (lo-bit31 class) must reconstruct bit-exactly"
+    );
+    // the f64 lane on the negative value — full double exactness
+    let neg64: f64 = lines[2].parse().expect("negative double display parses");
+    assert_eq!(
+        neg64.to_bits(),
+        (std::f64::consts::PI - 6.0).to_bits(),
+        "pi-6 as double must be bit-exact"
     );
 }
 
@@ -200,7 +196,8 @@ fn p1026_v09_v10_identity_mutation_and_dynamic_state() {
     // build a Python list, mutate via `l.append`, read via ALIAS `a` and
     // via getitem — identity + dynamic state in one program
     let run = session
-        .run("use.py builtins: list
+        .run(
+            "use.py builtins: list
 fn main() int {
 var l = list()
 var a = l
@@ -210,7 +207,8 @@ l.append(1)
 var w = a[1]
 var s = v + w
 return s.to(int)
-}")
+}",
+        )
         .unwrap_or_else(|e| panic!("identity run: {e}"));
     assert_eq!(
         run.success_i32(),
@@ -221,12 +219,14 @@ return s.to(int)
     // the pre-mutation getitem is the named IndexError (dynamic-state
     // negative leg): reading a[0] on an EMPTY list must trap
     let run2 = session
-        .run("use.py builtins: list
+        .run(
+            "use.py builtins: list
 fn main() int {
 var l = list()
 var v = l[0]
 return 1
-}")
+}",
+        )
         .unwrap_or_else(|e| panic!("empty-getitem run: {e}"));
     match run2.outcome {
         ace_av_core::contract::ExecOutcome::Trap { .. } => {}

@@ -14,8 +14,8 @@
 use crate::rust_provider::{open_py_bridge_session, F0Session};
 use ace_av_core::av::{execute_console_foreign, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
-use ace_av_core::host::{ConsoleHost, HostError, Stream};
 use ace_av_core::foreign_exec::ForeignStubTable;
+use ace_av_core::host::{ConsoleHost, HostError, Stream};
 use ace_foreign_contract::manual::AdmittedForeign;
 
 /// A minimal in-memory console capture (the py lane's stdout observer).
@@ -110,8 +110,8 @@ impl PySession {
         let encoded = ace_av_core::abc::encode_abc(&mir)
             .map_err(|e| format!("encode: {e:?}"))?
             .to_flat();
-        let decoded = ace_av_core::abc::decode_abc(&encoded)
-            .map_err(|e| format!("decode: {e:?}"))?;
+        let decoded =
+            ace_av_core::abc::decode_abc(&encoded).map_err(|e| format!("decode: {e:?}"))?;
         let table: &mut ForeignStubTable = self.inner.session.table();
         let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &mir.owner, table)
             .map_err(|e| format!("admit: {e:?}"))?;

@@ -41,6 +41,7 @@ pub mod provider_build_cache;
 pub mod resource_provider;
 pub mod run;
 
+pub mod py_session;
 /// PLAN-967 T-03: the F0 certification recipe on the worker transport.
 #[cfg(windows)]
 pub mod rust_f0_worker;
@@ -48,7 +49,6 @@ pub mod rust_f0_worker;
 /// shim -> one cdylib closure) and its in-process loader.
 #[cfg(windows)]
 pub mod rust_provider;
-pub mod py_session;
 pub mod semref;
 mod source_crt;
 pub mod source_foreign;
