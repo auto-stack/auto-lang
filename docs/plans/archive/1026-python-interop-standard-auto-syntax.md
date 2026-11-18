@@ -415,3 +415,12 @@ stage: merge | plan_id: PLAN-1026 | plan_revision: r3 | **outcome: pass（delive
 | 已知限制（guard） | `verify-mir-lowering-868.ps1 -Scope identity` 在本基线**不可运行**：脚本仍需退役的 `test-cases` feature（PLAN-901 拍平），非本计划引入；本轮新增的"crate 常量 == 镜像"断言以正控 + 三负控（crate="4"/mirror="4"/常量缺失）离线验证，并由 `case-ac-av/cte/mn` 实跑佐证 |
 | archived | 本文件已 `git mv` 至 `docs/plans/archive/`，`status: archived`；T-01..T-06 完成、T-07 完成、AC-01..AC-09 全勾（AC-02/03/04/09 为 partial-by-evidence-shape，具名后置见 §6）；交付链路 964/967/965/947/972 归档依赖保持 |
 | cleaned | 见下方清理段（worktree/branch/组目录移除 + 材料 scope 折叠删除 + 登记表刷新） |
+
+### 11.1 cleaned（2026-11-18）
+
+- **worktree/分支/组**：`wt-guard.ps1` 对 `D:/autostack/.wt/lang-1026/auto-lang` 与组内 sibling `auto-down` 均输出 **clean**（无 reparse point）→ `git worktree remove`（实现树）、`git branch -d plan-1026-dev`（was `181801922`）、`git -C D:/autostack/auto-down worktree remove …/auto-down`、删除空组目录 `D:/autostack/.wt/lang-1026`。`git worktree list` 中已无 1026 条目。
+- **材料 scope**：`D:/autostack/plan-artifacts/plan-1026/` 共 **79 文件 / 3,152,009 字节**（探针源码 11 + `ref/` 独立 oracle 3 + `review-r2..r5` 22 + 组/日志 34 + 其它 9）。按 2026-10-31 裁定：需要的证据已折叠进本文件（§9 收据、§11 门并集与基线红对账），**整目录删除**；无具名未解决问题持有。
+- **折叠的独立 oracle（V-01 参考，不经 ACE、不用 adapter）**：`ref/train_ref.py`（SHA256 前缀 `3B536E27D1F3C6BE`）+ `ref/train_ref_out.json`（`7E2D5A2C2A8D418F`，99 行）。脚本要点（seed=0、torch 2.14.0+cpu、CPU）：`x=arange(8).reshape(4,2)/2`、`target=ones(4,1)`、`Linear(2,1,bias=False)`、`MSELoss`、`SGD(lr=0.1)`、60 步 `zero_grad/backward/step`，记录 losses、首步梯度非零、最终权重/预测。关键值：first=`0.2370201051235199`、final=`0.1013089045882225`、pred0=`0.4728480279445648`、shape=`[4, 1]`、`losses_finite=true`、`final_lt_first=true`、`final_lt_1=true`；与交付实现经公共 `PySession` 的实测值在 f32 打印精度内一致（§8/§9 记录）。
+   语料 README 的"记录于 plan-artifacts/plan-1026/ref/train_ref_out.json"这处**出处指引**在收尾后由本段承担（该路径按政策已删除）；README 自身列出的首/末 loss、pred0 与 shape 值保持不变且正确，故不构成功能缺陷，作为**文档出处迁移**记录在案。
+- **登记表**：`D:/autostack/plan-artifacts/.retention/policy.json` 追加 `auto-lang/PLAN-1026` 条目（deleted-at-merge、无 holds、scope 删除量、delivery/archived 身份）。
+- **主检出状态**：本计划自身路径无残留 WIP（plan/design/specs 全部已入库）；主检出上仍存在的其它改动属并发会话 WIP，未触碰。
