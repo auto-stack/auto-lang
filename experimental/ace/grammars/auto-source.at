@@ -2288,6 +2288,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-968: `Task.spawn` — the reserved `spawn` as a method
             // member (scheduler face only).
             alt(profiles: [scheduler]) { dot(same-line: true) r-spawn(same-line: true, field: "member") }
+            // PLAN-981（D-981-GFX-SPAWN-SPELLING）：021 冻结拼写 `render2d.spawn`
+            // ——`spawn` 是全域保留 token，普通 `ident` 成员位匹配不到，AGE 作者
+            // 面因此写不出该服务调用。只开**成员位**（不新增 token、不改拼写）；
+            // 服务受检投影/价目仍由 `AGE_GFX_SERVICE_OPS` 决定（ctor 之外的
+            // `.spawn` 未声明在表里时按共享 resolve 的未定义拒，不静默）。
+            alt(profiles: [age-component, age-package]) { dot(same-line: true) r-spawn(same-line: true, field: "member") }
             alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
             // PLAN-961：`.as(T)` 数值转换后缀（T 为数值类型词；`.to(T)`

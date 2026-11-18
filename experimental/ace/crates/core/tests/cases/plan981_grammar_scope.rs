@@ -109,9 +109,14 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // 事件绑定调用形（age-event-binding）与元素括号属性行
         // （age-element-props-block）。前值 96ecc437…→1fb56340…（#6m）→f35cf593…
         //（#6o：头参数表/`;`/调用语句语法收全）随批漂移；其余 13 profile 逐字节不变（下表仍与冻结值相等）。
+        // PLAN-981（D-981-GFX-SPAWN-SPELLING，2026-11-18 具名重基线）：AGE 两面
+        // 的 `postfix-step` 组增 `spawn` 成员位专用臂（021 冻结拼写
+        // `render2d.spawn`；保留 token 走独立臂、token 表零新增）——**只有**
+        // age-component/age-package 移动（前值 f35cf593… / 0290d0ab… 之前值
+        // 2d1e0547…）；其余 12 个邻居逐字节不变（下表逐行冻结，任何漂移都会红）。
         (
             SourceProfile::AgeComponent,
-            "f35cf5934cbadd2524c81de925af1d2c24187ba1d869a09ffc0e6e372b8128a7",
+            "19a1376eac5f32404b0a653e84d58206c74a954b1546be5aec4485a3fb9bbae5",
         ),
         (
             SourceProfile::AgeH0,
@@ -179,8 +184,10 @@ fn p981_age_package_grammar_id_is_frozen() {
     // 漂移（前值 6c1bb477…）；age-component 与 12 个非 AGE 邻居逐字节不变
     //（上表逐行冻结，任何邻居漂移都会红）。age-component 侧的 f32 走 ident
     // 拼写，不需要该臂（其 `pub fn` 本就不在面内）。
+    // D-981-GFX-SPAWN-SPELLING（2026-11-18 二次重基线）：`spawn` 成员位臂
+    // 进两面——前值 2d1e0547… → 本值；age-component 同批前值 f35cf593…。
     assert_eq!(
         id_of(SourceProfile::AgePackage),
-        "2d1e0547d9dd989127639a0a6d63173810ff9c9ef637b194773d6e727919704c"
+        "0290d0ab2441b23399f6505512da4e3c9a9e907890d9584ba8a45ff2694136c8"
     );
 }

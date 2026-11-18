@@ -144,6 +144,22 @@ pub fn bad() i32 {
     }
 }
 
+/// `render2d.spawn`（021 冻结拼写）：`spawn` 是全域保留 token，AGE 面此前连
+/// 成员位都解析不到（`.spawn` 不成方法名）。本批只开**成员位**（专用臂、
+/// token 表零新增、拼写不动）——正例必须命中真实服务声明（typed i32），
+/// 元数错仍是 `source.age.gfx-arity` 具名拒（不是"任意方法"的泛化接受）。
+#[test]
+fn p981_gfx_seam_spawn_member_spelling_binds_the_service() {
+    let ok = "node R {\n    view {\n        text \"r\" {}\n    }\n}\n\npub fn spawn_img() i32 {\n    return render2d.spawn(\"assets/x.png\", 4.0, 6.0)\n}\n";
+    compile(ok).expect("the reserved `spawn` member spelling binds render2d.spawn");
+
+    let arity = "node R {\n    view {\n        text \"r\" {}\n    }\n}\n\npub fn bad() i32 {\n    return render2d.spawn(\"assets/x.png\", 4.0)\n}\n";
+    match compile(arity) {
+        Ok(_) => panic!("a 2-argument render2d.spawn must be rejected"),
+        Err(ds) => assert_eq!(ds[0].code, "source.age.gfx-arity", "{ds:?}"),
+    }
+}
+
 /// query token 失效语义（差额表 #1b/#6b，021 fault 13 的语言侧缝）：同一
 /// callback 内第二次 query2d.* 使先前 token 绑定失效——此后读旧 token
 /// 具名拒；新鲜读（单查后即读）与重绑刷新照常合法。
