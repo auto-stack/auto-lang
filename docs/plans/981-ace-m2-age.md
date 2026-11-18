@@ -5,7 +5,7 @@ feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
-plan_revision: 19
+plan_revision: 20
 current_step: 3
 total_steps: 34
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, ag-examples/PLAN-024, ag-examples/PLAN-025, ag-examples/PLAN-028, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067, auto-ui/PLAN-072]
@@ -920,6 +920,23 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-SOURCE-I/B-SOURCE-V/B-SESSION-I/B-SESSION-V/B-RUST-I/B-RUST-V/B-LANGUAGE-I/B-LANGUAGE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+### 2026-11-19 stage: work（**view-if 第二片：同步主线 + 34de6f919 缺口收口**；用户指令「以 620a0f73…/30834de6… 为正式 grammar ID，把 34de6f919 中仍缺的验收移植到主线实现」）| PLAN-981 r20 | outcome: **pass（描述面事实+观察入口具名拒交付；主线平铺/SFC/states-only 设计保持不动）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev`（重置到主线 `dc7fa60fd` 后续片） | base `dc7fa60fd` | code_commit `386d6c748`
+
+**同步与取代（如实）**：980 view-if 刀（`d69f29f91`，merge `f169cf17c`）先落主，grammar id 从 `8292feae…/c0e635d2…` 直接重基线为 **`620a0f73…`（age-component）/`30834de6…`（age-package）=正式值**；本包 r19 的 `34de6f919`（`b0ae9d90…/ecc64b8e…` 线）被其取代——分支已重置到主线（该提交经 reflog 可达、r19 收据留档；**本片起正式 id 以主线两值为准**）。重置前他会话在 worktree 的 6 个 av 测试 fmt 残留已 `git stash` 保护（stash 注明 owner: prior session）。
+
+**移植的三件验收**（`386d6c748`，零文法改动——grammar_scope 4/4 在本树复跑绿）：
+1. **描述面携条件事实**：`ComponentViewOut.cond_spans` / 包描述 `AgePackageComponent.cond_spans`（树序全量：else-if 链每层、元素内嵌套、命名 view 内；`collect_view_cond_spans`/`ComponentView::all_cond_spans` 助手）——观察入口具名拒的判据与锚点；未知构造不静默丢（IF-981-FIELDS 同纪律）。
+2. **实际消费平铺文本的观察入口具名拒**（主线把两支平铺进 `view.texts` 用于绑定检查——该设计**保持不动**，编译/绑定检查继续通过）：`observe_component_texts`（静态面）、`observe_compiled`（场景观察暖路径，覆盖 observe_component/observing/with_initials）、`observe_age_package`（包面）——`source.age.view-conditional`，消息携带作者最前 `if` 字节偏移，避免两支被当作同时可见。states-only/SFC 车道不经观察面，**不受影响**（980 翻转车道保住）；auto-ui 桌面/native 腿的装载点拒（`view_contains_cond`）先于其 observe 调用，行为不变。
+3. **诊断锚定作者 if**：`view_conditional_observation_diag(span)` 以 `cond_spans[0]` 构造（作者最前 `if`）；core 侧用例逐项断言偏移（else-if 链第 2 层=内层 `if .mode` 偏移、命名 view 条目=其自身 `if` 偏移）。
+
+**永久用例**：core `plan981_view_if` 5（states-only 可用；cond_spans 树序 3 层+逐偏移锚定；绑定通道 bad/ok 对照——分支叶引用未声明字段编译红、换声明 str 字段通过，判别=删平铺则 bad 静默过；包描述事实+偏移；普通 view 负控）+ av `plan981_view_if_av` 4（三观察入口拒收[静态腿用无 model 源——旧静态面拒 model，具名在案]+消息偏移断言；普通 view 三入口不误拒负控）。计时：core 5 例 0.03s、av 4 例 0.03s——远低于 10s 门。
+
+**门禁（机器空闲核后跑）**：`cargo t ace-source ace-av`——**ace-source PASS 891/891**；**ace-av 1418/1420**（唯二红 = `host_console::av_console_entry_selection_cannot_bypass_main_policy`/`owned_front_door_enforces_console_entry_only`——980 冻结树收据已具名的**预存对**（982 console 谱系 owner），本树隔离重放 2/2 确定性红、非本批引入；av 运行段 86.3s）。fmt：本批 4 文件 rustfmt 后干净（core/av conformance 的 mod 序 rustfmt 字母序归位；主线既有未格式化点 plan981_age_package_modules/plan981_gfx_seam 与 av 六文件不在本批触面、未动）。
+
+**边界（具名）**：①条件**渲染语义**（分支选择真值）仍归消费车道 owner（980 WEB/SFC v-if 已交；桌面/native 装载点拒已交；AV 观察面本片 fail-closed）——后续定义条件可见性观察时撤 `view_conditional_observation_diag` 门；②包观察拒对 `ace_package_bridge`（auto-ui）表现为 `.ok()?` 缺席——包面条件渲染未定义前一致 fail-closed；③`observe_component_states`（states-only 观察）不设门——状态面不消费平铺文本。
+
+stage: work | plan_id: PLAN-981 | plan_revision: r20 | from: work | to: work | status: executing | outcome: pass（第二片齐；正式 id=主线 620a0f73/30834de6）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | base: dc7fa60fd | code_commit: 386d6c748 | next: review（981 grammar/identity 面；含本片观察门与描述事实）
 
 ### 2026-11-19 stage: work（**view-if 刀：AGE `view` 条件节点的文法与投影**；用户排程「981 下一步先做 view if/else 的文法与投影」）| PLAN-981 r19 | outcome: **pass（两面文法+投影交付；条件渲染语义具名边界归消费车道；未合入窗口声明在案）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `7c91aef4c` | code_commit `34de6f919`
 
