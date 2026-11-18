@@ -2,6 +2,8 @@
 mod abc_semantics_tier;
 #[path = "cases/plan980_web_6o_face.rs"]
 mod plan980_web_6o_face;
+#[path = "cases/plan980_web_6p_channel_call.rs"]
+mod plan980_web_6p_channel_call;
 #[path = "cases/plan980_web_grammar_6m.rs"]
 mod plan980_web_grammar_6m;
 #[path = "cases/sched_m2_968.rs"]
@@ -265,10 +267,10 @@ mod plan979_age_h0_cpu;
 mod plan980_state_face;
 #[path = "cases/plan981_age_package_av.rs"]
 mod plan981_age_package_av;
-#[path = "cases/plan981_gfx_seam_av.rs"]
-mod plan981_gfx_seam_av;
 #[path = "cases/plan981_event_b_av.rs"]
 mod plan981_event_b_av;
+#[path = "cases/plan981_gfx_seam_av.rs"]
+mod plan981_gfx_seam_av;
 #[path = "cases/platform_io_1039.rs"]
 mod platform_io_1039;
 #[path = "cases/redis_975.rs"]

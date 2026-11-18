@@ -167,6 +167,38 @@ pub enum RawKind {
     NonAscii,
 }
 
+/// PLAN-982（④ S2-A）：数值面的**显式门控**（默认关＝今天的表面：数字面一律
+/// `RawKind::AffixedNum`）。打开后 `1.5` 成为 `Tok::Float`、超过 i32 的十进制整数成为
+/// `Tok::Wide`；其余（`0x10`、`1i32`、`1.5.6`）仍是 `Raw`。
+pub const NUMBER_SURFACE_ENV: &str = "AUTO_ACE_NUMBER_SURFACE";
+
+fn number_surface_enabled() -> bool {
+    matches!(
+        std::env::var(NUMBER_SURFACE_ENV).as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("ace")
+    )
+}
+
+/// 词法层只做**形状**判定；数值解析与范围由 parser/常量层负责。
+fn classify_affixed(text: String) -> Tok {
+    if number_surface_enabled() {
+        if let Some((int_part, frac)) = text.split_once('.') {
+            let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+            if digits(int_part) && digits(frac) {
+                return Tok::Float(text);
+            }
+        } else if text.bytes().all(|b| b.is_ascii_digit())
+            && text.parse::<i32>().is_err()
+            && text.parse::<u64>().is_ok()
+        {
+            return Tok::Wide(text);
+        }
+    }
+    Tok::Raw {
+        kind: RawKind::AffixedNum,
+        text,
+    }
+}
 impl RawKind {
     pub fn describe(&self) -> &'static str {
         match self {
@@ -209,6 +241,10 @@ pub enum Tok {
     /// Unsigned decimal digits; a leading `-` is a separate [`P::Minus`]
     /// token folded into a signed literal by the parser.
     Int(String),
+    /// PLAN-982（④ S2-A）：门控数值面——小数字面量（`1.5`）。
+    Float(String),
+    /// PLAN-982（④ S2-A）：门控数值面——超 i32 的十进制整数（`18446744073709551615`）。
+    Wide(String),
     Raw {
         kind: RawKind,
         text: String,
@@ -792,17 +828,27 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                     {
                         lx.pos += 1;
                     }
+                    let text = lx.src[start..lx.pos].to_string();
                     out.push(Token {
-                        tok: Tok::Raw {
-                            kind: RawKind::AffixedNum,
-                            text: lx.src[start..lx.pos].to_string(),
-                        },
+                        tok: classify_affixed(text),
                         span: Span { start, end: lx.pos },
                         line: lx.line,
                     });
                 } else {
+                    // PLAN-982（④ S2-A）：无后缀的十进制整数默认就是 `Int`（范围由
+                    // parser 的常量层报 `source.literal-range`）；门控打开时超 i32
+                    // 且能装进 u64 的才升成 `Wide`。
+                    let text = lx.src[start..lx.pos].to_string();
+                    let tok = if number_surface_enabled()
+                        && text.parse::<i32>().is_err()
+                        && text.parse::<u64>().is_ok()
+                    {
+                        Tok::Wide(text)
+                    } else {
+                        Tok::Int(text)
+                    };
                     out.push(Token {
-                        tok: Tok::Int(lx.src[start..lx.pos].to_string()),
+                        tok,
                         span: Span { start, end: lx.pos },
                         line: lx.line,
                     });
@@ -882,5 +928,58 @@ impl<'s> Lexer<'s> {
                 end: (self.pos + 1).min(self.b.len()),
             },
         )
+    }
+}
+#[cfg(test)]
+mod number_surface_tests {
+    use super::*;
+
+    /// 两个用例共享**进程级**门控变量，必须串行。
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn kinds(src: &str) -> Vec<String> {
+        tokenize(src)
+            .expect("the source lexes")
+            .into_iter()
+            .map(|t| match t.tok {
+                Tok::Float(v) => format!("Float({v})"),
+                Tok::Wide(v) => format!("Wide({v})"),
+                Tok::Int(v) => format!("Int({v})"),
+                Tok::Raw { kind, text } => format!("Raw({kind:?},{text})"),
+                other => format!("{other:?}"),
+            })
+            .collect()
+    }
+
+    /// 默认（门控关）：数字面一律是被排除的表面——与今天的行为逐字一致。
+    #[test]
+    fn number_surface_is_closed_by_default() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var(NUMBER_SURFACE_ENV);
+        assert!(kinds("1.5")[0].starts_with("Raw("));
+        assert!(kinds("2147483648")[0].starts_with("Int("));
+        assert!(kinds("0x10")[0].starts_with("Raw("));
+    }
+
+    /// 门控打开：小数与超 i32 的十进制整数成词；其余仍是被排除的表面。
+    #[test]
+    fn number_surface_opens_float_and_wide_integers_only() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var(NUMBER_SURFACE_ENV, "1");
+        let float = kinds("1.5");
+        let wide = kinds("2147483648");
+        let too_big = kinds("18446744073709551616");
+        let hex = kinds("0x10");
+        let suffix = kinds("1i32");
+        let dotted = kinds("1.5.6");
+        std::env::remove_var(NUMBER_SURFACE_ENV);
+
+        assert_eq!(float, vec!["Float(1.5)".to_string()]);
+        assert_eq!(wide, vec!["Wide(2147483648)".to_string()]);
+        // 超出 u64 仍是 `Int`：范围由 parser 的常量层报 `source.literal-range`。
+        assert!(too_big[0].starts_with("Int("), "{too_big:?}");
+        assert!(hex[0].starts_with("Raw("), "{hex:?}");
+        assert!(suffix[0].starts_with("Raw("), "{suffix:?}");
+        assert!(dotted[0].starts_with("Raw("), "{dotted:?}");
     }
 }

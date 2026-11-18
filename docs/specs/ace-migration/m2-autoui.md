@@ -620,3 +620,16 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **census 具名修订 #6**：(75,8,4,24)→**(75,8,4,26)**——[65][66] 第二 widget（空体）经选择器入分母；两源第一 widget（载荷声明+参数 handler）**仍缺**：widget 头参数表（`widget N(props)`）不在年龄面语法+④调用体/`;`分隔——[65]/[66] 全解锁的下一层（w1 独立编译已证选择器机制正确）。
 - **永久用例**：UI `p980_web_multi_widget_node_selector`（逐节点发射/一体化聚合/越界负控）。
 - **剩余边界（④/⑥ 终局陈述）**：④控制流/let/调用体=**外部名面**（`fs.read_dir`/`listusers`/`complete`——back.api 导入+FFI/方法/动态值；无外部名的纯结构扩展零语料收益）——需 use-import/foreign-contract（967/973 谱系）设计决策后才有安全承载，不做未验证旁路；⑥引号键族实查**零拼接收益**（全为空体/PARAMS-B 受阻源）。widget 头参数表+`;`分隔=④ 子项随该决策一并评估。
+
+### §13.16 调用语句域合同：fail-closed 承载（#6o）+ 通道调用完整承载（#6p，2026-11-18）
+
+本节合并落档 #6o 的调用语句 fail-closed 合同（其收据引用的 §13.16 此前未写入规范——#6p 补档并实装）与 #6p 的通道调用承载。
+
+**事实修正（#6p 探针证伪 #6o 前提）**："wide-ops 无调用后缀"不成立——pratt 调用后缀一直在场（文法 `call` 块 + 引擎 WantOp 臂）：`.x = on_select(1)` **解析通过**、在 **Bind** 阶段以 `source.undefined` 拒；调用**语句**形经 #6o `age-view-call-stmt` 解析。#6o 后实况缺口（master 在场）：①通道调用（callee=widget 头参数/宿主通道 prop）无承载——检查函数只铸赋值，**调用语句被静默丢弃**（[65] `.Bump` 拼接体只有 `n.value = next;`，`on_select(next)` 丢失）；②`handler_check_fn` 不守 `body_foreign`（#6o 收据声称"检查函数不铸"，实际照铸→部分体 verify+部分拼接）；③域外调用 handler 进 ops=整 lane 编译失败=**兄弟 handler 连带全体缺席**。
+
+- **通道调用（语句位）完整承载**：callee ∈ widget 头参数 → 投影为 `ComponentChannelCall` 行（channel/args 原源 span；具名实参不收=fail-closed）；**实参经检查函数死 let 验证**（无注解推断；形参/字段可见性+类型/ownership 共享 verify 真核——`on_x(typo)` 红 `source.undefined`；未验证拼写绝不进拼接体）。lane 发射：赋值片段与通道行按**源 span 序 merge**；通道行=emit 契约事件形（`on_x` 去 `on_` 的 Pascal 形 ∈ msg 变体 → `emit('<Pascal>', args)`）或回调 prop 形（`props.on_x(args)`）——老道 PLAN-668 R-23/Plan 444 同约定（SFC defineEmits/defineProps 声明机制承载）；实参按精确 span 经 a2x-ts 发射+宿主映射。
+- **fail-closed 闭合**：`body_foreign`（let/if/非头参数调用——④外部名面族）handler **检查函数不铸**（#6o 合同实装）→ lane 具名缺席（旧道承载）；**值位置**（赋值 RHS/通道实参嵌套）通道调用=效应作值，域内具名拒 `source.age.component-unsupported`（非泛化 `source.undefined`）；**ops 派发**通道 handler=零效果具名拒（场景重放车道无宿主，不做丢通知的部分重放）；view 内联 lambda 体含非赋值语句→值函数**不铸**（此前静默跳过调用语句=部分拼接丢句，同族闭合）。
+- **ops 豁免（兄弟保全）**：lane 侧方言预扫描——handler 体含调用语句（裸 `f(...)` 表达式语句）的 unit handler 不进 ops（通道走检查函数道；域外走缺席）；此前任一调用体进 ops=编译失败=全体缺席。
+- **census 具名修订 #8**：聚合 (75,8,7,23) **不变**——[65] 计数在 #6o 已计入（部分拼接态）；本切片修**内容正确性**（`.Bump` 体补全 `emit('Select', next);`）与兄弟保全语义；判别力由 `p980_web_channel_call_lane` 六臂断言承担。
+- **永久用例**：lang `plan980_web_6p_channel_call.rs`（六例：行投影/值位置拒/ops 拒/死 let 判别力/域外标记/foreign lambda）；UI `p980_web_channel_call_lane`（完整体文本/混合兄弟/props 形/RHS 缺席/lambda 缺席）。
+- **剩余边界（具名）**：④完整承载（外部调用 `fs.read_dir`/`listusers` 等进受检体）=976 后继目标域决策（a2ts.foreign-unsupported 域合同变更，§13.15 终局陈述保持）；lambda 面通道调用承载=后续切片（本批只闭"不铸"防丢句）；watch/lifecycle 体调用语句仍按方言合同跳过（#6o 边界）；`on` 块/lambda 体多语句单行形（`a; b` 不换行）=`list-nl` 文法既定边界。
