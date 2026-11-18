@@ -1348,6 +1348,14 @@ next_responsible_role: work（WEB 剩余=③双 widget 源（IF-981-MODULE 域 n
 
 next_responsible_role: user（**④外部名面设计决策**：widget 面的 use-import/foreign-contract 承载（967/973 谱系）——此为 B-WEB 全量 spliced 与 B-WEB-I/V/R 勾选的最后语言面前置；⑥零收益已闭格。980 侧无已解锁未交付项）。
 
+2026-11-18 stage: work+review+merge（WEB 批切片 #6o：④语法收全·fail-closed 承载；批级复核工件重构；phase fold #12）| plan_id: PLAN-980 | plan_revision: r16 | outcome: pass（**B-WEB-I/V/R 保持未勾**——调用表达式形（wide-ops pratt 无调用后缀）=下一层表达式面扩展）| delivery_commit: lang（含 lock 刷新 chore，982 先例法）/ ui 14050492。
+
+**交付。** ①widget 头参数表（`age-node-params` 对 age-component 开放；`age-param-ty` 按 profile 分臂——float/f32 词仅包面保留字；参数=宿主通道 prop，不进字段/handler 语义）；②`;` 单行语句分隔（组合器约束：多步 many/alt 混排均不支持——分号归子规则尾单步 opt）；③调用语句 `age-view-call-stmt` **语法收全 + body_foreign fail-closed 承载**（检查函数不铸=部分体 verify 禁；场景派发具名拒 `component-unsupported`=部分重放禁——a2ts.foreign-unsupported 域合同，不做未验证旁路）；④981 lifecycle/watch `member_stmts` 适配 alt 解包（6 红修复）；⑤grammar-id 两值二轮具名重基线（f35cf593…/6c1bb477…；Core 等 13 profile 逐字节不变）；⑥root Cargo.lock 刷新（982 两次同因先例法）。census #7：(75,8,4,26)→**(75,8,7,23)**。
+
+**验证（冻结提交实测）。** UI ace_ts_provider **23/23**（排窗浏览器档同绿）；lang `cargo t ace-source` **PASS**（981 lifecycle 族修复后）；永久用例 `p980_web_6o_face`（头参数+`;` 编译）+ `p980_web_head_props_semi_and_foreign_body_fail_closed`（拼接+调用体负控）。探针零残留、fmt clean。
+
+next_responsible_role: work（调用**表达式形**（`on_select(next)` 作 RHS/pratt——wide-ops 无调用后缀）=表达式面扩展；随后 [65] 全解锁。④完整承载仍待 976 后继目标域决策）。
+
 ## 10. 待澄清事项
 
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
