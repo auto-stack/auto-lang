@@ -84,7 +84,7 @@
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
 |---|---|---|
 | ①（**2026-11-18 关闭**：组件选择器已交 auto-ui `3604f2f2`；`ForNode` 场景扩展 + 宿主 `send_to_component`/`send_args_to_component` + 永久双组件 2:1 用例 s2/AV——lang `62d34e3df`、ui `1775f96d`，review-C pass）宿主 `exits()/request_layout()` 只读首组件，双组件 2:1 事件链不可表达；② 两个 node 同名 model 字段在包级撞 `__age_state_0_<field>`（`source.module-duplicate-declaration`），普通两个 Counter 无法同包 | 981 review-64 R64-3/R64-4；`plan981_*` 双组件用例缺宿主面 | ① 组件选择器/逐组件观察与布局 API 已交（auto-ui `3604f2f2`）；**剩余**：AV 场景 op 是实例级，组件级 2:1 调度需 ACE 场景扩展 + 永久双组件 2:1 用例；② **已关闭**（auto-lang `e36b7ffcd`）：状态函数按节点消歧（node 0 保持 `__age_state_0_count`，其余 `__age_state_n<node>_<inst>_<field>`），包前门/描述读回/AV 观察共用 helper；A2R 单节点合同复跑未变 |
-### D-981-MODULE-GLOBAL-A2R — 模块级 const/var 的 A2R 目标合法化（2026-11-16，落主 `1738c2a1c`，具名缺口）
+### D-981-MODULE-GLOBAL-A2R — 模块级 const/var 的 A2R 目标合法化（2026-11-16，落主 `1738c2a1c`，具名缺口；**2026-11-18 关闭（auto-lang `694908d8c`）**：路线①的 CheckedModule 层实现——绑定器事实（符号/可变性/init 链）经 `ModuleGlobalsPlan` 钉进 CheckedModule，SemanticView 仅在 plan 在场时放行 `module.global.*` 访问器（无 plan 路径维持旧拒），a2x-rust 生成 `static mut` 读/写 + 生成 main 在入口前执行 init 链；真实 rustc 关闭用例（跨模块 init 40 + set/get 双路径 + const 读 = 5，变异重放红）+ 旧 V-R-FAIL 负控按关闭条件翻正。剩余具名边界：计算面标量以外的全局类型（Str/record/容器）仍具名拒——AGE 资源端口全局的 A2R 面另行联冻）
 
 | 缺口 | 原证据/旧义务 | owner/关闭条件 |
 |---|---|---|

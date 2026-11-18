@@ -962,6 +962,18 @@ R64-10 资源 owner/多 Run-Stop 净归零与 AGE 异步仍无宿主面。
 **不冒充**：不把 I 切片当 V 交付；不用 981 自造样本代替 980 正式源；未改验收口径；未声称 plan-level
 execution_done。**具名债务**：`D-981-MODULE-GLOBAL-A2R`、`D-981-SESSION-MULTI` ①、`D-981-EXIT-CONTRACT`、
 R59-5（已附定位证据）、R62-7、正式 SDK pin（978/986/987）。
+2026-11-18 stage: work（**D-981-MODULE-GLOBAL-A2R 关闭批**：用户指令"按照你的建议实施"→建议优先级 #1）| PLAN-981 r18 | outcome: **pass（债务关闭，路线①的 CheckedModule 层实现）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `183e3f653`（再 sync master 22 提交）| code_commit `694908d8c`
+
+**实现（路线①：事实进 CheckedModule，不动 HIR 文本格式）**
+- `core/verify.rs`：新增 `ModuleGlobalsPlan { init_order, init_fns, facts[(symbol,name,mutable)] }` + `CheckedModule.module_globals/set_module_globals`（沿 text_plan/coll_plan/foreign_plan 的 facts-plan 先例）；AGE 包前门在唯一 verify 后从绑定器（`BoundPackages.globals/module_init_fns/init_order`）钉入。
+- `a2x-core/semantic_view.rs`：收集 `module.global.get/set:<sym>` 访问器 intrinsic；**仅当 plan 在场**才放行（无 plan 路径维持旧 compute-surface 拒——不静默扩大）；访问器符号必须命中 plan 事实；`globals_model()`（符号/类型/可变性）与 `global_init_fns()` 供代码生成。
+- `a2x-rust`：`static mut AGE_GLOBAL_<sym>`（计算面标量零值初值；Str/record/容器型具名拒=剩余边界）+ get/set 调用降为 unsafe 块内 static 读/写（setter 产 0 保合同）；两条组装路径（rt.rs/provider.rs）的生成 main 均在入口前执行 init 链（init 失败按 trap 报告）。
+**证据**
+- 关闭用例（a2x-worker，真实 rustc）：`const K=6` + `var total=helper.seed()`(=40，跨模块 init) + 两次 `bump()`(set/get 双径) → `a+b+K-84=5`——init 链/读/写任一环节坏值即偏；**变异重放红**（禁用 init 链 → value:-81）。
+- 旧 V-R-FAIL 负控（`p981_rust_public_chain_rejects…` 的 const 腿）按债务关闭条件**翻正**：同公共链真跑 value:1 + generated.rs 含 static 断言；恢复对照保留。
+- plan981 A2R 家族 3/3；门禁 `ace-source` **PASS** + `ace-a2x` **PASS**（整组复跑；首跑两红为 958 认证用例满载并行资源竞争——隔离绿/家族 10/10 绿/复跑绿三重证据，环境归因，与 982 会话并发编译同时段）。
+**下一步**：建议优先级 #2（B-LANGUAGE 语法余量**先对账 980 #6m/#6o 已交面**）与 #3（V 批 harness 预演核对）未动——按用户"按照你的建议实施"的顺序续做或按需暂停。
+
 2026-11-18 stage: work（**语言侧 AV 残余批 #1–#5**：用户指令"按照这个顺序把1~5都做了"）| PLAN-981 r18 | outcome: **pass（#1–#4 交付+#5 更正收口；D-981-GLOBAL-CLONE-GAP 关闭）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `16d5f1114`（ff re-sync，383 提交）＋`a2894e35e`（再并 master `020cd3ec1` 根 lock 修复）| code_commits `106a0f6ac`/`900bbabd1`/`9af02eaef`/`78ffd6e28`
 
 **#1 D-981-GLOBAL-CLONE-GAP 关闭（`106a0f6ac`，登记债已标关闭）**：CLONE 成为唯一视图→拥有跨接指令——mir_verify 放行 `Clone{Record(r)←RecordView(r)}`（COPY 不能跨视图故标量 record 同形、深克隆退化为值拷贝；异名仍 clone-type）；gfx 构造器 record 实参与 GlobalSet 视图写入改发射 Clone 跨接。三层证据：mir 单测（资源/标量准入+异名拒）、执行级深拷贝独立性（原件 Str 长度存活，浅别名会红）、AGE 源级 frame2d.at 整包过 verify + `var g Mesh2D` 视图参数写入过 verify + 异名端口前门拒；**变异重放**：禁用跨接臂两用例精确红。边界如实：frame2d.at 运行时执行待 UI058 宿主注入 Image2D 身份（T-03）。
