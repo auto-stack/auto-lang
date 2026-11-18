@@ -634,7 +634,7 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 **三、文法身份影响（981 会签要点）**
 - 现冻结值（**spawn/f32 落主后的基线**，2026-11-18 复核）：`age-component` = `19a1376eac5f32404b0a653e84d58206c74a954b1546be5aec4485a3fb9bbae5`；`age-package` = `0290d0ab2441b23399f6505512da4e3c9a9e907890d9584ba8a45ff2694136c8`（前值 f35cf593…/6c1bb477… 随 #6o 与 981 spawn 臂移动）。
-- 本刀**同时移动这两个值**（新规则 + public-body 臂）；其余 **13 profile 必须逐字节不变**（会签后由 980 提交 diff+逐 profile 转储，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 并注明前值/原因）。
+- 本刀**只移动 ge-package 一个值**（按 981 回签 (a) 收窄；ge-component 保持 19a1376e…）；其余 **13 profile 必须逐字节不变**（会签后由 980 提交 diff+逐 profile 转储，981 在**同一提交**重基线 `plan981_grammar_scope.rs` 并注明前值/原因）。
 - `themes` 的 `pub theme` 仍是**独立未支持面**：style 不放行 theme，不得把两者混为一谈。
 
 **四、验证计划（会签后执行）**
@@ -644,9 +644,24 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 
 **五、请求 981 会签（回签后 980 才动文法）**
 1. 认可 `style ≡ str const/fn` 映射与 profile 门 `[age-component, age-package]`；
-2. 认可两值 grammar ID 同批重基线（981 同提交更新冻结期望，注明前值）；
+2. 认可 grammar ID 同批重基线（**收窄后仅 age-package 一值**；981 同提交更新冻结期望，注明前值）——已按回签 (b) 做法 A 采纳；
 3. 确认 const/fn 命名空间与现有身份/可见性契约无冲突；
 4. 回签后落文法 + 投影 + 永久用例；本材料**未改任何文法/代码**。
+
+**六、981 回签（2026-11-18，`edfa4220c`）与 980 回执（本版按修订收窄）**
+- **(a) 收窄通过**：profile 门**只 `[age-package]`**（`age-component` 不开）。依据=组件面无语义面 const/public 规则、resolve 的 const 由 packages 绑定器消费、`ModuleGlobalsPlan` 仅 AGE 包前门钉入——开组件面=能解析跑不了。**只移动 age-package 一个 grammar ID**；`age-component` 保持 `19a1376e…`。
+- **(b) 做法 A 采纳**：980 在文法提交内同步更新 `plan981_grammar_scope.rs`（注明前值，沿 #6m/#6o），13 邻居逐 profile 转储随提交；981 在该提交复跑 `p981_grammar_scope` 并核 diff。
+- **(c)1 采纳**：重名走现有 `source.module-duplicate-declaration`（同一绑定图），不另造码、不只报 mangle。
+- **(c)2 980 回执=`Str`（owned）**：参数化 style 生成 `Item::Fn` 返回 `Str`；零参 style=const `Str`。理由：body 是 f-string/拼接（owned text），与文本叶 `.clone()` 约定同源，避免 view 生命周期；A2R/TS 按 owned 串发射。
+- **(c)3 980 回执=投影期字面量替换**：P3.1 中 style 名字（`style: NAME`、`style N = other`）在投影期替换为其字面量；带参调用一律 `style-call` 具名拒（**不做**折叠——语料唯一带参调用的目标声明带默认值本刀本就拒；跨模块常量求值收益 0、缓存身份/求值序风险不为 0）。**明示撤回**：用法不再声称复用 mangle/可见性；声明仍落 const/fn（身份/重名/导出/`pub` 显示面）。
+- **(d) 采纳**：`style-defaults` 指向**默认值 token**；`style-call` 区分 unknown-key/missing-arg/non-literal（同码不同臂、原 span）；未知形态不得回落 `source.syntax`。
+
+**七、落刀工作单（980 自用；回执后执行）**
+1. 文法（`grammars/auto-source.at`，仅 age-package）：`name(style-head){spelling:"style",token:"ident",role:"style"}`；`style-item`（name + 可选 `style-params`/`style-param`（`: ty` 可选、`= default` 可解析）+ `=` + `pratt wide-ops` value）；项位 alt 与 `public-body` 各加 `style-item` 臂（public 体首 token `style` 与 fn/type/const/use 互异）。
+2. 投影（`cst/frontdoor.rs` 包面）：zero-param → `Item::Const{ty:Str}`；param → `Item::Fn{ret:Str}`；默认值存在→`source.age.style-defaults`（span=默认值 token）；登记 `declarations`/`exports`（`pub style`）；重名走共享绑定器。用法替换：组件投影的 `style:` 条目与 `style N = other` 的初值在投影期解析为字面量（同模块；跨模块命中即 `style-call`）。
+3. 永久用例：字面量 / `pub style` / ident 复制 / 参数化（无默认）/ 默认值拒 / 带参调用拒（unknown-key·missing-arg·non-literal 三臂）/ 重名拒 / `style` 作普通标识符仍合法 / 13-profile 逐字节不变 + age-package 新值。
+4. 身份：更新 `plan981_grammar_scope.rs` 的 age-package 值与注释（前值 `0290d0ab…` → 新值），age-component 行不动；随提交附 13 邻居转储。
+5. 门禁：`cargo t ace-source ace-av`；981 复跑冻结测试。
 
 ## 6. 测试设计
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
@@ -1614,6 +1629,14 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 **验证。** 浏览器档 1/1（3.3s，env-gated）；回归 `plan980_closure_sfc` 2/2、`plan980_closure_window` 3/3、`ace_node_desktop` **11/11**；changed files fmt clean。
 
 **边界（诚实）。** 浏览器档执行的是 **SFC `<script>` 段**（页面宿主与按钮为测试装置）；完整 SFC（template 由 AGE 视图生成）未交；包桥仍只观察 int 字段、无 props/initials。
+
+2026-11-18 stage: design-revision（**981 回签（有条件）+ 980 回执**；P3 收窄为 age-package-only；本轮不动文法）| plan_id: PLAN-980 | plan_revision: r18 | outcome: **回执完成，落刀工作单就绪（§5 P3 七节）** | 981 回签：`edfa4220c`（981 §9 收据）。
+
+**981 修订（三处）**：(a) profile 门收窄为 `[age-package]`，`age-component` 不开（组件面无语义 const/public 规则、const 由 packages 绑定器消费、`ModuleGlobalsPlan` 仅 AGE 包前门钉入）；(b) 身份做法 A（980 同提交更新冻结值，只动 age-package，13 邻居转储）；(c) 重名走 `source.module-duplicate-declaration`、style 函数返回类型待定、下游车道（AV/TS/SFC/A2R）const 读风险要选路；(d) 诊断码细化 + 建议 P3.1 调用点一律 `style-call` 具名拒（不折叠）。
+
+**980 回执（两问）**：①(c)3 选 **投影期字面量替换**——P3.1 中 `style: NAME` 与 `style N = other` 在投影期替换为字面量；带参调用一律 `style-call` 具名拒；**明示撤回**"用法复用 mangle/可见性"的主张（声明仍落 const/fn）。理由：语料用法全是编译期 class 串，避免 TS/SFC/A2R 的 global 访问器缺口；跨模块常量折叠收益 0、身份/求值序风险不为 0。②(c)2 选 **`Str`（owned）**：参数化 style → `Item::Fn` 返回 `Str`；零参 → const `Str`（与文本叶 `.clone()` 约定同源，避免 view 生命周期）。
+
+**落刀工作单**（§5 P3 七节）：文法三件（`style-head`/`style-item`/`style-params`，仅 age-package）→ 投影（const/fn + defaults/call 具名拒 + 声明/导出/重名）→ 用法投影期字面量替换 → 永久用例九项 + 13-profile 转储 + age-package ID 重基线 → 门禁 `cargo t ace-source ace-av`；981 在 980 文法提交上复跑 `p981_grammar_scope` 核 diff。**本轮未改文法/代码。**
 
 ## 10. 待澄清事项
 Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
