@@ -5,7 +5,7 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-18
-plan_revision: 13
+plan_revision: 14
 current_step: 14
 total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-983] Web服务嵌入与实际后端迁移
 
 ## 0. 变更摘要
+
+2026-11-18 r14（C0‑B 正式跑 + C1 基线冻结）：①**C0‑B 永久用例正式通过**——`01b-workspace-av-consumption.spec.ts`（含 `b830e07`）在 AutoDown 主检出的 Playwright/Vite 上（临时 overlay，不复制 node_modules、不在 worktree 建 symlink）对 **982 CLI 启动的 AV 后端**跑：`1 passed`（6.2s；首跑 11.5s），页面真实请求 `GET http://127.0.0.1:13100/api/workspace` → **200** + `{"root":"<fixture>","wiki_dir":"<fixture>\\wiki"}`，主视图断言（`#app` 挂载、主区提示、opener=0）全过；后端收据 `served=2 av_dispatches=2 legacy_dispatches=0 same_sdk=true`；退出码 0。②**C1 验收基线由现有 `open_workspace_impl` 实测冻结**（临时起 jade-garden 原后端）：不存在目录 ⇒ `400` + `{"error":"Directory does not exist: <原样路径>"}` 且**零副作用**；成功 ⇒ `200` + **canonical（`\\?\` 前缀、反斜杠）** 的 `root`/`wiki_dir`；副作用=`<root>/wiki` 创建（空 wiki ⇒ 索引 `pages: []`）、`<root>/jade-garden-index.json` 重写（pages/blocks 含 `*.ad`）、配置 `{"workspace_root":"<canonical>"}`；二次 open 幂等。基线含"配置先写、wiki/index 后建"的部分副作用顺序（index 失败可能 500 但配置已切换）——记为债务候选，交 982 实现组合入口时一并裁定。B‑CONSUMERS 仍未勾。
 
 2026-11-18 r13（982 交接三件落主）：按 982 的 `--stack web` 交接（man `996694a`/`8729d0d64`），auto-web 的公开面已补齐并 **phase fold 到 auto-web master `5c484d9`**：a) `AvServiceEngine::new_with_grants(source, scratch_root, grants)`（含 `platform.env`，`56b3ac5`）；b) `AvServiceEngine::receipt() -> Arc<AvServiceReceipt>`（`av_dispatches()`/`legacy_dispatches()`，`228d775`）；c) 公开 `TransportConfig::from_service_config(&HttpServiceConfig)` 与 `from_service_config_with_policy(Arc<HttpServiceConfig>)`（`5c484d9`，含映射单测）。ready 用 `http_server::bound_addr_snapshot()`（serve_av 真实绑定；进程内单服务）——man 侧 `--server av` 已据此打印 `AUTO_SERVICE_READY`。**集成注意**：用 `*_with_policy` 时须 `ServiceRuntime::bind_shutdown(tx)`，否则 `/__auto/shutdown` 的 `request_shutdown()` 返回 false。man 的 C0 CLI 切片（`6e21bfa`，分支）已改用该公开映射。B-CONSUMERS 仍未勾；U0/C1 依赖不变。
 
@@ -186,9 +188,17 @@ R关闭：独立核真实输入→新producer→consumer、正反例/来源/资�
 
 **C0 CLI 复验（2026-11-18 已交，982/EXEC 接线）。** `auto service --server av --dir <project> --api <jade-garden workspace_service.at> --http-config-inline {"listen":{"port":0}}` 真 CLI：真实 bind（内核分配端口）、`AUTO_SERVICE_READY` 就绪行、`GET /api/workspace` 字节级 JSON（`root`/`wiki_dir` 与直连一致）、`POST /__auto/shutdown` ⇒ 202、进程退出 0、端口重绑、收据 `av_dispatches=2 legacy_dispatches=0 same_sdk=true`。实现：`--server av` = auto-web `serve_av` + `AvServiceEngine`（`--api` 显式源；`AUTO_AV_GRANTS` 默认 `platform.file,mem,env`）；pre-C0 的 man TCP 宿主保留为 `--server av-direct`（`plan982_av_http_service` 17/17 + `plan982_service_av_track` 2/2 仍绿）。用例 `auto-man crates/auto/tests/plan983_c0_cli.rs`（0.37s；`--no-default-features --features ace-candidate`）。`ace-candidate` 编译：`cargo check -p auto --no-default-features --features ace-candidate` 退出 0（UsePy 缺臂已由 lang `ff55579c3` 修复）。
 
-**C0-B（前端页）状态（2026-11-18）。** e2e 已备外部后端模式（`JADE_E2E_BACKEND_URL`：跳过 spawn 与 `/open`，只校验真实 `/api/workspace` 的 root；新增 `01b-workspace-av-consumption.spec.ts` 断言真实响应 + `#app` 主视图 + opener 不出现；managed 后端的两条旧用例在外部模式下具名 skip）。临时探针（plan-artifacts，不入库）用 982 CLI 启动 AV 后端 + Vite + Chromium 实测：页面发出真实 `/api/workspace` 请求、200/root、`#app` 挂载、opener 0、无 console error。**永久 playwright 跑未做**：auto-down 组树无 `node_modules`（避免在 worktree 内建 symlink）；待以已入库的 e2e 改动在具备依赖的检出/CI 复跑。
+**C0-B（前端页）已正式跑（2026-11-18）。** e2e 外部后端模式（`JADE_E2E_BACKEND_URL`）+ `01b-workspace-av-consumption.spec.ts`（auto-down `b830e07`）在 AutoDown 主检出的 Playwright/Vite 上运行（临时 overlay `front/e2e-983` + 临时 config，跑完即删；不复制 node_modules、不在 worktree 建 symlink）：**1 passed**（6.2s；首跑 11.5s）。正式收据：页面真实请求 `GET http://127.0.0.1:13100/api/workspace` → **200** + `{"root":"<fixture workspace>","wiki_dir":"<fixture>\\wiki"}`；主视图断言（`#app` 挂载、`Select a file…` 提示、opener=0）通过；后端（982 CLI `--server av --api <consumer source>`）收据 `served=2 av_dispatches=2 legacy_dispatches=0 same_sdk=true`；退出码 0；日志 `plan-artifacts/plan-983/c0b/playwright-01b.log`。managed 后端的 file-tree/opener 用例在外部模式下具名 skip，环境齐备时照旧覆盖。
 
-**分期。** C0-A 后端线、C0 CLI 腿、C0-B 页面前端探针均已交。C1（下一例，将触发 982 组合缺口）：`POST /api/workspace/open`——文本根路径 + 目录创建/索引重建（平台 I/O）+ JSON 入/出，需 982 在同一次调用里组合文本参数与平台 I/O。
+**C1 验收基线（2026-11-18 实测冻结，交 982 实现组合入口）。** 用现有 jade-garden 后端（`open_workspace_impl`；临时 exe 副本 + 隔离 config）实测：
+- 请求：`POST /api/workspace/open`，`content-type: application/json`，body `{"root":"<路径>"}`（单字符串字段；正/反斜杠输入均可）。
+- **不存在目录**：`400`，body 逐字节 `{"error":"Directory does not exist: <请求原样路径>"}`；**零副作用**（不创建目录、不写 config/index、既有工作区不变）。
+- **成功**：`200`，body `{"root":"<canonical>","wiki_dir":"<canonical>\\wiki"}`——canonical 是 Windows `canonicalize()` 形态（**`\\?\` 前缀 + 反斜杠**，JSON 里 `\\\\?\\`），与 C0（env 原样路径、未 canonicalize）**不同**；按原样钉住。
+- **副作用**：`<root>/wiki` 不存在时创建（空 wiki ⇒ 索引 `"pages": []`）；`<root>/jade-garden-index.json` 重写（`pages[{path,title,frontmatter,mtime}]` + `blocks[...]`，覆盖 `wiki/**/*.ad`，实测含 `hello.ad`）；config 持久化 `{"workspace_root":"<canonical>"}`（现有实现写 exe 相邻 `jade-garden-config.json`；CLI/AV 宿主须显式 config 路径——建议 `JADE_GARDEN_CONFIG`，实现时冻结）。
+- 二次 open 同路径幂等（200/同 body/index 重写）；切换到另一路径 ⇒ 新路径成为当前工作区，旧目录内容不被修改。
+- **组合入口需求（982）**：一次调用同时要文本实参（root）+ 平台 I/O（exists/stat、`create_dir_all`、读写 config/index、遍历 wiki）+ JSON 出参；失败必须**具名**且尽量零副作用。**已知顺序缺口（债务候选）**：现有实现先 `save_config` 再建 wiki/重建索引，index 失败会 500 但配置已切换——982 实现时须裁定（保旧行为或先 I/O 后提交）；C1 基线先钉成功路径 + 400 + 幂等，部分失败面单独登记。
+
+**分期。** C0-A 后端线、C0 CLI 腿、C0-B 页面（正式 playwright）均已交。C1 基线已冻结（上段），**实现待 982 的组合入口**（文本 + 平台 I/O 同一次调用）；C1 之后为 U0 与四仓整体。
 
 **U0（UI 腿，980/WEB 消费；2026-11-18 备例）。** 真实交互例=`auto-ui/examples/ui/002-counter`（[app.at](../../../auto-ui/examples/ui/002-counter/src/front/app.at)，初始 `Counter: 0`）：浏览器加载生成的 Vue 页面，点 `+` ⇒ `Counter: 1`，`-`/`Reset` ⇒ `Counter: 0`；DOM 文本逐字断言、无控制台错误。oracle 先例=auto-ui-runtime 浏览器挂载档 `p980_web_lane_browser_mount`（真 002 源 `.Inc` lane 体，41→42；`examples/ui/ace-web-lane/tests/test_lane_browser.mjs`，排窗 `AUTO_UI_ACE_WEB_E2E=1`）。接口：980/WEB——`ui_gen/vue` SFC/表达式与 lane handler 体（切片 #1–#6p 已交；**B-WEB-I/V/R 未勾**，余=真语料全量 spliced 切换 watch/setup/expose/ext_imports/style）；982/EXEC——产品形态需 `auto run`（Vue）真 CLI，候选腿当前对 run 家族具名拒绝、ACE 服务化未交（与 C0 同一 982 交接）；配置=`pac.at`（002 有）+ 应用窗口配置，实际字段随 CLI 腿冻结；983/AVSERVICE/GENERATED 不参与。失败/清理：坏源保旧产物、构建诊断具名；浏览器/服务子进程回收、端口释放、生成 tree 不手改。**现状**：只备例，未运行浏览器档；four-repo 的 UI 腿等 980/WEB 批勾选与 982 `auto run` 接口。
 
@@ -420,6 +430,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
   [C0-A 已交 2026-11-18 @211b6d5（auto-down）/ @56b3ac5（auto-web）] 见 §5「C0 首例冻结」：可执行 AV 业务源 `jade-garden/back/auto/av/workspace_service.at`（env→UTF-8/JSON→响应；Windows join `\wiki`；只读）+ `api.at` 指针；auto-web `AvServiceEngine::new_with_grants` 显式 grants；真实 TCP 直连用例（源读消费者仓、不复制）——`--test http_runtime` 8/8（7.92s；新例 0.215s），字节级 200 JSON / null 形态 / 404 派发前 / 重复稳定 / shutdown 端口重绑。
   [C0 CLI 已交 2026-11-18 @auto-man 6e21bfa / auto-web 228d775] 982/EXEC：`auto service --server av` 改走 auto-web `serve_av`+`AvServiceEngine`，`--api` 显式源，pre-C0 宿主保留 `av-direct`；`bind_control_plane_shutdown`+收据（av/legacy 计数）。真 CLI 用例 `plan983_c0_cli`（0.37s）：bind/ready/字节 JSON/shutdown 202/退出 0/端口重绑/`av_dispatches=2 legacy_dispatches=0`；`av-direct` 旧用例 17/17+2/2 仍绿；`ace-candidate` 编译绿（lang ff55579c3）。
   [C0-B 已备+探针 2026-11-18 @auto-down b830e07] e2e 外部后端模式（`JADE_E2E_BACKEND_URL`）+ `01b-workspace-av-consumption.spec.ts`；临时探针实测页面消费真实 `/api/workspace`（200/root、#app 挂载、opener 0、无 console error）。**仍未勾**：永久 playwright 跑（worktree 无 node_modules）、U0、四仓整体（默认特性 man 门被外部 auto-ui 红挡住）。
+  [C0-B 正式跑 + C1 基线 2026-11-18] `01b` spec 在 AutoDown 主检出 Playwright/Vite 上 **1 passed**（6.2s/11.5s）：真实 `GET /api/workspace` → 200 + root/wiki_dir，主视图断言过；后端 `av_dispatches=2 legacy_dispatches=0`。C1 基线实测冻结（400 零副作用 / canonical `\\?\` / wiki+index+config / 幂等），实现待 982 组合入口。
 
 - [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
@@ -444,6 +455,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-18 stage: work | PLAN-983 r14 | outcome: pass（**C0‑B 正式跑 + C1 基线冻结**；B-CONSUMERS 仍未勾）| 用户指令：跑 `01b-workspace-av-consumption.spec.ts`（用含 `b830e07` 的源码、复用 AutoDown 主检出依赖/CI），拿页面真实请求/响应/主视图的正式收据；随后按 `open_workspace_impl` 写 C1 验收基线交 982。| C0‑B 运行形态：临时 overlay（`front/e2e-983` + `playwright.983.config.ts`，跑完即删）+ **982 CLI AV 后端**（`auto.exe --server av --api <workspace_service.at>`，`JADE_GARDEN_DEFAULT_WORKSPACE=<fixture>`）；未复制 node_modules、未在 worktree 建 symlink。| evidence（C0‑B）：Playwright **1 passed**（6.2s；首跑 11.5s）；页面真实请求 `GET http://127.0.0.1:13100/api/workspace` → **200**，body `{"root":"D:/autostack/auto-down/jade-garden/front/e2e/.runtime/workspace","wiki_dir":"…\\wiki"}`；主视图断言（`#app` 挂载/主区提示/opener=0）通过；后端收据 `served=2 av_dispatches=2 legacy_dispatches=0 same_sdk=true`；退出码 0；日志 `plan-artifacts/plan-983/c0b/playwright-01b.log`。| evidence（C1 基线，临时 exe 副本 + 隔离 config 实测）：不存在目录 ⇒ `400` + `{"error":"Directory does not exist: <原样路径>"}`，**零副作用**（目录未建、既有工作区不变）；成功 ⇒ `200` + `{"root":"\\\\?\\D:\\…\\ws","wiki_dir":"\\\\?\\D:\\…\\ws\\wiki"}`（canonical `\\?\` 形态）；`<root>/wiki` 创建（wiki 缺失时；空 wiki ⇒ 索引 `pages: []`）；`<root>/jade-garden-index.json` 重写（`pages[{path,title,frontmatter,mtime}]`+`blocks[...]`，实测含 `hello.ad`）；config `{"workspace_root":"<canonical>"}`；二次 open 幂等。| 债务候选：现有实现先 `save_config` 后建 wiki/index（index 失败 ⇒ 500 但配置已切换）——982 实现组合入口时裁定。| 未做：C1 实现（待 982 组合入口）、U0、四仓整体。| next: 982 组合入口 + C1 实现；U0 待 980/WEB + 982 `auto run`；B-CONSUMERS → T-05/06/07
 
 2026-11-18 stage: merge（phase fold：**982 `--stack web` 交接三件公开面**）| PLAN-983 r13 | outcome: pass | delivery_commit: **auto-web master `5c484d9`**（ff-only；含 `56b3ac5` 公开 grants、`228d775` receipt+control-plane shutdown、`5c484d9` 公开 config→transport 映射+单测）；canonical: **lang master `2513903df`**（`m2-web.md` 新增「C0 公开面（供 982 `--stack web`）」节）| 交接件（982 可直接消费）：a) `AvServiceEngine::new_with_grants(source: &str, scratch_root: &Path, grants: Vec<String>) -> Result<Self, String>`（默认 `new` 仍 file+mem）；b) `AvServiceEngine::receipt() -> Arc<AvServiceReceipt>`，`AvServiceReceipt::av_dispatches()/legacy_dispatches()`（路由 miss 不计；legacy 结构常量 0）；c) `TransportConfig::from_service_config(&HttpServiceConfig)` 与 `from_service_config_with_policy(Arc<HttpServiceConfig>)`（后者装配 `ServiceRuntime`）；ready=`http_server::bound_addr_snapshot() -> Option<String>`（serve 真实绑定，进程内单服务）。**集成注意**：`*_with_policy` 须 `ServiceRuntime::bind_shutdown(tx)`（否则 `/__auto/shutdown` 不停）；无 policy 用 `bind_control_plane_shutdown(tx)`。| evidence: `--test http_runtime` **8/8**（7.55s）；`--lib` **189 例 188 绿/1 红/1 skip**（红=基线既有 `api_gen::tests::test_handler_body_r2_matrix_compile_oracle`；新映射单测 `service_config_maps_into_transport_budget_and_policy` 1/1）；`cargo fmt --check` clean；man 的 `serve_av` 改用公开映射后 `plan983_c0_cli` **1/1**（0.15s，含 `bind_shutdown`）。| 过程：lang master 前移导致首次 ff 失败，规范提交 rebase 后 ff（无内容漂移）。| 未做：man `6e21bfa` 仍在 plan-983-dev（待 982 认领/合入；man master 已有 982 `--stack`，注意合并冲突面 cli_spec/cmd_service/http_service）；C0-B 永久跑/U0/四仓不变。| next: 982 `--stack web` 接线（消费 master `5c484d9`）；C0-B 永久跑；C1 交 982；U0 待 980/982
 
@@ -506,6 +519,8 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
 
 ## 10. 待澄清事项
+
+**2026-11-18 C1 交接（982 组合入口）**：C1 基线已冻结（§5「C1 验收基线」）——`POST /api/workspace/open` 的 400/零副作用、成功后的 canonical `\\?\` 路径、`wiki` 创建、`jade-garden-index.json` 重写、config 持久化与幂等均已实测钉住；需要 982 在同一次调用里组合**文本实参 + 平台 I/O + JSON 出参**，并裁定"先写 config 后建 wiki/index"的部分副作用顺序（债务候选）。983 侧只出基线/oracle，不重复实现。
 
 **2026-11-18 982/EXEC 优先项（首例 C0 依赖）——已交**：按用户裁定「尽快解锁 983 ⇒ 982 优先交首例实际需要的 EXEC 接口」，auto-man `6e21bfa` 已把 `auto service --server av` 接到 auto-web `serve_av`（`--api` 显式源、grants 可配、ready/收据/控制面关停），pre-C0 宿主保留为 `--server av-direct`；真 CLI 用例 `plan983_c0_cli` 绿。982 `--stack web` 所需的**三件公开面已落 auto-web master `5c484d9`**（`new_with_grants`/`receipt`/`TransportConfig::from_service_config[_with_policy]`；ready=`bound_addr_snapshot()`），规范见 `m2-web.md`「C0 公开面」（lang `2513903df`）；集成注意 `*_with_policy` 须 `bind_shutdown`。**剩余外部项**：auto-ui master 默认特性红（`ace_av`/`ace_core`/`ace_a2x_ts` 未门控，`c0035034`）挡住 `cargo test -p auto`（默认特性）与 `plan890_web_consumers` 默认档——归 980/981 F32 窗口配对，非本切片引入。C/EXPORT 按自身顺序并行。
 
