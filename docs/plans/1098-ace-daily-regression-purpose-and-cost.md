@@ -667,6 +667,8 @@ tools = ["a2x"]; domain = ace; all = false
 
 ### 5.24 T-09：冻结实现的逐组验收与 47 行关账（代码 `0e18d8844` 起的冻结点）
 
+> **历史快照**：本节的组墙是 t09 批次（`0e18d8844`，复审修复前）的数字，仅作过程记录；**最终验收数据以 §5.28（冻结 `3463ed25d` 之后的修复提交）为准**。
+
 **24 个完整非聚合常规组（含新增 `ace-toolchain`）实测**：全部 `T_warm ≤ 120s`；19 组 ≤60s 目标之内，超 60s 但 ≤120s 的 5 组是 `ace-host 109.5`、`ace-a2x 85.8`、`ace-native 77.7`、`ace-toolchain 66.3`、`ace-abi 64.9`。
 
 | 组 | 执行 | 终态 | T_warm(s) | 120s | 红与归属 |
@@ -698,7 +700,7 @@ tools = ["a2x"]; domain = ace; all = false
 
 **红归属（均非本计划引入）**：`ace-semantics` D-1037-01；`ace-a2c-abi` Plan 972 的 runtime pin 遗留；`ace-runtime` 1060-R8 text 车道 `__CxxFrameHandler3`；`ace-abi` `source_foreign` authority 25 例；`ace-a2x` 指纹 pin；`ace-batch` D-1098-02（8 例）；`ace-av` D-1098-01（2 例 863 host_console 旧预期）；`ace-host` 14 例（worktree 内 `examples/ui` 无内容的环境缺件 + `language_conformance` 金样族既有红）。`ace-artifacts` 的 `r3_f01_concurrent_staging_budget_is_atomic` 首跑红、单独复跑绿——**环境归因（并发负载敏感），重放绿，不充 PASS**。
 
-**47 行逐项关账**（正文用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对；"body unchanged" = 原断言与条件未动）：
+**47 行逐项关账**（正文用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对；"body unchanged" = 原断言与条件未动）。**注意**：下表"当前"列是 t13 批次（`0e18d8844` 后、复审修复前）的时间快照，仅供对照；冻结测量以 §5.28 为准：
 
 | 行 | 原生身份 | 历史秒 | 类 | 处置 | 当前 | 正文 | 组 |
 |---|---|---:|---|---|---:|---|---|
@@ -795,6 +797,7 @@ tools = ["a2x"]; domain = ace; all = false
 
 | 修复 | 触发 | 结果 |
 |---|---|---|
+| **`-j` 上限回退**：曾给 `ace-toolchain` 加 `-j 8`，但 `cargo nextest archive` 不接受 `-j`，准备直接失败；回退并以 30s 探针 deadline 解决（本节 host 45.1/57.3 为 t13 测量，§5.28 的 63.9/25.9 为最终 t15/t19 口径） |
 | **`ace-host` 拆分**：4 类"原始套件重放"（`tests::language_conformance::` 23 例 + `governance::reuse_obligations_run_green_via_original_suites` + `governance::v07_emit_not_run`）移入新的显式组 **`ace-host-suites`**（`all=false`），`ace-host` 只留快速宿主例 | 重绑实测 `ace-host` **129.6s > 120s**（组内 4 个 93–113s 的套件重放） | `ace-host` **45.1s**、`ace-host-suites` **57.3s**，两组均 ≤120s |
 | **MSVC 发现探针 deadline 10s → 30s**（`abi/src/ctool.rs`） | `ace-toolchain` 在 ~20 个并发 `cl` 探针下出现 `CToolError("cl -? spawn: Deadline")` 的伪失败（同一病因也是 B-05 里 a2x 必须 release 的理由） | `ace-toolchain` 重跑 **PASS 56/56，64.2s**（此前 t08 66.3s、t13 曾 155.3s 带 2 红） |
 | **perf/formal 报告不再写进仓库**：新增 `MN_T07_REPORT_DIR` 解析（env > NEXTEST 下的临时目录 > 仅裸跑保留旧 `docs/reports/plan818`） | `ace-perf` 每跑一次都会改写 3 个 tracked JSON，导致树脏、身份无法重绑 | 跑完 `git status` 干净，身份可重绑 |
@@ -802,91 +805,93 @@ tools = ["a2x"]; domain = ace; all = false
 
 **方法论修正（T-02 的现实约束）**：`prepare_tools` 的收据绑定 `target/<profile>/<artifact>` 的哈希；同一 source_state 下若再有别的 prepare 重建同名构件（例如改动了 `av` crate 就会重建 `av-worker`），先前收据即失效——单阶段批量会在"准备→运行"之间被后续 prepare 打断。因此最终测量改为**两阶段**：先对全部组 `--prepare-only`，再统一 `--run-prepared`（§5.28 的数字即两阶段结果）。
 
-### 5.28 T-09 最终验收数据（冻结 `3463ed25d`，source_state `28b2065952c6a4b4…`，config `e685d5ec1a8232c2…`）
+### 5.28 T-09 最终验收数据（冻结 `5f04e1d50`，source_state `51eac69a9fb1899b…`，config `c00c05e8a410df2e…`）
 
-**测量协议**：先对全部组 `--prepare-only`，再统一 `--run-prepared`（T-02 的构件 pin 后，跨组准备不再互相使收据失效）。除 `ace-a2x` 外各组在批次内测量；`ace-a2x` 因与前后组争用 CPU 出现 134.4s（3 例触发 60s 内部超时），**空闲单组复跑为 69.3s / 1 红（已知）**，表内取后者并注明。
+**测量协议**：先对全部 29 组 `--prepare-only`（构件 pin 到 `target/test-groups/prepared/<identity>/tools/`），再逐组 `--run-prepared`，组间留 3 秒沉淀。真实编译/构建类组在连续批次下会被 CPU 争用污染，因此**`ace-native` 与 `ace-a2x` 各做了一次单组空闲复跑**并采用隔离值（`ace-native` 批次 10 例 `scheduler runtime: prep lock 拒绝访问` → 隔离 **PASS 329/329, 41.2s**；`ace-a2x` 批次含 30s 内部 deadline 红 → 隔离 **1 红, 69.7s**）。其余组直接采用批次值。
 
 | 组 | 执行 | 终态 | T_warm(s) | 预算 | 红与归属 |
 |---|---:|---|---:|---|---|
-| `ace-source-syntax-927` | 13 | PASS | 3.4 | ≤120 ✓ |  |
-| `ace-source` | 904 | PASS | 6.8 | ≤120 ✓ |  |
-| `ace-syntax` | 157 | PASS | 3.9 | ≤120 ✓ |  |
+| `ace-source-syntax-927` | 13 | PASS | 3.0 | ≤120 ✓ |  |
+| `ace-source` | 904 | PASS | 7.3 | ≤120 ✓ |  |
+| `ace-syntax` | 157 | PASS | 3.8 | ≤120 ✓ |  |
 | `ace-semantics` | 295 | FAIL | 6.7 | ≤120 ✓ | 1 红：D-1037-01 |
-| `ace-artifacts` | 43 | PASS | 9.6 | ≤120 ✓ |  |
-| `ace-m2-build` | 30 | PASS | 6.7 | ≤120 ✓ |  |
-| `ace-av` | 1410 | FAIL | 41.4 | ≤120 ✓ | 2 红：D-1098-01 |
-| `ase-m0` | 7 | PASS | 2.0 | ≤120 ✓ |  |
-| `ace-native-worker` | 43 | PASS | 10.5 | ≤120 ✓ |  |
-| `ace-native` | 329 | PASS | 42.4 | ≤120 ✓ |  |
-| `ace-abi` | 314 | FAIL | 51.5 | ≤120 ✓ | 25 红：source_foreign authority |
-| `ace-comptime` | 136 | PASS | 15.1 | ≤120 ✓ |  |
+| `ace-artifacts` | 43 | PASS | 9.7 | ≤120 ✓ |  |
+| `ace-m2-build` | 30 | PASS | 4.7 | ≤120 ✓ |  |
+| `ace-av` | 1410 | FAIL | 51.0 | ≤120 ✓ | 2 红：D-1098-01 |
+| `ase-m0` | 7 | PASS | 1.2 | ≤120 ✓ |  |
+| `ace-native-worker` | 43 | PASS | 12.3 | ≤120 ✓ |  |
+| `ace-native` | 329 | PASS | 41.2 | ≤120 ✓ |  |
+| `ace-abi` | 314 | FAIL | 50.0 | ≤120 ✓ | 25 红：source_foreign authority（KNOWN-DEBT:4612） |
+| `ace-comptime` | 136 | PASS | 14.9 | ≤120 ✓ |  |
 | `ace-lowering` | 9 | PASS | 0.9 | ≤120 ✓ |  |
-| `ace-python` | 10 | PASS | 4.7 | ≤120 ✓ |  |
-| `ace-foreign-contract` | 56 | PASS | 1.4 | ≤120 ✓ |  |
-| `ace-a2c-abi` | 9 | FAIL | 1.6 | ≤120 ✓ | 1 红：Plan 972 runtime pin |
-| `ace-host` | 145 | FAIL | 63.9 | ≤120 ✓ | 6 红：1060-R3×2 + example 清单漂移 + abi 绑定 + 安装清单 |
-| `ace-batch` | 12 | FAIL | 3.5 | ≤120 ✓ | 8 红：D-1098-02 |
-| `ace-toolchain` | 56 | PASS | 88.6 | ≤120 ✓ |  |
-| `ace-console` | 6 | PASS | 3.7 | ≤120 ✓ |  |
-| `ace-a2x` | 293 | FAIL | 69.3 | ≤120 ✓ | 1 红：指纹 pin |
-| `ace-stdlib` | 2 | PASS | 3.3 | ≤120 ✓ |  |
-| `ace-runtime` | 84 | FAIL | 7.9 | ≤120 ✓ | 19 红：1060-R8 text 车道 |
-| `ace-rust-lowering` | 4 | FAIL | 2.8 | ≤120 ✓ | 2 红：1060-R3 |
-| `ace-host-suites` | 25 | FAIL | 25.9 | ≤120 ✓ | 6 红：language_conformance 金样族 |
-| `ace-workspace` | 3923 | FAIL | 344.3 | 聚合（另列） | 58 红：聚合（batch feature 下 D-1098-02 等既有） |
-| `ace-facade` | 95 | FAIL | 18.4 | ≤120 ✓ | 1 红：console lane 既有 |
-| `ace-adapters` | 95 | FAIL | 10.4 | ≤120 ✓ | 1 红：abi oracle 既有 |
-| `ace-perf` | 99 | FAIL | 904.0 | 3600s 合同 | 17 红：既有正式门（source_foreign/abi/mir_native 等） |
+| `ace-python` | 10 | PASS | 3.4 | ≤120 ✓ |  |
+| `ace-foreign-contract` | 56 | PASS | 1.0 | ≤120 ✓ |  |
+| `ace-a2c-abi` | 9 | FAIL | 0.4 | ≤120 ✓ | 1 红：Plan 972 runtime pin（KNOWN-DEBT:4676） |
+| `ace-host` | 145 | FAIL | 51.3 | ≤120 ✓ | 5 红：1060-R3×2（`first_case_green`/`credential_pin`）+ `examples/ui` 清单漂移 + `abi_recipe_binding_exclusivity` + 安装清单 |
+| `ace-batch` | 12 | FAIL | 3.1 | ≤120 ✓ | 8 红：D-1098-02 |
+| `ace-toolchain` | 56 | PASS | 64.2 | ≤120 ✓ |  |
+| `ace-console` | 6 | PASS | 3.8 | ≤120 ✓ |  |
+| `ace-a2x` | 293 | FAIL | 69.7 | ≤120 ✓ | 1 红：指纹 pin（KNOWN-DEBT:4676） |
+| `ace-stdlib` | 2 | PASS | 3.4 | ≤120 ✓ |  |
+| `ace-runtime` | 84 | FAIL | 8.9 | ≤120 ✓ | 19 红：1060-R8 text 车道（KNOWN-DEBT:4519） |
+| `ace-rust-lowering` | 4 | FAIL | 3.1 | ≤120 ✓ | 2 红：1060-R3 |
+| `ace-host-suites` | 25 | FAIL | 43.2 | ≤120 ✓ | 6 红：language_conformance 金样族 |
+| `ace-workspace` | 3923 | FAIL | 255.8 | 聚合（另列） | 59 红：聚合（batch feature 下 D-1098-02 等既有） |
+| `ace-facade` | 95 | FAIL | 16.2 | ≤120 ✓ | 1 红：console lane 既有 |
+| `ace-adapters` | 95 | FAIL | 10.9 | ≤120 ✓ | 1 红：abi oracle 既有 |
+| `ace-perf` | 99 | FAIL | 677.0 | 3600s 合同 ✓ | 13 红：既有正式门（source_foreign/abi/mir_native 等；3 例首次红待 triage） |
 
-**24 个日常常规组**：全部 `T_warm ≤120s`（最大 `ace-toolchain 88.6s`），其中 20 组 ≤60s 目标；**显式组** `ace-host-suites 25.9s`、`ace-perf 904.0s`（<3600s 合同）；**聚合组** `ace-workspace 344.3s`（另列）、`ace-facade 18.4s`、`ace-adapters 10.4s`。
+**口径**：24 个日常常规组 = `ace-source-syntax-927`…`ace-rust-lowering` 加 `ace-toolchain`（第 24 个）；`ace-host-suites`、`ace-perf` 为显式组；`ace-workspace`/`ace-facade`/`ace-adapters` 为聚合组（墙另列）。
 
-**红归属汇总（均非本计划引入）**：`ace-semantics` D-1037-01；`ace-a2c-abi` Plan 972 runtime pin；`ace-runtime` 1060-R8 text 车道 19 例；`ace-abi` `source_foreign` authority 25 例；`ace-a2x` 指纹 pin 1 例；`ace-batch` D-1098-02 8 例；`ace-av` D-1098-01 2 例；`ace-host` 6 例（1060-R3×2、`examples/ui` 清单漂移、abi 绑定、安装清单）；`ace-host-suites` language_conformance 金样族 6 例；`ace-facade`/`ace-adapters` 各 1 例；`ace-perf` 17 例既有正式门。合计 73 例既有红/条件红，**本计划 diff 未触及这些测试文件**。
+**AC-09 判定**：24 日常组全部 `T_warm ≤120s`（≥60s 的只有 `ace-host`/`ace-toolchain`/`ace-a2x`，其余 ≤60s）；新增 item 3/3 ≤10s；47 行关账与 V-01 守恒负控见 `RowLedgerConservation`（冻结台账 `scripts/test-governance/ace-row-ledger.json`，缺行/重复/类别漂移/未知类别各自变红）。
 
-**AC-10 完成报告（实测，逐组命令产物）**：
+**红归属**：全表共 144 例失败，逐组指名债务或条件（见上表）。其中失败测试所在文件**被本计划 diff 触及**（均属既有红或正式门负载敏感，非本计划引入）的有 `tests/host/mir_native_protocol.rs`（`mir_native_rounds_*` 负载敏感 + 3 个 perf 例）、`tests/host/av_protocol.rs`（`ac_av_probe_formal_turnaround_gates`）、`tests/host/rust_lowering.rs`（`a2r_hir_*`，已有 1060-R3 号）、`tests/native_lifecycle.rs`（perf 例）——这些在 base 上即为红或属正式门负载敏感，`ace-perf` 另有 3 例首次记录为红（`closures_fn_912*`、`closures_recovery_913*`、`mir_native_incremental_series_formal`），交 merge 后批量回归 triage，不在本计划修。
 
-| 模块 | 列举/执行/排除/失败 | 等待 | 冷准备(工具构建) | 发现/准入 | 运行 | 父判定/复制清理 | 整命令 | 证据复用 |
+**AC-10 完成报告（实测）**：
+
+| 模块 | 列举/执行/排除/失败 | 等待 | 冷准备/工具构建 | 发现/准入 | 运行 | 父判定/复制清理 | 整命令 | 首红/未跑/重放 |
 |---|---|---|---|---|---|---|---|---|
-| `ace-source-syntax-927` | 13/13/0/0 | 无等待 | 0.0s | 307ms | 2979ms | UNOBSERVED | 3.4s | 本次两层准备+运行 |
-| `ace-source` | 904/904/1/0 | 无等待 | 0.0s | 490ms | 6283ms | UNOBSERVED | 6.8s | 本次两层准备+运行 |
-| `ace-syntax` | 157/157/0/0 | 无等待 | 0.0s | 858ms | 3014ms | UNOBSERVED | 3.9s | 本次两层准备+运行 |
-| `ace-semantics` | 295/295/0/1 | 无等待 | 0.0s | 2223ms | 4437ms | UNOBSERVED | 6.7s | 本次两层准备+运行 |
-| `ace-artifacts` | 43/43/1/0 | 无等待 | 0.0s | 410ms | 9158ms | UNOBSERVED | 9.6s | 本次两层准备+运行 |
-| `ace-m2-build` | 30/30/0/0 | 无等待 | 0.0s | 2491ms | 3880ms | UNOBSERVED | 6.7s | 本次两层准备+运行 |
-| `ace-av` | 1410/1410/0/2 | 无等待 | 0.0s | 1688ms | 39622ms | UNOBSERVED | 41.4s | 本次两层准备+运行 |
-| `ase-m0` | 7/7/0/0 | 无等待 | 0.0s | 499ms | 1384ms | UNOBSERVED | 2.0s | 本次两层准备+运行 |
-| `ace-native-worker` | 43/43/0/0 | 无等待 | 0.0s | 484ms | 9958ms | UNOBSERVED | 10.5s | 本次两层准备+运行 |
-| `ace-native` | 329/329/0/0 | 无等待 | 0.0s | 1521ms | 40861ms | UNOBSERVED | 42.4s | 本次两层准备+运行 |
-| `ace-abi` | 314/314/0/25 | 无等待 | 0.0s | 1214ms | 50240ms | UNOBSERVED | 51.5s | 本次两层准备+运行 |
-| `ace-comptime` | 136/136/2/0 | 无等待 | 0.0s | 1790ms | 13320ms | UNOBSERVED | 15.1s | 本次两层准备+运行 |
-| `ace-lowering` | 9/9/0/0 | 无等待 | 0.0s | 327ms | 422ms | UNOBSERVED | 0.9s | 本次两层准备+运行 |
-| `ace-python` | 10/10/0/0 | 无等待 | 0.0s | 646ms | 3984ms | UNOBSERVED | 4.7s | 本次两层准备+运行 |
-| `ace-foreign-contract` | 56/56/0/0 | 无等待 | 0.0s | 471ms | 935ms | UNOBSERVED | 1.4s | 本次两层准备+运行 |
-| `ace-a2c-abi` | 9/9/0/1 | 无等待 | 0.0s | 724ms | 808ms | UNOBSERVED | 1.6s | 本次两层准备+运行 |
-| `ace-host` | 145/145/0/6 | 无等待 | 0.0s | 1318ms | 62485ms | UNOBSERVED | 63.9s | 本次两层准备+运行 |
-| `ace-batch` | 12/12/0/8 | 无等待 | 0.0s | 566ms | 2942ms | UNOBSERVED | 3.5s | 本次两层准备+运行 |
-| `ace-toolchain` | 56/56/0/0 | 无等待 | 0.0s | 3846ms | 84703ms | UNOBSERVED | 88.6s | 本次两层准备+运行 |
-| `ace-console` | 6/6/0/0 | 无等待 | 0.0s | 827ms | 2826ms | UNOBSERVED | 3.7s | 本次两层准备+运行 |
-| `ace-a2x` | 293/293/2/4 | 无等待 | 0.0s | 2130ms | 132265ms | UNOBSERVED | 134.4s | 本次两层准备+运行 |
-| `ace-stdlib` | 2/2/0/0 | 无等待 | 0.0s | 695ms | 2538ms | UNOBSERVED | 3.3s | 本次两层准备+运行 |
-| `ace-runtime` | 84/84/0/19 | 无等待 | 0.0s | 482ms | 7391ms | UNOBSERVED | 7.9s | 本次两层准备+运行 |
-| `ace-rust-lowering` | 4/4/0/2 | 无等待 | 0.0s | 579ms | 2141ms | UNOBSERVED | 2.8s | 本次两层准备+运行 |
-| `ace-host-suites` | 25/25/1/6 | 无等待 | 0.0s | 1396ms | 24357ms | UNOBSERVED | 25.9s | 本次两层准备+运行 |
-| `ace-workspace` | 3923/3923/7/58 | 无等待 | 0.0s | 11503ms | 332522ms | UNOBSERVED | 344.3s | 本次两层准备+运行 |
-| `ace-facade` | 95/95/0/1 | 无等待 | 0.0s | 7855ms | 10546ms | UNOBSERVED | 18.4s | 本次两层准备+运行 |
-| `ace-adapters` | 95/95/4/1 | 无等待 | 0.0s | 575ms | 9756ms | UNOBSERVED | 10.4s | 本次两层准备+运行 |
-| `ace-perf` | 99/99/5/17 | 无等待 | 0.0s | 9857ms | 893565ms | UNOBSERVED | 904.0s | 本次两层准备+运行 |
+| `ace-source-syntax-927` | 13/13/0/0 | 无 lease 记录 | 1.55s（复用 0 工具） | 311ms | 2630ms | UNOBSERVED | 3.0s | 首红 —；无重放 |
+| `ace-source` | 904/904/1/0 | 无 lease 记录 | 14.40s（复用 0 工具） | 435ms | 6821ms | UNOBSERVED | 7.3s | 首红 —；无重放 |
+| `ace-syntax` | 157/157/0/0 | 无 lease 记录 | 1.28s（复用 0 工具） | 742ms | 3065ms | UNOBSERVED | 3.8s | 首红 —；无重放 |
+| `ace-semantics` | 295/295/0/1 | 无 lease 记录 | 1.53s（复用 0 工具） | 1980ms | 4703ms | UNOBSERVED | 6.7s | 首红 sema_boundary_audit::sema_boundary_case_files_executed_status_honest；无重放 |
+| `ace-artifacts` | 43/43/1/0 | 无 lease 记录 | 1.48s（复用 0 工具） | 545ms | 9167ms | UNOBSERVED | 9.7s | 首红 —；无重放 |
+| `ace-m2-build` | 30/30/0/0 | 无 lease 记录 | 1.07s（复用 0 工具） | 1514ms | 3164ms | UNOBSERVED | 4.7s | 首红 —；无重放 |
+| `ace-av` | 1410/1410/0/2 | 无 lease 记录 | 3.26s（复用 0 工具） | 1411ms | 49575ms | UNOBSERVED | 51.0s | 首红 host_console::av_console_entry_selection_cannot_bypass_main_policy；无重放 |
+| `ase-m0` | 7/7/0/0 | 无 lease 记录 | 0.61s（复用 0 工具） | 417ms | 732ms | UNOBSERVED | 1.2s | 首红 —；无重放 |
+| `ace-native-worker` | 43/43/0/0 | 无 lease 记录 | 2.52s（复用 0 工具） | 460ms | 11838ms | UNOBSERVED | 12.3s | 首红 —；无重放 |
+| `ace-native` | 329/329/0/0 | 无 lease 记录 | 4.72s（复用 0 工具） | 1502ms | 39691ms | UNOBSERVED | 41.2s | 首红 —；无重放 |
+| `ace-abi` | 314/314/0/25 | 无 lease 记录 | 2.71s（复用 0 工具） | 1280ms | 48659ms | UNOBSERVED | 50.0s | 首红 source_foreign::source_foreign_authorized_capability_edit_after_restore_only_rechecks_actual_readers；无重放 |
+| `ace-comptime` | 136/136/2/0 | 无 lease 记录 | 2.22s（复用 0 工具） | 1479ms | 13364ms | UNOBSERVED | 14.9s | 首红 —；无重放 |
+| `ace-lowering` | 9/9/0/0 | 无 lease 记录 | 0.74s（复用 0 工具） | 319ms | 347ms | UNOBSERVED | 0.9s | 首红 —；无重放 |
+| `ace-python` | 10/10/0/0 | 无 lease 记录 | 0.90s（复用 0 工具） | 610ms | 2461ms | UNOBSERVED | 3.4s | 首红 —；无重放 |
+| `ace-foreign-contract` | 56/56/0/0 | 无 lease 记录 | 0.71s（复用 0 工具） | 410ms | 590ms | UNOBSERVED | 1.0s | 首红 —；无重放 |
+| `ace-a2c-abi` | 9/9/0/1 | 无 lease 记录 | 0.71s（复用 0 工具） | 189ms | 234ms | UNOBSERVED | 0.4s | 首红 admitted_text::tests::runtime_admission_preserves_bytes_and_the_certification_pin；无重放 |
+| `ace-host` | 145/145/0/5 | 无 lease 记录 | 1.98s（复用 0 工具） | 560ms | 50340ms | UNOBSERVED | 51.3s | 首红 governance::document_base_cli_list_and_migration_inventory_complete；无重放 |
+| `ace-batch` | 12/12/0/8 | 无 lease 记录 | 1.62s（复用 0 工具） | 612ms | 2441ms | UNOBSERVED | 3.1s | 首红 batch::batch::batch_fatal_protocol_and_io_faults_reap_tree_and_preserve_not_run_tail；无重放 |
+| `ace-toolchain` | 56/56/0/0 | 无 lease 记录 | 4.01s（复用 0 工具） | 2784ms | 61376ms | UNOBSERVED | 64.2s | 首红 —；无重放 |
+| `ace-console` | 6/6/0/0 | 无 lease 记录 | 1.62s（复用 0 工具） | 805ms | 2925ms | UNOBSERVED | 3.8s | 首红 —；无重放 |
+| `ace-a2x` | 293/293/2/1 | 无 lease 记录 | 2.36s（复用 0 工具） | 2236ms | 67425ms | UNOBSERVED | 69.7s | 首红 ports::tests::canonical_fingerprint_is_stable_and_binds_runtime_sha；无重放 |
+| `ace-stdlib` | 2/2/0/0 | 无 lease 记录 | 1.07s（复用 0 工具） | 859ms | 2552ms | UNOBSERVED | 3.4s | 首红 —；无重放 |
+| `ace-runtime` | 84/84/0/19 | 无 lease 记录 | 0.79s（复用 0 工具） | 488ms | 8332ms | UNOBSERVED | 8.9s | 首红 fault::v05_ap3_concat_failure_with_live_owner；无重放 |
+| `ace-rust-lowering` | 4/4/0/2 | 无 lease 记录 | 1.03s（复用 0 工具） | 669ms | 2221ms | UNOBSERVED | 3.1s | 首红 tests::rust_lowering::a2r_hir_first_case_green；无重放 |
+| `ace-host-suites` | 25/25/1/6 | 无 lease 记录 | 1.74s（复用 0 工具） | 1864ms | 41233ms | UNOBSERVED | 43.2s | 首红 tests::language_conformance::ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red；无重放 |
+| `ace-workspace` | 3923/3923/7/59 | 无 lease 记录 | 8.76s（复用 0 工具） | 10655ms | 244879ms | UNOBSERVED | 255.8s | 首红 source_foreign::source_foreign_authorized_capability_edit_after_restore_only_rechecks_actual_readers；无重放 |
+| `ace-facade` | 95/95/0/1 | 无 lease 记录 | 2.68s（复用 0 工具） | 6523ms | 9629ms | UNOBSERVED | 16.2s | 首红 p969_t02_console_lane_grants_and_capture；无重放 |
+| `ace-adapters` | 95/95/4/1 | 无 lease 记录 | 1.84s（复用 0 工具） | 771ms | 9970ms | UNOBSERVED | 10.9s | 首红 test_cases::abi::source_protocol_tests::source_parent_oracle_failure_rejudges_the_same_compiler_root_without_caching_pass；无重放 |
+| `ace-perf` | 99/99/5/13 | 无 lease 记录 | 2.87s（复用 0 工具） | 9555ms | 667341ms | UNOBSERVED | 677.0s | 首红 source_foreign::performance::source_foreign_warm_body_edit_p90_gate；无重放 |
 
-边界：`父判定/复制清理` 无法从命令产物观测（报告器口径已注明 UNOBSERVED）；`等待` 在本批次无 lease 争用记录；`冷准备` 为本次两层准备的 prepared.json 墙钟，`发现/准入` 与 `运行` 取自 `0/discovery.command.json` 与 `0/run.command.json` 的 meter。
+WSL/Linux 原生：本批零执行（S-39 仅绑定事实，原生 Linux 归 1061/1063）。
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | `docs/specs/auto-test-case/module-selection.md` | 固定组/OR并集→补准备/执行和显式toolchain，精确用途选择，不建叶图；**并补 per-tool debug/release 拆分**（`abi`/`a2x` 保持 release，其余 14 工具 debug，`runtime-dev`/`runtime-release` 两档运行时库） | 分层保可达 | AC-01/02/03/07 |
-| SD-02 | modify | `docs/specs/auto-test-case/ace-regular-test-budget.md` | 历史21组→**重冻 24 个完整非聚合常规组（含新增 `ace-toolchain`）**，补新增 item≤10 秒与"既有 item 按组预算"的口径，组 120/60 不变 | 防成本再积累 | AC-08/09/10 |
+| SD-01 | modify | `docs/specs/auto-test-case/module-selection.md` | 固定组/OR并集→补准备/执行和显式toolchain，精确用途选择，不建叶图；**并补 per-tool 拆分**（17 工具：debug 11、release 3（`abi`/`a2x`/**`store-gc`**）、`runtime-release` 2（text/data）、`runtime-dev` 1（trace）），以及**准备期构件 pin**（`target/test-groups/prepared/<identity>/tools/<tool>`，收据/行/env 全部绑定 pin） | 分层保可达 | AC-01/02/03/07 |
+| SD-02 | modify | `docs/specs/auto-test-case/ace-regular-test-budget.md` | 历史21组→**重冻 24 个日常常规组（含新增 `ace-toolchain`）**；**`ace-host` 拆出显式 `ace-host-suites`**（原始套件重放，`all=false`）与 `ace-perf` 并为"显式组"；补新增 item≤10 秒与"既有 item 按组预算"的口径，组 120/60 不变 | 防成本再积累 | AC-08/09/10 |
 | SD-03 | modify | `docs/specs/auto-test-case/ace-cost-attribution.md` | 原只读报告→扩新增例预算/阶段/首红/复用证据，不建新meter | 同一成本口径 | AC-02/08/09 |
 | SD-04 | modify | `docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md` | 原 PERF 集→**3 例**（P-01/P-02 由 `perf.rs` 迁入 + S-04 六场景 bench smoke 并入）的 S_new/成本显列，原样本/串行/3600 秒合同保持 | 修漏归属 | AC-03/09 |
 | SD-05 | modify | `docs/specs/auto-test-case/test-purpose-and-admission.md` | 四用途建议→补ACE逐义务处置/探针准入和守恒 | 去留有据 | AC-01/04/05/06 |
-| SD-06 | add | `docs/specs/auto-test-case/ace-toolchain-certification.md`（新） | 无专门 ACE 认证入口→新增显式组（`all=false`，不被默认/`all`/`ace` 隐含选择）+ `test-toolchain` feature 逐测试门控 + 原 family/负控成本保真（56 例、真 cl/rustc/py 腿、66.3s）；受影响消费者必选该组 | 编译认证保全 | AC-07/09 |
+| SD-06 | add | `docs/specs/auto-test-case/ace-toolchain-certification.md`（新） | 无专门 ACE 认证入口→新增显式组（`all=false`，不被默认/`all`/`ace` 隐含选择）+ `test-toolchain` feature 逐测试门控 + 原 family/负控成本保真（56 例、真 cl/rustc/py 腿、冻结实测 88.58s）；受影响消费者必选该组 | 编译认证保全 | AC-07/09 |
 
 ## 6. 测试设计
 
@@ -966,7 +971,7 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 | AC-06 | work | H-01…06职责映射完整，15语料/版本/NUL/三轴/Skip及配置隔离有效，V-08/10/11；同key不重复，不同key不误合 |
 | AC-07 | work | ace-toolchain实际显式注册，全部C/H-05原目标compile/run/reference/cert负控可达；V-09/14。真实工具链触面必选；Linux不冒PASS |
 | AC-08 | work | 原报告器新增完整item≤10秒门，V-12严格边界/缺终态/STALE/截断组敏感，自身新增例≤10秒；不新建runner/meter |
-| AC-09 | work | 当前 24 个完整非聚合常规组 T_warm 均 ≤120 秒、目标 60；47 行逐项关账（分流/保留/角色/正文证据 + 原 item 时间留档）；**新增 item ≤10 秒；留日常的既有 item 不要求 ≤10s，其时间逐行记录并接受组预算约束**（2026-11-19 owner 裁决）；分流原例/条件通过，PERF 增量和原 3600 秒合同可核，聚合墙另列 |
+| AC-09 | work | 当前 **24 个日常常规组（22 模块组 + `ace-toolchain` + `ase-m0`；`ace-host-suites`/`ace-perf` 为显式组，`ace-workspace`/`ace-facade`/`ace-adapters` 为聚合组另列）** T_warm 均 ≤120 秒、目标 60；47 行逐项关账（分流/保留/角色/正文证据 + 原 item 时间留档）；**新增 item ≤10 秒；留日常的既有 item 不要求 ≤10s，其时间逐行记录并接受组预算约束**（2026-11-19 owner 裁决）；分流原例/条件通过，PERF 增量和原 3600 秒合同可核，聚合墙另列 |
 | AC-10 | work | 执行前并发检查/等待通知，报告实际模块、列举/执行/条件排除/失败、准备/发现/运行/清理/整墙、新增内容/逐项时间；V-13/14。首红/未跑/重放分列，零WSL |
 | AC-11 | review | 冻结提交独立核AC-01…10/SD-01…06/实际diff、遗漏/未批准延后/陈旧证据/告警/格式/debug输出；新增>10、组越界、必验未跑不得pass，绑定review SHA |
 | AC-12 | merge | 通过review后冻结必要并集、Spec沉淀、摘要折回/归档、所有输出目录对账；材料全删或具名持有，wt-guard clean后清树；实际关闭后勾完 |
