@@ -591,3 +591,45 @@ fn p105_hyphenated_element_tags_project() {
     assert_eq!(tags, vec!["col", "grid-item", "scroll-area"]);
     assert!(compiles(src), "package face admits hyphenated tags");
 }
+
+/// 012 真语料形：handler 内的**复合赋值**（`civil_y += 1` / `if … { civil_m = mp - 9 }`）。
+#[test]
+fn p105_handler_compound_assign() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0 }\n\
+        view { text \"x\" {} }\n\
+        on {\n\
+            .T -> {\n\
+                var y = 1\n\
+                if y < 5 { y += 2 }\n\
+                .n += y\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("compound assignments project");
+    let handler = &nodes[0].handlers[0];
+    let mut binaries = 0usize;
+    fn walk(stmts: &[ace_core::source::age_component::ComponentStmt], n: &mut usize) {
+        for st in stmts {
+            match st {
+                ace_core::source::age_component::ComponentStmt::Assign(a) => {
+                    if matches!(a.rhs.kind, ace_core::source::ast::ExprKind::Binary { .. }) {
+                        *n += 1;
+                    }
+                }
+                ace_core::source::age_component::ComponentStmt::If { then, els, .. } => {
+                    walk(then, n);
+                    if let Some(e) = els {
+                        walk(e, n);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(&handler.stmts, &mut binaries);
+    assert!(binaries >= 2, "both compound assignments desugar to binary writes");
+    assert!(compiles(src), "package face admits compound assignments on bound names");
+}

@@ -7561,12 +7561,41 @@ impl<'a> Engine<'a> {
                     .field_child(inner, "field")
                     .expect("on assign field name");
                 let rhs_node = self.cx.field_child(inner, "rhs").expect("on assign rhs");
+                let field_name = self.cx.spelling(field_leaf);
+                let span = self.cx.span_of(inner);
+                let mut rhs = self.project_expr_sync(rhs_node);
+                // PLAN-105 T-02：复合赋值脱糖为二元（裸名目标=Var，执行期按
+                // 绑定表解析为局部量或字段——与 981 遮蔽语义同源）。
+                if let Some(op_node) = self.cx.field_child(inner, "op") {
+                    let op_rule = self.rule_name_of_kind(self.cx.tree.kind(self.unwrap_child(op_node)));
+                    if op_rule == "age-op-plus-assign" || op_rule == "age-op-minus-assign" {
+                        let op = if op_rule == "age-op-plus-assign" {
+                            crate::source::ast::BinOp::Add
+                        } else {
+                            crate::source::ast::BinOp::Sub
+                        };
+                        rhs = Expr {
+                            span,
+                            kind: ExprKind::Binary {
+                                op,
+                                lhs: Box::new(Expr {
+                                    span,
+                                    kind: ExprKind::Var(Ident {
+                                        name: field_name.clone(),
+                                        span,
+                                    }),
+                                }),
+                                rhs: Box::new(rhs),
+                            },
+                        };
+                    }
+                }
                 Some(ComponentStmt::Assign(ComponentAssign {
-                    field: self.cx.spelling(field_leaf),
+                    field: field_name,
                     // `age-on-assign` 是裸名形（无 `.`）——局部遮蔽候选。
                     bare: true,
-                    rhs: self.project_expr_sync(rhs_node),
-                    span: self.cx.span_of(inner),
+                    rhs,
+                    span,
                 }))
             }
             "age-on-let" => {

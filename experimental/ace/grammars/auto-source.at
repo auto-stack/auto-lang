@@ -1037,9 +1037,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-on-let() {} }
             alt { age-on-if() {} }
         }
+        // PLAN-105 T-02（U03 真语料 012）：裸名赋值也支持**复合算子**
+        // （`civil_y += 1`——日历换算段），与 `.field +=` 同形脱糖为二元。
         age-on-assign(profiles: [age-component, age-package], expect: "an `on` handler assignment `<field> = <expr>`") {
             ident(field: "field") {}
-            assign() {}
+            age-assign-op(field: "op") {}
             pratt(of: "wide-ops", field: "rhs") {}
         }
         // PLAN-981（G2）：hook-local 绑定——本执行路径求值一次
