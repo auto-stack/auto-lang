@@ -385,6 +385,22 @@ Round 10 增量（冻结提交 `be7eb83fe`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 10 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: be7eb83fe | next: work`
 
+2026-11-20 · stage: work（round 11 · **AV V-02 缺陷最小化复现**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `<见本轮提交>` | task_ids: V-02 AV 缺陷定位（归 AV/1094 owner）| outcome: pass（round 级）| next_responsible_role: work（T-05 余量）＋ AV owner
+
+Round 11 增量：
+- 用逐项探针把 AV 端 V-02 缺陷**最小化**并排除共享前端：
+  - 失败矩阵：`use.py builtins: list, round, len, repr` + `var a1/a2/a3 = l.append(...)` + `print(l.count(22).to(int))` → `Success` 但 **stdout 为空**（打印被静默丢弃）；同程序把 append 减到 1-2 个、或改用纯 Auto `print(3)`、或去掉多余 import 均正常。
+  - 说明：同样的最小程序在 A2PY 端输出正确值（facts 由 resolve 在操作发生处记录且完整），故**共享前门/受检事实不是原因**；缺陷落在 AV lane 的 MIR/ABC/console 执行或本地槽处理。
+  - 完整 V-02 病例另有第二个症状：`Infra("foreign.frame: p967.frame/1 rejected: payload not LF-terminated")`。
+- 复现已固化为 `#[ignore]` 用例 `p1107_v02_av_drops_py_print_after_bound_method_locals`（并保留完整病例的 ignore 用例），修复后解除 ignore 即成为回归。
+- 本轮未改实现：按 IF-AV 该缺陷归 AV/1094 owner，1107 不在共享语义里为 AV 私有执行路径打补丁。
+
+证据：`cargo nextest -p ace-abi --test conformance -E 'test(p1107_v0)'` V-01 2/2 PASS（两条 AV V-02 复现均 ignore 跳过）；探针输出：`I3: OK out=""`、`I7/I8/J3: OK out="1\n"`、`K1/K2/K3: 纯打印正常`。
+
+影响：AC-03/V-02 的 AV 腿保持未关闭（具名外部 owner）；A2PY 腿已独立成立。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 11 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
