@@ -383,6 +383,25 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 即：O-01/O-02/O-04 的预期可完全从既有 Spec/Unicode 事实写出，**不需要**先跑一次再抄；O-03 缺合同须由 T-05 决策。
 
+### 5.12 T-02 首刀：准备/运行分离已实现并实测（2026-11-19，树 `d20cf3f87` + `197ac9e5d`）
+
+`scripts/fixed-tests.py` 新增：
+
+- `--prepare-only --out <dir>`：对 `invocations()` 合并后的每个 key，先走现有 `prepare_tools.prepare()`（工具 receipts 复用），再 `cargo nextest archive` 构建该 key 的 test 二进制归档；产出 `<dir>/prepared.json`（`schema: fixed-test-prepared/1`、`config_sha256`、`source_state`、rustc marker、每 key 的 archive path/sha256/bytes、工具 identity 与 artifact 哈希、`prepared_seconds`）。
+- `--run-prepared <prepared.json> --out <dir>`：先逐项校验（配置 sha、`checkout_state()`、rustc marker、每个工具的 `tool_identity`、每个工具 artifact 的 sha256、archive 的 sha256/存在性），任一不符 → `PREPARATION_REQUIRED: …` 且 **exit 2、零构建、零执行**；通过后 `cargo nextest list --archive-file …` + `cargo nextest run --archive-file … --workspace-remap … --archive-format tar-zst --ignore-default-filter -E <expr>`，终态校验沿用原 `enumerate_rust`/`terminal_results`。
+
+**实测（`ace-lowering`，本树）**：
+
+| 步骤 | 命令 | 结果 |
+|---|---|---|
+| 准备 | `--prepare-only --out t02/prepare-lowering` | exit 0，**1.19s**（目标已建），manifest+`archive-0.tar.zst` |
+| 只运行 | `--run-prepared … --out t02/run-lowering` | **exit 0，PASS 9/9，wall 0.721s**（整命令 1.32s），零构建 |
+| 负控·源码漂移 | 改 `scripts/fixed-tests.py` 后再 run-prepared | `PREPARATION_REQUIRED: source/input state changed since preparation`，exit 2 |
+| 负控·archive 篡改 | manifest sha256 置零 | `PREPARATION_REQUIRED: archive changed since preparation: …`，exit 2 |
+| 负控·archive 缺失 | 指向不存在路径 | `PREPARATION_REQUIRED: archive missing: …`，exit 2 |
+
+源码漂移负控是**真实发生**的：实现该接口时改了 driver 本身，`checkout_state()` 覆盖 `scripts/`，于是旧 manifest 立即失效——即 `--run-prepared` 绑定的正是本树源码身份，不是"exe 存在即用"。T-02 剩余：`cargo t` 默认入口在缺 manifest 时返回 `PREPARATION_REQUIRED`（§2 的入口切换）、工具 profile 改 debug/runtime-dev（B-05）、B-01…B-04 去测试体补构建、`test_fixed_groups.py`/`test_prepare_tools.py` 增治理负控。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -532,6 +551,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 5，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①第三批 **10 组真实发现分母**（§5.10）：`ace-source` 904、`ace-abi` 314、`ace-syntax` 159、`ace-comptime` 136、`ace-runtime` 84、`ace-foreign-contract` 56、`ace-source-syntax-927` 13、`ace-python` 10、`ace-a2c-abi` 9（lib 单测）、`ace-stdlib` 2，小计 1,687/0，整批墙 212.33s；五批累计已发现 **3,651** 例。②**O 类独立预期钉住**（§5.11）：O-01 依 `ace-collections.md:17` 钉为 Trap `list-index`；O-02 六场景按 Unicode/算术事实钉出精确值（1/4/1/97/1/20013）；O-04 依 packages 面 `source.module-symbol` 声明；O-03 无 spec 声明 → 交 T-05 决策（不得录打印值）；O-05 保留 22 断言 + cap 段须独立 oracle 或具名移 research。未闭：`ace-native`/`ace-native-worker`/`ace-a2x`/`ace-m2-build`（8 target）/`ace-facade`/`ace-adapters`（根 workspace）、聚合 `ace-workspace`、Case inventory。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass（进行中：10 组分母 + O 类预期钉住；T-01 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 收口：重内存组发现 + Case inventory）`
+
+同日续（round 5 末段）：T-02 **首刀实现**（§5.12，代码提交 `197ac9e5d`）——`--prepare-only`/`--run-prepared` archive 握手落地并实测：准备 1.19s → 只运行 PASS 9/9 wall 0.721s 零构建；三条负控（源码漂移/archive 篡改/archive 缺失）全部具名 `PREPARATION_REQUIRED` exit 2、零执行。其中"源码漂移"负控是真实事件：改 driver 自身后旧 manifest 立即失效。T-02 未完成项照旧：默认入口切换、B-05 profile、B-01…B-04、治理负控。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-02 首刀落地并有负控；T-01/T-02 均未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划 197ac9e5d（T-02 代码）/ 本轮 docs(plan1098) | next: work（T-02 续 + T-01 收口）`
 
 ## 10. 待澄清事项
 
