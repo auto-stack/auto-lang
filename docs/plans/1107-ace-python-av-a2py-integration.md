@@ -223,6 +223,7 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
 - [ ] T-02 接通共享Python操作投影
   - owner_stage: work；前置：T-01、IF-AV/IF-PY-SEM就绪。
   - 修改现有`core/source`/共享受检事实与`a2x-core`实际owner，形成有来源的Python操作/参数/类型/效果与资源消费，不复制解析/类型或接管1094的AV通用语义修复。
+  - [round 2 进展] 事实层已落地并提交 `c454eba02`（`ace_core::py_ops` + resolve 记录 + `CheckedModule::py_ops` + `SemanticView::py_ops()`；AV 帧/字节码未改）；证据 `cargo nextest … -E 'test(p1107_t02)'` 5/5、`cargo test -p ace-core --lib py_ops` 4/4、`cargo t ace-python` PASS。**未关闭**：A2PY 侧的准入/编译面（声明级 foreign supply）与 V-02/04/08 真跑仍待做。
   - [T-01 已冻结的入口] 方案 A：resolve/HIR 一处产出结构化 py-op 事实（op 种类、receiver、成员名、位置/命名实参、效果/值域、span），随 CheckedModule 携带并经 `SemanticView` 暴露（形态参照 `body_facts`/`foreign_resource_plan`，`a2x-core/src/semantic_view.rs:542-643`）；AV 侧继续产出既有 `p967.frame/1` 调用（ABI/字节码身份零变化），A2PY lowering 用同一事实生成原生 Python。py op 的冻结清单与 provider 声明（`crates/abi/rustside/py_bridge.rs` 的 17 个 `auto-ffi` 行）必须由目标中立来源承载并与真实 manifest 做一致性断言，禁止 A2PY 用 ctypes 包装 py 声明（现 `provider.rs:57-65` 会静默生成坏 wrapper）。
   - 关闭：V-02/04/08及共享完整职责组；AC-01/03/04。
 - [ ] T-03 扩展现有A2PY互操作
@@ -263,6 +264,16 @@ T-01 收据：AV 基线 `cargo t ace-python` PASS 10/10（V-01 2.98s，wall 4.12
 临时件：`D:/autostack/plan-artifacts/plan-1107/{logs,probe}`（收尾删除）；探针 `crates/abi/tests/cases/py_probe_1107.rs` + `tests/conformance.rs` 注册行（T-06 由正式 case 取代后移除，当前未提交）。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 1 | from: drafting | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 5089d3de0 | next: work`
+
+2026-11-20 · stage: work（round 2）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `c454eba02` | task_ids: T-02 主体落地（未关闭，关闭需 T-03 消费与 V-02/04/08）| outcome: pass（round 级；work stage 进行中）| next_responsible_role: work（T-02 收尾：A2PY 准入面；随后 T-03）
+
+T-02 增量（真实执行，冻结提交 `c454eba02`，树内 clean）：新增 `ace_core::py_ops` 共享受检 Python 操作事实层——23 个冻结 provider op 名的目标中立清单（`PY_OP_NAMES`，17 项）、`PyOpKind`（import/call/getattr/getitem/binop/to-float/to-int/to-bool/to-text）、`PyOpFact`（op、源码 span、静态 member/module、按源序的 `PyOperand{role, span, class}`）与 `PyOpPlan`；记录发生在**操作被受理处**（`source/py.rs` 的 import 前门、`resolve.rs` 的 `py_call_sugar`/`py_to_sugar`/getattr/getitem/binop 分支），经线程局部 recorder 仅由 py 通道入口 `compile_aggregates_source_with_foreign` 武装（其余编译路径零影响，错误路径也必然 disarm），verify 后钉进 `CheckedModule::py_ops`，再由 `SemanticView::py_ops()` 暴露给各目标。AV 的 `p967.frame/1` 编码/字节码**未改动**。
+
+证据：`cargo nextest run -p ace-abi --test conformance -E 'test(p1107_t02)'` → 5/5 PASS（import 源序与模块/成员、操作种类/成员、嵌套实参 span 与值类 object/int/bool/text/float、`SGD(model.parameters(), lr: 0.1)` 的 receiver=object 且 `lr`=float、`/`=truediv、`prediction[0]` getitem、两处 `.to(float)` 无低字 lane 重复、纯 Auto 程序 `py_ops()==None`、冻结 op 清单 == 真实 admitted provider 声明集合），单测 `cargo test -p ace-core --lib py_ops` 4/4 PASS；回归 `cargo t ace-python` PASS 10/10（AV 数值与身份不变，V-01 2.98s 级）；`cargo build -p ace-a2x-core -p ace-a2x-python` ok。
+
+未决（下一 round）：A2PY 编译面仍不接受 `use.py`（Scalar profile + 无 foreign 准入），`AdmittedForeign` 依赖 host authority/pages，声明级（无 PyO3/symbols）准入路径待定；选定后 T-03 才能用事实 lowering 出原生 Python。本 round 未跑 V-02/04/08，不记 PASS。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: c454eba02 | next: work`
 
 ## 10. 待澄清事项
 
