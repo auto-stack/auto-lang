@@ -76,3 +76,39 @@ fn p1107_v02_protocol_case_av_matches_the_native_oracle() {
     }
     eprintln!("V-02 AV: {got:?} == oracle {want:?}");
 }
+
+/// PLAN-1107 V-02 finding, MINIMIZED (AV lane; routed to the AV/1094 owner):
+/// with four `use.py` members and three bound-method results bound to locals,
+/// a later py-conversion console print is SILENTLY DROPPED (run reports
+/// Success with empty stdout); the same program with one/two appends, or with
+/// a pure-print, prints normally. The A2PY lane prints the correct value for
+/// the same source, so the shared front door/facts are not the cause.
+#[test]
+#[ignore = "AV lane: py-conversion print dropped after three bound-method locals (silent Success, empty stdout). Owner: AV/1094."]
+fn p1107_v02_av_drops_py_print_after_bound_method_locals() {
+    let src = "use.py builtins: list, round, len, repr
+fn main() int {
+var l = list()
+var a1 = l.append(11)
+var a2 = l.append(22)
+var a3 = l.append(33)
+print(l.count(22).to(int))
+return 7
+}";
+    let mut session = PySession::open().expect("session opens");
+    let run = session
+        .run_with(
+            src,
+            &ExecLimits {
+                max_steps: 5_000_000,
+                wall: std::time::Duration::from_secs(60),
+                ..Default::default()
+            },
+        )
+        .expect("the reduced program compiles and runs");
+    assert!(
+        !run.stdout_text().is_empty(),
+        "the console print must not be silently dropped (outcome {:?})",
+        run.outcome
+    );
+}
