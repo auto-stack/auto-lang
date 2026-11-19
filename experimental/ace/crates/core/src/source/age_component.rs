@@ -746,13 +746,9 @@ fn rewrite_store_expr(e: &mut Expr, map: &[(String, String)]) -> Result<(), Vec<
         }
         ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
             if is_store_base(recv) {
-                return Err(vec![text_diag(
-                    "source.age.component-unsupported",
-                    "`store.<Msg>(…)` method dispatch is not wired yet (S1); \
-                     call the message from the app handler or read store fields"
-                        .to_string(),
-                    e.span,
-                )]);
+                // `store.<Msg>(…)` 在 store 内联阶段**展开**成对应 handler 体
+                // （见 expand_store_calls）；此处原样保留，不误判为未接线。
+                return Ok(());
             }
             rewrite_store_expr(recv, map)?;
             for a in args {
