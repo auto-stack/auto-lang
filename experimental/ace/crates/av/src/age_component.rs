@@ -267,6 +267,27 @@ pub fn observe_component_states_and_texts(
     Ok((states, texts))
 }
 
+/// PLAN-104：**flat 观察**——文本叶按声明序平铺（条件两支都在内），条件
+/// 可见性由**消费端**按自身实例状态求值（桌面 harness 走这条：它同时持有
+/// view 树与逐实例状态）。`observe_component_states_and_texts` 的 981 门
+/// 保持对其余消费者 fail-closed 不变。
+pub fn observe_component_states_and_texts_flat(
+    compiled: &ComponentCompilation,
+) -> Result<(ObservedStates, Vec<Vec<String>>), String> {
+    let states = observe_component_states(compiled)?;
+    let mut texts: Vec<Vec<String>> = Vec::new();
+    for node in &compiled.description.nodes {
+        for per in &node.instance_texts {
+            let mut row = Vec::new();
+            for t in per {
+                row.push(execute_text(&compiled.checked, &t.def_id)?);
+            }
+            texts.push(row);
+        }
+    }
+    Ok((states, texts))
+}
+
 /// 场景级便捷入口：**states-only** 编译（带初值）→ 逐字段状态观察
 /// （PLAN-980 STATE 的 UI 桥热路径）。
 ///
