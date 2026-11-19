@@ -3603,7 +3603,14 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
     /// PLAN-864: whether this lowering targets the av.collections/1
     /// profile (the module profile is the flag — no signature threading).
     fn collections(&self) -> bool {
-        self.out.is_collections_profile() || self.out.is_closures_profile()
+        // PLAN-105 T-02（U03 真语料 016）：TEXT_DISPLAY 在 data/owned 模块的
+        // ABC 准入里本就允许（`abc.rs` `family.allows_data_tags()`），此前只在
+        // adapter 侧被 collections/closures 门挡住——放开 data/owned，组件面
+        // `text .intField` 才能在该车道 lowering。
+        self.out.is_collections_profile()
+            || self.out.is_closures_profile()
+            || self.out.is_data_profile()
+            || self.out.is_owned_profile()
     }
 
     /// PLAN-864 / PLAN-1035 (F34): HIR-level owned classification for a List
