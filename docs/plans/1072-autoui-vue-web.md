@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1072
-status: execution_done
+status: reviewed
 feature_name: AutoUI Vue 与生产 TS/JS 接管
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 3
+current_step: 4
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-976, PLAN-978]
 supersedes_spec_components: []
@@ -81,7 +81,7 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 - [x] **T-03｜work｜验收 Vue 产品链**。验收 V-B-WEB 及适用产品生成入口（`gen_vue_project` / `incremental_compile_changed` + `@vue/compiler-sfc` / `esbuild` + Playwright Node `http` 浏览器实操事件、状态、watch/expose/setup/unmount、错误保旧恢复）；完整 `auto run --render vue` CLI + `pnpm`/Vite 打包循环按 §6 与 PLAN-982 联验交付。
 
-- [ ] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
+- [x] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
 
 - [ ] **T-05｜merge｜正式交付**。按 owner 合入、沉淀规范，记录可消费版本，按项目规约归档及清理。
 
@@ -188,6 +188,29 @@ next_responsible_role: work（T-02 刀A 起）
 next_responsible_role: review（T-04 独立复审，含 `cargo t ace-source`、`cargo t ace-av` 与 `auto-ui` 同冻结提交复验）
 
 `stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 2 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | commits: lang 48738ff32a60fa56578da7ecee073d9bf8384917, ui 8210ef5bc0b1096d1184503373094d49d46ae9e1 | 证据锚点: T-03 剩余闭环（冷生成 a2x_rt/marshal 引号保护/expose 点前缀/.mjs 生命周期/错误保旧恢复）+ 旧新映射 9 项 + 残余 4 项记账 + UI 10 套件及 25 新增单测全 <=10s | next: review`
+
+2026-11-19 stage: review（T-04 独立终审，`review_scope: final`，1 轮修复闭环）| plan_id: PLAN-1072 | plan_revision: r1 | outcome: pass | reviewer: subagent `a3954308-7f96-4c71-a25c-9bb6c65634b1`（`research` 独立审计 + 冻结同提交重放） | reviewed_commits: lang `4bccd505548aed0bbba761fa237d32e88f5095f3`（修复 `48738ff32`）, ui `c1be21e45d238c9eabd64879b4d5a23d5d953a64`（修复 `8210ef5bc`）, plan doc `25741b96cf83bf1d7e54a563d2e9a4f76f10fce4` | siblings: auto-down `72b097006f34db3a871449f10e213820d51abef6`, auto-man `f461960f5db9bc99267f93541dc7c5bdeedfa048`, auto-web `3d328a3561935ac390916cfa356603bc30135e03`。
+
+**Round-0 独立复审 `needs_fix`（四项阻塞发现）→ Repair Cycle 1 全量闭环。**
+1. **Finding 1（已修，`4bccd5055`）**：`plan1072_component_style.rs:122` 原写 `let _ = compile(src);` → 改为 `compile(src).expect("`style` remains legal as a plain identifier");`，19/19 通过且 `--exact` 实测 `0.02s..0.03s`。
+2. **Finding 2（已修，`4bccd5055`）**：`frontdoor.rs:2987-3098` 抽取共享 `replace_style_in_entry_expr` 覆盖 `ComponentEntryValue::If`（`then_value` & `else_value`）与 `ComponentEntryValue::Expr`，统一对 `imports` / `reject_unknown && entry_key == "style"` / `ExprKind::Call` 执行 `source.age.style-call` fail-closed；`plan1072_component_style.rs:450-478` 补齐 3 项条件样式负控（`p1072_conditional_style_unknown_ident_is_named` / `p1072_conditional_style_imported_ident_is_named` / `p1072_conditional_style_call_form_is_named`，各 `0.02s`）。
+3. **Finding 3（已修，`c1be21e45` + Option A）**：`rustfmt --edition 2021` 对齐 `plan1072_vue_web.rs`、`plan1072_vue_error_recovery.rs`、`plan980_ace_vue_tool_wiring.rs`（Python token 等价性 `True`，两仓 PLAN-1072 变更行 `rustfmt --check` 全过）。`Cargo.lock` 按 Option A 不入 `plan-1072-dev`（+6 行为兄弟仓 `../auto-web` @ `3d328a35` 依赖解析产物，且 `auto-ui` 主检出已有未提交 `M Cargo.lock` 避免合并冲突），`auto-ui` 测试以 `--offline` 运行后 `git checkout -- Cargo.lock` 还原干净。
+4. **Finding 4（已修，`25741b96c`）**：在 `1072-autoui-vue-web.md` §5 规范增量 / §6 / §8 精确限定开关作用域（`--features ace-vue` + `AUTO_UI_ACE_VUE=1`，仅 `app.at` + `components/*.at`）、`VueGenerator`/`TypeScriptTrans` 双轨并存边界（`Widget B` `absent=[".Bump"]`、`computed`/`watch`/`setup`/`pages/`/`widgets/`/`stores/`）、以及 `1072`（库/SFC/`esbuild`/Playwright Node `http`）与 `PLAN-982`（CLI/`pnpm`/Vite 打包）联合门划分。
+
+**终态冻结提交实跑门禁汇总（`4bccd5055` + `c1be21e45`）。**
+- 机器占用退让记录：在 `lang-1098`/`lang-1078` 并发 `--release`/nextest 期间退让检查（约 4m+ 累计多段退让，复验前确认 0 `cargo/rustc/nextest/link` 占用）。
+- `auto-lang` (`4bccd5055`)：
+  - `cargo t ace-source` (`run-5r7lq5ca`): **PASS**, `923` executed / `923` ok / `0` failed / `0` ignored, wall `582.599s` (reviewer log `581.65s`), `gate_passed: true`。
+  - `cargo t ace-av` (`run-29xmmz07`): `1428` executed, **1426 passed / 2 failed / 22 skipped** (`Summary [89.305s]`, wall `125.335s`)——仅预存 `host_console::av_console_entry_selection_cannot_bypass_main_policy` (`0.078s`) 与 `host_console::av_console_owned_front_door_enforces_console_entry_only` (`0.055s`) 两条红，零并发负载抖动（`v02_d06_spawn_with_output_av` 与 `kv_zip_1064` 本轮全绿）。
+  - `ace-core --test conformance`: `plan1072_component_style` **19/19** (`0.04s` / `5.538s` 含重编；复审重跑 `0.05s` / `1.369s`；4 新增/修负控 `--exact` 均为 `0.02s..0.03s`)、`plan980_style_surface` **9/9** (`0.04s` / `0.325s`)、`plan981_grammar_scope` **4/4** (`0.30s..0.32s`)、`plan980_lambda_if` **5/5** (`0.02s..0.03s`)、`plan981_members_slot` **18/18** (`0.06s..0.09s`)。
+- `auto-ui` (`c1be21e45`, `--offline --test-threads=1`, `AUTO_UI_ACE_WEB_E2E=1`)：**全部 10 套件零失败**（`plan980_010_form_short` 前次因 OS 临时端口撞 Chromium 安全港限制 6669 `ERR_UNSAFE_PORT` 重放立即通过）：
+  - `plan1072_vue_web` 8/8 (`5.52s`；批跑复审 `5.59s`/`5.776s`)；本轮终态 `c1be21e45` 全部 8 条 `--exact` 实测 `0.16s..1.45s` test / `0.894s..2.241s` wall（均为 `<= 10.000s`；注：复审子代理在冷启动 Chromium 竞争下观察到 `p1072_005_product_browser_mount` 单条冷启方差 `10.40s` / `25.88s`，批量同套件 8 例总耗时 `5.59s`，须保持 E2E 浏览器套件 `--test-threads=1` 串行）。
+  - `plan1072_vue_error_recovery` 1/1 (`2.50s` / `74.209s` 含冷编；复审 `2.37s` / `2.622s`)、`plan980_ace_vue_tool_wiring` 1/1 (`2.70s` / `21.464s`)、`ace_ts_provider` 27/27 (`9.37s` / `32.408s`；复审 `7.47s`)、`plan980_010_form_short` 1/1 (`1.84s` / `2.717s`)、`plan980_u0_002_product_sfc` 2/2 (`1.48s` / `24.108s`)、`plan980_package_sfc` 8/8 (`2.26s` / `23.073s`)、`plan980_bweb_jg_watch` 2/2 (`2.20s` / `34.902s`)、`plan980_notes_fp_editor` 1/1 (`1.39s` / `2.751s`)、`plan980_u0_002_sfc` 2/2 (`1.42s` / `25.813s`)；另有 Round-0 实跑未改动 crate 基线：`vue_capabilities` 77+5（5 例均为 PLAN-643 预存 chart）、`auto-ui-tools --lib vue::tests` 60/60、`auto-ui-dialect --lib` 105/105、`ui_domain_validation` 5/5。
+- 脏工作区安全核对：两仓主检出未提交 WIP 与本计划修改文件及目标文档零重叠。
+
+next_responsible_role: merge（T-05：规范沉淀 `m2-autoui.md` §15、债务入 `KNOWN-DEBT-AND-RISKS.md`、rebase + `range-diff` + `--ff-only` 合入双仓、归档至 `docs/plans/archive/`、`wt-guard` + 五树清理 + `plan-artifacts/plan-1072` 清删与保留登记表更新、批回归到期移交）
+
+`stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | commits: lang 4bccd505548aed0bbba761fa237d32e88f5095f3, ui c1be21e45d238c9eabd64879b4d5a23d5d953a64, plan 25741b96cf83bf1d7e54a563d2e9a4f76f10fce4 | 证据锚点: T-04 两轮独立复审 pass（ace-source 923/923 PASS, ace-av 1426/1428 仅预存 host_console×2, UI 10 套件全绿, 四发现全修） | next: merge`
 
 ## 10. 待澄清事项
 
