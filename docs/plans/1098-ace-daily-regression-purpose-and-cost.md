@@ -481,6 +481,22 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 **B-05 剩余**（按 §5.13）：`cert_rt_902.rs:315`、`native/tests/common/mod.rs`（B-01）、`native/tests/common/collections.rs`、`core/tests/common/mod.rs`（B-04）、`host/rust_lowering.rs:231`（B-03），以及 5 个 lib 级 builder 的 env 优先改造与 profile 翻转。
 
+### 5.16 T-02 第五刀：B-01/B-02/B-03/B-04 落地（代码 `00f57a8b8`）
+
+| 行 | 原形态 | 现形态 | 验证 |
+|---|---|---|---|
+| **B-01** `native/tests/common/mod.rs::trace_support_lib` | 缺库即 `cargo build --profile runtime-dev` | `ACE_TRACE_RUNTIME_LIB` 优先（缺失/坏 = 具名 infra 失败并给准备命令）；env 未设（直接 `cargo test`）才走历史定位+构建 | `ace-native` prepared run **PASS 329/329** |
+| **B-01′** `native/tests/cases/first_case.rs::trace_support_lib` | 同上（计划未列的第 4 份拷贝） | 同上 | 同上 |
+| **B-02** `case-worker/tests/cases/backend.rs::trace_support_library_travels_to_the_mn_link` | 体内同型 `cargo build` | 同上（`exit=12`/stderr`ba` 断言原样保留） | `ace-native-worker` prepared run **PASS 43/43** |
+| **B-03** `tests/conformance/tests/host/rust_lowering.rs::{a2r_hir_first_case_green,worker_exe,maintenance_build_worker}` | 缺 env 时 release 维护构建 + `target/release` 回落 | **删除** `maintenance_build_worker`（55 行）与回落；`worker_exe` 只读 `AC_A2X_HIR_WORKER`，缺失即具名 infra | `ace-rust-lowering` prepared run 4/6（见下"既有红"） |
+| **B-04** `core/tests/common/mod.rs::{text_runtime_lib,text_runtime_pair_copy,text_runtime_sha}`（+`write_sidecar`） | 死 helper，仍会在体内 cargo build runtime-release | **删除**（文件 350→290 行；全仓无测试消费者，第 2 轮已核） | `ace-source` prepared run **PASS 904/904，整命令 11.26s** |
+
+`toolchains.json`：`trace-runtime` 增 `"env": "ACE_TRACE_RUNTIME_LIB"`（prepare 时发布准备件路径）。
+
+**两条既有红（非本包引入，已具名）**：`ace-rust-lowering` 的 `a2r_hir_first_case_green`（`a2x_runtime.rs` first_diff@423、`manifest.json`@473）与 `a2r_hir_worker_credential_pin`（`"matching pin passes"` 断言）在 `docs/plans/KNOWN-DEBT-AND-RISKS.md` 的 **1060-R3「a2r/a2x golden 漂移」P1** 中已登记（fail shape 与本轮实测逐字一致）。本轮只改了 worker 的**定位方式**（预建 vs 体内重建），未改产物/期望，因此不充 PASS、不 ignore；仍归 1060-R3 的 golden 修复 owner。
+
+**治理**：`test_fixed_groups` + `test_prepare_tools` **85/85 OK**。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -650,6 +666,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 9，r1）：`stage: work`，T-02 第四刀（§5.15，代码 `80bbab696`）。执行内容：6 处测试体去硬编码/去补构建（AV worker → `AC_AV_CASE_WORKER`；a2x worker → `AC_A2X_HIR_WORKER`；缺 env 即具名 panic 并给准备命令；删除两个不再使用的 `WORKER` 常量与两处体内 `cargo build --release`）。定向重放：AV 2/2 PASS（0.668s/0.810s）、a2x 9/9 PASS（其中 4 例 >10s，属 C 类待 T-06 迁出）。**过程事故并已纠正**：首次编辑因相对路径落到主检出，已 `git checkout --` 还原 6 文件（主检出随后零 WIP），改在实施树绝对路径重做；已记入 §5.15。B-05 剩余：`cert_rt_902.rs:315`、B-01/B-02/B-04、`rust_lowering.rs:231`（B-03）、5 个 lib builder env 化与 profile 翻转。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 9 | from: work | to: work | status: executing | outcome: pass（6 处硬编码收敛并定向重放通过；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 80bbab696 / 本轮 docs(plan1098) | next: work（T-02 续：B-01…B-04、lib builder env 化、profile 翻转）`
+
+2026-11-19（goal round 10，r1）：`stage: work`，T-02 第五刀（§5.16，代码 `00f57a8b8`）。执行内容：B-01（`native/tests/common` 的 trace 支持库改 env 优先，缺失即具名 infra）、B-01′（未列入计划的第 4 份拷贝 `native/tests/cases/first_case.rs` 同改）、B-02（case-worker 同型体内构建同改）、B-03（删除 `rust_lowering.rs` 的 55 行 maintenance release 构建与 `target/release` 回落，`worker_exe` 只读 env）、B-04（删除 `core/tests/common` 的 4 个死 helper，350→290 行）；`toolchains.json` 给 `trace-runtime` 发布 `ACE_TRACE_RUNTIME_LIB`。实测 prepared run：`ace-native` **329/329 PASS**、`ace-native-worker` **43/43 PASS**、`ace-source` **904/904 PASS（11.26s）**、`ace-rust-lowering` 4/6（2 红为 KNOWN-DEBT **1060-R3** 既有 golden 漂移/凭据 pin，fail shape 逐字一致，非本包引入）。治理 85/85 OK。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 10 | from: work | to: work | status: executing | outcome: pass（B-01…B-04 落地并真实验证；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 00f57a8b8 / 本轮 docs(plan1098) | next: work（T-02 续：cert_rt_902、lib builder env 化、profile 翻转）`
 
 ## 10. 待澄清事项
 
