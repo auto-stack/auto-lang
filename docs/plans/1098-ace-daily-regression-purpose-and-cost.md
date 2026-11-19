@@ -665,6 +665,98 @@ tools = ["a2x"]; domain = ace; all = false
 - 先用**旧**证据跑：`ace-toolchain`(t06) + `ace-console`(t07) → **UNVERIFIABLE，exit 2**，原因正是 `source_state differs from current checkout`——STALE 检查在真实数据上生效，没有把旧证据当绿。
 - 在当前 HEAD 重跑两组（toolchain 56/56、console 6/6）后再判：**GREEN，exit 0**，2 模块 / 67 身份，`added=0 removed=0`（与上一次会话基线逐身份一致），`ace-toolchain 66.293s → WITHIN_BUDGET`、`ace-console 3.033s → GREEN`，无 STALE。
 
+### 5.24 T-09：冻结实现的逐组验收与 47 行关账（代码 `0e18d8844` 起的冻结点）
+
+**24 个完整非聚合常规组（含新增 `ace-toolchain`）实测**：全部 `T_warm ≤ 120s`；14 组 ≤60s 目标之内，超 60s 但 ≤120s 的 5 组是 `ace-host 109.5`、`ace-a2x 85.8`、`ace-native 77.7`、`ace-toolchain 66.3`、`ace-abi 64.9`。
+
+| 组 | 执行 | 终态 | T_warm(s) | 120s | 红与归属 |
+|---|---:|---|---:|---|---|
+| `ace-source-syntax-927` | 13 | PASS | 3.0 | ≤120 ✓ |  |
+| `ace-source` | 904 | PASS | 7.8 | ≤120 ✓ |  |
+| `ace-syntax` | 157 | PASS | 3.8 | ≤120 ✓ |  |
+| `ace-semantics` | 295 | PASS*/FAIL | 7.5 | ≤120 ✓ | 1 红：D-1037-01（1 例，既有） |
+| `ace-artifacts` | 43 | PASS | 10.0 | ≤120 ✓ |  |
+| `ace-m2-build` | 30 | PASS | 5.3 | ≤120 ✓ |  |
+| `ace-av` | 1410 | PASS*/FAIL | 48.0 | ≤120 ✓ | 2 红：D-1098-01（2 例，863 host_console 旧预期，PLAN-982 命名入口决定后过时） |
+| `ase-m0` | 7 | PASS | 1.6 | ≤120 ✓ |  |
+| `ace-native-worker` | 43 | PASS | 14.1 | ≤120 ✓ |  |
+| `ace-native` | 329 | PASS | 77.7 | ≤120 ✓ |  |
+| `ace-abi` | 314 | PASS*/FAIL | 64.9 | ≤120 ✓ | 25 红：source_foreign authority 预存红（25 例，既有） |
+| `ace-comptime` | 136 | PASS | 14.8 | ≤120 ✓ |  |
+| `ace-lowering` | 9 | PASS | 0.7 | ≤120 ✓ |  |
+| `ace-python` | 10 | PASS | 4.3 | ≤120 ✓ |  |
+| `ace-foreign-contract` | 56 | PASS | 0.7 | ≤120 ✓ |  |
+| `ace-a2c-abi` | 9 | PASS*/FAIL | 0.8 | ≤120 ✓ | 1 红：a2x-c runtime pin 预存红（1 例，Plan 972 遗留） |
+| `ace-host` | 170 | PASS*/FAIL | 109.5 | ≤120 ✓ | 14 红：14 例：worktree 内 examples/ui 缺内容（环境）+ language_conformance 金样族（既有红） |
+| `ace-batch` | 12 | PASS*/FAIL | 3.2 | ≤120 ✓ | 8 红：D-1098-02（8 例，batch 旧边界解析 vs PLAN-1062 文档格式迁移） |
+| `ace-toolchain` | 56 | PASS | 66.3 | ≤120 ✓ |  |
+| `ace-console` | 6 | PASS | 3.0 | ≤120 ✓ |  |
+| `ace-a2x` | 293 | PASS*/FAIL | 85.8 | ≤120 ✓ | 1 红：ace_a2x_ts 指纹 pin 预存红（1 例，既有） |
+| `ace-stdlib` | 2 | PASS | 3.6 | ≤120 ✓ |  |
+| `ace-runtime` | 84 | PASS*/FAIL | 13.9 | ≤120 ✓ | 19 红：1060-R8 text 车道 __CxxFrameHandler3（既有红） |
+| `ace-rust-lowering` | 4 | PASS*/FAIL | 2.9 | ≤120 ✓ | 2 红：1060-R3 两例（既有） |
+
+**红归属（均非本计划引入）**：`ace-semantics` D-1037-01；`ace-a2c-abi` Plan 972 的 runtime pin 遗留；`ace-runtime` 1060-R8 text 车道 `__CxxFrameHandler3`；`ace-abi` `source_foreign` authority 25 例；`ace-a2x` 指纹 pin；`ace-batch` D-1098-02（8 例）；`ace-av` D-1098-01（2 例 863 host_console 旧预期）；`ace-host` 14 例（worktree 内 `examples/ui` 无内容的环境缺件 + `language_conformance` 金样族既有红）。`ace-artifacts` 的 `r3_f01_concurrent_staging_budget_is_atomic` 首跑红、单独复跑绿——**环境归因（并发负载敏感），重放绿，不充 PASS**。
+
+**47 行逐项关账**（正文用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对；"body unchanged" = 原断言与条件未动）：
+
+| 行 | 原生身份 | 历史秒 | 类 | 处置 | 当前 | 正文 | 组 |
+|---|---|---:|---|---|---:|---|---|
+| S-01 | `bstr_1064::bstr_1064_v_d09_file_read_bytes_cross_end` | 69.958 | C | → ace-toolchain（显式认证组，56/56 真跑） | 55.56s | body unchanged | ace-toolchain |
+| S-02 | `kv_zip_1064::v03_zip_plan897_and_btypes_av` | 51.688 | D | 留日常（原义务保留） | 32.65s | body unchanged | ace-av |
+| S-03 | `bstr_1064::bstr_1064_v_codec_five_ends` | 43.781 | C | → ace-toolchain（显式认证组，56/56 真跑） | 41.87s | body unchanged | ace-toolchain |
+| S-04 | `resources_tier::av_turnaround_six_scenarios_smoke` | 42.96 | Q | → resources_tier::performance（正式压力，ace-perf） | 24.41s（ace-perf 串行） | body unchanged（移入 mod performance） | ace-perf |
+| S-05 | `bstr_1064::bstr_1064_t01_longest_chain_probe` | 41.758 | R | 留日常（原义务保留） | 35.57s | body unchanged | ace-av |
+| S-06 | `stdlib_asm_972::stdlib_asm_972_cross_end_gaps_and_a2r_math` | 38.324 | C | → ace-toolchain（显式认证组，56/56 真跑） | 29.68s | body unchanged | ace-toolchain |
+| S-07 | `kv_zip_1064::v03_kv_a2r_roundtrip_and_budget_4096` | 33.775 | C | → ace-toolchain（显式认证组，56/56 真跑） | 30.20s | body unchanged | ace-toolchain |
+| S-08 | `kv_zip_1064::v03_zip_a2r_roundtrip_and_budget` | 33.414 | C | → ace-toolchain（显式认证组，56/56 真跑） | 29.47s | body unchanged | ace-toolchain |
+| S-09 | `kv_zip_1064::v03_zip_a2py_roundtrip_and_budget` | 33.149 | C | → ace-toolchain（显式认证组，56/56 真跑） | 26.94s | body unchanged | ace-toolchain |
+| S-10 | `kv_zip_1064::v03_kv_a2py_roundtrip_and_budget_4096` | 31.159 | C | → ace-toolchain（显式认证组，56/56 真跑） | 27.89s | body unchanged | ace-toolchain |
+| S-11 | `mir_tier::mir_admission_module_tables_over_budget_is_resource` | 30.228 | R | 留日常（原义务保留） | 0.02s | BODY CHANGED | ace-av |
+| S-12 | `stdlib_sys_973::sys973_a2r_real_rustc_leg` | 28.293 | C | → ace-toolchain（显式认证组，56/56 真跑） | 25.69s | UNKNOWN(no source) | ace-toolchain |
+| S-13 | `kv_zip_1064::v03_kv_wire_oracle_and_reopen_av` | 26.976 | D | 留日常（原义务保留） | 16.22s | body unchanged | ace-av |
+| S-14 | `stdlib_sys_973::sys973_a2py_real_python_leg` | 26.588 | C | → ace-toolchain（显式认证组，56/56 真跑） | 23.90s | UNKNOWN(no source) | ace-toolchain |
+| S-15 | `bstr_1064::bstr_1064_v01_decode_utf8_and_region` | 26.544 | R | 留日常（原义务保留） | 27.47s | body unchanged | ace-av |
+| S-16 | `sys_d01_d06_1064::v02_d01_d06_a2r_cross_end` | 21.394 | C | → ace-toolchain（显式认证组，56/56 真跑） | 25.93s | body unchanged | ace-toolchain |
+| S-17 | `v08_surface_972::v08_surface_manifest_and_five_end_exercise` | 19.869 | C | → ace-toolchain（显式认证组，56/56 真跑） | 26.65s | body unchanged | ace-toolchain |
+| S-18 | `sys_d01_d06_1064::v02_d01_d06_a2py_cross_end` | 19.865 | C | → ace-toolchain（显式认证组，56/56 真跑） | 23.92s | body unchanged | ace-toolchain |
+| S-19 | `json_975::json975_char_to_str_a2x_ends` | 19.384 | C | → ace-toolchain（显式认证组，56/56 真跑） | 15.99s | body unchanged | ace-toolchain |
+| S-20 | `module_packages_960::packages_960_four_ends_run_public_str_and_recover` | 18.905 | C | → ace-toolchain（显式认证组，56/56 真跑） | 12.23s | body unchanged | ace-toolchain |
+| S-21 | `stdlib_core_945::stdlib_core_945_four_ends_run_math_and_text_slices` | 17.565 | C | → ace-toolchain（显式认证组，56/56 真跑） | 21.26s | body unchanged | ace-toolchain |
+| S-22 | `av_source_incremental::av_source_incremental_detector_negative_controls` | 15.021 | R | 留日常（原义务保留） | 10.03s | body unchanged | ace-av |
+| S-23 | `plan966_ct_product::p966_ct_generated_declarations_change_end_results` | 14.412 | C | → ace-toolchain（显式认证组，56/56 真跑） | 14.41s | body unchanged | ace-toolchain |
+| S-24 | `plan966_ct_product::p966_ct_statements_and_macro_run_on_av_native_rust_c_py` | 14.396 | C | → ace-toolchain（显式认证组，56/56 真跑） | 14.29s | body unchanged | ace-toolchain |
+| S-25 | `kv_zip_1064::v03_kv_corrupt_io_budget_and_atomic_preserve_av` | 14.356 | D | 留日常（原义务保留） | 8.19s | body unchanged | ace-av |
+| S-26 | `bstr_1064::bstr_1064_t01_illegal_scalar_neighbor` | 14.096 | D | 留日常（原义务保留） | 15.33s | body unchanged | ace-av |
+| S-27 | `stdlib_sys_973::sys973_v03_process_spawn_capture_timeout_exit` | 13.817 | D | 留日常（原义务保留） | 13.87s | UNKNOWN(no source) | ace-av |
+| S-28 | `stdlib_sys_973::sys973_t08_seek_permissions_mtime` | 13.779 | D | 留日常（原义务保留） | 13.12s | UNKNOWN(no source) | ace-av |
+| S-29 | `stdlib_assembly_1043::stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c` | 13.484 | C | → ace-toolchain（显式认证组，56/56 真跑） | 16.98s | body unchanged | ace-toolchain |
+| S-30 | `stdlib_asm_972::stdlib_asm_972_hash_domains_av` | 12.967 | D | 留日常（原义务保留） | 16.85s | body unchanged | ace-av |
+| S-31 | `sys_d01_d06_1064::v02_d01_d02_file_text_range_and_dir_names_av` | 12.843 | D | 留日常（原义务保留） | 11.97s | body unchanged | ace-av |
+| S-32 | `console_coverage_1041::vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity` | 12.394 | C | → ace-toolchain（显式认证组，56/56 真跑） | 14.78s | body unchanged | ace-toolchain |
+| S-33 | `stdlib_sys_973::sys973_path_algorithms` | 12.359 | D | 留日常（原义务保留） | 12.95s | UNKNOWN(no source) | ace-av |
+| S-34 | `stdlib_sys_973::sys973_env_set_remove_real_process` | 12.343 | D | 留日常（原义务保留） | 13.36s | UNKNOWN(no source) | ace-av |
+| S-35 | `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av` | 12.279 | D | 留日常（原义务保留） | 7.57s | body unchanged | ace-av |
+| S-36 | `stdlib_sys_973::sys973_time_real_clock_bands` | 12.217 | D | 留日常（原义务保留） | 12.57s | UNKNOWN(no source) | ace-av |
+| S-37 | `b1_slice_975::json975_char_to_str_b1_slice_oracles` | 12.204 | D | 留日常（原义务保留） | 9.67s | body unchanged | ace-av |
+| S-38 | `stdlib_sys_973::sys973_dirs_and_replace` | 12.133 | D | 留日常（原义务保留） | 13.25s | UNKNOWN(no source) | ace-av |
+| S-39 | `stdlib_sys_973::sys973_t09_target_selection_linux_binds` | 12.064 | L | 留日常（5.024s，bind-only）；Linux 原生归 1061/1063 | 12.64s | UNKNOWN(no source) | ace-av |
+| S-40 | `stdlib_sys_973::sys973_t10_rand_real_entropy` | 11.979 | D | 留日常（原义务保留） | 12.20s | UNKNOWN(no source) | ace-av |
+| S-41 | `stdlib_sys_973::sys973_v04_short_read_and_fault_injection_no_false_success` | 11.864 | D | 留日常（原义务保留） | 11.71s | UNKNOWN(no source) | ace-av |
+| S-42 | `module_sources_950::modules_950_user_shadow_consumer_restore_first_edit_and_next_read` | 11.844 | R | 留日常（原义务保留） | 5.13s | body unchanged | ace-av |
+| S-43 | `stdlib_sys_973::sys973_v05_clock_rand_oracles` | 11.498 | D | 留日常（原义务保留） | 11.32s | UNKNOWN(no source) | ace-av |
+| S-44 | `stdlib_sys_973::sys973_v03_process_exit_outcome` | 11.431 | D | 留日常（原义务保留） | 12.12s | UNKNOWN(no source) | ace-av |
+| S-45 | `module_sources_950::modules_950_qualified_consumer_restore_first_edit_and_next_read` | 10.97 | R | 留日常（原义务保留） | 5.59s | body unchanged | ace-av |
+| S-46 | `stdlib_core_945::stdlib_core_945_clone_allocation_fault_is_a_typed_resource_trap` | 10.86 | D | 留日常（原义务保留） | 7.97s | body unchanged | ace-av |
+| S-47 | `v10_layers_972::v10_core_alloc_layers_mn` | 10.706 | R | 留日常（原义务保留） | 10.35s | body unchanged | ace-av |
+
+**唯一的正文变更**：S-11 `mir_tier::mir_admission_module_tables_over_budget_is_resource` —— T-04 F-01 把 7 万次 `intern_const` 改为直接建表（**断言与资源门未变**，另加 65_536 精确边界邻例），§5.19 有前后时间与门位变异负控。其余 46 行正文逐字未变。
+
+**本计划新增 ACE 原生项（≤10s 预算）**：`mir_tier::mir_admission_module_tables_boundary_is_exact` 0.035s、`sched_m2_968::sched_968_replay_is_deterministic` 0.140s、`console::console_real_observation_carries_three_axes_and_transport_loss_is_rejected` 0.888s——3/3 ≤10s；另有治理侧新增（python）与 `ace-toolchain` 组本身。
+
+**工具链/PERF 增量**：`ace-toolchain` 56 例 66.293s（真 cl/rustc/py 腿，显式组，父截止 1800s）；`ace-perf` 由原 2 例 15.251s + S-04 六场景 24.412s = **3 例**，原 3600s 串行合同未动；日常组不再承载任何 C/Q 行。
+
+**AC-09 判定**：24/24 组 T_warm ≤120s ✓；47/47 行有处置与证据 ✓；新增 item 3/3 ≤10s ✓；分流原例/条件通过（C 19 + Q 1 + L 1 有具名归属）✓；PERF 增量与 3600s 合同可核 ✓；聚合组（workspace/facade/adapters）墙另列不计入 24 ✓。
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
