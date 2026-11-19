@@ -269,6 +269,7 @@ fn certify_family() -> Vec<CertifyCase> {
     ]
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2r_hir_certify_leg_all_cases_pass() {
     let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -309,6 +310,7 @@ fn a2r_hir_certify_leg_all_cases_pass() {
 
 /// V-09 shapes: a wrong oracle and a wrong independent reference are
 /// REJECTED certifications — never a PASS by force.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2r_hir_certify_negative_controls_reject() {
     let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());

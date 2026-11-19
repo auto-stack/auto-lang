@@ -1216,5 +1216,33 @@ class PerformanceSelection(unittest.TestCase):
                 self.assertIn('not test(/(^|::)performance::/)', group['expression'], group['name'])
 
 
+class ToolchainSplit(unittest.TestCase):
+    """PLAN-1098 T-06: certified toolchain cases have one explicit home."""
+
+    def test_toolchain_group_is_explicit_and_never_implied(self):
+        value, groups = fixed.configuration()
+        group = groups['ace-toolchain']
+        self.assertFalse(group['all'])
+        self.assertEqual('ace-toolchain', group['name'])
+        self.assertIn('test-toolchain', group['args'])
+        for selection in ([], ['all'], ['ace']):
+            self.assertNotIn('ace-toolchain', [g['name'] for g in fixed.select(selection, value, groups)])
+
+    def test_toolchain_cases_are_feature_gated_in_source(self):
+        harness = (ROOT / 'experimental/ace/crates/a2x-worker/tests/conformance.rs').read_text(encoding='utf-8')
+        # The modules stay compiled (daily tests consume their data tables);
+        # only the certification test bodies are gated.
+        self.assertIn('mod a2c_rt_cert;', harness)
+        for name in ('a2c_cert', 'a2c_coll_cert', 'a2c_rt_cert', 'cert_coll_904', 'cert_rt_902',
+                     'worker_ct_frontdoor_958'):
+            source = (ROOT / ('experimental/ace/crates/a2x-worker/tests/cases/%s.rs' % name)).read_text(encoding='utf-8')
+            self.assertIn('#[cfg(feature = "test-toolchain")]', source, name)
+            self.assertEqual(source.count('#[cfg(feature = "test-toolchain")]'),
+                             source.count('#[test]'), name + ' has an ungated test')
+        host = (ROOT / 'experimental/ace/tests/conformance/tests/host/rust_lowering.rs').read_text(encoding='utf-8')
+        for case in ('a2r_hir_certify_leg_all_cases_pass', 'a2r_hir_certify_negative_controls_reject'):
+            self.assertIn('#[cfg(feature = "test-toolchain")]\n#[test]\nfn ' + case, host)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -144,6 +144,7 @@ fn main_ref(body: &str) -> String {
 
 /// The two-leg pass through the RECORD-TEXT channel identities; byte-stable
 /// certificate serialization; the emitted daily set carries the rt fileset.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_two_leg_pass_and_stable_bytes() {
     let (ok, r) = certify(&base_req("pass-a"));
@@ -168,6 +169,7 @@ fn rt_certify_two_leg_pass_and_stable_bytes() {
 }
 
 /// A WRONG oracle is refused (both legs observe the closed-form oracle).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_wrong_oracle_refused() {
     let mut req = base_req("wrong-oracle");
@@ -184,6 +186,7 @@ fn rt_certify_wrong_oracle_refused() {
 /// STRICT cross-channel controls: the schema/recipe PAIR must match the
 /// channel — a scalar pair under the record-text schema (and the reverse)
 /// is rejected tamper, as are trimmed files and non-PASS verdicts.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_cert_draft_strict_controls() {
     use ace_a2x_c::cert::{
@@ -265,6 +268,7 @@ fn rt_cert_draft_strict_controls() {
 /// method composite, each actual set and its reviewed hand-written
 /// reference-<case>.c compiled and run independently against the frozen
 /// oracle table (42/42/23/42/42).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_all_suite_cases() {
     // (case, profile, caps, oracle)
@@ -410,6 +414,7 @@ pub(super) fn mode_contracts_941() -> Vec<CertCase> {
     ]
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_modes_matrix() {
     let cases = mode_contracts_941();
@@ -477,6 +482,7 @@ pub(super) fn trap_contracts_941() -> Vec<CertCase> {
     ]
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_trap_axis() {
     let cases = trap_contracts_941();
@@ -514,6 +520,7 @@ fn rt_certify_trap_axis() {
 /// really compiles and observes the reference, not a hash of it. The
 /// broken shape is the exact regression found in the first T-09 review
 /// pass (a literal `\n` stranded in the C source of reference-T03.c).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_bad_references_refused() {
     // 1) wrong-value reference: valid C, wrong oracle answer

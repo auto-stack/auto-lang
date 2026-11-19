@@ -1463,6 +1463,17 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "ace-toolchain"
+title = "ACE工具链认证（显式：真rustc/cl编译、多端证书与其负控）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-worker", "-p", "ace-conformance", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "test-toolchain"]
+expression = "(test(a2c_cert::) + test(a2c_coll_cert::) + test(a2c_rt_cert::) + test(cert_coll_904::) + test(cert_rt_902::) + test(worker_ct_frontdoor_958::) + test(tests::rust_lowering::a2r_hir_certify)) and not test(/(^|::)performance::/)"
+tools = ["a2x"]
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-console"
 title = "ACE控制台真实宿主"
 runner = "nextest"

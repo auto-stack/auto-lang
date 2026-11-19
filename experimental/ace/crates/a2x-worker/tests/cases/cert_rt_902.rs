@@ -155,6 +155,7 @@ fn rt_cert_draft(
 /// and the independent reference both really compile and run to the
 /// closed-form oracle; the strict rt certificate validates and serializes
 /// byte-stably.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_pass_leg_and_binding() {
     let compiled =
@@ -199,6 +200,7 @@ fn rt_certify_pass_leg_and_binding() {
 }
 
 /// V-09: a WRONG oracle rejects (both legs observe 23; the oracle says 43).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_wrong_oracle_rejected() {
     let compiled =
@@ -219,6 +221,7 @@ fn rt_certify_wrong_oracle_rejected() {
 
 /// V-09: a WRONG reference rejects (actual matches the oracle; the
 /// independent reference does not).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_wrong_reference_rejected() {
     let compiled =
@@ -239,6 +242,7 @@ fn rt_certify_wrong_reference_rejected() {
 
 /// V-09: a LATE FAILURE (correct observation, then a non-zero exit) is a
 /// controlled refusal — never a PASS.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_late_failure_not_pass() {
     let compiled =
@@ -263,6 +267,7 @@ fn rt_certify_late_failure_not_pass() {
 /// V-09/V-10: cross-channel impersonation and tampered cert shapes are
 /// REJECTED by strict validation — the scalar identities never validate a
 /// record-text certificate and vice versa.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_strict_validation_negatives() {
     let vv = "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\n";
@@ -305,6 +310,7 @@ fn rt_certify_strict_validation_negatives() {
 /// PLAN-1098 B-05: the worker comes from the explicit preparation
 /// (`AC_A2X_HIR_WORKER`); there is no directory walk and no profile-specific
 /// `target/release` fallback. A missing tool is a named infra failure.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_protocol_legs_via_prebuilt_worker() {
     let worker = match std::env::var_os("AC_A2X_HIR_WORKER") {
