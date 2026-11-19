@@ -503,7 +503,8 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 - [x] **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final，核遗漏/延期/组合、warning/fmt/debug及Spec增量，缺必需批收据不得pass。
   [✅ 2026-11-19 r28 final pass] 见 §9 r28 终审记录（review_scope=final：全部 AC 对账、债务扫描、健康检查、Spec 增量已落 m2-web.md）。
 
-- [ ] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
+- [x] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
+  [✅ 2026-11-19 r28] 四仓合入完成：auto-man master `4a30483`（C1 强化+fmt，ff）、auto-web master `26d085f`（r25 修复+F-R5，ff）、auto-ui master `e7aeda14`（锁+8dd932b8 修复+金样+gitignore，ff；主检出 Cargo.lock WIP 具名 stash，合并锁已含其 ACE 依赖意图）、auto-lang master `8e1768507`（c7a13604f Try 修复+726ca59bb 门配置+r25 基线 fold，merge commit；web-native-owner-contracts.json=111739396 r25 基线正确落主）。交付版本=组树验证 SHA 原样（ff/merge 保哈希）；canonical 规范增量已落 `docs/specs/ace-migration/m2-web.md`（门禁阶段收口/裁定/vctip/C1 交接证据/pin 一致性）。
 
 - [ ] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
 
