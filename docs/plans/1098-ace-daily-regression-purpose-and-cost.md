@@ -443,7 +443,7 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 - **实测**：无准备时 `python scripts/fixed-tests.py ace-lowering` → 0.11s 内 `PREPARATION_REQUIRED`（附可直接复制的准备命令）；`--prepare-only` → 1.19s 写到规范位；再有准备时直接跑 → `PASS 9/9`，整命令 1.6s，零构建。
 - **治理负控（`scripts/tests/test_fixed_groups.py::PreparedRunGate`，5 例新增）**：合法 manifest 通过；config/source/toolchain 三类漂移各自具名失败；archive 篡改/缺失具名失败；`find_matching_manifest` 跳过无效 manifest 且要求"全覆盖"（只覆盖部分组时返回 None）；普通 ACE 入口在无准备时**不调用 `execute_plan`** 即抛 `PREPARATION_REQUIRED` 且消息含 `--prepare-only`。全套 `test_fixed_groups.py` **77/77 OK**（7.46s），`test_prepare_tools.py` 8/8 OK。
 - **顺带修正既有红**：`ace-python` 的 `expression` 原本只是 `test(p1026)`（缺 performance 排除，`test_ace_module_groups_exclude_formal_performance` 在 master 上就是红的——已单独在 master 复现确认非本包引入）；现在去掉 args 里重复的 `-E test(p1026)`，expression 改为 `(test(p1026)) and not test(/(^|::)performance::/)`。**重发现验证选择面不变（仍 10 例）**，非放宽或掩红。
-- **兼容面（须写入 SD-01）**：门覆盖**全部 `domain=ace` 的 nextest 组**，含外部 `ase-m0`（`experimental/ase-m0` 独立 workspace）与 `ace-perf`；二者从此同样要求先准备。**非 ACE 组与 `--ignored`/`--test-name` 显式重放路径不受影响**。命令行兼容：`cargo t <ACE组>` 的旧行为（自动构建后跑）不再可用，须先 `--prepare-only`——这是 §2 明示的意图改变，须在说明中写明。
+- **兼容面（须写入 SD-01）**：门覆盖**全部 `domain=ace` 的 nextest 组**，含外部 `ase-m0`（`experimental/ase-m0` 独立 workspace）与 `ace-perf`；二者从此同样要求先准备。**非 ACE 组与 `--ignored` 显式重放路径不受影响**（`--ignored` 每次必须显式给 `aavm` 或 `--test-name`，属具名手工入口，保留原构建语义，代码已按此豁免）；`--test-name` 只是日常选择内的导航，仍走准备件。命令行兼容：`cargo t <ACE组>` 的旧行为（自动构建后跑）不再可用，须先 `--prepare-only`——这是 §2 明示的意图改变，须在说明中写明。
 
 ### 规范增量
 
