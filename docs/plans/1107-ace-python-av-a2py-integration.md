@@ -115,6 +115,7 @@ SD 增量草稿（merge 时沉淀）：`D:/autostack/plan-artifacts/plan-1107/sp
 —— `SD-01-python-ecosystem-integration.md`（新增 `docs/specs/auto-a2x/python-ecosystem-integration.md`）、
 `SD-02-append-python-interop.md`、`SD-03-append-python-stdlib-readiness.md`、
 `SD-04-append-m2-build.md`（分别追加到对应 Spec）。
+
 ## 5. 详细设计
 
 ### 5.1 首个同源工程
@@ -500,6 +501,17 @@ Round 17 增量：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
+2026-11-20 · stage: work（round 18 · **AC-06 支持矩阵 + SD-01..04 沉淀草稿**）| plan_id: PLAN-1107 | plan_revision: r2 | task_ids: AC-06 文档面、SD 草稿 | outcome: pass（round 级；**AC-04 仍未满足：V-03 未执行**）| next_responsible_role: work（V-03）→ review/merge
+
+Round 18 增量：
+- 计划 §4.4 新增**支持矩阵（实测/未宣称分列）**：OS/arch、AV 解释器（进程内 3.14.2）、A2PY 声明解释器、第三方包（torch 2.14.0+cpu 与 stdlib 子集）、语言面（17 操作与已验形态）、目标、失败面、缓存/身份轴；未宣称项明确列出（Linux/其他 CPython 版本/CUDA/容器跨边界/动态浮点实参/A2PY 错误类映射）。
+- SD 草稿落在统一 scope（merge 时沉淀）：`D:/autostack/plan-artifacts/plan-1107/spec-delta/` 下 SD-01（新增 `docs/specs/auto-a2x/python-ecosystem-integration.md` 全文）、SD-02/03/04（追加段：AV python-interop 的单源与操作数单次求值约束、A2PY stdlib-readiness 的原生 lower 与 ctypes 区分、m2-build 的 use.py 工程/缓存/分发）。
+- **诚实核对 AC**：AC-01/02（V-01）、AC-03（V-02/04 部分）、AC-05（V-05/06）、AC-06（V-07/08+矩阵）均有实测证据；**AC-04 依赖 V-03（对象身份/别名/资源/Meta/失败后可用）尚未执行**，因此本轮不勾 AC-04、不把状态改成 execution_done。
+
+余量：V-03 真实用例（同一 Tensor 多次传递、别名修改、显式 float 后 backward、错误转换后继续、weakcopy 红控制、weakref/资源 trace 与 Auto finally），A2PY 错误类映射；随后 T-07 独立复审（含 SD 校验）、T-08 合入与清理。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -584,6 +596,17 @@ Round 17 增量：
 余量：AC-06 支持矩阵（平台/解释器/torch/包集合×AV/A2PY/978）、SD-01..04 Specs 沉淀、T-07 复审、T-08 合入。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
+2026-11-20 · stage: work（round 18 · **AC-06 支持矩阵 + SD-01..04 沉淀草稿**）| plan_id: PLAN-1107 | plan_revision: r2 | task_ids: AC-06 文档面、SD 草稿 | outcome: pass（round 级；**AC-04 仍未满足：V-03 未执行**）| next_responsible_role: work（V-03）→ review/merge
+
+Round 18 增量：
+- 计划 §4.4 新增**支持矩阵（实测/未宣称分列）**：OS/arch、AV 解释器（进程内 3.14.2）、A2PY 声明解释器、第三方包（torch 2.14.0+cpu 与 stdlib 子集）、语言面（17 操作与已验形态）、目标、失败面、缓存/身份轴；未宣称项明确列出（Linux/其他 CPython 版本/CUDA/容器跨边界/动态浮点实参/A2PY 错误类映射）。
+- SD 草稿落在统一 scope（merge 时沉淀）：`D:/autostack/plan-artifacts/plan-1107/spec-delta/` 下 SD-01（新增 `docs/specs/auto-a2x/python-ecosystem-integration.md` 全文）、SD-02/03/04（追加段：AV python-interop 的单源与操作数单次求值约束、A2PY stdlib-readiness 的原生 lower 与 ctypes 区分、m2-build 的 use.py 工程/缓存/分发）。
+- **诚实核对 AC**：AC-01/02（V-01）、AC-03（V-02/04 部分）、AC-05（V-05/06）、AC-06（V-07/08+矩阵）均有实测证据；**AC-04 依赖 V-03（对象身份/别名/资源/Meta/失败后可用）尚未执行**，因此本轮不勾 AC-04、不把状态改成 execution_done。
+
+余量：V-03 真实用例（同一 Tensor 多次传递、别名修改、显式 float 后 backward、错误转换后继续、weakcopy 红控制、weakref/资源 trace 与 Auto finally），A2PY 错误类映射；随后 T-07 独立复审（含 SD 校验）、T-08 合入与清理。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
 
 ## 10. 待澄清事项
 
