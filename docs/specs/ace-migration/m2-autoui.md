@@ -1,19 +1,18 @@
-# ace-migration: m2-autoui — 传统 AutoUI 声明的 ACE 接入（IF-980-FIELDS 字段分母已验切片）
+# ace-migration: m2-autoui — 传统 AutoUI 声明的 ACE 接入（基础范围已收口）
 
-> Status: **DIALECT 批已验**（PLAN-980 B-DIALECT-I/V/R，2026-11-16；work→review（含
-> 复核反例两族）→phase fold 收据见计划 §9）。已交付：字段级投影完整性清单共享机制
-> （ace-core `source::field_manifest`）+ `WidgetDecl` 完整分母可执行清单（auto-ui
-> `-dialect p980_fields`，ui.widget-decl/v1）+ **AGE 组件面对 widget 成员槽位与 view
-> 树的接线**——002-counter/001-helloworld 完整原 widget 源经同一 AGE Schema
-> legacy-widget 别名全量投影并通过共享场景 verify（含反引号 f-string 绑定、str 状态
-> 字段、复合赋值、`!` 一元、design 绑定表达式）；`node` 规范头副本同字段 ID 集；
-> 别名关闭/坏形状/未接线槽位在原 span 具名拒绝。
-> 未交付（保持显式）：`style`/`setup`/`actions`/widget 级 `use{}` 四槽位为具名拒绝
-> （KNOWN-DEBT 登记）；design 的 if/else 值与求值行为（结构锚定）；STATE/NATIVE/
-> WEB/RUST/TAURI/JET/ARK/PARITY 各批与 V-UI-FULL/真实窗口验收；959 全行/组件全模式
-> 分母（T-01/PARITY）。
-> 来源：[PLAN-980](../../plans/980-ace-m2-autoui.md) §5/§6/§9；消费方：
-> [PLAN-979](../../plans/archive/979-ace-m2-schema.md) r11 §5 V-11（T-08/T-04 回验）。
+> Status: **基础范围已收口**（PLAN-980 r20 拆分→T-05 终审→T-06 归档，2026-11-19；
+> 冻结门=ace-source PASS/ace-av 1426-1428 唯二红 host_console 预存对/UI 三套
+> 27+8+7 全绿）。**已交付（基础范围）**：IF-980-FIELDS 字段分母清单+组件面 widget
+> 槽位/view 树接线（002/001 全源投影）；STATE 实例 store；NATIVE MIN-A-UI+HELLO
+> 首窗全链（lang `1991021a5`/ui `e529dde6`）；view-if/on-if/lambda-if 控制流三刀
+>（组件面 lane 真复放+`__age_vl_` 结构化铸造）；包版 Let/If 消费门（F-R21-2，
+> ui `7b8456e5`/`d2e7d7a4`）；④-A 包桥/包片段 lane/包版 SFC；P3 `style` 声明面
+>（lang `e8e4c16da`）。
+> **后继归属**（PLAN-980 §0 移交表，归档件）：完整 AV/A2R/AC/游戏/PARITY 产品面
+> 归 1071/1074/1075-1077/1068/985；Vue/Tauri 归 1072/1073；包版控制流真复放、
+> owned-wrap 统一、`n_assigns` census 记账、005 use/style/design 残墙归 1072。
+> 来源：[PLAN-980](../../plans/archive/980-ace-m2-autoui.md)（归档件）§5/§6/§9；
+> 消费方：[PLAN-979](../../plans/archive/979-ace-m2-schema.md) r11 §5 V-11。
 > 本文件只写**已验行为与接口**。
 
 ## 1. 共享字段级清单机制（ace-core）
