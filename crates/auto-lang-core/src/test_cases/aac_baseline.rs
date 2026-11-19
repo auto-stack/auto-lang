@@ -717,7 +717,6 @@ fn validate_bridge_contracts(text: &str) -> Result<usize, String> {
         let row_id = fields[0].to_string();
         let seam = fields[1];
         let dimension = fields[2];
-        let value = fields[3];
         let note = fields[4];
         if !required.contains(&row_id) {
             return Err(format!(
@@ -849,7 +848,6 @@ fn validate_stage_contract(text: &str) -> Result<usize, String> {
         }
         let row_id = fields[0].to_string();
         let dimension = fields[1];
-        let value = fields[2];
         let note = fields[3];
         if !required.contains(&row_id) {
             return Err(format!(
