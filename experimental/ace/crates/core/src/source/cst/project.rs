@@ -5818,22 +5818,9 @@ impl<'a> Engine<'a> {
                 // 链，`onclick.self`）——拼写=基名+`.`+修饰符（is_event 按
                 // 前缀判不受影响）。
                 let key_node = self.cx.field_child(item, "key").expect("view entry key");
-                let mut key_name = self.cx.spelling(self.unwrap_child(key_node));
-                for m in self.cx.children(key_node) {
-                    if self.cx.tree.kind(m) != self.cx.tree.kind(self.unwrap_child(key_node)) {
-                        // 修饰符 ident 叶（dot 叶按非 ident 排除）。
-                        if self
-                            .cx
-                            .spelling(m)
-                            .chars()
-                            .next()
-                            .is_some_and(|c| c.is_alphabetic() || c == '_')
-                        {
-                            key_name.push('.');
-                            key_name.push_str(&self.cx.spelling(m));
-                        }
-                    }
-                }
+                // 键名=键节点的源文本切片（含点修饰符 `onclick.self` 与连字符段
+                // `stroke-width`——PLAN-105 T-02 起不再手工拼 '.'；键内无空白）。
+                let key_name = self.cx.spelling(key_node);
                 let value_node = self
                     .cx
                     .field_child(item, "value")

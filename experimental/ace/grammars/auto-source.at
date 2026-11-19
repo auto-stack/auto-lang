@@ -1165,8 +1165,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             }
             alt {
                 ident(field: "base") {}
+                // PLAN-105 T-02（U03 真语料 012）：连字符键（SVG 属性
+                // `stroke-width:` / `stroke-linecap:` 等）——`ident - ident`
+                // 段链；投影按 '-' 拼接键名（与点修饰符共存）。
+                many { age-event-key-dash() {} }
                 many { age-event-key-mod() {} }
             }
+        }
+        age-event-key-dash(profiles: [age-component, age-package]) {
+            minus() {}
+            ident(field: "segment") {}
         }
         age-event-key-mod(profiles: [age-component, age-package]) {
             dot() {}
@@ -1212,7 +1220,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-element-labeled-block() {} }
             alt { age-element-block() {} }
             alt { age-element-labeled() {} }
-            alt(profiles: [age-component]) { age-element-props-block() {} }
+            alt(profiles: [age-component, age-package]) { age-element-props-block() {} }
             // PLAN-104（007 真语料）：**裸标签元素**——只有标签名、无 label 也无
             // 体块（`spacer`/`divider` 等自闭合组件）。闭集 keyword token，不参与
             // contextual name 槽位，故不引入 label 跨行吞并/诊断噪声。
@@ -1262,7 +1270,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-980 WEB #6m：括号属性行元素 `input (placeholder: "s") { … }`
         //——真语料主导形态（vue_capabilities）：标签后属性括号对，再可
         // 选体块。属性=同一 age-view-entry 形。
-        age-element-props-block(profiles: [age-component]) {
+        age-element-props-block(profiles: [age-component, age-package]) {
             ident(field: "tag")
             lparen(same-line: true, cut: true) {}
             list-nl { age-view-entry() {} }
@@ -1271,7 +1279,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-980 WEB #6m：括号属性元素的可选体块（多步 opt 归子规则——
         // 多步 opt 在这些规则位不被组合器支持，具名重构）。
-        age-element-props-body(profiles: [age-component]) {
+        age-element-props-body(profiles: [age-component, age-package]) {
             lbrace(same-line: true) {}
             many { age-view-item() {} }
             rbrace() {}
