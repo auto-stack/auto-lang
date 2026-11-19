@@ -44,8 +44,7 @@ pub const DATA_DIR_REL: &str = "crates/auto-lang/test/cases/ace-m2/aac-baseline-
 pub const PROFILE_HEADER: &str = "row_id\tkind\tkey\tvalue\tunit\tnote";
 pub const SUBJECT_HEADER: &str = "row_id\tmodule_path\tsubject_authority\trust_retention\tnote";
 pub const BRIDGE_HEADER: &str = "row_id\tseam\tdimension\tvalue\tnote";
-pub const REQ_HEADER: &str =
-    "row_id\tkind\tfamily\trequirement\tproducer_chain\tconsumer\tphase\tdisposition\towner\tsource_ref\tevidence_state\tevidence_ref";
+pub const REQ_HEADER: &str = "row_id\tkind\tfamily\trequirement\tproducer_chain\tconsumer\tphase\tdisposition\towner\tsource_ref\tevidence_state\tevidence_ref";
 pub const SUPPLY_HEADER: &str =
     "row_id\tfinding\tsupply_gap\tclosing_owner\tdelivery_task\tinput\toracle\tclosing_condition";
 pub const STAGE_HEADER: &str = "row_id\tdimension\tvalue\tnote";
@@ -293,11 +292,14 @@ fn check_path_pin(
         ));
     }
     let full = workspace_root.join(path);
-    let bytes = std::fs::read(&full)
-        .map_err(|e| format!("{row_id}: identity `{path}` unreadable: {e}"))?;
+    let bytes =
+        std::fs::read(&full).map_err(|e| format!("{row_id}: identity `{path}` unreadable: {e}"))?;
     let actual = sha16_hex(&bytes);
     // Hex pins are case-insensitive (PowerShell/lowercase tooling differ).
-    if !actual.to_ascii_lowercase().starts_with(&pinned.to_ascii_lowercase()) {
+    if !actual
+        .to_ascii_lowercase()
+        .starts_with(&pinned.to_ascii_lowercase())
+    {
         return Err(format!(
             "{row_id}: identity `{path}` sha256 mismatch: pinned `{pinned}` actual `{actual}` (stale or forged identity)"
         ));
@@ -308,7 +310,9 @@ fn check_path_pin(
 fn validate_profile(text: &str, root: &Path) -> Result<AdmissionReport, String> {
     let mut lines = text.lines();
     if lines.next() != Some(PROFILE_HEADER) {
-        return Err(format!("contract-profile schema header mismatch: expected `{PROFILE_HEADER}`"));
+        return Err(format!(
+            "contract-profile schema header mismatch: expected `{PROFILE_HEADER}`"
+        ));
     }
     let mut seen_identity = Vec::new();
     let mut seen_profile = Vec::new();
@@ -339,10 +343,16 @@ fn validate_profile(text: &str, root: &Path) -> Result<AdmissionReport, String> 
             ));
         }
         if key.trim().is_empty() || value.trim().is_empty() {
-            return Err(format!("contract-profile line {}: row `{row_id}` key/value empty", index + 2));
+            return Err(format!(
+                "contract-profile line {}: row `{row_id}` key/value empty",
+                index + 2
+            ));
         }
         if unit.trim().is_empty() || note.trim().is_empty() {
-            return Err(format!("contract-profile line {}: row `{row_id}` unit/note empty", index + 2));
+            return Err(format!(
+                "contract-profile line {}: row `{row_id}` unit/note empty",
+                index + 2
+            ));
         }
         match kind {
             "identity" => {
@@ -353,34 +363,57 @@ fn validate_profile(text: &str, root: &Path) -> Result<AdmissionReport, String> 
                     ));
                 }
                 if seen_identity.contains(&row_id) {
-                    return Err(format!("contract-profile line {}: duplicate identity row `{row_id}`", index + 2));
+                    return Err(format!(
+                        "contract-profile line {}: duplicate identity row `{row_id}`",
+                        index + 2
+                    ));
                 }
                 seen_identity.push(row_id.clone());
-                check_path_pin(&value, root, &row_id, &["docs/specs/", "docs/design/", "experimental/"])?;
+                check_path_pin(
+                    &value,
+                    root,
+                    &row_id,
+                    &["docs/specs/", "docs/design/", "experimental/"],
+                )?;
                 report.identity_rows += 1;
             }
             "profile" => {
                 if !profile_rows().contains(&row_id) {
-                    return Err(format!("contract-profile line {}: unknown profile row `{row_id}`", index + 2));
+                    return Err(format!(
+                        "contract-profile line {}: unknown profile row `{row_id}`",
+                        index + 2
+                    ));
                 }
                 if seen_profile.contains(&row_id) {
-                    return Err(format!("contract-profile line {}: duplicate profile row `{row_id}`", index + 2));
+                    return Err(format!(
+                        "contract-profile line {}: duplicate profile row `{row_id}`",
+                        index + 2
+                    ));
                 }
                 seen_profile.push(row_id.clone());
                 report.profile_rows += 1;
             }
             _ => {
                 if !resource_rows().contains(&row_id) {
-                    return Err(format!("contract-profile line {}: unknown resource row `{row_id}`", index + 2));
+                    return Err(format!(
+                        "contract-profile line {}: unknown resource row `{row_id}`",
+                        index + 2
+                    ));
                 }
                 if seen_resource.contains(&row_id) {
-                    return Err(format!("contract-profile line {}: duplicate resource row `{row_id}`", index + 2));
+                    return Err(format!(
+                        "contract-profile line {}: duplicate resource row `{row_id}`",
+                        index + 2
+                    ));
                 }
                 let n: u64 = value.parse().map_err(|_| {
                     format!("contract-profile line {}: resource `{row_id}` value `{value}` is not a positive u64", index + 2)
                 })?;
                 if n == 0 {
-                    return Err(format!("contract-profile line {}: resource `{row_id}` value must be > 0", index + 2));
+                    return Err(format!(
+                        "contract-profile line {}: resource `{row_id}` value must be > 0",
+                        index + 2
+                    ));
                 }
                 seen_resource.push(row_id.clone());
                 report.resource_rows += 1;
@@ -406,14 +439,22 @@ fn validate_profile(text: &str, root: &Path) -> Result<AdmissionReport, String> 
         ));
     }
     if !missing_profile.is_empty() {
-        return Err(format!("contract-profile missing profile row(s): {}", missing_profile.join(", ")));
+        return Err(format!(
+            "contract-profile missing profile row(s): {}",
+            missing_profile.join(", ")
+        ));
     }
     if !missing_resource.is_empty() {
-        return Err(format!("contract-profile missing resource row(s): {}", missing_resource.join(", ")));
+        return Err(format!(
+            "contract-profile missing resource row(s): {}",
+            missing_resource.join(", ")
+        ));
     }
     for (row_id, expected) in frozen_profile_values() {
         let Some(line) = text.lines().find(|l| l.starts_with(&format!("{row_id}\t"))) else {
-            return Err(format!("contract-profile: frozen profile row `{row_id}` absent"));
+            return Err(format!(
+                "contract-profile: frozen profile row `{row_id}` absent"
+            ));
         };
         let fields: Vec<&str> = line.split('\t').collect();
         if fields[3] != expected {
@@ -427,12 +468,22 @@ fn validate_profile(text: &str, root: &Path) -> Result<AdmissionReport, String> 
 }
 
 fn validate_requirements(text: &str, root: &Path, kind: &str) -> Result<usize, String> {
-    let label = if kind == "CS" { "cs-requirements" } else { "cl-requirements" };
+    let label = if kind == "CS" {
+        "cs-requirements"
+    } else {
+        "cl-requirements"
+    };
     let mut lines = text.lines();
     if lines.next() != Some(REQ_HEADER) {
-        return Err(format!("{label} schema header mismatch: expected `{REQ_HEADER}`"));
+        return Err(format!(
+            "{label} schema header mismatch: expected `{REQ_HEADER}`"
+        ));
     }
-    let required: Vec<String> = if kind == "CS" { required_cs_rows() } else { required_cl_rows() };
+    let required: Vec<String> = if kind == "CS" {
+        required_cs_rows()
+    } else {
+        required_cl_rows()
+    };
     let mut seen = Vec::new();
     let mut count = 0usize;
     for (index, line) in lines.enumerate() {
@@ -466,7 +517,10 @@ fn validate_requirements(text: &str, root: &Path, kind: &str) -> Result<usize, S
             ));
         }
         if seen.contains(&row_id) {
-            return Err(format!("{label} line {}: duplicate row `{row_id}`", index + 2));
+            return Err(format!(
+                "{label} line {}: duplicate row `{row_id}`",
+                index + 2
+            ));
         }
         if row_kind != kind {
             return Err(format!(
@@ -475,7 +529,10 @@ fn validate_requirements(text: &str, root: &Path, kind: &str) -> Result<usize, S
             ));
         }
         if family.trim().is_empty() || requirement.trim().is_empty() {
-            return Err(format!("{label} line {}: row `{row_id}` family/requirement empty", index + 2));
+            return Err(format!(
+                "{label} line {}: row `{row_id}` family/requirement empty",
+                index + 2
+            ));
         }
         if producer_chain.trim().is_empty() || consumer.trim().is_empty() {
             return Err(format!(
@@ -496,10 +553,16 @@ fn validate_requirements(text: &str, root: &Path, kind: &str) -> Result<usize, S
             ));
         }
         if owner.trim().is_empty() {
-            return Err(format!("{label} line {}: row `{row_id}` has no owner（无补齐owner须拒绝）", index + 2));
+            return Err(format!(
+                "{label} line {}: row `{row_id}` has no owner（无补齐owner须拒绝）",
+                index + 2
+            ));
         }
         if source_ref.trim().is_empty() {
-            return Err(format!("{label} line {}: row `{row_id}` has no source_ref", index + 2));
+            return Err(format!(
+                "{label} line {}: row `{row_id}` has no source_ref",
+                index + 2
+            ));
         }
         if disposition == "deferred" && phase != "stage" {
             return Err(format!(
@@ -547,7 +610,9 @@ fn validate_requirements(text: &str, root: &Path, kind: &str) -> Result<usize, S
 fn validate_subject_map(text: &str) -> Result<usize, String> {
     let mut lines = text.lines();
     if lines.next() != Some(SUBJECT_HEADER) {
-        return Err(format!("subject-map schema header mismatch: expected `{SUBJECT_HEADER}`"));
+        return Err(format!(
+            "subject-map schema header mismatch: expected `{SUBJECT_HEADER}`"
+        ));
     }
     let required = required_subject_rows();
     let mut seen = Vec::new();
@@ -570,13 +635,22 @@ fn validate_subject_map(text: &str) -> Result<usize, String> {
         let retention = fields[3];
         let note = fields[4];
         if !required.contains(&row_id) {
-            return Err(format!("subject-map line {}: unknown row `{row_id}`", index + 2));
+            return Err(format!(
+                "subject-map line {}: unknown row `{row_id}`",
+                index + 2
+            ));
         }
         if seen.contains(&row_id) {
-            return Err(format!("subject-map line {}: duplicate row `{row_id}`", index + 2));
+            return Err(format!(
+                "subject-map line {}: duplicate row `{row_id}`",
+                index + 2
+            ));
         }
         if module_path.trim().is_empty() || note.trim().is_empty() {
-            return Err(format!("subject-map line {}: row `{row_id}` module_path/note empty", index + 2));
+            return Err(format!(
+                "subject-map line {}: row `{row_id}` module_path/note empty",
+                index + 2
+            ));
         }
         if !SUBJECT_AUTHORITIES.contains(&authority) {
             return Err(format!(
@@ -585,7 +659,10 @@ fn validate_subject_map(text: &str) -> Result<usize, String> {
             ));
         }
         if retention.trim().is_empty() {
-            return Err(format!("subject-map line {}: row `{row_id}` rust_retention empty", index + 2));
+            return Err(format!(
+                "subject-map line {}: row `{row_id}` rust_retention empty",
+                index + 2
+            ));
         }
         seen.push(row_id);
         count += 1;
@@ -607,7 +684,10 @@ fn validate_subject_map(text: &str) -> Result<usize, String> {
         .filter(|id| !seen.contains(id))
         .collect();
     if !missing.is_empty() {
-        return Err(format!("subject-map missing row(s): {}", missing.join(", ")));
+        return Err(format!(
+            "subject-map missing row(s): {}",
+            missing.join(", ")
+        ));
     }
     Ok(count)
 }
@@ -615,7 +695,9 @@ fn validate_subject_map(text: &str) -> Result<usize, String> {
 fn validate_bridge_contracts(text: &str) -> Result<usize, String> {
     let mut lines = text.lines();
     if lines.next() != Some(BRIDGE_HEADER) {
-        return Err(format!("bridge-contracts schema header mismatch: expected `{BRIDGE_HEADER}`"));
+        return Err(format!(
+            "bridge-contracts schema header mismatch: expected `{BRIDGE_HEADER}`"
+        ));
     }
     let required = required_bridge_rows();
     let mut seen = Vec::new();
@@ -638,13 +720,22 @@ fn validate_bridge_contracts(text: &str) -> Result<usize, String> {
         let value = fields[3];
         let note = fields[4];
         if !required.contains(&row_id) {
-            return Err(format!("bridge-contracts line {}: unknown row `{row_id}`", index + 2));
+            return Err(format!(
+                "bridge-contracts line {}: unknown row `{row_id}`",
+                index + 2
+            ));
         }
         if seen.contains(&row_id) {
-            return Err(format!("bridge-contracts line {}: duplicate row `{row_id}`", index + 2));
+            return Err(format!(
+                "bridge-contracts line {}: duplicate row `{row_id}`",
+                index + 2
+            ));
         }
         if seam.trim().is_empty() || dimension.trim().is_empty() || note.trim().is_empty() {
-            return Err(format!("bridge-contracts line {}: row `{row_id}` seam/dimension/note empty", index + 2));
+            return Err(format!(
+                "bridge-contracts line {}: row `{row_id}` seam/dimension/note empty",
+                index + 2
+            ));
         }
         seen.push(row_id);
         count += 1;
@@ -666,7 +757,10 @@ fn validate_bridge_contracts(text: &str) -> Result<usize, String> {
         .filter(|id| !seen.contains(id))
         .collect();
     if !missing.is_empty() {
-        return Err(format!("bridge-contracts missing row(s): {}", missing.join(", ")));
+        return Err(format!(
+            "bridge-contracts missing row(s): {}",
+            missing.join(", ")
+        ));
     }
     Ok(count)
 }
@@ -674,7 +768,9 @@ fn validate_bridge_contracts(text: &str) -> Result<usize, String> {
 fn validate_supply_matrix(text: &str) -> Result<usize, String> {
     let mut lines = text.lines();
     if lines.next() != Some(SUPPLY_HEADER) {
-        return Err(format!("supply-matrix schema header mismatch: expected `{SUPPLY_HEADER}`"));
+        return Err(format!(
+            "supply-matrix schema header mismatch: expected `{SUPPLY_HEADER}`"
+        ));
     }
     let required = required_supply_rows();
     let mut seen = Vec::new();
@@ -693,10 +789,16 @@ fn validate_supply_matrix(text: &str) -> Result<usize, String> {
         }
         let row_id = fields[0].to_string();
         if !required.contains(&row_id) {
-            return Err(format!("supply-matrix line {}: unknown row `{row_id}`", index + 2));
+            return Err(format!(
+                "supply-matrix line {}: unknown row `{row_id}`",
+                index + 2
+            ));
         }
         if seen.contains(&row_id) {
-            return Err(format!("supply-matrix line {}: duplicate row `{row_id}`", index + 2));
+            return Err(format!(
+                "supply-matrix line {}: duplicate row `{row_id}`",
+                index + 2
+            ));
         }
         // V-05: 不允许凭 owner 名字空置交付条件——input/oracle/
         // closing_condition 必须非空。
@@ -726,7 +828,9 @@ fn validate_supply_matrix(text: &str) -> Result<usize, String> {
 fn validate_stage_contract(text: &str) -> Result<usize, String> {
     let mut lines = text.lines();
     if lines.next() != Some(STAGE_HEADER) {
-        return Err(format!("stage-test-contract schema header mismatch: expected `{STAGE_HEADER}`"));
+        return Err(format!(
+            "stage-test-contract schema header mismatch: expected `{STAGE_HEADER}`"
+        ));
     }
     let required = required_stage_rows();
     let mut seen = Vec::new();
@@ -748,13 +852,22 @@ fn validate_stage_contract(text: &str) -> Result<usize, String> {
         let value = fields[2];
         let note = fields[3];
         if !required.contains(&row_id) {
-            return Err(format!("stage-test-contract line {}: unknown row `{row_id}`", index + 2));
+            return Err(format!(
+                "stage-test-contract line {}: unknown row `{row_id}`",
+                index + 2
+            ));
         }
         if seen.contains(&row_id) {
-            return Err(format!("stage-test-contract line {}: duplicate row `{row_id}`", index + 2));
+            return Err(format!(
+                "stage-test-contract line {}: duplicate row `{row_id}`",
+                index + 2
+            ));
         }
         if dimension.trim().is_empty() || note.trim().is_empty() {
-            return Err(format!("stage-test-contract line {}: row `{row_id}` dimension/note empty", index + 2));
+            return Err(format!(
+                "stage-test-contract line {}: row `{row_id}` dimension/note empty",
+                index + 2
+            ));
         }
         seen.push(row_id);
         count += 1;
@@ -776,7 +889,10 @@ fn validate_stage_contract(text: &str) -> Result<usize, String> {
         .filter(|id| !seen.contains(id))
         .collect();
     if !missing.is_empty() {
-        return Err(format!("stage-test-contract missing row(s): {}", missing.join(", ")));
+        return Err(format!(
+            "stage-test-contract missing row(s): {}",
+            missing.join(", ")
+        ));
     }
     Ok(count)
 }
@@ -791,7 +907,10 @@ fn read_contract(root: &Path, file: &str) -> Result<String, String> {
 /// once; vocabulary/ownership/trust rules must hold. This is contract
 /// admission (V-01..V-06), not a bootstrap PASS.
 pub fn validate_all(workspace_root: &Path) -> Result<AdmissionReport, String> {
-    let profile = validate_profile(&read_contract(workspace_root, "contract-profile.tsv")?, workspace_root)?;
+    let profile = validate_profile(
+        &read_contract(workspace_root, "contract-profile.tsv")?,
+        workspace_root,
+    )?;
     let cs = validate_requirements(
         &read_contract(workspace_root, "cs-requirements.tsv")?,
         workspace_root,
@@ -803,9 +922,11 @@ pub fn validate_all(workspace_root: &Path) -> Result<AdmissionReport, String> {
         "CL",
     )?;
     let subject = validate_subject_map(&read_contract(workspace_root, "subject-map.tsv")?)?;
-    let bridge = validate_bridge_contracts(&read_contract(workspace_root, "bridge-contracts.tsv")?)?;
+    let bridge =
+        validate_bridge_contracts(&read_contract(workspace_root, "bridge-contracts.tsv")?)?;
     let supply = validate_supply_matrix(&read_contract(workspace_root, "supply-matrix.tsv")?)?;
-    let stage = validate_stage_contract(&read_contract(workspace_root, "stage-test-contract.tsv")?)?;
+    let stage =
+        validate_stage_contract(&read_contract(workspace_root, "stage-test-contract.tsv")?)?;
     Ok(AdmissionReport {
         identity_rows: profile.identity_rows,
         profile_rows: profile.profile_rows,
@@ -867,7 +988,10 @@ mod tests {
             "supply-matrix.tsv",
             "stage-test-contract.tsv",
         ];
-        files.iter().map(|f| (f.to_string(), real_text(f))).collect()
+        files
+            .iter()
+            .map(|f| (f.to_string(), real_text(f)))
+            .collect()
     }
 
     /// V-01: the complete legal contract set admits — every identity pin
@@ -875,8 +999,8 @@ mod tests {
     /// contract admission, not a bootstrap PASS.
     #[test]
     fn v01_complete_legal_contract_set_admits() {
-        let (report, path) =
-            validate_tracked_contracts().unwrap_or_else(|e| panic!("legal contract set invalid: {e}"));
+        let (report, path) = validate_tracked_contracts()
+            .unwrap_or_else(|e| panic!("legal contract set invalid: {e}"));
         assert_eq!(report.identity_rows, identity_rows().len());
         assert_eq!(report.profile_rows, profile_rows().len());
         assert_eq!(report.resource_rows, resource_rows().len());
@@ -940,7 +1064,8 @@ mod tests {
             .find(|(f, _)| f == "subject-map.tsv")
             .expect("subject file");
         // 直接改 authority 列（第 3 列）：定位 subject.semantics 行。
-        let Some(semantics_line) = text.lines().find(|l| l.starts_with("subject.semantics\t")) else {
+        let Some(semantics_line) = text.lines().find(|l| l.starts_with("subject.semantics\t"))
+        else {
             panic!("subject.semantics exists");
         };
         let flipped_authority = semantics_line.replacen("\tauto\t", "\trust-retained\t", 1);
@@ -1020,8 +1145,8 @@ mod tests {
             .filter(|l| !l.starts_with("supply.f06.package-lock\t"))
             .collect::<Vec<_>>()
             .join("\n");
-        let err = validate_supply_matrix(&mutated)
-            .expect_err("missing package-lock supply must be RED");
+        let err =
+            validate_supply_matrix(&mutated).expect_err("missing package-lock supply must be RED");
         assert!(err.contains("supply.f06.package-lock"), "{err}");
         // 删除一个 AC 适用 CL 行。
         let (_, cl_text) = all_text()
@@ -1041,7 +1166,10 @@ mod tests {
             .into_iter()
             .find(|(f, _)| f == "contract-profile.tsv")
             .expect("profile file");
-        let swapped = profile.replace("profile.host\tprofile\thost\twindows-x64", "profile.host\tprofile\thost\twindows-x64-swapped");
+        let swapped = profile.replace(
+            "profile.host\tprofile\thost\twindows-x64",
+            "profile.host\tprofile\thost\twindows-x64-swapped",
+        );
         assert_ne!(&swapped, &profile);
         let err = validate_profile(&swapped, &root()).expect_err("host swap must be RED");
         assert!(err.contains("profile.host"), "{err}");
@@ -1058,15 +1186,21 @@ mod tests {
             .find(|(f, _)| f == "stage-test-contract.tsv")
             .expect("stage file");
         // auto-down 当 TestCase 生产者。
-        let mutated = stage.replace("stage-test.case-producer\tlanguage-testcase-owner\tauto-lang", "stage-test.case-producer\tlanguage-testcase-owner\tauto-down");
+        let mutated = stage.replace(
+            "stage-test.case-producer\tlanguage-testcase-owner\tauto-lang",
+            "stage-test.case-producer\tlanguage-testcase-owner\tauto-down",
+        );
         assert_ne!(&mutated, &stage);
         let err = validate_stage_contract(&mutated).expect_err("auto-down as producer must be RED");
         assert!(err.contains("stage-test.case-producer"), "{err}");
         // 仅旧 Rust 组绿充 Auto 阶段已测。
-        let mutated = stage.replace("stage-test.evidence-policy\tevidence\tauto-stage-run-required", "stage-test.evidence-policy\tevidence\trust-rust-groups-only");
+        let mutated = stage.replace(
+            "stage-test.evidence-policy\tevidence\tauto-stage-run-required",
+            "stage-test.evidence-policy\tevidence\trust-rust-groups-only",
+        );
         assert_ne!(&mutated, &stage);
-        let err = validate_stage_contract(&mutated)
-            .expect_err("rust-groups-only report must be RED");
+        let err =
+            validate_stage_contract(&mutated).expect_err("rust-groups-only report must be RED");
         assert!(err.contains("stage-test.evidence-policy"), "{err}");
         // 阶段与整机来源齐才接受。
         validate_all(&root()).expect("complete stage contract accepts");
