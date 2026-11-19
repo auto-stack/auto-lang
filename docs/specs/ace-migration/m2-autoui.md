@@ -8,9 +8,13 @@
 >（组件面 lane 真复放+`__age_vl_` 结构化铸造）；包版 Let/If 消费门（F-R21-2，
 > ui `7b8456e5`/`d2e7d7a4`）；④-A 包桥/包片段 lane/包版 SFC；P3 `style` 声明面
 >（lang `e8e4c16da`）。
-> **后继归属**（PLAN-980 §0 移交表，归档件）：完整 AV/A2R/AC/游戏/PARITY 产品面
-> 归 1071/1074/1075-1077/1068/985；Vue/Tauri 归 1072/1073；包版控制流真复放、
-> owned-wrap 统一、`n_assigns` census 记账、005 use/style/design 残墙归 1072。
+> **后继归属与已交付扩展**（PLAN-980 §0 移交表，归档件）：完整 AV/A2R/AC/游戏/PARITY 产品面
+> 归 1071（UI-W1-AV 已入 §14）/1074/1075-1077/1068/985；Vue/Tauri 归 1072/1073。
+> **PLAN-1072（Vue 与生产 TS/JS 接管，2026-11-19 已交付，见 §15）**：005/010 整例翻转、
+> 组件面 `style` 替换 + `view-for` + 仅视图数据字段 + `expose` 点前缀对齐、`marshal_str_boundary`
+> 统一 str 边界、`write_ace_vue_rt` 冷生成修复、`AC-LIF-07` 与 `n_assigns` 记账收口；
+> `#6p`/包面多分支控制流重放及 `pages/`/`widgets/`/`stores/`/默认开关/`pnpm`+Vite+`auto run` CLI 闭环
+> 记入 `KNOWN-DEBT-AND-RISKS.md`（与 PLAN-982 / 后继包分工）。
 > 来源：[PLAN-980](../../plans/archive/980-ace-m2-autoui.md)（归档件）§5/§6/§9；
 > 消费方：[PLAN-979](../../plans/archive/979-ace-m2-schema.md) r11 §5 V-11。
 > 本文件只写**已验行为与接口**。
@@ -662,3 +666,21 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **010 列表字段边界（交 1072 共享接口）**：`010-contact-form` 的 `faqs`（list-of-structs）为**仅视图数据源**（model 只读、`for` 渲染、无事件写）；列表字段在生成面按只读数据源处理（Vue v-for/等价），不作为可变 state 通道；AGE 列表语义归 collections owner 单写。
 - **预存红台账（具名排除）**：lang `ace-av` `host_console::{av_console_entry_selection_cannot_bypass_main_policy, av_console_owned_front_door_enforces_console_entry_only}`（981 §9 既有漂移）；UI `gallery_vue_golden`（auto-os widgets-gallery 源↔auto-ui golden 基线跨仓漂移，V-B-PARITY 面归 985/auto-ui owner 线，983 r25 已点名）。
 - **边界（保持）**：U02–U06 示例级 AV 完整逐例仍压 980 ④-A 解锁路径（980 §9 :1739「B-AV-I 保持未勾——全分母仍压 ④」）；`UI-W1-AV` 最终汇总收据由 980 `B-AV-R` 签发（981 §9 交接约定），本接收记录其已交子面与生产入口证据，不冒全包完成。
+
+## 15. Vue 与生产 TS/JS 接管（PLAN-1072，2026-11-19）
+
+- **交付来源**：[PLAN-1072](../../plans/archive/1072-autoui-vue-web.md)（归档件；冻结门 `cargo t ace-source` 923/923 PASS、`cargo t ace-av` 1426/1428 仅预存 `host_console`×2、UI 受影响 10 套件全部零失败、`plan1072_component_style` 19/19 通过）。
+- **语言侧（`ace-core` & `auto-source.at`）**：
+  - **组件面 `style` 惰性替换路径**（依 981 r18 会签 (c)3）：`style-head`/`style-item` 对 `[age-component]` 开放字面量声明（参数化/`pub` 仍由 `style-params` profile 门控留在包面），并补全 `age-event-key` `type-kw` 键臂（承接 `type: "password"`）；投影期 `apply_component_face_styles` 收集模块内 `style` 字面量表，并经共享 `replace_style_in_entry_expr`（`frontdoor.rs`）递归替换 view 内 `ComponentEntryValue::Expr` 与 `ComponentEntryValue::If`（`then_value` / `else_value` 两臂），统一对导入样式名、未声明 `style` 键标识符与带参调用形（`ExprKind::Call`）执行 `source.age.style-call` fail-closed 拒绝（不生成 `Item::Const`/`Fn`，不触发 resolve/全局表三条件）。
+  - **条件样式与 `view-for` / 仅视图数据字段（010 边界）**：`age-view-for`（双名形 `for i, f in .expr`，两 AGE 面）投影为 `ComponentViewItem::For`（循环体文本叶不平铺进 `texts`）；`age-view-data-lit` 仅限无类型列表字面量投影为 `ComponentViewDataField`（沿 PLAN-1071 §14 仅视图数据边界，不进 `fields`/state/scenario，handler 写入报未声明字段具名拒）；`age-entry-value` 新增 `if` 条件样式值（两臂均经 `replace_style_in_entry_expr` 受检）；native/desktop 与包面 SFC 渲染腿分别以 `view-for-unsupported` 与 `sfc-view-for` 具名拒。
+  - **`expose` 成员语法对齐**：`age-expose-member` / `age-expose-item` / `age-expose-name-tail`（`profiles: [age-component, age-package]`）并容 `.name`（如 `expose { .Inc, .count }`、多行无逗号 `.Inc\n.count`）与裸名（`expose { alpha, beta }`）；`AgeComponent` `grammar-id` 更新至 `fad57c5f81b4ee3ca191a472b952778f4666692e3760ed186e3f137c6ba164a1`、`AgePackage` 更新至 `06809c843671b91fe57ad77ddb6126a5bd094efc263cf0fc4beda4cdfb87111c`，13 个邻居 profile 逐字节保持不变（`plan981_grammar_scope` 4/4）。
+- **UI 侧生成、运行时与冷生成修复（`auto-ui-runtime` & `auto-ui-tools`）**：
+  - **`marshal_str_boundary` 统一 str 边界（收口 980 §10-1 `owned-wrap`）**：宿主（Vue `ref` / SFC 形参）以普通 JS 字符串承载；rt 文本值（`Uint8Array` / `A2xOwnedStr`）仅存于求值内部。宿主映射层对 `a2x_str_*` 行读取经 `wrap_host_reads` 包裹 `a2x_str_lit(...)`（跟踪单/双引号与反斜杠转义，绝不误改字符串字面量内容），写入经 `a2x_str_utf8(...)` 解码并释放 owned 副本，清理 `owned-swap` 快照与旧值释放块；状态函数道/检查函数道/λ 道三道统一经本层（`p980_web_param_browser_mount` 亦迁至官方 `script_runtime_body`）。
+  - **配方注册显式化与 `__bind_*` 隔离**：`generate_sfc_with_lane` / `generate_sfc_with_lane_product` 在生成前显式调用 `prepare_file_style_recipes` / `replay_file_style_recipes`，使独立入口也能将 `style: NAME` 展开为字面 class 串；`__bind_*` 方言合成键排除出 lane handler 规格表以免误扰整组件 lane 派生。
+  - **冷生成 `a2x_rt.mjs` 落盘与错误保旧恢复**：`VueProject::from_workspace_reads`（`components/*.at` 路径）继承 `ace_vue_rt` 且 `VueProject::generate` 补调 `self.write_ace_vue_rt()?;`，确保冷目录 `--gen-only` / `gen_vue_project` 完整写出 `src/a2x_rt.mjs` 及脚手架（`@vue/compiler-sfc` + `esbuild` 编译通过）。`incremental_compile_changed` 与 `gen_vue_project` 在语法错误（non-strict watch 返回 `Ok(0)` 告警 / strict 返回 `Err("Failed to compile")`）或 lane 拒（`Err("ace.vue-lane-unsupported")`）下均逐字节保留既有 `App.vue` 与 `a2x_rt.mjs`，修复源码后可恢复编译。
+  - **005/010 整例翻转与双产品浏览器实证**：`005-login`（6/6 handlers, `absent=[]`, `test_005_login.mjs` 7 判据）与 `010-contact-form`（3/3 handlers, `absent=[]`, `v-for` over `faqs` + `field_col` 展开）在产品 lane SFC + 官方 `a2x_rt.mjs` 下全绿；`test_p1072_lifecycle_watch_expose.mjs` 实证 `setup` 严禁重入仅执行 1 次 + `ext_imports`、`watch` 触发与 `unmount()` 停听、`defineExpose` `.Inc()` 调用与 `style` 展开。
+- **残余四项记账收口**：①`n_assigns`（`ace_ts_provider.rs:315-320, 392-397`、`ace_vue_script.rs:490-496`）取语言侧 `flat_handler_assigns(&stmts)` 跨分支深平铺计数，唯一消费者 `needs_fn` 在含分支赋值时保守为真、零语义漂移；②`AC-LIF-07`（生命周期全项）随 `plan1072_vue_web` + `.mjs` 浏览器实证闭合；③§10-1 `owned-wrap` 由 `marshal_str_boundary` 收口；④`#6p` 分支内调用形（`ace_ts_provider.rs:1619` 具名缺席 `.__evt_onclick_1`）与 `ace_package_sfc` 多分支控制流重放边界（`sfc-handler-stmt`、`sfc-view-for`）登账入 `KNOWN-DEBT-AND-RISKS.md`。
+- **实现与验证边界（不超宣称，与 PLAN-982 / 后继计划分工）**：
+  1. **开关与路径边界**：仅在 `auto-ui-tools --features ace-vue` + `AUTO_UI_ACE_VUE=1` 下对 `app.at`（`vue.rs:4173, 7684`）与 `components/*.at`（`vue.rs:4495`）启用 ACE lane 替换；默认构建、`front_dir` 兄弟文件（`vue.rs:7398`）、`pages/`（`vue.rs:4350`）、`widgets/`（`vue.rs:7757`）与 `stores/` 仍走旧 `VueGenerator` / `ts_adapter::TypeScriptTrans`。
+  2. **双轨拼接边界**：`generate_widget_with_lane`（`ace_vue_script.rs:796-884`）基于 `VueGenerator::new().generate_sfc(&widget)` 仅拼接替换受检 `on` / `__evt_*` 体；`computed`、`watch`、`setup`、`ext_imports`、`.Init`/`.Destroy` 与 `absent` 处理器仍由 `VueGenerator` 发射（如含 `setup`+`use{}` 的 `Widget B` 维持双轨 fail-closed，`absent=[".Bump"]`）。
+  3. **夹具与联合门边界**：1072 产品验证以 Rust `gen_vue_project` / `incremental_compile_changed`、`@vue/compiler-sfc` + `esbuild` 与 Playwright Node `http`（`test_010_form.mjs` stub `@/components/ui/*`、`test_p1072_lifecycle_watch_expose.mjs` stub `BOOT_EXT_STUB`；`plan980_010_form_short.rs` 浏览器腿仍挂旧 `App.vue`，而 `p1072_010_product_browser_mount` 挂 lane `App.sfc` 测三字段 `v-model` + `Submit`）为边界；公开 CLI `auto gen` / `auto build` / `auto run` 派发与完整 `pnpm` / Vite 打包运行由 **PLAN-982** 联合门与后续 `V-TS-CONSUMER-UI` 收尾任务承接（均登账入 `KNOWN-DEBT-AND-RISKS.md`）。
