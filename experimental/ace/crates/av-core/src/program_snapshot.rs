@@ -110,6 +110,25 @@ impl ProgramSnapshot {
     pub fn global_cells(&self) -> Vec<crate::contract::Value> {
         self.cells.borrow().clone()
     }
+
+    /// PLAN-1106（事件事务回滚）：整表恢复全局 cell（长度必须与 globals
+    /// 一致；逐槽写回）。会话层在 handler 派发前备份、失败（trap/预算/取消）
+    /// 时恢复——失败不发布半状态。这不是公开的任意写口：恢复值只能来自
+    /// 同一快照的 [`ProgramSnapshot::global_cells`] 备份。
+    pub fn restore_global_cells(&self, values: &[crate::contract::Value]) -> Result<(), String> {
+        if values.len() != self.globals.len() {
+            return Err(format!(
+                "global cell restore arity mismatch: {} values for {} cells",
+                values.len(),
+                self.globals.len()
+            ));
+        }
+        let mut cells = self.cells.borrow_mut();
+        for (c, v) in cells.iter_mut().zip(values.iter()) {
+            *c = v.clone();
+        }
+        Ok(())
+    }
     pub fn globals(&self) -> &[crate::mir::MirGlobal] {
         &self.globals
     }

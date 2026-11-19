@@ -2609,6 +2609,19 @@ pub(crate) fn rename_expr_with_params(
                             args: Vec::new(),
                         },
                     },
+                    FieldBinding::GlobalCell => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: format!(
+                                    "module.global.get:{}",
+                                    event_cell_name(&f.name)
+                                ),
+                                span: name.span,
+                            },
+                            args: Vec::new(),
+                        },
+                    },
                 },
                 None => expr.clone(),
             }
@@ -2680,6 +2693,19 @@ pub(crate) fn rename_expr_with_params(
                         kind: ExprKind::Call {
                             callee: Ident {
                                 name: state_fn_name_at(node, inst, &f.name),
+                                span: id.span,
+                            },
+                            args: Vec::new(),
+                        },
+                    },
+                    FieldBinding::GlobalCell => Expr {
+                        span: expr.span,
+                        kind: ExprKind::Call {
+                            callee: Ident {
+                                name: format!(
+                                    "module.global.get:{}",
+                                    event_cell_name(&f.name)
+                                ),
                                 span: id.span,
                             },
                             args: Vec::new(),
@@ -2991,12 +3017,17 @@ pub(crate) enum FieldBinding {
         node: usize,
         inst: usize,
     },
+    /// PLAN-1106 T-02：增量事件程序的全局 cell 读——字段引用改写为
+    /// `module.global.get:<cell>()` 调用（写入由统一的 cell 提交语句承担，
+    /// 不经该绑定）。cell 名见 [`event_cell_name`]。
+    GlobalCell,
 }
 /// 脱糖生成的保留名族（值求值 / 状态函数 / 驱动 / 载荷实参局部 / handler
 /// 检查函数 / view 内联 lambda 值函数）——用户顶层名不得占用（review-B1：
 /// `__age_hv_` 补入，具名拒而不是落到重复符号的通用诊断；#6k：`__age_vl_`
-/// 同族补入；PLAN-981 G2：`__age_hl_` hook-local 卫生局部同族补入）。
-const COMPONENT_RESERVED_NAMES: [&str; 7] = [
+/// 同族补入；PLAN-981 G2：`__age_hl_` hook-local 卫生局部同族补入；
+/// PLAN-1106 T-02：`__age_ev_` 事件面族同补）。
+const COMPONENT_RESERVED_NAMES: [&str; 8] = [
     AGE_COMPONENT_HIDDEN_PREFIX,
     "__age_state_",
     "__age_drive",
@@ -3004,6 +3035,7 @@ const COMPONENT_RESERVED_NAMES: [&str; 7] = [
     "__age_hv_",
     "__age_vl_",
     "__age_hl_",
+    "__age_ev_",
 ];
 
 /// 隐藏求值前缀与用户顶层名的具名冲突（两个前门共用，review F6/N6）。
@@ -3145,4 +3177,587 @@ pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
         "f32" | "float" => Some(TypeWord::Float),
         _ => None,
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// PLAN-1106 T-02：组件面的**增量事件程序**（可保留执行形态）
+// ---------------------------------------------------------------------------
+
+/// PLAN-1106 T-02：一个 `node` 的增量事件程序描述——字段 cell、init/seed、
+/// 每 handler 的单事件入口与文本叶求值函数，全部经同一共享前门与唯一 verify。
+#[derive(Debug)]
+pub struct ComponentEventProgram {
+    /// 唯一 verify 后的受检模块（一次编译，会话侧共享；不再按事件重编）。
+    pub checked: crate::verify::CheckedModule,
+    /// 字段（名, 类型拼写）按声明序——与 cell 名一一对应。
+    pub fields: Vec<(String, String)>,
+    /// 每 handler 的单事件入口（`module.global.get/set` 语义）。
+    pub handlers: Vec<ComponentEventHandlerOut>,
+    /// 文本叶求值函数（`emit_texts=true` 时按叶声明序；纯读 cell）。
+    pub text_def_ids: Vec<String>,
+    /// `d___age_ev_init`：写声明初值（每会话代次一次）。
+    pub init_def_id: String,
+    /// `d___age_ev_seed`：按字段全量覆盖（props 种子；形参=字段声明序）。
+    pub seed_def_id: String,
+    /// 字段 → 全局 cell 名（声明序；MIR globals 名与之对应）。
+    pub cell_names: Vec<String>,
+    /// 文本叶数（描述面；求值函数是否发射由 `emit_texts` 决定）。
+    pub text_leaf_count: usize,
+}
+
+/// PLAN-1106 T-02：单事件入口的描述面。
+#[derive(Debug)]
+pub struct ComponentEventHandlerOut {
+    pub msg: String,
+    /// 载荷类型拼写（按形参位序；空 = unit 消息）。
+    pub payload: Vec<String>,
+    pub fn_name: String,
+    pub def_id: String,
+}
+
+/// PLAN-1106 T-02：事件程序的字段 cell 名（`__age_ev_g_<field>`）。
+pub fn event_cell_name(field: &str) -> String {
+    format!("__age_ev_g_{field}")
+}
+
+/// handler 内的字段局部名（与场景车道同一 `local_name` 实例 0 形）。
+fn event_field_local(field: &str) -> String {
+    local_name(0, field)
+}
+
+/// `let <bind> = module.global.set:<cell>(<value>)`（提交语句）。
+fn cell_set_stmt(bind: &str, field: &str, value: Expr, span: Span) -> Stmt {
+    Stmt::Let {
+        kw: span,
+        name: Ident {
+            name: bind.to_string(),
+            span,
+        },
+        ann: None,
+        mutable: false,
+        value: Expr {
+            span,
+            kind: ExprKind::Call {
+                callee: Ident {
+                    name: format!("module.global.set:{}", event_cell_name(field)),
+                    span,
+                },
+                args: vec![crate::source::ast::Arg::Pos(value)],
+            },
+        },
+        span,
+    }
+}
+
+/// `module.global.get:<cell>()`（纯读）。
+fn cell_get_expr(field: &str, span: Span) -> Expr {
+    Expr {
+        span,
+        kind: ExprKind::Call {
+            callee: Ident {
+                name: format!("module.global.get:{}", event_cell_name(field)),
+                span,
+            },
+            args: Vec::new(),
+        },
+    }
+}
+
+/// 零值字面量（cell 声明占位初值与函数返回用；真实初值由 init 写入）。
+fn zero_literal(ty: TypeWord, span: Span) -> Expr {
+    let kind = match ty {
+        TypeWord::I32 => ExprKind::IntLit(0),
+        TypeWord::Bool => ExprKind::BoolLit(false),
+        TypeWord::StrOwned => ExprKind::StrLit(String::new()),
+        _ => ExprKind::TypedLit {
+            ty: TypeWord::Float,
+            bits: 0f32.to_bits() as u64,
+        },
+    };
+    Expr { span, kind }
+}
+
+/// PLAN-1106 T-02：编译一个 node 的**增量事件程序**——与场景车道同一形状
+/// 门/字段门/重复门/绑定检查，但脱糖产物不是“历史内联的状态函数”，而是：
+///
+/// - 每字段一个 `store` cell（`__age_ev_g_<field>`）；
+/// - `__age_ev_init()`：写声明初值（会话开启时每代次一次）；
+/// - `__age_ev_seed(<字段形参…>)`：props 种子全量覆盖；
+/// - 每 handler 一个 `__age_ev_on_<msg>(<载荷形参…>)`：开头把全部 cell 载入
+///   局部（`hook_stmts_lower` 同一脱糖跑业务语句），末尾**统一提交**全部
+///   cell——业务中途 trap ⇒ 零提交，旧态保留（事务性）；
+/// - 每文本叶一个 `__age_ev_text_<ti>()`（`emit_texts`）：纯读 cell 求值。
+///
+/// `emit_texts=false`（states-only，对齐场景车道的同名边界）：不发射文本叶
+/// 求值函数（f-string 叶在 av.owned/1 不可 lowering 的既有边界内的状态使用）。
+pub fn compile_component_event_program(
+    src: &str,
+    module_path: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    node_index: Option<usize>,
+    emit_texts: bool,
+) -> Result<ComponentEventProgram, Vec<Diagnostic>> {
+    let src = &desugar_widget_src(src)?;
+    let candidates = project_component_candidates(src)?;
+    if !alias.is_accept() {
+        if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
+            return Err(vec![text_diag(
+                "source.age.legacy-widget",
+                "legacy `widget` declarations require the AGE legacy-widget compat config; \
+                 write `node` or enable the compat config explicitly",
+                n.head_span,
+            )]);
+        }
+    }
+    if node_index.is_none() && candidates.len() != 1 {
+        let span = candidates
+            .first()
+            .map(|n| n.span)
+            .unwrap_or(Span { start: 0, end: 0 });
+        return Err(vec![text_diag(
+            "source.age.component-shape",
+            format!(
+                "the component slice holds exactly one node definition; found {}",
+                candidates.len()
+            ),
+            span,
+        )]);
+    }
+    let node = match node_index {
+        Some(i) => candidates.get(i).ok_or_else(|| {
+            vec![text_diag(
+                "source.age.component-shape",
+                format!(
+                    "node index {i} is out of range; the source declares {} node(s)",
+                    candidates.len()
+                ),
+                candidates
+                    .first()
+                    .map(|n| n.span)
+                    .unwrap_or(Span { start: 0, end: 0 }),
+            )]
+        })?,
+        None => &candidates[0],
+    };
+    let items = parse_program_items(src)?;
+    if let Some(d) = hidden_name_conflict(&items) {
+        return Err(vec![d]);
+    }
+    // 字段门（与场景车道同一判：可映射类型 + 至少一字段 + 无重复名）。
+    let mut seen_fields: Vec<&str> = Vec::new();
+    for f in &node.fields {
+        if seen_fields.contains(&f.name.as_str()) {
+            return Err(vec![text_diag(
+                "source.age.component-duplicate",
+                format!("duplicate `model` field `{}`", f.name),
+                f.span,
+            )]);
+        }
+        seen_fields.push(&f.name);
+    }
+    for f in &node.fields {
+        if field_type(f).is_none() {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "the component slice supports `int`/`i32`/`bool`/`str`/`f32` model fields; field `{}` is `{}`",
+                    f.name, f.ty
+                ),
+                f.ty_span,
+            )]);
+        }
+    }
+    if node.fields.is_empty() {
+        return Err(vec![text_diag(
+            "source.age.component-shape",
+            "the component slice requires at least one `model` field to observe",
+            node.view.span,
+        )]);
+    }
+    // 重复 `on <Msg>` 具名拒（同场景车道）。
+    let mut seen_msgs: Vec<String> = Vec::new();
+    for h in &node.handlers {
+        if seen_msgs.contains(&h.msg) {
+            return Err(vec![text_diag(
+                "source.age.component-duplicate",
+                format!(
+                    "duplicate `on {}` handler; the component slice needs one handler per message \
+                     (a silent first-wins would drop behaviour)",
+                    h.msg
+                ),
+                h.span,
+            )]);
+        }
+        seen_msgs.push(h.msg.clone());
+    }
+    // 形参 ↔ 载荷声明级核对 + 通道调用值位拒（同场景车道）。
+    check_handler_bindings(node)?;
+    validate_channel_value_use(node)?;
+    // 增量车道 = 场景重放车道同一 fail-closed 边界：外部名体/宿主通道调用
+    // 不进本车道（WEB lane 的检查函数道承载；ASE 域不消费）。
+    for h in &node.handlers {
+        if h.body_foreign {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "handler `{}` carries a body outside the checked script domain \
+                     (calls/lets/control flow); an incremental event entry must not run a partial body",
+                    h.msg
+                ),
+                h.span,
+            )]);
+        }
+        if !h.channel_calls.is_empty() {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "handler `{}` carries a host-channel call ({}); the incremental event lane has no \
+                     host, so a directed event must not drop the notification",
+                    h.msg,
+                    h.channel_calls
+                        .iter()
+                        .map(|c| c.channel.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                h.span,
+            )]);
+        }
+    }
+
+    let mut out_items: Vec<Item> = Vec::new();
+    // (1) 字段 cell（store 声明只注册访问子伪签名；真实初值由 init 写入，
+    //     声明占位值取该类型的零值）。
+    for f in &node.fields {
+        let ty = field_type(f).expect("field gate passed");
+        out_items.push(Item::Store(crate::source::ast::StoreItem {
+            name: Ident {
+                name: event_cell_name(&f.name),
+                span: f.span,
+            },
+            ty: TypeAnn {
+                kind: TypeRef::Builtin(ty),
+                span: f.ty_span,
+            },
+            value: zero_literal(ty, f.span),
+            span: f.span,
+        }));
+    }
+    // (2) `__age_ev_init()`：写声明初值（字段声明序；初值表达式里的字段引用
+    //     按声明序读 cell——与场景车道的局部序求值同构）。
+    {
+        let mut stmts = Vec::new();
+        for (i, f) in node.fields.iter().enumerate() {
+            let init = rename_expr(&f.init, FieldBinding::GlobalCell, &node.fields)?;
+            stmts.push(cell_set_stmt(&format!("__age_ev_iw_{i}"), &f.name, init, f.span));
+        }
+        stmts.push(Stmt::Return {
+            value: zero_literal(TypeWord::I32, node.span),
+            span: node.span,
+        });
+        out_items.push(Item::Fn(FnItem {
+            name: Ident {
+                name: "__age_ev_init".to_string(),
+                span: node.span,
+            },
+            type_params: Vec::new(),
+            params: Vec::new(),
+            ret: TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
+                span: node.span,
+            },
+            body: Block {
+                stmts,
+                span: node.span,
+            },
+            span: node.span,
+            receiver: crate::source::ast::Receiver::Free,
+            owner: None,
+            script: false,
+        }));
+    }
+    // (3) `__age_ev_seed(<字段形参…>)`：全量覆盖（形参=字段声明序；owned str
+    //     按 move 形参——与 handler 载荷同一纪律）。
+    {
+        let mut params = Vec::new();
+        let mut stmts = Vec::new();
+        for (i, f) in node.fields.iter().enumerate() {
+            let ty = field_type(f).expect("field gate passed");
+            // PLAN-1106：str 字段种子同样按借用 `str` 形参 + 一次 clone 落
+            // owned 局部（入口准入同 handler 载荷）。
+            let borrowed_str = matches!(ty, TypeWord::StrOwned);
+            let param_ty = if borrowed_str { TypeWord::Str } else { ty };
+            params.push(crate::source::ast::Param {
+                name: Ident {
+                    name: format!("__age_ev_p{i}"),
+                    span: f.span,
+                },
+                ty: TypeAnn {
+                    kind: TypeRef::Builtin(param_ty),
+                    span: f.ty_span,
+                },
+                mode: crate::source::ast::ParamMode::Default,
+                default: None,
+                span: f.span,
+            });
+            let value = if borrowed_str {
+                Expr {
+                    span: f.span,
+                    kind: ExprKind::Method {
+                        recv: Box::new(Expr {
+                            span: f.span,
+                            kind: ExprKind::Var(Ident {
+                                name: format!("__age_ev_p{i}"),
+                                span: f.span,
+                            }),
+                        }),
+                        name: Ident {
+                            name: "clone".to_string(),
+                            span: f.span,
+                        },
+                        args: Vec::new(),
+                    },
+                }
+            } else {
+                Expr {
+                    span: f.span,
+                    kind: ExprKind::Var(Ident {
+                        name: format!("__age_ev_p{i}"),
+                        span: f.span,
+                    }),
+                }
+            };
+            stmts.push(cell_set_stmt(&format!("__age_ev_sw_{i}"), &f.name, value, f.span));
+        }
+        stmts.push(Stmt::Return {
+            value: zero_literal(TypeWord::I32, node.span),
+            span: node.span,
+        });
+        out_items.push(Item::Fn(FnItem {
+            name: Ident {
+                name: "__age_ev_seed".to_string(),
+                span: node.span,
+            },
+            type_params: Vec::new(),
+            params,
+            ret: TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
+                span: node.span,
+            },
+            body: Block {
+                stmts,
+                span: node.span,
+            },
+            span: node.span,
+            receiver: crate::source::ast::Receiver::Free,
+            owner: None,
+            script: false,
+        }));
+    }
+    // (4) 每 handler 一个单事件入口：载入 cell → hook_stmts_lower（同一脱糖）
+    //     → 统一提交全部 cell → 返回 0。
+    let mut handlers_out = Vec::new();
+    for (hi, h) in node.handlers.iter().enumerate() {
+        let variant = node.messages.iter().find(|v| v.name == h.msg);
+        let payload = variant
+            .map(|v| v.payload.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let mut params = Vec::new();
+        let mut param_locals: Vec<(String, String, Span)> = Vec::new();
+        for (pi, ((name, p_span), spelling)) in h.params.iter().zip(payload.iter()).enumerate() {
+            let Some(ty) = payload_type(spelling) else {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    format!(
+                        "handler `{}` payload slot #{pi} carries type `{spelling}`, which the \
+                         event lane cannot bind",
+                        h.msg
+                    ),
+                    *p_span,
+                )]);
+            };
+            // PLAN-1106：str 载荷按**借用** `str` 形参铸造（执行器入口准入
+            // 只接纳 StrView 实参——owned `Str` 不能作入口实参），随后一次
+            // `.clone()` 落 owned 卫生局部；体内引用（含写入 owned 字段）都
+            // 走该局部——与场景车道的 owned 载荷局部同语义。
+            let borrowed_str = matches!(ty, TypeWord::StrOwned);
+            let param_ty = if borrowed_str { TypeWord::Str } else { ty };
+            let local = format!("__age_ev_a_{hi}_{pi}");
+            params.push(crate::source::ast::Param {
+                name: Ident {
+                    name: local.clone(),
+                    span: *p_span,
+                },
+                ty: TypeAnn {
+                    kind: TypeRef::Builtin(param_ty),
+                    span: *p_span,
+                },
+                mode: crate::source::ast::ParamMode::Default,
+                default: None,
+                span: *p_span,
+            });
+            param_locals.push((
+                name.clone(),
+                if borrowed_str {
+                    format!("__age_ev_ac_{hi}_{pi}")
+                } else {
+                    local
+                },
+                *p_span,
+            ));
+        }
+        let mut stmts = Vec::new();
+        // 借用 str 形参 → owned 卫生局部（一次 clone；后续读写均用局部）。
+        for (pi, ((_name, p_span), spelling)) in h.params.iter().zip(payload.iter()).enumerate() {
+            if payload_type(spelling) == Some(TypeWord::StrOwned) {
+                stmts.push(Stmt::Let {
+                    kw: *p_span,
+                    name: Ident {
+                        name: format!("__age_ev_ac_{hi}_{pi}"),
+                        span: *p_span,
+                    },
+                    ann: Some(TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::StrOwned),
+                        span: *p_span,
+                    }),
+                    mutable: false,
+                    value: Expr {
+                        span: *p_span,
+                        kind: ExprKind::Method {
+                            recv: Box::new(Expr {
+                                span: *p_span,
+                                kind: ExprKind::Var(Ident {
+                                    name: format!("__age_ev_a_{hi}_{pi}"),
+                                    span: *p_span,
+                                }),
+                            }),
+                            name: Ident {
+                                name: "clone".to_string(),
+                                span: *p_span,
+                            },
+                            args: Vec::new(),
+                        },
+                    },
+                    span: *p_span,
+                });
+            }
+        }
+        // 载入：每字段一个可变局部（cell 纯读）。
+        for f in &node.fields {
+            let ty = field_type(f).expect("field gate passed");
+            stmts.push(Stmt::Let {
+                kw: f.span,
+                name: Ident {
+                    name: event_field_local(&f.name),
+                    span: f.span,
+                },
+                ann: Some(TypeAnn {
+                    kind: TypeRef::Builtin(ty),
+                    span: f.ty_span,
+                }),
+                mutable: true,
+                value: cell_get_expr(&f.name, f.span),
+                span: f.span,
+            });
+        }
+        // 业务语句：与场景重放/检查函数共用同一条脱糖（无第二求值器）。
+        hook_stmts_lower(0, hi, node, &h.stmts, &param_locals, &mut stmts, &mut 0)?;
+        // 提交：全部字段统一写回 cell（业务中途 trap ⇒ 不达此处 ⇒ 旧态保留）。
+        for (i, f) in node.fields.iter().enumerate() {
+            stmts.push(cell_set_stmt(
+                &format!("__age_ev_ow_{i}"),
+                &f.name,
+                Expr {
+                    span: f.span,
+                    kind: ExprKind::Var(Ident {
+                        name: event_field_local(&f.name),
+                        span: f.span,
+                    }),
+                },
+                f.span,
+            ));
+        }
+        stmts.push(Stmt::Return {
+            value: zero_literal(TypeWord::I32, h.span),
+            span: h.span,
+        });
+        let fn_name = format!("__age_ev_on_{}", h.msg);
+        out_items.push(Item::Fn(FnItem {
+            name: Ident {
+                name: fn_name.clone(),
+                span: h.span,
+            },
+            type_params: Vec::new(),
+            params,
+            ret: TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
+                span: h.span,
+            },
+            body: Block {
+                stmts,
+                span: h.span,
+            },
+            span: h.span,
+            receiver: crate::source::ast::Receiver::Free,
+            owner: None,
+            script: false,
+        }));
+        let def_id = super::adapter::free_fn_def_id(&fn_name);
+        handlers_out.push(ComponentEventHandlerOut {
+            msg: h.msg.clone(),
+            payload,
+            fn_name,
+            def_id,
+        });
+    }
+    // (5) 文本叶求值函数（纯读 cell；`emit_texts=false` 跳过——states-only）。
+    let mut text_def_ids = Vec::new();
+    if emit_texts {
+        for (ti, leaf) in node.view.texts.iter().enumerate() {
+            let fn_name = format!("__age_ev_text_{ti}");
+            let bound = rename_expr(&leaf.expr, FieldBinding::GlobalCell, &node.fields)?;
+            out_items.push(Item::Fn(hidden_fn(
+                &fn_name,
+                &bound,
+                leaf.expr.span,
+            )));
+            text_def_ids.push(super::adapter::free_fn_def_id(&fn_name));
+        }
+    }
+    // 共享前门 + 唯一 verify（与场景车道同一 producer）。
+    let desugared = Program { items: out_items };
+    let parts = match super::adapter::compile_program_parts_age(
+        &desugared,
+        src,
+        module_path,
+        capabilities,
+        SourceProfile::TextRecord,
+    ) {
+        Ok(p) => p,
+        Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
+    };
+    let checked = match crate::verify::verify_text_record_age(parts.bundle) {
+        Ok(c) => c,
+        Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
+    };
+    Ok(ComponentEventProgram {
+        checked,
+        fields: node
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.ty.clone()))
+            .collect(),
+        handlers: handlers_out,
+        text_def_ids,
+        init_def_id: super::adapter::free_fn_def_id("__age_ev_init"),
+        seed_def_id: super::adapter::free_fn_def_id("__age_ev_seed"),
+        cell_names: node
+            .fields
+            .iter()
+            .map(|f| event_cell_name(&f.name))
+            .collect(),
+        text_leaf_count: node.view.texts.len(),
+    })
 }

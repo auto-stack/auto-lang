@@ -8,6 +8,7 @@
 //! Nothing here feeds product paths.
 
 pub mod age_component;
+pub mod component_event_sessions; // PLAN-1106
 // PLAN-981（IF-981-GFX-HOST-PORT）：AGE 图形宿主会话（注册/生命周期/每 Tick 预算）。
 pub mod age_gfx;
 pub mod age_h0;

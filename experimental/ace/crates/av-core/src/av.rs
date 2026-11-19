@@ -1406,6 +1406,99 @@ fn execute_program_impl(
     (out, st.trace)
 }
 
+/// PLAN-1106（ASE 增量事件会话）：单事件入口的实参——标量按值，文本按
+/// `ac.runtime.text.v1` 纪律在**本执行 arena** 内分配借用 `StrView`（入口
+/// 形参须为借用 `str`；owned `Str` 不是合法入口实参形）。
+#[derive(Clone, Debug)]
+pub enum EntryArg<'a> {
+    Value(Value),
+    Text(std::borrow::Cow<'a, [u8]>),
+}
+
+/// PLAN-1106（ASE 增量事件会话）：按**稳定 def id**派发快照上单个已链函数，
+/// 形参由运行时实参绑定。模块 init 链先于目标入口执行（每代一次，与
+/// [`execute_program`] 同一纪律——失败即整次拒绝，代次保持未初始化）。
+///
+/// 这是增量组件事件会话的**单事件入口**：一次被接纳的事件 = 恰一次目标
+/// handler 派发（经同一 `dispatch` 解释器与同一 link 绑定表），不是重启
+/// 入口链。未知名/未链函数是具名 `Infra` 拒（不静默落到 entry）。
+pub fn execute_program_entry_at(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    def_id: &str,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[Value],
+) -> (ExecOutcome, ExecTrace) {
+    let plain: Vec<EntryArg<'_>> = args.iter().map(|v| EntryArg::Value(v.clone())).collect();
+    execute_program_entry_args(prog, def_id, limits, cancel, &plain)
+}
+
+/// [`execute_program_entry_at`] 的混合实参形（标量 + 文本）。
+pub fn execute_program_entry_args(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    def_id: &str,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[EntryArg<'_>],
+) -> (ExecOutcome, ExecTrace) {
+    let mut st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
+    st.trace.arena = Some(st.arena.clone());
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
+    st.trace.loaded_index_builds = prog.loaded_program().builds();
+    st.trace.loaded_index_reuses = prog.loaded_program().reuses();
+    st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
+    let limits = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
+        Ok(limits) => limits,
+        Err(out) => return (out, st.trace),
+    };
+    // 文本实参：非法 UTF-8 在**分配前**拒（预算前置同 `execute_entry_text`）。
+    let mut values: Vec<Value> = Vec::with_capacity(args.len());
+    for arg in args {
+        match arg {
+            EntryArg::Value(v) => values.push(v.clone()),
+            EntryArg::Text(bytes) => {
+                let Ok(text) = std::str::from_utf8(bytes.as_ref()) else {
+                    let out = ExecOutcome::Infra(
+                        "entry text argument is not valid UTF-8".into(),
+                    );
+                    finish_trace(&mut st, &limits);
+                    return (out, st.trace);
+                };
+                let handle = st.arena.alloc(bytes);
+                let scalars = text.chars().count() as u32;
+                values.push(Value::StrView(crate::contract::StrView {
+                    src: crate::contract::StrViewSrc::Share(handle),
+                    start: 0,
+                    end: scalars,
+                }));
+            }
+        }
+    }
+    if let Some(out) = run_module_inits(prog, &limits, cancel, &mut st, true) {
+        finish_trace(&mut st, &limits);
+        return (out, st.trace);
+    }
+    let Some(slot) = prog.code().iter().position(|c| c.name() == def_id) else {
+        let out = ExecOutcome::Infra(format!(
+            "entry-at: function `{def_id}` is not linked in this snapshot"
+        ));
+        finish_trace(&mut st, &limits);
+        return (out, st.trace);
+    };
+    let view = prog.unit_view_at(slot as u32);
+    let out = dispatch(&view, &limits, cancel, &values, &mut st, None, false)
+        .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        cleanup_owned_frames(&mut st);
+    }
+    finish_trace(&mut st, &limits);
+    (out, st.trace)
+}
+
 /// PLAN-960: run the snapshot's module init functions (once per generation).
 /// Returns `Some(outcome)` on a non-Ok init result; the generation stays
 /// uninitialized so a retry re-runs from a clean cell table.
