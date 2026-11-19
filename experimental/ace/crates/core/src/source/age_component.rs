@@ -1294,7 +1294,42 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
     Ok(())
 }
 
-/// PLAN-105 T-02：模块级 `store` 声明的结构候选（独立于 node 候选——store 单元
+/// PLAN-105 T-02：组件面是否必须走 collections HIR 域（列表构造/字面量/下标/push）。
+fn needs_collections_face(node: &ComponentNode) -> bool {
+    fn expr_needs(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::ArrayLit(_) | ExprKind::Index { .. } => true,
+            ExprKind::GenericType { .. } => true,
+            ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+                expr_needs(recv) || args.iter().any(|a| match a {
+                    crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => expr_needs(x),
+                    crate::source::ast::Arg::Named { value, .. } => expr_needs(value),
+                })
+            }
+            ExprKind::TextDisplay(x) | ExprKind::Await(x) | ExprKind::Go(x) => expr_needs(x),
+            ExprKind::Unary { operand, .. } => expr_needs(operand),
+            ExprKind::Binary { lhs, rhs, .. } => expr_needs(lhs) || expr_needs(rhs),
+            ExprKind::Call { args, .. } => args.iter().any(|a| match a {
+                crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => expr_needs(x),
+                crate::source::ast::Arg::Named { value, .. } => expr_needs(value),
+            }),
+            _ => false,
+        }
+    }
+    fn stmt_needs(st: &ComponentStmt) -> bool {
+        match st {
+            ComponentStmt::Assign(a) => expr_needs(&a.rhs),
+            ComponentStmt::Call { call, .. } => expr_needs(call),
+            ComponentStmt::Let { value, .. } => expr_needs(value),
+            ComponentStmt::If { cond, then, els, .. } => {
+                expr_needs(cond) || then.iter().any(stmt_needs) || els.as_ref().is_some_and(|e| e.iter().any(stmt_needs))
+            }
+            ComponentStmt::For { iter, body, .. } => expr_needs(iter) || body.iter().any(stmt_needs),
+        }
+    }
+    node.handlers.iter().any(|h| h.stmts.iter().any(stmt_needs))
+}
+/// PLAN-105 T-02：模块级 store 声明的结构候选（独立于 node 候选——store 单元
 /// 可以只有 store 声明）。
 pub fn project_component_stores(src: &str) -> Result<Vec<ComponentStore>, Vec<Diagnostic>> {
     let src = &desugar_widget_src(src)?;
@@ -1528,6 +1563,11 @@ pub fn compile_age_component(
     }
     // 脱糖：每个文本叶一个隐藏求值函数（普通 Auto 源，由共享 verify 检查）。
     let mut items = items;
+    let hir_profile = if candidates.iter().any(needs_collections_face) {
+        SourceProfile::Collections
+    } else {
+        SourceProfile::TextRecord
+    };
     let mut leaves = Vec::new();
     for (ni, n) in candidates.iter().enumerate() {
         for (ti, leaf) in n.view.texts.iter().enumerate() {
@@ -1537,6 +1577,7 @@ pub fn compile_age_component(
                 &leaf.expr,
                 leaf.expr.span,
                 text_leaf_is_int_field(&leaf.expr, &n.fields),
+                hir_profile == SourceProfile::Collections,
             )));
             leaves.push((name, ni, ti));
         }
@@ -1547,13 +1588,13 @@ pub fn compile_age_component(
         src,
         module_path,
         capabilities,
-        SourceProfile::TextRecord,
+        hir_profile,
     ) {
         Ok(p) => p,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
     let input_hash = parts.input_hash.clone();
-    let checked = match crate::verify::verify_text_record_age(parts.bundle) {
+    let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collections(parts.bundle) } else { crate::verify::verify_text_record_age(parts.bundle) } {
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
@@ -1739,7 +1780,22 @@ pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
     out
 }
 
-fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool) -> FnItem {
+fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool, owned_text: bool) -> FnItem {
+    if owned_text {
+        if let ExprKind::StrLit(_) = expr.kind {
+            return FnItem {
+                name: Ident { name: name.to_string(), span },
+                type_params: Vec::new(),
+                params: Vec::new(),
+                ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::StrOwned), span },
+                body: Block { stmts: vec![Stmt::Return { value: expr.clone(), span }], span },
+                span,
+                script: false,
+                owner: None,
+                receiver: crate::source::ast::Receiver::Free,
+            };
+        }
+    }
     // PLAN-105 T-02（U03）：文本叶按静态类型选承载——`int` 字段走
     // `TextDisplay`（PLAN-964 的 <int>→str 显示节点，组件面/包面同一 resolver），
     // 其余仍 `.clone()`。此前一律 clone 只对 str 成立，`text .n`（int 字段）
@@ -2388,6 +2444,11 @@ fn compile_component_scenario_full(
     } // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
       // states-only 模式（PLAN-980 STATE）跳过文本叶发射：f-string 叶的
       // `TextDisplay` 在 av.owned/1 车道不可 lowering，而状态通道不依赖文本叶。
+    let hir_profile = if candidates.iter().any(needs_collections_face) {
+        SourceProfile::Collections
+    } else {
+        SourceProfile::TextRecord
+    };
     let mut leaves: Vec<(String, usize, usize)> = Vec::new();
     if emit_view_texts {
         for inst in 0..scenario.instances {
@@ -2399,6 +2460,7 @@ fn compile_component_scenario_full(
                     &bound,
                     leaf.expr.span,
                     text_leaf_is_int_field(&leaf.expr, &node.fields),
+                    hir_profile == SourceProfile::Collections,
                 )));
                 leaves.push((name, inst, ti));
             }
@@ -2478,15 +2540,20 @@ fn compile_component_scenario_full(
         src,
         module_path,
         capabilities,
-        SourceProfile::TextRecord,
+        hir_profile,
     ) {
         Ok(p) => p,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
     let input_hash = parts.input_hash.clone();
-    let checked = match crate::verify::verify_text_record_age(parts.bundle) {
+    let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collections(parts.bundle) } else { crate::verify::verify_text_record_age(parts.bundle) } {
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
+    };
+    let hir_profile = if candidates.iter().any(needs_collections_face) {
+        SourceProfile::Collections
+    } else {
+        SourceProfile::TextRecord
     };
     let mut instance_texts: Vec<Vec<ComponentText>> = vec![Vec::new(); scenario.instances];
     for (fn_name, inst, ti) in &leaves {
@@ -3414,14 +3481,33 @@ fn hook_stmts_lower(
                 )]);
             }
         }
-        match st {            // PLAN-105 T-02：handler 级调用语句（store 方法在 store 内联时展开；
-            // 其余调用不接线）——具名拒，不静默丢调用。
-            ComponentStmt::Call { span, .. } => {
+        match st {            // PLAN-105 T-02：handler 级调用语句。列表方法（`xs.push(…)`/
+            // `xs.get(…)`/`xs.len()`）在 collections 域按**表达式语句**交给共享
+            // resolver（列表方法脱糖）；其余调用维持具名拒（不静默丢调用）。
+            ComponentStmt::Call { call, span } => {
+                let is_list_method = match &call.kind {
+                    ExprKind::MethodCall { name, .. } => {
+                        matches!(name.name.as_str(), "push" | "get" | "len" | "pop" | "clear" | "set")
+                    }
+                    _ => false,
+                };
+                if is_list_method {
+                    out.push(Stmt::ExprStmt {
+                        value: rename_expr_with_params(
+                            call,
+                            FieldBinding::Local(inst),
+                            &node.fields,
+                            &scope,
+                        )?,
+                        span: *span,
+                    });
+                    continue;
+                }
                 return Err(vec![text_diag(
                     "source.age.component-unsupported",
                     "handler body call statements are only wired for `store.<Msg>()` (store inline); other calls are a named pending surface",
                     *span,
-                )])
+                )]);
             }
             // PLAN-105 T-02（U03 真语料 012）：handler 级 `for` 结构已入候选，
             // 列表迭代语义未接——具名拒（不静默丢循环体）。

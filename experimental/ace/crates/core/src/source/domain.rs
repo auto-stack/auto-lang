@@ -585,6 +585,11 @@ fn conclusion_of_def(
     if let HirExprKind::TextDisplay { .. } = &expr.kind {
         return Some((def.id_text.clone(), TextKind::Owned));
     }
+    // PLAN-105 T-02（U03 真语料 016，collections 域）：字面量叶直接返回
+    // `Str`（owned 文本）——同样承载文本，按 owned 计。
+    if matches!(expr.kind, HirExprKind::StrLit { .. }) {
+        return Some((def.id_text.clone(), TextKind::Owned));
+    }
     let HirExprKind::TextClone { operand } = &expr.kind else {
         return None;
     };

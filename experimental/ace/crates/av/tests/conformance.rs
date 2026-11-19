@@ -1,3 +1,5 @@
+#[path = "cases/plan105_list_handlers.rs"]
+mod plan105_list_handlers;
 #[path = "cases/abc_semantics_tier.rs"]
 mod abc_semantics_tier;
 #[path = "cases/component_event_sessions_1106.rs"]

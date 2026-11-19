@@ -6572,14 +6572,25 @@ impl<'a> Engine<'a> {
                             Some(cc) => channel_calls.push(cc),
                             None => {
                                 // PLAN-105 T-02：非通道调用保留为 Call 语句（store
-                                // 方法在 store 内联时展开；其余仍是域外体，派发
-                                // 具名拒——不静默丢弃调用）。
+                                // 方法在 store 内联时展开；列表方法在 collections
+                                // 域按表达式语句降级）；其余仍是域外体，派发具名拒。
                                 let call = self.project_expr_sync(call_node);
+                                let is_list_method = match &call.kind {
+                                    crate::source::ast::ExprKind::MethodCall { name, .. } => {
+                                        matches!(
+                                            name.name.as_str(),
+                                            "push" | "get" | "len" | "pop" | "clear" | "set"
+                                        )
+                                    }
+                                    _ => false,
+                                };
                                 stmts.push(crate::source::age_component::ComponentStmt::Call {
                                     call,
                                     span: self.cx.span_of(inner),
                                 });
-                                body_foreign = true;
+                                if !is_list_method {
+                                    body_foreign = true;
+                                }
                             }
                         }
                     } else if let Some(st) = self.project_on_stmt_inner(inner) {
