@@ -87,7 +87,7 @@
    "binaries": [
     "abi-worker"
    ],
-   "profile": "debug",
+   "profile": "release",
    "target": "experimental/ace/target",
    "env": "ABI_CASE_WORKER"
   },
@@ -107,7 +107,7 @@
    "binaries": [
     "a2x-worker"
    ],
-   "profile": "debug",
+   "profile": "release",
    "target": "experimental/ace/target",
    "env": "AC_A2X_HIR_WORKER"
   },
