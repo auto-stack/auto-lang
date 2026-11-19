@@ -506,7 +506,8 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 - [x] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
   [✅ 2026-11-19 r28] 四仓合入完成：auto-man master `4a30483`（C1 强化+fmt，ff）、auto-web master `26d085f`（r25 修复+F-R5，ff）、auto-ui master `e7aeda14`（锁+8dd932b8 修复+金样+gitignore，ff；主检出 Cargo.lock WIP 具名 stash，合并锁已含其 ACE 依赖意图）、auto-lang master `8e1768507`（c7a13604f Try 修复+726ca59bb 门配置+r25 基线 fold，merge commit；web-native-owner-contracts.json=111739396 r25 基线正确落主）。交付版本=组树验证 SHA 原样（ff/merge 保哈希）；canonical 规范增量已落 `docs/specs/ace-migration/m2-web.md`（门禁阶段收口/裁定/vctip/C1 交接证据/pin 一致性）。
 
-- [ ] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
+- [x] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
+  [✅ 2026-11-19 r28 清理收据] ①证据折叠：门收据（web-four-r27）、7 红分诊、隔离复验、C1 收据、vctip 修复、四仓合入 SHA 均已折入 §9 r28 记录；债务 D-983-01/02 登记 KNOWN-DEBT。②plan-artifacts/plan-983 删除（124.7 MB/8629 文件，删除前逐目录核对归属均 983 范围）；retention `policy.json` 登记 `deleted-at-merge (no holds)`（2026-11-19）。③五树 wt-guard 全 clean（无 reparse point）→ `git worktree remove` ×5 + `git branch -d plan-983-dev` ×5 + 组目录移除（`D:/autostack/.wt/lang-983` 已不存在）。④交付版本核验：lang `98f39c193`（含 c7a13604f/726ca59bb）、web `26d085f`（含 edeb8fc/26d085f）、man `4a30483`（含 0cc88c4/4a30483）、ui `67893861`（含 8dd932b8/586b3759/e7aeda14；1072 后续 rustfmt 在其上）、down `72b0970`。⑤并发会话说明：清理前核实 1072（自有 lang-1072 组树）与 owner 复核（探针 14:21 收敛、提交已落 master）均不再占用 983 树/scope；用户裁定"待并发会话完成后清理"于当日执行。**Plan 983 全 20 任务关闭（terminal: archived）。**
 
 B收口：所有B work、原全产品/组合及A证据适用性齐→原全包独立review→正式合入/Spec/归档→输出对账/清理；各批R与全包final分别执行，不能只数批次替原AC。
 
