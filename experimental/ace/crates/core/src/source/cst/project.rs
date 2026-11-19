@@ -105,6 +105,36 @@ pub(crate) fn project_program_with_caps(
         return Err(vec![d]);
     }
     let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face, age_face);
+    // PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` 声明——S1 首刀
+    // 已入语法（结构可解析）；共享实例/`.store.*` 绑定/store 方法未接线 →
+    // 具名拒（绝不静默降级成同名记录类型或跳过行为）。
+    if let Some(store_kind) = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-store-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    {
+        for d in &tree.decls {
+            let node = if tree.kind(d.node) == k.item {
+                tree.children(d.node)
+                    .into_iter()
+                    .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                    .unwrap_or(d.node)
+            } else {
+                d.node
+            };
+            if tree.kind(node) == store_kind {
+                let span = eng.cx.span_of(node);
+                return Err(vec![Diagnostic::new(
+                    Stage::Text,
+                    "source.age.component-unsupported",
+                    "store declarations are parsed; store semantics are not wired yet (S1)"
+                        .to_string(),
+                    span,
+                )]);
+            }
+        }
+    }
     let tree_has_errors = tree.has_error_nodes();
     // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
     // 其余面无此二规则 = 保持原分派行为）。
@@ -464,6 +494,27 @@ pub(crate) fn project_program_with_caps(
             } else if Some(kind) == k.task_item {
                 // PLAN-968: task actor declaration.
                 items.push(Item::Task(eng.run_task_item(node)));
+            } else if p
+                .rules
+                .iter()
+                .position(|r| r.name == "age-store-item")
+                .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+                .is_some_and(|k2| kind == k2)
+            {
+                // PLAN-105 T-02（U03 真语料 013/016）：store 声明结构已入语法
+                // （S1 首刀）；语义（共享实例/.store 绑定/store 方法）未接线——
+                // **具名拒**，绝不静默降级成同名记录类型。
+                let span = eng.cx.span_of(node);
+                eng.cx.reject(span, || {
+                    crate::atom_text::Diagnostic::new(
+                        crate::atom_text::Stage::Text,
+                        "source.age.component-unsupported",
+                        "store declarations are parsed; store semantics are not wired yet (S1)"
+                            .to_string(),
+                        span,
+                    )
+                });
+                continue;
             } else if p
                 .rules
                 .iter()

@@ -748,3 +748,31 @@ fn p105_store_ref_is_named_reject_in_component_face() {
         "named store reject expected, got {err:?}"
     );
 }
+
+/// 013/016 真语料形：`store <Name> { model { … } }` 声明——S1 首刀已入语法与
+/// 模块投影（不再静默降级成同名记录类型），语义未接线 → 具名拒。
+#[test]
+fn p105_store_decl_is_named_pending() {
+    let src = "store TodoStore {\n    model {\n        var active_count int = 0\n    }\n    msg { Init }\n}\n";
+    let caps = vec![PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario { instances: 1, ops: Vec::new() };
+    let err = compile_age_package_with_scenario(
+        &[PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: src.into(),
+            provider: None,
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .expect_err("store semantics stay a named pending surface");
+    assert!(
+        err.iter().any(|d| d.code == "source.age.component-unsupported"
+            && d.message.contains("store")),
+        "named store reject expected, got {err:?}"
+    );
+}

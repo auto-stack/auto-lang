@@ -167,7 +167,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 逻辑绑定回落 pratt（此前被裸 `.a` 贪吃，U03 元素绑定整类回滚）。
             // 仅 age-component 漂移（age-package 的事件臂本就被 profile 门
             // 排除，有效 alt 序未变）；13 邻居逐字节不变。
-            "0e2f0fbdb4d645132c0cb5cc41c0b94b23492b9a91b7f40e7a7c88ebb8aceaf4",
+            "147373b78ad5d9eeb4f75f56852d0be62776b4a2b70ea1aa98dbd2da486002a9",
         ),
         (
             SourceProfile::AgeH0,
@@ -265,6 +265,6 @@ fn p981_age_package_grammar_id_is_frozen() {
         // （`age-event-binding` + args/arg 规则）开 age-package——包面真语料
         // 的 `onclick: .Msg(args)`（012/016）此前被当普通调用，verify 拒。
         // 前值 06809c84…；13 邻居逐字节不变。
-        "f81b764255a005180ca92809e59d749e46793e970b9ec239aafbf96e629b875f"
+        "e50580b56393a130ca7780f7ba89f60375c479afebd75e8d613ffe73c3765bcc"
     );
 }

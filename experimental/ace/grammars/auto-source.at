@@ -304,6 +304,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-node-head) { spelling: "node", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
         name(age-widget-head) { spelling: "widget", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
         name(age-view-head) { spelling: "view", token: "r-view", role: "view", profiles: [age-h0, age-component, age-package] }
+        // PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` 共享 store
+        // 声明——`store` 是普通 ident token 的上下文名（不新造保留字）。
+        name(age-store-head) { spelling: "store", token: "ident", role: "store", profiles: [age-component, age-package] }
         name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component, age-package] }
         // PLAN-980 P3（981 回签 (a)）→ PLAN-1072 刀A：style 声明头开 age-component
         // ——惰性视图数据面（投影期字面量替换，981 (c)3 路径；不产 const/fn、
@@ -337,6 +340,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `pub` 与 `node` 互异）。当前**不产出**节点可见性，投影处具名拒绝。
             alt(profiles: [age-package]) { age-pub-node-item() {} }
             alt(profiles: [age-component, age-package]) { age-node-c-item() {} }
+            // PLAN-105 T-02：共享 store 声明（S1 首刀：语法 + 字段投影）。
+            alt(profiles: [age-component, age-package]) { age-store-item() {} }
             alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
             // PLAN-1041：内联公共 stdlib 源的 `pub fn` 声明项（见 public-fn）。
@@ -446,6 +451,26 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // view；view 体只容纳 text 叶——本切片之外的属性/字段/构造按语法
         // 结构拒绝（附原 span），不静默忽略。表达式是普通 Auto 文本表达式，
         // 由共享 verify 检查，不由领域层二次解释。
+        // PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { model { … } msg { … }
+        // on { … } }` 共享 store 声明。S1 首刀只收**结构**（name + model 字段）；
+        // msg/on 成员在此解析但语义投影在后续刀接线（现阶段编译期具名拒，
+        // 不静默丢行为）。
+        age-store-item(profiles: [age-component, age-package], expect: "a `store <Name> { model { … } }` declaration") {
+            name(of: "age-store-head", field: "head") {}
+            ident(field: "name") {}
+            lbrace(same-line: true) {}
+            many { age-store-member() {} }
+            rbrace() {}
+        }
+        age-store-member(profiles: [age-component, age-package]) {
+            alt { age-model-member() {} }
+            alt { age-msg-member() {} }
+            alt { age-on-widget-member() {} }
+            alt { age-design-member() {} }
+            alt { age-computed-member() {} }
+            alt { age-watch-member() {} }
+            alt { age-timer-member() {} }
+        }
         age-node-item(profiles: [age-h0, age-component, age-package], expect: "a `node <Name> { view { text <expression> {} } }` declaration") {
             age-node-head(field: "head") {}
             ident(field: "name")
