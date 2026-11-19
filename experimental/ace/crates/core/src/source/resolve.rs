@@ -602,6 +602,8 @@ pub enum FStrPart {
 pub enum PyFramePart {
     Txt(String),
     Disp(ResolvedExpr),
+    /// PLAN-1107: dynamic TEXT (a chunk-helper result) embedded verbatim.
+    TextExpr(ResolvedExpr),
 }
 
 impl FStrPart {
@@ -6343,10 +6345,18 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
     }
 
-    /// `__py_dlen(expr)` — the decimal digit count (the frame's value
-    /// length field).
-    fn py_dlen(&mut self, span: Span, value: ResolvedExpr) -> ResolvedExpr {
-        self.py_op_call("__py_dlen", span, value)
+    /// PLAN-1107: the ONE-evaluation operand chunk. `__py_chunk_<tag>(v)`
+    /// renders `"<tag> <dlen>\n<v>\n"` from a single evaluation of `v`, so an
+    /// inline py operation (which mints a fresh token per evaluation) can
+    /// never desync the declared payload length from the payload.
+    fn py_chunk_call(&mut self, tag: &str, v: &ResolvedExpr) -> ResolvedExpr {
+        let name = match tag {
+            "o" => "__py_chunk_o",
+            "b" => "__py_chunk_b",
+            _ => "__py_chunk_i",
+        };
+        let span = v.span;
+        self.py_op_call(name, span, v.clone())
     }
 
     /// The runtime frame: an FStr of static text parts + I32 displays,
@@ -6367,6 +6377,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         operand: Box::new(e),
                     },
                 })),
+                PyFramePart::TextExpr(e) => fparts.push(FStrPart::Expr(e)),
             }
         }
         let fstr = ResolvedExpr {
@@ -6449,23 +6460,18 @@ F:{d}
                     payload
                 )));
             }
-            // a py object — dynamic "o <dlen>\n<token>\n"
+            // a py object — dynamic "o <dlen>\n<token>\n". PLAN-1107: ONE
+            // evaluation through the chunk helper (the operand may be an
+            // inline py operation; evaluating it twice minted two tokens and
+            // desynced the declared length from the payload).
             _ if self.py_is_object(v) => {
-                let span = v.span;
-                parts.push(PyFramePart::Txt("o ".to_string()));
-                parts.push(PyFramePart::Disp(self.py_dlen(span, v.clone())));
-                parts.push(PyFramePart::Txt("\n".to_string()));
-                parts.push(PyFramePart::Disp(v.clone()));
-                parts.push(PyFramePart::Txt("\n".to_string()));
+                let chunk = self.py_chunk_call("o", v);
+            parts.push(PyFramePart::TextExpr(chunk));
             }
             // any other i32 dynamic value — dynamic "i <dlen>\n<value>\n"
             _ if v.vt == VT::I32 => {
-                let span = v.span;
-                parts.push(PyFramePart::Txt("i ".to_string()));
-                parts.push(PyFramePart::Disp(self.py_dlen(span, v.clone())));
-                parts.push(PyFramePart::Txt("\n".to_string()));
-                parts.push(PyFramePart::Disp(v.clone()));
-                parts.push(PyFramePart::Txt("\n".to_string()));
+                let chunk = self.py_chunk_call("i", v);
+            parts.push(PyFramePart::TextExpr(chunk));
             }
             // v1 boundary: dynamic floats/text/other types do not cross
             _ => {
@@ -6491,12 +6497,8 @@ F:{d}
         let mut parts: Vec<PyFramePart> = Vec::new();
         parts.push(PyFramePart::Txt("p967.frame/1\nr ".to_string()));
         if self.py_is_object(recv) {
-            parts.push(PyFramePart::Txt("o ".to_string()));
-            let rspan = recv.span;
-            parts.push(PyFramePart::Disp(self.py_dlen(rspan, recv.clone())));
-            parts.push(PyFramePart::Txt("\n".to_string()));
-            parts.push(PyFramePart::Disp(recv.clone()));
-            parts.push(PyFramePart::Txt("\n".to_string()));
+            let chunk = self.py_chunk_call("o", &recv);
+            parts.push(PyFramePart::TextExpr(chunk));
         } else {
             self.bind_err(
                 "source.py-domain",
@@ -6672,12 +6674,9 @@ F:{d}
         let mut parts: Vec<PyFramePart> = Vec::new();
         parts.push(PyFramePart::Txt("p967.frame/1\nr ".to_string()));
         if self.py_is_object(recv) {
-            parts.push(PyFramePart::Txt("o ".to_string()));
-            let rspan = recv.span;
-            parts.push(PyFramePart::Disp(self.py_dlen(rspan, recv.clone())));
-            parts.push(PyFramePart::Txt("\n".to_string()));
-            parts.push(PyFramePart::Disp(recv.clone()));
-            parts.push(PyFramePart::Txt("\np 0\nk 0\n".to_string()));
+            let chunk = self.py_chunk_call("o", &recv);
+            parts.push(PyFramePart::TextExpr(chunk));
+            parts.push(PyFramePart::Txt("p 0\nk 0\n".to_string()));
         } else {
             self.bind_err(
                 "source.py-domain",
@@ -12461,12 +12460,9 @@ F:{d}
                 if self.py_is_object(&recv) {
                     let mut parts: Vec<PyFramePart> =
                         vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
-                    parts.push(PyFramePart::Txt("o ".to_string()));
-                    let rspan = recv.span;
-                    parts.push(PyFramePart::Disp(self.py_dlen(rspan, recv.clone())));
-                    parts.push(PyFramePart::Txt("\n".to_string()));
-                    parts.push(PyFramePart::Disp(recv.clone()));
-                    parts.push(PyFramePart::Txt("\np 1\n".to_string()));
+                    let chunk = self.py_chunk_call("o", &recv);
+                    parts.push(PyFramePart::TextExpr(chunk));
+                    parts.push(PyFramePart::Txt("p 1\n".to_string()));
                     self.py_frame_val(&mut parts, &idx);
                     parts.push(PyFramePart::Txt("k 0\n".to_string()));
                     let frame = self.py_frame(e.span, parts);
@@ -14518,13 +14514,10 @@ F:{d}
                     if self.py_is_object(&base) {
                         let mut parts: Vec<PyFramePart> =
                             vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
-                        parts.push(PyFramePart::Txt("o ".to_string()));
-                        let rspan = base.span;
-                        parts.push(PyFramePart::Disp(self.py_dlen(rspan, base.clone())));
-                        parts.push(PyFramePart::Txt("\n".to_string()));
-                        parts.push(PyFramePart::Disp(base.clone()));
+                        let chunk = self.py_chunk_call("o", &base);
+                        parts.push(PyFramePart::TextExpr(chunk));
                         parts.push(PyFramePart::Txt(format!(
-                            "\np 1\nt {}\n{}\nk 0\n",
+                            "p 1\nt {}\n{}\nk 0\n",
                             name.name.len(),
                             name.name
                         )));
@@ -15003,12 +14996,9 @@ F:{d}
                             Some(opname) => {
                                 let mut parts: Vec<PyFramePart> =
                                     vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
-                                parts.push(PyFramePart::Txt("o ".to_string()));
-                                let rspan = l.span;
-                                parts.push(PyFramePart::Disp(self.py_dlen(rspan, l.clone())));
-                                parts.push(PyFramePart::Txt("\n".to_string()));
-                                parts.push(PyFramePart::Disp(l.clone()));
-                                parts.push(PyFramePart::Txt("\np 1\n".to_string()));
+                                let chunk = self.py_chunk_call("o", &l);
+                                parts.push(PyFramePart::TextExpr(chunk));
+                                parts.push(PyFramePart::Txt("p 1\n".to_string()));
                                 self.py_frame_val(&mut parts, &r);
                                 parts.push(PyFramePart::Txt(format!(
                                     "k 1\n2\nopt {}\n{opname}\n",

@@ -1373,6 +1373,15 @@ impl A2xSession {
         let mut staged_ids: BTreeMap<(String, String), String> = BTreeMap::new();
 
         for f in view.functions() {
+            // PLAN-1107: the py lane's AV frame helpers (`__py_dlen` and the
+            // single-evaluation `__py_chunk_*` builders) are AV wire machinery:
+            // a source-generating target lowers the OPERATIONS from the shared
+            // `py_ops` facts and never calls them, so they are not emitted.
+            if view.py_ops().is_some()
+                && (f.name == "sf___py_dlen" || f.name.starts_with("sf___py_chunk_"))
+            {
+                continue;
+            }
             self.stats.verify += 1;
             let sem_fp = semantic_fingerprint(view, f).map_err(A2xRejectOrResource::Reject)?;
             let context = contexts.get(f.source_name).map(String::as_str);

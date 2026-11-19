@@ -48,7 +48,6 @@ fn oracle_lines() -> Vec<f64> {
 }
 
 #[test]
-#[ignore = "PLAN-1107 V-02 finding (AV lane, routed to the AV/1094 owner): this combination fails on AV — the full case aborts with `foreign.frame: p967.frame/1 rejected: payload not LF-terminated`, and the no-loop subset returns Success with EMPTY stdout (prints dropped). A2PY passes the same corpus against the native-Python oracle. Un-ignore when the AV frame/print defect is fixed."]
 fn p1107_v02_protocol_case_av_matches_the_native_oracle() {
     let src = std::fs::read_to_string(corpus_dir().join("protocol_1107.at"))
         .expect("the shared V-02 protocol corpus");
@@ -76,16 +75,13 @@ fn p1107_v02_protocol_case_av_matches_the_native_oracle() {
     }
     eprintln!("V-02 AV: {got:?} == oracle {want:?}");
 }
-
-/// PLAN-1107 V-02 finding, MINIMIZED (AV lane; routed to the AV/1094 owner):
-/// with four `use.py` members and three bound-method results bound to locals,
-/// a later py-conversion console print is SILENTLY DROPPED (run reports
-/// Success with empty stdout); the same program with one/two appends, or with
-/// a pure-print, prints normally. The A2PY lane prints the correct value for
-/// the same source, so the shared front door/facts are not the cause.
+/// PLAN-1107 V-02 regression (AV): the frame operand chunk must evaluate its
+/// operand EXACTLY ONCE. `l.count(22).to(int)` as a print argument used to be
+/// written into the frame twice (dlen + value), minting two tokens: with
+/// single-digit tokens the bug was invisible, with two-digit tokens the
+/// declared payload length desynced and the frame was rejected.
 #[test]
-#[ignore = "AV lane: py-conversion print dropped after three bound-method locals (silent Success, empty stdout). Owner: AV/1094."]
-fn p1107_v02_av_drops_py_print_after_bound_method_locals() {
+fn p1107_v02_av_frame_operand_is_evaluated_once() {
     let src = "use.py builtins: list, round, len, repr
 fn main() int {
 var l = list()
@@ -105,10 +101,39 @@ return 7
                 ..Default::default()
             },
         )
-        .expect("the reduced program compiles and runs");
-    assert!(
-        !run.stdout_text().is_empty(),
-        "the console print must not be silently dropped (outcome {:?})",
-        run.outcome
+        .unwrap_or_else(|e| panic!("the frame must be well formed: {e}"));
+    assert_eq!(run.success_i32(), Some(7), "{:?}", run.outcome);
+    assert_eq!(run.stdout_text(), "1\n", "one evaluation, one frame, one print");
+}
+
+/// PLAN-1107 V-02 regression (AV): an inline side-effecting receiver runs
+/// once. `l.pop()` as a conversion receiver must remove exactly one element.
+#[test]
+fn p1107_v02_av_inline_side_effect_is_evaluated_once() {
+    let src = "use.py builtins: list, len
+fn main() int {
+var l = list()
+var a1 = l.append(7)
+var a2 = l.append(8)
+print(l.pop().to(int))
+print(len(l).to(int))
+return 0
+}";
+    let mut session = PySession::open().expect("session opens");
+    let run = session
+        .run_with(
+            src,
+            &ExecLimits {
+                max_steps: 5_000_000,
+                wall: std::time::Duration::from_secs(60),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("lane: {e}"));
+    assert_eq!(run.success_i32(), Some(0), "{:?}", run.outcome);
+    assert_eq!(
+        run.stdout_text(),
+        "8\n1\n",
+        "the popped value once, and exactly one element removed (a double evaluation would leave 0)"
     );
 }

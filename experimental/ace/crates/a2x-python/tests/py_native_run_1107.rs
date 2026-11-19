@@ -75,7 +75,11 @@ fn emit_fileset(dir: &PathBuf, src: &str) -> Vec<String> {
         !runtime.contains("f0_text_provider.dll"),
         "the py lane must not load the ctypes provider"
     );
-    let fns: Vec<&ace_a2x_core::FnFacts> = view.functions().iter().collect();
+    let fns: Vec<&ace_a2x_core::FnFacts> = view
+        .functions()
+        .iter()
+        .filter(|f| !ace_a2x_python::provider::is_py_lane_helper(f.name))
+        .collect();
     let texts = provider
         .produce_fragments(&view, &fns, Family::Collections)
         .unwrap_or_else(|e| panic!("lower: {e:?}"));

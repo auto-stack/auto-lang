@@ -36,6 +36,12 @@ if n >= 10000000 { d = d + 1 }
 if n >= 100000000 { d = d + 1 }
 if n >= 1000000000 { d = d + 1 }
 return d }
+fn __py_chunk_o(n int) Str {
+return f"o ${__py_dlen(n)}\n$n\n" }
+fn __py_chunk_i(n int) Str {
+return f"i ${__py_dlen(n)}\n$n\n" }
+fn __py_chunk_b(n int) Str {
+return f"b 1\n$n\n" }
 "#;
 
 /// One `p967.frame/1` static import frame (the frozen wire layout for a
