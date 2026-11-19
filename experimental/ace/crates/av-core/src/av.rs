@@ -1018,39 +1018,7 @@ pub fn execute_program_platform(
     console: Option<&mut dyn crate::host::ConsoleHost>,
     backend: &mut dyn crate::platform_io::PlatformIoBackend,
 ) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
-    // front-door: every declared import's capability must be granted
-    // (each code unit's host imports, via its verified unit module).
-    // PLAN-982 (Q-982-2 (a) step 1 / B): the three argv-READ imports (the
-    // two cmdline reads + the per-run argv line) accept EITHER key — the
-    // narrow `platform.process.argv` or the wide `platform.process` (which
-    // subsumes argv reading). Spawn & co. still need the exact wide key
-    // (the rule mirrors `platform_io::capability_satisfied`).
-    let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
-    for code in prog.code() {
-        for h in code.unit().module().host_imports.iter() {
-            let is_argv_read = matches!(
-                h.symbol.as_str(),
-                "auto.platform.process.cmdline_w16.v1"
-                    | "auto.platform.process.cmdline_fill_bytes.v1"
-                    | "auto.platform.process.run_argv_w16.v1"
-            );
-            let satisfied = granted.contains(h.capability.as_str())
-                || (is_argv_read
-                    && ((h.capability.as_str() == crate::platform_io::CAP_PROC
-                        && granted.contains(crate::platform_io::CAP_PROC_ARGV))
-                        || (h.capability.as_str() == crate::platform_io::CAP_PROC_ARGV
-                            && granted.contains(crate::platform_io::CAP_PROC))));
-            if !satisfied {
-                return Err(crate::host::AdmissionError {
-                    code: "host.unauthorized",
-                    message: format!(
-                        "platform capability `{}` is required by `{}` but not granted",
-                        h.capability, h.symbol
-                    ),
-                });
-            }
-        }
-    }
+    authorize_program_imports(prog, grants)?;
     let session_id = NEXT_PLATFORM_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut ledger = crate::platform_io::PlatformResourceLedger::new(session_id, grants);
     let mut st = LoopState {
@@ -1133,6 +1101,238 @@ pub fn execute_program_platform(
         cleanup_owned_frames(&mut st);
     }
     finish_trace(&mut st, &limits);
+    let summary = PlatformSessionSummary {
+        session_id,
+        last_os_error: ledger.last_os_error,
+        written_total_bytes: ledger.written_total_bytes,
+        leaked_regions_cleaned: ledger.active_regions(),
+        live_mapped_at_exit: ledger.live_mapped_bytes,
+    };
+    ledger.cleanup(backend);
+    Ok((out, st.trace, summary))
+}
+
+/// PLAN-982（aggregates 文本入口，2026-11-19）：包车道执行的前门——逐单元
+/// 声明导入核对（每个 code unit 经其受检单元模块的 host imports）。三个
+/// argv-READ 导入（两个 cmdline 读＋每运行 argv 行）双向接受窄键
+/// `platform.process.argv` 或宽键 `platform.process`（宽键⊇argv 读）；spawn
+/// 族仍需精确宽键（镜像 `platform_io::capability_satisfied`）。
+fn authorize_program_imports(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    grants: &[String],
+) -> Result<(), crate::host::AdmissionError> {
+    let granted: std::collections::BTreeSet<&str> = grants.iter().map(|g| g.as_str()).collect();
+    for code in prog.code() {
+        for h in code.unit().module().host_imports.iter() {
+            let is_argv_read = matches!(
+                h.symbol.as_str(),
+                "auto.platform.process.cmdline_w16.v1"
+                    | "auto.platform.process.cmdline_fill_bytes.v1"
+                    | "auto.platform.process.run_argv_w16.v1"
+            );
+            let satisfied = granted.contains(h.capability.as_str())
+                || (is_argv_read
+                    && ((h.capability.as_str() == crate::platform_io::CAP_PROC
+                        && granted.contains(crate::platform_io::CAP_PROC_ARGV))
+                        || (h.capability.as_str() == crate::platform_io::CAP_PROC_ARGV
+                            && granted.contains(crate::platform_io::CAP_PROC))));
+            if !satisfied {
+                return Err(crate::host::AdmissionError {
+                    code: "host.unauthorized",
+                    message: format!(
+                        "platform capability `{}` is required by `{}` but not granted",
+                        h.capability, h.symbol
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// PLAN-982（aggregates 文本入口裁定，2026-11-19）：包车道（分单元
+/// `ProgramSnapshot`）的**受检文本入口**——宿主把请求文本（如管道 stdin）
+/// 作为运行时数据交给入口单元的借用 `str` 形参。与单模块通道
+/// [`execute_entry_text_platform`] 同一账本：
+/// - 授权前置：逐单元声明导入核对（与 [`execute_program_platform`] 同扇门）；
+/// - **入口单元核对**（裁定原文：运行端从入口所属单元核对能力与 `StrView`
+///   签名）——入口所属单元声明 `ac.runtime.text.v1` 且入口形参**全为
+///   `StrView`**，否则执行前具名拒；
+/// - 文本在本次执行的 arena 内分配（`StrViewSrc::Share` 借用视图，无 drop
+///   权）；非法 UTF-8 在分配前拒；init 链零参、初始化顺序不变；
+/// - 实参持有共享引用：执行结束先释放实参再核对 arena **归零**；平台资源
+///   由 session ledger 核收（`cleanup`＋summary）。
+pub fn execute_program_text_platform(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    texts: &[&[u8]],
+    console: Option<&mut dyn crate::host::ConsoleHost>,
+    backend: &mut dyn crate::platform_io::PlatformIoBackend,
+) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
+    authorize_program_imports(prog, grants)?;
+    // 入口单元核对：能力 + 全 StrView 形参（执行前，缺一具名拒）。
+    let entry_code = prog
+        .code()
+        .iter()
+        .find(|c| c.name() == prog.entry())
+        .ok_or_else(|| crate::host::AdmissionError {
+            code: "host.entry",
+            message: format!("the entry unit `{}` is not linked", prog.entry()),
+        })?;
+    {
+        let m = entry_code.unit().module();
+        let sig_all_strview = m
+            .funcs
+            .get(m.entry as usize)
+            .and_then(|f| m.sig_of(f.sig))
+            .map(|sig| {
+                !sig.params.is_empty()
+                    && sig
+                        .params
+                        .iter()
+                        .all(|p| matches!(m.types.get(*p as usize), Some(crate::mir::MirType::StrView)))
+            })
+            .unwrap_or(false);
+        if !(m.has_text_entry_capability() && sig_all_strview) {
+            return Err(crate::host::AdmissionError {
+                code: "host.text-entry",
+                message: format!(
+                    "the entry unit `{}` does not declare the checked text entry (`ac.runtime.text.v1` with an all-StrView entry signature); the text arguments are refused rather than dropped",
+                    prog.entry()
+                ),
+            });
+        }
+    }
+    let session_id = NEXT_PLATFORM_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut ledger = crate::platform_io::PlatformResourceLedger::new(session_id, grants);
+    let arena = crate::owned_text::StrArena::new();
+    let mut args: Vec<Value> = Vec::with_capacity(texts.len());
+    for bytes in texts {
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: 0,
+                written_total_bytes: 0,
+                leaked_regions_cleaned: 0,
+                live_mapped_at_exit: 0,
+            };
+            return Ok((
+                ExecOutcome::Infra("entry text argument is not valid UTF-8".into()),
+                ExecTrace::default(),
+                summary,
+            ));
+        };
+        let handle = arena.alloc(bytes);
+        let scalars = text.chars().count() as u32;
+        args.push(Value::StrView(crate::contract::StrView {
+            src: crate::contract::StrViewSrc::Share(handle),
+            start: 0,
+            end: scalars,
+        }));
+    }
+    let mut st = LoopState {
+        arena,
+        ..Default::default()
+    };
+    st.trace.arena = Some(st.arena.clone());
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
+    let limits = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
+        Ok(limits) => limits,
+        Err(out) => {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: 0,
+                written_total_bytes: 0,
+                leaked_regions_cleaned: 0,
+                live_mapped_at_exit: 0,
+            };
+            drop(args);
+            return Ok((out, st.trace, summary));
+        }
+    };
+    // init 链零参不变（初始化顺序 = link 序；console/1 宿主仍随入口分派——
+    // 与 execute_program_platform 同纪律）。
+    if !prog.initialized() {
+        let slots = prog.init_slots().to_vec();
+        if slots.is_empty() {
+            prog.mark_initialized();
+        } else {
+            prog.reset_global_cells();
+            for slot in slots {
+                let view = prog.unit_view_at(slot);
+                let out = dispatch_with_host(
+                    &view,
+                    &limits,
+                    cancel,
+                    &[],
+                    &mut st,
+                    None,
+                    false,
+                    None,
+                    Some((&mut ledger, backend)),
+                    None,
+                )
+                .expect("no budget: the loop always terminates with an outcome");
+                if !matches!(out, ExecOutcome::Success { .. }) {
+                    drop(args);
+                    finish_trace(&mut st, &limits);
+                    let summary = PlatformSessionSummary {
+                        session_id,
+                        last_os_error: ledger.last_os_error,
+                        written_total_bytes: ledger.written_total_bytes,
+                        leaked_regions_cleaned: ledger.active_regions(),
+                        live_mapped_at_exit: ledger.live_mapped_bytes,
+                    };
+                    ledger.cleanup(backend);
+                    return Ok((out, st.trace, summary));
+                }
+            }
+            prog.mark_initialized();
+        }
+    }
+    let view = prog.unit_view();
+    let out = dispatch_with_host(
+        &view,
+        &limits,
+        cancel,
+        &args,
+        &mut st,
+        None,
+        false,
+        console,
+        Some((&mut ledger, backend)),
+        None,
+    )
+    .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        cleanup_owned_frames(&mut st);
+    }
+    finish_trace(&mut st, &limits);
+    // 实参持有共享缓冲引用：先释放再核对 arena 收支（成功/失败同要求）。
+    drop(args);
+    if let Some(a) = &st.trace.arena {
+        let live = a.live();
+        if live != 0 {
+            let summary = PlatformSessionSummary {
+                session_id,
+                last_os_error: ledger.last_os_error,
+                written_total_bytes: ledger.written_total_bytes,
+                leaked_regions_cleaned: ledger.active_regions(),
+                live_mapped_at_exit: ledger.live_mapped_bytes,
+            };
+            ledger.cleanup(backend);
+            return Ok((
+                ExecOutcome::Infra(format!(
+                    "text arena imbalance after the entry: {live} live allocation(s)"
+                )),
+                st.trace,
+                summary,
+            ));
+        }
+    }
     let summary = PlatformSessionSummary {
         session_id,
         last_os_error: ledger.last_os_error,

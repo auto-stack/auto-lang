@@ -2394,6 +2394,23 @@ impl<'s> Parser<'s> {
     /// Type annotation in parameter position: required, only the three
     /// profile words. Any other identifier is an excluded type surface.
     fn param_type(&mut self, pname: &Ident) -> Result<TypeAnn, Diagnostic> {
+        // PLAN-982（aggregates 文本入口裁定，2026-11-19）：aggregates 面在
+        // **参数位**收借用 `str`（`TypeWord::Str` ⇒ `VT::Str` ⇒ MIR
+        // `StrView`）——受检文本入口（`fn main(input str)`）自己的面；入口
+        // 专属纪律由车道门持有（非入口 fn 的 `str` 形参＝具名拒绝），本层
+        // 不放宽字段/其它类型的文法。
+        if self.surface.is_aggregates()
+            && matches!(
+                self.peek().map(|t| &t.tok),
+                Some(Tok::Ident(w)) if w == "str"
+            )
+        {
+            let t = self.bump();
+            return Ok(TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::Str),
+                span: t.span,
+            });
+        }
         if self.surface.is_closures() {
             return self.closures_type();
         }

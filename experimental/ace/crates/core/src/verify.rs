@@ -130,6 +130,16 @@ impl CheckedModule {
         &self.bundle.requires
     }
 
+    /// PLAN-982（aggregates 文本入口裁定，2026-11-19）：车道门把**派生能力**
+    /// 写入受检产物（入口带借用 `str` 形参 ⇒ `ac.runtime.text.v1`；去重）。
+    /// 这是「包编译端将能力写入受检产物」的落点——运行端从入口所属单元核对
+    /// 能力与 `StrView` 签名（`execute_program_text_platform` 前门）。
+    pub fn require_capability(&mut self, cap: &str) {
+        if !self.bundle.requires.iter().any(|c| c == cap) {
+            self.bundle.requires.push(cap.to_string());
+        }
+    }
+
     /// Whether the VERIFIED CONTENT actually lowers to text runtime calls
     /// (PLAN-770 r2 QA-02): derived from real operations, independent of
     /// the document's own `requires` declaration. The build gates
@@ -5282,6 +5292,13 @@ impl Verifier {
                     && lvt == ValueType::StrOwned)
                     || (self.domain == HirDomain::Closures
                         && l.role == hir::LocalRole::Capture
+                        && lvt == ValueType::Str)
+                    // PLAN-982（aggregates 文本入口裁定，2026-11-19）：closures
+                    // 域**参数位**的借用 `str`（受检文本入口 `fn main(input
+                    // str)` 的形参）——解析面只在 aggregates 参数位放行，入口
+                    // 专属纪律（非入口 fn 不得带 `str` 形参）由车道门把守。
+                    || (self.domain == HirDomain::Closures
+                        && l.role == hir::LocalRole::Param
                         && lvt == ValueType::Str)
                     // PLAN-909:  locals join the CLOSURES domain (the
                     // shared-cell value domain is int/bool/char, SEM-04).
