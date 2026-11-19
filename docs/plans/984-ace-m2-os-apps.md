@@ -4,8 +4,8 @@ status: executing
 feature_name: AutoOS全部应用与系统宿主迁移
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-17
-plan_revision: 11
+updated_at: 2026-11-19
+plan_revision: 13
 current_step: 4
 total_steps: 25
 depends_on: [PLAN-959, PLAN-969, PLAN-970, PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-977, PLAN-978, PLAN-980, PLAN-981, PLAN-982, PLAN-983, auto-os/PLAN-064]
@@ -18,13 +18,15 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+2026-11-19。图形 W2 由 [1097](1097-ace-ac-autoui-w2-and-age-host.md) 交付。W1 完整范围取 1071 已交子面及其后继完整 AV 收据，W3 取 1074，1068 交三端最终验收。
+
 ### 2026-11-19 · AutoMan UI 与导出接收范围
 
 AutoMan UI 交接查 [982 的 Vue/Iced 双端](982-ace-m2-man-gen.md)：Web 取 1072 的 A2Vue/TS，桌面取 1074 的 A2R/Iced，并按适用条款消费 UI 三波。实际 Tauri 格仍由 1073 产品收据负责。A2Ark/A2Jet 旧 Demo 仅作历史，产品化待 v0.7 或 v0.8 再排。C 工程如有实际依赖，接新版 A2C 的 CMake/Ninja 产物。
 
 ### 2026-11-19 · 980/981 后继接口
 
-980/981 作为已验基础来源。B 的 UI 接收 [1071](1071-autoui-w1-av.md) 的 UI-W1-AV、[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md) 的 UI-W2-AC 和 [1074](1074-autoui-w3-a2r.md) 的 UI-W3-A2R。实际 Vue/Tauri 模式取 [1072](1072-autoui-vue-web.md)/[1073](1073-autoui-tauri.md)，所用 AGE 产品域取 [1075](1075-age-av-content-and-fusion.md)/[1076](1076-age-a2r-game-2d.md)/[1077](1077-age-a2r-game-3d.md)。全量 OS 桌面仍由 OS064 独立交付。跨仓接收点是 auto-os/PLAN-064 的 §5 HOST/B-OS 和 A05..07 原 980/RUST 引用，分别按上述三波和 1074 工程接口核对；本计划保留正式收据消费与交接责任。
+980/981 作为已验基础来源。B 的 UI 接收 [1071](archive/1071-autoui-w1-av.md) 的 UI-W1-AV、[1097](1097-ace-ac-autoui-w2-and-age-host.md) 的 UI-W2-AC 和 [1074](1074-autoui-w3-a2r.md) 的 UI-W3-A2R。实际 Vue/Tauri 模式取 [1072](1072-autoui-vue-web.md)/[1073](1073-autoui-tauri.md)，所用 AGE 产品域按[AGE 交付表](../design/strategy/age-m2-three-route-strategy.md#后继交付与消费)取实际来源/[1076](1076-age-a2r-game-2d.md)/[1077](1077-age-a2r-game-3d.md)。全量 OS 桌面仍由 OS064 独立交付。跨仓接收点是 auto-os/PLAN-064 的 §5 HOST/B-OS 和 A05..07 原 980/RUST 引用，分别按上述三波和 1074 工程接口核对；本计划保留正式收据消费与交接责任。
 
 2026-11-16 r9（Godot/TS 范围历史）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用 Vue Web、Iced、独立现役产品模式及 AGE 自有 2D/3D 仍完整保留，25任务不变。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
@@ -107,7 +109,7 @@ CLOSURE逐产品登记真实配置入口/新SDK来源/平台与零旧求值事�
 
 ### 三波/OS接收边界（本轮当前）
 
-本包A仍只EMBED的真实最小仓外consumer，原语言/库/文件/后台/配置/资源oracle保持；不等待980/981完整图形、UI三波或OS全量。B的UI消费者按实际模式消费 1071/1068/1074 三波及 1072/1073 接口；OS实际产品只由OS064在UI-W1-AV→UI-W2-AC→UI-W3-A2R后迁，B-CLOSURE最终核其完整桌面Node根公共三端及每App声明模式/数据/双Host和登记增量，不能将旧“AV/A2R”当遗漏AC的豁免。
+本包A仍只EMBED的真实最小仓外consumer，原语言/库/文件/后台/配置/资源oracle保持；不等待980/981完整图形、UI三波或OS全量。B的UI消费者按实际模式消费 1071及其后续AV/1097/1074 三波及 1072/1073 接口；OS实际产品只由OS064在UI-W1-AV→UI-W2-AC→UI-W3-A2R后迁，B-CLOSURE最终核其完整桌面Node根公共三端及每App声明模式/数据/双Host和登记增量，不能将旧“AV/A2R”当遗漏AC的豁免。
 
 OS不依本包CLOSURE/985 B最终；本包CLOSURE单向收OS和原其他生态来源。AGE AG031消费OS相关正式切片不反成为UI波或A出口前置。原25任务/0完成不变；旧OS/App规则和非桌面SHELL/AI/CODER/CODERS/EDIT义务不删，不复制OS实施表。V-B-CLOSURE在原行补错波次/错后端/漏App控制，原R与T-05核，本轮未执行。
 

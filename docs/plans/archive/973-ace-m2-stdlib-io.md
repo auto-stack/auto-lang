@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-16
 plan_revision: 13
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-967, PLAN-968, PLAN-972, PLAN-947, PLAN-966, PLAN-1039, PLAN-1040, PLAN-1041, PLAN-1042]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/stdlib/design/ace-binding-and-assembly.md]
@@ -548,6 +548,19 @@ stage: goal | plan_id: PLAN-973 | plan_revision: r11 | round: 1 | from: work | t
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
+
+### 2026-11-16归档后交接补记（只作前向指针，不改原r13交付/终态）
+
+用户本轮明确要求补975/973/1064/1065/985交接。973现已归档，本补记不重开本包、不增加本包任务或更改原AC/源码/复审/清理事实；本轮逐原10任务勾选及第8轮delivered/cleaned收据核对后，仅更正滞后的current_step 9→10；不新增勾选、不代执行清理、不改r13/archived或原验收。
+
+| 原责任/新增交接 | 实际后继任务 | 消费与边界 |
+|---|---|---|
+| 原D-01..D-09＋byte→Str/同车道编码解码 | [1064 r2](../1064-ace-stdlib-byte-str-deferred-surfaces.md) T-02/03/04、T-KV/T-FRAME及其验证 | 原D09包含真实Option/List交付，不只裁定；现有AV读文本/C-Rust输出帧及原sentinel边界不冒已验 |
+| 原F1/AC 50操作真身与Linux代码移交 | [1065 r2](../1065-ace-ac-sys-real-bodies.md) T-01..04 | 按50符号/Win36适用真身＋14不适用拒绝，Linux代码/完整用例→1063；stub绿不冒真实OS结果 |
+| 975原“归973 io装配线”的public/private共同模块接面 | 1064/T-MODULE-I→V→R→D，接口IF-1064-MODULE | 973装配域实际后继，独立正式切片供975原T-03 LOAD；不是等973再交代码，不把JSON/DB/typed decode转交上游 |
+| 975已有B1原语 | [975 r10](../975-ace-m2-stdlib-data.md) T-B1-V→R→D | 先独立正式交付IF-975-B1，1064复用；不等MODULE/1064整包，避免循环 |
+
+[985 r19](../985-ace-m2-certification.md)在原矩阵按旧D/A行＋MODULE/B1接口维护来源、后继owner与完整M2-A缺口；本包归档只代表原已裁定有限面，不是完整新库/AC/M2出口通过。本轮无实现/测试/合入/清理，也不覆盖归档后原owner的收尾回执。
 
 ## 10. 待澄清事项
 

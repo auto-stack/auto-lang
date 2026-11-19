@@ -1,7 +1,7 @@
 # 标准库后端覆盖与 AV provider：一个执行器，多种实现来源
 
-> 2026-11-13 · Draft 0.3。用户明确新增标准库能力至少支持AV/AC/A2R/A2PY，AV另需native/C/Rust三类实现来源。本稿为设计和计划约束，不是当前支持声明；本轮不写实现、不跑产品、不改canonical Specs。
-> 衔接[平台I/O与内存底座](native-platform-io.md)、[Design56](../56-ace-m2-ffi-and-native-stdlib.md)、[Storage](../memory/storage-and-allocation.md)。旧AV/AC/A2R/A2C范围保留，A2PY是新增required，不以替换旧列减少义务。
+> 2026-11-16 · Draft 0.5。用户明确新增标准库能力至少支持AV/AC/A2R/A2PY，AV另需native/C/Rust三类实现来源。本稿为设计和计划约束，不是当前支持声明；本轮不写实现、不跑产品、不改canonical Specs。
+> 衔接[平台I/O与内存底座](native-platform-io.md)、[Design56](../56-ace-m2-ffi-and-native-stdlib.md)、[Storage](../memory/storage-and-allocation.md)。当前最终三端为AV/AC/A2R；A2PY标准库义务保持，A2C完整对齐增强、原记录保留；AC阶段按§2.1。
 
 ## 1. 决定
 
@@ -16,6 +16,14 @@
 
 默认仍是native：普通Auto算法加受检OS薄适配，不隐式依赖libc/Rust std；C/Rust是显式可选实现。纯数学、编码、集合、format等共享Auto源码，不为“三种provider”复制三套算法。只有原语/外部资源边界需要不同adapter，某provider缺所选必需操作则具名拒绝，不能静默回落其他provider。
 
+## 1.1 普通标准库自有实现与高级外库（2026-11-15当前）
+
+math、text/bytes、集合、parse/format、io/File/path及net/HTTP等普通标准能力，由共享Auto源码实现算法、协议和资源语义；native最低边界为Linux syscall / Windows公开系统DLL与OS原语。math不得默认包libm，io不得默认包C stdio/Rust std::io，net不得默认把reqwest/hyper/libcurl/Tokio网络栈充Auto实现。CPU受检原语与OS socket/事件机制允许；不是重写内核TCP/IP。
+
+高级数据库、TLS/第三方图形/媒体等引擎暂可显式FFI，列真实依赖/功能边界，未来Auto替换另立实施增量。TLS库提供加密/握手不允许顺带接管普通HTTP/缓冲/URL等默认实现。参考Go/Rust的API组织与分层，不从“参考Rust”推导Rust各平台都不依libc。
+
+AV/C、AV/Rust可继续显式提供兼容实现；A2R/A2PY/原A2C的运行时与低层adapter可以因目标而异。它们不代签AV/native或AC默认自有实现，也不要求纯算法复制四份来源文件。974负责Auto网络协议实现，983仍负责产品Web宿主接线，975负责自有JSON/编码与外部引擎分账。
+
 ## 2. 最低验收路径
 
 每项新增公共标准库能力在其完成计划中有以下required路径；不是把四个后端再全乘三个provider。
@@ -28,11 +36,21 @@
 | AC | 共享HIR/MIR→原生程序 | 实际执行，不借旧VM或先转译C/Rust业务代码 |
 | A2R | 共享Checked HIR/A2X→Rust | 生成工程真实编译运行；生成Rust本身不是结果 |
 | A2PY | 共享Checked HIR/A2X→Python | 新producer生成工程真实Python运行；旧AST emitter不代新路径 |
-| 原A2C义务 | 按原完整合同保留 | 不因用户说“至少四方向”而删旧C生成/运行用例 |
+| A2C增强项 | 保已有能力/原用例/支持事实，完整对齐争取 | 用户最新决定：缺完整对齐不阻M2；不得伪造PASS或删历史 |
 
-Windows/Linux按当前已承诺平台格分别实跑。某个OS底层指令/对象格式本身不需要跨后端同形，例如A2PY不生成ELF；1039/1040等基础设施不为新公共API签完成，消费它新增print/File等能力的计划才必须关闭上述路径。不能借“基础设施”名义把真实新增公共操作排除；948逐操作审计归属，985核完整分母。
+Windows按当前已承诺平台格实跑；Linux先实现代码与保留fixture/原oracle，当期不运行Linux测试，逐操作移交[1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md)为deferred-required/NOT_RUN，待1061原生Linux入口与环境完善后实跑。当前建设包的Linux完成条件改为实现与移交审查，不能升为verified；这不豁免Windows六路径/原A2C，不删Linux分母。某个OS底层指令/对象格式本身不需要跨后端同形，例如A2PY不生成ELF；1039/1040等基础设施不为新公共API签完成，消费它新增print/File等能力的计划才必须关闭上述路径。不能借“基础设施”名义把真实新增公共操作排除；948逐操作审计归属，985核完整分母。
 
 纯Auto算法在三个AV配置下可复用身份、输入、算法和观察均相同的证据，且必须有适用性说明；系统/分配/资源等provider边界必须各有实际dispatch与失败/清理证据。不要求每个纯函数另写C/Rust实现，也不机械重复全部无变化用例。代表用例不能代替未覆盖公共操作的支持事实。
+
+## 2.1 当前阶段门与最终对齐
+
+### M2-A基础可用、M2-B三端对齐与AAC实证（2026-11-16当前优先）
+
+用户最新裁定：**M2最终AV/AC/A2R公共能力一致；A2C完整对齐为增强项。** M2-A仍须完整AV/A2R语言/库及原required真实验证，AC至少有能承载AAC启动的真实多模块/类型与owned数据、泛型/Option/Result基本链、所需CTE/FFI、文本/分配/同步文件等基础。AC其余具名差额允许移M2-B：原行ID/输入/oracle/错误及资源义务、实际来源、B-owner/关闭条件必须保留，不能记PASS/NA或从分母删除。仅“原native不支持/旧profile外”不再是M2最终豁免。
+
+[1067](../../plans/1067-ace-ac-native-async-and-task-parity.md)补原生异步/Future/Task；[1068](../../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md)收全部三端语言/库/FFI/领域差额，并以AAC实际模块持续实证。985/A不等待两包，985/B及最终986/987必须收三端完整闭合；A2C现有代码/用例/支持记录保留、缺完整对齐不阻M2。A2PY既有标准库义务与AV三provider、Linux1063延期规则不变。
+
+AAC在A出口后、M2-B期间推进，以真实Auto编译器模块检验AC语言/库；某任务所需能力未交只阻该任务/切片，缺口回语言/库真实owner补齐。AAC未使用的语言/领域/异步特性仍补独立三端用例。完整Gen1→Gen2→Gen3自举签章保持独立，不强加为M2通过前置；其所暴露的M2三端能力缺口必须在M2最终前关闭。此规则优先于旧“AC所有义务必须A期全齐”“M2-B与AAC完全无能力交接”“原A2C全量同等硬门”等表述。
 
 ## 3. 一个 AV 的组织方式
 
@@ -54,7 +72,7 @@ C路径使用受检C ABI，CStr转换只发生在要求NUL的边界；长度buff
 
 第三方数据库/TLS引擎等显式功能依赖继续逐路径列明；native AV必须能消费受检FFI，但这不证明外部引擎已由Auto重写或无C/Rust。默认基础库的无libc/无Rust std合同与显式第三方功能依赖分账，不把本次provider要求外推为重写所有生态库。
 
-平台原语(native syscall/内存区域)→共享Auto库算法仍是默认路径硬前置；967提供显式C/Rust adapter；Python后端就绪由1042先行，不等待整个标准库或977的GD/REVERSE。完整公共新能力最终同时消费本次必需路径，允许native等已审切片先phase-fold交接，但整项不能在Python/C/Rust腿pending时勾完成。
+平台原语(native syscall/内存区域)→共享Auto库算法仍是默认路径硬前置；967提供显式C/Rust adapter；Python后端就绪由1042先行，不等待整个标准库或977的GD/REVERSE。完整公共新能力仍覆盖本次必需路径，允许已审切片先phase-fold交接；当前Windows Python/C/Rust腿pending不能勾完成，Linux腿仅按用户明确延期合同移交1063，不得套用到其他缺口。
 
 ## 6. 计划落点与依赖防环
 
@@ -116,9 +134,9 @@ C路径使用受检C ABI，CStr转换只发生在要求NUL的边界；长度buff
 
 旧`in sys #is current`及“in仅作候选、不必实施”的建议已由用户此次`#in`决定取代。裸`in`的通用运行时namespace scope仍非本轮必做；本轮要求实现显式`#in`及上述最小静态选择，不据此扩大任意对象with/动态namespace功能。
 
-## 10. 加载机制独立交付与下一入口（2026-11-13当前）
+## 10. 加载机制交付范围（2026-11-13设计快照）
 
-新增[PLAN-1043](../../plans/1043-ace-stdlib-context-assembly.md)：平铺provider后缀解析、公共声明与所选实现的逻辑模块装配、最小`#in`阶段/namespace与条件导入、缓存/恢复/错误来源、跨后端实际消费。复用944/947/960模块/选择事实与936/958 source-CT前门；不重开已归档计划、不另造loader/binder/CTE。最小目标判别值可在现标量CT支持域表示，具体编码在T-01核定；缺所需合法源能力先具名修约，不借旧VM求值或手填HIR。
+新增[PLAN-1043](../../plans/archive/1043-ace-stdlib-context-assembly.md)：平铺provider后缀解析、公共声明与所选实现的逻辑模块装配、最小`#in`阶段/namespace与条件导入、缓存/恢复/错误来源、跨后端实际消费。复用944/947/960模块/选择事实与936/958 source-CT前门；不重开已归档计划、不另造loader/binder/CTE。最小目标判别值可在现标量CT支持域表示，具体编码在T-01核定；缺所需合法源能力先具名修约，不借旧VM求值或手填HIR。
 
 1043是本套新加载机制的下一实施计划。它的AV/AC及既有A2R/A2C装配部分可在936/958/944/947/960正式来源核实后推进；全包的A2PY实跑需1042正式交付，因此1042是最终依赖，不是第一步调研/装配工作的阻塞。1043不依完整966/967/972/973；最小#in与平台选择由1043先交，966消费1043继续完整CTE/宏/metadata与原完整target条件验收，原任务范围保持，避免“库等966整包、966又等库”的环。
 
@@ -132,4 +150,4 @@ C路径使用受检C ABI，CStr转换只发生在要求NUL的边界；长度buff
 | 948 | 分母追加本加载机制的来源/公共符号/后端/provider与后继，旧947/944归档不冒新合同已交 |
 | 978、985 | 候选SDK保所选源及context/namespace/ABI闭包，仓外恢复实跑；完整A认证拒绝漏加载来源/后端或旧后缀旁路 |
 
-本稿是已确定方向的待实施设计。当前只更新设计与drafting计划，无实施树/构建/产品运行/提交，不修改canonical Specs或归档历史。
+当前1039–1043、946/948及967均已归档，完整库按972→973→974/975推进，973另需968；§6/§10的起草次序保设计来源，不作实时状态。Linux先代码后测试以§2和1063为当前完成/移交规则。本轮仅修设计/计划，未实施或运行产品，不修改canonical Specs与归档历史。

@@ -1,9 +1,25 @@
 # Auto Language 设计文档总览与索引
 
+当前配置迁移设计：[ACE M2-B配置文档求值与982合同](ace-config-document-evaluation.md)（2026-11-17，target-state；982原B-CONFIG承接共享前门/AV/公开owned接口及Man消费，复用969/979，不新增Plan。已交A保持，能力未实施）。
+
+## AGE M2三路线当前入口（2026-11-17，仅规划）
+
+| 设计 | 范围 |
+|---|---|
+| [统一strategy](strategy/age-m2-three-route-strategy.md) | R1生产UI替代、R2首批后2D/3D增强、R3新版AutoForge；A/B和三波有向交接 |
+| [共同架构](autographics/age-m2-three-route-architecture.md) | 单一Schema/Node、typed资源/事件/FFI、阶段来源与真实验收边界 |
+| [引擎详细合同](../../../auto-ui/docs/design/autographics/age-m2-engine-extension-contract.md) | UI099–102四有界AV合同；AC/A2R由981/1068既有owner承接，AG031增量required |
+| [AutoForge产品架构](../../../auto-forge/docs/design/architecture.md) | 工程/源码往返/隔离预览/恢复/Agent不可信提案；新仓独立产品 |
+| [AutoForge首批执行路线](../../../auto-forge/docs/strategy/roadmap.md) | 001→002→003先AV整包，004先AC阶段再A2R，不反卡985/A或AG031 |
+
+UI080已归档10/10，保有限单方向光/硬阴影的实际已交范围；旧M3/M4文件名和下方日期状态为历史映射，当前调度以上述入口及Plan实际正式来源为准。
+
 > 本文档是 `docs/design/` 的总入口，索引树内**全部**文档并标注分类与状态。
 > 整理历史：2026-06-15 首次体系化（14 章版）→ 2026-08-28 Plan 467 全量重整 →
 > 2026-08-28 Plan 468 需求级文档去序号化、按模块归位 →
 > 2026-09-04 Plan 543 建立知识库生命周期与 current/target-state 分层。
+
+当前多路线排程入口：[ACE各路线计划总览与执行顺序](strategy/ace-route-plan-map.md)（2026-11-14；语言、标准库、测试质量、Python、ROS2、UI/AGE、产品迁移、AAC及ASE的计划主归属与批次依赖）。
 
 ---
 
@@ -103,10 +119,15 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 34 | [VM Store 所有权与 Handler 阻塞纪律](34-vm-store-ownership-and-handler-discipline.md) | 决策工件：段执行/actor 双形态下的 store 所有权（Erlang vs Go 式）与 handler 阻塞纪律（类型化 vs ui_lint+段切预算）两案对比、迁移面评估与裁定建议 | 📝 决策工件（PLAN-702 T-07 产出，待用户裁定；不含实现） |
 | 50 | [AutoWeb服务框架与仓库边界](50-autoweb-service-framework-and-repo-boundaries.md) | 独立auto-web仓首期：Web/语言/Man/UI职责、HTTP生成与运行、测试发行、Blog消费及885/887/888交接 | target-state r3（2026-10-30）；890实施/完整交付→[auto-ui/014结构收口草案](../../../auto-ui/docs/plans/archived/014-ui-man-structure-closure.md)→按007原门推进；014仅规划 |
 | 53 | [独立构建边界与生成Cargo产物治理](53-independent-build-and-generated-cargo-governance.md) | 905/906/910/918与930有限交付；§8共享生成workspace承接910、对比既有共享target的新增收益 | 2026-11-06；942 drafting/r2，四项设计问题已修订、待定向复审；研究与生产接入均未执行 |
-| 54 | [Auto 标准库语义与 ACE 接入合同](54-stdlib-semantics-and-ace-integration.md) | 统一公共 API、语义/兼容合同、分层 runtime/宿主、ACE 装配/增量/恢复与领域迁移 | proposed r2（2026-11-09）；943/944已归档，945–948未执行且统一等M1正式tag；完整CAP保留原门 |
+| 54 | [Auto 标准库语义与 ACE 接入合同](54-stdlib-semantics-and-ace-integration.md) | 统一公共 API、语义/兼容合同、分层 runtime/宿主、ACE 装配/增量/恢复与领域迁移 | 943/944/947已归档；945/946/948按各Plan，M1正式tag已存在；完整CAP保留原门 |
 | 55 | [ACE M2完整语言、标准库与产品替换](55-ace-m2-complete-language-and-product-replacement.md) | 全语言四端、Schema/AutoUI/AGE、全库/全应用迁移及退役；[执行路线](strategy/ace-m2-delivery-roadmap.md) | target-state r4（2026-11-09）；§1.1规定标准库准备的M1-TAG门；完整FFI/新库增补见Design56 |
-| 56 | [ACE M2完整FFI与新版标准库](56-ace-m2-ffi-and-native-stdlib.md) | 自动C/Rust binding/shim、四端适配、默认Auto标准库、#if/#is平台选择、组织装配/加载与最终安装门 | proposed r2（2026-11-09）；945–948研究/接入在M1正式tag后；仅规划，未实施 |
-| 57 | [Auto ROS2 SDK](57-auto-ros2-sdk.md) | 实际工作SDK、类型/运行语义、ACE/AGE/Autonix依赖、v0.6必做与扩面；[R0–R5路线](strategy/ros2-sdk-delivery-roadmap.md) | proposed（2026-11-12）；1007 r4的A批执行中，官方首组1018/1019及其余计划仍drafting |
+| 56 | [ACE M2完整FFI与新版标准库](56-ace-m2-ffi-and-native-stdlib.md) | 自动C/Rust binding/shim、四端适配、默认Auto标准库、#if/#is平台选择、组织装配/加载与最终安装门 | proposed r13（2026-11-16）；1039–1043已归档；§0.7明确Linux延期与普通库自有实现，完整库在建 |
+| 57 | [Auto ROS2 SDK](57-auto-ros2-sdk.md) | 实际工作SDK、类型/运行语义、ACE/AGE/Autonix依赖、v0.6必做与扩面；[R0–R5路线](strategy/ros2-sdk-delivery-roadmap.md) | proposed（2026-11-12）；1007 r5的A批执行中，官方首组1018/1019及其余计划仍drafting |
+| 59 | [AAC编译器主体与原生自举](59-aac-native-bootstrap-and-compiler-subject.md) | 主体范围、CS/CL两轴、语言/模块化库需求审计、显式后端/AV桥、代际验收；[执行路线](strategy/aac-delivery-roadmap.md) | proposed r4（2026-11-16）；1044–1056仅规划，M2-A稳定后可与M2-B并行，独立验收且非M2硬门 |
+
+专题设计：[ACE原生平台I/O：Windows/Linux无libc基础库](stdlib/native-platform-io.md)——Draft 0.7（2026-11-16）；Zig/Go固定源码、Windows DLL装载/按需加载、直接syscall及Auto算法分层；1039–1043已交，Linux后续分支先实现不测试，1061隔离入口、1063待环境完善后验证。
+
+专题设计：[标准库后端覆盖与单AV多provider](stdlib/backend-provider-coverage.md)——Draft 0.5（2026-11-16）；六主路径及原A2C、平铺来源/#in；普通math/io/net/JSON自有Auto实现，高级外部引擎显式FFI，Linux完整分母延期移交1063，Windows覆盖保持。
 
 **模块子目录**：[documents/](documents/README.md)——文档与在线体验大模块（website/书籍/Playground
 线的需求级设计，slug 命名不带号；域级概要章待目录整体重组时补立，2026-09-07 用户裁定）。
@@ -130,7 +151,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 - [AutoScape：基于 ACE / AGE 的原生 UI Gallery](strategy/autoscape-native-gallery.md)（Design31 专题补充；独立制品/会话、本地服务绑定、AutoFrame 与可见性预算、v0.6 真实原型及对照验证，2026-11-12 proposed，未实施）
 
-- [ASE M0 最小原型实施路线](strategy/ase-m0-delivery-roadmap.md)（Auto Scape Engine 前后台框架、AutoScape 浏览器产品；1020–1023 基线→无窗口 AV→文字→交互会话，消费 ACE/AGE 最小正式接口，2026-11-12 仅规划）
+- [ASE M0 最小原型实施路线](strategy/ase-m0-delivery-roadmap.md)（Auto Scape Engine框架、AutoScape浏览器；1020–1023已交可视交互原型，2026-11-19 r3更正内部历史重放验收；[1106](../plans/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)规划真实增量会话，严格M0无重放子门pending，不重开1023）
 
 - [`autoui/app-presentation-host`](autoui/app-presentation-host.md)（App 呈现宿主：Region/Section/Surface 声明、Feature UI 目标绑定、灵活布局与整页栏目，Design 38 前置设计，2026-10-14 draft）
 
@@ -159,7 +180,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 |------|------|------|
 | [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 有限文件化基础788/852已交付；a2r日常金样/独立认证分轴，完整消费者覆盖待扩 |
-| [AutoDown 文档式用例](testing/autodown-document-cases.md) | 同一文档内的 Auto 源码、VM 观测、多目标生成金样和 ACE 场景 | 作者格式已确认；[hello 范例](testing/examples/printing.case.ad)，[M2-A · PLAN-1002 四例对照试点](../plans/1002-autodown-document-cases.md)待实施 |
+| [AutoDown 文档式用例](testing/autodown-document-cases.md) | 同一文档内的 Auto 源码、VM 观测、多目标生成金样和 ACE 场景 | 作者格式已确认；[hello 范例](testing/examples/printing.case.ad)，[M2-A · PLAN-1002 四例对照试点](../plans/archive/1002-autodown-document-cases.md)待实施 |
 | [模块选测与ACE成组执行](testing/module-selection-and-ace-batching.md) | 复用887义务清单建立模块/影响闭包、ACE独立与成组/组合表达式对照、逐项定位与实测推广 | target-state r1，PLAN-888草案；建议U887后优先质量支线，未实施，不取消全局冻结门 |
 | [Cargo包与Rust模块固定测试分组](testing/crate-and-rust-module-tests.md) | 替换tm动态叶/顶级/自动闭包体系，固定源码职责组、原生并行、必要构建与存储生命周期 | target-state r1（2026-10-31），PLAN-896 r4吸收897；待确认，尚未实施 |
 | [ACE测试框架与慢例归因](testing/ace-test-framework-and-cost-attribution.md) | 复用固定Cargo组/原生身份/现有计量的ACE接入与13项成本归因；M1净缺口归903 | target-state r3（2026-11-01），PLAN-893仅规划；不恢复tm/动态目录，不建第二runner |
@@ -188,6 +209,10 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 
 ## 五、战略路线图（`strategy/`）
+
+2026-11-19测试组织目标：[ACE按语言特性共享AutoDown语料](testing/ace-feature-organized-autodown-corpus.md)，由1078建立唯一作者/多后端检查/旧例迁移去重合同；仅规划，未移动实际用例。 AV专线当前只选AV，AC/A2X检查先#ignore，非AV未齐不阻AV，后续逐项启用。
+
+2026-11-19 AV语言专线：[AV与AutoVM语言齐平设计、AutoDown测试与执行路线](strategy/av-autovm-language-parity.md)。PLAN-1078–1096分批补共享前门/AV语言及普通工程组合，最终向1068/985-B交正式来源；仅规划，既有M2-A收据与UI/AGE产品门保持。
 
 2026-10-16跨路线阶段入口：[v0.6总体矩阵](../roadmap-v0.6.md#7-v06路线阶段与拆分边界矩阵2026-10-16)。以下专题只补目标态，当前能力仍查Spec；候选不自动成为发布门禁，机器人算法暂不纳入，下一条独立路线待讨论。
 
@@ -229,7 +254,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
 | [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | 实际工作Auto ROS2 SDK当前入口；旧通信/bridge/C绑定方案留档 | 2026-11-12；1007-A已开工，B及官方首组/其余计划未实施 |
-| [ros2-sdk-delivery-roadmap](strategy/ros2-sdk-delivery-roadmap.md) | R0–R5：平台/provider、类型、运行时、双端工具、真实任务/UI、Autonix终验 | r4；1007共17项（A01/A04已完成），1008–1012各6项，1018/1019共17项；8包合计64项；ROS数据适配/计量为本版义务 |
+| [ros2-sdk-delivery-roadmap](strategy/ros2-sdk-delivery-roadmap.md) | R0–R5：平台/provider、类型、运行时、双端工具、真实任务/UI、Autonix终验 | r5；1007共17项（A01/A04已完成），1008–1012各6项，1018/1019共17项；8包合计64项；ROS数据适配/计量为本版义务 |
 | [native-backend-strategy](strategy/native-backend-strategy.md) | Native 战略：当前 AC/ACC/Cranelift 分期 + 历史自主生态/开发形态/fork-rustc 论证 | 2026-10-04 文首对齐新路线；旧阶段顺序保留为历史 |
 | [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR）：AutoGraphics/创造入口；Godot参考/可选实验，旧静态缝合论证留档 | 📝 2026-10-16对齐后续讨论，阶段见autographics-forge-v06 |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
@@ -286,3 +311,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 - **查现状/关键代码入口**：去 [docs/specs/](../specs/overview.md)（本目录存意图，specs 存现状）。
 - **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/archive/513-repo-integration-cleanup.md) 接任）。
 - **新增设计文档**：按"归位规则"节先定性再落位，写完在本索引登记。
+
+2026-11-16当前阶段合同：M2最终AV/AC/A2R公共能力一致、A2C完整对齐增强；A期AC基础可用并交B差额，B期间以AAC真实模块实证补齐，完整AAC代际签章独立。原生异步补齐见[1067](../plans/1067-ace-ac-native-async-and-task-parity.md)，三端收口见[1068](../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md)；当前方向以Design55 §5.3、Design56 §0.8、Design59 §0为准。
+
+2026-11-16 AAC语言完整性检查：Design59 §3细化CL族级映射，1044–1056实际任务明确~T/?T/!T、泛型/CTE/required标注及CS未用补验；1067/1068承现AC执行缺口，1053/1054验完整AAC语言与各代，原任务/0进度不变。只规划，未实施。

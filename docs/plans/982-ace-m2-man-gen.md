@@ -5,7 +5,7 @@ feature_name: AutoMan配置任务模板与生成器迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
-plan_revision: 9
+plan_revision: 10
 current_step: 1
 total_steps: 37
 depends_on: [PLAN-960, PLAN-964, PLAN-966, PLAN-969, PLAN-970, PLAN-971, PLAN-973, PLAN-976, PLAN-977, PLAN-978, PLAN-967, PLAN-979]
@@ -28,7 +28,7 @@ touched_goals: [GOAL-002]
 
 ### 2026-11-19 · 980/981 后继接口
 
-Vue U0 联合收据 `2c9c5f228` 按原身份复用。§8 的 VM/Rust 工程 run 差额分别由 [1071](1071-autoui-w1-av.md) 交 VM/AV 宿主，[1074](1074-autoui-w3-a2r.md) 交 Rust 工程实际入口。982 按两项接口验真 CLI/SDK，脚本 stdin＋argv 和其他批次可独立推进。
+Vue U0 联合收据 `2c9c5f228` 按原身份复用。§8 的 VM/Rust 工程 run 差额分别由 [1071](1071-autoui-w1-av.md) 交 VM/AV 宿主，[1074](1074-autoui-w3-a2r.md) 交 Rust 工程实际入口。982 按两项接口验真 CLI/SDK。1074 独立交 Iced 项目输入、生成、冷构建和窗口宿主证据；982 在相同 SDK 上核实际三个 CLI 命令，将联合结果交 985/B。脚本 stdin＋argv 和其他批次可独立推进。
 
 2026-11-17 r8规划：GAP-982-CONFIG-ACE明确由本包现B-CONFIG-I/V/R端到端承接auto-lang＋auto-man，详§5/6/7和共同设计；原37任务/进度/A route C与M2A-08证据保持。本轮不实施、不建树、不改已验Spec，不再等待无owner的上游配置能力。
 

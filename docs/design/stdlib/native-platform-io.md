@@ -1,6 +1,6 @@
 # ACE 原生平台 I/O：Auto 自有标准库与 Windows/Linux 系统边界
 
-> 2026-11-14 · Draft 0.5，调研后设计稿。新增公共标准库能力的六路径/原A2C覆盖见[单AV多provider设计](backend-provider-coverage.md)；本稿原生平台四格是其底座子集。补正原生底座的强制依赖，并把OS内存来源纳入1039/1040；纯算法可以提前开发，默认自有标准库完成必须消费底座真实交付。用户授权调研/设计/计划修订，本轮不实施产品代码、不生成探针/SDK、不运行产品、不提交或发布。已归档计划不重开。
+> 2026-11-16 · Draft 0.7，调研后设计稿。新增公共标准库能力的六路径/原A2C覆盖见[单AV多provider设计](backend-provider-coverage.md)；本稿原生平台四格是其底座子集。补正原生底座的强制依赖，并把OS内存来源纳入1039/1040；纯算法可以提前开发，默认自有标准库完成必须消费底座真实交付。用户授权调研/设计/计划修订，本轮不实施产品代码、不生成探针/SDK、不运行产品、不提交或发布。已归档计划不重开。
 > 衔接 [Design54](../54-stdlib-semantics-and-ace-integration.md)、[Design56 §0.2](../56-ace-m2-ffi-and-native-stdlib.md)、[Storage 专题](../memory/storage-and-allocation.md)；当前实现以 Specs/代码为准，本稿描述待实现目标。
 
 ## 1. 决定与支持范围
@@ -14,7 +14,19 @@
 | 执行边界 | AV 受授权宿主入口；AC 机器码/受检 OS ABI 调用 | 不向不受信 AV 源暴露任意 syscall 编号或进程地址 |
 | OS | Linux 内核 ABI；Windows 公开系统 DLL API | OS 内部实现语言不成为 Auto 标准库实现语言要求 |
 
-本专题原生底座 required 平台格为 Windows x86-64/AV-native、Windows x86-64/AC、Linux x86-64/AV-native、Linux x86-64/AC。公共print/File等能力还须在同一个AV的C/Rust来源及A2R/A2PY/原A2C真实可用；四格不是全标准库覆盖分母。Windows 基线沿现有正式 Win x64，Linux 用户态拟基线 Ubuntu 22.04 x86-64；用户2026-11-14明确当前仅能通过WSL验证，1040以Windows宿主＋WSL2 Linux x86-64为当前required执行环境。T-01核实际WSL版本/发行版/kernel/工具/挂载与权限，不假设Ubuntu22.04已安装，不用WSL1转换层或Windows互操作.exe代Linux AV/AC。没有 runner 的格保持 pending，不能以目标选择或交叉编译冒实际运行。Linux arm64/DGX、其他 OS 与完整 Linux runtime 移植另按后继合同，不从该四格外推。
+本专题原生底座的平台分母仍为 Windows x86-64/AV-native、Windows x86-64/AC、Linux x86-64/AV-native、Linux x86-64/AC；公共能力另保AV/C、AV/Rust、A2R、A2PY及原A2C。**2026-11-15用户裁定取代此前Linux必须当期实跑的排程：当前实现Linux分支及保留用例，但不执行Linux测试；Windows验证照常。** Linux新增/变化行标记`deferred-required / NOT_RUN`并移交[1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md)，实现状态与验证状态分开，不能由Windows绿/交叉编译升为verified；原分母与独立oracle不减。
+
+[1061](../../plans/1061-ace-linux-suite-isolation.md)负责入口隔离与去WSL、未来原生Linux VM本地执行；环境完善后1063验证后续完整库，不反向阻塞当前建设包或Windows认证。1040/1041已跑的WSL2收据只作为其原范围历史证据保留，不重开、不要求当期重跑。未来基线沿Linux x86-64，发行版/kernel/工具以真实环境核定；arm64/macOS不自动加入支持范围。
+
+## 1.1 当前AC阶段边界
+
+### M2-A基础可用、M2-B三端对齐与AAC实证（2026-11-16当前优先）
+
+用户最新裁定：**M2最终AV/AC/A2R公共能力一致；A2C完整对齐为增强项。** M2-A仍须完整AV/A2R语言/库及原required真实验证，AC至少有能承载AAC启动的真实多模块/类型与owned数据、泛型/Option/Result基本链、所需CTE/FFI、文本/分配/同步文件等基础。AC其余具名差额允许移M2-B：原行ID/输入/oracle/错误及资源义务、实际来源、B-owner/关闭条件必须保留，不能记PASS/NA或从分母删除。仅“原native不支持/旧profile外”不再是M2最终豁免。
+
+[1067](../../plans/1067-ace-ac-native-async-and-task-parity.md)补原生异步/Future/Task；[1068](../../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md)收全部三端语言/库/FFI/领域差额，并以AAC实际模块持续实证。985/A不等待两包，985/B及最终986/987必须收三端完整闭合；A2C现有代码/用例/支持记录保留、缺完整对齐不阻M2。A2PY既有标准库义务与AV三provider、Linux1063延期规则不变。
+
+AAC在A出口后、M2-B期间推进，以真实Auto编译器模块检验AC语言/库；某任务所需能力未交只阻该任务/切片，缺口回语言/库真实owner补齐。AAC未使用的语言/领域/异步特性仍补独立三端用例。完整Gen1→Gen2→Gen3自举签章保持独立，不强加为M2通过前置；其所暴露的M2三端能力缺口必须在M2最终前关闭。此规则优先于旧“AC所有义务必须A期全齐”“M2-B与AAC完全无能力交接”“原A2C全量同等硬门”等表述。
 
 ## 2. Zig/Go 一手源码核验
 
@@ -50,7 +62,16 @@ Auto 编译器内部提供受限机器原语，平台模块用普通 Auto 包装
 
 ## 4. Windows 系统 API 与启动
 
-通过版本化目标签名/布局和 Win64 ABI 调用系统 DLL：公开入口可用 PE 导入/IAT，不必运行 C 编译器或加载 C stdio。系统导入库是链接描述，不等于链接 CRT。宿主构建工具的依赖与最终 PE 的依赖分别记录。
+通过版本化目标签名/布局和 Win64 ABI 调用系统 DLL。DLL需要映射进进程，但标准库业务不逐次手工加载：
+
+| 方式 | 加载与解析 | Auto采用规则 |
+|---|---|---|
+| 装载时导入 | 链接记录PE import/IAT；Windows loader在程序进入前加载系统DLL并填函数地址 | AC首版固定系统API优先采用；AV可使用宿主已链接的同类薄入口 |
+| 运行时导入 | LoadLibraryExW取得模块、GetProcAddress找符号，缓存后调用 | 版本可选API/显式动态库需要时复用现受检loader；OS模块来源明确，不另造每库加载器 |
+
+系统导入库（如kernel32.lib）是链接描述，不是把系统实现或CRT静态塞入产物；也不必先产C业务代码。Windows native允许公开kernel32等文件/内存API及ws2_32/Winsock socket入口，OS TCP/IP栈属于系统服务；不要求Auto重写内核。C调用约定不等于libc provider。AV宿主、构建工具和最终PE依赖分别记录。
+
+微软[装载时链接](https://learn.microsoft.com/en-us/windows/win32/dlls/load-time-dynamic-linking)说明loader解析导入，[运行时链接](https://learn.microsoft.com/en-us/windows/win32/dlls/run-time-dynamic-linking)说明LoadLibraryEx/GetProcAddress。实读Go go1.25.0 [runtime/os_windows.go](https://github.com/golang/go/blob/go1.25.0/src/runtime/os_windows.go)（blob `04752f26036d22b8a9fb9388bca5c80023d8746c`）的kernel32动态导入和loader初始化说明；[syscall/zsyscall_windows.go](https://github.com/golang/go/blob/go1.25.0/src/syscall/zsyscall_windows.go)（`93ef850975f8a4516b5f06584f0d18c397bda7d3`）以NewLazyDLL/NewProc调用WriteFile/Winsock；[dll_windows.go](https://github.com/golang/go/blob/go1.25.0/src/syscall/dll_windows.go)（`a7873e6ad8c93ef200979aa001c2cf1b3ebe8616`）缓存首次加载/解析。Zig0.15.1 [kernel32.zig](https://github.com/ziglang/zig/blob/0.15.1/lib/std/os/windows/kernel32.zig)（`2ef08dd97a91d51ad279fe1448885525119d6a27`）以extern "kernel32"声明CreateFileW/WriteFile等，链接到系统DLL。两语言都采用“自有库逻辑＋OS DLL”机制，不表示Zig所有Windows文件操作都选公开Win32。
 
 基础入口为 GetStdHandle、GetConsoleMode、WriteConsoleW、CreateFileW、ReadFile、WriteFile、SetFilePointerEx、GetFileSizeEx、FlushFileBuffers、CloseHandle、GetLastError；进程由自有入口进入并显式 ExitProcess。保 x64 栈对齐、shadow space、宽度/返回值/失败哨兵规则，不能用 AutoABI 代替 Windows ABI。
 
@@ -138,34 +159,38 @@ Windows首批使用VirtualAlloc(NULL,size,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)
 | owner | 本次安排 | 下游与边界 |
 |---|---|---|
 | 943/944/947 | 已归档，保持历史与现有有限能力，不重开 | 947现有Windows console与选择合同是起点，不证明Linux/全File已交 |
-| [1039](../../plans/1039-ace-platform-io-primitives.md) | 受检平台I/O/内存区域原语、AV缓冲/授权/资源边界、Win64接入 | r2，9任务；不等待完整967/968/972，不接管Storage策略/FFI/调度 |
-| [1040](../../plans/1040-ace-linux-native-elf-and-syscalls.md) | Linux x64 ELF/入口/退出/syscall、匿名内存区域与AV Linux薄适配 | r2，9任务；依1039，不声称全部runtime跨平台 |
-| [1041](../../plans/1041-ace-native-stdio-and-console-unicode.md) | 补947未交的跨平台stdio、Windows文本控制台与重定向/部分完成 | 依1039/1040与945所需文本能力；保947旧源与oracle，形成独立新增义务 |
+| [1039](../../plans/archive/1039-ace-platform-io-primitives.md) | 受检平台I/O/内存区域原语、AV缓冲/授权/资源边界、Win64接入 | 已归档；不接管Storage策略/FFI/调度 |
+| [1040](../../plans/archive/1040-ace-linux-native-elf-and-syscalls.md) | Linux x64 ELF/入口/退出/syscall、匿名内存区域与AV Linux薄适配 | 已归档；依1039，不声称全部runtime跨平台 |
+| [1041](../../plans/archive/1041-ace-native-stdio-and-console-unicode.md) | 已归档：补947未交的跨平台stdio、Windows文本控制台与重定向/部分完成 | 依1039/1040与945所需文本能力；保947旧源与oracle，形成独立新增义务 |
 | 946 | 纯算法可先准备；拥有资源的原生实施/验收消费1039/1040 | 新增整包底座依赖；不依972整库，不以临时Rust容器冒原生交付 |
 | 948 | 调查不等待底座；完整交接消费946等正式来源及其新增底座证据 | 盘点/设计与原生实施完成分别记账 |
 | 972 | Auto格式化/编码/缓冲/Storage；整包依赖1039/1040/1041 | core纯算法可先验证，但原生alloc/系统接线及整包完成须底座正式交付；不反等973 |
 | 973 | 消费三包，落实完整File/path/env/process/time/rand等原职责及本稿系统文件合同 | 新增公共能力六路径及原A2C；本专题不能代整973 |
-| 978 / 985 | 候选包依赖审计、真实四格认证；986/987继续原安装退役门 | 早期B0/Hello不被新增Linux整包反向阻塞；完整M2-A须收应有新义务 |
+| 978 / 985 | 候选包依赖审计、Windows真实认证＋Linux实现/延期账；986/987按实际发布平台验安装退役 | Linux真实认证交1063，不能冒已verified；早期B0/Hello门不扩 |
 
-新三包均drafting、未实施；设计/计划更新不自动进入work。缺Linux runner先列阻塞和可做的目标/Windows工作，不以未知状态充PASS。首步各T-01是有界全链可行性与输入冻结，不允许先实现一大批stub再用自报支持表过关。
+1039/1040/1041现已归档，历史任务计数不覆盖正式收据；后续主序为972→973→974/975，973另需968。Linux当前按§10.3先代码后验证，未验不计PASS；设计修订不冒本轮施工。首步各T-01是有界全链可行性与输入冻结，不允许先实现一大批stub再用自报支持表过关。
 
 ### 10.1 依赖的强制含义（r0.2，取代此前可并行表述的歧义）
 
-原生实施依赖不是仅有声明/接口即满足：必须取得对应操作的实现、实际OS运行、依赖来源与独立复审的正式交付。拟议provider、typed fixture、Windows-only样本、暂用旧Rust/C runtime均不能关闭相应原生子行。即使旧runtime为no_std/无libc，也不自动证明算法已由Auto实现。
+原生实施依赖不是仅有声明/接口即满足：必须取得对应操作的实现、依赖来源与独立复审的正式交付。当前Windows须真实OS运行；Linux新增/变化行按§10.3移交1063，不能冒已验证。拟议provider、typed fixture、Windows-only样本、暂用旧Rust/C runtime均不能关闭相应原生子行。即使旧runtime为no_std/无libc，也不自动证明算法已由Auto实现。
 
 执行顺序为1039→1040，再并行推进946拥有资源原生切片与1041；946→948正式交接，946/948连同语言前置与1041汇合到972完整库；再由原有语言/FFI/调度前置与三包汇合到973→974/975→完整SDK/认证。974/975通过973、978/985通过972/973已有传递依赖，无须机械重复所有边。967显式外部FFI、948前期调查、core算法准备以及UI早期F0/H0/E0/B0不因这条原生库链全面停工；它们的通过不冒原生库完成。
 
-### 10.2 加载/#in底座与OS原语分别交付（2026-11-13当前）
+### 10.2 加载/#in底座与OS原语分别交付（2026-11-13设计分工）
 
-[1043](../../plans/archive/1043-ace-stdlib-context-assembly.md)是新加载机制的下一实施包，负责公共+at/c/rs/py来源装配、#in namespace/阶段继承、目标条件导入及query/恢复；设计单源为[覆盖/加载§8–10](backend-provider-coverage.md)。1039/1040仍独立提供OS/内存原语，可用现正式显式target路径推进，不反等完整1043/966，也不以此签#in已支持。1043不实现syscall或交无libc File；公共能力1041/946/972/973最终汇合1043与本稿原生底座，另交真实C/Rust/Python运行证据。完整CTE由966消费1043继续，1042先交Python最小producer，避免平台底座/库/加载器互等。
+[1043](../../plans/archive/1043-ace-stdlib-context-assembly.md)已交新加载机制，负责公共+at/c/rs/py来源装配、#in namespace/阶段继承、目标条件导入及query/恢复；设计单源为[覆盖/加载§8–10](backend-provider-coverage.md)。1039/1040仍独立提供OS/内存原语，可用现正式显式target路径推进，不反等完整1043/966，也不以此签#in已支持。1043不实现syscall或交无libc File；公共能力1041/946/972/973最终汇合1043与本稿原生底座，另交真实C/Rust/Python运行证据。完整CTE由966消费1043继续，1042先交Python最小producer，避免平台底座/库/加载器互等。
 
-### 10.3 当前Linux验证渠道仅为WSL（2026-11-14）
+### 10.3 Linux先实现、后专项验证（2026-11-15当前）
 
-[1040 r5](../../plans/1040-ace-linux-native-elf-and-syscalls.md)明确采用WSL2实际Linux内核环境验收x64 ELF/raw syscall/内存区域及Linux AV同源操作，先核WSL/发行版/kernel/arch/工具/文件系统与执行权限。Windows可交叉构建，但Linux AV/AC结果必须在WSL内真实取得，Windows回归独立运行；子终态、原始bytes、取消/reader/资源回收及host/target依赖沿原门。证据限定该WSL2环境，不冒裸机/全部发行版/GUI或硬件性能认证。缺WSL/权限或仅WSL1保持Infra/pending，不假设额外Linux runner，不自动安装/升级或终止用户整个发行版。相关基础事实见[Microsoft WSL架构比较](https://learn.microsoft.com/en-us/windows/wsl/compare-versions)，命令与材料路径规则以1040 §5为准。本次只改设计/计划，未探测或启动WSL。
+本节取代此前“当前只能WSL、四格当期必跑”的排程。[1061](../../plans/1061-ace-linux-suite-isolation.md)隔离Linux测试、提供未来原生Linux VM本地执行；[1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md)在环境完善后统一验证标准库Linux分支。当前不启动WSL/VM、不执行Linux专属测试，所有ACE标准库建设包仍提交Linux代码和原完整fixture/expected、逐操作移交NOT_RUN及来源。Windows完整组与共享算法测试照常。
+
+建设包可在Linux实现/移交审查和当前Windows门满足后完成；Linux支持认证仍pending，未来实际验证失败由1063修复/回归后关闭。1063依赖能力来源，不是它们的反向前置。1040/1041等旧收据保持历史，不以设计新规抹掉已验事实，也不自动为后续改变背书。
 
 ## 11. 实施验收的最低证据
 
-1. 同一公共Auto源码在四个required格分别真实输出、重定向与文件往返；中文/emoji/NUL字节、空输入、大于转换块输入各有独立expected。AV宿主捕获不能代AC运行或真实Windows控制台。
+以下实际运行/依赖审计在当前Windows执行，Linux依§10.3仅审代码与完整移交，真实Linux验证由1063后续执行。
+
+1. 同一公共Auto源码在当前Windows两格验证真实输出、重定向与文件往返；Linux两格的实现与完整用例移交1063，后续同样实跑。中文/emoji/NUL字节、空输入、大于转换块输入各有独立expected。AV宿主捕获不能代AC运行或真实Windows控制台。
 2. 独立AC产物检查 PE imports 或 ELF headers/dynamic/undefined symbols，加真实运行调用/依赖观察；反控故意引入libc委托/错误目标provider/宿主文件访问绕过必须被抓住。静态无导入不单独证明调用链与算法语言。
 3. OS成功/部分完成/错误/关闭/取消、错代际/无授权、目标变化后的恢复与再次调用各有区分性正反控；mock故障注入辅助，但至少真实终端、文件、管道由OS执行。
 4. 沿既有TestCase/ACE worker和固定cargo组登记，缺Linux工具/终端/runner为pending。普通正确性组排除performance；不新造runner，不跑全仓/ace-perf作为本次规划门。

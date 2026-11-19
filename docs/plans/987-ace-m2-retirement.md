@@ -4,8 +4,8 @@ status: drafting
 feature_name: 旧AutoVM A2X退役及M2终验
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-17
-plan_revision: 12
+updated_at: 2026-11-19
+plan_revision: 13
 current_step: 0
 total_steps: 9
 depends_on: [PLAN-986, PLAN-985]
@@ -18,13 +18,15 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+2026-11-19。图形 W2 及实际 AC 域结果由 [1097](1097-ace-ac-autoui-w2-and-age-host.md) 交付。W1 完整范围取 1071 已交子面及其后继完整 AV 收据，W3 取 1074，1068 交三端最终验收。
+
 ### 2026-11-19 · AutoMan 退役范围接收
 
 按 [982](982-ace-m2-man-gen.md)、985/B 和 986 正式收据覆盖 Vue Web 与 A2R/Iced 的候选产品路径，并按 CMake/Ninja 验新 C 链。A2Ark/A2Jet 与 IAR/GHS 为本版用户延期；保历史适配证据，不纳当前新链正式验收。
 
 ### 2026-11-19 · 980/981 后继接口
 
-沿 [985](985-ace-m2-certification.md) 和安装链消费实际后继交付。[1071](1071-autoui-w1-av.md)/[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)/[1074](1074-autoui-w3-a2r.md) 分别签 UI 三波，985/B 同时核实际 Vue/Tauri、AGE、CLI 和 OS064 的模式覆盖，再按实际职责验旧路径退役。
+沿 [985](985-ace-m2-certification.md) 和安装链消费实际后继交付。[1071](archive/1071-autoui-w1-av.md)及后继 AV 来源/[1097](1097-ace-ac-autoui-w2-and-age-host.md)/[1074](1074-autoui-w3-a2r.md) 分别签 UI 三波，985/B 同时核实际 Vue/Tauri、AGE、CLI 和 OS064 的模式覆盖，再按实际职责验旧路径退役。
 
 2026-11-16 r10：最终M2按AV/AC/A2R完整公共能力一致验收，A2C完整对齐增强；A期AC后延必须在B关闭，收1068正式来源及AAC阶段实证，不要求AAC完整代际签章。原任务/进度保持，只规划。
 

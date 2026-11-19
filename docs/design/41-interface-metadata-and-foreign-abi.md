@@ -2,11 +2,13 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-11-05
+updated_at: 2026-11-13
 implemented_by_plans: []
 ---
 
 # Design 41：统一接口元数据、Foreign Interface IR 与跨 ABI 架构
+
+> **2026-11-13 ABI兼容补充（仅目标态/文档）**：用户明确Rust库与生成shim共同构建，经目标C ABI独立分发；构建缓存与运行兼容身份分离，见§5.1及[PLAN-967 r10](../plans/967-ace-m2-host.md)。不承诺任意Rust产物跨编译器版本兼容，不改现有实现/Specs或M1合同。
 
 > **2026-11-05 CA-E接续**：[941最终组合验收](../plans/941-ace-m1-expanded-and-architecture-acceptance.md)已正式规划，设计见[Design51 §16](51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)。937已交付不代938/939；总门分别验证typed/source方向、布局/调用/资源/独立认证与恢复依赖，缺项不签M1。下方CA-D初订及“CA-E未立项”为历史，不改797 candidate/descriptor3。
 
@@ -114,6 +116,36 @@ AC/ACC消费Rust库的默认候选路径：真实Rust类型/签名与实例需�
 Rust wrapper/shim的实际源码、rustc/target、crate源内容/依赖图/features/cfg、生成器、实例集合、接口和native依赖进入cache键。共享缓存与同版本号本身不授予布局/生命周期正确性。旧fork-rustc/Versioned Rust ABI研究保留历史，不作为新C/AutoABI主线前置，也不据“同版本”无条件直调Rust私有ABI。
 
 C++仅通过现成C API或有限且可验证的C++→C shim选用；COM/GObject/Objective-C等有独立对象模型与adapter，不能把其全部称为普通C ABI。完整C++模板/STL/异常/Apple SDK并未承诺支持；GIR/Vulkan registry/WinMD作为元信息源候选，实际适用范围逐项计划验证。
+
+### 5.1 Rust provider的构建与兼容合同（2026-11-13，目标态）
+
+执行/验收以[PLAN-967 r10的ABI-COMPAT条款](../plans/967-ace-m2-host.md)为准，M2职责见[Design56 §3.3](56-ace-m2-ffi-and-native-stdlib.md#33-rust-provider的二进制兼容与独立分发)。provider生态、AutoABI、目标C/system ABI与包/接口版本分开；本节不是“Auto所有内部调用改成C ABI”。
+
+**构建边界。** 源码模式把Rust库、生成shim、具体泛型实例及Rust依赖置于同一兼容Cargo/rustc构建闭包；工具链、源码/lock、features/cfg/flags、target/SDK/native依赖与生成器可追溯。不能凭目标同名或“套了C入口”混用任意不同rustc的`.rlib`/Rust ABI `.dylib`；同rustc标签也不充分证明依赖/配置兼容。缺源码、MSRV或构建依赖不满足须明确拒绝，不默默替换用户工具链。
+
+**对外边界。** 跨独立构建/分发的默认形式为系统动态库`cdylib`，将Rust库＋shim封装在provider内，通过冻结的目标C ABI和受检接口/依赖清单供消费。`extern "C"`是调用约定，`repr(C)`是数据布局选择；后者不能洗白嵌套String/Vec/trait/Result/Py私有布局。允许稳定标量、明确布局record、长度buffer及opaque引用，ownership/allocator/deleter/error/unwind/线程也需合同。已有C API的Rust预编译库可直接按其C契约使用，不强加第二个wrapper。
+
+二进制provider模式只使用包中已声明、版本明确的导出与具体实例，不为新Rust API/泛型需求从旧二进制猜签名或构造未导出的符号；需扩面时明确转源码重建或拒绝。源码导入可在构建期依赖rustc/rustdoc，已封装provider的正常运行不依赖Rust源码/开发树/rustc/Cargo。
+
+`staticlib`可作为原生链接输入，但升级可需重新链接，native依赖/链接器及LTO-bitcode条件单列，不能当Rust crate私有格式或无条件可动态替换库。A2R原有等价直接crate adapter属于同构建闭包优化路径，必须证明语义/资源等价；该分支不具有独立跨rustc二进制保证，也不改变AV/AC对外C ABI默认路径。
+
+**两类兼容身份。**
+
+| 层 | 权威信息 | 接受/失效原则 |
+|---|---|---|
+| 构建身份 BuildIdentity | Rust库/shim源码与crate闭包、lock/features/cfg/实例、生成器、rustc/toolchain/flags、target/SDK/linker/native输入 | 真正读取输入改变使受影响构建缓存/证据失效；不因C ABI相同复用错误产物；无关变化不重建 |
+| 运行兼容 RuntimeCompatibility | 目标OS/arch/env/C-system ABI profile、位宽/端序/必要ISA/OS runtime；descriptor Schema/ABI域；required符号/签名/布局；接口语义/错误/owner/线程与运行依赖 | provider和consumer的rustc版本无需相同；兼容性仍需明确目标和接口证明。不同目标/破坏性接口/缺运行依赖不接受，不用版本号或abi=C字符串单独裁决 |
+| 具体选择 ProviderArtifact | 工件hash/发布与构建收据、包/lock pin、当前provider代次/授权 | C ABI兼容只给重新装配/准入资格，不自动替换精确pin、恢复旧授权或旧行为证据；新工件必须实核 |
+
+接口业务版本、ABI/Schema版本、provider release/build和rustc来源版本独立记录。显式兼容规则可允许只增加可选符号而旧required子集不变；完整manifest hash改变不是接口破坏的充分条件。反过来，相同major/minor或repr(C)标记也不能让签名/字段/ownership改变自动兼容。
+
+**跨版本保证的准确含义。** 以rustc A构建的consumer可以使用rustc B构建的C ABI provider，前提是冻结的目标/接口/资源/运行依赖满足。consumer工具链升级不自动使未变化的已发布provider失效；provider源构建请求换rustc则产生新BuildIdentity，需库+shim重建及对应证据。私有实现变化可保对外接口，却仍是新工件；不能用原工件的证据替新代码背书。
+
+不同OS/arch/env/ABI、位宽、必要ISA/最低OS/CRT等是独立二进制适用边界；相同CPU名称不够。C ABI不自动赋予跨平台通用性，也不稳定CPython等外部运行依赖。旧opaque对象/callback/borrow仍pin原provider/代次，ABI兼容v2不能直接解释或释放v1对象。
+
+**实现归属与可验证关闭。** 967负责自动库+shim/ABI适配和独立oracle，T-14将双身份/接口/工件/运行依赖交978复用现有构建/装配/store；978/986负责真实分发/安装及升级闭包，不增967反等它们的环。V-ABI-*必须真实证明不同rustc的合法C ABI消费、私有Rust产物拒绝、target/接口变异拒绝、构建key失效/无关变化复用、旧owner释放、隔离包无需开发工具仍能运行；均未执行，不新增第二loader/manifest/cache。
+
+官方依据：[Rust与C ABI定义](https://doc.rust-lang.org/reference/items/external-blocks.html#abi)、[C布局](https://doc.rust-lang.org/reference/type-layout.html#the-c-representation)、[库产物形式](https://doc.rust-lang.org/reference/linkage.html)。本节给出ACE拟议合同和验收边界，官方定义不替本仓实现证据。
 
 ## 6. 多后端、版本与插件生命周期
 

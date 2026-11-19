@@ -1,3 +1,11 @@
+## D-ASE-1023-REPLAY — 内部历史重放与验收盲区（OPEN，2026-11-19）
+
+- **owner/后继**：[PLAN-1106](1106-ase-incremental-event-sessions-and-replay-audit-repair.md)，ACE组件编译/AV事件会话＋auto-ui公共状态桥及ASE消费；r1草案，0/10，尚未实施。
+- **事实**：`AceStateEngine::dispatch_impl`追加ops后`refresh`汇总历史并调用场景观察链重新编译/执行；1023对象常驻、外层loads/dispatch_log与最终3/7结果不能证明内部只执行新事件。旧负控主要覆盖外部重装，漏掉同owner内重放；本次为静态核查，新增运行反例尚未执行。
+- **影响**：保留已验原型/行为/隔离/车道关闭证据，撤回1023 AC-01/02、V-07/08及AC-R/AC-D关于无重放/严格M0完整成立的解释。1023仍archived/r2/10-of-10，原收据留历史；M0-SESSION增量与相关状态根释放子门恢复pending，不将整个可视原型判为不存在。
+- **关闭条件**：普通Node沿唯一verify/ACE执行，固定源下保留程序和独立运行模型；每新事件handler实执行一次，读/切换不重编/初始化/旧业务，失败不发布半态、旧事件先拒、关闭释放最后owner。执行层原红＋同owner隐蔽重放/重建负控敏感，原3/7/同app/归零/限额/迟到/20轮及真实窗口不减；独立review、正式来源/Spec与M0修复收据齐才closed。
+- **当前处置**：本轮仅计划/路线/验收事实更正，未改代码/运行/复测，不重开1020–1023或归档引擎Plan；不得用1106创建或文档检查当能力已修复。
+
 ## GAP-982-CONFIG-ACE — B已明确承接，能力尚未实现（2026-11-17）
 
 | 事实/原义务 | 唯一owner与具体任务 | 关闭条件/执行边界 |
@@ -4908,3 +4916,33 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 关闭条件：①`auto run --render vue` / `auto build` + `pnpm`/Vite 全工程实际运行门在 PLAN-982 联合验证绿；②`pages/`/`widgets/`/`stores/` 与 `watch`/`computed`/`setup` 下沉接管并完成默认开关切换门（取代双轨拼接边界）。
 - 状态：open（`m2-autoui.md` §15 已严格按当前代码边界写明，不阻塞 PLAN-1072 交付）。
 
+
+## D-1079-01 — `legacy-map.tsv` 中 1078 遗留 2 行的 `source_sha16` 列存的是文档整篇哈希（2026-11-19 PLAN-1079 复审登记，非本包行）
+
+- 现象：`crates/auto-lang/test/cases/language/migration/legacy-map.tsv` 表头声明
+  `SHA16 = first 16 hex chars of SHA-256 over the original Auto source bytes`，但 PLAN-1078
+  写入的两行 `legacy.aavm2.001_smoke` / `legacy.aavm2.002_hello_compile` 该列分别是
+  `4a9bf96f8568ad2e` / `b5b508996ecbc910`——经复审按同口径重算，Auto 源代码字节哈希应为
+  `ce7731aed91c240e` / `defffe73cc1d5a85`；表中值等于**文档整篇**哈希（设计文档
+  `av-autovm-legacy-case-map.md` 的「作者文档SHA16」列口径）。
+- 影响：仅影响来源指纹列的口径一致性；两行的 canonical 映射、状态（research-hold）与原
+  oracle 文本不受影响。PLAN-1079 的 68 行经逐行重算**全部一致**。
+- owner：PLAN-1078 归档后的迁移表维护者（下一 AVP 批次或 1068/985 完整门）。
+- 关闭条件：二选一并留证——(a) 按表头口径重算这两行的 Auto 源 SHA16；或 (b) 在表头/行内
+  明确区分「文档 SHA16」与「源 SHA16」两种列口径，并同步 PLAN-1078 行（不得只改本包新行）。
+- 状态：open（不阻塞 PLAN-1079 的 F-01/F-02 修复与交付）。
+
+## D-1079-02 — 词法器把数字体后的 `.成员` 并入数字 token（2026-11-19 PLAN-1079 修复轮登记，非本包引入）
+
+- 现象：`1.5f32.as(f64)`（类型化字面量后直接点调用、不加括号）被词法器整体当作一个
+  affix-num token，报 `source.unsupported`：`suffixed/radix/float numeric literal \`1.5f32.as\`
+  is not part of this source profile`；而 `(1.5f32).as(f64)` 与 `let a = 1.5f32` + `a.as(f64)`
+  均正常。数值语义本身正确（1.5 加宽无误差，已实测）。
+- 归属：ACE 词法/语法面（`crates/core/src/source/cst/lex.rs` 的数字体扫描），该"吞点"行为
+  **早于 PLAN-1079**（本包只改 `decode_typed_literal` 的 body 切分，不涉及词法 token 边界）。
+- 影响：只影响"字面量后直接 `.方法`"这一书写形；不产生错误数值，不静默接受非法源。
+- owner：ACE 词法/syntax 面（下一触及该文件的批次或 1080 调用面计划）。
+- 关闭条件：数字体的 token 边界在遇到 `.` 后跟标识符起始字符时终止（`1.5f32.as` 切为数字 +
+  `.as`），并补一条正例断言（`1.5f32.as(f64) == 1.5d` 与 `(1.5f32).as(f64) == 1.5d` 同真）；
+  修复后在 `ace-syntax` + `case-av-language-parity` 复跑稳定。
+- 状态：open（不阻塞 PLAN-1079；规范写法已覆盖，债务具名不静默）。

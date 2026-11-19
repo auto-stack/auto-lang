@@ -17,6 +17,12 @@ affects: [auto-test-case]
 
 # [PLAN-1062] 剩余代码case全面迁移到AutoDown
 
+> **2026-11-16交付后核查更正**：本Plan保持archived/r1/20 of 20及原交付记录；
+> 原“全部活跃语料/消费者均切换、零旧sidecar回读、bootstrap仅proposal可写”的全量结论
+> 已被当前代码核查证伪，不能作为现状或新的PASS依据。四类残留及补漏合同见
+> [PLAN-1066](../1066-autodown-migration-gap-closure.md)，当前仅规划、尚未修复。
+> 原已迁75组等有效证据保留；本注不是重开归档计划或追溯改写原执行结果。
+
 ## 0. 变更摘要
 
 在一个收尾计划内分阶段完成本仓所有剩余活跃代码语料的文档式作者入口迁移。沿用 [文档式设计](../design/testing/autodown-document-cases.md)，一份AutoDown组织源、多个后端独立预期及执行条件，不再逐批另开迁移Plan。本轮只规划，不编译、不执行产品case、不切换入口。
@@ -3153,6 +3159,22 @@ stage: goal | plan_id: PLAN-1062 | plan_revision: r1 | round: 5 | from: review |
 2026-11-15 T-20 merge 收据（PLAN-1062:r1）：stage=merge | outcome=pass | delivery_commit=42a1b19d1（19提交 rebase 自 3d8b3076f，git range-diff 全 `=` 逐对补丁等价；ff-only 落 master，无 merge 提交，master tip=delivery） | merge门修复：B文档 Auto 节对无尾LF源补 final-newline: false（合并门发现1例漂移 18_ffi/056_math_pow；1246文档再生成；vm inventory 绿+受影响族复绿） | 冻结影响并集（两轮）：cargo t auto-test-case a2r a2c a2ts corpus ffi 全 PASS（rebase前+rebase后基线各一轮，master侧ace/parser变更无冲突，range-diff零差异） | canonical：SD-01..06 落地（5 modify+1 add；document-migration-closure.md sha256=3a5ccd69819457d6…） | 观察：实施树 docs/ 有他人未提交WIP（含.next-id冲突标记），已 stash 保留于共享 stash（"PLAN-1062-merge: foreign docs/ WIP…"，主检出可恢复）；5个未跟踪旧plan文件随树清理前移出保全 | batch regression：1062%5≠0，last_covered=1060 （2026-11-14T23:23Z），48h内有多笔merge——due-check 归档后交 regress 单实例判断。
 
 stage: goal | plan_id: PLAN-1062 | plan_revision: r1 | round: 6 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 42a1b19d1 | next: done
+
+### 2026-11-16 交付后收口核查更正（owner转PLAN-1066）
+
+本次只读核查基面2cdb28fb353e615619b533f6a69c72496362a9ec及其源文件：
+
+| finding | 与原收口结论不符的实际事实 | 补漏范围/关闭条件 |
+|---|---|---|
+| F-1062-S | 当前76个case固定组，75组文档式，case-ace-m2-scheduler-968仍11例/11检查旧围栏；cad341817已是原交付42a1b19d1祖先，最终增量扫描漏项 | 1066/S11全源/expect内联，v2/实际对照/负控后切suite，并重扫当前全部组 |
+| F-1062-N | test_runner.rs发现仍依赖旧源/oracle存在；entry.rs四族run_*_file_test仍读旧载荷；四个Test.run_*_dir公开shim可达 | 五根1050输入已有doc不代表已接线；发现/执行/身份与doc-only、污染/缺doc负控均关闭 |
+| F-1062-P | a2r两个project测试仍从main.at启动，全语料rustc门仍读旧源且在测试体编译；不能泛以source-dir语义归support豁免 | 两工程5源/19原断言文档化；编译250既存子项保ledger，日常无隐式编译、显式准备与验证 |
+| F-1062-C | conformance_bootstrap仍为普通#[test]，30输入循环读旧input.at/覆盖expected_output.txt，错误仅打印；原“仅proposal可写”未实现 | 普通生成器退出，安全显式候选输出，33固定验证及原trim独立oracle不减 |
+
+因此T-17/T-19/T-20原记录的“全量收口/零活跃回读”只能保为当时的错误判断；已迁语料的
+逐项有效证据不因本注整体抹除，也不能外推覆盖上述残留。数轴另纠正：1062个去重检查对
+加17个跨组复用=1079迁移入口位置，再加95个既有文档位=1174，不是1062+95=1174。
+此次仅事实与责任纠正，无产品重跑、修复或新入口切换；补漏状态以1066为准。
 
 ## 10. 待澄清事项
 

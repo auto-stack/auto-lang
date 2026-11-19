@@ -4,8 +4,8 @@ status: drafting
 feature_name: ACE标准库Linux分支延后验证与平台支持认证
 author: [Codex]
 created_at: 2026-11-15
-updated_at: 2026-11-15
-plan_revision: 1
+updated_at: 2026-11-16
+plan_revision: 2
 current_step: 0
 total_steps: 8
 depends_on: [PLAN-1061, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-978]
@@ -73,6 +73,12 @@ affects: [stdlib, auto-ac, auto-test-case]
 | SD-02 | modify | docs/specs/auto-test-case/ace-test-policy.md | 承1061→新标准库Linux显式组归属与完整映射 | 无隐藏Linux执行 | AC-01/02 |
 | SD-03 | modify | docs/specs/auto-ac/linux-native-platform.md、docs/specs/stdlib/design/assembly-manifest.md | 已交底座→核实后扩Linux库/SDK支持；宿主/目标/外库分账 | 支持声明有证据 | AC-03/05 |
 
+### M2-B新增库/异步移交（2026-11-16）
+
+1067/1068中与标准库/异步资源有关的Linux新增行/完整原例也交本包，保同源/ABI/错误/取消/资源与独立oracle。当前仍不启动Linux测试。未到所需producer的验证行保持NOT_RUN，可先推进其余已就绪切片；不能据旧Windows结果升verified。UI/AGE/GPU等非标准库平台义务仍按原领域owner，本包不凭此扩成全部图形Linux验收。
+
+本轮用户将M2最终能力要求定为AV/AC/A2R一致、A2C完整对齐增强，AC差额可在B期间闭合；本包Linux运行延期合同不变，不将时间延期当实现豁免，A2PY既有标准库义务保留。
+
 ## 6. 测试设计
 
 全部拟议；T-02..05将移交源接成实际case，T-06执行。旧case先迁移/复用，不因下表生成第二框架。
@@ -111,6 +117,10 @@ affects: [stdlib, auto-ac, auto-test-case]
 - [ ] **T-08｜merge｜AC-05**：review pass后复用冻结证据、按变化补门，落Spec/支持范围、合回/归档；摘要折Plan，清材料scope及VM实际输出/树/分支，登记路径并跑wt-guard；依T-07。
 
 ## 9. 复审记录
+
+2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
+
+2026-11-16 stage:new / r2：接1067/1068的标准库/异步Linux行，其他域保原owner；原8任务/0完成/依赖保持。用户阶段/A2C目标修订仅改规划，当前不执行Linux或产品测试。
 
 2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
 

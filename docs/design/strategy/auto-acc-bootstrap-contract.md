@@ -1,5 +1,7 @@
 # ACC 自举主体与 HIR 阶段契约（auto-acc-bootstrap-contract）
 
+> **2026-11-14 当前AAC合同**：[Design59](../59-aac-native-bootstrap-and-compiler-subject.md)与[AAC路线](aac-delivery-roadmap.md)正式界定Auto版AC主体、语言/库需求及1044–1056计划。实施排程改为M2-A正式稳定出口后与M2-B并行；独立验收，非M2硬门，沿用独立后续v0.7归属。下方2026-10-24/11-09中“等全产品替换再启动AAC”的排期仅留历史；不扩成AAV/AACE全体提前实施。原HIR阶段安全合同仍为设计输入，本轮只规划、不施工。
+
 > 2026-11-09两阶段排程：ACE M2-A交完整语言/新库与具名真实验证，M2-B交全产品替换/退役；AAC（旧ACC）的Auto主体移植、桥接和Gen1→Gen2→Gen3仍独立后续v0.7，不是A/B/发布硬门。复用Cranelift与明确运行时桥不妨碍未来自举判据；技术可并行不等于本轮授权提前实施。当前阶段合同见[Design55 §16](../55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)。
 
 > 状态：📝 Draft（2026-10-04；PLAN-743 T-04 产出）。本稿是**契约文档**：定义阶段边界、

@@ -16,6 +16,10 @@ touched_goals: [GOAL-002, GOAL-007, GOAL-010]
 
 # [PLAN-1023] ASE M0交互会话原型与联合验收
 
+<!-- ASE_REPLAY_NOTICE_BEGIN -->
+> **2026-11-19验收更正（不重开归档）**：本计划仍为archived/r2/10-of-10，原代码交付、任务勾选及收据原文保留。后续源码核查发现同一`AceStateEngine`内部仍以`dispatch_impl→refresh`重编/重跑累计历史；外层loads/dispatch_log未观测这些执行。因此撤回AC-01/02、V-07/08及AC-R/AC-D对“已实现/已证明无重放、严格M0完整完成”的解释，涉及的增量执行子门恢复pending。双应用3/7行为、隔离/显示/关闭等已有证据继续按原覆盖范围保留。修复由[PLAN-1106](../1106-ase-incremental-event-sessions-and-replay-audit-repair.md)与债`D-ASE-1023-REPLAY`承接；本次只更正文档，未运行复现或修复。具体证据边界见§9末尾更正说明，不能仅凭下方历史PASS再次宣称严格增量完成。
+<!-- ASE_REPLAY_NOTICE_END -->
+
 ## 0. 变更摘要
 
 ### 2026-11-19 · 980/981 后继接口
@@ -177,6 +181,17 @@ stage: new/revision；PLAN-1023 r2（2026-11-17）；outcome: blocked（1022未�
 历史r1（2026-11-12）：当时因1022与基础接口未齐而blocked，0/10；原静态检查通过不充实施证据。旧读取基面lang `7b2f2e959`/UI `ad9c05da`及“970草案”是当时背景，当前合同由r2 §4–8取代。r2保留T-01..10/全部原AC/3与7/关开0/两会话上限/20轮，新增V-07..10绑定原AC，981仅作实际消费事件接口来源，不新增全局等待。
 
 r2静态预检（2026-11-17）：0–10章节、原任务/AC标识与零进度守恒，V-01..10各有输入/producer→consumer/独立结果及覆盖边界；V-07/08专门区分最终数字相同的重放与重建。三文档25处本地链接、前置身份/阶段DAG及格式检查通过，1020/1021归档与已读Specs未改。先证、负控、资源/窗口测试、独立实现复审均未执行，本轮不把本合同当真实会话接线已交付。
+
+<!-- ASE_REPLAY_ERRATUM_BEGIN -->
+### 2026-11-19 历史重放与验收观察口更正（后继1106，非原计划重开）
+
+- **证据类型**：本次为只读源码核查，尚未运行新增反例。UI源读取HEAD=`481a3cb55984bbe4783f2348a6881d198aedb6ab`，`ace_state_bridge.rs` SHA256前16=`0ae496dbdc342f29`、`ace_node_desktop.rs`=`773636ae1af47ba5`、`ase_m0_sessions.rs`=`79861c027bf956ba`、原测试=`99fb9e8b75944c65`；语言`av/src/age_component.rs`=`02a8c65a657a9f5e`。这些绑定核查来源，不虚构本次执行次数或计时。
+- **已确认链路**：ASE `step_selected`→`NodeDesktopBridge::step`→`BridgeEngine::Component`→`AceStateEngine::dispatch_impl`追加ops→`refresh`汇总所有活实例历史→`observe_component_scenario_states`重编/运行场景→状态读回/UI差量。对象仍在不表示业务模型/程序在底层跨事件保持；事件日志仍作为执行输入。
+- **旧oracle盲区**：loads位于外层`NodeDesktopBridge::load`，dispatches来自step与dispatch_log；旧V-08主要构造外部重装/重新提交事件，不观察同owner内部refresh。历史3/7及外层计数全等可以与内部重放同时成立，所以原“真实handler计量/负控足以证明增量”结论不成立。
+- **验收适用性修正**：AC-01的完整真实会话先证、AC-02无重放、V-07/08及AC-R相关机制判断缺证且被上述实现路径否定；原AC-D/M0-SESSION的完整成立声明只保留为历史，严格无重放子门恢复pending。AC-03/04/05/06已有行为、隔离、代次、UI提交/关闭和来源证据不一并撤销，但旧引擎对象释放不代未来真实状态根释放证明。
+- **当前状态**：可视交互原型存在；严格增量M0仍有开放债`D-ASE-1023-REPLAY`。PLAN-1106负责在实际编译/初始化/handler执行层取得原红与同owner隐蔽重放/重建负控，修复后独立复审、正式交付，再关闭对应子门。新证据只记后继计划，不倒填本计划执行历史。
+- **归档约束**：status/revision/current_step/total_steps、原勾选/交付SHA与原收据全部不改。本段及页首更正仅限定旧结论的现时适用性，不将archived改回executing，也不重开970/980/981。
+<!-- ASE_REPLAY_ERRATUM_END -->
 
 ## 10. 待澄清事项
 

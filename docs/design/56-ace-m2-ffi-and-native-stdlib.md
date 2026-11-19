@@ -1,6 +1,10 @@
 # Design 56：ACE M2 完整 FFI 与新版标准库
 
-> 2026-11-12 · proposed r5。用户正式追加的 M2 范围，尚未实施；补充 [Design55](55-ace-m2-complete-language-and-product-replacement.md)，执行入口为 [M2路线](strategy/ace-m2-delivery-roadmap.md)。r2把945–948的调研/准备/最小接线统一移至M1正式tag之后，门见Design55 §1.1。本轮仅修改设计与 drafting 计划，不改 M1/941/999、canonical Specs 或产品代码。
+2026-11-19，W1 按 1071 原子面和 AutoUI 104–108 剩余 AV 分母验齐，正式 W2 由 [1097](../plans/1097-ace-ac-autoui-w2-and-age-host.md) 交付，1074 消费 W2。AGE 领域来源见[AGE 交付表](strategy/age-m2-three-route-strategy.md#后继交付与消费)。1068 接收正式证据并执行最终三端验收。 普通 AC 修复按 [AAC 与现 AC 实施归属](59-aac-native-bootstrap-and-compiler-subject.md#现有-ac-差额的实施归属) 进入实际任务。
+
+> 2026-11-16 · proposed r13。完整 M2 范围仍在推进，947有限合同/console已交付，完整原生库未交；补充 [Design55](55-ace-m2-complete-language-and-product-replacement.md)，执行入口为 [M2路线](strategy/ace-m2-delivery-roadmap.md)。r2把945–948的调研/准备/最小接线统一移至M1正式tag之后，门见Design55 §1.1。本轮仅修改设计与 drafting 计划，不改 M1/941/999、canonical Specs 或产品代码。
+
+2026-11-13 r6补充：用户明确Rust库+shim共同构建及目标C ABI独立分发，编译器版本/目标/接口兼容与失效规则落§3.3、967 r10；保全部原FFI/LIB/F0与阶段义务。本轮仅文档，无构建/运行/探针、无接口已实现声明。
 
 ## 0. 两阶段归属（2026-11-09，当前）
 
@@ -18,17 +22,28 @@ Iced仍是Rust编译的宿主库；Auto代码经共同前门/领域投影与受�
 
 | 原Plan / 早期切片 | 最小交付、前置与边界 |
 |---|---|
-| [967/F0](../plans/967-ace-m2-host.md) r7，0/19 | 已交938/939与现有text/AV基础→普通use.rs/真实Rust公共元数据→自动binding/shim→共享verify→AV真实非UI Rust函数；首批借用UTF-8/i32-bool/同步同线程/准入资源错误。原完整T-09..15继续扩大C/Rust、资源、四端/真实库，F0不等962/963整包 |
-| [979/H0](../plans/979-ace-m2-schema.md) r8，0/12 | 现有grammar/CST/普通函数/text/verify基础→一个widget/view/text与普通函数文本表达式→受检领域描述/CPU消费者；不等完整963/966，保原完整Schema/Node及双后端任务 |
-| [969/E0](../plans/969-ace-m2-facade.md) r5，0/12 | F0正式来源→公开显式ACE AV同步执行/授权/结果/关闭接口，非UIconsumer自证；不等Dynamic/async/热更，不让UI另造解释器 |
-| [978/B0](../plans/978-ace-m2-build.md) r7，0/14 | 已交942/944/960＋F0/E0正式来源→预编译宿主/FFI闭包、运行构建分账、改Auto不重建不变provider；不等全部新库/CT/完整SDK，非UIconsumer闭合 |
-| [980/HELLO](../plans/980-ace-m2-autoui.md) r7，0/35 | F0/H0/E0/B0正式来源→独立最小Hello、单text和函数文本、真实AV→FFI→既有Iced宿主、错误/恢复/退出；不等STATE全部async、File/WEB/PARITY，不精简原001 |
+| [967/F0](../plans/archive/967-ace-m2-host.md) r7，0/19 | 已交938/939与现有text/AV基础→普通use.rs/真实Rust公共元数据→自动binding/shim→共享verify→AV真实非UI Rust函数；首批借用UTF-8/i32-bool/同步同线程/准入资源错误。原完整T-09..15继续扩大C/Rust、资源、四端/真实库，F0不等962/963整包 |
+| [979/H0](../plans/archive/979-ace-m2-schema.md) r8，0/12 | 现有grammar/CST/普通函数/text/verify基础→一个AGE node/view/text（Schema驱动解析、位置/上下文名称）与普通函数文本表达式→受检领域描述/CPU消费者；不等完整963/966，保原完整Schema/Node及双后端任务 |
+| [969/E0](../plans/archive/969-ace-m2-facade.md) r5，0/12 | F0正式来源→公开显式ACE AV同步执行/授权/结果/关闭接口，非UIconsumer自证；不等Dynamic/async/热更，不让UI另造解释器 |
+| [978/B0](../plans/archive/978-ace-m2-build.md) r7，0/14 | 已交942/944/960＋F0/E0正式来源→预编译宿主/FFI闭包、运行构建分账、改Auto不重建不变provider；不等全部新库/CT/完整SDK，非UIconsumer闭合 |
+| [980/HELLO](../plans/archive/980-ace-m2-autoui.md) r7，0/35 | F0/H0/E0/B0正式来源→AGE Node独立最小Hello、单text和函数文本、真实AV→FFI→既有Iced宿主、错误/恢复/退出；不等STATE全部async、File/WEB/PARITY，不精简原001 |
 
 每个早期切片新增I/V/R/D四个明确任务（work实现、work验证、独立review、merge阶段fold正式交接），共20任务；原任务/AC/用例及完整M2分母全保留，旧Plan号复用、没有新取号。只交早期能力不勾整项旧任务/整包完成，不归档/删唯一树；下游只消费已审已落主接口，不把冻结分支tip作交付。
 
 AV首窗与A2R分开推进：967原T-12的AXR0简单签名腿、978原T-03/09构建腿、980原B-RUST的同源Hello腿可并行独立复核/phase fold；AV首窗不等它们，完整980/RG-A03及M2-A仍须真实A2R与原模式全覆盖。相同源和资源、签名/ABI/owner事实共用，A2R禁AV/旧VM解释provider仍运行；直接crate adapter须独立证明与AV shim合同等价。
 
 最小Hello只证声明/呈现，函数文本再证实际AV求值与FFI dispatch。按钮→双实例→原001 themes/model/design/布局/选择复制→其它Demo逐步消费新增能力，Demo未覆盖的语法/资源/错态另补。完整FFI不能由简单借用文本、完整UI不能由Hello替代，945–948 M1-TAG及A/B总出口不变。
+
+2026-11-13当前纠正：首Hello直接以AGE `node Hello { view { text "Hello" {} } }`运行，979/H0由版本Schema驱动parser和结构校验；`widget/model/view/on`仅在AGE激活且Schema声明的NodeName槽/父规则内识别，普通表达式/无AGE环境不保留这些词。旧widget仅作同一Schema的显式兼容声明头别名，原源兼容与只改头的Node迁移分别验，不另造传统widget管线。967仍先做非UI函数F0，969/978保持非UI自证、避免反依UI；其接口供同一Node Hello宿主消费，无新增对完整963/966/981的早期等待。完整FFI/标准库/旧UI全部模式、AV/A2R及M2A-08义务不减。详Design55 §7.1和979/980/981当前合同；本段只修订规划。
+
+
+## 0.1a MIN-A UI-FFI与B三波（2026-11-16当前）
+
+A只交980 MIN-A-UI、981最小真实AV领域场景和OS064最小宿主见证，完整图形在B按AV→AC→A2R走整条爬梯。已交Hello的`text_byte_len`只证字节接收，Rust组件直接绘制不代实际UI FFI效果；A仍要真UI submit/typed事件回AV与借用/owned/代际/权限/主线程/关闭恢复。复用967自动binding/shim、预编译Rust/Iced宿主，guest不解释整套Iced，不跨ABI暴露Rust私有布局。
+
+W1由980 B-AV/981域owner完整跑示例与Widgets，UI-W1-AV正式后1097补AC机器业务/回调并独立交UI-W2-AC，随后1074 W3生成/真实rustc/运行全部同源UI。每波只当前后端实现/真实oracle，AV波不逐计划跑A2R图形；现有A2R与非图形语言/库/FFI基础证据保留，源/ABI变更按实际触面重验。W2不等1068最终三端，W3后OS全量，再985 B→986→987。
+
+详细分母、阶段与收据沿[980](../plans/archive/980-ace-m2-autoui.md)、[981](../plans/archive/981-ace-m2-age.md)、[1068](../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md)、[985](../plans/985-ace-m2-certification.md)和OS064；不新增Plan或执行器，当前只规划不改Spec事实。原语言/库的AC真实基础、非图形A2R及最终完整三端不后移为可选。
 
 ## 0.2 默认Auto系统库、可选FFI与字符串边界（2026-11-12，当前）
 
@@ -54,6 +69,58 @@ AV首窗与A2R分开推进：967原T-12的AXR0简单签名腿、978原T-03/09构
 验收分两腿：一腿移除所有可选Rust/C/libc provider，用默认库在真实OS执行文本/格式化/分配/文件等原已批准功能，核源码/符号/链接/运行调用与错误/清理；另一腿显式导入C/Rust测试库，分别验证ptr+len与CStr/Rust适配。默认腿不得偷用外部桥过关，外部腿也不得因“默认不依赖libc”被删。注入错误默认选择/隐式libc委托、错ABI、NUL截断、缺长度/销毁、缺工具/缺provider的控制必须红，合法空串/多字节/含NUL长度载荷及正确原生provider近邻须绿。四端相等只是补充，不替独立expected。
 
 本条只补设计与计划；未新增或生成binding/fixture/runtime/SDK，不运行探针/系统调用/产品，不改canonical Specs、不改M1或M1-TAG，不冻结新的allocator接口。
+
+## 0.3 Windows/Linux原生I/O具体方案（2026-11-13当前）
+
+[原生平台I/O Draft 0.1](stdlib/native-platform-io.md)实读Zig0.15.1/Go go1.25.0一手源码后确定：Auto公共算法→受检平台原语→Linux直接内核ABI / Windows公开Win32 API。Zig Windows部分走NtCreateFile，不据此声称两语言全部相同；Auto首版保公开Win32，必要Nt能力另具名论证。明确AV/AC buffer/授权/资源、Unicode控制台与重定向、部分完成、Path/关闭/持久化和三层无libc声明。
+
+已归档943/944/947不重开；新增1039受检平台I/O/内存区域原语、1040 Linux x64 ELF/入口/syscall/匿名内存、1041跨平台两流与Unicode补充；当前1039/1040为r2、各drafting 0/9，1041仍0/8；973继续完整File/系统服务及原A2R/A2C义务。948/972/973/978/985同步具体AC/V/SD；早期Hello/B0/F0前置不变。当前AC发射冻结COFF/PE，Linux目标选择不等ELF运行；新四格Windows/Linux × AV/AC由各owner按正式来源收证。宿主/工具/runtime与默认IO调用链分账，不宣称整个Rust AV已无libc或自举。本轮仅设计/计划，无实现/运行/canonical Spec更新。
+
+## 0.4 自有原生库的强制底座依赖（2026-11-13当前）
+
+用户指出平台机制是Auto自有标准库基础，不能只写为可选并行线。现修正[平台设计Draft 0.2](stdlib/native-platform-io.md)§9.1/10.1：1039/1040补OS页/区域来源（Windows VirtualAlloc/VirtualFree，Linux直接mmap/munmap），不依赖malloc/Rust全局allocator提供guest默认区域；Storage算法与公共API仍归946有限切片/972完整库及内存专题。
+
+946整包正式前置补1039/1040；972补1039/1040/1041，原生实施/验收必须消费真实实现/OS运行/独立复审/落主身份，不能拿接口、provider声明、旧Rust no_std runtime绿代替。纯core算法可提前写测，原生owned/alloc接线与整包完成必须等底座；不为无需OS的每个函数新增运行期syscall。1041只等945最小文本，不反依972；1039/1040不反等946/972，防止分配器自循环。973原已有三包前置，974/975及完整978/985沿现图传递依赖，不重复所有边；985新增FOUNDATION验收核实际来源。
+
+修正后的原生库主链为1039→1040→946/1041→948交接与972→973→974/975→完整SDK/认证。948前期调查、语言完善、967显式FFI及早期F0/H0/E0/B0仍按各自最小前置推进；其通过不冒默认原生库完成。943/944/945/947等归档不重开，旧交付按实际范围引用。本轮仅修订设计/计划，未实施代码/探针或修改canonical Specs。
+
+## 0.5 标准库最低后端与 AV 三来源（2026-11-13当前）
+
+用户明确：所有新增公共标准库能力至少支持AV/AC/A2R/A2PY，AV还需native、C、Rust三种实现来源。当前覆盖设计为[单AV/多provider](stdlib/backend-provider-coverage.md)。此前“四端”AV/AC/A2R/A2C仍保留，新增A2PY，不把旧A2C删掉。
+
+最少六条主路径为AV/native、AV/C、AV/Rust、AC、A2R、A2PY，另保原A2C。不是所有后端各建三版本；一个AV共用语法/字节码/类型/错误/授权/资源规则，装配时选原语provider。普通Auto算法单源，外部调用/资源边界有各自adapter，Rust经稳定C兼容shim；资源后续操作和析构始终由原provider承担，不静默fallback或跨来源释放。默认native不隐式用C/Rust标准库，显式外库和Python/Rust目标运行时依赖另列。
+
+1042新建最小Python producer/运行端口前置，977/PY消费后继续完整语言，不让库反等其GD/SCENE/REVERSE整包。946、972–975、1041逐公共操作关闭六路径/原A2C；948管分母，967管AV来源和A2PY受检FFI适配，978管装配/依赖，985核A完整性。1039/1040是内部平台底座，保AV/native+AC原生格，但不以基础设施完成签新增公共能力已全路径支持。F0/H0/E0/B0/Hello早期切片范围与前置不扩。
+
+本节是当前新增能力覆盖合同，优先于历史“四端”作为完整分母的表述。逐操作有独立expected与真实执行/资源证据；纯算法可按相同输入/身份/观察复用，不复制三套算法或盲跑全笛卡尔积。缺A2PY或任一AV来源的公共新能力不能标完成；旧归档计划不重开，由新计划/后继补差。本次设计/计划修订不是支持声明。
+
+## 0.6 新加载机制、#in与首个实施包（2026-11-13当前）
+
+[加载设计§8–10](stdlib/backend-provider-coverage.md)已按用户决定更新：公共io.at＋io.at.at/io.c.at/io.rs.at/io.py.at四类实现来源，provider后缀与执行后端正交；平台不扩后缀，使用`#in sys is current { Windows -> use ... }`。#in打开局部namespace并使内部is/if/for继承编译期阶段，不重复#is。旧in namespace“仅候选”的建议由此取代，裸in运行时扩展仍不在本轮。
+
+新增[1043](../plans/archive/1043-ace-stdlib-context-assembly.md)先交最小source装配/#in/条件导入与增量恢复，复用936/958/944/947/960，Python最终验证消费1042；1043不依完整966/967/库。966 r8消费本包继续完整CTE/宏/metadata与原目标条件职责，967及新增公共库能力最终消费加载合同，不重写loader；944/947已归档，不重开。1043的纯选择fixture不冒真实C/Rust provider dispatch，也不冒OS I/O完成。
+
+本套新加载机制下一实施计划为1043；1039 OS/内存原语可以并行、1040继其补Linux，1042同步交Python最小producer，完整输出/集合/系统库最后汇合这些底座与967的实际FFI。原946等M1-TAG、早期F0/B0/Hello、A/B正式门不减，不以新增计划绕过正式来源核验。当前仅设计/计划变更，无代码、worktree、产品运行或支持完成声明。
+
+## 0.7 Linux延后验证、Windows DLL与普通库归属（2026-11-15当前）
+
+本节按用户最新裁定优先于前文/历史快照中Linux必须当期实跑、WSL渠道及待执行底座状态：1039–1043、946/948、967现已归档。当前主序972→973→974/975，973另需968；本轮不实施代码或测试。
+
+Linux分支继续写代码、保完整用例/oracle，但当前不执行Linux测试；建设包以Windows required门＋Linux实现/移交审查完成。Linux格保deferred-required/NOT_RUN交[1063](../plans/1063-ace-stdlib-linux-deferred-validation.md)，环境完善后承[1061](../plans/1061-ace-linux-suite-isolation.md)原生Linux VM显式入口实跑。1063不反向卡能力包/Windows认证，未验Linux不升verified、不删分母；1040/1041已验历史保留，不重开。
+
+Windows系统DLL既可PE导入由loader启动时解析，也可LoadLibraryExW/GetProcAddress按需解析并缓存；AC固定OS入口优先PE导入，AV复用宿主薄入口/既有受检loader。系统DLL/C ABI不是C标准库，详[平台设计§4](stdlib/native-platform-io.md)。
+
+math/io/net及文本、集合、JSON/编码等普通标准能力默认必须由Auto实现算法/协议，再接OS薄原语；不能拿libm、C stdio/Rust std::io、reqwest/hyper/libcurl代默认自有实现。高级数据库/TLS等引擎可显式FFI直到Auto替换，依赖单列。AV可选C/Rust来源与各转译运行时adapter仍保留，六主路径/原A2C的当前Windows验证不减；网络/数据责任分别落974/975，Web产品宿主仍归983。
+
+## 0.8 最新阶段与三端一致性
+
+### M2-A基础可用、M2-B三端对齐与AAC实证（2026-11-16当前优先）
+
+用户最新裁定：**M2最终AV/AC/A2R公共能力一致；A2C完整对齐为增强项。** M2-A仍须完整AV/A2R语言/库及原required真实验证，AC至少有能承载AAC启动的真实多模块/类型与owned数据、泛型/Option/Result基本链、所需CTE/FFI、文本/分配/同步文件等基础。AC其余具名差额允许移M2-B：原行ID/输入/oracle/错误及资源义务、实际来源、B-owner/关闭条件必须保留，不能记PASS/NA或从分母删除。仅“原native不支持/旧profile外”不再是M2最终豁免。
+
+[1067](../plans/archive/1067-ace-ac-native-async-and-task-parity.md)补原生异步/Future/Task；[1068](../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md)收全部三端语言/库/FFI/领域差额，并以AAC实际模块持续实证。985/A不等待两包，985/B及最终986/987必须收三端完整闭合；A2C现有代码/用例/支持记录保留、缺完整对齐不阻M2。A2PY既有标准库义务与AV三provider、Linux1063延期规则不变。
+
+AAC在A出口后、M2-B期间推进，以真实Auto编译器模块检验AC语言/库；某任务所需能力未交只阻该任务/切片，缺口回语言/库真实owner补齐。AAC未使用的语言/领域/异步特性仍补独立三端用例。完整Gen1→Gen2→Gen3自举签章保持独立，不强加为M2通过前置；其所暴露的M2三端能力缺口必须在M2最终前关闭。此规则优先于旧“AC所有义务必须A期全齐”“M2-B与AAC完全无能力交接”“原A2C全量同等硬门”等表述。
 
 ## 1. 决定与现状
 
@@ -111,6 +178,19 @@ T-09冻结可运行源码、依赖/工具链和required特征表，原有C/Rust/
 C用独立C编译器构建caller/callee核布局、调用约定、返回值、写回、释放及错误签名；Rust用独立Rust测试核同一公开API，再核自动shim和四端结果。至少覆盖一个标准C头输入、真实SQLite header/library工程和一个使用Rust `serde_json` 公开API的工程，及具有callback/owned/泛型实例/future的专门fixture。具体版本由T-09钉住并记录许可证/分发依赖，sqlite和serde_json是最低真实路径，不作为全旧用法的上限。
 
 分别断言值、效果、资源销毁次数、越权dispatch=0和拒绝阶段；四端彼此相等不作唯一oracle。删除手工manifest、开发树与旧桥后仍能从原工程生成并执行，才算自动体验闭合。
+
+### 3.3 Rust provider的二进制兼容与独立分发
+
+架构单源为[Design41 §5.1](41-interface-metadata-and-foreign-abi.md#51-rust-provider的构建与兼容合同2026-11-13目标态)，执行合同为[PLAN-967 r10 ABI-COMPAT](../plans/archive/967-ace-m2-host.md)。这里把“C兼容shim”明确为以下M2验收义务，不修改原四端/真实库/资源分母。
+
+- 源码模式：Rust库＋生成shim在兼容工具链/依赖闭包内共同构建，真实rustc/target/crate lock/features/cfg/flags和生成器进入BuildIdentity。自动适配不使任意旧rlib/Rust ABI动态库可跨rustc直接链接；缺源码/工具/版本不满足须具名失败。
+- 分发模式：默认用封装Rust私有依赖的cdylib及其接口/工件/运行依赖清单，通过目标C ABI供AV/AC/适用A2X消费；已有C API无需强制再包。staticlib是原生链接分发，更新可能要重新链接，不能和独立动态替换混称。A2R等价直接crate adapter仍属同Rust构建闭包，不带跨rustc二进制稳定承诺。
+- 运行兼容：consumer与provider可用不同rustc，但目标ABI/OS-arch-env/位宽/端序/必要ISA、ABI域/descriptor版本、required符号/布局/调用、接口错误/owner/线程及运行依赖必须兼容。C ABI不等于跨平台、不含自动CPython/CRT兼容，也不自动批准旧handle交新代释放。
+- 失效分账：源码构建换rustc或真实输入→失效受影响BuildIdentity并重建库+shim；consumer工具链改变而已分发provider字节/接口/运行条件未变→不因rustc标签不同强制重建provider。目标或破坏性接口变化→重建适配/证据并在不兼容时业务dispatch前拒绝；显式规则允许的可选符号增量可按required子集重新准入。工件精确pin不因ABI兼容自动解除，新provider证据不得复用旧代码身份。
+
+967按原T-09/11/12/13/14/15及T-04交付B-01..06、AC-ABI-COMPAT和七个V-ABI-*；T-14向978输出双身份/版本化清单，978复用现有loader/store处理装配和分发，986核实际隔离安装/升级。967可先交独立消费夹具，不反等978/986整包，也不拿夹具代最终安装。
+
+独立oracle必须覆盖：两个实际兼容toolchain构建同合同provider及跨rustc消费；错target/布局/owner/接口/依赖拒绝；真实构建输入变化失效而无关变化不重建；ABI兼容新旧provider仍保旧owner/pin/释放；移除开发源码与rustc/Cargo可访问性后的隔离运行。缺第二工具链、缺目标runner或运行依赖均具名pending，不能以文档/emit/同rustc示例关闭；F0仅原最小Rust AV切片，不被本节扩大。
 
 ## 4. 新版标准库合同
 
@@ -184,7 +264,7 @@ AC原生库经AutoABI复用Auto模块、经平台ABI调用OS；不隐式套旧VM
 ## 6. 阶段顺序、交接与M2签章
 
 1. **M1正式tag后，组织/合同与分母**：先核[Design55 §1.1 M1-TAG](55-ace-m2-complete-language-and-product-replacement.md#11-m1-tag标准库准备计划的统一进入门)及对应实施授权；947保原console/资源前探并交分层、装配schema；948只在tag后才能按D943先盘点增补义务，最终仍等945/946/947。945/946在tag后消费947合同进入基础实现。943/944/959/960/961以正式归档身份消费，不重开历史计划。tag前不执行这些包的研究任务、probe或实现。
-2. **可并行基础**：967在960/962/963与938/939齐后，按公共导入→C→Rust→四端/资源→缓存/真实库阶段推进；972在其原语言/基础库依赖齐后实现默认Auto核心；966完成目标条件语义。不把972整库或968完整调度反向加为967前置。
+2. **可并行基础**：967在960/962/963与938/939齐后，按公共导入→C→Rust→含A2PY的各后端/AV来源与资源→缓存/真实库阶段推进；972在其原语言/基础库与本节967/1042适用依赖齐后实现默认Auto核心；966完成目标条件语义。不把972整库或968完整调度反向加为967前置。
 3. **系统与构建集成**：973消费967/968/972/947/966，补四端系统服务与平台provider；974/975保完整领域责任；978消费正式接口，完成可分发新库/binding/shim与工程增量。其原依赖不减少。
 4. **逐层验收**：985候选预认证收齐FFI/LIB义务及原MIX/REP/V06与新增MIX-07组合（目标选择→File→Rust解析→C数据库）；986隔离安装、升级/失败回滚/默认入口；987退役后重建发行物并重核受影响证据，才签M2。不得新增985↔986循环。
 
@@ -199,3 +279,6 @@ AC原生库经AutoABI复用Auto模块、经平台ABI调用OS；不隐式套旧VM
 实施时如某批超出可独立评审规模，须先把具体T/AC/V正式迁移到后继Plan并重核DAG，不能只写“未来完善”就通过母包。原计划的一般full-scope责任和本设计显式义务共同生效。
 
 本设计是未来执行合同。本文中的源码锚点、链接、任务/验收映射和依赖图需做静态预检；不以文档预检替代编译、功能、性能、安装或独立实现复审。最终预检收据见M2路线本次修订节。
+
+
+2026-11-13 本轮仅规划的静态核验：4份计划原95任务ID/勾选/数量/状态/进度与依赖元数据保持；新增3项AC、7项拟验证及3项拟Spec增量，全部未执行。9份文档本地引用、0–10章节、表格/围栏与新AC/V任务映射核对通过；F0→E0→B0与H0汇合HELLO、随后981按接口扩展的切片顺序不新增反向整包等待。963及其实施树未由本轮修改；未生成fixture/binding/SDK、未运行编译/产品/GPU/性能、未建树/提交/合入/tag。此为规划预检，不是实现独立review PASS。

@@ -1,5 +1,7 @@
 # ACE架构总路线：统一编译、解释、JIT、转译与增量热重载
 
+> **2026-11-14 AAC独立路线**：[Design59](../59-aac-native-bootstrap-and-compiler-subject.md)与[AAC路线](aac-delivery-roadmap.md)新增1044–1056草案：Auto版AC主体（含语法/语义/HIR→MIR/增量驱动），复用显式Cranelift/AV服务，M2-A稳定后可与M2-B并行。AAC独立验收、非M2硬门，仍属独立后续v0.7路线，不要求等全部产品迁移；旧相反排期被本条替代。当前仅规划/需求审计，不施工，不认领AAV或AACE整体完成。
+
 > 2026-11-09当前M2排程：A先交完整语言/新库/FFI及具名真实消费者，B集中接管所有产品、发行默认与旧实现退役；四端语言/资源/原正式计量仍分别验收。AC的Auto主体AAC/ACC与更大AACE仍独立后续v0.7，非M2硬门，不因A语言完整自动认领自举；不同时强加自研机器码后端。详[Design55 §16](../55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)。此条替代早期全面交错排程，不改原已交实现。
 
 > **2026-11-06 M2完整重规划（仅设计/草案，当前入口）**：[Design55](../55-ace-m2-complete-language-and-product-replacement.md)与[执行路线](ace-m2-delivery-roadmap.md)将完整语言四端、新标准库、Schema/AutoUI/AGE、全部产品/目标、安装退役拆为959–987；945–948 r2保基础职责并指定后继。936/944/950已归档；938/941在途、939草案，原M1合同不改。旧“未立项”描述仅为历史。全部新包drafting，未实施/切默认/签章；REP/V06原门不减。

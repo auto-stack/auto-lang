@@ -4,11 +4,11 @@ status: executing
 feature_name: M2两阶段验收与完整义务联合认证
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-17
-plan_revision: 30
+updated_at: 2026-11-19
+plan_revision: 35
 current_step: 6
 total_steps: 14
-depends_on: [PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-976, PLAN-977, PLAN-978, PLAN-984, PLAN-941, PLAN-1064, PLAN-1065, PLAN-1068, PLAN-1071, PLAN-1072, PLAN-1073, PLAN-1074, PLAN-1075, PLAN-1076, PLAN-1077]
+depends_on: [PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-976, PLAN-977, PLAN-978, PLAN-984, PLAN-941, PLAN-1064, PLAN-1065, PLAN-1068, PLAN-1071, PLAN-1072, PLAN-1073, PLAN-1074, PLAN-1075, PLAN-1076, PLAN-1077, PLAN-1097, PLAN-1099, PLAN-1100, PLAN-1101, PLAN-1102, PLAN-1103, PLAN-1104, PLAN-1105]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/stdlib/project.md]
 new_spec_components: [docs/specs/ace-migration/m2-certification.md, docs/specs/auto-test-case/ace-m2-stage-verification.md]
 touched_goals: [GOAL-002]
@@ -18,6 +18,24 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+2026-11-19。B 最终按 [AGE 交付表](../design/strategy/age-m2-three-route-strategy.md#后继交付与消费) 逐域接收 AV、AC、A2R 和两游戏发行。源、行为、oracle 和两个 ZIP 原分母保持；已签 A 冻结收据及任务进度保持。
+
+### 2026-11-19 r34 · 接收AV-ONLY阶段与非AV检查恢复
+
+用户已明确1078–1096只验AV，公共语料中AC/A2X等检查先以检查级#ignore暂缓。其未实现/未运行/失败不阻AV计划，不充PASS；本包进入对应后端开发/验证阶段后，逐check接手、移除本阶段标记并真实执行。共享源码、原oracle/条件/owner和本包完整验收门保持；不得要求AV计划先交非AVPASS。本轮仅修订规划。
+
+### 2026-11-19 r33 · 公共语言语料按特性共源（仅规划）
+
+按用户要求接[共享语料设计](../design/testing/ace-feature-organized-autodown-corpus.md)与1078的`IF-ACE-FEATURE-CORPUS/1`。B最终按原义务角色与canonical唯一执行数双账核对，共源迁移不得删除required/条件；收1068与1096正式结果及IF-ACE-FEATURE-CORPUS/1。原M2A-08和签章输入/归档收据不改，不因去重文件数下降宣称验收义务减少。 原任务ID/数量/进度与已有证据边界保持，本轮不施工、不迁实际测试。
+
+2026-11-19。图形 W2 由 [1097](1097-ace-ac-autoui-w2-and-age-host.md) 交付，AGE 实际 AC 域由 1102/1104/1105 交付。W1 完整范围取 1071 已交子面及其后继完整 AV 收据，W3 取 1074，1068 交三端最终验收。
+
+### 2026-11-19 r31 · B期接收AV完整语言来源
+
+新增[AV语言齐平专线1078–1096](../design/strategy/av-autovm-language-parity.md)的阶段接收规则：985/B全语言AV列消费[1096](1096-av-parity-full-language-certification.md)正式`IF-AV-LANGUAGE-PARITY/1`，核原L-01..49与逐case/check完整映射、独立expected、普通工程真实AV执行、差异/排除/未跑、错误与资源/恢复来源；不得以963–968归档或若干profile代表例替完整齐平。跨端来源仍由1068汇总，不另造测试框架。
+
+此依赖仅约束**B最终全语言接收**，不重开已签M2A-08，不阻本包可独立审计/已交切片接收，也不反置为1078–1096的前置。原14任务、6完成、status executing及所有已有收据/完整产品义务保持；仅规划，无新增验收PASS或实现。
+
 ### 2026-11-19 · AutoMan 的 UI 与导出认证范围
 
 985/B 按 [982 的修订合同](982-ace-m2-man-gen.md) 接收两端实际 UI CLI 结果。Vue/A2TS 对应 1072，A2R/Iced 对应 1074，各自绑定真实工程 `auto gen`、`auto build`、`auto run` 的产物、行为、诊断与版本闭包。C 目标取新版 A2C 的 CMake 导出和 Ninja 构建证据，旧转译样本随原身份作对照。
@@ -26,7 +44,7 @@ A2Ark/A2Jet 产品支持、IAR/GHS 适配从 B 当前必验分母移出，记用
 
 ### 2026-11-19 · 980/981 后继接口
 
-T-02/03、T-08[B]、T-04 负责原 980 PARITY 和 981 AUDIT 的联合接收与认证。UI 三波分别取 [1071](1071-autoui-w1-av.md)/[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)/[1074](1074-autoui-w3-a2r.md)，Vue/Tauri 取 [1072](1072-autoui-vue-web.md)/[1073](1073-autoui-tauri.md)，AGE 完整 AV 与两游戏发行取 [1075](1075-age-av-content-and-fusion.md)/[1076](1076-age-a2r-game-2d.md)/[1077](1077-age-a2r-game-3d.md)。生产方实现并复审各自格。985 按原 V-UI-SOURCE/FULL、V-UI-WAVE-RECEIPT、V-B-PARITY、V-B-AUDIT、V-DESKTOP-AUDIT、V-AGE-TRANSFER 等分母核独立来源、错误恢复、缺格拒绝、完整旧消费者和两个最终 ZIP。OS 产品取 OS064。已冻结的 A 收据维持原身份。
+T-02/03、T-08[B]、T-04 负责原 980 PARITY 和 981 AUDIT 的联合接收与认证。UI 三波分别取 [1071](archive/1071-autoui-w1-av.md)及后继 AV 来源/[1097](1097-ace-ac-autoui-w2-and-age-host.md)/[1074](1074-autoui-w3-a2r.md)，Vue/Tauri 取 [1072](1072-autoui-vue-web.md)/[1073](1073-autoui-tauri.md)，AGE 各域 AV/AC/A2R 和游戏发行取 [AGE 交付表](../design/strategy/age-m2-three-route-strategy.md#后继交付与消费) 对应列。生产方实现并复审各自格。985 按原 V-UI-SOURCE/FULL、V-UI-WAVE-RECEIPT、V-B-PARITY、V-B-AUDIT、V-DESKTOP-AUDIT、V-AGE-TRANSFER 等分母核独立来源、错误恢复、缺格拒绝、完整旧消费者和两个最终 ZIP。OS 产品取 OS064。已冻结的 A 收据维持原身份。
 
 2026-11-17 r29当前（/goal 完成计划985/A后续工作，work轮）：**T-08[A]＋T-A03执行完毕，A批work收口，移交T-A04独立复审**。T-08[A]交付MIX-07同一工程组合（`f0_t16_mix07`两例：1043平台文件选择→配置读取＋钉版serde_json真机解析（use.rs）→值流入use.c SQLite写入/聚合回读→双车道协作取消＋V-08具名负控；装配道扩展dep标注走真依赖cargo构建）；MIX-01..06 A腿逐行绑定owner正式证据。T-A03重冻：矩阵L-45/S-20/S-21/S-25按已记录裁定归B波、B-02落landed（已交A2C事实）、B-04/B-06 user-deferred（M2-TARGET-SCOPE允许清单＋never-PASS守卫＋新负控），obligation_ledger **8/8绿**（新TSV SHA=89eebafa…）；V-A-EXIT并集实跑：ledger 8/8、p981 205/205、ace-abi f0 36/36（含MIX-07 4.37s/5.63s）、m2-cover 2/2（53.3s）、固定组四组合选95例94绿＋1基线红（`source_parent_oracle_failure_rejudges…`，master复放同红=既有红非本批触面，归批量回归triage）。M2A-01..07门级全闭（见§5 r29执行记录）。B批（T-02..07/T-08[B]/T-04）不动，等M2A-08。
 
@@ -40,7 +58,7 @@ T-02/03、T-08[B]、T-04 负责原 980 PARITY 和 981 AUDIT 的联合接收与�
 
 2026-11-16 r24当前：EVENT-SPLIT-20261116明确A/B逐切片等待，三消息缺口归981原LANGUAGE/SESSION、980原AV/WEB消费者及985原认证任务；复用980/NATIVE与#6i，A关最小真实事件/保真/安全拒绝，B关完整payload/绑定/WEB及三端产品。旧980/981/985整包互等不再作为前置；原任务/勾选/完成数和全部验收保留，仅规划。
 
-2026-11-16 r21当前：A出口须核980/NATIVE真正AV＋Rust FFI可复用Node桌面入口，Hello字节验证/宿主绘制不足；AC桌面按1068/T-04及981 B正式接洽在B补齐。原14任务/4完成及历史收据不变，不以规划修订重记通过。
+2026-11-16 r21当前：A出口须核980/NATIVE真正AV＋Rust FFI可复用Node桌面入口，Hello字节验证/宿主绘制不足；AC桌面按1097及981 B正式接洽在B补齐。原14任务/4完成及历史收据不变，不以规划修订重记通过。
 
 2026-11-16 r20当前优先：M2最终AV/AC/A2R公共能力一致，A2C完整对齐增强；A允许AC具名差额、基础必须真实可用，B经1067/1068和AAC实际模块逐步补齐，最终三端差额=0。本次调整阶段及目标要求，原4/14历史进度/任务不重记通过，新分类及判据须T-A03/原review重冻；本轮仅规划。
 
@@ -181,6 +199,18 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 ## 5. 详细设计
 
+### AV-ONLY接收与本目标启用
+
+1078的IF-ACE-FEATURE-CORPUS/1和1096的AV语言证书允许携带非AV#ignore/NOT_RUN行，接收时只核AV声明和迁移义务未丢，不以非AVpending回卡AV独立出口。本包实际验证自己的后端/代际时，由原生产任务逐check去掉AV阶段#ignore，保原平台/ignore与oracle，按当前同源/工具/SDK身份运行；失败属于本目标任务，必须修到本目标required齐才签其完整出口。1068/985的最终多端门及AAC独立门不接受忽略充PASS；AV阶段通过从不冒多端通过。
+
+规范影响：公共作者/引用/选择/迁移协议由1078统一在拟`docs/specs/auto-test-case/feature-organized-corpus.md`沉淀；本消费者只在自身原SD/模块Spec记录实际Case引用、目标动作和正式证据，不再各写一套公共协议。AC-FC属于本包验收增量，原SD与目标义务全部保留。
+
+### FC · canonical语言输入与旧义务承接
+
+B最终按原义务角色与canonical唯一执行数双账核对，共源迁移不得删除required/条件；收1068与1096正式结果及IF-ACE-FEATURE-CORPUS/1。原M2A-08和签章输入/归档收据不改，不因去重文件数下降宣称验收义务减少。
+
+由原原B期T-02..07与T-08[B]及完整性审计按其职责消费/迁移对应行，保原source/expected/check及条件，重复仅在完整输入闭包/语义等价时合并，原义务→canonical Case/check映射不得丢；既有固定组/suite/worker读者按1078接口切换，不新建按后端/代际维护的Auto副本。缺字段/目标接口由1078和实际producer在原框架有界补接，不要求本包先等全AV/全AAC完成。
+
 ### B-CONFIG-20261117：配置缺口接收责任（A收据冻结不变）
 
 本revision只补B合同，已交M2A-08绑定r29/95c7fbad8与route C原接受面不重写、不重新签A。GAP-982-CONFIG-ACE唯一producer为[982现B-CONFIG-I/V/R](982-ace-m2-man-gen.md)，设计见[配置文档求值](../design/ace-config-document-evaluation.md)，覆盖auto-lang共享前门/AV/SDK和auto-man消费。不得继续以969已归档=配置已交，也不以“无owner”让整个B无限等待；新能力本轮尚未实现。
@@ -201,7 +231,7 @@ T-02/03逐行接IF-982-CONFIG-ACE的正式repo/SHA、Schema/值协议/源-contex
 
 | 缺口键 | A必须关闭的有界责任 | B保留的完整责任及具体任务owner |
 |---|---|---|
-| UI-EVT-PAYLOAD | 981 T-01与B-LANGUAGE-I/V/R[A]核空载荷unit消息、声明/调用一致性；B-SESSION-I/V/R[A]用已交980源验真实AV事件/双实例/关闭恢复。合法但当前车道不支持的有载荷执行必须具名拒绝且零效果；不能丢参数后执行常量体、补假值或伪装unit成功。 | 981 B-LANGUAGE-I/V/R[B-W1]承接共享ScenarioOp及声明→typed参数→唯一verify的真实载荷语义；981 B-SESSION-I/V/R[B-W1]承接AV队列/宿主调度/世代/所有权；980 B-AV-I/V/R消费AV，B-WEB-I/V/R消费受检TS/JS。AC域格由既有1068/T-04＋981 FUSION在W2接，A2R由980/981 B-RUST在W3接。 |
+| UI-EVT-PAYLOAD | 981 T-01与B-LANGUAGE-I/V/R[A]核空载荷unit消息、声明/调用一致性；B-SESSION-I/V/R[A]用已交980源验真实AV事件/双实例/关闭恢复。合法但当前车道不支持的有载荷执行必须具名拒绝且零效果；不能丢参数后执行常量体、补假值或伪装unit成功。 | 981 B-LANGUAGE-I/V/R[B-W1]承接共享ScenarioOp及声明→typed参数→唯一verify的真实载荷语义；981 B-SESSION-I/V/R[B-W1]承接AV队列/宿主调度/世代/所有权；980 B-AV-I/V/R消费AV，B-WEB-I/V/R消费受检TS/JS。AC域格由既有1097＋981 FUSION在W2接，A2R由980/981 B-RUST在W3接。 |
 | UI-EVT-MSG | 复用#6i语法；981 B-LANGUAGE-I/V/R[A]核匿名/具名unit声明的名字、变体、原span保真与重名/未知消息拒绝，合法具名unit源对同一独立轨迹；不把普通标识符升全局关键字。完整消息类型命名空间/quoted等不借此扩成A全量。 | 同一981 LANGUAGE[B-W1]补全部原msg声明/变体/类型/引用及错误表面，交IF-981-MSG-B；980 B-WEB-I/V/R核原具名/quoted/emit公开接口与实际新provider；无需重开979或新立后继。 |
 | UI-EVT-BIND | 981 B-LANGUAGE-I/V/R[A]读取并保留#6i handler参数名/span，核unit空参数合法、重复/错arity/未绑定名字拒绝；有效带参行为未实现时在verify/admit或dispatch前具名能力拒绝，零状态/UI效果。必须区分“解析成功”“发射/拼接成功”和“参数实际执行成功”。 | 981 LANGUAGE[B-W1]承接handler形参与消息载荷逐位置/类型的绑定、作用域与源映射；SESSION[B-W1]消费typed值；980 B-AV/B-WEB承接实际事件参数/$event及旧例消费。内联lambda铸造的原span→合成handler来源映射也归该LANGUAGE/980既有任务，不能继续写“谱系后继”。 |
 
@@ -899,8 +929,8 @@ MIN-A不是语法/能力的永久上限，是本轮明确的代表性产品验�
 | 波次 / 原执行owner | 开工与正式交付 / 后继 |
 |---|---|
 | W1 / 1071 接原 980 B-AV 与 981 适用 AV 域格 | M2A-08后，从真正UI-FFI Hello到完整examples/ui及Widgets相关组件；逐组只实施/真实验证AV。交`UI-W1-AV`（完整示例/组件分母及所需AGE语义/宿主AV行），不等AC、A2R、WEB/TAURI全产品或OS全量。 |
-| W2 / 1068 T-04 接原 981 FUSION 等 AC 领域格 | UI-W1-AV正式来源后接同源AC机器业务/事件→同一Rust/Iced宿主；复用实际AAC模块暴露缺口、1067提供所需原生异步。交`UI-W2-AC`，不等1068整包/T-06三端汇总/完整AAC自举或W3。 |
-| W3 / 1074 接公共 A2R，1076/1077 接各自游戏发行 | UI-W2-AC正式来源后才新增图形A2R实现/生成/真实rustc编译/运行；全UI/Widgets交`UI-W3-A2R`。已有A2R代码/收据保留，不重做已验部分；最终完整游戏包仍核981原G2/G3义务，不据一个stdout窗通过。 |
+| W2 / 1097 交 UI 基线，1102/1104/1105 接 AGE AC 域 | UI-W1-AV正式来源后接同源AC机器业务/事件→同一Rust/Iced宿主；复用实际AAC模块暴露缺口、1067提供所需原生异步。交`UI-W2-AC`，不等1068整包/T-06三端汇总/完整AAC自举或W3。 |
+| W3 / 1074 交 UI 与公共工具，1103 接 AGE 公共域，1076/1077 接各自游戏发行 | UI-W2-AC正式来源后才新增图形A2R实现/生成/真实rustc编译/运行；全UI/Widgets交`UI-W3-A2R`。已有A2R代码/收据保留，不重做已验部分；最终完整游戏包仍核981原G2/G3义务，不据一个stdout窗通过。 |
 | OS波 / OS064 HOST/PROOF的完整B部分、A01..28、ASSEMBLY | 三个UI波次正式齐后做完整桌面/应用迁移，先真实桌面Node根/生命周期，再按App依赖分组，最终装配/数据/模式/双Host；不等985/B最终签或986/987。OS核心实现/注册/gitlink只归OS064。 |
 | 汇合 / 985 B、986、987；984 CLOSURE | 三波＋OS与其余原产品/库/服务/游戏required齐→985/B候选认证→986安装升级默认→987无旧链重建终验。不得反向要求OS波先拿985/B，或让W2先等本包三端最终完成。 |
 
@@ -911,12 +941,12 @@ AV波日常不编译执行A2R UI，不跑整套多端UI；Rust宿主/FFI provide
 
 | 原要求/证据 | A出口精确关闭 / B承接与最终关闭 |
 |---|---|
-| RG-A03 全传统UI/全部组件/多模式AV-A2R | A仅MIN-A-UI真实AV入口/事件/生命周期；原完整字段/示例/Widgets/主题/输入/各模式映射980 B-AV、1068 T-04、980 B-RUST及最终PARITY，原行不删。 |
+| RG-A03 全传统UI/全部组件/多模式AV-A2R | A仅MIN-A-UI真实AV入口/事件/生命周期；原完整字段/示例/Widgets/主题/输入/各模式映射980 B-AV、1097、980 B-RUST及最终PARITY，原行不删。 |
 | RG-A04 完整Node/LANGUAGE/RUST/混合PROOF | A仅MIN-A-AGE真实AV代表性多模块/最小UI-2D-3D/更新关闭；完整AGE-L/AG-A、五view、原复杂实例/Frame/资源和三端图形格归981各原任务的W1/W2/W3，游戏和独立AGE最终门保留。 |
 | RG-A05 shell＋Notes/Clock原AV-A2R与双Host | A仅MIN-A-OS真实启动/激活/窗口/Node见证；Notes完整原oracle交OS064 A15，Clock交A12，完整shell/Node根/登记App/双Host/旧数据/daemon交HOST B/ASSEMBLY，三波之后执行。 |
 | RG-A01/02/06、语言/标准库/非图形FFI/SDK | 原基础与真实CLI/网络/生成服务/仓外consumer门保持；这次UI爬梯不取消普通语言/库A2R或AC基础，不把全部A-required只缩成一个Hello。 |
-| W1接收 / T-08[B]与T-02/03 | 1071 B-AV 正式收据＋所用 AGE AV 域正式来源，全部示例/Widgets分母/原oracle/运行结果齐，独立phase review/fold出UI-W1-AV；AC/A2R仍pending不阻W1，不能提前签三端。 |
-| W2接收 / 同上 | 1068 T-04＋981 AC域所需正式结果，全部同源组件/示例AC机码/真实窗/错误/资源齐，出UI-W2-AC；不等待1068全包/T-06或A2R W3。 |
+| W1接收 / T-08[B]与T-02/03 | 1071 已交子面＋AutoUI 104–108 适用 AV 结果与所用 AGE AV 正式来源，全部示例/Widgets分母/原oracle/运行结果齐，独立phase review/fold出UI-W1-AV；AC/A2R仍pending不阻W1，不能提前签三端。 |
+| W2接收 / 同上 | 1097＋981 AC域所需正式结果，全部同源组件/示例AC机码/真实窗/错误/资源齐，出UI-W2-AC；不等待1068全包/T-06或A2R W3。 |
 | W3接收 / 同上 | 1074 公共生成/域结果，全部示例/Widgets真A2R生成/编译/运行与原oracle齐，出UI-W3-A2R；此后OS064可开始全量产品迁移。 |
 | B候选最终 / T-04→T-05→T-06/07 | 三波＋OS064完整产品＋984 CLOSURE及其余原required齐，986/987的未执行安装/退役行仍明确交其owner；本包签候选产品/能力，不冒安装/无legacy正式版已交。986消费此候选，987消费986及B来源，不能反等安装/退役才交候选。 |
 
@@ -926,7 +956,7 @@ AV波日常不编译执行A2R UI，不跑整套多端UI；Rust宿主/FFI provide
 
 本节按用户最新决定覆盖旧“AC全部能力必须在A关闭、A2C同等完整硬门”的范围/阶段含义，不改历史已验结果。M2最终AV/AC/A2R在同平台的公共语言、标准库、FFI、UI/AGE领域能力一致；A2C完整对齐增强，保已有代码/用例/支持记录及准确拒绝，不因缺完整面阻M2。A2PY原标准库和AV三provider义务不变。
 
-A仍核普通语言/标准库/非图形FFI/SDK的原required及RG-A01/02/06；RG-A03/04/05按本轮MIN-A精确表，完整UI/Widgets/图形A2R已正式交B三波，AC至少有真实可用的多模块、基础类型/owned数据、泛型/Option/Result基本链、所需CTE/FFI、默认文本/分配/同步文件等AAC启动能力。AC其余行可以B-required移交，逐行保原ID/输入/独立oracle/资源/失败义务、现状、producer与关闭条件，owner为[1067](1067-ace-ac-native-async-and-task-parity.md)/ [1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)或其实际库/域owner；不记PASS/NA、不删除行。A2C非required应有用户范围标记，不冒已支持。
+A仍核普通语言/标准库/非图形FFI/SDK的原required及RG-A01/02/06；RG-A03/04/05按本轮MIN-A精确表，完整UI/Widgets/图形A2R已正式交B三波，AC至少有真实可用的多模块、基础类型/owned数据、泛型/Option/Result基本链、所需CTE/FFI、默认文本/分配/同步文件等AAC启动能力。AC其余行可以B-required移交，逐行保原ID/输入/独立oracle/资源/失败义务、现状、producer与关闭条件，生产任务按[实施归属](../design/59-aac-native-bootstrap-and-compiler-subject.md#现有-ac-差额的实施归属)，1068 最终验收；不记PASS/NA、不删除行。A2C非required应有用户范围标记，不冒已支持。
 
 | 出口/现原任务 | 当前完成条件 |
 |---|---|
@@ -935,7 +965,7 @@ A仍核普通语言/标准库/非图形FFI/SDK的原required及RG-A01/02/06；RG
 | T-02/T-03/T-08[B]/T-04及独立最终review | 收1068正式三端闭合与AAC阶段实证，原全部B产品/库/FFI/安装退役不减。公共能力不得以AC原profile不支持豁免 |
 | 986/987最终产物 | 同版AV/AC/A2R完整能力与资源/错误/依赖证明；A2C完整对齐非硬门；完整AAC Gen2/Gen3签章独立 |
 
-[1067](1067-ace-ac-native-async-and-task-parity.md)补native Future/async/Task；[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)补全部剩余AC接缝/跨域组合并收AAC真实源码模块。AAC未用到的特性仍按原语料补验，编译器happy-path或Gen1成功不能代完整语言。库/域缺口回原owner/新具名后继，归档968等不重开；当前Specs中的native拒绝仍是事实，本轮不改写成已支持。
+[1067](archive/1067-ace-ac-native-async-and-task-parity.md)补native Future/async/Task；[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)接收 `Design59` 具名生产任务的交付证据与 AAC 真实模块，验全部三端。AAC未用到的特性仍按原语料补验，编译器happy-path或Gen1成功不能代完整语言。库/域缺口回原owner/新具名后继，归档968等不重开；当前Specs中的native拒绝仍是事实，本轮不改写成已支持。
 
 frontmatter新增1068只约束本Plan最终B并集，不反向约束A出口；AAC1044/1045不依整个985或1068，任务级阶段图不形成环。Linux标准库代码/完整case继续NOT_RUN交1063，不能以本次阶段调整冒Linux verified或豁免Windows基础。
 
@@ -967,6 +997,10 @@ A原required的实际语言/库/FFI/非GUIA2R仍要真实关闭；旧载体可�
 
 
 ## 6. 测试设计
+
+### V-FC-CONSUMER（work / 原原B期T-02..07与T-08[B]及完整性审计，未执行）
+
+同一canonical source变化必须使本包实际目标/代际依赖失效并用独立oracle重验；单目标oracle变异、遗留旧活入口、删原义务映射、零选中/缺required检查和emit冒run分别判红。公共语言输入去重不减少旧资源/错误/恢复/平台条件；typed IR/后端专项及外仓完整产品保原owner。实际结果按Case＋check＋编译器/目标/动作＋source/SDK/provider身份记录，不以AV或其它代结果回填。
 
 ### V-CFG-HANDOFF（本轮新增接收控制，未执行）
 
@@ -1121,7 +1155,7 @@ A原required的实际语言/库/FFI/非GUIA2R仍要真实关闭；旧载体可�
 | V-NODE-DESKTOP-A / AC-NODE-DESKTOP / T-A03、T-A04/A05 | MIN-A真AV入口与完整UI/Widgets三波/B-OS逐行承接可签A；把入口换HELLO byte_len或删owner拒签。普通语言/标准库/非图形FFI原基础不减，图形A2R/完整UI不是A前置；最终B仍要全部三端/产品结果。 |
 | V-NODE-DESKTOP-B / AC-NODE-DESKTOP / T-02/03、T-08[B]、T-04/T-05 | 同源AC真窗/机器事件/资源及981混合域与包证据齐可签B；替换为A2R stdout窗、AV产品包、CPU描述文件或删一AC域行必须红，修复后同候选重验。 |
 
-由原认证矩阵/adapter消费980/1068/981正式来源；具名新用例由原work建立、独立review检查实际source/producer/consumer，当前仅规划未运行。新增接收检查不以已勾T-A01/A02/T-09的旧证据冒新门通过。
+由原认证矩阵/adapter消费980/981基础、1097领域与1068联合验收正式来源；具名新用例由原work建立、独立review检查实际source/producer/consumer，当前仅规划未运行。新增接收检查不以已勾T-A01/A02/T-09的旧证据冒新门通过。
 
 ### 三波/最小出口认证验证（拟议，未执行）
 
@@ -1146,6 +1180,8 @@ A原required的实际语言/库/FFI/非GUIA2R仍要真实关闭；旧载体可�
 原T-A03在现有义务矩阵/父侧adapter内实现上述接收/负控，名称为拟定检查键，尚无新可运行命令；不另建registry/tm或修改旧语料以凑绿。T-A04从真实工件独立复核，T-A05只做已审来源落地/收据，不把正确性留merge。分类变化/源码漂移只重核实际影响行，正式性能/全仓周期门仍按原条件，不附到每个审计包。
 
 ## 7. 验收标准
+
+- [ ] **AC-FC｜owner_stage: work**：V-FC-CONSUMER及§5 FC逐原义务满足，公共语言唯一作者/本目标真实动作与独立结果/迁移映射均可追溯；原独立review复核，merge只接真实落主来源。未交required目标保pending，不因共享目录、少文件或另一端通过而降门。
 
 - [ ] **AC-CFG-HANDOFF / work**：§5本包实际配置consumer/阶段的正式来源和V-CFG-HANDOFF闭合，区分宿主AV与目标业务、原A与完整B；不以未交接口/上游状态或peer-equal代真实consumer与独立oracle。原工作任务负责，原final独立复审核验。
 
@@ -1246,7 +1282,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 - [ ] **T-03｜M2-B｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 按V-UI-OS-ORDER在三波后接OS产品，OS不等待本包最终签；阶段收据不等本包全归档。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
-- [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 r21同时闭V-NODE-DESKTOP-B，收1068机器guest和981真实领域窗口/包，不以A2R或AV代AC。 最终收三波＋OS/其余产品的同版候选；986/987负责安装/退役，不反置成候选B交付前置。 r23收全部B-required产品/修复/格式迁移及旧消费者义务；1030按既有关闭条件、1066完整范围与正式来源核，1038研究不得冒新重构已交。 EVENT-SPLIT：最终AC-EVENT-PHASE完整闭合，原UI/语言/资源/模式/游戏义务保全。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
+- [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 r21同时闭V-NODE-DESKTOP-B，收1097机器guest和真实领域窗口/包，不以A2R或AV代AC。 最终收三波＋OS/其余产品的同版候选；986/987负责安装/退役，不反置成候选B交付前置。 r23收全部B-required产品/修复/格式迁移及旧消费者义务；1030按既有关闭条件、1066完整范围与正式来源核，1038研究不得冒新重构已交。 EVENT-SPLIT：最终AC-EVENT-PHASE完整闭合，原UI/语言/资源/模式/游戏义务保全。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **T-05｜M2-B｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -1270,6 +1306,14 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 
 ## 9. 复审记录
+
+- 2026-11-19 r34规划交接：明确AV路线只选AV，非AV#ignore由本目标实施阶段逐项恢复；原任务/状态/进度、完整门与原预期保持，本轮没有实现或运行。
+
+- 2026-11-19 r33：`stage: new/revision`，`outcome: pass`（规划静态预检），`next: work`待后续指令/所需来源。新增FC/V-FC-CONSUMER/AC-FC，原原B期T-02..07与T-08[B]及完整性审计补接同源语言/迁移合同，任务/进度不变；未移动用例、修改expected、运行或合入。
+
+### 2026-11-19 AV语言完整来源交接（r31；仅规划）
+
+`stage: new/revision`；`outcome: pass`（阶段依赖静态预检，非验收）；`next: work`待后续实施指令及适用来源。B最终全语言AV列接1096正式`IF-AV-LANGUAGE-PARITY/1`并经1068汇总，逐原case/check、差异与资源来源核实；A已签收据、14任务/6完成/status executing保持，不反阻其它可先行接收任务，不形成依赖环。本轮没有实现/运行/新PASS。
 
 ### 2026-11-17 CONFIG-ACE-B规划交接（r30；非实施验收）
 

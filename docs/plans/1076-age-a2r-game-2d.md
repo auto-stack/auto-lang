@@ -5,10 +5,10 @@ feature_name: AGE 2D 游戏的 A2R 独立发行
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
-plan_revision: 1
+plan_revision: 3
 current_step: 0
 total_steps: 5
-depends_on: [PLAN-981, PLAN-1074, PLAN-1075, ag-examples/PLAN-028, auto-ui/PLAN-072]
+depends_on: [PLAN-981, PLAN-1074, ag-examples/PLAN-028, auto-ui/PLAN-072, PLAN-1100, PLAN-1104]
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: [GOAL-002]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-1076] AGE 2D 游戏的 A2R 独立发行
 
 ## 0. 变更摘要
+
+2026-11-19。具名接 [1100](1100-age-av-game-2d.md) 同源 AV、[1104](1104-age-ac-game-2d.md) 对应原生 AC 和 [1074](1074-autoui-w3-a2r.md) 的 W3/公共构建宿主。[1103](1103-age-a2r-gallery-fusion-and-capabilities.md) 的端口按本工程实际消费范围接收。
 
 2026-11-19，用户批准按交付拆分 980/981。本计划接手原义务及可复用输入，按交付来源身份匹配后计验收。
 
@@ -34,19 +36,19 @@ age-examples 2D 产品与发行 owner，消费 auto-ui 与公共 A2R 交付。�
 
 ## 4. 需求分析与背景调查
 
-取材 [AutoLang 全局总览](../specs/overview.md) 的 UI/Web 生态，以及 [981 原合同](981-ace-m2-age.md#0-变更摘要)。原技术合同、输入、测试分母和负控按归属表接收。
+取材 [AutoLang 全局总览](../specs/overview.md) 的 UI/Web 生态，以及 [981 原合同](archive/981-ace-m2-age.md#0-变更摘要)。原技术合同、输入、测试分母和负控按归属表接收。
 
 ## 5. 详细设计
 
-**前置**。消费 1075 同源 2D AV、1068/T-04 对应 AC 域证据以及 1074 UI-W3/实际 A2R 宿主接口。具名引用 981 原 AG028 工具与现有 2D 源资产。
+**前置**。消费 [1100](1100-age-av-game-2d.md) 的同源 2D AV、[1104](1104-age-ac-game-2d.md) 对应 AC 域证据和 [1074](1074-autoui-w3-a2r.md) 的 UI-W3-A2R 与公共生成/宿主。实际用到 [1103](1103-age-a2r-gallery-fusion-and-capabilities.md) 的 AGE A2R 端口时，接相应正式接口。复用已交 AG028 工具、UI072 player 和本游戏源资产。完整游戏排在小 demo 与混合场景之后，按本游戏正式输入独立开工和验收。
 
-**接手范围**。接 981 B-RUST2D 的全部 G2-01..09、失败与独立可发行义务。自身以真实构建和试玩交付，公共生成链由 1074 持有。
+**接手范围**。接 981 B-RUST2D 的全部 G2-01..09、失败与独立可发行义务。自身以真实构建和试玩交付，公共工程链由 1074 持有，公共 AGE 图形 A2R 接线及域证据由 1103 持有。
 
 每组开工确认精确输入源、对应原用例、接口 owner 及身份。共享语义和 ABI 由原 owner 串行写入，变化时重验实际受影响格。已有阶段收据保留其验收边界。
 
 ## 6. 测试设计
 
-原 V-B-RUST2D、V-R2-RULE/MEDIA、V-R-PACK/FAIL 的 2D 格。真 A2R 生成/编译，仓外无开发工具链冷启动，真实胜败重开、音画输入、坏资源/构建失败、独立 oracle 与无解释器分派。
+原 V-B-RUST2D、V-R2-RULE/MEDIA、V-R-PACK/FAIL 的 2D 格。真 A2R 生成、编译、运行及适用 IF-AGE-GFX-A2R/<cap> 游戏行，仓外无开发工具链冷启动，真实胜败重开、音画输入、坏资源/构建失败、独立 oracle 与无解释器分派。
 
 沿原入口记录源码/目标/SDK、命令、子终态、独立 oracle、资源、条件排除与恢复。材料归本计划的统一目录。
 
@@ -64,7 +66,7 @@ age-examples 2D 产品与发行 owner，消费 auto-ui 与公共 A2R 交付。�
 
 - [ ] **T-02｜work｜接真实 release 打包**。复用原 packager，钉公共 A2R 工具与宿主身份，生成 exe、完整资源 ZIP 和发布清单。
 
-- [ ] **T-03｜work｜验仓外发行包**。执行原 V-R2-* 和 2D V-R-PACK/FAIL，验离线试玩、退出和与同源 AV 的独立语义对照。
+- [ ] **T-03｜work｜验仓外发行包**。执行原 V-R2-* 和 2D V-R-PACK/FAIL，验离线试玩、退出和与同源 AV 的独立语义对照。共享打包器如需共同修改，由首个实际改动方先独立合入并钉版本，各游戏仍独立出件。
 
 - [ ] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
 

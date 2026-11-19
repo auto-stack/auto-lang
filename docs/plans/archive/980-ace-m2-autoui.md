@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-980
-status: executing
+status: archived
 feature_name: AutoUI 的 ACE 基础接入
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
 plan_revision: 20
-current_step: 15
+current_step: 18
 total_steps: 18
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -954,11 +954,14 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 - [x] **T-BASE-HANDOFF｜基础收口｜owner_stage: work**。闭合 981 F-R21-2。在 `auto-ui/crates/auto-ui-runtime/src/ui/ace_package_sfc.rs` 的重放与相关消费点，核受检 Let/If 门、实际分支与原失败恢复。随 981 F-R21-3 对公共写面合入并集和正式来源，逐项对证后继移交。
   [✅ 已完成 2026-11-19（三方对账，本会话 `merge-base --is-ancestor` 复核全 YES）] **981**：F-R21-2 消费门落主+双树验收（§9 F-R21-2 收口/双树验收收据）→ fold 并集落主 `33895d91c`（收据 `c84f25cf4`，规范 m2-age.md §4）→ 980→981 交接落账 `7fc15205a` → **T-06 终局归档 `a475cc8c2`**（981 整包闭）。**AutoUI**：Let/If 消费门 `7b8456e5`（`source.age.sfc-handler-stmt` 具名拒+永久负例+红相）+ Let 臂永久例 `d2e7d7a4`（fold 后主线可达，8/8）；实际分支/失败恢复=双树 `plan980_package_sfc` 7/7→8/8 + ace_ts_provider 串行 27/27（§9 收据）。**985**：接收记录=985 §「2026-11-19 · 980/981 后继接口」（T-02/03、T-08[B]、T-04 负责从 980 PARITY 和 981 AUDIT 的联合接收与认证；波次分接 1071/1068/1074/1072/1073/1075-1077——随 r20 冻结提交入库）。后继移交对证=§0 移交表+r20 冻结合同。
 
-- [ ] **T-05｜基础收口｜owner_stage: review**。同树冻结，独立逐项核保留的能力、原适用反例、联合交接、后继义务完整性与来源。修复发现后重新验证。
+- [x] **T-05｜基础收口｜owner_stage: review**。同树冻结，独立逐项核保留的能力、原适用反例、联合交接、后继义务完整性与来源。修复发现后重新验证。
+  [✅ 已完成 2026-11-19（同会话终审——限制：非独立上下文；结论由工件重构：冻结门实跑+SHA 祖先链机械核+收据交叉对账，非采信执行摘要）] **冻结门（r20 提交 `3ba8d4259` 后 master 实跑）**：lang `cargo t ace-source` **PASS**（P3 `e8e4c16da` 重基线后冻结面绿）；`cargo t ace-av` **1426/1428**——唯二红=host_console 预存对（stash 基线同红实证[lambda-if 刀轮]+981 fold 收据同口径+本轮隔离复现同对，不判本包）；UI：ace_ts_provider 串行 **27/27**（3.17s）、`plan980_package_sfc` **8/8**（0.11s）、`ace_ui_hello` **7/7**（1.76s；坏源负例首跑=具名预备失败「exe not built」[纪律正确]，prep 段 `--example ace_hello_window --features ace-bridge` 3m15s 后全绿）。**逐项核**：基础 14 任务代表 SHA 祖先链全 YES（HELLO `1991021a5`/`e529dde6`、DIALECT `46f4ac0ec`、STATE、NATIVE `7f9d03bf6`、on-if `9468fdcf6`、lambda-if `347540437`、消费门 `7b8456e5`/`d2e7d7a4`、P3 `e8e4c16da`）；交付面零调试残留；后继计划 1071-1077+985/983-987 接收记录随 r20 入库。**findings=零**（无需修复重验）。
 
-- [ ] **T-06｜基础收口｜owner_stage: merge**。按 owner 次序合入，沉淀基础范围的正式规范与后继链接，核真实消费来源并归档。
+- [x] **T-06｜基础收口｜owner_stage: merge**。按 owner 次序合入，沉淀基础范围的正式规范与后继链接，核真实消费来源并归档。
+  [✅ 已完成 2026-11-19] 全部基础交付已按 owner 次序落各 master（T-05 收据 SHA 链全 YES）；规范收口=`m2-autoui.md` Status 头更新为「基础范围已收口」（已交付清单+后继归属 1071-1077/1068/985 链接）；消费来源核对=981 归档 `a475cc8c2`+985/983-987 接收记录（r20 `3ba8d4259` 入库）；本文件 git mv 入 `docs/plans/archive/`+status: archived（终态）。
 
-- [ ] **T-07｜基础收口｜owner_stage: merge**。依项目规约完成证据摘要、输出对账、登记和 guard 后清理。
+- [x] **T-07｜基础收口｜owner_stage: merge**。依项目规约完成证据摘要、输出对账、登记和 guard 后清理。
+  [✅ 已完成 2026-11-19] 证据摘要已折 §9（各刀收据：lambda-if/F-R21-2/双树验收/T-BASE-HANDOFF/T-05/T-HELLO-D 补记）；**plan-artifacts/plan-980 整目录删除**（~150 项探针/日志/补丁——收据内嵌后按 2026-10-31 裁定全删；无具名持有）；**lang-980 组四树 wt-guard 全 clean 后移除**（auto-lang 树因 ignored 构建产物先注销后残留 3.8M 源副本，guard 复扫 clean 后删——非穿透；组目录消）；两仓 `plan-980-dev` 分支删（lang `dce7492dd`/ui `d2e7d7a4`）；临时验证组 verify-981union 早前已清。收尾路径对账：本计划全部输出目录=两 worktree 组+plan-artifacts+临时组（均已消），无其他盘符/外置 target。
 
 ## 9. 复审记录
 

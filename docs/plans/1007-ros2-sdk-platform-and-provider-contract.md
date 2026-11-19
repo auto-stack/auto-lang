@@ -4,11 +4,11 @@ status: executing
 feature_name: ROS2 SDK平台、真实任务与provider合同
 author: [Codex]
 created_at: 2026-11-12
-updated_at: 2026-11-12
-plan_revision: 4
+updated_at: 2026-11-13
+plan_revision: 5
 current_step: 2
 total_steps: 17
-depends_on: []
+depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-978]
 supersedes_spec_components: []
 new_spec_components: [docs/specs/ros2-sdk/platform-and-provider.md, docs/specs/ros2-sdk/official-example-input.md]
 touched_goals: []
@@ -17,6 +17,8 @@ touched_goals: []
 # [PLAN-1007] ROS2 SDK平台、真实任务与provider合同
 
 ## 0. 变更摘要
+
+2026-11-13 r5：纠正整体依赖元数据。原depends_on为空只适用于A的独立原生准备，不能表示整Plan无ACE前置；现登记967/968/969/978，§2/§8保留A可提前开工、B逐切片核正式来源的规则。此修订不增加功能/任务，不改原2/17进度，不扩大A授权、不授权B或merge。
 
 2026-11-12 r4数据路径增补：用户要求针对ROS2数据专门适配并减少复制/序列化，纳入Design57 §12 DP-01..08。本轮只修合同，不运行新探针、不改ACE核心/上游，不放宽M1-TAG或当前不合并限制；原任务/AC与历史证据保留，旧功能绿不核销新增计量/生命周期义务。
 
@@ -33,6 +35,8 @@ A提前消除宿主库、接口映射与部署风险；B消费正式ACE接口并
 非目标：实现正式SDK、修改ACE/标准库/自动binding/调度、启动1008–1012、建新产品仓、改发行版配置或运行设备控制、签章发布。独立原生探针不是Auto SDK运行证据。
 
 ## 2. 架构方案与A/B进入门
+
+frontmatter依赖描述整个1007完成所需的ACE能力owner，不是A全部工作的统一开工门。A仍按下列独立路径提前推进；B须逐项记录其所需正式切片的repo/SHA/接口/验证来源，不能由Plan号或M1 tag推断能力已齐。967/F0的同步文本/标量切片不足以覆盖ROS资源、异步回调、Linux与大buffer。无需等待整个ACE M2最终签章，但需先交本包真正消费的FFI/调度/宿主/构建能力。
 
 A路径：冻结输入/原生ROS接口→原生rclrs或C++/Python对端→原生RMW→结果/状态/资源观察。A可在ACE M1 tag前实施，因为不消费/修改未交ACE接缝。
 
@@ -151,6 +155,8 @@ A runner在材料scope内显式限定进程超时、消息次数、ROS_DOMAIN_ID
 原T-01→A01/A02/A04/B03；原T-02→A03/B01/B02；原T-03→A05/B04；原T-04→A06/B03/B04。原AC/required不减少，A/B不增加Plan状态。不把后续B/T-05/06勾上来制造A完成。
 
 ## 9. 复审记录与执行证据
+
+2026-11-13 r5依赖纠正：stage=new，仅文档；补depends_on四项，A/B任务/AC/范围/既有证据与2/17进度不变。next=A按已授范围继续；B等待M1-TAG、所需正式接口与授权；最终review/merge仍pending。
 
 2026-11-12数据合同交接：stage=new，revision=4，仅文档修订；新增V-DATA/AC-DATA/SD-DATA及T-A08，全部未执行。保留历史完成标记/原红/限制；不声明新计量、零拷贝或安全借用通过。
 

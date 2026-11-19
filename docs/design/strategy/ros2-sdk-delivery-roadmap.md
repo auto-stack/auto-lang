@@ -1,6 +1,8 @@
 # Auto ROS2 SDK：v0.6 分阶段交付路线
 
-2026-11-12 · r4 · 1007-A已授权实施，其余仍规划。目标/required矩阵与架构权威为[Design57](../57-auto-ros2-sdk.md)。当前仅PLAN-1007 r4的A批可在独立worktree进行原生ROS/provider/ROSIDL与部署研究；不修改ACE核心、不绕M1-TAG、不合并。1007-B、1008–1012及1018/1019仍未授权实施，正式SDK/设备部署与发布未启动。用户要求的“实际工作SDK”替代旧bridge首版上限，历史[ROS2战略](ros2-ecosystem-strategy.md)不再决定本路线排序。
+> 与语言、FFI、标准库、Python、AGE及AAC的关系见[ACE统一计划总览](ace-route-plan-map.md)。ROS2只消费所需接口，核心SDK不等待AGE，1007-A原生研究与后续正式ACE接缝分开。
+
+2026-11-13 · r5 · 1007-A已授权实施，其余仍规划。目标/required矩阵与架构权威为[Design57](../57-auto-ros2-sdk.md)。当前仅PLAN-1007 r5的A批可在独立worktree进行原生ROS/provider/ROSIDL与部署研究；不修改ACE核心、不绕M1-TAG、不合并。1007-B、1008–1012及1018/1019仍未授权实施，正式SDK/设备部署与发布未启动。用户要求的“实际工作SDK”替代旧bridge首版上限，历史[ROS2战略](ros2-ecosystem-strategy.md)不再决定本路线排序。
 
 ## 1. 版本定位
 
@@ -12,7 +14,7 @@ v0.6 在拆分重构M1、ACE M2、AGE M2和Linux发行版主线基础上追加 R
 
 | 阶段 / Plan | 独立结果 | 实际进入条件 | 出口 / 下游 | 状态 |
 |---|---|---|---|---|
-| R0 [1007 环境/provider合同](../../plans/1007-ros2-sdk-platform-and-provider-contract.md) | A原生验证/类型与部署研究，B正式ACE接缝和最终业务平台合同；原required保留 | A已授权且不依赖M1 tag；B等新授权/M1正式tag及所需正式接口，不改ACE核心 | A保留独立分支不合并，不作为下游已交依赖；官方示例可消费B05/06/07有限正式来源，完整R0仍保留 | executing r4，2/17；进度见Plan |
+| R0 [1007 环境/provider合同](../../plans/1007-ros2-sdk-platform-and-provider-contract.md) | A原生验证/类型与部署研究，B正式ACE接缝和最终业务平台合同；原required保留 | A已授权且不依赖M1 tag；B等新授权/M1正式tag及所需正式接口，不改ACE核心 | A保留独立分支不合并，不作为下游已交依赖；官方示例可消费B05/06/07有限正式来源，完整R0仍保留 | executing r5，2/17；进度见Plan |
 | R1 [1008 接口生成](../../plans/1008-ros2-sdk-interface-generation.md) | 标准/项目接口包→受检Auto类型、类型支持、缓存/拒绝；R06-02 | 1007官方示例输入正式切片；960/962/963相关能力切片 | 接口生成和双向原生值oracle；供1009/1010 | drafting r3，0/6 |
 | R2 [1009 运行时语义](../../plans/1009-ros2-sdk-runtime-and-task-semantics.md) | Node/Topic/Service/Action/参数/时间/资源语义；R06-03..07 | 1007官方示例输入正式切片；967/968/969及库的所需切片；类型合同可与1008并行，最终联调等其正式来源 | 有界队列、取消/close/重启等正负控通过；供1010 | drafting r3，0/6 |
 | R3 [1010 双端与工具](../../plans/1010-ros2-sdk-ace-dual-backend-and-tooling.md) | AV开发、新A2R安装发布、colcon/ament/run/launch/录放；R06-01/08/09 | 1008/1009正式来源，967 A2R/978装配及Linux目标接口 | 干净工程同源两端真实运行，原生CLI/工具检查；供1018/1019及1011/1012 | drafting r3，0/6 |
@@ -21,7 +23,7 @@ v0.6 在拆分重构M1、ACE M2、AGE M2和Linux发行版主线基础上追加 R
 | R4 [1011 工作流与控制台](../../plans/1011-ros2-sdk-workflow-and-autoui-console.md) | 一个真实工作任务＋AutoUI、项目所需tf2等；R06-10 | 1010/1019正式来源、980/auto-ui的所需Linux UI/事件切片、1007冻结业务/设备 | 真实对端任务/反馈/取消/失败恢复/回放；供1012 | drafting r3，0/6 |
 | R5 [1012 Autonix与终验](../../plans/1012-ros2-sdk-autonix-release-and-certification.md) | 本地profile安装运行/更新恢复、长稳/性能、全矩阵独立验收；R06-11/12 | 1007–1011及1018/1019交付；发行owner候选与ACE M2最终SDK/无legacy来源 | R06全齐、候选身份/安装产物/文档一致，专项签章 | drafting r3，0/6 |
 
-1007 r4为A八项＋B七项（含有限输入work/review/未来merge）＋原T-05/06，共17项；1008–1012各6项，1018九项、1019八项，八包共64项，目前仅1007的A01/A04两项完成。1007实际进度见唯一Plan，A部分通过不构成R0已交；计划勾数不替验收。
+1007 r5为A八项＋B七项（含有限输入work/review/未来merge）＋原T-05/06，共17项；1008–1012各6项，1018九项、1019八项，八包共64项，目前仅1007的A01/A04两项完成。1007实际进度见唯一Plan，A部分通过不构成R0已交；计划勾数不替验收。
 
 R0的A批有界原生验证现已授权，B的ACE接缝仍未启动。R1/R2可在R0的B05/06/07官方示例输入切片已审已落主后并行，不能用A分支或B05候选代替；联调必须消费正式依赖。正式消费者按R3→E1官方基础→E2 turtlesim→R4传感器工作流→R5发行终验串接；传感器类型/业务调查可在1007内并行，不等官方教程。Autonix profile原生/容器可行性须在R0完整合同解决，不能到R5才发现安装路线不存在；它与设备/生产预算不反向卡官方示例有限输入。每包仍遵守上游Plan内部进入门，不替945–948放宽M1-TAG。
 
@@ -76,7 +78,7 @@ SDK的低复制表示、计量和消除重复转换不再推迟到后续版本�
 
 ## 6. 验收和执行纪律
 
-各Plan §6/7以真实对端、类型oracle、状态/资源反例与固定职责组验证；历史r1只做文档检查；当前1007-A按r4保留原已授范围，本轮新增官方任务只规划；后续可依原授权在统一材料scope运行独立原生ROS/Rust探针，禁止从语言根运行Cargo/ACE/AG门或生成正式Auto接口代码；GUI/设备/ISO仍未启动。没有review/merge/正式来源的候选不能被下游登记已交。
+各Plan §6/7以真实对端、类型oracle、状态/资源反例与固定职责组验证；历史r1只做文档检查；当前1007-A按r5保留原已授范围，本轮新增官方任务只规划；后续可依原授权在统一材料scope运行独立原生ROS/Rust探针，禁止从语言根运行Cargo/ACE/AG门或生成正式Auto接口代码；GUI/设备/ISO仍未启动。没有review/merge/正式来源的候选不能被下游登记已交。
 
 实施时一Plan一worktree：`D:/autostack/.wt/lang-<NNN>/auto-lang`，分支`plan-<NNN>-dev`；SDK/UI/发行仓使用同组、当地规则与所属owner计划。材料仅`D:/autostack/plan-artifacts/plan-<NNN>/`，merge折叠摘要到Plan后按现行保留政策核路径清理；不建junction/symlink。
 
@@ -87,3 +89,5 @@ r1历史文档检查：8份新增设计/路线/Plan的本地引用、6个唯一�
 2026-11-12 r3文档检查：8份Plan的63项任务与metadata计数一致，1007原2项完成保留；11个标准章节、本地引用、Markdown表格列、唯一计划号和依赖DAG通过；R06-01..12与OF/TS各5行完整。新增1018/1019均drafting、0进度；1007仍executing。仅检查文档，未运行ROS/cargo/GUI、未创建新实施树、未合并或发布。
 
 2026-11-12 r4数据合同检查：8份Plan共64任务，保留1007原2项完成；R06十二行、DP八行、各基础计划AC-DATA/V-DATA/SD-DATA映射、本地引用/表格/依赖DAG通过。新增A08及数据计量/借用/loan负控均未执行；1007 worktree保持原干净提交，无ACE核心或上游改动。本轮仅规划，不合并。
+
+2026-11-13 r5：1007整体depends_on已登记967/968/969/978；它描述整项完成依赖，不阻独立A批。B按实际能力切片核已审已落主来源，M1 tag/F0有限切片均不替所需能力；无需反等ACE整个M2最终签章。任务总数64、已完成2项保持，无运行/代码/merge动作。
