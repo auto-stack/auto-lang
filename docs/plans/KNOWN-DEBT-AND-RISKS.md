@@ -4892,3 +4892,19 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - owner：门配置治理维护方（复核 726ca59bb）+ 各时序门 owner（如需更宽预算/串行纪律演进）。
 - 关闭条件：治理维护方复核通过 726ca59bb；或时序门按负载预算重定标后在全量并发下稳定。
 - 状态：open（用户裁定下不阻塞 983 收口；登记以防后续机器争用复现时误判回归）。
+
+## D-1072-01 — `#6p` 分支内调用形与 `ace_package_sfc` 多分支控制流重放边界（2026-11-19 PLAN-1072 T-04/T-05 登记）
+
+- 现象：组件面内联 lambda 分支体含调用语句时（如 `if .n == 0 { .n += 1; side() }`）在 `ace_ts_provider.rs:1619-1627` 显式保持 `.__evt_onclick_1` 具名缺席不铸值函数（#6p fail-closed）；包面 `ace_package_sfc`（`ace_package_sfc.rs:424-429`）对 `handler_stmts` 含 `if`/`let`（`source.age.sfc-handler-stmt`，F-R21-2）及 `view` 含 `for`（`sfc-view-for`，PLAN-1072 刀 B）仍保持具名拒绝。
+- 根因：分支内效果/外部调用重放及包面多分支状态隔离需要包级控制流与外部域协调设计，1072 仅闭环了组件面 `005`/`010` 及顶层通道调用/单层 `on-if`/`lambda-if` 路径。
+- owner：AutoUI / ACE WEB 后续包级控制流演进计划（继承自 PLAN-980/1072）。
+- 关闭条件：完成 lambda 分支内通道调用与 `ace_package_sfc` 多分支控制流受检重放（附带负控与真实浏览器/Vue 端到端验证），取代 `.__evt_onclick_1` 缺席与 `sfc-handler-stmt`/`sfc-view-for` 拒绝边界。
+- 状态：open（fail-closed 已锁定，不阻塞 PLAN-1072 交付；`m2-autoui.md` §15 已建档）。
+
+## D-1072-02 — PLAN-1072 移交的残余 `V-TS-CONSUMER-UI` / `B-WEB` / `PLAN-982` 联合闭环项（2026-11-19 PLAN-1072 T-04/T-05 登记）
+
+- 现象：PLAN-1072 在 `auto-ui-tools --features ace-vue` + `AUTO_UI_ACE_VUE=1` 下接管 `app.at`（`vue.rs:4173, 7684`）与 `components/*.at`（`vue.rs:4495`），且 `generate_widget_with_lane`（`ace_vue_script.rs:796-884`）仍以旧 `VueGenerator` / `ts_adapter::TypeScriptTrans` 生成底稿并仅拼接替换 `on`/`__evt_*` 体。以下四子面尚未切全默认单轨：①默认不带 `--features ace-vue` / 未置 `AUTO_UI_ACE_VUE=1` 的构建仍走旧 emitter；②`front_dir` 兄弟文件（`vue.rs:7398`）、`pages/`（`vue.rs:4350`）、`widgets/`（`vue.rs:7757`）与 `stores/` 尚未接入 ACE lane；③`computed`、`watch`、`setup`、`ext_imports`、`.Init`/`.Destroy` 与 `Widget B`（`setup`+`use{}`，`absent=[".Bump"]`）尚未下沉去 `TypeScriptTrans`；④PLAN-1072 验证夹具止于 Rust `gen_vue_project` / `incremental_compile_changed` + `@vue/compiler-sfc` + `esbuild` + Playwright Node `http`（stub `@/components/ui/*` / `BOOT_EXT_STUB`），公开 CLI（`auto gen`/`auto build`/`auto run --render vue`）派发与完整 `pnpm`/Vite 打包运行循环依 §6 交由 **PLAN-982** 联合门完成（另 `plan980_010_form_short.rs` 浏览器腿仍挂旧 `App.vue`，lane 版 010 已在 `p1072_010_product_browser_mount` 实测）。
+- owner：AutoUI Vue / PLAN-982 联合收尾线。
+- 关闭条件：①`auto run --render vue` / `auto build` + `pnpm`/Vite 全工程实际运行门在 PLAN-982 联合验证绿；②`pages/`/`widgets/`/`stores/` 与 `watch`/`computed`/`setup` 下沉接管并完成默认开关切换门（取代双轨拼接边界）。
+- 状态：open（`m2-autoui.md` §15 已严格按当前代码边界写明，不阻塞 PLAN-1072 交付）。
+

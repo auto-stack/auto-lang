@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1072
-status: reviewed
+status: archived
 feature_name: AutoUI Vue 与生产 TS/JS 接管
 author: [Codex]
 created_at: 2026-11-19
@@ -34,7 +34,7 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 ## 4. 需求分析与背景调查
 
-取材 [AutoLang 全局总览](../specs/overview.md) 的 UI/Web 生态，以及 [980 原合同](980-ace-m2-autoui.md#0-变更摘要)。原技术合同、输入、测试分母和负控按归属表接收。
+取材 [AutoLang 全局总览](../../specs/overview.md) 的 UI/Web 生态，以及 [980 原合同](980-ace-m2-autoui.md#0-变更摘要)。原技术合同、输入、测试分母和负控按归属表接收。
 
 ## 5. 详细设计
 
@@ -211,6 +211,11 @@ next_responsible_role: review（T-04 独立复审，含 `cargo t ace-source`、`
 next_responsible_role: merge（T-05：规范沉淀 `m2-autoui.md` §15、债务入 `KNOWN-DEBT-AND-RISKS.md`、rebase + `range-diff` + `--ff-only` 合入双仓、归档至 `docs/plans/archive/`、`wt-guard` + 五树清理 + `plan-artifacts/plan-1072` 清删与保留登记表更新、批回归到期移交）
 
 `stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | commits: lang 4bccd505548aed0bbba761fa237d32e88f5095f3, ui c1be21e45d238c9eabd64879b4d5a23d5d953a64, plan 25741b96cf83bf1d7e54a563d2e9a4f76f10fce4 | 证据锚点: T-04 两轮独立复审 pass（ace-source 923/923 PASS, ace-av 1426/1428 仅预存 host_console×2, UI 10 套件全绿, 四发现全修） | next: merge`
+
+2026-11-19 stage: merge（checkpoints: `prepared` → `landed` → `canonical_verified` → `archived`, `completion_kind: delivered`）| plan_id: PLAN-1072 | outcome: pass | landed_master: auto-lang `9142f94bb787ff01ba48d5176e8ef205cfd9c6b8` (`--ff-only` over `55016bf97`), auto-ui `67893861c959788b2770b00b8d24bb9a31eb8418` (`--ff-only` over `e7aeda14`)。
+- **`prepared` & `range-diff` 证明**：`auto-lang` 代码变基 `e81c27e9f..4bccd50554 → 55016bf97..307055b19`（`git range-diff` 4/4 `=`：`5492b3ca7=5d059ac4d`、`041148cc1=389ce787f`、`48738ff32=8eeed9cfa`、`4bccd5055=307055b19`；`experimental/ace/{crates/core,grammars}` 在旧新基线间零变更）；`auto-ui` 变基 `d2e7d7a4..c1be21e45 → e7aeda14..67893861`（`git range-diff` 5/5 `=`：`ec7342c1=4ce227b1`、`1489d0cc=2d393650`、`b9417486=f234ce84`、`8210ef5b=09f307ee`、`c1be21e4=67893861`）。五 worktree `wt-guard.ps1` 全部输出 `clean`；双仓主检出既有脏 WIP 与合入文件零重叠、未触动。
+- **`canonical_verified`**：规范仅文档尾提交 `9142f94bb` 仅改 `docs/specs/ace-migration/m2-autoui.md`（更新顶部 `> Status:` 与新增 [§15 Vue 与生产 TS/JS 接管](../../specs/ace-migration/m2-autoui.md#15-vue-与生产-tsjs-接管plan-10722026-11-19)）；落主 SHA-256 = `857CEB6A33EC4DAE353C499C402E66A1234D61808B3E3721A120519577D1C5E7`。两项边界债务 `D-1072-01`、`D-1072-02` 已登记入 [KNOWN-DEBT-AND-RISKS.md](../KNOWN-DEBT-AND-RISKS.md)。
+- **`archived`**：已 `git mv docs/plans/1072-autoui-vue-web.md docs/plans/archive/1072-autoui-vue-web.md`，相对链接已校对，frontmatter `status: archived`；接下来执行 `wt-guard` 清理 5 worktree、删分支与 `plan-artifacts/plan-1072/`，刷新 `.retention/policy.json` 并落最终 `cleaned` 收据。
 
 ## 10. 待澄清事项
 
