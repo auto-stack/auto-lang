@@ -342,6 +342,19 @@ Round 7 增量（冻结提交 `e74094d5f`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 7 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: e74094d5f | next: work`
 
+2026-11-20 · stage: work（round 8 · **a2py SDK/重定位/依赖失败分账**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `db8446bde`+`6b45a5cbe`级 | task_ids: T-05 继续（V-05 运行/SDK 面、V-07 重定位与缺失失败）| outcome: pass（round 级）| next_responsible_role: work（T-05 余量：解释器/包身份轴、缓存失效）
+
+Round 8 增量（树内 clean；提交 `db8446bde` 与随后 `missing-package` 提交）：
+- **a2py 运行器**：`run_sdk` 以 `python -B a2x_main.py` 运行——不再把 `__pycache__` 写进已验证的 SDK 树（此前首次运行污染包，第二次 relocate 后被 `m2build.recipe.extra-file` 正确拒绝，属产品面缺陷而非测试问题）。
+- **SDK 端到端**（`ace-m2-build::py_project_1107`）：§5.1 `use.py` 工程 `build_sdk([A2py])` → `run_sdk` 真跑 62 行对齐 oracle（同一断言集）；把 SDK 整树复制到异根后再次 `run_sdk` 仍 PASS（可重定位）；删掉 `targets/a2py/a2x_py_runtime.py` 后 `run_sdk` 以 `m2build.*` 具名拒绝（缺工件不充运行）。
+- **运行依赖分账**：解释器存在但声明包缺失时，`run_sdk` 解析 stderr 的 `ModuleNotFoundError` 返回 `m2build.run.runtime-dependency`（点名缺失模块），而不是把 traceback 当运行结果；同时 emit 阶段不执行程序，故此类工程 build 仍然干净（新增用例 `p1107_t05_sdk_missing_python_package_is_named_at_run_not_emit` PASS）。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_t05)'` 3/3 PASS（6.4s）；`cargo t ace-m2-build` PASS（修复 `__pycache__` 污染后整组回归）。
+
+未决：T-05 余量（BuildIdentity/RuntimeCompatibility 的**解释器与包身份轴**、py 工程暖编辑/精确失效、`ac-build run --sdk` CLI 级用例）；T-06 共享病例/固定组并集；V-02/V-04 协议病例；支持矩阵与文档沉淀。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 8 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: db8446bde | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
