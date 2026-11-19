@@ -954,6 +954,15 @@ next: work 修 F-R21-1（fmt 单文件+core 四套件重放）→复审快验（
 
 stage: review | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: work | status: executing | outcome: needs_fix（F-R21-1 回 work；F-R21-2/3=合入前闭）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | reviewed_commit: c80d39553 | base_commit: b574c550a | findings: F-R21-1(fmt,P3)/F-R21-2(窗口未全开,P1,外部 owner)/F-R21-3(fold 并集义务) | evidence: 本记录内嵌（diff 审读/复放命令与计数/auto-ui 实况行号） | next: 见上
 
+### 2026-11-19 stage: handoff（**PLAN-980 → PLAN-981 T-BASE-ONIF：F-R21-2 双树验收收据**；980 侧用户指令验收后交付）
+
+- **修复身份**：auto-ui master **`7b8456e5`**（=master tip，ff-only 落主）——`generate_package_sfc` 入口查 `component.handler_stmts`，含 If/Let → 具名拒 `source.age.sfc-handler-stmt`（错误名 handler+语句类）；仅复放平铺赋值的原行为不变。
+- **配对语言 SHA**：主线 lang master **`391ffa54e`**（代码基=980 lambda-if `347540437`+规范 `32e7db448`）；981 并集树 **`286ed0cb4`**（含增量同步：lambda-if 的 `flatten_stmt_assigns` 第二调用点改道 `flat_handler_assigns`——本验收即覆盖该改道后的并集代码）。
+- **用例结果**：`plan980_package_sfc` **主线 7/7**（0.07s）+ **并集树 7/7**（0.07s；临时组 `verify-981union`={lang@`286ed0cb4`, ui@`7b8456e5`} 组内兄弟解析，四树 wt-guard clean 后整组移除）——普通赋值生成（派生真实例 counter：refs/handler/helper/defineExpose）、`if/else` 具名拒（`p980_package_sfc_if_handler_named_reject`）、view-if 渲染/条件挂载等回归全绿。
+- **新放开 let 路径（并集树确认）**：widget 形 `.Go -> { let q = .n + 1 … }` 在并集树（`c80d39553` 两面同开 age-on-let）**命中消费门**：`source.age.sfc-handler-stmt: handler `Go` contains a `let` statement — this lane replays flat assigns only; partial replay is forbidden`（验收探针，用后即删；主线同源=文法层 `source.age.structure` 拒——980 侧「门 Let 臂主线不可达」归档由此双树对照证实）。
+- **红相**：stash 藏门文件 → if 负例红（旧路径双支裸喷生成成功、`expect_err` panic）。
+- **残余归属**：完整包版控制流发射（真复放）由 **[1072](1072-autoui-vue-web.md)** 承接；`n_assigns` 平铺计数 census 漂移亦归 1072 记账（980 §9 F-R21-2 收据）。
+
 ### 2026-11-19 stage: work+review（**F-R21-1 修复＋复审快验**；用户预定授权「fmt clean+复放绿即转 pass」）| plan_id: PLAN-981 | plan_revision: r21 | outcome: **pass（on-if 刀语言面验收闭合；F-R21-2 窗口、F-R21-3 fold 并集义务保持合入前闭）** | worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev（clean，tip=reviewed）| code_commit: 修复 **`bcd7d2aad`**（ atop `c80d39553`）| base_commit: b574c550a
 
 **修复（F-R21-1 闭）**：`rustfmt --edition 2021` 单文件 `project.rs`——`project_on_stmt_inner` 的 `age-on-if` 臂体 20→16 空格缩进（提取时遗留旧嵌套层级）；**纯空白 20+/20−**，diff 逐 hunk 核对全部落在该臂内、零触面外改动；预存漂移测试面（bstr/kv_zip/net_974/plan980_state_face/plan981_f32_surface/age_package_modules/gfx_seam）未触碰（他会话 stash@{0} 注记保持）。
@@ -989,6 +998,8 @@ stage: work | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: work（�
 **landed**：master `dc8d2d198`→**`33895d91c`**（`git merge --ff-only plan-981-dev`；ace/specs 落主路径 clean，他会话 docs WIP 原样保留）。**canonical_verified**：`docs/specs/ace-migration/m2-age.md` §4（on-if 组件面刀已验知识——三语句面/链臂+兜底臂并集/投影合同/双消费门 SHA/AV 真值/id 第三次重基线）随 `d5f085aef` 落主。主干冒烟 26/26 绿。
 
 stage: merge | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: executing（后续批）| outcome: pass（r21 刀 landed `33895d91c`+canonical_verified）| worktree: 保留（唯一树续后续批）| delivery_commit: 33895d91c | evidence: 本记录内嵌 | pending: 无（F-R21-1/2/3 全闭）| next: 981 后续批（§5/§8 契约）；010 另墙（`var faqs=[...]` 无类型列表字段=collections 域）不在本刀
+
+**T-BASE-ONIF 闭合（980→981 交接件落账，2026-11-19）**：980 侧 F-R21-2 双树验收收据（§9 handoff 段：auto-ui `7b8456e5`=master tip ff-only/主线 `391ffa54e`/并集树 `286ed0cb4` 双树 `plan980_package_sfc` 7/7+永久负例红相；完整包版控制流真复放与 `n_assigns` census 漂移归 1072 记账）接收在案——该收据+本段=fold 前置链 F-R21-2 关闭的全部工件（与 `c84f25cf4` 收据互证）。T-BASE-ONIF 全范围（F-R21-2 复核/F-R21-3 并集/冻结复验/独立复审/落主）由 r21 fold 链闭合，任务勾选随 §8 合同修订会话提交走。
 
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
