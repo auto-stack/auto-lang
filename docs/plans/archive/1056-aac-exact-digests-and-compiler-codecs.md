@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1056
-status: reviewed
+status: archived
 feature_name: AAC精确摘要、编译器codec与标准库支撑
 author: [Codex]
 created_at: 2026-11-14
@@ -656,3 +656,22 @@ evidence: 固定组 `D:/autostack/.wt/lang-1056/auto-lang/target/test-groups/run
 pending_closeout_gates: AC-06（merge：沉淀 SD-01/SD-02、落主身份核准、归档计划、材料按政策清理、`wt-guard` clean 后移树/分支）；冻结受影响模块并集 = `ace-aac`，已在本 reviewed_commit 实跑（26/26、逐例 ≤10 s、`max_parallel_tests_observed=4`）；周期 `cargo t all` 属主检出单实例批回归，不作为本 Plan 门。
 
 **status: reviewed**（T-01..T-07 完成，T-08 留 merge；`current_step: 7`，`plan_revision: 6` 不变）。**next**: merge —— 按 merge 范式核准落主身份（SD-01 `7259caf1e31a54c2`、`atom_data.at` `f86c444309282fce`、`codec.at` `b942bf46f7f94618`）、沉淀 SD-01/SD-02、归档计划并清 scope；AC-06 待落主与清理完成后由 merge 勾选。
+
+## PLAN-1056:r6 merge 收据
+
+2026-11-19 stage: merge | plan_id: PLAN-1056 | plan_revision: 6 | outcome: **pass**（delivery / canonical sources / archival / cleanup 全部核验） | reviewed_commit（落主前）: `1d0c86549` → 落主后 `d0e11654b`（rebase，patch 等价见下） | delivery_commit: `e36131b403a711bfa342b833716266f38564890b` | main checkout: `D:/autostack/auto-lang`（branch `master`） | worktree: `D:/autostack/.wt/lang-1056/auto-lang`（branch `plan-1056-dev`） | merge_owner: `finish-1056`（同一代理，limitations 见 §9 复审记录）。
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | reviewed 基线 = `1d0c86549`（代码）+ `c478d5a88`（复审收据）@plan_revision 6，outcome pass；SD-01 `docs/specs/auto-ac/aac-digest-codec-profile.md`（`7259caf1e31a54c2`/18619）已在分支；SD-02 目标 `docs/specs/stdlib/design/ace-core-and-text.md` 未改（留 merge）；冻结受影响模块并集 = `ace-aac` |
+| `landed` | 分支先 rebase 到 master `3bc34c654`：`git -c core.autocrlf=false rebase master` → tip `5517771ea`→`e36131b40`；`git range-diff c4057c959..5517771ea 3bc34c654..e36131b40` **10/10 全部 `=`（无 `!`）**，证明 patch 等价。主检出 `git merge --ff-only plan-1056-dev` exit 0，master tip = `e36131b40…` = delivery commit，**无 merge commit**。旧→新映射：`1d0c86549`→`d0e11654b`（N-7/N-8 修复）、`c478d5a88`→`d2610da84`（复审收据）、`5517771ea`→`e36131b40`（SD-02）；其余 7 个提交同样一一对应 |
+| `canonical_verified` | 主检出 @`e36131b40`（git blob 口径）：SD-01 `docs/specs/auto-ac/aac-digest-codec-profile.md` `7259caf1e31a54c2`/18619 **= §9 复审记录值**；`experimental/ace/aac/support/atom_data.at` `f86c444309282fce`/64755、`codec.at` `b942bf46f7f94618`/22873 **= §9 复审记录值**；SD-02 目标 `ace-core-and-text.md` `097cc4269d587f68`/7801（新增 §5）。SD-02 为 docs-only 后继（+24 行，§1–§4 945 历史原样），实现/依赖零改动 → `e36131b40` 成为 delivery commit |
+| `post-landing gate` | 主检出 `cargo t ace-aac`（无 `CARGO_TARGET_DIR`）：**`PASS: ace-aac` exit 0**，整命令 **54.86 s**，`target/test-groups/run-oytahxk_/results.json`：executed=**26**、gate_passed=true、max_parallel_tests_observed=**4**、wall_seconds=54.09、source_state=e7d4f146…；逐例最大 **8.15 s**（`atom_real_schema_container_names_are_tags_not_fields`），26/26 ≤10 s。主检出未提交改动（其它会话的 docs/design、packages/blueprints 等）与本包路径无交集 |
+| `archived` | `git mv docs/plans/1056-aac-exact-digests-and-compiler-codecs.md docs/plans/archive/` → `docs/plans/archive/1056-aac-exact-digests-and-compiler-codecs.md`，frontmatter `status: archived`；随簿记提交入库（tracked，非未跟踪）；`git status` 对 plan/spec 目标路径为空 |
+| `cleaned` | 见下节（guard / worktree / branch / 组目录 / plan-artifacts / 登记表） |
+
+**计划副本对账（本任务强制项）**：主检出未跟踪副本 `docs/plans/1056-…`（`EA23BBCBBA4858F9…`，90106 B，含 `reviewer-1056c` 的 53 行 §9 记录，而分支副本当时缺这 53 行）在合并前已并入分支副本（本文件 = 该副本内容 + 本轮 §9 复审记录 + §7/任务表/源身份订正）；逐行包含性核对：主副本 588 行中仅 6 行在分支副本中"不存在"，全部是本轮**有意取代**的行（`current_step: 3`、§7 的 25 例计数句、T-04..T-07 四条未勾任务行）。核对通过后删除该未跟踪副本（sha256 已记于此），`git merge --ff-only` 因此不被 "untracked working tree file would be overwritten" 阻断；落主副本同时含 `reviewer-1056`/`reviewer-1056b`/`reviewer-1056c`/`finish-1056` 四份 §9 收据（行内计数 4/2/2/1，无收据丢失）。
+
+**merge 阶段耗时（本会话，空闲窗口）**：`git rebase master`（10 提交，无冲突，未单独计时）→ range-diff 即时；主检出 `cargo t ace-aac` 整命令 **54.86 s**（含 main 侧 ace target 增量构建）；`wt-guard` <1 s clean；归档/清理命令均即时。
+
+**证据（orig scratch，merge 后删除）**：`D:/autostack/plan-artifacts/plan-1056/verify/{p1-nextest-group.log,p1-cargo-t-ace-aac.log,p1-n8-showconfig.log,p2-check-warnings.log,p2-driver-all.log,p3-cargo-t-ace-aac-main.log}`；`target/test-groups/run-mwp8u33q/results.json`（worktree，executed=26）、`target/test-groups/run-oytahxk_/results.json`（主检出，executed=26）。关键数字已折入本文件，scratch 随 scope 删除。未写 `.autoos/specs.json` 等 legacy ledger；未做 release/部署构建。
