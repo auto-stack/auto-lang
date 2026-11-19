@@ -303,12 +303,16 @@ pub struct ComponentViewEntry {
 #[derive(Clone, Debug)]
 pub enum ComponentEntryValue {
     Expr(Expr),
-    /// 内联 lambda `() => { .field (=|+=|-=) expr … }`——脱糖为赋值集；
-    /// `foreign`（PLAN-980 WEB #6p）：体含非赋值语句（调用形等）——值函数
-    /// **不铸造**（fail-closed 缺席；此前静默跳过非赋值语句=部分体拼接丢
-    /// 句，与 handler 面 #6o 合同同族闭合）。
+    /// 内联 lambda `() => { .field (=|+=|-=) expr … / if … }`——`stmts`=
+    /// 结构化语句面（Assign/If 序保持；PLAN-980 lambda-if 刀，镜像
+    /// `ComponentHandler.stmts` 先例），`assigns`=深平铺赋值兼容面；
+    /// `foreign`（PLAN-980 WEB #6p）：体含调用形等——值函数**不铸造**
+    /// （fail-closed 缺席；此前静默跳过非赋值语句=部分体拼接丢句，与
+    /// handler 面 #6o 合同同族闭合）。lambda-if 刀起 if 形进 `stmts::If`
+    /// 不再 foreign（on-if 刀文法臂共用 view-stmt）。
     Lambda {
         assigns: Vec<ComponentAssign>,
+        stmts: Vec<ComponentStmt>,
         foreign: bool,
     },
 }
@@ -1368,7 +1372,7 @@ fn compile_component_scenario_full(
     {
         fn collect_lambdas<'a>(
             items: &'a [ComponentViewItem],
-            out: &mut Vec<&'a [ComponentAssign]>,
+            out: &mut Vec<&'a [ComponentStmt]>,
         ) {
             for it in items {
                 match it {
@@ -1381,25 +1385,27 @@ fn compile_component_scenario_full(
                         collect_lambdas(&c.else_items, out);
                     }
                     ComponentViewItem::Entry(en) => {
-                        // #6p：foreign lambda（体含非赋值语句）不铸——缺席。
+                        // #6p：foreign lambda（体含调用形）不铸——缺席；
+                        // lambda-if 刀：if 形进 stmts，不再 foreign。
                         if let ComponentEntryValue::Lambda {
-                            assigns: asgs,
+                            stmts,
                             foreign: false,
+                            ..
                         } = &en.value
                         {
-                            out.push(asgs);
+                            out.push(stmts);
                         }
                     }
                 }
             }
         }
-        let mut lambdas: Vec<&[ComponentAssign]> = Vec::new();
+        let mut lambdas: Vec<&[ComponentStmt]> = Vec::new();
         collect_lambdas(&node.view.tree, &mut lambdas);
         for (_, items) in &node.view.named_trees {
             collect_lambdas(items, &mut lambdas);
         }
-        for (seq, asgs) in lambdas.iter().enumerate() {
-            match lambda_value_fn(node, seq, asgs, "__age_vl_") {
+        for (seq, body) in lambdas.iter().enumerate() {
+            match lambda_value_fn(node, seq, body, "__age_vl_") {
                 Some(Ok(item)) => view_lambda_items.push(item),
                 Some(Err(ds)) => return Err(ds),
                 None => {}
@@ -1869,6 +1875,42 @@ fn expr_uses_channel_value(expr: &Expr, channels: &[String]) -> bool {
     }
 }
 
+/// PLAN-981（G2）：值位置走查覆盖**完整语句面**（赋值 RHS / hook-local
+/// let 初值 / if 条件——分支里的同样拒，不静默漏）。PLAN-980 lambda-if 刀
+/// 提升为模块级：handler 面（`h.stmts`）与 view lambda 面（`Lambda.stmts`）
+/// 共用同一条深走查。
+fn walk_stmt_exprs(
+    stmts: &[ComponentStmt],
+    f: &mut impl FnMut(&Expr) -> Option<Vec<Diagnostic>>,
+) -> Result<(), Vec<Diagnostic>> {
+    for st in stmts {
+        match st {
+            ComponentStmt::Assign(a) => {
+                if let Some(ds) = f(&a.rhs) {
+                    return Err(ds);
+                }
+            }
+            ComponentStmt::Let { value, .. } => {
+                if let Some(ds) = f(value) {
+                    return Err(ds);
+                }
+            }
+            ComponentStmt::If {
+                cond, then, els, ..
+            } => {
+                if let Some(ds) = f(cond) {
+                    return Err(ds);
+                }
+                walk_stmt_exprs(then, f)?;
+                if let Some(e) = els {
+                    walk_stmt_exprs(e, f)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 通道调用值位置具名拒：赋值 RHS（handler 与 view lambda）与通道实参
 /// 嵌套调用——语句位通道行（`channel_calls`）是唯一合法承载。
 fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic>> {
@@ -1887,39 +1929,6 @@ fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic
         })
     };
     for h in &node.handlers {
-        // PLAN-981（G2）：值位置走查覆盖**完整语句面**（赋值 RHS / hook-local
-        // let 初值 / if 条件——分支里的同样拒，不静默漏）。
-        fn walk_stmt_exprs(
-            stmts: &[ComponentStmt],
-            f: &mut impl FnMut(&Expr) -> Option<Vec<Diagnostic>>,
-        ) -> Result<(), Vec<Diagnostic>> {
-            for st in stmts {
-                match st {
-                    ComponentStmt::Assign(a) => {
-                        if let Some(ds) = f(&a.rhs) {
-                            return Err(ds);
-                        }
-                    }
-                    ComponentStmt::Let { value, .. } => {
-                        if let Some(ds) = f(value) {
-                            return Err(ds);
-                        }
-                    }
-                    ComponentStmt::If {
-                        cond, then, els, ..
-                    } => {
-                        if let Some(ds) = f(cond) {
-                            return Err(ds);
-                        }
-                        walk_stmt_exprs(then, f)?;
-                        if let Some(e) = els {
-                            walk_stmt_exprs(e, f)?;
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
         if let Err(ds) = walk_stmt_exprs(&h.stmts, &mut |e: &Expr| check(e, e.span)) {
             return Err(ds);
         }
@@ -1946,12 +1955,11 @@ fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic
                     walk_items(&c.else_items, f)?;
                 }
                 ComponentViewItem::Entry(en) => {
-                    if let ComponentEntryValue::Lambda { assigns, .. } = &en.value {
-                        for a in assigns {
-                            if let Some(ds) = f(&a.rhs) {
-                                return Err(ds);
-                            }
-                        }
+                    // PLAN-980 lambda-if 刀：值位置走查覆盖完整语句面
+                    //（赋值 RHS / if 条件——分支里同样拒，不静默漏；与
+                    // handler 面 walk_stmt_exprs 同判）。
+                    if let ComponentEntryValue::Lambda { stmts, .. } = &en.value {
+                        walk_stmt_exprs(stmts, f)?;
                     }
                 }
             }
@@ -2148,14 +2156,17 @@ pub(crate) fn local_name(instance: usize, field: &str) -> String {
 }
 
 /// PLAN-980 WEB（V-EVT-B-ORIGIN）：view 内联 lambda 的**值函数**铸造——
-/// 与 [`handler_check_fn`] 同族结构（字段 init let + 赋值体 + return 首字
+/// 与 [`handler_check_fn`] 同族结构（字段 init let + 语句体 + return 首字
 /// 段），但**无形参**（lambda 无参数；`.field` → 实例局部，无遮蔽表）。
-/// 赋值 RHS 保留**原源 span**（WEB lane 按区间相交发现并发射）。载荷/
-/// 类型不可承载时与检查函数同判（None=不铸，fail-closed）。
+/// 赋值 RHS / if 条件保留**原源 span**（WEB lane 按区间相交发现并整语句
+/// 发射）。载荷/类型不可承载时与检查函数同判（None=不铸，fail-closed）。
+/// PLAN-980 lambda-if 刀：体=结构化语句面（`ComponentStmt`——Assign/If
+/// 序保持）；If 递归降版 `Stmt::If`（分支各自独立——view-stmt 方言无
+/// let ⇒ 无 scope/遮蔽需求，「分支快照」语义自然成立）。
 pub(crate) fn lambda_value_fn(
     node: &ComponentNode,
     seq: usize,
-    assigns: &[ComponentAssign],
+    body: &[ComponentStmt],
     prefix: &str,
 ) -> Option<Result<Item, Vec<Diagnostic>>> {
     let first_field = node.fields.first()?;
@@ -2195,32 +2206,94 @@ pub(crate) fn lambda_value_fn(
             span: f.span,
         });
     }
-    for assign in assigns {
-        let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
-            return Some(Err(vec![text_diag(
-                "source.age.component-event",
-                format!(
-                    "view inline lambda assigns undeclared model field `{}`",
-                    assign.field
-                ),
-                assign.span,
-            )]));
-        };
-        let renamed = match rename_expr(&assign.rhs, FieldBinding::Local(inst), &node.fields) {
-            Ok(v) => v,
-            Err(ds) => return Some(Err(ds)),
-        };
-        stmts.push(Stmt::Assign {
-            target: crate::source::ast::AssignTarget {
-                base: Ident {
-                    name: local_name(inst, &field.name),
-                    span: assign.span,
-                },
-                path: Vec::new(),
-            },
-            value: renamed,
-            span: assign.span,
-        });
+    // PLAN-980 lambda-if 刀：语句面降版——Assign=既有路径（rename_expr，
+    // 不加 owned wrap——lambda 面既有发射语义保持）；If=递归分支；Let 在
+    // view-stmt 文法不可达，防御性 None=不铸（fail-closed，同载荷不可承
+    // 载判）。返回：Some(Ok(()))=完成 / Some(Err)=具名拒 / None=不铸。
+    fn lower_stmt(
+        node: &ComponentNode,
+        inst: usize,
+        body: &[ComponentStmt],
+        out: &mut Vec<Stmt>,
+    ) -> Option<Result<(), Vec<Diagnostic>>> {
+        for st in body {
+            match st {
+                ComponentStmt::Assign(assign) => {
+                    let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
+                        return Some(Err(vec![text_diag(
+                            "source.age.component-event",
+                            format!(
+                                "view inline lambda assigns undeclared model field `{}`",
+                                assign.field
+                            ),
+                            assign.span,
+                        )]));
+                    };
+                    let renamed =
+                        match rename_expr(&assign.rhs, FieldBinding::Local(inst), &node.fields) {
+                            Ok(v) => v,
+                            Err(ds) => return Some(Err(ds)),
+                        };
+                    out.push(Stmt::Assign {
+                        target: crate::source::ast::AssignTarget {
+                            base: Ident {
+                                name: local_name(inst, &field.name),
+                                span: assign.span,
+                            },
+                            path: Vec::new(),
+                        },
+                        value: renamed,
+                        span: assign.span,
+                    });
+                }
+                ComponentStmt::If {
+                    cond,
+                    then,
+                    els,
+                    span,
+                } => {
+                    let bound_cond =
+                        match rename_expr(cond, FieldBinding::Local(inst), &node.fields) {
+                            Ok(v) => v,
+                            Err(ds) => return Some(Err(ds)),
+                        };
+                    let mut then_out = Vec::new();
+                    match lower_stmt(node, inst, then, &mut then_out) {
+                        Some(Ok(())) => {}
+                        other => return other,
+                    }
+                    let els_out = match els {
+                        Some(e) => {
+                            let mut v = Vec::new();
+                            match lower_stmt(node, inst, e, &mut v) {
+                                Some(Ok(())) => Some(Block {
+                                    stmts: v,
+                                    span: *span,
+                                }),
+                                other => return other,
+                            }
+                        }
+                        None => None,
+                    };
+                    out.push(Stmt::If {
+                        cond: bound_cond,
+                        then: Block {
+                            stmts: then_out,
+                            span: *span,
+                        },
+                        els: els_out,
+                        span: *span,
+                    });
+                }
+                ComponentStmt::Let { .. } => return None,
+            }
+        }
+        Some(Ok(()))
+    }
+    match lower_stmt(node, inst, body, &mut stmts) {
+        Some(Ok(())) => {}
+        Some(Err(ds)) => return Some(Err(ds)),
+        None => return None,
     }
     stmts.push(Stmt::Return {
         value: Expr {
@@ -2233,7 +2306,13 @@ pub(crate) fn lambda_value_fn(
         span: first_field.span,
     });
     let ret_ty = field_type(first_field)?;
-    let fn_span = assigns.first().map(|a| a.span).unwrap_or(first_field.span);
+    let fn_span = body
+        .first()
+        .map(|s| match s {
+            ComponentStmt::Assign(a) => a.span,
+            ComponentStmt::Let { span, .. } | ComponentStmt::If { span, .. } => *span,
+        })
+        .unwrap_or(first_field.span);
     Some(Ok(Item::Fn(FnItem {
         name: Ident {
             name: format!("{prefix}{seq}"),
