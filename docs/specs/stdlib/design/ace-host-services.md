@@ -125,3 +125,23 @@ foreign 调用且 host-import 表全为 `auto.console.*`"（编译期对应条�
 `compatibility.toml` 分账。详细合同见
 [auto-av/host-import-and-console.md](../../auto-av/host-import-and-console.md)；
 证据为 `cargo t ace-python` 与 `cargo t ace-console` 的实际执行。
+
+## PLAN-1045 已交事实（2026-11-20，review pass 后合并沉淀；SD-02）
+
+本节只补记**已验证交付**的 AAC hosted 消费事实与指针，不改写上文任何现行规则或目标态
+（本文件的目标态描述仍以各 owner 进度为准）。
+
+- AAC 在 Windows x64 hosted+alloc 目标的**实际库消费面**已由 PLAN-1045 以真实客户端
+  落地验证：CS-201/202/203/204/207 各行（嵌零 bytes/span/intern、Str→int 映射与
+  字节字典序、预算化 arena 遍历、文件/目录/env/进程/链接器发现、argv/cwd/诊断阶段
+  分离），消费 `aac-support` 1.0.0（PLAN-1056）与 sys 库集（973/1039/1040/1041/1065）。
+  执行端与观察通道、逐行验证表、具名边界见
+  [auto-ac/aac-hosted-profile.md](../../auto-ac/aac-hosted-profile.md)。
+- 沿默认 provider 修复的三处共享缺口（已入主线）：mn `collections_lower` 的 typed
+  I64/I32 位运算发射（PLAN-972 具名后继切片，Shl/Shr/narrow 算术/float 位保持具名
+  拒绝）；mn `mn_coll_str_concat` 空⊕空拼接（`try_alloc(0)` 合法空表示误读为拒绝）；
+  `sysplat_win.at` `put_scalar` 对 OS 字符串内 NUL 的具名拒绝（-9，原为 Win32 NUL
+  终止边界的静默截断）。
+- 具名未闭：A2R 端 argv 读取经复合程序形状非确定损坏（内容与长度均曾红）——
+  V-05 的 argv 值子腿具名阻塞，owner=a2x runtime，见
+  `docs/plans/KNOWN-DEBT-AND-RISKS.md` D-1045-01；Linux host 运行归 PLAN-1063。
