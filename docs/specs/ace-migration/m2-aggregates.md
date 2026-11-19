@@ -76,3 +76,12 @@ object；tuple 递归），source/HIR/MIR/layout 四层一致（旧 Str-only 走
   A2X 两目标只消费既有 facts/mode。
 - 证据锚：`ace-av` `audit1035_res_01_*`/`audit1035_res_03_*`、`ace-core`
   `aggregates_resource_1035`、`ace-native` 聚合 tier。
+
+## PLAN-1082 增量（2026-11-20，AVP-04 集合/place 面语言事实）
+
+962 聚合基线保持；本包仅增 auto 面语言事实（L-16/19/48）：
+
+- **place 链语句**（auto 面独占）：`place-assign-stmt` `ident (.f | [e])* (op)= e`，混合 field×index / index×index 链与复合 `+= -= *= /=`；写回走既有 FieldPath/ListSet 通道（零新 HIR/MIR 节点、零 codec/a2x 触面）；base/index/RHS 源序恰一次（temp 提升）；`arr[0].x = v` 具名拒 `source.place-elem-field`（LIST_FIELD_SET 源码缝归 records 批）。
+- **rvalue 数组字面量**（auto 面独占）：任意 rvalue 位语句级提升；aggregates 冻结面 init-only 合同字节不变（`aggregates_t01_probe::array_literal_negative_controls` 仍绿）；空 `[]` 具名拒 `source.array-lit-empty`。
+- **诊断**：`source.compound-elem-type`（复合限 i32 元素）、`source.place-elem-field`、`source.list-new-empty`、`source.hof-elem-domain`、既有 `iterate-mutate`/`move-required` 边界保持；PLAN-1035 F34 Copy/owned record 替换边界经 place 链复验。
+- 证据：`cargo t case-av-language-parity`（25 例本包 canonical，67 AV 绿/34 隔离）+ `plan1082_collections_places`（17 例）；§6 冻结并集见计划 1082 §9（ace-source 927/ace-lowering 9/ace-stdlib 2 绿；继承红 3 项具名分账：host_console×2、sema-boundary-audit×1，base 复测同红）。

@@ -219,3 +219,26 @@ after`（d01 静默失效债闭） | PASS |
 | `av.parity.1081.nested-fn-capture` | resolve/`source.nested-fn-no-capture`（d01b error-presence 精确化） | PASS |
 
 冻结边界：嵌套 fn 项 call-only（无值通道）；lambda 体内嵌套 fn 具名拒；非 AV 检查 `#ignore`/NOT_RUN 不充 PASS。复跑入口：`cargo t case-av-language-parity`（42 AV 选中）与 `cargo test -p ace-av --test conformance plan1081_function_values`（21 例）。
+
+## PLAN-1082 增量（2026-11-20，AVP-04 集合/place 面）
+
+**支持域（普通 AV 链真实执行，`ac-av/language-source-run-v1`）**：
+
+- **数组/List 字面量任意 rvalue 位**（auto 面专属；962 aggregates 面 init-only 冻结合同不变）：语句 sink 提升（`ListNew`+push 脱糖，源序保持）；嵌套字面量元素以 `Move` 显式转移其合成新值 temp；空 `[]` 语法收录、resolve 具名拒 `bind/source.array-lit-empty`（无元素类型推导；显式 `List<T>.new()` 承载空表）。
+- **place 链赋值/复合赋值**：`ident (.f | [e])* (= | += | -= | *= | /=) e`（CST `place-assign-stmt`，auto 裁剪、置于 path/index-assign 之后仅承混合链/多级索引/复合形，冻结面字节不变）。base/index/RHS 源序各恰一次（合成 temp 提升）；字段链走既有 `RStmt::Assign` 路径写、索引链走 `ListSet`（record List 字段句柄写穿透实测）；复合值 = `ListGet op rhs`（仅 i32 元素，`bind/source.compound-elem-type`）；元素字段尾 `xs[i].f=v` 具名拒 `bind/source.place-elem-field`（LIST_FIELD_SET 源码缝归 records 批）；迭代中结构性写保持 `bind/source.iterate-mutate`。
+- **`List.new(e1..en)` 受检兼容糖**：元素 VT 取自 e1（同数组字面量同质校验+同 push admission）；零参具名拒 `bind/source.list-new-empty`；影子局部/record/variant 优先；非任意 varargs 面。
+- **HOF 方法面**：`map/filter/reduce/find/any/all/pop` on List<int> → 冻结 `stdlib/ace/asm/list.at` 同名 pub fn 直调（`compile_language_source` 按需文本 graft：`__std_list_` mangle、`pub` 剥离、方法形不动、字节稳定单测；同源同编译器，无第二算法）；非 i32 元素具名拒 `bind/source.hof-elem-domain`（stdlib 泛型 owner）。
+- **边界（SEM-02 冻结沿袭）**：越界/负下标/空容器/越界写统一 `run/av.trap.list-index`（先于 buffer 访问）；legacy 负索引 from-end 语义为批准差异分账，绝不冒绿。资源 record（Str/List/Variant 叶，PLAN-1035 F34）经 place 链隐式转移仍拒 `bind/source.move-required`；纯标量 record 按值 Copy 替换。
+
+| case | oracle | 结果 |
+|---|---|---|
+| `av.parity.1082.bracket-read-write` / `legacy-list-new` / `hof-real-call` / `nested-place` | exit 42 ×4（§6 合同） | PASS |
+| `av.parity.1082.place-side-effect` | stdout `i/v/|`（index→rhs 源序恰一次） | PASS |
+| `av.parity.1082.nested-index-place` | exit 28（兄弟字段保全） | PASS |
+| `av.parity.1082.bounds-*`（endpoints/oob/negative/empty/write） | 39 绿 + `run/av.trap.list-index` ×4 | PASS |
+| `av.parity.1082.compound-statement-family` | stdout `2/7/15/5/7/5`（11_compound_ops 六原始 oracle） | PASS |
+| `av.parity.1082.hof-family-legacy` / `hof-pipeline-legacy` / `hof-empty-face` | `15/4/0/1`、`60/5/5`、`0/0`（012/015/014 原始 oracle） | PASS |
+| `av.parity.1082.list-ops-family` / `list-iteration` / `shims-int-list` / `record-field-place` / `array-literal-shape` / `negative-index-positive-face` / `tuple-literal-destructure` | 迁移族（见 legacy-map 行） | PASS |
+| `av.parity.1082.empty-array-rejects` / `list-new-zero-arg-rejects` / `place-elem-field-rejects` | `resolve/source.array-lit-empty` / `source.list-new-empty` / `source.place-elem-field` | PASS |
+
+冻结边界：元素字段写、record 方法、对象字面量深链、Str 元整读分别归 records/AVP-05/AVP-06/AVP-08；hashmap/hashset/StrBldr 归 stdlib 容器批（本包非目标"不另造容器库"）。复跑入口：`cargo t case-av-language-parity`（67 AV 选中）与 `cargo test -p ace-av --test conformance plan1082_collections_places`（17 例）。

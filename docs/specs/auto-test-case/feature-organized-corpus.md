@@ -70,3 +70,7 @@
 ## PLAN-1081 增量（2026-11-20，functions 家族）
 
 canonical 作者 `crates/auto-lang/test/cases/language/functions/references-closures.case.ad`（12 case：§6 合同 4 例 + 9 份旧文档迁移），`language.suite.ad` 追加 include。legacy-map.tsv 本包 9 行：mapped×7（27_function_reference 三例 `double`→`twice` 保留词规范化；007 untyped lambda 参数加 `int` 注解；d01b error-presence 精确化为 `bind/source.nested-fn-no-capture`），research-hold×2（010/013 `List.map` 算法归 stdlib/HOF owner——闭包+捕获语言面由 canonical `closure-hof-capture` 承接，oracle 3 不变）。`test/vm` 零改动（具名冻结历史）；AV-ONLY 阶段非 AV 检查 `#ignore`/NOT_RUN 不充 PASS。
+
+## PLAN-1082 增量（2026-11-20，collections 家族）
+
+canonical 作者 `crates/auto-lang/test/cases/language/collections/list-places.case.ad`（25 case：§6 合同 4 例 + PLACE-SIDE-EFFECT/BOUNDS 五面 + 迁移 12 例 + 具名反例 3 例），`language.suite.ad` 追加 include。legacy-map.tsv 本包 62 行（33 mapped 带审计规范化 / 29 research-hold 具名 owner：AVP-06×8、AVP-05×1、AVP-08×1、stdlib 容器×19）；跨批关闭 statement-surface 复合语句 6 行（mapped 至 `compound-statement-family`，原始 oracle 全保）；21_conv 2 行重定向 stdlib 容器批。`test/vm` 零改动（具名冻结历史）。故意红元控制：单 oracle 变异 42→43 → scratch 套件 FAIL=1/exit 1。infra：`fixed-tests.py` per-group `check` 选择器经 prepared 清单丢失已修（run-prepared 丢 `--check av` 致全量套件对滤后期望误判）；AV-ONLY 阶段非 AV 检查 `#ignore`/NOT_RUN 不充 PASS（67 AV 绿/34 NOT_RUN）。

@@ -92,3 +92,10 @@ helper 触 use-after-move；use 别名解跨模块同名。
 `v08_surface_972`（面清单+62 符号五端）、`v10_layers_972`（core/alloc/
 失败注入/预算）、`probe972`（装配 lane 前探）。冻结并集（T-01 表）为
 merge 级门。
+
+## PLAN-1082 增量（2026-11-20，HOF/List.new 方法面接 972 实集）
+
+- **方法面直调冻结 stdlib**：`map/filter/reduce/find/any/all/pop` on List<int> 经 `compile_language_source` 按需 graft 冻结 `stdlib/ace/asm/list.at`（include_str 身份；`__std_list_` mangle + `pub` 剥离 + 方法形不动；字节稳定单测 `adapter::stdlib_list_graft_tests`）后 `CallFn` 直调——同源同编译器，无第二算法；packages-aggregates-ct 装配线身份/规则零改动。
+- **`List.new(e1..en)` 受检兼容糖**（auto 面）：元素 VT 取自 e1 + 同质校验 + 同 push admission；零参具名拒 `source.list-new-empty`（`List<T>.new()` 承载空表）；不新增任意用户 varargs 语法。
+- **边界**：非 i32 元素 `source.hof-elem-domain`（963 全泛型切片 owner）；`for_each`/`contains`/`sum`/`sort` 等未接方法面（972 集内未列或自由函数面，legacy 迁移以 `find`/`is` 规范化审计在案）；`pop` 保持 None-not-trap 空合同。
+- 证据：`av.parity.1082.hof-real-call`（42）、`hof-family-legacy`（15/4/0/1）、`hof-pipeline-legacy`（60/5/5）、`hof-empty-face`（0/0）、`shims-int-list`（3/20/99/4/30/2/1）。
