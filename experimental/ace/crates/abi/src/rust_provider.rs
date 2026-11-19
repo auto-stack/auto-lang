@@ -65,6 +65,23 @@ pub fn build_f0(root: &Path) -> Result<RustProviderBuild, String> {
 /// Same build closure for a (possibly edited) provider source — the
 /// identity/rebind leg rebuilds the unit from new provider bytes.
 pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, String> {
+    source_provider(root, source, None)
+}
+
+/// Load a source-bound prebuilt provider without invoking a compiler or writing build files.
+pub fn load_prepared_source(
+    root: &Path,
+    source: &str,
+    rustc_identity: &str,
+) -> Result<RustProviderBuild, String> {
+    source_provider(root, source, Some(rustc_identity))
+}
+
+fn source_provider(
+    root: &Path,
+    source: &str,
+    prepared_rustc: Option<&str>,
+) -> Result<RustProviderBuild, String> {
     let manifest = auto_bindgen::rust_import::import(source)
         .map_err(|e| format!("{}: {}", e.code, e.message))?;
     let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
@@ -77,29 +94,33 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
     )?;
 
     let crate_dir = root.join("f0-provider-crate");
-    let src = crate_dir.join("src");
     let out = root.join("out");
-    std::fs::create_dir_all(&src).map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    std::fs::write(src.join("provider.rs"), source).map_err(|e| e.to_string())?;
-    std::fs::write(src.join("shim.rs"), &shim_source).map_err(|e| e.to_string())?;
-    // The crate root is the FLAT concatenation of the provider source and
-    // the generated shim (inner doc comments and items splice legally;
-    // `--cap-lints allow` covers the mixed-use lint surface).
-    std::fs::write(
-        src.join("lib.rs"),
-        format!(
-            "{}\n// PLAN-967 F0 build unit: provider + generated shim, one closure.\n{}",
-            source, shim_source
-        ),
-    )
-    .map_err(|e| e.to_string())?;
+    let rustc_identity = if let Some(identity) = prepared_rustc {
+        identity.to_owned()
+    } else {
+        let src = crate_dir.join("src");
+        std::fs::create_dir_all(&src).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        std::fs::write(src.join("provider.rs"), source).map_err(|e| e.to_string())?;
+        std::fs::write(src.join("shim.rs"), &shim_source).map_err(|e| e.to_string())?;
+        // The crate root is the FLAT concatenation of the provider source and
+        // the generated shim (inner doc comments and items splice legally;
+        // `--cap-lints allow` covers the mixed-use lint surface).
+        std::fs::write(
+            src.join("lib.rs"),
+            format!(
+                "{}\n// PLAN-967 F0 build unit: provider + generated shim, one closure.\n{}",
+                source, shim_source
+            ),
+        )
+        .map_err(|e| e.to_string())?;
 
-    let (code, out_text, err) = run_rustc(&["--version"], &crate_dir)?;
-    if code != 0 {
-        return Err(format!("rustc --version failed: {err}"));
-    }
-    let rustc_identity = out_text.trim().to_string();
+        let (code, out_text, err) = run_rustc(&["--version"], &crate_dir)?;
+        if code != 0 {
+            return Err(format!("rustc --version failed: {err}"));
+        }
+        out_text.trim().to_string()
+    };
     // PLAN-980 HELLO：新鲜度缓存——同 (provider digest, shim digest, rustc
     // identity) 且 cdylib/staticlib 在位时跳过两次 rustc 编译（显式预构建
     // 阶段的测试纪律：测试及其子进程不编译前置）。缓存只认输入身份，不认
@@ -114,6 +135,12 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
         && out.join("f0_text_provider.dll").is_file()
         && out.join("f0_text_provider.lib").is_file();
     if !cached {
+        if prepared_rustc.is_some() {
+            return Err(format!(
+                "prepared Rust provider missing or stale at {}",
+                out.display()
+            ));
+        }
         let (code, _out, err) = run_rustc(
             &[
                 "--edition",

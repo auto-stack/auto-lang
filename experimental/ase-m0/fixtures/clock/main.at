@@ -1,0 +1,32 @@
+// An independent digital clock using the wall-clock behavior of AutoUI example 012.
+node Clock {
+    msg { Tick(int) }
+
+    model {
+        var time str = "Loading time…"
+    }
+
+    view {
+        text .time
+    }
+
+    on {
+        .Tick(seconds) -> {
+            let hours = seconds / 3600
+            let remaining = seconds - hours * 3600
+            let minutes = remaining / 60
+            let seconds_in_minute = remaining - minutes * 60
+            let hour_tens = hours / 10
+            let hour_ones = hours - hour_tens * 10
+            let minute_tens = minutes / 10
+            let minute_ones = minutes - minute_tens * 10
+            let second_tens = seconds_in_minute / 10
+            let second_ones = seconds_in_minute - second_tens * 10
+            let digits str = "0123456789"
+            let hour_text = digits.slice(hour_tens, hour_tens + 1) + digits.slice(hour_ones, hour_ones + 1)
+            let minute_text = digits.slice(minute_tens, minute_tens + 1) + digits.slice(minute_ones, minute_ones + 1)
+            let second_text = digits.slice(second_tens, second_tens + 1) + digits.slice(second_ones, second_ones + 1)
+            .time = hour_text + ":" + minute_text + ":" + second_text
+        }
+    }
+}

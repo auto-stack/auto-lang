@@ -188,6 +188,19 @@ pub fn register_source_provider(name: &str, root: &Path, source: &str) -> Result
     Ok(cdylib)
 }
 
+/// Admit a provider from previously built source-bound artifacts, without compiling.
+#[cfg(windows)]
+pub fn register_prepared_source_provider(
+    name: &str,
+    root: &Path,
+    source: &str,
+    rustc_identity: &str,
+) -> Result<PathBuf, String> {
+    let build = ace_abi::rust_provider::load_prepared_source(root, source, rustc_identity)?;
+    register_built_provider(name, &build)?;
+    Ok(build.cdylib)
+}
+
 /// Revoke a provider: every later request naming it is refused before any
 /// dispatch until [`readmit_provider`]. Returns whether an admitted
 /// provider was revoked.
