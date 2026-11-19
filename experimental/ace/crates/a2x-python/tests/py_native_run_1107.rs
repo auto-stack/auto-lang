@@ -227,3 +227,30 @@ fn p1107_v02_protocol_case_a2py_matches_the_native_oracle() {
     }
     eprintln!("V-02 A2PY: {got:?} == oracle {want:?}");
 }
+
+#[test]
+fn p1107_v04_uncaught_python_error_fails_the_native_run() {
+    let src = std::fs::read_to_string(corpus_dir().join("error_uncaught_1107.at"))
+        .expect("the shared V-04 error corpus");
+    let dir = scratch_dir("error");
+    emit_fileset(&dir, &src);
+    let out = Command::new(find_python())
+        .arg("a2x_main.py")
+        .current_dir(&dir)
+        .output()
+        .expect("run python");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        !out.status.success(),
+        "an uncaught Python error must fail the run (stdout {stdout:?})"
+    );
+    assert!(
+        stderr.contains("IndexError"),
+        "the failure names the Python error class: {stderr}"
+    );
+    assert!(
+        !stdout.contains("value:"),
+        "a failed run publishes no success marker: {stdout:?}"
+    );
+}

@@ -1,0 +1,8 @@
+use.py builtins: list
+
+fn main() int {
+    var l = list()
+    var x = l.pop()
+    print(x.to(int))
+    return 0
+}

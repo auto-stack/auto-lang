@@ -264,3 +264,83 @@ fn p1107_t05_sdk_missing_python_package_is_named_at_run_not_emit() {
         "the missing module is named: {err:?}"
     );
 }
+fn corpus_file(name: &str) -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../crates/auto-lang/test/cases/ace-m2/python-1107")
+            .join(name),
+    )
+    .unwrap_or_else(|e| panic!("shared corpus `{name}`: {e}"))
+}
+
+#[test]
+fn p1107_v04_sdk_run_of_an_uncaught_python_error_is_not_a_pass() {
+    let root = scratch("sdkerr");
+    let inputs = ProjectInputs {
+        name: "usepy1107err".to_string(),
+        entry: "main".to_string(),
+        caps: vec![],
+        sources: vec![("main.at".to_string(), corpus_file("error_uncaught_1107.at"))],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let sdk = root.join("sdk");
+    m2.build_sdk(&inputs, &[TargetKind::A2py], &sdk, vec![], "run:py")
+        .expect("emit does not execute the program");
+    let run = m2
+        .run_sdk(&sdk, TargetKind::A2py, "run:py")
+        .expect("the interpreter runs and its failure is observable");
+    assert_ne!(
+        run.exit_code,
+        Some(0),
+        "an uncaught Python error never counts as a successful run: {:?}",
+        run
+    );
+    assert!(
+        !run.stdout.contains("value:"),
+        "no success marker for a failed run: {:?}",
+        run.stdout
+    );
+}
+
+#[test]
+fn p1107_v08_plain_auto_project_on_the_a2py_lane_is_unaffected() {
+    // Control (V-08): a non-Python program keeps the frozen scalar cold path —
+    // no py declaration contract, no py helpers, no native object runtime.
+    let root = scratch("plain");
+    let inputs = ProjectInputs {
+        name: "plain1107".to_string(),
+        entry: "main".to_string(),
+        caps: vec![],
+        sources: vec![(
+            "main.at".to_string(),
+            "fn main() int {\n    var a = 14\n    return a\n}".to_string(),
+        )],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let outcome = m2
+        .build(TargetKind::A2py, &inputs)
+        .expect("the plain project builds on the a2py lane");
+    let runtime = outcome
+        .products
+        .iter()
+        .find(|(rel, _)| rel.ends_with("targets/a2py/a2x_py_runtime.py"))
+        .map(|(_, b)| String::from_utf8_lossy(b).to_string())
+        .expect("runtime product");
+    assert!(
+        !runtime.contains("def a2x_py_import("),
+        "a non-Python module must not carry the py object helpers"
+    );
+    assert!(
+        !runtime.contains("f0_text_provider.dll"),
+        "and must not load the ctypes provider"
+    );
+    let sdk = root.join("sdk-plain");
+    m2.build_sdk(&inputs, &[TargetKind::A2py], &sdk, vec![], "run:py")
+        .expect("the plain SDK builds");
+    let run = m2
+        .run_sdk(&sdk, TargetKind::A2py, "run:py")
+        .expect("the plain program runs");
+    assert_eq!(run.exit_code, Some(14), "the entry value is observed: {run:?}");
+}
