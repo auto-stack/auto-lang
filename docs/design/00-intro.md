@@ -151,7 +151,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 - [AutoScape：基于 ACE / AGE 的原生 UI Gallery](strategy/autoscape-native-gallery.md)（Design31 专题补充；独立制品/会话、本地服务绑定、AutoFrame 与可见性预算、v0.6 真实原型及对照验证，2026-11-12 proposed，未实施）
 
-- [ASE M0 最小原型实施路线](strategy/ase-m0-delivery-roadmap.md)（Auto Scape Engine框架、AutoScape浏览器；1020–1023已交可视交互原型，2026-11-19 r3更正内部历史重放验收；[1106](../plans/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)规划真实增量会话，严格M0无重放子门pending，不重开1023）
+- [ASE M0 最小原型实施路线](strategy/ase-m0-delivery-roadmap.md)（Auto Scape Engine框架、AutoScape浏览器；1020–1023已交可视交互原型，2026-11-19 r3更正内部历史重放验收；[1106](../plans/archive/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)已交付真实增量会话（2026-11-20），严格M0无重放子门已闭，不重开1023）
 
 - [`autoui/app-presentation-host`](autoui/app-presentation-host.md)（App 呈现宿主：Region/Section/Surface 声明、Feature UI 目标绑定、灵活布局与整页栏目，Design 38 前置设计，2026-10-14 draft）
 

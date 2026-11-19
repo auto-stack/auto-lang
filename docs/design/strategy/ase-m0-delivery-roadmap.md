@@ -1,6 +1,6 @@
 # ASE M0：AutoScape 最小原型实施路线
 
-> 2026-11-19 · proposed r3 · 1020–1023已归档，可视交互原型已交；源码核查发现1023内部仍重放历史，严格M0增量执行子门恢复pending。新增[PLAN-1106](../../plans/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)修复；本轮仅规划及验收事实更正，不启动实现/复验，不重开1023。
+> 2026-11-19 · proposed r3 · 1020–1023已归档，可视交互原型已交；源码核查发现1023内部仍重放历史，严格M0增量执行子门恢复pending。新增[PLAN-1106](../../plans/archive/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)修复；本轮仅规划及验收事实更正，不启动实现/复验，不重开1023。
 > 上位：[Design31](../31-autoscape-autoweb.md)、[原生 Gallery 设计](autoscape-native-gallery.md)。各 Plan §5–8 为任务/验收权威，本路线只组织依赖与完成边界。
 
 ## 1. 命名与范围
@@ -40,7 +40,7 @@ M0 不切换现有 Gallery 默认入口，不启动专用 HTTP 服务，不修�
 | [1021：Resolver 与无窗口 AV](../../plans/archive/1021-ase-m0-resolver-and-headless-av.md) | 两身份解析、真实AV冷执行、拒绝与编辑恢复 | 已归档9/9，不重做 | 后续在专属树消费当前ACE时，定向复验现有完整`cargo t ase-m0`；由1022/T-01负责，不回写1021完成记录 |
 | [1022：文字浏览器与公共嵌入](../../plans/archive/1022-ase-m0-text-browser-and-embedding.md) | Node A/B文字、同宿主frame切换/关闭，1021当前兼容复验 | 已归档9/9，保持交付身份 | 实际消费Spec与收据可复用，未承诺页内业务增量执行 |
 | [1023：交互会话与M0验收](../../plans/archive/1023-ase-m0-interactive-sessions-and-acceptance.md) | 双应用对象、3/7行为、同app隔离、代次/限额/关闭与UI差量 | 已归档10/10，原收据保留并追加更正 | 外层对象/计数不证明内部无重放；严格M0-SESSION及真实状态根释放子门待1106 |
-| [1106：真实增量事件与验收修复](../../plans/1106-ase-incremental-event-sessions-and-replay-audit-repair.md) | 保留受检程序/模型、仅执行新handler、执行层反例与闭合收据 | 已交付（2026-11-20复审pass后归档） | 独立上下文三轮复审（全审→修复×2）；冻结组 ace-source 全组/ace-av 1424/1426（2预存红）/ase-m0 7/7；1023子门按证据恢复 |
+| [1106：真实增量事件与验收修复](../../plans/archive/1106-ase-incremental-event-sessions-and-replay-audit-repair.md) | 保留受检程序/模型、仅执行新handler、执行层反例与闭合收据 | 已交付（2026-11-20复审pass后归档） | 独立上下文三轮复审（全审→修复×2）；冻结组 ace-source 全组/ace-av 1424/1426（2预存红）/ase-m0 7/7；1023子门按证据恢复 |
 
 四份为 ASE 跨运行时研究计划，正文由语言仓持有；UI 实现只落 auto-ui 原 owner，新 ASE 消费层落语言仓实验 workspace。不改 AutoOS 桌面/安装/原 Gallery 产品接线；未来以 auto-os 为主改面的产品计划必须在那里另取号。不得以本批跨仓形式绕过产品仓登记规则。
 

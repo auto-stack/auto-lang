@@ -20,7 +20,7 @@ touched_goals: [GOAL-002, GOAL-007, GOAL-010]
 
 **已交付（2026-11-20）**：r1 全 10 任务完成（work 8 + review 1 + merge 1）；独立复审三轮 pass；两仓 ff-only 落地；D-ASE-1023-REPLAY closed。承接1023归档后的源码核查发现：对象与最终状态保留并不代表业务增量执行，`AceStateEngine::dispatch_impl→refresh`仍重编/重跑累计历史场景，外层`loads/dispatch_log`漏计内部执行。新计划实现真实程序/模型持有与新事件单次执行，在同一真实路径用执行层oracle修复原验收盲区。
 
-[ASE路线](../design/strategy/ase-m0-delivery-roadmap.md)当前把M0-SESSION的无重放子门恢复为pending（债`D-ASE-1023-REPLAY`）；保留1023 archived、原revision/勾选和历史收据，仅追加可见更正。可视交互原型及3/7行为证据继续有效，不宣称本修复已实现。
+[ASE路线](../../design/strategy/ase-m0-delivery-roadmap.md)当前把M0-SESSION的无重放子门恢复为pending（债`D-ASE-1023-REPLAY`）；保留1023 archived、原revision/勾选和历史收据，仅追加可见更正。可视交互原型及3/7行为证据继续有效，不宣称本修复已实现。
 
 ## 1. 目标
 
@@ -48,7 +48,7 @@ T-01最多比较两条既有公共接缝：①`ProgramSnapshot`/全局cell和初
 
 用户2026-11-19明确要求针对1023历史重放制定修复计划，实现只执行新事件的真实增量会话，并修正路线/验收记录；保留1023归档，先不启动实现。当前授权含本Plan、路线、事实更正/债务登记，不含新源码/fixture/探针、建树/构建/测试/GUI、提交/合入或签章；无模型/工期/token预算。其它会话WIP保留。
 
-依据[Specs overview](../specs/overview.md)、[ASE交互现状](../specs/ase/m0-interactive-sessions.md)、[970会话边界](../specs/ace-migration/m2-sessions.md)、[UI组件状态与宿主规范](../specs/ace-migration/m2-autoui.md)、[源码重放规范](../specs/auto-test-case/ace-source-only-replay.md)及[1023归档](archive/1023-ase-m0-interactive-sessions-and-acceptance.md)。此次canonical更正是用户授权的已观察事实纠正，不提前沉淀未来增量支持。
+依据[Specs overview](../../specs/overview.md)、[ASE交互现状](../../specs/ase/m0-interactive-sessions.md)、[970会话边界](../../specs/ace-migration/m2-sessions.md)、[UI组件状态与宿主规范](../../specs/ace-migration/m2-autoui.md)、[源码重放规范](../../specs/auto-test-case/ace-source-only-replay.md)及[1023归档](1023-ase-m0-interactive-sessions-and-acceptance.md)。此次canonical更正是用户授权的已观察事实纠正，不提前沉淀未来增量支持。
 
 读取auto-lang HEAD=`670c720a893d226338ef9ad4a89475bc957b2da4`，auto-ui HEAD=`481a3cb55984bbe4783f2348a6881d198aedb6ab`及当前文档WIP。源SHA256前16：语言`av/src/age_component.rs`=`02a8c65a657a9f5e`，`core/src/source/age_component.rs`=`2f5f937e01888d80`，`av-core/src/program_snapshot.rs`=`0f666b6ea4abaa9f`；UI`ace_state_bridge.rs`=`0ae496dbdc342f29`，`ace_node_desktop.rs`=`773636ae1af47ba5`，`ase_m0_sessions.rs`=`79861c027bf956ba`，`tests/ase_m0_sessions.rs`=`99fb9e8b75944c65`。开工重核来源及并发改动，不拿移动HEAD当永久证据。
 

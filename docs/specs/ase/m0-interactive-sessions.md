@@ -9,7 +9,7 @@
 > [组件事件会话](../ace-migration/component-event-sessions.md)。
 > 下文 2026-11-19 更正保留为历史（其对旧观察口盲区的描述在旧道上成立）。
 
-> **2026-11-19 验收更正（历史保留）**：源码核查确认`AceStateEngine::dispatch_impl→refresh`仍汇总历史ops并重算整个场景。撤回本页原先将对象常驻/外层计数解释为“每个新事件只执行一次、无历史重放”的结论；[PLAN-1106](../../plans/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)承接，`D-ASE-1023-REPLAY`为OPEN。1023仍archived，旧行为/窗口证据保留；M0-SESSION无重放子门与严格完整M0完成声明恢复pending。本次只纠正已观察事实，未实现或运行修复。
+> **2026-11-19 验收更正（历史保留）**：源码核查确认`AceStateEngine::dispatch_impl→refresh`仍汇总历史ops并重算整个场景。撤回本页原先将对象常驻/外层计数解释为“每个新事件只执行一次、无历史重放”的结论；[PLAN-1106](../../plans/archive/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)承接，`D-ASE-1023-REPLAY`为OPEN。1023仍archived，旧行为/窗口证据保留；M0-SESSION无重放子门与严格完整M0完成声明恢复pending。本次只纠正已观察事实，未实现或运行修复。
 
 > 来源：PLAN-1023（2026-11-19 交付，复审/交付身份见计划 §9，归档于
 > `docs/plans/archive/1023-ase-m0-interactive-sessions-and-acceptance.md`）；
