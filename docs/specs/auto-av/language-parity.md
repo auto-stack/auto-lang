@@ -110,3 +110,20 @@
 | 计算借用视图局部量 `let t = s.slice(1,3)` | `verify.local-type`（aggregates 面局部量只收 owned `Str`） | PLAN-1086 | 借用视图局部量准入后按 `slice` 原 oracle 重跑 |
 | `str` 形参收 owned `Str` 实参 | `source.type-mismatch`（`expected str, found Str`） | PLAN-1086 | 形参视图/自有转换准入后重跑 |
 | `~` 位非、raw string 字面量 | 不在冻结算符表 / 无此形（`text.invalid-escape`） | — | 语言不定义该构造，旧义务记 `no-such-shape` |
+
+### 5.4 AVP-01 承接的 L 行验收状态（AC-04 映射）
+
+路线设计 `docs/design/strategy/av-autovm-language-parity.md` §6 把下列 L 行指派给 AVP-01。
+每行给 owner / 预期 / 当前状态 / actual 证据；子项缺失的行在状态列具名，不静默省略。
+映射数据行见 `crates/auto-lang/test/cases/language/migration/legacy-map.tsv`（L-01/02/03/05/49）。
+
+| L 行 | 预期（已定语义） | 状态 | actual 证据（本包真实运行） |
+|---|---|---|---|
+| L-01 整数字面量与后缀（i32/uint/i8/u8/i64/u64） | 六种宽度与后缀可解码，`int`=i32 | **mapped** | canonical `av.parity.1079.wide-exact`（`0xFFu8`/`0b1010u8`/`1_000_000`/`9007199254740993i64`/i64::MIN 折叠）+ `av.parity.1079.mixed-width-explicit`（`5b`/`7u`/`7u32`）；`plan1079_language_semantics::numeric_profile_suffix_vocabulary_decodes_exactly` 精确钉住 `0x1Fi8`→I8 31、`0b101b`→U8 5、`1_000_000u32`→U32、`0xFFu8`→U8、`0xFF`→I32。legacy `int=i64` 与隐式晋升是具名差异。 |
+| L-02 float/double 字面量与 NaN/-0 | `float`=f32、`double`=f64，NaN 无字面量语法，-0 位型保留 | **mapped** | `av.parity.1079.mixed-width-explicit`：`1.5f32`/`1.5d` 各自宽度解码、`(1.5f32).as(f64)` 精确加宽、`-0.0d == 0.0d`；位型由 `negative_zero_bits_survive_arithmetic_and_narrowing`（-0 经取负/相加/f64→f32 收窄）与 `nan_from_zero_modulo_is_a_value_not_a_trap`（运行期 `x % ±0.0` 得 NaN）观测。 |
+| L-03 byte/char/CStr 字面量 | char 为一标量；byte 为 u8；CStr 属旧拼写 | **mapped（partial）** | `av.parity.1079.text-literal-escapes`：`'中'`/`'\n'`/`'\u{4e2d}'` 与 `to_codepoint`；`av.parity.1079.mixed-width-explicit`：`5b` byte 字面量。**CStr 子项 no-such-shape**（ACE `TypeWord` 无 CStr 拼写），C 字符串互操作归 1093 foreign surface，不计 PASS。 |
+| L-05 位运算/移位/符号扩展 | `& \| ^` 同层、`.shl/.shr` 有界、符号/零扩展 | **mapped** | `av.parity.1079.mixed-width-explicit`：`((0xF0&0x3C)\|0x01) = 0x31`（同层判别）、`.shl(5u32)`/`.shr(5u32)`、`(7u8).as(u64)` 零扩展；符号扩展 `(-1i8).as(i64)` 与宽位值由同执行端的 961 `av_numeric_semantics` v08 行覆盖。 |
+| L-49 cast `as` / 转换 `to` | 窄化 checked、浮点↔整数 checked、混宽需显式 | **mapped** | `av.parity.1079.mixed-width-explicit`（`to(int)`/`as(i64)`/`as(u64)`）+ `av.parity.1079.overflow-is-not-wrap`（i32 MAX+1 → `av.trap.int-overflow`）；`conversions_are_checked_and_mixed_widths_are_source_rejections`：`i64→int` 越界 trap、混宽 `source.type-mismatch`、超宽度字面量 `source.literal-range`。 |
+
+复跑入口：`cargo t case-av-language-parity`（AV 视图，选中 8 行）与
+`cargo test -p ace-av --test conformance plan1079`（7 例类型化/位型 oracle）。

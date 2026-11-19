@@ -3372,18 +3372,23 @@ fn decode_typed_literal(raw: &str) -> Result<ExprKind, String> {
     // 数字体、suffix 为空。只有连一个数字都没有时才报错。
     //
     // PLAN-1079: the body is the run of *radix* digits plus `_` separators
-    // (and, in radix 10 only, one fraction dot); the suffix starts at the
-    // first character outside that set. Hex digits `a`..`f` are body
-    // characters, so `0xFFu8` splits as body `FF` + suffix `u8`; a plain
-    // alphabetic split would take `F` as the suffix and reject the literal
-    // as "carries no digits" (the pre-1079 behaviour for every radix
-    // spelling).
+    // (and one fraction dot); the suffix starts at the first character
+    // outside that set. Hex digits `a`..`f` are body characters, so
+    // `0xFFu8` splits as body `FF` + suffix `u8`; a plain alphabetic split
+    // would take `F` as the suffix and reject the literal as "carries no
+    // digits" (the pre-1079 behaviour for every radix spelling).
+    //
+    // The dot stays a BODY character in every radix (review F-02): a radix
+    // literal with a fraction must reach the explicit "radix literal cannot
+    // carry a fraction" rejection below, not be reported as an unknown
+    // suffix `.5`. Keeping the dot in the body is what makes that branch
+    // reachable.
     let digit = |ch: char| match radix {
         16 => ch.is_ascii_hexdigit(),
         2 => ch == '0' || ch == '1',
         _ => ch.is_ascii_digit(),
     };
-    let split = rest.find(|ch: char| !(digit(ch) || ch == '_' || (radix == 10 && ch == '.')));
+    let split = rest.find(|ch: char| !(digit(ch) || ch == '_' || ch == '.'));
     let (body, suffix) = match split {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, ""),

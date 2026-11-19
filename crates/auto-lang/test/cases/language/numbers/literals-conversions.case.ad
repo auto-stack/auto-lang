@@ -77,6 +77,14 @@ fn main() int {
  if (32u32).shr(5u32) != 1u32 { return 8 }
  if 7u32 / 2u32 != 3u32 { return 9 }
  if 7u32 % 2u32 != 1u32 { return 10 }
+ let f = 1.5f32
+ let d = 1.5d
+ if f.as(f64) != d { return 13 }
+ if -0.0d != 0.0d { return 14 }
+ let bt = 5b
+ if bt.as(int) != 5 { return 15 }
+ let u = 7u
+ if u.as(int) != 7 { return 16 }
  return 42
 }
 ```
@@ -106,6 +114,14 @@ binary digits only (a decimal-digit-only literal decoder answers
 "carries no digits" for `0xF`). Shifts and integer division/modulo keep their
 own frozen rules (arithmetic/logical direction, truncating division, remainder
 sign).
+
+The float/double block covers the L-02 literal family: `1.5f32` and `1.5d` are
+different widths of the same decimal text, `(1.5f32).as(f64)` must widen
+exactly, and `-0.0d == 0.0d` is true under IEEE comparison (the sign of zero is
+observable only as a bit pattern — the Rust oracle
+`plan1079_language_semantics.rs::negative_zero_bits_survive_arithmetic_and_narrowing`
+pins that). `5b` and `7u` are the byte and `uint` suffix spellings of L-01/L-03
+(byte literal, `uint` = u32).
 
 ## Case: overflow-is-not-wrap
 id: "av.parity.1079.overflow-is-not-wrap"

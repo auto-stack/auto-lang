@@ -65,6 +65,17 @@ fn trap_code(src: &str) -> String {
     }
 }
 
+/// First diagnostic of a rejected source, as `(code, message)`.
+fn compile_diagnostic(src: &str) -> (String, String) {
+    match ace_core::source::compile_language_source(src, "p1079.at", &[]) {
+        Ok(_) => panic!("expected a source diagnostic for `{src}`"),
+        Err(diags) => {
+            let d = diags.first().expect("at least one diagnostic");
+            (d.code.clone(), d.message.clone())
+        }
+    }
+}
+
 fn compile_code(src: &str) -> String {
     match ace_core::source::compile_language_source(src, "p1079.at", &[]) {
         Ok(_) => panic!("expected a source diagnostic for `{src}`"),
@@ -207,6 +218,20 @@ fn conversions_are_checked_and_mixed_widths_are_source_rejections() {
         "source.literal-range",
         "a literal outside its target width is a source diagnostic"
     );
+    // Review F-02: a radix literal carrying a fraction keeps its OWN named
+    // rejection (not the generic "unknown suffix `.5`"), i.e. the fraction
+    // branch in `decode_typed_literal` stays reachable.
+    for src in [
+        "fn main() int {\n    let a = 0x1F.5\n    return 42\n}",
+        "fn main() int {\n    let a = 0b1010.5\n    return 42\n}",
+    ] {
+        let (code, message) = compile_diagnostic(src);
+        assert_eq!(code, "source.literal-range", "radix fraction is rejected");
+        assert!(
+            message.contains("fraction"),
+            "radix fraction must name the fraction, got {message:?}"
+        );
+    }
 }
 
 // T-02 regressions for the literal decoder: radix spellings whose bodies carry
