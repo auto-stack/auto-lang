@@ -5,8 +5,8 @@ author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-19
 plan_revision: 2
-status: reviewed
-current_step: 8
+status: archived
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-1021, PLAN-967, PLAN-969, PLAN-978, PLAN-979, PLAN-980]
 supersedes_spec_components: []
@@ -125,7 +125,7 @@ r2验证选择：现有`cargo t ase-m0`由T-01在专属树先复验，失败先�
 - [x] T-06｜work｜T-05｜创建完整ase_m0_text目标并验V-01..06，结合T-01兼容复验及必要公共接缝集成；身份未变证据复用，未跑格不PASS。[✅ tests/ase_m0_text.rs 7/7（CPU 6+排窗1，0.92s热/2.16s窗档）；V-06另跑ase-m0组PASS；980既有ace_node_desktop/ace_ui_hello为非改面参考回归（本包未改其触面，证据复用）]
 - [x] T-07｜work｜T-06｜告警/格式/调试输出检查，折§9摘要、Spec delta与1023交接；AC-01..05。[✅ 新文件rustfmt clean、零编译警告（crate既有150+告警为存量非本包触面）；无调试输出（eprintln仅CLI用法/计时行）；§9收据+SD表+1023交接见§9]
 - [x] T-08｜review｜T-07｜独立核原源/AV/公共嵌入、陈旧释放及上下游边界；AC-R，不重复接管980。[✅ 2026-11-19 终审 pass（独立子代理上下文；AC-01..05 全 pass、无 blocker、F-1..3 全 non-blocking；收据见§9）]
-- [ ] T-09｜merge｜独审pass｜冻结相关完整目标/必要组，两仓SD正式落地、归档；全输出目录对账折摘要清scope，以`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <每仓工作树>`确认clean后清树；AC-D。
+- [x] T-09｜merge｜独审pass｜冻结相关完整目标/必要组，两仓SD正式落地、归档；全输出目录对账折摘要清scope，以`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <每仓工作树>`确认clean后清树；AC-D。[✅ 2026-11-19 merge pass，收据见§9]
 
 ## 9. 复审记录
 
@@ -175,6 +175,14 @@ stage: work | PLAN-1022 | r2 | 2026-11-19 | outcome: pass（execution_done）| w
 stage: goal | PLAN-1022 | r2 | round 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1022 | commit: lang 02adfe896 + ui 248b2bf4 | next: review
 
 stage: review | review_scope: final | reviewer: 独立子代理上下文（general-purpose agent_fed51c57，与执行者非同会话）| plan_id: PLAN-1022 | plan_revision: r2 | outcome: **pass**（reviewed）| worktree: D:/autostack/.wt/lang-1022/{auto-lang,auto-ui} | branch: codex/plan-1022-dev | reviewed_commit: lang 02adfe896 / ui 248b2bf4 | base: b2d830a2c / 67893861 | dependency_revisions: auto-web 26d085f / auto-down 72b0970（detached 兄弟）| spec_inputs: m2-autoui 857ceb6a(§7/§12)、m2-certification 045340642830e6b0、m0-headless-loading b92dc30ee43c202c | acceptance_results: AC-01..05 全 pass（独立复跑 7 锚点祖先核验；AC-02 oracle 判别力逐条推演：硬编码/byte_len伪车道/每页新窗各有断言组合必红）| findings: F-1 begin_open fs 读失败无 nav_log record（non-blocking，路由 1023）；F-2 HOST 已关闭 session 记录随轮次累积=980 既有 late 靶设计，不违"存活 owner"措辞，裁剪义务归 980 owner；F-3 CLI --evidence 缺值 panic 非 exit(2)、view 实例交错渲染（无 oracle 依赖）。**无 blocker** | evidence: diff 逐行审阅（lang 3 文件 31 行、ui 5 文件 1169 行全新增零既有改动）；install_bridge 零引用核实（未装全局桥）；V-06 results.json（run-dlqhk5zd, executed=7, gate_passed, config_sha 718592f480c3d…）身份未变复用；rustfmt 三新文件本次实跑 clean | pending_closeout_gates: 冻结受影响并集归 merge（T-09）：ui ase_m0_text 全档 + lang ase-m0 组；人工原生 resize/焦点走查档显式 pending | 局限: 机器被 PLAN-1098 作业占用（3→6 进程，等待 60s×2 后按纪律跳过实跑），判定基于代码审阅+§9 收据+V-06 身份核验；计时数值以 work 收据为准 | next: merge（T-09）
+
+stage: merge | plan_id: PLAN-1022 | plan_revision: r2 | outcome: pass | 2026-11-19
+- prepared: 终审 pass 基线 lang 02adfe896/ui 248b2bf4 + SD-01/SD-02 于两树落地（docs-only 后继 lang d7a8d352d→rebase 9334397f7、ui b1364eed；实现/依赖零改动）。
+- 冻结门（merge-owned，最终冻结态实跑）：ui `cargo test -p auto-ui-runtime --features ace-bridge --test ase_m0_text -- --test-threads=1` 7/7 PASS 1.34s（热）+ 排窗 `AUTO_UI_ASE_M0_E2E=1` 窗档 1/1 PASS 3.27s；lang `cargo t ase-m0` PASS 4.3s（热，run-v2flkgbt，executed=7）。准备 2.34s（增量）；等待/清理未观测项如实标注。
+- landed: 两仓 `--ff-only`，无 merge commit。lang master=9334397f7（rebase 旧→新 02adfe896→cfd4cbc30、d7a8d352d→9334397f7，`git range-diff master..d7a8d352d master..HEAD` 2/2 `=` 相等）；ui master=b1364eed（base 未动免 rebase）。
+- canonical_verified: 主检出 `docs/specs/ase/m0-text-browser.md` sha256 `6a55881996a24907015f079de31c5ab95f4acd3a03b2be6ffeee0957203f4b44` == 交付提交同文件；auto-ui `docs/specs/runtime/ase-m0-frame-consumption.md` sha256 `3fab60da295a9e9c081694eed9b6107962651217a48cc5ef1c4c2650e6cf3db6` == 交付提交同文件；fixtures text-a/b 在 master。
+- archived: `git mv docs/plans/1022-…md docs/plans/archive/`，status: archived，current_step 9/9，本提交入库。
+- cleaned: 见下方追记。
 
 ## 10. 待澄清事项
 
