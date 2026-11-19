@@ -17,7 +17,7 @@
    "binaries": [
     "av-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "AC_AV_CASE_WORKER"
   },
@@ -27,7 +27,7 @@
    "binaries": [
     "av-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "features": "test-case-batch",
    "target": "experimental/ace/target-batch",
    "env": "AC_AV_CASE_WORKER"
@@ -38,7 +38,7 @@
    "binaries": [
     "av-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "target/test-tools/regular"
   },
   "ac": {
@@ -47,7 +47,7 @@
    "binaries": [
     "ace-case-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "AC_CASE_WORKER"
   },
@@ -57,7 +57,7 @@
    "binaries": [
     "mn-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "AC_MN_CASE_WORKER"
   },
@@ -67,7 +67,7 @@
    "binaries": [
     "mn-collections-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "AC_MN_COLLECTIONS_CASE_WORKER"
   },
@@ -77,7 +77,7 @@
    "binaries": [
     "ace-comptime-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "AC_CTE_CASE_WORKER"
   },
@@ -87,7 +87,7 @@
    "binaries": [
     "abi-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "ABI_CASE_WORKER"
   },
@@ -97,7 +97,7 @@
    "binaries": [
     "sema-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "SEMA_CASE_WORKER"
   },
@@ -107,7 +107,7 @@
    "binaries": [
     "a2x-worker"
    ],
-   "profile": "release",
+   "profile": "debug",
    "target": "experimental/ace/target",
    "env": "AC_A2X_HIR_WORKER"
   },
