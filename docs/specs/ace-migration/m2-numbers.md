@@ -125,6 +125,9 @@ numeric-ops pratt 表（`& | ^` 同层，位阶 5）、`.shl(n)`/`.shr(n)`/`.as(
   `av.trap.int-overflow`（不 wrap）；显式 `to(int)`/`as(i64)`/`as(u64)` 转换；
   `& | ^` 同层 precedence；`.shl(n)`/`.shr(n)`；整除向零截断与取余符号；
   `0x`/`0b` 基数与 `_` 分隔符字面量。
+- **16 进制体与后缀歧义的冻结裁定**：基数体取最长该基数数字位串，`0x1Fb` = 507
+  （非 `0x1F`+byte 后缀）；`b` 后缀只在十进制/二进制体后可用，十六进制 byte
+  写 `0xFFu8`。旧解码器无此形，本批冻结并被精确断言。
 - **本包修复**（详见 `../auto-av/language-parity.md` §5.1）：affix-num 基数体
   切分（16 进制字母属体、数位门按基数判定）与 i32 类型化常量渲染
   （`{value}i32`）。修复前 Auto 面对 `0xFF`/`0xF`/`0xFFu8` 报

@@ -75,6 +75,11 @@
   `{value}i32`。缺这条臂时输出 `value: I32`，Atom bind 拒绝整个模块
   （`internal adapter error` / `constant value must be an integer value`），
   无后缀 affix-num（`1_000_000`、`0b1010`）因此不可用。
+- **16 进制体与后缀的歧义裁定**：基数体取**最长**的该基数数字位串，因此
+  `0x1Fb` 是十六进制数 507（不是 `0x1F` + `b` byte 后缀）—— 后缀在
+  十六进制数字后不可用，十六进制 byte 用 `0xFFu8` 或 `0xFF.as(u8)` 表达；
+  十进制/二进制下 //d 后缀不受影响。旧解码器对该形无裁定（直接报错），
+  本批按此规则冻结并由 plan1079_language_semantics.rs 精确断言。
 - 结论：Auto 面的字面量面（宽度/后缀/基数/分隔符）与 Numeric 面同一解码器，
   不是第二套解析。
 

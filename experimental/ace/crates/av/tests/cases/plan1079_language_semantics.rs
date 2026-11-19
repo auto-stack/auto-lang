@@ -224,6 +224,62 @@ fn radix_and_underscore_literals_decode() {
 }",
     );
     assert_eq!(v, 255 + 10 + 1_000_000 + 255);
+    // The documented hex/suffix corner: a 16-radix body takes the longest
+    // run of hex digits, so `0x1Fb` is 507 and the `b` (byte) suffix is not
+    // available after hex digits.
+    let corner = ok_i64("fn main() i64 { let x = 0x1Fb\n return x.as(i64) }");
+    assert_eq!(corner, 507, "`0x1Fb` reads as the hex number 507");
+}
+
+/// The Numeric profile shares the same decoder, so the frozen suffix
+/// vocabulary is pinned here at the EXACT magnitude/width — the 961 vocabulary
+/// matrix accepts `ok | literal-range | type` and therefore never caught the
+/// radix decode defect (`0x1Fi8` was reported as "carries no digits").
+///
+/// The last row pins the documented corner: a 16-radix body takes the longest
+/// run of hex digits, so `0x1Fb` is the hex number 507 and NOT `0x1F` byte —
+/// the `b` suffix is therefore unavailable after hex digits (spell a hex byte
+/// as `0xFFu8` or convert with `.as(u8)`). The legacy decoder had no reading
+/// for the form at all, so this is the rule the batch freezes.
+#[test]
+fn numeric_profile_suffix_vocabulary_decodes_exactly() {
+    for (word, ret_ty, want_ty, want_bits) in [
+        ("0x1Fi8", "i8", ace_core::hir::BuiltinType::I8, 31u64),
+        ("0b101b", "u8", ace_core::hir::BuiltinType::U8, 5),
+        ("1_000_000u32", "u32", ace_core::hir::BuiltinType::U32, 1_000_000),
+        ("0xFFu8", "u8", ace_core::hir::BuiltinType::U8, 255),
+
+    ] {
+        let src = format!("fn f() int {{ return 0 }}\nfn h() {ret_ty} {{ return {word} }}");
+        let parts = ace_core::source::adapter::compile_parts_with(
+            &src,
+            "n_lit.at",
+            &[],
+            ace_core::source::SourceProfile::Numeric,
+        )
+        .unwrap_or_else(|d| panic!("numeric compile failed for `{word}`: {d:?}"));
+        let checked =
+            ace_core::verify::verify_closures(parts.bundle).expect("numeric bundle verifies");
+        // Collect the typed constants of EVERY body — body order is not the
+        // source order, and the untyped `0` of the filler function is an
+        // ordinary constant (never a NumericConst).
+        let consts: Vec<(ace_core::hir::BuiltinType, u64)> = checked
+            .bundle()
+            .modules
+            .iter()
+            .flat_map(|m| m.bodies.iter())
+            .flat_map(|b| b.exprs.iter())
+            .filter_map(|e| match &e.kind {
+                ace_core::hir::ExprKind::NumericConst { ty, bits } => Some((*ty, *bits)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            consts,
+            vec![(want_ty, want_bits)],
+            "`{word}` must decode to exactly its magnitude and width"
+        );
+    }
 }
 
 // NUL and UTF-8 view separation on the ordinary Auto face: `len()` counts
