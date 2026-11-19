@@ -615,6 +615,17 @@ tools = ["a2x"]; domain = ace; all = false
 
 **T-06 仍未闭**：①`Q` 类（S-04 `resources_tier` 六场景）处置；②`L` 类 S-39 交 1061/1063 的具名移交文本；③`ace-av` 全组（1,411）prepared 复跑属 T-09 逐组验收项，不在本刀重复。
 
+**T-06 第三刀（同日续，代码 `3e03a6dc2`）：Q/L 两行处置，T-06 关闭**
+
+- **Q（S-04）**：`av_turnaround_six_scenarios_smoke` 实测 **44.778s**（远超 10s）。它已是"单 test 多断言、六场景、3 样本"，**缩样本会违反 §5.3 记录的"原 3 样本"义务**，故按 §5.3 Q 行允许的第二条路——**具名并入压力**：整段移入同文件既有 `mod performance`（身份变为 `resources_tier::performance::av_turnaround_six_scenarios_smoke`）。正文/3 样本/六场景/命中率/冲突诊断/编辑修订身份**一字未改**；正式 30 样本 P90 门仍由 `scripts/verify-ac-av-798.ps1 -Scope turnaround` 承担。
+  - 发现：`ace-av` 日常 **1,411 → 1,410**，且选择里 **0 个 `performance::` 泄漏**；`-p ace-av` 的 `performance::` 匹配由 22 → **23**（新入列的那条就是它）。
+  - 真实运行：`--profile ace-perf`（串行）**PASS，24.412s**。
+  - 新治理守卫：`PerformanceSelection` 增一例——该 bench smoke 必须位于 `mod performance` 之后（防被移回日常）。
+- **L（S-39 `sys973_t09_target_selection_linux_binds`）**：实测 **5.024s**，做的是 `TargetOs::Linux` 下的 `sysplat_lnx` **绑定 + 冷 link**（code-only），其 doc 已写明"Linux arms 仅 binding，原生运行 NOT_RUN，owner=PLAN-1063"。按 §5.3 第 7 条"Windows 不触发 WSL/Linux 腿；S-39 仅绑定事实单列，原生 Linux 仍由 1061/1063 验收"——**本行不需代码改动**，保持日常（5.0s ≤10s），移交文本即：Linux 原生写/读/目录语义归 1061/1063；本仓 Windows 只保留"能绑定 Linux target"这一条事实。
+- 治理：全套 `test_fixed_groups` **84/84 OK**。
+
+**T-06 关闭结论**：显式 `ace-toolchain` 组已建立并真跑（56/56）；C 类 19 行与 H-05 两例已迁出日常；Q 行并入压力；L 行具名移交。**C/Q/L 三类都不再占用日常预算**，剩余 `ace-av` 全组复跑归 T-09。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -812,6 +823,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 16，r1）：`stage: work`，T-06 第二刀（§5.21 续，代码 `e169c7000`）。执行内容：`ace-av` 增 `test-toolchain` feature，19 个 C 类（真 rustc/C/py 跨端腿）测试体逐条门控（只门测试体，共享助手不门）；`ace-toolchain` args/expression 扩到覆盖它们。真实发现差集：`ace-av` 1,428→**1,411**（−19 迁出 +2 新增）、`ace-toolchain` 37→**56**（实测 av 行=19）；`ace-toolchain` 真跑 **PASS 56/56 wall 68.0s**（item 和 993s，最慢 S-01 55.56s——这些 10s 违规已整体离开日常）。治理 `ToolchainSplit` 扩到 4 例，全套 **83/83 OK**。T-06 未闭：Q 类 S-04 处置、L 类 S-39 移交文本、`ace-av` 全组复跑（T-09）。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 16 | from: work | to: work | status: executing | outcome: pass（T-06 第二刀：C 类 19 行迁入，56/56 真跑；Q/L 待处置） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: e169c7000 / 本轮 docs(plan1098) | next: work（T-06 收尾 Q/L 行；随后 T-07 宿主/console 行）`
+
+2026-11-19（goal round 17，r1）：`stage: work`，T-06 第三刀（§5.21 续，代码 `3e03a6dc2`），**T-06 关闭**。执行内容：①Q（S-04）：`av_turnaround_six_scenarios_smoke` 实测 44.778s，按 §5.3 允许的"具名并入压力"整段移入 `mod performance`（3 样本/六场景/多轴断言原样），日常 `ace-av` **1,411 → 1,410** 且零 `performance::` 泄漏，`-p ace-av` 的 perf 匹配 22→23，`--profile ace-perf` 串行真跑 **PASS 24.412s**；新增守卫（该 smoke 必须在 `mod performance` 之后）。②L（S-39）：实测 5.024s，为 `TargetOs::Linux` 下绑定+冷 link（code-only，非执行），按 §5.3 第 7 条保持日常并具名移交 Linux 原生语义给 1061/1063，无代码改动。③治理 **84/84 OK**。C/Q/L 三类均不再占日常预算；`ace-av` 全组复跑归 T-09。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 17 | from: work | to: work | status: executing | outcome: pass（T-06 关闭：显式组 56/56、C 类迁出、Q 并入压力、L 具名移交） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 3e03a6dc2 / 本轮 docs(plan1098) | next: work（T-07 宿主/console H-01…H-06）`
 
 ## 10. 待澄清事项
 
