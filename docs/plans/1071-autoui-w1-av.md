@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1071
-status: drafting
+status: execution_done
 feature_name: AutoUI 示例与 Widgets 的 AV 接管
 author: [Codex]
 created_at: 2026-11-19
@@ -72,7 +72,9 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 ## 9. 复审记录
 
-### 2026-11-19 stage: work（T-03 实跑完整 AV）| PLAN-1071 r1 | outcome: pass（生产入口逐组关闭；两条预存红具名台账）| worktree: `D:/autostack/.wt/lang-1071/auto-ui` @ plan-1071-dev / auto-lang @ plan-1071-dev
+### 2026-11-19 stage: work（收口）| PLAN-1071 r1 | outcome: pass（execution_done）| task_ids: T-01/T-02/T-03 | evidence: §9 三份收据 | blockers: 无 | next_responsible_role: review（T-04 独立复审）| 授权链：用户「完成计划1071」= /auto-plan-goal 全链授权（work→review→merge），记录于 §4 语义与首条 goal 收据。
+
+2026-11-19 stage: work（T-03 实跑完整 AV）| PLAN-1071 r1 | outcome: pass（生产入口逐组关闭；两条预存红具名台账）| worktree: `D:/autostack/.wt/lang-1071/auto-ui` @ plan-1071-dev / auto-lang @ plan-1071-dev
 
 **实跑记录（2026-11-19，本会话，worktree 内）**
 
