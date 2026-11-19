@@ -5753,14 +5753,16 @@ impl<'a> Engine<'a> {
                     //（project_view_stmt_children——if 形进
                     // ComponentStmt::If 序保持；调用形置 foreign fail-closed
                     // 不铸，#6p 合同保持：lambda 面无通道参数，通道调用承载
-                    // =后续切片）；assigns 深平铺兼容面由 flatten_stmt_assigns
-                    // 生成（既有消费者默认路径不变）。
+                    // =后续切片）；assigns 深平铺兼容面（既有消费者默认路径
+                    // 不变）。
                     let mut foreign = false;
                     let stmts = self.project_view_stmt_children(inner, &[], &mut foreign);
+                    // 增量同步适配（F-R21-3 后续）：lambda-if 落地时调用的
+                    // 单句版 flatten_stmt_assigns 已在 981 并集删除（语义被
+                    // 切片版包含）——此处等价改道 flat_handler_assigns
+                    //（逐句循环 == 整切片收平，源序/深度不变）。
                     let mut assigns = Vec::new();
-                    for st in &stmts {
-                        Self::flatten_stmt_assigns(st, &mut assigns);
-                    }
+                    Self::flat_handler_assigns(&stmts, &mut assigns);
                     ComponentEntryValue::Lambda {
                         assigns,
                         stmts,
