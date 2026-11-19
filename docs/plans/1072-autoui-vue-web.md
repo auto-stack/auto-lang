@@ -1,16 +1,16 @@
 ---
 plan_id: PLAN-1072
-status: executing
+status: execution_done
 feature_name: AutoUI Vue 与生产 TS/JS 接管
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 1
+current_step: 3
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-976, PLAN-978]
 supersedes_spec_components: []
-new_spec_components: []
+new_spec_components: [docs/specs/ace-migration/m2-autoui.md#15]
 touched_goals: [GOAL-002]
 ---
 
@@ -46,6 +46,14 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 每组开工确认精确输入源、对应原用例、接口 owner 及身份。共享语义和 ABI 由原 owner 串行写入，变化时重验实际受影响格。已有阶段收据保留其验收边界。
 
+### 规范增量
+
+- **规范目标**：`docs/specs/ace-migration/m2-autoui.md`
+  - 更新顶部 `> Status:` 摘要，记录 PLAN-1072 完成 Vue 与生产 TS/JS 接管交付。
+  - 新增 `## 15. Vue 与生产 TS/JS 接管（PLAN-1072，2026-11-19）`：沉淀组件面 `style` 惰性替换路径、`.name`/裸名并容的 `expose` 语法对齐、`view-for` + 仅视图数据字段（`ComponentViewDataField`）+ 条件样式值、`marshal_str_boundary`（含引号字面量保护）统一 str 边界、冷生成 `write_ace_vue_rt` 修复、`setup/watch/expose/ext_imports/unmount` 与错误保旧恢复边界、旧新映射表及残余记账。
+- **债务账本目标**：`docs/plans/KNOWN-DEBT-AND-RISKS.md`
+  - 追加 `#6p` 分支内调用形（具名缺席）与 `ace_package_sfc` 多分支控制流重放边界的残余债务条（由后续包级控制流计划接手）。
+
 ## 6. 测试设计
 
 与 982 联合验一个原样 Vue UI 工程的 `auto gen`（Vue/TS 与运行时输出）、`auto build`（实际构建）、`auto run`（真实浏览器、事件与状态）。1072 交生成/运行时及行为依据，982 验公开 CLI 与工具派发。U0 只作为既有 Run 子面按原身份复用。
@@ -66,9 +74,9 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 - [x] **T-01｜work｜冻结语料**。复用 `auto-ui/crates/auto-ui-runtime/tests/ace_ts_provider.rs` 与 980 真实语料 census，定位旧源及独立期望。
 
-- [ ] **T-02｜work｜完成受检生成**。在既有 `ace_ts_provider.rs`、SFC 和 tools 产品入口补完 005、010 及分母内的缺口，复用 980 的生产 SFC 与 `a2x_rt.mjs`。
+- [x] **T-02｜work｜完成受检生成**。在既有 `ace_ts_provider.rs`、SFC 和 tools 产品入口补完 005、010 及分母内的缺口，复用 980 的生产 SFC 与 `a2x_rt.mjs`。
 
-- [ ] **T-03｜work｜验收 Vue 产品链**。跑原 V-B-WEB 及适用产品用例，从 `auto run --render vue` 到 pnpm/Vite/真实浏览器，对照页面事件、退出与清理。
+- [x] **T-03｜work｜验收 Vue 产品链**。跑原 V-B-WEB 及适用产品用例，从 `auto run --render vue` 到 pnpm/Vite/真实浏览器，对照页面事件、退出与清理。
 
 - [ ] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
 
@@ -114,10 +122,70 @@ next_responsible_role: work（T-02 刀A 起）
 
 **门禁。** plan1072 **5/5**（含浏览器档）、ace_ts_provider 串行 **27/27**、package_sfc **8/8**、U0 002 **2/2**、notes fp **1/1**、tool wiring **1/1**、010 form **1/1**。
 
-next_responsible_role: work（T-03 剩余：setup/watch/expose 核对与错误恢复面、旧新映射表落档、残余记账；随后 T-04 review）
+2026-11-19 stage: work（T-03 剩余闭环 + 旧新映射表 + 残余四项记账）| plan_id: PLAN-1072 | plan_revision: r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | task_ids: T-02, T-03 | commits: lang `48738ff32a60fa56578da7ecee073d9bf8384917`（基于 `5492b3ca7`, `041148cc1`）, ui `8210ef5bc0b1096d1184503373094d49d46ae9e1`（基于 `ec7342c1`, `1489d0cc`, `b9417486`） | siblings: auto-down `72b097006f34db3a871449f10e213820d51abef6`, auto-man `f461960f5db9bc99267f93541dc7c5bdeedfa048`, auto-web `3d328a3561935ac390916cfa356603bc30135e03`。
 
-`stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 1 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | commits: lang 041148cc1（刀B）+ui 三提交（刀A/B/C）| 证据锚点: 005/010 整例翻转（bodies 6/3、absent=[]）+ 双产品浏览器档全绿 + ace-source PASS/ace-av 红全归因 | next: work（T-03 剩余+记账→T-04 review）`
+**T-03 剩余修复与新增覆盖。** ①`auto-lang`（`48738ff32`）：`experimental/ace/grammars/auto-source.at` 对齐 `age-expose-member` / `age-expose-item` / `age-expose-name-tail`（`profiles: [age-component, age-package]`）并容 `.name` 与裸名及可选逗号；`AgeComponent` `42afe2cb…→fad57c5f81b4ee3c…`、`AgePackage` `91c53cde…→06809c843671b91f…`，13 邻居 grammar-id 逐字节不变（`plan981_grammar_scope` 4/4）。②`auto-ui`（`8210ef5b`）：`crates/auto-ui-tools/src/vue.rs` 在 `from_workspace_reads` `components/*.at` 循环（L4496）继承 `ace_vue_rt` 并在 `VueProject::generate`（L5336）补调 `self.write_ace_vue_rt()?;`（修复 `--gen-only` 冷生成漏写 `src/a2x_rt.mjs`）；`ace_vue_script.rs::wrap_host_reads`（L229）跟踪引号与反斜杠转义避免误包裹 `"..."`/`'...'` 内文本；修订 `plan980_u0_002_product_sfc.rs` 补入刀 C 引入的 `a2x_str_utf8`；修订 `ace_ts_provider.rs::p980_web_param_browser_mount`（E2E 档原预刀C手写 `rt_inline` 假桩缺 `a2x_str_lit`/`a2x_str_utf8`）改用官方 `ace_a2x_ts::script_runtime_body(ScriptLang::JavaScript, &[])` 实跑跨边界读写；新增 `test_p1072_lifecycle_watch_expose.mjs`、`plan1072_vue_web.rs` 三例及 `plan1072_vue_error_recovery.rs` 验证 `setup`（严格单次执行 + `ext_imports`）/ `watch`（触发与卸载停止监听）/ `expose`（`vm.Inc()` 与 dot 前缀）/ `style` 展开 / 冷生成 `@vue/compiler-sfc`+`esbuild` / 增量 non-strict 与 strict 及 lane 拒绝的错误保旧与恢复。
+
+**旧新映射表（真实语料与基准用例对账）。**
+
+| 语料/入口 | 旧源/基准 | 新受检路径与产物 | 验收结果与边界 |
+|---|---|---|---|
+| `002-counter` (U0) | `examples/ui/002-counter` | `ace_vue_script` lane 全派生 SFC + 官方 `a2x_rt.mjs` | `plan980_u0_002_sfc` 2/2、`plan980_u0_002_product_sfc` 2/2（含 `a2x_str_utf8`）通过 |
+| `005-login` | `446da5dc1bb68b6a`（134L） | ACE lane 6/6 handlers 派生（`absent=[]`）+ 配方 `style` 展开 + `test_005_login.mjs` + `gen_vue_project` | `plan1072_vue_web` + `plan1072_vue_error_recovery`：7 判据实浏览器、冷生成 SFC+esbuild、保旧恢复全通过 |
+| `010-contact-form` | `15a632b4cda27cd2`（177L） | `ComponentViewDataField` + `ComponentViewItem::For` + `__bind_*` 出规，3/3 handlers（`absent=[]`） | `plan1072_vue_web` + `plan980_010_form_short` + `plan1072_vue_error_recovery` 全绿；`faqs` 维持 PLAN-1071 仅视图数据边界 |
+| `AutoNotes fp_editor` vs `app.at` | `fp_editor.at`（106L） / `app.at:84` | `fp_editor.at` 全受检 lane；`app.at:84 use { package: official }` 锁包域 | `plan980_notes_fp_editor` 1/1 通过；宿主 `use { package }` 按 981 合同锁域边界 |
+| `Jade Garden quick_switcher` | `quick_switcher.at`（219L） | 双轨 `watch` + ext imports (`use { ... }`) | `plan980_bweb_jg_watch` 2/2 + `test_jg_watch_mount.mjs` 通过；组件面 `use` 块按 981 合同具名拒 |
+| 包面组件 (`ace_package_sfc`) | `package.at` 组件包语料 | `ace_package_sfc` 发射；`sfc-handler-stmt`（F-R21-2）与 `sfc-view-for`（刀B）具名拒 | `plan980_package_sfc` 8/8 通过；多分支控制流重放见残余记账④ |
+| `vue_capabilities` 83 语料 | `tests/vue_capabilities.rs` | `ace_ts_provider::p980_web_full_dual_track_census` | 27/27 通过，聚合 census `(75,8,8,22)` 稳定零漂移 |
+| 生命周期/样式通道 | `setup/watch/expose/ext_imports/style/unmount` | 双轨 + ACE lane 全派生 + `expose` dot 前缀语法对齐 | `plan1072_vue_web` + `test_p1072_lifecycle_watch_expose.mjs` 实浏览器通过；`setup {}` 沿 Vue host compiler 顶层生成 |
+| 错误保旧与恢复 | `incremental_compile_changed` / `gen_vue_project` | 冷生成脚手架 + `a2x_rt.mjs`；错误时 `App.vue`/`a2x_rt.mjs` 逐字节不变 | `plan1072_vue_error_recovery`：non-strict `Ok(0)` 保旧、strict `Err` 保旧、lane 拒保旧、修复恢复全绿 |
+
+**残余记账四项（全部落位）。**
+1. `n_assigns` census 漂移记账：`ace_ts_provider.rs`（L315-320, L392-397）与 `ace_vue_script.rs`（L490-496）记账 `n_assigns` 来自语言侧 `handler_assigns`（981 r21 起由 `flat_handler_assigns(&stmts)` 跨分支深平铺）；唯一消费者 `needs_fn = n_assigns > 0 || rows.iter().any(|r| !r.arg_spans.is_empty())`，含分支赋值的 handler 保守且语义正确（分支体进函数），零执行漂移。
+2. `AC-LIF-01..07` 1072 侧记账：AC-LIF-01..06 主体已随 980 `lambda-if` 刀（lang `347540437` + ui `05ed07c3`, `m2-autoui.md` §13.12）交齐；1072 侧经 `plan1072_vue_web` + `test_p1072_lifecycle_watch_expose.mjs` 验证 AC-LIF-07（`setup` 单次执行 + `ext_imports` + `watch` 更新与 `unmount` 停听 + `expose` 调用与 `.Inc` 对齐语法）。
+3. 原 980 §10-1 `owned-wrap` 统一决策：Knife C（ui `b9417486`）`marshal_str_boundary` 与 `wrap_host_reads` 引号字面量保护及 `p980_web_param_browser_mount` 官方 `script_runtime_body` 迁移已统一三道（状态函数/检查函数/λ 道）str 边界。
+4. `#6p` 分支内调用形与 `ace_package_sfc` 多分支控制流重放边界：`ace_ts_provider.rs:1619` 锁死分支内调用形具名缺席（`.__evt_onclick_1`），`ace_package_sfc.rs` 保留 `sfc-handler-stmt` 与 `sfc-view-for` 具名拒，并迁入 `KNOWN-DEBT-AND-RISKS.md`。
+
+**本轮测试耗时表（依 `test-discipline.md`）。**
+
+*表 1：模块与作用域分组耗时*
+
+| 仓 | 命令/测试集 | 结果（pass / fail） | 测试体耗时 | 总命令耗时 | 提交/状态说明 |
+|---|---|---|---|---|---|
+| `auto-lang` | `ace-core --test conformance plan1072_component_style` | 16 / 0 | 0.12s | 0.437s | 冻结 `48738ff32` |
+| `auto-lang` | `ace-core --test conformance plan981_grammar_scope` | 4 / 0 | 0.31s | 0.472s | 本会话同 SHA `48738ff32` 实测 |
+| `auto-lang` | `ace-core --test conformance plan981_members_slot` | 18 / 0 | 0.08s | 0.229s | 本会话同 SHA `48738ff32` 实测 |
+| `auto-lang` | `ace-core --test conformance plan980_lambda_if` | 5 / 0 | 0.03s | 0.183s | 本会话同 SHA `48738ff32` 实测 |
+| `auto-ui` | `plan980_u0_002_product_sfc` (E2E=1) | 2 / 0 | 2.66s | 20.015s | `tests/ace_ts_provider.rs` 修改前、源码与产品测试已同现态 |
+| `auto-ui` | `plan1072_vue_web` (全 8 例, E2E=1) | 8 / 0 | 5.15s | 28.282s | 另见表 2 在终态 `8210ef5bc` 同内容下 `--exact` 全绿 |
+| `auto-ui` | `plan1072_vue_error_recovery` | 1 / 0 | 4.38s | 35.910s | `tests/ace_ts_provider.rs` 修改前、tools 与 recovery 测试已同现态 |
+| `auto-ui` | `plan980_u0_002_sfc` (E2E=1) | 2 / 0 | 18.47s | 50.623s | 仅 `tests/ace_ts_provider.rs` 在后；src 一致（T-04 冻结同 SHA 重放） |
+| `auto-ui` | `plan980_bweb_jg_watch` (E2E=1) | 2 / 0 | 1.22s | 21.020s | 同上 |
+| `auto-ui` | `plan980_notes_fp_editor` | 1 / 0 | 1.06s | 2.155s | 同上 |
+| `auto-ui` | `ace_ts_provider` (E2E=1) | 27 / 0 | 34.27s | 74.012s | 终态 `8210ef5bc` 实测 |
+| `auto-ui` | `plan980_package_sfc` | 8 / 0 | 2.31s | 13.820s | 终态 `8210ef5bc` 实测 |
+| `auto-ui` | `plan980_ace_vue_tool_wiring` | 1 / 0 | 2.60s | 26.532s | 终态 `8210ef5bc` 实测 |
+| `auto-ui` | `plan980_010_form_short` (E2E=1) | 1 / 0 | 1.71s | 31.588s | 终态 `8210ef5bc` 实测 |
+
+*表 2：PLAN-1072 新增用例逐条耗时（全部 `<= 10.000s` 达标）*
+
+| 仓/测试文件 | 用例名 | 结果 | 测试体耗时 | 命令总耗时 |
+|---|---|---|---|---|
+| `auto-lang` `plan1072_component_style` | 16 个新增用例全集（`--exact` 逐条实测，`p1072_component_style_literal_compiles` .. `p1072_expose_dot_prefixed_names_project_and_compile`） | 16 / 0 | 0.02s..0.07s | 0.172s..0.291s |
+| `auto-ui` `plan1072_vue_web` | `p1072_005_lane_whole_source_derives` | 1 / 0 | 0.30s | 1.564s |
+| `auto-ui` `plan1072_vue_web` | `p1072_005_style_expansion_is_literal_not_binding` | 1 / 0 | 0.19s | 0.826s |
+| `auto-ui` `plan1072_vue_web` | `p1072_010_lane_whole_source_derives` | 1 / 0 | 0.19s | 0.804s |
+| `auto-ui` `plan1072_vue_web` | `p1072_005_product_browser_mount` | 1 / 0 | 1.34s | 1.945s |
+| `auto-ui` `plan1072_vue_web` | `p1072_010_product_browser_mount` | 1 / 0 | 1.26s | 1.876s |
+| `auto-ui` `plan1072_vue_web` | `p1072_marshal_str_boundary_preserves_string_literals` | 1 / 0 | 0.16s | 0.767s |
+| `auto-ui` `plan1072_vue_web` | `p1072_watch_expose_style_lane_and_setup_boundary` | 1 / 0 | 0.21s | 0.822s |
+| `auto-ui` `plan1072_vue_web` | `p1072_watch_expose_setup_unmount_browser_mount` | 1 / 0 | 1.34s | 1.962s |
+| `auto-ui` `plan1072_vue_error_recovery` | `p1072_vue_cold_gen_error_preserve_and_recovery` | 1 / 0 | 4.38s | 35.910s（含冷编；test 体 4.38s） |
+
+next_responsible_role: review（T-04 独立复审，含 `cargo t ace-source`、`cargo t ace-av` 与 `auto-ui` 同冻结提交复验）
+
+`stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 2 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | commits: lang 48738ff32a60fa56578da7ecee073d9bf8384917, ui 8210ef5bc0b1096d1184503373094d49d46ae9e1 | 证据锚点: T-03 剩余闭环（冷生成 a2x_rt/marshal 引号保护/expose 点前缀/.mjs 生命周期/错误保旧恢复）+ 旧新映射 9 项 + 残余 4 项记账 + UI 10 套件及 25 新增单测全 <=10s | next: review`
 
 ## 10. 待澄清事项
 
-T-01 已核（§9 收据）：原用例位置/依赖接口/生产入口冻结完毕；005/010 墙与路由已勘定。遗留观察项：①auto-ui master 未提交 WIP（examples/stylekit、packages/themes `.at` 删除族）owner 未明——merge 落地前需路由，非本计划阻塞；②owned-wrap 统一（原 980 §10-1 谱系）与 #6p 分支内调用形承载随 T-02 残余记账按证据决策。
+T-01 已核（§9 收据）；②已于 T-03 残余记账闭环（`n_assigns`、AC-LIF-07、§10-1 `owned-wrap`/`marshal_str_boundary`、`#6p` 分支内调用形与 `ace_package_sfc` 控制流边界）。保留观察：①`auto-ui` / `auto-lang` 主检出既有未提交 WIP（`examples/ui/stylekit`、`packages/themes`、`packages/blueprints`、`docs/design` 等）与 PLAN-1072 改件零重叠——禁止碰触，T-05 仅以 `--ff-only` 线性落地本计划显式文件。
