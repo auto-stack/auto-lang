@@ -650,6 +650,21 @@ tools = ["a2x"]; domain = ace; all = false
 
 **T-07 未闭项**：`ace-batch` 的完整真实运行（D-1098-02 的 8 红属 batch 文档格式迁移，不归本计划修）与 `host` 全组的 prepared 并集复跑，归 T-09 逐组验收。
 
+### 5.23 T-08：成本报告会话模式（代码 `e4642aa81`）
+
+在 `scripts/test-governance/ace_cost_report.py` 增第三模式 `session`（原 `policy`/`regular` 不动），只加"单组看不到"的两件事，其余**复用** `regular_module` 的既有判定（终态事件完整性、60/120 暖墙预算、STALE 身份）：
+
+1. **身份差集**：`--baseline <json>` 读上一会话的 `ace-session-baseline/1`，输出 `added`/`removed` 原生身份；`--baseline-out` 把本会话身份写成下一会话基线（往返可复现）。
+2. **新增例 ≤10 秒**：只对 `added` 身份强制 `--new-item-cap-seconds`（默认 10s，即 AC-09 的新增 item 预算）；老身份继续走组预算，不因新增例规则被卡。
+3. **退出码**：0=GREEN、1=OVER_BUDGET/新增例超时、2=UNVERIFIABLE（含坏基线 schema、缺证据、STALE 传播），沿用 `REGULAR_EXIT_*`，不新增语义。
+4. **不建 meter、不重跑、不改写产物**：报告只读 run 目录（`results.json` + `0/run.command.json` + `0/run.stdout`）。
+
+**测试**：`scripts/tests/test_ace_cost_report.py` 新增 `SessionReports` 9 例——无基线不产生差集、基线与基线输出往返、新增例 12.5s 超限→1、新增例 4s→0、移除身份上报、缺证据→2、坏基线 schema→2、多模块同判（2 模块 2 身份）、`--baseline` 在非 session 模式被拒。全套 **54/54 OK**（另 `test_fixed_groups` 84/84）。
+
+**真实数据首跑（V-12 端到端）**：
+- 先用**旧**证据跑：`ace-toolchain`(t06) + `ace-console`(t07) → **UNVERIFIABLE，exit 2**，原因正是 `source_state differs from current checkout`——STALE 检查在真实数据上生效，没有把旧证据当绿。
+- 在当前 HEAD 重跑两组（toolchain 56/56、console 6/6）后再判：**GREEN，exit 0**，2 模块 / 67 身份，`added=0 removed=0`（与上一次会话基线逐身份一致），`ace-toolchain 66.293s → WITHIN_BUDGET`、`ace-console 3.033s → GREEN`，无 STALE。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -757,7 +772,7 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 | [✅] T-05 | IV / work | T-01/02 | `p946_t01_probe.rs`、`probe972.rs`及挂载；O-01…05固化当前合同，无长期目的角色逐项具名research/退休并留原依据 | AC-05、V-07；各错预期真红、合法绿、新增例≤10秒 |
 | [✅] T-06 | V / work | T-01/02 | 47表C/Q/L、`host/rust_lowering.rs`认证部分、`test-groups.toml`/必要target；显式ace-toolchain保原各端/故障，Q正式压力原样PERF；Linux交1061/1063，绑定事实单列 | AC-07、V-09/14；旧新同输入每端对照、专项完整真实运行，不仅emit |
 | [✅] T-07 | V / work | T-01/02/06 | `conformance/tests/console.rs`、host协议、`invocations`和Case消费者；H-01…06核实后消重，保真实运输/版本/负控和batch隔离 | AC-06、V-08/10/11；完整host/console/rust-lowering/batch及15项case组；语义union可去重，预算须单组 |
-| [ ] T-08 | VI / work | T-01/02，最终接T-03…07 | 扩原`ace_cost_report.py`、`scripts/tests/test_ace_cost_report.py`：新增差集/≤10秒、原组预算/终态/STALE检查；会话报告，版本兼容；不另建meter | AC-08/10、V-12/13；治理完整组+prepare-tools定向，缺失时间不伪造 |
+| [✅] T-08 | VI / work | T-01/02，最终接T-03…07 | 扩原`ace_cost_report.py`、`scripts/tests/test_ace_cost_report.py`：新增差集/≤10秒、原组预算/终态/STALE检查；会话报告，版本兼容；不另建meter | AC-08/10、V-12/13；治理完整组+prepare-tools定向，缺失时间不伪造 |
 | [ ] T-09 | VI / work | T-03…08 | 冻结实现，24单组有效预算+47行关账、新增内容/时间、工具链/PERF增量及负控关闭，提交SD提案/Spec增量和源码/依赖/config/input结果身份 | AC-01…10；可复用同身份完整证据，超支/缺口不勾完成 |
 | [ ] T-10 | VII / review | T-09 | 同树独立上下文复审，暂停work写入，逐AC/SD/改动义务核真实输入消费者、负控敏感性和完整成本，必要定向复验并绑定review SHA | AC-11；needs_fix/needs_replan回work，不能边修边签 |
 | [ ] T-11 | VIII / merge | T-10通过、合入授权 | 冻结必要并集，沉淀SD-01…06、归档/输出对账/摘要折回，删本包材料与守卫后清树 | AC-12；未来merge任务不阻T-09交execution_done，不提前勾 |
@@ -855,6 +870,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 18，r1）：`stage: work`，T-07（§5.22，代码 `1bf9ff89b`）。执行内容：**补上 H-02 的真实运输负控**——`console-observation.json` 增写 `value/channel/trap`（真实帧三轴齐），新增 `pub console_admission_for_observation()` 让宿主对**原始帧**跑同一套 parent admission，新用例真实跑一次 console check 后断言三轴齐、admission 通过，并逐一删除 `stdout_b64`/`stderr_b64`/`value`/整个 `console` 都必须被拒。`ace-console` prepared **6/6 PASS，run 2.97s**；变异负控（期望 exit 7→8）令该例立刻红，已还原。同时核实 H-01（15 项与 `case-ace-m1-console-863` 同一 suite）、H-03（NUL 真跨进程）、H-04（三条便宜例仍普通，2 绿 2 既有红）、H-05（已入 toolchain）、H-06（同 key OR 并集实测）。**顺带测到**：无 prepared env 裸跑 console 五例各约 241s，走 driver 仅 2.97s，证明显式准备不是形式主义。T-07 未闭项（batch 完整跑、host 全组并集）归 T-09。**计划任务表**：T-02…T-07 翻为完成；T-01 保留（facade/adapters/聚合/PERF/Case 发现残项）。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 18 | from: work | to: work | status: executing | outcome: pass（T-07 完成：H-02 真实运输负控 + H-01/03/04/05/06 核实） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 1bf9ff89b / 本轮 docs(plan1098) | next: work（T-08 成本报告扩写 + 治理）`
+
+2026-11-19（goal round 19，r1）：`stage: work`，T-08（§5.23，代码 `e4642aa81`）。执行内容：`ace_cost_report.py` 增 `session` 模式——多模块同判（复用 `regular_module` 的暖预算/终态/STALE）+ 身份差集（`--baseline`/`--baseline-out`，`ace-session-baseline/1`）+ 新增例 ≤10s 预算（`--new-item-cap-seconds`），退出码沿用 0/1/2，不建新 meter、不重跑、不改写产物；`test_ace_cost_report.py` 加 `SessionReports` 9 例，全套 **54/54 OK**，`test_fixed_groups` 84/84。**真实数据**：旧证据跑 → UNVERIFIABLE(exit 2，STALE 正确拦截)；当前 HEAD 重跑 toolchain 56/56 + console 6/6 后 → **GREEN(exit 0)，67 身份，added=0/removed=0**，toolchain 66.293s WITHIN_BUDGET、console 3.033s GREEN。计划任务表 T-08 已翻完成。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 19 | from: work | to: work | status: executing | outcome: pass（T-08 完成：session 模式 + 差集 + 新增例≤10s，真实 GREEN 且旧证据被 STALE 拦下） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: e4642aa81 / 本轮 docs(plan1098) | next: work（T-09 冻结实现 + 逐组验收/关账）`
 
 ## 10. 待澄清事项
 
