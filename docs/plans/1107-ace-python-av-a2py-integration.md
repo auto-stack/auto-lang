@@ -648,6 +648,36 @@ V-03 覆盖判定（诚实）：身份/别名/重复传参 ✔；资源/close（
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
+2026-11-20 · stage: review（T-07 独立复审）| plan_id: PLAN-1107 | plan_revision: r2 | review_scope: final | outcome: pass
+
+reviewer_identity/limitations: 与本计划 work 同一会话、同一 checkout（无独立 reviewer 会话可用）；结论按 artifacts/命令复核重建，未依赖执行叙述。
+worktree_path: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | reviewed_commit: `d202960ed` | base_commit: `5089d3de0`
+dependency_revisions: 967 provider（pinned PyO3，经 `PySession`）、1026 冻结帧/用例、1042/977 既有 python 后端、978 m2-build；CPython 3.14.2、torch 2.14.0+cpu。
+spec_inputs: `docs/specs/auto-av/python-interop.md`（8575B）、`docs/specs/auto-a2x/python-stdlib-readiness.md`（5427B）、`docs/specs/ace-migration/m2-build.md`（4629B）、新增 `docs/specs/auto-a2x/python-ecosystem-integration.md`（SD-01 草稿）。
+
+复核方法：在冻结提交上重跑受影响模块并集；逐条 AC 对照代码/用例断言而非收据；检查 tree clean、`cargo fmt --check`（5 个改动 crate 全绿；复审前修掉 `Cargo.lock` 缺 `ace-foreign-contract` 与格式未净）、无调试残留（`A2X_FRAME_DEBUG`/`dbg!` 无命中）。
+
+AC 证据映射（pass/partial/fail）：
+| AC | 结果 | 证据 |
+|---|---|---|
+| AC-01 | pass | `p1107_v01_section51_training_via_av_session`（62 行、首 0.2370201/终 0.101308905、shape、pred0）＋ `p1107_t03_section51_runs_as_native_python`（同源、原生 Python）；同一 `pytorch_train.as`（sha256 钉住） |
+| AC-02 | pass | 两端 60 步真实训练数值 + 独立 Python oracle；emit 从不执行程序（V-05/V-06 `tool_spawns` 为空） |
+| AC-03 | pass | `p1107_v02_*` 两端 `[5,1,2,6]` 同 oracle；操作数单次求值；`py_ops_1107` 钉住 17 操作与中立契约；`a2py_contract_rejects_unrelated_sources…` 负控 |
+| AC-04 | pass（边界具名） | `p1107_v03_*` 身份/别名/重复传参 `[6,1,1,12,6]`；`p1107_v04_session_remains_usable_after_a_trap`（trap 后同 session 返回 42）；资源/close 由 1026 冻结用例覆盖；「显式 float 后 backward」由 V-01 覆盖。边界：深拷贝错误控制与「错误转换后继续用」在 v1 源面不可表达（无 catch/deepcopy），记未执行而非 PASS |
+| AC-05 | pass | V-05 无 legacy 引擎（无 pyo3/auto_vm/python_trans/ctypes provider，程序侧仅 stdlib import）；V-06 冷/暖/编辑真实计数（暖 `cache-hit`、零工具 spawn、身份轴 project/caps/provider）；A2PY 无 AV/PyO3 兜底（逐文件断言） |
+| AC-06 | pass | V-07 缺解释器/缺包/缺工件具名失败不充 PASS；V-08 非 Python 工程不受影响（无 py helper/ctypes，entry=14）；重定位 SDK 运行；§4.4 支持矩阵（实测/未宣称分列） |
+
+SD 校验：SD-01 新文件覆盖单源/双后端/17 操作/失败面/矩阵/工程集成/未交边界，与代码事实一致（17 操作表、`p967.frame/1`、`is_py_lane_helper`、`-B`、`cache-hit` 均在实现中核到）；SD-02/03/04 追加段只描述已验行为，不含执行日记；review 期间未发布 Spec（留 merge 沉淀）。
+
+新增用例耗时（实测，均 < 10s 门槛）：V-01 AV 1.87s / T-03 原生 2.1–2.6s / V-02 AV 0.18s、A2PY 0.13s / 单次求值 0.18s、0.13s / V-03 AV 2.9s、A2PY 2.6s / V-04 AV 0.13s、0.17s、A2PY 0.11s、SDK 0.19s / V-05 0.13s / V-06 0.20s、0.22s / V-07 0.12s / V-08 0.15s / T-05 工程 2.7s、SDK 4.1–4.3s、缺包 0.18s。
+
+冻结并集门（本基线实跑）：`cargo t ace-python ace-a2x ace-m2-build` —— ace-python PASS(10)、ace-m2-build PASS(39)、ace-a2x FAIL(1/300)：`ace-a2x-ts ports::tests::canonical_fingerprint_is_stable_and_binds_runtime_sha`（72 vs 71），与 master 同红，属预存基线红、非本计划回归（具名保留，未充 PASS）。
+
+findings：无阻塞项。复审前已修：`Cargo.lock` 缺 `ace-foreign-contract`（fresh checkout 会漂移）、5 个 crate 的格式未净（现 `--check` 全绿）。遗留边界（不计债务、写入 §5 未交域）：A2PY Python 异常→Auto 错误类映射未做。
+
+pending_closeout_gates（merge 所有）：SD-01..04 沉淀到 `docs/specs/` 并入 `00-intro` 索引；归档计划、`wt-guard` clean 后移除 worktree/branch；删除 `D:/autostack/plan-artifacts/plan-1107/`；merge 时在冻结提交复用本次并集门（输入未变则不重跑）。
+
+next: merge
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
