@@ -554,3 +554,40 @@ fn p105_list_index_expr_projects() {
         "named reject expected, got {err:?}"
     );
 }
+
+/// 016 真语料形：**连字符元素标签**（`grid-item`）——自定义元素名在标签位
+/// 收 `ident ('-' ident)*`，投影按键节点源文本取整名。
+#[test]
+fn p105_hyphenated_element_tags_project() {
+    let src = "widget App {\n\
+        model { var n int = 0 }\n\
+        view {\n\
+            col {\n\
+                grid-item { text \"x\" {} }\n\
+                scroll-area { text \"y\" {} }\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("hyphenated tags project");
+    let mut tags: Vec<String> = Vec::new();
+    fn walk(items: &[ace_core::source::age_component::ComponentViewItem], out: &mut Vec<String>) {
+        for it in items {
+            match it {
+                ace_core::source::age_component::ComponentViewItem::Element(e) => {
+                    out.push(e.tag.clone());
+                    walk(&e.items, out);
+                }
+                ace_core::source::age_component::ComponentViewItem::For(f) => walk(&f.items, out),
+                ace_core::source::age_component::ComponentViewItem::Cond(c) => {
+                    walk(&c.then_items, out);
+                    walk(&c.else_items, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(&nodes[0].view.tree, &mut tags);
+    assert_eq!(tags, vec!["col", "grid-item", "scroll-area"]);
+    assert!(compiles(src), "package face admits hyphenated tags");
+}
