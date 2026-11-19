@@ -4874,3 +4874,21 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - owner：1045（host 客户端实测）与 1051/1052（backend/驱动实测），SD-01 §5 已指向。
 - 关闭条件：以真实 AAC 有界代表输入（1045/1051 实际模块）测量单编译请求输出字节与整请求期限，记录批准支持 profile（不超已冻结有界约束；超界须回具名需求决策），更新 contract-profile.tsv resource 行与 SD-01 §5。
 - 状态：open（不阻塞 PLAN-1044 交付；1051/1052 具名携带）。
+
+## D-983-01 — shell-pack-sync.py 落点陈旧（PLAN-814 迁仓后未随，2026-11-19 PLAN-983 r28 登记，owner=os/ui）
+
+- 现象：uto-os/scripts/shell-pack-sync.py（PACK=shell.at/desktop.at/switcher.at/notification_center.at，单向 auto-os→目标）仍把目标解析为 uto-lang crates/auto-lang/assets/（PLAN-814 退役落点，该目录已不存在）；实际消费 pin 现位于 uto-ui crates/auto-ui-runtime/assets/。
+- 证据：983 收口侧已核对本次 pin 与源一致——auto-ui 8dd932b8 的四件与 auto-os 5928a11:shell/* **逐字节一致**（704/761/216/231 行，sha 全同）；auto-lang 旧落点目录已空。
+- 影响：同步链断裂——auto-os 后续改 shell 资产不会自动进 auto-ui pin（本次为手工 pin 刷新 8dd932b8/586b3759 补救）；脚本 run 会报"auto-lang root 未解析"。
+- owner：OS/UI 线（auto-os 脚本维护方）。
+- 关闭条件：shell-pack-sync.py 目标改指 uto-ui/crates/auto-ui-runtime/assets/（同 PACK 四件），同步后与 auto-os 源逐字节一致且打印目标仓 pin 版本注记；auto-lang 旧落点确认无消费方后移除引用；两次独立同步运行稳定一致。
+- 状态：open（不阻塞 983 交付；983 收口侧已按单向契约完成本次 pin 与金样同步）。
+
+## D-983-02 — rq/headless 媒体渲染族与 p073 吞吐门在全量并发下的负载假红族（2026-11-19 PLAN-983 r28 登记）
+
+- 现象：r27 门 ui-full 的 p073_t02×2/p063/rq_matrix_t04/rq_repair_fr2/rq_probe_t01（含 0xc0000005 崩溃）与 auto-media-core 排水时限 full_channel_oracle 在**全量套件并发/机器争用**下红，隔离重放全绿（1.7–98.3s；media 三跑 1红2绿）；失败集合逐轮漂移（owner 探针 4→1 红）。
+- 处置（已落）：共享门禁口径变更 726ca59bb（rq 族串行化 max-threads=1 + p073 t01/t02/t05 吞吐门 threads-required=num-cpus 独占槽位；输入/断言/预算零变化；治理维护方复核旗标）；用户裁定"负载问题跳过去，默认成成功"（r28）。
+- 影响：门在机器被其他会话占用时仍可能抖红；不构成确定性缺陷（隔离绿 + 全量探针 3861/3861）。
+- owner：门配置治理维护方（复核 726ca59bb）+ 各时序门 owner（如需更宽预算/串行纪律演进）。
+- 关闭条件：治理维护方复核通过 726ca59bb；或时序门按负载预算重定标后在全量并发下稳定。
+- 状态：open（用户裁定下不阻塞 983 收口；登记以防后续机器争用复现时误判回归）。
