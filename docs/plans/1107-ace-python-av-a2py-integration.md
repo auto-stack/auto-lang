@@ -328,6 +328,20 @@ Round 6 增量（冻结提交 `4c01fb05d`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 6 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 4c01fb05d | next: work`
 
+2026-11-20 · stage: work（round 7 · **978 工程入口接通 use.py 工程**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `e74094d5f` | task_ids: T-05 主体（V-05 部分：build/emit+真跑；SDK/身份/缓存待做）| outcome: pass（round 级）| next_responsible_role: work（T-05 余量或 T-06）
+
+Round 7 增量（冻结提交 `e74094d5f`，树内 clean）：
+- **a2x-store**：新增 `cold_assemble_py(src, caps, entry, read_only)` —— Aggregates 面经唯一共享前门 + 中立 py 声明契约编译（自动补 `foreign.scalar`/`foreign.resource`），再由会话 provider 组装；不发布 retained resolve env（暖编辑归 V-06）。新增 `ace-foreign-contract` 依赖（在 a2x 允许依赖清单内）。
+- **m2-build driver**：a2py 车道检测 `use.py` → 走 `cold_assemble_py`，其余车道保持冻结 cold 路径；emit 路径不执行 torch（`outcome.run == None` 已断言）。
+- **a2x-core prepare**：语义指纹序列化补 `py:<symbol>` 分支（py 通道抽取 intrinsic 的稳定身份），否则 store 组装在指纹期以 `call target not admitted` 拒绝。
+- **端到端**：`ace-m2-build::py_project_1107` PASS —— 同一 §5.1 工程经 `M2Build::build(TargetKind::A2py, …)` 构建，产物写入后由声明解释器真跑：62 行、first `0.2370201`、final `0.101308905`、shape、pred0 `0.47284803`，2.85s；产物 `generated.py` 无 `a2x_foreign_py_`、runtime 无 `f0_text_provider.dll`。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_t05)'` PASS（2.99s）；`cargo t ace-m2-build` PASS、`cargo t ace-python` PASS 10/10；`cargo t ace-a2x` 仍仅预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71，master 同红）与 `pyready_03` 并行偶发（隔离绿）。
+
+未决（下一 round）：T-05 余量（a2py 运行/兼容/选择账、解释器与包身份轴、`ac-build run --sdk` 消费、可重定位/缺环境具名失败）；T-06 共享病例与固定组并集；V-02/V-04 协议病例。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 7 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: e74094d5f | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
