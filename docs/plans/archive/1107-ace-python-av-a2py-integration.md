@@ -600,3 +600,11 @@ next: merge
 交付边界（不扩大）：本 Plan 交付既定 PyTorch 同源工程与列明协议/SDK 面；未宣称全 Python 生态或整版 M2 交付，也未宣称 Linux 腿（按 2026-11-14 裁定归专用环境）。遗留边界（不计债务、已在 §5/复审记录具名）：A2PY Python 异常→Auto 错误类映射、容器/记录跨边界、动态浮点实参。
 
 stage: merge | next: batch-regression-due-check
+
+2026-11-20 · merge 收尾核验（cleaned 复核，实际输出）：
+- worktree guard：`wt-guard: clean — D:\autostack\.wt\lang-1107\auto-lang 下无任何 reparse point`；worktree 内 `git status` 0 项、tip `535b34a01`（已 landed）。
+- 移除：`git worktree remove` exit 0；`git branch -d plan-1107-dev` → `Deleted branch plan-1107-dev (was 535b34a01)`；组目录 `D:/autostack/.wt/lang-1107` 删除（`group_gone=True`）。
+- 材料清理：`plan-artifacts/plan-1107/` 整目录 40 文件 / 801195 字节删除；registry `.retention/policy.json` 插入 `auto-lang/PLAN-1107`（deleted-at-merge，133 条）。
+- 归档核验：`docs/plans/archive/1107-ace-python-av-a2py-integration.md` status=`archived`、current_step=8、无未勾选项；Specs 已随落地 commit 在 master（`1724e803…` 等）；主检出仅余其他会话 WIP（未被本计划触碰或提交）。
+- 批量回归到期判定：`.last-batch-regression.json`（last_covered_plan_id=1098，2026-11-20T00:00Z）→ 1099..1109 间无 5 的倍数计划归档（1106/1107/1109），且回执 <48h ⇒ **未到期**，不派发 /auto-plan-regress。
+- 遗留：无 artifact hold；§5/§9 已具名的边界不因归档自动释放。
