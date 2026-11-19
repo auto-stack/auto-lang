@@ -454,3 +454,52 @@ fn p105_handler_var_locals_and_fstring() {
         "package face admits hook-local reassignment (mutable let)"
     );
 }
+/// 012 真语料形：元素体**单行逗号分隔**多 entry
+/// （`button "时−" { onclick: .ADnH, style: stepper_btn }`）。
+#[test]
+fn p105_single_line_comma_entries_project() {
+    let src = "style stepper_btn = \"w-8 h-8\"\nwidget App {\n    msg { ADnH }\n    model { var n int = 0 }\n    view {\n        col {\n            button \"时−\" { onclick: .ADnH, style: stepper_btn }\n        }\n    }\n}\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("single-line comma entries project");
+    let mut keys: Vec<String> = Vec::new();
+    fn walk(items: &[ace_core::source::age_component::ComponentViewItem], out: &mut Vec<String>) {
+        for it in items {
+            if let ace_core::source::age_component::ComponentViewItem::Element(e) = it {
+                for child in &e.items {
+                    if let ace_core::source::age_component::ComponentViewItem::Entry(en) = child {
+                        out.push(en.key.clone());
+                    }
+                }
+                walk(&e.items, out);
+            }
+        }
+    }
+    walk(&nodes[0].view.tree, &mut keys);
+    assert_eq!(keys, vec!["onclick", "style"]);
+    assert!(compiles(src), "package face admits single-line comma bodies");
+}
+
+/// 012 真语料形：handler 里**无 else 的 if** + 局部量再赋值（秒表/倒计时段）。
+#[test]
+fn p105_handler_if_without_else() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0\n var s str = \"\" }\n\
+        view { text \"x\" {} }\n\
+        on {\n\
+            .T -> {\n\
+                var a = f\"${.n}\"\n\
+                if .n < 10 { a = \"0\" + a }\n\
+                .s = a\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("if-without-else projects");
+    let handler = &nodes[0].handlers[0];
+    assert!(handler
+        .stmts
+        .iter()
+        .any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::If { els: None, .. })));
+    assert!(compiles(src), "package face admits if-without-else handlers");
+}
