@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-981
-status: executing
+status: archived
 feature_name: AGE Node 的 ACE 源与会话基础
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
 plan_revision: 22
-current_step: 6
+current_step: 8
 total_steps: 9
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -860,7 +860,9 @@ cargo test -p ace-syntax-grammar                               # 45/45
   [✅ 已完成 2026-11-19] 四核全过零阻塞（§9「T-05 基础收口独立复核」段：保留能力/44 反例全绿/后继 7 行齐备 draft/跨计划收据互证；info×2=r22 WIP 待落+后继 drafting 属设计）。
 
 
-- [ ] **T-06｜基础收口｜owner_stage: merge**。按 owner 次序合入，沉淀基础范围的正式规范与后继链接，核真实消费来源并归档。
+- [x] **T-06｜基础收口｜owner_stage: merge**。按 owner 次序合入，沉淀基础范围的正式规范与后继链接，核真实消费来源并归档。
+  [✅ 已完成 2026-11-19] 用户确认按 r22「AGE Node 的 ACE 源与会话基础」范围归档；拆分合同+后继先落（`beaed1df2`）→终审/移交记录复核（7/9 勾、T-05 终审在位、移交表 7 行、后继 drafting）→本提交归档。canonical=`docs/specs/ace-migration/m2-age.md`（tracked，§1-4 随 d5f085aef 落主）；后继链接=1071/1074/1075/1076/1077（本拆建立）+1068/985（既有，1068 未跟踪待其 owner 落盘）；**剩余产品验收由后继计划继续承担**（用户口径）。
+
 
 - [ ] **T-07｜基础收口｜owner_stage: merge**。依项目规约完成证据摘要、输出对账、登记和 guard 后清理。
 
@@ -1076,6 +1078,18 @@ stage: work | plan_id: PLAN-981 | plan_revision: r22 | task_ids: T-BASE-RECEIPT 
 **注记（info 级，不阻塞）**：(a) r22 合同修订本体为他会话未提交 WIP——T-06 合入/归档前须其落 commit（勾选翻转与 current_step 已随其工作树就绪）；(b) 后继均 drafting（义务已路由未开工=拆分设计使然，非缺件）。
 
 stage: review | plan_id: PLAN-981 | plan_revision: r22 | outcome: pass（T-05 闭；基础收口 work+review 齐）| findings: 零阻塞（info×2 如上）| next: T-06（merge：合入+基础规范沉淀+后继链接+**归档**——终态操作，前置=r22 WIP 落 commit+用户确认；T-07 清理随后）
+
+### 2026-11-19 stage: merge（**T-06 终态归档：PLAN-981 按 r22「AGE Node 的 ACE 源与会话基础」范围归档**；用户确认指令——先落拆分合同+后继、复核终审/移交记录、再归档；剩余产品验收由后继计划继续承担）| plan_id: PLAN-981 | plan_revision: r22（终版）| outcome: **pass（archived——终态；T-07 清理随后独立执行）** | delivery: 本提交（git mv docs/plans/981-ace-m2-age.md → docs/plans/archive/ + status: archived）
+
+**前置链**：拆分合同+后继五计划落地 `beaed1df2`（含 .next-id 1078 一致性；他会话 WIP 不触）→ 终审/移交复核：任务 7/9 勾（T-01/B-SOURCE×3/T-BASE-ONIF/T-BASE-RECEIPT/T-05）、终审收据三段在位（fold 链 `c84f25cf4`/审计 `5fb0b7725`/复核 `11c355776`）、§0 移交表 7 行、后继 drafting。
+
+**canonical_verified**：`docs/specs/ace-migration/m2-age.md`（tracked；§1 view-if/§2 cond_spans/§3 观察门/§4 on-if 组件面——随 r20 `b574c550a`+r21 `d5f085aef` 落主；本归档零新增规范面）。
+
+**后继链接**：1071（W1-AV）/1074（W3-A2R 公共）/1075（AV 内容融合）/1076（2D 游戏 A2R）/1077（3D 游戏 A2R）=本拆建立；1068（AC 三端）+985（认证）=既有接手方（1068 未跟踪，待其 owner 落盘——本表路由不依赖其 git 状态）。
+
+**遗留具名**：010 `var faqs=[...]` 无类型列表字段（collections 域）；包版 SFC 控制流真复放+`n_assigns` census（1072）；981-B 余量见 985 B-pending 清单。**范围声明**：本归档覆盖 r22 基础范围（源与会话基础+已 fold 各刀）；产品验收义务全部随 §0 表由后继承担，不在本计划内灭失。
+
+stage: merge | plan_id: PLAN-981 | plan_revision: r22 | outcome: pass（archived 终态）| task_ids: T-06 | canonical: m2-age.md §1-4 | delivery_commit: 本提交 | next: T-07（清理：仅 981 自有 worktree/分支/plan-artifacts；wt-guard 前置）
 
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
