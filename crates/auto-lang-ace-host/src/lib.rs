@@ -201,6 +201,12 @@ pub fn register_prepared_source_provider(
     Ok(build.cdylib)
 }
 
+/// Report whether the provider is registered and currently admits requests.
+#[cfg(windows)]
+pub fn provider_is_admitted(name: &str) -> bool {
+    lookup_provider(name).is_some_and(|entry| !entry.revoked.load(Ordering::SeqCst))
+}
+
 /// Revoke a provider: every later request naming it is refused before any
 /// dispatch until [`readmit_provider`]. Returns whether an admitted
 /// provider was revoked.
