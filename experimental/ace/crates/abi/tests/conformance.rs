@@ -51,6 +51,10 @@ mod py_bridge_1026;
 #[path = "cases/py_ops_1107.rs"]
 mod py_ops_1107;
 
+
+
+#[path = "cases/py_protocol_1107.rs"]
+mod py_protocol_1107;
 #[path = "cases/py_session_1107.rs"]
 mod py_session_1107;
 #[path = "cases/py_session_1026.rs"]

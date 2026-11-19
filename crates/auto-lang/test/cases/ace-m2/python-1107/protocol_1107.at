@@ -1,0 +1,24 @@
+use.py builtins: list, round, len, repr
+
+fn main() int {
+    var l = list()
+    var a1 = l.append(11)
+    var a2 = l.append(22)
+    var a3 = l.append(33)
+    var n = len(repr(12345))
+    print(n.to(int))
+    print(l.count(22).to(int))
+    print(round(2.5, ndigits: 0).to(float))
+    var total = 0
+    var i = 0
+    for i < 3 {
+        var c = l.count(22)
+        if c.to(int) == 1 {
+            total = total + 1
+        }
+        total = total + 1
+        i = i + 1
+    }
+    print(total)
+    return 0
+}

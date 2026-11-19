@@ -49,11 +49,11 @@ fn find_python() -> String {
     panic!("no usable Python interpreter (set AUTO_PYTHON_HOME)");
 }
 
-fn emit_fileset(dir: &PathBuf) -> Vec<String> {
+fn emit_fileset(dir: &PathBuf, src: &str) -> Vec<String> {
     let contract = py_declaration_contract().expect("declaration contract");
     let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
     let compiled = ace_core::source::compile_aggregates_source_with_foreign(
-        &section_5_1(),
+        src,
         "p1107-a2py.at",
         &caps,
         &contract,
@@ -114,7 +114,7 @@ fn emit_fileset(dir: &PathBuf) -> Vec<String> {
 #[test]
 fn p1107_t03_section51_runs_as_native_python() {
     let dir = scratch_dir("train");
-    let files = emit_fileset(&dir);
+    let files = emit_fileset(&dir, &section_5_1());
     assert!(files.contains(&"a2x_main.py".to_string()));
     let generated = std::fs::read_to_string(dir.join("generated.py")).unwrap();
     assert!(
@@ -165,4 +165,61 @@ fn p1107_t03_section51_runs_as_native_python() {
         lines.len(),
         elapsed.as_millis()
     );
+}
+
+/// The shared V-02 protocol case + its independent native-Python oracle.
+const PROTOCOL: &str = "protocol_1107.at";
+const PROTOCOL_REF: &str = "protocol_1107_ref.py";
+
+fn corpus_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-m2/python-1107")
+}
+
+fn protocol_source() -> String {
+    std::fs::read_to_string(corpus_dir().join(PROTOCOL)).expect("protocol corpus")
+}
+
+fn oracle_lines() -> Vec<f64> {
+    let out = Command::new(find_python())
+        .arg(corpus_dir().join(PROTOCOL_REF))
+        .output()
+        .expect("run the independent python oracle");
+    assert!(out.status.success(), "oracle failed");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.parse::<f64>().unwrap_or_else(|_| panic!("oracle line `{l}`")))
+        .collect()
+}
+
+fn numeric_lines(stdout: &str) -> Vec<f64> {
+    stdout
+        .lines()
+        .filter(|l| !l.starts_with("value:"))
+        .map(|l| l.parse::<f64>().unwrap_or_else(|_| panic!("lane line `{l}`")))
+        .collect()
+}
+
+#[test]
+fn p1107_v02_protocol_case_a2py_matches_the_native_oracle() {
+    let dir = scratch_dir("protocol");
+    emit_fileset(&dir, &protocol_source());
+    let out = Command::new(find_python())
+        .arg("a2x_main.py")
+        .current_dir(&dir)
+        .output()
+        .expect("run python");
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        out.status.success(),
+        "A2PY protocol run failed: {}\n{stdout}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let got = numeric_lines(&stdout);
+    let want = oracle_lines();
+    assert_eq!(got.len(), want.len(), "line count: {got:?} vs {want:?}");
+    for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+        assert!((g - w).abs() < 1e-6, "line {i}: {g} vs oracle {w}");
+    }
+    eprintln!("V-02 A2PY: {got:?} == oracle {want:?}");
 }
