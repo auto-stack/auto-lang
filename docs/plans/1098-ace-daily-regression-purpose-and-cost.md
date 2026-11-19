@@ -398,6 +398,12 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 **已排除的误判**：`av_collections_resources.rs:814` / `av_dynamic_resources.rs:723` 的 `target/release` 不是工具准备问题而是**测试自己找 worker**，归第 3 步一并处理。
 
+**关键细节（读实现后修正上表第 2 步的做法）**：这些 lib builder 不是"每次必建"，而是**内容绑定 + receipt 缓存**：`typed_runtime::prepare()` 用 `files/configs/rustc -vV/相关 env` 算 `build_key`，若 `<lib>.identity.json` 的 `build_key` 与 ABI 匹配且 `content_hash` 相符则**零 cargo 调用**；`override_library` 只改路径，**不跳过**身份计算与构建判定（`typed_runtime.rs:107-268`）。因此：
+
+- 仅"补 toolchains 条目 + cargo build"**不足以**让运行期零编译——运行期第一次调用仍会因缺 `identity.json` 再跑一次 cargo。
+- 正确做法是让**准备阶段执行 builder 本身**（一次），把 stamp 写出来。已有先例：`mn-collections-worker` 启动即调 `collections_runtime::prepare(None)`（`crates/native/src/bin/mn-collections-worker.rs:258,381`）。
+- 拟新增最小 `runtime-warm` bin（每宿主 crate 一个：`ace-native` 调 collections/sched/typed，`ace-av` 调 text/trace，`ace-abi` 调 text），并在 `toolchains.json` 加可选 `"warm": [...]` 字段、`prepare_tools.prepare()` 在构建成功后**执行一次 warm 命令**（计入准备时间与 receipt 身份）。这样"运行期零编译"由准备阶段负责，产品侧的 lazy build 与身份校验保持不变。
+
 ### 5.11 T-01 第五段：O 类探针的独立预期（按 Spec 钉住，不录当前输出）
 
 §5.2 的 O 行原来只有"要独立 oracle"的原则；本节把**预期来源**钉住（执行仍属 T-05）：
