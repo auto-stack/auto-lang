@@ -268,3 +268,39 @@ fn p105_int_field_text_leaf_displays() {
     assert_eq!(nodes[0].view.texts.len(), 2);
 assert!(compiles(src), "package face verifies the same source");
 }
+
+/// 018/021/023 真语料形：`link (to: "/") { … }`——`link` 是保留 token，
+/// 元素标签位必须单独收形（此前整块回滚到 bare-element 兜底）。
+#[test]
+fn p105_link_element_tag_projects() {
+    let src = "widget App {\n\
+        model { var n int = 0 }\n\
+        view {\n\
+            col {\n\
+                link (to: \"/\") { text \"Library\" {} }\n\
+                link (to: \"/settings\") {}\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("link elements project");
+    let mut tags = Vec::new();
+    fn walk(items: &[ace_core::source::age_component::ComponentViewItem], tags: &mut Vec<String>) {
+        for it in items {
+            match it {
+                ace_core::source::age_component::ComponentViewItem::Element(e) => {
+                    tags.push(e.tag.clone());
+                    walk(&e.items, tags);
+                }
+                ace_core::source::age_component::ComponentViewItem::For(f) => walk(&f.items, tags),
+                ace_core::source::age_component::ComponentViewItem::Cond(c) => {
+                    walk(&c.then_items, tags);
+                    walk(&c.else_items, tags);
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(&nodes[0].view.tree, &mut tags);
+    assert_eq!(tags, vec!["col", "link", "link"]);
+}

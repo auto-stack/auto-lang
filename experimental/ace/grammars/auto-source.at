@@ -1328,6 +1328,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // contextual name 槽位，故不引入 label 跨行吞并/诊断噪声。
             alt { age-element-bare() {} }
         }
+<<<<<<< HEAD
         // Route links retain the reserved `link` and `to` spellings in both AGE profiles.
         age-route-link-block(profiles: [age-component, age-package]) {
             age-route-link-tag(field: "tag") {}
