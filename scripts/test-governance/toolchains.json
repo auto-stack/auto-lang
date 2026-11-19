@@ -119,7 +119,8 @@
     "ace_trace_runtime.lib"
    ],
    "profile": "runtime-dev",
-   "target": "experimental/ace/target"
+   "target": "experimental/ace/target",
+   "env": "ACE_TRACE_RUNTIME_LIB"
   },
   "text-runtime": {
    "workspace": "experimental/ace",

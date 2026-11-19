@@ -14,9 +14,22 @@ pub fn repo_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
 
-/// The landed ac-trace-support staticlib (built on first use, exactly like
-/// the landed ac-core suites).
+/// The landed ac-trace-support staticlib.
+///
+/// PLAN-1098 B-01: daily runs consume the explicitly prepared artifact via
+/// `ACE_TRACE_RUNTIME_LIB` (missing/tampered = named infra failure, never a
+/// compile). Only a direct `cargo test` without the prepared environment keeps
+/// the historical locate-or-build path.
 pub fn trace_support_lib() -> std::path::PathBuf {
+    if let Some(value) = std::env::var_os("ACE_TRACE_RUNTIME_LIB") {
+        let prepared = std::path::PathBuf::from(value);
+        assert!(
+            prepared.is_file(),
+            "prepared trace support lib missing at {} (run: python scripts/fixed-tests.py <group> --prepare-only)",
+            prepared.display()
+        );
+        return prepared;
+    }
     let support = repo_root().join("experimental/ace/crates/trace-runtime");
     let lib = support.join("../../target/runtime-dev/ace_trace_runtime.lib");
     if !lib.is_file() {
