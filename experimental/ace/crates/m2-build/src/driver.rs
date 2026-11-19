@@ -781,7 +781,7 @@ impl M2Build {
                     ));
                 }
                 let dir = sdk_root.join("targets").join("a2py");
-                let run = self.spawn_capture_args(
+                let run = self.spawn_capture_args_stderr(
                     "python-interpreter",
                     "python",
                     &["-B", "a2x_main.py"],
@@ -792,6 +792,20 @@ impl M2Build {
                         "m2build.run.interpreter-failed",
                         format!("python interpreter unavailable: {}", run.1),
                     ));
+                }
+                // V-07: the interpreter is present but the DECLARED package set
+                // is not -> a named runtime-dependency rejection, never an
+                // opaque traceback counted as a run.
+                if run.0 != Some(0) {
+                    if let Some(module) = missing_python_module(&run.2) {
+                        return Err(M2Reject::new(
+                            "m2build.run.runtime-dependency",
+                            format!(
+                                "the declared interpreter lacks python module `{module}`: {}",
+                                run.2.lines().rev().take(3).collect::<Vec<_>>().join(" | ")
+                            ),
+                        ));
+                    }
                 }
                 // The generated runner prints `value:<n>` and exits 0 —
                 // normalize the observation to the VALUE (the lane's
@@ -892,6 +906,32 @@ impl M2Build {
         self.spawn_capture_args(name, program, &[], None)
     }
 
+
+    /// Capture stdout AND stderr (the a2py lane names missing runtime
+    /// dependencies instead of leaking a traceback).
+    fn spawn_capture_args_stderr(
+        &mut self,
+        name: &str,
+        program: &str,
+        args: &[&str],
+        cwd: Option<&Path>,
+    ) -> (Option<i32>, String, String) {
+        self.track_spawn(name);
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        if let Some(cwd) = cwd {
+            cmd.current_dir(cwd);
+        }
+        match cmd.output() {
+            Ok(out) => (
+                out.status.code(),
+                String::from_utf8_lossy(&out.stdout).to_string(),
+                String::from_utf8_lossy(&out.stderr).to_string(),
+            ),
+            Err(e) => (None, String::new(), format!("spawn {program}: {e}")),
+        }
+    }
+
     fn spawn_capture_args(
         &mut self,
         name: &str,
@@ -915,6 +955,20 @@ impl M2Build {
     }
 }
 
+/// The first missing python module named on a traceback's stderr (the a2py
+/// runtime-dependency probe).
+fn missing_python_module(stderr: &str) -> Option<String> {
+    const NEEDLE: &str = "ModuleNotFoundError: No module named ";
+    for line in stderr.lines() {
+        if let Some(rest) = line.split(NEEDLE).nth(1) {
+            let name = rest.trim().trim_matches(|c| c == '\'' || c == '"');
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
 /// One machine-level tool-process observation the tests drive directly.
 pub fn tool_process_delta<F, T>(f: F) -> (T, Vec<String>)
 where

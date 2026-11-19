@@ -248,3 +248,36 @@ fn p1107_t05_sdk_use_py_project_runs_relocates_and_refuses_missing_artifact() {
         err
     );
 }
+#[test]
+fn p1107_t05_sdk_missing_python_package_is_named_at_run_not_emit() {
+    // emit never executes the program (so an unavailable package cannot fail
+    // the build); the RUN names the missing declared dependency instead of
+    // counting a traceback as a run.
+    let root = scratch("missingdep");
+    let src = "use.py no_such_module_1107: member\nfn main() int {\n    var v = member()\n    return 0\n}";
+    let inputs = ProjectInputs {
+        name: "usepy1107missing".to_string(),
+        entry: "main".to_string(),
+        caps: vec![
+            ace_foreign_contract::manual::SOURCE_CAP.to_string(),
+            ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
+        ],
+        sources: vec![("main.at".to_string(), src.to_string())],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let sdk = root.join("sdk");
+    m2.build_sdk(&inputs, &[TargetKind::A2py], &sdk, vec![], "run:py")
+        .expect("emit does not execute the program, so the build is clean");
+    let err = m2
+        .run_sdk(&sdk, TargetKind::A2py, "run:py")
+        .expect_err("a missing runtime module must not be a pass");
+    assert_eq!(
+        err.code, "m2build.run.runtime-dependency",
+        "named dependency rejection: {err:?}"
+    );
+    assert!(
+        err.detail.contains("no_such_module_1107"),
+        "the missing module is named: {err:?}"
+    );
+}
