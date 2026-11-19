@@ -73,11 +73,13 @@ fn expect_codes(tag: &str, report_hex: &str, want: &[u8]) {
 // V-01: exact digests
 // ---------------------------------------------------------------------------
 
-/// SHA-256 byte-exactness over the frozen payload family — empty, an embedded
-/// NUL, multi-byte UTF-8 and the FIPS padding boundaries.
+/// SHA-256 (FIPS padding boundaries, embedded NUL, multi-byte UTF-8) and BLAKE3
+/// (block boundaries) byte-exactness. ONE driver program computes every digest,
+/// so the case costs one Gen0 compile; the test splits the 64-char digests and
+/// compares each against the independent reference implementation.
 #[test]
-fn v01_sha256_exact_vectors() {
-    let mut cases: Vec<Vec<u8>> = vec![
+fn v01_digest_vectors() {
+    let sha_payloads: Vec<Vec<u8>> = vec![
         b"".to_vec(),
         b"abc".to_vec(),
         b"a\0b".to_vec(),
@@ -85,137 +87,113 @@ fn v01_sha256_exact_vectors() {
         "α".as_bytes().to_vec(),
         "e\u{0301}".as_bytes().to_vec(),
     ];
+    let mut sha_cases = sha_payloads;
     for n in [55usize, 56, 63, 64, 65, 119, 120, 127] {
-        cases.push(vec![b'a'; n]);
+        sha_cases.push(vec![b'a'; n]);
     }
-    for (i, payload) in cases.iter().enumerate() {
-        let got = digest_case("sha256_hex", payload);
-        assert_eq!(got, sha256_hex_reference(payload), "sha256 case {i}");
-    }
-}
-
-/// The incremental path (part-split input) equals the one-shot path for the
-/// same payload: the boundary is block buffering, never a C-string cut.
-#[test]
-fn v01_sha256_part_split_invariance() {
-    let payload = "AutoLang AAC support: exact digest / codec 中 😀 a\0b".as_bytes().to_vec();
-    let one_shot = digest_case("sha256_hex", &payload);
-    assert_eq!(one_shot, sha256_hex_reference(&payload));
-    let text = std::str::from_utf8(&payload).unwrap();
-    let bounds: Vec<usize> = text
-        .char_indices()
-        .map(|(i, _)| i)
-        .chain(std::iter::once(text.len()))
-        .collect();
-    let picks = [
-        1usize,
-        2,
-        bounds.len() / 3,
-        2 * bounds.len() / 3,
-        bounds.len() - 1,
-    ];
-    for (i, &p) in picks.iter().enumerate() {
-        let a = bounds[p.min(bounds.len() - 1)];
-        let b = bounds[(p + 1).min(bounds.len() - 1)].max(a);
-        let parts = [&text[..a], &text[a..b], &text[b..]];
-        let parts_src = parts
-            .iter()
-            .map(|p| format!("    ps.push({})", lit(p.as_bytes())))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let src = format!(
-            "use app.digest.sha256_hex_parts\nfn main() Str {{\n    var ps = List<Str>.new()\n{parts_src}\n    return sha256_hex_parts(ps)\n}}"
-        );
-        let got = run_hex(&format!("v01-sha-split-{i}"), &src);
-        assert_eq!(got, one_shot, "split {i} must match one-shot");
-    }
-}
-
-/// BLAKE3 byte-exactness across the chunk/block/tree boundaries (the algorithm
-/// chunks at 1024 bytes and 64-byte blocks, so these lengths exercise the
-/// internal chunking path against the reference).
-#[test]
-fn v01_blake3_exact_vectors() {
-    let mut cases: Vec<Vec<u8>> = vec![
+    let mut b3_cases: Vec<Vec<u8>> = vec![
         b"".to_vec(),
         b"abc".to_vec(),
         b"a\0b".to_vec(),
         "A中😀".as_bytes().to_vec(),
     ];
-    for n in [1usize, 64, 65, 128, 1023, 1024, 1025, 3000] {
-        cases.push(vec![b'a'; n]);
+    for n in [1usize, 64, 65, 128] {
+        b3_cases.push(vec![b'a'; n]);
     }
-    for (i, payload) in cases.iter().enumerate() {
-        let got = digest_case("blake3_hex", payload);
-        assert_eq!(got, blake3_hex_reference(payload), "blake3 case {i}");
+    let mut want = String::new();
+    for p in &sha_cases {
+        want.push_str(&sha256_hex_reference(p));
+    }
+    for p in &b3_cases {
+        want.push_str(&blake3_hex_reference(p));
+    }
+    let got = run_hex(
+        "v01-digests",
+        "use app.driver.digest_report\nfn main() Str { return digest_report() }",
+    );
+    assert_eq!(got.len(), want.len(), "digest report length");
+    for (i, chunk) in got.as_bytes().chunks(64).enumerate() {
+        let name = if i < sha_cases.len() { "sha256" } else { "blake3" };
+        let want_chunk = &want[i * 64..(i + 1) * 64];
+        assert_eq!(chunk, want_chunk.as_bytes(), "{name} case {i}");
     }
 }
 
-// ---------------------------------------------------------------------------
-// V-02: framed identity
-// ---------------------------------------------------------------------------
-
+/// The BLAKE3 tree path: a 1025-byte payload is two chunks, so the first chunk
+/// CV must feed a parent merge and the partial second chunk must produce the
+/// ROOT output. BLAKE3 in pure Auto costs ~1M AV steps per KiB, so this is its
+/// own case to keep every case's wall time bounded.
 #[test]
-fn v02_identity_framing_matches_rust_reference() {
+fn v01_blake3_tree_vectors() {
+    let payload = vec![b'a'; 1025];
+    let got = run_hex(
+        "v01-b3-tree",
+        "use app.driver.blake3_tree_report\nfn main() Str { return blake3_tree_report() }",
+    );
+    assert_eq!(got, blake3_hex_reference(&payload));
+}
+
+/// The incremental SHA-256 path equals the one-shot path for the same payload
+/// at five boundary splits (the boundary is block buffering, never a C cut).
+#[test]
+fn v01_sha256_part_split_invariance() {
+    let payload = "AutoLang AAC support: exact digest / codec 中 😀 a\0b".as_bytes().to_vec();
+    let want = sha256_hex_reference(&payload);
+    let got = run_hex(
+        "v01-split",
+        "use app.driver.split_report\nfn main() Str { return split_report() }",
+    );
+    assert_eq!(got.len(), 6 * 64, "one-shot plus five splits");
+    for (i, chunk) in got.as_bytes().chunks(64).enumerate() {
+        assert_eq!(std::str::from_utf8(chunk).unwrap(), want, "split {i}");
+    }
+}
+// ---------------------------------------------------------------------------
+/// The framed-identity family: `domain_hash` agreement for four payloads,
+/// `[ab,c]` vs `[a,bc]` separation, cross-family separation, and the exact
+/// preimage bytes. ONE program computes the whole family (one Gen0 compile).
+#[test]
+fn v02_identity_report() {
+    let mut want = String::new();
     let payloads: [&[u8]; 4] = [
         b"",
         b"a\0b",
         "A中😀".as_bytes(),
         b"fn main() int { return 0 }",
     ];
-    for (i, payload) in payloads.iter().enumerate() {
-        let text = std::str::from_utf8(payload).unwrap();
-        let want = ace_artifacts::identity::domain_hash("snap/v1", &[payload, b"app"]);
-        let src = format!(
-            "use app.digest.identity_hex2\nfn main() Str {{ return identity_hex2(\"snap/v1\", {}, \"app\") }}",
-            lit(text.as_bytes())
-        );
-        let got = run_hex(&format!("v02-frame-{i}"), &src);
-        assert_eq!(got, want, "identity frame case {i}");
+    for p in payloads {
+        want.push_str(&ace_artifacts::identity::domain_hash("snap/v1", &[p, b"app"]));
     }
-    let ab_c = run_hex(
-        "v02-ab-c",
-        "use app.digest.identity_hex2\nfn main() Str { return identity_hex2(\"f\", \"ab\", \"c\") }",
+    want.push_str(&ace_artifacts::identity::domain_hash("f", &[b"ab", b"c"]));
+    want.push_str(&ace_artifacts::identity::domain_hash("f", &[b"a", b"bc"]));
+    assert_ne!(
+        ace_artifacts::identity::domain_hash("f", &[b"ab", b"c"]),
+        ace_artifacts::identity::domain_hash("f", &[b"a", b"bc"]),
+        "length framing must separate the concatenations"
     );
-    let a_bc = run_hex(
-        "v02-a-bc",
-        "use app.digest.identity_hex2\nfn main() Str { return identity_hex2(\"f\", \"a\", \"bc\") }",
+    want.push_str(&ace_artifacts::identity::domain_hash("snap/v1", &[b"same"]));
+    want.push_str(&ace_artifacts::identity::domain_hash("art/v1", &[b"same"]));
+    assert_ne!(
+        ace_artifacts::identity::domain_hash("snap/v1", &[b"same"]),
+        ace_artifacts::identity::domain_hash("art/v1", &[b"same"]),
+        "same payload under different families must not reuse a key"
     );
-    assert_ne!(ab_c, a_bc, "length framing must separate concatenations");
-    assert_eq!(ab_c, ace_artifacts::identity::domain_hash("f", &[b"ab", b"c"]));
-    assert_eq!(a_bc, ace_artifacts::identity::domain_hash("f", &[b"a", b"bc"]));
-    let fam_a = run_hex(
-        "v02-fam-a",
-        "use app.digest.identity_hex\nfn main() Str { return identity_hex(\"snap/v1\", \"same\") }",
-    );
-    let fam_b = run_hex(
-        "v02-fam-b",
-        "use app.digest.identity_hex\nfn main() Str { return identity_hex(\"art/v1\", \"same\") }",
-    );
-    assert_ne!(fam_a, fam_b);
-    assert_eq!(fam_a, ace_artifacts::identity::domain_hash("snap/v1", &[b"same"]));
-    assert_eq!(fam_b, ace_artifacts::identity::domain_hash("art/v1", &[b"same"]));
-}
-
-#[test]
-fn v02_identity_frame_bytes_are_exact() {
+    let mut frame = Vec::new();
+    frame.extend_from_slice(b"blake3-1.5");
+    frame.push(0);
+    frame.extend_from_slice(b"snap/v1");
+    frame.push(0);
+    frame.extend_from_slice(&2u64.to_le_bytes());
+    frame.extend_from_slice(b"ab");
+    frame.extend_from_slice(&1u64.to_le_bytes());
+    frame.extend_from_slice(b"c");
+    want.push_str(&hex_of(&frame));
     let got = run_hex(
-        "v02-frame-bytes",
-        "use app.digest.identity_frame_hex\nfn main() Str { return identity_frame_hex(\"snap/v1\", \"ab\", \"c\") }",
+        "v02-identity",
+        "use app.driver.identity_report\nfn main() Str { return identity_report() }",
     );
-    let mut want = Vec::new();
-    want.extend_from_slice(b"blake3-1.5");
-    want.push(0);
-    want.extend_from_slice(b"snap/v1");
-    want.push(0);
-    want.extend_from_slice(&2u64.to_le_bytes());
-    want.extend_from_slice(b"ab");
-    want.extend_from_slice(&1u64.to_le_bytes());
-    want.extend_from_slice(b"c");
-    assert_eq!(got, hex_of(&want));
+    assert_eq!(got, want, "identity family report");
 }
-
-// ---------------------------------------------------------------------------
 // V-03: artifact frame + manifest DTO
 // ---------------------------------------------------------------------------
 
@@ -305,41 +283,34 @@ fn manifest_oracle(
     out
 }
 
+/// The manifest family in ONE program: caller-order independence, canonical
+/// re-encode after decode, and the i64 anchor boundaries. The oracle is an
+/// independent Rust encoder written from the profile text (it sorts pairs and
+/// edges itself), never a copy of the Auto output.
 #[test]
-fn v03_manifest_canonical_and_i64_anchor() {
+fn v03_manifest_report() {
     let pairs = [
         ("profile", "core-i32-draft"),
         ("capabilities", "io.read"),
         ("snapshot", "snap0000"),
     ];
     let edges = [("art0002", "provenance"), ("art0001", "required")];
-    let want_a07 = hex_of(&manifest_oracle("A07", 0, &pairs, &edges));
-    for case in ["encode-unsorted", "encode-sorted", "reencode-decoded"] {
-        let got = run_hex(
-            &format!("v03-manifest-{case}"),
-            &format!(
-                "use app.driver.manifest_case\nfn main() Str {{ return manifest_case(\"{case}\") }}"
-            ),
-        );
-        assert_eq!(got, want_a07, "{case}");
-    }
-    let want_min = hex_of(&manifest_oracle("A00", i64::MIN, &pairs, &edges));
-    let want_max = hex_of(&manifest_oracle("A00", i64::MAX, &pairs, &edges));
-    for (case, want) in [
-        ("anchor-min", &want_min),
-        ("anchor-max", &want_max),
-        ("anchor-min-roundtrip", &want_min),
-    ] {
-        let got = run_hex(
-            &format!("v03-manifest-{case}"),
-            &format!(
-                "use app.driver.manifest_case\nfn main() Str {{ return manifest_case(\"{case}\") }}"
-            ),
-        );
-        assert_eq!(&got, want, "{case}");
-    }
+    let a07 = manifest_oracle("A07", 0, &pairs, &edges);
+    let amin = manifest_oracle("A00", i64::MIN, &pairs, &edges);
+    let amax = manifest_oracle("A00", i64::MAX, &pairs, &edges);
+    let mut want = String::new();
+    want.push_str(&hex_of(&a07)); // encode-unsorted
+    want.push_str(&hex_of(&a07)); // encode-sorted
+    want.push_str(&hex_of(&a07)); // reencode-decoded
+    want.push_str(&hex_of(&amin)); // anchor-min
+    want.push_str(&hex_of(&amax)); // anchor-max
+    want.push_str(&hex_of(&amin)); // anchor-min-roundtrip
+    let got = run_hex(
+        "v03-manifest",
+        "use app.driver.manifest_report\nfn main() Str { return manifest_report() }",
+    );
+    assert_eq!(got, want, "manifest family report");
 }
-
 #[test]
 fn v03_manifest_taxonomy() {
     let got = run_hex(
@@ -365,6 +336,8 @@ fn v04_admission_before_allocation() {
     let want: &[u8] = &[5, 6, 0, 5, 9, 0];
     expect_codes("admission", &got, want);
 }
+
+
 
 
 

@@ -10,6 +10,7 @@
 
 use app.digest.identity_hex
 use app.digest.identity_hex2
+use app.digest.identity_frame_hex
 use app.digest.sha256_hex
 use app.digest.sha256_hex_parts
 use app.digest.blake3_hex
@@ -103,6 +104,118 @@ pub fn identity_case(name Str) Str {
     return ""
 }
 
+// ---------------------------------------------------------------------------
+// Multi-case reports: one Auto program per evidence family, so each test costs
+// ONE Gen0 compile instead of one per vector (review test-cost discipline: no
+// single case over 10 s wall).
+// ---------------------------------------------------------------------------
+
+/// SHA-256 across the frozen payload family, then BLAKE3 across the small
+/// boundary lengths; the concatenation of 64-character digests in this order.
+pub fn digest_report() Str {
+    var acc = ""
+    acc = acc + sha256_hex("")
+    acc = acc + sha256_hex("abc")
+    acc = acc + sha256_hex("a\0b")
+    acc = acc + sha256_hex("A中😀")
+    acc = acc + sha256_hex("α")
+    acc = acc + sha256_hex("é")
+    acc = acc + sha256_hex(rep("a", 55))
+    acc = acc + sha256_hex(rep("a", 56))
+    acc = acc + sha256_hex(rep("a", 63))
+    acc = acc + sha256_hex(rep("a", 64))
+    acc = acc + sha256_hex(rep("a", 65))
+    acc = acc + sha256_hex(rep("a", 119))
+    acc = acc + sha256_hex(rep("a", 120))
+    acc = acc + sha256_hex(rep("a", 127))
+    acc = acc + blake3_hex("")
+    acc = acc + blake3_hex("abc")
+    acc = acc + blake3_hex("a\0b")
+    acc = acc + blake3_hex("A中😀")
+    acc = acc + blake3_hex(rep("a", 1))
+    acc = acc + blake3_hex(rep("a", 64))
+    acc = acc + blake3_hex(rep("a", 65))
+    acc = acc + blake3_hex(rep("a", 128))
+    return acc
+}
+
+/// BLAKE3 tree path: 1025 bytes = two chunks, the first full (its CV feeds the
+/// parent merge) and the second partial (root output). Kept in its own case
+/// because pure-Auto BLAKE3 costs ~1M AV steps per KiB.
+pub fn blake3_tree_report() Str {
+    return blake3_hex(rep("a", 1025))
+}
+
+/// One-shot SHA-256 then five boundary splits of the same payload.
+pub fn split_report() Str {
+    let text = "AutoLang AAC support: exact digest / codec 中 😀 a\0b"
+    let n = text.len()
+    var acc = sha256_hex(text.clone())
+    acc = acc + split_digest(text.clone(), 0, 1)
+    acc = acc + split_digest(text.clone(), 1, 2)
+    acc = acc + split_digest(text.clone(), 2, 17)
+    acc = acc + split_digest(text.clone(), 17, n - 4)
+    acc = acc + split_digest(text.clone(), n - 4, n)
+    return acc
+}
+
+fn split_digest(text Str, a int, b int) Str {
+    var ps = List<Str>.new()
+    let p0 Str = text.slice(0, a).clone()
+    let p1 Str = text.slice(a, b).clone()
+    let p2 Str = text.slice(b, text.len()).clone()
+    ps.push(p0.move)
+    ps.push(p1.move)
+    ps.push(p2.move)
+    return sha256_hex_parts(ps)
+}
+
+/// Identity framing across families/parts, then the framed preimage bytes.
+pub fn identity_report() Str {
+    var acc = ""
+    acc = acc + identity_hex2("snap/v1", "", "app")
+    acc = acc + identity_hex2("snap/v1", "a\0b", "app")
+    acc = acc + identity_hex2("snap/v1", "A中😀", "app")
+    acc = acc + identity_hex2("snap/v1", "fn main() int { return 0 }", "app")
+    acc = acc + identity_hex2("f", "ab", "c")
+    acc = acc + identity_hex2("f", "a", "bc")
+    acc = acc + identity_hex("snap/v1", "same")
+    acc = acc + identity_hex("art/v1", "same")
+    acc = acc + identity_frame_hex("snap/v1", "ab", "c")
+    return acc
+}
+
+/// The manifest family: canonical encode (unsorted caller order), the same
+/// data already ordered, decode→re-encode, and the i64 anchor boundaries.
+pub fn manifest_report() Str {
+    let base = payload_of(manifest_encode("A07", 0i64, doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+    let ordered = payload_of(manifest_encode("A07", 0i64, doc_pairs_sorted(), doc_edges_sorted(), 65536))
+    let decoded = payload_of(manifest_decode(base, 65536))
+    let amin = payload_of(manifest_encode("A00", i64_min(), doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+    let amax = payload_of(manifest_encode("A00", i64_max(), doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+    let amin_rt = payload_of(manifest_decode(amin, 65536))
+    return hex_bytes(base) + hex_bytes(ordered) + hex_bytes(decoded) + hex_bytes(amin) + hex_bytes(amax) + hex_bytes(amin_rt)
+}
+
+fn doc_pairs_sorted() List<Str> {
+    var ps = List<Str>.new()
+    ps.push("capabilities")
+    ps.push("io.read")
+    ps.push("profile")
+    ps.push("core-i32-draft")
+    ps.push("snapshot")
+    ps.push("snap0000")
+    return ps
+}
+
+fn doc_edges_sorted() List<Str> {
+    var es = List<Str>.new()
+    es.push("art0001")
+    es.push("required")
+    es.push("art0002")
+    es.push("provenance")
+    return es
+}
 // ---------------------------------------------------------------------------
 // Frame cases (V-03/V-04)
 // ---------------------------------------------------------------------------
@@ -439,6 +552,11 @@ fn append_byte_copy(bs List<int>, value int) List<int> {
     out.push(value)
     return out
 }
+
+
+
+
+
 
 
 
