@@ -445,6 +445,19 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 - **顺带修正既有红**：`ace-python` 的 `expression` 原本只是 `test(p1026)`（缺 performance 排除，`test_ace_module_groups_exclude_formal_performance` 在 master 上就是红的——已单独在 master 复现确认非本包引入）；现在去掉 args 里重复的 `-E test(p1026)`，expression 改为 `(test(p1026)) and not test(/(^|::)performance::/)`。**重发现验证选择面不变（仍 10 例）**，非放宽或掩红。
 - **兼容面（须写入 SD-01）**：门覆盖**全部 `domain=ace` 的 nextest 组**，含外部 `ase-m0`（`experimental/ase-m0` 独立 workspace）与 `ace-perf`；二者从此同样要求先准备。**非 ACE 组与 `--ignored` 显式重放路径不受影响**（`--ignored` 每次必须显式给 `aavm` 或 `--test-name`，属具名手工入口，保留原构建语义，代码已按此豁免）；`--test-name` 只是日常选择内的导航，仍走准备件。命令行兼容：`cargo t <ACE组>` 的旧行为（自动构建后跑）不再可用，须先 `--prepare-only`——这是 §2 明示的意图改变，须在说明中写明。
 
+### 5.14 T-02 第三刀：runtime 预热 + prepare 顺序修正（代码 `fe036b9f1`）
+
+- 新增 `ace-native` 的 `runtime-warm` bin（只调 collections/sched/typed 的真实 `prepare()`，不绕过身份/哈希校验）。
+- `toolchains.json` 新增 `native-runtimes`（`"warm": ["runtime-warm"]`），并加入 10 个工具多数组的 `tools`（共享同一 target/收据）。
+- `prepare_tools.prepare()` 支持 `"warm"`：构建或复用后执行一次 warm 命令，失败即准备失败；成本写入 receipts（`<tool>#warm` 行，含 `warm_seconds`/log）。
+- **顺序修正（实测发现的真问题）**：`cargo nextest archive` 用 nextest 的 `test` profile 在**同一 target dir** 重建同名 bin——实测 `runtime-warm.exe` 哈希在 archive 后由 `b0c9b3…` 变为 `21888e…`，于是"先准备工具、后建 archive"会让工具 artifact 哈希当场失效，`--run-prepared` 报 `tool artifact missing or tampered`。现 `prepare_plan` 分两阶段：**先建全部 archive，再准备工具并 warm**，使工具哈希描述最终字节。
+- **实测（`ace-native`，329 例）**：
+  - 冷准备 **673.22s**（13 个工具 release 构建 + 66MB archive + warm），热准备 **9.11s**（archive 复用、工具 cargo no-op、warm 0.27s）。
+  - warm 日志：collections/sched/typed 各 `builds=1`（各构建一次并写 `identity.json` stamp）。
+  - `--run-prepared` → **PASS 329/329**，`nextest run` 墙 **62.5s**（整命令 66.1s）；run 日志**零 `Compiling`/`Finished`**；三个 runtime 库 SHA256 运行前后**完全一致** → 运行期零编译、零重建。
+- **成本注记**：把 `native-runtimes` 加入 10 个工具多数组的 `tools` 后，任一组 prepare 都会预热 native runtimes（共享 target/收据，第二次起约 0.3s）；这是为"所有可能触及 native runtime 的组"提供同一保证，不是重复构建。
+- **未决**：`ace-native` 组 T_warm 62.5s 已接近目标 60s（仍在 120s 上限内，登记为观察项，等 profile 翻到 debug 后再测）。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -606,6 +619,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 7，r1）：`stage: work`。执行内容：①第四批重内存组真实发现（§5.10，`discover-heavy4/`，整批 39.55s）：`ace-native` 329、`ace-a2x` 328、`ace-native-worker` 43、`ace-m2-build` 30，小计 730；**累计 4,381 例 / 22 个非聚合组**（余 facade/adapters 两个根 workspace 组 + 聚合/PERF）。②**B-05 真实消费面核查**（§5.13）：全量扫描得 37 处 `target/release|runtime-release` 引用 / 20 文件，其中 11 处会触发构建，**5 处是 lib 级 lazy builder**（`av/text_runtime`、`abi/source_foreign`、`native/{collections,sched,typed}_runtime`），且 `collections/sched/typed` 三个 runtime **无 toolchains 条目**（今天无法预建）——计划原假设的"测试体补构建 3 处"明显低估。据此给出 B-05 四步改法（补工具条目 → lib builder env 优先且缺省回落仅限非测试 → hardcode 测试改 env → 最后翻 profile 并真实验证）。本轮未改实现代码。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 7 | from: work | to: work | status: executing | outcome: pass（T-01 分母 22/24 组、B-05 消费面核查完成；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) | next: work（T-02 B-05 第 1/2 步：补工具条目 + lib builder env 优先）`
+
+2026-11-19（goal round 8，r1）：`stage: work`，T-02 第三刀（§5.14，代码 `fe036b9f1`）。执行内容：①新增 `ace-native` `runtime-warm` bin + `toolchains.json` `native-runtimes`（`warm` 字段）+ `prepare_tools` warm 支持，把内容绑定的 collections/sched/typed runtime 在**准备阶段**构建并写 stamp。②修正 prepare 顺序（前面板实测发现：nextest archive 用 `test` profile 在同 target 重建同名 bin，会让先算的工具哈希立即失效；现改为先 archive 后 tools）。③实测 `ace-native`：冷准备 673.22s → 热准备 9.11s；`--run-prepared` **PASS 329/329**，run 墙 62.5s，**零 Compiling**，三个 runtime 库 SHA256 前后一致。治负 `test_prepare_tools`+`test_fixed_groups` **85/85 OK**。观察项：`ace-native` 62.5s 接近 60s 目标（未超 120s 上限）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 8 | from: work | to: work | status: executing | outcome: pass（runtime 预热与 prepare 顺序修正落地并实测零编译；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: fe036b9f1 / 本轮 docs(plan1098) | next: work（T-02 续：profile 翻转 + hardcoded 路径收敛）`
 
 ## 10. 待澄清事项
 
