@@ -249,3 +249,22 @@ fn p105_fstring_text_leaf_projects() {
         "the f-string text leaf is projected"
     );
 }
+
+/// 013/016 真语料形：`text .n`（int 字段）走 TextDisplay，组件面/包面都过 verify。
+#[test]
+fn p105_int_field_text_leaf_displays() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0\n var s str = \"\" }\n\
+        view {\n\
+            col {\n\
+                text .n {}\n\
+                text .s {}\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("int+str text leaves project");
+    assert_eq!(nodes[0].view.texts.len(), 2);
+assert!(compiles(src), "package face verifies the same source");
+}

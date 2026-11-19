@@ -1105,7 +1105,16 @@ pub(crate) fn project_packages_front(
                             Err(ds) => return Err(ds),
                         };
                         items.push(crate::source::ast::Item::Fn(
-                            crate::source::age_package::hidden_fn(&name, &bound, leaf.expr.span),
+                            // PLAN-105 T-02（U03）：int 文本叶走 TextDisplay。
+                            crate::source::age_package::hidden_fn(
+                                &name,
+                                &bound,
+                                leaf.expr.span,
+                                crate::source::age_component::text_leaf_is_int_field(
+                                    &leaf.expr,
+                                    &node.fields,
+                                ),
+                            ),
                         ));
                         text_fns.push((name, leaf.span));
                     }

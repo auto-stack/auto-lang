@@ -579,6 +579,12 @@ fn conclusion_of_def(
         _ => None,
     })?;
     let expr = body.exprs.get(value.0 as usize)?;
+    // PLAN-105 T-02（U03）：文本叶承载有两种——str 字段的 `.clone()`（TextClone）
+    // 与 int 字段的 TextDisplay（PLAN-964 的 <int>→str 显示节点）。两者都产出
+    // owned text；此前只认 TextClone，`text .n` 会被判成「非文本」具名拒。
+    if let HirExprKind::TextDisplay { .. } = &expr.kind {
+        return Some((def.id_text.clone(), TextKind::Owned));
+    }
     let HirExprKind::TextClone { operand } = &expr.kind else {
         return None;
     };

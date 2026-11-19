@@ -1314,17 +1314,26 @@ pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
 /// 隐藏求值函数的**源形状**：`fn <prefix><n>() Str { return (<expr>).clone() }`。
 ///
 /// 这是普通 Auto 源，交给唯一 verify；本函数不改判据、不建第二套检查。
-pub(crate) fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
-    let clone = Expr {
-        span,
-        kind: ExprKind::Method {
-            recv: Box::new(expr.clone()),
-            name: Ident {
-                name: "clone".to_string(),
-                span,
+pub(crate) fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool) -> FnItem {
+    // PLAN-105 T-02（U03）：与组件面同律——int 文本叶走 `TextDisplay`，
+    // 其余仍 `.clone()`（见 `age_component::hidden_fn` 注）。
+    let body_expr = if display {
+        Expr {
+            span,
+            kind: ExprKind::TextDisplay(Box::new(expr.clone())),
+        }
+    } else {
+        Expr {
+            span,
+            kind: ExprKind::Method {
+                recv: Box::new(expr.clone()),
+                name: Ident {
+                    name: "clone".to_string(),
+                    span,
+                },
+                args: Vec::new(),
             },
-            args: Vec::new(),
-        },
+        }
     };
     FnItem {
         name: Ident {
@@ -1338,7 +1347,10 @@ pub(crate) fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
             span,
         },
         body: Block {
-            stmts: vec![Stmt::Return { value: clone, span }],
+            stmts: vec![Stmt::Return {
+                value: body_expr,
+                span,
+            }],
             span,
         },
         span,

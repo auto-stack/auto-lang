@@ -722,7 +722,12 @@ pub fn compile_age_component(
     for (ni, n) in candidates.iter().enumerate() {
         for (ti, leaf) in n.view.texts.iter().enumerate() {
             let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{}", leaves.len());
-            items.push(Item::Fn(hidden_fn(&name, &leaf.expr, leaf.expr.span)));
+            items.push(Item::Fn(hidden_fn(
+                &name,
+                &leaf.expr,
+                leaf.expr.span,
+                text_leaf_is_int_field(&leaf.expr, &n.fields),
+            )));
             leaves.push((name, ni, ti));
         }
     }
@@ -924,17 +929,28 @@ pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
     out
 }
 
-fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
-    let clone = Expr {
-        span,
-        kind: ExprKind::Method {
-            recv: Box::new(expr.clone()),
-            name: Ident {
-                name: "clone".to_string(),
-                span,
+fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool) -> FnItem {
+    // PLAN-105 T-02（U03）：文本叶按静态类型选承载——`int` 字段走
+    // `TextDisplay`（PLAN-964 的 <int>→str 显示节点，组件面/包面同一 resolver），
+    // 其余仍 `.clone()`。此前一律 clone 只对 str 成立，`text .n`（int 字段）
+    // 在 verify 期被 `numeric receiver has no method clone` 拒。
+    let body_expr = if display {
+        Expr {
+            span,
+            kind: ExprKind::TextDisplay(Box::new(expr.clone())),
+        }
+    } else {
+        Expr {
+            span,
+            kind: ExprKind::Method {
+                recv: Box::new(expr.clone()),
+                name: Ident {
+                    name: "clone".to_string(),
+                    span,
+                },
+                args: Vec::new(),
             },
-            args: Vec::new(),
-        },
+        }
     };
     FnItem {
         name: Ident {
@@ -948,7 +964,10 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
             span,
         },
         body: Block {
-            stmts: vec![Stmt::Return { value: clone, span }],
+            stmts: vec![Stmt::Return {
+                value: body_expr,
+                span,
+            }],
             span,
         },
         span,
@@ -957,6 +976,22 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         script: false,
         proto: false,
     }
+}
+
+/// 文本叶的静态整数判定：仅 `self.<field>` 形且该字段类型为 `int/i32`。
+///
+/// 只做这一档是因为投影期没有表达式类型推断；真语料里 int 文本叶都是裸字段
+/// 读（`text .n`），复合表达式仍走 clone/str（后续按实测扩面）。
+pub(crate) fn text_leaf_is_int_field(expr: &Expr, fields: &[ComponentField]) -> bool {
+    if let ExprKind::Field { base, name } = &expr.kind {
+        let is_self = matches!(&base.kind, ExprKind::Var(v) if v.name == "self");
+        if is_self {
+            return fields
+                .iter()
+                .any(|f| f.name == name.name && field_type(f) == Some(TypeWord::I32));
+        }
+    }
+    false
 }
 
 /// 文本叶内的共享拒绝 → 领域代码标注（同 H0 口径）。
@@ -1549,7 +1584,12 @@ fn compile_component_scenario_full(
             for (ti, leaf) in node.view.texts.iter().enumerate() {
                 let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{inst}_text_{ti}");
                 let bound = rename_expr(&leaf.expr, FieldBinding::StateFn(inst), &node.fields)?;
-                items.push(Item::Fn(hidden_fn(&name, &bound, leaf.expr.span)));
+                items.push(Item::Fn(hidden_fn(
+                    &name,
+                    &bound,
+                    leaf.expr.span,
+                    text_leaf_is_int_field(&leaf.expr, &node.fields),
+                )));
                 leaves.push((name, inst, ti));
             }
         }
