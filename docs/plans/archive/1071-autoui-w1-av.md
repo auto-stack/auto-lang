@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-979]
 supersedes_spec_components: []
@@ -68,11 +68,13 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 - [x] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。复审结论与 AC 证据映射见 §9（2026-11-19 T-04 收据）。
 
-- [ ] **T-05｜merge｜正式交付**。按 owner 合入、沉淀规范，记录可消费版本，按项目规约归档及清理。
+- [x] **T-05｜merge｜正式交付**。按 owner 合入、沉淀规范，记录可消费版本，按项目规约归档及清理。交付收据见 §9（2026-11-19 T-05 收据）。
 
 ## 9. 复审记录
 
-### 2026-11-19 stage: review（T-04 独立复审）| review_scope: final | reviewer_identity: 本会话独立复核（**限制：非独立上下文**；结论由工件重构——worktree 状态核验/抽查命令重放/机械审计，非采信执行者摘要）| PLAN-1071 r1 | outcome: **pass** | worktree: `D:/autostack/.wt/lang-1071/{auto-lang,auto-ui}` @ plan-1071-dev | reviewed_commit: 无产品代码提交（本批纯验收+簿记；lang 基面 `f02b34b74`、ui 基面 `d2e7d7a4`、down `72b09700`）| spec_inputs: docs/specs/ace-migration/m2-autoui.md（§12 MIN-A-UI 桌面入口/§5 边界；merge 阶段沉淀 UI-W1-AV 接收节）
+### 2026-11-19 stage: merge（T-05 正式交付）| PLAN-1071 r1 | outcome: pass（landed + canonical_verified + archived；cleanup 进行中）| delivery: master tip `e2c7fee9d`（规范 §14 UI-W1-AV 接收，ff-only 无 merge commit）+ 归档簿记 `c1b4a2780`/`1e5d82134` | canonical: `docs/specs/ace-migration/m2-autoui.md` §14（UI-W1-AV 接收：接手关系/U01 输入子面/981 W1 五组证据/生产入口收据/010 边界/预存红台账/边界保持）| new_spec_components: `docs/specs/ace-migration/m2-autoui.md#14` | archive: `docs/plans/archive/1071-autoui-w1-av.md` status: archived | gates: 无新增红（T-03 台账保持）；纯文档交付无 cargo 门 | pending: worktree 清理（guard→remove×3→组目录）、plan-artifacts/plan-1071 删除、registry 刷新 | next: cleanup
+
+2026-11-19 stage: review（T-04 独立复审）| review_scope: final | reviewer_identity: 本会话独立复核（**限制：非独立上下文**；结论由工件重构——worktree 状态核验/抽查命令重放/机械审计，非采信执行者摘要）| PLAN-1071 r1 | outcome: **pass** | worktree: `D:/autostack/.wt/lang-1071/{auto-lang,auto-ui}` @ plan-1071-dev | reviewed_commit: 无产品代码提交（本批纯验收+簿记；lang 基面 `f02b34b74`、ui 基面 `d2e7d7a4`、down `72b09700`）| spec_inputs: docs/specs/ace-migration/m2-autoui.md（§12 MIN-A-UI 桌面入口/§5 边界；merge 阶段沉淀 UI-W1-AV 接收节）
 
 **AC 证据映射（逐项核）**：
 - **AC-01 PASS**：§5 对应原分母齐（T-01 冻结表：36 示例+70 Widgets 页+components 闭包 18 件、981 W1 五组 oracle 绑定 `3047b3481`、负控=撤权/坏源/非法输入具名拒、实际依赖=ace_node_desktop BridgeEngine/authoring_session/auto-lang-ace-host 全在位），输入/独立预期/负控/依赖可追溯。
