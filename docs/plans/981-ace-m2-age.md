@@ -1013,6 +1013,14 @@ stage: merge | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: executi
 
 stage: work | plan_id: PLAN-981 | plan_revision: r22 | task_ids: T-BASE-RECEIPT | outcome: pass（审计三环全绿）| code_commit: 零代码（主检出审计）| evidence: 本记录内嵌（SHA 清单/复放计数/985 收据行号）| blockers: 无 | next_responsible_role: review（T-05）
 
+### 2026-11-19 stage: review（**T-05 基础收口独立复核**；同会话工件重构——限制=非独立上下文，结论由实物核验非采信摘要）| plan_id: PLAN-981 | plan_revision: r22 | review_scope: final（基础收口批）| outcome: **pass（四核全过，零阻塞发现；两条 info 级注记）** | reviewed: 主检出 master `5fb0b7725`（零代码批——文档审计面）
+
+**四核**。①保留的能力：T-01/B-SOURCE 三行已勾（台账 SOURCE 行=979 核验落主+`plan981_original_g01`，在 248 全族绿内）+基础收口两任务收据在案（T-BASE-ONIF=fold 链 `c84f25cf4`；T-BASE-RECEIPT=审计 `5fb0b7725`）✓。②原适用反例：`plan981_` 族内**44 个**具名反例用例（reject/refuse/recovers/bad 命名），含 980 收据交叉引用的三恢复/环负控（`p981_module_cycle_is_named`/`recovers_on_the_same_entry`/`recovers_after_the_import_is_added`），全数在 core 248+av 56 绿内 ✓。③联合交接：§0 移交表 7 行后继全存在（1068/1071/1072/1074/1075/1076/1077/985，drafting、各 7-8 处转出义务引用）；跨计划收据互证（980 handoff 落账 `7fc15205a`、985 r28/r29 M2A-08、980 B-AV-R W1 入账）✓。④后继义务完整性：各行 V- 族引用在后继计划内具名；981-B 余量与 985 B-pending 清单一致（W1/W3/EVENT-B 三件/D-981-PROOF-AV-SCENE）✓。
+
+**注记（info 级，不阻塞）**：(a) r22 合同修订本体为他会话未提交 WIP——T-06 合入/归档前须其落 commit（勾选翻转与 current_step 已随其工作树就绪）；(b) 后继均 drafting（义务已路由未开工=拆分设计使然，非缺件）。
+
+stage: review | plan_id: PLAN-981 | plan_revision: r22 | outcome: pass（T-05 闭；基础收口 work+review 齐）| findings: 零阻塞（info×2 如上）| next: T-06（merge：合入+基础规范沉淀+后继链接+**归档**——终态操作，前置=r22 WIP 落 commit+用户确认；T-07 清理随后）
+
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
 **prepared**：复审 pass（reviewed_commit `ac1ae182c`）之上补 merge-owned 规范沉淀——`docs/specs/ace-migration/m2-age.md` **首个 phase 沉淀**（plan frontmatter 声明落点；两面文法臂+正式 grammar id `620a0f73…/`30834de6…`+age-h0 文法不可达根据、Cond 投影契约、两支平铺进 texts 绑定验证设计、`cond_spans` 描述事实、四观察入口 fail-closed+撤门条件、永久用例与变异判别力记录）——docs-only 后继（实现/依赖零改动，即 delivery 候选）`d91ac422d`。
