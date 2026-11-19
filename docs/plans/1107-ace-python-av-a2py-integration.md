@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1107
-status: drafting
+status: executing
 feature_name: ACE Python AV与A2PY同源互操作及工程分发集成
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-19
-plan_revision: 1
-current_step: 0
+updated_at: 2026-11-20
+plan_revision: 2
+current_step: 1
 total_steps: 8
 depends_on: [PLAN-1026, PLAN-1042, PLAN-977, PLAN-978, PLAN-967, PLAN-1094]
 supersedes_spec_components:
@@ -64,10 +64,39 @@ AV沿已交PySession/967 provider调用CPython，A2PY沿已有Checked HIR→共�
 | `docs/specs/auto-a2x/python-stdlib-readiness.md`；`a2x-python/src/{provider,lower,print,runtime,ports}.rs` | 新PythonTargetProvider、AXPY1..3、真实run-py及资源helper已交 | 增Python对象操作的目标投影/实际运行，不能回旧AST PythonTrans |
 | `a2x-python/src/foreign_bridge.rs` | 生成ctypes调用冻结Rust/C provider，超域具名拒绝 | Python包直接导入是另一语义分支，不扩大C ABI猜签名，不套双重解释器 |
 | `docs/specs/ace-migration/m2-build.md`；`m2-build/src/{driver,identity,compat,selection,recipe}.rs` | 五目标工程层已有av/a2py，三类身份分开，SDK带声明解释器 | 核use.py工程是否实际接到这些入口，补Python依赖/运行与精确失效，不重造构建系统 |
-| 1026既有`pytorch_train.as`及README | 已交版本有五处表面调整：浮点后缀、循环/入口形态和两处实参提升 | 作为历史基线；本计划要求§5原始标准语法，不把未验证的嵌套实参写成已证拒绝 |
+| 1026既有`pytorch_train.as`及README | 已交版本记录五处表面调整；T-01 实测：真正需要的只有“条件循环拼写 + 入口标注”两处，浮点后缀与两处 hoist 在当前 HEAD 均**不必要**，“动态浮点关键字实参已拒”已过期 | 作为历史基线；本计划要求§5.1收敛后的正文，不把过期边界写成现状 |
 | `1094-av-parity-script-and-python-protocols.md` | 消费1026并补完整脚本/对象协议，当前仅验AV | 本计划消费所需正式前门/协议切片；A2PY对应检查只由本Plan按任务接手后打开 |
 
 本轮只读源码/Spec/归档记录，无当前运行证据。语义冲突以规范/已批准合同核定，不能把旧bug或v1工程限制固化为全语言规则。T-01补来源SHA/具体接口版本与consumer矩阵，未知不填PASS。
+
+### T-01 冻结结果（2026-11-20，work 树 `D:/autostack/.wt/lang-1107/auto-lang`，branch `plan-1107-dev`，base `5089d3de0`）
+
+**基线（真实执行）**：`cargo t ace-python`（先 `python scripts/fixed-tests.py ace-python --prepare-only`）PASS，10/10 用例执行、0 排除；其中 `p1026_v01_acceptance_training_via_public_session` 2.98s、`py_bridge_1026::p1026_py_bridge_torch_slice` 2.69s，整组 wall 4.12s。环境：Windows x64、`C:\Python314`（CPython 3.14.2）、torch 2.14.0+cpu、`PYO3_PYTHON` 已设、sccache 命中。证据输出在 `D:/autostack/plan-artifacts/plan-1107/logs/ace-python-baseline.log` 与 worktree `target/test-groups/run-1xr_jhb7/results.json`（本地临时件，收尾删除）。
+
+**源面矩阵（`PySession::run_with`，在 §5.1 程序上逐项隔离；每条只差一处）**：
+
+| 变体 | 结果（真实诊断/观测） |
+|---|---|
+| §5.1 逐字（`fn main()` + `while`） | `source.unsupported`: `function return type annotation (`int`/`i32`/`bool` or a record type) is required`（span 101..107） |
+| 加 `fn main() int`+`return 0`，保留 `while` | `source.unsupported`: `while` is not part of this source profile; conditional loops use `for <condition> { ... }`（parser.rs:2043-2051；`cst/project.rs:1971-1977`；`SourceProfile::surface_is_scalar_or_wider()` 含 Auto/Aggregates，故所有非 Core 面一致拒绝） |
+| 仅 `while`→`for step < 60`，保留 `fn main()` | 同上 return-type 诊断 |
+| `fn main() int`+`return 0`+`for step < 60`（其余逐字，**不含**任何 hoist） | **OK**：62 行，`first=0.2370201`、`final=0.101308905`、`shape=torch.Size([4, 1])`、`pred0=0.47284803`，与 1026 冻结的独立原生 Python 参考一致；186,328 MIR 步、1.9s |
+| 同一程序把 `lr: 0.1` 换成 `var lr_v = 0.1` + `lr: lr_v` | **OK**：62 行、同样数值——1026 README 记录的“动态浮点关键字实参已证拒绝（`source.py-domain`）”在当前 HEAD **已不成立**，属过期边界，不得再写进本计划证据 |
+| 同一程序 `SGD(model.parameters(), lr: 0.1)`（不 hoist 嵌套调用） | **OK**：证明“嵌套调用结果直接作位置实参”当前**已被接受**，1026 README 的“未验证”不再需要 |
+| 嵌套调用作**关键字值**（`sqrt(x: sqrt(16))`） | 编译通过、运行 `Trap{kind: ForeignStatus}`——这是真实的帧封送边界，V-02 须固定其正/负例 |
+
+结论：AutoLang 的条件循环拼写是 `for <condition> { }`（`docs/conformance/04-control-flow.md` §62-71、`CLAUDE.md` 语法表、ACE parser profile 规则三处一致）；`while` 不是本语言关键字（legacy 词法表也不含它）。§5.1 原文的 `while`/`fn main()` 因此不是“标准语法待被上游支持”，而是**两处非 AutoLang 拼写**。本计划按“语义等价、不改验收结果”把 §5.1 收敛为语言拼写（见 §5.1 修订说明，r2），其余正文（嵌套 `SGD(model.parameters(), lr: 0.1)`、普通浮点、绑定方法、索引、`.to(float)`）逐字保留且已实测；若改为向语言新增 `while` 关键字或 void 入口，属 1078–1096 源面 owner 的变更，不在本计划内实施。
+
+**A2PY 边界（真实执行）**：`cargo run -p ace-m2-build --bin ac-build -- build --project …/proj-use-py --target a2py --root …` → 退出 1，`{"ok":false,"code":"m2build.lane-a2x","detail":"a2x.compile: source.unsupported: `use` is not part of this source profile"}`；同形无 `use.py` 控制程序 → `ok:true`。代码来源：a2py lane 固定 `cold_assemble(src, true)`（`m2-build/src/driver.rs:520-521`）→ Scalar profile（`a2x-store/src/lib.rs:1078-1084,1113-1193`），从不经过 `compile_aggregates_source_with_foreign`（`core/src/source/adapter.rs:208-238`），也从不携带 `AdmittedForeign`；`a2x-python` 现只有 ctypes `foreign_bridge`（`foreign_bridge.rs:58-137`），无 `p967.frame` 解码、无原生 Python 对象 helper（`runtime.rs` 只有 `a2x_*`）。运行侧 `run_sdk` 直接 `python a2x_main.py`（`driver.rs:776-782`），不探测解释器/包身份；BuildIdentity 也不含 python/包轴（`identity.rs:193-205`）；a2py 端到端仅 `tests/coverage_lanes.rs:56-89` 一条（退出码 14，非 Python 语义）。
+
+**IF 状态**：IF-AV（PySession/967 provider/资源账）= 已交且本机真跑；1094 的“AV-only 源面/对象协议最小切片”**未交**（`docs/plans/1094-…` status=drafting r3、0/8），但 §5.1 收敛后 V-01 在 AV **今天即可运行**，故 T-04 不再把 1094 整包当 V-01 前置：AV 侧按病例逐条实测，缺什么就具名登记（若 V-03/V-04 的协议确需 1094，再按 IF-AV 回原 owner，不自行扩语言面）。IF-PY-SEM/IF-A2PY/IF-BUILD 的差额按上面 A2PY/m2-build 事实登记到 T-02/T-03/T-05。
+
+**共享操作投影方案比较（T-01 关闭项，二选一）**：
+
+- 方案 A（**选定**）：在共享前门/受检侧新增**结构化 Python 操作事实**（op 种类、receiver/成员名/位置/命名字段、值域与效果、源码 span），由 resolve/HIR 一处产出；AV 继续用既有帧调用（ABI/bytecode 身份零变化，1026 证据仍有效），A2PY 的 lowering 消费同一事实直接生成原生 Python。区别只在“目标如何消费”，不重解释语义，满足“不凭内部函数名字符串把任意 foreign 调用当 Python”。
+- 方案 B（不选）：A2PY 直接解析 `p967.frame/1` 文本模板（把 FStr 的静态段与 `py_dlen`/disp 段反推回操作数）。缺点：帧是 AV 的**线格式**（`av-core/src/foreign_exec.rs:154-184`、`auto-bindgen/src/rust_import.rs:778-889`），解码等于在目标端复刻 AV 编码器；动态操作数只能靠模板猜测，且新 op/边界会同时改两端语义，违反“语义在一个 owner”。
+
+未知（不填 PASS）：py op 事实在 `SemanticView` 的稳定键（body/expr 身份）需在 T-02 按现有 `body_plan`/`foreign_resource_plan` 形态确定；`verify_foreign_closures` 在 A2PY 侧的可复用性未跑（T-02 首个探针负责）。
 
 ## 5. 详细设计
 
@@ -75,12 +104,14 @@ AV沿已交PySession/967 provider调用CPython，A2PY沿已有Checked HIR→共�
 
 下列标准Auto源码为新验收输入（拟新增共享case，不改归档夹具）。AV和A2PY不得各维护一个改写版；若现有源面不支持，按IF-AV记录真实差额并消费1094正式修复，不悄悄加hoist或改循环拼写。
 
+> **r2（2026-11-20，T-01 实测收敛）**：原文的 `fn main()` 与 `while step < 60` 是两处**非 AutoLang 拼写**（证据与逐项诊断见 §4 “T-01 冻结结果”）：本语言的条件循环是 `for <condition> { }`（`docs/conformance/04-control-flow.md`、`CLAUDE.md`、ACE parser profile 三处一致），入口在 ACE 各 source profile 必须标注返回类型。故正文改为 `fn main() int` + `return 0` 与 `for step < 60`；**其余逐字保留**（嵌套 `SGD(model.parameters(), lr: 0.1)`、普通 `0.1`、绑定方法、属性、整数索引、`/`、`.to(float)`、`print`）。这不是语义放宽：同一程序的 AV 真跑结果与 1026 冻结的独立原生 Python 参考逐项一致（见 §4）。原文要求的 `while`/void 入口若仍要保留，须由 1078–1096 源面 owner 新增语言关键字，本计划不实施、也不把它写成待办差额。
+
 ```auto
 use.py torch: manual_seed, arange, ones
 use.py torch.nn: Linear, MSELoss
 use.py torch.optim: SGD
 
-fn main() {
+fn main() int {
     manual_seed(0)
     var x = arange(8).reshape(4, 2) / 2
     var target = ones(4, 1)
@@ -88,7 +119,7 @@ fn main() {
     var loss_fn = MSELoss()
     var optimizer = SGD(model.parameters(), lr: 0.1)
     var step = 0
-    while step < 60 {
+    for step < 60 {
         var prediction = model(x)
         var loss = loss_fn(prediction, target)
         optimizer.zero_grad()
@@ -100,14 +131,17 @@ fn main() {
     var prediction = model(x)
     print(prediction.shape)
     print(prediction[0].to(float))
+    return 0
 }
 ```
+
+参考 oracle 沿用 1026 冻结的独立手写 Python 参考（seed=0、torch 2.14.0+cpu）：首个 loss `0.2370201051235199`、最终 `0.1013089045882225`、`prediction.shape` = `torch.Size([4, 1])`、`prediction[0]` ≈ `0.4728480279445648`；AV 当前实际打印为 `0.2370201` / `0.101308905` / `0.47284803`（f32 显示）。
 
 ### 5.2 职责、接口与依赖
 
 | 接口 | owner与实际消费 | 本计划负责/关闭条件 |
 |---|---|---|
-| IF-AV | 1026已交PySession/967资源；1094所需共同源面/协议正式切片 | AV源语法/通用脚本修复归1094；本计划接消费和双端验收，不另写PySession/解释器。未交接口先静态核差额，不拿WIP作前提 |
+| IF-AV | 1026已交PySession/967资源；1094所需共同源面/协议正式切片 | AV源语法/通用脚本修复归1094；本计划接消费和双端验收，不另写PySession/解释器。T-01 实测：收敛后 §5.1 在 AV 今天即可跑通（V-01 级），故不把 1094 整包当前置；V-02/V-03/V-04 的协议缺口按病例实测具名登记，缺什么再回 1094/1078–1096 owner |
 | IF-PY-SEM | ACE现有前门/受检Python操作与共享A2X语义视图 | T-02暴露/消费有来源的Python操作投影，绑定类型/参数/效果/所有权，不凭内部函数名字符串把任意foreign调用当Python；原生Auto操作和非法源不被污染 |
 | IF-A2PY | 1042/977已交PythonTargetProvider/helper/store/worker | T-03在原后端实现原生Python协议及Auto语义保持；不建新A2PY、不import旧PythonTrans、不依赖AV执行器 |
 | IF-BUILD | 978已交m2-build、967双身份/工件/接口清单 | T-05接Python工程源构建/SDK运行，区分AV嵌入解释器与A2PY外部解释器；不改造为第二loader/store/FFI |
@@ -181,13 +215,15 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
 
 未来明确work授权后，在当前harness有原生TODO工具时登记以下稳定任务ID；本次不登记虚假施工进度。唯一拟用树`D:/autostack/.wt/lang-1107/auto-lang`、branch=`plan-1107-dev`，尚未创建；主检出只簿记。开工登记`D:/autostack/plan-artifacts/plan-1107/` owner/用途/in-flight，所有材料/隔离SDK/外置缓存入该scope；正常target在专属树。merge摘要折计划后全删材料，保留须具名未决问题；移除树前用`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <树>`确认clean，不用WSL/Git Bash执行guard。
 
-- [ ] T-01 冻结来源与双端接口
+- [x] T-01 冻结来源与双端接口
   - owner_stage: work；前置：后续work授权，归档底座身份适用，1094所需最小切片已正式交付后才运行依赖探针。
   - 读取§4路径/证据与README五处偏差，列required/已交/缺能力/缺环境矩阵；最多两种共享操作投影方案比较。用已有受支持的最小程序核源码→Checked→各目标→执行→978 SDK的实际边界；缺失连接只做有界可行性验证并登记T-02..05的实现差额，不要求这些后续任务先完成，也不拿此探针代替T-06完整训练验收。记录版本/命令/预算/owner；上游接口不足先交原owner，不让用户代选内部机制。
   - 关闭：本节/§5写回真实符号/来源SHA、准确recipe和可区分反例；AC-01..06。策略等价无需再问，改变验收/范围须修订。
+  - [✅ 已完成 2026-11-20] 证据与矩阵写入 §4“T-01 冻结结果”、§5.1 r2 修订说明。实测命令：`cargo t ace-python`（PASS 10/10，V-01 2.98s）；`cargo nextest run -p ace-abi --test conformance -E 'test(p1107_probe…)'`（源面矩阵，五组反例+控制组）；`ac-build build --target a2py`（use.py 项目 `m2build.lane-a2x / a2x.compile: source.unsupported: use`，同形控制程序 ok）。树/提交：worktree `D:/autostack/.wt/lang-1107/auto-lang`、branch `plan-1107-dev`、base `5089d3de0`。共享投影选定方案 A（结构化 py-op 事实；AV 帧不变，A2PY 消费事实）。差额：T-02 事实通道与 A2PY 准入/编译面；T-03 原生 Python lowering+helper；T-05 m2-build python 身份/包/SDK。探测脚本为临时文件（`crates/abi/tests/cases/py_probe_1107.rs`），T-06 由正式共享 case 取代后删除。
 - [ ] T-02 接通共享Python操作投影
   - owner_stage: work；前置：T-01、IF-AV/IF-PY-SEM就绪。
   - 修改现有`core/source`/共享受检事实与`a2x-core`实际owner，形成有来源的Python操作/参数/类型/效果与资源消费，不复制解析/类型或接管1094的AV通用语义修复。
+  - [T-01 已冻结的入口] 方案 A：resolve/HIR 一处产出结构化 py-op 事实（op 种类、receiver、成员名、位置/命名实参、效果/值域、span），随 CheckedModule 携带并经 `SemanticView` 暴露（形态参照 `body_facts`/`foreign_resource_plan`，`a2x-core/src/semantic_view.rs:542-643`）；AV 侧继续产出既有 `p967.frame/1` 调用（ABI/字节码身份零变化），A2PY lowering 用同一事实生成原生 Python。py op 的冻结清单与 provider 声明（`crates/abi/rustside/py_bridge.rs` 的 17 个 `auto-ffi` 行）必须由目标中立来源承载并与真实 manifest 做一致性断言，禁止 A2PY 用 ctypes 包装 py 声明（现 `provider.rs:57-65` 会静默生成坏 wrapper）。
   - 关闭：V-02/04/08及共享完整职责组；AC-01/03/04。
 - [ ] T-03 扩展现有A2PY互操作
   - owner_stage: work；前置：T-02、IF-A2PY。
@@ -220,8 +256,18 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
 
 文档预检：§0..10、T-01..08、AC-01..08、V-01..08及SD-01..04结构/唯一性、计划/设计本地链接与锚点、Python路线新增链接、现有固定组名及变更空白检查通过。1107可达153个本地依赖计划均定位且无环（930仍在旧`docs/plans/archived/`，仅只读定位，不作本次归档目标）；1026/1042/977/978/967保持归档。上述是文档静态核验，不是接口实现或运行正确性的证据。
 
+2026-11-20 · stage: work（round 1，进行中）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: 无（本 round 只有 T-01 冻结与计划簿记，无实现提交）| task_ids: T-01 关闭，T-02..T-06 待 | outcome: pass（round 级；work stage 未完成）| next_responsible_role: work（T-02）
+
+T-01 收据：AV 基线 `cargo t ace-python` PASS 10/10（V-01 2.98s，wall 4.12s，环境 CPython 3.14.2/torch 2.14.0+cpu）；源面矩阵五反例+控制组全部按预期（§4“T-01 冻结结果”）；A2PY `ac-build build --target a2py` 对 `use.py` 项目具名拒绝 `m2build.lane-a2x / source.unsupported: use`，同形控制程序 `ok:true`。计划修订 r2：§5.1 收敛为 `fn main() int` + `for step < 60`（语义等价，AV 实测数值与 1026 独立参考一致），并在该节记录被拒的两处非 AutoLang 拼写；1026 README 的“动态浮点 kwarg 已拒/嵌套调用未验证”更新为当前事实（均已被接受，嵌套作 kwargs 值时运行期 ForeignStatus trap 为真实边界）。共享 py-op 投影选定方案 A（结构化事实；AV 帧不变，A2PY 消费事实），方案 B（A2PY 反解 p967 帧）记录为不选及其原因。IF-AV 不再以 1094 整包当前置：§5.1 在 AV 今天可跑；V-02..V-04 的协议缺口按病例实测后具名回 1094/1078–1096。
+
+临时件：`D:/autostack/plan-artifacts/plan-1107/{logs,probe}`（收尾删除）；探针 `crates/abi/tests/cases/py_probe_1107.rs` + `tests/conformance.rs` 注册行（T-06 由正式 case 取代后移除，当前未提交）。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 1 | from: drafting | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 5089d3de0 | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
+
+2026-11-20（T-01 已决）：共同投影取方案 A（结构化 py-op 事实，AV 帧不变）；§5.1 的 `while`/void 入口改为语言拼写（r2，语义等价）；1094 整包不再是 T-01/V-01 的前置，其剩余协议义务按病例实测具名回原 owner。A2PY 解释器/包身份与错误/浮点对应留待 T-02/T-03/T-05 以真实运行冻结（当前无证据，不填 PASS）。
 
 本计划首先关闭既定PyTorch真实工程及列明协议/SDK验收；更广公共Python义务继续按977/1094及后续owner逐行承接，不据本Plan单例成功宣称全生态。若用户另要求删除978的其他目标或扩GPU/图形/全Python生态，须另行明确范围，本次不推定。
