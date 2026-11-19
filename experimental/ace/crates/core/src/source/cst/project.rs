@@ -105,36 +105,6 @@ pub(crate) fn project_program_with_caps(
         return Err(vec![d]);
     }
     let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face, age_face);
-    // PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` 声明——S1 首刀
-    // 已入语法（结构可解析）；共享实例/`.store.*` 绑定/store 方法未接线 →
-    // 具名拒（绝不静默降级成同名记录类型或跳过行为）。
-    if let Some(store_kind) = p
-        .rules
-        .iter()
-        .position(|r| r.name == "age-store-item")
-        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
-    {
-        for d in &tree.decls {
-            let node = if tree.kind(d.node) == k.item {
-                tree.children(d.node)
-                    .into_iter()
-                    .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
-                    .unwrap_or(d.node)
-            } else {
-                d.node
-            };
-            if tree.kind(node) == store_kind {
-                let span = eng.cx.span_of(node);
-                return Err(vec![Diagnostic::new(
-                    Stage::Text,
-                    "source.age.component-unsupported",
-                    "store declarations are parsed; store semantics are not wired yet (S1)"
-                        .to_string(),
-                    span,
-                )]);
-            }
-        }
-    }
     let tree_has_errors = tree.has_error_nodes();
     // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
     // 其余面无此二规则 = 保持原分派行为）。
@@ -4298,6 +4268,14 @@ pub(crate) fn project_component_nodes(
     };
     let mut eng = Engine::new(p, k, tree, snap, profile, false, false, true);
     let mut out = Vec::new();
+    // PLAN-105 T-02（U03 真语料 013/016）：模块级 `store` 声明的结构候选
+    // （字段/消息/处理器）——统一收集后附到各候选节点。
+    let store_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-store-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    let mut stores = Vec::new();
     for d in &tree.decls {
         let node = if tree.kind(d.node) == k.item {
             tree.children(d.node)
@@ -4307,6 +4285,10 @@ pub(crate) fn project_component_nodes(
         } else {
             d.node
         };
+        if Some(tree.kind(node)) == store_kind {
+            stores.push(eng.run_component_store_item(node));
+            continue;
+        }
         // PLAN-981（IF-981-REF）：`pub node Foo { .. }` 壳——可见性位进候选，
         // 实体是它包裹的 node 声明。
         let public = p
@@ -4321,6 +4303,47 @@ pub(crate) fn project_component_nodes(
             continue;
         }
         out.push(eng.run_component_node_item(node, public));
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
+    for n in &mut out {
+        n.stores = stores.clone();
+    }
+    Ok(out)
+}
+
+/// PLAN-105 T-02（U03 真语料 013/016）：模块级 `store` 声明的结构候选投影
+/// （独立于 node 候选：store 单元可以没有 node）。
+pub(crate) fn project_component_stores(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+) -> Result<Vec<crate::source::age_component::ComponentStore>, Vec<Diagnostic>> {
+    let Some(store_kind) = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-store-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    else {
+        return Ok(Vec::new());
+    };
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false, true);
+    let mut out = Vec::new();
+    for d in &tree.decls {
+        let node = if tree.kind(d.node) == k.item {
+            tree.children(d.node)
+                .into_iter()
+                .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                .unwrap_or(d.node)
+        } else {
+            d.node
+        };
+        if tree.kind(node) == store_kind {
+            out.push(eng.run_component_store_item(node));
+        }
     }
     if let Some(first) = eng.cx.first_diag() {
         return Err(vec![first]);
@@ -5149,6 +5172,102 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` → `ComponentStore`
+    /// 结构候选（字段/消息/处理器与 span）。字段投影沿用 model 字段规则（与
+    /// 组件 node 同一条拼写/初值/可变位判定；此处内联复制以免动摇既有大 match）。
+    fn run_component_store_item(
+        &mut self,
+        node: u32,
+    ) -> crate::source::age_component::ComponentStore {
+        use crate::source::age_component::ComponentStore;
+        let name_leaf = self
+            .cx
+            .field_child(node, "name")
+            .expect("store declaration name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let mut fields: Vec<crate::source::age_component::ComponentField> = Vec::new();
+        let mut messages = Vec::new();
+        let mut handlers = Vec::new();
+        let mut members: Vec<u32> = Vec::new();
+        for child in self.cx.children(node) {
+            if self.rule_name_of(child) == "age-store-member" {
+                // `many { age-store-member }` 的包装层——真实成员是它的首个
+                // 非 trivia 孩子。
+                if let Some(inner) = self
+                    .cx
+                    .children(child)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                {
+                    members.push(inner);
+                }
+            } else {
+                members.push(child);
+            }
+        }
+        for member in members {
+            match self.rule_name_of(member).as_str() {
+                "age-model-member" => {
+                    for field in self.cx.children(member) {
+                        let field_kind = self.cx.tree.kind(field);
+                        let is_field = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                            r.name == "age-model-field"
+                                && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                    == field_kind
+                        });
+                        if !is_field {
+                            continue;
+                        }
+                        let Some(ty_node) = self.cx.field_child(field, "ty") else {
+                            // 视图数据字段（无类型列表字面量）——store 场合同样只读。
+                            continue;
+                        };
+                        let ty_leaf = self
+                            .cx
+                            .children(ty_node)
+                            .into_iter()
+                            .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                            .unwrap_or(ty_node);
+                        let init_node = self
+                            .cx
+                            .field_child(field, "init")
+                            .expect("store model field init");
+                        let init = self.project_expr_sync(init_node);
+                        let mutable = self
+                            .cx
+                            .field_child(field, "kw")
+                            .map(|kw| self.cx.spelling(kw) == "var")
+                            .unwrap_or(false);
+                        let name_leaf = self
+                            .cx
+                            .field_child(field, "field")
+                            .expect("store model field name");
+                        fields.push(crate::source::age_component::ComponentField {
+                            name: self.cx.spelling(name_leaf),
+                            ty: self.cx.spelling(ty_leaf),
+                            ty_span: self.cx.span_of(ty_leaf),
+                            init,
+                            mutable,
+                            span: self.cx.span_of(field),
+                        });
+                    }
+                }
+                "age-msg-member" => self.collect_msg_variants(member, &mut messages),
+                "age-on-widget-member" => {
+                    self.collect_widget_handlers(member, &mut handlers, &[]);
+                }
+                _ => {}
+            }
+        }
+        ComponentStore {
+            name,
+            fields,
+            messages,
+            handlers,
+            span: self.cx.span_of(node),
+        }
+    }
+
     /// PLAN-979（T-03）：一个组件 node 声明的未受信候选（model 字段 / on 处理器 / view）。
     fn run_component_node_item(
         &mut self,
@@ -5781,6 +5900,7 @@ impl<'a> Engine<'a> {
             design,
             members: member_rows,
             view_data,
+            stores: Vec::new(),
             span: self.cx.span_of(node),
         }
     }

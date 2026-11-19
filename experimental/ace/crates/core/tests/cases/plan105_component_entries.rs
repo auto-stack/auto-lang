@@ -776,3 +776,34 @@ fn p105_store_decl_is_named_pending() {
         "named store reject expected, got {err:?}"
     );
 }
+
+/// 013/016 真语料形：`store <Name> { model { … } msg { … } }` ——结构投影出
+/// 字段/消息（S1 首刀），编译期以具名拒提示共享实例语义未接线。
+#[test]
+fn p105_store_decl_projects_structure() {
+    let src = "widget App {\n    model { var n int = 0 }\n    view { text \"x\" {} }\n}\n\
+               store TodoStore {\n    model {\n        var active_count int = 0\n        var preview1 str = \"\"\n    }\n    msg { Init, Refresh }\n}\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("store structure projects");
+    assert_eq!(nodes.len(), 1);
+    let stores = &nodes[0].stores;
+    assert_eq!(stores.len(), 1);
+    assert_eq!(stores[0].name.name, "TodoStore");
+    let field_names: Vec<&str> = stores[0].fields.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(field_names, vec!["active_count", "preview1"]);
+    let msg_names: Vec<&str> = stores[0].messages.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(msg_names, vec!["Init", "Refresh"]);
+    let caps = vec!["ac.runtime.text.v1".to_string()];
+    let err = ace_core::source::age_component::compile_age_component(
+        src,
+        "app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+    )
+    .expect_err("store semantics stay a named pending surface");
+    assert!(
+        err.iter().any(|d| d.code == "source.age.component-unsupported"
+            && d.message.contains("TodoStore")),
+        "named store reject expected, got {err:?}"
+    );
+}

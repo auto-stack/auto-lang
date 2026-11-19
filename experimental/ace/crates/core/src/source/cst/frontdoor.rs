@@ -116,6 +116,8 @@ pub struct FrontOk {
     pub age_nodes: Vec<crate::source::age_h0::AgeNodeItem>,
     /// PLAN-979 T-03：组件面候选（未受信；只有 age-component profile 有内容）。
     pub component_nodes: Vec<crate::source::age_component::ComponentNode>,
+    /// PLAN-105 T-02：模块级 `store` 声明的结构候选（可能来自没有 node 的单元）。
+    pub component_stores: Vec<crate::source::age_component::ComponentStore>,
 }
 
 /// PLAN-979：槽位限定拼写的事实源（真实快照字节；本 crate 不复制源）。
@@ -3037,6 +3039,7 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
             cst: tree,
             age_nodes: Vec::new(),
             component_nodes: Vec::new(),
+            component_stores: Vec::new(),
         }),
         Err(diags) => FrontOutcome::Diag(diags),
     }
@@ -3557,6 +3560,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
     // PLAN-979：AGE 领域 profile 额外投影未受信领域候选（结构 + 原 span）。
     let mut age_nodes = Vec::new();
     let mut component_nodes = Vec::new();
+    let mut component_stores = Vec::new();
     if profile == SourceProfile::AgeH0 {
         match project::project_age_nodes(&cached.program, &cached.kinds, &tree, &snap, profile) {
             Ok(nodes) => age_nodes = nodes,
@@ -3581,6 +3585,18 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
             }
             Err(diags) => return FrontOutcome::Diag(diags),
         }
+        // PLAN-105 T-02：同一裁剪面的模块级 store 声明（store 单元可以没有
+        // node——独立收集，供包面/组件面消费方具名拒或接线）。
+        match project::project_component_stores(
+            &cached.program,
+            &cached.kinds,
+            &tree,
+            &snap,
+            profile,
+        ) {
+            Ok(stores) => component_stores = stores,
+            Err(diags) => return FrontOutcome::Diag(diags),
+        }
     }
     FrontOutcome::Ok(FrontOk {
         program,
@@ -3590,6 +3606,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
         cst: tree,
         age_nodes,
         component_nodes,
+        component_stores,
     })
 }
 
@@ -3767,6 +3784,7 @@ pub fn parse_fragment_front(
         // 片段入口不承载领域声明（AGE 只走 WholeModule）。
         age_nodes: Vec::new(),
         component_nodes: Vec::new(),
+        component_stores: Vec::new(),
     })
 }
 

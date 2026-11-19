@@ -436,6 +436,22 @@ pub struct ComponentNode {
     /// 数/场景/scenario/AceStateValue；handler 写它=未声明字段具名拒（
     /// `check_handler_bindings` 既有面）；列表语义/绑定归 collections owner。
     pub view_data: Vec<ComponentViewDataField>,
+    /// PLAN-105 T-02（U03 真语料 013/016）：模块内 `store <Name> { … }` 声明
+    /// （S1 结构候选；语义未接线时消费方必须具名拒）。
+    pub stores: Vec<ComponentStore>,
+    pub span: Span,
+}
+
+/// PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` 共享 store 声明
+/// ——S1 首刀的结构候选（字段/消息/处理器）。语义（共享实例、`.store.*`
+/// 绑定、store 方法调度）在后续刀接线；消费方见非空 `stores` 必须具名拒，
+/// 不得静默忽略。
+#[derive(Clone, Debug)]
+pub struct ComponentStore {
+    pub name: Ident,
+    pub fields: Vec<ComponentField>,
+    pub messages: Vec<ComponentMsgVariant>,
+    pub handlers: Vec<ComponentHandler>,
     pub span: Span,
 }
 
@@ -650,6 +666,36 @@ fn desugar_widget_src(src: &str) -> Result<String, Vec<Diagnostic>> {
 }
 
 /// 未受信候选投影（可单独测试；不接触 verify/后端）。
+/// PLAN-105 T-02：模块级 `store` 声明的结构候选（独立于 node 候选——store 单元
+/// 可以只有 store 声明）。
+pub fn project_component_stores(src: &str) -> Result<Vec<ComponentStore>, Vec<Diagnostic>> {
+    let src = &desugar_widget_src(src)?;
+    match parse_domain_whole_module(
+        src,
+        SourceProfile::AgeComponent,
+        FrontBudget::WORK_OWNED_64MIB,
+    ) {
+        FrontOutcome::Ok(ok) => Ok(ok.component_stores),
+        FrontOutcome::Diag(ds) => Err(ds),
+        FrontOutcome::ResourceExhausted { what, limit } => Err(vec![text_diag(
+            "source.resource",
+            format!("resource exhausted: {what} (limit {limit})"),
+            Span {
+                start: 0,
+                end: src.len(),
+            },
+        )]),
+        FrontOutcome::StaleForeign(_) | FrontOutcome::Infra(_) => Err(vec![text_diag(
+            "source.resource",
+            "front-end could not produce a store projection".to_string(),
+            Span {
+                start: 0,
+                end: src.len(),
+            },
+        )]),
+    }
+}
+
 pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec<Diagnostic>> {
     let src = &desugar_widget_src(src)?;
     match parse_domain_whole_module(
@@ -777,6 +823,22 @@ pub fn compile_age_component(
                 n.head_span,
             )]);
         }
+    }
+    // PLAN-105 T-02（U03 真语料 013/016）：store 声明结构已投影（字段/消息/
+    // 处理器），但共享实例/.store 绑定/方法调度未接线——**具名拒**（不静默
+    // 忽略声明，也不把它降级成普通类型）。
+    if let Some(store) = candidates.iter().flat_map(|n| n.stores.iter()).next() {
+        return Err(vec![text_diag(
+            "source.age.component-unsupported",
+            format!(
+                "store `{}` is parsed with {} field(s)/{} message(s) but its shared-instance \
+                 semantics are not wired yet (S1)",
+                store.name.name,
+                store.fields.len(),
+                store.messages.len()
+            ),
+            store.span,
+        )]);
     }
     // 未接线的语义：具名拒绝（不是静默忽略）。
     if let Some(h) = candidates.iter().find_map(|n| n.handlers.first()) {

@@ -684,6 +684,26 @@ pub fn compile_age_package(
 ///
 /// 场景不是源语言的一部分：它决定为哪些实例生成状态函数/求值函数，从而让
 /// AV/A2R 消费者观察真实值（两实例 2:1 事件、N 次 Tick）。
+/// PLAN-105 T-02：把 `use` 行按字节等长空白化（供 store 结构投影复用——store
+/// 单元常以 `use back.api: …` 开头，而组件裁剪面不接收 `use`）。
+fn blank_use_lines(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    for line in src.split_inclusive('\n') {
+        let body = line.trim_end_matches('\n');
+        if body.trim_start().starts_with("use ") {
+            for ch in body.chars() {
+                out.push(if ch == '\r' { '\r' } else { ' ' });
+            }
+            if line.ends_with('\n') {
+                out.push('\n');
+            }
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 pub fn compile_age_package_with_scenario(
     inputs: &[PackageModuleInput],
     entry: &str,
@@ -705,6 +725,27 @@ pub fn compile_age_package_with_scenario(
         })
         .collect();
     let inputs: &[PackageModuleInput] = &desugared;
+    // PLAN-105 T-02（U03 真语料 013/016）：包内 `store` 声明——结构已可投影
+    // （`ComponentStore`），共享实例语义未接线 → **具名拒**（store 单元常带
+    // `use` 行，这里按源准备同律先把 `use` 行空白化再投影）。
+    for unit in inputs {
+        let blanked = blank_use_lines(&unit.source);
+        if let Ok(stores) = crate::source::age_component::project_component_stores(&blanked) {
+            if let Some(store) = stores.first() {
+                return Err(vec![crate::atom_text::Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.component-unsupported",
+                    format!(
+                        "store `{}` is parsed with {} field(s) but package-level store \
+                         semantics are not wired yet (S1)",
+                        store.name.name,
+                        store.fields.len()
+                    ),
+                    store.span,
+                )]);
+            }
+        }
+    }
     // 1) 共享包绑定：包模块面 ∪ AGE 面**一次**解析；可见性/导入/初始化序/
     //    mangle 全部由 960 的绑定器裁定（本模块不重做任何一项）。
     let product = bind_packages_age(
