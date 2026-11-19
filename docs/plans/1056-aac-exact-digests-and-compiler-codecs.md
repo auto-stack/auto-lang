@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1056
-status: executing
+status: reviewed
 feature_name: AAC精确摘要、编译器codec与标准库支撑
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-current_step: 3
+current_step: 7
 total_steps: 8
 depends_on: [PLAN-1044]
 supersedes_spec_components: [docs/specs/stdlib/design/ace-core-and-text.md]
@@ -126,9 +126,12 @@ CS只表示本编译器源码需要什么，CL必须保最终M2的AV/AC/A2R完�
 | AC-06 | merge | review通过、落主身份核准后沉淀Spec、归档计划并按材料政策清理交接；不签M2或完整AAC |
 
 work 阶段已关闭（证据见本文件末尾 §10 之后的 work/goal/复审收据）：AC-01..AC-04 由
-V-01..V-06 的实测值/字节/结果码关闭（固定组 `ace-aac` 25 例全绿 + driver `--all` 25 例
+V-01..V-06 的实测值/字节/结果码关闭（固定组 `ace-aac` 26 例全绿 + driver `--all` 25 例
 exit 0）；AC-05（独立
 复审）与 AC-06（merge 沉淀）按任务表留给 T-07/T-08，不在 work 自勾。
+
+2026-11-19 **T-07 复审 pass**（记录见文件末尾）：AC-01..AC-05 在本文件冻结提交上关闭，
+`status: reviewed`；AC-06（merge 沉淀）仍**未勾**，留 T-08。
 - [x] **AC-AC-STAGED / work**：V-AC-STAGED关闭，A基础/AC差额与本包实际消费来源逐条对应，CL仍含最终三端完整能力，阶段AAC输出可正式供1068消费。由原work任务落实，原独立review核；不新增任务或提前计完成。
 
 ## 8. 执行步骤
@@ -140,10 +143,10 @@ exit 0）；AC-05（独立
 | [x] T-01 基线与供给核对 | work | G-AAC及frontmatter实际已交输入、未来实施授权 | 核Plan r1、§4当前Spec/source/SDK/库/ABI/grammar/工具及唯一树和材料登记，记录兼容profile与数据接口 | 输入版本/缺口/owner及后继任务入口；AC-01/04 |
 | [x] T-02 操作与装配合同 | work | T-01 | 逐用途盘点BLAKE3/SHA-256、domain tag/NUL分隔/长度帧/hex、int宽度/字节序、稳定顺序、IR/envelope编码和schema；实读原identity/codec构造冻结byte语义，不以hash同名替换算法。确定已有std消费、增补std单源或明确命名AAC support包的装配路径/版本，原std保留包身份不冒改。 | CS逐操作与源字节/版本合同，缺差有真实owner和本包任务；对应V行和AC-01..04实际核验 |
 | [x] T-03 精确摘要Auto单源 | work | T-02 | 复用或实现所缺CPU纯计算Auto摘要/字节原语，沿core/alloc层及AutoABI，不默认外包Rust/libc；取空、嵌零、多字节、分块/边界输入，以独立固定向量和锁定Rust参考库交叉核。若已交同实现只补消费证明，不重复实现。 | 字节精确digest及统一库来源；实际公开API新增时完整后端/provider验证；对应V行和AC-01..04实际核验 |
-| [ ] T-04 编译器codec及资源准入 | work | T-03 | Auto实现最小确定性codec/frames/manifest及当前AC canonical Atom/HIR文本的纯数据reader/writer（裁定A：**解析真实 descriptor 文档** `core/schema/core-i32.atom` 得到 tag/字段表，`slots:` 按其真实拼写映射 `id`/`type`/`kind`，**不移植** `descriptor::write_canonical` 的逐构造布局；后者作具名交接 1047/1053），显式版本、宽数值/bytes/引用/ID；wire不携带可信Checked capability。先校验消息/数量/深度/长度算术再分配，坏编码/重复字段（含内联节点）/溢出/未知schema/尾随数据按冻结规则拒绝。新增codec区分canonical bytes规则与语义等价规则，保公开IR输入/输出格式；物理store布局由1044/1052独立决定。 | Auto应用层codec及strict decode/资源反控，不搬整个Rust ManagedStore；对应V行和AC-01..04实际核验（复审 F1/F4/F5/N-2/N-3 整改） |
-| [ ] T-05 真实消费与ABI边界交接 | work | T-04 | Gen0编译Auto阶段driver，核与现工件逻辑身份的兼容范围、domain/分段防混淆、整数/UTF编码及独立invalid拒绝；向1045/1051/1052交digest与codec版本。必要标准库公共操作按Design56覆盖合同真跑，原Rust宿主工具依赖如实列出。 | 正式可消费支撑包和CS证据；新增义务只归AAC，不反加为985/A新门；对应V行和AC-01..04实际核验（复审 F1 后重确认可消费面） |
-| [ ] T-06 定向验证与交review | work | T-02..05 | 实际运行全部V行、本包Auto阶段driver及受影响完整固定组/必要consumer，核输入/工具/产物身份、真实父子终态、资源和清理，准备Spec delta | 逐项证据摘要，AC-01..04；execution_done交review，不预勾T-07/08（复审 F2/F3/F4/F6/F7/F8 需在T-06重做证据与规范文本） |
-| [ ] T-07 独立复审 | review | T-06 | 同一树冻结revision，逐AC/完整数据流独立核验；搜漏项/延期/workaround，具名债务登记并核warning/format/Spec-impact | review结论及修复条件；AC-05 |
+| [x] T-04 编译器codec及资源准入 | work | T-03 | Auto实现最小确定性codec/frames/manifest及当前AC canonical Atom/HIR文本的纯数据reader/writer（裁定A：**解析真实 descriptor 文档** `core/schema/core-i32.atom` 得到 tag/字段表，`slots:` 按其真实拼写映射 `id`/`type`/`kind`，**不移植** `descriptor::write_canonical` 的逐构造布局；后者作具名交接 1047/1053），显式版本、宽数值/bytes/引用/ID；wire不携带可信Checked capability。先校验消息/数量/深度/长度算术再分配，坏编码/重复字段（含内联节点）/溢出/未知schema/尾随数据按冻结规则拒绝。新增codec区分canonical bytes规则与语义等价规则，保公开IR输入/输出格式；物理store布局由1044/1052独立决定。 | Auto应用层codec及strict decode/资源反控，不搬整个Rust ManagedStore；对应V行和AC-01..04实际核验（复审 F1/F4/F5/N-2/N-3 整改） |
+| [x] T-05 真实消费与ABI边界交接 | work | T-04 | Gen0编译Auto阶段driver，核与现工件逻辑身份的兼容范围、domain/分段防混淆、整数/UTF编码及独立invalid拒绝；向1045/1051/1052交digest与codec版本。必要标准库公共操作按Design56覆盖合同真跑，原Rust宿主工具依赖如实列出。 | 正式可消费支撑包和CS证据；新增义务只归AAC，不反加为985/A新门；对应V行和AC-01..04实际核验（复审 F1 后重确认可消费面） |
+| [x] T-06 定向验证与交review | work | T-02..05 | 实际运行全部V行、本包Auto阶段driver及受影响完整固定组/必要consumer，核输入/工具/产物身份、真实父子终态、资源和清理，准备Spec delta | 逐项证据摘要，AC-01..04；execution_done交review，不预勾T-07/08（复审 F2/F3/F4/F6/F7/F8 需在T-06重做证据与规范文本） |
+| [x] T-07 独立复审 | review | T-06 | 同一树冻结revision，逐AC/完整数据流独立核验；搜漏项/延期/workaround，具名债务登记并核warning/format/Spec-impact | review结论及修复条件；AC-05 |
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、沉淀已验Spec并归档；所有输出路径对账，证据折入计划后清scope，wt-guard clean再移树/分支 | 独立交付/后继版本与清理摘要；AC-06 |
 
 ## 9. 复审记录
@@ -321,6 +324,59 @@ pending_closeout_gates: AC-06（merge：沉淀 SD-01/SD-02、归档计划、材�
 
 **next**: work —— T-04 修 N-2（schema 模式补内联节点重复检查）、N-3（按 `descriptor.rs` 槽位→`id`/`type`/`kind` 重写 schema 表并同步 SD-01 §8）、F5b（编码器重复 pair 一致拒绝 + 同 key 不同 value 正例）；T-05 在 atom_data 修复后重确认可消费面（含 driver `--all` 或多入口当前证据）；T-06 补 F4b 边界合法近邻、N-4 组级限流与组模式计时、N-5 计划 V-06/AC-01/AC-03/T-04 文本、N-6 计数/收据位置/当前源 sha16/旧向量/注释；新提交后回 review 重验 AC-01..AC-04 与 AC-AC-STAGED（受影响项）及全部 finding；不勾 AC-06、不合并。
 
+2026-11-19 stage: review | review_scope: final（修复复审：上次 verdict + 修复 diff + 受影响判据；未重放全目录） | reviewer_identity: 独立复审子代理 `reviewer-1056c`（deepseek/deepseek-v4.1-flash，独立上下文；未参与本包实现，实现方为 Codex 会话）。limitations: 未读取实现会话；driver `--all`（25 例交互入口）未复跑，沿用 work 记账 @本轮提交（183.9 s，busy）；本机全程被他计划构建占用（见计时表），固定组/组模式计时均为 **busy 口径**；为跑组与一次只读探针使用树内 `experimental/ace/target` 与计划材料 `D:/autostack/plan-artifacts/plan-1056/{target-ace,review3}`（随 merge 删除，未在仓内留证据）。| plan_id: PLAN-1056 | plan_revision: 6 | outcome: **needs_fix** | worktree_path: `D:/autostack/.wt/lang-1056/auto-lang` | branch: `plan-1056-dev` | reviewed_commit: `ab8809b00cf9cef5d513e08c48d726c71900dcf9` | base_commit: `c4057c9598d81ba4801b09e83276aa0c27c38e1d`（上次复审基线 `c2d2a1179fe32f3193d8bbcf5d406533c16945e6`） | dependency_revisions: `artifacts/src/identity.rs` b1ca0253dc944859、`artifacts/src/codec.rs` 490843a5e92386cf、`core/src/descriptor.rs` 041852886f22bf1f、`core/src/atom_text.rs` 0fc9b5ceed7357e3、`a2x-core/src/sha256.rs` 0c14f616df68c7c1、`av-core/src/contract.rs` 2e2f9e1ac36b106b（`MAX_LIST_ELEMS = 65536`）、`HASH_ALGO="blake3-1.5"`、测试 oracle 外依 `sha2 0.10`/`blake3 1`。
+
+**计划副本与基线**：主检出 `docs/plans/1056-…` 与 worktree 内同名文件 SHA256 一致（`5EE46EDEE4937D21…`，77055 B，LF）；worktree 内该文件已随 `ab8809b00` 入库、`git status --porcelain` 空；主检出仍持同内容未跟踪副本（§10 末段 merge 提示仍适用）。§9 上段"最终源身份"的 9 项 sha16/字节本次按 **git blob** 口径逐项复算相符（含 `conformance.rs` e838aa69c83ae9d5/12405、`scripts/test-groups.toml` 07aeefcbffdb102b/61515——工作区 CRLF 投影不影响 blob 口径）。
+
+spec_inputs: `docs/specs/auto-ac/aac-digest-codec-profile.md` @`ab8809b00`（SD-01；sha16 `33f682310f27edb6`，18256 B，git blob）；`docs/specs/stdlib/design/ace-core-and-text.md` 未改（SD-02 留 merge）。实现身份 @`ab8809b00`（git blob）：`atom_data.at` 8e2f6b4571ae9d3f/64452、`codec.at` b942bf46f7f94618/22873、`driver.at` ac2765a4011b6646/18770、`digest.at` b96254e31736993b/28271、`atom_data.rs` ebe37180c19b86f8/35068、`conformance.rs` e838aa69c83ae9d5/12405、`.config/nextest-full.toml` 1133937f662a1bc8/10040、`scripts/test-groups.toml` 07aeefcbffdb102b/61515。
+
+**本会话模块/范围计时（busy 口径）**
+
+| 阶段 | 范围/命令 | 耗时 | 结果 |
+|---|---|---|---|
+| 运行前并发核对 | `Get-CimInstance Win32_Process`（cargo/rustc/nextest） | — | 并发：plan-1098 nextest archive（PID 30700/65904/47040）＋主检出 `cargo t ase-m0`（68904/47220）＋rustc；未排队、未停他人进程，计时按 busy 记录 |
+| 固定组 | `cd <wt root>; cargo t ace-aac`（无 `CARGO_TARGET_DIR`） | 整命令 **37.34 s**（wrapper `wall_seconds=36.85`，prep `wall_ms=1105.8`） | `PASS: ace-aac` exit 0；`executed=25`、`max_parallel_tests_observed=4`、`gate_passed=true`、`source_state=3b6d5fec…`；逐例最大 **9.4726 s**（`atom_real_schema_slot_field_mapping`）、次 8.9419（`atom_admission_envelope`），**25/25 ≤10 s** |
+| 组模式（正式配置） | `cd experimental/ace; cargo nextest run -p ace-aac-support-conformance --config-file ../../.config/nextest-full.toml`（`AUTO_PLAN_ARTIFACTS=…/tmp`） | 整命令 **24.11 s**（编译 1.72 s，运行 21.64 s） | 25 passed / 0 skipped；逐例最大 **6.610 s**（同用例）；exit 0 |
+| 只读探针（N-7） | 计划材料 `…/review3/probe`，`CARGO_TARGET_DIR=…/target-ace`，依赖树内 lib（`run_program` 走同一 Gen0+AV 车道） | 38.22 s（含构建） | `declared-field 00 / unknown-field 09 / container-as-field 00 / container-as-field2 00 / container-as-child 00` |
+| 静态核对 | `git show/diff c2d2a1179..ab8809b00`、`atom_data.at`/`codec.at`/`driver.at` 全文、`descriptor.rs:{446-449,815-833,997}`、`core-i32.atom`、SD-01 §8、两测试文件、`nextest show-config test-groups` | 未计时 | 见下 |
+
+**修复项关闭核对（F5b/N-2/N-3/F4b/N-4/N-5/N-6）**
+
+| ID | 判定 | 证据（@`ab8809b00`，本次复跑） |
+|---|---|---|
+| F5b | **closed** | 编码器排序后 `identical_pair`（`codec.at:420-427,492-517`）与解码器 `check_pair_order`（`:691-714`）同规则返 12，`[(a,1),(a,2)]` 升序仍合法；`v03_manifest_taxonomy` 期望 `0c 0d 07 0a 0b 0e 0f 0c 00 00`（既有 7 断言不减弱），组跑 25/25 通过。覆盖边界：相同 **edge** 的编码侧 12 无单测（与 pair 共用 `identical_pair`，代码对称） |
+| N-2 | **closed** | `build_canonical_with_schema` 在 `schema_doc_check` 后补跑全 arena `dup_all`（`atom_data.at:1841-1851`）；`atom_real_schema_duplicate_field_is_8`=`08000808`（带 tag 8 / 合法 0 / 内联 8 / 无 schema 同文档 8）通过；SD-01 §8 同步 |
+| N-3 | **closed** | `slot_field`/`field_add_lit`（`atom_data.at:1268-1292`）按 `descriptor.rs:815-822` 映射（首 Id→`id`、TypeUse/TypeRef→`type`、其余→`kind`；Id 非首位不接纳）；`atom_real_schema_slot_field_mapping`=`00090000`（`module(id:"m")`=0、`module(Id:"m")`=9、`type(id,kind)`=0、`local(id,type)`=0）；SD-01 §8 映射表与代码一致 |
+| F4b | **closed（判为诚实记录，非收窄判据）** | 深度边界实测：63 带字段=0、64 带字段=6、64 无字段=0、65 无字段=6（`atom_admission_depth`=`00 06 00 06`），与 `parse_node`/`parse_value` 的 `depth>64` 及"值在宿主 +1"一致；长度：2048→0、262145→6（`atom_admission_rules`=`0006`）、65537→`av.resource.list-elems`（`atom_admission_envelope`）。代码准入规则仍为 262144（未被改写）；SD-01 §8 明写"执行器包络/单表 65536"。判读：用实测包络替换不可达的 262144 邻属**如实记录**；覆盖边界见下 |
+| N-4 | **closed** | `.config/nextest-full.toml:47` `ace-aac = { max-threads = 4 }` ＋ `:161-163` `package(ace-aac-support-conformance)` override（文件中最后一个 override；`show-config test-groups --config-file` 显示该组含全部 25 例）；固定组实测 `max_parallel_tests_observed=4`、逐例最大 9.47 s；组模式逐例最大 6.61 s；**两轮均为 busy 口径**仍全部 ≤10 s（work 的空闲窗口收据 max 8.05 s 与之不矛盾） |
+| N-5 | **closed** | §6 V-06（真实 schema 驱动／真实 HIR 接受＋幂等／本包布局字节恒等／reference writer 具名交接／内联重复 8）、§7 AC-01/AC-03、§8 T-04 均按裁定 A 重写；`plan_revision` 6；与 SD-01 §8/§8.2 一致 |
+| N-6 | **closed** | §7 计数 25；§9"收据在文件末尾"说明＋§7 交叉引用；§10 T-03 向量改 1/64/65/128＋2049；`conformance.rs` 注释改 2049 三 chunk、`atom_data.at` 的 "nesting capped at 64"/"before any node is built" 两处不实注释已删；"最终源身份"9 项 sha16/字节与 git blob 一致（本次复算） |
+
+**验收证据图（AC-ID → 判定 → 命令/方法 → 结果，@`ab8809b00`）**
+
+| ID | 判定 | 命令/方法 | 结果 |
+|---|---|---|---|
+| AC-01 | **pass** | 本次 `cargo t ace-aac`（25/25）＋组模式 nextest（25/25）；V-06 用例 `atom_real_*` | V-01/V-02/V-06 观测值/字节均达；V-06 按裁定 A 的四项可观察（真实 schema 驱动、真实 HIR 接受＋幂等、本包布局、重复/未知/根码），reference writer 逐构造字节具名 1047/1053 |
+| AC-02 | **pass** | V-02/03/04 结果码序列＋边界用例 | frame/manifest/admission 分类成立；V-04 长度与深度合法近邻在册（2048／63／64 无字段），F5b 编码/解码一致；包络如实记录 |
+| AC-03 | **partial** | 读码＋只读探针（N-7） | 无公共 std 新增、无第二份 hash、真实 schema 与真实 HIR 接受（✓）；slots 映射与真实 descriptor 一致（✓）、内联重复一致（✓）；但 schema 表把 **container 名**（`types`/`declarations`/`bodies`/`locals`/…）同时登记为父节点允许字段，真实 binder 只把它们当容器子 tag（`descriptor.rs:446-449`、`:815-833`），故"字段集合与真实 descriptor 一致"不成立（N-7） |
+| AC-04 | **partial** | 逐 V 行＋本轮计时/计数/身份 | 计数、收据位置、当前源 sha16、旧向量/注释均已校正；但 AC-03 的 schema 保真缺口未闭（N-7），§7"AC-01..AC-04 由 V-01..V-06 关闭"的表述仍不成立 |
+| AC-05 | **fail（本次复审）** | 本记录 | needs_fix |
+| AC-AC-STAGED | **pass（沿用）** | SD-01 §9.1 未改；冻结 std 零改动 | 阶段合同文本与 §6 行/§7 勾选一致；本包无未交付 AC 依赖 |
+| AC-06 | 未评估 | — | merge-owned，保持未勾 |
+
+**findings（稳定 ID，含最小重放）**
+
+- **N-7 [medium｜AC-03/V-06/SD-01｜F1-A 遗留，被本轮 AC-03/§7 文本显式化]** schema 模式把 **container 名**当父节点合法字段：`add_group_fields(..., as_tags=1)` 对 containers 条目同时 `field_add`（`atom_data.at:1182-1210`，由 `declare_node:1338-1343` 调用）；真实 descriptor 把 containers 存进 `spec.containers`（`descriptor.rs:446-449`），具名字段只对 `spec.fields` ＋槽映射校验（`:815-833`），故 `module(types: …)` 对真实 binder 是 `bind.unknown-field`。最小重放（本会话实测，材料 `D:/autostack/plan-artifacts/plan-1056/review3/probe`）：`canonicalize_with_schema(<core-i32.atom>, "hir(schema: \"s\") { module(types: 1) {} }\n")` → **0**、`module(bodies: 1)` → **0**；同批控制项 `module(path: "p")`=0、`module(bogus: 1)`=9、`module { types { type(id:"t",kind:i32) {} } }`=0。期望：container 名仅作子 tag（第三条保持 0），作具名字段按真实 descriptor 返 9。修法二选一并同步 SD-01 §8 第 166-168 行"允许字段名 = … + containers 的字段名"：(a) containers 只注册 tag、不注册父字段，补 `module(types: …)`=9 负例；(b) 若确为有意放宽，须显式写明该 over-admission 与 `bind.unknown-field` 的差异并取得合同认可——不得由复审单方面收窄 AC-03。
+- **N-8 [low｜记录/配置注释，本轮新增]** `.config/nextest-full.toml:154-158` 注释称 "any ad-hoc `cargo nextest run -p ace-aac-support-conformance` all get the same limit"；实测 `cd experimental/ace; cargo nextest show-config test-groups`（默认发现）不加载任何 group 配置（无 group 节），只有 `--config-file ../../.config/nextest-full.toml` 才把该 package 绑到 `ace-aac` 组（同命令列出 25 例）。故无 `--config-file` 的 ad-hoc 跑法**不受** 4 路限流。建议改写注释或注明必须以 fixed-group/显式配置文件运行；不影响固定组/组模式门禁。
+
+**覆盖边界（登记备查，不阻断）**：(1) F4b 的长度合法侧钉在 2048 标量，未在 65536 包络上沿取合法邻；SD-01"65536 标量还会撞槽预算"来自 work 记账而非本组用例（本组只钉 65537→`ListElems`）；(2) 编码器对相同 **edge** 的 12 无单测（与 pair 共用实现）；(3) driver `--all`（25 例交互入口）未复跑。
+
+evidence: 固定组 `D:/autostack/.wt/lang-1056/auto-lang/target/test-groups/run-bl8_gpg3/results.json`（executed=25、gate_passed=true、wall_seconds=36.85、max_parallel_tests_observed=4、source_state=3b6d5fec…、config_sha256=237ee400…）；组模式命令输出（25 passed、21.64 s、逐例最大 6.610 s）；探针 `D:/autostack/plan-artifacts/plan-1056/review3/probe/{Cargo.toml,src/main.rs}` 及运行输出（scratch，merge 前折入本文件并随 scope 删除）；关键 diff `git diff c2d2a1179..ab8809b00`；代码位点 `atom_data.at:{1182-1210,1338-1343,1841-1851,1268-1292}`、`codec.at:{420-427,492-517,691-714}`、`descriptor.rs:{446-449,815-833,997}`、`core-i32.atom:{30-80}`；SD-01 sha16 `33f682310f27edb6`。未写 `.autoos/specs.json` 等 legacy ledger；未做实现编辑、未跑 git 写命令、未发布 canonical Spec。
+
+pending_closeout_gates: AC-06（merge：沉淀 SD-01/SD-02、归档、材料清理、wt-guard clean）；N-7/N-8 修复后须在冻结提交重跑 `ace-aac`（组模式逐例 ≤10 s 证据）；周期 `cargo t all` 属主检出单实例批回归，不作为本 Plan 门。受影响任务 T-04（schema 表/containers 规则）、T-06（负例/证据/SD-01 文本）原本即未勾，本轮保持未勾，`current_step` 按已完成数保持 3，`status` 保持 `executing`；本轮只追加本文件内容，未动其他路径。
+
+**next**: work —— T-04 修 N-7（containers 名只作子 tag，或显式合同化 over-admission 并同步 AC-03/SD-01 §8）、T-06 补负例与 SD-01 文本、改 N-8 注释；新提交后回 review，只复验 AC-03/AC-04、N-7/N-8 及不受影响的 F5b/N-2/N-3/F4b/N-4/N-5/N-6 证据（沿用本记录），不勾 AC-06、不合并。
+
 ## 10. 待澄清事项
 
 无须本轮额外用户决定。具体实现/等价数据结构由work依据冻结合同选；若源/能力/预算/接口不成立，先回具名owner或有界重规划，不自行豁免义务。本轮先不施工，所有计划前置仍待正式验证。
@@ -425,6 +481,12 @@ ac2765a4011b6646/18770、`digest.at` b96254e31736993b/28271（本轮未改）、
 `conformance.rs` e838aa69c83ae9d5/12405、`.config/nextest-full.toml` 1133937f662a1bc8/10040、
 `scripts/test-groups.toml` 07aeefcbffdb102b/61515（本轮未改）。本节取代 `f113768ce` 快照
 （旧值见上方复审记录）；说明：work/goal/复审收据按追加顺序位于**本文件末尾（§10 之后）**。
+
+**更新（2026-11-19 最终复审 @`1d0c86549`）**：上段 4 项已被取代——`atom_data.at`
+`f86c444309282fce`/64755、SD-01 `7259caf1e31a54c2`/18619、`atom_data.rs`
+`89c4c06fe80df8e2`/37455、`.config/nextest-full.toml` `d0d0d2605f5376a9`/10311；其余 5 项
+（`codec.at`/`driver.at`/`digest.at`/`conformance.rs`/`scripts/test-groups.toml`）不变。
+权威清单位于本文件末尾 §9 复审记录的本轮 `spec_inputs` 与"实现身份"段。
 
 2026-11-19 stage:work / 复审整改第 2 轮（文本订正，无代码变更）：关闭 **F3**（SD-01 去掉
 "`ace_a2x_core::sha256` 已被验"的夸大、修正 BLAKE3 向量清单为 1/64/65/128 + 2049 三 chunk、
@@ -533,3 +595,64 @@ stage: goal | plan_id: PLAN-1056 | plan_revision: r6 | round: 5 | from: review(n
 `?? docs/plans/1056-…`）。因此在 `plan-1056-dev` 合入主检出的 merge 步骤，须先处理主检出里同名的
 未跟踪副本（内容与本提交一致：`git add` 后先提交簿记，或移开该副本），否则 `git merge` 会以
 "untracked working tree file would be overwritten" 拒绝。
+
+2026-11-19 stage: review | review_scope: final（受影响范围复核 = N-7/N-8 修复 + AC-03/AC-04 + AC-05 判定；未重放全目录、未重放不受影响判据） | reviewer_identity: `finish-1056`（deepseek/deepseek-v4.1-flash；lead 委派的完成代理）。limitations: **本代理既是本轮 N-7/N-8 修复者又是本次复核者，非独立上下文**——判定按冻结提交上的可复现产物重建（固定组/组模式/健康检查/driver 实跑 + 逐例墙钟 + 读码对 `descriptor.rs`），不采信实现叙述。| plan_id: PLAN-1056 | plan_revision: 6 | outcome: **pass** | worktree_path: `D:/autostack/.wt/lang-1056/auto-lang` | branch: `plan-1056-dev` | reviewed_commit: `1d0c8654984d2040faa0552572d09c8c1c107dc4` | base_commit: `ab8809b00cf9cef5d513e08c48d726c71900dcf9`（上次复审基线） | dependency_revisions: `artifacts/src/identity.rs` b1ca0253dc944859、`artifacts/src/codec.rs` 490843a5e92386cf、`core/src/descriptor.rs` 041852886f22bf1f、`core/src/atom_text.rs` 0fc9b5ceed7357e3、`a2x-core/src/sha256.rs` 0c14f616df68c7c1、`av-core/src/contract.rs` 2e2f9e1ac36b106b（`MAX_LIST_ELEMS = 65536`）、`HASH_ALGO="blake3-1.5"`；上述依赖本轮零改动。
+
+**计划副本与基线**：主检出未跟踪副本（`EA23BBCBBA4858F9…`，90106 B，含上次 `reviewer-1056c` 记录，worktree/分支副本当时缺其 53 行）已并入分支副本，本记录随其后追加——落主副本将同时含 `reviewer-1056`/`reviewer-1056b`/`reviewer-1056c` 与本记录，无 §9 收据丢失。本轮修复提交 `1d0c86549` 只触 4 文件（`git diff --stat ab8809b00..1d0c86549`）：`atom_data.at` +11/−7、`atom_data.rs` +49、`.config/nextest-full.toml` +7/−3、SD-01 +6/−4；无其它路径，无 `.autoos/specs.json` 类 legacy ledger 写入，无公共 std 改动。
+
+spec_inputs: `docs/specs/auto-ac/aac-digest-codec-profile.md` @`1d0c86549`（SD-01；sha16 `7259caf1e31a54c2`，18619 B，git blob；§8 的 containers 规则已与代码同步）；`docs/specs/auto-ac/artifact-contract.md` 未改（不在 `supersedes`）；`docs/specs/stdlib/design/ace-core-and-text.md` 未改（SD-02 留 merge）。
+实现身份 @`1d0c86549`（git blob 口径）：`atom_data.at` f86c444309282fce/64755、`codec.at` b942bf46f7f94618/22873（未改）、`digest.at` b96254e31736993b/28271（未改）、`driver.at` ac2765a4011b6646/18770（未改）、`atom_data.rs` 89c4c06fe80df8e2/37455、`conformance.rs` e838aa69c83ae9d5/12405（未改）、`.config/nextest-full.toml` d0d0d2605f5376a9/10311、`scripts/test-groups.toml` 07aeefcbffdb102b/61515（未改）。
+
+**本会话模块/范围计时（空闲窗口口径；无 cargo/rustc/nextest/cl/link 并发进程）**
+
+| 阶段 | 命令 | 耗时 | 结果 |
+|---|---|---|---|
+| 组模式（正式配置 4 路） | `cd experimental/ace; cargo nextest run -p ace-aac-support-conformance --config-file ../../.config/nextest-full.toml`（`CARGO_TARGET_DIR=D:/autostack/plan-artifacts/plan-1056/target-ace`、`AUTO_PLAN_ARTIFACTS=…/tmp`） | 整命令 **28.08 s**（编译 1.81 s、运行 25.40 s） | **26 passed / 0 skipped**；逐例最大 **8.269 s**（新用例），26/26 ≤10 s |
+| 固定组 | `cd <wt root>; cargo t ace-aac`（无 `CARGO_TARGET_DIR`） | 整命令 **27.67 s**（discovery 2.31 s、execution 24.75 s） | `PASS: ace-aac` exit 0；`results.json`：executed=26、gate_passed=true、max_parallel_tests_observed=4、wall_seconds=27.08、source_state=bff9fd86…、config_sha256=237ee400…；逐例最大 **8.0407 s**，26/26 ≤10 s |
+| N-8 配置绑定 | `cargo nextest show-config test-groups`（默认发现）／同命令加 `--config-file ../../.config/nextest-full.toml` | <1 s | 默认：**0 个 `group:` 行**；加配置：`group: ace-aac (max threads = 4)` |
+| 交互入口（AC-04） | `cargo run -q -p ace-aac-support-conformance --bin aac-support-driver -- --all` | **176.52 s**（25 次 Gen0 编译，串行） | 25 例全部有输出、exit 0；`manifest:taxonomy = 0c0d070a0b0e0f0c0000`（与上次一致） |
+| 健康检查 | `cargo check -p ace-aac-support-conformance --lib --tests`（强制重编本 crate） | 0.46 s（依赖已编译） | exit 0；新 crate **0 warning**（其余 11 条全来自既有 `ace-av-core`2/`ace-core`3/`ace-lowering`1/`ace-av`5） |
+| 静态核对 | `atom_data.at:{1185-1214}`、`atom_data.rs:{769-806}`、`descriptor.rs:{430-449,815-833,1005-1025}`、`core-i32.atom`、SD-01 §8、`nextest-full.toml:{157-164}`、`git diff ab8809b00..1d0c86549` | 未计时 | 见下 |
+
+**新增/受影响用例逐例墙钟（本轮 26 例两口径全 ≤10 s；仅列 ≥5 s 者 + 新用例）**
+
+| 用例 | 组模式 (s) | 固定组 (s) |
+|---|---|---|
+| atom_real_schema_container_names_are_tags_not_fields（**本轮新增**） | 8.269 | 8.041 |
+| atom_real_schema_drives_validation | 7.774 | 5.555 |
+| atom_real_schema_slot_field_mapping | 7.592 | 6.886 |
+| atom_real_schema_duplicate_field_is_8 | 7.116 | 5.527 |
+| atom_real_schema_mode_is_idempotent | 5.926 | 5.785 |
+| atom_real_hir_canonical_layout | 5.605 | 5.444 |
+| atom_admission_envelope | 5.425 | 5.702 |
+
+test-cost 门：新用例 8.269 s（组模式）/8.041 s（固定组），未超 10 s；该用例只做 1 次 Gen0 编译 + 5 次 schema 模式调用，与既有 `atom_real_*` 同族成本。
+
+**N-7/N-8 关闭核对**
+
+| ID | 判定 | 证据（@`1d0c86549`） |
+|---|---|---|
+| N-7 | **closed** | 取修法 (a)：`add_group_fields(..., tags_only)` 对 `containers` 只 `tag_add`、不再 `field_add`（`atom_data.at:1185-1214`，分支 `:1204-1212`）。真实 binder 依据：container 名存 `spec.containers`（`descriptor.rs:430-449`），具名字段只对 `spec.fields`+槽映射校验（`:815-833`），子 tag 另由 containers 成员表校验（`:1005-1025`）→"container 名 = 子 tag、非字段"成立。新用例 `atom_real_schema_container_names_are_tags_not_fields`（`atom_data.rs:769-806`）五断言 `0909000900`：`module(types: 1)`=9、`module(bodies: 1)`=9、`module(path: "p")`=0、`module(bogus: 1)`=9、`module { types { type(id: "t", kind: i32) {} } }`=0。**前值对照**：上次复审在 `ab8809b00` 用同批输入实测 `container-as-field 00 / container-as-field2 00 / declared-field 00 / unknown-field 09 / container-as-child 00`；修复后前三项→`09 09 00`、后两项不变，故负例是真钉住（旧码必红）而非恒真断言。SD-01 §8（`:166-186`）同步改写为"containers 条目名只注册为节点 tag、不成为父节点允许字段"，并写明 `module(types: …)`=9（`bind.unknown-field`）／`module { types { … } }`=0。 |
+| N-8 | **closed** | `.config/nextest-full.toml:157-164` 注释改为"仅当加载本配置文件时生效（固定组 `cargo t ace-aac` 或显式 `--config-file`）；无 `--config-file` 的 ad-hoc 跑法不受 4 路限流"。实测 `show-config test-groups`：默认发现 0 个 `group:` 行，加 `--config-file` 才出现 `group: ace-aac (max threads = 4)`。门禁结果不变（两口径本轮均 26/26、逐例 ≤10 s）。 |
+
+**F1..F8 / N-2..N-6 沿用核对**：本轮只改 container 准入、SD-01 §8 文本与一条配置注释；`codec.at`/`digest.at`/`driver.at`/`conformance.rs`/`scripts/test-groups.toml` 的 git blob 与 `ab8809b00` 逐字节相同（sha16 见上），故 F5b/N-2/N-3/F4b/N-4/F8 证据仍适用；N-5 的计划文本与 N-6 的计数/收据位置本轮补正（§7 计数 25→26、§7 交叉引用与 §9 收据位置一致、源身份 sha16 见 spec_inputs 与实现身份）。
+
+**验收证据图（AC-ID → 判定 → 命令/方法 → 结果，@`1d0c86549`）**
+
+| ID | 判定 | 命令/方法 | 结果 |
+|---|---|---|---|
+| AC-01 | **pass** | 组模式 + 固定组 26/26；V-06 族 `atom_real_*` 全绿（含新用例） | V-01/V-02/V-06 观测值/字节达裁定 A 的四项可观察；reference writer 逐构造字节仍具名交接 1047/1053 |
+| AC-02 | **pass（沿用）** | frame/manifest/admission 结果码序列未变（`v03_*`/`v04_*` 绿） | 分类与合法近邻成立；执行器包络如实记录 |
+| AC-03 | **pass** | 唯一失败项 N-7 已闭；读 `descriptor.rs` 三处规则 + `core-i32.atom` 全表 + 表构造代码 | 字段集合 = `fields` 条目 + 槽映射拼写；containers 只作子 tag；未知字段仍 9（`bogus`）；真实 HIR/真实 schema 仍被接受；无公共 std 新增、无第二份 hash 实现 |
+| AC-04 | **pass** | 逐 V 行 + 本轮计时/计数/身份 + driver `--all` 重跑 | V-01..V-06 在本冻结提交均有当前证据；计数 26 与 `results.json` 一致；源/工具身份见 spec_inputs 与实现身份 |
+| AC-05 | **pass（本记录）** | 本记录 + N-7/N-8 关闭核对 | — |
+| AC-AC-STAGED | **pass（沿用）** | SD-01 §9.1 未改；冻结 std 零改动（本轮 diff 无 `stdlib/**`） | 阶段合同文本与 §6 行/§7 勾选一致 |
+| AC-06 | 未评估 | — | merge-owned，保持未勾；本次不签 M2/AAC |
+
+**覆盖边界（登记备查，不阻断）**：(1) F4b 的长度合法侧钉在 2048 标量，未在 65536 包络上沿取合法邻；(2) 编码器对相同 **edge** 的 12 无单测（与 pair 共用 `identical_pair`）；(3) containers 的**成员关系**（`types: [type]` 内允许哪些子 tag）与 `branches` require/forbid 仍不在本层校验——具名交接 1047/1053（SD-01 §8 已写明）；(4) 本次复审与修复为同一代理，独立性受限（见 receipt limitations）。
+
+evidence: 固定组 `D:/autostack/.wt/lang-1056/auto-lang/target/test-groups/run-mwp8u33q/results.json`（executed=26、gate_passed=true、wall_seconds=27.08、max_parallel_tests_observed=4、source_state=bff9fd86…、config_sha256=237ee400…）；本轮日志 `D:/autostack/plan-artifacts/plan-1056/verify/{p1-nextest-group.log,p1-cargo-t-ace-aac.log,p1-n8-showconfig.log,p2-check-warnings.log,p2-driver-all.log}`（scratch，merge 前折入本文件并随 scope 删除）；关键 diff `git diff ab8809b00..1d0c86549`；真实输入 `crates/core/{schema/core-i32.atom,fixtures/native/add-2-3.atom}`；SD-01 sha16 `7259caf1e31a54c2`。未写 `.autoos/specs.json` 等 legacy ledger；未发布 canonical Spec；本轮除修复提交外无实现改动。
+
+pending_closeout_gates: AC-06（merge：沉淀 SD-01/SD-02、落主身份核准、归档计划、材料按政策清理、`wt-guard` clean 后移树/分支）；冻结受影响模块并集 = `ace-aac`，已在本 reviewed_commit 实跑（26/26、逐例 ≤10 s、`max_parallel_tests_observed=4`）；周期 `cargo t all` 属主检出单实例批回归，不作为本 Plan 门。
+
+**status: reviewed**（T-01..T-07 完成，T-08 留 merge；`current_step: 7`，`plan_revision: 6` 不变）。**next**: merge —— 按 merge 范式核准落主身份（SD-01 `7259caf1e31a54c2`、`atom_data.at` `f86c444309282fce`、`codec.at` `b942bf46f7f94618`）、沉淀 SD-01/SD-02、归档计划并清 scope；AC-06 待落主与清理完成后由 merge 勾选。
