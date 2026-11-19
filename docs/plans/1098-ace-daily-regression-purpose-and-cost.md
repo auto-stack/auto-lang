@@ -460,6 +460,27 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 - **材料卫生**：验证期把 3 份 `archive-0.tar.zst`（各 63.2MB）与 probe archive 落在 plan scope，达到 265.6MB。按 2026-10-31 裁定"证据=摘要、构建产物随树删除"，已删除全部 archive 与旧 prepare 目录，scope 回到 **4.0MB**（只留 manifest/results/log 摘要）；archive 属可重建准备产物，日常/准备位在 worktree `target/test-groups/prepared/<state>/`，不再入 scope。
 
+### 5.15 T-02 第四刀：6 处 worker 定位去硬编码（B-05 第 3 步部分，代码 `80bbab696`）
+
+改动（全在实施树）：
+
+| 文件 | 原形态 | 现形态 |
+|---|---|---|
+| `crates/av/tests/cases/av_collections_resources.rs`（`:793-818`） | 测试体内 `cargo build --release -p ace-av --bin av-worker` + `ws.join("target/release/av-worker.exe")` | 只读 `AC_AV_CASE_WORKER`；缺失即 panic 并打印显式准备命令 |
+| `crates/av/tests/cases/av_dynamic_resources.rs`（`:704-728`） | 同上（另带 `--target-dir`） | 同上 |
+| `a2x-worker/tests/cases/a2c_cert.rs`（`:21-28`） | `../../target/release/a2x-worker.exe` + `../../../target/release` 回落 | 只读 `AC_A2X_HIR_WORKER`，无回落 |
+| ` …/a2c_rt_cert.rs`（`:23-26`） | 同上（`assert!(p.exists())`） | 同上 |
+| ` …/a2c_coll_cert.rs`（`WORKER` 常量 + 回落） | 同上 | 同上（并删除不再使用的 `WORKER` 常量） |
+| ` …/cert_coll_904.rs`（`WORKER` 常量 + dev-tree 回落） | 同上 | 同上（同删常量） |
+
+**实测（带 env 的定向重放，release worker）**：
+- `ace-av`：`av_collections_worker_memory_hard_gate_parent_sampled` 0.668s、`av_dynamic_resources_worker_memory_hard_gate_parent_sampled` 0.810s → **2/2 PASS**。
+- `ace-a2x-worker`：`a2c_cert::` + `cert_coll_904::` 共 9 例 → **9/9 PASS**，其中 4 例 >10s（`audit1036_loop_03_owned_cleanup` 10.219s、`c2_certify_two_leg_pass_and_stable_bytes` 11.304s 等）——**这些正是 §5.3 C 类**（真 cl/rustc 编译认证），T-06 须迁 `ace-toolchain`。
+
+**过程记录（worktree 纪律）**：本轮首次编辑用了相对路径，工具把 6 个文件改到**主检出**而非实施树；已立即 `git checkout --` 还原（仅本会话所改的 6 个文件，主检出随后 `git status` 为 0），并在实施树用绝对路径重做。教训：编辑路径必须显式指向 `D:/autostack/.wt/lang-1098/auto-lang/...`，不能依赖工具工作目录。
+
+**B-05 剩余**（按 §5.13）：`cert_rt_902.rs:315`、`native/tests/common/mod.rs`（B-01）、`native/tests/common/collections.rs`、`core/tests/common/mod.rs`（B-04）、`host/rust_lowering.rs:231`（B-03），以及 5 个 lib 级 builder 的 env 优先改造与 profile 翻转。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -625,6 +646,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 8，r1）：`stage: work`，T-02 第三刀（§5.14，代码 `fe036b9f1`）。执行内容：①新增 `ace-native` `runtime-warm` bin + `toolchains.json` `native-runtimes`（`warm` 字段）+ `prepare_tools` warm 支持，把内容绑定的 collections/sched/typed runtime 在**准备阶段**构建并写 stamp。②修正 prepare 顺序（前面板实测发现：nextest archive 用 `test` profile 在同 target 重建同名 bin，会让先算的工具哈希立即失效；现改为先 archive 后 tools）。③实测 `ace-native`：冷准备 673.22s → 热准备 9.11s；`--run-prepared` **PASS 329/329**，run 墙 62.5s，**零 Compiling**，三个 runtime 库 SHA256 前后一致。治负 `test_prepare_tools`+`test_fixed_groups` **85/85 OK**。观察项：`ace-native` 62.5s 接近 60s 目标（未超 120s 上限）。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 8 | from: work | to: work | status: executing | outcome: pass（runtime 预热与 prepare 顺序修正落地并实测零编译；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: fe036b9f1 / 本轮 docs(plan1098) | next: work（T-02 续：profile 翻转 + hardcoded 路径收敛）`
+
+2026-11-19（goal round 9，r1）：`stage: work`，T-02 第四刀（§5.15，代码 `80bbab696`）。执行内容：6 处测试体去硬编码/去补构建（AV worker → `AC_AV_CASE_WORKER`；a2x worker → `AC_A2X_HIR_WORKER`；缺 env 即具名 panic 并给准备命令；删除两个不再使用的 `WORKER` 常量与两处体内 `cargo build --release`）。定向重放：AV 2/2 PASS（0.668s/0.810s）、a2x 9/9 PASS（其中 4 例 >10s，属 C 类待 T-06 迁出）。**过程事故并已纠正**：首次编辑因相对路径落到主检出，已 `git checkout --` 还原 6 文件（主检出随后零 WIP），改在实施树绝对路径重做；已记入 §5.15。B-05 剩余：`cert_rt_902.rs:315`、B-01/B-02/B-04、`rust_lowering.rs:231`（B-03）、5 个 lib builder env 化与 profile 翻转。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 9 | from: work | to: work | status: executing | outcome: pass（6 处硬编码收敛并定向重放通过；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 80bbab696 / 本轮 docs(plan1098) | next: work（T-02 续：B-01…B-04、lib builder env 化、profile 翻转）`
 
 ## 10. 待澄清事项
 
