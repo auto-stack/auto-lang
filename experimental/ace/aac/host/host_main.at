@@ -1,0 +1,35 @@
+// AAC hosted client native entry (PLAN-1045 T-02): `fn main() int` for the
+// real native AC (mn) leg. The exe's exit code is a REDUCTION of the case
+// observables, never a self-verdict: each case report is folded with the
+// same wrap32 FNV-1a the client exposes (`fnv32_bytes`), combined as
+// c = wrap32(c*31 + fnv(report)) over the fixed case order, reduced mod
+// 2^31 for a non-negative i32 exit code. The conformance crate computes
+// the SAME reduction over its INDEPENDENTLY derived expected strings, so
+// any byte of divergence in any case changes the exit code. Full-string
+// byte-exact oracles run on the AV leg (Value::Str), which carries the
+// complete observables.
+use app.host_client.bytes_span_report
+use app.host_client.map_report
+use app.host_client.intern_report
+use app.host_client.sort_report
+use app.host_client.int_report
+use app.host_client.budget_report
+use app.host_client.digest_report
+use app.host_client.fnv32_bytes
+
+fn wrap32(x i64) i64 {
+    return x % 4294967296i64
+}
+
+fn main() int {
+    var c = 0i64
+    c = wrap32(c * 31i64 + fnv32_bytes(bytes_span_report()))
+    c = wrap32(c * 31i64 + fnv32_bytes(map_report()))
+    c = wrap32(c * 31i64 + fnv32_bytes(intern_report()))
+    c = wrap32(c * 31i64 + fnv32_bytes(sort_report()))
+    c = wrap32(c * 31i64 + fnv32_bytes(int_report()))
+    c = wrap32(c * 31i64 + fnv32_bytes(budget_report()))
+    c = wrap32(c * 31i64 + fnv32_bytes(digest_report()))
+    let exit = c % 2147483648i64
+    return exit.to(i32)
+}

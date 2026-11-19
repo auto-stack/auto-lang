@@ -862,10 +862,7 @@ unsafe fn enter_frame(f: *mut Frame, cells: *mut Cell, count: u64, heap_reserved
         );
         state().frame = f;
         charge(bytes, 0);
-        if !evt(&[
-            Seg::B(b" act=frame-enter frame="),
-            Seg::N(seq),
-        ]) {
+        if !evt(&[Seg::B(b" act=frame-enter frame="), Seg::N(seq)]) {
             return Err(RESOURCE);
         }
         Ok(())
@@ -885,10 +882,7 @@ pub unsafe extern "system" fn mn_coll_frame_leave(f: *mut Frame) -> i32 {
         clear_via((*f).cells.add(i), b"swept");
     }
     let left_seq = (*f).seq;
-    if !evt(&[
-        Seg::B(b" act=frame-leave frame="),
-        Seg::N(left_seq),
-    ]) {
+    if !evt(&[Seg::B(b" act=frame-leave frame="), Seg::N(left_seq)]) {
         mn_coll_abort(RESOURCE);
     }
     if (*f).count & heap_flag != 0 {
@@ -1098,6 +1092,20 @@ pub unsafe extern "system" fn mn_coll_str_concat(dst: *mut Cell, a: u64, b: u64)
             &mut out,
         );
         if data.is_null() {
+            if out == 0 {
+                // PLAN-1045 T-02: `try_alloc(0)`'s valid-empty representation
+                // is a null buffer with length 0 — an empty ⊕ empty concat
+                // SUCCEEDS with an empty TEXT node (the owned lane's
+                // negative_guard/def_pair accepts the same pair); every
+                // error path writes a negative ERR_* code, so out == 0 can
+                // only be this case.
+                let n = new_node(TEXT, 0, 0)?;
+                (*n).data = core::ptr::null_mut();
+                (*n).len = 0;
+                commit(dst, owner(n));
+                ev_own(dst, false);
+                return Ok(());
+            }
             return Err(if out == ac_text_runtime::ERR_CANCELLED {
                 CANCELLED
             } else {
@@ -1322,7 +1330,9 @@ pub unsafe extern "system" fn mn_coll_list_set(bits: u64, index: i32, src: *mut 
         // PLAN-923: an in-place replacement bumps the element generation —
         // the element's own places (and every sibling minted before the
         // replacement) go stale; other elements stay legal.
-        (*p).gens.add(index as usize).write(read((*p).gens.add(index as usize)) + 1);
+        (*p).gens
+            .add(index as usize)
+            .write(read((*p).gens.add(index as usize)) + 1);
         Ok(())
     })())
 }
@@ -1394,7 +1404,11 @@ unsafe fn validate_place(t: *mut PlaceToken) -> Result<(), i32> {
 
 /// MINT_LIST_PLACE: snapshot `list[index]` into the place slot `dst`.
 #[no_mangle]
-pub unsafe extern "system" fn mn_coll_place_mint(dst: *mut Cell, list_bits: u64, index: i32) -> i32 {
+pub unsafe extern "system" fn mn_coll_place_mint(
+    dst: *mut Cell,
+    list_bits: u64,
+    index: i32,
+) -> i32 {
     status((|| {
         let p = of_kind(list_bits, LIST)?;
         if index < 0 || index as usize >= (*p).len {
@@ -1440,7 +1454,14 @@ pub unsafe extern "system" fn mn_coll_place_get(dst: *mut Cell, place_bits: u64)
     status((|| {
         let t = find_place(place_bits)?;
         validate_place(t)?;
-        let c = read((*t).list.as_ref().unwrap().data.cast::<Cell>().add((*t).index));
+        let c = read(
+            (*t).list
+                .as_ref()
+                .unwrap()
+                .data
+                .cast::<Cell>()
+                .add((*t).index),
+        );
         commit(dst, c);
         Ok(())
     })())

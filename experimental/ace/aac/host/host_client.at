@@ -1,0 +1,542 @@
+// AAC hosted pure-compute client (PLAN-1045 T-02): the minimal host-demand
+// client compiled by the Gen0 (Rust) frontend on the assembled
+// packages-aggregates-ct lane and executed on BOTH the AV executor and the
+// real native AC (mn) chain — the algorithm body is Auto on every end.
+//
+// Coverage (CS-201/202/203 rows the plan owns; digest consumption is the
+// frozen aac-support 1.0.0 package from PLAN-1056):
+//   * bytes/span/intern — length-exact UTF-8 bytes with embedded NUL as
+//     content (V-04: "a\0b" keeps 3 bytes; the byte span of "α" is [0,2)),
+//     an intern arena with first-seen indices and set-dedup counts (V-01
+//     compute leg);
+//   * collections — a Str→int map as parallel arenas with last-writer-wins
+//     put and BYTE-LEXICOGRAPHIC key order (V-04: a→1,b→2,a→3 gives exactly
+//     [(a,3),(b,2)]), deterministic selection sort (stable order is the
+//     data's function, never a random hash's accident);
+//   * precise numerics — the 1056 wrap32 discipline, exact int parse/format
+//     round trips and sign-analysis checked add with overflow classified as
+//     its own outcome, never a silent wrap;
+//   * alloc/budget — an arena-indexed binary-tree walk with an explicit
+//     step budget: in-budget success vs a named resource refusal (D-S03
+//     先限后分类), iterative, no per-element recursion.
+//
+// Face constraints honored (atom_data.at notes): no `while`/`const`/
+// `else if`, no `continue`, keywords never locals, owned `Str` moves are
+// explicit (`.clone()`/`.move`), flat `List<int>` arenas instead of nested
+// records, and hot loops inline their accessors.
+
+use app.digest.utf8_bytes
+use app.digest.sha256_hex
+use app.digest.blake3_hex
+use std.bytes.decode_utf8
+use std.conv.from_int
+use std.conv.to_int
+
+// ---------------------------------------------------------------------------
+// CS-201: exact bytes, spans, text construction
+// ---------------------------------------------------------------------------
+
+/// Decimal join of a byte vector (report alphabet: digits + ',').
+fn join_bytes(bs List<int>) Str {
+    var out = ""
+    var i = 0
+    for (i < bs.len()) {
+        if (i > 0) {
+            out = out + ","
+        }
+        out = out + from_int(bs.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+/// Byte offset of scalar index `idx` in `s` (its span is
+/// [span_start(s, idx), span_start(s, idx+1))).
+fn span_start(s Str, idx int) int {
+    var off = 0
+    var i = 0
+    for (i < idx) {
+        if (i >= s.len()) {
+            return -1
+        }
+        off = off + utf8_len_of(s.clone(), i)
+        i = i + 1
+    }
+    return off
+}
+
+fn utf8_len_of(s Str, i int) int {
+    let p = s.char_at(i).to_codepoint()
+    if (p < 128) {
+        return 1
+    }
+    if (p < 2048) {
+        return 2
+    }
+    if (p < 65536) {
+        return 3
+    }
+    return 4
+}
+
+/// V-04 bytes/spans: "a\0b" keeps its embedded NUL as content (3 scalars,
+/// 3 bytes, 61,0,62 — never a C-string truncation); "α" has byte span
+/// [0,2); in "a中b" (5 bytes, 3 scalars) the span of 中 is [1,4).
+pub fn bytes_span_report() Str {
+    let s1 = "a\0b"
+    let n1 = s1.len()
+    let nb1 = s1.len_bytes()
+    let bs1 = utf8_bytes(s1.move)
+    let b2 = utf8_bytes("α")
+    let sp20 = span_start("α", 0)
+    let sp21 = span_start("α", 1)
+    let s3 = "a中b"
+    let n3 = s3.len()
+    let b3 = utf8_bytes(s3.clone())
+    let sp31 = span_start(s3.move, 1)
+    let sp32 = span_start("a中b", 2)
+    var out = from_int(n1)
+    out = out + "," + from_int(nb1) + "," + join_bytes(bs1)
+    out = out + "|" + join_bytes(b2)
+    out = out + "," + from_int(sp20) + "," + from_int(sp21)
+    out = out + "|" + from_int(b3.len()) + "," + from_int(n3)
+    out = out + "," + join_bytes(b3)
+    out = out + "," + from_int(sp31) + "," + from_int(sp32)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// CS-202: Str→int map over parallel arenas, byte-lex order
+// ---------------------------------------------------------------------------
+
+/// Put `kb` → `v`; 1 = replaced an existing key, 0 = new. Last writer wins
+/// per key; the arenas keep first-insertion order.
+fn amap_put(arena List<int>, offs List<int>, vals List<int>, kb List<int>, v int) int {
+    var base = 0
+    var i = 0
+    for (i < offs.len()) {
+        let end = offs.get(i)
+        if (bytes_equal_range(arena, base, end, kb)) {
+            vals.set(i, v)
+            return 1
+        }
+        base = end
+        i = i + 1
+    }
+    append_bytes(arena, kb)
+    offs.push(arena.len())
+    vals.push(v)
+    return 0
+}
+
+fn append_bytes(dst List<int>, src List<int>) int {
+    var i = 0
+    for (i < src.len()) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+/// arena[base..end) == kb, exact length and content.
+fn bytes_equal_range(arena List<int>, base int, end int, kb List<int>) bool {
+    if (end - base != kb.len()) {
+        return false
+    }
+    var i = 0
+    for (i < kb.len()) {
+        if (arena.get(base + i) != kb.get(i)) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+/// Key `i`'s bytes as a fresh list ([offs[i-1], offs[i)); offs empty = no keys.
+fn amap_key(arena List<int>, offs List<int>, i int) List<int> {
+    var out = List<int>.new()
+    var base = 0
+    if (i > 0) {
+        base = offs.get(i - 1)
+    }
+    let end = offs.get(i)
+    var k = base
+    for (k < end) {
+        out.push(arena.get(k))
+        k = k + 1
+    }
+    return out
+}
+
+/// Byte-lexicographic compare of two exact byte vectors: -1 / 0 / 1.
+/// Shorter prefix sorts first; the order is a total order on bytes only.
+fn cmp_bytes(a List<int>, b List<int>) int {
+    var i = 0
+    for (i < a.len()) {
+        if (i >= b.len()) {
+            return 1
+        }
+        let x = a.get(i)
+        let y = b.get(i)
+        if (x < y) {
+            return -1
+        }
+        if (x > y) {
+            return 1
+        }
+        i = i + 1
+    }
+    if (a.len() < b.len()) {
+        return -1
+    }
+    return 0
+}
+
+/// Selection sort of key indices by their arena bytes — deterministic,
+/// in-place, no hash iteration anywhere in the order.
+fn selection_sort_indices(order List<int>, arena List<int>, offs List<int>) int {
+    var i = 0
+    for (i < order.len()) {
+        var best = i
+        var j = i + 1
+        for (j < order.len()) {
+            if (cmp_bytes(amap_key(arena, offs, order.get(j)), amap_key(arena, offs, order.get(best))) < 0) {
+                best = j
+            }
+            j = j + 1
+        }
+        if (best != i) {
+            let tmp = order.get(i)
+            order.set(i, order.get(best))
+            order.set(best, tmp)
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+/// Decode helper: the decoded text or "?" when the bytes are not UTF-8
+/// (the reports never feed it invalid bytes; the arm keeps the face total).
+fn show_bytes(kb List<int>) Str {
+    let dec = decode_utf8(kb)
+    is dec {
+        Some(s) -> {
+            return s
+        }
+        None -> {
+            return "?"
+        }
+    }
+}
+
+/// V-04 map: write a→1, b→2, a→3 — exactly two entries survive and the
+/// report is key-sorted [(a,3),(b,2)]; the put flags (0 new / 0 new / 1
+/// replace) are part of the observable so overwrite-in-place is
+/// distinguishable from duplicate insert.
+pub fn map_report() Str {
+    var arena = List<int>.new()
+    var offs = List<int>.new()
+    var vals = List<int>.new()
+    var flags = ""
+    flags = flags + from_int(amap_put(arena, offs, vals, utf8_bytes("a"), 1))
+    flags = flags + from_int(amap_put(arena, offs, vals, utf8_bytes("b"), 2))
+    flags = flags + from_int(amap_put(arena, offs, vals, utf8_bytes("a"), 3))
+    var order = List<int>.new()
+    var i = 0
+    for (i < offs.len()) {
+        order.push(i)
+        i = i + 1
+    }
+    selection_sort_indices(order, arena, offs)
+    var out = flags + "|" + from_int(offs.len())
+    var j = 0
+    for (j < order.len()) {
+        let idx = order.get(j)
+        out = out + "," + show_bytes(amap_key(arena, offs, idx)) + "=" + from_int(vals.get(idx))
+        j = j + 1
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// CS-201: intern arena (first-seen index) + set dedup
+// ---------------------------------------------------------------------------
+
+/// Intern `kb`: the arena's existing index when the exact bytes are already
+/// present, else the new index. The count of distinct interns is the set
+/// cardinality — dedup by content, not by identity or hash.
+fn intern_put(arena List<int>, offs List<int>, kb List<int>) int {
+    var base = 0
+    var i = 0
+    for (i < offs.len()) {
+        let end = offs.get(i)
+        if (bytes_equal_range(arena, base, end, kb)) {
+            return i
+        }
+        base = end
+        i = i + 1
+    }
+    append_bytes(arena, kb)
+    offs.push(arena.len())
+    return offs.len() - 1
+}
+
+/// V-01 compute leg: nine interns over distinguishable near-neighbours
+/// ("a\0b" vs "ab" vs "b", "α", "") with repeats — the report carries the
+/// per-input interned index, then the distinct count and arena byte size;
+/// duplicates collapse by exact bytes, and "a\0b" ≠ "ab" proves NUL is
+/// content, not a terminator.
+pub fn intern_report() Str {
+    var arena = List<int>.new()
+    var offs = List<int>.new()
+    var out = ""
+    out = out + from_int(intern_put(arena, offs, utf8_bytes("b")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("a\0b")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("ab")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("α")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("a\0b")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("b")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("α")))
+    out = out + "," + from_int(intern_put(arena, offs, utf8_bytes("中")))
+    out = out + "|" + from_int(offs.len()) + "," + from_int(arena.len())
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// CS-202: deterministic byte-lex sort of owned strings
+// ---------------------------------------------------------------------------
+
+/// Selection-sort the exact byte vectors of `items` and report them joined
+/// with "," — the same total order Rust's byte-lexicographic `Ord` gives.
+pub fn sort_report() Str {
+    var bytes = List<int>.new()
+    var offs = List<int>.new()
+    append_bytes(bytes, utf8_bytes("b"))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes("a"))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes("α"))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes("a\0b"))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes(""))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes("中"))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes("ab"))
+    offs.push(bytes.len())
+    append_bytes(bytes, utf8_bytes("b"))
+    offs.push(bytes.len())
+    var order = List<int>.new()
+    var k = 0
+    for (k < offs.len()) {
+        order.push(k)
+        k = k + 1
+    }
+    selection_sort_indices(order, bytes, offs)
+    var out = ""
+    var j = 0
+    for (j < order.len()) {
+        if (j > 0) {
+            out = out + ","
+        }
+        out = out + show_bytes(amap_key(bytes, offs, order.get(j)))
+        j = j + 1
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// CS-202: precise integers, wrap discipline, overflow class
+// ---------------------------------------------------------------------------
+
+/// The 1056 wrap32 reduction (checked i64 register, explicit mod 2^32).
+fn wrap32(x i64) i64 {
+    return x % 4294967296i64
+}
+
+/// FNV-1a over exact bytes in the wrap32 discipline — the shared reduction
+/// the native entry and the Rust oracle both compute independently.
+pub fn fnv32_bytes(s Str) i64 {
+    var h = 2166136261i64
+    let bs = utf8_bytes(s.move)
+    var i = 0
+    for (i < bs.len()) {
+        let t = (h ^ bs.get(i).to(i64)) * 16777619i64
+        h = wrap32(t)
+        i = i + 1
+    }
+    return h
+}
+
+/// Sign-analysis checked add: Some(sum) or None on overflow — overflow is
+/// its own classified outcome, never a wrap or a trap.
+fn add_ovf(a i64, b i64) ?i64 {
+    if (a >= 0i64) {
+        if (b >= 0i64) {
+            if (a > 9223372036854775807i64 - b) {
+                return None
+            }
+            return Some(a + b)
+        }
+        return Some(a + b)
+    }
+    if (b < 0i64) {
+        if (a < (-9223372036854775807i64 - 1i64) - b) {
+            return None
+        }
+        return Some(a + b)
+    }
+    return Some(a + b)
+}
+
+/// Report: wrap32-FNV of "a\0b" reduced mod 1e9 (decimal alphabet), exact
+/// parse round trips (2147483647 / -2147483648 / refusal on "9x"), and the
+/// overflow class of (i64::MAX + 1) vs (5 + 7).
+pub fn int_report() Str {
+    let h = fnv32_bytes("a\0b") % 1000000000i64
+    var out = from_int(h.to(i32))
+    let p1 = to_int("2147483647")
+    var v1 = "none"
+    is p1 {
+        Some(v) -> {
+            v1 = from_int(v)
+        }
+        None -> {
+            v1 = "none"
+        }
+    }
+    let p2 = to_int("-2147483648")
+    var v2 = "none"
+    is p2 {
+        Some(v) -> {
+            v2 = from_int(v)
+        }
+        None -> {
+            v2 = "none"
+        }
+    }
+    let p3 = to_int("9x")
+    var c3 = 1
+    is p3 {
+        Some(v) -> {
+            c3 = 0
+        }
+        None -> {
+            c3 = 1
+        }
+    }
+    let o1 = add_ovf(9223372036854775807i64, 1i64)
+    var oc1 = 0
+    is o1 {
+        Some(v) -> {
+            oc1 = 0
+        }
+        None -> {
+            oc1 = 1
+        }
+    }
+    let o2 = add_ovf(5i64, 7i64)
+    var ov2 = -1
+    is o2 {
+        Some(v) -> {
+            ov2 = v.to(i32)
+        }
+        None -> {
+            ov2 = -1
+        }
+    }
+    out = out + "|" + v1 + "," + v2 + ",ref" + from_int(c3)
+    out = out + "|ovf" + from_int(oc1) + "," + from_int(ov2)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// CS-203: arena graph, budgeted traversal, named resource refusal
+// ---------------------------------------------------------------------------
+
+/// Iterative DFS over the 7-node complete binary tree stored as
+/// [l0, r0, l1, r1, ...] child pairs (-1 = none), with an EXPLICIT step
+/// budget: every stack iteration counts one step. Returns the reachable
+/// count, or -1 when the budget refused the traversal (a named resource
+/// outcome distinct from any error value).
+fn budget_walk(pairs List<int>, budget int) int {
+    var seen = List<int>.new()
+    var k = 0
+    for (k < 7) {
+        seen.push(0)
+        k = k + 1
+    }
+    var stack = List<int>.new()
+    stack.push(0)
+    var steps = 0
+    var count = 0
+    for (stack.len() > 0) {
+        if (budget >= 0) {
+            if (steps >= budget) {
+                return -1
+            }
+        }
+        steps = steps + 1
+        let node = stack.remove(stack.len() - 1)
+        if (seen.get(node) == 0) {
+            seen.set(node, 1)
+            count = count + 1
+            let rch = pairs.get(2 * node + 1)
+            if (rch != -1) {
+                stack.push(rch)
+            }
+            let lch = pairs.get(2 * node)
+            if (lch != -1) {
+                stack.push(lch)
+            }
+        }
+    }
+    return count
+}
+
+/// Report: the in-budget walk reaches all 7 nodes ("ok:7"); a 3-step
+/// budget is REFUSED by name ("refused") — the same walk, a different
+/// classified outcome, not a partial silent result.
+pub fn budget_report() Str {
+    var pairs = List<int>.new()
+    var i = 0
+    for (i < 7) {
+        var l = 2 * i + 1
+        if (l > 6) {
+            l = -1
+        }
+        var r = 2 * i + 2
+        if (r > 6) {
+            r = -1
+        }
+        pairs.push(l)
+        pairs.push(r)
+        i = i + 1
+    }
+    let full = budget_walk(pairs, 100)
+    let tiny = budget_walk(pairs, 3)
+    var out = "ok:" + from_int(full)
+    if (tiny == -1) {
+        out = out + ",refused"
+    } else {
+        out = out + ",partial:" + from_int(tiny)
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// CS-205 consumption: exact digests from the frozen aac-support package
+// ---------------------------------------------------------------------------
+
+/// sha256("abc"), sha256("a\0b") and blake3("α") — the NUL is content, the
+/// non-ASCII is exact UTF-8 bytes; oracles are the independent sha2/blake3
+/// Rust references in the conformance crate.
+pub fn digest_report() Str {
+    let a = sha256_hex("abc")
+    let b = sha256_hex("a\0b")
+    let c = blake3_hex("α")
+    return a + "," + b + "," + c
+}

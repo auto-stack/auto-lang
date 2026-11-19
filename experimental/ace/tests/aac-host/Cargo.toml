@@ -1,0 +1,21 @@
+[package]
+name = "ace-aac-host-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+description = "PLAN-1045 AAC hosted pure-compute client: the Auto host client + frozen aac-support digest package compiled on the assembled packages-aggregates-ct lane, executed on the AV executor and the real native AC (mn) chain, with independent Rust byte oracles"
+
+[dependencies]
+ace-core = { path = "../../crates/core" }
+ace-source-query = { path = "../../crates/source-query" }
+ace-av = { path = "../../crates/av" }
+ace-av-core = { path = "../../crates/av-core" }
+ace-lowering = { path = "../../crates/lowering" }
+ace-native = { path = "../../crates/native" }
+blake3 = "1"
+sha2 = "0.10"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"

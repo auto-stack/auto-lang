@@ -45,6 +45,12 @@ ffi-dual = { max-threads = 1 }
 # group removes is what pushed 20 of 23 cases past 10 s; the residual is
 # external load, not this package.
 ace-aac = { max-threads = 4 }
+# PLAN-1045: the `ace-aac-host` cases share the ace-aac cost shape — each
+# case compiles the host client + frozen aac-support digest through the
+# Gen0 frontend (AV legs) and the native leg additionally lowers, links
+# and runs a real PE. Bound the group the same way (fixed-group runner
+# owns `-j`); inputs, assertions and budgets are unchanged.
+ace-aac-host = { max-threads = 4 }
 # PLAN-983 r27：UI rq/headless 媒体渲染族（rq_wire/rq_probe/rq_matrix/
 # rq_repair/rq_media/rq_cells/rqhost）在 full 池并发下互相竞争崩溃/假红
 # （0xc0000005 ABORT 与吞吐断言红，失败集合逐轮漂移；族内 68 例单独并发
@@ -165,6 +171,12 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "package(ace-aac-support-conformance)"
 test-group = "ace-aac"
+
+# PLAN-1045: bind the `ace-aac-host` fixed group's cases to its bounded
+# group (same discipline as ace-aac above; only under THIS config file).
+[[profile.default.overrides]]
+filter = "package(ace-aac-host-conformance)"
+test-group = "ace-aac-host"
 
 # PLAN-1016: explicitly selected formal pressure suite prioritizes stable
 # measurements over throughput. Concurrency inside a test's own protocol

@@ -1741,6 +1741,16 @@ tools = []
 domain = "ace"
 all = false
 [[group]]
+name = "ace-aac-host"
+title = "PLAN-1045 AAC hosted客户端：纯计算/alloc/budget/digest（Gen0前端+AV全串oracle+真实AC(mn)原生exe折减oracle）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-aac-host-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = ["mn"]
+domain = "ace"
+all = false
+[[group]]
 name = "ace-perf"
 title = "ACE性能与压力（串行）"
 runner = "nextest"

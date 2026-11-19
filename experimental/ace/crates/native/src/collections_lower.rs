@@ -1554,6 +1554,24 @@ impl Lower<'_, '_> {
             self.scalar_to(dst, r);
             return Ok(());
         }
+        if matches!(op, And | Or | Xor) && ty == I32 {
+            // PLAN-1045 T-02: the typed I32 bit ops this lane's AAC hosted
+            // consumption needs (digest.at folds chunk flags as i32
+            // `flags | chunk_flag`; the packages-aggregates-ct face has no
+            // shift operators). Narrow discipline: both operands are
+            // already ireduce'd to I32 above (the lane's narrow read), the
+            // op runs at I32 width and the result stores as a narrow
+            // scalar — cell reads truncate, so this mirrors AV
+            // `wrap_int(I32, a op b)` exactly. I8/U8/U32 and the shifts
+            // stay named rejections below.
+            let v = match op {
+                And => self.fb.ins().band(a, b),
+                Or => self.fb.ins().bor(a, b),
+                _ => self.fb.ins().bxor(a, b),
+            };
+            self.scalar_to(dst, v);
+            return Ok(());
+        }
         if ty != I64 {
             return Err(unsupported(
                 "instruction",
@@ -1606,7 +1624,21 @@ impl Lower<'_, '_> {
                     self.fb.ins().srem(a, b)
                 }
             }
-            And | Or | Xor | Shl | Shr => {
+            And | Or | Xor => {
+                // PLAN-1045 T-02: the typed i64 bit ops this lane's AAC
+                // hosted consumption needs (the exact-digest algorithms are
+                // xor-heavy; no shift operators exist on the
+                // packages-aggregates-ct face — shifts are expressed via
+                // mul/div, so Shl/Shr keep the named rejection below).
+                // Total operations at I64 width — no range guards (AV
+                // `eval_num` applies `wrap_int(I64, ..)`, a no-op here).
+                match op {
+                    And => self.fb.ins().band(a, b),
+                    Or => self.fb.ins().bor(a, b),
+                    _ => self.fb.ins().bxor(a, b),
+                }
+            }
+            Shl | Shr => {
                 return Err(unsupported(
                     "instruction",
                     "PLAN-972 typed bit/shift emission awaits the numeric backend unit",
