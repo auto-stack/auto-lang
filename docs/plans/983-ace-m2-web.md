@@ -18,6 +18,10 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+### 2026-11-19 · 980/981 后继接口
+
+本包已接受 980×982 U0 联合收据 `2c9c5f228`，满足原 U0 范围的 980/WEB 输入。完整 Vue 产品另由 [1072](1072-autoui-vue-web.md) 承接。本包四仓消费者验收按原义务执行。
+
 2026-11-19 r23（四仓门禁修复）：在现有 `B-CONSUMERS-V` 内设修复阶段，由 983 工程线负责 `plan988_byte_consumers` 的超时和 MSVC 尾进程两项排障及正式四仓复跑。工作范围、退出判据和复审归属见 §5。原任务 ID、进度、依赖和验收口径保持，988、989 的归档状态不变。本轮只更新计划。
 
 2026-11-18 r22（**U0 收据接收 + 四仓验收执行**；用户裁定×3）：①**批量回归跳过**（用户："回归不做了，跳过"）——r21 fold 收据的 DUE 移交撤销；既有具名红（infra-fixed ace-facade 期望行）仍归 969 线。②**U0 以收据接收**（用户："983 可以接收这份 U0 收据"）：接收 980×982 联合验收收据（980 §9 2026-11-18 verify，982 round-188 代记）——原样 002-counter 真产品链 `auto run --render vue`（`AUTO_UI_ACE_VUE=1`）→ pnpm → vite v5.4.21 → 真浏览器 `Counter: 0→+→1→-→0`（`+,+`→2、零 page error）+ 磁盘 lane `App.vue`/官方 `a2x_rt.mjs`（sha256 `97065d43…`）；证据 man `4a7a28e`（`plan982_u0_vue_run_cli` 3/3）+ lang `8e94acfaf`；按收据自身边界"983 U0 消费同一产物树/同一链"，**983 不重跑**。#9 主树复跑（新语言基线）与 980/WEB 全批验收=他人收口项（用户具名），非 983 之门。③**四仓验收（V-B-CONSUMERS）执行中**：`web-four-repository.py` 前四次起跑失败均为主检出**他线在途状态**（lang 主检出 5 个 ace-core 半截 WIP=980 记录在案的 #9 项；auto-ui 主检出 theme/stylekit 5 文件 tracked WIP + `examples/*/deps/themes` **junction**→`packages/themes` 使 git 穿透枚举恒不净）——终以**全组树**运行（lang/web/down/man 组树=各自 master tip；ui=d188d695，与 master `01f85061` 的差=980 后续合并，具名偏差）。**环境处置（全部非破坏、可恢复）**：四仓主检出内 `.wt/rc989-old/*` 停驻副本（11-12，内嵌 .git，违反"材料不入仓"裁定）迁 `plan-artifacts/orphans/`；auto-ui 的 `NUL` 保留名垃圾已删；auto-ui 锁 churn 与 980 线 tracked WIP 各入具名 stash（WIP 已 pop 还原，锁 stash 门后 pop）；一次复原脚本误搬的混合副本整体隔离 `orphans/_p983-quarantine/`（字节保全，其中 `tests/plan058_t02_probe.rs` 等可按需取回）。四仓门**第五次起跑通过全部预检/布局校验、实跑至语言固定组末尾**：45/46 过、`plan988_byte_consumers::plan988_source_bytes_compile_run_and_preserve_rejected_targets` 在门的 120s 预算下超时被杀 ⇒ 门失败（外部腿未达）。**隔离复跑×2：测试层 46/46 全过**但组判决 FAIL——`vctip.exe`（MSVC 遥测，pin 校验有效）在 workload 退出后残留触发进程树策略（"never a workload exception"，reaper 清后 remaining=0 仍判死）。**判定：blocked（既有基础设施条件，非 983 触面）**——plan988 长 Atomic（60–115s，owner=988/989 线）+vctip 尾检（门 owner 侧策略/机器条件）+主检出他线在途（#9/980 各收口项）。详证 §9 r22。

@@ -4,8 +4,8 @@ status: drafting
 feature_name: 独立发行安装升级与默认切换
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 7
+updated_at: 2026-11-17
+plan_revision: 12
 current_step: 0
 total_steps: 9
 depends_on: [PLAN-985, PLAN-982]
@@ -17,6 +17,20 @@ touched_goals: [GOAL-002]
 # [PLAN-986] 独立发行安装升级与默认切换
 
 ## 0. 变更摘要
+
+### 2026-11-19 · AutoMan 安装范围接收
+
+以 985/B 候选与 [982](982-ace-m2-man-gen.md) 的现行合同为准。AutoMan UI 安装与默认验证覆盖 Vue Web 和 A2R/Iced 的实际 Gen/Build/Run；C 产物按 CMake/Ninja 验收。A2Ark/A2Jet 与 IAR/GHS 属用户延期，旧适配只按明确的历史版本行为记录。1073 的 Tauri 按独立产品范围接收。
+
+### 2026-11-19 · 980/981 后继接口
+
+原三波正式证据分别取 [1071](1071-autoui-w1-av.md)/[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)/[1074](1074-autoui-w3-a2r.md)，Vue/Tauri 和 AGE 产品证据由 [985](985-ace-m2-certification.md) 按新 owner 汇入候选。原安装、数据、升级与发布门继续执行。
+
+2026-11-16 r10：最终M2按AV/AC/A2R完整公共能力一致验收，A2C完整对齐增强；A期AC后延必须在B关闭，收1068正式来源及AAC阶段实证，不要求AAC完整代际签章。原任务/进度保持，只规划。
+
+2026-11-16 r9（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，候选SDK/安装/升级/回滚/default与能力清单按本版required目标冻结；Godot未实施不能宣称已支持，新ACE请求不支持目标具名拒绝且无legacy fallback。既有代码/用例不在本轮删除，9任务/进度不变。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
+
+2026-11-15 r8当前：执行用户Linux先代码后测试及普通math/io/net自有实现裁定，§5/6/7新增当前验收与1063移交规则，优先于旧Linux当期实跑表述；原任务ID/勾选/进度保留，Windows必需验证和全部Linux原分母保留。此次仅修订合同，不实施或运行测试。
 
 2026-11-12 r7：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -31,6 +45,8 @@ touched_goals: [GOAL-002]
 准备并验证候选预编译ACE/runtime/SDK及新版stdlib/领域包，按平台受支持矩阵验证clean安装、仓外、重定位、升级和独立旧版本回滚。候选安装的所有入口实际装载新版ACE，清除开发树绝对路径与本机缓存依赖。
 
 设计与路线：[Design55](../design/55-ace-m2-complete-language-and-product-replacement.md)、[M2执行路线](../design/strategy/ace-m2-delivery-roadmap.md)。本包是拟议执行合同，非已实现声明。
+
+2026-11-16 r11当前：A最小真实基础后，B先完整UI/Widgets AV→AC→A2R三波，再OS全量；本包消费985/B同版候选及原正式依赖完成安装/升级/回滚/默认切换验证。9原任务/0完成保持，本轮只规划。
 
 ## 1. 目标
 
@@ -79,7 +95,33 @@ touched_goals: [GOAL-002]
 
 - [crates/auto-lang-core/src/stdlib_assembly/loader.rs](../../crates/auto-lang-core/src/stdlib_assembly/loader.rs)：安装后runtime/provider身份重验；读取SHA256前16 `0be54327bf6130a2`
 
+### 2026-11-16 用户目标范围修订与取材
+
+用户明确要求从ACE M2去掉Godot转译，并核实a2vue对TS的真实依赖；本轮仅规划，不删除实现/原源/旧用例，不运行测试/安装Godot或创建/恢复实施树/目标，不改canonical Specs或归档959。读取基面`8a686e8d2399f01c3aa91112aa683f141c0a0922`及并行文档WIP。auto-ui代码核实：`ui_gen/ts_adapter.rs` SHA256前16 `84efe1eb8306dc25`（Stmt回退约858行、Expr委托约2458行）、`ui_gen/vue/script.rs`=`8120f939878ed68d`（handler约288/1732行及computed/body约2596行）、`ui_gen/ark_adapter.rs`=`038454e31c87e786`（同类TS委托）；现行`docs/specs/ui/vue-store-generation.md`=`f422fe6df24cc398`。这是静态读取，不是新ACE TS运行证据。
+
+Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2R/其他required后端义务不能随Godot一起撤掉。规范中旧“全部在用A2X目标”的历史范围由本次用户裁定覆盖，未来实际交付时落对应SD；当前Spec已验事实不伪造。受修改的旧revision范围/矩阵证明仅保历史，未来独立review须绑定当前revision与真正实现提交。
+
+本轮用户授权：仅修订现有980、981、1068、OS064、985–987及相关路线，不新立项、不启动实施。采用A最小真实交付→985/A M2A-08→B完整UI/Widgets的AV→AC→A2R三波→AutoOS全量迁移→候选/安装/退役。读取语言主线aa257fa1425c31fab48bd544cbd116b2fdce7dcd及现有Specs/已交HELLO、AXR0、SOURCE；UI示例真实源在auto-ui/examples/ui，Widgets源在auto-os/widgets-gallery/src/front/{pages,components}，ui-gallery副本需和规范源去重。新增接面/用例/收据仅是合同，不代表已运行。语言/标准库/非图形FFI的既定基础与测试守恒仍保留，不能借UI延期把普通语言必需能力全部后移。
+
 ## 5. 详细设计
+
+### 配置求值安装闭包（2026-11-17）
+
+候选安装必须消费[982/B-CONFIG](982-ace-m2-man-gen.md)已审正式IF-982-CONFIG-ACE和985/B配置格结果，沿[设计](../design/ace-config-document-evaluation.md)的V-CFG-RETIRE核已安装SDK/host/profile/值协议、真实pac/am/index/state与args/env/相对根/坏源恢复；无开发树/旧VM/provider仍能实际新AV配置并运行候选工具，缺新桥具名拒绝。
+
+默认切换仍归本包原任务，不在982首次交CONFIG时提前切所有legacy导出。回滚只在明确用户操作/原回滚合同下恢复一个完整旧版本，不是配置报错后自动fallback旧引擎。原安装/数据/三端/OS全部门保留；本包完成不作为982或985交候选的前置。本轮只修订B合同，原9任务/0进度保持。
+
+### 三波与OS之后的发行接收（当前优先）
+
+本包不是A出口或UI任何前波的前置。A只收真实基础和MIN-A，三波/OS完整产品在B；旧完整语言/库/三端最终与用户数据/兼容承诺仍保留。沿原任务逐项接`M2A-08→UI-W1-AV→UI-W2-AC→UI-W3-A2R→OS064/984完整产品→985/B候选`的正式source/Schema/ABI/SDK/平台/应用/独立oracle/实际结果。缺一波、缺App/桌面或错来源只说明候选未齐，不能靠最小A/AXR0/Hello补证。
+
+AV包（源/字节码与runtime）、AC机器码包、A2R生成/编译包明确标backend与构建/运行工具依赖；Rust宿主不代表guest是A2R，A2R exe不能冒AC。安装运行已生成AC/A2R包不隐式拉开发树/rustc；AV运行是否允许源码/运行时按manifest明确，不能以“无编译器”误删AV合法依赖。UI三波日常只当前后端，发行最终在已冻结完整候选/数据样本上验证各自安装/回滚/错误/资源/独立预期。
+
+985/B负责候选能力/产品认证，不能等待本包或后续退役最终结果才交候选。本包消费的是具名已审落主候选结果，而非要求985整个archive/清树先发生；stage身份必须清楚，不能把只reviewed分支当来源。986的安装/默认结果→987退役重建/重装终验，987仍核全部原REP/V06与三端/OS/数据。最终v0.6/M2签章在这些门齐后，任何前波或A均不签正式发行。
+
+### M2-TARGET-SCOPE-20261116：本包当前边界
+
+候选SDK/安装/升级/回滚/default与能力清单按本版required目标冻结；Godot未实施不能宣称已支持，新ACE请求不支持目标具名拒绝且无legacy fallback。既有代码/用例不在本轮删除，9任务/进度不变。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
 ### M2阶段执行合同（当前优先）
 
@@ -177,15 +219,55 @@ struct InstallTransaction { previous: InstallationId, candidate: ReleaseId, stat
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
+| SD-CFG-HANDOFF | modify（拟，原owner） | `docs/specs/ace-migration/m2-release.md` | 原候选接收→实际配置新AV来源/宿主与guest边界、错误恢复/原平台，真实交付后才写已支持 | 982生产一次，本包只核实际消费者/安装退役阶段；A收据保留 | AC-CFG-HANDOFF、原AC与最终review |
 | SD-01 | add | `docs/specs/ace-migration/m2-release.md`（拟新增；可在review归并真实模块Spec，必须保持可追溯） | 未交付/有限切片→本包实际已验证支持、接口、拒绝及资源边界 | 防计划代现状 | AC-01..03/AC-06 |
 | SD-02 | modify | `docs/specs/ace-migration/replacement-scope-and-evidence.md` | 仅口径→关联本包已验证新producer及未闭缺口；不改旧义务 | 替换追踪 | AC-03/05 |
 | SD-03 | modify | `docs/specs/stdlib/design/assembly-manifest.md` | 当前有限能力→仅在本包实际验收后沉淀本次新增合同/来源/拒绝与资源边界；不改未交付为已实现 | Design56/本轮用户M2追加 | AC-07 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-release.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
 | SD-NATIVE | add | `docs/specs/ace-migration/m2-release.md`（沿原owner，仅真实交付后沉淀） | 默认实现选择未明→自有Auto/OS默认与显式FFI分账、长度字符串/目标ABI及来源验证 | LIB-M2-07/08 | AC-NATIVE |
-
-
+| SD-TARGET-SCOPE | modify | `docs/specs/ace-migration/m2-release.md`及`replacement-scope-and-evidence.md`（真实交付后归原owner） | 原全目标并集→按Design55 §5.1的用户范围：Godot后置，生产TS/JS required，范围/证据/发行宣称一致；旧实现与用例保留 | 本轮用户明确裁定，防止旧Godot门残留或误删Vue能力 | AC-01/02/04/05、AC-PHASE；原work/review与范围核对 |
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-release.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### Linux延期与默认自有实现（2026-11-15当前优先）
+
+本包适用范围：**发行候选中标准库的Linux测试与支持标记**。[覆盖设计](../design/stdlib/backend-provider-coverage.md)和[平台设计](../design/stdlib/native-platform-io.md)为共同合同。当前Linux分支继续写代码、保完整fixture/expected，但不执行Linux测试、不从Windows启动WSL/VM或隐式准备Linux runner；按1061隔离入口，环境完善后由[1063](1063-ace-stdlib-linux-deferred-validation.md)专项验证。
+
+本包当前完成门调整为Windows原required门＋Linux实现/完整移交审查；Linux每个原操作/case/check及增量保留backend/provider/target/ABI、源/依赖/输入/oracle/未跑原因，标`deferred-required / NOT_RUN`，明确owner=1063。不能改PASS/NA、删分母或用Windows/emit-only/交叉编译代实际Linux运行；实现与验证状态分开。1063不是本包反向依赖；本包可完成当前排程，不冒Linux已验证。旧1040/1041等归档实际证据保留，变化后的实现不自动继承旧绿。
+
+Windows安装/升级继续原门；Linux标准库实现随候选保留但标未验证，不宣称Linux版已通过认证。不以本条取消非标准库产品/安装原义务；Linux发行支持声明须待1063真实闭合。
+
+AV仍一个执行器，native/C/Rust为显式来源；Windows AV三来源、AC、A2R、A2PY及原A2C等本包原适用门不减。公共Auto算法尽量共享，C/Rust可选实现和目标runtime adapter保留；高级外库显式依赖不代默认Auto库。已完成任务证据保留，剩余work及最终验证/review按本修订核Linux移交；不得把合同修订计作实现进度。非标准库Linux专属项目不由本条自动豁免。
+
+### 当前延期规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-LINUX-PHASE | modify | docs/specs/ace-migration/m2-release.md | Linux当期必跑→代码/完整义务移交1063，verified保持pending；Windows原门不减 | 用户明确排程 | AC-LINUX-PHASE |
+
+### 发行目标与退役闭包的执行边界
+
+T-01冻结本版支持目标manifest及976生产TS/JS闭包；T-03/T-08/T-09核真实安装、默认命令、feature、动态dispatch及转依赖，与985当前范围版本一致。Godot脚本/TSCN/工程目标未交不成为M2必验，也不得出现在“已支持”宣称；新ACE入口请求未支持目标须具名拒绝，不能偷转旧emitter/AutoVM/A2R。
+
+旧Godot源码/fixtures本身可保历史；不能仅搜索到旧文件就判生产可达，也不能只改manifest掩盖实际依赖。若确有保留的独立legacy工具，须逐项登记owner/入口/隔离位置，证实不在M2生产、默认安装或正式发行依赖闭包，不新增本版可用承诺。Godot后置不豁免旧VM/A2R、生产 Vue Web/TS 路径旧 TypeScriptTrans 不可达及全部其他原required退役门。最终范围知识随原SD落Spec，本轮只规划。
+
+### 当前最终三端门
+
+本包在原A/B/安装退役门之外，必须消费985/B与[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)的同版三端完整能力证明；A允许的AC差额在最终产物中必须=0。不能以原profile外、native具名拒绝或只有AV/A2R成功签AC通过，也不能由AAC只编过自身子集代全语言/标准库/领域能力。A2C完整对齐增强、缺完整面不阻M2；已有支持/用例/缺口和发布范围如实保留，A2PY标准库等其他required不变。
+
+AAC在M2-B期间逐模块实证、修复回原能力/库owner；本包不等待1054整个Gen2/Gen3签章。Linux仍按1063延期，仅按实际已验平台发布支持声明；原数据、权限/资源、升级/回滚/去legacy与最终重建义务保留。
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-B-PARITY | modify | docs/specs/ace-migration/m2-release.md（原组件） | 原安装/退役门→同版AV/AC/A2R能力差额=0，A2C增强，完整AAC签章独立 | 用户最终目标 | AC-B-PARITY |
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-RELEASE-WAVES | modify | docs/specs/ace-migration/m2-release.md及replacement-scope-and-evidence.md（实际交付） | 发行/退役来源明确A最小、三波、OS候选与各后端包/工具依赖；无环接收，不降最终门 | 用户本轮三波与A最小出口裁定 | AC-RELEASE-WAVES |
+
 ## 6. 测试设计
+
+### V-CFG-HANDOFF（本轮新增接收控制，未执行）
+
+沿[配置设计九行Case](../design/ace-config-document-evaluation.md#6-验证合同与旧用例映射)，在本包所用真实consumer/原测试入口验合法动态值及坏源/错SDK-context/零旧求值/失败保旧/修复下一次read；把route C legacy config冒ACE、只核same_sdk、缺source或仅用静态投影则拒绝。原V全部保留，不新造runner。实际未用配置的域不增加虚假依赖；原平台/ignore/输入规模保持。
 
 ### 阶段适用验证（新增合同、未执行）
 
@@ -239,7 +321,36 @@ struct InstallTransaction { previous: InstallationId, candidate: ReleaseId, stat
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 当前Linux移交验证（未执行产品测试）
+
+| V / AC | 原任务owner与检查 | 预期与边界 |
+|---|---|---|
+| V-LINUX-PHASE / AC-LINUX-PHASE | 原能力work任务及最终work验证：逐原Linux操作/case/check/增量核源码分支、完整输入/expected、工具/来源与1063去向；原独立review复核 | 每项有实现与NOT_RUN/1063 owner；删除行、冒PASS/NA、用Windows或仅emit充Linux绿均不能通过移交审查。Windows原完整required组真实执行；当前不启动Linux测试。 |
+
+本节修改旧V-COVERAGE/V-PLATFORM-IO及其他表中Linux“当期实跑”的时序，不改变原独立oracle/规模/错误/资源义务；Linux真实运行在1063关闭。其他环境缺口不套本次延期。
+
+### 当前目标范围验证（拟实施，未运行）
+
+| Case | AC/任务 | 输入→producer→consumer→独立oracle与负控 |
+|---|---|---|
+| V-TARGET-SCOPE | AC-TARGET-SCOPE；T-01/03/08/09/04 | 当前manifest→冻结构建→干净安装/默认与feature入口→真实consumer；核生产TS/JS成功与旧emitter不可达，未支持GD/TSCN请求具名拒绝。遗留源码存在且隔离不单独判红；伪造支持宣称、manifest排除但默认dispatch仍进旧链、借Godot后置保留旧VM/A2R或Vue旧TS emitter均须失败；全部其他required安装/回滚/退役验证仍运行。 |
+
+| V / AC | 原owner/输入 | 独立预期与边界 |
+|---|---|---|
+| V-B-PARITY / AC-B-PARITY | 原能力work/最终work验证及独立review：同版安装/退役候选，AC留一项A后延而AAC或AV/A2R已绿；再补齐三端；A2C未全齐 | 前者拒签最终M2，三端及其他required齐才可收；A2C缺完整面不单独阻门，来源/布局/资源/恢复必须真实。 |
+
+### 三波/OS最终来源控制（拟议，未执行）
+
+| V / 原owner | 判别输入与独立关闭 |
+|---|---|
+| V-RELEASE-WAVES / T-01/03/04、T-09 | 完整同版三波/OS/985候选及AV/AC/A2R包，核真实安装/运行/身份与独立业务/数据；删一波/一App、旧来源、A2R冒AC或最小Hello冒全UI须拒。前两波不被迫测试本包。 |
+| V-RELEASE-RESTORE / T-08/09、T-04 | 原升级失败/回滚/旧数据与无旧链重建规则不变；所选包缺依赖/错ABI拒并保持可恢复状态，修复后再真实消费。只用dev树/旧binary/父exit0不通过。 |
+
+上述由原T-01/03/08/09/04在既有安装/产品/固定组入口补负控，精确命令/版本在T-01核真实工具冻结，不新增虚构runner；独立final仍先于归档。Linux、正式性能与原平台适用性保持，不以Windows证据充Linux认证。
+
 ## 7. 验收标准
+
+- [ ] **AC-CFG-HANDOFF / work**：§5本包实际配置consumer/阶段的正式来源和V-CFG-HANDOFF闭合，区分宿主AV与目标业务、原A与完整B；不以未交接口/上游状态或peer-equal代真实consumer与独立oracle。原工作任务负责，原final独立复审核验。
 
 | ID | owner_stage | 标准 | 核验 |
 |---|---|---|---|
@@ -253,6 +364,20 @@ struct InstallTransaction { previous: InstallationId, candidate: ReleaseId, stat
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-NATIVE | work | 缺自有默认provider受控失败且旧业务/数据保留；默认库与显式外库两腿值/长度/错误/释放正确，安装选择与SDK manifest/实际加载身份一致。 | T-09 / V-NATIVE；原独立review核新增义务 |
 
+- [ ] **AC-LINUX-PHASE / work**：V-LINUX-PHASE移交审查通过，Linux代码及原完整用例/oracle/增量有1063 owner，状态未冒verified；Windows本包原required验证齐全。当前Linux真实运行不再阻本包完成，未来Linux认证仍由1063承担；原独立review逐项核验。
+
+### 当前目标范围验收
+
+| ID | owner_stage | 标准 | 核验 |
+|---|---|---|---|
+| AC-TARGET-SCOPE | work | 发行目标宣称、安装/默认/feature/真实dispatch依赖与985当前范围一致；Godot后置未冒支持、未充旧链后门；生产TS及旧VM/A2R退役门保持 | T-01/T-03/T-08/T-09/T-04、V-TARGET-SCOPE；原独立review逐项复核 |
+
+- [ ] **AC-B-PARITY / work**：V-B-PARITY关闭；同版三端完整能力正式来源及原安装/退役独立oracle齐，A后延不能留下；AAC实际阶段实证与完整自举签章分开。原work负责、原review核，不新增任务。
+
+| ID | owner_stage | 标准 | 核验 |
+|---|---|---|---|
+| AC-RELEASE-WAVES | work | 完整三UI波/OS/候选来源与各后端包/构建运行依赖可核，新增V-RELEASE-WAVES/RESTORE与全部原安装/数据/退役门齐；不能以最小A或单一后端产品签最终 | T-01/03/08/09/04，原T-05独立final、T-06/07交付 |
+
 ## 8. 执行步骤
 
 当前共9任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
@@ -261,17 +386,17 @@ struct InstallTransaction { previous: InstallationId, candidate: ReleaseId, stat
 
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
-- [ ] **T-01｜M2-B｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [ ] **T-01｜M2-B｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 按本轮三波/OS来源合同冻结实际候选输入与后端包身份；不将本包反置为A/UI波/OS或985候选前提。
 
-- [ ] **T-02｜M2-B｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [ ] **T-02｜M2-B｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
-- [ ] **T-03｜M2-B｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [ ] **T-03｜M2-B｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 核V-RELEASE-WAVES与真实OS/App入口，AV/AC/A2R实际后端不可互冒。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **T-08｜M2-B｜owner_stage: work｜AC-06**：本包只交隔离候选发行、真实安装/升级/回滚和默认切换验证；旧实现未退役时不得对外宣称v0.6/M2正式发布。消费975/970用户数据兼容合同；正式无legacy发行由987重建签章。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
 - [ ] **T-09｜M2-B｜owner_stage: work｜AC-07/AC-NATIVE**：在干净仓外安装入口验证新库与C/Rust自动导入SDK、预生成native运行、重定位、升级/失败回滚和默认入口；核全ABI/provider/runtime闭包及构建/运行工具清单。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：B期干净安装/升级按默认自有库与显式C/Rust外库配置分别运行，核目标provider和实际运行依赖，不从系统旧libc兼容层/开发仓暗补缺失实现；原用户数据与回滚语义保留。
 
-- [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [ ] **T-04｜M2-B｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 汇总V-RELEASE-WAVES/RESTORE及全部原门，不用最小A/Hello代最终产品/数据/三端。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **T-05｜M2-B｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -291,7 +416,24 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
+
 ## 9. 复审记录
+
+### 2026-11-17 CONFIG-ACE-B规划交接（r12；非实施验收）
+
+stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授权补承接/设计/接口/验收及排程；未work/建树/运行测试/探针/构建/合入/归档/派agent。GAP-982-CONFIG-ACE由982原B-CONFIG两仓端到端承接，能力本身保持未实现；本包按§5–8现任务生产或接收，不新增Plan/任务，不改已验A收据。下一步须未来实施指令，982先B-CONFIG-I全链前探/接口与原输入冻结，再V→独立R→正式phase交接；其他owner按所用正式来源接。
+
+取材和静态核验：7计划123原任务ID/顺序/勾选与状态/进度保留，语义revision各增1；仅982补已交967/979直接基础依赖。9个配置判别Case/4个能力AC、typed接口/值语义/预算/生命周期/原用例映射与Spec候选已列；24节点30边阶段图无环，新增本地链接可达，18份源码/Spec/归档/计数器身份不变，目标文档git diff --check通过。旧无owner快照/route C/执行回执作历史保留，不把规划PASS当真实能力或独立产品review。M2A-08 r29/95c7fbad8冻结不变。
+
+2026-11-16 M2-PARITY-STAGED 规划静态核验：31份设计/计划779处本地链接有效；20份原计划232项任务的ID/总数保留，新增1067/1068共20项待实施任务。980并行work将12/29推进15/29（B-NATIVE-I/V/R），本轮保留其真实进展，未回退勾选。可达158份Plan无缺失/依赖环；985新增1068仅为B最终依赖，A→AAC/补齐→B收口的任务阶段图无反向整包等待。章节/表格/围栏、git diff --check通过。仅规划检查，不是产品或独立实现review PASS；未改已验Spec/归档历史、未构建或运行Windows/Linux测试、未启动AAC。
+
+2026-11-16 stage:new / r10：追加SD/V/AC-B-PARITY，保原任务与0进度。最终三端门消费1068，A2C完整对齐增强、完整AAC代际签章不强加本包；本轮只规划，无实施或安装/退役验证。
+
+2026-11-16 stage: new/revision | PLAN-986 r9 | 用户明确修订M2目标范围：Godot脚本/场景/工程支持后置，TS/JS保生产消费闭包。新增验证未执行；既有已交证据按其旧范围/身份复用，不能证明新范围检查。原状态与实际已完成任务保留；本记录非产品/独立实现review PASS，不授权实施/清理或恢复目标。
+
+2026-11-15 STD-LINUX-POLICY 静态核验：18份设计/计划717处本地链接有效；11份原计划115项任务的ID/勾选/状态/进度与原依赖保持，974仅T-08正文收紧默认transport来源，另增1063为drafting 0/8。新1063可达139份计划无缺失/环，不为能力建设增加反向依赖；章节、围栏与表格列宽检查通过，git diff --check退出0。仅规划静态结果，非独立实现review或产品PASS；本轮未改产品代码/测试配置、未构建/执行Windows或Linux测试，canonical Specs与归档历史未改。
+
+2026-11-15 stage:new / r8：按用户最新裁定修订Linux验证时序、移交1063与自有普通库边界；不变原任务ID/状态/进度/Windows门，保Linux原分母及独立oracle。原已完成证据不因本条重记通过；未实施或运行测试，规划静态结果另记。
 
 2026-11-12 stage:new / PLAN-986 r7：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -310,7 +452,15 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
+本轮规划静态预检：当前任务ID/总数、原已完成项与状态保持一致；仅977撤出GD/SCENE六项、982撤出GODOT三项，原条目及AC/V留§9历史；0–10章节、代码围栏和本轮新增本地链接已核。归档959、`.next-id`及两份取材canonical Spec的SHA256与读前一致。本记录不代实施/运行或独立产品复审，新增V行仍未执行。
+
+2026-11-16 stage:new/revision | PLAN-986 r11 | outcome:pass（规划可执行合同，非实现/认证PASS） | 9原任务/0完成与最终原门保持；明确三波→OS→候选→安装→退役来源与阶段，不新增Plan/安装产物 | next:由原owner依新阶段/真实来源接续；本轮只规划，不实施/建树/测试/合入/清理/恢复目标。
+
+本轮规划静态预检：14份计划/设计/路线文档，8份Plan共230个当前任务；仅980新增B-AV-I/V/R三项并按完整W3范围重开原RUST三项，旧AXR0收据保留；981仅核正原SOURCE三项已交的滞后计数。全部原任务ID/其余勾选、各Plan状态与整包依赖列表保留；新增本地链接/锚点15处、章节/表格/元数据计数/验收任务映射及行尾检查通过，A最小→A出口→W1→W2独立交接→W3→OS→候选/安装/退役阶段图16节点18边无环。原GUI/Widgets/Notes-Clock/语言/库/产品义务有具名阶段与原owner，不以延期冒PASS。仅文档预检，未实施/建树/运行测试或窗口/签阶段/合入/清理/恢复目标，未写源码、测试资产、canonical Specs或取号计数器；他会话并发修改不由本轮回退。
+
 ## 10. 待澄清事项
+
+Godot是否属于本次M2、是否等Godot环境已由用户明确：不属于、不等待。生产TS闭包由原T-01/实际consumer冻结，规范允许的合法构造不得因没Demo而省略；独立TS额外产品面不自动纳入。本轮不要求再次裁定相同目标范围。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。

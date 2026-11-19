@@ -8,7 +8,7 @@ updated_at: 2026-11-17
 plan_revision: 30
 current_step: 6
 total_steps: 14
-depends_on: [PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-976, PLAN-977, PLAN-978, PLAN-984, PLAN-941, PLAN-1064, PLAN-1065, PLAN-1068]
+depends_on: [PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-976, PLAN-977, PLAN-978, PLAN-984, PLAN-941, PLAN-1064, PLAN-1065, PLAN-1068, PLAN-1071, PLAN-1072, PLAN-1073, PLAN-1074, PLAN-1075, PLAN-1076, PLAN-1077]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/stdlib/project.md]
 new_spec_components: [docs/specs/ace-migration/m2-certification.md, docs/specs/auto-test-case/ace-m2-stage-verification.md]
 touched_goals: [GOAL-002]
@@ -17,6 +17,16 @@ touched_goals: [GOAL-002]
 # [PLAN-985] M2两阶段验收与完整义务联合认证
 
 ## 0. 变更摘要
+
+### 2026-11-19 · AutoMan 的 UI 与导出认证范围
+
+985/B 按 [982 的修订合同](982-ace-m2-man-gen.md) 接收两端实际 UI CLI 结果。Vue/A2TS 对应 1072，A2R/Iced 对应 1074，各自绑定真实工程 `auto gen`、`auto build`、`auto run` 的产物、行为、诊断与版本闭包。C 目标取新版 A2C 的 CMake 导出和 Ninja 构建证据，旧转译样本随原身份作对照。
+
+A2Ark/A2Jet 产品支持、IAR/GHS 适配从 B 当前必验分母移出，记用户延期，阶段旧收据或 Demo 仅作历史证据。Tauri 在产品矩阵单独接 1073。M2A-08 收据按已冻结身份复用。
+
+### 2026-11-19 · 980/981 后继接口
+
+T-02/03、T-08[B]、T-04 负责原 980 PARITY 和 981 AUDIT 的联合接收与认证。UI 三波分别取 [1071](1071-autoui-w1-av.md)/[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)/[1074](1074-autoui-w3-a2r.md)，Vue/Tauri 取 [1072](1072-autoui-vue-web.md)/[1073](1073-autoui-tauri.md)，AGE 完整 AV 与两游戏发行取 [1075](1075-age-av-content-and-fusion.md)/[1076](1076-age-a2r-game-2d.md)/[1077](1077-age-a2r-game-3d.md)。生产方实现并复审各自格。985 按原 V-UI-SOURCE/FULL、V-UI-WAVE-RECEIPT、V-B-PARITY、V-B-AUDIT、V-DESKTOP-AUDIT、V-AGE-TRANSFER 等分母核独立来源、错误恢复、缺格拒绝、完整旧消费者和两个最终 ZIP。OS 产品取 OS064。已冻结的 A 收据维持原身份。
 
 2026-11-17 r29当前（/goal 完成计划985/A后续工作，work轮）：**T-08[A]＋T-A03执行完毕，A批work收口，移交T-A04独立复审**。T-08[A]交付MIX-07同一工程组合（`f0_t16_mix07`两例：1043平台文件选择→配置读取＋钉版serde_json真机解析（use.rs）→值流入use.c SQLite写入/聚合回读→双车道协作取消＋V-08具名负控；装配道扩展dep标注走真依赖cargo构建）；MIX-01..06 A腿逐行绑定owner正式证据。T-A03重冻：矩阵L-45/S-20/S-21/S-25按已记录裁定归B波、B-02落landed（已交A2C事实）、B-04/B-06 user-deferred（M2-TARGET-SCOPE允许清单＋never-PASS守卫＋新负控），obligation_ledger **8/8绿**（新TSV SHA=89eebafa…）；V-A-EXIT并集实跑：ledger 8/8、p981 205/205、ace-abi f0 36/36（含MIX-07 4.37s/5.63s）、m2-cover 2/2（53.3s）、固定组四组合选95例94绿＋1基线红（`source_parent_oracle_failure_rejudges…`，master复放同红=既有红非本批触面，归批量回归triage）。M2A-01..07门级全闭（见§5 r29执行记录）。B批（T-02..07/T-08[B]/T-04）不动，等M2A-08。
 
@@ -620,8 +630,8 @@ G1002只约束新作者格式/相关接线，不是1035等原入口修复的前�
 | D03 FFI | A通用import/ABI/资源/实际库/所需callback-future/候选基础；全产品/安装退役及具名AC余量B。C互操作所需能力仍A，不自动变成完整A2C语言硬门。 |
 | D04 新库 | A既定公共库/自有实现/字符串/装配/必要真实后端与1064正式来源；安装/全产品/退役及允许AC余量B，旧S/FFI/LIB不漏。 |
 | D05 工具协议 | A取971-PROOF/969-970/982-CONFIG-PROOF等正式协议与最小真实消费；完整工具/编辑器/命令/目标迁移B，不要求整包归档。 |
-| D06 目标 | PY与生产TS/JS provider保既定A；普通非GUIA2R/已有FFI/库腿保A，完整图形A2R W3。A2C完整对齐增强，保已有事实与原required；Godot/GDScript/TSCN/SCENE Godot目标用户移出M2，JET/ARK M3；其余只按真实生产/规范支持清单，不复活已撤目标。 |
-| D07 UI产品 | A仅C-01等MIN-A见证和必要字段/协议；完整Iced/Widgets三波，WEB/TAURI按现役模式B并行，JET/ARK M3；完整模式/安装不得拿Hello/AXR0代替。 |
+| D06 目标 | PY与生产TS/JS provider保既定A；普通非GUIA2R/已有FFI/库腿保A，完整图形A2R W3。A2C完整对齐增强，保已有事实与原required；Godot/GDScript/TSCN/SCENE Godot目标用户移出M2；A2Jet/A2Ark 产品支持待 v0.7 或 v0.8 再定；其余只按真实生产/规范支持清单，不复活已撤目标。 |
+| D07 UI产品 | A仅C-01等MIN-A见证和必要字段/协议；完整Iced/Widgets三波，Vue Web 在 B 并行，Tauri 取 1073 独立产品收据，A2Jet/A2Ark 产品支持延期；完整模式/安装不得拿Hello/AXR0代替。 |
 | D08 Man产品 | A=CONFIG/PROOF，全部生成/命令/模板/watch/导出等B；入口含测试协议者按D05，阶段不按父行单一字面硬判。 |
 | D09 Web产品 | A=PORT/PROOF规定真实TCP/隔离DB/AV与非GUI生成服务，其他全API/四仓消费者B；完整产品不反成为A proof前提。 |
 | D10 生态/OS | A仅OS064 MIN-A-OS、984 EMBED及明确协议/守恒；三UI波后完整桌面/App/旧数据/双Host/Node根与其余生态B。 |
@@ -748,7 +758,7 @@ G1002只约束新作者格式/相关接线，不是1035等原入口修复的前�
 | C-02 | vue双档 | B完整产品/模式/安装 | D07 | 980/WEB+RUST |
 | C-03 | tauri | B完整产品/模式/安装 | D07 | 980/TAURI |
 | C-04 | rust静态 | B完整产品/模式/安装 | D07 | 980/RUST |
-| C-05 | jet/ark | M3，非M2缺证/PASS | D07 | 980/JET/ARK；按用户当前范围裁定 |
+| C-05 | A2Jet/A2Ark 产品支持 | 用户延期至 v0.7 或 v0.8，Demo 留档 | D07 | 到期重定产品适配与真实工程验收 |
 | C-06 | vscode模式 | A字段/协议基础＋B完整产品 | D07 | 971/986 |
 | C-07 | VM内部直连面 | A字段/协议基础＋B完整产品 | D07 | 967/980；980/981/1068三波 |
 | C-08 | 冻结SDK | B完整产品/模式/安装 | D07 | 981/987 |
@@ -888,9 +898,9 @@ MIN-A不是语法/能力的永久上限，是本轮明确的代表性产品验�
 
 | 波次 / 原执行owner | 开工与正式交付 / 后继 |
 |---|---|
-| W1 / 980新增B-AV-I/V/R；981 SESSION/LANGUAGE/CONTENT/FUSION的AV部分 | M2A-08后，从真正UI-FFI Hello到完整examples/ui及Widgets相关组件；逐组只实施/真实验证AV。交`UI-W1-AV`（完整示例/组件分母及所需AGE语义/宿主AV行），不等AC、A2R、WEB/TAURI全产品或OS全量。 |
-| W2 / 1068 T-04；981 FUSION等AC领域部分 | UI-W1-AV正式来源后接同源AC机器业务/事件→同一Rust/Iced宿主；复用实际AAC模块暴露缺口、1067提供所需原生异步。交`UI-W2-AC`，不等1068整包/T-06三端汇总/完整AAC自举或W3。 |
-| W3 / 980 B-RUST-I/V/R；981 RUST、相关RUST2D/3D与FUSION的A2R部分 | UI-W2-AC正式来源后才新增图形A2R实现/生成/真实rustc编译/运行；全UI/Widgets交`UI-W3-A2R`。已有A2R代码/收据保留，不重做已验部分；最终完整游戏包仍核981原G2/G3义务，不据一个stdout窗通过。 |
+| W1 / 1071 接原 980 B-AV 与 981 适用 AV 域格 | M2A-08后，从真正UI-FFI Hello到完整examples/ui及Widgets相关组件；逐组只实施/真实验证AV。交`UI-W1-AV`（完整示例/组件分母及所需AGE语义/宿主AV行），不等AC、A2R、WEB/TAURI全产品或OS全量。 |
+| W2 / 1068 T-04 接原 981 FUSION 等 AC 领域格 | UI-W1-AV正式来源后接同源AC机器业务/事件→同一Rust/Iced宿主；复用实际AAC模块暴露缺口、1067提供所需原生异步。交`UI-W2-AC`，不等1068整包/T-06三端汇总/完整AAC自举或W3。 |
+| W3 / 1074 接公共 A2R，1076/1077 接各自游戏发行 | UI-W2-AC正式来源后才新增图形A2R实现/生成/真实rustc编译/运行；全UI/Widgets交`UI-W3-A2R`。已有A2R代码/收据保留，不重做已验部分；最终完整游戏包仍核981原G2/G3义务，不据一个stdout窗通过。 |
 | OS波 / OS064 HOST/PROOF的完整B部分、A01..28、ASSEMBLY | 三个UI波次正式齐后做完整桌面/应用迁移，先真实桌面Node根/生命周期，再按App依赖分组，最终装配/数据/模式/双Host；不等985/B最终签或986/987。OS核心实现/注册/gitlink只归OS064。 |
 | 汇合 / 985 B、986、987；984 CLOSURE | 三波＋OS与其余原产品/库/服务/游戏required齐→985/B候选认证→986安装升级默认→987无旧链重建终验。不得反向要求OS波先拿985/B，或让W2先等本包三端最终完成。 |
 
@@ -905,9 +915,9 @@ AV波日常不编译执行A2R UI，不跑整套多端UI；Rust宿主/FFI provide
 | RG-A04 完整Node/LANGUAGE/RUST/混合PROOF | A仅MIN-A-AGE真实AV代表性多模块/最小UI-2D-3D/更新关闭；完整AGE-L/AG-A、五view、原复杂实例/Frame/资源和三端图形格归981各原任务的W1/W2/W3，游戏和独立AGE最终门保留。 |
 | RG-A05 shell＋Notes/Clock原AV-A2R与双Host | A仅MIN-A-OS真实启动/激活/窗口/Node见证；Notes完整原oracle交OS064 A15，Clock交A12，完整shell/Node根/登记App/双Host/旧数据/daemon交HOST B/ASSEMBLY，三波之后执行。 |
 | RG-A01/02/06、语言/标准库/非图形FFI/SDK | 原基础与真实CLI/网络/生成服务/仓外consumer门保持；这次UI爬梯不取消普通语言/库A2R或AC基础，不把全部A-required只缩成一个Hello。 |
-| W1接收 / T-08[B]与T-02/03 | 980 B-AV-R＋981所需AV域正式来源，全部示例/Widgets分母/原oracle/运行结果齐，独立phase review/fold出UI-W1-AV；AC/A2R仍pending不阻W1，不能提前签三端。 |
+| W1接收 / T-08[B]与T-02/03 | 1071 B-AV 正式收据＋所用 AGE AV 域正式来源，全部示例/Widgets分母/原oracle/运行结果齐，独立phase review/fold出UI-W1-AV；AC/A2R仍pending不阻W1，不能提前签三端。 |
 | W2接收 / 同上 | 1068 T-04＋981 AC域所需正式结果，全部同源组件/示例AC机码/真实窗/错误/资源齐，出UI-W2-AC；不等待1068全包/T-06或A2R W3。 |
-| W3接收 / 同上 | 980 RUST＋981所需生成/域结果，全部示例/Widgets真A2R生成/编译/运行与原oracle齐，出UI-W3-A2R；此后OS064可开始全量产品迁移。 |
+| W3接收 / 同上 | 1074 公共生成/域结果，全部示例/Widgets真A2R生成/编译/运行与原oracle齐，出UI-W3-A2R；此后OS064可开始全量产品迁移。 |
 | B候选最终 / T-04→T-05→T-06/07 | 三波＋OS064完整产品＋984 CLOSURE及其余原required齐，986/987的未执行安装/退役行仍明确交其owner；本包签候选产品/能力，不冒安装/无legacy正式版已交。986消费此候选，987消费986及B来源，不能反等安装/退役才交候选。 |
 
 阶段收据沿原矩阵/父侧认证和owner phase复核合入，不新增注册器。T-A03先将原表行按这张迁交映射重冻（case/source/hash/expected/phase/wave/backend/producer/consumer/owner/条件/正式来源）；旧4项勾选/162行只是历史输入，不自动代表新分母通过。A-required缺证仍阻A；B-required只要明确承接且未冒PASS可留pending，不能偷偷删行。T-08整项跨A/三波/OS最终仍只登记一次，不因W1/W2切片已交提前勾整项。

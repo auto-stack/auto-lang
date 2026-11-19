@@ -5,7 +5,7 @@ feature_name: AutoOS全部应用与系统宿主迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-17
-plan_revision: 10
+plan_revision: 11
 current_step: 4
 total_steps: 25
 depends_on: [PLAN-959, PLAN-969, PLAN-970, PLAN-971, PLAN-972, PLAN-973, PLAN-974, PLAN-975, PLAN-977, PLAN-978, PLAN-980, PLAN-981, PLAN-982, PLAN-983, auto-os/PLAN-064]
@@ -18,7 +18,15 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-16 r9（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用Vue/Ark/Web及AGE自有2D/3D仍完整保留，25任务不变。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
+### 2026-11-19 · AutoMan UI 与导出接收范围
+
+AutoMan UI 交接查 [982 的 Vue/Iced 双端](982-ace-m2-man-gen.md)：Web 取 1072 的 A2Vue/TS，桌面取 1074 的 A2R/Iced，并按适用条款消费 UI 三波。实际 Tauri 格仍由 1073 产品收据负责。A2Ark/A2Jet 旧 Demo 仅作历史，产品化待 v0.7 或 v0.8 再排。C 工程如有实际依赖，接新版 A2C 的 CMake/Ninja 产物。
+
+### 2026-11-19 · 980/981 后继接口
+
+980/981 作为已验基础来源。B 的 UI 接收 [1071](1071-autoui-w1-av.md) 的 UI-W1-AV、[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md) 的 UI-W2-AC 和 [1074](1074-autoui-w3-a2r.md) 的 UI-W3-A2R。实际 Vue/Tauri 模式取 [1072](1072-autoui-vue-web.md)/[1073](1073-autoui-tauri.md)，所用 AGE 产品域取 [1075](1075-age-av-content-and-fusion.md)/[1076](1076-age-a2r-game-2d.md)/[1077](1077-age-a2r-game-3d.md)。全量 OS 桌面仍由 OS064 独立交付。跨仓接收点是 auto-os/PLAN-064 的 §5 HOST/B-OS 和 A05..07 原 980/RUST 引用，分别按上述三波和 1074 工程接口核对；本计划保留正式收据消费与交接责任。
+
+2026-11-16 r9（Godot/TS 范围历史）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用 Vue Web、Iced、独立现役产品模式及 AGE 自有 2D/3D 仍完整保留，25任务不变。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
 2026-11-12 r8：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -91,15 +99,21 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 ## 5. 详细设计
 
+### CONFIG-ACE-B交接（2026-11-17）
+
+[982/B-CONFIG](982-ace-m2-man-gen.md)端到端承接GAP-982-CONFIG-ACE；本包不新建配置引擎。原25任务/已交EMBED A面保持，B-SHELL/AI/CODER/CODERS/EDIT按原CLI/构建最小表消费，其中实际配置读取使用IF-982-CONFIG-ACE的受检owned结果，重开/args/env/坏配置不改state与数据、修复后实际再读和业务结果均按原独立oracle核。
+
+CLOSURE逐产品登记真实配置入口/新SDK来源/平台与零旧求值事实，交985/B；OS064仍在三UI波后接产品，不反置为CONFIG或非UI CLI生产前置。不能用新CLI执行腿＋旧eval_config_with_vm的route C状态冒完整B迁移；旧A收据仍有效。见[设计](../design/ace-config-document-evaluation.md)。
+
 ### 三波/OS接收边界（本轮当前）
 
-本包A仍只EMBED的真实最小仓外consumer，原语言/库/文件/后台/配置/资源oracle保持；不等待980/981完整图形、UI三波或OS全量。B的UI消费者按980当前后端/域接口准备；OS实际产品只由OS064在UI-W1-AV→UI-W2-AC→UI-W3-A2R后迁，B-CLOSURE最终核其完整桌面Node根公共三端及每App声明模式/数据/双Host和登记增量，不能将旧“AV/A2R”当遗漏AC的豁免。
+本包A仍只EMBED的真实最小仓外consumer，原语言/库/文件/后台/配置/资源oracle保持；不等待980/981完整图形、UI三波或OS全量。B的UI消费者按实际模式消费 1071/1068/1074 三波及 1072/1073 接口；OS实际产品只由OS064在UI-W1-AV→UI-W2-AC→UI-W3-A2R后迁，B-CLOSURE最终核其完整桌面Node根公共三端及每App声明模式/数据/双Host和登记增量，不能将旧“AV/A2R”当遗漏AC的豁免。
 
 OS不依本包CLOSURE/985 B最终；本包CLOSURE单向收OS和原其他生态来源。AGE AG031消费OS相关正式切片不反成为UI波或A出口前置。原25任务/0完成不变；旧OS/App规则和非桌面SHELL/AI/CODER/CODERS/EDIT义务不删，不复制OS实施表。V-B-CLOSURE在原行补错波次/错后端/漏App控制，原R与T-05核，本轮未执行。
 
 ### M2-TARGET-SCOPE-20261116：本包当前边界
 
-本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用Vue/Ark/Web及AGE自有2D/3D仍完整保留，25任务不变。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
+本包与OS064仍覆盖本版实际桌面/App/服务及required A/B职责；目标维度按本轮范围，不把Godot/TSCN或独立无消费的a2ts目标作为全App迁移的额外阻塞。现用 Vue Web、Iced、独立现役产品模式及 AGE 自有 2D/3D 仍完整保留，25任务不变。 当前目标分类/旧义务去向/发行与退役以Design55 §5.1及本节为准；后文旧“全部目标/不缩分母”仅约束修订后仍required的义务，不重新加入用户明确后置的Godot。归档基线不重写，Godot不记PASS或无理由NA，生产TS不得错误排除。
 
 ### M2阶段执行合同（当前优先）
 
@@ -319,6 +333,7 @@ struct ConsumerCoverage { entry: EntryIdentity, source: SourceId, engine_path: P
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
+| SD-CFG-HANDOFF | modify（拟，原owner） | `docs/specs/ace-migration/m2-os-apps.md` | 原候选接收→实际配置新AV来源/宿主与guest边界、错误恢复/原平台，真实交付后才写已支持 | 982生产一次，本包只核实际消费者/安装退役阶段；A收据保留 | AC-CFG-HANDOFF、原AC与最终review |
 | SD-01 | add | docs/specs/ace-migration/m2-os-apps.md | 总口径→通用嵌入/非桌面consumer与OS正式收据指针，不复制OS产品规范 | 各owner唯一知识 | AC-01..06、全部AC-B-* |
 | SD-02 | modify | docs/specs/ace-migration/replacement-scope-and-evidence.md | 959分母→每consumer已验证新producer/差额 | 替换闭合 | AC-03/05/06 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-os-apps.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
@@ -329,6 +344,10 @@ struct ConsumerCoverage { entry: EntryIdentity, source: SourceId, engine_path: P
 | SD-OS-WAVES | modify | docs/specs/ace-migration/m2-os-apps.md（真实交付） | EMBED A不反等全UI；CLOSURE B单向收三波后的OS正式产品，公共三端与App模式分账 | 用户本轮三波与A最小出口裁定 | AC-B-CLOSURE、AC-PHASE |
 
 ## 6. 测试设计
+
+### V-CFG-HANDOFF（本轮新增接收控制，未执行）
+
+沿[配置设计九行Case](../design/ace-config-document-evaluation.md#6-验证合同与旧用例映射)，在本包所用真实consumer/原测试入口验合法动态值及坏源/错SDK-context/零旧求值/失败保旧/修复下一次read；把route C legacy config冒ACE、只核same_sdk、缺source或仅用静态投影则拒绝。原V全部保留，不新造runner。实际未用配置的域不增加虚假依赖；原平台/ignore/输入规模保持。
 
 ### 阶段适用验证（新增合同、未执行）
 
@@ -363,6 +382,8 @@ struct ConsumerCoverage { entry: EntryIdentity, source: SourceId, engine_path: P
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
 ## 7. 验收标准
+
+- [ ] **AC-CFG-HANDOFF / work**：§5本包实际配置consumer/阶段的正式来源和V-CFG-HANDOFF闭合，区分宿主AV与目标业务、原A与完整B；不以未交接口/上游状态或peer-equal代真实consumer与独立oracle。原工作任务负责，原final独立复审核验。
 
 | ID | owner_stage | 可观察标准 | 验证 |
 |---|---|---|---|
@@ -405,31 +426,31 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
-- [ ] **B-SHELL-I｜M2-B｜owner_stage: work｜AC-B-SHELL/AC-02/AC-03/AC-06**：替Shell脚本运行和Auto值桥旧入口，保结构化管道/CLI与沙箱策略；ash-gui若含可达旧执行链映射980，不能只验命令Rust部分。 按§5路径补永久fixture，固定§6命令。
+- [ ] **B-SHELL-I｜M2-B｜owner_stage: work｜AC-B-SHELL/AC-02/AC-03/AC-06**：替Shell脚本运行和Auto值桥旧入口，保结构化管道/CLI与沙箱策略；ash-gui若含可达旧执行链映射980，不能只验命令Rust部分。 按§5路径补永久fixture，固定§6命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **B-SHELL-V｜M2-B｜owner_stage: work｜AC-B-SHELL**：执行V-B-SHELL完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
 
 - [ ] **B-SHELL-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
-- [ ] **B-AI-I｜M2-B｜owner_stage: work｜AC-B-AI/AC-02/AC-03/AC-06**：核实际ACE可达桥与ash发现/脚本工具，迁有旧依赖处；纯Rust daemon不因在生态内而强制改写，保服务协议、路由、取消与策略。 按§5路径补永久fixture，固定§6命令。
+- [ ] **B-AI-I｜M2-B｜owner_stage: work｜AC-B-AI/AC-02/AC-03/AC-06**：核实际ACE可达桥与ash发现/脚本工具，迁有旧依赖处；纯Rust daemon不因在生态内而强制改写，保服务协议、路由、取消与策略。 按§5路径补永久fixture，固定§6命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **B-AI-V｜M2-B｜owner_stage: work｜AC-B-AI**：执行V-B-AI完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
 
 - [ ] **B-AI-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
-- [ ] **B-CODER-I｜M2-B｜owner_stage: work｜AC-B-CODER/AC-02/AC-03/AC-06**：用新A2R/ACE构建原多文件工程，保SSE/工具/权限/REPL/会话；不把main_merged或旧生成Rust当唯一入口。 按§5路径补永久fixture，固定§6命令。
+- [ ] **B-CODER-I｜M2-B｜owner_stage: work｜AC-B-CODER/AC-02/AC-03/AC-06**：用新A2R/ACE构建原多文件工程，保SSE/工具/权限/REPL/会话；不把main_merged或旧生成Rust当唯一入口。 按§5路径补永久fixture，固定§6命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **B-CODER-V｜M2-B｜owner_stage: work｜AC-B-CODER**：执行V-B-CODER完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
 
 - [ ] **B-CODER-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
-- [ ] **B-CODERS-I｜M2-B｜owner_stage: work｜AC-B-CODERS/AC-02/AC-03/AC-06**：核Rust工程及Auto源生成入口的真实旧依赖，切新构建链并保原API/tool/runtime/CLI流程；snapshot只作历史，不假称当前生产入口。 按§5路径补永久fixture，固定§6命令。
+- [ ] **B-CODERS-I｜M2-B｜owner_stage: work｜AC-B-CODERS/AC-02/AC-03/AC-06**：核Rust工程及Auto源生成入口的真实旧依赖，切新构建链并保原API/tool/runtime/CLI流程；snapshot只作历史，不假称当前生产入口。 按§5路径补永久fixture，固定§6命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **B-CODERS-V｜M2-B｜owner_stage: work｜AC-B-CODERS**：执行V-B-CODERS完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
 
 - [ ] **B-CODERS-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
-- [ ] **B-EDIT-I｜M2-B｜owner_stage: work｜AC-B-EDIT/AC-02/AC-03/AC-06**：迁独立AutoUI编辑器多文件store/actions/编辑器桥/工具入口；与OS064中的jade-edit分别记分，不按同类名字去重。 按§5路径补永久fixture，固定§6命令。
+- [ ] **B-EDIT-I｜M2-B｜owner_stage: work｜AC-B-EDIT/AC-02/AC-03/AC-06**：迁独立AutoUI编辑器多文件store/actions/编辑器桥/工具入口；与OS064中的jade-edit分别记分，不按同类名字去重。 按§5路径补永久fixture，固定§6命令。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **B-EDIT-V｜M2-B｜owner_stage: work｜AC-B-EDIT**：执行V-B-EDIT完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。
 
@@ -437,7 +458,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 - [ ] **B-CLOSURE-I｜M2-B｜owner_stage: work｜AC-B-CLOSURE/AC-02/AC-03/AC-06**：对959每个可达产品/API/副本逐行核OS064和各批正式来源，包含书稿/插件/后台及当前漏登consumer；新增项须先追加具名批次或当地计划，不能T-01空承诺。 按§5路径补永久fixture，固定§6命令。
 
-- [ ] **B-CLOSURE-V｜M2-B｜owner_stage: work｜AC-B-CLOSURE**：执行V-B-CLOSURE完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。 按本轮UI三波/OS来源表核公共桌面三端和App实际模式，不以旧AV/A2R用语豁免AC，缺波次/App/producer须红。
+- [ ] **B-CLOSURE-V｜M2-B｜owner_stage: work｜AC-B-CLOSURE**：执行V-B-CLOSURE完整职责与consumer，独立expected/旧数据/资源/身份/终态齐。 按本轮UI三波/OS来源表核公共桌面三端和App实际模式，不以旧AV/A2R用语豁免AC，缺波次/App/producer须红。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
 - [ ] **B-CLOSURE-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/来源，无scope遗漏；缺陷回本I，不冒全包交付。
 
@@ -458,7 +479,14 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-EMBED-I/B-EMBED-V/B-CLOSURE-I/B-CLOSURE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
+
 ## 9. 复审记录
+
+### 2026-11-17 CONFIG-ACE-B规划交接（r11；非实施验收）
+
+stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授权补承接/设计/接口/验收及排程；未work/建树/运行测试/探针/构建/合入/归档/派agent。GAP-982-CONFIG-ACE由982原B-CONFIG两仓端到端承接，能力本身保持未实现；本包按§5–8现任务生产或接收，不新增Plan/任务，不改已验A收据。下一步须未来实施指令，982先B-CONFIG-I全链前探/接口与原输入冻结，再V→独立R→正式phase交接；其他owner按所用正式来源接。
+
+取材和静态核验：7计划123原任务ID/顺序/勾选与状态/进度保留，语义revision各增1；仅982补已交967/979直接基础依赖。9个配置判别Case/4个能力AC、typed接口/值语义/预算/生命周期/原用例映射与Spec候选已列；24节点30边阶段图无环，新增本地链接可达，18份源码/Spec/归档/计数器身份不变，目标文档git diff --check通过。旧无owner快照/route C/执行回执作历史保留，不把规划PASS当真实能力或独立产品review。M2A-08 r29/95c7fbad8冻结不变。
 
 stage: goal | plan_id: PLAN-984 | plan_revision: r10 | round: 2 | from: user(缓存清理指令) | to: waiting(M2A-08) | status: executing | outcome: pass(中间产物清理) | 记录: 应用户指令清理 B 期等待期间的构建中间产物（2026-10-31 裁定：target 树不回收暂存、可再生）——删除 `.wt/lang-984/auto-lang/target`(13G) + `experimental/ace/target`(7.9G) + `plan-artifacts/plan-984/embed-consumer/target`(3.7G)，共释放约 24.6G；删除前核无进程占用 984 目录。**保留**：worktree 源树/分支（B期同树续行，开工需冷重建）、scope 内 consumer 源+assets+冻结脚本+全部收据日志（durable 证据）、sdk-legs 样例(198K)。B 期仍阻塞于 M2A-08（985 A批）；resync 后 B 开工首步=重建（consumer `cargo build` + `ac-build` dev 构建）。
 
