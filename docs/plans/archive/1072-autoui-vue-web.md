@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-976, PLAN-978]
 supersedes_spec_components: []
@@ -83,7 +83,7 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 - [x] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
 
-- [ ] **T-05｜merge｜正式交付**。按 owner 合入、沉淀规范，记录可消费版本，按项目规约归档及清理。
+- [x] **T-05｜merge｜正式交付**。按 owner 合入、沉淀规范，记录可消费版本，按项目规约归档及清理。
 
 ## 9. 复审记录
 
@@ -216,6 +216,11 @@ next_responsible_role: merge（T-05：规范沉淀 `m2-autoui.md` §15、债务�
 - **`prepared` & `range-diff` 证明**：`auto-lang` 代码变基 `e81c27e9f..4bccd50554 → 55016bf97..307055b19`（`git range-diff` 4/4 `=`：`5492b3ca7=5d059ac4d`、`041148cc1=389ce787f`、`48738ff32=8eeed9cfa`、`4bccd5055=307055b19`；`experimental/ace/{crates/core,grammars}` 在旧新基线间零变更）；`auto-ui` 变基 `d2e7d7a4..c1be21e45 → e7aeda14..67893861`（`git range-diff` 5/5 `=`：`ec7342c1=4ce227b1`、`1489d0cc=2d393650`、`b9417486=f234ce84`、`8210ef5b=09f307ee`、`c1be21e4=67893861`）。五 worktree `wt-guard.ps1` 全部输出 `clean`；双仓主检出既有脏 WIP 与合入文件零重叠、未触动。
 - **`canonical_verified`**：规范仅文档尾提交 `9142f94bb` 仅改 `docs/specs/ace-migration/m2-autoui.md`（更新顶部 `> Status:` 与新增 [§15 Vue 与生产 TS/JS 接管](../../specs/ace-migration/m2-autoui.md#15-vue-与生产-tsjs-接管plan-10722026-11-19)）；落主 SHA-256 = `857CEB6A33EC4DAE353C499C402E66A1234D61808B3E3721A120519577D1C5E7`。两项边界债务 `D-1072-01`、`D-1072-02` 已登记入 [KNOWN-DEBT-AND-RISKS.md](../KNOWN-DEBT-AND-RISKS.md)。
 - **`archived`**：已 `git mv docs/plans/1072-autoui-vue-web.md docs/plans/archive/1072-autoui-vue-web.md`，相对链接已校对，frontmatter `status: archived`；接下来执行 `wt-guard` 清理 5 worktree、删分支与 `plan-artifacts/plan-1072/`，刷新 `.retention/policy.json` 并落最终 `cleaned` 收据。
+
+- **`cleaned`**：五 worktree（`D:/autostack/.wt/lang-1072/{auto-lang,auto-ui,auto-down,auto-man,auto-web}`）`wt-guard.ps1` 全输出 `clean` 并已全部移除；`plan-1072-dev` 在 `auto-lang`（`9142f94bb`）与 `auto-ui`（`67893861`）已 `git branch -d` 删除；空组目录 `D:/autostack/.wt/lang-1072` 已删；`D:/autostack/plan-artifacts/plan-1072/` 已整目录删除（`files=0, bytes=0`，零外部散落输出目录）；`D:/autostack/plan-artifacts/.retention/policy.json` 已前置写入 `auto-lang/PLAN-1072`（`deleted-at-merge (no holds)`）并通过 Python `json.load` 校验（`plans_count=127`）。
+- **产物与批回归交接说明**：①*部署产物陈旧观察*：源码与规范已合入双仓 `master`（`auto-lang` `9142f94bb` / `auto-ui` `67893861`），未隐式触发发行/release 二进制全量构建；消费者如需发布态二进制请按仓规范显式构建（并注意 `--features ace-vue` + `AUTO_UI_ACE_VUE=1` 开关边界）。②*批回归到期移交*：`docs/plans/.last-batch-regression.json` 当前 `last_covered_plan_id=1064`、`timestamp="2026-11-16T10:04:09Z"`（已超过 48h 窗口且存在多笔合入），按规约判为 **due**——不在此处合并阶段混跑，已显式移交主检出单实例 `/auto-plan:regress`（`cargo t all`）独立执行。
+
+`stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 4 | from: merge | to: done | status: archived | outcome: pass | landed_master: auto-lang 9142f94bb787ff01ba48d5176e8ef205cfd9c6b8 (archive commit), auto-ui 67893861c959788b2770b00b8d24bb9a31eb8418 | spec: docs/specs/ace-migration/m2-autoui.md#15 (sha256 857CEB6A33EC4DAE353C499C402E66A1234D61808B3E3721A120519577D1C5E7) | debt: D-1072-01, D-1072-02 | cleanup: 5 worktrees + 2 branches + plan-artifacts/plan-1072 removed | next: done`
 
 ## 10. 待澄清事项
 
