@@ -1255,14 +1255,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { outlet-tok(field: "tag") }
         }
         age-element-labeled-block(profiles: [age-component, age-package]) {
-            ident(field: "tag")
+            age-element-tag(field: "tag")
             pratt(of: "wide-ops", field: "label")
             lbrace(same-line: true, cut: true) {}
             many { age-view-item() {} }
             rbrace() {}
         }
         age-element-block(profiles: [age-component, age-package]) {
-            ident(field: "tag")
+            age-element-tag(field: "tag")
             lbrace(same-line: true, cut: true) {}
             many { age-view-item() {} }
             rbrace() {}
@@ -1271,7 +1271,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         //——真语料主导形态（vue_capabilities）：标签后属性括号对，再可
         // 选体块。属性=同一 age-view-entry 形。
         age-element-props-block(profiles: [age-component, age-package]) {
-            ident(field: "tag")
+            age-element-tag(field: "tag")
             lparen(same-line: true, cut: true) {}
             list-nl { age-view-entry() {} }
             rparen() {}
@@ -1284,8 +1284,19 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             many { age-view-item() {} }
             rbrace() {}
         }
+        // PLAN-105 T-02（U03 真语料 016）：**连字符标签**（`grid-item` 这类
+        // 自定义元素名）——标签位收 `ident ('-' ident)*`；投影按键节点源文本
+        // 取整名（`spelling(tag)`）。
+        age-element-tag(profiles: [age-component, age-package]) {
+            ident(field: "base") {}
+            many { age-element-tag-dash() {} }
+        }
+        age-element-tag-dash(profiles: [age-component, age-package]) {
+            minus() {}
+            ident(field: "segment") {}
+        }
         age-element-labeled(profiles: [age-component, age-package]) {
-            ident(field: "tag")
+            age-element-tag(field: "tag")
             pratt(of: "wide-ops", field: "label")
         }
         // ---- 声明 ----
