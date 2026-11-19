@@ -579,11 +579,31 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
   原 span→值函数→发射→SFC 一一可追）；负控：拼接体不得是旧 TS fallback
   形（`n.value += 1`——lane 形=`a2x_add` helper）。002 真源端到端 9/9
   （6 on-block + 3 view lambda 全 lane 派生）。
+- **lambda 体结构化（PLAN-980 lambda-if 刀，2026-11-19）**：值函数道从
+  assigns-only 扩为**结构化语句面**——`Lambda` 投影携带 `stmts`
+  （Assign/If 序保持；`assigns`=深平铺兼容面；调用形仍 foreign 不铸，
+  #6p 合同不变）；`lambda_value_fn` 对 `If` 递归降版 `Stmt::If`（分支
+  独立、view-stmt 方言无 let=无 scope 遮蔽；cond 与分支 RHS 原源
+  span），HIR→a2x-ts `if/else` 文本经 `stmt_fragments_in` **If 整语句
+  发射**（on-if 刀 e 环机械复用——分支赋值不裸喷成无条件序列、条件不
+  丢；UI 侧零产品代码改动实证）。深验证面：通道值位置拒与 frontdoor
+  绑定收集覆盖 If cond+分支 RHS（`walk_stmt_exprs` 模块级共享）。
+  **零文法改动**（grammar-id 零漂移，ace-source 冻结面实证）。永久用
+  例：core `plan980_lambda_if`（5：结构化投影/序保持/else-if 链/嵌套/
+  调用形 foreign）、av `plan980_lambda_if`（4：铸造可判别 `__age_vl_0`
+  /分支未声明字段拒/cond 未绑定名拒/调用形不铸负控）、UI
+  `p980_lambda_if_lane`（区间发现+If 整语句片段+a2x_add 判别器+缺席
+  负控）+浏览器排窗档 `p980_lambda_if_browser_mount`（toggle 两分支
+  真实走到）。005 语料归因：str `!=` 条件铸造绿；整例缺席=use/style/
+  design 既名墙连带（剥离墙片段 3/3 派生）。
 - **浏览器档**：`test_lane_browser_params.mjs`（真实 input 事件实读参/
-  多载荷点击/bool 点击）与 `test_lane_browser_lambda.mjs`（真实点击
-  5→6）——playwright 无头 chromium，排窗 `AUTO_UI_ACE_WEB_E2E=1`。
+  多载荷点击/bool 点击）、`test_lane_browser_lambda.mjs`（真实点击
+  5→6）与 `test_lane_browser_lambda_if.mjs`（toggle 两分支真实走到）
+  ——playwright 无头 chromium，排窗 `AUTO_UI_ACE_WEB_E2E=1`。
 - **census 具名修订**：v2 表 #2（param-handler 0→1 恢复拼接 + param-read/
-  float-payload 行）与 #3（inline-lambda-only 0+absent→1）。全量普查聚合
+  float-payload 行）、#3（inline-lambda-only 0+absent→1）与 #10
+  （2026-11-19 lambda-if 行新增——if 体 lambda 翻转为结构化铸造+If 整
+  语句 lane 发射；005 族，判别力=`p980_lambda_if_lane`）。全量普查聚合
   (83 源 ok=72/err=11/spliced=0/absent=23) **未变**——真语料阻塞形非
   param/lambda（其主导形=无 on 块结构源/多语句体/store/computed 族，#6d/
   #6g 具名边界保持）。

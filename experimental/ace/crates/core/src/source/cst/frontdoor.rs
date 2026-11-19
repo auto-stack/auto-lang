@@ -1167,6 +1167,24 @@ pub(crate) fn project_packages_front(
                         }
                     }
 
+                    // PLAN-980 lambda-if 刀：lambda 体 if 条件表达式入绑定
+                    // 验证（镜像 view 条件节点 Cond 的条件入列；赋值 RHS 已
+                    // 由深平铺 assigns 覆盖）。
+                    fn push_stmt_conds<'a>(
+                        stmts: &'a [crate::source::age_component::ComponentStmt],
+                        out: &mut Vec<&'a crate::source::ast::Expr>,
+                    ) {
+                        use crate::source::age_component::ComponentStmt;
+                        for st in stmts {
+                            if let ComponentStmt::If { cond, then, els, .. } = st {
+                                out.push(cond);
+                                push_stmt_conds(then, out);
+                                if let Some(e) = els {
+                                    push_stmt_conds(e, out);
+                                }
+                            }
+                        }
+                    }
                     fn collect_item_exprs<'a>(
                         items: &'a [crate::source::age_component::ComponentViewItem],
                         msgs: &[String],
@@ -1196,10 +1214,11 @@ pub(crate) fn project_packages_front(
                                     }
                                     match &en.value {
                                         ComponentEntryValue::Expr(x) => out.push(x),
-                                        ComponentEntryValue::Lambda { assigns, .. } => {
+                                        ComponentEntryValue::Lambda { assigns, stmts, .. } => {
                                             for a in assigns {
                                                 out.push(&a.rhs);
                                             }
+                                            push_stmt_conds(stmts, out);
                                         }
                                     }
                                 }

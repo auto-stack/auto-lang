@@ -5749,24 +5749,23 @@ impl<'a> Engine<'a> {
                 let lambda_kind = self.rule_kind_of("age-inline-lambda");
                 let event_binding_kind = self.rule_kind_of("age-event-binding");
                 let value = if Some(inner_kind) == lambda_kind {
-                    let mut assigns = Vec::new();
+                    // PLAN-980 lambda-if 刀：体投影接共享结构化收集
+                    //（project_view_stmt_children——if 形进
+                    // ComponentStmt::If 序保持；调用形置 foreign fail-closed
+                    // 不铸，#6p 合同保持：lambda 面无通道参数，通道调用承载
+                    // =后续切片）；assigns 深平铺兼容面由 flatten_stmt_assigns
+                    // 生成（既有消费者默认路径不变）。
                     let mut foreign = false;
-                    let stmt_kind = self.rule_kind_of("age-view-stmt");
-                    for stmt in self.cx.children(inner) {
-                        if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                            // #6o/#6p：语句=alt——解包赋值形；非赋值语句（调
-                            // 用形等）标记 foreign——值函数不铸（fail-closed 缺
-                            // 席），不再静默跳过（部分体拼接丢句）。lambda 面
-                            // 的通道调用承载=后续切片。
-                            let s_inner = self.unwrap_child(stmt);
-                            if self.cx.field_child(s_inner, "field").is_some() {
-                                self.collect_view_stmt(s_inner, &mut assigns);
-                            } else {
-                                foreign = true;
-                            }
-                        }
+                    let stmts = self.project_view_stmt_children(inner, &[], &mut foreign);
+                    let mut assigns = Vec::new();
+                    for st in &stmts {
+                        Self::flatten_stmt_assigns(st, &mut assigns);
                     }
-                    ComponentEntryValue::Lambda { assigns, foreign }
+                    ComponentEntryValue::Lambda {
+                        assigns,
+                        stmts,
+                        foreign,
+                    }
                 } else if Some(inner_kind) == event_binding_kind {
                     // PLAN-980 WEB #6m：事件绑定调用形 `.Msg($event, …)`——
                     // 投影为**裸 `.Msg` 字段引用**（既有 event_binding_msg 识
