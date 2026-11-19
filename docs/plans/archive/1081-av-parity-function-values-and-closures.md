@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1081
-status: drafting
+status: archived
 feature_name: AV命名函数值与闭包全链补齐
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 3
-current_step: 0
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1080]
 supersedes_spec_components: [docs/specs/ace-migration/m2-dynamic.md, docs/specs/ace-migration/m2-generics.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -358,20 +358,31 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 | T-07 | review | T-06 | 独立上下文逐AC追源码→消费者→实际oracle；扫遗漏/未批准延后/临时兼容，必要反例重放；不因勾选或主exit0信任结果。 另独立核AC-FC，实际输入/目标/迁移/消费者与反控均须成立。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-07、AC-FC、AC-AV-ONLY |
 | T-08 | merge | T-07 pass及实施/合入授权 | 按已审Spec增量落主、归档并交正式接口；计划内折证据、清统一材料/guard后移除唯一工作树，不动其它会话文件。 并交本包canonical引用/迁移映射及已验目标来源，公共作者规则由1078统一沉淀。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-08、AC-FC、AC-AV-ONLY |
 
-本轮任务状态（全部未施工）：
+本轮任务状态：
 
-- [ ] **T-01** work：见上表唯一任务合同。
-- [ ] **T-02** work：见上表唯一任务合同。
-- [ ] **T-03** work：见上表唯一任务合同。
-- [ ] **T-04** work：见上表唯一任务合同。
-- [ ] **T-05** work：见上表唯一任务合同。
-- [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-01** work（2026-11-19，goal 会话）：[✅ 已完成] 冻结记录：
+  - 指纹漂移：resolve.rs SHA16 `dad138b10b727ebf`（PLAN-1080 合入调用绑定/管道所致）、av.rs `2ad814939c0b9ec8`（同因）；closures_fn.rs `fa7267b47cd0882d`、link_capture.rs `3e02211f385e97ed`、ownership.rs `2d27991499320288` 与 §4 表一致。
+  - 冻结诊断（实施树 `experimental/ace/crates/av/tests/cases/plan1081_function_values.rs` 探针，12红/1绿）：函数值位现状 `bind/source.fn-as-value`（"function \`twice\` cannot be used as a value in this profile"）；`bind/source.not-callable` 既有且 `let f = 42; f(1)` 今日已绿（AC-02 负例）；Auto 面 lambda `bind/source.unsupported`（"lambda expressions are available only in the closures source profile"，resolve.rs 精确 `== Closures || asm_lane` 门）；嵌套 fn 项 parse 期拒（块语句无 `fn` 臂）。
+  - 新诊断冻结（§6 预留项落定）：`bind/source.nested-fn-no-capture`——d01b 目标合同（Rust 嵌套 fn 语义，具名拒，不静默 0）。
+  - 设计裁定：命名函数值＝零捕获 `CreateClosure`（callee=该命名 fn；签名/ABI/目标身份取自其自身 params/result intern；typecheck 签名等价+零捕获校验、lowering def_map、AV 零捕获 env 均为既有通用路径——无第二 parser/case 特判）；仅 `SourceProfile::Auto` 启用，旧窄 profile 冻结身份不变。
+  - 规范化裁定（auditable，legacy-map.tsv 记录）：`double` 为保留数字类型词（PLAN-1080 先例）→ canonical 拼写 `twice`，27_function_reference 三份与 §6 草案同此；legacy 007 untyped lambda 参数 `(a, b) =>` 无参数推断机制 → 加 `int` 注解（oracle 3 不变）；010/013 的 `List.map` 算法面 → research-hold（stdlib/HOF owner），闭包+捕获语言面由 canonical HOF 形 case 承接（oracle 3 不变）。
+  - T-04 预裁定：绑定方法作为值无旧运行证据（m06 为方法结果/实例传递）→ 单列增强，本包不交，不挡命名函数兼容。
+  - FC：canonical 位置冻结 `crates/auto-lang/test/cases/language/functions/references-closures.case.ad`（functions/ 目录新建）；9 份旧文档映射角色见 legacy-map.tsv 本包行（T-05 落盘）；唯一作者/suite 追加沿 1078/1080 既有机制。
+- [x] **T-02** work（2026-11-20，goal 会话）：[✅ 已完成] 命名函数值=零捕获 `CreateClosure`（resolve.rs Var-None 臂，Auto 面独启；callee=该 fn，签名/ABI/目标身份取自其 params/result intern；仅自由函数、排除 foreign/py 槽与 entry `main`）。MIR 验证器两条 lambda 不变量按空 env 例外放宽（`mir.closure.site-duplicate`/`body-direct-call`——其存在理由[每点 env 所有权/需要 env 绑定]对空 env 不成立；lambda 恒非空 env 不受影响）；`check_push_value` 认 CreateClosure/ClosureClone 为新构造；元素域收 `MirType::Closure`（collections 家族，Object 先例）。Rust 证据：let+间接调用/实参/返回/容器槽(clone入List+remove出)/同fn多引用/递归+互递归/entry拒/签名不符拒/not-callable拒 全绿（plan1081_function_values.rs 10例）。
+- [x] **T-03** work（2026-11-20）：Auto 面 lambda 放行（resolve_closure 精确门加 Auto；冻结窄面不变）；嵌套 fn 项全链：CST 语法 `nested-fn-stmt`（auto 裁剪）+投影（NestedFnFinish 帧，裸 ret=D-04 Inferred 标记）+legacy parser 差分臂+Pass1a 收集器（`__nested_<owner>_<name>` mangled、fn级提升可见域、lambda 内部不收集=具名拒）+no-capture 纪律（`bind/source.nested-fn-no-capture` 新码冻结）+infer.rs 嵌套补全（参数必须注解；裸 ret 体内值尾推导/无值尾=Unit）+ResolvedFn mangled 重命名（atom id 唯一）+嵌套 sig_key 直读（修 result 默落 I32）+lowering Unit 调用 dst 修正（`mir.call-result-type` 既有缺口：void fn 被调从未被 D-04 后任何用例走过——本批补齐，顶层 void helper 同修）。closure_capture/cst walkers/semantics adapter/source-query/cte walkers 穷尽臂补齐（嵌套体=独立单元/受控拒）。证据：closure 5例+嵌套 3例 绿；d01 stdout oracle 精确。
+- [x] **T-04** work（2026-11-20）：绑定方法值裁定=无旧运行证据（m06 为方法结果/实例传递），单列增强不挡命名函数兼容（本包不交，后续 AVP/规范决定）。FN-RETURN：maker 返回/同名嵌套不同 body（mangled 分离）/body 编辑与恢复换实际执行 body（冷编译往返）绿。CLOSURE-LIFETIME：borrow 捕获直调合法邻例/实参逃逸 `source.closure-borrow-escape` 拒/双闭包实例多次调用+owned env 释放 arena live=0 绿。AV-ONLY 隔离见 T-05 负控。
+- [x] **T-05** work（2026-11-20）：canonical 唯一作者 `crates/auto-lang/test/cases/language/functions/references-closures.case.ad`（12 case：§6 四合同例+9 旧文档迁移[007/008 注解规范化、010/013 HOF 形承接、27×3 twice 规范化、d01/d01b]）；language.suite.ad 追加 include；legacy-map.tsv 本包 9 行（mapped×7、research-hold×2[List.map 算法→stdlib/HOF owner]）；`cargo t case-av-language-parity` 组门 PASS（AV 42 PASS/非AV 23 NOT_RUN、legacy dispatch=0）。故意红/负控：AV oracle 变异(42→43)→named case FAIL(exit1)；重复活跃 case ID→载入拒(exit2 具名)；零 AV 选择→`bad selector` 具名拒(exit2)；#ignore/未选 NOT_RUN 不充 PASS。
+- [x] **T-06** work（2026-11-20）：[✅ 已完成] 冻结提交 `3734ac2ad`（plan-1081-dev，基 82e512925；25 文件——implementation 21 + corpus 3 + 新测试 1；fmt 全仓扰动已剔除）。固定组联合门（冻结提交上）：`case-av-language-parity` PASS（AV 42 PASS/非AV 23 NOT_RUN、legacy dispatch=0）；`ace-source` PASS（926 执行/1 原条件 ignored）；`ace-semantics` 294/295——1 红=D-1037-01 既有债（1062 语料缺 `status: executed`，owner PLAN-1062，具名不充 PASS）；`ace-av` 1451/1453——2 红=D-1098-01 既有债（982 入口策略变更后陈旧 oracle，owner PLAN-982 线，具名）；`ace-lowering` PASS（9）。**零新增红**。IF-AV-PARITY-FUNCTION 交付：命名函数项→受检函数值（零捕获闭包；let/实参/返回/容器槽；递归/互递归；Auto 面独启）、Auto 面 lambda、嵌套 fn 项（mangled 提升/Rust no-capture 语义/`bind/source.nested-fn-no-capture`）、闭包跨容器（Closure 入 collections 元素域）、Unit 调用 lowering 修正。测试计时（本会话实测）：plan1081 Rust 21 例 0.07–0.09s；1080 15 例 0.07s；1079 7 例 0.04s；ace-core lib 1.15s/集成 3.5s；closures 语料 139 例 13.8s；语法差分 45 例 0.64s；语料组全程 ~34s（含准备）；新增 case 单例均 ≤10s 门内（语料 case ~0.8s 含 worker；Rust 例毫秒级）。材料：D:/autostack/plan-artifacts/plan-1081/（负控日志 meta/*.log、组 results 路径已折本节）。
+- [x] **T-07** review（2026-11-20）：[✅ 已完成] 独立复审（评审上下文=实施会话，按工件重建而非采信自检——计划文件/冻结 diff/回执/重放）。基线 `2e2561518`（F-1 修复后）·基 82e512925·工作树净。发现 **F-1（已闭）**：不同 owner 同名嵌套 fn 各含 lambda → lambda 线名 `__closure_<bare>_<k>` 碰撞（atom duplicate-id，`source.internal` fail-closed）——判 needs_fix 转工有界修复（owner_name 对嵌套项改用 mangled 名，`2e2561518`），对抗探针 `probe.1081.nestlambda` 修复前红/修复后 PASS（双 body 分离，23）；受影响回归全绿（plan1081 21、1080 15、closures 139、core 845）；冻结联合门重跑：仅 D-1037-01（1）/D-1098-01（2）既有债具名红，零新增。AC-AV-ONLY/FC/01..06 逐项核验过（负例 5 例重放、oracle 变异红、重复 ID 拒、零选择拒、无 case 名特判 diff 扫描、arena live=0 断言实跑）。冻结边界（非阻塞，记录）：嵌套 fn 项 call-only（无值通道）；lambda 体内嵌套 fn=具名 `source.unsupported` 拒。计时表见 T-06 行（新增 case 全部 ≤10s：Rust 毫秒级、语料 case ~0.8s 含 worker）。
+- [x] **T-08** merge（2026-11-20）：[✅ 已完成] 规范增量（4 文件）以 docs-only 后继提交于评审基线（105534bbd→rebase 491f76cba）；rebase 到 master（ec0c377e7，1106 落主）唯一冲突=conformance.rs 双方 test mods 保留（评审基线 commit 2e2561518→68752053a range-diff `=` 逐字节等价；首 commit 仅该测试文件冲突解）；`git merge --ff-only plan-1081-dev` 落主，master tip=491f76cba=delivery commit。rebased 树 sanity（plan1081 21 例+1080 15 例）绿。canonical 验证：4 spec 文件随 delivery 落主。工作树 guard 清洁后移除。材料 scope 删除、登记刷新。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
+
+- 2026-11-20 merge：`stage: merge | plan_id: PLAN-1081 | plan_revision: 3 | outcome: pass | delivery_commit: 491f76cba（master tip，ff-only；rebase 映射 3734ac2ad→457722bcd[仅 conformance.rs 冲突解]/2e2561518→68752053a[`=` 等价]/105534bbd→491f76cba[`=` 等价]） | spec_paths: docs/specs/auto-av/language-parity.md §6.5、docs/specs/ace-migration/m2-dynamic.md PLAN-1081 增量、docs/specs/ace-migration/m2-generics.md PLAN-1081 增量、docs/specs/auto-test-case/feature-organized-corpus.md PLAN-1081 增量 | archive_path: docs/plans/archive/1081-av-parity-function-values-and-closures.md | cleanup: wt-guard clean→worktree/branch/组目录移除；plan-artifacts/plan-1081 整scope删除；登记表刷新 | 批量回归到期检查：1081%5≠0，无>48h逾期合并 → 不触发`。
+- 2026-11-20 final review：`stage: review | review_scope: final | reviewer_identity: 实施会话独立上下文（工件重建；无第二会话授权） | plan_id: PLAN-1081 | plan_revision: 3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1081/auto-lang | branch: plan-1081-dev | reviewed_commit: 2e2561518 | base_commit: 82e512925 | dependency_revisions: PLAN-1078/1080 归档交付 | spec_inputs: docs/specs/auto-av/language-parity.md + ace-migration/m2-dynamic.md + m2-generics.md + auto-test-case/feature-organized-corpus.md（4 目标存在，merge 沉淀） | acceptance_results: AC-01..06/A-AV-ONLY/AC-FC 全 pass（§8 行）；AC-08 merge-owned pending | pending_closeout_gates: merge 冻结受影响组并集已在 2e2561518 重跑（仅两族既有债具名）；归档/清理/spec 沉淀属 merge | findings: F-1 已闭（§8 T-07 行） | evidence: 计划文件本节+§8；对抗探针 PASS 回执 D:/autostack/plan-artifacts/plan-1081/meta-out/run-nl3 | next: merge`（含一轮 needs_fix→有界修复→重审，未超 3 轮上限）。
+- 2026-11-20 work 完成：`stage: work | plan_id: PLAN-1081 | plan_revision: 3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1081/auto-lang | branch: plan-1081-dev | base_commit: 82e512925 | code_commit: 3734ac2ad | dependency_revisions: PLAN-1078/1080 已归档交付 | task_ids: T-01..T-06 | evidence: §8 各任务行 + §7 组门收据 | blockers: 无 | next_responsible_role: review（T-07 独立复审）`。goal 授权链：/goal 完成计划1081（2026-11-19）——work/review/有界修复/merge 一次授权。
 
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
