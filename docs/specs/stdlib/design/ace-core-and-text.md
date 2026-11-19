@@ -72,3 +72,27 @@
   972）、`len` 歧义族统一与 `parse_int` 差异（兼容账保留）、旧 VM/a2r 全文金样
   不充新侧 oracle。若条件以 ident 收尾再接 `{`，packages/text-record 面需括号
   （`if (a < b) {`）——record 构造歧义为该面既有语法特性，非本包新增。
+
+## 5. 增补：AAC 精确摘要与编译器 codec 支撑包不属公共 std（PLAN-1056 交付）
+
+> 2026-11-19 由 PLAN-1056 merge 沉淀，记录本切片之后**当前事实**；上文 §1–§4 的
+> 945 历史与未交付项原样保留，不因本节改写。
+
+- **无新增公共 std 操作**：PLAN-1056 交付的 BLAKE3-256、SHA-256、`aac.frame/1`
+  帧、`aac.manifest/1` 清单与 canonical Atom/HIR 纯数据 codec 位于 AAC 支撑包
+  `experimental/ace/aac/support/{digest,codec,atom_data,driver}.at`，**不进** `std`。
+  冻结公共 std 切片（`stdlib/ace/std/*`、`stdlib/ace/asm/*`）字节身份与
+  `is_frozen_std_*` 判定未改动；§1 的公开面与 §2 的四端分账不变。
+- **理由**：这些算法的唯一真实消费者是 AAC；发布为公共 std 操作会立刻产生
+  AV / native(mn) / A2R / A2C / A2PY 五端与 `stdlib/contracts` 义务而无公共消费者。
+  Design56 覆盖合同只在"新增公共操作"时适用，故本包具名为 AAC 支撑包；升级路径
+  （上移 std 单源 + 五端覆盖）写在 profile §9。
+- **规范指针**：本包已验证的 profile/接口/所有权与支持边界见
+  [AAC 摘要与 codec profile](../../auto-ac/aac-digest-codec-profile.md)（SD-01）。
+  该 profile 是本包**唯一**现行知识来源：摘要字节语义、`aac.frame/1` 与
+  `aac.manifest/1` 编解码与拒绝分类、canonical Atom 数据 writer 布局与真实 schema
+  驱动准入、资源准入与执行器包络，均以其为准。
+- **边界（与 §4 同级，均不在本包）**：语义校验与 `Checked` 构造、containers 成员
+  关系与 `branches` require/forbid、reference writer 的逐构造字节布局，均具名交接
+  1047/1053；本包只做纯数据 reader/writer，绝不构造可信对象。执行包络
+  （单表 65536 元素）宽于 codec 准入规则的事实按 profile §8 记录，不是对准入的收窄。
