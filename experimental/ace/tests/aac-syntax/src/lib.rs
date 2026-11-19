@@ -35,20 +35,26 @@ pub const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
 // The Auto module set (file name -> embedded source). `syntax_smoke.at` is
 // the stage driver; permanent cases consolidate into `syntax_driver.at` as
 // their tasks land.
+pub const DIGEST_SOURCE: &str = include_str!("../../../aac/support/digest.at");
 pub const PROGRAM_SOURCE: &str = include_str!("../../../aac/syntax/syntax_program.at");
 pub const LEXER_SOURCE: &str = include_str!("../../../aac/syntax/syntax_lexer.at");
 pub const CST_SOURCE: &str = include_str!("../../../aac/syntax/syntax_cst.at");
 pub const PARSE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_parse.at");
+pub const SNAPSHOT_SOURCE: &str = include_str!("../../../aac/syntax/syntax_snapshot.at");
+pub const INCREMENTAL_SOURCE: &str = include_str!("../../../aac/syntax/syntax_incremental.at");
 pub const GRAMMAR_DATA_SOURCE: &str = include_str!("../../../aac/syntax/syntax_grammar_data.at");
 pub const SMOKE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_smoke.at");
 
 /// The AV file set: all syntax modules + the smoke driver.
 pub fn syntax_av_modules() -> Vec<(String, String)> {
     vec![
+        ("digest.at".to_string(), DIGEST_SOURCE.to_string()),
         ("syntax_program.at".to_string(), PROGRAM_SOURCE.to_string()),
         ("syntax_lexer.at".to_string(), LEXER_SOURCE.to_string()),
         ("syntax_cst.at".to_string(), CST_SOURCE.to_string()),
         ("syntax_parse.at".to_string(), PARSE_SOURCE.to_string()),
+        ("syntax_snapshot.at".to_string(), SNAPSHOT_SOURCE.to_string()),
+        ("syntax_incremental.at".to_string(), INCREMENTAL_SOURCE.to_string()),
         (
             "syntax_grammar_data.at".to_string(),
             GRAMMAR_DATA_SOURCE.to_string(),
@@ -109,6 +115,7 @@ pub fn product_from_files(
 /// bytes (byte-exact comparison, never a checksum proxy). `case_use` is the
 /// full 3-segment item path (`app.<module>.<fn>`).
 pub fn run_case(tag: &str, case_use: &str, call: &str) -> Result<Vec<u8>, String> {
+    let budget: u64 = std::env::var("AV_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(AV_MAX_STEPS);
     let main_src = format!("use {case_use}\nfn main() Str {{ return {call} }}");
     let mut files = syntax_av_modules();
     files.push(("main.at".to_string(), main_src));
@@ -117,7 +124,7 @@ pub fn run_case(tag: &str, case_use: &str, call: &str) -> Result<Vec<u8>, String
         ace_av::modules::packages::PackageAvTarget::cold(&scratch(&format!("av-{tag}")), &product)
             .map_err(|e| format!("av cold {tag}: {e}"))?;
     let limits = ace_av_core::ExecLimits {
-        max_steps: AV_MAX_STEPS,
+        max_steps: budget,
         wall: std::time::Duration::from_secs(AV_WALL_SECS),
         ..ace_av_core::ExecLimits::default()
     };

@@ -141,6 +141,7 @@ fn m_ardepth() int { return 14 }
 fn m_nt() int { return 15 }
 fn m_running() int { return 16 }
 fn m_efhi() int { return 17 }
+fn m_ntoks() int { return 18 }
 
 fn w_none() int { return 0 }
 fn w_once() int { return 1 }
@@ -299,7 +300,14 @@ fn merge_firsts(firsts List<int>, nt int, src int, dst int) int {
 /// (ginfo[0] = 0 disables adoption). Returns: 0 ok; 2 depth exhausted;
 /// 3 work exhausted.
 pub fn parse_tokens(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, budget_depth int, budget_work int) int {
+    return parse_tokens_n(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, ot, oef, odecls, gcand, gshift, ginfo, budget_depth, budget_work, tok_count(toks))
+}
+
+/// `ntoks` is the LOGICAL token count (an incremental splice can leave a
+/// zeroed garbage tail below the physical length).
+pub fn parse_tokens_n(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, budget_depth int, budget_work int, ntoks int) int {
     var mc = mk_mc(budget_depth, budget_work)
+    mc.set(m_ntoks(), ntoks)
     var pending = List<int>.new()
     var fr = List<int>.new()
     var saves = List<int>.new()
@@ -321,7 +329,7 @@ pub fn parse_tokens(pg List<int>, cs List<int>, firsts List<int>, nullable List<
 fn mk_mc(depth int, work int) List<int> {
     var mc = List<int>.new()
     var i = 0
-    for (i < 18) {
+    for (i < 19) {
         mc.push(0)
         i = i + 1
     }
@@ -403,7 +411,7 @@ fn pend_push(mc List<int>, pending List<int>, v int) int {
 }
 
 fn peek(pg List<int>, toks List<int>, mc List<int>, pending List<int>) int {
-    let nt = tok_count(toks)
+    let nt = mc.get(m_ntoks())
     var i = mc.get(m_i())
     var probing = 1
     for (probing == 1) {
@@ -815,7 +823,7 @@ fn alloc_node(t List<int>, ef List<int>, fr List<int>, top int, kind int, missin
         if (i > 0) {
             pos = tok_end(toks, i - 1)
         } else {
-            if (i < tok_count(toks)) {
+            if (i < mc.get(m_ntoks())) {
                 pos = tok_start(toks, i)
             }
         }
@@ -1004,7 +1012,7 @@ fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
         cover_from = tok_start(toks, pending.get(0))
     } else {
         let i = mc.get(m_i())
-        if (i < tok_count(toks)) {
+        if (i < mc.get(m_ntoks())) {
             cover_from = tok_start(toks, i)
         }
     }
@@ -1668,8 +1676,8 @@ fn record_expect_hint(pg List<int>, toks List<int>, srcb List<int>, mc List<int>
         e = tok_end(toks, ti)
     } else {
         e = 0
-        if (tok_count(toks) > 0) {
-            e = tok_end(toks, tok_count(toks) - 1)
+        if (mc.get(m_ntoks()) > 0) {
+            e = tok_end(toks, mc.get(m_ntoks()) - 1)
         }
         s = e
     }
@@ -2538,7 +2546,7 @@ fn root_failure_wrap(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc
     }
     mc.set(m_plen(), 0)
     var i = mc.get(m_i())
-    for (i < tok_count(toks)) {
+    for (i < mc.get(m_ntoks())) {
         let tk = tok_token(toks, i)
         var extra = 0
         if (tk != -1) {
@@ -2549,10 +2557,10 @@ fn root_failure_wrap(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc
         kids.push(alloc_leaf(pg, toks, t, i, extra))
         i = i + 1
     }
-    mc.set(m_i(), tok_count(toks))
+    mc.set(m_i(), mc.get(m_ntoks()))
     var end = 0
-    if (tok_count(toks) > 0) {
-        end = tok_end(toks, tok_count(toks) - 1)
+    if (mc.get(m_ntoks()) > 0) {
+        end = tok_end(toks, mc.get(m_ntoks()) - 1)
     }
     let start_rule_id = start_rule(pg)
     let node = alloc_kids(t, ef, kids, 2097152 + start_rule_id, flag_error(), mc)
@@ -2572,11 +2580,11 @@ pub fn parse_finish(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc 
         root_failure_wrap(pg, toks, t, ef, mc, pending, dmsg)
     }
     let root = mc.get(m_root())
-    if (mc.get(m_i()) < tok_count(toks)) {
+    if (mc.get(m_i()) < mc.get(m_ntoks())) {
         var tail_error = 0
         var kids = List<int>.new()
         var i = mc.get(m_i())
-        for (i < tok_count(toks)) {
+        for (i < mc.get(m_ntoks())) {
             let tk = tok_token(toks, i)
             var extra = flag_error()
             if (tk != -1) {
@@ -2594,7 +2602,7 @@ pub fn parse_finish(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc 
         if (kids.len() > 0) {
             diag(dmsg, diag_trailing(), 0, 0, 0)
         }
-        mc.set(m_i(), tok_count(toks))
+        mc.set(m_i(), mc.get(m_ntoks()))
         var failed = 0
         if (tail_error != 0) {
             failed = 1
@@ -2781,8 +2789,8 @@ fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List
     // skip the unit's tokens
     let skip = tok_hi - tok_lo
     var ni = cur_new + skip
-    if (ni > tok_count(toks)) {
-        ni = tok_count(toks)
+    if (ni > mc.get(m_ntoks())) {
+        ni = mc.get(m_ntoks())
     }
     mc.set(m_i(), ni)
     mc.set(m_plen(), 0)

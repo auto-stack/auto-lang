@@ -1,0 +1,201 @@
+// AAC source snapshot + content identity (PLAN-1046 T-02): Auto port of
+// `ace_syntax_runtime::snapshot`/`identity` over an exact byte vector.
+//
+// Pages are VIRTUAL 16 KiB cuts (the Rust PageStore's raw boundaries), so
+// page hashes and the SnapshotId chain are byte-identical to the Rust side
+// for the same text: id = blake3("blake3-1.5\0snap\0" || u64le(len) ||
+// u64le(page_count) || per page (u32le(page_len) || hash-hex bytes)), with
+// the framing built over raw bytes (digest.at's blake3_hex_bytes domain).
+//
+// Edits are transactional: bad base revision / unordered+overlapping /
+// out-of-bounds / non-UTF-8-scalar boundaries refuse with a code and the
+// old snapshot unchanged. Logical document identity is the caller's
+// (revision counter); the SnapshotId is PURE CONTENT — same text same id,
+// edit changes it, undo restores it.
+
+use app.digest.blake3_hex_bytes
+use std.bytes.utf8_len
+use std.bytes.byte_of
+
+pub fn page_size() int { return 16384 }
+
+// Refusal codes.
+pub fn eedit_ok() int { return 0 }
+pub fn eedit_base() int { return 1 }
+pub fn eedit_overlap() int { return 2 }
+pub fn eedit_bounds() int { return 3 }
+pub fn eedit_boundary() int { return 4 }
+pub fn eedit_utf8() int { return 5 }
+
+/// Snapshot state: [0]=bytes...(single flat list) — represented as the
+/// byte list itself plus a revision carried by the caller. Helpers below
+/// treat `snap` as the byte vector.
+
+pub fn page_count(len int) int {
+    let n = len / page_size()
+    if (n * page_size() == len) {
+        return n
+    }
+    return n + 1
+}
+
+fn push_u64le(dst List<int>, v int) int {
+    var x = v
+    var k = 0
+    for (k < 8) {
+        dst.push(x % 256)
+        x = x / 256
+        k = k + 1
+    }
+    return 0
+}
+
+fn push_u32le(dst List<int>, v int) int {
+    dst.push(v % 256)
+    dst.push((v / 256) % 256)
+    dst.push((v / 65536) % 256)
+    dst.push((v / 16777216) % 256)
+    return 0
+}
+
+fn push_str_bytes(dst List<int>, s Str) int {
+    var i = 0
+    for (i < s.len()) {
+        let c = s.char_at(i).to_codepoint()
+        let n = utf8_len(c)
+        var k = 0
+        for (k < n) {
+            dst.push(byte_of(c, k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+fn push_frame_start(dst List<int>, family Str) int {
+    push_str_bytes(dst, "blake3-1.5")
+    dst.push(0)
+    push_str_bytes(dst, family)
+    dst.push(0)
+    return 0
+}
+
+fn page_bytes(snap List<int>, lo int, hi int) List<int> {
+    var out = List<int>.new()
+    var i = lo
+    for (i < hi) {
+        out.push(snap.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+/// Content SnapshotId (hex) over the virtual page directory. `len` is the
+/// LOGICAL length (the physical list may carry a garbage tail after
+/// deletion edits — lists on this lane have no pop).
+pub fn snapshot_id(snap List<int>, len int) Str {
+    let pc = page_count(len)
+    if (pc == 0) {
+        return ""
+    }
+    var pre = List<int>.new()
+    push_frame_start(pre, "snap")
+    // part: total_len (u64le bytes)
+    push_u64le(pre, len)
+    // part: page count (u64le bytes)
+    push_u64le(pre, pc)
+    // per page: (u32le page_len bytes, hash-hex bytes)
+    var p = 0
+    for (p < pc) {
+        let lo = p * page_size()
+        var hi = lo + page_size()
+        if (hi > len) {
+            hi = len
+        }
+        push_u32le(pre, hi - lo)
+        let h = blake3_hex_bytes(page_bytes(snap, lo, hi))
+        push_str_bytes(pre, h)
+        p = p + 1
+    }
+    return blake3_hex_bytes(pre)
+}
+
+fn is_scalar_boundary_len(snap List<int>, len int, off int) bool {
+    if (off == 0) {
+        return true
+    }
+    if (off >= len) {
+        if (off == len) {
+            return true
+        }
+        return false
+    }
+    let b = snap.get(off)
+    // continuation bytes are 0b10xxxxxx (0x80..0xBF)
+    if (b >= 128 && b < 192) {
+        return false
+    }
+    return true
+}
+
+/// Apply one edit [start, end) -> insert (transactional). Returns 0 ok or
+/// a refusal code; on ok `out_len`[0] receives the NEW LOGICAL length. On
+/// refusal the logical content is untouched.
+pub fn apply_edit(snap List<int>, cur_len int, start int, end int, insert Str, out_len List<int>) int {
+    if (end < start) {
+        return eedit_bounds()
+    }
+    if (end > cur_len) {
+        return eedit_bounds()
+    }
+    if (!is_scalar_boundary_len(snap, cur_len, start)) {
+        return eedit_boundary()
+    }
+    if (!is_scalar_boundary_len(snap, cur_len, end)) {
+        return eedit_boundary()
+    }
+    // splice
+    var ib = List<int>.new()
+    var i = 0
+    for (i < insert.len()) {
+        let c = insert.char_at(i).to_codepoint()
+        let n = utf8_len(c)
+        var k = 0
+        for (k < n) {
+            ib.push(byte_of(c, k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    // Build the new byte vector first (an in-place forward splice would
+    // overwrite its own source when the insert grows the span), then write
+    // back; the physical tail keeps garbage beyond the new logical length.
+    var out = List<int>.new()
+    i = 0
+    for (i < start) {
+        out.push(snap.get(i))
+        i = i + 1
+    }
+    i = 0
+    for (i < ib.len()) {
+        out.push(ib.get(i))
+        i = i + 1
+    }
+    i = end
+    for (i < cur_len) {
+        out.push(snap.get(i))
+        i = i + 1
+    }
+    i = 0
+    for (i < out.len()) {
+        if (i == snap.len()) {
+            snap.push(out.get(i))
+        } else {
+            snap.set(i, out.get(i))
+        }
+        i = i + 1
+    }
+    out_len.set(0, out.len())
+    return eedit_ok()
+}

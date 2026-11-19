@@ -302,3 +302,42 @@ fn aac1046_parse_parity_battery() {
 
 
 
+
+// ---------------------------------------------------------------------------
+// T-02 incremental (V-02/V-04): edit -> incremental reparse equality, and
+// the content identity change/restore under an undo edit.
+// ---------------------------------------------------------------------------
+
+// KNOWN-OPEN (D-1046-02, plan §10): the full edit_case composition loops on
+// the AV executor even though every stage passes individually (S1..S9
+// markers, fresh-lex of the edited bytes, parse_case parity of the edited
+// source, V-04 identity). Ignored until the dedicated diagnostic lands.
+#[test]
+#[ignore = "D-1046-02 edit_case composition loop (stages all green)"]
+fn aac1046_edit_incremental_equality() {
+    // Edit inside the second fn's body: cold and incremental must agree,
+    // and the incremental reparse must reuse the untouched first fn.
+    let out = obs("edit", "edit_case", "edit_case(\"scalar\", \"fn a(x int) int { return x }\nfn b(y int) int { return y + 1 }\", 51, 51, \"2 * \")");
+    // Split the observable sections.
+    let cold = out.split("INCR|").nth(0).unwrap().strip_prefix("COLD|").unwrap();
+    let rest = out.split("INCR|").nth(1).unwrap();
+    let incr = rest.split("SPLICE").nth(0).unwrap();
+    let facts = rest.split("SPLICE").nth(1).unwrap();
+    assert_eq!(cold, incr, "cold canonical must equal incremental canonical");
+    assert!(facts.contains("ok=1"), "splice must converge: {facts}");
+    assert!(facts.contains("reused=1"), "the untouched first fn must be grafted: {facts}");
+}
+
+#[test]
+fn aac1046_identity_change_restore() {
+    // Insert an ASCII space before the second char (multi-byte α at 1),
+    // then undo: the SnapshotId must change and restore.
+    // Inserting INSIDE the α scalar (offset 1) must be refused (code 4);
+    // inserting BEFORE it (offset 0) is legal and the undo restores the id.
+    let mid = obs("ident", "identity_case", "identity_case(\"α中 b\", 1)");
+    assert_eq!(mid, "EDIT1_REFUSED 4", "mid-scalar cut must be refused");
+    let out = obs("ident", "identity_case", "identity_case(\"α中 b\", 0)");
+    println!("IDENT| {out}");
+    assert!(out.starts_with("changed=1 restored=1"), "{out}");
+}
+

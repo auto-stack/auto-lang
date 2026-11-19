@@ -1,0 +1,315 @@
+// AAC incremental edit reparse (PLAN-1046 T-02): Auto port of
+// `ace_syntax_runtime::edit` — trusted-checkpoint rescan + token splice +
+// declaration-level copy-adopt graft.
+//
+//   * lex: rescan from the nearest AT-REST checkpoint before the edit
+//     (walking back over adjacent trivia and boundary-unsafe splits),
+//     stream until K=8 consecutive tokens align with the old stream under
+//     the edit delta, then splice the old tail (lines shifted by the head
+//     delta); no convergence inside the 64 KiB window -> recorded full
+//     fresh fallback;
+//   * parse: old declarations not intersecting the affected range and free
+//     of error/missing nodes become GRAFT CANDIDATES; the parse adopts
+//     them by copy (relative spans verbatim) and reparses the rest.
+//
+// Observables for the conformance suite: the spliced token count, rescan
+// bytes, reused/reparsed decl counts, fallback reason — and the canonical
+// equality cold vs incremental.
+
+use app.syntax_program.is_trivia_token
+use app.syntax_program.n_tokens
+use app.syntax_lexer.tok_count
+use app.syntax_lexer.tok_token
+use app.syntax_lexer.tok_start
+use app.syntax_lexer.tok_end
+use app.syntax_lexer.tok_line
+use app.syntax_lexer.tok_error
+use app.syntax_lexer.lex_all
+use app.syntax_lexer.lex_from
+use app.syntax_lexer.st_new
+use app.syntax_lexer.st_checkpoint
+use app.syntax_lexer.compile_scanner
+use app.syntax_cst.nflags
+use app.syntax_cst.nfc
+use app.syntax_cst.ncc
+use app.syntax_cst.flag_error
+use app.syntax_cst.flag_missing
+use app.syntax_cst.flag_trivia
+use app.syntax_cst.decl_origin
+use app.syntax_cst.decl_node
+use app.syntax_cst.decl_node_lo
+use app.syntax_parse.parse_tokens
+use app.syntax_parse.first_sets_into
+
+pub fn rescan_window() int { return 65536 }
+pub fn converge_k() int { return 8 }
+
+// Fallback reasons (Rust FallbackReason order).
+pub fn fb_none() int { return 0 }
+pub fn fb_unterminated() int { return 1 }
+pub fn fb_no_convergence() int { return 2 }
+pub fn fb_complex_edits() int { return 3 }
+
+// Splice output (single list, logical fields):
+// [0]=ok(1/0) [1]=fallback reason [2]=rescan bytes [3]=new_base
+// [4]=old_base [5]=prefix_len — tokens appended to `toks_out`.
+
+fn is_trivia_tok(pg List<int>, t int) bool {
+    if (t == -1) {
+        return false
+    }
+    return is_trivia_token(pg, t)
+}
+
+/// Incremental lex. `old_toks` = the previous full token vector (5/token);
+/// `new_len` = the NEW logical source length; `delta` and `e_start/e_end`
+/// describe the single edit in OLD coordinates. Tokens of the new stream
+/// are appended to `toks_out`; `out` receives the splice facts.
+pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List<int>, new_len int, e_start int, e_end int, delta int, toks_out List<int>, out List<int>) int {
+    var i = 0
+    for (i < 10) {
+        out.push(0)
+        i = i + 1
+    }
+    let otc = tok_count(old_toks)
+    // affected first old token
+    var span_edit = 1
+    if (e_end == e_start) {
+        span_edit = 0
+    }
+    var affected = otc
+    i = 0
+    for (i < otc) {
+        let hit = 0
+        if (tok_end(old_toks, i) > e_start) {
+            if (span_edit != 0) {
+                if (tok_start(old_toks, i) < e_end) {
+                    affected = i
+                    i = otc
+                }
+            } else {
+                if (tok_start(old_toks, i) >= e_start) {
+                    affected = i
+                    i = otc
+                }
+            }
+        }
+        if (i < otc) {
+            if (affected == i) {
+                i = otc
+            }
+        }
+        i = i + 1
+    }
+    // walk back over adjacent leading trivia
+    var cp_idx = affected
+    for (cp_idx > 0 && is_trivia_tok(pg, tok_token(old_toks, cp_idx - 1))) {
+        cp_idx = cp_idx - 1
+    }
+    // boundary safety: previous token not trivia AND directly adjacent ->
+    // keep walking (glued lexeme split risk)
+    for (cp_idx > 0 && !is_trivia_tok(pg, tok_token(old_toks, cp_idx - 1)) && tok_end(old_toks, cp_idx - 1) == tok_start(old_toks, cp_idx)) {
+        cp_idx = cp_idx - 1
+    }
+    if (cp_idx > 0) {
+        if (tok_error(old_toks, cp_idx - 1)) {
+            out.set(1, fb_unterminated())
+            return 0
+        }
+    }
+    // rescan from the checkpoint
+    var cp = st_new()
+    cp.set(0, 0)
+    cp.set(1, 1)
+    if (cp_idx < otc) {
+        cp.set(0, tok_start(old_toks, cp_idx))
+        cp.set(1, tok_line(old_toks, cp_idx))
+    } else {
+        cp.set(0, 0)
+        cp.set(1, 1)
+    }
+    // prefix tokens [0, cp_idx) copied verbatim
+    i = 0
+    for (i < cp_idx) {
+        toks_out.push(tok_token(old_toks, i))
+        toks_out.push(tok_start(old_toks, i))
+        toks_out.push(tok_end(old_toks, i))
+        toks_out.push(tok_line(old_toks, i))
+        if (tok_error(old_toks, i)) {
+            toks_out.push(1)
+        } else {
+            toks_out.push(0)
+        }
+        i = i + 1
+    }
+    // bounded rescan over the new bytes
+    let scan_limit = cp.get(0) + rescan_window() * 2
+    var lim = scan_limit
+    if (lim > new_len) {
+        lim = new_len
+    }
+    var head = List<int>.new()
+    var diags = List<int>.new()
+    let scanned = lex_all(pg, cs, srcb, lim, head, diags)
+    // stream K-run alignment
+    let shifted_end = e_end + delta
+    var run_new = 0
+    var run_old = 0
+    var run_len = 0
+    var align_new = -1
+    var align_old = -1
+    var j = 0
+    var done = 0
+    for (done == 0) {
+        if (j >= tok_count(head)) {
+            done = 1
+        } else {
+            let nt_start = tok_start(head, j)
+            // append
+            toks_out.push(tok_token(head, j))
+            toks_out.push(nt_start)
+            toks_out.push(tok_end(head, j))
+            toks_out.push(tok_line(head, j))
+            if (tok_error(head, j)) {
+                toks_out.push(1)
+            } else {
+                toks_out.push(0)
+            }
+            j = j + 1
+            if (run_len > 0) {
+                var cont = 0
+                if (run_old + run_len < otc) {
+                    let b = run_old + run_len
+                    if (nt_start - tok_start(old_toks, b) == delta) {
+                        if (tok_token(head, j - 1) == tok_token(old_toks, b)) {
+                            if (tok_end(head, j - 1) - nt_start == tok_end(old_toks, b) - tok_start(old_toks, b)) {
+                                cont = 1
+                            }
+                        }
+                    }
+                }
+                if (cont != 0) {
+                    run_len = run_len + 1
+                    if (run_len == converge_k()) {
+                        align_new = run_new + converge_k()
+                        align_old = run_old + converge_k()
+                        done = 1
+                    }
+                } else {
+                    run_len = 0
+                }
+            }
+            if (run_len == 0 && done == 0) {
+                let ntk = tok_token(head, j - 1)
+                var nt_is_trivia = 0
+                if (ntk != -1) {
+                    if (is_trivia_token(pg, ntk)) {
+                        nt_is_trivia = 1
+                    }
+                }
+                if (nt_is_trivia == 0 && nt_start + 1 > shifted_end) {
+                    let old_pos = nt_start - delta
+                    // binary search old token by start
+                    var lo2 = cp_idx
+                    var hi2 = otc
+                    var oi = -1
+                    var probing = 1
+                    for (probing == 1) {
+                        if (lo2 >= hi2) {
+                            probing = 0
+                        } else {
+                            let mid = (lo2 + hi2) / 2
+                            if (tok_start(old_toks, mid) < old_pos) {
+                                lo2 = mid + 1
+                            } else {
+                                hi2 = mid
+                            }
+                        }
+                    }
+                    if (lo2 < otc) {
+                        if (tok_start(old_toks, lo2) == old_pos) {
+                            if (tok_token(old_toks, lo2) == tok_token(head, j - 1)) {
+                                if (tok_end(old_toks, lo2) - tok_start(old_toks, lo2) == tok_end(head, j - 1) - nt_start) {
+                                    oi = lo2
+                                }
+                            }
+                        }
+                    }
+                    if (oi >= 0) {
+                        var boundary_safe = 0
+                        if (oi == 0) {
+                            boundary_safe = 1
+                        } else {
+                            if (is_trivia_tok(pg, tok_token(old_toks, oi - 1))) {
+                                boundary_safe = 1
+                            } else {
+                                if (tok_end(old_toks, oi - 1) < tok_start(old_toks, oi)) {
+                                    boundary_safe = 1
+                                }
+                            }
+                        }
+                        if (boundary_safe != 0) {
+                            run_new = j - 1
+                            run_old = oi
+                            run_len = 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out.set(2, scanned)
+    if (align_new < 0) {
+        out.set(1, fb_no_convergence())
+        return 0
+    }
+    // truncate the appended head to align_new tokens (logical length)
+    let keep = cp_idx + align_new
+    var phys = toks_out.len() / 5
+    var k2 = phys - 1
+    for (k2 >= keep) {
+        toks_out.set(k2 * 5, 0)
+        k2 = k2 - 1
+    }
+    // splice the old tail from align_old with delta/line shift
+    var head_newlines = 0
+    let a = align_new - 1
+    let b = align_old - 1
+    if (a >= 0 && b >= 0) {
+        head_newlines = tok_line(head, a) - tok_line(old_toks, b)
+    }
+    // mark the logical token count via out[6]; append tail into fresh region
+    out.set(6, keep)
+    var w = keep
+    i = align_old
+    for (i < otc) {
+        var rec = List<int>.new()
+        rec.push(tok_token(old_toks, i))
+        rec.push(tok_start(old_toks, i) + delta)
+        rec.push(tok_end(old_toks, i) + delta)
+        rec.push(tok_line(old_toks, i) + head_newlines)
+        if (tok_error(old_toks, i)) {
+            rec.push(1)
+        } else {
+            rec.push(0)
+        }
+        var q = 0
+        for (q < 5) {
+            if (w == phys) {
+                toks_out.push(rec.get(q))
+                phys = phys + 1
+            } else {
+                toks_out.set(w * 5 + q, rec.get(q))
+            }
+            q = q + 1
+        }
+        w = w + 1
+        i = i + 1
+    }
+    out.set(6, w)
+    out.set(0, 1)
+    out.set(3, keep)
+    out.set(4, align_old)
+    out.set(5, cp_idx)
+    return 1
+}
