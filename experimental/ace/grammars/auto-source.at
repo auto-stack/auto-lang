@@ -1323,12 +1323,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-element-block() {} }
             alt { age-element-labeled() {} }
             alt(profiles: [age-component, age-package]) { age-element-props-block() {} }
+
             // PLAN-104（007 真语料）：**裸标签元素**——只有标签名、无 label 也无
             // 体块（`spacer`/`divider` 等自闭合组件）。闭集 keyword token，不参与
             // contextual name 槽位，故不引入 label 跨行吞并/诊断噪声。
             alt { age-element-bare() {} }
         }
-<<<<<<< HEAD
         // Route links retain the reserved `link` and `to` spellings in both AGE profiles.
         age-route-link-block(profiles: [age-component, age-package]) {
             age-route-link-tag(field: "tag") {}

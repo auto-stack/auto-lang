@@ -304,3 +304,49 @@ fn p105_link_element_tag_projects() {
     walk(&nodes[0].view.tree, &mut tags);
     assert_eq!(tags, vec!["col", "link", "link"]);
 }
+
+/// 012 真语料形：SVG 元素属性连字符键（`stroke-width` / `stroke-linecap`）。
+#[test]
+fn p105_dashed_entry_keys_project() {
+    let src = "widget App {\n\
+        model { var n int = 0 }\n\
+        view {\n\
+            col {\n\
+                circle (cx: \"120\", stroke-width: \"5\", stroke-linecap: \"round\") {}\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("dashed keys project");
+    let mut keys: Vec<String> = Vec::new();
+    fn walk(items: &[ace_core::source::age_component::ComponentViewItem], out: &mut Vec<String>) {
+        for it in items {
+            if let ace_core::source::age_component::ComponentViewItem::Element(e) = it {
+                for child in &e.items {
+                    if let ace_core::source::age_component::ComponentViewItem::Entry(en) = child {
+                        out.push(en.key.clone());
+                    }
+                }
+                walk(&e.items, out);
+            }
+        }
+    }
+    walk(&nodes[0].view.tree, &mut keys);
+    assert_eq!(keys, vec!["cx", "stroke-width", "stroke-linecap"]);
+    assert!(compiles(src), "package face compiles the dashed keys too");
+}
+
+/// 016/018 真语料形：括号属性元素在**包面**也必须可解析（此前 component-only）。
+#[test]
+fn p105_props_element_compiles_in_package() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var s str = \"\" }\n\
+        view {\n\
+            col {\n\
+                input (value: .s) {}\n\
+            }\n\
+        }\n\
+    }\n";
+    assert!(compiles(src), "props element is admitted by the package face");
+}
