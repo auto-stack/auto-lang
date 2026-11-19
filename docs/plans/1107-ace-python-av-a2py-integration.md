@@ -304,6 +304,16 @@ Round 4 增量（冻结提交 `7c10af9b4`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 7c10af9b4 | next: work`
 
+2026-11-20 · stage: work（round 5）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `1045a8f91` | task_ids: T-03 继续（console 车道已通，staged-text 读回待做）| outcome: pass（round 级）| next_responsible_role: work（T-03 收尾）
+
+Round 5 增量（冻结提交 `1045a8f91`，树内 clean）：
+- **A2PY console 车道**：`lower_call` 现处理 `auto.console.print|eprint.<i32|bool|f64|f32|str|char>.v1`（经 `sched_symbol`，仅当符号精确匹配），发射 `a2x_console_{print,eprint}_<ty>`；运行时 helper 实现 Plan 403 格式对齐（NaN/Infinity 拼写、整值无小数点、f64 `repr` 最短往返、**f32 逐精度 g 格式 + `<f` 往返验证**取最短 f32 表示、每行一换行、true/false 拼写）。
+- 端到端测试 `p1107_t03_section51_runs_as_native_python` 保持 `#[ignore]`，原因更新为**具名下一缺口**：`print(prediction.shape)` 的 staged-text 读回路径在 console 之后到达 `py_stage_str`（span 632）而无对应共享事实——A2PY 需要把“Python 对象→文本”的 staged 读回按 `ToText` 事实整体 lowering（或用原生 `a2x_py_to_str` 替换整个读回链）。
+
+证据：`cargo nextest -p ace-a2x-python` 5 passed / 1 skipped（ignore 具名）；`cargo t ace-python` PASS 10/10；`cargo t ace-a2x` 仅两红：预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71，主检出同红）与 `ace-a2x-worker pyready_03`（并行组偶发，**隔离重跑 PASS 0.43s**，环境归因）。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 5 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 1045a8f91 | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
