@@ -1,22 +1,40 @@
 ---
 plan_id: PLAN-981
 status: executing
-feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
+feature_name: AGE Node 的 ACE 源与会话基础
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
-plan_revision: 21
-current_step: 3
-total_steps: 34
-depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, ag-examples/PLAN-024, ag-examples/PLAN-025, ag-examples/PLAN-028, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067, auto-ui/PLAN-072]
+plan_revision: 22
+current_step: 6
+total_steps: 9
+depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
 new_spec_components: [docs/specs/ace-migration/m2-age.md]
 touched_goals: [GOAL-002]
 ---
 
-# [PLAN-981] AGE Node直接接入ACE与AV开发及A2R游戏发行
+# [PLAN-981] AGE Node 的 ACE 源与会话基础
 
 ## 0. 变更摘要
+
+### 2026-11-19 · 基础范围与正式后继
+
+保留 T-01、B-SOURCE 全批，及已交 MIN-A-AGE、IF-981-EVENT-A、已合入 EVENT-B 和已交 W1 分组的基础来源及原适用验收。当前 r21 on-if 继续用 981 唯一树收口，与 980 消费修复对接。
+
+原 AGE 产品依赖 AG024/025 随 1075，AG028/UI072 随 1076/1077。当前基础取已交的适用 UI 宿主与研究来源。本节是原分波、跨计划和验收条款的当前 owner 映射。§5–7 保留全部原技术合同、分母、独立 oracle、负控与资源约束，按本表接手。已有收据仅按其实际来源及边界复用。基础归档取保留范围的正式验收；M2 产品继续按三波与各模式验收。
+
+| 原工作 | 正式接手方 | 原验收与证据 |
+|---|---|---|
+| B-SESSION/LANGUAGE/PROOF/FUSION/CONTENT 中 UI/Widgets 基线 AV 格 | [1071](1071-autoui-w1-av.md) | V-B-SESSION、V-B-LANGUAGE、V-EVT、V-AGE-WAVE/V-DESKTOP 的适用 AV 格 |
+| B-CONTENT 的其余完整产品 AV；B-SESSION/LANGUAGE/PROOF/FUSION 其余 AGE AV 格 | [1075](1075-age-av-content-and-fusion.md) | V-B-CONTENT、V-L-UI/VIEW/LIFE/COND/COVER、V-AGE-TRANSFER、V-B-FUSION 的产品 AV 格；M2-01..10、G-M01..09、两游戏/Gallery/混合、真 GPU、热更新、冷包和资源 |
+| B-RUST-I/V/R 与 LANGUAGE/PROOF/FUSION 公共 A2R 格 | [1074](1074-autoui-w3-a2r.md) | V-B-RUST、V-R-FAIL 公共部分、真实 GPU/事件/资源/恢复和 A2R cap 收据 |
+| B-RUST2D-I/V/R | [1076](1076-age-a2r-game-2d.md) | 原 V-B-RUST2D、V-R2-RULE/MEDIA、V-R-PACK/FAIL 的 2D 格、G2-01..09 与独立包 |
+| B-RUST3D-I/V/R | [1077](1077-age-a2r-game-3d.md) | 原 V-B-RUST3D、V-R3-RULE/MEDIA、V-R-PACK/FAIL 的 3D 格、G3-01..08 与独立包 |
+| LANGUAGE/FUSION/PROOF/AUDIT 的 AC 格、AC-NODE-DESKTOP 和 AC-AC-STAGED 的 B 范围 | [1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md) | V-DESKTOP-AC、V-DESKTOP-AUDIT、V-AGE-WAVE 的适用 AC 真实窗口/业务/域及负控 |
+| B-AUDIT-I/V/R、AC-AGE-CAP-HANDOFF、AC-AGE-WAVES 和 AC-EVENT-PHASE 的最终接收 | [985](985-ace-m2-certification.md) | 各生产方按原格实施并复审。985/B 按 V-B-AUDIT、V-AGE-TRANSFER、V-L-COVER、V-DESKTOP-AUDIT 对账旧消费者、完整语法/后端、两 ZIP 及删格负控；OS064/AG031 保各自产品及引擎义务 |
+
+原 A 时段事实、字段及交接接口由基础计划提供。后继负责对应实际产品的实施、验证、独立复审及交付。未关闭行随 owner 迁移，既有用例、约束和旧证据来源继续可追。
 
 2026-11-16 r17当前：EVENT-SPLIT-20261116明确A/B逐切片等待，三消息缺口归981原LANGUAGE/SESSION、980原AV/WEB消费者及985原认证任务；复用980/NATIVE与#6i，A关最小真实事件/保真/安全拒绝，B关完整payload/绑定/WEB及三端产品。旧980/981/985整包互等不再作为前置；原任务/勾选/完成数和全部验收保留，仅规划。
 
@@ -137,6 +155,8 @@ touched_goals: [GOAL-002]
 补读原冻结身份测试`experimental/ace/crates/core/tests/cases/plan981_grammar_scope.rs`，SHA256前16 `9bd4c795284c0da4`；属原SOURCE/LANGUAGE的防漂移用例，新增r41取材未运行或修改该文件。
 
 ## 5. 详细设计
+
+> 原完整合同保留在本节。现行实施与验收归属见 §0 的移交表，基础收口任务见 §8。
 
 ### AGE首批后能力与AutoForge接面（2026-11-17，分阶段接收）
 
@@ -508,6 +528,8 @@ struct AgeInstance { model: OwnerId, logic_clock: TickClock, frames: MountClockS
 
 ## 6. 测试设计
 
+> 原完整合同保留在本节。现行实施与验收归属见 §0 的移交表，基础收口任务见 §8。
+
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
 
 按§5原任务冻结实际cap/owner/源/平台与各端oracle：原UI波基线齐且新cap pending可交对应UI-W1/2/3，但不能签cap/AGE全齐；cap合法来源可逐端交，删cap/错源/把AV冒AC或仅emit冒A2R必须红，恢复真实产物可通过。用于新增cap的typed接口须先有独立合法/错误/owner测试，消费方真实GPU/交互/资源/包另验；缺模型/Forge产品不影响基线。AC-AGE-CAP-HANDOFF由本表原owner及最终review核。
@@ -772,6 +794,8 @@ cargo test -p ace-syntax-grammar                               # 45/45
 
 ## 7. 验收标准
 
+> 原完整合同保留在本节。现行实施与验收归属见 §0 的移交表，基础收口任务见 §8。
+
 - [ ] **AC-AGE-CAP-HANDOFF / work**：V-AGE-CAP-HANDOFF及§5本包实际producer/consumer逐cap义务闭合；UI三波与新图形cap来源分开、无循环、原验收不减，新cap不成为985/A新增前置。阶段R/fold不冒整包final。
 
 | ID | owner_stage | 标准 | 验证 |
@@ -816,9 +840,41 @@ cargo test -p ace-syntax-grammar                               # 45/45
 
 ## 8. 执行步骤
 
+保留 T-01、B-SOURCE 全批，及已交 MIN-A-AGE、IF-981-EVENT-A、已合入 EVENT-B 和已交 W1 分组的基础来源及原适用验收。当前 r21 on-if 继续用 981 唯一树收口，与 980 消费修复对接。
+
+- [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 EVENT-SPLIT：先核980/NATIVE正式源/原测试oracle，将V_PENDING_INPUTS逐键拆A必需与B全量；三个消息缺口归本包现有LANGUAGE/SESSION，缺件不泛称980未归档。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
+
+- [x] **B-SOURCE-I｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-02/AC-03/AC-06/AC-NODE-CHAIN/AC-HANDOFF**：按§5先落实IF-981-MODULE/REF/FIELDS/ORIGINAL的有界最长路径决定、模块图×领域组合、实例引用/完整构造表/g01原源CPU与永久正反例，消费已交979基础，不等其归档；auto-lang在本任务维护所需共享接口。继续完整SOURCE，领域/行为共同verify，保f32/数组/bool/实例/原span及旧生成骨架全部公开义务，不保旧重解析链。子面正式交接不提前勾整任务。
+
+- [x] **B-SOURCE-V｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-NODE-CHAIN/AC-HANDOFF**：按§6交接必验运行四个IF的永久用例、真实AV/A2R和g01原源CPU面、缺/私有/越权/删映射/坏包/修复反控，绑定源/图/Schema/目标/资源与子终态；继续原V-B-SOURCE完整职责/必要集成，未验不得改NA或提前勾全批。
+
+- [x] **B-SOURCE-R｜M2-A｜owner_stage: review｜AC-04**：同树停写独立核本批AC/diff/反例/跨仓来源；可先逐四个IF核子面并按原phase fold正式交979，留API/grammar/闭包/后端与实测来源，完整SOURCE全部原义务闭合才勾本任务；失败回I，不冒整包或979验收pass。
+
+- [x] **T-BASE-RECEIPT｜基础收口｜owner_stage: work**。核 MIN-A-AGE、EVENT-A、已交 EVENT-B 与 W1 分组收据的实际代码版本、独立 oracle、旧义务和 985 接收证据。缺基础证据在本计划定向补验。
+  [✅ 已完成 2026-11-19] 审计三环全绿（§9「T-BASE-RECEIPT 基础收据审计」段）：①代码版本=台账全部绑定 SHA 两仓 master 祖先核验过（13 lang+6 ui+985 侧 658ad515/95c7fbad8；一处仓标歧义勘正）；②oracle/旧义务=plan981 全族当前 master core 248/248+av 56/56（零丢失零红）；③985 接收=r28 对账+r29 M2A-08 成立+980 W1 入账。无阻塞缺件。
+
+- [x] **T-BASE-ONIF｜基础收口｜owner_stage: work**。复核 r21 on-if 的 F-R21-2 关闭并执行 F-R21-3 合入并集与冻结复验。复用 980 已合入代码，核两仓的语义差额并独立复审。逐项对证后继移交。
+  [✅ 已完成 2026-11-19] 全范围由 r21 fold 链闭合：F-R21-2 关闭复核（auto-ui `7b8456e5` 双树验收 7/7+lane `56725cd5`，窗口三条件齐——§9 handoff 段）+ F-R21-3 并集（`cd0ee2789` 四冲突显式解+else-if 链缺口收口）+ 两轮增量同步（`286ed0cb4` lambda-if 语义冲突/`33895d91c` classify_word 三参）+ 冻结复验（ace-source PASS/ace-av 1424-1428 具名口径）+ 独立复审 + ff-only 落主 `33895d91c`——收据 §9「r21 增量同步＋独立复核＋phase fold 落主」段（`c84f25cf4`）。
+
+- [x] **T-05｜基础收口｜owner_stage: review**。同树冻结，独立逐项核保留的能力、原适用反例、联合交接、后继义务完整性与来源。修复发现后重新验证。
+  [✅ 已完成 2026-11-19] 四核全过零阻塞（§9「T-05 基础收口独立复核」段：保留能力/44 反例全绿/后继 7 行齐备 draft/跨计划收据互证；info×2=r22 WIP 待落+后继 drafting 属设计）。
+
+
+- [ ] **T-06｜基础收口｜owner_stage: merge**。按 owner 次序合入，沉淀基础范围的正式规范与后继链接，核真实消费来源并归档。
+
+- [ ] **T-07｜基础收口｜owner_stage: merge**。依项目规约完成证据摘要、输出对账、登记和 guard 后清理。
+
+## 9. 复审记录
+
+2026-11-19 stage: revision。按用户裁定拆分。原任务、AC/V、负控与产品义务按 §0 移交。基础计划保持 executing，按本节上方 §8 实际勾选为 4/9。后继为 drafting。本轮未生成产品验收结论。
+
+### 拆分前 §8 任务合同
+
+快照 78b375bf4。原转出任务共 27 行，仍未关闭。执行 owner 按 §0。以下为冻结文字，保留现场来源和先前证据。
+
 当前共34任务，勾选仅按整任务计（仍 3 项：B-SOURCE-I/V/R）；A 子面交付见下方台账，不提前勾整任务。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
-### A最小与共享任务（完整余量按B波关闭）
+#### A最小与共享任务（完整余量按B波关闭）
 
 **A 子面交付台账（2026-11-17，985 r26 要求；勾选仍按整任务，不提前勾）**
 
@@ -834,83 +890,83 @@ cargo test -p ace-syntax-grammar                               # 45/45
 | T-01（A 决定/源/命令冻结） | 已交 | 本台账 + §9 收据 | — |
 **本轮执行入口**：A先复用已交SOURCE，只做MIN-A-AGE所需SESSION/LANGUAGE/PROOF的真实AV接口与验收，不等待完整RUST/五view/PARITY或976 WEB。三波在M2A-08后按§5执行；W1的980组件接口与981 AV领域格按组协作正式交接，981不先等完整UI-W1-AV才贡献同一收据。W2只等完整W1，W3只等W2正式切片。下面每个原任务只登记一次，跨阶段任务仅子面交付不勾整项。
 
-- [x] **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 EVENT-SPLIT：先核980/NATIVE正式源/原测试oracle，将V_PENDING_INPUTS逐键拆A必需与B全量；三个消息缺口归本包现有LANGUAGE/SESSION，缺件不泛称980未归档。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
+- 原状态：已勾 · **T-01｜M2-A准备｜owner_stage: work｜AC-01/AC-PHASE**：先核§5的A最小前置、真实owner/源/接口/命令及本包实施授权，冻结A能力或具名PROOF；B部分只登记原输入/oracle与缺口，正式实现须M2A-08及其批次前置，不把整包最终depends_on当A开工前置。 EVENT-SPLIT：先核980/NATIVE正式源/原测试oracle，将V_PENDING_INPUTS逐键拆A必需与B全量；三个消息缺口归本包现有LANGUAGE/SESSION，缺件不泛称980未归档。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
 
-- [x] **B-SOURCE-I｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-02/AC-03/AC-06/AC-NODE-CHAIN/AC-HANDOFF**：按§5先落实IF-981-MODULE/REF/FIELDS/ORIGINAL的有界最长路径决定、模块图×领域组合、实例引用/完整构造表/g01原源CPU与永久正反例，消费已交979基础，不等其归档；auto-lang在本任务维护所需共享接口。继续完整SOURCE，领域/行为共同verify，保f32/数组/bool/实例/原span及旧生成骨架全部公开义务，不保旧重解析链。子面正式交接不提前勾整任务。
+- 原状态：已勾 · **B-SOURCE-I｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-02/AC-03/AC-06/AC-NODE-CHAIN/AC-HANDOFF**：按§5先落实IF-981-MODULE/REF/FIELDS/ORIGINAL的有界最长路径决定、模块图×领域组合、实例引用/完整构造表/g01原源CPU与永久正反例，消费已交979基础，不等其归档；auto-lang在本任务维护所需共享接口。继续完整SOURCE，领域/行为共同verify，保f32/数组/bool/实例/原span及旧生成骨架全部公开义务，不保旧重解析链。子面正式交接不提前勾整任务。
 
-- [x] **B-SOURCE-V｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-NODE-CHAIN/AC-HANDOFF**：按§6交接必验运行四个IF的永久用例、真实AV/A2R和g01原源CPU面、缺/私有/越权/删映射/坏包/修复反控，绑定源/图/Schema/目标/资源与子终态；继续原V-B-SOURCE完整职责/必要集成，未验不得改NA或提前勾全批。
+- 原状态：已勾 · **B-SOURCE-V｜M2-A｜owner_stage: work｜AC-B-SOURCE/AC-NODE-CHAIN/AC-HANDOFF**：按§6交接必验运行四个IF的永久用例、真实AV/A2R和g01原源CPU面、缺/私有/越权/删映射/坏包/修复反控，绑定源/图/Schema/目标/资源与子终态；继续原V-B-SOURCE完整职责/必要集成，未验不得改NA或提前勾全批。
 
-- [x] **B-SOURCE-R｜M2-A｜owner_stage: review｜AC-04**：同树停写独立核本批AC/diff/反例/跨仓来源；可先逐四个IF核子面并按原phase fold正式交979，留API/grammar/闭包/后端与实测来源，完整SOURCE全部原义务闭合才勾本任务；失败回I，不冒整包或979验收pass。
+- 原状态：已勾 · **B-SOURCE-R｜M2-A｜owner_stage: review｜AC-04**：同树停写独立核本批AC/diff/反例/跨仓来源；可先逐四个IF核子面并按原phase fold正式交979，留API/grammar/闭包/后端与实测来源，完整SOURCE全部原义务闭合才勾本任务；失败回I，不冒整包或979验收pass。
 
-- [ ] **B-SESSION-I｜M2-A最小/B分波｜owner_stage: work｜AC-B-SESSION/AC-02/AC-03/AC-06**：按§5 SESSION替旧AutoVM为AV+typed宿主，保Tick/回调/资源/更新/停止恢复，补同PID body编辑cargo/rustc=0及坏编辑保旧用例；与RUST分写面并行，不手写Rust玩法。 按NODE-DESKTOP消费980的正式typed UI/事件/资源接口，建立V-DESKTOP-A；向1068交ABI与生命周期契约，不等待AC桌面。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A复用unit宿主/源并补最小资源/恢复；B接typed payload队列/dispatch_with_args的实际等价接口，沿967/968/970不造新FFI模型。
+- 原状态：待验 · **B-SESSION-I｜M2-A最小/B分波｜owner_stage: work｜AC-B-SESSION/AC-02/AC-03/AC-06**：按§5 SESSION替旧AutoVM为AV+typed宿主，保Tick/回调/资源/更新/停止恢复，补同PID body编辑cargo/rustc=0及坏编辑保旧用例；与RUST分写面并行，不手写Rust玩法。 按NODE-DESKTOP消费980的正式typed UI/事件/资源接口，建立V-DESKTOP-A；向1068交ABI与生命周期契约，不等待AC桌面。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A复用unit宿主/源并补最小资源/恢复；B接typed payload队列/dispatch_with_args的实际等价接口，沿967/968/970不造新FFI模型。
 
-- [ ] **B-SESSION-V｜M2-A最小/B分波｜owner_stage: work｜AC-B-SESSION**：运行V-B-SESSION及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A事件/关闭/错误真实验证不等B三件，B另核载荷值、世代/权限/所有权和恢复。
+- 原状态：待验 · **B-SESSION-V｜M2-A最小/B分波｜owner_stage: work｜AC-B-SESSION**：运行V-B-SESSION及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A事件/关闭/错误真实验证不等B三件，B另核载荷值、世代/权限/所有权和恢复。
 
-- [ ] **B-SESSION-R｜M2-A最小/B分波｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：IF-981-EVENT-A与B支持分件审查，不用I/语法替V；正式phase落主供下游。
+- 原状态：待验 · **B-SESSION-R｜M2-A最小/B分波｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：IF-981-EVENT-A与B支持分件审查，不用I/语法替V；正式phase落主供下游。
 
-- [ ] **B-RUST-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST/AC-02/AC-03/AC-06**：按§5 RUST接新A2R/provider与typed AGE静态宿主及978构建，语言owner关闭实际实例状态/初始化/调用的目标合法化缺口；建V-B-RUST和V-R-FAIL公共正反例，明确生成代码实际dispatch与禁VM验证；复用通用系统，与SESSION并行。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST/AC-02/AC-03/AC-06**：按§5 RUST接新A2R/provider与typed AGE静态宿主及978构建，语言owner关闭实际实例状态/初始化/调用的目标合法化缺口；建V-B-RUST和V-R-FAIL公共正反例，明确生成代码实际dispatch与禁VM验证；复用通用系统，与SESSION并行。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-RUST-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST**：运行V-B-RUST/V-R-FAIL公共部分和冻结语言职责并集，实际生成→编译→执行GPU/输入/音频；记录值/事件/资源、身份和故障恢复，emit-only或VM补逻辑不通过。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。 EVENT-SPLIT：完整本项为B-W3，不反置成MIN-A-AGE/A签章前置，旧真实rustc切片只复用原范围。
+- 原状态：待验 · **B-RUST-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST**：运行V-B-RUST/V-R-FAIL公共部分和冻结语言职责并集，实际生成→编译→执行GPU/输入/音频；记录值/事件/资源、身份和故障恢复，emit-only或VM补逻辑不通过。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。 EVENT-SPLIT：完整本项为B-W3，不反置成MIN-A-AGE/A签章前置，旧真实rustc切片只复用原范围。
 
-- [ ] **B-RUST-R｜M2-B-W3｜owner_stage: review｜AC-04**：同树停写独立核新A2R实际链、宿主资源/失败及无解释器执行证据，pass只关闭公共RUST批，不替两游戏。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST-R｜M2-B-W3｜owner_stage: review｜AC-04**：同树停写独立核新A2R实际链、宿主资源/失败及无解释器执行证据，pass只关闭公共RUST批，不替两游戏。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-LANGUAGE-I｜M2-A最小/B分波｜owner_stage: work｜AC-B-LANGUAGE/AC-02/AC-03/AC-06/AC-NODE-CHAIN/AC-HANDOFF**：继承SOURCE已交IF-981-REF/FIELDS的引用规则/完整构造表，按AGE-L01..05及AG-A01..09扩完整语法/AST/投影/consumer分母；复用979/980，接五view/选择/if/#if/Frame/新旧组件与完整可见性组合，先闭主时钟/挂载/策略决定；永久V-L-*源/命令/span/oracle冻结，不复制前端/控件库，不要求979归档才允许所需接口消费。 复用IF-980-NODE-DESKTOP-A，领域构造/源身份与AC移交沿NODE-DESKTOP；不另建UI执行线。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：承担§5三缺口的声明/handler保真、A拒绝/实际必需最小子面与B真实payload/绑定；复用#6i，不重开979。B producer可先phase交980，不能等其完整WEB/AV验收。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
+- 原状态：待验 · **B-LANGUAGE-I｜M2-A最小/B分波｜owner_stage: work｜AC-B-LANGUAGE/AC-02/AC-03/AC-06/AC-NODE-CHAIN/AC-HANDOFF**：继承SOURCE已交IF-981-REF/FIELDS的引用规则/完整构造表，按AGE-L01..05及AG-A01..09扩完整语法/AST/投影/consumer分母；复用979/980，接五view/选择/if/#if/Frame/新旧组件与完整可见性组合，先闭主时钟/挂载/策略决定；永久V-L-*源/命令/span/oracle冻结，不复制前端/控件库，不要求979归档才允许所需接口消费。 复用IF-980-NODE-DESKTOP-A，领域构造/源身份与AC移交沿NODE-DESKTOP；不另建UI执行线。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：承担§5三缺口的声明/handler保真、A拒绝/实际必需最小子面与B真实payload/绑定；复用#6i，不重开979。B producer可先phase交980，不能等其完整WEB/AV验收。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
 
-- [ ] **B-LANGUAGE-V｜M2-A最小/B分波｜owner_stage: work｜AC-B-LANGUAGE/AC-NODE-CHAIN**：A取最小SESSION及980已交正式A源，实跑本阶段适用V-B-LANGUAGE/V-L-*；B逐波补完整V，当前波后端对独立语义、资源、真实UI/图形oracle，核删除必需构造/后端腿负控；未决/缺环境保pending，不用游戏或最小view样本替代。 本批V-DESKTOP-A的所需入口/事件格必验，AC桌面只移交B，原AV/A2R完整语言范围保持。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：先按V-EVT-A-UNIT/ADMIT只验A真实所需，完整V-EVT-B-*在相应B波验；不得以V-B-RUST全量/980整包作A门。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
+- 原状态：待验 · **B-LANGUAGE-V｜M2-A最小/B分波｜owner_stage: work｜AC-B-LANGUAGE/AC-NODE-CHAIN**：A取最小SESSION及980已交正式A源，实跑本阶段适用V-B-LANGUAGE/V-L-*；B逐波补完整V，当前波后端对独立语义、资源、真实UI/图形oracle，核删除必需构造/后端腿负控；未决/缺环境保pending，不用游戏或最小view样本替代。 本批V-DESKTOP-A的所需入口/事件格必验，AC桌面只移交B，原AV/A2R完整语言范围保持。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：先按V-EVT-A-UNIT/ADMIT只验A真实所需，完整V-EVT-B-*在相应B波验；不得以V-B-RUST全量/980整包作A门。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
 
-- [ ] **B-LANGUAGE-R｜M2-A最小/B分波｜owner_stage: review｜AC-04**：同树停写独立逐AG-A/AGE-L/实际grammar与产品格核源码→受检语义→当前阶段/波后端→实际consumer（A只AV，B最终各端齐），核传统UI及多呈现/Frame/条件分期；缺任一必需格不能关闭，pass只关闭本批。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A/B分别核AC-EVENT-PHASE和正式来源，A phase不勾完整LANGUAGE。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
+- 原状态：待验 · **B-LANGUAGE-R｜M2-A最小/B分波｜owner_stage: review｜AC-04**：同树停写独立逐AG-A/AGE-L/实际grammar与产品格核源码→受检语义→当前阶段/波后端→实际consumer（A只AV，B最终各端齐），核传统UI及多呈现/Frame/条件分期；缺任一必需格不能关闭，pass只关闭本批。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A/B分别核AC-EVENT-PHASE和正式来源，A phase不勾完整LANGUAGE。 #6i身份：981 T-01/LANGUAGE[A]负责新旧grammar/Schema差额、原冻结测试与SDK/cache身份，先语义核准再维护期望；980供差额、985拒旧证，A必闭不等WEB全包。
 
-- [ ] **B-PROOF-I｜M2-A最小/B分波｜owner_stage: work｜AC-A-PROOF**：A用原showcase来源正常Node建立真实AV最小UI+2D+3D验证，B各波再补完整同源AV/AC/A2R组合，复用SOURCE/SESSION/RUST/LANGUAGE与renderer，冻结事件/帧/输入/更新及独立expected；不复制CONTENT的两完整游戏/全Gallery/编辑和离线包义务。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A只MIN-A-AGE AV组合，不要求完整RUST公共链/WEB/PARITY；实际源用到的事件能力仍须先真补。
+- 原状态：待验 · **B-PROOF-I｜M2-A最小/B分波｜owner_stage: work｜AC-A-PROOF**：A用原showcase来源正常Node建立真实AV最小UI+2D+3D验证，B各波再补完整同源AV/AC/A2R组合，复用SOURCE/SESSION/RUST/LANGUAGE与renderer，冻结事件/帧/输入/更新及独立expected；不复制CONTENT的两完整游戏/全Gallery/编辑和离线包义务。 按§5路径补永久fixture，冻结V-A-PROOF真实命令/输入与平台。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A只MIN-A-AGE AV组合，不要求完整RUST公共链/WEB/PARITY；实际源用到的事件能力仍须先真补。
 
-- [ ] **B-PROOF-V｜M2-A最小/B分波｜owner_stage: work｜AC-A-PROOF**：运行V-A-PROOF及完整受影响职责/必要consumer，记录两个局部实例事件2:1、Tick/Frame不随view倍增；真实GPU/输入/ROI与CPU状态一致，原span、坏更新保旧、关窗回收；headless或首帧不够。 核子终态与身份，未执行不PASS。 A桌面按980正式AV＋Rust FFI入口验；原已交A2R证据只复用其范围，新增完整图形A2R留W3、AC接入留W2，不反卡M2A-08。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A仅本阶段真实AV/UI-2D-3D及原错误/资源oracle，完整图形A2R留W3，普通语言/A2R原义务不取消。
+- 原状态：待验 · **B-PROOF-V｜M2-A最小/B分波｜owner_stage: work｜AC-A-PROOF**：运行V-A-PROOF及完整受影响职责/必要consumer，记录两个局部实例事件2:1、Tick/Frame不随view倍增；真实GPU/输入/ROI与CPU状态一致，原span、坏更新保旧、关窗回收；headless或首帧不够。 核子终态与身份，未执行不PASS。 A桌面按980正式AV＋Rust FFI入口验；原已交A2R证据只复用其范围，新增完整图形A2R留W3、AC接入留W2，不反卡M2A-08。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A仅本阶段真实AV/UI-2D-3D及原错误/资源oracle，完整图形A2R留W3，普通语言/A2R原义务不取消。
 
-- [ ] **B-PROOF-R｜M2-A最小/B分波｜owner_stage: review｜AC-A-PROOF**：停写后独立核本批全源路径/正反例/差额，绑定revision与SHA；owner按阶段fold正式合入后，才交985/A。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A真实组合＋EVENT-A独立复审/fold交985，不等M2A-08或980全包。
+- 原状态：待验 · **B-PROOF-R｜M2-A最小/B分波｜owner_stage: review｜AC-A-PROOF**：停写后独立核本批全源路径/正反例/差额，绑定revision与SHA；owner按阶段fold正式合入后，才交985/A。 本轮只将MIN-A-AGE AV子面交985/A，完整余量由V-AGE-WAVE在对应B波关闭；A部分R/fold不提前勾整任务，不等待RUST/PARITY/AC。 EVENT-SPLIT：A真实组合＋EVENT-A独立复审/fold交985，不等M2A-08或980全包。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
-### M2-B：全产品接管与完整收口
+#### M2-B：全产品接管与完整收口
 
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
-- [ ] **B-CONTENT-I｜M2-B｜owner_stage: work｜AC-B-CONTENT/AC-02/AC-03/AC-06**：按§5 CONTENT迁两游戏/Gallery/混合/全部profile至AV与新SDK，保编辑保存/SaveAs/搬迁/关开及旧间接链义务；按游戏提供同源AV收据，制品明确分型，不将AV包认A2R。
+- 原状态：待验 · **B-CONTENT-I｜M2-B｜owner_stage: work｜AC-B-CONTENT/AC-02/AC-03/AC-06**：按§5 CONTENT迁两游戏/Gallery/混合/全部profile至AV与新SDK，保编辑保存/SaveAs/搬迁/关开及旧间接链义务；按游戏提供同源AV收据，制品明确分型，不将AV包认A2R。
 
-- [ ] **B-CONTENT-V｜M2-B｜owner_stage: work｜AC-B-CONTENT**：运行V-B-CONTENT及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
+- 原状态：待验 · **B-CONTENT-V｜M2-B｜owner_stage: work｜AC-B-CONTENT**：运行V-B-CONTENT及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。
 
-- [ ] **B-CONTENT-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- 原状态：待验 · **B-CONTENT-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
 
-- [ ] **B-RUST2D-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST2D/AC-02/AC-03/AC-06**：消费RUST和原2D源/资源/已交工具，补既有verify/packager的新后端身份与V-R2-*、V-R-PACK/FAIL；真实A2R构建release并产最终exe+资源ZIP/来源/许可/说明，复用AG028而不重建玩法。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST2D-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST2D/AC-02/AC-03/AC-06**：消费RUST和原2D源/资源/已交工具，补既有verify/packager的新后端身份与V-R2-*、V-R-PACK/FAIL；真实A2R构建release并产最终exe+资源ZIP/来源/许可/说明，复用AG028而不重建玩法。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-RUST2D-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST2D**：对应AV证据齐后跑V-B-RUST2D及全部V-R2-*、共享V-R-PACK/FAIL的2D腿；逐原G2-01..09、独立oracle、仓外最终ZIP真实试玩/故障恢复、无VM执行逐项记录，缺条件保持pending。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST2D-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST2D**：对应AV证据齐后跑V-B-RUST2D及全部V-R2-*、共享V-R-PACK/FAIL的2D腿；逐原G2-01..09、独立oracle、仓外最终ZIP真实试玩/故障恢复、无VM执行逐项记录，缺条件保持pending。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-RUST2D-R｜M2-B-W3｜owner_stage: review｜AC-04**：同树停写独立核2D完整链和最终ZIP SHA，旧AG028/AV结果不替新A2R，全部必需格闭合才pass本批。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST2D-R｜M2-B-W3｜owner_stage: review｜AC-04**：同树停写独立核2D完整链和最终ZIP SHA，旧AG028/AV结果不替新A2R，全部必需格闭合才pass本批。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-RUST3D-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST3D/AC-02/AC-03/AC-06**：消费RUST和原3D源/资源/已交工具，补既有verify/packager的新后端身份与V-R3-*、V-R-PACK/FAIL；真实A2R构建release并产最终exe+资源ZIP/来源/许可/说明，保GLB纹理闭包；无需等2D验收完成。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST3D-I｜M2-B-W3｜owner_stage: work｜AC-B-RUST3D/AC-02/AC-03/AC-06**：消费RUST和原3D源/资源/已交工具，补既有verify/packager的新后端身份与V-R3-*、V-R-PACK/FAIL；真实A2R构建release并产最终exe+资源ZIP/来源/许可/说明，保GLB纹理闭包；无需等2D验收完成。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-RUST3D-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST3D**：对应AV证据齐后跑V-B-RUST3D及全部V-R3-*、共享V-R-PACK/FAIL的3D腿；逐原G3-01..08、独立oracle、仓外最终ZIP真实鼠标/键盘/音频和故障恢复，不能拿2D或headless绿替代。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST3D-V｜M2-B-W3｜owner_stage: work｜AC-B-RUST3D**：对应AV证据齐后跑V-B-RUST3D及全部V-R3-*、共享V-R-PACK/FAIL的3D腿；逐原G3-01..08、独立oracle、仓外最终ZIP真实鼠标/键盘/音频和故障恢复，不能拿2D或headless绿替代。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-RUST3D-R｜M2-B-W3｜owner_stage: review｜AC-04**：同树停写独立核3D完整链、相机/音画/资源闭包与最终ZIP SHA，所有必需格闭合才pass本批。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
+- 原状态：待验 · **B-RUST3D-R｜M2-B-W3｜owner_stage: review｜AC-04**：同树停写独立核3D完整链、相机/音画/资源闭包与最终ZIP SHA，所有必需格闭合才pass本批。 图形新增A2R实现/验证在UI-W2-AC正式后；旧已验A2R能力复用，完整包和原oracle不减。
 
-- [ ] **B-FUSION-I｜M2-B分波｜owner_stage: work｜AC-B-FUSION/AC-02/AC-03/AC-06**：承合并AGE M2融合线，依现有M1基础和980成熟接口接生产组件/主题/Node，保原兼容义务和direct/RQ/device/epoch/输入路由；不等待UI058/AG023或新增光影终验。按§5接永久fixture并冻结命令。 承接AC-NODE-DESKTOP，与1068/T-04按A期同版宿主接AC，建V-DESKTOP-AC；不等待1068全包或AAC完整代际。 AV/AC/A2R域格分别按W1/W2/W3协作，局部正式交接不等全包；整项最终才收全部。
+- 原状态：待验 · **B-FUSION-I｜M2-B分波｜owner_stage: work｜AC-B-FUSION/AC-02/AC-03/AC-06**：承合并AGE M2融合线，依现有M1基础和980成熟接口接生产组件/主题/Node，保原兼容义务和direct/RQ/device/epoch/输入路由；不等待UI058/AG023或新增光影终验。按§5接永久fixture并冻结命令。 承接AC-NODE-DESKTOP，与1068/T-04按A期同版宿主接AC，建V-DESKTOP-AC；不等待1068全包或AAC完整代际。 AV/AC/A2R域格分别按W1/W2/W3协作，局部正式交接不等全包；整项最终才收全部。
 
-- [ ] **B-FUSION-V｜M2-B分波｜owner_stage: work｜AC-B-FUSION**：运行V-B-FUSION及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 同时闭V-DESKTOP-AC适用真实AC窗口/域语义/事件/资源与负控，AV/A2R结果不能代替。 AV/AC/A2R域格分别按W1/W2/W3协作，局部正式交接不等全包；整项最终才收全部。
+- 原状态：待验 · **B-FUSION-V｜M2-B分波｜owner_stage: work｜AC-B-FUSION**：运行V-B-FUSION及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 同时闭V-DESKTOP-AC适用真实AC窗口/域语义/事件/资源与负控，AV/A2R结果不能代替。 AV/AC/A2R域格分别按W1/W2/W3协作，局部正式交接不等全包；整项最终才收全部。
 
-- [ ] **B-FUSION-R｜M2-B分波｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。 独立核真实AC guest dispatch及原三端域格，CPU/字节探针/旧A2R包不充本批AC。 AV/AC/A2R域格分别按W1/W2/W3协作，局部正式交接不等全包；整项最终才收全部。
+- 原状态：待验 · **B-FUSION-R｜M2-B分波｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。 独立核真实AC guest dispatch及原三端域格，CPU/字节探针/旧A2R包不充本批AC。 AV/AC/A2R域格分别按W1/W2/W3协作，局部正式交接不等全包；整项最终才收全部。
 
-- [ ] **B-AUDIT-I｜M2-B｜owner_stage: work｜AC-B-AUDIT/AC-02/AC-03/AC-06**：全旧消费者及全部十批新producer（AUDIT-I/V先核其余九批，含PROOF）/完整语言/传统UI/双后端/最终两ZIP逐项对账，补删除必需行负控；向985/986/987交候选/身份/实际证据，不以后继全生态门替本包AC。 新增AC正式consumer/后端/包身份映射由V-DESKTOP-AUDIT核，复用1068正式切片，不重复编译器/渲染系统。
+- 原状态：待验 · **B-AUDIT-I｜M2-B｜owner_stage: work｜AC-B-AUDIT/AC-02/AC-03/AC-06**：全旧消费者及全部十批新producer（AUDIT-I/V先核其余九批，含PROOF）/完整语言/传统UI/双后端/最终两ZIP逐项对账，补删除必需行负控；向985/986/987交候选/身份/实际证据，不以后继全生态门替本包AC。 新增AC正式consumer/后端/包身份映射由V-DESKTOP-AUDIT核，复用1068正式切片，不重复编译器/渲染系统。
 
-- [ ] **B-AUDIT-V｜M2-B｜owner_stage: work｜AC-B-AUDIT**：运行V-B-AUDIT及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 须闭V-DESKTOP-AUDIT，原双后端条款按r15补真实AC适用格；缺AC实现/领域产品证据不能pass。 同时核V-AGE-TRANSFER；原双后端表述按三端最终合同补齐AC，OS实际产品证据只消费OS064，不复制实现。
+- 原状态：待验 · **B-AUDIT-V｜M2-B｜owner_stage: work｜AC-B-AUDIT**：运行V-B-AUDIT及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 须闭V-DESKTOP-AUDIT，原双后端条款按r15补真实AC适用格；缺AC实现/领域产品证据不能pass。 同时核V-AGE-TRANSFER；原双后端表述按三端最终合同补齐AC，OS实际产品证据只消费OS064，不复制实现。
 
-- [ ] **B-AUDIT-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
+- 原状态：待验 · **B-AUDIT-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。
 
-- [ ] **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final，核遗漏/延期/组合、warning/fmt/debug及Spec增量，缺必需批收据不得pass。
+- 原状态：待验 · **T-05｜M2-B｜owner_stage: review｜AC-04**：全包独立final，核遗漏/延期/组合、warning/fmt/debug及Spec增量，缺必需批收据不得pass。
 
-- [ ] **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
+- 原状态：待验 · **T-06｜M2-B｜owner_stage: merge｜AC-05**：按owner依赖次序合入、落canonical并核实际消费者/接口同版本，全部齐才归档。
 
-- [ ] **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
+- 原状态：待验 · **T-07｜M2-B｜owner_stage: merge｜AC-05**：摘要折Plan，逐输出路径对账/删除scope/刷新retention，guard clean后清树；部分完成保留树。
 
 B收口：所有B work、原全产品/组合及A证据适用性齐→原全包独立review→正式合入/Spec/归档→输出对账/清理；各批R与全包final分别执行，不能只数批次替原AC。
 
-### 工作位置与材料
+#### 工作位置与材料
 
 
 
@@ -919,7 +975,7 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；B-SOURCE-I/B-SOURCE-V/B-SESSION-I/B-SESSION-V/B-RUST-I/B-RUST-V/B-LANGUAGE-I/B-LANGUAGE-V分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
-## 9. 复审记录
+### 原阶段收据
 
 ### 2026-11-19 stage: work（**on-if 组件面刀：组件事件体 if/let 开面**；用户排程⑤「010/005 暴露的组件事件体 if 语言缺口」，OK 后开工）| PLAN-981 r21 | outcome: **pass（两面文法+投影+AV 分支真值齐；窗口未合入声明在案）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `b574c550a`（=view-if 刀落主 tip） | code_commit `c80d39553`
 
