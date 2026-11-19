@@ -116,6 +116,8 @@ next_responsible_role: work（T-02 刀A 起）
 
 next_responsible_role: work（T-03 剩余：setup/watch/expose 核对与错误恢复面、旧新映射表落档、残余记账；随后 T-04 review）
 
+`stage: goal | plan_id: PLAN-1072 | plan_revision: r1 | round: 1 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1072/{auto-lang,auto-ui} @ plan-1072-dev | commits: lang 041148cc1（刀B）+ui 三提交（刀A/B/C）| 证据锚点: 005/010 整例翻转（bodies 6/3、absent=[]）+ 双产品浏览器档全绿 + ace-source PASS/ace-av 红全归因 | next: work（T-03 剩余+记账→T-04 review）`
+
 ## 10. 待澄清事项
 
 T-01 已核（§9 收据）：原用例位置/依赖接口/生产入口冻结完毕；005/010 墙与路由已勘定。遗留观察项：①auto-ui master 未提交 WIP（examples/stylekit、packages/themes `.at` 删除族）owner 未明——merge 落地前需路由，非本计划阻塞；②owned-wrap 统一（原 980 §10-1 谱系）与 #6p 分支内调用形承载随 T-02 残余记账按证据决策。
