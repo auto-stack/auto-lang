@@ -225,6 +225,8 @@ fn render_type(kind: &TypeRef) -> String {
         }
         TypeRef::ResultBang(inner) => format!("!{}", render_type(&inner.kind)),
         TypeRef::Stream(inner) => format!("~{}", render_type(&inner.kind)),
+        // PLAN-1080 加的推断占位（源拼写 `_`）——显示表按源拼写渲染。
+        TypeRef::Inferred => "_".to_string(),
     }
 }
 
