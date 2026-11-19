@@ -8,32 +8,15 @@ use std::process::Command;
 use ace_m2_build::driver::{M2Build, ProjectInputs};
 use ace_m2_build::identity::TargetKind;
 
-const SECTION_5_1: &str = r#"use.py torch: manual_seed, arange, ones
-use.py torch.nn: Linear, MSELoss
-use.py torch.optim: SGD
-
-fn main() int {
-    manual_seed(0)
-    var x = arange(8).reshape(4, 2) / 2
-    var target = ones(4, 1)
-    var model = Linear(2, 1, bias: false)
-    var loss_fn = MSELoss()
-    var optimizer = SGD(model.parameters(), lr: 0.1)
-    var step = 0
-    for step < 60 {
-        var prediction = model(x)
-        var loss = loss_fn(prediction, target)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        print(loss.to(float))
-        step = step + 1
-    }
-    var prediction = model(x)
-    print(prediction.shape)
-    print(prediction[0].to(float))
-    return 0
-}"#;
+/// The ONE shared PLAN-1107 corpus (byte-identical for every target; the
+/// AV/A2PY/m2-build lanes must never keep hand-written copies).
+fn section_5_1() -> String {
+    std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../../crates/auto-lang/test/cases/ace-m2/python-1107/pytorch_train.as"
+    ))
+    .expect("the shared PLAN-1107 corpus `pytorch_train.as`")
+}
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("p1107_m2_{name}_{}", std::process::id()));
@@ -82,7 +65,7 @@ fn p1107_t05_ac_build_a2py_use_py_project_runs_native_python() {
             ace_foreign_contract::manual::SOURCE_CAP.to_string(),
             ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
         ],
-        sources: vec![("main.at".to_string(), SECTION_5_1.to_string())],
+        sources: vec![("main.at".to_string(), section_5_1())],
         stdlib: Vec::new(),
     };
     let mut m2 = M2Build::new(&root.join("store"));
@@ -210,7 +193,7 @@ fn p1107_t05_sdk_use_py_project_runs_relocates_and_refuses_missing_artifact() {
             ace_foreign_contract::manual::SOURCE_CAP.to_string(),
             ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
         ],
-        sources: vec![("main.at".to_string(), SECTION_5_1.to_string())],
+        sources: vec![("main.at".to_string(), section_5_1())],
         stdlib: Vec::new(),
     };
     let mut m2 = M2Build::new(&root.join("store"));

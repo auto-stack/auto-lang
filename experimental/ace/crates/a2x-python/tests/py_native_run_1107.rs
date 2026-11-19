@@ -12,32 +12,15 @@ use ace_a2x_python::PythonTargetProvider;
 use ace_foreign_contract::manual::SOURCE_CAP;
 use ace_foreign_contract::resource::RESOURCE_CAP;
 
-const SECTION_5_1: &str = r#"use.py torch: manual_seed, arange, ones
-use.py torch.nn: Linear, MSELoss
-use.py torch.optim: SGD
-
-fn main() int {
-    manual_seed(0)
-    var x = arange(8).reshape(4, 2) / 2
-    var target = ones(4, 1)
-    var model = Linear(2, 1, bias: false)
-    var loss_fn = MSELoss()
-    var optimizer = SGD(model.parameters(), lr: 0.1)
-    var step = 0
-    for step < 60 {
-        var prediction = model(x)
-        var loss = loss_fn(prediction, target)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        print(loss.to(float))
-        step = step + 1
-    }
-    var prediction = model(x)
-    print(prediction.shape)
-    print(prediction[0].to(float))
-    return 0
-}"#;
+/// The ONE shared PLAN-1107 corpus (byte-identical for every target; the
+/// AV/A2PY/m2-build lanes must never keep hand-written copies).
+fn section_5_1() -> String {
+    std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../../crates/auto-lang/test/cases/ace-m2/python-1107/pytorch_train.as"
+    ))
+    .expect("the shared PLAN-1107 corpus `pytorch_train.as`")
+}
 
 fn scratch_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("p1107_a2py_{name}_{}", std::process::id()));
@@ -70,7 +53,7 @@ fn emit_fileset(dir: &PathBuf) -> Vec<String> {
     let contract = py_declaration_contract().expect("declaration contract");
     let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
     let compiled = ace_core::source::compile_aggregates_source_with_foreign(
-        SECTION_5_1,
+        &section_5_1(),
         "p1107-a2py.at",
         &caps,
         &contract,
