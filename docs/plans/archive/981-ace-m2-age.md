@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
 plan_revision: 22
-current_step: 8
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -864,7 +864,9 @@ cargo test -p ace-syntax-grammar                               # 45/45
   [✅ 已完成 2026-11-19] 用户确认按 r22「AGE Node 的 ACE 源与会话基础」范围归档；拆分合同+后继先落（`beaed1df2`）→终审/移交记录复核（7/9 勾、T-05 终审在位、移交表 7 行、后继 drafting）→本提交归档。canonical=`docs/specs/ace-migration/m2-age.md`（tracked，§1-4 随 d5f085aef 落主）；后继链接=1071/1074/1075/1076/1077（本拆建立）+1068/985（既有，1068 未跟踪待其 owner 落盘）；**剩余产品验收由后继计划继续承担**（用户口径）。
 
 
-- [ ] **T-07｜基础收口｜owner_stage: merge**。依项目规约完成证据摘要、输出对账、登记和 guard 后清理。
+- [x] **T-07｜基础收口｜owner_stage: merge**。依项目规约完成证据摘要、输出对账、登记和 guard 后清理。
+  [✅ 已完成 2026-11-19] 仅清 981 自有物（用户口径）：wt-guard 四树 clean→移除 lang-981 组全部（auto-lang/auto-down/auto-ui/auto-web 四 worktree+lang/ui 两 plan-981-dev 分支【33895d91c/aac407e6 均已并各 master，零未合提交】+组目录）；plan-artifacts/plan-981 整删（84M，证据已折叠进本计划 §9——merge 即全删裁定）；retention 登记核对=无 plan-981 scope/holds（未注册，无需刷新）；他会话 WIP/工作树零触碰。
+
 
 ## 9. 复审记录
 
@@ -1090,6 +1092,8 @@ stage: review | plan_id: PLAN-981 | plan_revision: r22 | outcome: pass（T-05 �
 **遗留具名**：010 `var faqs=[...]` 无类型列表字段（collections 域）；包版 SFC 控制流真复放+`n_assigns` census（1072）；981-B 余量见 985 B-pending 清单。**范围声明**：本归档覆盖 r22 基础范围（源与会话基础+已 fold 各刀）；产品验收义务全部随 §0 表由后继承担，不在本计划内灭失。
 
 stage: merge | plan_id: PLAN-981 | plan_revision: r22 | outcome: pass（archived 终态）| task_ids: T-06 | canonical: m2-age.md §1-4 | delivery_commit: 本提交 | next: T-07（清理：仅 981 自有 worktree/分支/plan-artifacts；wt-guard 前置）
+
+### 2026-11-19 stage: merge（**T-07 清理收口：PLAN-981 终态闭环 9/9**）| plan_id: PLAN-981 | plan_revision: r22 | outcome: **pass（cleaned）** | 清单：worktree×4（lang-981 组整组）、branch×2（plan-981-dev@lang=33895d91c / @auto-ui=aac407e6，均并 master）、plan-artifacts/plan-981（84M 整删）、组目录；guard=wt-guard 四树 clean 先行；登记=policy.json 无 981 scope/holds；边界=他会话 WIP 与工作树零触碰、后继计划文件全部保留在 docs/plans/。**PLAN-981 归档完成。**
 
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
