@@ -1001,6 +1001,18 @@ stage: merge | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: executi
 
 **T-BASE-ONIF 闭合（980→981 交接件落账，2026-11-19）**：980 侧 F-R21-2 双树验收收据（§9 handoff 段：auto-ui `7b8456e5`=master tip ff-only/主线 `391ffa54e`/并集树 `286ed0cb4` 双树 `plan980_package_sfc` 7/7+永久负例红相；完整包版控制流真复放与 `n_assigns` census 漂移归 1072 记账）接收在案——该收据+本段=fold 前置链 F-R21-2 关闭的全部工件（与 `c84f25cf4` 收据互证）。T-BASE-ONIF 全范围（F-R21-2 复核/F-R21-3 并集/冻结复验/独立复审/落主）由 r21 fold 链闭合，任务勾选随 §8 合同修订会话提交走。
 
+### 2026-11-19 stage: work（**T-BASE-RECEIPT 基础收据审计**：A 子面台账→实际代码/oracle/旧义务/985 接收三环对账）| plan_id: PLAN-981 | plan_revision: r22（合同修订会话 WIP 口径）| outcome: **pass（三环全绿，无阻塞缺件；一条仓标勘正+一条计数注记）** | worktree: 主检出审计（零代码改动；现行 master `7fc15205a`）
+
+**①实际代码版本（台账绑定 SHA 全量祖先核验）**。lang 侧 `24b4ba4a7`/`75015a49b`/`0b98c143b`/`230e4abc6`/`c286fb8d0`/`eb487f3cf`/`399edd447`/`ad7882cbe`/`6340934a1`/`0520c7f3b`+985 fold `95c7fbad8` 全 YES；auto-ui 侧 `771be6a9`/`9032d69c`/`15102c48`/`4c629db0`/`332ef407`/`0a87676b`/`1eb27697`/`ab6fff5c`/`658ad515`（985 r28 增补）全 YES。**勘正**：台账 B-LANGUAGE-V[A] 行 `c286fb8d0` 实为 lang、B-SESSION-I/V 行四 SHA 实为 auto-ui——仓标歧义非缺件，随合同修订会话提交勘正。
+
+**②独立 oracle/旧义务存续（当前 master 实跑）**：`plan981_` 全族 core **248/248**@0.84s + av **56/56**@0.34s（串行）——含 original_g01（SOURCE）、EVENT-B 显名族（`plan981_event_b` core+`plan981_event_b_av`）、EVENT-A 面（unit-消息族随 B-LANGUAGE-I 交付，在 model_handlers/msg_slot 内，全族绿覆盖）、W1 分组族（gfx_hooks/gfx_host/gfx_seam_av/cross_module_nodes/resource_ledger）、view-if/on-if/g2/grammar_scope。**注记**：985 r28 对账时 p981 全集 205 例→现 304 例（core+av），增量=view-if/on-if 等后续已 fold 批，**零丢失零红**（非对账漂移）。
+
+**③985 接收证据链**：r28（:1292）MIN-A-AGE 整体交接收（`e8d637bb9`/review-71 pass；绑定 revision 全落主核验；复跑 p981 205/205+PROOF A 4/4 判别绿）→ r29（:1302）**M2A-08 成立**（T-A05 fold `95c7fbad8`，canonical `m2-certification.md` 落主；981-B 余量具名列入 B-pending——W1/W3/EVENT-B 三件/D-981-PROOF-AV-SCENE 等，按 §0 移交表归后继）+ 980 B-AV-R W1 分组入账（`3047b3481`：G-INSTANCE/G-LIFECYCLE/G-VIEW 复放全绿收据在 980 §9）。
+
+**缺件处置**：无阻塞缺件；无需定向补验（三环证据齐）。next: T-05（基础收口独立 review——保留能力/原适用反例/联合交接/后继义务完整性）。
+
+stage: work | plan_id: PLAN-981 | plan_revision: r22 | task_ids: T-BASE-RECEIPT | outcome: pass（审计三环全绿）| code_commit: 零代码（主检出审计）| evidence: 本记录内嵌（SHA 清单/复放计数/985 收据行号）| blockers: 无 | next_responsible_role: review（T-05）
+
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
 **prepared**：复审 pass（reviewed_commit `ac1ae182c`）之上补 merge-owned 规范沉淀——`docs/specs/ace-migration/m2-age.md` **首个 phase 沉淀**（plan frontmatter 声明落点；两面文法臂+正式 grammar id `620a0f73…/`30834de6…`+age-h0 文法不可达根据、Cond 投影契约、两支平铺进 texts 绑定验证设计、`cond_spans` 描述事实、四观察入口 fail-closed+撤门条件、永久用例与变异判别力记录）——docs-only 后继（实现/依赖零改动，即 delivery 候选）`d91ac422d`。
