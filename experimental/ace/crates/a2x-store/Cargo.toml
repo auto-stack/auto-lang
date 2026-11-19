@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 ace-a2x-core = { path = "../a2x-core" }
 ace-core = { path = "../core" }
+ace-foreign-contract = { path = "../foreign-contract" }
 ace-artifacts = { path = "../artifacts" }
 ace-source-query = { path = "../source-query" }
 ace-semantics-contract = { path = "../semantics-contract" }

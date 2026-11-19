@@ -517,9 +517,16 @@ impl M2Build {
             ),
         }
         .map_err(|e| M2Reject::new("m2build.lane-a2x", e))?;
-        let assembly = session
-            .cold_assemble(src, true, &inputs.caps, &inputs.entry, false)
-            .map_err(|e| {
+        // PLAN-1107 T-05: a `use.py` project on the A2PY target compiles through
+        // the AGGREGATES surface with the neutral py declaration contract (the
+        // shared front door); every other lane keeps its frozen cold path.
+        let is_py_lane = matches!(target, TargetKind::A2py) && src.contains("use.py");
+        let assembly = if is_py_lane {
+            session.cold_assemble_py(src, &inputs.caps, &inputs.entry, false)
+        } else {
+            session.cold_assemble(src, true, &inputs.caps, &inputs.entry, false)
+        }
+        .map_err(|e| {
                 M2Reject::new(
                     "m2build.lane-a2x",
                     match &e {

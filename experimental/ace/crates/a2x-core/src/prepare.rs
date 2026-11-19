@@ -752,6 +752,11 @@ fn ser_expr(
                 // PLAN-968: scheduler intrinsic — the runtime call
                 // identity is its stable per-task symbol.
                 format!("sched:{sym}")
+            } else if let Some(sym) = view.py_symbol(target) {
+                // PLAN-1107 T-02: the py lane's extraction intrinsics are part
+                // of the checked body; their identity is the stable symbol
+                // (targets lower the OPERATION from the shared `py_ops` plan).
+                format!("py:{sym}")
             } else {
                 return Err(A2xReject::unsupported_expr("call target not admitted"));
             };

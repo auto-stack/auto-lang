@@ -1263,6 +1263,51 @@ impl A2xSession {
             .map_err(|e| e)
     }
 
+
+    /// PLAN-1107 T-05: the Python project lane — the AGGREGATES source surface
+    /// compiled through the ONE shared front door with the neutral Python op
+    /// declaration contract, then assembled by the session provider (the A2PY
+    /// target generates native Python; nothing is linked or executed here).
+    ///
+    /// Same compile/assemble pipeline as `cold_assemble_profile`, except that
+    /// the py declaration set is admitted (a `use.py` program cannot resolve
+    /// without it) and no retained resolve environment is published: a warm py
+    /// edit re-enters this cold path (V-06 owns incremental py edits).
+    pub fn cold_assemble_py(
+        &mut self,
+        src: &str,
+        caps: &[String],
+        entry: &str,
+        read_only: bool,
+    ) -> Result<Assembly, A2xRejectOrResource> {
+        self.profile = SourceProfile::Aggregates;
+        let mut all_caps: Vec<String> = caps.to_vec();
+        for cap in [
+            ace_foreign_contract::manual::SOURCE_CAP,
+            ace_foreign_contract::resource::RESOURCE_CAP,
+        ] {
+            if !all_caps.iter().any(|c| c == cap) {
+                all_caps.push(cap.to_string());
+            }
+        }
+        self.caps = all_caps.clone();
+        self.source_sha256 = Some(sha256_hex(src.as_bytes()));
+        self.ensure_target_supports()
+            .map_err(A2xRejectOrResource::Reject)?;
+        self.stats.parse += 1;
+        let contract = ace_foreign_contract::py_ops::language_contract()
+            .map_err(|e| A2xRejectOrResource::Reject(A2xReject::new("a2x.py-contract", e)))?;
+        let compiled = ace_core::source::compile_aggregates_source_with_foreign(
+            src, "a2x", &all_caps, &contract,
+        )
+        .map_err(|ds| {
+            A2xRejectOrResource::Reject(A2xReject::new("a2x.compile", render_diag(&ds)))
+        })?;
+        let view =
+            SemanticView::from_checked(&compiled.checked).map_err(A2xRejectOrResource::Reject)?;
+        self.stats.whole_fallback += 1;
+        self.assemble_from_view(&view, &compiled.input_hash, entry, src, read_only)
+    }
     /// Assemble from a view, reusing resident fragments and store hits;
     /// persists only what is new (§5.4 "未改函数生产/工件写入均0").
     fn assemble_from_view(
