@@ -512,6 +512,26 @@ Round 18 增量：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
 
+2026-11-20 · stage: work（round 19 · **V-03 对象身份/别名（两端）**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-03 部分 | outcome: pass（round 级）| next_responsible_role: work（V-03 余量判定）→ review/merge
+
+Round 19 增量：
+- 共享病例 `crates/auto-lang/test/cases/ace-m2/python-1107/identity_1107.at` + 独立参考 `identity_1107_ref.py`（Python 手写，不经 ACE）：
+  - **同一绑定身份稳定**：`id(t) - id(t) == 0`（经 f64 差异比较，避免 id 溢出 i32 或 py 对象 `==` 越出 v1 op 集）；
+  - **别名就地修改可见**：`t.fill_(3.0)` 后同一绑定的求和反映新值（6）；
+  - **派生张量是新对象**：`u = t.mul(1.0)` 与 `t` 的身份差非零；
+  - **同一张量两次传参**：`u.add(u)` 得 12（同一对象两次参与）；
+  - 源张量未被派生运算改变（t 仍为 6）。
+- 两端实测一致：AV `[6,1,1,12,6]`、A2PY `[6,1,1,12,6]`，均与 oracle 相同（`p1107_v03_identity_and_aliasing_via_av_session` / `..._matches_the_native_oracle`）。
+- 过程记录：id 值超过 i32 → `.to(int)` 触发 ForeignStatus（已改为差异比较）；py 对象 `==` 与 `.to(bool)` 不在 v1 op 集（真实差额，已按 v1 面改写而非放宽语义）。
+
+V-03 覆盖判定（诚实）：身份/别名/重复传参 ✔；资源/close（`py_alive`/`py_release`/`py_session_close`）由 1026 冻结用例覆盖 ✔；「显式 float 后 backward」由 V-01 六十次 `loss.to(float)`+`loss.backward()` 覆盖 ✔；**深拷贝错误控制与「错误转换后继续用」在 v1 源面不可表达**（无 catch、无 deepcopy 操作）——记为未执行/不适用，不充 PASS。
+
+证据：`cargo nextest -p ace-abi -E 'test(p1107_v03)'` PASS；`-p ace-a2x-python -E 'test(p1107_v03)'` PASS；组级 `cargo t ace-python` PASS、`cargo t ace-a2x` 仅预存 ts tripwire。
+
+余量：AC-04 的残余项按上判定（源面不可表达的负控）；A2PY 错误类映射；T-07 复审（含 SD 校验与 AC 勾稽）、T-08 合入清理。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -607,6 +627,26 @@ Round 18 增量：
 余量：V-03 真实用例（同一 Tensor 多次传递、别名修改、显式 float 后 backward、错误转换后继续、weakcopy 红控制、weakref/资源 trace 与 Auto finally），A2PY 错误类映射；随后 T-07 独立复审（含 SD 校验）、T-08 合入与清理。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
+
+2026-11-20 · stage: work（round 19 · **V-03 对象身份/别名（两端）**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-03 部分 | outcome: pass（round 级）| next_responsible_role: work（V-03 余量判定）→ review/merge
+
+Round 19 增量：
+- 共享病例 `crates/auto-lang/test/cases/ace-m2/python-1107/identity_1107.at` + 独立参考 `identity_1107_ref.py`（Python 手写，不经 ACE）：
+  - **同一绑定身份稳定**：`id(t) - id(t) == 0`（经 f64 差异比较，避免 id 溢出 i32 或 py 对象 `==` 越出 v1 op 集）；
+  - **别名就地修改可见**：`t.fill_(3.0)` 后同一绑定的求和反映新值（6）；
+  - **派生张量是新对象**：`u = t.mul(1.0)` 与 `t` 的身份差非零；
+  - **同一张量两次传参**：`u.add(u)` 得 12（同一对象两次参与）；
+  - 源张量未被派生运算改变（t 仍为 6）。
+- 两端实测一致：AV `[6,1,1,12,6]`、A2PY `[6,1,1,12,6]`，均与 oracle 相同（`p1107_v03_identity_and_aliasing_via_av_session` / `..._matches_the_native_oracle`）。
+- 过程记录：id 值超过 i32 → `.to(int)` 触发 ForeignStatus（已改为差异比较）；py 对象 `==` 与 `.to(bool)` 不在 v1 op 集（真实差额，已按 v1 面改写而非放宽语义）。
+
+V-03 覆盖判定（诚实）：身份/别名/重复传参 ✔；资源/close（`py_alive`/`py_release`/`py_session_close`）由 1026 冻结用例覆盖 ✔；「显式 float 后 backward」由 V-01 六十次 `loss.to(float)`+`loss.backward()` 覆盖 ✔；**深拷贝错误控制与「错误转换后继续用」在 v1 源面不可表达**（无 catch、无 deepcopy 操作）——记为未执行/不适用，不充 PASS。
+
+证据：`cargo nextest -p ace-abi -E 'test(p1107_v03)'` PASS；`-p ace-a2x-python -E 'test(p1107_v03)'` PASS；组级 `cargo t ace-python` PASS、`cargo t ace-a2x` 仅预存 ts tripwire。
+
+余量：AC-04 的残余项按上判定（源面不可表达的负控）；A2PY 错误类映射；T-07 复审（含 SD 校验与 AC 勾稽）、T-08 合入清理。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 ## 10. 待澄清事项
 
