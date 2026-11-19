@@ -1686,7 +1686,7 @@ runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang-ace-host", "--lib", "--tests", "--config-file", ".config/nextest-full.toml"]
 expression = "all()"
-tools = [, "collections-runtime"]
+tools = ["collections-runtime"]
 domain = "ace"
 all = false
 
