@@ -1,6 +1,9 @@
 //! V-13 性能证据（PLAN-787 T-07）：fresh/局部 edit/回退/重启小查询的原始读数
 //! （机器、提交、样本与 P50/P95/P99 分列；预热另列）。≥30 样本/场景；报告数值
 //! 由 verify 脚本采集进 docs/reports/plan787/matrix.md。
+/// PLAN-1098 T-03: the two formal timing cases live under \performance::\ so the
+/// ordinary groups never select them and \ce-perf\ is their only home.
+mod performance {
 
 use ace_syntax_grammar::compile as compile_grammar;
 use ace_syntax_runtime::edit::incremental_reparse;
@@ -204,4 +207,5 @@ fn perf_core_vs_legacy_parser_reference() {
         "PERF787-LEGACY doc={}KiB cst_fresh=({c50:.1},{c95:.1},{c99:.1})ms legacy_parser=({l50:.1},{l95:.1},{l99:.1})ms",
         text.len() >> 10
     );
+}
 }

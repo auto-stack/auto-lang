@@ -1194,6 +1194,27 @@ class PreparedRunGate(unittest.TestCase):
             self.assertIn('--prepare-only', str(caught.exception))
             execute.assert_not_called()
 
+class PerformanceSelection(unittest.TestCase):
+    """PLAN-1098 T-03: formal timing cases are selected by ace-perf only."""
+
+    def test_syntax_perf_cases_live_under_the_performance_module(self):
+        source = (ROOT / 'experimental/ace/crates/syntax-core/tests/cases/perf.rs').read_text(encoding='utf-8')
+        self.assertIn('mod performance {', source)
+        self.assertNotIn('mod perf {', source)
+
+    def test_ace_perf_is_the_only_positive_performance_selector(self):
+        value, groups = fixed.configuration()
+        positive = [g['name'] for g in groups.values()
+                    if g['expression'].strip() == 'test(/(^|::)performance::/)']
+        self.assertEqual(positive, ['ace-perf'])
+        for group in groups.values():
+            # Root-workspace ACE groups (ace-facade/ace-adapters) select all() by
+            # design and own no formal performance cases; the ACE workspace
+            # groups must exclude performance:: from their daily entry.
+            if (group['domain'] == 'ace' and group['runner'] == 'nextest'
+                    and group['workspace'] == 'experimental/ace' and group['name'] != 'ace-perf'):
+                self.assertIn('not test(/(^|::)performance::/)', group['expression'], group['name'])
+
 
 if __name__ == '__main__':
     unittest.main()
