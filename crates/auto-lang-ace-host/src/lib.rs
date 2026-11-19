@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use ace_av_core::av::{CancelFlag, ExecLimits};
-use ace_av_core::contract::{ExecOutcome, Value, fnv1a64};
+use ace_av_core::contract::{fnv1a64, ExecOutcome, Value};
 use ace_av_core::mir::MirModule;
 use ace_core::atom_text::Diagnostic;
 use ace_core::verify::CheckedModule;
@@ -543,8 +543,8 @@ fn lower_and_check_entry(
 pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
     use ace_core::source::cst::FrontBudget;
     use ace_core::source::packages::{
-        AssemblyBackend, PackageAssemblyContext, PackageModuleInput, ProviderChoice,
-        STDLIB_PACKAGE, STDLIB_VERSION, TargetOs, stdlib_sys_argv_process_source,
+        stdlib_sys_argv_process_source, AssemblyBackend, PackageAssemblyContext,
+        PackageModuleInput, ProviderChoice, TargetOs, STDLIB_PACKAGE, STDLIB_VERSION,
     };
     use ace_source_query::modules::packages::{
         assemble_package_inputs, compile_assembled_aggregates_inputs,
