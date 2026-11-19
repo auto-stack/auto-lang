@@ -5955,6 +5955,10 @@ fn resolve_fn_reuse<'a, 's>(
     } else {
         vt_of_ann(&f.ret, rec_index, diags)
     };
+    let nested_owner_name = nested
+        .sig_key
+        .clone()
+        .unwrap_or_else(|| f.name.name.clone());
     let mut r = FnResolver {
         sigs,
         trace_enabled,
@@ -5993,7 +5997,11 @@ fn resolve_fn_reuse<'a, 's>(
         iterate_targets: Vec::new(),
         for_latches: Vec::new(),
         shared_cell_spans: super::closure_capture::scan_shared_capture_cells(&f.params, &f.body),
-        owner_name: f.name.name.clone(),
+        // PLAN-1081 (T-07 F-1): a nested item's lambdas qualify their wire
+        // names with the MANGLED owner — same-name nested items under
+        // different owners would otherwise mint colliding
+        // `__closure_<bare>_<k>` defs (atom duplicate-id).
+        owner_name: nested_owner_name,
         closure_count: 0,
         lambda_sites,
         reuse,
