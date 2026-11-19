@@ -4,8 +4,8 @@ status: executing
 feature_name: 现有AutoUI全模式ACE兼容接入
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-18
-plan_revision: 18
+updated_at: 2026-11-19
+plan_revision: 19
 current_step: 12
 total_steps: 32
 depends_on: [PLAN-960, PLAN-963, PLAN-967, PLAN-968, PLAN-969, PLAN-972, PLAN-973, PLAN-976, PLAN-978, PLAN-979]
@@ -17,6 +17,8 @@ touched_goals: [GOAL-002]
 # [PLAN-980] 现有AutoUI全模式ACE兼容接入
 
 ## 0. 变更摘要
+
+2026-11-19 r19当前：新增 **PHASE-LAMBDA-IF（lambda-if 刀）**——§9 r18 边界②「005 lambda-if：文法臂已开（view-stmt 共用）但 lambda 投影仍 assigns-only+foreign——值函数铸造需结构化（下一小刀）」的用户指令收口阶段（2026-11-19 裁定：不另立新计划，直接入本包 phase；曾取号 PLAN-1071 同日撤销，`.next-id` 恢复 1071、无新计划文件落库）。设计/验证/验收/步骤见 §5/§6/§7/§8 新阶段块（非任务行，不改 32 任务/12 完成口径）。**零文法改动**（grammar-id 零漂移）、复用 on-if 五环 c/d/e 共享层；主战场=lambda 投影接线（`project.rs:5774-5792` 接 `project_view_stmt_children`+`Lambda` 增 `stmts`）+值函数铸造 If 递归降版+两个验证面深走查；lane/UI 侧预期零/近零产品代码改动（机理链假设，T-LIF-4 bounded probe 实证）。本轮仅规划落档（零代码/零建树/零运行/零合入）；原 AC/V 与规范主体不变。
 
 2026-11-18 r18当前：PHASE-④-EXT **七项裁定落档**（D-④-1=A 先行、D-④-2=开放符号表导入+981 会签、D-④-3=首切片保留宽数值拒绝、D-④-4=foreign AV 后置、D-④-5=TS 拒粒度维持、D-④-6=host 表不建、D-④-7=小范围验包绑定/保留作者语法）；**981 会签修正实施路径**（`81b0a03b1`：不开 age-component 面，多模块闭包走 `age-package`，age-component 单文件 `use` 改具名拒，硬条件=惰性导入，grammar 零改动），**用户复核接受并选 R1′**（先闭包→派生真实例→AV/SFC；表面补齐并行）；**④-A 首片 #1/#2a/#2b/#2c 全交**（点分 `use` 投影+引用驱动导入 lang `0db44dfdf`；AV 观察 `[4,2]`→`[20,10]`；包感知桌面桥+真窗 ui `145c4f13`；包片段 lane+同源 SFC script 段 ui `404dc442`）；**P3 `style` 会签材料已备**（126 行实测；style≡str const/fn；两值 grammar-id 影响；待 981 回签后落文法）。**U01 #14 已收口落主**（lang `95b0ccb49`/ui `91d549ea`）。32 任务/12 完成口径、原 AC/V 与规范主体不变。
 
@@ -141,6 +143,12 @@ Godot排除粒度是目标/consumer腿；同一旧源的普通Auto语义、AV/A2
 
 
 补读原冻结身份测试`experimental/ace/crates/core/tests/cases/plan981_grammar_scope.rs`，SHA256前16 `9bd4c795284c0da4`；属原SOURCE/LANGUAGE的防漂移用例，新增r41取材未运行或修改该文件。
+
+### 本轮 lambda-if 阶段修订的授权与取材（2026-11-19）
+
+用户指令（2026-11-19）：§9 r18 边界②「值函数铸造结构化=下一小刀」直接入 PLAN-980 新 phase，不另立新计划（已取号 PLAN-1071 同日撤销，`.next-id` 恢复 1071）。本轮=规划落档（§5/§6/§7/§8 阶段块+frontmatter r19），零代码/零建树/零运行/零合入；实施授权=本阶段块，执行沿唯一树 lang-980（worktree `D:/autostack/.wt/lang-980/{auto-lang,auto-ui}` @ plan-980-dev），材料入既有 `plan-artifacts/plan-980/` scope。
+
+取材全部 master 实测（lang `15cae2ded` / auto-ui master，2026-11-19）：文法 `experimental/ace/grammars/auto-source.at:578-592,1063-1068`（lambda 体=`list-nl age-view-stmt`，if 臂已共用——「文法臂已开」实证）；投影缺口 `cst/project.rs:5774-5792`（if 形落 foreign）；结构化投影器 `project.rs:7141-7199`（`project_view_if`/`project_view_stmt_children`，handler 面先例 `:6151-6199`）；铸造 `age_component.rs:1362-1409,2150-2260`（`collect_lambdas`/`lambda_value_fn` assigns-only）；深走查先例 `age_component.rs:1892-1916`（`walk_stmt_exprs`）；验证面消费者 `age_component.rs:1935-1965`（`validate_channel_value_use`）+ `cst/frontdoor.rs:1199`（`collect_item_exprs` Lambda 臂）；降版/发射 `a2x-ts lower/mod.rs:412`（`hir::Stmt::If` 臂）+ `fragment.rs:172`（`emit_stmt_fragment`）；lane `auto-ui crates/auto-ui-runtime/src/ui/ace_ts_provider.rs:492-660`（`stmt_fragments_in` 根块 If 整语句发射=on-if 刀 e 环已交、`lambda_fn_covering` 区间相交）+ `ace_vue_script.rs:688-780`（`lambda_body_regions`/`pair_lambda_regions`——括号深度配对天然容纳嵌套 if 大括号、mint 计数序失配全体缺席）。规范依据 `docs/specs/ace-migration/m2-autoui.md` §13.12（#6k 值函数道）。lane「零产品代码改动」为机理链**假设**，T-LIF-4 bounded probe 实证后方可当结论。
 
 ## 5. 详细设计
 
@@ -663,6 +671,30 @@ WEB/ARK原I任务消费976/AC-TS-CONSUMER及受检`ScriptArtifact`接口，先�
 4. 身份：更新 `plan981_grammar_scope.rs` 的 age-package 值与注释（前值 `0290d0ab…` → 新值），age-component 行不动；随提交附 13 邻居转储。
 5. 门禁：`cargo t ace-source ace-av`；981 复跑冻结测试。
 
+### PHASE-LAMBDA-IF：view 内联 lambda 值函数铸造结构化（2026-11-19 用户指令刀；r18 边界②收口）
+
+**定位。** view 内联 lambda `() => { … }` 的值函数铸造（`__age_vl_<seq>`，#6k 交付）现只收平铺赋值；体含 `if`（`age-view-if-stmt` 臂，on-if 刀已开、lambda 体共用 `age-view-stmt` 文法）时投影层落 `foreign=true` → 值函数不铸 → lane 缺席（旧道承载）。本刀=该面 **assigns-only → 结构化语句面**（If/Assign 序保持）；落成翻转 005 语料 `oninput: () => { if … }` 族 lane 全派生。
+
+**五环复用矩阵（现状全部 master 实测，见 §4 本轮取材）。**
+
+| 环 | 现状 | 本刀 |
+|---|---|---|
+| a 文法 | lambda 体=`list-nl age-view-stmt`（`auto-source.at:1063-1068`），if 臂已共用（:591） | **零改动**；grammar-id 冻结断言 |
+| b′ 投影 | lambda 只解 `field` 臂，if 形落 foreign（`project.rs:5774-5792`）；结构化投影器已在（:7141-7199） | 接 `project_view_stmt_children`（channel_names 传空——call 形统一置 foreign 与 #6p 合同一致）；`ComponentEntryValue::Lambda` 增 `stmts: Vec<ComponentStmt>`（镜像 `ComponentHandler.stmts` 先例），`assigns` 保深平铺兼容（`flatten_stmt_assigns`） |
+| 铸造 | `collect_lambdas`/`lambda_value_fn` assigns-only（`age_component.rs:1362-1409,2155-2260`） | 收 stmts 面；`lambda_value_fn` 增 `If` 递归降版 `Stmt::If`（镜像 `hook_stmts_lower` If 臂分支快照语义；lambda 无形参/无 let ⇒ 无 scope 需求；`Assign` 保持既有 `rename_expr` 路径**不改发射文本**）；DFS 计数序/字段 init let/return 首字段/`__age_vl_` 保留名均不动 |
+| c/d 降版/发射 | a2x-ts If 臂（`lower/mod.rs:412`）+ `emit_stmt_fragment`（`fragment.rs:172`） | 复用，零改动 |
+| e lane/UI | `stmt_fragments_in` 根块 If 整语句发射（on-if e 环已交）、`lambda_fn_covering` 区间相交、`pair_lambda_regions` 括号配对 | 预期**零/近零产品代码改动**（假设）；T-LIF-4 bounded probe 实证三点：①配对成功（mint 计数序不变）②`lambda_fn_covering` 命中（If cond/RHS 与区间相交）③If 整语句发射+宿主映射/临时名改号不破 |
+
+**验证面深走查。** `validate_channel_value_use`（`age_component.rs:1935-1965`）与 frontdoor `collect_item_exprs` Lambda 臂（`frontdoor.rs:1199`）从平铺 assigns 改 stmts 深走查（If cond + 分支赋值 RHS——通道值位置拒/前门表达式收集覆盖分支内）；共享助手复用/镜像 `walk_stmt_exprs`（:1892）。`field_manifest.rs:382` 只计数、ops=lambda 不进 ops（既定合同）——均不受影响。
+
+**合同不变项（非目标显名）。** 调用形 lambda 仍 foreign 不铸（#6p）；view-stmt `let` 仍拒（G2 负控合同）；单行多语句形=`list-nl` 既定边界；lambda 赋值 owned-transfer wrap 语义保持现状（与 handler 面 `wrap_owned_transfer` 差异记为具名边界，T-LIF-5 用例如实钉 str 字段行为，异常按证据定修/记账）；条件渲染语义（m2-age §3 撤门条件）owner 另属；既有 assigns-only lambda 发射文本逐字节不变（兼容面）。
+
+**规范增量（沿 §5 规范增量机制，交付后沉淀）。**
+
+| delta_id | add/modify/retire | target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LAMBDA-IF | modify | `m2-autoui.md` §13.12（沿原 owner） | before：值函数道 assigns-only（非赋值体=foreign 不铸）；after：结构化（Assign/If 序保持）铸造+If 整语句进 lane 发射；调用形仍 foreign | 005 lambda-if 族翻转；r18 边界②收口 | AC-LIF-01..06 |
+
 ## 6. 测试设计
 ### V-AGE-CAP-HANDOFF（新增分阶段控制，原V全部保留）
 
@@ -780,6 +812,20 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 拟补波次case由B-AV-I/B-RUST-I建在原测试owner，沿现有TestCase/固定组，不造新tm或每波新runner。AV用ace-source/ace-av/ace-host/ace-abi/ace-foreign-contract等真实职责和受影响UI `--features ace-bridge`命名target；AC归1068，A2R到W3才跑图形生成编译端。GPU窗口单实例，AG只受影响命名例；Linux/perf原条件不变。旧表V-UI-FULL/V-B-NATIVE/V-NODE-DESKTOP-*覆盖完整U组，在B按当前波执行；不是A全量门。各I读真实CLI/help冻结参数，不虚构新后端选择已存在。
 
+### V-LAMBDA-IF（lambda-if 刀；拟实施，未执行）
+
+**不变量**：①序保持（if 前后赋值源序不重排）；②fail-closed 不部分体（调用形 lambda 不铸）；③grammar-id 零漂移（零文法改动）；④既有 assigns-only lambda 发射文本不变（兼容面）。正例形：bare if / if-else / else-if 链 / 嵌套 / if+赋值混合序 / view-if Cond 子树内 lambda（DFS 序）。负例形：调用形 lambda（仍缺席）、未声明字段（具名拒）、cond 未绑定名（verify 红）、`let`（文法拒）。
+
+| V | 入口 | oracle |
+|---|---|---|
+| lang core 永久 `plan980_lambda_if.rs`（注册随 `plan980_view_if` 先例） | 组件面入口 | 铸造名 `__age_vl_<n>` 逐条、HIR 含 `Stmt::If`（cond/分支）、序断言、负控三形、深嵌/else 链 |
+| av `plan980_web_6p_channel_call.rs` 既有 foreign-lambda 负控 | 不变 | 仍绿（调用形仍拒——用例不破的判别点） |
+| UI `p980_lambda_if_lane`（ace_ts_provider） | 产品出口 SFC 生成 | lane 派生非缺席、拼接体含 `if (…) {…} else {…}` 文本（a2x 形）、宿主映射过语句文本、缺席清单不含目标；调用形缺席保持 |
+| UI 浏览器排窗档（`AUTO_UI_ACE_WEB_E2E=1`，镜像 `p980_web_lambda_browser_mount`） | 真挂载 | if 分支行为可判（条件翻转两分支 DOM 效果） |
+| 005 真源 lane 对账 | 既有语料 rig | lambda-if 族缺席翻转；**整例残墙如实归名（不承诺）**；census 具名修订行 |
+
+门禁：lang `cargo t ace-source`（grammar-id 冻结+core case）+ 触面组按 `cargo t --list` 实名选定；UI `cargo test -p auto-ui-runtime --test ace_ts_provider`（+ `plan980_package_sfc`/`p980_web_lambda_origin` 回归）。探针/语料日志入 `plan-artifacts/plan-980/`（沿既有 scope），merge 折叠摘要。
+
 ## 7. 验收标准
 
 - [ ] **AC-AGE-CAP-HANDOFF / work**：V-AGE-CAP-HANDOFF及§5本包实际producer/consumer逐cap义务闭合；UI三波与新图形cap来源分开、无循环、原验收不减，新cap不成为985/A新增前置。阶段R/fold不冒整包final。
@@ -833,6 +879,18 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 
 
 
+### PHASE-LAMBDA-IF 验收（owner_stage 按行；待实施，当前不得勾 PASS）
+
+| ID | owner_stage | 可观察标准 | 验证 |
+|---|---|---|---|
+| AC-LIF-01 | work | if 形 lambda 投影结构化 stmts（bare/else 链/嵌套/混合序）+assigns 深平铺兼容面保持 | `plan980_lambda_if` + 既有 core case 绿 |
+| AC-LIF-02 | work | `__age_vl_<seq>` 铸造含 If（HIR `Stmt::If`→a2x-ts 全链）；lane 整语句发射 if/else 宿主文本 | `p980_lambda_if_lane` + 浏览器排窗档 |
+| AC-LIF-03 | work | 负控合同不变：调用形 lambda 仍不铸（具名缺席）、未声明字段具名拒、let 文法拒、通道值位置拒覆盖分支内 | 负控用例 + `plan980_web_6p_channel_call` 全绿 |
+| AC-LIF-04 | work | grammar-id 零漂移（零文法文件改动，diff 自证+冻结面绿） | `cargo t ace-source` |
+| AC-LIF-05 | review | 既有永久用例零回归（`plan980_view_if`/`plan980_on_if`、`p980_web_lambda_origin` 002 e2e、981 冻结、ace_ts_provider 全量）；既有 lambda 发射文本不变 | 冻结门重放 |
+| AC-LIF-06 | review | 005 语料 lambda-if 族 lane 翻转实测记账（absent 变化+census 修订行）；整例残墙如实归名 | 语料 rig 对账 |
+| AC-LIF-07 | merge | SD-LAMBDA-IF 落 `m2-autoui.md` §13.12；收据入 §9；plan-artifacts 清理+收尾路径对账 | merge 流程 |
+
 ## 8. 执行步骤
 
 当前共32任务，已完成12项（B-NATIVE-I/V/R r13 批已复核勾选）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
@@ -842,6 +900,12 @@ GPU/窗口单实例，未来按明确授权排窗；纯文档本轮不运行。�
 - 依据与内容：§5 PHASE-④-EXT（外部名域合同：名面 N1–N4、六轴、承载矩阵、三方案、条款 C1–C8）+ §5 裁定落档/执行顺序 + ④-A 首切片合同 v1；owner_stage: design→executing（裁定后）。
 - 现状（2026-11-18）：**七项裁定已落**；①U01 #14 **已收口落主**（lang `95b0ccb49`/ui `91d549ea`，phase fold #14，见 §9）；②④-A：981 已会签（合同 v2，`81b0a03b1`），用户选 **R1′**（先闭包、派生真实例、表面补齐并行）；**首片 #1 已交**（点分 `use` 投影 + 引用驱动导入，lang `0db44dfdf`，四判据绿）——**下一步=AV 真窗 + 同源 SFC**；③UI058 T-02/981 联冻与包面表面补齐为并行线。
 - 退出：④-A 首切片收据（含 AV 真窗与 SFC 映射两格由"推论"变"已验"）→ 逐示例扩展；原任务/AC 不变，切片仍走 §9 收据+phase fold。
+
+### 阶段 PHASE-LAMBDA-IF（2026-11-19 新增；非任务行，不改 32 任务/12 完成口径）
+
+- 依据与内容：§5 PHASE-LAMBDA-IF（r18 边界②收口：lambda 投影结构化 + 值函数铸造 If 递归降版 + 验证面深走查；五环 a/c/d 零改动、e 复用实证）；owner_stage: work→review→merge 按切片。
+- 步骤（切片序，收据入 §9，phase fold 沿例）：**T-LIF-1** 投影结构化（`Lambda` 增 `stmts`+接线 `project_view_stmt_children`+深平铺）→ **T-LIF-2** 铸造结构化（`collect_lambdas`/`lambda_value_fn` If 递归降版）→ **T-LIF-3** 验证面深走查（`validate_channel_value_use`/frontdoor `collect_item_exprs`）→ **T-LIF-4** UI bounded probe（零改动假设实证：配对/区间发现/整语句发射三点；小缺口刀内修、跨域缺口具名拒不冒闭）→ **T-LIF-5** 永久用例（lang `plan980_lambda_if` + UI `p980_lambda_if_lane` + 浏览器排窗档）→ **T-LIF-6** 005 语料对账 + census 具名修订 → **T-LIF-7** 独立复审/冻结门/merge（SD-LAMBDA-IF 沉淀、收尾对账）。
+- 退出：AC-LIF-01..07 齐（005 lambda-if 族翻转或残墙具名归档）；原任务/AC 不变；实施沿唯一树 lang-980（plan-980-dev），材料入 `plan-artifacts/plan-980/`。
 
 ### A最小与B各波唯一任务清单（阶段按行标签）
 
@@ -1816,7 +1880,9 @@ cargo test -p auto-ui-runtime --features ace-bridge --test ace_node_desktop -- -
 
 **验收与门禁。** core `plan980_on_if` **4**（结构化投影/else-if 链/分支内调用 foreign/Str==str 编译放行）+grammar_scope 4/4+G2 修订控 2/2；UI `p980_on_if_param_handler_if_body_derives_structured`（a2x_str_eq 条件+if 分支+宿主映射）；实测 **SetTheme 形 bodies=1/absent=[]**（010 语料形状）。冻结门：ace-av **1412/1414**（仅 host_console×2=预存 A/B 实证）；ace-source 首跑红=G2 负控（合同冲突预期内，已按新合同修订后绿）；ace_ts_provider **25/25**、census 稳定、UI 五套 13/13、主树复验全绿。
 
-**边界（诚实）。** ①**010 整例翻转仍压 faqs 无类型列表字段**（collections 域——SetTheme/SetAccent 形已就绪）；②**005 lambda-if**：文法臂已开（view-stmt 共用）但 lambda 投影仍 assigns-only+foreign——值函数铸造需结构化（下一小刀）；③分支内调用形=body_foreign（通道调用承载归 #6p 谱系后续）。
+**边界（诚实）。** ①**010 整例翻转仍压 faqs 无类型列表字段**（collections 域——SetTheme/SetAccent 形已就绪）；②**005 lambda-if**：文法臂已开（view-stmt 共用）但 lambda 投影仍 assigns-only+foreign——值函数铸造需结构化（下一小刀→**r19 已立 PHASE-LAMBDA-IF 承接，见 §5/§8**）；③分支内调用形=body_foreign（通道调用承载归 #6p 谱系后续）。
+
+2026-11-19 stage: new（**PHASE-LAMBDA-IF 规划落档**；r18 边界②「下一小刀」按用户裁定入本包 phase，不另立新计划）| plan_id: PLAN-980 | plan_revision: r19 | outcome: pass（阶段合同就绪待实施；§5 设计/§6 V-LAMBDA-IF/§7 AC-LIF-01..07/§8 T-LIF-1..7）| 取材：§4 本轮授权小节（全 master 实测 file:line；五环 a/c/d 零改动与 e 已交实证、lane 零改动列为假设待 T-LIF-4）| 簿记：曾取号 PLAN-1071 同日撤销（`a66e8daae` reset，`.next-id` 恢复 1071，无新计划文件落库）| 本轮零代码/零建树/零运行/零合入 | next: work（T-LIF-1 起，唯一树 lang-980 @ plan-980-dev）。
 
 ## 10. 待澄清事项
 ## 10. 待澄清事项
