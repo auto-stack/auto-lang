@@ -292,13 +292,15 @@ fn located_rejection_battery() {
         decode(&afterprose, "x.case.ad").is_err(),
         "attrs after prose rejected"
     );
-    // Console recipe needs both streams.
+    // PLAN-1078 (user ruling): the console family defaults an OMITTED
+    // stdout/stderr to a zero-byte expectation at load time — omission is
+    // no longer an error (explicit streams still compare as written).
     let nostream =
         case_doc("\n### Probe c\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nexit: 0\n");
-    assert!(
-        decode(&nostream, "x.case.ad").is_err(),
-        "console needs stdout+stderr"
-    );
+    let cases = decode(&nostream, "x.case.ad").expect("omitted streams default to zero bytes");
+    let check = &cases[0].spec.checks[0];
+    assert_eq!(check.expect.stdout.as_ref().unwrap().text, "");
+    assert_eq!(check.expect.stderr.as_ref().unwrap().text, "");
     // Console entry must be d_main.
     let badentry = case_doc(
         "\n### Probe c\nrecipe: \"ac-av/console-run-v1\"\nentry: \"main\"\nexit: 0\n\n#### stdout\n\n```text\n1\n```\n\n#### stderr\n\n```text\n```\n",
