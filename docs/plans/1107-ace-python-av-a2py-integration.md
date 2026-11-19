@@ -224,6 +224,7 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
   - owner_stage: work；前置：T-01、IF-AV/IF-PY-SEM就绪。
   - 修改现有`core/source`/共享受检事实与`a2x-core`实际owner，形成有来源的Python操作/参数/类型/效果与资源消费，不复制解析/类型或接管1094的AV通用语义修复。
   - [round 2 进展] 事实层已落地并提交 `c454eba02`（`ace_core::py_ops` + resolve 记录 + `CheckedModule::py_ops` + `SemanticView::py_ops()`；AV 帧/字节码未改）；证据 `cargo nextest … -E 'test(p1107_t02)'` 5/5、`cargo test -p ace-core --lib py_ops` 4/4、`cargo t ace-python` PASS。**未关闭**：A2PY 侧的准入/编译面（声明级 foreign supply）与 V-02/04/08 真跑仍待做。
+  - [round 3 进展] A2PY 准入面完成并提交 `6f307e2b9`：中立 py op 契约 `ace_foreign_contract::py_ops`（17 op 表 + 声明级准入 `language_contract()`，无 PyO3/provider）+ AV provider 源迁至 `crates/foreign-contract/py/py_bridge_provider.rs` + A2PY 侧 `use.py` 可编译并经 `SemanticView` 取得同一事实（`py_defs` 仅在 plan 在场时收 `__py_f64_bits`/`__py_staged_text`）。**未关闭**：T-03 原生 lowering 与 V 例。
   - [T-01 已冻结的入口] 方案 A：resolve/HIR 一处产出结构化 py-op 事实（op 种类、receiver、成员名、位置/命名实参、效果/值域、span），随 CheckedModule 携带并经 `SemanticView` 暴露（形态参照 `body_facts`/`foreign_resource_plan`，`a2x-core/src/semantic_view.rs:542-643`）；AV 侧继续产出既有 `p967.frame/1` 调用（ABI/字节码身份零变化），A2PY lowering 用同一事实生成原生 Python。py op 的冻结清单与 provider 声明（`crates/abi/rustside/py_bridge.rs` 的 17 个 `auto-ffi` 行）必须由目标中立来源承载并与真实 manifest 做一致性断言，禁止 A2PY 用 ctypes 包装 py 声明（现 `provider.rs:57-65` 会静默生成坏 wrapper）。
   - 关闭：V-02/04/08及共享完整职责组；AC-01/03/04。
 - [ ] T-03 扩展现有A2PY互操作
@@ -274,6 +275,20 @@ T-02 增量（真实执行，冻结提交 `c454eba02`，树内 clean）：新增
 未决（下一 round）：A2PY 编译面仍不接受 `use.py`（Scalar profile + 无 foreign 准入），`AdmittedForeign` 依赖 host authority/pages，声明级（无 PyO3/symbols）准入路径待定；选定后 T-03 才能用事实 lowering 出原生 Python。本 round 未跑 V-02/04/08，不记 PASS。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: c454eba02 | next: work`
+
+2026-11-20 · stage: work（round 3）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `6f307e2b9` | task_ids: T-02 准入面完成（T-02 仍待 T-03 消费与 V 例）| outcome: pass（round 级）| next_responsible_role: work（T-03 原生 Python lowering）
+
+Round 3 增量（冻结提交 `6f307e2b9`，树内 clean）：
+- **中立声明契约**：新增 `ace_foreign_contract::py_ops` —— 17 项冻结 py op 表（name/symbol/fallible+状态码/纯形）+ `language_manifest()` + **声明级准入** `language_contract()`（供 A2PY 使用：无 PyO3、无 provider 二进制、无符号解析；`available_symbols` 即生成运行时的自身实现，身份字段全部由表派生）。这是计划 §8 T-02“目标中立来源承载 py op 清单”的落地。
+- **AV provider 源中立化**：`crates/abi/rustside/py_bridge.rs` → `crates/foreign-contract/py/py_bridge_provider.rs`（内容零改动，git 检测为 rename；abi `include_str!` 改路径）。AV 仍从该源派生其真实 provider manifest/会话，行为不变。
+- **A2PY 准入面**：`ace_a2x_python::py_contract` 暴露中立契约；A2X 视图在**只有 py-op plan 在场**时收 `__py_f64_bits`/`__py_staged_text`（`py_defs`/`py_symbol`，其余模块仍按旧诊断拒绝）；`use.py` 源可在 A2PY 侧完成 parse→front door→resolve→verify→`SemanticView`。
+- **一致性**：abi 测试把中立表与实时 provider 声明逐字段绑定（name/provider/logical form/status table/resource params+form）；`PY_OP_NAMES` 与两侧一致。
+
+证据：`cargo nextest -p ace-a2x-python -E 'test(a2py_)'` 2/2 PASS（§5.1 在 A2PY 侧编译+视图成立；未知成员仍 `source.undefined` 拒绝）；`cargo test -p ace-foreign-contract --lib py_ops` 2/2；`cargo nextest -p ace-abi -E 'test(p1107_t02)'` 6/6（含中立↔provider 一致性）；`cargo t ace-python` PASS 10/10、`cargo t ace-m2-build` PASS；`cargo t ace-a2x` 295/296，唯一 FAIL 为 **预存红**：`ace-a2x-ts ports::tests::canonical_fingerprint_is_stable_and_binds_runtime_sha`（共享 port 表 72 vs 断言 71；主检出 master 同红，代码面与本计划无关，交该 tripwire owner，不改期望值）。
+
+未决（下一 round）：A2PY provider 仍把 py 声明当 ctypes 包装（`provider.rs:57-65`）且无原生 lowering——T-03 需按 `py_ops` 事实发射原生 Python（含转换/错误/资源/print/main），并让 `ac-build --target a2py` 真跑 §5.1。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 6f307e2b9 | next: work`
 
 ## 10. 待澄清事项
 
