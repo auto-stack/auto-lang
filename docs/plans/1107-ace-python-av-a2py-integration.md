@@ -401,6 +401,17 @@ Round 11 增量：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 11 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
+2026-11-20 · stage: work（round 12 · **AV 缺陷第二层定位**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: 无实现改动（本轮仅定位）| task_ids: V-02 AV 缺陷定位（归 AV/1094 owner）| outcome: pass（round 级）| next_responsible_role: AV owner / work（其他任务）
+
+Round 12 增量（无实现提交；探针已删除，树内 clean）：
+- 对 round 11 的最小失败程序（4 个 `use.py` 成员 + 3 个绑定方法局部 + py 转换打印）做了 HIR/MIR 层对比：
+  - 失败与通过变体在**受检 HIR 里都恰有 1 条 console print**，在**lowering 后的 MIR 里也都有 1 条** console op —— 故缺陷不在 resolve、不在 HIR→MIR lowering。
+  - 差异只出现在 MIR 体积上：失败变体比“少一个 append”的通过变体大约多 5 KB（49496 vs 44207/44317 字节 debug 文本），提示该形态下有额外/重复的帧构造表达式；运行期仍 `Success` 且 stdout 为空。
+  - 结论收窄：缺陷位于 **AV 执行侧的 ABC/foreign 准入或 console host 接线**（或其与多 foreign 调用的寄存器/槽交互），不在共享语义与 lowering。复现用例保持 `#[ignore]` 具名，交 AV/1094 owner；1107 不在共享层为 AV 私有执行路径打补丁。
+- 影响不变：AC-03/V-02 AV 腿未关闭；A2PY 腿已独立成立（同源输出与 oracle 一致）。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
