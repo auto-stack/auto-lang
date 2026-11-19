@@ -1,0 +1,1125 @@
+---
+plan_id: PLAN-1098
+status: archived
+feature_name: ACE日常回归用途与成本重整
+author: [Codex]
+created_at: 2026-11-19
+updated_at: 2026-11-19
+
+plan_revision: 1
+depends_on: []
+supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/ace-regular-test-budget.md, docs/specs/auto-test-case/ace-cost-attribution.md, docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md, docs/specs/auto-test-case/test-purpose-and-admission.md]
+new_spec_components: [docs/specs/auto-test-case/ace-toolchain-certification.md]
+touched_goals: []
+
+affects: [auto-test-case, auto-ac, auto-av, auto-syntax]
+current_step: 0
+total_steps: 11
+---
+
+# [PLAN-1098] ACE日常回归用途与成本重整
+
+## 0. 变更摘要
+
+承接2026-11-19的ACE Rust测试调查，治理普通正确性测试中的成本与用途混杂：正式性能测试漏归属、测试体补构建/release路径、低效夹具、观察型探针、跨工具链全链认证，以及宿主与语料入口的重复执行。**本稿只规划；没有执行本计划的测试、迁移、分流或入口切换。**
+
+范围以真实ACE职责组为入口，已有47项AV慢例逐项列入§5.3；不将4,464个Rust测试全部改写成AutoDown。公共语言源码与预期适合文档化；非法IR、协议负控、缓存身份、资源/回滚状态继续由真实Rust测试保护。目标是快速发现特性间副作用，文件格式不是日常准入依据。
+
+八阶段、11任务：冻结用途/成本 → 准备与运行分离 → 性能归属和夹具优化 → 探针固化 → 工具链分流和宿主消重 → 预算检查和逐组验收 → 独立复审 → 合入沉淀。各阶段保原义务映射，不以删断言、缩冻结规模、批量ignore或拆一分钟碎组达标。
+
+## 1. 目标
+
+1. 对每条被修改、替换、合并或移出的回归义务记录实际旧身份、独立oracle、适用条件、新入口及关闭证据。内部单测和必要真实接缝继续保护未来修改。
+2. 日常执行消费明确准备的debug/test产物；缺失/陈旧产物明确失败，不自动补Cargo/依赖构建、release构建和外部Rust/C认证编译。真实Auto前端、MIR/ABC、AV及native codegen/link本体仍可作为被测功能执行并计时。
+3. 完整普通职责组目标≤60秒、验收上限≤120秒。本计划新增的每个原生test/文档check≤10.000秒；已知47项中继续留日常的完整原生test也优化到≤10秒，不能只看内部某小段。
+4. 正式采样/冻结压力归`ace-perf`；外部工具链认证有独立显式入口；临时探针转有效断言或逐项具名退出日常。普通正确性慢例优先优化，不能按耗时改称性能测试。
+
+非目标：动态叶目录/消费者图、全仓自动挑测试、重新实施1066、批量重写公共AutoDown作者、修改auto-musk技能、启动WSL/Linux/VM、实现1017已推迟的CLIF/binder/closure产品算法优化、给每个计划附加全ACE/全PERF门。
+
+## 2. 架构方案
+
+复用固定组、`scripts/fixed-tests.py`、`scripts/test-governance/prepare_tools.py`、nextest和`ace_cost_report.py`。用途审查是可追溯的维护结论，不变成另一套执行注册表。
+
+| 运行面 | 选择与职责 |
+|---|---|
+| 普通完整职责组 | 快速正确性、非法输入、小规模资源边界、生命周期、协议负控、必要真实接缝；只消费已准备产物 |
+| `ace-perf`（已有） | `::performance::`、原串行profile/平台/ignore/样本/尺度/阈值，保正式计量合同 |
+| `ace-toolchain`（已落地） | 显式固定组，`all=false`，不被`ace`/日常/`all`隐含选择；真实rustc/C编译、多端完整compile/run及其负控；依赖仍先准备。**最终 24 个日常常规组包含它**；`ace-host-suites`（原始套件重放）与 `ace-perf` 为显式组，`ace-workspace`/`ace-facade`/`ace-adapters` 为聚合组 |
+| research（逐项裁决） | 具名手工入口或转为有oracle的日常例；不充日常覆盖 |
+| Linux（1061/1063所有权） | Windows零原生Linux执行、零WSL；本包保持隔离，不代签原生Linux验收 |
+
+`ace-toolchain`尚不存在，由T-06交付；不吞并已有`a2r-compile`的250项legacy专项。原各后端源码、provider、输出、产物、条件、reference与证书义务保全；AV成功或Rust emit金样不能代签真compile/run。真实修改触及对应生成器/ABI/工具链时，必要消费者验证仍须显式选该组，不成为每Plan固定收尾。
+
+拟在同一固定驱动增加`--prepare-only`、`--run-prepared <manifest>`：前者准备所选完整调用的工具/测试二进制，后者只验身份并运行。T-01须核安装版nextest的实际二进制/归档复用接口；不能假定某个`--no-build`选项存在。不建第二runner、逐叶新鲜度或自动依赖图。
+
+交付后普通`cargo t <ACE组>`/`cargo t ace`默认也只能消费本树匹配的准备收据；找不到时返回具名PREPARATION_REQUIRED并给显式准备命令，**不能只增加可选run-prepared而让原日常入口继续lazy build**。显式传manifest可消除候选歧义。非ACE组原选择/执行行为不因本包改变；混合调用须在ACE准备失败时停止相应调用并保真实失败，不用其他组成功冲销。兼容命令的行为变更须在SD-01/说明中写明。
+
+## 3. 技术栈与工作位置
+
+Rust既有ACE测试、Python驱动/成本报告、nextest原结构化终态及Windows Job观测。常规准备debug/test增量；四个no_std运行时保必要panic-abort的`runtime-dev`，不改成release或破坏链接ABI。
+
+未来唯一实施树`D:/autostack/.wt/lang-1098/auto-lang`、分支`plan-1098-dev`，本轮不创建。兄弟依赖用同组真实worktree，不建链接。材料唯一scope=`D:/autostack/plan-artifacts/plan-1098/`，开工登记owner/用途/路径/可删缓存；代码、编译与测试仅在实施树，计划簿记留主检出。纯规划临时分析在系统临时目录。
+
+## 4. 需求分析与背景调查
+
+### 4.1 授权、规范和并行边界
+
+用户已授权新建详细计划，**先只规划**；未授权实施、跑新成本基线、切组或合入。`stage:new pass`只是规划合同自检，不是开工许可。
+
+**2026-11-19T14:43 授权更新（goal 授予，覆盖上述"仅规划"状态）**：用户在本仓新会话直接下达 `/goal 完成计划1098`（goal id `goal-b63fa353-…`，objective `完成计划1098`，max rounds 256）。按 `auto-plan-goal` 规约，该 goal 即整链授权：在 T-01 指定树内实施、独立复审、限额内返修、以及在最终 `pass` 绑定当前 revision/提交后合入沉淀。授权**不**包含：改变目标/验收/阈值/兼容承诺/仓范围/预算、绕过 worktree 与证据政策、无最终 pass 强行合入。计划范围、AC-01…12、§5 逐行义务与 §7 验收均不变。
+
+已读`docs/specs/overview.md`及下述固定组/预算/成本/性能/用途Specs。1017、1060、1066已归档，通过当前Specs继承约束，不重开旧计划；1060的21组/71个case入口、1017的94项S0为历史分母，不冒当前枚举。
+
+| 并行/前序计划 | 衔接与边界 |
+|---|---|
+| 1061/1063 Linux | 不等Linux环境即可做Windows部分；不重复建设Linux设施。若普通组仍触发WSL，须在运行前拦住并协调1061最小Windows隔离切片；解决前该组未执行/裁定排除，不跑WSL后称达标，不阻无关组 |
+| 1078、1079–1096、1068 | 共享AutoDown作者和多后端选择正在规划。本包可先治理成本；公共语言语料消费已交接口或登记具体迁移owner，不另建后端作者副本，不假称拟议fixture/adapter已实现 |
+| 1072等在途产品计划 | T-01重冻源码/工具/config，协调同文件写窗，不借其在途产物/目录作本包证据，不撤其产品回归达标 |
+| 1017后继产品优化 | 不提前实施已推迟算法改造。确无等价测试优化仍无法达预算时，具名记录未完成与最小修订，不自动放宽预算或移PERF |
+
+### 4.2 已观测分母、成本和来源
+
+调查基面`54ed8a4ca6aa28bea169b7d665c012b0a5ff3dd5`；当时ACE源码/固定驱动无工作区修改。其他会话的文档WIP与根目录临时`.rs`不在本包写集/测试分母。
+
+静态扫描已跟踪`experimental/ace`：1,012个Rust文件，651个含测试，31包共4,464个`#[test]`声明（av 1,319/core 905/native 359/abi 312/a2x-worker 290/conformance 198）。排除注释/字符串伪声明；宏/cfg/target/ignore仍需真实发现。**声明数不是实际执行数，也不表示已逐例裁决用途。**
+
+当前`domain=ace`为27个nextest/2个Python/73个case组。27中含外部`ase-m0`和显式PERF，剩25个ACE常规组含聚合`ace-workspace`。本包单组预算基线为**24个非聚合常规组**，另列聚合成本；不混用1066历史76全仓case组与当前73个ACE域组。
+
+11月19日14:10已有收据，只作成本排序，不作本包当前通过证据：
+
+| 记录 | 观测 | 边界 |
+|---|---|---|
+| lang-1072 `run-0xx9ddgf` | ace-source 919执行，整命令6.730秒，PASS | 大量内部回归可很快；非本包通过 |
+| `run-8iqbutj5` | source+av总964.829秒：工具构建796.700、发现/准备80.117、执行86.972、残差1.040 | 本次工具准备主导，不能推论每轮相同；残差不冒已测清理 |
+| 该次AV | 1,428执行，运行80.966秒，47项>10秒，2项失败 | 并行item时间不求和当整墙；不是PASS |
+
+原失败身份：`host_console::av_console_entry_selection_cannot_bypass_main_policy`、`host_console::av_console_owned_front_door_enforces_console_entry_only`。T-01核归属；首红/重放分列，本包新红必须修复，外部旧红具名移交，不改expected/ignore掩盖，不用成本绿代功能绿。
+
+run根=`D:/autostack/.wt/lang-1072/auto-lang/target/test-groups/`；`run-8iqbutj5` source_state=`3376df0c13ea20907aedeb2ee03bd99fd7f60ea489faaeccca8fe0102cb90c2f`；config=`090c0e71021f8cd283c2142a1456bc263c5229236d7ac48e37b01b9139635c68`。两份results.json SHA256按上述顺序为`c3a5907f0c92da261b55fa943b6e72d95d12c8e9e690fc5827eb595eec27357d`、`bdee19a19f2dcc3c1df779284a0c4d4fa329fd3c8612ae3688c50e97b34aed8f`。他计划清理路径后T-01仍须从实际源码/新run重冻，不能依赖材料永久留存。
+
+### 4.3 来源指纹与已证差异
+
+| 源码/规范 | SHA256（规划时） |
+|---|---|
+| `docs/specs/auto-test-case/module-selection.md` | `134dcebc4b7456fd1d8f3ef2a7c216247efcb13c7c5bc32009975d5ee514288b` |
+| `docs/specs/auto-test-case/ace-regular-test-budget.md` | `942077bcdda21052be7c817a2e4afdf83d3c36ae062db14358a8fa6bc845d464` |
+| `docs/specs/auto-test-case/ace-cost-attribution.md` | `d5c19ea912dfd5f2b0488b907ecc4418d6ccfcd77916b13ca5b1e167e9520b93` |
+| `docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md` | `10c02ac2bf21e67005720c661ec8fe958355bf0f39173de42ce7494009f5ae66` |
+| `docs/specs/auto-test-case/test-purpose-and-admission.md` | `c08df670e8e21ccf8daf2516f798aa50fa293da1ae452762a0dd3bb5d0c8fe76` |
+| `docs/design/testing/ace-feature-organized-autodown-corpus.md` | `9c02d5b393e6c55b24de9ce86dc19cf83f6ffbff50a1d5e94289710654d9ae50` |
+| `scripts/fixed-tests.py` | `379df21c3414fe47f194aa2ff621b5a50afbf7ff014e7b960e7b45d277d31d78` |
+| `scripts/test-governance/prepare_tools.py` | `e043fd2c5068f193c2bbce306d66af3e7e65300f84bedff0ab1cc9b6ce17f5bc` |
+| `scripts/test-governance/toolchains.json` | `177710e13656ddd4f2d2ba1a25662916f23a062c15a9b639df85fb5131b764ba` |
+
+已证：`mod perf`与`performance::`过滤不符；native缺库补Cargo；Rust lowering缺env补release；MIR夹具7万次线性intern；部分探针两分支都打印即绿。需纠正调查推断：core/common的runtime-release helper目前只查到同文件内部引用，不可宣称已导致日常构建；现有prepare_tools已有同身份复用，796.7秒不代表每轮重复冷构建；固定驱动已有完整配置key的OR去重，不能再按组名猜重复。
+
+T-01优先只读既有收据/配置/源码。确需新发现时仅显式debug/test准备，不走旧自动release工具准备；可比的“优化前”夹具/用例计时在T-02准备边界落地后，以同debug配置重放旧夹具形成，不能拿旧release工具时间冒debug A/B收益。
+
+## 5. 详细设计
+
+### 5.1 用途与义务守恒
+
+对所有活跃包/target/模块家族作用途核查；对本包全部改动行、47项、实施新发现>10秒项、补构建路径与无oracle路径逐个记录。其余未逐例人工评审的行记“家族核查、原态保留”，不充逐例日常准入结论。
+
+| 类型 | 已核实际例子（`experimental/ace/`前缀） | 保留的长期义务 |
+|---|---|---|
+| Auto行为/诊断 | `crates/core/tests/cases/scalar_source.rs::{scalar_positive_corpus_compiles,scalar_negative_matrix}` | 9普通正例+2能力例、19诊断输入的profile/domain/capability/code/span；公共输入与内部断言分工，不因Rust载体误删 |
+| 非法IR/坏包 | `crates/av-core/src/compact_abc.rs::av_wire_corrupt_sections_and_opcode_rejected` | 截断/重复/重叠/缺段/非法opcode受控拒绝，保持Rust直接造坏包 |
+| 生命周期 | `crates/av-core/src/av.rs::{av_borrow_rejects_expired_frame_and_slot_generation,av_orphaned_env_cleanup_releases_in_reverse_order}` | 过期frame/slot代际与最后owner释放/释放顺序，小规模日常保留 |
+| 缓存/事务 | `crates/native/src/typed_session.rs::{audit1032_ntx_02_batch_failure_is_atomic,audit1032_ntx_02_signature_change_pulls_real_dependents}` | 失败保旧与真实依赖拉取，不能只看最终值 |
+| 恢复/租约 | `crates/source-query/src/modules/persistence.rs::candidate_cancellation_and_actual_root_publication_failure_preserve_old_recovery`；`crates/artifacts/tests/cases/leased_publication.rs::leased_put_and_owned_root_retirement_preserve_readers_and_other_projects` | 取消/发布失败后下一次恢复、旧reader/其他project根不误删、最后释放后回收；留真实小store |
+| 框架/协议 | `tests/conformance/tests/console.rs`三流、版本stale、Skip、NUL测试 | 错预期必须判失败、缺轴不能绿、真实运输不能全换mock |
+| 工具链认证 | §5.3 C类和`host/rust_lowering.rs`认证两例 | 真compile/run、独立reference/oracle、provider/证书，显式专项保全 |
+| 正式性能/开发探针 | §5.2 P类/O类 | 原正式采样尺度不缩；观察型转独立oracle或有据research，不按名字批量退役 |
+
+逐义务记录：审计ID、旧package/target/full_test或Case/check、源码、原选择/平台/ignore、输入闭包/逻辑路径/入口/能力/预算、独立预期与断言角色、消费者、新用途/入口、拆分合并映射、负控、完整前后item时间/来源、owner/状态。一个test含多个角色时逐角色守恒，canonical执行数另列。材料表只放本包scope，耐久关键对照折回本计划/Spec，不建立自动执行侧表。
+
+### 5.2 已确认问题逐项合同
+
+下表路径除特别说明均以`experimental/ace/`为根，执行按完整原生身份而非行号绑定。
+
+| ID | 实际路径/符号 | 拟优化/分流 | 必须保留的义务与关闭条件 |
+|---|---|---|---|
+| P-01 | `crates/syntax-core/tests/cases/perf.rs::perf_fresh_parse_and_incremental_and_restart_query` | `tests/conformance.rs`的`mod perf`改真正`performance::`选择面 | N=32、3预热、8,000声明、fresh/增量/回退/重启场景和原读数；普通0选择、PERF唯一选择 |
+| P-02 | 同文件`perf_core_vs_legacy_parser_reference` | 同上 | 6,000函数、CST/legacy两链、32样本与P50/P95/P99，不只留下一个parser |
+| B-01 | `crates/native/tests/common/mod.rs::trace_support_lib`及`common/collections.rs`库helper | 缺库Cargo分支改消费预建manifest | 真实trace/collections ABI、capability、hash、link/run与错库拒绝；缺/坏产物不得补构建 |
+| B-02 | `crates/case-worker/tests/cases/backend.rs::trace_support_library_travels_to_the_mn_link` | 缺库Cargo移显式准备，保原测试 | exit=12、stderr=`ba`的参数求值顺序，真实支持库进link；缺库是infra失败 |
+| B-03 | `tests/conformance/tests/host/rust_lowering.rs::{a2r_hir_first_case_green,maintenance_build_worker}` | 删缺`AC_A2X_HIR_WORKER`时release构建，统一预建 | 5项daily语料原输出/缺口判决、worker身份；无env不回落旧release/相对路径 |
+| B-04 | `crates/core/tests/common/mod.rs::{text_runtime_lib,text_runtime_pair_copy,text_runtime_sha}` | T-01核可达，无消费者则清死helper，有则读预建runtime-dev | 有消费者时保runtime契约/23符号/hash/sidecar变异；死代码清理不冒实测收益 |
+| B-05 | `scripts/test-governance/toolchains.json`的`av/batch-av/av-regular/ac/mn/mn-collections/cte/abi/sema/a2x`当前profile=release，`text-runtime/data-runtime`当前runtime-release | 普通常规准备改debug/runtime-dev并核所有消费路径；case-parent/trace-runtime/execution-fixture原合理profile保留。正式PERF原工具profile单独绑定用途，不和日常收据串用 | 不只禁止测试体release却让显式日常准备继续release；worker协议、静态库ABI/sidecar/hash与批次feature保持。普通/正式用途profile差异进入收据身份及输出路径，不改原PERF输入/样本/执行profile |
+| F-01 | `crates/av/tests/cases/mir_tier.rs::mir_admission_module_tables_over_budget_is_resource` | 夹具线性构造7万常量，避逐次线性intern，不改产品语义 | 7万个不同I32、模块表门及精确Resource(TableEntries)；合法邻例和关闭资源门负控；不能缩成7千 |
+| F-02 | `crates/av/tests/cases/sched_m2_968.rs::ok`全部调用者 | 一次run同时核exit/stdout；必要确定性角色另保最小双run | compile→lower→verify→ABC→scheduler真实链；所有原exit/stdout/拒绝；双run角色比较真实两次outcome/流，不能删后冒已验 |
+| O-01 | `crates/av/tests/cases/p946_t01_probe.rs::p946_empty_remove_contract_observed` | 按当前List空remove合同固定精确trap/value/code，去两分支打印即绿 | 错结果必红，预期来自独立合同，不自动录制当前值 |
+| O-02 | `crates/av/tests/cases/probe972.rs::probe972_t02_str_surface` | 六子场景各有值/诊断oracle，公共语料衔接1078 | str等/拼接、char比较/码点、slice/len_bytes、char_at均独立判决，不只不panic |
+| O-03 | 同文件`probe972_p1b2_closure_param_frozen_rejection` | 核闭包参数现行支持；仍拒则精确阶段/code，已支持转正例 | 不能任意Err即绿，不能旧缺口阻挡已批准能力 |
+| O-04 | 同文件`probe972_p1c_suffix_list_public_frozen_rejection` | 核List公共参数suffix装配合同，同上 | 成功绑定执行或指定诊断；语法错误不能冒原准入拒绝 |
+| O-05 | `p946_t01_probe.rs::p946_list_argument_moves_single_module` | 保返回22断言，额外cap观察段强化或具名移research | 不因有打印删掉整个有效例；值与cap隔离角色分别可追溯 |
+| H-01 | `tests/conformance/tests/console.rs::console_real_corpus_and_stale_identity` | 对照`case-ace-m1-console-863`15项；完整语言语料保case组，宿主留最小真实身份见证 | 15项语言义务不丢；av-profile/mir-lowering轴、fresh→改轴stale真实worker观察；不能伪造结果替代 |
+| H-02 | 同文件`{console_three_oracle_axes_fail_independently_and_missing_axes_error,console_skip_remains_skip_and_never_creates_a_green_observation}` | 比较层能复用纯输入的复用，真实运输保最小例 | stdout/stderr/exit各错独立Fail并指向本轴；三种缺轴Error；Skip无native/绿结果，原6变异角色不丢。至少一条真实worker响应同时携带三轴，强制错/漏运输轴也必须被parent拒绝；不得只在假响应里证明比较器正确 |
+| H-03 | 同文件`console_nul_bytes_survive_worker_transport_and_parent_judgement` | 保最小真实跨进程例 | NUL原始字节跨transport/parent保持，不能用mock代签 |
+| H-04 | `tests/conformance/tests/host/rust_lowering.rs::{a2r_hir_tampered_golden_is_red,a2r_hir_missing_worker_is_infra_error,a2r_hir_worker_credential_pin}` | 便宜emit/坏golden/缺工具/身份负控保普通 | 错golden真红、缺worker infra、身份正确；不改Skip/准备成功 |
+| H-05 | 同文件`{a2r_hir_certify_leg_all_cases_pass,a2r_hir_certify_negative_controls_reject}` | 显式`ace-toolchain` | family每个actual/reference真实执行、cert_sha256、原120秒/leg、错oracle14→15和错reference拒绝全保；旧认证预算不是新增例豁免 |
+| H-06 | `scripts/fixed-tests.py::invocations`，host/console/rust-lowering/batch | 复用完整key的OR并集，只合兼容准备 | host+console同key不重复；host/rust-lowering工具key不同不强合，batch feature不同独立；零选择不PASS |
+
+### 5.3 已知47项AV慢例
+
+历史完整test墙钟见下，统一原生前缀`ace-av::conformance$`、源码`experimental/ace/crates/av/tests/cases/<模块>.rs`。每行内部子角色由T-01展开，不把47行当全部oracle数量。
+
+处置代码：**C**=日常保AV/内部廉价接缝，外部compile/run保原输入/多端/独立oracle移显式`ace-toolchain`，不进PERF；**D**=日常正确性留原组，优化重复装配/I/O/准备，不改语义/失败义务；**R**=资源/身份/恢复反控留日常优先修夹具，原冻结规模不减，只有原合同确属正式采样/压力者可据证移PERF，普通大正确性不新建慢例收容组；**Q**=先区分计时/尺度实验与正确性，只有正式采样/冻结压力归PERF，不能因慢改用途；**L**=Linux目标绑定行，核1061/1063所有权，当前bind/cold link不含Linux运行，不能冒原生LinuxPASS。
+
+| ID | 实际原生项 / 源码定位 | 历史秒 | 保留的回归义务 | 方案 |
+|---|---|---:|---|---|
+| S-01 | `bstr_1064::bstr_1064_v_d09_file_read_bytes_cross_end`（`bstr_1064.rs:968`） | 69.958 | 空/二进制/缺文件read_bytes的Option与字节内容、AV/A2R/A2PY独立结果 | C |
+| S-02 | `kv_zip_1064::v03_zip_plan897_and_btypes_av`（`kv_zip_1064.rs:618`） | 51.688 | ZIP原资产、ASCII/CJK/动态deflate与BTYPE=00内容、读取预算边界 | D |
+| S-03 | `bstr_1064::bstr_1064_v_codec_five_ends`（`bstr_1064.rs:696`） | 43.781 | 原codec合法/非法输入在AV/native/C/Rust/Python的各自结果 | C |
+| S-04 | `resources_tier::av_turnaround_six_scenarios_smoke`（`resources_tier.rs:806`） | 42.960 | 六场景、原3样本、真实hit/miss、冲突诊断、body edit不同修订身份 | Q |
+| S-05 | `bstr_1064::bstr_1064_t01_longest_chain_probe`（`bstr_1064.rs:73`） | 41.758 | 1024/4096/8192成功与16384 InstrSteps资源结果、原每段10秒门 | R |
+| S-06 | `stdlib_asm_972::stdlib_asm_972_cross_end_gaps_and_a2r_math`（`stdlib_asm_972.rs:288`） | 38.324 | 装配缺口判决及真实A2R数学行为，不只生成文件 | C |
+| S-07 | `kv_zip_1064::v03_kv_a2r_roundtrip_and_budget_4096`（`kv_zip_1064.rs:494`） | 33.775 | A2R KV roundtrip、4096边界、原最终ACE-KV/1磁盘字节 | C |
+| S-08 | `kv_zip_1064::v03_zip_a2r_roundtrip_and_budget`（`kv_zip_1064.rs:866`） | 33.414 | A2R ZIP合法内容/预算及真实编译执行 | C |
+| S-09 | `kv_zip_1064::v03_zip_a2py_roundtrip_and_budget`（`kv_zip_1064.rs:871`） | 33.149 | Python ZIP合法内容/预算及真实执行 | C |
+| S-10 | `kv_zip_1064::v03_kv_a2py_roundtrip_and_budget_4096`（`kv_zip_1064.rs:499`） | 31.159 | Python KV roundtrip、4096边界及磁盘字节 | C |
+| S-11 | `mir_tier::mir_admission_module_tables_over_budget_is_resource`（`mir_tier.rs:91`） | 30.228 | 7万不同常量、精确TableEntries资源拒绝，保合法邻例 | R |
+| S-12 | `stdlib_sys_973::sys973_a2r_real_rustc_leg`（`stdlib_sys_973.rs:608`） | 28.293 | 原sys系统接口源码的真实rustc编译/运行与独立结果 | C |
+| S-13 | `kv_zip_1064::v03_kv_wire_oracle_and_reopen_av`（`kv_zip_1064.rs:221`） | 26.976 | 独立ACE-KV/1字节、run=100/reopen=200、清空后头字节、无临时残留 | D |
+| S-14 | `stdlib_sys_973::sys973_a2py_real_python_leg`（`stdlib_sys_973.rs:701`） | 26.588 | 原sys系统接口源码的Python真实运行与独立结果 | C |
+| S-15 | `bstr_1064::bstr_1064_v01_decode_utf8_and_region`（`bstr_1064.rs:300`） | 26.544 | UTF8/region原陷阱和值100、512/1100字节多块预算，原内部10秒门 | R |
+| S-16 | `sys_d01_d06_1064::v02_d01_d06_a2r_cross_end`（`sys_d01_d06_1064.rs:446`） | 21.394 | 原D01-D06文件/目录/路径接口A2R真实执行及各独立预期 | C |
+| S-17 | `v08_surface_972::v08_surface_manifest_and_five_end_exercise`（`v08_surface_972.rs:348`） | 19.869 | 公开表面manifest和五端行为=62、各真实产物/编译/执行 | C |
+| S-18 | `sys_d01_d06_1064::v02_d01_d06_a2py_cross_end`（`sys_d01_d06_1064.rs:485`） | 19.865 | 原D01-D06接口Python真实执行及独立预期 | C |
+| S-19 | `json_975::json975_char_to_str_a2x_ends`（`json_975.rs:303`） | 19.384 | char到Str和JSON相关各目标结果、实际目标生成执行 | C |
+| S-20 | `module_packages_960::packages_960_four_ends_run_public_str_and_recover`（`module_packages_960.rs:145`） | 18.905 | 跨包public Str四端与失败恢复后的首次消费 | C |
+| S-21 | `stdlib_core_945::stdlib_core_945_four_ends_run_math_and_text_slices`（`stdlib_core_945.rs:207`） | 17.565 | 四端math/text slices各原输入与独立结果 | C |
+| S-22 | `av_source_incremental::av_source_incremental_detector_negative_controls`（`av_source_incremental.rs:549`） | 15.021 | 正常fast edit、强制rewarm值仍对但身份红、同hash换Arc检测、原findings>=100 | R |
+| S-23 | `plan966_ct_product::p966_ct_generated_declarations_change_end_results`（`plan966_ct_product.rs:265`） | 14.412 | CT生成声明变化真正影响各后端结果，不能缓存旧生成体 | C |
+| S-24 | `plan966_ct_product::p966_ct_statements_and_macro_run_on_av_native_rust_c_py`（`plan966_ct_product.rs:138`） | 14.396 | CT statements/macro在原五端真实运行和独立预期 | C |
+| S-25 | `kv_zip_1064::v03_kv_corrupt_io_budget_and_atomic_preserve_av`（`kv_zip_1064.rs:310`） | 14.356 | 损坏/IO/预算错误精确判决、原文件原子保留与恢复 | D |
+| S-26 | `bstr_1064::bstr_1064_t01_illegal_scalar_neighbor`（`bstr_1064.rs:203`） | 14.096 | 0xD800与0x110000非法码点均CharInvalid trap，不能任意错误代签 | D |
+| S-27 | `stdlib_sys_973::sys973_v03_process_spawn_capture_timeout_exit`（`stdlib_sys_973.rs:426`） | 13.817 | 真实spawn/capture/timeout/exit与进程收尾，时限不放宽 | D |
+| S-28 | `stdlib_sys_973::sys973_t08_seek_permissions_mtime`（`stdlib_sys_973.rs:478`） | 13.779 | 真实seek/权限/mtime OS结果，保持平台条件 | D |
+| S-29 | `stdlib_assembly_1043::stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c`（`stdlib_assembly_1043.rs:157`） | 13.484 | stdlib选择与AV/native/Rust/C真实链和各目标结果 | C |
+| S-30 | `stdlib_asm_972::stdlib_asm_972_hash_domains_av`（`stdlib_asm_972.rs:929`） | 12.967 | codepoint/byte hash、空/ASCII/Unicode/NUL原hash值与域区分=1111 | D |
+| S-31 | `sys_d01_d06_1064::v02_d01_d02_file_text_range_and_dir_names_av`（`sys_d01_d06_1064.rs:78`） | 12.843 | 文件text范围/目录名精确内容与边界，不仅无错误 | D |
+| S-32 | `console_coverage_1041::vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity`（`console_coverage_1041.rs:146`） | 12.394 | 同源A2R/C/Python各运行结果与provider身份 | C |
+| S-33 | `stdlib_sys_973::sys973_path_algorithms`（`stdlib_sys_973.rs:396`） | 12.359 | 原路径算法正反例，保精确字符串/平台边界 | D |
+| S-34 | `stdlib_sys_973::sys973_env_set_remove_real_process`（`stdlib_sys_973.rs:306`） | 12.343 | 真实进程环境设置/删除及原隔离与恢复 | D |
+| S-35 | `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av`（`kv_zip_1064.rs:725`） | 12.279 | 坏ZIP/解压炸弹/预算分类与原文件保留，不能错误当空成功 | D |
+| S-36 | `stdlib_sys_973::sys973_time_real_clock_bands`（`stdlib_sys_973.rs:367`） | 12.217 | 真实时钟原范围关系/单调性，禁止增sleep或放宽带宽达标 | D |
+| S-37 | `b1_slice_975::json975_char_to_str_b1_slice_oracles`（`b1_slice_975.rs:11`） | 12.204 | 原B1切片/char到Str独立oracle，不能与跨端大例互相代签 | D |
+| S-38 | `stdlib_sys_973::sys973_dirs_and_replace`（`stdlib_sys_973.rs:331`） | 12.133 | 真实目录与替换/失败保留语义、清理 | D |
+| S-39 | `stdlib_sys_973::sys973_t09_target_selection_linux_binds`（`stdlib_sys_973.rs:522`） | 12.064 | Linux目标sysplat_lnx绑定/冷link；原生运行NOT_RUN owner1063，不称Windows Linux执行通过 | L |
+| S-40 | `stdlib_sys_973::sys973_t10_rand_real_entropy`（`stdlib_sys_973.rs:560`） | 11.979 | 真实安全熵长度/字符集/两次差异，不能固定假随机替代 | D |
+| S-41 | `stdlib_sys_973::sys973_v04_short_read_and_fault_injection_no_false_success`（`stdlib_sys_973.rs:235`） | 11.864 | 短读与故障注入不误报成功、精确错误与恢复 | D |
+| S-42 | `module_sources_950::modules_950_user_shadow_consumer_restore_first_edit_and_next_read`（`module_sources_950.rs:424`） | 11.844 | user shadow消费恢复后首次编辑和下一次读，真实身份/依赖 | R |
+| S-43 | `stdlib_sys_973::sys973_v05_clock_rand_oracles`（`stdlib_sys_973.rs:266`） | 11.498 | clock/rand原可辨负控，合法值和退化值不能同绿 | D |
+| S-44 | `stdlib_sys_973::sys973_v03_process_exit_outcome`（`stdlib_sys_973.rs:451`） | 11.431 | 真实子进程退出outcome及收尾，不只parent exit0 | D |
+| S-45 | `module_sources_950::modules_950_qualified_consumer_restore_first_edit_and_next_read`（`module_sources_950.rs:420`） | 10.970 | qualified消费恢复后首次编辑/下一读、真实依赖与身份 | R |
+| S-46 | `stdlib_core_945::stdlib_core_945_clone_allocation_fault_is_a_typed_resource_trap`（`stdlib_core_945.rs:440`） | 10.860 | clone分配故障必须typed Resource trap，原释放/恢复断言不丢 | D |
+| S-47 | `v10_layers_972::v10_core_alloc_layers_mn`（`v10_layers_972.rs:202`） | 10.706 | CORE零alloc/attempt/live且exit1111121，ALLOC正常平衡与预算/释放原反控 | R |
+
+以上是拟处置，不是已切换。**（2026-11-19 owner 裁决，PLAN-1098 T-10 复审后修订）**：留日常行的既有 item 按**组预算**约束（≤120s，目标≤60s），其原 item 时间逐行留档，**不再要求逐 item ≤10 秒**；≤10 秒只约束**新增 item**。分流保原完整义务/原条件。S-05原内部每个target_bytes≤10秒，但整test历史41.758秒，新门看整test。S-22原`findings.len()>=100`及同hash换resident对象的指针/代际反控是已有结构/规模义务；日常小例不能把阈值改≥1代签旧例，原≥100反控仍须完整执行。普通正确性在保持原角色后仍不能满足预算，本项保持未完成，不自动分流。
+
+### 5.4 准备、并发与入口切换
+
+1. **显式准备**生成所选完整配置的发现清单、测试二进制/必要归档、worker/runtime、工具/内容hash、有效环境、平台/features/profile/source_state及成本。复用现有prepare_tools收据，不用exe存在/mtime代身份。Case输出准入需要的case-parent也先准备，`run_case`不得暗补。
+2. **只运行**时缺manifest/错树/缺库、源/config/toolchain/profile/features/env/产物或sidecar变化，测试体前具名准备错误；零lazy build/下载/release/旧exe回落。Auto编译器被测本体的parse/bind/emit/link允许并计时；外部rustc/C认证只在显式toolchain被测动作里允许，其依赖仍不得体内Cargo构建。
+3. 指纹沿用固定调用与实际输入身份；宁可明确要求重准备，不删轴提升命中。跨次证据复用须同身份/覆盖，无跨case可变session/store共享，不借其他计划target。
+4. 准备/联合测试前核agent协调信息、现有`execution_lease()`及真实Cargo/rustc/nextest/worker活动。其他会话忙则等待并通知，记录等待；不杀未知进程，不把自己已持有的准备→运行所有权误判他人。跨worktree互斥需要时扩展已有设施，不造第二调度平台。等待单列，不隐藏在组计时外不汇报。
+5. 当前`cargo t`薄驱动经`cargo run`启动，首次会编译。严格无编译执行须先准备launcher，必要时用同一已准备launcher或`python scripts/fixed-tests.py`进入同一实现。不能声称别名冷启动也零编译；所有准备成本可见。
+6. 切换按“冻结旧义务→新路径负控敏感→同输入对照→切固定组/脚本/聚合→真实入口验收→撤重复活入口”。普通PERF差集恰为P-01/P-02；C类保每目标动作/条件；console的15项语料和附加宿主断言各有owner。旧→新身份映射覆盖全部角色，少目标/错目标/emit冒run不能绿。
+7. 同key OR并集沿用原实现；不同feature/profile/env/tools不按同名test强合。切换失败恢复该阶段旧实现/选择，不改M1历史证据，不留双活作者/第二默认runner。Windows不触发WSL/Linux腿；S-39仅绑定事实单列，原生Linux仍由1061/1063验收。
+
+### 5.5 T-01 冻结基线（r1 首轮，只读核查，未执行任何组）
+
+实施树 `D:/autostack/.wt/lang-1098/auto-lang`、分支 `plan-1098-dev`，基面 `d20cf3f87`（建树时 master；建树后 master 被并发会话推进到 `37379e6d4`，合入前重同步）。材料 scope `D:/autostack/plan-artifacts/plan-1098/`（空，仅登记）。本轮**未**构建/未跑组：开始时刻机器上有其他会话的活跃 `cargo/rustc/nextest`（14:44–14:45 启动），按 §5.4-4 不并发启动准备/运行。主检出代码路径（`crates/ scripts/ experimental/ test/ .cargo/ Cargo*`）无 WIP；仅 docs/ 与其他会话的 `packages/blueprints/**` 删除，非本包写集。
+
+| # | 冻结项 | 实测（树/配置身份） | 结论 |
+|---|---|---|---|
+| K-01 | ACE 域固定组分母 | `scripts/test-groups.toml`（`090c0e71021f8cd2…`）166 组，`domain=ace` **102**：nextest **27** / python **2**（`infra-pilot-ace`、`plan1066-s-doc-controls`）/ case **73** | 与 §4.2 完全一致；24 个非聚合常规组 = 27 − `ase-m0`（外部）− `ace-perf`（显式 PERF）− `ace-workspace`（聚合） |
+| K-02 | P-01/P-02 泄漏路径 | `crates/syntax-core/tests/conformance.rs:14` `mod perf;`；普通 `ace-syntax` 表达式 `(all()) and not test(/(^|::)performance::/)`；`ace-perf` 表达式 `test(/(^|::)performance::/)`、`timeout_seconds=14400` | 结构性确认：`perf::perf_fresh_parse…` / `perf::perf_core_vs_legacy…`（`cases/perf.rs:41,175`）**既不匹配 PERF 选择、也不被普通组排除**→ 现留在日常组。真实发现差集（32 样本/8,000 声明等正文不动）由 T-03 构建后发现，不在本轮声明 |
+| K-03 | B-05 工具 profile 表 | `scripts/test-governance/toolchains.json`（`177710e13656ddd4…`）15 个工具：`av,batch-av,av-regular,ac,mn,mn-collections,cte,abi,sema,a2x`=`release`；`text-runtime,data-runtime`=`runtime-release`；`trace-runtime`=`runtime-dev`；`case-parent,execution-fixture`=`debug` | 与 §5.2 B-05 逐项一致；普通/正式 profile 分离仍待 T-02 实现 |
+| K-04 | B-03 测试体补 release | `experimental/ace/tests/conformance/tests/host/rust_lowering.rs:50-56`（无 `AC_A2X_HIR_WORKER` 时"build the release worker now"）、`:202` `--release`、`:228-231` 回落 `experimental/ace/target/release` | 确认存在；`a2r_hir_missing_worker_is_infra_error:112` 是该路径的负控，T-02 保留其"缺工具=infra 失败"义务 |
+| K-05 | F-01 夹具形态 | `crates/av/tests/cases/mir_tier.rs:97` `for i in 0..70_000i32`，`:130` 断言 `ResourceKind::TableEntries` | 确认 7 万不同常量 + 精确资源门；优化点=避免逐次线性 intern，尺度不缩 |
+| K-06 | O-01 双分支打印即绿 | `crates/av/tests/cases/p946_t01_probe.rs:118-130` `Ok(out)=>println!` / `Err(e)=>println!`，无断言 | 确认无 oracle；O-05（`:275` 起）另需独立核对打印/断言比例 |
+| K-07 | H-01…H-03 宿主文件 | `experimental/ace/tests/conformance/tests/console.rs`：`console_real_corpus_and_stale_identity:33`、`console_three_oracle_axes_fail_independently_and_missing_axes_error:86`、`console_skip_remains_skip_and_never_creates_a_green_observation:134`、`console_nul_bytes_survive_worker_transport_and_parent_judgement:150` | 行项存在。**新增发现**：同文件 `:197 console_resource_exhaustion_is_error_with_raw_prefix_evidence` 不在 §5.2 H-02 列，T-07 逐行展开时须纳入（缺轴/原始前缀义务） |
+| K-08 | §4.2 两个旧红归属 | 实测位于 `experimental/ace/crates/av/tests/cases/host_console.rs:12`、`:23`（package `ace-av`），不在 `tests/conformance` | 归属为 `ace-av` 组；完整 nextest 身份待真实发现（T-01 后续）确认，不按名字代签 |
+| K-09 | nextest 预构建接口 | `cargo-nextest 0.9.138`（x86_64-pc-windows-msvc）：**无** `--no-build`；`list`/`run` 均支持 `--archive-file`、`--archive-format`、`--binaries-metadata`、`--workspace-remap` | T-02 的 prepare/run 分离接口**定为 archive 握手**（准备产出 archive 清单+身份，运行只消费它），不假定不存在的参数；零编译由 T-02 负控实证 |
+| K-10 | 并发互斥既有设施 | `scripts/fixed-tests.py:372-446` `execution_lease()`：`target/test-groups/active` 原子 mkdir + `owner.json{pid,root}` + 死锁回收（PLAN-1014 B-07） | V-13 扩展现有租约，不建第二调度平台；等待单列 |
+| K-11 | 47 行源码存在性 | 抽查 `bstr_1064.rs`、`mir_tier.rs`、`probe972.rs`、`v10_layers_972.rs` 均在 `crates/av/tests/cases/` | 存在性通过；逐行角色/预期展开仍待 T-01 后续轮次（不得以声明数代执行数） |
+
+本轮仍**未**关闭任何 T-01 出口项：逐行（P/B/F/O/H + 47 行）义务映射、真实发现差集、两个旧红的重放判定、Case 消费者组核对尚未完成，且未构建。下一步仍在 T-01 内（先等并发会话空闲再取代表基线）。
+
+### 5.6 T-01 第二轮：真实重放与逐行静态核查（2026-11-19，树 `d20cf3f87`，debug）
+
+**重放（本轮唯一执行）**：worktree `experimental/ace` 内 `cargo nextest run -p ace-av --test conformance -E 'test(host_console::)' --no-fail-fast --status-level all`。观测（冷 debug，本树首次构建）：**准备/编译 61s**、**执行 0.280s**（21 例 19 绿 2 红）、整命令 **62.7s**、`exit=100`。原始日志 `D:/autostack/plan-artifacts/plan-1098/t01-av-console-replay/run.log`。该 1:218 的准备/执行比正是 §2 要拆开的两段，不是"测试慢"。
+
+两个旧红（§4.2）**首红复现**，完整身份与实测：
+
+| 完整 nextest 身份 | 结果 | 失败点 | 根因（实证） |
+|---|---|---|---|
+| `ace-av::conformance host_console::av_console_entry_selection_cannot_bypass_main_policy` | FAIL 0.092s | `host_console.rs:18` `.err().unwrap()` 取到 `Ok` | `ace_av::console_host::compile("…d_helper")` 不再拒 |
+| `ace-av::conformance host_console::av_console_owned_front_door_enforces_console_entry_only` | FAIL 0.049s | `host_console.rs:28` `.unwrap_err()` 取到 `Ok`（已降级出 `MirModule{profile:"av.host-console/1", name:"d_helper"}`） | `lower_checked_owned(…, "d_helper", 1)` 不再拒 |
+
+**判定：不是产品回归，是陈旧 oracle。** `3a9d9c1fb`（2026-11-18，PLAN-982）"the console lane admits named entries (d_fn) …entry shape stays gated by verify" 已把入口面从"只许 d_main"改为"具名入口 + verify 守形状"；`crates/lowering/src/hir_adapter.rs:1535-1575` 现在只为"模块内查不到该名"报 `lower.entry`。两个 863 测试仍断言旧策略。按仓库规则**不得单方面改预期**，故具名移交 `D-1098-01`（见 `docs/plans/KNOWN-DEBT-AND-RISKS.md`），不充 PASS、不 `#[ignore]`、不用成本绿代功能绿。
+
+**逐行静态核查新增结论（§5.2/§5.3）**：
+
+- **B-01**：缺库即 `cargo build --locked --profile runtime-dev`，`crates/native/tests/common/mod.rs:19-40`（target-dir `../../target`）；collections 侧同型但 `--profile runtime-release`，`crates/native/tests/common/collections.rs:31-46`。
+- **B-02**：`crates/case-worker/tests/cases/backend.rs:204-223` **另抄了一份**同样的"缺库即 cargo build"——同一反模式实测 **4 处**（native common ×2、case-worker ×1、core common ×1），不是 2 处；`exit=12`/stderr`ba` 的参数求值顺序义务在 :224-229，保留。
+- **B-04**：`crates/core/tests/common/mod.rs:293-350` 的 `text_runtime_lib/text_runtime_pair_copy/text_runtime_sha` 全仓**无测试消费者**（其余命中均为产品符号 `ace_av::text_runtime::*`）→ 死 helper；清理不提"实测收益"。
+- **C 类判据实证**：`crates/av/tests/cases/console_coverage_1041.rs:98 run_rust_stdout` 真跑 `rustc --edition 2021` 并执行产物；`:128 run_c_stdout` 走 `ace_a2x_worker::crun::compile_c_fileset`（真 C 编译）。同类 helper 在 `plan966_ct_product.rs:71`、`stdlib_assembly_1043.rs:90`、`module_packages_960.rs:79,132`、`stdlib_core_945.rs:190`、`module_sources_950.rs:60` 各自复制 → C 类"多端"义务集中在少数 helper，可按端映射进 `ace-toolchain`。
+- **P-01/P-02 原条件**：`cases/perf.rs` `N=32`、3 预热、`build_doc(8000)`；P-02 6,000 函数、CST vs legacy 双链、P50/P95/P99——与 §5.2 完全一致，不得缩。
+- **H-04/H-05**：便宜日常例 `a2r_hir_first_case_green`（5 注册例）+ `a2r_hir_tampered_golden_is_red`；其 release worker 维护构建在 `rust_lowering.rs:56-58`（B-03）。certify 族逐例 PASS + `cert_sha256` + 每 leg `<120_000ms`（:326-360），负控 14→15 与错 reference（:366-379）。
+- **47 行静态分档（候选，非最终处置）**：47 行全文按"是否触外部链 helper"分档，产物 `D:/autostack/plan-artifacts/plan-1098/t01-47-rows-static-triage.md`（SHA256 `314539e1…0f68`）。候选：C 触外部链 21 行、D/R 纯 AV 内部 20 行、thin-wrapper 待展开 5 行、L Linux 绑定 1 行（S-39）。**分档只看文本标记，不等于逐行处置结论**；每行仍须展开角色/独立 oracle/条件/消费者后才能勾 T-01。
+
+**T-01 仍未闭**：47 行逐项展开（角色/预期/条件/消费者）、24 组真实发现分母与 >10s 项、`ace-toolchain` 的目标清单与 Case 消费者核对、两个旧红的 owner 答复（D-1098-01）。
+
+### 5.7 T-01 第三轮：47 行结构化展开（只读，未跑组）
+
+**方法**：对 §5.3 全部 47 行按完整原生身份定位 `#[test]` 函数体，用**跳过字符串/raw-string/注释的花括号匹配**取体（内嵌 Auto 源码自身含 `fn`，简单按 `\nfn ` 截断会把体算成 3–15 行），再提取 oracle 机制（`expect_i32`/`assert*`/`unwrap_err`）、本地助手链（深度≤3）、端助手（`run_py_fileset`/`resolve_python`/`run_rust_stdout`/`run_c_stdout`/`compile_c_fileset`/`run_a2r`/`run_a2py`/`native_exit`/`native_value`/`c_stdout`/`rust_stdout`/`run_av`/`mn_run`/`run_case`）与时间门。产物：`D:/autostack/plan-artifacts/plan-1098/t01-47-rows-expanded.md`（SHA256 `a9250286…`）+ 抽取脚本 `extract_rows.py`（`d986d9e7…`）。
+
+**结构性结论（供 T-03…T-07 记账，不是处置结论）**：
+
+1. **47 行不是 47 段独立逻辑**：多数是 3–15 行 `#[test]` 外壳，真实多端逻辑在同文件本地助手里；且**一个助手服务多行**（`kv_zip_1064::run_kv_cross_backend_leg(…)` 同时服务 S-07 kv-a2r 与 S-10 kv-a2py；`run_zip_cross_backend_leg` 同时服务 S-08/S-09）。分流必须按"助手 × 端参数"记账，否则同一义务会被记两次或整段漏掉。
+2. **oracle 不是"打印即绿"**：D/R 类普遍用 `expect_i32(out, N, tag)` 精确值（S-33 期望 11、S-27 期望 42、S-28/S-36/S-38/S-40 同型）或 `assert_eq!`；至今唯一确认的"双分支打印即绿"仍是 §5.2 O-01。据此，S 行不得以"探针"名义批量退役。
+3. **端助手高度集中**：`run_py_fileset`/`resolve_python`、`run_rust_stdout`、`compile_c_fileset`、`native_exit`、`c_stdout`/`rust_stdout`——这些正是 `ace-toolchain` 的接缝；T-06 应按"助手×端"切，而不是按测试名。
+4. **抽表局限（须人工确认）**：直接 `Command::new(RUSTC|cl|python)` 的行不被"端助手"列捕获（实证：S-12 `stdlib_sys_973.rs:666,681` 直接起 rustc；S-01 的 A2R 端同理），所以"端助手列为空"**不等于**无外部链。
+5. **既有时间门**：仅 S-02/S-25 带 `Duration::from_secs(8)` 的 AV wall 预算（`kv_zip_1064.rs:99`），历史慢点在准备/IO 而非断言；`resources_tier`（S-04）另有 `from_secs(5)`/`120ms` 观测门。
+
+**T-01 未闭项（本轮推进但未完成）**：24 组真实发现分母与 >10s 项（本轮机器被并发会话占用，见 §9）；`ace-toolchain` 目标清单（静态已定：`-p ace-av --test conformance` 承载 S 行，`-p ace-conformance --test conformance` 承载 H-05/host 行）；Case 消费者四套件静态存在（`ace-document-console.suite.ad`、`ace-document-base.suite.ad`、`ace-m1/ace-m1-tr-native.suite.ad`、`ace-m1/typed-native-891/typed-native-891.suite.ad`），未做 inventory 计数。
+
+### 5.8 T-01 第四段：24 组包/target/feature 差集静态冻结（只读）
+
+按 `scripts/test-groups.toml`（`090c0e71…`）与 `experimental/ace/Cargo.toml` 成员清单逐组解析（脚本 `extract_groups.py`，产物 `t01-24-groups-targets.md`）。24 个非聚合 ACE nextest 组的真实形状：
+
+| 形状 | 组 | 说明 |
+|---|---|---|
+| 单 test 二进制 `-p X --test conformance`（无 `--lib`） | `ace-source-syntax-927`(core)、`ace-python`(abi)、`ace-host`/`ace-console`/`ace-batch`/`ace-rust-lowering`(conformance)、`ace-stdlib`(stdlib-conformance) | 7 组只跑一个 test target；`ace-python` 另有 `-E test(p1026)` |
+| `--lib --tests` 多包 | `ace-source`、`ace-syntax`(4 包)、`ace-semantics`(4 包)、`ace-artifacts`、`ace-av`(2 包)、`ace-native-worker`、`ace-native`、`ace-abi`、`ace-comptime`(4 包)、`ace-lowering`、`ace-foreign-contract`、`ace-a2x`(6 包)、`ace-runtime`(2 包) | 13 组含 lib 单测 + 全部 test target |
+| `--lib --tests` 多 test target | `ace-m2-build` | 8 个 test target（b0_closure/compat_selection/coverage_lanes/identity_cache/load_selection/restore_recovery/sdk_pack/…），组名易被误读为单例 |
+| 无 test target（仅 lib） | `ace-a2c-abi`（`ace-a2x-c`）、`ace-adapters`（`auto-lang-core --features code-editor`）、`ace-facade`（`auto-lang-ace-host`） | 后两者跑**根 workspace**，不是 `experimental/ace`；`ace-a2x-c` 无 tests 目录 |
+| 共享同一 test 二进制 `-p ace-conformance --test conformance` | `ace-host`、`ace-console`、`ace-batch`、`ace-rust-lowering` | 只靠 `--features`/`tools`/`expression` 区分 |
+
+**H-06（同 key OR 并集）静态实证**：`ace-host` 与 `ace-console` 的 9 元 key（runner/workspace/args/domain/tools/file/suite/respect_default_filter/timeout）**完全相同**（tools 同为 12 项、args 同），只有 expression 不同（host=`all()`，console=`^console::`）→ `invocations()` 必须合并为一次调用（现有实现如此，实测配置可证）。`ace-batch` 多 `--features test-case-batch`、`ace-rust-lowering` tools 仅 `a2x` → 两者 key 不同，**不得**强合。这三条与 §5.2 H-06/§6.1 V-10 一致，且可纯静态复核。
+
+### 5.9 T-01 出口项：准备/运行接口草案（已核 CLI 事实，实现属 T-02）
+
+**已核事实（`cargo-nextest 0.9.138`，本机实测 help）**：无 `--no-build`；存在 `cargo nextest archive --archive-file <PATH>`（构建 test 二进制并打成 `.tar.zst`），`list`/`run` 均支持 `--archive-file`、`--workspace-remap`、`--binaries-metadata`。→ 准备/运行分离**走 archive 握手**，不假定不存在的参数。
+
+**接口草案（T-02 按此实现，实际 manifest 名在 T-02 钉住）**：
+
+- `scripts/fixed-tests.py <groups> --prepare-only --out <dir>`：对 `invocations()` 合并后的**每个 key**（runner/workspace/args/domain/tools/file/suite/timeout 的并集成员）执行一次 `cargo nextest archive --archive-file <dir>/archive-<n>.tar.zst`，选择面沿用该 key 的 `-p/--lib/--tests/--test/--features/--target-dir`（不含 `-E`，表达式属运行期）；工具仍走现有 `prepare_tools.prepare()`（receipt 复用已按 source_state+rustc+tool config+target 身份校验并逐件 re-hash）。产出 `prepared.json`：`schema`、`config_sha256`、`source_state`、rustc marker、每个 key 的 archive path+sha256、工具 receipts、生成时间与 driver 版本。
+- `<同命令> --run-prepared <prepared.json>`：先逐项校验 identity（source_state、config、toolchain、archive sha256、工具 receipts），任一漂移 → **具名准备错误，零回落、零补构建**；通过后 `cargo nextest run --archive-file <a> --workspace-remap <checkout> --ignore-default-filter -E <并集表达式> --no-fail-fast --no-tests fail`（`-E`/`--run-ignored`/`respect_default_filter` 与 archive 的组合由 T-02 负控实证，不预设）。
+- 日常入口按 §2：`cargo t <ACE组>` 未找到本树匹配 prepared.json 时返回 `PREPARATION_REQUIRED` + 显式准备命令；显式 `--manifest` 消除候选歧义。
+
+**可复用面（决定 archive 数量，不是新注册表）**：`ace-host` 与 `ace-console` 同 key → 同一 archive；`ace-rust-lowering` 与 host 同包同 features（仅 `-E`/tools 不同）→ 可复用同一 archive；`ace-batch` 因 `--features test-case-batch` 独立 archive；`ace-facade`/`ace-adapters` 在根 workspace → 各自独立 archive；其余组各自一个。
+
+**T-02 必须负控的风险面**：archive 重映射后仍依赖 `CARGO_MANIFEST_DIR`/仓库相对路径的用例（如 S-12 直接起 rustc、B-01 的 trace-runtime 构建路径、`scratch()` 临时目录）须在真实链上证明行为不变；否则该组退回"显式准备但运行期直取 test 二进制"的等价形态，并在 SD-01 写明。
+
+**实证（本轮已完成，`ace-lowering` 真实链）**：
+
+```
+cargo nextest archive -p ace-lowering --lib --tests --archive-file <scope>/archive-spike/ace-lowering.tar.zst
+  → exit 0，18.75s（含编译；产出 4,563,639 B，tar.zst，sha256 ed97df0d…）
+cargo nextest run --archive-file <…>.tar.zst --workspace-remap <worktree>/experimental/ace \
+  --archive-format tar-zst --no-fail-fast --no-tests fail
+  → exit 0，**9/9 PASS，0.34s**（零构建）
+cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
+  → exit 0，**3/3 PASS，0.39s**，6 skipped（表达式在 archive 模式下生效）
+```
+
+即 §2/§5.4 要的"准备（可观测、可复用）→ 只运行（零编译）"在真实 nextest 上成立；准备/运行比 18.75s : 0.34s。
+
+### 5.10 T-01 真实发现分母（第一批，`--discover-only`，不执行 body、不准备 release 工具）
+
+| 组 | 选择 / 排除 | 二进制数 | 观测 | 材料 |
+|---|---:|---:|---|---|
+| `ace-av` | **1,428 / 0** | 8（`ace-av::conformance` 1,277、`ace-av-core` 69、`ace-av-core::conformance` 48、`ace-av` 17、`ace-av-core::foreign_resources` 11、`ace-av::bin/av-worker` 3、`ace-av-core::p982_config_super_put` 2、`ace-av-core::p982_console_stdin_contract` 1） | 墙 **56.378s**（含构建），CPU 190.2s，峰值 Job 3.50GB；`source_state 6371cd89…` | `discover-ace-av/results.json` |
+| `ace-lowering` | 9 / 0 | 2 | 三组合计 50.95s | `discover-small-3/results.json` |
+| `ace-artifacts` | 43 / 0 | 3（`ace-artifacts` 19 / `::conformance` 21 / `::store_resources` 3） | 同上 | 同上 |
+| `ace-semantics` | 295 / 0 | 19（其中 `ace-source-query` 104、`ace-semantics-store::conformance` 65） | 同上 | 同上 |
+
+历史收据（§4.2）的 `ace-av` 1,428 执行数与本次**发现**数一致 → 分母稳定；本轮只发现不执行，`>10s` 项仍须 T-02/T-09 在只运行形态下重测。
+
+**第二批（`ace-conformance` 共享二进制的 4 组，本轮实测）**：
+
+| 组 | 选择 / 排除 | 观测 |
+|---|---:|---|
+| `ace-host` + `ace-console` | **171 / 0**（**合并为 1 次调用**，见 §5.8 H-06） | 4 组整批墙 **199.06s**（含 conformance target 的两种 feature 构建） |
+| `ace-batch` | 12 / 0 | 独立调用（`--features test-case-batch`，tools=2） |
+| `ace-rust-lowering` | 6 / 0 | 独立调用（tools 仅 `a2x`） |
+
+**H-06 由静态推断升级为实测**：日志逐字显示 `Running ace-host, ace-console`（一次），`results` 只有 3 条 = 4 组；合并表达式为 `(all() and not performance::) or (^console:: and not performance::)`。另证 `ace-console` 的选择面是 `ace-host` 的真子集（`all()` 覆盖），即两者的日常义务在合并调用里同时满足，但**组预算仍须按组各记**（§6.2 不变）。
+
+**第三批（其余 10 个中等组，`discover-batch3/`，整批墙 212.33s）**：
+
+| 组 | 选择/排除 | 二进制数 |
+|---|---:|---:|
+| `ace-source-syntax-927` | 13 / 0 | 1（`ace-core`） |
+| `ace-source` | **904 / 0** | 1（`ace-core`） |
+| `ace-syntax` | 159 / 0 | 4（syntax-runtime 52 / grammar 45 / core 31 / artifacts 31） |
+| `ace-abi` | 314 / 0 | 1 |
+| `ace-comptime` | 136 / 0 | 2（comptime 85 / source-cte 51） |
+| `ace-stdlib` | 2 / 0 | 1 |
+| `ace-runtime` | 84 / 0 | 2（data-conformance 64 / text-conformance 20） |
+| `ace-foreign-contract` | 56 / 0 | 1 |
+| `ace-python` | 10 / 0 | 1（`ace-abi`，`-E test(p1026)`） |
+| `ace-a2c-abi` | 9 / 0 | 1（`ace-a2x-c` lib 单测；确认"只有 lib"但有 9 例） |
+| **小计** | **1,687 / 0** | — |
+
+已发现合计（5 批）：`ace-av` 1,428 + 4 组 347 + conformance 4 组 189 + 本批 1,687 = **3,651 例**。
+
+**第四批（重内存 4 组，`discover-heavy4/`，整批墙 39.55s）**：
+
+| 组 | 选择/排除 | 说明 |
+|---|---:|---|
+| `ace-native` | **329 / 0** | conformance 258 / sched_m2_1067 28 / typed_entry_tier 18 / lib 16 / bin mn-collections-worker 5 / typed_entry_incremental 4 |
+| `ace-a2x` | **328 / 0** | a2x-worker::conformance 272 / a2x-ts 20 / bin a2x-worker 8 / 其余多目标 |
+| `ace-native-worker` | 43 / 0 | conformance 39 / bin 4 |
+| `ace-m2-build` | 30 / 0 | 7 个 test target（sdk_pack 8 / load_selection 6 / compat 5 / identity 4 / b0 3 / coverage 2 / restore 2） |
+| **小计** | **730 / 0** | — |
+
+**累计已发现 4,381 例 / 22 个非聚合组**；余 `ace-facade`、`ace-adapters` 两个根 workspace 组，聚合 `ace-workspace` 与 `ace-perf` 另窗。
+
+### 5.13 T-02 前置核查：B-05 的**真实消费面**（比计划原假设大得多）
+
+对 `experimental/ace` 全量 Rust 源码静态扫描（`target/release|runtime-release`）：
+
+- **37 处硬编码引用，分布在 20 个文件**；其中 **11 处会实际触发构建**（字面量 `"runtime-release"`）：`tests/text-runtime/src/lib.rs`、`tests/data-runtime/src/lib.rs`、`crates/native/src/{collections_runtime,sched_runtime,typed_runtime}.rs`、`crates/native/tests/cases/collections_resources_tier.rs`、`crates/native/tests/common/collections.rs`、`crates/core/tests/common/mod.rs`、`crates/av/src/text_runtime.rs`、`crates/abi/src/source_foreign.rs`。
+- **5 处是"lib 级 lazy builder"**（不是测试体）：`crates/av/src/text_runtime.rs:13 text_runtime_lib()`、`crates/abi/src/source_foreign.rs:~1475`、`crates/native/src/collections_runtime.rs:233`、`crates/native/src/sched_runtime.rs:292`、`crates/native/src/typed_runtime.rs:228`。它们被产品路径调用（`native/{console,driver,worker}.rs` 等），在测试里表现为**运行期 cargo build**。
+- **`collections`/`sched`/`typed` 三个 runtime 在 `toolchains.json` 里没有任何条目** → 今天即使 `--prepare-only` 也无法预建，"零编译运行"在这些组上不可能成立。计划原文只列了 B-01/B-02/B-04 三处测试体补构建，**低估了 5 处 lib 级构建 + 3 个缺失工具条目**。
+
+**B-05 的可行改法（T-02 分步，不改产品语义）**：
+
+1. `toolchains.json` 新增 `collections-runtime`/`sched-runtime`/`typed-runtime` 条目（profile 按 §3 的 no_std 裁定先维持现状并在 SD-01 记录），`text/data` 由 `runtime-release` 改 `runtime-dev`（与 `trace-runtime` 一致）。
+2. 5 个 lib builder 改为 **env 优先**：测试准备注入（如 `ACE_TEXT_RUNTIME_LIB` 族）时读取并校验存在性/哈希，**缺失即具名 infra 失败、不回落构建**；env 未设（产品/开发直用）保持现有 lazy build——"日常零编译"由 env 保证，产品行为不变。
+3. 硬编码 `target/release/<worker>` 的测试（`a2x-worker/tests/cases/{a2c_cert,a2c_coll_cert,a2c_rt_cert,cert_coll_904,cert_rt_902}.rs`、`av/tests/cases/{av_collections_resources,av_dynamic_resources}.rs`）改 **env 优先 + 明确失败**，禁止回落 release 路径。
+4. 最后才翻 `av/batch-av/av-regular/ac/mn/mn-collections/cte/abi/sema/a2x` 的 profile 为 debug，并用真实组验证（`ace-abi`/`ace-batch`/`ace-native` 各一次 prepare→run，比较 debug worker 的 item 时间是否仍满足 ≤10s）。
+
+**已排除的误判**：`av_collections_resources.rs:814` / `av_dynamic_resources.rs:723` 的 `target/release` 不是工具准备问题而是**测试自己找 worker**，归第 3 步一并处理。
+
+**关键细节（读实现后修正上表第 2 步的做法）**：这些 lib builder 不是"每次必建"，而是**内容绑定 + receipt 缓存**：`typed_runtime::prepare()` 用 `files/configs/rustc -vV/相关 env` 算 `build_key`，若 `<lib>.identity.json` 的 `build_key` 与 ABI 匹配且 `content_hash` 相符则**零 cargo 调用**；`override_library` 只改路径，**不跳过**身份计算与构建判定（`typed_runtime.rs:107-268`）。因此：
+
+- 仅"补 toolchains 条目 + cargo build"**不足以**让运行期零编译——运行期第一次调用仍会因缺 `identity.json` 再跑一次 cargo。
+- 正确做法是让**准备阶段执行 builder 本身**（一次），把 stamp 写出来。已有先例：`mn-collections-worker` 启动即调 `collections_runtime::prepare(None)`（`crates/native/src/bin/mn-collections-worker.rs:258,381`）。
+- 拟新增最小 `runtime-warm` bin（每宿主 crate 一个：`ace-native` 调 collections/sched/typed，`ace-av` 调 text/trace，`ace-abi` 调 text），并在 `toolchains.json` 加可选 `"warm": [...]` 字段、`prepare_tools.prepare()` 在构建成功后**执行一次 warm 命令**（计入准备时间与 receipt 身份）。这样"运行期零编译"由准备阶段负责，产品侧的 lazy build 与身份校验保持不变。
+
+### 5.11 T-01 第五段：O 类探针的独立预期（按 Spec 钉住，不录当前输出）
+
+§5.2 的 O 行原来只有"要独立 oracle"的原则；本节把**预期来源**钉住（执行仍属 T-05）：
+
+| ID | 现状（实测代码） | 独立预期来源与内容 |
+|---|---|---|
+| O-01 `p946_empty_remove_contract_observed` | `p946_t01_probe.rs:118-130` 两分支只 `println!`，无条件断言 | `docs/specs/stdlib/design/ace-collections.md:17`：**空 `remove` 裸形 = trap `list-index`**（`pop` 空=None 只是包装层合同）→ 断言 Trap 且 code=`list-index`，合法邻例（非空 remove、空 pop=None）各自独立断言 |
+| O-02 `probe972_t02_str_surface` | `probe972.rs:409-449` 六子场景只 `eprintln!` | 语言/Unicode 事实（非实现回读）：`str_eq`→1、`str_concat`→4、`char_codepoint_cmp`→1、`char_codepoint`→97、`str_slice_len_bytes`→1（"A" 单字节）、`str_char_at`→20013（'中' U+4E2D） |
+| O-03 `probe972_p1b2_closure_param_frozen_rejection` | `:237-263` 只断言 `Err`（`Ok` 即 panic）+ 打印 code | **无 spec 声明的精确 code** → 不得把打印值录成 oracle；T-05 必须二选一：转正例（已支持）或由 owner 钉住阶段+code |
+| O-04 `probe972_p1c_suffix_list_public_frozen_rejection` | `:269-286` 同上只打印 | Spec 已声明：packages 面在 binder 层拒 `source.module-symbol`（`docs/specs/stdlib/design/ace-collections.md:33`、`docs/specs/auto-ac/source-collections-variants.md:137-138`）→ 断言该码 |
+| O-05 `p946_list_argument_moves_single_module` | `p946_t01_probe.rs:275+`，已有返回值 22 断言 + cap 观察打印 | 保留 `==22` 断言；cap 观察段要么给独立 oracle（cap 值/事件），要么具名移 research，不留在日常当装饰 |
+
+即：O-01/O-02/O-04 的预期可完全从既有 Spec/Unicode 事实写出，**不需要**先跑一次再抄；O-03 缺合同须由 T-05 决策。
+
+### 5.12 T-02 首刀：准备/运行分离已实现并实测（2026-11-19，树 `d20cf3f87` + `197ac9e5d`）
+
+`scripts/fixed-tests.py` 新增：
+
+- `--prepare-only --out <dir>`：对 `invocations()` 合并后的每个 key，先走现有 `prepare_tools.prepare()`（工具 receipts 复用），再 `cargo nextest archive` 构建该 key 的 test 二进制归档；产出 `<dir>/prepared.json`（`schema: fixed-test-prepared/1`、`config_sha256`、`source_state`、rustc marker、每 key 的 archive path/sha256/bytes、工具 identity 与 artifact 哈希、`prepared_seconds`）。
+- `--run-prepared <prepared.json> --out <dir>`：先逐项校验（配置 sha、`checkout_state()`、rustc marker、每个工具的 `tool_identity`、每个工具 artifact 的 sha256、archive 的 sha256/存在性），任一不符 → `PREPARATION_REQUIRED: …` 且 **exit 2、零构建、零执行**；通过后 `cargo nextest list --archive-file …` + `cargo nextest run --archive-file … --workspace-remap … --archive-format tar-zst --ignore-default-filter -E <expr>`，终态校验沿用原 `enumerate_rust`/`terminal_results`。
+
+**实测（`ace-lowering`，本树）**：
+
+| 步骤 | 命令 | 结果 |
+|---|---|---|
+| 准备 | `--prepare-only --out t02/prepare-lowering` | exit 0，**1.19s**（目标已建），manifest+`archive-0.tar.zst` |
+| 只运行 | `--run-prepared … --out t02/run-lowering` | **exit 0，PASS 9/9，wall 0.721s**（整命令 1.32s），零构建 |
+| 负控·源码漂移 | 改 `scripts/fixed-tests.py` 后再 run-prepared | `PREPARATION_REQUIRED: source/input state changed since preparation`，exit 2 |
+| 负控·archive 篡改 | manifest sha256 置零 | `PREPARATION_REQUIRED: archive changed since preparation: …`，exit 2 |
+| 负控·archive 缺失 | 指向不存在路径 | `PREPARATION_REQUIRED: archive missing: …`，exit 2 |
+
+源码漂移负控是**真实发生**的：实现该接口时改了 driver 本身，`checkout_state()` 覆盖 `scripts/`，于是旧 manifest 立即失效——即 `--run-prepared` 绑定的正是本树源码身份，不是"exe 存在即用"。T-02 剩余：`cargo t` 默认入口在缺 manifest 时返回 `PREPARATION_REQUIRED`（§2 的入口切换）、工具 profile 改 debug/runtime-dev（B-05）、B-01…B-04 去测试体补构建、`test_fixed_groups.py`/`test_prepare_tools.py` 增治理负控。
+
+**T-02 第二刀（同日续，代码 `946c38909`）：普通入口切换 + 治理负控**
+
+- **规范位置**：`--prepare-only` 无 `--out` 时落到规范位 `target/test-groups/prepared/<checkout_state[:16]>/`；普通 `cargo t <ACE组>`（非 select-only/discover-only）现在先 `find_matching_manifest()`：在规范位按 mtime 倒序找**校验通过**且**覆盖全部所请求 ACE 组**的 manifest；找不到 → `PREPARATION_REQUIRED: no verified prepared manifest covers …; run: python scripts/fixed-tests.py … --prepare-only`，**exit 2、零构建零执行**；找到 → 以该 manifest 的 archive 运行（混合调用只对 ACE 组走准备件，非 ACE 组行为不变）。
+- **实测**：无准备时 `python scripts/fixed-tests.py ace-lowering` → 0.11s 内 `PREPARATION_REQUIRED`（附可直接复制的准备命令）；`--prepare-only` → 1.19s 写到规范位；再有准备时直接跑 → `PASS 9/9`，整命令 1.6s，零构建。
+- **治理负控（`scripts/tests/test_fixed_groups.py::PreparedRunGate`，5 例新增）**：合法 manifest 通过；config/source/toolchain 三类漂移各自具名失败；archive 篡改/缺失具名失败；`find_matching_manifest` 跳过无效 manifest 且要求"全覆盖"（只覆盖部分组时返回 None）；普通 ACE 入口在无准备时**不调用 `execute_plan`** 即抛 `PREPARATION_REQUIRED` 且消息含 `--prepare-only`。全套 `test_fixed_groups.py` **77/77 OK**（7.46s），`test_prepare_tools.py` 8/8 OK。
+- **顺带修正既有红**：`ace-python` 的 `expression` 原本只是 `test(p1026)`（缺 performance 排除，`test_ace_module_groups_exclude_formal_performance` 在 master 上就是红的——已单独在 master 复现确认非本包引入）；现在去掉 args 里重复的 `-E test(p1026)`，expression 改为 `(test(p1026)) and not test(/(^|::)performance::/)`。**重发现验证选择面不变（仍 10 例）**，非放宽或掩红。
+- **兼容面（须写入 SD-01）**：门覆盖**全部 `domain=ace` 的 nextest 组**，含外部 `ase-m0`（`experimental/ase-m0` 独立 workspace）与 `ace-perf`；二者从此同样要求先准备。**非 ACE 组与 `--ignored` 显式重放路径不受影响**（`--ignored` 每次必须显式给 `aavm` 或 `--test-name`，属具名手工入口，保留原构建语义，代码已按此豁免）；`--test-name` 只是日常选择内的导航，仍走准备件。命令行兼容：`cargo t <ACE组>` 的旧行为（自动构建后跑）不再可用，须先 `--prepare-only`——这是 §2 明示的意图改变，须在说明中写明。
+
+### 5.14 T-02 第三刀：runtime 预热 + prepare 顺序修正（代码 `fe036b9f1`）
+
+- 新增 `ace-native` 的 `runtime-warm` bin（只调 collections/sched/typed 的真实 `prepare()`，不绕过身份/哈希校验）。
+- `toolchains.json` 新增 `native-runtimes`（`"warm": ["runtime-warm"]`），并加入 10 个工具多数组的 `tools`（共享同一 target/收据）。
+- `prepare_tools.prepare()` 支持 `"warm"`：构建或复用后执行一次 warm 命令，失败即准备失败；成本写入 receipts（`<tool>#warm` 行，含 `warm_seconds`/log）。
+- **顺序修正（实测发现的真问题）**：`cargo nextest archive` 用 nextest 的 `test` profile 在**同一 target dir** 重建同名 bin——实测 `runtime-warm.exe` 哈希在 archive 后由 `b0c9b3…` 变为 `21888e…`，于是"先准备工具、后建 archive"会让工具 artifact 哈希当场失效，`--run-prepared` 报 `tool artifact missing or tampered`。现 `prepare_plan` 分两阶段：**先建全部 archive，再准备工具并 warm**，使工具哈希描述最终字节。
+- **实测（`ace-native`，329 例）**：
+  - 冷准备 **673.22s**（13 个工具 release 构建 + 66MB archive + warm），热准备 **9.11s**（archive 复用、工具 cargo no-op、warm 0.27s）。
+  - warm 日志：collections/sched/typed 各 `builds=1`（各构建一次并写 `identity.json` stamp）。
+  - `--run-prepared` → **PASS 329/329**，`nextest run` 墙 **62.5s**（整命令 66.1s）；run 日志**零 `Compiling`/`Finished`**；三个 runtime 库 SHA256 运行前后**完全一致** → 运行期零编译、零重建。
+- **成本注记**：把 `native-runtimes` 加入 10 个工具多数组的 `tools` 后，任一组 prepare 都会预热 native runtimes（共享 target/收据，第二次起约 0.3s）；这是为"所有可能触及 native runtime 的组"提供同一保证，不是重复构建。
+- **未决**：`ace-native` 组 T_warm 62.5s 已接近目标 60s（仍在 120s 上限内，登记为观察项，等 profile 翻到 debug 后再测）。
+
+- **材料卫生**：验证期把 3 份 `archive-0.tar.zst`（各 63.2MB）与 probe archive 落在 plan scope，达到 265.6MB。按 2026-10-31 裁定"证据=摘要、构建产物随树删除"，已删除全部 archive 与旧 prepare 目录，scope 回到 **4.0MB**（只留 manifest/results/log 摘要）；archive 属可重建准备产物，日常/准备位在 worktree `target/test-groups/prepared/<state>/`，不再入 scope。
+
+### 5.15 T-02 第四刀：6 处 worker 定位去硬编码（B-05 第 3 步部分，代码 `80bbab696`）
+
+改动（全在实施树）：
+
+| 文件 | 原形态 | 现形态 |
+|---|---|---|
+| `crates/av/tests/cases/av_collections_resources.rs`（`:793-818`） | 测试体内 `cargo build --release -p ace-av --bin av-worker` + `ws.join("target/release/av-worker.exe")` | 只读 `AC_AV_CASE_WORKER`；缺失即 panic 并打印显式准备命令 |
+| `crates/av/tests/cases/av_dynamic_resources.rs`（`:704-728`） | 同上（另带 `--target-dir`） | 同上 |
+| `a2x-worker/tests/cases/a2c_cert.rs`（`:21-28`） | `../../target/release/a2x-worker.exe` + `../../../target/release` 回落 | 只读 `AC_A2X_HIR_WORKER`，无回落 |
+| ` …/a2c_rt_cert.rs`（`:23-26`） | 同上（`assert!(p.exists())`） | 同上 |
+| ` …/a2c_coll_cert.rs`（`WORKER` 常量 + 回落） | 同上 | 同上（并删除不再使用的 `WORKER` 常量） |
+| ` …/cert_coll_904.rs`（`WORKER` 常量 + dev-tree 回落） | 同上 | 同上（同删常量） |
+
+**实测（带 env 的定向重放，release worker）**：
+- `ace-av`：`av_collections_worker_memory_hard_gate_parent_sampled` 0.668s、`av_dynamic_resources_worker_memory_hard_gate_parent_sampled` 0.810s → **2/2 PASS**。
+- `ace-a2x-worker`：`a2c_cert::` + `cert_coll_904::` 共 9 例 → **9/9 PASS**，其中 4 例 >10s（`audit1036_loop_03_owned_cleanup` 10.219s、`c2_certify_two_leg_pass_and_stable_bytes` 11.304s 等）——**这些正是 §5.3 C 类**（真 cl/rustc 编译认证），T-06 须迁 `ace-toolchain`。
+
+**过程记录（worktree 纪律）**：本轮首次编辑用了相对路径，工具把 6 个文件改到**主检出**而非实施树；已立即 `git checkout --` 还原（仅本会话所改的 6 个文件，主检出随后 `git status` 为 0），并在实施树用绝对路径重做。教训：编辑路径必须显式指向 `D:/autostack/.wt/lang-1098/auto-lang/...`，不能依赖工具工作目录。
+
+**B-05 剩余**（按 §5.13）：`cert_rt_902.rs:315`、`native/tests/common/mod.rs`（B-01）、`native/tests/common/collections.rs`、`core/tests/common/mod.rs`（B-04）、`host/rust_lowering.rs:231`（B-03），以及 5 个 lib 级 builder 的 env 优先改造与 profile 翻转。
+
+### 5.16 T-02 第五刀：B-01/B-02/B-03/B-04 落地（代码 `00f57a8b8`）
+
+| 行 | 原形态 | 现形态 | 验证 |
+|---|---|---|---|
+| **B-01** `native/tests/common/mod.rs::trace_support_lib` | 缺库即 `cargo build --profile runtime-dev` | `ACE_TRACE_RUNTIME_LIB` 优先（缺失/坏 = 具名 infra 失败并给准备命令）；env 未设（直接 `cargo test`）才走历史定位+构建 | `ace-native` prepared run **PASS 329/329** |
+| **B-01′** `native/tests/cases/first_case.rs::trace_support_lib` | 同上（计划未列的第 4 份拷贝） | 同上 | 同上 |
+| **B-02** `case-worker/tests/cases/backend.rs::trace_support_library_travels_to_the_mn_link` | 体内同型 `cargo build` | 同上（`exit=12`/stderr`ba` 断言原样保留） | `ace-native-worker` prepared run **PASS 43/43** |
+| **B-03** `tests/conformance/tests/host/rust_lowering.rs::{a2r_hir_first_case_green,worker_exe,maintenance_build_worker}` | 缺 env 时 release 维护构建 + `target/release` 回落 | **删除** `maintenance_build_worker`（55 行）与回落；`worker_exe` 只读 `AC_A2X_HIR_WORKER`，缺失即具名 infra | `ace-rust-lowering` prepared run 4/6（见下"既有红"） |
+| **B-04** `core/tests/common/mod.rs::{text_runtime_lib,text_runtime_pair_copy,text_runtime_sha}`（+`write_sidecar`） | 死 helper，仍会在体内 cargo build runtime-release | **删除**（文件 350→290 行；全仓无测试消费者，第 2 轮已核） | `ace-source` prepared run **PASS 904/904，整命令 11.26s** |
+
+`toolchains.json`：`trace-runtime` 增 `"env": "ACE_TRACE_RUNTIME_LIB"`（prepare 时发布准备件路径）。
+
+**两条既有红（非本包引入，已具名）**：`ace-rust-lowering` 的 `a2r_hir_first_case_green`（`a2x_runtime.rs` first_diff@423、`manifest.json`@473）与 `a2r_hir_worker_credential_pin`（`"matching pin passes"` 断言）在 `docs/plans/KNOWN-DEBT-AND-RISKS.md` 的 **1060-R3「a2r/a2x golden 漂移」P1** 中已登记（fail shape 与本轮实测逐字一致）。本轮只改了 worker 的**定位方式**（预建 vs 体内重建），未改产物/期望，因此不充 PASS、不 ignore；仍归 1060-R3 的 golden 修复 owner。
+
+**治理**：`test_fixed_groups` + `test_prepare_tools` **85/85 OK**。
+
+### 5.17 T-02 第六刀：B-05 收尾——profile 按"是否被认证/摘要固定"分流（代码 `a8a9350b2` → `940030bed`）
+
+改动（`toolchains.json`）：`av/batch-av/av-regular/ac/mn/mn-collections/cte/sema` → **debug**；`abi`、`a2x` 保持 **release**；runtime 库保持现状（`text/data`=`runtime-release`、`trace`=`runtime-dev`）。
+
+A/B 实测（同选择、同 oracle，只有 profile 不同）：
+
+| 组 | release | debug | 判定 |
+|---|---|---|---|
+| `ace-native` 329 | PASS，墙 64.9s，item 和 1108.7s，>10s 项 28 | PASS，墙 60.9s，item 和 981.8s，>10s 项 19 | debug 不劣 → 保留 |
+| `ace-native-worker` 43 | — | PASS 43/43 | 保留 |
+| `ace-comptime` 136 | — | PASS 136/136 | 保留 |
+| `ace-semantics` 295 | — | 1 红（0.29s） | 该红 = KNOWN-DEBT **D-1037-01**（`sema_boundary_case_files_executed_status_honest`），既有 |
+| `ace-abi` 314 | **26 红** | **25 红**（同一集合，差 1 例方向相反） | 既有红族 `foreign.authority.runtime-or-emitter`（PLAN-1026 记录"预存基线红…与本计划无关"、PLAN-973 记 `ace-abi 293/294` 同码）；**两种 profile 下都存在**，故不可能由 profile 引入；`abi` 暂留 release 属保守选择，非本 A/B 证实的必要条件 |
+| `ace-a2x` 328 | **1 红** | **3 红** | debug 使两个认证例新增失败，实测报错 `c-tool infra: CToolError("cl -? spawn: Deadline")`（`worker_ct_frontdoor_958.rs:251`）→ **debug worker 太慢，撞到内部 `cl -?` 探测截止**，属**时限**而非语义/证书规则 |
+| `ace-batch` 12 | 8 红 | 未复测 | 8 红 = **D-1098-02**（旧 fence 解析 vs document 迁移），既有；与 profile 无关 |
+
+**结论（必须写入 SD-01）**：**"普通准备一律 debug" 不成立**，但原因要写准：`a2x` 必须 release 是**时限**约束（debug worker 令内部 `cl -?` 探测超时），不是认证语义；`abi` 本轮 A/B 未证明 profile 敏感（既有红在两种 profile 下同集合），暂按保守留 release 并在 SD-01 标注"未证实必要性"。可 debug 的是纯执行类 worker（av/ac/mn/mn-collections/cte/sema）。runtime 库 profile **不得**顺手改：`ace-abi` 的 `source_foreign_runtime_policy_pin_matches_current_sdk_material` 把 runtime 摘要 pin 成常量（两种 profile 都红，说明该 pin 与本树材料已漂移，属既有红），改 profile 等于改产品材料，需 owner 决策——本轮不动。
+
+**环境归因（不判红）**：`ace-a2x` 两次 run 都被 meter 记为 `[process-tree infrastructure] … live_after_exit: vctip.exe … cleanup_complete: true`（VS 遥测进程在主进程退出后仍在），属环境观察，已按 §6.2 分列，不计入测试失败。
+
+### 5.18 T-03：P-01/P-02 归 `performance::`（代码 `514a9459c`）
+
+改动：`crates/syntax-core/tests/cases/perf.rs` 整体包进 `mod performance { … }`（文件头 doc 注释保留在外），因此两个正式计时例的完整身份变为 `ace-syntax-core::conformance perf::performance::…`。`conformance.rs` 的 `mod perf;` 与两例正文（N=32、3 预热、8,000 声明；6,000 函数、CST/legacy 双链、P50/P95/P99）**一字未动**。
+
+**发现差集（真实 `--discover-only` / nextest 选择）**：
+
+| 面 | 之前 | 之后 |
+|---|---|---|
+| `ace-syntax`（普通） | 159，其中含 `perf::perf_*` 2 例 | **157，perf 相关 0 例** |
+| `performance::` 过滤（`-p ace-syntax-core --test conformance`） | 0 | **2 例**（`perf::performance::{perf_fresh_parse_and_incremental_and_restart_query, perf_core_vs_legacy_parser_reference}`） |
+
+**正式运行（`--profile ace-perf` 串行，原样本）**：`2/2 PASS`，`perf_core_vs_legacy_parser_reference` **11.450s**、`perf_fresh_parse_and_incremental_and_restart_query` **3.799s**，合计 15.251s（整命令 15.87s）。日志显示 `Finished test profile [unoptimized + debuginfo]`——即**当前 PERF 口径是 test(debug) 构建**，本轮未改（改口径属 SD-04 决策，见 §5.17 讨论）。
+
+**新治理控制（`PerformanceSelection`，2 例）**：①`perf.rs` 必须包含 `mod performance {`（防止有人把包装拆回去，导致普通组重新泄漏）；②`ace-perf` 是唯一"正向选择 `performance::`"的组，且 `experimental/ace` 下所有普通 nextest 组都必须带 `not test(/(^|::)performance::/)` 排除。全套 `test_fixed_groups` **79/79 OK**。
+
+**边界**：`ace-facade`/`ace-adapters`（根 workspace，`all()`）不在该排除断言内——它们不持有正式性能例，已在测试注释里写明理由。
+
+### 5.19 T-04：F-01 夹具 O(n²) 与 F-02 单 run 多轴（代码 `833f1dc3c`）
+
+**F-01**（`av/tests/cases/mir_tier.rs`）：原夹具 `for i in 0..70_000 { m.intern_const(I32(i)) }`——`intern_const` 是**整表线性扫描**，故 O(n²)。改为直接 `m.consts.extend((0..70_000).map(MirConst::I32))`（表内容完全相同），并抽 `module_with_const_count(n)` 复用。
+
+| 指标 | 前 | 后 |
+|---|---:|---:|
+| `mir_admission_module_tables_over_budget_is_resource` | **10.013s** | **0.063s** |
+| 断言 | 精确 `Resource(TableEntries)`，7 万不同 I32 | 不变 |
+| 新增邻例 `mir_admission_module_tables_boundary_is_exact` | — | 0.035s：**总数恰为 65_536 合法**、多 1 条即 `Resource(TableEntries)` |
+
+**F-02**（`av/tests/cases/sched_m2_968.rs`）：`ok()` 原来对每个调度样例跑**两次**（第一次判 exit、第二次判 stdout）。现在**一次 run 同时判 exit+stdout**；原先的"双 run 确定性"义务保留为**一个具名用例** `sched_968_replay_is_deterministic`（同一程序跑两次，outcome 与 stdout 必须一致）。
+
+**验证**：`-E 'test(mir_tier::) + test(sched_m2_968::)'` → **27/27 PASS，0.750s**（整命令含构建 5.7s）。
+
+**V-05 负控（本轮实做）**：把 `mir_verify/mod.rs` 的 `module_tables > MAX_TABLE_ENTRIES` 临时改成 `>=` 后重跑——**边界例立刻变红**（`a module exactly at the cap is legal: Resource … 65536 exceed 65536`），超预算例仍绿；随后立即还原（`git status` 干净）。证明邻例对门位真敏感，不是空断言。
+
+### 5.20 T-05：O 类探针全部转为独立 oracle（代码 `9d2f63a27`）
+
+| ID | 之前 | 现在（独立预期来源） |
+|---|---|---|
+| **O-01** `p946_empty_remove_contract_observed` | 两分支只 `println!` | 断言 `Err == "trap: av.trap.list-index"`（spec 的 trap kind `list-index`），**并加合法邻例**：非空 `remove(len-1)` 返回 7 |
+| **O-02** `probe972_t02_str_surface` | 六场景只 `eprintln!` | 每场景一个 oracle：值 `str_concat=4`、`char_codepoint_cmp=1`、`char_codepoint=97`、`str_char_at=20013`；两个该 profile 不接受的构型钉**诊断**——`str_eq` → `source.unsupported / "`fn` is not part of this source profile"`，`str_slice_len_bytes` → `verify.local-type / "…text-i32-draft profile"` |
+| **O-03** `probe972_p1b2_closure_param_frozen_rejection` | 只断言 `Err` + 打印 code | 钉**阶段+码+消息**：`source.syntax` / ``expected `,` or `)`, found `fn` `` |
+| **O-04** `probe972_p1c_suffix_list_public_frozen_rejection` | 同上 | 钉 `source.syntax` / ``expected `,` or `)`, found `<` `` |
+| **O-05** `p946_list_argument_moves_single_module` | 22 断言 + 一个**完全重复**的 `compile_and_execute_aggregates` 调用（结果只打印） | 保留 22 断言；删除重复块，并注明"cap 单轴隔离需要 raw assembly 路径，超出本 support fn，具名移 research" |
+
+**验证**：`p946_t01_probe::` + `probe972::` 全模块 **19/19 PASS，2.754s**（其中 `probe972_t02_str_surface` 2.752s）。
+
+**V-07 负控（本轮实做）**：把 O-02 的 `20013` 改成 `20014`、把 O-01 的期望码改成 `av.trap.list-index-x`，重跑 → **两例各自变红**（`right: 20014` / trap 码不匹配）；随即还原（`git diff` 只剩本轮预期改动）。
+
+**必须记入 SD-05 的两处 spec 与实现分歧**：
+
+1. **O-04**：`docs/specs/stdlib/design/ace-collections.md:33` 说 packages 面在 binder 层拒 List 参数（`source.module-symbol`），但 `asm_stdlib_aggregates_inputs` 这条**后缀装配 lane** 在**语法层**就拒了（`source.syntax`，泛型参数语法不在该 face）。本行按"实际可达的最早阶段"冻结，并把"是接受语法层拒绝、还是要求把语义码前移到该 lane"列为 SD-05 待决点。
+2. **O-03**：闭包类型参数同样停在语法层（`source.syntax`），无任何 spec 为其声明语义码。按 §5.11 的裁定：不把打印值当 oracle，先把**阶段+码+消息**冻结（放行或改码都会红），语义归属交 SD-05。
+
+### 5.21 T-06 首刀：显式 `ace-toolchain` 组（代码 `125ab32f4`）
+
+**新增组**（`scripts/test-groups.toml`）：
+
+```
+name = "ace-toolchain"; runner = nextest; workspace = experimental/ace
+args = [-p ace-a2x-worker, -p ace-conformance, --tests, --config-file ../../.config/nextest-full.toml, --features test-toolchain]
+expression = (test(a2c_cert::) + test(a2c_coll_cert::) + test(a2c_rt_cert::) + test(cert_coll_904::)
+              + test(cert_rt_902::) + test(worker_ct_frontdoor_958::) + test(tests::rust_lowering::a2r_hir_certify))
+             and not test(/(^|::)performance::/)
+tools = ["a2x"]; domain = ace; all = false
+```
+
+**feature 门控（不是整模块）**：新增空 feature `test-toolchain`（`ace-a2x-worker`、`ace-conformance` 各一处），给 6 个认证模块里的 **35 个 `#[test]`** 与 H-05 的 **2 个** 逐条加 `#[cfg(feature = "test-toolchain")]`。**为什么不能整模块门控**：`inventory_941.rs`（日常测试）消费 `a2c_rt_cert::{mode_contracts_941, trap_contracts_941}` 与 `a2c_coll_cert::CASES`——第一版按整模块门控后日常组直接 **E0433 cannot find a2c_rt_cert/a2c_coll_cert in super**（3 处），已改为只门测试体、数据表照常编译。
+
+**发现差集与真实运行**：
+
+| 组 | 之前 | 之后 | 说明 |
+|---|---:|---:|---|
+| `ace-a2x`（日常） | 328 | **293** | 35 个认证例移出；复跑 293 例，**仅 1 个既有红**（`ace_a2x_ts::ports::canonical_fingerprint_is_stable_and_binds_runtime_sha`，本包前几轮 debug/release 两 profile 下都红） |
+| `ace-rust-lowering`（日常） | 6 | **4** | 移出 H-05 两例；复跑 4 例，红的是既有 **1060-R3** 的两条 |
+| `ace-toolchain`（新） | — | **37** | 首次真实运行：准备 62.74s（冷建 feature 版 archive），运行 **PASS 37/37，95.59s**（≤120s 验收线；含真 cl/rustc 编译腿） |
+
+**治理**：新增 `ToolchainSplit` 2 例——①`ace-toolchain` 必须 `all=false` 且不被默认/`all`/`ace` set 选择；②每个认证模块里 `#[cfg(feature = "test-toolchain")]` 计数必须等于 `#[test]` 计数（防止有人只门一部分），H-05 两例必须带门。全套 `test_fixed_groups` **81/81 OK**。首次写的守卫用 `assertNotIn('#[test]\nfn ')` 是错的（它是门控串的子串），已改为计数相等。
+
+**T-06 未完成**：47 行里的 **C 类 19 行**（`bstr_1064`/`kv_zip_1064`/`stdlib_*`/`module_*`/`plan966_ct_product`/`console_coverage_1041` 等真 rustc/cl/py 腿）尚未迁入本组；它们目前仍在 `ace-av` 日常选择内。迁移需按 §5.7 的"助手 × 端"记账并做旧新同输入对照，留下一步。
+
+**T-06 第二刀（同日续，代码 `e169c7000`）：C 类 19 行迁入**
+
+- `crates/av/Cargo.toml` 增空 feature `test-toolchain`；给 19 个 C 行逐条加 `#[cfg(feature = "test-toolchain")]`（**只门测试体**，`run_rust_stdout`/`compile_c_fileset`/`native_exit` 等共享助手照常编译，避免像 a2x 那次整模块门控把日常编译打断）。
+- `ace-toolchain` 组 args 增 `-p ace-av --test conformance`（`--features test-toolchain` 已就位），expression 追加这 19 个逐名身份。
+
+**旧新身份对照（真实 `--discover-only` 差集，非口算）**：
+
+| 面 | 之前 | 之后 | 差集 |
+|---|---:|---:|---|
+| `ace-av`（日常） | 1,428 | **1,411** | −19（正是迁出的 19 行）+2（T-04/T-05 新增的边界邻例与确定性用例） |
+| `ace-toolchain`（显式） | 37 | **56** | +19，且其中 `ace-av::conformance` 行数实测 = 19 |
+| `ace-rust-lowering`（日常） | 6 | 4（第一刀） | 不变 |
+
+**真实运行**：`ace-toolchain` 准备 39.56s、运行 **PASS 56/56，wall 68.0s**；item 时间和 993s（并行 14×），最慢 `bstr_1064_v_d09_file_read_bytes_cross_end` 55.56s、`bstr_1064_v_codec_five_ends` 41.87s、`kv_zip_1064::v03_kv_a2r_roundtrip_and_budget_4096` 30.20s——**这些曾经的 10s 级违规现在整体离开日常组**，10s 预算不再被它们占用；`ace-toolchain` 自身属显式认证组（父截止 1800s），不适用日常 60/120 预算。
+
+**治理**：`ToolchainSplit` 扩到 4 例（组显式性、a2x 门控计数、AV 19 行"门控 + 组表达式逐名覆盖"、`ace-av` 必须声明该 feature），全套 **83/83 OK**。过程中一次补丁把类体写错缩进（`IndentationError`），用整段重写修复。
+
+**T-06 仍未闭**：①`Q` 类（S-04 `resources_tier` 六场景）处置；②`L` 类 S-39 交 1061/1063 的具名移交文本；③`ace-av` 全组（1,411）prepared 复跑属 T-09 逐组验收项，不在本刀重复。
+
+**T-06 第三刀（同日续，代码 `3e03a6dc2`）：Q/L 两行处置，T-06 关闭**
+
+- **Q（S-04）**：`av_turnaround_six_scenarios_smoke` 实测 **44.778s**（远超 10s）。它已是"单 test 多断言、六场景、3 样本"，**缩样本会违反 §5.3 记录的"原 3 样本"义务**，故按 §5.3 Q 行允许的第二条路——**具名并入压力**：整段移入同文件既有 `mod performance`（身份变为 `resources_tier::performance::av_turnaround_six_scenarios_smoke`）。正文/3 样本/六场景/命中率/冲突诊断/编辑修订身份**一字未改**；正式 30 样本 P90 门仍由 `scripts/verify-ac-av-798.ps1 -Scope turnaround` 承担。
+  - 发现：`ace-av` 日常 **1,411 → 1,410**，且选择里 **0 个 `performance::` 泄漏**；`-p ace-av` 的 `performance::` 匹配由 22 → **23**（新入列的那条就是它）。
+  - 真实运行：`--profile ace-perf`（串行）**PASS，24.412s**。
+  - 新治理守卫：`PerformanceSelection` 增一例——该 bench smoke 必须位于 `mod performance` 之后（防被移回日常）。
+- **L（S-39 `sys973_t09_target_selection_linux_binds`）**：实测 **5.024s**，做的是 `TargetOs::Linux` 下的 `sysplat_lnx` **绑定 + 冷 link**（code-only），其 doc 已写明"Linux arms 仅 binding，原生运行 NOT_RUN，owner=PLAN-1063"。按 §5.3 第 7 条"Windows 不触发 WSL/Linux 腿；S-39 仅绑定事实单列，原生 Linux 仍由 1061/1063 验收"——**本行不需代码改动**，保持日常（5.0s ≤10s），移交文本即：Linux 原生写/读/目录语义归 1061/1063；本仓 Windows 只保留"能绑定 Linux target"这一条事实。
+- 治理：全套 `test_fixed_groups` **84/84 OK**。
+
+**T-06 关闭结论**：显式 `ace-toolchain` 组已建立并真跑（56/56）；C 类 19 行与 H-05 两例已迁出日常；Q 行并入压力；L 行具名移交。**C/Q/L 三类都不再占用日常预算**，剩余 `ace-av` 全组复跑归 T-09。
+
+### 5.22 T-07：宿主/console H 行核实与 H-02 真实运输负控（代码 `1bf9ff89b`）
+
+**H-02 的真实运输缺口（本轮补上）**：原控制只在 `auto-lang-core` 单元测试里用**伪造 step** 证明 admission（缺 `console`/缺 `*_present`/截断都会被拒），而 §5.2 H-02 明确要求"至少一条真实 worker 响应同时携带三轴，强制错/漏运输轴也必须被 parent 拒绝；不得只在假响应里证明比较器正确"。本轮补齐三点：
+
+1. `console-observation.json`（真实 worker 帧的留档）原来只写 `outcome/diag/console`，**缺 exit 轴**；现在追加 `value/channel/trap`，成为可复核的三轴真实帧。
+2. 新增 `pub fn console_admission_for_observation(&serde_json::Value) -> Option<String>`（`crates/auto-lang-core/src/test_cases/ac_av.rs`）：把原始帧还原成 step 并跑**同一套** parent admission（`RecipeFamily::Console`）。
+3. 新宿主用例 `console_real_observation_carries_three_axes_and_transport_loss_is_rejected`：**真实**跑一次 console check → 读 artifact → 断言 `outcome=success`、`stdout_b64`/`stderr_b64` 为串、`channel=value`、`value=7`，且 admission 返回 `None`；然后分别删除 `stdout_b64`、`stderr_b64`、`value`（exit 轴）、整个 `console` → **每种都必须是 `Some(拒绝原因)`**。
+
+**验证**：`ace-console` prepared **6/6 PASS，run 2.97s**（prepare 32.41s）。**变异负控**：把断言 `value==7` 改成 `8` → 该例立刻红（driver 报 `FAIL: ace-console`），随即还原。
+
+**顺带测到的成本事实**：直接 `cargo nextest run -p ace-conformance -E 'test(console::)'`（无 prepared env）时，五个 console 例每个约 **241s**（等 worker/环境超时）；同一批经 prepared 路径仅 **2.97s**。这既证明"裸跑会退化成超时"是真实风险（§5.4 的零 lazy build/显式准备规则有实际收益），也说明 ACE 组必须走 driver。
+
+**其余 H 行核实结论**：
+
+| 行 | 结论 | 证据 |
+|---|---|---|
+| H-01 | 宿主保留最小真实身份见证；15 项语言义务在 `case-ace-m1-console-863`（**同一 suite** `crates/auto-lang/test/cases/ace-document-console.suite.ad`） | 该例断言 `report.results.len()==15` 全部 Pass、`av-profile=8`、`mir-lowering=EXPECTED`，并对真实 JSON 做 fresh→改轴 stale |
+| H-03 | NUL 原始字节跨 transport/parent 保持（真实 `run_console_check`，非 mock） | 该例实跑并比较 `a\0b\n` 精确 vs `ab\n` 缺失两种判定 |
+| H-04 | 三条便宜宿主例仍普通：坏 golden 真红、缺 worker 为 infra、身份正确 | `ace-rust-lowering` 4 例：bad golden/missing worker 绿，`first_case_green`+`credential_pin` 是既有 1060-R3 红 |
+| H-05 | certify 两例入显式 `ace-toolchain` | §5.21 首刀，组内 56/56 真跑 |
+| H-06 | host+console 同 key 走 OR 并集、不重复；host/rust-lowering 工具 key 不同不强合、batch feature 不同独立 | 前轮实测（`invocations` 去重后的 22 组发现差集），本轮 ACE 组全走同一条 `invocations` 路径 |
+
+**T-07 未闭项**：`ace-batch` 的完整真实运行（D-1098-02 的 8 红属 batch 文档格式迁移，不归本计划修）与 `host` 全组的 prepared 并集复跑，归 T-09 逐组验收。
+
+### 5.23 T-08：成本报告会话模式（代码 `e4642aa81`）
+
+在 `scripts/test-governance/ace_cost_report.py` 增第三模式 `session`（原 `policy`/`regular` 不动），只加"单组看不到"的两件事，其余**复用** `regular_module` 的既有判定（终态事件完整性、60/120 暖墙预算、STALE 身份）：
+
+1. **身份差集**：`--baseline <json>` 读上一会话的 `ace-session-baseline/1`，输出 `added`/`removed` 原生身份；`--baseline-out` 把本会话身份写成下一会话基线（往返可复现）。
+2. **新增例 ≤10 秒**：只对 `added` 身份强制 `--new-item-cap-seconds`（默认 10s，即 AC-09 的新增 item 预算）；老身份继续走组预算，不因新增例规则被卡。
+3. **退出码**：0=GREEN、1=OVER_BUDGET/新增例超时、2=UNVERIFIABLE（含坏基线 schema、缺证据、STALE 传播），沿用 `REGULAR_EXIT_*`，不新增语义。
+4. **不建 meter、不重跑、不改写产物**：报告只读 run 目录（`results.json` + `0/run.command.json` + `0/run.stdout`）。
+
+**测试**：`scripts/tests/test_ace_cost_report.py` 新增 `SessionReports` 9 例——无基线不产生差集、基线与基线输出往返、新增例 12.5s 超限→1、新增例 4s→0、移除身份上报、缺证据→2、坏基线 schema→2、多模块同判（2 模块 2 身份）、`--baseline` 在非 session 模式被拒。全套 **54/54 OK**（另 `test_fixed_groups` 84/84）。
+
+**真实数据首跑（V-12 端到端）**：
+- 先用**旧**证据跑：`ace-toolchain`(t06) + `ace-console`(t07) → **UNVERIFIABLE，exit 2**，原因正是 `source_state differs from current checkout`——STALE 检查在真实数据上生效，没有把旧证据当绿。
+- 在当前 HEAD 重跑两组（toolchain 56/56、console 6/6）后再判：**GREEN，exit 0**，2 模块 / 67 身份，`added=0 removed=0`（与上一次会话基线逐身份一致），`ace-toolchain 66.293s → WITHIN_BUDGET`、`ace-console 3.033s → GREEN`，无 STALE。
+
+### 5.24 T-09：冻结实现的逐组验收与 47 行关账（代码 `0e18d8844` 起的冻结点）
+
+> **历史快照**：本节的组墙是 t09 批次（`0e18d8844`，复审修复前）的数字，仅作过程记录；**最终验收数据以 §5.28（冻结 `3463ed25d` 之后的修复提交）为准**。
+
+**24 个完整非聚合常规组（含新增 `ace-toolchain`）实测**：全部 `T_warm ≤ 120s`；19 组 ≤60s 目标之内，超 60s 但 ≤120s 的 5 组是 `ace-host 109.5`、`ace-a2x 85.8`、`ace-native 77.7`、`ace-toolchain 66.3`、`ace-abi 64.9`。
+
+| 组 | 执行 | 终态 | T_warm(s) | 120s | 红与归属 |
+|---|---:|---|---:|---|---|
+| `ace-source-syntax-927` | 13 | PASS | 3.0 | ≤120 ✓ |  |
+| `ace-source` | 904 | PASS | 7.8 | ≤120 ✓ |  |
+| `ace-syntax` | 157 | PASS | 3.8 | ≤120 ✓ |  |
+| `ace-semantics` | 295 | PASS*/FAIL | 7.5 | ≤120 ✓ | 1 红：D-1037-01（1 例，既有） |
+| `ace-artifacts` | 43 | PASS | 10.0 | ≤120 ✓ |  |
+| `ace-m2-build` | 30 | PASS | 5.3 | ≤120 ✓ |  |
+| `ace-av` | 1410 | PASS*/FAIL | 48.0 | ≤120 ✓ | 2 红：D-1098-01（2 例，863 host_console 旧预期，PLAN-982 命名入口决定后过时） |
+| `ase-m0` | 7 | PASS | 1.6 | ≤120 ✓ |  |
+| `ace-native-worker` | 43 | PASS | 14.1 | ≤120 ✓ |  |
+| `ace-native` | 329 | PASS | 77.7 | ≤120 ✓ |  |
+| `ace-abi` | 314 | PASS*/FAIL | 64.9 | ≤120 ✓ | 25 红：source_foreign authority 预存红（25 例，既有） |
+| `ace-comptime` | 136 | PASS | 14.8 | ≤120 ✓ |  |
+| `ace-lowering` | 9 | PASS | 0.7 | ≤120 ✓ |  |
+| `ace-python` | 10 | PASS | 4.3 | ≤120 ✓ |  |
+| `ace-foreign-contract` | 56 | PASS | 0.7 | ≤120 ✓ |  |
+| `ace-a2c-abi` | 9 | PASS*/FAIL | 0.8 | ≤120 ✓ | 1 红：a2x-c runtime pin 预存红（1 例，Plan 972 遗留） |
+| `ace-host` | 170 | PASS*/FAIL | 109.5 | ≤120 ✓ | 14 红：14 例：worktree 内 examples/ui 缺内容（环境）+ language_conformance 金样族（既有红） |
+| `ace-batch` | 12 | PASS*/FAIL | 3.2 | ≤120 ✓ | 8 红：D-1098-02（8 例，batch 旧边界解析 vs PLAN-1062 文档格式迁移） |
+| `ace-toolchain` | 56 | PASS | 66.3 | ≤120 ✓ |  |
+| `ace-console` | 6 | PASS | 3.0 | ≤120 ✓ |  |
+| `ace-a2x` | 293 | PASS*/FAIL | 85.8 | ≤120 ✓ | 1 红：ace_a2x_ts 指纹 pin 预存红（1 例，既有） |
+| `ace-stdlib` | 2 | PASS | 3.6 | ≤120 ✓ |  |
+| `ace-runtime` | 84 | PASS*/FAIL | 13.9 | ≤120 ✓ | 19 红：1060-R8 text 车道 __CxxFrameHandler3（既有红） |
+| `ace-rust-lowering` | 4 | PASS*/FAIL | 2.9 | ≤120 ✓ | 2 红：1060-R3 两例（既有） |
+
+**红归属（均非本计划引入）**：`ace-semantics` D-1037-01；`ace-a2c-abi` Plan 972 的 runtime pin 遗留；`ace-runtime` 1060-R8 text 车道 `__CxxFrameHandler3`；`ace-abi` `source_foreign` authority 25 例；`ace-a2x` 指纹 pin；`ace-batch` D-1098-02（8 例）；`ace-av` D-1098-01（2 例 863 host_console 旧预期）；`ace-host` 14 例（worktree 内 `examples/ui` 无内容的环境缺件 + `language_conformance` 金样族既有红）。`ace-artifacts` 的 `r3_f01_concurrent_staging_budget_is_atomic` 首跑红、单独复跑绿——**环境归因（并发负载敏感），重放绿，不充 PASS**。
+
+**47 行逐项关账**（正文用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对；"body unchanged" = 原断言与条件未动）。**注意**：下表"当前"列是 t13 批次（`0e18d8844` 后、复审修复前）的时间快照，仅供对照；冻结测量以 §5.28 为准：
+
+| 行 | 原生身份 | 历史秒 | 类 | 处置 | 当前 | 正文 | 组 |
+|---|---|---:|---|---|---:|---|---|
+| S-01 | `bstr_1064::bstr_1064_v_d09_file_read_bytes_cross_end` | 69.958 | C | → ace-toolchain（显式认证组，56/56 真跑） | 55.56s | body unchanged | ace-toolchain |
+| S-02 | `kv_zip_1064::v03_zip_plan897_and_btypes_av` | 51.688 | D | 留日常（原义务保留） | 32.65s | body unchanged | ace-av |
+| S-03 | `bstr_1064::bstr_1064_v_codec_five_ends` | 43.781 | C | → ace-toolchain（显式认证组，56/56 真跑） | 41.87s | body unchanged | ace-toolchain |
+| S-04 | `resources_tier::av_turnaround_six_scenarios_smoke` | 42.96 | Q | → resources_tier::performance（正式压力，ace-perf） | 24.41s（ace-perf 串行） | body unchanged（移入 mod performance） | ace-perf |
+| S-05 | `bstr_1064::bstr_1064_t01_longest_chain_probe` | 41.758 | R | 留日常（原义务保留） | 35.57s | body unchanged | ace-av |
+| S-06 | `stdlib_asm_972::stdlib_asm_972_cross_end_gaps_and_a2r_math` | 38.324 | C | → ace-toolchain（显式认证组，56/56 真跑） | 29.68s | body unchanged | ace-toolchain |
+| S-07 | `kv_zip_1064::v03_kv_a2r_roundtrip_and_budget_4096` | 33.775 | C | → ace-toolchain（显式认证组，56/56 真跑） | 30.20s | body unchanged | ace-toolchain |
+| S-08 | `kv_zip_1064::v03_zip_a2r_roundtrip_and_budget` | 33.414 | C | → ace-toolchain（显式认证组，56/56 真跑） | 29.47s | body unchanged | ace-toolchain |
+| S-09 | `kv_zip_1064::v03_zip_a2py_roundtrip_and_budget` | 33.149 | C | → ace-toolchain（显式认证组，56/56 真跑） | 26.94s | body unchanged | ace-toolchain |
+| S-10 | `kv_zip_1064::v03_kv_a2py_roundtrip_and_budget_4096` | 31.159 | C | → ace-toolchain（显式认证组，56/56 真跑） | 27.89s | body unchanged | ace-toolchain |
+| S-11 | `mir_tier::mir_admission_module_tables_over_budget_is_resource` | 30.228 | R | 留日常（原义务保留） | 0.02s | BODY CHANGED | ace-av |
+| S-12 | `stdlib_sys_973::sys973_a2r_real_rustc_leg` | 28.293 | C | → ace-toolchain（显式认证组，56/56 真跑） | 25.69s | UNKNOWN(no source) | ace-toolchain |
+| S-13 | `kv_zip_1064::v03_kv_wire_oracle_and_reopen_av` | 26.976 | D | 留日常（原义务保留） | 16.22s | body unchanged | ace-av |
+| S-14 | `stdlib_sys_973::sys973_a2py_real_python_leg` | 26.588 | C | → ace-toolchain（显式认证组，56/56 真跑） | 23.90s | UNKNOWN(no source) | ace-toolchain |
+| S-15 | `bstr_1064::bstr_1064_v01_decode_utf8_and_region` | 26.544 | R | 留日常（原义务保留） | 27.47s | body unchanged | ace-av |
+| S-16 | `sys_d01_d06_1064::v02_d01_d06_a2r_cross_end` | 21.394 | C | → ace-toolchain（显式认证组，56/56 真跑） | 25.93s | body unchanged | ace-toolchain |
+| S-17 | `v08_surface_972::v08_surface_manifest_and_five_end_exercise` | 19.869 | C | → ace-toolchain（显式认证组，56/56 真跑） | 26.65s | body unchanged | ace-toolchain |
+| S-18 | `sys_d01_d06_1064::v02_d01_d06_a2py_cross_end` | 19.865 | C | → ace-toolchain（显式认证组，56/56 真跑） | 23.92s | body unchanged | ace-toolchain |
+| S-19 | `json_975::json975_char_to_str_a2x_ends` | 19.384 | C | → ace-toolchain（显式认证组，56/56 真跑） | 15.99s | body unchanged | ace-toolchain |
+| S-20 | `module_packages_960::packages_960_four_ends_run_public_str_and_recover` | 18.905 | C | → ace-toolchain（显式认证组，56/56 真跑） | 12.23s | body unchanged | ace-toolchain |
+| S-21 | `stdlib_core_945::stdlib_core_945_four_ends_run_math_and_text_slices` | 17.565 | C | → ace-toolchain（显式认证组，56/56 真跑） | 21.26s | body unchanged | ace-toolchain |
+| S-22 | `av_source_incremental::av_source_incremental_detector_negative_controls` | 15.021 | R | 留日常（原义务保留） | 10.03s | body unchanged | ace-av |
+| S-23 | `plan966_ct_product::p966_ct_generated_declarations_change_end_results` | 14.412 | C | → ace-toolchain（显式认证组，56/56 真跑） | 14.41s | body unchanged | ace-toolchain |
+| S-24 | `plan966_ct_product::p966_ct_statements_and_macro_run_on_av_native_rust_c_py` | 14.396 | C | → ace-toolchain（显式认证组，56/56 真跑） | 14.29s | body unchanged | ace-toolchain |
+| S-25 | `kv_zip_1064::v03_kv_corrupt_io_budget_and_atomic_preserve_av` | 14.356 | D | 留日常（原义务保留） | 8.19s | body unchanged | ace-av |
+| S-26 | `bstr_1064::bstr_1064_t01_illegal_scalar_neighbor` | 14.096 | D | 留日常（原义务保留） | 15.33s | body unchanged | ace-av |
+| S-27 | `stdlib_sys_973::sys973_v03_process_spawn_capture_timeout_exit` | 13.817 | D | 留日常（原义务保留） | 13.87s | UNKNOWN(no source) | ace-av |
+| S-28 | `stdlib_sys_973::sys973_t08_seek_permissions_mtime` | 13.779 | D | 留日常（原义务保留） | 13.12s | UNKNOWN(no source) | ace-av |
+| S-29 | `stdlib_assembly_1043::stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c` | 13.484 | C | → ace-toolchain（显式认证组，56/56 真跑） | 16.98s | body unchanged | ace-toolchain |
+| S-30 | `stdlib_asm_972::stdlib_asm_972_hash_domains_av` | 12.967 | D | 留日常（原义务保留） | 16.85s | body unchanged | ace-av |
+| S-31 | `sys_d01_d06_1064::v02_d01_d02_file_text_range_and_dir_names_av` | 12.843 | D | 留日常（原义务保留） | 11.97s | body unchanged | ace-av |
+| S-32 | `console_coverage_1041::vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity` | 12.394 | C | → ace-toolchain（显式认证组，56/56 真跑） | 14.78s | body unchanged | ace-toolchain |
+| S-33 | `stdlib_sys_973::sys973_path_algorithms` | 12.359 | D | 留日常（原义务保留） | 12.95s | UNKNOWN(no source) | ace-av |
+| S-34 | `stdlib_sys_973::sys973_env_set_remove_real_process` | 12.343 | D | 留日常（原义务保留） | 13.36s | UNKNOWN(no source) | ace-av |
+| S-35 | `kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av` | 12.279 | D | 留日常（原义务保留） | 7.57s | body unchanged | ace-av |
+| S-36 | `stdlib_sys_973::sys973_time_real_clock_bands` | 12.217 | D | 留日常（原义务保留） | 12.57s | UNKNOWN(no source) | ace-av |
+| S-37 | `b1_slice_975::json975_char_to_str_b1_slice_oracles` | 12.204 | D | 留日常（原义务保留） | 9.67s | body unchanged | ace-av |
+| S-38 | `stdlib_sys_973::sys973_dirs_and_replace` | 12.133 | D | 留日常（原义务保留） | 13.25s | UNKNOWN(no source) | ace-av |
+| S-39 | `stdlib_sys_973::sys973_t09_target_selection_linux_binds` | 12.064 | L | 留日常（5.024s，bind-only）；Linux 原生归 1061/1063 | 12.64s | UNKNOWN(no source) | ace-av |
+| S-40 | `stdlib_sys_973::sys973_t10_rand_real_entropy` | 11.979 | D | 留日常（原义务保留） | 12.20s | UNKNOWN(no source) | ace-av |
+| S-41 | `stdlib_sys_973::sys973_v04_short_read_and_fault_injection_no_false_success` | 11.864 | D | 留日常（原义务保留） | 11.71s | UNKNOWN(no source) | ace-av |
+| S-42 | `module_sources_950::modules_950_user_shadow_consumer_restore_first_edit_and_next_read` | 11.844 | R | 留日常（原义务保留） | 5.13s | body unchanged | ace-av |
+| S-43 | `stdlib_sys_973::sys973_v05_clock_rand_oracles` | 11.498 | D | 留日常（原义务保留） | 11.32s | UNKNOWN(no source) | ace-av |
+| S-44 | `stdlib_sys_973::sys973_v03_process_exit_outcome` | 11.431 | D | 留日常（原义务保留） | 12.12s | UNKNOWN(no source) | ace-av |
+| S-45 | `module_sources_950::modules_950_qualified_consumer_restore_first_edit_and_next_read` | 10.97 | R | 留日常（原义务保留） | 5.59s | body unchanged | ace-av |
+| S-46 | `stdlib_core_945::stdlib_core_945_clone_allocation_fault_is_a_typed_resource_trap` | 10.86 | D | 留日常（原义务保留） | 7.97s | body unchanged | ace-av |
+| S-47 | `v10_layers_972::v10_core_alloc_layers_mn` | 10.706 | R | 留日常（原义务保留） | 10.35s | body unchanged | ace-av |
+
+**唯一的正文变更**：S-11 `mir_tier::mir_admission_module_tables_over_budget_is_resource` —— T-04 F-01 把 7 万次 `intern_const` 改为直接建表（**断言与资源门未变**，另加 65_536 精确边界邻例），§5.19 有前后时间与门位变异负控。其余 46 行正文逐字未变。
+
+**本计划新增 ACE 原生项（≤10s 预算）**：`mir_tier::mir_admission_module_tables_boundary_is_exact` 0.035s、`sched_m2_968::sched_968_replay_is_deterministic` 0.140s、`console::console_real_observation_carries_three_axes_and_transport_loss_is_rejected` 0.888s——3/3 ≤10s；另有治理侧新增（python）与 `ace-toolchain` 组本身。
+
+**工具链/PERF 增量**：`ace-toolchain` 56 例 66.293s（真 cl/rustc/py 腿，显式组，父截止 1800s）；`ace-perf` 由原 2 例 15.251s + S-04 六场景 24.412s = **3 例**，原 3600s 串行合同未动；日常组不再承载任何 C/Q 行。
+
+**冻结身份（据实修正）**：T-09 的 24 组证据来自**混合树状态**——7 组在 `48a70522/e2d8b6dd`，12 组在 `17eb2472/c5312855`（提交 `e4642aa81`，早于 927 组修复），2 组 `36c60d20`、1 组 `506b711b`（脏树），`ace-toolchain`/`ace-console` 取 t08 的 `4b864266/c5312855`。这些差异在行为上只落在 927 组的 args/expression 与治理守卫上，但**不能**称为绑定 `0e18d8844`。T-10 复审后发现（§5.25），修正代码后在最终提交上**重跑 24 组重绑身份**，重绑结果记入 §5.26。
+
+**AC-09 判定**：24/24 组 T_warm ≤120s ✓；47/47 行有处置与证据 ✓；新增 item 3/3 ≤10s ✓；分流原例/条件通过（C 19 + Q 1 + L 1 有具名归属）✓；PERF 增量与 3600s 合同可核 ✓；聚合组（workspace/facade/adapters）墙另列不计入 24 ✓。
+### 5.25 T-10 独立复审记录（reviewed 0e18d8844，verdict = needs_fix → 已修）
+
+复审由**独立上下文**执行（不共享本会话推理），只读代码 + 两个治理套件（`test_fixed_groups` 85/85、`test_ace_cost_report` 54/54 均复跑为绿），逐 AC 核对真实输入/消费者，未采信打勾。结论：**needs_fix**，11 条发现。
+
+**已在本轮修掉（代码 `2565ae2c8`）**
+
+| 复审发现 | 性质 | 修复 |
+|---|---|---|
+| #2 `host/av_protocol.rs` shape-3 与 `av/tests/cases/av_owned_resources.rs` 在**准备运行中真做 release build**（前者 103.5s 占 host 组 109.5s 的绝大部分，并写出 `target/release/av-worker.exe`） | 违反 §5.4 零体内构建 | shape-3 改为"有 env 时 seam 原样返回准备好的 worker、不触发构建"（build 路径仍由 shape 1/2 的注入式 launcher 覆盖）；memory gate 改 env 优先 | 
+| #3 五个具名 lib 级 lazy builder 只改了三个：`tests/text-runtime/src/lib.rs`、`tests/data-runtime/src/lib.rs`、`tests/text-runtime/tests/cases/contract.rs` 仍在体内 `cargo build --profile runtime-release`；`toolchains.json` 的 `text-runtime`/`data-runtime` 从未导出 env | 违反 §5.4/§5.13 | 三个文件全部 env 优先 + **fail-closed**（给出准备命令），`toolchains.json` 增 `ACE_TEXT_RUNTIME_LIB`/`ACE_DATA_RUNTIME_LIB`；contract 测试的 sidecar 移到临时目录（核对当前代码无消费者） |
+| #3 续 `case-worker/backend.rs` 仍保留"直接 cargo test 就走历史构建"的回落 | 违反 §5.4 | 删除回落，未准备即具名报错 |
+| #3 续 `native_lifecycle.rs` 体内 `cargo build --release --bin store-gc` | 违反 §5.4 | 新增准备工具 `store-gc`（`ACE_STORE_GC_BIN`，release）并接入 9 个消费者组；测试改 env 优先 + fail-closed |
+| #9 `p946_list_clone_boundary` 的 aggregates 段仍是"两分支都打印" | 违反放行即绿禁令 | 实测 aggregates 同样以 `bind/source.unsupported`（"elements clone explicitly"）拒绝，改为精确断言 |
+| #4 冻结身份不实（24 组来自混合树状态） | 收据失真 | §5.24 已据实改写；修正后在最终提交**重跑 24 组重绑身份**（§5.26） |
+| #5 "14 组 ≤60s" 算错（实为 19） | 算术错误 | 已改 19 |
+| #10 SD 表与实现不一致 | 文档 | SD-01 补 per-tool debug/release 拆分；SD-02 改"重冻 24 组（含 ace-toolchain）"并补既有 item 口径；SD-04 改 3 例（P-01/P-02/S-04）；SD-06 补全显式组/门控/成本要点 |
+
+**未在本轮关闭，交下一轮**
+
+- **#1（HIGH，需 owner 裁决）**：AC-04/AC-09 中"47 行逐项关闭：日常完整 item ≤10 秒"与 §5.3 尾"仍不能满足预算则本项保持未完成"是**逐 item** 口径；实测留日常的 27 行里有 20 行 >10s（S-05 35.57s、S-02 32.65s、S-15 27.47s…）。组预算（24/24 ≤120s）与"新增 item ≤10s"（3/3）均达成。逐条优化 20 个历史夹具是**另一个计划量级**的工作，需用户选择：按"组预算 + 新增 item≤10s"口径修订 AC 措辞，或把逐行优化另立计划。
+- #6 聚合组（`ace-workspace`/`ace-facade`/`ace-adapters`）的墙与 `ace-perf` 3 例的 run 产物需补测/留档。
+- #7 AC-10 的完成报告表（准备/发现/运行/清理分列、T_wait、首红/重放分列）未填。
+- #8 T-01 残项（facade/adapters/聚合/PERF/Case 发现）与 V-01 守恒负控无实现。
+
+### 5.26 口径修订（2026-11-19 owner 裁决）
+
+复审发现 #1 指出：AC-04/AC-09 的"留日常行逐 item ≤10 秒"与 §5.3 尾的"仍不能满足预算则本项保持未完成"是**逐 item** 口径，而保留在日常的 27 行里 20 行 >10s（S-05 35.57s、S-02 32.65s、S-15 27.47s、S-22 10.03s、S-47 10.35s…），逐条优化属于另一个计划量级。
+
+**owner 裁决（本会话确认）**：改为 **"组预算（≤120s，目标 ≤60s）+ 新增 item ≤10 秒"**；留日常的**既有 item 不要求 ≤10s**，其时间逐行留档（§5.24 表"当前"列）并接受所辖组预算约束。相应修订：AC-04、AC-09、§5.3 尾段（均已在文中标注裁决日期）。
+
+据此 AC-09 判定：24/24 组 T_warm ≤120s ✓（19 组 ≤60s）；47/47 行有处置与正文证据 ✓；新增 3 项 ≤10s ✓；C/Q/L 分流具名 ✓；PERF 增量与 3600s 合同可核（3 例）✓；聚合墙与 AC-10 报告待 §5.27 补测。
+
+### 5.27 T-10 复审后的第二轮修复与重测（代码 `6e5d8fc72`、`13efa873b`、`23a32750a`）
+
+| 修复 | 触发 | 结果 |
+|---|---|---|
+| **`-j` 上限回退**：曾给 `ace-toolchain` 加 `-j 8`，但 `cargo nextest archive` 不接受 `-j`，准备直接失败；回退并以 30s 探针 deadline 解决（本节 host 45.1/57.3 为 t13 测量，§5.28 的 63.9/25.9 为最终 t15/t19 口径） |
+| **`ace-host` 拆分**：4 类"原始套件重放"（`tests::language_conformance::` 23 例 + `governance::reuse_obligations_run_green_via_original_suites` + `governance::v07_emit_not_run`）移入新的显式组 **`ace-host-suites`**（`all=false`），`ace-host` 只留快速宿主例 | 重绑实测 `ace-host` **129.6s > 120s**（组内 4 个 93–113s 的套件重放） | `ace-host` **45.1s**、`ace-host-suites` **57.3s**，两组均 ≤120s |
+| **MSVC 发现探针 deadline 10s → 30s**（`abi/src/ctool.rs`） | `ace-toolchain` 在 ~20 个并发 `cl` 探针下出现 `CToolError("cl -? spawn: Deadline")` 的伪失败（同一病因也是 B-05 里 a2x 必须 release 的理由） | `ace-toolchain` 重跑 **PASS 56/56，64.2s**（此前 t08 66.3s、t13 曾 155.3s 带 2 红） |
+| **perf/formal 报告不再写进仓库**：新增 `MN_T07_REPORT_DIR` 解析（env > NEXTEST 下的临时目录 > 仅裸跑保留旧 `docs/reports/plan818`） | `ace-perf` 每跑一次都会改写 3 个 tracked JSON，导致树脏、身份无法重绑 | 跑完 `git status` 干净，身份可重绑 |
+| **`av::text_runtime_lib` 与 `abi::text_runtime_support_lib` 改为 env 优先**（`ACE_TEXT_RUNTIME_LIB`），产品自建只作未准备环境的回落 | `ace-perf` 一次运行里出现数十个 cargo 子进程争锁（13 分钟仍未完），来自这两处体内构建 | perf 组不再争锁（本批次未再出现 cargo 风暴）；`ace-native` 的 4 个 closures 用例在 t13 因共享 `target/debug` 构件被后续 prepare 重建而报 `collections runtime: 找不到文件`，改为**两阶段批次**（先全准备、后全运行）复测 |
+
+**方法论修正（T-02 的现实约束）**：`prepare_tools` 的收据绑定 `target/<profile>/<artifact>` 的哈希；同一 source_state 下若再有别的 prepare 重建同名构件（例如改动了 `av` crate 就会重建 `av-worker`），先前收据即失效——单阶段批量会在"准备→运行"之间被后续 prepare 打断。因此最终测量改为**两阶段**：先对全部组 `--prepare-only`，再统一 `--run-prepared`（§5.28 的数字即两阶段结果）。
+
+### 5.28 T-09 最终验收数据（冻结 `905208386`，source_state `f069f264736f7623…`，config `2aed56adb222b09a…`）
+
+**测量协议**：先对全部 29 组 `--prepare-only`（构件 pin 到 `target/test-groups/prepared/<identity>/tools/`），再逐组 `--run-prepared`，组间留 3 秒沉淀；真实编译/构建类组若在连续批次下出现 CPU 争用（30s 内部 deadline、prep-lock 拒绝访问），按协议单组空闲复跑并同时记录两个数字；**本批无此情况**，全部采用批次值。
+
+| 组 | 执行 | 终态 | T_warm(s) | 预算 | 红与归属 |
+|---|---:|---|---:|---|---|
+| `ace-source-syntax-927` | 13 | PASS | 2.9 | ≤120 ✓ |  |
+| `ace-source` | 904 | PASS | 6.8 | ≤120 ✓ |  |
+| `ace-syntax` | 157 | PASS | 4.6 | ≤120 ✓ |  |
+| `ace-semantics` | 295 | FAIL | 8.4 | ≤120 ✓ | 1 红：D-1037-01 |
+| `ace-artifacts` | 43 | PASS | 9.9 | ≤120 ✓ |  |
+| `ace-m2-build` | 30 | PASS | 4.7 | ≤120 ✓ |  |
+| `ace-av` | 1410 | FAIL | 47.2 | ≤120 ✓ | 2 红：D-1098-01 |
+| `ase-m0` | 7 | PASS | 1.2 | ≤120 ✓ |  |
+| `ace-native-worker` | 43 | PASS | 12.4 | ≤120 ✓ |  |
+| `ace-native` | 329 | PASS | 41.3 | ≤120 ✓ |  |
+| `ace-abi` | 314 | FAIL | 46.2 | ≤120 ✓ | 25 红：source_foreign authority（KNOWN-DEBT:4612） |
+| `ace-comptime` | 136 | PASS | 17.1 | ≤120 ✓ |  |
+| `ace-lowering` | 9 | PASS | 0.9 | ≤120 ✓ |  |
+| `ace-python` | 10 | PASS | 3.3 | ≤120 ✓ |  |
+| `ace-foreign-contract` | 56 | PASS | 0.7 | ≤120 ✓ |  |
+| `ace-a2c-abi` | 9 | FAIL | 0.5 | ≤120 ✓ | 1 红：Plan 972 runtime pin（KNOWN-DEBT:4676） |
+| `ace-host` | 145 | FAIL | 42.8 | ≤120 ✓ | 5 红：1060-R3×2（`first_case_green`/`credential_pin`）+ `examples/ui` 清单漂移（KNOWN-DEBT:301）+ `abi_recipe_binding_exclusivity` + 安装清单 |
+| `ace-batch` | 12 | FAIL | 3.0 | ≤120 ✓ | 8 红：D-1098-02 |
+| `ace-toolchain` | 56 | PASS | 61.0 | ≤120 ✓ |  |
+| `ace-console` | 6 | PASS | 3.1 | ≤120 ✓ |  |
+| `ace-a2x` | 293 | FAIL | 58.7 | ≤120 ✓ | 1 红：指纹 pin（KNOWN-DEBT:4676） |
+| `ace-stdlib` | 2 | PASS | 3.9 | ≤120 ✓ |  |
+| `ace-runtime` | 84 | FAIL | 8.3 | ≤120 ✓ | 19 红：1060-R8 text 车道（KNOWN-DEBT:4519） |
+| `ace-rust-lowering` | 4 | FAIL | 2.9 | ≤120 ✓ | 2 红：1060-R3 |
+| `ace-host-suites` | 25 | FAIL | 40.2 | ≤120 ✓ | 6 红：language_conformance 金样族 |
+| `ace-workspace` | 3923 | FAIL | 225.6 | 聚合（另列） | 58 红：聚合（batch feature 下 D-1098-02 等既有） |
+| `ace-facade` | 95 | FAIL | 14.3 | ≤120 ✓ | 1 红：console lane 既有 |
+| `ace-adapters` | 95 | FAIL | 9.2 | ≤120 ✓ | 1 红：abi oracle 既有 |
+| `ace-perf` | 99 | FAIL | 577.6 | 3600s 合同 ✓ | 13 红：既有正式门（source_foreign/abi/mir_native 等；3 例首次红待 triage） |
+
+**口径**：24 个日常常规组 = `ace-source-syntax-927`…`ace-rust-lowering` 加 `ace-toolchain`（第 24 个）；`ace-host-suites`、`ace-perf` 为显式组；`ace-workspace`/`ace-facade`/`ace-adapters` 为聚合组（墙另列）。
+
+**AC-09 判定**：24 日常组全部 `T_warm ≤120s`（超 60s 目标的只有 `ace-toolchain` 与 `ace-a2x`，其余 22 组 ≤60s）；新增 item 3/3 ≤10s；47 行关账与 V-01 守恒负控见 `RowLedgerConservation`（冻结台账 `scripts/test-governance/ace-row-ledger.json`，缺行/重复/类别漂移/未知类别各自变红）。
+
+**红归属**：全表共 143 例失败，逐组指名债务或条件（见上表）。其中失败测试所在文件**被本计划 diff 触及**的有 `tests/host/mir_native_protocol.rs`（`mir_native_rounds_*` 负载敏感 + 3 个 perf 例）、`tests/host/av_protocol.rs`（`ac_av_probe_formal_turnaround_gates`）、`tests/host/rust_lowering.rs`（`a2r_hir_*`，已有 1060-R3 号）、`tests/native_lifecycle.rs`（perf 例）——这些在 base 上即为红或属正式门负载敏感，`ace-perf` 另有 3 例首次记录为红（`closures_fn_912*`、`closures_recovery_913*`、`mir_native_incremental_series_formal`），交 merge 后批量回归 triage，不在本计划修。
+
+**AC-10 完成报告（实测）**：
+
+| 模块 | 列举/执行/排除/失败 | 等待 | 冷准备/工具构建 | 发现/准入 | 运行 | 父判定/复制清理 | 整命令 | 首红/未跑/重放 |
+|---|---|---|---|---|---|---|---|---|
+| `ace-source-syntax-927` | 13/13/0/0 | 无 lease 记录 | 1.62s（复用 0 工具） | 281ms | 2641ms | UNOBSERVED | 2.9s | 首红 — |
+| `ace-source` | 904/904/1/0 | 无 lease 记录 | 14.93s（复用 0 工具） | 439ms | 6356ms | UNOBSERVED | 6.8s | 首红 — |
+| `ace-syntax` | 157/157/0/0 | 无 lease 记录 | 1.38s（复用 0 工具） | 1157ms | 3365ms | UNOBSERVED | 4.6s | 首红 — |
+| `ace-semantics` | 295/295/0/1 | 无 lease 记录 | 1.77s（复用 0 工具） | 2387ms | 5982ms | UNOBSERVED | 8.4s | 首红 sema_boundary_audit::sema_boundary_case_files_executed_status_honest |
+| `ace-artifacts` | 43/43/1/0 | 无 lease 记录 | 1.53s（复用 0 工具） | 475ms | 9436ms | UNOBSERVED | 9.9s | 首红 — |
+| `ace-m2-build` | 30/30/0/0 | 无 lease 记录 | 1.84s（复用 0 工具） | 1540ms | 3148ms | UNOBSERVED | 4.7s | 首红 — |
+| `ace-av` | 1410/1410/0/2 | 无 lease 记录 | 4.87s（复用 0 工具） | 1502ms | 45628ms | UNOBSERVED | 47.2s | 首红 host_console::av_console_entry_selection_cannot_bypass_main_policy |
+| `ase-m0` | 7/7/0/0 | 无 lease 记录 | 0.66s（复用 0 工具） | 505ms | 695ms | UNOBSERVED | 1.2s | 首红 — |
+| `ace-native-worker` | 43/43/0/0 | 无 lease 记录 | 2.95s（复用 0 工具） | 523ms | 11803ms | UNOBSERVED | 12.4s | 首红 — |
+| `ace-native` | 329/329/0/0 | 无 lease 记录 | 5.18s（复用 0 工具） | 1682ms | 39611ms | UNOBSERVED | 41.3s | 首红 —；本批无争用红 |
+| `ace-abi` | 314/314/0/25 | 无 lease 记录 | 2.82s（复用 0 工具） | 1221ms | 44958ms | UNOBSERVED | 46.2s | 首红 source_foreign::source_foreign_authorized_capability_edit_after_restore_only_rechecks_actual_readers |
+| `ace-comptime` | 136/136/2/0 | 无 lease 记录 | 2.23s（复用 0 工具） | 1616ms | 15509ms | UNOBSERVED | 17.1s | 首红 — |
+| `ace-lowering` | 9/9/0/0 | 无 lease 记录 | 0.73s（复用 0 工具） | 382ms | 484ms | UNOBSERVED | 0.9s | 首红 — |
+| `ace-python` | 10/10/0/0 | 无 lease 记录 | 0.88s（复用 0 工具） | 603ms | 2642ms | UNOBSERVED | 3.3s | 首红 — |
+| `ace-foreign-contract` | 56/56/0/0 | 无 lease 记录 | 0.70s（复用 0 工具） | 242ms | 486ms | UNOBSERVED | 0.7s | 首红 — |
+| `ace-a2c-abi` | 9/9/0/1 | 无 lease 记录 | 0.75s（复用 0 工具） | 227ms | 230ms | UNOBSERVED | 0.5s | 首红 admitted_text::tests::runtime_admission_preserves_bytes_and_the_certification_pin |
+| `ace-host` | 145/145/0/5 | 无 lease 记录 | 1.93s（复用 0 工具） | 518ms | 42221ms | UNOBSERVED | 42.8s | 首红 governance::document_base_cli_list_and_migration_inventory_complete |
+| `ace-batch` | 12/12/0/8 | 无 lease 记录 | 1.64s（复用 0 工具） | 524ms | 2434ms | UNOBSERVED | 3.0s | 首红 batch::batch::batch_blocked_request_writer_is_deadlined_and_reaped |
+| `ace-toolchain` | 56/56/0/0 | 无 lease 记录 | 4.69s（复用 0 工具） | 2530ms | 58474ms | UNOBSERVED | 61.0s | 首红 — |
+| `ace-console` | 6/6/0/0 | 无 lease 记录 | 1.78s（复用 0 工具） | 568ms | 2507ms | UNOBSERVED | 3.1s | 首红 — |
+| `ace-a2x` | 293/293/2/1 | 无 lease 记录 | 2.43s（复用 0 工具） | 2029ms | 56641ms | UNOBSERVED | 58.7s | 首红 ports::tests::canonical_fingerprint_is_stable_and_binds_runtime_sha；本批无争用红（仅既有指纹红） |
+| `ace-stdlib` | 2/2/0/0 | 无 lease 记录 | 1.17s（复用 0 工具） | 616ms | 3225ms | UNOBSERVED | 3.9s | 首红 — |
+| `ace-runtime` | 84/84/0/19 | 无 lease 记录 | 1.02s（复用 0 工具） | 432ms | 7828ms | UNOBSERVED | 8.3s | 首红 fault::v05_ap3_concat_failure_with_live_owner |
+| `ace-rust-lowering` | 4/4/0/2 | 无 lease 记录 | 1.30s（复用 0 工具） | 538ms | 2299ms | UNOBSERVED | 2.9s | 首红 tests::rust_lowering::a2r_hir_first_case_green |
+| `ace-host-suites` | 25/25/1/6 | 无 lease 记录 | 1.69s（复用 0 工具） | 588ms | 39586ms | UNOBSERVED | 40.2s | 首红 tests::language_conformance::ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red |
+| `ace-workspace` | 3923/3923/7/58 | 无 lease 记录 | 9.30s（复用 0 工具） | 8870ms | 216570ms | UNOBSERVED | 225.6s | 首红 source_foreign::source_foreign_authorized_capability_edit_after_restore_only_rechecks_actual_readers |
+| `ace-facade` | 95/95/0/1 | 无 lease 记录 | 2.90s（复用 0 工具） | 6054ms | 8201ms | UNOBSERVED | 14.3s | 首红 p969_t02_console_lane_grants_and_capture |
+| `ace-adapters` | 95/95/4/1 | 无 lease 记录 | 2.05s（复用 0 工具） | 562ms | 8627ms | UNOBSERVED | 9.2s | 首红 test_cases::abi::source_protocol_tests::source_parent_oracle_failure_rejudges_the_same_compiler_root_without_caching_pass |
+| `ace-perf` | 99/99/5/13 | 无 lease 记录 | 3.70s（复用 0 工具） | 9256ms | 568214ms | UNOBSERVED | 577.6s | 首红 source_foreign::performance::source_foreign_warm_body_edit_p90_gate |
+
+WSL/Linux 原生：本批零执行（S-39 仅绑定事实，原生 Linux 归 1061/1063）。
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | modify | `docs/specs/auto-test-case/module-selection.md` | 固定组/OR并集→补准备/执行和显式toolchain，精确用途选择，不建叶图；**并补 per-tool 拆分**（18 工具：debug 11、release 3（`abi`/`a2x`/**`store-gc`**）、`runtime-release` 3（text/data/**collections**）、`runtime-dev` 1（trace）），以及**准备期构件 pin**（`target/test-groups/prepared/<identity>/tools/<tool>`，收据/行/env 全部绑定 pin） | 分层保可达 | AC-01/02/03/07 |
+| SD-02 | modify | `docs/specs/auto-test-case/ace-regular-test-budget.md` | 历史21组→**重冻 24 个日常常规组（含新增 `ace-toolchain`）**；**`ace-host` 拆出显式 `ace-host-suites`**（原始套件重放，`all=false`）与 `ace-perf` 并为"显式组"；补新增 item≤10 秒与"既有 item 按组预算"的口径，组 120/60 不变 | 防成本再积累 | AC-08/09/10 |
+| SD-03 | modify | `docs/specs/auto-test-case/ace-cost-attribution.md` | 原只读报告→扩新增例预算/阶段/首红/复用证据，不建新meter | 同一成本口径 | AC-02/08/09 |
+| SD-04 | modify | `docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md` | 原 PERF 集→**3 例**（P-01/P-02 由 `perf.rs` 迁入 + S-04 六场景 bench smoke 并入）的 S_new/成本显列，原样本/串行/3600 秒合同保持 | 修漏归属 | AC-03/09 |
+| SD-05 | modify | `docs/specs/auto-test-case/test-purpose-and-admission.md` | 四用途建议→补ACE逐义务处置/探针准入和守恒 | 去留有据 | AC-01/04/05/06 |
+| SD-06 | add | `docs/specs/auto-test-case/ace-toolchain-certification.md`（新） | 无专门 ACE 认证入口→新增显式组（`all=false`，不被默认/`all`/`ace` 隐含选择）+ `test-toolchain` feature 逐测试门控 + 原 family/负控成本保真（56 例、真 cl/rustc/py 腿、最终冻结实测 64.2s）；受影响消费者必选该组 | 编译认证保全 | AC-07/09 |
+
+## 6. 测试设计
+
+### 6.1 可区分的语义与工作流负控
+
+全部为拟实施验证、当前未运行。owner_stage=work，T-10独立review重核；先确认变异实际落到被消费的输入/状态。纯计时边界可用小收据fixture，不用假PASS证明产品行为。
+
+| ID | AC/任务 | 实际输入/入口和变异 | 必须观察的oracle | 覆盖边界 |
+|---|---|---|---|---|
+| V-01 | AC-01/T-01 | 旧→新义务映射删S-01 A2R角色、改一个ignore/平台条件、重复同角色 | 守恒核查分别报缺失/条件漂移/重复，不靠总数凑平 | 全部处置行；不代语义运行 |
+| V-02 | AC-02/T-02 | 合法prepare后run-prepared；分别删worker/lib、改sidecar/hash/source/config/features/env/profile | 正常控制执行；坏轴测试体前准备失败、零补编译；重准备后首次执行正确 | 不缺工具→Skip/旧release回落 |
+| V-03 | AC-02/T-02 | B-01/02/03实际helper调用，缺库/缺env；B-05全部普通工具准备；观测完整子进程树 | 执行段零Cargo依赖构建/--release；普通显式准备也零release，正常B-02仍exit12、stderr ba；正式PERF独立profile/hash控制不串用 | Auto编译器本体不误禁，不能只检test body |
+| V-04 | AC-03/T-03 | 真实普通/PERF发现；临时注册变异恢复mod perf或双挂载 | 普通泄漏/专项漏项/重复均红；合法两例唯一PERF、32样本/输入不变 | grep不代发现 |
+| V-05 | AC-04/T-04 | F-01线性夹具7万不同常量、合法小模块；控制性关闭/错改TableEntries门 | 大输入精确Resource(TableEntries)，小输入接受，故障实现被抓住 | 原尺度/门不缩；不能先死在无关门 |
+| V-06 | AC-04/T-04 | F-02全部旧源码/预期；分别改错exit/stdout，确定性见证真实双run | 两轴分别红；双run角色比较两次真实结果/流 | 单run不能代确定性 |
+| V-07 | AC-05/T-05 | O-01错误值/trap，O-02六场景逐个错预期，O-03/04改成无关syntax/type错误 | 正常控制绿，各错误值/code/阶段明确红 | 预期先按Spec/独立oracle确认，不自动录制 |
+| V-08 | AC-06/T-07 | console真实worker；各错stdout/stderr/exit、删三轴、改版本轴、NUL实传、Skip | 各轴Fail且mismatch准确，缺轴Error，fresh→stale，Skip无native，NUL字节不截断 | 框架原meta-oracle保留 |
+| V-09 | AC-06/07/T-06/07 | H-05原family、错oracle14→15/错reference；C类各目标错expected或仅emit | 真compile/run有结果/身份/证书；错oracle/reference拒绝，少目标/错目标/emit冒run阻认证 | 原target/source/provider不换mini例 |
+| V-10 | AC-06/T-07 | invocations实际host+console，同名但tools不同的host+rust-lowering，batch feature | 同key一次执行各义务引用，不同key不强合，零选择不PASS | 不按test名判配置相同 |
+| V-11 | AC-04/06/T-04/07 | 真实fast edit、强制整前端rewarm、同hash换Arc；恢复后首次修改/读 | 正常编辑绿；值仍对而全重算/换对象红；恢复首改/首读和依赖正确 | 原≥100反控完整保全，小例不代签 |
+| V-12 | AC-08/T-08 | 报告fixture新增item=10.000/10.001秒，缺终态/STALE/截断组，完整组=120.000/120.001秒 | 边界严格；超10新例review失败，陈旧/缺终态不可复用，超120组红，不取整 | 不真sleep10秒，新增治理例自身≤10秒 |
+| V-13 | AC-02/10/T-02/08 | 临时域模拟有owner租约与第二会话准备/union，合法释放再试 | 忙时不启动build/test且通知、单列等待，释放后可进入，不误杀未知活动 | 不干扰真实他agent |
+| V-14 | AC-07/10/T-06/09 | Windows普通/聚合/toolchain的选择/准备/运行检查Linux/WSL，S-39核bind-only | 零WSL/原生Linux腿；归1061/1063，bind结果不冒运行PASS | 不要求Linux环境，不按名称批量关平台中立算法 |
+
+### 6.2 耗时口径与新用例准入
+
+- 用现有固定driver的全新`--out`、原命令meter、nextest完整item `exec_time`、Case原生`duration_ms`；扩展原`ace_cost_report.py --mode regular`，不新建第二meter/统一三warm或P90矩阵。并行item时间不能相加当墙。
+- 分列等待其他会话`T_wait`、显式编译/工具准备`T_cold`、发现/准入、运行、父判定/复制/清理、整命令墙。没单独观测的阶段记UNOBSERVED及边界，不填0；测试体补构建不能藏进cold排除。
+- 完整职责组`T_warm`含manifest校验、必要发现/准入、运行、父判定/复制/清理，≤120.000秒、目标60。`ace-workspace`/`ace`聚合另列选择和真实墙，不冒也应≤120，不代24个单职责预算。
+- 新增item看完整setup/body/teardown≤10.000秒，包多个子场景看整体；工具链/治理新负控也适用。迁移原大例原角色和原预算保留，单列“迁移原例”；新拆出的日常小例仍受10秒门。
+- 无计时/终态、身份无法对应、失败后只选快子集均不通过。47行逐项关闭：日常完整item≤10；分流原义务/原条件有效通过；待定位不能算关闭。
+- 新增差集由本包实际base与当前完整发现/Case检查清单对照，配合旧→新义务映射区分真正新增、改名和原例迁移；不能靠手写“旧例”标签豁免10秒，也不在执行时扫描全仓构建动态目录。新增test包多个case或子check时同时核其完整原生item和适用原生check时间。
+- 历史成本只排序；前后比较说明源码变化与等价断言。最终证据绑定本包冻结源码/依赖/config/input/tool/observer，同身份覆盖不变可复用，不为提交重复全轮。首红、未跑、环境归因、隔离重放分别保留。
+- P-01/P-02在原串行PERF profile下实际完整运行，新增S_new单列。原集合不变部分可按身份合法复用，复核1017逐模块求和的≤3600秒合同。syntax-core新增模块原预算没有覆盖时单列实际成本/合计，不挪用其他模块预算掩盖；确实越界保未完成并提出修复，不自行改上限。该专项不附加每次review/merge。
+
+### 6.3 计划命令、职责组与评审职责
+
+全部未执行。未来`$PlanOut = 'D:/autostack/plan-artifacts/plan-1098'`；每次输出新目录。T-02选项是拟新增接口，T-01核后写回真实命令，不能当已有能力运行。
+
+```powershell
+# 已有，只读预览，不证明真实发现/通过
+python scripts/fixed-tests.py ace-source ace-av ace-host ace-console --select-only
+
+# T-02拟新增：准备与无编译执行，实际manifest名在T-01/02钉住
+python scripts/fixed-tests.py ace-source --prepare-only --out "$PlanOut/prepare-source"
+python scripts/fixed-tests.py ace-source --run-prepared "$PlanOut/prepare-source/prepared.json" --out "$PlanOut/run-source"
+
+# 已有报告器，真实run须完整单职责组
+python scripts/test-governance/ace_cost_report.py --mode regular --run "$PlanOut/run-source" --out "$PlanOut/cost-source.md" --json-out "$PlanOut/cost-source.json"
+
+# T-06拟新增显式认证组，依赖先准备；原外部编译本身是其被测义务
+python scripts/fixed-tests.py ace-toolchain --prepare-only --out "$PlanOut/prepare-toolchain"
+python scripts/fixed-tests.py ace-toolchain --run-prepared "$PlanOut/prepare-toolchain/prepared.json" --out "$PlanOut/toolchain"
+
+# 原单例正式重放方式；T-03在计划更新准确迁名
+cargo t ace-perf --test-name performance::perf_fresh_parse_and_incremental_and_restart_query --out "$PlanOut/perf-syntax-incremental"
+cargo t ace-perf --test-name performance::perf_core_vs_legacy_parser_reference --out "$PlanOut/perf-syntax-reference"
+```
+
+24个现有非聚合常规组：`ace-source-syntax-927`、`ace-source`、`ace-syntax`、`ace-semantics`、`ace-artifacts`、`ace-m2-build`、`ace-av`、`ace-native-worker`、`ace-native`、`ace-abi`、`ace-comptime`、`ace-lowering`、`ace-python`、`ace-foreign-contract`、`ace-a2c-abi`、`ace-host`、`ace-batch`、`ace-console`、`ace-a2x`、`ace-stdlib`、`ace-facade`、`ace-adapters`、`ace-runtime`、`ace-rust-lowering`。T-01处理真实新增/迁名delta，不据历史数删组。
+
+治理组：`infra-fixed`、`infra-ace-cost-report`、`infra-ace-policy`，必要定向`python -m unittest discover -s scripts/tests -p test_prepare_tools.py`。真实Case消费者已核具体组：`case-ace-m1-console-863`→`crates/auto-lang/test/cases/ace-document-console.suite.ad`；`case-ace-m1-base`→`ace-document-base.suite.ad`（AV/多检查）；`case-ace-m1-tr-native`→`ace-m1/ace-m1-tr-native.suite.ad`（真实native接缝）；`case-ace-m1-typed-native-891`→`ace-m1/typed-native-891/typed-native-891.suite.ad`（typed native）。T-01复核当前工具与实际动作；若本包改变的worker/ABI不由这些组覆盖，追加具名消费者，不能占位验收。
+
+work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可复用本次同身份完整证据。最终union由真实diff确定，预计包含`ace-source ace-syntax ace-av ace-native-worker ace-native ace-host ace-console ace-rust-lowering ace-batch`、治理和Case消费者；共享准备协议变更时补所有真实消费者。列明联合组名/选择理由/时间，不只报告“Group union”。同key去重，PERF/认证另窗；不在work/review/merge反复叠跑24组全轮，只重测因修复失效范围。
+
+不以`cargo t all`替代本包验收，周期批量回归独立到期处理。work实现和内部自查；review在同一树独立上下文，暂停work写入、核AC且不边审边修；merge只做冻结必要并集与沉淀清理。未获用户额外委派，不自动开agent/chat。
+
+## 7. 验收标准
+
+| ID | owner_stage | 可观察通过条件 |
+|---|---|---|
+| AC-01 | work | 真实发现冻结入口/条件/用途；§5.2、47行及新慢例/补构建/弱oracle全部有逐角色去向；V-01缺行/漂移/重复红，声明数不冒执行数 |
+| AC-02 | work | 显式prepare后普通组消费同身份产物；缺失/陈旧/错env/lib/sidecar在体前错误且0补构建/0release，真实进程/收据证明，V-02/03/13 |
+| AC-03 | work | P-01/P-02普通各0、PERF各1；原32样本/输入/场景/统计不减，V-04；其余普通项无误失选 |
+| AC-04 | work | F-01原7万/精确资源门，F-02全部原exit/stdout/确定性，R类身份/恢复/owner断言保留；V-05/06/11敏感；**留日常行按组预算（≤120s，目标≤60s），原 item 时间逐行留档不改**，新增 item ≤10 秒（2026-11-19 owner 裁决，见 §5.26 口径修订） |
+| AC-05 | work | O-01…05当前独立oracle或有据research去向；V-07错值/code/阶段红，不打印即绿或按probe名批量删 |
+| AC-06 | work | H-01…06职责映射完整，15语料/版本/NUL/三轴/Skip及配置隔离有效，V-08/10/11；同key不重复，不同key不误合 |
+| AC-07 | work | ace-toolchain实际显式注册，全部C/H-05原目标compile/run/reference/cert负控可达；V-09/14。真实工具链触面必选；Linux不冒PASS |
+| AC-08 | work | 原报告器新增完整item≤10秒门，V-12严格边界/缺终态/STALE/截断组敏感，自身新增例≤10秒；不新建runner/meter |
+| AC-09 | work | 当前 **24 个日常常规组（22 模块组 + `ace-toolchain` + `ase-m0`；`ace-host-suites`/`ace-perf` 为显式组，`ace-workspace`/`ace-facade`/`ace-adapters` 为聚合组另列）** T_warm 均 ≤120 秒、目标 60；47 行逐项关账（分流/保留/角色/正文证据 + 原 item 时间留档）；**新增 item ≤10 秒；留日常的既有 item 不要求 ≤10s，其时间逐行记录并接受组预算约束**（2026-11-19 owner 裁决）；分流原例/条件通过，PERF 增量和原 3600 秒合同可核，聚合墙另列 |
+| AC-10 | work | 执行前并发检查/等待通知，报告实际模块、列举/执行/条件排除/失败、准备/发现/运行/清理/整墙、新增内容/逐项时间；V-13/14。首红/未跑/重放分列，零WSL |
+| AC-11 | review | 冻结提交独立核AC-01…10/SD-01…06/实际diff、遗漏/未批准延后/陈旧证据/告警/格式/debug输出；新增>10、组越界、必验未跑不得pass，绑定review SHA |
+| AC-12 | merge | 通过review后冻结必要并集、Spec沉淀、摘要折回/归档、所有输出目录对账；材料全删或具名持有，wt-guard clean后清树；实际关闭后勾完 |
+
+功能红与成本绿不互相覆盖。未关闭本包AC或缺必要oracle不能execution_done；外部既有红具名保留，review按原规则判影响，不跳整组或宣称全组PASS。
+
+## 8. 执行步骤
+
+| 任务 | 阶段 / owner_stage | 依赖 | 修改面、交付和出口 | 验证 |
+|---|---|---|---|---|
+| [ ] T-01 | I / work | 用户后续授权实施 | 建唯一树/scope；重冻24职责+聚合/PERF/Case、包target/module/source差集；展开全部问题/47行的角色、原条件、预期、消费者；核nextest接口/Linux归属/旧红/实际工具需求，把准确Case组与探针预期写回计划 | AC-01、V-01；仅必要发现/代表基线，先查并发。出口为可执行准备接口和逐行决定，非另一份泛调研 |
+| [✅] T-02 | II / work | T-01 | `scripts/fixed-tests.py`、`scripts/test-governance/{prepare_tools.py,toolchains.json}`、必要薄驱动、B-01…05；显式prepare/run、身份/互斥、普通debug/runtime-dev增量和正式PERF profile隔离，去helper补构建/release；复用`test_fixed_groups.py`/`test_prepare_tools.py` | AC-02/10，V-02/03/13；真实source/worker/native/Case代表链，不只mock |
+| [✅] T-03 | III / work | T-01/02 | `syntax-core/tests/conformance.rs`、`cases/perf.rs`及必要选择治理；两例接performance、原正文统计合同保全 | AC-03、V-04；真实发现差集+两例原PERF完整运行/成本 |
+| [✅] T-04 | III / work | T-01/02 | `av/tests/cases/{mir_tier.rs,sched_m2_968.rs}`及D/R候选夹具；线性常量、单run多轴、等价准备复用，不改产品语义 | AC-04、V-05/06/11；受影响完整ace-av及下游，原尺度/恢复状态保留 |
+| [✅] T-05 | IV / work | T-01/02 | `p946_t01_probe.rs`、`probe972.rs`及挂载；O-01…05固化当前合同，无长期目的角色逐项具名research/退休并留原依据 | AC-05、V-07；各错预期真红、合法绿、新增例≤10秒 |
+| [✅] T-06 | V / work | T-01/02 | 47表C/Q/L、`host/rust_lowering.rs`认证部分、`test-groups.toml`/必要target；显式ace-toolchain保原各端/故障，Q正式压力原样PERF；Linux交1061/1063，绑定事实单列 | AC-07、V-09/14；旧新同输入每端对照、专项完整真实运行，不仅emit |
+| [✅] T-07 | V / work | T-01/02/06 | `conformance/tests/console.rs`、host协议、`invocations`和Case消费者；H-01…06核实后消重，保真实运输/版本/负控和batch隔离 | AC-06、V-08/10/11；完整host/console/rust-lowering/batch及15项case组；语义union可去重，预算须单组 |
+| [✅] T-08 | VI / work | T-01/02，最终接T-03…07 | 扩原`ace_cost_report.py`、`scripts/tests/test_ace_cost_report.py`：新增差集/≤10秒、原组预算/终态/STALE检查；会话报告，版本兼容；不另建meter | AC-08/10、V-12/13；治理完整组+prepare-tools定向，缺失时间不伪造 |
+| [✅] T-09 | VI / work | T-03…08 | 冻结实现，24单组有效预算+47行关账、新增内容/时间、工具链/PERF增量及负控关闭，提交SD提案/Spec增量和源码/依赖/config/input结果身份 | AC-01…10；可复用同身份完整证据，超支/缺口不勾完成 |
+| [✅] T-10 | VII / review | T-09 | 同树独立上下文复审，暂停work写入，逐AC/SD/改动义务核真实输入消费者、负控敏感性和完整成本，必要定向复验并绑定review SHA | AC-11；needs_fix/needs_replan回work，不能边修边签 |
+| [✅] T-11 | VIII / merge | T-10通过、合入授权 | 冻结必要并集，沉淀SD-01…06、归档/输出对账/摘要折回，删本包材料与守卫后清树 | AC-12；未来merge任务不阻T-09交execution_done，不提前勾 |
+
+下一就绪任务只有T-01；准备接口、探针独立预期、逐角色分流未完成前不跳到大范围删例/切组。阶段出口可审查；先落地阶段须独立phase review与冻结门，不提前称全包完成，不另建第二实施树。
+
+完成汇报必须填写（实测，不只说“Group union”）：
+
+| 模块/实际命令/源码身份 | 列举/执行/条件排除/失败 | 等待 | 冷准备/工具构建 | 发现/准入 | 运行 | 父判定/复制清理 | 整命令 | 证据复用来源/理由 |
+|---|---|---|---|---|---|---|---|---|
+| 待实施 | 未运行 | — | — | — | — | 未观测须注明 | — | — |
+
+新增例另列`新身份/内容/独立预期/完整item时间/10秒判定/AC`；移入专项原例另列`旧→新身份/原尺度/oracle/实际时间/条件`，不冒新增快例。merge收尾对账全部实际输出目录（含外盘/消费者根），摘要与hash折回计划，plan-artifacts整scope删除或按具名未决持有登记，wt-guard clean后清理树/分支。归档不是清理已完成证明。
+
+## 9. 复审记录
+
+2026-11-19：`stage: new`，PLAN-1098 r1，`outcome: pass`（仅规划合同自检），`next: 等待用户授权work后T-01`。实现进度0/11。已纳入本次P/B/F/O/H发现与47项历史AV慢例，所有实施负控/成本验收及独立复审未执行。
+
+本轮仅修改本计划与取号簿记，未改测试、配置、Specs；未创建实施树，未启动新的编译/发现/测试，未合入归档。旧收据的PASS/FAIL不是本轮测试结果。
+
+2026-11-19（goal round 1，r1）：`stage: work`，T-01 **进行中**（未 pass）。执行内容：goal 授权入 §4.1；建唯一实施树 `D:/autostack/.wt/lang-1098/auto-lang`（`plan-1098-dev`，基面 `d20cf3f87`，主检出 master 建树后被并发会话推进到 `37379e6d4`）；建材料 scope `D:/autostack/plan-artifacts/plan-1098/`（空，已在 `.retention/policy.json` 登记 in-flight，无构建中间产物）；完成 §5.5 K-01…K-11 只读冻结（分母 102 ACE 组逐类核实、P-01/P-02 泄漏结构性确认、B-03/B-05/F-01/O-01/H-01…03 源码实证、nextest 0.9.138 archive 接口、既有 `execution_lease()` 互斥、47 行源码存在性）。**未**构建、**未**跑任何组：开工时机器上有其他会话活跃的 cargo/nextest（14:44–14:45 启动），按 §5.4-4 等待，不并发启动准备/运行。主检出代码路径无 WIP（仅 docs/ 与他会话 `packages/blueprints/**` 删除，非本包写集）。T-01 出口未闭：逐行（P/B/F/O/H + 47 行）义务映射、真实发现差集、两个旧红重放判定、Case 消费者组核对仍待后续轮次。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 1 | from: drafting | to: work | status: executing | outcome: pass（仅路由：drafting→work 已开启，T-01 未完成） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: ccbe165f3（计划文档）/ d20cf3f87（树基面） | next: work（继续 T-01）`
+
+2026-11-19（goal round 2，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①真实重放 `ace-av` 的 `host_console::` 21 例（冷 debug，准备 61s / 执行 0.280s / 整命令 62.7s / exit=100，19 绿 2 红），两个旧红**首红复现**并定位为 982 具名入口裁定后的**陈旧 oracle**（非产品回归），具名移交 D-1098-01；②逐行静态核查补齐 B-01/B-02/B-04（含"同一缺库补构建反模式 4 处"、B-04 死 helper 无消费者）、C 类真 rustc/真 C 编译 helper 实证、P-01/P-02 原参数、H-04/H-05 预算与负控；③47 行候选分档落材料 scope（`t01-47-rows-static-triage.md`，sha256 `314539e1…0f68`）。机器无并发构建（开工前后均已核对）。仍未闭：47 行逐项展开、24 组真实发现分母与 >10s 项、toolchain 目标清单/Case 消费者核对。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass（进行中：重放与静态核查落地，T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见下一条 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续）`
+
+2026-11-19（goal round 3，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：47 行结构化展开（§5.7）——花括号感知取体（内嵌 Auto 源码不再截断）、oracle 机制/本地助手链/端助手/时间门逐行提取，产物 `t01-47-rows-expanded.md`（`a9250286…`）+ 脚本 `extract_rows.py`（`d986d9e7…`）；四条结构性结论（47 行多为外壳、助手跨行共享、端助手集中、raw `Command` 不被命名覆盖）与既有时间门实证。**未跑任何组**：开工时另一会话 `python D:\autostack\.wt\lang-1078\auto-lang\scripts\fixed-tests.py case-av-language-parity` 正在 `cargo build -p ace-av --release`（14:50 起），按 §5.4-4 等待、未并发启动准备/运行；Case 四套件仅做存在性静态核对（未 inventory）。未闭：24 组真实发现分母与 >10s 项、toolchain 目标清单确认、Case inventory。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass（进行中：47 行结构化展开落地并留局限；T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见本次 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：等机器空闲后取真实发现分母）`
+
+同日续（round 3 末段）：24 组包/target/feature 差集静态冻结（§5.8，脚本 `extract_groups.py`，产物 `t01-24-groups-targets.md`）；静态实证 H-06——`ace-host`/`ace-console` 的 9 元 key 完全相同必须合并一次调用，`ace-batch`（features）与 `ace-rust-lowering`（tools）key 不同不得强合；另发现 `ace-m2-build` 实为 8 个 test target、`ace-a2c-abi` 只有 lib、`ace-facade`/`ace-adapters` 跑根 workspace（易被误读为 ACE workspace 单例）。仍未跑组。
+
+2026-11-19（goal round 4，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①**准备/运行接口实证**（§5.9）——`cargo nextest archive -p ace-lowering --lib --tests` 18.75s 产出 4.56MB tar.zst；`cargo nextest run --archive-file … --workspace-remap …` **9/9 PASS 0.34s 零构建**；再加 `--ignore-default-filter -E 'test(closures_lowering::)'` → 3/3 PASS 0.39s（表达式在 archive 模式生效）。prepare/run 分离在真实 nextest 上成立。②**真实发现分母第一批**（§5.10）：`ace-av` **1,428/0**（8 二进制，墙 56.378s，峰值 Job 3.50GB）、`ace-lowering` 9、`ace-artifacts` 43、`ace-semantics` 295；`ace-av` 发现数与此前执行的 1,428 一致。③材料：`discover-ace-av/`、`discover-small-3/`、`archive-spike/`。仍受并发会话（lang-1078 `case-av-language-parity`，14:50 起持续）限速：`ace-host`/`ace-console`/`ace-batch`/`ace-rust-lowering`（共享 `ace-conformance` target）等其余组未发现。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: pass（进行中：archive 接口实证 + 四组真实分母；T-01 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：其余组发现 + 收口）`
+
+2026-11-19（goal round 5，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①第三批 **10 组真实发现分母**（§5.10）：`ace-source` 904、`ace-abi` 314、`ace-syntax` 159、`ace-comptime` 136、`ace-runtime` 84、`ace-foreign-contract` 56、`ace-source-syntax-927` 13、`ace-python` 10、`ace-a2c-abi` 9（lib 单测）、`ace-stdlib` 2，小计 1,687/0，整批墙 212.33s；五批累计已发现 **3,651** 例。②**O 类独立预期钉住**（§5.11）：O-01 依 `ace-collections.md:17` 钉为 Trap `list-index`；O-02 六场景按 Unicode/算术事实钉出精确值（1/4/1/97/1/20013）；O-04 依 packages 面 `source.module-symbol` 声明；O-03 无 spec 声明 → 交 T-05 决策（不得录打印值）；O-05 保留 22 断言 + cap 段须独立 oracle 或具名移 research。未闭：`ace-native`/`ace-native-worker`/`ace-a2x`/`ace-m2-build`（8 target）/`ace-facade`/`ace-adapters`（根 workspace）、聚合 `ace-workspace`、Case inventory。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass（进行中：10 组分母 + O 类预期钉住；T-01 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 收口：重内存组发现 + Case inventory）`
+
+同日续（round 5 末段）：T-02 **首刀实现**（§5.12，代码提交 `197ac9e5d`）——`--prepare-only`/`--run-prepared` archive 握手落地并实测：准备 1.19s → 只运行 PASS 9/9 wall 0.721s 零构建；三条负控（源码漂移/archive 篡改/archive 缺失）全部具名 `PREPARATION_REQUIRED` exit 2、零执行。其中"源码漂移"负控是真实事件：改 driver 自身后旧 manifest 立即失效。T-02 未完成项照旧：默认入口切换、B-05 profile、B-01…B-04、治理负控。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-02 首刀落地并有负控；T-01/T-02 均未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划 197ac9e5d（T-02 代码）/ 本轮 docs(plan1098) | next: work（T-02 续 + T-01 收口）`
+
+2026-11-19（goal round 6，r1）：`stage: work`，T-02 第二刀（§5.12 续）。执行内容：①普通 ACE 入口切换——`--prepare-only` 无 `--out` 落规范位 `target/test-groups/prepared/<source_state[:16]>/`；默认 `cargo t <ACE组>` 先找**校验通过且全覆盖**的 manifest，缺失即 `PREPARATION_REQUIRED`（exit 2、零构建），实测 0.11s 拒绝 / 有准备时 `PASS 9/9` 整命令 1.6s 零构建。②治理负控 `PreparedRunGate` 5 例（config/source/toolchain 漂移、archive 篡改/缺失、find 跳过无效且要求全覆盖、无准备不调 execute_plan）；`test_fixed_groups.py` **77/77 OK**、`test_prepare_tools.py` 8/8 OK。③修正 master 既有红：`ace-python` expression 缺 performance 排除（已在 master 复现确认非本包引入），去重复 `-E` 并补排除，重发现仍选 10 例。代码提交 `946c38909`。T-02 剩余：B-05 工具 profile（debug/runtime-dev）、B-01…B-04 去体内补构建、工具链认证组（T-06）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 6 | from: work | to: work | status: executing | outcome: pass（入口切换+治理负控落地；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 946c38909 / 本轮 docs(plan1098) | next: work（T-02 续：B-05/B-01…04）`
+
+2026-11-19（goal round 7，r1）：`stage: work`。执行内容：①第四批重内存组真实发现（§5.10，`discover-heavy4/`，整批 39.55s）：`ace-native` 329、`ace-a2x` 328、`ace-native-worker` 43、`ace-m2-build` 30，小计 730；**累计 4,381 例 / 22 个非聚合组**（余 facade/adapters 两个根 workspace 组 + 聚合/PERF）。②**B-05 真实消费面核查**（§5.13）：全量扫描得 37 处 `target/release|runtime-release` 引用 / 20 文件，其中 11 处会触发构建，**5 处是 lib 级 lazy builder**（`av/text_runtime`、`abi/source_foreign`、`native/{collections,sched,typed}_runtime`），且 `collections/sched/typed` 三个 runtime **无 toolchains 条目**（今天无法预建）——计划原假设的"测试体补构建 3 处"明显低估。据此给出 B-05 四步改法（补工具条目 → lib builder env 优先且缺省回落仅限非测试 → hardcode 测试改 env → 最后翻 profile 并真实验证）。本轮未改实现代码。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 7 | from: work | to: work | status: executing | outcome: pass（T-01 分母 22/24 组、B-05 消费面核查完成；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) | next: work（T-02 B-05 第 1/2 步：补工具条目 + lib builder env 优先）`
+
+2026-11-19（goal round 8，r1）：`stage: work`，T-02 第三刀（§5.14，代码 `fe036b9f1`）。执行内容：①新增 `ace-native` `runtime-warm` bin + `toolchains.json` `native-runtimes`（`warm` 字段）+ `prepare_tools` warm 支持，把内容绑定的 collections/sched/typed runtime 在**准备阶段**构建并写 stamp。②修正 prepare 顺序（前面板实测发现：nextest archive 用 `test` profile 在同 target 重建同名 bin，会让先算的工具哈希立即失效；现改为先 archive 后 tools）。③实测 `ace-native`：冷准备 673.22s → 热准备 9.11s；`--run-prepared` **PASS 329/329**，run 墙 62.5s，**零 Compiling**，三个 runtime 库 SHA256 前后一致。治负 `test_prepare_tools`+`test_fixed_groups` **85/85 OK**。观察项：`ace-native` 62.5s 接近 60s 目标（未超 120s 上限）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 8 | from: work | to: work | status: executing | outcome: pass（runtime 预热与 prepare 顺序修正落地并实测零编译；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: fe036b9f1 / 本轮 docs(plan1098) | next: work（T-02 续：profile 翻转 + hardcoded 路径收敛）`
+
+2026-11-19（goal round 9，r1）：`stage: work`，T-02 第四刀（§5.15，代码 `80bbab696`）。执行内容：6 处测试体去硬编码/去补构建（AV worker → `AC_AV_CASE_WORKER`；a2x worker → `AC_A2X_HIR_WORKER`；缺 env 即具名 panic 并给准备命令；删除两个不再使用的 `WORKER` 常量与两处体内 `cargo build --release`）。定向重放：AV 2/2 PASS（0.668s/0.810s）、a2x 9/9 PASS（其中 4 例 >10s，属 C 类待 T-06 迁出）。**过程事故并已纠正**：首次编辑因相对路径落到主检出，已 `git checkout --` 还原 6 文件（主检出随后零 WIP），改在实施树绝对路径重做；已记入 §5.15。B-05 剩余：`cert_rt_902.rs:315`、B-01/B-02/B-04、`rust_lowering.rs:231`（B-03）、5 个 lib builder env 化与 profile 翻转。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 9 | from: work | to: work | status: executing | outcome: pass（6 处硬编码收敛并定向重放通过；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 80bbab696 / 本轮 docs(plan1098) | next: work（T-02 续：B-01…B-04、lib builder env 化、profile 翻转）`
+
+2026-11-19（goal round 10，r1）：`stage: work`，T-02 第五刀（§5.16，代码 `00f57a8b8`）。执行内容：B-01（`native/tests/common` 的 trace 支持库改 env 优先，缺失即具名 infra）、B-01′（未列入计划的第 4 份拷贝 `native/tests/cases/first_case.rs` 同改）、B-02（case-worker 同型体内构建同改）、B-03（删除 `rust_lowering.rs` 的 55 行 maintenance release 构建与 `target/release` 回落，`worker_exe` 只读 env）、B-04（删除 `core/tests/common` 的 4 个死 helper，350→290 行）；`toolchains.json` 给 `trace-runtime` 发布 `ACE_TRACE_RUNTIME_LIB`。实测 prepared run：`ace-native` **329/329 PASS**、`ace-native-worker` **43/43 PASS**、`ace-source` **904/904 PASS（11.26s）**、`ace-rust-lowering` 4/6（2 红为 KNOWN-DEBT **1060-R3** 既有 golden 漂移/凭据 pin，fail shape 逐字一致，非本包引入）。治理 85/85 OK。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 10 | from: work | to: work | status: executing | outcome: pass（B-01…B-04 落地并真实验证；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 00f57a8b8 / 本轮 docs(plan1098) | next: work（T-02 续：cert_rt_902、lib builder env 化、profile 翻转）`
+
+2026-11-19（goal round 11，r1）：`stage: work`，T-02 第六刀（§5.17）。执行内容：①`cert_rt_902` 的目录遍历+release 回落改为只读 `AC_A2X_HIR_WORKER`（缺失即具名 infra，不再静默 SKIP，代码 `b47e6f069`）。②`toolchains.json` 普通工具 profile 翻 debug（`a8a9350b2`），随后按 A/B 证据收敛为 **debug=av/batch-av/av-regular/ac/mn/mn-collections/cte/sema、release=abi/a2x**（`940030bed`）。③A/B 实测：`ace-native` release 64.9s/28 项>10s vs debug 60.9s/19 项>10s（同 329/329 PASS）；`ace-native-worker` 43/43、`ace-comptime` 136/136 PASS；`ace-semantics` 1 红=D-1037-01；`ace-abi` 26 红(release)/25 红(debug) 同族既有；`ace-a2x` debug **新增 2 红**→必须 release；`ace-batch` 8 红=D-1098-02（fence vs document 迁移，已登记 KNOWN-DEBT）。**结论**："一律 debug" 不成立，per-tool 分流写入 SD-01。过程中修掉一次 KNOWN-DEBT 追加导致的换行符全文件改写（已 `git checkout` 还原后以 LF 追加）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 11 | from: work | to: work | status: executing | outcome: pass（B-05 profile 分流落地并有 A/B 证据；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 940030bed / 本轮 docs(plan1098) | next: work（T-02 收尾：lib builder env 化或转 T-03）`
+
+2026-11-19（goal round 12，r1）：`stage: work`，T-03（§5.18，代码 `514a9459c`）。执行内容：把 `syntax-core/tests/cases/perf.rs` 包进 `mod performance`，使 P-01/P-02 的完整身份成为 `perf::performance::*` 而不再被普通组选中；两例正文/样本/统计一字未动。实测发现差集：`ace-syntax` 159→**157**（perf 相关 0），`performance::` 过滤由 0→**2**；`--profile ace-perf` 串行正式运行 **2/2 PASS**（11.450s + 3.799s = 15.251s）。新增 `PerformanceSelection` 治理控制 2 例（源码包装守卫 + "ace-perf 是唯一正向选择者/普通组必须排除"），全套 79/79 OK。另记录：当前 PERF 口径仍是 test(debug) 构建，是否改 release 口径属 SD-04 决策，本轮不动。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 12 | from: work | to: work | status: executing | outcome: pass（T-03 完成：P-01/P-02 唯一归 ace-perf 且正式运行通过） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 514a9459c / 本轮 docs(plan1098) | next: work（T-04 F-01/F-02 夹具与单 run 多轴）`
+
+2026-11-19（goal round 13，r1）：`stage: work`，T-04（§5.19，代码 `833f1dc3c`）。执行内容：①F-01 夹具改直建表——`mir_admission_module_tables_over_budget_is_resource` 由 **10.013s → 0.063s**（O(n²) 的 `intern_const` 循环改为 `consts.extend`，表内容不变），并新增边界邻例 `mir_admission_module_tables_boundary_is_exact`（65_536 合法 / 65_537 具名 Resource，0.035s）。②F-02 `ok()` 单 run 同判 exit+stdout，原双 run 确定性义务保留为具名用例 `sched_968_replay_is_deterministic`。③验证 `mir_tier:: + sched_m2_968::` **27/27 PASS 0.750s**；④V-05 负控实做：把门 `>` 临时改 `>=` 时边界例立即变红、超预算例仍绿，随即还原（工作树干净）。仍待：`ace-av` 全组 prepared 复跑与 47 行其余项（T-05/T-06）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 13 | from: work | to: work | status: executing | outcome: pass（T-04 完成：F-01 10.013s→0.063s 且有精确边界邻例与门位负控；F-02 单 run 多轴） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 833f1dc3c / 本轮 docs(plan1098) | next: work（T-05 O 类探针固化，或 T-06 显式 toolchain 组）`
+
+2026-11-19（goal round 14，r1）：`stage: work`，T-05（§5.20，代码 `9d2f63a27`）。执行内容：五个 O 类探针从"打印即绿"改为独立 oracle——O-01 断言空 `remove` 精确 trap `av.trap.list-index`（+非空邻例返回 7）；O-02 六场景各带值或诊断 oracle（4/1/97/20013 + 两处 profile 诊断）；O-03/O-04 钉 `source.syntax` 阶段与逐字消息；O-05 删掉与上一行完全重复、只打印的 caps 块（cap 单轴隔离具名移 research）。全探针模块 **19/19 PASS 2.754s**；V-07 负控实做：把 20013→20014、trap 码改成不存在值 → 两例各自变红，随即还原。**两处 spec 与实现分歧**（O-04 语义码 `source.module-symbol` 实际不可达于该 lane、O-03 无声明码）已记入 §5.20 交 SD-05 待决。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 14 | from: work | to: work | status: executing | outcome: pass（T-05 完成：O-01…O-05 全部有独立 oracle 且有变异负控） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 9d2f63a27 / 本轮 docs(plan1098) | next: work（T-06 显式 ace-toolchain 组，承接 47 行 C/Q/L 分流）`
+
+2026-11-19（goal round 15，r1）：`stage: work`，T-06 首刀（§5.21，代码 `125ab32f4`）。执行内容：新增显式 `ace-toolchain` 组（`all=false`，不被默认/`all`/`ace` 隐含选择）与空 feature `test-toolchain`；把 6 个认证模块的 **35 个测试** + H-05 两例逐条 `#[cfg(feature)]` 门控（**不门整模块**——首版整模块门控导致日常 `inventory_941` 引用其数据表编译失败 E0433×3，已修正）。发现差集：`ace-a2x` 328→**293**、`ace-rust-lowering` 6→**4**、`ace-toolchain` **37**；真实运行 `ace-toolchain` **PASS 37/37（95.59s，准备 62.74s）**，日常两组复跑只剩既有红（a2x 指纹 1 例、rust-lowering 1060-R3 两例），无新增。治理 `ToolchainSplit` 2 例 + 全套 81/81 OK。T-06 未完成：47 行 C 类 19 行仍在日常，待按"助手×端"迁入。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 15 | from: work | to: work | status: executing | outcome: pass（T-06 首刀：显式组+门控+37/37 真跑；C 类 19 行待迁） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 125ab32f4 / 本轮 docs(plan1098) | next: work（T-06 续：C 类 S 行迁入 + 旧新同输入对照）`
+
+2026-11-19（goal round 16，r1）：`stage: work`，T-06 第二刀（§5.21 续，代码 `e169c7000`）。执行内容：`ace-av` 增 `test-toolchain` feature，19 个 C 类（真 rustc/C/py 跨端腿）测试体逐条门控（只门测试体，共享助手不门）；`ace-toolchain` args/expression 扩到覆盖它们。真实发现差集：`ace-av` 1,428→**1,411**（−19 迁出 +2 新增）、`ace-toolchain` 37→**56**（实测 av 行=19）；`ace-toolchain` 真跑 **PASS 56/56 wall 68.0s**（item 和 993s，最慢 S-01 55.56s——这些 10s 违规已整体离开日常）。治理 `ToolchainSplit` 扩到 4 例，全套 **83/83 OK**。T-06 未闭：Q 类 S-04 处置、L 类 S-39 移交文本、`ace-av` 全组复跑（T-09）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 16 | from: work | to: work | status: executing | outcome: pass（T-06 第二刀：C 类 19 行迁入，56/56 真跑；Q/L 待处置） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: e169c7000 / 本轮 docs(plan1098) | next: work（T-06 收尾 Q/L 行；随后 T-07 宿主/console 行）`
+
+2026-11-19（goal round 17，r1）：`stage: work`，T-06 第三刀（§5.21 续，代码 `3e03a6dc2`），**T-06 关闭**。执行内容：①Q（S-04）：`av_turnaround_six_scenarios_smoke` 实测 44.778s，按 §5.3 允许的"具名并入压力"整段移入 `mod performance`（3 样本/六场景/多轴断言原样），日常 `ace-av` **1,411 → 1,410** 且零 `performance::` 泄漏，`-p ace-av` 的 perf 匹配 22→23，`--profile ace-perf` 串行真跑 **PASS 24.412s**；新增守卫（该 smoke 必须在 `mod performance` 之后）。②L（S-39）：实测 5.024s，为 `TargetOs::Linux` 下绑定+冷 link（code-only，非执行），按 §5.3 第 7 条保持日常并具名移交 Linux 原生语义给 1061/1063，无代码改动。③治理 **84/84 OK**。C/Q/L 三类均不再占日常预算；`ace-av` 全组复跑归 T-09。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 17 | from: work | to: work | status: executing | outcome: pass（T-06 关闭：显式组 56/56、C 类迁出、Q 并入压力、L 具名移交） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 3e03a6dc2 / 本轮 docs(plan1098) | next: work（T-07 宿主/console H-01…H-06）`
+
+2026-11-19（goal round 18，r1）：`stage: work`，T-07（§5.22，代码 `1bf9ff89b`）。执行内容：**补上 H-02 的真实运输负控**——`console-observation.json` 增写 `value/channel/trap`（真实帧三轴齐），新增 `pub console_admission_for_observation()` 让宿主对**原始帧**跑同一套 parent admission，新用例真实跑一次 console check 后断言三轴齐、admission 通过，并逐一删除 `stdout_b64`/`stderr_b64`/`value`/整个 `console` 都必须被拒。`ace-console` prepared **6/6 PASS，run 2.97s**；变异负控（期望 exit 7→8）令该例立刻红，已还原。同时核实 H-01（15 项与 `case-ace-m1-console-863` 同一 suite）、H-03（NUL 真跨进程）、H-04（三条便宜例仍普通，2 绿 2 既有红）、H-05（已入 toolchain）、H-06（同 key OR 并集实测）。**顺带测到**：无 prepared env 裸跑 console 五例各约 241s，走 driver 仅 2.97s，证明显式准备不是形式主义。T-07 未闭项（batch 完整跑、host 全组并集）归 T-09。**计划任务表**：T-02…T-07 翻为完成；T-01 保留（facade/adapters/聚合/PERF/Case 发现残项）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 18 | from: work | to: work | status: executing | outcome: pass（T-07 完成：H-02 真实运输负控 + H-01/03/04/05/06 核实） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 1bf9ff89b / 本轮 docs(plan1098) | next: work（T-08 成本报告扩写 + 治理）`
+
+2026-11-19（goal round 19，r1）：`stage: work`，T-08（§5.23，代码 `e4642aa81`）。执行内容：`ace_cost_report.py` 增 `session` 模式——多模块同判（复用 `regular_module` 的暖预算/终态/STALE）+ 身份差集（`--baseline`/`--baseline-out`，`ace-session-baseline/1`）+ 新增例 ≤10s 预算（`--new-item-cap-seconds`），退出码沿用 0/1/2，不建新 meter、不重跑、不改写产物；`test_ace_cost_report.py` 加 `SessionReports` 9 例，全套 **54/54 OK**，`test_fixed_groups` 84/84。**真实数据**：旧证据跑 → UNVERIFIABLE(exit 2，STALE 正确拦截)；当前 HEAD 重跑 toolchain 56/56 + console 6/6 后 → **GREEN(exit 0)，67 身份，added=0/removed=0**，toolchain 66.293s WITHIN_BUDGET、console 3.033s GREEN。计划任务表 T-08 已翻完成。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 19 | from: work | to: work | status: executing | outcome: pass（T-08 完成：session 模式 + 差集 + 新增例≤10s，真实 GREEN 且旧证据被 STALE 拦下） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: e4642aa81 / 本轮 docs(plan1098) | next: work（T-09 冻结实现 + 逐组验收/关账）`
+
+2026-11-19（goal round 20，r1）：`stage: work`，T-09（§5.24，冻结在 `0e18d8844`）。执行内容：①**7 个重组 + 13 个轻组**全部走 prepared 真跑，24 个非聚合常规组 **T_warm 全 ≤120s**（14 组 ≤60s，最大 `ace-host 109.5s`，其后 a2x 85.8 / native 77.7 / toolchain 66.3 / abi 64.9）；②**47 行逐项关账**：用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对，**46 行 body unchanged**，唯一变更是 S-11（T-04 F-01，断言未变且有 §5.19 证据）；C19→ace-toolchain、Q1→ace-perf、L1→日常 bind-only，D19/R7 留日常；③**新增 3 项均 ≤10s**（0.035/0.140/0.888s）；④**红全部归属既有**：semantics D-1037-01、a2c-abi Plan 972 pin、runtime 1060-R8、abi source_foreign 25、a2x 指纹 pin、batch D-1098-02、av D-1098-01、host 14（examples/ui 缺件环境 + 金样族既有）；`ace-artifacts::r3_f01` 首跑红/复跑绿记为**环境归因**；⑤**修掉一个真 bug**：`ace-source-syntax-927` 用位置过滤导致 `cargo nextest archive` 永不成功（`0e18d8844` 把过滤移入 `-E`，13 个名字两种选法逐一相同，组现已绿），并加治理守卫"ACE nextest 组不得带位置参数"（变异验证敏感）。治理 `test_fixed_groups` 85/85。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 20 | from: work | to: work | status: executing | outcome: pass（T-09 完成：24 组 ≤120s、47 行关账、新项 ≤10s、红全部归属；附带修好一组的准备兼容 bug） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 0e18d8844 / 本轮 docs(plan1098) | next: review（T-10 独立复审，绑定 review SHA）`
+
+2026-11-19（goal round 21，r1）：`stage: review`，**T-10 独立复审**（独立上下文执行，verdict = **needs_fix**，11 条发现）。执行内容：①按 AC-01…AC-10 逐条核对真实代码/证据（不采信打勾），并复跑 `test_fixed_groups` 85/85、`test_ace_cost_report` 54/54 全绿；②**确认的正面项**：24 组的执行数/墙/红逐行重算一致、47 行映射 47/47 正确（C 19 全在 toolchain 且不在 av、D/R/L 全在 av、Q 不在日常）、F-01/F-02 精确、新增 3 项 ≤10s、无 symlink/无证据入库；③**修掉 5 类真实缺陷**（代码 `2565ae2c8`）：`av_protocol` shape-3 与 `av_owned_resources` 在准备运行中做真 release build（前者占 host 组 103.5s/109.5s）、text/data runtime 三个 shim 与 case-worker 回落仍体内构建、`native_lifecycle` 体内 release 构建 `store-gc`、`p946` 最后一处只打印分支——全部改 env 优先 + fail-closed，并新增 `store-gc` 准备工具（`ACE_STORE_GC_BIN`，接入 9 组），`toolchains.json` 补 `ACE_TEXT_RUNTIME_LIB`/`ACE_DATA_RUNTIME_LIB`；④**收据修正**：冻结身份据实改写（24 组来自混合树状态，需重绑）、"14 组 ≤60s"改 19、SD-01/02/04/06 文案与实现对齐；⑤**口径裁决**：AC-04/AC-09 的"留日常 item ≤10s"经 owner 批准改为"组预算 + 新增 item ≤10s"（§5.26）。未闭项交下一轮：24 组重绑身份、聚合组墙 + ace-perf 产物、AC-10 报告表、T-01 残项/V-01 守恒负控。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 21 | from: work | to: review | status: executing | outcome: needs_fix 已修（5 类缺陷 + 3 处收据 + AC 口径 owner 裁决） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 2565ae2c8 / 本轮 docs(plan1098) | next: work（重绑 24 组身份 + 聚合墙/PERF 产物 + AC-10 报告）`
+
+2026-11-19（goal round 22，r1）：`stage: work`，T-10 复审后续修复 + 重绑（§5.27，代码 `6e5d8fc72`/`13efa873b`/`23a32750a`）。执行内容：①`ace-host` 拆分——重绑实测 129.6s 超 120s，把 4 类原始套件重放移入新显式组 `ace-host-suites`（`all=false`），拆分后 **ace-host 45.1s / host-suites 57.3s**；②MSVC 发现探针 deadline 10s→30s，`ace-toolchain` 由"155.3s + 2 红（cl -? Deadline）"变为 **PASS 56/56 64.2s**；③perf/formal 报告改走 `MN_T07_REPORT_DIR`（env > NEXTEST 临时目录 > 裸跑旧路径），跑完树保持干净；④`av::text_runtime_lib` 与 `abi::text_runtime_support_lib` 改 env 优先，消除 perf 组数十个 cargo 争锁；⑤发现并修正测量方法论：`prepare_tools` 收据绑定 `target/<profile>/<artifact>`，单阶段批量会在组间被后续 prepare 重建打断（`ace-native` 4 例 `collections runtime 找不到文件`），最终测量改为**两阶段**（先全准备、再全运行）。t13 全量重绑数据：24 日常组墙 3.1–119.3s（最大 `ace-abi` 119.3s）、聚合 `ace-workspace` 360.8s / `ace-facade` 22.0s / `ace-adapters` 15.3s、`ace-perf` 765.5s（<3600s 合同）。两阶段复测进行中（下一轮出最终表）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 22 | from: review | to: work | status: executing | outcome: pass（第二轮修复：host 拆分/探针 deadline/报告出仓/产品路径 env 优先 + 两阶段测量；最终表待复测） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 23a32750a / 本轮 docs(plan1098) | next: work（两阶段复测收尾 → §5.28 最终表 + AC-10 报告）`
+
+2026-11-19（goal round 23，r1）：`stage: work`，T-09 最终验收数据（§5.28，冻结 `3463ed25d`）。执行内容：①发现并修掉**构件 pin 缺失**导致的跨组身份互相失效——`prepare_tools` 现在把工具构件复制进 `target/test-groups/prepared/<identity>/tools/<tool>` 并以 pin 作为收据/行/env 的绑定对象，重跑前两阶段批次后 **24 组全部 prepare=0 且无 exit 2**，`ace-native` 恢复 PASS；②最终测量：**24 个日常组 T_warm 全部 ≤120s**（20 组 ≤60s，最大 `ace-toolchain 88.6s`），显式组 `ace-host-suites 25.9s`、`ace-perf 904.0s`（<3600s 合同），聚合组 `ace-workspace 344.3s`/`ace-facade 18.4s`/`ace-adapters 10.4s`；③`ace-a2x` 在连续批次下因 CPU 争用测到 134.4s（3 例触发 30s 内部编译 deadline），**空闲单组复跑 69.3s / 1 红（已知）**，表内取后者并记录测量协议；④填完 AC-10 完成报告表（列举/执行/排除/失败、冷准备、发现/准入、运行、整命令，父判定/清理标注 UNOBSERVED 边界）；⑤红归属：73 例既有/条件红，逐个指名债务编号（D-1037-01、D-1098-01/02、Plan 972 pin、1060-R3/R8 等），本计划 diff 未触及这些测试文件。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 23 | from: work | to: work | status: executing | outcome: pass（T-09 最终数据：24/24 ≤120s、AC-10 表、构件 pin 修复） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 3463ed25d / 本轮 docs(plan1098) | next: review（第二轮独立复审绑定新 SHA）`
+
+## 10. 待澄清事项
+
+无阻止提交本稿的用户决策。以下由T-01有界核查，不据此推迟全包或重新请求同范围许可：
+
+1. 安装版nextest/薄驱动的预构建消费接口，出口是T-02可实施命令和零编译证明，不假定未核参数。
+2. O-01…04当前Spec及独立预期：区分已支持/仍拒绝并记录精确值或阶段/code，不能自动录制当前输出。合同矛盾时只冻结该行并提出具体行为决策。
+3. C/Q/L每行角色、冻结尺度与Linux归属先查真实代码。无等价分流或日常120/10预算不可达时，具名保未完成和最小修订，不自行降门。
+4. 24组/47项为规划分母；并行计划delta须补对照，不能删旧行。新的产品语义、外仓实施或预算改变需用户决定。
+5. **D-1098-01（具名未决，已登记 KNOWN-DEBT）**：`ace-av::conformance host_console::av_console_entry_selection_cannot_bypass_main_policy` 与 `…_owned_front_door_enforces_console_entry_only` 两例按 863 旧策略断言 `lower.entry`，已被 PLAN-982 `3a9d9c1fb`（具名入口 `d_fn`，形状由 verify 守）废弃；2026-11-19 于本树 debug 重放两例均红（§5.6）。**不得由本包单方面改预期**：需 982 线 owner 或用户裁定"改写成新合同的独立 oracle"还是"恢复旧策略"，本包按外部既有红具名保留、不 ignore、不充 PASS。关闭条件见债务条目。
+
+2026-11-19（goal round 24，r1）：`stage: merge`，**PLAN-1098 交付完成**。①代码合并：`plan-1098-dev` → master，`8a9f2816d`（自动合并无冲突；主检出他会话 34 个 docs/design WIP 未触碰）；②**合并后复验**：master 上 `test_fixed_groups` + `test_prepare_tools` **100/100 OK**，抽查 `ace-syntax`（157 例）与 `ace-console`（6 例）在 master 源状态重新准备+运行 **prepare=0 / run=0**；③SD-01…SD-06 已沉淀进 `docs/specs/auto-test-case/`（5 改 1 新增，spec-lint 无新增错误）；④第三轮独立复审（绑定 `5f04e1d50`）提出的 12 项已处理：V-01 台账**补 `git add -f` 入库**（仓库 `*.json` 忽略规则曾静默吞掉）、`collections-runtime` 工具补进 `ace-perf`/`ace-facade`/`ace-adapters`（此前 perf 有两个新 panic 红）、最终表按 `905208386` 重生成（24 日常组全 ≤120s、22 组 ≤60s、最大 `ace-toolchain 61.0s`，红 143 例逐组归属）；⑤§5.29 收尾对账项已执行（见下）；⑥计划归档到 `docs/plans/archive/`，`status: archived`。
+
+**AC-12 对账**：`plan-artifacts/plan-1098/` 整 scope 删除（摘要与数字已折回 §5.28/§9）；worktree `D:/autostack/.wt/lang-1098/auto-lang` 经 `wt-guard` 校验 clean 后移除，分支 `plan-1098-dev` 删除，组目录清空；`docs/plans/attachments/889/`（运行期夹具写到 worktree 内、gitignored，约 1.7GB）随 worktree 一并删除，未进入任何证据；主检出保持他会话改动原样。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 24 | from: merge | to: archived | status: archived | outcome: pass（AC-01…12 关闭；24 日常组 ≤120s、47 行关账+守恒负控、工具链/PERF 增量、成本会话报告、SD 沉淀、合并后复验绿、scope 清理） | worktree: removed | commit: 8a9f2816d`
