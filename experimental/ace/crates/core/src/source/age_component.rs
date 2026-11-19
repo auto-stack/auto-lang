@@ -2232,11 +2232,13 @@ fn compile_component_scenario_full(
     // 模型限制（本步）：字段类型须可映射（int/i32/bool）；观测字段另由下方规则校验
     // （缺省首个 int 字段，或按名指定）。
     for f in &node.fields {
-        if field_type(f).is_none() {
+        // PLAN-105 T-02（U03 真语料 013/015）：列表字段（`[]T`/`[N]T`）也承载
+        // （collections 域 `List<T>`）；状态观测通道只打包 int 字段，其余跳过。
+        if field_type(f).is_none() && field_ann(f).is_none() {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
-                    "the component slice supports `int`/`i32`/`bool`/`str`/`f32` model fields; field `{}` is `{}`",
+                    "the component slice supports `int`/`i32`/`bool`/`str`/`f32` and `[]T`/`[N]T` model fields; field `{}` is `{}`",
                     f.name, f.ty
                 ),
                 f.ty_span,

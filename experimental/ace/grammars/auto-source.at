@@ -1030,7 +1030,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             pratt(of: "wide-ops", field: "value") {}
             opt { comma() {} }
         }
+        // PLAN-105 T-02（U03 真语料 013/015）：列表类型注解 `[]T` / `[N]T`
+        // （模型字段 `var todos []Todo = []`）——collections 域按 `List<T>` 承载。
+        age-list-ty(profiles: [age-component, age-package]) {
+            lbracket() {}
+            opt { int-literal(field: "len") {} }
+            rbracket() {}
+            age-model-ty(field: "elem") {}
+        }
         age-model-ty(profiles: [age-component, age-package]) {
+            alt { age-list-ty(field: "list") {} }
             alt { int-kw() {} }
             alt { i32() {} }
             alt { bool() {} }
