@@ -160,3 +160,92 @@ fn p105_component_entry_conditional_style_still_projects() {
     );
     assert!(compiles(src));
 }
+
+/// 016 真语料形：msg 逐行一成员、每行（含末项）以逗号结尾；载荷变体同行括号。
+#[test]
+fn p105_msg_trailing_comma_and_per_line_payloads() {
+    let src = "widget App {\n\
+        msg {\n\
+            PrevMonth,\n\
+            NextMonth,\n\
+            Today,\n\
+            SelectDay(str),\n\
+            ToggleSettings,\n\
+            ToggleDarkMode,\n\
+            SetTheme(str),\n\
+            SetAccent(str),\n\
+        }\n\
+        model { var n int = 0 }\n\
+        view { text \"x\" {} }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("016-shaped msg block projects");
+    let names: Vec<String> = nodes[0]
+        .messages
+        .iter()
+        .map(|m| m.name.clone())
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            "PrevMonth",
+            "NextMonth",
+            "Today",
+            "SelectDay",
+            "ToggleSettings",
+            "ToggleDarkMode",
+            "SetTheme",
+            "SetAccent"
+        ]
+    );
+    // 载荷保留（SelectDay(str) 等三例）。
+    assert!(nodes[0]
+        .messages
+        .iter()
+        .any(|m| m.name == "SelectDay" && m.payload.len() == 1));
+}
+
+/// 016 真语料形：单行逗号分隔的视图数据列表（无类型 model 字段）。
+#[test]
+fn p105_view_data_inline_list_literal() {
+    let src = "widget App {\n\
+        model {\n\
+            var weekday_labels = [\"Su\", \"Mo\", \"Tu\", \"We\", \"Th\", \"Fr\", \"Sa\"]\n\
+        }\n\
+        view { text \"x\" {} }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("inline view-data list projects");
+    let field = nodes[0]
+        .view_data
+        .iter()
+        .find(|f| f.name == "weekday_labels")
+        .expect("weekday_labels is view data");
+    assert!(
+        field.literal.contains("\"Su\"") && field.literal.contains("\"Sa\""),
+        "literal keeps the original source text"
+    );
+}
+
+/// 016 真语料形：`text f"${.store.year}"` 在组件面投影为文本叶（不因 f-string 回滚）。
+#[test]
+fn p105_fstring_text_leaf_projects() {
+    let src = "widget App {\n\
+        model {\n\
+            var n int = 0\n\
+            var s str = \"\"\n\
+        }\n\
+        view {\n\
+            col {\n\
+                text f\"v=${.s}/{.n}\" { style: \"x\" }\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("f-string text leaf projects");
+    assert_eq!(nodes.len(), 1);
+    assert!(
+        !nodes[0].view.texts.is_empty(),
+        "the f-string text leaf is projected"
+    );
+}

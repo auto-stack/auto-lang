@@ -556,6 +556,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { ident(field: "msg_name") {} }
             lbrace(same-line: true) {}
             age-msg-variant(field: "head") {} many { age-msg-variant-tail() {} }
+            // PLAN-105 T-02（U03 真语料 016）：末项尾随逗号（逐行一成员、
+            // 每行以 `,` 结尾的书写形）——此前尾逗号让尾链找不到后继变体，
+            // 整个 msg 块回滚到 model 槽位（`expected model`）。
+            opt { comma() {} }
             rbrace() {}
         }
         age-msg-variant(profiles: [age-component, age-package]) {
@@ -925,7 +929,30 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-1072 刀B：仅视图数据字面量（模型无类型字段的初值位专属——
         // 结构化解析记录原始 span；元素=记录字面量或标量表达式，嵌套列表
         // 不收（值域按 010 语料，扩面按实测）。
+        // PLAN-105 T-02（U03 真语料 016）：同批补**同行逗号分隔**形
+        // （`var weekday_labels = ["Su", "Mo", …]`）——010 是逐行记录形，
+        // 016 是单行标量表；两形共用惰性数据语义（原始 span 文本）。
         age-view-data-lit(profiles: [age-component, age-package], expect: "a `[ … ]` view-data list literal") {
+            alt { age-view-data-lit-inline() {} }
+            alt { age-view-data-lit-multiline() {} }
+        }
+        age-view-data-lit-inline(profiles: [age-component, age-package]) {
+            lbracket(same-line: true) {}
+            age-view-data-inline-entry(field: "first") {}
+            many { age-view-data-inline-tail() {} }
+            // 尾随逗号容错（`["a", "b",]`）。
+            opt { comma() {} }
+            rbracket() {}
+        }
+        age-view-data-inline-tail(profiles: [age-component, age-package]) {
+            comma() {}
+            age-view-data-inline-entry(field: "item") {}
+        }
+        age-view-data-inline-entry(profiles: [age-component, age-package]) {
+            alt { age-view-data-record() {} }
+            alt { pratt(of: "wide-ops") {} }
+        }
+        age-view-data-lit-multiline(profiles: [age-component, age-package]) {
             lbracket(same-line: true) {}
             list-nl { age-view-data-entry() {} }
             rbracket() {}

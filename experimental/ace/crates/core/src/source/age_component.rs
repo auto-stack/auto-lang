@@ -624,7 +624,7 @@ impl ComponentCompilation {
 /// `__fstr(...)`，与 `f"…"` 同一生成物）。AGE 组件面所有入口统一先过此步；
 /// 幂等（生成物无反引号）。f-string 内部 span 移位边界沿 PLAN-964 记录。
 fn desugar_widget_src(src: &str) -> Result<String, Vec<Diagnostic>> {
-    crate::source::fstr::desugar_fstrings_widget(src).map_err(|m| {
+    crate::source::fstr::desugar_widget_source(src).map_err(|m| {
         vec![text_diag(
             "source.fstr-syntax",
             format!("widget f-string: {m}"),

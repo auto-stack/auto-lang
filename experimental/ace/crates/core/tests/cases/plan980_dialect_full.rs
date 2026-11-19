@@ -575,8 +575,10 @@ fn p980_dialect_full_malformed_member_shapes_reject_at_span() {
             "on",
         ),
         (
-            "msg-dangling-comma",
-            "node C {\n    msg { A, B, }\n    view {\n        text \"x\" {}\n    }\n}\n",
+            // PLAN-105 T-02：末项尾随逗号（`msg { A, B, }`）已成为合法书写形
+            // （016 真语料逐行一成员、行尾逗号）；这里改用**双逗号**作坏形状。
+            "msg-double-comma",
+            "node C {\n    msg { A,, B }\n    view {\n        text \"x\" {}\n    }\n}\n",
             "msg",
         ),
         (

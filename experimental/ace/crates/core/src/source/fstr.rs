@@ -692,3 +692,12 @@ mod tests {
         );
     }
 }
+
+/// PLAN-105 T-02（U03 真语料）：widget 工程源**统一** f-string 脱糖入口——
+/// 先反引号形（`` `text ${expr}` ``），再 `f"…"` 形。此前 component/包片段
+/// 车道只脱反引号形，传统 AutoUI 源（012/013/016 的 `f"…${.x}…"`）解析期
+/// 直接回滚。span 边界沿 PLAN-964：f-string 内部可能移位，外部字节保持。
+pub fn desugar_widget_source(src: &str) -> Result<String, String> {
+    let backticked = desugar_fstrings_widget(src)?;
+    desugar_fstrings(&backticked)
+}
