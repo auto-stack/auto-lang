@@ -784,26 +784,45 @@ fn p105_store_decl_projects_structure() {
     let src = "widget App {\n    model { var n int = 0 }\n    view { text \"x\" {} }\n}\n\
                store TodoStore {\n    model {\n        var active_count int = 0\n        var preview1 str = \"\"\n    }\n    msg { Init, Refresh }\n}\n";
     let nodes = ace_core::source::age_component::project_component_candidates(src)
-        .expect("store structure projects");
+        .expect("store structure projects and inlines");
     assert_eq!(nodes.len(), 1);
-    let stores = &nodes[0].stores;
-    assert_eq!(stores.len(), 1);
-    assert_eq!(stores[0].name.name, "TodoStore");
-    let field_names: Vec<&str> = stores[0].fields.iter().map(|f| f.name.as_str()).collect();
-    assert_eq!(field_names, vec!["active_count", "preview1"]);
-    let msg_names: Vec<&str> = stores[0].messages.iter().map(|m| m.name.as_str()).collect();
-    assert_eq!(msg_names, vec!["Init", "Refresh"]);
+    // S1：store 字段/消息在投影出口内联为前缀名，声明本身被消费掉。
+    assert!(nodes[0].stores.is_empty(), "store decls are consumed by inlining");
+    let field_names: Vec<&str> = nodes[0].fields.iter().map(|f| f.name.as_str()).collect();
+    assert!(field_names.contains(&"st_active_count"), "fields: {field_names:?}");
+    assert!(field_names.contains(&"st_preview1"), "fields: {field_names:?}");
+    let msg_names: Vec<&str> = nodes[0].messages.iter().map(|m| m.name.as_str()).collect();
+    assert!(msg_names.contains(&"St_Init"), "msgs: {msg_names:?}");
+    assert!(msg_names.contains(&"St_Refresh"), "msgs: {msg_names:?}");
+    // S1 内联后场景面可编译（模型/事件面走共享 runtime）：`.store.*` 已改写。
     let caps = vec!["ac.runtime.text.v1".to_string()];
-    let err = ace_core::source::age_component::compile_age_component(
+    let scenario = ComponentScenario { instances: 1, ops: Vec::new() };
+    ace_core::source::age_component::compile_component_scenario(
         src,
         "app",
         LegacyWidgetAlias::Accept,
         &caps,
+        &scenario,
     )
-    .expect_err("store semantics stay a named pending surface");
-    assert!(
-        err.iter().any(|d| d.code == "source.age.component-unsupported"
-            && d.message.contains("TodoStore")),
-        "named store reject expected, got {err:?}"
-    );
+    .expect("store fields inline into the component scenario");
+}
+
+/// store 方法调度（`store.<Msg>(…)`）在接线前必须具名拒——不静默丢调用。
+#[test]
+fn p105_store_method_call_is_named_pending() {
+    let src = "widget App {\n    model { var n int = 0 }\n    view { text \"x\" {} }\n    on {\n        .Init -> { store.Recompute() }\n    }\n}\n\
+               store S {\n    model { var total int = 0 }\n    msg { Recompute }\n    on {\n        .Recompute -> { .total = .total + 1 }\n    }\n}\n";
+    let caps = vec!["ac.runtime.text.v1".to_string()];
+    let scenario = ComponentScenario { instances: 1, ops: Vec::new() };
+    // 含 store 方法调用的 handler 编译通过；该调用语句被判定为**域外体**
+    // （`body_foreign`），派发时由既有具名拒守住（"a directed event must not
+    // run a partial body"）——不静默执行半截 handler。
+    ace_core::source::age_component::compile_component_scenario(
+        src,
+        "app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .expect("store-method handler compiles; dispatch stays a named reject");
 }

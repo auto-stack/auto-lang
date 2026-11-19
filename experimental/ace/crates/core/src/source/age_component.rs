@@ -666,6 +666,220 @@ fn desugar_widget_src(src: &str) -> Result<String, Vec<Diagnostic>> {
 }
 
 /// 未受信候选投影（可单独测试；不接触 verify/后端）。
+// ───────────────────────── PLAN-105 T-02：store 声明内联 ─────────────────────
+//
+// 组件面（单源含 store 声明）与包面（store 单元）共用同一套「共享 store 状态」
+// 语义落地方式：把 store 的 model 字段并入组件字段（前缀 `st_`），msg 并入
+// 组件 msg（前缀 `St_`），handler 同前缀并重写体内 `.field` → `.st_field`；
+// 组件侧 `.store.field` 读/写改写成 `.st_field`。
+//
+// 具名边界（不静默丢行为）：`store.<Msg>(…)` 方法调度、未知 store 字段、多个
+// store 声明在接线完成前都具名拒。
+
+fn store_field_prefixed(name: &str) -> String {
+    format!("st_{name}")
+}
+
+fn store_msg_prefixed(name: &str) -> String {
+    format!("St_{name}")
+}
+
+/// `.store.<x>` 链的两形：`self.store.x`（点前缀投影）与 `store.x`（裸名）。
+fn is_store_base(base: &Expr) -> bool {
+    match &base.kind {
+        ExprKind::Var(v) => v.name == "store",
+        ExprKind::Field { base, name } => {
+            name.name == "store" && matches!(&base.kind, ExprKind::Var(v) if v.name == "self")
+        }
+        _ => false,
+    }
+}
+
+fn rewrite_store_expr(e: &mut Expr, map: &[(String, String)]) -> Result<(), Vec<Diagnostic>> {
+    match &mut e.kind {
+        ExprKind::Field { base, name } => {
+            // store handler 体内的点前导字段（`.total` → `self.total`）与
+            // 组件 handler 的 app 字段（不在 map 内）共用同一形状：命中 map 才
+            // 前缀化，未命中原样保留。
+            if matches!(&base.kind, ExprKind::Var(v) if v.name == "self") {
+                if let Some((_, prefixed)) = map.iter().find(|(f, _)| *f == name.name) {
+                    name.name = prefixed.clone();
+                }
+                return Ok(());
+            }
+            if is_store_base(base) {
+                let Some((_, prefixed)) = map.iter().find(|(f, _)| *f == name.name) else {
+                    return Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        format!(
+                            "`.store.{}` is not a field of the store declaration (S1)",
+                            name.name
+                        ),
+                        e.span,
+                    )]);
+                };
+                let span = e.span;
+                e.kind = ExprKind::Field {
+                    base: Box::new(Expr {
+                        span,
+                        kind: ExprKind::Var(Ident {
+                            name: "self".to_string(),
+                            span,
+                        }),
+                    }),
+                    name: Ident {
+                        name: prefixed.clone(),
+                        span,
+                    },
+                };
+                return Ok(());
+            }
+            rewrite_store_expr(base, map)
+        }
+        ExprKind::Method { recv, args, .. } => {
+            if is_store_base(recv) {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    "`store.<Msg>(…)` method dispatch is not wired yet (S1); \
+                     call the message from the app handler or read store fields"
+                        .to_string(),
+                    e.span,
+                )]);
+            }
+            rewrite_store_expr(recv, map)?;
+            for a in args {
+                rewrite_store_arg(a, map)?;
+            }
+            Ok(())
+        }
+        ExprKind::TextDisplay(inner) | ExprKind::Await(inner) | ExprKind::Go(inner) => {
+            rewrite_store_expr(inner, map)
+        }
+        ExprKind::Unary { operand, .. } => rewrite_store_expr(operand, map),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            rewrite_store_expr(lhs, map)?;
+            rewrite_store_expr(rhs, map)
+        }
+        ExprKind::Index { base, index } => {
+            rewrite_store_expr(base, map)?;
+            rewrite_store_expr(index, map)
+        }
+        ExprKind::Call { args, .. } => {
+            for a in args {
+                rewrite_store_arg(a, map)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn rewrite_store_arg(a: &mut crate::source::ast::Arg, map: &[(String, String)]) -> Result<(), Vec<Diagnostic>> {
+    match a {
+        crate::source::ast::Arg::Pos(e) | crate::source::ast::Arg::MovePos(e) => rewrite_store_expr(e, map),
+        crate::source::ast::Arg::Named { value, .. } => rewrite_store_expr(value, map),
+    }
+}
+
+fn rewrite_store_stmts(
+    stmts: &mut [ComponentStmt],
+    map: &[(String, String)],
+) -> Result<(), Vec<Diagnostic>> {
+    for st in stmts {
+        match st {
+            ComponentStmt::Assign(a) => {
+                if let Some((_, prefixed)) = map.iter().find(|(f, _)| *f == a.field) {
+                    a.field = prefixed.clone();
+                }
+                rewrite_store_expr(&mut a.rhs, map)?;
+            }
+            ComponentStmt::Let { value, .. } => rewrite_store_expr(value, map)?,
+            ComponentStmt::If {
+                cond, then, els, ..
+            } => {
+                rewrite_store_expr(cond, map)?;
+                rewrite_store_stmts(then, map)?;
+                if let Some(e) = els {
+                    rewrite_store_stmts(e, map)?;
+                }
+            }
+            ComponentStmt::For { iter, body, .. } => {
+                rewrite_store_expr(iter, map)?;
+                rewrite_store_stmts(body, map)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 把 node 内 `store` 声明内联成前缀字段/消息/处理器，并重写组件侧
+/// `.store.field` 引用。返回具名诊断（未知字段 / store 方法 / 多 store）。
+pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diagnostic>> {
+    if node.stores.is_empty() {
+        return Ok(());
+    }
+    if node.stores.len() > 1 {
+        return Err(vec![text_diag(
+            "source.age.component-unsupported",
+            "multiple store declarations per node are not wired yet (S1)".to_string(),
+            node.stores[1].span,
+        )]);
+    }
+    let store = node.stores.remove(0);
+    let map: Vec<(String, String)> = store
+        .fields
+        .iter()
+        .map(|f| (f.name.clone(), store_field_prefixed(&f.name)))
+        .collect();
+    // 字段并入（同名字段/前缀冲突具名拒——不静默覆盖）。
+    for f in &store.fields {
+        let prefixed = store_field_prefixed(&f.name);
+        if node.fields.iter().any(|cf| cf.name == prefixed || cf.name == f.name) {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!(
+                    "store field `{}` collides with an existing component field (S1)",
+                    f.name
+                ),
+                f.span,
+            )]);
+        }
+        let mut nf = f.clone();
+        nf.name = prefixed;
+        node.fields.push(nf);
+    }
+    // 消息并入。
+    for m in &store.messages {
+        let mut nm = m.clone();
+        nm.name = store_msg_prefixed(&m.name);
+        node.messages.push(nm);
+    }
+    // store handler：改名 + 重写体内引用。
+    for h in &store.handlers {
+        let mut nh = h.clone();
+        nh.msg = store_msg_prefixed(&h.msg);
+        rewrite_store_stmts(&mut nh.stmts, &map)?;
+        for a in &mut nh.assigns {
+            if let Some((_, prefixed)) = map.iter().find(|(f, _)| *f == a.field) {
+                a.field = prefixed.clone();
+            }
+            rewrite_store_expr(&mut a.rhs, &map)?;
+        }
+        node.handlers.push(nh);
+    }
+    // 组件侧 handler 与文本叶。
+    for h in &mut node.handlers {
+        rewrite_store_stmts(&mut h.stmts, &map)?;
+        for a in &mut h.assigns {
+            rewrite_store_expr(&mut a.rhs, &map)?;
+        }
+    }
+    for t in &mut node.view.texts {
+        rewrite_store_expr(&mut t.expr, &map)?;
+    }
+    Ok(())
+}
+
 /// PLAN-105 T-02：模块级 `store` 声明的结构候选（独立于 node 候选——store 单元
 /// 可以只有 store 声明）。
 pub fn project_component_stores(src: &str) -> Result<Vec<ComponentStore>, Vec<Diagnostic>> {
@@ -703,7 +917,36 @@ pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec
         SourceProfile::AgeComponent,
         FrontBudget::WORK_OWNED_64MIB,
     ) {
-        FrontOutcome::Ok(ok) => Ok(ok.component_nodes),
+        FrontOutcome::Ok(ok) => {
+            // PLAN-105 T-02（U03 真语料 013/016）：store 声明在**投影出口**内联
+            // （字段/消息/处理器前缀化、`.store.field` 改写），所有消费者
+            // （描述面/场景面/A2Vue/SFC）拿到的都是同一份 store-free 结构；
+            // store 方法调度等未接面由 `inline_store_decl` 具名拒。
+            let mut nodes = ok.component_nodes;
+            for node in nodes.iter_mut() {
+                inline_store_decl(node)?;
+            }
+            // 内联后仍残留 `.store.*` = store 声明不在本源（U03 的 store 在独立
+            // 单元）——具名拒（否则会落到隐藏函数的 "no local named self"）。
+            for node in &nodes {
+                if let Some(span) = node
+                    .view
+                    .texts
+                    .iter()
+                    .find(|t| expr_refs_store(&t.expr))
+                    .map(|t| t.span)
+                {
+                    return Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        "`.store.*` references need the store declaration in the same source \
+                         (or the package face); cross-unit store loading is not wired yet (S1)"
+                            .to_string(),
+                        span,
+                    )]);
+                }
+            }
+            Ok(nodes)
+        }
         FrontOutcome::Diag(ds) => Err(ds),
         FrontOutcome::ResourceExhausted { what, limit } => Err(vec![text_diag(
             "source.resource",
@@ -736,6 +979,12 @@ fn expr_refs_store(e: &Expr) -> bool {
         ExprKind::Method { recv, .. } => expr_refs_store(recv),
         ExprKind::TextDisplay(inner) => expr_refs_store(inner),
         ExprKind::Binary { lhs, rhs, .. } => expr_refs_store(lhs) || expr_refs_store(rhs),
+        ExprKind::Call { args, .. } => args.iter().any(|a| match a {
+            crate::source::ast::Arg::Pos(e) | crate::source::ast::Arg::MovePos(e) => {
+                expr_refs_store(e)
+            }
+            crate::source::ast::Arg::Named { value, .. } => expr_refs_store(value),
+        }),
         _ => false,
     }
 }
@@ -790,7 +1039,7 @@ pub fn compile_age_component(
     // adapter 的 span 映射与 input_hash）全部使用 desugar 后源，保证 span
     // 一致（PLAN-964 同边界：f-string 内部 span 可能移位）。
     let src = &desugar_widget_src(src)?;
-    let candidates = project_component_candidates(src)?;
+    let mut candidates = project_component_candidates(src)?;
     // PLAN-105 T-02（U03 真语料 013/016）：单源组件面没有 store 单元（S1 未
     // 接线）——`.store.*` 引用在此**具名拒**，不再落到隐藏函数的
     // 「no local named self」这类间接错误。
@@ -824,23 +1073,12 @@ pub fn compile_age_component(
             )]);
         }
     }
-    // PLAN-105 T-02（U03 真语料 013/016）：store 声明结构已投影（字段/消息/
-    // 处理器），但共享实例/.store 绑定/方法调度未接线——**具名拒**（不静默
-    // 忽略声明，也不把它降级成普通类型）。
-    if let Some(store) = candidates.iter().flat_map(|n| n.stores.iter()).next() {
-        return Err(vec![text_diag(
-            "source.age.component-unsupported",
-            format!(
-                "store `{}` is parsed with {} field(s)/{} message(s) but its shared-instance \
-                 semantics are not wired yet (S1)",
-                store.name.name,
-                store.fields.len(),
-                store.messages.len()
-            ),
-            store.span,
-        )]);
-    }
-    // 未接线的语义：具名拒绝（不是静默忽略）。
+    // PLAN-105 T-02（U03 真语料 013/016）：store 声明→组件面**内联**（共享
+    // store 状态：字段并入前缀 `st_`、消息并入 `St_`、`.store.field` 改写成
+    // 前缀字段）。store 方法调度/未知字段仍具名拒（见 `inline_store_decl`）。
+    for node in candidates.iter_mut() {
+        inline_store_decl(node)?;
+    }    // 未接线的语义：具名拒绝（不是静默忽略）。
     if let Some(h) = candidates.iter().find_map(|n| n.handlers.first()) {
         return Err(vec![text_diag(
             "source.age.component-unsupported",
@@ -1416,7 +1654,7 @@ fn compile_component_scenario_full(
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
     let src = &desugar_widget_src(src)?;
-    let candidates = project_component_candidates(src)?;
+    let mut candidates = project_component_candidates(src)?;
     if !alias.is_accept() {
         if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
             return Err(vec![text_diag(
