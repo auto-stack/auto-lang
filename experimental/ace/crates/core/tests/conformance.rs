@@ -193,5 +193,8 @@ mod plan980_closure_dotted;
 #[path = "cases/plan1072_component_style.rs"]
 mod plan1072_component_style;
 
+#[path = "cases/plan104_bare_tags.rs"]
+mod plan104_bare_tags;
+
 #[path = "cases/plan980_style_surface.rs"]
 mod plan980_style_surface;

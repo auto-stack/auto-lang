@@ -160,6 +160,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         double-kw(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { literal: "double" }
         f64-kw(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { literal: "f64" }
         type-kw { literal: "type" }
+        // PLAN-104（007/031 真语料）：裸自闭合标签（闭集）——AGE 两面保留拼写，
+        // 使 `spacer`/`divider`/`sep`/`outlet` 可作无 label/无体元素。用 keyword
+        // token 而非 contextual name：后者在未知属性处会产生 slot hint 噪声
+        // （979 unknown-attribute 诊断面实证）。
+        spacer-tok(profiles: [age-component, age-package]) { literal: "spacer" }
+        divider-tok(profiles: [age-component, age-package]) { literal: "divider" }
+        sep-tok(profiles: [age-component, age-package]) { literal: "sep" }
+        outlet-tok(profiles: [age-component, age-package]) { literal: "outlet" }
         static { literal: "static" }
         mut { literal: "mut" }
         enum { literal: "enum" }
@@ -1198,6 +1206,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-element-block() {} }
             alt { age-element-labeled() {} }
             alt(profiles: [age-component]) { age-element-props-block() {} }
+            // PLAN-104（007 真语料）：**裸标签元素**——只有标签名、无 label 也无
+            // 体块（`spacer`/`divider` 等自闭合组件）。闭集 keyword token，不参与
+            // contextual name 槽位，故不引入 label 跨行吞并/诊断噪声。
+            alt { age-element-bare() {} }
+        }
+        // 裸标签（闭集）：`spacer` / `divider` / `sep` / `outlet`。
+        age-element-bare(profiles: [age-component, age-package], expect: "a bare element tag (`spacer`/`divider`/`sep`/`outlet`)") {
+            alt { spacer-tok(field: "tag") }
+            alt { divider-tok(field: "tag") }
+            alt { sep-tok(field: "tag") }
+            alt { outlet-tok(field: "tag") }
         }
         age-element-labeled-block(profiles: [age-component, age-package]) {
             ident(field: "tag")

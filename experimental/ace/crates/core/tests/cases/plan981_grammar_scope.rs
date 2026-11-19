@@ -161,7 +161,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-1072 T-03（expose 点前缀对齐）：age-expose-item / tail 兼容
             // `.name` 与裸名及可选逗号（两面同开）——42afe2cb…→fad57c5f…；
             // 13 邻居逐字节不变。
-            "fad57c5f81b4ee3ca191a472b952778f4666692e3760ed186e3f137c6ba164a1",
+            "87f044eaf43e1fcc54f6b7980b4246182daa9c05cc978cd6adbb5cd9ffe9a0fe",
         ),
         (
             SourceProfile::AgeH0,
@@ -255,6 +255,6 @@ fn p981_age_package_grammar_id_is_frozen() {
         // c337685c…→91c53cde…。
         // PLAN-1072 T-03（age-expose-item / tail 两面同开）：
         // 91c53cde…→06809c84…。
-        "06809c843671b91fe57ad77ddb6126a5bd094efc263cf0fc4beda4cdfb87111c"
+        "4e0af2ae3130ab0cd97df9fc51efb4384a5a65cad09ff01e1e4bbcd3ab374b1a"
     );
 }
