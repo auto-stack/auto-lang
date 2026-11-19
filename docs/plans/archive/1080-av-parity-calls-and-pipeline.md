@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1080
-status: executing
+status: archived
 feature_name: AV调用绑定、隐式函数签名与管道补齐
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 3
-current_step: 1
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1079]
 supersedes_spec_components: [docs/specs/ace-migration/m2-generics.md, docs/specs/ace-migration/m2-denominator.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -374,18 +374,34 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av
 
 expressions.rs `cb21e122…` 未变（旧 parser 冻结）；auto-source.at `9e5248b2→6ee7996e`、project.rs `2223bfbb→e0b64164`、resolve.rs `54978de5→449cfe3b`——均因 1078/1079 落地；T-02 起以 worktree 当前版为准。10 份旧 case SHA16 逐份复核全匹配，旧义务零漂移。
 
+## 6.6 T-06 验证记录（冻结提交 34d97223c，2026-11-19）
+
+冻结门（`cargo t ace-source ace-syntax ace-semantics ace-av case-av-language-parity`，worktree 单实例，含增量准备总 wall 636.7s）：
+
+| 组 | 结果 | 执行数 | 备注 |
+|---|---|---|---|
+| ace-source | PASS | 926 | 含 plan981 grammar 13 邻居冻结（auto 门控零外溢实证）+ 927 七 profile 差分语料 |
+| ace-syntax | PASS | 159 | |
+| ace-semantics | FAIL | 295 | 294 绿 + **1 原红**：`sema_boundary_audit::sema_boundary_case_files_executed_status_honest`（ac-semantics cache-roundtrip 文档缺 executed 状态）——**干净基线复现同红**（stash 后重跑实证），非本包改动，归 ac-semantics 语料 owner |
+| ace-av | FAIL | 1450 | 1448 绿 + **2 原红**：`host_console::av_console_entry_selection_cannot_bypass_main_policy` / `av_console_owned_front_door_enforces_console_entry_only`（期望 982 前 lower.entry 政策，982 已改具名入口+MIR 形状合同）——**干净基线复现同红**，归 console 面 owner |
+| case-av-language-parity | PASS | 30 例/45 检查 | 1078/1079 全例无回归 + 本包 22 例全绿（复审 F-01 更正：原记 21）；非 AV 检查 #ignore/NOT_RUN（"not selected (check=av)"），avm dispatch=0 |
+
+新增用例计时：conformance `plan1080_calls_binding` 15 测 0.07s（含编译执行，全部 <<10s/例）；语料单例经 worker 全链 30-60ms/case。故意红元控制三红一绿（§8 T-05 行）。健康：基线 4 条预存告警数不变，零新增告警/调试输出。
+
+**IF-AV-PARITY-CALL**（交付接口）：`auto.source.language.av/v1` 面新增——① record 方法（实例/静态/receiver `.field`，MIR `m.<Rec>.<name>` 单元名）；② 无类型签名补全（调用点单态+体内推导；`bind/source.inference` 具名拒）；③ 原型 `fn f(..) R;`（`source.unresolved`）；④ 管道 `x |> .m(args)`/`x |> .f`/行首续行（紧结合，D-03）；⑤ 零参 Unit 入口（`fn main()`）；⑥ 描述符身份 `auto.hir.auto-language.draft/1/auto-language-draft`（aggregates 词汇+method+unit）。下游消费者：AVP-03（闭包/函数值——lambda 注解面未动）、AVP-04（List.new varargs 归集合）、statement-surface 批（compound-ops `+=`，legacy-map 具名）。
+
 ## 7. 验收标准
 
-- [ ] **AC-AV-ONLY｜owner_stage: work**：§5 AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE满足，当前仅AV及其共享正确性参与门；非AV#ignore/未选不prepare、不dispatch、不计PASS、不阻AV。原T-03..06落为真实选择/报告/隔离控制，T-07独立核，T-08不以非AV未齐阻本包落主。
+- [x] **AC-AV-ONLY｜owner_stage: work**：§5 AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE满足，当前仅AV及其共享正确性参与门；非AV#ignore/未选不prepare、不dispatch、不计PASS、不阻AV。原T-03..06落为真实选择/报告/隔离控制，T-07独立核，T-08不以非AV未齐阻本包落主。
 
-- [ ] **AC-FC｜owner_stage: work**：§5 FC及§6 V-FC-SOURCE/MIGRATE/TARGET由原T-01..06落实；唯一活跃作者、逐原义务迁移/条件/历史身份守恒与本轮所选AV真实观察齐，非AV#ignore/NOT_RUN分列且不阻AV。原T-07 review逐项核，T-08仅真实落主后交来源；既有AC全部保留，不缩语言或后端分母。
+- [x] **AC-FC｜owner_stage: work**：§5 FC及§6 V-FC-SOURCE/MIGRATE/TARGET由原T-01..06落实；唯一活跃作者、逐原义务迁移/条件/历史身份守恒与本轮所选AV真实观察齐，非AV#ignore/NOT_RUN分列且不阻AV。原T-07 review逐项核，T-08仅真实落主后交来源；既有AC全部保留，不缩语言或后端分母。
 
-- [ ] **AC-01｜owner_stage: work**：§6所有正例在普通AV真实执行满足固定值/双流及本包完整语义，原源不以mini/get/loop等替换后冒原兼容。
-- [ ] **AC-02｜owner_stage: work**：所有反例在约定阶段给可辨识错误与原source span；未授权/预算/取消/host失败分类保留；不静默默认值/空成功。
-- [ ] **AC-03｜owner_stage: work**：§6补充ID逐个有真实断言与结果；适用的调用次数/轨迹/owned账/关闭与恢复不是从主exit0推断。
-- [ ] **AC-04｜owner_stage: work**：本包原case/check与L行映射有唯一owner/预期/状态；AV required行必须有actual，AV未知/未跑阻AV出口。非AV保持#ignore/NOT_RUN及后续owner，迁移数据不得丢，但不要求本轮actual、不阻AV出口。
-- [ ] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
-- [ ] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
+- [x] **AC-01｜owner_stage: work**：§6所有正例在普通AV真实执行满足固定值/双流及本包完整语义，原源不以mini/get/loop等替换后冒原兼容。
+- [x] **AC-02｜owner_stage: work**：所有反例在约定阶段给可辨识错误与原source span；未授权/预算/取消/host失败分类保留；不静默默认值/空成功。
+- [x] **AC-03｜owner_stage: work**：§6补充ID逐个有真实断言与结果；适用的调用次数/轨迹/owned账/关闭与恢复不是从主exit0推断。
+- [x] **AC-04｜owner_stage: work**：本包原case/check与L行映射有唯一owner/预期/状态；AV required行必须有actual，AV未知/未跑阻AV出口。非AV保持#ignore/NOT_RUN及后续owner，迁移数据不得丢，但不要求本轮actual、不阻AV出口。
+- [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
+- [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [ ] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
 - [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
@@ -405,18 +421,25 @@ expressions.rs `cb21e122…` 未变（旧 parser 冻结）；auto-source.at `9e5
 本轮任务状态：
 
 - [x] **T-01** work：2026-11-19 已完成（worktree `D:/autostack/.wt/lang-1080/auto-lang`，基线 670c720a8）。决策记录见 §6.5。
-- [ ] **T-02** work：见上表唯一任务合同。
-- [ ] **T-03** work：见上表唯一任务合同。
-- [ ] **T-04** work：见上表唯一任务合同。
-- [ ] **T-05** work：见上表唯一任务合同。
-- [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-02** work：2026-11-19。实现：`param`/`fn-item` auto 门控文法臂（无类型形参/原型 `;`）；AST `TypeRef::Inferred`+`FnItem.proto`；投影（project.rs 可选注解/ret 推导标记/run_fn_proto）；**补全遍** `source/infer.rs`（parse→resolve 之间，仅 auto 面：调用点驱动单态定点、尾/return 推导、void main=Unit、原型合一；冲突/无约束=具名 `bind/source.inference`，无静默默认）。命名实参四诊断（缺失/重复/未知/未绑定）实证为现存 `source.argument` 家族；前向引用+CALL-SOURCE-ORDER（stdout 2\\n1\\n+值12）实证已满足。
+- [x] **T-03** work：2026-11-19。`pipegt` token+auto 门控 postfix-step（行首续行=pipegt 无 same-line）；投影与点后缀同构脱糖（AST/HIR 零新节点，LHS/实参恰一次）；**紧结合边界**（§6.5 D-03 修订：管道先作用于紧邻链，legacy 低结合形须显式括号——括号为透明 trivia，span 无法区分，故不设二元操作数拒而是固化正例 603/8）；record 方法面（D-02：auto-language 描述符+resolve 放行+`lower_checked_auto_language`，冻结窄面字节不变）；MIR 入口零参 Unit 放行（ABC 布局不动）。
+- [x] **T-04** work：2026-11-19。默认参数保 963 边界实证（`n int = 42` 调用点填充 42+7=49 全链绿）；不扩 varargs；extra oracle：CALL-SOURCE-ORDER（stdout 溯源）/PIPE-NEIGHBOR（紧结合 603、`| >` 分词 3、is 臂不受扰）入 canonical；V-FC AV 隔离：非 AV 检查 `#ignore`+NOT_RUN（报告实证 "not selected (check=av)"，avm dispatch=0）。
+- [x] **T-05** work：2026-11-19。canonical `language/calls/binding-pipeline.case.ad`（22 例；复审 F-01 更正计数——原记 21）+ suite 引用 + legacy-map 10 行（SHA16 全对账，double→twice 具名审计改名）+ compound-ops 6 行 owner 修正（D-08）；**故意红元控制**：m10 stdout 18→19 红、named-binding exit 7→8 红、missing-arg 码替换红、复原绿（三红一绿）；conformance `plan1080_calls_binding.rs` 15 测全绿。
+- [x] **T-06** work：2026-11-19 冻结提交+门（见 §9 收据与 §6.6 计量）。
+- [x] **T-07** review：2026-11-19 final pass @ 34d97223c（§9 收据；F-01 簿记更正）。
+- [x] **T-08** merge：2026-11-19 落主 74a0ff965 + 归档 + 清理（§9 merge 收据）。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
 
+- `stage: goal | plan_id: PLAN-1080 | plan_revision: 3 | round: 2 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1080/auto-lang | commit: 34d97223c | next: review`
+- `stage: goal | plan_id: PLAN-1080 | plan_revision: 3 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1080/auto-lang | commit: 34d97223c | next: merge`
+- 2026-11-19 merge `cleaned` 完成记录：wt-guard 复核 clean → worktree `D:/autostack/.wt/lang-1080/auto-lang` 与分支 `plan-1080-dev`（74a0ff965）移除、组目录删除；`plan-artifacts/plan-1080/`（31KB 探针暂存）整体删除（记录已折本 Plan），登记表刷新、无具名持有。落主检查：master tip=74a0ff965 线性历史（20231c041→d3020c6ef→74a0ff965→aa752d2e4）；主检出 target 缓存相对新 HEAD 为陈旧（下次使用增量重建——部署观察，非本包授权重建）。批量回归到期（1080%5=0 且上次收据 1064/2026-11-16 超 48h）→ 移交 auto-plan-regress（主检出单实例）。
+- `stage: goal | plan_id: PLAN-1080 | plan_revision: 3 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 74a0ff965 | next: done`
+- 2026-11-19 merge 收据：`stage: merge | plan_id: PLAN-1080 | plan_revision: 3 | outcome: pass | worktree: D:/autostack/.wt/lang-1080/auto-lang | branch: plan-1080-dev | prepared: reviewed 34d97223c + docs-only 后代 e34f17412（SD-01..03/SD-FC，四 spec 目标） | rebase: master 前移 670c720a8→20231c041（他人 docs 提交，零文件重叠）；旧→新 34d97223c→d3020c6ef、e34f17412→74a0ff965，range-diff 两段全等（安全改写证明）；rebased 树 case-av-language-parity 复跑 PASS（证据重绑 delivery） | landed: master tip=74a0ff965 ff-only 无合并提交 | canonical_verified: language-parity a078207898342fd6 / m2-generics b5867f4252baf7b8 / m2-denominator 2f2bdc63b49f0f66 / feature-organized-corpus 943479857f4dfa26（master:路径 SHA256 前16，PLAN-1080 增量均在） | archived: 见下行 | cleaned: 见下行 | next: done`。
+- 2026-11-19 final review 收据：`stage: review | review_scope: final | reviewer: 本会话独立上下文（限制：实施同会话——结论自工件重建：冻结提交 diff/组结果 JSON/语料报告逐项重核，不采信执行叙述） | plan_id: PLAN-1080 | plan_revision: 3 | outcome: pass | worktree: D:/autostack/.wt/lang-1080/auto-lang | branch: plan-1080-dev | reviewed_commit: 34d97223c | base_commit: 670c720a8 | dependency_revisions: PLAN-1078/1079 archived | spec_inputs: docs/specs/auto-av/language-parity.md（1078 建）+ m2-generics/m2-denominator/feature-organized-corpus（四目标均存在，SD-01..03/SD-FC 由 merge 沉淀） | acceptance_results: AC-AV-ONLY/AC-FC/AC-01..06=pass（45 语料检查含 1078/1079 零回归+22 新例；诊断四形+inference 两形+unresolved 实证；红控三红一绿；conformance 15/15；无 case 名特判 grep=0；冻结 schema/vm 零触碰 git 证；新例全部 <<10s） | pending_closeout_gates: AC-08 merge 落主+Spec 沉淀+归档+guard 清理（统一冻结门已跑：§6.6） | findings: F-01（簿记）计划/收据例数 21→22 已更正——不涉代码基线 | evidence: §6.5/§6.6/本行（run-5xs8c1t5 结果 JSON 路径已折计划） | next: merge（T-08）`。状态置 `reviewed`。
+- 2026-11-19 work 完成收据：`stage: work | plan_id: PLAN-1080 | plan_revision: 3 | outcome: pass | worktree: D:/autostack/.wt/lang-1080/auto-lang | branch: plan-1080-dev | base_commit: 670c720a8 | code_commit: 34d97223c | dependency_revisions: PLAN-1078/1079 archived（master 670c720a8 合入态） | task_ids: T-01..T-06 | evidence: §6.5 决策记录+§6.6 冻结门（926+159+295+1450+30 执行；3 条原红干净基线复现具名分列；45 语料检查全绿含 1078/1079 零回归；故意红元控制三红一绿；15 conformance 全绿）| blockers: 无 | next_responsible_role: review（T-07）`。状态置 `execution_done`。目标授权链：`/goal 完成计划1080`（2026-11-19）授权 work→review→bounded repair→merge 全链。
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
 - 2026-11-19 r2规划修订：`stage: new/revision`，`outcome: pass`（仅合同静态预检），`next: work`待后续施工指令/所需依赖。新增FC/AC-FC/V-FC，修改原T-01..06职责、canonical位置与目标视图；原任务ID/步骤数/进度、72个代码Case的Auto源码与原预期保留，不新造后端源码。未实施/迁例/运行。
