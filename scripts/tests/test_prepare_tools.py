@@ -63,19 +63,40 @@ class PrepareReceiptTests(unittest.TestCase):
         env, receipts = tools.prepare(self.root, ['fake'], self.root / 'out', set(), source_state)
         return env, receipts
 
+    def receipt(self):
+        return json.loads((self.root / 'target' / 'fake' / tools.RECEIPT_DIR / 'fake.json').read_text())
+
+    def pinned(self):
+        """PLAN-1098 T-02/T-10: the receipt binds the identity-scoped pin copy."""
+        return Path(self.receipt()['artifacts'][0]['path'])
+
     def test_first_preparation_builds_and_writes_a_receipt(self):
         env, receipts = self.prepare()
         self.assertEqual(1, len(self.calls))
-        self.assertEqual(str(self.binary), env['FAKE_BIN'])
+        pinned = self.pinned()
+        self.assertNotEqual(self.binary, pinned, 'the receipt binds the pin copy, not the build path')
+        self.assertEqual(b'built', pinned.read_bytes(), 'the pin holds the freshly built bytes')
+        self.assertEqual(str(pinned), env['FAKE_BIN'])
         receipt = self.root / 'target' / 'fake' / tools.RECEIPT_DIR / 'fake.json'
         self.assertTrue(receipt.is_file())
         self.assertEqual('test-tool-receipt/1', json.loads(receipt.read_text())['schema'])
+
+    def test_rebuilding_the_build_path_does_not_invalidate_the_pin(self):
+        # A later preparation of a DIFFERENT feature set overwrites the shared
+        # target path; the pin must keep the identity honest instead of turning
+        # a valid receipt into "tampered".
+        self.prepare()
+        self.binary.write_bytes(b'a different feature set rebuilt this path')
+        _, receipts = self.prepare()
+        self.assertEqual(1, len(self.calls), 'the pin makes the second invocation a reuse')
+        self.assertTrue(any(row.get('reused') for row in receipts))
+        self.assertEqual(b'built', self.pinned().read_bytes())
 
     def test_same_identity_is_reused_without_a_build(self):
         self.prepare()
         env, receipts = self.prepare()
         self.assertEqual(1, len(self.calls), 'second invocation must not rebuild')
-        self.assertEqual(str(self.binary), env['FAKE_BIN'])
+        self.assertEqual(str(self.pinned()), env['FAKE_BIN'])
         self.assertTrue(any(row.get('reused') for row in receipts))
 
     def test_changed_source_state_rebuilds(self):
@@ -99,16 +120,16 @@ class PrepareReceiptTests(unittest.TestCase):
 
     def test_tampered_artifact_rebuilds(self):
         self.prepare()
-        self.binary.write_bytes(b'v2-tampered')
+        self.pinned().write_bytes(b'v2-tampered')
         self.prepare()
         self.assertEqual(2, len(self.calls))
 
     def test_missing_artifact_rebuilds(self):
         self.prepare()
-        self.binary.unlink()
+        self.pinned().unlink()
         _, receipts = self.prepare()
         self.assertEqual(2, len(self.calls))
-        self.assertTrue(self.binary.is_file(), 'the fake build must restore the artifact')
+        self.assertTrue(self.pinned().is_file(), 'the fake build must restore the pin')
         self.assertFalse(any(row.get('reused') for row in receipts))
 
     def test_artifact_hashes_are_recorded_for_reuse(self):
