@@ -1713,6 +1713,35 @@ fn decode_one_case(
                         StreamKind::Trace => expect.trace = Some(st.expect.clone()),
                     }
                 }
+                // PLAN-1078 (user ruling): probe recipes that REQUIRE
+                // byte-exact dual streams (the console family —
+                // console-run-v1 / scheduler-source-run-v1 /
+                // language-source-run-v1) default an OMITTED stdout or
+                // stderr section to an expected zero-byte stream AT LOAD
+                // TIME, then hand the completed oracle to the existing
+                // validation. An author file may drop an empty stream
+                // paragraph; an actually emitted byte (including a lone
+                // newline) still fails the check. Explicit streams compare
+                // as written; success and diagnostic completions both apply.
+                // Every other check family keeps its original omission
+                // semantics.
+                let console_dual = family == ProbeFamily::AvConsole
+                    || matches!(
+                        p.recipe.as_str(),
+                        "ac-av/scheduler-source-run-v1" | "ac-av/language-source-run-v1"
+                    );
+                if console_dual {
+                    let zero = || StreamExpect {
+                        compare: Compare::Bytes,
+                        text: String::new(),
+                    };
+                    if expect.stdout.is_none() {
+                        expect.stdout = Some(zero());
+                    }
+                    if expect.stderr.is_none() {
+                        expect.stderr = Some(zero());
+                    }
+                }
                 if family == ProbeFamily::AvConsole {
                     crate::contract::validate_console_oracle(
                         expect.stdout.as_ref(),

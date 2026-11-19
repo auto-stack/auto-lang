@@ -6,6 +6,11 @@ the same source bytes and record their own real results. The `av` check runs
 the ordinary AV language chain (`ac-av/language-source-run-v1`, Auto profile);
 it never falls back to the old VM.
 
+The `av` probes require byte-exact dual streams; an OMITTED stdout/stderr
+paragraph is loaded as an expected zero-byte stream (PLAN-1078 user ruling),
+so empty-stream paragraphs are dropped here. An actually emitted byte —
+including a lone newline — still fails the check.
+
 ## Case: baseline-value
 id: "av.parity.1078.baseline-value"
 tags: ["av-language-parity", "plan-1078", "basics"]
@@ -24,16 +29,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 14
-
-#### stdout
-
-```text
-```
-
-#### stderr
-
-```text
-```
 
 ### Probe ac-native
 #ignore
@@ -83,16 +78,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-#### stdout
-
-```text
-```
-
-#### stderr
-
-```text
-```
-
 ### Notes
 
 The short-circuit polarity case: `&&`/`||` must never evaluate the guarded
@@ -118,16 +103,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 stage: "parse"
 code: "source.syntax"
-
-#### stdout
-
-```text
-```
-
-#### stderr
-
-```text
-```
 
 ### Notes
 
