@@ -503,3 +503,54 @@ fn p105_handler_if_without_else() {
         .any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::If { els: None, .. })));
     assert!(compiles(src), "package face admits if-without-else handlers");
 }
+
+/// 012 真语料形：列表索引表达式 `.offsets[.local_city]`——AGE 两面此前**没有**
+/// 索引后缀步（索引步只开在 aggregates/auto/closures/scheduler/config-document），
+/// 整个 handler 回滚成结构错误。现在解析/投影通过；包面以具名
+/// `component-unsupported` 拒（列表 state 语义未接，不静默当 0）。
+#[test]
+fn p105_list_index_expr_projects() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var offsets = [8, 0, -5]\n var local_city int = 0\n var s str = \"\" }\n\
+        view { text \"x\" {} }\n\
+        on {\n\
+            .T -> {\n\
+                var ls = .offsets[.local_city] * 3600\n\
+                .s = f\"${ls}\"\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("list index expression projects");
+    let handler = &nodes[0].handlers[0];
+    let has_let = handler
+        .stmts
+        .iter()
+        .any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::Let { .. }));
+    assert!(has_let, "index expression survives as a hook-local let");
+    // 包面：解析过，但列表索引语义未接 → 具名 component-unsupported（非结构回滚）。
+    let caps = vec![PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: Vec::new(),
+    };
+    let err = compile_age_package_with_scenario(
+        &[PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: src.into(),
+            provider: None,
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .expect_err("list index stays a named pending surface in the package face");
+    assert!(
+        err.iter().any(|d| d.code == "source.age.component-unsupported"),
+        "named reject expected, got {err:?}"
+    );
+}

@@ -2992,7 +2992,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 opt(profiles: [auto, auto-packages]) { expr(field: "slice_end") }
                 rbracket() {}
             }
-            alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
+            alt(profiles: [aggregates, auto, closures, scheduler, config-document, age-component, age-package, auto-packages]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
             // PLAN-965 (M2-A): `.?(fallback)` and `.?` error/option propagation steps.
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotquestion(same-line: true) lparen(same-line: true) expr(field: "fallback") rparen() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotquestion(same-line: true) }
