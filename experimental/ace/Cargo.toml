@@ -36,6 +36,7 @@ members = [
   "crates/text-runtime",
   "crates/trace-runtime",
   "crates/typed-entry-runtime",
+  "tests/aac-support",
   "tests/conformance",
   "tests/stdlib",
   "tests/data-runtime",

@@ -1,0 +1,449 @@
+// AAC support stage driver (PLAN-1056 T-05): the frozen case table executed
+// by the Gen0-compiled support driver (`aac-support-driver`) and by the
+// conformance suite. Every case returns an owned `Str` of lowercase hex, so
+// each observation is byte-exact (a digest, framed bytes, or an outcome-code
+// sequence) rather than a pass/fail proxy.
+//
+// The driver is a CONSUMER of the support package: it imports the frozen
+// modules and never re-implements an algorithm, so the evidence measures the
+// production interface (`digest.*`, `codec.*`).
+
+use app.digest.identity_hex
+use app.digest.identity_hex2
+use app.digest.sha256_hex
+use app.digest.sha256_hex_parts
+use app.digest.blake3_hex
+use app.digest.hex_bytes
+use app.digest.utf8_bytes
+use app.codec.frame_encode
+use app.codec.frame_build_raw
+use app.codec.frame_decode
+use app.codec.manifest_encode
+use app.codec.manifest_decode
+use app.codec.status_of
+use app.codec.payload_of
+
+fn codes(vals List<int>) Str {
+    return hex_bytes(vals)
+}
+
+// ---------------------------------------------------------------------------
+// Digest cases (V-01/V-02)
+// ---------------------------------------------------------------------------
+
+pub fn sha256_case(name Str) Str {
+    if (name == "empty") {
+        return sha256_hex("")
+    }
+    if (name == "abc") {
+        return sha256_hex("abc")
+    }
+    if (name == "nul") {
+        return sha256_hex("a\0b")
+    }
+    if (name == "utf8") {
+        return sha256_hex("A中😀")
+    }
+    if (name == "block64") {
+        return sha256_hex("0000000000000000000000000000000000000000000000000000000000000000")
+    }
+    if (name == "split") {
+        var ps = List<Str>.new()
+        ps.push("ab")
+        ps.push("cd")
+        ps.push("ef")
+        return sha256_hex_parts(ps)
+    }
+    return ""
+}
+
+pub fn blake3_case(name Str) Str {
+    if (name == "empty") {
+        return blake3_hex("")
+    }
+    if (name == "abc") {
+        return blake3_hex("abc")
+    }
+    if (name == "nul") {
+        return blake3_hex("a\0b")
+    }
+    if (name == "utf8") {
+        return blake3_hex("A中😀")
+    }
+    if (name == "chunk1024") {
+        return blake3_hex(rep("a", 1024))
+    }
+    if (name == "chunk1025") {
+        return blake3_hex(rep("a", 1025))
+    }
+    return ""
+}
+
+/// `s` repeated `n` times (the boundary-length vector builder).
+fn rep(s Str, n int) Str {
+    var acc = ""
+    var i = 0
+    for (i < n) {
+        acc = acc + s
+        i = i + 1
+    }
+    return acc
+}
+
+pub fn identity_case(name Str) Str {
+    if (name == "snapshot") {
+        return identity_hex2("snap/v1", "fn main() int { return 0 }", "app")
+    }
+    if (name == "artifact") {
+        return identity_hex("art/v1", "same")
+    }
+    if (name == "family-mismatch") {
+        return identity_hex("snap/v1", "same")
+    }
+    return ""
+}
+
+// ---------------------------------------------------------------------------
+// Frame cases (V-03/V-04)
+// ---------------------------------------------------------------------------
+
+
+/// V-03 wire compatibility: every (payload, kind) pair framed once, emitted as
+/// one concatenated hex report (the reference splits it by expected lengths).
+pub fn frame_report() Str {
+    var payloads = List<Str>.new()
+    payloads.push("")
+    payloads.push("a\0b")
+    payloads.push("A中😀")
+    payloads.push("fn main() int { return 0 }")
+    let big = rep("a", 100)
+    payloads.push(big.move)
+    var out = List<int>.new()
+    let np = payloads.len()
+    var pi = 0
+    for (pi < np) {
+        let text = payloads.remove(0)
+        let bs = utf8_bytes(text)
+        var kind = 0
+        for (kind < 11) {
+            let f = frame_encode(kind, bs, 4194304)
+            copy_bytes(payload_of(f), out)
+            kind = kind + 1
+        }
+        pi = pi + 1
+    }
+    return hex_bytes(out)
+}
+
+fn copy_bytes(src List<int>, dst List<int>) int {
+    var i = 0
+    for (i < src.len()) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+/// One byte per case: the decoder's outcome code.
+pub fn frame_case_codes() Str {
+    var cs = List<int>.new()
+    let payload = utf8_bytes("abc")
+    let frame = payload_of(frame_encode(0, payload, 4194304))
+    cs.push(status_of(frame_decode(frame, 4194304)))
+    cs.push(status_of(frame_decode(payload_of(frame_encode(3, utf8_bytes(""), 4194304)), 4194304)))
+    cs.push(status_of(frame_decode(payload_of(frame_encode(10, utf8_bytes("a\0b"), 4194304)), 4194304)))
+    // truncated header (47 of 51 bytes)
+    cs.push(status_of(frame_decode(slice_range(frame, 0, 47), 4194304)))
+    // bad magic
+    let bad_magic = mutate(frame, 0, 0)
+    cs.push(status_of(frame_decode(bad_magic, 4194304)))
+    // unsupported framing version
+    let bad_ver = mutate(frame, 4, 2)
+    cs.push(status_of(frame_decode(bad_ver, 4194304)))
+    // unknown chunk kind
+    let bad_kind = mutate(frame, 6, 11)
+    cs.push(status_of(frame_decode(bad_kind, 4194304)))
+    // announced length beyond the admission cap
+    let huge = frame_build_raw(0, 5000000, zero_digest(), empty_bytes())
+    cs.push(status_of(frame_decode(huge, 4194304)))
+    // announced length within the cap but no bytes present
+    let absent = frame_build_raw(0, 10, zero_digest(), empty_bytes())
+    cs.push(status_of(frame_decode(absent, 4194304)))
+    // trailing byte after an otherwise valid frame
+    cs.push(status_of(frame_decode(append_byte_copy(frame, 0), 4194304)))
+    // payload checksum mismatch
+    let bad_sum = mutate(frame, 16, 0)
+    cs.push(status_of(frame_decode(bad_sum, 4194304)))
+    return codes(cs)
+}
+
+/// V-04: admission-before-allocation, with a small explicit cap so the
+/// near-boundary legal neighbour is materializable.
+pub fn admission_case_codes() Str {
+    var cs = List<int>.new()
+    let cap = 64
+    // 1. announced length beyond the cap (nothing allocated)
+    cs.push(status_of(frame_decode(frame_build_raw(0, 100000000, zero_digest(), empty_bytes()), cap)))
+    // 2. announced length within the cap but absent bytes
+    cs.push(status_of(frame_decode(frame_build_raw(0, 1000000, zero_digest(), empty_bytes()), 4194304)))
+    // 3. payload exactly at the cap
+    let exact = rep("x", cap)
+    cs.push(status_of(frame_decode(payload_of(frame_encode(0, utf8_bytes(exact), cap)), cap)))
+    // 4. payload one byte over the cap
+    let over = rep("x", cap + 1)
+    cs.push(status_of(frame_decode(payload_of(frame_encode(0, utf8_bytes(over), cap + 1)), cap)))
+    // 5. manifest count 0xFFFFFFFF (announced before any allocation)
+    cs.push(status_of(manifest_decode(count_overflow_manifest(), 65536)))
+    // 6. manifest with one legal pair (produced by the verified encoder)
+    var pairs = List<Str>.new()
+    pairs.push("a")
+    pairs.push("b")
+    var edges = List<Str>.new()
+    let m = payload_of(manifest_encode("snap/v1", 0i64, pairs, edges, 65536))
+    cs.push(status_of(manifest_decode(m, 65536)))
+    return codes(cs)
+}
+
+fn count_overflow_manifest() List<int> {
+    var out = List<int>.new()
+    out.push(1)
+    out.push(0)
+    out.push(1)
+    out.push(0)
+    out.push(0)
+    out.push(4)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(115)
+    out.push(110)
+    out.push(97)
+    out.push(112)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(0)
+    out.push(255)
+    out.push(255)
+    out.push(255)
+    out.push(255)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Manifest cases (V-03)
+// ---------------------------------------------------------------------------
+
+fn doc_pairs_unsorted() List<Str> {
+    var ps = List<Str>.new()
+    ps.push("profile")
+    ps.push("core-i32-draft")
+    ps.push("capabilities")
+    ps.push("io.read")
+    ps.push("snapshot")
+    ps.push("snap0000")
+    return ps
+}
+
+fn doc_edges_unsorted() List<Str> {
+    var es = List<Str>.new()
+    es.push("art0002")
+    es.push("provenance")
+    es.push("art0001")
+    es.push("required")
+    return es
+}
+
+pub fn manifest_case(name Str) Str {
+    if (name == "encode-unsorted") {
+        let m = payload_of(manifest_encode("A07", 0i64, doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+        return hex_bytes(m)
+    }
+    if (name == "encode-sorted") {
+        var ps = List<Str>.new()
+        ps.push("capabilities")
+        ps.push("io.read")
+        ps.push("profile")
+        ps.push("core-i32-draft")
+        ps.push("snapshot")
+        ps.push("snap0000")
+        var es = List<Str>.new()
+        es.push("art0001")
+        es.push("required")
+        es.push("art0002")
+        es.push("provenance")
+        let m = payload_of(manifest_encode("A07", 0i64, ps, es, 65536))
+        return hex_bytes(m)
+    }
+    if (name == "reencode-decoded") {
+        let enc = payload_of(manifest_encode("A07", 0i64, doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+        let dec = manifest_decode(enc, 65536)
+        return hex_bytes(payload_of(dec))
+    }
+    if (name == "anchor-min") {
+        let m = payload_of(manifest_encode("A00", i64_min(), doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+        return hex_bytes(m)
+    }
+    if (name == "anchor-max") {
+        let m = payload_of(manifest_encode("A00", i64_max(), doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+        return hex_bytes(m)
+    }
+    if (name == "anchor-min-roundtrip") {
+        let enc = payload_of(manifest_encode("A00", i64_min(), doc_pairs_unsorted(), doc_edges_unsorted(), 65536))
+        let dec = manifest_decode(enc, 65536)
+        return hex_bytes(payload_of(dec))
+    }
+    return ""
+}
+
+fn i64_max() i64 {
+    return 9223372036854775807i64
+}
+
+fn i64_min() i64 {
+    return 0i64 - 9223372036854775807i64 - 1i64
+}
+
+/// Rejection taxonomy for the manifest DTO (one byte per case). Vectors are
+/// built by mutating a canonical encoding produced by the verified encoder,
+/// so each case isolates exactly one violation.
+pub fn manifest_codes() Str {
+    var cs = List<int>.new()
+    let fixture = fixture_manifest()
+    // duplicate key: the second key's two bytes become the first key's
+    cs.push(status_of(manifest_decode(set_range(fixture, 39, "aa"), 65536)))
+    // descending order: swap the two pair blocks
+    cs.push(status_of(manifest_decode(swap_range(fixture, 23, 35, 12), 65536)))
+    // trailing byte
+    cs.push(status_of(manifest_decode(append_byte_copy(fixture, 0), 65536)))
+    // unknown version
+    cs.push(status_of(manifest_decode(mutate(fixture, 0, 2), 65536)))
+    // unknown schema tag
+    cs.push(status_of(manifest_decode(mutate(fixture, 2, 2), 65536)))
+    // non-ASCII key byte (0xE4 leads a 3-byte UTF-8 sequence)
+    cs.push(status_of(manifest_decode(mutate(fixture, 27, 228), 65536)))
+    // empty key: the first key length becomes zero
+    cs.push(status_of(manifest_decode(zero_key_len(fixture), 65536)))
+    return codes(cs)
+}
+
+/// The first key length field (bytes 23..27, little-endian 2) becomes zero.
+fn zero_key_len(bs List<int>) List<int> {
+    return mutate(bs, 23, 0)
+}
+
+/// A canonical manifest built by the verified encoder: layer A07, anchor 0,
+/// pairs (aa,11) and (bb,22), no edges.
+fn fixture_manifest() List<int> {
+    var pairs = List<Str>.new()
+    pairs.push("bb")
+    pairs.push("22")
+    pairs.push("aa")
+    pairs.push("11")
+    var edges = List<Str>.new()
+    return payload_of(manifest_encode("A07", 0i64, pairs, edges, 65536))
+}
+
+fn set_range(bs List<int>, at int, text Str) List<int> {
+    let vals = utf8_bytes(text)
+    var out = List<int>.new()
+    var i = 0
+    for (i < bs.len()) {
+        if (i >= at) {
+            if (i < at + vals.len()) {
+                out.push(vals.get(i - at))
+            } else {
+                out.push(bs.get(i))
+            }
+        } else {
+            out.push(bs.get(i))
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn swap_range(bs List<int>, lo int, hi int, n int) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < bs.len()) {
+        if (i >= lo) {
+            if (i < lo + n) {
+                out.push(bs.get(hi + (i - lo)))
+            } else {
+                if (i < hi + n) {
+                    out.push(bs.get(lo + (i - hi)))
+                } else {
+                    out.push(bs.get(i))
+                }
+            }
+        } else {
+            out.push(bs.get(i))
+        }
+        i = i + 1
+    }
+    return out
+}
+// ---------------------------------------------------------------------------
+// Byte-vector helpers used by the cases
+// ---------------------------------------------------------------------------
+
+fn empty_bytes() List<int> {
+    return List<int>.new()
+}
+
+fn zero_digest() List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < 32) {
+        out.push(0)
+        i = i + 1
+    }
+    return out
+}
+
+fn slice_range(bs List<int>, lo int, hi int) List<int> {
+    var out = List<int>.new()
+    var i = lo
+    for (i < hi) {
+        out.push(bs.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+fn mutate(bs List<int>, at int, value int) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < bs.len()) {
+        if (i == at) {
+            out.push(value)
+        } else {
+            out.push(bs.get(i))
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn append_byte_copy(bs List<int>, value int) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < bs.len()) {
+        out.push(bs.get(i))
+        i = i + 1
+    }
+    out.push(value)
+    return out
+}
+
+
+
+
+
+
+
+

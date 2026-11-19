@@ -101,6 +101,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-aac-support-conformance"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-source-query",
+ "blake3",
+ "sha2",
+]
+
+[[package]]
 name = "ace-abi"
 version = "0.1.0"
 dependencies = [

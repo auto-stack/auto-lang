@@ -1709,6 +1709,16 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "ace-aac"
+title = "PLAN-1056 AAC支撑包：精确摘要/身份分帧/编译器codec（Auto源经装配aggregates-ct车道，AV执行+独立参考对账）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-aac-support-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = false
+[[group]]
 name = "ace-perf"
 title = "ACE性能与压力（串行）"
 runner = "nextest"
@@ -2039,3 +2049,4 @@ tools = ["av", "mn"]
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics.suite.ad"
 all = false
+

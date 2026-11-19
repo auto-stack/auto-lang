@@ -1,0 +1,942 @@
+// AAC support digest module (PLAN-1056 T-03): exact BLAKE3 and SHA-256 over
+// explicit byte vectors, as pure Auto single-source algorithms on the
+// assembled packages-aggregates-ct lane (profile `Aggregates`).
+//
+// Frozen contract (`docs/specs/auto-ac/aac-digest-codec-profile.md`, SD-01):
+//   * input is the exact byte sequence — an embedded NUL is content, never a
+//     terminator, and there is no C-string truncation anywhere;
+//   * 32-bit words are computed in checked i64 registers in [0, 2^32) with an
+//     explicit reduction after every add and are STORED as the two's
+//     complement i32 bit pattern in `List<int>` (the lane's only list element
+//     domain). `uval`/`sv` are the total, lossless conversions both ways;
+//   * nothing may wrap or trap differently per end: bit ops (`^ & |`) are
+//     total, every add goes through `wrap32`, and division/multiplication
+//     replace shifts (the lane has no `<<`/`>>` operators);
+//   * output is lowercase hex: SHA-256 = 64 chars, BLAKE3-256 = 64 chars;
+//   * iteration is bounded and ITERATIVE (`for (cond)`), never a deep
+//     recursion carrying a growing list: the AV executor accounts every live
+//     slot's data, so a per-element recursive accumulator would be quadratic
+//     in accounted bytes (measured: a 1 KiB BLAKE3 run reached the 8 MiB slot
+//     budget with the recursive walk and stays far below it iteratively).
+//
+// Rust references this must agree with byte-for-byte:
+//   * `ace_a2x_core::sha256::sha256_hex` (FIPS 180-4, product artifact
+//     receipts) and the independent `sha2` crate in the conformance suite;
+//   * `blake3` 1.x unkeyed 32-byte output (artifact identity, Design 40 §4),
+//     cross-checked against `ace_artifacts::identity::domain_hash` for the
+//     framed identity below.
+
+use std.bytes.byte_of
+use std.bytes.utf8_len
+
+// ---------------------------------------------------------------------------
+// 32-bit word discipline
+// ---------------------------------------------------------------------------
+
+/// Signed i32 bit pattern → unsigned 32-bit value in [0, 2^32).
+fn uval(x int) i64 {
+    if (x < 0) {
+        return x.to(i64) + 4294967296i64
+    }
+    return x.to(i64)
+}
+
+/// Unsigned 32-bit value in [0, 2^32) → the signed bit pattern.
+fn sv(v i64) int {
+    if (v >= 2147483648i64) {
+        return (v - 4294967296i64).to(i32)
+    }
+    return v.to(i32)
+}
+
+/// Reduction of a non-negative i64 accumulator modulo 2^32.
+fn wrap32(x i64) i64 {
+    return x % 4294967296i64
+}
+
+fn xor3(a i64, b i64, c i64) i64 {
+    return a ^ b ^ c
+}
+
+/// Rotate a 32-bit word right by n (the SHA-256 and BLAKE3 rotations).
+fn rotr(x i64, n int) i64 {
+    if (n == 2) {
+        return (x / 4i64) + (x % 4i64) * 1073741824i64
+    }
+    if (n == 6) {
+        return (x / 64i64) + (x % 64i64) * 67108864i64
+    }
+    if (n == 7) {
+        return (x / 128i64) + (x % 128i64) * 33554432i64
+    }
+    if (n == 8) {
+        return (x / 256i64) + (x % 256i64) * 16777216i64
+    }
+    if (n == 11) {
+        return (x / 2048i64) + (x % 2048i64) * 2097152i64
+    }
+    if (n == 12) {
+        return (x / 4096i64) + (x % 4096i64) * 1048576i64
+    }
+    if (n == 13) {
+        return (x / 8192i64) + (x % 8192i64) * 524288i64
+    }
+    if (n == 16) {
+        return (x / 65536i64) + (x % 65536i64) * 65536i64
+    }
+    if (n == 17) {
+        return (x / 131072i64) + (x % 131072i64) * 32768i64
+    }
+    if (n == 18) {
+        return (x / 262144i64) + (x % 262144i64) * 16384i64
+    }
+    if (n == 19) {
+        return (x / 524288i64) + (x % 524288i64) * 8192i64
+    }
+    if (n == 22) {
+        return (x / 4194304i64) + (x % 4194304i64) * 1024i64
+    }
+    if (n == 25) {
+        return (x / 33554432i64) + (x % 33554432i64) * 128i64
+    }
+    return x
+}
+
+// ---------------------------------------------------------------------------
+// Exact byte vectors and bounded iteration
+// ---------------------------------------------------------------------------
+
+/// `[0, 1, ..., n-1]` — the lane's small bounded iteration carrier.
+fn seq(n int) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < n) {
+        out.push(i)
+        i = i + 1
+    }
+    return out
+}
+
+fn copy_list(src List<int>, dst List<int>, from int) int {
+    var i = from
+    let n = src.len()
+    for (i < n) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn append_bytes(dst List<int>, s Str) int {
+    let bs = utf8_bytes(s)
+    copy_list(bs, dst, 0)
+    return 0
+}
+
+fn append_byte(dst List<int>, v int) int {
+    dst.push(v % 256)
+    return 0
+}
+
+/// `u64` little-endian length frame (the identity/reference framing).
+fn append_u64le(dst List<int>, n int) int {
+    dst.push(n % 256)
+    dst.push((n / 256) % 256)
+    dst.push((n / 65536) % 256)
+    dst.push((n / 16777216) % 256)
+    dst.push(0)
+    dst.push(0)
+    dst.push(0)
+    dst.push(0)
+    return 0
+}
+
+/// UTF-8 bytes of a `Str`: NUL is an ordinary byte and every scalar is
+/// encoded explicitly (no implicit C-string view).
+pub fn utf8_bytes(s Str) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    let n = s.len()
+    for (i < n) {
+        let p = s.char_at(i).to_codepoint()
+        let np = utf8_len(p)
+        var k = 0
+        for (k < np) {
+            out.push(byte_of(p, k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn byte_at_or_zero(bs List<int>, i int) int {
+    if (i < 0) {
+        return 0
+    }
+    if (i >= bs.len()) {
+        return 0
+    }
+    return bs.get(i)
+}
+
+fn slice_bytes(bs List<int>, lo int, hi int) List<int> {
+    var out = List<int>.new()
+    var i = lo
+    for (i < hi) {
+        out.push(bs.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+fn clamp(hi int, len int) int {
+    if (hi > len) {
+        return len
+    }
+    return hi
+}
+
+// ---------------------------------------------------------------------------
+// Hexadecimal output
+// ---------------------------------------------------------------------------
+
+fn hex_digit(d int) Str {
+    let digits Str = "0123456789abcdef"
+    return digits.slice(d, d + 1).clone()
+}
+
+fn hex_byte(b int) Str {
+    return hex_digit(b / 16) + hex_digit(b % 16)
+}
+
+fn hex_word_be(w i64) Str {
+    let b3 = (w % 256i64).to(i32)
+    let b2 = ((w / 256i64) % 256i64).to(i32)
+    let b1 = ((w / 65536i64) % 256i64).to(i32)
+    let b0 = ((w / 16777216i64) % 256i64).to(i32)
+    return hex_byte(b0) + hex_byte(b1) + hex_byte(b2) + hex_byte(b3)
+}
+
+/// Bounded ACCUMULATING loops: a per-element recursive accumulator would make
+/// the AV slot accounting quadratic (every frame carries the growing string),
+/// so hex encoding iterates in one frame.
+pub fn hex_words(ws List<int>) Str {
+    var acc = ""
+    var i = 0
+    for (i < ws.len()) {
+        acc = acc + hex_word_be(uval(ws.get(i)))
+        i = i + 1
+    }
+    return acc
+}
+
+pub fn hex_bytes(bs List<int>) Str {
+    var acc = ""
+    var i = 0
+    for (i < bs.len()) {
+        acc = acc + hex_byte(bs.get(i))
+        i = i + 1
+    }
+    return acc
+}
+
+// ---------------------------------------------------------------------------
+// SHA-256 (FIPS 180-4). The round constants are the standard's table (the
+// same values the A2X product reference carries); the algorithm below is an
+// independent Auto implementation.
+// ---------------------------------------------------------------------------
+
+fn sha_k(i int) i64 {
+    if (i == 0) { return 1116352408i64 }
+    if (i == 1) { return 1899447441i64 }
+    if (i == 2) { return 3049323471i64 }
+    if (i == 3) { return 3921009573i64 }
+    if (i == 4) { return 961987163i64 }
+    if (i == 5) { return 1508970993i64 }
+    if (i == 6) { return 2453635748i64 }
+    if (i == 7) { return 2870763221i64 }
+    if (i == 8) { return 3624381080i64 }
+    if (i == 9) { return 310598401i64 }
+    if (i == 10) { return 607225278i64 }
+    if (i == 11) { return 1426881987i64 }
+    if (i == 12) { return 1925078388i64 }
+    if (i == 13) { return 2162078206i64 }
+    if (i == 14) { return 2614888103i64 }
+    if (i == 15) { return 3248222580i64 }
+    if (i == 16) { return 3835390401i64 }
+    if (i == 17) { return 4022224774i64 }
+    if (i == 18) { return 264347078i64 }
+    if (i == 19) { return 604807628i64 }
+    if (i == 20) { return 770255983i64 }
+    if (i == 21) { return 1249150122i64 }
+    if (i == 22) { return 1555081692i64 }
+    if (i == 23) { return 1996064986i64 }
+    if (i == 24) { return 2554220882i64 }
+    if (i == 25) { return 2821834349i64 }
+    if (i == 26) { return 2952996808i64 }
+    if (i == 27) { return 3210313671i64 }
+    if (i == 28) { return 3336571891i64 }
+    if (i == 29) { return 3584528711i64 }
+    if (i == 30) { return 113926993i64 }
+    if (i == 31) { return 338241895i64 }
+    if (i == 32) { return 666307205i64 }
+    if (i == 33) { return 773529912i64 }
+    if (i == 34) { return 1294757372i64 }
+    if (i == 35) { return 1396182291i64 }
+    if (i == 36) { return 1695183700i64 }
+    if (i == 37) { return 1986661051i64 }
+    if (i == 38) { return 2177026350i64 }
+    if (i == 39) { return 2456956037i64 }
+    if (i == 40) { return 2730485921i64 }
+    if (i == 41) { return 2820302411i64 }
+    if (i == 42) { return 3259730800i64 }
+    if (i == 43) { return 3345764771i64 }
+    if (i == 44) { return 3516065817i64 }
+    if (i == 45) { return 3600352804i64 }
+    if (i == 46) { return 4094571909i64 }
+    if (i == 47) { return 275423344i64 }
+    if (i == 48) { return 430227734i64 }
+    if (i == 49) { return 506948616i64 }
+    if (i == 50) { return 659060556i64 }
+    if (i == 51) { return 883997877i64 }
+    if (i == 52) { return 958139571i64 }
+    if (i == 53) { return 1322822218i64 }
+    if (i == 54) { return 1537002063i64 }
+    if (i == 55) { return 1747873779i64 }
+    if (i == 56) { return 1955562222i64 }
+    if (i == 57) { return 2024104815i64 }
+    if (i == 58) { return 2227730452i64 }
+    if (i == 59) { return 2361852424i64 }
+    if (i == 60) { return 2428436474i64 }
+    if (i == 61) { return 2756734187i64 }
+    if (i == 62) { return 3204031479i64 }
+    return 3329325298i64
+}
+
+fn sha_iv(out List<int>) int {
+    out.push(sv(1779033703i64))
+    out.push(sv(3144134277i64))
+    out.push(sv(1013904242i64))
+    out.push(sv(2773480762i64))
+    out.push(sv(1359893119i64))
+    out.push(sv(2600822924i64))
+    out.push(sv(528734635i64))
+    out.push(sv(1541459225i64))
+    return 0
+}
+
+fn pad_to(xs List<int>, want int) int {
+    for (xs.len() % 64 != want) {
+        xs.push(0)
+    }
+    return 0
+}
+
+/// The bit-length field of the FIPS padding. Admission keeps every input far
+/// below 2^28 bytes, so the high four bytes of the u64 are constant zeros.
+fn push_be64_len(xs List<int>, v int) int {
+    xs.push(0)
+    xs.push(0)
+    xs.push(0)
+    xs.push(0)
+    xs.push((v / 16777216) % 256)
+    xs.push((v / 65536) % 256)
+    xs.push((v / 256) % 256)
+    xs.push(v % 256)
+    return 0
+}
+
+/// Pad the buffered tail and emit the hex digest of the running state.
+fn sha256_finish(st List<int>, tail List<int>, total int) Str {
+    tail.push(128)
+    pad_to(tail, 56)
+    push_be64_len(tail, total * 8)
+    var off = 0
+    let nblocks = tail.len() / 64
+    var blk = 0
+    for (blk < nblocks) {
+        sha256_block(st, tail, off)
+        off = off + 64
+        blk = blk + 1
+    }
+    return hex_words(st)
+}
+
+fn drop_head(xs List<int>, k int) int {
+    var i = 0
+    for (i < k) {
+        xs.remove(0)
+        i = i + 1
+    }
+    return 0
+}
+
+/// Consume every complete 64-byte block currently buffered.
+fn drain_full(st List<int>, tail List<int>) int {
+    for (tail.len() >= 64) {
+        sha256_block(st, tail, 0)
+        drop_head(tail, 64)
+    }
+    return 0
+}
+
+/// SHA-256 over one exact byte vector; lowercase hex.
+pub fn sha256_hex_bytes(bs List<int>) Str {
+    var st = List<int>.new()
+    sha_iv(st)
+    var tail = List<int>.new()
+    copy_list(bs, tail, 0)
+    let total = bs.len()
+    drain_full(st, tail)
+    return sha256_finish(st, tail, total)
+}
+
+/// Incremental SHA-256 over a sequence of parts: the same payload split at
+/// arbitrary boundaries must produce the one-shot digest. The tail buffer and
+/// block drain are the real incremental path, not a re-concatenation.
+///
+/// The parts list is CONSUMED (`remove(0)` moves each owned element out) —
+/// reading a list element as a value is a named lane rejection
+/// (`source.view-escape`), and a stream consumer owns its segments.
+pub fn sha256_hex_parts(parts List<Str>) Str {
+    var st = List<int>.new()
+    sha_iv(st)
+    var tail = List<int>.new()
+    var total = 0
+    for (parts.len() > 0) {
+        let owned Str = parts.remove(0)
+        let bs = utf8_bytes(owned)
+        copy_list(bs, tail, 0)
+        total = total + bs.len()
+        drain_full(st, tail)
+    }
+    return sha256_finish(st, tail, total)
+}
+
+pub fn sha256_hex(data Str) Str {
+    return sha256_hex_bytes(utf8_bytes(data))
+}
+
+fn sha256_block(st List<int>, msg List<int>, off int) int {
+    var w = List<int>.new()
+    var k = 0
+    for (k < 16) {
+        let base = off + k * 4
+        let b0 = byte_at_or_zero(msg, base).to(i64)
+        let b1 = byte_at_or_zero(msg, base + 1).to(i64)
+        let b2 = byte_at_or_zero(msg, base + 2).to(i64)
+        let b3 = byte_at_or_zero(msg, base + 3).to(i64)
+        w.push(sv(b0 * 16777216i64 + b1 * 65536i64 + b2 * 256i64 + b3))
+        k = k + 1
+    }
+    var j = 0
+    for (j < 48) {
+        let idx = 16 + j
+        let x = uval(w.get(idx - 15))
+        let y = uval(w.get(idx - 2))
+        let s0 = xor3(rotr(x, 7), rotr(x, 18), x / 8i64)
+        let s1 = xor3(rotr(y, 17), rotr(y, 19), y / 1024i64)
+        let v = wrap32(wrap32(wrap32(uval(w.get(idx - 16)) + s0) + uval(w.get(idx - 7))) + s1)
+        w.push(sv(v))
+        j = j + 1
+    }
+    var a = uval(st.get(0))
+    var b = uval(st.get(1))
+    var c = uval(st.get(2))
+    var d = uval(st.get(3))
+    var e = uval(st.get(4))
+    var f = uval(st.get(5))
+    var g = uval(st.get(6))
+    var h = uval(st.get(7))
+    var r = 0
+    for (r < 64) {
+        let s1 = xor3(rotr(e, 6), rotr(e, 11), rotr(e, 25))
+        let ch = g ^ (e & (f ^ g))
+        let t1 = wrap32(wrap32(wrap32(wrap32(h + s1) + ch) + sha_k(r)) + uval(w.get(r)))
+        let s0 = xor3(rotr(a, 2), rotr(a, 13), rotr(a, 22))
+        let maj = xor3(a & b, a & c, b & c)
+        let t2 = wrap32(s0 + maj)
+        h = g
+        g = f
+        f = e
+        e = wrap32(d + t1)
+        d = c
+        c = b
+        b = a
+        a = wrap32(t1 + t2)
+        r = r + 1
+    }
+    st.set(0, sv(wrap32(uval(st.get(0)) + a)))
+    st.set(1, sv(wrap32(uval(st.get(1)) + b)))
+    st.set(2, sv(wrap32(uval(st.get(2)) + c)))
+    st.set(3, sv(wrap32(uval(st.get(3)) + d)))
+    st.set(4, sv(wrap32(uval(st.get(4)) + e)))
+    st.set(5, sv(wrap32(uval(st.get(5)) + f)))
+    st.set(6, sv(wrap32(uval(st.get(6)) + g)))
+    st.set(7, sv(wrap32(uval(st.get(7)) + h)))
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// BLAKE3 (unkeyed, 32-byte output): 1024-byte chunks, 64-byte blocks, a binary
+// tree of chaining values, and the ROOT flag only on the final compression.
+// ---------------------------------------------------------------------------
+
+fn b3_chunk_start() int {
+    return 1
+}
+
+fn b3_chunk_end() int {
+    return 2
+}
+
+fn b3_parent() int {
+    return 4
+}
+
+fn b3_root() int {
+    return 8
+}
+
+/// The BLAKE3 initialisation vector (the SHA-256 H0 words).
+fn b3_iv() List<int> {
+    var out = List<int>.new()
+    out.push(sv(1779033703i64))
+    out.push(sv(3144134277i64))
+    out.push(sv(1013904242i64))
+    out.push(sv(2773480762i64))
+    out.push(sv(1359893119i64))
+    out.push(sv(2600822924i64))
+    out.push(sv(528734635i64))
+    out.push(sv(1541459225i64))
+    return out
+}
+
+/// The fixed message permutation applied between BLAKE3 rounds.
+fn b3_perm(x List<int>) List<int> {
+    var out = List<int>.new()
+    out.push(x.get(2))
+    out.push(x.get(6))
+    out.push(x.get(3))
+    out.push(x.get(10))
+    out.push(x.get(7))
+    out.push(x.get(0))
+    out.push(x.get(4))
+    out.push(x.get(13))
+    out.push(x.get(1))
+    out.push(x.get(11))
+    out.push(x.get(12))
+    out.push(x.get(5))
+    out.push(x.get(9))
+    out.push(x.get(14))
+    out.push(x.get(15))
+    out.push(x.get(8))
+    return out
+}
+
+fn b3_g(st List<int>, a int, b int, c int, d int, x i64, y i64) int {
+    st.set(a, sv(wrap32(wrap32(uval(st.get(a)) + uval(st.get(b))) + x)))
+    st.set(d, sv(rotr(uval(st.get(d)) ^ uval(st.get(a)), 16)))
+    st.set(c, sv(wrap32(uval(st.get(c)) + uval(st.get(d)))))
+    st.set(b, sv(rotr(uval(st.get(b)) ^ uval(st.get(c)), 12)))
+    st.set(a, sv(wrap32(wrap32(uval(st.get(a)) + uval(st.get(b))) + y)))
+    st.set(d, sv(rotr(uval(st.get(d)) ^ uval(st.get(a)), 8)))
+    st.set(c, sv(wrap32(uval(st.get(c)) + uval(st.get(d)))))
+    st.set(b, sv(rotr(uval(st.get(b)) ^ uval(st.get(c)), 7)))
+    return 0
+}
+
+fn b3_round(st List<int>, m List<int>) int {
+    b3_g(st, 0, 4, 8, 12, uval(m.get(0)), uval(m.get(1)))
+    b3_g(st, 1, 5, 9, 13, uval(m.get(2)), uval(m.get(3)))
+    b3_g(st, 2, 6, 10, 14, uval(m.get(4)), uval(m.get(5)))
+    b3_g(st, 3, 7, 11, 15, uval(m.get(6)), uval(m.get(7)))
+    b3_g(st, 0, 5, 10, 15, uval(m.get(8)), uval(m.get(9)))
+    b3_g(st, 1, 6, 11, 12, uval(m.get(10)), uval(m.get(11)))
+    b3_g(st, 2, 7, 8, 13, uval(m.get(12)), uval(m.get(13)))
+    b3_g(st, 3, 4, 9, 14, uval(m.get(14)), uval(m.get(15)))
+    return 0
+}
+
+/// A BLAKE3 compression. `cv` and `m` are 8/16 signed words; the result is
+/// the full 16-word state (signed storage).
+fn b3_compress(cv List<int>, m List<int>, counter i64, blen i64, flags i64) List<int> {
+    var st = List<int>.new()
+    copy_list(cv, st, 0)
+    let iv = b3_iv()
+    st.push(iv.get(0))
+    st.push(iv.get(1))
+    st.push(iv.get(2))
+    st.push(iv.get(3))
+    st.push(sv(wrap32(counter)))
+    st.push(sv(0i64))
+    st.push(sv(blen))
+    st.push(sv(flags))
+    let m0 = List<int>.new()
+    copy_list(m, m0, 0)
+    let m1 = b3_perm(m0)
+    let m2 = b3_perm(m1)
+    let m3 = b3_perm(m2)
+    let m4 = b3_perm(m3)
+    let m5 = b3_perm(m4)
+    let m6 = b3_perm(m5)
+    b3_round(st, m0)
+    b3_round(st, m1)
+    b3_round(st, m2)
+    b3_round(st, m3)
+    b3_round(st, m4)
+    b3_round(st, m5)
+    b3_round(st, m6)
+    var out = List<int>.new()
+    out.push(sv(uval(st.get(0)) ^ uval(st.get(8))))
+    out.push(sv(uval(st.get(1)) ^ uval(st.get(9))))
+    out.push(sv(uval(st.get(2)) ^ uval(st.get(10))))
+    out.push(sv(uval(st.get(3)) ^ uval(st.get(11))))
+    out.push(sv(uval(st.get(4)) ^ uval(st.get(12))))
+    out.push(sv(uval(st.get(5)) ^ uval(st.get(13))))
+    out.push(sv(uval(st.get(6)) ^ uval(st.get(14))))
+    out.push(sv(uval(st.get(7)) ^ uval(st.get(15))))
+    out.push(sv(uval(st.get(8)) ^ uval(cv.get(0))))
+    out.push(sv(uval(st.get(9)) ^ uval(cv.get(1))))
+    out.push(sv(uval(st.get(10)) ^ uval(cv.get(2))))
+    out.push(sv(uval(st.get(11)) ^ uval(cv.get(3))))
+    out.push(sv(uval(st.get(12)) ^ uval(cv.get(4))))
+    out.push(sv(uval(st.get(13)) ^ uval(cv.get(5))))
+    out.push(sv(uval(st.get(14)) ^ uval(cv.get(6))))
+    out.push(sv(uval(st.get(15)) ^ uval(cv.get(7))))
+    return out
+}
+
+fn first8(xs List<int>) List<int> {
+    var out = List<int>.new()
+    var k = 0
+    for (k < 8) {
+        out.push(xs.get(k))
+        k = k + 1
+    }
+    return out
+}
+
+/// The 16 message words of block `b` of a chunk (missing bytes are zero).
+fn b3_block_words(chunk List<int>, b int) List<int> {
+    var w = List<int>.new()
+    let base = b * 64
+    var k = 0
+    for (k < 16) {
+        let i = base + k * 4
+        let b0 = byte_at_or_zero(chunk, i).to(i64)
+        let b1 = byte_at_or_zero(chunk, i + 1).to(i64)
+        let b2 = byte_at_or_zero(chunk, i + 2).to(i64)
+        let b3 = byte_at_or_zero(chunk, i + 3).to(i64)
+        w.push(sv(b0 + b1 * 256i64 + b2 * 65536i64 + b3 * 16777216i64))
+        k = k + 1
+    }
+    return w
+}
+
+fn b3_block_len(chunk List<int>, b int) int {
+    let rem = chunk.len() - b * 64
+    if (rem > 64) {
+        return 64
+    }
+    return rem
+}
+
+/// An "output" record: 8 cv words ‖ 16 message words ‖ counter ‖ block_len ‖
+/// flags (27 entries). The root compression is derived from it.
+fn b3_output(cv List<int>, block List<int>, counter i64, blen int, flags int) List<int> {
+    var out = List<int>.new()
+    copy_list(cv, out, 0)
+    copy_list(block, out, 0)
+    out.push(sv(wrap32(counter)))
+    out.push(blen)
+    out.push(flags)
+    return out
+}
+
+fn b3_output_cv_field(out List<int>) List<int> {
+    return first8(out)
+}
+
+fn b3_output_block(out List<int>) List<int> {
+    return slice_bytes(out, 8, 24)
+}
+
+fn b3_output_counter(out List<int>) i64 {
+    return uval(out.get(24))
+}
+
+fn b3_output_blen(out List<int>) int {
+    return out.get(25)
+}
+
+fn b3_output_flags(out List<int>) int {
+    return out.get(26)
+}
+
+/// The chaining value of an output record (compress without ROOT).
+fn b3_output_cv(out List<int>) List<int> {
+    let full = b3_compress(
+        b3_output_cv_field(out),
+        b3_output_block(out),
+        b3_output_counter(out),
+        b3_output_blen(out).to(i64),
+        b3_output_flags(out).to(i64)
+    )
+    return first8(full)
+}
+
+/// The parent node output of two chaining values (input CV = the key words).
+fn b3_parent_output(left List<int>, right List<int>) List<int> {
+    var block = List<int>.new()
+    copy_list(left, block, 0)
+    copy_list(right, block, 0)
+    let key_cv = b3_iv()
+    return b3_output(key_cv, block, 0i64, 64, b3_parent())
+}
+
+/// The output record of one chunk. `extra` carries non-root chunk flags (0 in
+/// the unkeyed mode).
+fn b3_chunk_output(chunk List<int>, counter i64, extra int) List<int> {
+    let nblocks = b3_chunk_blocks(chunk)
+    var cv = b3_iv()
+    var b = 0
+    for (b < nblocks) {
+        let words = b3_block_words(chunk, b)
+        let blen = b3_block_len(chunk, b)
+        var flags = extra
+        if (b == 0) {
+            flags = flags | b3_chunk_start()
+        }
+        if (b == nblocks - 1) {
+            flags = flags | b3_chunk_end()
+        }
+        if (b == nblocks - 1) {
+            return b3_output(cv, words, counter, blen, flags)
+        }
+        let full = b3_compress(cv, words, counter, blen.to(i64), flags.to(i64))
+        cv = first8(full)
+        b = b + 1
+    }
+    return b3_output(cv, b3_block_words(chunk, 0), counter, 0, extra)
+}
+
+fn b3_chunk_blocks(chunk List<int>) int {
+    let n = chunk.len()
+    if (n == 0) {
+        return 1
+    }
+    let full = n / 64
+    if (n % 64 == 0) {
+        return full
+    }
+    return full + 1
+}
+
+fn b3_chunk_cv(chunk List<int>, counter i64) List<int> {
+    return b3_output_cv(b3_chunk_output(chunk, counter, 0))
+}
+
+fn b3_chunk_count(n int) int {
+    if (n == 0) {
+        return 1
+    }
+    return (n + 1023) / 1024
+}
+
+fn stack_push_cv(stack List<int>, cv List<int>) int {
+    copy_list(cv, stack, 0)
+    return 0
+}
+
+fn stack_pop_cv(stack List<int>) List<int> {
+    let n = stack.len()
+    var out = List<int>.new()
+    var k = 0
+    for (k < 8) {
+        out.push(stack.get(n - 8 + k))
+        k = k + 1
+    }
+    drop_tail(stack, 8)
+    return out
+}
+
+fn drop_tail(xs List<int>, k int) int {
+    var i = 0
+    for (i < k) {
+        xs.remove(xs.len() - 1)
+        i = i + 1
+    }
+    return 0
+}
+
+/// Binary-tree merge before pushing a new chunk CV.
+fn b3_merge(stack List<int>, cv List<int>, total int) List<int> {
+    var merged = first8(cv)
+    var t = total
+    for (t % 2 == 0) {
+        if (stack.len() < 8) {
+            return merged
+        }
+        let left = stack_pop_cv(stack)
+        merged = b3_output_cv(b3_parent_output(left, merged))
+        t = t / 2
+    }
+    return merged
+}
+
+/// Fold the remaining subtree CVs into the ROOT node's output record (the
+/// record, not just its chaining value: the root compression needs the final
+/// node's message block, block length and flags).
+fn b3_fold(stack List<int>, out List<int>) List<int> {
+    var acc = out
+    for (stack.len() >= 8) {
+        let left = stack_pop_cv(stack)
+        let right = b3_output_cv(acc)
+        acc = b3_parent_output(left, right)
+    }
+    return acc
+}
+
+/// BLAKE3-256 over an exact byte vector; lowercase hex.
+pub fn blake3_hex_bytes(bs List<int>) Str {
+    var stack = List<int>.new()
+    let n = bs.len()
+    let nchunks = b3_chunk_count(n)
+    var ci = 0
+    for (ci < nchunks - 1) {
+        let lo = ci * 1024
+        let chunk = slice_bytes(bs, lo, lo + 1024)
+        let cv = b3_chunk_cv(chunk, ci.to(i64))
+        let merged = b3_merge(stack, cv, ci + 1)
+        stack_push_cv(stack, merged)
+        ci = ci + 1
+    }
+    let last = nchunks - 1
+    let lo = last * 1024
+    let hi = clamp(lo + 1024, n)
+    let chunk = slice_bytes(bs, lo, hi)
+    let out = b3_chunk_output(chunk, last.to(i64), 0)
+    let root = b3_fold(stack, out)
+    return b3_root_hex(root)
+}
+
+pub fn blake3_hex(data Str) Str {
+    return blake3_hex_bytes(utf8_bytes(data))
+}
+
+/// BLAKE3-256 raw digest bytes (32) — the artifact frame stores the raw
+/// digest, not hex (`blake3::hash(payload).as_bytes()`).
+pub fn blake3_bytes(bs List<int>) List<int> {
+    var stack = List<int>.new()
+    let n = bs.len()
+    let nchunks = b3_chunk_count(n)
+    var ci = 0
+    for (ci < nchunks - 1) {
+        let lo = ci * 1024
+        let chunk = slice_bytes(bs, lo, lo + 1024)
+        let cv = b3_chunk_cv(chunk, ci.to(i64))
+        let merged = b3_merge(stack, cv, ci + 1)
+        stack_push_cv(stack, merged)
+        ci = ci + 1
+    }
+    let last = nchunks - 1
+    let lo = last * 1024
+    let hi = clamp(lo + 1024, n)
+    let chunk = slice_bytes(bs, lo, hi)
+    let out = b3_chunk_output(chunk, last.to(i64), 0)
+    let root = b3_fold(stack, out)
+    let full = b3_compress(
+        b3_output_cv_field(root),
+        b3_output_block(root),
+        0i64,
+        b3_output_blen(root).to(i64),
+        b3_output_flags(root).to(i64) | b3_root().to(i64)
+    )
+    var bytes = List<int>.new()
+    var k = 0
+    for (k < 8) {
+        let w = uval(full.get(k))
+        bytes.push((w % 256i64).to(i32))
+        bytes.push(((w / 256i64) % 256i64).to(i32))
+        bytes.push(((w / 65536i64) % 256i64).to(i32))
+        bytes.push(((w / 16777216i64) % 256i64).to(i32))
+        k = k + 1
+    }
+    return bytes
+}
+
+fn b3_root_hex(out List<int>) Str {
+    let full = b3_compress(
+        b3_output_cv_field(out),
+        b3_output_block(out),
+        0i64,
+        b3_output_blen(out).to(i64),
+        b3_output_flags(out).to(i64) | b3_root().to(i64)
+    )
+    var bytes = List<int>.new()
+    var k = 0
+    for (k < 8) {
+        let w = uval(full.get(k))
+        bytes.push((w % 256i64).to(i32))
+        bytes.push(((w / 256i64) % 256i64).to(i32))
+        bytes.push(((w / 65536i64) % 256i64).to(i32))
+        bytes.push(((w / 16777216i64) % 256i64).to(i32))
+        k = k + 1
+    }
+    return hex_bytes(bytes)
+}
+
+// ---------------------------------------------------------------------------
+// Framed identity (the artifact-identity reference framing, Design 40 §4):
+// blake3( HASH_ALGO ‖ 0 ‖ family ‖ 0 ‖ { u64le(part_len) ‖ part }* )
+// ---------------------------------------------------------------------------
+
+fn identity_start(dst List<int>, family Str) int {
+    append_bytes(dst, "blake3-1.5")
+    append_byte(dst, 0)
+    append_bytes(dst, family)
+    append_byte(dst, 0)
+    return 0
+}
+
+fn identity_part(dst List<int>, part Str) int {
+    let bs = utf8_bytes(part)
+    append_u64le(dst, bs.len())
+    copy_list(bs, dst, 0)
+    return 0
+}
+
+/// One-part domain hash: `hex(blake3(frame(family, [part])))`.
+pub fn identity_hex(family Str, part Str) Str {
+    var pre = List<int>.new()
+    identity_start(pre, family)
+    identity_part(pre, part)
+    return blake3_hex_bytes(pre)
+}
+
+/// Two-part domain hash — the length framing must distinguish `[ab, c]` from
+/// `[a, bc]` (they never share an identity).
+pub fn identity_hex2(family Str, p0 Str, p1 Str) Str {
+    var pre = List<int>.new()
+    identity_start(pre, family)
+    identity_part(pre, p0)
+    identity_part(pre, p1)
+    return blake3_hex_bytes(pre)
+}
+
+/// The bytes of a framed identity preimage (hex) — used by the plan's
+/// wire-format evidence so the frame, not just the digest, is observable.
+pub fn identity_frame_hex(family Str, p0 Str, p1 Str) Str {
+    var pre = List<int>.new()
+    identity_start(pre, family)
+    identity_part(pre, p0)
+    identity_part(pre, p1)
+    return hex_bytes(pre)
+}
+
+
+
+
+

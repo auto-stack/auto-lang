@@ -1,0 +1,34 @@
+[package]
+name = "ace-aac-support-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+description = "PLAN-1056 AAC exact digest / compiler codec support: the Auto support package compiled and executed through the assembled packages-aggregates-ct lane, with independent Rust/Python-reference byte oracles"
+
+[dependencies]
+ace-core = { path = "../../crates/core" }
+ace-source-query = { path = "../../crates/source-query" }
+ace-av = { path = "../../crates/av" }
+ace-av-core = { path = "../../crates/av-core" }
+ace-artifacts = { path = "../../crates/artifacts" }
+blake3 = "1"
+sha2 = "0.10"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+
+
+[[bin]]
+name = "aac-support-driver"
+path = "src/bin/aac-support-driver.rs"
+
+[[test]]
+name = "atom_data"
+path = "tests/atom_data.rs"
+
+
+
+

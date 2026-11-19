@@ -1,0 +1,716 @@
+// AAC support compiler codec (PLAN-1056 T-04): deterministic framing, a
+// strict manifest DTO, and pre-allocation resource admission, in pure Auto on
+// the assembled packages-aggregates-ct lane.
+//
+// Frozen contract (`docs/specs/auto-ac/aac-digest-codec-profile.md`, SD-01):
+//
+//   * `aac.frame/1` is BYTE-COMPATIBLE with the artifact codec reference
+//     (`experimental/ace/crates/artifacts/src/codec.rs::frame_chunk`):
+//       0..4   magic 0x5A4B3341 little-endian ("A3KZ")
+//       4..6   framing version u16 LE = 1
+//       6      chunk kind u8 (0..10, the one kind table)
+//       7      reserved u8, written 0, NEVER validated on decode
+//       8..16  payload length u64 LE
+//       16..48 raw blake3-256 digest of the payload (NOT domain framed)
+//       48..   payload
+//     Exact length and digest are mandatory; trailing bytes are an error,
+//     never silently ignored.
+//
+//   * `aac.manifest/1` is the AAC support manifest DTO (deliberately NOT the
+//     store's internal identity construction, which hashes rather than
+//     serializes): version u16 LE = 1, schema tag u8 = 1, layer str, pair
+//     count u32 LE + (key str, value str)*, edge count u32 LE + (id str,
+//     refkind str)*; a str is u32 LE length + ASCII bytes. Canonical order is
+//     ascending key (ties ascending value) and ascending (id, refkind): the
+//     encoder sorts, the decoder REJECTS a non-canonical order. The wire
+//     carries no trusted "Checked" capability — there is no trust field at
+//     all, so a restored DTO can never stand in for a verified one.
+//
+//   * Every decode validates announced counts and lengths against the bytes
+//     actually present BEFORE allocating or iterating (`count * 8 > bytes
+//     left`), so an attacker-length message is refused rather than
+//     materialized.
+//
+// All entry points return a byte vector whose FIRST element is the outcome:
+// 0 = ok (the rest is the result), > 0 = a named rejection:
+//
+//   1 truncated-header        2 bad-magic          3 unsupported-framing
+//   4 unknown-kind            5 too-large          6 truncated-payload
+//   7 trailing-bytes          8 checksum-mismatch  9 count-overflow
+//   10 unsupported-version    11 unknown-schema    12 duplicate-key
+//   13 non-canonical-order    14 non-ascii-bytes   15 empty-field
+
+use app.digest.blake3_bytes
+use app.digest.utf8_bytes
+
+// ---------------------------------------------------------------------------
+// Outcome vocabulary
+// ---------------------------------------------------------------------------
+
+fn outcome(code int) List<int> {
+    var out = List<int>.new()
+    out.push(code)
+    return out
+}
+
+fn outcome_with(code int, payload List<int>) List<int> {
+    var out = List<int>.new()
+    out.push(code)
+    copy_bytes(payload, out)
+    return out
+}
+
+fn ok(v List<int>) bool {
+    if (v.len() == 0) {
+        return false
+    }
+    return v.get(0) == 0
+}
+
+/// The outcome code of a codec result (0 = ok).
+pub fn status_of(v List<int>) int {
+    if (v.len() == 0) {
+        return 99
+    }
+    return v.get(0)
+}
+
+/// The payload of an ok codec result (drops the outcome byte).
+pub fn payload_of(v List<int>) List<int> {
+    return slice_of(v, 1, v.len())
+}
+
+pub fn code_names() Str {
+    return "ok truncated-header bad-magic unsupported-framing unknown-kind too-large truncated-payload trailing-bytes checksum-mismatch count-overflow unsupported-version unknown-schema duplicate-key non-canonical-order non-ascii-bytes empty-field"
+}
+
+// ---------------------------------------------------------------------------
+// Byte plumbing
+// ---------------------------------------------------------------------------
+
+fn copy_bytes(src List<int>, dst List<int>) int {
+    var i = 0
+    for (i < src.len()) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn push_u32le(out List<int>, v int) int {
+    out.push(v % 256)
+    out.push((v / 256) % 256)
+    out.push((v / 65536) % 256)
+    out.push((v / 16777216) % 256)
+    return 0
+}
+
+fn push_u64le(out List<int>, v int) int {
+    push_u32le(out, v)
+    push_u32le(out, 0)
+    return 0
+}
+
+/// Read a u32 into an i64 (the full unsigned range, no i32 overflow).
+fn read_u32le_wide(bs List<int>, at int) i64 {
+    let b0 = bs.get(at).to(i64)
+    let b1 = bs.get(at + 1).to(i64)
+    let b2 = bs.get(at + 2).to(i64)
+    let b3 = bs.get(at + 3).to(i64)
+    return b0 + b1 * 256i64 + b2 * 65536i64 + b3 * 16777216i64
+}
+
+/// Read a u32 as the lane's signed int; values above i32::MAX are refused with
+/// -1 (a count/length beyond the addressable int range is a rejection, never
+/// an overflow trap).
+fn read_u32le(bs List<int>, at int) int {
+    let v = read_u32le_wide(bs, at)
+    if (v > 2147483647i64) {
+        return -1
+    }
+    return v.to(i32)
+}
+
+fn slice_of(bs List<int>, lo int, hi int) List<int> {
+    var out = List<int>.new()
+    var i = lo
+    for (i < hi) {
+        out.push(bs.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+fn bytes_equal(a List<int>, b List<int>) bool {
+    if (a.len() != b.len()) {
+        return false
+    }
+    var i = 0
+    for (i < a.len()) {
+        if (a.get(i) != b.get(i)) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fn ascii_only(bs List<int>, lo int, hi int) bool {
+    var i = lo
+    for (i < hi) {
+        if (bs.get(i) >= 128) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+/// Byte-wise comparison of two slices of `blob` (canonical ordering).
+fn slice_cmp(blob List<int>, sa int, la int, sb int, lb int) int {
+    var i = 0
+    for (i < la) {
+        if (i >= lb) {
+            return 1
+        }
+        let x = blob.get(sa + i)
+        let y = blob.get(sb + i)
+        if (x < y) {
+            return -1
+        }
+        if (x > y) {
+            return 1
+        }
+        i = i + 1
+    }
+    if (la < lb) {
+        return -1
+    }
+    return 0
+}
+
+/// Push an i64 as its exact u64 little-endian two's complement bytes
+/// (the wide-number axis of V-03: i64::MIN/MAX must round-trip unchanged).
+fn push_u32le_wide(out List<int>, v i64) int {
+    out.push((v % 256i64).to(i32))
+    out.push(((v / 256i64) % 256i64).to(i32))
+    out.push(((v / 65536i64) % 256i64).to(i32))
+    out.push(((v / 16777216i64) % 256i64).to(i32))
+    return 0
+}
+
+fn push_i64le(out List<int>, v i64) int {
+    var lo = v % 4294967296i64
+    if (lo < 0i64) {
+        lo = lo + 4294967296i64
+    }
+    let hi = (v - lo) / 4294967296i64
+    var hi_u = hi % 4294967296i64
+    if (hi_u < 0i64) {
+        hi_u = hi_u + 4294967296i64
+    }
+    push_u32le_wide(out, lo)
+    push_u32le_wide(out, hi_u)
+    return 0
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Frame (`aac.frame/1`) — byte-compatible with the artifact codec reference
+// ---------------------------------------------------------------------------
+
+pub fn default_max_payload() int {
+    return 4194304
+}
+
+pub fn default_max_items() int {
+    return 65536
+}
+
+/// Frame one payload. `max_payload` is the caller's admission cap: the frozen
+/// FORMAT allows 64 MiB (`MAX_CHUNK`) and the reference still accepts that
+/// range, while this executor materializes at most a few MiB — so the cap is
+/// an explicit admission decision (5 too-large), never a silent truncation.
+pub fn frame_encode(kind int, payload List<int>, max_payload int) List<int> {
+    if (kind < 0) {
+        return outcome(4)
+    }
+    if (kind > 10) {
+        return outcome(4)
+    }
+    if (payload.len() > max_payload) {
+        return outcome(5)
+    }
+    var out = List<int>.new()
+    out.push(0)
+    out.push(65)
+    out.push(51)
+    out.push(75)
+    out.push(90)
+    out.push(1)
+    out.push(0)
+    out.push(kind)
+    out.push(0)
+    push_u64le(out, payload.len())
+    let digest = blake3_bytes(payload)
+    copy_bytes(digest, out)
+    copy_bytes(payload, out)
+    return out
+}
+
+pub fn frame_decode(bytes List<int>, max_payload int) List<int> {
+    if (bytes.len() < 48) {
+        return outcome(1)
+    }
+    if (bytes.get(0) != 65) {
+        return outcome(2)
+    }
+    if (bytes.get(1) != 51) {
+        return outcome(2)
+    }
+    if (bytes.get(2) != 75) {
+        return outcome(2)
+    }
+    if (bytes.get(3) != 90) {
+        return outcome(2)
+    }
+    if (bytes.get(4) != 1) {
+        return outcome(3)
+    }
+    if (bytes.get(5) != 0) {
+        return outcome(3)
+    }
+    let kind = bytes.get(6)
+    if (kind < 0) {
+        return outcome(4)
+    }
+    if (kind > 10) {
+        return outcome(4)
+    }
+    let high = read_u32le(bytes, 12)
+    if (high != 0) {
+        return outcome(5)
+    }
+    let plen = read_u32le(bytes, 8)
+    if (plen < 0) {
+        return outcome(5)
+    }
+    if (plen > max_payload) {
+        return outcome(5)
+    }
+    let available = bytes.len() - 48
+    if (plen > available) {
+        return outcome(6)
+    }
+    if (plen < available) {
+        return outcome(7)
+    }
+    let payload = slice_of(bytes, 48, 48 + plen)
+    let want = slice_of(bytes, 16, 48)
+    let have = blake3_bytes(payload)
+    if (!bytes_equal(want, have)) {
+        return outcome(8)
+    }
+    return outcome_with(0, payload)
+}
+
+// ---------------------------------------------------------------------------
+// Manifest DTO (`aac.manifest/1`)
+// ---------------------------------------------------------------------------
+
+/// Encode the manifest DTO from a flat [key, value, ...] pair list and a flat
+/// [id, refkind, ...] edge list. Both are sorted here, so caller order is
+/// irrelevant: the bytes are a pure function of the data.
+pub fn manifest_encode(
+    layer Str,
+    anchor i64,
+    pairs List<Str>,
+    edges List<Str>,
+    max_items int
+) List<int> {
+    if (pairs.len() % 2 != 0) {
+        return outcome(9)
+    }
+    if (edges.len() % 2 != 0) {
+        return outcome(9)
+    }
+    let pair_count = pairs.len() / 2
+    let edge_count = edges.len() / 2
+    if (pair_count > max_items) {
+        return outcome(5)
+    }
+    if (edge_count > max_items) {
+        return outcome(5)
+    }
+    // Pair/edge lists are CONSUMED (`remove(0)` moves each owned element out):
+    // a list element is an owned-Str view and may not be read as a value, so
+    // the encoder takes ownership of its segments (same discipline as the
+    // streaming digest).
+    var blob = List<int>.new()
+    var pspans = List<int>.new()
+    var pidx = 0
+    for (pidx < pair_count) {
+        let k = pairs.remove(0)
+        let kb = utf8_bytes(k)
+        if (!ascii_only(kb, 0, kb.len())) {
+            return outcome(14)
+        }
+        if (kb.len() == 0) {
+            return outcome(15)
+        }
+        pspans.push(blob.len())
+        pspans.push(kb.len())
+        copy_bytes(kb, blob)
+        let v = pairs.remove(0)
+        let vb = utf8_bytes(v)
+        if (!ascii_only(vb, 0, vb.len())) {
+            return outcome(14)
+        }
+        pspans.push(blob.len())
+        pspans.push(vb.len())
+        copy_bytes(vb, blob)
+        pidx = pidx + 1
+    }
+    let blayer = utf8_bytes(layer)
+    if (!ascii_only(blayer, 0, blayer.len())) {
+        return outcome(14)
+    }
+    if (blayer.len() == 0) {
+        return outcome(15)
+    }
+    var eblob = List<int>.new()
+    var espans = List<int>.new()
+    var eidx = 0
+    for (eidx < edge_count) {
+        let id = edges.remove(0)
+        let idb = utf8_bytes(id)
+        if (!ascii_only(idb, 0, idb.len())) {
+            return outcome(14)
+        }
+        if (idb.len() == 0) {
+            return outcome(15)
+        }
+        espans.push(eblob.len())
+        espans.push(idb.len())
+        copy_bytes(idb, eblob)
+        let kind = edges.remove(0)
+        let kindb = utf8_bytes(kind)
+        if (!ascii_only(kindb, 0, kindb.len())) {
+            return outcome(14)
+        }
+        if (kindb.len() == 0) {
+            return outcome(15)
+        }
+        espans.push(eblob.len())
+        espans.push(kindb.len())
+        copy_bytes(kindb, eblob)
+        eidx = eidx + 1
+    }
+    sort_pair_spans(blob, pspans)
+    sort_pair_spans(eblob, espans)
+    var out = List<int>.new()
+    out.push(0)
+    out.push(1)
+    out.push(0)
+    out.push(1)
+    out.push(0)
+    push_u32le(out, blayer.len())
+    copy_bytes(blayer, out)
+    push_i64le(out, anchor)
+    push_u32le(out, pair_count)
+    emit_pair_spans(out, blob, pspans)
+    push_u32le(out, edge_count)
+    emit_pair_spans(out, eblob, espans)
+    return out
+}
+
+// Pair spans are FOUR ints per pair: key start, key len, value start,
+// value len.
+fn emit_pair_spans(out List<int>, blob List<int>, spans List<int>) int {
+    var i = 0
+    for (i < spans.len() / 4) {
+        push_u32le(out, spans.get(4 * i + 1))
+        copy_bytes(slice_of(blob, spans.get(4 * i), spans.get(4 * i) + spans.get(4 * i + 1)), out)
+        push_u32le(out, spans.get(4 * i + 3))
+        copy_bytes(slice_of(blob, spans.get(4 * i + 2), spans.get(4 * i + 2) + spans.get(4 * i + 3)), out)
+        i = i + 1
+    }
+    return 0
+}
+
+fn pair_less(blob List<int>, spans List<int>, a int, b int) bool {
+    let ka = spans.get(4 * a)
+    let la = spans.get(4 * a + 1)
+    let kb = spans.get(4 * b)
+    let lb = spans.get(4 * b + 1)
+    let c = slice_cmp(blob, ka, la, kb, lb)
+    if (c < 0) {
+        return true
+    }
+    if (c > 0) {
+        return false
+    }
+    let va = spans.get(4 * a + 2)
+    let vla = spans.get(4 * a + 3)
+    let vb = spans.get(4 * b + 2)
+    let vlb = spans.get(4 * b + 3)
+    return slice_cmp(blob, va, vla, vb, vlb) < 0
+}
+
+fn swap_pair(spans List<int>, a int, b int) int {
+    swap_int(spans, 4 * a, 4 * b)
+    swap_int(spans, 4 * a + 1, 4 * b + 1)
+    swap_int(spans, 4 * a + 2, 4 * b + 2)
+    swap_int(spans, 4 * a + 3, 4 * b + 3)
+    return 0
+}
+
+fn swap_int(xs List<int>, a int, b int) int {
+    let t = xs.get(a)
+    xs.set(a, xs.get(b))
+    xs.set(b, t)
+    return 0
+}
+
+/// Canonical ascending sort of pair spans (insertion sort; deterministic and
+/// stable for equal pairs, which the decoder then rejects as duplicates).
+fn sort_pair_spans(blob List<int>, spans List<int>) int {
+    let n = spans.len() / 4
+    var i = 1
+    for (i < n) {
+        var j = i
+        for (j > 0) {
+            if (!pair_less(blob, spans, j, j - 1)) {
+                break
+            }
+            swap_pair(spans, j, j - 1)
+            j = j - 1
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+/// Decode the manifest DTO under pre-allocation admission. On success the
+/// observation is the CANONICAL RE-ENCODING (`[0, ...bytes]`), so a decoder
+/// that silently reorders cannot pass.
+pub fn manifest_decode(bytes List<int>, max_items int) List<int> {
+    if (bytes.len() < 5) {
+        return outcome(1)
+    }
+    if (bytes.get(0) != 1) {
+        return outcome(10)
+    }
+    if (bytes.get(1) != 0) {
+        return outcome(10)
+    }
+    if (bytes.get(2) != 1) {
+        return outcome(11)
+    }
+    if (bytes.get(3) != 0) {
+        return outcome(11)
+    }
+    var pos = 4
+    let layer_len = peek_str_len(bytes, pos)
+    if (layer_len < 0) {
+        return outcome(0 - layer_len)
+    }
+    if (!ascii_only(bytes, pos + 4, pos + 4 + layer_len)) {
+        return outcome(14)
+    }
+    if (layer_len == 0) {
+        return outcome(15)
+    }
+    let layer = slice_of(bytes, pos + 4, pos + 4 + layer_len)
+    pos = pos + 4 + layer_len
+    if (pos + 8 > bytes.len()) {
+        return outcome(1)
+    }
+    // The anchor is a fixed-width i64 field: its 8 bytes are carried verbatim,
+    // so no value-level re-encoding can perturb i64::MIN/MAX.
+    let anchor_bytes = slice_of(bytes, pos, pos + 8)
+    pos = pos + 8
+    let pair_count = peek_count(bytes, pos, max_items)
+    if (pair_count < 0) {
+        return outcome(0 - pair_count)
+    }
+    pos = pos + 4
+    if (pair_count * 8 > bytes.len() - pos) {
+        return outcome(9)
+    }
+    var pblob = List<int>.new()
+    var pspans = List<int>.new()
+    var i = 0
+    for (i < pair_count) {
+        let kl = peek_str_len(bytes, pos)
+        if (kl < 0) {
+            return outcome(0 - kl)
+        }
+        if (!ascii_only(bytes, pos + 4, pos + 4 + kl)) {
+            return outcome(14)
+        }
+        if (kl == 0) {
+            return outcome(15)
+        }
+        pspans.push(pblob.len())
+        pspans.push(kl)
+        copy_bytes(slice_of(bytes, pos + 4, pos + 4 + kl), pblob)
+        pos = pos + 4 + kl
+        let vl = peek_str_len(bytes, pos)
+        if (vl < 0) {
+            return outcome(0 - vl)
+        }
+        if (!ascii_only(bytes, pos + 4, pos + 4 + vl)) {
+            return outcome(14)
+        }
+        pspans.push(pblob.len())
+        pspans.push(vl)
+        copy_bytes(slice_of(bytes, pos + 4, pos + 4 + vl), pblob)
+        pos = pos + 4 + vl
+        i = i + 1
+    }
+    let edge_count = peek_count(bytes, pos, max_items)
+    if (edge_count < 0) {
+        return outcome(0 - edge_count)
+    }
+    pos = pos + 4
+    if (edge_count * 8 > bytes.len() - pos) {
+        return outcome(9)
+    }
+    var eblob = List<int>.new()
+    var espans = List<int>.new()
+    i = 0
+    for (i < edge_count) {
+        let il = peek_str_len(bytes, pos)
+        if (il < 0) {
+            return outcome(0 - il)
+        }
+        if (!ascii_only(bytes, pos + 4, pos + 4 + il)) {
+            return outcome(14)
+        }
+        if (il == 0) {
+            return outcome(15)
+        }
+        espans.push(eblob.len())
+        espans.push(il)
+        copy_bytes(slice_of(bytes, pos + 4, pos + 4 + il), eblob)
+        pos = pos + 4 + il
+        let rl = peek_str_len(bytes, pos)
+        if (rl < 0) {
+            return outcome(0 - rl)
+        }
+        if (!ascii_only(bytes, pos + 4, pos + 4 + rl)) {
+            return outcome(14)
+        }
+        if (rl == 0) {
+            return outcome(15)
+        }
+        espans.push(eblob.len())
+        espans.push(rl)
+        copy_bytes(slice_of(bytes, pos + 4, pos + 4 + rl), eblob)
+        pos = pos + 4 + rl
+        i = i + 1
+    }
+    if (pos != bytes.len()) {
+        return outcome(7)
+    }
+    let porder = check_pair_order(pblob, pspans)
+    if (porder != 0) {
+        return outcome(porder)
+    }
+    let eorder = check_pair_order(eblob, espans)
+    if (eorder != 0) {
+        return outcome(eorder)
+    }
+    var out = List<int>.new()
+    out.push(0)
+    out.push(1)
+    out.push(0)
+    out.push(1)
+    out.push(0)
+    push_u32le(out, layer.len())
+    copy_bytes(layer, out)
+    copy_bytes(anchor_bytes, out)
+    push_u32le(out, pair_count)
+    emit_pair_spans(out, pblob, pspans)
+    push_u32le(out, edge_count)
+    emit_pair_spans(out, eblob, espans)
+    return out
+}
+
+/// 0 = strictly ascending; 12 = duplicate pair; 13 = descending.
+fn check_pair_order(blob List<int>, spans List<int>) int {
+    let n = spans.len() / 4
+    var i = 1
+    for (i < n) {
+        let ka = spans.get(4 * i)
+        let la = spans.get(4 * i + 1)
+        let kb = spans.get(4 * (i - 1))
+        let lb = spans.get(4 * (i - 1) + 1)
+        let c = slice_cmp(blob, ka, la, kb, lb)
+        if (c < 0) {
+            return 13
+        }
+        if (c == 0) {
+            return 12
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+/// Length of the next `u32 len + bytes` string, or a NEGATIVE outcome code.
+fn peek_str_len(bytes List<int>, pos int) int {
+    if (pos + 4 > bytes.len()) {
+        return -1
+    }
+    let n = read_u32le(bytes, pos)
+    if (n < 0) {
+        return -9
+    }
+    if (n > bytes.len() - pos - 4) {
+        return -9
+    }
+    return n
+}
+
+/// A u32 count (negative on rejection).
+fn peek_count(bytes List<int>, pos int, max_items int) int {
+    if (pos + 4 > bytes.len()) {
+        return -1
+    }
+    let n = read_u32le(bytes, pos)
+    if (n < 0) {
+        return -9
+    }
+    if (n > max_items) {
+        return -5
+    }
+    return n
+}
+
+
+// ---------------------------------------------------------------------------
+// Raw builders — used only to construct malformed vectors for the rejection
+// tests. They deliberately skip the encoder's canonicalisation and are never
+// part of a producer path.
+// ---------------------------------------------------------------------------
+
+/// Raw frame bytes WITHOUT the outcome byte (a test-vector builder).
+pub fn frame_build_raw(kind int, declared_len int, digest List<int>, payload List<int>) List<int> {
+    var out = List<int>.new()
+    out.push(65)
+    out.push(51)
+    out.push(75)
+    out.push(90)
+    out.push(1)
+    out.push(0)
+    out.push(kind)
+    out.push(0)
+    push_u64le(out, declared_len)
+    copy_bytes(digest, out)
+    copy_bytes(payload, out)
+    return out
+}
+

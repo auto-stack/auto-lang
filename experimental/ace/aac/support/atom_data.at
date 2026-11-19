@@ -1,0 +1,1394 @@
+// AAC support canonical Atom DATA reader/writer (PLAN-1056 T-04): a pure-Auto
+// lexer, parser, frozen-schema admission check and byte-identical canonical
+// writer for this lane's Atom data slice, running on the assembled
+// packages-aggregates-ct lane (profile `Aggregates`).
+//
+// This is a PURE DATA codec, deliberately NOT a constructor of verified
+// objects. It accepts any syntactically valid document whose node tags and
+// field names are in the frozen table, including semantically odd data (a
+// `decl` whose `kind` names an id that does not exist, two `decl` nodes with
+// the same `id`, a `type` under a `decl`, a `revision` that is a string).
+// Nothing here claims to have built a checked ACC/AAC object: the result is
+// canonical bytes and the caller must treat it as an untrusted DTO. The only
+// structural checks are the frozen tag/field table plus duplicate detection —
+// every semantic relation belongs to a later verification stage, not to the
+// reader.
+//
+// Frozen surface (see `docs/specs/auto-ac/aac-digest-codec-profile.md`):
+//
+//   lexer   whitespace is space/\t/\r/\n; `//` runs to end-of-line; an
+//           identifier is `[A-Za-z_][A-Za-z0-9_]*`; a string is `"..."`
+//           whose ONLY escapes are `\" \\ \n \t` (any other escape is a
+//           rejection, not a literal); non-ASCII scalars pass through
+//           unchanged (the whole walk is SCALAR-indexed, so UTF-8 inside a
+//           string is never re-chunked); a number is an optional `-`, then
+//           digits, then an optional ASCII-letter-led suffix (`1u32`, `7i32`,
+//           `0`, `-5`); punctuation is `( ) { } [ ] : ; ,`.
+//           The number rule is exact: a `-` that is not followed by a digit, a
+//           suffix letter followed by a second letter (`1u3x`), or a missing
+//           digit run are all invalid numbers (5).
+//
+//   grammar a document is ONE root node; any token left after it is a
+//           rejection (7). A node is `tag` + zero or more primary values +
+//           an optional `( ... )` group + an optional `{ body }`. The group
+//           holds primaries and `name: value` fields; the body holds
+//           `name: value` fields and child nodes; `,` and `;` are both
+//           accepted between items and are skipped. After a tag, `{` always
+//           opens the body (an inline `{ ... }` node is a VALUE, so it is
+//           reachable as a field value or a list element).
+//
+//   writer  byte-identical canonical re-emission, 4 spaces per depth:
+//             node header  = `tag` + `(p, p; k: v; k: v)` + ` {`, with the
+//                            header glued to a single space before `{`
+//                            (primaries first, `,`-separated, then fields,
+//                            `;`-separated, inside the ONE group the grammar
+//                            admits);
+//             non-empty    body items follow one per line at depth+1 (source
+//                            order preserved: fields and children are never
+//                            reordered);
+//             empty body   = `tag(...) {}` on one line;
+//             closing `}`  alone on its own line at the node's depth;
+//             list values  = `[a, b, c]`; inline nodes = `{ k: v, k: v }`;
+//             strings are re-quoted with the same four escapes (a legal
+//                            escape sequence re-encodes to itself, so the raw
+//                            source content is re-emitted verbatim);
+//             numbers are re-emitted digit-for-digit exactly as written;
+//             every line ends with `\n`, including the root's closing `}`.
+//
+//   schema  allowed node tags: `descriptor` (root only; fields `schema`,
+//           `revision`, `profile`), `module` (field `id`), `decl` and `type`
+//           (fields `id`, `kind`). An unknown node tag is 10 (a non-descriptor
+//           root is also 10), an unknown field name is 9, a field repeated in
+//           the same node is 8 (an inline `{ ... }` value node has no tag and
+//           therefore no field table — its names are data, not schema).
+//
+//   admission: text longer than 262144 scalars is 6 BEFORE any lexing work;
+//           node/value nesting deeper than 64 is 6 (counted over tagged nodes,
+//           inline value nodes and list containers alike, so the recursion the
+//           walker needs is bounded). Both refusals happen before the work they
+//           bound. The 64 depth bound is the ADMISSION rule, not a performance
+//           promise: the canonical form of a depth-d document is O(d^2) bytes of
+//           indentation, so an executor whose step budget is small relative to
+//           that (this harness runs AV at 64M steps) can run out of budget
+//           before it reaches the admitted depth — the module's own cost is
+//           linear in the emitted bytes, not exponential in the nesting.
+//
+// Outcome byte first (the codec.at convention): `[0, ...canonical bytes]` or
+// `[code]`. Codes: 0 ok, 1 empty, 2 unexpected-char, 3 unterminated-string,
+// 4 bad-escape, 5 invalid-number, 6 admission/unbalanced, 7 trailing-tokens,
+// 8 duplicate-field, 9 unknown-field, 10 unknown-node.
+//
+// Implementation notes (the lane constraints this hit — learned the hard way):
+//   * no `while`, no `const`, and no `else if` (this face's grammar wants
+//     `else {` with a block, so every branch chain is either sequential `if`s
+//     over a classified role or a nested `else { if ... }` block);
+//   * no `List` `.clone()` on this face — a list argument is a handle that is
+//     never moved, so lists are passed by name, while an owned `Str` argument
+//     MOVES at a call and therefore every `Str` handed to a helper is an
+//     explicit `.clone()`;
+//   * the face's keywords are not usable as local names either: `is` and `tag`
+//     are both keywords, and a bad `let is = ...` does NOT report a name error —
+//     CST recovery swallows the function and the projector reports a bogus
+//     "expected iteration binding, found `(`" at the first `for` in it, which
+//     is why the locals here are `istart`/`ntag`;
+//   * values live in flat `List<int>` arenas (tokens/values/nodes/pools)
+//     instead of nested records, and the document body is emitted by an
+//     explicit stack walk into a BYTE vector rather than a recursion carrying a
+//     growing `Str`: a per-level `Str` accumulator re-copies the whole prefix
+//     on every append (cubic in the depth, measured at ~100M AV step units for
+//     a 40-deep document) and a per-level list accumulator is quadratic in the
+//     AV slot accounting; byte pushes make the writer linear in the output.
+
+use std.bytes.byte_of
+use std.bytes.decode_utf8
+use std.bytes.utf8_len
+
+// ---------------------------------------------------------------------------
+// Outcome vocabulary
+// ---------------------------------------------------------------------------
+
+fn outcome(code int) List<int> {
+    var out = List<int>.new()
+    out.push(code)
+    return out
+}
+
+fn copy_bytes(src List<int>, dst List<int>) int {
+    var i = 0
+    for (i < src.len()) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn copy_ints(src List<int>, dst List<int>) int {
+    var i = 0
+    for (i < src.len()) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn slice_of(bs List<int>, lo int, hi int) List<int> {
+    var out = List<int>.new()
+    var i = lo
+    for (i < hi) {
+        out.push(bs.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+/// The outcome code of a result (0 = ok; 99 = the empty vector, which no
+/// entry point of this module produces).
+pub fn status_of(v List<int>) int {
+    if (v.len() == 0) {
+        return 99
+    }
+    return v.get(0)
+}
+
+/// The payload of an ok result (drops the outcome byte).
+pub fn payload_of(v List<int>) List<int> {
+    return slice_of(v, 1, v.len())
+}
+
+/// UTF-8 bytes of a `Str` (scalars encoded explicitly; NUL would be an
+/// ordinary byte and no C-string view exists anywhere on this path).
+fn utf8_bytes(s Str) List<int> {
+    var out = List<int>.new()
+    let n = s.len()
+    var i = 0
+    for (i < n) {
+        let p = cp_at(s.clone(), i)
+        let np = utf8_len(p)
+        var k = 0
+        for (k < np) {
+            out.push(byte_of(p, k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Character classes (codepoints; the ASCII table is written as integers)
+// ---------------------------------------------------------------------------
+
+fn cp_at(s Str, i int) int {
+    return s.char_at(i).to_codepoint()
+}
+
+fn is_space(c int) bool {
+    if (c == 32) {
+        return true
+    }
+    if (c == 9) {
+        return true
+    }
+    if (c == 13) {
+        return true
+    }
+    if (c == 10) {
+        return true
+    }
+    return false
+}
+
+fn is_digit(c int) bool {
+    if (c < 48) {
+        return false
+    }
+    if (c > 57) {
+        return false
+    }
+    return true
+}
+
+fn is_upper(c int) bool {
+    if (c < 65) {
+        return false
+    }
+    if (c > 90) {
+        return false
+    }
+    return true
+}
+
+fn is_lower(c int) bool {
+    if (c < 97) {
+        return false
+    }
+    if (c > 122) {
+        return false
+    }
+    return true
+}
+
+fn is_alpha(c int) bool {
+    if (is_upper(c)) {
+        return true
+    }
+    return is_lower(c)
+}
+
+fn is_ident_start(c int) bool {
+    if (is_alpha(c)) {
+        return true
+    }
+    return c == 95
+}
+
+fn is_ident_cont(c int) bool {
+    if (is_ident_start(c)) {
+        return true
+    }
+    return is_digit(c)
+}
+
+/// The four legal string escapes: `"`, `\`, `n`, `t`.
+fn is_escape(c int) bool {
+    if (c == 34) {
+        return true
+    }
+    if (c == 92) {
+        return true
+    }
+    if (c == 110) {
+        return true
+    }
+    if (c == 116) {
+        return true
+    }
+    return false
+}
+
+/// `( ) { } [ ] : ; ,` → token kinds 4..12; 0 means "not punctuation".
+fn punct_kind(c int) int {
+    if (c == 40) {
+        return 4
+    }
+    if (c == 41) {
+        return 5
+    }
+    if (c == 123) {
+        return 6
+    }
+    if (c == 125) {
+        return 7
+    }
+    if (c == 91) {
+        return 8
+    }
+    if (c == 93) {
+        return 9
+    }
+    if (c == 58) {
+        return 10
+    }
+    if (c == 59) {
+        return 11
+    }
+    if (c == 44) {
+        return 12
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Lexer. The token arena is a flat `List<int>` with stride 3:
+//   [kind, span_start, span_end)  (scalar indices into the source text)
+// Kinds: 1 ident, 2 string (the span is the INNER content), 3 number,
+// 4 lparen, 5 rparen, 6 lbrace, 7 rbrace, 8 lbracket, 9 rbracket,
+// 10 colon, 11 semicolon, 12 comma.
+// ---------------------------------------------------------------------------
+
+fn push_token(toks List<int>, kind int, a int, b int) int {
+    toks.push(kind)
+    toks.push(a)
+    toks.push(b)
+    return 0
+}
+
+fn tok_count(toks List<int>) int {
+    return toks.len() / 3
+}
+
+fn tok_kind(toks List<int>, i int) int {
+    return toks.get(i * 3)
+}
+
+fn tok_a(toks List<int>, i int) int {
+    return toks.get(i * 3 + 1)
+}
+
+fn tok_b(toks List<int>, i int) int {
+    return toks.get(i * 3 + 2)
+}
+
+/// The exact source text of a token (ident, number, or string content).
+fn tok_text(src Str, toks List<int>, t int) Str {
+    return src.slice(tok_a(toks, t), tok_b(toks, t)).clone()
+}
+
+fn ident_end(src Str, from int) int {
+    let n = src.len()
+    var j = from
+    for (j < n) {
+        if (!is_ident_cont(cp_at(src.clone(), j))) {
+            break
+        }
+        j = j + 1
+    }
+    return j
+}
+
+/// Skip `//...` up to (not including) the end of the line.
+fn skip_comment(src Str, from int) int {
+    let n = src.len()
+    var j = from + 2
+    for (j < n) {
+        if (cp_at(src.clone(), j) == 10) {
+            break
+        }
+        j = j + 1
+    }
+    return j
+}
+
+/// A string literal starting at `q0` (the opening quote). Returns the next
+/// index, or a NEGATIVE rejection code (3 unterminated, 4 bad escape).
+fn lex_string(src Str, toks List<int>, q0 int) int {
+    let n = src.len()
+    var j = q0 + 1
+    for (j < n) {
+        let c = cp_at(src.clone(), j)
+        if (c == 34) {
+            push_token(toks, 2, q0 + 1, j)
+            return j + 1
+        }
+        if (c == 92) {
+            if (j + 1 >= n) {
+                return -3
+            }
+            let e = cp_at(src.clone(), j + 1)
+            if (!is_escape(e)) {
+                return -4
+            }
+            j = j + 2
+        } else {
+            j = j + 1
+        }
+    }
+    return -3
+}
+
+/// A number token starting at `q0` (`-` or a digit). Returns the next index,
+/// or a NEGATIVE rejection code (-5 invalid number).
+fn lex_number(src Str, toks List<int>, q0 int) int {
+    let n = src.len()
+    var j = q0
+    if (cp_at(src.clone(), j) == 45) {
+        j = j + 1
+        if (j >= n) {
+            return -5
+        }
+        if (!is_digit(cp_at(src.clone(), j))) {
+            return -5
+        }
+    }
+    if (!is_digit(cp_at(src.clone(), j))) {
+        return -5
+    }
+    for (j < n) {
+        if (!is_digit(cp_at(src.clone(), j))) {
+            break
+        }
+        j = j + 1
+    }
+    if (j < n) {
+        if (is_alpha(cp_at(src.clone(), j))) {
+            // The suffix is one letter plus its digit run (`u32`, `i8`, `u`):
+            // a second letter where that digit run belongs is a non-digit in
+            // the suffix, i.e. an invalid number.
+            j = j + 1
+            for (j < n) {
+                if (!is_digit(cp_at(src.clone(), j))) {
+                    break
+                }
+                j = j + 1
+            }
+            if (j < n) {
+                if (is_alpha(cp_at(src.clone(), j))) {
+                    return -5
+                }
+            }
+        }
+    }
+    push_token(toks, 3, q0, j)
+    return j
+}
+
+/// One lexer step at `i`: consume trivia, one token, or report. Returns the
+/// next index, or a NEGATIVE rejection code (2 unexpected char, 3, 4, 5).
+fn lex_step(src Str, toks List<int>, i int) int {
+    let n = src.len()
+    let c = cp_at(src.clone(), i)
+    if (is_space(c)) {
+        return i + 1
+    }
+    if (c == 47) {
+        if (i + 1 >= n) {
+            return -2
+        }
+        if (cp_at(src.clone(), i + 1) != 47) {
+            return -2
+        }
+        return skip_comment(src.clone(), i)
+    }
+    if (is_ident_start(c)) {
+        let j = ident_end(src.clone(), i)
+        push_token(toks, 1, i, j)
+        return j
+    }
+    if (c == 34) {
+        return lex_string(src.clone(), toks, i)
+    }
+    if (is_digit(c)) {
+        return lex_number(src.clone(), toks, i)
+    }
+    if (c == 45) {
+        return lex_number(src.clone(), toks, i)
+    }
+    let k = punct_kind(c)
+    if (k == 0) {
+        return -2
+    }
+    push_token(toks, k, i, i + 1)
+    return i + 1
+}
+
+/// Tokenise the whole text. Returns 0 or a rejection code (1 empty,
+/// 2 unexpected char, 3 unterminated string, 4 bad escape, 5 invalid number).
+fn lex(src Str, toks List<int>) int {
+    let n = src.len()
+    var i = 0
+    for (i < n) {
+        let r = lex_step(src.clone(), toks, i)
+        if (r < 0) {
+            return 0 - r
+        }
+        i = r
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Arenas. Everything the parser builds is a flat int list:
+//
+//   vals  stride 4 [kind, tok, a, b]
+//         0 ident (tok)  1 string (tok = the inner span)  2 number (tok)
+//         3 list (a = seq start, b = count)   4 inline node (a = node index)
+//   nodes stride 8 [tag_tok, prim_start, prim_count, fld_start, fld_count,
+//                   item_start, item_count, flags]
+//         flags: 1 = has body, 2 = inline (tag_tok = -1)
+//   seq   value indices (node primaries, list elements)
+//   flds  stride 2 [name_tok, value_index]
+//   items stride 2 [kind, ref]  kind 0 = field (ref = flds index),
+//                               kind 1 = child node (ref = node index)
+// ---------------------------------------------------------------------------
+
+fn nf(nodes List<int>, node int, f int) int {
+    return nodes.get(node * 8 + f)
+}
+
+fn set_nf(nodes List<int>, node int, f int, v int) int {
+    nodes.set(node * 8 + f, v)
+    return 0
+}
+
+fn vf(vals List<int>, v int, f int) int {
+    return vals.get(v * 4 + f)
+}
+
+fn set_vf(vals List<int>, v int, f int, x int) int {
+    vals.set(v * 4 + f, x)
+    return 0
+}
+
+/// `ident :` — a field item (in a body or in a `( ... )` group).
+fn is_field_start(toks List<int>, pos int, ntok int) bool {
+    if (tok_kind(toks, pos) != 1) {
+        return false
+    }
+    if (pos + 1 >= ntok) {
+        return false
+    }
+    return tok_kind(toks, pos + 1) == 10
+}
+
+/// `ident | string | number | [`: a primary-value position.
+fn is_primary_start(k int) bool {
+    if (k == 1) {
+        return true
+    }
+    if (k == 2) {
+        return true
+    }
+    if (k == 3) {
+        return true
+    }
+    if (k == 8) {
+        return true
+    }
+    return false
+}
+
+/// Item classification inside a `( ... )` group, a `{ body }` or a `[ ... ]`
+/// list. 0 = a value position, 1 = the closing token, 2 = separator,
+/// 3 = field, 4 = child node.
+fn item_role(
+    toks List<int>,
+    pos int,
+    ntok int,
+    close int,
+    allow_field int,
+    allow_child int
+) int {
+    let k = tok_kind(toks, pos)
+    if (k == close) {
+        return 1
+    }
+    if (k == 11) {
+        return 2
+    }
+    if (k == 12) {
+        return 2
+    }
+    if (allow_field == 1) {
+        if (is_field_start(toks, pos, ntok)) {
+            return 3
+        }
+    }
+    if (allow_child == 1) {
+        if (k == 1) {
+            return 4
+        }
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Parser (recursive over node nesting; nesting is capped at 64 by admission)
+// ---------------------------------------------------------------------------
+
+fn parse_value(
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    errs List<int>,
+    st List<int>,
+    depth int
+) int {
+    if (depth > 64) {
+        errs.set(0, 6)
+        return -1
+    }
+    let ntok = tok_count(toks)
+    let pos = st.get(0)
+    if (pos >= ntok) {
+        errs.set(0, 6)
+        return -1
+    }
+    let kind = tok_kind(toks, pos)
+    let vi = vals.len() / 4
+    var z = 0
+    for (z < 4) {
+        vals.push(0)
+        z = z + 1
+    }
+    set_vf(vals, vi, 1, pos)
+    if (kind == 1) {
+        set_vf(vals, vi, 0, 0)
+        st.set(0, pos + 1)
+        return vi
+    }
+    if (kind == 2) {
+        set_vf(vals, vi, 0, 1)
+        st.set(0, pos + 1)
+        return vi
+    }
+    if (kind == 3) {
+        set_vf(vals, vi, 0, 2)
+        st.set(0, pos + 1)
+        return vi
+    }
+    if (kind == 8) {
+        st.set(0, pos + 1)
+        var elems = List<int>.new()
+        var done = 0
+        for (done == 0) {
+            let p = st.get(0)
+            if (p >= ntok) {
+                errs.set(0, 6)
+                return -1
+            }
+            let role = item_role(toks, p, ntok, 9, 0, 0)
+            if (role == 1) {
+                st.set(0, p + 1)
+                done = 1
+            } else {
+                if (role == 2) {
+                    st.set(0, p + 1)
+                } else {
+                    let e = parse_value(
+                        src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+                    )
+                    if (errs.get(0) != 0) {
+                        return -1
+                    }
+                    elems.push(e)
+                }
+            }
+        }
+        set_vf(vals, vi, 0, 3)
+        set_vf(vals, vi, 2, seq.len())
+        set_vf(vals, vi, 3, elems.len())
+        copy_ints(elems, seq)
+        return vi
+    }
+    if (kind == 6) {
+        st.set(0, pos + 1)
+        let inode = parse_inline(
+            src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+        )
+        if (errs.get(0) != 0) {
+            return -1
+        }
+        set_vf(vals, vi, 0, 4)
+        set_vf(vals, vi, 2, inode)
+        return vi
+    }
+    errs.set(0, 6)
+    return -1
+}
+
+/// An inline `{ k: v, ... }` node: fields only, no tag, no body, emitted on
+/// one line inside whatever value position it occupies.
+fn parse_inline(
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    errs List<int>,
+    st List<int>,
+    depth int
+) int {
+    if (depth > 64) {
+        errs.set(0, 6)
+        return -1
+    }
+    let ntok = tok_count(toks)
+    let node = nodes.len() / 8
+    var z = 0
+    for (z < 8) {
+        nodes.push(0)
+        z = z + 1
+    }
+    set_nf(nodes, node, 0, -1)
+    set_nf(nodes, node, 7, 2)
+    var myfld = List<int>.new()
+    var done = 0
+    for (done == 0) {
+        let pos = st.get(0)
+        if (pos >= ntok) {
+            errs.set(0, 6)
+            return -1
+        }
+        let role = item_role(toks, pos, ntok, 7, 1, 0)
+        if (role == 0) {
+            errs.set(0, 6)
+            return -1
+        }
+        if (role == 1) {
+            st.set(0, pos + 1)
+            done = 1
+        }
+        if (role == 2) {
+            st.set(0, pos + 1)
+        }
+        if (role == 3) {
+            st.set(0, pos + 2)
+            let v = parse_value(
+                src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+            )
+            if (errs.get(0) != 0) {
+                return -1
+            }
+            myfld.push(pos)
+            myfld.push(v)
+        }
+    }
+    let fs = flds.len() / 2
+    copy_ints(myfld, flds)
+    set_nf(nodes, node, 3, fs)
+    set_nf(nodes, node, 4, myfld.len() / 2)
+    return node
+}
+
+/// One node (and, recursively, its body children).
+fn parse_node(
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    errs List<int>,
+    st List<int>,
+    depth int
+) int {
+    if (depth > 64) {
+        errs.set(0, 6)
+        return -1
+    }
+    let ntok = tok_count(toks)
+    let pos0 = st.get(0)
+    if (pos0 >= ntok) {
+        errs.set(0, 6)
+        return -1
+    }
+    if (tok_kind(toks, pos0) != 1) {
+        errs.set(0, 6)
+        return -1
+    }
+    let node = nodes.len() / 8
+    var z = 0
+    for (z < 8) {
+        nodes.push(0)
+        z = z + 1
+    }
+    set_nf(nodes, node, 0, pos0)
+    st.set(0, pos0 + 1)
+    var myprim = List<int>.new()
+    var myfld = List<int>.new()
+    var myitem = List<int>.new()
+    // primaries before the group
+    var pgo = 0
+    for (pgo == 0) {
+        let p = st.get(0)
+        if (p >= ntok) {
+            pgo = 1
+        } else {
+            if (!is_primary_start(tok_kind(toks, p))) {
+                pgo = 1
+            } else {
+                let v = parse_value(
+                    src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+                )
+                if (errs.get(0) != 0) {
+                    return -1
+                }
+                myprim.push(v)
+            }
+        }
+    }
+    // the optional ( primaries / fields ) group
+    let gpos = st.get(0)
+    if (gpos < ntok) {
+        if (tok_kind(toks, gpos) == 4) {
+            st.set(0, gpos + 1)
+            var gdone = 0
+            for (gdone == 0) {
+                let p = st.get(0)
+                if (p >= ntok) {
+                    errs.set(0, 6)
+                    return -1
+                }
+                let role = item_role(toks, p, ntok, 5, 1, 0)
+                if (role == 0) {
+                    let v = parse_value(
+                        src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+                    )
+                    if (errs.get(0) != 0) {
+                        return -1
+                    }
+                    myprim.push(v)
+                }
+                if (role == 1) {
+                    st.set(0, p + 1)
+                    gdone = 1
+                }
+                if (role == 2) {
+                    st.set(0, p + 1)
+                }
+                if (role == 3) {
+                    st.set(0, p + 2)
+                    let v = parse_value(
+                        src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+                    )
+                    if (errs.get(0) != 0) {
+                        return -1
+                    }
+                    myfld.push(p)
+                    myfld.push(v)
+                }
+            }
+        }
+    }
+    // the optional { body }
+    let bpos = st.get(0)
+    var has_body = 0
+    if (bpos < ntok) {
+        if (tok_kind(toks, bpos) == 6) {
+            has_body = 1
+            st.set(0, bpos + 1)
+            var bdone = 0
+            for (bdone == 0) {
+                let p = st.get(0)
+                if (p >= ntok) {
+                    errs.set(0, 6)
+                    return -1
+                }
+                let role = item_role(toks, p, ntok, 7, 1, 1)
+                if (role == 0) {
+                    errs.set(0, 6)
+                    return -1
+                }
+                if (role == 1) {
+                    st.set(0, p + 1)
+                    bdone = 1
+                }
+                if (role == 2) {
+                    st.set(0, p + 1)
+                }
+                if (role == 3) {
+                    st.set(0, p + 2)
+                    let v = parse_value(
+                        src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+                    )
+                    if (errs.get(0) != 0) {
+                        return -1
+                    }
+                    myfld.push(p)
+                    myfld.push(v)
+                    myitem.push(0)
+                    myitem.push(myfld.len() / 2 - 1)
+                }
+                if (role == 4) {
+                    let child = parse_node(
+                        src.clone(), toks, vals, nodes, seq, flds, items, errs, st, depth + 1
+                    )
+                    if (errs.get(0) != 0) {
+                        return -1
+                    }
+                    myitem.push(1)
+                    myitem.push(child)
+                }
+            }
+        }
+    }
+    // publish this node's ranges (children already published theirs, so every
+    // range stays contiguous in its pool)
+    let ps = seq.len()
+    copy_ints(myprim, seq)
+    set_nf(nodes, node, 1, ps)
+    set_nf(nodes, node, 2, myprim.len())
+    let fs = flds.len() / 2
+    copy_ints(myfld, flds)
+    set_nf(nodes, node, 3, fs)
+    set_nf(nodes, node, 4, myfld.len() / 2)
+    let istart = items.len() / 2
+    var j = 0
+    for (j < myitem.len() / 2) {
+        let ik = myitem.get(2 * j)
+        var ref = myitem.get(2 * j + 1)
+        if (ik == 0) {
+            ref = fs + ref
+        }
+        items.push(ik)
+        items.push(ref)
+        j = j + 1
+    }
+    set_nf(nodes, node, 5, istart)
+    set_nf(nodes, node, 6, myitem.len() / 2)
+    set_nf(nodes, node, 7, has_body)
+    return node
+}
+
+// ---------------------------------------------------------------------------
+// Frozen schema admission
+// ---------------------------------------------------------------------------
+
+fn tag_allowed(ntag Str) bool {
+    if (ntag == "descriptor") {
+        return true
+    }
+    if (ntag == "module") {
+        return true
+    }
+    if (ntag == "decl") {
+        return true
+    }
+    if (ntag == "type") {
+        return true
+    }
+    return false
+}
+
+/// The slot of an allowed field name inside its node's table, or -1.
+fn field_slot(ntag Str, name Str) int {
+    if (ntag == "descriptor") {
+        if (name == "schema") {
+            return 0
+        }
+        if (name == "revision") {
+            return 1
+        }
+        if (name == "profile") {
+            return 2
+        }
+        return -1
+    }
+    if (ntag == "module") {
+        if (name == "id") {
+            return 0
+        }
+        return -1
+    }
+    if (name == "id") {
+        return 0
+    }
+    if (name == "kind") {
+        return 1
+    }
+    return -1
+}
+
+fn field_one(
+    src Str,
+    toks List<int>,
+    flds List<int>,
+    ntag Str,
+    seen List<int>,
+    f int
+) int {
+    let name = tok_text(src.clone(), toks, flds.get(f * 2))
+    let slot = field_slot(ntag.clone(), name.clone())
+    if (slot < 0) {
+        return 9
+    }
+    if (seen.get(slot) != 0) {
+        return 8
+    }
+    seen.set(slot, 1)
+    return 0
+}
+
+/// Field admission for ONE node: every group field and every body field, in
+/// source order; unknown name first, then duplicate.
+fn fields_ok(
+    src Str,
+    toks List<int>,
+    nodes List<int>,
+    flds List<int>,
+    items List<int>,
+    node int,
+    ntag Str
+) int {
+    var seen = List<int>.new()
+    seen.push(0)
+    seen.push(0)
+    seen.push(0)
+    let fs = nf(nodes, node, 3)
+    let fc = nf(nodes, node, 4)
+    var i = 0
+    for (i < fc) {
+        let c = field_one(src.clone(), toks, flds, ntag.clone(), seen, fs + i)
+        if (c != 0) {
+            return c
+        }
+        i = i + 1
+    }
+    let istart = nf(nodes, node, 5)
+    let ic = nf(nodes, node, 6)
+    var j = 0
+    for (j < ic) {
+        if (items.get((istart + j) * 2) == 0) {
+            let c = field_one(
+                src.clone(), toks, flds, ntag.clone(), seen, items.get((istart + j) * 2 + 1)
+            )
+            if (c != 0) {
+                return c
+            }
+        }
+        j = j + 1
+    }
+    return 0
+}
+
+/// Pre-order walk over the tagged node tree (inline value nodes have no tag
+/// and are data, not schema). The root must be `descriptor`.
+fn schema_check(
+    src Str,
+    toks List<int>,
+    nodes List<int>,
+    flds List<int>,
+    items List<int>,
+    root int
+) int {
+    let root_tag = tok_text(src.clone(), toks, nf(nodes, root, 0))
+    if (root_tag != "descriptor") {
+        return 10
+    }
+    var stack = List<int>.new()
+    stack.push(root)
+    for (stack.len() > 0) {
+        let node = stack.remove(stack.len() - 1)
+        let ntag = tok_text(src.clone(), toks, nf(nodes, node, 0))
+        if (!tag_allowed(ntag.clone())) {
+            return 10
+        }
+        let fc = fields_ok(src.clone(), toks, nodes, flds, items, node, ntag.clone())
+        if (fc != 0) {
+            return fc
+        }
+        let istart = nf(nodes, node, 5)
+        let ic = nf(nodes, node, 6)
+        var i = 0
+        for (i < ic) {
+            if (items.get((istart + i) * 2) == 1) {
+                stack.push(items.get((istart + i) * 2 + 1))
+            }
+            i = i + 1
+        }
+    }
+    return 0
+}
+// ---------------------------------------------------------------------------
+// Canonical writer. The output accumulates into a BYTE vector, not a growing
+// `Str`: pushing one byte is amortized constant work, while a `Str` concat
+// re-copies the whole prefix on every append. That difference is not cosmetic
+// — the canonical form of a depth-d document is O(d^2) bytes of indentation, so
+// a `Str` accumulator re-copies it O(d) times, and a 40-deep all-bodies
+// document measured ~100M AV step units and could not finish under the 64M
+// step budget; the byte vector makes the writer linear in the emitted size.
+// ---------------------------------------------------------------------------
+
+/// Append the exact UTF-8 bytes of a `Str`.
+fn append_str(dst List<int>, s Str) int {
+    let bs = utf8_bytes(s.clone())
+    var i = 0
+    for (i < bs.len()) {
+        dst.push(bs.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+/// Append `4 * d` spaces (the lane's indent unit).
+fn append_indent(dst List<int>, d int) int {
+    let n = d * 4
+    var i = 0
+    for (i < n) {
+        dst.push(32)
+        i = i + 1
+    }
+    return 0
+}
+
+/// `tag` + the ONE `( primaries ; fields )` group the grammar admits.
+fn append_header(
+    dst List<int>,
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    node int
+) int {
+    append_str(dst, tok_text(src.clone(), toks, nf(nodes, node, 0)))
+    let ps = nf(nodes, node, 1)
+    let pc = nf(nodes, node, 2)
+    let fs = nf(nodes, node, 3)
+    let fc = nf(nodes, node, 4)
+    if (pc > 0) {
+        append_str(dst, "(")
+        var i = 0
+        for (i < pc) {
+            if (i > 0) {
+                append_str(dst, ", ")
+            }
+            append_value(dst, src.clone(), toks, vals, nodes, seq, flds, items, seq.get(ps + i))
+            i = i + 1
+        }
+        var j = 0
+        for (j < fc) {
+            append_str(dst, "; ")
+            append_field(dst, src.clone(), toks, vals, nodes, seq, flds, items, fs + j)
+            j = j + 1
+        }
+        append_str(dst, ")")
+    } else {
+        if (fc > 0) {
+            append_str(dst, "(")
+            var k = 0
+            for (k < fc) {
+                if (k > 0) {
+                    append_str(dst, "; ")
+                }
+                append_field(dst, src.clone(), toks, vals, nodes, seq, flds, items, fs + k)
+                k = k + 1
+            }
+            append_str(dst, ")")
+        }
+    }
+    return 0
+}
+
+/// `name: value`.
+fn append_field(
+    dst List<int>,
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    f int
+) int {
+    append_str(dst, tok_text(src.clone(), toks, flds.get(f * 2)))
+    append_str(dst, ": ")
+    append_value(dst, src.clone(), toks, vals, nodes, seq, flds, items, flds.get(f * 2 + 1))
+    return 0
+}
+
+/// One value in its single-line form: ident/number verbatim, string re-quoted
+/// with the same four escapes, `[a, b]` list, `{ k: v, k: v }` inline node.
+fn append_value(
+    dst List<int>,
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    v int
+) int {
+    let kind = vf(vals, v, 0)
+    if (kind == 0) {
+        append_str(dst, tok_text(src.clone(), toks, vf(vals, v, 1)))
+        return 0
+    }
+    if (kind == 2) {
+        append_str(dst, tok_text(src.clone(), toks, vf(vals, v, 1)))
+        return 0
+    }
+    if (kind == 1) {
+        append_str(dst, "\"")
+        append_str(dst, tok_text(src.clone(), toks, vf(vals, v, 1)))
+        append_str(dst, "\"")
+        return 0
+    }
+    if (kind == 3) {
+        append_str(dst, "[")
+        let ss = vf(vals, v, 2)
+        let n = vf(vals, v, 3)
+        var i = 0
+        for (i < n) {
+            if (i > 0) {
+                append_str(dst, ", ")
+            }
+            append_value(dst, src.clone(), toks, vals, nodes, seq, flds, items, seq.get(ss + i))
+            i = i + 1
+        }
+        append_str(dst, "]")
+        return 0
+    }
+    let node = vf(vals, v, 2)
+    let fs = nf(nodes, node, 3)
+    let fc = nf(nodes, node, 4)
+    if (fc == 0) {
+        append_str(dst, "{}")
+        return 0
+    }
+    append_str(dst, "{ ")
+    var j = 0
+    for (j < fc) {
+        if (j > 0) {
+            append_str(dst, ", ")
+        }
+        append_field(dst, src.clone(), toks, vals, nodes, seq, flds, items, fs + j)
+        j = j + 1
+    }
+    append_str(dst, " }")
+    return 0
+}
+
+/// Emit the canonical document as UTF-8 bytes. The body walk is an explicit
+/// stack over the arena (never a recursion carrying the growing output), so
+/// both the AV slot accounting and the emitted-byte work stay linear.
+fn emit_document(
+    src Str,
+    toks List<int>,
+    vals List<int>,
+    nodes List<int>,
+    seq List<int>,
+    flds List<int>,
+    items List<int>,
+    root int
+) List<int> {
+    var out = List<int>.new()
+    append_header(out, src.clone(), toks, vals, nodes, seq, flds, items, root)
+    if (nf(nodes, root, 7) != 1) {
+        append_str(out, "\n")
+        return out
+    }
+    if (nf(nodes, root, 6) == 0) {
+        append_str(out, " {}\n")
+        return out
+    }
+    append_str(out, " {\n")
+    var stack = List<int>.new()
+    var curs = List<int>.new()
+    stack.push(root)
+    curs.push(0)
+    for (stack.len() > 0) {
+        let top = stack.len() - 1
+        let node = stack.get(top)
+        let cur = curs.get(top)
+        if (cur < nf(nodes, node, 6)) {
+            curs.set(top, cur + 1)
+            let depth = stack.len()
+            let base = nf(nodes, node, 5)
+            let ik = items.get((base + cur) * 2)
+            let iref = items.get((base + cur) * 2 + 1)
+            append_indent(out, depth)
+            if (ik == 0) {
+                append_field(out, src.clone(), toks, vals, nodes, seq, flds, items, iref)
+                append_str(out, "\n")
+            } else {
+                append_header(out, src.clone(), toks, vals, nodes, seq, flds, items, iref)
+                if (nf(nodes, iref, 7) != 1) {
+                    append_str(out, "\n")
+                } else {
+                    if (nf(nodes, iref, 6) == 0) {
+                        append_str(out, " {}\n")
+                    } else {
+                        append_str(out, " {\n")
+                        stack.push(iref)
+                        curs.push(0)
+                    }
+                }
+            }
+        } else {
+            let d = stack.len() - 1
+            stack.remove(stack.len() - 1)
+            curs.remove(curs.len() - 1)
+            append_indent(out, d)
+            append_str(out, "}\n")
+        }
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/// The registered profile identity of this data slice.
+pub fn atom_profile() Str {
+    return "aac.atom-data/v1"
+}
+
+/// Parse + admit + emit. `errs[0]` holds the rejection code (0 = ok); the
+/// result is the canonical UTF-8 byte vector (empty on rejection).
+fn build_canonical(text Str, errs List<int>) List<int> {
+    if (text.len() > 262144) {
+        errs.set(0, 6)
+        return List<int>.new()
+    }
+    var toks = List<int>.new()
+    let lc = lex(text.clone(), toks)
+    if (lc != 0) {
+        errs.set(0, lc)
+        return List<int>.new()
+    }
+    let ntok = tok_count(toks)
+    if (ntok == 0) {
+        errs.set(0, 1)
+        return List<int>.new()
+    }
+    var vals = List<int>.new()
+    var nodes = List<int>.new()
+    var seq = List<int>.new()
+    var flds = List<int>.new()
+    var items = List<int>.new()
+    var st = List<int>.new()
+    st.push(0)
+    let root = parse_node(
+        text.clone(), toks, vals, nodes, seq, flds, items, errs, st, 0
+    )
+    if (errs.get(0) != 0) {
+        return List<int>.new()
+    }
+    if (st.get(0) != ntok) {
+        errs.set(0, 7)
+        return List<int>.new()
+    }
+    let sc = schema_check(text.clone(), toks, nodes, flds, items, root)
+    if (sc != 0) {
+        errs.set(0, sc)
+        return List<int>.new()
+    }
+    return emit_document(text.clone(), toks, vals, nodes, seq, flds, items, root)
+}
+
+/// Parse + schema-check + emit canonical UTF-8 bytes, outcome byte first:
+/// `[0, ...bytes]` on success, `[code]` on rejection.
+pub fn canonicalize(text Str) List<int> {
+    var errs = List<int>.new()
+    errs.push(0)
+    let bs = build_canonical(text.clone(), errs)
+    if (errs.get(0) != 0) {
+        return outcome(errs.get(0))
+    }
+    var out = List<int>.new()
+    out.push(0)
+    copy_bytes(bs, out)
+    return out
+}
+
+/// The canonical text, or the empty `Str` on rejection.
+pub fn canonical_text(text Str) Str {
+    var errs = List<int>.new()
+    errs.push(0)
+    let bs = build_canonical(text.clone(), errs)
+    if (errs.get(0) != 0) {
+        return ""
+    }
+    let decoded = decode_utf8(bs)
+    is decoded {
+        Some(v) -> {
+            return v
+        }
+        None -> {
+            return ""
+        }
+    }
+}
