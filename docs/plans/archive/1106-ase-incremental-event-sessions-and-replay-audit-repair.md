@@ -376,6 +376,12 @@ stage: new；PLAN-1106 r1；outcome: pass（有界修复合同可交接，不是
 
 本轮文档预检：10个独立checkbox任务/10个V用例/9个AC（含review/merge）及0–10章节映射、22处本地链接、依赖唯一身份与无新增回边、围栏/空白检查通过。1020/1021/1022归档及7个已核源码/测试文件内容hash未变；从1023剥除两块具名更正后，原文本hash及frontmatter与读前完全一致，证明只追加更正。静态检查不证明修复能力或新反例已运行；全部实现任务仍未勾选。
 
+stage: goal | plan_id: PLAN-1106 | plan_revision: r1 | round: 1 | from: archived-verify | to: done | status: archived | outcome: pass | worktree: 无（lang-1106 组已移除） | commit: 6708a123e（归档链接补正，文档-only）/ 交付 64e518f52（lang）＋70f06862（ui） | next: done
+
+- **归档态核验（2026-11-20）**：master tip＝交付线+归档 docs；`git log -1 -- docs/plans/archive/1106-*` 命中 94ac2d062（归档提交）；SD-01 `docs/specs/ace-migration/component-event-sessions.md`、SD-02（[ASE交互现状](../../specs/ase/m0-interactive-sessions.md) 头部 2026-11-20 修复段）、SD-04a `docs/design/strategy/ase-m0-delivery-roadmap.md`（M0-SESSION/M0-CLOSE 已恢复）、SD-03 auto-ui `docs/specs/runtime/ase-m0-frame-consumption.md`（70f06862）均在落地提交内；`D-ASE-1023-REPLAY` 记 **CLOSED**；auto-ui 70f06862 为 master 祖先（`git merge-base --is-ancestor` 退出码 0）；分支 `plan-1106-dev` 已删，`D:/autostack/.wt/lang-1106` 与 `D:/autostack/plan-artifacts/plan-1106` 均 `Test-Path=False`。
+- **归档门补正（文档-only，未重开实现/验收）**：`git mv` 入 archive/ 后未同步的入链共 10 处（本文件 7、m0 spec 1、roadmap 2、00-intro 1）从 `docs/plans/archive/` 解析失败（如 `archive/1023-*`→`archive/archive/1023-*`、`../specs/*`→`archive/../specs/*`）。已按 merge 归档门 “links resolve from the real parent” 改为 `../../design|specs`、`1023-*`、`plans/archive/1106-*`，并更正 00-intro 过期“规划/pending”为已交付已闭。提交 6708a123e；复核本次扫描 1106 相关断链 **0**（全表 170→160，余 160 为 KNOWN-DEBT 等既有历史断链，非本计划改面）。
+- **未到期门**：批回归收据 last_covered 1098（2026-11-20）→ 1106%5=1 且 <48h，非 due；本会话仅 docs 补正，未触发新一次 `cargo t all`。主检出 WIP 仅并行会话（1107/1081 规划）docs 簿记，未纳入本会话提交（00-intro 仅暂存本会话 hunk）。
+
 ## 10. 待澄清事项
 
 T-01负责选择实际可行的代码/状态根/单事件入口与事务观察方法，最多两策略；ProgramSnapshot全局cell与owned会话只是候选，不能因名称存在跳过普通Node整链。涉及共享UI在途改动先核owner/短写窗；若必要新语义无法保持当前支持或原验收，明确needs_replan及最小范围变更供决定，不默降为事件重放或仅返回数字。
