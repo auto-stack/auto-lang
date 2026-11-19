@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1107
-status: executing
+status: reviewed
 feature_name: ACE Python AV与A2PY同源互操作及工程分发集成
 author: [Codex]
 created_at: 2026-11-19
@@ -282,7 +282,7 @@ T-01 收据：AV 基线 `cargo t ace-python` PASS 10/10（V-01 2.98s，wall 4.12
 
 临时件：`D:/autostack/plan-artifacts/plan-1107/{logs,probe}`（收尾删除）；探针 `crates/abi/tests/cases/py_probe_1107.rs` + `tests/conformance.rs` 注册行（T-06 由正式 case 取代后移除，当前未提交）。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 1 | from: drafting | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 5089d3de0 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 1 | from: drafting | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 5089d3de0 | next: work`
 
 2026-11-20 · stage: work（round 2）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `c454eba02` | task_ids: T-02 主体落地（未关闭，关闭需 T-03 消费与 V-02/04/08）| outcome: pass（round 级；work stage 进行中）| next_responsible_role: work（T-02 收尾：A2PY 准入面；随后 T-03）
 
@@ -292,7 +292,7 @@ T-02 增量（真实执行，冻结提交 `c454eba02`，树内 clean）：新增
 
 未决（下一 round）：A2PY 编译面仍不接受 `use.py`（Scalar profile + 无 foreign 准入），`AdmittedForeign` 依赖 host authority/pages，声明级（无 PyO3/symbols）准入路径待定；选定后 T-03 才能用事实 lowering 出原生 Python。本 round 未跑 V-02/04/08，不记 PASS。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: c454eba02 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 2 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: c454eba02 | next: work`
 
 2026-11-20 · stage: work（round 3）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `6f307e2b9` | task_ids: T-02 准入面完成（T-02 仍待 T-03 消费与 V 例）| outcome: pass（round 级）| next_responsible_role: work（T-03 原生 Python lowering）
 
@@ -306,7 +306,7 @@ Round 3 增量（冻结提交 `6f307e2b9`，树内 clean）：
 
 未决（下一 round）：A2PY provider 仍把 py 声明当 ctypes 包装（`provider.rs:57-65`）且无原生 lowering——T-03 需按 `py_ops` 事实发射原生 Python（含转换/错误/资源/print/main），并让 `ac-build --target a2py` 真跑 §5.1。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 6f307e2b9 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 3 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 6f307e2b9 | next: work`
 
 2026-11-20 · stage: work（round 4）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `7c10af9b4` | task_ids: T-03 主体（未关闭）| outcome: pass（round 级）| next_responsible_role: work（T-03 收尾：aggregates 族 console print lowering）
 
@@ -320,7 +320,7 @@ Round 4 增量（冻结提交 `7c10af9b4`，树内 clean）：
 
 未决（下一 round）：`p1107_t03_section51_runs_as_native_python` 现为 `#[ignore]`——aggregates 族的 console print intrinsic（`auto.console.print.{f32,f64,i32,bool,str,char}.v1`）在 A2PY 尚无关卡映射（`resolve_stdlib_port_id` 只认 external 源名），故 §5.1 的 `print(...)` 走到 "call target def #21 is not an admitted Python function"。T-03 关闭需：给 A2PY 接通 console print 家族（按 port 目录或 runtime helper），然后解除 ignore 并断言 62 行/首终 loss/shape/pred0。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 7c10af9b4 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 4 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 7c10af9b4 | next: work`
 
 2026-11-20 · stage: work（round 5）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `1045a8f91` | task_ids: T-03 继续（console 车道已通，staged-text 读回待做）| outcome: pass（round 级）| next_responsible_role: work（T-03 收尾）
 
@@ -330,7 +330,7 @@ Round 5 增量（冻结提交 `1045a8f91`，树内 clean）：
 
 证据：`cargo nextest -p ace-a2x-python` 5 passed / 1 skipped（ignore 具名）；`cargo t ace-python` PASS 10/10；`cargo t ace-a2x` 仅两红：预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71，主检出同红）与 `ace-a2x-worker pyready_03`（并行组偶发，**隔离重跑 PASS 0.43s**，环境归因）。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 5 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 1045a8f91 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 5 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 1045a8f91 | next: work`
 
 2026-11-20 · stage: work（round 6 · **V-01 A2PY 真跑通过**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `4c01fb05d` | task_ids: T-03 核心达成（V-01 双端），T-03 仍未关闭（V-02/04/08 待做）| outcome: pass（round 级）| next_responsible_role: work（T-03 余量 / T-06 病例）
 
@@ -344,7 +344,7 @@ Round 6 增量（冻结提交 `4c01fb05d`，树内 clean）：
 
 下一步：T-03 余量（V-02 绑定/kwargs/源序、V-04 错误映射、V-08 回归）→ 之后 T-05 工程/SDK 接通（`ac-build --target a2py` 走 Aggregates+py 契约），T-06 共享病例与固定组并集。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 6 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 4c01fb05d | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 6 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 4c01fb05d | next: work`
 
 2026-11-20 · stage: work（round 7 · **978 工程入口接通 use.py 工程**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `e74094d5f` | task_ids: T-05 主体（V-05 部分：build/emit+真跑；SDK/身份/缓存待做）| outcome: pass（round 级）| next_responsible_role: work（T-05 余量或 T-06）
 
@@ -358,7 +358,7 @@ Round 7 增量（冻结提交 `e74094d5f`，树内 clean）：
 
 未决（下一 round）：T-05 余量（a2py 运行/兼容/选择账、解释器与包身份轴、`ac-build run --sdk` 消费、可重定位/缺环境具名失败）；T-06 共享病例与固定组并集；V-02/V-04 协议病例。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 7 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: e74094d5f | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 7 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: e74094d5f | next: work`
 
 2026-11-20 · stage: work（round 8 · **a2py SDK/重定位/依赖失败分账**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `db8446bde`+`6b45a5cbe`级 | task_ids: T-05 继续（V-05 运行/SDK 面、V-07 重定位与缺失失败）| outcome: pass（round 级）| next_responsible_role: work（T-05 余量：解释器/包身份轴、缓存失效）
 
@@ -371,7 +371,7 @@ Round 8 增量（树内 clean；提交 `db8446bde` 与随后 `missing-package` �
 
 未决：T-05 余量（BuildIdentity/RuntimeCompatibility 的**解释器与包身份轴**、py 工程暖编辑/精确失效、`ac-build run --sdk` CLI 级用例）；T-06 共享病例/固定组并集；V-02/V-04 协议病例；支持矩阵与文档沉淀。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 8 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: db8446bde | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 8 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: db8446bde | next: work`
 
 2026-11-20 · stage: work（round 9 · **单一同源语料 + AV 端 V-01 永久用例**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `cb3fee558` | task_ids: T-06 主体（共享病例层）| outcome: pass（round 级）| next_responsible_role: work（T-05 身份轴 / T-06 余量）
 
@@ -384,7 +384,7 @@ Round 9 增量（冻结提交 `cb3fee558`，树内 clean）：
 
 未决：T-05 余量（解释器/包身份轴、暖编辑精确失效、CLI 级 `run --sdk` 用例）；T-06 余量（V-02 绑定/kwargs/源序、V-04 错误/位置、V-08 回归控制、固定组选择理由写回）；支持矩阵与 Specs 沉淀留待 review/merge。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 9 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: cb3fee558 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 9 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: cb3fee558 | next: work`
 
 2026-11-20 · stage: work（round 10 · **V-02 病例：A2PY 通过，AV 暴露 lane 缺陷**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `be7eb83fe` | task_ids: V-02 部分（A2PY 真跑+oracle；AV 缺陷待 AV owner）| outcome: pass（round 级；AC-03 因 AV lane 缺陷不能宣称）| next_responsible_role: work（T-05 余量）＋ AV owner（V-02 AV 缺陷）
 
@@ -401,7 +401,7 @@ Round 10 增量（冻结提交 `be7eb83fe`，树内 clean）：
 
 未决：AV V-02 帧/打印缺陷（owner=AV/1094，具名复现见上）；T-05 余量（解释器/包身份轴、暖编辑失效、CLI run 用例）；V-04 错误/位置病例；V-08 回归控制；支持矩阵与 Specs。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 10 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: be7eb83fe | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 10 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: be7eb83fe | next: work`
 
 2026-11-20 · stage: work（round 11 · **AV V-02 缺陷最小化复现**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `<见本轮提交>` | task_ids: V-02 AV 缺陷定位（归 AV/1094 owner）| outcome: pass（round 级）| next_responsible_role: work（T-05 余量）＋ AV owner
 
@@ -417,7 +417,7 @@ Round 11 增量：
 
 影响：AC-03/V-02 的 AV 腿保持未关闭（具名外部 owner）；A2PY 腿已独立成立。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 11 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 11 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 12 · **AV 缺陷第二层定位**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: 无实现改动（本轮仅定位）| task_ids: V-02 AV 缺陷定位（归 AV/1094 owner）| outcome: pass（round 级）| next_responsible_role: AV owner / work（其他任务）
 
@@ -428,7 +428,7 @@ Round 12 增量（无实现提交；探针已删除，树内 clean）：
   - 结论收窄：缺陷位于 **AV 执行侧的 ABC/foreign 准入或 console host 接线**（或其与多 foreign 调用的寄存器/槽交互），不在共享语义与 lowering。复现用例保持 `#[ignore]` 具名，交 AV/1094 owner；1107 不在共享层为 AV 私有执行路径打补丁。
 - 影响不变：AC-03/V-02 AV 腿未关闭；A2PY 腿已独立成立（同源输出与 oracle 一致）。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
 
 2026-11-20 · stage: work（round 13 · **V-02 AV 缺陷已修复，AV/A2PY 两端同源通过**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `efb78858a` | task_ids: V-02 关闭（两端）；T-05/T-06 余量仍在 | outcome: pass（round 级）| next_responsible_role: work（T-05 身份轴 / T-06 余量 / V-04）
 
@@ -441,7 +441,7 @@ Round 13 实现（冻结提交 `efb78858a`，树内 clean）：
 
 AC-03/V-02：**两端均已成立**（AV 真实运行 + A2PY 原生 Python，同一共享语料 + 独立 oracle）。余量：T-05 解释器/包身份轴与暖编辑、V-04 错误/位置、V-08 回归控制、支持矩阵与 Specs。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
 
 2026-11-20 · stage: work（round 14 · **V-04 错误语义三腿一致 + V-08 非 Python 控制**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `9944c349b` | task_ids: V-04 部分（未捕获异常/失败不充 PASS）、V-08 控制 | outcome: pass（round 级）| next_responsible_role: work（V-04 余量：错误类映射/位置；T-05 身份轴；SD 沉淀）
 
@@ -456,7 +456,7 @@ Round 14 增量（冻结提交 `9944c349b`，树内 clean）：
 
 余量：V-04 的错误**类映射/用户位置**在 A2PY 仍是 Python traceback（未做共享错误类）；T-05 解释器/包身份轴与暖编辑；V-07 缺 torch/缺解释器具名失败；SD-01..04 Specs 沉淀；随后 T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
 
 2026-11-20 · stage: work（round 15 · **V-05 legacy 路径排除 + V-07 缺解释器具名失败**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-05/V-07 部分 | outcome: pass（round 级）| next_responsible_role: work（V-06 暖编辑/身份轴、支持矩阵、SD-*) 
 
@@ -469,7 +469,7 @@ Round 15 增量：
 
 余量：V-06（冷/暖/body 编辑/helper 变更/包与 provider 身份/兼容换包的计数与失效）；AC-06 支持矩阵；SD-01..04 Specs；T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 16 · **V-06 冷/暖/编辑真实计数**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 主体 | outcome: pass（round 级）| next_responsible_role: work（支持矩阵/SD-*）→ review/merge
 
@@ -484,7 +484,7 @@ Round 16 增量：
 
 余量：解释器/包身份轴（RuntimeCompatibility 侧）、helper/包/provider 兼容换包的失效矩阵（V-06 剩余）、AC-06 支持矩阵、SD-01..04 Specs、T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 17 · **V-06 身份轴与 provider 参与**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 关闭（工程/SDK 侧）| outcome: pass（round 级）| next_responsible_role: work（支持矩阵 + SD-* 沉淀）→ review/merge
 
@@ -499,7 +499,7 @@ Round 17 增量：
 
 余量：AC-06 支持矩阵（平台/解释器/torch/包集合×AV/A2PY/978）、SD-01..04 Specs 沉淀、T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 18 · **AC-06 支持矩阵 + SD-01..04 沉淀草稿**）| plan_id: PLAN-1107 | plan_revision: r2 | task_ids: AC-06 文档面、SD 草稿 | outcome: pass（round 级；**AC-04 仍未满足：V-03 未执行**）| next_responsible_role: work（V-03）→ review/merge
 
@@ -510,7 +510,7 @@ Round 18 增量：
 
 余量：V-03 真实用例（同一 Tensor 多次传递、别名修改、显式 float 后 backward、错误转换后继续、weakcopy 红控制、weakref/资源 trace 与 Auto finally），A2PY 错误类映射；随后 T-07 独立复审（含 SD 校验）、T-08 合入与清理。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
 
 2026-11-20 · stage: work（round 19 · **V-03 对象身份/别名（两端）**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-03 部分 | outcome: pass（round 级）| next_responsible_role: work（V-03 余量判定）→ review/merge
 
@@ -530,7 +530,7 @@ V-03 覆盖判定（诚实）：身份/别名/重复传参 ✔；资源/close（
 
 余量：AC-04 的残余项按上判定（源面不可表达的负控）；A2PY 错误类映射；T-07 复审（含 SD 校验与 AC 勾稽）、T-08 合入清理。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
@@ -544,7 +544,7 @@ goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 
 
 **修复方向（下一 round 实施）**：让帧的每个动态操作数**只求值一次**——在共享前门注入 Auto 侧 chunk helper（`__py_chunk_i/__py_chunk_o/__py_chunk_b(n)`：由同一个入参生成 `tag <len>\n<digits>\n`），resolver 用一次 helper 调用替换现有的 `Disp(dlen)+Disp(value)` 两段；帧字节与 AV wire **保持逐字节不变**（同一输入生成同一文本），A2PY 事实不变。修复须带两类回归：①一位数 token 的重复求值（副作用一次）；②两位数及以上 token 的帧长度一致（本次失败用例）。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
 
 2026-11-20 · stage: work（round 13 · **V-02 AV 缺陷已修复，AV/A2PY 两端同源通过**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `efb78858a` | task_ids: V-02 关闭（两端）；T-05/T-06 余量仍在 | outcome: pass（round 级）| next_responsible_role: work（T-05 身份轴 / T-06 余量 / V-04）
 
@@ -557,7 +557,7 @@ Round 13 实现（冻结提交 `efb78858a`，树内 clean）：
 
 AC-03/V-02：**两端均已成立**（AV 真实运行 + A2PY 原生 Python，同一共享语料 + 独立 oracle）。余量：T-05 解释器/包身份轴与暖编辑、V-04 错误/位置、V-08 回归控制、支持矩阵与 Specs。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
 
 2026-11-20 · stage: work（round 14 · **V-04 错误语义三腿一致 + V-08 非 Python 控制**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `9944c349b` | task_ids: V-04 部分（未捕获异常/失败不充 PASS）、V-08 控制 | outcome: pass（round 级）| next_responsible_role: work（V-04 余量：错误类映射/位置；T-05 身份轴；SD 沉淀）
 
@@ -572,7 +572,7 @@ Round 14 增量（冻结提交 `9944c349b`，树内 clean）：
 
 余量：V-04 的错误**类映射/用户位置**在 A2PY 仍是 Python traceback（未做共享错误类）；T-05 解释器/包身份轴与暖编辑；V-07 缺 torch/缺解释器具名失败；SD-01..04 Specs 沉淀；随后 T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
 
 2026-11-20 · stage: work（round 15 · **V-05 legacy 路径排除 + V-07 缺解释器具名失败**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-05/V-07 部分 | outcome: pass（round 级）| next_responsible_role: work（V-06 暖编辑/身份轴、支持矩阵、SD-*) 
 
@@ -585,7 +585,7 @@ Round 15 增量：
 
 余量：V-06（冷/暖/body 编辑/helper 变更/包与 provider 身份/兼容换包的计数与失效）；AC-06 支持矩阵；SD-01..04 Specs；T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 16 · **V-06 冷/暖/编辑真实计数**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 主体 | outcome: pass（round 级）| next_responsible_role: work（支持矩阵/SD-*）→ review/merge
 
@@ -600,7 +600,7 @@ Round 16 增量：
 
 余量：解释器/包身份轴（RuntimeCompatibility 侧）、helper/包/provider 兼容换包的失效矩阵（V-06 剩余）、AC-06 支持矩阵、SD-01..04 Specs、T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 17 · **V-06 身份轴与 provider 参与**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 关闭（工程/SDK 侧）| outcome: pass（round 级）| next_responsible_role: work（支持矩阵 + SD-* 沉淀）→ review/merge
 
@@ -615,7 +615,7 @@ Round 17 增量：
 
 余量：AC-06 支持矩阵（平台/解释器/torch/包集合×AV/A2PY/978）、SD-01..04 Specs 沉淀、T-07 复审、T-08 合入。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 2026-11-20 · stage: work（round 18 · **AC-06 支持矩阵 + SD-01..04 沉淀草稿**）| plan_id: PLAN-1107 | plan_revision: r2 | task_ids: AC-06 文档面、SD 草稿 | outcome: pass（round 级；**AC-04 仍未满足：V-03 未执行**）| next_responsible_role: work（V-03）→ review/merge
 
@@ -626,7 +626,7 @@ Round 18 增量：
 
 余量：V-03 真实用例（同一 Tensor 多次传递、别名修改、显式 float 后 backward、错误转换后继续、weakcopy 红控制、weakref/资源 trace 与 Auto finally），A2PY 错误类映射；随后 T-07 独立复审（含 SD 校验）、T-08 合入与清理。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 18 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 83d305ec4 | next: work`
 
 2026-11-20 · stage: work（round 19 · **V-03 对象身份/别名（两端）**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-03 部分 | outcome: pass（round 级）| next_responsible_role: work（V-03 余量判定）→ review/merge
 
@@ -646,7 +646,7 @@ V-03 覆盖判定（诚实）：身份/别名/重复传参 ✔；资源/close（
 
 余量：AC-04 的残余项按上判定（源面不可表达的负控）；A2PY 错误类映射；T-07 复审（含 SD 校验与 AC 勾稽）、T-08 合入清理。
 
-goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 19 | from: work | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 ## 10. 待澄清事项
 
