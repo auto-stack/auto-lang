@@ -13,6 +13,15 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
 后端选择/身份/退役规则见 [native-backend-and-retirement.md](native-backend-and-retirement.md)。
 完整语言面、AAC/ACC native 自举与其它能力仍由后续计划承接。
 
+## AAC 基线合同（PLAN-1044 已交）
+
+AAC（用 Auto 实现 AC 编译器主体）的 CS/CL 分账、主体归属与信任边界、桥/代际
+合同、资源 profile、供应矩阵（F01–F10）与阶段/跨仓交接契约已由 PLAN-1044 冻结，
+规范见 [aac-baseline-and-subject.md](aac-baseline-and-subject.md)（schema
+`autolang.aac-baseline/1`，准入校验器 `crates/auto-lang-core/src/test_cases/aac_baseline.rs`）。
+本文件继续描述**现行 Rust AC 事实**（reference 与历史阶段），不提前写成 AAC 已实现；
+完整 AAC 自举仍由 1053/1054 独立验收，阶段切片由 1045–1052/1056 各包原门关闭。
+
 ## 目标与范围
 
 - 消费 `verify::CheckedModule`（唯一合法来源），**经 `auto-mir-lower` 降到共享 Typed MIR**；
