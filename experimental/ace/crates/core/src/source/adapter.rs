@@ -192,7 +192,14 @@ pub fn compile_language_source(
     module_path: &str,
     capabilities: &[String],
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
-    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Auto)?;
+    // PLAN-1082 (T-03): graft the frozen 972 assembled stdlib list module
+    // (name-mangled) onto the single-module ordinary face when the source
+    // references the legacy `List.new(` constructor or a HOF method — the
+    // method surface dispatches to these REAL public functions (same
+    // frozen file, same compiler; never a second algorithm). Without a
+    // hit the source compiles byte-identically (zero graft, zero drift).
+    let grafted = graft_stdlib_list(src);
+    let parts = compile_parts_with(&grafted, module_path, capabilities, SourceProfile::Auto)?;
     let checked = crate::verify::verify_closures(parts.bundle)?;
     Ok(CompiledSource {
         profile: super::AUTO_SOURCE_PROFILE,
@@ -200,6 +207,136 @@ pub fn compile_language_source(
         atom_text: parts.atom_text,
         checked,
     })
+}
+
+/// The frozen 972 assembled stdlib list module — identity is the repo file
+/// itself (same source the packages-aggregates-ct lane assembles).
+const STDLIB_ASM_LIST_AT: &str = include_str!("../../../../../../stdlib/ace/asm/list.at");
+
+/// The mangled namespace for grafted stdlib list functions on the
+/// ordinary face (double-underscore prefix; a user fn colliding with it
+/// keeps the ordinary duplicate-fn diagnostic).
+pub const STDLIB_LIST_MANGLE: &str = "__std_list_";
+
+/// Every function name of the frozen module (public HOF family + the
+/// private sort helpers — all mangled uniformly so internal calls stay
+/// connected).
+const STDLIB_LIST_FNS: &[&str] = &[
+    "sum",
+    "find_first_gt",
+    "pop",
+    "total_len",
+    "reduce",
+    "find",
+    "any",
+    "all",
+    "filter",
+    "map",
+    "sort",
+    "copy_all",
+    "drain_into",
+    "min_index",
+];
+
+fn needs_stdlib_list_graft(src: &str) -> bool {
+    src.contains("List.new(")
+        || src.contains(".map(")
+        || src.contains(".filter(")
+        || src.contains(".reduce(")
+        || src.contains(".find(")
+        || src.contains(".any(")
+        || src.contains(".all(")
+}
+
+/// Rename every function of the frozen module (declarations AND internal
+/// calls; method-call shapes `.name(` are excluded by the preceding-dot
+/// check) into the mangled namespace. Pure text transform over frozen
+/// bytes — verified byte-stable by the 1082 unit test.
+fn mangle_stdlib_list(src: &str) -> String {
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len() + 256);
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b.is_ascii_alphanumeric() || b == b'_' {
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            let word = &src[start..i];
+            let prev_dot = start > 0 && bytes[start - 1] == b'.';
+            let prev_word = start > 0
+                && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_');
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' ) {
+                j += 1;
+            }
+            let call_shaped = j < bytes.len() && bytes[j] == b'(';
+            if word == "pub" && src[j..].starts_with("fn ") {
+                // the auto face has no `pub` token (visibility is a no-op
+                // in a single module) — drop the marker from the graft.
+                continue;
+            }
+            if call_shaped && !prev_dot && !prev_word && STDLIB_LIST_FNS.contains(&word) {
+                out.push_str(STDLIB_LIST_MANGLE);
+            }
+            out.push_str(word);
+        } else {
+            out.push(b as char);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn graft_stdlib_list(src: &str) -> String {
+    if !needs_stdlib_list_graft(src) {
+        return src.to_string();
+    }
+    let mangled = mangle_stdlib_list(STDLIB_ASM_LIST_AT);
+    format!("{src}
+{mangled}
+")
+}
+
+#[cfg(test)]
+mod stdlib_list_graft_tests {
+    use super::*;
+
+    /// PLAN-1082: the graft transform is byte-stable over the frozen
+    /// module — every declared fn mangled exactly once, internal calls
+    /// connected, method-call shapes untouched, `pub` markers dropped,
+    /// and no bare set-name call survives.
+    #[test]
+    fn mangle_is_stable_and_complete() {
+        let m = mangle_stdlib_list(STDLIB_ASM_LIST_AT);
+        for name in STDLIB_LIST_FNS {
+            assert!(
+                m.contains(&format!("fn {STDLIB_LIST_MANGLE}{name}(")),
+                "declaration of {name} must be mangled"
+            );
+        }
+        // method-call shapes on receivers stay unmangled
+        assert!(m.contains("ys.push(x)"));
+        assert!(m.contains("xs.len()"));
+        assert!(m.contains("work.remove(mi)"));
+        // internal free-fn calls are renamed
+        assert!(m.contains("__std_list_copy_all(xs, work, 0)"));
+        assert!(m.contains("__std_list_drain_into(work, ys, xs.len())"));
+        assert!(m.contains("__std_list_min_index(work, 0, 1, work.get(0))"));
+        // no bare public-name declarations remain
+        assert!(!m.contains("
+fn sort("));
+        assert!(!m.contains("
+fn map("));
+        // pub markers dropped (auto face has no pub token)
+        assert!(!m.contains("pub "));
+        // zero-graft identity for sources without the trigger faces
+        let plain = "fn main() int { return 1 }";
+        assert_eq!(graft_stdlib_list(plain), plain);
+        assert!(graft_stdlib_list("fn main() int { let xs = List.new(1, 2)
+ return xs[0] }").len() > 100);
+    }
 }
 
 /// PLAN-1026: the py training lane — the AGGREGATES surface with the

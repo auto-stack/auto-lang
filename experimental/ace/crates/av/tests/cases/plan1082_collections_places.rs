@@ -54,6 +54,34 @@ fn ok_i32(src: &str) -> i32 {
     }
 }
 
+/// The first compile diagnostic as (stage, code) — for pinning the named
+/// rejection of a missing/forbidden face.
+fn diag(src: &str) -> (String, String) {
+    match ace_core::source::compile_language_source(src, "p1082.at", &[]) {
+        Ok(_) => panic!("expected a compile diagnostic, got Ok"),
+        Err(ds) => {
+            let d = ds.first().expect("at least one diagnostic");
+            (format!("{:?}", d.stage).to_lowercase(), d.code.clone())
+        }
+    }
+}
+
+/// The trap kind of an executed program (SEM-02 observation face).
+fn trap_kind(src: &str) -> String {
+    match run(src).0 {
+        ExecOutcome::Trap { kind, .. } => format!("{kind:?}"),
+        other => panic!("expected a trap, got {other:?}"),
+    }
+}
+
+fn ok_stdout(src: &str) -> String {
+    let (out, capture) = run(src);
+    match out {
+        ExecOutcome::Success { .. } => String::from_utf8(capture.stdout).expect("stdout is UTF-8"),
+        other => panic!("expected a success, got {other:?}"),
+    }
+}
+
 /// Human-readable current outcome of one source: either the executed i32
 /// or the first compile diagnostic (stage+code).
 fn observe(src: &str) -> String {
@@ -304,3 +332,336 @@ fn probe_nested_place() {
     );
 }
 
+
+// ---- T-03: the six-member HOF family over the real 972 public face ------
+
+#[test]
+fn hof_find_any_all() {
+    // find(>3)=Some(4) -> 4; any(<0)=false; all(>0)=true: coded digits.
+    assert_eq!(
+        ok_i32(concat!(
+            "fn main() int {
+",
+            " let xs = [1, 2, 3, 4]
+",
+            " var code = 0
+",
+            " let hit = xs.find((x int) => x > 3)
+",
+            " is hit {
+",
+            "  Some(v) -> { code = v }
+",
+            "  None -> { code = 0 }
+",
+            " }
+",
+            " code = code * 10
+",
+            " if xs.any((x int) => x < 0) { code = code + 1 }
+",
+            " if xs.all((x int) => x > 0) { code = code + 2 }
+",
+            " return code
+",
+            "}
+"
+        )),
+        42,
+        "find(4)*10 + any(0) + all(2) = 42 over the grafted 972 fns"
+    );
+}
+
+#[test]
+fn hof_over_empty_list() {
+    assert_eq!(
+        ok_i32(concat!(
+            "fn main() int {
+",
+            " let xs = List<int>.new()
+",
+            " let ys = xs.map((x int) => x * 2)
+",
+            " let s = ys.reduce(24, (acc int, x int) => acc + x)
+",
+            " return s + ys.len()
+",
+            "}
+"
+        )),
+        24,
+        "legacy 014 empty-face: map/reduce over an empty list keep init+0"
+    );
+}
+
+#[test]
+fn legacy_list_new_zero_args_rejects() {
+    let (stage, code) = diag("fn main() int { let xs = List.new()
+ return xs.len() }
+");
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.list-new-empty"),
+        "zero-arg List.new cannot infer an element type (named, D-1082-05)"
+    );
+}
+
+#[test]
+fn list_new_mixed_types_reject() {
+    let (stage, code) = diag("fn main() int { let xs = List.new(1, \"x\")
+ return xs.len() }
+");
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.type-mismatch"),
+        "List.new keeps the array-literal homogeneous rule"
+    );
+}
+
+#[test]
+fn hof_non_int_elements_reject() {
+    let (stage, code) = diag(concat!(
+        "fn main() int {
+",
+        " let xs = [\"a\", \"b\"]
+",
+        " let ys = xs.map((x int) => 1)
+",
+        " return ys.len()
+",
+        "}
+"
+    ));
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.hof-elem-domain"),
+        "the 972 family is List<int>-instantiated; other elements keep their owner"
+    );
+}
+
+// ---- T-04: places, bounds, negative controls ------------------------------
+
+#[test]
+fn place_side_effect_source_order_exactly_once() {
+    // index() then rhs(), each exactly once, index before rhs (source
+    // order); the base is a local binding (place bases are locals).
+    assert_eq!(
+        ok_stdout(concat!(
+            "fn idx() int { print(\"i\")
+ return 0 }
+",
+            "fn val() int { print(\"v\")
+ return 5 }
+",
+            "fn main() int {
+",
+            " let xs = [19, 20]
+",
+            " xs[idx()] += val()
+",
+            " print(\"|\")
+",
+            " return xs[0]
+",
+            "}
+"
+        )),
+        "i
+v
+|
+",
+        "compound place evaluates index once, then rhs once, in source order"
+    );
+}
+
+#[test]
+fn nested_place_preserves_siblings() {
+    // legacy 009/013 face: writing m[0][1] keeps every other element.
+    assert_eq!(
+        ok_i32(concat!(
+            "fn main() int {
+",
+            " let m = [[1, 2], [3, 4]]
+",
+            " m[0][1] = 20
+",
+            " return m[0][0] + m[0][1] + m[1][0] + m[1][1]
+",
+            "}
+"
+        )),
+        28,
+        "1+20+3+4: chained index write preserves the whole structure"
+    );
+}
+
+#[test]
+fn bounds_positive_faces_and_traps() {
+    // in-range endpoints read; len / negative / empty trap ListIndex (the
+    // frozen SEM-02 single code, before buffer access).
+    assert_eq!(ok_i32("fn main() int { let xs = [19, 20]
+ return xs[0] + xs[1] }
+"), 39);
+    assert_eq!(
+        trap_kind("fn main() int { let xs = [19, 20]
+ return xs[2] }
+"),
+        "ListIndex",
+        "len == out of bounds traps"
+    );
+    assert_eq!(
+        trap_kind("fn main() int { let xs = [19, 20]
+ return xs[-1] }
+"),
+        "ListIndex",
+        "negative keeps the SEM-02 approved difference (trap, not from-end)"
+    );
+    assert_eq!(
+        trap_kind("fn main() int { let xs = List<int>.new()
+ return xs[0] }
+"),
+        "ListIndex",
+        "empty container traps before buffer access"
+    );
+    assert_eq!(
+        trap_kind("fn main() int { let xs = [19, 20]
+ xs[2] = 5
+ return xs[0] }
+"),
+        "ListIndex",
+        "out-of-bounds write traps"
+    );
+}
+
+#[test]
+fn place_elem_field_write_rejects_named() {
+    let (stage, code) = diag(concat!(
+        "type P { x int }
+",
+        "fn main() int { let a = [P(1), P(2)]
+ a[0].x = 10
+ return a[0].x }
+"
+    ));
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.place-elem-field"),
+        "element field writes stay with the records-batch seam (D-1082-10)"
+    );
+}
+
+#[test]
+fn compound_on_owned_elements_rejects() {
+    let (stage, code) = diag(concat!(
+        "type P { x int }
+",
+        "fn main() int { let a = [P(1)]
+ a[0] += 1
+ return 1 }
+"
+    ));
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.compound-elem-type"),
+        "compound through an index place requires i32 elements"
+    );
+}
+
+#[test]
+fn structural_write_during_iteration_rejects() {
+    let (stage, code) = diag(concat!(
+        "fn main() int {
+",
+        " let xs = [1, 2]
+",
+        " var s = 0
+",
+        " for x in xs {
+",
+        "  xs[0] = 5
+",
+        "  s = s + x
+",
+        " }
+",
+        " return s
+",
+        "}
+"
+    ));
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.iterate-mutate"),
+        "index place writes structurally modify the iterated list (same contract as .set)"
+    );
+}
+
+#[test]
+fn owned_element_replacement_keeps_move_rules() {
+    // a fresh rvalue replaces in place; an implicit local move rejects.
+    assert_eq!(
+        ok_i32(concat!(
+            "type P { x int }
+",
+            "fn main() int {
+",
+            " let a = [P(1), P(2)]
+",
+            " a[1] = P(42)
+",
+            " return a[1].x
+",
+            "}
+"
+        )),
+        42,
+        "fresh ctor rvalue transfers at commit (864 admission)"
+    );
+    // PLAN-1035 (F34): a scalar-only record is Copy — an implicit local
+    // replacement copies by value and executes.
+    assert_eq!(
+        ok_i32(concat!(
+            "type P { x int }
+",
+            "fn main() int {
+",
+            " let a = [P(1), P(2)]
+",
+            " let p = P(3)
+",
+            " a[1] = p
+",
+            " return a[1].x + p.x
+",
+            "}
+"
+        )),
+        6,
+        "a resource-free record element copies by value (no move source needed)"
+    );
+    // A record reaching a resource leaf (Str field) owns its storage — an
+    // implicit local transfer through a place chain keeps the frozen
+    // move-required family; the deep view/move seam stays with the
+    // resource batch (AVP-08).
+    let (stage, code) = diag(concat!(
+        "type Q { name Str }
+",
+        "fn main() int {
+",
+        " let a = [Q(\"a\"), Q(\"b\")]
+",
+        " let q = Q(\"c\")
+",
+        " a[1] = q
+",
+        " return a[1].name.len()
+",
+        "}
+"
+    ));
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.move-required"),
+        "an owned record still requires an explicit .move through a place chain"
+    );
+}

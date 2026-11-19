@@ -8111,6 +8111,137 @@ F:{d}
         (stmts, val, div)
     }
 
+    /// PLAN-1082 (T-03, D-1082-05): the legacy `List.new(e1, ..., en)`
+    /// checked compat sugar on the ordinary (auto) face. Element VT comes
+    /// from the first argument with the array-literal homogeneous rule and
+    /// the same push admission; desugars to ListNew + push (hoisted via
+    /// the statement sink). Zero args is a NAMED rejection (no element
+    /// type is inferable; the explicit `List<T>.new()` carries the empty
+    /// list). NOT a general varargs surface: only the bare `List` receiver
+    /// with the `new` member; a shadowing local/record/variant wins.
+    fn try_resolve_legacy_list_new(&mut self, e: &ast::Expr, _expect: Option<VT>) -> Option<ResolvedExpr> {
+        if !self.profile.is_auto_language() {
+            return None;
+        }
+        let ExprKind::MethodCall { recv, name, args } = &e.kind else {
+            return None;
+        };
+        if name.name != "new" {
+            return None;
+        }
+        let ExprKind::Var(id) = &recv.kind else {
+            return None;
+        };
+        if id.name != "List" {
+            return None;
+        }
+        if self.lookup("List").is_some()
+            || self.rec_index.contains_key("List")
+            || self.coll.variant_by_name("List").is_some()
+        {
+            return None;
+        }
+        if args.is_empty() {
+            self.bind_err(
+                "source.list-new-empty",
+                "`List.new()` cannot infer an element type; write `List<T>.new()` for an empty list"
+                    .to_string(),
+                e.span,
+            );
+            return Some(ResolvedExpr {
+                span: e.span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            });
+        }
+        let mut rs = Vec::with_capacity(args.len());
+        for a in args {
+            let ast::Arg::Pos(x) = a else {
+                self.bind_err(
+                    "source.unsupported",
+                    "`List.new(...)` takes positional elements only".to_string(),
+                    e.span,
+                );
+                return None;
+            };
+            rs.push(self.expr_iterative(x));
+        }
+        let elem_vt = rs[0].vt;
+        for (r, a) in rs.iter().zip(args.iter()) {
+            let ast::Arg::Pos(x) = a else {
+                unreachable!("positional checked above");
+            };
+            if r.vt != elem_vt {
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!(
+                        "List.new elements must share one type; first is `{}`, found `{}`",
+                        elem_vt.as_str(),
+                        r.vt.as_str()
+                    ),
+                    x.span,
+                );
+            }
+            self.reject_elem_view_use(r, "the literal element");
+        }
+        let li = self.coll.intern_list(elem_vt);
+        let temp = self.agg_temp("list_new", VT::List(li), false, e.span);
+        self.emit_stmt(RStmt::Let {
+            local: temp,
+            value: ResolvedExpr {
+                span: e.span,
+                vt: VT::List(li),
+                kind: RExprKind::ListNew { list: li },
+            },
+            span: e.span,
+        });
+        for (mut r, a) in rs.into_iter().zip(args.iter()) {
+            let ast::Arg::Pos(x) = a else {
+                unreachable!("positional checked above");
+            };
+            if matches!(x.kind, ExprKind::ArrayLit(_))
+                && matches!(r.kind, RExprKind::ReadLocal(_))
+                && self.vt_is_coll_owned(r.vt)
+            {
+                let inner_vt = r.vt;
+                let span0 = r.span;
+                let taken = std::mem::replace(&mut r.kind, RExprKind::IntLit(0));
+                r = ResolvedExpr {
+                    span: span0,
+                    vt: inner_vt,
+                    kind: RExprKind::Move {
+                        inner: Box::new(ResolvedExpr {
+                            span: span0,
+                            vt: inner_vt,
+                            kind: taken,
+                        }),
+                    },
+                };
+            }
+            self.check_push_value(&elem_vt, &mut r, x.span);
+            self.emit_stmt(RStmt::ExprStmt {
+                value: ResolvedExpr {
+                    span: x.span,
+                    vt: VT::Unit,
+                    kind: RExprKind::ListPush {
+                        list: Box::new(ResolvedExpr {
+                            span: x.span,
+                            vt: VT::List(li),
+                            kind: RExprKind::ReadLocal(temp),
+                        }),
+                        value: Box::new(r),
+                    },
+                },
+                span: x.span,
+            });
+        }
+        Some(ResolvedExpr {
+            span: e.span,
+            vt: VT::List(li),
+            kind: RExprKind::ReadLocal(temp),
+        })
+    }
+
     fn try_resolve_may_ctor(&mut self, e: &ast::Expr, expect: Option<VT>) -> Option<ResolvedExpr> {
         if !self.profile.is_aggregates()
             || self.lookup("May").is_some()
@@ -8434,7 +8565,7 @@ F:{d}
                         span,
                     );
                 }
-                let mut value = self.expr_with_expect(&pa.value, Some(VT::I32));
+                let value = self.expr_with_expect(&pa.value, Some(VT::I32));
                 if value.vt != VT::I32 {
                     self.bind_err(
                         "source.type-mismatch",
@@ -10318,6 +10449,11 @@ F:{d}
         if let Some(may) = self.try_resolve_may_ctor(v, expect) {
             return may;
         }
+        // PLAN-1082 (T-03): the legacy List.new varargs sugar rides the
+        // same bare-ctor interception shape as May.
+        if let Some(list) = self.try_resolve_legacy_list_new(v, expect) {
+            return list;
+        }
         if self.profile.is_aggregates() {
             match &v.kind {
                 ExprKind::Binary {
@@ -10529,6 +10665,16 @@ F:{d}
                     },
                 )
             }
+            // PLAN-1082 (T-03): the 972 HOF method surface — dispatch to
+            // the grafted frozen stdlib public functions (same source, same
+            // compiler; never a second algorithm). List<int> only: the
+            // stdlib family is int-instantiated.
+            "map" | "filter" | "find" | "any" | "all" if rargs.len() == 1 => {
+                return self.std_list_hof(name, *list, rargs, span);
+            }
+            "reduce" if rargs.len() == 2 => {
+                return self.std_list_hof(name, *list, rargs, span);
+            }
             "len" if rargs.is_empty() => mk(VT::I32, RExprKind::ListLen { list }),
             "clear" if rargs.is_empty() => mk(VT::Unit, RExprKind::ListClear { list }),
             "clone" if rargs.is_empty() => {
@@ -10552,6 +10698,57 @@ F:{d}
                 );
                 mk(VT::I32, RExprKind::IntLit(0))
             }
+        }
+    }
+
+    /// PLAN-1082 (T-03): build the CallFn for a stdlib HOF method — the
+    /// receiver rides as argument 0 of the grafted frozen public function.
+    fn std_list_hof(
+        &mut self,
+        name: &ast::Ident,
+        list: ResolvedExpr,
+        mut rargs: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        if let VT::List(li) = list.vt {
+            let elem = self.coll.lists[li];
+            if elem != VT::I32 {
+                self.bind_err(
+                    "source.hof-elem-domain",
+                    format!(
+                        "the stdlib HOF family runs over List<int>; `{}` elements stay with the stdlib generics owner",
+                        elem.as_str()
+                    ),
+                    span,
+                );
+            }
+        }
+        let mangled = format!("{}{}", crate::source::adapter::STDLIB_LIST_MANGLE, name.name);
+        let Some(sig) = self.sigs.get(&mangled) else {
+            self.bind_err(
+                "source.unsupported",
+                "the stdlib HOF functions are not linked into this module (graft missed)".to_string(),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        };
+        let fn_index = sig.index;
+        let result = sig.result;
+        let mut args = vec![ResolvedArg {
+            value: list,
+            name: None,
+            moved: false,
+            span,
+        }];
+        args.append(&mut rargs);
+        ResolvedExpr {
+            span,
+            vt: result,
+            kind: RExprKind::CallFn { fn_index, args },
         }
     }
 
@@ -14690,6 +14887,13 @@ F:{d}
                                 out[slot] = may;
                                 continue;
                             }
+                        }
+                        // PLAN-1082 (T-03): the List.new sugar intercepts
+                        // in the iterative walker too (every expression
+                        // position funnels through here).
+                        if let Some(list) = self.try_resolve_legacy_list_new(node, None) {
+                            out[slot] = list;
+                            continue;
                         }
                         // static pre-classification: bare record type name
                         // receiver resolves to no local — the receiver
