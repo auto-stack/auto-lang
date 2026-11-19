@@ -440,6 +440,19 @@ Round 14 增量（冻结提交 `9944c349b`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
 
+2026-11-20 · stage: work（round 15 · **V-05 legacy 路径排除 + V-07 缺解释器具名失败**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-05/V-07 部分 | outcome: pass（round 级）| next_responsible_role: work（V-06 暖编辑/身份轴、支持矩阵、SD-*) 
+
+Round 15 增量：
+- **V-05**：`p1107_v05_emitted_fileset_carries_no_legacy_python_engine` —— 真实 978 A2py 构建产物逐文件断言：无 `pyo3`/`auto_vm`/`python_trans`，且不加载 ctypes provider（`f0_text_provider`）；`generated.py` 自身不出现 `ctypes` 且只 import 标准库（builtins/math/sys）。即 A2PY 生成物是纯 Python 3，不经旧 VM/PyO3/旧 PythonTrans。
+- **V-07**：`p1107_v07_missing_interpreter_is_named_not_a_pass` —— SDK 运行前把 PATH 指向空目录，`run_sdk` 返回具名 `m2build.run.interpreter-failed`（或 run.runtime-dependency），绝不返回成功观测。
+- 说明：runtime 模板仍保留 foreign 桥的 ctypes import（其他 target 复用），故 V-05 只要求 PROGRAM 侧无 ctypes 且全部产物无 legacy 引擎/provider 加载；该口径在用例注释中写明。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_v05_emitted)+test(p1107_v07)'` PASS；组级 `cargo t ace-m2-build` PASS、`cargo t ace-python` PASS、`cargo t ace-a2x` 仅预存 ts tripwire。
+
+余量：V-06（冷/暖/body 编辑/helper 变更/包与 provider 身份/兼容换包的计数与失效）；AC-06 支持矩阵；SD-01..04 Specs；T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -481,6 +494,19 @@ Round 14 增量（冻结提交 `9944c349b`，树内 clean）：
 余量：V-04 的错误**类映射/用户位置**在 A2PY 仍是 Python traceback（未做共享错误类）；T-05 解释器/包身份轴与暖编辑；V-07 缺 torch/缺解释器具名失败；SD-01..04 Specs 沉淀；随后 T-07 复审、T-08 合入。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
+
+2026-11-20 · stage: work（round 15 · **V-05 legacy 路径排除 + V-07 缺解释器具名失败**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-05/V-07 部分 | outcome: pass（round 级）| next_responsible_role: work（V-06 暖编辑/身份轴、支持矩阵、SD-*) 
+
+Round 15 增量：
+- **V-05**：`p1107_v05_emitted_fileset_carries_no_legacy_python_engine` —— 真实 978 A2py 构建产物逐文件断言：无 `pyo3`/`auto_vm`/`python_trans`，且不加载 ctypes provider（`f0_text_provider`）；`generated.py` 自身不出现 `ctypes` 且只 import 标准库（builtins/math/sys）。即 A2PY 生成物是纯 Python 3，不经旧 VM/PyO3/旧 PythonTrans。
+- **V-07**：`p1107_v07_missing_interpreter_is_named_not_a_pass` —— SDK 运行前把 PATH 指向空目录，`run_sdk` 返回具名 `m2build.run.interpreter-failed`（或 run.runtime-dependency），绝不返回成功观测。
+- 说明：runtime 模板仍保留 foreign 桥的 ctypes import（其他 target 复用），故 V-05 只要求 PROGRAM 侧无 ctypes 且全部产物无 legacy 引擎/provider 加载；该口径在用例注释中写明。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_v05_emitted)+test(p1107_v07)'` PASS；组级 `cargo t ace-m2-build` PASS、`cargo t ace-python` PASS、`cargo t ace-a2x` 仅预存 ts tripwire。
+
+余量：V-06（冷/暖/body 编辑/helper 变更/包与 provider 身份/兼容换包的计数与失效）；AC-06 支持矩阵；SD-01..04 Specs；T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 ## 10. 待澄清事项
 
