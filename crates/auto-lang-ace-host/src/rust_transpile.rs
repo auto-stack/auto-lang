@@ -168,6 +168,92 @@ pub(crate) fn source_sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+/// PLAN-982（982/RUST · round 200）：**包级 A2R 渲染**——把整个多模块工程
+/// 一次编译成一个完整 file set（镜像 A2C 的 `transpile_package_c`）。
+///
+/// `modules` = `(模块名, 源码)` 列表（工程全部 `.at`），`entry` = 入口模块名
+/// （如 `"main"`）。标准库（`std.math`/`std.text`）由本驱动按冻结输入注入，
+/// 调用方只给用户模块；跨模块 `use` 由 packages 绑定图承载。链路：packages
+/// 前门（`compile_package_product`）→ `PackageA2xTarget::cold` ＋
+/// `RustTargetProvider`（HIR→Rust，RecordText 家族）→ fileset（`generated.rs`
+/// ＋`a2x_runtime.rs`＋`main.rs` 包装＋manifest）。非 UI 面——Iced 工程另留
+/// 1074 联合验收。
+pub fn transpile_package_rust(
+    modules: &[(String, String)],
+    entry: &str,
+) -> Result<AceRustFileSet, (&'static str, String)> {
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::packages::PackageA2xTarget;
+    use ace_core::source::cst::FrontBudget;
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+    use ace_source_query::modules::packages::{compile_package_product, stdlib_inputs};
+
+    let mut inputs = stdlib_inputs();
+    for (id, source) in modules {
+        inputs.push(PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: id.clone(),
+            source: source.clone(),
+            provider: None,
+        });
+    }
+    let entry_id = format!("app::{entry}");
+    let product = compile_package_product(
+        &inputs,
+        &entry_id,
+        &[PACKAGES_CAPABILITY.into()],
+        FrontBudget::WORK_OWNED_64MIB,
+    )
+    .map_err(|diags| {
+        let first = diags.first();
+        let message = match first {
+            Some(d) => format!(
+                "package '{}': {} {}",
+                d.module, d.diagnostic.code, d.diagnostic.message
+            ),
+            None => "the package compile failed without a diagnostic".to_string(),
+        };
+        ("ace.rust/compile", message)
+    })?;
+
+    // store 冷启动：同输入 ⇒ 同 fileset（与 A2C 驱动同一纪律）。
+    let store = std::env::temp_dir().join(format!("ace-a2r-store-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    std::fs::create_dir_all(&store).map_err(|e| {
+        (
+            "ace.rust/emit",
+            format!("scratch store dir {}: {e}", store.display()),
+        )
+    })?;
+    let target = PackageA2xTarget::cold(
+        &store,
+        "auto-a2r",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &product,
+    )
+    .map_err(|e| ("ace.rust/emit", e))?;
+    let files: Vec<AceRustFile> = target
+        .current
+        .files
+        .iter()
+        .map(|(name, text)| AceRustFile {
+            name: name.clone(),
+            text: text.clone(),
+        })
+        .collect();
+    let fileset = AceRustFileSet {
+        files,
+        manifest: target.current.manifest.clone(),
+        entry: entry.to_string(),
+    };
+    let _ = std::fs::remove_dir_all(&store);
+    Ok(fileset)
+}
+
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {

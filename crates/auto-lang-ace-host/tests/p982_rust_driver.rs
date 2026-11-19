@@ -113,7 +113,10 @@ fn p982_rust_source_sha256_matches_the_known_vectors() {
     let expected = {
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(src.as_bytes());
-        digest.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     };
     assert!(
         fileset.manifest.contains(&expected),
