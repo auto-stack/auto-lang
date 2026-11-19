@@ -129,7 +129,6 @@ fn emit_fileset(dir: &PathBuf) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "T-03 in progress: the staged-text readback lane (py_stage_str/py_str_word) is reached without a shared fact after the console-print lowering; the console print lanes themselves are wired. Un-ignore when T-03 closes."]
 fn p1107_t03_section51_runs_as_native_python() {
     let dir = scratch_dir("train");
     let files = emit_fileset(&dir);
@@ -156,7 +155,13 @@ fn p1107_t03_section51_runs_as_native_python() {
         out.status.success(),
         "native python run failed: {stderr}\n--- generated.py ---\n{generated}"
     );
-    let lines: Vec<&str> = stdout.lines().collect();
+    // The run-observation marker (`value:<i32>`) is the target run channel
+    // (the A2PY analogue of the AV session's success value), not program
+    // output; the language-level 62 lines are asserted below it.
+    let lines: Vec<&str> = stdout
+        .lines()
+        .filter(|l| !l.starts_with("value:"))
+        .collect();
     assert_eq!(
         lines.len(),
         62,

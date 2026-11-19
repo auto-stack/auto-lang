@@ -16042,6 +16042,22 @@ F:{d}
             // the raw i32 token.
             if self.py_is_object(&arg) {
                 let span = arg.span;
+                // PLAN-1107 T-03: the display extraction is ONE shared
+                // operation fact — a source-generating target lowers it to its
+                // native text conversion instead of replaying the staged
+                // word-readback chain.
+                if crate::py_ops::recording_active() {
+                    crate::py_ops::record(
+                        PyOpFact::new(PyOpKind::ToText, span)
+                            .with_member("str")
+                            .operand_lit(
+                                PyRole::Receiver,
+                                span,
+                                self.py_val_class(&arg),
+                                self.py_operand_literal(&arg),
+                            ),
+                    );
+                }
                 let len = self.py_stage_len(&arg, span);
                 self.used_intrinsics.insert("__py_staged_text");
                 arg = ResolvedExpr {

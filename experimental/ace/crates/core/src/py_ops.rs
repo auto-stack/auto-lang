@@ -332,6 +332,15 @@ impl PyOpPlan {
             .find(|f| f.op == kind && f.span.0 == start)
     }
 
+    /// The fact for `kind` whose operation span is EXACTLY `span`. Chained
+    /// operations share a start offset (`a.b(c) + d`), so a consumer that has
+    /// the whole checked expression must prefer the exact-span fact.
+    pub fn find_exact(&self, kind: PyOpKind, span: (u32, u32)) -> Option<&PyOpFact> {
+        self.facts
+            .iter()
+            .find(|f| f.op == kind && f.span == span)
+    }
+
     /// All facts of one kind, in source order.
     pub fn of_kind(&self, kind: PyOpKind) -> impl Iterator<Item = &PyOpFact> {
         self.facts.iter().filter(move |f| f.op == kind)

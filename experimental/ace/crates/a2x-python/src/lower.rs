@@ -600,10 +600,12 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             return Ok(None);
         };
         let start = e.span.start as u32;
+        let exact = (e.span.start as u32, e.span.end as u32);
+        let find = |kind: PyOpKind| plan.find_exact(kind, exact).or_else(|| plan.find(kind, start));
         // `.to(float)`: the F32 lane is `Cast(bits-pair intrinsic)`; the F64
         // lane's OUTER node is the bits-pair intrinsic itself. Both are ONE
         // native extraction.
-        if let Some(fact) = plan.find(PyOpKind::ToFloat, start) {
+        if let Some(fact) = find(PyOpKind::ToFloat) {
             let outer = match &e.kind {
                 hir::ExprKind::Cast {
                     to: hir::BuiltinType::F32 | hir::BuiltinType::F64,
@@ -629,12 +631,12 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             }
         }
         // `.to(str)`: the AV staged-text intrinsic is the outer node.
-        if let Some(fact) = plan.find(PyOpKind::ToText, start) {
+        if let Some(fact) = find(PyOpKind::ToText) {
             if let hir::ExprKind::Call { callee, .. } = &e.kind {
                 if self.view.py_symbol(callee.0 as usize) == Some("__py_staged_text") {
                     let recv = self.py_operand(fact, PyRole::Receiver)?;
                     let t = self.fresh_temp();
-                    self.emit_line(&format!("{t} = a2x_py_to_str({recv})"));
+                    self.emit_line(&format!("{t} = a2x_str_from_lit(a2x_py_to_str({recv}))"));
                     return Ok(Some(t));
                 }
             }
@@ -657,7 +659,7 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 ),
             )
         })?;
-        let fact = plan.find(kind, start).ok_or_else(|| {
+        let fact = find(kind).ok_or_else(|| {
             A2xReject::new(
                 "a2py.py-op",
                 format!("no shared py-op fact for `{}` at span {start}", decl.name),
