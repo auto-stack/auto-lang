@@ -16,6 +16,11 @@ pub fn bridge_source(view: &ace_a2x_core::SemanticView<'_>) -> Result<String, A2
     let mut out = String::new();
     let mut count = 0usize;
     for decl in view.foreign_declarations() {
+        // PLAN-1107 T-03: the py lane's operations are native Python — they
+        // never ride the ctypes provider bridge.
+        if decl.provider == ace_core::py_ops::PY_PROVIDER {
+            continue;
+        }
         out.push_str(&wrapper_source(decl)?);
         count += 1;
     }

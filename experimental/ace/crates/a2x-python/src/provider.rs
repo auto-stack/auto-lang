@@ -55,10 +55,27 @@ impl PythonTargetProvider {
 
 impl TargetProvider for PythonTargetProvider {
     fn validate_view(&self, view: &SemanticView<'_>) -> Result<(), A2xReject> {
-        // PLAN-967 (A2PY ctypes leg): the frozen F0/rich domain bridges
-        // through ctypes; anything wider keeps the named rejection (the
-        // bridge itself re-validates every declaration's shape).
+        // PLAN-1107 T-03: the py lane's declarations are LANGUAGE operations,
+        // not C-ABI entries — they are lowered natively from the shared
+        // `py_ops` facts (never a ctypes wrapper, never the F0 provider DLL).
+        // They are admissible only together with the verified plan.
+        let py_lane = view.py_ops().is_some();
         for decl in view.foreign_declarations() {
+            if decl.provider == ace_core::py_ops::PY_PROVIDER {
+                if !py_lane {
+                    return Err(A2xReject::new(
+                        "a2py.py-op",
+                        format!(
+                            "python declaration `{}` is present without the shared py-op plan",
+                            decl.name
+                        ),
+                    ));
+                }
+                continue;
+            }
+            // PLAN-967 (A2PY ctypes leg): the frozen F0/rich domain bridges
+            // through ctypes; anything wider keeps the named rejection (the
+            // bridge itself re-validates every declaration's shape).
             crate::foreign_bridge::wrapper_source(decl)?;
         }
         Ok(())
@@ -104,6 +121,11 @@ impl TargetProvider for PythonTargetProvider {
             }
         };
         let mut src = python_runtime_source(marks);
+        // PLAN-1107 T-03: native Python object helpers for the py lane only
+        // (a non-Python module keeps the frozen runtime bytes/identity).
+        if view.py_ops().is_some() {
+            src.push_str(crate::runtime::py_object_helpers_source());
+        }
         // PLAN-967 (A2PY ctypes leg): the ctypes bridge rides the runtime
         let bridge = crate::foreign_bridge::bridge_source(view)?;
         if !bridge.is_empty() {

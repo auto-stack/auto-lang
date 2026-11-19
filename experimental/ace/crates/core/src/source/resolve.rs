@@ -15,7 +15,7 @@
 use super::ast::{self, Arg, BinOp, Expr, ExprKind, FnItem, Stmt, TypeWord, UnaryOp};
 use super::{meta_intrinsic, trace_intrinsic, SourceProfile, META_CAPABILITY, TRACE_CAPABILITY};
 use crate::atom_text::{Diagnostic, Span, Stage};
-use crate::py_ops::{PyOpFact, PyOpKind, PyRole, PyValClass};
+use crate::py_ops::{PyLiteral, PyOpFact, PyOpKind, PyRole, PyValClass};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "agg_lower.rs"]
@@ -6296,6 +6296,33 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
     }
 
+    /// PLAN-1107 T-02: the exact literal payload an operand bakes into the AV
+    /// frame text (`i`/`b`/`t`/`F:` encodings), carried in the fact so a
+    /// source-generating target never has to decode frame text.
+    fn py_operand_literal(&self, v: &ResolvedExpr) -> Option<PyLiteral> {
+        match &v.kind {
+            RExprKind::IntLit(n) => Some(PyLiteral::Int(*n)),
+            RExprKind::BoolLit(b) => Some(PyLiteral::Bool(*b)),
+            RExprKind::StrLit(t) => Some(PyLiteral::Text(t.clone())),
+            RExprKind::TypedLit { vt: VT::F64, bits } => {
+                Some(PyLiteral::Float(f64::from_bits(*bits)))
+            }
+            RExprKind::TypedLit { vt: VT::F32, bits } => Some(PyLiteral::Float(
+                f32::from_bits(*bits as u32) as f64,
+            )),
+            RExprKind::ReadLocal(l) if matches!(v.vt, VT::F64 | VT::F32) => {
+                self.py_lit_locals.get(l).map(|(vt, bits)| {
+                    PyLiteral::Float(if *vt == VT::F64 {
+                        f64::from_bits(*bits)
+                    } else {
+                        f32::from_bits(*bits as u32) as f64
+                    })
+                })
+            }
+            _ => None,
+        }
+    }
+
     /// Call a foreign py op (or a helper fn) by name with ONE positional
     /// argument, typed by the callee's declared result.
     fn py_op_call(&mut self, op: &str, span: Span, value: ResolvedExpr) -> ResolvedExpr {
@@ -6509,24 +6536,31 @@ F:{d}
         // PLAN-1107 T-02: record the operation where it is admitted.
         if crate::py_ops::recording_active() {
             let mut fact = PyOpFact::new(PyOpKind::Call, span).with_member(member);
-            fact = fact.operand(PyRole::Receiver, recv.span, self.py_val_class(recv));
+            fact = fact.operand_lit(
+                PyRole::Receiver,
+                recv.span,
+                self.py_val_class(recv),
+                self.py_operand_literal(recv),
+            );
             let mut slot = 0u32;
             for a in &args {
                 if a.name.is_none() {
-                    fact = fact.operand(
+                    fact = fact.operand_lit(
                         PyRole::Positional(slot),
                         a.value.span,
                         self.py_val_class(&a.value),
+                        self.py_operand_literal(&a.value),
                     );
                     slot += 1;
                 }
             }
             for a in &args {
                 if let Some(n) = &a.name {
-                    fact = fact.operand(
+                    fact = fact.operand_lit(
                         PyRole::Kwarg(n.name.clone()),
                         a.value.span,
                         self.py_val_class(&a.value),
+                        self.py_operand_literal(&a.value),
                     );
                 }
             }
@@ -6554,7 +6588,12 @@ F:{d}
                 crate::py_ops::record(
                     PyOpFact::new(kind, span)
                         .with_member(word)
-                        .operand(PyRole::Receiver, recv.span, self.py_val_class(recv)),
+                        .operand_lit(
+                            PyRole::Receiver,
+                            recv.span,
+                            self.py_val_class(recv),
+                            self.py_operand_literal(recv),
+                        ),
                 );
             }
         }
@@ -12435,12 +12474,18 @@ F:{d}
                     if crate::py_ops::recording_active() {
                         crate::py_ops::record(
                             PyOpFact::new(PyOpKind::GetItem, e.span)
-                                .operand(
+                                .operand_lit(
                                     PyRole::Receiver,
                                     recv.span,
                                     self.py_val_class(&recv),
+                                    self.py_operand_literal(&recv),
                                 )
-                                .operand(PyRole::Positional(0), idx.span, self.py_val_class(&idx)),
+                                .operand_lit(
+                                    PyRole::Positional(0),
+                                    idx.span,
+                                    self.py_val_class(&idx),
+                                    self.py_operand_literal(&idx),
+                                ),
                         );
                     }
                     return self.py_op_call("py_getitem", e.span, frame);
@@ -14489,10 +14534,11 @@ F:{d}
                             crate::py_ops::record(
                                 PyOpFact::new(PyOpKind::GetAttr, name.span)
                                     .with_member(name.name.clone())
-                                    .operand(
+                                    .operand_lit(
                                         PyRole::Receiver,
                                         base.span,
                                         self.py_val_class(&base),
+                                        self.py_operand_literal(&base),
                                     ),
                             );
                         }
@@ -14974,15 +15020,17 @@ F:{d}
                                     crate::py_ops::record(
                                         PyOpFact::new(PyOpKind::BinOp, span)
                                             .with_member(opname)
-                                            .operand(
+                                            .operand_lit(
                                                 PyRole::Receiver,
                                                 l.span,
                                                 self.py_val_class(&l),
+                                                self.py_operand_literal(&l),
                                             )
-                                            .operand(
+                                            .operand_lit(
                                                 PyRole::Positional(0),
                                                 r.span,
                                                 self.py_val_class(&r),
+                                                self.py_operand_literal(&r),
                                             ),
                                     );
                                 }

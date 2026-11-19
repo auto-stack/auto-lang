@@ -187,18 +187,33 @@ impl PyRole {
     }
 }
 
+/// The exact literal payload of an operand that the AV frame encoder bakes
+/// into the frame TEXT (compile-time `i`/`b`/`t`/`F:` encodings). A
+/// source-generating target needs the VALUE, not its frame spelling, so the
+/// fact carries it: `None` means the operand is a runtime expression (found
+/// by its span).
+#[derive(Clone, PartialEq, Debug)]
+pub enum PyLiteral {
+    Int(i32),
+    Bool(bool),
+    Text(String),
+    Float(f64),
+}
+
 /// One operand slot of an operation.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct PyOperand {
     pub role: PyRole,
     /// Source span of the operand expression (the consumer maps it to the
     /// checked expression of that span).
     pub span: (u32, u32),
     pub class: PyValClass,
+    /// The compile-time literal payload, when the operand IS a literal.
+    pub literal: Option<PyLiteral>,
 }
 
 /// One recorded Python operation.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct PyOpFact {
     pub op: PyOpKind,
     /// Source span of the whole operation expression.
@@ -238,6 +253,24 @@ impl PyOpFact {
             role,
             span: (span.start as u32, span.end as u32),
             class,
+            literal: None,
+        });
+        self
+    }
+
+    /// The same, carrying the compile-time literal payload.
+    pub fn operand_lit(
+        mut self,
+        role: PyRole,
+        span: Span,
+        class: PyValClass,
+        literal: Option<PyLiteral>,
+    ) -> Self {
+        self.operands.push(PyOperand {
+            role,
+            span: (span.start as u32, span.end as u32),
+            class,
+            literal,
         });
         self
     }
@@ -269,8 +302,7 @@ impl PyOpFact {
     }
 }
 
-/// The verified Python-operation plan of one module (source order).
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct PyOpPlan {
     facts: Vec<PyOpFact>,
 }

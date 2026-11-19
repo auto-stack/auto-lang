@@ -6,6 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use ace_a2x_core::{A2xReject, FnFacts, FnKind, ParamFacts, SemanticView, Ty};
 use ace_core::hir;
+use ace_core::py_ops::{PyLiteral, PyOpKind, PyRole};
 
 use crate::ports::default_stdlib_port_catalog;
 use crate::runtime::PY_RUNTIME_VERSION;
@@ -331,6 +332,47 @@ fn py_bytes_literal(bytes: &[u8]) -> String {
     out
 }
 
+/// A Python `str` literal for a helper argument (module/member/kwarg name).
+fn py_text_arg(s: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || (c as u32) > 0x7e => {
+                out.push_str(&format!("\\u{:04x}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// PLAN-1107 T-03: one compile-time literal operand of a Python operation,
+/// in the target's value representation (Auto text is bytes on this target).
+fn py_literal_text(lit: &PyLiteral) -> String {
+    match lit {
+        PyLiteral::Int(v) => format!("{v}"),
+        PyLiteral::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+        PyLiteral::Text(t) => py_bytes_literal(t.as_bytes()),
+        PyLiteral::Float(f) => {
+            if f.is_finite() {
+                format!("{f:?}")
+            } else if f.is_nan() {
+                "float(\"nan\")".to_string()
+            } else if *f > 0.0 {
+                "float(\"inf\")".to_string()
+            } else {
+                "float(\"-inf\")".to_string()
+            }
+        }
+    }
+}
+
 struct PyLowerCtx<'v, 'a> {
     view: &'v SemanticView<'a>,
     facts: &'v FnFacts<'a>,
@@ -518,6 +560,242 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         let res = self.lower_stmt_inner(stmt);
         self.exit_depth();
         res
+    }
+
+    /// PLAN-1107 T-03: lower ONE shared-checked Python operation to native
+    /// Python. The operation identity and its operand slots come from the
+    /// shared `py_ops` plan (the same facts every target receives); the AV
+    /// `p967.frame/1` encodings in the body are never decoded and never
+    /// emitted. `Ok(None)` means "not a Python operation".
+    fn try_lower_py_op(&mut self, e: &hir::Expr) -> Result<Option<String>, A2xReject> {
+        let Some(plan) = self.view.py_ops() else {
+            return Ok(None);
+        };
+        let start = e.span.start as u32;
+        // `.to(float)`: the F32 lane is `Cast(bits-pair intrinsic)`; the F64
+        // lane's OUTER node is the bits-pair intrinsic itself. Both are ONE
+        // native extraction.
+        if let Some(fact) = plan.find(PyOpKind::ToFloat, start) {
+            let outer = match &e.kind {
+                hir::ExprKind::Cast {
+                    to: hir::BuiltinType::F32 | hir::BuiltinType::F64,
+                    ..
+                } => Some(true),
+                hir::ExprKind::Call { callee, .. } => {
+                    Some(self.view.py_symbol(callee.0 as usize) == Some("__py_f64_bits"))
+                }
+                _ => None,
+            };
+            if outer == Some(true) {
+                let recv = self.py_operand(fact, PyRole::Receiver)?;
+                let t = self.fresh_temp();
+                let call = match &e.kind {
+                    hir::ExprKind::Cast {
+                        to: hir::BuiltinType::F32,
+                        ..
+                    } => format!("a2x_cast_f32(a2x_py_to_f64({recv}))"),
+                    _ => format!("a2x_py_to_f64({recv})"),
+                };
+                self.emit_line(&format!("{t} = {call}"));
+                return Ok(Some(t));
+            }
+        }
+        // `.to(str)`: the AV staged-text intrinsic is the outer node.
+        if let Some(fact) = plan.find(PyOpKind::ToText, start) {
+            if let hir::ExprKind::Call { callee, .. } = &e.kind {
+                if self.view.py_symbol(callee.0 as usize) == Some("__py_staged_text") {
+                    let recv = self.py_operand(fact, PyRole::Receiver)?;
+                    let t = self.fresh_temp();
+                    self.emit_line(&format!("{t} = a2x_py_to_str({recv})"));
+                    return Ok(Some(t));
+                }
+            }
+        }
+        let hir::ExprKind::Call { callee, .. } = &e.kind else {
+            return Ok(None);
+        };
+        let Some(decl) = self.view.foreign_by_def(callee.0 as usize) else {
+            return Ok(None);
+        };
+        if decl.provider != ace_core::py_ops::PY_PROVIDER {
+            return Ok(None);
+        }
+        let kind = PyOpKind::from_decl_name(&decl.name).ok_or_else(|| {
+            A2xReject::new(
+                "a2py.py-op",
+                format!(
+                    "`{}` is a provider lane, not a source operation (its extraction is lowered through the outer fact)",
+                    decl.name
+                ),
+            )
+        })?;
+        let fact = plan.find(kind, start).ok_or_else(|| {
+            A2xReject::new(
+                "a2py.py-op",
+                format!("no shared py-op fact for `{}` at span {start}", decl.name),
+            )
+        })?;
+        let t = self.fresh_temp();
+        let line = match kind {
+            PyOpKind::Import => format!(
+                "{t} = a2x_py_import({}, {})",
+                py_text_arg(&fact.module),
+                py_text_arg(&fact.member)
+            ),
+            PyOpKind::Call => {
+                let recv = self.py_operand(fact, PyRole::Receiver)?;
+                let mut args = Vec::new();
+                let mut slot = 0u32;
+                while let Some(op) = fact
+                    .operands
+                    .iter()
+                    .find(|o| matches!(&o.role, PyRole::Positional(i) if *i == slot))
+                {
+                    args.push(self.py_operand_slot(op)?);
+                    slot += 1;
+                }
+                let mut kwargs = Vec::new();
+                for op in &fact.operands {
+                    if let PyRole::Kwarg(name) = &op.role {
+                        kwargs.push(format!("{}: {}", py_text_arg(name), self.py_operand_slot(op)?));
+                    }
+                }
+                let member = if fact.member.is_empty() {
+                    "None".to_string()
+                } else {
+                    py_text_arg(&fact.member)
+                };
+                format!(
+                    "{t} = a2x_py_call({recv}, {member}, [{}], {{{}}})",
+                    args.join(", "),
+                    kwargs.join(", ")
+                )
+            }
+            PyOpKind::GetAttr => format!(
+                "{t} = a2x_py_getattr({}, {})",
+                self.py_operand(fact, PyRole::Receiver)?,
+                py_text_arg(&fact.member)
+            ),
+            PyOpKind::GetItem => format!(
+                "{t} = a2x_py_getitem({}, {})",
+                self.py_operand(fact, PyRole::Receiver)?,
+                self.py_operand(fact, PyRole::Positional(0))?
+            ),
+            PyOpKind::BinOp => format!(
+                "{t} = a2x_py_binop({}, {}, {})",
+                py_text_arg(&fact.member),
+                self.py_operand(fact, PyRole::Receiver)?,
+                self.py_operand(fact, PyRole::Positional(0))?
+            ),
+            PyOpKind::ToFloat => format!(
+                "{t} = a2x_py_to_f64({})",
+                self.py_operand(fact, PyRole::Receiver)?
+            ),
+            PyOpKind::ToInt => format!(
+                "{t} = a2x_check_i32(a2x_py_to_i32({}))",
+                self.py_operand(fact, PyRole::Receiver)?
+            ),
+            PyOpKind::ToBool => format!(
+                "{t} = a2x_py_to_bool({})",
+                self.py_operand(fact, PyRole::Receiver)?
+            ),
+            PyOpKind::ToText => format!(
+                "{t} = a2x_py_to_str({})",
+                self.py_operand(fact, PyRole::Receiver)?
+            ),
+        };
+        self.emit_line(&line);
+        Ok(Some(t))
+    }
+
+    /// The value of one operand slot: the compile-time literal the fact
+    /// carries, or the checked expression at that span (lowered normally, so
+    /// nested Python operations recurse through the same path).
+    fn py_operand(
+        &mut self,
+        fact: &ace_core::py_ops::PyOpFact,
+        role: PyRole,
+    ) -> Result<String, A2xReject> {
+        let op = fact
+            .operands
+            .iter()
+            .find(|o| o.role == role)
+            .ok_or_else(|| {
+                A2xReject::new(
+                    "a2py.py-op",
+                    format!(
+                        "operation `{}` lacks the `{}` slot",
+                        fact.op.as_str(),
+                        role.as_str()
+                    ),
+                )
+            })?;
+        self.py_operand_slot(op)
+    }
+
+    fn py_operand_slot(
+        &mut self,
+        op: &ace_core::py_ops::PyOperand,
+    ) -> Result<String, A2xReject> {
+        if let Some(lit) = &op.literal {
+            return Ok(py_literal_text(lit));
+        }
+        let id = self.py_find_value(op.span).ok_or_else(|| {
+            A2xReject::new(
+                "a2py.py-op",
+                format!(
+                    "operand span {}..{} has no checked expression",
+                    op.span.0, op.span.1
+                ),
+            )
+        })?;
+        self.lower_expr(id)
+    }
+
+    /// The checked VALUE expression at exactly `span`. Frame-construction
+    /// nodes (display/concat/borrow and the AV encoding intrinsics/helper)
+    /// are not values and are skipped; a py-op call outranks a local read,
+    /// which outranks a literal.
+    fn py_find_value(&self, span: (u32, u32)) -> Option<hir::ExprId> {
+        let mut best: Option<(u8, hir::ExprId)> = None;
+        for (i, x) in self.facts.body.exprs.iter().enumerate() {
+            if (x.span.start as u32, x.span.end as u32) != span {
+                continue;
+            }
+            let rank = match &x.kind {
+                hir::ExprKind::TextDisplay { .. }
+                | hir::ExprKind::TextConcat { .. }
+                | hir::ExprKind::TextToBorrowed { .. } => continue,
+                hir::ExprKind::Call { callee, .. } => {
+                    if self.view.py_symbol(callee.0 as usize).is_some() {
+                        continue; // AV encoding intrinsic
+                    }
+                    if let Some(f) = self.view.fn_by_def(callee.0 as usize) {
+                        if f.name == "sf___py_dlen" {
+                            continue; // the frame length helper
+                        }
+                    }
+                    if self
+                        .view
+                        .foreign_by_def(callee.0 as usize)
+                        .is_some_and(|d| d.provider == ace_core::py_ops::PY_PROVIDER)
+                    {
+                        0
+                    } else {
+                        3
+                    }
+                }
+                hir::ExprKind::ReadLocal { .. } => 1,
+                hir::ExprKind::Constant { .. }
+                | hir::ExprKind::NumericConst { .. }
+                | hir::ExprKind::StrLit { .. } => 2,
+                _ => 3,
+            };
+            if best.map(|(r, _)| rank < r).unwrap_or(true) {
+                best = Some((rank, hir::ExprId(i as u32)));
+            }
+        }
+        best.map(|(_, id)| id)
     }
 
     fn lower_stmt_inner(&mut self, stmt: &hir::Stmt) -> Result<(), A2xReject> {
@@ -739,6 +1017,12 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             .get(id.0 as usize)
             .ok_or_else(|| A2xReject::new("a2x.internal", "expr index out of range"))?
             .clone();
+        // PLAN-1107 T-03: a shared-checked Python operation lowers to native
+        // Python from the py_ops facts — the AV frame encodings never reach
+        // this target.
+        if let Some(out) = self.try_lower_py_op(&e)? {
+            return Ok(out);
+        }
         match &e.kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.local_name(local.0)?.to_string()),
             hir::ExprKind::Unit => Ok("None".to_string()),
