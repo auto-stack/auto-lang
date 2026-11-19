@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-983
-status: reviewed
+status: archived
 feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
