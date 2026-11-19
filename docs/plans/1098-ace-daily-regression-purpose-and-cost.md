@@ -302,6 +302,45 @@ T-01优先只读既有收据/配置/源码。确需新发现时仅显式debug/te
 
 **H-06（同 key OR 并集）静态实证**：`ace-host` 与 `ace-console` 的 9 元 key（runner/workspace/args/domain/tools/file/suite/respect_default_filter/timeout）**完全相同**（tools 同为 12 项、args 同），只有 expression 不同（host=`all()`，console=`^console::`）→ `invocations()` 必须合并为一次调用（现有实现如此，实测配置可证）。`ace-batch` 多 `--features test-case-batch`、`ace-rust-lowering` tools 仅 `a2x` → 两者 key 不同，**不得**强合。这三条与 §5.2 H-06/§6.1 V-10 一致，且可纯静态复核。
 
+### 5.9 T-01 出口项：准备/运行接口草案（已核 CLI 事实，实现属 T-02）
+
+**已核事实（`cargo-nextest 0.9.138`，本机实测 help）**：无 `--no-build`；存在 `cargo nextest archive --archive-file <PATH>`（构建 test 二进制并打成 `.tar.zst`），`list`/`run` 均支持 `--archive-file`、`--workspace-remap`、`--binaries-metadata`。→ 准备/运行分离**走 archive 握手**，不假定不存在的参数。
+
+**接口草案（T-02 按此实现，实际 manifest 名在 T-02 钉住）**：
+
+- `scripts/fixed-tests.py <groups> --prepare-only --out <dir>`：对 `invocations()` 合并后的**每个 key**（runner/workspace/args/domain/tools/file/suite/timeout 的并集成员）执行一次 `cargo nextest archive --archive-file <dir>/archive-<n>.tar.zst`，选择面沿用该 key 的 `-p/--lib/--tests/--test/--features/--target-dir`（不含 `-E`，表达式属运行期）；工具仍走现有 `prepare_tools.prepare()`（receipt 复用已按 source_state+rustc+tool config+target 身份校验并逐件 re-hash）。产出 `prepared.json`：`schema`、`config_sha256`、`source_state`、rustc marker、每个 key 的 archive path+sha256、工具 receipts、生成时间与 driver 版本。
+- `<同命令> --run-prepared <prepared.json>`：先逐项校验 identity（source_state、config、toolchain、archive sha256、工具 receipts），任一漂移 → **具名准备错误，零回落、零补构建**；通过后 `cargo nextest run --archive-file <a> --workspace-remap <checkout> --ignore-default-filter -E <并集表达式> --no-fail-fast --no-tests fail`（`-E`/`--run-ignored`/`respect_default_filter` 与 archive 的组合由 T-02 负控实证，不预设）。
+- 日常入口按 §2：`cargo t <ACE组>` 未找到本树匹配 prepared.json 时返回 `PREPARATION_REQUIRED` + 显式准备命令；显式 `--manifest` 消除候选歧义。
+
+**可复用面（决定 archive 数量，不是新注册表）**：`ace-host` 与 `ace-console` 同 key → 同一 archive；`ace-rust-lowering` 与 host 同包同 features（仅 `-E`/tools 不同）→ 可复用同一 archive；`ace-batch` 因 `--features test-case-batch` 独立 archive；`ace-facade`/`ace-adapters` 在根 workspace → 各自独立 archive；其余组各自一个。
+
+**T-02 必须负控的风险面**：archive 重映射后仍依赖 `CARGO_MANIFEST_DIR`/仓库相对路径的用例（如 S-12 直接起 rustc、B-01 的 trace-runtime 构建路径、`scratch()` 临时目录）须在真实链上证明行为不变；否则该组退回"显式准备但运行期直取 test 二进制"的等价形态，并在 SD-01 写明。
+
+**实证（本轮已完成，`ace-lowering` 真实链）**：
+
+```
+cargo nextest archive -p ace-lowering --lib --tests --archive-file <scope>/archive-spike/ace-lowering.tar.zst
+  → exit 0，18.75s（含编译；产出 4,563,639 B，tar.zst，sha256 ed97df0d…）
+cargo nextest run --archive-file <…>.tar.zst --workspace-remap <worktree>/experimental/ace \
+  --archive-format tar-zst --no-fail-fast --no-tests fail
+  → exit 0，**9/9 PASS，0.34s**（零构建）
+cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
+  → exit 0，**3/3 PASS，0.39s**，6 skipped（表达式在 archive 模式下生效）
+```
+
+即 §2/§5.4 要的"准备（可观测、可复用）→ 只运行（零编译）"在真实 nextest 上成立；准备/运行比 18.75s : 0.34s。
+
+### 5.10 T-01 真实发现分母（第一批，`--discover-only`，不执行 body、不准备 release 工具）
+
+| 组 | 选择 / 排除 | 二进制数 | 观测 | 材料 |
+|---|---:|---:|---|---|
+| `ace-av` | **1,428 / 0** | 8（`ace-av::conformance` 1,277、`ace-av-core` 69、`ace-av-core::conformance` 48、`ace-av` 17、`ace-av-core::foreign_resources` 11、`ace-av::bin/av-worker` 3、`ace-av-core::p982_config_super_put` 2、`ace-av-core::p982_console_stdin_contract` 1） | 墙 **56.378s**（含构建），CPU 190.2s，峰值 Job 3.50GB；`source_state 6371cd89…` | `discover-ace-av/results.json` |
+| `ace-lowering` | 9 / 0 | 2 | 三组合计 50.95s | `discover-small-3/results.json` |
+| `ace-artifacts` | 43 / 0 | 3（`ace-artifacts` 19 / `::conformance` 21 / `::store_resources` 3） | 同上 | 同上 |
+| `ace-semantics` | 295 / 0 | 19（其中 `ace-source-query` 104、`ace-semantics-store::conformance` 65） | 同上 | 同上 |
+
+历史收据（§4.2）的 `ace-av` 1,428 执行数与本次**发现**数一致 → 分母稳定；本轮只发现不执行，`>10s` 项仍须 T-02/T-09 在只运行形态下重测。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -443,6 +482,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass（进行中：47 行结构化展开落地并留局限；T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见本次 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：等机器空闲后取真实发现分母）`
 
 同日续（round 3 末段）：24 组包/target/feature 差集静态冻结（§5.8，脚本 `extract_groups.py`，产物 `t01-24-groups-targets.md`）；静态实证 H-06——`ace-host`/`ace-console` 的 9 元 key 完全相同必须合并一次调用，`ace-batch`（features）与 `ace-rust-lowering`（tools）key 不同不得强合；另发现 `ace-m2-build` 实为 8 个 test target、`ace-a2c-abi` 只有 lib、`ace-facade`/`ace-adapters` 跑根 workspace（易被误读为 ACE workspace 单例）。仍未跑组。
+
+2026-11-19（goal round 4，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①**准备/运行接口实证**（§5.9）——`cargo nextest archive -p ace-lowering --lib --tests` 18.75s 产出 4.56MB tar.zst；`cargo nextest run --archive-file … --workspace-remap …` **9/9 PASS 0.34s 零构建**；再加 `--ignore-default-filter -E 'test(closures_lowering::)'` → 3/3 PASS 0.39s（表达式在 archive 模式生效）。prepare/run 分离在真实 nextest 上成立。②**真实发现分母第一批**（§5.10）：`ace-av` **1,428/0**（8 二进制，墙 56.378s，峰值 Job 3.50GB）、`ace-lowering` 9、`ace-artifacts` 43、`ace-semantics` 295；`ace-av` 发现数与此前执行的 1,428 一致。③材料：`discover-ace-av/`、`discover-small-3/`、`archive-spike/`。仍受并发会话（lang-1078 `case-av-language-parity`，14:50 起持续）限速：`ace-host`/`ace-console`/`ace-batch`/`ace-rust-lowering`（共享 `ace-conformance` target）等其余组未发现。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: pass（进行中：archive 接口实证 + 四组真实分母；T-01 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：其余组发现 + 收口）`
 
 ## 10. 待澄清事项
 
