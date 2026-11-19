@@ -1,15 +1,17 @@
 {
-  "last_covered_plan_id": 1064,
-  "timestamp": "2026-11-16T10:04:09Z",
-  "covered_commit": "5cedb4715 (HEAD at run start; run config_sha256 8364456127bd..f3a24a9d; concurrent 981 bookkeeping commits during run, selected-group code unchanged; HEAD at receipt-write 9e67676f61)",
+  "last_covered_plan_id": 1098,
+  "timestamp": "2026-11-19T15:12:46Z",
+  "covered_commit": "bcf0ddb88 (HEAD at run start; run dir target/test-groups/run-amzo64ib; first cargo t all under the PLAN-1098 prepare/run handshake)",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
   "new_reds": [
-    "infra-fixed: test_fixed_groups.FixedGroups.test_ace_set_is_explicit_and_separate_from_daily — `ace` set now expands to [ace-workspace, ace-adapters, ace-batch, ace-facade] but the governance test's frozen expectation lacks ace-facade. Introduced by PLAN-969 E0 facade landing 278b912043 (2026-11-15, after prior receipt b1dbab313d); PLAN-976 (this window's merge) touched only the ace-a2x group args line. Attribution: PLAN-969 facade governance-test lag; fix-forward: one-line expectation update in scripts/tests/test_fixed_groups.py via L0 fix worktree (owner: 969 line)."
+    "prepare-archive: aavm/auto-lang/auto-lang-core/auto-playground 'selected Cargo target discovery/build failed' — .config/nextest-full.toml override package(ace-aac-support-conformance) (PLAN-1056) matches no package in the prepared archive graph for that group set; deterministic via `python scripts/fixed-tests.py all --prepare-only`. Attribution: PLAN-1098 prepare handshake x 1056-era override (test governance).",
+    "infra-meter: test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — expects FIXTURE_WORKER release path, actual prepared path (1098 prepared-tool regime; test expectation lag). Attribution: PLAN-1098.",
+    "infra-fixed: test_ordinary_ace_entry_requires_preparation_before_any_run — expects PREPARATION_REQUIRED, hit 'execution lease held by live pid 25200' (gate test isolation vs concurrent slot lease). Attribution: PLAN-1098 gate-test isolation."
   ],
   "known_reds_seen": [],
   "verdict": "new-reds-attributed",
-  "notes": "Due trigger: PLAN-975 (%5=0) archived after prior receipt (2026-11-14T23:23Z). Run: 36 groups = 32 PASS, 3 NOT_APPLICABLE (conditional aavm/a2r-actor/auto-vm, same as prior), 1 FAIL (infra-fixed, above); 4639 tests executed; wall 1072.4s; single instance on main, no competing builds (tasklist clean before start); results target/test-groups/run-4tyrocgf/results.json. Prior receipt's known reds resolved: auto-generation-core plan988 TIMEOUT now PASS (46/46); auto-tool-execution timing pair PASS this run. Window b1dbab313d..HEAD includes 969 facade, 972/975 archives, 976 delivery, 980/981 native rounds. discovery_complete=false reflects concurrent bookkeeping commits on main during the run (same shape as prior receipt)."
+  "notes": "Due trigger: PLAN-1080 (%5=0) archived; prior receipt 1064/2026-11-16 (>48h with merges). 36 groups = 28 PASS, 2 NOT_APPLICABLE (a2r-actor-tests/auto-vm, same conditional shape as prior), 6 FAIL (all three families above — infra, zero language-code regressions). PLAN-1080's own affected groups (ace-source/ace-syntax/ace-semantics/ace-av/case-av-language-parity) all PASS in this batch. Prior receipt's infra-fixed known red (ace set expectation) now PASS — 1098 renamed the sets. Recorded DEBT-1098-BATCH-PREPARE in KNOWN-DEBT-AND-RISKS.md; fix-forward to the 1098 governance line; nothing unmerged. wall 439s; single instance on main; no competing cargo/nextest at start (tasklist clean)."
 }

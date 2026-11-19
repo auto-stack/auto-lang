@@ -1,3 +1,14 @@
+## DEBT-1098-BATCH-PREPARE — 批量全量门准备路径三处 infra 红（OPEN，2026-11-19）
+
+- **owner/后继**：PLAN-1098 测试治理线（prepare/run 握手与构件 pin）fix-forward 任务；由 PLAN-1080 合入触发的到期批量回归首次在 1098 新握手下运行时发现（receipt run-amzo64ib）。
+- **事实（36 组=28 PASS/6 FAIL/2 NA，wall 439s，主检出单实例）**：
+  1. aavm/auto-lang/auto-lang-core/auto-playground 四组 "selected Cargo target discovery/build failed"——archive 准备解析 `.config/nextest-full.toml` override `package(ace-aac-support-conformance)`（PLAN-1056 加入）在该组集的包图上无匹配（确定性复现：`python scripts/fixed-tests.py all --prepare-only`）。
+  2. infra-meter `test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build`——期望 FIXTURE_WORKER=release 路径，实际指向 prepared 路径（1098 prepared-tool 制度改变了 env，测试期望滞后）。
+  3. infra-fixed `test_ordinary_ace_entry_requires_preparation_before_any_run`——期望 PREPARATION_REQUIRED，实际撞 "execution lease held by live pid"（门测试自身隔离不足，与并行槽租约冲突）。
+- **影响**：语言代码零回归（本包 ace-source/syntax/semantics/av/case-av-language-parity 在该批全 PASS）；批量门 infra 修复前后续到期跑仍会红这三族。
+- **关闭条件**：① archive 准备使 nextest-full override 与所选组包图一致（或把该 override 移入 ace-aac 组专属 config）；② meter 测试期望对齐 prepared 制度；③ 门测试用独立 root/租约隔离。三者修复后 `cargo t all` 单实例复跑全绿。
+- **当前处置**：不回滚任何已合入计划；修复走 1098 线 fix-forward（小修可 L0 fix-* worktree）。
+
 ## D-ASE-1023-REPLAY — 内部历史重放与验收盲区（OPEN，2026-11-19）
 
 - **owner/后继**：[PLAN-1106](1106-ase-incremental-event-sessions-and-replay-audit-repair.md)，ACE组件编译/AV事件会话＋auto-ui公共状态桥及ASE消费；r1草案，0/10，尚未实施。
