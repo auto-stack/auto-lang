@@ -425,6 +425,21 @@ AC-03/V-02：**两端均已成立**（AV 真实运行 + A2PY 原生 Python，同
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
 
+2026-11-20 · stage: work（round 14 · **V-04 错误语义三腿一致 + V-08 非 Python 控制**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `9944c349b` | task_ids: V-04 部分（未捕获异常/失败不充 PASS）、V-08 控制 | outcome: pass（round 级）| next_responsible_role: work（V-04 余量：错误类映射/位置；T-05 身份轴；SD 沉淀）
+
+Round 14 增量（冻结提交 `9944c349b`，树内 clean）：
+- 共享错误语料 `crates/auto-lang/test/cases/ace-m2/python-1107/error_uncaught_1107.at`（空 `list.pop()`）。
+- **AV**：`p1107_v04_uncaught_python_error_is_a_named_trap_with_span` —— 结果不是 Success，而是具名 `Trap{ForeignStatus, span}`，且 span 精确覆盖 `pop` 调用；stdout 为空（无部分输出冒充程序输出）。
+- **A2PY**：`p1107_v04_uncaught_python_error_fails_the_native_run` —— 原生 Python 退出码非 0、stderr 点名 `IndexError`、无 `value:` 成功标记。
+- **978**：`p1107_v04_sdk_run_of_an_uncaught_python_error_is_not_a_pass` —— SDK run 的 exit_code 非 0、无成功标记（run 缺/坏环境不充 PASS）。
+- **V-08 控制**：`p1107_v08_plain_auto_project_on_the_a2py_lane_is_unaffected` —— 非 Python 工程仍走冻结 Scalar cold 路径：runtime 无 `a2x_py_import`、无 `f0_text_provider.dll`，entry 值 14 正常观测。
+
+证据：`cargo nextest -p ace-abi -E 'test(p1107_v04)'` PASS；`-p ace-a2x-python -E 'test(p1107_v04)'` PASS（整二进制 3/3）；`-p ace-m2-build -E 'test(p1107_v04)+test(p1107_v08)'` 2/2；组级 `cargo t ace-python` PASS、`cargo t ace-m2-build` PASS、`cargo t ace-a2x` 仅预存 ts tripwire（72 vs 71，master 同红）；`p1107_v04` A2PY 用例在一次并行组运行中出现失败、隔离与整二进制复跑均绿，记为并行环境偶发（与 `pyready_03` 同类），已在本条具名留痕。
+
+余量：V-04 的错误**类映射/用户位置**在 A2PY 仍是 Python traceback（未做共享错误类）；T-05 解释器/包身份轴与暖编辑；V-07 缺 torch/缺解释器具名失败；SD-01..04 Specs 沉淀；随后 T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -451,6 +466,21 @@ Round 13 实现（冻结提交 `efb78858a`，树内 clean）：
 AC-03/V-02：**两端均已成立**（AV 真实运行 + A2PY 原生 Python，同一共享语料 + 独立 oracle）。余量：T-05 解释器/包身份轴与暖编辑、V-04 错误/位置、V-08 回归控制、支持矩阵与 Specs。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
+
+2026-11-20 · stage: work（round 14 · **V-04 错误语义三腿一致 + V-08 非 Python 控制**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `9944c349b` | task_ids: V-04 部分（未捕获异常/失败不充 PASS）、V-08 控制 | outcome: pass（round 级）| next_responsible_role: work（V-04 余量：错误类映射/位置；T-05 身份轴；SD 沉淀）
+
+Round 14 增量（冻结提交 `9944c349b`，树内 clean）：
+- 共享错误语料 `crates/auto-lang/test/cases/ace-m2/python-1107/error_uncaught_1107.at`（空 `list.pop()`）。
+- **AV**：`p1107_v04_uncaught_python_error_is_a_named_trap_with_span` —— 结果不是 Success，而是具名 `Trap{ForeignStatus, span}`，且 span 精确覆盖 `pop` 调用；stdout 为空（无部分输出冒充程序输出）。
+- **A2PY**：`p1107_v04_uncaught_python_error_fails_the_native_run` —— 原生 Python 退出码非 0、stderr 点名 `IndexError`、无 `value:` 成功标记。
+- **978**：`p1107_v04_sdk_run_of_an_uncaught_python_error_is_not_a_pass` —— SDK run 的 exit_code 非 0、无成功标记（run 缺/坏环境不充 PASS）。
+- **V-08 控制**：`p1107_v08_plain_auto_project_on_the_a2py_lane_is_unaffected` —— 非 Python 工程仍走冻结 Scalar cold 路径：runtime 无 `a2x_py_import`、无 `f0_text_provider.dll`，entry 值 14 正常观测。
+
+证据：`cargo nextest -p ace-abi -E 'test(p1107_v04)'` PASS；`-p ace-a2x-python -E 'test(p1107_v04)'` PASS（整二进制 3/3）；`-p ace-m2-build -E 'test(p1107_v04)+test(p1107_v08)'` 2/2；组级 `cargo t ace-python` PASS、`cargo t ace-m2-build` PASS、`cargo t ace-a2x` 仅预存 ts tripwire（72 vs 71，master 同红）；`p1107_v04` A2PY 用例在一次并行组运行中出现失败、隔离与整二进制复跑均绿，记为并行环境偶发（与 `pyready_03` 同类），已在本条具名留痕。
+
+余量：V-04 的错误**类映射/用户位置**在 A2PY 仍是 Python traceback（未做共享错误类）；T-05 解释器/包身份轴与暖编辑；V-07 缺 torch/缺解释器具名失败；SD-01..04 Specs 沉淀；随后 T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 14 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 9944c349b | next: work`
 
 ## 10. 待澄清事项
 
