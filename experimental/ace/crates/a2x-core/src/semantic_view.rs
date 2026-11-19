@@ -282,6 +282,11 @@ pub struct SemanticView<'a> {
     global_defs: Vec<(usize, String, bool)>,
     /// PLAN-981：绑定器钉进 CheckedModule 的全局事实（可变性/init 链）。
     globals_plan: Option<&'a ModuleGlobalsPlan>,
+    /// PLAN-1107 T-02: the shared verified Python-operation facts (the py
+    /// lane's front door pins them onto `CheckedModule`). Present only for
+    /// modules compiled through the py lane; targets consume the facts and
+    /// never recover Python operations from frame text or names.
+    py_ops: Option<&'a ace_core::py_ops::PyOpPlan>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
     pub capabilities: Vec<String>,
 }
@@ -351,6 +356,9 @@ impl<'a> SemanticView<'a> {
             gfx_defs,
             global_defs,
             globals_plan,
+            // PLAN-1107 T-02: the py lane pins the shared operation facts onto
+            // the verified module; absent for every other compile path.
+            py_ops: checked.py_ops(),
             capabilities: bundle.requires.clone(),
         };
         view.walk_bodies()?;
@@ -469,6 +477,9 @@ impl<'a> SemanticView<'a> {
             gfx_defs,
             global_defs,
             globals_plan: None,
+            // PLAN-1107 T-02: a fragment view carries no whole-module py-op
+            // plan (the fragment credential does not cover it).
+            py_ops: None,
             capabilities: bundle.requires.clone(),
         };
         view.walk_bodies()?;
@@ -620,6 +631,16 @@ impl<'a> SemanticView<'a> {
     /// The signature-only external owning `def_index`, if any.
     pub fn external_by_def(&self, def_index: usize) -> Option<&ExternalFn> {
         self.externals.iter().find(|f| f.def_index == def_index)
+    }
+
+    /// PLAN-1107 T-02: the shared verified Python-operation plan of this
+    /// module (the py lane's front-door facts: imports, calls, attribute /
+    /// index / binary operations and explicit extractions with their
+    /// source-order operand slots and spans). `None` for modules that carry
+    /// no Python operations. Targets consume this plan instead of decoding
+    /// the AV `p967.frame/1` wire text.
+    pub fn py_ops(&self) -> Option<&'a ace_core::py_ops::PyOpPlan> {
+        self.py_ops
     }
 
     /// A real source foreign declaration; never a sibling ExternalFn scaffold.

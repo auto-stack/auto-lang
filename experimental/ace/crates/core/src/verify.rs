@@ -97,6 +97,10 @@ pub struct CheckedModule {
     foreign_plan: Option<crate::foreign_resources::ForeignResourcePlan>,
     /// PLAN-981：模块级 const/var 事实（仅 AGE 包前门设置；其余路径 None）。
     module_globals: Option<ModuleGlobalsPlan>,
+    /// PLAN-1107：共享受检的 Python 操作事实（仅 py 通道前门设置；其余路径
+    /// None）。由 resolve 在**执行该操作的位置**记录（`ace_core::py_ops`），
+    /// 不是从帧文本或函数名反推；AV 继续用帧调用，其他目标消费同一事实。
+    py_ops: Option<crate::py_ops::PyOpPlan>,
 }
 
 impl CheckedModule {
@@ -116,6 +120,18 @@ impl CheckedModule {
     /// PLAN-981：AGE 包前门在唯一 verify 后钉入绑定器事实（一次性）。
     pub fn set_module_globals(&mut self, plan: ModuleGlobalsPlan) {
         self.module_globals = Some(plan);
+    }
+
+    /// PLAN-1107：共享受检 Python 操作事实（py 通道前门设置；不是从帧文本
+    /// 反推）。非 py 模块为 None。
+    pub fn py_ops(&self) -> Option<&crate::py_ops::PyOpPlan> {
+        self.py_ops.as_ref()
+    }
+
+    /// PLAN-1107：py 通道编译入口在 verify 后钉入本次编译记录的操作事实
+    /// （一次性）。事实由 resolve 在操作发生处记录。
+    pub fn set_py_ops(&mut self, plan: crate::py_ops::PyOpPlan) {
+        self.py_ops = Some(plan);
     }
 
     /// The descriptor identity this module was verified under.
@@ -1864,6 +1880,7 @@ pub fn verify_foreign_scalar(
             coll_plan: None,
             foreign_plan: None,
             module_globals: None,
+            py_ops: None,
         })
     } else {
         Err(verifier.diags)
@@ -2181,6 +2198,7 @@ fn verify_text_domain(
             // declarations (its verifier entry rejects them).
             foreign_plan: None,
             module_globals: None,
+            py_ops: None,
         })
     } else {
         Err(v.diags)
@@ -2324,6 +2342,7 @@ fn verify_text_record_impl(
             coll_plan: None,
             foreign_plan,
             module_globals: None,
+            py_ops: None,
         })
     } else {
         Err(v.diags)
@@ -2435,6 +2454,7 @@ fn verify_collection_family_impl(
             coll_plan: Some(plan),
             foreign_plan: None,
             module_globals: None,
+            py_ops: None,
         })
     } else {
         Err(v.diags)
@@ -2549,6 +2569,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
             coll_plan: None,
             foreign_plan: None,
             module_globals: None,
+            py_ops: None,
         })
     } else {
         Err(v.diags)

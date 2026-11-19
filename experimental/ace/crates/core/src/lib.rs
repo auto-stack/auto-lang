@@ -50,6 +50,7 @@ pub mod descriptor;
 pub mod foreign_resources;
 pub mod hir;
 pub mod link;
+pub mod py_ops;
 pub mod runtime_contract;
 pub mod source;
 pub mod text_resources;

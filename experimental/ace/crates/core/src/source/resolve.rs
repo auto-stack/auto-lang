@@ -15,6 +15,7 @@
 use super::ast::{self, Arg, BinOp, Expr, ExprKind, FnItem, Stmt, TypeWord, UnaryOp};
 use super::{meta_intrinsic, trace_intrinsic, SourceProfile, META_CAPABILITY, TRACE_CAPABILITY};
 use crate::atom_text::{Diagnostic, Span, Stage};
+use crate::py_ops::{PyOpFact, PyOpKind, PyRole, PyValClass};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "agg_lower.rs"]
@@ -6270,6 +6271,31 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
     }
 
+    /// PLAN-1107 T-02: the admitted value class of one operand — the same
+    /// classification the frame encoder applies (`py_frame_val`), so the
+    /// recorded fact and the wire frame can never disagree about an operand.
+    fn py_val_class(&self, v: &ResolvedExpr) -> PyValClass {
+        if self.py_is_object(v) {
+            return PyValClass::Object;
+        }
+        match &v.kind {
+            RExprKind::StrLit(_) => PyValClass::Text,
+            RExprKind::BoolLit(_) => PyValClass::Bool,
+            RExprKind::TypedLit {
+                vt: VT::F64 | VT::F32,
+                ..
+            } => PyValClass::Float,
+            RExprKind::ReadLocal(l)
+                if matches!(v.vt, VT::F64 | VT::F32) && self.py_lit_locals.contains_key(l) =>
+            {
+                PyValClass::Float
+            }
+            _ if v.vt == VT::I32 => PyValClass::Int,
+            _ if v.vt == VT::Bool => PyValClass::Bool,
+            _ => PyValClass::Other,
+        }
+    }
+
     /// Call a foreign py op (or a helper fn) by name with ONE positional
     /// argument, typed by the callee's declared result.
     fn py_op_call(&mut self, op: &str, span: Span, value: ResolvedExpr) -> ResolvedExpr {
@@ -6480,12 +6506,58 @@ F:{d}
                 self.py_frame_val(&mut parts, &a.value);
             }
         }
+        // PLAN-1107 T-02: record the operation where it is admitted.
+        if crate::py_ops::recording_active() {
+            let mut fact = PyOpFact::new(PyOpKind::Call, span).with_member(member);
+            fact = fact.operand(PyRole::Receiver, recv.span, self.py_val_class(recv));
+            let mut slot = 0u32;
+            for a in &args {
+                if a.name.is_none() {
+                    fact = fact.operand(
+                        PyRole::Positional(slot),
+                        a.value.span,
+                        self.py_val_class(&a.value),
+                    );
+                    slot += 1;
+                }
+            }
+            for a in &args {
+                if let Some(n) = &a.name {
+                    fact = fact.operand(
+                        PyRole::Kwarg(n.name.clone()),
+                        a.value.span,
+                        self.py_val_class(&a.value),
+                    );
+                }
+            }
+            crate::py_ops::record(fact);
+        }
         let frame = self.py_frame(span, parts);
         self.py_op_call("py_call", span, frame)
     }
 
     /// The `.to(...)` extraction sugar on a py object.
     fn py_to_sugar(&mut self, recv: &ResolvedExpr, target: VT, span: Span) -> ResolvedExpr {
+        // PLAN-1107 T-02: the extraction operation (the `py_f64_lo` low-word
+        // lane is the continuation of the same `.to(float)` extraction and is
+        // not a second operation).
+        if crate::py_ops::recording_active() {
+            let word = match target {
+                VT::F64 => Some((PyOpKind::ToFloat, "double")),
+                VT::F32 => Some((PyOpKind::ToFloat, "float")),
+                VT::I32 => Some((PyOpKind::ToInt, "int")),
+                VT::Bool => Some((PyOpKind::ToBool, "bool")),
+                VT::Str | VT::StrOwned => Some((PyOpKind::ToText, "str")),
+                _ => None,
+            };
+            if let Some((kind, word)) = word {
+                crate::py_ops::record(
+                    PyOpFact::new(kind, span)
+                        .with_member(word)
+                        .operand(PyRole::Receiver, recv.span, self.py_val_class(recv)),
+                );
+            }
+        }
         match target {
             VT::F64 | VT::F32 => {
                 let frame = self.py_recv_frame(recv, span);
@@ -12359,6 +12431,18 @@ F:{d}
                     self.py_frame_val(&mut parts, &idx);
                     parts.push(PyFramePart::Txt("k 0\n".to_string()));
                     let frame = self.py_frame(e.span, parts);
+                    // PLAN-1107 T-02: index operation fact (receiver + slot 0).
+                    if crate::py_ops::recording_active() {
+                        crate::py_ops::record(
+                            PyOpFact::new(PyOpKind::GetItem, e.span)
+                                .operand(
+                                    PyRole::Receiver,
+                                    recv.span,
+                                    self.py_val_class(&recv),
+                                )
+                                .operand(PyRole::Positional(0), idx.span, self.py_val_class(&idx)),
+                        );
+                    }
                     return self.py_op_call("py_getitem", e.span, frame);
                 }
                 match recv.vt {
@@ -14400,6 +14484,18 @@ F:{d}
                             name.name
                         )));
                         let frame = self.py_frame(name.span, parts);
+                        // PLAN-1107 T-02: attribute operation fact.
+                        if crate::py_ops::recording_active() {
+                            crate::py_ops::record(
+                                PyOpFact::new(PyOpKind::GetAttr, name.span)
+                                    .with_member(name.name.clone())
+                                    .operand(
+                                        PyRole::Receiver,
+                                        base.span,
+                                        self.py_val_class(&base),
+                                    ),
+                            );
+                        }
                         out[dest] = self.py_op_call("py_getattr", name.span, frame);
                         continue;
                     }
@@ -14873,6 +14969,23 @@ F:{d}
                                     opname.len()
                                 )));
                                 let frame = self.py_frame(span, parts);
+                                // PLAN-1107 T-02: binary operation fact.
+                                if crate::py_ops::recording_active() {
+                                    crate::py_ops::record(
+                                        PyOpFact::new(PyOpKind::BinOp, span)
+                                            .with_member(opname)
+                                            .operand(
+                                                PyRole::Receiver,
+                                                l.span,
+                                                self.py_val_class(&l),
+                                            )
+                                            .operand(
+                                                PyRole::Positional(0),
+                                                r.span,
+                                                self.py_val_class(&r),
+                                            ),
+                                    );
+                                }
                                 out[dest] = self.py_op_call("py_binop", span, frame);
                                 continue;
                             }

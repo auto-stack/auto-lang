@@ -211,30 +211,48 @@ pub fn compile_aggregates_source_with_foreign(
     capabilities: &[String],
     foreign: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
-    let mut program = match super::parse_program_with(src, SourceProfile::Aggregates) {
-        Ok(p) => p,
-        Err(d) => return Err(vec![d]),
-    };
-    // PLAN-1026: the use.py front door (helper injection + hoisted member
-    // imports) — a no-op without use.py items.
-    super::py::front_door(&mut program);
-    let parts = compile_program_observed_with_age(
-        &program,
-        src,
-        module_path,
-        capabilities,
-        SourceProfile::Aggregates,
-        None,
-        Some(foreign),
-        false,
-    )?;
-    let checked = crate::verify::verify_foreign_closures(parts.bundle, foreign)?;
-    Ok(CompiledSource {
-        profile: super::AGGREGATES_SOURCE_PROFILE,
-        input_hash: parts.input_hash,
-        atom_text: parts.atom_text,
-        checked,
-    })
+    // PLAN-1107 T-02: arm the shared py-op recorder for this compile. The
+    // recorder is thread-local and only records while armed, so every other
+    // compile path is untouched. The plan is always disarmed (taken) below,
+    // including on error, and pinned onto the verified module only when
+    // operations were actually recorded.
+    crate::py_ops::begin_recording();
+    let compiled = (|| {
+        let mut program = match super::parse_program_with(src, SourceProfile::Aggregates) {
+            Ok(p) => p,
+            Err(d) => return Err(vec![d]),
+        };
+        // PLAN-1026: the use.py front door (helper injection + hoisted member
+        // imports) — a no-op without use.py items.
+        super::py::front_door(&mut program);
+        let parts = compile_program_observed_with_age(
+            &program,
+            src,
+            module_path,
+            capabilities,
+            SourceProfile::Aggregates,
+            None,
+            Some(foreign),
+            false,
+        )?;
+        let checked = crate::verify::verify_foreign_closures(parts.bundle, foreign)?;
+        Ok(CompiledSource {
+            profile: super::AGGREGATES_SOURCE_PROFILE,
+            input_hash: parts.input_hash,
+            atom_text: parts.atom_text,
+            checked,
+        })
+    })();
+    let plan = crate::py_ops::take_plan();
+    match compiled {
+        Ok(mut compiled) => {
+            if !plan.is_empty() {
+                compiled.checked.set_py_ops(plan);
+            }
+            Ok(compiled)
+        }
+        Err(diags) => Err(diags),
+    }
 }
 
 pub fn compile_scalar_source(

@@ -19,6 +19,7 @@
 
 use super::ast::{Arg, Expr, ExprKind, Ident, Item, Program, Stmt};
 use crate::atom_text::Span;
+use crate::py_ops::{PyOpFact, PyOpKind};
 
 /// The frozen helpers (aggregates surface; `2147483647 + 1` split avoids
 /// the i32 literal-range rejection while staying exact at runtime; the
@@ -111,6 +112,16 @@ pub fn front_door(program: &mut Program) -> usize {
     };
     let mut hoisted: Vec<Stmt> = Vec::with_capacity(imports.len());
     for (module, member, span) in imports {
+        // PLAN-1107 T-02: the shared py-op fact — the import is recorded HERE,
+        // where the front door admits it (module string + member + span), so
+        // no target has to recover it from the generated frame text.
+        if crate::py_ops::recording_active() {
+            crate::py_ops::record(
+                PyOpFact::new(PyOpKind::Import, span)
+                    .with_module(module.clone())
+                    .with_member(member.clone()),
+            );
+        }
         let frame = import_frame(&module, &member);
         hoisted.push(Stmt::Let {
             kw: span,
