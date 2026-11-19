@@ -344,3 +344,92 @@ fn p1107_v08_plain_auto_project_on_the_a2py_lane_is_unaffected() {
         .expect("the plain program runs");
     assert_eq!(run.exit_code, Some(14), "the entry value is observed: {run:?}");
 }
+#[test]
+fn p1107_v05_emitted_fileset_carries_no_legacy_python_engine() {
+    // AC-05: the A2PY lane must not fall back to the old VM / PyO3 / ctypes /
+    // PythonTrans engine. The emitted fileset is plain Python 3 that imports
+    // only the standard library and the emitted runtime.
+    let root = scratch("legacy");
+    let inputs = ProjectInputs {
+        name: "usepy1107legacy".to_string(),
+        entry: "main".to_string(),
+        caps: vec![],
+        sources: vec![("main.at".to_string(), corpus_file("protocol_1107.at"))],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let outcome = m2
+        .build(TargetKind::A2py, &inputs)
+        .expect("the protocol project builds");
+    assert!(!outcome.products.is_empty(), "the fileset is emitted");
+    for (rel, bytes) in &outcome.products {
+        let text = String::from_utf8_lossy(bytes).to_string();
+        for forbidden in ["pyo3", "PyO3", "auto_vm", "python_trans", "PythonTrans"] {
+            assert!(
+                !text.contains(forbidden),
+                "`{rel}` must not reference the legacy engine (`{forbidden}`)"
+            );
+        }
+        assert!(
+            !text.contains("f0_text_provider"),
+            "`{rel}` must not load the ctypes provider for this py-lane project"
+        );
+        // The PROGRAM never touches ctypes; the runtime template may still
+        // carry the (unused here) ctypes import of the foreign bridge.
+        if rel.ends_with("/generated.py") {
+            assert!(
+                !text.contains("ctypes"),
+                "the generated program must not call through ctypes"
+            );
+        }
+    }
+    // The generated program imports only stdlib modules by name.
+    let generated = outcome
+        .products
+        .iter()
+        .find(|(rel, _)| rel.ends_with("/generated.py"))
+        .map(|(_, b)| String::from_utf8_lossy(b).to_string())
+        .expect("generated.py");
+    for line in generated.lines() {
+        if let Some(rest) = line.trim().strip_prefix("import ") {
+            let name = rest.split_whitespace().next().unwrap_or("");
+            assert!(
+                ["builtins", "math", "sys"].contains(&name),
+                "unexpected import `{name}` in generated.py"
+            );
+        }
+    }
+}
+
+#[test]
+fn p1107_v07_missing_interpreter_is_named_not_a_pass() {
+    // V-07: with no interpreter on PATH the RUN names the failure; it never
+    // reports a successful observation.
+    let root = scratch("nointerp");
+    let inputs = ProjectInputs {
+        name: "usepy1107nointerp".to_string(),
+        entry: "main".to_string(),
+        caps: vec![],
+        sources: vec![("main.at".to_string(), corpus_file("protocol_1107.at"))],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let sdk = root.join("sdk");
+    m2.build_sdk(&inputs, &[TargetKind::A2py], &sdk, vec![], "run:py")
+        .expect("emit does not run the interpreter");
+    let empty = root.join("empty-path");
+    std::fs::create_dir_all(&empty).unwrap();
+    let saved_path = std::env::var_os("PATH");
+    std::env::set_var("PATH", &empty);
+    let result = m2.run_sdk(&sdk, TargetKind::A2py, "run:py");
+    match saved_path {
+        Some(p) => std::env::set_var("PATH", p),
+        None => std::env::remove_var("PATH"),
+    }
+    let err = result.expect_err("no interpreter must never be a passing run");
+    assert!(
+        err.code == "m2build.run.interpreter-failed"
+            || err.code == "m2build.run.runtime-dependency",
+        "named interpreter failure: {err:?}"
+    );
+}
