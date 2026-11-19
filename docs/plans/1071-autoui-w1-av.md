@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1071
-status: execution_done
+status: reviewed
 feature_name: AutoUI 示例与 Widgets 的 AV 接管
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 3
+current_step: 4
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-979]
 supersedes_spec_components: []
@@ -66,13 +66,29 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 - [x] **T-03｜work｜实跑完整 AV**。沿原 V-UI-W1 真窗、`ace_node_desktop` 和 `authoring_session` 等生产测试入口逐组关闭，提供可独立验收的 VM 工程运行收据。实跑记录与预存红台账见 §9（2026-11-19 T-03 收据）。
 
-- [ ] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
+- [x] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。复审结论与 AC 证据映射见 §9（2026-11-19 T-04 收据）。
 
 - [ ] **T-05｜merge｜正式交付**。按 owner 合入、沉淀规范，记录可消费版本，按项目规约归档及清理。
 
 ## 9. 复审记录
 
-### 2026-11-19 stage: work（收口）| PLAN-1071 r1 | outcome: pass（execution_done）| task_ids: T-01/T-02/T-03 | evidence: §9 三份收据 | blockers: 无 | next_responsible_role: review（T-04 独立复审）| 授权链：用户「完成计划1071」= /auto-plan-goal 全链授权（work→review→merge），记录于 §4 语义与首条 goal 收据。
+### 2026-11-19 stage: review（T-04 独立复审）| review_scope: final | reviewer_identity: 本会话独立复核（**限制：非独立上下文**；结论由工件重构——worktree 状态核验/抽查命令重放/机械审计，非采信执行者摘要）| PLAN-1071 r1 | outcome: **pass** | worktree: `D:/autostack/.wt/lang-1071/{auto-lang,auto-ui}` @ plan-1071-dev | reviewed_commit: 无产品代码提交（本批纯验收+簿记；lang 基面 `f02b34b74`、ui 基面 `d2e7d7a4`、down `72b09700`）| spec_inputs: docs/specs/ace-migration/m2-autoui.md（§12 MIN-A-UI 桌面入口/§5 边界；merge 阶段沉淀 UI-W1-AV 接收节）
+
+**AC 证据映射（逐项核）**：
+- **AC-01 PASS**：§5 对应原分母齐（T-01 冻结表：36 示例+70 Widgets 页+components 闭包 18 件、981 W1 五组 oracle 绑定 `3047b3481`、负控=撤权/坏源/非法输入具名拒、实际依赖=ace_node_desktop BridgeEngine/authoring_session/auto-lang-ace-host 全在位），输入/独立预期/负控/依赖可追溯。
+- **AC-02 PASS（有界，如实）**：§6 真产品入口逐组关闭（ace_node_desktop 11/11 CPU+真窗、ace_ui_hello 7/7、authoring_session 4/4、mixed_regions 7/7、desktop_behavior 11/11、image_surface_contract 1/1、plan041 4/4、plan033 2/2、theme_scope 4/4、lang ace-source PASS/ace-av 1426/1428）；故障/恢复/资源/来源身份对证（撤权拒、坏源命名退出、关开/late、二十轮零资源增长、base commit 记录）。**两条预存红具名台账**：host_console 族（981 §9 既有漂移，lang 零改动=master 基面状态）；gallery_vue_golden（auto-os 源↔auto-ui golden 跨仓漂移，V-B-PARITY 面归 985/auto-ui owner 线，983 r25 已点名）。
+- **AC-03 PASS（本复核）+ merge 待办**：同树冻结、正式交付证据齐；source/SDK/ABI 身份与消费者接面（010 列表字段边界交 1072）在案；消费者按约定接口接收由 merge 落规范。
+
+**抽查重放（独立重构）**：`p980_u01_input_text_numeric_reject_and_two_instance_isolation` + `p980_u01_window_input_e2e`（真窗，`AUTO_UI_ACE_NODE_E2E=1`）**2/2 绿 6.75s**——U01 输入四 oracle 数字复核（i0 `你好Auto`/42·`abc` 拒·i1 `乙侧`/-5 与收据一致）。worktree 双树 clean（auto-ui 仅 Cargo.lock 构建产物，已还原）。
+
+**遗漏/延后/Workaround 扫描**：①U02–U06 示例级 AV 完整逐例——**延后（原义务）**，随 980 B-AV-I/V/R 在 ④-A 解锁路径上（980 §9 :1739 明确「B-AV-I 保持未勾——全分母仍压 ④」），本批按 §5「独立组不等待全组过线」先交 U01 全子面+生产入口收据，不冒全包完成（merge 落规范时记接收边界）；②无 Workaround 补丁（零产品代码）；③健康检查：双树 clean、零调试打印、零 fmt 面。
+
+**pending_closeout_gates（merge 持有）**：m2-autoui.md 沉淀 UI-W1-AV 接收节 + KNOWN-DEBT 边界记录 + 归档/清理。
+
+**evidence**：本会话实跑输出（§9 T-03 收据表）+ 抽查重放 2/2（上文）+ 计划文件三份 work 收据。
+**next**: merge（T-05 正式交付）。
+
+2026-11-19 stage: work（收口）| PLAN-1071 r1 | outcome: pass（execution_done）| task_ids: T-01/T-02/T-03 | evidence: §9 三份收据 | blockers: 无 | next_responsible_role: review（T-04 独立复审）| 授权链：用户「完成计划1071」= /auto-plan-goal 全链授权（work→review→merge），记录于 §4 语义与首条 goal 收据。
 
 2026-11-19 stage: work（T-03 实跑完整 AV）| PLAN-1071 r1 | outcome: pass（生产入口逐组关闭；两条预存红具名台账）| worktree: `D:/autostack/.wt/lang-1071/auto-ui` @ plan-1071-dev / auto-lang @ plan-1071-dev
 
