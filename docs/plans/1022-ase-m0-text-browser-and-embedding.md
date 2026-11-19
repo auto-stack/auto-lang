@@ -1,6 +1,5 @@
 ---
 plan_id: PLAN-1022
-status: execution_done
 feature_name: ASE M0两页文字浏览器与公共嵌入
 author: [Codex]
 created_at: 2026-11-12
