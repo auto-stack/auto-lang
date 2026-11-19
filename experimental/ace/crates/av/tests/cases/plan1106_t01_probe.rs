@@ -105,6 +105,7 @@ fn fn_item(name: &str, params: Vec<Param>, body: Vec<Stmt>) -> Item {
         receiver: ace_core::source::ast::Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     })
 }
 

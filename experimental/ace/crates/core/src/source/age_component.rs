@@ -3474,6 +3474,7 @@ pub fn compile_component_event_program(
             receiver: crate::source::ast::Receiver::Free,
             owner: None,
             script: false,
+            proto: false,
         }));
     }
     // (3) `__age_ev_seed(<字段形参…>)`：全量覆盖（形参=字段声明序；owned str
@@ -3557,6 +3558,7 @@ pub fn compile_component_event_program(
             receiver: crate::source::ast::Receiver::Free,
             owner: None,
             script: false,
+            proto: false,
         }));
     }
     // (4) 每 handler 一个单事件入口：载入 cell → hook_stmts_lower（同一脱糖）
@@ -3706,6 +3708,7 @@ pub fn compile_component_event_program(
             receiver: crate::source::ast::Receiver::Free,
             owner: None,
             script: false,
+            proto: false,
         }));
         let def_id = super::adapter::free_fn_def_id(&fn_name);
         handlers_out.push(ComponentEventHandlerOut {
