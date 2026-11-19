@@ -948,6 +948,164 @@ fn rewrite_store_view_items(
     Ok(())
 }
 
+/// PLAN-105 T-02（U03 真语料 016）：`computed` 成员在文本叶里以 `.name` 引用，
+/// 但 computed 不是模型字段（无 `self.name` 绑定）——把它**内联替换**成成员值
+/// 表达式（原语义=每次渲染按当前状态求值；内联保持纯函数语义）。
+fn inline_computed_expr(
+    e: &mut Expr,
+    computed: &[(String, Expr)],
+    depth: usize,
+) -> Result<(), Vec<Diagnostic>> {
+    if depth > 8 {
+        return Err(vec![text_diag(
+            "source.age.component-unsupported",
+            "computed member expansion exceeded the depth limit (cyclic computed)".to_string(),
+            e.span,
+        )]);
+    }
+    match &mut e.kind {
+        ExprKind::Field { base, name } => {
+            if matches!(&base.kind, ExprKind::Var(v) if v.name == "self") {
+                if let Some((_, value)) = computed.iter().find(|(n, _)| *n == name.name) {
+                    let mut value = value.clone();
+                    inline_computed_expr(&mut value, computed, depth + 1)?;
+                    let span = e.span;
+                    value.span = span;
+                    *e = value;
+                    return Ok(());
+                }
+                return Ok(());
+            }
+            inline_computed_expr(base, computed, depth)
+        }
+        ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+            inline_computed_expr(recv, computed, depth)?;
+            for a in args {
+                match a {
+                    crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => {
+                        inline_computed_expr(x, computed, depth)?
+                    }
+                    crate::source::ast::Arg::Named { value, .. } => {
+                        inline_computed_expr(value, computed, depth)?
+                    }
+                }
+            }
+            Ok(())
+        }
+        ExprKind::Call { args, .. } => {
+            for a in args {
+                match a {
+                    crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => {
+                        inline_computed_expr(x, computed, depth)?
+                    }
+                    crate::source::ast::Arg::Named { value, .. } => {
+                        inline_computed_expr(value, computed, depth)?
+                    }
+                }
+            }
+            Ok(())
+        }
+        ExprKind::TextDisplay(x) | ExprKind::Await(x) | ExprKind::Go(x) => {
+            inline_computed_expr(x, computed, depth)
+        }
+        ExprKind::Unary { operand, .. } => inline_computed_expr(operand, computed, depth),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            inline_computed_expr(lhs, computed, depth)?;
+            inline_computed_expr(rhs, computed, depth)
+        }
+        ExprKind::Index { base, index } => {
+            inline_computed_expr(base, computed, depth)?;
+            inline_computed_expr(index, computed, depth)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn inline_computed_stmts(
+    stmts: &mut [ComponentStmt],
+    computed: &[(String, Expr)],
+) -> Result<(), Vec<Diagnostic>> {
+    for st in stmts {
+        match st {
+            ComponentStmt::Assign(a) => inline_computed_expr(&mut a.rhs, computed, 0)?,
+            ComponentStmt::Call { call, .. } => inline_computed_expr(call, computed, 0)?,
+            ComponentStmt::Let { value, .. } => inline_computed_expr(value, computed, 0)?,
+            ComponentStmt::If {
+                cond, then, els, ..
+            } => {
+                inline_computed_expr(cond, computed, 0)?;
+                inline_computed_stmts(then, computed)?;
+                if let Some(e) = els {
+                    inline_computed_stmts(e, computed)?;
+                }
+            }
+            ComponentStmt::For { iter, body, .. } => {
+                inline_computed_expr(iter, computed, 0)?;
+                inline_computed_stmts(body, computed)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn inline_computed_view_items(
+    items: &mut [ComponentViewItem],
+    computed: &[(String, Expr)],
+) -> Result<(), Vec<Diagnostic>> {
+    for item in items {
+        match item {
+            ComponentViewItem::Text(t) => inline_computed_expr(&mut t.expr, computed, 0)?,
+            ComponentViewItem::Element(e) => {
+                if let Some(label) = &mut e.label {
+                    inline_computed_expr(label, computed, 0)?;
+                }
+                inline_computed_view_items(&mut e.items, computed)?;
+            }
+            ComponentViewItem::Entry(en) => match &mut en.value {
+                ComponentEntryValue::Expr(x) => inline_computed_expr(x, computed, 0)?,
+                ComponentEntryValue::Lambda { stmts, .. } => {
+                    inline_computed_stmts(stmts, computed)?
+                }
+                _ => {}
+            },
+            ComponentViewItem::Cond(c) => {
+                inline_computed_expr(&mut c.cond, computed, 0)?;
+                inline_computed_view_items(&mut c.then_items, computed)?;
+                inline_computed_view_items(&mut c.else_items, computed)?;
+            }
+            ComponentViewItem::For(f) => {
+                inline_computed_expr(&mut f.iter, computed, 0)?;
+                inline_computed_view_items(&mut f.items, computed)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 把 node 的 `computed` 成员内联进文本叶/树/处理器（computed 不是字段）。
+pub(crate) fn inline_computed_members(node: &mut ComponentNode) -> Result<(), Vec<Diagnostic>> {
+    let computed: Vec<(String, Expr)> = node
+        .members
+        .iter()
+        .filter(|m| m.role == "computed")
+        .filter_map(|m| m.value.clone().map(|v| (m.name.clone(), v)))
+        .collect();
+    if computed.is_empty() {
+        return Ok(());
+    }
+    for t in &mut node.view.texts {
+        inline_computed_expr(&mut t.expr, &computed, 0)?;
+    }
+    inline_computed_view_items(&mut node.view.tree, &computed)?;
+    for (_, items) in &mut node.view.named_trees {
+        inline_computed_view_items(items, &computed)?;
+    }
+    for h in &mut node.handlers {
+        inline_computed_stmts(&mut h.stmts, &computed)?;
+    }
+    Ok(())
+}
+
 /// 把 node 内 `store` 声明内联成前缀字段/消息/处理器，并重写组件侧
 /// `.store.field` 引用。返回具名诊断（未知字段 / store 方法 / 多 store）。
 pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diagnostic>> {
@@ -1180,6 +1338,7 @@ pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec
             // store 方法调度等未接面由 `inline_store_decl` 具名拒。
             let mut nodes = ok.component_nodes;
             for node in nodes.iter_mut() {
+                inline_computed_members(node)?;
                 inline_store_decl(node)?;
             }
             // 内联后仍残留 `.store.*` = store 声明不在本源（U03 的 store 在独立
