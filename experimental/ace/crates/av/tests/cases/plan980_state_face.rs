@@ -284,7 +284,9 @@ fn p980_state_fstring_view_leaf_states_observe_text_lane_refuses() {
         &ComponentFieldValue::Int(1)
     );
 
-    // 完整编译（发射文本叶）→ 整模块 lowering 拒绝 text-display（边界在案）。
+    // PLAN-105 T-02（U03）：声明 `ac.runtime.text.v1` 的 data/owned 模块现在
+    // **支持** `TEXT_DISPLAY` lowering（ABC 准入 `family.allows_data_tags()` 本就
+    // 允许）——完整文本观察从「拒绝」翻转为「渲染 int 叶」。
     let compiled = compile_component_scenario_with_initials(
         FSTR_SRC,
         "fid.at",
@@ -295,8 +297,17 @@ fn p980_state_fstring_view_leaf_states_observe_text_lane_refuses() {
         &empty_initials(1),
     )
     .expect("full compile verifies (HIR-level)");
-    let err = observe_compiled(&compiled).expect_err("text lane must refuse TextDisplay");
-    assert!(err.contains("text-display"), "{err}");
+    let observed = observe_compiled(&compiled).expect("text lane renders TextDisplay");
+    let rendered: Vec<&str> = observed
+        .instance_texts
+        .iter()
+        .flatten()
+        .map(|s| s.as_str())
+        .collect();
+    assert!(
+        rendered.iter().any(|t| t.contains('1')),
+        "rendered text leaves: {rendered:?}"
+    );
 }
 
 /// 复核反例（B-STATE-R）：states-only 是工件级事实，不是运行时偶然——

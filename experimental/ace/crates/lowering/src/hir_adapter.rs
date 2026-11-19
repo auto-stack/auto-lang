@@ -3609,8 +3609,11 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         // `text .intField` 才能在该车道 lowering。
         self.out.is_collections_profile()
             || self.out.is_closures_profile()
-            || self.out.is_data_profile()
-            || self.out.is_owned_profile()
+            // PLAN-105 T-02（U03 真语料 016）：声明了受检文本入口能力
+            // （`ac.runtime.text.v1`）的 data/owned 模块——组件面 int 文本叶的
+            // `TEXT_DISPLAY` 只在这里放开（其它模块保持原拒绝面）。
+            || (self.out.has_text_entry_capability()
+                && (self.out.is_data_profile() || self.out.is_owned_profile()))
     }
 
     /// PLAN-864 / PLAN-1035 (F34): HIR-level owned classification for a List
