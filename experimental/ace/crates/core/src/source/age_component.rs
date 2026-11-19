@@ -3439,6 +3439,15 @@ fn hook_stmts_lower(
                 if assign.bare {
                     let scoped = scope.iter().find(|(n, _, _)| n == &assign.field);
                     if let Some((_, local, _)) = scoped {
+                    let value = rename_expr_with_params(
+                        &assign.rhs,
+                        FieldBinding::Local(inst),
+                        &node.fields,
+                        &scope,
+                    )?;
+                    // 局部写同样按 owned-str 位置语义补 `.clone()`（016 的
+                    // `.accent_color = .store.accent_color` 镜像链）。
+                    let value = clone_if_place(value);
                     out.push(Stmt::Assign {
                         target: crate::source::ast::AssignTarget {
                             base: Ident {
@@ -3447,12 +3456,7 @@ fn hook_stmts_lower(
                             },
                             path: Vec::new(),
                         },
-                        value: rename_expr_with_params(
-                            &assign.rhs,
-                            FieldBinding::Local(inst),
-                            &node.fields,
-                            &scope,
-                        )?,
+                        value,
                         span: assign.span,
                         });
                         continue;
@@ -3821,26 +3825,36 @@ fn rename_arg(
 fn wrap_owned_transfer(
     value: Expr,
     field: &ComponentField,
-    param_locals: &[(String, String, Span)],
+    _param_locals: &[(String, String, Span)],
 ) -> Expr {
     if field_type(field) == Some(TypeWord::StrOwned) {
-        if let ExprKind::Var(ref v) = value.kind {
-            if param_locals.iter().any(|(_, local, _)| *local == v.name) {
-                let name_span = v.span;
-                let span = value.span;
-                return Expr {
-                    span,
-                    kind: ExprKind::Method {
-                        recv: Box::new(value),
-                        name: Ident {
-                            name: "clone".to_string(),
-                            span: name_span,
-                        },
-                        args: Vec::new(),
-                    },
-                };
-            }
-        }
+        return clone_if_place(value);
+    }
+    value
+}
+
+/// PLAN-105 T-02（U03 真语料 016）：owned `str` 赋值——右手若是**位置表达式**
+/// （变量/字段/下标读），HIR 侧需要显式 `.clone()`（否则触发
+/// `verify.ownership-required: assignment … implicitly transfers`）；字面量/构造
+/// 调用/显示表达式本身即 owned，不动。
+fn clone_if_place(value: Expr) -> Expr {
+    if matches!(
+        value.kind,
+        ExprKind::Var(_) | ExprKind::Field { .. } | ExprKind::Index { .. }
+    ) {
+        let name_span = value.span;
+        let span = value.span;
+        return Expr {
+            span,
+            kind: ExprKind::Method {
+                recv: Box::new(value),
+                name: Ident {
+                    name: "clone".to_string(),
+                    span: name_span,
+                },
+                args: Vec::new(),
+            },
+        };
     }
     value
 }
