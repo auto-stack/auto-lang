@@ -666,6 +666,7 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **010 列表字段边界（交 1072 共享接口）**：`010-contact-form` 的 `faqs`（list-of-structs）为**仅视图数据源**（model 只读、`for` 渲染、无事件写）；列表字段在生成面按只读数据源处理（Vue v-for/等价），不作为可变 state 通道；AGE 列表语义归 collections owner 单写。
 - **预存红台账（具名排除）**：lang `ace-av` `host_console::{av_console_entry_selection_cannot_bypass_main_policy, av_console_owned_front_door_enforces_console_entry_only}`（981 §9 既有漂移）；UI `gallery_vue_golden`（auto-os widgets-gallery 源↔auto-ui golden 基线跨仓漂移，V-B-PARITY 面归 985/auto-ui owner 线，983 r25 已点名）。
 - **边界（保持）**：U02–U06 示例级 AV 完整逐例仍压 980 ④-A 解锁路径（980 §9 :1739「B-AV-I 保持未勾——全分母仍压 ④」）；`UI-W1-AV` 最终汇总收据由 980 `B-AV-R` 签发（981 §9 交接约定），本接收记录其已交子面与生产入口证据，不冒全包完成。
+- **PLAN-104 补记（U02 AV harness 能力与边界，2026-11-19，merge 落地）**：AV 组件面 `ace_node_desktop` 的显示模型 harness 现支持——①view 条件项按实例状态求值可见性（不可见叶不呈现、叶序保持）；②元素 label（`h2`/`span` 族）作为展示行（不占 AV 叶编号）；③`view for` 循环体叶按仅视图数据（`ComponentViewDataField`）展开为具体叶（010 faqs：4 项×q/a=8 叶），不支持形状具名拒；④`style` 面不被 harness 消费（按原字节空白化，样式由 A2Vue/1072 负责）；⑤`ui_apply_bool` 的 Auto 面标量为 `i32`（0/1）。**保持边界**：foreign handler（`print` 等，D-④-4）在 AV 与 Vue lane 均具名缺席（`absent`/零效果拒）；entry-λ `oninput` 与无消息输入在 AV 场景面无派发面，输入类格以 A2Vue 收据为准（2026-11-19 用户裁定）；U02–U06 示例级 AV 完整逐例仍随 ④-A 解锁路径推进。
 
 ## 15. Vue 与生产 TS/JS 接管（PLAN-1072，2026-11-19）
 
