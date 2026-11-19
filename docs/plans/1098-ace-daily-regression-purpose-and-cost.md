@@ -341,6 +341,16 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 历史收据（§4.2）的 `ace-av` 1,428 执行数与本次**发现**数一致 → 分母稳定；本轮只发现不执行，`>10s` 项仍须 T-02/T-09 在只运行形态下重测。
 
+**第二批（`ace-conformance` 共享二进制的 4 组，本轮实测）**：
+
+| 组 | 选择 / 排除 | 观测 |
+|---|---:|---|
+| `ace-host` + `ace-console` | **171 / 0**（**合并为 1 次调用**，见 §5.8 H-06） | 4 组整批墙 **199.06s**（含 conformance target 的两种 feature 构建） |
+| `ace-batch` | 12 / 0 | 独立调用（`--features test-case-batch`，tools=2） |
+| `ace-rust-lowering` | 6 / 0 | 独立调用（tools 仅 `a2x`） |
+
+**H-06 由静态推断升级为实测**：日志逐字显示 `Running ace-host, ace-console`（一次），`results` 只有 3 条 = 4 组；合并表达式为 `(all() and not performance::) or (^console:: and not performance::)`。另证 `ace-console` 的选择面是 `ace-host` 的真子集（`all()` 覆盖），即两者的日常义务在合并调用里同时满足，但**组预算仍须按组各记**（§6.2 不变）。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
