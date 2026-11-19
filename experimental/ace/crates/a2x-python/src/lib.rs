@@ -26,6 +26,7 @@ pub mod foreign_bridge;
 pub mod lower;
 pub mod ports;
 pub mod print;
+pub mod py_contract;
 pub mod provider;
 pub mod runtime;
 pub mod seed;

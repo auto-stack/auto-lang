@@ -276,6 +276,12 @@ pub struct SemanticView<'a> {
     /// `a2x_gfx_*` 宿主 extern；A2R 在自身 lowering 具名拒（AC/C 宿主车道
     /// 才是消费方）。
     gfx_defs: Vec<(usize, String)>,
+    /// PLAN-1107 T-02: py-lane extraction intrinsics present (def_index →
+    /// symbol: `__py_f64_bits` / `__py_staged_text`). Admitted only when the
+    /// shared `py_ops` plan is present; a target lowers the OPERATIONS via
+    /// the plan, so this list exists to keep the checked bodies admissible
+    /// rather than to expose an AV encoding.
+    py_defs: Vec<(usize, String)>,
     /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：module.global.get/set 的 def
     /// （索引、global 符号、是否 set）。仅当 facts plan 在场（AGE 包前门）
     /// 时参与放行；碎片视图恒为空。
@@ -317,8 +323,8 @@ impl<'a> SemanticView<'a> {
         let functions = collect_functions(module, None)?;
         let records = collect_records(module)?;
         let variants = collect_variants(module)?;
-        let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs) =
-            collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs, py_defs) =
+            collect_trace_defs(module, bundle, checked.py_ops().is_some())?;
         // PLAN-981：全局访问器只在**事实在场**时放行（AGE 包前门钉的
         // plan）——无 plan 的路径维持旧的 compute-surface 拒绝。
         let globals_plan = checked.module_globals();
@@ -354,6 +360,7 @@ impl<'a> SemanticView<'a> {
             sched_defs,
             platform_defs,
             gfx_defs,
+            py_defs,
             global_defs,
             globals_plan,
             // PLAN-1107 T-02: the py lane pins the shared operation facts onto
@@ -439,8 +446,8 @@ impl<'a> SemanticView<'a> {
                 ),
             ));
         }
-        let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs) =
-            collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs, py_defs) =
+            collect_trace_defs(module, bundle, false)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
         // index — a mismatched plan can never leak to another body).
@@ -475,6 +482,7 @@ impl<'a> SemanticView<'a> {
             sched_defs,
             platform_defs,
             gfx_defs,
+            py_defs,
             global_defs,
             globals_plan: None,
             // PLAN-1107 T-02: a fragment view carries no whole-module py-op
@@ -641,6 +649,21 @@ impl<'a> SemanticView<'a> {
     /// the AV `p967.frame/1` wire text.
     pub fn py_ops(&self) -> Option<&'a ace_core::py_ops::PyOpPlan> {
         self.py_ops
+    }
+
+    /// PLAN-1107 T-02: the py-lane extraction intrinsics present in the
+    /// admitted bodies (`__py_f64_bits` / `__py_staged_text`), with their def
+    /// indices. Present only together with `py_ops()`.
+    pub fn py_defs(&self) -> &[(usize, String)] {
+        &self.py_defs
+    }
+
+    /// PLAN-1107 T-02: the py-lane intrinsic symbol at `def_index`.
+    pub fn py_symbol(&self, def_index: usize) -> Option<&str> {
+        self.py_defs
+            .iter()
+            .find(|(i, _)| *i == def_index)
+            .map(|(_, s)| s.as_str())
     }
 
     /// A real source foreign declaration; never a sibling ExternalFn scaffold.
@@ -1142,6 +1165,11 @@ impl<'a> SemanticView<'a> {
                     // PLAN-968: scheduler-surface intrinsics reach the
                     // targets' scheduler runtimes.
                     || self.sched_symbol(target).is_some()
+                    // PLAN-1107 T-02: py-lane extraction intrinsics appear in
+                    // the checked py bodies; the target lowers the OPERATION
+                    // from `py_ops()`, so the intrinsic itself is admitted
+                    // here only to keep the frozen body admissible.
+                    || self.py_symbol(target).is_some()
                 {
                     Ok(())
                 } else {
@@ -1602,12 +1630,14 @@ fn collect_variants(module: &hir::Module) -> Result<Vec<VariantFacts>, A2xReject
 fn collect_trace_defs(
     module: &hir::Module,
     bundle: &hir::Bundle,
+    allow_py_lane: bool,
 ) -> Result<
     (
         Vec<(usize, &'static str)>,
         Vec<(usize, String)>,
         Vec<(usize, String)>,
         Vec<(usize, String, bool)>,
+        Vec<(usize, String)>,
         Vec<(usize, String)>,
     ),
     A2xReject,
@@ -1616,6 +1646,12 @@ fn collect_trace_defs(
     let mut trace_defs = Vec::new();
     let mut platform_defs = Vec::new();
     let mut sched_defs = Vec::new();
+    // PLAN-1107 T-02: the py lane's lowering intrinsics. They belong to the
+    // AV `.to(float)`/`.to(str)` extraction encodings; a source-generating
+    // target consumes the shared `py_ops` facts (the operation identity) and
+    // lowers them natively. Admitted ONLY when the py lane armed the module's
+    // operation plan — a non-python module can never smuggle them in.
+    let mut py_defs: Vec<(usize, String)> = Vec::new();
     // PLAN-981（A2C 宿主面）：AGE gfx 宿主车道 op（HostAlgorithm/HostIdentity，
     // `age_resources::is_gfx_host_symbol` 为唯一事实源）。符号面在此收进
     // 视图；目标车道各自处置（A2C 发射宿主 extern，A2R 具名拒）。
@@ -1651,6 +1687,12 @@ fn collect_trace_defs(
                 sched_defs.push((def_index, symbol.clone()));
                 continue;
             }
+            // PLAN-1107 T-02: py-lane extraction intrinsics, only with the op plan
+            // present (see `py_defs` above).
+            if allow_py_lane && matches!(symbol.as_str(), "__py_f64_bits" | "__py_staged_text") {
+                py_defs.push((def_index, symbol.clone()));
+                continue;
+            }
             let sym = match symbol.as_str() {
                 "hir.test.mark_a" => "hir.test.mark_a",
                 "hir.test.mark_b" => "hir.test.mark_b",
@@ -1670,7 +1712,7 @@ fn collect_trace_defs(
             trace_defs.push((def_index, sym));
         }
     }
-    Ok((trace_defs, platform_defs, sched_defs, global_defs, gfx_defs))
+    Ok((trace_defs, platform_defs, sched_defs, global_defs, gfx_defs, py_defs))
 }
 
 fn fn_sig(module: &hir::Module, ty: hir::TypeId) -> Result<&hir::FnSig, A2xReject> {

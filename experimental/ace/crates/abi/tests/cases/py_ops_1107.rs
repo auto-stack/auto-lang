@@ -174,6 +174,41 @@ fn p1107_t02_operand_slots_bind_nesting_and_value_classes() {
 }
 
 #[test]
+fn p1107_t02_neutral_contract_matches_the_live_provider_declarations() {
+    // Two admissions of the same language contract: the neutral declaration
+    // table (`ace_foreign_contract::py_ops`, consumed by A2PY without PyO3)
+    // and the AV provider derived from its frozen source. A drift on either
+    // side must fail here — names, logical forms, status tables and resource
+    // lane kinds are compared field by field.
+    let neutral = ace_foreign_contract::py_ops::language_contract().expect("neutral contract");
+    let session = open_py_bridge_session(1).expect("live provider");
+    let live = session.admitted.source_declarations_ref();
+    assert_eq!(neutral.source_declarations_ref().len(), live.len());
+    for nl in neutral.source_declarations_ref() {
+        let lv = live
+            .iter()
+            .find(|d| d.name == nl.name)
+            .unwrap_or_else(|| panic!("the live provider lacks `{}`", nl.name));
+        assert_eq!(nl.provider, lv.provider, "{} provider", nl.name);
+        assert_eq!(
+            nl.function.form.signature(),
+            lv.function.form.signature(),
+            "{} logical form",
+            nl.name
+        );
+        assert_eq!(
+            nl.function.error_model, lv.function.error_model,
+            "{} status table",
+            nl.name
+        );
+        let nr = nl.resource().expect("neutral resource sig");
+        let lr = lv.resource().expect("live resource sig");
+        assert_eq!(nr.params, lr.params, "{} resource params", nl.name);
+        assert_eq!(nr.form, lr.form, "{} resource form", nl.name);
+    }
+}
+
+#[test]
 fn p1107_t02_provider_declarations_match_the_frozen_op_list() {
     // The target-neutral declaration list (`PY_OP_NAMES`) is the source other
     // targets recognise; it must stay exactly the admitted provider's set, so

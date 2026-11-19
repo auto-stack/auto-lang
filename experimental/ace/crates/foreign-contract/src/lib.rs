@@ -46,6 +46,7 @@ pub mod lane;
 pub mod manual;
 pub mod plan;
 pub mod port;
+pub mod py_ops;
 pub mod resource;
 pub mod typed;
 pub mod work;

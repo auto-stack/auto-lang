@@ -472,7 +472,7 @@ pub fn f0_tframe_provider_source() -> &'static str {
 /// The annotated py-bridge provider source (the pinned pyo3 dependency
 /// rides the `dep` line into the B-01 source build closure).
 pub fn py_bridge_provider_source() -> &'static str {
-    include_str!("../rustside/py_bridge.rs")
+    include_str!("../../foreign-contract/py/py_bridge_provider.rs")
 }
 
 /// The T-01-frozen interpreter home (overridable; the only supported
