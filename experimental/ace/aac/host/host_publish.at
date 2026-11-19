@@ -1,0 +1,135 @@
+// AAC hosted failure & publish primitives (PLAN-1045 T-04): the publish
+// shape AAC actually uses (write temp → atomic replace) with INJECTED
+// failures, proving the three-way outcome discipline of the 1044 resource
+// contract — OS failure / resource refusal / success are distinct codes,
+// a failed publish PRESERVES the old artifact byte-exactly, the committed
+// retry succeeds, and the temp file never survives the commit.
+//
+// Also: classified partial-write failures (missing dir, NUL path), the
+// over-EOF read clamp, and balanced reaping (spawn/wait pairs; every child
+// is waited and released, fifty sequential file reads stay byte-stable —
+// a leaked handle per read would exhaust well before fifty).
+//
+// Face notes as host_files.at (owned Str moves explicit; list elements
+// consumed via remove/option unwrap; no `while`/`const`/`else if`).
+
+use app.digest.blake3_hex
+use app.digest.utf8_bytes
+use std.bytes.decode_utf8
+use std.conv.from_int
+use std.file.exists
+use std.file.read_bytes
+use std.file.read_text_range
+use std.file.replace_atomic
+use std.file.write_bytes
+use std.file.write_text
+use std.process.spawn5
+use std.text.equal
+use std.text.find
+
+fn bytes_of(p Str) List<int> {
+    let got = read_bytes(p)
+    is got {
+        Some(xs) -> {
+            return xs
+        }
+        None -> {
+            return List<int>.new()
+        }
+    }
+}
+
+fn text_of(bs List<int>) Str {
+    let dec = decode_utf8(bs)
+    is dec {
+        Some(s) -> {
+            return s
+        }
+        None -> {
+            return ""
+        }
+    }
+}
+
+/// V-02 publish leg. The artifact `art.bin` starts at content C1; failure
+/// injection #1 replaces a temp ONTO AN EXISTING DIRECTORY (an OS failure
+/// — negative code), #2 replaces from a nonexistent source. After both
+/// failures the artifact hash must equal h1 EXACTLY (a failed publish
+/// preserves the old bytes). The retried real publish (temp2 → artifact)
+/// must succeed, leave the artifact at h2 and remove temp2.
+pub fn publish_report(root Str) Str {
+    let art = root.clone() + "/art.bin"
+    let tmp1 = root.clone() + "/tmp1.bin"
+    let tmp2 = root.clone() + "/tmp2.bin"
+    let dir = root.clone() + "/adir"
+    let c1 = "artifact-v1 内容 α\0尾"
+    let c2 = "artifact-v2 内容 β\0尾"
+    let w1 = write_text(art.clone(), c1.clone())
+    let h1 = blake3_hex(text_of(bytes_of(art.clone())))
+    // injection 1: target is an existing DIRECTORY — an OS failure
+    let w2 = write_bytes(tmp1.clone(), utf8_bytes(c1))
+    let f1 = replace_atomic(tmp1.clone(), dir)
+    // injection 2: source does not exist — an OS failure
+    let f2 = replace_atomic(root.clone() + "/missing-src.bin", art.clone())
+    // the old artifact survived both failures byte-exactly
+    let pv = equal(blake3_hex(text_of(bytes_of(art.clone()))), h1.clone())
+    var preserved = 0
+    if (pv) {
+        preserved = 1
+    }
+    // the committed retry: temp2 carries C2, the replace succeeds
+    let w3 = write_bytes(tmp2.clone(), utf8_bytes(c2))
+    let published = replace_atomic(tmp2.clone(), art.clone())
+    let h2 = blake3_hex(text_of(bytes_of(art.clone())))
+    var temp_gone = 0
+    if (exists(tmp2.clone())) {
+        temp_gone = 0
+    } else {
+        temp_gone = 1
+    }
+    return from_int(w1) + "," + from_int(w2) + "," + from_int(f1) + "," + from_int(f2) + "," + from_int(preserved) + "," + from_int(published) + "," + from_int(temp_gone) + "|" + h1 + "|" + h2
+}
+
+/// Classified IO failures + clamped over-read + balanced child reaping.
+///   * write into a MISSING DIRECTORY → negative (OS failure family);
+///   * write onto a NUL path → negative (the adapter's named -9 refusal
+///     family — never success, never silent truncation);
+///   * read_text_range far past EOF clamps to the available content;
+///   * three sequential children are spawned, waited and released (all
+///     exit 0);
+///   * fifty sequential read_bytes of the same file stay byte-stable.
+pub fn io_failure_report(root Str) Str {
+    let f = root.clone() + "/io.txt"
+    let w1 = write_text(f.clone(), "0123456789")
+    let bad_dir = write_text(root.clone() + "/no-dir/x.txt", "x")
+    let nul_dst = write_text(root.clone() + "/a\0b.txt", "x")
+    // read_text_range answers a JSON envelope; the clamp proof is the
+    // windowed text from scalar offset 3 to EOF appearing inside it
+    let over = read_text_range(f.clone(), 3, 100000)
+    var over_ok = 0
+    let hit = find(over, "\"text\":\"3456789\"")
+    is hit {
+        Some(v) -> {
+            over_ok = 1
+        }
+        None -> {
+            over_ok = 0
+        }
+    }
+    let c1 = spawn5("cmd.exe", "/c", "exit", "0", "", 10000)
+    let c2 = spawn5("cmd.exe", "/c", "exit", "0", "", 10000)
+    let c3 = spawn5("cmd.exe", "/c", "exit", "0", "", 10000)
+    var stable = 1
+    var i = 0
+    for (i < 50) {
+        let bs = bytes_of(f.clone())
+        if (bs.len() != 10) {
+            stable = 0
+        }
+        if (bs.get(0) != 48) {
+            stable = 0
+        }
+        i = i + 1
+    }
+    return from_int(w1) + "," + from_int(bad_dir) + "," + from_int(nul_dst) + "," + from_int(over_ok) + "," + from_int(c1) + "," + from_int(c2) + "," + from_int(c3) + "," + from_int(stable)
+}

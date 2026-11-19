@@ -33,6 +33,14 @@ fn put_unit(region int, pos int, v int) int {
 }
 
 fn put_scalar(region int, pos int, cp int) int {
+    // PLAN-1045 T-03 (V-01): a NUL inside an OS string is refused BY NAME
+    // (-9). The Win32 entrypoints below all read NUL-TERMINATED UTF-16, so
+    // staging U+0000 into the buffer would silently truncate the path at
+    // that point — length strings keep their NUL as content, OS strings
+    // reject it explicitly instead.
+    if (cp == 0) {
+        return -9
+    }
     if (cp < 65536) {
         return put_unit(region, pos, cp)
     }
@@ -70,7 +78,11 @@ fn stage_inner(s Str, region int, off int, i int, istop int, ostop int, units in
     let cp = s.char_at(i).to_codepoint()
     let r = put_scalar(region, off + units * 2, cp)
     if (r != 0) {
-        return -8
+        // PLAN-1045 T-03: propagate the staging refusal's OWN named code
+        // (put_scalar's -9 NUL refusal, mem_write_u8's region errors) —
+        // consumers test `n <= 0`, so the code is information, not a
+        // contract change.
+        return r
     }
     return stage_inner(s, region, off, i + 1, istop, ostop, units + utf16_len(cp))
 }

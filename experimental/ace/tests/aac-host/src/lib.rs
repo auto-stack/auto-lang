@@ -38,6 +38,10 @@ pub const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
 
 /// The frozen aac-support digest module (PLAN-1056, package 1.0.0).
 pub const DIGEST_SOURCE: &str = include_str!("../../../aac/support/digest.at");
+/// The PLAN-1045 hosted file/path/process client (T-03, sys set).
+pub const HOST_FILES_SOURCE: &str = include_str!("../../../aac/host/host_files.at");
+/// The PLAN-1045 failure & publish client (T-04, sys set).
+pub const HOST_PUBLISH_SOURCE: &str = include_str!("../../../aac/host/host_publish.at");
 /// The PLAN-1045 host client (case reports + shared reduction).
 pub const HOST_CLIENT_SOURCE: &str = include_str!("../../../aac/host/host_client.at");
 /// The native-entry combine main (exit code reduction).
@@ -140,6 +144,79 @@ pub fn run_case(tag: &str, case_use: &str, call: &str) -> Result<Vec<u8>, String
 /// a harness budget, not a change to any frozen 1044 resource contract).
 pub const AV_MAX_STEPS: u64 = 64_000_000;
 pub const AV_WALL_SECS: u64 = 300;
+
+// ---------------------------------------------------------------------------
+// T-03: the sys lane (aggregates + sys set) with the REAL Win32 backend
+// ---------------------------------------------------------------------------
+
+/// The full sys grant vector (the sys_d01_d06_1064 shape — all families).
+pub const SYS_GRANTS: &[&str] = &[
+    "platform.io.stdout",
+    "platform.io.stderr",
+    "platform.io.stdin",
+    "platform.io.write",
+    "platform.mem",
+    "platform.file",
+    "platform.file.path",
+    "platform.env",
+    "platform.clock",
+    "platform.entropy",
+    "platform.process",
+];
+
+/// Compile + run one generated driver main against the hosted sys set on
+/// the AV executor driving the REAL Win32PlatformIo backend (real files,
+/// real child processes), returning the observed string bytes.
+pub fn run_sys_case(tag: &str, main_src: &str) -> Result<Vec<u8>, String> {
+    let files = vec![
+        ("digest.at".to_string(), DIGEST_SOURCE.to_string()),
+        ("host_client.at".to_string(), HOST_CLIENT_SOURCE.to_string()),
+        ("host_files.at".to_string(), HOST_FILES_SOURCE.to_string()),
+        (
+            "host_publish.at".to_string(),
+            HOST_PUBLISH_SOURCE.to_string(),
+        ),
+        ("main.at".to_string(), main_src.to_string()),
+    ];
+    let product = sys_product(tag, &files)?;
+    let grants: Vec<String> = SYS_GRANTS.iter().map(|s| s.to_string()).collect();
+    let target =
+        ace_av::modules::packages::PackageAvTarget::cold(&scratch(&format!("sys-{tag}")), &product)
+            .map_err(|e| format!("av cold {tag}: {e}"))?;
+    let mut backend = ace_av_core::platform_io::Win32PlatformIo::default();
+    let (out, _stats) = target
+        .run_platform_value(&grants, &mut backend)
+        .map_err(|e| format!("av exec {tag}: {e}"))?;
+    match out {
+        ace_av_core::contract::ExecOutcome::Success {
+            value: ace_av_core::contract::Value::Str(h),
+            ..
+        } => Ok(h.bytes().to_vec()),
+        other => Err(format!("sys run {tag}: {other:?}")),
+    }
+}
+
+/// Assemble + compile on the sys lane (aggregates + sys set, Windows).
+pub fn sys_product(tag: &str, files: &[(String, String)]) -> Result<PackageProduct, String> {
+    let mut ctx =
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    let inputs = ace_source_query::modules::packages::assemble_stdlib_sys_inputs(
+        files,
+        "app::main",
+        &mut ctx,
+    )
+    .map_err(|e| format!("{tag} assemble sys: {e}"))?;
+    compile_assembled_aggregates_inputs(&inputs, "app::main", BUDGET, &ctx).map_err(|ds| {
+        format!(
+            "{tag} compile sys: {} {} {} @{}..{}",
+            ds[0].module,
+            ds[0].diagnostic.code,
+            ds[0].diagnostic.message,
+            ds[0].diagnostic.span.start,
+            ds[0].diagnostic.span.end
+        )
+    })
+}
 
 /// The native AC (mn) leg: lower the SAME checked product through shared
 /// MIR, emit per-function COFF, link a real PE, run it once; the exit code

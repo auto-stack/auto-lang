@@ -19,3 +19,7 @@ sha2 = "0.10"
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[[test]]
+name = "host_files"
+path = "tests/host_files.rs"

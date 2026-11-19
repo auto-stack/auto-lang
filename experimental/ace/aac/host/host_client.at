@@ -37,7 +37,7 @@ use std.conv.to_int
 // ---------------------------------------------------------------------------
 
 /// Decimal join of a byte vector (report alphabet: digits + ',').
-fn join_bytes(bs List<int>) Str {
+pub fn join_bytes(bs List<int>) Str {
     var out = ""
     var i = 0
     for (i < bs.len()) {
@@ -52,7 +52,7 @@ fn join_bytes(bs List<int>) Str {
 
 /// Byte offset of scalar index `idx` in `s` (its span is
 /// [span_start(s, idx), span_start(s, idx+1))).
-fn span_start(s Str, idx int) int {
+pub fn span_start(s Str, idx int) int {
     var off = 0
     var i = 0
     for (i < idx) {
@@ -65,7 +65,7 @@ fn span_start(s Str, idx int) int {
     return off
 }
 
-fn utf8_len_of(s Str, i int) int {
+pub fn utf8_len_of(s Str, i int) int {
     let p = s.char_at(i).to_codepoint()
     if (p < 128) {
         return 1
@@ -111,7 +111,7 @@ pub fn bytes_span_report() Str {
 
 /// Put `kb` → `v`; 1 = replaced an existing key, 0 = new. Last writer wins
 /// per key; the arenas keep first-insertion order.
-fn amap_put(arena List<int>, offs List<int>, vals List<int>, kb List<int>, v int) int {
+pub fn amap_put(arena List<int>, offs List<int>, vals List<int>, kb List<int>, v int) int {
     var base = 0
     var i = 0
     for (i < offs.len()) {
@@ -129,7 +129,7 @@ fn amap_put(arena List<int>, offs List<int>, vals List<int>, kb List<int>, v int
     return 0
 }
 
-fn append_bytes(dst List<int>, src List<int>) int {
+pub fn append_bytes(dst List<int>, src List<int>) int {
     var i = 0
     for (i < src.len()) {
         dst.push(src.get(i))
@@ -139,7 +139,7 @@ fn append_bytes(dst List<int>, src List<int>) int {
 }
 
 /// arena[base..end) == kb, exact length and content.
-fn bytes_equal_range(arena List<int>, base int, end int, kb List<int>) bool {
+pub fn bytes_equal_range(arena List<int>, base int, end int, kb List<int>) bool {
     if (end - base != kb.len()) {
         return false
     }
@@ -154,7 +154,7 @@ fn bytes_equal_range(arena List<int>, base int, end int, kb List<int>) bool {
 }
 
 /// Key `i`'s bytes as a fresh list ([offs[i-1], offs[i)); offs empty = no keys.
-fn amap_key(arena List<int>, offs List<int>, i int) List<int> {
+pub fn amap_key(arena List<int>, offs List<int>, i int) List<int> {
     var out = List<int>.new()
     var base = 0
     if (i > 0) {
@@ -171,7 +171,7 @@ fn amap_key(arena List<int>, offs List<int>, i int) List<int> {
 
 /// Byte-lexicographic compare of two exact byte vectors: -1 / 0 / 1.
 /// Shorter prefix sorts first; the order is a total order on bytes only.
-fn cmp_bytes(a List<int>, b List<int>) int {
+pub fn cmp_bytes(a List<int>, b List<int>) int {
     var i = 0
     for (i < a.len()) {
         if (i >= b.len()) {
@@ -195,7 +195,7 @@ fn cmp_bytes(a List<int>, b List<int>) int {
 
 /// Selection sort of key indices by their arena bytes — deterministic,
 /// in-place, no hash iteration anywhere in the order.
-fn selection_sort_indices(order List<int>, arena List<int>, offs List<int>) int {
+pub fn selection_sort_indices(order List<int>, arena List<int>, offs List<int>) int {
     var i = 0
     for (i < order.len()) {
         var best = i
@@ -218,7 +218,7 @@ fn selection_sort_indices(order List<int>, arena List<int>, offs List<int>) int 
 
 /// Decode helper: the decoded text or "?" when the bytes are not UTF-8
 /// (the reports never feed it invalid bytes; the arm keeps the face total).
-fn show_bytes(kb List<int>) Str {
+pub fn show_bytes(kb List<int>) Str {
     let dec = decode_utf8(kb)
     is dec {
         Some(s) -> {
@@ -266,7 +266,7 @@ pub fn map_report() Str {
 /// Intern `kb`: the arena's existing index when the exact bytes are already
 /// present, else the new index. The count of distinct interns is the set
 /// cardinality — dedup by content, not by identity or hash.
-fn intern_put(arena List<int>, offs List<int>, kb List<int>) int {
+pub fn intern_put(arena List<int>, offs List<int>, kb List<int>) int {
     var base = 0
     var i = 0
     for (i < offs.len()) {

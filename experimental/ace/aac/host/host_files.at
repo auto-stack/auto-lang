@@ -1,0 +1,430 @@
+// AAC hosted file/path/process client (PLAN-1045 T-03): the AAC startup
+// consumption of the sys library set (PLAN-973/1039/1040/1041/1065 —
+// std.file/std.path/std.env/std.process over the real Win32 platform ops),
+// assembled on the packages-aggregates-ct lane + sys set and executed with
+// the REAL Win32PlatformIo backend (real files, real child processes).
+//
+// Coverage (CS-204/207 rows; V-01's module-read leg; V-02's spawn legs):
+//   * module reading — exact bytes of a module under a non-ASCII path with
+//     an embedded NUL in its CONTENT (content NUL stays content; the byte
+//     is read, hashed and interned like any other byte), intern/dedup of
+//     identical vs near-miss modules, the empty file, exact BLAKE3 of the
+//     module bytes from the frozen aac-support digest module;
+//   * OS-string NUL refusal — a path containing U+0000 is REFUSED BY NAME
+//     by the adapter (sysplat_win put_scalar -9, the PLAN-1045 fix): the
+//     refusal is proven NOT a truncation by probing the truncated prefix
+//     ("a\0b" must not hit the real file "a");
+//   * directory/module location — deterministic byte-lex listing, locate
+//     probing across candidate dirs, the empty directory;
+//   * env/target — set/get/remove round trip, unset-vs-empty, home dir;
+//   * process — real cmd.exe child with exit code, timeout-kill (-11,
+//     controlled reclaim), missing tool (explicit -1, never a hang);
+//   * linker discovery — the find_rust_lld algorithm in Auto: env
+//     override, else `rustc --print sysroot` through spawn_with_output,
+//     JSON stdout extraction with a real unescape walk, sysroot join and
+//     existence probe of rust-lld.exe.
+//
+// Face notes: no `while`/`const`/`else if`; owned `Str` moves explicit
+// (a Str local reused across calls is cloned at each use); list ELEMENTS
+// are owned cells — they are consumed by `for x in xs` iteration or
+// `remove`, never indexed as values; the JSON unescape is a single
+// left-to-right codepoint walk (a replace pass would corrupt `..\\r..`
+// sequences).
+
+use app.host_client.append_bytes
+use app.host_client.intern_put
+use app.digest.blake3_hex
+use app.digest.utf8_bytes
+use std.bytes.decode_utf8
+use std.conv.from_int
+use std.env.get
+use std.env.get_or
+use std.env.home_dir
+use std.env.remove
+use std.env.set
+use std.file.dir_names
+use std.file.exists
+use std.file.read_bytes
+use std.process.spawn5
+use std.process.spawn_wait_cps
+use std.process.spawn_with_output
+use std.text.find
+use std.text.trim
+
+// ---------------------------------------------------------------------------
+// V-01 module-read leg: exact bytes, NUL as content, intern/dedup, digest
+// ---------------------------------------------------------------------------
+
+/// Count of zero bytes in an exact byte vector (content NUL is content).
+pub fn nul_count(bs List<int>) int {
+    var n = 0
+    var i = 0
+    for (i < bs.len()) {
+        if (bs.get(i) == 0) {
+            n = n + 1
+        }
+        i = i + 1
+    }
+    return n
+}
+
+/// Bytes of an exact byte vector decoded back to Str (content is valid
+/// UTF-8 by fixture contract); "" on refusal.
+fn text_of(bs List<int>) Str {
+    let dec = decode_utf8(bs)
+    is dec {
+        Some(s) -> {
+            return s
+        }
+        None -> {
+            return ""
+        }
+    }
+}
+
+/// Report: the intern index of each read module (main, same, near, empty),
+/// the main module's len/nul-count/blake3, then the distinct count.
+/// Identical modules collapse to one intern slot; the near-miss does not.
+pub fn module_read_report(root Str) Str {
+    var arena = List<int>.new()
+    var offs = List<int>.new()
+    var idxs = ""
+    var k = 0
+    let names = module_names()
+    for (names.len() > 0) {
+        let nm = names.remove(0)
+        let p = root.clone() + "/" + nm
+        let got = read_bytes(p)
+        var bs = List<int>.new()
+        is got {
+            Some(xs) -> {
+                bs = xs
+            }
+            None -> {
+                bs = List<int>.new()
+            }
+        }
+        if (k > 0) {
+            idxs = idxs + ","
+        }
+        idxs = idxs + from_int(intern_put(arena, offs, bs))
+        if (k == 0) {
+            idxs = idxs + "|main:" + from_int(bs.len()) + "," + from_int(nul_count(bs)) + "," + blake3_hex(text_of(bs))
+        }
+        k = k + 1
+    }
+    return idxs + "|" + from_int(offs.len())
+}
+
+fn module_names() List<Str> {
+    var names = List<Str>.new()
+    names.push("模块-α.at")
+    names.push("same.at")
+    names.push("near.at")
+    names.push("empty.at")
+    return names
+}
+
+// ---------------------------------------------------------------------------
+// OS-string NUL refusal (adapter-level, named — never silent truncation)
+// ---------------------------------------------------------------------------
+
+/// The root carries a real file named "a". Reading "a\0b" must be REFUSED
+/// (read_bytes → None) and exists("a\0b") must be false — had the adapter
+/// truncated at the NUL, both would hit the REAL file "a".
+pub fn nul_path_report(root Str) Str {
+    let nul_path = root.clone() + "/a\0b"
+    let got = read_bytes(nul_path.clone())
+    var read_code = "some"
+    is got {
+        Some(xs) -> {
+            read_code = "some:" + from_int(xs.len())
+        }
+        None -> {
+            read_code = "none"
+        }
+    }
+    let hit = exists(nul_path)
+    if (hit) {
+        return read_code + ",true"
+    }
+    return read_code + ",false"
+}
+
+// ---------------------------------------------------------------------------
+// Directory listing + module location probing
+// ---------------------------------------------------------------------------
+
+/// Deterministic byte-lex listing of `root` (selection sort over the exact
+/// byte vectors — the same total order as T-02), then module location by
+/// probing candidate dirs (present vs absent), then the empty dir.
+pub fn dir_locate_report(root Str) Str {
+    let names = dir_names(root.clone())
+    var arena = List<int>.new()
+    var offs = List<int>.new()
+    for (names.len() > 0) {
+        let nm = names.remove(0)
+        append_bytes(arena, utf8_bytes(nm))
+        offs.push(arena.len())
+    }
+    var order = List<int>.new()
+    var k = 0
+    for (k < offs.len()) {
+        order.push(k)
+        k = k + 1
+    }
+    sort_order(order, arena, offs)
+    var listing = ""
+    var j = 0
+    for (j < order.len()) {
+        if (j > 0) {
+            listing = listing + ","
+        }
+        listing = listing + show(order, arena, offs, order.get(j))
+        j = j + 1
+    }
+    // module location: probe the module under root (present) and under a
+    // missing sibling dir (absent) — the located path is exact.
+    let here = root.clone() + "/模块-α.at"
+    let nowhere = root.clone() + "/missing-dir/模块-α.at"
+    var locate = "absent"
+    if (exists(here)) {
+        locate = "present"
+    }
+    if (exists(nowhere)) {
+        locate = locate + "+bug"
+    }
+    // the empty directory lists zero names
+    let empty_names = dir_names(root.clone() + "/leer")
+    var empty_code = "n:" + from_int(empty_names.len())
+    return locate + "|" + listing + "|" + empty_code
+}
+
+fn key_at(arena List<int>, offs List<int>, i int) List<int> {
+    var out = List<int>.new()
+    var base = 0
+    if (i > 0) {
+        base = offs.get(i - 1)
+    }
+    let end = offs.get(i)
+    var k = base
+    for (k < end) {
+        out.push(arena.get(k))
+        k = k + 1
+    }
+    return out
+}
+
+fn cmp_lists(a List<int>, b List<int>) int {
+    var i = 0
+    for (i < a.len()) {
+        if (i >= b.len()) {
+            return 1
+        }
+        let x = a.get(i)
+        let y = b.get(i)
+        if (x < y) {
+            return -1
+        }
+        if (x > y) {
+            return 1
+        }
+        i = i + 1
+    }
+    if (a.len() < b.len()) {
+        return -1
+    }
+    return 0
+}
+
+fn sort_order(order List<int>, arena List<int>, offs List<int>) int {
+    var i = 0
+    for (i < order.len()) {
+        var best = i
+        var j = i + 1
+        for (j < order.len()) {
+            if (cmp_lists(key_at(arena, offs, order.get(j)), key_at(arena, offs, order.get(best))) < 0) {
+                best = j
+            }
+            j = j + 1
+        }
+        if (best != i) {
+            let tmp = order.get(i)
+            order.set(i, order.get(best))
+            order.set(best, tmp)
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+fn show(order List<int>, arena List<int>, offs List<int>, i int) Str {
+    let dec = decode_utf8(key_at(arena, offs, i))
+    is dec {
+        Some(s) -> {
+            return s
+        }
+        None -> {
+            return "?"
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Env / target info
+// ---------------------------------------------------------------------------
+
+/// Round trip on a private key: set → get equals, remove → get_or default,
+/// home_dir non-empty. Unset-vs-empty is the get_or contract.
+pub fn env_target_report() Str {
+    let s1 = set("AAC1045_T03", "值α")
+    let v = get("AAC1045_T03")
+    var eq = 0
+    if (v == "值α") {
+        eq = 1
+    }
+    let s2 = remove("AAC1045_T03")
+    let after = get_or("AAC1045_T03", "<unset>")
+    var unset = 0
+    if (after == "<unset>") {
+        unset = 1
+    }
+    let home = home_dir()
+    var home_ok = 0
+    if (home.len() > 0) {
+        home_ok = 1
+    }
+    return from_int(s1) + "," + from_int(eq) + "," + from_int(s2) + "," + from_int(unset) + "," + from_int(home_ok)
+}
+
+// ---------------------------------------------------------------------------
+// Process assembly: exit code, timeout-kill, missing tool
+// ---------------------------------------------------------------------------
+
+fn push_ascii(s Str, cps List<int>) int {
+    var i = 0
+    for (i < s.len()) {
+        cps.push(s.char_at(i).to_codepoint())
+        i = i + 1
+    }
+    return 0
+}
+
+/// cmd.exe is the explicit, named external tool (a Windows builtin). The
+/// three legs: `/c exit 7` → 7; `ping -n 8 127.0.0.1` under an 800 ms
+/// budget → the -11 timeout-kill (controlled reclaim of the child; the
+/// staged-codepoint entry is used because the argv needs five tokens);
+/// a tool that does not exist → -1 (explicit refusal, never a hang).
+pub fn process_report() Str {
+    let ok = spawn5("cmd.exe", "/c", "exit", "7", "", 10000)
+    var cps = List<int>.new()
+    push_ascii("cmd.exe", cps)
+    cps.push(32)
+    push_ascii("/c", cps)
+    cps.push(32)
+    push_ascii("ping", cps)
+    cps.push(32)
+    push_ascii("-n", cps)
+    cps.push(32)
+    push_ascii("8", cps)
+    cps.push(32)
+    push_ascii("127.0.0.1", cps)
+    let slow = spawn_wait_cps(cps, 800)
+    let miss = spawn5("aac1045-missing-tool.exe", "", "", "", "", 3000)
+    return from_int(ok) + "," + from_int(slow) + "," + from_int(miss)
+}
+
+// ---------------------------------------------------------------------------
+// Linker discovery (the find_rust_lld algorithm, in Auto)
+// ---------------------------------------------------------------------------
+
+/// Extract the JSON string value of `"key":"…"` with a real left-to-right
+/// unescape walk (\\, \", \r, \n, \t); "?" when the key is absent.
+fn json_string_field(s Str, key Str) Str {
+    let marker = "\"" + key.clone() + "\":\""
+    let marker_len = marker.len()
+    let at = find(s.clone(), marker)
+    var start = 0
+    is at {
+        Some(v) -> {
+            start = v + marker_len
+        }
+        None -> {
+            return "?"
+        }
+    }
+    var cps = List<int>.new()
+    var i = start
+    for (i < s.len()) {
+        let cp = s.char_at(i).to_codepoint()
+        if (cp == 34) {
+            return text_of(cps)
+        }
+        if (cp == 92) {
+            // escape pair: consume the next scalar and emit the unescaped
+            // codepoint (any other follower is kept verbatim)
+            var nxt = cp
+            if (i + 1 < s.len()) {
+                nxt = s.char_at(i + 1).to_codepoint()
+                i = i + 1
+            }
+            if (nxt == 114) {
+                cps.push(13)
+            } else {
+                if (nxt == 110) {
+                    cps.push(10)
+                } else {
+                    if (nxt == 116) {
+                        cps.push(9)
+                    } else {
+                        cps.push(nxt)
+                    }
+                }
+            }
+        } else {
+            cps.push(cp)
+        }
+        i = i + 1
+    }
+    return text_of(cps)
+}
+
+/// The Auto replication of `ace_core::link::find_rust_lld`: AC741_RUST_LLD
+/// override first, else `rustc --print sysroot` via spawn_with_output with
+/// a JSON stdout extraction + trim, then the rust-lld.exe existence probe.
+/// Report: "<sysroot>|found" / "<sysroot>|not-found" / "|rustc-missing".
+pub fn linker_report() Str {
+    let over = get("AC741_RUST_LLD")
+    if (over.len() > 0) {
+        if (exists(over.clone())) {
+            return over + "|found"
+        }
+        return over + "|not-found"
+    }
+    let raw = spawn_with_output("[\"rustc\",\"--print\",\"sysroot\"]")
+    if (raw.len() == 0) {
+        return "|rustc-missing"
+    }
+    var ec_ok = 0
+    let ec_at = find(raw.clone(), "\"exit_code\":0")
+    is ec_at {
+        Some(v) -> {
+            ec_ok = 1
+        }
+        None -> {
+            ec_ok = 0
+        }
+    }
+    if (ec_ok == 0) {
+        return "|rustc-missing"
+    }
+    let sysroot = trim(json_string_field(raw, "stdout"))
+    if (sysroot.len() == 0) {
+        return "|rustc-missing"
+    }
+    let lld = sysroot.clone() + "/lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe"
+    if (exists(lld)) {
+        return sysroot + "|found"
+    }
+    return sysroot + "|not-found"
+}
