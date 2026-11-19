@@ -652,3 +652,13 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **census 具名修订 #8**：聚合 (75,8,7,23) **不变**——[65] 计数在 #6o 已计入（部分拼接态）；本切片修**内容正确性**（`.Bump` 体补全 `emit('Select', next);`）与兄弟保全语义；判别力由 `p980_web_channel_call_lane` 六臂断言承担。
 - **永久用例**：lang `plan980_web_6p_channel_call.rs`（六例：行投影/值位置拒/ops 拒/死 let 判别力/域外标记/foreign lambda）；UI `p980_web_channel_call_lane`（完整体文本/混合兄弟/props 形/RHS 缺席/lambda 缺席）。
 - **剩余边界（具名）**：④完整承载（外部调用 `fs.read_dir`/`listusers` 等进受检体）=976 后继目标域决策（a2ts.foreign-unsupported 域合同变更，§13.15 终局陈述保持）；lambda 面通道调用承载=后续切片（本批只闭"不铸"防丢句）；watch/lifecycle 体调用语句仍按方言合同跳过（#6o 边界）；`on` 块/lambda 体多语句单行形（`a; b` 不换行）=`list-nl` 文法既定边界。
+
+## 14. UI-W1-AV 接收（PLAN-1071，2026-11-19）
+
+- **接手关系**：980 §0 移交表——B-AV-I/V/R 与 981 SESSION/LANGUAGE/PROOF/FUSION/CONTENT 中传统 UI、Widgets 与 UI 基线混合见证所需 AV 格归 1071（UI-W1-AV，GOAL-002）。本计划承接 980/981 已交基础，按组件组先交正式子面；游戏与扩展场景完整 AV 由 1075 接。
+- **U01 输入子面（正式交付）**：980 phase fold #14（lang `95b0ccb49`/ui `91d549ea`）——`ace_node_desktop` 11/11（CPU+真窗）、`p980_u01_window_input_e2e`（真窗键入 i0 `你好Auto`/42、`abc` 具名拒零效果、i1 `乙侧`/-5、两实例隔离）、`p980_node_desktop_permission_revocation_refuses_before_dispatch`（撤权）、关开/late/双关。
+- **981 W1 五组证据汇入**（绑定 `3047b3481`，980 §9 :1070 入账）：G-INSTANCE 双实例 2:1、G-LIFECYCLE 关开、G-VIEW/FRAME/INPUT 75/75、G-BADEDIT 坏编辑保旧（会话侧语义归 auto-ui R64-1）、G-RESOURCE 会话腿资源归零（AGE 节点资源面归 UI058/1068）。
+- **生产入口收据（1071 实跑，2026-11-19）**：`ace_ui_hello` 7/7（含真窗 e2e）、`authoring_session` 4/4、`mixed_regions_lifecycle_flow` 7/7、`desktop_behavior` 11/11、`image_surface_contract` 1/1、`plan041_instance_ownership` 4/4、`plan033_b1_scope_isolation` 2/2、`theme_scope_isolation` 4/4、lang `ace-source` PASS / `ace-av` 1426/1428。
+- **010 列表字段边界（交 1072 共享接口）**：`010-contact-form` 的 `faqs`（list-of-structs）为**仅视图数据源**（model 只读、`for` 渲染、无事件写）；列表字段在生成面按只读数据源处理（Vue v-for/等价），不作为可变 state 通道；AGE 列表语义归 collections owner 单写。
+- **预存红台账（具名排除）**：lang `ace-av` `host_console::{av_console_entry_selection_cannot_bypass_main_policy, av_console_owned_front_door_enforces_console_entry_only}`（981 §9 既有漂移）；UI `gallery_vue_golden`（auto-os widgets-gallery 源↔auto-ui golden 基线跨仓漂移，V-B-PARITY 面归 985/auto-ui owner 线，983 r25 已点名）。
+- **边界（保持）**：U02–U06 示例级 AV 完整逐例仍压 980 ④-A 解锁路径（980 §9 :1739「B-AV-I 保持未勾——全分母仍压 ④」）；`UI-W1-AV` 最终汇总收据由 980 `B-AV-R` 签发（981 §9 交接约定），本接收记录其已交子面与生产入口证据，不冒全包完成。
