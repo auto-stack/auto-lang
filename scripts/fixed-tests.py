@@ -683,7 +683,8 @@ def main(argv=None):
             # Ordinary ACE entry: only a verified in-tree preparation may build-free run.
             ace_names = [name for group in plan for name in group['groups']
                          if group['domain'] == 'ace']
-            if ace_names and not args.discover_only:
+            # Explicit ignored-only manual replay keeps its own entry discipline.
+            if ace_names and not args.discover_only and not args.ignored:
                 manifest_path = find_matching_manifest(ace_names)
                 if manifest_path is None:
                     raise ValueError(
