@@ -1289,5 +1289,46 @@ class ToolchainSplit(unittest.TestCase):
         self.assertIn('test-toolchain = []', manifest)
 
 
+class AceArchiveArgs(unittest.TestCase):
+    """PLAN-1098 T-09: `cargo nextest archive` rejects positional filters.
+
+    A group that filters with a positional token builds fine under the old
+    "run" path but breaks explicit preparation (the archive command exits with
+    `unexpected argument`). Such groups must express the filter in the -E
+    expression instead, or they cannot be prepared at all.
+    """
+
+    VALUED_OPTIONS = {
+        '-p', '--package', '--test', '--bin', '--config-file', '--features',
+        '-E', '--filter-expr', '--profile', '--target', '--exclude',
+        '--archive-file', '--archive-format', '--workspace-remap',
+    }
+
+    def positional_args(self, args):
+        positional, index = [], 0
+        while index < len(args):
+            token = args[index]
+            if token in self.VALUED_OPTIONS:
+                index += 2
+                continue
+            if token.startswith('-'):
+                index += 1
+                continue
+            positional.append(token)
+            index += 1
+        return positional
+
+    def test_ace_nextest_groups_carry_no_positional_filters(self):
+        value, groups = fixed.configuration()
+        offenders = {}
+        for group in groups.values():
+            if group.get('domain') != 'ace' or group.get('runner') != 'nextest':
+                continue
+            positional = self.positional_args(group.get('args') or [])
+            if positional:
+                offenders[group['name']] = positional
+        self.assertEqual(offenders, {}, 'move positional filters into the expression')
+
+
 if __name__ == '__main__':
     unittest.main()
