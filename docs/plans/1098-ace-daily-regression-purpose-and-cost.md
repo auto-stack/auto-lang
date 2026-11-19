@@ -756,6 +756,8 @@ tools = ["a2x"]; domain = ace; all = false
 
 **工具链/PERF 增量**：`ace-toolchain` 56 例 66.293s（真 cl/rustc/py 腿，显式组，父截止 1800s）；`ace-perf` 由原 2 例 15.251s + S-04 六场景 24.412s = **3 例**，原 3600s 串行合同未动；日常组不再承载任何 C/Q 行。
 
+**冻结身份**：worktree HEAD 提交 `0e18d8844c531138ffda03ec7b0429ae2de7a9ba`；本轮 24 组结果文件的 `source_state = 48a70522c555a249d6e386536765b7bae801ee686da7fb905f90414da8e7066e`、`config_sha256 = e2d8b6ddfc94d0cc43d3ab6406c476f56696b204062306d3f176becc11118c27`（`t09/run-*/results.json` 逐组同值；`ace-toolchain`/`ace-console` 取 t08 同身份运行，`ace-rust-lowering` 为 t09 单独复跑）。后续 review 若改代码，须重跑受影响组并重记这两个值。
+
 **AC-09 判定**：24/24 组 T_warm ≤120s ✓；47/47 行有处置与证据 ✓；新增 item 3/3 ≤10s ✓；分流原例/条件通过（C 19 + Q 1 + L 1 有具名归属）✓；PERF 增量与 3600s 合同可核 ✓；聚合组（workspace/facade/adapters）墙另列不计入 24 ✓。
 ### 规范增量
 
@@ -865,7 +867,7 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 | [✅] T-06 | V / work | T-01/02 | 47表C/Q/L、`host/rust_lowering.rs`认证部分、`test-groups.toml`/必要target；显式ace-toolchain保原各端/故障，Q正式压力原样PERF；Linux交1061/1063，绑定事实单列 | AC-07、V-09/14；旧新同输入每端对照、专项完整真实运行，不仅emit |
 | [✅] T-07 | V / work | T-01/02/06 | `conformance/tests/console.rs`、host协议、`invocations`和Case消费者；H-01…06核实后消重，保真实运输/版本/负控和batch隔离 | AC-06、V-08/10/11；完整host/console/rust-lowering/batch及15项case组；语义union可去重，预算须单组 |
 | [✅] T-08 | VI / work | T-01/02，最终接T-03…07 | 扩原`ace_cost_report.py`、`scripts/tests/test_ace_cost_report.py`：新增差集/≤10秒、原组预算/终态/STALE检查；会话报告，版本兼容；不另建meter | AC-08/10、V-12/13；治理完整组+prepare-tools定向，缺失时间不伪造 |
-| [ ] T-09 | VI / work | T-03…08 | 冻结实现，24单组有效预算+47行关账、新增内容/时间、工具链/PERF增量及负控关闭，提交SD提案/Spec增量和源码/依赖/config/input结果身份 | AC-01…10；可复用同身份完整证据，超支/缺口不勾完成 |
+| [✅] T-09 | VI / work | T-03…08 | 冻结实现，24单组有效预算+47行关账、新增内容/时间、工具链/PERF增量及负控关闭，提交SD提案/Spec增量和源码/依赖/config/input结果身份 | AC-01…10；可复用同身份完整证据，超支/缺口不勾完成 |
 | [ ] T-10 | VII / review | T-09 | 同树独立上下文复审，暂停work写入，逐AC/SD/改动义务核真实输入消费者、负控敏感性和完整成本，必要定向复验并绑定review SHA | AC-11；needs_fix/needs_replan回work，不能边修边签 |
 | [ ] T-11 | VIII / merge | T-10通过、合入授权 | 冻结必要并集，沉淀SD-01…06、归档/输出对账/摘要折回，删本包材料与守卫后清树 | AC-12；未来merge任务不阻T-09交execution_done，不提前勾 |
 
@@ -966,6 +968,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 19，r1）：`stage: work`，T-08（§5.23，代码 `e4642aa81`）。执行内容：`ace_cost_report.py` 增 `session` 模式——多模块同判（复用 `regular_module` 的暖预算/终态/STALE）+ 身份差集（`--baseline`/`--baseline-out`，`ace-session-baseline/1`）+ 新增例 ≤10s 预算（`--new-item-cap-seconds`），退出码沿用 0/1/2，不建新 meter、不重跑、不改写产物；`test_ace_cost_report.py` 加 `SessionReports` 9 例，全套 **54/54 OK**，`test_fixed_groups` 84/84。**真实数据**：旧证据跑 → UNVERIFIABLE(exit 2，STALE 正确拦截)；当前 HEAD 重跑 toolchain 56/56 + console 6/6 后 → **GREEN(exit 0)，67 身份，added=0/removed=0**，toolchain 66.293s WITHIN_BUDGET、console 3.033s GREEN。计划任务表 T-08 已翻完成。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 19 | from: work | to: work | status: executing | outcome: pass（T-08 完成：session 模式 + 差集 + 新增例≤10s，真实 GREEN 且旧证据被 STALE 拦下） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: e4642aa81 / 本轮 docs(plan1098) | next: work（T-09 冻结实现 + 逐组验收/关账）`
+
+2026-11-19（goal round 20，r1）：`stage: work`，T-09（§5.24，冻结在 `0e18d8844`）。执行内容：①**7 个重组 + 13 个轻组**全部走 prepared 真跑，24 个非聚合常规组 **T_warm 全 ≤120s**（14 组 ≤60s，最大 `ace-host 109.5s`，其后 a2x 85.8 / native 77.7 / toolchain 66.3 / abi 64.9）；②**47 行逐项关账**：用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对，**46 行 body unchanged**，唯一变更是 S-11（T-04 F-01，断言未变且有 §5.19 证据）；C19→ace-toolchain、Q1→ace-perf、L1→日常 bind-only，D19/R7 留日常；③**新增 3 项均 ≤10s**（0.035/0.140/0.888s）；④**红全部归属既有**：semantics D-1037-01、a2c-abi Plan 972 pin、runtime 1060-R8、abi source_foreign 25、a2x 指纹 pin、batch D-1098-02、av D-1098-01、host 14（examples/ui 缺件环境 + 金样族既有）；`ace-artifacts::r3_f01` 首跑红/复跑绿记为**环境归因**；⑤**修掉一个真 bug**：`ace-source-syntax-927` 用位置过滤导致 `cargo nextest archive` 永不成功（`0e18d8844` 把过滤移入 `-E`，13 个名字两种选法逐一相同，组现已绿），并加治理守卫"ACE nextest 组不得带位置参数"（变异验证敏感）。治理 `test_fixed_groups` 85/85。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 20 | from: work | to: work | status: executing | outcome: pass（T-09 完成：24 组 ≤120s、47 行关账、新项 ≤10s、红全部归属；附带修好一组的准备兼容 bug） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 0e18d8844 / 本轮 docs(plan1098) | next: review（T-10 独立复审，绑定 review SHA）`
 
 ## 10. 待澄清事项
 
