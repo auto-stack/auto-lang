@@ -618,6 +618,9 @@ fn core_version_for(recipe: &str) -> &'static str {
         // PLAN-913: the source-bound recovery recipe — same closures wire,
         // same profile; only the binding/restore phase differs.
         "ac-av/closures-recovery-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
+        // PLAN-1078: the ordinary AV language-source recipe lowers through
+        // the same closures-superset wire family (aggregates face).
+        "ac-av/language-source-run-v1" => ace_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/dynamic-run-v1" => ace_av_core::contract::AV_DYNAMIC_PROFILE,
         _ => ace_av_core::contract::AV_PROFILE,
     }
@@ -944,6 +947,16 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
             Ok(observations) => echo(observations),
             Err(error) => {
                 eprintln!("scheduler request: {error}");
+                exit(2);
+            }
+        };
+    }
+    // PLAN-1078: the ordinary AV language-source recipe producer.
+    if recipe == ace_av::language_source_worker::RECIPE {
+        return match ace_av::language_source_worker::serve(&req) {
+            Ok(observations) => echo(observations),
+            Err(error) => {
+                eprintln!("language-source request: {error}");
                 exit(2);
             }
         };

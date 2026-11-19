@@ -346,3 +346,26 @@ paint/reader/todo），OS064/ASSEMBLY 以 gitlink 同 SHA 为准。**28 与 OS06
 4. **退役/删除**：行不删除；旧实现退出以 SD-02 证据（依赖图/dispatch/包内容/安装收据）
    为准，在 delta 注记中登记退役收据指针。
 5. **口径变更**：分类法或前缀含义变化须修订 PLAN（needs_replan），不允许在台账内静默改口径。
+
+## 11. delta-2026-11-19（PLAN-1078 AVP-00 语言/普通入口事实）
+
+来源身份：auto-lang plan-1078-dev @ 3842c826c/3e14cadda/493bc6954/88306dfc8/f37159231
+（工作树 `D:/autostack/.wt/lang-1078/auto-lang`）；独立复审通过后随 merge 落主。
+
+- **普通 AV 语言入口（新增，不插入冻结行）**：`SourceProfile::Auto`
+  （`auto.source.language.av/v1`，能力键 `ac.source.language.av/v1`）与 recipe
+  `ac-av/language-source-run-v1` 由 AVP-00 交付，首批 = aggregates 面；
+  公共语料 canonical 根 `crates/auto-lang/test/cases/language/`（作者 +
+  `language.suite.ad` + `language/migration/legacy-map.tsv`）；
+  固定组 `case-av-language-parity` 为 AV 视图。规范：[auto-av/language-parity.md](../auto-av/language-parity.md)。
+- **L 行适用状态（不实现，仅登记）**：L-04（i128/f32 后缀）与 L-46
+  （spread/set/when/match/global 关键字）= 无此形；L-45（NavCall）= parser-only。
+  三行本包记录适用状态，归 AVP-00，后续对应批次（980 routes 等）按既有行级
+  归属承接。
+- **旧 aavm2 义务**：`legacy.aavm2.001_smoke`/`002_hello_compile` 保
+  research/手动条件（aavm2 研究族不转日常硬门）；语言面 overlap
+  （console print + void main）由共享基线语言族承接，不充 PASS。
+- **检查级 `#ignore`（AV-ONLY-1078-1096）与双流省略补零**：见
+  [auto-test-case/document-cases.md](../auto-test-case/document-cases.md) 与
+  [auto-test-case/feature-organized-corpus.md](../auto-test-case/feature-organized-corpus.md)。
+  本台账仅登记事实，不提升任何冻结行状态。

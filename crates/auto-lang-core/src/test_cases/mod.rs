@@ -1065,6 +1065,20 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-1078: the ordinary AV language-source recipe (Auto profile;
+        // int entry value + exact console streams; append-only).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_LANGUAGE_SOURCE_RECIPE) =>
+        {
+            ac_av::run_language_source_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-866: the resident-online av recipe (append-only
         // registration; prior recipe contracts untouched).
         (Adapter::Probe, auto_test_case::contract::Action::Run)

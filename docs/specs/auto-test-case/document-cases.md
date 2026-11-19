@@ -38,6 +38,12 @@
   （parse/resolve/typecheck/verify/run），且不得同时声明 `exit` 或 `channel`。
   `channel: unit` 不得带 `exit`；`caps` 显式空列表原样保留，加载器不补授权。
   其余 recipe 在文档式中定位拒绝。
+- **PLAN-1078 双流省略补零（user ruling）**：要求双流字节断言的 console 族
+  recipe（`ac-av/console-run-v1`、`ac-av/scheduler-source-run-v1`、
+  `ac-av/language-source-run-v1`）加载时把**省略的** stdout 或 stderr 独立补成
+  预期零字节（`compare: bytes` + 空文本），再交现有校验；显式填写的流按原
+  预期比较，成功例与诊断例均适用，其他检查族保留原省略语义。作者文件因此
+  可以省略空流段落；省略的流一旦实际输出一个字节（含换行）仍判失败。
 - 属性紧跟所属标题（`key: value`，Atom 值语法），遇空行/下一标题/围栏即止；
   正文段落后出现的属性行、未知键、重复键、未知/未接通标题均带行号拒绝。
 - 元数据：文件层 `tags`/`links`；用例层 `id`/`tags`/`links`/`module-name`/`entry-mode`

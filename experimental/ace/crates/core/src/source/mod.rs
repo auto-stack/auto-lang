@@ -53,9 +53,9 @@ pub mod typecheck;
 pub use adapter::{
     compile_aggregates_source, compile_aggregates_source_with_foreign, compile_closures_source,
     compile_closures_source_incremental, compile_collections_source, compile_entry_unit_source,
-    compile_host_console_source, compile_numeric_source, compile_parts, compile_parts_with,
-    compile_program_parts, compile_record_source, compile_scalar_source, compile_scheduler_source,
-    compile_source, compile_text_record_source, compile_text_source,
+    compile_host_console_source, compile_language_source, compile_numeric_source, compile_parts,
+    compile_parts_with, compile_program_parts, compile_record_source, compile_scalar_source,
+    compile_scheduler_source, compile_source, compile_text_record_source, compile_text_source,
     emit_collections_function_batch, emit_function_body, emit_resolved_module_parts,
     emit_resolved_packages_parts, emit_resolved_packages_parts_profile, emit_resolved_parts,
     prepare_candidate_document, prepare_function_candidate, prepare_module_candidate,
@@ -117,6 +117,13 @@ pub const TEXT_RECORD_SOURCE_PROFILE: &str = "auto.source.text-record.draft";
 /// 专属语法（顶层 `key: value`、`dep`/节点三形）由 E2 在本面增量。消费者只有
 /// [`config_document::compile_config_document`]。
 pub const CONFIG_DOCUMENT_SOURCE_PROFILE: &str = "auto.source.config-document.v1";
+/// PLAN-1078 (AVP-00): the ordinary AV language source profile — the explicit
+/// identity axis of the `ac-av/language-source-run-v1` recipe (source admission
+/// key `ac.source.language.av/v1`). First-batch semantics equal the aggregates
+/// surface (same shared Schema/CST → bind → Checked HIR → MIR → ABC → AV
+/// pipeline; no second parser/interpreter). Later AVP batches widen this
+/// surface incrementally; the frozen narrow profiles keep their identities.
+pub const AUTO_SOURCE_PROFILE: &str = "auto.source.language.av/v1";
 /// The entry-unit source profile (PLAN-862, R2-E/SEM-05): the scalar
 /// operator surface plus the ENTRY surface — `fn main() int`,
 /// `fn main() void` (Unit result), a single-file top-level statement
@@ -201,6 +208,11 @@ pub enum SourceProfile {
     /// the projection materializes as ONE sequential entry function). Only
     /// [`config_document::compile_config_document`] consumes it.
     ConfigDocument,
+    /// PLAN-1078 (AVP-00): the ordinary AV language source profile — the
+    /// explicit identity axis of the `ac-av/language-source-run-v1` recipe.
+    /// First-batch semantics equal the aggregates surface (same shared
+    /// pipeline); later AVP batches widen it incrementally.
+    Auto,
 }
 
 impl SourceProfile {
@@ -222,6 +234,7 @@ impl SourceProfile {
             SourceProfile::AgeComponent => AGE_COMPONENT_SOURCE_PROFILE,
             SourceProfile::AgePackage => AGE_PACKAGE_SOURCE_PROFILE,
             SourceProfile::ConfigDocument => CONFIG_DOCUMENT_SOURCE_PROFILE,
+            SourceProfile::Auto => AUTO_SOURCE_PROFILE,
         }
     }
 
@@ -262,6 +275,9 @@ impl SourceProfile {
             // 的 host-import + PlatformCall 接缝；文档语义只经
             // [`config_document::compile_config_document`]，不新开第二检查器。
             SourceProfile::ConfigDocument => crate::hir::HirDomain::HostConsole,
+            // PLAN-1078: Auto documents verify under the same closures-family
+            // domain as the aggregates surface (first-batch semantics).
+            SourceProfile::Auto => crate::hir::HirDomain::Closures,
         }
     }
 
@@ -289,6 +305,8 @@ impl SourceProfile {
                 // PLAN-982: the configuration-document face keeps the
                 // text-record operator surface.
                 | SourceProfile::ConfigDocument
+                // PLAN-1078: the Auto face keeps the scalar operator surface.
+                | SourceProfile::Auto
         )
     }
 
@@ -305,6 +323,8 @@ impl SourceProfile {
                 | SourceProfile::Aggregates
                 // PLAN-968: the scheduler face keeps the collections surface.
                 | SourceProfile::Scheduler
+                // PLAN-1078: the Auto face keeps the collections surface.
+                | SourceProfile::Auto
         )
     }
 
@@ -318,6 +338,8 @@ impl SourceProfile {
                 | SourceProfile::Aggregates
                 // PLAN-968: the scheduler face keeps the closures surface.
                 | SourceProfile::Scheduler
+                // PLAN-1078: the Auto face keeps the closures surface.
+                | SourceProfile::Auto
         )
     }
 
@@ -327,6 +349,8 @@ impl SourceProfile {
         matches!(
             self,
             SourceProfile::Numeric | SourceProfile::Aggregates | SourceProfile::Scheduler
+            // PLAN-1078: the Auto face keeps the numeric surface.
+            | SourceProfile::Auto
         )
     }
 
@@ -334,7 +358,13 @@ impl SourceProfile {
     /// containers, composite record/variant fields, tuples, index
     /// places, ranges and the wider pattern set.
     pub fn is_aggregates(&self) -> bool {
-        matches!(self, SourceProfile::Aggregates | SourceProfile::Scheduler)
+        matches!(
+            self,
+            SourceProfile::Aggregates
+                | SourceProfile::Scheduler
+                // PLAN-1078: the Auto face is an aggregates-surface identity.
+                | SourceProfile::Auto
+        )
     }
 
     /// PLAN-968: whether the task actor surface is accepted — `task`
@@ -383,6 +413,8 @@ impl SourceProfile {
                 | SourceProfile::AgePackage
                 // PLAN-982: configuration documents construct objects.
                 | SourceProfile::ConfigDocument
+                // PLAN-1078: the Auto face keeps the record surface.
+                | SourceProfile::Auto
         )
     }
 
@@ -429,6 +461,9 @@ impl SourceProfile {
                 // PLAN-982: the configuration-document face is a text-record
                 // superset.
                 | SourceProfile::ConfigDocument
+                // PLAN-1078: the Auto face is an aggregates (scalar-or-wider)
+                // superset.
+                | SourceProfile::Auto
         )
     }
 
@@ -449,6 +484,7 @@ impl SourceProfile {
             AGE_COMPONENT_SOURCE_PROFILE => Some(SourceProfile::AgeComponent),
             AGE_PACKAGE_SOURCE_PROFILE => Some(SourceProfile::AgePackage),
             CONFIG_DOCUMENT_SOURCE_PROFILE => Some(SourceProfile::ConfigDocument),
+            AUTO_SOURCE_PROFILE => Some(SourceProfile::Auto),
             _ => None,
         }
     }

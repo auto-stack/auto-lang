@@ -25,7 +25,7 @@ use crate::contract::{
     ProbeAvInvalidationSpec, ProbeAvResourceSpec, ProbeMnDeclarationSpec, ProbeMnHistorySpec,
     ProbeMnResourceSpec, ProbeMnTurnaroundSpec,
     ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
-    ResultExpect, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
+    ResultExpect, SkipSpec, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
 use crate::raw_ranges::line_table;
 use crate::sha256::{hex, sha256};
@@ -361,6 +361,13 @@ fn collect_leading_attrs(
     let mut i = heading_line + 1;
     loop {
         let t = line_text(doc, lines, i).trim().to_string();
+        // PLAN-1078 (r3): the AV-phase `#ignore` marker is consumed by the
+        // check decoder — it skips the marker line and keeps reading the
+        // section's attributes (never an attribute nor a block end).
+        if is_av_phase_ignore_line(doc, lines, i) {
+            i += 1;
+            continue;
+        }
         if in_payload_line(doc, lines, i)
             || t.is_empty()
             || heading_shape(&t)
@@ -399,6 +406,30 @@ fn collect_leading_attrs(
 /// line of the block must then parse. Attribute blocks that start AFTER
 /// prose in the zone are located errors — attributes belong directly
 /// under their heading.
+/// PLAN-1078 (r3): the AV-phase check-level `#ignore` marker. A bare line
+/// immediately under a check-section heading maps to the phase SkipSpec
+/// (the check stays declared with its original oracle/owner; it is not
+/// executed during the AV phase).
+pub const AV_PHASE_IGNORE_MARKER: &str = "#ignore";
+pub const AV_PHASE_SKIP_REASON: &str = "AV阶段暂缓非AV检查";
+pub const AV_PHASE_SKIP_ISSUE: &str = "AV-ONLY-1078-1096";
+
+/// Is this a bare `#ignore` marker line (outside any fence payload)?
+fn is_av_phase_ignore_line(doc: &CaseDocument, lines: &[(usize, usize)], n: usize) -> bool {
+    !in_payload_line(doc, lines, n) && line_text(doc, lines, n).trim() == AV_PHASE_IGNORE_MARKER
+}
+
+/// The AV-phase SkipSpec for an ignored check section (r3). The phase
+/// owner is the current corpus maintainer (PLAN-1078); the real backend
+/// producer stays in the obligation map.
+fn av_phase_skip(section_line: usize, ignored: &std::collections::BTreeSet<usize>) -> Option<SkipSpec> {
+    ignored.contains(&section_line).then(|| SkipSpec {
+        reason: AV_PHASE_SKIP_REASON.into(),
+        issue: AV_PHASE_SKIP_ISSUE.into(),
+        owner: Some("PLAN-1078".into()),
+    })
+}
+
 fn attr_blocks(
     doc: &CaseDocument,
     lines: &[(usize, usize)],
@@ -414,6 +445,9 @@ fn attr_blocks(
             || t.is_empty()
             || heading_shape(&t)
             || fence_line_shape(&t)
+            // PLAN-1078 (r3): the AV-phase check-level `#ignore` marker is
+            // consumed by the check decoder, never an attribute or prose.
+            || is_av_phase_ignore_line(doc, lines, i)
         {
             i += 1;
             continue;
@@ -432,6 +466,12 @@ fn attr_blocks(
         let mut block = Vec::new();
         while i <= end_line {
             let t2 = line_text(doc, lines, i).trim().to_string();
+            // PLAN-1078 (r3): the AV-phase `#ignore` marker never ends an
+            // attribute block — the check decoder consumes it separately.
+            if is_av_phase_ignore_line(doc, lines, i) {
+                i += 1;
+                continue;
+            }
             if in_payload_line(doc, lines, i)
                 || t2.is_empty()
                 || heading_shape(&t2)
@@ -723,6 +763,16 @@ fn decode_one_case(
     let section_heads: Vec<&HeadRef> = heads
         .iter()
         .filter(|h| h.line > case_head.line && h.line < end_line)
+        .collect();
+
+    // PLAN-1078 (r3): check-level AV-phase `#ignore` — a bare marker line
+    // immediately under a level-3 check-section heading (before its
+    // attributes) maps that ONE check to the phase SkipSpec; it never marks
+    // the whole case or the shared Auto source.
+    let ignored_sections: std::collections::BTreeSet<usize> = section_heads
+        .iter()
+        .filter(|h| h.level == 3 && is_av_phase_ignore_line(doc, lines, h.line + 1))
+        .map(|h| h.line)
         .collect();
 
     let mut auto: Option<String> = None;
@@ -1663,6 +1713,35 @@ fn decode_one_case(
                         StreamKind::Trace => expect.trace = Some(st.expect.clone()),
                     }
                 }
+                // PLAN-1078 (user ruling): probe recipes that REQUIRE
+                // byte-exact dual streams (the console family —
+                // console-run-v1 / scheduler-source-run-v1 /
+                // language-source-run-v1) default an OMITTED stdout or
+                // stderr section to an expected zero-byte stream AT LOAD
+                // TIME, then hand the completed oracle to the existing
+                // validation. An author file may drop an empty stream
+                // paragraph; an actually emitted byte (including a lone
+                // newline) still fails the check. Explicit streams compare
+                // as written; success and diagnostic completions both apply.
+                // Every other check family keeps its original omission
+                // semantics.
+                let console_dual = family == ProbeFamily::AvConsole
+                    || matches!(
+                        p.recipe.as_str(),
+                        "ac-av/scheduler-source-run-v1" | "ac-av/language-source-run-v1"
+                    );
+                if console_dual {
+                    let zero = || StreamExpect {
+                        compare: Compare::Bytes,
+                        text: String::new(),
+                    };
+                    if expect.stdout.is_none() {
+                        expect.stdout = Some(zero());
+                    }
+                    if expect.stderr.is_none() {
+                        expect.stderr = Some(zero());
+                    }
+                }
                 if family == ProbeFamily::AvConsole {
                     crate::contract::validate_console_oracle(
                         expect.stdout.as_ref(),
@@ -1755,6 +1834,16 @@ fn decode_one_case(
                 key
             ),
         );
+    }
+
+    // PLAN-1078 (r3): apply the AV-phase check-level `#ignore` markers to
+    // the declared checks (skip is set AFTER the per-section decoders so
+    // every check family carries the same phase SkipSpec; the check stays
+    // declared with its original oracle/owner).
+    for (check, span) in checks.iter_mut().zip(check_spans.iter()) {
+        if check.skip.is_none() && ignored_sections.contains(&span.section_line) {
+            check.skip = av_phase_skip(span.section_line, &ignored_sections);
+        }
     }
 
     let default_id = format!(
