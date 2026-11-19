@@ -1344,6 +1344,10 @@ fn needs_collections_face(node: &ComponentNode) -> bool {
         }
     }
     node.handlers.iter().any(|h| h.stmts.iter().any(stmt_needs))
+        || node.fields.iter().any(|f| {
+            let t = f.ty.trim();
+            t.starts_with("[]") || t.starts_with('[')
+        })
 }
 /// PLAN-105 T-02：模块级 store 声明的结构候选（独立于 node 候选——store 单元
 /// 可以只有 store 声明）。
@@ -3091,14 +3095,14 @@ pub(crate) fn handler_check_fn(
     // 实例 0 的字段初始化（声明语义；不用宿主初值覆盖——那是消费侧配置）。
     let inst = 0usize;
     for f in &node.fields {
-        let ty = match field_type(f) {
+        let ann = match field_ann(f) {
             Some(t) => t,
             None => {
                 return Some(Err(vec![text_diag(
                     "source.age.component-unsupported",
                     format!(
                         "`model` field `{}` has type `{}`, which this slice cannot hold yet \
-                         (supported: int/i32/bool/str)",
+                         (supported: int/i32/bool/str and `[]T`/`[N]T` lists)",
                         f.name, f.ty
                     ),
                     f.ty_span,
@@ -3115,10 +3119,7 @@ pub(crate) fn handler_check_fn(
                 name: local_name(inst, &f.name),
                 span: f.span,
             },
-            ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(ty),
-                span: f.ty_span,
-            }),
+            ann: Some(ann),
             mutable: true,
             value: init,
             span: f.span,
@@ -3248,14 +3249,14 @@ pub(crate) fn lambda_value_fn(
     let mut stmts = Vec::new();
     let inst = 0usize;
     for f in &node.fields {
-        let ty = match field_type(f) {
+        let ann = match field_ann(f) {
             Some(t) => t,
             None => {
                 return Some(Err(vec![text_diag(
                     "source.age.component-unsupported",
                     format!(
                         "`model` field `{}` has type `{}`, which this slice cannot hold yet \
-                         (supported: int/i32/bool/str)",
+                         (supported: int/i32/bool/str and `[]T`/`[N]T` lists)",
                         f.name, f.ty
                     ),
                     f.ty_span,
@@ -3272,10 +3273,7 @@ pub(crate) fn lambda_value_fn(
                 name: local_name(inst, &f.name),
                 span: f.span,
             },
-            ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(ty),
-                span: f.ty_span,
-            }),
+            ann: Some(ann),
             mutable: true,
             value: init,
             span: f.span,
@@ -4014,12 +4012,12 @@ pub(crate) fn instance_stmts(
         // 轮 49 契约：不支持的类型在**类型 token** 处具名拒绝。必须在 init 的
         // 表达式脱糖之前判——980 STATE 的 init 形状诊断会先命中（同样的
         // `source.age.component-unsupported`，但定位在初值字面量上）。
-        let ty = field_type(f).ok_or_else(|| {
+        let ann = field_ann(f).ok_or_else(|| {
             vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
                     "`model` field `{}` has type `{}`, which this slice cannot hold yet \
-                     (supported: int/i32/bool/str/f32)",
+                     (supported: int/i32/bool/str/f32 and `[]T`/`[N]T` lists)",
                     f.name, f.ty
                 ),
                 f.ty_span,
@@ -4035,10 +4033,7 @@ pub(crate) fn instance_stmts(
                 name: local_name(inst, &f.name),
                 span: f.span,
             },
-            ann: Some(TypeAnn {
-                kind: TypeRef::Builtin(ty),
-                span: f.ty_span,
-            }),
+            ann: Some(ann),
             mutable: true,
             value: init,
             span: f.span,
@@ -4345,6 +4340,64 @@ fn initial_literal(v: &InitialValue, span: Span) -> Expr {
 }
 
 /// 模型字段类型 → Auto 内建类型（本切片：int/i32/bool/str/f32）。
+/// PLAN-105 T-02（U03 真语料 013/015）：模型字段的**完整类型注解**——列表字段
+/// `[]T` / `[N]T` 映射为 `List<T>`（collections 域），其余回落内建/记录类型。
+/// 列表元素为记录名时要求该记录已在模块类型表（prep 内联 `type` 声明）。
+pub(crate) fn field_ann(f: &ComponentField) -> Option<TypeAnn> {
+    let ty = f.ty.trim();
+    let elem = ty
+        .strip_prefix("[]")
+        .or_else(|| {
+            // `[N]T` 定长数组：取 `]` 之后的元素类型。
+            ty.strip_prefix('[')
+                .and_then(|rest| rest.find(']').map(|i| &rest[i + 1..]))
+        });
+    if let Some(elem) = elem {
+        let elem = elem.trim();
+        let inner = match elem {
+            "int" | "i32" => TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
+                span: f.ty_span,
+            },
+            "bool" => TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::Bool),
+                span: f.ty_span,
+            },
+            "str" | "Str" => TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::StrOwned),
+                span: f.ty_span,
+            },
+            "f32" | "float" => TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::Float),
+                span: f.ty_span,
+            },
+            name if !name.is_empty() => TypeAnn {
+                kind: TypeRef::Record(Ident {
+                    name: name.to_string(),
+                    span: f.ty_span,
+                }),
+                span: f.ty_span,
+            },
+            _ => return None,
+        };
+        return Some(TypeAnn {
+            kind: TypeRef::Generic {
+                name: Ident {
+                    name: "List".to_string(),
+                    span: f.ty_span,
+                },
+                args: vec![inner],
+            },
+            span: f.ty_span,
+        });
+    }
+    let word = field_type(f)?;
+    Some(TypeAnn {
+        kind: TypeRef::Builtin(word),
+        span: f.ty_span,
+    })
+}
+
 pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {
         "int" | "i32" => Some(TypeWord::I32),
