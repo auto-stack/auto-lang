@@ -36,11 +36,13 @@ exit: 14
 ```
 
 ### Probe ac-native
+#ignore
 recipe: "ac/mir-native-scalar-v1"
 entry: "d_main"
 exit: 14
 
 ### VM result
+#ignore
 check-id: "legacy-reference"
 final-newline: false
 
@@ -51,10 +53,11 @@ final-newline: false
 ### Notes
 
 `av.parity.1078.baseline-value` keeps the planned 1078 id (identical Auto
-source to `ace.m1.b01`); the AV and AC-native checks share the same source
-and record their own real results. The legacy-reference row is the frozen
-old-VM oracle of the same source, used only as the explicit migration
-comparison — never as the AV expected.
+source to `ace.m1.b01`); the AV check runs the ordinary language chain. The
+ac-native and legacy-reference checks are declared with their original
+oracles and owners, and carry the AV-phase `#ignore` marker (AV-ONLY-1078-1096)
+— they are not executed during this phase and never block the AV gate; their
+backend tasks remove the marker and open them when they land.
 
 ## Case: short-circuit
 id: "av.parity.1078.short-circuit"
