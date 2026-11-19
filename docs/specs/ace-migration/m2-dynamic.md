@@ -66,3 +66,17 @@ AV：`dynamic_objects_964` 10 腿（对象读写 600/nil 别名 20/可调用 9/H
 `cargo t auto-val ace-source ace-semantics ace-av ace-native ace-a2x ace-runtime case-ace-m2-dynamic-964`
 最终轮无计划归因红（环境红具名：char-multi 词法 ×6、`__CxxFrameHandler3`/`_fltused` lld 链接 ×19——
 mn 车道 CRT stub 为净改善；ace-a2x meter infra flake）。
+
+## PLAN-1079 文本面事实（AVP-01，2026-11-19）
+
+- `print(str)` 每次调用恰追加一个 `0a`（[source-console-output](../auto-ac/source-console-output.md)），
+  因此 FStr 的"源序求值恰一次"可由父侧 exact stdout 观察：`f"${left()}${right()}"`
+  配 `left`/`right` 各打印一字节 → 期望 `A\nB\n`（反序得 `B\nA\n`，重复求值多字节）。
+- 嵌入 NUL 是普通文本标量：`"A中😀\u{0}"` 的 `len()`=4（标量数）、
+  `len_bytes()`=9（UTF-8 字节）；`char_at` 按标量索引、`to_codepoint` 观测标量值；
+  C 字符串实现会得 3/8，故两组长度共同钉住"带 NUL 的视图"。
+- `Str` 与 `str` 字面量的相等比较在普通 Auto 面可用（`f != "v=42"` 实测）；
+  i32 显示为十进制 ASCII（含负号的 `-`）。
+- **具名边界**（同 `../auto-av/language-parity.md` §5.3）：`char.to(Str)` 装箱、
+  计算借用视图局部量（`slice` 结果）与 `str` 形参收 owned 实参不在 aggregates
+  面，owner PLAN-975/1086。

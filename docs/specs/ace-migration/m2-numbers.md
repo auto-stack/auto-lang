@@ -116,3 +116,24 @@ numeric-ops pratt 表（`& | ^` 同层，位阶 5）、`.shl(n)`/`.shr(n)`/`.as(
 `numeric-annotation`（infer 面扩容属后继计划）；CTE 值面维持 I32/Bool（新类型进 CTE 为具名受控
 拒绝）；comptime av_driver 数值常量执行面可执行但 admission 未扩（具名）；聚合/泛型/动态/控制
 效应面归 962–966；i32 裁定与 diff-old-int-i64 差异沿用。其他平台/资源/标准库族不据此声明支持。
+
+## PLAN-1079 语言面事实（AVP-01，2026-11-19）
+
+普通 Auto 入口（`ac-av/language-source-run-v1`）真机运行确认并补入：
+
+- **已在普通入口可执行**：i64 超 2^53 的精确算术；checked i32 溢出为
+  `av.trap.int-overflow`（不 wrap）；显式 `to(int)`/`as(i64)`/`as(u64)` 转换；
+  `& | ^` 同层 precedence；`.shl(n)`/`.shr(n)`；整除向零截断与取余符号；
+  `0x`/`0b` 基数与 `_` 分隔符字面量。
+- **本包修复**（详见 `../auto-av/language-parity.md` §5.1）：affix-num 基数体
+  切分（16 进制字母属体、数位门按基数判定）与 i32 类型化常量渲染
+  （`{value}i32`）。修复前 Auto 面对 `0xFF`/`0xF`/`0xFFu8` 报
+  `carries no digits`，对无后缀 affix-num 报 Atom bind 内部错误。
+- **位型观察**（父侧 Rust 类型化/位观察，`av/tests/cases/plan1079_language_semantics.rs`）：
+  运行时 `x % ±0.0` 得 NaN（自不等、无序、不 trap）；`-0.0` 经取负、两个负零
+  相加、f64→f32 收窄保持符号位；f64→f32 半程按 ties-to-even；`i64→int` 越界
+  为 `av.trap.int-overflow`；混宽为 `source.type-mismatch`；超宽度字面量为
+  `source.literal-range`。文本显示不参与位型判定。
+- **具名边界**：复合赋值语句（`x += …`）不在 Auto 语句面（`source.syntax`），
+  owner PLAN-1080；本表数值语义不受影响，同一 checked 加法经 `x = x + 1`
+  已在 canonical case 实测。

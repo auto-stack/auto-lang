@@ -1,6 +1,6 @@
 # 按语言特性组织的共享 AutoDown 语料（feature-organized corpus）
 
-> Status: **delivered（PLAN-1078 AVP-00，2026-11-19）**。公共语言测试按语言特性
+> Status: **delivered（PLAN-1078 AVP-00 / PLAN-1079 AVP-01，2026-11-19）**。公共语言测试按语言特性
 > 集中组织：同一份 Auto 源码供 AV/AC/A2R 等后端各自追加目标检查，避免重复维护。
 > 设计合同见 [docs/design/testing/ace-feature-organized-autodown-corpus.md](../../design/testing/ace-feature-organized-autodown-corpus.md)；
 > 本文件记录**实际交付**的作者/选择/迁移/忽略机制与支持事实。
@@ -40,3 +40,18 @@
   AV 必需公共编译与语义验证仍正确。非 AV required 关闭是对应后端/1068/985
   的最终门，AV 阶段的忽略不当通过。
 - 平台：Windows 执行；Linux/WSL 腿归专用 Linux 环境。
+
+## 5. AVP-01（PLAN-1079）增量
+
+- 新增唯一作者文件：`language/numbers/literals-conversions.case.ad`（3 个 Case：
+  wide-exact / mixed-width-explicit / overflow-is-not-wrap）、
+  `language/text/interpolation-unicode.case.ad`（2 个 Case：text-nul-and-format /
+  text-literal-escapes）。`language.suite.ad` 只追加两条 canonical 引用。
+- 固定组 `case-av-language-parity` 复跑 8/8（1078 三例 + 本包五例），单例
+  0.45–0.54s，均在 10s 预算内；非 AV 行继续 `#ignore`/NOT_RUN，不充 PASS。
+- `legacy-map.tsv` 追加 68 行（PLAN-1079 主承接的旧 VM 文档）：保留原 case ID、
+  check ID、声明 oracle 与 Auto 源 SHA16；分类 mapped 22 / research-hold 34 /
+  no-such-shape 12。hold 行在 reason 里写明形态、owner 与关闭条件，不缩分母。
+- 门禁控制（真实执行）：oracle 变异（成功例 `exit: 41`）→ FAIL
+  `exit[exit] mismatch: expected "41", actual "Some(42)"`；全部 AV 检查 `#ignore`
+  的视图 → 组级 `NOT_APPLICABLE` 且单独运行 exit=1（零选中不绿）。

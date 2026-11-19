@@ -1,6 +1,6 @@
 # AV 语言能力与来源映射（AV language parity ledger）
 
-> Status: **delivered（PLAN-1078 AVP-00，2026-11-19）**。本文件由 AVP-00 首次建立，
+> Status: **delivered（PLAN-1078 AVP-00 / PLAN-1079 AVP-01，2026-11-19）**。本文件由 AVP-00 首次建立，
 > 后续 AVP 批次（1079–1096）串行增量维护；它是当前 AV 语言**能力/来源映射**，不是第二
 > 注册器——suite/固定组/发现仍由既有 TestCase/auto-case 机制各负其责。
 > 只登记实际交付与真实运行事实；未交行保 pending/owner，不写 implemented。
@@ -57,3 +57,51 @@
 - 未交/拒绝：task actor、脚本/Python 协议、泛型/闭包/生成器/async 等后续 AVP
   批次能力不因 Auto 面未覆盖而豁免；旧窄 profile 拒绝面不变。
 - 平台：Windows 执行；Linux/WSL 腿按裁定归专用 Linux 环境，不判红、不充 PASS。
+
+## 5. AVP-01（PLAN-1079）交付：标量、转换与文本
+
+> 2026-11-19，普通 Auto 入口真机运行（`ac-av/language-source-run-v1`）。
+> 只登记实际观察；未交行在 §5.3 具名并写 owner/关闭条件。
+
+### 5.1 普通入口新增/修复的准入事实
+
+- **affix-num 基数体切分**（`core/src/source/cst/project.rs::decode_typed_literal`）：
+  `0x`/`0b` 前缀后的体按**目标基数**的数字位切分（16 进制 `a..f` 属体），
+  十进制另收一个分点；"至少有一个数位"的门也按同一基数判定。因此
+  `0xFF`、`0xF`、`0xFFu8`、`0b1010`、`1_000_000`、`40i64`、`42i32` 全部解码；
+  此前 Auto 面报 `numeric literal ... carries no digits`（`source.literal-range`）
+  或 `suffixed/radix/float numeric literal ... is not part of this source profile`。
+- **i32 类型化常量渲染**（`adapter.rs`）：`EKind::TypedConst { vt: I32 }` 渲染
+  `{value}i32`。缺这条臂时输出 `value: I32`，Atom bind 拒绝整个模块
+  （`internal adapter error` / `constant value must be an integer value`），
+  无后缀 affix-num（`1_000_000`、`0b1010`）因此不可用。
+- 结论：Auto 面的字面量面（宽度/后缀/基数/分隔符）与 Numeric 面同一解码器，
+  不是第二套解析。
+
+### 5.2 本包 canonical Case 与真实结果
+
+| Case ID | 作者文件 | 独立 oracle | 实际结果 |
+|---|---|---|---|
+| `av.parity.1079.wide-exact` | `language/numbers/literals-conversions.case.ad` | exit 42（i64 超 2^53 精确、`0xFFu8`、`0b1010u8`、`1_000_000`、i64::MIN 加减） | PASS |
+| `av.parity.1079.mixed-width-explicit` | 同上 | exit 42（`to(int)`/`as(i64)`/`as(u64)`、`=` 复合算术、`& \| ^` 同层、`.shl/.shr`、整除取余） | PASS |
+| `av.parity.1079.overflow-is-not-wrap` | 同上 | run / `av.trap.int-overflow`（i32 MAX+1 不 wrap） | PASS（trap） |
+| `av.parity.1079.text-nul-and-format` | `language/text/interpolation-unicode.case.ad` | exit 42 + stdout `A\nB\n`（`len`=4/`len_bytes`=9/NUL/astral/FStr 源序恰一次/Str 相等/负数显示） | PASS |
+| `av.parity.1079.text-literal-escapes` | 同上 | exit 42（`\n`、`\t\\\"`、`\u{4e2d}`、`to_codepoint` 十进制与 `0x4E2D` 双拼写） | PASS |
+
+- 固定组 `case-av-language-parity` 复跑 8/8（1078 的 3 例 + 本包 5 例），
+  单例 0.45–0.54s。
+- 位型补充观察（父侧 Rust 类型化观测，`av/tests/cases/plan1079_language_semantics.rs`）：
+  运行时 `x % ±0.0` 产生 NaN（自不等/无序/不 trap）、`-0.0` 经取负/相加/f64→f32
+  收窄保持符号位、f64→f32 半程按 ties-to-even、`i64→int` 越界 trap
+  `av.trap.int-overflow`、混宽 `source.type-mismatch`、超宽度字面量
+  `source.literal-range`。
+
+### 5.3 具名边界（未交付；owner + 关闭条件）
+
+| 形态 | 实际观察 | owner | 关闭条件 |
+|---|---|---|---|
+| 复合赋值语句 `x += …` | `source.syntax`（`expected expression, found =`）；Auto 语句面只收 `=`，同一 checked 加法经 `x = x + 1` 已验 | PLAN-1080（调用与管道语句面） | 语句面接纳该形后按原 case oracle 重跑 |
+| `char.to(Str)`（char→owned Str 装箱） | CST 前门拒绝（回退到 legacy 解析器报 `fn is not part of this source profile`） | PLAN-975 后续批次 | 该形可编译后按 `len`/`len_bytes` 断言 |
+| 计算借用视图局部量 `let t = s.slice(1,3)` | `verify.local-type`（aggregates 面局部量只收 owned `Str`） | PLAN-1086 | 借用视图局部量准入后按 `slice` 原 oracle 重跑 |
+| `str` 形参收 owned `Str` 实参 | `source.type-mismatch`（`expected str, found Str`） | PLAN-1086 | 形参视图/自有转换准入后重跑 |
+| `~` 位非、raw string 字面量 | 不在冻结算符表 / 无此形（`text.invalid-escape`） | — | 语言不定义该构造，旧义务记 `no-such-shape` |
