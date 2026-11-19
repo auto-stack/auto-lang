@@ -98,6 +98,23 @@ AV沿已交PySession/967 provider调用CPython，A2PY沿已有Checked HIR→共�
 
 未知（不填 PASS）：py op 事实在 `SemanticView` 的稳定键（body/expr 身份）需在 T-02 按现有 `body_plan`/`foreign_resource_plan` 形态确定；`verify_foreign_closures` 在 A2PY 侧的可复用性未跑（T-02 首个探针负责）。
 
+### 4.4 支持矩阵（AC-06，实测 2026-11-20）
+
+| 轴 | 已验证 | 证据 | 未宣称 |
+|---|---|---|---|
+| OS/arch | Windows x64 | 端到端真实运行（AV/A2PY/978） | Linux/macOS（按 2026-11-14 裁定归专用 Linux 环境） |
+| AV 解释器 | 进程内 CPython 3.14.2（967 provider） | V-01/V-02 AV 运行（`py_session_1107`/`py_protocol_1107`） | 其他 3.x 版本 |
+| A2PY 解释器 | PATH 上的声明 `python3`（实测 3.14.2，`-B`） | `py_native_run_1107`、`run_sdk` | 其他版本；缺失 → `m2build.run.interpreter-failed` |
+| 第三方包 | torch 2.14.0+cpu（CPU 线性回归）、标准库 list/len/repr/round | `pytorch_train.as`、`protocol_1107.at` | CUDA/其他 torch 构建；未声明包 → `m2build.run.runtime-dependency` |
+| 语言面 | 17 py 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法 | V-01/V-02/`py_ops_1107` | 容器/记录跨边界、动态浮点实参、属性派生值 |
+| 目标 | AV（in-process）、A2PY（原生 Python 文件集）、978 SDK A2py | T-01/T-03/T-05 | 其他 978 目标行为不变 |
+| 失败面 | 缺解释器/包/工件 → 具名 `m2build.*`；未捕获异常 → AV Trap(span) / A2PY 非零+异常类 / SDK run 非 PASS | V-04/V-07 | A2PY 错误类映射到 Auto 错误类型（未交，见 §5 余量） |
+| 缓存/身份 | 冷产片段、暖 `cache-hit` 零 spawn、body 编辑失效、project/caps/provider 身份轴 | `p1107_v06_*` | — |
+
+SD 增量草稿（merge 时沉淀）：`D:/autostack/plan-artifacts/plan-1107/spec-delta/`
+—— `SD-01-python-ecosystem-integration.md`（新增 `docs/specs/auto-a2x/python-ecosystem-integration.md`）、
+`SD-02-append-python-interop.md`、`SD-03-append-python-stdlib-readiness.md`、
+`SD-04-append-m2-build.md`（分别追加到对应 Spec）。
 ## 5. 详细设计
 
 ### 5.1 首个同源工程
