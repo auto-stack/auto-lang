@@ -30,3 +30,16 @@ experimental/ase-m0/Cargo.toml --test headless`（固定组 `cargo t ase-m0`）�
 兄弟树显式路径）经 979/980 冻结的普通 Node 兼容面装载并取 AV 真值文本。
 源闭包=单文件自包含；换合法根/函数名及改文字仍工作（auto-ui 侧
 `ase_m0_text` 目标 V-02 反硬编码 oracle）。
+
+## PLAN-1023：两份交互 Counter 源（会话宿主输入）
+
+`fixtures/counter-a/main.at` 与 `fixtures/counter-b/main.at` 是 ASE M0 交互
+会话（PLAN-1023）的两份**独立普通 Node 应用输入**：同 Schema（无参
+`msg { Inc, Dec, Reset }` + `model count int = 0` + `on` 复合赋值），不同
+合法根名（`CounterA`/`CounterB`）与文字——反硬编码 oracle 输入。按钮声明序
+两源一致（0=`-` Dec、1=Reset、2=`+` Inc）。它们同 text-a/b 一样不经
+`run_app`/registry 冷链执行；UI 侧会话宿主（auto-ui `ase_m0_sessions`，
+组内兄弟树显式路径）经 979/980/981 冻结的公共面装载：`count` 经已交 int
+状态槽显示（显示=只读镜像，业务权威在会话引擎），事件=981 事件 A 无参
+unit 面（带参/载荷近邻在边界具名拒）；同 app 双开=两次独立装载（双引擎，
+模型不合并）。不为显示引入 f-string 文本叶（W1 已知边界）。

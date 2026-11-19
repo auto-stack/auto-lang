@@ -1,0 +1,27 @@
+// PLAN-1023 ASE M0：交互会话 Counter B（权威 fixture；无参事件 A 面）。
+// 与 counter-a 同 Schema 但根名/文字不同（反硬编码）。按钮声明序（冻结，
+// 与 counter-a 一致）：0=`-`(Dec)、1=Reset、2=`+`(Inc)。
+node CounterB {
+    msg { Inc, Dec, Reset }
+
+    model {
+        var count int = 0
+    }
+
+    view {
+        col {
+            text "counter B ascii"
+            row {
+                button "-" { onclick: .Dec }
+                button "Reset" { onclick: .Reset }
+                button "+" { onclick: .Inc }
+            }
+        }
+    }
+
+    on {
+        .Inc -> { .count += 1 }
+        .Dec -> { .count -= 1 }
+        .Reset -> { .count = 0 }
+    }
+}
