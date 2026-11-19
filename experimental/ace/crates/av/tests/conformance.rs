@@ -176,6 +176,8 @@ mod host_console;
 mod mir_tier;
 #[path = "cases/p946_t01_probe.rs"]
 mod p946_t01_probe;
+#[path = "cases/plan1079_language_semantics.rs"]
+mod plan1079_language_semantics;
 #[path = "cases/resource_915.rs"]
 mod resource_915;
 #[path = "cases/resources_tier.rs"]

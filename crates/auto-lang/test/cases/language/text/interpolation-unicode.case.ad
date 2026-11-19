@@ -1,0 +1,133 @@
+# PLAN-1079 — 文本：char/str/Str、嵌入 NUL、UTF-8 视图与 FStr（语言共享语料）
+
+The text slice of the feature-organized language corpus. One Auto source per
+case; the `av` check runs the ordinary AV language chain
+(`ac-av/language-source-run-v1`, Auto profile).
+
+Frozen text facts this file observes (independent oracles, never copied from
+the implementation):
+
+- `str`/`Str` are UTF-8 text; `len()` counts Unicode scalars, `len_bytes()`
+  counts UTF-8 bytes (an owned `Str` clone keeps both).
+- Embedded NUL is ordinary text, not a terminator: `"A中😀\0"` is 4 scalars /
+  9 bytes (a `strlen`-shaped implementation answers 3 / 8).
+- `char_at` indexes scalars and returns `char`; `char` is one UTF-8 scalar.
+- `\u{...}` escapes decode to their scalar.
+- FStr interpolation evaluates each embedded expression once, in source
+  order, and displays an i32 as decimal ASCII.
+
+## Case: text-nul-and-format
+id: "av.parity.1079.text-nul-and-format"
+tags: ["av-language-parity", "plan-1079", "text"]
+links: ["PLAN-1079", "PLAN-964", "PLAN-975"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn left() int {
+ print("A")
+ return 1
+}
+fn right() int {
+ print("B")
+ return 2
+}
+fn main() int {
+ let s = "A中😀\u{0}".clone()
+ if s.len() != 4 { return 1 }
+ if s.len_bytes() != 9 { return 2 }
+ if s.char_at(0).to_codepoint() != 65 { return 3 }
+ if s.char_at(2).to_codepoint() != 128512 { return 4 }
+ if s.char_at(3).to_codepoint() != 0 { return 5 }
+ let f = f"v=${20 + 22}"
+ if f.len() != 4 { return 6 }
+ if f.char_at(0).to_codepoint() != 118 { return 7 }
+ if f.char_at(1).to_codepoint() != 61 { return 8 }
+ if f.char_at(2).to_codepoint() != 52 { return 9 }
+ if f.char_at(3).to_codepoint() != 50 { return 10 }
+ let traced = f"${left()}${right()}"
+ if traced.len() != 2 { return 11 }
+ if f != "v=42" { return 14 }
+ let neg = f"${0 - 7}"
+ if neg.len() != 2 { return 15 }
+ if neg.char_at(0).to_codepoint() != 45 { return 16 }
+ let escaped = "\u{4e2d}"
+ if escaped.len() != 1 { return 12 }
+ if escaped.len_bytes() != 3 { return 13 }
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+A
+B
+```
+
+### Notes
+
+`"A中😀\u{0}".clone()` materializes an owned `Str` whose scalar count is 4
+(`A` + `中` + `😀` + NUL) and whose UTF-8 byte count is 9 (1 + 3 + 4 + 1).
+A C-string implementation would stop at the NUL and answer 3 / 8, so the two
+lengths together pin the NUL-carrying view; `char_at` proves the astral scalar
+is one scalar, not two surrogate halves.
+
+The two trailing blocks are the FStr order/once observation: `left()` and
+`right()` each print one byte through the frozen console contract (every
+`print` call appends exactly one `0a`, `docs/specs/auto-ac/source-console-output.md`),
+so the expected stdout `A\nB\n` proves both interpolations ran exactly once
+and in source order — a reversed or duplicated evaluation changes the bytes.
+`f"v=${20 + 22}"` is the int-display case: the i32 renders as decimal ASCII.
+
+## Case: text-literal-escapes
+id: "av.parity.1079.text-literal-escapes"
+tags: ["av-language-parity", "plan-1079", "text"]
+links: ["PLAN-1079", "PLAN-975"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let nl = "\n".clone()
+ if nl.len() != 1 { return 1 }
+ if nl.len_bytes() != 1 { return 2 }
+ if nl.char_at(0).to_codepoint() != 10 { return 3 }
+ let mixed = "\t\\\"".clone()
+ if mixed.len() != 3 { return 4 }
+ let c = '中'
+ if c.to_codepoint() != 20013 { return 5 }
+ if c.to_codepoint() != 0x4E2D { return 6 }
+ let cjk = "\u{4e2d}"
+ if cjk.len() != 1 { return 7 }
+ if cjk.len_bytes() != 3 { return 8 }
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+The escape block pins the frozen decode table: `\n` is one scalar / one byte,
+`\t\\\"` is three scalars, and `\u{4e2d}` is one scalar of three UTF-8 bytes.
+`'中'.to_codepoint()` is the U+4E2D scalar value 20013, spelled twice (decimal
+and radix `0x4E2D`) so the character lane is pinned to the scalar value rather
+than to a display string. The char→`Str` boxing form (`c.to(Str)`) and the
+borrowed-view local (`let t = s.slice(1, 3)`, whose `str` result the
+aggregates-surface domain refuses as a local) are recorded as named boundaries
+in the Plan (§9) with their owners; they are not part of this case's oracle.

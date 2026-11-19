@@ -1,0 +1,140 @@
+# PLAN-1079 — 数值：已定宽度、字面量、显式转换（语言共享语料）
+
+The numeric slice of the feature-organized language corpus: the frozen widths
+(`int`=i32, `i64`, `u8`, `u32`, `u64`, `float`=f32, `double`=f64), affix-num
+literals (`i64`/`u8` suffixes, `0x`/`0b` prefixes, `_` separators), same-type
+arithmetic discipline (mixed widths need an explicit `as`/`to`), checked
+overflow (never wrapping) and the explicit conversion matrix.
+
+Every case carries ONE Auto source. The `av` check runs the ordinary AV
+language chain (`ac-av/language-source-run-v1`, Auto profile); the independent
+oracle is the exit value / the frozen trap code, never a value copied out of
+the implementation.
+
+## Case: wide-exact
+id: "av.parity.1079.wide-exact"
+tags: ["av-language-parity", "plan-1079", "numbers"]
+links: ["PLAN-1079", "PLAN-961"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let big = 9007199254740993i64
+ let prev = 9007199254740992i64
+ if big - prev != 1i64 { return 1 }
+ if 0xFFu8 != 255u8 { return 2 }
+ if 0b1010u8 != 10u8 { return 3 }
+ if 1_000_000 != 1000000 { return 4 }
+ let min = -9223372036854775807i64 - 1i64
+ if min + 1i64 != -9223372036854775807i64 { return 5 }
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+i64 arithmetic is exact well past the f64/double 2^53 integer window, so
+`9007199254740993 - 9007199254740992` must be `1i64` (a float-widened or
+truncating chain would answer 0 or 2). The literal forms (`0xFFu8`, `0b1010u8`,
+`1_000_000`) are the affix-num spellings of the frozen numeric contract. The
+last block reaches i64::MIN by checked subtraction and adds back — a wrapping
+or clamping implementation answers something else.
+
+## Case: mixed-width-explicit
+id: "av.parity.1079.mixed-width-explicit"
+tags: ["av-language-parity", "plan-1079", "numbers"]
+links: ["PLAN-1079", "PLAN-961"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let wide = 40i64 + 2i64
+ let narrowed = wide.to(int)
+ if narrowed != 42 { return 1 }
+ let back = narrowed.as(i64)
+ if back != 42i64 { return 2 }
+ if (7u8).as(u64) != 7u64 { return 3 }
+ var acc = 20
+ acc = acc + 22
+ if acc != 42 { return 4 }
+ if ((0xF0u8 & 0x3Cu8) | 0x01u8) != 0x31u8 { return 5 }
+ if (0xF & 0x3) != 0x3 { return 11 }
+ if (0b1010 & 0b0110) != 0b0010 { return 12 }
+ if 1 + 2 * 3 != 7 { return 6 }
+ if (1u32).shl(5u32) != 32u32 { return 7 }
+ if (32u32).shr(5u32) != 1u32 { return 8 }
+ if 7u32 / 2u32 != 3u32 { return 9 }
+ if 7u32 % 2u32 != 1u32 { return 10 }
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+Mixed widths are a type error in the frozen contract, so the only way to move
+between `i64` and `int` is an explicit `as`/`to` (checked narrowing: 42 is
+representable). `(7u8).as(u64)` is the zero-extending widening direction.
+The accumulator block is the plain-assignment spelling of the same checked
+add (`acc = acc + 22`): the ordinary Auto statement surface admits `=`, and
+compound-assignment *statements* (`+=`) are a statement-grammar item of the
+later pipeline batch (T-01 probe: `acc += 22` is `source.syntax` at the `=`;
+recorded as a named boundary in §9, not a relaxation of the arithmetic
+contract — the same add is exercised here through `=`).
+`((0xF0 & 0x3C) | 0x01)` distinguishes the frozen `&`/`|`/`^` shared tier
+(same precedence, left associative) from a C-like tighter `&`: the frozen
+answer is `0x31`, the tighter-`&` reading would answer `0x30`. The `0xF & 0x3`
+and `0b1010 & 0b0110` rows pin the radix spellings whose bodies are letters or
+binary digits only (a decimal-digit-only literal decoder answers
+"carries no digits" for `0xF`). Shifts and integer division/modulo keep their
+own frozen rules (arithmetic/logical direction, truncating division, remainder
+sign).
+
+## Case: overflow-is-not-wrap
+id: "av.parity.1079.overflow-is-not-wrap"
+tags: ["av-language-parity", "plan-1079", "numbers"]
+links: ["PLAN-1079", "PLAN-961"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ var n = 2147483647
+ return n + 1
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.int-overflow"
+
+### Notes
+
+The frozen numeric contract is checked arithmetic: i32 `MAX + 1` traps
+`av.trap.int-overflow` at run time instead of wrapping to `-2147483648` (the
+legacy wrapping behaviour is a named difference, not the oracle). `var n`
+keeps the add out of any constant fold so the trap phase is the runtime phase
+the contract names. This is a language trap, not a diagnosed admission error,
+so the expected completion is `stage: run` + a trap-code substring.

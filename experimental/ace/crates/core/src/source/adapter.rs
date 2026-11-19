@@ -4860,6 +4860,15 @@ impl<'p> Emitter<'p> {
                         // parses the suffix back — bit-exact round trip).
                         EKind::TypedConst { vt, bits } => {
                             let text = match vt {
+                                // PLAN-1079: the i32 typed constant renders the
+                                // same `{value}i32` word the plain Const arm
+                                // uses. Without this arm the descriptor received
+                                // `value: I32` (the `{:?}` fallback) and the
+                                // Atom bind rejected the module with
+                                // "constant value must be an integer value" —
+                                // which made every un-suffixed affix-num
+                                // spelling (`1_000_000`, `0b1010`) unusable.
+                                VT::I32 => format!("{}i32", *bits as i32),
                                 VT::I8 => format!("{}i8", *bits as u8 as i8),
                                 VT::U8 => format!("{}u8", *bits as u8),
                                 VT::U32 => format!("{}u32", *bits as u32),
