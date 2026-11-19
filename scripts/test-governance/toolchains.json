@@ -155,7 +155,18 @@
    "target": "target",
    "env": "AUTO_TOOL_EXECUTION_FIXTURE"
   },
-  "store-gc": {
+  "collections-runtime": {
+  "workspace": "experimental/ace",
+  "package": "ace-collections-runtime",
+  "binaries": [],
+  "artifacts": [
+   "ace_collections_runtime.lib"
+  ],
+  "profile": "runtime-release",
+  "target": "experimental/ace/target",
+  "env": "ACE_COLLECTIONS_RUNTIME_LIB"
+ },
+ "store-gc": {
   "workspace": "experimental/ace",
   "package": "ace-artifacts",
   "binaries": [

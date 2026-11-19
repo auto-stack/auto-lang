@@ -241,10 +241,3 @@ fn trace_support_library_travels_to_the_mn_link() {
     assert_eq!(String::from_utf8_lossy(&stderr), "ba");
 }
 
-fn compiler_status(command: std::process::Command) -> std::io::Result<std::process::ExitStatus> {
-    use std::io::Write;
-    let output = auto_tool_execution::run_command_output(command)?;
-    std::io::stdout().write_all(&output.stdout)?;
-    std::io::stderr().write_all(&output.stderr)?;
-    Ok(output.status)
-}

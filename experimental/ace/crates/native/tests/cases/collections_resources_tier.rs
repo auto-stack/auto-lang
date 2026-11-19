@@ -8,25 +8,21 @@ use std::sync::OnceLock;
 fn libraries() -> &'static [PathBuf] {
     static LIBRARIES: OnceLock<Vec<PathBuf>> = OnceLock::new();
     LIBRARIES.get_or_init(|| {
-        let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../collections-runtime");
-        let mut owned_compiler = Command::new("cargo");
-        owned_compiler
-            .args(["build", "--manifest-path"])
-            .arg(runtime.join("Cargo.toml"))
-            .args(["--profile", "runtime-release"])
-            .arg("--locked")
-            .env_remove("CARGO_TARGET_DIR")
-            .env_remove("CARGO_TARGET_DIR")
-            .arg("--target-dir")
-            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-        let output = auto_tool_execution::run_command_output(owned_compiler)
-            .expect("build container runtime");
+        // PLAN-1098 T-02/T-10: prepared `collections-runtime` only (no in-body build).
+        let path = std::env::var_os("ACE_COLLECTIONS_RUNTIME_LIB").unwrap_or_else(|| {
+            panic!(
+                "ACE_COLLECTIONS_RUNTIME_LIB is not set: prepare the `collections-runtime` tool \
+                 (python scripts/fixed-tests.py <group> --prepare-only); the runtime is never \
+                 built inside the test"
+            )
+        });
+        let lib = PathBuf::from(path);
         assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
+            lib.is_file(),
+            "prepared collections runtime missing: {}",
+            lib.display()
         );
-        vec![runtime.join("../../target/runtime-release/ace_collections_runtime.lib")]
+        vec![lib]
     })
 }
 

@@ -1331,5 +1331,83 @@ class AceArchiveArgs(unittest.TestCase):
         self.assertEqual(offenders, {}, 'move positional filters into the expression')
 
 
+class RowLedgerConservation(unittest.TestCase):
+    """PLAN-1098 V-01: the 47-row freeze is conserved, not just asserted.
+
+    A missing row, a drifted class/condition, or a duplicated obligation must
+    each turn this red; the plan's own table is not machine-checkable, so the
+    frozen ledger is a repo artifact validated here.
+    """
+
+    LEDGER = ROOT / 'scripts/test-governance/ace-row-ledger.json'
+    CLASSES = {'C', 'D', 'R', 'Q', 'L'}
+
+    def document(self):
+        return json.loads(self.LEDGER.read_text(encoding='utf-8'))
+
+    def problems(self, document):
+        problems = []
+        if document.get('schema') != 'ace-row-ledger/1':
+            problems.append('schema')
+        rows = document.get('rows') or []
+        expected = document.get('expected') or {}
+        if len(rows) != expected.get('rows'):
+            problems.append('row count %d != frozen %s' % (len(rows), expected.get('rows')))
+        ids = [row.get('id') for row in rows]
+        names = [row.get('name') for row in rows]
+        if len(set(ids)) != len(ids):
+            problems.append('duplicate id')
+        if len(set(names)) != len(names):
+            problems.append('duplicate name')
+        counts = {}
+        for row in rows:
+            klass = row.get('class')
+            if klass not in self.CLASSES:
+                problems.append('unknown class %r on %s' % (klass, row.get('id')))
+                continue
+            counts[klass] = counts.get(klass, 0) + 1
+            if not row.get('destination'):
+                problems.append('no destination on %s' % row.get('id'))
+            if not isinstance(row.get('historical_seconds'), (int, float)):
+                problems.append('no historical time on %s' % row.get('id'))
+        if counts != expected.get('classes'):
+            problems.append('class distribution %s != frozen %s'
+                            % (dict(sorted(counts.items())), expected.get('classes')))
+        return problems
+
+    def test_frozen_ledger_is_conserved(self):
+        self.assertEqual(self.problems(self.document()), [])
+
+    def test_missing_row_is_red(self):
+        document = self.document()
+        document['rows'] = document['rows'][:-1]
+        self.assertIn('row count', ' '.join(self.problems(document)))
+
+    def test_duplicate_row_is_red(self):
+        document = self.document()
+        document['rows'].append(dict(document['rows'][0]))
+        problems = self.problems(document)
+        self.assertTrue(any('duplicate' in item for item in problems), problems)
+
+    def test_drifted_class_is_red(self):
+        document = self.document()
+        document['rows'][0]['class'] = 'D'
+        problems = self.problems(document)
+        self.assertTrue(any('class distribution' in item for item in problems), problems)
+
+    def test_unknown_class_is_red(self):
+        document = self.document()
+        document['rows'][0]['class'] = 'X'
+        problems = self.problems(document)
+        self.assertTrue(any('unknown class' in item for item in problems), problems)
+
+    def test_destinations_match_the_frozen_groups(self):
+        value, groups = fixed.configuration()
+        document = self.document()
+        for row in document['rows']:
+            with self.subTest(row=row['id']):
+                self.assertIn(row['destination'], groups)
+
+
 if __name__ == '__main__':
     unittest.main()
