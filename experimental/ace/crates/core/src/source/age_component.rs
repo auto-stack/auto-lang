@@ -679,6 +679,61 @@ pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec
 }
 
 /// 组件面前门：候选 → 兼容闸 → 隐藏名 → 脱糖 → **唯一 verify** → 版本化描述。
+/// PLAN-105 T-02：表达式是否含 `.store.*` 引用链（组件面 S1 具名拒用）。
+fn expr_refs_store(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Field { base, name } => {
+            name.name == "store"
+                || matches!(&base.kind, ExprKind::Var(v) if v.name == "store")
+                || expr_refs_store(base)
+        }
+        ExprKind::Method { recv, .. } => expr_refs_store(recv),
+        ExprKind::TextDisplay(inner) => expr_refs_store(inner),
+        ExprKind::Binary { lhs, rhs, .. } => expr_refs_store(lhs) || expr_refs_store(rhs),
+        _ => false,
+    }
+}
+
+/// PLAN-105 T-02：语句面里是否有 `.store.*` 引用（返回首个 span）。
+fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
+    for st in stmts {
+        match st {
+            ComponentStmt::Assign(a) => {
+                if expr_refs_store(&a.rhs) {
+                    return Some(a.span);
+                }
+            }
+            ComponentStmt::Let { value, span, .. } => {
+                if expr_refs_store(value) {
+                    return Some(*span);
+                }
+            }
+            ComponentStmt::If { cond, then, els, span } => {
+                if expr_refs_store(cond) {
+                    return Some(*span);
+                }
+                if let Some(s) = stmt_refs_store(then) {
+                    return Some(s);
+                }
+                if let Some(e) = els {
+                    if let Some(s) = stmt_refs_store(e) {
+                        return Some(s);
+                    }
+                }
+            }
+            ComponentStmt::For { iter, body, span, .. } => {
+                if expr_refs_store(iter) {
+                    return Some(*span);
+                }
+                if let Some(s) = stmt_refs_store(body) {
+                    return Some(s);
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn compile_age_component(
     src: &str,
     module_path: &str,
@@ -690,6 +745,28 @@ pub fn compile_age_component(
     // 一致（PLAN-964 同边界：f-string 内部 span 可能移位）。
     let src = &desugar_widget_src(src)?;
     let candidates = project_component_candidates(src)?;
+    // PLAN-105 T-02（U03 真语料 013/016）：单源组件面没有 store 单元（S1 未
+    // 接线）——`.store.*` 引用在此**具名拒**，不再落到隐藏函数的
+    // 「no local named self」这类间接错误。
+    if let Some(span) = candidates.iter().find_map(|n| {
+        n.view
+            .texts
+            .iter()
+            .find(|t| expr_refs_store(&t.expr))
+            .map(|t| t.span)
+            .or_else(|| {
+                n.handlers
+                    .iter()
+                    .find_map(|h| stmt_refs_store(&h.stmts))
+            })
+    }) {
+        return Err(vec![text_diag(
+            "source.age.component-unsupported",
+            "`.store.*` references need the package face: store declarations are not \
+             wired into the component slice yet (S1)",
+            span,
+        )]);
+    }
     // 兼容配置：别名关闭时旧声明头受控拒绝（不回落旧引擎）。
     if !alias.is_accept() {
         if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {

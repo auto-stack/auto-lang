@@ -724,3 +724,27 @@ fn p105_toplevel_bare_assign() {
     );
     assert!(compiles(src), "package face admits top-level bare assignments");
 }
+
+/// 013/016 真语料形：`.store.*` 在**单源组件面**目前没有 store 单元（S1 未接线）
+/// ——必须具名拒（提示走包面），不能落到隐藏函数的「no local named self」。
+#[test]
+fn p105_store_ref_is_named_reject_in_component_face() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0 }\n\
+        view { text .store.active_count { style: \"x\" } }\n\
+    }\n";
+    let caps = vec!["ac.runtime.text.v1".to_string()];
+    let err = ace_core::source::age_component::compile_age_component(
+        src,
+        "app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+    )
+    .expect_err("store refs are a named pending surface in the component face");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.age.component-unsupported" && d.message.contains(".store.")),
+        "named store reject expected, got {err:?}"
+    );
+}
