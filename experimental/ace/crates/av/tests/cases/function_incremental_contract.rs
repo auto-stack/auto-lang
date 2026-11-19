@@ -549,6 +549,9 @@ fn verify_profile(
         // collections-family domain (wider admission is keyed on the
         // aggregates capability, not the verifier entry).
         SourceProfile::Aggregates => verify::verify_closures(b),
+        // PLAN-1078: the Auto profile verifies under the same
+        // collections-family domain (aggregates-surface identity).
+        SourceProfile::Auto => verify::verify_closures(b),
         // PLAN-888 discovery: PLAN-865 added this source domain. Keep
         // this test adapter exhaustive by calling its landed verifier.
         SourceProfile::Closures => verify::verify_closures(b),

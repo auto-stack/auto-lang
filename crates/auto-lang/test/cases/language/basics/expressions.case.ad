@@ -1,0 +1,133 @@
+# PLAN-1078 — 普通 AV 语言基线：表达式与短路（语言共享语料第一份）
+
+The first canonical file of the feature-organized language corpus. Every
+case carries ONE Auto source; AV / AC-native / legacy-reference checks share
+the same source bytes and record their own real results. The `av` check runs
+the ordinary AV language chain (`ac-av/language-source-run-v1`, Auto profile);
+it never falls back to the old VM.
+
+## Case: baseline-value
+id: "av.parity.1078.baseline-value"
+tags: ["av-language-parity", "plan-1078", "basics"]
+links: ["PLAN-1078", "PLAN-1002"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return 2 + 3 * 4 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 14
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Probe ac-native
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 14
+
+### VM result
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+14
+```
+
+### Notes
+
+`av.parity.1078.baseline-value` keeps the planned 1078 id (identical Auto
+source to `ace.m1.b01`); the AV and AC-native checks share the same source
+and record their own real results. The legacy-reference row is the frozen
+old-VM oracle of the same source, used only as the explicit migration
+comparison — never as the AV expected.
+
+## Case: short-circuit
+id: "av.parity.1078.short-circuit"
+tags: ["av-language-parity", "plan-1078", "basics"]
+links: ["PLAN-1078"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn explode() bool { fail("must-not-run") }
+fn main() int {
+ if false && explode() { return 0 }
+ if true || explode() { return 42 }
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The short-circuit polarity case: `&&`/`||` must never evaluate the guarded
+`explode()` call (its `fail` would be a language error). The result 42 proves
+both guards short-circuited.
+
+## Case: syntax-neighbor
+id: "av.parity.1078.syntax-neighbor"
+tags: ["av-language-parity", "plan-1078", "basics"]
+links: ["PLAN-1078"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return (40 + 2 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "parse"
+code: "source.syntax"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The nearest-neighbor syntax rejection: the unbalanced `(` is a parse-stage
+diagnostic (`source.syntax`), never a silent any-Err. The diagnostic stage/code
+is frozen by PLAN-1078 T-01.

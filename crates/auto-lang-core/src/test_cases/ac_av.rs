@@ -112,6 +112,10 @@ pub const AV_AGGREGATES_SOURCE_RECIPE: &str = "ac-av/aggregates-source-run-v1";
 /// cooperative scheduler (av.closures/1 identity; SCHED opcodes additive)
 /// and console observation.
 pub const AV_SCHEDULER_SOURCE_RECIPE: &str = "ac-av/scheduler-source-run-v1";
+/// PLAN-1078: the ordinary AV language-source recipe — the explicit Auto
+/// profile entry (first-batch aggregates face) through the shared front
+/// door with int entry value + exact console streams, same seam contract.
+pub const AV_LANGUAGE_SOURCE_RECIPE: &str = "ac-av/language-source-run-v1";
 /// PLAN-823 (R1-F02): the closures-profile av recipe (append-only
 /// registration; earlier recipe contracts untouched).
 pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
@@ -204,6 +208,8 @@ pub enum RecipeFamily {
     Compact,
     /// PLAN-919: the per-owner lifecycle recipe (`av.lifecycle/1`).
     ResourceEvents,
+    /// PLAN-1078: the ordinary AV language-source recipe (Auto profile).
+    LanguageSource,
 }
 
 impl RecipeFamily {
@@ -228,6 +234,7 @@ impl RecipeFamily {
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
             RecipeFamily::Compact => AV_COMPACT_RECIPE,
             RecipeFamily::ResourceEvents => AV_RESOURCE_EVENTS_RECIPE,
+            RecipeFamily::LanguageSource => AV_LANGUAGE_SOURCE_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
@@ -262,6 +269,9 @@ impl RecipeFamily {
             // PLAN-919: profile-dependent — see the special case at the
             // admission site (owned vs collections).
             RecipeFamily::ResourceEvents => EXPECTED_AV_CORE_VERSION,
+            // PLAN-1078: the language-source recipe rides the closures
+            // identity (aggregates face, same wire family).
+            RecipeFamily::LanguageSource => EXPECTED_AV_CLOSURES_CORE_VERSION,
         }
     }
 }
@@ -1729,6 +1739,29 @@ pub fn run_scheduler_source_check(
     )
 }
 
+/// PLAN-1078: the ordinary AV language-source recipe check — same
+/// request/judge shape as the scheduler source family (int entry value +
+/// exact console streams + exit observed); the worker compiles the real
+/// source through the Auto profile front door.
+pub fn run_language_source_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::LanguageSource,
+    )
+}
+
 /// PLAN-964: the aggregates SOURCE recipe check — same request/judge
 /// shape as the other av source families; the worker compiles the real
 /// source through the aggregates frontend (no fixture table).
@@ -1914,7 +1947,12 @@ fn run_check_with_transport(
             case.spec.source.syntax.as_str()
         ));
     }
-    if family == RecipeFamily::Console || family == RecipeFamily::SchedulerSource {
+    if family == RecipeFamily::Console
+        || family == RecipeFamily::SchedulerSource
+        // PLAN-1078: the language-source recipe observes console streams
+        // like the scheduler family.
+        || family == RecipeFamily::LanguageSource
+    {
         // PLAN-968: the scheduler face's ERROR completions assert no
         // streams (the case gate forbids them there); the full console
         // oracle contract applies to success completions.
@@ -1941,10 +1979,11 @@ fn run_check_with_transport(
             .probe_av
             .as_ref()
             .ok_or("console binding missing")?;
-        let want_recipe = if family == RecipeFamily::Console {
-            AV_CONSOLE_RECIPE
-        } else {
-            AV_SCHEDULER_SOURCE_RECIPE
+        let want_recipe = match family {
+            RecipeFamily::Console => AV_CONSOLE_RECIPE,
+            RecipeFamily::SchedulerSource => AV_SCHEDULER_SOURCE_RECIPE,
+            RecipeFamily::LanguageSource => AV_LANGUAGE_SOURCE_RECIPE,
+            _ => unreachable!("console family match"),
         };
         if check.options.probe_recipe.as_deref() != Some(want_recipe)
             || binding.entry != "d_main"
@@ -1955,9 +1994,9 @@ fn run_check_with_transport(
                 Some([auto_test_case::contract::ProbeStep::Run])
             )
         {
-            return Err(
-                "console-run-v1/scheduler-source-run-v1 requires d_main, one run and no session/profile override".into(),
-            );
+            return Err(format!(
+                "{want_recipe} requires d_main, one run and no session/profile override"
+            ));
         }
     } else if oracle.stdout.is_some() || oracle.stderr.is_some() {
         return Err("this probe recipe does not expose console streams".into());
@@ -2819,7 +2858,12 @@ fn run_check_with_transport(
         }
     }
 
-    if family == RecipeFamily::Console || family == RecipeFamily::SchedulerSource {
+    if family == RecipeFamily::Console
+        || family == RecipeFamily::SchedulerSource
+        // PLAN-1078: the language-source recipe compares console streams
+        // like the scheduler family.
+        || family == RecipeFamily::LanguageSource
+    {
         let capture = step.console.as_ref().expect("console admitted");
         let run =
             serde_json::json!({"stdout_b64":capture.stdout_b64,"stderr_b64":capture.stderr_b64});
@@ -5865,7 +5909,12 @@ pub fn current_console_toolchain_identity() -> std::collections::BTreeMap<String
 
 /// Console transport admission is independent of a matching oracle.
 fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> {
-    if family != RecipeFamily::Console && family != RecipeFamily::SchedulerSource {
+    if family != RecipeFamily::Console
+        && family != RecipeFamily::SchedulerSource
+        // PLAN-1078: the language-source recipe captures console streams
+        // like the scheduler family.
+        && family != RecipeFamily::LanguageSource
+    {
         return steps
             .iter()
             .any(|s| s.console.is_some())

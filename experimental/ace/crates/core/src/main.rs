@@ -235,6 +235,10 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
         SourceProfile::Aggregates => {
             ace_core::source::compile_aggregates_source(&src, &module_path, &args.capabilities)
         }
+        // PLAN-1078: the Auto surface's standalone entry (aggregates face).
+        SourceProfile::Auto => {
+            ace_core::source::compile_language_source(&src, &module_path, &args.capabilities)
+        }
         // PLAN-979: the AGE H0 domain profile is consumed by its own domain
         // front door (never the generic compile entries).
         // PLAN-979 T-03: the AGE component profile is consumed by its own

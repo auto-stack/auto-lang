@@ -1,0 +1,9 @@
+# PLAN-1078 — the public feature-organized language corpus selection.
+# The canonical author root is crates/auto-lang/test/cases/language/; every
+# file here is the ONE active author of its cases (AV / AC / A2R checks share
+# the same Auto source). New AVP batches append canonical references only.
+```test-suite
+suite { schema: "autolang.suite/2", id: "language", include: [
+  "language/basics/expressions.case.ad",
+] }
+```

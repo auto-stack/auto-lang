@@ -1361,6 +1361,9 @@ fn decode_check(
             // PLAN-968: the scheduler source recipe observes console
             // streams like the console recipe.
             && options.probe_recipe.as_deref() != Some("ac-av/scheduler-source-run-v1")
+            // PLAN-1078: the language-source recipe observes console
+            // streams like the scheduler recipe.
+            && options.probe_recipe.as_deref() != Some("ac-av/language-source-run-v1")
         {
             // PLAN-914: the MIR-native recipes capture the produced PE's
             // real streams; `stderr` is admitted there so a scenario can
@@ -1375,6 +1378,9 @@ fn decode_check(
             // PLAN-968: the scheduler source recipe observes console
             // streams like the console recipe.
             && options.probe_recipe.as_deref() != Some("ac-av/scheduler-source-run-v1")
+            // PLAN-1078: the language-source recipe observes console
+            // streams like the scheduler recipe.
+            && options.probe_recipe.as_deref() != Some("ac-av/language-source-run-v1")
         {
             return Err(err(
                 &f.path_of("expect"),
@@ -1887,6 +1893,11 @@ fn decode_options(
                         "ac-av/scheduler-source-run-v1" => {
                             matches!(op.as_str(), "run")
                         }
+                        // PLAN-1078: the ordinary AV language-source recipe —
+                        // run-only vocabulary (one judged run).
+                        "ac-av/language-source-run-v1" => {
+                            matches!(op.as_str(), "run")
+                        }
                         "ac-av/closures-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
@@ -2282,6 +2293,9 @@ fn decode_options(
                         || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/aggregates-source-run-v1"
                         || recipe == "ac-av/scheduler-source-run-v1"
+                        // PLAN-1078: the language-source recipe requires the
+                        // av binding (entry/caps) like its siblings.
+                        || recipe == "ac-av/language-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/closures-source-run-v1"
@@ -2310,6 +2324,9 @@ fn decode_options(
                         && recipe != "ac-av/collections-source-run-v1"
                         && recipe != "ac-av/aggregates-source-run-v1"
                         && recipe != "ac-av/scheduler-source-run-v1"
+                        // PLAN-1078: the language-source recipe takes the
+                        // same av binding shape (entry/caps).
+                        && recipe != "ac-av/language-source-run-v1"
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/closures-source-run-v1"
@@ -3241,6 +3258,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-968: the scheduler source recipe (task actor surface; run-only
     // steps, console streams observed).
     "ac-av/scheduler-source-run-v1",
+    // PLAN-1078: the ordinary AV language-source recipe (the explicit
+    // Auto profile entry; first-batch aggregates face; int entry value +
+    // exact console streams, same seam contract).
+    "ac-av/language-source-run-v1",
     // PLAN-865: the closures SOURCE recipe — real .at sources through the
     // closures frontend onto the frozen 823 execution, same seam contract.
     "ac-av/closures-source-run-v1",

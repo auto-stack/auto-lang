@@ -681,6 +681,24 @@ domain = "ace"
 file = "scripts/tests/test_case_pilot_ace.py"
 all = false
 
+# PLAN-1078: the public feature-organized language corpus AV view — selects
+# the `av` checks of the canonical language.suite.ad (the ordinary AV
+# language-source recipe). legacy-reference rows stay with the explicit avm
+# comparison and never run in this view; AC-native rows get their own target
+# view when a consumer needs them.
+[[group]]
+name = "case-av-language-parity"
+title = "TestCase 公共语言语料 AV 视图（PLAN-1078 普通源入口）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+check = "av"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/language.suite.ad"
+all = false
+
 [[group]]
 name = "case-ac-av"
 title = "TestCase case-ac-av"

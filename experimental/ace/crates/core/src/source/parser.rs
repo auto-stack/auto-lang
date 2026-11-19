@@ -139,7 +139,10 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Aggregates
         // PLAN-968: the scheduler face runs through the same unified CST
         // chain (aggregates superset trim + task rules).
-        | SourceProfile::Scheduler => {
+        | SourceProfile::Scheduler
+        // PLAN-1078: the Auto face runs through the same unified CST chain
+        // (first-batch aggregates-surface identity).
+        | SourceProfile::Auto => {
             // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
             // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
             let parsed_src = if super::fstr::profile_admits_fstr(profile) {
@@ -1078,7 +1081,10 @@ impl<'s> Parser<'s> {
             Some(Tok::Reserved(word))
                 if word == "use"
                     && (self.surface == SourceProfile::TextRecord
-                        || self.surface == SourceProfile::Aggregates) =>
+                        || self.surface == SourceProfile::Aggregates
+                        // PLAN-1078: the Auto face admits the same frontdoor
+                        // (aggregates-surface identity).
+                        || self.surface == SourceProfile::Auto) =>
             {
                 self.use_rs_item()
             }

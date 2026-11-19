@@ -1,0 +1,12 @@
+# PLAN-1078 legacy→canonical migration map (data table, not a registry).
+# Columns: old_repo_path | old_case_id | old_check_id | old_action | source_sha16 | old_oracle | conditions | canonical_case_id | canonical_check | reason | owner | status
+# SHA16 = first 16 hex chars of SHA-256 over the original Auto source bytes.
+# Status values: mapped / research-hold / no-such-shape / parser-only-hold.
+# Rows maintained by PLAN-1078 only; later AVP batches append their own rows.
+#	legacy.aavm2.001_smoke
+crates/auto-lang/test/vm/aavm2/001_smoke/smoke.case.ad	legacy.aavm2.001_smoke	vm-stdout	run	4a9bf96f8568ad2e	aavm2 smoke ok	research/manual (aavm2 family, not a daily gate); entry-mode program; path smoke.at	av.parity.1078.baseline-value	av	research-hold: language face (console print + void main) covered by the 1078 baseline entry; aavm2 family keeps its own research/manual lane	PLAN-1078	T-01/T-05
+crates/auto-lang/test/vm/aavm2/002_hello_compile/hello_compile.case.ad	legacy.aavm2.002_hello_compile	vm-stdout	run	b5b508996ecbc910	hello aavm2 compile	research/manual (aavm2 family, not a daily gate); entry-mode program; path hello_compile.at	av.parity.1078.baseline-value	av	research-hold: language face (console print + void main) covered by the 1078 baseline entry; aavm2 family keeps its own research/manual lane	PLAN-1078	T-01/T-05
+# L-table rows owned by AVP-00 (PLAN-1078): applicability recorded in docs/specs/auto-av/language-parity.md, not implemented.
+legacy L-04 (i128/f32 suffixes, ast.rs:311-316)	L-04	—	—	—	—	no such shape in token.rs	av.parity.1078.baseline-value	av	no-such-shape: language does not define the construct; AVP-00 records the applicability, nothing is built	PLAN-1078	recorded
+legacy L-45 (NavCall routing call, ast.rs:392)	L-45	—	—	—	—	legacy parser-only (no VM arm)	av.parity.1078.baseline-value	av	parser-only-hold: legacy parser-only item; AVP-00 records the applicability; routing belongs to 980 routes batches	PLAN-1078	recorded
+legacy L-46 (spread / set literal / when / match / global keywords)	L-46	—	—	—	—	no such shape in token.rs	av.parity.1078.baseline-value	av	no-such-shape: language does not define these constructs (is covers matching); AVP-00 records the applicability, nothing is built	PLAN-1078	recorded

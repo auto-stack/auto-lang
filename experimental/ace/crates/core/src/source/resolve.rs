@@ -15440,7 +15440,9 @@ F:{d}
             // PLAN-982 (Q-982-2 step 2): the sys script lane — plain
             // Aggregates app faces gain the same console calls; the run's
             // console host (capture or direct) is the door's choice.
-            || self.profile == SourceProfile::Aggregates)
+            || self.profile == SourceProfile::Aggregates
+            // PLAN-1078: the Auto face admits the same console calls.
+            || self.profile == SourceProfile::Auto)
             && matches!(callee.name.as_str(), "print" | "eprint" | "say")
         {
             if rargs.len() != 1 || rargs.iter().any(|a| a.name.is_some()) {
@@ -15565,6 +15567,9 @@ F:{d}
             // PLAN-973: 装配 aggregates 面（std 系统库集：sysplat_win/lnx 的
             // 平台原语包装）同样准入平台保留名；能力/授权仍在运行准入层核。
             || self.profile == SourceProfile::Aggregates
+            // PLAN-1078: the Auto face admits the same platform reserved
+            // names (authority still checked at the runtime admission layer).
+            || self.profile == SourceProfile::Auto
         {
             if let Some(op) = super::platform_io::lookup_callee(&callee.name) {
                 if rargs.len() != op.params.len() || rargs.iter().any(|a| a.name.is_some()) {

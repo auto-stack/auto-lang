@@ -77,7 +77,7 @@ def invocations(groups, test_name=None):
     merged = {}
     for g in groups:
         key = (g['runner'], g['workspace'], tuple(g['args']), g['domain'], tuple(g['tools']),
-               g.get('file'), g.get('suite'), bool(g.get('respect_default_filter')), g.get('timeout_seconds'))
+               g.get('file'), g.get('suite'), g.get('check'), bool(g.get('respect_default_filter')), g.get('timeout_seconds'))
         if key not in merged:
             merged[key] = {**g, 'groups': [], 'expressions': []}
         merged[key]['groups'].append(g['name'])
@@ -324,6 +324,12 @@ def run_case(group, output, env, prepared, discover_only=False, source_state=Non
     if inventory_document.get('schema') != 'test-case-inventory/1' or not inventory_document.get('checks'):
         raise ValueError('unsupported or empty TestCase inventory')
     checks = inventory_document['checks']
+    # PLAN-1078: an optional per-group `check` selector narrows the view to
+    # the named check ids (e.g. the public corpus AV view runs `--check av`
+    # only; legacy-reference rows stay with the explicit avm comparison).
+    check_filter = group.get('check')
+    if check_filter:
+        checks = [c for c in checks if c['check'] == check_filter]
     if discover_only:
         return {'outcome': 'DISCOVERED', 'executed': 0, 'selected': checks}
     if not any(row['state'] == 'RUN' for row in checks):
@@ -334,16 +340,19 @@ def run_case(group, output, env, prepared, discover_only=False, source_state=Non
     extra, receipts = prepare(ROOT, tools, output / 'tools', prepared, source_state)
     env.update(extra)
     runtime = create_runtime()
-    result, execution = invoke([binary, 'run', '--suite', suite, '--out', str(runtime.path)],
-                               ROOT, env, output, 'run')
+    run_argv = [binary, 'run', '--suite', suite, '--out', str(runtime.path)]
+    if check_filter:
+        run_argv += ['--check', check_filter]
+    result, execution = invoke(run_argv, ROOT, env, output, 'run')
     report = json.loads((runtime.path / 'report.json').read_text(encoding='utf-8'))
     overrides = json.loads((ROOT / 'scripts/test-governance/case-control-oracles.json').read_text())['overrides']
     expectations = {(c['case'], c['check']): 'PASS' for c in checks if c['state'] == 'RUN'}
     for row in overrides:
         if any(c['suite'] == row['suite'] for c in checks) and (row['case'], row['check']) in expectations:
             expectations[(row['case'], row['check'])] = row['expected_status']
-    actual = {(r['case'], r['check']): r for r in report['results']}
-    valid = len(actual) == len(report['results']) and actual.keys() == expectations.keys()
+    actual = {(r['case'], r['check']): r for r in report['results'] if r['status'] != 'NOT_RUN'}
+    selected_report_rows = [r for r in report['results'] if r['status'] != 'NOT_RUN']
+    valid = len(actual) == len(selected_report_rows) and actual.keys() == expectations.keys()
     valid = valid and not report['load_errors'] and not report['coverage_gaps']
     for key, status in expectations.items():
         row = actual.get(key, {})
@@ -352,7 +361,14 @@ def run_case(group, output, env, prepared, discover_only=False, source_state=Non
         valid = valid and row.get('identity', {}).get('source') == original['source_sha256']
         valid = valid and row.get('identity', {}).get('oracle') == original['oracle_sha256']
     expected_exit = 1 if 'FAIL' in expectations.values() else 0
-    valid = valid and result.returncode == expected_exit
+    if check_filter:
+        # Explicit per-check selection: the suite report's exit code is 1
+        # whenever NOT_RUN rows exist (the F-04 partial-run gate), so the
+        # view gate judges only the selected rows' status — a selected FAIL
+        # is still red through the per-row check above.
+        valid = valid and not any(row.get('status') == 'FAIL' for row in actual.values())
+    else:
+        valid = valid and result.returncode == expected_exit
     artifacts = archive_runtime(runtime, output, 0)
     artifacts['report'] = str(Path(artifacts['root']) / 'report.json')
     return {'outcome': 'PASS' if valid else 'FAIL', 'execution': execution,

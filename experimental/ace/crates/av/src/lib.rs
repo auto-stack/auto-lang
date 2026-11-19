@@ -40,6 +40,8 @@ pub mod formal_828;
 pub mod formal_campaign;
 pub mod formal_worker;
 pub mod function_queries;
+// PLAN-1078: the ordinary AV language-source recipe producer.
+pub mod language_source_worker;
 pub mod load256;
 pub mod mempeek;
 pub mod native_exec;

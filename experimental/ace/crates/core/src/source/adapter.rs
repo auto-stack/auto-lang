@@ -173,6 +173,28 @@ pub fn compile_aggregates_source(
     })
 }
 
+/// PLAN-1078: compile under the Auto source profile (the ordinary AV
+/// language entry; first-batch semantics equal the aggregates surface —
+/// same shared Schema/CST → bind → Checked HIR → MIR → ABC → AV pipeline,
+/// no second parser/interpreter). The profile identity and the
+/// `ac.source.language.av/v1` admission key distinguish the ordinary
+/// language face from the frozen narrow profiles; later AVP batches widen
+/// this surface incrementally.
+pub fn compile_language_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Auto)?;
+    let checked = crate::verify::verify_closures(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::AUTO_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// PLAN-1026: the py training lane — the AGGREGATES surface with the
 /// py-bridge adapter's declared frame ops grafted in (use.py member
 /// imports and the Python op sugar ride this entry).

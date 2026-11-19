@@ -589,6 +589,8 @@ pub fn profile_admits_fstr(profile: SourceProfile) -> bool {
             | SourceProfile::Numeric
             | SourceProfile::Aggregates
             | SourceProfile::Scheduler
+            // PLAN-1078：Auto 面（aggregates 身份）同走 f-string 变换。
+            | SourceProfile::Auto
             // PLAN-982（B-CONFIG-I）：配置文档模板插值走同一 f-string 变换。
             | SourceProfile::ConfigDocument
     )
