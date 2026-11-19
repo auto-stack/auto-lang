@@ -1,0 +1,10 @@
+fn headline_a() str {
+    return "第一页·中文标题"
+}
+
+node TextPageA {
+    view {
+        text "ASE M0 页面甲" {}
+        text headline_a() {}
+    }
+}

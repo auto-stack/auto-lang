@@ -19,3 +19,14 @@ cargo run --manifest-path experimental/ase-m0/Cargo.toml -- \
 
 `--registry` 默认为随包 fixtures 目录。测试：`cargo test --manifest-path
 experimental/ase-m0/Cargo.toml --test headless`（固定组 `cargo t ase-m0`）。
+
+## PLAN-1022：两页普通 Node 文字源（UI 页面输入）
+
+`fixtures/text-a/main.at` 与 `fixtures/text-b/main.at` 是 ASE M0 文字浏览器
+（PLAN-1022）的两份**独立普通 Node 页面输入**：中文页（`TextPageA`，字面量叶
++ `headline_a()` 函数文本叶）与 ASCII 页（`SecondTextRoot`，不同合法根名/
+函数名，同构双叶）。它们不是 `registry.toml` 冷链 app（M0 能力域无 UI 能力、
+入口须返回 i32），不经 `run_app` 执行；UI 宿主（auto-ui `ase_m0_frame`，组内
+兄弟树显式路径）经 979/980 冻结的普通 Node 兼容面装载并取 AV 真值文本。
+源闭包=单文件自包含；换合法根/函数名及改文字仍工作（auto-ui 侧
+`ase_m0_text` 目标 V-02 反硬编码 oracle）。

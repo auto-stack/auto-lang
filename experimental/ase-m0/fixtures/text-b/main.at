@@ -1,0 +1,10 @@
+fn body_line() str {
+    return "page B ascii body line"
+}
+
+node SecondTextRoot {
+    view {
+        text "ASE M0 page B" {}
+        text body_line() {}
+    }
+}
