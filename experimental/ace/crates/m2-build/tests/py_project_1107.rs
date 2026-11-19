@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use ace_m2_build::driver::{M2Build, ProjectInputs};
+use ace_m2_build::driver::{M2Build, ProjectInputs, ProviderArtifactInput};
 use ace_m2_build::identity::TargetKind;
 
 /// The ONE shared PLAN-1107 corpus (byte-identical for every target; the
@@ -508,5 +508,79 @@ fn p1107_v06_cold_warm_and_body_edit_are_counted_and_invalidated() {
         after.counts.tool_spawns.is_empty(),
         "an edit never spawns a toolchain: {:?}",
         after.counts.tool_spawns
+    );
+}
+#[test]
+fn p1107_v06_identity_axes_and_provider_participation() {
+    // V-06 remainder: the build identity tracks the project name, the declared
+    // caps and a participating provider artifact — real reads, not a flag.
+    let root = scratch("axes");
+    let src = corpus_file("protocol_1107.at");
+    let make = |name: &str, caps: Vec<String>| ProjectInputs {
+        name: name.to_string(),
+        entry: "main".to_string(),
+        caps,
+        sources: vec![("main.at".to_string(), src.clone())],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let base = m2
+        .build(TargetKind::A2py, &make("usepy1107axes", vec![]))
+        .expect("baseline");
+    assert!(
+        base.identity.provider_build.is_none(),
+        "no provider artifact participates in the baseline"
+    );
+
+    let renamed = m2
+        .build(TargetKind::A2py, &make("usepy1107axes2", vec![]))
+        .expect("renamed project");
+    assert_ne!(
+        base.identity.project, renamed.identity.project,
+        "the project name is an identity axis"
+    );
+
+    let capped = m2
+        .build(
+            TargetKind::A2py,
+            &make(
+                "usepy1107axes",
+                vec![ace_foreign_contract::manual::SOURCE_CAP.to_string()],
+            ),
+        )
+        .expect("capped project");
+    assert_ne!(
+        base.identity.caps, capped.identity.caps,
+        "declared caps are an identity axis"
+    );
+
+    // A provider artifact that participates in the SDK build appears in the
+    // identity (consumed as-is) and in the packed SDK.
+    let sdk = root.join("sdk-provider");
+    let recipe = m2
+        .build_sdk(
+            &make("usepy1107axes", vec![]),
+            &[TargetKind::A2py],
+            &sdk,
+            vec![ProviderArtifactInput {
+                provider_id: "p1107.fake".to_string(),
+                file_name: "p1107_fake_provider.dll".to_string(),
+                bytes: b"fake-provider-bytes".to_vec(),
+                kind: "abi".to_string(),
+            }],
+            "run:py",
+        )
+        .expect("a participating provider artifact is packed");
+    let packed = recipe
+        .artifacts
+        .iter()
+        .any(|a| a.path.ends_with("p1107_fake_provider.dll"));
+    assert!(packed, "the provider artifact is in the SDK recipe: {recipe:?}");
+    let with_provider = m2
+        .build(TargetKind::A2py, &make("usepy1107axes", vec![]))
+        .expect("identity after provider");
+    assert_eq!(
+        with_provider.identity.provider_build, base.identity.provider_build,
+        "a provider packed into an SDK does not silently rewrite the plain build identity"
     );
 }
