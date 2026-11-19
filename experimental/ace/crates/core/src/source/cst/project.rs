@@ -6286,6 +6286,7 @@ impl<'a> Engine<'a> {
                     }
                 }
                 crate::source::age_component::ComponentStmt::Let { .. } => {}
+                crate::source::age_component::ComponentStmt::Call { .. } => {}
                 // PLAN-105 T-02：循环体里的赋值同样进平铺流（执行语义按 stmts）。
                 crate::source::age_component::ComponentStmt::For { body, .. } => {
                     Self::flat_handler_assigns(body, out)
@@ -6569,7 +6570,17 @@ impl<'a> Engine<'a> {
                     } else if let Some(call_node) = self.cx.field_child(inner, "call") {
                         match self.project_channel_call(call_node, channel_names) {
                             Some(cc) => channel_calls.push(cc),
-                            None => body_foreign = true,
+                            None => {
+                                // PLAN-105 T-02：非通道调用保留为 Call 语句（store
+                                // 方法在 store 内联时展开；其余仍是域外体，派发
+                                // 具名拒——不静默丢弃调用）。
+                                let call = self.project_expr_sync(call_node);
+                                stmts.push(crate::source::age_component::ComponentStmt::Call {
+                                    call,
+                                    span: self.cx.span_of(inner),
+                                });
+                                body_foreign = true;
+                            }
                         }
                     } else if let Some(st) = self.project_on_stmt_inner(inner) {
                         stmts.push(st);
@@ -7745,6 +7756,16 @@ impl<'a> Engine<'a> {
                 let mut tmp = Vec::new();
                 self.collect_view_stmt(inner, &mut tmp);
                 tmp.pop().map(ComponentStmt::Assign)
+            }
+            // PLAN-105 T-02：调用语句（`store.M(args)` 等）结构入候选；
+            // store 方法在 store 内联时展开，其余调用维持 body_foreign 合同。
+            "age-view-call-stmt" => {
+                let call_node = self.cx.field_child(inner, "call")?;
+                let call = self.project_expr_sync(call_node);
+                Some(ComponentStmt::Call {
+                    call,
+                    span: self.cx.span_of(inner),
+                })
             }
             "age-on-assign" => {
                 let field_leaf = self

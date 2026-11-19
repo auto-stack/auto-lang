@@ -826,3 +826,36 @@ fn p105_store_method_call_is_named_pending() {
     )
     .expect("store-method handler compiles; dispatch stays a named reject");
 }
+
+/// store 方法调用展开：`.Init -> { store.Inc() }` 在 store 内联时被展开成
+/// `.total = .total + 1` 的语句（不是被丢弃、也不是留成域外调用）。
+#[test]
+fn p105_store_method_call_expands_into_handler_stmts() {
+    let src = "widget App {\n    msg { Init }\n    model { var n int = 0 }\n    view { text \"x\" {} }\n    on {\n        .Init -> { store.Inc() }\n    }\n}\n\
+               store S {\n    model { var total int = 0 }\n    msg { Inc }\n    on {\n        .Inc -> { .total = .total + 1 }\n    }\n}\n";
+    let caps = vec!["ac.runtime.text.v1".to_string()];
+    let scenario = ComponentScenario { instances: 1, ops: Vec::new() };
+    let compiled = ace_core::source::age_component::compile_component_scenario(
+        src,
+        "app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .expect("store method call expands at inline time");
+    let node = &compiled.description.nodes[0];
+    let init = node
+        .handler_stmts
+        .iter()
+        .find(|(m, _)| m == "Init")
+        .map(|(_, s)| s)
+        .expect("Init handler present");
+    assert!(
+        init.iter().any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::Assign(a) if a.field == "st_total")),
+        "expanded assignment expected, got {init:?}"
+    );
+    assert!(
+        !init.iter().any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::Call { .. })),
+        "no call statement should survive expansion: {init:?}"
+    );
+}

@@ -73,6 +73,14 @@ pub enum ComponentStmt {
         els: Option<Vec<ComponentStmt>>,
         span: Span,
     },
+    /// PLAN-105 T-02（U03 真语料 013/015/016）：handler 体里的**调用语句**
+    /// （`store.NewNote()` / `channel(x)` / 外部函数调用）。结构入候选（不再
+    /// 直接丢弃）；store 方法在 store 内联时**展开**成语句，其余调用仍是
+    /// 域外体（派发具名拒，不跑半截 handler）。
+    Call {
+        call: Expr,
+        span: Span,
+    },
     /// PLAN-105 T-02（U03 真语料 012）：handler 级 `for <value> in <expr> { … }`
     /// ——结构先入候选；列表迭代语义在铸语句处**具名**拒（component-unsupported），
     /// 不静默丢循环体。
@@ -736,7 +744,7 @@ fn rewrite_store_expr(e: &mut Expr, map: &[(String, String)]) -> Result<(), Vec<
             }
             rewrite_store_expr(base, map)
         }
-        ExprKind::Method { recv, args, .. } => {
+        ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
             if is_store_base(recv) {
                 return Err(vec![text_diag(
                     "source.age.component-unsupported",
@@ -793,6 +801,7 @@ fn rewrite_store_stmts(
                 }
                 rewrite_store_expr(&mut a.rhs, map)?;
             }
+            ComponentStmt::Call { call, .. } => rewrite_store_expr(call, map)?,
             ComponentStmt::Let { value, .. } => rewrite_store_expr(value, map)?,
             ComponentStmt::If {
                 cond, then, els, ..
@@ -810,6 +819,97 @@ fn rewrite_store_stmts(
         }
     }
     Ok(())
+}
+
+/// `store.<Msg>(args)` 调用识别：返回 (Msg, args)。
+fn store_call_parts(call: &Expr) -> Option<(String, Vec<Expr>)> {
+    match &call.kind {
+        ExprKind::MethodCall { recv, name, args } if is_store_base(recv) => {
+            let mut out = Vec::new();
+            for a in args {
+                match a {
+                    crate::source::ast::Arg::Pos(e) | crate::source::ast::Arg::MovePos(e) => {
+                        out.push(e.clone())
+                    }
+                    crate::source::ast::Arg::Named { value, .. } => out.push(value.clone()),
+                }
+            }
+            Some((name.name.clone(), out))
+        }
+        _ => None,
+    }
+}
+
+/// 把 store handler 的形参替换成调用实参（只换 `Var(param)`）。
+fn subst_params_expr(e: &mut Expr, subs: &[(String, Expr)]) {
+    match &mut e.kind {
+        ExprKind::Var(v) => {
+            if let Some((_, arg)) = subs.iter().find(|(n, _)| *n == v.name) {
+                let span = e.span;
+                let mut arg = arg.clone();
+                arg.span = span;
+                *e = arg;
+            }
+        }
+        ExprKind::Field { base, .. } => subst_params_expr(base, subs),
+        ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+            subst_params_expr(recv, subs);
+            for a in args {
+                match a {
+                    crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => {
+                        subst_params_expr(x, subs)
+                    }
+                    crate::source::ast::Arg::Named { value, .. } => subst_params_expr(value, subs),
+                }
+            }
+        }
+        ExprKind::TextDisplay(x) | ExprKind::Await(x) | ExprKind::Go(x) => {
+            subst_params_expr(x, subs)
+        }
+        ExprKind::Unary { operand, .. } => subst_params_expr(operand, subs),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            subst_params_expr(lhs, subs);
+            subst_params_expr(rhs, subs);
+        }
+        ExprKind::Index { base, index } => {
+            subst_params_expr(base, subs);
+            subst_params_expr(index, subs);
+        }
+        ExprKind::Call { args, .. } => {
+            for a in args {
+                match a {
+                    crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => {
+                        subst_params_expr(x, subs)
+                    }
+                    crate::source::ast::Arg::Named { value, .. } => subst_params_expr(value, subs),
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn subst_params_stmts(stmts: &mut [ComponentStmt], subs: &[(String, Expr)]) {
+    for st in stmts {
+        match st {
+            ComponentStmt::Assign(a) => subst_params_expr(&mut a.rhs, subs),
+            ComponentStmt::Call { call, .. } => subst_params_expr(call, subs),
+            ComponentStmt::Let { value, .. } => subst_params_expr(value, subs),
+            ComponentStmt::If {
+                cond, then, els, ..
+            } => {
+                subst_params_expr(cond, subs);
+                subst_params_stmts(then, subs);
+                if let Some(e) = els {
+                    subst_params_stmts(e, subs);
+                }
+            }
+            ComponentStmt::For { iter, body, .. } => {
+                subst_params_expr(iter, subs);
+                subst_params_stmts(body, subs);
+            }
+        }
+    }
 }
 
 /// 把 node 内 `store` 声明内联成前缀字段/消息/处理器，并重写组件侧
@@ -857,11 +957,14 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
         nm.name = store_msg_prefixed(&m.name);
         node.messages.push(nm);
     }
-    // store handler：改名 + 重写体内引用。
+    // store handler：改名 + 重写体内引用；同时保留一份**原始消息名**的体，
+    // 供 `store.<Msg>()` 调用展开。
+    let mut store_bodies: Vec<(String, Vec<ComponentStmt>, Vec<(String, Span)>)> = Vec::new();
     for h in &store.handlers {
         let mut nh = h.clone();
         nh.msg = store_msg_prefixed(&h.msg);
         rewrite_store_stmts(&mut nh.stmts, &map)?;
+        store_bodies.push((h.msg.clone(), nh.stmts.clone(), h.params.clone()));
         for a in &mut nh.assigns {
             if let Some((_, prefixed)) = map.iter().find(|(f, _)| *f == a.field) {
                 a.field = prefixed.clone();
@@ -869,6 +972,116 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
             rewrite_store_expr(&mut a.rhs, &map)?;
         }
         node.handlers.push(nh);
+    }
+    // store 方法调用展开：`store.M(args)` → store handler `M` 的语句（形参替换
+    // 实参），期间保持具名边界（未知方法/递归深度超限都拒）。
+
+    fn expand_store_calls(
+        stmts: Vec<ComponentStmt>,
+        bodies: &[(String, Vec<ComponentStmt>, Vec<(String, Span)>)],
+        depth: usize,
+    ) -> Result<Vec<ComponentStmt>, Vec<Diagnostic>> {
+        if depth > 8 {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                "store method expansion exceeded the depth limit (recursive store calls)".to_string(),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        let mut out = Vec::new();
+        for st in stmts {
+            match st {
+                ComponentStmt::Call { call, span } => {
+                    if let Some((msg, args)) = store_call_parts(&call) {
+                        let Some((_, body, params)) =
+                            bodies.iter().find(|(m, _, _)| *m == msg)
+                        else {
+                            return Err(vec![text_diag(
+                                "source.age.component-unsupported",
+                                format!(
+                                    "`store.{msg}(…)` has no store handler `{msg}` (S1)"
+                                ),
+                                span,
+                            )]);
+                        };
+                        if params.len() != args.len() {
+                            return Err(vec![text_diag(
+                                "source.age.component-unsupported",
+                                format!(
+                                    "`store.{msg}(…)` passes {} arg(s) but the store handler takes {}",
+                                    args.len(),
+                                    params.len()
+                                ),
+                                span,
+                            )]);
+                        }
+                        let subs: Vec<(String, Expr)> = params
+                            .iter()
+                            .zip(args.into_iter())
+                            .map(|((p, _), a)| (p.clone(), a))
+                            .collect();
+                        let mut expanded = body.clone();
+                        subst_params_stmts(&mut expanded, &subs);
+                        let expanded = expand_store_calls(expanded, bodies, depth + 1)?;
+                        out.extend(expanded);
+                    } else {
+                        out.push(ComponentStmt::Call { call, span });
+                    }
+                }
+                ComponentStmt::If {
+                    cond, then, els, span,
+                } => {
+                    out.push(ComponentStmt::If {
+                        cond,
+                        then: expand_store_calls(then, bodies, depth)?,
+                        els: match els {
+                            Some(e) => Some(expand_store_calls(e, bodies, depth)?),
+                            None => None,
+                        },
+                        span,
+                    });
+                }
+                ComponentStmt::For {
+                    value, iter, body, span,
+                } => {
+                    out.push(ComponentStmt::For {
+                        value,
+                        iter,
+                        body: expand_store_calls(body, bodies, depth)?,
+                        span,
+                    });
+                }
+                other => out.push(other),
+            }
+        }
+        Ok(out)
+    }
+
+    for h in &mut node.handlers {
+        let stmts = std::mem::take(&mut h.stmts);
+        h.stmts = expand_store_calls(stmts, &store_bodies, 0)?;
+        // 展开后若不再有调用语句，恢复可执行面（body_foreign 由投影器按调用判定）。
+        if !h.stmts.iter().any(|s| matches!(s, ComponentStmt::Call { .. })) {
+            h.body_foreign = false;
+        }
+        let mut assigns = Vec::new();
+        fn flat(stmts: &[ComponentStmt], out: &mut Vec<ComponentAssign>) {
+            for s in stmts {
+                match s {
+                    ComponentStmt::Assign(a) => out.push(a.clone()),
+                    ComponentStmt::If { then, els, .. } => {
+                        flat(then, out);
+                        if let Some(e) = els {
+                            flat(e, out);
+                        }
+                    }
+                    ComponentStmt::For { body, .. } => flat(body, out),
+                    _ => {}
+                }
+            }
+        }
+        flat(&h.stmts, &mut assigns);
+        h.assigns = assigns;
     }
     // 组件侧 handler 与文本叶。
     for h in &mut node.handlers {
@@ -979,7 +1192,7 @@ fn expr_refs_store(e: &Expr) -> bool {
                 || matches!(&base.kind, ExprKind::Var(v) if v.name == "store")
                 || expr_refs_store(base)
         }
-        ExprKind::Method { recv, .. } => expr_refs_store(recv),
+        ExprKind::Method { recv, .. } | ExprKind::MethodCall { recv, .. } => expr_refs_store(recv),
         ExprKind::TextDisplay(inner) => expr_refs_store(inner),
         ExprKind::Binary { lhs, rhs, .. } => expr_refs_store(lhs) || expr_refs_store(rhs),
         ExprKind::Call { args, .. } => args.iter().any(|a| match a {
@@ -999,6 +1212,11 @@ fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
             ComponentStmt::Assign(a) => {
                 if expr_refs_store(&a.rhs) {
                     return Some(a.span);
+                }
+            }
+            ComponentStmt::Call { call, span } => {
+                if expr_refs_store(call) {
+                    return Some(*span);
                 }
             }
             ComponentStmt::Let { value, span, .. } => {
@@ -2320,6 +2538,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                         }
                     }
                     ComponentStmt::For { body, .. } => collect_assign_targets(body, out),
+                    ComponentStmt::Call { .. } => {}
                     ComponentStmt::Let { .. } => {}
                 }
             }
@@ -2341,6 +2560,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                         }
                     }
                     ComponentStmt::Assign(_) => {}
+                    ComponentStmt::Call { .. } => {}
                     ComponentStmt::For { body, .. } => collect_local_names(body, out),
                 }
             }
@@ -2424,6 +2644,11 @@ fn walk_stmt_exprs(
         match st {
             ComponentStmt::Assign(a) => {
                 if let Some(ds) = f(&a.rhs) {
+                    return Err(ds);
+                }
+            }
+            ComponentStmt::Call { call, .. } => {
+                if let Some(ds) = f(call) {
                     return Err(ds);
                 }
             }
@@ -2772,6 +2997,14 @@ pub(crate) fn lambda_value_fn(
     ) -> Option<Result<(), Vec<Diagnostic>>> {
         for st in body {
             match st {
+                // PLAN-105 T-02：view inline lambda 的调用语句尚未接线——具名拒。
+                ComponentStmt::Call { span, .. } => {
+                    return Some(Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        "view inline lambda call statements are not wired yet",
+                        *span,
+                    )]))
+                }
                 // PLAN-105 T-02：view inline lambda 的 `for` 结构已入候选，
                 // 语义未接——具名拒（不静默丢循环体）。
                 ComponentStmt::For { span, .. } => {
@@ -2873,7 +3106,8 @@ pub(crate) fn lambda_value_fn(
         .first()
         .map(|s| match s {
             ComponentStmt::Assign(a) => a.span,
-            ComponentStmt::Let { span, .. }
+            ComponentStmt::Call { span, .. }
+            | ComponentStmt::Let { span, .. }
             | ComponentStmt::If { span, .. }
             | ComponentStmt::For { span, .. } => *span,
         })
@@ -2970,6 +3204,15 @@ fn hook_stmts_lower(
     let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
     for st in body {
         match st {
+            // PLAN-105 T-02：handler 级调用语句（store 方法在 store 内联时展开；
+            // 其余调用不接线）——具名拒，不静默丢调用。
+            ComponentStmt::Call { span, .. } => {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    "handler body call statements are only wired for `store.<Msg>()` (store inline); other calls are a named pending surface",
+                    *span,
+                )])
+            }
             // PLAN-105 T-02（U03 真语料 012）：handler 级 `for` 结构已入候选，
             // 列表迭代语义未接——具名拒（不静默丢循环体）。
             ComponentStmt::For { span, .. } => {
