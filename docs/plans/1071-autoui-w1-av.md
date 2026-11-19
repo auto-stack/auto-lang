@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 2
+current_step: 3
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-979]
 supersedes_spec_components: []
@@ -64,7 +64,7 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 - [x] **T-02｜work｜接 AV 组件与状态**。复用 `auto-ui/crates/auto-ui-runtime/src/ui/ace_node_desktop.rs` 与现有组件/Store/事件入口；共享列表语义按现有 AGE/collections owner 单写。复用点与 010 边界确认见 §9（2026-11-19 T-02 收据）。
 
-- [ ] **T-03｜work｜实跑完整 AV**。沿原 V-UI-W1 真窗、`ace_node_desktop` 和 `authoring_session` 等生产测试入口逐组关闭，提供可独立验收的 VM 工程运行收据。
+- [x] **T-03｜work｜实跑完整 AV**。沿原 V-UI-W1 真窗、`ace_node_desktop` 和 `authoring_session` 等生产测试入口逐组关闭，提供可独立验收的 VM 工程运行收据。实跑记录与预存红台账见 §9（2026-11-19 T-03 收据）。
 
 - [ ] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
 
@@ -72,7 +72,30 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 ## 9. 复审记录
 
-### 2026-11-19 stage: work（T-02 接 AV 组件与状态）| PLAN-1071 r1 | outcome: pass | 复用确认与 010 边界
+### 2026-11-19 stage: work（T-03 实跑完整 AV）| PLAN-1071 r1 | outcome: pass（生产入口逐组关闭；两条预存红具名台账）| worktree: `D:/autostack/.wt/lang-1071/auto-ui` @ plan-1071-dev / auto-lang @ plan-1071-dev
+
+**实跑记录（2026-11-19，本会话，worktree 内）**
+
+| 生产入口（980 §6 冻结命令） | 结果 | 说明 |
+|---|---|---|
+| `ace_node_desktop`（CPU，`--features ace-bridge --test ace_node_desktop -- --test-threads=1`） | **11/11**（1.43s） | 含 Hello AV 文本、Counter 轨迹 0→1→0→0+两实例 2:1、撤权拒、关开/late、双关/队列隔离、U01 输入四 oracle、静态面输入拒 |
+| `ace_node_desktop`（真窗，`AUTO_UI_ACE_NODE_E2E=1`） | **11/11**（8.62s） | `p980_u01_window_input_e2e`（i0 `你好Auto`/42·`abc` 具名拒·i1 `乙侧`/-5）+ 真窗计数脚本；prep=`ace_node_desktop_window --prep-only` exit 0 |
+| `ace_ui_hello`（CPU+真窗，`AUTO_UI_ACE_HELLO_E2E=1`） | **7/7**（3.90s） | 含 schema 身份/改名容忍、20 轮生命周期/teardown 拒、坏源命名退出、真窗 text/body/F0；prep=F0 provider 预构建（`--provider f0_hello` exit 0） |
+| `authoring_session`（driver 独立 workspace，overlay pin 物化后） | **4/4**（2.36s） | 与 981 V-B-SESSION 4/4 一致：事务历史恢复、128 对象配置等 |
+| `mixed_regions_lifecycle_flow` | **7/7**（4.38s） | 二十轮生命周期零资源增长、冻结容量、窗口失焦击键不泄漏 |
+| `desktop_behavior` | **11/11**（1 ignored） | B-NATIVE 触面 |
+| `image_surface_contract` | **1/1** | 图像面 |
+| `plan041_instance_ownership` | **4/4** | 组件实例 owner（981 W1 G-INSTANCE 面） |
+| `plan033_b1_scope_isolation` | **2/2** | 作用域隔离 |
+| `theme_scope_isolation` | **4/4** | 主题 scope（U02 主题面） |
+| lang `cargo t ace-source` | **PASS** | 固定组 |
+| lang `cargo t ace-av` | **1426/1428**（2 红=预存，见下） | 固定组 |
+
+**预存红台账（具名排除，非本批引入）**：①lang `ace-av` 两条红 `host_console::{av_console_entry_selection_cannot_bypass_main_policy, av_console_owned_front_door_enforces_console_entry_only}`——981 §9 已台账（`test-case-batch` 特性既有漂移，基面 stash 复现同两条；本批 lang 零改动，代码=master 基面）；②UI `gallery_vue_golden` 红——widgets-gallery Vue 输出与基线不一致，left/right 差分显示 auto-os 主检出源（app.at 59545→63861 字节、carousel/kitchen-sink/command/index 等页面）与 auto-ui golden 基线跨仓漂移，属 V-B-PARITY 面（980 §6 :785 归 PARITY/985 与 auto-ui owner 线，983 收据 r25 已点名的 17 auto-ui-master 红族），非 1071 AV 面。两者均不影响本批 AV 结论。
+
+**边界（诚实）**：U02–U06 示例级 AV 的完整逐例关闭仍在 980 ④-A 解锁路径上（census 17 例被引用导入/包面表面墙，980 §9 :1739 明确「B-AV-I 保持未勾——全分母仍压 ④」），本批按 §5「独立组不等待全组过线」以已冻结生产入口为界交 U01 全子面 + W1 分组证据 + 生产入口收据；余行作为原义务随 980 B-AV-I/V/R 继续跟踪，不冒全包完成。010 列表字段边界已交 1072（T-02 收据）。
+
+2026-11-19 stage: work（T-02 接 AV 组件与状态）| PLAN-1071 r1 | outcome: pass | 复用确认与 010 边界
 
 **复用入口（实读 `auto-ui/crates/auto-ui-runtime/src/ui/ace_node_desktop.rs`，1720 行）**：`BridgeEngine` 枚举=Component(`AceStateEngine`)/Package(`PackageStateEngine`) 双引擎，公开 `mount(identity, initials)`/`read_all(identity)`/`dispatch(identity, msg)`/`dispatch_with_args(identity, msg, args)`——普通 Node 源→AGE Schema/CST/verify→AV 求值→ui980 provider FFI（ui_open/apply_text/apply_int/apply_bool/poll_event/close）→typed 事件队列→Iced 投影，与 980 NATIVE r13 交付（`403c936d`/`34bb4326`）一致。现有组件/Store/事件入口全部在位（tests/：`plan041_instance_ownership`、`plan033_b1_scope_isolation`、`component_registry_test`、`theme_scope_isolation`、`gallery_golden`、`desktop_behavior`、`image_surface_contract`、`ace_ui_hello`、`ace_node_desktop`、`vue_capabilities`；driver：`authoring_session`、`mixed_regions_lifecycle_flow`）。
 
