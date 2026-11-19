@@ -63,16 +63,9 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             SourceProfile::HostConsole,
             "69615a6a506ebd926dafcb7164068956f39af8183996667a1c7e0bfa5c8f61ac",
         ),
-        // PLAN-1083（AVP-05 类型/模式刀）：enum-arm 增 auto 面多元组载荷尾/
-        // 命名字段载荷/`= N` 判别/臂后逗号吸收 + enum 体 fn 成员 + agg 臂
-        // 多绑定/or/guard/return 臂 + 尾逗号（全部 [auto] 门控步骤）——
-        // Collections 裁剪面因 enum-arm 公共 alt 内步骤表变化重冻结
-        // 3e1193e9…→e320297e…、Aggregates 539a8bed…→f31c1e33…、Scheduler f26f3786…→8788b679…；其余邻居逐字节不变（Closures/Numeric/
-        // Scheduler/Core/Scalar/Text/Record/TextRecord/EntryUnit/
-        // HostConsole/age-* 实测不变）。
         (
             SourceProfile::Collections,
-            "e320297e9fd301fc828f17c67658cc6f06475f827d1347490f70d15055c5e017",
+            "3e1193e9b693e0ca02b5ea3ce27578e16046a9cb9a9b80e341221e1966fe1e16",
         ),
         (
             SourceProfile::Closures,
@@ -93,11 +86,11 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             //     aggregates 面（py 通道的 ABI 对齐拼写）；
             //   - 所以只有 aggregates profile 的 grammar id 必须移动；其余
             //     邻居行的字节未变（本表逐行冻结，任何邻居漂移都会红）。
-            "f31c1e339d01ba723a985aa1a701a3b5599dc669cf4569dd00eddf97ded7a164",
+            "539a8bedcbd0ab4588b20d5fe6bcbf83ee7b304b8fa1675d1a0ce5f993d43d9b",
         ),
         (
             SourceProfile::Scheduler,
-            "8788b6799a322719e4bd47072f44f7695ef3c405591a227da3c0c352fdf550c2",
+            "f26f378633dd7b3df5754ee754836cfc2759c8435df1d04ecb952712c81d0d5e",
         ),
         // R65-5（2026-11-16）：**980 WEB #6i（`b043117b8`）的语法域扩**是本次身份
         // 变化的唯一原因，语义差如实记录（不是"把哈希替成当前值"）：
@@ -168,9 +161,13 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-1072 T-03（expose 点前缀对齐）：age-expose-item / tail 兼容
             // `.name` 与裸名及可选逗号（两面同开）——42afe2cb…→fad57c5f…；
             // 13 邻居逐字节不变。
-            // PLAN-124: route link elements in the AGE component and package profiles.
-            // PLAN-125: retain a text literal followed by parenthesized view properties.
-            "3abe2d4a53c607fee4ba474de2ee1cf3d8fc6e79d7f8b04648a632b0d9a30be7",
+            // PLAN-105 T-02（U03 真语料，2026-11-19 具名重基线）：组件面
+            // entry 值的事件绑定形改为**实参括号必填**并前置——只有
+            // `onclick: .Msg(args)` 走事件绑定，`checked: .a == 0` 等比较/
+            // 逻辑绑定回落 pratt（此前被裸 `.a` 贪吃，U03 元素绑定整类回滚）。
+            // 仅 age-component 漂移（age-package 的事件臂本就被 profile 门
+            // 排除，有效 alt 序未变）；13 邻居逐字节不变。
+            "fe09a3644b482619a58e092c05db3441d0329a2ce99889f4ad76efc548a7bd40",
         ),
         (
             SourceProfile::AgeH0,
@@ -264,8 +261,10 @@ fn p981_age_package_grammar_id_is_frozen() {
         // c337685c…→91c53cde…。
         // PLAN-1072 T-03（age-expose-item / tail 两面同开）：
         // 91c53cde…→06809c84…。
-        // PLAN-124: route links and structural projection of package host commands.
-        // PLAN-125: retain a text literal followed by parenthesized view properties.
-        "42b6eedec484000eeff74717d8159ac514b9905eda18ea95dab9e87c63f672e5"
+        // PLAN-105 T-02（U03 真语料，2026-11-19 具名重基线）：事件绑定形
+        // （`age-event-binding` + args/arg 规则）开 age-package——包面真语料
+        // 的 `onclick: .Msg(args)`（012/016）此前被当普通调用，verify 拒。
+        // 前值 06809c84…；13 邻居逐字节不变。
+        "4b6a971997f4df2be1a8327727553927a692cb8a75e251c17a52ae255fa42558"
     );
 }

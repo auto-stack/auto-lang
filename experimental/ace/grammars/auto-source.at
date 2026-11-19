@@ -1229,6 +1229,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 tok(of: "type-kw", field: "base") {}
                 many { age-event-key-mod() {} }
             }
+            // PLAN-105 T-02（U03 真语料）：`to: "/"`（018 路由按钮、Widgets
+            // sidebar/breadcrumb 族）——`to` 是全局保留 token（`r-to`），条目
+            // 键位按 token 直收；投影 spelling 同名（"to"）兼容。
+            alt {
+                tok(of: "r-to", field: "base") {}
+                many { age-event-key-mod() {} }
+            }
             alt {
                 ident(field: "base") {}
                 // PLAN-105 T-02（U03 真语料 012）：连字符键（SVG 属性
@@ -1247,29 +1254,31 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "modifier")
         }
         age-entry-value(profiles: [age-component, age-package]) {
+            // PLAN-105 T-02（U03 真语料）：事件绑定调用形 `.Msg(args, …)` **必须先于**
+            // 普通表达式分支，且实参括号**必填**——否则 `checked: .a == 0` 会被
+            // component 面的裸事件形贪吃成 `.a` 而把 `== 0` 留给父规则（U03 的
+            // 比较/逻辑绑定全部回滚到 item 级）。裸 `.Msg`（无括号）仍由下面的
+            // pratt 解析成 Field，投影层按事件键 + msg 名单识别，语义不变。
+            alt(profiles: [age-component, age-package]) { age-event-binding() {} }
             alt { age-inline-lambda() {} }
             // PLAN-1072 刀B（010 真语料）：条件样式值 `style: if <cond>
             // { <lit> } else { <lit> }`——结构承载（镜像 design 三段；惰性
             // 不求值，模板腿按方言 AST 的 :class 三元承载）。
             alt { age-if-expr() {} }
-            // PLAN-980 WEB #6m：事件绑定调用形 `.Msg(args, …)`——实参是
-            // 宿主通道（DOM 事件/字面量），不走受检表达式 verify（投影层
-            // 按事件绑定识别；`$event` 由 UI 侧同长归一化承载）。仅
-            // age-component（widget 工程面）。
-            alt(profiles: [age-component]) { age-event-binding() {} }
             alt { pratt(of: "wide-ops") {} }
         }
-        age-event-binding(profiles: [age-component]) {
+        age-event-binding(profiles: [age-component, age-package]) {
             dot() {}
             ident(field: "msg")
-            opt { age-event-binding-args(field: "args") {} }
+            // PLAN-105 T-02：括号必填（见 age-entry-value 注）。
+            age-event-binding-args(field: "args") {}
         }
-        age-event-binding-args(profiles: [age-component]) {
+        age-event-binding-args(profiles: [age-component, age-package]) {
             lparen(same-line: true) {}
             list { age-event-arg() {} }
             rparen() {}
         }
-        age-event-arg(profiles: [age-component]) {
+        age-event-arg(profiles: [age-component, age-package]) {
             // `$event` 宿主占位由 UI 侧同长归一化（`$event`→`nevent`，与
             // state→model 同法）承担——本面实参=普通 pratt 表达式（归一化
             // 后的 ident 字面量；投影层丢弃实参=宿主通道，不求值）。
