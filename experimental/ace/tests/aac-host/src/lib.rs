@@ -42,6 +42,8 @@ pub const DIGEST_SOURCE: &str = include_str!("../../../aac/support/digest.at");
 pub const HOST_FILES_SOURCE: &str = include_str!("../../../aac/host/host_files.at");
 /// The PLAN-1045 failure & publish client (T-04, sys set).
 pub const HOST_PUBLISH_SOURCE: &str = include_str!("../../../aac/host/host_publish.at");
+/// The PLAN-1045 hosted diagnostic driver (T-09, sys set, A2R exe leg).
+pub const HOST_DIAG_SOURCE: &str = include_str!("../../../aac/host/host_diag.at");
 /// The PLAN-1045 host client (case reports + shared reduction).
 pub const HOST_CLIENT_SOURCE: &str = include_str!("../../../aac/host/host_client.at");
 /// The native-entry combine main (exit code reduction).
@@ -198,8 +200,17 @@ pub fn run_sys_case(tag: &str, main_src: &str) -> Result<Vec<u8>, String> {
 
 /// Assemble + compile on the sys lane (aggregates + sys set, Windows).
 pub fn sys_product(tag: &str, files: &[(String, String)]) -> Result<PackageProduct, String> {
-    let mut ctx =
-        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    sys_product_backend(tag, files, AssemblyBackend::Av)
+}
+
+/// Assemble + compile on the sys lane with an explicit backend (the T-09
+/// A2R exe leg compiles the same assembled sys product for real rustc).
+pub fn sys_product_backend(
+    tag: &str,
+    files: &[(String, String)],
+    backend: AssemblyBackend,
+) -> Result<PackageProduct, String> {
+    let mut ctx = PackageAssemblyContext::new(backend, ProviderChoice::Auto, TargetOs::Windows);
     let inputs = ace_source_query::modules::packages::assemble_stdlib_sys_inputs(
         files,
         "app::main",

@@ -13,6 +13,9 @@ ace-av = { path = "../../crates/av" }
 ace-av-core = { path = "../../crates/av-core" }
 ace-lowering = { path = "../../crates/lowering" }
 ace-native = { path = "../../crates/native" }
+ace-m2-build = { path = "../../crates/m2-build" }
+ace-a2x-rust = { path = "../../crates/a2x-rust" }
+ace-a2x-store = { path = "../../crates/a2x-store" }
 blake3 = "1"
 sha2 = "0.10"
 
@@ -23,3 +26,11 @@ path = "tests/conformance.rs"
 [[test]]
 name = "host_files"
 path = "tests/host_files.rs"
+
+[[test]]
+name = "host_sdk"
+path = "tests/host_sdk.rs"
+
+[[test]]
+name = "host_diag"
+path = "tests/host_diag.rs"

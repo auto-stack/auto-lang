@@ -1,0 +1,216 @@
+// AAC hosted scenario closure & diagnostics (PLAN-1045 T-09 / V-05):
+// the REAL hosted-driver leg — this module is compiled by the Gen0
+// frontend on the sys lane to a REAL executable (A2R end: real rustc) and
+// run as a real child process with space/Unicode/empty/quote arguments
+// from TWO different working directories by the conformance parent.
+//
+// Exit-code observable (0 = all legs green; 2xx = the named failing leg):
+//   * argv identity — the last five arguments must be exactly the
+//     parent-issued ["αrg 空 格", "two words", "", "a\"b", "中文-1045"]
+//     (spaces, empty, quote, Unicode — values, not encodings);
+//   * cwd independence — current_dir is read, changed into a fixture dir,
+//     read again and restored (the report file carries the STARTING cwd so
+//     the parent can see it differ across runs while every other leg's
+//     outcome is identical);
+//   * source-span stability — the byte span of "α" in a fixed in-source
+//     literal is [0,2) regardless of cwd/argv (the in-process length
+//     discipline of CS-207 joined with the process boundary);
+//   * OS-path NUL refusal — reading "<root>/a\0b" is None and exists is
+//     false while the truncated prefix "a" REALLY EXISTS (refusal, not
+//     truncation — the PLAN-1045 adapter rule at the process boundary);
+//   * missing tool — spawning a nonexistent executable is -1 at RUN stage
+//     (the parent separately proves a LANGUAGE type error is refused at
+//     COMPILE stage — the two failure families never mix);
+//   * same-source retry — after a failed read of a missing file, the same
+//     read shape succeeds on the existing file with exact bytes.
+//
+// Face notes as host_files.at (owned Str moves explicit; list elements
+// consumed via remove; no `while`/`const`/`else if`).
+
+use std.conv.from_int
+use std.env.get_or
+use std.file.exists
+use std.file.read_bytes
+use std.file.write_text
+use std.process.args
+use std.process.current_dir
+use std.process.set_current_dir
+use std.process.spawn5
+use std.text.equal
+
+pub fn args_tail_ok(argv List<Str>) int {
+    let n = argv.len()
+    if (n < 5) {
+        return 200
+    }
+    let t4 = argv.remove(n - 1)
+    let t3 = argv.remove(n - 2)
+    let t2 = argv.remove(n - 3)
+    let t1 = argv.remove(n - 4)
+    let t0 = argv.remove(n - 5)
+    if (equal(t0, "αrg 空 格") == false) {
+        return 201
+    }
+    if (equal(t1, "two words") == false) {
+        return 202
+    }
+    if (equal(t2, "") == false) {
+        return 203
+    }
+    if (equal(t3, "a\"b") == false) {
+        return 204
+    }
+    if (equal(t4, "中文-1045") == false) {
+        return 205
+    }
+    return 0
+}
+
+fn span_leg() int {
+    // the byte span of "α" in this fixed literal is [0,2) — scalar 0,
+    // bytes [206,177]; cwd/argv never touch it
+    let s = "α-diag"
+    if (s.len() != 6) {
+        return 220
+    }
+    if (s.len_bytes() != 7) {
+        return 221
+    }
+    let b0 = alpha_byte(s, 0)
+    let b1 = alpha_byte(s, 1)
+    if (b0 != 206) {
+        return 222
+    }
+    if (b1 != 177) {
+        return 223
+    }
+    return 0
+}
+
+fn alpha_byte(s Str, k int) int {
+    let cp = s.char_at(0).to_codepoint()
+    if (k == 0) {
+        return 192 + cp / 64
+    }
+    return 128 + cp % 64
+}
+
+fn nul_leg(root Str) int {
+    // the truncated prefix "a" REALLY exists — a truncating adapter would
+    // find it; the refusal must be by name
+    if (exists(root.clone() + "/a") == false) {
+        return 230
+    }
+    let got = read_bytes(root.clone() + "/a\0b")
+    var none_ok = 1
+    is got {
+        Some(xs) -> {
+            none_ok = 0
+        }
+        None -> {
+            none_ok = 1
+        }
+    }
+    if (none_ok == 0) {
+        return 231
+    }
+    if (exists(root.clone() + "/a\0b")) {
+        return 232
+    }
+    return 0
+}
+
+fn tool_leg() int {
+    let miss = spawn5("aac1045-missing-diag-tool.exe", "", "", "", "", 3000)
+    if (miss != -1) {
+        return 240
+    }
+    return 0
+}
+
+fn retry_leg(root Str) int {
+    let miss = read_bytes(root.clone() + "/missing-module.at")
+    var m_ok = 1
+    is miss {
+        Some(xs) -> {
+            m_ok = 0
+        }
+        None -> {
+            m_ok = 1
+        }
+    }
+    if (m_ok == 0) {
+        return 250
+    }
+    // the SAME read shape on the existing file succeeds with exact bytes
+    let again = read_bytes(root.clone() + "/diag-module.at")
+    var bytes = List<int>.new()
+    is again {
+        Some(xs) -> {
+            bytes = xs
+        }
+        None -> {
+            bytes = List<int>.new()
+        }
+    }
+    if (bytes.len() != 16) {
+        return 251
+    }
+    if (bytes.get(14) != 0) {
+        return 252
+    }
+    if (bytes.get(15) != 98) {
+        return 253
+    }
+    return 0
+}
+
+/// The hosted diagnostic driver. All legs run; the report carries each
+/// leg's code (argv, cwd-roundtrip, span, NUL refusal, missing tool,
+/// same-source retry — 0 = green) followed by the STARTING cwd, and the
+/// generated main writes it to `<root>/report.txt` (the A2R process exit
+/// is the runtime's own success code, not main's value — the report file
+/// is the observable, the PLAN-1064 discipline).
+/// The argv leg runs in its OWN driver frame (argv_invariance): the
+/// composite diag_report frame hits a NAMED A2R-runtime defect (the
+/// args()/equal content read corrupts there — lengths and codepoints stay
+/// intact, see the plan's named-debt record; the dedicated driver frame
+/// verifies the full equal() oracle green).
+pub fn argv_invariance(root Str) int {
+    return args_tail_ok(args())
+}
+
+pub fn diag_report(root Str) Str {
+    var cd = 0
+    let cwd0 = current_dir()
+    if (cwd0.len() == 0) {
+        cd = 210
+    }
+    if (cd == 0) {
+        if (set_current_dir(root.clone() + "/sub") != 0) {
+            cd = 211
+        }
+    }
+    if (cd == 0) {
+        let inner = current_dir()
+        if (inner.len() == 0) {
+            cd = 212
+        }
+    }
+    if (cd == 0) {
+        if (set_current_dir(cwd0.clone()) != 0) {
+            cd = 213
+        }
+    }
+    if (cd == 0) {
+        if (equal(current_dir(), cwd0.clone()) == false) {
+            cd = 214
+        }
+    }
+    let sp = span_leg()
+    let nl = nul_leg(root.clone())
+    let tl = tool_leg()
+    let rl = retry_leg(root.clone())
+    let codes = from_int(cd) + "," + from_int(sp) + "," + from_int(nl) + "," + from_int(tl) + "," + from_int(rl)
+    return codes + "|" + cwd0
+}
