@@ -4957,3 +4957,21 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   `.as`），并补一条正例断言（`1.5f32.as(f64) == 1.5d` 与 `(1.5f32).as(f64) == 1.5d` 同真）；
   修复后在 `ace-syntax` + `case-av-language-parity` 复跑稳定。
 - 状态：open（不阻塞 PLAN-1079；规范写法已覆盖，债务具名不静默）。
+
+## D-1045-01 — A2R 端 argv 内容 oracle 在复合大帧内读到损坏（2026-11-19 PLAN-1045 T-09 登记）
+
+- 现象：同一 `args_tail_ok(args())`（List<Str> 尾部五元素 remove + `std.text.equal` 全量比对，
+  含空格/Unicode/空串/引号参数）在 main 直接调用或专职小帧（含带 Str 参数的 wrap 帧）内
+  **全绿**（码点探针证实尾参数码点逐位正确：20013,25991,45,49,48,52,53）；但在
+  `host_diag.at` 的复合大帧 `diag_report`（多腿长函数）内 `equal(t4, "中文-1045")` 恒假
+  （报 205），同一帧内其余腿（长度探针等）不受影响。
+- 归属：A2X-Rust 运行时/降层（`experimental/ace/crates/a2x-rust`）——argv 元素经帧传递后的
+  内容读取在大帧组合下损坏；PLAN-1064 的既有用例（短源、main 内直调）不触发。
+- 影响：仅影响"在单个复合帧内同时消费 argv 全量 equal 比对"的书写形；PLAN-1045 已把 argv
+  腿拆入专职 driver 帧（`argv_invariance`）以全强度 oracle 关闭 V-05，无 oracle 弱化。
+- owner：a2x-rust runtime/降层 owner（下一触及 a2x-rust 帧传递/字符串驻留的批次；或
+  Design59 具名实施任务指派）。
+- 关闭条件：复合帧内 `equal(args()[i], <同串>)` 与专职帧结果一致；以 PLAN-1045
+  `experimental/ace/aac/host/host_diag.at` 的 diag_report 原复合形（argv 腿并回）为复现
+  基准，`ace-aac-host` 全绿后并回专职帧拆分。
+- 状态：open（不阻塞 PLAN-1045——V-05 已由专职 driver 帧全强度验证关闭）。
