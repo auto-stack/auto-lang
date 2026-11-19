@@ -55,6 +55,9 @@ mod py_ops_1107;
 
 
 
+
+#[path = "cases/py_identity_1107.rs"]
+mod py_identity_1107;
 #[path = "cases/py_error_1107.rs"]
 mod py_error_1107;
 #[path = "cases/py_protocol_1107.rs"]

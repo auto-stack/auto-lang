@@ -1,0 +1,24 @@
+use.py builtins: id
+use.py torch: manual_seed, ones
+
+fn main() int {
+    manual_seed(0)
+    var t = ones(2, 1)
+    var a = t.fill_(3.0)
+    print(t.mul(1.0).sum().to(float))
+    var base = id(t)
+    if (id(t) - base).to(float) == 0.0 {
+        print(1)
+    } else {
+        print(0)
+    }
+    var u = t.mul(1.0)
+    if (id(u) - base).to(float) == 0.0 {
+        print(0)
+    } else {
+        print(1)
+    }
+    print(u.add(u).sum().to(float))
+    print(t.sum().to(float))
+    return 0
+}

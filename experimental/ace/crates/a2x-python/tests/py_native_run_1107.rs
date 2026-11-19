@@ -185,8 +185,12 @@ fn protocol_source() -> String {
 }
 
 fn oracle_lines() -> Vec<f64> {
+    oracle_lines_of(PROTOCOL_REF)
+}
+
+fn oracle_lines_of(script: &str) -> Vec<f64> {
     let out = Command::new(find_python())
-        .arg(corpus_dir().join(PROTOCOL_REF))
+        .arg(corpus_dir().join(script))
         .output()
         .expect("run the independent python oracle");
     assert!(out.status.success(), "oracle failed");
@@ -253,4 +257,31 @@ fn p1107_v04_uncaught_python_error_fails_the_native_run() {
         !stdout.contains("value:"),
         "a failed run publishes no success marker: {stdout:?}"
     );
+}
+#[test]
+fn p1107_v03_identity_and_aliasing_matches_the_native_oracle() {
+    let src = std::fs::read_to_string(corpus_dir().join("identity_1107.at"))
+        .expect("the shared V-03 identity corpus");
+    let dir = scratch_dir("identity");
+    emit_fileset(&dir, &src);
+    let out = Command::new(find_python())
+        .arg("a2x_main.py")
+        .current_dir(&dir)
+        .output()
+        .expect("run python");
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        out.status.success(),
+        "A2PY identity run failed: {}\n{stdout}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let got = numeric_lines(&stdout);
+    let want = oracle_lines_of("identity_1107_ref.py");
+    assert_eq!(got.len(), want.len(), "line count: {got:?} vs {want:?}");
+    for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+        assert!((g - w).abs() < 1e-6, "line {i}: {g} vs oracle {w}");
+    }
+    assert_eq!(want[1], 1.0, "same binding keeps Python identity");
+    assert_eq!(want[2], 1.0, "derived tensor is a different object");
+    eprintln!("V-03 A2PY: {got:?} == oracle {want:?}");
 }
