@@ -4979,3 +4979,10 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 关闭条件：上述复现形状稳定全绿（内容 equal + 长度 + 码点）；由 owner 修复后把
   `v05_argv_invariance` 用例按 PLAN-1045 §9 复审轮记录的形状接回 ace-aac-host 并复跑全绿。
 - 状态：open（阻塞 V-05 argv 子腿；其余 V-05 腿已保留全绿）。
+
+## D-1109-ABI-C-RUNTIME-PIN — ABI 源外调的 C 运行时摘要已漂移
+
+PLAN-1109 冻结 `ace-abi` 运行中 25 条 `source_foreign` 用例失败。以变更前 f8311d8cf 在同一工作区重新准备并执行该名称段，所得 25 个失败 ID 完全相同。纯摘要断言比较出当前 A2C 运行时摘要 `0a4f68e3…` 与签入值 `bd260a8b…` 不一致；其余恢复类用例报 `foreign.authority.runtime-or-emitter`。原测试保持入选，命令和用例清单见 PLAN-1109 §9。
+
+- 主责归 ABI 源外调和 A2C 运行时维护方。关闭条件是按正式信任来源复核摘要变更，同一完整 ABI 目标确认原 25 条测试的真实恢复结果。
+- 同次 `ace-facade` 基线重放的 `p969_t02_console_lane_grants_and_capture` 属现有 D-1098-01 控制台具名入口断言问题。它维持失败计数，维护归属和关闭条件沿用该项。

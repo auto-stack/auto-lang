@@ -224,7 +224,7 @@ Counter→Clock→Todo/Notes→混合样例是建议的验证顺序，不把下�
 
 ### 8.4 分期与现有上游职责
 
-具体首批执行合同已落 [ASE M0 路线](ase-m0-delivery-roadmap.md)：1020 基线/接口 → 1021 无窗口 AV → 1022 两页文字 → 1023 双 Counter/会话与 M0 联合验收。M0 为下表 G0/G1 的有界子集，不包含 G2 全栈/混合图形或完整 Gallery 教程区；这些后续目标保留。M0 现在可准备，1022 等 F0/H0/E0/B0/HELLO 正式来源，1023 再等所需状态/事件/保留会话接口，不等完整 ACE/AGE M2。
+[ASE M0 路线](ase-m0-delivery-roadmap.md)已完成 1020 基线/接口 → 1021 无窗口 AV → 1022 两页文字 → 1023 双 Counter，1106 已交付增量事件会话与释放修复。M0 为下表 G0/G1 的有界子集。M0 后首个切片是 [已交付的 PLAN-1109 原生 Clock 页签生命周期](../../plans/archive/1109-ase-clock-tab-lifecycle.md)，使用现有 ACE/AGE AV 接缝验证隐藏停更、切回校时和关闭撤销。该切片以 012 的数字时间行为为来源，并完成 ASG-09 的 Clock 子项。[可见页签定时规范](../../specs/ase/visible-tab-timers.md)记录冻结的支持范围。完整 012 原应用与 G2 全栈、混合图形、Gallery 教程区各按原主责推进。
 
 | 阶段 | 必需结果 | 进入条件与边界 |
 |---|---|---|
