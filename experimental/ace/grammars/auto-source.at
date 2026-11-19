@@ -1049,8 +1049,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 组件面开臂（on-if 组件面刀）：形参可见性/分支快照与包面同一条
         // 检查/脱糖链（age-component 面的 ann-ty 无 f32 臂——沿用该面既有
         // 类型面，不因开臂扩类型）。
+        // PLAN-105 T-02（U03 真语料 012）：widget 方言的 hook 局部量写 `var`
+        // （`var ss = total_s % 60`），AGE 作者面写 `let`——两拼写同义，分开成
+        // 两个子规则（alt 不与步骤混排），投影不看 kw 拼写。
         age-on-let(profiles: [age-component, age-package], expect: "a hook-local `let <name> = <expr>`") {
+            alt { age-on-let-let() {} }
+            alt { age-on-let-var() {} }
+        }
+        age-on-let-let(profiles: [age-component, age-package]) {
             let(field: "kw") {}
+            age-on-let-tail() {}
+        }
+        age-on-let-var(profiles: [age-component, age-package]) {
+            var(field: "kw") {}
+            age-on-let-tail() {}
+        }
+        age-on-let-tail(profiles: [age-component, age-package]) {
             ident(field: "name") {}
             opt { ann-ty(field: "ann") {} }
             assign() {}

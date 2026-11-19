@@ -400,3 +400,64 @@ fn p105_view_for_single_and_indexed_variables() {
     );
     assert!(compiles(src), "package face admits both for shapes");
 }
+
+/// 012 真语料形：handler 体内的 `var` 局部量（widget 拼写）+ `let` 拼写同义；
+/// `if` 分支与 f-string 初值同时成立。局部量**再赋值**（`b = "0" + b`）仍具名
+/// 拒绝（binder 按模型字段判；hook 局部再赋值是后续刀）。
+#[test]
+fn p105_handler_var_locals_and_fstring() {
+    let src_ok = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0\n var s str = \"\" }\n\
+        view { text \"x\" {} }\n\
+        on {\n\
+            .T -> {\n\
+                var a = .n % 60\n\
+                var b = f\"${a}\"\n\
+                .s = f\"${b}\"\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src_ok)
+        .expect("var locals and f-strings project");
+    let handler = &nodes[0].handlers[0];
+    let names: Vec<&str> = handler
+        .stmts
+        .iter()
+        .filter_map(|s| match s {
+            ace_core::source::age_component::ComponentStmt::Let { name, .. } => {
+                Some(name.name.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, vec!["a", "b"]);
+    assert!(compiles(src_ok), "package face admits var locals and handler f-strings");
+
+    // 局部量再赋值（012 秒表 `if cc < 10 { cc_str = "0" + cc_str }`）——当前具名
+    // 拒绝（binder 判成未声明模型字段 `b`），不是解析回滚。
+    let src_reassign = src_ok.replace(".s = f\"${b}\"", "if a < 10 { b = \"0\" + b }\n                .s = b");
+    let caps = vec![PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: Vec::new(),
+    };
+    let err = compile_age_package_with_scenario(
+        &[PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: src_reassign.clone(),
+            provider: None,
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .expect_err("local reassignment is a named reject today");
+    assert!(
+        err.iter().any(|d| d.code == "source.age.component-event"),
+        "named reject expected, got {err:?}"
+    );
+}

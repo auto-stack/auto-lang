@@ -3021,6 +3021,10 @@ impl<'a> Walker<'a> {
                         // PLAN-946（T-02）：内建变体构造（Option/Result 域，
                         // PLAN-864/962）原样透传给 resolver；绑定层不改写符号
                         //（plain/ct 面不可达——Generic/Optional 已在其 walk 层拒）。
+                    } else if callee.name == "__fstr" {
+                        // PLAN-105 T-02（U03 真语料 012）：f-string 脱糖生成物
+                        // （`f"…"` → `__fstr(…)`）不是包符号——由 resolver 的
+                        // builtin 展平器接管；绑定层不改写符号。
                     } else {
                         return Err(fail(
                             self.key,

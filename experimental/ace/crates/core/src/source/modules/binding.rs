@@ -472,6 +472,12 @@ pub(super) fn bind_module_syntax_reusing(
                                 symbol(id, &callee.name, entry)
                             } else if let Some(imported) = imports.get(&callee.name) {
                                 imported.clone()
+                            } else if callee.name == "__fstr" {
+                                // PLAN-105 T-02（U03 真语料 012）：f-string 脱糖的
+                                // 生成物（`f"…"` → `__fstr(…)`）不是模块符号——
+                                // 由 resolve 的 builtin 展平器接管；这里放行，不登记
+                                // 声明/导入（用户同名声明会走上面的分支）。
+                                callee.name.clone()
                             } else {
                                 return Err(fail(
                                     id,

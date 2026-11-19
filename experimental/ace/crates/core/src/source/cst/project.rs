@@ -7566,15 +7566,39 @@ impl<'a> Engine<'a> {
                 }))
             }
             "age-on-let" => {
-                let name_leaf = self.cx.field_child(inner, "name").expect("on let name");
+                // PLAN-105 T-02：let/var 拆成「拼写子规则 + 尾规则」后字段在
+                // tail 节点（与拼写 token 平级）；在两层子节点里找同时持有
+                // `name`/`value` 字段的节点（旧单规则形首次即命中）。
+                let mut let_node = None;
+                'outer: for c in self.cx.children(inner) {
+                    if self.cx.field_child(c, "name").is_some()
+                        && self.cx.field_child(c, "value").is_some()
+                    {
+                        let_node = Some(c);
+                        break;
+                    }
+                    for cc in self.cx.children(c) {
+                        if self.cx.field_child(cc, "name").is_some()
+                            && self.cx.field_child(cc, "value").is_some()
+                        {
+                            let_node = Some(cc);
+                            break 'outer;
+                        }
+                    }
+                }
+                let let_node = let_node.unwrap_or(inner);
+                let name_leaf = self.cx.field_child(let_node, "name").expect("on let name");
                 let ann = self
                     .cx
-                    .field_child(inner, "ann")
+                    .field_child(let_node, "ann")
                     // 增量同步适配（982 aggregates 文本入口刀）：classify_word
                     // 增第三参 param_pos——hook-local let 注解位非入口参数位，
                     // 恒 false（982 主线同点位同值）。
                     .map(|a| self.classify_word(a, false, false));
-                let value_node = self.cx.field_child(inner, "value").expect("on let value");
+                let value_node = self
+                    .cx
+                    .field_child(let_node, "value")
+                    .expect("on let value");
                 Some(ComponentStmt::Let {
                     name: ident_of(&mut self.cx, name_leaf),
                     ann,

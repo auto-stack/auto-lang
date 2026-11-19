@@ -691,6 +691,20 @@ pub fn compile_age_package_with_scenario(
     capabilities: &[String],
     scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
+    // PLAN-105 T-02（U03 真语料 012）：包面与组件面同律——源在**解析前**统一
+    // 脱糖 f-string（`f"…"` → `__fstr(…)`，含 handler 体）；调用方不必先脱糖
+    // （auto-ui 的 prep 因此幂等）。脱糖失败保持原源，交给后续阶段具名诊断。
+    let desugared: Vec<PackageModuleInput> = inputs
+        .iter()
+        .map(|u| match crate::source::fstr::desugar_widget_source(&u.source) {
+            Ok(s) if s != u.source => PackageModuleInput {
+                source: s,
+                ..u.clone()
+            },
+            _ => u.clone(),
+        })
+        .collect();
+    let inputs: &[PackageModuleInput] = &desugared;
     // 1) 共享包绑定：包模块面 ∪ AGE 面**一次**解析；可见性/导入/初始化序/
     //    mangle 全部由 960 的绑定器裁定（本模块不重做任何一项）。
     let product = bind_packages_age(
