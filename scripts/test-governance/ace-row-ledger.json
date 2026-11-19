@@ -1,0 +1,346 @@
+{
+ "schema": "ace-row-ledger/1",
+ "plan": "PLAN-1098",
+ "source_state": "28b2065952c6a4b4",
+ "expected": {
+  "rows": 47,
+  "classes": {
+   "C": 19,
+   "D": 19,
+   "R": 7,
+   "Q": 1,
+   "L": 1
+  }
+ },
+ "rows": [
+  {
+   "id": "S-01",
+   "name": "bstr_1064::bstr_1064_v_d09_file_read_bytes_cross_end",
+   "historical_seconds": 69.958,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-02",
+   "name": "kv_zip_1064::v03_zip_plan897_and_btypes_av",
+   "historical_seconds": 51.688,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-03",
+   "name": "bstr_1064::bstr_1064_v_codec_five_ends",
+   "historical_seconds": 43.781,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-04",
+   "name": "resources_tier::av_turnaround_six_scenarios_smoke",
+   "historical_seconds": 42.96,
+   "class": "Q",
+   "destination": "ace-perf"
+  },
+  {
+   "id": "S-05",
+   "name": "bstr_1064::bstr_1064_t01_longest_chain_probe",
+   "historical_seconds": 41.758,
+   "class": "R",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-06",
+   "name": "stdlib_asm_972::stdlib_asm_972_cross_end_gaps_and_a2r_math",
+   "historical_seconds": 38.324,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-07",
+   "name": "kv_zip_1064::v03_kv_a2r_roundtrip_and_budget_4096",
+   "historical_seconds": 33.775,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-08",
+   "name": "kv_zip_1064::v03_zip_a2r_roundtrip_and_budget",
+   "historical_seconds": 33.414,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-09",
+   "name": "kv_zip_1064::v03_zip_a2py_roundtrip_and_budget",
+   "historical_seconds": 33.149,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-10",
+   "name": "kv_zip_1064::v03_kv_a2py_roundtrip_and_budget_4096",
+   "historical_seconds": 31.159,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-11",
+   "name": "mir_tier::mir_admission_module_tables_over_budget_is_resource",
+   "historical_seconds": 30.228,
+   "class": "R",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-12",
+   "name": "stdlib_sys_973::sys973_a2r_real_rustc_leg",
+   "historical_seconds": 28.293,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-13",
+   "name": "kv_zip_1064::v03_kv_wire_oracle_and_reopen_av",
+   "historical_seconds": 26.976,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-14",
+   "name": "stdlib_sys_973::sys973_a2py_real_python_leg",
+   "historical_seconds": 26.588,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-15",
+   "name": "bstr_1064::bstr_1064_v01_decode_utf8_and_region",
+   "historical_seconds": 26.544,
+   "class": "R",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-16",
+   "name": "sys_d01_d06_1064::v02_d01_d06_a2r_cross_end",
+   "historical_seconds": 21.394,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-17",
+   "name": "v08_surface_972::v08_surface_manifest_and_five_end_exercise",
+   "historical_seconds": 19.869,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-18",
+   "name": "sys_d01_d06_1064::v02_d01_d06_a2py_cross_end",
+   "historical_seconds": 19.865,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-19",
+   "name": "json_975::json975_char_to_str_a2x_ends",
+   "historical_seconds": 19.384,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-20",
+   "name": "module_packages_960::packages_960_four_ends_run_public_str_and_recover",
+   "historical_seconds": 18.905,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-21",
+   "name": "stdlib_core_945::stdlib_core_945_four_ends_run_math_and_text_slices",
+   "historical_seconds": 17.565,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-22",
+   "name": "av_source_incremental::av_source_incremental_detector_negative_controls",
+   "historical_seconds": 15.021,
+   "class": "R",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-23",
+   "name": "plan966_ct_product::p966_ct_generated_declarations_change_end_results",
+   "historical_seconds": 14.412,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-24",
+   "name": "plan966_ct_product::p966_ct_statements_and_macro_run_on_av_native_rust_c_py",
+   "historical_seconds": 14.396,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-25",
+   "name": "kv_zip_1064::v03_kv_corrupt_io_budget_and_atomic_preserve_av",
+   "historical_seconds": 14.356,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-26",
+   "name": "bstr_1064::bstr_1064_t01_illegal_scalar_neighbor",
+   "historical_seconds": 14.096,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-27",
+   "name": "stdlib_sys_973::sys973_v03_process_spawn_capture_timeout_exit",
+   "historical_seconds": 13.817,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-28",
+   "name": "stdlib_sys_973::sys973_t08_seek_permissions_mtime",
+   "historical_seconds": 13.779,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-29",
+   "name": "stdlib_assembly_1043::stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c",
+   "historical_seconds": 13.484,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-30",
+   "name": "stdlib_asm_972::stdlib_asm_972_hash_domains_av",
+   "historical_seconds": 12.967,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-31",
+   "name": "sys_d01_d06_1064::v02_d01_d02_file_text_range_and_dir_names_av",
+   "historical_seconds": 12.843,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-32",
+   "name": "console_coverage_1041::vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity",
+   "historical_seconds": 12.394,
+   "class": "C",
+   "destination": "ace-toolchain"
+  },
+  {
+   "id": "S-33",
+   "name": "stdlib_sys_973::sys973_path_algorithms",
+   "historical_seconds": 12.359,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-34",
+   "name": "stdlib_sys_973::sys973_env_set_remove_real_process",
+   "historical_seconds": 12.343,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-35",
+   "name": "kv_zip_1064::v03_zip_negative_corrupt_bomb_and_preserve_av",
+   "historical_seconds": 12.279,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-36",
+   "name": "stdlib_sys_973::sys973_time_real_clock_bands",
+   "historical_seconds": 12.217,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-37",
+   "name": "b1_slice_975::json975_char_to_str_b1_slice_oracles",
+   "historical_seconds": 12.204,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-38",
+   "name": "stdlib_sys_973::sys973_dirs_and_replace",
+   "historical_seconds": 12.133,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-39",
+   "name": "stdlib_sys_973::sys973_t09_target_selection_linux_binds",
+   "historical_seconds": 12.064,
+   "class": "L",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-40",
+   "name": "stdlib_sys_973::sys973_t10_rand_real_entropy",
+   "historical_seconds": 11.979,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-41",
+   "name": "stdlib_sys_973::sys973_v04_short_read_and_fault_injection_no_false_success",
+   "historical_seconds": 11.864,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-42",
+   "name": "module_sources_950::modules_950_user_shadow_consumer_restore_first_edit_and_next_read",
+   "historical_seconds": 11.844,
+   "class": "R",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-43",
+   "name": "stdlib_sys_973::sys973_v05_clock_rand_oracles",
+   "historical_seconds": 11.498,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-44",
+   "name": "stdlib_sys_973::sys973_v03_process_exit_outcome",
+   "historical_seconds": 11.431,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-45",
+   "name": "module_sources_950::modules_950_qualified_consumer_restore_first_edit_and_next_read",
+   "historical_seconds": 10.97,
+   "class": "R",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-46",
+   "name": "stdlib_core_945::stdlib_core_945_clone_allocation_fault_is_a_typed_resource_trap",
+   "historical_seconds": 10.86,
+   "class": "D",
+   "destination": "ace-av"
+  },
+  {
+   "id": "S-47",
+   "name": "v10_layers_972::v10_core_alloc_layers_mn",
+   "historical_seconds": 10.706,
+   "class": "R",
+   "destination": "ace-av"
+  }
+ ]
+}
