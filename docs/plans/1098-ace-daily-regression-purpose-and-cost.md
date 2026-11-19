@@ -517,6 +517,23 @@ A/B 实测（同选择、同 oracle，只有 profile 不同）：
 
 **环境归因（不判红）**：`ace-a2x` 两次 run 都被 meter 记为 `[process-tree infrastructure] … live_after_exit: vctip.exe … cleanup_complete: true`（VS 遥测进程在主进程退出后仍在），属环境观察，已按 §6.2 分列，不计入测试失败。
 
+### 5.18 T-03：P-01/P-02 归 `performance::`（代码 `514a9459c`）
+
+改动：`crates/syntax-core/tests/cases/perf.rs` 整体包进 `mod performance { … }`（文件头 doc 注释保留在外），因此两个正式计时例的完整身份变为 `ace-syntax-core::conformance perf::performance::…`。`conformance.rs` 的 `mod perf;` 与两例正文（N=32、3 预热、8,000 声明；6,000 函数、CST/legacy 双链、P50/P95/P99）**一字未动**。
+
+**发现差集（真实 `--discover-only` / nextest 选择）**：
+
+| 面 | 之前 | 之后 |
+|---|---|---|
+| `ace-syntax`（普通） | 159，其中含 `perf::perf_*` 2 例 | **157，perf 相关 0 例** |
+| `performance::` 过滤（`-p ace-syntax-core --test conformance`） | 0 | **2 例**（`perf::performance::{perf_fresh_parse_and_incremental_and_restart_query, perf_core_vs_legacy_parser_reference}`） |
+
+**正式运行（`--profile ace-perf` 串行，原样本）**：`2/2 PASS`，`perf_core_vs_legacy_parser_reference` **11.450s**、`perf_fresh_parse_and_incremental_and_restart_query` **3.799s**，合计 15.251s（整命令 15.87s）。日志显示 `Finished test profile [unoptimized + debuginfo]`——即**当前 PERF 口径是 test(debug) 构建**，本轮未改（改口径属 SD-04 决策，见 §5.17 讨论）。
+
+**新治理控制（`PerformanceSelection`，2 例）**：①`perf.rs` 必须包含 `mod performance {`（防止有人把包装拆回去，导致普通组重新泄漏）；②`ace-perf` 是唯一"正向选择 `performance::`"的组，且 `experimental/ace` 下所有普通 nextest 组都必须带 `not test(/(^|::)performance::/)` 排除。全套 `test_fixed_groups` **79/79 OK**。
+
+**边界**：`ace-facade`/`ace-adapters`（根 workspace，`all()`）不在该排除断言内——它们不持有正式性能例，已在测试注释里写明理由。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -694,6 +711,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 11，r1）：`stage: work`，T-02 第六刀（§5.17）。执行内容：①`cert_rt_902` 的目录遍历+release 回落改为只读 `AC_A2X_HIR_WORKER`（缺失即具名 infra，不再静默 SKIP，代码 `b47e6f069`）。②`toolchains.json` 普通工具 profile 翻 debug（`a8a9350b2`），随后按 A/B 证据收敛为 **debug=av/batch-av/av-regular/ac/mn/mn-collections/cte/sema、release=abi/a2x**（`940030bed`）。③A/B 实测：`ace-native` release 64.9s/28 项>10s vs debug 60.9s/19 项>10s（同 329/329 PASS）；`ace-native-worker` 43/43、`ace-comptime` 136/136 PASS；`ace-semantics` 1 红=D-1037-01；`ace-abi` 26 红(release)/25 红(debug) 同族既有；`ace-a2x` debug **新增 2 红**→必须 release；`ace-batch` 8 红=D-1098-02（fence vs document 迁移，已登记 KNOWN-DEBT）。**结论**："一律 debug" 不成立，per-tool 分流写入 SD-01。过程中修掉一次 KNOWN-DEBT 追加导致的换行符全文件改写（已 `git checkout` 还原后以 LF 追加）。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 11 | from: work | to: work | status: executing | outcome: pass（B-05 profile 分流落地并有 A/B 证据；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 940030bed / 本轮 docs(plan1098) | next: work（T-02 收尾：lib builder env 化或转 T-03）`
+
+2026-11-19（goal round 12，r1）：`stage: work`，T-03（§5.18，代码 `514a9459c`）。执行内容：把 `syntax-core/tests/cases/perf.rs` 包进 `mod performance`，使 P-01/P-02 的完整身份成为 `perf::performance::*` 而不再被普通组选中；两例正文/样本/统计一字未动。实测发现差集：`ace-syntax` 159→**157**（perf 相关 0），`performance::` 过滤由 0→**2**；`--profile ace-perf` 串行正式运行 **2/2 PASS**（11.450s + 3.799s = 15.251s）。新增 `PerformanceSelection` 治理控制 2 例（源码包装守卫 + "ace-perf 是唯一正向选择者/普通组必须排除"），全套 79/79 OK。另记录：当前 PERF 口径仍是 test(debug) 构建，是否改 release 口径属 SD-04 决策，本轮不动。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 12 | from: work | to: work | status: executing | outcome: pass（T-03 完成：P-01/P-02 唯一归 ace-perf 且正式运行通过） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 514a9459c / 本轮 docs(plan1098) | next: work（T-04 F-01/F-02 夹具与单 run 多轴）`
 
 ## 10. 待澄清事项
 
