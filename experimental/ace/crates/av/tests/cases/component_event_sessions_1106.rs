@@ -207,8 +207,6 @@ fn v04_trap_rollback_seq_watermark_and_close() {
 
     // 序号水位：同 seq 重投不重复执行（返回 Duplicate + 上次状态）；
     // 新 seq 的同名合法事件各执行一次。
-    let mut c = compile(COUNTER_SRC);
-    let _ = &mut c;
     let prog2 = compile(COUNTER_SRC);
     let mut s2 = prog2.open_session(&[]).unwrap();
     s2.dispatch_seq(Some(1), "Inc", &[]).unwrap();

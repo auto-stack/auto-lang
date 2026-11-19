@@ -74,7 +74,6 @@ pub enum EventOutcome {
 pub struct ComponentEventSessionProgram {
     src: String,
     module_path: String,
-    alias: LegacyWidgetAlias,
     codes: Vec<Arc<FunctionCode>>,
     globals: Vec<ace_av_core::mir::MirGlobal>,
     fields: Vec<(String, String)>,
@@ -169,12 +168,12 @@ impl ComponentEventSessionProgram {
             Self::lower_and_admit(&core).map(|_| core)
         };
         match attempt(true) {
-            Ok(core) => Self::build(core, src, module_path, alias, None, 1),
+            Ok(core) => Self::build(core, src, module_path, None, 1),
             Err(full_err) => {
                 let core = attempt(false).map_err(|states_err| {
                     format!("event program compile failed (full: {full_err}; states-only: {states_err})")
                 })?;
-                Self::build(core, src, module_path, alias, Some(full_err), 2)
+                Self::build(core, src, module_path, Some(full_err), 2)
             }
         }
     }
@@ -183,7 +182,6 @@ impl ComponentEventSessionProgram {
         core: CoreEventProgram,
         src: &str,
         module_path: &str,
-        alias: LegacyWidgetAlias,
         texts_unavailable_reason: Option<String>,
         compile_count: u64,
     ) -> Result<Self, String> {
@@ -191,7 +189,6 @@ impl ComponentEventSessionProgram {
         Ok(Self {
             src: src.to_string(),
             module_path: module_path.to_string(),
-            alias,
             codes: built.codes,
             globals: built.globals,
             fields: core.fields.clone(),
@@ -320,7 +317,6 @@ impl ComponentEventSessionProgram {
             fields: self.fields.clone(),
             handlers: self.handlers.clone(),
             cell_of_field: self.cell_of_field.clone(),
-            seed_def_id: self.seed_def_id.clone(),
             text_def_ids: self.text_def_ids.clone(),
             texts_available: self.texts_available,
             watermark: None,
@@ -367,7 +363,6 @@ pub struct ComponentEventSession {
     fields: Vec<(String, String)>,
     handlers: Vec<HandlerEntry>,
     cell_of_field: Vec<usize>,
-    seed_def_id: String,
     text_def_ids: Vec<String>,
     texts_available: bool,
     /// 最近一次成功事件的序号水位（≤ 水位 = 重投，不重复执行）。
@@ -435,7 +430,7 @@ impl ComponentEventSession {
             // 原场景车道的具名诊断（check_event_dispatch）同码同形——消费侧
             // 错误合同（stage/type）保持。
             return Err(format!(
-                "source.age.component-event: message `{msg}` declares {} payload slot(s); the directed event carries {}                  value(s) — a payload event must not run with dropped, padded or swapped values",
+                "source.age.component-event: message `{msg}` declares {} payload slot(s); the directed event carries {} value(s) — a payload event must not run with dropped, padded or swapped values",
                 h.payload.len(),
                 args.len()
             ));
