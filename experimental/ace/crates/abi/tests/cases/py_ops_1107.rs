@@ -42,9 +42,14 @@ fn compile(src: &str) -> ace_core::verify::CheckedModule {
         ace_foreign_contract::manual::SOURCE_CAP.to_string(),
         ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
     ];
-    ace_core::source::compile_aggregates_source_with_foreign(src, "p1107.at", &caps, &session.admitted)
-        .unwrap_or_else(|d| panic!("compile: {d:?}"))
-        .checked
+    ace_core::source::compile_aggregates_source_with_foreign(
+        src,
+        "p1107.at",
+        &caps,
+        &session.admitted,
+    )
+    .unwrap_or_else(|d| panic!("compile: {d:?}"))
+    .checked
 }
 
 #[test]
@@ -83,9 +88,7 @@ fn p1107_t02_operations_are_recorded_with_kinds_and_members() {
     // A call of an imported binding is a DIRECT call of the receiver object —
     // the frozen provider ABI's member label is "" for that form (`SGD(...)`,
     // `manual_seed(0)`, `model(x)`); a bound method carries its member name.
-    for expected in [
-        "", "reshape", "parameters", "zero_grad", "backward", "step",
-    ] {
+    for expected in ["", "reshape", "parameters", "zero_grad", "backward", "step"] {
         assert!(
             calls.contains(&expected),
             "call member `{expected}` missing from {calls:?}"
@@ -103,7 +106,9 @@ fn p1107_t02_operations_are_recorded_with_kinds_and_members() {
     );
     // every call has a receiver operand and the receiver is a Python object
     for f in plan.of_kind(PyOpKind::Call) {
-        let recv = f.receiver().unwrap_or_else(|| panic!("{f:?} lacks a receiver"));
+        let recv = f
+            .receiver()
+            .unwrap_or_else(|| panic!("{f:?} lacks a receiver"));
         assert_eq!(recv.class, PyValClass::Object, "{f:?}");
     }
     let attrs: Vec<&str> = plan
@@ -143,7 +148,11 @@ fn p1107_t02_operand_slots_bind_nesting_and_value_classes() {
         .find(|f| f.kwargs().iter().any(|(n, _)| *n == "lr"))
         .expect("SGD call fact");
     let recv = sgd.receiver().expect("receiver slot");
-    assert_eq!(recv.class, PyValClass::Object, "import binding is an object");
+    assert_eq!(
+        recv.class,
+        PyValClass::Object,
+        "import binding is an object"
+    );
     let pos = sgd.positionals();
     assert_eq!(pos.len(), 1, "`model.parameters()` is the one positional");
     assert_eq!(pos[0].class, PyValClass::Object);

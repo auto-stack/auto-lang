@@ -51,21 +51,16 @@ mod py_bridge_1026;
 #[path = "cases/py_ops_1107.rs"]
 mod py_ops_1107;
 
-
-
-
-
-
-#[path = "cases/py_identity_1107.rs"]
-mod py_identity_1107;
 #[path = "cases/py_error_1107.rs"]
 mod py_error_1107;
+#[path = "cases/py_identity_1107.rs"]
+mod py_identity_1107;
 #[path = "cases/py_protocol_1107.rs"]
 mod py_protocol_1107;
-#[path = "cases/py_session_1107.rs"]
-mod py_session_1107;
 #[path = "cases/py_session_1026.rs"]
 mod py_session_1026;
+#[path = "cases/py_session_1107.rs"]
+mod py_session_1107;
 #[path = "cases/rust_f0.rs"]
 mod rust_f0;
 #[path = "cases/scalar_bridge.rs"]

@@ -156,14 +156,17 @@ fn p1107_t03_section51_runs_as_native_python() {
     );
     let first: f32 = lines[0].parse().expect("first loss");
     let last: f32 = lines[59].parse().expect("final loss");
-    assert!((first - 0.2370201051235199f32).abs() < 1e-6, "first {first}");
     assert!(
-        (last - 0.1013089045882225f32).abs() < 1e-6,
-        "final {last}"
+        (first - 0.2370201051235199f32).abs() < 1e-6,
+        "first {first}"
     );
+    assert!((last - 0.1013089045882225f32).abs() < 1e-6, "final {last}");
     assert_eq!(lines[60], "torch.Size([4, 1])", "shape display");
     let pred0: f32 = lines[61].parse().expect("pred0");
-    assert!((pred0 - 0.4728480279445648f32).abs() < 1e-5, "pred0 {pred0}");
+    assert!(
+        (pred0 - 0.4728480279445648f32).abs() < 1e-5,
+        "pred0 {pred0}"
+    );
     eprintln!(
         "T-03 native python training: {} lines in {} ms",
         lines.len(),
@@ -196,7 +199,10 @@ fn oracle_lines_of(script: &str) -> Vec<f64> {
     assert!(out.status.success(), "oracle failed");
     String::from_utf8_lossy(&out.stdout)
         .lines()
-        .map(|l| l.parse::<f64>().unwrap_or_else(|_| panic!("oracle line `{l}`")))
+        .map(|l| {
+            l.parse::<f64>()
+                .unwrap_or_else(|_| panic!("oracle line `{l}`"))
+        })
         .collect()
 }
 
@@ -204,7 +210,10 @@ fn numeric_lines(stdout: &str) -> Vec<f64> {
     stdout
         .lines()
         .filter(|l| !l.starts_with("value:"))
-        .map(|l| l.parse::<f64>().unwrap_or_else(|_| panic!("lane line `{l}`")))
+        .map(|l| {
+            l.parse::<f64>()
+                .unwrap_or_else(|_| panic!("lane line `{l}`"))
+        })
         .collect()
 }
 

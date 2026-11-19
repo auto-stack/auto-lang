@@ -6309,9 +6309,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             RExprKind::TypedLit { vt: VT::F64, bits } => {
                 Some(PyLiteral::Float(f64::from_bits(*bits)))
             }
-            RExprKind::TypedLit { vt: VT::F32, bits } => Some(PyLiteral::Float(
-                f32::from_bits(*bits as u32) as f64,
-            )),
+            RExprKind::TypedLit { vt: VT::F32, bits } => {
+                Some(PyLiteral::Float(f32::from_bits(*bits as u32) as f64))
+            }
             RExprKind::ReadLocal(l) if matches!(v.vt, VT::F64 | VT::F32) => {
                 self.py_lit_locals.get(l).map(|(vt, bits)| {
                     PyLiteral::Float(if *vt == VT::F64 {
@@ -6466,12 +6466,12 @@ F:{d}
             // desynced the declared length from the payload).
             _ if self.py_is_object(v) => {
                 let chunk = self.py_chunk_call("o", v);
-            parts.push(PyFramePart::TextExpr(chunk));
+                parts.push(PyFramePart::TextExpr(chunk));
             }
             // any other i32 dynamic value — dynamic "i <dlen>\n<value>\n"
             _ if v.vt == VT::I32 => {
                 let chunk = self.py_chunk_call("i", v);
-            parts.push(PyFramePart::TextExpr(chunk));
+                parts.push(PyFramePart::TextExpr(chunk));
             }
             // v1 boundary: dynamic floats/text/other types do not cross
             _ => {
@@ -6587,16 +6587,12 @@ F:{d}
                 _ => None,
             };
             if let Some((kind, word)) = word {
-                crate::py_ops::record(
-                    PyOpFact::new(kind, span)
-                        .with_member(word)
-                        .operand_lit(
-                            PyRole::Receiver,
-                            recv.span,
-                            self.py_val_class(recv),
-                            self.py_operand_literal(recv),
-                        ),
-                );
+                crate::py_ops::record(PyOpFact::new(kind, span).with_member(word).operand_lit(
+                    PyRole::Receiver,
+                    recv.span,
+                    self.py_val_class(recv),
+                    self.py_operand_literal(recv),
+                ));
             }
         }
         match target {

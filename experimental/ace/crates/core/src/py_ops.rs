@@ -336,9 +336,7 @@ impl PyOpPlan {
     /// operations share a start offset (`a.b(c) + d`), so a consumer that has
     /// the whole checked expression must prefer the exact-span fact.
     pub fn find_exact(&self, kind: PyOpKind, span: (u32, u32)) -> Option<&PyOpFact> {
-        self.facts
-            .iter()
-            .find(|f| f.op == kind && f.span == span)
+        self.facts.iter().find(|f| f.op == kind && f.span == span)
     }
 
     /// All facts of one kind, in source order.
@@ -384,14 +382,7 @@ mod tests {
     use super::*;
 
     fn fact(op: PyOpKind, member: &str) -> PyOpFact {
-        PyOpFact::new(
-            op,
-            Span {
-                start: 10,
-                end: 20,
-            },
-        )
-        .with_member(member)
+        PyOpFact::new(op, Span { start: 10, end: 20 }).with_member(member)
     }
 
     #[test]
@@ -445,7 +436,10 @@ mod tests {
         assert_eq!(plan.len(), 2);
         assert!(plan.find(PyOpKind::Call, 10).is_some());
         assert!(plan.find(PyOpKind::Call, 11).is_none(), "span key is exact");
-        assert!(plan.find(PyOpKind::ToFloat, 10).is_none(), "kind key is exact");
+        assert!(
+            plan.find(PyOpKind::ToFloat, 10).is_none(),
+            "kind key is exact"
+        );
         assert_eq!(plan.of_kind(PyOpKind::Import).count(), 1);
     }
 

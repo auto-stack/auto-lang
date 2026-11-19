@@ -44,7 +44,10 @@ fn oracle_lines() -> Vec<f64> {
     assert!(out.status.success(), "the oracle must run");
     String::from_utf8_lossy(&out.stdout)
         .lines()
-        .map(|l| l.parse::<f64>().unwrap_or_else(|_| panic!("oracle line `{l}`")))
+        .map(|l| {
+            l.parse::<f64>()
+                .unwrap_or_else(|_| panic!("oracle line `{l}`"))
+        })
         .collect()
 }
 

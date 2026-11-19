@@ -174,8 +174,8 @@ fn p981_query_token_second_query_invalidates_the_first() {
     let stale = "node P {\n    view {\n        text \"p\" {}\n    }\n}\n\npub fn two(r i32) bool {\n    let a Cast2D = query2d.segment(r, true, 0.0, 0.0, 1.0, 0.0)\n    let b Sweep2D = query2d.sweep(r, true, 1.0, 0.0)\n    return a.hit\n}\n";
     let ds = compile(stale).expect_err("reading the first token after the second query is stale");
     assert!(
-        ds.iter().any(|d| d.code == "source.age.query-token-stale"
-            && d.message.contains("fault 13")),
+        ds.iter()
+            .any(|d| d.code == "source.age.query-token-stale" && d.message.contains("fault 13")),
         "named staleness rejection: {ds:?}"
     );
 
@@ -199,4 +199,3 @@ fn p981_query_token_loop_query_invalidates_outer_token() {
         "named staleness rejection: {ds:?}"
     );
 }
-

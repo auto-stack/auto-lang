@@ -1263,7 +1263,6 @@ impl A2xSession {
             .map_err(|e| e)
     }
 
-
     /// PLAN-1107 T-05: the Python project lane — the AGGREGATES source surface
     /// compiled through the ONE shared front door with the neutral Python op
     /// declaration contract, then assembled by the session provider (the A2PY

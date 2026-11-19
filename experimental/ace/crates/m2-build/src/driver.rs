@@ -527,14 +527,14 @@ impl M2Build {
             session.cold_assemble(src, true, &inputs.caps, &inputs.entry, false)
         }
         .map_err(|e| {
-                M2Reject::new(
-                    "m2build.lane-a2x",
-                    match &e {
-                        ace_a2x_store::A2xRejectOrResource::Reject(r) => r.to_string(),
-                        ace_a2x_store::A2xRejectOrResource::Resource(r) => r.to_string(),
-                    },
-                )
-            })?;
+            M2Reject::new(
+                "m2build.lane-a2x",
+                match &e {
+                    ace_a2x_store::A2xRejectOrResource::Reject(r) => r.to_string(),
+                    ace_a2x_store::A2xRejectOrResource::Resource(r) => r.to_string(),
+                },
+            )
+        })?;
         let stats = session.stats();
         let counts = BuildCounts {
             lane: lane.into(),
@@ -905,7 +905,6 @@ impl M2Build {
         let program = program.as_str();
         self.spawn_capture_args(name, program, &[], None)
     }
-
 
     /// Capture stdout AND stderr (the a2py lane names missing runtime
     /// dependencies instead of leaking a traceback).

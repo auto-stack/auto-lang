@@ -43,7 +43,10 @@ fn p104_bare_tags_project_as_elements() {
         let nodes = project(&src).expect("bare tag must project");
         let mut out = Vec::new();
         element_tags(&nodes[0].view.tree, &mut out);
-        assert!(out.contains(&tag.to_string()), "`{tag}` must project as an element: {out:?}");
+        assert!(
+            out.contains(&tag.to_string()),
+            "`{tag}` must project as an element: {out:?}"
+        );
     }
 }
 
@@ -51,7 +54,8 @@ fn p104_bare_tags_project_as_elements() {
 /// 不能被 `age-element-labeled` 跨行吞成 label（吞并时条目消失/报错）。
 #[test]
 fn p104_bare_tag_does_not_swallow_following_entry() {
-    let src = "widget App {\n    view { col {\n        spacer\n        style: \"p-4\"\n    } }\n}\n";
+    let src =
+        "widget App {\n    view { col {\n        spacer\n        style: \"p-4\"\n    } }\n}\n";
     let nodes = project(src).expect("bare tag + entry must project");
     let col = match &nodes[0].view.tree[0] {
         ComponentViewItem::Element(e) => e,

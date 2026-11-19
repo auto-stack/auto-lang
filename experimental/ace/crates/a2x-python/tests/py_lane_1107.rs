@@ -42,7 +42,11 @@ fn a2py_compiles_use_py_under_the_declaration_contract() {
 
     let view = SemanticView::from_checked(&compiled.checked).expect("shared semantic view");
     let view_plan = view.py_ops().expect("the view exposes the same plan");
-    assert_eq!(view_plan.len(), plan.len(), "same plan, no second derivation");
+    assert_eq!(
+        view_plan.len(),
+        plan.len(),
+        "same plan, no second derivation"
+    );
 
     // the declarations the view carries are exactly the admitted py op set
     let mut providers: Vec<&str> = view

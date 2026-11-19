@@ -129,14 +129,17 @@ fn p1107_t05_ac_build_a2py_use_py_project_runs_native_python() {
     );
     let first: f32 = lines[0].parse().expect("first loss");
     let last: f32 = lines[59].parse().expect("final loss");
-    assert!((first - 0.2370201051235199f32).abs() < 1e-6, "first {first}");
     assert!(
-        (last - 0.1013089045882225f32).abs() < 1e-6,
-        "final {last}"
+        (first - 0.2370201051235199f32).abs() < 1e-6,
+        "first {first}"
     );
+    assert!((last - 0.1013089045882225f32).abs() < 1e-6, "final {last}");
     assert_eq!(lines[60], "torch.Size([4, 1])", "shape display");
     let pred0: f32 = lines[61].parse().expect("pred0");
-    assert!((pred0 - 0.4728480279445648f32).abs() < 1e-5, "pred0 {pred0}");
+    assert!(
+        (pred0 - 0.4728480279445648f32).abs() < 1e-5,
+        "pred0 {pred0}"
+    );
     eprintln!(
         "T-05 ac-build a2py use.py project: {} lines in {} ms",
         lines.len(),
@@ -173,14 +176,17 @@ fn assert_training(lines: &[String], label: &str) {
     );
     let first: f32 = lines[0].parse().expect("first loss");
     let last: f32 = lines[59].parse().expect("final loss");
-    assert!((first - 0.2370201051235199f32).abs() < 1e-6, "{label} first");
     assert!(
-        (last - 0.1013089045882225f32).abs() < 1e-6,
-        "{label} final"
+        (first - 0.2370201051235199f32).abs() < 1e-6,
+        "{label} first"
     );
+    assert!((last - 0.1013089045882225f32).abs() < 1e-6, "{label} final");
     assert_eq!(lines[60], "torch.Size([4, 1])", "{label} shape");
     let pred0: f32 = lines[61].parse().expect("pred0");
-    assert!((pred0 - 0.4728480279445648f32).abs() < 1e-5, "{label} pred0");
+    assert!(
+        (pred0 - 0.4728480279445648f32).abs() < 1e-5,
+        "{label} pred0"
+    );
 }
 
 #[test]
@@ -204,7 +210,12 @@ fn p1107_t05_sdk_use_py_project_runs_relocates_and_refuses_missing_artifact() {
     let run = m2
         .run_sdk(&sdk, TargetKind::A2py, "run:py")
         .unwrap_or_else(|e| panic!("SDK run: {e:?}"));
-    assert_eq!(run.exit_code, Some(0), "the entry returns 0: {}", run.stdout);
+    assert_eq!(
+        run.exit_code,
+        Some(0),
+        "the entry returns 0: {}",
+        run.stdout
+    );
     assert_training(&training_lines(&run.stdout), "SDK run");
 
     // V-07: the SDK is relocatable — move it to another root with no dev
@@ -221,7 +232,13 @@ fn p1107_t05_sdk_use_py_project_runs_relocates_and_refuses_missing_artifact() {
     // silent/partial run.
     let broken = root.join("broken");
     copy_tree(&sdk, &broken);
-    std::fs::remove_file(broken.join("targets").join("a2py").join("a2x_py_runtime.py")).unwrap();
+    std::fs::remove_file(
+        broken
+            .join("targets")
+            .join("a2py")
+            .join("a2x_py_runtime.py"),
+    )
+    .unwrap();
     let err = m2
         .run_sdk(&broken, TargetKind::A2py, "run:py")
         .expect_err("a missing helper must be refused");
@@ -342,7 +359,11 @@ fn p1107_v08_plain_auto_project_on_the_a2py_lane_is_unaffected() {
     let run = m2
         .run_sdk(&sdk, TargetKind::A2py, "run:py")
         .expect("the plain program runs");
-    assert_eq!(run.exit_code, Some(14), "the entry value is observed: {run:?}");
+    assert_eq!(
+        run.exit_code,
+        Some(14),
+        "the entry value is observed: {run:?}"
+    );
 }
 #[test]
 fn p1107_v05_emitted_fileset_carries_no_legacy_python_engine() {
@@ -494,7 +515,10 @@ fn p1107_v06_cold_warm_and_body_edit_are_counted_and_invalidated() {
     let after = m2
         .build(TargetKind::A2py, &inputs(&edited))
         .expect("edited build");
-    assert!(after.rebuilt, "a body edit invalidates the program fragment");
+    assert!(
+        after.rebuilt,
+        "a body edit invalidates the program fragment"
+    );
     assert!(
         after.counts.fragments_produced > 0,
         "the edited fragment is re-produced: {:?}",
@@ -575,7 +599,10 @@ fn p1107_v06_identity_axes_and_provider_participation() {
         .artifacts
         .iter()
         .any(|a| a.path.ends_with("p1107_fake_provider.dll"));
-    assert!(packed, "the provider artifact is in the SDK recipe: {recipe:?}");
+    assert!(
+        packed,
+        "the provider artifact is in the SDK recipe: {recipe:?}"
+    );
     let with_provider = m2
         .build(TargetKind::A2py, &make("usepy1107axes", vec![]))
         .expect("identity after provider");

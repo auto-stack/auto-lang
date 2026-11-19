@@ -17,8 +17,7 @@ pub use ace_foreign_contract::py_ops::{PyOpDecl, PY_OPS};
 
 /// The declaration-only environment the A2PY compile lane passes to the shared
 /// front door.
-pub fn py_declaration_contract(
-) -> Result<ace_foreign_contract::manual::AdmittedForeign, String> {
+pub fn py_declaration_contract() -> Result<ace_foreign_contract::manual::AdmittedForeign, String> {
     ace_foreign_contract::py_ops::language_contract()
 }
 

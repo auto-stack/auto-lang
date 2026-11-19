@@ -601,7 +601,10 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         };
         let start = e.span.start as u32;
         let exact = (e.span.start as u32, e.span.end as u32);
-        let find = |kind: PyOpKind| plan.find_exact(kind, exact).or_else(|| plan.find(kind, start));
+        let find = |kind: PyOpKind| {
+            plan.find_exact(kind, exact)
+                .or_else(|| plan.find(kind, start))
+        };
         // `.to(float)`: the F32 lane is `Cast(bits-pair intrinsic)`; the F64
         // lane's OUTER node is the bits-pair intrinsic itself. Both are ONE
         // native extraction.
@@ -687,7 +690,11 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 let mut kwargs = Vec::new();
                 for op in &fact.operands {
                     if let PyRole::Kwarg(name) = &op.role {
-                        kwargs.push(format!("{}: {}", py_text_arg(name), self.py_operand_slot(op)?));
+                        kwargs.push(format!(
+                            "{}: {}",
+                            py_text_arg(name),
+                            self.py_operand_slot(op)?
+                        ));
                     }
                 }
                 let member = if fact.member.is_empty() {
@@ -763,10 +770,7 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         self.py_operand_slot(op)
     }
 
-    fn py_operand_slot(
-        &mut self,
-        op: &ace_core::py_ops::PyOperand,
-    ) -> Result<String, A2xReject> {
+    fn py_operand_slot(&mut self, op: &ace_core::py_ops::PyOperand) -> Result<String, A2xReject> {
         if let Some(lit) = &op.literal {
             return Ok(py_literal_text(lit));
         }

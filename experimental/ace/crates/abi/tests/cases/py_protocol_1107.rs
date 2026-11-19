@@ -43,7 +43,10 @@ fn oracle_lines() -> Vec<f64> {
     assert!(out.status.success(), "the oracle must run");
     String::from_utf8_lossy(&out.stdout)
         .lines()
-        .map(|l| l.parse::<f64>().unwrap_or_else(|_| panic!("oracle line `{l}`")))
+        .map(|l| {
+            l.parse::<f64>()
+                .unwrap_or_else(|_| panic!("oracle line `{l}`"))
+        })
         .collect()
 }
 
@@ -103,7 +106,11 @@ return 7
         )
         .unwrap_or_else(|e| panic!("the frame must be well formed: {e}"));
     assert_eq!(run.success_i32(), Some(7), "{:?}", run.outcome);
-    assert_eq!(run.stdout_text(), "1\n", "one evaluation, one frame, one print");
+    assert_eq!(
+        run.stdout_text(),
+        "1\n",
+        "one evaluation, one frame, one print"
+    );
 }
 
 /// PLAN-1107 V-02 regression (AV): an inline side-effecting receiver runs

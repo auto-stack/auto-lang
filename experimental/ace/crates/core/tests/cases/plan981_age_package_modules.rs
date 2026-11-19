@@ -276,8 +276,10 @@ fn p981_module_cycle_is_named() {
     // 必须由被引用的导入观察（未引用的环见 980 p980_lazy_unreferenced_cyclic_
     // imports_do_not_form_edges，那里按新合同是正例）。本用例保留“环具名拒绝”
     // 原性质：两边都用被引用的导入互指。
-    let aa = "use bb.b\npub fn a() int {\n    return b()\n}\nnode A {\n    view { text \"a\" {} }\n}\n";
-    let bb = "use aa.a\npub fn b() int {\n    return a()\n}\nnode B {\n    view { text \"b\" {} }\n}\n";
+    let aa =
+        "use bb.b\npub fn a() int {\n    return b()\n}\nnode A {\n    view { text \"a\" {} }\n}\n";
+    let bb =
+        "use aa.a\npub fn b() int {\n    return a()\n}\nnode B {\n    view { text \"b\" {} }\n}\n";
     let main = "use aa.a\nnode Main {\n    model {\n        var x int = a()\n    }\n    view { text \"m\" {} }\n}\n";
     let ds = compile_age_package(
         &[input("aa", aa), input("bb", bb), input("main", main)],

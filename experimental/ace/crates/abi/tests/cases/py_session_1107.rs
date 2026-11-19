@@ -13,8 +13,12 @@ const CORPUS_SHA256: &str = "0d5dc8504252fbb1caff55a0e2adf8b0cb8b2b4ab83d0583409
 
 fn corpus() -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS);
-    std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("the shared PLAN-1107 corpus is missing at {}: {e}", path.display()))
+    std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "the shared PLAN-1107 corpus is missing at {}: {e}",
+            path.display()
+        )
+    })
 }
 
 #[test]
