@@ -434,30 +434,23 @@ fn p105_handler_var_locals_and_fstring() {
     assert_eq!(names, vec!["a", "b"]);
     assert!(compiles(src_ok), "package face admits var locals and handler f-strings");
 
-    // 局部量再赋值（012 秒表 `if cc < 10 { cc_str = "0" + cc_str }`）——当前具名
-    // 拒绝（binder 判成未声明模型字段 `b`），不是解析回滚。
-    let src_reassign = src_ok.replace(".s = f\"${b}\"", "if a < 10 { b = \"0\" + b }\n                .s = b");
-    let caps = vec![PACKAGES_CAPABILITY.to_string()];
-    let scenario = ComponentScenario {
-        instances: 1,
-        ops: Vec::new(),
-    };
-    let err = compile_age_package_with_scenario(
-        &[PackageModuleInput {
-            package: "app".into(),
-            version: "1.0.0".into(),
-            id: "app".into(),
-            source: src_reassign.clone(),
-            provider: None,
-        }],
-        "app::app",
-        LegacyWidgetAlias::Accept,
-        &caps,
-        &scenario,
-    )
-    .expect_err("local reassignment is a named reject today");
+    // 局部量再赋值（012 秒表 `if cc < 10 { cc_str = "0" + cc_str }`）：裸名先查
+    // 执行路径绑定表（hook-local 遮蔽同拼写 model 字段），命中即局部写；被再
+    // 赋值的 let 绑定自动翻成可变（verify 的可变写要求）。两面都必须通过。
+    let src_reassign = src_ok.replace(
+        ".s = f\"${b}\"",
+        "if a < 10 { b = \"0\" + b }\n                .s = b",
+    );
+    let nodes = ace_core::source::age_component::project_component_candidates(&src_reassign)
+        .expect("local reassignment projects");
+    let handler = &nodes[0].handlers[0];
+    let has_if = handler
+        .stmts
+        .iter()
+        .any(|s| matches!(s, ace_core::source::age_component::ComponentStmt::If { .. }));
+    assert!(has_if, "the reassignment stays inside its `if` branch");
     assert!(
-        err.iter().any(|d| d.code == "source.age.component-event"),
-        "named reject expected, got {err:?}"
+        compiles(&src_reassign),
+        "package face admits hook-local reassignment (mutable let)"
     );
 }

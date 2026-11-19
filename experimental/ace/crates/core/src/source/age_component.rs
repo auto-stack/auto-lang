@@ -36,6 +36,10 @@ pub struct ComponentField {
 #[derive(Clone, Debug)]
 pub struct ComponentAssign {
     pub field: String,
+    /// PLAN-105 T-02（U03 真语料 012）：源形是否为**裸名**赋值（无 `.`）。
+    /// 裸名先查 handler 执行路径绑定表（hook-local/形参遮蔽同拼写 model 字段），
+    /// 未命中才落模型字段；`.field =` 恒指实例字段。
+    pub bare: bool,
     pub rhs: Expr,
     pub span: Span,
 }
@@ -1922,8 +1926,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                         out.push((a.field.clone(), a.span));
                     }
                     ComponentStmt::If { then, els, .. } => {
-                        collect_assign_targets(then, out);
-                        if let Some(e) = els {
+                        collect_assign_targets(then, out);                        if let Some(e) = els {
                             collect_assign_targets(e, out);
                         }
                     }
@@ -1933,7 +1936,29 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
         }
         let mut targets = Vec::new();
         collect_assign_targets(&h.stmts, &mut targets);
+        // PLAN-105 T-02（U03 真语料 012）：hook 局部量（`let`/`var` 声明）的
+        // **再赋值**（`if cc < 10 { cc_str = "0" + cc_str }`）是局部写，不是
+        // 模型字段写——按声明名集合跳过字段核对（未声明的裸名仍具名拒）。
+        let mut locals: Vec<String> = Vec::new();
+        fn collect_local_names(stmts: &[ComponentStmt], out: &mut Vec<String>) {
+            for st in stmts {
+                match st {
+                    ComponentStmt::Let { name, .. } => out.push(name.name.clone()),
+                    ComponentStmt::If { then, els, .. } => {
+                        collect_local_names(then, out);
+                        if let Some(e) = els {
+                            collect_local_names(e, out);
+                        }
+                    }
+                    ComponentStmt::Assign(_) => {}
+                }
+            }
+        }
+        collect_local_names(&h.stmts, &mut locals);
         for (field, span) in &targets {
+            if locals.iter().any(|l| l == field) {
+                continue;
+            }
             if !node.fields.iter().any(|f| &f.name == field) {
                 bad = Some((field.clone(), *span));
                 break;
@@ -2209,6 +2234,14 @@ pub(crate) fn handler_check_fn(
     ) {
         return Some(Err(ds));
     }
+    // PLAN-105 T-02（U03 真语料 012）：被**再赋值**的 hook 局部量需要可变绑定
+    // （共享 verify 的 `verify.immutable-write` 拒绝 `let` 再赋值）——语句面
+    // 铸完后按赋值目标名把对应 `let` 翻成 `var`。
+    {
+        let mut targets = Vec::new();
+        collect_assign_target_names(&stmts, &mut targets);
+        mark_lets_mutable(&mut stmts, &targets);
+    }
     // PLAN-980 WEB #6p：通道调用实参验证——**死 let**（无注解推断）承载：
     // 实参经同一重命名通道（形参/字段可见性 + 类型/ownership 由共享 verify
     // 真核），值弃用（通道本身=宿主通知，不进受检值域——#6m 实参=宿主
@@ -2481,6 +2514,42 @@ pub(crate) fn hook_local_name(instance: usize, seq: usize, k: usize, name: &str)
 /// 裸名先查本表（hook-local 遮蔽同拼写 model 字段，同形参规则）；
 /// `.field` 恒指实例字段，不被遮蔽。`if/else` 分支各拿**快照**——分支内
 /// 绑定不外泄（回调结束即失效，021 token 语义由隐藏函数体的作用域承担）。
+/// PLAN-105 T-02：语句面里的赋值目标名（递归进 if/else 分支）。
+fn collect_assign_target_names(stmts: &[Stmt], out: &mut Vec<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Assign { target, .. } => out.push(target.base.name.clone()),
+            Stmt::If { then, els, .. } => {
+                collect_assign_target_names(&then.stmts, out);
+                if let Some(e) = els {
+                    collect_assign_target_names(&e.stmts, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// PLAN-105 T-02：把被再赋值的 `let` 绑定翻成可变（对应 verify 的可变写要求）。
+fn mark_lets_mutable(stmts: &mut [Stmt], targets: &[String]) {
+    for st in stmts.iter_mut() {
+        match st {
+            Stmt::Let { name, mutable, .. } => {
+                if targets.iter().any(|t| t == &name.name) {
+                    *mutable = true;
+                }
+            }
+            Stmt::If { then, els, .. } => {
+                mark_lets_mutable(&mut then.stmts, targets);
+                if let Some(e) = els {
+                    mark_lets_mutable(&mut e.stmts, targets);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn hook_stmts_lower(
     inst: usize,
     seq: usize,
@@ -2494,6 +2563,31 @@ fn hook_stmts_lower(
     for st in body {
         match st {
             ComponentStmt::Assign(assign) => {
+                // PLAN-105 T-02（U03 真语料 012）：裸名先查执行路径绑定表
+                // （hook-local 遮蔽同拼写 model 字段——981 语义注记同款）；
+                // 命中即局部写，不落实例字段。
+                if assign.bare {
+                    let scoped = scope.iter().find(|(n, _, _)| n == &assign.field);
+                    if let Some((_, local, _)) = scoped {
+                    out.push(Stmt::Assign {
+                        target: crate::source::ast::AssignTarget {
+                            base: Ident {
+                                name: local.clone(),
+                                span: assign.span,
+                            },
+                            path: Vec::new(),
+                        },
+                        value: rename_expr_with_params(
+                            &assign.rhs,
+                            FieldBinding::Local(inst),
+                            &node.fields,
+                            &scope,
+                        )?,
+                        span: assign.span,
+                        });
+                        continue;
+                    }
+                }
                 let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
                     return Err(vec![text_diag(
                         "source.age.component-event",

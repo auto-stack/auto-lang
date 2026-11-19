@@ -6164,6 +6164,8 @@ impl<'a> Engine<'a> {
         }
         assigns.push(ComponentAssign {
             field: field_name,
+            // 点语法赋值恒指实例字段（PLAN-105：裸名才走局部遮蔽查表）。
+            bare: false,
             rhs,
             span,
         });
@@ -7561,6 +7563,8 @@ impl<'a> Engine<'a> {
                 let rhs_node = self.cx.field_child(inner, "rhs").expect("on assign rhs");
                 Some(ComponentStmt::Assign(ComponentAssign {
                     field: self.cx.spelling(field_leaf),
+                    // `age-on-assign` 是裸名形（无 `.`）——局部遮蔽候选。
+                    bare: true,
                     rhs: self.project_expr_sync(rhs_node),
                     span: self.cx.span_of(inner),
                 }))
