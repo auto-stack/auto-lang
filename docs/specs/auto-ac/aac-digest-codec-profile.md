@@ -38,7 +38,7 @@ AAC 需要的是与 Rust 工件层**逐字节一致**的：
 
 | 公共拼写 | 合同 | 已验证参考 |
 |---|---|---|
-| `sha256_hex(data Str) Str` | FIPS 180-4，UTF-8 字节精确，返回 64 位小写十六进制 | `sha2` crate（测试进程内独立实现）与 `ace_a2x_core::sha256::sha256_hex` |
+| `sha256_hex(data Str) Str` | FIPS 180-4，UTF-8 字节精确，返回 64 位小写十六进制 | 进程内独立 `sha2` crate（未被验的对照：K/IV 常量取自 A2X 产品参考 `ace_a2x_core::sha256`，算法为独立 Auto 实现） |
 | `sha256_hex_bytes(bs List<int>) Str` | 同上，输入=精确字节向量 | 同上 |
 | `sha256_hex_parts(parts List<Str>) Str` | 流式：同一 payload 任意切分与一次性哈希结果相同（真实增量路径：尾缓冲 + 块排空，不是重新拼接）；`parts` 被消费（`remove(0)`） | 同上 |
 | `blake3_hex(data Str) Str` / `blake3_hex_bytes` | BLAKE3 非密钥 256 位，64 位小写十六进制 | `blake3` crate（unkeyed `hash`） |
@@ -56,8 +56,10 @@ AAC 需要的是与 Rust 工件层**逐字节一致**的：
 
 **命名边界（本切片不做）**：
 - BLAKE3 的**增量/流式**接口（`update`/`finalize` 跨块状态机）未提供：AAC 当前消费者
-  （源文本、工件字节）在内存中一次性可得；BLAKE3 的内部分块路径由 1023/1024/1025/
-  2048/3000 字节向量对参考实现验证。SHA-256 已提供真实增量路径（§3）。
+  （源文本、工件字节）在内存中一次性可得；BLAKE3 的内部分块路径由 1/64/65/128 字节
+  边界向量加 **2049 字节（三 chunk，触发二叉树合并）** 向量对参考实现验证；单 chunk 满
+  1024 字节的独立向量未单列（同一 chunk 处理路径已由上述覆盖）。SHA-256 已提供真实
+  增量路径（§3）。
 - 密钥模式（keyed / derive_key）与扩展输出长度（>32 字节）不在本切片。
 - 性能：纯 Auto BLAKE3 约 1M 指令步/KiB；AV 默认 1M 步不足，driver 以显式记录的
   64M 步预算运行（`AV_MAX_STEPS`）。加速是后继增量，不是本 profile 的合同。
@@ -104,15 +106,17 @@ u32 edge_count | (str id, str refkind) * edge_count
 其中 str = u32le(len) ‖ ASCII 字节
 ```
 
-- **规范顺序**：pair 按 key 升序（key 相同按 value）；edge 按 (id, refkind) 升序。
-  编码器排序；解码器**拒绝**非规范顺序（13）与重复键（12）——排序不确定性不会以
-  last-writer-wins 方式隐藏；
+- **规范顺序**：pair 按 (key, value) 升序（key 相同则按 value，value 相同即同一 pair）；
+  edge 按 (id, refkind) 升序。编码器排序；解码器**拒绝**非规范顺序（13）与**完全相同的
+  重复 pair**（12）——同 key 不同 value 是合法规范序，因此编码器不可能产出自身解码器
+  拒绝的字节；排序不确定性不会以 last-writer-wins 方式隐藏；
 - **wire 不携带可信 Checked 能力**：格式里根本没有信任字段，恢复出的 DTO 永远不能
   冒充已验证对象；语义准入仍由 1047/1053 的重验路径负责；
 - **预分配准入**：所有 count/长度在分配/迭代之前先按"实际剩余字节"校验
   （`count * 8 > remaining` 即拒绝），攻击性长度不会导致分配；
-- `anchor` 的 8 字节原样搬运，因此 `i64::MIN`/`i64::MAX` 不受值层重编码扰动；
-  写入路径由 `i64_le_bytes` 语义（见 §7）覆盖；
+- `anchor` 的 8 字节原样搬运（解码端按定宽字段复制，不做值层重编码），因此
+  `i64::MIN`/`i64::MAX` 不受重编码扰动；写入路径为 `codec.push_i64le(v i64)`
+  （二进制补码 u64 小端，见 §7）；
 - 该 DTO **不宣称**与 `artifacts` 内部的 `artifact_identity` 哈希构造逐字节相同：
   后者是哈希而非序列化；本 DTO 的排序规则是显式冻结的。
 
@@ -152,6 +156,20 @@ admission 上限：`default_max_payload() = 4 MiB`，`default_max_items() = 6553
   单源 + 按 Design 56 覆盖合同跑 AV/mn/A2R/A2C/A2PY 五端"，届时应新建或修订 spec
   delta，而不是让本 profile 静默扩面。
 
+## 9.1 阶段合同（SD-AC-STAGED 载体）
+
+本包执行 Design 59 的**阶段**规则，明写如下（这是 SD-AC-STAGED 的规范载体）：
+
+- A 侧（M2-A）已交能力是**单向消费**：本包只消费已正式落主的 A 能力
+  （`stdlib/ace/asm/bytes.at` 的 `byte_of`/`utf8_len`、共享 grammar 与
+  `packages-aggregates-ct` 车道）；不新增、不改写 A 的冻结切片。
+- A 侧**具名 AC 差额**可以在 B 期间与 AAC 实证互相交接：本包当前**没有**任何缺口依赖，
+  即所有被消费的操作都已交付；若将来某切片依赖尚未交付的 AC 操作，必须先具名登记该
+  切片阻塞，不得 fallback 到旧 VM/私有临时实现。
+- CL（完整语言）行不因 A 期能力有限而删改；本包的 profile 只描述 digest/codec 支撑面，
+  不冒领全 CL、Gen1–3 或 M2 最终通过。
+- 阶段通过（本 profile 的 V-01..V-06）不等于完整 AAC 或 M2 三端签章；完整验收仍归
+  1053/1054/1068。
 ## 10. 验证（本交付稿的真实命令与结果）
 
 固定组 `ace-aac`：`cargo nextest run -p ace-aac-support-conformance`。
